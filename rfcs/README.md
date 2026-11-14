@@ -20,6 +20,7 @@ Each RFC is a file `NNNN-short-name.md` with a header:
 | [0003](0003-in-process-code-patching.md) | In-process code patching and an interpreted app package | Rejected |
 | [0004](0004-asuka-test.md) | asuka test: the same UI tests on the platforms' real views | Draft |
 | [0005](0005-devtools.md) | Devtools: debugging, inspecting and profiling an app | Draft |
+| [0006](0006-over-the-air-updates.md) | Code push on phones | Rejected |
 
 ## Background: hot reload today
 
