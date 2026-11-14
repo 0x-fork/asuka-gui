@@ -14,8 +14,10 @@ Desktop apps already update themselves whole (`asuka/sdk/update`) and a
 web app reloads; on phones `update.Supported()` is `ErrUnsupported`.
 
 Two ways were considered and rejected for now. One is the app as
-downloaded WebAssembly: on iOS it would run 500 to 1,400 times slower
-than the shipped binary (measured below). The other is Shorebird's way:
+downloaded WebAssembly: on iOS, which allows no JIT, it would run about
+50 times slower than the shipped binary under the best interpreter
+measured, and 500 to 1,400 times slower under wazero's (measured below).
+The other is Shorebird's way:
 patched functions run in an interpreter while the rest stays compiled.
 That works for Dart because Shorebird owns Dart's compiler and VM. For
 Go it would mean an interpreter that isn't verified on iOS or Android
@@ -97,35 +99,72 @@ included. If it ran the app's Go code, compiled for `GOOS=wasip1`, in
 an embedded runtime and spoke that protocol over an in-memory pipe, an
 update would be a new `.wasm`.
 
-The runtime is the problem. wazero, the pure-Go runtime, has no
-compiler on `GOOS=ios` or `GOOS=android`, and an App Store app couldn't
-map its code executable anyway, so it interprets. Below are Asuka's own
-benchmarks, measured with the core and the app together as they would
-run in that `.wasm` (Go 1.27.3, wazero 1.12.0, Apple Silicon Mac,
-`-benchtime 1s`):
+The cost is interpretation. An App Store app can't map memory
+executable, so on iOS the `.wasm` must be interpreted. wazero, the
+pure-Go runtime, has no compiler on `GOOS=ios` or `GOOS=android` at all.
+Two things are slow, and they are measured apart below: Go's
+WebAssembly itself, and the runtime that runs it. These are Asuka's own
+benchmarks, with the core and the app together as they would run in
+that `.wasm`. They were run on an Apple Silicon Mac (Go 1.27.3,
+`-benchtime 1s`), so a phone would be slower in every column. Each
+cell gives the time and how many times slower it is than native.
 
-| benchmark | native | wazero compiler | wazero interpreter |
-|---|---:|---:|---:|
-| signal DeepPropagation | 1.23 µs | 8.8 µs (7×) | 920 µs (750×) |
-| signal BroadPropagation | 2.15 µs | 29 µs (14×) | 1.41 ms (655×) |
-| signal Diamond | 110 ns | 2.06 µs (19×) | 57 µs (520×) |
-| ui Mount1000 | 5.7 ms | 67 ms (12×) | 4.46 s (776×) |
-| ui UpdateOne1000 | 0.16 ms | 1.9 ms (12×) | 115 ms (705×) |
-| ui UpdateAll1000 | 0.96 ms | 11.8 ms (12×) | 1.05 s (1,085×) |
-| layout RelayoutOneText | 15.5 µs | 591 µs (38×) | 15.3 ms (985×) |
-| layout FullLayout | 79.5 µs | 2.16 ms (27×) | 116 ms (1,460×) |
+| benchmark | native | V8 (JIT) | wazero compiler | WAMR fast interpreter | wasm3 | wazero interpreter |
+|---|---:|---:|---:|---:|---:|---:|
+| signal DeepPropagation | 1.23 µs | 3.2 µs (2.6×) | 8.8 µs (7×) | 44 µs (36×) | 34 µs (28×) | 920 µs (750×) |
+| signal BroadPropagation | 2.15 µs | 8.8 µs (4.1×) | 29 µs (14×) | 127 µs (59×) | 104 µs (49×) | 1.41 ms (655×) |
+| signal Diamond | 110 ns | 485 ns (4.4×) | 2.06 µs (19×) | 6.8 µs (62×) | 5.4 µs (49×) | 57 µs (520×) |
+| ui Mount1000 | 5.7 ms | 20 ms (3.5×) | 67 ms (12×) | 334 ms (58×) | n/a | 4.46 s (776×) |
+| ui UpdateOne1000 | 0.16 ms | 0.47 ms (2.9×) | 1.9 ms (12×) | 6.6 ms (40×) | n/a | 115 ms (705×) |
+| ui UpdateAll1000 | 0.96 ms | 3.7 ms (3.9×) | 11.8 ms (12×) | 64 ms (66×) | n/a | 1.05 s (1,085×) |
+| layout RelayoutOneText | 15.5 µs | 56 µs (3.6×) | 591 µs (38×) | 694 µs (45×) | 588 µs (38×) | 15.3 ms (985×) |
+| layout FullLayout | 79.5 µs | 322 µs (4.0×) | 2.16 ms (27×) | 5.1 ms (64×) | 4.9 ms (62×) | 116 ms (1,460×) |
 
-To reproduce: `GOOS=wasip1 GOARCH=wasm go test -c -o ui.wasm ./ui`,
-then `wazero run [-interpreter] -mount=ui:/ ui.wasm -test.run='^$'
--test.bench=.`.
+The runtimes used:
 
-Interpreted, an update to one row in a thousand takes 115 ms, seven
-frames at 60 Hz, against a sixth of a millisecond today. Mounting a
-thousand rows takes four and a half seconds. Moving only the app into
-WebAssembly and keeping the core native doesn't help. The core's hot
-paths call the app's closures (signals' computations, effects, list
-cell builders), so every call would cross the boundary with its values
-copied, since a WebAssembly module's Go heap isn't the host's.
+- **V8**: Node 26's `node:wasi`, an optimizing JIT. This is the floor:
+  what Go's WebAssembly costs with the best compiler behind it.
+- **wazero 1.12.0**: `wazero run` and `wazero run -interpreter`.
+- **WAMR 2.4.5**: built with its fast interpreter, without JIT or AOT.
+  It is C, which `mobile/` could link through cgo.
+- **wasm3**: built from main. It can't compile `ui`'s module ("compiling
+  function overran its stack height limit"), and it is in minimal
+  maintenance.
+
+To reproduce, build a package's tests as wasm with
+`GOOS=wasip1 GOARCH=wasm go test -c -o ui.wasm ./ui`. Then run it with
+`-test.run='^$' -test.bench=.` under each runtime, the package's
+directory mounted as `/`.
+
+So both are slow, and the runtime decides most of it:
+
+- **Go's WebAssembly costs 3 to 4.5 times native even under V8.** Go
+  keeps its own stack in linear memory, and it compiles each function
+  so that it can stop and resume at its calls, which goroutines need
+  because WebAssembly has no way to switch stacks. TinyGo's output is faster, but TinyGo doesn't
+  support all of Go, and it wasn't measured.
+- **A good interpreter costs another 10 to 15 times on top.** The best
+  interpreters measured (WAMR, wasm3) are 30 to 65 times slower than
+  native.
+- **wazero's interpreter is 15 to 25 times slower than those.** It is
+  "a naive interpreter-based implementation", in wazero's own words.
+  The 500 to 1,400 times measured first was mostly wazero.
+
+Even with WAMR, the whole app as interpreted WebAssembly runs about 50
+times slower than the release it patches, until the next store release
+replaces it. On a Mac, updating one row in a thousand takes 6.6 ms, most
+of a 120 Hz frame, against a sixth of a millisecond today. Mounting a
+thousand rows takes a third of a second, against 6 ms. A screen with
+little in it would be usable, while lists and large screens would drop
+frames. An app that took an update would run worse than one that
+didn't, which is the opposite of what an update is for.
+
+Moving only the app, or only the changed modules, into WebAssembly and
+keeping the core native doesn't help either. The core's hot paths call
+the app's closures (signals' computations, effects, list cell
+builders), so every call would cross the boundary with its values
+copied, since a WebAssembly module's Go heap isn't the host's. Signals,
+closures and nodes are Go values that one heap can't hand to the other.
 
 ## Option 2: patched functions interpreted, the rest compiled
 
@@ -224,6 +263,7 @@ would have to be.
   [the protocol](https://docs.expo.dev/technical-specs/expo-updates-1/).
 - [App Center's retirement](https://learn.microsoft.com/en-us/appcenter/retirement).
 - [wazero](https://github.com/tetratelabs/wazero) (`internal/platform`: the
-  compiler's platforms).
+  compiler's platforms), [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime),
+  [wasm3](https://github.com/wasm3/wasm3).
 - [ixgo](https://github.com/goplus/ixgo), [reflectx](https://github.com/goplus/reflectx),
   [yaegi](https://github.com/traefik/yaegi).
