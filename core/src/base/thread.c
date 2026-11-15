@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L  // clock_gettime under -std=c17
 #include "base/thread.h"
 
 #include <time.h>
