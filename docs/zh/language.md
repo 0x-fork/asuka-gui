@@ -38,7 +38,7 @@ import ./model.{Message, Folder}  // 直接使用这些名字，不用加包名
 import ./theme as t               // 起一个更短的名字
 ```
 
-包里的名字要通过包名来使用：`http.get(url)`、`components.Card("Hi")`。预置模块（prelude，即内置的类型、元素和函数）不需要导入。
+包里的名字要通过包名来使用：`http.get(url)`、`components.Card("Hi")`。包名取自路径的最后一段；最后一段不能用作名字的包（比如 `@acme/line-charts`），导入时要用 `as` 给它起一个名字。预置模块（prelude，即内置的类型、元素和函数）不需要导入。`asuka/...` 这些包都列在[标准库](stdlib.md)里。
 
 语句和声明在行尾结束；想在一行里写多条，用 `;` 隔开。如果一行以运算符、逗号或左括号结尾，就会接着下一行继续。
 
@@ -62,7 +62,24 @@ import ./theme as t               // 起一个更短的名字
 | `Length` | `100`（点）、`50%`、`.auto` |
 | `fn(A) -> B` | 函数和闭包 |
 
-字符串的花括号里可以放任意表达式：`"{count} items"`、`"Total: {price * qty}"`。`\{` 表示一个花括号字符；`r"…"` 是原始字符串，没有转义也没有插值；`"""…"""` 可以跨多行。
+字符串的花括号里可以放任意表达式：`"{count} items"`、`"Total: {price * qty}"`。`\{` 表示一个花括号字符；`r"…"` 是原始字符串，没有转义也没有插值；`"""…"""` 可以跨多行（第一行为空时不算在内，结束引号所在那一行的缩进也会去掉）。不是数字、布尔值或字符串的值，显示为文本时是这样的：枚举成员显示为它的名字，可选值显示为 `none` 或其中的值，错误显示为它的消息，其他值显示为 JSON。
+
+map 的键可以是整数、字符串、布尔值，或者成员不携带值的枚举。
+
+### 内置方法
+
+字符串、bytes、数组、map 和可选值都有方法。其中会修改值本身的方法（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）只能用在 `var` 或状态上：
+
+| 类型 | 方法 |
+|---|---|
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
+| `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序） |
+| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new)`、`split(sep)`、`find(s)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`+` |
+| `bytes` | `count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）；`bytes()` 是空的字节序列，`s.bytes()` 是字符串的 UTF-8 字节 |
+| `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()` |
+| `T?` | `isNone()`、`isSome()` |
+
+`min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `asuka/math` 里。
 
 ### 值语义
 
@@ -84,6 +101,8 @@ if let u = user { Text(u.name) }
 let name = user?.name ?? "Guest"
 let first = items.first()!        // 为 none 时会崩溃：只在确定不可能为 none 时这样写
 ```
+
+`?.` 之后，链条剩下的部分遇到 none 也会停下：`user?.boss.name` 的类型是 `string?`。
 
 ### 声明
 
@@ -110,7 +129,7 @@ let m = Message(id: "1", subject: "Hello")
 let n = Message(id: m.id, subject: m.subject, read: true)
 ```
 
-创建结构体的方式是调用它，并按名字传入各个字段；有默认值的字段可以省略。结构体主体里的 `let` 是这个类型的常量（`Font.title`），在任何需要 `Font` 的地方都可以简写成 `.title`。
+创建结构体的方式是调用它，按名字或按顺序传入各个字段；有默认值的字段可以省略。结构体的方法直接用名字访问它的字段，但不能修改结构体（它是一个值）：需要修改时，就返回一个新的结构体。结构体主体里的 `let` 是这个类型的常量（`Font.title`），在任何需要 `Font` 的地方都可以简写成 `.title`。
 
 ### 枚举
 
@@ -279,7 +298,7 @@ pub store Mailbox {
   }
 
   pub async fn refresh() throws {
-    messages = try await http.get("https://example.com/inbox").json<[Message]>()
+    messages = try await http.get("https://example.com/inbox").json()
   }
 }
 ```
@@ -373,6 +392,8 @@ on press {
 let n = try? parse(text)   // 抛出错误时为 none
 ```
 
+错误的 `message` 是它的 `message` 字段、它的 `fn message() -> string`，或者它的类型名和成员名。`Error("…")` 用一条消息创建一个错误。`catch` 永远不会捕获 task 的取消：取消会一直走到 task 的结尾，并在途中执行各个 `defer`。
+
 处理函数或 task 没有捕获的错误，会交给包住这个组件的最近的 `Boundary`；如果没有，就交给应用自己的处理（开发时显示出来，发布版本中记录到日志）：
 
 ```asuka
@@ -441,7 +462,7 @@ pub native component MapView(region: Region) {
 }
 ```
 
-`asuka native generate` 会生成各平台需要实现的 Swift、Kotlin、JavaScript 和 C 代码。详见[原生代码](native.md)。
+创建模块和调用它都可能失败（当前平台可能没有它的代码），所以两者都要加 `try`：`let h = try Haptics()`、`try h.impact(.light)`。`asuka native generate` 会生成各平台需要实现的 Swift、Kotlin、JavaScript 和 Go 代码。详见[原生代码](native.md)。
 
 ## 测试
 
@@ -453,6 +474,8 @@ test "archiving removes the row" {
   app.expectNo("Hello")
 }
 ```
+
+`expect(cond)` 在 cond 为 false 时让测试失败，并指出失败的是什么、在哪里（如果是比较，还会给出两边的值）。JSON 由 `asuka/json` 处理：`let notes: [Note] = try json.decode(text)` 按期望的类型读取 JSON（也可以写成 `json.decode<[Note]>(text)`），`json.encode(notes)` 把值写成 JSON。泛型函数也可以把它的 `T` 当作 JSON 读写；这样每次调用时，`T` 都必须是 JSON 能表示的类型，编译器会在调用处检查这一点。
 
 `asuka test` 在假宿主上运行包里的测试：它会像各平台那样对视图进行布局，按每个字符固定宽度来测量文字，而且只有在没有其他东西可以运行时，时间才会前进（测试里的 `sleep(5s)` 不花任何时间）。`mount` 返回应用，供你驱动和检查：`tap`、`type(_, into:)`、`scroll`、`back`、`expect`、`expectNo`、`idle`。详见[测试](testing.md)。
 

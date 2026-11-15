@@ -38,7 +38,7 @@ import ./model.{Message, Folder}  // パッケージ名を付けずに使う名�
 import ./theme as t               // 短い別名
 ```
 
-パッケージの名前は、パッケージ名を通して使います（`http.get(url)`、`components.Card("Hi")`）。プレリュード（組み込みの型、要素、関数）はインポートする必要がありません。
+パッケージの名前は、パッケージ名を通して使います（`http.get(url)`、`components.Card("Hi")`）。パッケージ名はパスの最後の部分です。最後の部分が名前として使えないパッケージ（`@acme/line-charts`）は、`as` で名前を付けてインポートします。プレリュード（組み込みの型、要素、関数）はインポートする必要がありません。`asuka/...` のパッケージの一覧は[標準ライブラリ](stdlib.md)にあります。
 
 文と宣言は行末で終わります。一行に複数書くときは `;` で区切ります。演算子、カンマ、開き括弧で終わる行は、次の行に続きます。
 
@@ -62,7 +62,24 @@ import ./theme as t               // 短い別名
 | `Length` | `100`（ポイント）、`50%`、`.auto` |
 | `fn(A) -> B` | 関数とクロージャ |
 
-文字列の波括弧の中には、任意の式を書けます（`"{count} items"`、`"Total: {price * qty}"`）。`\{` は波括弧そのものを表します。`r"…"` はエスケープも埋め込みもない raw 文字列で、`"""…"""` は複数行にまたがる文字列です。
+文字列の波括弧の中には、任意の式を書けます（`"{count} items"`、`"Total: {price * qty}"`）。`\{` は波括弧そのものを表します。`r"…"` はエスケープも埋め込みもない raw 文字列で、`"""…"""` は複数行にまたがる文字列です（1 行目が空ならその行は含まれず、閉じ引用符の行のインデントも取り除かれます）。数値、ブール値、文字列以外の値は、テキストとして表示すると次のようになります。列挙型のケースはその名前、オプショナルは `none` か中の値、エラーはそのメッセージ、それ以外は JSON です。
+
+マップのキーには、整数、文字列、ブール値、値を持たないケースだけの列挙型が使えます。
+
+### 組み込みメソッド
+
+文字列、バイト列、配列、マップ、オプショナルにはメソッドがあります。値そのものを変更するメソッド（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）は、`var` か状態に対してだけ呼べます。
+
+| 型 | メソッド |
+|---|---|
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`+` |
+| `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順） |
+| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new)`、`split(sep)`、`find(s)`（バイトオフセット。見つからなければ none）、`slice(from, to)`（文字単位）、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`+` |
+| `bytes` | `count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）。`bytes()` は空のバイト列、`s.bytes()` は文字列の UTF-8 |
+| `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()` |
+| `T?` | `isNone()`、`isSome()` |
+
+`min`、`max`、`abs`、`float(n)`、`int(x)` は関数です。それ以外（`math.sqrt`、`math.pow`、`math.pi` など）は `asuka/math` にあります。
 
 ### 値のセマンティクス
 
@@ -84,6 +101,8 @@ if let u = user { Text(u.name) }
 let name = user?.name ?? "Guest"
 let first = items.first()!        // none ならクラッシュする。none になりえないときだけ書く
 ```
+
+`?.` のあとは、チェーンの残りの部分も none で止まります。`user?.boss.name` は `string?` です。
 
 ### 宣言
 
@@ -110,7 +129,7 @@ let m = Message(id: "1", subject: "Hello")
 let n = Message(id: m.id, subject: m.subject, read: true)
 ```
 
-構造体は、フィールドを名前付きで渡して呼び出すことで作ります。デフォルト値のあるフィールドは省略できます。構造体の本体に書いた `let` はその型の定数（`Font.title`）になり、`Font` が求められる場所ならどこでも `.title` と書けます。
+構造体は、フィールドを名前付きか順番どおりに渡して呼び出すことで作ります。デフォルト値のあるフィールドは省略できます。メソッドからはフィールドを名前でそのまま参照できます。ただし構造体は値なので、メソッドで変更することはできません。変更するメソッドは、新しい構造体を返します。構造体の本体に書いた `let` はその型の定数（`Font.title`）になり、`Font` が求められる場所ならどこでも `.title` と書けます。
 
 ### 列挙型
 
@@ -279,7 +298,7 @@ pub store Mailbox {
   }
 
   pub async fn refresh() throws {
-    messages = try await http.get("https://example.com/inbox").json<[Message]>()
+    messages = try await http.get("https://example.com/inbox").json()
   }
 }
 ```
@@ -373,6 +392,8 @@ on press {
 let n = try? parse(text)   // エラーが投げられたら none
 ```
 
+エラーの `message` は、`message` フィールド、`fn message() -> string`、または型とケースの名前です。`Error("…")` はメッセージからエラーを作ります。タスクのキャンセルは `catch` では捕まりません。キャンセルはタスクの最後まで進み、その途中で `defer` を実行していきます。
+
 ハンドラーやタスクで捕まえなかったエラーは、そのコンポーネントを囲むいちばん近い `Boundary` に届きます。`Boundary` がなければアプリのもの（開発中は画面に表示し、リリースビルドではログに記録します）に届きます。
 
 ```asuka
@@ -441,7 +462,7 @@ pub native component MapView(region: Region) {
 }
 ```
 
-`asuka native generate` は、各プラットフォームが実装する Swift、Kotlin、JavaScript、C のコードを生成します。詳しくは[ネイティブコード](native.md)を参照してください。
+モジュールを作ることも呼び出すことも失敗する可能性がある（そのプラットフォームにコードがないかもしれない）ので、どちらにも `try` を付けます（`let h = try Haptics()`、`try h.impact(.light)`）。`asuka native generate` は、各プラットフォームが実装する Swift、Kotlin、JavaScript、Go のコードを生成します。詳しくは[ネイティブコード](native.md)を参照してください。
 
 ## テスト
 
@@ -453,6 +474,8 @@ test "archiving removes the row" {
   app.expectNo("Hello")
 }
 ```
+
+`expect(cond)` は cond が false ならテストを失敗させ、何がどこで失敗したかを示します（比較なら両辺の値も示します）。JSON は `asuka/json` で扱います。`let notes: [Note] = try json.decode(text)` は求められている型として読み込み（`json.decode<[Note]>(text)` とも書けます）、`json.encode(notes)` は JSON に書き出します。ジェネリック関数も自分の `T` を JSON として読み書きできます。その場合、呼び出しごとに `T` は JSON で表せる型でなければならず、コンパイラーが呼び出し箇所でそれをチェックします。
 
 `asuka test` は、パッケージのテストをフェイクホストで実行します。フェイクホストはプラットフォームと同じようにビューをレイアウトし、テキストは 1 文字あたり固定の幅で測ります。また、時間はほかに実行できるものが何もないときにしか進みません（テストの中の `sleep(5s)` には時間がかかりません）。`mount` はアプリを返すので、それを操作して確かめます（`tap`、`type(_, into:)`、`scroll`、`back`、`expect`、`expectNo`、`idle`）。詳しくは[テスト](testing.md)を参照してください。
 
