@@ -29,12 +29,19 @@ type placeTable struct {
 }
 
 type placeFile struct {
-	funcs []string // the declared functions' runtime names
+	funcs []placeFunc
 	lits  []placeLit
 	sites []placeSite
 	// reset, when the file says //asuka:reset, is a digest of its
 	// content: its signals start over when it's edited.
 	reset string
+}
+
+// placeFunc is a declared function: its runtime name (main.Screen) and
+// that name past its package, after a dot (.Screen), which an inlined
+// copy's name has after its caller's (main.main.func1.Screen.1).
+type placeFunc struct {
+	name, local string
 }
 
 // placeLit is a function literal: its lines, its depth among the
@@ -73,7 +80,9 @@ func KeepPlaces(table string) {
 		case fields[0] == "R" && len(fields) == 2:
 			f.reset = fields[1]
 		case fields[0] == "D" && len(fields) == 2:
-			f.funcs = append(f.funcs, fields[1])
+			d := fields[1]
+			_, local, _ := strings.Cut(d[strings.LastIndexByte(d, '/')+1:], ".")
+			f.funcs = append(f.funcs, placeFunc{d, "." + local})
 		case fields[0] == "L" && len(fields) == 6:
 			f.lits = append(f.lits, placeLit{atoi(fields[1]), atoi(fields[2]), atoi(fields[3]), atoi(fields[4]), fields[5]})
 		case fields[0] == "S" && len(fields) == 4:
@@ -95,40 +104,44 @@ func (t *placeTable) closure(fr runtime.Frame) string {
 	if f == nil {
 		return ""
 	}
-	// The function it's in: the longest declared one its name starts with.
-	decl := ""
+	var pick, numbered *placeLit
+	n, numberedCount := 0, 0
 	for _, d := range f.funcs {
-		if len(d) > len(decl) && len(fr.Function) > len(d) && strings.HasPrefix(fr.Function, d) &&
-			(fr.Function[len(d)] == '.' || fr.Function[len(d)] == '-') {
-			decl = d
-		}
-	}
-	if decl == "" {
-		return ""
-	}
-	depth, num := closureDepth(fr.Function[len(decl):])
-	if depth == 0 {
-		return ""
-	}
-	var pick *placeLit
-	n := 0
-	for i := range f.lits {
-		l := &f.lits[i]
-		if l.depth != depth || fr.Line < l.start || fr.Line > l.end {
+		// Inlining can put the caller before the declaring function:
+		// main.main.func1.Screen.1. Match Screen's suffix, but only to
+		// Screen's own literals at the frame's source location below.
+		i := strings.LastIndex(fr.Function, d.local)
+		if i < 0 {
 			continue
 		}
-		n++
-		if n == 1 || l.num == num {
+		end := i + len(d.local)
+		depth, num := closureDepth(fr.Function[end:])
+		if depth == 0 {
+			continue
+		}
+		for i := range f.lits {
+			l := &f.lits[i]
+			if l.depth != depth || fr.Line < l.start || fr.Line > l.end ||
+				len(l.name) <= len(d.name) || l.name[len(d.name)] != '>' || !strings.HasPrefix(l.name, d.name) {
+				continue
+			}
+			n++
 			pick = l
+			// A cloned literal's number belongs to the inlining caller,
+			// so it can't distinguish siblings on the same source line.
+			if fr.Function[:end] == d.name && l.num == num {
+				numbered = l
+				numberedCount++
+			}
 		}
 	}
-	if n > 1 && pick.num != num {
-		return ""
+	if n == 1 {
+		return pick.name
 	}
-	if pick == nil {
-		return ""
+	if numberedCount == 1 {
+		return numbered.name
 	}
-	return pick.name
+	return ""
 }
 
 // site names what the signal made at fr is for ("" when nothing does),
@@ -157,11 +170,28 @@ func (t *placeTable) site(fr runtime.Frame) (name, reset string) {
 // range-over-func loop's body); a loop's body is -rangeN, not a literal:
 // .func2.func1, .1, -range1.func1, -range1-range1.1, .func1-range1.func1.
 func closureDepth(rest string) (depth, num int) {
+	if rest == "" || rest[0] != '.' && rest[0] != '-' {
+		return 0, 0
+	}
 	for seg := range strings.SplitSeq(rest, ".") {
-		base, _, _ := strings.Cut(seg, "-")
-		if n, ok := number(strings.TrimPrefix(base, "func")); ok {
+		base, ranges, _ := strings.Cut(seg, "-")
+		if base != "" {
+			n, ok := number(strings.TrimPrefix(base, "func"))
+			if !ok {
+				return 0, 0 // a different declaration or a wrapper
+			}
 			depth++
 			num = n
+		}
+		for ranges != "" {
+			var r string
+			r, ranges, _ = strings.Cut(ranges, "-")
+			if !strings.HasPrefix(r, "range") {
+				return 0, 0
+			}
+			if _, ok := number(strings.TrimPrefix(r, "range")); !ok {
+				return 0, 0
+			}
 		}
 	}
 	return depth, num
