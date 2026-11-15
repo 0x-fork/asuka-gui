@@ -64,6 +64,7 @@ Asuka 需要 Go 1.26 或更高版本。应用可运行在 iOS 16、Android 13（
 - [蓝牙](bluetooth.md)：低功耗蓝牙设备的扫描或选择、连接、读写和订阅；应用作为外围设备进行广播和提供服务；后台运行；以及各平台上的情况。
 - [iCloud](icloud.md)：跟随用户同步到每台设备的键值存储，以及应用在 iCloud Drive 中的文档：列出、读写、下载和移除本地副本、解决冲突；支持 iOS 和 macOS。
 - [桌面端](desktop.md)：托盘图标和程序坞（Dock）菜单、后台运行的应用、全局快捷键、文件对话框和文件管理器、打开文件、单实例、退出、最近文档、开机启动、更新、显示器、电源，以及应用图标上的进度。
+- [包](packages.md)：在应用之间共享代码：`asuka add`、npm registry、`asuka.lock` 和发布。
 - [插件](plugins.md)：为各平台预先构建好、随应用一起发布的原生库包，SQLite 就是其中之一。
 - [原生代码](native.md)：原生包——在 Go 里声明带类型的模块和视图，在各平台自己的项目里实现：iOS 和 macOS 用 Swift，Android 用 Kotlin，Web 用 JavaScript，Windows 和 Linux 用 Go。
 - [开发](development.md)：深入介绍各平台上的 `asuka dev`、设备、`asuka vet`、测试和常见问题。
