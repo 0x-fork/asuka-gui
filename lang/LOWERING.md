@@ -232,3 +232,25 @@ write a struct's fields by name, each field's name in its shape carries
 its descriptor after a NUL (`"title\x00s"`, `"tags\x00[s"`), and the same
 for enum cases' labelled payloads; a payloadless enum JSON reads or
 writes gets a shape of its name whose cases name its values.
+
+## Native packages
+
+A `native interface X { fn m(a: A) -> R }` (docs/native.md) lowers to an
+object type (a reference: the runtime's ak_native_obj) and its methods:
+
+- `X()` (making one) is CALLB `native.new(cls, iface, errors)`: cls is
+  the class each platform's generated code registers for the package
+  (its module ID), iface the interface's index in the package, errors
+  the package's declared errors (an array of Error values, constants).
+- A call `x.m(a)` is CALLB `native.call(x, method, args, argsDesc,
+  retDesc, errors)`: method the method's index from 1, args a tuple of
+  the arguments, the descriptors (core/src/native/native.h: rt/json.h's
+  plus `o` objects, `F<n>…` callbacks, `v` nothing) string constants. An
+  `async` method is `native.start` with the same arguments, then AWAIT;
+  cancelling the task cancels the call on the platform's side.
+- Every method `throws` (the platform's side may fail); the checker
+  requires `try` at calls.
+
+`asuka native generate` writes each platform's side (Swift, Kotlin,
+JavaScript; C on the desktop) from the same declarations, in
+native/codec.go's wire format.
