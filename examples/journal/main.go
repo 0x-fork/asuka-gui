@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/asuka/app"
@@ -49,6 +50,10 @@ func statusOf(f icloud.File) string {
 	return ""
 }
 
+// busy counts the iCloud work under way, off the main thread: a test
+// waits for it before it ends.
+var busy atomic.Int32
+
 func Journal() ui.Node {
 	account := icloud.UseAccount()
 	files := icloud.UseFiles(icloud.DocumentsScope)
@@ -60,7 +65,9 @@ func Journal() ui.Node {
 
 	// run does iCloud's work off the main thread, and shows its error.
 	run := func(f func() error) {
+		busy.Add(1)
 		go func() {
+			defer busy.Add(-1)
 			if err := f(); err != nil {
 				ui.Post(func() { status.Set(err.Error()) })
 			}

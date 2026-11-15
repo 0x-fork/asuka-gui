@@ -21,6 +21,8 @@ func mount(t *testing.T, setup func(ic *fake.ICloud)) (*uitest.App, *fake.ICloud
 			setup(ic)
 		}
 	}))
+	// The app's iCloud work ends before the app and its containers do.
+	t.Cleanup(func() { a.Until("the iCloud work", func() bool { return busy.Load() == 0 }) })
 	return a, ic
 }
 
@@ -40,7 +42,8 @@ func TestEntries(t *testing.T) {
 	a, ic := mount(t, nil)
 	a.Until("the documents", func() bool { return !a.Disabled("New Entry") })
 	a.Tap("New Entry")
-	a.WaitFor("2026-11-15")
+	// The editor: the new entry's row can be listed before it opens.
+	a.WaitFor("What happened today?")
 	a.Type("What happened today?", "Walked to the lake.")
 	a.Tap("Save")
 	a.WaitFor("Saved")
