@@ -87,6 +87,10 @@ struct ak_module {
 };
 
 void ak_module_retain(ak_module *m);
+// ak_vm_running_module is the module whose code is running: the VM's
+// frame's, else the one compiled into the build (what builtins that
+// look up the module's types, JSON's and native calls', ask).
+ak_module *ak_vm_running_module(void);
 
 // A call frame on a coroutine.
 typedef struct {

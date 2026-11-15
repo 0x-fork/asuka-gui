@@ -27,6 +27,22 @@ var (
 	runnerErr  error
 )
 
+// runBoth runs m's tests on the VM, then compiled to C (lang/cgen), and
+// fails when the two backends don't print the same or don't agree on
+// failing: the conformance suite holds for both. It returns the VM's.
+func runBoth(t *testing.T, m *bc.Module) (string, error) {
+	t.Helper()
+	out, err := Run(testRunner(t), m, true, "")
+	cout, cerr := RunC(m, true, true, "")
+	if _, ok := cerr.(*exec.ExitError); cerr != nil && !ok {
+		t.Fatalf("the C backend: %v\n%s", cerr, cout)
+	}
+	if cout != out || (cerr == nil) != (err == nil) {
+		t.Fatalf("the VM and the compiled C disagree:\nVM (%v):\n%s\nC (%v):\n%s", err, out, cerr, cout)
+	}
+	return out, err
+}
+
 func testRunner(t *testing.T) string {
 	t.Helper()
 	if _, err := cbuild.Find(); err != nil {
@@ -85,7 +101,7 @@ func TestRun(t *testing.T) {
 					t.Log(bc.Disasm(res.Module, &res.Module.Funcs[i]))
 				}
 			}
-			out, err := Run(testRunner(t), res.Module, true, "")
+			out, err := runBoth(t, res.Module)
 			got := strings.TrimSpace(out)
 			if got != want {
 				t.Fatalf("got:\n%s\nwant:\n%s", got, want)

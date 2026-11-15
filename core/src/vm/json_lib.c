@@ -3,10 +3,7 @@
 #include "vm/vm_int.h"
 #include "rt/json.h"
 
-static ak_module *running(void) {
-	ak_co *co = ak_vm_cur ? ak_vm_cur : &ak_vm_main;
-	return co->nframes ? co->frames[co->nframes - 1].fn->mod : NULL;
-}
+static ak_module *running(void) { return ak_vm_running_module(); }
 
 static const ak_shape *shape(void *ctx, const char *name, size_t n) {
 	ak_module *m = ctx;

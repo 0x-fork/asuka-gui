@@ -35,7 +35,7 @@ func TestUIPrograms(t *testing.T) {
 			if res.Module.App < 0 {
 				t.Fatal("no app")
 			}
-			out, err := Run(testRunner(t), res.Module, true, "")
+			out, err := runBoth(t, res.Module)
 			if strings.Contains(out, "no builtin ui.") || strings.Contains(out, "no builtin test.") {
 				t.Skip("the runtime has no UI builtins yet: " + strings.TrimSpace(out))
 			}

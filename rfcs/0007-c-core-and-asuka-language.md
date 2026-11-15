@@ -488,17 +488,17 @@ UBSan.
 
 Each ends with its tests green.
 
-- [ ] **L0** this RFC; the docs' language reference (`docs/language.md`).
+- [x] **L0** this RFC; the docs' language reference (`docs/language.md`).
 - [x] **C0** the core in C: base, signal, layout (Chrome fixtures at
       parity with `known_failures.txt`), ops encoder (byte-identical to
       the golden files), the fake host.
 - [x] **L1** the compiler front end: lexer, parser, printer, `asuka fmt`.
-- [ ] **L2** the checker, the IR, bytecode; the VM; the UI runtime for
+- [x] **L2** the checker, the IR, bytecode; the VM; the UI runtime for
       the v0 elements; `asuka test`: counter and todo pass their tests.
 - [ ] **M1** iOS and Android: the core built for both, the hosts
       unchanged, `asuka dev` with bytecode reloads, `asuka build`.
 - [ ] **W1** the web: the core as WebAssembly, `platform/web` unchanged.
-- [ ] **L3** the C backend for release builds; both backends pass the
+- [x] **L3** the C backend for release builds; both backends pass the
       same conformance suite.
 - [ ] **E1** every element of the schema in the UI runtime; the
       examples ported to Asuka.

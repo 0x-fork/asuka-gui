@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/cgen"
 )
 
 // FindCore finds the C core's directory (core/, with core/runner): from
@@ -78,6 +79,46 @@ func Run(runner string, m *bytecode.Module, test bool, pattern string) (string, 
 	}
 	args = append(args, p)
 	cmd := exec.Command(runner, args...)
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
+	err = cmd.Run()
+	return out.String(), err
+}
+
+// RunC runs a module compiled to C (lang/cgen), as a release build runs
+// it: the C is built with the core into a runner (its objects cached),
+// which runs it as Run's runner runs bytecode.
+func RunC(m *bytecode.Module, sanitize, test bool, pattern string) (string, error) {
+	core, err := FindCore()
+	if err != nil {
+		return "", err
+	}
+	src, err := cgen.Generate(m)
+	if err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp("", "asuka-runc")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+	app := filepath.Join(dir, "app.c")
+	if err := os.WriteFile(app, src, 0o644); err != nil {
+		return "", err
+	}
+	exe, err := cbuild.RunnerWith(core, []string{app}, sanitize)
+	if err != nil {
+		return "", errors.New("the C the module compiles to doesn't build: " + err.Error())
+	}
+	var args []string
+	if test {
+		args = append(args, "-test")
+		if pattern != "" {
+			args = append(args, pattern)
+		}
+	}
+	args = append(args, "-aot")
+	cmd := exec.Command(exe, args...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err = cmd.Run()

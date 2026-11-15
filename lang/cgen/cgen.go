@@ -183,7 +183,9 @@ func (g *gen) fn(i int) error {
 	g.p("\tif (0) goto unwind;\n")
 	for _, in := range ins {
 		if targets[in.pc] {
-			g.p("L%d:;\n", in.pc)
+			// A handler's label may have no throwing instruction in its
+			// range to jump to it: used either way.
+			g.p("L%d:; if (0) goto L%d;\n", in.pc, in.pc)
 		}
 		h := "unwind"
 		for _, hd := range f.Handlers {

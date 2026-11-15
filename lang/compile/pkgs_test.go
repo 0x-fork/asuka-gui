@@ -15,7 +15,7 @@ func TestPackages(t *testing.T) {
 	if err := res.Err(); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Run(testRunner(t), res.Module, true, "")
+	out, err := runBoth(t, res.Module)
 	want := "#1 a\nHI!\n1\nok packages"
 	if strings.TrimSpace(out) != want || err != nil {
 		t.Fatalf("got (%v):\n%s\nwant:\n%s", err, out, want)
@@ -74,7 +74,7 @@ test "imports" {
 	} else if !strings.Contains(string(lock), `"file:../charts"`) {
 		t.Errorf("asuka.lock should record the package from the project:\n%s", lock)
 	}
-	out, err := Run(testRunner(t), res.Module, true, "")
+	out, err := runBoth(t, res.Module)
 	// No platform here: the store keeps nothing, and reads the default.
 	if want := "metric\n42\nok imports"; strings.TrimSpace(out) != want || err != nil {
 		t.Fatalf("got (%v):\n%s\nwant:\n%s", err, out, want)
@@ -105,7 +105,7 @@ test "native fns" {
 	if err := res.Err(); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Run(testRunner(t), res.Module, true, "")
+	out, err := runBoth(t, res.Module)
 	if want := "5\n2\nok native fns"; strings.TrimSpace(out) != want || err != nil {
 		t.Fatalf("got (%v):\n%s\nwant:\n%s", err, out, want)
 	}
