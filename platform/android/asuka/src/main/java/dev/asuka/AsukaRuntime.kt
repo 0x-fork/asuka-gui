@@ -427,7 +427,10 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             if (activity is AsukaShareActivity) runCatching { AsukaNative.setenv("ASUKA_SHARE_SHEET", "1") }
             registerNatives()
             activity.sendEnvironment(force = true)
-            enter { AsukaNative.start(this) }
+            enter {
+                AsukaNative.start(this)
+                AsukaNative.startApp(app)
+            }
             AsukaSplash.started()
             val urls = ArrayList(pendingURLs)
             pendingURLs.clear()
@@ -452,7 +455,10 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         watchRegion()
         AsukaNative.load(app)
         registerNatives()
-        enter { AsukaNative.start(this) }
+        enter {
+            AsukaNative.start(this)
+            AsukaNative.startApp(app)
+        }
         AsukaSplash.started()
     }
 

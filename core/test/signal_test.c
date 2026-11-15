@@ -275,7 +275,7 @@ TEST(batch) {
 	bat.a.v = 1;
 	bat.b.v = 2;
 	ak_owner *r = ak_root(bat_build, NULL);
-	ak_batch(bat_writes, NULL);
+	ak_signal_batch(bat_writes, NULL);
 	CHECK_EQ_INT(bat.runs, 2);
 	CHECK(bat.flushing);
 	ak_batch_begin();

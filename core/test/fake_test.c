@@ -173,7 +173,7 @@ TEST(golden_batch) {
 	// The recorded ops' bytes outlive the batch.
 	memset(bin.data, 0, bin.len);
 	ak_op op = ak_fake_op_at(e.f, 2);
-	CHECK(ak_str_eqc(op.value.s, "héllo, 世界"));
+	CHECK(ak_span_eqc(op.value.s, "héllo, 世界"));
 	ak_fake_reset(e.f);
 	CHECK_EQ_INT(ak_fake_op_count(e.f), 0);
 	CHECK_EQ_INT(e.f->applies, 0);
@@ -333,12 +333,12 @@ TEST(measure) {
 	ak_batch_create(b, 7, AK_KIND_PROGRESS_RING);
 	ak_batch_create(b, 8, AK_KIND_SEGMENTED);
 	ak_buf *seg = ak_batch_set_bytes_begin(b, 8, AK_PROP_SEGMENTED_SEGMENTS);
-	ak_append_strings(seg, (const ak_str[]){AK_STR("One"), AK_STR("Two"), AK_STR("Three")}, 3);
+	ak_append_strings(seg, (const ak_span[]){AK_STR("One"), AK_STR("Two"), AK_STR("Three")}, 3);
 	ak_batch_set_bytes_end(b);
 	ak_batch_create(b, 9, AK_KIND_PICKER);
 	set_str(b, 9, AK_PROP_PICKER_LABEL, "Size");
 	ak_buf *items = ak_batch_set_bytes_begin(b, 9, AK_PROP_PICKER_ITEMS);
-	ak_append_strings(items, (const ak_str[]){AK_STR("Small"), AK_STR("Medium")}, 2);
+	ak_append_strings(items, (const ak_span[]){AK_STR("Small"), AK_STR("Medium")}, 2);
 	ak_batch_set_bytes_end(b);
 	ak_batch_create(b, 10, AK_KIND_DATE_PICKER);
 	ak_batch_set_enum(b, 10, AK_PROP_DATE_PICKER_MODE, AK_DATE_MODE_DATE_TIME);
@@ -430,7 +430,7 @@ TEST(events) {
 	ev = event(&e.rec, 1);
 	CHECK_EQ_INT(ev.id, 6);
 	CHECK_EQ_INT(ev.kind, AK_EVENT_TEXT_CHANGED);
-	CHECK(ak_str_eqc(ev.s, "hi"));
+	CHECK(ak_span_eqc(ev.s, "hi"));
 	ev = event(&e.rec, 2);
 	CHECK_EQ_INT(ev.kind, AK_EVENT_TOGGLED);
 	CHECK(ev.b);
@@ -474,13 +474,13 @@ TEST(events) {
 	CHECK_EQ_F(ev.env.width, 844);
 	CHECK_EQ_F(ev.env.safe_top, 47);
 	CHECK(ev.env.dark);
-	CHECK(ak_str_eqc(ev.env.locale, "en_US"));
-	CHECK(ak_str_eqc(ev.env.languages, "en-US"));
+	CHECK(ak_span_eqc(ev.env.locale, "en_US"));
+	CHECK(ak_span_eqc(ev.env.languages, "en-US"));
 
 	ak_fake_open_url(e.f, "asuka://x");
 	ev = event(&e.rec, 6);
 	CHECK_EQ_INT(ev.kind, AK_EVENT_INCOMING_URL);
-	CHECK(ak_str_eqc(ev.s, "asuka://x"));
+	CHECK(ak_span_eqc(ev.s, "asuka://x"));
 	ak_fake_lifecycle(e.f, AK_LIFECYCLE_BACKGROUND);
 	ev = event(&e.rec, 7);
 	CHECK_EQ_INT(ev.id, 0);
@@ -541,16 +541,16 @@ TEST(alerts) {
 	ak_alert_field_vec fs = {0};
 	ak_fake_alert_fields(alert, &fs);
 	REQUIRE(fs.len == 2);
-	CHECK(ak_str_eqc(fs.data[0].text, "Ann"));
-	CHECK(ak_str_eqc(fs.data[1].placeholder, "Password"));
+	CHECK(ak_span_eqc(fs.data[0].text, "Ann"));
+	CHECK(ak_span_eqc(fs.data[1].placeholder, "Password"));
 	CHECK_EQ_INT(fs.data[1].flags, AK_ALERT_FIELD_SECURE);
 	ak_vec_free(&fs);
 	ak_event ev = event(&e.rec, 0);
 	uint32_t index;
-	ak_str text;
+	ak_span text;
 	CHECK(ak_decode_field_changed((const uint8_t *)ev.s.p, ev.s.len, &index, &text));
 	CHECK_EQ_INT(index, 0);
-	CHECK(ak_str_eqc(text, "Ann"));
+	CHECK(ak_span_eqc(text, "Ann"));
 
 	CHECK(ak_fake_return_in_alert(e.f, alert));
 	ev = event(&e.rec, 1);
@@ -562,9 +562,9 @@ TEST(alerts) {
 }
 
 // A Call is answered by the call function, its Result posted.
-static bool answer(void *ctx, ak_str module, ak_str method, ak_str args, ak_buf *out) {
+static bool answer(void *ctx, ak_span module, ak_span method, ak_span args, ak_buf *out) {
 	AK_UNUSED(ctx);
-	if (!ak_str_eqc(module, "echo")) {
+	if (!ak_span_eqc(module, "echo")) {
 		ak_buf_printf(out, "no such module");
 		return false;
 	}
@@ -604,9 +604,9 @@ TEST(calls_and_posts) {
 	ak_event ev = event(&e.rec, 0);
 	CHECK_EQ_INT(ev.id, 1);
 	CHECK_EQ_INT(ev.kind, AK_EVENT_RESULT);
-	CHECK(ak_str_eq(ev.s, AK_STR("\x07\0\0\0\x01ping:xyz")));
+	CHECK(ak_span_eq(ev.s, AK_STR("\x07\0\0\0\x01ping:xyz")));
 	ev = event(&e.rec, 1);
-	CHECK(ak_str_eq(ev.s, AK_STR("\x08\0\0\0\0no such module")));
+	CHECK(ak_span_eq(ev.s, AK_STR("\x08\0\0\0\0no such module")));
 
 	// The vtable applies and measures.
 	ak_batch_set_frame(&e.b, 6, 1, 2, 3, 4);
@@ -718,19 +718,19 @@ TEST(native) {
 	CHECK_EQ_INT(z->i, 43);
 	const ak_fake_native *t = ak_fake_native_value(v, "title");
 	REQUIRE(t);
-	CHECK(ak_str_eqc(t->s, "Kyoto"));
+	CHECK(ak_span_eqc(t->s, "Kyoto"));
 	CHECK(ak_fake_native_value(v, "nope") == NULL);
 
 	ak_fake_emit_native(e.f, v, "moved", (const ak_fake_native[]){{.name = AK_STR("x"), .type = 3, .f = 1.5}, {.name = AK_STR("ok"), .type = 1, .i = 1}}, 2);
 	ak_event ev = event(&e.rec, 0);
 	CHECK_EQ_INT(ev.kind, AK_EVENT_NATIVE);
 	ak_reader r = {(const uint8_t *)ev.s.p, ev.s.len, 0, false};
-	CHECK(ak_str_eqc(ak_read_str(&r), "moved"));
+	CHECK(ak_span_eqc(ak_read_str(&r), "moved"));
 	CHECK_EQ_INT(ak_read_u32(&r), 2);
-	CHECK(ak_str_eqc(ak_read_str(&r), "x"));
+	CHECK(ak_span_eqc(ak_read_str(&r), "x"));
 	CHECK_EQ_INT(ak_read_u8(&r), 3);
 	CHECK_EQ_F(ak_read_f64(&r), 1.5);
-	CHECK(ak_str_eqc(ak_read_str(&r), "ok"));
+	CHECK(ak_span_eqc(ak_read_str(&r), "ok"));
 	CHECK_EQ_INT(ak_read_u8(&r), 1);
 	CHECK_EQ_INT(ak_read_u8(&r), 1);
 	CHECK(!r.err && r.off == r.len);

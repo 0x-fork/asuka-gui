@@ -38,6 +38,12 @@ void ak_keep_stop(void);
 uint32_t ak_keep_saved(void);
 uint32_t ak_keep_restored(void);
 
+// ak_keep_qualify, when set, turns a cell's key (Component.name) into
+// the key it's kept by: under its instance's path (the UI runtime's
+// ak_ui_path_key), so two instances keep two values. Returns an owned
+// string.
+extern ak_str *(*ak_keep_qualify)(ak_str *key);
+
 // A cell going away (react.c's).
 void ak_keep_forget(void *cell);
 

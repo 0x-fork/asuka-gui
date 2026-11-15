@@ -448,13 +448,42 @@ final class AsukaTextField: UITextField {
             },
             native_cancel: { AsukaNative.cancel($0) },
             native_release: { AsukaNative.release($0) },
-            native_free: { free($0) }
+            native_free: { free($0) },
+            measure_v: nil
         )
-        enter { asuka_start(&cb) }
+        enter {
+            asuka_start(&cb)
+            startApp()
+        }
         AsukaSplash.shared.started()
         let urls = pendingURLs
         pendingURLs = []
         openURLs(urls)
+    }
+
+    /// startApp runs the app: under asuka dev (ASUKA_DEV=host:port in the
+    /// environment, which the CLI launches the player with), the bytecode
+    /// the CLI sends; otherwise the app compiled into this build.
+    private func startApp() {
+        var err: UnsafeMutablePointer<CChar>?
+        let rc: Int32
+        if let dev = ProcessInfo.processInfo.environment["ASUKA_DEV"], let colon = dev.lastIndex(of: ":"), let port = Int32(dev[dev.index(after: colon)...]) {
+            let host = String(dev[..<colon])
+            #if targetEnvironment(simulator)
+            let kind = "simulator"
+            #else
+            let kind = "device"
+            #endif
+            let hello = "{\"platform\":\"ios\",\"device\":\"\(kind)\",\"os\":\"\(UIDevice.current.systemVersion)\"}"
+            rc = asuka_dev_connect(host, port, hello, &err)
+        } else {
+            rc = asuka_run(&err)
+        }
+        if rc != 0 {
+            let msg = err.map { String(cString: $0) } ?? "asuka: the core failed"
+            asuka_free_string(err)
+            print(msg)
+        }
     }
 
     /// The app was opened with urls together (scene(_:openURLContexts:)):

@@ -172,7 +172,7 @@ func kind(t string) string {
 
 // enumTypes are types.asuka's payloadless enums.
 var enumTypes = map[string]bool{
-	"Axis": true, "Justify": true, "Align": true, "TextAlign": true, "Role": true, "Material": true,
+	"Axis": true, "Justify": true, "Align": true, "Platform": true, "SizeClass": true, "TextAlign": true, "Role": true, "Material": true,
 	"ButtonVariant": true, "Keyboard": true, "TextStyle": true, "FontWeight": true,
 }
 
@@ -236,10 +236,24 @@ func header() []byte {
 	for _, k := range keys {
 		fmt.Fprintf(&b, " %s,", kind(k.typ))
 	}
+	b.WriteString("};\n\n// The element each key is of (AK_EL_*); 0: the style's, every element's.\nstatic const uint8_t ak_key_els[] = {0,")
+	elIndex := map[string]int{}
+	for i, e := range prelude.Elements {
+		elIndex[e.Name] = i + 1
+	}
+	for _, k := range keys {
+		fmt.Fprintf(&b, " %d,", elIndex[k.el])
+	}
 	b.WriteString("};\n\nstatic const char *const ak_ev_names[] = {\"\",")
 	for _, e := range prelude.Elements {
 		for _, ev := range e.Events {
 			fmt.Fprintf(&b, " %q,", e.Name+"."+ev.Name)
+		}
+	}
+	b.WriteString("};\n\n// The element each event is of (AK_EL_*).\nstatic const uint8_t ak_ev_els[] = {0,")
+	for i, e := range prelude.Elements {
+		for range e.Events {
+			fmt.Fprintf(&b, " %d,", i+1)
 		}
 	}
 	b.WriteString("};\n\n#endif\n")

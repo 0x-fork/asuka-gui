@@ -1,13 +1,16 @@
-// JNI entry points for the Android host (platform/android, dev.asuka.AsukaNative).
+// JNI entry points for the Android host (platform/android, dev.asuka.AsukaNative),
+// over the C ABI (asuka.h). Only in Android builds.
 // Kotlin calls in on the main thread; the core calls back into
 // dev.asuka.AsukaRuntime: apply(ByteBuffer) once per batch, measure(...) and
 // post() (from any thread).
+
+#ifdef __ANDROID__
 
 #include <jni.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#include "_cgo_export.h"
+#include "asuka.h"
 
 static JavaVM *vm;
 static jobject runtime;
@@ -70,8 +73,8 @@ static void cb_post(void) {
 	}
 }
 
-// Typed native modules. Go calls from its own threads, many: each is
-// attached once, and detached as it ends.
+// Typed native modules, which the core may call from other threads: each
+// is attached once, and detached as it ends.
 static void detach(void *unused) { (*vm)->DetachCurrentThread(vm); }
 
 static JNIEnv *modulesEnv(void) {
@@ -83,7 +86,7 @@ static JNIEnv *modulesEnv(void) {
 	return e;
 }
 
-// answerOf copies a Kotlin answer where Go reads it: into out when it
+// answerOf copies a Kotlin answer where the core reads it: into out when it
 // fits, else into memory of its own (*big, which cb_native_free frees).
 static size_t answerOf(JNIEnv *e, jbyteArray a, uint8_t *out, size_t cap, uint8_t **big) {
 	if ((*e)->ExceptionCheck(e) || a == NULL) {
@@ -155,9 +158,9 @@ static void cb_native_release(uint64_t h) {
 static void cb_native_free(void *p) { free(p); }
 
 static asuka_host_callbacks callbacks = {cb_apply, cb_measure, cb_post,
-	cb_native_new, cb_native_call, cb_native_start, cb_native_cancel, cb_native_release, cb_native_free};
+	cb_native_new, cb_native_call, cb_native_start, cb_native_cancel, cb_native_release, cb_native_free, NULL};
 
-// Kotlin's way back to Go: a started call's answer; a Go callback's call.
+// Kotlin's way back to the core: a started call's answer; a Go callback's call.
 JNIEXPORT void JNICALL Java_dev_asuka_AsukaModules_done(JNIEnv *e, jclass cls, jlong call, jbyteArray a) {
 	jsize n = (*e)->GetArrayLength(e, a);
 	jbyte *p = (*e)->GetByteArrayElements(e, a, NULL);
@@ -234,3 +237,31 @@ JNIEXPORT jstring JNICALL Java_dev_asuka_AsukaNative_crashStart(JNIEnv *e, jclas
 }
 
 JNIEXPORT void JNICALL Java_dev_asuka_AsukaNative_crashNotify(JNIEnv *e, jclass cls) { asuka_crash_notify(); }
+
+// The app: the one compiled into the library (a release build), or the
+// bytecode asuka dev sends (a player). Each returns an error's message,
+// or null.
+static jstring result(JNIEnv *e, int rc, char *err) {
+	if (rc == 0) return NULL;
+	jstring s = (*e)->NewStringUTF(e, err ? err : "asuka: the core failed");
+	asuka_free_string(err);
+	return s;
+}
+
+JNIEXPORT jstring JNICALL Java_dev_asuka_AsukaNative_run(JNIEnv *e, jclass cls) {
+	char *err = NULL;
+	int rc = asuka_run(&err);
+	return result(e, rc, err);
+}
+
+JNIEXPORT jstring JNICALL Java_dev_asuka_AsukaNative_devConnect(JNIEnv *e, jclass cls, jstring host, jint port, jstring hello) {
+	const char *h = (*e)->GetStringUTFChars(e, host, NULL);
+	const char *j = (*e)->GetStringUTFChars(e, hello, NULL);
+	char *err = NULL;
+	int rc = asuka_dev_connect(h, (int)port, j, &err);
+	(*e)->ReleaseStringUTFChars(e, host, h);
+	(*e)->ReleaseStringUTFChars(e, hello, j);
+	return result(e, rc, err);
+}
+
+#endif

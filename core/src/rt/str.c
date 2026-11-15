@@ -5,7 +5,7 @@
 #include <errno.h>
 
 ak_str *ak_str_new(const char *s, size_t n) {
-	ak_str *o = ak_obj_new(AK_T_STR, sizeof(ak_str) + n + 1);
+	ak_str *o = ak_obj_new(AK_TAG_STR, sizeof(ak_str) + n + 1);
 	o->len = (uint32_t)n;
 	if (n) memcpy(o->data, s, n);
 	o->data[n] = 0;
@@ -24,7 +24,7 @@ ak_str *ak_str_empty(void) {
 ak_str *ak_str_concat(ak_str *a, ak_str *b) {
 	if (a->len == 0) return ak_retain(b);
 	if (b->len == 0) return ak_retain(a);
-	ak_str *o = ak_obj_new(AK_T_STR, sizeof(ak_str) + a->len + b->len + 1);
+	ak_str *o = ak_obj_new(AK_TAG_STR, sizeof(ak_str) + a->len + b->len + 1);
 	o->len = a->len + b->len;
 	memcpy(o->data, a->data, a->len);
 	memcpy(o->data + a->len, b->data, b->len);
@@ -273,7 +273,7 @@ ak_str *ak_strb_finish(ak_strb *b) {
 }
 
 ak_bytes *ak_bytes_new(const void *p, size_t n) {
-	ak_bytes *o = ak_obj_new(AK_T_BYTES, sizeof(ak_bytes) + n);
+	ak_bytes *o = ak_obj_new(AK_TAG_BYTES, sizeof(ak_bytes) + n);
 	o->len = (uint32_t)n;
 	if (n) memcpy(o->data, p, n);
 	return o;

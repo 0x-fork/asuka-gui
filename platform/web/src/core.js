@@ -107,7 +107,7 @@ export async function startCore(host, options = {}) {
   e.asuka_web_start();
   if (options.module) {
     const bytes = new Uint8Array(await (await fetch(options.module)).arrayBuffer());
-    if (withBytes(bytes, (p, n) => e.asuka_load(p, n)) !== 0) throw new Error("asuka: the app's module didn't load (see the console)");
+    if (withBytes(bytes, (p, n) => e.asuka_load(p, n, 0)) !== 0) throw new Error("asuka: the app's module didn't load (see the console)");
   }
   host.started();
   return core;

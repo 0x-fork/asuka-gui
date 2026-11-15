@@ -51,7 +51,7 @@ enum {
 // section's.
 typedef struct ak_action_item {
 	uint8_t role;  // AK_ALERT_BUTTON_ROLE_*
-	ak_str title, icon;
+	ak_span title, icon;
 	uint8_t flags;
 	const struct ak_action_item *items;
 	uint32_t count;
@@ -65,7 +65,7 @@ typedef struct {
 	uint32_t parent;  // its submenu's item's index; UINT32_MAX at depth 0
 	uint32_t count;   // its own items (not theirs)
 	uint8_t role;
-	ak_str title, icon;
+	ak_span title, icon;
 	uint8_t flags;
 } ak_action;
 
@@ -78,7 +78,7 @@ bool ak_decode_actions(const uint8_t *b, size_t n, ak_action_vec *out);
 // ak_count_actions is how many numbers a menu's items take.
 uint32_t ak_count_actions(const ak_action_item *items, uint32_t n);
 // ak_action_named is the index of the first item titled title, or -1.
-int64_t ak_action_named(const ak_action *items, uint32_t n, ak_str title);
+int64_t ak_action_named(const ak_action *items, uint32_t n, ak_span title);
 
 // Menus (ops/menu.go): the app's menu bar and tray and Dock menus.
 //
@@ -91,14 +91,14 @@ int64_t ak_action_named(const ak_action *items, uint32_t n, ak_str title);
 
 typedef struct ak_menu_item {
 	uint8_t flags;
-	ak_str title, key;
+	ak_span title, key;
 	uint8_t mods, role;
 	const struct ak_menu_item *items;
 	uint32_t count;
 } ak_menu_item;
 
 typedef struct {
-	ak_str title;
+	ak_span title;
 	const ak_menu_item *items;
 	uint32_t count;
 } ak_menu_bar_menu;
@@ -109,13 +109,13 @@ typedef struct {
 	uint32_t depth, parent, count;
 	uint32_t menu;  // in a menu bar: its menu's index
 	uint8_t flags;
-	ak_str title, key;
+	ak_span title, key;
 	uint8_t mods, role;
 } ak_menu_entry;
 
 // A menu bar's menu, decoded: its items are entries first..first+total-1.
 typedef struct {
-	ak_str title;
+	ak_span title;
 	uint32_t first, total;
 } ak_menu_title;
 
@@ -136,18 +136,18 @@ bool ak_decode_menu_bar(const uint8_t *b, size_t n, ak_menu_title_vec *menus, ak
 enum { AK_ALERT_FIELD_SECURE = 1 };
 
 typedef struct {
-	ak_str placeholder, text;
+	ak_span placeholder, text;
 	uint8_t flags;     // AK_ALERT_FIELD_*
 	uint8_t keyboard;  // AK_KEYBOARD_*
-	ak_str content_type;
+	ak_span content_type;
 } ak_alert_field;
 
 typedef AK_VEC(ak_alert_field) ak_alert_field_vec;
 
 void ak_append_alert_fields(ak_buf *b, const ak_alert_field *fs, uint32_t n);
 bool ak_decode_alert_fields(const uint8_t *b, size_t n, ak_alert_field_vec *out);
-void ak_append_field_changed(ak_buf *b, uint32_t index, ak_str text);
-bool ak_decode_field_changed(const uint8_t *b, size_t n, uint32_t *index, ak_str *text);
+void ak_append_field_changed(ak_buf *b, uint32_t index, ak_span text);
+bool ak_decode_field_changed(const uint8_t *b, size_t n, uint32_t *index, ak_span *text);
 // ak_default_alert_action is the number of an alert's default button,
 // the first of its buttons (items, decoded) whose role is Default; -1 if
 // there's none.
@@ -157,7 +157,7 @@ int64_t ak_default_alert_action(const ak_action *items, uint32_t n);
 // name (a lower case character or a named key) and u8 modifiers.
 
 typedef struct {
-	ak_str name;
+	ak_span name;
 	uint8_t mods;
 } ak_key;
 
@@ -168,26 +168,26 @@ bool ak_decode_keys(const uint8_t *b, size_t n, ak_key_vec *out);
 // ak_key_name is a key's name as the Keys prop has it: a single
 // character lower case (in buf, which takes 4 bytes), a named key as it
 // is.
-ak_str ak_key_name(ak_str name, char buf[4]);
+ak_span ak_key_name(ak_span name, char buf[4]);
 // ak_match_key is the index of the key in keys that a key going down is,
 // or -1.
-int ak_match_key(const ak_key *keys, uint32_t n, ak_str name, uint8_t mods);
+int ak_match_key(const ak_key *keys, uint32_t n, ak_span name, uint8_t mods);
 
 // Things shared or dragged (ops/item.go): a Shared or Drop event's items,
 // a view's DragItems.
 
 typedef struct {
 	uint8_t kind;  // AK_SHARE_KIND_*
-	ak_str text;   // a text's text, a link's URL
-	ak_str path;   // a file's
-	ak_str name;   // the file's name where it came from
-	ak_str mime;
+	ak_span text;   // a text's text, a link's URL
+	ak_span path;   // a file's
+	ak_span name;   // the file's name where it came from
+	ak_span mime;
 	int64_t size;  // the file's size in bytes, -1 if unknown
 	bool value;    // DragItems: it carries an app's value
 } ak_item;
 
 typedef AK_VEC(ak_item) ak_item_vec;
-typedef AK_VEC(ak_str) ak_str_vec;
+typedef AK_VEC(ak_span) ak_str_vec;
 
 // Items: u32 count, per item u8 ShareKind, string text, path, name, MIME
 // type, i64 size.
@@ -209,12 +209,12 @@ void ak_append_drop(ak_buf *b, const ak_drop *d, const ak_item *items, uint32_t 
 bool ak_decode_drop(const uint8_t *b, size_t n, ak_drop *d, ak_item_vec *items);
 
 // A list of strings: u32 count, then each u32-length (DropAccept's).
-void ak_append_strings(ak_buf *b, const ak_str *s, uint32_t n);
+void ak_append_strings(ak_buf *b, const ak_span *s, uint32_t n);
 bool ak_decode_strings(const uint8_t *b, size_t n, ak_str_vec *out);
 // ak_match_mime reports whether a MIME type matches any of the patterns:
 // an exact type, a family (image/*) or anything (*/*, *), regardless of
 // case and parameters.
-bool ak_match_mime(const ak_str *patterns, uint32_t n, ak_str mime);
+bool ak_match_mime(const ak_span *patterns, uint32_t n, ak_span mime);
 
 // Styled text (ops/rich.go): RichText's Content, a Rich TextField's Rich.
 //
@@ -237,12 +237,12 @@ typedef struct {
 	uint8_t weight;  // AK_FONT_WEIGHT_*
 	uint8_t flags;   // AK_RICH_*
 	ak_color color, background;
-	ak_str link;
+	ak_span link;
 } ak_rich_style;
 
 typedef struct {
 	ak_rich_style style;
-	ak_str text;  // a "\n" ends a paragraph
+	ak_span text;  // a "\n" ends a paragraph
 } ak_rich_run;
 
 typedef AK_VEC(ak_rich_run) ak_rich_run_vec;
@@ -260,18 +260,18 @@ bool ak_decode_rich(const uint8_t *b, size_t n, ak_rich_run_vec *out);
 // icon and badge.
 
 typedef struct {
-	ak_str title, icon, badge;
+	ak_span title, icon, badge;
 } ak_sidebar_item;
 
 typedef struct {
-	ak_str title;
+	ak_span title;
 	const ak_sidebar_item *items;
 	uint32_t count;
 } ak_sidebar_section;
 
 // A section, decoded: its items are first..first+count-1.
 typedef struct {
-	ak_str title;
+	ak_span title;
 	uint32_t first, count;
 } ak_sidebar_heading;
 
@@ -285,7 +285,7 @@ bool ak_decode_sidebar(const uint8_t *b, size_t n, ak_sidebar_heading_vec *secti
 bool ak_same_sidebar_shape(const ak_sidebar_heading *a, uint32_t na, const ak_sidebar_heading *b, uint32_t nb);
 // ak_badge_number reports the count a badge says, if it's only ASCII
 // digits, at most nine.
-bool ak_badge_number(ak_str s, int32_t *n);
+bool ak_badge_number(ak_span s, int32_t *n);
 
 // Windows (ops/window.go).
 
@@ -336,8 +336,8 @@ typedef struct {
 	uint8_t title_bar;  // AK_TITLE_BAR_*
 	ak_color background;
 	ak_id parent;
-	ak_str state_key;
-	ak_str title;
+	ak_span state_key;
+	ak_span title;
 } ak_window_config;
 
 void ak_append_window_config(ak_buf *b, const ak_window_config *c);
@@ -378,12 +378,12 @@ bool ak_decode_flyout(const uint8_t *b, size_t n, ak_flyout *f);
 typedef struct {
 	uint8_t action;  // AK_LOCATION_ACTION_*
 	int32_t delta;
-	ak_str href, state, window;
+	ak_span href, state, window;
 } ak_location;
 
 void ak_append_location(ak_buf *b, const ak_location *l);
 bool ak_decode_location(const uint8_t *b, size_t n, ak_location *l);
-void ak_append_location_event(ak_buf *b, ak_str href, ak_str state);
-bool ak_decode_location_event(const uint8_t *b, size_t n, ak_str *href, ak_str *state);
+void ak_append_location_event(ak_buf *b, ak_span href, ak_span state);
+bool ak_decode_location_event(const uint8_t *b, size_t n, ak_span *href, ak_span *state);
 
 #endif

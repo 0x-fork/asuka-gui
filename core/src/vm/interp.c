@@ -94,8 +94,8 @@ void ak_vm_traceback(char *buf, size_t cap) {
 const ak_func *ak_vm_method(void *obj, ak_str *name) {
 	const ak_obj *o = obj;
 	const ak_shape *s = NULL;
-	if (o && o->tag == AK_T_STRUCT) s = ((const ak_struct *)o)->shape;
-	else if (o && o->tag == AK_T_ENUM) s = ((const ak_enum *)o)->shape;
+	if (o && o->tag == AK_TAG_STRUCT) s = ((const ak_struct *)o)->shape;
+	else if (o && o->tag == AK_TAG_ENUM) s = ((const ak_enum *)o)->shape;
 	if (!s || s == &ak_shape_error) return NULL;
 	// Shapes the VM loaded carry their methods and module.
 	const ak_vm_shape *vs = (const ak_vm_shape *)s;

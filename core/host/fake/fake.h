@@ -46,11 +46,11 @@ typedef struct {
 // One of a native view's named values (ui.Native's Props): type 1 bool
 // (i), 2 int (i), 3 float (f), 4 string (s), 5 bytes (s).
 typedef struct {
-	ak_str name;
+	ak_span name;
 	uint8_t type;
 	int64_t i;
 	double f;
-	ak_str s;
+	ak_span s;
 } ak_fake_native;
 
 // A List's section, as ListUpdate sends it.
@@ -65,7 +65,7 @@ typedef AK_VEC(ak_fake_view *) ak_fake_view_vec;
 // A pretend native view. Pointers to it are valid until it's destroyed.
 struct ak_fake_view {
 	ak_id id;
-	ak_kind kind;
+	ak_view_kind kind;
 	ak_fake_view *parent;
 	ak_fake_view_vec children;
 	AK_VEC(ak_fake_prop) props;
@@ -97,7 +97,7 @@ typedef struct ak_fake ak_fake;
 
 // What answers a Call command (a module's method): it appends the answer
 // to out and returns true, or an error's message and returns false.
-typedef bool (*ak_fake_call_fn)(void *ctx, ak_str module, ak_str method, ak_str args, ak_buf *out);
+typedef bool (*ak_fake_call_fn)(void *ctx, ak_span module, ak_span method, ak_span args, ak_buf *out);
 // What measures views instead of the built-in rules.
 typedef void (*ak_fake_measure_fn)(void *ctx, ak_fake_view *v, float width, float height, float avail_w, float avail_h, float *out_w, float *out_h);
 // What hears of a misuse (an op a real host couldn't apply, an event on
@@ -177,11 +177,11 @@ ak_fake_view *ak_fake_view_of(const ak_fake *f, ak_id id);  // NULL if none
 ak_fake_view *ak_fake_root(const ak_fake *f);
 // ak_fake_find appends the views of kind k whose text, title or (a
 // TextField's) value is s, in ID order.
-void ak_fake_find(const ak_fake *f, ak_kind k, ak_str s, ak_fake_view_vec *out);
+void ak_fake_find(const ak_fake *f, ak_view_kind k, ak_span s, ak_fake_view_vec *out);
 // ak_fake_one is the only view of kind k with text s; a misuse if there
 // isn't exactly one (NULL).
-ak_fake_view *ak_fake_one(ak_fake *f, ak_kind k, const char *s);
-void ak_fake_of_kind(const ak_fake *f, ak_kind k, ak_fake_view_vec *out);
+ak_fake_view *ak_fake_one(ak_fake *f, ak_view_kind k, const char *s);
+void ak_fake_of_kind(const ak_fake *f, ak_view_kind k, ak_fake_view_vec *out);
 // ak_fake_presented appends the sheets, alerts, popovers, windows and
 // snackbars that got Present and still exist, in ID order.
 void ak_fake_presented(const ak_fake *f, ak_fake_view_vec *out);
@@ -201,13 +201,13 @@ ak_fake_view *ak_fake_key_out(const ak_fake *f, const ak_fake_view *v);
 
 // A view's props: NULL, empty or 0 when unset.
 const ak_value *ak_fake_prop_of(const ak_fake_view *v, ak_prop p);
-ak_str ak_fake_string(const ak_fake_view *v, ak_prop p);  // a string's or bytes'
+ak_span ak_fake_string(const ak_fake_view *v, ak_prop p);  // a string's or bytes'
 bool ak_fake_bool(const ak_fake_view *v, ak_prop p);
 int64_t ak_fake_int(const ak_fake_view *v, ak_prop p);  // an int, enum or color
 double ak_fake_float(const ak_fake_view *v, ak_prop p);
 bool ak_fake_listens(const ak_fake_view *v, ak_event_kind e);
 // ak_fake_label is the view's own text: a Text's text, a Button's title.
-ak_str ak_fake_label(const ak_fake_view *v);
+ak_span ak_fake_label(const ak_fake_view *v);
 // ak_fake_text appends the texts and titles under v, depth first, joined
 // by "|".
 void ak_fake_text(const ak_fake_view *v, ak_buf *out);
@@ -215,7 +215,7 @@ void ak_fake_text(const ak_fake_view *v, ak_buf *out);
 // line each, as Go's View.Tree.
 void ak_fake_tree(const ak_fake_view *v, ak_buf *out);
 // ak_fake_kind_name is "Cell" for a cell, the kind's name, or "Kind(n)".
-void ak_fake_kind_name(ak_buf *out, ak_kind k);
+void ak_fake_kind_name(ak_buf *out, ak_view_kind k);
 // A native view's value named name, or NULL.
 const ak_fake_native *ak_fake_native_value(const ak_fake_view *v, const char *name);
 

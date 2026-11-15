@@ -64,7 +64,7 @@ typedef enum { AK_FUT_PENDING, AK_FUT_DONE, AK_FUT_FAILED } ak_fut_state;
 typedef struct ak_waiter ak_waiter;
 
 typedef struct ak_future {
-	ak_opaque h;  // tag AK_T_TASK
+	ak_opaque h;  // tag AK_TAG_TASK
 	uint8_t state;
 	uint8_t kind;  // the result's kind
 	ak_val result;

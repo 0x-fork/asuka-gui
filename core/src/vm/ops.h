@@ -181,10 +181,10 @@ static inline bool ak_op_setidx(ak_val *R, uint16_t a, int64_t i, ak_val v) {
 static inline int64_t ak_op_len(const ak_obj *o) {
 	if (!o) return 0;
 	switch (o->tag) {
-	case AK_T_ARR: return ((const ak_arr *)o)->len;
-	case AK_T_MAP: return ((const ak_map *)o)->live;
-	case AK_T_STR: return ((const ak_str *)o)->len;
-	case AK_T_BYTES: return ((const ak_bytes *)o)->len;
+	case AK_TAG_ARR: return ((const ak_arr *)o)->len;
+	case AK_TAG_MAP: return ((const ak_map *)o)->live;
+	case AK_TAG_STR: return ((const ak_str *)o)->len;
+	case AK_TAG_BYTES: return ((const ak_bytes *)o)->len;
 	}
 	return 0;
 }

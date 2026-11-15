@@ -1,12 +1,15 @@
 // asuka-run: runs a compiled module (lang/bytecode) on the VM. With
 // -test, it runs the module's test blocks instead of its app, with time
 // that only moves when nothing else can run (a sleep in a test takes no
-// time), and reports each as "ok name" or "FAIL name: message".
+// time), and reports each as "ok name" or "FAIL name: message". A test
+// mounts views on the fake host (test.mount: core/host/fake/uitest.h).
 //
 //	asuka-run [-test [pattern]] module.akb
 #include "vm/vm.h"
 #include "rt/sched.h"
 #include "signal/signal.h"
+#include "ui/ui.h"
+#include "fake/uitest.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,6 +94,9 @@ int main(int argc, char **argv) {
 	}
 	ak_signal_bind_thread();
 	ak_vm_init();
+	// The UI runtime, and tests' mount, tap, expect... on the fake host.
+	ak_ui_builtins_init();
+	ak_uitest_builtins_init();
 	ak_signal_set_error_handler(on_error, NULL);
 	if (test) ak_sched_manual_clock(true);
 	char err[512] = "";
@@ -141,6 +147,7 @@ int main(int argc, char **argv) {
 		current = NULL;
 	}
 	ak_owner_dispose(root);
+	ak_ui_shutdown();
 	if (!aot) ak_module_release(m);
 	return failures ? 1 : 0;
 }

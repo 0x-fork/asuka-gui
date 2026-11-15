@@ -41,25 +41,25 @@ bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
 		return true;
 	}
 	switch ((ak_tag)o->tag) {
-	case AK_T_STR: {
+	case AK_TAG_STR: {
 		ak_str *s = (ak_str *)o;
 		ak_buf_u8(b, 's');
 		ak_buf_str(b, s->data, s->len);
 		return true;
 	}
-	case AK_T_BYTES: {
+	case AK_TAG_BYTES: {
 		ak_bytes *s = (ak_bytes *)o;
 		ak_buf_u8(b, 'y');
 		ak_buf_str(b, (const char *)s->data, s->len);
 		return true;
 	}
-	case AK_T_BOX: {
+	case AK_TAG_BOX: {
 		ak_box *x = (ak_box *)o;
 		ak_buf_u8(b, 'B');
 		ak_buf_u8(b, (uint8_t)x->h.aux);
 		return ak_keep_encode(b, x->v, (ak_kind)x->h.aux);
 	}
-	case AK_T_ARR: {
+	case AK_TAG_ARR: {
 		ak_arr *a = (ak_arr *)o;
 		ak_buf_u8(b, 'a');
 		ak_buf_u8(b, (uint8_t)ak_arr_kind(a));
@@ -68,7 +68,7 @@ bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
 			if (!ak_keep_encode(b, a->data[i], ak_arr_kind(a))) return false;
 		return true;
 	}
-	case AK_T_MAP: {
+	case AK_TAG_MAP: {
 		ak_map *m = (ak_map *)o;
 		ak_kind kk = (ak_kind)(m->h.aux & 0xf), vk = (ak_kind)(m->h.aux >> 4);
 		ak_buf_u8(b, 'm');
@@ -81,7 +81,7 @@ bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
 		}
 		return true;
 	}
-	case AK_T_STRUCT: {
+	case AK_TAG_STRUCT: {
 		ak_struct *s = (ak_struct *)o;
 		ak_buf_u8(b, 'S');
 		wstr(b, s->shape->name);
@@ -93,7 +93,7 @@ bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
 		}
 		return true;
 	}
-	case AK_T_ENUM: {
+	case AK_TAG_ENUM: {
 		ak_enum *e = (ak_enum *)o;
 		const ak_case *c = &e->shape->cases[ak_enum_case(e)];
 		ak_buf_u8(b, 'E');
@@ -239,9 +239,9 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 			a->data[a->len++] = v;
 			if (ek == AK_K_REF && v.p) {
 				ak_obj *eo = v.p;
-				if (eo->tag == AK_T_STR) a->h.flags = 1;
-				if (eo->tag == AK_T_STRUCT) a->shape = ((ak_struct *)eo)->shape;
-				if (eo->tag == AK_T_ENUM) a->shape = ((ak_enum *)eo)->shape;
+				if (eo->tag == AK_TAG_STR) a->h.flags = 1;
+				if (eo->tag == AK_TAG_STRUCT) a->shape = ((ak_struct *)eo)->shape;
+				if (eo->tag == AK_TAG_ENUM) a->shape = ((ak_enum *)eo)->shape;
 			}
 		}
 		if (!ok) {
@@ -263,7 +263,7 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 				ak_release_val(key, kk);
 				goto map_fail;
 			}
-			if (!m) m = ak_map_new(kk, kk == AK_K_REF && key.p && ((ak_obj *)key.p)->tag == AK_T_STR, vk, NULL);
+			if (!m) m = ak_map_new(kk, kk == AK_K_REF && key.p && ((ak_obj *)key.p)->tag == AK_TAG_STR, vk, NULL);
 			ak_map_set(&m, key, val);
 		}
 		out->p = m ? m : ak_map_new(kk, kk == AK_K_REF, vk, NULL);
@@ -398,8 +398,12 @@ static entry *lookup(ak_str *key) {
 	return NULL;
 }
 
+ak_str *(*ak_keep_qualify)(ak_str *key);
+
 static bool keep_find(ak_str *key, ak_kind k, ak_val *out) {
-	entry *e = lookup(key);
+	ak_str *q = ak_keep_qualify ? ak_keep_qualify(key) : ak_retain(key);
+	entry *e = lookup(q);
+	ak_release(q);
 	if (!e || !e->has) return false;
 	ak_reader r = {e->saved.data, e->saved.len, 0, false};
 	bool ok = ak_keep_decode(&r, k, find_shape, find_ctx, out);
@@ -411,10 +415,13 @@ static bool keep_find(ak_str *key, ak_kind k, ak_val *out) {
 }
 
 static void keep_add(ak_str *key, void *cell) {
-	entry *e = lookup(key);
+	ak_str *q = ak_keep_qualify ? ak_keep_qualify(key) : ak_retain(key);
+	entry *e = lookup(q);
 	if (!e) {
-		ak_vec_push(&entries, ((entry){.key = ak_retain(key)}));
+		ak_vec_push(&entries, ((entry){.key = q}));
 		e = &entries.data[entries.len - 1];
+	} else {
+		ak_release(q);
 	}
 	e->cell = cell;
 	((ak_obj *)cell)->flags |= 1;  // keyed: forget it when it goes

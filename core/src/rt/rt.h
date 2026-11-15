@@ -34,22 +34,22 @@ typedef enum ak_kind {
 
 // A heap object's tag.
 typedef enum ak_tag {
-	AK_T_STR = 1,
-	AK_T_BYTES,
-	AK_T_ARR,
-	AK_T_MAP,
-	AK_T_STRUCT,   // structs, tuples, errors
-	AK_T_ENUM,     // a case of an enum with payloads
-	AK_T_BOX,      // an optional scalar that isn't none
-	AK_T_CLOSURE,
-	AK_T_CELL,     // a state cell (vm, ui)
-	AK_T_MEMO,
-	AK_T_ACC,      // an accessor: what a component's parameter reads
-	AK_T_STORE,
-	AK_T_TASK,
-	AK_T_VIEW,
-	AK_T_NATIVE,   // native/native.h's objects
-	AK_T_OPAQUE,   // runtime objects with their own destructor
+	AK_TAG_STR = 1,
+	AK_TAG_BYTES,
+	AK_TAG_ARR,
+	AK_TAG_MAP,
+	AK_TAG_STRUCT,   // structs, tuples, errors
+	AK_TAG_ENUM,     // a case of an enum with payloads
+	AK_TAG_BOX,      // an optional scalar that isn't none
+	AK_TAG_CLOSURE,
+	AK_TAG_CELL,     // a state cell (vm, ui)
+	AK_TAG_MEMO,
+	AK_TAG_ACC,      // an accessor: what a component's parameter reads
+	AK_TAG_STORE,
+	AK_TAG_TASK,
+	AK_TAG_VIEW,
+	AK_TAG_NATIVE,   // native/native.h's objects
+	AK_TAG_OPAQUE,   // runtime objects with their own destructor
 } ak_tag;
 
 typedef struct ak_obj {

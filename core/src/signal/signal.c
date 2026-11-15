@@ -199,7 +199,7 @@ void ak_batch_end(void) {
 	if (--g->batch_depth == 0 && !g->flushing && g->queue.len) ak_sig_flush();
 }
 
-void ak_batch(void (*fn)(void *ctx), void *ctx) {
+void ak_signal_batch(void (*fn)(void *ctx), void *ctx) {
 	ak_batch_begin();
 	fn(ctx);
 	ak_batch_end();

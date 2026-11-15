@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/asuka/internal/cbuild"
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/cgen"
+	"github.com/egoist/asuka/lang/prelude"
 )
 
 // These tests run hand-assembled modules on the VM (asuka-run, built
@@ -492,4 +493,218 @@ func TestVMSpawn(t *testing.T) {
 		t.Fatalf("%v\n%s", err, got)
 	}
 	expect(t, got, "500000500000", "ok spawn")
+}
+
+// The UI runtime's numbers (core/src/ui/elements_gen.h), from the
+// prelude's tables they're generated from.
+
+func elID(t *testing.T, name string) int {
+	for i, e := range prelude.Elements {
+		if e.Name == name {
+			return i + 1
+		}
+	}
+	t.Fatalf("no element %s", name)
+	return 0
+}
+
+func keyID(t *testing.T, el, name string) int {
+	n := 0
+	if el == "" {
+		for _, k := range prelude.Style {
+			n++
+			if k.Name == name {
+				return n
+			}
+		}
+		t.Fatalf("no style key %s", name)
+	}
+	n = len(prelude.Style)
+	for _, e := range prelude.Elements {
+		for _, k := range e.Keys {
+			n++
+			if e.Name == el && k.Name == name {
+				return n
+			}
+		}
+		n += len(e.Slots)
+	}
+	t.Fatalf("no key %s.%s", el, name)
+	return 0
+}
+
+func evID(t *testing.T, el, name string) int {
+	n := 0
+	for _, e := range prelude.Elements {
+		for _, ev := range e.Events {
+			n++
+			if e.Name == el && ev.Name == name {
+				return n
+			}
+		}
+	}
+	t.Fatalf("no event %s.%s", el, name)
+	return 0
+}
+
+// callb emits a builtin's call with args copied into consecutive
+// registers of their kinds (CALLB takes its arguments from a run of
+// registers).
+func (f *fn) callb(dst int, name string, args ...[2]int) {
+	first := -1
+	for i, a := range args {
+		r := f.reg(bc.Kind(a[1]))
+		if i == 0 {
+			first = r
+		}
+		if bc.Kind(a[1]) == bc.KRef {
+			f.op("MOVR", r, a[0])
+		} else {
+			f.op("MOV", r, a[0])
+		}
+	}
+	if first < 0 {
+		first = 0
+	}
+	f.op("CALLB", dst, f.b(name), first, len(args))
+}
+
+func ref(r int) [2]int { return [2]int{r, int(bc.KRef)} }
+func num(r int) [2]int { return [2]int{r, int(bc.KInt)} }
+
+// A Counter, as the compiler lowers
+//
+//	component Counter {
+//	  state count = 0
+//	  Column {
+//	    gap: 8
+//	    Text("Count: {count}")
+//	    Button("Add") { on press { count += 1 } }
+//	  }
+//	}
+//	test "counter" { let app = mount(Counter()); app.tap("Add"); app.expect("Count: 1") }
+//
+// mounted on the fake host by the test builtins.
+func TestVMCounterOnTheFakeHost(t *testing.T) {
+	m := module()
+	addInit(m)
+
+	// The Text's binding: "Count: {count}".
+	label := newFn(m, "Counter.label")
+	label.def.CapKinds = []bc.Kind{bc.KRef}
+	c, v, s, out := label.reg(bc.KRef), label.reg(bc.KInt), label.reg(bc.KRef), label.reg(bc.KRef)
+	label.op("CAP", c, 0)
+	label.op("CGET", v, c)
+	label.op("KSTR", s, label.str("Count: "))
+	parts := []int{label.reg(bc.KRef), label.reg(bc.KInt)}
+	label.op("MOVR", parts[0], s)
+	label.op("MOV", parts[1], v)
+	label.op("INTERP", out, parts[0], 2, label.str(string([]byte{byte(bc.KRef), byte(bc.KInt)})))
+	label.op("RET", out)
+	labelIdx := label.done(bc.KRef, 0)
+
+	// on press { count += 1 }
+	press := newFn(m, "Counter.press")
+	press.def.CapKinds = []bc.Kind{bc.KRef}
+	pc, pv := press.reg(bc.KRef), press.reg(bc.KInt)
+	press.op("CAP", pc, 0)
+	press.op("CGET", pv, pc)
+	press.op("ADDIK", pv, pv, 1)
+	press.op("CSET", pc, pv)
+	press.op("RET0")
+	pressIdx := press.done(bc.KVoid, 0)
+
+	// The component's body.
+	body := newFn(m, "Counter")
+	name := body.reg(bc.KRef)
+	body.op("KSTR", name, body.str("Counter"))
+	body.callb(bc.None, "ui.enter", ref(name))
+	zero, cell := body.reg(bc.KInt), body.reg(bc.KRef)
+	body.op("KSMALL", zero, 0)
+	body.op("CELLK", cell, zero, int(bc.KInt), body.str("Counter.count"))
+	k := body.reg(bc.KInt)
+	col := body.reg(bc.KRef)
+	body.op("KSMALL", k, elID(t, "Column"))
+	body.callb(col, "ui.new", num(k))
+	gap := body.reg(bc.KFloat)
+	m.Floats = append(m.Floats, 8)
+	body.op("KFLOAT", gap, len(m.Floats)-1)
+	body.op("KSMALL", k, keyID(t, "", "gap"))
+	body.callb(bc.None, "ui.set", ref(col), num(k), [2]int{gap, int(bc.KFloat)})
+	// Text("Count: {count}")
+	txt, thunk := body.reg(bc.KRef), body.reg(bc.KRef)
+	body.op("KSMALL", k, elID(t, "Text"))
+	body.callb(txt, "ui.new", num(k))
+	body.op("CLOS", thunk, labelIdx, cell, 1)
+	body.op("KSMALL", k, keyID(t, "Text", "text"))
+	body.callb(bc.None, "ui.bind", ref(txt), num(k), ref(thunk))
+	body.callb(bc.None, "ui.add", ref(col), ref(txt))
+	// Button("Add") { on press { ... } }
+	btn, title, handler := body.reg(bc.KRef), body.reg(bc.KRef), body.reg(bc.KRef)
+	body.op("KSMALL", k, elID(t, "Button"))
+	body.callb(btn, "ui.new", num(k))
+	body.op("KSTR", title, body.str("Add"))
+	body.op("KSMALL", k, keyID(t, "Button", "title"))
+	body.callb(bc.None, "ui.set", ref(btn), num(k), ref(title))
+	body.op("CLOS", handler, pressIdx, cell, 1)
+	body.op("KSMALL", k, evID(t, "Button", "press"))
+	body.callb(bc.None, "ui.on", ref(btn), num(k), ref(handler))
+	body.callb(bc.None, "ui.add", ref(col), ref(btn))
+	body.callb(bc.None, "ui.leave")
+	body.op("RET", col)
+	bodyIdx := body.done(bc.KRef, 0)
+
+	// The test block.
+	f := newFn(m, "t")
+	build, app, s1 := f.reg(bc.KRef), f.reg(bc.KRef), f.reg(bc.KRef)
+	f.op("CLOS", build, bodyIdx, 0, 0)
+	f.callb(app, "test.mount", ref(build))
+	f.op("KSTR", s1, f.str("Add"))
+	f.callb(bc.None, "test.tap", ref(app), ref(s1))
+	f.op("KSTR", s1, f.str("Count: 1"))
+	f.callb(bc.None, "test.expect", ref(app), ref(s1))
+	f.op("KSTR", s1, f.str("Count: 2"))
+	f.callb(bc.None, "test.expect_no", ref(app), ref(s1))
+	// What the screen shows, as test.dump has it.
+	dump := f.reg(bc.KRef)
+	f.callb(dump, "test.dump", ref(app))
+	f.print(dump, bc.KRef)
+	f.op("RET0")
+	test(m, "counter", f.done(bc.KVoid, bc.FThrows))
+
+	// A failing expectation says what's missing and what's shown.
+	g := newFn(m, "u")
+	gb, ga, gs := g.reg(bc.KRef), g.reg(bc.KRef), g.reg(bc.KRef)
+	g.op("CLOS", gb, bodyIdx, 0, 0)
+	g.callb(ga, "test.mount", ref(gb))
+	g.op("KSTR", gs, g.str("Count: 7"))
+	g.callb(bc.None, "test.expect", ref(ga), ref(gs))
+	g.op("RET0")
+	test(m, "missing", g.done(bc.KVoid, bc.FThrows))
+
+	got, err := run(t, m, "-test")
+	if err == nil {
+		t.Fatalf("want the second test to fail\n%s", got)
+	}
+	var lines []string
+	for _, l := range strings.Split(got, "\n") {
+		if l != "" {
+			lines = append(lines, l)
+		}
+	}
+	want := []string{
+		"View 0,0 390x844",
+		"  Text 0,0 390x20 \"Count: 1\"",
+		"  Button 0,28 390x44 \"Add\"",
+		"ok counter",
+		"FAIL missing: the screen doesn't show \"Count: 7\"",
+	}
+	for i, w := range want {
+		if i >= len(lines) || lines[i] != w {
+			t.Fatalf("got:\n%s\nwant (first lines):\n%s", got, strings.Join(want, "\n"))
+		}
+	}
+	if !strings.Contains(got, "Text 0,0 390x20 \"Count: 0\"") {
+		t.Fatalf("the failure doesn't show the screen:\n%s", got)
+	}
 }

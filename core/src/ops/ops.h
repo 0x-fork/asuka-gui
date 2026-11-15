@@ -60,25 +60,25 @@ enum {
 // "SetProp"…), or NULL.
 const char *ak_op_name(uint8_t code);
 
-// ak_str is a span of text or bytes that someone else owns: a decoder's
+// ak_span is a span of text or bytes that someone else owns: a decoder's
 // input, a literal. It isn't NUL-terminated.
 typedef struct {
 	const char *p;
 	uint32_t len;
-} ak_str;
+} ak_span;
 
-#define AK_STR(lit) ((ak_str){"" lit, (uint32_t)(sizeof(lit) - 1)})
-static inline ak_str ak_cstr(const char *s) { return (ak_str){s, s ? (uint32_t)strlen(s) : 0}; }
-static inline ak_str ak_strn(const void *p, size_t n) { return (ak_str){(const char *)p, (uint32_t)n}; }
-static inline bool ak_str_eq(ak_str a, ak_str b) { return a.len == b.len && (a.len == 0 || memcmp(a.p, b.p, a.len) == 0); }
-static inline bool ak_str_eqc(ak_str a, const char *b) { return ak_str_eq(a, ak_cstr(b)); }
+#define AK_STR(lit) ((ak_span){"" lit, (uint32_t)(sizeof(lit) - 1)})
+static inline ak_span ak_cstr(const char *s) { return (ak_span){s, s ? (uint32_t)strlen(s) : 0}; }
+static inline ak_span ak_strn(const void *p, size_t n) { return (ak_span){(const char *)p, (uint32_t)n}; }
+static inline bool ak_span_eq(ak_span a, ak_span b) { return a.len == b.len && (a.len == 0 || memcmp(a.p, b.p, a.len) == 0); }
+static inline bool ak_span_eqc(ak_span a, const char *b) { return ak_span_eq(a, ak_cstr(b)); }
 // ak_buf_wstr appends s as the wire has strings: u32 length, bytes.
-static inline void ak_buf_wstr(ak_buf *b, ak_str s) { ak_buf_str(b, s.p, s.len); }
+static inline void ak_buf_wstr(ak_buf *b, ak_span s) { ak_buf_str(b, s.p, s.len); }
 // ak_read_str reads a u32-length string; an empty one when r is cut short.
-static inline ak_str ak_read_str(ak_reader *r) {
+static inline ak_span ak_read_str(ak_reader *r) {
 	uint32_t n;
 	const uint8_t *p = ak_read_bytes(r, &n);
-	return (ak_str){(const char *)p, n};
+	return (ak_span){(const char *)p, n};
 }
 
 // Errors of the decoders.
@@ -125,7 +125,7 @@ typedef struct {
 	uint8_t type;  // AK_T_*
 	int64_t i;     // bool (0/1), int, enum, color
 	double f;
-	ak_str s;
+	ak_span s;
 	float edges[4];  // top, right, bottom, left
 } ak_value;
 
@@ -133,7 +133,7 @@ typedef struct {
 typedef struct {
 	uint8_t code;
 	ak_id id;
-	ak_kind kind;         // Create
+	ak_view_kind kind;         // Create
 	ak_prop prop;         // SetProp
 	ak_event_kind event;  // Listen, Unlisten
 	ak_cmd cmd;           // Command
@@ -159,7 +159,7 @@ static inline uint32_t ak_batch_len(const ak_batch *b) { return b->count; }
 // valid until the batch changes.
 const uint8_t *ak_batch_encode(ak_batch *b, size_t *len);
 
-void ak_batch_create(ak_batch *b, ak_id id, ak_kind k);
+void ak_batch_create(ak_batch *b, ak_id id, ak_view_kind k);
 void ak_batch_destroy(ak_batch *b, ak_id id);
 void ak_batch_insert(ak_batch *b, ak_id parent, ak_id child, uint32_t index);
 void ak_batch_remove(ak_batch *b, ak_id parent, ak_id child);
@@ -204,14 +204,14 @@ bool ak_batch_next(ak_batch_reader *br, ak_op *op);
 // ops/testdata/golden.txt ("set 2 6 1 true"); ak_value_format is
 // ops.Value's String.
 void ak_op_format(ak_buf *out, const ak_op *op);
-void ak_op_format_kind(ak_buf *out, const ak_op *op, ak_kind k);
+void ak_op_format_kind(ak_buf *out, const ak_op *op, ak_view_kind k);
 void ak_op_dump(ak_buf *out, const ak_op *op);
 void ak_value_format(ak_buf *out, const ak_value *v);
 // ak_fmt_float appends f as Go's %v (and %g) prints it: the shortest
 // digits that read back as f, for a float64 (bits 64) or a float32 (32).
 void ak_fmt_float(ak_buf *out, double f, int bits);
 // ak_fmt_quote appends s as Go's %q (strconv.Quote) prints it.
-void ak_fmt_quote(ak_buf *out, ak_str s);
+void ak_fmt_quote(ak_buf *out, ak_span s);
 
 // Events.
 
@@ -257,9 +257,9 @@ typedef struct {
 	bool dark, reduce_motion, screen_reader;
 	uint8_t platform;                  // AK_PLATFORM_*
 	uint8_t width_class, height_class;  // AK_SIZE_CLASS_*
-	ak_str locale;     // the user's regional formats: BCP 47, or POSIX with keywords
-	ak_str time_zone;  // IANA
-	ak_str languages;  // BCP 47 tags, most preferred first, joined by commas
+	ak_span locale;     // the user's regional formats: BCP 47, or POSIX with keywords
+	ak_span time_zone;  // IANA
+	ak_span languages;  // BCP 47 tags, most preferred first, joined by commas
 	uint8_t first_weekday;  // 1 Sunday to 7 Saturday; 0 unknown
 	uint8_t hour_cycle;     // 12 or 24; 0 unknown
 } ak_environment;
@@ -288,7 +288,7 @@ typedef struct {
 	int64_t i;
 	double f;
 	double x, y;
-	ak_str s;
+	ak_span s;
 	ak_environment env;
 	ak_gesture g;
 } ak_event;

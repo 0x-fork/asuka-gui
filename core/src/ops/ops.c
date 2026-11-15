@@ -93,7 +93,7 @@ const uint8_t *ak_batch_encode(ak_batch *b, size_t *len) {
 	return b->buf.data;
 }
 
-void ak_batch_create(ak_batch *b, ak_id id, ak_kind k) {
+void ak_batch_create(ak_batch *b, ak_id id, ak_view_kind k) {
 	op(b, AK_OP_CREATE, id);
 	ak_buf_u16(&b->buf, k);
 }
@@ -376,7 +376,7 @@ static bool printable(uint32_t r) {
 	return true;
 }
 
-void ak_fmt_quote(ak_buf *out, ak_str s) {
+void ak_fmt_quote(ak_buf *out, ak_span s) {
 	const uint8_t *p = (const uint8_t *)s.p;
 	ak_buf_u8(out, '"');
 	for (uint32_t i = 0; i < s.len;) {
@@ -407,7 +407,7 @@ void ak_fmt_quote(ak_buf *out, ak_str s) {
 	ak_buf_u8(out, '"');
 }
 
-static void hex(ak_buf *out, ak_str s) {
+static void hex(ak_buf *out, ak_span s) {
 	for (uint32_t i = 0; i < s.len; i++) ak_buf_printf(out, "%02x", (uint8_t)s.p[i]);
 }
 
@@ -432,7 +432,7 @@ void ak_value_format(ak_buf *out, const ak_value *v) {
 	ak_buf_u8(out, '?');
 }
 
-static void kind_name(ak_buf *out, ak_kind k) {
+static void kind_name(ak_buf *out, ak_view_kind k) {
 	const char *n = ak_kind_name(k);
 	if (n) ak_buf_printf(out, "%s", n);
 	else ak_buf_printf(out, "Kind(%u)", k);
@@ -444,7 +444,7 @@ static void event_name(ak_buf *out, ak_event_kind e) {
 	else ak_buf_printf(out, "Event(%u)", e);
 }
 
-static void format(ak_buf *out, const ak_op *op, bool by_kind, ak_kind k) {
+static void format(ak_buf *out, const ak_op *op, bool by_kind, ak_view_kind k) {
 	const char *code = ak_op_name(op->code);
 	switch (op->code) {
 	case AK_OP_CREATE:
@@ -490,7 +490,7 @@ static void format(ak_buf *out, const ak_op *op, bool by_kind, ak_kind k) {
 }
 
 void ak_op_format(ak_buf *out, const ak_op *op) { format(out, op, false, 0); }
-void ak_op_format_kind(ak_buf *out, const ak_op *op, ak_kind k) { format(out, op, true, k); }
+void ak_op_format_kind(ak_buf *out, const ak_op *op, ak_view_kind k) { format(out, op, true, k); }
 
 static void bits32(ak_buf *out, float f) {
 	uint32_t u;

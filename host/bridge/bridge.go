@@ -43,7 +43,10 @@ type Core struct {
 	ev    []byte
 
 	start      func(cbs *callbacks)
-	load       func(p *byte, n uintptr) int32
+	load       func(p *byte, n uintptr, err **byte) int32
+	run        func(err **byte) int32
+	devConnect func(host string, port int32, hello string, err **byte) int32
+	freeString func(p *byte)
 	event      func(p *byte, n uintptr)
 	listCount  func(list uint32) int64
 	listBind   func(list uint32, index int64, cell uint32)
@@ -105,6 +108,9 @@ func Open(path string) (*Core, error) {
 	c := &Core{}
 	purego.RegisterLibFunc(&c.start, lib, "asuka_start")
 	purego.RegisterLibFunc(&c.load, lib, "asuka_load")
+	purego.RegisterLibFunc(&c.run, lib, "asuka_run")
+	purego.RegisterLibFunc(&c.devConnect, lib, "asuka_dev_connect")
+	purego.RegisterLibFunc(&c.freeString, lib, "asuka_free_string")
 	purego.RegisterLibFunc(&c.event, lib, "asuka_event")
 	purego.RegisterLibFunc(&c.listCount, lib, "asuka_list_count")
 	purego.RegisterLibFunc(&c.listBind, lib, "asuka_list_bind")
@@ -240,10 +246,43 @@ func (c *Core) Load(module []byte) error {
 	if len(module) == 0 {
 		return fmt.Errorf("bridge: an empty module")
 	}
-	if c.load(&module[0], uintptr(len(module))) != 0 {
-		return fmt.Errorf("bridge: the core couldn't load the module (see its log)")
+	var msg *byte
+	if c.load(&module[0], uintptr(len(module)), &msg) != 0 {
+		return c.failed(msg)
 	}
 	return nil
+}
+
+// Run runs the app compiled into the core library (a release build).
+func (c *Core) Run() error {
+	var msg *byte
+	if c.run(&msg) != 0 {
+		return c.failed(msg)
+	}
+	return nil
+}
+
+// DevConnect connects to asuka dev at host:port: the CLI sends the app's
+// bytecode, and again on every save.
+func (c *Core) DevConnect(host string, port int, hello string) error {
+	var msg *byte
+	if c.devConnect(host, int32(port), hello, &msg) != 0 {
+		return c.failed(msg)
+	}
+	return nil
+}
+
+func (c *Core) failed(msg *byte) error {
+	if msg == nil {
+		return fmt.Errorf("asuka: the core failed (see its log)")
+	}
+	n := 0
+	for *(*byte)(unsafe.Add(unsafe.Pointer(msg), n)) != 0 {
+		n++
+	}
+	s := string(unsafe.Slice(msg, n))
+	c.freeString(msg)
+	return fmt.Errorf("%s", s)
 }
 
 // Attach tells the core its host's root was made again.

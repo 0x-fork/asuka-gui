@@ -25,7 +25,7 @@ bool ak_native_encode(ak_buf *b, ak_val v, const char *desc, const ak_json_types
 // ak_native_decode reads a value; it throws on a short or bad answer.
 ak_val ak_native_decode(ak_reader *r, const char *desc, const ak_json_types *t);
 
-// Objects: an rt object (AK_T_NATIVE) holding a handle, let go on the
+// Objects: an rt object (AK_TAG_NATIVE) holding a handle, let go on the
 // platform's side when its last reference goes.
 typedef struct ak_native_obj {
 	ak_opaque h;

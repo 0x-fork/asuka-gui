@@ -231,7 +231,7 @@ static void obj_drop(ak_opaque *o) {
 }
 
 ak_native_obj *ak_native_wrap(uint64_t h) {
-	ak_native_obj *o = ak_opaque_new(AK_T_NATIVE, sizeof(ak_native_obj), obj_drop);
+	ak_native_obj *o = ak_opaque_new(AK_TAG_NATIVE, sizeof(ak_native_obj), obj_drop);
 	o->handle = h;
 	return o;
 }

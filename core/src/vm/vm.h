@@ -37,6 +37,7 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap);
 // ak_module_release drops the loader's reference; the module is freed
 // when the last closure of its code goes too.
 void ak_module_release(ak_module *m);
+void ak_module_retain(ak_module *m);
 
 uint32_t ak_module_nfuncs(const ak_module *m);
 const ak_func *ak_module_func(const ak_module *m, uint32_t i);
