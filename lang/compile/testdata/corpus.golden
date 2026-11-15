@@ -52,7 +52,7 @@ inbox.asuka:22:10: SearchField can't bind text: only a control's own value binds
 inbox.asuka:28:21: a match in a view takes no guards: put an if in the arm
 inbox.asuka:32:26: isEmpty is a method of string: call it, isEmpty()
 == native
-native.asuka:19:7: native interfaces aren't supported by the compiler yet (Haptics.impact)
+native.asuka:19:7: Haptics is a native interface: make one, Haptics(), and call impact on it
 native.asuka:19:29: can't tell what .light is here: write its type, Type.light
 == tests
 tests.asuka:17:16: unknown name name (did you mean Frame?)

@@ -55,6 +55,8 @@ const (
 	CallFunc          CallKind = iota + 1 // a declared function
 	CallMethod                            // a struct's, an enum's, a store's or a component's method
 	CallIface                             // an interface's method, by name
+	CallNativeNew                         // a native interface made: X()
+	CallNative                            // a native interface's method (Index: its number, from 1)
 	CallBuiltinMethod                     // a built-in type's method (Method)
 	CallBuiltin                           // a function the compiler provides
 	CallClosure                           // a function value
@@ -87,6 +89,7 @@ type Call struct {
 	// or the env's).
 	SelfCall bool
 	Optional bool // x?.f(): none when x is
+	Index    int  // CallNative: the method's number, from 1
 }
 
 // SelKind is what x.name or .name is.

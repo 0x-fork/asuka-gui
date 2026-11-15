@@ -400,9 +400,28 @@ object type (a reference: the runtime's ak_native_obj) and its methods:
 - Every method `throws` (the platform's side may fail); the checker
   requires `try` at calls.
 
+A native interface can't be generic, has methods only, and no struct
+declares it. The class is the package's name as internal/nativegen
+names it: asuka.toml's `name`, else its directory's. The errors array is
+a global init.strings makes: every enum declared `: Error` in the
+package, its cases in order (a case with values stands as an error of
+its name).
+
 `asuka native generate` writes each platform's side (Swift on iOS and macOS, Kotlin,
 JavaScript, Go on Windows and Linux, whose hosts are Go) from the same declarations, in
 native/codec.go's wire format.
+
+## Imports
+
+The compiler (lang/compile) finds each import: `./path` beside the
+importing file's package; `asuka/json`, `asuka/math` and `asuka/time`
+in the checker itself; any other `asuka/<name>` in std/ (the CLI's
+copy: package std); anything else through the project's asuka.lock
+(internal/pkgs.Imports), by the importing package's dependencies, so
+two packages may import different majors under one name. A package's
+symbols are qualified by its import path (a dependency's relative
+imports by the dependency's path), so two packages' `./util` are two
+packages.
 
 ## Prelude functions the runtime provides
 

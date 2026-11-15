@@ -9,6 +9,8 @@
 //   state units = store.read("units", "metric")
 //   effect { store.write("units", units) }
 
+import asuka/json
+
 /// The platform's preferences: strings by key.
 native interface Prefs {
   fn get(key: string) -> string?
@@ -16,13 +18,15 @@ native interface Prefs {
   fn remove(key: string)
 }
 
-let prefs = try !Prefs()
+// Made once; none where the platform has no preferences, and then
+// nothing is kept.
+let prefs = try? Prefs()
 
 /// The value kept under key, or def when there's none (or what's kept
 /// isn't a T any more).
 pub fn read<T>(key: string, def: T) -> T {
-  if let s = try? prefs.get(key) {
-    if let s = s {
+  if let p = prefs {
+    if let s = try? p.get(key) {
       if let v = try? json.decode<T>(s) {
         return v
       }
@@ -33,10 +37,14 @@ pub fn read<T>(key: string, def: T) -> T {
 
 /// Keeps value under key.
 pub fn write<T>(key: string, value: T) {
-  try? prefs.set(key, json.encode(value))
+  if let p = prefs {
+    try? p.set(key, json.encode(value))
+  }
 }
 
 /// Forgets what's kept under key.
 pub fn remove(key: string) {
-  try? prefs.remove(key)
+  if let p = prefs {
+    try? p.remove(key)
+  }
 }

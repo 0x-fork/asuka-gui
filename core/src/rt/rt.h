@@ -169,7 +169,7 @@ typedef struct ak_bytes {
 	uint8_t data[];
 } ak_bytes;
 
-ak_bytes *ak_bytes_new(const void *p, size_t n);
+ak_bytes *ak_bytes_new(const void *p, size_t n);  // p NULL: n bytes, uninitialized
 
 // ---- Arrays ----
 

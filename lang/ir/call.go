@@ -33,6 +33,10 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 		return b.closureCall(e, call, dst)
 	case check.CallIface:
 		return b.ifaceCall(e, call, nil, dst)
+	case check.CallNative:
+		return b.nativeMethodCall(e, call, nil, dst)
+	case check.CallNativeNew:
+		return b.nativeNewCall(call, dst)
 	case check.CallBuiltinMethod:
 		return b.builtinMethod(e, call, nil, dst)
 	case check.CallBuiltin:
@@ -71,6 +75,8 @@ func (b *fb) optionalCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		v = b.builtinMethod(e, call, &in, -1)
 	case check.CallIface:
 		v = b.ifaceCall(e, call, &in, -1)
+	case check.CallNative:
+		v = b.nativeMethodCall(e, call, &in, -1)
 	default:
 		v = b.funcCallRecv(e, call, in, -1, false)
 	}

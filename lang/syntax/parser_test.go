@@ -369,6 +369,15 @@ func TestParseDecls(t *testing.T) {
 	if d := f.Imports[0]; !d.Relative || d.PathString() != "./a/b" || len(d.Names) != 2 || d.Alias.Name != "z" {
 		t.Errorf("import: %+v", d)
 	}
+	f = parseOK(t, "import @acme/line-charts as lc\nimport @acme/charts.v2\nimport charts2")
+	for i, want := range []string{"@acme/line-charts", "@acme/charts.v2", "charts2"} {
+		if got := f.Imports[i].PathString(); got != want {
+			t.Errorf("import %d: %q, want %q", i, got, want)
+		}
+	}
+	if f.Imports[0].Alias == nil || f.Imports[0].Alias.Name != "lc" {
+		t.Errorf("scoped import's alias: %+v", f.Imports[0])
+	}
 	f = parseOK(t, "enum E: Error { a, b(int), c(code: int, String)\n fn f() { } }")
 	if e := f.Decls[0].(*EnumDecl); len(e.Cases) != 3 || len(e.Members) != 1 || e.Cases[2].Params.List[0].Label.Name != "code" || e.Cases[2].Params.List[1].Label != nil {
 		t.Errorf("enum: %s", printed(e))

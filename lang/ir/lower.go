@@ -32,6 +32,7 @@ type Lowerer struct {
 	pendingStrings []pendingStrings
 	consts         map[string]int // a hoisted literal (and its type) → its global
 	pendingConsts  []pendingConst
+	pendingNative  []pendingNative
 	stringsFn      *fb
 }
 
@@ -108,6 +109,7 @@ func (l *Lowerer) lower() {
 		}
 		l.finishConsts()
 	}
+	l.finishNativeErrors()
 	l.finishStrings()
 }
 

@@ -275,6 +275,6 @@ ak_str *ak_strb_finish(ak_strb *b) {
 ak_bytes *ak_bytes_new(const void *p, size_t n) {
 	ak_bytes *o = ak_obj_new(AK_TAG_BYTES, sizeof(ak_bytes) + n);
 	o->len = (uint32_t)n;
-	if (n) memcpy(o->data, p, n);
+	if (n && p) memcpy(o->data, p, n);  // p NULL: the caller fills them
 	return o;
 }

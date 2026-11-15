@@ -1,0 +1,26 @@
+// Bytes: made from text, read back, sliced and joined.
+
+test "bytes" {
+  let b = "héllo".bytes()
+  print(b.count())
+  print(b.string())
+  print(b.slice(from: 0, to: 1).string())
+  print(b.get(1) ?? -1)
+  print(b.get(99) ?? -1)
+  let empty = bytes()
+  print(empty.isEmpty())
+  print(empty.concat(b).count())
+  // What isn't UTF-8 is read as U+FFFD.
+  print(b.slice(from: 0, to: 2).string().count())
+}
+
+// Output:
+// 6
+// héllo
+// h
+// 195
+// -1
+// true
+// 6
+// 2
+// ok bytes

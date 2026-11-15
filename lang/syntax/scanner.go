@@ -341,6 +341,8 @@ redo:
 		}
 	case '|':
 		tok = s.alt('|', LOR, PIPE)
+	case '@':
+		tok = AT
 	case '?':
 		switch s.ch {
 		case '?':

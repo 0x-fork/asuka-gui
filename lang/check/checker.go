@@ -46,6 +46,9 @@ type Checker struct {
 	free    map[*TypeParam]bool
 	spawns  []*FuncCtx
 	errT    *TypeName // Error
+	// Generic calls, for the type parameters read or written as JSON
+	// (checked once every body has said which: jsonGenerics).
+	genericCalls []genericCall
 }
 
 // NewChecker makes a checker and checks the prelude with it.
@@ -95,6 +98,7 @@ func (c *Checker) CheckPackage(path, name string, files []*syntax.SourceFile, im
 // Program is what the checker made of the packages so far.
 func (c *Checker) Program(root *Package) *Program {
 	c.finalize()
+	c.jsonGenerics()
 	pkgs := append([]*Package{c.prelude}, c.pkgs...)
 	diags := append([]Diagnostic{}, c.diags...)
 	sort.SliceStable(diags, func(i, j int) bool {
@@ -220,7 +224,10 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 
 func (c *Checker) importDecl(fs *Scope, imp *syntax.ImportDecl, imports map[string]*Package) {
 	path := imp.PathString()
-	ip := imports[path]
+	ip, found := imports[path]
+	if found && ip == nil {
+		return // the compiler couldn't load it, and said so
+	}
 	if ip == nil {
 		ip = c.Std(path)
 	}
@@ -253,6 +260,9 @@ func (c *Checker) importDecl(fs *Scope, imp *syntax.ImportDecl, imports map[stri
 	name := ip.Name
 	if imp.Alias != nil {
 		name = imp.Alias.Name
+	} else if !syntax.IsIdentifier(name) {
+		c.errorf(imp, "import %s as a name: %s isn't one", path, name)
+		return
 	}
 	pn := &PkgName{object: object{name, imp.Start}, Pkg: ip}
 	if old := fs.Insert(pn); old != nil {
@@ -264,7 +274,7 @@ func importHint(imp *syntax.ImportDecl) string {
 	if imp.Relative {
 		return "a package beside this one is a directory of .asuka files"
 	}
-	return "the standard library has asuka/json, asuka/math and asuka/time; a dependency is added with asuka add"
+	return "the standard library is asuka/<name> (docs/stdlib.md); a dependency is added with asuka add"
 }
 
 func contains[T comparable](s []T, x T) bool {
@@ -333,7 +343,14 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 		p.Types = append(p.Types, t)
 		declare(d.Name, t)
 	case *syntax.InterfaceDecl:
-		t := &TypeName{object: object{d.Name.Name, d.Name.Start}, Pkg: p, Kind: InterfaceType, Decl: d}
+		t := &TypeName{object: object{d.Name.Name, d.Name.Start}, Pkg: p, Kind: InterfaceType, Decl: d, Native: d.Native.IsValid()}
+		if t.Native {
+			for _, o := range p.Types {
+				if o.Native {
+					t.NativeIndex++
+				}
+			}
+		}
 		p.Types = append(p.Types, t)
 		declare(d.Name, t)
 	case *syntax.TypeAliasDecl:

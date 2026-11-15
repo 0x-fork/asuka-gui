@@ -140,7 +140,12 @@ func Resolve(c *Client, root map[string]string, projectDir string) (*Lock, error
 				if _, err := os.Stat(filepath.Join(p, ManifestFile)); err != nil {
 					return fmt.Errorf("%s: %s = %q: no package there (no %s)", by, k, deps[k], ManifestFile)
 				}
-				id := "file:" + filepath.ToSlash(p)
+				// Recorded from the project, so asuka.lock can be committed.
+				rel := p
+				if r, err := filepath.Rel(projectDir, p); err == nil {
+					rel = r
+				}
+				id := "file:" + filepath.ToSlash(rel)
 				into[k] = id
 				if lock.Find(id) == nil {
 					lock.Packages = append(lock.Packages, Locked{ID: id, Source: id})
@@ -255,9 +260,9 @@ func CacheDir() string {
 }
 
 // Fetch makes sure a locked package's files are in the cache and
-// returns their directory: a file: package's own directory; else the
-// cache's, keyed by the tarball's integrity, downloaded (and checked)
-// once.
+// returns their directory: a file: package's own directory (from the
+// project's, when relative); else the cache's, keyed by the tarball's
+// integrity, downloaded (and checked) once.
 func Fetch(c *Client, l *Locked) (string, error) {
 	if strings.HasPrefix(l.Source, "file:") {
 		return filepath.FromSlash(strings.TrimPrefix(l.Source, "file:")), nil

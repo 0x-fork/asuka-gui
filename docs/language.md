@@ -47,8 +47,11 @@ import ./theme as t               // a shorter name
 ```
 
 A package's names are used through it: `http.get(url)`,
-`components.Card("Hi")`. The prelude (the built-in types, elements and
-functions) needs no import.
+`components.Card("Hi")`. A package is named by its path's last segment;
+one whose name isn't a name (`@acme/line-charts`) is imported with
+`as`. The prelude (the built-in types, elements and functions) needs no
+import. [The standard library](stdlib.md) lists the `asuka/...`
+packages.
 
 Statements and declarations end at the end of a line; `;` puts several
 on one. A line that ends with an operator, a comma or an opening bracket
@@ -87,7 +90,7 @@ A map's keys are ints, strings, bools or enums without payloads.
 
 ### Built-in methods
 
-Strings, arrays, maps and optionals have methods; those that change
+Strings, bytes, arrays, maps and optionals have methods; those that change
 their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 `clear`, `sort`, `remove`) take a `var` or state:
 
@@ -96,6 +99,7 @@ their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 | `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `filter(p)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `reversed()`, `slice(from, to)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order) |
 | `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new)`, `split(sep)`, `find(s)` (a byte offset, or none), `slice(from, to)` (characters), `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `+` |
+| `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD); `bytes()` is none, `s.bytes()` a string's UTF-8 |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
 | `T?` | `isNone()`, `isSome()` |
 
@@ -559,8 +563,11 @@ pub native component MapView(region: Region) {
 }
 ```
 
-`asuka native generate` writes the Swift, Kotlin, JavaScript and C each
-platform implements. See [Native packages](native.md).
+Making a module and calling it may fail (its platform may have no code
+for it), so both take `try`: `let h = try Haptics()`, `try
+h.impact(.light)`. `asuka native generate` writes the Swift, Kotlin,
+JavaScript and Go each platform implements. See [Native
+packages](native.md).
 
 ## Tests
 
@@ -575,8 +582,10 @@ test "archiving removes the row" {
 
 `expect(cond)` fails a test when cond is false, saying what failed and
 where (with a comparison's two sides). JSON comes from `asuka/json`:
-`let notes: [Note] = try json.decode(text)` reads what's expected of it,
-`json.encode(notes)` writes it.
+`let notes: [Note] = try json.decode(text)` reads what's expected of it
+(or `json.decode<[Note]>(text)`), `json.encode(notes)` writes it. A
+generic function may read or write its `T` as JSON; each call then
+needs a `T` JSON can say, which the compiler checks where it's called.
 
 `asuka test` runs a package's tests on a fake host: it lays views out as
 the platforms do, measures text at a fixed width per character, and time

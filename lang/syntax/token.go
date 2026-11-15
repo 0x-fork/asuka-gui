@@ -231,6 +231,7 @@ const (
 	PERIOD   // .
 	DOTBRACE // .{
 	PIPE     // |
+	AT       // @: a scoped package's import path
 
 	COMMA     // ,
 	COLON     // :
@@ -349,6 +350,7 @@ var tokens = [...]string{
 	PERIOD:   ".",
 	DOTBRACE: ".{",
 	PIPE:     "|",
+	AT:       "@",
 
 	COMMA:     ",",
 	COLON:     ":",
@@ -513,4 +515,19 @@ func (l ErrorList) Sort() {
 		}
 		return a.Offset < b.Offset
 	})
+}
+
+// IsIdentifier reports whether s is a name a declaration can have: a
+// letter or _, then letters, digits and _, and not a keyword.
+func IsIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if !(isLetter(r) || i > 0 && isDigit(r)) {
+			return false
+		}
+	}
+	t, kw := keywords[s]
+	return !kw || softKeyword(t)
 }

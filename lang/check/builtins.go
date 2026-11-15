@@ -186,10 +186,15 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		}
 		call.Args, call.Params = args, ps
 		t := want
+		if len(e.TypeArgs) == 1 {
+			t = c.typeExpr(e.TypeArgs[0]) // json.decode<T>(text)
+		} else if len(e.TypeArgs) > 1 {
+			c.errorf(e, "json.decode takes one type: json.decode<T>(text)")
+		}
 		if t == nil {
-			c.errorf(e, "json.decode needs to know what it reads: say what's expected, let x: T = try json.decode(text)")
+			c.errorf(e, "json.decode needs to know what it reads: json.decode<T>(text), or say what's expected, let x: T = try json.decode(text)")
 			t = Invalid
-		} else if why := jsonable(t); why != "" {
+		} else if why := c.jsonable(t); why != "" {
 			c.errorf(e, "json can't read a %s: %s", typeString(t), why)
 		}
 		call.Result = t
@@ -200,7 +205,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if args[0] != nil {
 			t := c.valueType(c.expr(args[0], nil), args[0])
 			ps[0].Type = t
-			if why := jsonable(t); why != "" && !IsInvalid(t) {
+			if why := c.jsonable(t); why != "" && !IsInvalid(t) {
 				c.errorf(args[0], "json can't write a %s: %s", typeString(t), why)
 			}
 		}
@@ -384,12 +389,112 @@ func (c *Checker) load(e *syntax.UnaryExpr) Type {
 }
 
 // jsonable reports why JSON can't read or write t, "" when it can.
-func jsonable(t Type) string {
-	return jsonable1(t, map[*TypeName]bool{})
+// jsonable says why t can't be JSON ("" when it can). A type parameter
+// of the function being checked can: each call's type argument is
+// checked instead (jsonGenerics).
+func (c *Checker) jsonable(t Type) string {
+	return jsonable1(t, map[*TypeName]bool{}, func(tp *TypeParam) bool {
+		f := c.enclosingFunc()
+		if f == nil || !contains(f.TypeParams, tp) {
+			return false
+		}
+		if f.jsonParams == nil {
+			f.jsonParams = map[*TypeParam]bool{}
+		}
+		f.jsonParams[tp] = true
+		return true
+	})
 }
 
-func jsonable1(t Type, seen map[*TypeName]bool) string {
+// enclosingFunc is the declared function whose body is being checked.
+func (c *Checker) enclosingFunc() *Function {
+	for x := c.ctx; x != nil; x = x.Parent {
+		if x.Func != nil {
+			return x.Func
+		}
+	}
+	return nil
+}
+
+type genericCall struct {
+	e    *syntax.CallExpr
+	f    *Function
+	args []Type
+	encl *Function // the function the call is in
+}
+
+// jsonGenerics checks the type arguments of generic calls whose type
+// parameters are read or written as JSON: a call passing a type
+// parameter of its own function makes that one JSON too, until nothing
+// changes; then every concrete argument must be JSON.
+func (c *Checker) jsonGenerics() {
+	for changed := true; changed; {
+		changed = false
+		for _, g := range c.genericCalls {
+			if g.encl == nil {
+				continue
+			}
+			for i, tp := range g.f.TypeParams {
+				if !g.f.jsonParams[tp] || i >= len(g.args) {
+					continue
+				}
+				for _, own := range g.encl.TypeParams {
+					if mentionsParam(g.args[i], own) && !g.encl.jsonParams[own] {
+						if g.encl.jsonParams == nil {
+							g.encl.jsonParams = map[*TypeParam]bool{}
+						}
+						g.encl.jsonParams[own] = true
+						changed = true
+					}
+				}
+			}
+		}
+	}
+	for _, g := range c.genericCalls {
+		for i, tp := range g.f.TypeParams {
+			if !g.f.jsonParams[tp] || i >= len(g.args) || IsInvalid(g.args[i]) {
+				continue
+			}
+			if why := jsonable1(g.args[i], map[*TypeName]bool{}, func(*TypeParam) bool { return true }); why != "" {
+				c.errorf(g.e, "%s reads or writes its %s as JSON, and a %s can't be: %s", g.f.name, tp.Name, typeString(g.args[i]), why)
+			}
+		}
+	}
+}
+
+// mentionsParam reports whether t mentions tp.
+func mentionsParam(t Type, tp *TypeParam) bool {
 	switch x := t.(type) {
+	case *TypeParam:
+		return x == tp
+	case *Array:
+		return mentionsParam(x.Elem, tp)
+	case *Optional:
+		return mentionsParam(x.Elem, tp)
+	case *Map:
+		return mentionsParam(x.Key, tp) || mentionsParam(x.Elem, tp)
+	case *Named:
+		for _, a := range x.Args {
+			if mentionsParam(a, tp) {
+				return true
+			}
+		}
+	case *Tuple:
+		for _, e := range x.Elems {
+			if mentionsParam(e, tp) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) string {
+	switch x := t.(type) {
+	case *TypeParam:
+		if param(x) {
+			return ""
+		}
 	case *Basic:
 		switch x {
 		case Int, Float, Bool, String, Bytes, Duration, Color:
@@ -397,14 +502,14 @@ func jsonable1(t Type, seen map[*TypeName]bool) string {
 		}
 		return "it's a " + x.name
 	case *Array:
-		return jsonable1(x.Elem, seen)
+		return jsonable1(x.Elem, seen, param)
 	case *Optional:
-		return jsonable1(x.Elem, seen)
+		return jsonable1(x.Elem, seen, param)
 	case *Map:
 		if x.Key != String {
 			return "a JSON object's keys are strings"
 		}
-		return jsonable1(x.Elem, seen)
+		return jsonable1(x.Elem, seen, param)
 	case *Named:
 		if seen[x.Obj] {
 			return ""
@@ -414,7 +519,7 @@ func jsonable1(t Type, seen map[*TypeName]bool) string {
 		switch x.Obj.Kind {
 		case StructType:
 			for _, f := range x.Obj.Fields {
-				if why := jsonable1(s.Apply(f.Type), seen); why != "" {
+				if why := jsonable1(s.Apply(f.Type), seen, param); why != "" {
 					return "its field " + f.Name + ": " + why
 				}
 			}
@@ -425,7 +530,7 @@ func jsonable1(t Type, seen map[*TypeName]bool) string {
 			}
 			for _, k := range x.Obj.Cases {
 				for _, p := range k.Params {
-					if why := jsonable1(s.Apply(p), seen); why != "" {
+					if why := jsonable1(s.Apply(p), seen, param); why != "" {
 						return "its case " + k.Name + ": " + why
 					}
 				}
@@ -441,6 +546,16 @@ func jsonable1(t Type, seen map[*TypeName]bool) string {
 
 // ---------------------------------------------------------------------
 // The standard library the compiler provides
+
+// ProvidesStd reports whether the compiler itself provides the standard
+// library's package at path (the rest are directories of std/).
+func ProvidesStd(path string) bool {
+	switch path {
+	case "asuka/json", "asuka/math", "asuka/time":
+		return true
+	}
+	return false
+}
 
 func (c *Checker) makeStd(path string) *Package {
 	p := &Package{Path: path, Prelude: false}

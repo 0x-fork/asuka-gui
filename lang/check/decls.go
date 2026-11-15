@@ -120,15 +120,29 @@ func (c *Checker) typeMembers(t *TypeName) {
 		}
 	case *syntax.InterfaceDecl:
 		t.Iface = &Iface{}
+		if t.Native && len(d.TypeParams) > 0 {
+			c.errorf(d.Name, "a native interface isn't generic: its platforms' code can't be")
+		}
 		for _, m := range d.Members {
 			switch m := m.(type) {
 			case *syntax.Field:
+				if t.Native {
+					c.errorf(m.Name, "a native interface has methods only")
+				}
 				t.Iface.Fields = append(t.Iface.Fields, &Field{Name: m.Name.Name, Type: c.typeExpr(m.Type), Pos: m.Name.Start})
 			case *syntax.FuncDecl:
 				if m.Body != nil || m.Value != nil {
 					c.errorf(m.Name, "an interface's methods have no bodies: the types that have the interface implement them")
 				}
-				t.Iface.Methods = append(t.Iface.Methods, &IfaceMethod{Name: m.Name.Name, Sig: c.signature(m, nil)})
+				sig := c.signature(m, nil)
+				if t.Native {
+					if len(m.TypeParams) > 0 {
+						c.errorf(m.Name, "a native interface's methods aren't generic")
+					}
+					// The platform's side may always fail.
+					sig.Throws = true
+				}
+				t.Iface.Methods = append(t.Iface.Methods, &IfaceMethod{Name: m.Name.Name, Sig: sig})
 			}
 		}
 	case *syntax.ComponentDecl:
@@ -155,6 +169,10 @@ func (c *Checker) conforms(t *TypeName, list []syntax.Type) {
 		}
 		ty := c.typeExpr(ct)
 		if n, ok := ty.(*Named); ok && n.Obj.Kind == InterfaceType {
+			if n.Obj.Native {
+				c.errorf(ct, "%s is a native interface: its platforms' code implements it (docs/native.md)", n.Obj.name)
+				continue
+			}
 			t.Conforms = append(t.Conforms, n.Obj)
 			continue
 		}

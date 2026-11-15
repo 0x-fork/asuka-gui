@@ -709,6 +709,93 @@ static ak_val f_race(ak_val *args, uint32_t n) {
 	RET_P(out);
 }
 
+// ---- Bytes ----
+//
+// A bytes value may be none (a zero value): it's empty.
+
+#define BYTES(i) ((ak_bytes *)args[i].p)
+
+static uint32_t blen(const ak_bytes *b) { return b ? b->len : 0; }
+
+static ak_val str_to_bytes(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	RET_P(ak_bytes_new(STR(0)->data, STR(0)->len));
+}
+
+static ak_val bytes_empty(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+	RET_P(ak_bytes_new(NULL, 0));
+}
+
+static ak_val bytes_len(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(blen(BYTES(0))); }
+static ak_val bytes_is_empty(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(blen(BYTES(0)) == 0); }
+
+static ak_val bytes_get(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t i = A(1).i;
+	if (i < 0 || i >= (int64_t)blen(BYTES(0))) RET_P(NULL);
+	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = BYTES(0)->data[i]}));
+}
+
+static ak_val bytes_slice(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t len = blen(BYTES(0)), from = A(1).i, to = A(2).i;
+	if (from < 0) from = 0;
+	if (to > len) to = len;
+	if (to < from) to = from;
+	RET_P(ak_bytes_new(len ? BYTES(0)->data + from : NULL, (size_t)(to - from)));
+}
+
+static ak_val bytes_concat(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	uint32_t a = blen(BYTES(0)), b = blen(BYTES(1));
+	ak_bytes *r = ak_bytes_new(NULL, (size_t)a + b);
+	if (a) memcpy(r->data, BYTES(0)->data, a);
+	if (b) memcpy(r->data + a, BYTES(1)->data, b);
+	RET_P(r);
+}
+
+// utf8_seq is the length of the valid UTF-8 sequence at p (n bytes
+// left), or 0 when it isn't one.
+static size_t utf8_seq(const uint8_t *p, size_t n) {
+	uint8_t c = p[0];
+	if (c < 0x80) return 1;
+	size_t len;
+	uint32_t min;
+	if ((c & 0xe0) == 0xc0) len = 2, min = 0x80;
+	else if ((c & 0xf0) == 0xe0) len = 3, min = 0x800;
+	else if ((c & 0xf8) == 0xf0) len = 4, min = 0x10000;
+	else return 0;
+	if (n < len) return 0;
+	uint32_t cp = c & (0x7f >> len);
+	for (size_t i = 1; i < len; i++) {
+		if ((p[i] & 0xc0) != 0x80) return 0;
+		cp = cp << 6 | (p[i] & 0x3f);
+	}
+	if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return 0;
+	return len;
+}
+
+static ak_val bytes_str(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_bytes *b = BYTES(0);
+	size_t len = blen(b);
+	ak_buf out = {0};
+	for (size_t i = 0; i < len;) {
+		size_t k = utf8_seq(b->data + i, len - i);
+		if (k) {
+			ak_buf_put(&out, b->data + i, k);
+			i += k;
+		} else {
+			ak_buf_put(&out, "\xef\xbf\xbd", 3);  // U+FFFD
+			i++;
+		}
+	}
+	ak_str *s = ak_str_new((const char *)out.data, out.len);
+	ak_buf_free(&out);
+	RET_P(s);
+}
+
 const ak_lib_entry ak_lib[] = {
 	{"print", lib_print},
 	{"panic", lib_panic},
@@ -734,6 +821,15 @@ const ak_lib_entry ak_lib[] = {
 	{"str.repeat", str_repeat},
 	{"str.join", str_join},
 	{"str.chars", str_chars},
+	{"str.to_bytes", str_to_bytes},
+
+	{"bytes.empty", bytes_empty},
+	{"bytes.len", bytes_len},
+	{"bytes.is_empty", bytes_is_empty},
+	{"bytes.get", bytes_get},
+	{"bytes.slice", bytes_slice},
+	{"bytes.concat", bytes_concat},
+	{"bytes.str", bytes_str},
 	{"str.fixed", str_from_float_digits},
 
 	{"arr.push", arr_push},

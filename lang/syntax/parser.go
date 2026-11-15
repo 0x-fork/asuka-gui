@@ -663,11 +663,12 @@ func (p *parser) parseImport() *ImportDecl {
 		p.next()
 	}
 	for {
-		if !p.isName() {
+		seg := p.importSegment(!d.Relative && len(d.Path) == 0)
+		if seg == nil {
 			p.errorExpected("an import path")
 			break
 		}
-		d.Path = append(d.Path, p.name())
+		d.Path = append(d.Path, seg)
 		if p.tok != QUO {
 			break
 		}
@@ -690,6 +691,36 @@ func (p *parser) parseImport() *ImportDecl {
 	}
 	d.Span = p.span(start)
 	return d
+}
+
+// importSegment is one segment of an import path: a name, or a
+// package's name on the registry, which may have hyphens and dots
+// (line-charts) and, first, a scope (@acme). Its parts are adjacent.
+func (p *parser) importSegment(first bool) *Ident {
+	start := p.pos
+	var b strings.Builder
+	if first && p.tok == AT {
+		b.WriteByte('@')
+		p.next()
+		if p.pos != p.prevEnd {
+			return nil
+		}
+	}
+	if !p.isName() {
+		return nil
+	}
+	b.WriteString(p.lit)
+	p.next()
+	for (p.tok == SUB || p.tok == PERIOD) && p.pos == p.prevEnd {
+		if t := p.peek(1); t != IDENT && t != INT && !t.IsKeyword() || p.toks[p.i+1].pos != p.pos+Pos(len(p.lit)) {
+			break
+		}
+		b.WriteString(p.lit)
+		p.next()
+		b.WriteString(p.lit)
+		p.next()
+	}
+	return &Ident{Span: Span{start, p.prevEnd}, Name: b.String()}
 }
 
 func (p *parser) parseDecl() Decl {

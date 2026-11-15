@@ -107,6 +107,15 @@ var Methods = []*Method{
 	{Recv: "string", Name: "toFloat", Sig: "() -> float?", Builtin: "str.to_float"},
 	{Recv: "string", Name: "repeat", Sig: "(count: int) -> string", Builtin: "str.repeat"},
 	{Recv: "string", Name: "chars", Sig: "() -> [string]", Builtin: "str.chars", Doc: "its characters, each a string"},
+	{Recv: "string", Name: "bytes", Sig: "() -> bytes", Builtin: "str.to_bytes", Doc: "its UTF-8 bytes"},
+
+	// Bytes.
+	{Recv: "bytes", Name: "count", Sig: "() -> int", Builtin: "bytes.len", Doc: "the number of bytes"},
+	{Recv: "bytes", Name: "isEmpty", Sig: "() -> bool", Builtin: "bytes.is_empty"},
+	{Recv: "bytes", Name: "get", Sig: "(index: int) -> int?", Builtin: "bytes.get", Doc: "the byte at index (0 to 255), or none when it's out of range"},
+	{Recv: "bytes", Name: "slice", Sig: "(from: int, to: int) -> bytes", Builtin: "bytes.slice", Doc: "the bytes from from up to to, clamped"},
+	{Recv: "bytes", Name: "concat", Sig: "(other: bytes) -> bytes", Builtin: "bytes.concat", Doc: "these bytes, then other's"},
+	{Recv: "bytes", Name: "string", Sig: "() -> string", Builtin: "bytes.str", Doc: "the bytes read as UTF-8 text; what isn't UTF-8 becomes U+FFFD"},
 
 	// Numbers.
 	{Recv: "float", Name: "fixed", Sig: "(digits: int) -> string", Builtin: "str.fixed", Doc: "with that many digits after the point: 3.14159.fixed(2) is 3.14"},
@@ -170,6 +179,8 @@ func recvKind(t Type) string {
 			return "int"
 		case TestApp:
 			return "app"
+		case Bytes:
+			return "bytes"
 		}
 	}
 	return ""
@@ -393,6 +404,8 @@ func (p *sigParser) typ() Type {
 			t = Bool
 		case "string":
 			t = String
+		case "bytes":
+			t = Bytes
 		case "T":
 			t = tvT
 		case "K":

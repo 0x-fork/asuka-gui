@@ -140,7 +140,7 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 					if call.Func.Ctx == nil || call.Func.Ctx.readsState || call.Func.Recv != nil && call.Func.Recv.Kind == StoreType {
 						found = true
 					}
-				case CallClosure, CallIface:
+				case CallClosure, CallIface, CallNative:
 					found = true
 				case CallBuiltinMethod:
 					if call.Method.Recv == "loading" {

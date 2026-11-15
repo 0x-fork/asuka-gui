@@ -85,7 +85,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 				return c.caseCall(e, tn, k, want)
 			}
 			if d, ok := tn.Decl.(*syntax.InterfaceDecl); ok && d.Native.IsValid() {
-				c.errorf(fn, "native interfaces aren't supported by the compiler yet (%s.%s)", tn.name, fn.Name.Name)
+				c.errorf(fn, "%s is a native interface: make one, %s(), and call %s on it", tn.name, tn.name, fn.Name.Name)
 			} else {
 				c.errorf(fn.Name, "%s has no case %s", tn.name, fn.Name.Name)
 			}
@@ -469,6 +469,9 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 	call.Result = s.Apply(f.Sig.Result)
 	c.info.Calls[e] = call
 	c.callEffects(e, what, f.Sig.Async, f.Sig.Throws)
+	if len(f.TypeParams) > 0 {
+		c.genericCalls = append(c.genericCalls, genericCall{e, f, call.TypeArgs, c.enclosingFunc()})
+	}
 	return call
 }
 
@@ -628,7 +631,7 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 				return c.closureCall(e, fn, t)
 			}
 		case InterfaceType:
-			for _, m := range n.Obj.Iface.Methods {
+			for i, m := range n.Obj.Iface.Methods {
 				if m.Name == name {
 					args := c.matchArgs(e, m.Sig.Params, name)
 					for i, a := range args {
@@ -636,7 +639,11 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 							c.assign(a, m.Sig.Params[i].Type, "argument "+m.Sig.Params[i].Name+" of "+name)
 						}
 					}
-					c.info.Calls[e] = &Call{Kind: CallIface, Recv: fn.X, RecvType: xt, Args: args, Params: m.Sig.Params, Result: m.Sig.Result, Bound: map[string]Type{"name": nil}}
+					kind := CallIface
+					if n.Obj.Native {
+						kind = CallNative
+					}
+					c.info.Calls[e] = &Call{Kind: kind, Recv: fn.X, RecvType: xt, Args: args, Params: m.Sig.Params, Result: m.Sig.Result, Bound: map[string]Type{"name": nil}, Index: i + 1}
 					c.info.Selections[fn] = &Selection{Kind: SelMethod, Name: name, Recv: xt}
 					c.callEffects(e, name, m.Sig.Async, m.Sig.Throws)
 					if c.ctx != nil {
@@ -722,6 +729,14 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 			c.info.Calls[e] = &Call{Kind: CallBuiltin, Builtin: errorBuiltin, Args: args, Params: ps, Result: c.errT.Type}
 			return c.errT.Type
 		}
+		if tn.Native {
+			if argCount(e) > 0 || e.Block != nil {
+				c.errorf(e, "%s() takes nothing: its platforms' code makes it", tn.name)
+			}
+			c.info.Calls[e] = &Call{Kind: CallNativeNew, Type: tn.Type.(*Named), Result: tn.Type}
+			c.callEffects(e, tn.name, false, true)
+			return tn.Type
+		}
 		c.errorf(e.Fun, "%s is an interface: make a struct or an enum that has it", tn.name)
 	case EnumType:
 		c.errorf(e.Fun, "%s is an enum: make one of its cases, %s.name", tn.name, tn.name)
@@ -729,6 +744,9 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		switch tn.Type {
 		case Float, Int:
 			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: map[Type]BuiltinID{Float: BFloat, Int: BInt}[tn.Type]}, want)
+		case Bytes:
+			// bytes(): none; s.bytes() makes them from text.
+			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BMath, RT: "bytes.empty", Sig: &FuncType{Result: Bytes}}, want)
 		}
 		c.errorf(e.Fun, "%s is a type, not a function", tn.name)
 	default:

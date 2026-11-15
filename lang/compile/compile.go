@@ -8,14 +8,18 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/egoist/asuka/internal/pkgs"
+	"github.com/egoist/asuka/internal/toml"
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/ir"
 	"github.com/egoist/asuka/lang/syntax"
+	"github.com/egoist/asuka/std"
 )
 
 // Options say how to compile.
@@ -26,6 +30,10 @@ type Options struct {
 	// MainTest adds the root package's fn main() as a test named main
 	// (asuka run).
 	MainTest bool
+	// Resolve finds a dependency: the package that from (a dependency's
+	// ID; "" for the root package) imports as path (@acme/charts). Dir
+	// resolves through the project's asuka.lock when it's nil.
+	Resolve func(from, path string) (id, dir string, err error)
 }
 
 // Result is a compilation's outcome.
@@ -55,9 +63,10 @@ func (r *Result) Err() error {
 // a package to check: its files, parsed, and its imports, resolved.
 type unit struct {
 	path    string // its import path ("" for the root)
+	id      string // a dependency's ID in asuka.lock ("" for the project's own)
 	dir     string
 	files   []*syntax.SourceFile
-	imports map[string]*unit // by the path as written
+	imports map[string]*unit // by the path as written; nil: it failed (reported)
 	std     map[string]bool
 	pkg     *check.Package
 	state   int // 0 new, 1 visiting, 2 done
@@ -75,12 +84,17 @@ func Dir(dir string, opts *Options) (*Result, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
-	l := &loader{fset: syntax.NewFileSet(), opts: opts, units: map[string]*unit{}}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
 	}
-	root, err := l.loadDir("", abs)
+	if opts.Resolve == nil {
+		o := *opts
+		o.Resolve = pkgs.NewImports(abs).Resolve
+		opts = &o
+	}
+	l := &loader{fset: syntax.NewFileSet(), opts: opts, units: map[string]*unit{}}
+	root, err := l.loadDir("", "", abs)
 	if err != nil {
 		return nil, err
 	}
@@ -96,11 +110,11 @@ func Files(files map[string][]byte, opts *Options) *Result {
 		opts = &Options{}
 	}
 	l := &loader{fset: syntax.NewFileSet(), opts: opts, units: map[string]*unit{}}
-	root := l.loadSources("", ".", files)
+	root := l.loadSources("", "", ".", files)
 	return l.compile(root)
 }
 
-func (l *loader) loadDir(path, dir string) (*unit, error) {
+func (l *loader) loadDir(path, id, dir string) (*unit, error) {
 	if u, ok := l.units[dir]; ok {
 		return u, nil
 	}
@@ -120,11 +134,11 @@ func (l *loader) loadDir(path, dir string) (*unit, error) {
 		}
 		files[p] = src
 	}
-	u := l.loadSources(path, dir, files)
+	u := l.loadSources(path, id, dir, files)
 	return u, nil
 }
 
-func (l *loader) loadSources(path, dir string, files map[string][]byte) *unit {
+func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *unit {
 	key := dir
 	if path != "" && l.opts.Packages[path] != nil {
 		key = "pkg:" + path
@@ -132,7 +146,7 @@ func (l *loader) loadSources(path, dir string, files map[string][]byte) *unit {
 	if u, ok := l.units[key]; ok {
 		return u
 	}
-	u := &unit{path: path, dir: dir, imports: map[string]*unit{}, std: map[string]bool{}}
+	u := &unit{path: path, id: id, dir: dir, imports: map[string]*unit{}, std: map[string]bool{}}
 	l.units[key] = u
 	names := make([]string, 0, len(files))
 	for n := range files {
@@ -153,24 +167,53 @@ func (l *loader) loadSources(path, dir string, files map[string][]byte) *unit {
 				continue
 			}
 			if src := l.opts.Packages[ip]; src != nil {
-				u.imports[ip] = l.loadSources(ip, "pkg:"+ip, src)
+				u.imports[ip] = l.loadSources(ip, "", "pkg:"+ip, src)
 				continue
 			}
+			var dep *unit
+			var err error
 			switch {
 			case imp.Relative:
-				d := filepath.Join(u.dir, filepath.FromSlash(strings.TrimPrefix(ip, "./")))
-				dep, err := l.loadDir(ip, d)
-				if err != nil {
-					pos := l.fset.Position(imp.Start)
-					l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: pos, Msg: fmt.Sprintf("can't read package %s: %v", ip, err)})
+				rel := strings.TrimPrefix(ip, "./")
+				d := filepath.Join(u.dir, filepath.FromSlash(rel))
+				// Its path names it apart from another package's ./util.
+				p := ip
+				if base := u.path; base != "" {
+					p = pathpkg.Join(base, rel)
+				}
+				dep, err = l.loadDir(p, u.id, d)
+			case check.ProvidesStd(ip):
+				u.std[ip] = true // the checker provides it
+				continue
+			case strings.HasPrefix(ip, "asuka/"):
+				d, ok := std.Package(ip)
+				if !ok {
+					// The checker says what the standard library has.
+					u.std[ip] = true
 					continue
 				}
-				u.imports[ip] = dep
+				dep, err = l.loadDir(ip, "", d)
 			default:
-				// The standard library (the checker knows it) or a
-				// dependency (not supported yet: the checker says so).
-				u.std[ip] = true
+				if l.opts.Resolve == nil {
+					err = fmt.Errorf("a dependency needs a project (asuka.toml)")
+					break
+				}
+				var id, d string
+				if id, d, err = l.opts.Resolve(u.id, ip); err == nil {
+					dep, err = l.loadDir(ip, id, d)
+				}
 			}
+			if err != nil {
+				pos := l.fset.Position(imp.Start)
+				what := "can't import"
+				if imp.Relative {
+					what = "can't read package"
+				}
+				l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: pos, Msg: fmt.Sprintf("%s %s: %v", what, ip, err)})
+				u.imports[ip] = nil // reported: the checker skips it
+				continue
+			}
+			u.imports[ip] = dep
 		}
 	}
 	return u
@@ -190,6 +233,10 @@ func (l *loader) compile(root *unit) *Result {
 		u.state = 1
 		imports := map[string]*check.Package{}
 		for ip, dep := range u.imports {
+			if dep == nil {
+				imports[ip] = nil
+				continue
+			}
 			if !visit(dep) {
 				pos := l.fset.Position(u.files[0].Start)
 				l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: pos, Msg: "import cycle through " + ip + ": packages can't import each other"})
@@ -199,10 +246,11 @@ func (l *loader) compile(root *unit) *Result {
 		}
 		name := "main"
 		if u.path != "" {
-			name = u.path[strings.LastIndexAny(u.path, "/.")+1:]
+			name = u.path[strings.LastIndexByte(u.path, '/')+1:]
 		}
 		u.pkg = c.CheckPackage(u.path, name, u.files, imports)
 		u.pkg.Dir = u.dir
+		u.pkg.NativeClass = nativeClass(u)
 		u.state = 2
 		return true
 	}
@@ -221,4 +269,22 @@ func (l *loader) compile(root *unit) *Result {
 	res.IR = p
 	res.Module = p.Encode()
 	return res
+}
+
+// nativeClass is what a package's platforms' code registers its native
+// interfaces under, as internal/nativegen names it: asuka.toml's name,
+// else its directory's.
+func nativeClass(u *unit) string {
+	if strings.HasPrefix(u.dir, "pkg:") {
+		return u.path
+	}
+	if b, err := os.ReadFile(filepath.Join(u.dir, "asuka.toml")); err == nil {
+		var m struct {
+			Name string `json:"name"`
+		}
+		if toml.Unmarshal(b, &m) == nil && m.Name != "" {
+			return m.Name
+		}
+	}
+	return filepath.Base(u.dir)
 }

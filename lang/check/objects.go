@@ -25,13 +25,17 @@ func (o *object) Pos() syntax.Pos { return o.pos }
 // A Package is a directory of .asuka files, the prelude, or a package of
 // the standard library the compiler provides (asuka/json).
 type Package struct {
-	Path    string // as imported: asuka/json, ./components; "" for the root, "prelude"
-	Name    string // its last segment
-	Dir     string
-	Files   []*syntax.SourceFile
-	Scope   *Scope
-	Prelude bool
-	qualify bool // types print as Name.Type
+	Path string // as imported: asuka/json, ./components; "" for the root, "prelude"
+	Name string // its last segment
+	Dir  string
+	// NativeClass is what its platforms' code registers its native
+	// interfaces under (internal/nativegen's Package.Path): asuka.toml's
+	// name, else its directory's.
+	NativeClass string
+	Files       []*syntax.SourceFile
+	Scope       *Scope
+	Prelude     bool
+	qualify     bool // types print as Name.Type
 
 	Globals []*Global   // top-level state and let, in source order
 	Funcs   []*Function // top-level functions
@@ -132,6 +136,10 @@ type Function struct {
 	Recv       *TypeName // a method's type (struct, enum, store, component); nil for a function
 	Ctx        *FuncCtx  // its body's
 
+	// Its type parameters read or written as JSON: each call's type
+	// argument must be JSON then.
+	jsonParams map[*TypeParam]bool
+
 	// What the reactive analysis and spawn's check need.
 	readsState bool
 	calls      []*Function
@@ -205,6 +213,10 @@ type TypeName struct {
 	// Interfaces.
 	Iface        *Iface
 	isErrorIface bool
+	// Native interfaces: their platforms' code implements them;
+	// NativeIndex is their place among the package's.
+	Native      bool
+	NativeIndex int
 	// Stores and components.
 	Comp *Component
 

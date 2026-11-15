@@ -227,17 +227,3 @@ func Install(c *Client, dir string, update bool) (*Lock, error) {
 	}
 	return l, nil
 }
-
-// Dirs maps every package of the lock to its directory, fetching what
-// isn't in the cache: what the compiler's imports resolve through.
-func Dirs(c *Client, l *Lock) (map[string]string, error) {
-	out := map[string]string{}
-	for i := range l.Packages {
-		d, err := Fetch(c, &l.Packages[i])
-		if err != nil {
-			return nil, err
-		}
-		out[l.Packages[i].ID] = d
-	}
-	return out, nil
-}

@@ -7,6 +7,8 @@
 //   let r = try await http.get("https://example.com/inbox.json")
 //   let inbox = try r.json<[Message]>()
 
+import asuka/json as codec
+
 /// What a request answered.
 pub struct Response {
   /// The status code: 200, 404...
@@ -18,10 +20,10 @@ pub struct Response {
   body: bytes
 
   /// The body as UTF-8 text.
-  fn text() -> string = string(body)
+  fn text() -> string = body.string()
 
   /// The body as JSON, decoded into T.
-  fn json<T>() throws -> T = try json.decode<T>(text())
+  fn json<T>() throws -> T = try codec.decode<T>(text())
 
   /// Whether the status is a success (200 to 299).
   fn ok() -> bool = status >= 200 && status < 300
@@ -34,12 +36,17 @@ native interface Transport {
   async fn send(method: string, url: string, headers: [string: string], body: bytes, timeout: Duration) -> Response
 }
 
-let transport = try !Transport()
+// Made once; none where the platform has no client (making one again
+// says why).
+let transport = try? Transport()
 
 /// Sends a request: method (GET, POST...), url, headers, body, and how
 /// long to wait for the answer.
 pub async fn request(method: string, url: string, headers: [string: string] = [:], body: bytes = bytes(), timeout: Duration = 60s) throws -> Response {
-  return try await transport.send(method, url, headers, body, timeout)
+  if let t = transport {
+    return try await t.send(method, url, headers, body, timeout)
+  }
+  return try await Transport().send(method, url, headers, body, timeout)
 }
 
 pub async fn get(url: string, headers: [string: string] = [:]) throws -> Response {
@@ -54,5 +61,5 @@ pub async fn post(url: string, body: bytes, headers: [string: string] = [:]) thr
 pub async fn postJSON<T>(url: string, value: T, headers: [string: string] = [:]) throws -> Response {
   var h = headers
   h["content-type"] = "application/json"
-  return try await request("POST", url, headers: h, body: bytes(json.encode(value)))
+  return try await request("POST", url, headers: h, body: codec.encode(value).bytes())
 }
