@@ -77,7 +77,7 @@ func cHeader(s ops.SchemaDef) []byte {
 	p("// AK_P_<PAYLOAD> (an event's); each has a count, one past its last.\n")
 	p("#ifndef AK_OPS_GEN_H\n#define AK_OPS_GEN_H\n\n#include <stdbool.h>\n#include <stdint.h>\n\n")
 
-	p("typedef uint16_t ak_kind;\ntypedef uint16_t ak_prop;\ntypedef uint16_t ak_event_kind;\ntypedef uint16_t ak_cmd;\n\n")
+	p("typedef uint16_t ak_view_kind;\ntypedef uint16_t ak_prop;\ntypedef uint16_t ak_event_kind;\ntypedef uint16_t ak_cmd;\n\n")
 
 	p("// Wire types of prop values.\nenum {\n")
 	for t := ops.TBool; t <= ops.TBytes; t++ {
@@ -174,11 +174,11 @@ extern const uint8_t ak_kind_prop_counts[AK_KIND_COUNT];
 extern const ak_enum_info ak_enums[AK_ENUM_COUNT];
 
 // Names, or NULL for a number the schema doesn't have.
-const char *ak_kind_name(ak_kind k);
+const char *ak_kind_name(ak_view_kind k);
 const char *ak_event_name(ak_event_kind e);
 const char *ak_cmd_name(ak_cmd c);
 // ak_prop_of is prop p of kind k (a common prop for any k), or NULL.
-const ak_prop_info *ak_prop_of(ak_kind k, ak_prop p);
+const ak_prop_info *ak_prop_of(ak_view_kind k, ak_prop p);
 // ak_event_payload is what events of kind e carry (AK_P_*), 255 if e is
 // unknown.
 uint8_t ak_event_payload(ak_event_kind e);
@@ -278,11 +278,11 @@ func cSource(s ops.SchemaDef) []byte {
 	}
 	p("};\n\n")
 
-	b.WriteString(`const char *ak_kind_name(ak_kind k) { return k < AK_KIND_COUNT ? ak_kind_names[k] : NULL; }
+	b.WriteString(`const char *ak_kind_name(ak_view_kind k) { return k < AK_KIND_COUNT ? ak_kind_names[k] : NULL; }
 const char *ak_event_name(ak_event_kind e) { return e < AK_EVENT_COUNT ? ak_event_names[e] : NULL; }
 const char *ak_cmd_name(ak_cmd c) { return c < AK_CMD_COUNT ? ak_cmd_names[c] : NULL; }
 
-const ak_prop_info *ak_prop_of(ak_kind k, ak_prop p) {
+const ak_prop_info *ak_prop_of(ak_view_kind k, ak_prop p) {
 	if (p > 0 && p < AK_COMMON_PROP_COUNT) return &ak_common_props[p];
 	if (k < AK_KIND_COUNT && p >= AK_FIRST_KIND_PROP && p - AK_FIRST_KIND_PROP < ak_kind_prop_counts[k]) return &ak_kind_props[k][p - AK_FIRST_KIND_PROP];
 	return NULL;

@@ -268,7 +268,7 @@ static ak_val arr_map(ak_val *args, uint32_t n) {
 			VOID;
 		}
 		out->data[out->len++] = v;
-		if (k == AK_K_REF && v.p && ((ak_obj *)v.p)->tag == AK_T_STR) out->h.flags = 1;
+		if (k == AK_K_REF && v.p && ((ak_obj *)v.p)->tag == AK_TAG_STR) out->h.flags = 1;
 	}
 	RET_P(out);
 }

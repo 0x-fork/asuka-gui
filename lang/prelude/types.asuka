@@ -201,3 +201,66 @@ struct Animation {
   let linear = Animation(curve: .linear)
   let quick = Animation(duration: 200ms)
 }
+
+/// A span of a text field's text, as byte offsets into it
+/// (text[start..<end]); start == end is the cursor.
+struct TextRange {
+  start: int = 0
+  end: int = 0
+}
+
+/// A view's place in its parent and its size, in points.
+struct Frame {
+  x: float = 0
+  y: float = 0
+  width: float = 0
+  height: float = 0
+}
+
+/// The system an app runs on.
+enum Platform {
+  unknown
+  iOS
+  android
+  macOS
+  windows
+  web
+  linux
+}
+
+/// How much room a window gives an app along one axis: compact under
+/// 600 points wide (480 high), medium under 840 (900), else expanded.
+enum SizeClass {
+  unspecified
+  compact
+  medium
+  expanded
+}
+
+/// What the platform says about where the app shows: its size, the safe
+/// area's insets, the keyboard, the display, the text size, the user's
+/// languages. environment() reads it, and a binding that does follows it
+/// (a rotation, dark mode, the keyboard showing). The UI runtime builds
+/// it: its fields' order is core/src/ui's.
+struct Environment {
+  width: float = 0
+  height: float = 0
+  safeTop: float = 0
+  safeRight: float = 0
+  safeBottom: float = 0
+  safeLeft: float = 0
+  keyboard: float = 0  // how much of the bottom the keyboard covers
+  scale: float = 1     // pixels per point
+  fontScale: float = 1 // the user's text size; 1 is the default
+  dark: bool = false
+  reduceMotion: bool = false
+  screenReader: bool = false
+  platform: Platform = .unknown
+  widthClass: SizeClass = .unspecified
+  heightClass: SizeClass = .unspecified
+  locale: string = ""     // the user's regional formats (BCP 47)
+  timeZone: string = ""   // IANA
+  languages: string = ""  // BCP 47 tags, most preferred first, joined by commas
+  firstWeekday: int = 0   // 1 Sunday to 7 Saturday; 0 unknown
+  hourCycle: int = 0      // 12 or 24; 0 unknown
+}

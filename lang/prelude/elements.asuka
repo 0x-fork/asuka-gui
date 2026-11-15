@@ -80,29 +80,55 @@ native component Style {
   prop a11yHidden: bool
   prop tooltip: string
   prop disabled: bool
+  /// lays it and what's in it out this way, whatever the app's language: what reads one way everywhere (a phone number, a player's controls)
+  prop layoutDirection: LayoutDirection
 }
 
-/// a container: a column by default
+/// a container: a column by default. Without a look (background, border...), events or an accessibility prop it makes no native view: its children go in the nearest one around it
 native component View() {
   prop children: View? = none
+  /// a tap on it
+  event press
+  /// a press held on it
+  event longPress
+  /// its frame once it's laid out, and again each time layout changes it
+  event layout(frame: Frame)
 }
 
 /// a container whose children stack on a row
 native component Row() {
   prop children: View? = none
+  /// a tap on it
+  event press
+  /// a press held on it
+  event longPress
+  /// its frame once it's laid out, and again each time layout changes it
+  event layout(frame: Frame)
 }
 
 /// a container whose children stack on a column
 native component Column() {
   prop children: View? = none
+  /// a tap on it
+  event press
+  /// a press held on it
+  event longPress
+  /// its frame once it's laid out, and again each time layout changes it
+  event layout(frame: Frame)
 }
 
-/// a container that keeps its children out of the system's bars, notches and the keyboard
+/// a column that keeps its children out of the system's bars, notches and the keyboard: padded by the safe area's insets, over its own padding
 native component SafeArea() {
   prop children: View? = none
+  /// a tap on it
+  event press
+  /// a press held on it
+  event longPress
+  /// its frame once it's laid out, and again each time layout changes it
+  event layout(frame: Frame)
 }
 
-/// a text
+/// a text: it wraps, unless lines limits it
 native component Text(text: string) {
   /// the text can be selected and copied
   prop selectable: bool
@@ -112,7 +138,7 @@ native component Text(text: string) {
 native component Button(title: string) {
   /// how the platform draws it
   prop variant: ButtonVariant
-  /// a symbol before the title
+  /// a symbol before the title (see Symbol); with no title, the icon alone
   prop icon: string
   /// actions shown when it's tapped, instead of press
   prop menu: [Action]
@@ -121,23 +147,136 @@ native component Button(title: string) {
   event press
 }
 
-/// a text field
+/// a text field: a line, or lines with multiline
 native component TextField() {
+  /// its text: typing writes it, and writing it replaces what the field shows
   prop text: string
   prop placeholder: string
   prop keyboard: Keyboard
+  prop returnKey: ReturnKey
+  /// a password's: its characters hidden
   prop secure: bool
+  prop autocapitalize: Autocapitalize
+  prop autocorrect: Autocorrect
+  /// what it holds, for the system's AutoFill: username, password, newPassword, oneTimeCode, email, ...
+  prop contentType: string
+  /// lines of text: return is a new line, not submit, and it grows with its text up to lines lines
   prop multiline: bool
+  /// without the platform's border, background and inset: its text alone
+  prop plain: bool
+  /// takes the keyboard as it shows
   prop autofocus: bool
+  /// the cursor or the selected text, as byte offsets into text: the user's moves write it, and writing it moves them
+  prop selection: TextRange
   event change(text: string)
+  /// return pressed (not in a multiline field)
   event submit
   event focus
   event blur
+  event select(selection: TextRange)
 }
 
-/// a switch
+/// a switch, or a checkbox
 native component Toggle() {
   prop on: bool
+  /// what screen readers call it (the text beside it is the app's)
   prop title: string
+  /// a checkbox rather than a switch
+  prop checkbox: bool
   event change(on: bool)
+}
+
+/// picks a value in a range
+native component Slider() {
+  prop value: float
+  prop min: float = 0
+  prop max: float = 1
+  event change(value: float)
+}
+
+/// steps a value with minus and plus buttons; show the value beside it
+native component Stepper() {
+  prop value: float
+  prop min: float = 0
+  prop max: float = 100
+  prop step: float = 1
+  event change(value: float)
+}
+
+/// one of a few options side by side
+native component Segmented(segments: [string]) {
+  prop selected: int
+  event change(index: int)
+}
+
+/// picks one of many options from a menu, showing the chosen one
+native component Picker(items: [string]) {
+  /// the chosen item's index; out of range: none, and it shows its prompt
+  prop selected: int = -1
+  /// what it picks: shown while none is chosen (Android's floating label), and read by screen readers
+  prop prompt: string
+  event change(index: int)
+}
+
+/// a progress bar; its color is its fill
+native component Progress() {
+  /// done, from 0 to 1; none: under way, how far unknown
+  prop value: float?
+}
+
+/// circular progress; its color is its fill
+native component ProgressRing() {
+  /// done, from 0 to 1; none: the platform's spinning indicator
+  prop value: float?
+}
+
+/// a spinner
+native component Activity() {
+}
+
+/// a symbol (an SF Symbol, the Material Symbol for it), sized as text of its font and colored with its color
+native component Symbol(name: string) {
+}
+
+/// a picture the host loads; without a size it takes its natural one, no wider than its room, and keeps its aspect ratio when one side is set
+native component Image(source: string) {
+  /// how it fills its box
+  prop mode: ImageMode
+  /// an image shown until source loads, and if it fails
+  prop placeholder: string
+  /// seconds it takes to fade in as it arrives (0: the platform's; -1: none)
+  prop transition: float
+  event load(width: float, height: float)
+  event error(message: string)
+}
+
+/// scrolls its children along one axis (horizontal: a row); its wrap, justify, align, gap and padding lay out its content. Give it a size (or grow) to scroll within
+native component Scroll() {
+  prop children: View? = none
+  prop horizontal: bool
+  /// shows the pull to refresh spinner while true (with on refresh)
+  prop refreshing: bool
+  /// its content offset as it scrolls
+  event scroll(x: float, y: float)
+  /// pulled to refresh
+  event refresh
+}
+
+/// a for in it is the platform's recycling list: rows exist only while they're on screen. It grows into its room unless it's sized
+native component List() {
+  prop children: View? = none
+  /// shows the pull to refresh spinner while true (with on refresh)
+  prop refreshing: bool
+  /// a grid of this many columns (gap apart)
+  prop columns: int
+  prop appearance: ListAppearance
+  /// .bottom: a chat's, which rests at its end
+  prop anchor: ScrollAnchor
+  event scroll(x: float, y: float)
+  /// pulled to refresh
+  event refresh
+  /// the last rows are about to show: load more (once per length)
+  event endReached
+  /// the first rows are about to show: load earlier ones (once per first item)
+  event startReached
 }

@@ -8,7 +8,7 @@ static ak_kind key_kind(const ak_map *m) { return (ak_kind)(m->h.aux & 0xf); }
 static ak_kind val_kind(const ak_map *m) { return (ak_kind)(m->h.aux >> 4); }
 
 ak_map *ak_map_new(ak_kind key, bool string_keys, ak_kind val, const ak_shape *vshape) {
-	ak_map *m = ak_obj_new(AK_T_MAP, sizeof(ak_map));
+	ak_map *m = ak_obj_new(AK_TAG_MAP, sizeof(ak_map));
 	m->h.aux = (uint16_t)(key | val << 4);
 	m->h.flags = string_keys ? 1 : 0;
 	m->vshape = vshape;

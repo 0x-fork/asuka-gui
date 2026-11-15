@@ -277,13 +277,13 @@ static uint32_t golden_events(ak_event *evs) {
 static bool event_eq(const ak_event *a, const ak_event *b) {
 	const ak_environment *x = &a->env, *y = &b->env;
 	return a->id == b->id && a->kind == b->kind && a->b == b->b && a->i == b->i && a->f == b->f && a->x == b->x &&
-	       a->y == b->y && ak_str_eq(a->s, b->s) && x->width == y->width && x->height == y->height &&
+	       a->y == b->y && ak_span_eq(a->s, b->s) && x->width == y->width && x->height == y->height &&
 	       x->safe_top == y->safe_top && x->safe_right == y->safe_right && x->safe_bottom == y->safe_bottom &&
 	       x->safe_left == y->safe_left && x->keyboard == y->keyboard && x->scale == y->scale &&
 	       x->font_scale == y->font_scale && x->dark == y->dark && x->reduce_motion == y->reduce_motion &&
 	       x->screen_reader == y->screen_reader && x->platform == y->platform && x->width_class == y->width_class &&
-	       x->height_class == y->height_class && ak_str_eq(x->locale, y->locale) && ak_str_eq(x->time_zone, y->time_zone) &&
-	       ak_str_eq(x->languages, y->languages) && x->first_weekday == y->first_weekday && x->hour_cycle == y->hour_cycle &&
+	       x->height_class == y->height_class && ak_span_eq(x->locale, y->locale) && ak_span_eq(x->time_zone, y->time_zone) &&
+	       ak_span_eq(x->languages, y->languages) && x->first_weekday == y->first_weekday && x->hour_cycle == y->hour_cycle &&
 	       memcmp(&a->g, &b->g, sizeof a->g) == 0;
 }
 
@@ -410,10 +410,10 @@ TEST(menu_round_trip) {
 	ak_menu_entry_vec items = {0};
 	CHECK(ak_decode_menu_bar(b.data, b.len, &menus, &items));
 	REQUIRE(menus.len == 2 && items.len == 8);
-	CHECK(ak_str_eqc(menus.data[0].title, "File") && menus.data[0].first == 0 && menus.data[0].total == 6);
-	CHECK(ak_str_eqc(menus.data[1].title, "App") && menus.data[1].first == 6 && menus.data[1].total == 2);
+	CHECK(ak_span_eqc(menus.data[0].title, "File") && menus.data[0].first == 0 && menus.data[0].total == 6);
+	CHECK(ak_span_eqc(menus.data[1].title, "App") && menus.data[1].first == 6 && menus.data[1].total == 2);
 	for (uint32_t i = 0; i < items.len; i++) CHECK_EQ_INT(items.data[i].index, i);
-	CHECK(ak_str_eqc(items.data[0].key, "n") && items.data[0].mods == 1);
+	CHECK(ak_span_eqc(items.data[0].key, "n") && items.data[0].mods == 1);
 	CHECK(items.data[1].flags == AK_MENU_SUBMENU && items.data[1].count == 3);
 	CHECK(items.data[3].flags == AK_MENU_SEPARATOR && items.data[3].depth == 1 && items.data[3].parent == 1);
 	CHECK(items.data[5].depth == 0 && items.data[5].menu == 0);
@@ -469,7 +469,7 @@ TEST(sidebar_bin) {
 	ak_sidebar_heading_vec cut = {0};
 	ak_sidebar_item_vec cut_items = {0};
 	ak_decode_sidebar(b.data, b.len - 18, &cut, &cut_items);
-	CHECK(cut.len == 2 && cut.data[1].count == 1 && ak_str_eqc(cut_items.data[cut.data[1].first].badge, "Neu"));
+	CHECK(cut.len == 2 && cut.data[1].count == 1 && ak_span_eqc(cut_items.data[cut.data[1].first].badge, "Neu"));
 	CHECK(!ak_same_sidebar_shape(secs.data, secs.len, cut.data, cut.len));
 	CHECK(ak_same_sidebar_shape(secs.data, secs.len, secs.data, secs.len));
 	static const struct {
@@ -528,8 +528,8 @@ TEST(alert_fields_bin) {
 	ak_buf fc = {0};
 	REQUIRE(golden("fieldchanged.bin", &fc));
 	uint32_t i;
-	ak_str s;
-	CHECK(ak_decode_field_changed(fc.data, fc.len, &i, &s) && i == 2 && ak_str_eqc(s, "Grüße"));
+	ak_span s;
+	CHECK(ak_decode_field_changed(fc.data, fc.len, &i, &s) && i == 2 && ak_span_eqc(s, "Grüße"));
 	CHECK(!ak_decode_field_changed((const uint8_t[]){2, 0, 0, 0, 9, 0, 0, 0, 'x'}, 9, &i, &s));
 
 	static const ak_action_item buttons[] = {
@@ -613,13 +613,13 @@ TEST(location) {
 	ak_append_location(&b, &l);
 	ak_location got;
 	CHECK(ak_decode_location(b.data, b.len, &got));
-	CHECK(got.action == l.action && got.delta == l.delta && ak_str_eq(got.href, l.href) && ak_str_eq(got.state, l.state) &&
-	      ak_str_eq(got.window, l.window));
+	CHECK(got.action == l.action && got.delta == l.delta && ak_span_eq(got.href, l.href) && ak_span_eq(got.state, l.state) &&
+	      ak_span_eq(got.window, l.window));
 	CHECK(!ak_decode_location(b.data, 7, &got));
 	b.len = 0;
 	ak_append_location_event(&b, AK_STR("/a"), AK_STR("s"));
-	ak_str h, s;
-	CHECK(ak_decode_location_event(b.data, b.len, &h, &s) && ak_str_eqc(h, "/a") && ak_str_eqc(s, "s"));
+	ak_span h, s;
+	CHECK(ak_decode_location_event(b.data, b.len, &h, &s) && ak_span_eqc(h, "/a") && ak_span_eqc(s, "s"));
 	ak_buf_free(&b);
 }
 
@@ -630,7 +630,7 @@ TEST(keys) {
 	ak_key_vec got = {0};
 	CHECK(ak_decode_keys(b.data, b.len, &got));
 	REQUIRE(got.len == 4);
-	CHECK(ak_str_eqc(got.data[2].name, "ä") && got.data[2].mods == 2);
+	CHECK(ak_span_eqc(got.data[2].name, "ä") && got.data[2].mods == 2);
 	CHECK_EQ_INT(ak_match_key(got.data, got.len, AK_STR("S"), 1), 0);
 	CHECK_EQ_INT(ak_match_key(got.data, got.len, AK_STR("s"), 0), -1);
 	CHECK_EQ_INT(ak_match_key(got.data, got.len, AK_STR("enter"), 0), 1);
@@ -645,8 +645,8 @@ TEST(keys) {
 }
 
 static bool item_eq(const ak_item *a, const ak_item *b) {
-	return a->kind == b->kind && ak_str_eq(a->text, b->text) && ak_str_eq(a->path, b->path) && ak_str_eq(a->name, b->name) &&
-	       ak_str_eq(a->mime, b->mime) && a->size == b->size && a->value == b->value;
+	return a->kind == b->kind && ak_span_eq(a->text, b->text) && ak_span_eq(a->path, b->path) && ak_span_eq(a->name, b->name) &&
+	       ak_span_eq(a->mime, b->mime) && a->size == b->size && a->value == b->value;
 }
 
 TEST(items) {
@@ -676,19 +676,19 @@ TEST(items) {
 	CHECK(gd.x == 1.5f && gd.y == 2 && gd.source == 7 && gd.copied && got.len == 2 && item_eq(&got.data[1], &items[1]));
 	CHECK(!ak_decode_drop((const uint8_t[]){1, 2, 3}, 3, &gd, &got));
 
-	static const ak_str strs[] = {AK_STR("image/*"), {0}, AK_STR("text/plain")};
+	static const ak_span strs[] = {AK_STR("image/*"), {0}, AK_STR("text/plain")};
 	ak_str_vec gs = {0};
 	b.len = 0;
 	ak_append_strings(&b, strs, 3);
 	CHECK(ak_decode_strings(b.data, b.len, &gs));
-	CHECK(gs.len == 3 && ak_str_eq(gs.data[0], strs[0]) && gs.data[1].len == 0 && ak_str_eq(gs.data[2], strs[2]));
+	CHECK(gs.len == 3 && ak_span_eq(gs.data[0], strs[0]) && gs.data[1].len == 0 && ak_span_eq(gs.data[2], strs[2]));
 
 	// A cut list ends where it's cut; a corrupt length reads nothing.
 	static const ak_item two[] = {{.text = AK_STR("one"), .size = -1}, {.text = AK_STR("two"), .size = -1}};
 	b.len = got.len = 0;
 	ak_append_items(&b, two, 2);
 	ak_decode_items(b.data, b.len - 3, &got);
-	CHECK(got.len == 1 && ak_str_eqc(got.data[0].text, "one"));
+	CHECK(got.len == 1 && ak_span_eqc(got.data[0].text, "one"));
 	got.len = 0;
 	CHECK(!ak_decode_items((const uint8_t[]){1, 0, 0, 0, 0, 0xff, 0xff, 0xff, 0x7f}, 9, &got));
 	CHECK_EQ_INT(got.len, 0);
@@ -716,7 +716,7 @@ TEST(match_mime) {
 		{{NULL}, "text/plain", false},
 	};
 	for (size_t i = 0; i < AK_LEN(cases); i++) {
-		ak_str ps[2];
+		ak_span ps[2];
 		uint32_t n = 0;
 		for (int j = 0; j < 2 && cases[i].patterns[j]; j++) ps[n++] = ak_cstr(cases[i].patterns[j]);
 		if (ak_match_mime(ps, n, ak_cstr(cases[i].mime)) != cases[i].want) T_FAIL("case %zu: %s", i, cases[i].mime);
@@ -738,11 +738,11 @@ TEST(rich) {
 	ak_rich_run_vec got = {0};
 	CHECK(ak_decode_rich(b.data, b.len, &got));
 	REQUIRE(got.len == 5);
-	CHECK(ak_str_eqc(got.data[0].text, "Hello world"));
-	CHECK(ak_str_eqc(got.data[1].text, "\n"));
-	CHECK(ak_str_eqc(got.data[2].text, "second ") && ak_rich_style_eq(&got.data[2].style, &plain));
-	CHECK(ak_str_eqc(got.data[3].text, "line") && ak_rich_style_eq(&got.data[3].style, &bold));
-	CHECK(ak_str_eqc(got.data[4].text, "\n") && ak_rich_style_eq(&got.data[4].style, &bold));
+	CHECK(ak_span_eqc(got.data[0].text, "Hello world"));
+	CHECK(ak_span_eqc(got.data[1].text, "\n"));
+	CHECK(ak_span_eqc(got.data[2].text, "second ") && ak_rich_style_eq(&got.data[2].style, &plain));
+	CHECK(ak_span_eqc(got.data[3].text, "line") && ak_rich_style_eq(&got.data[3].style, &bold));
+	CHECK(ak_span_eqc(got.data[4].text, "\n") && ak_rich_style_eq(&got.data[4].style, &bold));
 	// Encoding what it decoded gives the same bytes: canonical.
 	ak_buf again = {0};
 	ak_append_rich(&again, got.data, got.len);
@@ -765,7 +765,7 @@ TEST(window_config) {
 	ak_window_config g = ak_decode_window_config(b.data, b.len);
 	CHECK(g.width == 800 && g.height == 600 && g.min_width == 320 && g.min_height == 0 && g.max_width == 0 &&
 	      g.max_height == 900 && g.x == 10 && g.y == -20 && g.flags == c.flags && g.title_bar == c.title_bar &&
-	      g.background == c.background && g.parent == 7 && ak_str_eq(g.state_key, c.state_key) && ak_str_eq(g.title, c.title));
+	      g.background == c.background && g.parent == 7 && ak_span_eq(g.state_key, c.state_key) && ak_span_eq(g.title, c.title));
 	for (size_t n = 0; n < b.len; n++) ak_decode_window_config(b.data, n);  // cut short: no crash
 	ak_buf old = {0};
 	ak_buf_f32(&old, 640);
@@ -774,7 +774,7 @@ TEST(window_config) {
 	ak_buf_f32(&old, 100);
 	ak_buf_put(&old, "Old", 3);
 	g = ak_decode_window_config(old.data, old.len);
-	CHECK(g.width == 640 && g.height == 480 && g.min_width == 200 && g.min_height == 100 && ak_str_eqc(g.title, "Old") && g.flags == 0);
+	CHECK(g.width == 640 && g.height == 480 && g.min_width == 200 && g.min_height == 100 && ak_span_eqc(g.title, "Old") && g.flags == 0);
 	ak_buf_free(&b);
 	ak_buf_free(&old);
 }

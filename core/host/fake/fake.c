@@ -24,7 +24,7 @@ AK_PRINTF(2, 3) static void fail(ak_fake *f, const char *fmt, ...) {
 	f->fail_fn(f->fail_ctx, msg);
 }
 
-static const char *kind_str(ak_kind k, char buf[16]) {
+static const char *kind_str(ak_view_kind k, char buf[16]) {
 	if (k == AK_FAKE_KIND_CELL) return "Cell";
 	const char *n = ak_kind_name(k);
 	if (n) return n;
@@ -56,7 +56,7 @@ static uint32_t rune_len(const uint8_t *p, uint32_t n) {
 }
 
 // runes counts s's runes as Go's len([]rune(s)) does.
-static int64_t runes(ak_str s) {
+static int64_t runes(ak_span s) {
 	const uint8_t *p = (const uint8_t *)s.p;
 	int64_t n = 0;
 	for (uint32_t i = 0; i < s.len; i += rune_len(p + i, s.len - i)) n++;
@@ -142,9 +142,9 @@ const ak_value *ak_fake_prop_of(const ak_fake_view *v, ak_prop p) {
 	return s ? &s->value : NULL;
 }
 
-ak_str ak_fake_string(const ak_fake_view *v, ak_prop p) {
+ak_span ak_fake_string(const ak_fake_view *v, ak_prop p) {
 	const ak_value *x = ak_fake_prop_of(v, p);
-	return x ? x->s : (ak_str){"", 0};
+	return x ? x->s : (ak_span){"", 0};
 }
 
 bool ak_fake_bool(const ak_fake_view *v, ak_prop p) {
@@ -162,14 +162,14 @@ double ak_fake_float(const ak_fake_view *v, ak_prop p) {
 	return x ? x->f : 0;
 }
 
-static ak_str dup_str(ak_str s) {
-	if (!s.len) return (ak_str){"", 0};
+static ak_span dup_str(ak_span s) {
+	if (!s.len) return (ak_span){"", 0};
 	char *p = ak_alloc(s.len);
 	memcpy(p, s.p, s.len);
-	return (ak_str){p, s.len};
+	return (ak_span){p, s.len};
 }
 
-static void free_str(ak_str s) {
+static void free_str(ak_span s) {
 	if (s.len) ak_free((void *)s.p);
 }
 
@@ -195,16 +195,16 @@ bool ak_fake_listens(const ak_fake_view *v, ak_event_kind e) {
 }
 
 const ak_fake_native *ak_fake_native_value(const ak_fake_view *v, const char *name) {
-	ak_str n = ak_cstr(name);
+	ak_span n = ak_cstr(name);
 	for (uint32_t i = 0; i < v->native.len; i++)
-		if (ak_str_eq(v->native.data[i].name, n)) return &v->native.data[i];
+		if (ak_span_eq(v->native.data[i].name, n)) return &v->native.data[i];
 	return NULL;
 }
 
 // set_native keeps a NativeProp's value (ui.Native's wire: a u32-length
 // name, u8 type, the value) in v->native; it ignores one it can't read,
 // as Go's does.
-static void set_native(ak_fake_view *v, ak_str b) {
+static void set_native(ak_fake_view *v, ak_span b) {
 	ak_reader r = {(const uint8_t *)b.p, b.len, 0, false};
 	ak_fake_native n = {.name = ak_read_str(&r)};
 	n.type = ak_read_u8(&r);
@@ -219,7 +219,7 @@ static void set_native(ak_fake_view *v, ak_str b) {
 	if (r.err) return;
 	ak_fake_native *slot = NULL;
 	for (uint32_t i = 0; i < v->native.len; i++)
-		if (ak_str_eq(v->native.data[i].name, n.name)) slot = &v->native.data[i];
+		if (ak_span_eq(v->native.data[i].name, n.name)) slot = &v->native.data[i];
 	if (slot) {
 		free_str(slot->s);
 		n.name = slot->name;
@@ -444,7 +444,7 @@ static const char *const type_names[] = {"?", "bool", "int", "float", "string", 
 // list_update keeps ListUpdate's args: u32 count, the item IDs (i64
 // each), then, if there are any, u32 count and the sections (u32 start,
 // i64 ID each).
-static void list_update(ak_fake *f, ak_fake_view *v, ak_str args) {
+static void list_update(ak_fake *f, ak_fake_view *v, ak_span args) {
 	ak_reader r = {(const uint8_t *)args.p, args.len, 0, false};
 	v->items.len = v->sections.len = 0;
 	uint32_t n = ak_read_u32(&r);
@@ -471,16 +471,16 @@ static void list_update(ak_fake *f, ak_fake_view *v, ak_str args) {
 // call runs a Call (u32 call ID, a u32-length module, method, then the
 // args) with the call function and posts its Result: u32 call ID, u8 1
 // and the answer, or u8 0 and the error's message.
-static void call(ak_fake *f, ak_id root, ak_str b) {
+static void call(ak_fake *f, ak_id root, ak_span b) {
 	ak_reader r = {(const uint8_t *)b.p, b.len, 0, false};
 	uint32_t id = ak_read_u32(&r);
-	ak_str module = ak_read_str(&r);
-	ak_str method = ak_read_str(&r);
+	ak_span module = ak_read_str(&r);
+	ak_span method = ak_read_str(&r);
 	if (r.err) {
 		fail(f, "Call: args cut short");
 		return;
 	}
-	ak_str args = {b.p + r.off, (uint32_t)(r.len - r.off)};
+	ak_span args = {b.p + r.off, (uint32_t)(r.len - r.off)};
 	ak_buf ans = {0};
 	bool ok = false;
 	if (f->call_fn) {
@@ -500,14 +500,14 @@ static void call(ak_fake *f, ak_id root, ak_str b) {
 // window_command keeps what of a window's commands the fake host follows:
 // which window is in use (Present of a Window that isn't hidden,
 // WindowAction Focus), and checks they're sent where they can be.
-static void window_command(ak_fake *f, ak_fake_view *v, ak_cmd c, ak_str args) {
+static void window_command(ak_fake *f, ak_fake_view *v, ak_cmd c, ak_span args) {
 	switch (c) {
 	case AK_CMD_WINDOW_OPTIONS:
 		if (v->kind != AK_KIND_VIEW) fail(f, "WindowOptions not on the root");
 		return;
 	case AK_CMD_PRESENT: {
 		if (v->kind != AK_KIND_WINDOW) return;
-		ak_str cfg = ak_fake_string(v, AK_PROP_WINDOW_CONFIG);
+		ak_span cfg = ak_fake_string(v, AK_PROP_WINDOW_CONFIG);
 		ak_window_config wc = ak_decode_window_config((const uint8_t *)cfg.p, cfg.len);
 		if (!(wc.flags & AK_WINDOW_HIDDEN)) f->key = v->id;
 		return;
@@ -668,7 +668,7 @@ static int64_t trunc_i64(float x) {
 
 // measure_text lays out 8pt characters on 20pt lines, wrapping anywhere
 // (min-content is one character wide).
-static void measure_text(ak_str text, float width, float avail_w, float *w, float *h) {
+static void measure_text(ak_span text, float width, float avail_w, float *w, float *h) {
 	int64_t n = runes(text);
 	if (n == 0) {
 		*w = *h = 0;
@@ -690,11 +690,11 @@ static void measure_text(ak_str text, float width, float avail_w, float *w, floa
 // rich_size measures a RichText as Go's fake does: the paragraphs' text,
 // a line each at least, as tall as its inline components.
 static void rich_size(const ak_fake_view *v, float width, float avail_w, float *ow, float *oh) {
-	ak_str in = ak_fake_string(v, AK_PROP_RICH_TEXT_INLINES);
+	ak_span in = ak_fake_string(v, AK_PROP_RICH_TEXT_INLINES);
 	ak_reader ir = {(const uint8_t *)in.p, in.len, 0, false};
 	uint32_t ninl = in.len >= 4 ? ak_read_u32(&ir) : 0;
 	uint32_t next = 0;
-	ak_str c = ak_fake_string(v, AK_PROP_RICH_TEXT_CONTENT);
+	ak_span c = ak_fake_string(v, AK_PROP_RICH_TEXT_CONTENT);
 	ak_reader r = {(const uint8_t *)c.p, c.len, 0, false};
 	float w = 0, h = 0;
 	if (c.len) {
@@ -719,7 +719,7 @@ static void rich_size(const ak_fake_view *v, float width, float avail_w, float *
 			uint32_t inl = 0;
 			for (uint32_t j = 0; j < nr && !r.err; j++) {
 				uint32_t st = ak_read_u32(&r);
-				ak_str t = ak_read_str(&r);
+				ak_span t = ak_read_str(&r);
 				if (r.err) break;
 				if (st >= inline_style.len) {
 					r.err = true;
@@ -729,7 +729,7 @@ static void rich_size(const ak_fake_view *v, float width, float avail_w, float *
 				if (inline_style.data[st]) inl++;
 			}
 			float tw, th;
-			measure_text((ak_str){(const char *)text.data, (uint32_t)text.len}, width, avail_w, &tw, &th);
+			measure_text((ak_span){(const char *)text.data, (uint32_t)text.len}, width, avail_w, &tw, &th);
 			w = ak_maxf(w, tw);
 			for (uint32_t k = 0; k < inl && first_inline + k < ninl; k++) {
 				ak_reader e = {(const uint8_t *)in.p, in.len, 4 + (size_t)(first_inline + k) * 12 + 8, false};
@@ -766,7 +766,7 @@ void ak_fake_measure(ak_fake *f, ak_id id, float width, float height, float avai
 		w = 200, h = 36;
 		if (ak_fake_bool(v, AK_PROP_TEXT_FIELD_MULTILINE)) {
 			// 20pt lines, as many as its text has, up to its line limit.
-			ak_str s = ak_fake_string(v, AK_PROP_TEXT_FIELD_VALUE);
+			ak_span s = ak_fake_string(v, AK_PROP_TEXT_FIELD_VALUE);
 			int64_t lines = 1;
 			for (uint32_t i = 0; i < s.len; i++) lines += s.p[i] == '\n';
 			int64_t l = ak_fake_int(v, AK_PROP_LINE_LIMIT);
@@ -789,8 +789,8 @@ void ak_fake_measure(ak_fake *f, ak_id id, float width, float height, float avai
 	case AK_KIND_PICKER: {
 		// A pop-up button: its title (the chosen item, else its label),
 		// 8pt characters, and the indicator.
-		ak_str title = ak_fake_string(v, AK_PROP_PICKER_LABEL);
-		ak_str items = ak_fake_string(v, AK_PROP_PICKER_ITEMS);
+		ak_span title = ak_fake_string(v, AK_PROP_PICKER_LABEL);
+		ak_span items = ak_fake_string(v, AK_PROP_PICKER_ITEMS);
 		ak_str_vec its = {0};
 		ak_decode_strings((const uint8_t *)items.p, items.len, &its);
 		int64_t i = ak_fake_int(v, AK_PROP_PICKER_SELECTED);
@@ -803,7 +803,7 @@ void ak_fake_measure(ak_fake *f, ak_id id, float width, float height, float avai
 	case AK_KIND_STEPPER: w = 94, h = 32; break;      // UIStepper's
 	case AK_KIND_COLOR_PICKER: w = h = 28; break;     // UIColorWell's
 	case AK_KIND_SEGMENTED: {
-		ak_str b = ak_fake_string(v, AK_PROP_SEGMENTED_SEGMENTS);
+		ak_span b = ak_fake_string(v, AK_PROP_SEGMENTED_SEGMENTS);
 		uint32_t n = 0;
 		if (b.len >= 4) memcpy(&n, b.p, 4);
 		w = (float)(70 * (int64_t)n);
@@ -846,31 +846,31 @@ static ak_id root_id(const ak_fake *f) {
 	return r ? r->id : 0;
 }
 
-ak_str ak_fake_label(const ak_fake_view *v) {
+ak_span ak_fake_label(const ak_fake_view *v) {
 	switch (v->kind) {
 	case AK_KIND_TEXT: return ak_fake_string(v, AK_PROP_TEXT_TEXT);
 	case AK_KIND_BUTTON: return ak_fake_string(v, AK_PROP_BUTTON_TITLE);
 	}
-	return (ak_str){"", 0};
+	return (ak_span){"", 0};
 }
 
 typedef struct {
-	ak_kind kind;
-	ak_str s;
+	ak_view_kind kind;
+	ak_span s;
 } find_arg;
 
 static bool find_pred(const ak_fake_view *v, const void *arg) {
 	const find_arg *a = arg;
 	if (v->kind != a->kind) return false;
-	return ak_str_eq(ak_fake_label(v), a->s) || (v->kind == AK_KIND_TEXT_FIELD && ak_str_eq(ak_fake_string(v, AK_PROP_TEXT_FIELD_VALUE), a->s));
+	return ak_span_eq(ak_fake_label(v), a->s) || (v->kind == AK_KIND_TEXT_FIELD && ak_span_eq(ak_fake_string(v, AK_PROP_TEXT_FIELD_VALUE), a->s));
 }
 
-void ak_fake_find(const ak_fake *f, ak_kind k, ak_str s, ak_fake_view_vec *out) {
+void ak_fake_find(const ak_fake *f, ak_view_kind k, ak_span s, ak_fake_view_vec *out) {
 	find_arg a = {k, s};
 	collect(f, find_pred, &a, out);
 }
 
-ak_fake_view *ak_fake_one(ak_fake *f, ak_kind k, const char *s) {
+ak_fake_view *ak_fake_one(ak_fake *f, ak_view_kind k, const char *s) {
 	ak_fake_view_vec vs = {0};
 	ak_fake_find(f, k, ak_cstr(s), &vs);
 	ak_fake_view *v = vs.len == 1 ? vs.data[0] : NULL;
@@ -882,9 +882,9 @@ ak_fake_view *ak_fake_one(ak_fake *f, ak_kind k, const char *s) {
 	return v;
 }
 
-static bool kind_pred(const ak_fake_view *v, const void *arg) { return v->kind == *(const ak_kind *)arg; }
+static bool kind_pred(const ak_fake_view *v, const void *arg) { return v->kind == *(const ak_view_kind *)arg; }
 
-void ak_fake_of_kind(const ak_fake *f, ak_kind k, ak_fake_view_vec *out) { collect(f, kind_pred, &k, out); }
+void ak_fake_of_kind(const ak_fake *f, ak_view_kind k, ak_fake_view_vec *out) { collect(f, kind_pred, &k, out); }
 
 static bool presented_pred(const ak_fake_view *v, const void *arg) {
 	AK_UNUSED(arg);
@@ -957,7 +957,7 @@ void ak_fake_text(const ak_fake_view *v, ak_buf *out) {
 	ak_vec_push(&stack, v);
 	while (stack.len) {
 		const ak_fake_view *x = ak_vec_pop(&stack);
-		ak_str s = ak_fake_label(x);
+		ak_span s = ak_fake_label(x);
 		if (s.len) {
 			if (out->len > start) ak_buf_u8(out, '|');
 			ak_buf_put(out, s.p, s.len);
@@ -967,7 +967,7 @@ void ak_fake_text(const ak_fake_view *v, ak_buf *out) {
 	ak_vec_free(&stack);
 }
 
-void ak_fake_kind_name(ak_buf *out, ak_kind k) {
+void ak_fake_kind_name(ak_buf *out, ak_view_kind k) {
 	char kb[16];
 	const char *n = kind_str(k, kb);
 	ak_buf_put(out, n, strlen(n));
@@ -984,7 +984,7 @@ static void tree(const ak_fake_view *v, ak_buf *out, int depth) {
 	ak_fmt_float(out, v->frame[2], 32);
 	ak_buf_u8(out, 'x');
 	ak_fmt_float(out, v->frame[3], 32);
-	ak_str s = ak_fake_label(v);
+	ak_span s = ak_fake_label(v);
 	if (s.len) {
 		ak_buf_u8(out, ' ');
 		ak_fmt_quote(out, s);
@@ -998,22 +998,22 @@ void ak_fake_tree(const ak_fake_view *v, ak_buf *out) { tree(v, out, 0); }
 // Payload props.
 
 void ak_fake_action_items(const ak_fake_view *v, ak_prop p, ak_action_vec *out) {
-	ak_str b = ak_fake_string(v, p);
+	ak_span b = ak_fake_string(v, p);
 	ak_decode_actions((const uint8_t *)b.p, b.len, out);
 }
 
 void ak_fake_alert_fields(const ak_fake_view *v, ak_alert_field_vec *out) {
-	ak_str b = ak_fake_string(v, AK_PROP_ALERT_FIELDS);
+	ak_span b = ak_fake_string(v, AK_PROP_ALERT_FIELDS);
 	ak_decode_alert_fields((const uint8_t *)b.p, b.len, out);
 }
 
 void ak_fake_sidebar(const ak_fake_view *v, ak_sidebar_heading_vec *sections, ak_sidebar_item_vec *items) {
-	ak_str b = ak_fake_string(v, AK_PROP_SPLIT_ITEMS);
+	ak_span b = ak_fake_string(v, AK_PROP_SPLIT_ITEMS);
 	ak_decode_sidebar((const uint8_t *)b.p, b.len, sections, items);
 }
 
 void ak_fake_strings(const ak_fake_view *v, ak_prop p, ak_str_vec *out) {
-	ak_str b = ak_fake_string(v, p);
+	ak_span b = ak_fake_string(v, p);
 	ak_decode_strings((const uint8_t *)b.p, b.len, out);
 }
 
@@ -1058,7 +1058,7 @@ void ak_fake_tap(ak_fake *f, ak_fake_view *v) { emit(f, v, AK_EVENT_PRESS); }
 void ak_fake_long_press(ak_fake *f, ak_fake_view *v) { emit(f, v, AK_EVENT_LONG_PRESS); }
 
 void ak_fake_type(ak_fake *f, ak_fake_view *v, const char *s) {
-	ak_str str = ak_cstr(s);
+	ak_span str = ak_cstr(s);
 	set_prop(v, AK_PROP_TEXT_FIELD_VALUE, &(ak_value){.type = AK_T_STRING, .s = str});
 	if (ak_fake_listens(v, AK_EVENT_TEXT_CHANGED)) ak_fake_dispatch(f, &(ak_event){.id = v->id, .kind = AK_EVENT_TEXT_CHANGED, .s = str});
 }
@@ -1154,7 +1154,7 @@ void ak_fake_type_in_alert(ak_fake *f, ak_fake_view *alert, uint32_t field, cons
 		ak_vec_free(&fs);
 		{ fail(f, "alert %u has no field %u", alert->id, field); return; }
 	}
-	ak_str text = ak_cstr(s);
+	ak_span text = ak_cstr(s);
 	fs.data[field].text = text;
 	ak_buf b = {0};
 	ak_append_alert_fields(&b, fs.data, fs.len);

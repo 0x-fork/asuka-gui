@@ -1,5 +1,14 @@
-// The C ABI of Asuka's Go core (mobile/mobile.go). Every call comes from
-// the main thread.
+// The C ABI of Asuka's core: what a host (Swift, Kotlin, JavaScript
+// through WebAssembly, the desktop hosts in Go through purego) calls, and
+// the callbacks it gives the core. Implemented by core/src/abi/abi.c (as
+// mobile/mobile.go implements it for the Go core). Every call comes from
+// the main thread, unless it says otherwise.
+//
+// Starting: asuka_start(callbacks), with the host's environment reported
+// (asuka_event, an Environment event for root 0) before or after it; then
+// the app: asuka_load(module) for bytecode (the dev player, code push), or
+// asuka_run(app_main) for an app compiled to C (lang/cgen's release
+// builds, which generate app_main).
 #ifndef ASUKA_H
 #define ASUKA_H
 
@@ -31,6 +40,16 @@ typedef struct {
 } asuka_host_callbacks;
 
 void asuka_start(asuka_host_callbacks *callbacks);
+// Loads a compiled module (lang/bytecode), runs its init and mounts its
+// app as the root. A module loaded while one runs replaces it (the old
+// app is unmounted). It returns 0, or -1 with a message the host can
+// show: *err (asuka_free_string frees it).
+int asuka_load(const uint8_t *module, size_t len, char **err);
+// Runs an app compiled to C: app_main builds its root through the UI
+// runtime (lang/cgen generates it). 0, or -1 when the core isn't started.
+int asuka_run(void (*app_main)(void));
+// Frees a string the core returned.
+void asuka_free_string(char *s);
 void asuka_attach(void);
 void asuka_event(const uint8_t *buf, size_t len);
 int64_t asuka_list_count(uint32_t list);
@@ -40,13 +59,15 @@ void asuka_run_posted(void);
 // Sets an environment variable for the Go code (os.Setenv), which copied
 // the process's as it loaded.
 void asuka_setenv(const char *key, const char *value);
-// Begins the run's crash record (asuka/sdk/crash), with info, JSON of the
+// Begins the run's crash record (asuka/sdk/crash; not available in the
+// C core yet: it returns ""), with info, JSON of the
 // device and the app: the directory native reports go in, "" if the app
 // doesn't report crashes. Any thread, before asuka_start; free the result.
 char *asuka_crash_start(const char *info);
 // Says the host wrote a report in the directory's inbox. Any thread.
 void asuka_crash_notify(void);
-// Typed native modules' way back to Go, from any thread: a started
+// Typed native modules' way back to the core (not available in the C
+// core until native packages land: they do nothing), from any thread: a started
 // call's answer; a Go callback's call, its answer (none: 0) into *out,
 // which the caller frees.
 void asuka_native_done(uint64_t call, const uint8_t *p, size_t len);

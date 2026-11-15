@@ -12,7 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef uint16_t ak_kind;
+typedef uint16_t ak_view_kind;
 typedef uint16_t ak_prop;
 typedef uint16_t ak_event_kind;
 typedef uint16_t ak_cmd;
@@ -1209,11 +1209,11 @@ extern const uint8_t ak_kind_prop_counts[AK_KIND_COUNT];
 extern const ak_enum_info ak_enums[AK_ENUM_COUNT];
 
 // Names, or NULL for a number the schema doesn't have.
-const char *ak_kind_name(ak_kind k);
+const char *ak_kind_name(ak_view_kind k);
 const char *ak_event_name(ak_event_kind e);
 const char *ak_cmd_name(ak_cmd c);
 // ak_prop_of is prop p of kind k (a common prop for any k), or NULL.
-const ak_prop_info *ak_prop_of(ak_kind k, ak_prop p);
+const ak_prop_info *ak_prop_of(ak_view_kind k, ak_prop p);
 // ak_event_payload is what events of kind e carry (AK_P_*), 255 if e is
 // unknown.
 uint8_t ak_event_payload(ak_event_kind e);

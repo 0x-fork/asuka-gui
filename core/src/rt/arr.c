@@ -1,7 +1,7 @@
 #include "rt/rt.h"
 
 ak_arr *ak_arr_new(ak_kind elem, const ak_shape *shape, uint32_t cap) {
-	ak_arr *a = ak_obj_new(AK_T_ARR, sizeof(ak_arr));
+	ak_arr *a = ak_obj_new(AK_TAG_ARR, sizeof(ak_arr));
 	a->h.aux = (uint16_t)elem;
 	a->shape = shape;
 	if (cap) {

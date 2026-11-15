@@ -93,8 +93,8 @@ void ak_vm_traceback(char *buf, size_t cap) {
 static const ak_func *method(void *obj, ak_str *name) {
 	const ak_obj *o = obj;
 	const ak_shape *s = NULL;
-	if (o && o->tag == AK_T_STRUCT) s = ((const ak_struct *)o)->shape;
-	else if (o && o->tag == AK_T_ENUM) s = ((const ak_enum *)o)->shape;
+	if (o && o->tag == AK_TAG_STRUCT) s = ((const ak_struct *)o)->shape;
+	else if (o && o->tag == AK_TAG_ENUM) s = ((const ak_enum *)o)->shape;
 	if (!s || s == &ak_shape_error) return NULL;
 	// Shapes the VM loaded carry their methods and module.
 	const ak_vm_shape *vs = (const ak_vm_shape *)s;
@@ -497,10 +497,10 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 			int64_t n = 0;
 			if (o) {
 				switch (o->tag) {
-				case AK_T_ARR: n = ((ak_arr *)o)->len; break;
-				case AK_T_MAP: n = ((ak_map *)o)->live; break;
-				case AK_T_STR: n = ((ak_str *)o)->len; break;
-				case AK_T_BYTES: n = ((ak_bytes *)o)->len; break;
+				case AK_TAG_ARR: n = ((ak_arr *)o)->len; break;
+				case AK_TAG_MAP: n = ((ak_map *)o)->live; break;
+				case AK_TAG_STR: n = ((ak_str *)o)->len; break;
+				case AK_TAG_BYTES: n = ((ak_bytes *)o)->len; break;
 				}
 			}
 			R[a[0]].i = n;

@@ -318,7 +318,7 @@ static void future_drop(ak_opaque *o) {
 }
 
 ak_future *ak_future_new(ak_kind k) {
-	ak_future *f = ak_opaque_new(AK_T_TASK, sizeof(ak_future), future_drop);
+	ak_future *f = ak_opaque_new(AK_TAG_TASK, sizeof(ak_future), future_drop);
 	f->kind = (uint8_t)k;
 	return f;
 }

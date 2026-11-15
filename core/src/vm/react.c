@@ -24,7 +24,7 @@ bool (*ak_vm_keep_find)(ak_str *key, ak_kind k, ak_val *out);
 void (*ak_vm_keep_add)(ak_str *key, void *cell);
 
 ak_val ak_vm_cell_new(ak_val v, ak_kind k, ak_str *keep_key) {
-	cell *c = ak_opaque_new(AK_T_CELL, sizeof(cell), cell_drop);
+	cell *c = ak_opaque_new(AK_TAG_CELL, sizeof(cell), cell_drop);
 	c->kind = (uint8_t)k;
 	c->v = v;
 	if (keep_key && ak_vm_keep_find) {
@@ -139,7 +139,7 @@ static void memo_drop(ak_opaque *o) {
 }
 
 ak_val ak_vm_memo_new(ak_closure *c, ak_kind k) {
-	memo *m = ak_opaque_new(AK_T_MEMO, sizeof(memo), memo_drop);
+	memo *m = ak_opaque_new(AK_TAG_MEMO, sizeof(memo), memo_drop);
 	m->kind = (uint8_t)k;
 	m->c = ak_retain(c);
 	m->info = (ak_comp_info){.drop = memo_comp_drop, .label = label_of(c)};
@@ -181,7 +181,7 @@ static void acc_drop(ak_opaque *o) {
 }
 
 static acc *acc_new(uint8_t mode, ak_kind k, ak_val v) {
-	acc *a = ak_opaque_new(AK_T_ACC, sizeof(acc), acc_drop);
+	acc *a = ak_opaque_new(AK_TAG_ACC, sizeof(acc), acc_drop);
 	a->mode = mode;
 	a->kind = (uint8_t)k;
 	a->v = v;
@@ -193,8 +193,8 @@ ak_val ak_vm_acc_func(ak_closure *c, ak_kind k) { return (ak_val){.p = acc_new(A
 
 ak_val ak_vm_acc_cell(void *p) {
 	ak_obj *o = p;
-	if (o->tag == AK_T_MEMO) return (ak_val){.p = acc_new(ACC_MEMO, (ak_kind)((memo *)p)->kind, (ak_val){.p = ak_retain(p)})};
-	if (o->tag == AK_T_ACC) return (ak_val){.p = ak_retain(p)};
+	if (o->tag == AK_TAG_MEMO) return (ak_val){.p = acc_new(ACC_MEMO, (ak_kind)((memo *)p)->kind, (ak_val){.p = ak_retain(p)})};
+	if (o->tag == AK_TAG_ACC) return (ak_val){.p = ak_retain(p)};
 	return (ak_val){.p = acc_new(ACC_CELL, (ak_kind)((cell *)p)->kind, (ak_val){.p = ak_retain(p)})};
 }
 

@@ -426,11 +426,11 @@ const ak_enum_info ak_enums[AK_ENUM_COUNT] = {
 	{"LocationAction", enum_LocationAction, 4},
 };
 
-const char *ak_kind_name(ak_kind k) { return k < AK_KIND_COUNT ? ak_kind_names[k] : NULL; }
+const char *ak_kind_name(ak_view_kind k) { return k < AK_KIND_COUNT ? ak_kind_names[k] : NULL; }
 const char *ak_event_name(ak_event_kind e) { return e < AK_EVENT_COUNT ? ak_event_names[e] : NULL; }
 const char *ak_cmd_name(ak_cmd c) { return c < AK_CMD_COUNT ? ak_cmd_names[c] : NULL; }
 
-const ak_prop_info *ak_prop_of(ak_kind k, ak_prop p) {
+const ak_prop_info *ak_prop_of(ak_view_kind k, ak_prop p) {
 	if (p > 0 && p < AK_COMMON_PROP_COUNT) return &ak_common_props[p];
 	if (k < AK_KIND_COUNT && p >= AK_FIRST_KIND_PROP && p - AK_FIRST_KIND_PROP < ak_kind_prop_counts[k]) return &ak_kind_props[k][p - AK_FIRST_KIND_PROP];
 	return NULL;

@@ -126,40 +126,115 @@ var Style = []Key{
 	{Name: "a11yHidden", Type: "bool", Doc: "hidden from screen readers, with what's in it"},
 	{Name: "tooltip", Type: "string"},
 	{Name: "disabled", Type: "bool"},
+	// Direction.
+	{Name: "layoutDirection", Type: "LayoutDirection", Doc: "lays it and what's in it out this way, whatever the app's language: what reads one way everywhere (a phone number, a player's controls)"},
+}
+
+// containerEvents are what View, Row, Column and SafeArea report: a
+// container with any of them has a native view of its own.
+var containerEvents = []Event{
+	{Name: "press", Doc: "a tap on it"},
+	{Name: "longPress", Doc: "a press held on it"},
+	{Name: "layout", Params: []Param{{"frame", "Frame"}}, Doc: "its frame once it's laid out, and again each time layout changes it"},
 }
 
 // Elements are the built-in elements. core/src/ui implements each.
 var Elements = []Element{
-	{Name: "View", Children: true, Doc: "a container: a column by default"},
-	{Name: "Row", Children: true, Doc: "a container whose children stack on a row"},
-	{Name: "Column", Children: true, Doc: "a container whose children stack on a column"},
-	{Name: "SafeArea", Children: true, Doc: "a container that keeps its children out of the system's bars, notches and the keyboard"},
+	{Name: "View", Children: true, Events: containerEvents, Doc: "a container: a column by default. Without a look (background, border...), events or an accessibility prop it makes no native view: its children go in the nearest one around it"},
+	{Name: "Row", Children: true, Events: containerEvents, Doc: "a container whose children stack on a row"},
+	{Name: "Column", Children: true, Events: containerEvents, Doc: "a container whose children stack on a column"},
+	{Name: "SafeArea", Children: true, Events: containerEvents, Doc: "a column that keeps its children out of the system's bars, notches and the keyboard: padded by the safe area's insets, over its own padding"},
 	{Name: "Text", Keys: []Key{
 		{Name: "text", Type: "string", Positional: true},
 		{Name: "selectable", Type: "bool", Doc: "the text can be selected and copied"},
-	}, Doc: "a text"},
+	}, Doc: "a text: it wraps, unless lines limits it"},
 	{Name: "Button", Keys: []Key{
 		{Name: "title", Type: "string", Positional: true},
 		{Name: "variant", Type: "ButtonVariant", Doc: "how the platform draws it"},
-		{Name: "icon", Type: "string", Doc: "a symbol before the title"},
+		{Name: "icon", Type: "string", Doc: "a symbol before the title (see Symbol); with no title, the icon alone"},
 		{Name: "menu", Type: "[Action]", Doc: "actions shown when it's tapped, instead of press"},
 		{Name: "href", Type: "string", Doc: "goes to this route when it's pressed, after press"},
 	}, Events: []Event{{Name: "press"}}, Doc: "the platform's button"},
 	{Name: "TextField", Keys: []Key{
-		{Name: "text", Type: "string", Bind: true, Event: "change"},
+		{Name: "text", Type: "string", Bind: true, Event: "change", Doc: "its text: typing writes it, and writing it replaces what the field shows"},
 		{Name: "placeholder", Type: "string"},
 		{Name: "keyboard", Type: "Keyboard"},
-		{Name: "secure", Type: "bool"},
-		{Name: "multiline", Type: "bool"},
-		{Name: "autofocus", Type: "bool"},
+		{Name: "returnKey", Type: "ReturnKey"},
+		{Name: "secure", Type: "bool", Doc: "a password's: its characters hidden"},
+		{Name: "autocapitalize", Type: "Autocapitalize"},
+		{Name: "autocorrect", Type: "Autocorrect"},
+		{Name: "contentType", Type: "string", Doc: "what it holds, for the system's AutoFill: username, password, newPassword, oneTimeCode, email, ..."},
+		{Name: "multiline", Type: "bool", Doc: "lines of text: return is a new line, not submit, and it grows with its text up to lines lines"},
+		{Name: "plain", Type: "bool", Doc: "without the platform's border, background and inset: its text alone"},
+		{Name: "autofocus", Type: "bool", Doc: "takes the keyboard as it shows"},
+		{Name: "selection", Type: "TextRange", Bind: true, Event: "select", Doc: "the cursor or the selected text, as byte offsets into text: the user's moves write it, and writing it moves them"},
 	}, Events: []Event{
 		{Name: "change", Params: []Param{{"text", "string"}}},
-		{Name: "submit"},
+		{Name: "submit", Doc: "return pressed (not in a multiline field)"},
 		{Name: "focus"},
 		{Name: "blur"},
-	}, Doc: "a text field"},
+		{Name: "select", Params: []Param{{"selection", "TextRange"}}},
+	}, Doc: "a text field: a line, or lines with multiline"},
 	{Name: "Toggle", Keys: []Key{
 		{Name: "on", Type: "bool", Bind: true, Event: "change"},
-		{Name: "title", Type: "string"},
-	}, Events: []Event{{Name: "change", Params: []Param{{"on", "bool"}}}}, Doc: "a switch"},
+		{Name: "title", Type: "string", Doc: "what screen readers call it (the text beside it is the app's)"},
+		{Name: "checkbox", Type: "bool", Doc: "a checkbox rather than a switch"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"on", "bool"}}}}, Doc: "a switch, or a checkbox"},
+	{Name: "Slider", Keys: []Key{
+		{Name: "value", Type: "float", Bind: true, Event: "change"},
+		{Name: "min", Type: "float", Default: "0"},
+		{Name: "max", Type: "float", Default: "1"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"value", "float"}}}}, Doc: "picks a value in a range"},
+	{Name: "Stepper", Keys: []Key{
+		{Name: "value", Type: "float", Bind: true, Event: "change"},
+		{Name: "min", Type: "float", Default: "0"},
+		{Name: "max", Type: "float", Default: "100"},
+		{Name: "step", Type: "float", Default: "1"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"value", "float"}}}}, Doc: "steps a value with minus and plus buttons; show the value beside it"},
+	{Name: "Segmented", Keys: []Key{
+		{Name: "segments", Type: "[string]", Positional: true},
+		{Name: "selected", Type: "int", Bind: true, Event: "change"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "one of a few options side by side"},
+	{Name: "Picker", Keys: []Key{
+		{Name: "items", Type: "[string]", Positional: true},
+		{Name: "selected", Type: "int", Default: "-1", Bind: true, Event: "change", Doc: "the chosen item's index; out of range: none, and it shows its prompt"},
+		{Name: "prompt", Type: "string", Doc: "what it picks: shown while none is chosen (Android's floating label), and read by screen readers"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "picks one of many options from a menu, showing the chosen one"},
+	{Name: "Progress", Keys: []Key{
+		{Name: "value", Type: "float?", Doc: "done, from 0 to 1; none: under way, how far unknown"},
+	}, Doc: "a progress bar; its color is its fill"},
+	{Name: "ProgressRing", Keys: []Key{
+		{Name: "value", Type: "float?", Doc: "done, from 0 to 1; none: the platform's spinning indicator"},
+	}, Doc: "circular progress; its color is its fill"},
+	{Name: "Activity", Doc: "a spinner"},
+	{Name: "Symbol", Keys: []Key{
+		{Name: "name", Type: "string", Positional: true},
+	}, Doc: "a symbol (an SF Symbol, the Material Symbol for it), sized as text of its font and colored with its color"},
+	{Name: "Image", Keys: []Key{
+		{Name: "source", Type: "string", Positional: true, Doc: "an http(s) URL, an asset's path, or a file's"},
+		{Name: "mode", Type: "ImageMode", Doc: "how it fills its box"},
+		{Name: "placeholder", Type: "string", Doc: "an image shown until source loads, and if it fails"},
+		{Name: "transition", Type: "float", Doc: "seconds it takes to fade in as it arrives (0: the platform's; -1: none)"},
+	}, Events: []Event{
+		{Name: "load", Params: []Param{{"width", "float"}, {"height", "float"}}},
+		{Name: "error", Params: []Param{{"message", "string"}}},
+	}, Doc: "a picture the host loads; without a size it takes its natural one, no wider than its room, and keeps its aspect ratio when one side is set"},
+	{Name: "Scroll", Children: true, Keys: []Key{
+		{Name: "horizontal", Type: "bool"},
+		{Name: "refreshing", Type: "bool", Doc: "shows the pull to refresh spinner while true (with on refresh)"},
+	}, Events: []Event{
+		{Name: "scroll", Params: []Param{{"x", "float"}, {"y", "float"}}, Doc: "its content offset as it scrolls"},
+		{Name: "refresh", Doc: "pulled to refresh"},
+	}, Doc: "scrolls its children along one axis (horizontal: a row); its wrap, justify, align, gap and padding lay out its content. Give it a size (or grow) to scroll within"},
+	{Name: "List", Children: true, LazyFor: true, Keys: []Key{
+		{Name: "refreshing", Type: "bool", Doc: "shows the pull to refresh spinner while true (with on refresh)"},
+		{Name: "columns", Type: "int", Doc: "a grid of this many columns (gap apart)"},
+		{Name: "appearance", Type: "ListAppearance"},
+		{Name: "anchor", Type: "ScrollAnchor", Doc: ".bottom: a chat's, which rests at its end"},
+	}, Events: []Event{
+		{Name: "scroll", Params: []Param{{"x", "float"}, {"y", "float"}}},
+		{Name: "refresh", Doc: "pulled to refresh"},
+		{Name: "endReached", Doc: "the last rows are about to show: load more (once per length)"},
+		{Name: "startReached", Doc: "the first rows are about to show: load earlier ones (once per first item)"},
+	}, Doc: "a for in it is the platform's recycling list: rows exist only while they're on screen. It grows into its room unless it's sized"},
 }

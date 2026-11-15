@@ -56,9 +56,9 @@ uint32_t ak_count_actions(const ak_action_item *items, uint32_t n) {
 	return c;
 }
 
-int64_t ak_action_named(const ak_action *items, uint32_t n, ak_str title) {
+int64_t ak_action_named(const ak_action *items, uint32_t n, ak_span title) {
 	for (uint32_t i = 0; i < n; i++)
-		if (ak_str_eq(items[i].title, title)) return items[i].index;
+		if (ak_span_eq(items[i].title, title)) return items[i].index;
 	return -1;
 }
 
@@ -158,18 +158,18 @@ bool ak_decode_alert_fields(const uint8_t *b, size_t n, ak_alert_field_vec *out)
 	return !r.err;
 }
 
-void ak_append_field_changed(ak_buf *b, uint32_t index, ak_str text) {
+void ak_append_field_changed(ak_buf *b, uint32_t index, ak_span text) {
 	ak_buf_u32(b, index);
 	ak_buf_wstr(b, text);
 }
 
-bool ak_decode_field_changed(const uint8_t *b, size_t n, uint32_t *index, ak_str *text) {
+bool ak_decode_field_changed(const uint8_t *b, size_t n, uint32_t *index, ak_span *text) {
 	ak_reader r = reader(b, n);
 	uint32_t i = ak_read_u32(&r);
-	ak_str s = ak_read_str(&r);
+	ak_span s = ak_read_str(&r);
 	if (r.err) {
 		*index = 0;
-		*text = (ak_str){0};
+		*text = (ak_span){0};
 		return false;
 	}
 	*index = i;
@@ -281,18 +281,18 @@ static uint32_t lower(uint32_t r) {
 	return r;
 }
 
-ak_str ak_key_name(ak_str name, char buf[4]) {
+ak_span ak_key_name(ak_span name, char buf[4]) {
 	uint32_t l;
 	uint32_t r = rune((const uint8_t *)name.p, name.len, &l);
 	if (l == 0 || l != name.len) return name;
-	return (ak_str){buf, put_rune(buf, lower(r))};
+	return (ak_span){buf, put_rune(buf, lower(r))};
 }
 
-int ak_match_key(const ak_key *keys, uint32_t n, ak_str name, uint8_t mods) {
+int ak_match_key(const ak_key *keys, uint32_t n, ak_span name, uint8_t mods) {
 	char buf[4];
 	name = ak_key_name(name, buf);
 	for (uint32_t i = 0; i < n; i++)
-		if (keys[i].mods == mods && ak_str_eq(keys[i].name, name)) return (int)i;
+		if (keys[i].mods == mods && ak_span_eq(keys[i].name, name)) return (int)i;
 	return -1;
 }
 
@@ -380,7 +380,7 @@ bool ak_decode_drop(const uint8_t *b, size_t n, ak_drop *d, ak_item_vec *items) 
 	return true;
 }
 
-void ak_append_strings(ak_buf *b, const ak_str *s, uint32_t n) {
+void ak_append_strings(ak_buf *b, const ak_span *s, uint32_t n) {
 	ak_buf_u32(b, n);
 	for (uint32_t i = 0; i < n; i++) ak_buf_wstr(b, s[i]);
 }
@@ -389,7 +389,7 @@ bool ak_decode_strings(const uint8_t *b, size_t n, ak_str_vec *out) {
 	ak_reader r = reader(b, n);
 	uint32_t count = ak_read_u32(&r);
 	for (uint32_t i = 0; i < count && !r.err; i++) {
-		ak_str s = ak_read_str(&r);
+		ak_span s = ak_read_str(&r);
 		if (r.err) break;
 		ak_vec_push(out, s);
 	}
@@ -399,7 +399,7 @@ bool ak_decode_strings(const uint8_t *b, size_t n, ak_str_vec *out) {
 static bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'; }
 
 // base_mime is a MIME type without its parameters and spaces.
-static ak_str base_mime(ak_str m) {
+static ak_span base_mime(ak_span m) {
 	const char *semi = m.len ? memchr(m.p, ';', m.len) : NULL;
 	if (semi) m.len = (uint32_t)(semi - m.p);
 	while (m.len && space(m.p[0])) m.p++, m.len--;
@@ -417,11 +417,11 @@ static bool fold_eq(const char *a, const char *b, uint32_t n) {
 	return true;
 }
 
-bool ak_match_mime(const ak_str *patterns, uint32_t n, ak_str mime) {
+bool ak_match_mime(const ak_span *patterns, uint32_t n, ak_span mime) {
 	mime = base_mime(mime);
 	for (uint32_t i = 0; i < n; i++) {
-		ak_str p = base_mime(patterns[i]);
-		if (ak_str_eqc(p, "*") || ak_str_eqc(p, "*/*")) return true;
+		ak_span p = base_mime(patterns[i]);
+		if (ak_span_eqc(p, "*") || ak_span_eqc(p, "*/*")) return true;
 		if (p.len >= 2 && p.p[p.len - 2] == '/' && p.p[p.len - 1] == '*') {
 			uint32_t k = p.len - 1;
 			if (mime.len > k && fold_eq(mime.p, p.p, k)) return true;
@@ -436,7 +436,7 @@ bool ak_match_mime(const ak_str *patterns, uint32_t n, ak_str mime) {
 
 bool ak_rich_style_eq(const ak_rich_style *a, const ak_rich_style *b) {
 	return a->text_style == b->text_style && a->size == b->size && a->weight == b->weight && a->flags == b->flags &&
-	       a->color == b->color && a->background == b->background && ak_str_eq(a->link, b->link);
+	       a->color == b->color && a->background == b->background && ak_span_eq(a->link, b->link);
 }
 
 typedef struct {
@@ -528,7 +528,7 @@ bool ak_decode_rich(const uint8_t *b, size_t n, ak_rich_run_vec *out) {
 		if (r.err) goto done;
 		for (uint32_t i = 0; i < runs; i++) {
 			uint32_t k = ak_read_u32(&r);
-			ak_str text = ak_read_str(&r);
+			ak_span text = ak_read_str(&r);
 			if (r.err || k >= styles.len) {
 				r.err = true;
 				goto done;
@@ -590,7 +590,7 @@ bool ak_same_sidebar_shape(const ak_sidebar_heading *a, uint32_t na, const ak_si
 	return true;
 }
 
-bool ak_badge_number(ak_str s, int32_t *n) {
+bool ak_badge_number(ak_span s, int32_t *n) {
 	*n = 0;
 	if (s.len == 0 || s.len > 9) return false;
 	int32_t v = 0;
@@ -633,7 +633,7 @@ ak_window_config ak_decode_window_config(const uint8_t *b, size_t n) {
 	c.parent = ak_read_u32(&r);
 	c.state_key = ak_read_str(&r);
 	if (!r.err) c.title = ak_strn(b + r.off, n - r.off);
-	else c.state_key = (ak_str){0};
+	else c.state_key = (ak_span){0};
 	return c;
 }
 
@@ -726,12 +726,12 @@ bool ak_decode_location(const uint8_t *b, size_t n, ak_location *l) {
 	return !r.err;
 }
 
-void ak_append_location_event(ak_buf *b, ak_str href, ak_str state) {
+void ak_append_location_event(ak_buf *b, ak_span href, ak_span state) {
 	ak_buf_wstr(b, href);
 	ak_buf_wstr(b, state);
 }
 
-bool ak_decode_location_event(const uint8_t *b, size_t n, ak_str *href, ak_str *state) {
+bool ak_decode_location_event(const uint8_t *b, size_t n, ak_span *href, ak_span *state) {
 	ak_reader r = reader(b, n);
 	*href = ak_read_str(&r);
 	*state = ak_read_str(&r);

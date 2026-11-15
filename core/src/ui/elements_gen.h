@@ -15,7 +15,18 @@ enum {
 	AK_EL_BUTTON = 6,
 	AK_EL_TEXT_FIELD = 7,
 	AK_EL_TOGGLE = 8,
-	AK_EL__COUNT = 9,
+	AK_EL_SLIDER = 9,
+	AK_EL_STEPPER = 10,
+	AK_EL_SEGMENTED = 11,
+	AK_EL_PICKER = 12,
+	AK_EL_PROGRESS = 13,
+	AK_EL_PROGRESS_RING = 14,
+	AK_EL_ACTIVITY = 15,
+	AK_EL_SYMBOL = 16,
+	AK_EL_IMAGE = 17,
+	AK_EL_SCROLL = 18,
+	AK_EL_LIST = 19,
+	AK_EL__COUNT = 20,
 };
 
 // Keys: the style's (every element's) first, then each element's.
@@ -71,43 +82,107 @@ enum {
 	AK_KEY_A11Y_HIDDEN = 49, // a11yHidden: bool
 	AK_KEY_TOOLTIP = 50, // tooltip: string
 	AK_KEY_DISABLED = 51, // disabled: bool
-	AK_KEY__STYLE_END = 52,
-	AK_KEY_TEXT_TEXT = 52, // text: string
-	AK_KEY_TEXT_SELECTABLE = 53, // selectable: bool
-	AK_KEY_BUTTON_TITLE = 54, // title: string
-	AK_KEY_BUTTON_VARIANT = 55, // variant: ButtonVariant
-	AK_KEY_BUTTON_ICON = 56, // icon: string
-	AK_KEY_BUTTON_MENU = 57, // menu: [Action]
-	AK_KEY_BUTTON_HREF = 58, // href: string
-	AK_KEY_TEXT_FIELD_TEXT = 59, // text: string
-	AK_KEY_TEXT_FIELD_PLACEHOLDER = 60, // placeholder: string
-	AK_KEY_TEXT_FIELD_KEYBOARD = 61, // keyboard: Keyboard
-	AK_KEY_TEXT_FIELD_SECURE = 62, // secure: bool
-	AK_KEY_TEXT_FIELD_MULTILINE = 63, // multiline: bool
-	AK_KEY_TEXT_FIELD_AUTOFOCUS = 64, // autofocus: bool
-	AK_KEY_TOGGLE_ON = 65, // on: bool
-	AK_KEY_TOGGLE_TITLE = 66, // title: string
-	AK_KEY__COUNT = 67,
+	AK_KEY_LAYOUT_DIRECTION = 52, // layoutDirection: LayoutDirection
+	AK_KEY__STYLE_END = 53,
+	AK_KEY_TEXT_TEXT = 53, // text: string
+	AK_KEY_TEXT_SELECTABLE = 54, // selectable: bool
+	AK_KEY_BUTTON_TITLE = 55, // title: string
+	AK_KEY_BUTTON_VARIANT = 56, // variant: ButtonVariant
+	AK_KEY_BUTTON_ICON = 57, // icon: string
+	AK_KEY_BUTTON_MENU = 58, // menu: [Action]
+	AK_KEY_BUTTON_HREF = 59, // href: string
+	AK_KEY_TEXT_FIELD_TEXT = 60, // text: string
+	AK_KEY_TEXT_FIELD_PLACEHOLDER = 61, // placeholder: string
+	AK_KEY_TEXT_FIELD_KEYBOARD = 62, // keyboard: Keyboard
+	AK_KEY_TEXT_FIELD_RETURN_KEY = 63, // returnKey: ReturnKey
+	AK_KEY_TEXT_FIELD_SECURE = 64, // secure: bool
+	AK_KEY_TEXT_FIELD_AUTOCAPITALIZE = 65, // autocapitalize: Autocapitalize
+	AK_KEY_TEXT_FIELD_AUTOCORRECT = 66, // autocorrect: Autocorrect
+	AK_KEY_TEXT_FIELD_CONTENT_TYPE = 67, // contentType: string
+	AK_KEY_TEXT_FIELD_MULTILINE = 68, // multiline: bool
+	AK_KEY_TEXT_FIELD_PLAIN = 69, // plain: bool
+	AK_KEY_TEXT_FIELD_AUTOFOCUS = 70, // autofocus: bool
+	AK_KEY_TEXT_FIELD_SELECTION = 71, // selection: TextRange
+	AK_KEY_TOGGLE_ON = 72, // on: bool
+	AK_KEY_TOGGLE_TITLE = 73, // title: string
+	AK_KEY_TOGGLE_CHECKBOX = 74, // checkbox: bool
+	AK_KEY_SLIDER_VALUE = 75, // value: float
+	AK_KEY_SLIDER_MIN = 76, // min: float
+	AK_KEY_SLIDER_MAX = 77, // max: float
+	AK_KEY_STEPPER_VALUE = 78, // value: float
+	AK_KEY_STEPPER_MIN = 79, // min: float
+	AK_KEY_STEPPER_MAX = 80, // max: float
+	AK_KEY_STEPPER_STEP = 81, // step: float
+	AK_KEY_SEGMENTED_SEGMENTS = 82, // segments: [string]
+	AK_KEY_SEGMENTED_SELECTED = 83, // selected: int
+	AK_KEY_PICKER_ITEMS = 84, // items: [string]
+	AK_KEY_PICKER_SELECTED = 85, // selected: int
+	AK_KEY_PICKER_PROMPT = 86, // prompt: string
+	AK_KEY_PROGRESS_VALUE = 87, // value: float?
+	AK_KEY_PROGRESS_RING_VALUE = 88, // value: float?
+	AK_KEY_SYMBOL_NAME = 89, // name: string
+	AK_KEY_IMAGE_SOURCE = 90, // source: string
+	AK_KEY_IMAGE_MODE = 91, // mode: ImageMode
+	AK_KEY_IMAGE_PLACEHOLDER = 92, // placeholder: string
+	AK_KEY_IMAGE_TRANSITION = 93, // transition: float
+	AK_KEY_SCROLL_HORIZONTAL = 94, // horizontal: bool
+	AK_KEY_SCROLL_REFRESHING = 95, // refreshing: bool
+	AK_KEY_LIST_REFRESHING = 96, // refreshing: bool
+	AK_KEY_LIST_COLUMNS = 97, // columns: int
+	AK_KEY_LIST_APPEARANCE = 98, // appearance: ListAppearance
+	AK_KEY_LIST_ANCHOR = 99, // anchor: ScrollAnchor
+	AK_KEY__COUNT = 100,
 };
 
 // Events.
 enum {
-	AK_EV_BUTTON_PRESS = 1,
-	AK_EV_TEXT_FIELD_CHANGE = 2,
-	AK_EV_TEXT_FIELD_SUBMIT = 3,
-	AK_EV_TEXT_FIELD_FOCUS = 4,
-	AK_EV_TEXT_FIELD_BLUR = 5,
-	AK_EV_TOGGLE_CHANGE = 6,
-	AK_EV__COUNT = 7,
+	AK_EV_VIEW_PRESS = 1,
+	AK_EV_VIEW_LONG_PRESS = 2,
+	AK_EV_VIEW_LAYOUT = 3,
+	AK_EV_ROW_PRESS = 4,
+	AK_EV_ROW_LONG_PRESS = 5,
+	AK_EV_ROW_LAYOUT = 6,
+	AK_EV_COLUMN_PRESS = 7,
+	AK_EV_COLUMN_LONG_PRESS = 8,
+	AK_EV_COLUMN_LAYOUT = 9,
+	AK_EV_SAFE_AREA_PRESS = 10,
+	AK_EV_SAFE_AREA_LONG_PRESS = 11,
+	AK_EV_SAFE_AREA_LAYOUT = 12,
+	AK_EV_BUTTON_PRESS = 13,
+	AK_EV_TEXT_FIELD_CHANGE = 14,
+	AK_EV_TEXT_FIELD_SUBMIT = 15,
+	AK_EV_TEXT_FIELD_FOCUS = 16,
+	AK_EV_TEXT_FIELD_BLUR = 17,
+	AK_EV_TEXT_FIELD_SELECT = 18,
+	AK_EV_TOGGLE_CHANGE = 19,
+	AK_EV_SLIDER_CHANGE = 20,
+	AK_EV_STEPPER_CHANGE = 21,
+	AK_EV_SEGMENTED_CHANGE = 22,
+	AK_EV_PICKER_CHANGE = 23,
+	AK_EV_IMAGE_LOAD = 24,
+	AK_EV_IMAGE_ERROR = 25,
+	AK_EV_SCROLL_SCROLL = 26,
+	AK_EV_SCROLL_REFRESH = 27,
+	AK_EV_LIST_SCROLL = 28,
+	AK_EV_LIST_REFRESH = 29,
+	AK_EV_LIST_END_REACHED = 30,
+	AK_EV_LIST_START_REACHED = 31,
+	AK_EV__COUNT = 32,
 };
 
-static const char *const ak_el_names[] = {"", "View", "Row", "Column", "SafeArea", "Text", "Button", "TextField", "Toggle",};
+static const char *const ak_el_names[] = {"", "View", "Row", "Column", "SafeArea", "Text", "Button", "TextField", "Toggle", "Slider", "Stepper", "Segmented", "Picker", "Progress", "ProgressRing", "Activity", "Symbol", "Image", "Scroll", "List",};
 
-static const char *const ak_key_names[] = {"", "direction", "wrap", "justify", "align", "alignSelf", "gap", "padding", "margin", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "aspectRatio", "grow", "shrink", "basis", "absolute", "top", "right", "bottom", "left", "start", "end", "grid", "gridColumn", "gridRow", "background", "radius", "border", "borderColor", "opacity", "hidden", "clip", "transform", "shadow", "gradient", "material", "transition", "match", "font", "color", "textAlign", "lines", "label", "hint", "role", "a11yHidden", "tooltip", "disabled", "text", "selectable", "title", "variant", "icon", "menu", "href", "text", "placeholder", "keyboard", "secure", "multiline", "autofocus", "on", "title",};
+static const char *const ak_key_names[] = {"", "direction", "wrap", "justify", "align", "alignSelf", "gap", "padding", "margin", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "aspectRatio", "grow", "shrink", "basis", "absolute", "top", "right", "bottom", "left", "start", "end", "grid", "gridColumn", "gridRow", "background", "radius", "border", "borderColor", "opacity", "hidden", "clip", "transform", "shadow", "gradient", "material", "transition", "match", "font", "color", "textAlign", "lines", "label", "hint", "role", "a11yHidden", "tooltip", "disabled", "layoutDirection", "text", "selectable", "title", "variant", "icon", "menu", "href", "text", "placeholder", "keyboard", "returnKey", "secure", "autocapitalize", "autocorrect", "contentType", "multiline", "plain", "autofocus", "selection", "on", "title", "checkbox", "value", "min", "max", "value", "min", "max", "step", "segments", "selected", "items", "selected", "prompt", "value", "value", "name", "source", "mode", "placeholder", "transition", "horizontal", "refreshing", "refreshing", "columns", "appearance", "anchor",};
 
 // How each key's value is stored.
-static const uint8_t ak_key_kinds[] = {0, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_INT, AK_K_FLOAT, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF,};
+static const uint8_t ak_key_kinds[] = {0, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_INT, AK_K_FLOAT, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_INT, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_FLOAT, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT,};
 
-static const char *const ak_ev_names[] = {"", "Button.press", "TextField.change", "TextField.submit", "TextField.focus", "TextField.blur", "Toggle.change",};
+// The element each key is of (AK_EL_*); 0: the style's, every element's.
+static const uint8_t ak_key_els[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10, 10, 11, 11, 12, 12, 12, 13, 14, 16, 17, 17, 17, 17, 18, 18, 19, 19, 19, 19,};
+
+static const char *const ak_ev_names[] = {"", "View.press", "View.longPress", "View.layout", "Row.press", "Row.longPress", "Row.layout", "Column.press", "Column.longPress", "Column.layout", "SafeArea.press", "SafeArea.longPress", "SafeArea.layout", "Button.press", "TextField.change", "TextField.submit", "TextField.focus", "TextField.blur", "TextField.select", "Toggle.change", "Slider.change", "Stepper.change", "Segmented.change", "Picker.change", "Image.load", "Image.error", "Scroll.scroll", "Scroll.refresh", "List.scroll", "List.refresh", "List.endReached", "List.startReached",};
+
+// The element each event is of (AK_EL_*).
+static const uint8_t ak_ev_els[] = {0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 6, 7, 7, 7, 7, 7, 8, 9, 10, 11, 12, 17, 17, 18, 18, 19, 19, 19, 19,};
 
 #endif

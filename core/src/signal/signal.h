@@ -109,8 +109,8 @@ void ak_untrack_end(void *token);
 // ak_tracking reports whether a computation is tracking reads.
 bool ak_tracking(void);
 
-// ak_batch runs fn and the effects its writes dirtied once, after it.
-void ak_batch(void (*fn)(void *ctx), void *ctx);
+// ak_signal_batch runs fn and the effects its writes dirtied once, after it.
+void ak_signal_batch(void (*fn)(void *ctx), void *ctx);
 void ak_batch_begin(void);
 void ak_batch_end(void);
 bool ak_signal_batching(void);
@@ -152,6 +152,10 @@ void ak_owner_release(ak_owner *o);
 ak_owner *ak_current_owner(void);
 // ak_with_owner runs fn with o as the current owner, untracked.
 void ak_with_owner(ak_owner *o, void (*fn)(void *ctx), void *ctx);
+// ak_with_owner_tracked runs fn with o as the current owner, the running
+// computation still tracking what fn reads: what an effect builds under
+// an owner of its own, that it disposes itself (the UI's Dynamic).
+void ak_with_owner_tracked(ak_owner *o, void (*fn)(void *ctx), void *ctx);
 // ak_on_cleanup registers fn to run when the current owner is disposed,
 // or before the current computation re-runs. With no owner it does
 // nothing.

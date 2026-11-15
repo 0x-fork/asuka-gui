@@ -1,0 +1,62 @@
+// uitest.h: an app's UI tested on the fake host, as a user drives it,
+// by what the screen shows: a port of the Go uitest package (uitest/*.go)
+// for `asuka test` (the test.* builtins) and the core's C tests.
+//
+// The app runs as on an iPhone (390x844 points) unless the environment
+// given says otherwise. Everything runs on the main thread: an action
+// settles before it returns (what was posted runs, the UI flushes, the
+// rows lists show are bound, again until nothing changes). The fake host
+// measures text at 8 points a character on 20-point lines.
+//
+// What the screen shows is what a user could see: the root and what's
+// presented over it, a List's rows that fit its height (bound as a
+// collection view would), and nothing hidden. A text names a view that
+// shows it: a Text's text, a Button's title, a field's text or
+// placeholder, a picker's chosen item, an accessibility label, a
+// segment.
+#ifndef AK_UITEST_H
+#define AK_UITEST_H
+
+#include "fake/fake.h"
+#include "ui/ui.h"
+
+typedef struct ak_uitest ak_uitest;  // an rt object (AK_TAG_OPAQUE)
+
+// ak_uitest_mount mounts build's view on a new fake host, settled. env
+// (NULL: an iPhone's) is the environment it reports. The UI runtime has
+// one root: mounting unmounts what was.
+ak_uitest *ak_uitest_mount(ak_closure *build, const ak_environment *env);
+// ak_uitest_unmount unmounts the app and reports in err (if not NULL)
+// the native views that outlived it (an owner left undisposed). False
+// if any did.
+bool ak_uitest_unmount(ak_uitest *a, ak_buf *err);
+ak_fake *ak_uitest_host(ak_uitest *a);
+
+// ak_uitest_settle runs what was posted, flushes and binds lists' rows,
+// until nothing changes.
+void ak_uitest_settle(ak_uitest *a);
+
+// Actions and expectations: true, or false with what went wrong and what
+// the screen shows in err.
+//
+// tap taps what shows text: a button, a text in something that takes a
+// press, a toggle (flips), a text field (focuses), a segment, a menu's
+// item while it's open (a button's menu opens on its tap).
+bool ak_uitest_tap(ak_uitest *a, ak_span text, ak_buf *err);
+// type types text into the field label names (its placeholder, text or
+// label, or the field after a text that says label, or in a view that
+// says it), or, label empty, the field tapped or typed in last.
+bool ak_uitest_type(ak_uitest *a, ak_span text, ak_span label, ak_buf *err);
+bool ak_uitest_has(ak_uitest *a, ak_span text);
+bool ak_uitest_expect(ak_uitest *a, ak_span text, ak_buf *err);
+bool ak_uitest_expect_no(ak_uitest *a, ak_span text, ak_buf *err);
+// ak_uitest_snapshot describes what the screen shows: each layer's
+// views, with their kinds, frames, texts and states, one a line,
+// indented by depth (uitest's Snapshot).
+void ak_uitest_snapshot(ak_uitest *a, ak_buf *out);
+
+// ak_uitest_builtins_init registers the test.* builtins (uitest.c's
+// table) for `asuka test`.
+void ak_uitest_builtins_init(void);
+
+#endif

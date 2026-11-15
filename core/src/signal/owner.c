@@ -139,6 +139,13 @@ void ak_with_owner(ak_owner *o, void (*fn)(void *ctx), void *ctx) {
 	g->active = prev_sub;
 }
 
+void ak_with_owner_tracked(ak_owner *o, void (*fn)(void *ctx), void *ctx) {
+	ak_owner *prev_owner = g->owner;
+	g->owner = o;
+	fn(ctx);
+	g->owner = prev_owner;
+}
+
 void ak_on_cleanup(void (*fn)(void *ctx), void *ctx) {
 	if (g->owner) ak_vec_push(&g->owner->cleanups, ((ak_cleanup){fn, ctx}));
 }
