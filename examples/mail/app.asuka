@@ -242,22 +242,22 @@ component Compose {
     Row {
       gap: 4
       padding: [6, 12]
-      Tool("bold", "Bold", on: formats.bold) {
+      Tool("bold", "Bold", lit: formats.bold) {
         on press { field.toggleFormat(.bold) }
       }
-      Tool("italic", "Italic", on: formats.italic) {
+      Tool("italic", "Italic", lit: formats.italic) {
         on press { field.toggleFormat(.italic) }
       }
-      Tool("underline", "Underline", on: formats.underline) {
+      Tool("underline", "Underline", lit: formats.underline) {
         on press { field.toggleFormat(.underline) }
       }
-      Tool("strikethrough", "Strikethrough", on: formats.strike) {
+      Tool("strikethrough", "Strikethrough", lit: formats.strike) {
         on press { field.toggleFormat(.strike) }
       }
-      Tool("chevron.left.forwardslash.chevron.right", "Code", on: formats.mono) {
+      Tool("chevron.left.forwardslash.chevron.right", "Code", lit: formats.mono) {
         on press { field.toggleFormat(.mono) }
       }
-      Tool("link", "Link", on: !formats.link.isEmpty) {
+      Tool("link", "Link", lit: !formats.link.isEmpty) {
         on press { field.setLink(if formats.link.isEmpty { "https://example.com" } else { "" }) }
       }
     }
@@ -287,13 +287,13 @@ component Line(label: string) {
 }
 
 /// A formatting button, lit while its format is at the cursor.
-component Tool(icon: string, label: string, on: bool) {
+component Tool(icon: string, label: string, lit: bool) {
   event press
 
   Button("") {
     icon: icon
     label: label
-    background: if on { .secondaryBackground } else { .clear }
+    background: if lit { .secondaryBackground } else { .clear }
     radius: 8
     on press { emit press }
   }
@@ -303,7 +303,7 @@ app {
   Stack { Inbox() }
 }
 
-test "a mail swiped to the archive goes" {
+test "selecting, and the composer" {
   let app = mount(Stack { Inbox() })
   app.expect("Inbox", "Today")
   app.tap("Select")
