@@ -5,7 +5,9 @@
 //	start({ wasm: "app.wasm", container: document.body });
 //
 // Options: container (the element the app fills; the page's body by
-// default, the app then filling the page), wasm (its URL), exec (the URL
+// default, the app then filling the page), core (the URL of the C core,
+// asuka.wasm, with the app compiled in) and module (an app's bytecode to
+// load into it: asuka dev's), wasm (a Go app's URL), exec (the URL
 // of the Go release's wasm_exec.js; "wasm_exec.js" beside this file by
 // default), assets (where its assets are served: "assets"), name (the
 // app's: its stored data is kept under it), fonts (the app's font files,
@@ -25,6 +27,7 @@ import { natives as builtinNatives } from "./modules/hardware.js";
 import * as worker from "./worker.js";
 import { notifyFor } from "./modules/system-notify.js";
 import { Crash } from "./crash.js";
+import { startCore } from "./core.js";
 // What packages' generated JavaScript (asuka native) builds on: globalThis.asuka.native.
 export * as native from "./native.js";
 
@@ -53,8 +56,6 @@ export async function start(options = {}) {
   sqlite?.catch(() => {});
   const data = "/data/" + name.replace(/[^\w.-]/g, "_");
   await fs.mount({ name, dir: data, output: dev?.log });
-  const execURL = options.exec || new URL("wasm_exec.js", import.meta.url).href;
-  if (!globalThis.Go) await loadScript(execURL);
   const host = new Host(container, { ...options, fullPage, name });
   // The host's own native views (camera.View), then the app's, which may replace them.
   for (const [k, f] of Object.entries(builtinNatives)) host.natives.set(k, f);
@@ -65,6 +66,21 @@ export async function start(options = {}) {
   worker.openLaunchFiles(host, fs.saveUpload);
   const hostName = "asukaHost" + (hosts++ || "");
   globalThis[hostName] = host;
+  if (options.core) {
+    // The C core (asuka.wasm), with the app compiled in or its bytecode
+    // (options.module) loaded into it.
+    try {
+      await startCore(host, { wasm: options.core, module: options.module, log: dev?.log });
+    } catch (e) {
+      showError(container, "The app couldn't load: " + e.message);
+      throw e;
+    }
+    if (dev) dev.attach(host);
+    try { notifyFor(host); } catch (e) { console.warn("asuka/sdk/notify:", e); }
+    return host;
+  }
+  const execURL = options.exec || new URL("wasm_exec.js", import.meta.url).href;
+  if (!globalThis.Go) await loadScript(execURL);
   const go = new globalThis.Go();
   // asuka/sdk/crash's record of the run: what Go's runtime prints of a crash, uncaught errors.
   host.crash = new Crash(go, host);
