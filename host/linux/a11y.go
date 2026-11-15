@@ -3,6 +3,9 @@
 package linux
 
 import (
+	"os"
+	"strings"
+
 	. "github.com/egoist/asuka/internal/gtk"
 	"github.com/egoist/asuka/ops"
 )
@@ -118,9 +121,11 @@ func (h *Host) updateA11y(n *node) {
 	}
 }
 
-// announce has a screen reader read text out.
+// announce has a screen reader read text out. GTK 4.14's test
+// accessibility backend (GTK_A11Y=test, as the host's tests run) has no
+// announce of its own: GTK would call a null function.
 func (h *Host) announce(text string) {
-	if AccessibleAnnounce != nil && h.main != nil {
+	if AccessibleAnnounce != nil && h.main != nil && !strings.EqualFold(os.Getenv("GTK_A11Y"), "test") {
 		AccessibleAnnounce(h.main.window, text, 1) // GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_MEDIUM
 	}
 }
