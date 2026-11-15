@@ -1014,6 +1014,7 @@ func (c *Checker) memberSuggest(t Type, name string) string {
 // implicitMember is .name where a type is expected.
 func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 	name := e.Name.Name
+	c.info.Expected[e] = want
 	w := Unopt(want)
 	switch w {
 	case nil:

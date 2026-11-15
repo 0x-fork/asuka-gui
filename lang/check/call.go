@@ -94,6 +94,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 		}
 		return c.methodCall(e, fn, want)
 	case *syntax.ImplicitMember:
+		c.info.Expected[fn] = want
 		w := Unopt(want)
 		if n, ok := w.(*Named); ok && n.Obj.Kind == EnumType {
 			if k := n.Obj.Case(fn.Name.Name); k != nil {
