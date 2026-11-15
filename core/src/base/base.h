@@ -83,6 +83,8 @@ void ak_buf_u64(ak_buf *b, uint64_t v);
 void ak_buf_f32(ak_buf *b, float v);
 void ak_buf_f64(ak_buf *b, double v);
 void ak_buf_str(ak_buf *b, const char *s, size_t n);  // u32 length + bytes
+// ak_buf_printf appends formatted text (no terminating NUL).
+void ak_buf_printf(ak_buf *b, const char *fmt, ...) AK_PRINTF(2, 3);
 
 // Little-endian readers over a byte span; reading past the end sets
 // r->err and returns 0.
