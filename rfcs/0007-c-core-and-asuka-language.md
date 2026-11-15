@@ -50,7 +50,7 @@ project is experimental; nothing is kept for compatibility.
 
 | Question | Decision | Why |
 |---|---|---|
-| Core language | C17, no C++ | Every platform's toolchain and FFI speaks C; Win32 and GTK are C APIs; AppKit is reached through `objc_msgSend`. One cross-compiler (Zig's `zig cc`) builds it for every target. |
+| Core language | C17, no C++ | Every platform's toolchain and FFI speaks C; Win32 and GTK are C APIs; AppKit is reached through `objc_msgSend`. Each platform's own compiler builds it; Zig's `zig cc` cross-compiles it. |
 | App language | Asuka, statically typed, declarative component bodies | See "The language". |
 | Compiler written in | Go, in `lang/`, run by the CLI | The CLI is Go; the device never compiles. Fast to write, cross-platform, and the same binary runs the language server. |
 | Dev execution | Bytecode on a register VM in the core | Reload without restarting, on every platform, physical devices included (iOS can't load new machine code). |
@@ -59,7 +59,7 @@ project is experimental; nothing is kept for compatibility.
 | Concurrency | `async`/`await` compiled to stackless coroutines; tasks owned by owners; `spawn` for worker threads, checked | No stack switching, so the same code runs on wasm; `await` marks where state may change. |
 | Reactivity | Fine-grained signals (alien-signals' algorithm, Solid's owners), with dependencies resolved at compile time where they're static | As before, minus runtime tracking for the common case. |
 | Layout | The CSS block, flexbox and grid engine, ported to C, checked against the same Chrome fixtures | Unchanged semantics. |
-| Build tool | Zig (`zig cc`, `build.zig`) | One toolchain cross-compiles C to iOS, Android, wasm, macOS, Windows and Linux; already used by `sdk/sqlite`. |
+| C compiler | The system's by default (Xcode's clang for Apple platforms, the NDK's clang for Android, cc on Linux, clang on Windows); Zig's `zig cc` opted into (`ASUKA_CC=zig`), and used where only it can: cross-compiling a desktop build for another system, the web without an LLVM that targets wasm | The platforms' own compilers are what their SDKs are tested with and what developers already have; Zig is one download that cross-compiles to everything, for what the system's can't do. |
 | Desktop hosts | Stay in Go, in process, driving the C core (a library, `libasuka`) through `asuka.h` with purego callbacks | They are already hosts behind the ops wire: their cost is AppKit's, Win32's and GTK's calls, not Go's. Rewriting 100k lines in C would change nothing an app or its user sees. |
 | Packages | The npm registry, with the `asuka` CLI as the client: its own resolver (one version per package, a lockfile), no Node, no `node_modules` | See "Packages". The registry gives scopes, auth, private registries, provenance and a CDN for free; npm's install model (nested duplicate versions, install scripts) doesn't fit a compiled language. |
 | Installing the CLI | npm (`npm i -g asuka`, `npx asuka`), with a prebuilt binary per platform as an optional dependency (esbuild's pattern); also a shell installer and Homebrew | Most app developers already have npm; nothing is built on install. |

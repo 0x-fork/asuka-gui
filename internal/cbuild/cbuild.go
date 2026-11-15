@@ -1,6 +1,7 @@
 // Package cbuild builds Asuka's C core (core/) with a C compiler run as a
-// program: Zig's (zig cc), which cross-compiles to every target, or the
-// system's. Nothing here uses cgo.
+// program: the system's (cc: Xcode's clang, gcc or clang on Linux,
+// clang on Windows) by default, or Zig's (zig cc), opted into, which
+// cross-compiles to every target from any system. Nothing here uses cgo.
 package cbuild
 
 import (
@@ -25,21 +26,49 @@ type Compiler struct {
 	Args []string
 }
 
-// Find returns the compiler to use: $CC if set, else zig cc, else cc.
+// Find returns the compiler to use for this system:
+//
+//   - ASUKA_CC=zig: Zig's (zig cc);
+//   - ASUKA_CC or CC set to a command: that one ("clang -fcolor-diagnostics");
+//   - else the system's: cc, clang or gcc, the first found.
 func Find() (Compiler, error) {
-	if cc := os.Getenv("CC"); cc != "" {
-		f := strings.Fields(cc)
-		return Compiler{Path: f[0], Args: f[1:]}, nil
+	cc := os.Getenv("ASUKA_CC")
+	if cc == "" {
+		cc = os.Getenv("CC")
 	}
-	if p, err := exec.LookPath("zig"); err == nil {
-		return Compiler{Path: p, Args: []string{"cc"}}, nil
+	if cc == "zig" {
+		return Zig()
+	}
+	if cc != "" {
+		f := strings.Fields(cc)
+		p, err := exec.LookPath(f[0])
+		if err != nil {
+			return Compiler{}, fmt.Errorf("cbuild: the C compiler %q (ASUKA_CC or CC) isn't installed", f[0])
+		}
+		return Compiler{Path: p, Args: f[1:]}, nil
 	}
 	for _, name := range []string{"cc", "clang", "gcc"} {
 		if p, err := exec.LookPath(name); err == nil {
 			return Compiler{Path: p}, nil
 		}
 	}
-	return Compiler{}, fmt.Errorf("cbuild: no C compiler: install Zig (https://ziglang.org) or set CC")
+	return Compiler{}, fmt.Errorf("cbuild: no C compiler: install your system's (Xcode's command line tools, build-essential, LLVM) or Zig with ASUKA_CC=zig")
+}
+
+// Zig returns Zig's C compiler, for builds that cross-compile (Windows
+// or Linux from a Mac, the web without an LLVM that targets wasm) or
+// when asked for (ASUKA_CC=zig).
+func Zig() (Compiler, error) {
+	p, err := exec.LookPath("zig")
+	if err != nil {
+		return Compiler{}, fmt.Errorf("cbuild: zig isn't installed (https://ziglang.org/download)")
+	}
+	return Compiler{Path: p, Args: []string{"cc"}}, nil
+}
+
+// IsZig reports whether c is Zig's.
+func (c Compiler) IsZig() bool {
+	return len(c.Args) > 0 && c.Args[0] == "cc" && strings.Contains(filepath.Base(c.Path), "zig")
 }
 
 // Flags are the flags every file of the core is compiled with.
