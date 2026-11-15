@@ -72,6 +72,20 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 	if err != nil {
 		return err
 	}
+	// An app's own resources (a .syso in its directory, for the
+	// architecture: rsrc_windows_arm64.syso) instead.
+	if own, _ := filepath.Glob(filepath.Join(app.dir, "*.syso")); len(own) > 0 {
+		pick := own[0]
+		for _, f := range own {
+			if strings.Contains(filepath.Base(f), "_"+goarch) {
+				pick = f
+			}
+		}
+		if res, err = os.ReadFile(pick); err != nil {
+			return err
+		}
+		fmt.Println("asuka: using the app's own resources,", filepath.Base(pick))
+	}
 	target := "windows-" + goarch
 	t := cbuild.Target{OS: "windows", Arch: goarch}
 	if err := desktopRelease(app, t, filepath.Join(out, exe), filepath.Join(out, coreLibName("windows")), o, appbuild.HostOptions{Syso: res}); err != nil {

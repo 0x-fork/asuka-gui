@@ -228,8 +228,7 @@ func TestI18nCommands(t *testing.T) {
 	if err := setDevLocale("zh_TW", "rtl"); err != nil || devLang != "zh-TW" || devDirection != "rtl" {
 		t.Errorf("%v %s %s", err, devLang, devDirection)
 	}
-	c := &appConfig{}
-	if f := c.ldflags(false); !strings.Contains(f, "boot.Lang=zh-TW") || !strings.Contains(f, "boot.Direction=rtl") {
-		t.Errorf("ldflags %s", f)
+	if c := (&asukaApp{cfg: &appConfig{}}).hostConfig(platformLinux, "", false); c.Lang != "zh-TW" || c.Direction != "rtl" {
+		t.Errorf("the host's settings: %+v", c)
 	}
 }

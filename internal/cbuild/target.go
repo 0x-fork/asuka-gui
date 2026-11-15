@@ -288,6 +288,10 @@ func (tc *Toolchain) compileCached(core, what string, srcs, hdrs, flags []string
 // a release doesn't need.
 func deadStrip(t Target) []string {
 	switch t.OS {
+	case "android":
+		// Its symbols stay for Gradle, which strips what it packages and
+		// keeps them for crash reports (native-debug-symbols.zip).
+		return []string{"-Wl,--gc-sections"}
 	case "darwin", "ios", "ios-simulator":
 		return []string{"-Wl,-dead_strip", "-Wl,-x"}
 	case "windows":

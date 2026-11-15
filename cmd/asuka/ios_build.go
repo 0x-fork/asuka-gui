@@ -22,7 +22,7 @@ import (
 
 // buildIOS makes a release build: an .ipa signed for distribution, or
 // with --simulator a release .app for the simulator. No Xcode project:
-// swiftc compiles the host (optimized), the Go archive is built for the
+// swiftc compiles the host (optimized), the core is built for the
 // device, actool compiles the icon, and the bundle is signed with the
 // provisioning profile that fits.
 func buildIOS(app *asukaApp, o *buildOptions) error {

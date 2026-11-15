@@ -3,9 +3,8 @@
 `asuka dev` runs an app and reloads it as you save: on the iOS simulator
 or an iPhone, an Android emulator or phone, your Mac, PC or Linux
 machine, or your browser. This page covers how it does that on each,
-what a reload keeps, devices, assets and logs, what it can't reload,
-`asuka vet`, the problems you may meet, and Asuka's own tests and
-benchmarks.
+what a reload keeps, devices, assets and logs, the problems you may
+meet, and Asuka's own tests and benchmarks.
 
 ## asuka dev
 
@@ -22,371 +21,237 @@ asuka dev --platform web [flags] [dir]       # your browser
 builds) for the computer you're on. One platform per run: run two
 terminals for two.
 
-`dir` is the app's directory, the current one by default: a `main`
-package that calls `app.Run`. The flags:
+`dir` is the app's directory, the current one by default: its `.asuka`
+files, one of which has the `app` block, and its `asuka.toml`. The
+flags:
 
 - `--platform`: as above.
 - `--lang`: show a language for this run (`de`, `zh-Hans`), or a pseudo
   locale: `en-XA` (accented and longer) or `ar-XB` (right to left).
   `--dir rtl` lays any app out right to left. See
   [Languages](i18n.md).
-- `--once`: build the app and run it once, without watching. On the
-  desktop, `asuka dev` exits when the app does; on a phone, it builds
-  the app with its Go code, installs it and launches it, then exits,
-  without logs; in a browser, it serves the app.
+- `--once`: launch the app once, without watching for changes.
 - `-v`: print the commands Asuka runs.
-- `--no-vet`: don't run [`asuka vet`](#asuka-vet) beside the builds.
 
 On a phone:
 
 - `--device`: on iOS, a simulator's name or UDID (by default the booted
   iPhone, else a recent iPhone Pro, which it boots), a connected iPhone's
   or iPad's name or UDID, or `iphone` for the one connected (see
-  [An iPhone](#devices)); on Android, an adb serial or an AVD's name (by
+  [Devices](#devices)); on Android, an adb serial or an AVD's name (by
   default the first device adb lists, else the first AVD, which it
   starts).
-- `--team`: on an iPhone, the Apple Developer team that signs the player
-  and the app.
-- `--no-hot`: no hot reload: build the app with its Go code in it, and
-  rebuild and reinstall it on each save, starting it again from nothing.
+- `--team`: on an iPhone, the Apple Developer team that signs the
+  player.
 
 In a browser: `--port`, `--lan` (serve to your network, for a phone's
 browser) and `--no-open`; see [the
 web](web.md#asuka-dev---platform-web).
 
+## How it works: the player
+
+An app runs on Asuka's core, a C library: a release has the app compiled
+to C and built into it; in development the core runs the app's
+**bytecode** on its VM instead, and can swap it for the next build's
+while the app runs.
+
+`asuka dev` builds the platform's **player** once: the app's shell (its
+name, ID, icon, `Info.plist` or manifest, its native packages' code)
+with the core and no app in it. It installs and launches it, and the
+player connects back to `asuka dev`, which compiles the app and sends
+it the module. On each save, `asuka dev` compiles again (a few
+milliseconds) and sends the new module; the player loads it in place,
+keeping the app's state, and reports how it went:
+
+```
+asuka: compiled in 3.1 ms
+asuka: reloaded in 2.2 ms, 4 states kept
+```
+
+A save that doesn't compile prints its errors, as `file:line:col:
+message`, and the player keeps running what it had; the next save that
+compiles goes on from there. A change to the rest of the app (its
+`asuka.toml`, its assets, its native packages' Swift, Kotlin or
+JavaScript) builds the player again, reinstalls it if it changed, and
+launches it.
+
+What each platform's player is:
+
+- **macOS, Windows, Linux**: the desktop host (`cmd/asuka-host`: AppKit,
+  Win32 or GTK, driving the core through its C ABI) and the core beside
+  it (`libasuka.dylib`, `asuka.dll`, `libasuka.so`), in the app's
+  directory in Asuka's cache; on a Mac it's an `.app` like a release's.
+  It's launched with `ASUKA_DEV=host:port` in its environment.
+- **iOS**: the Swift host linked with the core (`libasuka.a`) into the
+  app's `.app`, with every part of the host that links a framework of
+  its own (WebKit, AVKit...), so the app may use any of them as you edit
+  it. `xcrun simctl` installs and launches it on the simulator, with
+  `ASUKA_DEV` in its environment; on an iPhone, it's signed for
+  development and installed with `xcrun devicectl`.
+- **Android**: the debug shell app (Gradle builds it once, and again
+  when its manifest, Kotlin or resources change), with the core pushed
+  into its private files (`files/asuka/libasuka.so`), which the debug
+  app loads from; `files/asuka/dev` says where `asuka dev` is, and `adb
+  reverse` makes it the device's own loopback.
+- **The web**: the page loads the core as WebAssembly (`asuka.wasm`)
+  and the app's module from the dev server, and each new one as it's
+  built.
+
 ## On the desktop
 
-On macOS, Windows and Linux, the app's Go code and the platform's host
-are one Go program, built for this computer with `CGO_ENABLED=0`. `asuka
-dev` builds it and runs it; on each save it builds it again and starts
-the new one while the running app stays on screen. Once the new one has
-started, Asuka stops the running app, which saves its signals' values
-as it quits, and the new one goes on and takes them back (see [What a
-reload keeps](#what-a-reload-keeps)). A reload takes about as long as
-`go build`. A build that fails prints its errors and keeps the running
-app, and so does one that quits as it starts (a panic in an `init`).
-
-On macOS, the system checks a program the first time it runs, which
-can add a few hundred milliseconds to every reload; Asuka says so when
-it does. Adding your terminal app under System Settings > Privacy &
-Security > Developer Tools turns that check off for what it runs (and,
-with tmux or another multiplexer, the multiplexer too).
+On macOS, Windows and Linux, `asuka dev` runs the player in a window.
+The host is built from Asuka's source when the CLI runs from a checkout
+of it, else it's the CLI's release's, fetched once into Asuka's cache and
+checked by its hash; the core is built with this computer's C compiler.
 
 The app reads its `assets/` where they are, so changing one needs no
-copy. Its data (`store.Dir()`, SQLite databases there) is in a `data`
-directory of its own in Asuka's cache (see [Starting
-over](#common-problems)), not the installed app's, so `asuka dev` and a
-release don't share it. Its output (`fmt.Println`, `log`, panics) prints
-in the terminal.
+copy. Its data (SQLite databases, files) is in a `data` directory of its
+own in Asuka's cache (see [Starting over](#common-problems)), not the
+installed app's, so `asuka dev` and a release don't share it. Its output
+and its errors print in the terminal.
 
-**macOS.** `asuka dev` on a Mac runs the app from an `.app` like a
-release's, in Asuka's cache: its `Info.plist` (its name, bundle ID, URL
-scheme, purpose strings and languages from `asuka.toml`) and icon, signed
-ad hoc. So the app is itself to the system, as when it's opened from the
-Finder: the Dock shows its name and icon, notifications are its own, and
-its privacy prompts (the camera, location, contacts) ask for it, with
-its purpose strings, not for the terminal. Packages that need a
-provisioning profile's entitlements (push, Sign in with Apple, App
-Attest) work only in a release build signed with one: see
-[Shipping](shipping.md#macos).
+**macOS.** The player is an `.app` like a release's, in Asuka's cache:
+its `Info.plist` (its name, bundle ID, URL scheme, purpose strings and
+languages from `asuka.toml`) and icon, signed ad hoc. So the app is
+itself to the system, as when it's opened from the Finder: the Dock
+shows its name and icon, notifications are its own, and its privacy
+prompts (the camera, location, contacts) ask for it, with its purpose
+strings, not for the terminal. Packages that need a provisioning
+profile's entitlements (push, Sign in with Apple, App Attest) work only
+in a release build signed with one: see [Shipping](shipping.md#macos).
 
 **Windows.** `asuka dev` runs only on Windows itself; `asuka build
---platform windows` builds from any system. The dev build is a console
+--platform windows` builds from any system. The player is a console
 program, so its output prints in the terminal; a release has no
-console. To stop the app for a reload, Asuka tells it over a connection
-it keeps to each run (Windows can't send a process Ctrl-C), and it saves
-its state as it quits.
+console. To stop it, Asuka closes its standard input (Windows can't send
+a process Ctrl-C).
 
-**Linux.** `asuka dev` on Linux runs the app on GTK 4 and libadwaita,
+**Linux.** `asuka dev` on Linux runs the player on GTK 4 and libadwaita,
 which it needs installed (see [Getting
 started](getting-started.md#what-you-need)), under your session's
-display, Wayland or X11. It gets the name, ID, version and accent of
-`asuka.toml`, as a release does; Asuka stops it over a connection it
-keeps to each run (or SIGINT), and it saves its state as it quits. On a Mac or a PC, `asuka dev --platform linux`
-builds the app for Linux but can't run it there, unless
-`ASUKA_LINUX_RUN` names a command that runs a program on a Linux machine
-with a display, which sees this computer's files at the same paths: a
-VM, as `ASUKA_LINUX_RUN="orb -m ubuntu"` (OrbStack) or
-`ASUKA_LINUX_RUN="limactl shell default"` (Lima). Asuka runs the app with
-it, for that machine's architecture.
-
-## On a phone: the player and built apps
-
-iOS needs a Mac; Android, a Mac, a Windows PC or Linux. By default,
-`asuka dev` runs your Go code on your computer, and its views in the
-**player**: an app named Asuka (`dev.asuka.player`) that is the
-platform's host with no app in it. The player is built and installed
-once, shared by every app, and installed again only when it changes (a
-new version of Asuka). The Go code and the player talk over a socket.
-
-On a save, Asuka rebuilds the Go code for your computer and restarts it,
-in about a second, the new run starting while the last one still serves
-the player; the player reconnects as the last one stops, and shows the
-new code. Nothing is installed.
-
-With `--no-hot` or `--once`, when the app uses native packages with code
-for the platform (a `Package.swift` or `android/`, see [Native
-code](native.md)), or when it uses something the player can't stand in
-for, Asuka builds the app itself instead, its Go code inside as a release
-build has it, under the app's own name and ID. It says which it was.
-What the player can't stand in for:
-
-- **On iOS, `asuka/sdk/icloud`**: iCloud keeps an app's values and
-  documents under its own ID, which the player's isn't.
-- **On iOS, `asuka/sdk/purchase`**: the App Store sells an app's
-  products only to the app.
-- **On iOS, `push.Rewrite`**: the player has no notification service
-  extension to rewrite pushes in.
-- **On an iPhone, `asuka.toml`'s `nfc.iso7816` or `nfc.felica`**: iOS
-  finds only the cards the app's own Info.plist names.
-- **On a phone, a `shareTarget` that takes files**: the files are on the
-  phone, not on the computer the Go code runs on (the simulator's are the
-  Mac's, so it keeps the player).
-
-A built app:
-
-- **iOS**: the host, with the native packages' Swift, is built once
-  and again only as it changes;
-  each save rebuilds the Go code, links the app, signs it for the
-  simulator and reinstalls it with `xcrun simctl`, or, on an iPhone,
-  signs it for development and reinstalls it with `xcrun devicectl`.
-- **Android**: Gradle builds the app, with its Kotlin, once for each
-  version of the host, of the Kotlin and of the manifest; each save
-  rebuilds the Go library, pushes it into the app's private files with
-  `adb`, where the debug app loads it from, and restarts the app.
-
-The player has every permission any Asuka package needs, and its own
-purpose strings. What `asuka.toml` gives the app itself (its name, its
-ID, a URL `scheme`, `links`, `ios.usage`, Android's NFC tag filters) only
-a built app has, and `asuka dev` says so when the app has them: try
-those with `--no-hot`. The `accent` color applies in the player too.
+display, Wayland or X11. On a Mac or a PC, `asuka dev --platform linux`
+runs it only where `ASUKA_LINUX_RUN` names a command that runs a program
+on a Linux machine with a display, which sees this computer's files at
+the same paths: a VM, as `ASUKA_LINUX_RUN="orb -m ubuntu"` (OrbStack) or
+`ASUKA_LINUX_RUN="limactl shell default"` (Lima). Asuka builds the
+player for that machine's architecture (the core with Zig), and the
+player reaches `asuka dev` over the network: at this computer's first
+address, or `ASUKA_DEV_HOST`'s.
 
 ## What a reload keeps
 
-A reload keeps the values of the app's signals, with no code of yours:
-in the player, on the desktop and in the browser. The app saves them as
-it stops, to the file the `ASUKA_STATE` environment variable names
-(`asuka dev` sets it to `state.json` in the app's directory in Asuka's
-cache), and the next run gives each value back to the signal made at
-the same place: the same call path (the functions it's made in, not
-lines), the same name, and the same type.
-
-Places are named from your source, which Asuka reads as it builds: a
-closure by what it is in its function (the variable or field it's
-assigned to, the call it's passed to, a `go` or `defer`), and a signal
-by the variable or field it's made for. So editing around a signal
-doesn't lose its value: adding a handler before the closure that makes
-it, or another signal of its type before it.
-
-```go
-func Counter() ui.Node {
-	onReset := func() { ... }  // added: count keeps its value
-	step := signal.New(1)      // added: likewise
-	count := signal.New(0)
-	...
-}
-```
+A reload keeps every `state` of the app, with no code of yours, on every
+platform: each state cell is kept under its component's place in the
+view tree and its name (`Inbox.query`, under the screen and the row
+that show it), and the new module's cell at the same place, with the
+same name, starts from its value. Values are converted to the new
+module's types by their fields' and cases' names: a field added starts
+from its default, one removed is dropped. A state whose type changed in
+a way that can't be converted (an `int` that's now a `string`) starts
+again from its initial value. The views are made again from the new
+module, showing the state they had: the screen looks as it did, with
+the change.
 
 What isn't kept:
 
-- Navigation: a reload starts at the root screen.
-- Signals Asuka makes itself, and values JSON doesn't carry (funcs,
-  unexported fields).
-- Signals whose type changed.
-- Signals made in a file that has a `//asuka:reset` comment, when the
-  file was edited: put it in a file whose screen should start over as
-  you change it.
-- A signal renamed, or moved to another function or closure, starts
-  over; several made for the same name at one place (in a loop) are
-  told apart by their order.
+- A state renamed, or moved to another component, starts over; so does
+  one whose component moved to another place in the view tree.
+- `let` values aren't kept: they're computed again from what they read.
+- Tasks and effects start again in the new module (a `task` running
+  when you save is cancelled, and the new one runs).
 
-A built phone app (`--no-hot`, `--once`, native code) starts again from
-nothing on each reload.
-
-Files your Go code writes (`asuka/sdk/store`, `asuka/sdk/sqlite`) are on your
-computer, in the player as on the desktop: `store.Dir()` is a `data`
-directory of the app's own in Asuka's cache, one for each platform, as
-two devices would have theirs. Delete it to start the app again with no
-data. In the browser they're the page's (IndexedDB): see [the
-web](web.md#the-apps-files).
+Stopping `asuka dev` and running it again starts the app from nothing.
+Files the app writes (SQLite databases, files) are kept: they're in the
+app's data directory, on the device or, on the desktop, in Asuka's
+cache.
 
 ## Reloading
 
-Asuka watches the app's directory and its module's, as the system says
-they change (FSEvents, inotify, ReadDirectoryChangesW; where it can't,
-by polling):
+Asuka watches the app's directory and its local dependencies'
+(`file:` in `asuka.toml`), as the system says they change (FSEvents,
+inotify, ReadDirectoryChangesW; where it can't, by polling):
 
-- Go files and `go.mod` (not `_test.go`);
-- Swift and Kotlin files;
-- the language catalogs;
-- files under `assets/`;
-- with `--platform web`, the app's scripts (`web/*.js`), and in a
-  checkout of Asuka the web host's (`platform/web/src`): the page
-  reloads with them, without a build.
+- `.asuka` files: compiled and sent to the player;
+- `asuka.toml` and `asuka.lock`, files under `assets/`, the language
+  catalogs, native packages' Swift, Kotlin and JavaScript, `Info.plist`
+  and entitlements: the player is built and launched again (the app
+  starts from nothing);
+- with `--platform web`, in a checkout of Asuka the web host's own
+  JavaScript (`platform/web/src`): the page loads again.
 
-It skips directories starting with `.`, and `testdata`, `build` and
-`node_modules`. A build that fails prints its errors and keeps the
-running app; the next save tries again.
-
-`asuka.toml`'s fields are read as `asuka dev` starts. Stop it and run it
-again after changing them; it rebuilds and reinstalls what changed.
-
-Native code reloads only in a built phone app, where Asuka rebuilds and
-reinstalls it on each save. Gradle runs again when Kotlin changes, which
-takes longer than a Go change. A desktop app's native code in Go
-reloads as the rest of it does; a Mac app's native packages' Swift is
-built again as it changes (a second or two), and the app runs again with its
-signals' values kept.
+It skips directories starting with `.`, and `testdata`, `build`, `dist`
+and `node_modules`.
 
 ## Devices
 
 **Your computer**: `asuka dev` alone, on a Mac, a PC or Linux.
 
 **The iOS simulator** shares the Mac's network, so the player reaches
-`asuka dev` directly.
+`asuka dev` on its loopback.
 
-**An Android emulator** reaches your computer at `10.0.2.2`, and the
-player connects there.
+**An Android emulator or phone**: `adb reverse` gives the device the
+port `asuka dev` listens on, on its own loopback, for an emulator and a
+phone over USB alike. For a phone, turn on USB debugging in its
+developer options, plug it in and accept the prompt, and check that
+`adb devices` lists it. `asuka dev --platform android` takes the first
+device adb lists, phone or emulator; with several, name it with
+`--device` and its serial.
 
-**An Android phone over USB**: turn on USB debugging in its developer
-options, plug it in and accept the prompt, and check that `adb devices`
-lists it. `asuka dev --platform android` takes the first device adb lists,
-phone or emulator; with several, name it with `--device` and its serial.
-The phone reaches your computer through `adb reverse`, which Asuka sets
-up for ports 7461 (the app) and 7462 (its assets). In development Asuka
-builds for 64-bit phones and emulators (arm64-v8a, x86_64).
+**An iPhone** (or iPad), with Xcode 15 or later: plug it in, unlock it
+and tap Trust; turn on Developer Mode in its Settings › Privacy &
+Security (it shows once the phone has met Xcode; the phone restarts).
+Then `asuka dev --platform ios --device iphone` runs on it, or
+`--device` with its name or UDID when several are connected (`xcrun
+devicectl list devices` lists them).
 
-**An iPhone** (or iPad), by USB or Wi-Fi, with Xcode 15 or later: plug
-it in, unlock it and tap Trust; turn on Developer Mode in its Settings ›
-Privacy & Security (it shows once the phone has met Xcode; the phone
-restarts). Then `asuka dev --platform ios --device iphone` runs on it,
-or `--device` with its name or UDID when several are connected (`xcrun
-devicectl list devices` lists them). A phone paired with this Mac in
-Xcode's Devices window works over Wi-Fi too, unplugged.
-
-- **Signing**: the player and the app are signed for development by
-  your team: `--team`, else `ASUKA_TEAM_ID`, else `asuka.toml`'s
-  `ios.team`, else the team of the Apple Development certificate in
-  your keychain. The first run has Xcode make the development profiles
-  it needs (`xcodebuild -allowProvisioningUpdates`), registering the
-  phone with the team and turning on the capabilities the app uses
-  (push, App Groups...), with the Apple ID in Xcode › Settings ›
-  Accounts, or with an [App Store Connect API key](shipping.md) if
-  `ASUKA_ASC_KEY_ID` (or `ios.appStoreConnect`) sets one. A team's
-  profiles that already fit, wildcard ones too, are used as they are.
-- **The player** on a phone is your team's own, `dev.asuka.player.`
-  and the team ID, as an App ID belongs to one team. Its share sheet,
-  widgets and capabilities follow the team's: with a free team, which
-  has no push or App Groups, it goes without them, and says so.
-- **Reaching your Mac**: over USB the Mac opens connections to the
-  player through the cable (usbmuxd, as Xcode does), so nothing goes
-  over the network. Without the cable, the player connects to the
-  Mac's addresses on the network, and its Bonjour name, which follows
-  the Mac to a new address: the phone must be on the Mac's network, and
-  iOS asks once whether the player may find devices on it (allow it;
-  its Settings › Apps › asuka › Local Network turns it on later). If
-  the player doesn't connect, Asuka says what to check. Either way the
-  player reconnects as each save restarts the Go code.
-- **Built apps** (`--no-hot`, `--once`, native code) are signed the same
-  way, with the app's own ID, and each save rebuilds, signs,
-  reinstalls and relaunches the app with `xcrun devicectl`.
+- **Signing**: the player is signed for development by your team:
+  `--team`, else `ASUKA_TEAM_ID`, else `asuka.toml`'s `ios.team`, else
+  the team of the Apple Development certificate in your keychain. The
+  first run has Xcode make the development profiles it needs
+  (`xcodebuild -allowProvisioningUpdates`), registering the phone with
+  the team and turning on the capabilities the app uses (push, App
+  Groups...), with the Apple ID in Xcode › Settings › Accounts, or with
+  an [App Store Connect API key](shipping.md) if `ASUKA_ASC_KEY_ID` (or
+  `ios.appStoreConnect`) sets one. A team's profiles that already fit,
+  wildcard ones too, are used as they are.
+- **Reaching your Mac**: the player connects to `asuka dev` over the
+  network, at the Mac's first address (or `ASUKA_DEV_HOST`'s), on port
+  8791 when it's free, so a player launched again from the home screen
+  finds it. The phone must be on the Mac's network, and iOS asks once
+  whether the app may find devices on it (allow it; its Settings › Apps
+  › Local Network turns it on later). If the player doesn't connect,
+  Asuka says what to check.
 
 **A phone's browser**: `asuka dev --platform web --lan` serves the app to
 your network, and prints the addresses to open.
 
 ## Assets
 
-On the desktop, the app reads `assets/` in place. In the player, the
-app's `assets/` directory stays on your computer: the Go process serves
-it over HTTP, and the player loads `ui.Image`'s asset paths, and the
-fonts in `assets/fonts`, from there. In the browser, the dev server
-serves them. A change to an asset reloads the app.
-
-A built phone app has its assets inside it: on iOS, copied into the app
-on each build; on Android, pushed into the app's private files when they
-changed.
+On the desktop, the player reads `assets/` in place. On a phone, they're
+in the player: copied into the `.app` on iOS, pushed into the app's
+private files on Android, when they changed. In the browser, the dev
+server serves them. A change to an asset builds and launches the player
+again.
 
 ## Logs
 
-- **On the desktop and in the player**, the terminal shows the Go
-  process's output: `fmt.Println`, `log`, panics.
-- **In the browser**, the terminal shows the app's output and the
-  page's errors too.
-- **A built app on iOS**: the app's output, Go's and Swift's `print`,
-  through the simulator's console, or on an iPhone through `devicectl`'s.
-- **A built app on Android**: the app's logcat. Android drops a
-  process's standard output, so the Go code's goes to logcat, tagged
-  `asuka`.
-- With `--once` on a phone, nothing: read them with Console.app or `adb
-  logcat`.
-
-## Backgrounding the app
-
-Leaving the app in the player (to take a photo with the camera app, to
-sign in in the browser) doesn't end the session. While the player is in
-the background, the Go code waits up to ten minutes for an answer from
-it, rather than the usual ten seconds, since the system may freeze it.
-When Android cuts a backgrounded app's network, the session is kept for
-three minutes; a player that comes back in time takes it up again, with
-its screens as they were. A player that comes back later starts the
-app again, at its root screen.
-
-Stopping `asuka dev` (Ctrl-C) stops the player too, so it doesn't join
-the next session, which may be another app's. On the desktop it stops
-the app.
-
-## asuka vet
-
-```sh
-asuka vet [flags] [packages]
-```
-
-`asuka vet` finds the mistakes that build and run but do the wrong thing.
-It reports:
-
-- **reads**: a signal read while a component builds its views, so what
-  it shows never changes, as `ui.StaticText(fmt.Sprint(count.Get()))`
-  or `if open.Get() { ... }` in a component's body. See [What
-  updates](concepts.md#what-updates).
-- **mainthread**: a signal written on a goroutine instead of in
-  `ui.Post`. See [The main thread](concepts.md#the-main-thread).
-- **memowrites**: a signal written inside a memo, which panics.
-- **routes**: a constant href no route of the app's takes (a link with a
-  typo, to a route that moved), which shows the not-found screen, and a
-  `ui.HrefOf` given the wrong number of values. See [Typed
-  links](navigation.md#typed-links).
-
-```
-$ asuka vet
-main.go:14:23: count.Get() is read once, while App builds its views, so the constant made from it never changes: give the prop signal.Func(func() T { ... }) instead, or use count.Peek() to read it once on purpose
-```
-
-It reports only what it's sure of, so a report is worth fixing. Each
-message names the fix, and how to say you meant it: a read once on
-purpose is `Peek`, or `signal.Untrack` for an accessor, which it never
-reports.
-
-The packages are `./...` by default, as `go vet` takes them. So are the
-flags (`-tags=...`, `-json`), and one per check: `-reads=false` turns
-reads off. `asuka vet` exits with 1 when it reports anything, for CI.
-It runs the same checks as `go vet -vettool=$(which asuka)`, where `go
-vet`'s own checks don't run.
-
-`asuka dev` runs it in the background when it starts and after each
-save, and prints what's new as warnings; `asuka build` runs it before it
-builds. Neither stops for what it finds. It takes a second or two, beside
-a build; `--no-vet` turns it off for either.
+The player sends its output and its errors to `asuka dev`, which prints
+them in the terminal: `print`, uncaught errors, and what the core and
+the host write, on every platform. A module the player couldn't load
+says why (`asuka: the player: ...`). In the browser, the page's errors
+print there too.
 
 ## Snapshots and scripts
 
-A desktop app takes a few environment variables that make it show a
-state and capture it, for checking a change by eye or in CI. Run the app
-with `go run .` in its directory:
+The desktop hosts take a few environment variables that make the app
+show a state and capture it, for checking a change by eye or in CI. Run
+a release build's executable with them, or `asuka dev` (which passes its
+environment to the player):
 
 ```sh
-ASUKA_SNAPSHOT=shot.png go run .                  # the window as a PNG, once it has shown, then quit
-ASUKA_SNAPSHOT=shot.png ASUKA_DUMP=1 go run .      # and its view tree, in shot.png.txt
-ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png go run .   # steps first
+ASUKA_SNAPSHOT=shot.png ./MyApp.app/Contents/MacOS/MyApp            # the window as a PNG, once it has shown, then quit
+ASUKA_SNAPSHOT=shot.png ASUKA_DUMP=1 asuka dev                      # and its view tree, in shot.png.txt
+ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # steps first
 ```
 
 - `ASUKA_SNAPSHOT` writes the window as a PNG once it has shown (and
@@ -397,16 +262,29 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png go run .   # steps first
   title bar.
 - `ASUKA_DUMP` writes the view tree beside it: each view's kind, frame
   and what it shows.
-- `ASUKA_SCRIPT` runs steps, separated by `;`,
-  before the snapshot: `tap:<text>` (the view showing it: a button's
-  title, a text, a tab, a sidebar's row, a segment), `type:<text>` (into the focused field), `back`,
-  `key:<shortcut>` (`ctrl+shift+k`), `menu:<item>` (the menu bar's),
-  `escape`, `close` (the window in use), `wait:<duration>` (`500ms`)
-  and `snap:<file>`. Each host has a few more: see its `automation.go`
-  (macOS: `script.go`).
+- `ASUKA_SCRIPT` runs steps, separated by `;`, before the snapshot:
+  `tap:<text>` (the view showing it: a button's title, a text, a tab, a
+  sidebar's row, a segment), `type:<text>` (into the focused field),
+  `back`, `key:<shortcut>` (`ctrl+shift+k`), `menu:<item>` (the menu
+  bar's), `escape`, `close` (the window in use), `wait:<duration>`
+  (`500ms`), `waitfor:<file>` (until the file exists: a test says when
+  to go on) and `snap:<file>`. Each host has a few more: see its
+  `automation.go` (macOS: `script.go`).
 
 ## Common problems
 
+- **`the compiler isn't in this build yet`**: the CLI was built without
+  the Asuka compiler: install a release, or build the CLI from a
+  checkout that has it.
+- **`cbuild: no C compiler`**: install your system's (Xcode's command
+  line tools, `build-essential`, LLVM), or Zig with `ASUKA_CC=zig`.
+  `building for the web needs Zig` and `cross-compiling for ... needs
+  Zig`: install [Zig](https://ziglang.org/download), which builds the
+  core as WebAssembly and for other systems.
+- **`this asuka has no prebuilt desktop host`**: a CLI built from source
+  outside a checkout of Asuka has no release to fetch the host from: run
+  it from the checkout (`go run ./cmd/asuka`), or set `ASUKA_HOST` to a
+  host built with `go build ./cmd/asuka-host`.
 - **`no iOS simulator SDK (install Xcode)`**: install Xcode, open it
   once, and add an iOS simulator runtime in its Components settings.
   `no iPhone simulator; add one in Xcode` and `no simulator "..."`
@@ -423,10 +301,10 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png go run .   # steps first
   Store Connect API key; a bundle ID another team has needs another
   `id` in `asuka.toml`. `the keychain has Apple Development certificates
   of N teams`: pick one with `--team`.
-- **`the player hasn't connected yet`**: by USB, check the cable and
-  unlock the phone; over Wi-Fi, put it on the Mac's network, allow the
-  player's Local Network access, and let `asuka` take connections in
-  the Mac's firewall (System Settings › Network › Firewall).
+- **`the player hasn't connected yet`**: put the phone on the Mac's
+  network, allow its Local Network access, and let `asuka` take
+  connections in the Mac's firewall (System Settings › Network ›
+  Firewall).
 - **`no Android SDK: install Android Studio or set ANDROID_HOME`**: Asuka
   looks in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, then
   `~/Library/Android/sdk` on a Mac, `%LOCALAPPDATA%\Android\Sdk` on
@@ -442,43 +320,34 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png go run .   # steps first
   Program Files or `%LOCALAPPDATA%\Programs`).
 - **The first Android build is slow**: Gradle downloads itself and
   Android's libraries, once.
-- **`the player connected ... and hasn't shown the app`**: the player
-  reached your Go code but never showed the app, its main thread stuck.
-  Asuka saves the player's goroutines to `player-stacks.txt` in the
-  app's directory in Asuka's cache (the path is printed): attach it to
-  a bug report. Relaunch the player, or run with `--no-hot` to build the
-  app with its Go code in it.
 - **A release build on the phone**: an app installed by `asuka build`
   (another signing key) is uninstalled, with its data, to install the
-  debug one.
-- **`asuka dev --platform windows runs the app on this PC`**: `asuka dev`
-  runs a Windows app on Windows only. Build it elsewhere with `asuka
-  build --platform windows`, and copy the folder to a PC.
+  player.
+- **`asuka dev --platform windows runs the app on this computer`**:
+  `asuka dev` runs a Windows app on Windows only. Build it elsewhere
+  with `asuka build --platform windows`, and copy the folder to a PC.
 - **`... isn't installed` on Linux**: the host needs GTK 4.14 and
-  libadwaita 1.5 or later (`the Linux host needs GTK 4.14 and libadwaita
-  1.5 or later`), and some packages a library of their own: WebKitGTK
-  6.0 for `ui.WebView`, GStreamer for video and audio, libsecret for
-  `asuka/sdk/secure`. The error names it; install it with your distribution's
-  package manager.
+  libadwaita 1.5 or later, and some packages a library of their own:
+  WebKitGTK 6.0 for `WebView`, GStreamer for video and audio, libsecret
+  for secure storage. The error names it; install it with your
+  distribution's package manager.
 - **A Linux app that doesn't open**: it needs a display. Over SSH or in
   CI, run it under Xvfb (`xvfb-run -a`), with a session bus
   (`dbus-run-session`) for what goes through D-Bus.
-- **The CLI and the app's Asuka**: the CLI carries the hosts' Swift and
-  Kotlin, and the app's `go.mod` picks Asuka's Go code. Install the CLI at
-  the version the app requires.
-- **Starting over**: Asuka's builds, caches, kept state and the apps'
-  development data are in Asuka's cache directory: `~/Library/Caches/asuka`
-  on a Mac, `~/.cache/asuka` on Linux, `%LocalAppData%\asuka` on Windows.
-  Delete it to build everything again, with no state or data.
+- **Starting over**: Asuka's builds, caches and the apps' development
+  data are in Asuka's cache directory: `~/Library/Caches/asuka` on a
+  Mac, `~/.cache/asuka` on Linux, `%LocalAppData%\asuka` on Windows.
+  Delete it to build everything again, with no data.
 
 ## Tests
 
-To test your app's interface in `go test`, with no device or display,
-see [Testing](testing.md). Asuka's own repository tests each host
-through the platform's real views.
+To test your app's interface with `asuka test`, with no device or
+display, see [Testing](testing.md). Asuka's own repository tests the
+core, the CLI and each host through the platform's real views.
 
 ```sh
-go test ./...                                      # the core, against host/fake
+go test ./core                                     # the core's C tests (ASan, UBSan) and the VM's
+go test ./internal/appbuild ./cmd/asuka            # the builds and the dev loop, on every platform this computer has
 go test ./host/darwin                              # macOS: real AppKit views
 go test ./host/windows                             # Windows: real windows
 xvfb-run -a dbus-run-session go test ./host/linux  # Linux: real GTK widgets
@@ -486,39 +355,17 @@ swift test --package-path platform/ios             # the Swift host's decoder
 node --test platform/web                           # the web host's decoder
 ```
 
+`go test ./cmd/asuka` runs the dev loop end to end where it can: on this
+Mac (the player, a module, a tap, the next module with the count kept),
+in headless Chrome, on the booted iOS simulator and on a running Android
+emulator, and builds the app for each platform; it skips what this
+computer can't build or run.
+
 `go test ./host/darwin -run Conformance` and `go test ./host/windows
 -run Conformance` check what the host draws for a style (edges, corners,
 borders, shadows, gradients), measured in a capture of the window; the
-e2e tests below do the same on the simulator, the emulator and headless
-Chrome.
-
-### GUI tests
-
-The examples run on each platform in `e2e/`, driven through the debug
-hosts' automation:
-
-```sh
-go test -tags e2e ./e2e -run IOS       # the booted simulator, else a recent iPhone
-go test -tags e2e ./e2e -run Android   # the device asuka dev picks
-go test -tags e2e ./e2e -run Web       # headless Chrome (ASUKA_CHROME: its path)
-xvfb-run -a dbus-run-session go test -tags e2e ./e2e -run Linux  # GTK 4, on Linux
-```
-
-Each test builds an example with `asuka dev --once` (a debug build, with
-its Go code), then taps, types and reads the screen: through a
-notification on iOS, a broadcast on Android, the dev server on the web
-(`platform/web/src/automation.js`), and a file in the directory
-`ASUKA_COMMANDS` names on Linux (`host/linux/automation.go`). The
-counter, notes, chat, navigation and languages examples have tests, the
-same on each platform. They wait for the screen to show what they
-expect, up to a minute, never for a set time.
-
-The iOS tests need Xcode (`xcrun`); the Android ones need the SDK and
-NDK that `asuka dev --platform android` needs (`adb` from your `PATH`,
-else the SDK's), on a Mac, a PC or Linux; the
-Linux ones a display (Xvfb's, in CI) and a session bus. Without them,
-the tests are skipped. macOS and Windows have no e2e tests yet: their
-host tests drive real windows instead.
+e2e tests do the same on the simulator, the emulator and headless
+Chrome (`go test -tags e2e ./e2e -run Conformance`).
 
 ## Benchmarks
 

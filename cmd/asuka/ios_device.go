@@ -16,12 +16,11 @@ import (
 )
 
 // asuka dev on an iPhone or iPad: devicectl (Xcode's CoreDevice) finds,
-// installs on and launches the device, by USB or Wi-Fi. The player, or
-// the app itself, is built for iphoneos and signed for development with
-// the team's profiles, which Xcode makes as needed (xcodebuild's
-// automatic provisioning). The player reaches the Go code on this Mac
-// through tunnels over USB (package devtunnel, through usbmuxd), else
-// over the local network.
+// installs on and launches the device, by USB or Wi-Fi. The player (the
+// app's .app with the core without an app) is built for iphoneos and
+// signed for development with the team's profiles, which Xcode makes as
+// needed (xcodebuild's automatic provisioning). It reaches asuka dev on
+// this Mac over the local network.
 
 // deviceKeyword is what --device takes for the one iPhone or iPad
 // connected, whatever its name.
@@ -393,7 +392,7 @@ func profileEntitlements(path string) (map[string]any, error) {
 // device: found, else made by Xcode.
 func (s *devSigner) profile(id string) (*profile, error) {
 	if !slices.Contains(s.ids, id) {
-		s.ids = append(s.ids, id) // known once the Go code is built
+		s.ids = append(s.ids, id) // known once the app's features are
 	}
 	p, err := pickProfileFor(s.team, id, "", "development", s.udid)
 	var missing []string

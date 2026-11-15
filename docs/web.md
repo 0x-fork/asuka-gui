@@ -1,53 +1,66 @@
 # The web
 
-The same app runs in a browser: its Go code compiled to WebAssembly, its
-views the page's DOM. The web is one of Asuka's platforms beside iOS,
-Android, the Mac, Windows and Linux, from the same Go code. Each view the core makes is an element placed at
-the frame the core laid out, as each native host places its widgets, so
-the layout is Asuka's own (flexbox and grid, in Go), the same on every
-platform; leaves are measured by the real elements, as the native hosts
-measure theirs. Controls are the browser's own (`<button>`, `<input>`,
-`<select>`, `<progress>`, `<dialog>`), so keyboard handling, focus,
-autofill, spelling and screen readers come with them.
+The same app runs in a browser: Asuka's core compiled to WebAssembly
+(the app compiled into it, or its bytecode loaded by it), its views the
+page's DOM. The web is one of Asuka's platforms beside iOS, Android, the
+Mac, Windows and Linux, from the same code. Each view the core makes is
+an element placed at the frame the core laid out, as each native host
+places its widgets, so the layout is Asuka's own (flexbox and grid, in
+the core), the same on every platform; leaves are measured by the real
+elements, as the native hosts measure theirs. Controls are the
+browser's own (`<button>`, `<input>`, `<select>`, `<progress>`,
+`<dialog>`), so keyboard handling, focus, autofill, spelling and screen
+readers come with them.
 
 ```sh
 asuka dev --platform web examples/counter       # serves it and opens it in your browser; reloads as you save
 asuka build --platform web examples/counter     # a static site, in examples/counter/dist/web
 ```
 
+Both build the core as WebAssembly with [Zig](https://ziglang.org/download)
+(`zig cc`), which has to be installed.
+
 What follows says what the web does, and, where a browser can't do what
 a phone does, what happens instead.
 
 ## asuka dev --platform web
 
-`asuka dev --platform web` builds the app for the browser (`GOOS=js GOARCH=wasm`),
-serves it at `http://localhost:8790/` (or a free port) and opens it. Each
-save rebuilds it, in well under a second for the examples, and the page
-loads the new build with the app's signals' values kept, as the other
-platforms' reloads keep them. The app's output (`fmt.Println`, `log`, a
-panic) and the page's errors print in the terminal; a build that fails
-shows its errors over the page until the next one builds.
+`asuka dev --platform web` builds the player once (the core as
+WebAssembly, `asuka.wasm`, with no app in it), serves the page at
+`http://localhost:8790/` (or a free port) and opens it. The page loads
+the core, then the app's bytecode from the dev server. Each save
+compiles the app again, in milliseconds, and the page loads the new
+module in place, keeping the app's state, as the other platforms'
+players do; the terminal reports each reload (`asuka: reloaded in 1.1
+ms, 3 states kept`). The app's output and the page's errors print in the
+terminal; a save that doesn't compile shows its errors over the page
+until the next one compiles. A change to `asuka.toml`, the assets or a
+native package's JavaScript reloads the page (the app starts again).
 
-The flags, beside `asuka dev`'s own (`--lang`, `--dir`, `--no-vet`, `-v`):
+The flags, beside `asuka dev`'s own (`--lang`, `--dir`, `-v`):
 
 - `--port`: the server's port.
 - `--lan`: serve to your network too, and print its addresses: open the
   app in a phone's browser.
 - `--no-open`: don't open the browser.
-- `--once`: build and serve, without watching.
+- `--once`: serve, without watching.
+
+The dev server also takes the GUI tests' commands (`POST
+/__asuka/automation`, a command a line: `tap Add`, `dump`), which the
+page runs (`platform/web/src/automation.js`).
 
 ## asuka build --platform web
 
-`asuka build --platform web` makes a static site in `dist/web`:
+`asuka build --platform web` compiles the app to C, builds it with the
+core as WebAssembly, and makes a static site in `dist/web`:
 
 - `index.html` and `manifest.webmanifest` (a web app manifest, so a
   browser offers to install the app; its icons from `asuka.toml`'s
   `icon`, with a favicon and iOS's home screen icon);
-- the app, `app.<digest>.wasm`, built stripped and with `-trimpath`;
-- the web host's files in `asuka/<digest>/` (with SQLite's WebAssembly
-  build, about 0.9 MB, 0.4 MB gzipped, for an app that imports
-  `asuka/sdk/sqlite`), and the app's own scripts (`web/*.js`) in
-  `web/<digest>/`;
+- the core with the app, `asuka.<digest>.wasm`, optimized and stripped;
+- the web host's files in `asuka/<digest>/` (with its plugins' files,
+  as SQLite's WebAssembly build, for an app that uses them), and its
+  native packages' scripts;
 - the app's service worker, `sw.<digest>.js`, beside `index.html` (its
   scope is the site's folder): it shows the app's notifications and
   pushes while no page of it is open
@@ -69,9 +82,9 @@ under it, and a router's hrefs are the page's addresses under it
 Serve the folder from any web server or CDN: the files named by their
 content's digest change name when they change, so they can be cached for
 good, and only `index.html` must be fetched again. Serve `.wasm` as
-`application/wasm`. A counter is about 6.5 MB of WebAssembly, 1.7 MB
-gzipped (1.3 MB with brotli, which your CDN can do); the app's own code
-and the packages it imports add to that.
+`application/wasm`. The core with a counter is about 300 KB of
+WebAssembly, 115 KB gzipped; the app's own code adds to that, the
+web host's JavaScript beside it.
 
 ## Addresses and history
 

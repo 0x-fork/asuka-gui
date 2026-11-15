@@ -65,20 +65,6 @@ func newAndroidToolchainOn(sys androidsdk.System, verbose bool) (*androidToolcha
 	}, nil
 }
 
-// cgoEnv is the environment of a cgo build of Go code for Android:
-// goarch (and goarm), with the NDK's clang for target (a triple, the API
-// level added) as CC, called directly with --target (no NDK wrapper,
-// which on Windows is a .cmd through cmd.exe), and 16 KB pages.
-func (t *androidToolchain) cgoEnv(goarch, goarm, triple string) []string {
-	env := []string{"GOOS=android", "GOARCH=" + goarch, "CGO_ENABLED=1",
-		"CC=" + androidsdk.CC(t.clang, triple+androidMinAPI),
-		"CGO_LDFLAGS=-Wl,-z,max-page-size=16384"}
-	if goarm != "" {
-		env = append(env, "GOARM="+goarm)
-	}
-	return env
-}
-
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 func (t *androidToolchain) run(dir string, env []string, name string, args ...string) error {

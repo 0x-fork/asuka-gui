@@ -13,7 +13,7 @@ import (
 // reasons for the APIs its binary uses, which App Store Connect checks
 // each binary for), signed with the app before it (signFrameworks); the
 // app doesn't link it. An extension (PlugIns/<name>.appex) that runs the
-// app's Go code finds the app's. An app embedded in another
+// app's code finds the app's. An app embedded in another
 // (--xcframework) comes with an XCFramework of each, which the app
 // around it embeds too.
 

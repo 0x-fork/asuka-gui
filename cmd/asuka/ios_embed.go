@@ -63,7 +63,7 @@ func buildIOSFramework(app *asukaApp, o *buildOptions) error {
 			return err
 		}
 		slices = append(slices, fw)
-		// The plugins' libraries, which the Go code loads from the app's
+		// The plugins' libraries, which the app loads from the app's
 		// Frameworks: a framework each, for the app to embed too.
 		libs, err := tc.pluginLibs(app)
 		if err != nil {
@@ -97,7 +97,7 @@ func buildIOSFramework(app *asukaApp, o *buildOptions) error {
 	}
 	fmt.Printf("asuka: %s in %s\n", out, time.Since(start).Round(time.Second))
 	if len(extra) > 0 {
-		fmt.Printf("asuka: beside it, the libraries of its plugins, which the app's Go code loads: %s\n", strings.Join(extra, ", "))
+		fmt.Printf("asuka: beside it, the libraries of its plugins, which the app loads: %s\n", strings.Join(extra, ", "))
 		fmt.Println("asuka: add them all to your Xcode target (Embed & Sign), then: import AsukaApp; present(AsukaViewController(), animated: true)")
 		return nil
 	}

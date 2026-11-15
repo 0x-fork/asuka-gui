@@ -19,15 +19,17 @@ import (
 	iupdate "github.com/egoist/asuka/internal/update"
 )
 
-// macOS: the app's Go code and its host (host/darwin, AppKit through
-// purego) are one Go program, built for this Mac with CGO_ENABLED=0.
+// macOS: the app's executable is the desktop host (cmd/asuka-host:
+// host/darwin, AppKit through purego), with the C core in its
+// Frameworks (libasuka.dylib) and its settings in its Resources.
 //
-// asuka dev --platform mac runs it here, from an .app like a release's (its
-// Info.plist, icon and languages, signed ad hoc, answering for its own
-// privacy prompts), and on each change rebuilds it and runs it again (its
-// signals' state kept, as with the player). asuka build --platform mac
-// makes an .app: a universal binary (arm64 and x86_64), its Info.plist,
-// icon and assets, and its plugins' libraries (Contents/Frameworks),
+// asuka dev --platform mac runs the player here (desktop.go), from an
+// .app like a release's (its Info.plist, icon and languages, signed ad
+// hoc, answering for its own privacy prompts), with the core without an
+// app, which loads the app's bytecode and each save's. asuka build
+// --platform mac makes an .app: universal binaries (arm64 and x86_64) of
+// the host and the core with the app compiled in, its Info.plist, icon
+// and assets, and its plugins' libraries (Contents/Frameworks),
 // signed (ad hoc unless --sign names an
 // identity), with its provisioning profile
 // (Contents/embedded.provisionprofile) and the entitlements the app's

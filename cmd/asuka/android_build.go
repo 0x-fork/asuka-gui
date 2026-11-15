@@ -109,8 +109,8 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 		optional bool
 	}{
 		{filepath.Join(built, "bundle", "release", "app-release.aab"), filepath.Base(aabPath(cfg, o)), false},
-		// For a crash service (the .aab has both for Google Play): the Go
-		// code's and the host's native symbols, and R8's map of the
+		// For a crash service (the .aab has both for Google Play): the
+		// core's and the host's native symbols, and R8's map of the
 		// Kotlin it renamed.
 		{filepath.Join(built, "native-debug-symbols", "release", "native-debug-symbols.zip"), name + "-native-debug-symbols.zip", true},
 		{filepath.Join(built, "mapping", "release", "mapping.txt"), name + "-mapping.txt", true},

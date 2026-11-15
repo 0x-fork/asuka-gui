@@ -1,7 +1,10 @@
 # Shipping
 
 `asuka build` makes an app's release build for one platform, from the
-app's directory (or the one given), into its `dist`. `asuka publish`
+app's directory (or the one given), into its `dist`. It compiles the app
+to C (through its bytecode, as `asuka dev` runs it) and builds that with
+Asuka's core, optimized, for the platform, with the platform's own C
+compiler: there's no interpreter in what you ship. `asuka publish`
 uploads the iOS and Android builds to their stores: to TestFlight and
 App Review, or a Google Play track (see [Publishing](#publishing)); and
 the desktop builds' signed updates, which installed apps update to, to
@@ -12,13 +15,20 @@ GitHub's releases or an S3 bucket (see [Updates](#updates)).
 | `ios` | `<Name>.ipa`, signed for the App Store | a Mac with Xcode | TestFlight, the App Store (`asuka publish`) |
 | `android` | `<Name>.aab`, signed with your upload key | any system with a JDK, the Android SDK and the NDK | Google Play (`asuka publish`) |
 | `mac` | `<Name>.app`, universal; or a `.pkg` (`--appstore`) | a Mac with Xcode's command line tools | a download, signed and notarized; the Mac App Store |
-| `windows` | `<Name>/`, the `.exe` and its assets | any system | a zip, or an installer or MSIX of yours |
-| `linux` | `linux/`: an install prefix, a `.tar.gz`, a Flatpak manifest | any system | the `.tar.gz`, a Flatpak |
-| `web` | `web/`, a static site | any system | any web server or CDN |
+| `windows` | `<Name>/`, the `.exe`, `asuka.dll` and its assets | Windows with clang, or any system with Zig | a zip, or an installer or MSIX of yours |
+| `linux` | `linux/`: an install prefix, a `.tar.gz`, a Flatpak manifest | Linux with a C compiler, or any system with Zig | the `.tar.gz`, a Flatpak |
+| `web` | `web/`, a static site | any system with Zig | any web server or CDN |
 
 Without `--platform`, on a Mac, a Windows PC or a Linux machine, it
-builds for that computer. Every build but iOS's and Android's is plain
-Go with `CGO_ENABLED=0`, so it needs no C toolchain.
+builds for that computer. The core is built by the platform's compiler
+(Xcode's clang for Apple's platforms, the NDK's for Android, the
+system's on Windows and Linux); [Zig](https://ziglang.org/download)'s
+`zig cc` builds it as WebAssembly, and for Windows and Linux from
+another system (`ASUKA_CC=zig` uses it everywhere). A desktop app's
+executable is Asuka's desktop host, the same for every app: the CLI's
+release has it for each system, and fetches the one a build needs once,
+checked by its hash; run from a checkout of Asuka, the CLI builds it
+with Go instead (see [the desktop](desktop.md#how-a-desktop-app-is-made)).
 
 ## asuka.toml
 
@@ -177,7 +187,10 @@ developer.apple.com, then make the profile again. `asuka build --platform ios` (
 asuka build --platform ios
 ```
 
-makes a `.ipa` signed for the App Store, with the team's distribution
+makes a `.ipa` signed for the App Store: the Swift host linked with the
+core and the app compiled in (`libasuka.a`, built by Xcode's clang),
+with only the parts of the host the app uses (WebKit's, AVKit's...,
+from the packages it imports and the elements it shows), with the team's distribution
 certificate (in your keychain, from Xcode's Accounts) and a provisioning
 profile for the app's ID: `ios.profile`, or `--profile`, else the best
 match installed. `--distribution ad-hoc` or `development` signs it for the
@@ -209,7 +222,7 @@ the group too, for its data, whatever it takes.
 
 **Privacy manifest.** The App Store requires one, giving a reason for
 each API of Apple's list the app uses. Asuka writes it, from what the
-binary uses: Go's runtime reads the clock and file times. It declares
+binary uses: the core reads the clock and file times. It declares
 no tracking, and the data the app collects as `ios.collected` lists it,
 for what App Store Connect compares with the app's privacy labels:
 
@@ -250,9 +263,11 @@ ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
 (`ASUKA_KEY_PASSWORD` too if the key's differs; `ASUKA_KEYSTORE` and
 `ASUKA_KEY_ALIAS` name them in CI.) It makes an `.aab` for Google Play, for
 64-bit and 32-bit ARM phones and x86_64 (emulators, Chromebooks),
-Android 13 and later; Play makes each phone's APK from it, with only
-that phone's architecture. An app that uses `asuka/sdk/sqlite` has SQLite
-beside its Go code in each architecture, `libasqlite.so`, which Android
+Android 13 and later: the core with the app compiled in,
+`libasuka.so`, built by the NDK's clang for each architecture. Play makes
+each phone's APK from it, with only that phone's architecture. An app
+that uses the sqlite plugin has SQLite beside the core in each
+architecture, `libasqlite.so`, which Android
 loads from the APK as it does the app's (uncompressed, on 16 KB pages). `asuka publish --platform android` makes it and uploads it to Google Play (see
 [Publishing](#publishing)).
 
@@ -346,8 +361,11 @@ asuka build --platform mac
 ```
 
 makes `dist/<Name>.app` on a Mac: a universal app (Apple silicon and
-Intel), for macOS 11 and later, with its Info.plist, icon, languages and
-assets, signed ad hoc: it runs on your Mac. The packages the app imports
+Intel), for macOS 11 and later: the desktop host as its executable, the
+core with the app compiled in as `Contents/Frameworks/libasuka.dylib`
+(both universal), its settings (`Contents/Resources/asuka-app.json`), its
+Info.plist, icon, languages and assets, signed ad hoc: it runs on your
+Mac. The packages the app imports
 give it their purpose strings, as on iOS, from `ios.usage` (location's
 is `NSLocationUsageDescription` on the Mac, taken from
 `NSLocationWhenInUseUsageDescription`), and the hardened runtime's
@@ -417,15 +435,19 @@ asuka build --platform windows               # x64, which Windows on Arm runs em
 asuka build --platform windows --arch arm64  # native on Arm PCs
 ```
 
-makes a folder, `dist/<Name>`, from any system: `<Name>.exe` and the
-app's assets beside it, and for an app that uses `asuka/sdk/sqlite`,
-SQLite's library, `asqlite.dll`, for the same architecture (it needs
-only what every Windows 10 and 11 has: the Universal C Runtime). The
-`.exe` is a GUI program (no console window) with its resources built
-in: the icon at Windows's sizes, its version information (`version` and
-`build`), and a manifest that asks for the common controls 6,
-per-monitor DPI awareness and UTF-8, for Windows 10 and 11. An app with a `.syso` of its own in its directory has its own
-resources instead. Zip the folder, or package it (an installer, MSIX).
+makes a folder, `dist/<Name>`: `<Name>.exe`, the desktop host; beside it
+`asuka.dll`, the core with the app compiled in, built for the
+architecture by clang on Windows or by Zig on any other system;
+`asuka-app.json`, its settings; the app's assets; and for an app that
+uses the sqlite plugin, SQLite's library, `asqlite.dll`, for the same
+architecture (it needs only what every Windows 10 and 11 has: the
+Universal C Runtime). The `.exe` is a GUI program (no console window)
+with its resources linked in: the icon at Windows's sizes, its version
+information (`version` and `build`), and a manifest that asks for the
+common controls 6, per-monitor DPI awareness and UTF-8, for Windows 10
+and 11. An app with a `.syso` of its own in its directory
+(`rsrc_windows_amd64.syso`) has its own resources instead. Zip the
+folder, or package it (an installer, MSIX).
 
 Sign the `.exe`, so SmartScreen knows who it's from, with a code signing
 certificate exported as a `.pfx`:
@@ -442,7 +464,7 @@ fails, saying so; `ASUKA_WINDOWS_TIMESTAMP=none` signs without a timestamp
 (the signature then ends with the certificate). It signs with `signtool` on
 Windows (the Windows SDK's; on the `PATH`, else the newest installed),
 with `osslsigncode` elsewhere (`brew install osslsigncode`, `apt install
-osslsigncode`), and `asqlite.dll` with it. Without `ASUKA_WINDOWS_CERT`
+osslsigncode`), and `asuka.dll` and `asqlite.dll` with it. Without `ASUKA_WINDOWS_CERT`
 the `.exe` isn't signed. A certificate on a hardware token or in a cloud
 service (Azure Trusted Signing) signs through its own tool: sign the
 `.exe` (and `asqlite.dll`) in the folder with it after the build.
@@ -459,13 +481,16 @@ asuka build --platform linux --arch arm64   # amd64 or arm64
 ```
 
 It builds from any system: the host calls GTK 4 and libadwaita without
-cgo. In `dist/linux` it makes:
+cgo, and the core is built by this machine's C compiler on Linux, by Zig
+elsewhere. In `dist/linux` it makes:
 
 - `<name>/`, a folder laid out as an install prefix, named after the
   app in lower case (`My Notes`: `my-notes`):
-  - `bin/my-notes`, the app;
-  - `share/my-notes/assets`, its assets, which it finds from
-    `bin/`;
+  - `bin/my-notes`, the app: the desktop host;
+  - `lib/my-notes/libasuka.so`, the core with the app compiled in,
+    which the host finds from `bin/`;
+  - `share/my-notes/assets` and `share/my-notes/asuka-app.json`, its
+    assets and settings, which it finds from `bin/` too;
   - `lib/my-notes/libasqlite.so`, SQLite's library, for an app that
     uses `asuka/sdk/sqlite`, which it finds from `bin/` too (glibc 2.17 or
     later; it shows none of SQLite's own symbols, so a system SQLite in
@@ -527,8 +552,8 @@ software centers want the summary, description, license and developer.
 asuka build --platform web
 ```
 
-makes a static site in `dist/web`: `index.html`, the app as
-WebAssembly, the web host's scripts, the app's service worker, its
+makes a static site in `dist/web`: `index.html`, the core with the app
+compiled in as WebAssembly (built by Zig), the web host's scripts, the app's service worker, its
 assets, a web app manifest with its icons, gzipped copies, and a
 `_headers` file for Cloudflare and Netlify. The files are named by their
 digests, so all but `index.html` and the manifest can be cached for
@@ -761,13 +786,13 @@ The signatures are the ones `asuka build` made: the server only chooses.
 
 ## In an existing app
 
-A Asuka app can live inside an app made in Xcode or Android Studio: a
-feature written once in Go, shown from a native app. (On the web, the
+An Asuka app can live inside an app made in Xcode or Android Studio: a
+feature written once in Asuka, shown from a native app. (On the web, the
 build's app runs in an element of a page of yours: see
 [the web](web.md).)
 
 **iOS.** `asuka build --platform ios --xcframework` makes `dist/AsukaApp.xcframework`:
-the app's Go code and the UIKit host, for devices and the simulator, with
+the core with the app compiled in and the UIKit host, for devices and the simulator, with
 a Swift module interface and the app's assets. Add it to your target
 (Embed & Sign), then show the Asuka app as any view controller:
 
@@ -779,11 +804,11 @@ present(AsukaViewController(), animated: true)
 ```
 
 An app that uses `asuka/sdk/sqlite` comes with `dist/asqlite.xcframework`
-beside it, SQLite's library: embed it too (Embed & Sign). The Go code
+beside it, SQLite's library: embed it too (Embed & Sign). The app
 loads it from your app's `Frameworks`; it has its own privacy manifest.
 
 **Android.** `asuka build --platform android --aar` makes a Maven repository in
-`dist/maven`: the host library with the app's Go code for each ABI, its
+`dist/maven`: the host library with the core and the app compiled in for each ABI, its
 assets, and `AsukaActivity` declared, with its dependencies (Material,
 AndroidX) in its POM, and the optional modules the app uses (`asuka/sdk/push`,
 `asuka/sdk/maps`) beside it, and SQLite's library for each ABI when the app
@@ -808,12 +833,12 @@ set in its own project.
 
 A native crash's frames are addresses in the app's binaries; a crash
 service (or App Store Connect, or Google Play) turns them into
-functions and lines with the build's symbols. Go's own stack traces
-need none (their tables are in the binary), so a Go panic reads as it
-is.
+functions and lines with the build's symbols. An error the app
+doesn't catch is reported by the core with its message, whatever the
+symbols.
 
 **iOS.** `asuka build --platform ios` compiles the host with debug information,
-keeps the Go code's, and makes a dSYM of each binary (the app, its
+keeps the core's symbols, and makes a dSYM of each binary (the app, its
 framework when it has a share sheet, its extensions), as Xcode's archive
 does, then strips the binaries. They're in `dist/<Name>.dSYMs`, beside
 the `.ipa` (or the simulator's `.app`), and their symbols in the `.ipa`
@@ -828,7 +853,7 @@ sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes.dSYMs
 upload-symbols -gsp GoogleService-Info.plist -p ios dist/Notes.dSYMs
 ```
 
-**Android.** `asuka build --platform android` keeps the Go libraries' symbol tables
+**Android.** `asuka build --platform android` keeps the core's symbol tables
 for Gradle, which strips the libraries it packages and puts their
 symbols in the `.aab`, with R8's map of the Kotlin it renamed: Google
 Play symbolicates native crashes and ANRs, and deobfuscates stack
@@ -840,8 +865,8 @@ sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes-native-debu
 sentry-cli upload-proguard --org ORG --project PROJECT dist/Notes-mapping.txt
 ```
 
-**The Mac, Windows, Linux and the web.** The app is one Go binary, built
-without its symbol table and debug information (`-s -w`); Go's stack
+**The Mac, Windows, Linux and the web.** The host and the core are built
+without their symbol tables and debug information; the host's Go stack
 traces keep their function names and lines, so its panics read as they
 are, and there are no symbols to upload.
 

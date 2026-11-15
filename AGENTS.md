@@ -78,12 +78,12 @@ go run ./cmd/asuka native generate examples/media/segmented  # a native package'
 go test ./internal/nativegen -update     # after changing the generator: refresh its golden files (testdata/kitchen)
 go test ./host/darwin -run SwiftNatives  # a native package's Swift (the kitchen), built and called through the Mac's library
 go test -tags e2e ./e2e -run NativePackages  # native packages on the simulator, the emulator and headless Chrome
-go run ./cmd/asuka vet ./...                # the analyzers (package vet): a signal read once, written off the main thread
 go run ./cmd/asuka dev --platform ios --lang ar examples/i18n  # a language for one run; --lang ar-XB, en-XA: pseudo locales; --dir rtl: any app right to left
-go run ./cmd/asuka dev --platform ios examples/counter       # iOS simulator (Xcode): the Go code runs here, in the player
+go run ./cmd/asuka dev --platform ios examples/counter       # iOS simulator (Xcode): the player (the core without an app) loads the bytecode asuka dev sends
 go run ./cmd/asuka dev --platform android examples/counter   # Android emulator (SDK + NDK), likewise
-go run ./cmd/asuka dev --platform ios --once examples/counter # build the app with its Go code, launch once (--no-hot: and watch)
-go test ./internal/remote                        # the dev transport, against the fake host
+go run ./cmd/asuka dev --platform ios --once examples/counter # build the player, launch it once with the app, without watching
+go run ./cmd/asuka run file.asuka                # one file: its test blocks, then what its app shows (fake host)
+go test ./internal/appbuild ./cmd/asuka          # the builds for every target, the dev loop end to end (mac, Chrome, simulator, emulator)
 go test -tags e2e ./e2e -run IOS                 # GUI tests: the examples on the simulator (Android: -run Android, an emulator running)
 go run ./cmd/asuka build --platform ios --simulator examples/counter    # a release build (--platform ios alone: a signed .ipa)
 go run ./cmd/asuka build --platform android examples/counter           # an .aab (ASUKA_KEYSTORE, ASUKA_KEY_ALIAS, ASUKA_KEYSTORE_PASSWORD)
