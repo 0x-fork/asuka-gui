@@ -1,0 +1,313 @@
+// signal.c: signals, memos, effects, batching and the flush
+// (signal/signal.go).
+#include "signal/signal_impl.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+
+#define g ak_sig
+
+void ak_sig_panic(const char *fmt, ...) {
+	char buf[512];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof buf, fmt, ap);
+	va_end(ap);
+	if (g->panic_hook) {
+		g->panic_hook(g->panic_ctx, buf);
+		return;
+	}
+	ak_panic("%s", buf);
+}
+
+void ak_signal_set_panic_hook(void (*fn)(void *ctx, const char *msg), void *ctx) {
+	g->panic_hook = fn;
+	g->panic_ctx = ctx;
+}
+
+const char *ak_sig_describe(const ak_comp *c, char *buf, size_t n) {
+	const char *kind = (c->node.flags & AK_F_MEMO) ? "memo" : "effect";
+	if (c->info && c->info->label) snprintf(buf, n, "%s %s", kind, c->info->label);
+	else snprintf(buf, n, "an unnamed %s", kind);
+	return buf;
+}
+
+// Signals.
+
+void ak_signal_read(ak_node *n) {
+	if (g->active) ak_sig_track(n, g->active);
+}
+
+void ak_signal_write(ak_node *n) {
+	if (!ak_sig_check_thread()) return;
+	if (AK_UNLIKELY(g->in_memo > 0)) {
+		char d[256];
+		ak_sig_panic("signal: write inside a memo (%s)", g->active ? ak_sig_describe(g->active, d, sizeof d) : "?");
+		return;
+	}
+	if (n->subs) {
+		ak_sig_propagate(n->subs, AK_F_DIRTY);
+		if (g->batch_depth == 0 && !g->flushing) ak_sig_flush();
+	}
+}
+
+void ak_signal_drop(ak_node *n) {
+	n->flags |= AK_F_DISPOSED;
+	ak_sig_unlink_all_subs(n);
+}
+
+// Memos.
+
+static ak_comp *comp_new(uint32_t flags, void *ctx, const ak_comp_info *info) {
+	ak_comp *c = ak_alloc(sizeof *c);
+	c->node.flags = flags;
+	c->ctx = ctx;
+	c->info = info;
+	c->owner.comp = c;
+	c->owner.refs = 1;
+	ak_sig_owner_attach(&c->owner, g->owner);
+	return c;
+}
+
+ak_memo *ak_memo_new(bool (*update)(void *ctx), void *ctx, const ak_comp_info *info) {
+	ak_comp *m = comp_new(AK_F_MEMO | AK_F_DIRTY, ctx, info);
+	m->fn.update = update;
+	return m;
+}
+
+ak_owner *ak_memo_owner(ak_memo *m) { return &m->owner; }
+void *ak_memo_error(const ak_memo *m) { return m->err; }
+
+bool ak_memo_read(ak_memo *m) {
+	ak_node *n = &m->node;
+	if (n->flags & AK_F_DISPOSED) return true;
+	if (n->flags & (AK_F_DIRTY | AK_F_PENDING)) {
+		if ((n->flags & AK_F_DIRTY) || ak_sig_check_dirty(m)) {
+			if (ak_sig_memo_update(m) && n->subs) ak_sig_shallow_propagate(n->subs);
+		} else {
+			n->flags &= ~(uint32_t)AK_F_PENDING;
+		}
+	}
+	if (g->active) ak_sig_track(n, g->active);
+	if (m->err) {
+		ak_raise(m->err);
+		return false;
+	}
+	return true;
+}
+
+// ak_sig_memo_update recomputes m and reports whether its value changed.
+// An error raised in it is m's until its next update.
+bool ak_sig_memo_update(ak_comp *m) {
+	ak_owner_retain(&m->owner);
+	ak_frame f = {.prev = g->frame};
+	g->frame = &f;
+	ak_sig_owner_clean(&m->owner);
+	ak_comp *prev_sub = g->active;
+	ak_owner *prev_owner = g->owner;
+	g->active = m;
+	g->owner = &m->owner;
+	g->in_memo++;
+	m->err = NULL;
+	ak_sig_start_tracking(m);
+	bool changed = m->fn.update(m->ctx);
+	g->in_memo--;
+	g->active = prev_sub;
+	g->owner = prev_owner;
+	if (m->node.flags & AK_F_DISPOSED) ak_sig_unlink_all_deps(m);
+	else ak_sig_end_tracking(m);
+	g->frame = f.prev;
+	if (f.failed) {
+		m->err = f.err;
+		changed = true; // its readers must see the error
+	}
+	ak_owner_release(&m->owner);
+	return changed;
+}
+
+// ak_sig_memo_unwatched: with no subscribers left, a memo lets go of its
+// sources so it stops being notified, and recomputes on its next read.
+void ak_sig_memo_unwatched(ak_comp *m) {
+	if (m->node.flags & AK_F_DISPOSED) return;
+	ak_sig_unlink_all_deps(m);
+	m->node.flags |= AK_F_DIRTY;
+	if (m->info && m->info->unwatched) m->info->unwatched(m->ctx);
+}
+
+// Effects.
+
+static void effect_update(ak_comp *e) {
+	ak_owner_retain(&e->owner);
+	ak_frame f = {.prev = g->frame};
+	g->frame = &f;
+	ak_sig_owner_clean(&e->owner);
+	ak_comp *prev_sub = g->active;
+	ak_owner *prev_owner = g->owner;
+	g->active = e;
+	g->owner = &e->owner;
+	ak_sig_start_tracking(e);
+	e->fn.run(e->ctx);
+	g->active = prev_sub;
+	g->owner = prev_owner;
+	// After an error too: it re-runs when what it read so far changes.
+	if (e->node.flags & AK_F_DISPOSED) ak_sig_unlink_all_deps(e);
+	else ak_sig_end_tracking(e);
+	g->frame = f.prev;
+	if (f.failed) ak_sig_handle_error(&e->owner, f.err);
+	ak_owner_release(&e->owner);
+}
+
+ak_effect *ak_effect_new(void (*run)(void *ctx), void *ctx, uint32_t flags, const ak_comp_info *info) {
+	bool render = (flags & AK_EFFECT_RENDER) != 0;
+	ak_comp *e = comp_new(AK_F_EFFECT | (render ? AK_F_RENDER : AK_F_DIRTY), ctx, info);
+	e->fn.run = run;
+	e->seq = ++g->seq;
+	if (render) {
+		effect_update(e);
+	} else {
+		ak_sig_enqueue(e);
+		if (g->batch_depth == 0 && !g->flushing) ak_sig_flush();
+	}
+	return e;
+}
+
+ak_owner *ak_effect_owner(ak_effect *e) { return &e->owner; }
+
+// Tracking and batching.
+
+void *ak_untrack_begin(void) {
+	ak_comp *prev = g->active;
+	g->active = NULL;
+	return prev;
+}
+
+void ak_untrack_end(void *token) { g->active = token; }
+
+void ak_untrack(void (*fn)(void *ctx), void *ctx) {
+	void *t = ak_untrack_begin();
+	fn(ctx);
+	ak_untrack_end(t);
+}
+
+bool ak_tracking(void) { return g->active != NULL; }
+
+void ak_batch_begin(void) { g->batch_depth++; }
+
+void ak_batch_end(void) {
+	AK_ASSERT(g->batch_depth > 0);
+	if (--g->batch_depth == 0 && !g->flushing && g->queue.len) ak_sig_flush();
+}
+
+void ak_batch(void (*fn)(void *ctx), void *ctx) {
+	ak_batch_begin();
+	fn(ctx);
+	ak_batch_end();
+}
+
+bool ak_signal_batching(void) { return g->batch_depth > 0; }
+bool ak_signal_flushing(void) { return g->flushing; }
+
+void ak_signal_set_after_flush(void (*fn)(void *ctx), void *ctx) {
+	g->after_flush = fn;
+	g->after_flush_ctx = ctx;
+}
+
+// The flush.
+
+void ak_sig_enqueue(ak_comp *e) {
+	if (e->node.flags & AK_F_QUEUED) return;
+	e->node.flags |= AK_F_QUEUED;
+	ak_owner_retain(&e->owner);
+	ak_vec_push(&g->queue, e);
+}
+
+// Render effects first, then creation order.
+static inline uint64_t order(const ak_comp *c) {
+	return (c->node.flags & AK_F_RENDER ? 0 : 1ull << 63) | c->seq;
+}
+
+static void sift(ak_comp **a, size_t i, size_t n) {
+	for (;;) {
+		size_t c = 2 * i + 1;
+		if (c >= n) return;
+		if (c + 1 < n && order(a[c + 1]) > order(a[c])) c++;
+		if (order(a[i]) >= order(a[c])) return;
+		ak_comp *t = a[i];
+		a[i] = a[c];
+		a[c] = t;
+		i = c;
+	}
+}
+
+// sort_effects sorts in place, allocating nothing: insertion sort for the
+// usual short, nearly sorted queue, heapsort beyond.
+static void sort_effects(ak_comp **a, size_t n) {
+	if (n <= 16) {
+		for (size_t i = 1; i < n; i++) {
+			ak_comp *x = a[i];
+			uint64_t k = order(x);
+			size_t j = i;
+			for (; j > 0 && order(a[j - 1]) > k; j--) a[j] = a[j - 1];
+			a[j] = x;
+		}
+		return;
+	}
+	for (size_t i = n / 2; i-- > 0;) sift(a, i, n);
+	for (size_t end = n - 1; end > 0; end--) {
+		ak_comp *t = a[0];
+		a[0] = a[end];
+		a[end] = t;
+		sift(a, 0, end);
+	}
+}
+
+static void drop_queue(void) {
+	for (uint32_t i = 0; i < g->queue.len; i++) {
+		ak_comp *e = g->queue.data[i];
+		e->node.flags &= ~(uint32_t)AK_F_QUEUED;
+		ak_owner_release(&e->owner);
+	}
+	g->queue.len = 0;
+}
+
+void ak_sig_flush(void) {
+	g->flushing = true;
+	for (int round = 0;; round++) {
+		for (int pass = 0; g->queue.len; pass++) {
+			if (pass == AK_MAX_PASSES) {
+				char d[256];
+				ak_sig_describe(g->queue.data[0], d, sizeof d);
+				drop_queue();
+				g->flushing = false;
+				ak_sig_panic("signal: effects still dirty after %d passes (an infinite loop?), e.g. %s", AK_MAX_PASSES, d);
+				return;
+			}
+			ak_comp_vec t = g->running;
+			g->running = g->queue;
+			g->queue = t;
+			g->queue.len = 0;
+			sort_effects(g->running.data, g->running.len);
+			for (uint32_t i = 0; i < g->running.len; i++) {
+				ak_comp *e = g->running.data[i];
+				g->running.data[i] = NULL;
+				uint32_t f = e->node.flags &= ~(uint32_t)AK_F_QUEUED;
+				if (!(f & AK_F_DISPOSED)) {
+					if ((f & AK_F_DIRTY) || ((f & AK_F_PENDING) && ak_sig_check_dirty(e))) effect_update(e);
+					else e->node.flags &= ~(uint32_t)AK_F_PENDING;
+				}
+				ak_owner_release(&e->owner);
+			}
+			g->running.len = 0;
+		}
+		if (!g->after_flush) break;
+		if (round == AK_MAX_PASSES) {
+			drop_queue();
+			g->flushing = false;
+			ak_sig_panic("signal: the after-flush hook dirtied effects %d times (an infinite loop?)", AK_MAX_PASSES);
+			return;
+		}
+		g->after_flush(g->after_flush_ctx);
+		if (!g->queue.len) break;
+	}
+	g->flushing = false;
+}

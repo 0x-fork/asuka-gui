@@ -4,13 +4,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+uint64_t ak_alloc_count;
+
 void *ak_alloc(size_t n) {
+	ak_alloc_count++;
 	void *p = calloc(1, n ? n : 1);
 	if (!p) ak_panic("out of memory (%zu bytes)", n);
 	return p;
 }
 
 void *ak_realloc(void *p, size_t n) {
+	ak_alloc_count++;
 	void *q = realloc(p, n ? n : 1);
 	if (!q) ak_panic("out of memory (%zu bytes)", n);
 	return q;
