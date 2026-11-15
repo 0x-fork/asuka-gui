@@ -1,6 +1,6 @@
 //go:build linux
 
-package watch
+package fswatch
 
 import (
 	"bytes"

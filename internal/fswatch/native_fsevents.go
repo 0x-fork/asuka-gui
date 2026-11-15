@@ -1,6 +1,6 @@
 //go:build darwin && !ios
 
-package watch
+package fswatch
 
 import (
 	"errors"

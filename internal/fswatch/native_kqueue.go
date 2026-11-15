@@ -1,6 +1,6 @@
 //go:build darwin
 
-package watch
+package fswatch
 
 import (
 	"os"

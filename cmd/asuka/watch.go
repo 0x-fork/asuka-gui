@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/egoist/asuka/sdk/watch"
+	"github.com/egoist/asuka/internal/fswatch"
 )
 
 // watcher notices changes to Go sources, native code, catalogs and
@@ -141,12 +141,12 @@ const (
 
 func newWakeup(roots []string) *wakeup {
 	u := &wakeup{c: make(chan struct{}, 1)}
-	var ws []*watch.Watcher
+	var ws []*fswatch.Watcher
 	for _, root := range outermost(roots) {
 		if _, err := os.Stat(root); err != nil {
 			continue // a native package's directory that isn't there
 		}
-		w, err := watch.New(context.Background(), root, watch.Options{
+		w, err := fswatch.New(context.Background(), root, fswatch.Options{
 			Recursive: true,
 			Ignore: func(path string, isDir bool) bool {
 				name := path[strings.LastIndexByte(path, '/')+1:]
@@ -173,7 +173,7 @@ func newWakeup(roots []string) *wakeup {
 	return u
 }
 
-func (u *wakeup) follow(w *watch.Watcher) {
+func (u *wakeup) follow(w *fswatch.Watcher) {
 	for {
 		if _, err := w.Next(context.Background()); err != nil {
 			u.poll(w.Root(), err)

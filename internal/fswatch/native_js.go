@@ -1,6 +1,6 @@
 //go:build js
 
-package watch
+package fswatch
 
 import (
 	"fmt"

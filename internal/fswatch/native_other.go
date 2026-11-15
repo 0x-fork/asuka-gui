@@ -1,6 +1,6 @@
 //go:build !darwin && !linux && !windows && !js
 
-package watch
+package fswatch
 
 // newPlatform: no file watching here.
 func newPlatform(notify func(notice), opts Options) (native, error) {

@@ -1,6 +1,6 @@
 //go:build darwin && !ios
 
-package watch
+package fswatch
 
 // newPlatform starts FSEvents, or kqueue when the tests ask (or when
 // FSEvents can't be loaded, which a Mac always has).
