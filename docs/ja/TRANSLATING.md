@@ -36,6 +36,11 @@
 | core | コア | Asuka のコア |
 | signal | シグナル | OS や GTK のシグナルは文脈で区別する（「GTK のシグナル」） |
 | effect | エフェクト | |
+| store (Asuka language) | ストア | Asuka 言語の `store`。App Store などのストアとは文脈で区別する |
+| task (Asuka language) | タスク | Asuka 言語の `task` |
+| state | 状態 | |
+| binding | バインディング | two-way binding →双方向バインディング |
+| slot | スロット | |
 | owner | オーナー | |
 | accessor | アクセサ | |
 | memo | メモ | `signal.Memo` のこと |
@@ -113,6 +118,7 @@ OS が日本語で表示する名前は、それぞれの表記に従います�
 | ページ | タイトル |
 | --- | --- |
 | getting-started.md | はじめに |
+| language.md | Asuka 言語 |
 | concepts.md | 基本概念 |
 | layout.md | レイアウトとスタイル |
 | components.md | コンポーネント |
