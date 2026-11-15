@@ -320,6 +320,47 @@ ak_val ak_deep_copy(ak_val v, ak_kind k) {
 	}
 }
 
+// ---- Constants ----
+
+void ak_freeze(ak_val v, ak_kind k) {
+	if (k != AK_K_REF || !v.p) return;
+	ak_obj *o = v.p;
+	if (o->rc == AK_RC_IMMORTAL) return;
+	switch ((ak_tag)o->tag) {
+	case AK_T_ARR: {
+		ak_arr *a = (ak_arr *)o;
+		for (uint32_t i = 0; i < a->len; i++) ak_freeze(a->data[i], ak_arr_kind(a));
+		break;
+	}
+	case AK_T_MAP: {
+		ak_map *m = (ak_map *)o;
+		for (uint32_t i = 0; i < m->len; i++) {
+			if (m->dead[i]) continue;
+			ak_freeze(m->keys[i], (ak_kind)(m->h.aux & 0xf));
+			ak_freeze(m->vals[i], (ak_kind)(m->h.aux >> 4));
+		}
+		break;
+	}
+	case AK_T_STRUCT: {
+		ak_struct *s = (ak_struct *)o;
+		for (uint16_t i = 0; i < s->shape->nfields; i++) ak_freeze(s->f[i], (ak_kind)s->shape->kinds[i]);
+		break;
+	}
+	case AK_T_ENUM: {
+		ak_enum *e = (ak_enum *)o;
+		const ak_case *c = &e->shape->cases[e->h.aux];
+		for (uint16_t i = 0; i < c->nfields; i++) ak_freeze(e->f[i], (ak_kind)c->kinds[i]);
+		break;
+	}
+	case AK_T_BOX:
+		ak_freeze(((ak_box *)o)->v, (ak_kind)o->aux);
+		break;
+	default:
+		break;
+	}
+	ak_make_immortal(o);
+}
+
 // ---- Errors ----
 
 static AK_TLS void *pending_error;

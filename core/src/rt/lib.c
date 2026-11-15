@@ -49,6 +49,15 @@ static ak_val lib_error_message(ak_val *args, uint32_t n) {
 	RET_P(ak_retain(ak_error_message(args[0].p)));
 }
 
+// rt.freeze(value, kind): the value, made a constant (rt.h's ak_freeze).
+static ak_val rt_freeze(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_kind k = (ak_kind)args[1].i;
+	ak_freeze(args[0], k);
+	ak_retain_val(args[0], k);
+	return args[0];
+}
+
 // ---- Strings ----
 
 static ak_val str_len(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_count(STR(0))); }
@@ -705,6 +714,7 @@ const ak_lib_entry ak_lib[] = {
 	{"panic", lib_panic},
 	{"error", lib_error},
 	{"error.message", lib_error_message},
+	{"rt.freeze", rt_freeze},
 
 	{"str.len", str_len},
 	{"str.bytes_len", str_bytes_len},
