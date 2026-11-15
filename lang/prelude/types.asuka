@@ -1,0 +1,203 @@
+// The prelude's core types: what the built-in elements' props take.
+// Every program sees these without importing them.
+//
+// Built into the compiler, not declared here: int, float, bool, string,
+// bytes, void, arrays [T], maps [K: V], optionals T?, tuples, functions,
+// View, Error, Task<T>, Loading<T>, Duration (300ms), Color (#7c3aed and
+// the semantic colors: .label, .secondaryLabel, .accent, ...) and Length
+// (100, 50%, .auto).
+
+/// The axis a container stacks its children on.
+enum Axis {
+  column
+  row
+}
+
+/// Where children go on a container's main axis.
+enum Justify {
+  start
+  center
+  end
+  spaceBetween
+  spaceAround
+  spaceEvenly
+}
+
+/// How children line up on a container's cross axis.
+enum Align {
+  auto
+  start
+  center
+  end
+  stretch
+  baseline
+}
+
+/// Space on each side of a box, in points. start and end are the sides a
+/// line of text starts and ends on (left and right, or right and left in
+/// Arabic); where a side has both, start or end wins.
+///
+///   padding: 16             every side
+///   padding: [8, 16]        vertical, horizontal
+///   padding: [4, 8, 4, 8]   top, right, bottom, left
+///   padding: Edges(top: 4)
+struct Edges {
+  top: float = 0
+  right: float = 0
+  bottom: float = 0
+  left: float = 0
+  start: float = 0
+  end: float = 0
+}
+
+/// A font: a text style the platform scales with the user's text size,
+/// a size, a weight, and a family of the app's (assets/fonts) or the
+/// system's.
+///
+///   font: .title
+///   font: .largeTitle.bold
+///   font: Font(size: 17, weight: .semibold, family: "Inter")
+struct Font {
+  style: TextStyle = .default
+  size: float = 0
+  weight: FontWeight = .default
+  family: string = ""
+
+  let largeTitle = Font(style: .largeTitle)
+  let title = Font(style: .title)
+  let title2 = Font(style: .title2)
+  let title3 = Font(style: .title3)
+  let headline = Font(style: .headline)
+  let subheadline = Font(style: .subheadline)
+  let body = Font(style: .body)
+  let callout = Font(style: .callout)
+  let footnote = Font(style: .footnote)
+  let caption = Font(style: .caption)
+  let caption2 = Font(style: .caption2)
+
+  fn weighted(weight: FontWeight) -> Font = Font(style: style, size: size, weight: weight, family: family)
+  fn sized(size: float) -> Font = Font(style: style, size: size, weight: weight, family: family)
+  fn family(name: string) -> Font = Font(style: style, size: size, weight: weight, family: name)
+  fn bold() -> Font = weighted(.bold)
+  fn semibold() -> Font = weighted(.semibold)
+  fn medium() -> Font = weighted(.medium)
+}
+
+/// Moves, scales and rotates a view as it's drawn, around its center;
+/// layout doesn't see it.
+struct Transform {
+  x: float = 0
+  y: float = 0
+  scale: float = 1
+  scaleX: float = 1
+  scaleY: float = 1
+  rotation: float = 0  // degrees, clockwise
+}
+
+/// A shadow under a view, cast by its shape.
+struct Shadow {
+  color: Color = #00000033
+  radius: float = 4  // blur radius
+  x: float = 0
+  y: float = 2
+}
+
+/// A stop of a gradient: a color at a location from 0 to 1.
+struct Stop {
+  color: Color
+  at: float
+}
+
+/// A linear gradient over a view's background, from start to end in
+/// unit points of the view (0, 0 is its top left).
+struct Gradient {
+  stops: [Stop]
+  startX: float = 0
+  startY: float = 0
+  endX: float = 0
+  endY: float = 1
+}
+
+/// How a view comes in when it's added during animate { }, and goes out
+/// when it's removed during one.
+struct Transition {
+  fade: bool = false
+  scale: float = 0  // 0: none
+  x: float = 0
+  y: float = 0
+
+  let opacity = Transition(fade: true)
+  let slide = Transition(y: 24, fade: true)
+  let pop = Transition(scale: 0.9, fade: true)
+}
+
+/// A grid's tracks.
+///
+///   grid: Grid(columns: [.fr(1), .fr(2)], rows: [.auto])
+struct Grid {
+  columns: [Track] = []
+  rows: [Track] = []
+  autoColumns: [Track] = []
+  autoRows: [Track] = []
+  dense: bool = false
+  flowColumn: bool = false
+}
+
+/// A grid track's size.
+enum Track {
+  auto
+  points(float)
+  percent(float)
+  fr(float)
+  minContent
+  maxContent
+  minmax(Track, Track)
+  repeat(int, [Track])
+  autoFill([Track])
+  autoFit([Track])
+}
+
+/// Where a child sits on a grid's axis: lines from 1, negative from the
+/// end, or a span.
+enum GridLine {
+  auto
+  line(int)
+  span(int)
+  between(int, int)
+}
+
+/// An item of a menu, a swipe or a context menu.
+enum Action {
+  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: fn())
+  submenu(title: string, icon: string, items: [Action])
+  section(title: string, items: [Action])
+}
+
+/// An action's role, which the platform draws it by.
+enum ActionRole {
+  normal
+  cancel
+  destructive
+}
+
+/// The kinds of haptic feedback.
+enum Feedback {
+  selection
+  light
+  medium
+  heavy
+  success
+  warning
+  error
+}
+
+/// An animation's timing.
+struct Animation {
+  duration: Duration = 350ms
+  curve: AnimationCurve = .easeInOut
+  delay: Duration = 0ms
+
+  let spring = Animation(curve: .spring)
+  let linear = Animation(curve: .linear)
+  let quick = Animation(duration: 200ms)
+}
