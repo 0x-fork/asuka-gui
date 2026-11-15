@@ -36,6 +36,9 @@ static inline float ak_maxf(float a, float b) { return a > b ? a : b; }
 void *ak_alloc(size_t n);  // zeroed
 void *ak_realloc(void *p, size_t n);
 void ak_free(void *p);
+// ak_alloc_count counts calls to ak_alloc and ak_realloc, so tests can
+// assert that a hot path allocates nothing.
+extern uint64_t ak_alloc_count;
 
 // ak_panic reports a bug in the core or the app and aborts.
 AK_NORETURN void ak_panic(const char *fmt, ...) AK_PRINTF(1, 2);
