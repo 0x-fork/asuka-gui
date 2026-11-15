@@ -171,3 +171,36 @@ func (l *Lowerer) finishNativeErrors() {
 	}
 	l.pendingNative = nil
 }
+
+// nativeBody is a native fn's body: a call of the runtime's builtin
+// <package>.<name> (a method's: <package>.<Type>.<name>, its receiver
+// first), awaited when it's async.
+func (b *fb) nativeBody(f *check.Function, params []int) {
+	name := f.Pkg.Name + "." + f.Name()
+	args := params
+	if f.Recv != nil {
+		name = f.Pkg.Name + "." + f.Recv.Name() + "." + f.Name()
+		if s := b.ctx.Self; s != nil {
+			args = append([]int{b.vars[s]}, params...)
+		}
+	}
+	k := b.f.Ret
+	if f.Sig.Async {
+		fut := b.callB(name, bc.KRef, args...)
+		if k == bc.KVoid {
+			b.emit(op("AWAIT"), b.temp(bc.KRef), fut)
+			b.emit(op("RET0"))
+			return
+		}
+		r := b.temp(k)
+		b.emit(op("AWAIT"), r, fut)
+		b.ret(r, k)
+		return
+	}
+	if k == bc.KVoid {
+		b.callBTo(name, bc.None, args...)
+		b.emit(op("RET0"))
+		return
+	}
+	b.ret(b.callB(name, k, args...), k)
+}

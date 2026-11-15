@@ -85,3 +85,33 @@ test "imports" {
 		t.Errorf("a dependency outside a project: %v", got)
 	}
 }
+
+// A standard library package's native fn is the runtime's builtin of
+// its package and name (here str.len, time.sleep); others can't have one.
+func TestNativeFn(t *testing.T) {
+	res := Files(map[string][]byte{"a.asuka": []byte(`import asuka/str
+import asuka/time
+
+test "native fns" {
+  print(str.len("héllo"))
+  await time.sleep(5ms)
+  let f = str.len
+  print(f("ab"))
+}
+`)}, &Options{Packages: map[string]map[string][]byte{
+		"asuka/str":  {"str.asuka": []byte("pub native fn len(s: string) -> int\n")},
+		"asuka/time": {"time.asuka": []byte("pub native async fn sleep(d: Duration)\n")},
+	}})
+	if err := res.Err(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Run(testRunner(t), res.Module, true, "")
+	if want := "5\n2\nok native fns"; strings.TrimSpace(out) != want || err != nil {
+		t.Fatalf("got (%v):\n%s\nwant:\n%s", err, out, want)
+	}
+
+	res = Files(map[string][]byte{"a.asuka": []byte("native fn f() -> int\n")}, nil)
+	if got := res.Err(); got == nil || !strings.Contains(got.Error(), "native fn is the standard library's") {
+		t.Errorf("a native fn outside the standard library: %v", got)
+	}
+}

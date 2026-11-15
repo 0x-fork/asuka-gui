@@ -121,6 +121,8 @@ func TestFormatCases(t *testing.T) {
 		{"type F = async fn( int )throws->bool?", "type F = async fn(int) throws -> bool?\n"},
 		{"import ./a .{ X,Y }as z", "import ./a.{X, Y} as z\n"},
 		{"import @acme/line-charts  as lc", "import @acme/line-charts as lc\n"},
+		{"pub  native  async fn  f( a:int )throws->int", "pub native async fn f(a: int) throws -> int\n"},
+		{"struct T { native fn  g()->int }", "struct T { native fn g() -> int }\n"},
 		// Items, one per line.
 		{"component C { prop a = 1; event e; Text(\"x\") }", "component C {\n  prop a = 1\n  event e\n  Text(\"x\")\n}\n"},
 		{"component C { Text(\"x\") }", "component C { Text(\"x\") }\n"},

@@ -411,6 +411,16 @@ its name).
 JavaScript, Go on Windows and Linux, whose hosts are Go) from the same declarations, in
 native/codec.go's wire format.
 
+## The standard library's native fns
+
+In a standard library package (`asuka/<name>`, std/), `native fn f(…) ->
+R` has no body: the runtime implements it as the builtin `<name>.f` (a
+method's `native fn` in `struct T`: `<name>.T.f`, the receiver first). Its
+function's body is CALLB of that builtin with the parameters (AWAIT of
+the future it returns when it's `async`), so it's called, passed and
+compiled as any function. Other packages reach platform code through
+native interfaces instead.
+
 ## Streams
 
 `Stream(produce)` is CALLB `stream.new(produce, kind)` (kind: the

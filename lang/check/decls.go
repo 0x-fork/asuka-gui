@@ -2,6 +2,7 @@ package check
 
 import (
 	"github.com/egoist/asuka/lang/syntax"
+	"strings"
 )
 
 // typeScope is the scope a type's insides are checked in: its file's,
@@ -384,7 +385,16 @@ func (c *Checker) funcBody(f *Function) {
 	}
 	c.funcSig(f)
 	d := f.Decl
-	if d.Body == nil && d.Value == nil {
+	if d.Native.IsValid() {
+		switch {
+		case d.Body != nil || d.Value != nil:
+			c.errorf(d.Name, "a native fn has no body: the runtime implements it")
+		case f.Pkg == nil || !strings.HasPrefix(f.Pkg.Path, "asuka/"):
+			c.errorf(d.Name, "native fn is the standard library's (its runtime implements it); a package's platform code is a native interface (docs/native.md)")
+		case len(f.TypeParams) > 0:
+			c.errorf(d.Name, "a native fn isn't generic")
+		}
+	} else if d.Body == nil && d.Value == nil {
 		c.errorf(d.Name, "fn %s has no body", f.name)
 		return
 	}
@@ -443,7 +453,9 @@ func (c *Checker) funcBody(f *Function) {
 			c.defaultValue(nil, p.Default, p.Type, "parameter "+p.Name)
 		}
 	}
-	if d.Value != nil {
+	if d.Native.IsValid() {
+		// The runtime's builtin is the body (lang/LOWERING.md).
+	} else if d.Value != nil {
 		if ctx.Result == Void {
 			c.expr(d.Value, nil)
 		} else {

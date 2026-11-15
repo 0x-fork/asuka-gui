@@ -56,6 +56,11 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 		b.f.Flags |= bc.FThrows
 	}
 	d := f.Decl
+	if d.Native.IsValid() {
+		b.nativeBody(f, params)
+		b.closeScope()
+		return
+	}
 	if d.Value != nil {
 		k := b.f.Ret
 		if k == bc.KVoid {

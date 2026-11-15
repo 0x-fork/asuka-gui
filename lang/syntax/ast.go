@@ -309,6 +309,9 @@ type FuncDecl struct {
 	Result     Type // nil for none (void)
 	Body       *Block
 	Value      Expr // fn f() -> T = expr
+	// Native: native fn f(…) -> T, with no body: the runtime implements
+	// it (the standard library's).
+	Native Pos
 }
 
 // A TypeAliasDecl is type Name<T> = Type.

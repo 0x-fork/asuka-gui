@@ -485,6 +485,9 @@ func (p *printer) conforms(list []Type) {
 
 func (p *printer) funcDecl(d *FuncDecl) {
 	p.pub(d.Pub)
+	if d.Native.IsValid() {
+		p.write("native ")
+	}
 	if d.Async.IsValid() {
 		p.write("async ")
 	}

@@ -512,7 +512,7 @@ func (p *parser) declAhead() bool {
 	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE:
 		return isIdentTok(next)
 	case NATIVE:
-		return next == INTERFACE || next == COMPONENT
+		return next == INTERFACE || next == COMPONENT || next == FN || next == ASYNC
 	case IMPORT:
 		return true
 	case APP:
@@ -765,8 +765,12 @@ func (p *parser) parseDecl() Decl {
 			d = p.parseInterface(start, native)
 		case COMPONENT:
 			d = p.parseComponent(start, native)
+		case FN, ASYNC:
+			f := p.parseFunc(start)
+			f.Native = native
+			d = f
 		default:
-			p.errorExpected("'interface' or 'component' after 'native'")
+			p.errorExpected("'interface', 'component' or 'fn' after 'native'")
 			p.sync()
 			return &BadDecl{Span: p.span(start)}
 		}
@@ -1050,6 +1054,12 @@ func (p *parser) parseFieldOrMethod(what string, constants bool) Node {
 	switch {
 	case p.tok == FN || p.tok == ASYNC:
 		n = p.parseFunc(start)
+	case p.tok == NATIVE && (p.peek(1) == FN || p.peek(1) == ASYNC):
+		native := p.pos
+		p.next()
+		f := p.parseFunc(start)
+		f.Native = native
+		n = f
 	case p.tok == LET && constants:
 		// A constant of the type (Font.title), in a struct's or an
 		// enum's body.
