@@ -1903,6 +1903,17 @@ func (p *parser) parsePostfix() Expr {
 			p.trailingBlock(c)
 			c.Span = p.span(start)
 			x = c
+		case LSS:
+			// f<T>(…): explicit type arguments, when what follows the < is
+			// types up to a > right before a (; else it's a comparison.
+			targs, ok := p.tryTypeArgs(x)
+			if !ok {
+				return x
+			}
+			c := &CallExpr{Fun: x, TypeArgs: targs, Args: p.parseArgs()}
+			p.trailingBlock(c)
+			c.Span = p.span(start)
+			x = c
 		case LBRACE:
 			if p.exprLev < 0 || !isElement(x) {
 				return x
@@ -1929,6 +1940,59 @@ func (p *parser) parsePostfix() Expr {
 			return x
 		}
 	}
+}
+
+// tryTypeArgs parses <T, U> after a name, when it's followed at once by
+// a (: a call with explicit type arguments (json.decode<[Item]>(s)).
+// Anything else (a < b, a < b > c's error) it leaves untouched.
+func (p *parser) tryTypeArgs(x Expr) ([]Type, bool) {
+	switch x.(type) {
+	case *Ident, *MemberExpr:
+	default:
+		return nil, false
+	}
+	// Types are what's between: names, brackets, ?, commas, colons, fn,
+	// arrows. A quick scan rejects most comparisons without parsing.
+	depth := 0
+	j := 1
+	for ; ; j++ {
+		switch t := p.peek(j); t {
+		case IDENT, PERIOD, COMMA, COLON, LBRACK, RBRACK, QUESTION, LPAREN, RPAREN, FN, ARROW, ASYNC, THROWS:
+		case LSS:
+			depth++
+		case GTR:
+			if depth == 0 {
+				if p.peek(j+1) != LPAREN {
+					return nil, false
+				}
+				goto parse
+			}
+			depth--
+		default:
+			return nil, false
+		}
+	}
+parse:
+	saved, savedEnd := p.i, p.prevEnd
+	nerr := len(p.errors)
+	p.next() // <
+	var ts []Type
+	for {
+		ts = append(ts, p.parseType())
+		if !p.got(COMMA) {
+			break
+		}
+	}
+	if p.tok != GTR || len(p.errors) != nerr {
+		// Not types after all: back to the <.
+		p.errors = p.errors[:nerr]
+		p.i, p.prevEnd = saved, savedEnd
+		t := p.toks[p.i]
+		p.tok, p.pos, p.lit = t.tok, t.pos, t.lit
+		return nil, false
+	}
+	p.next() // >
+	return ts, true
 }
 
 // trailingBlock parses a call's trailing block, if one may follow

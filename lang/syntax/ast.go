@@ -732,6 +732,7 @@ type Arg struct {
 type CallExpr struct {
 	Span
 	Fun      Expr
+	TypeArgs []Type   // f<T>(…): explicit type arguments; nil for none
 	Args     *ArgList // nil: no parentheses, Row { … }
 	Block    *Block   // the trailing block; nil for none
 	Handlers []*OnHandler

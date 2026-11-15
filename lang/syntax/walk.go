@@ -286,6 +286,9 @@ func Walk(v Visitor, n Node) {
 		walk(n.Value)
 	case *CallExpr:
 		walk(n.Fun)
+		for _, t := range n.TypeArgs {
+			walk(t)
+		}
 		if n.Args != nil {
 			walk(n.Args)
 		}

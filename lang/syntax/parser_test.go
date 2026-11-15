@@ -572,3 +572,23 @@ func TestSpans(t *testing.T) {
 func spanText(f *SourceFile, s Span) string {
 	return f.File.Position(s.Start).String() + "-" + f.File.Position(s.End).String()
 }
+
+// f<T>(…) is a call with type arguments; a < b and a > c stay comparisons.
+func TestTypeArguments(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{"let x = json.decode<[Item]>(s)", "json.decode<[Item]>(s)"},
+		{"let x = r.json<[string: Item?]>()", "r.json<[string: Item?]>()"},
+		{"let x = pair<int, string>(1, \"a\")", "pair<int, string>(1, \"a\")"},
+		{"let x = a < b && c > d", "a < b && c > d"},
+		{"let x = a < b", "a < b"},
+		{"let x = f(a < b, c > d)", "f(a < b, c > d)"},
+		// As C#: <...> right before ( is type arguments.
+		{"let x = f(a < b, c > (d))", "f(a<b, c>(d))"},
+	} {
+		f := parseOK(t, c.src)
+		got := printed(f.Decls[0].(*LetDecl).Value)
+		if got != c.want {
+			t.Errorf("%s: printed %q, want %q", c.src, got, c.want)
+		}
+	}
+}

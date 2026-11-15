@@ -965,6 +965,16 @@ func (p *printer) expr1(x Expr) {
 		p.write(x.Name.Name)
 	case *CallExpr:
 		p.exprPrec(x.Fun, precPostfix)
+		if len(x.TypeArgs) > 0 {
+			p.write("<")
+			for i, t := range x.TypeArgs {
+				if i > 0 {
+					p.write(", ")
+				}
+				p.typ(t)
+			}
+			p.write(">")
+		}
 		if x.Args != nil {
 			p.args(x.Args)
 		}
