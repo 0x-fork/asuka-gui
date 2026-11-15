@@ -98,13 +98,13 @@ func TestRefers(t *testing.T) {
 	}
 }
 
-// examples/services calls push.Rewrite; examples/counter doesn't import
-// asuka/sdk/push at all.
+// testdata/goapps/push calls push.Rewrite; testdata/goapps/plain doesn't
+// import asuka/sdk/push at all.
 func TestCalls(t *testing.T) {
-	if !calls("../../examples/services", ".", "ios", pushPkg, "Rewrite") {
-		t.Error("examples/services: push.Rewrite not found")
+	if !calls("testdata/goapps/push", ".", "ios", pushPkg, "Rewrite") {
+		t.Error("goapps/push: push.Rewrite not found")
 	}
-	if calls("../../examples/counter", ".", "ios", pushPkg, "Rewrite") {
-		t.Error("examples/counter: push.Rewrite found")
+	if calls("testdata/goapps/plain", ".", "ios", pushPkg, "Rewrite") {
+		t.Error("goapps/plain: push.Rewrite found")
 	}
 }

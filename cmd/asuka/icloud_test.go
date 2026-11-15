@@ -103,19 +103,19 @@ func TestICloudPlistAndSimulator(t *testing.T) {
 	}
 }
 
-// What an app calls says what it's given: examples/journal calls both
-// parts; the player, which stands in for any app, has neither (an app of
-// iCloud's is built, not run in the player).
+// What an app calls says what it's given: testdata/goapps/icloud calls
+// both parts; the player, which stands in for any app, has neither (an
+// app of iCloud's is built, not run in the player).
 func TestUseICloud(t *testing.T) {
 	c := &appConfig{ID: "dev.asuka.journal"}
-	c.useICloud("../../examples/journal", ".", []string{icloudPkg})
+	c.useICloud("testdata/goapps/icloud", ".", []string{icloudPkg})
 	if !c.icloudKV || !c.icloudDocs || c.entitlements[entKVStore] != teamPrefix+"dev.asuka.journal" {
-		t.Errorf("examples/journal: kv %v, docs %v, %v", c.icloudKV, c.icloudDocs, c.entitlements)
+		t.Errorf("goapps/icloud: kv %v, docs %v, %v", c.icloudKV, c.icloudDocs, c.entitlements)
 	}
 	none := &appConfig{ID: "dev.asuka.counter"}
-	none.useICloud("../../examples/counter", ".", []string{"github.com/egoist/asuka/ui"})
+	none.useICloud("testdata/goapps/plain", ".", []string{"github.com/egoist/asuka/ui"})
 	if none.icloudKV || none.icloudDocs || len(none.entitlements) != 0 {
-		t.Errorf("examples/counter: %v", none.entitlements)
+		t.Errorf("goapps/plain: %v", none.entitlements)
 	}
 	if p := playerConfig(); p.icloudKV || p.icloudDocs || p.entitlements[entKVStore] != nil {
 		t.Errorf("the player: %v", p.entitlements)
