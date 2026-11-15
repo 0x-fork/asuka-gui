@@ -53,7 +53,7 @@ ak_str *ak_i18n_normalize(ak_span in) {
 		}
 		if (n == 0) {
 			// The language: 2, 3 or 5 to 8 letters ("und" names none).
-			if (!all(s, alpha) || s.len == 4) {
+			if (!all(s, alpha) || s.len < 2 || s.len == 4) {
 				ok = false;
 				break;
 			}

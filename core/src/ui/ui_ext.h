@@ -178,5 +178,9 @@ bool ak_ext_reduce_motion(ak_ui_root *r);
 
 // ak_locale_rtl is whether the app is laid out right to left now.
 bool ak_locale_rtl(void);
+// ak_locale_now is the language shown (borrowed); reading it follows it.
+ak_str *ak_locale_now(void);
+// ak_locale_changed tells the locale the catalogs' languages changed.
+void ak_locale_changed(void);
 
 #endif

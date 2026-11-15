@@ -105,8 +105,11 @@ static void load(void) {
 	}
 }
 
+static bool sent;  // update sent Locale (ak_locale_mounted's)
+
 static void send_locale(ak_ui_root *r) {
 	if (!r || !r->el || r->disposed) return;
+	sent = true;
 	ak_buf *b = ak_batch_command_begin(r->batch, r->el->id, AK_CMD_LOCALE);
 	ak_buf_u8(b, L.rtl ? 1 : 0);
 	ak_buf_put(b, L.locale->data, L.locale->len);
@@ -166,8 +169,9 @@ static void take_env(const ak_environment *e) {
 void ak_locale_mounted(ak_ui_root *r) {
 	load();
 	take_env(&r->env);
+	sent = false;
 	update();
-	send_locale(r);  // the host hears it as the root mounts, whatever changed
+	if (!sent) send_locale(r);  // the host hears it as the root mounts, whatever changed
 	if (L.has_pending_save) {
 		ak_batch_command(r->batch, r->el->id, AK_CMD_SAVE_LOCALE, L.pending_save ? L.pending_save->data : "", L.pending_save ? L.pending_save->len : 0);
 		ak_release(L.pending_save);
