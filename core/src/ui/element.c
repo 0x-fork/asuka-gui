@@ -305,6 +305,12 @@ void ak_view_destroy(ak_view *e) {
 		ak_ui.stats.native--;
 	}
 	for (uint32_t i = 0; i < e->kids.len; i++) ak_view_destroy(e->kids.data[i]);
+	// Its slots' views (a Screen's bar buttons) go with it.
+	for (uint32_t i = 0; i < e->style.len; i++) {
+		ak_style_ent *s = &e->style.data[i];
+		if (s->key >= AK_KEY__STYLE_END && ak_key_kinds[s->key] == AK_K_REF && s->v.p && ((ak_obj *)s->v.p)->tag == AK_TAG_VIEW)
+			ak_view_destroy(s->v.p);
+	}
 }
 
 // ---- Frames ----

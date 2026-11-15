@@ -147,8 +147,8 @@ static bool allow(ak_view *w) {
 
 static void close_requested(ak_view *w) {
 	if (w->el == AK_EL_WINDOW && ak_view_handler(w, AK_EV_WINDOW_CLOSE_REQUEST)) {
-		ak_view_call(w, AK_EV_WINDOW_CLOSE_REQUEST, NULL, 0);  // it closes it, or not (closeWindow)
-		if (!allow(w)) return;
+		// The window stays: its handler closes it, or not (closeWindow(w)).
+		ak_view_call(w, AK_EV_WINDOW_CLOSE_REQUEST, NULL, 0);
 		return;
 	}
 	if (allow(w)) destroy(w);

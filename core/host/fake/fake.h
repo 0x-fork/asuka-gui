@@ -22,8 +22,8 @@
 //
 // Not ported (the Go fake's platform services and desktop windows):
 // Bluetooth, NFC, payments, purchases, iCloud, location, now playing,
-// trays, a Router's history (Location commands are recorded only), and
-// windows' state (WindowState reports, sizes, closing): of windows it
+// trays, the addresses a desktop host keeps by window key, and windows'
+// state (WindowState reports, sizes, closing): of windows it
 // keeps which one is in use (a Window presented, or focused with
 // WindowAction) and checks their commands go where a host takes them.
 //
@@ -95,6 +95,22 @@ typedef struct {
 
 typedef struct ak_fake ak_fake;
 
+// A Router's addresses, as the web host keeps them (host/fake/history.go):
+// each window's (the root's, a Window node's) Location commands drive a
+// browser's history of its own, which a test goes back and forward in as
+// the user does with a browser's buttons (ak_fake_go: the Location
+// event, with the state the entry kept).
+typedef struct {
+	ak_buf href, state;
+} ak_fake_entry;
+
+typedef struct {
+	ak_id win;
+	AK_VEC(ak_fake_entry) entries;
+	int32_t index;  // the entry shown (-1: none)
+	uint32_t commands;  // the Location commands it was sent
+} ak_fake_history;
+
 // What answers a Call command (a module's method): it appends the answer
 // to out and returns true, or an error's message and returns false.
 typedef bool (*ak_fake_call_fn)(void *ctx, ak_span module, ak_span method, ak_span args, ak_buf *out);
@@ -139,6 +155,9 @@ struct ak_fake {
 	uint32_t next_cell;
 	ak_id key;  // the window in use: 0 the root
 	ak_buf ev;  // an event being sent
+	AK_VEC(ak_fake_history) histories;
+	bool popping;  // a Location event is being sent: the browser went there already
+	int32_t pop_from;
 };
 
 ak_fake *ak_fake_new(void);
@@ -279,6 +298,14 @@ void ak_fake_lifecycle(ak_fake *f, int64_t state);  // AK_LIFECYCLE_*
 // ak_fake_emit_native sends a native view's event: its name and named
 // values (their type says which field: as ak_fake_native).
 void ak_fake_emit_native(ak_fake *f, ak_fake_view *v, const char *name, const ak_fake_native *values, uint32_t n);
+
+// Histories: the window's (NULL: the main window's), NULL when it has
+// none yet; its hrefs, oldest first, joined by " ". ak_fake_go moves n
+// entries (popstate), reporting the entry to the core; false when there's
+// none there.
+ak_fake_history *ak_fake_history_of(ak_fake *f, const ak_fake_view *win);
+void ak_fake_hrefs(const ak_fake_history *h, ak_buf *out);
+bool ak_fake_go(ak_fake *f, ak_fake_view *win, int32_t n);
 
 // Lists.
 ak_fake_view *ak_fake_new_cell(ak_fake *f);  // a cell, as a collection view makes one

@@ -127,6 +127,7 @@ ak_view *ak_sheet_present(ak_ui_root *r, ak_owner *owner, ak_closure *build, ak_
 	ak_view_listen(e, AK_EVENT_DISMISSED);
 	e->finalized = true;
 	hold(e);
+	ak_release(e);  // the root holds it while it shows
 	s->owner = ak_root_under(owner);
 	s->back = ak_back_new(sheet_dismissed, e);
 	ak_back_attach(s->back, e);
@@ -466,16 +467,23 @@ static void alert_close(ak_view *e) {
 	ak_retain(e);
 	ak_owner *o = a->owner;
 	a->owner = NULL;
-	if (o) ak_owner_dispose(o);
+	if (o) {
+		ak_owner_dispose(o);  // nothing, when it's its disposal that closes it
+		ak_owner_release(o);
+	}
 	ak_view_destroy(e);
 	unhold(e);
 	ak_release(e);
 }
 
-static void alert_cleanup(void *ctx) {
-	ak_view *e = ctx;
-	((alert_t *)e->impl)->owner = NULL;  // being disposed
-	alert_close(e);
+static void alert_cleanup(void *ctx) { alert_close(ctx); }
+
+// new_child makes an owner under the current one, disposed with it, kept
+// (retained) until it's disposed.
+static void new_child(void *ctx) {
+	ak_owner *o = ak_owner_new();
+	ak_owner_retain(o);
+	*(ak_owner **)ctx = o;
 }
 
 static void release_ctx(void *ctx) { ak_release(ctx); }
@@ -601,7 +609,7 @@ void ak_ui_alert(ak_str *title, ak_str *message, ak_obj *actions, bool action_sh
 	// it shows, and it goes with the root.
 	ak_ui_root *pr = ak_ui.cur;
 	ak_ui.cur = r;
-	a->owner = ak_root_under(r->owner);
+	ak_with_owner(r->owner, new_child, &a->owner);
 	alert_setup st = {e};
 	ak_with_owner(a->owner, alert_effects, &st);
 	ak_ui.cur = pr;
@@ -626,7 +634,10 @@ static bool snack_close(ak_view *e) {
 	ak_retain(e);
 	ak_owner *o = s->owner;
 	s->owner = NULL;
-	if (o) ak_owner_dispose(o);
+	if (o) {
+		ak_owner_dispose(o);
+		ak_owner_release(o);
+	}
 	ak_view_destroy(e);
 	unhold(e);
 	ak_release(e);
@@ -675,11 +686,7 @@ static void snack_drop(ak_view *e) {
 
 static const ak_el_class cls_snack = {.name = "Snackbar", .kind = AK_KIND_SNACKBAR, .event = snack_event, .drop = snack_drop};
 
-static void snack_cleanup(void *ctx) {
-	ak_view *e = ctx;
-	((snack_t *)e->impl)->owner = NULL;  // being disposed
-	snack_close(e);
-}
+static void snack_cleanup(void *ctx) { snack_close(ctx); }
 
 static void snack_owned(void *ctx) { ak_on_cleanup(snack_cleanup, ctx); }
 
@@ -727,7 +734,7 @@ ak_closure *ak_ui_snackbar(ak_str *message, const ak_enum *action, int64_t durat
 	ak_view_listen(e, AK_EVENT_ACTION);
 	ak_view_listen(e, AK_EVENT_DISMISSED);
 	hold(e);
-	s->owner = ak_root_under(r->owner);  // goes with its root
+	ak_with_owner(r->owner, new_child, &s->owner);  // goes with its root
 	ak_with_owner(s->owner, snack_owned, e);
 	ak_batch_command(b, e->id, AK_CMD_PRESENT, NULL, 0);
 	ak_closure *c = ak_closure_new(snack_dismiss_fn, NULL, 1, ref_cap);
