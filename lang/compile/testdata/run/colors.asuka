@@ -1,0 +1,16 @@
+// Colors: a fixed color's opacity, and a semantic color's, which stays
+// semantic (ops/ops.go's encoding).
+
+test "opacity" {
+  let c: Color = #7c3aed
+  print(c.opacity(0.5) == #7c3aed80)
+  let a: Color = .accent
+  print(a.opacity(0.25) == a)
+  print(a.opacity(1) == a)
+}
+
+// Output:
+// true
+// false
+// true
+// ok opacity

@@ -1,10 +1,10 @@
 # Layout and style
 
-A `ui.Style` says how a view is laid out and how it looks. Layout is CSS
-flexbox, in points; the look is colors, corners, borders, shadows and
-text. This page covers both, and styles that change. The layout is the
-same on every platform: Asuka computes it in Go and places the platform's
-views where it says.
+An element's style props say how it's laid out and how it looks. Layout
+is CSS flexbox and grid, in points; the look is colors, corners,
+borders, shadows and text. This page covers both, and styles that
+change. The layout is the same on every platform: Asuka's core computes
+it and places the platform's views where it says.
 
 ## Platform defaults
 
@@ -26,35 +26,46 @@ fonts below to fixed ones, so the app keeps following the platform.
 
 ## Style
 
-`ui.Style` is a plain struct. Components take it as their style, a
-`Styler`: a `Style`, or a `ui.StyleFunc` for one that changes (see
-[Styles that change](#styles-that-change)).
+Every element takes the style props in its block, after its own:
 
-```go
-ui.Text(title, ui.Style{Font: fonts.Headline, Color: colors.SecondaryLabel})
-ui.Button(ui.ButtonProps{Title: ui.Val("Follow"), Style: ui.Style{Shrink: ui.NoShrink}})
-ui.View(ui.ViewProps{Style: ui.Style{Height: ui.Pt(1), Background: colors.Separator}})
+```asuka
+Text(title) { font: .headline; color: .secondaryLabel }
+Button("Follow") { shrink: 0 }
+View { height: 1; background: .separator }
 ```
 
-Visual props apply where the native widget supports them: a button
-takes `Color` as its tint, a view ignores `Font`.
+A `style` declares props to reuse; `style name` in a block applies
+them, and the props after it win:
+
+```asuka
+style card {
+  padding: 16; radius: 12; gap: 8
+  background: .secondaryBackground
+}
+
+View { style card; background: .accent }
+```
+
+Look props apply where the native widget supports them: a button takes
+`color` as its tint, a view ignores `font`.
 
 ## Stacking views
 
-`ui.Column` stacks its children top to bottom, `ui.Row` leading to
-trailing. `ui.View` is a container whose direction is its style's
-`Direction`: `ui.ColumnDir`, the default, or `ui.RowDir`. A nil style is
-an empty one.
+`Column` stacks its children top to bottom, `Row` leading to trailing.
+`View` is a container whose direction is its `direction`: `.column`, the
+default, or `.row`.
 
-```go
-ui.Row(ui.Style{Align: ui.AlignCenter, Gap: 12},
-	Avatar(),
-	ui.Column(ui.Style{Grow: 1, Gap: 2},
-		ui.StaticText("Ada Lovelace", ui.Style{Font: fonts.Headline}),
-		ui.StaticText("Notes on the Analytical Engine", ui.Style{Font: fonts.Subheadline, Color: colors.SecondaryLabel, Lines: 1}),
-	),
-	ui.Button(ui.ButtonProps{Title: ui.Val("Follow"), Style: ui.Style{Shrink: ui.NoShrink}}),
-)
+```asuka
+Row {
+  align: .center; gap: 12
+  Avatar()
+  Column {
+    grow: 1; gap: 2
+    Text("Ada Lovelace") { font: .headline }
+    Text("Notes on the Analytical Engine") { font: .subheadline; color: .secondaryLabel; lines: 1 }
+  }
+  Button("Follow") { shrink: 0 }
+}
 ```
 
 A container with only layout props makes no native view: its children
@@ -66,69 +77,67 @@ them.
 Layout follows CSS flexbox with React Native's defaults: column
 direction, and sizes that include padding and borders.
 
-- **`Gap`**: the space between children, and between lines when they
+- **`gap`**: the space between children, and between lines when they
   wrap.
-- **`Justify`** places the children along the main axis:
-  `ui.JustifyStart` (the default), `ui.JustifyCenter`, `ui.JustifyEnd`,
-  `ui.JustifySpaceBetween`, `ui.JustifySpaceAround`,
-  `ui.JustifySpaceEvenly`.
-- **`Align`** places them across it: `ui.AlignStretch` (the default:
-  they fill the cross axis), `ui.AlignStart`, `ui.AlignCenter`,
-  `ui.AlignEnd`, `ui.AlignBaseline`.
-- **`AlignSelf`** overrides the parent's `Align` for one child;
-  `ui.AlignAuto`, the zero value, keeps it.
-- **`Wrap`** lets children flow onto more lines when they don't fit.
-- **`Grow`** is a child's share of the space left along its parent's
+- **`justify`** places the children along the main axis: `.start` (the
+  default), `.center`, `.end`, `.spaceBetween`, `.spaceAround`,
+  `.spaceEvenly`.
+- **`align`** places them across it: `.stretch` (the default: they fill
+  the cross axis), `.start`, `.center`, `.end`, `.baseline`.
+- **`alignSelf`** overrides the parent's `align` for one child; `.auto`,
+  the default, keeps it.
+- **`wrap`** lets children flow onto more lines when they don't fit.
+- **`grow`** is a child's share of the space left along its parent's
   main axis. A growing child can also shrink below its content's size,
   so a growing view around a `Scroll` scrolls rather than taking the
   scroll's full height.
-- **`Shrink`** is how much a child gives up when the line overflows. 0
-  is the default, 1: text wraps, controls keep their minimum size.
-  `ui.NoShrink` keeps the child's size.
-- **`Basis`** is a child's starting size along the main axis; Auto, the
-  default, is its content's.
+- **`shrink`** is how much a child gives up when the line overflows. 0
+  is the default; 1: text wraps, controls keep their minimum size.
+- **`basis`** is a child's starting size along the main axis; `.auto`,
+  the default, is its content's.
 
-```go
+```asuka
 // Two boxes sharing the width, one twice the other.
-ui.Row(ui.Style{Gap: 8, Height: ui.Pt(60)},
-	ui.View(ui.ViewProps{Style: ui.Style{Grow: 2, Background: colors.SecondaryBackground}}),
-	ui.View(ui.ViewProps{Style: ui.Style{Grow: 1, Background: colors.SecondaryBackground}}),
-)
+Row {
+  gap: 8; height: 60
+  View { grow: 2; background: .secondaryBackground }
+  View { grow: 1; background: .secondaryBackground }
+}
 
 // A label and a value at either end.
-ui.Row(ui.Style{Justify: ui.JustifySpaceBetween, Align: ui.AlignCenter},
-	ui.StaticText("Total"),
-	ui.StaticText("$42", ui.Style{Font: fonts.Title2}),
-)
+Row {
+  justify: .spaceBetween; align: .center
+  Text("Total")
+  Text("$42") { font: .title2 }
+}
 
 // Chips that wrap onto more lines.
-ui.Row(ui.Style{Wrap: true, Gap: 8},
-	ui.StaticText("Go"), ui.StaticText("iOS"), ui.StaticText("Android"),
-)
+Row {
+  wrap: true; gap: 8
+  Text("Asuka"); Text("iOS"); Text("Android")
+}
 ```
 
 ## Sizes
 
-Lengths are a `ui.Dim`:
+Lengths are a `Length`:
 
-- `ui.Pt(v)`: points: iOS's and macOS's points, Android's dp, a pixel
-  at 100% scaling on Windows (1/96 inch), GTK's logical pixels on
-  Linux, and CSS pixels on the web.
-- `ui.Pct(v)`: a percentage of the parent's size along the same axis.
-- `ui.Auto`, the zero value: the content's size, or what flexbox gives.
+- a number: points: iOS's and macOS's points, Android's dp, a pixel at
+  100% scaling on Windows (1/96 inch), GTK's logical pixels on Linux,
+  and CSS pixels on the web;
+- a percentage, `50%`, of the parent's size along the same axis;
+- `.auto`, the default: the content's size, or what flexbox gives.
 
-`Width` and `Height` set the size; `MinWidth`, `MinHeight`, `MaxWidth`
-and `MaxHeight` bound it. `AspectRatio` is width over height: with one
+`width` and `height` set the size; `minWidth`, `minHeight`, `maxWidth`
+and `maxHeight` bound it. `aspectRatio` is width over height: with one
 side known, it sets the other.
 
-```go
-ui.View(ui.ViewProps{Style: ui.Style{
-	Width:       ui.Pct(50),
-	MinWidth:    ui.Pt(120),
-	MaxWidth:    ui.Pt(320),
-	AspectRatio: 16.0 / 9,
-	Background:  colors.Gray,
-}})
+```asuka
+View {
+  width: 50%; minWidth: 120; maxWidth: 320
+  aspectRatio: 16.0 / 9
+  background: .gray
+}
 ```
 
 Text and controls measure themselves, with the platform's own
@@ -136,122 +145,130 @@ measuring: give them a size only to change it.
 
 A point is as many pixels as the display's scale: 2 or 3 on a phone, 2
 on a Retina Mac, the display's scaling on Windows and Linux (1.5 at
-150%), the browser's device pixel ratio on the web. `ui.UseEnvironment()`'s
-`Scale` says which. A desktop window moved to a display of another
+150%), the browser's device pixel ratio on the web. The environment's
+`scale` says which (`environment().scale`). A desktop window moved to a display of another
 scale is drawn at that display's scale; its layout, in points, stays as
 it was.
 
 ## Padding and margin
 
-`Padding` and `Margin` are `ui.Edges`, per side, in points:
+`padding` and `margin` are `Edges`, per side, in points:
 
-- `ui.All(v)`: v on every side.
-- `ui.Symmetric(v, h)`: v at the top and bottom, h at the left and
-  right.
-- `ui.Edges{Top: 24}`: each side by name.
+- `16`: 16 on every side;
+- `[8, 16]`: 8 at the top and bottom, 16 at the left and right;
+- `[4, 8, 4, 8]`: top, right, bottom, left;
+- `Edges(top: 24)`: each side by name.
 
-```go
-ui.Column(ui.Style{Padding: ui.Symmetric(8, 16), Margin: ui.Edges{Top: 24}},
-	ui.StaticText("Padded"),
-)
+```asuka
+Column {
+  padding: [8, 16]; margin: Edges(top: 24)
+  Text("Padded")
+}
 ```
 
-A `Button`'s `Padding` replaces the platform's own, as CSS's does, on
-iOS, Android and the web: `ui.Style{MinHeight: ui.Pt(48), Padding:
-ui.Symmetric(10, 20)}` is 48 points high there, as the same style on a
-`View` is. A button without `Padding` keeps the platform's, a border too.
-On the desktop, a button's padding is around its native bezel.
+A `Button`'s `padding` replaces the platform's own, as CSS's does, on
+iOS, Android and the web: `minHeight: 48; padding: [10, 20]` is 48
+points high there, as the same props on a `View` are. A button without
+`padding` keeps the platform's, a border too. On the desktop, a button's
+padding is around its native bezel.
 
-In a language written right to left, a `Row` runs from the right, `Justify`
-and `Align` follow it, and the side a line of text starts on is the right.
-`Left` and `Right` stay where they say, as in CSS. To put a space on the side
-text starts or ends on, say `Start` or `End`:
+In a language written right to left, a `Row` runs from the right,
+`justify` and `align` follow it, and the side a line of text starts on
+is the right. `left` and `right` stay where they say, as in CSS. To put
+a space on the side text starts or ends on, say `start` or `end`:
 
-```go
-ui.Style{Padding: ui.Edges{Start: 16, End: 8}} // 16 on the left in English, on the right in Arabic
+```asuka
+View { padding: Edges(start: 16, end: 8) } // 16 on the left in English, on the right in Arabic
 ```
 
 See [Languages](i18n.md).
 
 ## Absolute positioning
 
-`Absolute` takes a view out of the flow; `Top`, `Right`, `Bottom` and
-`Left` place it in its parent. Here a badge sits on the corner of an
-avatar:
+`absolute: true` takes a view out of the flow; `top`, `right`, `bottom`
+and `left` place it in its parent. Here a badge sits on the corner of
+an avatar:
 
-```go
-ui.View(ui.ViewProps{Style: ui.Style{Width: ui.Pt(44), Height: ui.Pt(44)}},
-	Avatar(),
-	ui.View(ui.ViewProps{Style: ui.Style{
-		Absolute: true, Top: ui.Pt(-4), Right: ui.Pt(-4),
-		Width: ui.Pt(18), Height: ui.Pt(18), CornerRadius: 9,
-		Background: colors.Red, Align: ui.AlignCenter, Justify: ui.JustifyCenter,
-	}}, Badge()),
-)
+```asuka
+View {
+  width: 44; height: 44
+  Avatar()
+  View {
+    absolute: true; top: -4; right: -4
+    width: 18; height: 18; radius: 9
+    background: .red; align: .center; justify: .center
+    Badge()
+  }
+}
 ```
 
 Later children are drawn over earlier ones.
 
 ## Grid
 
-With `Grid` set, a container lays out its children in a CSS grid. Its
-tracks come from package `layout`: `layout.Fr`, `layout.Px`,
-`layout.Repeat`, `layout.Minmax`... A child spans tracks with
-`GridColumn` and `GridRow`.
+With `grid` set, a container lays out its children in a CSS grid. Its
+tracks are `Track`s: `.fr(1)`, `.points(80)`, `.percent(25)`, `.auto`,
+`.minContent`, `.maxContent`, `.minmax(a, b)`, `.repeat(n, [...])`,
+`.autoFill([...])`, `.autoFit([...])`. A child spans tracks with
+`gridColumn` and `gridRow` (`.line(2)`, `.span(3)`, `.between(1, 3)`).
 
-```go
-ui.View(ui.ViewProps{Style: ui.Style{Gap: 8, Grid: &ui.Grid{
-	Columns: []layout.GridTrack{layout.Repeat(3, layout.Fr(1))},
-}}},
-	Avatar(), Avatar(), Avatar(), Avatar(),
-	ui.View(ui.ViewProps{Style: ui.Style{GridColumn: layout.Placement{Start: layout.Span(3)}, Height: ui.Pt(20), Background: colors.Gray}}),
-)
+```asuka
+View {
+  gap: 8
+  grid: Grid(columns: [.repeat(3, [.fr(1)])])
+  Avatar(); Avatar(); Avatar(); Avatar()
+  View { gridColumn: .span(3); height: 20; background: .gray }
+}
 ```
 
-For a grid of many items that scrolls, use a `ui.List` with `Columns`
-(see [Components](components.md)).
+For a grid of many items that scrolls, use a `List` with `columns` (see
+[Components](components.md)).
 
 ## The safe area, the keyboard and the window
 
 On a phone, the root fills the screen, under the status bar, the notch
-and the home indicator. `ui.SafeArea` is a `Column` padded by the safe
+and the home indicator. `SafeArea` is a `Column` padded by the safe
 area's insets, on top of its own padding. Its bottom padding is the
 keyboard's height while the keyboard is up, so what's at its bottom (a
 text field, a send button) stays above it.
 
-```go
-ui.SafeArea(ui.Style{Padding: ui.All(16), Gap: 12},
-	ui.StaticText("Todos", ui.Style{Font: fonts.LargeTitle.Weighted(fonts.Bold)}),
-	ui.Scroll(ui.ScrollProps{Style: ui.Style{Grow: 1}}, rows...),
-	composer,
-)
+```asuka
+SafeArea {
+  padding: 16; gap: 12
+  Text("Todos") { font: .largeTitle.bold() }
+  Scroll {
+    grow: 1
+    for t in todos key t.id { TodoRow(t) }
+  }
+  Composer()
+}
 ```
 
 The insets are those of the screen it's in: in a stack screen, a tab or
-a sheet, that screen's. `ui.UseEnvironment` gives them, and the
-keyboard's height, for placing things yourself (see
-[Concepts](concepts.md)).
+a sheet, that screen's. `environment()` gives them, and the keyboard's
+height, for placing things yourself (see
+[Concepts](concepts.md#the-environment)).
 
 On macOS, Windows and Linux the root fills the window's content, below
 its title bar (Linux's header bar). A desktop window has no safe area
 and no on-screen keyboard over it: the insets and the keyboard's height
-are 0, and `ui.SafeArea` is a `Column` with its own padding. Use it
-anyway; the same screen then fits a phone too.
+are 0, and `SafeArea` is a `Column` with its own padding. Use it anyway;
+the same screen then fits a phone too.
 
-The window is 800 by 600 points unless the app says otherwise. Give
-its size, and the least the user can make it, with `app.RunWindow`:
+The window is 800 by 600 points unless the app says otherwise (see
+[Navigation](navigation.md)); a phone has none. As the user resizes the
+window, the environment's `width` and `height` change and layout runs
+again: there's nothing to handle. To change the layout at a size (a
+sidebar that shows when there's room), branch on the environment's
+`widthClass`, as on a tablet:
 
-```go
-func main() {
-	app.RunWindow(ui.WindowOptions{Width: 960, Height: 640, MinWidth: 480, MinHeight: 360}, App)
+```asuka
+if environment().widthClass == .expanded {
+  Row { grow: 1; Sidebar(); Detail() }
+} else {
+  ItemList()
 }
 ```
-
-A phone ignores these options. As the user resizes the window, the
-environment's `Width` and `Height` change and layout runs again: there's
-nothing to handle. To change the layout at a size (a sidebar that shows
-when there's room), read the environment's `WidthClass` in a
-`StyleFunc` or a `Show`, as on a tablet.
 
 In a browser, an app that fills the page takes the device's safe area
 (`env(safe-area-inset-*)`, on a phone with a notch) and the on-screen
@@ -260,42 +277,39 @@ a page has neither.
 
 ## Scrolling
 
-`ui.Scroll` scrolls its children, vertically or, with `Horizontal`,
-sideways. Give it a size, or `Grow: 1`, so it has something to scroll
-within. `Style` is the scroll view's own box; `ContentStyle` is the box
-its children stack in, where padding and gaps go.
+`Scroll` scrolls its children, vertically or, with `horizontal: true`,
+sideways. Give it a size, or `grow: 1`, so it has something to scroll
+within. Its size props are the scroll view's own box; its `padding`,
+`gap`, `justify`, `align` and `wrap` lay out its content.
 
-```go
-ui.Scroll(ui.ScrollProps{Style: ui.Style{Grow: 1}, ContentStyle: ui.Style{Padding: ui.All(16), Gap: 12}},
-	ui.StaticText("Long content"),
-)
+```asuka
+Scroll {
+  grow: 1; padding: 16; gap: 12
+  Text("Long content")
+}
 ```
 
 Pull to refresh and scroll positions are in
 [Components](components.md), and long lists in
-[Lists](components.md).
+[Lists](components.md#lists).
 
 ## Colors
 
-A `ui.Color` comes from the package `colors`
-(`github.com/egoist/asuka/colors`), and is one of:
+A `Color` is one of:
 
-- **The platform's default**: the zero value, a prop left unset.
+- **The platform's default**: a prop left unset.
 - **A semantic color**, resolved by the platform, so it follows dark
   mode:
-  - text: `colors.Label`, `colors.SecondaryLabel`, `colors.TertiaryLabel`;
-  - backgrounds: `colors.Background`, `colors.SecondaryBackground`,
-    `colors.GroupedBackground`, and `colors.SecondaryGroupedBackground` for
-    a grouped list's rows on it (iOS's inset grouped cells);
-  - `colors.Separator`, `colors.Accent` (the app's accent),
-    `colors.OnAccent` (what reads on it: an icon on a button filled with
-    the accent), `colors.Clear` (transparent);
-  - the system's hues: `colors.Red`, `colors.Orange`, `colors.Yellow`,
-    `colors.Green`, `colors.Blue`, `colors.Purple`, `colors.Pink`,
-    `colors.Gray`.
-- **A fixed color**: `colors.RGB(r, g, b)`, `colors.RGBA(r, g, b, a)`,
-  `colors.Hex(0x7c3aed)`, or `colors.ParseHex("#7c3aed")` (also
-  `"#rrggbbaa"`), which reports whether it parsed.
+  - text: `.label`, `.secondaryLabel`, `.tertiaryLabel`;
+  - backgrounds: `.background`, `.secondaryBackground`,
+    `.groupedBackground`, and `.secondaryGroupedBackground` for a
+    grouped list's rows on it (iOS's inset grouped cells);
+  - `.separator`, `.accent` (the app's accent), `.onAccent` (what reads
+    on it: an icon on a button filled with the accent), `.clear`
+    (transparent);
+  - the system's hues: `.red`, `.orange`, `.yellow`, `.green`, `.blue`,
+    `.purple`, `.pink`, `.gray`.
+- **A fixed color**: `#7c3aed`, or `#7c3aed80` with its alpha.
 
 Where the semantic colors come from:
 
@@ -309,48 +323,52 @@ Where the semantic colors come from:
 | The web | Asuka's palette, as CSS variables, light and dark |
 
 On the desktops the grouped backgrounds are the plain ones:
-`colors.GroupedBackground` is the window's background, and
-`colors.SecondaryGroupedBackground` a card's, as `colors.SecondaryBackground` is.
+`.groupedBackground` is the window's background, and
+`.secondaryGroupedBackground` a card's, as `.secondaryBackground` is.
 
-```go
-ui.Column(ui.Style{Padding: ui.All(16), Gap: 4, Background: colors.Background, CornerRadius: 12},
-	ui.StaticText("Title", ui.Style{Font: fonts.Headline}),
-	ui.StaticText("Details", ui.Style{Font: fonts.Subheadline, Color: colors.SecondaryLabel}),
-)
+```asuka
+Column {
+  padding: 16; gap: 4; background: .background; radius: 12
+  Text("Title") { font: .headline }
+  Text("Details") { font: .subheadline; color: .secondaryLabel }
+}
 ```
 
-`c.Opacity(a)` is a color drawn at an opacity from 0 to 1 (SwiftUI's
+`c.opacity(a)` is a color drawn at an opacity from 0 to 1 (SwiftUI's
 `.opacity`, Compose's `copy(alpha =)`). A semantic color stays one, so
-`colors.Accent.Opacity(0.15)` is a tint of the accent in light and dark
-alike: a chip's background, a chart's fill, a track.
+the accent at `opacity(0.15)` is a tint of it in light and dark alike: a
+chip's background, a chart's fill, a track.
 
-`Color` is the text's color, or a control's tint.
+```asuka
+let tint: Color = .accent
+View { padding: [4, 10]; radius: 12; background: tint.opacity(0.15); Text("New") }
+```
+
+`color` is the text's color, or a control's tint.
 
 ## Backgrounds, borders and shadows
 
-- **`Background`**: the view's background color.
-- **`CornerRadius`**: rounds its corners, in points.
-- **`BorderWidth`** and **`BorderColor`**: a border, drawn inside the
-  box. It insets the content, as padding does.
-- **`Shadow`**: a drop shadow, cast by the view's shape (its bounds,
-  rounded by `CornerRadius`), not by what's drawn in it: `Color` (none
-  without one), `Radius` (a blur radius, as CSS's and SwiftUI's: twice
-  the blur's σ), and an offset, `X` and `Y`. A view that clips its
-  children (`Clip`) still casts it, as a rounded card that clips its
-  image does. Android draws its elevation shadow instead: the radius is
-  the elevation, the color tints it, and the light sets the offset.
-  macOS, Windows, Linux and the web draw it as iOS does, with the same
-  blur and offset.
-- **`Gradient`**: a linear gradient over the background.
-  `ui.LinearGradient(colors...)` goes from top to bottom; a
-  `ui.Gradient` sets `Start` and `End` as `ui.Point`s, in units of the
-  view's size ((0, 0) its top leading corner, (1, 1) its bottom trailing
-  one), and `Locations`, one per color. Android draws it along the
-  nearest of eight directions; the other platforms along the line you
-  give.
-- **`Material`**: a translucent background that blurs what's behind it,
-  iOS's materials: `ui.MaterialUltraThin`, `ui.MaterialThin`,
-  `ui.MaterialRegular`, `ui.MaterialThick`, `ui.MaterialBar`.
+- **`background`**: the view's background color.
+- **`radius`**: rounds its corners, in points.
+- **`border`** and **`borderColor`**: a border, drawn inside the box. It
+  insets the content, as padding does.
+- **`shadow`**: a drop shadow, cast by the view's shape (its bounds,
+  rounded by `radius`), not by what's drawn in it: `Shadow(color:,
+  radius:, x:, y:)`, where `radius` is a blur radius (as CSS's and
+  SwiftUI's: twice the blur's σ) and `x` and `y` its offset. A view that
+  clips its children (`clip`) still casts it, as a rounded card that
+  clips its image does. Android draws its elevation shadow instead: the
+  radius is the elevation, the color tints it, and the light sets the
+  offset. macOS, Windows, Linux and the web draw it as iOS does, with
+  the same blur and offset.
+- **`gradient`**: a linear gradient over the background,
+  `Gradient(stops: [...])`, top to bottom unless `startX`, `startY`,
+  `endX` and `endY` say otherwise, in units of the view's size ((0, 0)
+  its top left corner, (1, 1) its bottom right one). Each `Stop` is a
+  color at a location from 0 to 1. Android draws it along the nearest
+  of eight directions; the other platforms along the line you give.
+- **`material`**: a translucent background that blurs what's behind it,
+  iOS's materials: `.ultraThin`, `.thin`, `.regular`, `.thick`, `.bar`.
   - iOS: `UIVisualEffectView`'s blurs.
   - macOS: an `NSVisualEffectView` behind the view's content, blurring
     what's behind it in the window.
@@ -359,88 +377,87 @@ alike: a chip's background, a chart's fill, a track.
   - The web: CSS's `backdrop-filter`, a blur and saturation.
   - Android and Linux, which can't blur behind a view, show the surface
     color (Linux: libadwaita's card color), translucent.
-- **`Clip`**: clips the children to the view's bounds and corners.
+- **`clip`**: clips the children to the view's bounds and corners.
 
-```go
-ui.View(ui.ViewProps{Style: ui.Style{
-	Height:       ui.Pt(120),
-	CornerRadius: 16,
-	Gradient:     ui.LinearGradient(colors.Hex(0x6366f1), colors.Hex(0xec4899)),
-	Shadow:       ui.Shadow{Color: colors.RGBA(0, 0, 0, 80), Radius: 16, Y: 8},
-}})
+```asuka
+View {
+  height: 120; radius: 16
+  gradient: Gradient(stops: [Stop(color: #6366f1, at: 0), Stop(color: #ec4899, at: 1)])
+  shadow: Shadow(color: #00000050, radius: 16, y: 8)
+}
 
-ui.View(ui.ViewProps{Style: ui.Style{Padding: ui.All(12), BorderWidth: 1, BorderColor: colors.Separator, CornerRadius: 8, Clip: true}},
-	ui.StaticText("Bordered"),
-)
+View {
+  padding: 12; border: 1; borderColor: .separator; radius: 8; clip: true
+  Text("Bordered")
+}
 
 // Left to right.
-ui.View(ui.ViewProps{Style: ui.Style{
-	Height:   ui.Pt(80),
-	Gradient: &ui.Gradient{Colors: []ui.Color{colors.Blue, colors.Purple}, Start: ui.Point{X: 0, Y: 0.5}, End: ui.Point{X: 1, Y: 0.5}},
-}})
+View {
+  height: 80
+  gradient: Gradient(stops: [Stop(color: .blue, at: 0), Stop(color: .purple, at: 1)], startY: 0.5, endX: 1, endY: 0.5)
+}
 ```
 
 ## Opacity and hiding
 
-`Opacity` is from 0 to 1, but its zero value means opaque, as an unset
-prop does: `Opacity: 0.5` is half transparent, `Opacity: 0` is fully
-opaque. To hide a view, set `Hidden`. A hidden view still takes its
-space in the layout; to take it out, and its views with it, use
-`ui.Show` (see [Concepts](concepts.md)).
+`opacity` is from 0 (transparent) to 1 (opaque, the default). To hide a
+view, set `hidden`. A hidden view still takes its space in the layout;
+to take it out, and its views with it, put it in an `if` (see
+[Concepts](concepts.md#showing-and-repeating)).
 
 ## Transforms
 
-`Transform` moves, scales and rotates a view as it's drawn
-(`TranslateX`, `TranslateY`, `Scale`, `ScaleX`, `ScaleY`, `Rotate` in
-degrees); layout doesn't see it. Every platform draws it. Transforms, `Transition` and `Match` are
-for animation: see [Motion](motion.md).
+`transform` moves, scales and rotates a view as it's drawn,
+`Transform(x:, y:, scale:, scaleX:, scaleY:, rotation:)` (degrees,
+clockwise); layout doesn't see it. Every platform draws it.
+Transforms, `transition` and `shared` are for animation: see
+[Motion](motion.md).
 
 ## Text
 
-`Font` sets a text's font, a `fonts.Font` from the package `fonts`
-(`github.com/egoist/asuka/fonts`):
+`font` sets a text's font, a `Font`:
 
 - **Semantic fonts**, the platform's text styles, scaled with the
-  user's text size: `fonts.LargeTitle`, `fonts.Title`, `fonts.Title2`,
-  `fonts.Title3`, `fonts.Headline`, `fonts.Subheadline`, `fonts.Body`,
-  `fonts.Callout`, `fonts.Footnote`, `fonts.Caption`, `fonts.Caption2`.
-- **`fonts.System(size)`**: the system font at a size, in points.
-- **`.Weighted(w)`** gives a font a weight: `fonts.Ultralight`,
-  `fonts.Thin`, `fonts.Light`, `fonts.Regular`, `fonts.Medium`,
-  `fonts.Semibold`, `fonts.Bold`, `fonts.Heavy`, `fonts.Black`.
+  user's text size: `.largeTitle`, `.title`, `.title2`, `.title3`,
+  `.headline`, `.subheadline`, `.body`, `.callout`, `.footnote`,
+  `.caption`, `.caption2`.
+- **`Font(size: 20)`**: the system font at a size, in points.
+- **A weight**: `.bold()`, `.semibold()`, `.medium()`, or `weighted(w)`
+  with any of `.ultralight`, `.thin`, `.light`, `.regular`, `.medium`,
+  `.semibold`, `.bold`, `.heavy`, `.black`.
 
-`Color` is the text's color, `TextAlign` its alignment (`ui.TextStart`,
-`ui.TextCenter`, `ui.TextEnd`, `ui.TextJustify`), and `Lines` the most
-lines it shows; 0, the default, is no limit. Text wraps by default.
+`color` is the text's color, `textAlign` its alignment (`.start`,
+`.center`, `.end`, `.justify`), and `lines` the most lines it shows; 0,
+the default, is no limit. Text wraps by default.
 
-```go
-ui.StaticText("Brand", ui.Style{Color: colors.RGB(124, 58, 237), Font: fonts.Title.Weighted(fonts.Bold)})
-ui.StaticText("A long paragraph that stops after two lines.", ui.Style{Font: fonts.Body, Lines: 2, TextAlign: ui.TextCenter})
-ui.StaticText("Fixed size", ui.Style{Font: fonts.System(20).Weighted(fonts.Medium)})
+```asuka
+Text("Brand") { color: #7c3aed; font: .title.bold() }
+Text("A long paragraph that stops after two lines.") { font: .body; lines: 2; textAlign: .center }
+Text("Fixed size") { font: Font(size: 20).medium() }
 ```
 
 For text with several styles in it, links and inline views, see
 [RichText](components.md).
 
 The text styles are iOS's names; each platform maps them to its own
-type ramp, so `fonts.Body` is the size the platform's apps use for body
+type ramp, so `.body` is the size the platform's apps use for body
 text:
 
-| Platform | Text styles | `fonts.Body` |
+| Platform | Text styles | `.body` |
 | --- | --- | --- |
 | iOS | UIKit's text styles, in San Francisco | 17 |
-| Android | Material 3's type scale (`fonts.Body` is Body Large), in Roboto | 16 |
+| Android | Material 3's type scale (`.body` is Body Large), in Roboto | 16 |
 | macOS | AppKit's text styles (`NSFont.preferredFont(forTextStyle:)`), in San Francisco | 13 |
 | Windows | Windows 11's type ramp, in Segoe UI Variable (Segoe UI before Windows 11) | 14 |
 | Linux | libadwaita's type classes (`.title-1`, `.heading`, `.caption`...), relative to the desktop's interface font | the interface font's size |
 | The web | Asuka's ramp, in the system's font (`system-ui`) | 16 |
 
-On Windows the styles take the nearest of the ramp's: `fonts.LargeTitle` is
-Title Large (40), `fonts.Title` Title (28), `fonts.Title2` Subtitle (20),
-`fonts.Headline` Body Strong (14, semibold), `fonts.Footnote` and `fonts.Caption`
-Caption (12). On Linux, with GNOME's 11 pt interface font, `fonts.LargeTitle`
-is `.title-1` (181%, heavy), `fonts.Title` `.title-2`, `fonts.Headline`
-`.heading` (bold), and `fonts.Caption` `.caption` (82%).
+On Windows the styles take the nearest of the ramp's: `.largeTitle` is
+Title Large (40), `.title` Title (28), `.title2` Subtitle (20),
+`.headline` Body Strong (14, semibold), `.footnote` and `.caption`
+Caption (12). On Linux, with GNOME's 11 pt interface font, `.largeTitle`
+is libadwaita's `.title-1` (181%, heavy), `.title` `.title-2`,
+`.headline` `.heading` (bold), and `.caption` `.caption` (82%).
 
 What scales with the user's text size:
 
@@ -454,13 +471,13 @@ What scales with the user's text size:
   `rem`.
 - **macOS** has no text size setting: fonts stay as they are.
 
-`ui.UseEnvironment()`'s `FontScale` is that size, 1 by default (see
+The environment's `fontScale` is that size, 1 by default (see
 [Accessibility](accessibility.md)).
 
 ## Custom fonts
 
 Put font files (`.ttf`, `.otf`) in the app's `assets/fonts`. A font's
-`Family`, or `fonts.Custom(family, font)`, picks one:
+`family`, `Font(family: "Inter")` or `.body.family("Inter")`, picks one:
 
 - a file's name: `assets/fonts/Inter-Bold.ttf` is `"Inter-Bold"`;
 - a family of files: `"Inter"` is `Inter-Regular`, `Inter-Bold`... as
@@ -477,57 +494,52 @@ A custom font scales as its text style does. One the platform doesn't
 have shows in the system font. Every platform loads the files in
 `assets/fonts` for the app alone: they aren't installed for other apps.
 
-```go
-ui.StaticText("Inter Bold", ui.Style{Font: fonts.Custom("Inter-Bold", fonts.Title)})
-ui.StaticText("Inter", ui.Style{Font: fonts.Custom("Inter", fonts.Body).Weighted(fonts.Semibold)})
-ui.StaticText("Code", ui.Style{Font: fonts.Custom("monospace", fonts.Footnote)})
+```asuka
+Text("Inter Bold") { font: .title.family("Inter-Bold") }
+Text("Inter") { font: .body.family("Inter").semibold() }
+Text("Code") { font: .footnote.family("monospace") }
 ```
 
 ## Dark mode
 
 Semantic colors change with dark mode on their own: an app that uses
 them needs no code for it. A fixed color stays as it is; to pick one per
-mode, read `Dark` from the environment in a `StyleFunc`:
+mode, read `dark` from the environment:
 
-```go
-env := ui.UseEnvironment()
-ui.View(ui.ViewProps{Style: ui.StyleFunc(func() ui.Style {
-	s := ui.Style{Height: ui.Pt(80), CornerRadius: 12, Background: colors.RGB(255, 255, 255)}
-	if env.Get().Dark {
-		s.Background = colors.RGB(28, 28, 30)
-	}
-	return s
-})})
+```asuka
+View {
+  height: 80; radius: 12
+  background: if environment().dark { #1c1c1e } else { #ffffff }
+}
 ```
 
 ## Styles that change
 
-A `ui.StyleFunc` returns a style, and runs again when a signal it read
-changes. The new style is compared with the last: layout runs again only
-if a layout prop changed, and only the visual props that differ are
-sent to the view.
+A prop that reads state is a binding: it runs again when that state
+changes, and sends that one prop to the view. A layout prop that
+changes lays out again; a look prop that changes only updates the view.
 
-```go
-ui.View(ui.ViewProps{
-	OnPress: func() { selected.Set(!selected.Peek()) },
-	Style: ui.StyleFunc(func() ui.Style {
-		s := ui.Style{Padding: ui.All(12), CornerRadius: 10, Background: colors.SecondaryBackground}
-		if selected.Get() {
-			s.Background = colors.Accent
-			s.BorderWidth = 2
-			s.BorderColor = colors.Label
-		}
-		return s
-	}),
-}, ui.StaticText("Tap me"))
+```asuka
+component Choice {
+  state selected = false
+
+  View {
+    padding: 12; radius: 10
+    background: if selected { .accent } else { .secondaryBackground }
+    border: if selected { 2 } else { 0 }
+    borderColor: .label
+    on press { selected = !selected }
+    Text("Tap me")
+  }
+}
 ```
 
-Make the change inside `ui.Animate` and it animates (see
+Make the change inside `animate { }` and it animates (see
 [Motion](motion.md)).
 
 ## The accent color
 
-`colors.Accent`, and the controls that use it, take the app's accent color
+`.accent`, and the controls that use it, take the app's accent color
 from `asuka.toml`:
 
 ```toml
@@ -550,22 +562,11 @@ blue, and on the web a blue of Asuka's. See [Shipping](shipping.md).
 
 The app follows the system's appearance: iOS's and macOS's Dark Mode,
 Android's dark theme, Windows' app mode (Settings, Personalization,
-Colors), GNOME's dark style, the browser's `prefers-color-scheme`.
-`ui.SetColorScheme` shows it light or dark whatever the system's is, as
-an app's own appearance setting does (SwiftUI's
-`preferredColorScheme`; on Android, AppCompat's night mode; on macOS,
-the app's `NSAppearance`; on Linux, libadwaita's style manager), and
-`ui.ColorSchemeSystem` follows the system again. The
+Colors), GNOME's dark style, the browser's `prefers-color-scheme`. An
+app can show itself light or dark whatever the system's is, as an app's
+own appearance setting does (SwiftUI's `preferredColorScheme`; on
+Android, AppCompat's night mode; on macOS, the app's `NSAppearance`; on
+Linux, libadwaita's style manager): see [the app](navigation.md). The
 semantic colors, the platform's controls and the system bars follow,
-without remaking the app, and `ui.UseEnvironment()`'s `Dark` says which
-it is. Keep the choice with [`store`](data.md) and set it as the app
-starts:
-
-```go
-var scheme = store.Signal("colorScheme", int(ui.ColorSchemeSystem))
-
-func App() ui.Node {
-	ui.SetColorScheme(ui.ColorScheme(scheme.Peek()))
-	// ...
-}
-```
+without remaking the app, and the environment's `dark` says which it
+is. Keep the user's choice with [`asuka/store`](stdlib.md).

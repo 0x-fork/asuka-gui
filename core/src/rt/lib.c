@@ -709,6 +709,32 @@ static ak_val f_race(ak_val *args, uint32_t n) {
 	RET_P(out);
 }
 
+// ---- Colors ----
+//
+// A Color is ops' encoding (ops/ops.go): 0 the platform's default; a
+// semantic color 1<<32 | (255 - alpha)<<24 | its index; RGBA 2<<32 |
+// r<<24 | g<<16 | b<<8 | a.
+
+static ak_val color_opacity(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	uint64_t c = (uint64_t)args[0].i;
+	double o = args[1].f;
+	if (o < 0) o = 0;
+	if (o > 1) o = 1;
+	switch (c >> 32) {
+	case 1: {
+		uint32_t alpha = 255 - (uint32_t)((c >> 24) & 0xff);
+		uint64_t a = (uint64_t)(alpha * o + 0.5);
+		RET_I((1ull << 32) | (255 - a) << 24 | (c & 0xffff));
+	}
+	case 2: {
+		uint64_t a = (uint64_t)((double)(c & 0xff) * o + 0.5);
+		RET_I((c & ~0xffull) | a);
+	}
+	}
+	RET_I(c);
+}
+
 // ---- Bytes ----
 //
 // A bytes value may be none (a zero value): it's empty.
@@ -823,6 +849,7 @@ const ak_lib_entry ak_lib[] = {
 	{"str.chars", str_chars},
 	{"str.to_bytes", str_to_bytes},
 
+	{"color.opacity", color_opacity},
 	{"bytes.empty", bytes_empty},
 	{"bytes.len", bytes_len},
 	{"bytes.is_empty", bytes_is_empty},

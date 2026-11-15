@@ -401,6 +401,7 @@ const (
 	BRange       // arr.range
 	BWithTimeout // withTimeout(d) { … }
 	BStream      // Stream<T>(send => { … })
+	BEnvironment // environment(): what the platform says about where the app shows (tracked)
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

@@ -146,6 +146,10 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 					if call.Method.Recv == "loading" {
 						found = true
 					}
+				case CallBuiltin:
+					if call.Builtin.ID == BEnvironment {
+						found = true // it reads the root's environment, a signal
+					}
 				}
 			}
 		case *syntax.UnaryExpr:

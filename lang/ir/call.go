@@ -439,6 +439,8 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return b.allRace(e, call, dst)
 	case check.BWithTimeout:
 		return b.withTimeout(e, call)
+	case check.BEnvironment:
+		return b.copyTo(b.callB("ui.environment", bc.KRef), dst)
 	case check.BStream:
 		// Stream<T>(produce): started when it's first read.
 		st := b.typ(call.Result).(*check.Stream)

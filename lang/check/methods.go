@@ -109,6 +109,9 @@ var Methods = []*Method{
 	{Recv: "string", Name: "chars", Sig: "() -> [string]", Builtin: "str.chars", Doc: "its characters, each a string"},
 	{Recv: "string", Name: "bytes", Sig: "() -> bytes", Builtin: "str.to_bytes", Doc: "its UTF-8 bytes"},
 
+	// Colors.
+	{Recv: "color", Name: "opacity", Sig: "(alpha: float) -> Color", Builtin: "color.opacity", Doc: "the color drawn at alpha (0 to 1) times its own opacity; a semantic color stays one, so it still follows dark mode"},
+
 	// Bytes.
 	{Recv: "bytes", Name: "count", Sig: "() -> int", Builtin: "bytes.len", Doc: "the number of bytes"},
 	{Recv: "bytes", Name: "isEmpty", Sig: "() -> bool", Builtin: "bytes.is_empty"},
@@ -183,6 +186,8 @@ func recvKind(t Type) string {
 			return "app"
 		case Bytes:
 			return "bytes"
+		case Color:
+			return "color"
 		}
 	}
 	return ""
@@ -410,6 +415,8 @@ func (p *sigParser) typ() Type {
 			t = String
 		case "bytes":
 			t = Bytes
+		case "Color":
+			t = Color
 		case "T":
 			t = tvT
 		case "K":

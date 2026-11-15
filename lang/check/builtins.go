@@ -242,6 +242,9 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		call.Result = Void
 		c.callEffects(e, "withTimeout", true, true)
+	case BEnvironment:
+		positional(0, "nothing: environment()")
+		call.Result = c.prelude.Scope.Lookup("Environment").(*TypeName).Type
 	case BStream:
 		args := positional(1, "what sends its values: Stream<T>(send => { … })")
 		var elem Type
