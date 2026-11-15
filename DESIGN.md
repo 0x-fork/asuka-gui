@@ -1,250 +1,175 @@
 # Asuka — design
 
-Asuka (working name) is a UI framework in Go that renders with each
-platform's own widgets. **Mobile comes first: iOS and Android.** Desktop
-(macOS, Windows, Linux) comes after mobile's v0 is done, on the same core
-(see "Desktop, later"). Apps are written in Go. The goals, in order:
+Asuka is a UI framework that renders with each platform's own widgets,
+driven by fine-grained signals. **Mobile comes first: iOS and
+Android**; macOS, Windows, Linux and the web run on the same core. Apps
+are written in **Asuka**, a language of its own (docs/language.md), and
+run on a **core written in C** (core/). RFC 0007 has the reasoning for
+both. The goals, in order:
 
-1. **Fast to build with**: fast compiles, a quick edit-and-run loop on
-   the simulator and the emulator, a small API.
+1. **Fast to build with**: a save shows on the device in milliseconds,
+   with its state and its views kept; a small, checked language; one
+   command for every platform.
 2. **Best performance**: an update touches only the native widgets it
-   changes, and crosses into native code once per batch.
+   changes, crosses into native code once per batch, and allocates
+   nothing in the steady state; release builds are compiled to C.
 
-Non-goals: drawing widgets ourselves (that is MyGo's native UI; the one
-planned exception is rich text, see "Rich text"), web views (an app in a phone's web view; the browser is a platform of its own, see "The web"), pixel-identical looks across platforms, stability across a
-large audience before 1.0. Desktop is not a non-goal, only later: no
-core API may assume a phone (one window, touch only) where desktop would
-need something else; such APIs get a desktop-shaped extension point now
-and an implementation later.
+Non-goals: drawing widgets ourselves (the one exception is rich text,
+see "Rich text"), web views (the browser is a platform of its own, see
+"The web"), pixel-identical looks across platforms, stability across a
+large audience before 1.0.
 
 ## Decisions
 
 | Question | Decision | Why |
 |---|---|---|
-| Platforms, in order | iOS, Android; then macOS, Windows, Linux | Mobile is the focus. The core and `ops` are platform-neutral, so desktop hosts are added later without changing apps. |
-| Language | Go | Fast compiles; GC and closures make UI code quick to write; MyGo's purego/Objective-C experience carries over. The cost per frame is in the platform toolkits, so a faster core language would not show. |
-| Retained or immediate | Retained | Native widgets are retained objects that own focus, selection, IME, scroll and accessibility state. Rebuilding a description every frame would mean diffing it against them. |
-| Reactivity | Fine-grained signals (Solid-like), no virtual tree | A signal write re-runs only the effects that read it, and each effect emits exactly the property change it causes. |
-| Threads | Core runs on the platform's main thread | Native callbacks that need answers synchronously (list data sources, text field delegates, measurement, layout inside the keyboard's animation) call straight into the core. Frameworks that run logic and layout off the main thread (React Native, Texture, Litho) do it so slow or garbage-collected app logic can't drop frames, and pay with asynchronous interop: blank cells, input races, layout a frame late. Fabric added synchronous layout and Flutter merged its UI and platform threads (3.29) for that reason; SwiftUI and Compose stay on main. Asuka's logic is compiled Go with fine-grained updates, so the main thread suffices; slow work runs on goroutines that post results back. The place off-main work does pay, preparing long, rich or streaming text, is handled without moving the core (see "Rich text"). |
-| Core ↔ native contract | Batched mount operations (`ops`) | One crossing per batch. The same stream works in process and over a socket. |
-| Layout | Our own engine in Go: CSS block, flexbox and grid (Taffy-like, checked against Chrome), measured by the host | One layout engine for every platform, with the semantics web and React Native developers know; native widgets report their own sizes. Designed for our tree and for zero allocation, not ported from Yoga or Taffy. |
-| iOS host | Swift + UIKit, with Go linked as a `c-archive` | UIKit subclasses and delegates are trivial in Swift. Not SwiftUI: it is a second reconciler. |
-| Android host | Kotlin + Android Views (Material Components 3), with Go loaded as a `c-shared` library | Views are imperative targets for mount ops; JNI is crossed once per batch. Not Compose: it is a second reconciler, it measures only inside its own layout pass (the core measures synchronously during a flush), and it applies changes on the next frame. Views aren't deprecated, but new Material and Jetpack UI (Material 3 Expressive, adaptive scaffolds) often lands in Compose first or only. A component that exists only in Compose is mounted as a `ComposeView` for that one node, driven by the node's props and measured with `ComposeView.measure`; the core and the ops don't change. Not in list rows: each `ComposeView` is its own composition. Revisit only if Material Components is deprecated. |
-| Text and controls | The platform's own views (`UILabel`, `TextView`, ...), measured by the real widget on the main thread | Native behavior for free: accessibility, Dynamic Type and font scale, selection, truncation, line breaking. What's measured is what's drawn. The alternative, laying text out off the main thread with CoreText / `StaticLayout` and drawing it in a custom view (as frameworks whose core runs off the main thread do), would re-implement all of that. The cost: text is measured on the main thread, and each widget's measuring quirks are ours. Mitigations: per-node layout caches, and a shared measure cache keyed by content (below). If profiling ever shows main-thread text measuring hurting (List cells), measure with CoreText / `StaticLayout` while still drawing with the platform view. |
-| Web | The DOM, from a JavaScript host (`platform/web`) the app's Go code drives as WebAssembly (`host/web`) | As the mobile hosts: the core hands over each batch encoded, decoded in place out of the WebAssembly memory by a generated decoder, one crossing per batch; driving the DOM from Go through `syscall/js` would cross per property. Each view is an element at the frame the core laid out, so layout is Asuka's, as on every platform; leaves are measured by the real elements. Not a canvas: the browser's text, controls, focus, autofill and accessibility come with its elements. |
-| cgo | Allowed only in `mobile/` (build tags `ios`, `android`) | Go's `c-archive` and `c-shared` build modes need it. Everything else builds with `CGO_ENABLED=0`, so desktop hosts can stay cgo-free later. |
+| Platforms, in order | iOS, Android; then macOS, Windows, Linux, the web | The core and `ops` are platform-neutral. |
+| App language | Asuka: statically typed, component bodies declarative, async/await, value semantics (docs/language.md) | Reactivity the compiler checks (a read that should follow can't be read once), main-thread rules as type errors, and code a VM can reload without restarting. |
+| Core language | C17 (core/) | Every platform's toolchain and FFI calls C; no runtime or GC of its own on the phone; a small WebAssembly build. |
+| Compiler | Go (lang/), part of the CLI | The device never compiles; the CLI and the language server share it. |
+| Running the app | Bytecode on the core's VM in development; C compiled with the core for release (lang/cgen) | Reloads keep state and views on every platform, physical phones included; releases run at native speed. |
+| Memory | Reference counting, copy on write; owners dispose explicitly | No GC pauses; values can't make cycles. |
+| Retained or immediate | Retained | Native widgets are retained objects that own focus, selection, IME, scroll and accessibility state. |
+| Reactivity | Fine-grained signals (alien-signals' algorithm, Solid's owners), no virtual tree | A write re-runs only what read it, and each binding sends only the prop it sets. |
+| Threads | The core runs on the platform's main thread; `spawn` runs values-only work on workers | Native callbacks that need answers synchronously (list data sources, text field delegates, measurement) call straight into the core. |
+| Core ↔ native contract | Batched mount operations (`ops`), encoded once per batch | One crossing per batch, the same stream in process and over a socket. |
+| Layout | Our own engine (core/src/layout): CSS block, flexbox and grid, checked against Chrome, measured by the host | One layout for every platform, with the semantics web and React Native developers know. |
+| iOS host | Swift + UIKit, the core linked as a static library | UIKit subclasses and delegates are trivial in Swift. Not SwiftUI: it is a second reconciler. |
+| Android host | Kotlin + Android Views (Material Components 3), the core a shared library through JNI | Views are imperative targets for mount ops. Not Compose (a second reconciler, measuring only in its own pass). |
+| Desktop hosts | Go, in process (AppKit through purego, Win32, GTK 4), driving the core through its C ABI (host/bridge) | They are hosts behind the ops wire like the others; their cost is the platforms' calls. No cgo. |
+| Web | The DOM, from a JavaScript host (platform/web), the core as WebAssembly | Batches decoded in place out of the WebAssembly memory; the browser's own elements. |
+| C compiler | The platform's own (Xcode's clang, the NDK's, the system's); Zig's opted into (`ASUKA_CC=zig`) and to cross-compile | What the platforms' SDKs are tested with; Zig for what they can't do. |
+| Packages | The npm registry, with the asuka CLI as the client (`asuka add`, `asuka.lock`) | A registry with scopes, auth and private mirrors for free; one version of each package per app. |
+| Manifest | `asuka.toml` | Written by people, commented, merged by git. |
 
-Open decisions, with the default to use until they are settled:
+Open decisions, with the default until they are settled:
 
-- Minimum versions: **iOS 16, Android API 33 (13)**: Android 13 brought RuntimeShader (ui.Shader) and per-app languages, and what came before it is a small share of devices.
-- Android widgets: Material Components 3 (decided in M2), with the
-  Material 3 Expressive theme and styles (Material Components 1.14).
-- Module path: `github.com/egoist/asuka`.
+- Minimum versions: **iOS 16, Android API 33 (13), macOS 11**.
+- Android widgets: Material Components 3, with Material 3 Expressive.
 
 ## Architecture
 
 ```
-app code (Go)            components, signals
-─────────────────────────────────────────────────────────────
-signal/                  Signal, Memo, Effect, owners, batching
-ui/                      node tree, components, flush scheduler
-layout/                  flexbox over the node tree
-ops/                     mount operations, binary encoding
-─────────────────────────────────────────────────────────────  Host interface
-mobile/ (C ABI, cgo) ──► platform/ios (Swift)   platform/android (Kotlin)
-host/fake                                  tests: records ops
-host/darwin                                macOS: AppKit in process, Go (purego)
-host/windows                               Windows: Win32 in process, Go (syscall)
-host/web (js/wasm) ──► platform/web (JavaScript)   the browser: the DOM
-host/linux                                 later: desktop, in process, Go
+app code (Asuka)        components, stores, state
+─────────────────────────────────────────────────────────────  lang/ (Go, in the CLI)
+compiler                parse, check, lower: bytecode (dev), C (release)
+─────────────────────────────────────────────────────────────  core/ (C)
+vm/  rt/                the VM, values, tasks, the standard library
+signal/                 signals, memos, effects, owners
+ui/                     elements, the node tree, the flush
+layout/                 block, flexbox, grid
+ops/                    mount operations, binary encoding
+abi/                    asuka.h: what hosts call
+─────────────────────────────────────────────────────────────  asuka.h
+platform/ios (Swift)   platform/android (Kotlin)   platform/web (JavaScript)
+host/darwin, host/windows, host/linux (Go, through host/bridge)
+core/host/fake          tests: records ops, measures text at 8 points a character
 ```
 
-The core never imports a host. A mobile app is a Go library: `mobile/`
-adapts the C ABI to `host.Host`, and the Swift/Kotlin host app calls its
-exported functions.
+The core never knows a host: it talks to them through `asuka.h` only.
 
-### The Host interface
+### The C ABI
 
-```go
-package host
+core/include/asuka.h is the whole contract. The host gives the core its
+callbacks once, and calls in on the main thread:
 
-type Host interface {
-	// Apply applies a batch of mount operations. Main thread.
-	Apply(b *ops.Batch)
-	// Measure returns the size of a native view's content: c gives the
-	// known width/height (NaN when free) and the space available on each
-	// axis (definite, MaxContentSpace or MinContentSpace). Main thread,
-	// synchronous, only for views that exist (applied in an earlier Apply).
-	Measure(id ops.NodeID, c layout.Constraints) layout.Size
-	// Post schedules f on the main thread, safe from any goroutine.
-	Post(f func())
-	// Environment returns the root view's size, safe area insets, the
-	// keyboard's frame, scale, appearance (dark/light), locale and text
-	// size (Dynamic Type, Android font scale).
-	Environment() Environment
-}
+```c
+typedef struct {
+	void (*apply)(const uint8_t *buf, size_t len);      // a batch of ops
+	void (*measure)(uint32_t id, float width, float height,
+	                float availWidth, float availHeight,
+	                float *outWidth, float *outHeight); // a leaf's size
+	void (*post)(void);                                 // call asuka_run_posted soon (any thread)
+	/* native packages: native_new, native_call, native_start, ... */
+} asuka_host_callbacks;
+
+void asuka_start(asuka_host_callbacks *callbacks);
+int  asuka_load(const uint8_t *module, size_t len);    // bytecode (dev); release builds link the app
+void asuka_event(const uint8_t *buf, size_t len);      // an encoded event
+int64_t asuka_list_count(uint32_t list);
+void asuka_list_bind(uint32_t list, int64_t index, uint32_t cell);
+void asuka_list_unbind(uint32_t list, uint32_t cell);
+void asuka_run_posted(void);
 ```
 
-Events come from the host into `ui` through one entry point
-(`ui.Dispatch(ev ops.Event)`), on the main thread. Hosts that call into
-the core implement `host.Connector`; `ui.Mount` hands them a `host.Core`
-(`Dispatch`, `ListCount`, `ListBind`, `ListUnbind`).
+## The language and its compiler
+
+docs/language.md is the language; lang/LOWERING.md how each construct
+becomes bytecode and calls into the core. The compiler (lang/syntax,
+lang/types, lang/ir, lang/bytecode, lang/cgen, lang/compile) runs in
+the CLI. In development `asuka dev` sends the player the app's
+bytecode, and on each save the packages that changed: the VM swaps the
+code, keeps every state cell by its component path and name (converted
+to the new types by field names), and keeps the native views that are
+still there. For release, `asuka build` compiles the app to C and links
+it with the core.
 
 ## signal
 
-Port the algorithm of [alien-signals](https://github.com/stackblitz/alien-signals)
+core/src/signal ports [alien-signals](https://github.com/stackblitz/alien-signals)
 (push dirty flags, pull values; glitch-free, no unnecessary
-recomputation), with Solid's ownership model.
-
-```go
-package signal
-
-type Signal[T any] struct{ /* … */ }
-func New[T comparable](v T) *Signal[T]                 // skips equal writes
-func NewFunc[T any](v T, equal func(a, b T) bool) *Signal[T]
-func (s *Signal[T]) Get() T                             // tracks
-func (s *Signal[T]) Peek() T                            // doesn't track
-func (s *Signal[T]) Set(v T)
-func (s *Signal[T]) Update(f func(T) T)
-
-type Memo[T any] struct{ /* … */ }
-func NewMemo[T comparable](f func() T) *Memo[T]         // lazy, cached
-func (m *Memo[T]) Get() T
-
-// Accessor is what components take: a signal, a memo or a func.
-type Accessor[T any] interface{ Get() T }
-func Func[T any](f func() T) Accessor[T]
-func Static[T any](v T) Accessor[T]
-
-func Effect(f func())               // runs at flush, after memos
-func RenderEffect(f func())         // runs now; ui's prop effects
-func NewOwner() *Owner              // disposed with the current owner
-func RunWithOwner(o *Owner, f func())
-func BindThread()                   // asuka_debug: the main thread
-func Untrack[T any](f func() T) T
-func Batch(f func())                // one flush for all writes in f
-
-// Owners
-func Root(f func(dispose func()))
-func OnCleanup(f func())
-type Context[T any] struct{ /* … */ }
-func NewContext[T any](def T) *Context[T]
-func (c *Context[T]) Provide(v T, f func())
-func (c *Context[T]) Use() T
-```
+recomputation), with Solid's ownership model. The graph holds no
+values: the VM's cells and memos own them and tell the graph when they
+read or change one.
 
 Rules:
 
-- Every effect and memo belongs to the owner that was current when it was
-  made. Disposing an owner disposes its children, runs their cleanups,
-  and unsubscribes them. The GC frees memory but never stops a
-  subscribed effect: disposal is explicit and must be tested.
-- Writes during an event handler are batched until the handler returns.
-  `Set` is legal only on the main thread; goroutines use `ui.Post`.
-  Builds with the `asuka_debug` tag check this and panic.
-- Effects run in creation order within a flush: render effects (those
-  `ui` makes for props) before user effects (`signal.Effect`).
-- Writing a signal inside a memo is a panic. Writing inside an effect
-  schedules another pass in the same flush, at most 100 passes, then a
-  panic naming the effect (an infinite loop).
-- No reflection, no `interface{}` boxing on the hot path, no allocation
-  per write in the steady state.
-
-Stores for nested state (a signal per struct field, as Solid's
-`createStore`) come later, generated by `go generate` since generics
-cannot reach fields.
+- Every effect and memo belongs to the owner that was current when it
+  was made. Disposing an owner disposes its children, runs their
+  cleanups and unsubscribes them. Disposal is explicit and tested.
+- Writes during an event handler are batched until the handler returns
+  (or awaits). Writes are legal only on the main thread; worker threads
+  only compute values (`spawn`).
+- Render effects (the UI's bindings) run before user effects within a
+  flush. A write inside a memo is an error; effects that keep dirtying
+  each other stop after 100 passes, naming the effect.
+- No allocation per write in the steady state: links are reused and
+  kept on a free list.
+- Errors: a computation that fails raises its error, which goes to the
+  nearest catcher of its owner (a `Boundary`), or the app's.
 
 ## ui
 
+core/src/ui is the node tree over native views and the flush. Compiled
+code drives it through one protocol (core/src/ui/ui.h), the same for
+every element: make an element, set or bind its keys (a key is a wire
+prop of its native view, a style field, or a behavior such as a text
+field's two-way text), add handlers, children and slots. The elements,
+their keys and events are declared once (lang/prelude/elements.go),
+which generates the C constants and the prelude the compiler reads.
+
 ### Components
 
-A component is a Go function that runs **once** and returns a node.
-Props that can change are `signal.Accessor[T]`; event handlers are plain
-funcs.
+A component is declared in Asuka, and compiles to a function that runs
+**once** per instance and builds the bindings its body declares:
 
-```go
-func Counter() ui.Node {
-	count := signal.New(0)
-	return ui.Column(ui.Style{Gap: 8, Padding: ui.All(16)},
-		ui.Text(signal.Func(func() string {
-			return fmt.Sprintf("Count: %d", count.Get())
-		})),
-		ui.Button(ui.ButtonProps{
-			Title:   ui.Val("Add"),
-			OnPress: func() { count.Update(func(n int) int { return n + 1 }) },
-		}),
-		ui.Show(signal.Func(func() bool { return count.Get() > 10 }),
-			func() ui.Node { return ui.StaticText("That's a lot") }),
-	)
+```asuka
+component Counter {
+  state count = 0
+
+  Column {
+    gap: 8; padding: 16
+    Text("Count: {count}")
+    Button("Add") { on press { count += 1 } }
+    if count > 10 { Text("That's a lot") }
+  }
 }
-
-// On mobile the host calls main once at launch; app.Run mounts the root.
-func main() { app.Run(Counter) }
 ```
 
-The root fills the screen; `ui.SafeArea` (below) keeps content out of
-the notch, the home indicator and the keyboard.
-
-**Props.** A prop that can change after mount is an accessor; one that
-can't (a sheet's detents, an action's title, a tab's icon) is a plain
-value. A nil accessor is the zero value (`false`, `""`, 0): it sends
-nothing and the host keeps its default, so a literal false is just left
-out. A constant is `ui.Val(v)`, which the core spots: it's sent once
-and makes no effect. A style is a `Style` or a `StyleFunc`, one effect
-per element whose result is diffed (layout fields relayout only when
-they change; visual fields send only what changed), not a signal per
-field.
-
-Go has no compile step to hide this, as Solid's JSX compiler does when
-it turns `refreshing={r()}` into a getter, and we don't add one: `go
-build`, `go test`, gopls and the debugger would all see code that means
-something else. Instead, `asuka vet` (package `vet`, analyzers on
-`golang.org/x/tools/go/analysis`, which `asuka dev` and `asuka build` run
-as warnings) reports a signal read in a component's body outside any
-effect, which runs once and never updates (Solid's most common bug,
-too), when what it reads goes into the tree; with shortcuts for the
-common reactive cases planned. A JSX-like syntax, if ever, would be a
-separate file type that generates Go (as templ does), once the
-component API has settled.
-
-**`asuka vet`** reports only what's certain from the code, as the
-compiler would; a check that cries wolf gets turned off. Its analyzers:
-
-- `reads`: what's built is a function returning a `Node` (or `[]Node`)
-  and the func literals given to what runs them once, untracked: `Show`'s
-  branches, `For`'s and `List`'s rows, a screen, a tab's or a sheet's
-  `Content`. Not `Dynamic`'s, which builds again when what it read
-  changes, nor the components it runs. A read is a `Get` of a signal, a
-  memo or an accessor, a call that says the app's language (`ui.Locale`,
-  a catalog's messages, and what calls them, in any package: a fact of
-  the analysis), and a call of the component's own closure that reads.
-  It's reported when its value goes into the tree (a node's argument,
-  `ui.Val`, a `Style`, an `if` or a `range`, what's returned), followed
-  through expressions and local variables, so a read for an action, an
-  event handler's capture or a new signal's first value isn't. Not
-  followed: a function that reads a signal, whose callers often use what
-  can't change (a record's ID); a field that can't change (the
-  environment's `Platform`); a `For` row's item that can't (a pointer,
-  or its own key).
-- `mainthread`: a `Set` or `Update` run by a `go` statement (directly,
-  through what runs right there, as `Batch`, or through the package's
-  functions that write), not inside `ui.Post`.
-- `memowrites`: a write inside a memo's function, which panics.
-
-`asuka` is its own `-vettool`: run by `go vet` (`-V=full`, `-flags`, a
-`.cfg`), it serves the analyzers by `unitchecker`'s protocol, so `asuka
-vet` is `go vet -vettool=asuka` with go vet's caching, build flags and
-facts across packages; dev and build read its `-json`.
+Each prop whose value reads state is a render effect that sends only
+that prop when it changes; a constant prop is sent once and makes no
+effect. A style is a set of keys like any other.
 
 ### Control flow
 
-- `Show(when Accessor[bool], then func() Node, else ...func() Node)`: makes
-  and disposes the branch's owner as `when` changes.
-- `For[T any, K comparable](items Accessor[[]T], key func(T) K, row func(item Accessor[T], index Accessor[int]) Node)`:
-  keyed; a row's owner lives as long as its key. A moved row moves its
-  native view; a changed item updates that row's `item` signal and
-  nothing else.
-- `Switch` / `Match`, `Dynamic(f func() Node)`.
+- `if` (`ak_ui_show`): makes and disposes the branch's owner as the
+  condition changes.
+- `for … key` (`ak_ui_for`): keyed; a row's owner lives as long as its
+  key. A moved row moves its native view; a changed item updates that
+  row's bindings and nothing else. Directly in a `List`, rows are
+  virtualized (`ak_ui_lazy_for`).
+- `match` (`ak_ui_switch`), and views rebuilt from what they read
+  (`ak_ui_dynamic`).
 
 ### v0 components
 
