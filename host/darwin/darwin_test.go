@@ -3,9 +3,11 @@
 package darwin
 
 import (
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +93,8 @@ func find(h *Host, k ops.Kind) []*node {
 			out = append(out, n)
 		}
 	}
+	// In creation order: a map's is random.
+	slices.SortFunc(out, func(a, b *node) int { return cmp.Compare(a.id, b.id) })
 	return out
 }
 

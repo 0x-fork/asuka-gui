@@ -3,10 +3,12 @@
 package windows
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"unsafe"
 
@@ -90,6 +92,8 @@ func find(h *Host, k ops.Kind) []*node {
 			out = append(out, n)
 		}
 	}
+	// In creation order: a map's is random.
+	slices.SortFunc(out, func(a, b *node) int { return cmp.Compare(a.id, b.id) })
 	return out
 }
 

@@ -3,8 +3,10 @@
 package linux
 
 import (
+	"cmp"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -151,6 +153,8 @@ func find(h *Host, k ops.Kind) []*node {
 			out = append(out, n)
 		}
 	}
+	// In creation order: a map's is random.
+	slices.SortFunc(out, func(a, b *node) int { return cmp.Compare(a.id, b.id) })
 	return out
 }
 
