@@ -264,12 +264,13 @@ if environment().widthClass == .expanded {
 
 ## 持久化的值
 
-状态只在应用运行期间存在。store 模块（`import asuka/store`）可以在多次启动之间保留设置之类的小数据：
+状态只在应用运行期间存在。store 模块（`import asuka/store`）可以在多次启动之间保留设置之类的小数据：`read` 读出保存的值（没有的话就是默认值），`write` 把值保存下来。用一个 effect 就能把状态的每一个值都保存下来：
 
 ```asuka
 import asuka/store
 
-state units = store.value("units", "metric")
+state units = store.read("units", "metric")
+effect { store.write("units", units) }
 ```
 
-它的初始值是之前保存的值，没有的话就是默认值；之后每次给它设置的值都会被保存下来。关于 store 模块和数据库，详见[数据](data.md)。在 `asuka dev` 下，所有状态的值也都会在每次保存后保留，不需要写任何代码（见[快速上手](getting-started.md#运行)）。
+值以 JSON 的形式保存在平台自己的偏好设置里，所以数字、字符串、数组和结构体都可以。关于 store 模块和数据库，详见[数据](data.md)。在 `asuka dev` 下，所有状态的值也都会在每次保存后保留，不需要写任何代码（见[快速上手](getting-started.md#运行)）。
