@@ -20,5 +20,7 @@ void ak_vm_init(void) {
 	done = true;
 	ak_vm_builtins_init();
 	ak_vm_json_init();
+	extern void ak_native_vm_init(void);
+	ak_native_vm_init();
 	ak_vm_react_init();
 }

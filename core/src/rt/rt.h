@@ -48,7 +48,7 @@ typedef enum ak_tag {
 	AK_T_STORE,
 	AK_T_TASK,
 	AK_T_VIEW,
-	AK_T_NATIVE,
+	AK_T_NATIVE,   // native/native.h's objects
 	AK_T_OPAQUE,   // runtime objects with their own destructor
 } ak_tag;
 
