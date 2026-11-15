@@ -221,3 +221,14 @@ value (converted to the new module's types by field and case names; a
 value whose type changed in a way that can't be converted starts
 again), disposes the old app, frees the old module once nothing of it
 is left, and mounts the new one.
+
+## JSON
+
+`json.decode<T>(text)`, `json.encode(value)` and the network's
+`.json<T>()` lower to the builtins `json.decode(text, desc)` and
+`json.encode(value, desc, indent)`, where desc is T's descriptor
+(core/src/rt/json.h) as a string constant. For the runtime to read and
+write a struct's fields by name, each field's name in its shape carries
+its descriptor after a NUL (`"title\x00s"`, `"tags\x00[s"`), and the same
+for enum cases' labelled payloads; a payloadless enum JSON reads or
+writes gets a shape of its name whose cases name its values.
