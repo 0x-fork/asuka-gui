@@ -18,8 +18,14 @@ var (
 	nextCall  uint32
 )
 
-// errRootGone answers the Calls a disposed root's host never will.
-var errRootGone = errors.New("ui: the root went before the call was answered")
+// ErrRootGone answers the Calls a disposed root's host never will: a
+// package's goroutine polling a module ("next") ends, and may start
+// again under the next root.
+var ErrRootGone = errors.New("ui: the root went before the call was answered")
+
+// ErrNoRoot answers a Call made with no root mounted: before Mount, or
+// after the last root went.
+var ErrNoRoot = errors.New("ui: Call without a mounted root")
 
 // failCalls answers the Calls waiting on r's host, which is gone: a
 // goroutine in CallWait (a package's poll of "next") ends instead of
@@ -33,7 +39,7 @@ func failCalls(r *Root) {
 		delete(calls, id)
 		delete(callRoots, id)
 		if done != nil {
-			done(nil, errRootGone)
+			done(nil, ErrRootGone)
 		}
 	}
 }
@@ -50,7 +56,7 @@ func Call(module, method string, args []byte, done func(result []byte, err error
 		// Before Mount, or after the last root went (a package's
 		// cleanup that's put off).
 		if done != nil {
-			done(nil, errors.New("ui: Call without a mounted root"))
+			done(nil, ErrNoRoot)
 		}
 		return
 	}

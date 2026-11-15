@@ -528,8 +528,12 @@ func (w *work) release() {
 // dispatcher hands the events to the handlers of their kind, holding
 // those of a kind no handler takes yet.
 type dispatcher struct {
-	mu       sync.Mutex
-	started  bool
+	mu      sync.Mutex
+	started bool
+	// serving is the generation of the serve under way: one of a root
+	// that went, ending after another began, neither stops it nor takes
+	// its events.
+	serving  uint64
 	handlers [2][]*any
 	held     [2][]locationspec.Event
 }
@@ -543,13 +547,24 @@ func (d *dispatcher) start() {
 	d.mu.Lock()
 	start := !d.started
 	d.started = true
+	if start {
+		d.serving++
+	}
+	g := d.serving
 	d.mu.Unlock()
 	if start {
 		boot.AfterMount(func() {
-			go d.serve()
+			go d.serve(g)
 			go computed.resume()
 		})
 	}
+}
+
+// current reports whether g is the serve under way's generation.
+func (d *dispatcher) current(g uint64) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.serving == g
 }
 
 func kindOf(e locationspec.Event) int {
@@ -591,20 +606,33 @@ func (d *dispatcher) add(kind int, f any) (stop func()) {
 }
 
 // serve takes the host's events ("next" answers with one) until the
-// host has none to give (a host whose events are all computed here).
-func (d *dispatcher) serve() {
-	for {
+// host has none to give (a host whose events are all computed here), or
+// its root goes. g is its generation (start).
+func (d *dispatcher) serve(g uint64) {
+	for d.current(g) {
 		b, err := ui.CallWait("locationBackground", "next", nil)
+		if !d.current(g) {
+			return // another serve began: the event is its host's to give again
+		}
 		if err != nil {
 			if err.Error() == "stopped" {
 				continue
 			}
-			// No events from this host (its are computed here), or the
-			// root went: a handler added later, under a root mounted
-			// again, starts it again.
+			// No events from this host (its are computed here), or no
+			// root (it went, or had before the call). With handlers, it goes on under another root,
+			// the next one if that was the last; else a handler added
+			// later starts it again.
 			d.mu.Lock()
-			d.started = false
+			again := (errors.Is(err, ui.ErrRootGone) || errors.Is(err, ui.ErrNoRoot)) && (len(d.handlers[kindCrossings]) > 0 || len(d.handlers[kindUpdates]) > 0)
+			d.started = again
+			if again {
+				d.serving++
+			}
+			next := d.serving
 			d.mu.Unlock()
+			if again {
+				boot.AfterMount(func() { go d.serve(next) })
+			}
 			return
 		}
 		var e locationspec.Event

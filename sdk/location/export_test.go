@@ -27,6 +27,7 @@ func reset() {
 	capsMu.Unlock()
 	events.mu.Lock()
 	events.started = false
+	events.serving++ // a serve of the last test's root ends without a word
 	events.handlers = [2][]*any{}
 	events.held = [2][]locationspec.Event{}
 	events.mu.Unlock()

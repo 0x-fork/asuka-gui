@@ -963,7 +963,7 @@ func TestCallFailsWithTheRoot(t *testing.T) {
 		t.Fatalf("answered before the root went: %v", err)
 	}
 	r.Dispose()
-	if err == nil || err.Error() != "ui: the root went before the call was answered" {
+	if !errors.Is(err, ui.ErrRootGone) {
 		t.Fatalf("after Dispose: %v", err)
 	}
 }

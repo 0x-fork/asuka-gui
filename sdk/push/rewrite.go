@@ -64,9 +64,15 @@ func serveRewrites() {
 			if err.Error() == "stopped" {
 				continue
 			}
+			// No root (it went, or had before the call): the rewrite
+			// goes on under another, the next one if that was the last.
 			rewriteMu.Lock()
-			serving = false
+			serving = (errors.Is(err, ui.ErrRootGone) || errors.Is(err, ui.ErrNoRoot)) && rewriter != nil
+			again := serving
 			rewriteMu.Unlock()
+			if again {
+				boot.AfterMount(func() { go serveRewrites() })
+			}
 			return
 		}
 		var req struct {

@@ -154,13 +154,18 @@ func (r *Root) Dispose() {
 	r.dispose = nil
 	r.el.destroy()
 	r.Flush()
-	failCalls(r)
 	for i, x := range roots {
 		if x == r {
 			roots = append(roots[:i], roots[i+1:]...)
 			break
 		}
 	}
+	if len(roots) == 0 {
+		boot.Unmounted()
+	}
+	// Last: a package's poll that ends here starts again under another
+	// root (boot.AfterMount), the next one if this was the last.
+	failCalls(r)
 }
 
 // Environment returns the root view's environment; reading it in an

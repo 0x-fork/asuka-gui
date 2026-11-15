@@ -114,7 +114,7 @@ var (
 	SavedLocale func() string
 )
 
-// afterMount are what waits for the first root (AfterMount).
+// afterMount are what waits for a root (AfterMount).
 var (
 	mountMu    sync.Mutex
 	mounted    bool
@@ -133,6 +133,14 @@ func AfterMount(f func()) {
 	}
 	mountMu.Unlock()
 	f()
+}
+
+// Unmounted, from ui's Root.Dispose as the last root goes: what
+// AfterMount is given next waits for another.
+func Unmounted() {
+	mountMu.Lock()
+	mounted = false
+	mountMu.Unlock()
 }
 
 // Mounted, from ui.Mount, runs what waits for it.
