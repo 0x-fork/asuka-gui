@@ -254,7 +254,8 @@ typedef ak_val (*ak_invoke_fn)(ak_closure *c, ak_val *args, uint32_t nargs);
 struct ak_closure {
 	ak_obj h;
 	ak_invoke_fn invoke;
-	const void *fn;         // the VM's function, or C code's data
+	void (*drop)(ak_closure *c);  // after its captures are released; may be NULL
+	const void *fn;               // the VM's function, or C code's data
 	const uint8_t *capkinds;
 	uint16_t ncap;
 	ak_val caps[];

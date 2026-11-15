@@ -193,7 +193,14 @@ ak_owner *ak_catcher_new(ak_error_fn on_error, void *ctx);
 // those of the effects it owns, then and later. It returns the catcher,
 // held by the current owner (by the caller when there is none).
 ak_owner *ak_catch(void (*fn)(void *ctx), void *ctx, ak_error_fn on_error, void *ectx);
+// Errors are the caller's objects; the graph holds them through the
+// caller's references (ak_signal_set_error_refs; none: plain pointers).
+// ak_raise takes a reference. Delivery lends the error to the handler
+// and releases it after; a second error raised in the same run is
+// released at once; a memo holds its error until its next update or its
+// drop, and raises a new reference of it in each reader.
 void ak_raise(void *err);
+void ak_signal_set_error_refs(void (*retain)(void *err), void (*release)(void *err));
 // ak_failed reports whether the running computation raised an error.
 bool ak_failed(void);
 void ak_signal_set_error_handler(ak_error_fn fn, void *ctx);

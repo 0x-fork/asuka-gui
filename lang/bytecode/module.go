@@ -79,6 +79,7 @@ type FuncDef struct {
 	NParams   uint16
 	Kinds     []Kind // per register: its kind (refs own their value)
 	CapKinds  []Kind // a closure's captures
+	Ret       Kind   // the result's kind
 	Flags     uint8
 	Code      []uint16
 	Handlers  []Handler
@@ -174,6 +175,7 @@ func (m *Module) Encode() []byte {
 		w.u16(f.NParams)
 		w.kinds(f.Kinds)
 		w.kinds(f.CapKinds)
+		w.u8(uint8(f.Ret))
 		w.u8(f.Flags)
 		w.u32(uint32(len(f.Code)))
 		for _, c := range f.Code {
@@ -241,7 +243,7 @@ func Decode(b []byte) (*Module, error) {
 		m.Shapes = append(m.Shapes, s)
 	}
 	for n := r.u32(); n > 0 && r.err == nil; n-- {
-		f := FuncDef{Name: r.str(), File: r.str(), NParams: r.u16(), Kinds: r.kinds(), CapKinds: r.kinds(), Flags: r.u8()}
+		f := FuncDef{Name: r.str(), File: r.str(), NParams: r.u16(), Kinds: r.kinds(), CapKinds: r.kinds(), Ret: Kind(r.u8()), Flags: r.u8()}
 		for c := r.u32(); c > 0 && r.err == nil; c-- {
 			f.Code = append(f.Code, r.u16())
 		}

@@ -90,7 +90,7 @@ bool ak_memo_read(ak_memo *m) {
 	}
 	if (g->active) ak_sig_track(n, g->active);
 	if (m->err) {
-		ak_raise(m->err);
+		ak_raise(ak_sig_err_retain(m->err));
 		return false;
 	}
 	return true;
@@ -108,6 +108,7 @@ bool ak_sig_memo_update(ak_comp *m) {
 	g->active = m;
 	g->owner = &m->owner;
 	g->in_memo++;
+	ak_sig_err_release(m->err);
 	m->err = NULL;
 	ak_sig_start_tracking(m);
 	bool changed = m->fn.update(m->ctx);

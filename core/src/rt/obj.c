@@ -26,7 +26,9 @@ void ak_destroy(ak_obj *o) {
 	switch ((ak_tag)o->tag) {
 	case AK_T_STR:
 	case AK_T_BYTES:
+		break;
 	case AK_T_BOX:
+		if (o->aux == AK_K_REF) ak_release(((ak_box *)o)->v.p);  // a var box
 		break;
 	case AK_T_ARR: {
 		ak_arr *a = (ak_arr *)o;
@@ -63,6 +65,7 @@ void ak_destroy(ak_obj *o) {
 	case AK_T_CLOSURE: {
 		ak_closure *c = (ak_closure *)o;
 		if (c->capkinds) release_fields(c->caps, c->ncap, c->capkinds);
+		if (c->drop) c->drop(c);
 		break;
 	}
 	default: {

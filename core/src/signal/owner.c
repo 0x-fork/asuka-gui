@@ -16,6 +16,7 @@ static void owner_free(ak_owner *o) {
 	ak_vec_free(&o->cleanups);
 	if (o->comp) {
 		ak_comp *c = o->comp;
+		ak_sig_err_release(c->err);
 		if (c->info && c->info->drop) c->info->drop(c->ctx);
 		ak_free(c);
 	} else {
@@ -218,6 +219,8 @@ void ak_raise(void *err) {
 		if (!f->failed) {
 			f->failed = true;
 			f->err = err;
+		} else {
+			ak_sig_err_release(err);  // only the first error of a run is kept
 		}
 		return;
 	}
@@ -225,6 +228,11 @@ void ak_raise(void *err) {
 }
 
 bool ak_failed(void) { return g->frame && g->frame->failed; }
+
+void ak_signal_set_error_refs(void (*retain)(void *err), void (*release)(void *err)) {
+	g->err_retain = retain;
+	g->err_release = release;
+}
 
 void ak_signal_set_error_handler(ak_error_fn fn, void *ctx) {
 	g->on_error = fn;
@@ -239,6 +247,7 @@ void ak_sig_handle_error(ak_owner *o, void *err) {
 	if (!c) {
 		if (g->on_error) g->on_error(g->on_error_ctx, err);
 		else ak_sig_panic("signal: an error no catcher handled (%p)", err);
+		ak_sig_err_release(err);
 		return;
 	}
 	ak_owner *up = c->parent && c->parent->catcher ? c->parent : NULL;
@@ -246,6 +255,7 @@ void ak_sig_handle_error(ak_owner *o, void *err) {
 	ak_frame f = {.prev = g->frame};
 	g->frame = &f;
 	c->on_error(c->error_ctx, err);
+	ak_sig_err_release(err);
 	g->frame = f.prev;
 	if (f.failed) ak_sig_handle_error(up, f.err);
 	ak_owner_release(c);

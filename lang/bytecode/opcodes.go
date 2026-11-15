@@ -16,7 +16,10 @@
 // Encoding. An instruction is its opcode's word followed by its
 // operands, one word each except for Off (a jump: two words, a signed
 // 32-bit offset from the instruction after the jump) and K32 (a 32-bit
-// constant index). A destination of 0xFFFF discards the result.
+// constant index). A destination of 0xFFFF discards the result; a call
+// whose result is a reference always has a register for it (so it's
+// released), and only a call to a bytecode function (CALL, CALLI) may
+// discard one.
 package bytecode
 
 //go:generate go run ./gen

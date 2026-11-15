@@ -5,6 +5,8 @@ package cbuild
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"os"
@@ -126,4 +128,77 @@ func (c Compiler) run(args []string) error {
 		return fmt.Errorf("%s %s: %v\n%s", filepath.Base(c.Path), strings.Join(args, " "), err, out.String())
 	}
 	return nil
+}
+
+// Runner builds asuka-run (core/runner: the VM, the core and the fake
+// host) into a cache directory, once per version of the sources, and
+// returns its path. sanitize builds it with ASan and UBSan (tests).
+func Runner(core string, sanitize bool) (string, error) {
+	cc, err := Find()
+	if err != nil {
+		return "", err
+	}
+	srcs, err := Sources(core, true)
+	if err != nil {
+		return "", err
+	}
+	runner, _ := filepath.Glob(filepath.Join(core, "runner", "*.c"))
+	srcs = append(srcs, runner...)
+	flags := append(Includes(core), "-g", "-O1")
+	link := []string{"-lm"}
+	if sanitize && runtime.GOOS != "windows" {
+		flags = append(flags, "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer", "-DAK_TEST=1")
+		link = append(link, "-fsanitize=address,undefined")
+	} else {
+		flags = append(flags, "-O2")
+	}
+	h := sha256.New()
+	fmt.Fprintln(h, cc.Path, cc.Args, flags, link)
+	hdrs, _ := headers(core)
+	for _, f := range append(srcs, hdrs...) {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintln(h, f, len(b))
+		h.Write(b)
+	}
+	sum := hex.EncodeToString(h.Sum(nil))[:16]
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		cache = os.TempDir()
+	}
+	dir := filepath.Join(cache, "asuka", "runner-"+sum)
+	exe := filepath.Join(dir, "asuka-run")
+	if runtime.GOOS == "windows" {
+		exe += ".exe"
+	}
+	if _, err := os.Stat(exe); err == nil {
+		return exe, nil
+	}
+	objs, err := cc.Compile(srcs, filepath.Join(dir, "obj"), flags)
+	if err != nil {
+		return "", err
+	}
+	tmp := exe + ".tmp"
+	if err := cc.Link(objs, tmp, link); err != nil {
+		return "", err
+	}
+	os.RemoveAll(filepath.Join(dir, "obj"))
+	return exe, os.Rename(tmp, exe)
+}
+
+func headers(core string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(core, func(p string, e fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !e.IsDir() && strings.HasSuffix(p, ".h") {
+			out = append(out, p)
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out, err
 }

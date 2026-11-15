@@ -93,6 +93,8 @@ typedef struct ak_graph {
 	void *after_flush_ctx;
 	ak_error_fn on_error;
 	void *on_error_ctx;
+	void (*err_retain)(void *err);
+	void (*err_release)(void *err);
 	void (*panic_hook)(void *ctx, const char *msg);
 	void *panic_ctx;
 	uintptr_t main_thread;
@@ -100,6 +102,15 @@ typedef struct ak_graph {
 } ak_graph;
 
 extern ak_graph *ak_sig;
+
+static inline void *ak_sig_err_retain(void *err) {
+	if (err && ak_sig->err_retain) ak_sig->err_retain(err);
+	return err;
+}
+
+static inline void ak_sig_err_release(void *err) {
+	if (err && ak_sig->err_release) ak_sig->err_release(err);
+}
 
 // graph.c
 void ak_sig_track(ak_node *dep, ak_comp *sub);
