@@ -1,0 +1,18 @@
+{
+  "name": "@asuka/cli",
+  "version": "0.0.0",
+  "description": "Asuka: native apps for iOS, Android, macOS, Windows, Linux and the web, in the Asuka language",
+  "license": "MIT",
+  "repository": "github:egoist/asuka",
+  "bin": { "asuka": "bin/asuka.js" },
+  "files": ["bin"],
+  "engines": { "node": ">=18" },
+  "optionalDependencies": {
+    "@asuka/cli-darwin-arm64": "0.0.0",
+    "@asuka/cli-darwin-x64": "0.0.0",
+    "@asuka/cli-linux-arm64": "0.0.0",
+    "@asuka/cli-linux-x64": "0.0.0",
+    "@asuka/cli-win32-arm64": "0.0.0",
+    "@asuka/cli-win32-x64": "0.0.0"
+  }
+}

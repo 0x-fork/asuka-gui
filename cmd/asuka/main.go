@@ -22,6 +22,10 @@ import (
 	"golang.org/x/tools/go/analysis/unitchecker"
 )
 
+// version is the CLI's release (-ldflags -X main.version=…; scripts/npm
+// sets it), "dev" for a build from source.
+var version = "dev"
+
 func usage() {
 	fmt.Fprint(os.Stderr, `usage:
   asuka new <dir>                           make a project from the template
@@ -40,6 +44,7 @@ func usage() {
   asuka i18n init|add|check                 start, add languages to, and check the catalogs
   asuka vet [flags] [packages]              report what builds but runs wrong, as a signal read once
   asuka fmt [-w] [-l] [paths]               format Asuka source (.asuka files) in its canonical form
+  asuka version                             print the CLI's version
 
 asuka <command> --help lists its flags.
 `)
@@ -78,6 +83,9 @@ func main() {
 		err = cmdVet(os.Args[2:])
 	case "fmt":
 		err = cmdFmt(os.Args[2:])
+	case "version", "--version":
+		fmt.Println("asuka", version)
+		return
 	case "-h", "--help", "help":
 		usage()
 		return
