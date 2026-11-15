@@ -100,12 +100,7 @@ final class AsukaTextView: UITextView {
     /// Keeps the caret in sight in that, above the keyboard, as it moves.
     func revealCaret() {
         guard isFirstResponder, let at = selectedTextRange?.end else { return }
-        var holder = superview
-        while let v = holder, !((v as? UIScrollView)?.isScrollEnabled ?? false) { holder = v.superview }
-        guard let scroll = holder as? UIScrollView else { return }
-        let caret = caretRect(for: at)
-        guard !caret.isNull, !caret.isInfinite, caret.origin.y.isFinite else { return }
-        scroll.scrollRectToVisible(convert(caret, to: scroll).insetBy(dx: 0, dy: -14), animated: false)
+        AsukaRuntime.shared.reveal(self, caretRect(for: at), animated: false)
     }
 
     private func updateBorder() {
@@ -207,8 +202,7 @@ extension AsukaRuntime: UITextViewDelegate {
         guard let t = textView as? AsukaTextView else { return }
         let id = t.asukaID
         emit(id, .focus) { AsukaEvents.focus(id) }
-        // Once the keyboard's up and whatever holds this has made room for it.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak t] in t?.revealCaret() }
+        revealOnFocus()
     }
 
     public func textViewDidEndEditing(_ textView: UITextView) {
