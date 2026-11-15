@@ -1,5 +1,5 @@
 // The segmented control on Android: Material's segmented buttons.
-package com.github.egoist.asuka.examples.media.segmented
+package _asuka.segmented
 
 import android.view.View
 import android.widget.LinearLayout

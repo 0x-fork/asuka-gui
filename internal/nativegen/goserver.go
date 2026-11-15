@@ -75,7 +75,12 @@ func GenerateGoServer(p *Package) ([]byte, error) {
 		g.printf("\t\tcase %d:\n\t\t\treturn new%s()\n", it.Index, it.Name)
 	}
 	g.printf("\t\t}\n\t\treturn nil, native.ErrClosed\n\t},\n\tCall: serve,\n}\n\tnative.RegisterServer(server)\n}\n\n")
-	g.printf("func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *native.Reader, w *native.Writer) error {\n\tswitch o := obj.(type) {\n")
+	g.printf("func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *native.Reader, w *native.Writer) error {\n")
+	if len(p.Interfaces) > 0 {
+		g.printf("\tswitch o := obj.(type) {\n")
+	} else {
+		g.printf("\tswitch obj.(type) {\n")
+	}
 	for _, it := range p.Interfaces {
 		g.printf("\tcase %s:\n\t\tswitch method {\n", it.Name)
 		for _, m := range it.Methods {
@@ -101,12 +106,54 @@ func GenerateGoServer(p *Package) ([]byte, error) {
 		g.printf("\t\t}\n")
 	}
 	g.printf("\t}\n\treturn native.ErrClosed\n}\n\n")
+	for _, v := range p.Views {
+		g.view(v)
+	}
 	g.helpers()
 	src, err := format.Source(g.b.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("nativegen: the desktop Go doesn't format: %v\n%s", err, g.b.Bytes())
 	}
 	return src, nil
+}
+
+// view writes a native component's Go side: <View>Native, the view and
+// a setter per prop; <View>Events, which sends its events; and
+// implement<View>, which a file built for a platform calls from its init
+// to make Go's implementation the view there (native.RegisterView, under
+// the kind the hosts look it up by: the module's Swift class on macOS,
+// its path elsewhere).
+func (g *gsGen) view(v *View) {
+	n := v.Name
+	g.printf("// %sNative is a %s implemented in Go (Windows, Linux; macOS, over\n// the package's Swift): the platform's view (native.View's Handle) and\n// its props.\n", n, n)
+	g.printf("type %sNative interface {\n\tHandle() uintptr\n", n)
+	for _, f := range v.Props {
+		g.printf("\tSet%s(%s %s)\n", f.Name, lowerCamel(f.Name), g.goType(f.Type))
+	}
+	g.printf("}\n\n")
+	g.printf("// %sEvents sends a %s's events, and has its context: the host's\n// view it goes in.\n", n, n)
+	g.printf("type %sEvents struct{ Context native.Context }\n\n", n)
+	for _, e := range v.Events {
+		var params []string
+		for _, a := range e.Type.Func.Params {
+			params = append(params, a.Name+" "+g.goType(a.Type))
+		}
+		g.printf("// %s sends the %s event.\n", e.Name, e.Name)
+		g.printf("func (e %sEvents) %s(%s) {\n\tvar s *native.Session // a view's values hold no objects\n\t_ = s\n\tw := native.NewWriter()\n", n, e.Name, strings.Join(params, ", "))
+		for _, a := range e.Type.Func.Params {
+			g.printf("\t%s\n", g.enc(a.Type, "w", a.Name))
+		}
+		g.printf("\te.Context.Emit(%q, map[string]any{\"v\": w.Take()})\n}\n\n", e.Name)
+	}
+	g.printf("// implement%s makes Go's implementation the %s on this platform: call\n// it from an init function of a file built for it.\n", n, n)
+	g.printf("func implement%s(make func(events %sEvents) %sNative) {\n", n, n, n)
+	g.printf("\tm := &native.Module{ID: %q, Swift: %q, Kotlin: %q}\n", g.p.Path, SwiftClass(g.p.Path), KotlinClass(g.p.Path))
+	g.printf("\tnative.RegisterView(native.ViewKind(m, %q), func(ctx native.Context) native.View {\n", n)
+	g.printf("\t\tv := make(%sEvents{ctx})\n\t\treturn native.GoView(v, func(name string, value []byte) {\n\t\t\tvar s *native.Session // a view's values hold no objects\n\t\t\t_ = s\n\t\t\tr := native.NewReader(value)\n\t\t\tswitch name {\n", n)
+	for _, f := range v.Props {
+		g.printf("\t\t\tcase %q:\n\t\t\t\tif a := %s; r.Err() == nil {\n\t\t\t\t\tv.Set%s(a)\n\t\t\t\t}\n", f.Name, g.dec(f.Type, "r"), f.Name)
+	}
+	g.printf("\t\t\t}\n\t\t})\n\t})\n}\n\n")
 }
 
 type gsGen struct {

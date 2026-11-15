@@ -189,6 +189,67 @@ func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *na
 	return native.ErrClosed
 }
 
+// DialNative is a Dial implemented in Go (Windows, Linux; macOS, over
+// the package's Swift): the platform's view (native.View's Handle) and
+// its props.
+type DialNative interface {
+	Handle() uintptr
+	SetValue(value float64)
+	SetLabel(label string)
+	SetItems(items []Item)
+}
+
+// DialEvents sends a Dial's events, and has its context: the host's
+// view it goes in.
+type DialEvents struct{ Context native.Context }
+
+// Changed sends the Changed event.
+func (e DialEvents) Changed(value float64) {
+	var s *native.Session // a view's values hold no objects
+	_ = s
+	w := native.NewWriter()
+	w.Float64(value)
+	e.Context.Emit("Changed", map[string]any{"v": w.Take()})
+}
+
+// Picked sends the Picked event.
+func (e DialEvents) Picked(item Item, index int) {
+	var s *native.Session // a view's values hold no objects
+	_ = s
+	w := native.NewWriter()
+	writeItem(s, w, item)
+	w.Int(index)
+	e.Context.Emit("Picked", map[string]any{"v": w.Take()})
+}
+
+// implementDial makes Go's implementation the Dial on this platform: call
+// it from an init function of a file built for it.
+func implementDial(make func(events DialEvents) DialNative) {
+	m := &native.Module{ID: "@asuka/pantry", Swift: "AsukaModule__asuka_pantry", Kotlin: "_asuka.pantry.AsukaModule"}
+	native.RegisterView(native.ViewKind(m, "Dial"), func(ctx native.Context) native.View {
+		v := make(DialEvents{ctx})
+		return native.GoView(v, func(name string, value []byte) {
+			var s *native.Session // a view's values hold no objects
+			_ = s
+			r := native.NewReader(value)
+			switch name {
+			case "Value":
+				if a := r.Float64(); r.Err() == nil {
+					v.SetValue(a)
+				}
+			case "Label":
+				if a := r.String(); r.Err() == nil {
+					v.SetLabel(a)
+				}
+			case "Items":
+				if a := readSliceItem(s, r); r.Err() == nil {
+					v.SetItems(a)
+				}
+			}
+		})
+	})
+}
+
 func readSliceItem(s *native.Session, r *native.Reader) []Item {
 	n := r.Len()
 	v := make([]Item, 0, n)

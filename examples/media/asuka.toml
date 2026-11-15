@@ -1,0 +1,5 @@
+name = "Media"
+id = "dev.asuka.media"
+version = "1.0.0"
+build = 1
+orientations = ["portrait", "landscape"]
