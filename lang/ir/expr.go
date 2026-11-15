@@ -29,6 +29,9 @@ func (b *fb) value(e syntax.Expr, dst int) int {
 	to := b.typ(conv)
 	from := b.rawType(e)
 	inner := check.Unopt(to)
+	if n, ok := inner.(*check.Named); ok && n.Obj.Kind == check.InterfaceType {
+		b.l.implement(check.Unopt(from), n)
+	}
 	// What's converted when compiling: lengths and edges.
 	if inner == check.Length && from != check.Length {
 		r := b.temp(bc.KInt)

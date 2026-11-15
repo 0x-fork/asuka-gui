@@ -343,7 +343,7 @@ func (b *fb) callInout(m *check.Method, cur int, vals []int, r int) {
 		b.emit(op("MOV"), cur, blk)
 		b.emit(op("MOV"), blk, null)
 	}
-	if m.Throws || hasClosureArg(m) {
+	if m.Throws || m.Fails || hasClosureArg(m) {
 		b.protect(func() {
 			b.emit(op("CALLB"), r, b.l.builtin(m.Builtin), blk, len(ks))
 		}, func(int) { back() })

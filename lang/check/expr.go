@@ -902,11 +902,15 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 				c.info.Selections[e] = &Selection{Kind: SelField, Field: f, Recv: t}
 				return s.Apply(f.Type)
 			}
-			if u.Obj.Methods[name] != nil {
+			if u.Obj.Methods[name] != nil && !(u.Obj.IsError && name == "message") {
 				c.errorf(e.Name, "%s is a method of %s: call it, %s()", name, u.Obj.name, name)
 				return Invalid
 			}
 		case EnumType:
+			if u.Obj.IsError && name == "message" {
+				c.info.Selections[e] = &Selection{Kind: SelErrorMessage, Recv: t}
+				return String
+			}
 			if u.Obj.Methods[name] != nil {
 				c.errorf(e.Name, "%s is a method of %s: call it, %s()", name, u.Obj.name, name)
 				return Invalid

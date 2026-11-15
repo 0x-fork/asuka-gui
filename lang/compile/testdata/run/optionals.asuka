@@ -1,0 +1,74 @@
+// Optionals: none, ??, ?., !, if let, while let.
+
+struct User {
+  name: string
+  boss: User? = none
+  age: int? = none
+}
+
+fn find(id: int) -> User? {
+  if id == 1 { return User(name: "Ann", age: 30) }
+  if id == 2 { return User(name: "Bob", boss: User(name: "Ann")) }
+  return none
+}
+
+test "optionals" {
+  let a = find(1)
+  let none1 = find(9)
+  print(a?.name ?? "nobody")
+  print(none1?.name ?? "nobody")
+  print(find(2)?.boss?.name ?? "-")
+  print(a!.age! + 1)
+  if let u = find(2) {
+    print("found {u.name}")
+  }
+  if let u = find(3) {
+    print("found {u.name}")
+  } else {
+    print("not found")
+  }
+  var n: int? = none
+  print(n ?? 7)
+  n = 5
+  print(n ?? 7)
+  n ??= 9
+  print(n!)
+  var m: int? = none
+  m ??= 9
+  print(m!)
+  expect(n != none && n == 5)
+  let items: [string?] = ["a", none, "c"]
+  var count = 0
+  for i in items {
+    if let s = i { count += s.count() }
+  }
+  print(count)
+  print("{n} {none1?.name}")
+  var stack = [1, 2, 3]
+  var sum = 0
+  while let top = stack.pop() { sum += top }
+  print(sum)
+  expect(n.isSome() && m.isSome() && none1.isNone())
+}
+
+test "unwrap none" {
+  let u = find(5)
+  print(u!.name)
+}
+
+// Output:
+// Ann
+// nobody
+// Ann
+// 31
+// found Bob
+// not found
+// 7
+// 5
+// 5
+// 9
+// 2
+// 5 none
+// 6
+// ok optionals
+// FAIL unwrap none: unwrapped none (optionals.asuka:56)

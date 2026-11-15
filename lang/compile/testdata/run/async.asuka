@@ -1,0 +1,86 @@
+// Async: await, sleep (the test clock moves only when nothing can run),
+// all, race, spawn, tasks.
+
+async fn slow(n: int, d: Duration) -> int {
+  await sleep(d)
+  print("slow {n} done")
+  return n
+}
+
+async fn fails(d: Duration) throws -> int {
+  await sleep(d)
+  throw Error("too late")
+}
+
+fn heavy(n: int) -> int {
+  var sum = 0
+  for i in 1..n { sum += i }
+  return sum
+}
+
+test "await and sleep" {
+  let a = await slow(1, 10ms)
+  let b = await slow(2, 5ms)
+  print(a + b)
+}
+
+test "all" {
+  let (x, y) = await all(slow(1, 30ms), slow(2, 10ms))
+  print("{x} {y}")
+  let (s, n) = await all(name(), slow(3, 1ms))
+  print("{s} {n}")
+}
+
+async fn name() -> string {
+  await sleep(2ms)
+  return "asuka"
+}
+
+test "race" {
+  let first = await race(slow(1, 30ms), slow(2, 10ms))
+  print("first {first}")
+  await sleep(50ms)
+  print("after")
+}
+
+test "errors in all" {
+  do {
+    let (a, b) = try await all(slow(1, 10ms), fails(5ms))
+    print("{a} {b}")
+  } catch e {
+    print("caught {e.message}")
+  }
+}
+
+test "spawn" {
+  let n = 1000
+  let t = spawn { heavy(n) }
+  let u = spawn {
+    var s = "x"
+    for _ in 0..<3 { s += "y" }
+    return s
+  }
+  print(await t)
+  print(await u)
+}
+
+// Output:
+// slow 1 done
+// slow 2 done
+// 3
+// ok await and sleep
+// slow 2 done
+// slow 1 done
+// 1 2
+// slow 3 done
+// asuka 3
+// ok all
+// slow 2 done
+// first 2
+// after
+// ok race
+// caught too late
+// ok errors in all
+// 500500
+// xyyy
+// ok spawn

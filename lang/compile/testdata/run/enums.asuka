@@ -1,0 +1,100 @@
+// Enums: cases, payloads, methods, match and its patterns.
+
+enum Light { red, yellow, green }
+
+enum Shape {
+  circle(radius: float)
+  rect(w: float, h: float)
+  point
+
+  fn area() -> float = match self {
+    .circle(r) => 3 * r * r
+    .rect(w, h) => w * h
+    .point => 0
+  }
+}
+
+fn next(l: Light) -> Light = match l {
+  .red => .green
+  .green => .yellow
+  .yellow => .red
+}
+
+fn describe(n: int) -> string = match n {
+  0 => "zero"
+  1 | 2 => "small"
+  _ if n < 0 => "negative"
+  _ => "big"
+}
+
+test "payloadless" {
+  var l = Light.red
+  l = next(l)
+  print(l)
+  print(next(next(l)))
+  expect(l == .green)
+  let all: [Light] = [.red, .yellow, .green]
+  print(all.count())
+}
+
+test "payloads" {
+  let shapes: [Shape] = [.circle(radius: 2), .rect(w: 2, h: 3), .point]
+  var total = 0.0
+  for s in shapes { total += s.area() }
+  print(total)
+  match shapes[1] {
+    .rect(w, _) if w > 1 => print("wide {w}")
+    _ => print("other")
+  }
+  expect(shapes[2] == Shape.point)
+  expect(shapes[0] != .circle(radius: 3))
+}
+
+test "literal patterns" {
+  print(describe(0))
+  print(describe(2))
+  print(describe(-5))
+  print(describe(99))
+  let s = "b"
+  let v = match s {
+    "a" => 1
+    "b" => 2
+    _ => 3
+  }
+  print(v)
+  let flag = true
+  match flag {
+    true => print("yes")
+    false => print("no")
+  }
+}
+
+test "tuples" {
+  let t = (1, "one")
+  let (n, name) = t
+  print("{n} {name}")
+  let pair: (int, int) = (3, 4)
+  match pair {
+    (0, _) => print("zero first")
+    (a, b) => print(a + b)
+  }
+}
+
+// Output:
+// green
+// red
+// 3
+// ok payloadless
+// 18
+// wide 2
+// ok payloads
+// zero
+// small
+// negative
+// big
+// 2
+// yes
+// ok literal patterns
+// 1 one
+// 7
+// ok tuples

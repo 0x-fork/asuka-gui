@@ -29,6 +29,9 @@ type Method struct {
 	// passed, copying first when it's shared).
 	Inout  bool
 	Throws bool
+	// Fails: may raise a runtime error (as an index out of range does),
+	// which needs no try.
+	Fails bool
 	Async  bool
 	// Order is the builtin's arguments after the receiver, by parameter
 	// index, when it isn't the parameters' order.
@@ -56,7 +59,7 @@ var Methods = []*Method{
 	{Recv: "array", Name: "get", Sig: "(index: int) -> T?", Builtin: "arr.get", Doc: "the element at index, or none when it's out of range"},
 	{Recv: "array", Name: "push", Sig: "(value: T)", Builtin: "arr.push", Inout: true},
 	{Recv: "array", Name: "insert", Sig: "(value: T, at: int)", Builtin: "arr.insert", Inout: true, Order: []int{1, 0}},
-	{Recv: "array", Name: "removeAt", Sig: "(index: int) -> T", Builtin: "arr.remove_at", Inout: true, Throws: true},
+	{Recv: "array", Name: "removeAt", Sig: "(index: int) -> T", Builtin: "arr.remove_at", Inout: true, Fails: true, Doc: "removes and returns the element at index; out of range is an error, as xs[i] is"},
 	{Recv: "array", Name: "removeWhere", Sig: "(where: fn(T) -> bool) -> int", Builtin: "arr.remove_where", Inout: true, Doc: "removes the elements the predicate is true of; how many"},
 	{Recv: "array", Name: "pop", Sig: "() -> T?", Builtin: "arr.pop", Inout: true},
 	{Recv: "array", Name: "clear", Sig: "()", Builtin: "arr.clear", Inout: true},

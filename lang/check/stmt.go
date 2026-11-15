@@ -177,6 +177,19 @@ func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable bool) {
 
 func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 	lt := c.lvalue(s.Target, "assign to")
+	if ix, ok := unparen(s.Target).(*syntax.IndexExpr); ok {
+		if _, isMap := c.info.Types[ix.X].(*Map); isMap {
+			// m[k] reads a V?, and stores a V.
+			switch s.Op {
+			case syntax.ASSIGN, syntax.COALESCE_ASSIGN:
+				c.assign(s.Value, Unopt(lt), "the value")
+			default:
+				c.expr(s.Value, nil)
+				c.errorf(s, "m[k] may be none: write m[k] = (m[k] ?? 0) %s …", strings.TrimSuffix(s.Op.String(), "="))
+			}
+			return
+		}
+	}
 	switch s.Op {
 	case syntax.ASSIGN:
 		c.assign(s.Value, lt, "the value")

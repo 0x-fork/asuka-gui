@@ -1,0 +1,128 @@
+// Arrays and their methods.
+
+struct Person {
+  name: string
+  age: int
+}
+
+test "building and reading" {
+  var xs = [3, 1, 2]
+  xs.push(5)
+  xs.insert(0, at: 0)
+  print(xs)
+  print(xs.count())
+  print(xs[1])
+  print(xs.first()!)
+  print(xs.last()!)
+  print(xs.get(10) ?? -1)
+  expect(!xs.isEmpty())
+  let removed = xs.removeAt(1)
+  print(removed)
+  print(xs.pop()!)
+  print(xs)
+  xs.clear()
+  expect(xs.isEmpty())
+  expect(xs.pop() == none)
+}
+
+test "transforming" {
+  let xs = [1, 2, 3, 4, 5, 6]
+  print(xs.map(x => x * x))
+  print(xs.filter(x => x % 2 == 0))
+  print(xs.count(x => x > 2))
+  print(xs.any(x => x > 5))
+  print(xs.all(x => x > 0))
+  print(xs.index(x => x == 4)!)
+  print(xs.find(x => x > 3)!)
+  expect(xs.contains(6) && !xs.contains(7))
+  print(xs.sum())
+  print(xs.reversed())
+  print(xs.slice(1, 3))
+  print([3, 1, 2].sorted())
+  print(["b", "c", "a"].sorted())
+  print(xs.map(x => "{x}").joined(separator: ","))
+  print([1.5, 2.5].sum())
+  print(xs + [7])
+}
+
+test "sorting by" {
+  var people = [Person(name: "b", age: 30), Person(name: "a", age: 20), Person(name: "c", age: 25)]
+  let byAge = people.sorted((p, q) => p.age < q.age)
+  print(byAge.map(p => p.name).joined())
+  people.sort((p, q) => p.name < q.name)
+  print(people.map(p => p.name).joined())
+  let removed = people.removeWhere(p => p.age > 24)
+  print("{removed} {people.count()}")
+}
+
+test "loops" {
+  var total = 0
+  for x in [1, 2, 3] { total += x }
+  for i in 0..<3 { total += i * 10 }
+  for i in 1..3 { total += i * 100 }
+  print(total)
+  for (i, s) in ["a", "b"].enumerated() { print("{i}:{s}") }
+  let pairs = ["x", "y"].enumerated()
+  print(pairs.count())
+  var n = 0
+  while n < 10 {
+    n += 1
+    if n == 3 { continue }
+    if n == 6 { break }
+    print(n)
+  }
+  let nested = [[1, 2], [3]]
+  var flat: [int] = []
+  for row in nested {
+    for x in row { flat.push(x) }
+  }
+  print(flat)
+}
+
+test "out of range" {
+  let xs = [1]
+  print(xs[3])
+}
+
+// Output:
+// [0,3,1,2,5]
+// 5
+// 3
+// 0
+// 5
+// -1
+// 3
+// 5
+// [0,1,2]
+// ok building and reading
+// [1,4,9,16,25,36]
+// [2,4,6]
+// 4
+// true
+// true
+// 3
+// 4
+// 21
+// [6,5,4,3,2,1]
+// [2,3]
+// [1,2,3]
+// ["a","b","c"]
+// 1,2,3,4,5,6
+// 4
+// [1,2,3,4,5,6,7]
+// ok transforming
+// acb
+// abc
+// 2 1
+// ok sorting by
+// 636
+// 0:a
+// 1:b
+// 2
+// 1
+// 2
+// 4
+// 5
+// [1,2,3]
+// ok loops
+// FAIL out of range: index 3 out of range (length 1)

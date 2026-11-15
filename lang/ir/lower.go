@@ -657,3 +657,48 @@ func sortedGlobals(m map[*check.Global]int) []*check.Global {
 	sort.Slice(gs, func(i, j int) bool { return m[gs[i]] < m[gs[j]] })
 	return gs
 }
+
+// implement fills the method table of t's shape with what interface
+// iface calls through CALLI: its methods, and getters of its fields.
+func (l *Lowerer) implement(t, iface check.Type) {
+	n, ok := t.(*check.Named)
+	in, ok2 := iface.(*check.Named)
+	if !ok || !ok2 || in.Obj.Iface == nil {
+		return
+	}
+	shape := l.shape(n)
+	if shape < 0 {
+		return
+	}
+	sd := &l.mod.Shapes[shape]
+	if sd.Methods == nil {
+		sd.Methods = map[string]uint32{}
+	}
+	for _, m := range in.Obj.Iface.Methods {
+		if _, done := sd.Methods[m.Name]; done {
+			continue
+		}
+		if f := n.Obj.Methods[m.Name]; f != nil {
+			sd.Methods[m.Name] = uint32(l.funcIndex(f, nil, n))
+		}
+	}
+	for _, fl := range in.Obj.Iface.Fields {
+		if _, done := sd.Methods[fl.Name]; done {
+			continue
+		}
+		if f := n.Obj.Methods[fl.Name]; f != nil && n.Obj.Kind == check.EnumType {
+			sd.Methods[fl.Name] = uint32(l.funcIndex(f, nil, n))
+			continue
+		}
+		f := n.Obj.Field(fl.Name)
+		if f == nil {
+			continue
+		}
+		ft := n.Subst().Apply(f.Type)
+		g := l.newFunc(l.typeKey(n)+"."+fl.Name, "", 1, l.kind(ft))
+		g.f.Kinds = []bc.Kind{bc.KRef}
+		r := g.getField(0, n, f, -1)
+		g.emit(op("RET"), r)
+		sd.Methods[fl.Name] = uint32(g.idx)
+	}
+}

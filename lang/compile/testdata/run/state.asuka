@@ -1,0 +1,68 @@
+// State outside the UI: a file's state, its memos, a store, effects.
+
+state count = 0
+let doubled = count * 2
+
+struct Item {
+  name: string
+  done: bool = false
+}
+
+store Cart {
+  state items: [Item] = []
+  state total = 0
+  let left = items.count(i => !i.done)
+
+  effect {
+    print("cart has {items.count()}")
+  }
+
+  fn add(name: string) {
+    items.push(Item(name: name))
+    total += 1
+  }
+
+  fn finish(i: int) {
+    items[i].done = true
+  }
+}
+
+test "file state and memos" {
+  print(doubled)
+  count = 5
+  print(doubled)
+  count += 1
+  print(count)
+  print(doubled)
+}
+
+test "a store" {
+  let cart = Cart()
+  cart.add("milk")
+  cart.add("eggs")
+  print(cart.left)
+  cart.finish(0)
+  print(cart.left)
+  print(cart.items[0].done)
+  print(cart.total)
+  cart.items.push(Item(name: "tea"))
+  print(cart.left)
+}
+
+// Output:
+// 0
+// 10
+// 6
+// 12
+// ok file state and memos
+// cart has 0
+// cart has 1
+// cart has 2
+// 2
+// cart has 2
+// 1
+// true
+// 2
+// cart has 3
+// 2
+// ok a store

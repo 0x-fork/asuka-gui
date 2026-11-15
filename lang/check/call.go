@@ -386,10 +386,15 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 				checked[i] = true
 				continue
 			}
-			w := s.Apply(pt)
+			pw := s.Apply(pt)
+			w := pw
+			if !isLambda && mentionsFree(w, free, s) {
+				// What isn't known yet doesn't steer the argument.
+				w = nil
+			}
 			got := c.expr(a, w)
 			types[i] = got
-			if !c.unify(w, got, s, free) {
+			if !c.unify(pw, got, s, free) {
 				c.errorf(a, "argument %s of %s is a %s, which doesn't fit %s", params[i].Name, what, typeString(got), typeString(s.Apply(pt)))
 			}
 			checked[i] = true

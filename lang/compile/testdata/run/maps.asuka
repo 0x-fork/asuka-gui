@@ -1,0 +1,40 @@
+// Maps, kept in insertion order.
+
+test "maps" {
+  var ages = ["ann": 30, "bob": 25]
+  ages["cy"] = 41
+  ages["ann"] = 31
+  print(ages.count())
+  print(ages["ann"]!)
+  print(ages["zed"] ?? 0)
+  expect(ages.has("bob") && !ages.has("zed"))
+  print(ages.keys())
+  print(ages.values())
+  expect(ages.remove("bob"))
+  expect(!ages.remove("bob"))
+  for (name, age) in ages { print("{name}={age}") }
+  var counts: [string: int] = [:]
+  for w in "a b a c a".split(" ") {
+    counts[w] = (counts[w] ?? 0) + 1
+  }
+  print(counts)
+  var ids: [int: string] = [1: "one"]
+  ids[2] = "two"
+  print(ids.get(2)!)
+  expect(!ids.isEmpty())
+  let m2 = ["a": [1, 2]]
+  print(m2["a"]!.count())
+}
+
+// Output:
+// 3
+// 31
+// 0
+// ["ann","bob","cy"]
+// [31,25,41]
+// ann=31
+// cy=41
+// {"a":3,"b":1,"c":1}
+// two
+// 2
+// ok maps
