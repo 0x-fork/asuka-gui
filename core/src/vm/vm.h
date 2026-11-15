@@ -46,6 +46,7 @@ int32_t ak_module_app(const ak_module *m);
 uint32_t ak_module_ntests(const ak_module *m);
 const char *ak_module_test(const ak_module *m, uint32_t i, uint32_t *func);
 const ak_shape *ak_module_shape(const ak_module *m, uint32_t i);
+const ak_shape *ak_module_shape_named(const ak_module *m, const char *name);
 const char *ak_func_name(const ak_func *f);
 bool ak_func_async(const ak_func *f);
 

@@ -1,0 +1,468 @@
+#include "vm/keep.h"
+#include "vm/vm_int.h"
+
+// ---- Encoding ----
+//
+// value := tag, then by tag:
+//   'i' i64 | 'f' f64 | 'b' u8 | 'n' (none)
+//   's' str | 'y' bytes
+//   'B' kind value                      a boxed optional scalar
+//   'a' kind count value*               an array (elements of kind)
+//   'm' kind kind count (value value)*  a map
+//   'S' str count (str kind value)*     a struct: its shape's name, fields by name
+//   'E' str str count (kind value)*     an enum: its shape's and its case's names
+// str := u32 length, bytes
+
+static void wstr(ak_buf *b, const char *s) { ak_buf_str(b, s ? s : "", s ? strlen(s) : 0); }
+
+bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
+	switch (k) {
+	case AK_K_INT:
+		ak_buf_u8(b, 'i');
+		ak_buf_u64(b, (uint64_t)v.i);
+		return true;
+	case AK_K_BOOL:
+		ak_buf_u8(b, 'b');
+		ak_buf_u8(b, v.i != 0);
+		return true;
+	case AK_K_FLOAT:
+		ak_buf_u8(b, 'f');
+		ak_buf_f64(b, v.f);
+		return true;
+	case AK_K_REF:
+		break;
+	default:
+		ak_buf_u8(b, 'n');
+		return true;
+	}
+	ak_obj *o = v.p;
+	if (!o) {
+		ak_buf_u8(b, 'n');
+		return true;
+	}
+	switch ((ak_tag)o->tag) {
+	case AK_T_STR: {
+		ak_str *s = (ak_str *)o;
+		ak_buf_u8(b, 's');
+		ak_buf_str(b, s->data, s->len);
+		return true;
+	}
+	case AK_T_BYTES: {
+		ak_bytes *s = (ak_bytes *)o;
+		ak_buf_u8(b, 'y');
+		ak_buf_str(b, (const char *)s->data, s->len);
+		return true;
+	}
+	case AK_T_BOX: {
+		ak_box *x = (ak_box *)o;
+		ak_buf_u8(b, 'B');
+		ak_buf_u8(b, (uint8_t)x->h.aux);
+		return ak_keep_encode(b, x->v, (ak_kind)x->h.aux);
+	}
+	case AK_T_ARR: {
+		ak_arr *a = (ak_arr *)o;
+		ak_buf_u8(b, 'a');
+		ak_buf_u8(b, (uint8_t)ak_arr_kind(a));
+		ak_buf_u32(b, a->len);
+		for (uint32_t i = 0; i < a->len; i++)
+			if (!ak_keep_encode(b, a->data[i], ak_arr_kind(a))) return false;
+		return true;
+	}
+	case AK_T_MAP: {
+		ak_map *m = (ak_map *)o;
+		ak_kind kk = (ak_kind)(m->h.aux & 0xf), vk = (ak_kind)(m->h.aux >> 4);
+		ak_buf_u8(b, 'm');
+		ak_buf_u8(b, (uint8_t)kk);
+		ak_buf_u8(b, (uint8_t)vk);
+		ak_buf_u32(b, m->live);
+		for (uint32_t i = 0; i < m->len; i++) {
+			if (m->dead[i]) continue;
+			if (!ak_keep_encode(b, m->keys[i], kk) || !ak_keep_encode(b, m->vals[i], vk)) return false;
+		}
+		return true;
+	}
+	case AK_T_STRUCT: {
+		ak_struct *s = (ak_struct *)o;
+		ak_buf_u8(b, 'S');
+		wstr(b, s->shape->name);
+		ak_buf_u32(b, s->shape->nfields);
+		for (uint16_t i = 0; i < s->shape->nfields; i++) {
+			wstr(b, s->shape->names ? s->shape->names[i] : "");
+			ak_buf_u8(b, s->shape->kinds[i]);
+			if (!ak_keep_encode(b, s->f[i], (ak_kind)s->shape->kinds[i])) return false;
+		}
+		return true;
+	}
+	case AK_T_ENUM: {
+		ak_enum *e = (ak_enum *)o;
+		const ak_case *c = &e->shape->cases[ak_enum_case(e)];
+		ak_buf_u8(b, 'E');
+		wstr(b, e->shape->name);
+		wstr(b, c->name);
+		ak_buf_u32(b, c->nfields);
+		for (uint16_t i = 0; i < c->nfields; i++) {
+			ak_buf_u8(b, c->kinds[i]);
+			if (!ak_keep_encode(b, e->f[i], (ak_kind)c->kinds[i])) return false;
+		}
+		return true;
+	}
+	default:
+		return false;  // closures, cells, views, tasks: not values
+	}
+}
+
+static bool rname(ak_reader *r, const uint8_t **p, uint32_t *n) {
+	*p = ak_read_bytes(r, n);
+	return !r->err;
+}
+
+static bool name_is(const uint8_t *p, uint32_t n, const char *s) { return s && strlen(s) == n && memcmp(p, s, n) == 0; }
+
+// skip reads past one encoded value.
+static bool skip(ak_reader *r) {
+	uint8_t tag = ak_read_u8(r);
+	uint32_t n;
+	switch (tag) {
+	case 'i':
+	case 'f':
+		ak_read_u64(r);
+		break;
+	case 'b':
+		ak_read_u8(r);
+		break;
+	case 'n':
+		break;
+	case 's':
+	case 'y':
+		ak_read_bytes(r, &n);
+		break;
+	case 'B':
+		ak_read_u8(r);
+		return skip(r);
+	case 'a':
+		ak_read_u8(r);
+		n = ak_read_u32(r);
+		for (uint32_t i = 0; i < n && !r->err; i++)
+			if (!skip(r)) return false;
+		break;
+	case 'm':
+		ak_read_u8(r);
+		ak_read_u8(r);
+		n = ak_read_u32(r);
+		for (uint32_t i = 0; i < n && !r->err; i++)
+			if (!skip(r) || !skip(r)) return false;
+		break;
+	case 'S':
+		ak_read_bytes(r, &n);
+		n = ak_read_u32(r);
+		for (uint32_t i = 0; i < n && !r->err; i++) {
+			uint32_t m;
+			ak_read_bytes(r, &m);
+			ak_read_u8(r);
+			if (!skip(r)) return false;
+		}
+		break;
+	case 'E':
+		ak_read_bytes(r, &n);
+		ak_read_bytes(r, &n);
+		n = ak_read_u32(r);
+		for (uint32_t i = 0; i < n && !r->err; i++) {
+			ak_read_u8(r);
+			if (!skip(r)) return false;
+		}
+		break;
+	default:
+		return false;
+	}
+	return !r->err;
+}
+
+static ak_val zero_field(ak_kind k, bool *ok) {
+	// A new field: scalars start at zero; a reference has no zero to
+	// start from unless it's optional, which the shape doesn't say, so
+	// the conversion fails.
+	if (k == AK_K_REF) *ok = false;
+	return (ak_val){0};
+}
+
+bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, ak_val *out) {
+	*out = (ak_val){0};
+	uint8_t tag = ak_read_u8(r);
+	if (r->err) return false;
+	switch (tag) {
+	case 'i':
+		out->i = (int64_t)ak_read_u64(r);
+		return !r->err && k == AK_K_INT;
+	case 'b':
+		out->i = ak_read_u8(r);
+		return !r->err && k == AK_K_BOOL;
+	case 'f':
+		out->f = ak_read_f64(r);
+		return !r->err && k == AK_K_FLOAT;
+	case 'n':
+		return k == AK_K_REF;
+	}
+	if (k != AK_K_REF) {
+		// The type was a reference and is a scalar now: read past it.
+		r->off--;
+		skip(r);
+		return false;
+	}
+	switch (tag) {
+	case 's':
+	case 'y': {
+		uint32_t n;
+		const uint8_t *p = ak_read_bytes(r, &n);
+		if (r->err) return false;
+		out->p = tag == 's' ? (void *)ak_str_new((const char *)p, n) : (void *)ak_bytes_new(p, n);
+		return true;
+	}
+	case 'B': {
+		ak_kind bk = (ak_kind)ak_read_u8(r);
+		ak_val v;
+		if (!ak_keep_decode(r, bk, find, ctx, &v)) return false;
+		out->p = ak_box_new(bk, v);
+		return true;
+	}
+	case 'a': {
+		ak_kind ek = (ak_kind)ak_read_u8(r);
+		uint32_t n = ak_read_u32(r);
+		if (r->err || n > r->len) return false;
+		ak_arr *a = ak_arr_new(ek, NULL, n);
+		bool ok = true;
+		for (uint32_t i = 0; i < n; i++) {
+			ak_val v;
+			if (!ak_keep_decode(r, ek, find, ctx, &v)) {
+				ok = false;
+				break;
+			}
+			a->data[a->len++] = v;
+			if (ek == AK_K_REF && v.p) {
+				ak_obj *eo = v.p;
+				if (eo->tag == AK_T_STR) a->h.flags = 1;
+				if (eo->tag == AK_T_STRUCT) a->shape = ((ak_struct *)eo)->shape;
+				if (eo->tag == AK_T_ENUM) a->shape = ((ak_enum *)eo)->shape;
+			}
+		}
+		if (!ok) {
+			ak_release(a);
+			return false;
+		}
+		out->p = a;
+		return true;
+	}
+	case 'm': {
+		ak_kind kk = (ak_kind)ak_read_u8(r), vk = (ak_kind)ak_read_u8(r);
+		uint32_t n = ak_read_u32(r);
+		if (r->err || n > r->len) return false;
+		ak_map *m = NULL;
+		for (uint32_t i = 0; i < n; i++) {
+			ak_val key, val;
+			if (!ak_keep_decode(r, kk, find, ctx, &key)) goto map_fail;
+			if (!ak_keep_decode(r, vk, find, ctx, &val)) {
+				ak_release_val(key, kk);
+				goto map_fail;
+			}
+			if (!m) m = ak_map_new(kk, kk == AK_K_REF && key.p && ((ak_obj *)key.p)->tag == AK_T_STR, vk, NULL);
+			ak_map_set(&m, key, val);
+		}
+		out->p = m ? m : ak_map_new(kk, kk == AK_K_REF, vk, NULL);
+		return true;
+	map_fail:
+		ak_release(m);
+		return false;
+	}
+	case 'S': {
+		const uint8_t *sn;
+		uint32_t snl;
+		if (!rname(r, &sn, &snl)) return false;
+		char name[256];
+		if (snl >= sizeof name) return false;
+		memcpy(name, sn, snl);
+		name[snl] = 0;
+		const ak_shape *s = find ? find(ctx, name) : NULL;
+		uint32_t nf = ak_read_u32(r);
+		if (r->err) return false;
+		ak_struct *o = s ? ak_struct_new(s) : NULL;
+		bool *seen = NULL;
+		if (o && s->nfields) seen = ak_alloc(s->nfields);
+		bool ok = o != NULL && s->ncases == 0;
+		for (uint32_t i = 0; i < nf; i++) {
+			const uint8_t *fn;
+			uint32_t fnl;
+			if (!rname(r, &fn, &fnl)) {
+				ok = false;
+				break;
+			}
+			ak_kind fk = (ak_kind)ak_read_u8(r);
+			int idx = -1;
+			if (ok)
+				for (uint16_t j = 0; j < s->nfields; j++)
+					if (s->names && name_is(fn, fnl, s->names[j])) idx = j;
+			if (idx >= 0 && s->kinds[idx] == fk) {
+				ak_val v;
+				if (!ak_keep_decode(r, fk, find, ctx, &v)) {
+					ok = false;
+					break;
+				}
+				o->f[idx] = v;
+				seen[idx] = true;
+			} else {
+				// A field removed, or now another kind: read past it.
+				if (!skip(r)) {
+					ok = false;
+					break;
+				}
+				if (idx >= 0) ok = false;  // changed kind: start again
+			}
+		}
+		if (ok)
+			for (uint16_t j = 0; j < s->nfields; j++)
+				if (!seen[j]) o->f[j] = zero_field((ak_kind)s->kinds[j], &ok);
+		ak_free(seen);
+		if (!ok) {
+			ak_release(o);
+			return false;
+		}
+		out->p = o;
+		return true;
+	}
+	case 'E': {
+		const uint8_t *sn, *cn;
+		uint32_t snl, cnl;
+		if (!rname(r, &sn, &snl) || !rname(r, &cn, &cnl)) return false;
+		char name[256];
+		if (snl >= sizeof name) return false;
+		memcpy(name, sn, snl);
+		name[snl] = 0;
+		const ak_shape *s = find ? find(ctx, name) : NULL;
+		uint32_t nf = ak_read_u32(r);
+		if (r->err) return false;
+		int ci = -1;
+		if (s)
+			for (uint16_t c = 0; c < s->ncases; c++)
+				if (name_is(cn, cnl, s->cases[c].name)) ci = c;
+		bool ok = ci >= 0 && s->cases[ci].nfields == nf;
+		ak_val fields[32];
+		uint32_t got = 0;
+		if (nf > 32) ok = false;
+		for (uint32_t i = 0; i < nf; i++) {
+			ak_kind fk = (ak_kind)ak_read_u8(r);
+			if (ok && s->cases[ci].kinds[i] == fk) {
+				if (!ak_keep_decode(r, fk, find, ctx, &fields[got])) {
+					ok = false;
+					break;
+				}
+				got++;
+			} else {
+				ok = false;
+				if (!skip(r)) break;
+			}
+		}
+		if (!ok) {
+			for (uint32_t i = 0; i < got; i++) ak_release_val(fields[i], (ak_kind)s->cases[ci].kinds[i]);
+			return false;
+		}
+		ak_enum *e = ak_enum_new(s, (uint16_t)ci);
+		for (uint32_t i = 0; i < nf; i++) e->f[i] = fields[i];
+		out->p = e;
+		return true;
+	}
+	}
+	return false;
+}
+
+// ---- The dev loop's registry ----
+
+typedef struct {
+	ak_str *key;
+	void *cell;     // live, weak; NULL once gone
+	ak_buf saved;   // its value, saved before a reload
+	uint8_t kind;
+	bool has;
+} entry;
+
+static AK_VEC(entry) entries;
+static bool on;
+static ak_keep_shape_fn find_shape;
+static void *find_ctx;
+static uint32_t nsaved, nrestored;
+
+extern bool (*ak_vm_keep_find)(ak_str *key, ak_kind k, ak_val *out);
+extern void (*ak_vm_keep_add)(ak_str *key, void *cell);
+ak_kind ak_vm_cell_kind(void *cell);
+
+static entry *lookup(ak_str *key) {
+	for (uint32_t i = 0; i < entries.len; i++)
+		if (ak_str_eq(entries.data[i].key, key)) return &entries.data[i];
+	return NULL;
+}
+
+static bool keep_find(ak_str *key, ak_kind k, ak_val *out) {
+	entry *e = lookup(key);
+	if (!e || !e->has) return false;
+	ak_reader r = {e->saved.data, e->saved.len, 0, false};
+	bool ok = ak_keep_decode(&r, k, find_shape, find_ctx, out);
+	// Each saved value is used once: the next cell with the key starts
+	// fresh (two instances of a component in one place).
+	e->has = false;
+	if (ok) nrestored++;
+	return ok;
+}
+
+static void keep_add(ak_str *key, void *cell) {
+	entry *e = lookup(key);
+	if (!e) {
+		ak_vec_push(&entries, ((entry){.key = ak_retain(key)}));
+		e = &entries.data[entries.len - 1];
+	}
+	e->cell = cell;
+	((ak_obj *)cell)->flags |= 1;  // keyed: forget it when it goes
+}
+
+void ak_keep_forget(void *cell) {
+	for (uint32_t i = 0; i < entries.len; i++)
+		if (entries.data[i].cell == cell) entries.data[i].cell = NULL;
+}
+
+void ak_keep_start(void) {
+	on = true;
+	ak_vm_keep_find = keep_find;
+	ak_vm_keep_add = keep_add;
+}
+
+void ak_keep_save(void) {
+	nsaved = 0;
+	for (uint32_t i = 0; i < entries.len; i++) {
+		entry *e = &entries.data[i];
+		if (!e->cell) continue;
+		ak_buf_reset(&e->saved);
+		ak_kind k = ak_vm_cell_kind(e->cell);
+		ak_val v = ak_vm_cell_get(e->cell, false);
+		e->has = ak_keep_encode(&e->saved, v, k);
+		ak_release_val(v, k);
+		e->kind = (uint8_t)k;
+		e->cell = NULL;
+		if (e->has) nsaved++;
+	}
+}
+
+void ak_keep_use(ak_keep_shape_fn find, void *ctx) {
+	find_shape = find;
+	find_ctx = ctx;
+	nrestored = 0;
+}
+
+void ak_keep_stop(void) {
+	on = false;
+	ak_vm_keep_find = NULL;
+	ak_vm_keep_add = NULL;
+	for (uint32_t i = 0; i < entries.len; i++) {
+		ak_release(entries.data[i].key);
+		ak_buf_free(&entries.data[i].saved);
+	}
+	ak_vec_free(&entries);
+}
+
+uint32_t ak_keep_saved(void) { return nsaved; }
+uint32_t ak_keep_restored(void) { return nrestored; }

@@ -2,6 +2,7 @@
 // memos, accessors, effects, cleanups, and tasks tied to owners.
 #include "vm/vm_int.h"
 #include "signal/signal.h"
+#include "vm/keep.h"
 
 // ---- Cells ----
 
@@ -14,6 +15,7 @@ typedef struct {
 
 static void cell_drop(ak_opaque *o) {
 	cell *c = (cell *)o;
+	if (o->h.flags & 1) ak_keep_forget(c);  // a keyed cell (keep.c)
 	ak_signal_drop(&c->node);
 	ak_release_val(c->v, (ak_kind)c->kind);
 }

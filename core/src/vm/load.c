@@ -334,6 +334,12 @@ const char *ak_module_test(const ak_module *m, uint32_t i, uint32_t *func) {
 	return m->tests[i].name->data;
 }
 
+const ak_shape *ak_module_shape_named(const ak_module *m, const char *name) {
+	for (uint32_t i = 0; i < m->nshapes; i++)
+		if (strcmp(m->shapes[i].s.name, name) == 0) return &m->shapes[i].s;
+	return NULL;
+}
+
 const ak_shape *ak_module_shape(const ak_module *m, uint32_t i) { return i < m->nshapes ? &m->shapes[i].s : NULL; }
 const char *ak_func_name(const ak_func *f) { return f->name->data; }
 bool ak_func_async(const ak_func *f) { return f->flags & AK_F_ASYNC; }
