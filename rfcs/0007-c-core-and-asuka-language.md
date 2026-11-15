@@ -483,7 +483,7 @@ UBSan.
 Each ends with its tests green.
 
 - [ ] **L0** this RFC; the docs' language reference (`docs/language.md`).
-- [ ] **C0** the core in C: base, signal, layout (Chrome fixtures at
+- [x] **C0** the core in C: base, signal, layout (Chrome fixtures at
       parity with `known_failures.txt`), ops encoder (byte-identical to
       the golden files), the fake host.
 - [ ] **L1** the compiler front end: lexer, parser, printer, `asuka fmt`.
