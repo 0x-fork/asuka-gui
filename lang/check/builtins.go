@@ -108,9 +108,19 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Result = c.allRace(e, b, call.Args)
 		c.callEffects(e, b.name, true, false)
 	case BMount:
-		args := positional(1, "a view: mount(Counter())")
-		if len(args) > 0 {
+		// mount(view, provide: store): the store provided to the view.
+		ps := []*Param{{Name: "view", Type: View}, {Name: "provide", Type: nil, Default: zeroLit}}
+		args := c.matchArgs(e, ps, "mount")
+		if args[0] != nil {
 			c.builderExpr(args[0])
+		}
+		if args[1] != nil {
+			pt := c.expr(args[1], nil)
+			if n, ok := pt.(*Named); !ok || n.Obj.Kind != StoreType {
+				if !IsInvalid(pt) {
+					c.errorf(args[1], "provide takes a store: this is a %s", typeString(pt))
+				}
+			}
 		}
 		call.Args = args
 		call.Result = TestApp

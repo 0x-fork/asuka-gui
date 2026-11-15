@@ -39,6 +39,7 @@ type Checker struct {
 	resolving map[any]bool
 	view      bool // checking view items
 
+	chained map[syntax.Expr]bool // the members and calls of a ?. chain
 	nextTP  int
 	loadOK  bool
 	inDefer int
@@ -49,7 +50,7 @@ type Checker struct {
 
 // NewChecker makes a checker and checks the prelude with it.
 func NewChecker(fset *syntax.FileSet) *Checker {
-	c := &Checker{fset: fset, info: newInfo(), errLines: map[string]bool{}, std: map[string]*Package{}, resolving: map[any]bool{}}
+	c := &Checker{fset: fset, info: newInfo(), errLines: map[string]bool{}, std: map[string]*Package{}, resolving: map[any]bool{}, chained: map[syntax.Expr]bool{}}
 	c.universe = NewScope(nil)
 	c.initUniverse()
 	var files []*syntax.SourceFile

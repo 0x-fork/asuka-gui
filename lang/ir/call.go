@@ -428,7 +428,22 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		b.emit(op("AWAIT"), w, f)
 		return -1
 	case check.BMount:
-		bl := b.builder(call.Args[0])
+		var bl int
+		if p := call.Args[1]; p != nil {
+			// The builder provides the store, then builds the view.
+			store := b.value(p, -1)
+			key := b.l.typeKey(b.rawType(p))
+			sv := &check.Var{}
+			x := call.Args[0]
+			ctx := b.l.info.Ctxs[x]
+			bl = b.makeClosure(closure{name: "mount", ctxs: []*check.FuncCtx{ctx}, extra: []extraCap{{sv, store}}, ret: bc.KRef, throws: true, body: func(c *fb) {
+				c.callBTo(uiProvide, bc.None, c.kstr(key), c.vars[sv])
+				v, _ := c.viewExpr(x)
+				c.emit(op("RET"), v)
+			}})
+		} else {
+			bl = b.builder(call.Args[0])
+		}
 		return b.copyTo(b.callB(uiTestMount, bc.KRef, bl), dst)
 	case check.BPush, check.BPresent:
 		bl := b.builder(call.Args[0])

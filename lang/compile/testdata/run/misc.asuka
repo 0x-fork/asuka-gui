@@ -1,0 +1,157 @@
+// Corners: nested changes in place, captures in loops, defers with break
+// and return, if and match as values, shadowing, recursion.
+
+struct Inner {
+  n: int
+  xs: [int] = []
+}
+
+struct Outer {
+  inner: Inner
+  name: string = "o"
+}
+
+struct Form {
+  name: string = ""
+  age: int = 0
+}
+
+store Profile {
+  state form = Form()
+  state grid: [[int]] = [[0, 0], [0, 0]]
+
+  fn rename(n: string) { form.name = n }
+  fn birthday() { form.age += 1 }
+  fn mark(i: int, j: int) { grid[i][j] = 1 }
+}
+
+fn isEven(n: int) -> bool = if n == 0 { true } else { isOdd(n - 1) }
+fn isOdd(n: int) -> bool = if n == 0 { false } else { isEven(n - 1) }
+
+fn greet(name: string, greeting: string = "Hello", punct: string = "!") -> string = "{greeting}, {name}{punct}"
+
+fn firstOver(xs: [int], n: int) -> int? {
+  for x in xs {
+    defer { print("checked {x}") }
+    if x > n { return x }
+  }
+  return none
+}
+
+test "nested changes" {
+  var o = Outer(inner: Inner(n: 1))
+  let saved = o
+  o.inner.n += 10
+  o.inner.xs.push(5)
+  o.name += "!"
+  print("{o.inner.n} {o.inner.xs} {o.name}")
+  print("{saved.inner.n} {saved.inner.xs} {saved.name}")
+  var grid = [[1, 2], [3, 4]]
+  grid[1][0] = 30
+  grid[0].push(9)
+  print(grid)
+}
+
+test "state changes in place" {
+  let p = Profile()
+  p.rename("ann")
+  p.birthday()
+  p.birthday()
+  p.mark(1, 1)
+  print("{p.form.name} {p.form.age} {p.grid}")
+}
+
+test "captures in loops" {
+  var fs: [fn() -> int] = []
+  for i in 0..<3 { fs.push(() => i * 10) }
+  print(fs.map(f => f()))
+  var count = 0
+  let bump = () => { count += 1 }
+  bump()
+  bump()
+  print(count)
+  var log = ""
+  for s in ["a", "b"] {
+    let add = (t: string) => { log += t + s }
+    add("<")
+  }
+  print(log)
+}
+
+test "defer with break and return" {
+  print(firstOver([1, 5, 9], 4) ?? -1)
+  for i in 0..<5 {
+    defer { print("leave {i}") }
+    if i == 1 { break }
+  }
+}
+
+test "values from if and match" {
+  let n = 7
+  let size = if n > 5 { "big" } else if n > 2 { "medium" } else { "small" }
+  print(size)
+  let parity = match n % 2 {
+    0 => "even"
+    _ => {
+      let s = "odd"
+      s.upper()
+    }
+  }
+  print(parity)
+  print(isEven(10))
+  print(isOdd(7))
+}
+
+test "shadowing and defaults" {
+  let x = 1
+  if true {
+    let x = "inner"
+    print(x)
+  }
+  print(x)
+  print(greet("Ann"))
+  print(greet("Bob", punct: "?"))
+  print(greet("Cy", greeting: "Hi"))
+}
+
+test "optional calls" {
+  let maybe: Inner? = Inner(n: 3)
+  let none2: Inner? = none
+  print(maybe?.xs.count() ?? -1)
+  print(none2?.n ?? -1)
+  let s: string? = "hey"
+  print(s?.upper() ?? "")
+}
+
+// Output:
+// 11 [5] o!
+// 1 [] o
+// [[1,2,9],[30,4]]
+// ok nested changes
+// ann 2 [[0,0],[0,1]]
+// ok state changes in place
+// [0,10,20]
+// 2
+// <a<b
+// ok captures in loops
+// checked 1
+// checked 5
+// 5
+// leave 0
+// leave 1
+// ok defer with break and return
+// big
+// ODD
+// true
+// true
+// ok values from if and match
+// inner
+// 1
+// Hello, Ann!
+// Hello, Bob?
+// Hi, Cy!
+// ok shadowing and defaults
+// 0
+// -1
+// HEY
+// ok optional calls

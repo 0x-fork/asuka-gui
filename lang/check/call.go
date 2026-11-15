@@ -573,7 +573,8 @@ func (c *Checker) methodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, want Typ
 		return Invalid
 	}
 	optional := false
-	if fn.Optional {
+	if fn.Optional || IsOptional(xt) && c.chained[unparen(fn.X)] {
+		c.chained[e] = true
 		if !IsOptional(xt) {
 			c.errorf(fn, "%s isn't optional: use . (?. is for optionals)", typeString(xt))
 		}

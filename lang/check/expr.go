@@ -839,7 +839,10 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 	if IsInvalid(xt) {
 		return Invalid
 	}
-	if e.Optional {
+	if e.Optional || IsOptional(xt) && c.chained[unparen(e.X)] {
+		// x?.name, or .name after one in a chain (a?.b.c): none when
+		// what's before is.
+		c.chained[e] = true
 		if !IsOptional(xt) {
 			c.errorf(e, "%s isn't optional: use . (?. is for optionals)", typeString(xt))
 		}

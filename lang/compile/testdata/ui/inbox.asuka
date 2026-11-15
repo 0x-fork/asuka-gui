@@ -1,0 +1,81 @@
+struct Message {
+  id: int
+  subject: string
+  read: bool = false
+}
+
+store Mailbox {
+  state messages: [Message] = []
+  let unread = messages.count(m => !m.read)
+
+  fn markRead(id: int) {
+    if let i = messages.index(m => m.id == id) { messages[i].read = true }
+  }
+
+  async fn fetch(page: int) throws -> [Message] {
+    await sleep(10ms)
+    return [Message(id: page, subject: "page {page}")]
+  }
+}
+
+component Card(title: string) {
+  prop children: View
+  prop footer: View? = none
+
+  Column {
+    gap: 8; padding: [8, 16]
+    Text(title) { font: .headline }
+    children
+    footer
+  }
+}
+
+component Inbox {
+  use mail: Mailbox
+  state page = 1
+  state query = ""
+  state selected: Message? = none
+  state notify = true
+  let latest = load mail.fetch(page)
+
+  task(page) { print("page {page}") }
+  effect { print("query is {query}") }
+
+  Column {
+    TextField { bind text: query; placeholder: "Search" }
+    Toggle { bind on: notify; title: "Notifications" }
+    match latest {
+      .pending => Text("Loading…")
+      .failed(e) => Text("Failed: {e.message}") { color: .red }
+      .ready(list) => Column {
+        for (i, m) in list.enumerated() key m.id {
+          Card("{i}: {m.subject}") {
+            Text(if m.read { "read" } else { "new" })
+            footer { Button("Open") { on press { selected = m; mail.markRead(m.id) } } }
+          }
+        }
+      }
+    }
+    if let m = selected {
+      Text("Selected {m.subject}")
+    } else {
+      Text("Nothing selected")
+    }
+    Text("{mail.unread} unread")
+    Button("Next") { on press { page += 1 } }
+  }
+}
+
+app {
+  provide Mailbox()
+  Inbox()
+}
+
+test "loads a page" {
+  let app = mount(Inbox(), provide: Mailbox())
+  await app.idle()
+  app.expect("0: page 1")
+  app.tap("Next")
+  await app.idle()
+  app.expect("0: page 2")
+}
