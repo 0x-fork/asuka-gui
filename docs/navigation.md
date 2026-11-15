@@ -1275,6 +1275,42 @@ in a package that sees no routes is checked in the package that declares
 them. It says nothing when the routes can't all be known from the code
 (a function builds some) or the app has a catch-all of its own.
 
+### In Asuka
+
+In the Asuka language (where Asuka is going: see [the language](language.md)),
+routes are elements, declared where the app's structure is, and a
+screen can declare its own path; its parameters are typed, so a link to
+it is checked as the app compiles:
+
+```asuka
+app {
+  Router(initial: "/inbox") {
+    Route("/", redirect: "/inbox")
+    Route(layout: .tabs) {
+      Route("/inbox", layout: .stack, title: "Inbox", icon: "tray") {
+        Inbox
+        Thread
+        Route(":id/reply", sheet: true) { (p) in Reply(id: p.get("id")) }
+      }
+      Route("/settings", layout: .stack, title: "Settings", icon: "gear") { Settings }
+    }
+  }
+}
+
+screen Thread(id: int) at ":id" {
+  …
+  Button("Reply", href: "/inbox/{id}/reply")
+}
+
+// elsewhere
+navigate(Thread(id: 7))   // goes to /inbox/7
+```
+
+A `Route` with routes in it is a navigator of them (`layout`: `.stack`,
+`.tabs`, `.split`, `.slot`) or a group; a `Route` whose block builds a
+view is a screen, given its `Params`. `navigate`, `push`, `pop`,
+`present` and `dismiss`, and a Button's `href`, work as they do in Go.
+
 ## Deep links
 
 An app opens for URLs of its own scheme, and for https links to its own

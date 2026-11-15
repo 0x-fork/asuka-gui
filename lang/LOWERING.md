@@ -170,8 +170,17 @@ protocol (core/src/ui/ui.h), as builtins:
 | `bind text: q` | `ui.bind(v, AK_KEY_TEXT_FIELD_TEXT, thunk{CGET q})` and `ui.on(v, AK_EV_TEXT_FIELD_CHANGE, closure(t){CSET q t})` |
 | `style card` | the style's prop sets, inlined here; a later set of the same key wins (the compiler keeps only the last) |
 | children | each built, then `ui.add(v, child)` |
+| children of a `LazyChildren` element (`Stack`, `Tab`, `Sheet`, `Destination`, `Window`, `Route`, `Boundary`) | `ui.lazy(v, builder)`: the runtime builds them when they show, under an owner of their own (a `Route`'s builder takes its `Params`, an accessor) |
 | `toolbar { … }` | `ui.slot(v, AK_KEY_SCREEN_TOOLBAR, fragment)` |
+| a `Lazy` slot (`Popover`'s `content { … }`) | `ui.slot(v, key, builder)`: a closure returning the View, built as it shows |
+| `on error(e, reset) { views }` (an event that `Builds`) | `ui.on(v, ev, closure)`, the closure returning the View it builds |
 | `Text(x) as t` | `t` is a local holding `ui.ref(v)` |
+
+A `Screen`'s `actions`, `toolbar` and `primary` slots hold Buttons:
+the runtime sends them as the platform's bar items (title or icon, a
+`menu`, `disabled`), and runs a Button's `press` (and its `href`) when
+its item is chosen; a Button that changes, or one a `for` or an `if` in
+the slot adds, sends the bar again.
 
 Values cross as their kinds (rt.h). Conversions the checker inserts:
 a number where an `Edges` is expected is `Edges(all)`; `[v, h]` and `[t,
@@ -205,7 +214,78 @@ what it read changes, cancelling the last task, and exposes a
 
 `push(X(…))`, `present(X(…))`: CALLB `ui.push(builder)`, `ui.present(builder)`.
 `pop()`, `dismiss()`, `field.focus()`, `scroll.scrollTo(…)`: builtins
-taking the ref.
+taking the ref. The rest (core/src/ui/builtins.c has their arguments):
+
+| Source | Lowered |
+|---|---|
+| `onBack { … return true }` (a component's statement) | `ui.on_back(closure)`: the closure returns whether it took the user's going back from the nearest pushed screen, sheet or popover (else the app's); it goes with the component |
+| `depth()` | `ui.depth()`: the nearest stack's screens |
+| `alert("Delete?", message: m, actions: [.button(…)], fields: […])` | `ui.alert(title, message, actions, actionSheet, fields)`; `actions` a closure when they read state (a button disabled while a field is empty), followed while it shows |
+| `snackbar("Deleted", action: .button("Undo") { … })` | `ui.snackbar(message, action, duration, onDismiss)`, returning the closure that dismisses it |
+| `w.show()`, `w.setSize(w, h)`, … on `Window(…) as w` (none: the window it's in) | `ui.window_action(w, action, x, y)`; `w.close()` `ui.window_close(w)`; `w.state` `ui.window_state(w)`, followed |
+| `onCloseRequest { … return ok }` | `ui.on_close_request(closure)` |
+| `navigate(href)`, `navigate(X(…))` | `ui.navigate(href, mode)` (0 navigate, 1 push, 2 replace); `X(…)` a routed screen (below): its href |
+| `router.back()`, `router.dismiss()`, `router.canGoBack`, `router.href`, `router.setQuery(q)` | `ui.router_back`, `ui.router_dismiss`, `ui.can_go_back`, `ui.router_href` (followed), `ui.set_query` |
+
+## Routes
+
+A `Router` maps addresses to screens, as the Go ui's did: every screen
+of it has an href (`/inbox/18`, `/search?q=go`), which the web shows
+in its address bar, a link opens, and a reload comes back to. Routes
+are elements, so they're declared where the app's structure is:
+
+```asuka
+app {
+  Router(initial: "/inbox") {
+    Route("/", redirect: "/inbox")
+    Route(layout: .tabs) {
+      Route("/inbox", layout: .stack, title: "Inbox", icon: "tray") {
+        Inbox                                    // its screen's own path: ""
+        Thread                                   // ":id"
+        Route(":id/reply", sheet: true) { (p) in Reply(id: p.get("id")) }
+      }
+      Route("/settings", layout: .stack, title: "Settings", icon: "gear") {
+        Settings
+      }
+    }
+    Route("/admin", layout: .stack, guard: { to in signedIn ? "" : "/login?next={to}" }) { Users }
+  }
+}
+
+screen Inbox at "" { … }
+screen Thread(id: int) at ":id" { … }    // id: from the path, parsed
+```
+
+- `Router(initial:) { … }` is `ui.new(AK_EL_ROUTER)`, its keys, then
+  `ui.add` of each `Route`; a `Route` with routes in it likewise. A
+  route's layout makes it a navigator of its children (`.stack`,
+  `.tabs`, `.split`, `.slot`), `.group` (the default) only gathers them
+  under its path and guard.
+- `Route(path) { (p) in View }` is `ui.lazy(route, closure(pAcc){…})`:
+  the runtime builds it for each screen of the route, with its `Params`
+  (an accessor: a kept screen follows its query, `setQuery`).
+- A screen declared with `at "pattern"` is routable: named in a
+  `Route`'s block, it's a `Route` of its pattern (relative to the
+  parent's, unless it starts with `/`) whose builder reads each of the
+  screen's parameters from the path's parameters, else the query's,
+  converted to its type (`int`, `float`, `bool`, an enum's case name,
+  `string`); a value that doesn't convert throws `RouteError` to the
+  nearest `Boundary`. Its title is the screen's own.
+- `navigate(Thread(id: 7))`, a Button's `href: Thread(id: 7)`: the
+  compiler knows Thread's full pattern from the one Router that routes it
+  (`/inbox/:id`) and lowers the href to `ui.href_of("/inbox/:id",
+  ["7"])`; a screen two Routers route, or none, is an error there. A
+  string href is checked against the routes when it's a constant.
+- Guards are closures `fn(string) -> string` (the href asked for; `""`
+  lets the user in, an href sends them there), asked as the router
+  navigates. Redirects fill the route's parameters into theirs.
+- The router is the nearest one around the code (a context the router
+  gives what it builds), else the main window's first.
+
+The runtime (core/src/ui/router.c) is the Go ui's router: the navigation
+state described, then reconciled; Location commands with how the
+history moved; a browser's back and forward (the Location event); links
+the app is opened with.
 
 ## Tests
 

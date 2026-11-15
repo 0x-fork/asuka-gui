@@ -839,6 +839,36 @@ ui.Route{Guard: func(to ui.Href) ui.Href { // 一个分组：其余所有页面
 
 Go 没法在编译时检查字符串，所以这件事交给 `asuka vet`（`asuka dev` 和 `asuka build` 都会运行它）：它的 `routes` 检查会报告没有任何路由能处理的常量 href（`Href`、`Navigate` 的参数、`Redirect`），因为它们会显示“未找到”页面；也会报告传给 `ui.HrefOf` 的值比模式里的参数多或少的情况。`ui.HrefOf("/inbox/:id", id)` 按路由的模式生成 href，并对填入的值做转义，模式本身也会被检查。如果某个包里有链接、但看不到任何路由，它的链接会在声明路由的那个包里检查。当路由无法完全从代码中得知（有的由函数生成），或者应用有自己的通配路由时，它不会报告任何东西。
 
+### 在 Asuka 语言中
+
+在 Asuka 语言里（Asuka 接下来的方向，见[语言](language.md)），路由是元素，和应用的结构写在一起；页面也可以声明自己的路径。页面的参数有类型，所以指向它的链接在编译时就会被检查：
+
+```asuka
+app {
+  Router(initial: "/inbox") {
+    Route("/", redirect: "/inbox")
+    Route(layout: .tabs) {
+      Route("/inbox", layout: .stack, title: "Inbox", icon: "tray") {
+        Inbox
+        Thread
+        Route(":id/reply", sheet: true) { (p) in Reply(id: p.get("id")) }
+      }
+      Route("/settings", layout: .stack, title: "Settings", icon: "gear") { Settings }
+    }
+  }
+}
+
+screen Thread(id: int) at ":id" {
+  …
+  Button("Reply", href: "/inbox/{id}/reply")
+}
+
+// 在别处
+navigate(Thread(id: 7))   // 跳到 /inbox/7
+```
+
+里面还有路由的 `Route` 是它们的导航器（`layout`：`.stack`、`.tabs`、`.split`、`.slot`）或者分组；代码块构建视图的 `Route` 是一个页面，构建时会拿到它的 `Params`。`navigate`、`push`、`pop`、`present`、`dismiss` 以及 Button 的 `href`，用法和 Go 里一样。
+
 ## 深度链接
 
 只要在 `asuka.toml` 里声明，应用就可以通过自己 scheme 的 URL 打开，也可以通过指向自己域名的 https 链接打开：
