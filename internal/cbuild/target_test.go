@@ -47,8 +47,8 @@ func TestLibAndroid(t *testing.T) {
 }
 
 func TestLibWasm(t *testing.T) {
-	if _, err := os.Stat(filepath.Join(coreRoot(t), "src", "abi", "web.c")); err != nil {
-		t.Skip("the web's ABI (core/src/abi/web.c) isn't there yet")
+	if _, err := os.Stat(filepath.Join(coreRoot(t), "src", "abi", "abi.c")); err != nil {
+		t.Skip("the C ABI (core/src/abi/abi.c) isn't there yet")
 	}
 	build(t, Target{"wasm", "wasm32"}, Module, "asuka.wasm")
 }
