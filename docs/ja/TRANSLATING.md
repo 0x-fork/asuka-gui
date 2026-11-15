@@ -130,6 +130,7 @@ OS が日本語で表示する名前は、それぞれの表記に従います�
 | device.md | デバイスとサービス |
 | icloud.md | iCloud |
 | desktop.md | デスクトップ |
+| packages.md | パッケージ |
 | plugins.md | プラグイン |
 | native.md | ネイティブコード |
 | development.md | 開発 |
