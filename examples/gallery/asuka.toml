@@ -1,0 +1,5 @@
+name = "Gallery"
+id = "dev.asuka.gallery"
+version = "1.0.0"
+build = 1
+orientations = ["portrait", "landscape"]

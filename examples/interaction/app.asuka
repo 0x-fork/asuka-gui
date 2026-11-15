@@ -248,7 +248,7 @@ component Board {
         on drop(d) {
           for item in d.items {
             if let id = item.text.int() {
-              animate { move(id, done) }
+              animate(() => move(id, done))
             }
           }
         }

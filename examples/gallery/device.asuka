@@ -1,0 +1,423 @@
+import asuka/audio
+import asuka/camera
+import asuka/compose
+import asuka/crash
+import asuka/device
+import asuka/location
+import asuka/notify
+import asuka/preview
+import asuka/print
+import asuka/record
+import asuka/scan
+import asuka/secure
+import asuka/time
+
+component Services {
+  state copied = false
+
+  Section("Services") {
+    Text("The segment in Controls is kept: relaunch to see it.") { style caption }
+    Row {
+      gap: 12
+      Button(if copied { "Copied" } else { "Copy link" }) {
+        icon: "doc.on.doc"
+        variant: .gray
+        on press {
+          copy("https://go.dev")
+          copied = true
+        }
+      }
+      Button("Share") {
+        icon: "square.and.arrow.up"
+        variant: .gray
+        on press { share("https://go.dev") }
+      }
+    }
+  }
+}
+
+/// The markup Documents prints and makes a PDF of.
+let receipt = """
+  <!doctype html><meta charset="utf-8"><title>Receipt</title>
+  <style>body \{ font: 14px system-ui, sans-serif; } h1 \{ font-size: 22px; } td \{ padding: 4px 12px 4px 0; }
+  .total \{ font-weight: 600; border-top: 1px solid #999; }</style>
+  <h1>Receipt</h1><p>Thank you for your order.</p>
+  <table><tr><td>Coffee beans</td><td>2</td><td>$24.00</td></tr><tr><td>Filter papers</td><td>1</td><td>$4.50</td></tr>
+  <tr class="total"><td>Total</td><td></td><td>$28.50</td></tr></table>
+  """
+
+/// Shows files with the system's viewer, prints, makes a PDF, and
+/// composes a mail and a text message.
+component Documents {
+  state status = ""
+
+  let pdfButton = Ref()
+  let shareButton = Ref()
+
+  /// Runs a document's work, and shows how it went.
+  async fn report(what: string, work: async fn() throws -> string) {
+    do {
+      let said = try await work()
+      status = if said.isEmpty { "" } else { "{what}: {said}" }
+    } catch e {
+      status = "{what}: {e.message}"
+    }
+  }
+
+  Section("Documents") {
+    Row {
+      gap: 12
+      wrap: true
+      Button("Preview a PDF") {
+        ref: pdfButton
+        icon: "doc"
+        variant: .gray
+        on press {
+          await report("Preview", () => {
+            try await preview.show(["docs/Gallery.pdf"], from: pdfButton)
+            return ""
+          })
+        }
+      }
+      Button("Print a receipt") {
+        icon: "printer"
+        variant: .gray
+        on press { await report("Print", () => "{try await print.html(receipt, job: "Receipt")}") }
+      }
+      Button("Make a PDF and share it") {
+        ref: shareButton
+        icon: "square.and.arrow.up"
+        variant: .gray
+        on press {
+          status = "Making the PDF…"
+          await report("PDF", () => {
+            let path = try await print.pdf(receipt)
+            status = ""
+            try await shareFiles([path], title: "Receipt", from: shareButton)
+            return ""
+          })
+        }
+      }
+      Button("Mail the PDF") {
+        icon: "envelope"
+        variant: .gray
+        on press {
+          await report("Mail", () => "{try await compose.mail(
+            to: ["friend@example.com"],
+            subject: "The gallery's PDF",
+            body: "<p>Here's the <b>gallery's</b> PDF.</p>",
+            html: true,
+            attachments: [compose.Attachment(source: "docs/Gallery.pdf")],
+          )}")
+        }
+      }
+      Button("Text a friend") {
+        icon: "message"
+        variant: .gray
+        on press {
+          await report("Message", () => "{try await compose.message(to: ["+15555550123"], body: "Look at Asuka's gallery.")}")
+        }
+      }
+    }
+    Text(status) { style caption }
+  }
+}
+
+/// The platform's modules: the secure store, device info, the in-app
+/// browser and the photo picker.
+component PlatformSection {
+  state secret = ""
+  state where = "" // location's, notify's
+  state photos: [string] = []
+
+  let info = load device.info()
+
+  async fn readCode() {
+    let paths = (try? await device.pickPhotos(max: 1)) ?? []
+    if paths.isEmpty { return }
+    do {
+      let codes = try await scan.file(paths[0])
+      where = if let c = codes.first { "{c.kind}: {c.value}" } else { "No code in it" }
+    } catch e {
+      where = "Couldn't: {e.message}"
+    }
+  }
+
+  async fn remind() {
+    do {
+      if try await notify.request() {
+        try await notify.schedule(notify.Notification(id: "remind", title: "Gallery", body: "Five seconds have passed.", after: 5s))
+        where = "Set: in 5 s, even if you leave the app"
+      } else {
+        where = "Allow notifications in Settings"
+      }
+    } catch e {
+      where = e.message
+    }
+  }
+
+  Section("Platform") {
+    Text(if let i = info.value { "{i.model}, {i.system} {i.systemVersion}" } else { "" }) { color: .secondaryLabel }
+    Row {
+      gap: 12
+      wrap: true
+      Button("Keep a secret") {
+        icon: "lock"
+        variant: .gray
+        on press {
+          do {
+            try await secure.save("token", "s3cr3t-{time.now().format("HHmmss")}")
+            secret = "Kept: {(try await secure.load("token")) ?? ""}"
+          } catch e {
+            secret = "Couldn't keep it: {e.message}"
+          }
+        }
+      }
+      Button("Browse") {
+        icon: "globe"
+        variant: .gray
+        on press { try? await device.browse("https://go.dev") }
+      }
+      Button("Pick photos") {
+        icon: "photo"
+        variant: .gray
+        on press { photos = (try? await device.pickPhotos(max: 3)) ?? [] }
+      }
+      Button("Read a code in a photo") {
+        icon: "qrcode"
+        variant: .gray
+        on press { await readCode() }
+      }
+      Button("Where am I?") {
+        icon: "location"
+        variant: .gray
+        on press {
+          where = "Finding you…"
+          do {
+            let p = try await location.current()
+            where = "{p.latitude.fixed(4)}, {p.longitude.fixed(4)} (within {p.accuracy.fixed(0)} m)"
+          } catch e {
+            where = "Couldn't: {e.message}"
+          }
+        }
+      }
+      Button("Take a photo") {
+        icon: "camera"
+        variant: .gray
+        on press {
+          do {
+            if let path = try await camera.take() { photos = [path] }
+          } catch e {
+            where = e.message
+          }
+        }
+      }
+      Button("Play a chime") {
+        icon: "speaker.wave.2"
+        variant: .gray
+        on press { audio.play("sounds/chime.wav") }
+      }
+      Button("Remind me in 5 s") {
+        icon: "bell"
+        variant: .gray
+        on press { await remind() }
+      }
+    }
+    Text(secret) { style caption }
+    Text(where) { style caption }
+    Row {
+      gap: 8
+      for p in photos key p {
+        Image(p) {
+          mode: .fill
+          width: 96
+          height: 96
+          radius: 12
+          clip: true
+        }
+      }
+    }
+  }
+}
+
+/// What a failed checkout records.
+enum CheckoutError: Error {
+  noNetwork
+
+  fn message() -> string = "checkout: no network"
+}
+
+/// The crash reports kept (asuka/crash): the app's own crashes, from
+/// earlier runs, and the errors it recorded. A real app sends each to its
+/// server and deletes it; here, Delete only forgets it.
+component Crashes {
+  state reports: [crash.Report] = []
+
+  task {
+    crash.breadcrumb("gallery: opened")
+    for await r in crash.reports() { reports.push(r) }
+  }
+
+  Section("Crash reports") {
+    Text("Crash the app, open it again: the crash is here, with what the app was doing.") { style caption }
+    Row {
+      gap: 12
+      wrap: true
+      Button("Crash the app") {
+        icon: "exclamationmark.triangle"
+        variant: .gray
+        on press {
+          crash.breadcrumb("gallery: crashing on purpose")
+          crash.set("screen", "gallery")
+          let cart: [string: int] = [:]
+          print(cart["items"]!) // none: a crash
+        }
+      }
+      Button("Crash on a worker") {
+        variant: .gray
+        on press {
+          crash.breadcrumb("gallery: crashing off the main thread")
+          let at = time.now().format("HH:mm:ss")
+          spawn {
+            let synced: string? = none
+            print("sync failed at {at}: {synced!}")
+          }
+        }
+      }
+      Button("Record an error") {
+        variant: .gray
+        on press { crash.record(CheckoutError.noNetwork) }
+      }
+    }
+    if reports.isEmpty {
+      Text("No reports.") { color: .secondaryLabel }
+    }
+    Column {
+      gap: 10
+      for r in reports key r.id {
+        Row {
+          gap: 12
+          align: .center
+          Column {
+            grow: 1
+            shrink: 1
+            gap: 2
+            Text(r.message) {
+              font: .subheadline
+              lines: 2
+            }
+            Text(describe(r)) {
+              style caption
+              lines: 2
+            }
+          }
+          Button("") {
+            icon: "trash"
+            label: "Delete"
+            variant: .plain
+            on press {
+              crash.delete(r.id)
+              reports.removeWhere(x => x.id == r.id)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn describe(r: crash.Report) -> string {
+  let c = r.context
+  let s = "{r.kind} · {r.time.format("MMM d HH:mm")} · {c.appVersion} {c.build}"
+  if let last = c.breadcrumbs.last { return "{s} · last: {last.message}" }
+  return s
+}
+
+/// The camera live (camera.View) with a shutter (camera.capture), and the
+/// last photo taken; it records videos (asuka/record), played on a screen
+/// of their own, and reads the codes it sees.
+component CameraScreen {
+  state last = ""
+  state status = ""
+  state recording = false
+
+  async fn toggleRecording() {
+    if recording {
+      record.stop()
+      return
+    }
+    recording = true
+    status = "Recording…"
+    defer { recording = false }
+    do {
+      let path = try await record.start(maxDuration: 1min)
+      status = "Recorded"
+      push(Recorded(path))
+    } catch e {
+      status = e.message
+    }
+  }
+
+  Column {
+    grow: 1
+    camera.View {
+      mode: .video
+      scan: true
+      grow: 1
+      on error(m) { status = m }
+      on code(c) {
+        status = "{c.kind}: {c.value}"
+        haptic(.success)
+      }
+    }
+    SafeArea {
+      Row {
+        padding: 16
+        gap: 16
+        align: .center
+        if !last.isEmpty {
+          Image(last) {
+            mode: .fill
+            label: "The last photo"
+            width: 56
+            height: 56
+            radius: 8
+            clip: true
+          }
+        }
+        Text(status) {
+          grow: 1
+          style caption
+        }
+        Button(if recording { "Stop" } else { "Record" }) {
+          icon: "video"
+          variant: .tinted
+          on press { await toggleRecording() }
+        }
+        Button("") {
+          icon: "camera"
+          label: "Take a photo"
+          variant: .filled
+          on press {
+            do {
+              last = try await camera.capture()
+              status = "Saved"
+            } catch e {
+              status = e.message
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+screen Recorded(path: string) {
+  title: "The video"
+
+  Video(path) {
+    autoPlay: true
+    loop: true
+    grow: 1
+  }
+}
