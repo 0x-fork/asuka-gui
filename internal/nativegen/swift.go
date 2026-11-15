@@ -283,7 +283,13 @@ func (g *swiftGen) structDecl(s *StructDecl) {
 	if g.recursive(s) {
 		kind = "final class"
 	}
-	g.printf("%spublic %s %s {\n", swiftDoc(s.Doc, ""), kind, s.Name)
+	conform := ""
+	if kind == "struct" && g.sendable(&Type{Kind: Struct, Name: s.Name}, map[string]bool{}) {
+		// Plain values: they cross to the main thread (DispatchQueue.main,
+		// a Task) without a warning.
+		conform = ": Sendable"
+	}
+	g.printf("%spublic %s %s%s {\n", swiftDoc(s.Doc, ""), kind, s.Name, conform)
 	var params, sets []string
 	for _, f := range s.Fields {
 		n := swiftName(lowerCamel(f.Name))
@@ -296,6 +302,32 @@ func (g *swiftGen) structDecl(s *StructDecl) {
 		sets = append(sets, fmt.Sprintf("        self.%s = %s", n, n))
 	}
 	g.printf("\n    public init(%s) {\n%s\n    }\n}\n\n", strings.Join(params, ", "), strings.Join(sets, "\n"))
+}
+
+// sendable reports whether t is a plain value: no native object, no
+// callback, no class (a recursive struct's).
+func (g *swiftGen) sendable(t *Type, seen map[string]bool) bool {
+	switch t.Kind {
+	case Object, Func:
+		return false
+	case Slice, Map, Optional:
+		return g.sendable(t.Elem, seen)
+	case Struct:
+		if seen[t.Name] {
+			return false // recursive: a final class
+		}
+		seen[t.Name] = true
+		s := g.structs[t.Name]
+		if s == nil || g.recursive(s) {
+			return false
+		}
+		for _, f := range s.Fields {
+			if !g.sendable(f.Type, seen) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (g *swiftGen) errors() {

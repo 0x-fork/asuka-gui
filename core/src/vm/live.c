@@ -22,6 +22,7 @@ typedef struct {
 	bool running;
 	bool wanted;   // read tracked since it was last unwatched
 	bool queued;   // a start is queued
+	bool ended;    // the stream ended: not started again until unwatched
 	ak_val value;
 	ak_node node;        // written when a value comes
 	ak_memo *memo;       // owned (no owner: disposed with the live)
@@ -45,12 +46,17 @@ static void on_next(void *ctx) {
 	if (!more || !l->running) {
 		// The end, or an error (the value stays what it was).
 		stop(l);
+		l->ended = true;
 		return;
 	}
 	ak_val v = ak_stream_value(l->stream);
-	ak_release_val(l->value, (ak_kind)l->kind);
-	l->value = v;
-	ak_signal_write(&l->node);
+	if (ak_val_eq(v, l->value, (ak_kind)l->kind)) {
+		ak_release_val(v, (ak_kind)l->kind);
+	} else {
+		ak_release_val(l->value, (ak_kind)l->kind);
+		l->value = v;
+		ak_signal_write(&l->node);
+	}
 	ak_with_owner(l->owner, ask, l);
 }
 
@@ -120,7 +126,7 @@ static bool update(void *ctx) {
 	ak_live *l = ctx;
 	ak_signal_read(&l->node);
 	l->wanted = true;
-	if (!l->running && !l->queued) {
+	if (!l->running && !l->queued && !l->ended) {
 		l->queued = true;
 		ak_ready(started, ak_retain(l));
 	}
@@ -130,6 +136,7 @@ static bool update(void *ctx) {
 static void unwatched(void *ctx) {
 	ak_live *l = ctx;
 	l->wanted = false;
+	l->ended = false;
 	stop(l);
 }
 

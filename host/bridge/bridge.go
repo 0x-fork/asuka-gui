@@ -236,6 +236,7 @@ func (c *Core) Start(h host.Host) {
 	current = c
 	mu.Unlock()
 	c.cbs = cbs
+	native.SetPost(h.Post)
 	c.start(c.cbs)
 	if conn, ok := h.(host.Connector); ok {
 		conn.Connect(c)

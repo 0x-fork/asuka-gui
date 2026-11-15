@@ -10,7 +10,7 @@ import Foundation
 import Asuka
 
 /// FrameRange is a range of frames.
-public struct FrameRange {
+public struct FrameRange: Sendable {
     public var from: Double
     public var to: Double
 
@@ -21,7 +21,7 @@ public struct FrameRange {
 }
 
 /// SeekTo moves the animation (see the package's doc).
-public struct SeekTo {
+public struct SeekTo: Sendable {
     public var progress: Double
     /// 0: Progress; 1: the range's start; 2: its end
     public var to: Int
@@ -41,7 +41,7 @@ public struct SeekTo {
 }
 
 /// KeypathOverride is a keypath's override.
-public struct KeypathOverride {
+public struct KeypathOverride: Sendable {
     public var keypath: String
     public var kind: Int
     /// 0 to 1
@@ -66,7 +66,7 @@ public struct KeypathOverride {
 }
 
 /// MarkerInfo is a named range of frames.
-public struct MarkerInfo {
+public struct MarkerInfo: Sendable {
     public var name: String
     public var start: Double
     public var duration: Double
@@ -79,7 +79,7 @@ public struct MarkerInfo {
 }
 
 /// AnimationInfo is an animation that loaded.
-public struct AnimationInfo {
+public struct AnimationInfo: Sendable {
     /// its size, one point per unit
     public var width: Double
     /// its size, one point per unit

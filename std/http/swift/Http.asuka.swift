@@ -10,7 +10,7 @@ import Foundation
 import Asuka
 
 /// What a request answered.
-public struct Response {
+public struct Response: Sendable {
     /// The status code: 200, 404...
     public var status: Int
     /// The URL it answered from, after redirects.
