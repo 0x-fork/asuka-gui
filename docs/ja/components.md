@@ -137,8 +137,8 @@ return ui.Row(ui.Style{Gap: 12, Wrap: true},
 | `ButtonTinted` | tinted | Tonal ボタン | タイトルがアクセントカラーのプッシュボタン | アクセントカラーの淡い塗り | アクセントカラーの淡い塗り | 淡い色付き |
 | `ButtonGray` | gray | Tonal ボタン | プッシュボタン | 標準のボタン | 標準のボタン | グレー |
 | `ButtonBordered` | bordered | Outlined ボタン | プッシュボタン | 標準のボタン | 標準のボタン | 枠線付き |
-| `ButtonGlass` | Liquid Glass（`glass()`、iOS 26。それより前は gray） | Tonal ボタン | `ButtonGray` と同じ | `ButtonGray` と同じ | 標準のボタン | `ButtonGray` と同じ |
-| `ButtonGlassProminent` | 色付きの Liquid Glass（`prominentGlass()`、iOS 26。それより前は filled） | Filled ボタン | `ButtonFilled` と同じ | `ButtonFilled` と同じ | suggested action | `ButtonFilled` と同じ |
+| `ButtonGlass` | Liquid Glass（`glass()`、iOS 26。それより前は gray） | Tonal ボタン | ガラスのベゼル。カプセル形、アイコンだけなら円（macOS 26。それより前はプッシュボタン） | `ButtonGray` と同じ | 標準のボタン | `ButtonGray` と同じ |
+| `ButtonGlassProminent` | 色付きの Liquid Glass（`prominentGlass()`、iOS 26。それより前は filled） | Filled ボタン | アクセントカラーで色付けしたガラスのベゼル、主要なアクション（macOS 26。それより前は `ButtonFilled` と同じ） | `ButtonFilled` と同じ | suggested action | `ButtonFilled` と同じ |
 
 ガラスのボタンはカプセル形で、アイコンだけのガラスのボタンは円形になります。iOS 26 純正のシートの閉じるボタンと同じ形です。
 

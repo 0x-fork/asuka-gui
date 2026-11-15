@@ -412,12 +412,14 @@ const (
 	ButtonTinted   = ops.ButtonVariantTinted
 	ButtonGray     = ops.ButtonVariantGray
 	ButtonBordered = ops.ButtonVariantBordered
-	// ButtonGlass is Liquid Glass (iOS 26's glass configuration): a
-	// capsule, a circle around an icon alone. Before iOS 26, and on the
-	// other platforms, it's Gray's look (Material's tonal button).
+	// ButtonGlass is Liquid Glass (iOS 26's glass configuration, macOS
+	// 26's glass bezel): a capsule, a circle around an icon alone. Before
+	// iOS and macOS 26, and on the other platforms, it's Gray's look
+	// (Material's tonal button).
 	ButtonGlass = ops.ButtonVariantGlass
 	// ButtonGlassProminent is tinted Liquid Glass, for the primary
-	// action (prominentGlass); elsewhere Filled's look.
+	// action (prominentGlass; on macOS 26 the glass bezel tinted in the
+	// accent color); elsewhere Filled's look.
 	ButtonGlassProminent = ops.ButtonVariantGlassProminent
 )
 

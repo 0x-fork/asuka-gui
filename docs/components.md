@@ -195,8 +195,8 @@ return ui.Row(ui.Style{Gap: 12, Wrap: true},
 | `ButtonTinted` | tinted | tonal button | push button, its title in the accent color | a wash of the accent | a wash of the accent | tinted |
 | `ButtonGray` | gray | tonal button | push button | standard button | standard button | gray |
 | `ButtonBordered` | bordered | outlined button | push button | standard button | standard button | outlined |
-| `ButtonGlass` | Liquid Glass (`glass()`, iOS 26; gray before) | tonal button | as `ButtonGray` | as `ButtonGray` | standard button | as `ButtonGray` |
-| `ButtonGlassProminent` | tinted Liquid Glass (`prominentGlass()`, iOS 26; filled before) | filled button | as `ButtonFilled` | as `ButtonFilled` | suggested action | as `ButtonFilled` |
+| `ButtonGlass` | Liquid Glass (`glass()`, iOS 26; gray before) | tonal button | the glass bezel, a capsule or a circle around an icon alone (macOS 26; push button before) | as `ButtonGray` | standard button | as `ButtonGray` |
+| `ButtonGlassProminent` | tinted Liquid Glass (`prominentGlass()`, iOS 26; filled before) | filled button | the glass bezel tinted in the accent color, as the primary action (macOS 26; as `ButtonFilled` before) | as `ButtonFilled` | suggested action | as `ButtonFilled` |
 
 The glass buttons are capsules, and a glass button with an icon alone is
 a circle: a sheet's close button, as iOS 26's own.

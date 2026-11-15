@@ -456,7 +456,8 @@ func dateMillis(ms int64) ID {
 func (h *Host) buttonTitle(n *node) {
 	title := String(n.title)
 	var color ID
-	switch macVariant(n.variant) {
+	h.glassShape(n)
+	switch macVariant(n) {
 	case ops.ButtonVariantPlain:
 		color = h.nsColor(n.color)
 		if color == 0 {
@@ -480,24 +481,51 @@ func (h *Host) buttonTitle(n *node) {
 	Send(n.view, "setAttributedTitle:", uintptr(Autorelease(s)))
 }
 
-// macVariant is the variant a Mac's button looks like: glass as the push
-// button, prominent glass as the default button.
-func macVariant(v int32) ops.ButtonVariant {
-	switch ops.ButtonVariant(v) {
+// macVariant is the variant a Mac's button looks like: glass is macOS
+// 26's glass bezel; before, it's the push button, and prominent glass
+// the default button.
+func macVariant(n *node) ops.ButtonVariant {
+	v := ops.ButtonVariant(n.variant)
+	if hasGlass(n.view) {
+		return v
+	}
+	switch v {
 	case ops.ButtonVariantGlass:
 		return ops.ButtonVariantGray
 	case ops.ButtonVariantGlassProminent:
 		return ops.ButtonVariantFilled
 	}
-	return ops.ButtonVariant(v)
+	return v
+}
+
+// hasGlass reports whether a button can take macOS 26's glass bezel
+// (NSBezelStyleGlass, with its tint prominence and border shape).
+func hasGlass(v ID) bool { return RespondsTo(v, "setTintProminence:") }
+
+const (
+	bezelGlass        = 16 // NSBezelStyleGlass
+	shapeAutomatic    = 0  // NSControlBorderShapeAutomatic
+	shapeCapsule      = 1
+	shapeCircle       = 3
+	prominenceAuto    = 0 // NSTintProminenceAutomatic
+	prominencePrimary = 2
+)
+
+func isGlass(v ops.ButtonVariant) bool {
+	return v == ops.ButtonVariantGlass || v == ops.ButtonVariantGlassProminent
 }
 
 // buttonVariant maps a variant to a macOS button: Plain is borderless
 // text in the accent color, Filled the accent-colored default button,
-// the others push buttons.
+// Glass and GlassProminent the glass bezel (macOS 26), plain and tinted
+// with the accent, the others push buttons.
 func (h *Host) buttonVariant(n *node) {
 	v := n.view
-	switch macVariant(n.variant) {
+	if hasGlass(v) {
+		Send(v, "setTintProminence:", prominenceAuto)
+		Send(v, "setBorderShape:", shapeAutomatic)
+	}
+	switch macVariant(n) {
 	case ops.ButtonVariantPlain:
 		Send(v, "setBordered:", 0)
 		Send(v, "setBezelColor:", 0)
@@ -507,11 +535,34 @@ func (h *Host) buttonVariant(n *node) {
 		if n.background == 0 {
 			Send(v, "setBezelColor:", uintptr(h.accentColor()))
 		}
+	case ops.ButtonVariantGlass, ops.ButtonVariantGlassProminent:
+		Send(v, "setBordered:", 1)
+		Send(v, "setBezelStyle:", bezelGlass)
+		Send(v, "setBezelColor:", 0)
+		if n.variant == int32(ops.ButtonVariantGlassProminent) {
+			Send(v, "setTintProminence:", prominencePrimary)
+			if n.background == 0 {
+				Send(v, "setBezelColor:", uintptr(h.accentColor()))
+			}
+		}
 	default:
 		Send(v, "setBordered:", 1)
 		Send(v, "setBezelStyle:", 1)
 	}
 	h.buttonTitle(n)
+}
+
+// glassShape is a glass button's shape: a circle around an icon alone,
+// else a capsule, as the system's glass buttons are.
+func (h *Host) glassShape(n *node) {
+	if !isGlass(macVariant(n)) {
+		return
+	}
+	shape := shapeCapsule
+	if n.title == "" && n.icon != "" {
+		shape = shapeCircle
+	}
+	Send(n.view, "setBorderShape:", uintptr(shape))
 }
 
 func (h *Host) setField(n *node, p ops.PropID, v *ops.Value) {

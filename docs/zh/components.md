@@ -138,8 +138,8 @@ return ui.Row(ui.Style{Gap: 12, Wrap: true},
 | `ButtonTinted` | 着色 | 色调按钮 | push 按钮，标题使用强调色 | 一层淡淡的强调色 | 一层淡淡的强调色 | 着色 |
 | `ButtonGray` | 灰色 | 色调按钮 | push 按钮 | 标准按钮 | 标准按钮 | 灰色 |
 | `ButtonBordered` | 带边框 | 描边按钮 | push 按钮 | 标准按钮 | 标准按钮 | 描边 |
-| `ButtonGlass` | Liquid Glass（`glass()`，iOS 26；之前为灰色） | 色调按钮 | 同 `ButtonGray` | 同 `ButtonGray` | 标准按钮 | 同 `ButtonGray` |
-| `ButtonGlassProminent` | 着色的 Liquid Glass（`prominentGlass()`，iOS 26；之前为填充） | 填充按钮 | 同 `ButtonFilled` | 同 `ButtonFilled` | 建议操作样式 | 同 `ButtonFilled` |
+| `ButtonGlass` | Liquid Glass（`glass()`，iOS 26；之前为灰色） | 色调按钮 | 玻璃边框，胶囊形，仅有图标时为圆形（macOS 26；之前为普通按钮） | 同 `ButtonGray` | 标准按钮 | 同 `ButtonGray` |
+| `ButtonGlassProminent` | 着色的 Liquid Glass（`prominentGlass()`，iOS 26；之前为填充） | 填充按钮 | 以强调色着色的玻璃边框，作为主要操作（macOS 26；之前同 `ButtonFilled`） | 同 `ButtonFilled` | 建议操作样式 | 同 `ButtonFilled` |
 
 玻璃按钮是胶囊形的；只有图标的玻璃按钮则是圆形，可以用作弹出面板的关闭按钮，和 iOS 26 系统自带的一样。
 
