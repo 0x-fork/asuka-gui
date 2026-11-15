@@ -1,49 +1,63 @@
 # AGENTS.md
 
-Asuka is a UI framework in Go that renders with each platform's own
-widgets, driven by fine-grained signals. **Mobile first: iOS and
-Android.** Desktop and the web run on the same core: the macOS host
-(`host/darwin`, AppKit through purego), the Windows host
-(`host/windows`, Win32 through syscall), the Linux host (`host/linux`,
-GTK 4 and libadwaita through purego, `internal/gtk`) and the web
-(`host/web`, the app as WebAssembly, and `platform/web`, the DOM from
-JavaScript). **Read
-[DESIGN.md](DESIGN.md) before changing code**; it is the source of truth
-for the architecture, the APIs and the milestones. Work milestone by
-milestone, in order.
+Asuka is a UI framework that renders with each platform's own widgets,
+driven by fine-grained signals. Apps are written in the **Asuka
+language** (docs/language.md; its compiler is Go, in `lang/`, run by the
+CLI) and run on a **core in C** (`core/`: the VM, signals, the UI
+runtime, layout, ops). **Mobile first: iOS and Android.** Desktop and
+the web run on the same core: the macOS host (`host/darwin`, AppKit
+through purego, `internal/darwin`), the Windows host (`host/windows`,
+Win32 through syscall), the Linux host (`host/linux`, GTK 4 and
+libadwaita through purego, `internal/gtk`), all Go driving the C core
+through its ABI (`host/bridge`), and the web (`platform/web`, the DOM
+from JavaScript, the core as WebAssembly). **Read [DESIGN.md](DESIGN.md)
+and [RFC 0007](rfcs/0007-c-core-and-asuka-language.md) before changing
+code**; DESIGN.md is the source of truth for the architecture, RFC 0007
+for the rewrite's milestones, lang/LOWERING.md for how the language
+compiles. Work milestone by milestone, in order.
 
 ## Hard rules
 
-- **No cgo outside `mobile/`.** Everything else builds with
-  `CGO_ENABLED=0` (so desktop hosts can later call native code through
-  purego and `syscall`). `mobile/` uses cgo only because Go's
-  `c-archive`/`c-shared` build modes need it.
-- **The core never imports a host.** `signal`, `ui`, `layout` and `ops`
-  talk to hosts only through `host.Host` and `ops`. Adding a component
-  means: its kind and props in `ops/schema.go`, `go generate ./ops`, the
-  component in `ui`, and its view in every host (`fake` first, then iOS
-  and Android, then macOS in `host/darwin`, Windows in `host/windows`,
-  Linux in `host/linux` and the web in `platform/web/src`).
+- **No cgo, anywhere.** Go code (the CLI, the compiler, the desktop
+  hosts) builds with `CGO_ENABLED=0`; it reaches C through purego and
+  `syscall`, and builds C by running a compiler (internal/cbuild).
+- **The core never knows a host.** Hosts talk to it through
+  `core/include/asuka.h` only. Adding an element means: its kind and
+  props in `ops/schema.go` (`go generate ./ops`) when it makes a new
+  kind of native view, its keys and events in `lang/prelude/elements.go`
+  (`go generate ./lang/prelude`), its behavior in `core/src/ui`, and its
+  view in every host (the C fake host first, then iOS and Android, then
+  macOS, Windows, Linux and the web).
+- **C:** C17, `-Wall -Wextra -Werror`, internal symbols `ak_`, the ABI
+  `asuka_`; tests under ASan and UBSan (`go test ./core`).
 - **Nothing phone-only in the core's data structures**: no single global
-  root, no assumption that the screen size never changes, so desktop
-  windows can be added later without rewriting the core.
-- **Main thread.** The core, every host call and every signal write run
-  on the platform's main thread. Goroutines reach it with `ui.Post`.
-  Never block the main thread, and never make a host wait on a
-  goroutine.
+  root, no assumption that the screen size never changes.
+- **Main thread.** The core, every host call and every state write run
+  on the platform's main thread. Other threads reach it with `ak_post`;
+  `spawn` runs values-only work on workers. Never block the main thread.
 - **One flush, two crossings.** Effects emit ops into a batch; a flush
   applies the props batch, lays out, applies the frames batch. Never
   cross into Swift or Kotlin per property.
 - **Hot paths** (signal propagation, flush, layout, op encoding and
-  decoding): no reflection, no per-op or per-write allocation in the
-  steady state.
-- **Owners dispose explicitly.** Every effect has an owner; disposing it
-  stops the effect and runs its cleanups. Test it whenever you add a
-  construct that makes owners (`Show`, `For`, `List` rows, screens).
+  decoding, the VM's dispatch): no per-op or per-write allocation in
+  the steady state; tests count allocations (`ak_alloc_count`).
+- **Owners dispose explicitly.** Every effect and task has an owner;
+  disposing it stops the effect, cancels the task and runs cleanups.
+  Test it whenever you add a construct that makes owners.
+- **One source, generated outputs:** the wire (`ops/schema.go`), the
+  bytecode (`lang/bytecode/opcodes.go`), the elements
+  (`lang/prelude/elements.go`). Edit those, run go generate, commit the
+  outputs.
 
 ## Commands
 
 ```sh
+go test ./core                      # the C core's tests (ASan/UBSan) and the VM's; -run 'TestC/Layout': one C test file
+go test ./lang/...                  # the compiler: parser, checker, codegen, and Asuka programs run on the VM
+go run ./cmd/asuka test [dir]       # an Asuka package's test blocks, on the fake host
+go run ./cmd/asuka fmt -w [paths]   # format .asuka files
+go generate ./lang/bytecode ./lang/prelude  # the VM's opcodes header; the prelude and the UI's element constants
+go test ./internal/cbuild           # the core built for this computer, iOS, Android and the web (ASUKA_CC=zig for Zig)
 go build ./... && go vet ./...      # CGO_ENABLED=0: everything but mobile/
 go test ./...                       # signal, layout, ui with host/fake, ops, CLI
 go test ./uitest ./examples/...     # apps' UI tests: uitest drives them on host/fake (-uitest.update: their snapshots)
