@@ -1,0 +1,11 @@
+// Stubs for app.asuka.
+enum Theme { system, light, dark }
+
+struct Account {
+  id: string
+  let current = Account(id: "me")
+}
+
+store Mailbox(account: Account) {
+  state count = 0
+}

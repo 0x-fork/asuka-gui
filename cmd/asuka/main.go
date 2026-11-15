@@ -9,6 +9,9 @@
 //	asuka dev --platform web <dir>           build, serve and open in the browser, rebuild on save
 //	asuka dev <dir>                          on macOS, Windows or Linux: run on this computer
 //	asuka fmt [-w] [-l] [paths]              format Asuka source (.asuka files)
+//	asuka check [dir]                        report an Asuka package's problems
+//	asuka test [-run pattern] [dir]          run an Asuka package's tests on the VM
+//	asuka run file.asuka                     run a file's fn main() (or its tests) on the VM
 package main
 
 import (
@@ -40,6 +43,9 @@ func usage() {
   asuka i18n init|add|check                 start, add languages to, and check the catalogs
   asuka vet [flags] [packages]              report what builds but runs wrong, as a signal read once
   asuka fmt [-w] [-l] [paths]               format Asuka source (.asuka files) in its canonical form
+  asuka check [dir]                         report an Asuka package's problems (file:line:col: message)
+  asuka test [-run pattern] [-v] [dir]      run an Asuka package's test blocks on the VM
+  asuka run file.asuka                      run a file's fn main() (or its tests) on the VM
 
 asuka <command> --help lists its flags.
 `)
@@ -78,6 +84,12 @@ func main() {
 		err = cmdVet(os.Args[2:])
 	case "fmt":
 		err = cmdFmt(os.Args[2:])
+	case "check":
+		err = cmdCheck(os.Args[2:])
+	case "test":
+		err = cmdTest(os.Args[2:])
+	case "run":
+		err = cmdRun(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -87,6 +99,9 @@ func main() {
 	}
 	if errors.Is(err, errHelp) {
 		return
+	}
+	if errors.Is(err, errReported) {
+		os.Exit(1)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "asuka:", err)

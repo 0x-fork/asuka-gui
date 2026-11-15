@@ -1,0 +1,18 @@
+// Stubs for model.asuka and mailbox.asuka: what they use and don't
+// declare.
+struct Contact: Equatable, Hashable {
+  name: string
+}
+
+struct Date: Equatable, Hashable {
+  ns: int
+}
+
+struct Account {
+  id: string
+  token: string
+}
+
+struct HttpError: Error {
+  message: string
+}

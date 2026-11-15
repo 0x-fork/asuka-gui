@@ -364,7 +364,19 @@ func (b *fb) storeCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 func (b *fb) lowerApp(d *syntax.AppDecl) {
 	b.at(d)
 	b.openScope()
-	v := b.viewsOf(d.Body.Items)
+	var views []syntax.Item
+	for _, it := range d.Body.Items {
+		if p, ok := it.(*syntax.ProvideDecl); ok {
+			mark := b.mark()
+			v := b.value(p.Value, -1)
+			key := b.kstr(b.l.typeKey(b.rawType(p.Value)))
+			b.callBTo(uiProvide, bc.None, key, v)
+			b.release(mark)
+			continue
+		}
+		views = append(views, it)
+	}
+	v := b.viewsOf(views)
 	r := b.newReg(bc.KRef)
 	b.move(r, v)
 	b.emit(op("RET"), r)

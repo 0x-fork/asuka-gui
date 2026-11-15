@@ -566,6 +566,9 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 		return Invalid
 	}
 	switch tn.Kind {
+	case ComponentType:
+		// A component (or the element View) as a type: what it makes.
+		return View
 	case BasicType, ParamType:
 		if len(t.Args) > 0 {
 			c.errorf(t, "%s takes no type arguments", name)

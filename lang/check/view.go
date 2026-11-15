@@ -423,16 +423,20 @@ func (c *Checker) componentCall(e *syntax.CallExpr, tn *TypeName) Type {
 	for _, m := range comp.Params {
 		params = append(params, &Param{Name: m.name, Type: m.Type, Default: m.Default})
 	}
+	var list []*syntax.Arg
 	if e.Args != nil {
 		for _, a := range e.Args.List {
 			if a.Label != nil {
-				if m := comp.Members[a.Label.Name]; m != nil && m.Kind != ParamMember {
+				if m := comp.Members[a.Label.Name]; m != nil && m.Kind != ParamMember || comp.Native && c.styleMember(a.Label.Name) != nil {
 					c.errorf(a.Label, "%s is a prop of %s: set it in the block, %s(…) { %s: … }", a.Label.Name, tn.name, tn.name, a.Label.Name)
+					c.expr(a.Value, nil)
+					continue
 				}
 			}
+			list = append(list, a)
 		}
 	}
-	ec.Args = c.matchArgs(e, params, tn.name)
+	ec.Args = c.matchArgList(e, list, params, tn.name)
 	for i, a := range ec.Args {
 		if a != nil {
 			c.propValue(a, comp.Params[i], "argument "+params[i].Name+" of "+tn.name)

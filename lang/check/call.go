@@ -84,7 +84,11 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			if k := tn.Case(fn.Name.Name); k != nil {
 				return c.caseCall(e, tn, k, want)
 			}
-			c.errorf(fn.Name, "%s has no case %s", tn.name, fn.Name.Name)
+			if d, ok := tn.Decl.(*syntax.InterfaceDecl); ok && d.Native.IsValid() {
+				c.errorf(fn, "native interfaces aren't supported by the compiler yet (%s.%s)", tn.name, fn.Name.Name)
+			} else {
+				c.errorf(fn.Name, "%s has no case %s", tn.name, fn.Name.Name)
+			}
 			c.checkArgsLoosely(e)
 			return Invalid
 		}
@@ -155,11 +159,15 @@ func (c *Checker) checkArgsLoosely(e *syntax.CallExpr) {
 // then by name. It returns the argument per parameter (nil for one left
 // to its default).
 func (c *Checker) matchArgs(e *syntax.CallExpr, params []*Param, what string) []syntax.Expr {
-	out := make([]syntax.Expr, len(params))
 	var list []*syntax.Arg
 	if e.Args != nil {
 		list = e.Args.List
 	}
+	return c.matchArgList(e, list, params, what)
+}
+
+func (c *Checker) matchArgList(e *syntax.CallExpr, list []*syntax.Arg, params []*Param, what string) []syntax.Expr {
+	out := make([]syntax.Expr, len(params))
 	named := false
 	pos := 0
 	for _, a := range list {
@@ -191,6 +199,11 @@ func (c *Checker) matchArgs(e *syntax.CallExpr, params []*Param, what string) []
 		out[i] = a.Value
 	}
 	for i, p := range params {
+		if i == len(params)-1 && e.Block != nil {
+			if _, ok := p.Type.(*FuncType); ok {
+				continue // the trailing block
+			}
+		}
 		if out[i] == nil && p.Default == nil && !p.optional() {
 			at := syntax.Node(e)
 			if e.Args != nil {

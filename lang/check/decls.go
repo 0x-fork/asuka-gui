@@ -462,7 +462,20 @@ func (c *Checker) appBody(p *Package) {
 	c.ctx = nil
 	ctx := c.enter(CtxApp, p.App, "app")
 	ctx.Result = View
-	c.viewBlock(p.App.Body.Items, nil, "app")
+	var views []syntax.Item
+	for _, it := range p.App.Body.Items {
+		if d, ok := it.(*syntax.ProvideDecl); ok {
+			pt := c.expr(d.Value, nil)
+			if n, ok := pt.(*Named); !ok || n.Obj.Kind != StoreType {
+				if !IsInvalid(pt) {
+					c.errorf(d.Value, "provide takes a store, for use in the components below: this is a %s", typeString(pt))
+				}
+			}
+			continue
+		}
+		views = append(views, it)
+	}
+	c.viewBlock(views, nil, "app")
 	c.leave(nil)
 	c.scope, c.ctx = savedScope, savedCtx
 }

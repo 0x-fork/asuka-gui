@@ -1,0 +1,12 @@
+// Stubs for native.asuka.
+struct Region {
+  lat: float
+  lng: float
+  span: float
+}
+struct Pin {
+  lat: float
+  lng: float
+  title: string
+}
+enum Impact { light, medium, heavy }

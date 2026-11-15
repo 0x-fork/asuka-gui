@@ -1,0 +1,13 @@
+// A stub of inbox.asuka's ./components.
+pub struct Message {
+  id: int
+  subject: string
+  preview: string
+}
+pub component MessageRow(message: Message) {
+  prop compact = false
+  event archive
+  event tap
+  Text(message.subject)
+}
+pub component EmptyState(title: string) { Text(title) }
