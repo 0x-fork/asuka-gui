@@ -120,6 +120,8 @@ browser.
   background, global shortcuts, file dialogs and the file manager,
   opening files, one instance, quitting, recent documents, starting at
   login, updates, the displays, power and progress on the app's icon.
+- [Packages](packages.md): sharing code between apps: `asuka add`, the
+  npm registry, `asuka.lock`, publishing
 - [Plugins](plugins.md): packages that bring native libraries, prebuilt
   for each platform, shipped with the app; SQLite is one.
 - [Native code](native.md): native packages, typed modules and views
