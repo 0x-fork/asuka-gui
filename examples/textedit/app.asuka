@@ -71,4 +71,3 @@ component Editor(doc: document.Document<string>) {
     }
   }
 }
-
