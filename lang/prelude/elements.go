@@ -114,7 +114,7 @@ var Style = []Key{
 	{Name: "gradient", Type: "Gradient?"},
 	{Name: "material", Type: "Material", Doc: "a translucent background that blurs what's behind"},
 	{Name: "transition", Type: "Transition", Doc: "how it comes in and goes out during animate { }"},
-	{Name: "match", Type: "string", Doc: "a key it shares with another view, to move between them during animate { }"},
+	{Name: "shared", Type: "string", Doc: "a key it shares with another view: during animate { }, the one that comes moves from where the one that goes was"},
 	{Name: "font", Type: "Font"},
 	{Name: "color", Type: "Color", Doc: "text color, or a control's tint"},
 	{Name: "textAlign", Type: "TextAlign"},

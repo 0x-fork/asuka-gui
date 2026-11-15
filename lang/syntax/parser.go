@@ -1001,14 +1001,14 @@ func (p *parser) parseStruct(start Pos) *StructDecl {
 	d.TypeParams = p.parseTypeParams()
 	d.Conforms = p.parseConforms()
 	d.Lbrace, d.Members, d.Dangling, d.Rbrace = p.parseBody("struct", func() Node {
-		return p.parseFieldOrMethod("a field (name: Type) or a method")
+		return p.parseFieldOrMethod("a field (name: Type), a constant (let) or a method", true)
 	})
 	d.Span = p.span(start)
 	return d
 }
 
 // parseFieldOrMethod parses a struct's or an interface's member.
-func (p *parser) parseFieldOrMethod(what string) Node {
+func (p *parser) parseFieldOrMethod(what string, constants bool) Node {
 	start := p.pos
 	var pub Pos
 	if p.tok == PUB {
@@ -1019,6 +1019,10 @@ func (p *parser) parseFieldOrMethod(what string) Node {
 	switch {
 	case p.tok == FN || p.tok == ASYNC:
 		n = p.parseFunc(start)
+	case p.tok == LET && constants:
+		// A constant of the type (Font.title), in a struct's or an
+		// enum's body.
+		n = p.parseLet(start)
 	case p.isName() && p.peek(1) == COLON:
 		f := &Field{Name: p.name()}
 		p.next()
@@ -1056,20 +1060,27 @@ func (p *parser) parseEnum(start Pos) *EnumDecl {
 		}
 		i := p.i
 		t := p.leading(p.pos)
-		if p.tok == FN || p.tok == ASYNC || p.tok == PUB {
-			m := p.parseFieldOrMethod("a method")
-			if f, ok := m.(*FuncDecl); ok {
+		if p.tok == FN || p.tok == ASYNC || p.tok == PUB || p.tok == LET {
+			m := p.parseFieldOrMethod("a method or a constant", true)
+			switch f := m.(type) {
+			case *FuncDecl:
 				f.Trivia = t
-				d.Methods = append(d.Methods, f)
+				d.Members = append(d.Members, f)
 				p.endItem(f, "method")
-			} else if m != nil {
-				p.error(m.Range().Start, "an enum has cases and methods, not fields")
+			case *LetDecl:
+				f.Trivia = t
+				d.Members = append(d.Members, f)
+				p.endItem(f, "constant")
+			default:
+				if m != nil {
+					p.error(m.Range().Start, "an enum has cases, constants and methods, not fields")
+				}
 			}
 		} else if p.isName() {
 			c := p.parseEnumCase()
 			c.Trivia = t
-			if len(d.Methods) > 0 {
-				p.error(c.Pos(), "an enum's cases come before its methods")
+			if len(d.Members) > 0 {
+				p.error(c.Pos(), "an enum's cases come before its constants and methods")
 			}
 			d.Cases = append(d.Cases, c)
 			if p.tok == COMMA {
@@ -1133,7 +1144,7 @@ func (p *parser) parseInterface(start, native Pos) *InterfaceDecl {
 	d.Name = p.ident()
 	d.TypeParams = p.parseTypeParams()
 	d.Lbrace, d.Members, d.Dangling, d.Rbrace = p.parseBody("interface", func() Node {
-		return p.parseFieldOrMethod("a function's signature (fn name(…)) or a field (name: Type)")
+		return p.parseFieldOrMethod("a function's signature (fn name(…)) or a field (name: Type)", false)
 	})
 	d.Span = p.span(start)
 	return d

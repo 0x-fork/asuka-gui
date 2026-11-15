@@ -92,7 +92,7 @@ func Walk(v Visitor, n Node) {
 		for _, c := range n.Cases {
 			walk(c)
 		}
-		for _, m := range n.Methods {
+		for _, m := range n.Members {
 			walk(m)
 		}
 	case *EnumCase:

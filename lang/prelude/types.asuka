@@ -91,13 +91,13 @@ struct Transform {
   scale: float = 1
   scaleX: float = 1
   scaleY: float = 1
-  rotation: float = 0  // degrees, clockwise
+  rotation: float = 0 // degrees, clockwise
 }
 
 /// A shadow under a view, cast by its shape.
 struct Shadow {
   color: Color = #00000033
-  radius: float = 4  // blur radius
+  radius: float = 4 // blur radius
   x: float = 0
   y: float = 2
 }
@@ -122,7 +122,7 @@ struct Gradient {
 /// when it's removed during one.
 struct Transition {
   fade: bool = false
-  scale: float = 0  // 0: none
+  scale: float = 0 // 0: none
   x: float = 0
   y: float = 0
 

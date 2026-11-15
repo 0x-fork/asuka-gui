@@ -97,7 +97,7 @@ SourceFile 1:1-84:3
                 Type: NamedType 17:32-17:38
                   Path: [1]
                     Ident "string" 17:32-17:38
-      Methods: [1]
+      Members: [1]
         FuncDecl 19:3-25:4 blank
           Name: Ident "message" 19:6-19:13
           Params: ParamList 19:13-19:15

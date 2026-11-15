@@ -370,8 +370,17 @@ func TestParseDecls(t *testing.T) {
 		t.Errorf("import: %+v", d)
 	}
 	f = parseOK(t, "enum E: Error { a, b(int), c(code: int, String)\n fn f() { } }")
-	if e := f.Decls[0].(*EnumDecl); len(e.Cases) != 3 || len(e.Methods) != 1 || e.Cases[2].Params.List[0].Label.Name != "code" || e.Cases[2].Params.List[1].Label != nil {
+	if e := f.Decls[0].(*EnumDecl); len(e.Cases) != 3 || len(e.Members) != 1 || e.Cases[2].Params.List[0].Label.Name != "code" || e.Cases[2].Params.List[1].Label != nil {
 		t.Errorf("enum: %s", printed(e))
+	}
+	f = parseOK(t, "struct Font { size: float = 0\n let title = Font(size: 28)\n fn bold() -> Font = self }\nenum Track { auto, fr(float)\n let one = Track.fr(1) }")
+	if s := f.Decls[0].(*StructDecl); len(s.Members) != 3 {
+		t.Errorf("struct constants: %s", printed(s))
+	} else if _, ok := s.Members[1].(*LetDecl); !ok {
+		t.Errorf("struct constant: %T", s.Members[1])
+	}
+	if e := f.Decls[1].(*EnumDecl); len(e.Members) != 1 {
+		t.Errorf("enum constants: %s", printed(e))
 	}
 	f = parseOK(t, "native component MapView(region: Region) { prop pins: [Pin] = []; event moved(r: Region) }")
 	if c := f.Decls[0].(*ComponentDecl); !c.Native.IsValid() || len(c.Body.Items) != 2 {

@@ -228,7 +228,7 @@ type StructDecl struct {
 	TypeParams []*TypeParam
 	Conforms   []Type // after the colon; nil for none
 	Lbrace     Pos
-	Members    []Node // *Field and *FuncDecl, in source order
+	Members    []Node // *Field, *LetDecl (a constant of the type: Font.title) and *FuncDecl, in source order
 	Dangling   []*CommentGroup
 	Rbrace     Pos
 }
@@ -253,7 +253,7 @@ type EnumDecl struct {
 	Conforms   []Type
 	Lbrace     Pos
 	Cases      []*EnumCase
-	Methods    []*FuncDecl
+	Members    []Node // after the cases: *LetDecl (constants of the type) and *FuncDecl (methods), in source order
 	Dangling   []*CommentGroup
 	Rbrace     Pos
 }

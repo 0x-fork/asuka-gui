@@ -591,10 +591,8 @@ func (p *printer) node(n Node) {
 		for _, c := range n.Cases {
 			nodes = append(nodes, c)
 		}
-		for _, m := range n.Methods {
-			nodes = append(nodes, m)
-		}
-		p.body(n.Lbrace, nil, nodes, n.Dangling, n.Rbrace, len(n.Methods) == 0, ", ")
+		nodes = append(nodes, n.Members...)
+		p.body(n.Lbrace, nil, nodes, n.Dangling, n.Rbrace, len(n.Members) == 0, ", ")
 	case *EnumCase:
 		p.write(n.Name.Name)
 		if n.Params != nil {

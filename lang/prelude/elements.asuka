@@ -64,8 +64,8 @@ native component Style {
   prop material: Material
   /// how it comes in and goes out during animate { }
   prop transition: Transition
-  /// a key it shares with another view, to move between them during animate { }
-  prop match: string
+  /// a key it shares with another view: during animate { }, the one that comes moves from where the one that goes was
+  prop shared: string
   prop font: Font
   /// text color, or a control's tint
   prop color: Color
