@@ -127,6 +127,9 @@ let name = user?.name ?? "Guest"
 let first = items.first()!        // a crash if it's none: say so only when it can't be
 ```
 
+After `?.`, the rest of the chain stops at none too: `user?.boss.name`
+is a `string?`.
+
 ### Declarations
 
 ```asuka
