@@ -257,3 +257,15 @@ object type (a reference: the runtime's ak_native_obj) and its methods:
 `asuka native generate` writes each platform's side (Swift on iOS and macOS, Kotlin,
 JavaScript, Go on Windows and Linux, whose hosts are Go) from the same declarations, in
 native/codec.go's wire format.
+
+## Prelude functions the runtime provides
+
+| Asuka | Lowered |
+|---|---|
+| `environment()` | CALLB `ui.environment` (an Environment, tracked: read in a binding, it follows the screen) |
+| `push(v)`, `present(v)` | CALLB `ui.push(builder)`, `ui.present(builder)` (the argument as a builder) |
+| `pop()`, `dismiss()` | CALLB `ui.pop`, `ui.dismiss` |
+| `sleep(d)` | CALLB `time.sleep(ns)`, AWAIT |
+| `all(a, b, …)`, `race(…)` | the calls as tasks (TASK), CALLB `async.all`/`async.race` over an array of them, AWAIT |
+| `spawn { … }` | CALLB `async.spawn(closure, kind)`, a Task |
+| `print(s)` | CALLB `print` |
