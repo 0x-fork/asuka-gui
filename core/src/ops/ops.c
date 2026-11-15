@@ -72,6 +72,7 @@ void ak_batch_free(ak_batch *b) {
 }
 
 static inline void op(ak_batch *b, uint8_t code, ak_id id) {
+	AK_ASSERT(b->mark == 0);  // not between a _begin and its _end
 	if (b->buf.len == 0) ak_buf_u32(&b->buf, 0);  // the count, written by encode
 	ak_buf_reserve(&b->buf, 1 + 4 + 2 + 1 + 16);
 	ak_buf_u8(&b->buf, code);
@@ -80,6 +81,7 @@ static inline void op(ak_batch *b, uint8_t code, ak_id id) {
 }
 
 const uint8_t *ak_batch_encode(ak_batch *b, size_t *len) {
+	AK_ASSERT(b->mark == 0);
 	if (b->buf.len == 0) ak_buf_u32(&b->buf, 0);
 	uint32_t n = b->count;
 	uint8_t *p = b->buf.data;

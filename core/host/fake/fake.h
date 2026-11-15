@@ -22,7 +22,10 @@
 //
 // Not ported (the Go fake's platform services and desktop windows):
 // Bluetooth, NFC, payments, purchases, iCloud, location, now playing,
-// trays, history, and windows' commands and WindowState reports.
+// trays, a Router's history (Location commands are recorded only), and
+// windows' state (WindowState reports, sizes, closing): of windows it
+// keeps which one is in use (a Window presented, or focused with
+// WindowAction) and checks their commands go where a host takes them.
 //
 // Main thread only, but post (ak_fake_callbacks') from any thread.
 #ifndef AK_FAKE_H
@@ -102,8 +105,11 @@ typedef void (*ak_fake_measure_fn)(void *ctx, ak_fake_view *v, float width, floa
 // with one, the op or event is dropped.
 typedef void (*ak_fake_fail_fn)(void *ctx, const char *msg);
 
+// A recorded op: its span's bytes are at off in the fake host's arena
+// (read it with ak_fake_op_at).
 typedef struct {
-	ak_op op;  // spans relative to the record's arena: read with ak_fake_op_at
+	ak_op op;
+	size_t off;
 } ak_fake_record;
 
 struct ak_fake {
@@ -158,7 +164,8 @@ static inline uint32_t ak_fake_op_count(const ak_fake *f) { return f->ops.len; }
 ak_op ak_fake_op_at(const ak_fake *f, uint32_t i);  // valid until the next apply or reset
 uint32_t ak_fake_count(const ak_fake *f, uint8_t code);
 // ak_fake_commands appends the indices of the recorded commands c.
-void ak_fake_commands(const ak_fake *f, ak_cmd c, AK_VEC(uint32_t) *out);
+typedef AK_VEC(uint32_t) ak_fake_index_vec;
+void ak_fake_commands(const ak_fake *f, ak_cmd c, ak_fake_index_vec *out);
 // ak_fake_log appends the recorded ops, a line each, as Go's Host.Log
 // prints them: Op.String, with props named by their view's kind.
 void ak_fake_log(const ak_fake *f, ak_buf *out);
