@@ -1,0 +1,626 @@
+package ir
+
+import (
+	"strings"
+
+	bc "github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/syntax"
+)
+
+// fb builds a function: its registers, its code, and where each name it
+// uses lives.
+type fb struct {
+	l     *Lowerer
+	f     *Func
+	idx   int
+	ctx   *check.FuncCtx
+	subst check.Subst
+	line  int32
+
+	vars map[*check.Var]int // a local's register (its box, accessor or memo)
+
+	// Registers: per kind, those free to reuse; temps die at the end of
+	// the statement that made them; locals at the end of their block.
+	free      map[bc.Kind][]int
+	temps     []int
+	scopes    [][]int
+	blockFree map[string][]int // argument blocks, by their kinds
+	nullReg   int              // a reference register that's always none
+
+	loops    []loop
+	defers   []*syntax.Block // the defers in effect, innermost last
+	inDefer  int
+
+	// The component's or store's env: envReg holds the struct (in
+	// methods, closures, and the component's function once it's made);
+	// envBox the box its closures made before that capture.
+	comp       *check.TypeName
+	envReg     int
+	envBox     int
+	memberRegs map[*check.Member]int // in the component's function
+}
+
+type loop struct {
+	brk, cont Label
+	defers    int // len(defers) where the loop starts
+}
+
+func (b *fb) emit(o bc.Op, args ...int)     { b.f.Emit(b.line, o, args...) }
+func (b *fb) emitKind(o bc.Op, args ...int) { b.f.Emit(b.line, o, args...) }
+
+// emitJump emits a jump to l: JMP, or a conditional one on reg.
+func (b *fb) emitJump(o bc.Op, reg int, l Label) {
+	if o == op("JMP") {
+		b.f.Emit(b.line, o, int(l))
+		return
+	}
+	b.f.Emit(b.line, o, reg, int(l))
+}
+
+func (b *fb) jmp(l Label) { b.f.Emit(b.line, op("JMP"), int(l)) }
+
+func (b *fb) at(n syntax.Node) {
+	if n != nil {
+		if line := b.l.line(n); line > 0 {
+			b.line = line
+		}
+	}
+}
+
+// ---------------------------------------------------------------------
+// Registers
+
+func (b *fb) newReg(k bc.Kind) int { return b.f.Reg(k) }
+
+// temp is a register that lives until the statement's end.
+func (b *fb) temp(k bc.Kind) int {
+	if k == bc.KVoid {
+		return bc.None
+	}
+	var r int
+	if fr := b.free[k]; len(fr) > 0 {
+		r = fr[len(fr)-1]
+		b.free[k] = fr[:len(fr)-1]
+	} else {
+		r = b.newReg(k)
+	}
+	b.temps = append(b.temps, r)
+	return r
+}
+
+func (b *fb) mark() int { return len(b.temps) }
+
+// release frees the temps made since mark.
+func (b *fb) release(mark int) {
+	for _, r := range b.temps[mark:] {
+		k := b.f.Kinds[r]
+		b.free[k] = append(b.free[k], r)
+	}
+	b.temps = b.temps[:mark]
+}
+
+// local is a register that lives until its block ends.
+func (b *fb) local(k bc.Kind) int {
+	var r int
+	if fr := b.free[k]; len(fr) > 0 {
+		r = fr[len(fr)-1]
+		b.free[k] = fr[:len(fr)-1]
+	} else {
+		r = b.newReg(k)
+	}
+	if n := len(b.scopes); n > 0 {
+		b.scopes[n-1] = append(b.scopes[n-1], r)
+	}
+	return r
+}
+
+func (b *fb) openScope() { b.scopes = append(b.scopes, nil) }
+
+func (b *fb) closeScope() {
+	n := len(b.scopes)
+	for _, r := range b.scopes[n-1] {
+		k := b.f.Kinds[r]
+		if k == bc.KRef {
+			// Let go of what it held: a value someone changes next
+			// stays unique, and so in place.
+			b.emit(op("CLR"), r)
+		}
+		b.free[k] = append(b.free[k], r)
+	}
+	b.scopes = b.scopes[:n-1]
+}
+
+func kindsKey(ks []bc.Kind) string {
+	var s strings.Builder
+	for _, k := range ks {
+		s.WriteByte(byte('0' + k))
+	}
+	return s.String()
+}
+
+// regs is n consecutive registers of the kinds: a call's arguments, a
+// struct's fields, a closure's captures.
+func (b *fb) regs(ks []bc.Kind) int {
+	if len(ks) == 0 {
+		return 0
+	}
+	key := kindsKey(ks)
+	if fr := b.blockFree[key]; len(fr) > 0 {
+		r := fr[len(fr)-1]
+		b.blockFree[key] = fr[:len(fr)-1]
+		return r
+	}
+	base := len(b.f.Kinds)
+	for _, k := range ks {
+		b.newReg(k)
+	}
+	return base
+}
+
+// releaseRegs lets a block's references go and frees it.
+func (b *fb) releaseRegs(base int, ks []bc.Kind) {
+	if len(ks) == 0 {
+		return
+	}
+	for i, k := range ks {
+		if k == bc.KRef {
+			b.emit(op("CLR"), base+i)
+		}
+	}
+	key := kindsKey(ks)
+	b.blockFree[key] = append(b.blockFree[key], base)
+}
+
+// null is a reference register that's always none (for moves).
+func (b *fb) null() int {
+	if b.nullReg < 0 {
+		b.nullReg = b.newReg(bc.KRef)
+	}
+	return b.nullReg
+}
+
+// move copies src into dst: retained when a reference.
+func (b *fb) move(dst, src int) {
+	if dst == src || src < 0 || dst == bc.None {
+		return
+	}
+	if b.f.Kinds[dst] == bc.KRef {
+		b.emit(op("MOVR"), dst, src)
+	} else {
+		b.emit(op("MOV"), dst, src)
+	}
+}
+
+// valueReg checks that v holds a value of kind k.
+func (b *fb) valueReg(v int, k bc.Kind) int {
+	if v < 0 || v == bc.None {
+		r := b.temp(k)
+		if k == bc.KRef {
+			b.emit(op("KNONE"), r)
+		} else if k != bc.KVoid {
+			b.emit(op("KSMALL"), r, 0)
+		}
+		return r
+	}
+	return v
+}
+
+// konst is an int constant in a temp.
+func (b *fb) konst(v int64) int {
+	r := b.temp(bc.KInt)
+	b.loadInt(r, v)
+	return r
+}
+
+func (b *fb) loadInt(r int, v int64) {
+	if v >= -32768 && v <= 32767 {
+		b.emit(op("KSMALL"), r, int(uint16(int16(v))))
+		return
+	}
+	b.emit(op("KINT"), r, b.l.intConst(v))
+}
+
+func (l *Lowerer) intConst(v int64) int {
+	for i, x := range l.mod.Ints {
+		if x == v {
+			return i
+		}
+	}
+	l.mod.Ints = append(l.mod.Ints, v)
+	return len(l.mod.Ints) - 1
+}
+
+func (l *Lowerer) floatConst(v float64) int {
+	for i, x := range l.mod.Floats {
+		if x == v {
+			return i
+		}
+	}
+	l.mod.Floats = append(l.mod.Floats, v)
+	return len(l.mod.Floats) - 1
+}
+
+func (b *fb) kstr(s string) int {
+	r := b.temp(bc.KRef)
+	b.emit(op("KSTR"), r, b.l.str(s))
+	return r
+}
+
+// callB calls a builtin with args (registers, of their kinds) and
+// returns its result in a temp of kind res (None for void).
+func (b *fb) callB(name string, res bc.Kind, args ...int) int {
+	dst := bc.None
+	if res != bc.KVoid {
+		dst = b.temp(res)
+	}
+	b.callBTo(name, dst, args...)
+	return dst
+}
+
+func (b *fb) callBTo(name string, dst int, args ...int) {
+	ks := make([]bc.Kind, len(args))
+	for i, a := range args {
+		ks[i] = b.f.Kinds[a]
+	}
+	blk := b.regs(ks)
+	for i, a := range args {
+		b.move(blk+i, a)
+	}
+	b.emit(op("CALLB"), dst, b.l.builtin(name), blk, len(args))
+	b.releaseRegs(blk, ks)
+}
+
+// freeze makes a constant immortal (rt.freeze), for sharing.
+func (b *fb) freeze(v int, k bc.Kind) int {
+	return b.callB("rt.freeze", k, v, b.konst(int64(k)))
+}
+
+// typ is t with the function's type arguments.
+func (b *fb) typ(t check.Type) check.Type { return b.subst.Apply(t) }
+
+func (b *fb) kind(t check.Type) bc.Kind { return b.l.kind(b.typ(t)) }
+
+// typeOf is e's type, as it's used (after its implicit conversion).
+func (b *fb) typeOf(e syntax.Expr) check.Type {
+	if t, ok := b.l.info.Convs[e]; ok {
+		return b.typ(t)
+	}
+	return b.typ(b.l.info.Types[e])
+}
+
+// rawType is e's own type.
+func (b *fb) rawType(e syntax.Expr) check.Type { return b.typ(b.l.info.Types[e]) }
+
+// ---------------------------------------------------------------------
+// Locals
+
+// declare makes v's register, and initializes it with init (a register,
+// or -1 for none).
+func (b *fb) declare(v *check.Var, init int) int {
+	if v == nil || v.Name() == "_" && init < 0 {
+		return -1
+	}
+	k := b.kind(v.Type)
+	if v.Kind == check.RowItem || v.Kind == check.ViewMemo {
+		k = bc.KRef
+	}
+	if v.Boxed() {
+		r := b.local(bc.KRef)
+		val := b.valueReg(init, k)
+		b.emit(op("VBOX"), r, val, int(k))
+		b.vars[v] = r
+		return r
+	}
+	r := b.local(k)
+	if init >= 0 {
+		b.move(r, init)
+	}
+	b.vars[v] = r
+	return r
+}
+
+// readVar is v's value: its register (borrowed), or a temp.
+func (b *fb) readVar(v *check.Var, n syntax.Node) int {
+	r, ok := b.vars[v]
+	if !ok {
+		b.l.errorf(n, "internal: %s has no register in %s", v.Name(), b.f.Name)
+		return b.valueReg(-1, b.kind(v.Type))
+	}
+	switch {
+	case v.Boxed():
+		t := b.temp(b.kind(v.Type))
+		b.emit(op("VGET"), t, r)
+		return t
+	case v.Kind == check.RowItem:
+		t := b.temp(b.kind(v.Type))
+		b.emit(op("AGET"), t, r)
+		return t
+	case v.Kind == check.ViewMemo:
+		t := b.temp(b.kind(v.Type))
+		b.emit(op("MREAD"), t, r)
+		return t
+	}
+	return r
+}
+
+// writeVar sets v to val.
+func (b *fb) writeVar(v *check.Var, val int, n syntax.Node) {
+	r, ok := b.vars[v]
+	if !ok {
+		b.l.errorf(n, "internal: %s has no register", v.Name())
+		return
+	}
+	if v.Boxed() {
+		b.emit(op("VSET"), r, val)
+		return
+	}
+	b.move(r, val)
+}
+
+// ---------------------------------------------------------------------
+// Components' and stores' members
+
+// env is the env struct's register.
+func (b *fb) env(n syntax.Node) int {
+	if b.envReg >= 0 {
+		return b.envReg
+	}
+	b.l.errorf(n, "%s's members can't be used here (while it's being made)", b.compName())
+	return b.null()
+}
+
+func (b *fb) compName() string {
+	if b.comp != nil {
+		return b.comp.Name()
+	}
+	return "the component"
+}
+
+// memberIndex is m's field in its owner's env.
+func (l *Lowerer) memberIndex(m *check.Member) int {
+	l.envShapeOf(m.Owner)
+	return l.memberIdx[m]
+}
+
+// memberKind is how m is stored in the env.
+func (l *Lowerer) memberKind(m *check.Member) bc.Kind {
+	if m.Kind == check.LetMember && !m.Memo && !isLoad(m.Default) {
+		return l.kind(m.Type)
+	}
+	return bc.KRef
+}
+
+func isLoad(e syntax.Expr) bool {
+	u, ok := e.(*syntax.UnaryExpr)
+	return ok && u.Op == syntax.LOAD
+}
+
+// envShapeOf is a component's or store's env: a struct of its members'
+// cells, memos, accessors and handlers.
+func (l *Lowerer) envShapeOf(t *check.TypeName) int {
+	if i, ok := l.envShape[t]; ok {
+		return i
+	}
+	key := l.typeKey(t.Type)
+	i := l.addShape(key, t.Type)
+	l.envShape[t] = i
+	var fs []bc.Field
+	for _, m := range t.Comp.Order {
+		if m.Kind == check.FnMember {
+			continue
+		}
+		l.memberIdx[m] = len(fs)
+		fs = append(fs, bc.Field{Name: m.Name(), Kind: l.memberKind(m), Shape: -1})
+	}
+	l.mod.Shapes[i].Fields = fs
+	return i
+}
+
+// memberRef is the register holding m's cell, memo, accessor or value.
+func (b *fb) memberRef(m *check.Member, n syntax.Node) int {
+	if r, ok := b.memberRegs[m]; ok {
+		return r
+	}
+	env := b.env(n)
+	r := b.temp(b.l.memberKind(m))
+	b.emit(op("GETF"), r, env, b.l.memberIndex(m))
+	return r
+}
+
+// readMember is m's value.
+func (b *fb) readMember(m *check.Member, n syntax.Node) int {
+	ref := b.memberRef(m, n)
+	k := b.kind(m.Type)
+	switch m.Kind {
+	case check.StateMember:
+		r := b.temp(k)
+		b.emit(op("CGET"), r, ref)
+		return r
+	case check.LetMember:
+		if isLoad(m.Default) {
+			return ref
+		}
+		if m.Memo {
+			r := b.temp(k)
+			b.emit(op("MREAD"), r, ref)
+			return r
+		}
+		return ref
+	case check.ParamMember, check.PropMember:
+		if m.IsSlot() {
+			return ref // a builder
+		}
+		r := b.temp(k)
+		b.emit(op("AGET"), r, ref)
+		return r
+	}
+	return ref
+}
+
+// storeMemberRef is a store member's cell or memo, from the store value s.
+func (b *fb) storeMemberRef(s int, m *check.Member) int {
+	r := b.temp(b.l.memberKind(m))
+	b.emit(op("GETF"), r, s, b.l.memberIndex(m))
+	return r
+}
+
+// ---------------------------------------------------------------------
+// Closures
+
+// closure describes a closure to make: its function's body, and what it
+// captures (what its contexts capture, and the env when one uses it).
+type closure struct {
+	name   string
+	ctxs   []*check.FuncCtx
+	params []*check.Var // nil entries: parameters it ignores
+	pkinds []bc.Kind    // the kinds of the nil ones (default ref)
+	ret    bc.Kind
+	async  bool
+	throws bool
+	env    bool       // capture the env even if no context says so
+	extra  []extraCap // more captures: registers of the maker's
+	body   func(c *fb)
+}
+
+// extraCap captures the maker's register reg as v.
+type extraCap struct {
+	v   *check.Var
+	reg int
+}
+
+// makeClosure makes the closure's function and, here, the closure: its
+// register (a temp).
+func (b *fb) makeClosure(s closure) int {
+	l := b.l
+	c := l.newFunc(b.f.Name+"/"+s.name, b.f.File, len(s.params), s.ret)
+	c.subst = b.subst
+	c.comp = b.comp
+	c.line = b.line
+	if len(s.ctxs) > 0 {
+		c.ctx = s.ctxs[0]
+	}
+	// Parameters.
+	for i, v := range s.params {
+		if v == nil {
+			k := bc.KRef
+			if i < len(s.pkinds) && s.pkinds[i] != bc.KVoid {
+				k = s.pkinds[i]
+			}
+			c.newReg(k)
+			continue
+		}
+		k := c.kind(v.Type)
+		if v.Kind == check.RowItem || v.Kind == check.ViewMemo {
+			k = bc.KRef
+		}
+		r := c.newReg(k)
+		c.vars[v] = r
+	}
+	// Captures.
+	var caps []int // the maker's registers
+	var capVars []*check.Var
+	seen := map[*check.Var]bool{}
+	for _, p := range s.params {
+		if p != nil {
+			seen[p] = true
+		}
+	}
+	useEnv := s.env
+	for _, x := range s.ctxs {
+		if x == nil {
+			continue
+		}
+		useEnv = useEnv || x.UsesEnv
+		for _, v := range x.Captures {
+			if seen[v] {
+				continue
+			}
+			seen[v] = true
+			r, ok := b.vars[v]
+			if !ok {
+				// Not the maker's: a closure further in declares it.
+				continue
+			}
+			caps = append(caps, r)
+			capVars = append(capVars, v)
+		}
+	}
+	for _, x := range s.extra {
+		if !seen[x.v] {
+			seen[x.v] = true
+			caps = append(caps, x.reg)
+			capVars = append(capVars, x.v)
+		}
+	}
+	envCap := -1
+	envIsBox := false
+	if useEnv {
+		switch {
+		case b.envReg >= 0:
+			envCap = len(caps)
+			caps = append(caps, b.envReg)
+		case b.envBox >= 0:
+			envCap = len(caps)
+			envIsBox = true
+			caps = append(caps, b.envBox)
+		}
+	}
+	// The closure's prologue loads its captures.
+	for i, r := range caps {
+		k := b.f.Kinds[r]
+		c.f.CapKinds = append(c.f.CapKinds, k)
+		reg := c.newReg(k)
+		c.emit(op("CAP"), reg, i)
+		if i == envCap {
+			if envIsBox {
+				env := c.newReg(bc.KRef)
+				c.emit(op("VGET"), env, reg)
+				reg = env
+			}
+			c.envReg = reg
+			continue
+		}
+		c.vars[capVars[i]] = reg
+	}
+	c.f.Flags = 0
+	if s.throws {
+		c.f.Flags |= bc.FThrows
+	}
+	s.body(c)
+	if s.async {
+		c.f.Flags |= bc.FAsync
+	}
+	// Here: the closure.
+	ks := make([]bc.Kind, len(caps))
+	for i, r := range caps {
+		ks[i] = b.f.Kinds[r]
+	}
+	blk := b.regs(ks)
+	for i, r := range caps {
+		b.move(blk+i, r)
+	}
+	dst := b.temp(bc.KRef)
+	b.emit(op("CLOS"), dst, c.idx, blk, len(caps))
+	b.releaseRegs(blk, ks)
+	return dst
+}
+
+// thunk is a closure of no arguments returning e's value: a binding.
+func (b *fb) thunk(ctx *check.FuncCtx, e syntax.Expr, t check.Type) int {
+	k := b.kind(t)
+	return b.makeClosure(closure{name: "binding", ctxs: []*check.FuncCtx{ctx}, ret: k, throws: true, body: func(c *fb) {
+		c.at(e)
+		r := c.value(e, -1)
+		c.ret(r, k)
+	}})
+}
+
+// ret returns r (of kind k).
+func (b *fb) ret(r int, k bc.Kind) {
+	if k == bc.KVoid || r < 0 {
+		b.emit(op("RET0"))
+		return
+	}
+	b.emit(op("RET"), b.valueReg(r, k))
+}
