@@ -33,6 +33,12 @@
 | core | 核心 | Asuka 的核心 |
 | signal | signal | 保留英文，不译；标题里单独出现时首字母大写（`## Signal`）。操作系统和 GTK 的 signal（崩溃时收到的信号、GTK 信号）不是这个概念，照常译作“信号” |
 | effect | effect | 保留英文，如“一个 effect” |
+| store (Asuka language) | store | Asuka 语言里的 `store`，保留英文；应用商店的 store 见下文 |
+| task (Asuka language) | task | Asuka 语言里的 `task`，保留英文 |
+| state | 状态 | |
+| handler | 处理函数 / 事件处理函数 | |
+| binding | 绑定 | two-way binding → 双向绑定 |
+| slot | 插槽 | |
 | owner | owner | 保留英文；首次出现可解释为“所有者” |
 | accessor | 访问器 | |
 | props | 属性 / props | 指 Go 结构体字段时用“属性”，指 `XxxProps` 类型时保留英文 |

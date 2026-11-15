@@ -1,0 +1,472 @@
+# Asuka 语言
+
+Asuka 应用用 Asuka 语言编写。这是一门小巧的语言，专为使用各平台原生控件的界面而设计。它是静态类型的：发布构建时会预先编译成 C；开发时则运行在虚拟机上，所以保存后几毫秒内就能看到改动，所有的值和原生视图都会保留下来。
+
+```asuka
+component Counter {
+  state count = 0
+
+  SafeArea {
+    justify: .center; align: .center; gap: 16; padding: 24
+
+    Text("Count: {count}") { font: .largeTitle.bold() }
+    Row {
+      gap: 12
+      Button("Reset") { variant: .gray; on press { count = 0 } }
+      Button("Add") { variant: .filled; on press { count += 1 } }
+    }
+    if count >= 10 {
+      Text("That's a lot") { color: .secondaryLabel }
+    }
+  }
+}
+
+app { Counter() }
+```
+
+本页介绍这门语言的全部内容。元素本身（`Text`、`Button`、`List`、`Stack` ……）另有专门的页面：[组件](components.md)。
+
+## 文件、包与导入
+
+源文件以 `.asuka` 结尾。一个目录里的源文件构成一个**包**：同一个包的文件不需要导入，就能看到彼此的声明。加上 `pub` 的声明才对其他包可见。
+
+```asuka
+import asuka/http                 // 标准库
+import @acme/charts               // 一个依赖（asuka add @acme/charts）
+import ./components               // 与当前包并列的另一个包
+import ./model.{Message, Folder}  // 直接使用这些名字，不用加包名
+import ./theme as t               // 起一个更短的名字
+```
+
+包里的名字要通过包名来使用：`http.get(url)`、`components.Card("Hi")`。预置模块（prelude，即内置的类型、元素和函数）不需要导入。
+
+语句和声明在行尾结束；想在一行里写多条，用 `;` 隔开。如果一行以运算符、逗号或左括号结尾，就会接着下一行继续。
+
+注释写作 `// …` 和 `/* … */`。`///` 注释用来给它下面的声明写文档，编辑器会显示出来。
+
+## 值与类型
+
+| 类型 | 值 |
+|---|---|
+| `int` | 64 位整数：`42`、`1_000`、`0xff` |
+| `float` | 64 位浮点数：`3.14`、`1e-3` |
+| `bool` | `true`、`false` |
+| `string` | UTF-8 文本：`"Hello, {name}"` |
+| `bytes` | 原始字节 |
+| `[T]` | 数组：`[1, 2, 3]`、`[]` |
+| `[K: V]` | map，按插入顺序保存：`["a": 1]`、`[:]` |
+| `(A, B)` | 元组：`(1, "one")` |
+| `T?` | 可选值：一个 `T`，或者 `none` |
+| `Duration` | `300ms`、`5s`、`2min`、`1h` |
+| `Color` | `#7c3aed`、`#7c3aed80`，以及语义色：`.label`、`.accent` …… |
+| `Length` | `100`（点）、`50%`、`.auto` |
+| `fn(A) -> B` | 函数和闭包 |
+
+字符串的花括号里可以放任意表达式：`"{count} items"`、`"Total: {price * qty}"`。`\{` 表示一个花括号字符；`r"…"` 是原始字符串，没有转义也没有插值；`"""…"""` 可以跨多行。
+
+### 值语义
+
+字符串、数组、map、结构体和枚举都是**值**：赋值或传参时，从你能观察到的行为来看，得到的都是一份副本。副本的开销很小：多个副本共享同一块内存，直到其中一个被修改；如果一个值只有一处持有，修改时会直接原地修改。
+
+```asuka
+var a = [1, 2, 3]
+var b = a
+b.push(4)        // a 仍然是 [1, 2, 3]
+```
+
+store、闭包、task 和视图是**引用**：复制出来的仍是同一个东西。
+
+语言里没有 null。可能缺失的值用可选值表示：
+
+```asuka
+let user: User? = none
+if let u = user { Text(u.name) }
+let name = user?.name ?? "Guest"
+let first = items.first()!        // 为 none 时会崩溃：只在确定不可能为 none 时这样写
+```
+
+### 声明
+
+```asuka
+let pi = 3.14159             // 常量
+var total = 0                // 变量（在函数和处理函数中）
+state count = 0              // 状态：界面会跟随变化的值
+```
+
+类型会自动推断；在有助于阅读的地方可以写出来：`let ids: [int] = []`。
+
+### 结构体
+
+```asuka
+struct Message {
+  id: string
+  subject: string
+  read: bool = false
+
+  fn preview() -> string = subject.slice(0, 40)
+}
+
+let m = Message(id: "1", subject: "Hello")
+let n = Message(id: m.id, subject: m.subject, read: true)
+```
+
+创建结构体的方式是调用它，并按名字传入各个字段；有默认值的字段可以省略。结构体主体里的 `let` 是这个类型的常量（`Font.title`），在任何需要 `Font` 的地方都可以简写成 `.title`。
+
+### 枚举
+
+```asuka
+enum Filter {
+  all
+  unread
+  from(Person)
+
+  fn matches(m: Message) -> bool = match self {
+    .all => true
+    .unread => !m.read
+    .from(p) => m.from == p
+  }
+}
+
+let f: Filter = .unread
+```
+
+在类型已知的地方，枚举的成员写作 `.name`。`match` 必须覆盖所有成员（或者以 `_ =>` 结尾）；模式可以绑定成员携带的值（`.from(p)`），可以匹配字面量（`0`、`"x"`），可以同时匹配多个成员（`.a | .b`），还可以带守卫条件（`.from(p) if p.vip =>`）。
+
+### 函数与闭包
+
+```asuka
+fn area(width: float, height: float = 1) -> float {
+  return width * height
+}
+
+fn double(x: int) -> int = x * 2      // 只有一个表达式
+
+area(3, height: 4)
+let squares = [1, 2, 3].map(x => x * x)
+let sorted = people.sorted((a, b) => a.age < b.age)
+```
+
+参数先按位置传，再按名字传。闭包写作 `x => expr`、`(a, b) => expr` 或 `x => { statements }`；它按值捕获普通的值，按引用捕获状态。
+
+### 接口与泛型
+
+接口是一组方法和字段；一个类型只要具备这些方法和字段，就实现了这个接口（不需要额外声明）。
+
+```asuka
+interface Shape { fn area() -> float }
+
+fn total<T>(items: [T], size: fn(T) -> float) -> float {
+  var sum = 0.0
+  for i in items { sum += size(i) }
+  return sum
+}
+```
+
+泛型函数和泛型类型可以接收类型参数；可用的约束有 `Equatable`、`Comparable` 和 `Hashable`，当结构体和枚举的字段都满足某个约束时，它们自身也就满足这个约束。
+
+## 组件
+
+组件是界面中的一块，参数在头部声明，其余所有内容都写在主体里：
+
+```asuka
+component MessageRow(message: Message) {
+  prop compact = false            // 一个具名 prop，带默认值
+  prop accessory: View? = none    // 一个插槽：由调用方传入的视图
+  event archive                   // 它对外报告的事件
+  state expanded = false          // 它自己的状态
+
+  Row {
+    gap: 12; padding: [12, 16]
+    Avatar(message.from)
+    Column {
+      grow: 1
+      Text(message.subject) { font: .headline; lines: 1 }
+      if !compact { Text(message.preview()) { color: .secondaryLabel } }
+    }
+    accessory
+  }
+  contextMenu {
+    Button("Archive") { role: .destructive; on press { emit archive } }
+  }
+}
+```
+
+使用组件的方式和使用内置元素完全一样。头部参数放在圆括号里，其余一切都放在代码块里：
+
+- prop：`name: value`
+- 处理函数：`on name { … }`
+- 双向绑定：`bind name: target`
+- 样式：`style name`
+- 子元素
+
+```asuka
+MessageRow(m) {
+  compact: true
+  accessory: Badge(3)
+  on archive { mailbox.archive(m.id) }
+}
+```
+
+每样东西都只有一个位置：头部参数不能在代码块里设置，prop 也不能放在圆括号里传。
+
+接收子元素的组件要声明 `prop children: View`，调用方代码块里的内容就会放到这里。具名插槽在代码块里写作 `name { … }`（`toolbar { … }`）。
+
+`emit name(args)` 触发一个事件，由调用方的 `on name(args) { }` 来处理。
+
+### 组件的主体是声明
+
+组件的主体**不是**运行一次就被抛到脑后的代码。主体里的每一行都声明了一件始终成立的事：
+
+- `state x = …` 是组件自己拥有的状态。
+- `let y = …` 由它读取的内容派生而来，并会一直保持最新（只在被读取时才计算，而且只有当它读过的内容变化后才会再次计算）。
+- 每个元素的每个 prop 值都以同样的方式保持最新：`count` 变化时，`Text("Count: {count}")` 跟着变化，其他东西都不会变。
+- `if`、`for` 和 `match` 会按照条件显示对应的内容，现在如此，之后也一样。
+
+`count` 变化时，重新运行的只有读取了它的部分：那个 `Text` 的文字，以及那个 `if`。没有任何组件会重新运行，平台的视图也只在确实有变化的地方才会被改动。
+
+### 处理函数与语句
+
+代码在这些地方运行：处理函数（`on press { … }`）、函数、`task` 和 `effect` 代码块，以及测试。在这些地方读取状态，得到的是它的当前值；写入状态，读取它的地方就会更新：
+
+```asuka
+on press {
+  count += 1
+  todos.push(Todo(title: draft))
+  todos[0].done = true      // 写入 todos：只有读取了 todos[0] 的行会更新
+  draft = ""
+}
+```
+
+一个处理函数里的多次写入，会在它结束时（或者执行到 `await` 时）一起显示出来。
+
+语句有：`let`、`var`、赋值（`= += -= *= /= %= ??=`）、`if`、`for x in xs`、`for (i, x) in xs.enumerated()`、`while`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`。
+
+### 双向绑定
+
+控件既要显示一个值，也要修改它。`bind` 把状态交给控件，两件事就都能做：
+
+```asuka
+state query = ""
+state notify = true
+
+TextField { bind text: query; placeholder: "Search" }
+Toggle { bind on: notify; title: "Notifications" }
+```
+
+不用 `bind` 时，控件只负责报告变化：`TextField { text: name; on change(t) { name = t.trim() } }`。
+
+### 视图列表
+
+```asuka
+for todo in todos key todo.id {
+  TodoRow(todo) { on delete { todos.removeWhere(t => t.id == todo.id) } }
+}
+```
+
+`for` 为每个键保留一行。某一项变化时，对应的行只更新它自己的绑定。新增一项会创建一行，删除一项会销毁它的那一行。移动了位置的行只会被移动，不会重建。直接放在 `List` 下面时，行只在显示在屏幕上时才存在，所以一个有 100,000 项的列表，开销也只是屏幕上可见的那些。
+
+### Store
+
+store 是状态加上修改它的函数，由使用它的视图共享：
+
+```asuka
+pub store Mailbox {
+  state messages: [Message] = []
+  let unread = messages.count(m => !m.read)
+
+  pub fn markRead(id: string) {
+    if let i = messages.index(m => m.id == id) { messages[i].read = true }
+  }
+
+  pub async fn refresh() throws {
+    messages = try await http.get("https://example.com/inbox").json<[Message]>()
+  }
+}
+```
+
+store 的创建方式和结构体一样（`Mailbox()`），它属于创建它的那个组件或 store。`provide` 让它对下面的所有内容可用，`use` 用来取到它：
+
+```asuka
+app {
+  provide Mailbox()
+  Stack { Inbox() }
+}
+
+screen Inbox {
+  use mailbox: Mailbox
+  …
+}
+```
+
+写在文件顶层的 `state` 属于整个应用：全应用只有一份。
+
+### Effect 与 task
+
+```asuka
+effect { storage.set("draft", draft) }        // 立即运行，之后 draft 每次变化时再运行
+task { try? await mailbox.refresh() }         // 组件显示期间运行一次
+task(query) { results = await search(query) } // query 变化时再运行一次
+```
+
+effect 会立即运行，之后每当它读取过的内容变化时再次运行。task 是异步的（见下文）：组件出现时启动；圆括号里的内容变化时重新启动（并取消上一次运行）；组件消失时被取消。
+
+## 异步
+
+需要等待的工作（网络、文件、定时器）用 `async` 表示，等待它则用 `await`：
+
+```asuka
+async fn loadThread(id: string) throws -> Thread {
+  let (messages, people) = try await all(api.messages(id), api.people(id))
+  let html = await spawn { renderMarkdown(messages) }
+  return Thread(messages, people, html)
+}
+```
+
+- 调用异步函数需要 `await`。处理函数、task 和测试里可以使用 `await`；组件的主体及其中的 `let` 不行。
+- **主线程。** 所有代码都在主线程上运行；`await` 让你的代码在等待时，其他工作可以先运行。状态可以在主线程上修改，而且只能在主线程上修改。
+- `all(a, b)` 同时发起多个调用，并等待全部结果；`race(a, b)` 取第一个完成的结果，并取消其余的；此外还有 `sleep(300ms)` 和 `withTimeout(5s) { … }`。
+- `spawn { … }` 在另一个线程上运行一段代码，用于会拖住主线程的工作（解析、图片处理）。这段代码只能使用值，不能使用状态、store 或视图：如果用了，编译器会报错。
+- `for await message in socket.messages { … }` 读取一个流。
+- **取消。** task 属于启动它的那个东西。当那个东西消失时（比如用户离开了页面），task 就会被取消：它正在等待的那个 `await` 会结束它，它的 `defer` 会运行，并且不会报告任何错误。
+
+### 需要加载的数据
+
+`load` 把一个异步结果保存在组件里：
+
+```asuka
+screen Profile(id: string) {
+  let user = load api.user(id)   // id 变化时重新加载
+
+  match user {
+    .pending => Spinner()
+    .failed(e) => ErrorView(e) { on retry { user.reload() } }
+    .ready(u) => ProfileCard(u)
+  }
+}
+```
+
+`Loading<T>` 的值是 `.pending`、`.ready(value)` 或 `.failed(error)` 之一；`.value` 是最近一次得到的值（重新加载期间也会保留，这样页面不会闪烁），`.reload()` 会再运行一次。当它的参数所读取的内容变化时，它会重新运行，并取消那次即将过时的运行。
+
+## 错误
+
+可能失败的函数要标注 `throws`，调用它时需要 `try`：
+
+```asuka
+enum MailError: Error { offline, server(code: int) }
+
+async fn send(m: Message) throws {
+  if !network.online { throw MailError.offline }
+  …
+}
+
+on press {
+  do {
+    try await send(draft)
+    dismiss()
+  } catch MailError.offline {
+    showOffline = true
+  } catch e {
+    alert("Couldn't send", message: e.message)
+  }
+}
+
+let n = try? parse(text)   // 抛出错误时为 none
+```
+
+处理函数或 task 没有捕获的错误，会交给包住这个组件的最近的 `Boundary`；如果没有，就交给应用自己的处理（开发时显示出来，发布版本中记录到日志）：
+
+```asuka
+Boundary {
+  Feed()
+  on error(e) { Text("Something went wrong: {e.message}") }
+}
+```
+
+## 样式
+
+每个元素都接收样式 prop：先是布局（`direction`、`justify`、`align`、`gap`、`padding`、`margin`、`width`、`height`、`grow`、`shrink`、`absolute`、`top`、`grid` ……），然后是外观（`background`、`radius`、`border`、`opacity`、`shadow`、`font`、`color`、`lines` ……）。详见[布局与样式](layout.md)。
+
+```asuka
+style card {
+  padding: 16; radius: 12; gap: 8
+  background: .secondaryBackground
+}
+
+View { style card; background: .accent }   // 后写的 prop 优先
+```
+
+不设置任何样式的元素，看起来就和平台自己的一样。
+
+## 导航
+
+```asuka
+app {
+  Tabs {
+    Tab("Inbox", icon: "tray") { Stack { Inbox() } }
+    Tab("Settings", icon: "gear") { Stack { Settings() } }
+  }
+}
+
+screen Inbox {
+  title: "Inbox"
+  List {
+    for m in messages key m.id {
+      MessageRow(m) { on press { push(Thread(m.id)) } }
+    }
+  }
+  toolbar {
+    Button(icon: "square.and.pencil") { on press { present(Compose()) } }
+  }
+}
+```
+
+`screen` 是一种组件，它的根是导航栈中的一个页面：它的代码块接收页面的 prop（`title`、`largeTitle` ……）和插槽（`toolbar`）。`push(…)` 和 `pop()` 作用于最近的导航栈，`present(…)` 和 `dismiss()` 作用于弹出面板（sheet）。详见[导航](navigation.md)。
+
+## 多语言文本
+
+`tr.inbox.title(unread: n)` 读取应用的目录文件，并在应用编译时检查：缺少键或参数都会报错。每个显示文字的 prop 都会跟随应用的语言，所以切换语言时，显示的内容也会随之改变。详见[多语言](i18n.md)。
+
+## 原生代码
+
+只有平台才能做的事，放在原生包里：用 Asuka 声明，再用各平台自己的语言实现：
+
+```asuka
+pub native interface Haptics {
+  fn impact(style: Feedback)
+}
+
+pub native component MapView(region: Region) {
+  prop pins: [Pin] = []
+  event regionChanged(region: Region)
+}
+```
+
+`asuka native generate` 会生成各平台需要实现的 Swift、Kotlin、JavaScript 和 C 代码。详见[原生代码](native.md)。
+
+## 测试
+
+```asuka
+test "archiving removes the row" {
+  let app = mount(Inbox(), provide: Mailbox.fake([sample]))
+  await app.idle()
+  app.tap("Archive")
+  app.expectNo("Hello")
+}
+```
+
+`asuka test` 在假宿主上运行包里的测试：它会像各平台那样对视图进行布局，按每个字符固定宽度来测量文字，而且只有在没有其他东西可以运行时，时间才会前进（测试里的 `sleep(5s)` 不花任何时间）。`mount` 返回应用，供你驱动和检查：`tap`、`type(_, into:)`、`scroll`、`back`、`expect`、`expectNo`、`idle`。详见[测试](testing.md)。
+
+## 内存与性能
+
+没有垃圾回收器，所以也就没有停顿。值采用引用计数，并在写入时复制。状态、store、effect 和 task 都属于创建它们的组件，并随它一起销毁。
+
+- 一次变化只会运行读取了变化内容的那些绑定，也只把变化了的 prop 发给平台。这些 prop 打成一个批次发送，然后运行布局，再把各视图的位置和尺寸（frame）打成另一个批次发送。
+- 发布构建会和核心一起编译成 C，所以你发布的应用里没有解释器。
+- 列表只构建屏幕上可见的部分，并复用单元格。
+
+## 关键字
+
+`app as async await bind break catch component continue defer do effect
+else emit enum event false fn for if import in interface key let load
+match native none on prop provide pub return screen self spawn state
+store struct style task test throw throws true try type use var while`

@@ -75,6 +75,9 @@ browser.
 
 - [Getting started](getting-started.md): install the CLI, make an app
   and run it on a phone, the simulator, your computer or a browser.
+- [The Asuka language](language.md): files and packages, values and
+  types, components and state, async, errors, styles, navigation, native
+  code and tests: the language apps are written in.
 - [Concepts](concepts.md): components, signals, owners, the main
   thread, and the environment.
 - [Layout and style](layout.md): flexbox, sizes, the safe area, colors,
