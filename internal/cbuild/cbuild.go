@@ -106,7 +106,10 @@ func Includes(core string) []string {
 }
 
 // Compile compiles each source to an object in out, in parallel, and
-// returns the objects. extra flags come after Flags.
+// returns the objects. extra flags come after Flags. An object already
+// in out is kept (out is a cache keyed by the sources and flags), and
+// each is written under a name of its own then renamed into place, so
+// builds running at once share the cache safely.
 func (c Compiler) Compile(srcs []string, out string, extra []string) ([]string, error) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return nil, err
@@ -123,9 +126,15 @@ func (c Compiler) Compile(srcs []string, out string, extra []string) ([]string, 
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			if _, err := os.Stat(objs[i]); err == nil {
+				return
+			}
+			tmp := fmt.Sprintf("%s.%d.tmp", objs[i], os.Getpid())
 			args := append(append(append([]string{}, c.Args...), Flags...), extra...)
-			args = append(args, "-c", src, "-o", objs[i])
-			errs[i] = c.run(args)
+			args = append(args, "-c", src, "-o", tmp)
+			if errs[i] = c.run(args); errs[i] == nil {
+				errs[i] = os.Rename(tmp, objs[i])
+			}
 		}(i, src)
 	}
 	wg.Wait()
