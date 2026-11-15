@@ -12,6 +12,7 @@ package windows
 
 import (
 	"fmt"
+	"github.com/egoist/asuka/host/bridge"
 	"github.com/egoist/asuka/internal/rtf"
 	"math"
 	"os"
@@ -378,7 +379,21 @@ func newHost() *Host {
 
 // Run runs root as the app's window until it's closed. Main thread: call
 // it from main.
-func Run(root func() ui.Node) {
+func Run(root func() ui.Node) { run(func(h *Host) { ui.Mount(h, root) }) }
+
+// RunCore runs the app on the C core (host/bridge: asuka.dll beside the
+// executable, the app compiled into it or, under asuka dev, its
+// bytecode) until it's closed. Main thread: call it from main.
+func RunCore() {
+	run(func(h *Host) {
+		if _, err := bridge.Mount(h); err != nil {
+			fmt.Fprintln(os.Stderr, "asuka:", err)
+			os.Exit(1)
+		}
+	})
+}
+
+func run(mount func(h *Host)) {
 	// Under asuka dev, until the run before this one has stopped: this one
 	// starts behind it (state.go).
 	stopped := devstate.Wait()
@@ -395,7 +410,7 @@ func Run(root func() ui.Node) {
 	startCrash()
 	h := newHost()
 	restoreState(stopped)
-	h.enter(func() { ui.Mount(h, root) })
+	h.enter(func() { mount(h) })
 	if launchDockItem >= 0 {
 		h.trayEvent(0, 2, launchDockItem)
 		launch = ""

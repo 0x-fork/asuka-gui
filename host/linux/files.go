@@ -10,7 +10,6 @@ import (
 	"github.com/egoist/asuka/internal/boot"
 	"github.com/egoist/asuka/internal/fileurl"
 	. "github.com/egoist/asuka/internal/gtk"
-	"github.com/egoist/asuka/ui"
 )
 
 // What the app is opened with, and its one instance. GApplication gets
@@ -69,14 +68,14 @@ func launchArgs(argv []string) []string {
 
 // watchLaunches starts the app on its first launch (activate, open, or
 // its command line) and takes the next.
-func (h *Host) watchLaunches(root func() ui.Node) {
+func (h *Host) watchLaunches(mount func(h *Host)) {
 	started := false
 	start := func() bool {
 		if started {
 			return false
 		}
 		started = true
-		h.start(root)
+		h.start(mount)
 		return true
 	}
 	Connect(h.app, "activate", func() {

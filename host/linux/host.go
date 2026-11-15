@@ -18,6 +18,7 @@ package linux
 
 import (
 	"fmt"
+	"github.com/egoist/asuka/host/bridge"
 	"os"
 	"sync"
 	"time"
@@ -215,7 +216,22 @@ func Run(root func() ui.Node) {
 	startCrash()
 	MustLoad()
 	h := newHost()
-	h.run(root)
+	h.run(func(h *Host) { ui.Mount(h, root) })
+}
+
+// RunCore runs the app on the C core (host/bridge: libasuka.so beside the
+// executable, the app compiled into it or, under asuka dev, its
+// bytecode) until it quits. Main thread: call it from main.
+func RunCore() {
+	startCrash()
+	MustLoad()
+	h := newHost()
+	h.run(func(h *Host) {
+		if _, err := bridge.Mount(h); err != nil {
+			fmt.Fprintln(os.Stderr, "asuka:", err)
+			os.Exit(1)
+		}
+	})
 }
 
 func newHost() *Host {
@@ -233,7 +249,7 @@ func newHost() *Host {
 	return h
 }
 
-func (h *Host) run(root func() ui.Node) {
+func (h *Host) run(mount func(h *Host)) {
 	// A notification's systemd timer runs the app to show it: no window,
 	// no GTK (notify_timer.go).
 	if id := os.Getenv("ASUKA_NOTIFY"); id != "" {
@@ -252,7 +268,7 @@ func (h *Host) run(root func() ui.Node) {
 	h.watchMemory()
 	boot.Quit = func() { h.Post(h.requestQuit) }
 	SetApplicationName(h.appName) // what GTK records the files the app opens under (recent.go)
-	h.watchLaunches(root)
+	h.watchLaunches(mount)
 	// GApplication gets the whole command line: with HANDLES_COMMAND_LINE
 	// and no options of its own, it parses none of the app's (unknown
 	// options stay, --help too), and hands the lot to the instance that
@@ -279,9 +295,9 @@ func (h *Host) incomingURL(u string) {
 }
 
 // start makes the main window and mounts the root in it.
-func (h *Host) start(root func() ui.Node) {
+func (h *Host) start(mount func(h *Host)) {
 	h.setup()
-	h.enter(func() { ui.Mount(h, root) })
+	h.enter(func() { mount(h) })
 	// An app that keeps running with no window is held: GApplication
 	// would quit as its last window goes. One in the background shows no
 	// window at launch (but in automation runs, which look at it) until

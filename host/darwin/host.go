@@ -12,6 +12,7 @@ package darwin
 
 import (
 	"fmt"
+	"github.com/egoist/asuka/host/bridge"
 	"os"
 	"runtime"
 	"sync"
@@ -279,7 +280,21 @@ func newHost() *Host {
 
 // Run runs root as the app's window until the app quits. Main thread:
 // call it from main.
-func Run(root func() ui.Node) {
+func Run(root func() ui.Node) { run(func(h *Host) { ui.Mount(h, root) }) }
+
+// RunCore runs the app on the C core (host/bridge: libasuka beside the
+// executable, the app compiled into it or, under asuka dev, its
+// bytecode) until it quits. Main thread: call it from main.
+func RunCore() {
+	run(func(h *Host) {
+		if _, err := bridge.Mount(h); err != nil {
+			fmt.Fprintln(os.Stderr, "asuka:", err)
+			os.Exit(1)
+		}
+	})
+}
+
+func run(mount func(h *Host)) {
 	if !IsMainThread() {
 		panic("asuka: darwin.Run must be called from main, on the main thread")
 	}
@@ -300,7 +315,7 @@ func Run(root func() ui.Node) {
 		h.installNotifications()
 		// app.Quit, OnQuit's signals and the launch's Apple Event (files.go).
 		h.startQuit()
-		h.enter(func() { ui.Mount(h, root) })
+		h.enter(func() { mount(h) })
 		if !h.main.configured {
 			// No WindowOptions: the host's, kept under "main".
 			h.configure(h.main, ops.WindowConfig{})

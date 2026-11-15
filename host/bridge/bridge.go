@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -332,3 +334,29 @@ func (c *Core) ListBind(list ops.NodeID, index int, cell ops.NodeID) {
 func (c *Core) ListUnbind(list ops.NodeID, cell ops.NodeID) { c.listUnbind(uint32(list), uint32(cell)) }
 
 var _ host.Core = (*Core)(nil)
+
+// Mount starts the C core (Find's library) with h as its host and starts
+// the app: the bytecode asuka dev sends when ASUKA_DEV (host:port) is
+// set, else the app compiled into the library. The desktop hosts call it
+// on the main thread, where they mounted a Go root before.
+func Mount(h host.Host) (*Core, error) {
+	path, err := Find()
+	if err != nil {
+		return nil, err
+	}
+	c, err := Open(path)
+	if err != nil {
+		return nil, err
+	}
+	c.Start(h)
+	if dev := os.Getenv("ASUKA_DEV"); dev != "" {
+		i := strings.LastIndexByte(dev, ':')
+		port, perr := strconv.Atoi(dev[i+1:])
+		if i < 0 || perr != nil {
+			return nil, fmt.Errorf("ASUKA_DEV=%q: want host:port", dev)
+		}
+		hello := fmt.Sprintf(`{"platform":%q,"device":"desktop"}`, runtime.GOOS)
+		return c, c.DevConnect(dev[:i], port, hello)
+	}
+	return c, c.Run()
+}
