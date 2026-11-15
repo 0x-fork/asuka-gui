@@ -620,6 +620,9 @@ void l_place_absolute_aligned(ak_lpass *p, ak_lnode *c, float ax, float ay, floa
 // Rounding.
 
 static double int64_round(double v) {
+	// Out of int64's range (and NaN) the conversion is undefined in C:
+	// such a value is already whole, or meaningless.
+	if (!(fabs(v) < 9.2e18)) return v;
 	if (v < 0) return -(double)(int64_t)(-v + 0.5);
 	return (double)(int64_t)(v + 0.5);
 }

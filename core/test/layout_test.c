@@ -511,6 +511,63 @@ TEST(tree_edits) {
 	ak_lnode_free(p1);
 }
 
+TEST(content_insets) {
+	ak_lnode *c = ak_lnode_new();
+	ak_lnode_style(c)->padding = (ak_lrect){ak_lpt(1), ak_lpct(10), ak_lpt(3), ak_lpt(4)};
+	ak_lnode_style(c)->border.left = ak_lpt(2);
+	ak_lnode *plain = ak_lnode_new();
+	ak_lnode *root = row(c, plain);
+	ak_lnode_style(root)->padding = ak_lrect_all(ak_lpt(10));
+	ak_lnode_style(root)->border = ak_lrect_all(ak_lpt(5));
+	ak_lnode_style(root)->width = ak_lpt(230);
+	ak_lpass p = {0};
+	ak_lnode_layout(root, (ak_lsize){230, 100}, &p);
+	ak_ledges r = ak_lnode_content_insets(root);
+	CHECK(r.top == 15 && r.right == 15 && r.bottom == 15 && r.left == 15);
+	ak_ledges e = ak_lnode_content_insets(c);  // 10% of the root's 200pt content width
+	CHECK(e.top == 1 && e.right == 20 && e.bottom == 3 && e.left == 6);
+	ak_ledges z = ak_lnode_content_insets(plain);
+	CHECK(z.top == 0 && z.right == 0 && z.bottom == 0 && z.left == 0);
+	ak_lnode_free_tree(root);
+	ak_lpass_free(&p);
+}
+
+TEST(force_report) {
+	ak_lnode *a = sized(10, 10), *b = sized(10, 10);
+	ak_lnode *root = row(a, b);
+	ak_lpass p = {0};
+	ak_lnode_layout(root, (ak_lsize){100, 100}, &p);
+	CHECK_EQ_INT(p.nchanged, 3);
+	ak_lnode_force_report(b);
+	ak_lnode_mark_dirty(root);
+	ak_lpass_reset(&p);
+	ak_lnode_layout(root, (ak_lsize){100, 100}, &p);
+	REQUIRE(p.nchanged == 1);  // its frame is the same, but reported again
+	CHECK(p.changed[0] == b);
+	ak_lpass_reset(&p);
+	ak_lnode_mark_dirty(root);
+	ak_lnode_layout(root, (ak_lsize){100, 100}, &p);
+	CHECK_EQ_INT(p.nchanged, 0);
+	ak_lnode_free_tree(root);
+	ak_lpass_free(&p);
+}
+
+TEST(set_style_allocates_nothing) {
+	ak_lnode *g = ak_lnode_new();
+	ak_lstyle s = *ak_lnode_style(g);
+	s.display = AK_LDISPLAY_GRID;
+	s.grid_template_columns = dir_cols;
+	s.ngrid_template_columns = 2;
+	uint64_t before = ak_alloc_count;
+	for (int i = 0; i < 10; i++) {
+		s.column_gap = ak_lpt((float)i);
+		s.direction = i % 2 ? AK_LDIR_RTL : AK_LDIR_LTR;
+		ak_lnode_set_style(g, &s);
+	}
+	CHECK_EQ_INT(ak_alloc_count - before, 0);
+	ak_lnode_free(g);
+}
+
 // The Chrome fixtures.
 
 typedef struct {
@@ -814,6 +871,11 @@ static bool same_as_go(ak_lnode *n, const frame_rec *g, int *k, char *diff, size
 	return true;
 }
 
+static ak_lnode *last_node(ak_lnode *n) {
+	while (ak_lnode_child_count(n) > 0) n = ak_lnode_child(n, ak_lnode_child_count(n) - 1);
+	return n;
+}
+
 static char *read_file(const char *path) {
 	FILE *f = fopen(path, "rb");
 	if (!f) return NULL;
@@ -850,7 +912,7 @@ TEST(css_fixtures) {
 		int pass, total, gopass;
 	} groups[16];
 	int ngroups = 0;
-	int total = 0, pass = 0, gopass = 0, beyond = 0, unlike_go = 0, regressions = 0;
+	int total = 0, pass = 0, gopass = 0, beyond = 0, unlike_go = 0, regressions = 0, cache_fails = 0;
 	ak_lpass p = {0};
 	char *t;
 	while ((t = next_token(&s)) != NULL) {
@@ -905,6 +967,36 @@ TEST(css_fixtures) {
 			unlike_go++;
 			if (getenv("T_VERBOSE") || go_pass) fprintf(stderr, "  differs from Go: %s: %s\n", name, gdiff);
 		}
+
+		// Again, unchanged: answered from the final caches, reporting
+		// nothing and allocating nothing.
+		uint64_t before = ak_alloc_count;
+		ak_lpass_reset(&p);
+		ak_lnode_layout(root, (ak_lsize){vw, vh}, &p);
+		if (p.nchanged != 0 || p.measures != 0 || ak_alloc_count != before) {
+			cache_fails++;
+			T_FAIL("%s: unchanged relayout: %u changed, %llu measures, %llu allocations", name, p.nchanged,
+				(unsigned long long)p.measures, (unsigned long long)(ak_alloc_count - before));
+		}
+		// The last node invalidated: its ancestors recompute, the rest
+		// answers from its caches; then everything from clean caches. Both
+		// give the Go engine's frames, from the pass's warm scratch memory.
+		for (int round = 0; round < 2 && like_go; round++) {
+			if (round == 0) ak_lnode_mark_dirty(last_node(root));
+			else ak_lnode_mark_subtree_dirty(root);
+			before = ak_alloc_count;
+			ak_lpass_reset(&p);
+			ak_lnode_layout(root, (ak_lsize){vw, vh}, &p);
+			uint64_t allocs = ak_alloc_count - before;
+			if (rounding) ak_lround(root, 1);
+			k = 0;
+			if (!same_as_go(root, gof, &k, gdiff, sizeof gdiff) || allocs != 0) {
+				cache_fails++;
+				T_FAIL("%s: relayout %s: %llu allocations; %s", name, round == 0 ? "of the last node" : "from clean caches",
+					(unsigned long long)allocs, gdiff);
+				break;
+			}
+		}
 		free_fixture(root);
 		ak_lnode_free_tree(root);
 	}
@@ -914,6 +1006,7 @@ TEST(css_fixtures) {
 	CHECK(total > 1900);
 	CHECK_EQ_INT(regressions, 0);
 	CHECK_EQ_INT(unlike_go, 0);
+	CHECK_EQ_INT(cache_fails, 0);
 	ak_lpass_free(&p);
 	free(want);
 	free(gof);

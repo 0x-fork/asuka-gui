@@ -88,6 +88,9 @@ static float fixed_breadth(ak_ltrack_size s, float basis) {
 	return 0;
 }
 
+// Browsers limit grids to lines within ±MAX_LINES.
+#define MAX_LINES 10000
+
 // expand_count returns how many explicit tracks a template makes, given
 // the inner size (NaN when indefinite) for auto-repeat, and the
 // auto-repeat's repetitions in *reps.
@@ -128,7 +131,11 @@ static int expand_count(const ak_lgrid_track *tpl, uint32_t ntpl, float inner, f
 			float free = inner - fixed - gap * (float)n;
 			if (n == 0) free += gap;
 			if (per > 0) {
-				int q = (int)((free + 0.0001f) / per);
+				// Clamped before converting, which C leaves undefined out
+				// of int's range: no grid has more than MAX_LINES lines,
+				// and any negative count acts as -1 does.
+				float qf = (free + 0.0001f) / per;
+				int q = qf != qf ? 0 : qf >= MAX_LINES ? MAX_LINES : qf <= -1 ? -1 : (int)qf;
 				if (n == 0 && q == 0) q = 1;
 				r = l_imax(1, q);
 			}
@@ -137,9 +144,6 @@ static int expand_count(const ak_lgrid_track *tpl, uint32_t ntpl, float inner, f
 	*reps = r;
 	return n + r * (int)autot->nsizes;
 }
-
-// Browsers limit grids to lines within ±MAX_LINES.
-#define MAX_LINES 10000
 
 static int clamp_line(int v) { return l_imin(l_imax(v, -MAX_LINES), MAX_LINES); }
 
