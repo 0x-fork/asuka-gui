@@ -56,6 +56,9 @@ android {
         // The app's manifest (asuka.json's permissions, scheme and links),
         // over the debug one in development.
         getByName("debug") {
+            // The core: a player's (asuka dev sends it the app's bytecode),
+            // or one with the app compiled in.
+            prop("asukaJniLibs")?.let { jniLibs.srcDir(it) }
             prop("asukaManifest")?.let { manifest.srcFile(it) }
             prop("asukaRes")?.let { res.srcDir(it) } // the splash, Firebase's settings
         }

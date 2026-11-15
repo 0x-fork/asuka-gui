@@ -24,6 +24,7 @@
 #include <string.h>
 
 static asuka_host_callbacks host;
+static void dispatch_early(void);
 static bool started;
 static ak_module *module;
 static ak_owner *module_owner;  // what the module's init made (its state)
@@ -67,6 +68,7 @@ void asuka_start(asuka_host_callbacks *callbacks) {
 	ak_sched_set_wake(wake);
 	ak_native_set_host(&host);
 	ak_ui_init(&(ak_host){NULL, host_apply, host_measure});
+	dispatch_early();
 }
 
 static char *dup_string(const char *s) {
@@ -200,8 +202,28 @@ void asuka_attach(void) {
 	if (started) ak_ui_reattach();
 }
 
+// Events a host sends before it starts the core (Android reports its
+// environment, the screen's size and insets, first) wait for it.
+static ak_buf early;
+
 void asuka_event(const uint8_t *buf, size_t len) {
-	if (started) ak_ui_dispatch(buf, len);
+	if (started) {
+		ak_ui_dispatch(buf, len);
+		return;
+	}
+	ak_buf_u32(&early, (uint32_t)len);
+	ak_buf_put(&early, buf, len);
+}
+
+static void dispatch_early(void) {
+	ak_reader r = {early.data, early.len, 0, false};
+	while (r.off < r.len) {
+		uint32_t n;
+		const uint8_t *p = ak_read_bytes(&r, &n);
+		if (r.err) break;
+		ak_ui_dispatch(p, n);
+	}
+	ak_buf_free(&early);
 }
 
 int64_t asuka_list_count(uint32_t list) { return started ? ak_ui_list_count(list) : 0; }
