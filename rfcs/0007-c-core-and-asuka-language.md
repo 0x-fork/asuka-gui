@@ -19,11 +19,12 @@ core for release.
 
 What stays: the ops wire and its schema (`ops/schema.go`), the platform
 hosts in Swift, Kotlin and JavaScript (`platform/*`), which only ever
-see encoded batches and call the C ABI of `asuka.h`, and the CLI. What
-goes: the Go packages an app imported (`signal`, `ui`, `layout`, `app`,
-`colors`, `fonts`, `uitest`), the Go desktop hosts (rewritten in C) and
-apps written in Go. The project is experimental; nothing is kept for
-compatibility.
+see encoded batches and call the C ABI of `asuka.h`, the desktop hosts
+in Go (`host/darwin`, `host/windows`, `host/linux`), which drive the C
+core through the same ABI (purego, no cgo), and the CLI. What goes: the
+Go packages an app imported (`signal`, `ui`, `layout`, `app`, `colors`,
+`fonts`, `uitest`), `mobile/`, `host/web`, and apps written in Go. The
+project is experimental; nothing is kept for compatibility.
 
 ## Motivation
 
@@ -59,6 +60,7 @@ compatibility.
 | Reactivity | Fine-grained signals (alien-signals' algorithm, Solid's owners), with dependencies resolved at compile time where they're static | As before, minus runtime tracking for the common case. |
 | Layout | The CSS block, flexbox and grid engine, ported to C, checked against the same Chrome fixtures | Unchanged semantics. |
 | Build tool | Zig (`zig cc`, `build.zig`) | One toolchain cross-compiles C to iOS, Android, wasm, macOS, Windows and Linux; already used by `sdk/sqlite`. |
+| Desktop hosts | Stay in Go, in process, driving the C core (a library, `libasuka`) through `asuka.h` with purego callbacks | They are already hosts behind the ops wire: their cost is AppKit's, Win32's and GTK's calls, not Go's. Rewriting 100k lines in C would change nothing an app or its user sees. |
 | Packages | The npm registry, with the `asuka` CLI as the client: its own resolver (one version per package, a lockfile), no Node, no `node_modules` | See "Packages". The registry gives scopes, auth, private registries, provenance and a CDN for free; npm's install model (nested duplicate versions, install scripts) doesn't fit a compiled language. |
 | Installing the CLI | npm (`npm i -g asuka`, `npx asuka`), with a prebuilt binary per platform as an optional dependency (esbuild's pattern); also a shell installer and Homebrew | Most app developers already have npm; nothing is built on install. |
 
@@ -497,7 +499,9 @@ Each ends with its tests green.
 - [ ] **N1** native packages from `native` declarations; `sdk/` ported.
 - [ ] **P1** packages: `asuka add`, `asuka pkg publish`, the resolver,
       `asuka.lock`, the cache; the CLI on npm with prebuilt binaries.
-- [ ] **D1** desktop hosts in C: macOS, Windows, Linux.
-- [ ] **X** the Go core, the Go hosts and Go apps removed; DESIGN.md,
+- [ ] **D1** the desktop hosts (Go) on the C core: `libasuka` loaded
+      with purego, batches decoded by `ops`, events and list calls into
+      the ABI; `asuka dev` and `asuka build` for macOS, Windows, Linux.
+- [ ] **X** the Go core, `mobile/`, `host/web` and Go apps removed; DESIGN.md,
       AGENTS.md and the docs (with `zh` and `ja`) describe the new
       Asuka.
