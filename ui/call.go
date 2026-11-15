@@ -127,8 +127,8 @@ var (
 )
 
 // OnOpenURL calls f with each URL the app is opened with: its scheme
-// (asuka.json's "scheme", myapp://...), or a universal or app link
-// (asuka.json's "links"), at launch or since, that no Router's route
+// (asuka.toml's scheme, myapp://...), or a universal or app link
+// (asuka.toml's links), at launch or since, that no Router's route
 // takes (a Router goes to those itself). A URL that came before any
 // handler (the one the app launched with) goes to the first, once the
 // app is mounted (a Router mounted with it has it first). It stops with
@@ -178,7 +178,7 @@ var (
 )
 
 // OnOpenFiles calls f with the files the app is opened with, at launch
-// or since: those of asuka.json's "fileTypes" the user opens with it
+// or since: those of asuka.toml's fileTypes the user opens with it
 // (a double click in Finder, Explorer or Files, Open With, a file
 // dropped on its Dock icon), a recent document chosen (asuka/sdk/recent:
 // the File menu's Open Recent, the Dock menu, the jump list), and on

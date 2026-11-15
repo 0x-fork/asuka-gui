@@ -1,7 +1,7 @@
 // NFC Tags reads the link on an NFC tag, and writes one to it
 // (asuka/sdk/nfc): iOS's sheet, Android's reader mode, Web NFC in Chrome
 // on Android. On Android, a tag with a link under https://asuka.dev/nfc/
-// opens the app (asuka.json's nfc), which shows it.
+// opens the app (asuka.toml's nfc), which shows it.
 //
 //	go run ./cmd/asuka dev --platform android examples/nfc
 package main

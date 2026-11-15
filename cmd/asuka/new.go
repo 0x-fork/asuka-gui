@@ -13,6 +13,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/egoist/asuka/internal/toml"
 	tpl "github.com/egoist/asuka/template"
 )
 
@@ -63,7 +64,7 @@ func cmdNew(args []string) error {
 		if rel == "gitignore" {
 			rel = ".gitignore"
 		}
-		t, err := template.New(rel).Parse(string(src))
+		t, err := template.New(rel).Funcs(template.FuncMap{"quote": toml.Quote}).Parse(string(src))
 		if err != nil {
 			return err
 		}

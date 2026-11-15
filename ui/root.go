@@ -422,7 +422,7 @@ func (r *Root) layoutFit(e *element, p *layout.Pass) {
 	}
 }
 
-// sendAccent tells the host the app's accent color (asuka.json's), before
+// sendAccent tells the host the app's accent color (asuka.toml's), before
 // any view is made with the theme.
 func (r *Root) sendAccent() {
 	c, ok := colors.ParseHex(boot.Accent)

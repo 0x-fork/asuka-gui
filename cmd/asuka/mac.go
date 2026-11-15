@@ -39,7 +39,7 @@ const macMin = "11.0"
 // macTarget is a Mac build's, for its updates: universal.
 const macTarget = "darwin-universal"
 
-// macLdflags is the -ldflags of a Mac build: asuka.json's, and the app's
+// macLdflags is the -ldflags of a Mac build: asuka.toml's, and the app's
 // name (its menus and window title), version and build (asuka/sdk/update's,
 // its crash reports').
 func macLdflags(app *goApp, release bool) string {
@@ -199,7 +199,7 @@ func writeMacBundle(app *goApp, bundle, work string, release bool, run func(dir 
 		}
 		info["CFBundleIconFile"] = "AppIcon"
 	}
-	// asuka.json's fileTypes, their icons as .icns files of their own.
+	// asuka.toml's fileTypes, their icons as .icns files of their own.
 	types := app.cfg.fileTypes()
 	icons := map[int]string{}
 	for i, t := range types {
@@ -428,7 +428,7 @@ func buildMac(app *goApp, o *buildOptions) error {
 
 // macSigning is the profile (nil for none) and the identity ("-": ad
 // hoc) a Mac build signs with: the profile --profile, ASUKA_MAC_PROFILE or
-// asuka.json names, else for an app whose packages need one (or for the
+// asuka.toml names, else for an app whose packages need one (or for the
 // Mac App Store) the best match installed; the identity --sign names, else
 // the profile's, else ad hoc. Without a profile, it says what won't work.
 func macSigning(cfg *appConfig, o *buildOptions) (*macProfile, string, error) {
@@ -457,7 +457,7 @@ func macSigning(cfg *appConfig, o *buildOptions) (*macProfile, string, error) {
 			return nil, "", err
 		}
 		// None installed: the app builds, without what needs one.
-		fmt.Printf("asuka: %s won't work on the Mac without a provisioning profile: %v (or set ASUKA_MAC_PROFILE, or asuka.json's mac.profile)\n",
+		fmt.Printf("asuka: %s won't work on the Mac without a provisioning profile: %v (or set ASUKA_MAC_PROFILE, or asuka.toml's mac.profile)\n",
 			strings.Join(needs, ", "), err)
 		identity := o.sign
 		if identity == "" {

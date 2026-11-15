@@ -22,7 +22,7 @@ Asuka 提供了一系列包，让应用用上视图之外的设备能力：相�
 | `asuka/sdk/photos` | `READ_MEDIA_IMAGES`、`READ_MEDIA_VISUAL_USER_SELECTED`；`READ_EXTERNAL_STORAGE`（Android 12 及更早版本） | `NSPhotoLibraryUsageDescription` |
 | `asuka/sdk/push` | Firebase Cloud Messaging、`POST_NOTIFICATIONS` | `aps-environment` entitlement；`remote-notification` 后台模式 |
 | `asuka/sdk/appleauth` | | 通过 Apple 登录（Sign in with Apple）的 entitlement |
-| `asuka/sdk/pay` | Google Pay 的库，启用它的 API，以及它的回调服务 | Apple Pay 的 entitlement，带有 `asuka.json` 的 `applePay.merchantIds` |
+| `asuka/sdk/pay` | Google Pay 的库，启用它的 API，以及它的回调服务 | Apple Pay 的 entitlement，带有 `asuka.toml` 的 `applePay.merchantIds` |
 | `asuka/sdk/biometric` | `USE_BIOMETRIC` | `NSFaceIDUsageDescription` |
 | `asuka/sdk/audio/record` | `RECORD_AUDIO`、`FOREGROUND_SERVICE_MICROPHONE`；一个前台服务 | `NSMicrophoneUsageDescription` |
 | `asuka/sdk/nowplaying` | `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MEDIA_PLAYBACK`；一个前台服务 | `audio` 后台模式（仅限调用了 `nowplaying.Show` 的应用） |
@@ -42,31 +42,26 @@ Asuka 提供了一系列包，让应用用上视图之外的设备能力：相�
 | `asuka/sdk/contacts` | `READ_CONTACTS`（用于 `List`） | `NSContactsUsageDescription` |
 | `asuka/sdk/calendar` | `READ_CALENDAR`（用于 `Calendars`、`Events`） | `NSCalendarsFullAccessUsageDescription`、`NSCalendarsUsageDescription` |
 | `asuka/sdk/compose` | 处理 `mailto:` 和 `smsto:` 的应用的可见性声明（`<queries>`） | `LSApplicationQueriesSchemes` 中的 `mailto` |
-| `asuka/sdk/nfc` | `NFC`；`uses-feature android.hardware.nfc`（非必需）；asuka.json 中 `nfc` 的过滤器（见 [NFC 标签](nfc.md)） | `NFCReaderUsageDescription`；Core NFC 的 entitlement；asuka.json 中 `nfc` 的 AID 和 FeliCa 系统代码 |
-| `asuka/sdk/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；声明了 `asuka.json` 的 `bluetooth.background` 时还有扫描接收器（见[蓝牙](bluetooth.md#构建时添加的内容)） | `NSBluetoothAlwaysUsageDescription`；声明了 `bluetooth.background` 时还有 `bluetooth-central`、`bluetooth-peripheral` |
+| `asuka/sdk/nfc` | `NFC`；`uses-feature android.hardware.nfc`（非必需）；`asuka.toml` 中 `nfc` 的过滤器（见 [NFC 标签](nfc.md)） | `NFCReaderUsageDescription`；Core NFC 的 entitlement；`asuka.toml` 中 `nfc` 的 AID 和 FeliCa 系统代码 |
+| `asuka/sdk/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；声明了 `asuka.toml` 的 `bluetooth.background` 时还有扫描接收器（见[蓝牙](bluetooth.md#构建时添加的内容)） | `NSBluetoothAlwaysUsageDescription`；声明了 `bluetooth.background` 时还有 `bluetooth-central`、`bluetooth-peripheral` |
 
 `asuka/sdk/device`、`asuka/sdk/audio`、`asuka/sdk/splash`、`asuka/sdk/imageedit`、`asuka/sdk/widget`、`asuka/sdk/js`、`asuka/sdk/secure`、`asuka/sdk/preview` 和 `asuka/sdk/print` 不需要任何权限。
 
 要在发布构建中使用某个 entitlement，必须先在应用的 App ID 上开启对应的 capability（在 developer.apple.com 的 Identifiers 页面），这样描述文件（provisioning profile）里才会包含它。如果描述文件缺了某一项，`asuka build --platform ios` 会停下来并告诉你缺的是什么；模拟器构建则所有 entitlement 都有。
 
-Asuka 写入的用途说明是通用的（"To take a photo."）。iOS 和 macOS 向用户请求权限时会显示这段文字，所以最好在 `asuka.json` 的 `ios.usage` 里写上你自己的说明：
+Asuka 写入的用途说明是通用的（"To take a photo."）。iOS 和 macOS 向用户请求权限时会显示这段文字，所以最好在 `asuka.toml` 的 `ios.usage` 里写上你自己的说明：
 
-```json
-{
-  "ios": {
-    "usage": {
-      "NSCameraUsageDescription": "To photograph your receipts.",
-      "NSLocationWhenInUseUsageDescription": "To find stores near you."
-    }
-  }
-}
+```toml
+[ios.usage]
+NSCameraUsageDescription = "To photograph your receipts."
+NSLocationWhenInUseUsageDescription = "To find stores near you."
 ```
 
 每个包都是在第一次真正需要时才询问用户，而不是在应用启动时。需要等待的调用（等用户回应、等定位结果、等平台处理）在下文中会标注“不能在主线程上调用”：请在 goroutine 中调用它们，再用 `ui.Post` 把结果送回主线程（见[主线程](concepts.md#主线程)）。其余的调用都接受一个回调，回调会在主线程上执行。
 
 ## 在 Mac 上
 
-Mac 应用（无论是 `asuka dev` 还是 `asuka build` 生成的）的 Info.plist 里有同样的用途说明（定位的那条还会额外写成 `NSLocationUsageDescription`）。它的签名带有 hardened runtime 为这些请求所需的 entitlement（相机、麦克风、定位、通讯录、日历、照片）；缺了它们，Developer ID 构建的应用就拿不到相应的权限。推送的 `aps-environment`、通过 Apple 登录、App Attest、Apple Pay 和 iCloud 这几项 entitlement 只能由描述文件授予：对于用到它们的应用，`asuka build` 会嵌入一个描述文件（优先取 `asuka.json` 的 `mac.profile`，其次是 `ASUKA_MAC_PROFILE`，最后是本机已安装的最佳匹配项）。没有描述文件时，应用照样能构建，CLI 会告诉你哪些功能将无法使用：在 Mac 上，注册推送和通过 Apple 登录都会失败，App Attest 会报告不受支持。`asuka dev` 使用 ad hoc 签名，不带描述文件，所以开发时也是同样的情况。Mac App Store 构建（`--appstore`）运行在沙盒中，可以访问网络以及用户选择的文件。详见[发布](shipping.md)。
+Mac 应用（无论是 `asuka dev` 还是 `asuka build` 生成的）的 Info.plist 里有同样的用途说明（定位的那条还会额外写成 `NSLocationUsageDescription`）。它的签名带有 hardened runtime 为这些请求所需的 entitlement（相机、麦克风、定位、通讯录、日历、照片）；缺了它们，Developer ID 构建的应用就拿不到相应的权限。推送的 `aps-environment`、通过 Apple 登录、App Attest、Apple Pay 和 iCloud 这几项 entitlement 只能由描述文件授予：对于用到它们的应用，`asuka build` 会嵌入一个描述文件（优先取 `asuka.toml` 的 `mac.profile`，其次是 `ASUKA_MAC_PROFILE`，最后是本机已安装的最佳匹配项）。没有描述文件时，应用照样能构建，CLI 会告诉你哪些功能将无法使用：在 Mac 上，注册推送和通过 Apple 登录都会失败，App Attest 会报告不受支持。`asuka dev` 使用 ad hoc 签名，不带描述文件，所以开发时也是同样的情况。Mac App Store 构建（`--appstore`）运行在沙盒中，可以访问网络以及用户选择的文件。详见[发布](shipping.md)。
 
 这些包在 macOS 上的工作方式与 iOS 相同，用的也是同一套框架（AVFoundation、PhotoKit、Core Location、MapKit、Vision、Speech、UserNotifications、AuthenticationServices），只有下面这些 Mac 与之不同的地方例外：
 
@@ -94,7 +89,7 @@ Mac 应用（无论是 `asuka dev` 还是 `asuka build` 生成的）的 Info.pli
 | `asuka/sdk/purchase` | StoreKit 2，编译进应用的 Swift 库；导入了这个包的应用，构建时会生成这个库（见[应用内购买](purchases.md)） |
 | `asuka/sdk/icloud` | 和 iOS 一样，编译进应用的 Swift 库。需要带 iCloud 的描述文件（见上文）：没有的话返回 `ErrNotAvailable`（见 [iCloud](icloud.md)） |
 | `asuka/sdk/splash` | Mac 应用没有启动屏：`Hold` 和 `Hide` 什么也不做 |
-| `ui.OnShare`、`app.ShareSheet`、快捷操作 | 仅限 iOS 和 Android：Mac 应用不会出现在其他应用的分享菜单里，`asuka.json` 的 `shortcuts` 也不会被添加 |
+| `ui.OnShare`、`app.ShareSheet`、快捷操作 | 仅限 iOS 和 Android：Mac 应用不会出现在其他应用的分享菜单里，`asuka.toml` 的 `shortcuts` 也不会被添加 |
 
 ## 在 Windows 上
 
@@ -407,7 +402,7 @@ ui.Button(ui.ButtonProps{Title: ui.Val("Help"), OnPress: func() {
 - `device.KeepAwake(on)` 在 `on` 为 true 时让屏幕保持常亮，适合视频、菜谱、地图这类场景。需要常亮的界面关闭时，记得把它关掉。
 - `device.PickFiles(options, done)` 显示系统的文档选择器（iOS 的“文件”浏览器、Android 的存储选择器、桌面上的打开对话框、浏览器中的文件选择器；都不需要权限）。`Types` 是 MIME 类型（`"application/pdf"`、`"image/*"`；不填则可以选任何文件），`Multiple` 允许用户选择多个文件。`done` 会为每个文件收到一个 `device.File`：`Path` 是复制到应用缓存目录中的副本，另外还有 `Name`、`Type` 和 `Size`；用户取消时则为空。
 - `device.ClipboardHas()` 不读取剪贴板，就能告诉你里面装的是 `Text`、`Image` 还是 `URL`（iOS 不会因此询问用户）：这样你可以只在有东西可粘贴时才显示“粘贴”按钮。`device.ClipboardImage()` 把剪贴板里的图片读到一个文件中，格式与复制时相同；`device.CopyImage(path, done)` 把一个图片文件放进剪贴板。`device.OnClipboardChange(f)` 在剪贴板内容变化时调用 `f`，直到调用 `stop` 为止。
-- `device.GetInfo()` 返回设备和应用的信息：`Model`（"iPhone"、"Pixel 9"、"Mac"、"PC"）、`System`（"iOS"、"Android"、"macOS"、"Windows"、"Linux"）、`SystemVersion`，以及 `AppVersion` 和 `Build`，即 `asuka.json` 中的 `version` 和 `build`。不能在主线程上调用。
+- `device.GetInfo()` 返回设备和应用的信息：`Model`（"iPhone"、"Pixel 9"、"Mac"、"PC"）、`System`（"iOS"、"Android"、"macOS"、"Windows"、"Linux"）、`SystemVersion`，以及 `AppVersion` 和 `Build`，即 `asuka.toml` 中的 `version` 和 `build`。不能在主线程上调用。
 
 ```go
 func Player() ui.Node {
@@ -441,7 +436,7 @@ s := webauth.Start(webauth.Options{URL: authorizeURL, CallbackScheme: "myapp"},
 
 登录流程有两种结束方式：
 
-- **通过回调 scheme。** 页面跳转到 `CallbackScheme`（应用自己的 scheme）下的 URL 时，面板关闭，`done` 收到这个 URL。在 Android 上，这个 scheme 必须就是应用的 scheme，即 asuka.json 中的 `scheme`；URL 会交给 `done`，而不是 `ui.OnOpenURL`。
+- **通过回调 scheme。** 页面跳转到 `CallbackScheme`（应用自己的 scheme）下的 URL 时，面板关闭，`done` 收到这个 URL。在 Android 上，这个 scheme 必须就是应用的 scheme，即 `asuka.toml` 中的 `scheme`；URL 会交给 `done`，而不是 `ui.OnOpenURL`。
 - **由应用自己结束。** 不设置 scheme 时，页面会重定向到一个应用能收到通知的地方：如果 OAuth 服务器允许重定向到回环地址（`http://localhost:port/callback`，见 RFC 8252），它就会把 code 发给应用在该端口上运行的服务器，再由这个服务器调用 `s.Cancel()` 关闭面板。在 Android 上，取消会让应用回到标签页之上。
 
 用户关闭面板，或者调用了 `Cancel` 时，`done` 会收到 `webauth.ErrCanceled`。`Ephemeral` 会请求一个私密会话，不带浏览器中的 cookie（iOS 的 `prefersEphemeralWebBrowserSession`；Android 的 Custom Tab 会保留 cookie）。[`examples/usage`](../../examples/usage) 就是这样借助一个回环服务器登录 Claude 的。
@@ -485,7 +480,7 @@ share = ui.Button(ui.ButtonProps{Title: ui.Val("Share"), OnPress: func() {
 
 在 iOS 上，如果文件的扩展名与它的类型对不上，会像 expo-sharing 那样换一个相符的文件名再分享：作为 JPEG 分享的 `image.pdf` 会以 `image.pdf.jpeg` 的名字发出，它是指向原文件的链接，而不是副本。在 Android 上，文件通过应用的 FileProvider 传递；不在应用自身目录中的文件，会先复制到缓存目录。Mac 上用的是共享服务选择器。Windows 上用的是分享界面（界面一出现就会调用 `done`，因为 Windows 不会告知它何时关闭）。Linux 没有分享面板：文件会放进剪贴板，与分享文本时一样。浏览器能用 Web Share 面板分享文件时就用它，否则会逐个下载这些文件。
 
-如果想让应用自己能通过 URL 被打开，请参阅[发布](shipping.md#asukajson)中 `asuka.json` 的 `scheme` 和 `links`，以及 `ui.OnOpenURL`。
+如果想让应用自己能通过 URL 被打开，请参阅[发布](shipping.md#asukatoml)中 `asuka.toml` 的 `scheme` 和 `links`，以及 `ui.OnOpenURL`。
 
 ## 预览文件：asuka/sdk/preview
 
@@ -663,7 +658,7 @@ func Track() ui.Node {
 
 - `location.Request()` 在第一次调用时请求 `WhenInUse`（`Current` 和 `Watch` 也是这样请求的），返回用户作出选择后的 `location.Authorization`：其中 `Level` 是级别（`NotAsked`、`Denied`、`Restricted`、`WhenInUse`、`Always`），`Precise` 表示是否为精确位置，`Off` 表示整台设备的定位服务是否已关闭。
 - `location.RequestAlways()` 请求 `Always`；如果用户还没允许 `WhenInUse`，会先请求它。iOS 只会弹出一次询问；Android 11 及以后的版本会把用户带到应用的定位设置页面，让用户选择“始终允许”。
-- `location.RequestPrecise(purpose)` 向只允许了大致位置的用户请求精确位置。在 iOS 上，这只在应用离开前台之前有效（临时完全精度），`purpose` 指定向用户展示的理由，是 asuka.json 中 `ios.locationPurposes` 的一个键（其中已经有 `"default"`，内容是 "To show exactly where you are."）；在 Android 上，用户的选择会一直有效。
+- `location.RequestPrecise(purpose)` 向只允许了大致位置的用户请求精确位置。在 iOS 上，这只在应用离开前台之前有效（临时完全精度），`purpose` 指定向用户展示的理由，是 `asuka.toml` 中 `ios.locationPurposes` 的一个键（其中已经有 `"default"`，内容是 "To show exactly where you are."）；在 Android 上，用户的选择会一直有效。
 - `location.Authorized()` 返回当前的授权状态，不会询问用户；`location.UseAuthorization()` 把它作为 signal 提供给组件使用，`location.WatchAuthorization(f)` 则在每次变化时调用 `f`（包括用户在“设置”中的修改）。`location.OpenSettings()` 打开系统中这个应用的定位设置：一旦变成 `Denied`，就只能由用户在那里修改了。
 
 这些调用都要等待用户回应，不能在主线程上调用。
@@ -794,7 +789,7 @@ go func() {
 - `notify.Schedule(n)` 安排 `n` 在 `n.After` 之后显示（至少一秒）；`notify.Show(n)` 则立即显示。如果 `ID` 与某条等待中或正在显示的通知相同，就会替换掉它。不能在主线程上调用。
 - `notify.Cancel(id)` 移除一条通知，无论它还在等待还是已经显示。在主线程上调用。
 
-`Notification` 的 `URL` 应该使用应用自己的 scheme（`asuka.json` 中的 `scheme`）：用户点按通知时，`ui.OnOpenURL` 会收到这个 URL。其他字段如下：
+`Notification` 的 `URL` 应该使用应用自己的 scheme（`asuka.toml` 中的 `scheme`）：用户点按通知时，`ui.OnOpenURL` 会收到这个 URL。其他字段如下：
 
 | 字段 | 作用 |
 |---|---|
@@ -913,7 +908,7 @@ notify.SetChannels(
 | 列出、移除 | ✓ | ✓ | ✓ | ✓（通知中心中的） | 仅限应用本次运行中显示过的 | ✓（service worker 显示的） |
 | Present | ✓ | ✓ | ✓ | ✓（定时通知除外） | ✓ | ✓ |
 
-**macOS** 需要应用的 bundle，而 `asuka dev` 和 `asuka build` 都是从 bundle 启动应用的：单独运行的可执行文件（`go run`）没有 bundle ID，这些调用会失败，并返回说明原因的错误。**Windows** 显示 toast 通知，可以立即显示，也可以定时显示，支持图片，类别中的操作显示为按钮，回复显示为文本框。应用第一次使用通知时会注册自己：在开始菜单中创建一个快捷方式，带上应用的 AppUserModelID（即 asuka.json 中的 `id`），并在用户的注册表中登记一个 COM 激活器（也就是应用的可执行文件）。这样，点按通知或按钮时才能把响应送到应用；如果应用没在运行，Windows 会替它启动。如果是后台操作，应用会保持不可见，并在 `OnAction` 处理完后退出。角标是画在应用任务栏按钮上的一个数字（打包应用则使用系统的角标）。无论 `Present` 怎么设定，Windows 都会显示定时的 toast。**Linux** 上，如果应用有 desktop 文件（或运行在沙盒中），通知会以 GNotification 的形式发送，否则直接发给桌面的通知服务器（GNOME Shell 会拒绝没有 desktop 文件的应用）；应用运行期间，点按通知和按钮都能传到应用。定时通知是一个 systemd 用户定时器（`systemd-run --user`）：到时它会以无窗口的方式运行应用的可执行文件来显示通知，如果应用正在运行就交给应用处理，用户点按时则启动应用；没有 systemd 时（Flatpak、`asuka dev`），定时通知只在应用运行时显示。**浏览器**通过应用的 service worker 显示通知，`asuka/sdk/push` 则通过 Web Push 实现：详见 [Web](web.md)。
+**macOS** 需要应用的 bundle，而 `asuka dev` 和 `asuka build` 都是从 bundle 启动应用的：单独运行的可执行文件（`go run`）没有 bundle ID，这些调用会失败，并返回说明原因的错误。**Windows** 显示 toast 通知，可以立即显示，也可以定时显示，支持图片，类别中的操作显示为按钮，回复显示为文本框。应用第一次使用通知时会注册自己：在开始菜单中创建一个快捷方式，带上应用的 AppUserModelID（即 `asuka.toml` 中的 `id`），并在用户的注册表中登记一个 COM 激活器（也就是应用的可执行文件）。这样，点按通知或按钮时才能把响应送到应用；如果应用没在运行，Windows 会替它启动。如果是后台操作，应用会保持不可见，并在 `OnAction` 处理完后退出。角标是画在应用任务栏按钮上的一个数字（打包应用则使用系统的角标）。无论 `Present` 怎么设定，Windows 都会显示定时的 toast。**Linux** 上，如果应用有 desktop 文件（或运行在沙盒中），通知会以 GNotification 的形式发送，否则直接发给桌面的通知服务器（GNOME Shell 会拒绝没有 desktop 文件的应用）；应用运行期间，点按通知和按钮都能传到应用。定时通知是一个 systemd 用户定时器（`systemd-run --user`）：到时它会以无窗口的方式运行应用的可执行文件来显示通知，如果应用正在运行就交给应用处理，用户点按时则启动应用；没有 systemd 时（Flatpak、`asuka dev`），定时通知只在应用运行时显示。**浏览器**通过应用的 service worker 显示通知，`asuka/sdk/push` 则通过 Web Push 实现：详见 [Web](web.md)。
 
 ## 播放声音：asuka/sdk/audio
 
@@ -1112,16 +1107,18 @@ go func() {
 
 ## 接收其他应用的分享：ui.OnShare
 
-当其他应用通过分享面板把内容分享给这个应用时，`ui.OnShare(f)` 会把这些内容交给 `f`：比如来自 YouTube 或浏览器的链接、备忘录里的一段文字、相册里的照片、“文件”里的 PDF。这是 iOS 和 Android 才有的功能：在桌面端和浏览器中，应用不会出现在其他应用的分享菜单里，`f` 也不会被调用。`asuka.json` 的 `shareTarget` 决定应用可以接收哪些内容：
+当其他应用通过分享面板把内容分享给这个应用时，`ui.OnShare(f)` 会把这些内容交给 `f`：比如来自 YouTube 或浏览器的链接、备忘录里的一段文字、相册里的照片、“文件”里的 PDF。这是 iOS 和 Android 才有的功能：在桌面端和浏览器中，应用不会出现在其他应用的分享菜单里，`f` 也不会被调用。`asuka.toml` 的 `shareTarget` 决定应用可以接收哪些内容：
 
-```json
-{ "shareTarget": true }
+```toml
+shareTarget = true
 ```
 
-这样写表示接收文本和链接。写成对象时还能接收文件，按 MIME 类型指定，一次最多 `max` 个（默认 1 个）：
+这样写表示接收文本和链接。写成表时还能接收文件，按 MIME 类型指定，一次最多 `max` 个（默认 1 个）：
 
-```json
-{ "shareTarget": { "types": ["text", "image/*", "video/*"], "max": 10 } }
+```toml
+[shareTarget]
+types = ["text", "image/*", "video/*"]
+max = 10
 ```
 
 类型可以是 `"text"`（文本和网页链接），也可以是 MIME 类型：`"image/*"`、`"video/*"`、`"audio/*"`、`"application/pdf"`，`"*/*"` 表示任意文件。
@@ -1232,10 +1229,11 @@ func App() ui.Node {
 - `push.OnOpen(f)` 接收用户点按的每一条通知；只要在应用启动时就设置好 `f`，启动应用的那条通知也会包括在内。和 `asuka/sdk/notify` 的通知一样，消息数据中的 `"url"` 也会交给 `ui.OnOpenURL`。
 - `push.Message` 包含 `ID`、`Title`、`Body` 和 `Data`（iOS 上是负载中 `aps` 以外的键；Android 上是消息的 data）。
 
-iOS 的发布构建需要在 App ID 上开启 Push Notifications 功能；在模拟器上也能拿到令牌。Android 需要一个 Firebase 项目：把 Android 应用添加进去，下载它的 `google-services.json`，然后在 `asuka.json` 中指定这个文件：
+iOS 的发布构建需要在 App ID 上开启 Push Notifications 功能；在模拟器上也能拿到令牌。Android 需要一个 Firebase 项目：把 Android 应用添加进去，下载它的 `google-services.json`，然后在 `asuka.toml` 中指定这个文件：
 
-```json
-{ "android": { "googleServices": "google-services.json" } }
+```toml
+[android]
+googleServices = "google-services.json"
 ```
 
 Asuka 会像 Google 的 Gradle 插件那样，把其中的配置写进应用。缺少这个文件时，`Register` 会失败，并告诉你该怎么做。
@@ -1272,7 +1270,7 @@ func main() {
 
 `f` 在单独的 goroutine 中运行，不在主线程上。返回错误或发生 panic 时，推送会按原样显示。`m.Image` 会被下载下来，作为附件显示；`m.From` 把推送变成一条消息，作用和 `notify.Notification` 的 `From` 相同。
 
-**iOS** 在 Notification Service Extension 中改写推送，`asuka build` 会为调用了 `push.Rewrite` 的应用生成这个扩展：对于 `aps` 中带有 `"mutable-content": 1`（以及 `alert`，改写失败时显示的就是它）的每条推送，扩展都会在独立的进程中运行应用的 Go 代码。先运行 `main`，再运行 `f`；根组件不会运行，所以 `main` 要尽量轻量。iOS 给扩展大约 30 秒时间和 24 MB 内存，超时后会按原样显示推送。应用保存的数据在扩展里同样可用：数据（`asuka/sdk/store`、`store.Dir` 中的文件）存放在两者共享的 App Group 中，钥匙串项（`asuka/sdk/secure`）存放在应用的钥匙串组中。发布构建需要为扩展的 bundle ID（应用的 ID 加上 `.notification`）准备一个描述文件（可以用 `asuka.json` 的 `ios.notificationProfile` 指定；默认使用已安装的描述文件中最匹配的那个），并开启 App Groups 功能、加入应用的组。在 iOS 上，改写无法把推送隐藏起来。
+**iOS** 在 Notification Service Extension 中改写推送，`asuka build` 会为调用了 `push.Rewrite` 的应用生成这个扩展：对于 `aps` 中带有 `"mutable-content": 1`（以及 `alert`，改写失败时显示的就是它）的每条推送，扩展都会在独立的进程中运行应用的 Go 代码。先运行 `main`，再运行 `f`；根组件不会运行，所以 `main` 要尽量轻量。iOS 给扩展大约 30 秒时间和 24 MB 内存，超时后会按原样显示推送。应用保存的数据在扩展里同样可用：数据（`asuka/sdk/store`、`store.Dir` 中的文件）存放在两者共享的 App Group 中，钥匙串项（`asuka/sdk/secure`）存放在应用的钥匙串组中。发布构建需要为扩展的 bundle ID（应用的 ID 加上 `.notification`）准备一个描述文件（可以用 `asuka.toml` 的 `ios.notificationProfile` 指定；默认使用已安装的描述文件中最匹配的那个），并开启 App Groups 功能、加入应用的组。在 iOS 上，改写无法把推送隐藏起来。
 
 **Android** 在应用的进程中改写 FCM 的数据消息：如果应用没有在运行，Go 代码会在没有界面的情况下启动，在大约十秒内完成改写，然后显示通知。如果改写后的数据消息既没有标题也没有正文，就不会显示。
 
@@ -1339,10 +1337,11 @@ pay.Button(pay.ButtonProps{
 
 这个令牌就是各家支付处理商的 SDK 所发送的内容。Apple Pay 的令牌是 `PKPaymentToken` 的 `paymentData`，一个 JSON 对象（Stripe 把它作为 `pk_token` 接收，Braintree 和 Adyen 作为 Apple Pay 令牌接收），它用商户 ID 的支付处理证书签名，这个证书由支付处理商持有。Google Pay 的令牌由请求中的 `Google.Gateway` 按网关的参数生成（Stripe 的 publishable key，Adyen 或 Braintree 的商户账号）；也可以用 `DirectKey` 加密给应用自己的服务器。
 
-Apple Pay 需要一个商户 ID（在 developer.apple.com 的 Identifiers 里创建 Merchant ID），并配上支付处理商提供的支付处理证书，写进 `asuka.json`：
+Apple Pay 需要一个商户 ID（在 developer.apple.com 的 Identifiers 里创建 Merchant ID），并配上支付处理商提供的支付处理证书，写进 `asuka.toml`：
 
-```json
-{ "applePay": { "merchantIds": ["merchant.com.example.tea"] } }
+```toml
+[applePay]
+merchantIds = ["merchant.com.example.tea"]
 ```
 
 导入了这个包的应用会获得带有这些商户 ID 的 in-app-payments entitlement；发布构建的描述文件要求应用的 App ID 开启 Apple Pay 能力，并关联同样的商户 ID（Mac 应用也需要描述文件，见[在 Mac 上](#在-mac-上)）。模拟器里的支付面板用测试卡付款，返回的令牌任何支付处理商都不会扣款。在 Web 上，Apple Pay 要求网站的域名已为该商户 ID 注册，并且要提供 `OnValidateMerchant`：由应用的服务器用商户身份证书向 Apple 请求商户会话（merchant session）。Google Pay 的 `TEST` 环境不需要任何账号，返回的是测试令牌；`Google.Production` 需要 Google Pay & Wallet Console 里的商户 ID，并且应用要在那里通过审核。导入了这个包的 Android 应用会带上 Google Pay 的库（`play-services-wallet`），在 manifest 里启用它的 API，并注册它的面板所回调的服务；没导入的应用则不会带上这些。
@@ -1399,7 +1398,7 @@ record.Stop()
 
 `Options.Stream` 录制的是 ADTS 流（`.aac`），它的每一帧都是完整的，所以即使应用崩溃或手机突然关机，已经录下的内容也不会丢；而 MPEG-4 文件在关闭之前是无法读取的。给它指定一个 `Path`，崩溃之后就能再找到这个文件；然后用 `record.Finalize(stream, dst)` 把它转成适合长期保存的 `.m4a`，转换后的文件可以正常拖动进度。无论录音是正常停止还是因崩溃中断，都可以这样处理。
 
-`Options.Background` 让录音在应用不可见、屏幕锁定时继续进行。iOS 需要在 `asuka.json` 中加上 `"ios": {"backgroundModes": ["audio"]}`；Android 会运行一个麦克风类型的前台服务，并显示一条常驻通知（`BackgroundTitle`），上面带有停止按钮。Google Play 会询问这个服务是做什么用的：上传之前请先完成声明。桌面应用在不可见时本来就会继续录音，所以 `Background` 在桌面端不起作用。
+`Options.Background` 让录音在应用不可见、屏幕锁定时继续进行。iOS 需要在 `asuka.toml` 的 `[ios]` 中加上 `backgroundModes = ["audio"]`；Android 会运行一个麦克风类型的前台服务，并显示一条常驻通知（`BackgroundTitle`），上面带有停止按钮。Google Play 会询问这个服务是做什么用的：上传之前请先完成声明。桌面应用在不可见时本来就会继续录音，所以 `Background` 在桌面端不起作用。
 
 ## 语音转文字：asuka/sdk/transcribe
 
@@ -1427,7 +1426,7 @@ screen.PreventCapture(true) // 票券上的二维码
 stop := screen.OnScreenshot(func() { note.Set("That screenshot shows your balance") })
 ```
 
-- `screen.Lock(o)` 把应用转到方向 `o` 并保持不变：`Portrait`、`PortraitUp`、`Landscape`、`LandscapeLeft`、`LandscapeRight`；`Any` 表示解除锁定。只能使用 `asuka.json` 允许的方向。处于分屏浏览（Split View）或台前调度（Stage Manager）中的 iPad，以及 Android 16 的大屏设备，会忽略这个设置。
+- `screen.Lock(o)` 把应用转到方向 `o` 并保持不变：`Portrait`、`PortraitUp`、`Landscape`、`LandscapeLeft`、`LandscapeRight`；`Any` 表示解除锁定。只能使用 `asuka.toml` 允许的方向。处于分屏浏览（Split View）或台前调度（Stage Manager）中的 iPad，以及 Android 16 的大屏设备，会忽略这个设置。
 - `screen.SetBars(bars)` 设置状态栏的 `Style`（`Auto` 跟随深色模式；`Light` 是浅色图标，适合下方是深色画面的情况；`Dark` 是深色图标），还可以隐藏状态栏（`HideStatus`）或 Android 的导航栏（`HideNavigation`；从屏幕边缘滑动会让它们短暂出现）。安全区域会随之更新。
 - `screen.PreventCapture(on)` 让应用不出现在截图和录屏中。Android 会把窗口设为安全窗口：截图和录屏都是黑屏，最近任务里也显示为空白。iOS 无法阻止截图：它只能在屏幕被录制、镜像或通过 AirPlay 投放时把应用遮住。
 - `screen.OnScreenshot(f)` 在用户截屏时调用 `f`（iOS；Android 14 及以上），直到调用 `stop`。
@@ -1438,10 +1437,14 @@ stop := screen.OnScreenshot(func() { note.Set("That screenshot shows your balanc
 
 ## 启动屏：asuka/sdk/splash
 
-`asuka.json` 的 `splash` 就是启动屏：一张图片（正方形 PNG，比如 logo），宽 `size` 点（默认 120，最大 160），居中显示在纯色背景上，浅色和深色模式可以分别设置。
+`asuka.toml` 的 `splash` 就是启动屏：一张图片（正方形 PNG，比如 logo），宽 `size` 点（默认 120，最大 160），居中显示在纯色背景上，浅色和深色模式可以分别设置。
 
-```json
-{ "splash": { "image": "logo.png", "size": 96, "background": "#4A63B5", "darkBackground": "#1B2440" } }
+```toml
+[splash]
+image = "logo.png"
+size = 96
+background = "#4A63B5"
+darkBackground = "#1B2440"
 ```
 
 它从用户点按图标开始显示，一直到应用的第一帧出现为止。在 iOS 上，先显示系统的启动屏，然后在应用上方覆盖一份一模一样的副本，直到第一帧准备好；在 Android 12 及以上是系统的启动画面（图片位于图标的圆形区域中央），更早的版本则用窗口背景来显示。桌面端和 Web 没有启动屏：`Hold` 和 `Hide` 在这些平台上什么也不做。如果想在应用加载期间一直显示启动屏，就在启动时（在根组件中）调用 `splash.Hold()`，加载完成后再调用 `splash.Hide()`：
@@ -1477,7 +1480,7 @@ maps.View(maps.Props{
 - `Type` 可以是 `Standard`、`Satellite`、`Hybrid` 或 `Muted`（iOS）；`ShowsUser` 显示用户的位置，需要定位权限（先导入 `asuka/sdk/location` 并请求权限）；`NoInteraction` 让地图变成一张静态预览。
 - 地图本身没有尺寸：要么给它设置尺寸，要么用 `Grow`。
 
-Android 需要一个启用了 Maps SDK for Android 的 Google Maps Platform API 密钥，写在 `asuka.json` 中：`{"android": {"mapsKey": "..."}}`。没有密钥时，地图上会显示相应提示，`OnError` 也会收到原因。在 Windows、Linux 和 Web 上，`Satellite` 和 `Hybrid` 显示的都是街道图（没有免费的卫星影像）；`ShowsUser` 在 Windows 和 Linux 上不显示任何内容，在浏览器中，只要页面获得了定位权限，就会显示用户的位置。在 iOS 和 Web 上，`Muted` 显示的是更素净的街道图。Linux 需要安装 libshumate（`libshumate-1.0-1`）。瓦片按照 OpenStreetMap 使用政策的要求从 `tile.openstreetmap.org` 获取，并在地图上标注其署名；Web 应用也可以从自己的服务器获取瓦片（见 [Web](web.md)）。
+Android 需要一个启用了 Maps SDK for Android 的 Google Maps Platform API 密钥，写在 `asuka.toml` 的 `[android]` 中：`mapsKey = "..."`。没有密钥时，地图上会显示相应提示，`OnError` 也会收到原因。在 Windows、Linux 和 Web 上，`Satellite` 和 `Hybrid` 显示的都是街道图（没有免费的卫星影像）；`ShowsUser` 在 Windows 和 Linux 上不显示任何内容，在浏览器中，只要页面获得了定位权限，就会显示用户的位置。在 iOS 和 Web 上，`Muted` 显示的是更素净的街道图。Linux 需要安装 libshumate（`libshumate-1.0-1`）。瓦片按照 OpenStreetMap 使用政策的要求从 `tile.openstreetmap.org` 获取，并在地图上标注其署名；Web 应用也可以从自己的服务器获取瓦片（见 [Web](web.md)）。
 
 ## 后台刷新：asuka/sdk/periodic
 
@@ -1576,10 +1579,14 @@ speech.Speak("Turn left in 200 meters", speech.Options{Rate: 1.1}, nil)
 
 ## 主屏幕小组件：asuka/sdk/widget
 
-`asuka.json` 的 `widgets` 声明应用有哪些小组件；`widget.Set` 则在应用的 Go 代码里为它们填充内容：
+`asuka.toml` 的 `widgets` 声明应用有哪些小组件；`widget.Set` 则在应用的 Go 代码里为它们填充内容：
 
-```json
-{ "widgets": [{ "kind": "today", "name": "Today", "description": "What's next", "sizes": ["small", "medium", "rectangular"] }] }
+```toml
+[[widgets]]
+kind = "today"
+name = "Today"
+description = "What's next"
+sizes = ["small", "medium", "rectangular"]
 ```
 
 ```go
@@ -1619,15 +1626,20 @@ a.End(liveactivity.Content{Title: "Order #1042", Subtitle: "Delivered"}, liveact
 
 ## 快捷方式：Siri、聚焦搜索与启动器
 
-`asuka.json` 的 `shortcuts` 列出系统为应用提供的快捷操作。每个快捷方式都会用它的 URL 打开应用，交给 `ui.OnOpenURL` 处理：
+`asuka.toml` 的 `shortcuts` 列出系统为应用提供的快捷操作。每个快捷方式都会用它的 URL 打开应用，交给 `ui.OnOpenURL` 处理：
 
-```json
-{ "shortcuts": [{ "id": "newNote", "title": "New Note", "url": "notes://new", "symbol": "square.and.pencil", "phrases": ["New note in ${app}"] }] }
+```toml
+[[shortcuts]]
+id = "newNote"
+title = "New Note"
+url = "notes://new"
+symbol = "square.and.pencil"
+phrases = ["New note in ${app}"]
 ```
 
 在 iOS 上，它们是 App Shortcuts：Siri 能听懂它们的短语（每个短语都要包含代表应用名称的 `${app}`），它们还会出现在聚焦搜索、“快捷指令”App 和操作按钮中，用户无需做任何设置（最多十个）。CLI 会把它们编译成 App Intents，并像 Xcode 那样提取它们的元数据。在 Android 上，它们是启动器快捷方式，长按应用图标时出现，图标使用强调色。桌面端和 Web 不会添加它们。
 
-模拟器构建会像 Xcode 那样签名，使用钥匙串中的 Apple Development 身份（属于 `asuka.json` 中指定的团队）：App Intents 只能在带有团队的应用中运行。如果没有团队，构建会采用临时（ad hoc）签名，CLI 会提示快捷方式将无法运行。
+模拟器构建会像 Xcode 那样签名，使用钥匙串中的 Apple Development 身份（属于 `asuka.toml` 中指定的团队）：App Intents 只能在带有团队的应用中运行。如果没有团队，构建会采用临时（ad hoc）签名，CLI 会提示快捷方式将无法运行。
 
 ## 触感反馈：ui.Haptic
 
@@ -1681,7 +1693,7 @@ Go 的崩溃由 Go 运行时自己保存（`runtime/debug.SetCrashOutput`，在�
 
 报告的 `Text` 是平台给出的原始内容（Go 的崩溃输出、调用栈、tombstone、ANR 的 trace）；`Threads` 是把这些调用栈解析成的帧，崩溃的线程排在最前面。Go 的帧包含函数、文件和行号。原生帧包含所在的二进制文件、该二进制的 UUID（Mach-O）或 build ID（ELF）、地址以及它在二进制中的偏移，崩溃收集服务正是用这些信息，配合构建时产出的符号来做符号化（见[发布](shipping.md#崩溃报告的符号)）。
 
-**发送到 Sentry 或 Crashlytics。** 对于 Sentry，把每份报告转成一个事件，发到它的 envelope 端点（`https://<host>/api/<project>/envelope/`，使用你 DSN 中的 key）：`exception.values[0]` 的 `type` 为 `Kind`，`value` 为 `Message`，`stacktrace.frames` 为崩溃线程的帧，从最外层开始排列（这是 Sentry 的顺序，与 `Thread` 中的顺序相反），每一帧带上 `function`、`filename` 和 `lineno`，原生帧则带上 `instruction_addr` 和 `package`；再在 `debug_meta.images` 中列出这些帧所在的每个二进制文件：`{"type": "macho", "debug_id": BinaryID, "image_addr": Address-Offset}`（Android 上为 `"elf"`），这样你用 `sentry-cli` 上传的 dSYM 或符号文件才能派上用场。`Context` 放进 `contexts`、`tags` 和 `breadcrumbs`。Crashlytics 没有可以直接发送的公开端点：你可以把报告发到自己的服务器，或者在你自己的原生模块里（[原生代码](native.md)）通过 Crashlytics 的 SDK 把它们记录为非致命错误。不管用哪种方式，App Store 审核都会问到崩溃数据：如果你发送了，就要如实声明（在 `asuka.json` 的 `ios.collected` 中加上 `{"type": "CrashData", "purposes": ["AppFunctionality"]}`）。
+**发送到 Sentry 或 Crashlytics。** 对于 Sentry，把每份报告转成一个事件，发到它的 envelope 端点（`https://<host>/api/<project>/envelope/`，使用你 DSN 中的 key）：`exception.values[0]` 的 `type` 为 `Kind`，`value` 为 `Message`，`stacktrace.frames` 为崩溃线程的帧，从最外层开始排列（这是 Sentry 的顺序，与 `Thread` 中的顺序相反），每一帧带上 `function`、`filename` 和 `lineno`，原生帧则带上 `instruction_addr` 和 `package`；再在 `debug_meta.images` 中列出这些帧所在的每个二进制文件：`{"type": "macho", "debug_id": BinaryID, "image_addr": Address-Offset}`（Android 上为 `"elf"`），这样你用 `sentry-cli` 上传的 dSYM 或符号文件才能派上用场。`Context` 放进 `contexts`、`tags` 和 `breadcrumbs`。Crashlytics 没有可以直接发送的公开端点：你可以把报告发到自己的服务器，或者在你自己的原生模块里（[原生代码](native.md)）通过 Crashlytics 的 SDK 把它们记录为非致命错误。不管用哪种方式，App Store 审核都会问到崩溃数据：如果你发送了，就要如实声明（在 `asuka.toml` 的 `ios.collected` 中加上 `{"type": "CrashData", "purposes": ["AppFunctionality"]}`）。
 
 **各平台的细节。** iOS 只会把 MetricKit 链接进读取报告的应用（调用了 `crash.Reports` 或 `crash.OnReport` 的应用），并且把诊断交给应用本身，而不是它的分享扩展。带有自己分享面板（`app.ShareSheet`）的应用，会把面板的崩溃和应用自己的放在一起，保存在两者的 App Group 中，任何一方都能读取。从 iOS 17 开始，MetricKit 会给出崩溃的进程 ID，借此可以把崩溃关联到那一次运行的上下文；在此之前，则关联到崩溃之前的最后一次运行。MetricKit 在模拟器上不会送达诊断。Android 不需要额外配置；Android 11 之前没有原生崩溃和 ANR 的记录。macOS：MetricKit 从 macOS 12 开始可用；导致应用退出的未捕获 Objective-C 异常会以 MetricKit 崩溃报告的形式出现（主线程上的这类异常会被 AppKit 捕获并记入日志）。Windows：进程没有处理的每一个异常都由 Go 运行时处理（它是最后一个处理程序）：它会打印出异常和所有 goroutine，然后退出。在没有控制台的情况下（发布构建，以 GUI 程序构建），Asuka 会把运行时打印的内容写入本次运行对应的文件，下次启动时读取，生成一份 `Native` 报告。Asuka 不会设置自己的未处理异常过滤器：Go 的处理程序会先运行，替换它会破坏 Go 自身的异常处理。Windows 错误报告（Windows Error Reporting）照常保留它自己的记录。在浏览器中，Go 运行时无法把崩溃输出写入文件（`SetCrashOutput` 依赖 `dup`），所以宿主会在 Go 运行期间保存运行时打印的内容，等程序因 panic 或致命错误结束时，把它写入本次运行的记录，存放在应用的文件中（IndexedDB），下次启动时就会读取。未捕获的 JavaScript 错误（无论来自宿主还是应用的 `web/*.js`）会立即生成一份 `Exception` 报告，它是非致命的（页面会继续运行），并附带本次运行的上下文；每次运行最多 20 份，同一个错误只报告一次。每个页面都会在同源的 `localStorage` 里标记自己这次运行还活着，这样应用其他开着的页面就不会去动它的记录。
 

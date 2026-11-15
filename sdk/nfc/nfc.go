@@ -19,9 +19,9 @@
 // thread).
 //
 // Tags read while the app isn't open come to it too: on iOS, a tag
-// whose URI is one of the app's universal links (asuka.json's links)
+// whose URI is one of the app's universal links (asuka.toml's links)
 // opens it, as any of its links do (ui.OnOpenURL); on Android, the tags
-// of asuka.json's nfc filters, the URIs to ui.OnOpenURL and the others
+// of asuka.toml's nfc filters, the URIs to ui.OnOpenURL and the others
 // to OnOpen.
 package nfc
 
@@ -281,7 +281,7 @@ type Options struct {
 	// message (iOS's NFCNDEFReaderSession, whose tags have no ID and take
 	// no raw commands; elsewhere every kind). Any: those kinds, with
 	// their IDs and raw commands (iOS's NFCTagReaderSession, which needs
-	// asuka.json's nfc.iso7816 for ISO 7816 cards and nfc.felica for
+	// asuka.toml's nfc.iso7816 for ISO 7816 cards and nfc.felica for
 	// FeliCa; Android's reader mode flags). The web reads NDEF only.
 	Poll Poll
 	// SkipNDEF: don't read the NDEF message as a tag is found (Android's
@@ -517,7 +517,7 @@ type (
 	// ISO7816Info is an ISO 7816 card's.
 	ISO7816Info struct {
 		// AID is the application iOS selected as it found the card: one
-		// of asuka.json's nfc.iso7816, in hex.
+		// of asuka.toml's nfc.iso7816, in hex.
 		AID string
 		// Historical are its historical bytes (from the ATS: ISO 14443-A);
 		// HiLayer its higher layer response (ISO 14443-B).
@@ -819,7 +819,7 @@ var (
 
 // OnOpen calls f, on the main thread, with each tag the system opens the
 // app with, at launch or since (Android's NDEF_DISCOVERED and
-// TECH_DISCOVERED, of asuka.json's nfc filters), until stop; a tag that
+// TECH_DISCOVERED, of asuka.toml's nfc filters), until stop; a tag that
 // came before any f waits for the first. A tag whose URI opened the app
 // goes to ui.OnOpenURL instead, and iOS opens apps only with those (its
 // background tag reading of the app's universal links). The tag can be

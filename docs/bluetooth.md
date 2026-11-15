@@ -34,7 +34,7 @@ no: they allow it in the app's settings.
 
 | Platform | What `Request` asks |
 | --- | --- |
-| iOS, macOS | The system's prompt, with `NSBluetoothAlwaysUsageDescription` (asuka.json's `ios.usage`; the package gives a generic one) |
+| iOS, macOS | The system's prompt, with `NSBluetoothAlwaysUsageDescription` (asuka.toml's `ios.usage`; the package gives a generic one) |
 | Android | The nearby devices permission (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`), and the location permission for an app whose scans find where the user is (`bluetooth.location`, below) |
 | Windows | Access to the radio (Settings' privacy page can refuse it) |
 | Linux | Nothing: BlueZ decides. A Flatpak without access to `org.bluez` is `Denied` |
@@ -184,15 +184,12 @@ can't, or stops: the web has no peripheral role (`ErrNotAvailable`).
 ## In the background
 
 An app that keeps using Bluetooth with its screen away says so in
-`asuka.json`:
+`asuka.toml`:
 
-```json
-{
-  "bluetooth": {
-    "background": ["central", "peripheral"],
-    "location": false
-  }
-}
+```toml
+[bluetooth]
+background = ["central", "peripheral"]
+location = false
 ```
 
 - `"central"`: iOS's `bluetooth-central` background mode, with state

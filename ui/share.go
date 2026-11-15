@@ -133,7 +133,7 @@ var (
 
 // OnShare calls f with what another app shares with this one from its
 // share sheet ("Share" in YouTube, a browser, Photos), which offers this
-// app with asuka.json's "shareTarget": texts, links and files, in the
+// app with asuka.toml's shareTarget: texts, links and files, in the
 // order the other app gave them. What came before any handler (the share
 // that launched the app) goes to the first. It stops with the
 // component's owner. Main thread.

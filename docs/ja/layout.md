@@ -370,13 +370,13 @@ ui.View(ui.ViewProps{
 
 ## アクセントカラー
 
-`colors.Accent` と、それを使うコントロールは、`asuka.json` に書いたアプリのアクセントカラーを使います。
+`colors.Accent` と、それを使うコントロールは、`asuka.toml` に書いたアプリのアクセントカラーを使います。
 
-```json
-{ "accent": "#7c3aed" }
+```toml
+accent = "#7c3aed"
 ```
 
-アクセントカラーは、iOS ではティントカラーになり、Android では Material 3 のカラースキームのシードカラーになります（Android 12 以降）。`"android": {"dynamicColor": true}` を指定すると、Android は Material のアプリと同じく、システムが対応していればユーザーの壁紙から色を取ります。macOS、Windows、Linux では、Asuka のコントロールと色の中で、システムのアクセントカラーの代わりに使われます。Web では、さらにコントロールの `accent-color` にもなります。
+アクセントカラーは、iOS ではティントカラーになり、Android では Material 3 のカラースキームのシードカラーになります（Android 12 以降）。`[android]` に `dynamicColor = true` を指定すると、Android は Material のアプリと同じく、システムが対応していればユーザーの壁紙から色を取ります。macOS、Windows、Linux では、Asuka のコントロールと色の中で、システムのアクセントカラーの代わりに使われます。Web では、さらにコントロールの `accent-color` にもなります。
 
 アクセントカラーを指定しなければ、プラットフォームのものが使われます。macOS と Windows ではユーザーが選んだアクセントカラー（macOS は「システム設定」>「外観」、Windows は「設定」>「個人用設定」>「色」）、Linux では libadwaita の青、Web では Asuka 独自の青です。[配布](shipping.md)も参照してください。
 

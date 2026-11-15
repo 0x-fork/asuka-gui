@@ -40,15 +40,15 @@ type publishOptions struct {
 
 func publishFlags(o *publishOptions) *flagSet {
 	fs := newFlagSet("publish", "[dir]")
-	fs.about = "Makes a release build of the app and uploads it to App Store Connect or Google Play; a desktop app's, with its update, to asuka.json's updates (GitHub's releases, an S3 bucket)."
+	fs.about = "Makes a release build of the app and uploads it to App Store Connect or Google Play; a desktop app's, with its update, to asuka.toml's updates (GitHub's releases, an S3 bucket)."
 	platformFlag(fs, &o.platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux},
-		"the `platform` whose store to upload to: ios, App Store Connect (TestFlight and the App Store); android, Google Play; mac, windows or linux, the update files where asuka.json's updates say (installed apps update to it)")
+		"the `platform` whose store to upload to: ios, App Store Connect (TestFlight and the App Store); android, Google Play; mac, windows or linux, the update files where asuka.toml's updates say (installed apps update to it)")
 	fs.String(&o.sign, "sign", 0, "", "macOS: a signing `identity`, e.g. \"Developer ID Application: ...\" (default: ad hoc)")
 	fs.String(&o.notarize, "notarize", 0, "", "macOS: notarize the app and staple the ticket: a notarytool keychain `profile`, or \"env\"")
 	fs.String(&o.arch, "arch", 0, "", "Linux and Windows: amd64 or arm64")
-	fs.String(&o.version, "version", 0, "", "the `version` to build, in place of asuka.json's (as CI takes it from the tag)")
+	fs.String(&o.version, "version", 0, "", "the `version` to build, in place of asuka.toml's (as CI takes it from the tag)")
 	fs.String(&o.file, "file", 0, "", "upload this .ipa or .aab (from asuka build) instead of building one")
-	fs.Int(&o.build, "build", 0, 0, "the build `number` (default: one more than the store's highest, at least asuka.json's build)")
+	fs.Int(&o.build, "build", 0, 0, "the build `number` (default: one more than the store's highest, at least asuka.toml's build)")
 	fs.String(&o.notes, "notes", 0, "", "what's new: text in the store's default language, @file likewise, or @dir with a file per language as the store names it (en-US.txt); TestFlight's What to Test and, with --review, the App Store's What's New; Play's release notes")
 	fs.String(&o.groups, "groups", 0, "", "iOS: the TestFlight groups to give the build to, by name, comma separated (with an external group, the build goes to beta review)")
 	fs.Bool(&o.review, "review", 0, "iOS: submit the version, with this build, for App Store review")
@@ -58,7 +58,7 @@ func publishFlags(o *publishOptions) *flagSet {
 	fs.Float(&o.rollout, "rollout", 0, 0, "Android: roll the release out to this `fraction` of users, as 0.1, raised later in the Play Console (default: all)")
 	fs.Bool(&o.draft, "draft", 0, "Android: a draft release, to roll out in the Play Console; mac, windows, linux on GitHub: upload to a draft release, which you publish once every platform is there (default: published)")
 	fs.Bool(&o.cancelReview, "cancel-review", 0, "Android: if the app has changes in review, cancel that review and send them with this release (default: stop)")
-	fs.String(&o.profile, "profile", 0, "", "iOS: a provisioning `profile`'s path, name or UUID (default: asuka.json's, else the best match installed)")
+	fs.String(&o.profile, "profile", 0, "", "iOS: a provisioning `profile`'s path, name or UUID (default: asuka.toml's, else the best match installed)")
 	fs.String(&o.out, "out", 'o', "", "the output `directory` of the build (default: dist in the app's directory)")
 	fs.Bool(&o.noVet, "no-vet", 0, "don't run asuka vet first (by default it prints what it finds, as warnings: the build goes on)")
 	fs.Bool(&o.verbose, "verbose", 'v', "print the commands asuka runs and its requests to the store")
@@ -196,7 +196,7 @@ func aabPath(cfg *appConfig, o *buildOptions) string {
 
 // nextBuild is the build number to publish: want if given, which must
 // be above the store's highest; else one more than the store's highest,
-// and at least asuka.json's.
+// and at least asuka.toml's.
 func nextBuild(highest, configured, want int) (int, error) {
 	if want > 0 {
 		if want <= highest {
@@ -378,7 +378,7 @@ func publishIOSSteps(c *ascClient, app *goApp, o *publishOptions, notes map[stri
 			return err
 		}
 		if info.id != cfg.ID {
-			return fmt.Errorf("%s is %s, but asuka.json's id is %s", o.file, info.id, cfg.ID)
+			return fmt.Errorf("%s is %s, but asuka.toml's id is %s", o.file, info.id, cfg.ID)
 		}
 		version = info.version
 	}

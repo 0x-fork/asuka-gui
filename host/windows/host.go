@@ -992,7 +992,7 @@ func (h *Host) Measure(id ops.NodeID, c layout.Constraints) layout.Size {
 	return h.measure(n, c)
 }
 
-// appName is the app's name: asuka.json's, or the executable's.
+// appName is the app's name: asuka.toml's, or the executable's.
 func appName() string {
 	if boot.Name != "" {
 		return boot.Name

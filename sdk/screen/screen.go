@@ -20,7 +20,7 @@ import (
 type Orientation uint8
 
 const (
-	// Any is asuka.json's orientations (default: all the device turns to):
+	// Any is asuka.toml's orientations (default: all the device turns to):
 	// unlocked.
 	Any Orientation = iota
 	// Portrait is upright (and upside down, where the platform allows it:
@@ -39,7 +39,7 @@ const (
 
 // Lock turns the app to o and keeps it there, whichever way the device is
 // held (a video player's landscape, a scanner's portrait); Lock(Any)
-// unlocks it. An orientation asuka.json's orientations leave out stays
+// unlocks it. An orientation asuka.toml's orientations leave out stays
 // out. iPad apps in Split View or Stage Manager, and Android's large
 // screens (Android 16 and later), are whatever shape their window is: the
 // lock doesn't hold there.

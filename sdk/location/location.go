@@ -1,7 +1,7 @@
 // Package location is where the device is: now, and as it moves, with
 // the user's permission, which it asks for the first time (Core
 // Location; Android's location manager, which needs no Play services).
-// An app that imports it is given the permissions it needs; asuka.json's
+// An app that imports it is given the permissions it needs; asuka.toml's
 // ios.usage.NSLocationWhenInUseUsageDescription says why to the user.
 //
 // With the app out of sight too (expo-location's background updates and

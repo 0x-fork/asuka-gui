@@ -41,29 +41,25 @@ comes with an XCFramework of each library, for that app to embed too.
 
 ## Writing a plugin
 
-A plugin is a package with a manifest beside it, `asuka-plugin.json`:
+A plugin is a package with a manifest beside it, `asuka-plugin.toml`:
 
-```json
-{
-  "name": "sqlite",
-  "sources": ["csrc", "internal/build"],
-  "libraries": [
-    {
-      "name": "asqlite",
-      "version": "3.54.1",
-      "release": "https://github.com/egoist/asuka/releases/download/plugin-sqlite",
-      "files": {
-        "darwin": {"name": "libasqlite.dylib"},
-        "ios": {"name": "asqlite"},
-        "ios-simulator": {"name": "asqlite"},
-        "android-arm64": {"name": "libasqlite.so"},
-        "linux-amd64": {"name": "libasqlite.so"},
-        "windows-amd64": {"name": "asqlite.dll"},
-        "wasm": {"name": "asqlite.wasm"}
-      }
-    }
-  ]
-}
+```toml
+name = "sqlite"
+sources = ["csrc", "internal/build"]
+
+[[libraries]]
+name = "asqlite"
+version = "3.54.1"
+release = "https://github.com/egoist/asuka/releases/download/plugin-sqlite"
+
+[libraries.files]
+darwin = {name = "libasqlite.dylib"}
+ios = {name = "asqlite"}
+ios-simulator = {name = "asqlite"}
+android-arm64 = {name = "libasqlite.so"}
+linux-amd64 = {name = "libasqlite.so"}
+windows-amd64 = {name = "asqlite.dll"}
+wasm = {name = "asqlite.wasm"}
 ```
 
 - `name` is the plugin's, as the CLI's messages name it.
@@ -84,7 +80,7 @@ path `plugin.LibraryPath` gives, from a file in the manifest's
 directory:
 
 ```go
-//go:embed asuka-plugin.json
+//go:embed asuka-plugin.toml
 var manifest []byte
 
 func load() (uintptr, error) {
@@ -120,7 +116,8 @@ go run ./cmd/asuka plugin publish sdk/sqlite     # publish
 (`asqlite-darwin-1982f596dd7c-libasqlite.dylib.gz`). It uploads the ones
 the release doesn't have yet, with `gh`, making the release if it isn't
 there. It downloads each one back to check it, and records them in the
-manifest, which is what you commit. A file a release has is never
+manifest, which is what you commit. It writes the whole manifest, under
+a comment that says so, so comments of yours in it don't last. A file a release has is never
 replaced, so every manifest a commit had keeps working. A build older
 than the plugin's sources stops it: build again first.
 

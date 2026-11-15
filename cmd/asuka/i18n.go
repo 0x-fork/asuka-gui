@@ -23,10 +23,12 @@ import (
 	"github.com/egoist/asuka/internal/l10n"
 )
 
-// i18nConfig is asuka.json's "i18n": where the app's catalogs are. An app
+// i18nConfig is asuka.toml's i18n: where the app's catalogs are. An app
 // with a locales directory of catalogs needs none of it.
 //
-//	"i18n": {"dir": "locales", "source": "en"}
+//	[i18n]
+//	dir = "locales"
+//	source = "en"
 type i18nConfig struct {
 	// Dir holds a catalog per language, named after its BCP 47 tag: en.json,
 	// de.json, zh-Hans.json (default: locales).
@@ -56,7 +58,7 @@ func setDevLocale(lang, dir string) error {
 	return nil
 }
 
-// useI18nDefaults finds the app's catalogs when asuka.json doesn't say where
+// useI18nDefaults finds the app's catalogs when asuka.toml doesn't say where
 // they are, and fills in what it leaves out.
 func (c *appConfig) useI18nDefaults(dir string) {
 	c.dir = dir
@@ -306,7 +308,7 @@ func i18nInit(args []string) error {
 		return err
 	}
 	if c.I18n.Source != tag {
-		return fmt.Errorf("the source language is %s, as asuka.json says", c.I18n.Source)
+		return fmt.Errorf("the source language is %s, as asuka.toml says", c.I18n.Source)
 	}
 	if err := c.generateCatalogs(); err != nil {
 		return err
@@ -458,7 +460,7 @@ func (c *appConfig) writeLprojs(dir string) error {
 	return nil
 }
 
-// packagingSource returns what a packaging key says in asuka.json, which is
+// packagingSource returns what a packaging key says in asuka.toml, which is
 // what Swift looks up: a shortcut's title or a widget's name or description.
 func (c *appConfig) packagingSource(key string, source map[string]string) string {
 	if v, ok := strings.CutPrefix(key, "shortcut."); ok {

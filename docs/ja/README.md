@@ -64,12 +64,12 @@ Asuka には Go 1.26 以降が必要です。アプリが動作するのは、iO
 - [ネイティブコード](native.md)：ネイティブパッケージ。Go で宣言し、各プラットフォームのプロジェクトで実装する型付きのモジュールとビュー（iOS と macOS は Swift、Android は Kotlin、Web は JavaScript、Windows と Linux は Go）
 - [開発](development.md)：各プラットフォームでの `asuka dev` の詳細、デバイス、`asuka vet`、テスト、よくある問題
 - [テスト](testing.md)：デバイスもディスプレイも使わない、`go test` でのアプリの UI のテスト。タップや入力と画面の表示内容の確認、スナップショット、アプリのゴルーチンの待機
-- [配布](shipping.md)：App Store と Google Play 向けのビルド、署名・公証済みの Mac アプリ、Windows 向けのフォルダー、Linux のアーカイブと Flatpak マニフェスト、デスクトップアプリの署名付きアップデート、`asuka.json` に記述するアプリの情報
+- [配布](shipping.md)：App Store と Google Play 向けのビルド、署名・公証済みの Mac アプリ、Windows 向けのフォルダー、Linux のアーカイブと Flatpak マニフェスト、デスクトップアプリの署名付きアップデート、`asuka.toml` に記述するアプリの情報
 - [Web](web.md)：同じアプリを WebAssembly とページの DOM でブラウザーで動かす仕組み、`asuka dev --platform web`、デプロイできる静的サイト、ほかのページへの埋め込み、まだできないこと
 
 ## リファレンス
 
-- [asuka.json](asuka-json.md)：アプリの `asuka.json` のすべてのキーについて、型、デフォルト値、各プラットフォームでの働き
+- [asuka.toml](asuka-toml.md)：アプリの `asuka.toml` のすべてのキーについて、型、デフォルト値、各プラットフォームでの働き
 - [SwiftUI・Expo との比較](parity.md)：Asuka にあるもの、まだないもの
 - [Asuka と MyGo](mygo.md)：プラットフォーム純正のウィジェットか、フレームワークが描く UI か。それぞれが動く環境（MyGo のスマートフォン対応は近日公開予定）と、どちらを使うべきか
 - Go の API：`go doc -all github.com/egoist/asuka/ui` と、モジュール内のほかのパッケージ

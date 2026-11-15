@@ -37,10 +37,10 @@
 // thread: call it from a goroutine.
 //
 // The app needs the user's permission: Request asks for it (iOS's and
-// macOS's prompt, with asuka.json's ios.usage
+// macOS's prompt, with asuka.toml's ios.usage
 // NSBluetoothAlwaysUsageDescription; Android 12's nearby devices
 // permission, the location permission before). An app that imports the
-// package is given what it declares; asuka.json's "bluetooth" asks for
+// package is given what it declares; asuka.toml's bluetooth asks for
 // the background modes (docs/bluetooth.md).
 package bluetooth
 
@@ -403,7 +403,7 @@ func keys[K comparable, V any](m map[K]V) []K {
 // Bluetooth while the app wasn't running.
 type Restored struct {
 	// Devices are those iOS kept connected (or connecting) for the app
-	// (state restoration: asuka.json's bluetooth.background "central"):
+	// (state restoration: asuka.toml's bluetooth.background "central"):
 	// Connect to them to use them again, which is immediate.
 	Devices []Device
 	// ScanServices are the services of the scan iOS kept running (start

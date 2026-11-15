@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// asuka/sdk/purchase's StoreKit configuration file (asuka.json's
+// asuka/sdk/purchase's StoreKit configuration file (asuka.toml's
 // ios.storekit): asuka dev's build for the simulator carries it, as
 // AsukaStoreKit.storekit, and launched by asuka dev the host sells from it
 // (platform/ios's AsukaStoreKitTest), as an app run from Xcode with the
@@ -50,7 +50,7 @@ func (c *appConfig) copyStoreKit(bundle string) error {
 	}
 	b, err := os.ReadFile(src)
 	if err != nil {
-		return fmt.Errorf("asuka.json's ios.storekit: %v", err)
+		return fmt.Errorf("asuka.toml's ios.storekit: %v", err)
 	}
 	return os.WriteFile(filepath.Join(bundle, storeKitName), b, 0o644)
 }

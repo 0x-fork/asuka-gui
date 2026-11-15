@@ -41,7 +41,7 @@ The flags, beside `asuka dev`'s own (`--lang`, `--dir`, `--no-vet`, `-v`):
 `asuka build --platform web` makes a static site in `dist/web`:
 
 - `index.html` and `manifest.webmanifest` (a web app manifest, so a
-  browser offers to install the app; its icons from `asuka.json`'s
+  browser offers to install the app; its icons from `asuka.toml`'s
   `icon`, with a favicon and iOS's home screen icon);
 - the app, `app.<digest>.wasm`, built stripped and with `-trimpath`;
 - the web host's files in `asuka/<digest>/` (with SQLite's WebAssembly
@@ -61,7 +61,7 @@ The flags, beside `asuka dev`'s own (`--lang`, `--dir`, `--no-vet`, `-v`):
   page, so a [router](#addresses-and-history)'s addresses open the app.
 
 `index.html`'s `<base href>` is the path the site is served at: `/` by
-default, else `asuka.json`'s `web.base` or `--base` (`"/app/"` for
+default, else `asuka.toml`'s `web.base` or `--base` (`"/app/"` for
 `https://example.com/app/`). The page finds its files from any address
 under it, and a router's hrefs are the page's addresses under it
 (`/chat/7` is `https://example.com/app/chat/7`).
@@ -426,10 +426,11 @@ a push from your server at that time.
 
 Web Push needs a VAPID key pair: the app's server signs its pushes with
 the private key, and the browser subscribes with the public one, which
-goes in `asuka.json`:
+goes in `asuka.toml`:
 
-```json
-{ "web": { "vapidPublicKey": "BKpYsAT0ADj2pHQQ..." } }
+```toml
+[web]
+vapidPublicKey = "BKpYsAT0ADj2pHQQ..."
 ```
 
 Make the pair once, and keep the private key on the server; a new pair

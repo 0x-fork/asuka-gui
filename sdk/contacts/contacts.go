@@ -5,7 +5,7 @@
 // Pick and Add need no permission: the user picks, or saves, in the
 // system's own screen. List reads the address book, with the user's
 // permission (Request); an app that imports this package is given what
-// it needs (iOS's NSContactsUsageDescription, which asuka.json's
+// it needs (iOS's NSContactsUsageDescription, which asuka.toml's
 // ios.usage says better; Android's READ_CONTACTS).
 package contacts
 

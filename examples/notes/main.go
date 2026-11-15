@@ -85,7 +85,7 @@ func export(notes []note) {
 
 func App() ui.Node {
 	query := signal.New("")
-	// asukanotes://add?text=... adds a note (asuka.json's scheme).
+	// asukanotes://add?text=... adds a note (asuka.toml's scheme).
 	ui.OnOpenURL(func(raw string) {
 		if u, err := url.Parse(raw); err == nil && u.Host == "add" {
 			if t := u.Query().Get("text"); t != "" {

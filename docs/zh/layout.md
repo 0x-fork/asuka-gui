@@ -370,13 +370,13 @@ ui.View(ui.ViewProps{
 
 ## 强调色
 
-`colors.Accent` 以及用到它的控件，都从 `asuka.json` 读取应用的强调色：
+`colors.Accent` 以及用到它的控件，都从 `asuka.toml` 读取应用的强调色：
 
-```json
-{ "accent": "#7c3aed" }
+```toml
+accent = "#7c3aed"
 ```
 
-在 iOS 上它是着色（tint）；在 Android 上它是 Material 3 配色方案的种子色（Android 12 及以上）。设置 `"android": {"dynamicColor": true}` 后，只要系统支持，Android 就会像其他 Material 应用一样，从用户的壁纸中取色。在 macOS、Windows 和 Linux 上，它会在 Asuka 的控件和颜色中替换系统的强调色；在 Web 上，它同时也是控件的 `accent-color`。
+在 iOS 上它是着色（tint）；在 Android 上它是 Material 3 配色方案的种子色（Android 12 及以上）。在 `[android]` 中设置 `dynamicColor = true` 后，只要系统支持，Android 就会像其他 Material 应用一样，从用户的壁纸中取色。在 macOS、Windows 和 Linux 上，它会在 Asuka 的控件和颜色中替换系统的强调色；在 Web 上，它同时也是控件的 `accent-color`。
 
 如果没有设置强调色，就使用平台自己的。在 macOS 和 Windows 上，这是用户自己选的强调色（macOS 的“系统设置 > 外观”；Windows 的“设置 > 个性化 > 颜色”）；在 Linux 上是 libadwaita 的蓝色；在 Web 上是 Asuka 自带的一种蓝色。参见[发布](shipping.md)。
 

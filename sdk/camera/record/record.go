@@ -1,6 +1,6 @@
 // Package record records video from the camera.View on screen (its Mode
 // camera.Video), with sound unless muted. An app that imports it is given
-// the microphone's permission and purpose string (asuka.json's
+// the microphone's permission and purpose string (asuka.toml's
 // ios.usage.NSMicrophoneUsageDescription says it better); apps that only
 // take photos go without.
 package record

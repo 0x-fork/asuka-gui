@@ -419,7 +419,7 @@ func (c *appConfig) nativeNeeds(ps []nativePackage, platform string) error {
 					sort.Strings(have)
 					c.nativePlist[k] = have
 				case string:
-					// A purpose string is a usage: the app's asuka.json says better.
+					// A purpose string is a usage: the app's asuka.toml says better.
 					if strings.HasSuffix(k, "UsageDescription") {
 						if c.IOS.Usage == nil {
 							c.IOS.Usage = map[string]string{}

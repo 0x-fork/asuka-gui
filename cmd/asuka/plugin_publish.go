@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -40,9 +39,9 @@ func cmdPlugin(args []string) error {
 	}
 	fs := newFlagSet("plugin publish", "[dir]")
 	fs.about = `Publishes a plugin's libraries: its build of each (build/<target> beside its
-asuka-plugin.json, as its build tool writes it), gzipped and named for its
+asuka-plugin.toml, as its build tool writes it), gzipped and named for its
 hash, uploaded with gh to its library's release (a GitHub release, made if
-it isn't there), then recorded in asuka-plugin.json, for apps to download.
+it isn't there), then recorded in asuka-plugin.toml, for apps to download.
 A build older than the plugin's sources stops it.`
 	if err := fs.parse(args[1:]); err != nil {
 		return err
@@ -122,11 +121,11 @@ func publishPlugin(dir string) error {
 			m.Libraries[i].Files[a.target] = a.file
 		}
 	}
-	out, err := json.MarshalIndent(m, "", "  ")
+	out, err := m.Marshal()
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(path, out, 0o644); err != nil {
 		return err
 	}
 	fmt.Printf("asuka: published plugin %s, recorded in %s\n", m.Name, path)
@@ -152,7 +151,7 @@ func githubRelease(release string) (repo, tag string, err error) {
 func uploadAssets(repo, tag, pluginName string, assets []pluginAsset) error {
 	if exec.Command("gh", "release", "view", tag, "-R", repo).Run() != nil {
 		fmt.Printf("asuka: making the release %s of %s\n", tag, repo)
-		notes := fmt.Sprintf("The libraries of Asuka's %s plugin, each file named for its hash: what its asuka-plugin.json names.", pluginName)
+		notes := fmt.Sprintf("The libraries of Asuka's %s plugin, each file named for its hash: what its asuka-plugin.toml names.", pluginName)
 		c := exec.Command("gh", "release", "create", tag, "-R", repo, "--title", "Asuka plugin: "+pluginName, "--notes", notes, "--latest=false")
 		if b, err := c.CombinedOutput(); err != nil {
 			return fmt.Errorf("gh release create: %v\n%s", err, b)

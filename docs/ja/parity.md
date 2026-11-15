@@ -67,7 +67,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | ポップオーバー | `.popover` | — | ✓ `Popover`（iPhone でもポップオーバー） |
 | アラート、アクションシート | `.alert`、`.confirmationDialog` | `Alert` | ✓ `Alert`（両方のスタイル。アラートのテキストフィールド：`Fields`、パスワード用の `Secure`、`Disabled` で入力に応じて有効になるボタン） |
 | スナックバー、トースト（「元に戻す」付きの短いメッセージ） | — | コミュニティ製（react-native-paper の `Snackbar`） | ✓ `Snackbar`（Android では Material のもの、Linux では `AdwToast`。iOS、macOS、Windows、Web ではプラットフォームらしい見た目で描画） |
-| ディープリンク、ユニバーサルリンクと App Links | `.onOpenURL` | Linking | ✓ `OnOpenURL`、`asuka.json` の scheme と links |
+| ディープリンク、ユニバーサルリンクと App Links | `.onOpenURL` | Linking | ✓ `OnOpenURL`、`asuka.toml` の scheme と links |
 | 引っ張って更新、スワイプアクション | `.refreshable`、`.swipeActions` | `RefreshControl` | ✓（両端：`SwipeActions`、`LeadingSwipeActions`） |
 
 ## モーション
@@ -119,7 +119,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | ネットワークの状態 | `NWPathMonitor` | `expo-network` | ✓ `asuka/sdk/network`（オンラインかどうか、Wi-Fi かモバイル通信か、従量制かどうか、データセーバー／省データモード） |
 | ギャラリーや Downloads への保存 | `PHPhotoLibrary` | `expo-media-library` | ✓ `asuka/sdk/library`（MediaStore のコレクション。写真、または「ファイル」の Documents） |
 | バックグラウンドでの処理 | `beginBackgroundTask`、`BGTaskScheduler` | `expo-task-manager`、`expo-background-task` | ✓ `asuka/sdk/background`：Android ではアプリを動かし続け、進捗とボタンを通知に表示。iOS では約 30 秒。Mac では動かし続け（App Nap をオフ）、Linux と Windows ではシステムのスリープを防ぐ。`asuka/sdk/periodic`：システムがときどき実行するタスクで、アプリの Go のコードを画面なしで起動（BGTaskScheduler、WorkManager。Mac ではアプリの実行中に `NSBackgroundActivityScheduler`。Linux と Windows では実行中のタイマー） |
-| ほかのアプリからの共有の受け取り | 共有拡張機能 | `expo-sharing`（`useIncomingShare`） | ✓ `ui.OnShare`：テキスト、リンク、画像、動画、音声、ファイルを、一つでも複数でも、名前、MIME タイプ、サイズ付きで受け取る（`asuka.json` の `shareTarget`：types と max から、Android のインテントフィルターと iOS のアクティベーションルールを生成。iOS ではアプリを開く共有拡張機能で、ファイルは App Group 経由）。`app.ShareSheet` は、共有元のアプリの上に出すアプリ独自の画面（iOS では共有拡張機能、Android では独立したプロセスのボトムシート）で、データをアプリと共有する。リンクの解決は行わない（`net/http` を使う） |
+| ほかのアプリからの共有の受け取り | 共有拡張機能 | `expo-sharing`（`useIncomingShare`） | ✓ `ui.OnShare`：テキスト、リンク、画像、動画、音声、ファイルを、一つでも複数でも、名前、MIME タイプ、サイズ付きで受け取る（`asuka.toml` の `shareTarget`：types と max から、Android のインテントフィルターと iOS のアクティベーションルールを生成。iOS ではアプリを開く共有拡張機能で、ファイルは App Group 経由）。`app.ShareSheet` は、共有元のアプリの上に出すアプリ独自の画面（iOS では共有拡張機能、Android では独立したプロセスのボトムシート）で、データをアプリと共有する。リンクの解決は行わない（`net/http` を使う） |
 | 音声 | AVAudioPlayer、AVAudioRecorder | `expo-audio` | ✓ `asuka/sdk/audio`（読み込み、再生、一時停止、シーク、音量、ループ）。`asuka/sdk/audio/record`（音声向けまたは音楽向けの音質、一時停止、レベルメーター） |
 | 再生中の情報、ロック画面のコントロール、メディアキー | `MPNowPlayingInfoCenter`、`MPRemoteCommandCenter` | `expo-audio` のロック画面のコントロール、コミュニティ製（`react-native-track-player`） | ✓ `asuka/sdk/nowplaying`（タイトル、アーティスト、アルバム、アートワーク、長さ、システムが進める再生位置、再生、一時停止、次へ、前へ、シーク、スキップ、停止。設定したハンドラーに応じて有効化。`audio.Player` には自動で追従。Android では MediaSession とメディア再生サービス、Mac ではコントロールセンター、Windows ではメディアのフライアウト、Linux では MPRIS、Web では Media Session API） |
 | Sign in with Apple | `SignInWithAppleButton` | `expo-apple-authentication` | ✓ `asuka/sdk/appleauth`（Apple のボタン、認証情報、その状態。iOS と macOS） |
@@ -137,12 +137,12 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | 音声合成 | `AVSpeechSynthesizer` | `expo-speech` | ✓ `asuka/sdk/speech`（キュー、音声の種類、ピッチ、速さ、単語の区切りでの一時停止） |
 | 連絡先 | Contacts、ContactsUI | `expo-contacts` | ✓ `asuka/sdk/contacts`（許可なしでピッカーと新規連絡先の画面。許可があればアドレス帳。Windows では追加すると vCard を開き、アドレス帳はなし） |
 | カレンダー | EventKit、EventKitUI | `expo-calendar` | ✓ `asuka/sdk/calendar`（許可なしでイベントの編集画面。許可があればカレンダーとイベント。Windows では追加すると iCalendar ファイルを開き、カレンダーはなし） |
-| ホーム画面ウィジェット | WidgetKit | `expo-widgets` | ✓ `asuka/sdk/widget` と `asuka.json` の `widgets`（すべてのサイズのテンプレート、iOS ではロック画面のものも。タイムライン、カウントダウン、URL 付きのタップ） |
+| ホーム画面ウィジェット | WidgetKit | `expo-widgets` | ✓ `asuka/sdk/widget` と `asuka.toml` の `widgets`（すべてのサイズのテンプレート、iOS ではロック画面のものも。タイムライン、カウントダウン、URL 付きのタップ） |
 | ライブアクティビティ | ActivityKit | `expo-live-activity` | ✓ `asuka/sdk/liveactivity`（iOS ではロック画面と Dynamic Island。Android では継続中の通知と Android 16 の Live Update。カウントダウン、進捗、アラート、サーバーからのプッシュによる更新と開始） |
-| App Intents、ショートカット | App Intents、App Shortcuts | — | ✓ `asuka.json` の `shortcuts`（iOS では Siri のフレーズ付きの App Shortcuts で、Spotlight とショートカットアプリに表示。Android ではランチャーのショートカット） |
+| App Intents、ショートカット | App Intents、App Shortcuts | — | ✓ `asuka.toml` の `shortcuts`（iOS では Siri のフレーズ付きの App Shortcuts で、Spotlight とショートカットアプリに表示。Android ではランチャーのショートカット） |
 | カスタムフォント | `.font(.custom)` | `expo-font` | ✓ `Font.Family` |
 | ライフサイクル | `scenePhase` | AppState | ✓ `app.OnLifecycle` |
-| 起動画面 | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.json` の `splash`。`asuka/sdk/splash` でアプリの読み込み中は表示を保持 |
+| 起動画面 | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.toml` の `splash`。`asuka/sdk/splash` でアプリの読み込み中は表示を保持 |
 | ステータスバー、ナビゲーションバー | `statusBarHidden`、`preferredStatusBarStyle` | `expo-status-bar`、`expo-navigation-bar` | ✓ `asuka/sdk/screen` の `SetBars` |
 | 画面の向きの固定 | `supportedInterfaceOrientations` | `expo-screen-orientation` | ✓ `asuka/sdk/screen` の `Lock` |
 | スクリーンショット | `isCaptured`、`userDidTakeScreenshotNotification` | `expo-screen-capture` | ✓ `asuka/sdk/screen` の `PreventCapture`（Android ではキャプチャーが空白になる。iOS では録画中は覆い隠す。macOS と Windows ではウィンドウをキャプチャーから除外）、`OnScreenshot`（Linux と Windows ではピクチャ／スクリーンショットフォルダーの新しい画像） |
@@ -152,7 +152,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 
 | | SwiftUI | Expo | Asuka |
 |---|---|---|---|
-| ダークモード、セマンティックカラー、アクセントカラー | 自動 | `useColorScheme` | ✓ セマンティックカラー、`asuka.json` の accent（Android では Material 3 のダイナミックカラー。Mac では AppKit 自身のコントロールはユーザーのアクセントカラーのまま） |
+| ダークモード、セマンティックカラー、アクセントカラー | 自動 | `useColorScheme` | ✓ セマンティックカラー、`asuka.toml` の accent（Android では Material 3 のダイナミックカラー。Mac では AppKit 自身のコントロールはユーザーのアクセントカラーのまま） |
 | Dynamic Type、フォントサイズ | 自動 | `allowFontScaling` | ✓ テキストスタイルもカスタムフォントも拡大縮小される |
 | スクリーンリーダーのラベル、ロール、非表示 | `.accessibilityLabel`... | `accessibilityLabel`... | ✓ `Label`、`Hint`、`Role`、`Decorative`。押せるビューはボタンになる |
 | 読み上げ | `AccessibilityNotification.Announcement` | `announceForAccessibility` | ✓ `Announce` |
@@ -195,7 +195,7 @@ Web ビューのアプリは、HTML と CSS で書いたとおりに、どのシ
 | トレイアイコン | `Tray` | トレイアイコン | ✓ `tray.Show`（`NSStatusItem`、通知領域、Linux では StatusNotifierItem）：アイコンまたはシンボル、タイトル、ツールチップ、メニュー、クリック |
 | サブメニュー、終了の項目 | `MenuItem.submenu`、ロール | ロール、サブメニュー | ✓ `MenuItem.Submenu`、`ui.MenuQuit`。メニューバー、トレイ、Dock のメニューで使える |
 | Dock のメニュー、ジャンプリストのタスク | `app.dock.setMenu`、`setUserTasks` | Dock のメニュー、ジャンプリスト | ✓ `tray.DockMenu`（Dock のメニュー、ジャンプリストのタスク、Linux のランチャーのクイックリスト） |
-| バックグラウンドのアプリ | `app.dock.hide`、`window-all-closed` で終了しない | バックグラウンドのアプリ | ✓ `app.KeepRunning`、`app.RunInBackground`、`asuka.json` の `background` |
+| バックグラウンドのアプリ | `app.dock.hide`、`window-all-closed` で終了しない | バックグラウンドのアプリ | ✓ `app.KeepRunning`、`app.RunInBackground`、`asuka.toml` の `background` |
 | フライアウト：トレイアイコンから垂れ下がるウィンドウ | アプリが `tray.getBounds()` の位置に置くフレームなしの `BrowserWindow` | フライアウト | ✓ `WindowProps.Flyout`。`tray.Icon.Anchor()` か、ウィンドウ内の矩形から垂れ下がる：ディスプレイに収まるように配置・反転し、ほかの場所のクリックか Escape で閉じ、上にモーダルダイアログも出せる（Linux では X11 の場合のみ配置） |
 | ランチャー用のパネル | `type: 'panel'`（macOS） | パネル | ✓ `Panel`：すべてのアプリと操作スペースの上に浮かび、Mac ではアプリをアクティブにせずにキーボード入力を受け、Escape かほかの場所のクリックで閉じる（Linux の Wayland では通常のウィンドウ） |
 | コンテンツに合わせたウィンドウのサイズ | アプリが `setContentSize` を呼ぶ | `FitContent` | ✓ `FitContent`：コンテンツが変わると、コアのレイアウトがウィンドウのサイズを決める |
@@ -204,8 +204,8 @@ Web ビューのアプリは、HTML と CSS で書いたとおりに、どのシ
 | グローバルショートカット | `globalShortcut` | グローバルショートカット | ✓ `hotkey.Register`（Carbon のホットキー、`RegisterHotKey`、X11 のグラブまたは Wayland の GlobalShortcuts ポータル） |
 | 開く、保存、フォルダーのダイアログ | `dialog.showOpenDialog`、`showSaveDialog` | ダイアログ | ✓ `asuka/sdk/dialog` の `Open`、`Save`、`Folder`（Mac ではシート。Web では File System Access のピッカーかファイル入力。スマートフォンでは `Open` のみ） |
 | Finder などでの表示、既定のアプリで開く、ゴミ箱に移動 | `shell.showItemInFolder`、`openPath`、`trashItem` | シェル | ✓ `asuka/sdk/shell` の `Reveal`、`Open`、`Trash`、`Beep` |
-| ファイルの関連付け | `fileAssociations`（electron-builder）、`open-file` | ファイルの関連付け | ✓ `asuka.json` の `fileTypes`、`ui.OnOpenFiles`（iOS、Android、インストールした Web アプリでも） |
-| 単一インスタンスと二回目の起動 | `requestSingleInstanceLock`、`second-instance` | 単一インスタンス | ✓ `app.OnSecondInstance`、`asuka.json` の `singleInstance`（Mac では引数ではなくファイルを渡す） |
+| ファイルの関連付け | `fileAssociations`（electron-builder）、`open-file` | ファイルの関連付け | ✓ `asuka.toml` の `fileTypes`、`ui.OnOpenFiles`（iOS、Android、インストールした Web アプリでも） |
+| 単一インスタンスと二回目の起動 | `requestSingleInstanceLock`、`second-instance` | 単一インスタンス | ✓ `app.OnSecondInstance`、`asuka.toml` の `singleInstance`（Mac では引数ではなくファイルを渡す） |
 | 終了と、終了前の確認 | `app.quit`、`before-quit` | 終了 | ✓ `app.Quit`、`app.OnQuit`（`Cancel`、`SessionEnding`） |
 | アプリのフォルダー | `app.getPath` | ディレクトリ | ✓ `app.DataDir`、`ConfigDir`、`CacheDir`、`LogDir`（すべてのプラットフォーム） |
 | 最近使った書類 | `app.addRecentDocument` | 最近使った書類 | ✓ `asuka/sdk/recent`（Mac の「最近使った項目を開く」、ジャンプリスト、Linux のユーザーの最近使ったファイル） |

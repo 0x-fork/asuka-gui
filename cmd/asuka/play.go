@@ -33,12 +33,13 @@ type serviceAccount struct {
 	key          *rsa.PrivateKey
 }
 
-const playKeyHelp = `publishing to Google Play takes a service account: in Google Cloud, turn on the Google Play Android Developer API, make a service account and a JSON key for it (IAM › Service accounts › Keys); in the Play Console, invite its email (Users and permissions) with the rights to release; then name its key in asuka.json
-  "android": {"serviceAccount": "play-service-account.json"}
+const playKeyHelp = `publishing to Google Play takes a service account: in Google Cloud, turn on the Google Play Android Developer API, make a service account and a JSON key for it (IAM › Service accounts › Keys); in the Play Console, invite its email (Users and permissions) with the rights to release; then name its key in asuka.toml
+  [android]
+  serviceAccount = "play-service-account.json"
 or in the environment: ASUKA_PLAY_SERVICE_ACCOUNT (the key's path, or its JSON). Keep the key out of your repository`
 
 // loadServiceAccount finds the app's Play service account: in the
-// environment, else asuka.json, else GOOGLE_APPLICATION_CREDENTIALS.
+// environment, else asuka.toml, else GOOGLE_APPLICATION_CREDENTIALS.
 func loadServiceAccount(cfg *appConfig) (*serviceAccount, error) {
 	src := firstOf(os.Getenv("ASUKA_PLAY_SERVICE_ACCOUNT"), cfg.Android.ServiceAccount, os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"))
 	if src == "" {

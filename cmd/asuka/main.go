@@ -31,7 +31,7 @@ func usage() {
   asuka build [-p platform] [flags] [dir]   a release build for platform, likewise
   asuka publish -p platform [flags] [dir]
                                             a release build, uploaded to TestFlight or Google Play;
-                                            mac, windows, linux: its update, to asuka.json's updates
+                                            mac, windows, linux: its update, to asuka.toml's updates
   asuka update keygen                       make the key pair that signs a desktop app's updates
   asuka plugin publish [dir]                upload a plugin's built libraries, record them in its manifest
   asuka native generate|check|new|add       native packages: Go interfaces their Swift, Kotlin, JavaScript implement
@@ -113,7 +113,7 @@ func devFlags(o *devOptions) *flagSet {
 	fs.Bool(&o.lan, "lan", 0, "web: serve to this network too (a phone's browser), not only this machine")
 	fs.Bool(&o.noOpen, "no-open", 0, "web: don't open the page in the browser")
 	fs.String(&o.device, "device", 'd', "", "iOS: a simulator's or a connected iPhone's or iPad's name or UDID, or iphone for the one connected (default: the booted simulator, else the newest iPhone simulator); Android: adb serial or AVD name")
-	fs.String(&o.team, "team", 0, "", "iOS, on a device: the Apple Developer `team` ID that signs the player and the app (default: ASUKA_TEAM_ID, asuka.json's ios.team, else the keychain's one Apple Development team)")
+	fs.String(&o.team, "team", 0, "", "iOS, on a device: the Apple Developer `team` ID that signs the player and the app (default: ASUKA_TEAM_ID, asuka.toml's ios.team, else the keychain's one Apple Development team)")
 	fs.Bool(&o.once, "once", 0, "build the app with its Go code and launch it once, without watching or streaming logs")
 	fs.Bool(&o.noHot, "no-hot", 0, "iOS, Android: no hot reload: build the app with its Go code and reinstall it on each save (the default runs the Go code here, in the player, and keeps its state across reloads)")
 	fs.String(&o.lang, "lang", 0, "", "show this `language` for this run, as de or zh-Hans, or a pseudo locale: en-XA (accented, a third longer) or ar-XB (right to left)")

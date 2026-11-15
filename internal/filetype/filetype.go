@@ -1,4 +1,4 @@
-// Package filetype is asuka.json's fileTypes as a host needs them where
+// Package filetype is asuka.toml's fileTypes as a host needs them where
 // no bundle declares them (Windows, which registers them for the user as
 // the app starts): the Asuka CLI encodes them into the build
 // (boot.FileTypes, -ldflags -X), the host decodes them.

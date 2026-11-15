@@ -5,7 +5,7 @@
 //
 // Android: Google's Maps SDK, which an app that imports this package is
 // built with, and a Google Maps Platform API key (Maps SDK for Android)
-// in asuka.json's android.mapsKey. ShowsUser needs the location
+// in asuka.toml's android.mapsKey. ShowsUser needs the location
 // permission: import asuka/sdk/location and ask for it (location.Current)
 // first.
 package maps

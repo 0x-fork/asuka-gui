@@ -94,7 +94,7 @@ func (h *Host) readPalette(w Ptr) palette {
 	return p
 }
 
-// applyAccent puts the app's accent in the palette (asuka.json's, as on
+// applyAccent puts the app's accent in the palette (asuka.toml's, as on
 // every platform).
 func (h *Host) applyAccent(p *palette) {
 	if r, g, b, _, ok := h.accent.RGBA(); ok {

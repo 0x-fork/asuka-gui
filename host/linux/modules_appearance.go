@@ -14,7 +14,7 @@ import (
 // SettingChanged. Without the portal (or a contrast in it), high contrast
 // is libadwaita's (its style manager's, which reads the portal or a
 // HighContrast theme), and there's no accent. Linux desktops have no
-// Reduce Transparency: always off. The host's own accent (asuka.json's)
+// Reduce Transparency: always off. The host's own accent (asuka.toml's)
 // isn't the system's, and isn't reported.
 //
 // The state is u8 has accent, red, green, blue, increase contrast,

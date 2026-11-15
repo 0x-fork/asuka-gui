@@ -241,7 +241,7 @@ func (h *Host) run(root func() ui.Node) {
 	}
 	// One instance per app ID (a second launch hands the first its command
 	// line, files.go), but not in automation runs, tests and asuka dev,
-	// nor without an ID of the app's, nor when asuka.json's
+	// nor without an ID of the app's, nor when asuka.toml's
 	// "singleInstance" is false.
 	flags := appFlags(boot.ID, boot.MultipleInstances, os.Getenv)
 	h.app = AdwApplicationNew(h.appID, flags)

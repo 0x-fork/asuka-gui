@@ -1278,15 +1278,13 @@ them. It says nothing when the routes can't all be known from the code
 ## Deep links
 
 An app opens for URLs of its own scheme, and for https links to its own
-domains, when `asuka.json` lists them:
+domains, when `asuka.toml` lists them:
 
-```json
-{
-  "name": "Notes",
-  "id": "com.example.notes",
-  "scheme": "notes",
-  "links": ["notes.example.com"]
-}
+```toml
+name = "Notes"
+id = "com.example.notes"
+scheme = "notes"
+links = ["notes.example.com"]
 ```
 
 - `scheme` opens the app for `notes://anything`: on iOS and Android,
@@ -1336,9 +1334,9 @@ opens its screen, and opening the page doesn't call `OnOpenURL`.
 
 ## Shares from other apps
 
-With `"shareTarget": true` in `asuka.json`, the app shows in other apps'
+With `shareTarget = true` in `asuka.toml`, the app shows in other apps'
 share sheets, for text and links, such as "Share" in a browser or in
-YouTube; `{"types": ["image/*", ...]}` takes files too (see
+YouTube; a table, `{types = ["image/*", ...]}`, takes files too (see
 [Device](device.md#shares-from-other-apps-uionshare)). `ui.OnShare` gets
 what's shared. A share that launched the app goes to the first handler,
 as with `OnOpenURL`.

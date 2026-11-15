@@ -6,7 +6,7 @@
 // the plugin's source hash (package plugin). The plugin's tests and the
 // examples use that build in a checkout; asuka plugin publish
 // sdk/sqlite uploads it to the plugin's release and records it in
-// its manifest (asuka-plugin.json).
+// its manifest (asuka-plugin.toml).
 //
 // Toolchains: Xcode's (macOS, iOS), the Android NDK (ANDROID_NDK_HOME,
 // or the newest under the SDK), Zig (Linux, Windows, the web: wasm).

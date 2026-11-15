@@ -19,7 +19,7 @@ go func() {
 
 | 平台 | `Request` 请求的是什么 |
 | --- | --- |
-| iOS、macOS | 系统的授权弹窗，文案取自 `NSBluetoothAlwaysUsageDescription`（asuka.json 的 `ios.usage`；包会提供一条通用文案） |
+| iOS、macOS | 系统的授权弹窗，文案取自 `NSBluetoothAlwaysUsageDescription`（`asuka.toml` 的 `ios.usage`；包会提供一条通用文案） |
 | Android | “附近的设备”权限（`BLUETOOTH_SCAN`、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`）；如果应用要通过扫描确定用户位置（见下文的 `bluetooth.location`），还会请求位置权限 |
 | Windows | 对无线电的访问权限（可以在“设置”的隐私页面里拒绝） |
 | Linux | 不请求：由 BlueZ 决定。没有 `org.bluez` 访问权限的 Flatpak 会是 `Denied` |
@@ -119,15 +119,12 @@ level.Notify([]byte{battery()}) // 发给已订阅的中心设备
 
 ## 在后台
 
-如果应用在离开屏幕后还要继续使用蓝牙，需要在 `asuka.json` 里声明：
+如果应用在离开屏幕后还要继续使用蓝牙，需要在 `asuka.toml` 里声明：
 
-```json
-{
-  "bluetooth": {
-    "background": ["central", "peripheral"],
-    "location": false
-  }
-}
+```toml
+[bluetooth]
+background = ["central", "peripheral"]
+location = false
 ```
 
 - `"central"`：iOS 的 `bluetooth-central` 后台模式，并启用状态恢复：iOS 会替应用保持连接和扫描，在有事件时重新启动应用；`OnRestore` 会告诉应用恢复了哪些内容，以便重新连接（会立即完成）和重新扫描。在 iOS 后台扫描必须指定 `Services`，并且每个设备只会上报一次。在 Android 上，设置了 `ScanOptions.Background` 的扫描由系统通过 `PendingIntent` 执行：应用进程结束后它仍会继续，期间扫到的结果会在应用下次运行时交给 `OnRestore`，直到调用 `StopBackgroundScan`。屏幕关闭时，Android 会暂停没有指定服务的扫描。

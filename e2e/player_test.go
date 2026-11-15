@@ -44,7 +44,7 @@ func startPlayerDev(t *testing.T, platform string) *playerDev {
 	repo := root(t)
 	dir := filepath.Join(t.TempDir(), "counter")
 	os.MkdirAll(dir, 0o755)
-	for _, f := range []string{"main.go", "asuka.json", "icon.png"} {
+	for _, f := range []string{"main.go", "asuka.toml", "icon.png"} {
 		b, err := os.ReadFile(filepath.Join(repo, "examples", "counter", f))
 		if err != nil {
 			t.Fatal(err)

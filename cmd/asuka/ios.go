@@ -32,7 +32,7 @@ type goApp struct {
 	name      string // its base name
 	moduleDir string
 	bundleID  string
-	cfg       *appConfig // asuka.json
+	cfg       *appConfig // asuka.toml
 	// pkg, for an app whose Go code is a package of another module (the
 	// player's, mobile/player), is that package, as the go command in
 	// pkgIn builds it; dir is then only where it's built.
@@ -478,7 +478,7 @@ var featureExtras = map[string]struct {
 	},
 	// asuka/sdk/location: Always's purpose string (location.RequestAlways),
 	// updates in the background (location.StartUpdates). Temporary full
-	// accuracy's purposes are asuka.json's (locationPurposes).
+	// accuracy's purposes are asuka.toml's (locationPurposes).
 	"ASUKA_LOCATION_ALWAYS": {
 		usage: map[string]string{"NSLocationAlwaysAndWhenInUseUsageDescription": "To know where you are with the app closed."},
 	},

@@ -371,7 +371,7 @@ An `Info.plist` beside `Package.swift` holds what the package needs of
 an Apple app:
 
 - its usage strings (`NSBluetoothAlwaysUsageDescription`): the app's
-  own, in its `asuka.json`, win;
+  own, in its `asuka.toml`, win;
 - its arrays (`UIBackgroundModes`), which are joined with the app's and
   other packages';
 - any other key, which is set unless the app sets it.

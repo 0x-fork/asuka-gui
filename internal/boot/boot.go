@@ -41,7 +41,7 @@ var QuitRequested func(ending bool) (cancel bool)
 // arguments on to ui.OnOpenFiles and ui.OnOpenURL.
 var SecondInstance func(args []string, dir string)
 
-// MultipleInstances is "1" when asuka.json's "singleInstance" is false,
+// MultipleInstances is "1" when asuka.toml's singleInstance is false,
 // set by the Asuka CLI (-ldflags -X): on Windows and Linux the app then
 // runs as often as it's started, each launch its own (no
 // OnSecondInstance).
@@ -64,7 +64,7 @@ func TakeLoginArg() {
 	}
 }
 
-// Accent is the app's accent color from asuka.json ("#rrggbb" or
+// Accent is the app's accent color from asuka.toml ("#rrggbb" or
 // "#rrggbbaa"), and DynamicColor "1" when its Android colors are the
 // wallpaper's: set by the Asuka CLI when it builds the app (-ldflags -X).
 var Accent, DynamicColor string
@@ -73,29 +73,29 @@ var Accent, DynamicColor string
 // the app's assets are served from: ui.Image loads asset paths from it.
 var AssetBase string
 
-// Name is the app's name from asuka.json, set by the Asuka CLI (-ldflags
+// Name is the app's name from asuka.toml, set by the Asuka CLI (-ldflags
 // -X): a desktop host's window title and menus.
 var Name string
 
-// ID is asuka.json's app ID (com.example.app), set by the Asuka CLI
+// ID is asuka.toml's app ID (com.example.app), set by the Asuka CLI
 // (-ldflags -X) where the platform has no bundle to read it from (Linux:
 // the application's ID, which names its desktop file and its D-Bus
 // name).
 var ID string
 
-// Scheme is asuka.json's URL scheme (myapp), set by the Asuka CLI
+// Scheme is asuka.toml's URL scheme (myapp), set by the Asuka CLI
 // (-ldflags -X) where the platform has no bundle or desktop file to
 // declare it in (Windows: the host registers it for the user as the app
 // starts, and passes on the URLs it's opened with).
 var Scheme string
 
-// FileTypes are asuka.json's fileTypes (internal/filetype's encoding),
+// FileTypes are asuka.toml's fileTypes (internal/filetype's encoding),
 // set by the Asuka CLI (-ldflags -X) where the platform has no bundle or
 // desktop file to declare them in (Windows: the host registers them for
 // the user as the app starts).
 var FileTypes string
 
-// Version and Build are asuka.json's, set by the Asuka CLI (-ldflags -X)
+// Version and Build are asuka.toml's, set by the Asuka CLI (-ldflags -X)
 // where the platform has no bundle to read them from (Windows).
 var Version, Build string
 
@@ -148,7 +148,7 @@ func Mounted() {
 }
 
 // Background is "1" for a desktop app that runs in the background
-// (app.RunInBackground, or asuka.json's "background", set by the Asuka CLI
+// (app.RunInBackground, or asuka.toml's background, set by the Asuka CLI
 // with -ldflags -X): no window shows at launch, and on macOS it has no
 // Dock icon (an accessory app). It keeps running with no window, as
 // KeepRunning.

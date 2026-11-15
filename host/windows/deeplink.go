@@ -3,11 +3,11 @@ package windows
 import "strings"
 
 // Links into the app, apart from the host (it builds anywhere, so it's
-// tested anywhere). An app with an ID (asuka.json's, set by the Asuka CLI)
-// runs once (unless asuka.json's "singleInstance" is false): a second
+// tested anywhere). An app with an ID (asuka.toml's, set by the Asuka CLI)
+// runs once (unless asuka.toml's singleInstance is false): a second
 // launch hands the first its arguments and working directory, which bring
 // it to the front, and quits (deeplink_windows.go, files.go). An app with a scheme
-// (asuka.json's "scheme") is its URLs' handler: registered for the user as
+// (asuka.toml's scheme) is its URLs' handler: registered for the user as
 // it starts, its command line `"app.exe" "myapp://..."`.
 
 // instanceTag is the WM_COPYDATA dwData of a launch handed to the running

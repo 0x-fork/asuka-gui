@@ -20,21 +20,24 @@ Without `--platform`, on a Mac, a Windows PC or a Linux machine, it
 builds for that computer. Every build but iOS's and Android's is plain
 Go with `CGO_ENABLED=0`, so it needs no C toolchain.
 
-## asuka.json
+## asuka.toml
 
-```json
-{
-  "name": "Notes",
-  "id": "com.example.notes",
-  "version": "1.2",
-  "build": 7,
-  "icon": "icon.png",
-  "ios": { "team": "ABCDE12345" },
-  "android": { "keystore": "upload.jks", "keyAlias": "upload" }
-}
+```toml
+name = "Notes"
+id = "com.example.notes"
+version = "1.2"
+build = 7
+icon = "icon.png"
+
+[ios]
+team = "ABCDE12345"
+
+[android]
+keystore = "upload.jks"
+keyAlias = "upload"
 ```
 
-Every key is optional; [the asuka.json reference](asuka-json.md) lists
+Every key is optional; [the asuka.toml reference](asuka-toml.md) lists
 them all, with their types and defaults. These apply on every platform:
 
 - `name` is the app's name: under the icon, in the Mac's menu bar, the
@@ -73,11 +76,16 @@ them all, with their types and defaults. These apply on every platform:
 - `fileTypes` are the kinds of files the app opens, which
   `ui.OnOpenFiles` gets:
 
-  ```json
-  "fileTypes": [
-    {"name": "Markdown Document", "extensions": ["md", "markdown"], "role": "viewer"},
-    {"name": "Notes Document", "extensions": ["note"], "icon": "note.png"}
-  ]
+  ```toml
+  [[fileTypes]]
+  name = "Markdown Document"
+  extensions = ["md", "markdown"]
+  role = "viewer"
+
+  [[fileTypes]]
+  name = "Notes Document"
+  extensions = ["note"]
+  icon = "note.png"
   ```
 
   `extensions` is required; `name` defaults to the first extension in
@@ -132,12 +140,12 @@ These are for the phones and tablets:
   `ui.UseEnvironment()`'s `Width` and `Height`, the window's size, not
   the device's.
 - `shareTarget` offers the app in other apps' share sheets: `true` for
-  texts and links, or `{"types": ["text", "image/*"], "max": 10}` for
-  files too (see [Device](device.md#shares-from-other-apps-uionshare));
+  texts and links, or a table, `{types = ["text", "image/*"], max = 10}`,
+  for files too (see [Device](device.md#shares-from-other-apps-uionshare));
   `ui.OnShare` gets them. On iOS it's a share extension in the app, with
   a bundle ID of its own (the app's plus `.share`).
-- `splash` is the launch screen: `{"image": "logo.png", "size": 96,
-  "background": "#ffffff", "darkBackground": "#000000"}` (see
+- `splash` is the launch screen: `{image = "logo.png", size = 96,
+  background = "#ffffff", darkBackground = "#000000"}` (see
   [Device](device.md#the-launch-screen-asukasdksplash)).
 - `widgets` are the app's home screen widgets and `shortcuts` its
   actions for Siri, Spotlight and the launcher (see
@@ -205,16 +213,17 @@ binary uses: Go's runtime reads the clock and file times. It declares
 no tracking, and the data the app collects as `ios.collected` lists it,
 for what App Store Connect compares with the app's privacy labels:
 
-```json
-"ios": {
-  "collected": [{ "type": "EmailAddress", "linked": true, "purposes": ["AppFunctionality"] }]
-}
+```toml
+[[ios.collected]]
+type = "EmailAddress"
+linked = true
+purposes = ["AppFunctionality"]
 ```
 
 `type` and `purposes` are Apple's names without their prefixes
 (`NSPrivacyCollectedDataType`, `NSPrivacyCollectedDataTypePurpose`);
 `linked` says the data is tied to the user's identity, `tracking` that
-it's used to track them (see [the reference](asuka-json.md#ios)). If
+it's used to track them (see [the reference](asuka-toml.md#ios)). If
 your app tracks, or its manifest needs more than this, write your own
 as `ios/PrivacyInfo.xcprivacy`, with the reasons above in it too; Asuka
 uses it instead, and `ios.collected` with it is ignored.
@@ -231,7 +240,7 @@ safe:
 keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-Name it in `asuka.json` (`android.keystore`, `android.keyAlias`), and give
+Name it in `asuka.toml` (`android.keystore`, `android.keyAlias`), and give
 its password in the environment:
 
 ```sh
@@ -254,12 +263,12 @@ uploads it through the store's API. It asks the store first what could
 stop it (that the app is there and the key may upload to it, that the
 version still takes builds, that the TestFlight groups exist), so
 nothing is built for an upload that would fail. Each build is numbered
-one above the store's highest (and at least `asuka.json`'s `build`):
+one above the store's highest (and at least `asuka.toml`'s `build`):
 there's nothing to bump between releases. `--build 42` gives one.
 
 **App Store Connect.** Make an API key in App Store Connect (Users and
 Access › Integrations › App Store Connect API) with the App Manager
-role, download its `.p8`, and name it in `asuka.json`, or in the
+role, download its `.p8`, and name it in `asuka.toml`, or in the
 environment (`ASUKA_ASC_KEY_ID`, `ASUKA_ASC_ISSUER_ID`, and
 `ASUKA_ASC_KEY`, the `.p8`'s path or its text). Without a `key`, it's
 looked for as `altool` does, `AuthKey_<id>.p8` in
@@ -267,10 +276,10 @@ looked for as `altool` does, `AuthKey_<id>.p8` in
 repository. Add the app in App Store Connect first (Apps › + › New
 App), with its bundle ID.
 
-```json
-"ios": {
-  "appStoreConnect": { "keyId": "ABC123DEF4", "issuerId": "57246542-96fe-1a63-e053-0824d011072a" }
-}
+```toml
+[ios.appStoreConnect]
+keyId = "ABC123DEF4"
+issuerId = "57246542-96fe-1a63-e053-0824d011072a"
 ```
 
 ```sh
@@ -291,7 +300,7 @@ then:
 - `--groups` gives the build to TestFlight groups, by name. With an
   external group (testers outside your team), the build goes to beta
   review; fill in the test information in TestFlight first.
-- `--review` makes the App Store version (`asuka.json`'s `version`) if
+- `--review` makes the App Store version (`asuka.toml`'s `version`) if
   there isn't one, gives it the build, and submits it for review. A
   first submission needs its listing, screenshots and privacy answers
   filled in App Store Connect first; what's missing is printed.
@@ -303,7 +312,7 @@ then:
 (IAM › Service accounts › Keys), in a project with the Google Play
 Android Developer API turned on. Invite its email in the Play Console
 (Users and permissions), with the rights to release the app. Name its
-key in `asuka.json` (`"android": {"serviceAccount": "play.json"}`) or in
+key in `asuka.toml` (`serviceAccount = "play.json"` under `[android]`) or in
 `ASUKA_PLAY_SERVICE_ACCOUNT` (its path or its JSON). Play takes an app's
 first `.aab` only in the Play Console: create the app there and upload
 its first build by hand; `asuka publish` uploads the ones after.
@@ -387,7 +396,7 @@ team, and the hardened runtime. The build says which a profile lacks.
 Without `--sign`, the identity is the keychain's certificate the profile
 allows (Developer ID Application); a `--sign` the profile doesn't list is
 an error. `--profile` takes a path, or an installed profile's name or UUID;
-`ASUKA_MAC_PROFILE` and asuka.json's `mac.profile` say the same. With none,
+`ASUKA_MAC_PROFILE` and asuka.toml's `mac.profile` say the same. With none,
 an app that uses those packages is signed with the best match installed
 for its ID (in Xcode's profile folders), else without one: the build
 says what won't work on the Mac, and the rest of the app does.
@@ -395,7 +404,7 @@ says what won't work on the Mac, and the rest of the app does.
 `--appstore` makes `dist/<Name>.pkg` for the Mac App Store instead: the app in the
 App Sandbox (with the network and the files the user picks), signed
 with a Mac App Store profile's certificate (Apple Distribution;
-asuka.json's `mac.appStoreProfile`, else `--profile`, else the best match),
+asuka.toml's `mac.appStoreProfile`, else `--profile`, else the best match),
 and the package with the team's Mac Installer Distribution certificate.
 Upload it with Transporter or `xcrun altool --upload-package`;
 `asuka publish` doesn't upload Mac builds yet. Notarizing is for apps
@@ -440,7 +449,7 @@ service (Azure Trusted Signing) signs through its own tool: sign the
 
 An app that shows notifications (`asuka/sdk/notify`) is given a shortcut in the
 user's Start menu the first time, which Windows needs for an app's
-toasts: its AppUserModelID is asuka.json's `id` (else one of its name).
+toasts: its AppUserModelID is asuka.toml's `id` (else one of its name).
 
 ## Linux
 
@@ -491,19 +500,21 @@ shows the first's window), and its data directory
 (`~/.local/share/<id>`); it must be letters, digits, `_` and `-`, in two
 parts or more, none starting with a digit.
 
-What the desktop file and metainfo say, in `asuka.json`:
+What the desktop file and metainfo say, in `asuka.toml`:
 
-```json
-"linux": {
-  "summary": "Write things down",
-  "description": "Notes, kept on your computer.\n\nA second paragraph.",
-  "categories": ["Office"],
-  "keywords": ["memo"],
-  "license": "MIT",
-  "developer": "Example Inc.",
-  "homepage": "https://example.com",
-  "flatpakRuntime": "50"
-}
+```toml
+[linux]
+summary = "Write things down"
+description = """
+Notes, kept on your computer.
+
+A second paragraph."""
+categories = ["Office"]
+keywords = ["memo"]
+license = "MIT"
+developer = "Example Inc."
+homepage = "https://example.com"
+flatpakRuntime = "50"
 ```
 
 `categories` are [freedesktop.org's](https://specifications.freedesktop.org/menu-spec/latest/category-registry.html)
@@ -548,16 +559,15 @@ asuka update keygen
 
 It writes `asuka-update.key`, the secret key, and `asuka-update.pub`, the
 public key, to `asuka/update-keys` in your configuration directory
-(`--out` chooses another), and prints what to add to `asuka.json`. Keep
+(`--out` chooses another), and prints what to add to `asuka.toml`. Keep
 the secret key out of the repository: in a password manager, and in your
 CI's secrets. Installed apps take only updates signed with it, so losing
 it strands them, and whoever has it can ship code to your users.
 
-```json
-"updates": {
-  "publicKey": "…the contents of asuka-update.pub…",
-  "github": "you/notes"
-}
+```toml
+[updates]
+publicKey = "…the contents of asuka-update.pub…"
+github = "you/notes"
 ```
 
 | Key | What it is |
@@ -664,7 +674,7 @@ With `updates` and the secret key, `asuka build --platform mac`,
   `update-<target>-beta.json`, which only apps on its channel read.
 
 Without the key it builds the app and writes no update files, saying
-so. `--version 1.2.0` builds another version than `asuka.json`'s (CI takes
+so. `--version 1.2.0` builds another version than `asuka.toml`'s (CI takes
 it from the tag). A Windows folder and a Linux prefix also get
 `.asuka-files`, the list of what the version installs, so that its
 update removes what the next one no longer has, and nothing of yours.
@@ -698,12 +708,11 @@ asuka publish --platform linux --draft
 With `feed`, apps ask your server instead, its URL with `{target}`,
 `{version}` (the version they run) and `{channel}` filled in:
 
-```json
-"updates": {
-  "publicKey": "…",
-  "url": "https://downloads.example.com/notes",
-  "feed": "https://api.example.com/updates?target={target}&version={version}&channel={channel}"
-}
+```toml
+[updates]
+publicKey = "…"
+url = "https://downloads.example.com/notes"
+feed = "https://api.example.com/updates?target={target}&version={version}&channel={channel}"
 ```
 
 It answers `204 No Content` (or 404) when there's nothing newer, else
@@ -791,7 +800,7 @@ startActivity(Intent(this, dev.asuka.AsukaActivity::class.java))
 ```
 
 The embedded app is one Asuka app, mounted once, as in a standalone
-build. What `asuka.json` sets for a whole app (its icon, URL scheme,
+build. What `asuka.toml` sets for a whole app (its icon, URL scheme,
 share target, widgets, permissions' texts) is the embedding app's to
 set in its own project.
 
@@ -1004,7 +1013,7 @@ tag and attach them to its draft release: the Mac's signed with your
 Developer ID and notarized, Windows' for x64 and Arm, signed, and
 Linux's for amd64 and arm64. Windows' and Linux's build on Linux, so
 one Ubuntu runner makes both. (The app is named Notes here: its files
-are named after `asuka.json`'s `name`.)
+are named after `asuka.toml`'s `name`.)
 
 ```yaml
   mac:
@@ -1118,7 +1127,7 @@ and in the Windows and Linux job:
 Then publish the draft (`gh release edit v1.2.0 --draft=false`, or in
 the release's page): installed apps update to it. The release job's tag
 is `tagPrefix` and the version (`v1.2.0`); `--version` makes the build's
-the tag's, so `asuka.json`'s needn't be bumped. Deltas start from the
+the tag's, so `asuka.toml`'s needn't be bumped. Deltas start from the
 published release, which the runners download (`GH_TOKEN` lifts the
 GitHub API's limit on requests, which a `tagPrefix` uses).
 

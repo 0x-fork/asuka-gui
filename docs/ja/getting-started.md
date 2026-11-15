@@ -39,7 +39,7 @@ cd hello
 `hello` には次のファイルができます。
 
 - `main.go`：アプリ本体です。アプリの UI を返す関数を `app.Run` に渡しています。
-- `asuka.json`：アプリの名前、ID（bundle ID、application ID、デスクトップアプリの ID を兼ねます）、バージョンと、[ストアと各プラットフォーム](shipping.md)が求める情報です。
+- `asuka.toml`：アプリの名前、ID（bundle ID、application ID、デスクトップアプリの ID を兼ねます）、バージョンと、[ストアと各プラットフォーム](shipping.md)が求める情報です。
 - `go.mod`。
 
 ## 実行

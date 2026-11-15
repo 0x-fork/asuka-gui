@@ -12,7 +12,7 @@ import (
 
 // The plugin's manifest: its library, asqlite, for each platform.
 //
-//go:embed asuka-plugin.json
+//go:embed asuka-plugin.toml
 var manifest []byte
 
 // loadLibrary finds and loads SQLite's library: ASUKA_SQLITE_LIB if set,

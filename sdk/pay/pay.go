@@ -18,8 +18,8 @@
 // errors, which the sheet shows. Asuka never charges a card itself.
 //
 // Apple Pay needs a merchant ID (developer.apple.com: Certificates,
-// Identifiers & Profiles, Merchant IDs), in asuka.json's
-// "applePay": {"merchantIds": [...]}, for the app's entitlement
+// Identifiers & Profiles, Merchant IDs), in asuka.toml's
+// applePay.merchantIds, for the app's entitlement
 // (com.apple.developer.in-app-payments, given to an app that imports
 // this package), and its payment processing certificate with the
 // processor. Google Pay needs the processor's gateway ID and the
@@ -265,7 +265,7 @@ type AutomaticReload struct {
 // Apple is the request's Apple Pay accounts.
 type Apple struct {
 	// MerchantID is the merchant identifier ("merchant.com.example.shop"),
-	// one of asuka.json's applePay.merchantIds.
+	// one of asuka.toml's applePay.merchantIds.
 	MerchantID string
 	// EMV also takes EMV payments (China UnionPay's cards).
 	EMV bool
@@ -661,7 +661,7 @@ func (r *Request) present(id string) (spec.Present, error) {
 	}
 	p.GoogleReady, _ = json.Marshal(r.googleReady())
 	if r.Apple.MerchantID == "" {
-		p.AppleError = "pay: Request.Apple.MerchantID is empty (one of asuka.json's applePay.merchantIds)"
+		p.AppleError = "pay: Request.Apple.MerchantID is empty (one of asuka.toml's applePay.merchantIds)"
 	}
 	return p, nil
 }

@@ -68,7 +68,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 气泡弹窗 | `.popover` | — | ✓ `Popover`（在 iPhone 上也是 popover） |
 | 警告框、操作表 | `.alert`、`.confirmationDialog` | `Alert` | ✓ `Alert`（两种样式都支持；警告框可以带输入框：`Fields`，密码框用 `Secure`，按钮通过 `Disabled` 跟随输入内容） |
 | Snackbar、toast（带“撤销”的简短提示） | — | 社区方案（react-native-paper 的 `Snackbar`） | ✓ `Snackbar`（Android 上是 Material 的 Snackbar，Linux 上是 `AdwToast`；iOS、macOS、Windows 和 Web 上按平台的样式绘制） |
-| 深度链接、通用链接和 App Links | `.onOpenURL` | Linking | ✓ `Router` 自己处理能匹配其路由的链接（应用 scheme 的链接、通用链接和 App Links、通知里的 URL），其余交给 `OnOpenURL`；`asuka.json` 里的 scheme 和 links |
+| 深度链接、通用链接和 App Links | `.onOpenURL` | Linking | ✓ `Router` 自己处理能匹配其路由的链接（应用 scheme 的链接、通用链接和 App Links、通知里的 URL），其余交给 `OnOpenURL`；`asuka.toml` 里的 scheme 和 links |
 | URL 路由：路径模式、嵌套导航器、链接下方的初始页面、重定向、守卫、未找到页面 | 配合 `Codable` 值的 `NavigationPath` | expo-router（`[id]`、`[...rest]`、`unstable_settings`、`<Redirect>`、`Stack.Protected`、`+not-found`） | ✓ `Router` 和 `Route`（`:id`、`*rest`、`Initial`、`Redirect`、`Guard`、`NotFound`；导航栈、标签页、分栏视图、slot 和弹出面板都可以是路由），`Navigate`、`Push`、`Replace`、`Back`、`SetQuery`，`NavLink` 以及视图和按钮上的 `Href`；导航状态能从地址恢复（刷新页面、桌面窗口上次的位置、`asuka dev` 的重新加载） |
 | 类型安全的链接 | `NavigationPath` 的值 | 类型化路由（生成的 `.d.ts`） | ✓ `asuka vet` 的 `routes` 检查（没有路由能匹配的常量 href、`HrefOf` 的参数个数）；`ui.HrefOf` 按路由的模式填入参数 |
 | 下拉刷新、滑动操作 | `.refreshable`、`.swipeActions` | `RefreshControl` | ✓（两侧都支持：`SwipeActions`、`LeadingSwipeActions`） |
@@ -122,7 +122,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 网络状态 | `NWPathMonitor` | `expo-network` | ✓ `asuka/sdk/network`（是否在线、Wi-Fi 还是蜂窝网络、是否按流量计费、流量节省程序 / 低数据模式） |
 | 保存到相册、下载目录 | `PHPhotoLibrary` | `expo-media-library` | ✓ `asuka/sdk/library`（Android 上是 MediaStore 的各个集合；iOS 上是“照片”，或“文件”里的 Documents） |
 | 后台任务 | `beginBackgroundTask`、`BGTaskScheduler` | `expo-task-manager`、`expo-background-task` | ✓ `asuka/sdk/background`：Android 会让应用保持运行，进度和按钮显示在一条通知里；iOS 大约给 30 秒；Mac 会让应用保持运行（关闭 App Nap），Linux 和 Windows 会阻止系统休眠。`asuka/sdk/periodic`：由系统不定期运行的任务，以无界面方式启动应用的 Go 代码（BGTaskScheduler、WorkManager；Mac 上在应用运行期间用 `NSBackgroundActivityScheduler`；Linux 和 Windows 上在应用运行期间用定时器） |
-| 接收其他应用的分享 | Share extension | `expo-sharing`（`useIncomingShare`） | ✓ `ui.OnShare`：文本、链接、图片、视频、音频和文件，单个或多个，附带名称、MIME 类型和大小（由 `asuka.json` 的 `shareTarget` 指定类型和数量上限，并据此生成 Android 的 intent filter 和 iOS 的激活规则；iOS 上由分享扩展打开应用，文件通过 App Group 传递）；`app.ShareSheet`：在发起分享的应用上方显示应用自己的界面（iOS 上是它的分享扩展；Android 上是运行在独立进程里的底部面板），数据与应用共享；不解析链接内容（请用 `net/http`） |
+| 接收其他应用的分享 | Share extension | `expo-sharing`（`useIncomingShare`） | ✓ `ui.OnShare`：文本、链接、图片、视频、音频和文件，单个或多个，附带名称、MIME 类型和大小（由 `asuka.toml` 的 `shareTarget` 指定类型和数量上限，并据此生成 Android 的 intent filter 和 iOS 的激活规则；iOS 上由分享扩展打开应用，文件通过 App Group 传递）；`app.ShareSheet`：在发起分享的应用上方显示应用自己的界面（iOS 上是它的分享扩展；Android 上是运行在独立进程里的底部面板），数据与应用共享；不解析链接内容（请用 `net/http`） |
 | 音频 | AVAudioPlayer、AVAudioRecorder | `expo-audio` | ✓ `asuka/sdk/audio`（加载、播放、暂停、跳转、音量、循环）；`asuka/sdk/audio/record`（语音或音乐音质、暂停、电平表） |
 | 正在播放、锁屏控制、媒体键 | `MPNowPlayingInfoCenter`、`MPRemoteCommandCenter` | `expo-audio` 的锁屏控制、社区方案（`react-native-track-player`） | ✓ `asuka/sdk/nowplaying`（标题、艺人、专辑、封面、时长、由系统推进的播放位置，以及播放、暂停、下一首、上一首、跳转、快进快退、停止，设置了哪些处理函数就启用哪些控制；会自动跟随 `audio.Player`；Android 上用 MediaSession 和媒体播放服务；Mac 上是控制中心，Windows 上是媒体浮出控件，Linux 上是 MPRIS，Web 上是 Media Session API） |
 | 通过 Apple 登录 | `SignInWithAppleButton` | `expo-apple-authentication` | ✓ `asuka/sdk/appleauth`（Apple 的登录按钮、凭据及其状态；iOS 和 macOS） |
@@ -135,7 +135,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 应用完整性 | App Attest | `expo-app-integrity` | ✓ `asuka/sdk/integrity`（App Attest、Play Integrity） |
 | 年龄段 | Declared Age Range | `expo-age-range` | ✓ `asuka/sdk/agerange`（Declared Age Range、Play Age Signals） |
 | 传感器 | Core Motion | `expo-sensors` | ✓ `asuka/sdk/sensors`（加速度计、陀螺仪、磁力计、带姿态和朝向的设备运动、气压计、光线、计步器；两个平台上坐标轴和单位一致；Mac 和 Windows 没有传感器；Linux 上是 iio-sensor-proxy 提供的光线和方向） |
-| NFC 标签 | Core NFC | `react-native-nfc-manager` | ✓ `asuka/sdk/nfc`（读写 NDEF，支持文本、URI、MIME、外部类型和智能海报（smart poster）记录，可将标签设为只读、查询容量；标签的 ID 和技术类型；ISO 7816 APDU、MIFARE、FeliCa 和 ISO 15693 命令，以及 Android 的 NfcA/B/F/V、IsoDep 和 MIFARE Classic；iOS 的系统面板、Android 的读卡器模式；能打开应用的标签：iOS 通过通用链接，Android 通过 `asuka.json` 中配置的 NDEF_DISCOVERED 和 TECH_DISCOVERED；Web 上是 Chrome for Android 的 Web NFC，仅支持 NDEF；桌面端没有） |
+| NFC 标签 | Core NFC | `react-native-nfc-manager` | ✓ `asuka/sdk/nfc`（读写 NDEF，支持文本、URI、MIME、外部类型和智能海报（smart poster）记录，可将标签设为只读、查询容量；标签的 ID 和技术类型；ISO 7816 APDU、MIFARE、FeliCa 和 ISO 15693 命令，以及 Android 的 NfcA/B/F/V、IsoDep 和 MIFARE Classic；iOS 的系统面板、Android 的读卡器模式；能打开应用的标签：iOS 通过通用链接，Android 通过 `asuka.toml` 中配置的 NDEF_DISCOVERED 和 TECH_DISCOVERED；Web 上是 Chrome for Android 的 Web NFC，仅支持 NDEF；桌面端没有） |
 | 低功耗蓝牙 | Core Bluetooth | 社区方案（`react-native-ble-plx`） | ✓ `asuka/sdk/bluetooth`（按服务过滤的扫描、重复上报和 RSSI、广播数据；连接及其断开原因、服务、读取、带响应和不带响应的写入、通知和指示、MTU、RSSI、Android 的连接优先级；已知设备和系统已连接的设备；广播和 GATT 服务端；iOS 的后台模式和状态恢复、Android 的后台扫描；Windows 上是 Windows.Devices.Bluetooth，Linux 上是 BlueZ；Web 上是 Web Bluetooth 的设备选择器，仅限 Chrome 和 Edge，没有外围设备角色） |
 | 图片编辑 | Core Graphics、ImageIO | `expo-image-manipulator` | ✓ `asuka/sdk/imageedit`（缩放、裁剪、旋转、翻转、填充、像素化；可以读入 HEIC，输出 JPEG 或 PNG，方向摆正，并去掉原图的元数据；Linux 上用 GdkPixbuf 的解码器，Windows 上用 WIC 的解码器） |
 | 识别图片里的文字、人脸和条码 | Vision | 无 | ✓ `asuka/sdk/vision`，会给出每一项的位置；Android 上用 ML Kit，只会打包进导入了它的应用；Linux 上用 ZBar 识别条码、Tesseract 识别文字，不支持人脸；Windows 上用系统 OCR 识别文字和人脸，用 Asuka 自己的识别器识别条码 |
@@ -144,12 +144,12 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 文字转语音 | `AVSpeechSynthesizer` | `expo-speech` | ✓ `asuka/sdk/speech`（朗读队列、声音、音调、语速、在某个词处暂停） |
 | 通讯录 | Contacts、ContactsUI | `expo-contacts` | ✓ `asuka/sdk/contacts`（联系人选择器和新建联系人界面不需要权限；有权限后可以访问通讯录；Windows 上添加联系人会打开一个 vCard，无法访问通讯录） |
 | 日历 | EventKit、EventKitUI | `expo-calendar` | ✓ `asuka/sdk/calendar`（事件编辑器不需要权限；有权限后可以访问日历和事件；Windows 上添加事件会打开一个 iCalendar 文件，无法访问日历） |
-| 主屏幕小组件 | WidgetKit | `expo-widgets` | ✓ `asuka/sdk/widget` 和 `asuka.json` 的 `widgets`（所有尺寸共用一个模板，iOS 上还有锁屏小组件；时间线、倒计时、点按时打开 URL） |
+| 主屏幕小组件 | WidgetKit | `expo-widgets` | ✓ `asuka/sdk/widget` 和 `asuka.toml` 的 `widgets`（所有尺寸共用一个模板，iOS 上还有锁屏小组件；时间线、倒计时、点按时打开 URL） |
 | 实时活动 | ActivityKit | `expo-live-activity` | ✓ `asuka/sdk/liveactivity`（iOS：锁屏和灵动岛；Android：常驻通知，即 Android 16 的实时更新；倒计时、进度、提醒，以及由服务器推送来更新和启动） |
-| App Intents、快捷指令 | App Intents、App Shortcuts | — | ✓ `asuka.json` 的 `shortcuts`（iOS 上是带 Siri 短语的 App Shortcuts，会出现在聚焦搜索和“快捷指令”里；Android 上是启动器快捷方式） |
+| App Intents、快捷指令 | App Intents、App Shortcuts | — | ✓ `asuka.toml` 的 `shortcuts`（iOS 上是带 Siri 短语的 App Shortcuts，会出现在聚焦搜索和“快捷指令”里；Android 上是启动器快捷方式） |
 | 自定义字体 | `.font(.custom)` | `expo-font` | ✓ `Font.Family` |
 | 生命周期 | `scenePhase` | AppState | ✓ `app.OnLifecycle` |
-| 启动屏 | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.json` 的 `splash`；`asuka/sdk/splash` 可以在应用加载期间让它一直显示 |
+| 启动屏 | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.toml` 的 `splash`；`asuka/sdk/splash` 可以在应用加载期间让它一直显示 |
 | 状态栏、导航栏 | `statusBarHidden`、`preferredStatusBarStyle` | `expo-status-bar`、`expo-navigation-bar` | ✓ `asuka/sdk/screen` 的 `SetBars` |
 | 锁定屏幕方向 | `supportedInterfaceOrientations` | `expo-screen-orientation` | ✓ `asuka/sdk/screen` 的 `Lock` |
 | 截屏 | `isCaptured`、`userDidTakeScreenshotNotification` | `expo-screen-capture` | ✓ `asuka/sdk/screen` 的 `PreventCapture`（Android 上截图是空白的；iOS 上录屏时内容会被遮住；macOS 和 Windows 上截图里不包含这些窗口）、`OnScreenshot`（Linux 和 Windows 上通过 Pictures/Screenshots 里新出现的图片来判断） |
@@ -159,7 +159,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 
 | | SwiftUI | Expo | Asuka |
 |---|---|---|---|
-| 深色模式、语义色、强调色 | 自动处理 | `useColorScheme` | ✓ 语义色、`asuka.json` 的强调色（Android 上用 Material 3 动态取色；Mac 上 AppKit 自己的控件保留用户设置的强调色） |
+| 深色模式、语义色、强调色 | 自动处理 | `useColorScheme` | ✓ 语义色、`asuka.toml` 的强调色（Android 上用 Material 3 动态取色；Mac 上 AppKit 自己的控件保留用户设置的强调色） |
 | 动态字体、字体缩放 | 自动处理 | `allowFontScaling` | ✓ 文本样式和自定义字体都会跟着缩放 |
 | 屏幕阅读器的标签、角色、隐藏 | `.accessibilityLabel`... | `accessibilityLabel`... | ✓ `Label`、`Hint`、`Role`、`Decorative`；可点按的视图会被识别为按钮 |
 | 播报 | `AccessibilityNotification.Announcement` | `announceForAccessibility` | ✓ `Announce` |
@@ -203,7 +203,7 @@ web view 应用在所有系统上都长得一样，完全按它的 HTML 和 CSS 
 | 托盘图标 | `Tray` | 托盘图标 | ✓ `tray.Show`（Mac 上是 `NSStatusItem`；Windows 上是通知区域；Linux 上是 StatusNotifierItem）：图标或符号、标题、悬停提示、菜单、点击 |
 | 子菜单、退出菜单项 | `MenuItem.submenu`、roles | roles、子菜单 | ✓ `MenuItem.Submenu`、`ui.MenuQuit`，可用于菜单栏、托盘菜单和程序坞菜单 |
 | 程序坞菜单、跳转列表任务 | `app.dock.setMenu`、`setUserTasks` | 程序坞菜单、跳转列表 | ✓ `tray.DockMenu`（程序坞菜单、跳转列表里的“任务”、Linux 启动器的快捷列表） |
-| 在后台运行的应用 | `app.dock.hide`，以及在 `window-all-closed` 时不退出 | 后台应用 | ✓ `app.KeepRunning`、`app.RunInBackground`、`asuka.json` 的 `background` |
+| 在后台运行的应用 | `app.dock.hide`，以及在 `window-all-closed` 时不退出 | 后台应用 | ✓ `app.KeepRunning`、`app.RunInBackground`、`asuka.toml` 的 `background` |
 | Flyout：从托盘图标弹出的窗口 | 由应用自己把无边框的 `BrowserWindow` 摆到 `tray.getBounds()` 的位置 | flyout | ✓ `WindowProps.Flyout`，从 `tray.Icon.Anchor()` 或所在窗口的某个矩形区域弹出：在显示器范围内摆放，放不下时翻转方向，点击别处或按 Escape 关闭，上面还可以再打开模态对话框（Linux 上只有 X11 能定位） |
 | 启动器面板 | `type: 'panel'`（macOS） | 面板 | ✓ `Panel`：浮在所有应用和所有桌面空间（Space）之上，在 Mac 上能接收键盘输入而不激活应用，按 Escape 或点击别处时关闭（Linux 的 Wayland 下就是普通窗口） |
 | 窗口大小随内容变化 | 由应用自己调用 `setContentSize` | `FitContent` | ✓ `FitContent`：内容变化时，由核心的布局来决定窗口大小 |
@@ -212,8 +212,8 @@ web view 应用在所有系统上都长得一样，完全按它的 HTML 和 CSS 
 | 全局快捷键 | `globalShortcut` | 全局快捷键 | ✓ `hotkey.Register`（Mac 上用 Carbon 的热键；Windows 上用 `RegisterHotKey`；Linux 上用 X11 的按键抓取或 Wayland 的 GlobalShortcuts portal） |
 | 打开、保存、选择文件夹对话框 | `dialog.showOpenDialog`、`showSaveDialog` | 对话框 | ✓ `asuka/sdk/dialog` 的 `Open`、`Save`、`Folder`（Mac 上以 sheet 显示；Web 上用 File System Access 选择器或文件输入框；手机上只支持 `Open`） |
 | 在文件夹中显示、用默认应用打开、移到废纸篓 | `shell.showItemInFolder`、`openPath`、`trashItem` | shell | ✓ `asuka/sdk/shell` 的 `Reveal`、`Open`、`Trash`、`Beep` |
-| 文件关联 | `fileAssociations`（electron-builder）、`open-file` | 文件关联 | ✓ `asuka.json` 的 `fileTypes`、`ui.OnOpenFiles`（iOS、Android 和已安装的 Web 应用也支持） |
-| 单实例，以及处理再次启动 | `requestSingleInstanceLock`、`second-instance` | 单实例 | ✓ `app.OnSecondInstance`、`asuka.json` 的 `singleInstance`（Mac 上传过来的是文件，而不是命令行参数） |
+| 文件关联 | `fileAssociations`（electron-builder）、`open-file` | 文件关联 | ✓ `asuka.toml` 的 `fileTypes`、`ui.OnOpenFiles`（iOS、Android 和已安装的 Web 应用也支持） |
+| 单实例，以及处理再次启动 | `requestSingleInstanceLock`、`second-instance` | 单实例 | ✓ `app.OnSecondInstance`、`asuka.toml` 的 `singleInstance`（Mac 上传过来的是文件，而不是命令行参数） |
 | 退出，以及退出前询问 | `app.quit`、`before-quit` | 退出 | ✓ `app.Quit`、`app.OnQuit`（`Cancel`、`SessionEnding`） |
 | 应用的各类目录 | `app.getPath` | 目录 | ✓ `app.DataDir`、`ConfigDir`、`CacheDir`、`LogDir`（所有平台都可用） |
 | 最近使用的文档 | `app.addRecentDocument` | 最近使用的文档 | ✓ `asuka/sdk/recent`（Mac 上的“打开最近使用”、Windows 的跳转列表、Linux 上用户的最近文件） |

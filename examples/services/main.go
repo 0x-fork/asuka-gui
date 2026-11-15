@@ -58,7 +58,7 @@ func App() ui.Node {
 	push.OnOpen(func(m push.Message) { log.Printf("services: opened push %q", m.Title) })
 	status := signal.New("Tap a service.")
 	setUpMessages(status)
-	// asuka.json's shortcuts and the widget open the app with these.
+	// asuka.toml's shortcuts and the widget open the app with these.
 	ui.OnOpenURL(func(u string) {
 		status.Set("Opened with " + u)
 		if u == "asukaservices://speak" {

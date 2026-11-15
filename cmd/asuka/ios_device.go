@@ -258,7 +258,7 @@ func findIOSDevice(want string) (*iosDevice, error) {
 // Teams
 
 // devTeam is the team that signs for a device: --team, ASUKA_TEAM_ID,
-// asuka.json's ios.team, else the one of the keychain's Apple
+// asuka.toml's ios.team, else the one of the keychain's Apple
 // Development identities.
 func devTeam(flag string, cfg *appConfig) (string, error) {
 	if t := firstOf(flag, os.Getenv("ASUKA_TEAM_ID"), cfg.IOS.Team); t != "" {
@@ -284,10 +284,10 @@ func pickTeam(ids [][2]string, names map[string]string) (string, error) {
 	case 1:
 		return teams[0], nil
 	case 0:
-		return "", errors.New("no Apple Development certificate in the keychain to sign for the device: add your Apple ID in Xcode › Settings › Accounts (a free one works), then name its team with --team TEAMID or asuka.json's ios.team (Xcode makes the certificate as it signs)")
+		return "", errors.New("no Apple Development certificate in the keychain to sign for the device: add your Apple ID in Xcode › Settings › Accounts (a free one works), then name its team with --team TEAMID or asuka.toml's ios.team (Xcode makes the certificate as it signs)")
 	}
 	sort.Strings(which)
-	return "", fmt.Errorf("the keychain has Apple Development certificates of %d teams: pick one with --team, ASUKA_TEAM_ID or asuka.json's ios.team: %s", len(teams), strings.Join(which, ", "))
+	return "", fmt.Errorf("the keychain has Apple Development certificates of %d teams: pick one with --team, ASUKA_TEAM_ID or asuka.toml's ios.team: %s", len(teams), strings.Join(which, ", "))
 }
 
 // Signing
@@ -579,7 +579,7 @@ func xcodebuildError(out []byte) error {
 		hint = "\nsign in to Xcode with the team's Apple ID (Xcode › Settings › Accounts), or set an App Store Connect API key (ASUKA_ASC_KEY_ID, ASUKA_ASC_ISSUER_ID, ASUKA_ASC_KEY)"
 	case strings.Contains(msg, "is not available") && strings.Contains(msg, "bundle identifier"),
 		strings.Contains(msg, "cannot be registered to your development team"):
-		hint = "\nthe bundle ID belongs to another team: change asuka.json's id"
+		hint = "\nthe bundle ID belongs to another team: change asuka.toml's id"
 	}
 	return fmt.Errorf("Xcode couldn't make the development profiles:\n%s%s", msg, hint)
 }

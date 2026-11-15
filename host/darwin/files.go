@@ -210,7 +210,7 @@ func recentPaths() []string {
 }
 
 // hasOpenRecent is whether the File menu has Open Recent: the app opens
-// files (its bundle declares document types, asuka.json's fileTypes),
+// files (its bundle declares document types, asuka.toml's fileTypes),
 // keeps recent documents (recent.Add), or has some from before.
 func (h *Host) hasOpenRecent() bool {
 	if recentState.used {

@@ -16,8 +16,8 @@ type Info struct {
 	Model         string `json:"model"`         // "iPhone", "Pixel 9"
 	System        string `json:"system"`        // "iOS", "Android"
 	SystemVersion string `json:"systemVersion"` // "26.0", "16"
-	AppVersion    string `json:"appVersion"`    // asuka.json's version
-	Build         string `json:"build"`         // asuka.json's build
+	AppVersion    string `json:"appVersion"`    // asuka.toml's version
+	Build         string `json:"build"`         // asuka.toml's build
 }
 
 // GetInfo is the device and the app. Not on the main thread.

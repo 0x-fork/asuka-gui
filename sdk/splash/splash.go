@@ -1,10 +1,14 @@
 // Package splash keeps the launch screen up while the app gets ready
-// (expo-splash-screen): asuka.json's splash (an image in the middle of a
+// (expo-splash-screen): asuka.toml's splash (an image in the middle of a
 // color) shows from the tap on the icon until the app's first frame, or,
 // if the app holds it as it starts, until it hides it: once its data is
 // loaded, its fonts in, the signed-in user known.
 //
-//	"splash": {"image": "logo.png", "size": 120, "background": "#ffffff", "darkBackground": "#000000"}
+//	[splash]
+//	image = "logo.png"
+//	size = 120
+//	background = "#ffffff"
+//	darkBackground = "#000000"
 //
 // iOS: the launch screen (UILaunchScreen), then a copy of it over the app.
 // Android: Android 12's splash screen (the image in the middle of the

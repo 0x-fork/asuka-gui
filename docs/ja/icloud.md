@@ -58,7 +58,7 @@ found, err := icloud.Get("lastPage", &page)
 
 ## 書類
 
-iCloud にあるアプリのファイルは、アプリの**コンテナー**に置かれます。コンテナーは、iCloud が同期する、デバイス上のディレクトリです。`icloud.Container(id)` はコンテナーのディレクトリを返し、`""` を渡すとアプリの最初のコンテナーのディレクトリを返します。デフォルトでは、アプリのコンテナーは一つで、アプリの ID の前に `iCloud.` を付けたものです。`asuka.json` の `icloud.containers` でほかのコンテナーを指定でき、その最初のものがデフォルトになります。初回の呼び出しは、iCloud がコンテナーを準備するため、時間がかかることがあります。
+iCloud にあるアプリのファイルは、アプリの**コンテナー**に置かれます。コンテナーは、iCloud が同期する、デバイス上のディレクトリです。`icloud.Container(id)` はコンテナーのディレクトリを返し、`""` を渡すとアプリの最初のコンテナーのディレクトリを返します。デフォルトでは、アプリのコンテナーは一つで、アプリの ID の前に `iCloud.` を付けたものです。`asuka.toml` の `icloud.containers` でほかのコンテナーを指定でき、その最初のものがデフォルトになります。初回の呼び出しは、iCloud がコンテナーを準備するため、時間がかかることがあります。
 
 `icloud.Documents()` は最初のコンテナーの `Documents` ディレクトリを返し、なければ作ります。ここに置いたものは、iCloud Drive（iOS では「ファイル」アプリ、Mac では Finder）のアプリの名前のフォルダーに表示されます。ユーザーはそこでファイルを開いたり、名前を変えたり、移動したりできます。コンテナーのそれ以外の部分は、アプリだけが使います。
 
@@ -99,15 +99,14 @@ if len(vs) > 0 {
 
 `icloud.Link(path)` は、ファイルの公開リンクと、その有効期限を返します。ファイルがまだアップロードされていなければ、先にアップロードします。リンクを知っていれば誰でも、その時点のファイルのコピーをダウンロードできます。
 
-## asuka.json とエンタイトルメント
+## asuka.toml とエンタイトルメント
 
 アプリに付与されるものは、アプリが何を呼んでいるかで決まり、それは Go のコードから判断されます。キーバリューストアの関数を呼ぶアプリには、そのエンタイトルメント（`com.apple.developer.ubiquity-kvstore-identifier`。値はチームの ID とアプリの ID）が付きます。書類の関数を呼ぶアプリには、iCloud Documents（`com.apple.developer.icloud-services` の `CloudDocuments`）とアプリのコンテナーが付き、Info.plist の `NSUbiquitousContainers` によって、最初のコンテナーの `Documents` が iCloud Drive に表示されます。アカウントについて問い合わせるだけのアプリにも、ストアのエンタイトルメントが付きます。これがないとアカウントを確認できないためです。
 
-```json
-"icloud": {
-  "containers": ["iCloud.com.example.journal"],
-  "driveName": "Journal"
-}
+```toml
+[icloud]
+containers = ["iCloud.com.example.journal"]
+driveName = "Journal"
 ```
 
 | キー | 型 | デフォルト | 説明 |
@@ -124,7 +123,7 @@ iCloud Drive が新しいフォルダーや新しい名前を反映するのは�
 
 iCloud はアプリの値と書類をアプリ自身の ID で管理しますが、開発用アプリの ID はアプリの ID とは違います。そのため `asuka dev` は、このパッケージをインポートしたアプリを、シミュレーターでも iPhone でも開発用アプリでは動かさず、アプリそのものとしてビルドし、そのことを表示します。シミュレーターで iCloud を試すには、シミュレーターの「設定」で Apple アカウントにサインインし、iCloud Drive をオンにしてください。
 
-Mac では、iCloud のエンタイトルメントを使うには、アプリにプロビジョニングプロファイルで署名する必要があります（`asuka build --profile`、または `asuka.json` の `mac.profile`）。`asuka dev` はこの署名をしないので、プロファイルなしで動くアプリの呼び出しは `ErrNotAvailable` で失敗し、その理由を伝えます。
+Mac では、iCloud のエンタイトルメントを使うには、アプリにプロビジョニングプロファイルで署名する必要があります（`asuka build --profile`、または `asuka.toml` の `mac.profile`）。`asuka dev` はこの署名をしないので、プロファイルなしで動くアプリの呼び出しは `ErrNotAvailable` で失敗し、その理由を伝えます。
 
 ## プラットフォームごとの動作
 

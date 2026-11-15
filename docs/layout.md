@@ -528,14 +528,14 @@ Make the change inside `ui.Animate` and it animates (see
 ## The accent color
 
 `colors.Accent`, and the controls that use it, take the app's accent color
-from `asuka.json`:
+from `asuka.toml`:
 
-```json
-{ "accent": "#7c3aed" }
+```toml
+accent = "#7c3aed"
 ```
 
 It's the tint on iOS, and the seed of the Material 3 color scheme on
-Android (Android 12 and later). With `"android": {"dynamicColor": true}`,
+Android (Android 12 and later). With `dynamicColor = true` under `[android]`,
 Android takes the colors from the user's wallpaper where the system has
 them, as Material apps do. On macOS, Windows and Linux it replaces the
 system's accent in Asuka's controls and colors; on the web it's the

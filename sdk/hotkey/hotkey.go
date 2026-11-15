@@ -31,7 +31,7 @@
 //     portal's GlobalShortcuts (GNOME 48, KDE Plasma 6, Hyprland). The
 //     desktop may ask the user to confirm it or pick other keys, lists it
 //     with its Description in its settings, and needs the app installed
-//     (it knows apps by their desktop entry, asuka.json's id); a window
+//     (it knows apps by their desktop entry, asuka.toml's id); a window
 //     OnPress shows or focuses takes the focus with the press's
 //     activation token, as Wayland asks. Under X11
 //     the app grabs the keys itself (XGrabKey), which fails while

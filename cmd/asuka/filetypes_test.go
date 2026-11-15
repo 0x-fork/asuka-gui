@@ -14,18 +14,33 @@ import (
 	"github.com/egoist/asuka/internal/filetype"
 )
 
-const fileTypesJSON = `{"name":"My Notes","id":"com.example.notes","icon":"icon.png","fileTypes":[
-	{"name":"Markdown Document","extensions":["md","markdown"],"role":"viewer"},
-	{"name":"Notes Document","extensions":[".note"],"icon":"note.png","conformsTo":["public.plain-text"]},
-	{"extensions":["mydb"],"uti":"org.example.mydb","mimeTypes":["application/x-mydb"]}
-]}`
+const fileTypesConfig = `name = "My Notes"
+id = "com.example.notes"
+icon = "icon.png"
+
+[[fileTypes]]
+name = "Markdown Document"
+extensions = ["md", "markdown"]
+role = "viewer"
+
+[[fileTypes]]
+name = "Notes Document"
+extensions = [".note"]
+icon = "note.png"
+conformsTo = ["public.plain-text"]
+
+[[fileTypes]]
+extensions = ["mydb"]
+uti = "org.example.mydb"
+mimeTypes = ["application/x-mydb"]
+`
 
 // fileTypesApp is an app with three file types: one the systems know
 // (Markdown), the app's own (.note, with an icon), and another's the
 // systems don't know (org.example.mydb).
 func fileTypesApp(t *testing.T) *goApp {
 	t.Helper()
-	app := linuxTestApp(t, fileTypesJSON)
+	app := linuxTestApp(t, fileTypesConfig)
 	img := image.NewNRGBA(image.Rect(0, 0, 64, 64))
 	for i := range img.Pix {
 		img.Pix[i] = 200
@@ -55,13 +70,13 @@ func TestFileTypes(t *testing.T) {
 		t.Fatalf("fileTypes:\n%+v\nwant\n%+v", got, want)
 	}
 	for _, bad := range []string{
-		`{"fileTypes":[{"name":"x"}]}`,
-		`{"fileTypes":[{"extensions":["m d"]}]}`,
-		`{"fileTypes":[{"extensions":["md"],"role":"owner"}]}`,
-		`{"fileTypes":[{"extensions":["md"],"mimeTypes":["text"]}]}`,
+		"[[fileTypes]]\nname = \"x\"",
+		"[[fileTypes]]\nextensions = [\"m d\"]",
+		"[[fileTypes]]\nextensions = [\"md\"]\nrole = \"owner\"",
+		"[[fileTypes]]\nextensions = [\"md\"]\nmimeTypes = [\"text\"]",
 	} {
 		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(bad), 0o644)
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(bad), 0o644)
 		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "fileTypes[0]") {
 			t.Errorf("%s: %v", bad, err)
 		}

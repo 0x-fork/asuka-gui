@@ -103,7 +103,7 @@ as RFC 3339 text, which Go decodes into a `[]byte` and a `time.Time`.
 An app's files in iCloud live in its **containers**: directories on the
 device that iCloud syncs. `icloud.Container(id)` is a container's
 directory, and with `""`, the app's first. By default the app has one,
-`iCloud.<the app's ID>`; `asuka.json`'s `icloud.containers` names others,
+`iCloud.<the app's ID>`; `asuka.toml`'s `icloud.containers` names others,
 the first its default. The first call may take a while, as iCloud sets
 the container up.
 
@@ -182,7 +182,7 @@ if len(vs) > 0 {
 isn't yet, and when it expires. Anyone with the link can download a copy
 of the file as it is now.
 
-## asuka.json and entitlements
+## asuka.toml and entitlements
 
 What an app is given follows what it calls, found in its Go code. One
 that calls the key-value store's functions gets its entitlement
@@ -194,11 +194,10 @@ first one's `Documents` in iCloud Drive. One that only asks about the
 account gets the store's entitlement, without which there's no account
 to see.
 
-```json
-"icloud": {
-  "containers": ["iCloud.com.example.journal"],
-  "driveName": "Journal"
-}
+```toml
+[icloud]
+containers = ["iCloud.com.example.journal"]
+driveName = "Journal"
 ```
 
 | Key | Type | Default | What it is |
@@ -227,7 +226,7 @@ iPhone, and says so. To try iCloud on the simulator, sign in to an
 Apple Account in its Settings, with iCloud Drive on.
 
 On a Mac, iCloud's entitlements need the app signed with a
-provisioning profile (`asuka build --profile`, or `asuka.json`'s
+provisioning profile (`asuka build --profile`, or `asuka.toml`'s
 `mac.profile`), which `asuka dev` doesn't do: without one, the calls fail
 with `ErrNotAvailable` and say why.
 

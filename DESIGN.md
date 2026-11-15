@@ -583,7 +583,7 @@ hash). It builds:
   app starts.
 
 A package's `Info.plist`, `iOS.entitlements` and `macOS.entitlements`
-merge into the app's: usage strings defer to asuka.json, arrays join,
+merge into the app's: usage strings defer to asuka.toml, arrays join,
 and other keys are set if absent. Android's manifest merger takes the
 module's `AndroidManifest.xml`.
 
@@ -1168,7 +1168,7 @@ disposal ends it. What the app calls, from its source (`useICloud`), says
 which entitlements it gets, which the CLI signs as Xcode does (a
 profile's `*` and `TEAMID.*` as the app's values).
 
-What runs outside the app's process is built from `asuka.json`. iOS's
+What runs outside the app's process is built from `asuka.toml`. iOS's
 widget extension is WidgetKit's, so SwiftUI's (the one place the host
 uses it): one template (platform/ios/Widget) with the app's kinds,
 reading the entries the app's Go code sets (`asuka/sdk/widget`) from the App
@@ -1186,7 +1186,7 @@ provider for each kind (over the host's `AsukaWidgetProvider`, with
 RemoteViews) and the launcher's static shortcuts.
 
 Two extensions run the app's Go code, from the app's own symbols rather
-than `asuka.json`: the share sheet (`app.ShareSheet`) and the
+than `asuka.toml`: the share sheet (`app.ShareSheet`) and the
 Notification Service Extension (`push.Rewrite`). With either, the app's
 Go code and the host are one dynamic framework (AsukaApp.framework) that
 the app and the extension link, their data in the App Group they share.
@@ -1200,7 +1200,7 @@ and hands Go the response, keeping the process until Go reports it done.
 
 ### Plugins
 
-A plugin is a Go package with a manifest beside it, `asuka-plugin.json`
+A plugin is a Go package with a manifest beside it, `asuka-plugin.toml`
 (package `plugin`), naming the native libraries it brings: for each
 target (`darwin`, universal; `ios`, `ios-simulator`; `android-<goarch>`;
 `linux-<goarch>`; `windows-<goarch>`; `wasm`) a file, published to the
@@ -1340,15 +1340,17 @@ asuka publish --platform mac|windows|linux   the desktop build, its signed updat
 asuka update keygen                         the Ed25519 key pair that signs desktop updates
 ```
 
-**An app's metadata** is `asuka.json` beside its Go code, all optional:
+**An app's metadata** is `asuka.toml` beside its Go code (TOML 1.0, read
+by `internal/toml`), all optional:
 name, ID (bundle ID and application ID), version and build number, a
 1024×1024 icon, orientations (the phone's: an iPad or a large Android
 screen turns the app any way, for split screen), the iOS team (and
 whether it's iPhone only), provisioning profile, usage
 descriptions and extra Info.plist keys, the Android permissions and
-upload key. `asuka dev` and `asuka build` read it alike.
+upload key. `asuka dev` and `asuka build` read it alike. An error names
+its line and column.
 
-**The accent color** (`"accent": "#7c3aed"`) is the one color an app's
+**The accent color** (`accent = "#7c3aed"`) is the one color an app's
 brand sets on native controls; the controls are the platform's, so
 Asuka has no theme of its own over them (`Style` changes one view). It
 travels with the Go code, not the shell: the CLI builds it in
@@ -1360,7 +1362,7 @@ take. On Android it's the seed of a Material 3 color scheme
 (`SchemeContent`, light and dark, as Material's `DynamicColors` makes
 it) on Android 12 and later; before that, Material's baseline colors,
 with Asuka's own uses of the accent (links, `colors.Accent`) taking the color
-itself. `"android": {"dynamicColor": true}` takes the wallpaper's colors
+itself. `android.dynamicColor = true` takes the wallpaper's colors
 instead, where the system has them. The theme context is made again
 and the views that resolved theme colors are rebuilt, as on a dark mode
 change.
@@ -1384,7 +1386,7 @@ the Go code as a stripped `.so` for arm64-v8a, armeabi-v7a and x86_64,
 the assets, launcher icons (legacy per density, and adaptive: the icon
 inside the safe zone over its corner color), the permissions, the
 version; Kotlin shrunk by R8 (the classes JNI and reflection reach are
-kept); signed with the upload key named in `asuka.json` or `ASUKA_KEYSTORE`,
+kept); signed with the upload key named in `asuka.toml` or `ASUKA_KEYSTORE`,
 its passwords from the environment (never on a command line). A
 release build never loads a library from the app's files, as debug
 builds do in development; cleartext HTTP (the player's assets) is
@@ -1397,7 +1399,7 @@ can refuse is asked first, before the build: the app (App Store Connect
 by bundle ID; Play by package, in an edit opened to look and deleted),
 whether the version still takes builds (approved or released: no), the
 TestFlight groups by name, and the store's highest build number. The
-build is numbered one above it (and at least `asuka.json`'s `build`), so
+build is numbered one above it (and at least `asuka.toml`'s `build`), so
 `build` needn't be raised by hand; `--build` sets one. iOS: a JWT signed
 with the App Store Connect API key (ES256, renewed every 10 minutes);
 the `.ipa` sent as `buildUploads` says, in parts, a few at a time, each
@@ -1683,7 +1685,7 @@ Each one ends with its examples running and its tests in CI.
 - **M5, dev without reinstalling** (done): the socket transport and the
   player apps (iOS simulator and devices, Android emulator and devices);
   app state survives a reload with no code.
-- **M6, shipping** (done): `asuka.json`, `asuka build --platform ios` (signed `.ipa`;
+- **M6, shipping** (done): `asuka.toml`, `asuka build --platform ios` (signed `.ipa`;
   `--simulator`), `asuka build --platform android` (`.aab`), `asuka
   publish` (the build uploaded through the stores' APIs: TestFlight's
   groups and beta review, App Review; a Play track, staged). Not yet:
@@ -1748,7 +1750,7 @@ Each one ends with its examples running and its tests in CI.
     exactly the column width the host gives it.
   - `asuka/sdk/store` (small values kept across launches, `store.Signal`),
     `ui.Copy`, `ui.Share`.
-  - The app's accent color (`asuka.json`).
+  - The app's accent color (`asuka.toml`).
   - The device's time zone as Go's `time.Local`.
   - Motion: `Style.Transform`, shadows, gradients, `Style.Material`
     (blur), repeating animations, enter and exit `Transition`s.
@@ -1766,9 +1768,9 @@ Each one ends with its examples running and its tests in CI.
     content scrolls), the window's toolbar on a Mac, a Fluent command bar,
     a `GtkActionBar` in an `AdwToolbarView`, a bar and a floating button
     on the web.
-  - Incoming links: `asuka.json`'s `scheme` and `links`, `ui.OnOpenURL`.
-  - Shares from other apps: `asuka.json`'s `shareTarget` (`true`, or
-    `{"types": [...], "max": n}`), `ui.OnShare` (a list of
+  - Incoming links: `asuka.toml`'s `scheme` and `links`, `ui.OnOpenURL`.
+  - Shares from other apps: `asuka.toml`'s `shareTarget` (`true`, or
+    `{types = [...], max = n}`), `ui.OnShare` (a list of
     `SharedItem`s: texts, links and files). Android takes `ACTION_SEND`
     and `ACTION_SEND_MULTIPLE` in the app's Activity, with intent
     filters for the types, and copies the files to the app's caches off
@@ -1916,7 +1918,7 @@ Each one ends with its examples running and its tests in CI.
   sensors, widgets and the age range aren't a Mac's ("not available").
   The CLI gives a Mac app its purpose strings and its hardened runtime's
   entitlements for them, and its provisioning profile (`--profile`,
-  `ASUKA_MAC_PROFILE`, asuka.json's `mac.profile`, else the best match
+  `ASUKA_MAC_PROFILE`, asuka.toml's `mac.profile`, else the best match
   installed for an app that needs one): embedded as
   `Contents/embedded.provisionprofile`, the app signed with its app ID,
   team and what its packages need of the profile's entitlements (push's
@@ -2815,7 +2817,7 @@ How the Linux host maps Asuka (`host/linux`):
   (`internal/gtk`: typed functions purego builds once, and raw function
   pointers called through `SyscallN` on the hot paths, allocating frames
   and drawing, so they use no reflection). `app.Run` makes an
-  `AdwApplication` (its ID asuka.json's `id`, `boot.ID`; unique, so a
+  `AdwApplication` (its ID asuka.toml's `id`, `boot.ID`; unique, so a
   second launch activates the first, but in tests and automation runs)
   and runs GLib's main loop on the main thread. `Post` queues the
   function and adds an idle source (`g_idle_add`, thread-safe). Signals
@@ -2844,7 +2846,7 @@ How the Linux host maps Asuka (`host/linux`):
   (/etc/localtime). `Environment.Platform` is `PlatformLinux`.
 - Colors are libadwaita's named colors (`window_bg_color`,
   `card_bg_color`, `accent_color`...), read from the theme for the
-  current style; asuka.json's accent is the theme's accent, through a
+  current style; asuka.toml's accent is the theme's accent, through a
   style sheet of the host's. The text styles are libadwaita's type
   classes relative to the interface font (gtk-font-name): LargeTitle is
   `.title-1`, Title `.title-2`, Title2 `.title-3`, Title3 `.title-4`,
@@ -3177,7 +3179,7 @@ menu bar's shortcuts with the same layout.
   disabled items and roles left out (a jump list can't show them); none
   deletes the list; tests and automation and dev runs don't touch the
   user's. The argument is taken out of `os.Args`; a running app (one
-  with asuka.json's `id` runs once) is handed `asuka-dock-item:<n>`, and
+  with asuka.toml's `id` runs once) is handed `asuka-dock-item:<n>`, and
   reports the item without coming to the front. Submenus in the menu bar
   are `MF_POPUP`s, with access keys per level; an owner-drawn item that
   opens one draws the visual style's arrow (`MENU_POPUPSUBMENU`) and
@@ -3216,8 +3218,8 @@ menu bar's shortcuts with the same layout.
   closes: closing the main window hides it, its root mounted, until the
   app shows it again (on macOS also the Dock icon, clicked with no window
   showing: `applicationShouldHandleReopen:hasVisibleWindows:`; on Linux,
-  the app launched again, `activate`). `app.RunInBackground()` (and asuka.json's
-  `"background": true`, which sets it with `-X` and, on macOS, puts
+  the app launched again, `activate`). `app.RunInBackground()` (and asuka.toml's
+  `background = true`, which sets it with `-X` and, on macOS, puts
   `LSUIElement` in the Info.plist so the Dock icon never shows) also
   leaves the main window hidden at launch, and on macOS makes the app an
   accessory (no Dock icon, not in ⌘Tab; a `Window` it opens activates
@@ -3496,7 +3498,7 @@ menu bar's shortcuts with the same layout.
 **Files, one instance, quitting, recent documents and login**
 (`ui/call.go`, `app/quit.go`, `app/dirs.go`, `recent`, `login`):
 
-- `asuka.json`'s `fileTypes` (name, extensions, MIME types, UTI,
+- `asuka.toml`'s `fileTypes` (name, extensions, MIME types, UTI,
   `conformsTo`, role, icon) are declared by each build
   (`cmd/asuka/filetypes.go`): macOS and iOS `CFBundleDocumentTypes` by
   UTI, the app's own types (a UTI under its ID) exported, others the
@@ -3817,7 +3819,7 @@ subscriptions) and as a peripheral (advertising, a GATT server).
   for uitest.
 - iOS: Core Bluetooth, compiled in for an app whose archive calls the
   package (`ASUKA_BLUETOOTH`, through its `call` and `send`); state
-  restoration when the app has the background modes (asuka.json's
+  restoration when the app has the background modes (asuka.toml's
   `bluetooth.background`), the managers made at launch for a relaunch.
   macOS: the same through purego. Android: one merged scan, one GATT
   operation at a time per connection, the companion device chooser, a

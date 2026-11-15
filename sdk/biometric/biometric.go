@@ -2,7 +2,7 @@
 // ID or a fingerprint (expo-local-authentication): to unlock the app, to
 // confirm a payment, before showing a secret. iOS's LocalAuthentication;
 // Android's BiometricPrompt. An app that imports it is given what it
-// needs (iOS's NSFaceIDUsageDescription, which asuka.json's ios.usage
+// needs (iOS's NSFaceIDUsageDescription, which asuka.toml's ios.usage
 // says better; Android's USE_BIOMETRIC).
 package biometric
 

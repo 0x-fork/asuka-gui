@@ -718,15 +718,13 @@ iOS にも Android にも、アプリ間で共通して使われる標準のト�
 
 ## ディープリンク
 
-`asuka.json` に記載しておくと、アプリは独自スキームの URL や、自分のドメインへの https リンクで開くようになります。
+`asuka.toml` に記載しておくと、アプリは独自スキームの URL や、自分のドメインへの https リンクで開くようになります。
 
-```json
-{
-  "name": "Notes",
-  "id": "com.example.notes",
-  "scheme": "notes",
-  "links": ["notes.example.com"]
-}
+```toml
+name = "Notes"
+id = "com.example.notes"
+scheme = "notes"
+links = ["notes.example.com"]
 ```
 
 - `scheme` を指定すると、`notes://anything` でアプリが開きます。対応するのは、iOS と Android、Mac（アプリの `Info.plist` でスキームを宣言します）、インストール後の Linux（デスクトップファイルがスキームを処理します。GNOME のアプリはそれぞれ単一インスタンスなので、アプリの実行中に開かれたリンクは実行中のアプリに届きます）、そして Windows（アプリは起動時に `HKEY_CURRENT_USER\Software\Classes` の下にユーザー単位でスキームを登録し、アプリが移動していれば登録し直します。アプリの実行中に開かれたリンクは実行中のアプリに届きます）です。`id` を持つアプリは、Linux と Windows では一つしか起動しません。もう一度起動すると、すでに動いているアプリが前面に出ます。`asuka dev` は Linux や Windows ではスキームを登録せず、その実行がインストール済みのアプリに処理を引き渡すこともありません。リンクは、ビルドしたアプリで試してください。
@@ -750,7 +748,7 @@ ui.OnOpenURL(func(raw string) {
 
 ## ほかのアプリからの共有
 
-`asuka.json` に `"shareTarget": true` を指定すると、ブラウザーや YouTube の「共有」のように、ほかのアプリの共有シートにアプリが表示され、テキストやリンクを受け取れるようになります。`{"types": ["image/*", ...]}` を指定すると、ファイルも受け取れます（[デバイスとサービス](device.md#ほかのアプリからの共有-uionshare) を参照）。`ui.OnShare` は、共有された内容を受け取ります。`OnOpenURL` と同じく、アプリを起動した共有は最初のハンドラーに渡されます。
+`asuka.toml` に `shareTarget = true` と書くと、ブラウザーや YouTube の「共有」のように、ほかのアプリの共有シートにアプリが表示され、テキストやリンクを受け取れるようになります。`shareTarget` をテーブルにして `types = ["image/*", ...]` を指定すると、ファイルも受け取れます（[デバイスとサービス](device.md#ほかのアプリからの共有-uionshare) を参照）。`ui.OnShare` は、共有された内容を受け取ります。`OnOpenURL` と同じく、アプリを起動した共有は最初のハンドラーに渡されます。
 
 ```go
 ui.OnShare(func(items []ui.SharedItem) {

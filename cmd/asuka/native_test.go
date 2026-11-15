@@ -64,7 +64,7 @@ func TestNativePackages(t *testing.T) {
 }
 
 // What a native package's Swift needs of the app: its Info.plist's keys
-// (a purpose string as a usage the app's asuka.json says better; arrays
+// (a purpose string as a usage the app's asuka.toml says better; arrays
 // joined; the rest where nothing set it), and its entitlements.
 func TestNativeNeeds(t *testing.T) {
 	dir := t.TempDir()

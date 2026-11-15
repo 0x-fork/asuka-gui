@@ -29,7 +29,7 @@ func init() {
 	})
 }
 
-// registerFileTypes registers asuka.json's fileTypes (boot.FileTypes) for
+// registerFileTypes registers asuka.toml's fileTypes (boot.FileTypes) for
 // the user, as the app starts: only the values that differ, then the
 // shell is told. Not when automation or asuka dev runs the app.
 func (h *Host) registerFileTypes() {

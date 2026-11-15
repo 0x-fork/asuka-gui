@@ -15,7 +15,7 @@
 | Linux | `$XDG_DATA_HOME/<id>`（即 `~/.local/share/<id>`；在 Flatpak 中则是沙盒自己的对应目录） |
 | Web | `/data/<name>`，位于一个内存文件系统中，页面会把它保存到浏览器的存储（IndexedDB）里 |
 
-`<name>` 是 `asuka.json` 里的 `name`，`<id>` 是其中的 `id`；如果不通过 CLI 而是直接用 `go run` 运行应用，两者都取程序名。这个目录不会预先创建，第一次往里写东西时才会建出来。在 Windows 和 Linux 上，宿主自己也会在这里放几个文件（主窗口的大小和位置、应用当前选择的语言）。在浏览器中，这个目录里的文件会在应用启动前加载好，修改后稍过片刻写回，页面被隐藏时也会写回，详见 [Web](web.md)。
+`<name>` 是 `asuka.toml` 里的 `name`，`<id>` 是其中的 `id`；如果不通过 CLI 而是直接用 `go run` 运行应用，两者都取程序名。这个目录不会预先创建，第一次往里写东西时才会建出来。在 Windows 和 Linux 上，宿主自己也会在这里放几个文件（主窗口的大小和位置、应用当前选择的语言）。在浏览器中，这个目录里的文件会在应用启动前加载好，修改后稍过片刻写回，页面被隐藏时也会写回，详见 [Web](web.md)。
 
 在 `asuka dev` 下，Go 代码运行在你的电脑上（桌面应用如此，iOS 和 Android 在热重载模式下也是如此），此时 `store.Dir()` 指向 `asuka dev` 在电脑上专门准备的目录（位于用户的缓存目录下的 `asuka/` 中，每个应用、每个平台各一个）。这样你开发时随手试出来的数据，就不会和已安装版本的数据混在一起。在热重载模式下，store、数据库和你的文件都在电脑上，而不在设备上。唯一的例外是 `asuka/sdk/secure`：它和发布构建一样使用平台自己的存储（热重载模式下就是设备的钥匙串）。在 Web 上，`asuka dev` 打开的页面把文件保存在浏览器里，按开发服务器的地址区分。
 
@@ -233,7 +233,7 @@ case err != nil:
 
 ### 库文件
 
-所有平台上的 SQLite 都是 3.54.1 版本，内置了 FTS5、R*Tree、Geopoly、数学函数、`dbstat`、`STAT4` 和 `soundex`，不支持加载扩展，临时表保存在内存中（手机上可能没有临时目录）。它就是插件的库 `asqlite`，为每个平台分别构建，发布在插件的 GitHub release 上；插件的清单文件（`sdk/sqlite/asuka-plugin.json`）列出了每个文件及其 SHA-256，CLI 和这个包会从那里把它们下载到用户的缓存目录，只下载一次。所以应用的开发者不需要安装 C 编译器。
+所有平台上的 SQLite 都是 3.54.1 版本，内置了 FTS5、R*Tree、Geopoly、数学函数、`dbstat`、`STAT4` 和 `soundex`，不支持加载扩展，临时表保存在内存中（手机上可能没有临时目录）。它就是插件的库 `asqlite`，为每个平台分别构建，发布在插件的 GitHub release 上；插件的清单文件（`sdk/sqlite/asuka-plugin.toml`）列出了每个文件及其 SHA-256，CLI 和这个包会从那里把它们下载到用户的缓存目录，只下载一次。所以应用的开发者不需要安装 C 编译器。
 
 - **`asuka build`** 会把这个库和应用一起打包，和其他插件的库一样（见[插件](plugins.md#库放在哪里)）：在 macOS 上放在应用的 `Contents/Frameworks` 中（并随应用一起签名），在 Windows 上放在 `.exe` 旁边，在 Linux 上放在安装前缀的 `lib/<app>` 中，在 iOS 应用里是 `asqlite.framework`，在 APK 里则每种 ABI 各放一份。
 - **`go run`、`go test`、`asuka dev`** 在桌面端会从用户的缓存目录加载已发布的库；在手机上，`asuka dev` 会像构建时一样把它放进应用里。嵌入到其他应用中的应用（`asuka build --xcframework`）会附带一个 `asqlite.xcframework`，宿主应用也需要把它一并嵌入（见[发布](shipping.md#嵌入现有应用)）。

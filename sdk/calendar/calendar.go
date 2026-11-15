@@ -5,7 +5,7 @@
 // Add needs no permission: the user saves the event in the system's own
 // editor. Calendars and Events read the user's calendars, with their
 // permission (Request); an app that imports this package is given what it
-// needs (iOS's calendar purpose strings, which asuka.json's ios.usage says
+// needs (iOS's calendar purpose strings, which asuka.toml's ios.usage says
 // better; Android's READ_CALENDAR).
 package calendar
 

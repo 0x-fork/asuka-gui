@@ -36,7 +36,7 @@ import (
 // the File menu's Open Recent and the Dock menu list, ten at most, and
 // keep across launches. Windows: the shell's recent items for the app
 // (SHAddToRecentDocs), which its jump list's Recent shows for the file
-// types the app opens (asuka.json's fileTypes), and the app's own list,
+// types the app opens (asuka.toml's fileTypes), and the app's own list,
 // which List returns. Linux: the user's recently used files
 // (~/.local/share/recently-used.xbel), as the app's.
 func Add(path string, done func(err error)) {

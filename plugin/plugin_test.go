@@ -3,11 +3,40 @@ package plugin
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
+// What Marshal writes, Parse reads back: the file asuka plugin publish
+// writes, with its header.
+func TestMarshal(t *testing.T) {
+	m := &Manifest{Name: "x", Sources: []string{"csrc"}, Libraries: []Library{{
+		Name: "lx", Version: "1.0", Release: "https://github.com/o/r/releases/download/t",
+		Files: map[string]File{"darwin": {Name: "liblx.dylib", Asset: "a.gz", Size: 3, SHA256: "ab"}, "wasm": {Name: "lx.wasm"}},
+	}}}
+	b, err := m.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(b), "# ") || !strings.Contains(string(b), "asuka plugin publish") || !strings.Contains(string(b), "[libraries.files.darwin]") {
+		t.Errorf("%s", b)
+	}
+	back, err := Parse(b)
+	if err != nil || !reflect.DeepEqual(back, m) {
+		t.Errorf("%+v, %v", back, err)
+	}
+}
+
 func TestParse(t *testing.T) {
-	m, err := Parse([]byte(`{"name": "x", "libraries": [{"name": "lx", "files": {"darwin": {"name": "liblx.dylib"}}}]}`))
+	m, err := Parse([]byte(`name = "x"
+
+[[libraries]]
+name = "lx"
+
+[libraries.files.darwin]
+name = "liblx.dylib"
+`))
 	if err != nil || m.Name != "x" {
 		t.Fatal(m, err)
 	}
@@ -17,9 +46,9 @@ func TestParse(t *testing.T) {
 	if _, ok := m.Library("nope"); ok {
 		t.Error("a library that isn't there")
 	}
-	for _, bad := range []string{`{`, `{"libraries": []}`, `{"name": "a b", "libraries": []}`, `{"name": ".x", "libraries": []}`,
-		`{"name": "x", "libraries": [{"files": {}}]}`,
-		`{"name": "x", "libraries": [{"name": "l", "files": {"darwin": {}}}]}`} {
+	for _, bad := range []string{`name = `, `libraries = []`, `name = "a b"`, `name = ".x"`,
+		"name = \"x\"\n[[libraries]]\nfiles = {}",
+		"name = \"x\"\n[[libraries]]\nname = \"l\"\n[libraries.files.darwin]"} {
 		if _, err := Parse([]byte(bad)); err == nil {
 			t.Errorf("%s: no error", bad)
 		}
@@ -53,7 +82,7 @@ func TestSourceHash(t *testing.T) {
 	}
 	write("x.go", "package x // changed")
 	write("build/darwin/lib.dylib", "built")
-	write(ManifestFile, "{}")
+	write(ManifestFile, `name = "x"`)
 	write("csrc/a_test.go", "package a")
 	same("what isn't a source")
 	write("csrc/a.c", "int b;")

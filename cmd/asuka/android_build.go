@@ -36,14 +36,14 @@ func buildAndroid(app *goApp, o *buildOptions) error {
 	if err != nil {
 		return err
 	}
-	// The upload key: asuka.json, or the environment (CI).
+	// The upload key: asuka.toml, or the environment (CI).
 	keystore := firstOf(os.Getenv("ASUKA_KEYSTORE"), cfg.Android.Keystore)
 	alias := firstOf(os.Getenv("ASUKA_KEY_ALIAS"), cfg.Android.KeyAlias)
 	storePass := os.Getenv("ASUKA_KEYSTORE_PASSWORD")
 	if keystore == "" || alias == "" || storePass == "" {
 		return errors.New(`a release build is signed with your upload key; make one (once, and keep it safe):
   keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
-then name it in asuka.json ("android": {"keystore": "upload.jks", "keyAlias": "upload"})
+then name it in asuka.toml's [android] (keystore = "upload.jks", keyAlias = "upload")
 and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the key's differs)`)
 	}
 	fmt.Printf("asuka: building %s %s (%d) for Android\n", cfg.Name, cfg.Version, cfg.Build)
@@ -62,7 +62,7 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 		}
 		icon = "@mipmap/ic_launcher"
 	} else {
-		fmt.Println("asuka: no icon in asuka.json; Google Play needs one (512×512 or larger PNG)")
+		fmt.Println("asuka: no icon in asuka.toml; Google Play needs one (512×512 or larger PNG)")
 	}
 	if _, err := androidRes(cfg, res); err != nil {
 		return err

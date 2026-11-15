@@ -342,7 +342,7 @@ func prepareAndroidHost(app *goApp, work string) (src, hash string, err error) {
 			fmt.Fprintln(h, m[0], m[1], dirDigest(m[1]))
 		}
 	}
-	// The widgets' providers (asuka.json's widgets).
+	// The widgets' providers (asuka.toml's widgets).
 	gen := filepath.Join(src, "app", "src", "main", "java", "dev", "asuka", "app", "widgets")
 	os.RemoveAll(gen)
 	if app.cfg != nil && len(app.cfg.androidWidgets()) > 0 {

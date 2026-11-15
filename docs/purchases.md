@@ -219,12 +219,11 @@ installed from one of its tracks, so purchases are unavailable in
 
 **The iOS simulator.** Make a StoreKit configuration file in Xcode (File ›
 New › File › StoreKit Configuration File; or sync it from App Store
-Connect), with the products, and name it in `asuka.json`:
+Connect), with the products, and name it in `asuka.toml`:
 
-```json
-{
-  "ios": { "storekit": "Products.storekit" }
-}
+```toml
+[ios]
+storekit = "Products.storekit"
 ```
 
 `asuka dev`'s build for the simulator carries it, and as `asuka dev`

@@ -36,7 +36,7 @@
 //     a dark taskbar, black on a light one; so is a Template image.
 //     DockMenu's items are the Tasks of the taskbar button's jump list
 //     (ICustomDestinationList): each starts the app with an argument,
-//     which a running app (one with asuka.json's id runs once) is handed;
+//     which a running app (one with asuka.toml's id runs once) is handed;
 //     its separators are the jump list's, and submenus, checks and
 //     disabled items it can't show are left out.
 //   - Linux: a StatusNotifierItem on the session bus, its menu exported

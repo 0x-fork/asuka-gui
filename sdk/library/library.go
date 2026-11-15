@@ -7,7 +7,7 @@
 //
 // An app that imports it is given what it needs: Android's storage
 // permission before Android 10, iOS's purpose string for adding to
-// Photos (asuka.json's ios.usage.NSPhotoLibraryAddUsageDescription says
+// Photos (asuka.toml's ios.usage.NSPhotoLibraryAddUsageDescription says
 // it better), and its Documents in Files.
 package library
 

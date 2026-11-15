@@ -333,7 +333,7 @@ func (h *Host) dockMenu() ID {
 // backgroundPolicy is the activation policy the app runs with: an
 // accessory (no Dock icon, not in the app switcher) when it runs in the
 // background (app.RunInBackground) or its bundle says so (LSUIElement,
-// asuka.json's "background"), else a regular app.
+// asuka.toml's background), else a regular app.
 func backgroundPolicy() uintptr {
 	if inBackground() {
 		return 1 // NSApplicationActivationPolicyAccessory

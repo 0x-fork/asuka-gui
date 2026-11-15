@@ -72,7 +72,7 @@ ui.Window(ui.WindowProps{
 
 ## 后台应用
 
-`app.KeepRunning()` 让应用在最后一个窗口关闭后继续运行：窗口只是被隐藏，调用 `ui.MainWindow().Show()` 就能把它重新显示出来（在 Mac 上，点击程序坞图标也可以）。`app.RunInBackground()`，或者在 `asuka.json` 中设置 `"background": true`，还会让应用启动时不显示任何窗口，在 Mac 上也不显示程序坞图标，适合只住在菜单栏或托盘里的应用。这两个函数都要在 `app.Run` 之前调用。
+`app.KeepRunning()` 让应用在最后一个窗口关闭后继续运行：窗口只是被隐藏，调用 `ui.MainWindow().Show()` 就能把它重新显示出来（在 Mac 上，点击程序坞图标也可以）。`app.RunInBackground()`，或者在 `asuka.toml` 中设置 `background = true`，还会让应用启动时不显示任何窗口，在 Mac 上也不显示程序坞图标，适合只住在菜单栏或托盘里的应用。这两个函数都要在 `app.Run` 之前调用。
 
 ## 全局快捷键
 
@@ -190,7 +190,7 @@ dialog.Save(dialog.SaveOptions{
 
 ## 打开文件
 
-在 `asuka.json` 的 `fileTypes` 中声明应用能打开的文件类型（见[发布](shipping.md)），然后用 `ui.OnOpenFiles` 处理它们：
+在 `asuka.toml` 的 `fileTypes` 中声明应用能打开的文件类型（见[发布](shipping.md)），然后用 `ui.OnOpenFiles` 处理它们：
 
 ```go
 ui.OnOpenFiles(func(paths []string) {
@@ -204,7 +204,7 @@ ui.OnOpenFiles(func(paths []string) {
 
 ## 单实例
 
-在 Windows 和 Linux 上，设置了 `id` 的应用只会运行一个实例：再次启动它时，会把正在运行的那个切到前台，`app.OnSecondInstance(func(args []string, dir string))` 会收到这次启动的参数和工作目录，其中的文件和链接会分别交给 `ui.OnOpenFiles` 和 `ui.OnOpenURL`。如果希望每次都启动一个新实例，就在 `asuka.json` 中设置 `"singleInstance": false`。Mac 总是只运行一个实例，并且只传递文件，不传递参数。
+在 Windows 和 Linux 上，设置了 `id` 的应用只会运行一个实例：再次启动它时，会把正在运行的那个切到前台，`app.OnSecondInstance(func(args []string, dir string))` 会收到这次启动的参数和工作目录，其中的文件和链接会分别交给 `ui.OnOpenFiles` 和 `ui.OnOpenURL`。如果希望每次都启动一个新实例，就在 `asuka.toml` 中设置 `singleInstance = false`。Mac 总是只运行一个实例，并且只传递文件，不传递参数。
 
 ## 退出
 
@@ -218,7 +218,7 @@ ui.OnOpenFiles(func(paths []string) {
 
 把 `update.Window(update.Options{})` 放在应用的根组件里，就得到一个 Sparkle 式的更新器：它会在启动后不久以及之后每天检查一次新版本；有新版本时显示更新说明，并提供“安装更新”“跳过此版本”和“稍后提醒”三个选项；下载时显示进度条（如果有针对当前版本的增量包，就只下载变化的部分）；校验新版本是否用应用的密钥签名；安装完成后提供“立即重新启动”。`update.AppMenu()` 会在 Mac 上的“关于”之后加入“检查更新…”菜单项（在其他平台上则放在“帮助”菜单中）。如果想自己做更新界面，可以使用 `update.Check`、`Release.Install` 和 `update.Relaunch`。
 
-`asuka update keygen` 生成密钥对；`asuka.json` 中的 `updates` 指定发布的位置（GitHub Releases、S3 存储桶、任意 HTTPS 目录，或者你自己的服务器）；`asuka publish --platform mac`（或 `windows`、`linux`）负责构建、签名和上传（见[发布](shipping.md#自动更新)）。Mac 应用的新 bundle 会等应用退出后再替换；Windows 和 Linux 则在应用运行时就替换它的文件。通过系统软件包、Flatpak、Snap 或应用商店安装的应用由它们负责更新，`update.Supported()` 会反映这一点；手机上返回 `ErrUnsupported`。在 Web 上，如果页面比网站上的版本旧，会提示用户重新加载。
+`asuka update keygen` 生成密钥对；`asuka.toml` 中的 `updates` 指定发布的位置（GitHub Releases、S3 存储桶、任意 HTTPS 目录，或者你自己的服务器）；`asuka publish --platform mac`（或 `windows`、`linux`）负责构建、签名和上传（见[发布](shipping.md#自动更新)）。Mac 应用的新 bundle 会等应用退出后再替换；Windows 和 Linux 则在应用运行时就替换它的文件。通过系统软件包、Flatpak、Snap 或应用商店安装的应用由它们负责更新，`update.Supported()` 会反映这一点；手机上返回 `ErrUnsupported`。在 Web 上，如果页面比网站上的版本旧，会提示用户重新加载。
 
 ## 最近使用的文档
 
@@ -248,7 +248,7 @@ func main() {
 }
 ```
 
-在 `asuka.json` 的 `fileTypes` 中列出同样的类型，系统才会把你的应用作为这些文件的打开方式之一。`examples/textedit` 就是这个编辑器，另外加了一行状态栏，以及一个在文件被其他应用修改时出现的提示条。
+在 `asuka.toml` 的 `fileTypes` 中列出同样的类型，系统才会把你的应用作为这些文件的打开方式之一。`examples/textedit` 就是这个编辑器，另外加了一行状态栏，以及一个在文件被其他应用修改时出现的提示条。
 
 文档的 `Content()` 是一个 signal：视图绑定它，修改它就等于编辑了文档——除非 `Equal` 判断它和文件中的内容相同（比如撤销回原样，或者打了一个字又删掉）。重新读取文件时也会设置它。如果应用是原地修改内容的（比如内容是指向某个模型的指针），就要调用 `doc.Changed()` 告知这一点，并提供 `Snapshot`，用来在写入之前复制一份内容。`doc.State()` 是一个 signal，包含文档的名称、文件，以及它是否已编辑、只读、有冲突或已被删除。
 

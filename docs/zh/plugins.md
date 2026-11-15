@@ -31,29 +31,25 @@ db, err := sqlite.Open("notes.db")
 
 ## 编写插件
 
-插件就是一个旁边带有清单文件 `asuka-plugin.json` 的包：
+插件就是一个旁边带有清单文件 `asuka-plugin.toml` 的包：
 
-```json
-{
-  "name": "sqlite",
-  "sources": ["csrc", "internal/build"],
-  "libraries": [
-    {
-      "name": "asqlite",
-      "version": "3.54.1",
-      "release": "https://github.com/egoist/asuka/releases/download/plugin-sqlite",
-      "files": {
-        "darwin": {"name": "libasqlite.dylib"},
-        "ios": {"name": "asqlite"},
-        "ios-simulator": {"name": "asqlite"},
-        "android-arm64": {"name": "libasqlite.so"},
-        "linux-amd64": {"name": "libasqlite.so"},
-        "windows-amd64": {"name": "asqlite.dll"},
-        "wasm": {"name": "asqlite.wasm"}
-      }
-    }
-  ]
-}
+```toml
+name = "sqlite"
+sources = ["csrc", "internal/build"]
+
+[[libraries]]
+name = "asqlite"
+version = "3.54.1"
+release = "https://github.com/egoist/asuka/releases/download/plugin-sqlite"
+
+[libraries.files]
+darwin = {name = "libasqlite.dylib"}
+ios = {name = "asqlite"}
+ios-simulator = {name = "asqlite"}
+android-arm64 = {name = "libasqlite.so"}
+linux-amd64 = {name = "libasqlite.so"}
+windows-amd64 = {name = "asqlite.dll"}
+wasm = {name = "asqlite.wasm"}
 ```
 
 - `name` 是插件的名称，命令行工具在输出信息中会用它来指代这个插件。
@@ -63,7 +59,7 @@ db, err := sqlite.Open("notes.db")
 插件的 Go 代码写在清单所在目录下的某个文件中，它嵌入清单，并从 `plugin.LibraryPath` 给出的路径加载库：
 
 ```go
-//go:embed asuka-plugin.json
+//go:embed asuka-plugin.toml
 var manifest []byte
 
 func load() (uintptr, error) {
@@ -86,7 +82,7 @@ go generate ./sdk/sqlite                         # 构建所有目标平台
 go run ./cmd/asuka plugin publish sdk/sqlite     # 发布
 ```
 
-`asuka plugin publish` 会把每个文件用 gzip 压缩，并以它的哈希命名（`asqlite-darwin-1982f596dd7c-libasqlite.dylib.gz`）。它通过 `gh` 上传 release 中还没有的文件；如果 release 不存在，就先创建它。上传后，它会把每个文件重新下载回来校验，再把它们记录到清单中——你要提交的正是这个清单。release 中已有的文件永远不会被替换，因此历史上任何一次提交中的清单都始终可用。如果构建产物比插件的源文件旧，发布会中止：先重新构建即可。
+`asuka plugin publish` 会把每个文件用 gzip 压缩，并以它的哈希命名（`asqlite-darwin-1982f596dd7c-libasqlite.dylib.gz`）。它通过 `gh` 上传 release 中还没有的文件；如果 release 不存在，就先创建它。上传后，它会把每个文件重新下载回来校验，再把它们记录到清单中——你要提交的正是这个清单。整个清单都由它写出，开头有一行注释说明这一点，所以你在里面加的注释不会保留下来。release 中已有的文件永远不会被替换，因此历史上任何一次提交中的清单都始终可用。如果构建产物比插件的源文件旧，发布会中止：先重新构建即可。
 
 ## 平台宿主的原生代码
 

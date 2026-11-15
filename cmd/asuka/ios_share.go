@@ -13,7 +13,7 @@ import (
 	iosHost "github.com/egoist/asuka/platform/ios"
 )
 
-// The share extension (asuka.json's shareTarget): platform/ios/Share, a
+// The share extension (asuka.toml's shareTarget): platform/ios/Share, a
 // binary of its own in the app's PlugIns. It runs no Go: it opens the
 // app with what was shared in a URL of the app's share scheme, which the
 // host turns into the Shared event (ui.OnShare), as Android's

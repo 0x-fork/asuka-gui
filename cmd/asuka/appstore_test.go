@@ -131,10 +131,10 @@ func TestLoadASCKey(t *testing.T) {
 	if err != nil || k.id != "ABC" || k.issuer != "iss" {
 		t.Fatalf("%+v %v", k, err)
 	}
-	// asuka.json's path, made absolute by loadConfig.
+	// asuka.toml's path, made absolute by loadConfig.
 	app := t.TempDir()
 	os.WriteFile(filepath.Join(app, "key.p8"), p8, 0o600)
-	os.WriteFile(filepath.Join(app, "asuka.json"), []byte(`{"ios":{"appStoreConnect":{"keyId":"DEF","issuerId":"i2","key":"key.p8"}}}`), 0o644)
+	os.WriteFile(filepath.Join(app, "asuka.toml"), []byte("[ios.appStoreConnect]\nkeyId = \"DEF\"\nissuerId = \"i2\"\nkey = \"key.p8\""), 0o644)
 	cfg, err = loadConfig(app)
 	if err != nil {
 		t.Fatal(err)
@@ -465,7 +465,7 @@ func TestPublishIOSRefusals(t *testing.T) {
 	c, f := testASC(t)
 	f.versions = append(f.versions, res("appStoreVersions", "v12", map[string]any{"versionString": "1.2", "appVersionState": "READY_FOR_DISTRIBUTION"}))
 	err := publishIOS(c, testApp(t), &publishOptions{}, nil, build)
-	if err == nil || !strings.Contains(err.Error(), "raise asuka.json's version") || built != 0 {
+	if err == nil || !strings.Contains(err.Error(), "raise asuka.toml's version") || built != 0 {
 		t.Fatalf("closed version: %v (built %d)", err, built)
 	}
 
@@ -544,7 +544,7 @@ func TestPublishIOSFile(t *testing.T) {
 	// Another app's .ipa.
 	app := testApp(t)
 	app.cfg.ID = "com.example.other"
-	if err := publishIOS(c, app, &publishOptions{file: ipa}, nil, never); err == nil || !strings.Contains(err.Error(), "asuka.json's id is com.example.other") {
+	if err := publishIOS(c, app, &publishOptions{file: ipa}, nil, never); err == nil || !strings.Contains(err.Error(), "asuka.toml's id is com.example.other") {
 		t.Fatal(err)
 	}
 }

@@ -13,7 +13,7 @@ import (
 // store's entitlement (its identifier, the team's prefix and the app's
 // ID), for an app that calls the store's functions; for one that calls
 // the documents', iCloud Documents (the CloudDocuments service) and the
-// app's containers (asuka.json's icloud.containers, by default
+// app's containers (asuka.toml's icloud.containers, by default
 // iCloud.<id>), and Info.plist's NSUbiquitousContainers, which shows the
 // first one's Documents in iCloud Drive. As Xcode does, a profile's
 // wildcards (the services' "*", the store's TEAM.*) are signed as the
@@ -49,9 +49,9 @@ var icloudEntitlements = []string{entKVStore, entContainers, entUbiquity, entSer
 // icloudWhat says what an entitlement is for, when a profile lacks it.
 var icloudWhat = map[string]string{
 	entKVStore:    "iCloud's key-value storage (asuka/sdk/icloud)",
-	entContainers: "iCloud Documents, with asuka.json's icloud containers (asuka/sdk/icloud)",
-	entUbiquity:   "iCloud Documents, with asuka.json's icloud containers (asuka/sdk/icloud)",
-	entServices:   "iCloud Documents, with asuka.json's icloud containers (asuka/sdk/icloud)",
+	entContainers: "iCloud Documents, with asuka.toml's icloud containers (asuka/sdk/icloud)",
+	entUbiquity:   "iCloud Documents, with asuka.toml's icloud containers (asuka/sdk/icloud)",
+	entServices:   "iCloud Documents, with asuka.toml's icloud containers (asuka/sdk/icloud)",
 }
 
 // icloudContainers are the app's container IDs, its default first.
@@ -102,7 +102,7 @@ func (c *appConfig) addICloud(kv, docs bool) {
 
 // ubiquitousContainers is Info.plist's NSUbiquitousContainers: the first
 // container's Documents shown in iCloud Drive (the Files app, Finder), in
-// a folder with the app's name, unless asuka.json's icloud.driveHidden.
+// a folder with the app's name, unless asuka.toml's icloud.driveHidden.
 // nil if the app has no documents.
 func (c *appConfig) ubiquitousContainers() map[string]any {
 	if !c.icloudDocs {

@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	// asuka.json says so for a build; this does it for go run too.
+	// asuka.toml says so for a build; this does it for go run too.
 	app.RunInBackground()
 	app.RunWindow(ui.WindowOptions{
 		Title:      ui.Val("Launcher"),

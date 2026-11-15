@@ -14,13 +14,19 @@ import (
 // config or not.
 func TestNFCConfig(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id": "com.example.tags", "nfc": {
-		"iso7816": ["d2760000850101", "A0000002471001"],
-		"felica": ["8008"],
-		"ndef": [{"uri": "https://Example.com/t/"}, {"uri": "geo:"}, {"mime": "Application/vnd.example.ticket"}, {"external": "Example.com:Ticket"}],
-		"tech": [["IsoDep"], ["android.nfc.tech.NfcA", "mifareultralight"]],
-		"required": true
-	}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`id = "com.example.tags"
+
+[nfc]
+iso7816 = ["d2760000850101", "A0000002471001"]
+felica = ["8008"]
+ndef = [
+  {uri = "https://Example.com/t/"},
+  {uri = "geo:"},
+  {mime = "Application/vnd.example.ticket"},
+  {external = "Example.com:Ticket"},
+]
+tech = [["IsoDep"], ["android.nfc.tech.NfcA", "mifareultralight"]]
+required = true`), 0o644)
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -108,21 +114,21 @@ func TestNFCConfig(t *testing.T) {
 
 func TestNFCConfigErrors(t *testing.T) {
 	for _, js := range []string{
-		`{"iso7816": ["xyz"]}`,
-		`{"iso7816": ["A000"]}`,
-		`{"felica": ["FFFF"]}`,
-		`{"felica": ["80080"]}`,
-		`{"ndef": [{}]}`,
-		`{"ndef": [{"uri": "https://a", "mime": "a/b"}]}`,
-		`{"ndef": [{"uri": "example.com"}]}`,
-		`{"ndef": [{"mime": "text"}]}`,
-		`{"ndef": [{"external": "thing"}]}`,
-		`{"tech": [[]]}`,
-		`{"tech": [["Felica"]]}`,
+		`iso7816 = ["xyz"]`,
+		`iso7816 = ["A000"]`,
+		`felica = ["FFFF"]`,
+		`felica = ["80080"]`,
+		`ndef = [{}]`,
+		`ndef = [{uri = "https://a", mime = "a/b"}]`,
+		`ndef = [{uri = "example.com"}]`,
+		`ndef = [{mime = "text"}]`,
+		`ndef = [{external = "thing"}]`,
+		`tech = [[]]`,
+		`tech = [["Felica"]]`,
 	} {
 		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"nfc": `+js+`}`), 0o644)
-		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "asuka.json: nfc:") {
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[nfc]\n"+js), 0o644)
+		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "asuka.toml: nfc:") {
 			t.Errorf("%s: %v", js, err)
 		}
 	}

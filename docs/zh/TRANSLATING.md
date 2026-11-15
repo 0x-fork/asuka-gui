@@ -76,6 +76,7 @@
 | phone | 手机 | |
 | Mac / PC | Mac / PC | 保留 |
 | app | 应用 / App | 一般用“应用”；“the player app”等可用 App |
+| table (TOML) | 表 | `asuka.toml` 中的 `[ios]` 等。array of tables（`[[widgets]]`）→ 表数组，inline table → 内联表，与 TOML 中文版规范的用语一致 |
 
 产品名、框架名（UIKit、AppKit、Material 3、GTK、libadwaita、WebView2、SwiftUI、Expo、React Native ……）一律保留英文。
 

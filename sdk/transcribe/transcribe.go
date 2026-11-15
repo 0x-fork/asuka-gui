@@ -9,7 +9,7 @@
 //	}()
 //
 // An app that imports it is given the permissions it needs: iOS's speech
-// recognition, with its purpose string (asuka.json's
+// recognition, with its purpose string (asuka.toml's
 // ios.usage.NSSpeechRecognitionUsageDescription says it better), and on
 // Android the microphone's, which its recognizer asks for.
 package transcribe

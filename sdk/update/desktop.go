@@ -56,7 +56,7 @@ func init() {
 }
 
 // Supported reports whether the app can update itself, and why not: nil
-// when it can. It can't in a development build or one without asuka.json's
+// when it can. It can't in a development build or one without asuka.toml's
 // "updates" (ErrNotConfigured), when the system's packages, Flatpak, Snap
 // or an app store installed it (ErrManaged), when it runs translocated
 // on the Mac (ErrTranslocated) or where the user can't write

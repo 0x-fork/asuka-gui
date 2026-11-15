@@ -49,7 +49,7 @@ nfc.Start(nfc.Options{OnEnd: ended}, func(t *nfc.Tag) {
 
 在 iOS 上，会话会显示系统的面板。`Options.Alert` 是寻找标签时面板上显示的文字，`SetAlert` 可以修改它（比如 `"Writing…"`）。`Stop` 会让面板带着对勾和当前提示文字关闭；`Fail("Couldn't write the tag.")` 则让面板显示这条失败信息后关闭。Android 和 Web 不显示面板：应用自己展示界面，提示文字在那里不起作用。
 
-`Options.Poll` 决定使用哪种会话。不设置时，iOS 使用 `NFCNDEFReaderSession` 读取带 NDEF 消息的标签：这样找到的标签没有 ID，也不能接收原始命令。设置之后（`nfc.PollA`、`PollB`、`PollF`、`PollV`、`PollPACE` 或 `PollAll`），iOS 改用 `NFCTagReaderSession` 轮询这些类型的标签，可以拿到 ID，也能发送命令。ISO 7816 卡需要在 asuka.json 的 `nfc.iso7816` 里列出它的应用，FeliCa 卡需要在 `nfc.felica` 里列出系统代码：iOS 不会发现其他的卡。
+`Options.Poll` 决定使用哪种会话。不设置时，iOS 使用 `NFCNDEFReaderSession` 读取带 NDEF 消息的标签：这样找到的标签没有 ID，也不能接收原始命令。设置之后（`nfc.PollA`、`PollB`、`PollF`、`PollV`、`PollPACE` 或 `PollAll`），iOS 改用 `NFCTagReaderSession` 轮询这些类型的标签，可以拿到 ID，也能发送命令。ISO 7816 卡需要在 `asuka.toml` 的 `nfc.iso7816` 里列出它的应用，FeliCa 卡需要在 `nfc.felica` 里列出系统代码：iOS 不会发现其他的卡。
 
 ### Android 的读卡器模式
 
@@ -125,8 +125,8 @@ MIFARE Classic 的扇区只能在 Android 上读写（iOS 不支持 MIFARE Class
 
 应用没有打开时，标签也能打开它，或者把它带到前台：
 
-- **iOS** 会在后台读取标签（iPhone XS 及更新的机型），当标签的第一条记录是某个应用的通用链接时，提示用户打开该应用：也就是 asuka.json 的 `links` 中、域名提供了 apple-app-site-association 文件的链接。这个链接会像其他链接一样交给 `ui.OnOpenURL`。
-- **Android** 会为 asuka.json 中 `nfc.ndef`（NDEF_DISCOVERED，按消息的第一条记录匹配：URI、MIME 类型或外部类型）和 `nfc.tech`（TECH_DISCOVERED，按技术类型匹配）列出的标签打开应用。带 URI 的标签交给 `ui.OnOpenURL`；其他标签作为 `Tag` 交给 `nfc.OnOpen`，标签还在附近时，应用依然可以读写它、给它发命令。属于应用 `links` 的 https 标签还会作为 App Link 打开应用。
+- **iOS** 会在后台读取标签（iPhone XS 及更新的机型），当标签的第一条记录是某个应用的通用链接时，提示用户打开该应用：也就是 `asuka.toml` 的 `links` 中、域名提供了 apple-app-site-association 文件的链接。这个链接会像其他链接一样交给 `ui.OnOpenURL`。
+- **Android** 会为 `asuka.toml` 中 `nfc.ndef`（NDEF_DISCOVERED，按消息的第一条记录匹配：URI、MIME 类型或外部类型）和 `nfc.tech`（TECH_DISCOVERED，按技术类型匹配）列出的标签打开应用。带 URI 的标签交给 `ui.OnOpenURL`；其他标签作为 `Tag` 交给 `nfc.OnOpen`，标签还在附近时，应用依然可以读写它、给它发命令。属于应用 `links` 的 https 标签还会作为 App Link 打开应用。
 
 ```go
 ui.OnOpenURL(func(u string) { link.Set(u) })
@@ -139,20 +139,23 @@ nfc.OnOpen(func(t *nfc.Tag) {
 
 在设置处理函数之前到达的标签（比如启动应用的那个标签）会一直等到第一个处理函数出现。`nfc.OnOpen` 会随组件的 owner 一起停止，也可以调用它返回的函数停止。会话运行期间到达的标签交给会话，而不是这里。
 
-## asuka.json 与权限
+## asuka.toml 与权限
 
 导入了 `asuka/sdk/nfc` 的应用会获得 Android 的 `NFC` 权限和 `uses-feature android.hardware.nfc`（非必需：没有 NFC 的手机也能安装），以及 iOS 上的 `NFCReaderUsageDescription`（在 `ios.usage` 里写你自己的说明）和 Core NFC 的 entitlement `com.apple.developer.nfc.readersession.formats`（`NDEF` 和 `TAG`）。发布构建的 App ID 需要开启 NFC Tag Reading 能力：如果描述文件缺少它，`asuka build` 会提示你。
 
-asuka.json 的 `nfc` 用来补充应用的标签所需的配置：
+`asuka.toml` 的 `nfc` 用来补充应用的标签所需的配置：
 
-```json
-"nfc": {
-  "iso7816": ["D2760000850101"],
-  "felica": ["8008"],
-  "ndef": [{ "uri": "https://example.com/t/" }, { "mime": "application/vnd.example.ticket" }, { "external": "example.com:ticket" }],
-  "tech": [["IsoDep"], ["NfcA", "MifareUltralight"]],
-  "required": true
-}
+```toml
+[nfc]
+iso7816 = ["D2760000850101"]
+felica = ["8008"]
+ndef = [
+  {uri = "https://example.com/t/"},
+  {mime = "application/vnd.example.ticket"},
+  {external = "example.com:ticket"},
+]
+tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
+required = true
 ```
 
 | 键 | 说明 |
@@ -163,7 +166,7 @@ asuka.json 的 `nfc` 用来补充应用的标签所需的配置：
 | `tech` | 在 Android 上按技术类型打开应用的标签：每个列表里是标签必须全部具备的类型（`android.nfc.tech` 的类） |
 | `required` | 应用只面向带 NFC 的手机：Google Play 不会向其他设备提供它 |
 
-这些配置只会加到导入了这个包的应用里。见 [asuka.json](asuka-json.md#nfc)。
+这些配置只会加到导入了这个包的应用里。见 [asuka.toml](asuka-toml.md#nfc)。
 
 ## 在 asuka dev 中
 

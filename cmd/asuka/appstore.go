@@ -33,12 +33,15 @@ type ascKey struct {
 	p8         []byte // the key's file, for xcodebuild (asuka dev on a device)
 }
 
-const ascKeyHelp = `publishing to App Store Connect takes an API key: make one there (Users and Access › Integrations › App Store Connect API, with the App Manager role), then name it in asuka.json
-  "ios": {"appStoreConnect": {"keyId": "ABC123DEF4", "issuerId": "57246542-96fe-1a63-e053-0824d011072a", "key": "AuthKey_ABC123DEF4.p8"}}
+const ascKeyHelp = `publishing to App Store Connect takes an API key: make one there (Users and Access › Integrations › App Store Connect API, with the App Manager role), then name it in asuka.toml
+  [ios.appStoreConnect]
+  keyId = "ABC123DEF4"
+  issuerId = "57246542-96fe-1a63-e053-0824d011072a"
+  key = "AuthKey_ABC123DEF4.p8"
 or in the environment: ASUKA_ASC_KEY_ID, ASUKA_ASC_ISSUER_ID and ASUKA_ASC_KEY (the .p8's path, or its text). Keep the .p8 out of your repository`
 
 // loadASCKey finds the app's App Store Connect key: in the environment,
-// else asuka.json, its .p8 where they say or, as altool looks for it,
+// else asuka.toml, its .p8 where they say or, as altool looks for it,
 // AuthKey_<id>.p8 in a private_keys directory.
 func loadASCKey(cfg *appConfig) (*ascKey, error) {
 	a := cfg.IOS.AppStoreConnect
@@ -76,7 +79,7 @@ func loadASCKey(cfg *appConfig) (*ascKey, error) {
 			}
 		}
 		if data == nil {
-			return nil, fmt.Errorf("no AuthKey_%s.p8 in %s; name it in asuka.json (ios.appStoreConnect.key) or ASUKA_ASC_KEY", id, strings.Join(dirs, ", "))
+			return nil, fmt.Errorf("no AuthKey_%s.p8 in %s; name it in asuka.toml (ios.appStoreConnect.key) or ASUKA_ASC_KEY", id, strings.Join(dirs, ", "))
 		}
 	}
 	key, err := parseP8(data)
@@ -470,7 +473,7 @@ func (c *ascClient) checkVersionOpen(appID, version string) error {
 	}
 	for _, v := range vs {
 		if slices.Contains(closedStates, v.Attributes.AppVersionState) {
-			return fmt.Errorf("version %s is %s on App Store Connect, which takes no more builds of it: raise asuka.json's version",
+			return fmt.Errorf("version %s is %s on App Store Connect, which takes no more builds of it: raise asuka.toml's version",
 				version, stateText(v.Attributes.AppVersionState))
 		}
 	}
@@ -785,7 +788,7 @@ func (c *ascClient) testFlight(buildID string, groups []ascRes[ascBetaGroup]) er
 		return err
 	}
 	if d.InternalBuildState == "MISSING_EXPORT_COMPLIANCE" {
-		return errors.New(`the build has no export compliance: answer for it in App Store Connect (TestFlight), or say in asuka.json what the app's encryption is ("ios": {"nonExemptEncryption": "no"}), then publish again`)
+		return errors.New(`the build has no export compliance: answer for it in App Store Connect (TestFlight), or say in asuka.toml what the app's encryption is ([ios] nonExemptEncryption = "no"), then publish again`)
 	}
 	var add []ascRef
 	var names []string
@@ -872,7 +875,7 @@ func (c *ascClient) submitReview(appID, buildID, version string, notes map[strin
 		case s == "WAITING_FOR_REVIEW" || s == "IN_REVIEW":
 			return fmt.Errorf("version %s is %s already: to send another build, cancel its review in App Store Connect first", version, stateText(s))
 		case !slices.Contains(editableStates, s):
-			return fmt.Errorf("version %s is %s: raise asuka.json's version", version, stateText(s))
+			return fmt.Errorf("version %s is %s: raise asuka.toml's version", version, stateText(s))
 		}
 		if len(attrs) > 0 {
 			if err := c.do(http.MethodPatch, "/v1/appStoreVersions/"+v.ID, data("appStoreVersions", v.ID, attrs, nil), nil); err != nil {

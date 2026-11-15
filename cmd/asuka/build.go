@@ -27,9 +27,9 @@ type buildOptions struct {
 	arch         string // Linux and Windows: amd64 or arm64
 	verbose      bool
 	noVet        bool
-	version      string // asuka.json's version, for this build
+	version      string // asuka.toml's version, for this build
 	publishing   bool   // asuka publish: the update files are required
-	base         string // web: the path the site is served at (asuka.json's web.base)
+	base         string // web: the path the site is served at (asuka.toml's web.base)
 
 	// dev, for iOS: asuka dev on a device (ios_device.go).
 	dev *iosDevBuild
@@ -44,15 +44,15 @@ func buildFlags(o *buildOptions) *flagSet {
 	fs.String(&o.notarize, "notarize", 0, "", "macOS: notarize the signed app and staple the ticket: a notarytool keychain `profile` (xcrun notarytool store-credentials), or \"env\" for ASUKA_APPLE_ID, ASUKA_APPLE_PASSWORD (app-specific) and ASUKA_TEAM_ID")
 	fs.Bool(&o.simulator, "simulator", 0, "iOS: a release .app for the simulator instead (not signed for devices)")
 	fs.Bool(&o.xcframework, "xcframework", 0, "iOS: AsukaApp.xcframework, the app to embed in an app made in Xcode (import AsukaApp; AsukaViewController())")
-	fs.String(&o.base, "base", 0, "", "web: the `path` the site is served at, \"/app/\" for https://example.com/app/ (default: asuka.json's web.base, else \"/\")")
+	fs.String(&o.base, "base", 0, "", "web: the `path` the site is served at, \"/app/\" for https://example.com/app/ (default: asuka.toml's web.base, else \"/\")")
 	fs.String(&o.arch, "arch", 0, "", "Linux: amd64 or arm64 (default: this machine's, else amd64); Windows: amd64 or arm64 (default: amd64, which runs on Windows on Arm too)")
 	fs.Bool(&o.aar, "aar", 0, "Android: an .aar, the app to embed in an app made in Android Studio (start dev.asuka.AsukaActivity)")
 	fs.String(&o.distribution, "distribution", 0, "app-store", "iOS: app-store, ad-hoc or development")
-	fs.String(&o.profile, "profile", 0, "", "iOS and macOS: a provisioning `profile`'s path, name or UUID (default: asuka.json's (macOS: or ASUKA_MAC_PROFILE), else the best match installed; macOS: only for an app whose packages need one: push, Sign in with Apple, App Attest)")
+	fs.String(&o.profile, "profile", 0, "", "iOS and macOS: a provisioning `profile`'s path, name or UUID (default: asuka.toml's (macOS: or ASUKA_MAC_PROFILE), else the best match installed; macOS: only for an app whose packages need one: push, Sign in with Apple, App Attest)")
 	fs.Bool(&o.appStore, "appstore", 0, "macOS: a .pkg for the Mac App Store: the app sandboxed, signed with a Mac App Store profile's certificate (Apple Distribution), the .pkg with Mac Installer Distribution")
 	fs.String(&o.out, "out", 'o', "", "the output `directory` (default: dist in the app's directory)")
 	fs.Bool(&o.noVet, "no-vet", 0, "don't run asuka vet first (by default it prints what it finds, as warnings: the build goes on)")
-	fs.String(&o.version, "version", 0, "", "the `version` to build, in place of asuka.json's (as CI takes it from the tag: 1.2.0, 1.3.0-beta.1)")
+	fs.String(&o.version, "version", 0, "", "the `version` to build, in place of asuka.toml's (as CI takes it from the tag: 1.2.0, 1.3.0-beta.1)")
 	fs.Bool(&o.verbose, "verbose", 'v', "print the commands asuka runs")
 	return fs
 }

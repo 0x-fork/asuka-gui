@@ -59,7 +59,7 @@ cd hello
 
 - `main.go`, the app: a function that returns its interface, given to
   `app.Run`.
-- `asuka.json`, its name, its ID (the bundle ID, application ID and
+- `asuka.toml`, its name, its ID (the bundle ID, application ID and
   desktop app ID) and version, and what [the stores and each
   platform](shipping.md) need.
 - `go.mod`.

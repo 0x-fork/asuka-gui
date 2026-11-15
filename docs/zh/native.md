@@ -271,7 +271,7 @@ func makeKitchen() throws -> any Kitchen
 
 `Package.swift` 旁边的 `Info.plist` 声明这个包对 Apple 应用的要求：
 
-- 权限用途说明（如 `NSBluetoothAlwaysUsageDescription`）：如果应用自己在 `asuka.json` 中提供了，以应用的为准；
+- 权限用途说明（如 `NSBluetoothAlwaysUsageDescription`）：如果应用自己在 `asuka.toml` 中提供了，以应用的为准；
 - 数组类型的键（如 `UIBackgroundModes`）：会与应用和其他包的值合并；
 - 其他任何键：除非应用自己设置了，否则就使用包里的值。
 

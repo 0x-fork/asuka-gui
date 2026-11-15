@@ -85,7 +85,7 @@ func say(key string, args func() map[string]any) signal.Accessor[string] {
 	})
 }
 
-// appName is the app's name, asuka.json's.
+// appName is the app's name, asuka.toml's.
 func appName() string {
 	if boot.Name != "" {
 		return boot.Name
