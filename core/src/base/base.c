@@ -84,6 +84,24 @@ void ak_buf_str(ak_buf *b, const char *s, size_t n) {
 	ak_buf_put(b, s, n);
 }
 
+void ak_buf_printf(ak_buf *b, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	char tmp[256];
+	int n = vsnprintf(tmp, sizeof tmp, fmt, ap);
+	va_end(ap);
+	if (n < 0) return;
+	if ((size_t)n < sizeof tmp) {
+		ak_buf_put(b, tmp, (size_t)n);
+		return;
+	}
+	ak_buf_reserve(b, (size_t)n + 1);
+	va_start(ap, fmt);
+	vsnprintf((char *)b->data + b->len, (size_t)n + 1, fmt, ap);
+	va_end(ap);
+	b->len += (size_t)n;
+}
+
 static bool need(ak_reader *r, size_t n) {
 	if (r->err || r->len - r->off < n) {
 		r->err = true;
