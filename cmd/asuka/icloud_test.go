@@ -103,30 +103,21 @@ func TestICloudPlistAndSimulator(t *testing.T) {
 	}
 }
 
-// What an app calls says what it's given: examples/journal calls both
-// parts; the player, which stands in for any app, has neither (an app of
-// iCloud's is built, not run in the player).
+// What an app calls says what it's given: an app that imports
+// asuka/icloud and names its store's and its documents' functions both;
+// one that doesn't, neither.
 func TestUseICloud(t *testing.T) {
-	c := &appConfig{ID: "dev.asuka.journal"}
-	c.useICloud("../../examples/journal", ".", []string{icloudPkg})
+	both := t.TempDir()
+	os.WriteFile(filepath.Join(both, "app.asuka"), []byte("import asuka/icloud\n\nfn save() { icloud.set(\"k\", \"v\"); icloud.writeFile(\"a\", \"b\") }\n\napp { Text(\"a\") }\n"), 0o644)
+	os.WriteFile(filepath.Join(both, "asuka.toml"), []byte("id = \"dev.asuka.journal\"\n"), 0o644)
+	c := projectApp(t, both, nil).cfg
 	if !c.icloudKV || !c.icloudDocs || c.entitlements[entKVStore] != teamPrefix+"dev.asuka.journal" {
-		t.Errorf("examples/journal: kv %v, docs %v, %v", c.icloudKV, c.icloudDocs, c.entitlements)
+		t.Errorf("both: kv %v, docs %v, %v", c.icloudKV, c.icloudDocs, c.entitlements)
 	}
-	none := &appConfig{ID: "dev.asuka.counter"}
-	none.useICloud("../../examples/counter", ".", []string{"github.com/egoist/asuka/ui"})
-	if none.icloudKV || none.icloudDocs || len(none.entitlements) != 0 {
-		t.Errorf("examples/counter: %v", none.entitlements)
-	}
-	if p := playerConfig(); p.icloudKV || p.icloudDocs || p.entitlements[entKVStore] != nil {
-		t.Errorf("the player: %v", p.entitlements)
-	}
-	for _, target := range []string{"ios", "ios-device"} {
-		if b, _ := gapsOf(c, target, icloudPkg); !strings.Contains(b, "iCloud") {
-			t.Errorf("%s: an app of iCloud's runs in the player (%q)", target, b)
-		}
-	}
-	if b, _ := gapsOf(c, "android", icloudPkg); b != "" {
-		t.Errorf("android: built for %q", b)
+	none := t.TempDir()
+	os.WriteFile(filepath.Join(none, "app.asuka"), []byte("app { Text(\"set\") }\n"), 0o644)
+	if c := projectApp(t, none, nil).cfg; c.icloudKV || c.icloudDocs || len(c.entitlements) != 0 {
+		t.Errorf("none: %v", c.entitlements)
 	}
 	if !slices.Equal(featureMacSwift[icloudPkg], []string{"ASUKA_ICLOUD"}) {
 		t.Error("no Mac Swift for iCloud")

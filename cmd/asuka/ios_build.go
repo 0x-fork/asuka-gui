@@ -16,14 +16,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/egoist/asuka/lang/bytecode"
 )
 
 // buildIOS makes a release build: an .ipa signed for distribution, or
 // with --simulator a release .app for the simulator. No Xcode project:
-// swiftc compiles the host (optimized), the Go archive is built for the
+// swiftc compiles the host (optimized), the core is built for the
 // device, actool compiles the icon, and the bundle is signed with the
 // provisioning profile that fits.
-func buildIOS(app *goApp, o *buildOptions) error {
+func buildIOS(app *asukaApp, o *buildOptions) error {
 	start := time.Now()
 	cfg := app.cfg
 	sdkName := "iphoneos"
@@ -70,23 +72,38 @@ func buildIOS(app *goApp, o *buildOptions) error {
 		}
 	}
 	fmt.Printf("asuka: building %s %s (%d) for %s\n", cfg.Name, cfg.Version, cfg.Build, map[bool]string{true: "the simulator", false: "devices"}[o.simulator])
-	lib, err := tc.buildGo(app, work)
+	if err := generateNatives(app); err != nil {
+		return err
+	}
+	// The core: with the app compiled in, or, for asuka dev on a device,
+	// the player's, which loads the app's bytecode, with every feature.
+	var m *bytecode.Module
+	features := []string(nil)
+	if o.dev == nil {
+		if m, err = app.compile(); err != nil {
+			return err
+		}
+		features = usedFeatures(app, cfg)
+	} else {
+		features = playerFeatures(app, cfg)
+		// It reaches asuka dev on the local network.
+		if cfg.IOS.Usage == nil {
+			cfg.IOS.Usage = map[string]string{}
+		}
+		if cfg.IOS.Usage["NSLocalNetworkUsageDescription"] == "" {
+			cfg.IOS.Usage["NSLocalNetworkUsageDescription"] = "To reach asuka dev on your computer, which runs the app you're working on."
+		}
+	}
+	lib, err := tc.buildCore(work, m)
 	if err != nil {
 		return err
 	}
-	var hostObj string
-	if app.pkg != "" {
-		// The player (asuka dev on a device): every feature, as on the
-		// simulator, and no native packages.
-		hostObj, err = tc.buildHost(work, nil, allFeatures())
-	} else {
-		hostObj, err = tc.buildHost(work, app, usedFeatures(lib, cfg))
-	}
+	hostObj, err := tc.buildHost(work, app, features)
 	if err != nil {
 		return err
 	}
 	// The widget extension of an app with Live Activities and no widgets,
-	// likewise known once the Go code is.
+	// likewise known once its features are.
 	if cfg.widgetExtension() && widgetProf == nil && !o.simulator {
 		if widgetProf, err = o.pickProfile(prof.team, cfg.widgetID(), cfg.IOS.WidgetProfile); err != nil {
 			return fmt.Errorf("the widget extension (asuka/sdk/liveactivity's Live Activities): %v", err)
@@ -94,7 +111,7 @@ func buildIOS(app *goApp, o *buildOptions) error {
 		fmt.Printf("asuka: signing the widget extension with %q\n", widgetProf.name)
 	}
 	// The Notification Service Extension (push.Rewrite), whose profile is
-	// known once the Go code is: signed with one of its own, likewise.
+	// known once the features are: signed with one of its own, likewise.
 	if cfg.pushRewrite && !o.simulator {
 		if notificationProf, err = o.pickProfile(prof.team, cfg.notificationID(), cfg.IOS.NotificationProfile); err != nil {
 			return fmt.Errorf("the Notification Service Extension (push.Rewrite): %v", err)

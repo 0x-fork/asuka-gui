@@ -12,10 +12,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/egoist/asuka/internal/androidsdk"
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/cbuild"
 	androidHost "github.com/egoist/asuka/platform/android"
 )
 
@@ -60,20 +63,6 @@ func newAndroidToolchainOn(sys androidsdk.System, verbose bool) (*androidToolcha
 		javaHome: sys.Java(),
 		verbose:  verbose,
 	}, nil
-}
-
-// cgoEnv is the environment of a cgo build of Go code for Android:
-// goarch (and goarm), with the NDK's clang for target (a triple, the API
-// level added) as CC, called directly with --target (no NDK wrapper,
-// which on Windows is a .cmd through cmd.exe), and 16 KB pages.
-func (t *androidToolchain) cgoEnv(goarch, goarm, triple string) []string {
-	env := []string{"GOOS=android", "GOARCH=" + goarch, "CGO_ENABLED=1",
-		"CC=" + androidsdk.CC(t.clang, triple+androidMinAPI),
-		"CGO_LDFLAGS=-Wl,-z,max-page-size=16384"}
-	if goarm != "" {
-		env = append(env, "GOARM="+goarm)
-	}
-	return env
 }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
@@ -180,20 +169,16 @@ func (t *androidToolchain) goArch(serial string) (goarch, triple string, err err
 	return "", "", fmt.Errorf("unsupported Android ABI %q", abi)
 }
 
-// buildGo builds the app's Go code for the device, work/libasuka.so, and
-// writes its plugins' libraries beside it (plugins: their paths).
-func (t *androidToolchain) buildGo(app *goApp, work, serial string) (lib string, plugins []string, err error) {
-	goarch, triple, err := t.goArch(serial)
-	if err != nil {
-		return "", nil, err
-	}
-	ov, err := writeOverlay(app, work)
+// buildPlayerLib builds asuka dev's player for the device's ABI: the core
+// without an app, work/libasuka.so, with the app's plugins' libraries
+// beside it (plugins: their paths).
+func (t *androidToolchain) buildPlayerLib(app *asukaApp, work, serial string) (lib string, plugins []string, err error) {
+	goarch, _, err := t.goArch(serial)
 	if err != nil {
 		return "", nil, err
 	}
 	lib = filepath.Join(work, "libasuka.so")
-	env := t.cgoEnv(goarch, "", triple)
-	if err := t.run(app.dir, env, "go", "build", "-buildmode=c-shared", app.cfg.ldflags(false), "-overlay", ov, "-o", lib, "."); err != nil {
+	if err := appbuild.Lib(cbuild.Target{OS: "android", Arch: goarch}, cbuild.Shared, nil, lib); err != nil {
 		return "", nil, err
 	}
 	// An earlier build's plugins' libraries go.
@@ -203,7 +188,7 @@ func (t *androidToolchain) buildGo(app *goApp, work, serial string) (lib string,
 			os.Remove(p)
 		}
 	}
-	libs, err := appLibs(app.dir, "android", goarch, "android-"+goarch)
+	libs, err := appLibs(app, "android-"+goarch)
 	if err != nil {
 		return "", nil, err
 	}
@@ -219,7 +204,7 @@ func (t *androidToolchain) buildGo(app *goApp, work, serial string) (lib string,
 
 // buildAPK builds the shell app for app with Gradle, cached by the host
 // sources and the app ID.
-func (t *androidToolchain) buildAPK(app *goApp, work string) (apk, hash string, err error) {
+func (t *androidToolchain) buildAPK(app *asukaApp, work string) (apk, hash string, err error) {
 	// The host's sources and Gradle build are shared: one build at a time.
 	unlock, err := lockShared(androidHostDir(work))
 	if err != nil {
@@ -306,7 +291,7 @@ func androidHostDir(work string) string {
 // prepareAndroidHost writes the embedded host, with the app's own
 // Kotlin, where Gradle builds it (shared by the apps), and returns its
 // directory and a hash of what it holds.
-func prepareAndroidHost(app *goApp, work string) (src, hash string, err error) {
+func prepareAndroidHost(app *asukaApp, work string) (src, hash string, err error) {
 	h := sha256.New()
 	fmt.Fprintln(h, app.bundleID, app.name, app.displayName())
 	var files []string
@@ -392,6 +377,11 @@ func removeStaleSources(src string, files []string) {
 	})
 }
 
+// devAndroid runs the app on an emulator or a device: the debug shell
+// app (installed when it changed) with the player's library (the core
+// without an app, pushed to its files, as the app's plugins'), which
+// connects to asuka dev through adb reverse (files/asuka/dev says where)
+// and loads the app's bytecode, again on each save.
 func devAndroid(dir string, o *devOptions, stop <-chan os.Signal) error {
 	app, err := loadApp(dir)
 	if err != nil {
@@ -410,22 +400,40 @@ func devAndroid(dir string, o *devOptions, stop <-chan os.Signal) error {
 		return err
 	}
 	fmt.Printf("asuka: %s on %s\n", app.name, serial)
-	if usePlayer(app, o, "android") {
-		return devAndroidPlayer(app, tc, work, serial, stop)
+	loop, err := newDevLoop(app, "127.0.0.1:0")
+	if err != nil {
+		return err
 	}
-	pkg := androidPackage(app.bundleID)
+	p, err := androidPlayer(app, tc, work, serial, loop)
+	if err != nil {
+		return err
+	}
+	return loop.run(p, stop, o.once)
+}
 
-	var logs *exec.Cmd
-	build := func() error {
+// androidPlayer is the player on the device serial: the shell app
+// installed when it changed, the core without an app pushed to its files,
+// started connected to the loop through adb reverse (its stop removes
+// it).
+func androidPlayer(app *asukaApp, tc *androidToolchain, work, serial string, loop *devLoop) (devPlayer, error) {
+	pkg := androidPackage(app.bundleID)
+	// The device's loopback reaches this computer's, on the same port.
+	port := strconv.Itoa(loop.port())
+	if err := tc.run(work, nil, tc.adb, "-s", serial, "reverse", "tcp:"+port, "tcp:"+port); err != nil {
+		return devPlayer{}, err
+	}
+	launch := func() error {
 		start := time.Now()
-		// The Go code first: whether it has a share sheet is the manifest's.
-		lib, plugins, err := tc.buildGo(app, work, serial)
+		if err := generateNatives(app); err != nil {
+			return err
+		}
+		lib, plugins, err := tc.buildPlayerLib(app, work, serial)
 		if err != nil {
 			return err
 		}
-		app.cfg.shareSheet = hasSheet(lib)
-		app.cfg.pushRewrite = hasSymbol(lib, rewriteSymbol)
-		app.cfg.useLocation(func(s string) bool { return hasSymbol(lib, s) })
+		// What the app's sources use decides its manifest's services.
+		usedFeatures(app, app.cfg)
+		app.cfg.useLocation(app.hasSymbol)
 		apk, hash, err := tc.buildAPK(app, work)
 		if err != nil {
 			return err
@@ -433,12 +441,7 @@ func devAndroid(dir string, o *devOptions, stop <-chan os.Signal) error {
 		if err := tc.installOnce(serial, pkg, apk, hash, filepath.Join(work, "installed-"+serial)); err != nil {
 			return err
 		}
-		if logs != nil && logs.Process != nil {
-			logs.Process.Kill()
-			logs.Wait()
-			logs = nil
-		}
-		// The Go library, and its plugins' beside it.
+		// The player's library, and its plugins' beside it.
 		tmp := "/data/local/tmp/asuka-" + pkg + ".so"
 		if err := tc.run(work, nil, tc.adb, "-s", serial, "push", lib, tmp); err != nil {
 			return err
@@ -453,7 +456,7 @@ func devAndroid(dir string, o *devOptions, stop <-chan os.Signal) error {
 		}
 		tc.run(work, nil, tc.adb, "-s", serial, "shell", "am", "force-stop", pkg)
 		if err := tc.run(work, nil, tc.adb, "-s", serial, "shell", "run-as", pkg, "sh", "-c",
-			"'"+devLibsScript(tmp, pushed)+"'"); err != nil {
+			"'"+devLibsScript(tmp, pushed)+" && echo 127.0.0.1:"+port+" > files/asuka/dev'"); err != nil {
 			return err
 		}
 		if err := tc.pushAssets(app, work, serial, pkg); err != nil {
@@ -462,48 +465,18 @@ func devAndroid(dir string, o *devOptions, stop <-chan os.Signal) error {
 		if err := tc.run(work, nil, tc.adb, "-s", serial, "shell", "am", "start", "-W", "-n", pkg+"/dev.asuka.AsukaActivity"); err != nil {
 			return err
 		}
-		fmt.Printf("asuka: built and started in %.1fs\n", time.Since(start).Seconds())
-		if o.once {
-			return nil
-		}
-		pid, _ := tc.adbOut(serial, "shell", "pidof", pkg)
-		args := []string{"-s", serial, "logcat", "-v", "brief", "-T", "1"}
-		if pid != "" {
-			args = append(args, "--pid="+strings.Fields(pid)[0])
-		}
-		logs = exec.Command(tc.adb, args...)
-		logs.Stdout, logs.Stderr = os.Stdout, os.Stderr
-		return logs.Start()
-	}
-	if err := build(); err != nil {
-		if o.once {
-			return err
-		}
-		fmt.Fprintln(os.Stderr, "asuka:", err)
-	}
-	if o.once {
+		fmt.Printf("asuka: the player built and started in %.1fs\n", time.Since(start).Seconds())
 		return nil
 	}
-	fmt.Println("asuka: watching for changes (Ctrl-C to stop)")
-	natives, _ := nativeFor(app, "android", "arm64") // its native packages' Kotlin, wherever they are
-	w := newWatcher(append([]string{app.moduleDir, app.dir}, nativeDirsOf(natives, "android")...)...)
-	for {
-		select {
-		case <-stop:
-			if logs != nil && logs.Process != nil {
-				logs.Process.Kill()
-			}
-			return nil
-		case <-w.wake:
-			if !w.changed() {
-				continue
-			}
-			fmt.Println("asuka: change detected, rebuilding")
-			if err := build(); err != nil {
-				fmt.Fprintln(os.Stderr, "asuka:", err)
-			}
-		}
-	}
+	return devPlayer{
+		launch: launch,
+		stop: func() {
+			// Started from the launcher after, it runs what it has.
+			exec.Command(tc.adb, "-s", serial, "shell", "am", "force-stop", pkg).Run()
+			exec.Command(tc.adb, "-s", serial, "shell", "run-as", pkg, "rm", "-f", "files/asuka/dev").Run()
+			exec.Command(tc.adb, "-s", serial, "reverse", "--remove", "tcp:"+port).Run()
+		},
+	}, nil
 }
 
 // devLib is a plugin's library asuka dev pushed: where, and its name.
@@ -511,7 +484,7 @@ type devLib struct{ tmp, name string }
 
 // devLibsScript is the shell script (run as the app) that puts the
 // libraries asuka dev pushed to the device's tmp in the app's
-// files/asuka: the Go code's, and its plugins' (an earlier build's go).
+// files/asuka: the player's core, and its plugins' (an earlier build's go).
 // Read-only: Android refuses to load writable libraries.
 func devLibsScript(goTmp string, plugins []devLib) string {
 	s := "mkdir -p files/asuka && rm -f files/asuka/*.so" +
@@ -524,18 +497,6 @@ func devLibsScript(goTmp string, plugins []devLib) string {
 
 // androidPackage makes an Android package name from a bundle ID: no
 // hyphens, and no segment starting with a digit.
-// hasSheet reports whether the Go library at path calls app.ShareSheet:
-// its name is in the functions' table, which stripping a release's
-// symbols leaves (stack traces need it).
-func hasSheet(path string) bool { return hasSymbol(path, sheetSymbol) }
-
-// hasSymbol reports whether the Go library at path has the function
-// symbol (its symbol table names it).
-func hasSymbol(path, symbol string) bool {
-	data, err := os.ReadFile(path)
-	return err == nil && bytes.Contains(data, []byte(symbol+"\x00"))
-}
-
 func androidPackage(id string) string {
 	parts := strings.Split(strings.ReplaceAll(id, "-", "_"), ".")
 	for i, p := range parts {
@@ -549,7 +510,7 @@ func androidPackage(id string) string {
 // pushAssets copies the app's assets directory into its private files
 // (files/asuka/assets), where the debug shell app reads them, when they
 // changed.
-func (t *androidToolchain) pushAssets(app *goApp, work, serial, pkg string) error {
+func (t *androidToolchain) pushAssets(app *asukaApp, work, serial, pkg string) error {
 	dir := filepath.Join(app.dir, "assets")
 	if !exists(dir) {
 		return nil

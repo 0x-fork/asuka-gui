@@ -66,19 +66,6 @@ func TestAndroidToolchainWindows(t *testing.T) {
 		}
 	}
 
-	// Every ABI's CC: clang.exe itself, quoted, with the target triple and
-	// API level (no NDK .cmd wrapper, no cmd.exe).
-	for _, a := range androidABIs {
-		env := tc.cgoEnv(a.goarch, a.goarm, a.clang)
-		want := `CC="` + clang + `" --target=` + a.clang + androidMinAPI
-		if !slices.Contains(env, want) {
-			t.Errorf("%s: %q has no %s", a.abi, env, want)
-		}
-		if a.goarm != "" && !slices.Contains(env, "GOARM="+a.goarm) {
-			t.Errorf("%s: %q has no GOARM", a.abi, env)
-		}
-	}
-
 	// Gradle: the wrapper's batch file; the properties, whatever their
 	// characters, in its environment.
 	src := filepath.Join(root, "android-host")
@@ -116,10 +103,6 @@ func TestAndroidToolchainMac(t *testing.T) {
 	}
 	if want := filepath.Join(sdk, "platform-tools", "adb"); tc.adb != want {
 		t.Errorf("adb: %q, want %q", tc.adb, want)
-	}
-	clang := filepath.Join(sdk, "ndk", "27.2.12479018", "toolchains", "llvm", "prebuilt", "darwin-x86_64", "bin", "clang")
-	if env := tc.cgoEnv("arm64", "", "aarch64-linux-android"); !slices.Contains(env, "CC="+clang+" --target=aarch64-linux-android"+androidMinAPI) {
-		t.Errorf("cgo: %q", env)
 	}
 	if name, _, _ := tc.gradleCommand("/h", nil, nil); name != filepath.Join("/h", "gradlew") {
 		t.Errorf("gradle: %q", name)

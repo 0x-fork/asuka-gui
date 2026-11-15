@@ -174,19 +174,6 @@ func (u *updatesConfig) fileURL(version, name string) string {
 	return "https://github.com/" + u.GitHub + "/releases/download/" + url.PathEscape(u.TagPrefix+version) + "/" + url.PathEscape(name)
 }
 
-// updateLdflags are the -ldflags that build updates into the app of
-// target: its feed, the public key and the target.
-func updateLdflags(app *goApp, target string) string {
-	u, err := app.cfg.updates()
-	if err != nil || u == nil {
-		return ""
-	}
-	pkg := "github.com/egoist/asuka/sdk/update."
-	return " -X " + strconv.Quote(pkg+"buildFeed="+u.feed(target)) +
-		" -X " + strconv.Quote(pkg+"buildKey="+strings.TrimSpace(u.PublicKey)) +
-		" -X " + strconv.Quote(pkg+"buildTarget="+target)
-}
-
 // signingKey returns the private key that signs updates, nil when there's
 // none: ASUKA_UPDATE_PRIVATE_KEY (the key, or its file's path), else
 // updates.privateKey's file. It must be the public key's.
@@ -308,7 +295,7 @@ func writeFileList(b updateBuild) error {
 // and its manifest. It returns the files written (none without updates
 // in asuka.toml); without the signing key it says so and writes none,
 // unless required (asuka publish), which fails then.
-func writeUpdates(app *goApp, out string, b updateBuild, required bool) ([]string, error) {
+func writeUpdates(app *asukaApp, out string, b updateBuild, required bool) ([]string, error) {
 	u, err := app.cfg.updates()
 	if err != nil || u == nil {
 		if required && err == nil {
@@ -680,7 +667,7 @@ it can ship code to your users.`
 
 // versionFile is the web's version.json (asuka/sdk/update on the web): the
 // version built, and its release notes.
-func versionFile(app *goApp) []byte {
+func versionFile(app *asukaApp) []byte {
 	v := map[string]string{"version": app.cfg.Version, "build": strconv.Itoa(app.cfg.Build), "date": time.Now().UTC().Format(time.RFC3339)}
 	if u, err := app.cfg.updates(); err == nil && u != nil {
 		if notes, err := u.releaseNotes(app.dir, app.cfg.Version); err == nil && notes != "" {

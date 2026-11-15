@@ -10,34 +10,27 @@ import (
 )
 
 // testNativeApp is testdata/nativeapp, an app with a native package (the
-// kitchen, internal/nativegen's testdata).
-func testNativeApp(t *testing.T) *goApp {
+// kitchen, internal/nativegen's testdata) among its dependencies.
+func testNativeApp(t *testing.T) *asukaApp {
 	t.Helper()
-	dir, err := filepath.Abs(filepath.Join("testdata", "nativeapp"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := loadConfig(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &goApp{dir: dir, name: "nativeapp", cfg: cfg}
+	kitchen, _ := filepath.Abs(filepath.Join("..", "..", "internal", "nativegen", "testdata", "kitchen"))
+	return projectApp(t, filepath.Join("testdata", "nativeapp"), map[string]string{"kitchen": kitchen})
 }
 
 // An app's native packages are its dependencies with generated native
 // code; each platform's are those with its project.
 func TestNativePackages(t *testing.T) {
 	app := testNativeApp(t)
-	all, err := appNatives(app.dir, ".", "android", "arm64")
-	if err != nil || len(all) != 1 || all[0].name != "kitchen" || !all[0].main {
+	all, err := appNatives(app)
+	if err != nil || len(all) != 1 || all[0].name != "kitchen" || all[0].main {
 		t.Fatalf("%+v %v", all, err)
 	}
 	for _, pl := range []string{"android", "web", "macos"} {
-		if ps, err := nativeFor(app, pl, "arm64"); err != nil || len(ps) != 1 {
+		if ps, err := nativeFor(app, pl); err != nil || len(ps) != 1 {
 			t.Errorf("%s: %+v %v", pl, ps, err)
 		}
 	}
-	if ps, err := nativeFor(sqliteTestApp(t), "android", "arm64"); err != nil || len(ps) != 0 {
+	if ps, err := nativeFor(sqliteTestApp(t), "android"); err != nil || len(ps) != 0 {
 		t.Errorf("sqliteapp: %+v %v", ps, err)
 	}
 	if err := app.cfg.androidNatives(app); err != nil {
@@ -99,7 +92,7 @@ func TestNativeNeeds(t *testing.T) {
 // products; two native packages SwiftPM would take for one say so.
 func TestSwiftRootManifest(t *testing.T) {
 	app := testNativeApp(t)
-	natives, err := nativeFor(app, "ios", "arm64")
+	natives, err := nativeFor(app, "ios")
 	if err != nil || len(natives) != 1 {
 		t.Fatal(natives, err)
 	}
@@ -128,7 +121,7 @@ func TestSwiftRootManifest(t *testing.T) {
 // A web build puts packages' files in lib/ and packages/ of the host's:
 // the host's files have neither.
 func TestWebHostLeavesPackageDirs(t *testing.T) {
-	src, _ := webSource(&goApp{})
+	src, _ := webSource()
 	for _, d := range []string{"lib", "packages"} {
 		if _, err := fs.Stat(src, d); err == nil {
 			t.Errorf("the web host has %s/, where packages' files go", d)

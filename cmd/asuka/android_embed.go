@@ -11,7 +11,7 @@ import (
 )
 
 // An app embedded in another (asuka build --platform android --aar): the host library
-// with the app's Go code for every ABI and its assets, AsukaActivity
+// with the core and the app compiled in for every ABI and its assets, AsukaActivity
 // declared in its manifest, published to a Maven repository in dist/maven
 // with the optional modules the app uses, so an app made in Android Studio
 // adds the repository and the dependency, and starts the Asuka app:
@@ -20,7 +20,7 @@ import (
 //
 // Its dependencies (Material, AndroidX) come through the repository's POMs.
 
-func buildAndroidAAR(app *goApp, o *buildOptions) error {
+func buildAndroidAAR(app *asukaApp, o *buildOptions) error {
 	start := time.Now()
 	cfg := app.cfg
 	tc, err := newAndroidToolchain(o.verbose)

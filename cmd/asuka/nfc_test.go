@@ -104,12 +104,6 @@ required = true`), 0o644)
 	if ok, _ := androidRes(plain, t.TempDir()); ok {
 		t.Error("tech lists without any")
 	}
-
-	// The player has the permission and the entitlement, as any app could.
-	p := playerConfig()
-	if !slices.Contains(p.Android.Permissions, "android.permission.NFC") || p.entitlements["com.apple.developer.nfc.readersession.formats"] == nil {
-		t.Error("the player can't read tags")
-	}
 }
 
 func TestNFCConfigErrors(t *testing.T) {

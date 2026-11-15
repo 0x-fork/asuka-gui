@@ -173,15 +173,29 @@ static void reload(const uint8_t *p, size_t n) {
 	ak_dev_send(AK_DEV_RELOADED, b, sizeof b);
 }
 
+static void keep_states(void) {
+	if (keeping) return;
+	keeping = true;
+	ak_keep_start();
+	ak_keep_qualify = ak_ui_path_key;
+}
+
+int asuka_dev_reload(const uint8_t *p, size_t n, uint32_t *micros, char **err) {
+	if (err) *err = NULL;
+	keep_states();
+	int64_t t0 = ak_now_ns();
+	if (asuka_load(p, n, err) != 0) return -1;
+	if (micros) *micros = (uint32_t)((ak_now_ns() - t0) / 1000);
+	return (int)ak_keep_restored();
+}
+
 int asuka_dev_connect(const char *host_name, int port, const char *hello, char **err) {
 	if (err) *err = NULL;
 	if (!started) {
 		fail(err, "asuka: asuka_dev_connect before asuka_start");
 		return -1;
 	}
-	keeping = true;
-	ak_keep_start();
-	ak_keep_qualify = ak_ui_path_key;
+	keep_states();
 	ak_dev_set_reload(reload);
 	char msg[256];
 	if (!ak_dev_connect(host_name, port, hello, true, msg, sizeof msg)) {

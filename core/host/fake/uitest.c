@@ -97,13 +97,17 @@ static void uitest_drop(ak_opaque *o) {
 	if (active == a) active = NULL;
 }
 
+static uint8_t default_platform = AK_PLATFORM_IOS;
+
+void ak_uitest_set_platform(uint8_t platform) { default_platform = platform; }
+
 ak_uitest *ak_uitest_mount(ak_closure *build, const ak_environment *env) {
 	if (active && active->mounted) ak_uitest_unmount(active, NULL);
 	ak_uitest *a = ak_opaque_new(AK_TAG_OPAQUE, sizeof(ak_uitest), uitest_drop);
 	a->f = ak_fake_new();
 	ak_fake *f = a->f;
 	if (env) f->env = *env;
-	else f->env.platform = AK_PLATFORM_IOS;
+	else f->env.platform = default_platform;
 	f->core = (ak_fake_core){a, ev_cb, count_cb, bind_cb, unbind_cb, posted_cb};
 	f->fail_fn = fail_cb;
 	f->fail_ctx = &a->fails;

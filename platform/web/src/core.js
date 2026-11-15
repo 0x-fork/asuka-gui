@@ -3,7 +3,7 @@
 // as the Go web host was: batches and measurements through a shared
 // buffer, events and the lists' calls into the core's C ABI (asuka.h).
 //
-//	const core = await startCore(host, { wasm: "asuka.wasm", module: "app.akb" });
+//	const core = await startCore(host, { wasm: "asuka.wasm", module: "app.akb", dev: true });
 
 /** wasi is the little of WASI the core's C library calls: the clock, randomness, writing to the console. */
 function wasi(memory, log) {
@@ -54,7 +54,9 @@ function wasi(memory, log) {
 
 /**
  * startCore loads the core into the page and connects it to host. Options: wasm (the
- * core's URL), module (bytecode to run: asuka dev's app), log (where the core's output goes).
+ * core's URL), module (bytecode to run: asuka dev's app), dev (asuka dev's page: the module
+ * loads as its reloads do, and core.reload loads the next one keeping the app's state and
+ * views), log (where the core's output goes).
  */
 export async function startCore(host, options = {}) {
   let instance;
@@ -91,7 +93,22 @@ export async function startCore(host, options = {}) {
     new Uint8Array(memory().buffer, p, bytes.length).set(bytes);
     try { return f(p, bytes.length); } finally { e.asuka_free(p); }
   };
+  // asuka dev's loads: the state cells kept (0 for the first) and the microseconds taken.
+  const devLoad = (bytes) => {
+    const micros = e.asuka_alloc(4);
+    try {
+      const kept = withBytes(bytes, (p, n) => e.asuka_dev_reload(p, n, micros, 0));
+      if (kept < 0) throw new Error("asuka: the app's module didn't load (see the console)");
+      return { kept, micros: new DataView(memory().buffer).getUint32(micros, true) };
+    } finally {
+      e.asuka_free(micros);
+    }
+  };
   const core = {
+    /** reload loads asuka dev's next module, keeping the app's state and views: { kept, micros }. */
+    reload: (bytes) => new Promise((ok, fail) => host.call(() => {
+      try { ok(devLoad(bytes)); } catch (err) { fail(err); }
+    })),
     event: (bytes) => withBytes(bytes, (p, n) => e.asuka_event(p, n)),
     listCount: (id) => Number(e.asuka_list_count(id)),
     listBind: (id, index, cell) => e.asuka_list_bind(id, BigInt(index), cell),
@@ -107,8 +124,14 @@ export async function startCore(host, options = {}) {
   e.asuka_web_start();
   if (options.module) {
     // asuka dev: the app's bytecode.
-    const bytes = new Uint8Array(await (await fetch(options.module)).arrayBuffer());
-    if (withBytes(bytes, (p, n) => e.asuka_load(p, n, 0)) !== 0) throw new Error("asuka: the app's module didn't load (see the console)");
+    const res = await fetch(options.module);
+    if (!res.ok) throw new Error("asuka: the app's module: " + (await res.text()));
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (options.dev) {
+      core.loaded = devLoad(bytes);
+    } else if (withBytes(bytes, (p, n) => e.asuka_load(p, n, 0)) !== 0) {
+      throw new Error("asuka: the app's module didn't load (see the console)");
+    }
   } else if (e.asuka_run(0) !== 0) {
     // The app compiled into asuka.wasm.
     throw new Error("asuka: the app didn't start (see the console)");

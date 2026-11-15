@@ -195,7 +195,7 @@ func TestWriteUpdates(t *testing.T) {
 			defer srv.Close()
 			appDir := t.TempDir()
 			writeFiles(t, appDir, map[string]string{"CHANGELOG.md": "# Changes\n\n## 1.0.1\n\n- Faster.\n\n## 1.0.0\n\nFirst.\n"})
-			app := &goApp{dir: appDir, name: "notes", bundleID: "com.example.notes", cfg: &appConfig{
+			app := &asukaApp{dir: appDir, name: "notes", bundleID: "com.example.notes", cfg: &appConfig{
 				Name: "Notes", Updates: &updatesConfig{PublicKey: pub, URL: srv.URL + "/notes"},
 			}}
 			target := "test-target"
@@ -289,7 +289,7 @@ func TestWriteUpdatesPrerelease(t *testing.T) {
 	t.Setenv("ASUKA_UPDATE_PUBLIC_KEY", "")
 	t.Setenv("ASUKA_UPDATE_URL", "")
 	zero := 0
-	app := &goApp{dir: t.TempDir(), name: "notes", bundleID: "com.example.notes", cfg: &appConfig{
+	app := &asukaApp{dir: t.TempDir(), name: "notes", bundleID: "com.example.notes", cfg: &appConfig{
 		Name: "Notes", Version: "2.0.0-beta.1", Updates: &updatesConfig{PublicKey: pub, GitHub: "me/notes", Deltas: &zero},
 	}}
 	out := t.TempDir()

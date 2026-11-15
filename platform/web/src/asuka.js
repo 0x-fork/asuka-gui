@@ -1,13 +1,14 @@
-// Asuka's web loader: it starts an app's Go code (compiled to WebAssembly)
-// with the web host on a page.
+// Asuka's web loader: it starts an app (the C core as WebAssembly, the
+// app compiled into it or loaded as bytecode) with the web host on a page.
 //
 //	import { start } from "./asuka/asuka.js";
-//	start({ wasm: "app.wasm", container: document.body });
+//	start({ core: "asuka.wasm", container: document.body });
 //
 // Options: container (the element the app fills; the page's body by
 // default, the app then filling the page), core (the URL of the C core,
 // asuka.wasm, with the app compiled in) and module (an app's bytecode to
-// load into it: asuka dev's), wasm (a Go app's URL), exec (the URL
+// load into it: asuka dev's, which with dev loads each save's in place,
+// keeping the app's state), wasm (a Go app's URL), exec (the URL
 // of the Go release's wasm_exec.js; "wasm_exec.js" beside this file by
 // default), assets (where its assets are served: "assets"), name (the
 // app's: its stored data is kept under it), fonts (the app's font files,
@@ -69,13 +70,14 @@ export async function start(options = {}) {
   if (options.core) {
     // The C core (asuka.wasm), with the app compiled in or its bytecode
     // (options.module) loaded into it.
+    let core;
     try {
-      await startCore(host, { wasm: options.core, module: options.module, log: dev?.log });
+      core = await startCore(host, { wasm: options.core, module: options.module, dev: !!dev, log: dev?.log });
     } catch (e) {
       showError(container, "The app couldn't load: " + e.message);
       throw e;
     }
-    if (dev) dev.attach(host);
+    if (dev) dev.attach(host, core);
     try { notifyFor(host); } catch (e) { console.warn("asuka/sdk/notify:", e); }
     return host;
   }
@@ -157,8 +159,24 @@ function devClient(url) {
   };
   addEventListener("error", (e) => log(2, `page: ${e.message} (${e.filename}:${e.lineno})\n${e.error?.stack || ""}\n`));
   addEventListener("unhandledrejection", (e) => log(2, `page: ${e.reason?.stack || e.reason}\n`));
-  let host = null;
+  let host = null, core = null;
+  const report = (r, first) => fetch(base + "reloaded", { method: "POST", body: JSON.stringify({ First: first, Kept: r.kept, Micros: r.micros }) }).catch(() => {});
   const events = new EventSource(base + "events");
+  // A new build of the app's module: loaded in place, its state and views kept.
+  let loading = Promise.resolve();
+  events.addEventListener("module", (e) => {
+    if (!core?.reload) return;
+    loading = loading.then(async () => {
+      try {
+        const res = await fetch(base + "app.akb?" + e.data);
+        if (!res.ok) throw new Error(await res.text());
+        report(await core.reload(new Uint8Array(await res.arrayBuffer())), false);
+      } catch (err) {
+        log(2, `page: the new module didn't load: ${err?.message || err}\n`);
+      }
+      send();
+    });
+  });
   events.addEventListener("reload", () => {
     host?.saveState();
     send();
@@ -188,7 +206,11 @@ function devClient(url) {
   });
   return {
     log,
-    attach(h) { host = h; },
+    attach(h, c) {
+      host = h;
+      core = c || null;
+      if (core?.loaded) report(core.loaded, true);
+    },
     lastError: () => errorText.trim().split("\n").slice(-30).join("\n"),
   };
 }

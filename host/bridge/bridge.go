@@ -79,7 +79,8 @@ func LibName() string {
 }
 
 // Find returns the core library's path: ASUKA_CORE_LIB, or LibName
-// beside the executable (or in a .app's Frameworks).
+// beside the executable, in a .app's Frameworks, or in an install
+// prefix's lib/<executable> (Linux: bin/<executable> beside it).
 func Find() (string, error) {
 	if p := os.Getenv("ASUKA_CORE_LIB"); p != "" {
 		return p, nil
@@ -93,6 +94,7 @@ func Find() (string, error) {
 		filepath.Join(dir, LibName()),
 		filepath.Join(dir, "..", "Frameworks", LibName()),
 		filepath.Join(dir, "lib", LibName()),
+		filepath.Join(dir, "..", "lib", strings.TrimSuffix(filepath.Base(exe), ".exe"), LibName()),
 	} {
 		if _, err := os.Stat(p); err == nil {
 			return p, nil

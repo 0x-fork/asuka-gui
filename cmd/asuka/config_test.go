@@ -21,25 +21,12 @@ func TestAccent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "-ldflags=-s -w -X github.com/egoist/asuka/internal/boot.Accent=#7c3aed -X github.com/egoist/asuka/internal/boot.DynamicColor=1"
-	if got := c.ldflags(true); got != want {
-		t.Fatalf("ldflags %q", got)
-	}
-	// A development build: no DWARF, which it doesn't use.
-	if got := (&appConfig{}).ldflags(false); got != "-ldflags=-w" {
-		t.Fatalf("no accent: %q", got)
-	}
-	// Releases that keep symbols for crash reports: iOS all (its dSYM),
-	// Android the symbol table (its native debug symbols).
-	if got := c.ldflagsStrip(); got != "-ldflags=-X github.com/egoist/asuka/internal/boot.Accent=#7c3aed -X github.com/egoist/asuka/internal/boot.DynamicColor=1" {
-		t.Fatalf("iOS release: %q", got)
-	}
-	if got := c.ldflagsStrip("-w"); !strings.HasPrefix(got, "-ldflags=-w -X ") {
-		t.Fatalf("Android release: %q", got)
+	if c.Accent != "#7c3aed" || !c.Android.DynamicColor {
+		t.Fatalf("accent %q, dynamic color %v", c.Accent, c.Android.DynamicColor)
 	}
 	// A background app says so to the desktop hosts.
 	write(`background = true`)
-	if c, err := loadConfig(dir); err != nil || c.ldflags(false) != "-ldflags=-w -X github.com/egoist/asuka/internal/boot.Background=1" {
+	if c, err := loadConfig(dir); err != nil || !(&asukaApp{cfg: c}).hostConfig(platformMac, "", false).Background {
 		t.Fatalf("background: %v, %v", c, err)
 	}
 	write(`accent = "purple"`)
@@ -191,9 +178,6 @@ func TestFeaturesFromImports(t *testing.T) {
 	if got := strings.Join(none.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("no modules: %s", got)
 	}
-	if p := playerConfig(); !slices.Contains(p.androidModules, "scan") {
-		t.Errorf("the player's modules: %v", p.androidModules)
-	}
 }
 
 // An app that imports asuka/sdk/pay gets Google Pay's module (whose
@@ -273,15 +257,6 @@ func TestShareSheetConfig(t *testing.T) {
 	c.shareSheet = false
 	if c.appGroup() != "" || c.keychainGroup("T") != "" || c.sharePrincipal() != "AsukaShareViewController" {
 		t.Error("no sheet: a group, or the sheet's class")
-	}
-	// The sheet's symbol is found in a library's function names.
-	dir := t.TempDir()
-	lib := filepath.Join(dir, "libasuka.so")
-	os.WriteFile(lib, []byte("..."+sheetSymbol+"\x00..."), 0o644)
-	other := filepath.Join(dir, "other.so")
-	os.WriteFile(other, []byte("..."+sheetSymbol+"Thing\x00..."), 0o644)
-	if !hasSheet(lib) || hasSheet(other) {
-		t.Error("hasSheet")
 	}
 }
 

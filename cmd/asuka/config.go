@@ -197,24 +197,24 @@ type appConfig struct {
 		DriveName   string   `json:"driveName"`
 		DriveHidden bool     `json:"driveHidden"`
 	} `json:"icloud"`
-	// icloudKV, icloudDocs: the app's Go code calls asuka/sdk/icloud's
+	// icloudKV, icloudDocs: the app uses asuka/icloud's
 	// key-value store, its documents (useICloud). displayName is the
 	// app's name (loadApp), its iCloud Drive folder's.
 	icloudKV, icloudDocs bool
 	displayName          string
-	// shareSheet: the app's Go code calls app.ShareSheet (its archive has
-	// it, sheetSymbol): the share target shows the app's sheet.
+	// shareSheet: the app uses ShareSheet (sheetSymbol): the share target
+	// shows the app's sheet.
 	shareSheet bool
-	// pushRewrite: the app's Go code calls push.Rewrite (rewriteSymbol):
+	// pushRewrite: the app uses push.rewrite (rewriteSymbol):
 	// on iOS it has a Notification Service Extension, which runs it.
 	pushRewrite bool
-	// locationPrecise: the app's Go code calls location.RequestPrecise
+	// locationPrecise: the app uses location.requestPrecise
 	// (ASUKA_LOCATION_PRECISE): Info.plist has its purposes.
 	locationPrecise bool
 	// nfcOn: the app imports asuka/sdk/nfc (addNFC): its filters and
 	// uses-feature go in the manifest.
 	nfcOn bool
-	// liveActivity: the app's Go code calls asuka/sdk/liveactivity
+	// liveActivity: the app uses asuka/liveactivity
 	// (ASUKA_LIVEACTIVITY): on iOS its widget extension has the Live
 	// Activities' template, with or without widgets.
 	liveActivity bool
@@ -327,15 +327,6 @@ var (
 	domain   = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$`)
 )
 
-// multipleInstances is the -ldflags -X of an app that runs as often as
-// it's started (asuka.toml's singleInstance = false), or "".
-func (c *appConfig) multipleInstances() string {
-	if c == nil || c.SingleInstance == nil || *c.SingleInstance {
-		return ""
-	}
-	return " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.MultipleInstances=1")
-}
-
 // configFile is an app's manifest, in its directory.
 const configFile = "asuka.toml"
 
@@ -445,43 +436,6 @@ func loadConfig(dir string) (*appConfig, error) {
 		}
 	}
 	return c, nil
-}
-
-// ldflags is the go build -ldflags for the app: what of asuka.toml its Go
-// code reads (internal/boot), and, for a release, no symbol tables; for a
-// development build, no DWARF.
-func (c *appConfig) ldflags(release bool) string {
-	if release {
-		return c.ldflagsStrip("-s", "-w")
-	}
-	// A development build: without DWARF, which the linker spends a good
-	// part of its time on and asuka dev's runs don't use (panics' traces
-	// and runtime.Callers come from the symbol table, which stays).
-	return c.ldflagsStrip("-w")
-}
-
-// ldflagsStrip is ldflags with what the linker leaves out: an iOS
-// release keeps Go's debug information for its dSYM, an Android one its
-// symbol table for the native debug symbols (crash reports' native
-// frames), which the build strips from the binaries it ships.
-func (c *appConfig) ldflagsStrip(strip ...string) string {
-	f := append([]string(nil), strip...)
-	if c != nil && c.Accent != "" {
-		f = append(f, "-X", "github.com/egoist/asuka/internal/boot.Accent="+c.Accent)
-	}
-	if c != nil && c.Android.DynamicColor {
-		f = append(f, "-X", "github.com/egoist/asuka/internal/boot.DynamicColor=1")
-	}
-	if c != nil && c.Background {
-		f = append(f, "-X", "github.com/egoist/asuka/internal/boot.Background=1")
-	}
-	if devLang != "" {
-		f = append(f, "-X", "github.com/egoist/asuka/internal/boot.Lang="+devLang)
-	}
-	if devDirection != "" {
-		f = append(f, "-X", "github.com/egoist/asuka/internal/boot.Direction="+devDirection)
-	}
-	return "-ldflags=" + strings.Join(f, " ")
 }
 
 // urlTypes is Info.plist's CFBundleURLTypes for the scheme, and on iOS
@@ -618,7 +572,7 @@ var featurePermissions = []struct {
 	// promotes to a Live Update (POST_PROMOTED_NOTIFICATIONS); the
 	// receiver hears one dismissed, and refreshes a bar that fills by
 	// itself. iOS's Info.plist key and widget extension come with the
-	// feature (ASUKA_LIVEACTIVITY), as the Go code calls it.
+	// feature (ASUKA_LIVEACTIVITY), as the app uses it.
 	{pkg: "github.com/egoist/asuka/sdk/liveactivity",
 		android:    []string{"android.permission.POST_NOTIFICATIONS", "android.permission.POST_PROMOTED_NOTIFICATIONS"},
 		androidApp: []string{`<receiver android:name="dev.asuka.AsukaLiveActivityReceiver" android:exported="false" />`}},
@@ -948,7 +902,7 @@ func (c *appConfig) androidManifest(debug bool) string {
 	if c.Android.MapsKey != "" && slices.Contains(c.androidModules, "maps") {
 		fmt.Fprintf(&b, "        <meta-data android:name=\"com.google.android.geo.API_KEY\" android:value=\"%s\" />\n", html.EscapeString(c.Android.MapsKey))
 	}
-	// push.Rewrite: FCM's data messages start the Go code to rewrite them.
+	// push.Rewrite: FCM's data messages start the app to rewrite them.
 	if c.pushRewrite {
 		b.WriteString("        <meta-data android:name=\"dev.asuka.push.rewrite\" android:value=\"true\" />\n")
 	}

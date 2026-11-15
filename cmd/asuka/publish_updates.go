@@ -23,7 +23,7 @@ func desktopPlatform(p string) bool {
 	return p == platformMac || p == platformWindows || p == platformLinux
 }
 
-func publishDesktop(app *goApp, o *publishOptions) error {
+func publishDesktop(app *asukaApp, o *publishOptions) error {
 	u, err := app.cfg.updates()
 	if err != nil {
 		return err
@@ -63,7 +63,6 @@ func publishDesktop(app *goApp, o *publishOptions) error {
 	if err := os.MkdirAll(b.out, 0o755); err != nil {
 		return err
 	}
-	vetBuild(app.dir, !b.noVet)
 	var target string
 	switch b.platform {
 	case platformMac:

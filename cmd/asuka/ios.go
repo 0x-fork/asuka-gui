@@ -18,95 +18,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/cbuild"
+	"github.com/egoist/asuka/lang/bytecode"
 	iosHost "github.com/egoist/asuka/platform/ios"
 )
 
-// The iOS dev loop: the Swift host is compiled once (and cached); on each
-// change the app's Go code is rebuilt as a c-archive, linked with it into
-// an .app, and reinstalled and relaunched on the simulator.
+// iOS: the Swift host (platform/ios, compiled once and cached) linked
+// with the C core (libasuka.a) into an .app. A release's core has the
+// app compiled into it (asuka_run); asuka dev's is the player, the core
+// without an app, which loads the bytecode asuka dev sends it and again
+// on each save, keeping its state (asuka_dev_connect, ASUKA_DEV in its
+// environment): it's built and installed once, and again only when the
+// app's settings or native code change.
 
 const iosMin = "16.0"
-
-type goApp struct {
-	dir       string // the main package's directory
-	name      string // its base name
-	moduleDir string
-	bundleID  string
-	cfg       *appConfig // asuka.toml
-	// pkg, for an app whose Go code is a package of another module (the
-	// player's, mobile/player), is that package, as the go command in
-	// pkgIn builds it; dir is then only where it's built.
-	pkg, pkgIn string
-}
-
-// goPackage is where to run the go command for the app's Go code, and
-// the package to name: its directory and ".", or, for the player, the
-// app's directory and mobile/player.
-func (a *goApp) goPackage() (dir, pkg string) {
-	if a.pkg != "" {
-		return a.pkgIn, a.pkg
-	}
-	return a.dir, "."
-}
-
-// displayName is the name under the app's icon.
-func (a *goApp) displayName() string {
-	if a.cfg != nil && a.cfg.Name != "" {
-		return a.cfg.Name
-	}
-	return a.name // the player's
-}
-
-func loadApp(dir string) (*goApp, error) {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return nil, err
-	}
-	// Its stdout only: with modules to download first, go list says so on
-	// stderr ("go: downloading ..."), which isn't the answer.
-	var stderr bytes.Buffer
-	c := exec.Command("go", "-C", abs, "list", "-f", "{{.Name}}\t{{.Module.Dir}}\t{{.Dir}}", ".")
-	c.Stderr = &stderr
-	out, err := c.Output()
-	if err != nil {
-		return nil, fmt.Errorf("%s: %s", dir, bytes.TrimSpace(stderr.Bytes()))
-	}
-	f := strings.Split(strings.TrimSpace(string(out)), "\t")
-	if len(f) != 3 || f[0] != "main" {
-		return nil, fmt.Errorf("%s is not a main package (it should call app.Run in main)", dir)
-	}
-	cfg, err := loadConfig(f[2])
-	if err != nil {
-		return nil, err
-	}
-	if err := cfg.generateCatalogs(); err != nil {
-		return nil, err
-	}
-	app := &goApp{dir: f[2], name: filepath.Base(abs), moduleDir: f[1], bundleID: cfg.ID, cfg: cfg}
-	// Its native packages' generated code (asuka native), before its Go
-	// builds.
-	if err := generateNatives(app); err != nil {
-		return nil, err
-	}
-	beforeRebuild = func() {
-		if err := cfg.generateCatalogs(); err != nil {
-			fmt.Fprintln(os.Stderr, "asuka:", err)
-		}
-		forgetNatives(app.dir)
-		if err := generateNatives(app); err != nil {
-			fmt.Fprintln(os.Stderr, "asuka:", err)
-		}
-	}
-	deps, _ := exec.Command("go", "-C", abs, "list", "-deps", ".").Output()
-	cfg.permissionsFor(strings.Fields(string(deps)))
-	cfg.displayName = app.displayName()
-	cfg.useICloud(abs, ".", strings.Fields(string(deps)))
-	warnCatalogsUnused(cfg, strings.Fields(string(deps)))
-	warnDevLang(cfg)
-	warnFrozenMessages(cfg, f[1])
-	startDevVet(f[2])
-	return app, nil
-}
 
 type iosToolchain struct {
 	sdk, sdkName, clang, target, goarch string
@@ -173,7 +99,7 @@ func filterLinker(out []byte) string {
 // buildHost compiles the embedded Swift host, with the app's own Swift
 // (its ios/*.swift: native views for ui.Native), into one object file,
 // cached by the hash of its sources and the SDK.
-func (t *iosToolchain) buildHost(work string, app *goApp, features []string) (string, error) {
+func (t *iosToolchain) buildHost(work string, app *asukaApp, features []string) (string, error) {
 	opt := []string{"-Onone", "-D", "DEBUG"}
 	if t.release {
 		// With debug information, for the app's dSYM (iosSymbols).
@@ -222,7 +148,7 @@ func (t *iosToolchain) buildHost(work string, app *goApp, features []string) (st
 	if app != nil {
 		// The app's native packages' Swift: then the host's is a Swift
 		// package, built with theirs; what they need goes in its Info.plist.
-		natives, err := nativeFor(app, "ios", t.goarch)
+		natives, err := nativeFor(app, "ios")
 		if err != nil {
 			return "", err
 		}
@@ -281,12 +207,12 @@ func (t *iosToolchain) buildHostPackage(work string, natives []nativePackage, fe
 }
 
 // iosFeatures are the parts of the host that link a framework of their
-// own (WebKit, AVKit...), and the Go function an app calls to use each.
-// Loading a framework costs at launch whether or not it's used (WebKit
-// and AVKit's together, about a second on the simulator), so a host is
-// built with only those its app's Go code calls: the Go linker drops
-// what isn't called, which leaves its symbol out of the archive (each is
-// go:noinline, so a call keeps it).
+// own (WebKit, AVKit...), and the function of the standard library (or
+// the element) an app uses each through. Loading a framework costs at
+// launch whether or not it's used (WebKit and AVKit's together, about a
+// second on the simulator), so a release's host is built with only those
+// its app uses: the packages it imports, whose functions its sources
+// name (asukaApp.hasSymbol). asuka dev's player has them all.
 var iosFeatures = []struct{ flag, symbol string }{
 	{"ASUKA_WEBVIEW", "github.com/egoist/asuka/ui.WebView"},
 	{"ASUKA_VIDEO", "github.com/egoist/asuka/ui.Video"},
@@ -543,37 +469,15 @@ func allFeatures() []string {
 	return out
 }
 
-// definedSymbols are the functions the Go archive lib defines (nil if it
-// can't be read).
-func definedSymbols(lib string) map[string]bool {
-	out, err := exec.Command("xcrun", "nm", lib).Output()
-	if err != nil {
-		return nil
-	}
-	defined := map[string]bool{}
-	for _, l := range strings.Split(string(out), "\n") {
-		if f := strings.Fields(l); len(f) >= 3 && (f[1] == "t" || f[1] == "T") {
-			defined[strings.TrimPrefix(f[2], "_")] = true
-		}
-	}
-	return defined
-}
-
-// usedFeatures are the features the Go archive lib calls (all of them if
-// it can't be read), and notes in cfg whether it has a share sheet or a
-// push rewrite, and what its features need (addFeatureExtras).
-func usedFeatures(lib string, cfg *appConfig) []string {
-	defined := definedSymbols(lib)
-	if defined == nil {
-		all := allFeatures()
-		cfg.addFeatureExtras(all)
-		return all
-	}
-	cfg.shareSheet = defined[sheetSymbol]
-	cfg.pushRewrite = defined[rewriteSymbol]
+// usedFeatures are the features the app uses, and notes in cfg whether it
+// has a share sheet or a push rewrite, and what its features need
+// (addFeatureExtras).
+func usedFeatures(app *asukaApp, cfg *appConfig) []string {
+	cfg.shareSheet = app.hasSymbol(sheetSymbol)
+	cfg.pushRewrite = app.hasSymbol(rewriteSymbol)
 	var used []string
 	for _, f := range iosFeatures {
-		if defined[f.symbol] && !slices.Contains(used, f.flag) {
+		if app.hasSymbol(f.symbol) && !slices.Contains(used, f.flag) {
 			used = append(used, f.flag)
 		}
 	}
@@ -581,50 +485,28 @@ func usedFeatures(lib string, cfg *appConfig) []string {
 	return used
 }
 
-// writeOverlay writes a go build overlay that adds a file to the app's
-// main package: it links the mobile bridge and hands it main.
-func writeOverlay(app *goApp, work string) (string, error) {
-	stub := filepath.Join(work, "zz_asuka_main.go")
-	code := "package main\n\nimport \"github.com/egoist/asuka/mobile\"\n\nfunc init() { mobile.Main = main }\n"
-	if err := os.WriteFile(stub, []byte(code), 0o644); err != nil {
-		return "", err
-	}
-	overlay, _ := json.Marshal(map[string]map[string]string{"Replace": {filepath.Join(app.dir, "zz_asuka_main.go"): stub}})
-	ovPath := filepath.Join(work, "overlay.json")
-	return ovPath, os.WriteFile(ovPath, overlay, 0o644)
+// playerFeatures are every feature, for asuka dev's player, which runs
+// whatever the app's next save calls; what they need of the app
+// (entitlements, background modes) is only what the app uses' (which a
+// device's development profile must allow).
+func playerFeatures(app *asukaApp, cfg *appConfig) []string {
+	usedFeatures(app, cfg)
+	return allFeatures()
 }
 
-// buildGo builds the app's Go code as a c-archive.
-func (t *iosToolchain) buildGo(app *goApp, work string) (string, error) {
-	if app.pkg != "" {
-		// The player's library: the same source makes the same archive (no
-		// paths, build ID or dates in it), so an unchanged player isn't
-		// installed again.
-		lib := filepath.Join(work, "libplayer.a")
-		flags := "-isysroot " + t.sdk + " -target " + t.target
-		env := []string{"GOOS=ios", "GOARCH=" + t.goarch, "CGO_ENABLED=1", "CC=" + t.clang, "CGO_CFLAGS=" + flags, "CGO_LDFLAGS=" + flags, "ZERO_AR_DATE=1"}
-		dir, pkg := app.goPackage()
-		return lib, t.run(dir, env, "go", "build", "-tags", "ios", "-buildmode=c-archive", "-trimpath", "-ldflags=-buildid=", "-o", lib, pkg)
-	}
-	ovPath, err := writeOverlay(app, work)
-	if err != nil {
-		return "", err
+// buildCore builds the C core for the SDK's target into work: with m
+// compiled in (a release), or without an app (m nil: asuka dev's
+// player).
+func (t *iosToolchain) buildCore(work string, m *bytecode.Module) (string, error) {
+	target := cbuild.Target{OS: "ios", Arch: "arm64"}
+	if t.sdkName == "iphonesimulator" {
+		target = cbuild.Target{OS: "ios-simulator", Arch: t.goarch}
 	}
 	lib := filepath.Join(work, "libasuka.a")
-	flags := "-isysroot " + t.sdk + " -target " + t.target
-	env := []string{"GOOS=ios", "GOARCH=" + t.goarch, "CGO_ENABLED=1", "CC=" + t.clang,
-		"CGO_CFLAGS=" + flags, "CGO_LDFLAGS=" + flags}
-	// A release keeps Go's symbols and debug information, for the dSYM:
-	// the executable is stripped of them once it's made (iosSymbols).
-	args := []string{"build", "-tags", "ios", "-buildmode=c-archive", "-overlay", ovPath, "-o", lib, app.cfg.ldflagsStrip()}
-	if t.release {
-		args = append(args, "-trimpath")
-	}
-	err = t.run(app.dir, env, "go", append(args, ".")...)
-	return lib, err
+	return lib, appbuild.Lib(target, cbuild.Static, m, lib)
 }
 
-func (t *iosToolchain) link(app *goApp, work, hostObj, lib string) (string, error) {
+func (t *iosToolchain) link(app *asukaApp, work, hostObj, lib string) (string, error) {
 	bundle := filepath.Join(work, app.name+".app")
 	os.RemoveAll(bundle)
 	if err := os.MkdirAll(bundle, 0o755); err != nil {
@@ -895,16 +777,6 @@ func pickSimulator(want string) (*simDevice, error) {
 	return pick, nil
 }
 
-func workDir(app *goApp, platform string) (string, error) {
-	base, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256([]byte(app.dir))
-	dir := filepath.Join(base, "asuka", app.name+"-"+hex.EncodeToString(sum[:])[:8], platform)
-	return dir, os.MkdirAll(dir, 0o755)
-}
-
 func devIOS(dir string, o *devOptions, stop <-chan os.Signal) error {
 	app, err := loadApp(dir)
 	if err != nil {
@@ -929,72 +801,58 @@ func devIOS(dir string, o *devOptions, stop <-chan os.Signal) error {
 		return err
 	}
 	fmt.Printf("asuka: %s on %s (%s)\n", app.name, sim.Name, sim.UDID)
-	if usePlayer(app, o, "ios") {
-		return devIOSPlayer(app, tc, work, sim, stop)
+	// The simulator shares this Mac's network: the player reaches asuka
+	// dev on its loopback.
+	loop, err := newDevLoop(app, "127.0.0.1:0")
+	if err != nil {
+		return err
 	}
+	return loop.run(simulatorPlayer(app, tc, work, sim, loop), stop, o.once)
+}
 
-	var logs *exec.Cmd
-	build := func() error {
+// simulatorPlayer is the player on the simulator sim: built, installed
+// when it changed, launched connected to the loop.
+func simulatorPlayer(app *asukaApp, tc *iosToolchain, work string, sim *simDevice, loop *devLoop) devPlayer {
+	installed := ""
+	launch := func() error {
 		start := time.Now()
-		lib, err := tc.buildGo(app, work)
+		bundle, err := tc.buildPlayer(app, work)
 		if err != nil {
 			return err
 		}
-		hostObj, err := tc.buildHost(work, app, usedFeatures(lib, app.cfg))
-		if err != nil {
-			return err
-		}
-		bundle, err := tc.link(app, work, hostObj, lib)
-		if err != nil {
-			return err
-		}
-		if logs != nil && logs.Process != nil {
-			logs.Process.Kill()
-			logs.Wait()
-			logs = nil
-		}
-		if err := tc.run(work, nil, "xcrun", "simctl", "install", sim.UDID, bundle); err != nil {
-			return err
-		}
-		fmt.Printf("asuka: built and installed in %.1fs\n", time.Since(start).Seconds())
-		launchEnv := app.cfg.storeKitLaunchEnv() // ios.storekit's session
-		if o.once {
-			return tc.run(work, launchEnv, "xcrun", "simctl", "launch", "--terminate-running-process", sim.UDID, app.bundleID)
-		}
-		logs = exec.Command("xcrun", "simctl", "launch", "--console-pty", "--terminate-running-process", sim.UDID, app.bundleID)
-		logs.Env = append(os.Environ(), launchEnv...)
-		logs.Stdout, logs.Stderr = os.Stdout, os.Stderr
-		return logs.Start()
-	}
-	if err := build(); err != nil {
-		if o.once {
-			return err
-		}
-		fmt.Fprintln(os.Stderr, "asuka:", err)
-	}
-	if o.once {
-		return nil
-	}
-	fmt.Println("asuka: watching for changes (Ctrl-C to stop)")
-	natives, _ := nativeFor(app, "ios", tc.goarch) // its native packages' Swift, wherever they are
-	w := newWatcher(append([]string{app.moduleDir, app.dir}, nativeDirsOf(natives, "ios")...)...)
-	for {
-		select {
-		case <-stop:
-			if logs != nil && logs.Process != nil {
-				logs.Process.Kill()
+		if sum := dirDigest(bundle); sum != installed {
+			if err := tc.run(work, nil, "xcrun", "simctl", "install", sim.UDID, bundle); err != nil {
+				return err
 			}
-			return nil
-		case <-w.wake:
-			if !w.changed() {
-				continue
-			}
-			fmt.Println("asuka: change detected, rebuilding")
-			if err := build(); err != nil {
-				fmt.Fprintln(os.Stderr, "asuka:", err)
-			}
+			installed = sum
+			fmt.Printf("asuka: the player built and installed in %.1fs\n", time.Since(start).Seconds())
 		}
+		// Its environment: SIMCTL_CHILD_ names are the app's.
+		env := append(app.cfg.storeKitLaunchEnv(), fmt.Sprintf("SIMCTL_CHILD_ASUKA_DEV=127.0.0.1:%d", loop.port()))
+		return tc.run(work, env, "xcrun", "simctl", "launch", "--terminate-running-process", sim.UDID, app.bundleID)
 	}
+	return devPlayer{
+		launch: launch,
+		stop:   func() { exec.Command("xcrun", "simctl", "terminate", sim.UDID, app.bundleID).Run() },
+	}
+}
+
+// buildPlayer builds asuka dev's player for the simulator: the app's
+// .app (its Info.plist, icon, entitlements, native packages' Swift), with
+// every feature of the host and the core without an app.
+func (t *iosToolchain) buildPlayer(app *asukaApp, work string) (string, error) {
+	if err := generateNatives(app); err != nil {
+		return "", err
+	}
+	lib, err := t.buildCore(work, nil)
+	if err != nil {
+		return "", err
+	}
+	hostObj, err := t.buildHost(work, app, playerFeatures(app, app.cfg))
+	if err != nil {
+		return "", err
+	}
+	return t.link(app, work, hostObj, lib)
 }
 
 // copyDir copies the files under src (if it exists) to dst.

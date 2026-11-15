@@ -55,9 +55,9 @@ func (t *iosToolchain) shareEntitlements(work string, cfg *appConfig) ([]string,
 }
 
 // buildShare makes the extension's executable for cfg's app. With a share
-// sheet (app.ShareSheet), it links the app's framework (fw: the host and
-// the app's Go code), whose AsukaShareSheetController is its principal
-// class. Without, it's platform/ios/Share, which runs no Go, cached (by
+// sheet (ShareSheet), it links the app's framework (fw: the host and
+// the core with the app), whose AsukaShareSheetController is its principal
+// class. Without, it's platform/ios/Share, which runs no app code, cached (by
 // its sources, the SDK and the flags) beside the host's builds, shared by
 // the apps that build the same.
 func (t *iosToolchain) buildShare(work string, cfg *appConfig, fw string) (string, error) {

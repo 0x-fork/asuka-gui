@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/cbuild"
 )
 
 // androidABIs are the ABIs a release build carries: phones (arm64), old
@@ -22,10 +24,10 @@ var androidABIs = []struct{ abi, goarch, goarm, clang string }{
 }
 
 // buildAndroid makes a release build: an .aab for Google Play, signed
-// with the upload key, the Go code built for every ABI, the assets and
+// with the upload key, the core with the app compiled in for every ABI, the assets and
 // icons packaged, and the Kotlin shrunk by R8. No .apk: Google Play makes
 // each device's from the .aab, with only that device's ABI and density.
-func buildAndroid(app *goApp, o *buildOptions) error {
+func buildAndroid(app *asukaApp, o *buildOptions) error {
 	start := time.Now()
 	cfg := app.cfg
 	tc, err := newAndroidToolchain(o.verbose)
@@ -107,8 +109,8 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 		optional bool
 	}{
 		{filepath.Join(built, "bundle", "release", "app-release.aab"), filepath.Base(aabPath(cfg, o)), false},
-		// For a crash service (the .aab has both for Google Play): the Go
-		// code's and the host's native symbols, and R8's map of the
+		// For a crash service (the .aab has both for Google Play): the
+		// core's and the host's native symbols, and R8's map of the
 		// Kotlin it renamed.
 		{filepath.Join(built, "native-debug-symbols", "release", "native-debug-symbols.zip"), name + "-native-debug-symbols.zip", true},
 		{filepath.Join(built, "mapping", "release", "mapping.txt"), name + "-mapping.txt", true},
@@ -192,37 +194,32 @@ func androidIcons(path, res string) error {
 `), 0o644)
 }
 
-// buildAndroidLibs builds the app's Go code as a shared library for each
-// ABI a release carries, in work/jniLibs/<abi>/libasuka.so, with its
-// plugins' libraries beside it (plugins.go).
-func buildAndroidLibs(app *goApp, tc *androidToolchain, work string) (string, error) {
+// buildAndroidLibs builds the C core with the app compiled in as a shared
+// library for each ABI a release carries, in work/jniLibs/<abi>/libasuka.so,
+// with its plugins' libraries beside it (plugins.go).
+func buildAndroidLibs(app *asukaApp, tc *androidToolchain, work string) (string, error) {
 	cfg := app.cfg
 	jni := filepath.Join(work, "jniLibs")
 	os.RemoveAll(jni)
-	ov, err := writeOverlay(app, work)
+	m, err := app.compile()
 	if err != nil {
 		return "", err
 	}
 	for _, a := range androidABIs {
 		out := filepath.Join(jni, a.abi, "libasuka.so")
-		env := tc.cgoEnv(a.goarch, a.goarm, a.clang)
-		// The symbol table stays, for the native debug symbols: Gradle
-		// strips the libraries it packages (with the NDK the build names).
-		if err := tc.run(app.dir, env, "go", "build", "-buildmode=c-shared", "-trimpath", cfg.ldflagsStrip("-w"),
-			"-overlay", ov, "-o", out, "."); err != nil {
+		if err := appbuild.Lib(cbuild.Target{OS: "android", Arch: a.goarch}, cbuild.Shared, m, out); err != nil {
 			return "", fmt.Errorf("%s: %v", a.abi, err)
 		}
-		os.Remove(strings.TrimSuffix(out, ".so") + ".h")
-		libs, err := appLibs(app.dir, "android", a.goarch, "android-"+a.goarch)
+		libs, err := appLibs(app, "android-"+a.goarch)
 		if err != nil {
 			return "", fmt.Errorf("%s: %v", a.abi, err)
 		}
 		if err := writeLibs(libs, filepath.Dir(out)); err != nil {
 			return "", fmt.Errorf("%s: %v", a.abi, err)
 		}
-		cfg.shareSheet = hasSheet(out)
-		cfg.pushRewrite = hasSymbol(out, rewriteSymbol)
-		cfg.useLocation(func(s string) bool { return hasSymbol(out, s) })
 	}
+	// What the app's sources use decides its manifest's services.
+	usedFeatures(app, cfg)
+	cfg.useLocation(app.hasSymbol)
 	return jni, nil
 }

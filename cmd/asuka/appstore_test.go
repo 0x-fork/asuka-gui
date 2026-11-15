@@ -379,15 +379,15 @@ func testASC(t *testing.T) (*ascClient, *fakeASC) {
 	return c, f
 }
 
-func testApp(t *testing.T) *goApp {
+func testApp(t *testing.T) *asukaApp {
 	cfg := &appConfig{Name: "Notes", ID: "com.example.notes", Version: "1.2", Build: 3, dir: t.TempDir()}
-	return &goApp{dir: cfg.dir, cfg: cfg}
+	return &asukaApp{dir: cfg.dir, cfg: cfg}
 }
 
 // fakeBuild stands for the release build: a file of size bytes.
-func fakeBuild(t *testing.T, size int, ext string, got *int) (func(*goApp, *buildOptions) (string, error), []byte) {
+func fakeBuild(t *testing.T, size int, ext string, got *int) (func(*asukaApp, *buildOptions) (string, error), []byte) {
 	content := bytes.Repeat([]byte("0123456789abcdef"), size/16+1)[:size]
-	return func(app *goApp, o *buildOptions) (string, error) {
+	return func(app *asukaApp, o *buildOptions) (string, error) {
 		*got = app.cfg.Build
 		p := filepath.Join(t.TempDir(), "Notes"+ext)
 		return p, os.WriteFile(p, content, 0o644)
@@ -530,7 +530,7 @@ func TestPublishIOSFile(t *testing.T) {
 	ipa := filepath.Join(t.TempDir(), "Notes.ipa")
 	writeIPA(t, ipa, map[string]any{"CFBundleIdentifier": "com.example.notes", "CFBundleShortVersionString": "1.2", "CFBundleVersion": "42",
 		"UIDeviceFamily": []int{1, 2}, "LSRequiresIPhoneOS": true})
-	never := func(*goApp, *buildOptions) (string, error) { t.Fatal("built"); return "", nil }
+	never := func(*asukaApp, *buildOptions) (string, error) { t.Fatal("built"); return "", nil }
 	if err := publishIOS(c, testApp(t), &publishOptions{file: ipa, noWait: true}, nil, never); err != nil {
 		t.Fatal(err)
 	}

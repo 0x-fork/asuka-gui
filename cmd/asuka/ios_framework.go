@@ -7,13 +7,13 @@ import (
 )
 
 // An app with a share sheet (app.ShareSheet) or a push rewrite
-// (push.Rewrite) runs its Go code and the host in more than one process:
+// (push.Rewrite) runs its code and the host in more than one process:
 // the app's, and its share extension's or its Notification Service
 // Extension's. All are in one dynamic framework, Frameworks/AsukaApp.framework, as Xcode
 // shares code between an app and its extensions: the app's executable is
 // a main that starts the host's app delegate, the extension's links the
-// framework and starts at NSExtensionMain. Go's runtime starts as the
-// framework loads, in each. An app without either is one executable.
+// framework and starts at NSExtensionMain. The core starts as the
+// framework's host does, in each. An app without either is one executable.
 
 const (
 	fwName = "AsukaApp" // the framework, and its binary

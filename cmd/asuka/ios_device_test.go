@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -14,8 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/egoist/asuka/internal/devtunnel"
 )
 
 func testDevices(t *testing.T) []iosDevice {
@@ -152,38 +149,6 @@ func TestOrderLANHosts(t *testing.T) {
 	}
 }
 
-func TestDevicePlayerConfig(t *testing.T) {
-	c := devicePlayerConfig("ABCDE12345")
-	if c.ID != "dev.asuka.player.abcde12345" || c.shareID() != "dev.asuka.player.abcde12345.share" || c.appGroup() != "group.dev.asuka.player.abcde12345" {
-		t.Fatalf("IDs: %s %s %s", c.ID, c.shareID(), c.appGroup())
-	}
-	if c.IOS.Usage["NSLocalNetworkUsageDescription"] == "" {
-		t.Fatal("no Local Network purpose string")
-	}
-	s := newDevSigner("ABCDE12345", "00008140-0011223344556677", c, t.TempDir(), true, false)
-	if !slices.Equal(s.ids, []string{c.ID, c.shareID(), c.widgetID()}) {
-		t.Fatalf("the IDs provisioned together: %v", s.ids)
-	}
-	app := s.wants(c.ID)
-	if _, ok := app["aps-environment"]; !ok {
-		t.Fatalf("the player's entitlements: %v", app)
-	}
-	if g, _ := app["com.apple.security.application-groups"].([]string); !slices.Equal(g, []string{c.appGroup()}) {
-		t.Fatalf("the player's App Group: %v", app)
-	}
-	if ext := s.wants(c.shareID()); len(ext) != 1 {
-		t.Fatalf("the share extension's: %v", ext)
-	}
-	// A team without App Groups: no share sheet, and no group to sign with.
-	s.goWithout(c.ID, []string{"aps-environment", "com.apple.security.application-groups"})
-	if c.ShareTarget.on || c.appGroup() != "" {
-		t.Fatal("the share target stayed without an App Group")
-	}
-	if _, ok := c.entitlements["aps-environment"]; ok {
-		t.Fatal("kept push without its capability")
-	}
-}
-
 func TestProvisionProject(t *testing.T) {
 	dir := t.TempDir()
 	proj, err := writeProvisionProject(dir, "ABCDE12345", []provisionTarget{
@@ -286,67 +251,4 @@ func freeLoopbackPort(t *testing.T) int {
 	}
 	defer ln.Close()
 	return ln.Addr().(*net.TCPAddr).Port
-}
-
-// The player on a device reaches the Go code and its assets through the
-// link: by tunnels, as over USB, and through the relays, as over Wi-Fi.
-func TestDeviceLink(t *testing.T) {
-	core, assets := greeter(t, "core"), greeter(t, "assets")
-	pool := freeLoopbackPort(t) // the phone's tunnel port, here
-	l := newDeviceLink(&iosDevice{Name: "Test iPhone"}, core, assets)
-	l.dialUSB = func() (net.Conn, error) { return net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", pool)) }
-	if err := l.start(); err != nil {
-		t.Fatal(err)
-	}
-	defer l.close()
-	spec := l.spec()
-	if spec.Tunnel != deviceTunnelPort || spec.AssetsPort != deviceAssetsPort || len(spec.Remote) != len(spec.Assets) {
-		t.Fatalf("spec: %+v", spec)
-	}
-	// Over USB.
-	usb := spec
-	usb.Tunnel, usb.AssetsPort = pool, freeLoopbackPort(t)
-	d, err := devtunnel.NewDialer(usb)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
-	c, err := d.Remote()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := greet(t, c, "hi"); got != "core:hi" {
-		t.Fatalf("over USB: %q", got)
-	}
-	c.Close()
-	if last := l.how(); last != "USB" {
-		t.Fatalf("connected over %q", last)
-	}
-	a, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", usb.AssetsPort))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := greet(t, a, "logo.png"); got != "assets:logo.png" {
-		t.Fatalf("an asset over USB: %q", got)
-	}
-	a.Close()
-	// Over Wi-Fi: the relays, at this machine's addresses (or its
-	// loopback, without a network).
-	rp := l.lnRemote.Addr().(*net.TCPAddr).Port
-	wifi := devtunnel.Spec{Remote: append(spec.Remote, fmt.Sprintf("127.0.0.1:%d", rp))}
-	d2, err := devtunnel.NewDialer(wifi)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, err = d2.Remote()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := greet(t, c, "yo"); got != "core:yo" {
-		t.Fatalf("over Wi-Fi: %q", got)
-	}
-	c.Close()
-	if last := l.how(); last != "Wi-Fi" {
-		t.Fatalf("connected over %q", last)
-	}
 }

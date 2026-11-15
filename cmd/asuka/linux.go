@@ -8,31 +8,35 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/boot"
+	"github.com/egoist/asuka/internal/cbuild"
 	iupdate "github.com/egoist/asuka/internal/update"
 )
 
-// Linux: the app's Go code and its host (host/linux, GTK 4 and
-// libadwaita through purego) are one Go program, built with
-// CGO_ENABLED=0 for amd64 or arm64, from any system.
+// Linux: the app's executable is the desktop host (cmd/asuka-host:
+// host/linux, GTK 4 and libadwaita through purego, built with
+// CGO_ENABLED=0), with the C core (libasuka.so), for amd64 or arm64, from
+// any system (Zig compiles the core elsewhere than Linux).
 //
-// asuka dev --platform linux runs it here and, on each change, rebuilds it
-// and runs it again (its signals' state kept, as with the player: Asuka
-// sends it SIGINT, and it saves its state and quits). On another system
-// it builds it, and runs it only where ASUKA_LINUX_RUN says how: a
-// command that runs a program on a Linux machine that sees this one's
-// files at the same paths (a VM: orb -m ubuntu, limactl shell default).
+// asuka dev --platform linux runs the player here (the host and the core
+// without an app), which loads the app's bytecode from asuka dev and
+// again on each save, keeping its state. On another system it runs it
+// only where ASUKA_LINUX_RUN says how: a command that runs a program on
+// a Linux machine that sees this one's files at the same paths (a VM: orb
+// -m ubuntu, limactl shell default), which reaches asuka dev by the
+// network (ASUKA_DEV_HOST: this computer's address as it sees it).
 //
 // asuka build --platform linux makes a folder laid out as an install
-// prefix: bin/<exe>; share/<exe>/assets, where the host finds them from
-// the executable; its plugins' libraries in lib/<exe>, where package
-// plugin finds them likewise; the desktop file, icons and AppStream metainfo named
+// prefix: bin/<exe>; share/<exe>/assets and share/<exe>/asuka-app.json
+// (the app's settings), where the host finds them from the executable;
+// the core with the app compiled in and its plugins' libraries in
+// lib/<exe>, where the host finds them likewise; the desktop file, icons and AppStream metainfo named
 // for the app's ID, as desktops and software centers look them up; a
 // .tar.gz of it, to unpack into ~/.local or /usr/local; and a Flatpak
 // manifest that packages it, for flatpak-builder.
@@ -45,26 +49,9 @@ const flatpakRuntime = "50"
 // linuxIconSizes are the sizes of the app's icon in the hicolor theme.
 var linuxIconSizes = []int{16, 24, 32, 48, 64, 128, 256, 512}
 
-// linuxLdflags is the -ldflags of a Linux build: asuka.toml's (its
-// accent), and the app's name (its window title), ID (its GApplication's,
-// which names its desktop file, its D-Bus name and its data directory),
-// version and build (its crash reports' and About's).
-func linuxLdflags(app *goApp, release bool) string {
-	f := strings.TrimPrefix(app.cfg.ldflags(release), "-ldflags=")
-	set := [][2]string{{"Name", app.displayName()}, {"ID", app.bundleID}}
-	if app.cfg != nil {
-		set = append(set, [2]string{"Version", app.cfg.Version}, [2]string{"Build", strconv.Itoa(app.cfg.Build)})
-	}
-	for _, kv := range set {
-		f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot."+kv[0]+"="+kv[1])
-	}
-	f += app.cfg.multipleInstances()
-	return "-ldflags=" + strings.TrimSpace(f)
-}
-
 // linuxExe is the executable's name: the app's, in lower case, words
 // joined by hyphens, as Linux names its programs.
-func linuxExe(app *goApp) string { return exeSlug(app.displayName(), app.bundleID) }
+func linuxExe(app *asukaApp) string { return exeSlug(app.displayName(), app.bundleID) }
 
 // exeSlug is name in lower case, its words joined by hyphens; for a name
 // in another script, id's last part.
@@ -131,79 +118,7 @@ func gAppIDValid(id string) bool {
 	return true
 }
 
-func devLinux(dir string, o *devOptions, stop <-chan os.Signal) error {
-	app, err := loadApp(dir)
-	if err != nil {
-		return err
-	}
-	work, err := workDir(app, "linux")
-	if err != nil {
-		return err
-	}
-	if !gAppIDValid(app.bundleID) {
-		fmt.Printf("asuka: %q isn't a valid application ID on Linux (letters, digits, _ and -, in two parts or more, none starting with a digit): the app runs under another\n", app.bundleID)
-	}
-	proc := &hostProcess{app: app, work: work, flags: linuxLdflags(app, false), goos: "linux",
-		bin: filepath.Join(work, linuxExe(app))}
-	wrap := strings.Fields(os.Getenv("ASUKA_LINUX_RUN"))
-	where := "this computer"
-	if runtime.GOOS != "linux" {
-		if len(wrap) == 0 {
-			if proc.goarch, err = linuxArch(""); err != nil {
-				return err
-			}
-			if err := proc.build(); err != nil {
-				return err
-			}
-			return fmt.Errorf("built %s (linux/%s), but a Linux app runs only on Linux: run asuka dev there, or set ASUKA_LINUX_RUN to a command that runs a program on a Linux machine with a display that sees this computer's files at the same paths (orb -m ubuntu, limactl shell default). asuka build --platform linux builds a release from here", proc.bin, proc.goarch)
-		}
-		// The machine's architecture, from uname.
-		out, err := exec.Command(wrap[0], append(wrap[1:len(wrap):len(wrap)], "uname", "-m")...).Output()
-		if err != nil {
-			return fmt.Errorf("ASUKA_LINUX_RUN=%q: uname -m: %v", os.Getenv("ASUKA_LINUX_RUN"), err)
-		}
-		switch m := strings.TrimSpace(string(out)); m {
-		case "aarch64", "arm64":
-			proc.goarch = "arm64"
-		case "x86_64", "amd64":
-			proc.goarch = "amd64"
-		default:
-			return fmt.Errorf("ASUKA_LINUX_RUN: a %s machine; Asuka runs on amd64 and arm64", m)
-		}
-		proc.wrap = wrap
-		where = wrap[0]
-	}
-	fmt.Printf("asuka: %s on %s\n", app.name, where)
-	proc.env = []string{
-		"ASUKA_DATA=" + filepath.Join(work, "data"),
-		// Read where they are, so changing one needs no rebuild.
-		"ASUKA_ASSETS=" + filepath.Join(app.dir, "assets"),
-	}
-	if !o.once {
-		proc.env = append(proc.env, "ASUKA_STATE="+filepath.Join(work, "state.json"))
-	}
-	os.MkdirAll(filepath.Join(work, "data"), 0o755)
-	start := time.Now()
-	if err := proc.build(); err != nil {
-		return err
-	}
-	if err := proc.restart(); err != nil {
-		return err
-	}
-	fmt.Printf("asuka: built and started in %.1fs\n", time.Since(start).Seconds())
-	if o.once {
-		// Until it quits, or Asuka is stopped (it stops the app).
-		select {
-		case <-proc.done():
-		case <-stop:
-			proc.stop()
-		}
-		return nil
-	}
-	return watchHost(proc, stop, func() {})
-}
-
-func buildLinux(app *goApp, o *buildOptions) error {
+func buildLinux(app *asukaApp, o *buildOptions) error {
 	arch, err := linuxArch(o.arch)
 	if err != nil {
 		return err
@@ -220,21 +135,19 @@ func buildLinux(app *goApp, o *buildOptions) error {
 	if err := os.MkdirAll(filepath.Join(out, "bin"), 0o755); err != nil {
 		return err
 	}
+	// The host in bin, the core with the app compiled in where the host
+	// finds it (lib/<exe>), the app's settings in share/<exe>.
 	target := "linux-" + arch
-	libs, err := appLibs(app.dir, "linux", arch, target)
-	if err != nil {
+	t := cbuild.Target{OS: "linux", Arch: arch}
+	if err := desktopRelease(app, t, filepath.Join(out, "bin", exe), filepath.Join(linuxPluginLibs(out, exe), coreLibName("linux")), o, appbuild.HostOptions{}); err != nil {
 		return err
 	}
-	args := append([]string{"build", "-trimpath", linuxLdflags(app, true) + updateLdflags(app, target)}, pluginBuildFlags(libs)...)
-	args = append(args, "-o", filepath.Join(out, "bin", exe), ".")
-	if o.verbose {
-		fmt.Println("+ GOOS=linux GOARCH="+arch+" CGO_ENABLED=0 go", strings.Join(args, " "))
+	if err := writeHostConfig(app, platformLinux, target, true, filepath.Join(out, "share", exe, boot.ConfigFile)); err != nil {
+		return err
 	}
-	c := exec.Command("go", args...)
-	c.Dir = app.dir
-	c.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+arch, "CGO_ENABLED=0")
-	if b, err := c.CombinedOutput(); err != nil {
-		return fmt.Errorf("go build failed: %v\n%s", err, b)
+	libs, err := appLibs(app, target)
+	if err != nil {
+		return err
 	}
 	if err := writeLibs(libs, linuxPluginLibs(out, exe)); err != nil {
 		return err
@@ -262,7 +175,7 @@ func buildLinux(app *goApp, o *buildOptions) error {
 		}
 	}
 	manifest := filepath.Join(base, app.bundleID+".yml")
-	if err := os.WriteFile(manifest, []byte(flatpakManifest(app, exe, len(libs) > 0)), 0o644); err != nil {
+	if err := os.WriteFile(manifest, []byte(flatpakManifest(app, exe)), 0o644); err != nil {
 		return err
 	}
 	fmt.Printf("asuka: %s (linux/%s; it needs GTK 4.14 and libadwaita 1.5 or later)\n", filepath.Join(out, "bin", exe), arch)
@@ -290,7 +203,7 @@ func linuxPluginLibs(out, exe string) string {
 // app's assets (share/<exe>/assets, which the host finds from
 // bin/<exe>), its icon at each size, its desktop file and its AppStream
 // metainfo.
-func writeLinuxShare(app *goApp, out, exe string) error {
+func writeLinuxShare(app *asukaApp, out, exe string) error {
 	share := filepath.Join(out, "share")
 	if err := copyDir(filepath.Join(app.dir, "assets"), filepath.Join(share, exe, "assets")); err != nil {
 		return err
@@ -354,7 +267,7 @@ func writeLinuxShare(app *goApp, out, exe string) error {
 // desktopEntry is the app's desktop file: what launchers show and run.
 // StartupWMClass is its windows' WM_CLASS on X11 (the program's name);
 // on Wayland they carry its ID, which names the file.
-func desktopEntry(app *goApp, exe string, icon bool) string {
+func desktopEntry(app *asukaApp, exe string, icon bool) string {
 	l := app.cfg.Linux
 	var b strings.Builder
 	b.WriteString("[Desktop Entry]\nType=Application\n")
@@ -388,7 +301,7 @@ func desktopEntry(app *goApp, exe string, icon bool) string {
 
 // linuxCategories are the app's freedesktop.org categories (default
 // Utility).
-func linuxCategories(app *goApp) []string {
+func linuxCategories(app *asukaApp) []string {
 	if c := app.cfg.Linux.Categories; len(c) > 0 {
 		return c
 	}
@@ -402,7 +315,7 @@ func desktopEscape(s string) string {
 
 // metainfo is the app's AppStream metainfo: what software centers
 // (GNOME Software, KDE Discover, Flathub) show of it.
-func metainfo(app *goApp, icon bool, now time.Time) string {
+func metainfo(app *asukaApp, icon bool, now time.Time) string {
 	l := app.cfg.Linux
 	e := html.EscapeString
 	var b strings.Builder
@@ -460,16 +373,13 @@ func metainfo(app *goApp, icon bool, now time.Time) string {
 
 // flatpakManifest is a flatpak-builder manifest that packages the build's
 // prefix (beside it, in the directory named exe) on the GNOME runtime:
-// its bin and share, and its lib with its plugins' libraries (lib).
-func flatpakManifest(app *goApp, exe string, lib bool) string {
+// its bin, its lib (the core, the plugins' libraries) and its share.
+func flatpakManifest(app *asukaApp, exe string) string {
 	rt := app.cfg.Linux.FlatpakRuntime
 	if rt == "" {
 		rt = flatpakRuntime
 	}
-	dirs := "bin share"
-	if lib {
-		dirs = "bin lib share"
-	}
+	dirs := "bin lib share"
 	return fmt.Sprintf(`# A Flatpak of %[1]s, from asuka build --platform linux (the binary it built,
 # for one architecture): flatpak-builder --user --install --force-clean build %[2]s.yml
 # Then: flatpak run %[2]s

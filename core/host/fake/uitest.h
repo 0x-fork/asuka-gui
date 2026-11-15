@@ -26,6 +26,9 @@ typedef struct ak_uitest ak_uitest;  // an rt object (AK_TAG_OPAQUE)
 // (NULL: an iPhone's) is the environment it reports. The UI runtime has
 // one root: mounting unmounts what was.
 ak_uitest *ak_uitest_mount(ak_closure *build, const ak_environment *env);
+// ak_uitest_set_platform sets the platform a mount with no environment
+// reports (AK_PLATFORM_IOS by default): asuka test -platform.
+void ak_uitest_set_platform(uint8_t platform);
 // ak_uitest_unmount unmounts the app and reports in err (if not NULL)
 // the native views that outlived it (an owner left undisposed). False
 // if any did.
