@@ -187,7 +187,7 @@ func GenerateKotlin(p *Package) []byte {
 		g.ifaces[it.Name] = it
 	}
 	g.printf("%s\n", header("//", p.Hash))
-	g.printf("// What the package's Go declares (package %s), as its Kotlin implements\n", p.Name)
+	g.printf("// What the package declares (%s), as its Kotlin implements\n", p.Name)
 	g.printf("// it. The Kotlin (in this package) writes the functions that make each:\n//\n")
 	for _, it := range p.Interfaces {
 		g.printf("//\tfun make%s(): %s\n", it.Name, it.Name)
@@ -257,7 +257,7 @@ func (g *kotlinGen) structDecl(s *StructDecl) {
 
 func (g *kotlinGen) errors() {
 	t, x := KotlinErrorType(g.p), KotlinException(g.p)
-	g.printf("/** The errors the package declares (native.NewError), which its Go gets as those values. */\n")
+	g.printf("/** The errors the package declares , which its callers get as those values. */\n")
 	g.printf("public enum class %s(val message: String) {\n", t)
 	for i, e := range g.p.Errors {
 		sep := ","

@@ -1,0 +1,61 @@
+// The pantry package declares, in Asuka, a native module and a view with
+// every kind of value that crosses: nativegen's tests generate the
+// platforms' code from it.
+
+/// The pantry's errors.
+pub enum PantryError: Error {
+  /// pantry: busy
+  busy
+  /// pantry: empty
+  empty
+}
+
+/// How hot.
+pub enum Level {
+  low
+  high
+}
+
+/// Something in the pantry.
+pub struct Item {
+  name: string
+  weight: float
+  level: Level
+  tags: [string]
+  notes: [string: string]
+  next: Item?
+  data: bytes
+  took: Duration
+  count: int
+  fresh: bool
+}
+
+/// The platform's pantry.
+pub native interface Pantry {
+  /// The pantry's name.
+  fn name() -> string
+  fn items(filter: string) -> [Item]
+  fn add(item: Item)
+  /// Cooks a recipe, saying how far along it is.
+  async fn cook(recipe: string, progress: fn(float)) -> Item
+  fn ask(question: fn(string) -> bool) -> bool
+  fn open(name: string) -> Shelf
+  /// @mainThread
+  fn show()
+  fn counts() -> [string: int]
+}
+
+/// One of the pantry's shelves.
+/// @mainThread
+pub native interface Shelf {
+  fn stack(count: int, level: Level)
+  fn close()
+}
+
+/// A dial: a value to pick, and what it says.
+pub native component Dial(value: float) {
+  prop label: string = ""
+  prop items: [Item] = []
+  event changed(value: float)
+  event picked(item: Item, index: int)
+}

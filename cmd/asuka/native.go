@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -186,7 +187,17 @@ func hasDirectives(dir string) bool {
 	es, _ := os.ReadDir(dir)
 	for _, e := range es {
 		n := e.Name()
-		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") || strings.HasSuffix(n, "_native.go") {
+		if e.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(n, ".asuka") {
+			// An Asuka package: native interface or native component.
+			if b, err := os.ReadFile(filepath.Join(dir, n)); err == nil && nativeDecl.Match(b) {
+				return true
+			}
+			continue
+		}
+		if !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") || strings.HasSuffix(n, "_native.go") {
 			continue
 		}
 		if b, err := os.ReadFile(filepath.Join(dir, n)); err == nil && (bytes.Contains(b, []byte("//asuka:native")) || bytes.Contains(b, []byte("//asuka:view"))) {
@@ -195,6 +206,9 @@ func hasDirectives(dir string) bool {
 	}
 	return false
 }
+
+// nativeDecl finds an Asuka file's native declarations.
+var nativeDecl = regexp.MustCompile(`(?m)^\s*(pub\s+)?native\s+(interface|component)\b`)
 
 // nativeDirs are the packages of the module in moduleDir (as ./...
 // lists them) with //asuka:native or //asuka:view declarations.
@@ -225,7 +239,7 @@ func nativeStamp(dir string) string {
 	es, _ := os.ReadDir(dir)
 	for _, e := range es {
 		n := e.Name()
-		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") || strings.HasSuffix(n, "_native.go") {
+		if e.IsDir() || !(strings.HasSuffix(n, ".go") || strings.HasSuffix(n, ".asuka")) || strings.HasSuffix(n, "_test.go") || strings.HasSuffix(n, "_native.go") {
 			continue
 		}
 		b, _ := os.ReadFile(filepath.Join(dir, n))
@@ -255,7 +269,7 @@ func generateNative(dir string) error {
 			return nil
 		}
 	}
-	p, err := nativegen.Load(dir)
+	p, err := nativegen.LoadAny(dir)
 	if err != nil {
 		return err
 	}
@@ -300,7 +314,7 @@ func checkNative(dir string) error {
 	if b, err := os.ReadFile(sp); err == nil && string(b) == "checked "+stamp {
 		return nil
 	}
-	p, err := nativegen.Load(dir)
+	p, err := nativegen.LoadAny(dir)
 	if err != nil {
 		return err
 	}

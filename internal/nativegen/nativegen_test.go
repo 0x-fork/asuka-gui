@@ -117,3 +117,66 @@ func TestSameText(t *testing.T) {
 		t.Error("another file is the same")
 	}
 }
+
+// The pantry package (testdata/pantry) declares in Asuka what the kitchen
+// declares in Go: its generated Swift, Kotlin and JavaScript are what's
+// committed (-update writes them).
+func TestPantry(t *testing.T) {
+	p, err := LoadAsuka("testdata/pantry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p == nil {
+		t.Fatal("no native declarations")
+	}
+	if p.Path != "@asuka/pantry" || len(p.Interfaces) != 2 || len(p.Views) != 1 || len(p.Errors) != 2 || len(p.Structs) != 1 || len(p.Enums) != 1 {
+		t.Fatalf("model: path %s, %d interfaces, %d views, %d errors, %d structs, %d enums", p.Path, len(p.Interfaces), len(p.Views), len(p.Errors), len(p.Structs), len(p.Enums))
+	}
+	cook := p.Interfaces[0].Methods[3]
+	if cook.Name != "Cook" || !cook.Context || cook.Params[1].Type.Kind != Func {
+		t.Fatalf("cook: %+v", cook)
+	}
+	if !p.Interfaces[1].MainThread || !p.Interfaces[1].Methods[1].Close {
+		t.Fatalf("shelf: %+v", p.Interfaces[1])
+	}
+	if *update {
+		if _, err := Write(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := Files(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 3 {
+		t.Errorf("%d files, want Swift's, Kotlin's and JavaScript's (no Go: Asuka's compiler calls it)", len(files))
+	}
+	for rel, b := range files {
+		old, _ := os.ReadFile(filepath.Join(p.Dir, rel))
+		if string(old) != string(b) {
+			t.Errorf("stale (go test ./internal/nativegen -update): %s", rel)
+		}
+	}
+	if _, err := LoadAsuka("testdata/kitchen"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// What can't cross says where and why.
+func TestAsukaLoadErrors(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{"native interface X { fn m(c: [X]) }", "isn't in an array"},
+		{"native interface X { fn m(m: [int: string]) }", "keys are strings"},
+		{"native interface X { fn m() -> fn() }", "as a parameter only"},
+		{"native interface X { fn m(t: http.Request) }", "own types"},
+		{"enum E { a(int) }\nnative interface X { fn m(e: E) }", "without payloads"},
+		{"native interface X { fn m(u: Unknown) }", "Unknown can't cross"},
+	} {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "x.asuka"), []byte(c.src), 0o644)
+		_, err := LoadAsuka(dir)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want %q", c.src, err, c.want)
+		}
+	}
+}

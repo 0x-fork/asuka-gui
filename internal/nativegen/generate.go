@@ -45,11 +45,14 @@ func HasPlatform(dir, platform string) bool {
 // Files are what the package generates, by their paths relative to its
 // directory: its Go, and each platform's it has native code for.
 func Files(p *Package) (map[string][]byte, error) {
-	goSrc, err := GenerateGo(p)
-	if err != nil {
-		return nil, err
+	files := map[string][]byte{}
+	if !p.Asuka {
+		goSrc, err := GenerateGo(p)
+		if err != nil {
+			return nil, err
+		}
+		files[GoFile(p.Name)] = goSrc
 	}
-	files := map[string][]byte{GoFile(p.Name): goSrc}
 	if HasPlatform(p.Dir, "swift") {
 		files[filepath.Join(SwiftDir, SwiftFile(p))] = GenerateSwift(p)
 	}

@@ -155,6 +155,9 @@ type Package struct {
 	Errors          []*ErrorDecl
 	// Hash is the declarations', which every generated file records.
 	Hash string
+	// Asuka: declared in Asuka (LoadAsuka), whose compiler makes the
+	// calling side; there's no Go client to generate.
+	Asuka bool
 }
 
 // Empty reports whether the package declares nothing native.

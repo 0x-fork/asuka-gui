@@ -110,7 +110,7 @@ func GenerateJS(p *Package) []byte {
 		g.ifaces[it.Name] = it
 	}
 	g.printf("%s\n", header("//", p.Hash))
-	g.printf("// What the package's Go declares (package %s), as its JavaScript\n", p.Name)
+	g.printf("// What the package declares (%s), as its JavaScript\n", p.Name)
 	g.printf("// implements it. %s exports the functions that make each:\n//\n", JSImpl(p))
 	for _, it := range p.Interfaces {
 		g.printf("//\texport function make%s() // returns its methods (lowerCamelCase)\n", it.Name)

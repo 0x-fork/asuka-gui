@@ -228,7 +228,7 @@ func GenerateSwift(p *Package) []byte {
 		g.ifaces[it.Name] = it
 	}
 	g.printf("%s\n", header("//", p.Hash))
-	g.printf("// What the package's Go declares (package %s), as its Swift implements\n", p.Name)
+	g.printf("// What the package declares (%s), as its Swift implements\n", p.Name)
 	g.printf("// it. The Swift writes the functions that make each:\n//\n")
 	for _, it := range p.Interfaces {
 		main := ""
@@ -300,7 +300,7 @@ func (g *swiftGen) structDecl(s *StructDecl) {
 
 func (g *swiftGen) errors() {
 	t := SwiftErrorType(g.p)
-	g.printf("/// The errors the package declares (native.NewError), which its Go gets\n/// as those values.\n")
+	g.printf("/// The errors the package declares , which its callers get\n/// as those values.\n")
 	g.printf("public enum %s: Error, AsukaDeclaredError, LocalizedError {\n", t)
 	for _, e := range g.p.Errors {
 		g.printf("    case %s\n", swiftName(lowerCamel(errorCase(e.Name))))
