@@ -1,6 +1,6 @@
 //go:build !darwin && !windows && !linux
 
-package main
+package apphost
 
 import (
 	"fmt"

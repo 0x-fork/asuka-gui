@@ -807,6 +807,12 @@ func devIOS(dir string, o *devOptions, stop <-chan os.Signal) error {
 	if err != nil {
 		return err
 	}
+	return loop.run(simulatorPlayer(app, tc, work, sim, loop), stop, o.once)
+}
+
+// simulatorPlayer is the player on the simulator sim: built, installed
+// when it changed, launched connected to the loop.
+func simulatorPlayer(app *asukaApp, tc *iosToolchain, work string, sim *simDevice, loop *devLoop) devPlayer {
 	installed := ""
 	launch := func() error {
 		start := time.Now()
@@ -825,10 +831,10 @@ func devIOS(dir string, o *devOptions, stop <-chan os.Signal) error {
 		env := append(app.cfg.storeKitLaunchEnv(), fmt.Sprintf("SIMCTL_CHILD_ASUKA_DEV=127.0.0.1:%d", loop.port()))
 		return tc.run(work, env, "xcrun", "simctl", "launch", "--terminate-running-process", sim.UDID, app.bundleID)
 	}
-	return loop.run(devPlayer{
+	return devPlayer{
 		launch: launch,
 		stop:   func() { exec.Command("xcrun", "simctl", "terminate", sim.UDID, app.bundleID).Run() },
-	}, stop, o.once)
+	}
 }
 
 // buildPlayer builds asuka dev's player for the simulator: the app's

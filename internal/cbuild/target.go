@@ -242,8 +242,18 @@ func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, 
 			link = append(link, exportFlags()...)
 		}
 		link = append(link, "-lm")
-		if tc.Target.OS == "linux" {
+		switch tc.Target.OS {
+		case "linux":
 			link = append(link, "-lpthread")
+		case "windows":
+			link = append(link, "-lws2_32") // asuka dev's connection (abi/dev.c)
+			if tc.CC.IsZig() {
+				// lld writes an import library beside the DLL, named for an
+				// object; the hosts load the DLL by its path and need none.
+				implib := filepath.Join(os.TempDir(), fmt.Sprintf("asuka-%d.lib", os.Getpid()))
+				link = append(link, "-Wl,--out-implib,"+implib)
+				defer os.Remove(implib)
+			}
 		}
 		if !debug {
 			link = append(link, deadStrip(tc.Target)...)

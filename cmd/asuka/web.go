@@ -277,37 +277,12 @@ func devWeb(dir string, o *devOptions, stop <-chan os.Signal) error {
 	if err != nil {
 		return err
 	}
-	vapid, err := webVAPIDKey(app)
-	if err != nil {
-		return err
-	}
-	src, srcDir := webSource()
-	s := &devServer{app: app, src: src, wasm: filepath.Join(work, "asuka.wasm"), vapid: vapid, clients: map[chan string]bool{}}
 	start := time.Now()
-	// The player: the core without an app, which loads the app's module.
-	if err := appbuild.Lib(cbuild.Target{OS: "wasm", Arch: "wasm32"}, cbuild.Module, nil, s.wasm); err != nil {
-		return err
-	}
-	if err := s.findPlugins(); err != nil {
-		return err
-	}
-	loop, err := newDevLoop(app, "127.0.0.1:0")
+	s, loop, err := newWebDev(app, work)
 	if err != nil {
 		return err
 	}
-	s.loop = loop
-	s.moduleStamp = strconv.FormatInt(time.Now().UnixNano(), 36)
-	loop.mu.Lock()
-	loop.modules = append(loop.modules, func([]byte) {
-		s.mu.Lock()
-		s.moduleStamp = strconv.FormatInt(time.Now().UnixNano(), 36)
-		stamp := s.moduleStamp
-		s.mu.Unlock()
-		s.send("module", stamp)
-	})
-	loop.failed = append(loop.failed, func(msg string) { s.send("failed", msg) })
-	loop.fixed = append(loop.fixed, func() { s.send("fixed", "") })
-	loop.mu.Unlock()
+	_, srcDir := webSource()
 	s.stamp = strconv.FormatInt(time.Now().UnixNano(), 36)
 	host := "127.0.0.1"
 	if o.lan {
@@ -369,6 +344,44 @@ func devWeb(dir string, o *devOptions, stop <-chan os.Signal) error {
 		}
 	}()
 	return loop.run(devPlayer{launch: launch}, stop, o.once)
+}
+
+// newWebDev makes asuka dev's web server for app: the player (the core
+// without an app) built in work, and the loop that compiles the app and
+// tells the pages of each new module (which they load in place), of what
+// didn't compile and of when it compiles again.
+func newWebDev(app *asukaApp, work string) (*devServer, *devLoop, error) {
+	vapid, err := webVAPIDKey(app)
+	if err != nil {
+		return nil, nil, err
+	}
+	src, _ := webSource()
+	s := &devServer{app: app, src: src, wasm: filepath.Join(work, "asuka.wasm"), vapid: vapid, clients: map[chan string]bool{}}
+	if err := appbuild.Lib(cbuild.Target{OS: "wasm", Arch: "wasm32"}, cbuild.Module, nil, s.wasm); err != nil {
+		return nil, nil, err
+	}
+	if err := s.findPlugins(); err != nil {
+		return nil, nil, err
+	}
+	loop, err := newDevLoop(app, "127.0.0.1:0")
+	if err != nil {
+		return nil, nil, err
+	}
+	s.loop = loop
+	s.stamp = strconv.FormatInt(time.Now().UnixNano(), 36)
+	s.moduleStamp = s.stamp
+	loop.mu.Lock()
+	loop.modules = append(loop.modules, func([]byte) {
+		s.mu.Lock()
+		s.moduleStamp = strconv.FormatInt(time.Now().UnixNano(), 36)
+		stamp := s.moduleStamp
+		s.mu.Unlock()
+		s.send("module", stamp)
+	})
+	loop.failed = append(loop.failed, func(msg string) { s.send("failed", msg) })
+	loop.fixed = append(loop.fixed, func() { s.send("fixed", "") })
+	loop.mu.Unlock()
+	return s, loop, nil
 }
 
 // devServer serves the app's page under asuka dev: the page, the host's

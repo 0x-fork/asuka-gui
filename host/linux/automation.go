@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/asuka/internal/boot"
 	. "github.com/egoist/asuka/internal/gtk"
 	"github.com/egoist/asuka/ops"
 )
@@ -18,7 +19,7 @@ import (
 // Debug automation, as on macOS and Windows: ASUKA_SCRIPT runs steps
 // (tap:<text>, type:<text>, submit, back, escape, scroll:<y>,
 // resize:<w>,<h>, key:<shortcut>, menu:<item title>, tab:<title>,
-// close, wait:<d>, snap:<file>), then ASUKA_SNAPSHOT=file.png writes the window as a PNG
+// close, wait:<d>, waitfor:<file>, snap:<file>), then ASUKA_SNAPSHOT=file.png writes the window as a PNG
 // (ASUKA_DUMP=1: its view tree beside it) and quits.
 
 func (h *Host) automation() {
@@ -40,6 +41,10 @@ func (h *Host) automation() {
 				if dur, err := time.ParseDuration(d); err == nil {
 					time.Sleep(dur)
 				}
+				continue
+			}
+			if p, ok := strings.CutPrefix(s, "waitfor:"); ok {
+				boot.WaitFor(p)
 				continue
 			}
 			done := make(chan struct{})

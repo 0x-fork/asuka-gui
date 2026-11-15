@@ -4,16 +4,25 @@
 // it publishes them (npm publish, with the user's npm credentials;
 // --provenance on CI), platform packages first.
 //
+// It builds the desktop host (cmd/asuka-host, every desktop app's
+// executable) for each desktop target first, into <out>/hosts, which the
+// release uploads beside the CLI's binaries: each CLI is built with their
+// SHA-256 (internal/appbuild's hostSums), and fetches and checks the one
+// a build needs.
+//
 //	go run ./scripts/npm -version 0.1.0 [-out dist/npm] [-publish]
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 var platforms = []struct{ goos, goarch, os, cpu string }{
@@ -37,6 +46,32 @@ func main() {
 	if err := os.RemoveAll(*out); err != nil {
 		fail(err.Error())
 	}
+	// The desktop hosts, and their hashes for the CLI.
+	var sums []string
+	hosts := filepath.Join(*out, "hosts")
+	for _, p := range platforms {
+		name := "asuka-host-" + p.goos + "-" + p.goarch
+		ld := "-s -w -buildid="
+		if p.goos == "windows" {
+			name += ".exe"
+			ld += " -H windowsgui"
+		}
+		bin := filepath.Join(hosts, name)
+		fmt.Println("building", name)
+		cmd := exec.Command("go", "build", "-trimpath", "-ldflags", ld, "-o", bin, "./cmd/asuka-host")
+		cmd.Env = append(os.Environ(), "GOOS="+p.goos, "GOARCH="+p.goarch, "CGO_ENABLED=0")
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			fail(fmt.Sprintf("npm: building %s: %v", name, err))
+		}
+		b, err := os.ReadFile(bin)
+		if err != nil {
+			fail(err.Error())
+		}
+		sum := sha256.Sum256(b)
+		sums = append(sums, p.goos+"-"+p.goarch+"="+hex.EncodeToString(sum[:]))
+	}
+	cliFlags := "-s -w -X main.version=" + *version + " -X github.com/egoist/asuka/internal/appbuild.hostSums=" + strings.Join(sums, ",")
 	var dirs []string
 	deps := map[string]string{}
 	for _, p := range platforms {
@@ -48,7 +83,7 @@ func main() {
 		}
 		bin := filepath.Join(dir, "bin", exe)
 		fmt.Println("building", name)
-		cmd := exec.Command("go", "build", "-trimpath", "-ldflags", "-s -w -X main.version="+*version, "-o", bin, "./cmd/asuka")
+		cmd := exec.Command("go", "build", "-trimpath", "-ldflags", cliFlags, "-o", bin, "./cmd/asuka")
 		cmd.Env = append(os.Environ(), "GOOS="+p.goos, "GOARCH="+p.goarch, "CGO_ENABLED=0")
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if err := cmd.Run(); err != nil {

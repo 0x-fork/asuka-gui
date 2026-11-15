@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/asuka/internal/boot"
 	. "github.com/egoist/asuka/internal/darwin"
 	"github.com/egoist/asuka/ops"
 )
@@ -30,6 +31,8 @@ import (
 //   - resize:<w>,<h> sizes the main window's content
 //   - menu:<title> chooses the menu bar's item, tab:<title> a tab
 //   - wait:<duration> waits (500ms), snap:<file.png> writes a snapshot
+//   - waitfor:<file> waits until the file exists (a minute at most): a
+//     test says when to go on
 //
 // The script runs once the window has shown, each step after the last
 // settles; then ASUKA_SNAPSHOT is written, if it's set.
@@ -45,6 +48,10 @@ func (h *Host) runScript(script string) {
 			if dur, err := time.ParseDuration(d); err == nil {
 				time.Sleep(dur)
 			}
+			continue
+		}
+		if p, ok := strings.CutPrefix(s, "waitfor:"); ok {
+			boot.WaitFor(p)
 			continue
 		}
 		done := make(chan struct{})

@@ -1,4 +1,7 @@
 #define _POSIX_C_SOURCE 200809L  // sockets, pipes and dup under -std=c17
+#if defined(_WIN32) && !defined(__wasm__)
+#include <winsock2.h>  // before windows.h (base/thread.h's)
+#endif
 #include "abi/dev.h"
 #include "base/thread.h"
 #include "rt/sched.h"

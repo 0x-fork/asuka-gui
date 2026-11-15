@@ -414,17 +414,28 @@ func devAndroid(dir string, o *devOptions, stop <-chan os.Signal) error {
 		return err
 	}
 	fmt.Printf("asuka: %s on %s\n", app.name, serial)
-	pkg := androidPackage(app.bundleID)
 	loop, err := newDevLoop(app, "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
+	p, err := androidPlayer(app, tc, work, serial, loop)
+	if err != nil {
+		return err
+	}
+	return loop.run(p, stop, o.once)
+}
+
+// androidPlayer is the player on the device serial: the shell app
+// installed when it changed, the core without an app pushed to its files,
+// started connected to the loop through adb reverse (its stop removes
+// it).
+func androidPlayer(app *asukaApp, tc *androidToolchain, work, serial string, loop *devLoop) (devPlayer, error) {
+	pkg := androidPackage(app.bundleID)
 	// The device's loopback reaches this computer's, on the same port.
 	port := strconv.Itoa(loop.port())
 	if err := tc.run(work, nil, tc.adb, "-s", serial, "reverse", "tcp:"+port, "tcp:"+port); err != nil {
-		return err
+		return devPlayer{}, err
 	}
-	defer exec.Command(tc.adb, "-s", serial, "reverse", "--remove", "tcp:"+port).Run()
 	launch := func() error {
 		start := time.Now()
 		if err := generateNatives(app); err != nil {
@@ -471,14 +482,15 @@ func devAndroid(dir string, o *devOptions, stop <-chan os.Signal) error {
 		fmt.Printf("asuka: the player built and started in %.1fs\n", time.Since(start).Seconds())
 		return nil
 	}
-	return loop.run(devPlayer{
+	return devPlayer{
 		launch: launch,
 		stop: func() {
 			// Started from the launcher after, it runs what it has.
 			exec.Command(tc.adb, "-s", serial, "shell", "am", "force-stop", pkg).Run()
 			exec.Command(tc.adb, "-s", serial, "shell", "run-as", pkg, "rm", "-f", "files/asuka/dev").Run()
+			exec.Command(tc.adb, "-s", serial, "reverse", "--remove", "tcp:"+port).Run()
 		},
-	}, stop, o.once)
+	}, nil
 }
 
 // devLib is a plugin's library asuka dev pushed: where, and its name.

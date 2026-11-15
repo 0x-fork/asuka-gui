@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/asuka/internal/boot"
 	. "github.com/egoist/asuka/internal/windows"
 	"github.com/egoist/asuka/ops"
 )
@@ -18,7 +19,7 @@ import (
 func snapshotting() bool { return os.Getenv("ASUKA_SNAPSHOT") != "" }
 
 // automation starts the debug automation: ASUKA_SCRIPT's steps (tap a
-// view by its text, back, wait, snap), then ASUKA_SNAPSHOT (write the
+// view by its text, back, wait, waitfor:<file>, snap), then ASUKA_SNAPSHOT (write the
 // window as a PNG once it has shown, ASUKA_DUMP the view tree beside it)
 // and quit.
 func (h *Host) automation() {
@@ -38,6 +39,10 @@ func (h *Host) automation() {
 			if verb == "wait" {
 				d, _ := time.ParseDuration(arg)
 				time.Sleep(d)
+				continue
+			}
+			if verb == "waitfor" {
+				boot.WaitFor(arg)
 				continue
 			}
 			done := make(chan struct{})

@@ -1,4 +1,4 @@
-package main
+package apphost
 
 import (
 	"runtime"

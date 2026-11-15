@@ -64,3 +64,27 @@ func TestNoCompiler(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// A module without its tests keeps what its app and init reach, and
+// calls none of the test builtins; it runs as before.
+func TestStripTests(t *testing.T) {
+	needCC(t)
+	m := apptest.Counter("Count: ")
+	apptest.Failing(m, "Count: ")
+	s := appbuild.StripTests(m)
+	if len(s.Tests) != 0 || len(s.Funcs) != len(m.Funcs)-2 || len(m.Tests) != 2 {
+		t.Fatalf("funcs %d of %d, tests %d", len(s.Funcs), len(m.Funcs), len(s.Tests))
+	}
+	for _, b := range s.Builtins {
+		if strings.HasPrefix(b, "test.") {
+			t.Errorf("calls %s", b)
+		}
+	}
+	if s.Funcs[s.App].Name != "Counter" || s.Funcs[s.Init].Name != "init" {
+		t.Errorf("app %s, init %s", s.Funcs[s.App].Name, s.Funcs[s.Init].Name)
+	}
+	var out strings.Builder
+	if err := appbuild.ShowApp(s, &out); err != nil || !strings.Contains(out.String(), `"Count: 0"`) {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+}

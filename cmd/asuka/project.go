@@ -162,7 +162,9 @@ func (a *asukaApp) refresh() {
 }
 
 // compile compiles the app to its module, printing its diagnostics; an
-// error says it didn't compile.
+// error says it didn't compile. Its test blocks are left out (and the
+// test builtins with them, which only asuka test's fake host has): this
+// is the module a player loads and a release compiles to C.
 func (a *asukaApp) compile() (*bytecode.Module, error) {
 	m, diags, err := a.proj.Compile()
 	for _, d := range diags {
@@ -177,7 +179,7 @@ func (a *asukaApp) compile() (*bytecode.Module, error) {
 	if m.App < 0 {
 		return nil, fmt.Errorf("%s has no app block (app { Root() }) to run", a.dir)
 	}
-	return m, nil
+	return appbuild.StripTests(m), nil
 }
 
 // relDiag makes a diagnostic's file relative to dir, when it's in it.
