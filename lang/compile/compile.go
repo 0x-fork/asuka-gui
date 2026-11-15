@@ -34,6 +34,13 @@ type Options struct {
 	// ID; "" for the root package) imports as path (@acme/charts). Dir
 	// resolves through the project's asuka.lock when it's nil.
 	Resolve func(from, path string) (id, dir string, err error)
+	// Overlay holds files' unsaved contents by absolute path (an editor's
+	// open documents): read instead of what's on disk, and a .asuka file
+	// the disk doesn't have yet is part of its directory's package.
+	Overlay map[string][]byte
+	// CheckOnly stops after the checker (an editor's diagnostics): no
+	// lowering, no Module.
+	CheckOnly bool
 }
 
 // Result is a compilation's outcome.
@@ -118,16 +125,24 @@ func (l *loader) loadDir(path, id, dir string) (*unit, error) {
 	if u, ok := l.units[dir]; ok {
 		return u, nil
 	}
+	files := map[string][]byte{}
+	for p, src := range l.opts.Overlay {
+		if filepath.Dir(p) == dir && strings.HasSuffix(p, ".asuka") {
+			files[p] = src
+		}
+	}
 	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if err != nil && len(files) == 0 {
 		return nil, err
 	}
-	files := map[string][]byte{}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".asuka") {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
+		if _, ok := files[p]; ok {
+			continue
+		}
 		src, err := os.ReadFile(p)
 		if err != nil {
 			return nil, err
@@ -258,7 +273,7 @@ func (l *loader) compile(root *unit) *Result {
 	prog := c.Program(root.pkg)
 	res.Program = prog
 	res.Diags = append(append([]check.Diagnostic{}, l.diags...), prog.Diags...)
-	if len(res.Diags) > 0 {
+	if len(res.Diags) > 0 || l.opts.CheckOnly {
 		return res
 	}
 	p, diags := ir.Lower(prog, &ir.Options{MainTest: l.opts.MainTest})
