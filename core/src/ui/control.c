@@ -551,3 +551,148 @@ void ak_ui_task(ak_closure *c) {
 	t->info = (ak_comp_info){.drop = task_drop, .label = "task"};
 	ak_effect_new(task_run, t, AK_EFFECT_USER, &t->info);
 }
+
+// ---- Loaders ----
+//
+// let x = load f(…) is a loader: an effect calls the thunk, tracked, so
+// it runs again when what the arguments read changes. A user effect:
+// it first runs once the component is built (the thunk reads the
+// component's values, set after the load is made). The thunk starts
+// the call as a task under the effect's owner; the next run disposes that
+// owner first, which cancels the last task. The loader's state is a
+// signal, so what reads it (a match, .value) follows it.
+
+typedef struct ak_loader {
+	ak_opaque h;
+	ak_node node;    // state, value and error
+	ak_node again;   // written by reload, read by each run
+	uint8_t state;   // AK_LOAD_*
+	uint8_t kind;    // the value's kind, once one came
+	ak_val value;    // the latest value (kept while it reloads)
+	void *error;     // when failed
+	ak_future *fut;  // the run's task, while it's pending
+	ak_effect *eff;  // borrowed: NULL once disposed
+	ak_closure *thunk;
+} ak_loader;
+
+enum { AK_LOAD_PENDING, AK_LOAD_READY, AK_LOAD_FAILED };
+
+typedef struct {
+	ak_loader *l;   // retained
+	ak_future *f;   // retained
+} loader_ticket;
+
+static void loader_drop(ak_opaque *o) {
+	ak_loader *l = (ak_loader *)o;
+	ak_signal_drop(&l->node);
+	ak_signal_drop(&l->again);
+	ak_release_val(l->value, (ak_kind)l->kind);
+	if (l->error) ak_release(l->error);
+	if (l->fut) ak_release(l->fut);
+	ak_release(l->thunk);
+}
+
+static void loader_set(ak_loader *l, uint8_t state) {
+	l->state = state;
+	ak_signal_write(&l->node);
+}
+
+static void loader_done(void *ctx) {
+	loader_ticket *t = ctx;
+	ak_loader *l = t->l;
+	ak_future *f = t->f;
+	if (l->fut == f) {  // else a later run replaced it, or it went
+		ak_release(l->fut);
+		l->fut = NULL;
+		if (f->state == AK_FUT_DONE) {
+			ak_release_val(l->value, (ak_kind)l->kind);
+			l->kind = f->kind;
+			l->value = f->result;
+			ak_retain_val(l->value, (ak_kind)l->kind);
+			if (l->error) ak_release(l->error), l->error = NULL;
+			loader_set(l, AK_LOAD_READY);
+		} else if (!ak_is_cancel(f->error)) {
+			if (l->error) ak_release(l->error);
+			l->error = ak_retain(f->error);
+			loader_set(l, AK_LOAD_FAILED);
+		}
+	}
+	ak_release(f);
+	ak_release(l);
+	ak_free(t);
+}
+
+static void loader_fail(ak_loader *l, void *err) {
+	if (l->error) ak_release(l->error);
+	l->error = err;
+	loader_set(l, AK_LOAD_FAILED);
+}
+
+static void loader_run_fn(void *ctx) {
+	ak_loader *l = ctx;
+	if (l->fut) ak_release(l->fut), l->fut = NULL;  // cancelled with the owner
+	ak_signal_read(&l->again);
+	ak_val v = ak_call(l->thunk, NULL, 0);
+	if (ak_error_pending()) {
+		void *err = ak_error_take();
+		if (ak_is_cancel(err)) ak_release(err);
+		else loader_fail(l, err);
+		return;
+	}
+	ak_future *f = v.p;
+	l->fut = ak_retain(f);
+	if (l->state != AK_LOAD_PENDING) loader_set(l, AK_LOAD_PENDING);
+	loader_ticket *t = ak_alloc(sizeof *t);
+	t->l = ak_retain(l);
+	t->f = f;  // the call's reference
+	ak_future_wait(f, loader_done, t);
+}
+
+static void loader_effect_drop(void *ctx) {
+	ak_loader *l = ctx;
+	l->eff = NULL;
+	if (l->fut) ak_release(l->fut), l->fut = NULL;
+	ak_release(l);
+}
+
+static const ak_comp_info loader_info = {.drop = loader_effect_drop, .label = "load"};
+
+ak_val ak_ui_load(ak_closure *thunk) {
+	ak_loader *l = ak_opaque_new(AK_TAG_OPAQUE, sizeof *l, loader_drop);
+	l->thunk = ak_retain(thunk);
+	l->state = AK_LOAD_PENDING;
+	l->eff = ak_effect_new(loader_run_fn, ak_retain(l), AK_EFFECT_USER, &loader_info);
+	return (ak_val){.p = l};
+}
+
+static ak_loader *loader_arg(ak_val v, const char *name) {
+	ak_opaque *o = v.p;
+	if (!o || o->h.tag != AK_TAG_OPAQUE || o->drop != loader_drop) ak_panic("%s: not a loader", name);
+	return (ak_loader *)o;
+}
+
+int64_t ak_ui_load_state(ak_val v) {
+	ak_loader *l = loader_arg(v, "load.state");
+	ak_signal_read(&l->node);
+	return l->state;
+}
+
+// The latest value, boxed when a scalar; none before the first.
+ak_val ak_ui_load_value(ak_val v) {
+	ak_loader *l = loader_arg(v, "load.value");
+	ak_signal_read(&l->node);
+	if (l->kind == AK_K_VOID) return (ak_val){0};
+	if (l->kind == AK_K_REF) return (ak_val){.p = ak_retain(l->value.p)};
+	return (ak_val){.p = ak_box_new((ak_kind)l->kind, l->value)};
+}
+
+ak_val ak_ui_load_error(ak_val v) {
+	ak_loader *l = loader_arg(v, "load.error");
+	ak_signal_read(&l->node);
+	return (ak_val){.p = l->error ? ak_retain(l->error) : NULL};
+}
+
+void ak_ui_load_reload(ak_val v) {
+	ak_loader *l = loader_arg(v, "load.reload");
+	if (l->eff) ak_signal_write(&l->again);
+}

@@ -1342,7 +1342,7 @@ static ak_val images_app(ak_closure *c, ak_val *a, uint32_t n) {
 	set_i(col, AK_KEY_ALIGN, 1);
 	ak_view *i = ak_ui_new(AK_EL_IMAGE);
 	set_str(i, AK_KEY_IMAGE_SOURCE, "https://example.com/a.png");
-	on(i, AK_EV_IMAGE_LOAD, on_load, NULL);
+	on(i, AK_EV_IMAGE_LOADED, on_load, NULL);
 	add(col, i);
 	i = ak_ui_new(AK_EL_IMAGE);
 	set_str(i, AK_KEY_IMAGE_SOURCE, "b.png");

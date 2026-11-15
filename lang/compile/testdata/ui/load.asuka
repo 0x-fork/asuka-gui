@@ -1,0 +1,74 @@
+enum LookupError: Error { missing }
+
+store Calls {
+  state started = 0
+  state finished = 0
+}
+
+async fn lookup(calls: Calls, id: int) throws -> int {
+  calls.started += 1
+  await sleep(10ms)
+  if id < 0 { throw LookupError.missing }
+  calls.finished += 1
+  return id * 10
+}
+
+component Lookup {
+  use calls: Calls
+  state id = 1
+  let result = load lookup(calls, id)
+
+  Column {
+    match result {
+      .pending => Text("Loading…")
+      .failed(e) => Text("Failed")
+      .ready(v) => Text("Value {v}")
+    }
+    Text("Latest {result.value ?? 0}")
+    Text("Started {calls.started}, finished {calls.finished}")
+    Button("Next") { on press { id += 1 } }
+    Button("Bad") { on press { id = -1 } }
+    Button("Reload") { on press { result.reload() } }
+  }
+}
+
+app {
+  provide Calls()
+  Lookup()
+}
+
+test "loads, and keeps the value while it reloads" {
+  let app = mount(Lookup(), provide: Calls())
+  app.expect("Loading…")
+  await app.idle()
+  app.expect("Value 10")
+  app.expect("Latest 10")
+  app.tap("Next")
+  app.expect("Loading…")
+  app.expect("Latest 10")
+  await app.idle()
+  app.expect("Value 20")
+  app.expect("Started 2, finished 2")
+}
+
+test "cancels the run that went stale" {
+  let app = mount(Lookup(), provide: Calls())
+  await app.idle()
+  app.tap("Next")
+  app.tap("Next")
+  await app.idle()
+  app.expect("Value 30")
+  app.expect("Started 3, finished 2")
+}
+
+test "fails, and reloads" {
+  let app = mount(Lookup(), provide: Calls())
+  await app.idle()
+  app.tap("Bad")
+  await app.idle()
+  app.expect("Failed")
+  app.expect("Latest 10")
+  app.tap("Reload")
+  await app.idle()
+  app.expect("Started 3, finished 1")
+}

@@ -1,0 +1,32 @@
+// Stubs: elements the prelude doesn't have yet, for the parser's corpus
+// (lang/syntax/testdata) to check against.
+
+component List { prop children: View? = none }
+component Stack { prop children: View? = none }
+component Tabs { prop children: View? = none }
+component Tab(title: string) {
+  prop icon = ""
+  prop badge: string? = none
+  prop children: View? = none
+}
+component ProgressView { Text("…") }
+component SearchField {
+  prop text = ""
+  event change(text: string)
+  Text(text)
+}
+component Grid {
+  prop columns: [Length] = []
+  prop gap: float = 0
+  prop children: View? = none
+}
+component Boundary {
+  prop children: View? = none
+  event error(e: Error)
+}
+component Chart(values: [float]) { Text("chart") }
+component EmptyState(title: string) { Text(title) }
+
+async fn withTimeout(d: Duration, body: async fn()) {
+  await body()
+}

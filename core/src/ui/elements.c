@@ -74,7 +74,7 @@ ak_event_kind ak_ev_ops(uint16_t ev) {
 	case AK_EV_SEGMENTED_CHANGE:
 	case AK_EV_PICKER_CHANGE:
 		return AK_EVENT_SELECTED;
-	case AK_EV_IMAGE_LOAD: return AK_EVENT_LOADED;
+	case AK_EV_IMAGE_LOADED: return AK_EVENT_LOADED;
 	case AK_EV_IMAGE_ERROR: return AK_EVENT_FAILED;
 	case AK_EV_SCROLL_SCROLL:
 	case AK_EV_LIST_SCROLL:
@@ -709,7 +709,7 @@ static void image_event(ak_view *e, const ak_event *ev) {
 			ak_view_remeasure(e);
 		}
 		ak_val args[2] = {{.f = ev->x}, {.f = ev->y}};
-		ak_view_call(e, AK_EV_IMAGE_LOAD, args, 2);
+		ak_view_call(e, AK_EV_IMAGE_LOADED, args, 2);
 	} else if (ev->kind == AK_EVENT_FAILED) {
 		ak_str *m = ak_str_new(ev->s.p, ev->s.len);
 		ak_val arg = {.p = m};

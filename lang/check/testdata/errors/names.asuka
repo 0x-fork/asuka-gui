@@ -1,0 +1,53 @@
+// Names and types.
+
+struct Todo {
+  title: string
+  done: bool = false
+}
+
+fn f() -> int {
+  return countt // ERROR "unknown name countt"
+}
+
+fn g() -> string {
+  let t = Todo(title: "a")
+  let x: int = t.title // ERROR "the value is a string, not a int"
+  return t.titel // ERROR "Todo has no titel \(did you mean title\?\)"
+}
+
+fn h(t: Todo) -> int {
+  return t.title.count // ERROR "count is a method of string: call it, count\(\)"
+}
+
+fn noReturn(x: int) -> int {
+  if x > 0 { return 1 }
+} // ERROR "can reach its end without a return"
+
+fn mixed() -> float {
+  let n = 3
+  return n * 1.5 // ERROR "on an int and a float"
+}
+
+fn args() {
+  let t = Todo() // ERROR "Todo needs title: string"
+  let u = Todo(title: "x", nope: 1) // ERROR "Todo has no parameter nope"
+  let v = Todo(title: 1) // ERROR "argument title of Todo is a int, not a string"
+}
+
+fn immutables() {
+  let a = 1
+  a = 2 // ERROR "can't assign to a: it's a let: make it a var"
+  var xs = [1]
+  xs.push("x") // ERROR "argument value of push is a string, not a int"
+}
+
+fn optionals(t: Todo?) -> string {
+  return t.title // ERROR "may be none: use \?\."
+}
+
+fn equality(f: fn() -> int) -> bool {
+  return f == f // ERROR "can't be compared with =="
+}
+
+fn dup() {}
+fn dup() {} // ERROR "dup is declared twice"

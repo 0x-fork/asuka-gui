@@ -1,0 +1,24 @@
+// Stubs for concurrency.asuka.
+struct Forecast {
+  high: int
+  low: int
+  updated: Date?
+}
+
+struct Date {
+  relative: string
+}
+
+struct Cache {
+  async fn get(key: string) throws -> Forecast {
+    throw Error("miss")
+  }
+}
+
+let cache = Cache()
+
+async fn fetchToday(city: string) -> int { return 1 }
+async fn fetchWeek(city: string) -> [int] { return [] }
+async fn mirror1(city: string) -> string { return "" }
+async fn mirror2(city: string) -> string { return "" }
+fn summarize(today: int, week: [int], fastest: string) -> string = ""

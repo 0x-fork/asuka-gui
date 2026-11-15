@@ -513,6 +513,25 @@ void ak_uitest_settle(ak_uitest *a) {
 	ak_buf_printf(&a->fails, "the app never settles (it posts or rebinds forever)\n");
 }
 
+// ak_uitest_idle settles, then moves the clock (a manual one, under
+// test) to each timer that's due and settles again, until no timer is
+// left. Ten minutes of the app's time is the most it moves: a timer that
+// keeps firing past that (a ticker) is a failure.
+void ak_uitest_idle(ak_uitest *a) {
+	int64_t start = ak_sched_now();
+	for (;;) {
+		ak_uitest_settle(a);
+		int64_t at;
+		if (!ak_sched_next_timer(&at)) return;
+		if (at - start > 600 * (int64_t)1000000000) {
+			ak_buf_printf(&a->fails, "the app never idles: a timer keeps firing (a ticker?)\n");
+			return;
+		}
+		int64_t now = ak_sched_now();
+		ak_sched_advance(at > now ? at - now : 0);
+	}
+}
+
 // ---- Actions ----
 
 static bool disabled(const ak_fake_view *v) {
@@ -691,7 +710,8 @@ bool ak_uitest_expect_no(ak_uitest *a, ak_span text, ak_buf *err) {
 //	                 the field tapped or typed in last)            -
 //	test.expect      app: App, texts: string or [string]           -
 //	test.expect_no   app: App, texts: string or [string]           -
-//	test.idle        app: App                                      Task<void> (settled)
+//	test.idle        app: App                                      Task<void> (settled; the
+//	                                                               clock moved past every timer)
 //	test.dump        app: App                                      string (what the screen shows)
 //
 // A failed action or expectation throws an error saying what's wrong and
@@ -777,7 +797,7 @@ static ak_val t_expect_no(ak_val *a, uint32_t n) { return expect(a, n, true, "te
 
 static ak_val t_idle(ak_val *a, uint32_t n) {
 	ak_uitest *app = app_arg(a, n, "test.idle");
-	ak_uitest_settle(app);
+	ak_uitest_idle(app);
 	ak_future *f = ak_future_new(AK_K_VOID);
 	ak_future_resolve(f, (ak_val){0});
 	return (ak_val){.p = f};

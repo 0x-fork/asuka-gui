@@ -246,7 +246,7 @@ native component Image(source: string) {
   prop placeholder: string
   /// seconds it takes to fade in as it arrives (0: the platform's; -1: none)
   prop transition: float
-  event load(width: float, height: float)
+  event loaded(width: float, height: float)
   event error(message: string)
 }
 

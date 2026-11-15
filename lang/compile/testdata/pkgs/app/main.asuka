@@ -1,0 +1,12 @@
+import ./model.{Todo, Filter}
+import ./model as m
+import ./util
+
+test "packages" {
+  let todos = [Todo(id: 1, title: "a"), Todo(id: 2, title: "b", done: true)]
+  let open = todos.filter(t => m.matches(t, Filter.open))
+  print(open.map(t => t.label()).joined(separator: ", "))
+  print(util.shout("hi"))
+  m.created += 1
+  print(m.created)
+}

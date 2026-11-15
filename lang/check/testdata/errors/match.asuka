@@ -1,0 +1,26 @@
+// Matches cover every case.
+
+enum Light { red, yellow, green }
+
+fn name(l: Light) -> string = match l { // ERROR "match doesn't cover .green"
+  .red => "red"
+  .yellow => "yellow"
+}
+
+fn flag(b: bool) -> int = match b { // ERROR "match doesn't cover false"
+  true => 1
+}
+
+fn ok(l: Light) -> int = match l {
+  .red | .yellow => 1
+  _ => 2
+}
+
+fn numbers(n: int) -> int = match n { // ERROR "match doesn't cover the rest"
+  0 => 1
+}
+
+fn wrongCase(l: Light) -> int = match l {
+  .blue => 1 // ERROR "Light has no case blue"
+  _ => 0
+}

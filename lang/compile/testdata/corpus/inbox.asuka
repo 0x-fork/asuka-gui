@@ -1,0 +1,13 @@
+// Stubs for inbox.asuka.
+import ./components
+
+type Message = components.Message
+
+store Mailbox {
+  state all: [Message] = []
+  async fn messages(in: Mailbox, matching: string) throws -> [Message] { return all }
+  async fn archive(m: Message) {}
+}
+
+component Compose { Text("compose") }
+component Detail(message: Message) { Text(message.subject) }

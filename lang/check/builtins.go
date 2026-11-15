@@ -1,0 +1,481 @@
+package check
+
+import (
+	"github.com/egoist/asuka/lang/syntax"
+)
+
+// loadingT is Loading<T>: what load keeps, matched like an enum.
+var loadingT = func() *TypeName {
+	t := &TypeName{object: object{name: "Loading"}, Kind: EnumType, resolved: true}
+	tp := &TypeParam{Name: "T", id: -1}
+	t.TypeParams = []*TypeParam{tp}
+	t.Type = &Named{Obj: t, Args: []Type{tp}}
+	t.Cases = []*Case{
+		{Name: "pending", Index: 0, Owner: t},
+		{Name: "ready", Index: 1, Params: []Type{tp}, Labels: []string{""}, Owner: t},
+		{Name: "failed", Index: 2, Params: []Type{nil}, Labels: []string{""}, Owner: t},
+	}
+	t.caseIndex = map[string]int{"pending": 0, "ready": 1, "failed": 2}
+	t.Methods = map[string]*Function{}
+	t.Consts = map[string]*Global{}
+	return t
+}()
+
+// IsLoading reports Loading<T>.
+func IsLoading(t Type) bool {
+	n, ok := t.(*Named)
+	return ok && n.Obj == loadingT
+}
+
+// semanticColors are ops' SemanticColor values, by their Asuka names
+// (ops/schema.go's SemanticColor, lower camel case).
+var semanticColors = []string{"none", "label", "secondaryLabel", "tertiaryLabel", "background", "secondaryBackground", "groupedBackground", "separator", "accent", "red", "orange", "yellow", "green", "blue", "purple", "pink", "gray", "clear", "secondaryGroupedBackground", "onAccent"}
+
+// SemanticColor is the ops.Color of a semantic color's name.
+func SemanticColor(name string) (int64, bool) {
+	for i, n := range semanticColors {
+		if n == name && i > 0 {
+			return 1<<32 | int64(i), true
+		}
+	}
+	return 0, false
+}
+
+func semanticColorNames() []string { return semanticColors[1:] }
+
+// builtinCall checks a call of a function the compiler provides.
+func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
+	call := &Call{Kind: CallBuiltin, Builtin: b}
+	c.info.Calls[e] = call
+	var list []*syntax.Arg
+	if e.Args != nil {
+		list = e.Args.List
+	}
+	positional := func(n int, what string) []syntax.Expr {
+		var out []syntax.Expr
+		for _, a := range list {
+			if a.Label != nil {
+				c.errorf(a.Label, "%s's arguments have no names", b.name)
+			}
+			out = append(out, a.Value)
+		}
+		if n >= 0 && len(out) != n {
+			c.errorf(e, "%s takes %s", b.name, what)
+		}
+		return out
+	}
+	if e.Block != nil && b.ID != BMount && b.ID != BWithTimeout {
+		c.errorf(e.Block, "%s takes no block", b.name)
+	}
+	switch b.ID {
+	case BPrint:
+		args := positional(1, "one value: print(\"…\")")
+		for _, a := range args {
+			c.interpolated(a, c.expr(a, nil))
+		}
+		call.Args = args
+		call.Result = Void
+	case BExpect:
+		args := positional(-1, "a condition: expect(count == 2)")
+		if len(args) < 1 || len(args) > 2 {
+			c.errorf(e, "expect takes a condition, and maybe a message: expect(count == 2, \"…\")")
+		}
+		if len(args) > 0 {
+			c.assign(args[0], Bool, "expect's condition")
+		}
+		if len(args) > 1 {
+			c.assign(args[1], String, "expect's message")
+		}
+		call.Args = args
+		call.Result = Void
+	case BPanic:
+		args := positional(1, "a message")
+		if len(args) > 0 {
+			c.assign(args[0], String, "panic's message")
+		}
+		call.Args = args
+		call.Result = Never
+	case BSleep:
+		args := positional(1, "a duration: sleep(300ms)")
+		if len(args) > 0 {
+			c.assign(args[0], Duration, "sleep's duration")
+		}
+		call.Args = args
+		call.Result = Void
+		c.callEffects(e, "sleep", true, false)
+	case BAll, BRace:
+		call.Args = positional(-1, "")
+		call.Result = c.allRace(e, b, call.Args)
+		c.callEffects(e, b.name, true, false)
+	case BMount:
+		// mount(view, provide: store): the store provided to the view.
+		ps := []*Param{{Name: "view", Type: View}, {Name: "provide", Type: nil, Default: zeroLit}}
+		args := c.matchArgs(e, ps, "mount")
+		if args[0] != nil {
+			c.builderExpr(args[0])
+		}
+		if args[1] != nil {
+			pt := c.expr(args[1], nil)
+			if n, ok := pt.(*Named); !ok || n.Obj.Kind != StoreType {
+				if !IsInvalid(pt) {
+					c.errorf(args[1], "provide takes a store: this is a %s", typeString(pt))
+				}
+			}
+		}
+		call.Args = args
+		call.Result = TestApp
+	case BIdle:
+		call.Args = positional(0, "nothing")
+		call.Result = Void
+		c.callEffects(e, "idle", true, false)
+	case BPush, BPresent:
+		args := positional(1, "a view: "+b.name+"(Screen())")
+		if len(args) > 0 {
+			c.builderExpr(args[0])
+		}
+		call.Args = args
+		call.Result = Void
+	case BPop, BDismiss:
+		call.Args = positional(0, "nothing")
+		call.Result = Void
+	case BMin, BMax:
+		args := positional(2, "two numbers")
+		call.Args = args
+		if len(args) == 2 {
+			call.Result = c.sameNumbers(e, args, want)
+		} else {
+			call.Result = Invalid
+		}
+	case BAbs:
+		args := positional(1, "a number")
+		call.Args = args
+		if len(args) == 1 {
+			t := c.expr(args[0], numOnly(Unopt(want)))
+			if !IsNumeric(t) && !IsInvalid(t) {
+				c.errorf(args[0], "abs takes a number, not a %s", typeString(t))
+			}
+			call.Result = t
+		} else {
+			call.Result = Invalid
+		}
+	case BFloat:
+		args := positional(1, "an int: float(n)")
+		call.Args = args
+		if len(args) == 1 {
+			t := c.expr(args[0], nil)
+			if t != Int && t != Float && !IsInvalid(t) {
+				c.errorf(args[0], "float(…) takes an int, not a %s", typeString(t))
+			}
+		}
+		call.Result = Float
+	case BInt:
+		args := positional(1, "a float: int(x)")
+		call.Args = args
+		if len(args) == 1 {
+			t := c.expr(args[0], nil)
+			if t != Int && t != Float && !IsInvalid(t) {
+				c.errorf(args[0], "int(…) takes a float, not a %s", typeString(t))
+			}
+		}
+		call.Result = Int
+	case BJSONDecode:
+		ps := []*Param{{Name: "text", Type: String}}
+		args := c.matchArgs(e, ps, "json.decode")
+		if args[0] != nil {
+			c.assign(args[0], String, "the JSON text")
+		}
+		call.Args, call.Params = args, ps
+		t := want
+		if t == nil {
+			c.errorf(e, "json.decode needs to know what it reads: say what's expected, let x: T = try json.decode(text)")
+			t = Invalid
+		} else if why := jsonable(t); why != "" {
+			c.errorf(e, "json can't read a %s: %s", typeString(t), why)
+		}
+		call.Result = t
+		c.callEffects(e, "json.decode", false, true)
+	case BJSONEncode:
+		ps := []*Param{{Name: "value", Type: nil}, {Name: "indent", Type: Int, Default: zeroLit}}
+		args := c.matchArgs(e, ps, "json.encode")
+		if args[0] != nil {
+			t := c.valueType(c.expr(args[0], nil), args[0])
+			ps[0].Type = t
+			if why := jsonable(t); why != "" && !IsInvalid(t) {
+				c.errorf(args[0], "json can't write a %s: %s", typeString(t), why)
+			}
+		}
+		if args[1] != nil {
+			c.assign(args[1], Int, "the indent")
+		}
+		call.Args, call.Params = args, ps
+		call.Result = String
+	case BMath, BTimeNow, BTimeMonotonic:
+		ft := b.Sig
+		args := positional(len(ft.Params), plural(len(ft.Params), "argument", "arguments"))
+		for i, a := range args {
+			if i < len(ft.Params) {
+				c.assign(a, ft.Params[i], "argument "+itoa(i+1)+" of "+b.name)
+			}
+		}
+		call.Args = args
+		call.Result = ft.Result
+	case BRange:
+		call.Result = &Array{Int}
+	case BWithTimeout:
+		args := positional(1, "a duration and a block: withTimeout(5s) { … }")
+		if len(args) > 0 {
+			c.assign(args[0], Duration, "the timeout")
+		}
+		if e.Block == nil {
+			c.errorf(e, "withTimeout takes a block: withTimeout(5s) { … }")
+		} else {
+			lam := &syntax.LambdaExpr{Span: e.Block.Span, Body: e.Block}
+			c.info.Trailing[e] = lam
+			c.expr(lam, &FuncType{Result: Void, Async: true, Throws: true})
+			args = append(args, lam)
+		}
+		call.Args = args
+		call.Result = Void
+		c.callEffects(e, "withTimeout", true, true)
+	default:
+		c.errorf(e, "unknown builtin %s", b.name)
+		call.Result = Invalid
+	}
+	return call.Result
+}
+
+var zeroLit = &syntax.BasicLit{Kind: syntax.INT, Value: "0"}
+
+func (c *Checker) sameNumbers(e *syntax.CallExpr, args []syntax.Expr, want Type) Type {
+	var xt, yt Type
+	switch {
+	case literalInt(args[0]) && !literalInt(args[1]):
+		yt = c.expr(args[1], numOnly(Unopt(want)))
+		xt = c.expr(args[0], numOnly(yt))
+	default:
+		xt = c.expr(args[0], numOnly(Unopt(want)))
+		yt = c.expr(args[1], numOnly(xt))
+	}
+	if IsInvalid(xt) || IsInvalid(yt) {
+		return Invalid
+	}
+	if !IsNumeric(xt) || !Identical(xt, yt) {
+		c.errorf(e, "this takes two ints or two floats, not a %s and a %s", typeString(xt), typeString(yt))
+		return Invalid
+	}
+	return xt
+}
+
+// allRace checks all(…) and race(…): calls of async functions, or
+// tasks, started at once.
+func (c *Checker) allRace(e *syntax.CallExpr, b *Builtin, args []syntax.Expr) Type {
+	if len(args) == 0 {
+		c.errorf(e, "%s takes the calls it runs at once: %s(f(), g())", b.name, b.name)
+		return Invalid
+	}
+	var types []Type
+	for _, a := range args {
+		c.inAwait++
+		t := c.expr(a, nil)
+		c.inAwait--
+		if tk, ok := t.(*Task); ok {
+			t = tk.Elem
+		} else if arr, ok := t.(*Array); ok && len(args) == 1 {
+			if tk, ok := arr.Elem.(*Task); ok {
+				if b.ID == BRace {
+					return tk.Elem
+				}
+				return &Array{tk.Elem}
+			}
+		} else if ce, ok := unparen(a).(*syntax.CallExpr); !ok || c.info.Calls[ce] == nil || !c.isAsyncCall(c.info.Calls[ce]) {
+			if !IsInvalid(t) {
+				c.errorf(a, "%s runs async calls (or tasks) at once, and this isn't one", b.name)
+			}
+		}
+		types = append(types, t)
+	}
+	if b.ID == BRace {
+		t := types[0]
+		for i, u := range types[1:] {
+			if j := c.join(t, u); j != nil {
+				t = j
+			} else {
+				c.errorf(args[i+1], "race's calls must have one type: this is a %s, the first a %s", typeString(u), typeString(t))
+			}
+		}
+		return t
+	}
+	if len(types) == 1 {
+		return types[0]
+	}
+	return &Tuple{types}
+}
+
+func unparen(e syntax.Expr) syntax.Expr {
+	for {
+		p, ok := e.(*syntax.ParenExpr)
+		if !ok {
+			return e
+		}
+		e = p.X
+	}
+}
+
+// isAsyncCall reports a call of an async function.
+func (c *Checker) isAsyncCall(call *Call) bool {
+	switch call.Kind {
+	case CallFunc, CallMethod:
+		return call.Func.Sig.Async
+	case CallClosure:
+		ft, ok := call.RecvType.(*FuncType)
+		return ok && ft.Async
+	case CallIface:
+		return false
+	case CallBuiltinMethod:
+		return call.Method.Async
+	case CallBuiltin:
+		switch call.Builtin.ID {
+		case BSleep, BAll, BRace, BIdle, BWithTimeout:
+			return true
+		}
+	}
+	return false
+}
+
+// builderExpr checks a view that's built later, where it's placed: a
+// closure of its own (a builder).
+func (c *Checker) builderExpr(x syntax.Expr) {
+	saved := c.ctx
+	savedView := c.view
+	c.enter(CtxBuilder, x, "builder")
+	c.view = true
+	t := c.expr(x, View)
+	if !IsInvalid(t) && t != View {
+		c.errorf(x, "this is a %s, not a view", typeString(t))
+	}
+	c.view = savedView
+	c.leave(saved)
+}
+
+// load checks load f(args): an async call whose result a component
+// keeps.
+func (c *Checker) load(e *syntax.UnaryExpr) Type {
+	if c.ctx == nil || c.ctx.Kind != CtxBinding || !c.loadOK {
+		c.errorf(e, "load is a component's or a store's: let x = load f(…)")
+	}
+	call, ok := unparen(e.X).(*syntax.CallExpr)
+	if !ok {
+		c.errorf(e.X, "load takes an async call: load f(…)")
+		c.expr(e.X, nil)
+		return Invalid
+	}
+	c.inAwait++
+	c.inTry++
+	t := c.expr(call, nil)
+	c.inTry--
+	c.inAwait--
+	if ci := c.info.Calls[call]; ci != nil && !c.isAsyncCall(ci) {
+		c.errorf(call, "load takes an async call, and this isn't one")
+	}
+	if IsInvalid(t) {
+		return Invalid
+	}
+	return &Named{Obj: loadingT, Args: []Type{t}}
+}
+
+// jsonable reports why JSON can't read or write t, "" when it can.
+func jsonable(t Type) string {
+	return jsonable1(t, map[*TypeName]bool{})
+}
+
+func jsonable1(t Type, seen map[*TypeName]bool) string {
+	switch x := t.(type) {
+	case *Basic:
+		switch x {
+		case Int, Float, Bool, String, Bytes, Duration, Color:
+			return ""
+		}
+		return "it's a " + x.name
+	case *Array:
+		return jsonable1(x.Elem, seen)
+	case *Optional:
+		return jsonable1(x.Elem, seen)
+	case *Map:
+		if x.Key != String {
+			return "a JSON object's keys are strings"
+		}
+		return jsonable1(x.Elem, seen)
+	case *Named:
+		if seen[x.Obj] {
+			return ""
+		}
+		seen[x.Obj] = true
+		s := x.Subst()
+		switch x.Obj.Kind {
+		case StructType:
+			for _, f := range x.Obj.Fields {
+				if why := jsonable1(s.Apply(f.Type), seen); why != "" {
+					return "its field " + f.Name + ": " + why
+				}
+			}
+			return ""
+		case EnumType:
+			if x.Obj == loadingT {
+				return "it's a Loading"
+			}
+			for _, k := range x.Obj.Cases {
+				for _, p := range k.Params {
+					if why := jsonable1(s.Apply(p), seen); why != "" {
+						return "its case " + k.Name + ": " + why
+					}
+				}
+			}
+			return ""
+		}
+		return "it's a " + x.Obj.name
+	case *Tuple:
+		return "tuples aren't JSON: use a struct"
+	}
+	return "it's a " + typeString(t)
+}
+
+// ---------------------------------------------------------------------
+// The standard library the compiler provides
+
+func (c *Checker) makeStd(path string) *Package {
+	p := &Package{Path: path, Prelude: false}
+	p.Scope = NewScope(nil)
+	add := func(name string, id BuiltinID, rt string, sig *FuncType) {
+		p.Scope.Insert(&Builtin{object: object{name: name}, ID: id, RT: rt, Sig: sig})
+	}
+	f1 := &FuncType{Params: []Type{Float}, Result: Float}
+	f2 := &FuncType{Params: []Type{Float, Float}, Result: Float}
+	switch path {
+	case "asuka/json":
+		p.Name = "json"
+		add("decode", BJSONDecode, "", nil)
+		add("encode", BJSONEncode, "", nil)
+	case "asuka/math":
+		p.Name = "math"
+		for _, n := range []string{"sqrt", "floor", "ceil", "round", "sin", "cos"} {
+			add(n, BMath, "math."+n, f1)
+		}
+		add("pow", BMath, "math.pow", f2)
+		add("atan2", BMath, "math.atan2", f2)
+		add("random", BMath, "math.random", &FuncType{Result: Float})
+		add("randomInt", BMath, "math.random_int", &FuncType{Params: []Type{Int, Int}, Result: Int})
+		add("seed", BMath, "math.seed", &FuncType{Params: []Type{Int}, Result: Void})
+		add("clamp", BMath, "math.clampf", &FuncType{Params: []Type{Float, Float, Float}, Result: Float})
+		pi := &Global{object: object{name: "pi"}, Pkg: p, Kind: ConstGlobal, Type: Float, Value: &syntax.BasicLit{Kind: syntax.FLOAT, Value: "3.141592653589793"}, Pub: true}
+		p.Scope.Insert(pi)
+		p.Globals = append(p.Globals, pi)
+	case "asuka/time":
+		p.Name = "time"
+		add("now", BTimeNow, "time.now", &FuncType{Result: Int})
+		add("monotonic", BTimeMonotonic, "time.monotonic", &FuncType{Result: Duration})
+	default:
+		return nil
+	}
+	c.pkgs = append(c.pkgs, p)
+	return p
+}

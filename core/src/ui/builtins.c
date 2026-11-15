@@ -29,6 +29,11 @@
 //	ui.use         key: string (the type's name)                      ref?
 //	ui.provide     key: string, value: ref                            -
 //	ui.task        body: async fn()                                   -
+//	ui.load        thunk: fn() -> Task<T>                             Loader
+//	load.state     l: Loader                    int (0 pending, 1 ready, 2 failed)
+//	load.value     l: Loader                    T? (boxed when a scalar)
+//	load.error     l: Loader                                          Error?
+//	load.reload    l: Loader                                          -
 //	ui.enter       name: string (the component's)                     -
 //	ui.leave       -                                                  -
 //	ui.focus       v: View                                            -
@@ -131,6 +136,32 @@ static ak_val b_task(ak_val *a, uint32_t n) {
 	return none();
 }
 
+static ak_val b_load(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return ak_ui_load(a[0].p);
+}
+
+static ak_val b_load_state(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.i = ak_ui_load_state(a[0])};
+}
+
+static ak_val b_load_value(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return ak_ui_load_value(a[0]);
+}
+
+static ak_val b_load_error(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return ak_ui_load_error(a[0]);
+}
+
+static ak_val b_load_reload(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_load_reload(a[0]);
+	return none();
+}
+
 static ak_val b_enter(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	ak_ui_enter(a[0].p);
@@ -208,6 +239,11 @@ void ak_ui_builtins_init(void) {
 		{"ui.use", b_use},
 		{"ui.provide", b_provide},
 		{"ui.task", b_task},
+		{"ui.load", b_load},
+		{"load.state", b_load_state},
+		{"load.value", b_load_value},
+		{"load.error", b_load_error},
+		{"load.reload", b_load_reload},
 		{"ui.enter", b_enter},
 		{"ui.leave", b_leave},
 		{"ui.focus", b_focus},

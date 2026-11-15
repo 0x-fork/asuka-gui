@@ -35,6 +35,9 @@ ak_fake *ak_uitest_host(ak_uitest *a);
 // ak_uitest_settle runs what was posted, flushes and binds lists' rows,
 // until nothing changes.
 void ak_uitest_settle(ak_uitest *a);
+// ak_uitest_idle settles, moving the clock past each timer as it comes
+// due (ten minutes of the app's time at most).
+void ak_uitest_idle(ak_uitest *a);
 
 // Actions and expectations: true, or false with what went wrong and what
 // the screen shows in err.

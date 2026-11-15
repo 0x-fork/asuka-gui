@@ -1,0 +1,60 @@
+== counter
+counter.asuka:8:30: Text has no prop fontSize
+counter.asuka:10:10: Button has no event tap (its events: press)
+counter.asuka:14:10: Button has no event tap (its events: press)
+== todo
+todo.asuka:12:46: count is a method of [Todo]: call it, count()
+todo.asuka:16:14: isEmpty is a method of string: call it, isEmpty()
+todo.asuka:19:11: [Todo] has no method append
+todo.asuka:35:25: isEmpty is a method of string: call it, isEmpty()
+todo.asuka:36:12: Button has no event tap (its events: press)
+todo.asuka:44:18: Toggle can't bind isOn: only a control's own value binds (TextField's text, Toggle's on)
+todo.asuka:44:36: [Todo] has no method firstIndex
+todo.asuka:51:19: Role has no case or constant destructive
+todo.asuka:52:16: Button has no event tap (its events: press)
+todo.asuka:52:28: [Todo] has no method removeAll (did you mean removeAt?)
+== styles
+styles.asuka:4:15: secondarySystemBackground isn't a semantic color (they're label, secondaryLabel, tertiaryLabel, background, secondaryBackground, groupedBackground, separator, accent, red, orange, yellow, green, blue, purple, pink, gray, clear, secondaryGroupedBackground, onAccent)
+styles.asuka:5:24: Shadow has no parameter blur
+styles.asuka:9:3: Text has no prop fontSize
+styles.asuka:10:3: Text has no prop weight (did you mean height?)
+styles.asuka:10:11: can't tell what .semibold is here: write its type, Type.semibold
+styles.asuka:31:15: 1fr is a grid track's share: write it .fr(1)
+styles.asuka:31:20: 1fr is a grid track's share: write it .fr(1)
+styles.asuka:31:25: 2fr is a grid track's share: write it .fr(2)
+== model, mailbox
+mailbox.asuka:15:48: count is a method of [Message]: call it, count()
+mailbox.asuka:30:26: [Message] has no method firstIndex
+mailbox.asuka:35:67: count is a method of [Message]: call it, count()
+mailbox.asuka:39:69: Message has no box
+model.asuka:11:36: - doesn't take a Date and a Date
+model.asuka:76:26: first is a method of [int]: call it, first()
+model.asuka:78:21: isEmpty is a method of [int]: call it, isEmpty()
+model.asuka:83:27: count is a method of [int]: call it, count()
+== concurrency
+concurrency.asuka:4:1: screen Weather needs the Screen element, which the runtime doesn't have yet: make it a component
+concurrency.asuka:9:5: for await isn't supported yet
+concurrency.asuka:9:40: Accelerometer has no case updates
+concurrency.asuka:10:16: [float] has no method append
+concurrency.asuka:21:13: post can throw: call it with try (try post(…)), or try? for none on an error
+concurrency.asuka:21:13: this closure doesn't throw where it's passed: catch the error (do { } catch { }, try?)
+concurrency.asuka:25:3: title: … goes in an element's block, not here
+concurrency.asuka:31:10: Button has no event tap (its events: press)
+concurrency.asuka:35:39: Text has no prop fontSize
+concurrency.asuka:40:5: a view here does nothing: views go in a component's body
+== app
+== inbox
+inbox.asuka:5:1: screen Inbox needs the Screen element, which the runtime doesn't have yet: make it a component
+inbox.asuka:12:3: title: … goes in an element's block, not here
+inbox.asuka:13:3: largeTitle: … goes in an element's block, not here
+inbox.asuka:15:3: toolbar { … } goes in an element's block, not here
+inbox.asuka:22:10: SearchField can't bind text: only a control's own value binds (TextField's text, Toggle's on)
+inbox.asuka:28:21: a match in a view takes no guards: put an if in the arm
+inbox.asuka:32:26: isEmpty is a method of string: call it, isEmpty()
+== native
+native.asuka:19:7: native interfaces aren't supported by the compiler yet (Haptics.impact)
+native.asuka:19:29: can't tell what .light is here: write its type, Type.light
+== tests
+tests.asuka:17:16: unknown name name (did you mean Frame?)
+tests.asuka:22:14: count is a method of string: call it, count()
+tests.asuka:22:35: count is a method of string: call it, count()

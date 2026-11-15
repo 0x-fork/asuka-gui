@@ -77,7 +77,30 @@ declaration under it, and editors show it.
 
 Strings take any expression between braces: `"{count} items"`, `"Total:
 {price * qty}"`. `\{` is a brace; `r"…"` is a raw string with no escapes
-or interpolation; `"""…"""` spans lines.
+or interpolation; `"""…"""` spans lines (without its first line when
+that's blank, and without the indentation of its closing quotes' line).
+A value that isn't a number, a bool or a string shows as text: an enum's
+case by its name, an optional as `none` or its value, an error as its
+message, the rest as JSON.
+
+A map's keys are ints, strings, bools or enums without payloads.
+
+### Built-in methods
+
+Strings, arrays, maps and optionals have methods; those that change
+their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
+`clear`, `sort`, `remove`) take a `var` or state:
+
+| Type | Methods |
+|---|---|
+| `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `filter(p)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `reversed()`, `slice(from, to)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
+| `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order) |
+| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new)`, `split(sep)`, `find(s)` (a byte offset, or none), `slice(from, to)` (characters), `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `+` |
+| `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
+| `T?` | `isNone()`, `isSome()` |
+
+`min`, `max`, `abs`, `float(n)` and `int(x)` are functions;
+`asuka/math` has the rest (`math.sqrt`, `math.pow`, `math.pi`, ...).
 
 ### Value semantics
 
@@ -104,6 +127,9 @@ let name = user?.name ?? "Guest"
 let first = items.first()!        // a crash if it's none: say so only when it can't be
 ```
 
+After `?.`, the rest of the chain stops at none too: `user?.boss.name`
+is a `string?`.
+
 ### Declarations
 
 ```asuka
@@ -129,8 +155,10 @@ let m = Message(id: "1", subject: "Hello")
 let n = Message(id: m.id, subject: m.subject, read: true)
 ```
 
-A struct is made by calling it with its fields by name; fields with a
-default may be left out. `let` in a struct's body is a constant of the
+A struct is made by calling it with its fields, by name or in order;
+fields with a default may be left out. Its methods see its fields by
+their names; they can't change it (it's a value): one that would
+returns a new one. `let` in a struct's body is a constant of the
 type (`Font.title`), which `.title` names wherever a `Font` is
 expected.
 
@@ -334,7 +362,7 @@ pub store Mailbox {
   }
 
   pub async fn refresh() throws {
-    messages = try await http.get("https://example.com/inbox").json<[Message]>()
+    messages = try await http.get("https://example.com/inbox").json()
   }
 }
 ```
@@ -445,6 +473,11 @@ on press {
 let n = try? parse(text)   // none if it throws
 ```
 
+An error's `message` is its `message` field, its `fn message() ->
+string`, or its type's and case's name. `Error("…")` makes an error of a
+message. A `catch` never sees a task's cancellation: it goes on to the
+task's end, running the `defer`s on its way.
+
 An error a handler or a task doesn't catch goes to the nearest
 `Boundary` around the component, and to the app's (shown in
 development, logged in release) when there is none:
@@ -539,6 +572,11 @@ test "archiving removes the row" {
   app.expectNo("Hello")
 }
 ```
+
+`expect(cond)` fails a test when cond is false, saying what failed and
+where (with a comparison's two sides). JSON comes from `asuka/json`:
+`let notes: [Note] = try json.decode(text)` reads what's expected of it,
+`json.encode(notes)` writes it.
 
 `asuka test` runs a package's tests on a fake host: it lays views out as
 the platforms do, measures text at a fixed width per character, and time

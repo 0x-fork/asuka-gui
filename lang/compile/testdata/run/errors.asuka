@@ -1,0 +1,137 @@
+// Errors: throw, try, try?, do/catch by type and case, defer, rethrow.
+
+enum MailError: Error {
+  offline
+  server(code: int)
+
+  fn message() -> string = match self {
+    .offline => "you're offline"
+    .server(code) => "server error {code}"
+  }
+}
+
+struct ParseError: Error {
+  message: string
+  line: int
+}
+
+fn send(n: int) throws -> int {
+  if n == 0 { throw MailError.offline }
+  if n < 0 { throw MailError.server(code: -n) }
+  if n > 100 { throw ParseError(message: "too big", line: n) }
+  if n == 99 { throw Error("plain") }
+  return n * 2
+}
+
+fn tryAll(n: int) -> string {
+  do {
+    let v = try send(n)
+    return "ok {v}"
+  } catch MailError.offline {
+    return "offline"
+  } catch MailError.server(code) {
+    return "server {code}"
+  } catch e: ParseError {
+    return "parse at {e.line}: {e.message}"
+  } catch e {
+    return "other: {e.message}"
+  }
+}
+
+fn divide(a: int, b: int) throws -> int {
+  if b == 0 { throw Error("divide by zero") }
+  return a / b
+}
+
+fn passOn(n: int) throws -> int {
+  let v = try send(n)
+  return v + 1
+}
+
+
+test "catching" {
+  print(tryAll(1))
+  print(tryAll(0))
+  print(tryAll(-5))
+  print(tryAll(500))
+  print(tryAll(99))
+}
+
+test "try?" {
+  print(try? send(3) ?? -1)
+  print(try? send(0) ?? -1)
+  let r = try? divide(1, 0)
+  expect(r == none)
+}
+
+test "rethrow and message" {
+  do {
+    try passOn(-7)
+  } catch e {
+    print(e.message)
+  }
+  do {
+    let x = [1, 2]
+    print(x[5])
+  } catch e {
+    print("runtime: {e.message}")
+  }
+  do {
+    do {
+      try send(0)
+    } catch e: ParseError {
+      print("not here")
+    }
+  } catch e: MailError {
+    print("outer got {e.message}")
+  }
+}
+
+fn withDefers(fail: bool) throws -> int {
+  var trace = "start"
+  defer { print("deferred: {trace}") }
+  trace = "middle"
+  if fail { throw Error("failed") }
+  trace = "end"
+  return 1
+}
+
+test "defer" {
+  print(try withDefers(false))
+  print(try? withDefers(true) ?? -1)
+  for i in 0..<3 {
+    defer { print("loop {i}") }
+    if i == 1 { continue }
+    print("body {i}")
+  }
+}
+
+test "uncaught user error" {
+  try send(-3)
+}
+
+// Output:
+// ok 2
+// offline
+// server 5
+// parse at 500: too big
+// other: plain
+// ok catching
+// 6
+// -1
+// ok try?
+// server error 7
+// runtime: index 5 out of range (length 2)
+// outer got you're offline
+// ok rethrow and message
+// deferred: end
+// 1
+// deferred: middle
+// -1
+// body 0
+// loop 0
+// loop 1
+// body 2
+// loop 2
+// ok defer
+// FAIL uncaught user error: server error 3

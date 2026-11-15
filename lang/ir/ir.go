@@ -1,0 +1,160 @@
+// Package ir is the Asuka compiler's lowered program: functions of
+// three-address code over typed registers, made from the checked program
+// (lang/check) as lang/LOWERING.md says. Its instructions are the VM's
+// (lang/bytecode's opcodes), with registers already allocated (per kind)
+// and jumps to labels; Encode writes the bytecode module, resolving
+// labels into offsets and handler ranges, and the C backend (lang/cgen)
+// will read the same functions.
+package ir
+
+import (
+	"github.com/egoist/asuka/lang/bytecode"
+)
+
+// A Label is a place in a function's code; jumps and handlers name it.
+type Label int32
+
+// An Instr is an instruction: an opcode and its operands, as many as the
+// opcode takes (an Off operand holds a Label).
+type Instr struct {
+	Op   bytecode.Op
+	Args [5]int32
+	Line int32
+}
+
+// A Handler catches errors raised in [Start, End) at Target.
+type Handler struct {
+	Start, End, Target Label
+}
+
+// A Func is a lowered function.
+type Func struct {
+	Name     string
+	File     string
+	NParams  int
+	Kinds    []bytecode.Kind // per register
+	CapKinds []bytecode.Kind
+	Ret      bytecode.Kind
+	Flags    uint8
+	Code     []Instr
+	Handlers []Handler // innermost first
+	labels   []int     // per label, the instruction it's at (-1: not placed yet)
+}
+
+// NewLabel makes a label, not placed yet.
+func (f *Func) NewLabel() Label {
+	f.labels = append(f.labels, -1)
+	return Label(len(f.labels) - 1)
+}
+
+// Place puts l at the next instruction.
+func (f *Func) Place(l Label) { f.labels[l] = len(f.Code) }
+
+// Here makes a label at the next instruction.
+func (f *Func) Here() Label {
+	l := f.NewLabel()
+	f.Place(l)
+	return l
+}
+
+// Emit appends an instruction.
+func (f *Func) Emit(line int32, op bytecode.Op, args ...int) {
+	in := Instr{Op: op, Line: line}
+	if len(args) != len(bytecode.Ops[op].Operands) {
+		panic("ir: " + op.String() + " takes " + itoa(len(bytecode.Ops[op].Operands)) + " operands, got " + itoa(len(args)))
+	}
+	for i, a := range args {
+		in.Args[i] = int32(a)
+	}
+	f.Code = append(f.Code, in)
+}
+
+// Reg adds a register of kind k.
+func (f *Func) Reg(k bytecode.Kind) int {
+	f.Kinds = append(f.Kinds, k)
+	if len(f.Kinds) >= bytecode.None {
+		panic("ir: " + f.Name + " needs more than 65534 registers")
+	}
+	return len(f.Kinds) - 1
+}
+
+// A Program is the lowered program: the module's pools and tables, and
+// its functions.
+type Program struct {
+	Mod   *bytecode.Module // Funcs filled by Encode
+	Funcs []*Func
+}
+
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	var b []byte
+	neg := i < 0
+	if neg {
+		i = -i
+	}
+	for i > 0 {
+		b = append([]byte{byte('0' + i%10)}, b...)
+		i /= 10
+	}
+	if neg {
+		b = append([]byte{'-'}, b...)
+	}
+	return string(b)
+}
+
+// Encode writes the program's functions into its module.
+func (p *Program) Encode() *bytecode.Module {
+	m := p.Mod
+	m.Funcs = make([]bytecode.FuncDef, len(p.Funcs))
+	for i, f := range p.Funcs {
+		m.Funcs[i] = f.encode()
+	}
+	return m
+}
+
+func (f *Func) encode() bytecode.FuncDef {
+	// Word offsets of each instruction.
+	pcs := make([]int, len(f.Code)+1)
+	pc := 0
+	for i, in := range f.Code {
+		pcs[i] = pc
+		pc += in.Op.Width()
+	}
+	pcs[len(f.Code)] = pc
+	at := func(l Label) int {
+		i := f.labels[l]
+		if i < 0 {
+			panic("ir: label not placed in " + f.Name)
+		}
+		return pcs[i]
+	}
+	var a bytecode.Asm
+	var lines []bytecode.Line
+	last := int32(-1)
+	for i, in := range f.Code {
+		if in.Line != last && in.Line > 0 {
+			lines = append(lines, bytecode.Line{PC: uint32(pcs[i]), Line: uint32(in.Line)})
+			last = in.Line
+		}
+		ops := bytecode.Ops[in.Op].Operands
+		args := make([]int, len(ops))
+		for j, o := range ops {
+			if o == bytecode.Off {
+				args[j] = at(Label(in.Args[j])) - pcs[i+1]
+			} else {
+				args[j] = int(in.Args[j])
+			}
+		}
+		a.Emit(in.Op, args...)
+	}
+	def := bytecode.FuncDef{
+		Name: f.Name, File: f.File, NParams: uint16(f.NParams), Kinds: f.Kinds, CapKinds: f.CapKinds,
+		Ret: f.Ret, Flags: f.Flags, Code: a.Code, Lines: lines,
+	}
+	for _, h := range f.Handlers {
+		def.Handlers = append(def.Handlers, bytecode.Handler{Start: uint32(at(h.Start)), End: uint32(at(h.End)), Target: uint32(at(h.Target))})
+	}
+	return def
+}

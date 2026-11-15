@@ -159,7 +159,7 @@ enum {
 	AK_EV_STEPPER_CHANGE = 21,
 	AK_EV_SEGMENTED_CHANGE = 22,
 	AK_EV_PICKER_CHANGE = 23,
-	AK_EV_IMAGE_LOAD = 24,
+	AK_EV_IMAGE_LOADED = 24,
 	AK_EV_IMAGE_ERROR = 25,
 	AK_EV_SCROLL_SCROLL = 26,
 	AK_EV_SCROLL_REFRESH = 27,
@@ -180,7 +180,7 @@ static const uint8_t ak_key_kinds[] = {0, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_IN
 // The element each key is of (AK_EL_*); 0: the style's, every element's.
 static const uint8_t ak_key_els[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10, 10, 11, 11, 12, 12, 12, 13, 14, 16, 17, 17, 17, 17, 18, 18, 19, 19, 19, 19,};
 
-static const char *const ak_ev_names[] = {"", "View.press", "View.longPress", "View.layout", "Row.press", "Row.longPress", "Row.layout", "Column.press", "Column.longPress", "Column.layout", "SafeArea.press", "SafeArea.longPress", "SafeArea.layout", "Button.press", "TextField.change", "TextField.submit", "TextField.focus", "TextField.blur", "TextField.select", "Toggle.change", "Slider.change", "Stepper.change", "Segmented.change", "Picker.change", "Image.load", "Image.error", "Scroll.scroll", "Scroll.refresh", "List.scroll", "List.refresh", "List.endReached", "List.startReached",};
+static const char *const ak_ev_names[] = {"", "View.press", "View.longPress", "View.layout", "Row.press", "Row.longPress", "Row.layout", "Column.press", "Column.longPress", "Column.layout", "SafeArea.press", "SafeArea.longPress", "SafeArea.layout", "Button.press", "TextField.change", "TextField.submit", "TextField.focus", "TextField.blur", "TextField.select", "Toggle.change", "Slider.change", "Stepper.change", "Segmented.change", "Picker.change", "Image.loaded", "Image.error", "Scroll.scroll", "Scroll.refresh", "List.scroll", "List.refresh", "List.endReached", "List.startReached",};
 
 // The element each event is of (AK_EL_*).
 static const uint8_t ak_ev_els[] = {0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 6, 7, 7, 7, 7, 7, 8, 9, 10, 11, 12, 17, 17, 18, 18, 19, 19, 19, 19,};

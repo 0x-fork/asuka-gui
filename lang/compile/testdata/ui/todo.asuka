@@ -1,0 +1,67 @@
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+}
+
+component TodoRow(todo: Todo) {
+  event toggle(on: bool)
+  event delete
+
+  Row {
+    gap: 8
+    Toggle { on: todo.done; on change(on) { emit toggle(on) } }
+    Text(todo.title) {
+      grow: 1
+      color: if todo.done { .secondaryLabel } else { .label }
+    }
+    Button("Delete") { on press { emit delete } }
+  }
+}
+
+component TodoApp {
+  state todos: [Todo] = []
+  state draft = ""
+  state nextId = 1
+
+  let remaining = todos.count(t => !t.done)
+
+  fn add() {
+    let title = draft.trim()
+    if title.isEmpty() { return }
+    todos.push(Todo(id: nextId, title: title))
+    nextId += 1
+    draft = ""
+  }
+
+  Column {
+    gap: 8; padding: 16
+    Row {
+      gap: 8
+      TextField { placeholder: "What needs doing?"; bind text: draft; on submit { add() } }
+      Button("Add") { disabled: draft.trim().isEmpty(); on press { add() } }
+    }
+    for todo in todos key todo.id {
+      TodoRow(todo) {
+        on toggle(on) {
+          if let i = todos.index(t => t.id == todo.id) { todos[i].done = on }
+        }
+        on delete { todos.removeWhere(t => t.id == todo.id) }
+      }
+    }
+    Text("{remaining} left") { color: .secondaryLabel }
+  }
+}
+
+app { TodoApp() }
+
+test "adds, completes and deletes" {
+  let app = mount(TodoApp())
+  app.type("Milk", into: "What needs doing?")
+  app.tap("Add")
+  app.expect("Milk")
+  app.expect("1 left")
+  app.tap("Delete")
+  app.expectNo("Milk")
+  app.expect("0 left")
+}

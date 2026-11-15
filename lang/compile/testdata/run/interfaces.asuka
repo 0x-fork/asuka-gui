@@ -1,0 +1,52 @@
+// Interfaces: structural, their methods and fields called through them.
+
+interface Shape {
+  name: string
+  fn area() -> float
+}
+
+struct Square {
+  name: string = "square"
+  side: float
+  fn area() -> float = side * side
+}
+
+struct Circle {
+  name: string = "circle"
+  r: float
+  fn area() -> float = 3 * r * r
+}
+
+enum Blob: Shape {
+  small
+  big(float)
+
+  fn area() -> float = match self {
+    .small => 1
+    .big(n) => n
+  }
+  fn name() -> string = "blob"
+}
+
+fn total(shapes: [Shape]) -> float {
+  var sum = 0.0
+  for s in shapes { sum += s.area() }
+  return sum
+}
+
+test "interfaces" {
+  let shapes: [Shape] = [Square(side: 2), Circle(r: 1), Blob.big(10), Blob.small]
+  print(total(shapes))
+  for s in shapes { print(s.name) }
+  let one: Shape = Square(side: 3)
+  print(one.area())
+}
+
+// Output:
+// 18
+// square
+// circle
+// blob
+// blob
+// 9
+// ok interfaces

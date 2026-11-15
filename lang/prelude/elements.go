@@ -216,7 +216,7 @@ var Elements = []Element{
 		{Name: "placeholder", Type: "string", Doc: "an image shown until source loads, and if it fails"},
 		{Name: "transition", Type: "float", Doc: "seconds it takes to fade in as it arrives (0: the platform's; -1: none)"},
 	}, Events: []Event{
-		{Name: "load", Params: []Param{{"width", "float"}, {"height", "float"}}},
+		{Name: "loaded", Params: []Param{{"width", "float"}, {"height", "float"}}},
 		{Name: "error", Params: []Param{{"message", "string"}}},
 	}, Doc: "a picture the host loads; without a size it takes its natural one, no wider than its room, and keeps its aspect ratio when one side is set"},
 	{Name: "Scroll", Children: true, Keys: []Key{

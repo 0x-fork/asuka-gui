@@ -194,6 +194,16 @@ ak_val ak_ui_use(ak_str *key);  // retained; NULL when none is provided
 // ak_ui_task starts c (an async closure) once the component it's in is
 // built, owned by the current owner: disposing it cancels the task.
 void ak_ui_task(ak_closure *c);
+// ak_ui_load makes a loader (let x = load f(…)): thunk (tracked) starts
+// the call as a task and returns its future; it runs again, cancelling
+// the last task, when what it read changes or on ak_ui_load_reload. The
+// state (0 pending, 1 ready, 2 failed), the latest value (boxed when a
+// scalar; none before the first) and the error are tracked reads.
+ak_val ak_ui_load(ak_closure *thunk);  // owned
+int64_t ak_ui_load_state(ak_val loader);
+ak_val ak_ui_load_value(ak_val loader);  // owned
+ak_val ak_ui_load_error(ak_val loader);  // owned
+void ak_ui_load_reload(ak_val loader);
 
 // Instance paths. A state cell kept across reloads (CELLK) is found by
 // its key (Component.x) and the place of the component instance that
