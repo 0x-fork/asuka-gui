@@ -99,10 +99,10 @@ func (s *Scope) Names() []string {
 type VarKind uint8
 
 const (
-	LocalVar  VarKind = iota // let, var, a parameter, a pattern's binding
-	RowItem                  // a for's item or index in a view: an accessor
-	ViewMemo                 // a match payload or if let in a view: a memo
-	SelfVar                  // a method's receiver
+	LocalVar VarKind = iota // let, var, a parameter, a pattern's binding
+	RowItem                 // a for's item or index in a view: an accessor
+	ViewMemo                // a match payload or if let in a view: a memo
+	SelfVar                 // a method's receiver
 )
 
 // A Var is a local: a parameter, let, var, or a pattern's binding.
@@ -383,7 +383,7 @@ const (
 	BPanic
 	BJSONDecode
 	BJSONEncode
-	BMath   // math.<name>: the builtin of the same name
+	BMath // math.<name>: the builtin of the same name
 	BTimeNow
 	BTimeMonotonic
 	BRange // arr.range

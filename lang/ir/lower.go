@@ -426,7 +426,7 @@ type pendingStrings struct {
 	ss     []string
 }
 
-func (l *Lowerer) str(s string) int  { return int(l.mod.String(s)) }
+func (l *Lowerer) str(s string) int        { return int(l.mod.String(s)) }
 func (l *Lowerer) builtin(name string) int { return int(l.mod.Builtin(name)) }
 
 func op(name string) bc.Op {

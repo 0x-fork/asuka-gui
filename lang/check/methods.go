@@ -32,7 +32,7 @@ type Method struct {
 	// Fails: may raise a runtime error (as an index out of range does),
 	// which needs no try.
 	Fails bool
-	Async  bool
+	Async bool
 	// Order is the builtin's arguments after the receiver, by parameter
 	// index, when it isn't the parameters' order.
 	Order []int

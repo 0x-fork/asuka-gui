@@ -44,7 +44,7 @@ type Checker struct {
 	inDefer int
 	free    map[*TypeParam]bool
 	spawns  []*FuncCtx
-	errT   *TypeName // Error
+	errT    *TypeName // Error
 }
 
 // NewChecker makes a checker and checks the prelude with it.
