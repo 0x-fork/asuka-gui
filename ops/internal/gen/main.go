@@ -3,7 +3,8 @@
 // (platform/ios/Sources/AsukaOps/Ops.swift) and the Kotlin decoder and event
 // encoder (platform/android/asuka/src/main/java/dev/asuka/Ops.kt) and the
 // JavaScript decoder and event encoder of the web host
-// (platform/web/src/ops.js). Run it with go generate ./ops.
+// (platform/web/src/ops.js) and the C core's numbers and name tables
+// (core/src/ops/ops_gen.h and ops_gen.c). Run it with go generate ./ops.
 package main
 
 import (
@@ -31,6 +32,8 @@ func main() {
 	write(filepath.Join(root, "platform", "ios", "Sources", "AsukaOps", "Ops.swift"), swiftFile(s), false)
 	write(filepath.Join(root, "platform", "android", "asuka", "src", "main", "java", "dev", "asuka", "Ops.kt"), kotlinFile(s), false)
 	write(filepath.Join(root, "platform", "web", "src", "ops.js"), jsFile(s), false)
+	write(filepath.Join(root, "core", "src", "ops", "ops_gen.h"), cHeader(s), false)
+	write(filepath.Join(root, "core", "src", "ops", "ops_gen.c"), cSource(s), false)
 }
 
 func write(path string, src []byte, gofmt bool) {
