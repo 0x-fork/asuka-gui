@@ -137,6 +137,9 @@ func Resolve(c *Client, root map[string]string, projectDir string) (*Lock, error
 				if !filepath.IsAbs(p) {
 					p = filepath.Join(projectDir, p)
 				}
+				if _, err := os.Stat(filepath.Join(p, ManifestFile)); err != nil {
+					return fmt.Errorf("%s: %s = %q: no package there (no %s)", by, k, deps[k], ManifestFile)
+				}
 				id := "file:" + filepath.ToSlash(p)
 				into[k] = id
 				if lock.Find(id) == nil {

@@ -44,6 +44,10 @@ func usage() {
   asuka i18n init|add|check                 start, add languages to, and check the catalogs
   asuka vet [flags] [packages]              report what builds but runs wrong, as a signal read once
   asuka fmt [-w] [-l] [paths]               format Asuka source (.asuka files) in its canonical form
+  asuka add <package>[@range]               add dependencies: asuka.toml, asuka.lock, fetched
+  asuka remove <package>                    remove dependencies
+  asuka install [-update] [dir]             fetch what asuka.lock names (resolving again with -update)
+  asuka pkg pack|publish [dir]              pack, or publish to the npm registry, a package
   asuka version                             print the CLI's version
 
 asuka <command> --help lists its flags.
@@ -83,6 +87,14 @@ func main() {
 		err = cmdVet(os.Args[2:])
 	case "fmt":
 		err = cmdFmt(os.Args[2:])
+	case "add":
+		err = cmdAdd(os.Args[2:])
+	case "remove":
+		err = cmdRemove(os.Args[2:])
+	case "install":
+		err = cmdInstall(os.Args[2:])
+	case "pkg":
+		err = cmdPkg(os.Args[2:])
 	case "version", "--version":
 		fmt.Println("asuka", version)
 		return
