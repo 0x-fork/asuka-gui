@@ -486,7 +486,7 @@ Each ends with its tests green.
 - [x] **C0** the core in C: base, signal, layout (Chrome fixtures at
       parity with `known_failures.txt`), ops encoder (byte-identical to
       the golden files), the fake host.
-- [ ] **L1** the compiler front end: lexer, parser, printer, `asuka fmt`.
+- [x] **L1** the compiler front end: lexer, parser, printer, `asuka fmt`.
 - [ ] **L2** the checker, the IR, bytecode; the VM; the UI runtime for
       the v0 elements; `asuka test`: counter and todo pass their tests.
 - [ ] **M1** iOS and Android: the core built for both, the hosts
