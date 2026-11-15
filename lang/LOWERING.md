@@ -251,6 +251,6 @@ object type (a reference: the runtime's ak_native_obj) and its methods:
 - Every method `throws` (the platform's side may fail); the checker
   requires `try` at calls.
 
-`asuka native generate` writes each platform's side (Swift, Kotlin,
-JavaScript; C on the desktop) from the same declarations, in
+`asuka native generate` writes each platform's side (Swift on iOS and macOS, Kotlin,
+JavaScript, Go on Windows and Linux, whose hosts are Go) from the same declarations, in
 native/codec.go's wire format.
