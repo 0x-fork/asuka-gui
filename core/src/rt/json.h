@@ -1,0 +1,40 @@
+// json.h: JSON to and from typed values, for asuka/json and the
+// network's .json<T>(). A value's type comes as a descriptor (the
+// compiler writes it as a string constant):
+//
+//   i int    f float    b bool    s string    y bytes (base64)
+//   ?T       an optional T (null)
+//   [T       an array of T
+//   {T       a map from string to T (a JSON object)
+//   S<name>; a struct, by its shape's name: an object with its fields
+//   E<name>; an enum: a payloadless case is its name as a string; a case
+//            with a payload is {"case": [fields...]} or {"case": {...}} by
+//            field labels
+//   e<name>; a payloadless enum stored as an int: its case's name
+//
+// Shapes are found by name through a lookup the caller gives (the
+// running module's).
+#ifndef AK_JSON_H
+#define AK_JSON_H
+
+#include "rt/rt.h"
+
+typedef const ak_shape *(*ak_json_shape_fn)(void *ctx, const char *name, size_t len);
+// For payloadless enums stored as ints: their case names.
+typedef bool (*ak_json_cases_fn)(void *ctx, const char *name, size_t len, const char *const **cases, uint32_t *n);
+
+typedef struct {
+	ak_json_shape_fn shape;
+	ak_json_cases_fn cases;
+	void *ctx;
+} ak_json_types;
+
+// ak_json_decode parses text into a value of the descriptor's type. On
+// failure it throws an error saying where (line:column) and why, and
+// returns a zero value.
+ak_val ak_json_decode(const char *text, size_t len, const char *desc, const ak_json_types *t);
+// ak_json_encode writes v (of the descriptor's type) as JSON; indent > 0
+// pretty-prints with that many spaces.
+ak_str *ak_json_encode(ak_val v, const char *desc, const ak_json_types *t, int indent);
+
+#endif

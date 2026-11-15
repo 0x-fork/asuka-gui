@@ -31,7 +31,9 @@ func (k Kind) String() string {
 // None is the "no index" value of a 16-bit operand or index.
 const None = 0xFFFF
 
-// Field is a struct's field or an enum case's payload field.
+// Field is a struct's field or an enum case's payload field. Its Name
+// may carry its type's JSON descriptor after a NUL ("title\x00s"; see
+// core/src/rt/json.h), which the runtime reads to decode and encode it.
 type Field struct {
 	Name  string
 	Kind  Kind

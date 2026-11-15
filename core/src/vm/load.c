@@ -288,6 +288,7 @@ void ak_module_release(ak_module *m) {
 			ak_free((void *)vs->cases[c].names);
 		}
 		ak_free(vs->cases);
+		ak_free((void *)vs->case_names);
 		for (uint32_t k = 0; k < vs->nmethods; k++) {
 			ak_str *n = vs->methods[k].name;
 			bool constant = false;

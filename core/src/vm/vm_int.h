@@ -49,6 +49,7 @@ typedef struct {
 	const ak_shape **shapes;
 	const char **names;
 	ak_case *cases;
+	const char **case_names;  // made on first use (json_lib.c)
 } ak_vm_shape;
 
 struct ak_module {
@@ -138,6 +139,7 @@ void ak_vm_effect(ak_closure *c, bool render);
 void ak_vm_cleanup(ak_closure *c);
 void ak_vm_batch(bool begin);
 void ak_vm_react_init(void);
+void ak_vm_json_init(void);
 void ak_vm_task_own(ak_task *t);  // ties a task to the current owner
 bool ak_vm_task_run(ak_task *t, ak_val *out);  // ak_vm_run, under the task's owner
 // ak_vm_task_done lets the task's owner go; err (owned, or NULL) is an

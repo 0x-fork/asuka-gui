@@ -19,5 +19,6 @@ void ak_vm_init(void) {
 	if (done) return;
 	done = true;
 	ak_vm_builtins_init();
+	ak_vm_json_init();
 	ak_vm_react_init();
 }
