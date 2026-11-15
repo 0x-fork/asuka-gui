@@ -50,6 +50,15 @@ const ak_shape *ak_module_shape_named(const ak_module *m, const char *name);
 const char *ak_func_name(const ak_func *f);
 bool ak_func_async(const ak_func *f);
 
+// ak_module_attach gives a module's functions their bodies compiled to
+// C (lang/cgen): bodies[i] is function i's, or NULL to interpret it.
+void ak_module_attach(ak_module *m, ak_val (*const *bodies)(ak_val *args, ak_closure *clos), uint32_t n);
+
+// ak_app_loader loads the app compiled into this build (lang/cgen's C
+// sets it as it starts); NULL when none is (a development build, which
+// gets bytecode).
+extern ak_module *(*ak_app_loader)(void);
+
 // ak_vm_call calls f with its arguments (borrowed).
 ak_val ak_vm_call(const ak_func *f, ak_val *args, uint32_t nargs);
 

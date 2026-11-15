@@ -61,32 +61,40 @@ static void settle(ak_future *fut) {
 }
 
 int main(int argc, char **argv) {
-	bool test = false;
+	bool test = false, aot = false;
 	const char *pattern = NULL, *path = NULL;
 	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "-test") == 0) {
+		if (strcmp(argv[i], "-aot") == 0) {
+			aot = true;
+		} else if (strcmp(argv[i], "-test") == 0) {
 			test = true;
 			if (i + 2 < argc) pattern = argv[++i];
 		} else {
 			path = argv[i];
 		}
 	}
-	if (!path) {
-		fprintf(stderr, "usage: asuka-run [-test [pattern]] module.akb\n");
+	if (!path && !aot) {
+		fprintf(stderr, "usage: asuka-run [-test [pattern]] (module.akb | -aot)\n");
 		return 2;
 	}
-	size_t n;
-	uint8_t *p = read_file(path, &n);
-	if (!p) {
-		fprintf(stderr, "asuka-run: can't read %s\n", path);
+	size_t n = 0;
+	uint8_t *p = NULL;
+	if (!aot) {
+		p = read_file(path, &n);
+		if (!p) {
+			fprintf(stderr, "asuka-run: can't read %s\n", path);
+			return 2;
+		}
+	} else if (!ak_app_loader) {
+		fprintf(stderr, "asuka-run: no app compiled in (-aot)\n");
 		return 2;
 	}
 	ak_signal_bind_thread();
 	ak_vm_init();
 	ak_signal_set_error_handler(on_error, NULL);
 	if (test) ak_sched_manual_clock(true);
-	char err[512];
-	ak_module *m = ak_module_load(p, n, err, sizeof err);
+	char err[512] = "";
+	ak_module *m = aot ? ak_app_loader() : ak_module_load(p, n, err, sizeof err);
 	ak_free(p);
 	if (!m) {
 		fprintf(stderr, "asuka-run: %s\n", err);
@@ -133,7 +141,7 @@ int main(int argc, char **argv) {
 		current = NULL;
 	}
 	ak_owner_dispose(root);
-	ak_module_release(m);
+	if (!aot) ak_module_release(m);
 	return failures ? 1 : 0;
 }
 

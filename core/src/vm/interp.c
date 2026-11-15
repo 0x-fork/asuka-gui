@@ -1,4 +1,5 @@
 #include "vm/vm_int.h"
+#include "vm/ops.h"
 
 #include <stdio.h>
 
@@ -90,7 +91,7 @@ void ak_vm_traceback(char *buf, size_t cap) {
 
 // ---- Interface calls ----
 
-static const ak_func *method(void *obj, ak_str *name) {
+const ak_func *ak_vm_method(void *obj, ak_str *name) {
 	const ak_obj *o = obj;
 	const ak_shape *s = NULL;
 	if (o && o->tag == AK_T_STRUCT) s = ((const ak_struct *)o)->shape;
@@ -105,37 +106,11 @@ static const ak_func *method(void *obj, ak_str *name) {
 
 // ---- The interpreter ----
 
-static ak_str *interp_str(ak_val *R, uint16_t b, uint16_t n, const ak_str *kinds) {
-	ak_strb sb = {0};
-	for (uint16_t i = 0; i < n; i++) {
-		ak_val v = R[b + i];
-		switch (i < kinds->len ? kinds->data[i] : AK_K_REF) {
-		case AK_K_INT: ak_strb_int(&sb, v.i); break;
-		case AK_K_FLOAT: ak_strb_float(&sb, v.f); break;
-		case AK_K_BOOL: ak_strb_bool(&sb, v.i != 0); break;
-		default:
-			if (v.p) ak_strb_str(&sb, v.p);
-			break;
-		}
-	}
-	return ak_strb_finish(&sb);
-}
-
-static inline void setref(ak_val *R, uint16_t a, void *p) {
-	void *old = R[a].p;
-	R[a].p = p;
-	ak_release(old);
-}
+#define setref ak_op_setref
 
 static inline uint32_t off32(const uint16_t *c) { return (uint32_t)c[0] | (uint32_t)c[1] << 16; }
 
-// store puts a result in register a of the frame's function (releasing
-// what it held), or releases it when a is 0xFFFF.
-static inline void store(const ak_func *f, ak_val *R, uint16_t a, ak_val v) {
-	if (a == 0xFFFF) return;  // the caller released it if it was a reference
-	if (f->kinds[a] == AK_K_REF) setref(R, a, v.p);
-	else R[a] = v;
-}
+#define store(f, R, a, v) ak_op_store((f)->kinds, R, a, v)
 
 bool ak_vm_run(ak_co *co, ak_val *out) {
 	ak_co *prev = cur_co();
@@ -213,16 +188,9 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 		case AK_OP_SUBI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i - (uint64_t)R[a[2]].i); break;
 		case AK_OP_MULI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i * (uint64_t)R[a[2]].i); break;
 		case AK_OP_DIVI:
-		case AK_OP_MODI: {
-			int64_t x = R[a[1]].i, y = R[a[2]].i;
-			if (y == 0) {
-				ak_throw_msg("division by zero");
-				goto unwind;
-			}
-			if (y == -1) R[a[0]].i = op == AK_OP_DIVI ? (int64_t)(0 - (uint64_t)x) : 0;
-			else R[a[0]].i = op == AK_OP_DIVI ? x / y : x % y;
+		case AK_OP_MODI:
+			if (!ak_op_divi(R, a[0], a[1], a[2], op == AK_OP_MODI)) goto unwind;
 			break;
-		}
 		case AK_OP_NEGI: R[a[0]].i = (int64_t)(0 - (uint64_t)R[a[1]].i); break;
 		case AK_OP_ADDIK: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i + (uint64_t)(int64_t)(int16_t)a[2]); break;
 		case AK_OP_EQI: R[a[0]].i = R[a[1]].i == R[a[2]].i; break;
@@ -243,11 +211,7 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 		case AK_OP_LTF: R[a[0]].i = R[a[1]].f < R[a[2]].f; break;
 		case AK_OP_LEF: R[a[0]].i = R[a[1]].f <= R[a[2]].f; break;
 		case AK_OP_I2F: R[a[0]].f = (double)R[a[1]].i; break;
-		case AK_OP_F2I: {
-			double d = R[a[1]].f;
-			R[a[0]].i = d != d ? 0 : d >= 9.2233720368547758e18 ? INT64_MAX : d <= -9.2233720368547758e18 ? INT64_MIN : (int64_t)d;
-			break;
-		}
+		case AK_OP_F2I: R[a[0]].i = ak_op_f2i(R[a[1]].f); break;
 		case AK_OP_NOT: R[a[0]].i = !R[a[1]].i; break;
 
 		case AK_OP_EQ: R[a[0]].i = ak_val_eq(R[a[1]], R[a[2]], (ak_kind)a[3]); break;
@@ -255,20 +219,8 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 		case AK_OP_ISNONE: R[a[0]].i = R[a[1]].p == NULL; break;
 
 		case AK_OP_CONCAT: setref(R, a[0], ak_str_concat(R[a[1]].p, R[a[2]].p)); break;
-		case AK_OP_TOSTR: {
-			ak_str *s;
-			switch (a[2]) {
-			case AK_K_INT: s = ak_str_from_int(R[a[1]].i); break;
-			case AK_K_FLOAT: s = ak_str_from_float(R[a[1]].f); break;
-			case AK_K_BOOL: s = ak_str_from_bool(R[a[1]].i != 0); break;
-			default: s = ak_retain(R[a[1]].p ? R[a[1]].p : ak_str_empty()); break;
-			}
-			setref(R, a[0], s);
-			break;
-		}
-		case AK_OP_INTERP:
-			setref(R, a[0], interp_str(R, a[1], a[2], M->strings[a[3]]));
-			break;
+		case AK_OP_TOSTR: setref(R, a[0], ak_op_tostr(R[a[1]], a[2])); break;
+		case AK_OP_INTERP: setref(R, a[0], ak_op_interp(R, a[1], a[2], M->strings[a[3]])); break;
 		case AK_OP_LTS: R[a[0]].i = ak_str_cmp(R[a[1]].p, R[a[2]].p) < 0; break;
 
 		case AK_OP_JMP: pc += off32(a); break;
@@ -280,6 +232,14 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 		case AK_OP_CALL: {
 			const ak_func *g = &M->funcs[a[1]];
 			fr->pc = pc;
+			if (g->native) {
+				ak_val v = g->native(R + a[2], NULL);
+				RELOAD();
+				CHECK_ERR();
+				if (a[0] == 0xFFFF) ak_release_val(v, (ak_kind)g->ret);
+				else store(F, R, a[0], v);
+				break;
+			}
 			if (!ak_vm_push(co, g, NULL, R + a[2], a[3], a[0], false, ipc)) goto unwind;
 			LOAD();
 			break;
@@ -288,7 +248,7 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 			ak_closure *c = R[a[1]].p;
 			if (!c) ak_panic("vm: calling none");
 			fr->pc = pc;
-			if (c->invoke == ak_vm_closure_invoke && !(((const ak_func *)c->fn)->flags & AK_F_ASYNC && co->task == NULL)) {
+			if (c->invoke == ak_vm_closure_invoke && !((const ak_func *)c->fn)->native && !(((const ak_func *)c->fn)->flags & AK_F_ASYNC && co->task == NULL)) {
 				// A VM closure: call it in this loop.
 				if (!ak_vm_push(co, c->fn, c, R + a[2], a[3], a[0], false, ipc)) goto unwind;
 				LOAD();
@@ -311,9 +271,17 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 		case AK_OP_CALLI: {
 			ak_str *name = M->strings[a[1]];
 			void *obj = R[a[2]].p;
-			const ak_func *g = method(obj, name);
+			const ak_func *g = ak_vm_method(obj, name);
 			if (!g) ak_panic("vm: no method %s", name->data);
 			fr->pc = pc;
+			if (g->native) {
+				ak_val v = g->native(R + a[2], NULL);
+				RELOAD();
+				CHECK_ERR();
+				if (a[0] == 0xFFFF) ak_release_val(v, (ak_kind)g->ret);
+				else store(F, R, a[0], v);
+				break;
+			}
 			if (!ak_vm_push(co, g, NULL, R + a[2], a[3], a[0], false, ipc)) goto unwind;
 			LOAD();
 			break;
@@ -358,186 +326,30 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 			goto unwind_frame;
 		}
 
-		case AK_OP_CLOS: {
-			const ak_func *g = &M->funcs[a[1]];
-			ak_closure *c = ak_closure_new(ak_vm_closure_invoke, g, g->ncap, g->capkinds);
-			c->drop = NULL;
-			for (uint16_t i = 0; i < g->ncap; i++) {
-				c->caps[i] = R[a[2] + i];
-				ak_retain_val(c->caps[i], (ak_kind)g->capkinds[i]);
-			}
-			ak_module_retain(g->mod);
-			extern void ak_vm_closure_drop(ak_closure *);
-			c->drop = ak_vm_closure_drop;
-			setref(R, a[0], c);
-			break;
-		}
-		case AK_OP_CAP: {
-			ak_closure *c = fr->clos;
-			ak_val v = c->caps[a[1]];
-			if (c->capkinds[a[1]] == AK_K_REF) setref(R, a[0], ak_retain(v.p));
-			else R[a[0]] = v;
-			break;
-		}
-		case AK_OP_VBOX: {
-			ak_box *b = ak_box_new((ak_kind)a[2], R[a[1]]);
-			ak_retain_val(b->v, (ak_kind)a[2]);
-			b->h.flags = 1;  // a var box: its value is released with it
-			setref(R, a[0], b);
-			break;
-		}
-		case AK_OP_VGET: {
-			ak_box *b = R[a[1]].p;
-			if (b->h.aux == AK_K_REF) setref(R, a[0], ak_retain(b->v.p));
-			else R[a[0]] = b->v;
-			break;
-		}
-		case AK_OP_VSET: {
-			ak_box *b = R[a[0]].p;
-			if (b->h.aux == AK_K_REF) {
-				void *old = b->v.p;
-				b->v.p = ak_retain(R[a[1]].p);
-				ak_release(old);
-			} else {
-				b->v = R[a[1]];
-			}
-			break;
-		}
-
-		case AK_OP_NEWS: {
-			const ak_shape *s = &M->shapes[a[1]].s;
-			ak_struct *o = ak_struct_new(s);
-			for (uint16_t i = 0; i < s->nfields; i++) {
-				o->f[i] = R[a[2] + i];
-				ak_retain_val(o->f[i], (ak_kind)s->kinds[i]);
-			}
-			setref(R, a[0], o);
-			break;
-		}
-		case AK_OP_GETF: {
-			ak_struct *o = R[a[1]].p;
-			ak_val v = o->f[a[2]];
-			if (o->shape->kinds[a[2]] == AK_K_REF) setref(R, a[0], ak_retain(v.p));
-			else R[a[0]] = v;
-			break;
-		}
-		case AK_OP_SETF: {
-			ak_struct **op_ = (ak_struct **)&R[a[0]].p;
-			ak_struct *o = ak_struct_mut(op_);
-			if (o->shape->kinds[a[1]] == AK_K_REF) {
-				void *old = o->f[a[1]].p;
-				o->f[a[1]].p = ak_retain(R[a[2]].p);
-				ak_release(old);
-			} else {
-				o->f[a[1]] = R[a[2]];
-			}
-			break;
-		}
-		case AK_OP_NEWE: {
-			const ak_shape *s = &M->shapes[a[1]].s;
-			ak_enum *e = ak_enum_new(s, a[2]);
-			const ak_case *c = &s->cases[a[2]];
-			for (uint16_t i = 0; i < c->nfields; i++) {
-				e->f[i] = R[a[3] + i];
-				ak_retain_val(e->f[i], (ak_kind)c->kinds[i]);
-			}
-			setref(R, a[0], e);
-			break;
-		}
+		case AK_OP_CLOS: setref(R, a[0], ak_op_clos(&M->funcs[a[1]], R + a[2])); break;
+		case AK_OP_CAP: ak_op_cap(R, a[0], fr->clos, a[1]); break;
+		case AK_OP_VBOX: ak_op_vbox(R, a[0], R[a[1]], a[2]); break;
+		case AK_OP_VGET: ak_op_vget(R, a[0], R[a[1]].p); break;
+		case AK_OP_VSET: ak_op_vset(R[a[0]].p, R[a[1]]); break;
+		case AK_OP_NEWS: setref(R, a[0], ak_op_news(&M->shapes[a[1]].s, R + a[2])); break;
+		case AK_OP_GETF: ak_op_getf(R, a[0], R[a[1]].p, a[2]); break;
+		case AK_OP_SETF: ak_op_setf(R, a[0], a[1], R[a[2]]); break;
+		case AK_OP_NEWE: setref(R, a[0], ak_op_newe(&M->shapes[a[1]].s, a[2], R + a[3])); break;
 		case AK_OP_ECASE: R[a[0]].i = ak_enum_case(R[a[1]].p); break;
-		case AK_OP_GETP: {
-			ak_enum *e = R[a[1]].p;
-			const ak_case *c = &e->shape->cases[ak_enum_case(e)];
-			ak_val v = e->f[a[2]];
-			if (c->kinds[a[2]] == AK_K_REF) setref(R, a[0], ak_retain(v.p));
-			else R[a[0]] = v;
-			break;
-		}
+		case AK_OP_GETP: ak_op_getp(R, a[0], R[a[1]].p, a[2]); break;
 		case AK_OP_BOX: setref(R, a[0], ak_box_new((ak_kind)a[2], R[a[1]])); break;
 		case AK_OP_UNBOX: R[a[0]] = ((ak_box *)R[a[1]].p)->v; break;
-
-		case AK_OP_NEWA: {
-			ak_kind k = (ak_kind)a[1];
-			const ak_shape *s = a[2] == 0xFFFF ? NULL : &M->shapes[a[2]].s;
-			ak_arr *arr = ak_arr_new(k, s, a[4]);
-			for (uint16_t i = 0; i < a[4]; i++) {
-				arr->data[i] = R[a[3] + i];
-				ak_retain_val(arr->data[i], k);
-			}
-			arr->len = a[4];
-			setref(R, a[0], arr);
+		case AK_OP_NEWA: setref(R, a[0], ak_op_newa((ak_kind)a[1], a[2] == 0xFFFF ? NULL : &M->shapes[a[2]].s, R + a[3], a[4])); break;
+		case AK_OP_IDX:
+			if (!ak_op_idx(R, a[0], R[a[1]].p, R[a[2]].i)) goto unwind;
 			break;
-		}
-		case AK_OP_IDX: {
-			ak_arr *arr = R[a[1]].p;
-			int64_t i = R[a[2]].i;
-			if (!ak_arr_check(arr, i)) {
-				ak_throw_msg("index %lld out of range (length %u)", (long long)i, arr->len);
-				goto unwind;
-			}
-			ak_val v = arr->data[i];
-			if (ak_arr_kind(arr) == AK_K_REF) setref(R, a[0], ak_retain(v.p));
-			else R[a[0]] = v;
+		case AK_OP_SETIDX:
+			if (!ak_op_setidx(R, a[0], R[a[1]].i, R[a[2]])) goto unwind;
 			break;
-		}
-		case AK_OP_SETIDX: {
-			ak_arr **ap = (ak_arr **)&R[a[0]].p;
-			int64_t i = R[a[1]].i;
-			if (!ak_arr_check(*ap, i)) {
-				ak_throw_msg("index %lld out of range (length %u)", (long long)i, (*ap)->len);
-				goto unwind;
-			}
-			ak_val v = R[a[2]];
-			ak_retain_val(v, ak_arr_kind(*ap));
-			ak_arr_set(ap, i, v);
-			break;
-		}
-		case AK_OP_LEN: {
-			ak_obj *o = R[a[1]].p;
-			int64_t n = 0;
-			if (o) {
-				switch (o->tag) {
-				case AK_T_ARR: n = ((ak_arr *)o)->len; break;
-				case AK_T_MAP: n = ((ak_map *)o)->live; break;
-				case AK_T_STR: n = ((ak_str *)o)->len; break;
-				case AK_T_BYTES: n = ((ak_bytes *)o)->len; break;
-				}
-			}
-			R[a[0]].i = n;
-			break;
-		}
-		case AK_OP_NEWM: {
-			ak_kind kk = (ak_kind)a[1], vk = (ak_kind)a[2];
-			ak_map *m = ak_map_new(kk, kk == AK_K_REF, vk, NULL);
-			for (uint16_t i = 0; i < a[4]; i++) {
-				ak_val k = R[a[3] + 2 * i], v = R[a[3] + 2 * i + 1];
-				ak_retain_val(k, kk);
-				ak_retain_val(v, vk);
-				ak_map_set(&m, k, v);
-			}
-			setref(R, a[0], m);
-			break;
-		}
-		case AK_OP_MGET: {
-			ak_map *m = R[a[1]].p;
-			ak_val v;
-			void *res = NULL;
-			if (ak_map_get(m, R[a[2]], &v)) {
-				ak_kind vk = (ak_kind)(m->h.aux >> 4);
-				res = vk == AK_K_REF ? ak_retain(v.p) : ak_box_new(vk, v);
-			}
-			setref(R, a[0], res);
-			break;
-		}
-		case AK_OP_MSET: {
-			ak_map **mp = (ak_map **)&R[a[0]].p;
-			ak_kind kk = (ak_kind)((*mp)->h.aux & 0xf), vk = (ak_kind)((*mp)->h.aux >> 4);
-			ak_val k = R[a[1]], v = R[a[2]];
-			ak_retain_val(k, kk);
-			ak_retain_val(v, vk);
-			ak_map_set(mp, k, v);
-			break;
-		}
+		case AK_OP_LEN: R[a[0]].i = ak_op_len(R[a[1]].p); break;
+		case AK_OP_NEWM: setref(R, a[0], ak_op_newm((ak_kind)a[1], (ak_kind)a[2], R + a[3], a[4])); break;
+		case AK_OP_MGET: setref(R, a[0], ak_op_mget(R[a[1]].p, R[a[2]])); break;
+		case AK_OP_MSET: ak_op_mset(R, a[0], R[a[1]], R[a[2]]); break;
 
 		case AK_OP_CELL:
 		case AK_OP_CELLK: {
@@ -641,8 +453,7 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 		case AK_OP_TASK: {
 			ak_closure *c = R[a[1]].p;
 			fr->pc = pc;
-			// A VM closure starts a task; a C closure returns its future.
-			ak_val f = c->invoke == ak_vm_closure_invoke ? (ak_val){.p = ak_vm_task_start(c->fn, c, NULL, 0)} : c->invoke(c, NULL, 0);
+			ak_val f = ak_op_task(c);
 			RELOAD();
 			CHECK_ERR();
 			setref(R, a[0], f.p);
@@ -731,6 +542,7 @@ static ak_val call_sync(const ak_func *f, ak_closure *clos, ak_val *args, uint32
 
 ak_val ak_vm_closure_invoke(ak_closure *c, ak_val *args, uint32_t nargs) {
 	const ak_func *f = c->fn;
+	if (f->native) return f->native(args, c);
 	if (f->flags & AK_F_ASYNC) return (ak_val){.p = ak_vm_task_start(f, c, args, nargs)};
 	return call_sync(f, c, args, nargs);
 }
@@ -745,6 +557,7 @@ ak_val ak_vm_call(const ak_func *f, ak_val *args, uint32_t nargs) {
 		ak_release(fut);
 		return v;
 	}
+	if (f->native) return f->native(args, NULL);
 	return call_sync(f, NULL, args, nargs);
 }
 

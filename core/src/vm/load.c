@@ -344,3 +344,9 @@ const ak_shape *ak_module_shape_named(const ak_module *m, const char *name) {
 const ak_shape *ak_module_shape(const ak_module *m, uint32_t i) { return i < m->nshapes ? &m->shapes[i].s : NULL; }
 const char *ak_func_name(const ak_func *f) { return f->name->data; }
 bool ak_func_async(const ak_func *f) { return f->flags & AK_F_ASYNC; }
+
+void ak_module_attach(ak_module *m, ak_val (*const *bodies)(ak_val *args, ak_closure *clos), uint32_t n) {
+	for (uint32_t i = 0; i < n && i < m->nfuncs; i++) m->funcs[i].native = bodies[i];
+}
+
+ak_module *(*ak_app_loader)(void);

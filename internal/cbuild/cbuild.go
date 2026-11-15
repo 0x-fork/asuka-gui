@@ -162,7 +162,11 @@ func (c Compiler) run(args []string) error {
 // Runner builds asuka-run (core/runner: the VM, the core and the fake
 // host) into a cache directory, once per version of the sources, and
 // returns its path. sanitize builds it with ASan and UBSan (tests).
-func Runner(core string, sanitize bool) (string, error) {
+func Runner(core string, sanitize bool) (string, error) { return RunnerWith(core, nil, sanitize) }
+
+// RunnerWith is Runner with more C sources built in: an app compiled to
+// C (lang/cgen), which asuka-run -aot runs.
+func RunnerWith(core string, extra []string, sanitize bool) (string, error) {
 	cc, err := Find()
 	if err != nil {
 		return "", err
@@ -173,6 +177,7 @@ func Runner(core string, sanitize bool) (string, error) {
 	}
 	runner, _ := filepath.Glob(filepath.Join(core, "runner", "*.c"))
 	srcs = append(srcs, runner...)
+	srcs = append(srcs, extra...)
 	flags := append(Includes(core), "-g", "-O1")
 	link := []string{"-lm"}
 	if sanitize && runtime.GOOS != "windows" {

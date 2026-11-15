@@ -11,8 +11,14 @@
 typedef struct { uint32_t start, end, target; } ak_handler;
 typedef struct { uint32_t pc, line; } ak_line;
 
+// A function's body compiled to C (lang/cgen): it takes its arguments
+// (borrowed; it retains what it keeps) and the running closure, and
+// returns its result (owned), throwing as builtins do.
+typedef ak_val (*ak_native_body)(ak_val *args, ak_closure *clos);
+
 struct ak_func {
 	ak_module *mod;
+	ak_native_body native;  // set when the function was compiled to C
 	ak_str *name;
 	ak_str *file;
 	uint16_t nparams;
@@ -138,6 +144,9 @@ ak_val ak_vm_untrack(ak_closure *c, ak_val *args, uint32_t nargs);
 void ak_vm_effect(ak_closure *c, bool render);
 void ak_vm_cleanup(ak_closure *c);
 void ak_vm_batch(bool begin);
+// ak_vm_method finds an interface method of a struct's or an enum's
+// shape (NULL: none).
+const ak_func *ak_vm_method(void *obj, ak_str *name);
 void ak_vm_react_init(void);
 void ak_vm_json_init(void);
 void ak_vm_task_own(ak_task *t);  // ties a task to the current owner

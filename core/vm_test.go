@@ -9,6 +9,7 @@ import (
 
 	"github.com/egoist/asuka/internal/cbuild"
 	bc "github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/cgen"
 )
 
 // These tests run hand-assembled modules on the VM (asuka-run, built
@@ -34,13 +35,33 @@ func runner(t *testing.T) string {
 	return exe
 }
 
+// run runs m on the VM, then compiled to C (lang/cgen), and fails the
+// test when the two don't print the same: both backends mean the same.
 func run(t *testing.T, m *bc.Module, args ...string) (string, error) {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "m.akb")
+	dir := t.TempDir()
+	p := filepath.Join(dir, "m.akb")
 	if err := os.WriteFile(p, m.Encode(), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out, err := exec.Command(runner(t), append(args, p)...).CombinedOutput()
+	csrc, gerr := cgen.Generate(m)
+	if gerr != nil {
+		t.Fatal(gerr)
+	}
+	app := filepath.Join(dir, "app.c")
+	if err := os.WriteFile(app, csrc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root, _ := filepath.Abs(".")
+	exe, berr := cbuild.RunnerWith(root, []string{app}, true)
+	if berr != nil {
+		t.Fatalf("the C the module compiles to doesn't build: %v", berr)
+	}
+	aout, aerr := exec.Command(exe, append(args, "-aot")...).CombinedOutput()
+	if string(aout) != string(out) || (aerr == nil) != (err == nil) {
+		t.Fatalf("the VM and the compiled C disagree:\nVM (%v):\n%s\nC (%v):\n%s", err, out, aerr, aout)
+	}
 	return string(out), err
 }
 
