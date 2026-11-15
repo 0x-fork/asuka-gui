@@ -23,25 +23,13 @@ static const ak_shape *shape(void *ctx, const char *name, size_t n) {
 	return NULL;
 }
 
-// The types a module's native calls use, kept per module for callbacks
-// that outlive the call that registered them.
-static ak_json_types *types_of(ak_module *m) {
-	static struct {
-		ak_module *m;
-		ak_json_types t;
-	} cache[16];
-	for (int i = 0; i < 16; i++)
-		if (cache[i].m == m) return &cache[i].t;
-	for (int i = 0; i < 16; i++) {
-		if (!cache[i].m) {
-			cache[i].m = m;
-			cache[i].t = (ak_json_types){shape, NULL, m};
-			return &cache[i].t;
-		}
-	}
-	cache[0].m = m;
-	cache[0].t = (ak_json_types){shape, NULL, m};
-	return &cache[0].t;
+// The types a module's native calls use, on the module: callbacks that
+// outlive the call that registered them keep a pointer to them.
+static const ak_json_types *types_of(ak_module *m) {
+	static const ak_json_types none = {shape, NULL, NULL};
+	if (!m) return &none;
+	if (!m->native_types.shape) m->native_types = (ak_json_types){shape, NULL, m};
+	return &m->native_types;
 }
 
 static ak_val new_(ak_val *a, uint32_t n) {

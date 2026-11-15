@@ -5,6 +5,7 @@
 #include "vm/vm.h"
 #include <stdatomic.h>
 #include "rt/sched.h"
+#include "rt/json.h"
 #include "vm/opcodes_gen.h"
 #include "signal/signal.h"
 
@@ -80,6 +81,9 @@ struct ak_module {
 	struct { ak_str *name; uint32_t func; } *tests;
 	uint32_t ntests;
 	struct { ak_str **data; uint32_t len, cap; } names;  // what shapes' names point into
+	// How native calls find the module's types (native_lib.c): kept as
+	// long as the module, for callbacks that outlive their call.
+	ak_json_types native_types;
 };
 
 void ak_module_retain(ak_module *m);
