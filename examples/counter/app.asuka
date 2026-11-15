@@ -1,0 +1,45 @@
+// Counter is the smallest Asuka app: state, a Text that reads it and a
+// Button that writes it.
+//
+//   asuka dev --platform ios examples/counter
+
+component Counter {
+  state count = 0
+
+  SafeArea {
+    justify: .center
+    align: .center
+    gap: 16
+    padding: 24
+
+    Text("Count: {count}") { font: .largeTitle.bold() }
+    Row {
+      gap: 12
+      Button("Reset") {
+        variant: .gray
+        on press { count = 0 }
+      }
+      Button("Add") {
+        variant: .filled
+        on press { count += 1 }
+      }
+    }
+    if count >= 10 {
+      Text("That's a lot") { color: .secondaryLabel }
+    }
+  }
+}
+
+app { Counter() }
+
+test "counts, and says when it's a lot" {
+  let app = mount(Counter())
+  app.expect("Count: 0")
+  for _ in 0..<10 {
+    app.tap("Add")
+  }
+  app.expect("Count: 10", "That's a lot")
+  app.tap("Reset")
+  app.expect("Count: 0")
+  app.expectNo("That's a lot")
+}

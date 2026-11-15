@@ -1,0 +1,201 @@
+// Files shows a folder and keeps it up to date as files appear, change,
+// are renamed and go (asuka/watch): the app's own folder at first, which
+// New File and swiping a file away change, or, on a desktop, a folder
+// chosen with Choose Folder…, which any app may change. What changed
+// since the folder opened is listed below it.
+//
+//   asuka dev examples/files
+//   asuka dev --platform ios examples/files
+
+import asuka/dialog
+import asuka/fs
+import asuka/time
+import asuka/watch
+
+struct Entry {
+  name: string
+  dir: bool
+  size: int
+}
+
+/// dir's entries, folders first, hidden files left out. It blocks: call
+/// it in a spawn.
+fn read(dir: string) throws -> [Entry] {
+  let list = try fs.readDir(dir)
+  .filter(e => !e.name.hasPrefix("."))
+  .map(e => Entry(name: e.name, dir: e.isDir, size: e.size))
+  return list.sorted((a, b) => if a.dir != b.dir { a.dir } else { a.name < b.name })
+}
+
+/// The app's folder of files, made if it isn't there.
+fn ownFolder() -> string {
+  let dir = fs.join(fs.appDir(), "Files")
+  try? fs.mkdirAll(dir)
+  return dir
+}
+
+fn describe(e: watch.Event) -> string = match e.op {
+  .rename => "Renamed {e.oldPath} to {e.path}"
+  .overflow => "Looked at everything again"
+  .create => what("Created", e.path)
+  .write => what("Changed", e.path)
+  .remove => what("Removed", e.path)
+  .attrib => what("Permissions of", e.path)
+}
+
+fn what(verb: string, path: string) -> string = if path == "." { "{verb} the folder" } else { "{verb} {path}" }
+
+screen Files {
+  state folder = ownFolder()
+  state entries: [Entry] = []
+  state problem = ""
+  state changes: [string] = []
+  state watching = false
+  state watchError = ""
+  state count = 0
+
+  let status = if !watchError.isEmpty {
+    "Not watched: {watchError}"
+  } else if !problem.isEmpty {
+    problem
+  } else if !watching {
+    "…"
+  } else if entries.count == 1 {
+    "1 item"
+  } else {
+    "{entries.count} items"
+  }
+
+  title: "Files"
+
+  /// Reads the folder again, off the main thread.
+  async fn reload() {
+    let dir = folder
+    do {
+      let list = try await spawn { try read(dir) }
+      if folder != dir { return } // another folder since
+      entries = list
+      problem = ""
+    } catch e {
+      problem = e.message
+    }
+  }
+
+  // The folder's watch, as long as the screen is there: each batch of
+  // changes reads it again. Hidden files (an editor's temporary ones) are
+  // left out.
+  task(folder) {
+    changes = []
+    watching = false
+    watchError = ""
+    await reload()
+    do {
+      let w = try await watch.path(folder, ignore: [".*"])
+      watching = true
+      for await events in w.events {
+        changes = (events.reversed().map(describe) + changes).prefix(20)
+        await reload()
+      }
+    } catch e {
+      watchError = e.message
+    }
+  }
+
+  async fn newFile() {
+    count += 1
+    let path = fs.join(folder, "Note {count}.txt")
+    let text = "{time.now()}\n"
+    do {
+      try await spawn { try fs.write(path, text.bytes()) }
+    } catch e {
+      problem = e.message
+    }
+  }
+
+  async fn chooseFolder() {
+    if let path = try? await dialog.chooseFolder(button: "Show") { folder = path }
+  }
+
+  SafeArea {
+    grow: 1
+    Column {
+      padding: [8, 16]
+      gap: 8
+      Text(folder) {
+        font: .footnote
+        color: .secondaryLabel
+        lines: 2
+      }
+      Row {
+        gap: 8
+        Button("New File") {
+          icon: "plus"
+          variant: .filled
+          on press { await newFile() }
+        }
+        Button("Choose Folder…") {
+          icon: "folder"
+          on press { await chooseFolder() }
+        }
+      }
+      Text(status) {
+        font: .footnote
+        color: .secondaryLabel
+      }
+    }
+    List {
+      for e in entries key e.name {
+        Row {
+          gap: 12
+          padding: [12, 20]
+          align: .center
+          swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => {
+            let path = fs.join(folder, e.name)
+            spawn { try? fs.removeAll(path) } // the watch shows it gone
+          })]
+          if e.dir {
+            Symbol("folder") { color: .accent }
+          } else {
+            Symbol("doc") { color: .secondaryLabel }
+          }
+          Text(e.name) {
+            grow: 1
+            lines: 1
+          }
+          Text(if e.dir { "" } else { "{e.size} B" }) {
+            font: .footnote
+            color: .secondaryLabel
+          }
+        }
+      }
+    }
+    Column {
+      padding: [8, 16]
+      gap: 4
+      Text("Changes") { font: .headline }
+      for (i, change) in changes.enumerated() key i {
+        Text(change) {
+          font: .footnote
+          color: .secondaryLabel
+          lines: 1
+        }
+      }
+    }
+  }
+}
+
+app {
+  Window {
+    width: 420
+    height: 640
+    minWidth: 320
+    minHeight: 400
+    Stack { Files() }
+  }
+}
+
+test "describes what changed" {
+  expect(describe(watch.Event(op: .create, path: "a.txt")) == "Created a.txt")
+  expect(describe(watch.Event(op: .remove, path: ".")) == "Removed the folder")
+  expect(describe(watch.Event(op: .rename, path: "b", oldPath: "a")) == "Renamed a to b")
+}

@@ -1,0 +1,317 @@
+// Mail is an inbox and a composer: a List in sections by day (Today,
+// Yesterday...) whose headers stick, swipe actions from both edges
+// (Unread, Archive), selecting mails to archive together, and a rich
+// text field with a formatting toolbar for the message.
+//
+//   asuka dev --platform ios examples/mail
+
+import asuka/time
+
+struct Mail {
+  id: int
+  from: string
+  subject: string
+  preview: string
+  at: time.Time
+  unread: bool
+}
+
+struct Day {
+  name: string
+  mails: [Mail]
+}
+
+let senders = ["Ada Lovelace", "Grace Hopper", "Linus Torvalds", "Barbara Liskov", "Ken Thompson"]
+let subjects = ["Release notes for 1.0", "Lunch on Friday?", "Re: the list's anchor", "Design review", "Your invoice", "Weekly sync"]
+
+fn inbox(n: int) -> [Mail] {
+  var out: [Mail] = []
+  var at = time.now()
+  for i in 0..<n {
+    at = at - (40 + i * 13 % 90) * 1min
+    out.push(Mail(
+      id: i + 1,
+      from: senders[i % senders.count],
+      subject: subjects[i % subjects.count],
+      preview: "Here's where things stand, and what's left before we ship.",
+      at: at,
+      unread: i % 3 == 0,
+    ))
+  }
+  return out
+}
+
+fn day(t: time.Time) -> string {
+  let today = time.now()
+  if t.sameDay(today) { return "Today" }
+  if t.sameDay(today - 24h) { return "Yesterday" }
+  return t.format("EEEE, MMMM d")
+}
+
+/// The mails as runs of the same day.
+fn byDay(mails: [Mail]) -> [Day] {
+  var days: [Day] = []
+  for m in mails {
+    let name = day(m.at)
+    if days.last?.name == name {
+      days[days.count - 1].mails.push(m)
+    } else {
+      days.push(Day(name: name, mails: [m]))
+    }
+  }
+  return days
+}
+
+screen Inbox {
+  state mails = inbox(60)
+  state selecting = false
+  state chosen: [int] = []
+  state composing = false
+
+  let days = byDay(mails)
+
+  title: "Inbox"
+  largeTitle: true
+  toolbar {
+    Button(if selecting { "Done" } else { "Select" }) {
+      on press {
+        selecting = !selecting
+        chosen = []
+      }
+    }
+    Button("Compose") {
+      icon: "square.and.pencil"
+      on press { composing = true }
+    }
+  }
+
+  fn toggleUnread(id: int) {
+    if let i = mails.index(m => m.id == id) { mails[i].unread = !mails[i].unread }
+  }
+
+  fn archive(ids: [int]) { mails.removeWhere(m => ids.contains(m.id)) }
+
+  fn choose(id: int, on: bool) {
+    chosen.removeWhere(c => c == id)
+    if on { chosen.push(id) }
+  }
+
+  SafeArea {
+    grow: 1
+    List {
+      bind selecting: selecting
+      for d in days key d.name {
+        Section {
+          header {
+            View {
+              padding: [6, 16]
+              Text(d.name) {
+                font: .footnote.semibold()
+                color: .secondaryLabel
+              }
+            }
+          }
+          for m in d.mails key m.id {
+            MailRow(m) {
+              leadingSwipeActions: [.button(
+                title: if m.unread { "Read" } else { "Unread" },
+                icon: "envelope",
+                run: () => toggleUnread(m.id),
+              )]
+              swipeActions: [.button(title: "Archive", icon: "archivebox", run: () => archive([m.id]))]
+              selected: chosen.contains(m.id)
+              on select(on) { choose(m.id, on) }
+              on selectBegin {
+                selecting = true
+                choose(m.id, true)
+              }
+            }
+          }
+        }
+      }
+    }
+    if selecting {
+      Row {
+        justify: .spaceBetween
+        align: .center
+        padding: [8, 16]
+        Text("{chosen.count} selected")
+        Button("Archive") {
+          disabled: chosen.isEmpty
+          on press {
+            archive(chosen)
+            selecting = false
+            chosen = []
+          }
+        }
+      }
+    }
+    Sheet {
+      bind open: composing
+      Compose { on close { composing = false } }
+    }
+  }
+}
+
+component MailRow(mail: Mail) {
+  Row {
+    gap: 10
+    padding: [10, 16]
+    align: .start
+    View {
+      width: 10
+      height: 10
+      radius: 5
+      margin: Edges(top: 6)
+      background: if mail.unread { .accent } else { .clear }
+    }
+    Column {
+      grow: 1
+      shrink: 1
+      gap: 2
+      Row {
+        justify: .spaceBetween
+        gap: 8
+        Text(mail.from) {
+          font: .headline
+          lines: 1
+          shrink: 1
+        }
+        Text(mail.at.format("HH:mm")) {
+          font: .footnote
+          color: .secondaryLabel
+        }
+      }
+      Text(mail.subject) { lines: 1 }
+      Text(mail.preview) {
+        font: .subheadline
+        color: .secondaryLabel
+        lines: 2
+      }
+    }
+  }
+}
+
+/// A message with a formatted body: the toolbar's buttons show the
+/// styles at the cursor and set them.
+component Compose {
+  event close
+  state to = ""
+  state subject = ""
+  state body = [
+    Span(text: "Hi,\n\nThe "),
+    Span(text: "1.0", font: Font(weight: .bold)),
+    Span(text: " build is ready. Notes are "),
+    Span(text: "here", link: "https://example.com/notes"),
+    Span(text: ".\n\nThanks!"),
+  ]
+  state formats = TextFormats()
+
+  let field = Ref()
+
+  SafeArea {
+    grow: 1
+    Row {
+      justify: .spaceBetween
+      align: .center
+      padding: [8, 16]
+      Button("Cancel") {
+        on press { emit close }
+      }
+      Text("New Message") { font: .headline }
+      Button("Send") {
+        variant: .filled
+        disabled: to.trim().isEmpty
+        on press { emit close }
+      }
+    }
+    Line("To:") {
+      bind text: to
+      keyboard: .email
+    }
+    Line("Subject:") { bind text: subject }
+    TextField {
+      ref: field
+      bind rich: body
+      plain: true
+      placeholder: "Message"
+      grow: 1
+      padding: [8, 16]
+      on formats(f) { formats = f }
+    }
+    Row {
+      gap: 4
+      padding: [6, 12]
+      Tool("bold", "Bold", on: formats.bold) {
+        on press { field.toggleFormat(.bold) }
+      }
+      Tool("italic", "Italic", on: formats.italic) {
+        on press { field.toggleFormat(.italic) }
+      }
+      Tool("underline", "Underline", on: formats.underline) {
+        on press { field.toggleFormat(.underline) }
+      }
+      Tool("strikethrough", "Strikethrough", on: formats.strike) {
+        on press { field.toggleFormat(.strike) }
+      }
+      Tool("chevron.left.forwardslash.chevron.right", "Code", on: formats.mono) {
+        on press { field.toggleFormat(.mono) }
+      }
+      Tool("link", "Link", on: !formats.link.isEmpty) {
+        on press { field.setLink(if formats.link.isEmpty { "https://example.com" } else { "" }) }
+      }
+    }
+  }
+}
+
+/// A line of the message's header: its label and its field.
+component Line(label: string) {
+  prop text = ""
+  prop keyboard: Keyboard = .default
+  event change(text: string)
+
+  Row {
+    gap: 8
+    align: .center
+    padding: [8, 16]
+    Text(label) { color: .secondaryLabel }
+    TextField {
+      text: text
+      plain: true
+      keyboard: keyboard
+      autocapitalize: .off
+      grow: 1
+      on change(t) { emit change(t) }
+    }
+  }
+}
+
+/// A formatting button, lit while its format is at the cursor.
+component Tool(icon: string, label: string, on: bool) {
+  event press
+
+  Button("") {
+    icon: icon
+    label: label
+    background: if on { .secondaryBackground } else { .clear }
+    radius: 8
+    on press { emit press }
+  }
+}
+
+app {
+  Stack { Inbox() }
+}
+
+test "a mail swiped to the archive goes" {
+  let app = mount(Stack { Inbox() })
+  app.expect("Inbox", "Today")
+  app.tap("Select")
+  app.expect("0 selected", "Done")
+  app.tap("Done")
+  app.expectNo("0 selected")
+  app.tap("Compose")
+  app.expect("New Message")
+  app.tap("Cancel")
+  app.expectNo("New Message")
+}

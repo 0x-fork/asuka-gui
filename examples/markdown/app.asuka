@@ -1,0 +1,57 @@
+// Markdown: a reply streaming in, as a language model writes it, parsed
+// and shown incrementally: each chunk parses and updates only the block
+// being written. The whole reply is one selection.
+//
+//   asuka dev --platform ios examples/markdown
+
+import asuka/assets
+import asuka/markdown
+
+screen Reply {
+  state text = ""
+  state streaming = false
+
+  title: "Markdown"
+
+  /// Writes the reply in chunks of a few characters, as tokens come.
+  async fn stream() throws {
+    if streaming { return }
+    streaming = true
+    defer { streaming = false }
+    text = ""
+    let reply = try await assets.text("reply.md")
+    var end = 0
+    while end < reply.count {
+      await sleep(12ms)
+      end = min(end + 7, reply.count)
+      text = reply.slice(0, end)
+    }
+  }
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      padding: 20
+      gap: 16
+      Button(if streaming { "Writing…" } else { "Stream the reply" }) {
+        variant: .filled
+        disabled: streaming
+        on press { try await stream() }
+      }
+      markdown.View(text) { streaming: streaming }
+    }
+  }
+}
+
+app {
+  Stack { Reply() }
+}
+
+test "streams the reply in" {
+  let app = mount(Stack { Reply() })
+  app.expect("Markdown", "Stream the reply")
+  app.tap("Stream the reply")
+  app.expect("Writing…")
+  await app.idle()
+  app.expect("Stream the reply")
+}

@@ -1,0 +1,195 @@
+// Tray is a focus timer that lives in the tray (the menu bar on a Mac):
+// its icon counts down beside it; a click on it opens a flyout under it
+// (above it on a taskbar at the bottom) with the timer, its lengths and a
+// Reset that asks first, in a dialog over the flyout; its menu (a right
+// click) starts and pauses the timer, picks how long it runs, and opens a
+// window with the timer in it.
+// It's a background app (asuka.toml's background): no window and, on a
+// Mac, no Dock icon at launch. The Dock icon's menu (a jump list's tasks
+// on Windows, the launcher's quicklist on Linux) starts and pauses it
+// too.
+//
+//   asuka dev examples/tray
+
+import asuka/tray
+
+/// The timer's choices, in minutes.
+let lengths = [15, 25, 50]
+
+pub store Timer {
+  state minutes = 25
+  state left = 25min
+  state running = false
+
+  let clock = "{(left.seconds.int() / 60).padded(2)}:{(left.seconds.int() % 60).padded(2)}"
+  let startTitle = if running { "Pause" } else { "Start" }
+
+  // A second at a time while it runs; starting it again cancels the run
+  // before, so a tick of an earlier run never lands.
+  task(running) {
+    if !running { return }
+    while left > 1s {
+      await sleep(1s)
+      left -= 1s
+    }
+    running = false
+    left = minutes * 1min
+  }
+
+  pub fn toggle() { running = !running }
+
+  pub fn setLength(m: int) {
+    minutes = m
+    if !running { left = m * 1min }
+  }
+
+  pub fn reset() {
+    running = false
+    setLength(minutes)
+  }
+}
+
+app {
+  provide Timer()
+  Focus()
+}
+
+component Focus {
+  use timer: Timer
+  state open = false
+  state flyout = false
+
+  tray.Tray("timer") {
+    symbol: if timer.running { "timer" } else { "moon.zzz" }
+    title: timer.clock
+    tooltip: "Focus"
+    menu: [
+      .section(title: "", items: [
+        .button(title: timer.startTitle, run: () => timer.toggle()),
+        .button(title: "Reset", disabled: timer.running, run: () => timer.setLength(timer.minutes)),
+        .submenu(title: "Length", items: lengths.map(m => .button(
+          title: "{m} minutes",
+          checked: timer.minutes == m,
+          run: () => timer.setLength(m),
+        ))),
+      ]),
+      .section(title: "", items: [.button(title: "Open Timer", run: () => { open = true })]),
+      .section(title: "", items: [.button(title: "Quit Focus", run: () => quit())]),
+    ]
+    on click { flyout = !flyout }
+  }
+  tray.DockMenu { items: [.button(title: timer.startTitle, run: () => timer.toggle())] }
+
+  Panel()
+  Window {
+    bind open: open
+    title: "Focus"
+    width: 320
+    height: 220
+    Panel()
+  }
+  // The flyout: as big as what it shows, under the icon; it closes as the
+  // user clicks elsewhere or presses Escape, and stays while its dialog
+  // asks.
+  Window {
+    bind open: flyout
+    flyout: Flyout(anchor: tray.anchor("timer"), placement: .bottom, gap: 4)
+    fitContent: true
+    minWidth: 260
+    TimerFlyout()
+  }
+}
+
+component Panel {
+  use timer: Timer
+
+  Column {
+    justify: .center
+    align: .center
+    gap: 16
+    padding: 24
+    grow: 1
+    Text(timer.clock) { font: .largeTitle.bold() }
+    Button(timer.startTitle) {
+      variant: .filled
+      on press { timer.toggle() }
+    }
+  }
+}
+
+component TimerFlyout {
+  use timer: Timer
+  state confirm = false
+
+  Column {
+    gap: 14
+    padding: 18
+    align: .center
+    Text(timer.clock) { font: .largeTitle.bold() }
+    // The lengths, as a segmented control that follows minutes.
+    Segmented(lengths.map(m => "{m} min")) {
+      selected: lengths.index(m => m == timer.minutes) ?? 0
+      on change(i) { timer.setLength(lengths[i]) }
+    }
+    Row {
+      gap: 8
+      Button(timer.startTitle) {
+        variant: .filled
+        on press { timer.toggle() }
+      }
+      Button("Reset…") {
+        on press { confirm = true }
+      }
+    }
+    // A dialog over the flyout: modal to it, above it.
+    Window {
+      bind open: confirm
+      modal: true
+      title: "Reset the timer?"
+      width: 300
+      height: 110
+      resizable: false
+      Column {
+        gap: 16
+        padding: 18
+        grow: 1
+        Text("Reset the timer?")
+        Row {
+          gap: 8
+          justify: .end
+          Button("Cancel") {
+            on press { confirm = false }
+          }
+          Button("Reset") {
+            variant: .filled
+            on press {
+              timer.reset()
+              confirm = false
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+test "starts, counts down and resets" {
+  let app = mount(Panel(), provide: Timer())
+  app.expect("25:00", "Start")
+  app.tap("Start")
+  await sleep(3s)
+  app.expect("24:57", "Pause")
+  app.tap("Pause")
+  app.expect("Start")
+}
+
+test "a length picked in the flyout resets the clock" {
+  let app = mount(TimerFlyout(), provide: Timer())
+  app.tap("50 min")
+  app.expect("50:00")
+  app.tap("Start")
+  await sleep(1s)
+  app.tap("Reset…")
+  app.tap("Reset")
+  app.expect("50:00", "Start")
+}
