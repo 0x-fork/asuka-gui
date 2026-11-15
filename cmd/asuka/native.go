@@ -13,15 +13,14 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/egoist/asuka/internal/nativegen"
 )
 
-// Native packages: Go packages that declare typed native modules
-// (//asuka:native) and views (//asuka:view), with their native code beside
-// them, a project of each platform's own (internal/nativegen): a Swift
-// package (Package.swift, its Swift in swift/) for iOS and macOS, a
+// Native packages: Asuka packages that declare native interfaces (a
+// module's objects) and native components (views), with their native code
+// beside them, a project of each platform's own (internal/nativegen): a
+// Swift package (Package.swift, its Swift in swift/) for iOS and macOS, a
 // Gradle module (android/) for Android, JavaScript (web/) for the web. The
 // CLI keeps their generated files current, and builds each platform's
 // project into the apps that import them: the Swift with xcodebuild, as a
@@ -32,95 +31,69 @@ import (
 // with native code.
 type nativePackage struct {
 	path, name, dir string
-	main            bool // in the app's own module: asuka writes its generated files
+	main            bool // the app's own, or a local dependency's: asuka writes its generated files
 }
 
-// appPackages is what the go command lists of an app's package: its
-// native packages, and every package it imports, all the way down.
-type appPackages struct {
-	natives []nativePackage
-	deps    []string
-}
-
-var (
-	nativesMu    sync.Mutex
-	nativesCache = map[string]appPackages{}
-)
-
-// appNatives are the native packages of package pkg, as the go command
-// in dir builds it for goos and goarch: its dependencies with generated
-// native code.
-func appNatives(dir, pkg, goos, goarch string) ([]nativePackage, error) {
-	ps, err := listApp(dir, pkg, goos, goarch)
-	return ps.natives, err
-}
-
-// appDeps are the import paths of package pkg and its dependencies, as
-// the go command in dir builds it for goos and goarch.
-func appDeps(dir, pkg, goos, goarch string) ([]string, error) {
-	ps, err := listApp(dir, pkg, goos, goarch)
-	return ps.deps, err
-}
-
-// listApp lists package pkg's dependencies once per build of it.
-func listApp(dir, pkg, goos, goarch string) (appPackages, error) {
-	key := dir + "\x00" + pkg + "\x00" + goos + "\x00" + goarch
-	nativesMu.Lock()
-	ps, ok := nativesCache[key]
-	nativesMu.Unlock()
-	if ok {
-		return ps, nil
+// appNatives are the app's packages that declare something native: the
+// packages in its directory, and its dependencies.
+func appNatives(app *asukaApp) ([]nativePackage, error) {
+	type cand struct {
+		dir  bool
+		path string
+		main bool
 	}
-	cgo := "0"
-	if goos == "ios" || goos == "android" {
-		cgo = "1"
+	var dirs []string
+	byDir := map[string]cand{}
+	filepath.WalkDir(app.dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+		if p != app.dir && skipDir(d.Name()) {
+			return filepath.SkipDir
+		}
+		if hasDirectives(p) {
+			r, _ := filepath.Rel(app.dir, p)
+			dirs = append(dirs, p)
+			byDir[p] = cand{path: "./" + filepath.ToSlash(r), main: true}
+		}
+		return nil
+	})
+	var deps map[string]string
+	var local []string
+	if app.proj != nil {
+		deps, local = app.proj.Deps, app.proj.Local
 	}
-	c := exec.Command("go", "-C", dir, "list", "-deps", "-f", "{{.ImportPath}}\t{{.Name}}\t{{.Dir}}\t{{with .Module}}{{.Main}}{{end}}", pkg)
-	c.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED="+cgo)
-	var stderr bytes.Buffer
-	c.Stderr = &stderr
-	out, err := c.Output()
-	if err != nil {
-		return ps, fmt.Errorf("go list: %v\n%s", err, stderr.Bytes())
-	}
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		f := strings.Split(l, "\t")
-		if len(f) != 4 {
+	for id, d := range deps {
+		if _, ok := byDir[d]; ok || !hasDirectives(d) {
 			continue
 		}
-		ps.deps = append(ps.deps, f[0])
-		if f[2] == "" || !exists(filepath.Join(f[2], nativegen.GoFile(f[1]))) {
+		dirs = append(dirs, d)
+		byDir[d] = cand{path: id, main: slices.Contains(local, d)}
+	}
+	sort.Strings(dirs)
+	var out []nativePackage
+	for _, d := range dirs {
+		p, err := nativegen.LoadAny(d)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil || p.Empty() {
 			continue
 		}
-		ps.natives = append(ps.natives, nativePackage{path: f[0], name: f[1], dir: f[2], main: f[3] == "true"})
-	}
-	nativesMu.Lock()
-	nativesCache[key] = ps
-	nativesMu.Unlock()
-	return ps, nil
-}
-
-// forgetNatives drops what appNatives found for dir (asuka dev rebuilds:
-// its imports may have changed).
-func forgetNatives(dir string) {
-	nativesMu.Lock()
-	for k := range nativesCache {
-		if strings.HasPrefix(k, dir+"\x00") {
-			delete(nativesCache, k)
+		c := byDir[d]
+		path := c.path
+		if p.Path != "" && !c.main {
+			path = p.Path
 		}
+		out = append(out, nativePackage{path: path, name: p.Name, dir: d, main: c.main})
 	}
-	nativesMu.Unlock()
+	return out, nil
 }
 
 // nativeFor are the app's native packages with native code for platform
-// (ios, macos, android, web), built for goarch.
-func nativeFor(app *goApp, platform, goarch string) ([]nativePackage, error) {
-	goos := map[string]string{"ios": "ios", "macos": "darwin", "android": "android", "web": "js"}[platform]
-	if platform == "web" {
-		goarch = "wasm"
-	}
-	dir, pkg := app.goPackage()
-	ps, err := appNatives(dir, pkg, goos, goarch)
+// (ios, macos, android, web).
+func nativeFor(app *asukaApp, platform string) ([]nativePackage, error) {
+	ps, err := appNatives(app)
 	if err != nil {
 		return nil, err
 	}
@@ -149,33 +122,22 @@ func nativeFor(app *goApp, platform, goarch string) ([]nativePackage, error) {
 }
 
 // generateNatives keeps the app's native packages' generated files
-// current: those of its own module (its dependencies there with
-// //asuka: directives) are written again where their declarations
-// changed; a dependency's of another module, stale, is an error (its
-// module is what's published).
-func generateNatives(app *goApp) error {
-	c := exec.Command("go", "-C", app.dir, "list", "-deps", "-f", "{{.Dir}}\t{{.Name}}\t{{with .Module}}{{.Main}}{{end}}", ".")
-	var stderr bytes.Buffer
-	c.Stderr = &stderr
-	out, err := c.Output()
+// current: those of its own (and of its local dependencies) are written
+// again where their declarations changed; a published dependency's,
+// stale, is an error (what's published is what it is).
+func generateNatives(app *asukaApp) error {
+	ps, err := appNatives(app)
 	if err != nil {
-		return fmt.Errorf("go list: %v\n%s", err, stderr.Bytes())
+		return err
 	}
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		f := strings.Split(l, "\t")
-		if len(f) != 3 || f[0] == "" || f[2] == "" {
-			continue // the standard library's
+	for _, p := range ps {
+		if p.main {
+			err = generateNative(p.dir)
+		} else {
+			err = checkNative(p.dir)
 		}
-		dir, main := f[0], f[2] == "true"
-		switch {
-		case main && hasDirectives(dir):
-			if err := generateNative(dir); err != nil {
-				return err
-			}
-		case !main && exists(filepath.Join(dir, nativegen.GoFile(f[1]))):
-			if err := checkNative(dir); err != nil {
-				return err
-			}
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -511,8 +473,8 @@ func nativeDirsOf(ps []nativePackage, platform string) []string {
 
 // androidNatives sets the app's native packages' Gradle modules (their
 // android/), named by their packages.
-func (c *appConfig) androidNatives(app *goApp) error {
-	natives, err := nativeFor(app, "android", "arm64")
+func (c *appConfig) androidNatives(app *asukaApp) error {
+	natives, err := nativeFor(app, "android")
 	if err != nil {
 		return err
 	}

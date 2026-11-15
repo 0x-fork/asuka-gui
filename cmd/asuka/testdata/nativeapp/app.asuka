@@ -1,0 +1,5 @@
+// An app with a native package (internal/nativegen's kitchen): the Mac
+// build's tests build its Swift.
+import kitchen
+
+app { Text("kitchen") }

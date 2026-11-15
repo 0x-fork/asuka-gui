@@ -30,73 +30,36 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/nativegen"
 	webhost "github.com/egoist/asuka/platform/web"
 )
 
-// The web: the app's Go code compiled to WebAssembly (GOOS=js
-// GOARCH=wasm) and the web host (platform/web: the DOM, in JavaScript),
-// which the page loads together.
+// The web: the C core as WebAssembly (asuka.wasm, built by Zig) and the
+// web host (platform/web: the DOM, in JavaScript), which the page loads
+// together.
 //
-// asuka dev --platform web serves the app on this machine and opens it in the
-// browser; each change rebuilds it and reloads the page, the app's
-// signals' state kept (the page keeps it in its session storage across
-// the reload). The app's output and the page's errors are printed here.
-// asuka build --platform web makes a static site: its files named by their content's
-// digest (cache them for good; index.html no-cache), gzipped copies,
-// a web app manifest and its icons, and the app's service worker
-// (webWorker), which shows its notifications and pushes while no page is
-// open.
+// asuka dev --platform web serves the app on this machine and opens it in
+// the browser: the page runs the player (the core without an app) and
+// loads the app's bytecode from asuka dev, and again on each save,
+// keeping its state and views (asuka_dev_reload). The app's output and
+// the page's errors are printed here. asuka build --platform web makes a
+// static site: the core with the app compiled in, its files named by
+// their content's digest (cache them for good; index.html no-cache),
+// gzipped copies, a web app manifest and its icons, and the app's service
+// worker (webWorker), which shows its notifications and pushes while no
+// page is open.
 
 const devWebPort = 8790
 
-// webLdflags is the -ldflags of a web build: asuka.toml's, the app's name
-// (the page's title) and version.
-func webLdflags(app *goApp, release bool) string {
-	f := strings.TrimPrefix(app.cfg.ldflags(release), "-ldflags=")
-	f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.Name="+app.displayName())
-	if app.cfg != nil {
-		f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.Version="+app.cfg.Version)
-		f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.Build="+strconv.Itoa(app.cfg.Build))
-	}
-	return "-ldflags=" + strings.TrimSpace(f)
-}
-
-// buildWasm builds the app's Go code for the browser; a development build
-// (places, not a release) with the names of its source's places for its
-// kept state (devPlaces).
-func buildWasm(app *goApp, out string, release, verbose bool, places *devPlaces) error {
-	args := []string{"build", webLdflags(app, release), "-o", out}
-	if release {
-		args = append(args, "-trimpath")
-	}
-	if places != nil {
-		ov, err := devOverlay(app, filepath.Dir(out), false, places)
-		if err != nil {
-			return err
-		}
-		args = append(args, "-overlay", ov)
-	}
-	args = append(args, ".")
-	if verbose {
-		fmt.Println("+ GOOS=js GOARCH=wasm go", strings.Join(args, " "))
-	}
-	c := exec.Command("go", args...)
-	c.Dir = app.dir
-	c.Env = goEnv(app.dir, "GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0")
-	if b, err := c.CombinedOutput(); err != nil {
-		return fmt.Errorf("go build failed:\n%s", bytes.TrimSpace(b))
-	}
-	return nil
-}
-
-// webSource is the web host's files: the checkout's, when the app is in
-// Asuka's own module (so changing them reloads the page too), else the
-// ones built into the CLI.
-func webSource(app *goApp) (fs.FS, string) {
-	dir := filepath.Join(app.moduleDir, "platform", "web", "src")
-	if _, err := os.Stat(filepath.Join(dir, "host.js")); err == nil {
-		if b, err := os.ReadFile(filepath.Join(app.moduleDir, "go.mod")); err == nil && bytes.Contains(b, []byte("module github.com/egoist/asuka\n")) {
+// webSource is the web host's files: the checkout's, when the CLI runs
+// from one (so changing them reloads the page too), else the ones built
+// into the CLI.
+func webSource() (fs.FS, string) {
+	if root := appbuild.Checkout(); root != "" {
+		dir := filepath.Join(root, "platform", "web", "src")
+		if _, err := os.Stat(filepath.Join(dir, "host.js")); err == nil {
 			return os.DirFS(dir), dir
 		}
 	}
@@ -107,8 +70,8 @@ func webSource(app *goApp) (fs.FS, string) {
 // webPluginFiles are the web's files of the plugins app uses (their
 // libraries' wasm files, plugins.go), by their paths in the host's
 // directory: lib/<file>, as Linux's are in lib/ of the prefix.
-func webPluginFiles(app *goApp) (map[string]pluginLib, error) {
-	libs, err := appLibs(app.dir, "js", "wasm", "wasm")
+func webPluginFiles(app *asukaApp) (map[string]pluginLib, error) {
+	libs, err := appLibs(app, "wasm")
 	if err != nil {
 		return nil, err
 	}
@@ -134,25 +97,9 @@ func webPluginOptions(files map[string]pluginLib, base string, opts map[string]a
 	opts["libs"] = libs
 }
 
-// wasmExec is the Go release's JavaScript side of its WebAssembly port,
-// which must be the one the app was built with.
-func wasmExec() ([]byte, error) {
-	root, err := exec.Command("go", "env", "GOROOT").Output()
-	if err != nil {
-		return nil, err
-	}
-	r := strings.TrimSpace(string(root))
-	for _, p := range []string{filepath.Join(r, "lib", "wasm", "wasm_exec.js"), filepath.Join(r, "misc", "wasm", "wasm_exec.js")} {
-		if b, err := os.ReadFile(p); err == nil {
-			return b, nil
-		}
-	}
-	return nil, errors.New("no wasm_exec.js in this Go installation")
-}
-
 // fontFiles are the app's font files (assets/fonts), which a FontFamily
 // names by their names without the extension.
-func fontFiles(app *goApp) []string {
+func fontFiles(app *asukaApp) []string {
 	var out []string
 	es, _ := os.ReadDir(filepath.Join(app.dir, "assets", "fonts"))
 	for _, e := range es {
@@ -165,11 +112,11 @@ func fontFiles(app *goApp) []string {
 }
 
 type webPage struct {
-	Name, Lang       string
-	Base             string // the path the site is served at: its <base href>
-	Host, Wasm, Exec string // the URLs of the host's directory, the app's wasm, wasm_exec.js
-	Options          map[string]any
-	Icon, Manifest   bool
+	Name, Lang     string
+	Base           string // the path the site is served at: its <base href>
+	Host, Core     string // the URLs of the host's directory, the core's wasm
+	Options        map[string]any
+	Icon, Manifest bool
 	// Scripts are its native packages' generated JavaScript, loaded
 	// before it starts: they register the packages' modules and views.
 	Scripts []string
@@ -188,7 +135,7 @@ func siteBase(b string) string {
 // base, so it finds its files from any route's path (a Router's
 // addresses, which the server answers with this page).
 func webIndex(p webPage) string {
-	opts := map[string]any{"wasm": p.Wasm, "exec": p.Exec, "assets": "assets"}
+	opts := map[string]any{"core": p.Core, "assets": "assets"}
 	for k, v := range p.Options {
 		opts[k] = v
 	}
@@ -228,7 +175,7 @@ globalThis.asuka = asuka;
 </script>
 </body>
 </html>
-`, p.Host, p.Wasm, o, imports(p.Scripts))
+`, p.Host, p.Core, o, imports(p.Scripts))
 	return b.String()
 }
 
@@ -305,7 +252,7 @@ func webWorker(src fs.FS, settings map[string]any) ([]byte, error) {
 
 // webVAPIDKey is asuka.toml's web.vapidPublicKey, checked: an uncompressed
 // P-256 point in base64url (unpadded), as PushManager.subscribe takes it.
-func webVAPIDKey(app *goApp) (string, error) {
+func webVAPIDKey(app *asukaApp) (string, error) {
 	if app.cfg == nil || strings.TrimSpace(app.cfg.Web.VapidPublicKey) == "" {
 		return "", nil
 	}
@@ -330,24 +277,37 @@ func devWeb(dir string, o *devOptions, stop <-chan os.Signal) error {
 	if err != nil {
 		return err
 	}
-	exec_, err := wasmExec()
-	if err != nil {
-		return err
-	}
 	vapid, err := webVAPIDKey(app)
 	if err != nil {
 		return err
 	}
-	src, srcDir := webSource(app)
-	s := &devServer{app: app, src: src, exec: exec_, wasm: filepath.Join(work, "app.wasm"), vapid: vapid, clients: map[chan string]bool{},
-		places: newDevPlaces(app, "js", "wasm")}
+	src, srcDir := webSource()
+	s := &devServer{app: app, src: src, wasm: filepath.Join(work, "asuka.wasm"), vapid: vapid, clients: map[chan string]bool{}}
 	start := time.Now()
-	if err := buildWasm(app, s.wasm, false, o.verbose, s.places); err != nil {
+	// The player: the core without an app, which loads the app's module.
+	if err := appbuild.Lib(cbuild.Target{OS: "wasm", Arch: "wasm32"}, cbuild.Module, nil, s.wasm); err != nil {
 		return err
 	}
 	if err := s.findPlugins(); err != nil {
 		return err
 	}
+	loop, err := newDevLoop(app, "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	s.loop = loop
+	s.moduleStamp = strconv.FormatInt(time.Now().UnixNano(), 36)
+	loop.mu.Lock()
+	loop.modules = append(loop.modules, func([]byte) {
+		s.mu.Lock()
+		s.moduleStamp = strconv.FormatInt(time.Now().UnixNano(), 36)
+		stamp := s.moduleStamp
+		s.mu.Unlock()
+		s.send("module", stamp)
+	})
+	loop.failed = append(loop.failed, func(msg string) { s.send("failed", msg) })
+	loop.fixed = append(loop.fixed, func() { s.send("fixed", "") })
+	loop.mu.Unlock()
 	s.stamp = strconv.FormatInt(time.Now().UnixNano(), 36)
 	host := "127.0.0.1"
 	if o.lan {
@@ -366,82 +326,71 @@ func devWeb(dir string, o *devOptions, stop <-chan os.Signal) error {
 	}
 	go http.Serve(ln, s)
 	url := fmt.Sprintf("http://localhost:%d/", ln.Addr().(*net.TCPAddr).Port)
-	fmt.Printf("asuka: %s at %s (built in %.1fs)\n", app.name, url, time.Since(start).Seconds())
+	s.url = url
+	fmt.Printf("asuka: %s at %s (the player built in %.1fs)\n", app.name, url, time.Since(start).Seconds())
 	if o.lan {
 		for _, a := range lanAddrs() {
 			fmt.Printf("asuka: on this network: http://%s:%d/\n", a, ln.Addr().(*net.TCPAddr).Port)
 		}
 	}
-	if !o.noOpen {
-		openBrowser(url)
-	}
-	if o.once {
-		<-stop
-		return nil
-	}
-	fmt.Println("asuka: watching for changes (Ctrl-C to stop)")
 	hostWatch := newWebWatcher(srcDir)
 	var nativeWatch []*webWatcher // the native packages' JavaScript, wherever it is
-	natives, _ := nativeFor(app, "web", "wasm")
-	webDirs := nativeDirsOf(natives, "web")
-	for _, d := range webDirs {
+	natives, _ := nativeFor(app, "web")
+	for _, d := range nativeDirsOf(natives, "web") {
 		nativeWatch = append(nativeWatch, newWebWatcher(d))
 	}
-	// Woken by changes to any of them: the Go code and what the scripts'
-	// watchers look at.
-	w := newWatcher(append([]string{app.moduleDir, app.dir, srcDir}, webDirs...)...)
-	for {
-		select {
-		case <-stop:
-			return nil
-		case <-w.wake:
-			if hostWatch.changed() || slices.ContainsFunc(nativeWatch, (*webWatcher).changed) {
-				// The host's own JavaScript (a checkout of Asuka): the page loads it again.
-				s.stamp = strconv.FormatInt(time.Now().UnixNano(), 36)
-				s.send("reload", "")
-			}
-			if !w.changed() {
-				continue
-			}
-			t := time.Now()
-			if err := buildWasm(app, s.wasm, false, o.verbose, s.places); err != nil {
-				fmt.Fprintln(os.Stderr, "asuka:", err)
-				s.send("failed", err.Error())
-				s.failed = true
-				continue
-			}
-			if s.failed {
-				s.failed = false
-				s.send("fixed", "")
-			}
+	opened := false
+	launch := func() error {
+		if opened {
+			// The app's settings, assets or scripts changed: the page
+			// loads them again.
 			if err := s.findPlugins(); err != nil {
-				fmt.Fprintln(os.Stderr, "asuka:", err)
+				return err
 			}
 			s.stamp = strconv.FormatInt(time.Now().UnixNano(), 36)
 			s.send("reload", "")
-			fmt.Printf("asuka: rebuilt in %.1fs\n", time.Since(t).Seconds())
+			return nil
 		}
+		opened = true
+		if !o.noOpen {
+			openBrowser(url)
+		}
+		return nil
 	}
+	// The host's own JavaScript (a checkout of Asuka) and the packages':
+	// the page loads them again.
+	go func() {
+		w := newWatcher(append([]string{srcDir}, nativeDirsOf(natives, "web")...)...)
+		for range w.wake {
+			if hostWatch.changed() || slices.ContainsFunc(nativeWatch, (*webWatcher).changed) {
+				s.stamp = strconv.FormatInt(time.Now().UnixNano(), 36)
+				s.send("reload", "")
+			}
+		}
+	}()
+	return loop.run(devPlayer{launch: launch}, stop, o.once)
 }
 
 // devServer serves the app's page under asuka dev: the page, the host's
 // files, the build, the app's assets, and its connection back (the
 // reloads it waits for, the logs it sends).
 type devServer struct {
-	app     *goApp
+	app     *asukaApp
+	loop    *devLoop
 	src     fs.FS
 	plugins atomic.Pointer[map[string]pluginLib] // webPluginFiles, as of the last build
 	scripts atomic.Pointer[[]webScript]          // the plugins' scripts (pluginScripts), likewise
-	exec    []byte
-	wasm    string
-	vapid   string // asuka.toml's web.vapidPublicKey
-	places  *devPlaces
-	stamp   string // the build's, so the page never loads an old one
-	failed  bool
-	mu      sync.Mutex
-	clients map[chan string]bool
-	nextID  int64
-	waiting map[int64]chan struct {
+	wasm    string                               // the player: the core without an app
+	vapid   string                               // asuka.toml's web.vapidPublicKey
+	url     string
+	stamp   string // the page's files', so the page never loads old ones
+	// moduleStamp names the app's last module, so the page never loads an
+	// old one.
+	moduleStamp string
+	mu          sync.Mutex
+	clients     map[chan string]bool
+	nextID      int64
+	waiting     map[int64]chan struct {
 		ID         int64
 		Out, Error string
 	}
@@ -508,9 +457,26 @@ func (s *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case p == "/" || p == "/index.html":
 		s.index(w)
-	case p == "/app.wasm":
+	case p == "/asuka.wasm":
 		w.Header().Set("Content-Type", "application/wasm")
 		http.ServeFile(w, r, s.wasm)
+	case p == "/__asuka/app.akb":
+		m := s.loop.current()
+		if m == nil {
+			http.Error(w, "the app hasn't compiled", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Write(m)
+	case p == "/__asuka/reloaded" && r.Method == http.MethodPost:
+		var rep struct {
+			First  bool
+			Kept   uint32
+			Micros uint32
+		}
+		if json.NewDecoder(r.Body).Decode(&rep) == nil {
+			s.loop.report(nil, rep.First, rep.Kept, rep.Micros)
+		}
 	case p == "/sw.js":
 		b, err := webWorker(s.src, map[string]any{"name": s.app.cfg.ID, "title": s.app.displayName(), "assets": "assets"})
 		if err != nil {
@@ -519,9 +485,6 @@ func (s *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", contentType(p))
 		w.Write(b)
-	case p == "/asuka/wasm_exec.js":
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		w.Write(s.exec)
 	case strings.HasPrefix(p, "/asuka/packages/"):
 		i := slices.IndexFunc(*s.scripts.Load(), func(sc webScript) bool { return "/asuka/"+sc.path == p })
 		if i < 0 {
@@ -590,14 +553,18 @@ func (s *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // path: a Router's addresses).
 func (s *devServer) index(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	opts := map[string]any{"name": s.app.cfg.ID, "title": s.app.displayName(), "dev": "/__asuka/", "fonts": fontFiles(s.app), "version": s.app.cfg.Version, "build": s.app.cfg.Build, "serviceWorker": "sw.js"}
+	s.mu.Lock()
+	module := "/__asuka/app.akb?" + s.moduleStamp
+	s.mu.Unlock()
+	opts := map[string]any{"name": s.app.cfg.ID, "title": s.app.displayName(), "dev": "/__asuka/", "module": module,
+		"fonts": fontFiles(s.app), "version": s.app.cfg.Version, "build": s.app.cfg.Build, "serviceWorker": "sw.js"}
 	if s.vapid != "" {
 		opts["vapidPublicKey"] = s.vapid
 	}
 	webPluginOptions(*s.plugins.Load(), "asuka/", opts)
 	io.WriteString(w, webIndex(webPage{
 		Name: s.app.displayName(), Lang: devLangOr("en"),
-		Host: "asuka", Wasm: "app.wasm?" + s.stamp, Exec: "asuka/wasm_exec.js",
+		Host: "asuka", Core: "asuka.wasm?" + s.stamp,
 		Scripts: prefixed("asuka/", scriptPaths(*s.scripts.Load())),
 		Options: opts,
 	}))
@@ -743,7 +710,7 @@ func devLangOr(def string) string {
 	return def
 }
 
-func buildWeb(app *goApp, o *buildOptions) error {
+func buildWeb(app *asukaApp, o *buildOptions) error {
 	out := filepath.Join(o.out, "web")
 	if err := os.RemoveAll(out); err != nil {
 		return err
@@ -751,8 +718,13 @@ func buildWeb(app *goApp, o *buildOptions) error {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
-	tmp := filepath.Join(out, ".app.wasm")
-	if err := buildWasm(app, tmp, true, o.verbose, nil); err != nil {
+	// The core with the app compiled in.
+	m, err := app.compile()
+	if err != nil {
+		return err
+	}
+	tmp := filepath.Join(out, ".asuka.wasm")
+	if err := appbuild.Lib(cbuild.Target{OS: "wasm", Arch: "wasm32"}, cbuild.Module, m, tmp); err != nil {
 		return err
 	}
 	defer os.Remove(tmp)
@@ -760,18 +732,14 @@ func buildWeb(app *goApp, o *buildOptions) error {
 	if err != nil {
 		return err
 	}
-	exec_, err := wasmExec()
-	if err != nil {
-		return err
-	}
 	vapid, err := webVAPIDKey(app)
 	if err != nil {
 		return err
 	}
-	src, _ := webSource(app)
+	src, _ := webSource()
 	// The host's files go in a directory named by their digest: they
 	// import each other by name.
-	files := map[string][]byte{"wasm_exec.js": exec_}
+	files := map[string][]byte{}
 	fs.WalkDir(src, ".", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
 			files[p], _ = fs.ReadFile(src, p)
@@ -788,7 +756,7 @@ func buildWeb(app *goApp, o *buildOptions) error {
 			return err
 		}
 	}
-	natives, err := nativeFor(app, "web", "wasm")
+	natives, err := nativeFor(app, "web")
 	if err != nil {
 		return err
 	}
@@ -818,7 +786,7 @@ func buildWeb(app *goApp, o *buildOptions) error {
 		}
 	}
 	sum := sha256.Sum256(wasm)
-	wasmName := "app." + hex.EncodeToString(sum[:])[:12] + ".wasm"
+	wasmName := "asuka." + hex.EncodeToString(sum[:])[:12] + ".wasm"
 	if err := writeWeb(filepath.Join(out, wasmName), wasm); err != nil {
 		return err
 	}
@@ -887,7 +855,7 @@ func buildWeb(app *goApp, o *buildOptions) error {
 	}
 	base = siteBase(base)
 	page := webIndex(webPage{
-		Name: name, Lang: "en", Base: base, Host: hostDir, Wasm: wasmName, Exec: hostDir + "/wasm_exec.js",
+		Name: name, Lang: "en", Base: base, Host: hostDir, Core: wasmName,
 		Options:  opts,
 		Icon:     icon,
 		Manifest: true,
@@ -1003,13 +971,11 @@ func webIcons(src, dir string) error {
 // findPlugins finds the plugins the app uses again (its imports may have
 // changed), and their files for the pages.
 func (s *devServer) findPlugins() error {
-	forgetPlugins(s.app.dir)
 	files, err := webPluginFiles(s.app)
 	if err != nil {
 		return err
 	}
-	forgetNatives(s.app.dir)
-	natives, err := nativeFor(s.app, "web", "wasm")
+	natives, err := nativeFor(s.app, "web")
 	if err != nil {
 		return err
 	}

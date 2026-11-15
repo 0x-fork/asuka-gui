@@ -191,9 +191,6 @@ func TestFeaturesFromImports(t *testing.T) {
 	if got := strings.Join(none.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("no modules: %s", got)
 	}
-	if p := playerConfig(); !slices.Contains(p.androidModules, "scan") {
-		t.Errorf("the player's modules: %v", p.androidModules)
-	}
 }
 
 // An app that imports asuka/sdk/pay gets Google Pay's module (whose
@@ -273,15 +270,6 @@ func TestShareSheetConfig(t *testing.T) {
 	c.shareSheet = false
 	if c.appGroup() != "" || c.keychainGroup("T") != "" || c.sharePrincipal() != "AsukaShareViewController" {
 		t.Error("no sheet: a group, or the sheet's class")
-	}
-	// The sheet's symbol is found in a library's function names.
-	dir := t.TempDir()
-	lib := filepath.Join(dir, "libasuka.so")
-	os.WriteFile(lib, []byte("..."+sheetSymbol+"\x00..."), 0o644)
-	other := filepath.Join(dir, "other.so")
-	os.WriteFile(other, []byte("..."+sheetSymbol+"Thing\x00..."), 0o644)
-	if !hasSheet(lib) || hasSheet(other) {
-		t.Error("hasSheet")
 	}
 }
 

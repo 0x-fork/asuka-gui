@@ -17,7 +17,7 @@ import (
 // and 11) and its version information. The Go linker links the main
 // package's .syso files into the executable. (From MyGo's.) goarch is
 // the build's: amd64 or arm64.
-func winresSyso(app *goApp, goarch string) ([]byte, error) {
+func winresSyso(app *asukaApp, goarch string) ([]byte, error) {
 	machine, relocation := uint16(0x8664), uint16(0x0003) // amd64, IMAGE_REL_AMD64_ADDR32NB
 	if goarch == "arm64" {
 		machine, relocation = 0xAA64, 0x0002 // IMAGE_REL_ARM64_ADDR32NB
@@ -205,7 +205,7 @@ func sortedKeys[V any](m map[uint16]V) []uint16 {
 
 // windowsVersion is the app's version as four numbers: asuka.toml's
 // version (1.2.3), then its build.
-func windowsVersion(app *goApp) [4]uint16 {
+func windowsVersion(app *asukaApp) [4]uint16 {
 	var out [4]uint16
 	v, b := "1.0", 1
 	if app.cfg != nil {
@@ -225,7 +225,7 @@ func windowsVersion(app *goApp) [4]uint16 {
 	return out
 }
 
-func windowsManifest(app *goApp) string {
+func windowsManifest(app *asukaApp) string {
 	v := windowsVersion(app)
 	name := strings.Map(func(r rune) rune {
 		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' {
@@ -259,7 +259,7 @@ func windowsManifest(app *goApp) string {
 
 // versionInfo encodes a VS_VERSIONINFO resource: the app's name and
 // version, in US English and Unicode (040904b0).
-func versionInfo(app *goApp) []byte {
+func versionInfo(app *asukaApp) []byte {
 	v := windowsVersion(app)
 	fixed := make([]byte, 52)
 	le := binary.LittleEndian

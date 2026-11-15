@@ -27,13 +27,8 @@ func (t *iosToolchain) pluginTarget() string {
 
 // pluginLibs are the libraries of the plugins app uses, for the
 // toolchain's SDK.
-func (t *iosToolchain) pluginLibs(app *goApp) ([]pluginLib, error) {
-	goarch := t.goarch
-	if goarch == "" {
-		goarch = "arm64"
-	}
-	dir, pkg := app.goPackage()
-	ps, err := pkgPlugins(dir, pkg, "ios", goarch)
+func (t *iosToolchain) pluginLibs(app *asukaApp) ([]pluginLib, error) {
+	ps, err := appPlugins(app)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +86,7 @@ func (t *iosToolchain) writePluginFramework(dir string, l pluginLib) (string, er
 // embedPlugins puts the frameworks of the plugins app uses in bundle's
 // Frameworks, with those of its Swift packages, and their resource
 // bundles in it; signFrameworks signs the frameworks.
-func (t *iosToolchain) embedPlugins(bundle string, app *goApp) error {
+func (t *iosToolchain) embedPlugins(bundle string, app *asukaApp) error {
 	if err := t.packages.embed(filepath.Join(bundle, "Frameworks"), bundle); err != nil {
 		return err
 	}

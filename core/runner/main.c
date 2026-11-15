@@ -34,6 +34,7 @@ typedef struct {
 
 static void run_test(void *ctx);
 static void run_init(void *ctx);
+static void show_app(ak_owner *o, const ak_func *f);
 
 static int failures;
 static const char *current;
@@ -64,20 +65,33 @@ static void settle(ak_future *fut) {
 }
 
 int main(int argc, char **argv) {
-	bool test = false, aot = false;
+	bool test = false, aot = false, app = false;
 	const char *pattern = NULL, *path = NULL;
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "-aot") == 0) {
 			aot = true;
+		} else if (strcmp(argv[i], "-app") == 0) {
+			app = true;
+		} else if (strcmp(argv[i], "-platform") == 0 && i + 1 < argc) {
+			static const char *names[] = {"", "ios", "android", "macos", "windows", "web", "linux"};
+			const char *want = argv[++i];
+			uint8_t p = 0;
+			for (uint8_t k = 1; k < sizeof names / sizeof *names; k++)
+				if (strcmp(names[k], want) == 0) p = k;
+			if (!p) {
+				fprintf(stderr, "asuka-run: -platform %s: one of ios, android, macos, windows, web, linux\n", want);
+				return 2;
+			}
+			ak_uitest_set_platform(p);
 		} else if (strcmp(argv[i], "-test") == 0) {
 			test = true;
-			if (i + 2 < argc) pattern = argv[++i];
+			if (i + 2 < argc && argv[i + 1][0] != '-') pattern = argv[++i];
 		} else {
 			path = argv[i];
 		}
 	}
 	if (!path && !aot) {
-		fprintf(stderr, "usage: asuka-run [-test [pattern]] (module.akb | -aot)\n");
+		fprintf(stderr, "usage: asuka-run [-test [pattern]] [-app] [-platform name] (module.akb | -aot)\n");
 		return 2;
 	}
 	size_t n = 0;
@@ -98,7 +112,7 @@ int main(int argc, char **argv) {
 	ak_ui_builtins_init();
 	ak_uitest_builtins_init();
 	ak_signal_set_error_handler(on_error, NULL);
-	if (test) ak_sched_manual_clock(true);
+	if (test || app) ak_sched_manual_clock(true);
 	char err[512] = "";
 	ak_module *m = aot ? ak_app_loader() : ak_module_load(p, n, err, sizeof err);
 	ak_free(p);
@@ -146,10 +160,50 @@ int main(int argc, char **argv) {
 		}
 		current = NULL;
 	}
+	if (app) {
+		int32_t ai = ak_module_app(m);
+		if (ai < 0) {
+			fprintf(stderr, "asuka-run: the module has no app\n");
+			failures++;
+		} else {
+			ak_owner *o = ak_owner_new();
+			show_app(o, ak_module_func(m, (uint32_t)ai));
+			ak_owner_dispose(o);
+			settle(NULL);
+		}
+	}
 	ak_owner_dispose(root);
 	ak_ui_shutdown();
 	if (!aot) ak_module_release(m);
 	return failures ? 1 : 0;
+}
+
+typedef struct {
+	const ak_func *f;
+	ak_uitest *a;
+} show_t;
+
+static void mount_app(void *ctx) {
+	show_t *s = ctx;
+	ak_closure *build = ak_vm_closure(s->f);
+	s->a = ak_uitest_mount(build, NULL);
+	ak_release(build);
+}
+
+// show_app mounts the app's root view on the fake host, owned by o, lets
+// it settle and prints what the screen shows.
+static void show_app(ak_owner *o, const ak_func *f) {
+	show_t s = {f, NULL};
+	ak_with_owner(o, mount_app, &s);
+	settle(NULL);
+	ak_uitest_settle(s.a);
+	ak_buf out = {0};
+	ak_uitest_snapshot(s.a, &out);
+	fwrite(out.data, 1, out.len, stdout);
+	fflush(stdout);
+	ak_buf_free(&out);
+	ak_uitest_unmount(s.a, NULL);
+	ak_release(s.a);
 }
 
 // run_test starts a test: an async function, so a task whose future it

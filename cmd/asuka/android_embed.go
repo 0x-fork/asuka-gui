@@ -20,7 +20,7 @@ import (
 //
 // Its dependencies (Material, AndroidX) come through the repository's POMs.
 
-func buildAndroidAAR(app *goApp, o *buildOptions) error {
+func buildAndroidAAR(app *asukaApp, o *buildOptions) error {
 	start := time.Now()
 	cfg := app.cfg
 	tc, err := newAndroidToolchain(o.verbose)

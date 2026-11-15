@@ -194,13 +194,14 @@ const (
 
 // Lib builds the core (and extra sources: an app compiled to C) for the
 // toolchain's target into out, optimized for release unless debug. It
-// caches objects by their sources and flags under the user's cache.
+// caches objects under the user's cache: the core's by its sources and
+// flags, the extra sources' by theirs, so a new build of an app compiles
+// only the app.
 func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, out string) error {
 	srcs, err := Sources(core, false)
 	if err != nil {
 		return err
 	}
-	srcs = append(srcs, extra...)
 	flags := append(append(Includes(core), tc.Flags...), "-ffunction-sections", "-fdata-sections")
 	if debug {
 		flags = append(flags, "-g", "-O1", "-DAK_DEBUG=1")
@@ -210,25 +211,17 @@ func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, 
 	if kind != Static {
 		flags = append(flags, "-fvisibility=hidden", "-DAK_EXPORTS=1")
 	}
-	h := sha256.New()
-	fmt.Fprintln(h, tc.CC.Path, tc.CC.Args, flags, kind)
 	hdrs, _ := headers(core)
-	for _, f := range append(srcs, hdrs...) {
-		b, err := os.ReadFile(f)
+	objs, err := tc.compileCached(core, "core", srcs, hdrs, flags, kind)
+	if err != nil {
+		return err
+	}
+	if len(extra) > 0 {
+		more, err := tc.compileCached(core, "app", extra, hdrs, flags, kind)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(h, f, len(b))
-		h.Write(b)
-	}
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	dir := filepath.Join(cache, "asuka", "core-"+tc.Target.String()+"-"+hex.EncodeToString(h.Sum(nil))[:16])
-	objs, err := tc.CC.Compile(srcs, filepath.Join(dir, "obj"), flags)
-	if err != nil {
-		return err
+		objs = append(objs, more...)
 	}
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return err
@@ -259,6 +252,28 @@ func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, 
 	}
 }
 
+// compileCached compiles srcs with flags into a cache directory named by
+// what (core, app), the target and the hash of the sources, the headers
+// they include and the flags.
+func (tc *Toolchain) compileCached(core, what string, srcs, hdrs, flags []string, kind LibKind) ([]string, error) {
+	h := sha256.New()
+	fmt.Fprintln(h, tc.CC.Path, tc.CC.Args, flags, kind)
+	for _, f := range append(append([]string{}, srcs...), hdrs...) {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintln(h, f, len(b))
+		h.Write(b)
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		cache = os.TempDir()
+	}
+	dir := filepath.Join(cache, "asuka", what+"-"+tc.Target.String()+"-"+hex.EncodeToString(h.Sum(nil))[:16])
+	return tc.CC.Compile(srcs, filepath.Join(dir, "obj"), flags)
+}
+
 // deadStrip drops what nothing calls, and symbols and debug information
 // a release doesn't need.
 func deadStrip(t Target) []string {
@@ -278,7 +293,7 @@ func exportFlags() []string {
 	for _, name := range []string{
 		"asuka_start", "asuka_load", "asuka_event", "asuka_list_count", "asuka_list_bind", "asuka_list_unbind",
 		"asuka_run_posted", "asuka_attach", "asuka_timer_fire", "asuka_native_done", "asuka_native_invoke", "asuka_alloc", "asuka_free",
-		"asuka_run", "asuka_free_string", "asuka_web_start", "asuka_io",
+		"asuka_run", "asuka_dev_reload", "asuka_free_string", "asuka_web_start", "asuka_io",
 	} {
 		f = append(f, "-Wl,--export="+name)
 	}

@@ -92,7 +92,7 @@ func TestFlagsHelp(t *testing.T) {
 			"\n  -p, --platform <platform>\n        the platform to build for: ios,",
 			"\n      --distribution <distribution>\n        iOS: app-store, ad-hoc or development (default: app-store)\n",
 			"\n  -o, --out <directory>\n",
-			"\n      --no-vet\n",
+			"\n      --simulator\n",
 			"\n  -v, --verbose\n        print the commands asuka runs\n",
 		} {
 			if !strings.Contains(help, want) {

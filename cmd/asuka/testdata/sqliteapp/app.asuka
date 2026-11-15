@@ -1,0 +1,5 @@
+// An app that uses the sqlite plugin (asuka/sqlite): the builds' tests
+// ship its library.
+import asuka/sqlite
+
+app { Text("runs") }

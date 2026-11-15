@@ -22,15 +22,7 @@ func TestMacSwift(t *testing.T) {
 	if _, err := exec.LookPath("xcodebuild"); err != nil {
 		t.Skip("no Xcode")
 	}
-	dir, err := filepath.Abs(filepath.Join("testdata", "nativeapp"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := loadConfig(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := &goApp{dir: dir, name: "nativeapp", cfg: cfg}
+	app := testNativeApp(t)
 	tmp := t.TempDir()
 	bundle := filepath.Join(tmp, "App.app")
 	os.MkdirAll(filepath.Join(bundle, "Contents", "MacOS"), 0o755)

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/egoist/asuka/internal/boot"
 	"github.com/egoist/asuka/internal/filetype"
 )
 
@@ -38,7 +39,7 @@ mimeTypes = ["application/x-mydb"]
 // fileTypesApp is an app with three file types: one the systems know
 // (Markdown), the app's own (.note, with an icon), and another's the
 // systems don't know (org.example.mydb).
-func fileTypesApp(t *testing.T) *goApp {
+func fileTypesApp(t *testing.T) *asukaApp {
 	t.Helper()
 	app := linuxTestApp(t, fileTypesConfig)
 	img := image.NewNRGBA(image.Rect(0, 0, 64, 64))
@@ -221,11 +222,11 @@ func TestLinuxFileTypes(t *testing.T) {
 	}
 }
 
-// Windows: the build carries the types, which the host registers; a
+// Windows: the host's settings carry the types, which it registers; a
 // release's icons are the executable's resources.
 func TestWindowsFileTypes(t *testing.T) {
 	app := fileTypesApp(t)
-	types := ldflagsFileTypes(t, windowsLdflags(app, true))
+	types := configFileTypes(t, app.hostConfig(platformWindows, "windows-amd64", true))
 	want := []filetype.Type{
 		{Name: "Markdown Document", Extensions: []string{"md", "markdown"}},
 		{Name: "Notes Document", Extensions: []string{"note"}, Own: true, Icon: 102},
@@ -234,7 +235,7 @@ func TestWindowsFileTypes(t *testing.T) {
 	if !reflect.DeepEqual(types, want) {
 		t.Fatalf("boot.FileTypes: %+v", types)
 	}
-	if dev := ldflagsFileTypes(t, windowsLdflags(app, false)); dev[1].Icon != 0 {
+	if dev := configFileTypes(t, app.hostConfig(platformWindows, "", false)); dev[1].Icon != 0 {
 		t.Error("a dev build's types name icons it hasn't")
 	}
 	b, err := winresSyso(app, "amd64")
@@ -248,15 +249,13 @@ func TestWindowsFileTypes(t *testing.T) {
 	}
 }
 
-// ldflagsFileTypes are the types -ldflags sets boot.FileTypes to.
-func ldflagsFileTypes(t *testing.T, flags string) []filetype.Type {
+// configFileTypes are the types the host's settings carry.
+func configFileTypes(t *testing.T, c boot.Config) []filetype.Type {
 	t.Helper()
-	_, enc, ok := strings.Cut(flags, "boot.FileTypes=")
-	if !ok {
-		t.Fatalf("no boot.FileTypes in %s", flags)
+	if c.FileTypes == "" {
+		t.Fatalf("no file types in %+v", c)
 	}
-	enc, _, _ = strings.Cut(enc, `"`)
-	return filetype.Decode(enc)
+	return filetype.Decode(c.FileTypes)
 }
 
 // The web manifest's file handlers accept the types.

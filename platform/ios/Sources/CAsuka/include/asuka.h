@@ -69,6 +69,12 @@ ASUKA_API int asuka_run(char **err);
 // player's logs go to the CLI. hello is the player's JSON (platform,
 // device). 0, or -1 with a message in *err.
 ASUKA_API int asuka_dev_connect(const char *host, int port, const char *hello, char **err);
+// Loads a module as asuka dev's reloads do, keeping the state cells and
+// views of the app it replaces: for a player that gets the modules
+// itself (the web's page, which has no socket to connect with). The state
+// cells kept (0 for the first), or -1 with a message in *err. *micros, if
+// not NULL, is how long the load took.
+ASUKA_API int asuka_dev_reload(const uint8_t *module, size_t len, uint32_t *micros, char **err);
 // Memory for bytes a host passes in (the web's JavaScript), and for what
 // the core hands out (asuka_native_invoke's answer): asuka_free frees it.
 ASUKA_API void *asuka_alloc(size_t n);

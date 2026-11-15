@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/egoist/asuka/internal/cbuild"
 )
 
 // A Mac app's signature carries the hardened runtime's entitlements for
@@ -16,7 +18,7 @@ import (
 func TestMacEntitlements(t *testing.T) {
 	cfg := &appConfig{}
 	cfg.permissionsFor([]string{"github.com/egoist/asuka/sdk/camera", "github.com/egoist/asuka/sdk/contacts", "github.com/egoist/asuka/sdk/location"})
-	app := &goApp{cfg: cfg}
+	app := &asukaApp{cfg: cfg}
 	f, err := writeMacEntitlements(app, t.TempDir())
 	if err != nil || f == "" {
 		t.Fatalf("entitlements: %q, %v", f, err)
@@ -34,7 +36,7 @@ func TestMacEntitlements(t *testing.T) {
 			t.Errorf("%s in\n%s", not, s)
 		}
 	}
-	if f, err := writeMacEntitlements(&goApp{cfg: &appConfig{}}, t.TempDir()); f != "" || err != nil {
+	if f, err := writeMacEntitlements(&asukaApp{cfg: &appConfig{}}, t.TempDir()); f != "" || err != nil {
 		t.Errorf("an app that asks for nothing: %q, %v", f, err)
 	}
 }
@@ -96,13 +98,16 @@ func TestSignMacFrameworks(t *testing.T) {
 	}
 }
 
-// A Mac build of an app that uses asuka/sdk/sqlite ships the library in its
-// Frameworks, signed with it, and is built without the copy the package
-// embeds: it runs from the .app, finding the library there.
-func TestBuildMacSQLite(t *testing.T) {
+// A Mac build is an .app: the host (universal) as its executable, the
+// core with the app compiled in (universal) and the plugins' libraries in
+// its Frameworks, signed with it, the app's settings in its Resources. It
+// runs: the window shows the Counter, which counts a press.
+func TestBuildMac(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("a Mac build signs on a Mac")
 	}
+	needDesktopBuild(t, cbuild.Target{OS: "darwin", Arch: "arm64"})
+	useCounter(t, "Count: ")
 	app := sqliteTestApp(t)
 	out := t.TempDir()
 	if err := buildMac(app, &buildOptions{out: out}); err != nil {
@@ -110,24 +115,28 @@ func TestBuildMacSQLite(t *testing.T) {
 	}
 	bundle := filepath.Join(out, app.displayName()+".app")
 	bin := filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName()))
-	if tags := buildTags(t, bin); tags != pluginTag {
-		t.Errorf("tags: %q", tags)
+	for _, f := range []string{bin, filepath.Join(bundle, "Contents", "Frameworks", "libasuka.dylib")} {
+		archs, err := exec.Command("lipo", "-archs", f).Output()
+		if err != nil || strings.TrimSpace(string(archs)) != "x86_64 arm64" {
+			t.Errorf("%s: %q %v", filepath.Base(f), archs, err)
+		}
+	}
+	for _, f := range []string{"Frameworks/libasqlite.dylib", "Resources/asuka-app.json", "Info.plist"} {
+		if _, err := os.Stat(filepath.Join(bundle, "Contents", f)); err != nil {
+			t.Error(err)
+		}
 	}
 	if b, err := exec.Command("codesign", "--verify", "--deep", "--strict", bundle).CombinedOutput(); err != nil {
 		t.Errorf("codesign --verify --deep: %v\n%s", err, b)
 	}
-	db := filepath.Join(t.TempDir(), "runs.db")
-	for _, want := range []string{"runs 1, SQLite 3.", "runs 2, SQLite 3."} {
-		c := exec.Command(bin, db)
-		c.Env = append(os.Environ(), "ASUKA_SQLITE_LIB=")
-		b, err := c.CombinedOutput()
-		if err != nil || !strings.HasPrefix(string(b), want) {
-			t.Fatalf("%v: %s, want %s", err, b, want)
-		}
+	snap := filepath.Join(t.TempDir(), "c.png")
+	c := exec.Command(bin)
+	c.Env = append(os.Environ(), "ASUKA_SCRIPT=tap:Add", "ASUKA_SNAPSHOT="+snap, "ASUKA_DUMP=1")
+	if b, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, b)
 	}
-	// Without it, the app says where it looked.
-	os.Remove(filepath.Join(macPluginLibs(bundle), "libasqlite.dylib"))
-	if b, err := exec.Command(bin).CombinedOutput(); err == nil || !strings.Contains(string(b), "Frameworks/libasqlite.dylib") {
-		t.Errorf("without the library: %v, %s", err, b)
+	dump, err := os.ReadFile(snap + ".txt")
+	if err != nil || !strings.Contains(string(dump), `"Count: 1"`) || !strings.Contains(string(dump), `window "sqliteapp"`) {
+		t.Fatalf("after tapping Add, the window shows (%v):\n%s", err, dump)
 	}
 }

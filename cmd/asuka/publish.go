@@ -60,7 +60,6 @@ func publishFlags(o *publishOptions) *flagSet {
 	fs.Bool(&o.cancelReview, "cancel-review", 0, "Android: if the app has changes in review, cancel that review and send them with this release (default: stop)")
 	fs.String(&o.profile, "profile", 0, "", "iOS: a provisioning `profile`'s path, name or UUID (default: asuka.toml's, else the best match installed)")
 	fs.String(&o.out, "out", 'o', "", "the output `directory` of the build (default: dist in the app's directory)")
-	fs.Bool(&o.noVet, "no-vet", 0, "don't run asuka vet first (by default it prints what it finds, as warnings: the build goes on)")
 	fs.Bool(&o.verbose, "verbose", 'v', "print the commands asuka runs and its requests to the store")
 	return fs
 }
@@ -171,14 +170,13 @@ func (o *publishOptions) check(set map[string]bool) error {
 }
 
 // buildForStore makes the release build the store takes: its path.
-func buildForStore(app *goApp, o *buildOptions) (string, error) {
+func buildForStore(app *asukaApp, o *buildOptions) (string, error) {
 	if o.out == "" {
 		o.out = filepath.Join(app.dir, "dist")
 	}
 	if err := os.MkdirAll(o.out, 0o755); err != nil {
 		return "", err
 	}
-	vetBuild(app.dir, !o.noVet)
 	if o.platform == platformIOS {
 		o.distribution = "app-store"
 		return ipaPath(app.cfg, o), buildIOS(app, o)
@@ -364,11 +362,11 @@ func plistStrings(data []byte) (map[string]string, error) {
 // publishIOS builds the app (or takes --file), uploads it to App Store
 // Connect, waits for Apple to process it, and hands it to TestFlight's
 // groups and to App Review as asked.
-func publishIOS(c *ascClient, app *goApp, o *publishOptions, notes map[string]string, build func(*goApp, *buildOptions) (string, error)) error {
+func publishIOS(c *ascClient, app *asukaApp, o *publishOptions, notes map[string]string, build func(*asukaApp, *buildOptions) (string, error)) error {
 	return ascHint(publishIOSSteps(c, app, o, notes, build), c.key)
 }
 
-func publishIOSSteps(c *ascClient, app *goApp, o *publishOptions, notes map[string]string, build func(*goApp, *buildOptions) (string, error)) error {
+func publishIOSSteps(c *ascClient, app *asukaApp, o *publishOptions, notes map[string]string, build func(*asukaApp, *buildOptions) (string, error)) error {
 	cfg := app.cfg
 	id, version := cfg.ID, cfg.Version
 	var info ipaInfo
@@ -464,7 +462,7 @@ func ascHint(err error, key *ascKey) error {
 
 // publishAndroid builds the app (or takes --file), uploads it to Google
 // Play and releases it on the track.
-func publishAndroid(p *playClient, app *goApp, o *publishOptions, notes map[string]string, build func(*goApp, *buildOptions) (string, error)) error {
+func publishAndroid(p *playClient, app *asukaApp, o *publishOptions, notes map[string]string, build func(*asukaApp, *buildOptions) (string, error)) error {
 	cfg := app.cfg
 	pkg := androidPackage(cfg.ID)
 	// A look first: the highest version code and the listing's language,

@@ -376,7 +376,7 @@ func mimeIconName(m string) string { return strings.ReplaceAll(m, "/", "-") }
 
 // desktopMimeTypes are the desktop file's MimeType values: the scheme's
 // handler and the file types'.
-func desktopMimeTypes(app *goApp, types []fileType) []string {
+func desktopMimeTypes(app *asukaApp, types []fileType) []string {
 	var out []string
 	if app.cfg.Scheme != "" {
 		out = append(out, "x-scheme-handler/"+app.cfg.Scheme)

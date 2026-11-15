@@ -3,7 +3,21 @@
 // on the C core beside it (libasuka.dylib, asuka.dll, libasuka.so: the
 // core with the app compiled into it), or, under asuka dev (ASUKA_DEV),
 // the bytecode the CLI sends. asuka build copies it into the app as the
-// app's own executable; it's the same for every app.
+// app's own executable; it's the same for every app, which reads its
+// settings (its name, its ID, its accent) from asuka-app.json beside it
+// (internal/boot's ConfigFile).
 package main
 
-func main() { run() }
+import (
+	"fmt"
+	"os"
+
+	"github.com/egoist/asuka/internal/boot"
+)
+
+func main() {
+	if err := boot.LoadConfig(); err != nil {
+		fmt.Fprintln(os.Stderr, "asuka:", boot.ConfigFile+":", err)
+	}
+	run()
+}

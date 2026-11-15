@@ -69,10 +69,4 @@ func TestLocationExtras(t *testing.T) {
 			t.Errorf("%s isn't a feature's symbol", f)
 		}
 	}
-	// The player has it all.
-	p := playerConfig()
-	if !slices.Contains(p.Android.Permissions, "android.permission.ACCESS_BACKGROUND_LOCATION") || p.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] == "" ||
-		!slices.Contains(p.plistArrays["UIBackgroundModes"], "location") {
-		t.Errorf("player: %v %v %v", p.Android.Permissions, p.IOS.Usage, p.plistArrays)
-	}
 }

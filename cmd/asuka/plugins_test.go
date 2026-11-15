@@ -20,18 +20,11 @@ import (
 // writeTestPluginLib writes the sqlite plugin's library for target to
 // path, as testdata/sqliteapp's build would ship it.
 func writeTestPluginLib(target, path string) error {
-	dir, err := filepath.Abs(filepath.Join("testdata", "sqliteapp"))
+	app, err := projectAppErr(filepath.Join("testdata", "sqliteapp"), sqliteDeps())
 	if err != nil {
 		return err
 	}
-	goos, goarch, _ := strings.Cut(target, "-")
-	switch target {
-	case "darwin":
-		goarch = "arm64"
-	case "ios", "ios-simulator":
-		goos, goarch = "ios", "arm64"
-	}
-	libs, err := appLibs(dir, goos, goarch, target)
+	libs, err := appLibs(app, target)
 	if err != nil {
 		return err
 	}
@@ -42,30 +35,27 @@ func writeTestPluginLib(target, path string) error {
 }
 
 // An app's plugins are its dependencies with a manifest: sqliteapp has
-// the sqlite plugin, with a library for every target; the CLI itself
-// (which imports package plugin, not a plugin) has none.
+// the sqlite plugin, with a library for every target; an app with no
+// dependencies has none.
 func TestAppPlugins(t *testing.T) {
 	app := sqliteTestApp(t)
-	ps, err := appPlugins(app.dir, "linux", "amd64")
+	ps, err := appPlugins(app)
 	if err != nil || len(ps) != 1 || ps[0].m.Name != "sqlite" || filepath.Base(ps[0].dir) != "sqlite" {
 		t.Fatalf("%v %v", ps, err)
 	}
-	none, err := appPlugins(".", "linux", "amd64")
+	none, err := appPlugins(projectApp(t, t.TempDir(), nil))
 	if err != nil || len(none) != 0 {
-		t.Fatalf("the CLI's: %v %v", none, err)
+		t.Fatalf("no dependencies: %v %v", none, err)
 	}
 	for _, target := range []string{"darwin", "ios", "ios-simulator", "android-arm64", "android-arm", "android-amd64",
 		"linux-amd64", "linux-arm64", "windows-amd64", "windows-arm64", "wasm"} {
-		libs, err := appLibs(app.dir, "linux", "amd64", target)
+		libs, err := appLibs(app, target)
 		if err != nil || len(libs) != 1 || libs[0].file.Name == "" {
 			t.Errorf("%s: %v %v", target, libs, err)
 		}
 	}
-	if _, err := appLibs(app.dir, "linux", "amd64", "plan9-amd64"); err == nil {
+	if _, err := appLibs(app, "plan9-amd64"); err == nil {
 		t.Error("a target the plugin hasn't: no error")
-	}
-	if pluginBuildFlags(nil) != nil || len(pluginBuildFlags([]pluginLib{{}})) != 1 {
-		t.Error("pluginBuildFlags")
 	}
 }
 
@@ -123,7 +113,7 @@ func TestAndroidPluginLibraries(t *testing.T) {
 	for _, a := range androidABIs {
 		t.Run(a.abi, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "jniLibs", a.abi)
-			libs, err := appLibs(app.dir, "android", a.goarch, "android-"+a.goarch)
+			libs, err := appLibs(app, "android-"+a.goarch)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -248,7 +238,7 @@ func TestEmbedPlugins(t *testing.T) {
 	}
 	tc := &iosToolchain{sdkName: "iphonesimulator"}
 	bundle := filepath.Join(t.TempDir(), "A.app")
-	if err := tc.embedPlugins(bundle, &goApp{dir: "."}); err != nil || exists(filepath.Join(bundle, "Frameworks")) {
+	if err := tc.embedPlugins(bundle, &asukaApp{dir: "."}); err != nil || exists(filepath.Join(bundle, "Frameworks")) {
 		t.Fatalf("without plugins: %v", err)
 	}
 	if err := tc.embedPlugins(bundle, sqliteTestApp(t)); err != nil {

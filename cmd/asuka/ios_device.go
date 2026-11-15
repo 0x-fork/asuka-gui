@@ -12,11 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/egoist/asuka/internal/devtunnel"
-	"github.com/egoist/asuka/internal/usbmux"
 )
 
 // asuka dev on an iPhone or iPad: devicectl (Xcode's CoreDevice) finds,
@@ -26,14 +22,6 @@ import (
 // automatic provisioning). The player reaches the Go code on this Mac
 // through tunnels over USB (package devtunnel, through usbmuxd), else
 // over the local network.
-
-// The player's ports on the phone, on its loopback: the app's asset
-// URLs name the first, as on the simulator; the Mac's tunnels arrive on
-// the second.
-const (
-	deviceAssetsPort = devicePort + 1
-	deviceTunnelPort = devicePort + 2
-)
 
 // deviceKeyword is what --device takes for the one iPhone or iPad
 // connected, whatever its name.
@@ -741,9 +729,11 @@ func installedOnDevice(d *iosDevice, id string) bool {
 	return false
 }
 
-// devIOSDevice runs the app on a physical device: in the player, or
-// built with its Go code.
-func devIOSDevice(app *goApp, o *devOptions, d *iosDevice, stop <-chan os.Signal) error {
+// devIOSDevice runs the app on a physical device: the player (the app's
+// .app with the core without an app, signed for the device by the team),
+// installed when it changed, which connects to asuka dev over the local
+// network and loads the app's bytecode, again on each save.
+func devIOSDevice(app *asukaApp, o *devOptions, d *iosDevice, stop <-chan os.Signal) error {
 	team, err := devTeam(o.team, app.cfg)
 	if err != nil {
 		return err
@@ -753,280 +743,75 @@ func devIOSDevice(app *goApp, o *devOptions, d *iosDevice, stop <-chan os.Signal
 		how = ", over " + how
 	}
 	fmt.Printf("asuka: %s on %s%s, signed by team %s\n", app.name, d, how, team)
-	tc, err := newIOSToolchainFor("iphoneos", o.verbose)
-	if err != nil {
-		return err
-	}
-	if usePlayer(app, o, "ios-device") {
-		return devIOSDevicePlayer(app, tc, o, d, team, stop)
-	}
 	work, err := workDir(app, "ios-device")
 	if err != nil {
 		return err
 	}
-	signer := newDevSigner(team, d.UDID, app.cfg, work, false, o.verbose)
-	var logs *exec.Cmd
-	stopLogs := func() {
-		if logs != nil && logs.Process != nil {
-			logs.Process.Signal(os.Interrupt) // devicectl passes it to the app
-			done := make(chan struct{})
-			go func() { logs.Wait(); close(done) }()
-			select {
-			case <-done:
-			case <-time.After(3 * time.Second):
-				logs.Process.Kill()
-				<-done
-			}
-		}
-		logs = nil
+	// The phone reaches asuka dev on this Mac's network: on every
+	// address, the same port from run to run when it's free, so the
+	// player launched again from the home screen finds it.
+	ln, err := listenAll(deviceDevPort)
+	if err != nil {
+		return err
 	}
-	build := func() error {
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	loop, err := newDevLoop(app, fmt.Sprintf(":%d", port))
+	if err != nil {
+		return err
+	}
+	hosts := lanHosts()
+	if len(hosts) == 0 {
+		return errors.New("this Mac isn't on a network: the phone reaches asuka dev over Wi-Fi or Ethernet")
+	}
+	addr := os.Getenv("ASUKA_DEV_HOST")
+	if addr == "" {
+		addr = hosts[0]
+	}
+	signer := newDevSigner(team, d.UDID, app.cfg, work, false, o.verbose)
+	marker := filepath.Join(work, "installed-"+d.UDID)
+	var pid int
+	launch := func() error {
 		start := time.Now()
 		bo := &buildOptions{platform: platformIOS, distribution: "development", verbose: o.verbose, dev: &iosDevBuild{signer: signer}}
 		if err := buildIOS(app, bo); err != nil {
 			return err
 		}
-		stopLogs()
-		if err := installOnDevice(d, bo.dev.bundle, o.verbose); err != nil {
-			return err
-		}
-		fmt.Printf("asuka: built and installed in %.1fs\n", time.Since(start).Seconds())
-		if o.once {
-			_, err := launchOnDevice(d, app.bundleID, nil)
-			return err
-		}
-		// Its standard output and error, here, until it exits.
-		logs = exec.Command("xcrun", "devicectl", "device", "process", "launch", "--device", d.UDID, "--terminate-existing", "--console", app.bundleID)
-		logs.Stdout, logs.Stderr = os.Stdout, os.Stderr
-		return logs.Start()
-	}
-	if err := build(); err != nil {
-		if o.once {
-			return err
-		}
-		fmt.Fprintln(os.Stderr, "asuka:", err)
-	}
-	if o.once {
-		return nil
-	}
-	defer stopLogs()
-	fmt.Println("asuka: watching for changes (Ctrl-C to stop)")
-	natives, _ := nativeFor(app, "ios", tc.goarch)
-	w := newWatcher(append([]string{app.moduleDir, app.dir}, nativeDirsOf(natives, "ios")...)...)
-	for {
-		select {
-		case <-stop:
-			return nil
-		case <-w.wake:
-			if !w.changed() {
-				continue
+		if sum := dirDigest(bo.dev.bundle); func() bool { b, _ := os.ReadFile(marker); return string(b) != sum }() || !installedOnDevice(d, app.bundleID) {
+			if err := installOnDevice(d, bo.dev.bundle, o.verbose); err != nil {
+				return err
 			}
-			fmt.Println("asuka: change detected, rebuilding")
-			if err := build(); err != nil {
-				fmt.Fprintln(os.Stderr, "asuka:", err)
-			}
+			os.WriteFile(marker, []byte(sum), 0o644)
+			fmt.Printf("asuka: the player built and installed in %.1fs\n", time.Since(start).Seconds())
 		}
-	}
-}
-
-// devicePlayerConfig is the player's on a device: its bundle ID the
-// team's own (an App ID is one team's), with the Local Network's purpose
-// string for Wi-Fi.
-func devicePlayerConfig(team string) *appConfig {
-	c := playerConfig()
-	c.ID = playerID + "." + strings.ToLower(team)
-	c.Name = playerName
-	c.Version, c.Build = "1.0", 1
-	c.Orientations = []string{"portrait", "landscape"}
-	return c
-}
-
-func devIOSDevicePlayer(app *goApp, tc *iosToolchain, o *devOptions, d *iosDevice, team string, stop <-chan os.Signal) error {
-	start := time.Now()
-	work, err := workDir(app, "ios")
-	if err != nil {
-		return err
-	}
-	// The Go code, as on the simulator: on this Mac's loopback, which the
-	// tunnels and the network's relays reach.
-	port := freePort(devicePort)
-	proc := &hostProcess{app: app, work: work, remote: true, env: []string{
-		fmt.Sprintf("ASUKA_REMOTE=127.0.0.1:%d", port),
-		"ASUKA_STATE=" + filepath.Join(work, "state.json"),
-		"ASUKA_DATA=" + filepath.Join(work, "data"),
-		fmt.Sprintf("ASUKA_ASSETS_URL=http://127.0.0.1:%d/", deviceAssetsPort), // the player forwards its loopback's
-		fmt.Sprintf("ASUKA_ASSETS_ADDR=127.0.0.1:%d", port+1),
-	}}
-	if err := proc.inheritRemote(port); err != nil {
-		return err
-	}
-	if err := proc.build(); err != nil {
-		return err
-	}
-	dir := playerDir(work, "ios-device")
-	unlock, err := lockShared(dir)
-	if err != nil {
-		return err
-	}
-	release := sync.OnceFunc(unlock)
-	defer release()
-	cfg := devicePlayerConfig(team)
-	player := &goApp{dir: dir, name: playerName, bundleID: cfg.ID, cfg: cfg, pkg: playerPkg, pkgIn: app.dir}
-	lib, err := tc.buildGo(player, dir)
-	if err != nil {
-		return err
-	}
-	hostObj, err := tc.buildHost(dir, nil, allFeatures())
-	if err != nil {
-		return err
-	}
-	sum := fileHash(hostObj, lib) + "\n" + team
-	marker := filepath.Join(dir, "installed-"+d.UDID)
-	if prev, _ := os.ReadFile(marker); string(prev) != sum || !installedOnDevice(d, cfg.ID) {
-		pwork, err := workDir(player, "ios-device")
+		if pid != 0 {
+			terminateOnDevice(d, pid)
+		}
+		pid, err = launchOnDevice(d, app.bundleID, map[string]string{"ASUKA_DEV": net.JoinHostPort(addr, strconv.Itoa(port))})
 		if err != nil {
 			return err
 		}
-		bo := &buildOptions{platform: platformIOS, distribution: "development", verbose: o.verbose,
-			dev: &iosDevBuild{signer: newDevSigner(team, d.UDID, cfg, pwork, true, o.verbose)}}
-		if err := buildIOS(player, bo); err != nil {
-			return fmt.Errorf("the player: %w", err)
-		}
-		fmt.Println("asuka: installing the player on", d.Name)
-		if err := installOnDevice(d, bo.dev.bundle, o.verbose); err != nil {
-			return err
-		}
-		os.WriteFile(marker, []byte(sum), 0o644)
-	}
-	release()
-
-	link := newDeviceLink(d, port, port+1)
-	if err := link.start(); err != nil {
-		return err
-	}
-	defer link.close()
-	if err := proc.restart(); err != nil {
-		return err
-	}
-	pid, err := launchOnDevice(d, cfg.ID, map[string]string{"ASUKA_REMOTE": link.spec().String()})
-	if err != nil {
-		proc.stop()
-		return err
-	}
-	fmt.Printf("asuka: running in the player in %.1fs; changes reload without reinstalling\n", time.Since(start).Seconds())
-	go link.hint(15 * time.Second)
-	return watchHost(proc, stop, func() { terminateOnDevice(d, pid) })
-}
-
-// deviceLink is how the player on a device reaches the Go code: tunnels
-// over USB, and relays on this Mac's network addresses for Wi-Fi. It
-// says which the player took.
-type deviceLink struct {
-	dev                *iosDevice
-	remote, assets     int // the Go code's ports, on the loopback
-	usb                *devtunnel.Server
-	dialUSB            func() (net.Conn, error) // a tunnel (default: usbmuxd's)
-	lnRemote, lnAssets net.Listener
-	mu                 sync.Mutex
-	last               string // how the player last connected
-	connected          chan struct{}
-	once               sync.Once
-}
-
-func newDeviceLink(d *iosDevice, remote, assets int) *deviceLink {
-	return &deviceLink{dev: d, remote: remote, assets: assets, connected: make(chan struct{})}
-}
-
-func (l *deviceLink) start() error {
-	if l.dialUSB == nil {
-		mux := &usbmux.Client{}
-		l.dialUSB = func() (net.Conn, error) {
-			u, ok, err := mux.Find(l.dev.UDID)
-			if err != nil {
-				return nil, err
+		go func() {
+			time.Sleep(15 * time.Second)
+			if loop.srv.Players() == 0 {
+				fmt.Printf("asuka: the player hasn't connected yet: %s must be on this Mac's network (%s), allowed to find devices on it (tap Allow when it asks, or its Settings › Apps › %s › Local Network), and this Mac's firewall must let asuka take connections\n", d.Name, addr, app.displayName())
 			}
-			if !ok {
-				return nil, errors.New("not on usbmuxd")
-			}
-			return mux.Dial(u.ID, deviceTunnelPort)
-		}
+		}()
+		return nil
 	}
-	target := func(p int) string { return fmt.Sprintf("127.0.0.1:%d", p) }
-	l.usb = &devtunnel.Server{
-		Dial:    l.dialUSB,
-		Targets: map[byte]string{devtunnel.KindRemote: target(l.remote), devtunnel.KindAssets: target(l.assets)},
-		Used: func(k byte) {
-			if k == devtunnel.KindRemote {
-				l.took("USB")
+	return loop.run(devPlayer{
+		launch: launch,
+		stop: func() {
+			if pid != 0 {
+				terminateOnDevice(d, pid)
 			}
 		},
-	}
-	l.usb.Start()
-	// On every address, for the network: the same ports from run to run
-	// when they're free, so a player launched again from the home screen
-	// finds them.
-	var err error
-	if l.lnRemote, err = listenAll(deviceTunnelPort + 1); err != nil {
-		return err
-	}
-	if l.lnAssets, err = listenAll(deviceTunnelPort + 2); err != nil {
-		return err
-	}
-	go devtunnel.Relay(l.lnRemote, target(l.remote), func(from net.Addr) { l.took("Wi-Fi") })
-	go devtunnel.Relay(l.lnAssets, target(l.assets), nil)
-	return nil
+	}, stop, o.once)
 }
 
-func (l *deviceLink) close() {
-	l.usb.Close()
-	if l.lnRemote != nil {
-		l.lnRemote.Close()
-	}
-	if l.lnAssets != nil {
-		l.lnAssets.Close()
-	}
-}
-
-// took notes how the player connected, and says so when it changes.
-func (l *deviceLink) took(how string) {
-	l.mu.Lock()
-	changed := l.last != how
-	l.last = how
-	l.mu.Unlock()
-	l.once.Do(func() { close(l.connected) })
-	if changed {
-		fmt.Printf("asuka: the player connected over %s\n", how)
-	}
-}
-
-// how is how the player last connected ("" not yet).
-func (l *deviceLink) how() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.last
-}
-
-// spec is what the player is launched with.
-func (l *deviceLink) spec() devtunnel.Spec {
-	hosts := lanHosts()
-	s := devtunnel.Spec{Tunnel: deviceTunnelPort, AssetsPort: deviceAssetsPort}
-	rp := l.lnRemote.Addr().(*net.TCPAddr).Port
-	ap := l.lnAssets.Addr().(*net.TCPAddr).Port
-	for _, h := range hosts {
-		s.Remote = append(s.Remote, net.JoinHostPort(h, strconv.Itoa(rp)))
-		s.Assets = append(s.Assets, net.JoinHostPort(h, strconv.Itoa(ap)))
-	}
-	return s
-}
-
-// hint says what to check when the player hasn't connected after wait.
-func (l *deviceLink) hint(wait time.Duration) {
-	select {
-	case <-l.connected:
-	case <-time.After(wait):
-		fmt.Printf("asuka: the player hasn't connected yet. By USB, check the cable and that %s is unlocked; over Wi-Fi, it must be on this Mac's network, allowed to find devices on it (tap Allow when it asks, or its Settings › Apps › asuka › Local Network), and this Mac's firewall must let asuka take connections\n", l.dev.Name)
-	}
-}
+// deviceDevPort is the port a phone's player reaches asuka dev on, when
+// it's free.
+const deviceDevPort = 8791
 
 // listenAll listens on every address, on port if it's free.
 func listenAll(port int) (net.Listener, error) {

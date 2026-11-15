@@ -62,18 +62,15 @@ func (c *appConfig) icloudContainers() []string {
 	return []string{"iCloud." + c.ID}
 }
 
-// useICloud notes what of asuka/sdk/icloud the app's Go code (the main
-// package pkg in dir, its imports deps) calls, from its source, and adds
-// what that needs. An app that only asks about the account is given the
-// store's entitlement, without which there's no account to see.
-func (c *appConfig) useICloud(dir, pkg string, deps []string) {
-	if !slices.Contains(deps, icloudPkg) {
+// useICloud notes what of asuka/sdk/icloud the app calls, from what its
+// sources name, and adds what that needs. An app that only asks about
+// the account is given the store's entitlement, without which there's no
+// account to see.
+func (c *appConfig) useICloud(app *asukaApp) {
+	if !app.imports(icloudPkg) {
 		return
 	}
-	names, all := called(dir, pkg, "ios", icloudPkg)
-	uses := func(fns []string) bool {
-		return all || slices.ContainsFunc(fns, func(f string) bool { return names[f] })
-	}
+	uses := func(fns []string) bool { return slices.ContainsFunc(fns, app.names) }
 	kv, docs := uses(icloudFuncs.kv), uses(icloudFuncs.docs)
 	if !kv && !docs && uses(icloudFuncs.account) {
 		kv = true

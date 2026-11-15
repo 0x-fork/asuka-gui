@@ -27,7 +27,7 @@ func TestWebWorker(t *testing.T) {
 // asuka.toml's web.vapidPublicKey is checked: a P-256 point, in base64url.
 func TestWebVAPIDKey(t *testing.T) {
 	const key = "BKpYsAT0ADj2pHQQZeNsXmA3fgij4OZ_7ZqkS63fvpscgjHLZys0UDBluROJdtDaGlE3WW1_IlFyzVzC2LlHyO0"
-	app := &goApp{cfg: &appConfig{}}
+	app := &asukaApp{cfg: &appConfig{}}
 	if k, err := webVAPIDKey(app); k != "" || err != nil {
 		t.Fatalf("none: %q %v", k, err)
 	}

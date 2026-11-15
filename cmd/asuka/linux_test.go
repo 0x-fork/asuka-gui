@@ -9,16 +9,16 @@ import (
 	"image/color"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/egoist/asuka/internal/cbuild"
 )
 
-func linuxTestApp(t *testing.T, config string) *goApp {
+func linuxTestApp(t *testing.T, config string) *asukaApp {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "My Notes")
 	os.MkdirAll(filepath.Join(dir, "assets", "img"), 0o755)
@@ -30,34 +30,20 @@ func linuxTestApp(t *testing.T, config string) *goApp {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &goApp{dir: dir, name: filepath.Base(dir), bundleID: cfg.ID, cfg: cfg}
+	return &asukaApp{dir: dir, name: filepath.Base(dir), bundleID: cfg.ID, cfg: cfg}
 }
 
-// The build sets the host's name, ID, version and build (and the
+// The host's settings: the app's name, ID, version and build (and the
 // accent, as every platform's).
-func TestLinuxLdflags(t *testing.T) {
+func TestLinuxHostConfig(t *testing.T) {
 	app := linuxTestApp(t, "name = \"Notes & Co\"\nid = \"com.example.notes\"\nversion = \"2.1\"\nbuild = 7\naccent = \"#ff8800\"")
-	got := linuxLdflags(app, true)
-	for _, want := range []string{
-		"-ldflags=-s -w", "boot.Accent=#ff8800",
-		`-X "github.com/egoist/asuka/internal/boot.Name=Notes & Co"`,
-		`-X "github.com/egoist/asuka/internal/boot.ID=com.example.notes"`,
-		`-X "github.com/egoist/asuka/internal/boot.Version=2.1"`,
-		`-X "github.com/egoist/asuka/internal/boot.Build=7"`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("no %q in %s", want, got)
-		}
-	}
-	if strings.Contains(linuxLdflags(app, false), "-s -w") {
-		t.Error("a dev build is stripped")
-	}
-	if strings.Contains(got, "MultipleInstances") {
-		t.Error("a single instance's ldflags say multiple")
+	c := app.hostConfig(platformLinux, "linux-amd64", true)
+	if c.Name != "Notes & Co" || c.ID != "com.example.notes" || c.Version != "2.1" || c.Build != "7" || c.Accent != "#ff8800" || c.MultipleInstances {
+		t.Errorf("%+v", c)
 	}
 	multi := linuxTestApp(t, "name = \"Notes\"\nid = \"com.example.notes\"\nsingleInstance = false")
-	if !strings.Contains(linuxLdflags(multi, false), "boot.MultipleInstances=1") {
-		t.Error(`"singleInstance": false isn't in the ldflags`)
+	if c := multi.hostConfig(platformLinux, "", false); !c.MultipleInstances {
+		t.Error(`"singleInstance": false isn't in the settings`)
 	}
 }
 
@@ -65,7 +51,7 @@ func TestLinuxExe(t *testing.T) {
 	for name, want := range map[string]string{
 		"Counter": "counter", "My Notes!": "my-notes", "Notes 2 Go": "notes-2-go", "笔记": "notes", "a/b": "a-b",
 	} {
-		app := &goApp{bundleID: "com.example.Notes", cfg: &appConfig{Name: name}}
+		app := &asukaApp{bundleID: "com.example.Notes", cfg: &appConfig{Name: name}}
 		if got := linuxExe(app); got != want {
 			t.Errorf("%q: %q, want %q", name, got, want)
 		}
@@ -221,22 +207,18 @@ func TestLinuxShareDefaults(t *testing.T) {
 
 func TestFlatpakManifest(t *testing.T) {
 	app := linuxTestApp(t, `id = "com.example.notes"`)
-	m := flatpakManifest(app, "my-notes", false)
+	m := flatpakManifest(app, "my-notes")
 	for _, want := range []string{
 		"\napp-id: com.example.notes\n", "\nruntime: org.gnome.Platform\n", "\nruntime-version: '" + flatpakRuntime + "'\n",
-		"\nsdk: org.gnome.Sdk\n", "\ncommand: my-notes\n", "--socket=wayland", "cp -a bin share /app/", "\n        path: my-notes\n",
+		"\nsdk: org.gnome.Sdk\n", "\ncommand: my-notes\n", "--socket=wayland", "cp -a bin lib share /app/", "\n        path: my-notes\n",
 	} {
 		if !strings.Contains(m, want) {
 			t.Errorf("no %q in\n%s", want, m)
 		}
 	}
 	app.cfg.Linux.FlatpakRuntime = "47"
-	if !strings.Contains(flatpakManifest(app, "my-notes", false), "runtime-version: '47'") {
+	if !strings.Contains(flatpakManifest(app, "my-notes"), "runtime-version: '47'") {
 		t.Error("linux.flatpakRuntime")
-	}
-	// With SQLite's library: lib too.
-	if m := flatpakManifest(app, "my-notes", true); !strings.Contains(m, "cp -a bin lib share /app/") {
-		t.Errorf("with lib:\n%s", m)
 	}
 }
 
@@ -280,24 +262,43 @@ func TestLinuxSQLiteLib(t *testing.T) {
 	}
 }
 
-// A Linux build of an app that uses asuka/sdk/sqlite puts the library in
-// the prefix, the tarball and the Flatpak, and is built without the copy
-// the package embeds; on Linux, it runs from the prefix, finding it.
-func TestBuildLinuxSQLite(t *testing.T) {
+// A Linux build is an install prefix: the host in bin, the core with the
+// app compiled in and the plugins' libraries in lib/<exe>, where the host
+// finds them, the app's settings in share/<exe>; the tarball and the
+// Flatpak have them all.
+func TestBuildLinux(t *testing.T) {
+	needDesktopBuild(t, cbuild.Target{OS: "linux", Arch: "amd64"})
+	useCounter(t, "Count: ")
 	app := sqliteTestApp(t)
+	machines := map[string]elf.Machine{"amd64": elf.EM_X86_64, "arm64": elf.EM_AARCH64}
 	for _, arch := range []string{"amd64", "arm64"} {
 		out := t.TempDir()
 		if err := buildLinux(app, &buildOptions{out: out, arch: arch}); err != nil {
 			t.Fatal(err)
 		}
 		prefix := filepath.Join(out, "linux", "sqliteapp")
-		bin := filepath.Join(prefix, "bin", "sqliteapp")
-		lib := filepath.Join(prefix, "lib", "sqliteapp", "libasqlite.so")
-		if _, err := os.Stat(lib); err != nil {
-			t.Fatal(err)
+		for _, f := range []string{"bin/sqliteapp", "lib/sqliteapp/libasuka.so", "lib/sqliteapp/libasqlite.so"} {
+			e, err := elf.Open(filepath.Join(prefix, f))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if e.Machine != machines[arch] {
+				t.Errorf("%s: %s is for %v", arch, f, e.Machine)
+			}
+			if f == "lib/sqliteapp/libasuka.so" {
+				syms, _ := e.DynamicSymbols()
+				found := false
+				for _, s := range syms {
+					found = found || s.Name == "asuka_run"
+				}
+				if !found {
+					t.Errorf("%s: libasuka.so doesn't export asuka_run", arch)
+				}
+			}
+			e.Close()
 		}
-		if tags := buildTags(t, bin); tags != pluginTag {
-			t.Errorf("%s: tags %q", arch, tags)
+		if b, err := os.ReadFile(filepath.Join(prefix, "share", "sqliteapp", "asuka-app.json")); err != nil || !strings.Contains(string(b), `"name": "sqliteapp"`) {
+			t.Errorf("%s: the settings: %v\n%s", arch, err, b)
 		}
 		m, _ := os.ReadFile(filepath.Join(out, "linux", app.bundleID+".yml"))
 		if !strings.Contains(string(m), "cp -a bin lib share /app/") {
@@ -318,24 +319,10 @@ func TestBuildLinuxSQLite(t *testing.T) {
 			names = append(names, h.Name)
 		}
 		f.Close()
-		if !slices.Contains(names, "sqliteapp/lib/sqliteapp/libasqlite.so") {
-			t.Errorf("%s: the tarball has %v", arch, names)
-		}
-		if runtime.GOOS != "linux" || runtime.GOARCH != arch {
-			continue
-		}
-		db := filepath.Join(t.TempDir(), "runs.db")
-		for _, want := range []string{"runs 1, SQLite 3.", "runs 2, SQLite 3."} {
-			c := exec.Command(bin, db)
-			c.Env = append(os.Environ(), "ASUKA_SQLITE_LIB=")
-			b, err := c.CombinedOutput()
-			if err != nil || !strings.HasPrefix(string(b), want) {
-				t.Fatalf("%v: %s, want %s", err, b, want)
+		for _, want := range []string{"sqliteapp/bin/sqliteapp", "sqliteapp/lib/sqliteapp/libasuka.so", "sqliteapp/lib/sqliteapp/libasqlite.so", "sqliteapp/share/sqliteapp/asuka-app.json"} {
+			if !slices.Contains(names, want) {
+				t.Errorf("%s: the tarball has %v, not %s", arch, names, want)
 			}
-		}
-		os.Remove(lib)
-		if b, err := exec.Command(bin).CombinedOutput(); err == nil || !strings.Contains(string(b), "lib/sqliteapp/libasqlite.so") {
-			t.Errorf("without the library: %v, %s", err, b)
 		}
 	}
 }

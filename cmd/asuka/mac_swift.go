@@ -85,11 +85,11 @@ func macEmbedPackages(o *swiftPackageOutput, dir, fw, res string) error {
 // Frameworks, for archs (Go's names), or takes away a library left from
 // before when it has none. In asuka dev, a build whose packages haven't
 // changed keeps the library it has.
-func macSwift(app *goApp, bundle, work string, archs []string, release bool, run func(dir string, env []string, cmd string, args ...string) error) error {
+func macSwift(app *asukaApp, bundle, work string, archs []string, release bool, run func(dir string, env []string, cmd string, args ...string) error) error {
 	fw := filepath.Join(bundle, "Contents", "Frameworks")
 	lib := filepath.Join(fw, macSwiftLib)
 	dir := filepath.Join(work, "swift")
-	natives, err := nativeFor(app, "macos", "arm64")
+	natives, err := nativeFor(app, "macos")
 	if err != nil {
 		return err
 	}

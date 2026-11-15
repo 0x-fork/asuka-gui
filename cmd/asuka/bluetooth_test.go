@@ -35,8 +35,8 @@ func TestBluetoothConfig(t *testing.T) {
 	if !slices.Contains(c.flatpakArgs, "--system-talk-name=org.bluez") {
 		t.Errorf("flatpak: %v", c.flatpakArgs)
 	}
-	app := &goApp{cfg: &c, bundleID: "dev.asuka.ble", name: "ble"}
-	if f := flatpakManifest(app, "ble", false); !strings.Contains(f, "  - --device=dri\n  - --system-talk-name=org.bluez\nmodules:") {
+	app := &asukaApp{cfg: &c, bundleID: "dev.asuka.ble", name: "ble"}
+	if f := flatpakManifest(app, "ble"); !strings.Contains(f, "  - --device=dri\n  - --system-talk-name=org.bluez\nmodules:") {
 		t.Errorf("the Flatpak's manifest:\n%s", f)
 	}
 
@@ -77,12 +77,6 @@ func TestBluetoothConfig(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`bluetooth.background = ["beacon"]`), 0o644)
 	if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "beacon") {
 		t.Errorf("a bad background role: %v", err)
-	}
-
-	// The player runs any app: the background modes too.
-	if p := playerConfig(); !slices.Contains(p.plistArrays["UIBackgroundModes"], "bluetooth-central") ||
-		p.IOS.Usage["NSBluetoothAlwaysUsageDescription"] == "" {
-		t.Errorf("the player: %v %v", p.plistArrays, p.IOS.Usage)
 	}
 }
 
