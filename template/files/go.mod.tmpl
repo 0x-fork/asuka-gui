@@ -1,8 +1,0 @@
-module {{.Module}}
-
-go 1.26
-
-{{if .Version}}require github.com/egoist/asuka {{.Version}}
-{{end}}{{if .Replace}}
-replace github.com/egoist/asuka => {{.Replace}}
-{{end}}

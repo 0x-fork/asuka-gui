@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strings"
 	"text/template"
 
@@ -44,16 +42,9 @@ func cmdNew(args []string) error {
 		return err
 	}
 	name := filepath.Base(abs)
-	data := struct{ Name, Module, ID, Version, Replace string }{
-		Name: name, Module: strings.ToLower(name),
-		ID: "com.example." + strings.Trim(strings.ToLower(idPart.ReplaceAllString(name, "")), "-"),
-	}
-	// The Asuka the project uses: this checkout, or the version this CLI is
-	// (go install github.com/egoist/asuka/cmd/asuka@v0.1.0), else the latest.
-	if c := asukaCheckout(); c != "" {
-		data.Replace, data.Version = c, "v0.0.0"
-	} else if bi, ok := debug.ReadBuildInfo(); ok && strings.HasPrefix(bi.Main.Version, "v") {
-		data.Version = bi.Main.Version
+	data := struct{ Name, ID string }{
+		Name: name,
+		ID:   "com.example." + strings.Trim(strings.ToLower(idPart.ReplaceAllString(name, "")), "-"),
 	}
 	err = fs.WalkDir(tpl.Files, "files", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -79,18 +70,6 @@ func cmdNew(args []string) error {
 	if err != nil {
 		return err
 	}
-	// go.sum (and, with no version, the latest Asuka).
-	steps := [][]string{{"mod", "tidy"}}
-	if data.Version == "" {
-		steps = [][]string{{"get", "github.com/egoist/asuka@latest"}, {"mod", "tidy"}}
-	}
-	for _, s := range steps {
-		c := exec.Command("go", s...)
-		c.Dir, c.Stdout, c.Stderr = abs, os.Stdout, os.Stderr
-		if err := c.Run(); err != nil {
-			return fmt.Errorf("go %s: %v", strings.Join(s, " "), err)
-		}
-	}
-	fmt.Printf("asuka: made %s\n\n  cd %s\n  asuka dev --platform ios    # or android, web; on macOS, Windows or Linux, asuka dev runs it on this computer\n", dir, dir)
+	fmt.Printf("asuka: made %s\n\n  cd %s\n  asuka dev --platform ios    # or android, web; on macOS, Windows or Linux, asuka dev runs it on this computer\n  asuka test                  # its test blocks\n", dir, dir)
 	return nil
 }
