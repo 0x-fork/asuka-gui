@@ -148,8 +148,8 @@ func TestPantry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 3 {
-		t.Errorf("%d files, want Swift's, Kotlin's and JavaScript's (no Go: Asuka's compiler calls it)", len(files))
+	if len(files) != 4 {
+		t.Errorf("%d files, want Swift's, Kotlin's, JavaScript's and the desktop's Go (no Go client: Asuka's compiler calls it)", len(files))
 	}
 	for rel, b := range files {
 		old, _ := os.ReadFile(filepath.Join(p.Dir, rel))
@@ -159,6 +159,13 @@ func TestPantry(t *testing.T) {
 	}
 	if _, err := LoadAsuka("testdata/kitchen"); err != nil {
 		t.Fatal(err)
+	}
+	for _, goos := range []string{"windows", "linux"} {
+		c := exec.Command("go", "vet", "./testdata/pantry/desktop")
+		c.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=0")
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Errorf("%s: %v\n%s", goos, err, out)
+		}
 	}
 }
 

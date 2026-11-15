@@ -22,6 +22,7 @@ import (
 
 	"github.com/egoist/asuka/host"
 	"github.com/egoist/asuka/layout"
+	"github.com/egoist/asuka/native"
 	"github.com/egoist/asuka/ops"
 )
 
@@ -49,6 +50,11 @@ type Core struct {
 	listUnbind func(list uint32, cell uint32)
 	runPosted  func()
 	attach     func()
+	nativeDone func(call uint64, p *byte, n uintptr)
+	invoke     func(id uint64, p *byte, n uintptr, out **byte) uintptr
+	cFree      func(p unsafe.Pointer)
+
+	natives *native.Session
 }
 
 var (
@@ -105,7 +111,59 @@ func Open(path string) (*Core, error) {
 	purego.RegisterLibFunc(&c.listUnbind, lib, "asuka_list_unbind")
 	purego.RegisterLibFunc(&c.runPosted, lib, "asuka_run_posted")
 	purego.RegisterLibFunc(&c.attach, lib, "asuka_attach")
+	purego.RegisterLibFunc(&c.nativeDone, lib, "asuka_native_done")
+	purego.RegisterLibFunc(&c.invoke, lib, "asuka_native_invoke")
+	purego.RegisterLibFunc(&c.cFree, lib, "asuka_free")
+	// Native packages implemented in Go (their desktop/ packages, built
+	// into the host) answer the core's native calls.
+	c.natives = native.NewSession(c.invokeCallback, c.done)
 	return c, nil
+}
+
+// answer hands an answer to the core: in out when it fits, else in a
+// buffer the core frees with native_free (Go memory, kept alive until
+// then).
+var (
+	bigMu sync.Mutex
+	bigs  = map[uintptr][]byte{}
+)
+
+func answer(b []byte, out unsafe.Pointer, capacity uintptr, big unsafe.Pointer) uintptr {
+	if uintptr(len(b)) <= capacity {
+		copy(unsafe.Slice((*byte)(out), capacity), b)
+		return uintptr(len(b))
+	}
+	buf := append([]byte(nil), b...)
+	p := uintptr(unsafe.Pointer(&buf[0]))
+	bigMu.Lock()
+	bigs[p] = buf
+	bigMu.Unlock()
+	*(*uintptr)(big) = p
+	return uintptr(len(b))
+}
+
+func (c *Core) invokeCallback(id uint64, args []byte) []byte {
+	var out *byte
+	var p *byte
+	if len(args) > 0 {
+		p = &args[0]
+	}
+	n := c.invoke(id, p, uintptr(len(args)), &out)
+	if out == nil || n == 0 {
+		return nil
+	}
+	b := append([]byte(nil), unsafe.Slice(out, n)...)
+	c.cFree(unsafe.Pointer(out))
+	return b
+}
+
+func (c *Core) done(call uint64, b []byte) {
+	var p *byte
+	if len(b) > 0 {
+		p = &b[0]
+	}
+	// asuka_native_done copies the answer and posts it to the main thread.
+	c.nativeDone(call, p, uintptr(len(b)))
 }
 
 // The callbacks, made once: purego's are never freed.
@@ -127,16 +185,40 @@ var cbs = func() *callbacks {
 			current.measureV(id, in, out)
 			return 0
 		}),
-		nativeNew: purego.NewCallback(func(cls, clsLen, iface, out, cap, big uintptr) uintptr { return 0 }),
-		nativeCall: purego.NewCallback(func(handle, method, in, n, out, cap, big uintptr) uintptr {
+		nativeNew: purego.NewCallback(func(cls unsafe.Pointer, clsLen, iface uintptr, out unsafe.Pointer, capacity uintptr, big unsafe.Pointer) uintptr {
+			name := string(unsafe.Slice((*byte)(cls), clsLen))
+			return answer(current.natives.New(name, uint32(iface)), out, capacity, big)
+		}),
+		nativeCall: purego.NewCallback(func(handle, method uintptr, in unsafe.Pointer, n uintptr, out unsafe.Pointer, capacity uintptr, big unsafe.Pointer) uintptr {
+			return answer(current.natives.Call(uint64(handle), uint32(method), bytesAt(in, n)), out, capacity, big)
+		}),
+		nativeStart: purego.NewCallback(func(handle, method uintptr, in unsafe.Pointer, n, call uintptr) uintptr {
+			current.natives.Start(uint64(handle), uint32(method), bytesAt(in, n), uint64(call))
 			return 0
 		}),
-		nativeStart:   purego.NewCallback(func(handle, method, in, n, call uintptr) uintptr { return 0 }),
-		nativeCancel:  purego.NewCallback(func(call uintptr) uintptr { return 0 }),
-		nativeRelease: purego.NewCallback(func(handle uintptr) uintptr { return 0 }),
-		nativeFree:    purego.NewCallback(func(p uintptr) uintptr { return 0 }),
+		nativeCancel: purego.NewCallback(func(call uintptr) uintptr {
+			current.natives.Cancel(uint64(call))
+			return 0
+		}),
+		nativeRelease: purego.NewCallback(func(handle uintptr) uintptr {
+			current.natives.Release(uint64(handle))
+			return 0
+		}),
+		nativeFree: purego.NewCallback(func(p uintptr) uintptr {
+			bigMu.Lock()
+			delete(bigs, p)
+			bigMu.Unlock()
+			return 0
+		}),
 	}
 }()
+
+func bytesAt(p unsafe.Pointer, n uintptr) []byte {
+	if p == nil || n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(p), n)
+}
 
 // Start gives the core its host: from then on it may apply batches and
 // measure. Main thread.

@@ -53,6 +53,13 @@ func Files(p *Package) (map[string][]byte, error) {
 		}
 		files[GoFile(p.Name)] = goSrc
 	}
+	if p.Asuka && exists(filepath.Join(p.Dir, DesktopDir)) {
+		src, err := GenerateGoServer(p)
+		if err != nil {
+			return nil, err
+		}
+		files[filepath.Join(DesktopDir, GoServerFile(p))] = src
+	}
 	if HasPlatform(p.Dir, "swift") {
 		files[filepath.Join(SwiftDir, SwiftFile(p))] = GenerateSwift(p)
 	}
