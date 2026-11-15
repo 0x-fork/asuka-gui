@@ -1,0 +1,3 @@
+name = "asuka/store"
+version = "0.1.0"
+description = "Small values kept across launches, in each platform's own preferences"

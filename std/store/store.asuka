@@ -1,0 +1,42 @@
+// Package asuka/store keeps small values (settings, the last tab, a
+// draft) across launches, in each platform's own preferences:
+// UserDefaults on iOS and macOS, SharedPreferences on Android,
+// localStorage on the web, a file in the app's data directory on
+// Windows and Linux. Values are kept as JSON, so any value JSON can say
+// (numbers, strings, arrays, structs) works. For records, use a
+// database (asuka/sqlite).
+//
+//   state units = store.read("units", "metric")
+//   effect { store.write("units", units) }
+
+/// The platform's preferences: strings by key.
+native interface Prefs {
+  fn get(key: string) -> string?
+  fn set(key: string, value: string)
+  fn remove(key: string)
+}
+
+let prefs = try !Prefs()
+
+/// The value kept under key, or def when there's none (or what's kept
+/// isn't a T any more).
+pub fn read<T>(key: string, def: T) -> T {
+  if let s = try? prefs.get(key) {
+    if let s = s {
+      if let v = try? json.decode<T>(s) {
+        return v
+      }
+    }
+  }
+  return def
+}
+
+/// Keeps value under key.
+pub fn write<T>(key: string, value: T) {
+  try? prefs.set(key, json.encode(value))
+}
+
+/// Forgets what's kept under key.
+pub fn remove(key: string) {
+  try? prefs.remove(key)
+}
