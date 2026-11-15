@@ -1,9 +1,12 @@
 # Lowering Asuka
 
 How the compiler turns Asuka (docs/language.md, RFC 0007's grammar) into
-bytecode (lang/bytecode) that the VM (core/src/vm) runs, and into C
-(lang/cgen) for release builds. Both backends start from the same typed
-IR, and the C they call into (core/src/rt, core/src/ui) is the same.
+bytecode (lang/bytecode) that the VM (core/src/vm) runs. Release builds
+compile that bytecode to C (lang/cgen): each synchronous function
+becomes a C function that calls the same instruction bodies the
+interpreter does (core/src/vm/ops.h), and async functions stay on the
+VM. So the bytecode is the one contract, and both backends mean the
+same thing by it (core/vm_test.go runs every module both ways).
 
 ## Pipeline
 
@@ -15,7 +18,7 @@ lang/ir       typed program -> IR: functions of three-address code over
               calls; async marked; retain/release implicit in kinds
 lang/bytecode IR -> module (register allocation per kind, jump patching,
               handler tables, line tables)
-lang/cgen     IR -> C (release)
+lang/cgen     bytecode -> C (release)
 lang/compile  the driver: a package and its imports -> one module
 ```
 
