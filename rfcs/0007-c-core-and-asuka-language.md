@@ -59,6 +59,8 @@ compatibility.
 | Reactivity | Fine-grained signals (alien-signals' algorithm, Solid's owners), with dependencies resolved at compile time where they're static | As before, minus runtime tracking for the common case. |
 | Layout | The CSS block, flexbox and grid engine, ported to C, checked against the same Chrome fixtures | Unchanged semantics. |
 | Build tool | Zig (`zig cc`, `build.zig`) | One toolchain cross-compiles C to iOS, Android, wasm, macOS, Windows and Linux; already used by `sdk/sqlite`. |
+| Packages | The npm registry, with the `asuka` CLI as the client: its own resolver (one version per package, a lockfile), no Node, no `node_modules` | See "Packages". The registry gives scopes, auth, private registries, provenance and a CDN for free; npm's install model (nested duplicate versions, install scripts) doesn't fit a compiled language. |
+| Installing the CLI | npm (`npm i -g asuka`, `npx asuka`), with a prebuilt binary per platform as an optional dependency (esbuild's pattern); also a shell installer and Homebrew | Most app developers already have npm; nothing is built on install. |
 
 ## The language
 
@@ -356,6 +358,48 @@ unqualified; `as` renames. The built-in elements, `Color`'s semantic
 colors, fonts and the core functions (`push`, `sleep`, `all`, …) are in
 the prelude.
 
+### Packages
+
+Packages share components, stores, native code (a `native` package's
+Swift, Kotlin, JavaScript and C) and prebuilt libraries (plugins). They
+live on the **npm registry**, but npm doesn't install them: the `asuka`
+CLI is the client, and it needs no Node.
+
+- **A package** is a directory with `asuka.json` (`"name"`, `"version"`,
+  `"dependencies"`, and what it is: a library, a native package, a
+  plugin) and its `.asuka` sources. `asuka pkg publish` makes the npm
+  package from it: `package.json` (name, version, `"asuka"` pointing at
+  the manifest, `"files"`) and the tarball, and uploads it with the
+  user's npm credentials (`~/.npmrc`, `NPM_TOKEN`), with provenance on
+  CI. Scoped names (`@acme/charts`) work as on npm, and so do private
+  registries (GitHub Packages, Verdaccio, a company's), set in
+  `.npmrc`.
+- **Depending** on one is `asuka add @acme/charts` (writes
+  `"dependencies": {"@acme/charts": "^1.2.0"}` in `asuka.json`) and
+  `import @acme/charts` in the source. Git dependencies
+  (`"github:acme/charts#v1.2.0"`) and local paths (`"file:../charts"`)
+  work too, for what isn't published.
+- **Resolving** picks one version of each package for the whole app,
+  by minimal version selection (Go's): the least version that meets
+  every requirement, so a build never changes because someone
+  published something. Two incompatible major versions are two
+  packages (`@acme/charts` and `@acme/charts@2` imported under their
+  own names), never two copies of one type. The result goes in
+  `asuka.lock`, with each tarball's integrity hash, and the CLI checks
+  every download against it.
+- **Installing** fetches tarballs straight from the registry's HTTP API
+  into a content-addressed cache (`~/.cache/asuka/pkg`), shared by every
+  project, read in place: no `node_modules`, and no install scripts, ever.
+  A plugin's prebuilt libraries are files its manifest names with their
+  SHA-256 (docs/plugins.md), fetched the same way, per platform, only
+  when a build needs them.
+- **Versions** are semver. `asuka pkg publish` checks a version against
+  the last one: a `pub` declaration removed or changed incompatibly
+  needs a new major version (the checker compares the two packages'
+  exported APIs).
+- The standard library (`asuka/http`, `asuka/sqlite`, ...) comes with
+  the CLI: it's versioned with it and needs no install.
+
 ### Native code
 
 `native interface Haptics { fn impact(style: Impact) }` and `native
@@ -451,6 +495,8 @@ Each ends with its tests green.
 - [ ] **E1** every element of the schema in the UI runtime; the
       examples ported to Asuka.
 - [ ] **N1** native packages from `native` declarations; `sdk/` ported.
+- [ ] **P1** packages: `asuka add`, `asuka pkg publish`, the resolver,
+      `asuka.lock`, the cache; the CLI on npm with prebuilt binaries.
 - [ ] **D1** desktop hosts in C: macOS, Windows, Linux.
 - [ ] **X** the Go core, the Go hosts and Go apps removed; DESIGN.md,
       AGENTS.md and the docs (with `zh` and `ja`) describe the new
