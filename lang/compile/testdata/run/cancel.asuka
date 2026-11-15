@@ -1,0 +1,38 @@
+// Cancellation: a task belongs to what started it; when that goes, the
+// await it's at ends it, its defers run, and no catch sees it.
+
+store Poller {
+  state ticks = 0
+
+  task {
+    defer { print("poller stopped after {ticks} ticks") }
+    while true {
+      do {
+        await sleep(10ms)
+        ticks += 1
+      } catch {
+        print("never: a catch doesn't see the cancellation")
+      }
+    }
+  }
+}
+
+test "a store's task ends with the test" {
+  let p = Poller()
+  await sleep(35ms)
+  print("ticks: {p.ticks}")
+}
+
+test "try? doesn't swallow it either" {
+  let p = Poller()
+  await sleep(5ms)
+  print(p.ticks)
+}
+
+// Output:
+// ticks: 3
+// poller stopped after 3 ticks
+// ok a store's task ends with the test
+// 0
+// poller stopped after 0 ticks
+// ok try? doesn't swallow it either
