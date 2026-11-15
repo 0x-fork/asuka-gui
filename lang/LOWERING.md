@@ -430,6 +430,16 @@ throws what the producer threw), JF to the end, CALLB `stream.value(s)`
 for x, the body, back to the top; at the end CALLB `stream.close(s)`,
 which cancels the producer (core/src/rt/stream.c).
 
+## Live values
+
+`live(initial, source)` is CALLB `live.new(initial, source, kind)`,
+which returns a closure that reads the value (core/src/vm/live.c): a
+memo over a signal the stream's values write. The memo's first tracked
+read queues the stream's start (on the ready queue: a producer's first
+steps may write state, which a memo's update can't); its unwatched
+hook cancels the stream. An untracked read returns the last value and
+starts nothing.
+
 ## Imports
 
 The compiler (lang/compile) finds each import: `./path` beside the

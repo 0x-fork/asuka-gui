@@ -17,6 +17,7 @@
 // stream holds the task, which would be a cycle.
 #include "rt/lib.h"
 #include "rt/sched.h"
+#include "rt/stream.h"
 
 enum { IDLE, RUNNING, ENDED, FAILED, CLOSED };
 
@@ -214,6 +215,15 @@ static ak_val stream_close(ak_val *args, uint32_t n) {
 	s->state = CLOSED;
 	return (ak_val){0};
 }
+
+ak_future *ak_stream_next(ak_val s) {
+	ak_val v = stream_next(&s, 1);
+	return v.p;
+}
+
+ak_val ak_stream_value(ak_val s) { return stream_value(&s, 1); }
+
+void ak_stream_close(ak_val s) { stream_close(&s, 1); }
 
 const ak_lib_entry ak_stream_lib[] = {
 	{"stream.new", stream_new},

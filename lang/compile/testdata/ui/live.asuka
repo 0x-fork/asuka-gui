@@ -1,0 +1,45 @@
+state started = 0
+state stopped = 0
+
+fn ticks() -> Stream<int> = Stream(send => {
+  started += 1
+  defer { stopped += 1 }
+  for i in 1..3 {
+    await sleep(10ms)
+    send(i)
+  }
+  await sleep(5min)
+})
+
+let count = live(0, ticks)
+
+component Shown {
+  Text("count {count()}")
+}
+
+component Root {
+  state on = true
+
+  Column {
+    if on { Shown() }
+    Button("Hide") { on press { on = false } }
+  }
+}
+
+app { Root() }
+
+test "follows its stream while it's read" {
+  expect(started == 0)
+  let app = mount(Root())
+  app.expect("count 0")
+  expect(started == 1)
+  app.tap("Hide")
+  await app.idle()
+  expect(stopped == 1)
+}
+
+test "keeps up with what comes" {
+  let app = mount(Shown())
+  await app.idle()
+  app.expect("count 3")
+}

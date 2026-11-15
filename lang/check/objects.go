@@ -402,6 +402,7 @@ const (
 	BWithTimeout // withTimeout(d) { … }
 	BStream      // Stream<T>(send => { … })
 	BEnvironment // environment(): what the platform says about where the app shows (tracked)
+	BLive        // live(initial, source): a tracked value a stream keeps current while it's read
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

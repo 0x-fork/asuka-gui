@@ -242,6 +242,27 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		call.Result = Void
 		c.callEffects(e, "withTimeout", true, true)
+	case BLive:
+		args := positional(2, "a value and a stream: live(initial, () => changes())")
+		var elem Type
+		if len(e.TypeArgs) == 1 {
+			elem = c.typeExpr(e.TypeArgs[0])
+		} else if ft, ok := Unopt(want).(*FuncType); ok && len(ft.Params) == 0 && ft.Result != nil {
+			elem = ft.Result
+		}
+		if len(args) == 2 {
+			if elem == nil {
+				elem = c.valueType(c.expr(args[0], nil), args[0])
+			} else {
+				c.assign(args[0], elem, "the initial value")
+			}
+			c.assign(args[1], &FuncType{Result: &Stream{elem}}, "the stream it follows")
+		}
+		if elem == nil {
+			elem = Invalid
+		}
+		call.Args = args
+		call.Result = &FuncType{Result: elem}
 	case BEnvironment:
 		positional(0, "nothing: environment()")
 		call.Result = c.prelude.Scope.Lookup("Environment").(*TypeName).Type

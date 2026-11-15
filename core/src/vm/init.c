@@ -2,11 +2,13 @@
 #include "rt/lib.h"
 
 extern const ak_lib_entry ak_lib_spawn;
+extern const ak_lib_entry ak_live_lib;
 
 void ak_vm_builtins_init(void) {
 	for (const ak_lib_entry *e = ak_lib; e->name; e++) ak_builtin_register(e->name, e->fn);
 	for (const ak_lib_entry *e = ak_stream_lib; e->name; e++) ak_builtin_register(e->name, e->fn);
 	ak_builtin_register(ak_lib_spawn.name, ak_lib_spawn.fn);
+	ak_builtin_register(ak_live_lib.name, ak_live_lib.fn);
 }
 
 // A closure spawn copied for a worker holds the module too.

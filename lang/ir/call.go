@@ -439,6 +439,11 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return b.allRace(e, call, dst)
 	case check.BWithTimeout:
 		return b.withTimeout(e, call)
+	case check.BLive:
+		ft := b.typ(call.Result).(*check.FuncType)
+		init := b.valueReg(b.value(call.Args[0], -1), b.l.kind(ft.Result))
+		src := b.value(call.Args[1], -1)
+		return b.copyTo(b.callB("live.new", bc.KRef, init, src, b.konst(int64(b.l.kind(ft.Result)))), dst)
 	case check.BEnvironment:
 		return b.copyTo(b.callB("ui.environment", bc.KRef), dst)
 	case check.BStream:

@@ -438,6 +438,17 @@ async fn loadThread(id: string) throws -> Thread {
     try await battery.watch(changed: level => send(level))
   })
   ```
+- `live(initial, source)` is a value a stream keeps current, as a
+  function that reads it: read in a binding, it follows `source()`'s
+  stream from the first such read until the last reader goes (then the
+  stream is cancelled: nothing watches the platform for no one); read
+  elsewhere, it's the last value known. It's how a package offers what
+  the platform changes, such as the network's state:
+
+  ```asuka
+  let level = live(1.0, levels)
+  pub fn batteryLevel() -> float = level()
+  ```
 - **Cancellation.** A task belongs to what started it. When that goes (the
   user leaves the screen), the task is cancelled: the `await` it's at
   ends it, its `defer`s run, and no error is reported.
