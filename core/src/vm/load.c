@@ -1,5 +1,7 @@
 #include "vm/vm_int.h"
 
+#include <stdatomic.h>
+
 #include <stdio.h>
 
 // ---- Builtins ----
@@ -88,7 +90,7 @@ static ak_str *intern(ak_module *m, ak_str *s) {
 	for (uint32_t i = 0; i < m->nstrings; i++) {
 		if (ak_str_eq(m->strings[i], s)) {
 			ak_release(s);
-			return ak_retain(m->strings[i]);
+			return m->strings[i];  // immortal, freed with the module
 		}
 	}
 	return s;
@@ -127,7 +129,14 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	for (uint32_t i = 0; i < m->nfloats; i++) m->floats[i] = ak_read_f64(&l->r);
 	m->nstrings = count(l, 4);
 	m->strings = ak_alloc(sizeof(ak_str *) * (m->nstrings ? m->nstrings : 1));
-	for (uint32_t i = 0; i < m->nstrings; i++) m->strings[i] = rstr(l);
+	// Constants are immortal: reading them costs no reference counting,
+	// and spawn's threads share them. A module is freed only once nothing
+	// of what ran it is left (on a reload, after the old views went and
+	// kept state was copied into the new module's values).
+	for (uint32_t i = 0; i < m->nstrings; i++) {
+		m->strings[i] = rstr(l);
+		ak_make_immortal(m->strings[i]);
+	}
 
 	// Shapes refer to each other by index: allocate them all first.
 	m->nshapes = count(l, 4);
@@ -250,10 +259,10 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	return m;
 }
 
-void ak_module_retain(ak_module *m) { m->rc++; }
+void ak_module_retain(ak_module *m) { atomic_fetch_add(&m->rc, 1); }
 
 void ak_module_release(ak_module *m) {
-	if (--m->rc > 0) return;
+	if (atomic_fetch_sub(&m->rc, 1) != 1) return;
 	for (uint32_t i = 0; i < m->nglobals; i++) ak_release_val(m->globals[i], (ak_kind)m->gkinds[i]);
 	ak_free(m->globals);
 	ak_free(m->gkinds);
@@ -279,7 +288,12 @@ void ak_module_release(ak_module *m) {
 			ak_free((void *)vs->cases[c].names);
 		}
 		ak_free(vs->cases);
-		for (uint32_t k = 0; k < vs->nmethods; k++) ak_release(vs->methods[k].name);
+		for (uint32_t k = 0; k < vs->nmethods; k++) {
+			ak_str *n = vs->methods[k].name;
+			bool constant = false;
+			for (uint32_t i = 0; i < m->nstrings && !constant; i++) constant = m->strings[i] == n;
+			if (!constant) ak_release(n);
+		}
 		ak_free(vs->methods);
 		// Payloadless singletons of payload enums.
 		if (vs->s.singletons) {
@@ -291,7 +305,7 @@ void ak_module_release(ak_module *m) {
 	ak_free(m->shapes);
 	for (uint32_t i = 0; i < m->names.len; i++) ak_release(m->names.data[i]);
 	ak_vec_free(&m->names);
-	for (uint32_t i = 0; i < m->nstrings; i++) ak_release(m->strings[i]);
+	for (uint32_t i = 0; i < m->nstrings; i++) ak_free(m->strings[i]);
 	ak_free(m->strings);
 	ak_free(m->ints);
 	ak_free(m->floats);

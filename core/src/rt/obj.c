@@ -322,7 +322,7 @@ ak_val ak_deep_copy(ak_val v, ak_kind k) {
 
 // ---- Errors ----
 
-static void *pending_error;
+static AK_TLS void *pending_error;
 
 static const uint8_t error_kinds[] = {AK_K_REF};
 static const char *const error_names[] = {"message"};

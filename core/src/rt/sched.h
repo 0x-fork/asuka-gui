@@ -26,6 +26,15 @@ bool ak_sched_has_ready(void);
 // ak_post queues cb to run on the main thread. Any thread.
 void ak_post(ak_cb cb, void *ctx);
 void ak_sched_run_posted(void);
+// Work on other threads that will post back (spawn's jobs, native calls)
+// holds the scheduler; a test's loop waits for it (ak_sched_wait_posted)
+// rather than deciding that nothing is left to run.
+void ak_sched_hold(void);
+void ak_sched_unhold(void);
+bool ak_sched_held(void);
+// ak_sched_wait_posted blocks until something is posted or nothing holds
+// the scheduler. Tests only: the main thread never blocks otherwise.
+void ak_sched_wait_posted(void);
 // ak_sched_set_wake sets what asks the host to call ak_sched_run_posted
 // (the host's post callback). Any thread may call wake.
 void ak_sched_set_wake(void (*wake)(void));

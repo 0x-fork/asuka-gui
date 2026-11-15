@@ -23,6 +23,7 @@ static void finish(ak_task *t, ak_val out, bool failed) {
 	if (failed) ak_future_reject(f, err);
 	else ak_future_resolve(f, out);
 	ak_vm_task_done(t, unseen);
+	ak_module_release(t->mod);
 	ak_free(t->co.regs);
 	ak_free(t->co.frames);
 	ak_free(t);
@@ -42,6 +43,8 @@ ak_future *ak_vm_task_start(const ak_func *f, ak_closure *clos, ak_val *args, ui
 	ak_task *t = ak_alloc(sizeof *t);
 	t->fut = ak_retain(fut);
 	t->co.task = t;
+	t->mod = f->mod;
+	ak_module_retain(f->mod);  // its code runs on until it finishes
 	fut->cancel = task_cancel;
 	fut->ctx = t;
 	ak_vm_task_own(t);

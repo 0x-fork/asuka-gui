@@ -2,8 +2,15 @@
 
 #include <stdio.h>
 
-ak_co ak_vm_main;
-ak_co *ak_vm_cur = &ak_vm_main;
+// Each thread runs the VM on its own coroutines: the main thread, and
+// spawn's workers.
+AK_TLS ak_co ak_vm_main;
+AK_TLS ak_co *ak_vm_cur;
+
+static inline ak_co *cur_co(void) {
+	if (!ak_vm_cur) ak_vm_cur = &ak_vm_main;
+	return ak_vm_cur;
+}
 
 #define MAX_FRAMES 10000
 
@@ -72,7 +79,7 @@ static uint32_t line_of(const ak_func *f, uint32_t pc) {
 void ak_vm_traceback(char *buf, size_t cap) {
 	size_t n = 0;
 	buf[0] = 0;
-	ak_co *co = ak_vm_cur;
+	ak_co *co = cur_co();
 	for (uint32_t i = co->nframes; i-- > 0 && n < cap;) {
 		ak_frame *fr = &co->frames[i];
 		int w = snprintf(buf + n, cap - n, "%s (%s:%u)\n", fr->fn->name->data, fr->fn->file->data, line_of(fr->fn, fr->pc ? fr->pc - 1 : 0));
@@ -131,7 +138,7 @@ static inline void store(const ak_func *f, ak_val *R, uint16_t a, ak_val v) {
 }
 
 bool ak_vm_run(ak_co *co, ak_val *out) {
-	ak_co *prev = ak_vm_cur;
+	ak_co *prev = cur_co();
 	ak_vm_cur = co;
 	ak_frame *fr;
 	const ak_func *F;
@@ -714,7 +721,7 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 void ak_vm_closure_drop(ak_closure *c) { ak_module_release(((const ak_func *)c->fn)->mod); }
 
 static ak_val call_sync(const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs) {
-	ak_co *co = ak_vm_cur;
+	ak_co *co = cur_co();
 	if (!ak_vm_push(co, f, clos, args, nargs, 0xFFFF, true, 0)) return (ak_val){0};
 	ak_val out;
 	bool suspended = ak_vm_run(co, &out);

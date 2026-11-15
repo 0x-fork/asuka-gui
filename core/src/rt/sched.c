@@ -43,6 +43,39 @@ bool ak_sched_run(void) {
 static ak_mutex post_mu = AK_MUTEX_INIT;
 static AK_VEC(item) posted, running;
 static void (*wake_host)(void);
+static ak_cond post_cond;
+static bool post_cond_ready;
+static int holds;  // under post_mu
+
+void ak_sched_hold(void) {
+	ak_mutex_lock(&post_mu);
+	holds++;
+	ak_mutex_unlock(&post_mu);
+}
+
+void ak_sched_unhold(void) {
+	ak_mutex_lock(&post_mu);
+	holds--;
+	if (post_cond_ready) ak_cond_broadcast(&post_cond);
+	ak_mutex_unlock(&post_mu);
+}
+
+bool ak_sched_held(void) {
+	ak_mutex_lock(&post_mu);
+	bool h = holds > 0;
+	ak_mutex_unlock(&post_mu);
+	return h;
+}
+
+void ak_sched_wait_posted(void) {
+	ak_mutex_lock(&post_mu);
+	if (!post_cond_ready) {
+		ak_cond_init(&post_cond);
+		post_cond_ready = true;
+	}
+	while (posted.len == 0 && holds > 0) ak_cond_wait(&post_cond, &post_mu);
+	ak_mutex_unlock(&post_mu);
+}
 
 void ak_sched_set_wake(void (*wake)(void)) { wake_host = wake; }
 
@@ -50,6 +83,7 @@ void ak_post(ak_cb cb, void *ctx) {
 	ak_mutex_lock(&post_mu);
 	bool first = posted.len == 0;
 	ak_vec_push(&posted, ((item){cb, ctx}));
+	if (post_cond_ready) ak_cond_broadcast(&post_cond);
 	void (*w)(void) = wake_host;
 	ak_mutex_unlock(&post_mu);
 	if (first && w) w();

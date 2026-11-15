@@ -3,6 +3,7 @@
 #define AK_VM_INT_H
 
 #include "vm/vm.h"
+#include <stdatomic.h>
 #include "rt/sched.h"
 #include "vm/opcodes_gen.h"
 #include "signal/signal.h"
@@ -51,7 +52,7 @@ typedef struct {
 } ak_vm_shape;
 
 struct ak_module {
-	uint32_t rc;  // the loader's reference and one per live closure of its code
+	_Atomic uint32_t rc;  // the loader's, one per live closure of its code and per task; any thread
 	int64_t *ints;
 	uint32_t nints;
 	double *floats;
@@ -102,11 +103,12 @@ struct ak_task {
 	ak_co co;
 	ak_future *awaiting;  // retained while suspended
 	ak_owner *owner;      // its own owner, under the one that started it
+	ak_module *mod;       // retained while it runs
 	bool running, cancelled;
 };
 
-extern ak_co *ak_vm_cur;  // the coroutine running now
-extern ak_co ak_vm_main;
+extern AK_TLS ak_co *ak_vm_cur;  // the coroutine running now (NULL: the main one)
+extern AK_TLS ak_co ak_vm_main;
 
 // The interpreter: runs co from its top frame until a boundary frame
 // returns (its result in *out) or the coroutine suspends (true).

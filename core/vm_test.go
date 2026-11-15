@@ -433,3 +433,42 @@ func TestVMTasks(t *testing.T) {
 	}
 	expect(t, got, "started", "slept", "7", "slept", "7", "ok tasks")
 }
+
+func TestVMSpawn(t *testing.T) {
+	m := module()
+	addInit(m)
+	// heavy() sums 1..1e6 on a worker; captured n.
+	heavy := newFn(m, "heavy")
+	heavy.def.CapKinds = []bc.Kind{bc.KInt}
+	i, sum, n, c := heavy.reg(bc.KInt), heavy.reg(bc.KInt), heavy.reg(bc.KInt), heavy.reg(bc.KBool)
+	heavy.op("CAP", n, 0)
+	heavy.op("KSMALL", i, 1)
+	heavy.op("KSMALL", sum, 0)
+	top := heavy.pc()
+	heavy.op("LEI", c, i, n)
+	exit := heavy.op("JF", c, 0)
+	heavy.op("ADDI", sum, sum, i)
+	heavy.op("ADDIK", i, i, 1)
+	back := heavy.op("JMP", 0)
+	heavy.a.PatchJump(back, top)
+	heavy.a.PatchJump(exit, heavy.pc())
+	heavy.op("RET", sum)
+	hIdx := heavy.done(bc.KInt, 0)
+
+	f := newFn(m, "t")
+	nn, clos, kind, fut, res := f.reg(bc.KInt), f.reg(bc.KRef), f.reg(bc.KInt), f.reg(bc.KRef), f.reg(bc.KInt)
+	m.Ints = append(m.Ints, 1000000)
+	f.op("KINT", nn, 0)
+	f.op("CLOS", clos, hIdx, nn, 1)
+	f.op("KSMALL", kind, int(bc.KInt))
+	f.op("CALLB", fut, f.b("async.spawn"), clos, 2)
+	f.op("AWAIT", res, fut)
+	f.print(res, bc.KInt)
+	f.op("RET0")
+	test(m, "spawn", f.done(bc.KVoid, bc.FAsync))
+	got, err := run(t, m, "-test")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, got)
+	}
+	expect(t, got, "500000500000", "ok spawn")
+}

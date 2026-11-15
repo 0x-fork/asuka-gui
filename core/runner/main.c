@@ -49,6 +49,11 @@ static void settle(ak_future *fut) {
 		ak_sched_run_posted();
 		if (ak_sched_run()) continue;
 		if (fut && fut->state != AK_FUT_PENDING) return;
+		if (ak_sched_held()) {
+			// Another thread works for us: wait for what it posts.
+			ak_sched_wait_posted();
+			continue;
+		}
 		int64_t at;
 		if (!ak_sched_next_timer(&at)) return;
 		ak_sched_advance(at - ak_sched_now());

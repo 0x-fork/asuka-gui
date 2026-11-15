@@ -32,6 +32,14 @@ static inline float ak_maxf(float a, float b) { return a > b ? a : b; }
 #define AK_PRINTF(f, a)
 #endif
 
+// AK_TLS marks a variable each thread has its own of: the VM's state,
+// which spawn's worker threads run on too.
+#if defined(_MSC_VER)
+#define AK_TLS __declspec(thread)
+#else
+#define AK_TLS _Thread_local
+#endif
+
 // Allocation. Never returns NULL: running out of memory aborts.
 void *ak_alloc(size_t n);  // zeroed
 void *ak_realloc(void *p, size_t n);
