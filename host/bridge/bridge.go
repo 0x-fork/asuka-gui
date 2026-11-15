@@ -181,8 +181,8 @@ var cbs = func() *callbacks {
 		// Floats can't cross purego's callbacks everywhere (Windows), so
 		// the host takes measure_v: the four inputs and two outputs by
 		// pointer.
-		measureV: purego.NewCallback(func(id uint32, in, out unsafe.Pointer) uintptr {
-			current.measureV(id, in, out)
+		measureV: purego.NewCallback(func(id uintptr, in, out unsafe.Pointer) uintptr {
+			current.measureV(uint32(id), in, out)
 			return 0
 		}),
 		nativeNew: purego.NewCallback(func(cls unsafe.Pointer, clsLen, iface uintptr, out unsafe.Pointer, capacity uintptr, big unsafe.Pointer) uintptr {
