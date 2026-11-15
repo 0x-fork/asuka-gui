@@ -368,14 +368,13 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		}
 	case isEnumerated(seq):
 		call := seq.(*syntax.CallExpr)
-		t := c.expr(call, nil)
+		c.expr(call, nil)
 		fi.Kind, fi.Seq = ForEnumerated, call.Fun.(*syntax.MemberExpr).X
 		if a, ok := c.info.Types[fi.Seq].(*Array); ok {
 			fi.Elem = a.Elem
 		} else {
 			fi.Elem = Invalid
 		}
-		_ = t
 	default:
 		t := c.expr(s.Seq, nil)
 		fi.Seq = s.Seq
@@ -778,7 +777,6 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		}
 		c.info.Cases[p] = k
 		c.caseArgs(p, k, et)
-		_ = kind
 	}
 }
 

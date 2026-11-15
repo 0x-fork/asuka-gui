@@ -259,8 +259,6 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 	m := call.Method
 	res := b.typ(call.Result)
 	k := b.l.kind(res)
-	bound := check.Subst{}
-	_ = bound
 	switch m.Special {
 	case "len":
 		x := b.recvValue(call, recv)

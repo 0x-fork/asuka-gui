@@ -999,7 +999,7 @@ func sendable1(t Type, seen map[*TypeName]bool) bool {
 			}
 		}
 		return true
-	case *FuncType, *Task, *Loading:
+	case *FuncType, *Task:
 		return false
 	case *TypeParam:
 		return true

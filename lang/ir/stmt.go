@@ -594,16 +594,13 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 	switch s.Op {
 	case syntax.ASSIGN:
 		v := b.value(s.Value, -1)
-		if b.f.Kinds[v] == bc.KRef || lt != nil {
-			v = b.owned(v)
-		}
 		b.set(b.prepare(s.Target), v)
 	case syntax.COALESCE_ASSIGN:
 		lv := b.prepare(s.Target)
 		cur := b.get(lv)
 		end := b.f.NewLabel()
 		b.emitJump(op("JSOME"), cur, end)
-		v := b.owned(b.value(s.Value, -1))
+		v := b.value(s.Value, -1)
 		b.set(lv, v)
 		b.f.Place(end)
 	default:
@@ -635,10 +632,6 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 		b.set(lv, r)
 	}
 }
-
-// owned is v in a register of its own (a temp), so a store can't alias
-// a local that changes later.
-func (b *fb) owned(v int) int { return v }
 
 // ---------------------------------------------------------------------
 // Errors

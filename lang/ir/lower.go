@@ -2,7 +2,6 @@ package ir
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
@@ -677,16 +676,6 @@ func (l *Lowerer) lowerTest(t *check.Test) {
 		b.emit(op("THROW"), e)
 		b.f.Handlers = append(b.f.Handlers, Handler{start, end, target})
 	})
-}
-
-// sortedGlobals is for stable output in tests.
-func sortedGlobals(m map[*check.Global]int) []*check.Global {
-	var gs []*check.Global
-	for g := range m {
-		gs = append(gs, g)
-	}
-	sort.Slice(gs, func(i, j int) bool { return m[gs[i]] < m[gs[j]] })
-	return gs
 }
 
 // implement fills the method table of t's shape with what interface

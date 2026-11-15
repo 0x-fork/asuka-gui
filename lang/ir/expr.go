@@ -1,7 +1,6 @@
 package ir
 
 import (
-	"math"
 	"strings"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
@@ -944,5 +943,3 @@ func (b *fb) matchExpr(e *syntax.MatchExpr, dst int) int {
 	b.f.Place(end)
 	return r
 }
-
-var _ = math.Inf

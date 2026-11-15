@@ -281,9 +281,7 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 	case *syntax.IfStmt:
 		saved := c.ctx
 		c.openScope()
-		var lc *syntax.LetCond
 		if l, ok := s.Cond.(*syntax.LetCond); ok {
-			lc = l
 			c.enter(CtxBinding, s.Cond, "condition")
 			lt := c.expr(l.Value, nil)
 			c.leave(saved)
@@ -296,7 +294,6 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 			c.leave(saved)
 			c.enter(CtxBuilder, s.Then, "then")
 		}
-		_ = lc
 		c.viewItems(s.Then.Items, nil)
 		c.leave(saved)
 		c.closeScope()
@@ -336,12 +333,8 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 			}
 			c.leave(saved)
 		}
-		ok, missing := c.exhaustive(t, s.Arms)
-		mi.Exhaustive = ok
-		if !ok {
-			// A view may show nothing for the rest.
-			_ = missing
-		}
+		// A view may show nothing for the cases it doesn't match.
+		mi.Exhaustive, _ = c.exhaustive(t, s.Arms)
 	case *syntax.ExprStmt:
 		t := c.expr(s.X, View)
 		if !IsInvalid(t) && t != View && !(IsOptional(t) && Unopt(t) == View) {

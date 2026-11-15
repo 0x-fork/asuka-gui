@@ -541,13 +541,11 @@ func (b *fb) forView(s *syntax.ForStmt) int {
 func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int) {
 	fi := b.l.info.Fors[s]
 	itemsCtx := b.l.info.Ctxs[s.Seq]
-	seqT := b.typ(&check.Array{Elem: fi.Elem})
 	items = b.makeClosure(closure{name: "items", ctxs: []*check.FuncCtx{itemsCtx}, ret: bc.KRef, throws: true, body: func(c *fb) {
 		c.ctx = itemsCtx
 		v := c.value(fi.Seq, -1)
 		c.emit(op("RET"), v)
 	}})
-	_ = seqT
 	if s.Key != nil {
 		kctx := b.l.info.Ctxs[s.Key]
 		var item *check.Var

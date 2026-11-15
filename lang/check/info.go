@@ -13,17 +13,16 @@ type Info struct {
 	// Convs: an expression whose value converts implicitly where it's
 	// used (an int literal to a float aside, which is typed float): to
 	// an optional, an interface, a Length, Edges.
-	Convs     map[syntax.Expr]Type
-	Ctxs      map[syntax.Node]*FuncCtx // the functions closures make: lambdas, handlers, tasks, effects, spawn, bindings
-	Cases     map[*syntax.CasePat]*Case
-	Catches   map[*syntax.CatchClause]*CatchInfo
-	Fors      map[*syntax.ForStmt]*ForInfo
-	Elements  map[*syntax.CallExpr]*ElementCall
-	Matches   map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
-	Lets      map[*syntax.LetDecl]Type   // a local let's or var's type
-	Emits     map[*syntax.EmitStmt]*Member
-	Binds     map[*syntax.OnHandler][]*Var // an on handler's parameters
-	Untracked map[syntax.Expr]bool
+	Convs    map[syntax.Expr]Type
+	Ctxs     map[syntax.Node]*FuncCtx // the functions closures make: lambdas, handlers, tasks, effects, spawn, bindings
+	Cases    map[*syntax.CasePat]*Case
+	Catches  map[*syntax.CatchClause]*CatchInfo
+	Fors     map[*syntax.ForStmt]*ForInfo
+	Elements map[*syntax.CallExpr]*ElementCall
+	Matches  map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
+	Lets     map[*syntax.LetDecl]Type   // a local let's or var's type
+	Emits    map[*syntax.EmitStmt]*Member
+	Binds    map[*syntax.OnHandler][]*Var // an on handler's parameters
 	// Trailing: a call's trailing block, as the closure it passes.
 	Trailing map[*syntax.CallExpr]*syntax.LambdaExpr
 }
@@ -45,7 +44,6 @@ func newInfo() *Info {
 		Lets:       map[*syntax.LetDecl]Type{},
 		Emits:      map[*syntax.EmitStmt]*Member{},
 		Binds:      map[*syntax.OnHandler][]*Var{},
-		Untracked:  map[syntax.Expr]bool{},
 		Trailing:   map[*syntax.CallExpr]*syntax.LambdaExpr{},
 	}
 }
