@@ -2,8 +2,8 @@
 
 // Package e2e drives the example apps on a simulator and an emulator,
 // through the platform's widgets, not the core. The tests build each app
-// with `asuka dev --once` (its Go code embedded, a debug build; the
-// player's tests, player_test.go, run asuka dev's player instead), then tap
+// with `asuka dev --once` (a debug build; the player's tests,
+// player_test.go, run asuka dev's player instead), then tap
 // and read the screen through the debug hosts' automation
 // (platform/ios/Sources/AsukaHost/Automation.swift, a notification;
 // platform/android/asuka/src/main/java/dev/asuka/Automation.kt, a broadcast;
@@ -18,6 +18,13 @@
 //
 // They wait for what they expect (bounded, so a broken app fails rather
 // than hangs), never for a fixed time.
+//
+// The examples are written in Asuka (app.asuka and the files beside it),
+// not Go: there's no main package to build any more. asuka dev builds an
+// example from its directory as before; these scenarios are the same, and
+// run again once asuka dev and asuka build compile Asuka packages (RFC
+// 0007's milestones M1, W1 and D1). The apps in testdata are still Go
+// until then.
 package e2e
 
 import (
@@ -187,9 +194,9 @@ func navigation(t *testing.T, s screen) {
 	s.command("tab Settings")
 	waitFor(t, s, []string{"Notifications", "About"}, "Message 19")
 	s.tap("About")
-	waitFor(t, s, []string{"Native widgets, driven by Go and fine-grained signals."})
+	waitFor(t, s, []string{"Native widgets, driven by Asuka and fine-grained signals."})
 	s.command("back")
-	waitFor(t, s, []string{"About"}, "Native widgets, driven by Go and fine-grained signals.")
+	waitFor(t, s, []string{"About"}, "Native widgets, driven by Asuka and fine-grained signals.")
 	s.command("tab Inbox")
 	waitFor(t, s, []string{"Message 19"}, "Notifications")
 }

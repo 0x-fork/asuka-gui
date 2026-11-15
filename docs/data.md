@@ -63,9 +63,10 @@ func Settings() ui.Node {
 ```
 
 Make it on the main thread, as any signal. A package-level variable works
-too (`examples/downloader` has `var wifiOnly = store.Signal("wifiOnly",
-false)`). Each call makes a new signal: two made with the same key don't
-follow each other, so make one and share it.
+too, which the whole app shares (`examples/downloader` keeps its Wi-Fi
+only switch so, at the top of its `app.asuka`: `let wifiOnly =
+storage.Value("wifiOnly", false)`). Each call makes a new signal: two made
+with the same key don't follow each other, so make one and share it.
 
 `Get`, `Set` and `Delete` work on values directly. `Set` takes anything
 `encoding/json` encodes; `Get` decodes into a pointer, and returns false

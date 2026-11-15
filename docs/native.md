@@ -428,7 +428,9 @@ web` reloads the page as one changes. See [the web](web.md#native-code).
 The desktop hosts run the app's Go in their own process, so a native
 package's code there is Go: Win32 through `syscall` on Windows, and GTK 4
 through purego on Linux, without cgo. A file built for those platforms
-gives `implement<T>` its implementation from an `init`:
+gives `implement<T>` its implementation from an `init`. They go in the
+package's `desktop/`, beside the `<package>_native.go` that `asuka native
+generate` writes there:
 
 ```go
 //go:build windows || (linux && !android)
@@ -477,7 +479,7 @@ Swift there, using AppKit through purego's `objc`.
 On the desktop, everything a Go implementation does runs on the main
 thread when it's called there, as the hosts do. A GTK signal needs a C
 callback (`purego.NewCallback`), and those are never freed, so make one
-and route by the widget. `examples/media/segmented/segmented_linux.go`
+and route by the widget. `examples/media/segmented/desktop/segmented_linux.go`
 does that.
 
 ## Developing native code

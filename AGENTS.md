@@ -60,7 +60,8 @@ go generate ./lang/bytecode ./lang/prelude  # the VM's opcodes header; the prelu
 go test ./internal/cbuild           # the core built for this computer, iOS, Android and the web (ASUKA_CC=zig for Zig)
 go build ./... && go vet ./...      # CGO_ENABLED=0: everything but mobile/
 go test ./...                       # signal, layout, ui with host/fake, ops, CLI
-go test ./uitest ./examples/...     # apps' UI tests: uitest drives them on host/fake (-uitest.update: their snapshots)
+go test ./uitest                    # Go apps' UI tests: uitest drives them on host/fake (-uitest.update: their snapshots)
+go run ./cmd/asuka test examples/counter  # an example's tests (its test blocks); the examples are Asuka, their stdlib in examples/STDLIB.md
 go test ./layout -run CSS -update-known  # after fixing layout: refresh known_failures.txt
 go test ./ops -update               # after changing the wire format: refresh golden files
 go test ./host/darwin -run Conformance   # what the macOS host draws for a Style, measured (package conformance)
@@ -73,16 +74,16 @@ go run platform/web/gen_symbols.go  # the web host's symbols, from the Android h
 go generate ./i18n                  # CLDR's tables, from the pinned release
 go generate ./sdk/sqlite        # the sqlite plugin's library for every platform, into sdk/sqlite/build (Xcode, the NDK, Zig)
 go run ./cmd/asuka plugin publish sdk/sqlite  # upload a plugin's build to its GitHub release, record it in its asuka-plugin.toml
-go run ./cmd/asuka generate examples/i18n  # an app's catalog functions (dev and build do it too)
+go run ./cmd/asuka generate <app>   # a Go app's catalog functions (dev and build do it too); Asuka reads the catalogs as tr.
 go run ./cmd/asuka native generate examples/media/segmented  # a native package's glue: Go, Swift, Kotlin, JavaScript (dev and build do it too; `native check`: CI)
 go test ./internal/nativegen -update     # after changing the generator: refresh its golden files (testdata/kitchen)
 go test ./host/darwin -run SwiftNatives  # a native package's Swift (the kitchen), built and called through the Mac's library
 go test -tags e2e ./e2e -run NativePackages  # native packages on the simulator, the emulator and headless Chrome
 go run ./cmd/asuka vet ./...                # the analyzers (package vet): a signal read once, written off the main thread
 go run ./cmd/asuka dev --platform ios --lang ar examples/i18n  # a language for one run; --lang ar-XB, en-XA: pseudo locales; --dir rtl: any app right to left
-go run ./cmd/asuka dev --platform ios examples/counter       # iOS simulator (Xcode): the Go code runs here, in the player
+go run ./cmd/asuka dev --platform ios examples/counter       # iOS simulator (Xcode): the app's code runs here, in the player
 go run ./cmd/asuka dev --platform android examples/counter   # Android emulator (SDK + NDK), likewise
-go run ./cmd/asuka dev --platform ios --once examples/counter # build the app with its Go code, launch once (--no-hot: and watch)
+go run ./cmd/asuka dev --platform ios --once examples/counter # build the app with its code, launch once (--no-hot: and watch)
 go test ./internal/remote                        # the dev transport, against the fake host
 go test -tags e2e ./e2e -run IOS                 # GUI tests: the examples on the simulator (Android: -run Android, an emulator running)
 go run ./cmd/asuka build --platform ios --simulator examples/counter    # a release build (--platform ios alone: a signed .ipa)
