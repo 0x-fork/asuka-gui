@@ -1,0 +1,19 @@
+pub struct Todo {
+  id: int
+  title: string
+  done: bool = false
+
+  pub fn label() -> string = "#{id} {title}"
+}
+
+pub enum Filter { all, open, done }
+
+pub fn matches(t: Todo, f: Filter) -> bool = match f {
+  .all => true
+  .open => !t.done
+  .done => t.done
+}
+
+fn secret() -> int = 42
+
+pub state created = 0

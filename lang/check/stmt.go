@@ -298,6 +298,10 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			if sel.Member.Kind != StateMember {
 				c.errorf(x, "can't %s %s: it isn't state", what, x.Name.Name)
 			}
+		case SelPkg:
+			if g, ok := sel.Obj.(*Global); !ok || g.Kind != StateGlobal {
+				c.errorf(x, "can't %s %s: only a package's state changes", what, exprName(x))
+			}
 		default:
 			c.errorf(x, "can't %s %s", what, exprName(x))
 		}

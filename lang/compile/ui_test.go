@@ -24,6 +24,9 @@ func TestUIPrograms(t *testing.T) {
 			if err := res.Err(); err != nil {
 				t.Fatalf("compile:\n%v", err)
 			}
+			if err := res.IR.Validate(); err != nil {
+				t.Fatalf("invalid IR: %v", err)
+			}
 			if *dumpFlag {
 				for i := range res.Module.Funcs {
 					t.Log(bc.Disasm(res.Module, &res.Module.Funcs[i]))

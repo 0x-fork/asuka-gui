@@ -489,6 +489,11 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 		}
 	case *syntax.MemberExpr:
 		sel := b.l.info.Selections[x]
+		if sel != nil && sel.Kind == check.SelPkg {
+			if g, ok := sel.Obj.(*check.Global); ok {
+				return &lvalue{x: x, kind: lvCell, cell: b.globalCell(g), g: g}
+			}
+		}
 		if sel != nil && sel.Kind == check.SelStoreMember {
 			s := b.value(x.X, -1)
 			return &lvalue{x: x, kind: lvCell, cell: b.storeMemberRef(s, sel.Member), m: sel.Member}
