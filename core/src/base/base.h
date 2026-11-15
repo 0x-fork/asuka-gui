@@ -37,6 +37,12 @@ void *ak_alloc(size_t n);  // zeroed
 void *ak_realloc(void *p, size_t n);
 void ak_free(void *p);
 
+#ifdef AK_TEST
+// The calls to ak_alloc and ak_realloc so far, for tests that assert a
+// path allocates nothing.
+extern uint64_t ak_alloc_count;
+#endif
+
 // ak_panic reports a bug in the core or the app and aborts.
 AK_NORETURN void ak_panic(const char *fmt, ...) AK_PRINTF(1, 2);
 
