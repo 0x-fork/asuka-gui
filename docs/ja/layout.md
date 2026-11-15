@@ -1,6 +1,6 @@
 # レイアウトとスタイル
 
-`ui.Style` は、ビューをどう配置し、どう見せるかを指定します。レイアウトは CSS の flexbox で、単位はポイントです。見た目は色、角丸、枠線、影、テキストで決まります。このページでは、この両方と、状況に応じて変わるスタイルについて説明します。レイアウトはどのプラットフォームでも同じです。Asuka が Go で計算し、その結果の位置にプラットフォームのビューを配置します。
+要素のスタイルのプロパティは、その要素をどう配置し、どう見せるかを指定します。レイアウトは CSS の flexbox と grid で、単位はポイントです。見た目は色、角丸、枠線、影、テキストで決まります。このページでは、この両方と、変化するスタイルについて説明します。レイアウトはどのプラットフォームでも同じです。Asuka のコアが計算し、その結果の位置にプラットフォームのビューを配置します。
 
 ## プラットフォームのデフォルト
 
@@ -17,29 +17,42 @@
 
 ## スタイル
 
-`ui.Style` はただの構造体です。コンポーネントはスタイルを `Styler` として受け取ります。`Styler` には `Style` を渡すか、変化するスタイルなら `ui.StyleFunc` を渡します（[動的なスタイル](#動的なスタイル)を参照）。
+どの要素も、ブロックの中で自身のプロパティに続けてスタイルのプロパティを受け取ります。
 
-```go
-ui.Text(title, ui.Style{Font: fonts.Headline, Color: colors.SecondaryLabel})
-ui.Button(ui.ButtonProps{Title: ui.Val("Follow"), Style: ui.Style{Shrink: ui.NoShrink}})
-ui.View(ui.ViewProps{Style: ui.Style{Height: ui.Pt(1), Background: colors.Separator}})
+```asuka
+Text(title) { font: .headline; color: .secondaryLabel }
+Button("Follow") { shrink: 0 }
+View { height: 1; background: .separator }
 ```
 
-見た目のプロパティは、ネイティブのウィジェットが対応している場合にだけ反映されます。たとえばボタンは `Color` をティントカラーとして使い、ビューは `Font` を無視します。
+`style` は再利用するプロパティをまとめて宣言します。ブロックの中に `style name` と書くとそれが適用され、その後に書いたプロパティが優先されます。
+
+```asuka
+style card {
+  padding: 16; radius: 12; gap: 8
+  background: .secondaryBackground
+}
+
+View { style card; background: .accent }
+```
+
+見た目のプロパティは、ネイティブのウィジェットが対応している場合にだけ反映されます。たとえばボタンは `color` をティントカラーとして使い、ビューは `font` を無視します。
 
 ## ビューの並べ方
 
-`ui.Column` は子を上から下へ、`ui.Row` は先頭（leading）から末尾（trailing）へ並べます。`ui.View` は、スタイルの `Direction` で方向が決まるコンテナーです。`Direction` には `ui.ColumnDir`（デフォルト）か `ui.RowDir` を指定します。nil のスタイルは空のスタイルとして扱われます。
+`Column` は子を上から下へ、`Row` は先頭（leading）から末尾（trailing）へ並べます。`View` は、`direction` で方向が決まるコンテナーです。`direction` は `.column`（デフォルト）か `.row` です。
 
-```go
-ui.Row(ui.Style{Align: ui.AlignCenter, Gap: 12},
-	Avatar(),
-	ui.Column(ui.Style{Grow: 1, Gap: 2},
-		ui.StaticText("Ada Lovelace", ui.Style{Font: fonts.Headline}),
-		ui.StaticText("Notes on the Analytical Engine", ui.Style{Font: fonts.Subheadline, Color: colors.SecondaryLabel, Lines: 1}),
-	),
-	ui.Button(ui.ButtonProps{Title: ui.Val("Follow"), Style: ui.Style{Shrink: ui.NoShrink}}),
-)
+```asuka
+Row {
+  align: .center; gap: 12
+  Avatar()
+  Column {
+    grow: 1; gap: 2
+    Text("Ada Lovelace") { font: .headline }
+    Text("Notes on the Analytical Engine") { font: .subheadline; color: .secondaryLabel; lines: 1 }
+  }
+  Button("Follow") { shrink: 0 }
+}
 ```
 
 レイアウトのプロパティしか持たないコンテナーは、ネイティブのビューを作りません。その子は、ネイティブのビューを持つ最も近い祖先の中に配置されます。そのため、いくら入れ子にしてもコストはかかりません。
@@ -48,165 +61,175 @@ ui.Row(ui.Style{Align: ui.AlignCenter, Gap: 12},
 
 レイアウトは CSS の flexbox に従い、デフォルト値は React Native と同じです。つまり、方向は縦（column）で、サイズにはパディングと枠線が含まれます。
 
-- **`Gap`**：子どうしの間隔です。子が折り返したときは、行と行の間隔にもなります。
-- **`Justify`** は、主軸方向の子の配置です。`ui.JustifyStart`（デフォルト）、`ui.JustifyCenter`、`ui.JustifyEnd`、`ui.JustifySpaceBetween`、`ui.JustifySpaceAround`、`ui.JustifySpaceEvenly` があります。
-- **`Align`** は、交差軸方向の配置です。`ui.AlignStretch`（デフォルト。子が交差軸いっぱいに広がります）、`ui.AlignStart`、`ui.AlignCenter`、`ui.AlignEnd`、`ui.AlignBaseline` があります。
-- **`AlignSelf`** は、その子についてだけ親の `Align` を上書きします。ゼロ値の `ui.AlignAuto` なら、親の値に従います。
-- **`Wrap`** を設定すると、子が収まらないときに複数の行に折り返します。
-- **`Grow`** は、親の主軸方向に余ったスペースのうち、その子が受け取る割合です。`Grow` を持つ子は、中身のサイズより小さく縮むこともできます。そのため、`Scroll` を囲む `Grow` 付きのビューは、スクロールの中身の高さ全体に広がるのではなく、その中でスクロールします。
-- **`Shrink`** は、行があふれたときにその子が譲る量です。デフォルトは 0 で、1 として扱われます。このとき、テキストは折り返し、コントロールは最小サイズを保ちます。`ui.NoShrink` を指定すると、子のサイズは縮みません。
-- **`Basis`** は、主軸方向での子の初期サイズです。デフォルトの Auto は中身のサイズです。
+- **`gap`**：子どうしの間隔です。子が折り返したときは、行と行の間隔にもなります。
+- **`justify`** は、主軸方向の子の配置です。`.start`（デフォルト）、`.center`、`.end`、`.spaceBetween`、`.spaceAround`、`.spaceEvenly` があります。
+- **`align`** は、交差軸方向の配置です。`.stretch`（デフォルト。子が交差軸いっぱいに広がります）、`.start`、`.center`、`.end`、`.baseline` があります。
+- **`alignSelf`** は、その子についてだけ親の `align` を上書きします。デフォルトの `.auto` なら、親の値に従います。
+- **`wrap`** を設定すると、子が収まらないときに複数の行に折り返します。
+- **`grow`** は、親の主軸方向に余ったスペースのうち、その子が受け取る割合です。伸びる子は、中身のサイズより小さく縮むこともできます。そのため、`Scroll` を囲む伸びるビューは、スクロールの中身の高さ全体に広がるのではなく、その中でスクロールします。
+- **`shrink`** は、行があふれたときにその子が譲る量です。デフォルトは 0 です。1 にすると、テキストは折り返し、コントロールは最小サイズを保ちます。
+- **`basis`** は、主軸方向での子の初期サイズです。デフォルトの `.auto` は中身のサイズです。
 
-```go
+```asuka
 // 幅を分け合う二つのボックス。一方はもう一方の 2 倍。
-ui.Row(ui.Style{Gap: 8, Height: ui.Pt(60)},
-	ui.View(ui.ViewProps{Style: ui.Style{Grow: 2, Background: colors.SecondaryBackground}}),
-	ui.View(ui.ViewProps{Style: ui.Style{Grow: 1, Background: colors.SecondaryBackground}}),
-)
+Row {
+  gap: 8; height: 60
+  View { grow: 2; background: .secondaryBackground }
+  View { grow: 1; background: .secondaryBackground }
+}
 
 // 両端に置いたラベルと値。
-ui.Row(ui.Style{Justify: ui.JustifySpaceBetween, Align: ui.AlignCenter},
-	ui.StaticText("Total"),
-	ui.StaticText("$42", ui.Style{Font: fonts.Title2}),
-)
+Row {
+  justify: .spaceBetween; align: .center
+  Text("Total")
+  Text("$42") { font: .title2 }
+}
 
 // 複数行に折り返すチップ。
-ui.Row(ui.Style{Wrap: true, Gap: 8},
-	ui.StaticText("Go"), ui.StaticText("iOS"), ui.StaticText("Android"),
-)
+Row {
+  wrap: true; gap: 8
+  Text("Asuka"); Text("iOS"); Text("Android")
+}
 ```
 
 ## サイズ
 
-長さは `ui.Dim` で表します。
+長さは `Length` で表します。
 
-- `ui.Pt(v)`：ポイント。iOS と macOS ではポイント、Android では dp、Windows では拡大率 100% のときの 1 ピクセル（1/96 インチ）、Linux では GTK の論理ピクセル、Web では CSS ピクセルです。
-- `ui.Pct(v)`：同じ軸方向の、親のサイズに対するパーセンテージ。
-- `ui.Auto`（ゼロ値）：中身のサイズ、または flexbox が割り当てるサイズ。
+- 数値：ポイント。iOS と macOS ではポイント、Android では dp、Windows では拡大率 100% のときの 1 ピクセル（1/96 インチ）、Linux では GTK の論理ピクセル、Web では CSS ピクセルです。
+- パーセンテージ（`50%`）：同じ軸方向の、親のサイズに対する割合。
+- `.auto`（デフォルト）：中身のサイズ、または flexbox が割り当てるサイズ。
 
-`Width` と `Height` でサイズを指定し、`MinWidth`、`MinHeight`、`MaxWidth`、`MaxHeight` でその範囲を制限します。`AspectRatio` は幅を高さで割った比です。一辺のサイズが決まっていれば、もう一辺をこの比から決めます。
+`width` と `height` でサイズを指定し、`minWidth`、`minHeight`、`maxWidth`、`maxHeight` でその範囲を制限します。`aspectRatio` は幅を高さで割った比です。一辺のサイズが決まっていれば、もう一辺をこの比から決めます。
 
-```go
-ui.View(ui.ViewProps{Style: ui.Style{
-	Width:       ui.Pct(50),
-	MinWidth:    ui.Pt(120),
-	MaxWidth:    ui.Pt(320),
-	AspectRatio: 16.0 / 9,
-	Background:  colors.Gray,
-}})
+```asuka
+View {
+  width: 50%; minWidth: 120; maxWidth: 320
+  aspectRatio: 16.0 / 9
+  background: .gray
+}
 ```
 
 テキストとコントロールは、プラットフォーム自身の計測方法で自分のサイズを測ります。サイズを指定するのは、それを変えたいときだけにしてください。
 
-1 ポイントが何ピクセルになるかは、ディスプレイのスケールで決まります。スマートフォンでは 2 か 3、Retina の Mac では 2、Windows と Linux ではディスプレイの拡大率（150% なら 1.5）、Web ではブラウザーの device pixel ratio です。実際の値は `ui.UseEnvironment()` の `Scale` でわかります。デスクトップのウィンドウをスケールの異なるディスプレイに移すと、そのディスプレイのスケールで描画されます。ポイント単位のレイアウトは変わりません。
+1 ポイントが何ピクセルになるかは、ディスプレイのスケールで決まります。スマートフォンでは 2 か 3、Retina の Mac では 2、Windows と Linux ではディスプレイの拡大率（150% なら 1.5）、Web ではブラウザーの device pixel ratio です。実際の値は環境の `scale`（`environment().scale`）でわかります。デスクトップのウィンドウをスケールの異なるディスプレイに移すと、そのディスプレイのスケールで描画されます。ポイント単位のレイアウトは変わりません。
 
 ## パディングとマージン
 
-`Padding` と `Margin` は `ui.Edges` で、辺ごとにポイントで指定します。
+`padding` と `margin` は `Edges` で、辺ごとにポイントで指定します。
 
-- `ui.All(v)`：すべての辺に v。
-- `ui.Symmetric(v, h)`：上下に v、左右に h。
-- `ui.Edges{Top: 24}`：辺を名前で個別に指定。
+- `16`：すべての辺に 16。
+- `[8, 16]`：上下に 8、左右に 16。
+- `[4, 8, 4, 8]`：上、右、下、左の順。
+- `Edges(top: 24)`：辺を名前で個別に指定。
 
-```go
-ui.Column(ui.Style{Padding: ui.Symmetric(8, 16), Margin: ui.Edges{Top: 24}},
-	ui.StaticText("Padded"),
-)
+```asuka
+Column {
+  padding: [8, 16]; margin: Edges(top: 24)
+  Text("Padded")
+}
 ```
 
-iOS、Android、Web では、`Button` の `Padding` は CSS と同じようにプラットフォーム標準の余白に置き換わります。`ui.Style{MinHeight: ui.Pt(48), Padding: ui.Symmetric(10, 20)}` はこれらのプラットフォームで高さ 48 ポイントになり、同じスタイルの `View` と同じです。`Padding` を指定しないボタンはプラットフォーム標準の余白のままで、枠線だけを指定した場合も同じです。デスクトップでは、ボタンの余白はネイティブのボタンの外枠の外側に付きます。
+iOS、Android、Web では、`Button` の `padding` は CSS と同じようにプラットフォーム標準の余白に置き換わります。`minHeight: 48; padding: [10, 20]` はこれらのプラットフォームで高さ 48 ポイントになり、同じプロパティを指定した `View` と同じです。`padding` を指定しないボタンはプラットフォーム標準の余白のままで、枠線だけを指定した場合も同じです。デスクトップでは、ボタンの余白はネイティブのボタンの外枠の外側に付きます。
 
-右から左に書く言語では、`Row` は右から並び、`Justify` と `Align` もそれに従います。テキストの行が始まる側も右になります。一方、`Left` と `Right` は CSS と同じく、書かれたとおりの側を指します。テキストが始まる側や終わる側に余白を置きたいときは、`Start` や `End` を使います。
+右から左に書く言語では、`Row` は右から並び、`justify` と `align` もそれに従います。テキストの行が始まる側も右になります。一方、`left` と `right` は CSS と同じく、書かれたとおりの側を指します。テキストが始まる側や終わる側に余白を置きたいときは、`start` や `end` を使います。
 
-```go
-ui.Style{Padding: ui.Edges{Start: 16, End: 8}} // 英語では左に 16、アラビア語では右に 16
+```asuka
+View { padding: Edges(start: 16, end: 8) } // 英語では左に 16、アラビア語では右に 16
 ```
 
 [多言語対応](i18n.md)も参照してください。
 
 ## 絶対配置
 
-`Absolute` を設定するとビューは通常のフローから外れ、`Top`、`Right`、`Bottom`、`Left` で親の中での位置を指定できます。次の例では、アバターの角にバッジを重ねています。
+`absolute: true` を設定するとビューは通常のフローから外れ、`top`、`right`、`bottom`、`left` で親の中での位置を指定できます。次の例では、アバターの角にバッジを重ねています。
 
-```go
-ui.View(ui.ViewProps{Style: ui.Style{Width: ui.Pt(44), Height: ui.Pt(44)}},
-	Avatar(),
-	ui.View(ui.ViewProps{Style: ui.Style{
-		Absolute: true, Top: ui.Pt(-4), Right: ui.Pt(-4),
-		Width: ui.Pt(18), Height: ui.Pt(18), CornerRadius: 9,
-		Background: colors.Red, Align: ui.AlignCenter, Justify: ui.JustifyCenter,
-	}}, Badge()),
-)
+```asuka
+View {
+  width: 44; height: 44
+  Avatar()
+  View {
+    absolute: true; top: -4; right: -4
+    width: 18; height: 18; radius: 9
+    background: .red; align: .center; justify: .center
+    Badge()
+  }
+}
 ```
 
 後の子ほど、前の子の上に重ねて描画されます。
 
 ## Grid
 
-`Grid` を設定したコンテナーは、子を CSS grid で配置します。トラックの指定には、`layout` パッケージの `layout.Fr`、`layout.Px`、`layout.Repeat`、`layout.Minmax` などを使います。子を複数のトラックにまたがらせるには、`GridColumn` と `GridRow` を使います。
+`grid` を設定したコンテナーは、子を CSS grid で配置します。トラックは `Track` で、`.fr(1)`、`.points(80)`、`.percent(25)`、`.auto`、`.minContent`、`.maxContent`、`.minmax(a, b)`、`.repeat(n, [...])`、`.autoFill([...])`、`.autoFit([...])` があります。子を複数のトラックにまたがらせるには、`gridColumn` と `gridRow` を使います（`.line(2)`、`.span(3)`、`.between(1, 3)`）。
 
-```go
-ui.View(ui.ViewProps{Style: ui.Style{Gap: 8, Grid: &ui.Grid{
-	Columns: []layout.GridTrack{layout.Repeat(3, layout.Fr(1))},
-}}},
-	Avatar(), Avatar(), Avatar(), Avatar(),
-	ui.View(ui.ViewProps{Style: ui.Style{GridColumn: layout.Placement{Start: layout.Span(3)}, Height: ui.Pt(20), Background: colors.Gray}}),
-)
-```
-
-多数の項目をスクロールできるグリッドで表示するなら、`Columns` を指定した `ui.List` を使ってください（[コンポーネント](components.md)を参照）。
-
-## セーフエリア、キーボード、ウィンドウ
-
-スマートフォンでは、ルートは画面全体を覆い、ステータスバー、ノッチ、ホームインジケーターの下にまで広がります。`ui.SafeArea` は、自身のパディングに加えて、セーフエリアのインセット分のパディングを持つ `Column` です。キーボードが表示されている間は下のパディングがキーボードの高さになるので、下端にあるもの（テキストフィールドや送信ボタン）はキーボードの上に出たままになります。
-
-```go
-ui.SafeArea(ui.Style{Padding: ui.All(16), Gap: 12},
-	ui.StaticText("Todos", ui.Style{Font: fonts.LargeTitle.Weighted(fonts.Bold)}),
-	ui.Scroll(ui.ScrollProps{Style: ui.Style{Grow: 1}}, rows...),
-	composer,
-)
-```
-
-インセットは、そのビューがある画面のものです。スタックの画面、タブ、シートの中なら、その画面のインセットになります。自分で配置したいときは、`ui.UseEnvironment` でインセットとキーボードの高さを取得できます（[基本概念](concepts.md)を参照）。
-
-macOS、Windows、Linux では、ルートはタイトルバー（Linux ではヘッダーバー）の下にある、ウィンドウのコンテンツ領域を埋めます。デスクトップのウィンドウにはセーフエリアがなく、オンスクリーンキーボードが重なることもありません。そのため、インセットとキーボードの高さは 0 になり、`ui.SafeArea` は自身のパディングだけを持つ `Column` になります。それでも `ui.SafeArea` は使っておきましょう。そうすれば、同じ画面がスマートフォンにもそのまま収まります。
-
-アプリが指定しない限り、ウィンドウのサイズは 800 × 600 ポイントです。サイズと、ユーザーが縮められる最小サイズは `app.RunWindow` で指定します。
-
-```go
-func main() {
-	app.RunWindow(ui.WindowOptions{Width: 960, Height: 640, MinWidth: 480, MinHeight: 360}, App)
+```asuka
+View {
+  gap: 8
+  grid: Grid(columns: [.repeat(3, [.fr(1)])])
+  Avatar(); Avatar(); Avatar(); Avatar()
+  View { gridColumn: .span(3); height: 20; background: .gray }
 }
 ```
 
-スマートフォンでは、これらのオプションは無視されます。ユーザーがウィンドウのサイズを変えると、環境の `Width` と `Height` が変わってレイアウトが再実行されるので、アプリ側で処理することは何もありません。あるサイズでレイアウトを切り替えたいとき（スペースに余裕があればサイドバーを表示するなど）は、タブレットの場合と同じく、`StyleFunc` や `Show` の中で環境の `WidthClass` を読みます。
+多数の項目をスクロールできるグリッドで表示するなら、`columns` を指定した `List` を使ってください（[コンポーネント](components.md)を参照）。
+
+## セーフエリア、キーボード、ウィンドウ
+
+スマートフォンでは、ルートは画面全体を覆い、ステータスバー、ノッチ、ホームインジケーターの下にまで広がります。`SafeArea` は、自身のパディングに加えて、セーフエリアのインセット分のパディングを持つ `Column` です。キーボードが表示されている間は下のパディングがキーボードの高さになるので、下端にあるもの（テキストフィールドや送信ボタン）はキーボードの上に出たままになります。
+
+```asuka
+SafeArea {
+  padding: 16; gap: 12
+  Text("Todos") { font: .largeTitle.bold() }
+  Scroll {
+    grow: 1
+    for t in todos key t.id { TodoRow(t) }
+  }
+  Composer()
+}
+```
+
+インセットは、そのビューがある画面のものです。スタックの画面、タブ、シートの中なら、その画面のインセットになります。自分で配置したいときは、`environment()` でインセットとキーボードの高さを取得できます（[基本概念](concepts.md#環境)を参照）。
+
+macOS、Windows、Linux では、ルートはタイトルバー（Linux ではヘッダーバー）の下にある、ウィンドウのコンテンツ領域を埋めます。デスクトップのウィンドウにはセーフエリアがなく、オンスクリーンキーボードが重なることもありません。そのため、インセットとキーボードの高さは 0 になり、`SafeArea` は自身のパディングだけを持つ `Column` になります。それでも `SafeArea` は使っておきましょう。そうすれば、同じ画面がスマートフォンにもそのまま収まります。
+
+アプリが指定しない限り、ウィンドウのサイズは 800 × 600 ポイントです（[ナビゲーション](navigation.md)を参照）。スマートフォンにはウィンドウがありません。ユーザーがウィンドウのサイズを変えると、環境の `width` と `height` が変わってレイアウトが再実行されるので、アプリ側で処理することは何もありません。あるサイズでレイアウトを切り替えたいとき（スペースに余裕があればサイドバーを表示するなど）は、タブレットの場合と同じく、環境の `widthClass` で分岐します。
+
+```asuka
+if environment().widthClass == .expanded {
+  Row { grow: 1; Sidebar(); Detail() }
+} else {
+  ItemList()
+}
+```
 
 ブラウザーでは、ページ全体を占めるアプリは、デバイスのセーフエリア（ノッチのあるスマートフォンでの `env(safe-area-inset-*)`）と、visual viewport から得たオンスクリーンキーボードの高さを使います。ページの一部に埋め込まれたアプリには、どちらもありません。
 
 ## スクロール
 
-`ui.Scroll` は子を縦方向に、`Horizontal` を指定すれば横方向にスクロールします。スクロールする範囲が決まるように、サイズか `Grow: 1` を指定してください。`Style` はスクロールビュー自体のボックスに、`ContentStyle` は子が並ぶボックスに適用されます。パディングや間隔は `ContentStyle` に指定します。
+`Scroll` は子を縦方向に、`horizontal: true` を指定すれば横方向にスクロールします。スクロールする範囲が決まるように、サイズか `grow: 1` を指定してください。サイズのプロパティはスクロールビュー自体のボックスに適用され、`padding`、`gap`、`justify`、`align`、`wrap` は中身の並べ方に使われます。
 
-```go
-ui.Scroll(ui.ScrollProps{Style: ui.Style{Grow: 1}, ContentStyle: ui.Style{Padding: ui.All(16), Gap: 12}},
-	ui.StaticText("Long content"),
-)
+```asuka
+Scroll {
+  grow: 1; padding: 16; gap: 12
+  Text("Long content")
+}
 ```
 
-引っ張って更新する機能とスクロール位置については[コンポーネント](components.md)を、長いリストについては[リスト](components.md)を参照してください。
+引っ張って更新する機能とスクロール位置については[コンポーネント](components.md)を、長いリストについては[リスト](components.md#リスト)を参照してください。
 
 ## 色
 
-`ui.Color` は `colors` パッケージ（`github.com/egoist/asuka/colors`）で作ります。色は次のいずれかです。
+`Color` は次のいずれかです。
 
-- **プラットフォームのデフォルト**：ゼロ値。プロパティを設定しなかった場合です。
+- **プラットフォームのデフォルト**：プロパティを設定しなかった場合です。
 - **セマンティックカラー**：実際の色はプラットフォームが決めるので、ダークモードに追従します。
-  - テキスト：`colors.Label`、`colors.SecondaryLabel`、`colors.TertiaryLabel`。
-  - 背景：`colors.Background`、`colors.SecondaryBackground`、`colors.GroupedBackground`、そしてその上に置くグループ化されたリストの行のための `colors.SecondaryGroupedBackground`（iOS の inset grouped のセル）。
-  - `colors.Separator`、`colors.Accent`（アプリのアクセントカラー）、`colors.OnAccent`（アクセントカラーの上で読みやすい色。アクセントカラーで塗りつぶしたボタンの上のアイコンなど）、`colors.Clear`（透明）。
-  - システムの色：`colors.Red`、`colors.Orange`、`colors.Yellow`、`colors.Green`、`colors.Blue`、`colors.Purple`、`colors.Pink`、`colors.Gray`。
-- **固定色**：`colors.RGB(r, g, b)`、`colors.RGBA(r, g, b, a)`、`colors.Hex(0x7c3aed)`、`colors.ParseHex("#7c3aed")`（`"#rrggbbaa"` も使えます）。`colors.ParseHex` は、パースできたかどうかも返します。
+  - テキスト：`.label`、`.secondaryLabel`、`.tertiaryLabel`。
+  - 背景：`.background`、`.secondaryBackground`、`.groupedBackground`、そしてその上に置くグループ化されたリストの行のための `.secondaryGroupedBackground`（iOS の inset grouped のセル）。
+  - `.separator`、`.accent`（アプリのアクセントカラー）、`.onAccent`（アクセントカラーの上で読みやすい色。アクセントカラーで塗りつぶしたボタンの上のアイコンなど）、`.clear`（透明）。
+  - システムの色：`.red`、`.orange`、`.yellow`、`.green`、`.blue`、`.purple`、`.pink`、`.gray`。
+- **固定色**：`#7c3aed`、またはアルファ付きの `#7c3aed80`。
 
 セマンティックカラーの出どころは次のとおりです。
 
@@ -219,91 +242,97 @@ ui.Scroll(ui.ScrollProps{Style: ui.Style{Grow: 1}, ContentStyle: ui.Style{Paddin
 | Linux | libadwaita の名前付きカラー（`window_fg_color`、`window_bg_color`、`card_bg_color`、`destructive_color` など）。テーマの定義どおりで、ハイコントラストにも対応 |
 | Web | Asuka のパレット。CSS 変数で、ライトとダークの両方 |
 
-デスクトップでは、グループ化用の背景は通常の背景と同じです。`colors.GroupedBackground` はウィンドウの背景色、`colors.SecondaryGroupedBackground` は `colors.SecondaryBackground` と同じくカードの背景色になります。
+デスクトップでは、グループ化用の背景は通常の背景と同じです。`.groupedBackground` はウィンドウの背景色、`.secondaryGroupedBackground` は `.secondaryBackground` と同じくカードの背景色になります。
 
-```go
-ui.Column(ui.Style{Padding: ui.All(16), Gap: 4, Background: colors.Background, CornerRadius: 12},
-	ui.StaticText("Title", ui.Style{Font: fonts.Headline}),
-	ui.StaticText("Details", ui.Style{Font: fonts.Subheadline, Color: colors.SecondaryLabel}),
-)
+```asuka
+Column {
+  padding: 16; gap: 4; background: .background; radius: 12
+  Text("Title") { font: .headline }
+  Text("Details") { font: .subheadline; color: .secondaryLabel }
+}
 ```
 
-`c.Opacity(a)` は、色を 0 から 1 の不透明度で描画した色です（SwiftUI の `.opacity`、Compose の `copy(alpha =)` にあたります）。セマンティックカラーはセマンティックカラーのままなので、`colors.Accent.Opacity(0.15)` はライトでもダークでもアクセントカラーの淡い色になります。チップの背景、グラフの塗り、トラックなどに使えます。
+`c.opacity(a)` は、色を 0 から 1 の不透明度で描画した色です（SwiftUI の `.opacity`、Compose の `copy(alpha =)` にあたります）。セマンティックカラーはセマンティックカラーのままなので、`opacity(0.15)` を付けたアクセントカラーは、ライトでもダークでもアクセントカラーの淡い色になります。チップの背景、グラフの塗り、トラックなどに使えます。
 
-`Color` は、テキストの色、またはコントロールのティントカラーです。
+```asuka
+let tint: Color = .accent
+View { padding: [4, 10]; radius: 12; background: tint.opacity(0.15); Text("New") }
+```
+
+`color` は、テキストの色、またはコントロールのティントカラーです。
 
 ## 背景、枠線、影
 
-- **`Background`**：ビューの背景色。
-- **`CornerRadius`**：角を丸めます。単位はポイントです。
-- **`BorderWidth`** と **`BorderColor`**：枠線。ボックスの内側に描画され、パディングと同じように中身を内側に寄せます。
-- **`Shadow`**：ドロップシャドウ。中に描かれた内容ではなく、ビューの形（`CornerRadius` で角を丸めた境界）から落ちる影です。指定するのは `Color`（指定しなければ影は出ません）、`Radius`（CSS や SwiftUI と同じぼかし半径で、ぼかしの σ の 2 倍）、オフセットの `X` と `Y` です。子をクリップするビュー（`Clip`）でも影は出ます。画像をクリップした角丸のカードに影が付くのと同じです。Android では代わりにエレベーションの影を描画します。半径がエレベーションになり、色は影の色味になり、オフセットは光源で決まります。macOS、Windows、Linux、Web では、iOS と同じぼかしとオフセットで描画します。
-- **`Gradient`**：背景に重ねる線形グラデーション。`ui.LinearGradient(colors...)` は上から下へのグラデーションです。`ui.Gradient` では、`Start` と `End` をビューのサイズを単位とした `ui.Point` で指定し（(0, 0) が上端の先頭側の角、(1, 1) が下端の末尾側の角）、`Locations` を色ごとに一つずつ指定します。Android では 8 方向のうち最も近い方向に沿って描画し、ほかのプラットフォームでは指定した線に沿って描画します。
-- **`Material`**：背後にあるものをぼかす半透明の背景で、iOS のマテリアルにあたります。`ui.MaterialUltraThin`、`ui.MaterialThin`、`ui.MaterialRegular`、`ui.MaterialThick`、`ui.MaterialBar` があります。
+- **`background`**：ビューの背景色。
+- **`radius`**：角を丸めます。単位はポイントです。
+- **`border`** と **`borderColor`**：枠線。ボックスの内側に描画され、パディングと同じように中身を内側に寄せます。
+- **`shadow`**：ドロップシャドウ。中に描かれた内容ではなく、ビューの形（`radius` で角を丸めた境界）から落ちる影です。`Shadow(color:, radius:, x:, y:)` で指定し、`radius` はぼかし半径（CSS や SwiftUI と同じく、ぼかしの σ の 2 倍）、`x` と `y` はオフセットです。子をクリップするビュー（`clip`）でも影は出ます。画像をクリップした角丸のカードに影が付くのと同じです。Android では代わりにエレベーションの影を描画します。半径がエレベーションになり、色は影の色味になり、オフセットは光源で決まります。macOS、Windows、Linux、Web では、iOS と同じぼかしとオフセットで描画します。
+- **`gradient`**：背景に重ねる線形グラデーション（`Gradient(stops: [...])`）。`startX`、`startY`、`endX`、`endY` を指定しなければ上から下へのグラデーションになります。これらはビューのサイズを単位とした値で、(0, 0) が左上の角、(1, 1) が右下の角です。各 `Stop` は、色と、0 から 1 の位置です。Android では 8 方向のうち最も近い方向に沿って描画し、ほかのプラットフォームでは指定した線に沿って描画します。
+- **`material`**：背後にあるものをぼかす半透明の背景で、iOS のマテリアルにあたります。`.ultraThin`、`.thin`、`.regular`、`.thick`、`.bar` があります。
   - iOS：`UIVisualEffectView` のぼかし。
   - macOS：ビューの内容の背後に置いた `NSVisualEffectView`。ウィンドウ内でその背後にあるものをぼかします。
   - Windows：ホストが描画する Fluent のアクリル。ビューの背後にあるものをぼかし、ライトまたはダークの色味を付けます。
   - Web：CSS の `backdrop-filter` によるぼかしと彩度の調整。
   - Android と Linux はビューの背後をぼかせないため、サーフェスの色（Linux では libadwaita のカードの色）を半透明で表示します。
-- **`Clip`**：子をビューの境界と角丸でクリップします。
+- **`clip`**：子をビューの境界と角丸でクリップします。
 
-```go
-ui.View(ui.ViewProps{Style: ui.Style{
-	Height:       ui.Pt(120),
-	CornerRadius: 16,
-	Gradient:     ui.LinearGradient(colors.Hex(0x6366f1), colors.Hex(0xec4899)),
-	Shadow:       ui.Shadow{Color: colors.RGBA(0, 0, 0, 80), Radius: 16, Y: 8},
-}})
+```asuka
+View {
+  height: 120; radius: 16
+  gradient: Gradient(stops: [Stop(color: #6366f1, at: 0), Stop(color: #ec4899, at: 1)])
+  shadow: Shadow(color: #00000050, radius: 16, y: 8)
+}
 
-ui.View(ui.ViewProps{Style: ui.Style{Padding: ui.All(12), BorderWidth: 1, BorderColor: colors.Separator, CornerRadius: 8, Clip: true}},
-	ui.StaticText("Bordered"),
-)
+View {
+  padding: 12; border: 1; borderColor: .separator; radius: 8; clip: true
+  Text("Bordered")
+}
 
 // 左から右へ。
-ui.View(ui.ViewProps{Style: ui.Style{
-	Height:   ui.Pt(80),
-	Gradient: &ui.Gradient{Colors: []ui.Color{colors.Blue, colors.Purple}, Start: ui.Point{X: 0, Y: 0.5}, End: ui.Point{X: 1, Y: 0.5}},
-}})
+View {
+  height: 80
+  gradient: Gradient(stops: [Stop(color: .blue, at: 0), Stop(color: .purple, at: 1)], startY: 0.5, endX: 1, endY: 0.5)
+}
 ```
 
 ## 不透明度と非表示
 
-`Opacity` は 0 から 1 の値ですが、ゼロ値は、設定しなかったプロパティと同じく不透明を意味します。つまり `Opacity: 0.5` は半透明で、`Opacity: 0` は完全に不透明です。ビューを隠すには `Hidden` を設定します。隠したビューも、レイアウト上のスペースは占めたままです。レイアウトから外し、中のビューもまとめて取り除くには、`ui.Show` を使います（[基本概念](concepts.md)を参照）。
+`opacity` は 0（透明）から 1（不透明。デフォルト）の値です。ビューを隠すには `hidden` を設定します。隠したビューも、レイアウト上のスペースは占めたままです。レイアウトから外し、中のビューもまとめて取り除くには、`if` の中に入れます（[基本概念](concepts.md#表示の切り替えと繰り返し)を参照）。
 
 ## トランスフォーム
 
-`Transform` は、描画時にビューを移動、拡大縮小、回転させます（`TranslateX`、`TranslateY`、`Scale`、`ScaleX`、`ScaleY`、度単位の `Rotate`）。レイアウトはトランスフォームの影響を受けません。トランスフォームはすべてのプラットフォームで描画されます。トランスフォーム、`Transition`、`Match` はアニメーションのためのものです。[モーションとジェスチャー](motion.md)を参照してください。
+`transform` は、描画時にビューを移動、拡大縮小、回転させます。`Transform(x:, y:, scale:, scaleX:, scaleY:, rotation:)` で指定し、`rotation` は時計回りの度数です。レイアウトはトランスフォームの影響を受けません。トランスフォームはすべてのプラットフォームで描画されます。トランスフォーム、`transition`、`shared` はアニメーションのためのものです。[モーションとジェスチャー](motion.md)を参照してください。
 
 ## テキスト
 
-`Font` はテキストのフォントを指定します。値は `fonts` パッケージ（`github.com/egoist/asuka/fonts`）の `fonts.Font` です。
+`font` はテキストのフォントを指定します。値は `Font` です。
 
-- **セマンティックフォント**：プラットフォームのテキストスタイルで、ユーザーの文字サイズ設定に合わせて拡大縮小されます。`fonts.LargeTitle`、`fonts.Title`、`fonts.Title2`、`fonts.Title3`、`fonts.Headline`、`fonts.Subheadline`、`fonts.Body`、`fonts.Callout`、`fonts.Footnote`、`fonts.Caption`、`fonts.Caption2` があります。
-- **`fonts.System(size)`**：指定したサイズ（ポイント）のシステムフォント。
-- **`.Weighted(w)`**：フォントにウェイトを付けます。`fonts.Ultralight`、`fonts.Thin`、`fonts.Light`、`fonts.Regular`、`fonts.Medium`、`fonts.Semibold`、`fonts.Bold`、`fonts.Heavy`、`fonts.Black` があります。
+- **セマンティックフォント**：プラットフォームのテキストスタイルで、ユーザーの文字サイズ設定に合わせて拡大縮小されます。`.largeTitle`、`.title`、`.title2`、`.title3`、`.headline`、`.subheadline`、`.body`、`.callout`、`.footnote`、`.caption`、`.caption2` があります。
+- **`Font(size: 20)`**：指定したサイズ（ポイント）のシステムフォント。
+- **ウェイト**：`.bold()`、`.semibold()`、`.medium()`、または `weighted(w)` に `.ultralight`、`.thin`、`.light`、`.regular`、`.medium`、`.semibold`、`.bold`、`.heavy`、`.black` のいずれかを渡します。
 
-`Color` はテキストの色、`TextAlign` は揃え方（`ui.TextStart`、`ui.TextCenter`、`ui.TextEnd`、`ui.TextJustify`）、`Lines` は表示する最大行数です。`Lines` のデフォルトの 0 は無制限を意味します。テキストはデフォルトで折り返します。
+`color` はテキストの色、`textAlign` は揃え方（`.start`、`.center`、`.end`、`.justify`）、`lines` は表示する最大行数です。`lines` のデフォルトの 0 は無制限を意味します。テキストはデフォルトで折り返します。
 
-```go
-ui.StaticText("Brand", ui.Style{Color: colors.RGB(124, 58, 237), Font: fonts.Title.Weighted(fonts.Bold)})
-ui.StaticText("A long paragraph that stops after two lines.", ui.Style{Font: fonts.Body, Lines: 2, TextAlign: ui.TextCenter})
-ui.StaticText("Fixed size", ui.Style{Font: fonts.System(20).Weighted(fonts.Medium)})
+```asuka
+Text("Brand") { color: #7c3aed; font: .title.bold() }
+Text("A long paragraph that stops after two lines.") { font: .body; lines: 2; textAlign: .center }
+Text("Fixed size") { font: Font(size: 20).medium() }
 ```
 
 複数のスタイル、リンク、インラインのビューを含むテキストについては、[RichText](components.md) を参照してください。
 
-テキストスタイルの名前は iOS のものです。各プラットフォームはこれを自身のタイプランプ（文字サイズの体系）に対応づけるので、`fonts.Body` は、そのプラットフォームのアプリが本文に使うサイズになります。
+テキストスタイルの名前は iOS のものです。各プラットフォームはこれを自身のタイプランプ（文字サイズの体系）に対応づけるので、`.body` は、そのプラットフォームのアプリが本文に使うサイズになります。
 
-| プラットフォーム | テキストスタイル | `fonts.Body` |
+| プラットフォーム | テキストスタイル | `.body` |
 | --- | --- | --- |
 | iOS | UIKit のテキストスタイル。フォントは San Francisco | 17 |
-| Android | Material 3 のタイプスケール（`fonts.Body` は Body Large）。フォントは Roboto | 16 |
+| Android | Material 3 のタイプスケール（`.body` は Body Large）。フォントは Roboto | 16 |
 | macOS | AppKit のテキストスタイル（`NSFont.preferredFont(forTextStyle:)`）。フォントは San Francisco | 13 |
 | Windows | Windows 11 のタイプランプ。フォントは Segoe UI Variable（Windows 11 より前は Segoe UI） | 14 |
 | Linux | libadwaita のタイプクラス（`.title-1`、`.heading`、`.caption` など）。デスクトップのインターフェースフォントに対する相対値 | インターフェースフォントのサイズ |
 | Web | Asuka のタイプランプ。フォントはシステムのフォント（`system-ui`） | 16 |
 
-Windows では、各スタイルはタイプランプの中で最も近いものになります。`fonts.LargeTitle` は Title Large (40)、`fonts.Title` は Title (28)、`fonts.Title2` は Subtitle (20)、`fonts.Headline` は Body Strong（14、semibold）、`fonts.Footnote` と `fonts.Caption` は Caption (12) です。Linux では、GNOME のインターフェースフォントが 11 pt の場合、`fonts.LargeTitle` は `.title-1`（181%、heavy）、`fonts.Title` は `.title-2`、`fonts.Headline` は `.heading`（bold）、`fonts.Caption` は `.caption`（82%）になります。
+Windows では、各スタイルはタイプランプの中で最も近いものになります。`.largeTitle` は Title Large (40)、`.title` は Title (28)、`.title2` は Subtitle (20)、`.headline` は Body Strong（14、semibold）、`.footnote` と `.caption` は Caption (12) です。Linux では、GNOME のインターフェースフォントが 11 pt の場合、`.largeTitle` は libadwaita の `.title-1`（181%、heavy）、`.title` は `.title-2`、`.headline` は `.heading`（bold）、`.caption` は `.caption`（82%）になります。
 
 ユーザーの文字サイズ設定によって拡大縮小されるのは、次のとおりです。
 
@@ -313,11 +342,11 @@ Windows では、各スタイルはタイプランプの中で最も近いもの
 - **Web**：すべてのフォント。フォントは `rem` で指定されるので、ブラウザーの文字サイズ設定に従います。
 - **macOS** には文字サイズの設定がないため、フォントはそのままです。
 
-その倍率は `ui.UseEnvironment()` の `FontScale` で取得できます。デフォルトは 1 です（[アクセシビリティ](accessibility.md)を参照）。
+その倍率は環境の `fontScale` です。デフォルトは 1 です（[アクセシビリティ](accessibility.md)を参照）。
 
 ## カスタムフォント
 
-フォントファイル（`.ttf`、`.otf`）は、アプリの `assets/fonts` に置きます。フォントを選ぶには、フォントの `Family` か `fonts.Custom(family, font)` に次のいずれかを指定します。
+フォントファイル（`.ttf`、`.otf`）は、アプリの `assets/fonts` に置きます。フォントを選ぶには、フォントの `family`（`Font(family: "Inter")` や `.body.family("Inter")`）に次のいずれかを指定します。
 
 - ファイル名：`assets/fonts/Inter-Bold.ttf` なら `"Inter-Bold"`。
 - ファイルのファミリー：`"Inter"` を指定すると、フォントのウェイトに応じて `Inter-Regular`、`Inter-Bold` などが使われます。
@@ -326,51 +355,47 @@ Windows では、各スタイルはタイプランプの中で最も近いもの
 
 カスタムフォントは、元にしたテキストスタイルと同じように拡大縮小されます。プラットフォームにないフォントは、システムフォントで表示されます。`assets/fonts` のファイルは、どのプラットフォームでもそのアプリ専用に読み込まれ、ほかのアプリ向けにインストールされることはありません。
 
-```go
-ui.StaticText("Inter Bold", ui.Style{Font: fonts.Custom("Inter-Bold", fonts.Title)})
-ui.StaticText("Inter", ui.Style{Font: fonts.Custom("Inter", fonts.Body).Weighted(fonts.Semibold)})
-ui.StaticText("Code", ui.Style{Font: fonts.Custom("monospace", fonts.Footnote)})
+```asuka
+Text("Inter Bold") { font: .title.family("Inter-Bold") }
+Text("Inter") { font: .body.family("Inter").semibold() }
+Text("Code") { font: .footnote.family("monospace") }
 ```
 
 ## ダークモード
 
-セマンティックカラーはダークモードに合わせて自動的に変わるので、それを使うアプリはダークモードのためのコードを書く必要がありません。固定色は変わりません。モードごとに色を選ぶには、`StyleFunc` の中で環境の `Dark` を読みます。
+セマンティックカラーはダークモードに合わせて自動的に変わるので、それを使うアプリはダークモードのためのコードを書く必要がありません。固定色は変わりません。モードごとに色を選ぶには、環境の `dark` を読みます。
 
-```go
-env := ui.UseEnvironment()
-ui.View(ui.ViewProps{Style: ui.StyleFunc(func() ui.Style {
-	s := ui.Style{Height: ui.Pt(80), CornerRadius: 12, Background: colors.RGB(255, 255, 255)}
-	if env.Get().Dark {
-		s.Background = colors.RGB(28, 28, 30)
-	}
-	return s
-})})
+```asuka
+View {
+  height: 80; radius: 12
+  background: if environment().dark { #1c1c1e } else { #ffffff }
+}
 ```
 
 ## 動的なスタイル
 
-`ui.StyleFunc` はスタイルを返す関数で、中で読んだシグナルが変わると再実行されます。新しいスタイルは前回のものと比較され、レイアウトのプロパティが変わった場合にだけレイアウトが再実行されます。ビューに送られるのも、変わった見た目のプロパティだけです。
+状態を読むプロパティはバインディングです。その状態が変わると再実行され、そのプロパティだけがビューに送られます。変わったのがレイアウトのプロパティならレイアウトが再実行され、見た目のプロパティならビューが更新されるだけです。
 
-```go
-ui.View(ui.ViewProps{
-	OnPress: func() { selected.Set(!selected.Peek()) },
-	Style: ui.StyleFunc(func() ui.Style {
-		s := ui.Style{Padding: ui.All(12), CornerRadius: 10, Background: colors.SecondaryBackground}
-		if selected.Get() {
-			s.Background = colors.Accent
-			s.BorderWidth = 2
-			s.BorderColor = colors.Label
-		}
-		return s
-	}),
-}, ui.StaticText("Tap me"))
+```asuka
+component Choice {
+  state selected = false
+
+  View {
+    padding: 12; radius: 10
+    background: if selected { .accent } else { .secondaryBackground }
+    border: if selected { 2 } else { 0 }
+    borderColor: .label
+    on press { selected = !selected }
+    Text("Tap me")
+  }
+}
 ```
 
-この変更を `ui.Animate` の中で行えば、アニメーションになります（[モーションとジェスチャー](motion.md)を参照）。
+この変更を `animate { }` の中で行えば、アニメーションになります（[モーションとジェスチャー](motion.md)を参照）。
 
 ## アクセントカラー
 
-`colors.Accent` と、それを使うコントロールは、`asuka.toml` に書いたアプリのアクセントカラーを使います。
+`.accent` と、それを使うコントロールは、`asuka.toml` に書いたアプリのアクセントカラーを使います。
 
 ```toml
 accent = "#7c3aed"
@@ -382,13 +407,4 @@ accent = "#7c3aed"
 
 ## ライトとダーク
 
-アプリはシステムの外観に従います。iOS と macOS のダークモード、Android のダークテーマ、Windows のアプリモード（「設定」>「個人用設定」>「色」）、GNOME のダークスタイル、ブラウザーの `prefers-color-scheme` です。`ui.SetColorScheme` を使うと、アプリ独自の外観設定と同じように、システムの設定にかかわらずライトかダークで表示できます（SwiftUI の `preferredColorScheme`、Android では AppCompat のナイトモード、macOS ではアプリの `NSAppearance`、Linux では libadwaita のスタイルマネージャーにあたります）。`ui.ColorSchemeSystem` を指定すると、再びシステムに従います。セマンティックカラー、プラットフォームのコントロール、システムバーは、アプリを作り直すことなく切り替わり、今どちらなのかは `ui.UseEnvironment()` の `Dark` でわかります。選んだ設定は [`store`](data.md) で保存し、アプリの起動時に適用しましょう。
-
-```go
-var scheme = store.Signal("colorScheme", int(ui.ColorSchemeSystem))
-
-func App() ui.Node {
-	ui.SetColorScheme(ui.ColorScheme(scheme.Peek()))
-	// ...
-}
-```
+アプリはシステムの外観に従います。iOS と macOS のダークモード、Android のダークテーマ、Windows のアプリモード（「設定」>「個人用設定」>「色」）、GNOME のダークスタイル、ブラウザーの `prefers-color-scheme` です。アプリ独自の外観設定と同じように、システムの設定にかかわらずライトかダークで表示することもできます（SwiftUI の `preferredColorScheme`、Android では AppCompat のナイトモード、macOS ではアプリの `NSAppearance`、Linux では libadwaita のスタイルマネージャーにあたります）。[アプリ](navigation.md)を参照してください。セマンティックカラー、プラットフォームのコントロール、システムバーは、アプリを作り直すことなく切り替わり、今どちらなのかは環境の `dark` でわかります。ユーザーの選択は [`asuka/store`](../stdlib.md) で保存しましょう。

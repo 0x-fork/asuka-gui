@@ -29,7 +29,7 @@ final class IOSBattery: Battery {
 func makeBattery() throws -> any Battery { IOSBattery() }
 ```
 
-原生包就是一个普通的 Asuka 包：它可以放在应用里，也可以作为应用的依赖（见[包](../packages.md)），导入它的每个应用都会带上它的原生代码。每个平台的代码放在该平台自己的项目里（Swift 包、Gradle 模块），使用该平台自己的依赖管理工具：SwiftPM 和 Maven。
+原生包就是一个普通的 Asuka 包：它可以放在应用里，也可以作为应用的依赖（见[包](packages.md)），导入它的每个应用都会带上它的原生代码。每个平台的代码放在该平台自己的项目里（Swift 包、Gradle 模块），使用该平台自己的依赖管理工具：SwiftPM 和 Maven。
 
 ## 什么时候需要它
 
