@@ -6,7 +6,7 @@
 // toggle's on, a slider's value) keeps what the host last reported and
 // sends the value only when it differs from that: typing never round
 // trips, and IME composition is never disturbed.
-#include "ui/ui_int.h"
+#include "ui/ui_ext.h"
 
 // ---- Helpers ----
 
@@ -83,7 +83,7 @@ ak_event_kind ak_ev_ops(uint16_t ev) {
 	case AK_EV_LIST_REFRESH:
 		return AK_EVENT_REFRESH;
 	}
-	return 0;  // the runtime's own: layout, a list's end
+	return ak_ix_ev_ops(ev);  // the extensions' (ui_ext.h), else the runtime's own: layout, a list's end
 }
 
 // ---- Containers: View, Row, Column, SafeArea ----
@@ -137,9 +137,9 @@ static void safe_init(ak_view *e) {
 	ak_effect_new(safe_run, ak_retain(e), AK_EFFECT_RENDER, &safe_info);
 }
 
-static const ak_el_class cls_view = {.name = "View", .kind = AK_KIND_VIEW, .flags = AK_ELF_FLATTEN | AK_ELF_CHILDREN, .event = container_event};
-static const ak_el_class cls_row = {.name = "Row", .kind = AK_KIND_VIEW, .flags = AK_ELF_FLATTEN | AK_ELF_CHILDREN, .init = row_init, .event = container_event};
-static const ak_el_class cls_safe = {.name = "SafeArea", .kind = AK_KIND_VIEW, .flags = AK_ELF_FLATTEN | AK_ELF_CHILDREN, .init = safe_init, .event = container_event};
+static const ak_el_class cls_view = {.name = "View", .kind = AK_KIND_VIEW, .flags = AK_ELF_FLATTEN | AK_ELF_CHILDREN, .set = ak_ix_container_set, .event = container_event};
+static const ak_el_class cls_row = {.name = "Row", .kind = AK_KIND_VIEW, .flags = AK_ELF_FLATTEN | AK_ELF_CHILDREN, .init = row_init, .set = ak_ix_container_set, .event = container_event};
+static const ak_el_class cls_safe = {.name = "SafeArea", .kind = AK_KIND_VIEW, .flags = AK_ELF_FLATTEN | AK_ELF_CHILDREN, .init = safe_init, .set = ak_ix_container_set, .event = container_event};
 
 // ---- Text, Symbol ----
 
@@ -149,10 +149,9 @@ static void text_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 	AK_UNUSED(prev);
 	if (key == AK_KEY_TEXT_TEXT) {
 		set_text(&e->text, v);
-		send_str(e, AK_PROP_TEXT_TEXT, v);
-		ak_view_remeasure(e);
+		ak_text_send(e);  // a selectable Text's goes to its RichText (rich.c)
 	}
-	// selectable: with rich text and Selectable (deferred).
+	// selectable: at finalize (rich.c).
 }
 
 static void symbol_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
@@ -164,7 +163,8 @@ static void symbol_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 	}
 }
 
-static const ak_el_class cls_text = {.name = "Text", .kind = AK_KIND_TEXT, .flags = AK_ELF_TEXT | AK_ELF_MEASURED | AK_ELF_CACHE, .init = measured_init, .set = text_set};
+static const ak_el_class cls_text = {.name = "Text", .kind = AK_KIND_TEXT, .flags = AK_ELF_TEXT | AK_ELF_MEASURED | AK_ELF_CACHE, .init = measured_init, .set = text_set,
+                                     .finalize = ak_text_finalize, .style_target = ak_text_style_target};
 static const ak_el_class cls_symbol = {.name = "Symbol", .kind = AK_KIND_SYMBOL, .flags = AK_ELF_TEXT | AK_ELF_MEASURED | AK_ELF_CACHE, .init = measured_init, .set = symbol_set};
 
 // ---- Button ----
@@ -345,6 +345,7 @@ static void field_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 	switch (key) {
 	case AK_KEY_TEXT_FIELD_TEXT: {
 		ak_str *s = v.p;
+		if (ak_field_rich(e)) break;  // a rich field's text is its rich's, which it follows
 		if (f->known && ak_obj_eq((const ak_obj *)s, (const ak_obj *)f->reported)) break;
 		set_text(&f->reported, v);
 		f->known = true;
@@ -379,7 +380,16 @@ static void field_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 		break;
 	case AK_KEY_TEXT_FIELD_AUTOFOCUS: break;  // at finalize
 	case AK_KEY_TEXT_FIELD_SELECTION: field_send_selection(e, v.p); break;
+	default: ak_field_set_ext(e, key, v, prev); break;  // rich.c
 	}
+}
+
+void ak_field_text_reported(ak_view *e, ak_str *s) {
+	field_state *f = e->impl;
+	ak_retain(s);
+	ak_release(f->reported);
+	f->reported = s;
+	f->known = true;
 }
 
 static void field_finalize(ak_view *e) {
@@ -390,10 +400,12 @@ static void field_finalize(ak_view *e) {
 	if (key_set(e, AK_KEY_TEXT_FIELD_SELECTION)) ak_view_listen(e, AK_EVENT_SELECTION_CHANGED);
 	const ak_val *af = ak_style_get(e, AK_KEY_TEXT_FIELD_AUTOFOCUS);
 	if (af && af->i) e->autofocus = true;  // with its first frame
+	ak_field_finalize_ext(e);
 }
 
 static void field_event(ak_view *e, const ak_event *ev) {
 	field_state *f = e->impl;
+	if (ak_field_event_ext(e, ev)) return;
 	switch (ev->kind) {
 	case AK_EVENT_TEXT_CHANGED: {
 		ak_str *s = ak_str_new(ev->s.p, ev->s.len);
@@ -649,76 +661,7 @@ static void activity_init(ak_view *e) {
 
 static const ak_el_class cls_activity = {.name = "Activity", .kind = AK_KIND_ACTIVITY, .flags = AK_ELF_MEASURED | AK_ELF_CACHE, .init = activity_init};
 
-// ---- Image ----
-
-typedef struct {
-	ak_lsize natural;  // as loaded, one point a pixel
-} image_state;
-
-// image_size is an image's size within c, from its natural size; the
-// style's aspect ratio overrides the image's, as CSS's does.
-static ak_lsize image_size(ak_lsize n, float ratio, ak_lconstraints c) {
-	bool kw = !ak_isnan(c.width), kh = !ak_isnan(c.height);
-	if (ratio > 0 && n.w > 0 && n.h > 0) n.h = n.w / ratio;
-	if (kw && kh) return (ak_lsize){c.width, c.height};
-	if (ratio > 0 && kw) return (ak_lsize){c.width, c.width / ratio};
-	if (ratio > 0 && kh) return (ak_lsize){c.height * ratio, c.height};
-	if (n.w <= 0 || n.h <= 0) return (ak_lsize){kw ? c.width : 0, kh ? c.height : 0};
-	if (kw) return (ak_lsize){c.width, c.width * n.h / n.w};
-	if (kh) return (ak_lsize){c.height * n.w / n.h, c.height};
-	ak_lsize s = n;
-	float aw = c.avail_w;
-	if (aw > 0 && aw < AK_INF && s.w > aw) s = (ak_lsize){aw, aw * n.h / n.w};
-	return s;
-}
-
-static ak_lsize image_measure(void *ctx, ak_lconstraints c) {
-	ak_view *e = ctx;
-	image_state *s = e->impl;
-	return image_size(s->natural, ak_style_float(e, AK_KEY_ASPECT_RATIO, 0), c);
-}
-
-static void image_init(ak_view *e) {
-	e->impl = ak_alloc(sizeof(image_state));
-	ak_lnode_set_measure(e->box, image_measure, e);
-	ak_view_listen(e, AK_EVENT_LOADED);
-}
-
-static void image_drop(ak_view *e) { ak_free(e->impl); }
-
-static void image_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
-	ak_batch *b = e->r->batch;
-	switch (key) {
-	case AK_KEY_IMAGE_SOURCE: send_str(e, AK_PROP_IMAGE_SOURCE, v); break;  // an asset's URL under asuka dev: the dev loop's
-	case AK_KEY_IMAGE_MODE:
-		if (prev || v.i) ak_batch_set_enum(b, e->id, AK_PROP_IMAGE_MODE, (int32_t)v.i);
-		break;
-	case AK_KEY_IMAGE_PLACEHOLDER: send_str(e, AK_PROP_IMAGE_PLACEHOLDER, v); break;
-	case AK_KEY_IMAGE_TRANSITION:
-		if (prev || v.f != 0) ak_batch_set_float(b, e->id, AK_PROP_IMAGE_TRANSITION, v.f);
-		break;
-	}
-}
-
-static void image_event(ak_view *e, const ak_event *ev) {
-	image_state *s = e->impl;
-	if (ev->kind == AK_EVENT_LOADED) {
-		ak_lsize n = {(float)ev->x, (float)ev->y};
-		if (n.w != s->natural.w || n.h != s->natural.h) {
-			s->natural = n;
-			ak_view_remeasure(e);
-		}
-		ak_val args[2] = {{.f = ev->x}, {.f = ev->y}};
-		ak_view_call(e, AK_EV_IMAGE_LOAD, args, 2);
-	} else if (ev->kind == AK_EVENT_FAILED) {
-		ak_str *m = ak_str_new(ev->s.p, ev->s.len);
-		ak_val arg = {.p = m};
-		ak_view_call(e, AK_EV_IMAGE_ERROR, &arg, 1);
-		ak_release(m);
-	}
-}
-
-static const ak_el_class cls_image = {.name = "Image", .kind = AK_KIND_IMAGE, .init = image_init, .set = image_set, .event = image_event, .drop = image_drop};
+// ---- Image (media.c) ----
 
 // ---- Scroll ----
 
@@ -861,11 +804,11 @@ const ak_el_class *ak_el_class_of(uint16_t el) {
 	case AK_EL_PROGRESS_RING: return &cls_ring;
 	case AK_EL_ACTIVITY: return &cls_activity;
 	case AK_EL_SYMBOL: return &cls_symbol;
-	case AK_EL_IMAGE: return &cls_image;
+	case AK_EL_IMAGE: return &ak_class_image;
 	case AK_EL_SCROLL: return &cls_scroll;
 	case AK_EL_LIST: return &ak_class_list;
 	}
-	return NULL;
+	return ak_ext_class_of(el);
 }
 
 // ---- The protocol ----
@@ -892,6 +835,7 @@ void ak_ui_set(ak_view *v, uint16_t key, ak_val value) {
 	check_key(v, key);
 	if (v->dead) return;
 	if (key < AK_KEY__STYLE_END) {
+		if (v->ix && ak_ix_set_base(v, key, value)) return;  // a key its variants set (interaction.c)
 		ak_view *t = v->cls->style_target ? v->cls->style_target(v, key) : v;
 		if (t) ak_style_set(t, key, value);
 		if (v->cls->styled) v->cls->styled(v, key);
@@ -973,6 +917,7 @@ void ak_ui_on(ak_view *v, uint16_t ev, ak_closure *handler) {
 	if (!v->real && (v->cls->flags & AK_ELF_FLATTEN)) ak_view_make_real(v);
 	ak_event_kind k = ak_ev_ops(ev);
 	if (k) ak_view_listen(v, k);
+	ak_ix_on(v, ev);
 }
 
 void ak_ui_add(ak_view *v, ak_view *child) {

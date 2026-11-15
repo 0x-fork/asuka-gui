@@ -10,6 +10,10 @@ void ak_native_set_host(const asuka_host_callbacks *cb) { host = cb; }
 
 // ---- Descriptors ----
 
+static const char *desc_skip(const char *d);
+
+const char *ak_native_desc_skip(const char *d) { return desc_skip(d); }
+
 static const char *desc_skip(const char *d) {
 	switch (*d) {
 	case '?':

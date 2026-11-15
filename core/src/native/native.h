@@ -22,6 +22,11 @@
 void ak_native_set_host(const asuka_host_callbacks *cb);
 
 bool ak_native_encode(ak_buf *b, ak_val v, const char *desc, const ak_json_types *t);
+// ak_native_desc_skip is what follows the descriptor at d.
+const char *ak_native_desc_skip(const char *d);
+// ak_native_running_types is the running module's types (its shapes by
+// name), for builtins that encode its values (vm/native_lib.c).
+const ak_json_types *ak_native_running_types(void);
 // ak_native_decode reads a value; it throws on a short or bad answer.
 ak_val ak_native_decode(ak_reader *r, const char *desc, const ak_json_types *t);
 

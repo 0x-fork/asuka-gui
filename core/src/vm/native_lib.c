@@ -44,6 +44,8 @@ static ak_json_types *types_of(ak_module *m) {
 	return &cache[0].t;
 }
 
+const ak_json_types *ak_native_running_types(void) { return types_of(running()); }
+
 static ak_val new_(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *cls = a[0].p;

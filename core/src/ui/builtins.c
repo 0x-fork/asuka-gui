@@ -187,7 +187,10 @@ static ak_val b_dismiss(ak_val *a, uint32_t n) {
 	return none();
 }
 
+void ak_ui_ext_builtins_init(void);
+
 void ak_ui_builtins_init(void) {
+	ak_ui_ext_builtins_init();  // interaction, media, graphics, languages (builtins_ext.c)
 	static const struct {
 		const char *name;
 		ak_builtin_fn fn;

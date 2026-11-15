@@ -10,7 +10,7 @@
 // that calls back while it applies (a list binding its cells) gets a
 // spare batch for what that writes, so the batch being applied is never
 // sent twice.
-#include "ui/ui_int.h"
+#include "ui/ui_ext.h"
 
 #include <stdlib.h>
 
@@ -78,6 +78,7 @@ void ak_root_release(ak_ui_root *r) {
 	ak_lpass_free(&r->pass);
 	ak_mcache_free(&r->measures);
 	ak_signal_drop(&r->env_node);
+	ak_rext_free(r);
 	ak_release(r->env_locale);
 	ak_release(r->env_tz);
 	ak_release(r->env_langs);
@@ -132,6 +133,7 @@ static void root_set_env(ak_ui_root *r, const ak_environment *in) {
 	}
 	for (int i = 0; i < 3; i++) ak_release(strs[i]);
 	ak_signal_write(&r->env_node);
+	ak_ext_environment(r);
 }
 
 void ak_ui_set_environment(const ak_environment *env) {
@@ -204,6 +206,7 @@ static void mount_fn(void *ctx, ak_owner *root) {
 	ak_ui.cur = r;
 	r->el = ak_view_new(r, &cls_root, 0, true);
 	ak_batch_set_root(r->batch, r->el->id);
+	ak_ext_mounted(r);
 	ak_path_reset();
 	ak_view *v = ak_ui_build(r, m->build, NULL, 0);
 	if (v) {
@@ -245,6 +248,7 @@ void ak_ui_unmount(void) {
 	ak_ui_root *r = ak_ui.root;
 	if (!r) return;
 	r->disposed = true;
+	ak_ext_unmount(r);
 	ak_owner_dispose(r->owner);
 	r->owner = NULL;
 	ak_view_destroy(r->el);
@@ -264,6 +268,7 @@ void ak_ui_unmount(void) {
 
 void ak_ui_shutdown(void) {
 	ak_ui_unmount();
+	ak_ext_shutdown();
 	ak_free(ak_ui.ids);
 	ak_ui.ids = NULL;
 	ak_ui.ids_cap = ak_ui.ids_len = 0;
@@ -349,6 +354,7 @@ static void root_layout(ak_ui_root *r) {
 	ak_lsize size = {r->env.width, r->env.height};
 	ak_lpass *p = &r->pass;
 	ak_lpass_reset(p);
+	ak_ext_layout_inlines(r, p);
 	if (ak_lnode_dirty(r->el->box) || size.w != r->size.w || size.h != r->size.h) {
 		r->size = size;
 		ak_lnode_layout(r->el->box, size, p);
@@ -364,6 +370,7 @@ static void root_layout(ak_ui_root *r) {
 		ak_list_layout(l, p);
 	}
 	r->lists.len = live;
+	ak_ext_layout(r, p);
 	for (uint32_t i = 0; i < p->nchanged; i++) {
 		ak_view *e = ak_lnode_context(p->changed[i]);
 		if (e) ak_view_each_native(e, queue_frame_cb, NULL);
@@ -392,14 +399,19 @@ void ak_root_flush(ak_ui_root *r) {
 		ak_release(e);
 	}
 	r->kids_q.len = 0;
+	ak_anim_before_apply(r);
 	ak_root_apply(r);
 	root_layout(r);
+	bool frames = r->frame_q.len > 0;
+	if (frames) ak_anim_frames(r, true);
 	for (uint32_t i = 0; i < r->frame_q.len; i++) {
 		ak_view *e = r->frame_q.data[i];
 		ak_view_emit_frame(e);
 		ak_release(e);
 	}
 	r->frame_q.len = 0;
+	if (frames) ak_anim_frames(r, false);
+	ak_anim_flushed(r);
 	ak_root_apply(r);
 	report_layouts(r);
 	ak_release(r->el);
@@ -417,7 +429,8 @@ static void report_layouts(ak_ui_root *r) {
 	for (uint32_t i = 0; i < q.len; i++) {
 		ak_view *e = q.data[i];
 		e->layout_q = false;
-		if (!e->dead) {
+		if (!e->dead && (e->cls->flags & AK_ELF_SIZED)) e->cls->sized(e, e->sent[2], e->sent[3]);
+		if (!e->dead && e->handlers.len) {
 			ak_struct *f = ak_struct_new(&ak_ui_shape_frame);
 			for (int j = 0; j < 4; j++) f->f[j].f = e->sent[j];
 			ak_val arg = {.p = f};
@@ -475,11 +488,14 @@ void ak_ui_dispatch(const uint8_t *buf, size_t len) {
 		if (r && ev.i == AK_LIFECYCLE_MEMORY_WARNING) ak_mcache_clear(&r->measures);
 		return;
 	}
+	if (ak_ext_dispatch(&ev)) return;  // a frame, a call's result, a URL, a share (ui_ext.h)
 	ak_view *e = ak_view_of(ev.id);
-	if (!e || e->dead || !e->cls->event) return;
+	if (!e || e->dead) return;
 	ak_retain(e);
 	ak_batch_begin();
-	e->cls->event(e, &ev);
+	// The events every view may have (interaction states, gestures, keys,
+	// drags), then its class's.
+	if (!ak_ix_event(e, &ev) && e->cls->event) e->cls->event(e, &ev);
 	flush_after();
 	ak_release(e);
 }

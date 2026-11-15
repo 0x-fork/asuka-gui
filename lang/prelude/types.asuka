@@ -4,8 +4,9 @@
 // Built into the compiler, not declared here: int, float, bool, string,
 // bytes, void, arrays [T], maps [K: V], optionals T?, tuples, functions,
 // View, Error, Task<T>, Loading<T>, Duration (300ms), Color (#7c3aed and
-// the semantic colors: .label, .secondaryLabel, .accent, ...) and Length
-// (100, 50%, .auto).
+// the semantic colors: .label, .secondaryLabel, .accent, ...), Length
+// (100, 50%, .auto), and Canvas's Graphics and Path (their methods are
+// builtins: lang/LOWERING.md's "Canvas").
 
 /// The axis a container stacks its children on.
 enum Axis {
@@ -191,11 +192,21 @@ enum Feedback {
   error
 }
 
-/// An animation's timing.
+/// An animation's timing. repeat runs it again, that many times more
+/// (-1: until its props change again), each run going back first with
+/// autoreverses. A spring's damping is from 0 to 1 (1 settles without
+/// overshooting; 0: 0.85, a little) and its velocity, a fraction of the
+/// change per second at the start (to carry on a fling). done is called
+/// once it's complete (never for -1).
 struct Animation {
   duration: Duration = 350ms
   curve: AnimationCurve = .easeInOut
   delay: Duration = 0ms
+  repeat: int = 0
+  autoreverses: bool = false
+  damping: float = 0
+  velocity: float = 0
+  done: fn()? = none
 
   let spring = Animation(curve: .spring)
   let linear = Animation(curve: .linear)
@@ -263,4 +274,234 @@ struct Environment {
   languages: string = ""  // BCP 47 tags, most preferred first, joined by commas
   firstWeekday: int = 0   // 1 Sunday to 7 Saturday; 0 unknown
   hourCycle: int = 0      // 12 or 24; 0 unknown
+}
+
+// ---- Interaction ----
+
+/// A pan's, a pinch's or a rotation's progress, in points: x and y are
+/// where the touch is in the view, the translation how far it moved
+/// since it began, the velocity in points per second, scale a pinch's
+/// since it began (1 otherwise), rotation two fingers' turn since they
+/// began, in radians clockwise.
+struct Gesture {
+  state: GestureState = .began
+  x: float = 0
+  y: float = 0
+  translationX: float = 0
+  translationY: float = 0
+  velocityX: float = 0
+  velocityY: float = 0
+  scale: float = 1
+  rotation: float = 0
+}
+
+/// A swipe's direction.
+enum SwipeDirection {
+  right
+  left
+  up
+  down
+}
+
+/// A key a view takes while the keyboard's focus is in it, and what it
+/// does. key is a character ("d", any case) or a named key (up, down,
+/// left, right, escape, enter, tab, space, delete, home, end, pageup,
+/// pagedown, f1...); with a modifier, a shortcut. primary is ⌘ on Apple
+/// platforms and Ctrl elsewhere.
+///
+///   keys: [Shortcut(key: "down", run: () => { sel += 1 }), Shortcut(key: "d", primary: true, run: duplicate)]
+struct Shortcut {
+  key: string
+  primary: bool = false
+  shift: bool = false
+  alt: bool = false
+  control: bool = false
+  run: fn()
+}
+
+/// What a screen reader offers to do with a view (VoiceOver's rotor,
+/// TalkBack's actions): what a swipe or a long press does for a sighted
+/// user.
+struct A11yAction {
+  name: string
+  run: fn()
+}
+
+/// A thing another app shared with this one, or pasted into a field: a
+/// text, a link, or a file (the app's own copy, in its caches).
+struct SharedItem {
+  kind: ShareKind = .text
+  text: string = ""   // a text's text, a link's URL
+  path: string = ""   // a file's
+  name: string = ""   // the file's name where it came from
+  mime: string = ""
+  size: int = -1      // a file's size in bytes; -1: unknown
+}
+
+/// A thing a drag carries: a text, a link, a file, and the app's own
+/// value for a drag within the app (an id), which other apps never see.
+/// mime is what drop targets accept it by: "text/plain" for a text and
+/// "text/uri-list" for a link unless set, a file's from its name.
+struct DragItem {
+  kind: ShareKind = .text
+  text: string = ""
+  path: string = ""
+  name: string = ""
+  mime: string = ""
+  size: int = -1
+  value: string = ""
+}
+
+/// What's dropped on a view: the items it accepts, where in it, whether
+/// it was dragged from the app (its items' values are there), and
+/// whether the files are the app's own copies (another app's drop on a
+/// phone: move or remove them).
+struct Drop {
+  items: [DragItem] = []
+  x: float = 0
+  y: float = 0
+  local: bool = false
+  copied: bool = false
+}
+
+// ---- Rich text ----
+
+/// A run of styled text, for RichText and a rich TextField. A field
+/// left zero is the element's (its font's style, size and weight, its
+/// color); a link's color is the accent's. A "\n" starts a paragraph.
+/// inline makes the span a component in the text instead (text is
+/// ignored).
+struct Span {
+  text: string = ""
+  font: Font = Font()
+  italic: bool = false
+  mono: bool = false
+  underline: bool = false
+  strike: bool = false
+  color: Color = 0
+  background: Color = 0
+  link: string = ""
+  inline: Inline? = none
+}
+
+/// A component in a RichText's text, where its span is, laid out at its
+/// own size and sitting on the baseline. key keeps it (and its state)
+/// from one text to the next; build makes it, once per key.
+struct Inline {
+  key: string
+  build: fn() -> View
+}
+
+/// A style of a rich TextField's text (format, toggleFormat).
+enum TextFormat {
+  bold
+  italic
+  underline
+  strike
+  mono
+}
+
+/// The styles a rich TextField has where its cursor is, or that all its
+/// selection has.
+struct TextFormats {
+  bold: bool = false
+  italic: bool = false
+  underline: bool = false
+  strike: bool = false
+  mono: bool = false
+  link: string = ""
+}
+
+// ---- Media ----
+
+/// How an Image's placeholder fills its box: as the image does, or its
+/// own way.
+enum PlaceholderMode {
+  asImage
+  fit
+  fill
+  stretch
+  center
+}
+
+/// A WebView's page: its URL, title, progress (0 to 1), and where its
+/// history can go.
+struct WebState {
+  url: string = ""
+  title: string = ""
+  loading: bool = false
+  progress: float = 0
+  canGoBack: bool = false
+  canGoForward: bool = false
+}
+
+/// A file a WebView's page leads to, which it can't show.
+struct WebDownload {
+  url: string = ""
+  mime: string = ""
+  filename: string = ""
+  size: int = -1
+}
+
+// ---- Graphics ----
+
+/// How a Canvas strokes a path.
+struct StrokeStyle {
+  width: float = 1
+  cap: LineCap = .butt
+  join: LineJoin = .miter
+  dash: [float] = []   // lengths drawn and skipped in turn; []: solid
+  dashPhase: float = 0
+}
+
+/// A Canvas's linear gradient: colors at locations from start to end,
+/// in points of the canvas ([] locations: evenly spaced; start and end
+/// both 0: the canvas's top to its bottom).
+struct LinearGradient {
+  colors: [Color]
+  locations: [float] = []
+  startX: float = 0
+  startY: float = 0
+  endX: float = 0
+  endY: float = 0
+}
+
+/// A Canvas's radial gradient: colors from center (0) to the circle of
+/// radius (1); focusX, focusY move where it starts (SVG's focal point),
+/// the center when unset.
+struct RadialGradient {
+  colors: [Color]
+  locations: [float] = []
+  centerX: float = 0
+  centerY: float = 0
+  radius: float = 0
+  focusX: float? = none
+  focusY: float? = none
+}
+
+/// How Graphics.text draws: its size (0: 17, the body's), weight,
+/// color (0: the label color), and where x is on it, physically.
+struct CanvasText {
+  size: float = 0
+  weight: FontWeight = .default
+  color: Color = 0
+  align: TextAlign = .start
+}
+
+/// A Shader's uniform variable's value, by its name: a scalar's number,
+/// a vector's components, a matrix's columns in turn.
+struct Uniform {
+  name: string
+  value: [float]
+}
+
+// ---- Languages ----
+
+/// The user's regional formats: the locale of the formats (which may be
+/// another language's than the app's), the first day of the week (1
+/// Sunday to 7 Saturday) and the hour cycle (12 or 24).
+struct Region {
+  locale: string = ""
+  firstWeekday: int = 2
+  hourCycle: int = 24
 }
