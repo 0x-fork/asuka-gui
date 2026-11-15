@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("//000000000000000\nstruct A:A00{A:A\nA:A\nA:A=\"\"\nA:A\nA:A000000\nA:A000000\nA:A\nfn A(A:A)->A=000}\nenum A00{A(A),A(A000000),fn A()->A{retur% match A0000{0=>\"000\",0=>\"\",(0,)=>\"000000\"}}}")

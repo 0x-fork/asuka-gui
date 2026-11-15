@@ -1,0 +1,134 @@
+SourceFile 1:1-23:3
+  Imports: [1]
+    ImportDecl 1:1-1:23 relative
+      Path: [1]
+        Ident "app" 1:10-1:13
+      Names: [1]
+        Ident "Counter" 1:15-1:22
+  Decls: [2]
+    TestDecl 3:1-12:2 blank
+      Name: StringLit 3:6-3:19 Segments=["counts taps"]
+      Body: Block 3:20-12:2
+        Items: [8]
+          LetDecl 4:3-4:29 Keyword=let
+            Pattern: BindPat 4:7-4:10
+              Name: Ident "app" 4:7-4:10
+            Value: CallExpr 4:13-4:29
+              Fun: Ident "mount" 4:13-4:18
+              Args: ArgList 4:18-4:29
+                List: [1]
+                  Arg 4:19-4:28
+                    Value: CallExpr 4:19-4:28
+                      Fun: Ident "Counter" 4:19-4:26
+                      Args: ArgList 4:26-4:28
+          ExprStmt 5:3-5:25
+            X: CallExpr 5:3-5:25
+              Fun: MemberExpr 5:3-5:13
+                X: Ident "app" 5:3-5:6
+                Name: Ident "expect" 5:7-5:13
+              Args: ArgList 5:13-5:25
+                List: [1]
+                  Arg 5:14-5:24
+                    Value: StringLit 5:14-5:24 Segments=["Count: 0"]
+          ExprStmt 6:3-6:23
+            X: UnaryExpr 6:3-6:23 Op=await
+              X: CallExpr 6:9-6:23
+                Fun: MemberExpr 6:9-6:16
+                  X: Ident "app" 6:9-6:12
+                  Name: Ident "tap" 6:13-6:16
+                Args: ArgList 6:16-6:23
+                  List: [1]
+                    Arg 6:17-6:22
+                      Value: StringLit 6:17-6:22 Segments=["Add"]
+          ExprStmt 7:3-7:23
+            X: UnaryExpr 7:3-7:23 Op=await
+              X: CallExpr 7:9-7:23
+                Fun: MemberExpr 7:9-7:16
+                  X: Ident "app" 7:9-7:12
+                  Name: Ident "tap" 7:13-7:16
+                Args: ArgList 7:16-7:23
+                  List: [1]
+                    Arg 7:17-7:22
+                      Value: StringLit 7:17-7:22 Segments=["Add"]
+          ExprStmt 8:3-8:25
+            X: CallExpr 8:3-8:25
+              Fun: MemberExpr 8:3-8:13
+                X: Ident "app" 8:3-8:6
+                Name: Ident "expect" 8:7-8:13
+              Args: ArgList 8:13-8:25
+                List: [1]
+                  Arg 8:14-8:24
+                    Value: StringLit 8:14-8:24 Segments=["Count: 2"]
+          ExprStmt 9:3-9:25
+            X: UnaryExpr 9:3-9:25 Op=await
+              X: CallExpr 9:9-9:25
+                Fun: MemberExpr 9:9-9:16
+                  X: Ident "app" 9:9-9:12
+                  Name: Ident "tap" 9:13-9:16
+                Args: ArgList 9:16-9:25
+                  List: [1]
+                    Arg 9:17-9:24
+                      Value: StringLit 9:17-9:24 Segments=["Reset"]
+          ExprStmt 10:3-10:15
+            X: UnaryExpr 10:3-10:15 Op=await
+              X: CallExpr 10:9-10:15
+                Fun: Ident "idle" 10:9-10:13
+                Args: ArgList 10:13-10:15
+          ExprStmt 11:3-11:27
+            X: CallExpr 11:3-11:27
+              Fun: MemberExpr 11:3-11:15
+                X: Ident "app" 11:3-11:6
+                Name: Ident "expectNo" 11:7-11:15
+              Args: ArgList 11:15-11:27
+                List: [1]
+                  Arg 11:16-11:26
+                    Value: StringLit 11:16-11:26 Segments=["Count: 2"]
+    TestDecl 14:1-23:2 blank
+      Name: StringLit 14:6-14:33 Segments=["reads a multi-line string"]
+      Body: Block 14:34-23:2
+        Items: [5]
+          LetDecl 15:3-18:8 Keyword=let
+            Pattern: BindPat 15:7-15:11
+              Name: Ident "text" 15:7-15:11
+            Value: StringLit 15:14-18:8 multiline Segments=["\n    Hello,\n      \"world\" " "\n    "]
+              Interps: [1]
+                Ident "name" 17:16-17:20
+          LetDecl 19:3-19:42 Keyword=let
+            Pattern: BindPat 19:7-19:10
+              Name: Ident "raw" 19:7-19:10
+            Value: StringLit 19:13-19:42 raw Segments=["C:\\path\\{not interpolated}"]
+          LetDecl 20:3-20:54 Keyword=let
+            Pattern: BindPat 20:7-20:14
+              Name: Ident "escaped" 20:7-20:14
+            Value: StringLit 20:17-20:54 Segments=["tab\\tquote\\\" brace\\{ smile\\u{1F600}"]
+          ExprStmt 21:3-21:33
+            X: CallExpr 21:3-21:33
+              Fun: Ident "expect" 21:3-21:9
+              Args: ArgList 21:9-21:33
+                List: [1]
+                  Arg 21:10-21:32
+                    Value: CallExpr 21:10-21:32
+                      Fun: MemberExpr 21:10-21:23
+                        X: Ident "text" 21:10-21:14
+                        Name: Ident "contains" 21:15-21:23
+                      Args: ArgList 21:23-21:32
+                        List: [1]
+                          Arg 21:24-21:31
+                            Value: StringLit 21:24-21:31 Segments=["world"]
+          ExprStmt 22:3-22:45
+            X: CallExpr 22:3-22:45
+              Fun: Ident "expect" 22:3-22:9
+              Args: ArgList 22:9-22:45
+                List: [1]
+                  Arg 22:10-22:44
+                    Value: BinaryExpr 22:10-22:44 Op=&&
+                      X: BinaryExpr 22:10-22:23 Op=>
+                        X: MemberExpr 22:10-22:19
+                          X: Ident "raw" 22:10-22:13
+                          Name: Ident "count" 22:14-22:19
+                        Y: BasicLit 22:22-22:23 Kind=integer Value="0"
+                      Y: BinaryExpr 22:27-22:44 Op=>
+                        X: MemberExpr 22:27-22:40
+                          X: Ident "escaped" 22:27-22:34
+                          Name: Ident "count" 22:35-22:40
+                        Y: BasicLit 22:43-22:44 Kind=integer Value="0"

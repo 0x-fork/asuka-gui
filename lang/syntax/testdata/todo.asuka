@@ -1,0 +1,69 @@
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+}
+
+component TodoApp {
+  state todos: [Todo] = []
+  state draft = ""
+  state nextId = 1
+
+  let remaining = todos.filter(t => !t.done).count
+
+  fn add() {
+    let title = draft.trim()
+    if title.isEmpty {
+      return
+    }
+    todos.append(Todo(id: nextId, title: title))
+    nextId += 1
+    draft = ""
+  }
+
+  Column {
+    gap: 8
+    padding: 16
+    Row {
+      gap: 8
+      TextField {
+        placeholder: "What needs doing?"
+        bind text: draft
+        on submit { add() }
+      }
+      Button("Add") {
+        disabled: draft.isEmpty
+        on tap { add() }
+      }
+    }
+    List {
+      for todo in todos key todo.id {
+        Row {
+          gap: 8
+          Toggle {
+            bind isOn: todos[todos.firstIndex(id: todo.id)!].done
+          }
+          Text(todo.title) {
+            grow: 1
+            color: if todo.done { .secondaryLabel } else { .label }
+          }
+          Button("Delete") {
+            role: .destructive
+            on tap { todos.removeAll(t => t.id == todo.id) }
+          }
+        }
+      }
+    }
+    Text("{remaining} left") { color: .secondaryLabel }
+  }
+}
+
+test "adds and completes a todo" {
+  let app = mount(TodoApp())
+  await app.type("Milk", into: "What needs doing?")
+  await app.tap("Add")
+  app.expect("Milk")
+  app.expect("1 left")
+  await app.tap("Delete")
+  app.expectNo("Milk")
+}

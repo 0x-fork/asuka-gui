@@ -1,0 +1,51 @@
+import asuka/http
+import asuka/sensors.{Accelerometer}
+
+screen Weather(city: string) {
+  let forecast = load fetchForecast(city)
+  state readings: [float] = []
+
+  task {
+    for await reading in Accelerometer.updates(every: 100ms) {
+      readings.append(reading.x)
+    }
+  }
+
+  task(city) {
+    let (today, week) = await all(fetchToday(city), fetchWeek(city))
+    let fastest = await race(mirror1(city), mirror2(city))
+    let summary = await spawn {
+      return summarize(today, week, fastest)
+    }
+    await withTimeout(5s) {
+      await http.post("/seen", body: summary)
+    }
+  }
+
+  title: city
+
+  match forecast {
+    .pending => ProgressView()
+    .ready(f) => Text("{f.high}° / {f.low}°")
+    .failed(e) => Button("Retry") {
+      on tap { forecast.reload() }
+    }
+  }
+  if let last = forecast.value?.updated {
+    Text("Updated {last.relative}") { fontSize: 12 }
+  }
+  Boundary {
+    Chart(readings)
+  } on error(e) {
+    Text("The chart failed: {e.message}")
+  }
+}
+
+async fn fetchForecast(city: string) throws -> Forecast {
+  let cached = try? await cache.get(city)
+  if let c = cached {
+    return c
+  }
+  let f: Forecast = try await http.get("/forecast/{city}").json()
+  return f
+}

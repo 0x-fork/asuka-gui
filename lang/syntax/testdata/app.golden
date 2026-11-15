@@ -1,0 +1,96 @@
+SourceFile 1:1-18:3
+  Imports: [1]
+    ImportDecl 1:1-1:35 relative
+      Path: [1]
+        Ident "screens" 1:10-1:17
+      Names: [2]
+        Ident "Inbox" 1:19-1:24
+        Ident "Settings" 1:26-1:34
+  Decls: [2]
+    StateDecl 3:1-3:29 blank
+      Name: Ident "theme" 3:7-3:12
+      Type: NamedType 3:14-3:19
+        Path: [1]
+          Ident "Theme" 3:14-3:19
+      Value: ImplicitMember 3:22-3:29
+        Name: Ident "system" 3:23-3:29
+    AppDecl 5:1-18:2 blank
+      Body: Block 5:5-18:2
+        Items: [2]
+          ProvideDecl 6:3-6:44
+            Value: CallExpr 6:11-6:44
+              Fun: Ident "Mailbox" 6:11-6:18
+              Args: ArgList 6:18-6:44
+                List: [1]
+                  Arg 6:19-6:43
+                    Label: Ident "account" 6:19-6:26
+                    Value: MemberExpr 6:28-6:43
+                      X: Ident "Account" 6:28-6:35
+                      Name: Ident "current" 6:36-6:43
+          ExprStmt 7:3-17:4
+            X: CallExpr 7:3-17:4
+              Fun: Ident "Tabs" 7:3-7:7
+              Block: Block 7:8-17:4
+                Items: [2]
+                  ExprStmt 8:5-11:6
+                    X: CallExpr 8:5-11:6
+                      Fun: Ident "Tab" 8:5-8:8
+                      Args: ArgList 8:8-8:16
+                        List: [1]
+                          Arg 8:9-8:15
+                            Value: StringLit 8:9-8:15 Segments=["Mail"]
+                      Block: Block 8:17-11:6
+                        Items: [2]
+                          PropSet 9:7-9:23
+                            Name: Ident "icon" 9:7-9:11
+                            Value: StringLit 9:13-9:23 Segments=["envelope"]
+                          ExprStmt 10:7-10:39
+                            X: CallExpr 10:7-10:39
+                              Fun: Ident "Stack" 10:7-10:12
+                              Block: Block 10:13-10:39
+                                Items: [1]
+                                  ExprStmt 10:15-10:37
+                                    X: CallExpr 10:15-10:37
+                                      Fun: Ident "Inbox" 10:15-10:20
+                                      Args: ArgList 10:20-10:37
+                                        List: [1]
+                                          Arg 10:21-10:36
+                                            Label: Ident "mailbox" 10:21-10:28
+                                            Value: ImplicitMember 10:30-10:36
+                                              Name: Ident "inbox" 10:31-10:36
+                  ExprStmt 12:5-16:6
+                    X: CallExpr 12:5-16:6
+                      Fun: Ident "Tab" 12:5-12:8
+                      Args: ArgList 12:8-12:20
+                        List: [1]
+                          Arg 12:9-12:19
+                            Value: StringLit 12:9-12:19 Segments=["Settings"]
+                      Block: Block 12:21-16:6
+                        Items: [3]
+                          PropSet 13:7-13:19
+                            Name: Ident "icon" 13:7-13:11
+                            Value: StringLit 13:13-13:19 Segments=["gear"]
+                          PropSet 14:7-14:53
+                            Name: Ident "badge" 14:7-14:12
+                            Value: IfExpr 14:14-14:53
+                              Cond: BinaryExpr 14:17-14:31 Op===
+                                X: Ident "theme" 14:17-14:22
+                                Y: ImplicitMember 14:26-14:31
+                                  Name: Ident "dark" 14:27-14:31
+                              Then: Block 14:32-14:39
+                                Items: [1]
+                                  ExprStmt 14:34-14:37
+                                    X: StringLit 14:34-14:37 Segments=["1"]
+                              Else: Block 14:45-14:53
+                                Items: [1]
+                                  ExprStmt 14:47-14:51
+                                    X: NoneLit 14:47-14:51
+                          ExprStmt 15:7-15:27
+                            X: CallExpr 15:7-15:27
+                              Fun: Ident "Stack" 15:7-15:12
+                              Block: Block 15:13-15:27
+                                Items: [1]
+                                  ExprStmt 15:15-15:25
+                                    X: CallExpr 15:15-15:25
+                                      Fun: Ident "Settings" 15:15-15:23
+                                      Args: ArgList 15:23-15:25

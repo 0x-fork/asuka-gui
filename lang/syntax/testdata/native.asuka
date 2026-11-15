@@ -1,0 +1,22 @@
+/// Taps the user feels.
+pub native interface Haptics {
+  fn impact(style: Impact)
+  async fn prepare() throws -> bool
+}
+
+pub native component MapView(region: Region) {
+  prop pins: [Pin] = []
+  event regionChanged(region: Region)
+}
+
+component Map {
+  state region = Region(lat: 35.68, lng: 139.76, span: 0.1)
+
+  MapView(region) {
+    pins: [Pin(lat: 35.68, lng: 139.76, title: "Tokyo")]
+    on regionChanged(r) {
+      region = r
+      Haptics.impact(style: .light)
+    }
+  }
+}

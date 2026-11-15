@@ -1,0 +1,23 @@
+import ./app.{Counter}
+
+test "counts taps" {
+  let app = mount(Counter())
+  app.expect("Count: 0")
+  await app.tap("Add")
+  await app.tap("Add")
+  app.expect("Count: 2")
+  await app.tap("Reset")
+  await idle()
+  app.expectNo("Count: 2")
+}
+
+test "reads a multi-line string" {
+  let text = """
+    Hello,
+      "world" {name}
+    """
+  let raw = r"C:\path\{not interpolated}"
+  let escaped = "tab\tquote\" brace\{ smile\u{1F600}"
+  expect(text.contains("world"))
+  expect(raw.count > 0 && escaped.count > 0)
+}

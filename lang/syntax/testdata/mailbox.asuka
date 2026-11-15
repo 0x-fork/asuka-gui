@@ -1,0 +1,48 @@
+import asuka/http
+
+/// The app's mail: what's loaded, and what changes it.
+pub store Mailbox(account: Account) {
+  state messages: [Message] = []
+  state unread = 0
+  state error: Error? = none
+
+  let unreadLabel = if unread > 99 { "99+" } else { "{unread}" }
+
+  task(account) {
+    while true {
+      do {
+        messages = try await fetchMessages(account)
+        unread = messages.filter(m => !m.read).count
+      } catch e: HttpError {
+        error = e
+      } catch {
+        error = none
+      }
+      await sleep(5min)
+    }
+  }
+
+  effect {
+    print("unread: {unread}")
+  }
+
+  async fn archive(message: Message) throws {
+    let index = messages.firstIndex(id: message.id) ?? -1
+    if index < 0 {
+      throw MailError.notFound(message.id)
+    }
+    messages[index].archived = true
+    defer { unread = messages.filter(m => !m.read && !m.archived).count }
+    try await http.post("/archive/{message.id}")
+  }
+
+  fn messagesIn(box: Mailbox) -> [Message] = messages.filter(m => m.box == box)
+}
+
+async fn fetchMessages(account: Account) throws -> [Message] {
+  let response = try await http.get("https://mail.example.com/{account.id}/messages", headers: [
+    "Authorization": "Bearer {account.token}",
+    "Accept": "application/json",
+  ])
+  return try response.json()
+}
