@@ -15,6 +15,16 @@
 #include <stdint.h>
 #include <stddef.h>
 
+// ASUKA_API marks what the core's library exports (its other symbols are
+// hidden).
+#if defined(_WIN32) && defined(AK_EXPORTS)
+#define ASUKA_API __declspec(dllexport)
+#elif defined(__GNUC__) || defined(__clang__)
+#define ASUKA_API __attribute__((visibility("default")))
+#else
+#define ASUKA_API
+#endif
+
 typedef struct {
 	// Applies a batch of encoded ops (ops/ops.go). The buffer is valid
 	// during the call only.
@@ -44,44 +54,48 @@ typedef struct {
 	void (*measure_v)(uint32_t id, const float *in, float *out);
 } asuka_host_callbacks;
 
-void asuka_start(asuka_host_callbacks *callbacks);
+ASUKA_API void asuka_start(asuka_host_callbacks *callbacks);
 // Loads a compiled module (lang/bytecode), runs its init and mounts its
 // app as the root. A module loaded while one runs replaces it (the old
 // app is unmounted). It returns 0, or -1 with a message the host can
 // show: *err (asuka_free_string frees it).
-int asuka_load(const uint8_t *module, size_t len, char **err);
+ASUKA_API int asuka_load(const uint8_t *module, size_t len, char **err);
 // Runs the app compiled to C into this build (lang/cgen): as asuka_load,
 // with the app's own module. 0, or -1 with a message in *err.
-int asuka_run(char **err);
+ASUKA_API int asuka_run(char **err);
 // Connects to asuka dev at host:port (a player: the simulator's, an
 // emulator's, a phone's, a desktop's): the CLI sends the app's bytecode
 // and loads it again on every save, keeping its state and views; the
 // player's logs go to the CLI. hello is the player's JSON (platform,
 // device). 0, or -1 with a message in *err.
-int asuka_dev_connect(const char *host, int port, const char *hello, char **err);
+ASUKA_API int asuka_dev_connect(const char *host, int port, const char *hello, char **err);
+// Memory for bytes a host passes in (the web's JavaScript), and for what
+// the core hands out (asuka_native_invoke's answer): asuka_free frees it.
+ASUKA_API void *asuka_alloc(size_t n);
+ASUKA_API void asuka_free(void *p);
 // Frees a string the core returned.
-void asuka_free_string(char *s);
-void asuka_attach(void);
-void asuka_event(const uint8_t *buf, size_t len);
-int64_t asuka_list_count(uint32_t list);
-void asuka_list_bind(uint32_t list, int64_t index, uint32_t cell);
-void asuka_list_unbind(uint32_t list, uint32_t cell);
-void asuka_run_posted(void);
+ASUKA_API void asuka_free_string(char *s);
+ASUKA_API void asuka_attach(void);
+ASUKA_API void asuka_event(const uint8_t *buf, size_t len);
+ASUKA_API int64_t asuka_list_count(uint32_t list);
+ASUKA_API void asuka_list_bind(uint32_t list, int64_t index, uint32_t cell);
+ASUKA_API void asuka_list_unbind(uint32_t list, uint32_t cell);
+ASUKA_API void asuka_run_posted(void);
 // Sets an environment variable for the Go code (os.Setenv), which copied
 // the process's as it loaded.
-void asuka_setenv(const char *key, const char *value);
+ASUKA_API void asuka_setenv(const char *key, const char *value);
 // Begins the run's crash record (asuka/sdk/crash; not available in the
 // C core yet: it returns ""), with info, JSON of the
 // device and the app: the directory native reports go in, "" if the app
 // doesn't report crashes. Any thread, before asuka_start; free the result.
 char *asuka_crash_start(const char *info);
 // Says the host wrote a report in the directory's inbox. Any thread.
-void asuka_crash_notify(void);
+ASUKA_API void asuka_crash_notify(void);
 // Typed native modules' way back to the core (not available in the C
 // core until native packages land: they do nothing), from any thread: a started
 // call's answer; a Go callback's call, its answer (none: 0) into *out,
 // which the caller frees.
-void asuka_native_done(uint64_t call, const uint8_t *p, size_t len);
-size_t asuka_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out);
+ASUKA_API void asuka_native_done(uint64_t call, const uint8_t *p, size_t len);
+ASUKA_API size_t asuka_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out);
 
 #endif

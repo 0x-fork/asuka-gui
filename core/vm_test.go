@@ -586,6 +586,12 @@ func num(r int) [2]int { return [2]int{r, int(bc.KInt)} }
 //
 // mounted on the fake host by the test builtins.
 func TestVMCounterOnTheFakeHost(t *testing.T) {
+	m, bodyIdx := counterModule(t)
+	counterTests(t, m, bodyIdx)
+}
+
+// counterModule is the Counter component (above) in a module.
+func counterModule(t *testing.T) (*bc.Module, int) {
 	m := module()
 	addInit(m)
 
@@ -653,7 +659,10 @@ func TestVMCounterOnTheFakeHost(t *testing.T) {
 	body.callb(bc.None, "ui.leave")
 	body.op("RET", col)
 	bodyIdx := body.done(bc.KRef, 0)
+	return m, bodyIdx
+}
 
+func counterTests(t *testing.T, m *bc.Module, bodyIdx int) {
 	// The test block.
 	f := newFn(m, "t")
 	build, app, s1 := f.reg(bc.KRef), f.reg(bc.KRef), f.reg(bc.KRef)

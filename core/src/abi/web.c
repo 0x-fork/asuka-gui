@@ -63,8 +63,6 @@ EXPORT("asuka_web_start") void asuka_web_start(void) {
 }
 
 EXPORT("asuka_io") uint32_t asuka_io(void) { return (uint32_t)(uintptr_t)&io; }
-EXPORT("asuka_alloc") void *asuka_alloc(size_t n) { return malloc(n ? n : 1); }
-EXPORT("asuka_free") void asuka_free(void *p) { free(p); }
 EXPORT("asuka_timer_fire") void asuka_timer_fire(double id) { ak_timer_fire((uint64_t)id); }
 
 #endif

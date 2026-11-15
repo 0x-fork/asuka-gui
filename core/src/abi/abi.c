@@ -191,6 +191,9 @@ int asuka_dev_connect(const char *host_name, int port, const char *hello, char *
 
 void asuka_free_string(char *s) { free(s); }
 
+void *asuka_alloc(size_t n) { return malloc(n ? n : 1); }
+void asuka_free(void *p) { free(p); }
+
 // asuka_attach tells the host again which view is the root, and resends
 // every frame (an Android activity recreated took over the views).
 void asuka_attach(void) {
