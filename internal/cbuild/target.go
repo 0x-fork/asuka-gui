@@ -275,7 +275,8 @@ func exportFlags() []string {
 	var f []string
 	for _, name := range []string{
 		"asuka_start", "asuka_load", "asuka_event", "asuka_list_count", "asuka_list_bind", "asuka_list_unbind",
-		"asuka_run_posted", "asuka_attach", "asuka_timer_fire", "asuka_native_done", "asuka_alloc", "asuka_free",
+		"asuka_run_posted", "asuka_attach", "asuka_timer_fire", "asuka_native_done", "asuka_native_invoke", "asuka_alloc", "asuka_free",
+		"asuka_run", "asuka_free_string", "asuka_web_start", "asuka_io",
 	} {
 		f = append(f, "-Wl,--export="+name)
 	}

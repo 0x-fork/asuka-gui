@@ -106,8 +106,12 @@ export async function startCore(host, options = {}) {
   host.inGo = 1;
   e.asuka_web_start();
   if (options.module) {
+    // asuka dev: the app's bytecode.
     const bytes = new Uint8Array(await (await fetch(options.module)).arrayBuffer());
     if (withBytes(bytes, (p, n) => e.asuka_load(p, n, 0)) !== 0) throw new Error("asuka: the app's module didn't load (see the console)");
+  } else if (e.asuka_run(0) !== 0) {
+    // The app compiled into asuka.wasm.
+    throw new Error("asuka: the app didn't start (see the console)");
   }
   host.started();
   return core;
