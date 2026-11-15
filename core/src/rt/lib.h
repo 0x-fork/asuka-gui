@@ -20,6 +20,8 @@ typedef struct {
 
 // The standard library's functions, NULL-terminated.
 extern const ak_lib_entry ak_lib[];
+// Streams' (stream.c).
+extern const ak_lib_entry ak_stream_lib[];
 
 // Where print writes (tests capture it); NULL: stdout.
 extern void (*ak_lib_print_hook)(const char *s, size_t n);

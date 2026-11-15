@@ -142,6 +142,7 @@ const (
 	ForRange              // a..b, a..<b
 	ForMap                // (key, value) in a map
 	ForEnumerated         // (i, x) in xs.enumerated()
+	ForStream             // for await x in a stream
 )
 
 // ForInfo is a for loop's iteration.

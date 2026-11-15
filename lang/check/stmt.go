@@ -346,11 +346,12 @@ func (c *Checker) letCondPattern(lc *syntax.LetCond, t Type, kind VarKind) {
 }
 
 func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
-	if s.Await.IsValid() {
-		c.errorf(s, "for await isn't supported yet")
-	}
 	fi := &ForInfo{Pat: s.Pattern, View: view}
 	c.info.Fors[s] = fi
+	if s.Await.IsValid() {
+		c.forAwait(s, fi, view)
+		return
+	}
 	seq := unparen(s.Seq)
 	saved := c.ctx
 	if view {
@@ -1050,4 +1051,37 @@ func hasBreak(items []syntax.Item) bool {
 		})
 	}
 	return found
+}
+
+// forAwait is for await x in s: each value the stream sends, as it
+// comes. It waits, and throws what the stream's producer throws.
+func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
+	fi.Kind, fi.Seq = ForStream, s.Seq
+	if view {
+		c.errorf(s, "a view can't wait: read the stream in a task { }, into state")
+	}
+	if c.ctx == nil || !c.ctx.Async {
+		c.errorf(s, "for await waits, and this can't: %s", c.asyncHint())
+	} else {
+		c.ctx.Awaits = true
+	}
+	t := c.expr(s.Seq, nil)
+	if st, ok := t.(*Stream); ok {
+		fi.Elem = st.Elem
+	} else {
+		if !IsInvalid(t) {
+			c.errorf(s.Seq, "for await goes over a stream, not a %s (for goes over arrays)", typeString(t))
+		}
+		fi.Elem = Invalid
+	}
+	if s.Key != nil {
+		c.errorf(s.Key, "key is for a for in a view")
+	}
+	c.mayThrow(s.Seq)
+	c.openScope()
+	c.forBindings(fi, s.Pattern, LocalVar, nil)
+	c.loops++
+	c.block(s.Body)
+	c.loops--
+	c.closeScope()
 }

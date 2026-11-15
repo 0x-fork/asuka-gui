@@ -196,6 +196,10 @@ func (b *fb) ifStmt(s *syntax.IfStmt) {
 
 func (b *fb) forStmt(s *syntax.ForStmt) {
 	fi := b.l.info.Fors[s]
+	if fi.Kind == check.ForStream {
+		b.forAwait(s, fi)
+		return
+	}
 	b.openScope()
 	defer b.closeScope()
 	top, cont, end := b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel()
@@ -818,4 +822,36 @@ func (b *fb) emitStmt(s *syntax.EmitStmt) {
 	b.emit(op("CALLC"), res, h, blk, len(vals))
 	b.releaseRegs(blk, ks)
 	b.f.Place(skip)
+}
+
+// forAwait is for await x in s: await stream.next (whether a value came:
+// false at the end; it throws what the producer threw), take it with
+// stream.value; leaving the loop closes the stream, which cancels its
+// producer.
+func (b *fb) forAwait(s *syntax.ForStmt, fi *check.ForInfo) {
+	b.openScope()
+	defer b.closeScope()
+	top, end := b.f.NewLabel(), b.f.NewLabel()
+	st := b.local(bc.KRef)
+	b.value(fi.Seq, st)
+	more := b.local(bc.KBool)
+	b.f.Place(top)
+	f := b.callB("stream.next", bc.KRef, st)
+	b.emit(op("AWAIT"), more, f)
+	b.emitJump(op("JF"), more, end)
+	b.openScope()
+	x := b.temp(b.kind(fi.Elem))
+	b.callBTo("stream.value", x, st)
+	if _, ok := fi.Pat.(*syntax.TuplePat); ok {
+		b.bindLet(fi.Pat, x, b.typ(fi.Elem))
+	} else {
+		b.declare(fi.Item, x)
+	}
+	b.loops = append(b.loops, loop{brk: end, cont: top, defers: len(b.defers)})
+	b.block(s.Body)
+	b.loops = b.loops[:len(b.loops)-1]
+	b.closeScope()
+	b.jmp(top)
+	b.f.Place(end)
+	b.callBTo("stream.close", bc.None, st)
 }

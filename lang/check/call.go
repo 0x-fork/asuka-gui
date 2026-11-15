@@ -309,6 +309,9 @@ func (c *Checker) unify(p, a Type, s Subst, free map[*TypeParam]bool) bool {
 	case *Task:
 		y, ok := a.(*Task)
 		return ok && c.unify(x.Elem, y.Elem, s, free)
+	case *Stream:
+		y, ok := a.(*Stream)
+		return ok && c.unify(x.Elem, y.Elem, s, free)
 	case *Named:
 		y, ok := a.(*Named)
 		if !ok || y.Obj != x.Obj || len(y.Args) != len(x.Args) {
@@ -355,6 +358,8 @@ func mentionsFree(t Type, free map[*TypeParam]bool, s Subst) bool {
 			}
 			walk(x.Result)
 		case *Task:
+			walk(x.Elem)
+		case *Stream:
 			walk(x.Elem)
 		case *Named:
 			for _, a := range x.Args {
@@ -1017,7 +1022,7 @@ func sendable1(t Type, seen map[*TypeName]bool) bool {
 			}
 		}
 		return true
-	case *FuncType, *Task:
+	case *FuncType, *Task, *Stream:
 		return false
 	case *TypeParam:
 		return true

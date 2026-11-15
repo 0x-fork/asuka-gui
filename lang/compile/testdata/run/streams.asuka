@@ -1,0 +1,62 @@
+// Streams: a producer sends values; for await reads them as they come.
+
+enum CountError: Error { tooFar }
+
+fn counter(to: int) -> Stream<int> = Stream(send => {
+  for i in 1..to {
+    await sleep(10ms)
+    send(i)
+  }
+})
+
+fn failing() -> Stream<string> = Stream(send => {
+  send("a")
+  await sleep(1ms)
+  throw CountError.tooFar
+})
+
+fn forever(log: [string]) -> Stream<int> = Stream(send => {
+  defer { print("producer stopped") }
+  var i = 0
+  while true {
+    i += 1
+    send(i)
+    await sleep(1ms)
+  }
+})
+
+test "reads what comes" {
+  var sum = 0
+  for await n in counter(to: 4) {
+    sum += n
+  }
+  print(sum)
+}
+
+test "a producer's error" {
+  do {
+    for await s in failing() {
+      print(s)
+    }
+  } catch e {
+    print("caught {e.message}")
+  }
+}
+
+test "break stops the producer" {
+  for await n in forever(log: []) {
+    if n == 3 { break }
+  }
+  await sleep(5ms)
+  print("after")
+}
+
+// Output:
+// 10
+// ok reads what comes
+// a
+// caught CountError.tooFar
+// ok a producer's error
+// producer stopped
+// after
+// ok break stops the producer

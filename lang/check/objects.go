@@ -400,6 +400,7 @@ const (
 	BTimeMonotonic
 	BRange       // arr.range
 	BWithTimeout // withTimeout(d) { … }
+	BStream      // Stream<T>(send => { … })
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

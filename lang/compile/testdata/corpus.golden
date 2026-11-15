@@ -33,7 +33,6 @@ model.asuka:78:21: isEmpty is a method of [int]: call it, isEmpty()
 model.asuka:83:27: count is a method of [int]: call it, count()
 == concurrency
 concurrency.asuka:4:1: screen Weather needs the Screen element, which the runtime doesn't have yet: make it a component
-concurrency.asuka:9:5: for await isn't supported yet
 concurrency.asuka:9:40: Accelerometer has no case updates
 concurrency.asuka:10:16: [float] has no method append
 concurrency.asuka:21:13: post can throw: call it with try (try post(…)), or try? for none on an error

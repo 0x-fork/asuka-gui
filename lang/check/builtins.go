@@ -242,6 +242,25 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		call.Result = Void
 		c.callEffects(e, "withTimeout", true, true)
+	case BStream:
+		args := positional(1, "what sends its values: Stream<T>(send => { … })")
+		var elem Type
+		if len(e.TypeArgs) == 1 {
+			elem = c.typeExpr(e.TypeArgs[0])
+		} else if st, ok := Unopt(want).(*Stream); ok {
+			elem = st.Elem
+		}
+		if elem == nil {
+			c.errorf(e, "can't tell what the stream sends: Stream<T>(…), or say what's expected")
+			elem = Invalid
+		}
+		prod := &FuncType{Params: []Type{&FuncType{Params: []Type{elem}, Result: Void}}, Result: Void, Async: true, Throws: true}
+		if len(args) == 1 {
+			c.assign(args[0], prod, "what sends the stream's values")
+		}
+		call.Args = args
+		call.Params = []*Param{{Name: "produce", Type: prod}}
+		call.Result = &Stream{elem}
 	default:
 		c.errorf(e, "unknown builtin %s", b.name)
 		call.Result = Invalid

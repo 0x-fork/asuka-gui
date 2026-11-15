@@ -425,7 +425,18 @@ async fn loadThread(id: string) throws -> Thread {
 - `spawn { … }` runs a block on another thread, for work that would hold
   the main thread up (parsing, image processing). It may use values only,
   not state, stores or views: the compiler says so if it does.
-- `for await message in socket.messages { … }` reads a stream.
+- `for await message in socket.messages { … }` reads a stream, a
+  `Stream<T>`: values that come over time. `Stream(send => { … })`
+  makes one: the block runs as a task when the stream is first read,
+  and each `send(x)` is a value; the stream ends when the block
+  returns, and fails with what it throws. Leaving the loop (`break`, an
+  error, the owner going) cancels the block. A stream has one reader.
+
+  ```asuka
+  fn levels() -> Stream<float> = Stream(send => {
+    try await battery.watch(changed: level => send(level))
+  })
+  ```
 - **Cancellation.** A task belongs to what started it. When that goes (the
   user leaves the screen), the task is cancelled: the `await` it's at
   ends it, its `defer`s run, and no error is reported.

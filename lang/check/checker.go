@@ -160,7 +160,7 @@ func (c *Checker) initUniverse() {
 		{"print", BPrint}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
-		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout},
+		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
 	}
@@ -547,6 +547,14 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 	name := t.Path[len(t.Path)-1].Name
 	if len(t.Path) == 1 {
 		switch name {
+		case "Stream":
+			if o, _ := c.lookup(name).(*Builtin); o != nil && o.ID == BStream {
+				if len(t.Args) != 1 {
+					c.errorf(t, "Stream takes one type: Stream<T>")
+					return Invalid
+				}
+				return &Stream{c.typeExpr(t.Args[0])}
+			}
 		case "Task":
 			if c.lookup(name) == nil {
 				if len(t.Args) != 1 {

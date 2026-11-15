@@ -138,7 +138,7 @@ func (c *Checker) interpolated(x syntax.Expr, t Type) {
 		case View, TestApp:
 			c.errorf(x, "a %s can't be put in a string", typeString(u))
 		}
-	case *FuncType, *Task, *TypeParam:
+	case *FuncType, *Task, *Stream, *TypeParam:
 		c.errorf(x, "a %s can't be put in a string", typeString(t))
 	case *Named:
 		if u.Obj.Kind == StoreType || u.Obj.Kind == ComponentType {

@@ -139,6 +139,11 @@ type Task struct{ Elem Type }
 
 func (t *Task) String() string { return "Task<" + t.Elem.String() + ">" }
 
+// Stream is Stream<T>: values that come over time, read with for await.
+type Stream struct{ Elem Type }
+
+func (t *Stream) String() string { return "Stream<" + t.Elem.String() + ">" }
+
 // Named is a declared type (a struct, an enum, an interface, a store, a
 // component) with its type arguments.
 type Named struct {
@@ -223,6 +228,9 @@ func Identical(a, b Type) bool {
 	case *Task:
 		y, ok := b.(*Task)
 		return ok && Identical(x.Elem, y.Elem)
+	case *Stream:
+		y, ok := b.(*Stream)
+		return ok && Identical(x.Elem, y.Elem)
 	case *Named:
 		y, ok := b.(*Named)
 		if !ok || x.Obj != y.Obj || len(x.Args) != len(y.Args) {
@@ -292,6 +300,10 @@ func (s Subst) Apply(t Type) Type {
 		if e := s.Apply(x.Elem); e != x.Elem {
 			return &Task{e}
 		}
+	case *Stream:
+		if e := s.Apply(x.Elem); e != x.Elem {
+			return &Stream{e}
+		}
 	case *Named:
 		var args []Type
 		for i, a := range x.Args {
@@ -359,6 +371,8 @@ func HasTypeParams(t Type) bool {
 		}
 		return HasTypeParams(x.Result)
 	case *Task:
+		return HasTypeParams(x.Elem)
+	case *Stream:
 		return HasTypeParams(x.Elem)
 	case *Named:
 		for _, a := range x.Args {

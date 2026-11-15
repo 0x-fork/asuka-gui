@@ -165,6 +165,8 @@ func recvKind(t Type) string {
 		return "optional"
 	case *Task:
 		return "task"
+	case *Stream:
+		return "stream"
 	case *Named:
 		if x.Obj == loadingT {
 			return "loading"
@@ -237,6 +239,8 @@ func (m *Method) bind(recv Type) Subst {
 	case *Optional:
 		s[tvT] = x.Elem
 	case *Task:
+		s[tvT] = x.Elem
+	case *Stream:
 		s[tvT] = x.Elem
 	case *Named:
 		if len(x.Args) > 0 {

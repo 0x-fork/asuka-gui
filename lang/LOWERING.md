@@ -411,6 +411,15 @@ its name).
 JavaScript, Go on Windows and Linux, whose hosts are Go) from the same declarations, in
 native/codec.go's wire format.
 
+## Streams
+
+`Stream(produce)` is CALLB `stream.new(produce, kind)` (kind: the
+values' ak_kind); `for await x in s { … }` is: s into a local; at the
+top, AWAIT CALLB `stream.next(s)` (a bool: whether a value came; it
+throws what the producer threw), JF to the end, CALLB `stream.value(s)`
+for x, the body, back to the top; at the end CALLB `stream.close(s)`,
+which cancels the producer (core/src/rt/stream.c).
+
 ## Imports
 
 The compiler (lang/compile) finds each import: `./path` beside the
