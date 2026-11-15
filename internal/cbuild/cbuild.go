@@ -223,11 +223,10 @@ func RunnerWith(core string, extra []string, sanitize bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tmp := exe + ".tmp"
+	tmp := fmt.Sprintf("%s.%d.tmp", exe, os.Getpid())
 	if err := cc.Link(objs, tmp, link); err != nil {
 		return "", err
 	}
-	os.RemoveAll(filepath.Join(dir, "obj"))
 	return exe, os.Rename(tmp, exe)
 }
 
