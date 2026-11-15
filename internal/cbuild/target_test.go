@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func core(t *testing.T) string {
+func coreRoot(t *testing.T) string {
 	p, _ := filepath.Abs(filepath.Join("..", "..", "core"))
 	return p
 }
@@ -20,7 +20,7 @@ func build(t *testing.T, tg Target, kind LibKind, name string) {
 		t.Skip(err)
 	}
 	out := filepath.Join(t.TempDir(), name)
-	if err := tc.Lib(core(t), kind, nil, false, out); err != nil {
+	if err := tc.Lib(coreRoot(t), kind, nil, false, out); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -47,8 +47,24 @@ func TestLibAndroid(t *testing.T) {
 }
 
 func TestLibWasm(t *testing.T) {
-	if _, err := os.Stat(filepath.Join(core(t), "src", "abi", "web.c")); err != nil {
+	if _, err := os.Stat(filepath.Join(coreRoot(t), "src", "abi", "web.c")); err != nil {
 		t.Skip("the web's ABI (core/src/abi/web.c) isn't there yet")
 	}
 	build(t, Target{"wasm", "wasm32"}, Module, "asuka.wasm")
+}
+
+func TestCoreDirExtract(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	d, err := extract()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isCore(d) {
+		t.Fatalf("%s isn't the core", d)
+	}
+	srcs, _ := Sources(d, true)
+	if len(srcs) < 10 {
+		t.Fatalf("only %d sources in %s", len(srcs), d)
+	}
 }

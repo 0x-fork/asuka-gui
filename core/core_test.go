@@ -1,10 +1,10 @@
-// Package core holds Asuka's C core. This test builds each
+// The C core's tests. TestC builds each
 // core/test/*_test.c with the whole core and the fake host, under
 // AddressSanitizer and UndefinedBehaviorSanitizer, and runs it:
 //
 //	go test ./core              every C test
 //	go test ./core -run Layout  core/test/layout_test.c alone
-package core
+package core_test
 
 import (
 	"os"
