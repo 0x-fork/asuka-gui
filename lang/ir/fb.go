@@ -28,9 +28,10 @@ type fb struct {
 	blockFree map[string][]int // argument blocks, by their kinds
 	nullReg   int              // a reference register that's always none
 
-	loops   []loop
-	defers  []*syntax.Block // the defers in effect, innermost last
-	inDefer int
+	hoisting bool // making a hoisted literal: don\'t hoist again
+	loops    []loop
+	defers   []*syntax.Block // the defers in effect, innermost last
+	inDefer  int
 
 	// The component's or store's env: envReg holds the struct (in
 	// methods, closures, and the component's function once it's made);

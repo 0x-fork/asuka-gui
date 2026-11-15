@@ -64,7 +64,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		}
 		return out
 	}
-	if e.Block != nil && b.ID != BMount {
+	if e.Block != nil && b.ID != BMount && b.ID != BWithTimeout {
 		c.errorf(e.Block, "%s takes no block", b.name)
 	}
 	switch b.ID {
@@ -221,6 +221,22 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Result = ft.Result
 	case BRange:
 		call.Result = &Array{Int}
+	case BWithTimeout:
+		args := positional(1, "a duration and a block: withTimeout(5s) { … }")
+		if len(args) > 0 {
+			c.assign(args[0], Duration, "the timeout")
+		}
+		if e.Block == nil {
+			c.errorf(e, "withTimeout takes a block: withTimeout(5s) { … }")
+		} else {
+			lam := &syntax.LambdaExpr{Span: e.Block.Span, Body: e.Block}
+			c.info.Trailing[e] = lam
+			c.expr(lam, &FuncType{Result: Void, Async: true, Throws: true})
+			args = append(args, lam)
+		}
+		call.Args = args
+		call.Result = Void
+		c.callEffects(e, "withTimeout", true, true)
 	default:
 		c.errorf(e, "unknown builtin %s", b.name)
 		call.Result = Invalid
@@ -319,7 +335,7 @@ func (c *Checker) isAsyncCall(call *Call) bool {
 		return call.Method.Async
 	case CallBuiltin:
 		switch call.Builtin.ID {
-		case BSleep, BAll, BRace, BIdle:
+		case BSleep, BAll, BRace, BIdle, BWithTimeout:
 			return true
 		}
 	}

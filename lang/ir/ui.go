@@ -532,16 +532,22 @@ func (b *fb) showView(s *syntax.IfStmt) int {
 }
 
 func (b *fb) forView(s *syntax.ForStmt) int {
+	items, key, row := b.forParts(s)
+	return b.callB(uiFor, bc.KRef, items, key, row)
+}
+
+// forParts makes a for's closures in a view: its items' thunk, its
+// key's function (or none), its row's builder.
+func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int) {
 	fi := b.l.info.Fors[s]
 	itemsCtx := b.l.info.Ctxs[s.Seq]
 	seqT := b.typ(&check.Array{Elem: fi.Elem})
-	items := b.makeClosure(closure{name: "items", ctxs: []*check.FuncCtx{itemsCtx}, ret: bc.KRef, throws: true, body: func(c *fb) {
+	items = b.makeClosure(closure{name: "items", ctxs: []*check.FuncCtx{itemsCtx}, ret: bc.KRef, throws: true, body: func(c *fb) {
 		c.ctx = itemsCtx
 		v := c.value(fi.Seq, -1)
 		c.emit(op("RET"), v)
 	}})
 	_ = seqT
-	var key int
 	if s.Key != nil {
 		kctx := b.l.info.Ctxs[s.Key]
 		var item *check.Var
@@ -564,12 +570,12 @@ func (b *fb) forView(s *syntax.ForStmt) int {
 	rctx := b.l.info.Ctxs[s.Body]
 	params := make([]*check.Var, 2)
 	copy(params, rctx.Params)
-	row := b.makeClosure(closure{name: "row", ctxs: []*check.FuncCtx{rctx}, params: params, ret: bc.KRef, throws: true, body: func(c *fb) {
+	row = b.makeClosure(closure{name: "row", ctxs: []*check.FuncCtx{rctx}, params: params, ret: bc.KRef, throws: true, body: func(c *fb) {
 		c.ctx = rctx
 		v := c.viewsOf(s.Body.Items)
 		c.emit(op("RET"), v)
 	}})
-	return b.callB(uiFor, bc.KRef, items, key, row)
+	return items, key, row
 }
 
 func (b *fb) matchView(s *syntax.MatchStmt) int {
@@ -747,6 +753,13 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 	}
 	for _, ch := range ec.Children {
 		mark := b.mark()
+		if f, ok := ch.(*syntax.ForStmt); ok && b.l.info.Fors[f] != nil && b.l.info.Fors[f].Lazy {
+			// Rows the element builds only while they're on screen.
+			items, key, row := b.forParts(f)
+			b.callBTo(uiLazyFor, bc.None, v, items, key, row)
+			b.release(mark)
+			continue
+		}
 		cv, opt := b.viewItem(ch)
 		if cv >= 0 {
 			skip := b.f.NewLabel()

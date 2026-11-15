@@ -48,6 +48,22 @@ test "stores with parameters" {
   print(d.n)
 }
 
+test "with a timeout" {
+  try await withTimeout(50ms) {
+    await sleep(10ms)
+    print("in time")
+  }
+  do {
+    try await withTimeout(20ms) {
+      defer { print("cancelled, cleaned up") }
+      await sleep(1h)
+      print("never")
+    }
+  } catch e {
+    print(e.message)
+  }
+}
+
 // Output:
 // 3
 // ok async closures
@@ -57,3 +73,7 @@ test "stores with parameters" {
 // n=6
 // 21
 // ok stores with parameters
+// in time
+// timed out (tasks.asuka:57)
+// cancelled, cleaned up
+// ok with a timeout

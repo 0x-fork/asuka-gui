@@ -156,7 +156,7 @@ func (c *Checker) initUniverse() {
 		{"print", BPrint}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
-		{"int", BInt}, {"panic", BPanic},
+		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
 	}

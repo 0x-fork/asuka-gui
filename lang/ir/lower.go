@@ -31,6 +31,8 @@ type Lowerer struct {
 
 	opts           *Options
 	pendingStrings []pendingStrings
+	consts         map[string]int // a hoisted literal (and its type) → its global
+	pendingConsts  []pendingConst
 	stringsFn      *fb
 }
 
@@ -96,10 +98,16 @@ func (l *Lowerer) lower() {
 			}
 		}
 	}
-	for len(l.work) > 0 {
-		w := l.work[0]
-		l.work = l.work[1:]
-		w()
+	for {
+		for len(l.work) > 0 {
+			w := l.work[0]
+			l.work = l.work[1:]
+			w()
+		}
+		if len(l.pendingConsts) == 0 {
+			break
+		}
+		l.finishConsts()
 	}
 	l.finishStrings()
 }
@@ -421,6 +429,12 @@ func (l *Lowerer) frozenStrings(ss []string, key string) int {
 	return g
 }
 
+type pendingConst struct {
+	global int
+	e      syntax.Expr
+	subst  check.Subst
+}
+
 type pendingStrings struct {
 	global int
 	ss     []string
@@ -544,6 +558,23 @@ func (l *Lowerer) initBody(b *fb) {
 
 // finishStrings writes init.strings: the frozen string tables (enums'
 // case names) the lowering asked for.
+// finishConsts makes the hoisted literals, in init.strings.
+func (l *Lowerer) finishConsts() {
+	b := l.stringsFn
+	for len(l.pendingConsts) > 0 {
+		p := l.pendingConsts[0]
+		l.pendingConsts = l.pendingConsts[1:]
+		mark := b.mark()
+		b.subst = p.subst
+		b.hoisting = true
+		v := b.expr(p.e, -1)
+		b.hoisting = false
+		v = b.freeze(v, bc.KRef)
+		b.emit(op("GSET"), p.global, v, int(bc.KRef))
+		b.release(mark)
+	}
+}
+
 func (l *Lowerer) finishStrings() {
 	b := l.stringsFn
 	for _, p := range l.pendingStrings {
@@ -701,4 +732,101 @@ func (l *Lowerer) implement(t, iface check.Type) {
 		g.emit(op("RET"), r)
 		sd.Methods[fl.Name] = uint32(g.idx)
 	}
+}
+
+// hoist returns a constant literal (an array, a map, a tuple, a struct or
+// a case made of literals) from the global init builds it in once,
+// frozen; ok false when e isn't one.
+func (b *fb) hoist(e syntax.Expr, dst int) (int, bool) {
+	l := b.l
+	if b.hoisting || b == l.stringsFn || b.idx == int(l.mod.Init) || !l.constLiteral(e, true) {
+		return 0, false
+	}
+	t := b.rawType(e)
+	if check.HasTypeParams(t) {
+		return 0, false
+	}
+	key := fmt.Sprintf("%p|%s", e, l.typeKey(t))
+	if l.consts == nil {
+		l.consts = map[string]int{}
+	}
+	g, ok := l.consts[key]
+	if !ok {
+		g = len(l.mod.Globals)
+		l.mod.Globals = append(l.mod.Globals, bc.KRef)
+		l.consts[key] = g
+		l.pendingConsts = append(l.pendingConsts, pendingConst{g, e, b.subst})
+	}
+	r := b.out(dst, bc.KRef)
+	b.emit(op("GGET"), r, g, int(bc.KRef))
+	return r, true
+}
+
+// constLiteral reports a value made of literals only (top: a container
+// of them, which is worth hoisting).
+func (l *Lowerer) constLiteral(e syntax.Expr, top bool) bool {
+	switch x := e.(type) {
+	case *syntax.ParenExpr:
+		return l.constLiteral(x.X, top)
+	case *syntax.BasicLit, *syntax.BoolLit, *syntax.NoneLit:
+		return !top
+	case *syntax.StringLit:
+		return !top && len(x.Interps) == 0
+	case *syntax.UnaryExpr:
+		return !top && x.Op == syntax.SUB && l.constLiteral(x.X, false)
+	case *syntax.ImplicitMember, *syntax.MemberExpr:
+		if top {
+			return false
+		}
+		sel := l.info.Selections[e]
+		return sel != nil && (sel.Kind == check.SelCase || sel.Kind == check.SelColor || sel.Kind == check.SelLengthAuto)
+	case *syntax.ArrayExpr:
+		if len(x.Elems) == 0 {
+			return false
+		}
+		for _, el := range x.Elems {
+			if !l.constLiteral(el, false) {
+				return false
+			}
+		}
+		return true
+	case *syntax.MapExpr:
+		if len(x.Entries) == 0 {
+			return false
+		}
+		for _, en := range x.Entries {
+			if !l.constLiteral(en.Key, false) || !l.constLiteral(en.Value, false) {
+				return false
+			}
+		}
+		return true
+	case *syntax.TupleExpr:
+		for _, el := range x.Elems {
+			if !l.constLiteral(el, false) {
+				return false
+			}
+		}
+		return len(x.Elems) > 0
+	case *syntax.CallExpr:
+		call := l.info.Calls[x]
+		if call == nil || call.Kind != check.CallStruct && call.Kind != check.CallCase {
+			return false
+		}
+		if n, ok := call.Type.Obj.Type.(*check.Named); ok && n.Obj.IsError {
+			return false
+		}
+		for i, a := range call.Args {
+			if a == nil {
+				if d := call.Params[i].Default; d != nil && !l.constLiteral(d, false) {
+					return false
+				}
+				continue
+			}
+			if !l.constLiteral(a, false) {
+				return false
+			}
+		}
+		return len(call.Args) > 0
+	}
+	return false
 }

@@ -37,9 +37,13 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 		return b.builtinMethod(e, call, nil, dst)
 	case check.CallBuiltin:
 		return b.builtinCall(e, call, dst)
-	case check.CallStruct:
-		return b.structCall(call, dst)
-	case check.CallCase:
+	case check.CallStruct, check.CallCase:
+		if r, ok := b.hoist(e, dst); ok {
+			return r
+		}
+		if call.Kind == check.CallStruct {
+			return b.structCall(call, dst)
+		}
 		return b.caseCall(call, dst)
 	case check.CallComponent:
 		return b.copyTo(b.element(e), dst)
@@ -422,6 +426,8 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return -1
 	case check.BAll, check.BRace:
 		return b.allRace(e, call, dst)
+	case check.BWithTimeout:
+		return b.withTimeout(e, call)
 	case check.BIdle:
 		f := b.callB(uiTestIdle, bc.KRef)
 		w := b.temp(bc.KRef)
@@ -924,4 +930,38 @@ func (b *fb) spawn(e *syntax.SpawnExpr, dst int) int {
 	}})
 	k := b.konst(int64(ret))
 	return b.copyTo(b.callB("async.spawn", bc.KRef, clos, k), dst)
+}
+
+// withTimeout(d) { body } races the body against a timer that throws.
+func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call) int {
+	if len(call.Args) < 2 {
+		return -1
+	}
+	d := b.value(call.Args[0], -1)
+	lam := call.Args[1].(*syntax.LambdaExpr)
+	body := b.lambda(lam)
+	t1 := b.temp(bc.KRef)
+	b.emit(op("TASK"), t1, body)
+	dv := &check.Var{}
+	msg := "timed out (" + b.where(e) + ")"
+	timer := b.makeClosure(closure{name: "timeout", extra: []extraCap{{dv, d}}, ret: bc.KVoid, async: true, throws: true, body: func(c *fb) {
+		f := c.callB("time.sleep", bc.KRef, c.vars[dv])
+		w := c.temp(bc.KRef)
+		c.emit(op("AWAIT"), w, f)
+		c.throwMsg(msg)
+		c.emit(op("RET0"))
+	}})
+	t2 := b.temp(bc.KRef)
+	b.emit(op("TASK"), t2, timer)
+	ks := repeatKind(bc.KRef, 2)
+	blk := b.regs(ks)
+	b.move(blk, t1)
+	b.move(blk+1, t2)
+	arr := b.temp(bc.KRef)
+	b.emit(op("NEWA"), arr, int(bc.KRef), bc.None, blk, 2)
+	b.releaseRegs(blk, ks)
+	f := b.callB("async.race", bc.KRef, arr)
+	w := b.temp(bc.KRef)
+	b.emit(op("AWAIT"), w, f)
+	return -1
 }

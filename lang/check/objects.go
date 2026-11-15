@@ -386,7 +386,8 @@ const (
 	BMath // math.<name>: the builtin of the same name
 	BTimeNow
 	BTimeMonotonic
-	BRange // arr.range
+	BRange       // arr.range
+	BWithTimeout // withTimeout(d) { … }
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

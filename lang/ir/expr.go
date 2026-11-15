@@ -173,6 +173,9 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 	case *syntax.LambdaExpr:
 		return b.copyTo(b.lambda(e), dst)
 	case *syntax.TupleExpr:
+		if r, ok := b.hoist(e, dst); ok {
+			return r
+		}
 		t := b.rawType(e).(*check.Tuple)
 		var vals []int
 		for _, x := range e.Elems {
@@ -180,6 +183,9 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		}
 		return b.newStruct(b.l.shape(t), t.Elems, vals, dst)
 	case *syntax.ArrayExpr:
+		if r, ok := b.hoist(e, dst); ok {
+			return r
+		}
 		at, _ := b.rawType(e).(*check.Array)
 		if at == nil {
 			return b.valueReg(-1, bc.KRef)
@@ -203,6 +209,9 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		b.releaseRegs(blk, ks)
 		return r
 	case *syntax.MapExpr:
+		if r, ok := b.hoist(e, dst); ok {
+			return r
+		}
 		mt, _ := b.rawType(e).(*check.Map)
 		if mt == nil {
 			return b.valueReg(-1, bc.KRef)
