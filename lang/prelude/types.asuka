@@ -264,3 +264,89 @@ struct Environment {
   firstWeekday: int = 0   // 1 Sunday to 7 Saturday; 0 unknown
   hourCycle: int = 0      // 12 or 24; 0 unknown
 }
+
+/// A height a sheet can rest at.
+enum Detent {
+  medium
+  large
+  fit // as tall as its content (macOS; large elsewhere)
+}
+
+/// How a Route shows its child routes.
+enum RouteLayout {
+  group // no navigator of its own: its children join its parent's
+  stack // a navigation stack: its children are its screens
+  tabs  // each child a tab
+  split // each child a destination of a sidebar
+  slot  // one child at a time, with no bar (signed out, signed in)
+}
+
+/// A route's parameters, given to its screen: the path's (:id, *path),
+/// the query's, and the screen's own href. The UI runtime builds it: its
+/// fields' order is core/src/ui's.
+struct Params {
+  href: string = ""
+  path: [string: string] = [:]
+  query: [string: string] = [:]
+
+  fn get(name: string) -> string = path[name] ?? query[name] ?? ""
+}
+
+/// A text field of an alert.
+struct AlertField {
+  text: string = ""        // what it starts with
+  placeholder: string = ""
+  secure: bool = false     // a password's
+  keyboard: Keyboard = .default
+  contentType: string = "" // AutoFill's hint
+  change: fn(string)? = none // the user's typing
+}
+
+/// How a Window opens. Sizes are its content's, in points (0: the
+/// platform's).
+struct WindowOptions {
+  width: float = 0
+  height: float = 0
+  minWidth: float = 0
+  minHeight: float = 0
+  maxWidth: float = 0
+  maxHeight: float = 0
+  x: float = 0 // its frame's top left on the screen, with positioned
+  y: float = 0
+  positioned: bool = false
+  center: bool = false
+  fixedSize: bool = false
+  noMinimize: bool = false
+  noMaximize: bool = false
+  noClose: bool = false
+  alwaysOnTop: bool = false
+  hidden: bool = false
+  skipTaskbar: bool = false
+  transparent: bool = false
+  maximized: bool = false
+  fullscreen: bool = false
+  child: bool = false  // belongs to the window it's declared in
+  modal: bool = false  // and blocks it
+  panel: bool = false  // floating, non-activating
+  fitContent: bool = false
+  clickThrough: bool = false
+  menuBar: bool = false
+  titleBar: TitleBar = .default
+  background: Color = #00000000
+  stateKey: string = "" // where the platform remembers its place
+}
+
+/// A window's state, as the platform reports it (windowState(w)).
+struct WindowState {
+  x: float = 0
+  y: float = 0
+  width: float = 0
+  height: float = 0
+  visible: bool = false
+  focused: bool = false
+  minimized: bool = false
+  maximized: bool = false
+  fullscreen: bool = false
+  alwaysOnTop: bool = false
+  clickThrough: bool = false
+}

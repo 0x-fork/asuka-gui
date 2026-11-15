@@ -173,7 +173,7 @@ func kind(t string) string {
 // enumTypes are types.asuka's payloadless enums.
 var enumTypes = map[string]bool{
 	"Axis": true, "Justify": true, "Align": true, "Platform": true, "SizeClass": true, "TextAlign": true, "Role": true, "Material": true,
-	"ButtonVariant": true, "Keyboard": true, "TextStyle": true, "FontWeight": true,
+	"ButtonVariant": true, "Keyboard": true, "TextStyle": true, "FontWeight": true, "Detent": true, "RouteLayout": true,
 }
 
 func header() []byte {

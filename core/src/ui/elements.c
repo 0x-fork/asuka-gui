@@ -82,8 +82,9 @@ ak_event_kind ak_ev_ops(uint16_t ev) {
 	case AK_EV_SCROLL_REFRESH:
 	case AK_EV_LIST_REFRESH:
 		return AK_EVENT_REFRESH;
+	case AK_EV_SCROLL_PAGE: return AK_EVENT_PAGED;
 	}
-	return 0;  // the runtime's own: layout, a list's end
+	return ak_nav_ev_ops(ev);  // the navigation's, or the runtime's own (layout, a list's end)
 }
 
 // ---- Containers: View, Row, Column, SafeArea ----
@@ -120,9 +121,8 @@ static void row_init(ak_view *e) { ak_style_set(e, AK_KEY_DIRECTION, (ak_val){.i
 // indicator, the system bars) and the keyboard, over its own padding.
 static void safe_run(void *ctx) {
 	ak_view *e = ctx;
-	ak_ui_root *r = e->r;
-	ak_signal_read(&r->env_node);
-	float pad[4] = {r->env.safe_top, r->env.safe_right, ak_maxf(r->env.safe_bottom, r->env.keyboard), r->env.safe_left};
+	const ak_environment *env = ak_view_env(e);  // its screen's, sheet's, window's, else the root's
+	float pad[4] = {env->safe_top, env->safe_right, ak_maxf(env->safe_bottom, env->keyboard), env->safe_left};
 	if (memcmp(pad, e->extra_pad, sizeof pad) == 0) return;
 	memcpy(e->extra_pad, pad, sizeof pad);
 	ak_style_relayout(e);
@@ -134,6 +134,8 @@ static const ak_comp_info safe_info = {.drop = safe_drop, .label = "SafeArea"};
 
 static void safe_init(ak_view *e) {
 	e->safe = true;
+	e->prov = ak_prov_current();  // the environment it's built in
+	if (e->prov) ak_retain(e->prov);
 	ak_effect_new(safe_run, ak_retain(e), AK_EFFECT_RENDER, &safe_info);
 }
 
@@ -220,6 +222,33 @@ static const ak_enum *find_action(const ak_arr *as, int64_t *n, int depth) {
 	return NULL;
 }
 
+void ak_encode_actions(ak_buf *b, const ak_arr *as) { append_actions(b, as, 0); }
+
+const ak_enum *ak_find_action(const ak_arr *as, int64_t n) { return n < 0 ? NULL : find_action(as, &n, 0); }
+
+static uint32_t count_actions(const ak_arr *as, int depth) {
+	uint32_t n = 0;
+	for (uint32_t i = 0; as && i < as->len; i++) {
+		const ak_enum *a = as->data[i].p;
+		uint16_t c = a ? ak_enum_case(a) : 0;
+		n++;
+		if ((c == 1 || c == 2) && depth < ACTION_DEPTH) n += count_actions(c == 1 ? a->f[2].p : a->f[1].p, depth + 1);
+	}
+	return n;
+}
+
+uint32_t ak_action_count(const ak_arr *as) { return count_actions(as, 0); }
+
+void ak_run_action(ak_view *e, const ak_enum *a) {
+	if (!a || ak_enum_case(a) != 0 || a->f[3].i || !a->f[5].p) return;  // a submenu, disabled, or nothing to run
+	ak_closure *run = a->f[5].p;
+	ak_retain(run);
+	ak_val r = ak_call(run, NULL, 0);
+	if (!ak_error_pending()) ak_release(r.p);
+	else ak_ui_raise_pending(e ? e->owner : NULL);
+	ak_release(run);
+}
+
 static void button_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 	ak_batch *b = e->r->batch;
 	switch (key) {
@@ -247,25 +276,19 @@ static void button_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 		break;
 	}
 	case AK_KEY_BUTTON_HREF:
-		break;  // the router (deferred with navigation)
+		ak_view_listen(e, AK_EVENT_PRESS);  // the router goes there (router.c)
+		break;
 	}
 }
 
 static void button_event(ak_view *e, const ak_event *ev) {
 	if (ev->kind == AK_EVENT_PRESS) {
 		call0(e, AK_EV_BUTTON_PRESS);
+		const ak_val *href = ak_style_get(e, AK_KEY_BUTTON_HREF);
+		if (href && href->p && ((ak_str *)href->p)->len && !e->dead) ak_router_href(e, href->p);
 	} else if (ev->kind == AK_EVENT_ACTION) {
 		const ak_val *menu = ak_style_get(e, AK_KEY_BUTTON_MENU);
-		int64_t n = ev->i;
-		const ak_enum *a = menu ? find_action(menu->p, &n, 0) : NULL;
-		if (a && ak_enum_case(a) == 0 && a->f[5].p) {
-			ak_closure *run = a->f[5].p;
-			ak_retain(run);
-			ak_val r = ak_call(run, NULL, 0);
-			if (!ak_error_pending()) ak_release(r.p);
-			else ak_ui_raise_pending(e->owner);
-			ak_release(run);
-		}
+		ak_run_action(e, menu ? ak_find_action(menu->p, ev->i) : NULL);
 	}
 }
 
@@ -726,6 +749,13 @@ static const ak_el_class cls_image = {.name = "Image", .kind = AK_KIND_IMAGE, .i
 typedef struct {
 	ak_view *content;  // a kid of the scroll view
 	bool refresh_shown;  // the host shows its spinner
+	// A paging scroll's: its page as last reported or scrolled to, and its
+	// size along its axis (a page's), which its content's grid tracks are.
+	int64_t page;
+	bool page_set;     // its page key is set: it scrolls there
+	int64_t shown;     // the page the host shows (-1: none yet)
+	float page_size, laid;
+	ak_ltrack_size track;
 } scroll_state;
 
 static bool horizontal(const ak_view *e) {
@@ -748,11 +778,34 @@ static void scroll_adjust(ak_view *e, ak_lstyle *ls) {
 	ls->align_items = AK_LALIGN_STRETCH;
 }
 
+static bool paging(const ak_view *e) {
+	const ak_val *v = ak_style_get(e, AK_KEY_SCROLL_PAGING);
+	return v && v->i;
+}
+
 static void content_adjust(ak_view *e, ak_lstyle *cs) {
 	cs->flex_shrink = 0;  // the content keeps its size; that's the point
 	ak_view *s = e->parent;
 	bool h = s && horizontal(s);
 	cs->flex_direction = h ? AK_LROW : AK_LCOLUMN;
+	if (s && s->el == AK_EL_SCROLL && paging(s)) {
+		// Each child is a page, exactly as big as the scroll view along its
+		// axis: a track each of a grid that flows along it.
+		scroll_state *st = s->impl;
+		if (st->page_size > 0) {
+			st->track = ak_lpx(st->page_size);
+			cs->display = AK_LDISPLAY_GRID;
+			if (h) {
+				cs->grid_auto_flow = AK_LFLOW_COLUMN;
+				cs->grid_auto_columns = &st->track;
+				cs->ngrid_auto_columns = 1;
+			} else {
+				cs->grid_auto_flow = AK_LFLOW_ROW;
+				cs->grid_auto_rows = &st->track;
+				cs->ngrid_auto_rows = 1;
+			}
+		}
+	}
 	if (h && ak_view_rtl(e)) {
 		cs->direction = AK_LDIR_RTL;
 		if (ak_llength_is_auto(cs->min_width)) cs->min_width = ak_lpct(100);  // short content hugs the right
@@ -763,6 +816,7 @@ static const ak_el_class cls_content = {.name = "View", .kind = AK_KIND_VIEW, .f
 
 static void scroll_init(ak_view *e) {
 	scroll_state *s = ak_alloc(sizeof *s);
+	s->shown = -1;
 	e->impl = s;
 	s->content = ak_view_new(e->r, &cls_content, 0, true);
 	ak_view_append(e, s->content);
@@ -807,6 +861,47 @@ void ak_refresh_event(ak_view *e, bool *shown, ak_prop refreshing, uint16_t key,
 	}
 }
 
+// logical turns a page from the physical start (left, top) into one
+// from the reading start, and back: right to left, horizontally, the
+// first is the rightmost.
+static int64_t logical(ak_view *e, int64_t i) {
+	scroll_state *s = e->impl;
+	if (!horizontal(e) || !ak_view_rtl(s->content)) return i;
+	int64_t n = (int64_t)ak_lnode_child_count(s->content->box) - 1 - i;
+	return n > 0 ? n : 0;
+}
+
+// scroll_to_page scrolls a paging Scroll to its page once it's laid out:
+// animated, unless it's the first or its size changed (which keeps the
+// page, at once).
+static void scroll_to_page(ak_view *e) {
+	scroll_state *s = e->impl;
+	float sz = s->page_size;
+	if (sz <= 0 || !s->page_set || (s->page == s->shown && sz == s->laid)) return;
+	bool animated = s->laid == sz && s->shown >= 0;
+	s->shown = s->page, s->laid = sz;
+	float off = (float)logical(e, s->page) * sz;
+	bool h = horizontal(e);
+	ak_ui_scroll_to(e, h ? off : 0, h ? 0 : off, animated);
+}
+
+// ak_scroll_laid follows a paging Scroll's size once it's laid out: its
+// pages are as big, and it's scrolled to its page. It reports whether
+// its content must be laid out again.
+bool ak_scroll_laid(ak_view *e) {
+	scroll_state *s = e->impl;
+	if (e->dead || !paging(e)) return false;
+	ak_lframe f = ak_lnode_frame(e->box);
+	float sz = horizontal(e) ? f.w : f.h;
+	if (sz == s->page_size) {
+		scroll_to_page(e);
+		return false;
+	}
+	s->page_size = sz;
+	ak_style_relayout(s->content);
+	return true;
+}
+
 static void scroll_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 	scroll_state *s = e->impl;
 	switch (key) {
@@ -816,6 +911,20 @@ static void scroll_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 		ak_style_relayout(s->content);
 		break;
 	case AK_KEY_SCROLL_REFRESHING: ak_refresh_set(e, &s->refresh_shown, AK_PROP_SCROLL_REFRESHING, v); break;
+	case AK_KEY_SCROLL_PAGING:
+		if (prev || v.i) ak_batch_set_bool(e->r->batch, e->id, AK_PROP_SCROLL_PAGING, v.i != 0);
+		if (v.i) {
+			ak_view_listen(e, AK_EVENT_PAGED);
+			ak_vec_push(&e->r->pagers, (ak_view *)ak_retain(e));
+		}
+		ak_style_relayout(s->content);
+		break;
+	case AK_KEY_SCROLL_PAGE:
+		// Scrolled to the page, unless the host shows it (the user's swipe
+		// reported it).
+		s->page = v.i, s->page_set = true;
+		scroll_to_page(e);
+		break;
 	}
 }
 
@@ -830,6 +939,12 @@ static void scroll_event(ak_view *e, const ak_event *ev) {
 		ak_view_call(e, AK_EV_SCROLL_SCROLL, args, 2);
 	} else if (ev->kind == AK_EVENT_REFRESH) {
 		ak_refresh_event(e, &s->refresh_shown, AK_PROP_SCROLL_REFRESHING, AK_KEY_SCROLL_REFRESHING, AK_EV_SCROLL_REFRESH);
+	} else if (ev->kind == AK_EVENT_PAGED) {
+		int64_t page = logical(e, ev->i);
+		s->shown = page;
+		if (s->page_set) s->page = page;
+		ak_val arg = {.i = page};
+		ak_view_call(e, AK_EV_SCROLL_PAGE, &arg, 1);
 	}
 }
 
@@ -837,9 +952,10 @@ static const ak_el_class cls_scroll = {.name = "Scroll", .kind = AK_KIND_SCROLL,
                                        .finalize = scroll_finalize, .event = scroll_event, .adjust = scroll_adjust, .add = scroll_add,
                                        .style_target = scroll_style_target, .drop = scroll_drop};
 
-// ---- List (list.c) ----
+// ---- List (list.c), the navigation's (nav.c) ----
 
 extern const ak_el_class ak_class_list;
+const ak_el_class *ak_nav_class_of(uint16_t el);
 
 // ---- Classes by element ----
 
@@ -865,7 +981,7 @@ const ak_el_class *ak_el_class_of(uint16_t el) {
 	case AK_EL_SCROLL: return &cls_scroll;
 	case AK_EL_LIST: return &ak_class_list;
 	}
-	return NULL;
+	return ak_nav_class_of(el);
 }
 
 // ---- The protocol ----
@@ -891,6 +1007,7 @@ static void check_key(const ak_view *v, uint16_t key) {
 void ak_ui_set(ak_view *v, uint16_t key, ak_val value) {
 	check_key(v, key);
 	if (v->dead) return;
+	if (v->bar) ak_bar_dirty(v);  // a Button in a Screen's bar: the bar is sent again
 	if (key < AK_KEY__STYLE_END) {
 		ak_view *t = v->cls->style_target ? v->cls->style_target(v, key) : v;
 		if (t) ak_style_set(t, key, value);
@@ -982,9 +1099,16 @@ void ak_ui_add(ak_view *v, ak_view *child) {
 	else ak_view_append(v, child);
 }
 
+// A slot takes a view, or a builder (a closure returning one) for a lazy
+// slot (a Popover's content), which the element builds when it shows.
 void ak_ui_slot(ak_view *v, uint16_t slot, ak_view *child) {
-	ak_view_finalize(child);
+	if (child && ((ak_obj *)child)->tag == AK_TAG_VIEW) ak_view_finalize(child);
 	ak_ui_set(v, slot, (ak_val){.p = child});
+}
+
+void ak_ui_lazy(ak_view *v, ak_closure *build) {
+	if (!v->cls->lazy) ak_panic("ui: %s builds no children lazily", v->el ? ak_el_names[v->el] : v->cls->name);
+	v->cls->lazy(v, build);
 }
 
 ak_view *ak_ui_ref(ak_view *v) { return ak_retain(v); }
@@ -1012,17 +1136,3 @@ void ak_ui_scroll_to(ak_view *v, float x, float y, bool animated) {
 	args[8] = animated ? 1 : 0;
 	ak_batch_command(v->r->batch, v->id, AK_CMD_SCROLL_TO_OFFSET, args, sizeof args);
 }
-
-void ak_ui_push(ak_closure *build) {
-	AK_UNUSED(build);
-	ak_throw_msg("push: navigation isn't available yet");
-}
-
-void ak_ui_pop(void) { ak_throw_msg("pop: navigation isn't available yet"); }
-
-void ak_ui_present(ak_closure *build) {
-	AK_UNUSED(build);
-	ak_throw_msg("present: sheets aren't available yet");
-}
-
-void ak_ui_dismiss(void) { ak_throw_msg("dismiss: sheets aren't available yet"); }

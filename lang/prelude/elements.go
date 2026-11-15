@@ -44,12 +44,19 @@ type Param struct {
 type Event struct {
 	Name   string
 	Params []Param
+	// Builds: the handler's block is views, and the handler returns the
+	// View it builds (a Boundary's error: what shows instead).
+	Builds bool
 	Doc    string
 }
 
 // Slot is a named place for views: toolbar { }.
 type Slot struct {
 	Name string
+	// Lazy: the slot's views are passed as a builder (ui.slot with a
+	// closure returning a View), built only when they show (a Popover's
+	// content, as it opens).
+	Lazy bool
 	Doc  string
 }
 
@@ -61,6 +68,13 @@ type Element struct {
 	// LazyFor: a for directly in its block builds its rows only while
 	// they're on screen (a List).
 	LazyFor bool
+	// LazyChildren: its children are passed as a builder (ui.lazy(v,
+	// builder)), built only when they show and disposed when they go: a
+	// Tab's page as it's first chosen, a Sheet's content as it opens.
+	// Params are what the builder is called with (a Route's: its
+	// parameters, an accessor).
+	LazyChildren bool
+	Params       []Param
 	// NoStyle: the element takes none of the style keys (a fragment).
 	NoStyle bool
 	Keys    []Key
@@ -153,7 +167,7 @@ var Elements = []Element{
 		{Name: "variant", Type: "ButtonVariant", Doc: "how the platform draws it"},
 		{Name: "icon", Type: "string", Doc: "a symbol before the title (see Symbol); with no title, the icon alone"},
 		{Name: "menu", Type: "[Action]", Doc: "actions shown when it's tapped, instead of press"},
-		{Name: "href", Type: "string", Doc: "goes to this route when it's pressed, after press"},
+		{Name: "href", Type: "string", Doc: "goes to this route when it's pressed, after press (the Router around it navigates there)"},
 	}, Events: []Event{{Name: "press"}}, Doc: "the platform's button"},
 	{Name: "TextField", Keys: []Key{
 		{Name: "text", Type: "string", Bind: true, Event: "change", Doc: "its text: typing writes it, and writing it replaces what the field shows"},
@@ -222,19 +236,125 @@ var Elements = []Element{
 	{Name: "Scroll", Children: true, Keys: []Key{
 		{Name: "horizontal", Type: "bool"},
 		{Name: "refreshing", Type: "bool", Doc: "shows the pull to refresh spinner while true (with on refresh)"},
+		{Name: "paging", Type: "bool", Doc: "it stops only at multiples of its own size, a page each, and hides its scroll bars"},
+		{Name: "page", Type: "int", Bind: true, Event: "page", Doc: "the page it shows (paging): a swipe that settles writes it, and writing it scrolls there"},
 	}, Events: []Event{
 		{Name: "scroll", Params: []Param{{"x", "float"}, {"y", "float"}}, Doc: "its content offset as it scrolls"},
 		{Name: "refresh", Doc: "pulled to refresh"},
+		{Name: "page", Params: []Param{{"page", "int"}}, Doc: "a paging swipe is settling on a page: its index from the content's start (its leading edge, right to left)"},
 	}, Doc: "scrolls its children along one axis (horizontal: a row); its wrap, justify, align, gap and padding lay out its content. Give it a size (or grow) to scroll within"},
 	{Name: "List", Children: true, LazyFor: true, Keys: []Key{
 		{Name: "refreshing", Type: "bool", Doc: "shows the pull to refresh spinner while true (with on refresh)"},
 		{Name: "columns", Type: "int", Doc: "a grid of this many columns (gap apart)"},
 		{Name: "appearance", Type: "ListAppearance"},
 		{Name: "anchor", Type: "ScrollAnchor", Doc: ".bottom: a chat's, which rests at its end"},
+		{Name: "swipeActions", Type: "fn(int) -> [Action]", Doc: "row index's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's)"},
+		{Name: "leadingSwipeActions", Type: "fn(int) -> [Action]", Doc: "row index's actions revealed from its leading edge (Mail's Unread)"},
+		{Name: "section", Type: "fn(int) -> string", Doc: "row index's section: rows next to each other with the same key are one, headed by header"},
+		{Name: "header", Type: "fn(string) -> View", Doc: "a section's header, given its key (an accessor: a recycled header follows its new section)"},
+		{Name: "selecting", Type: "bool", Doc: "selection mode (Mail's Edit): rows show the platform's selection control, a tap selects instead of pressing, and rows don't swipe"},
+		{Name: "selected", Type: "fn(int) -> bool", Doc: "whether row index is selected, followed as what it reads changes"},
 	}, Events: []Event{
 		{Name: "scroll", Params: []Param{{"x", "float"}, {"y", "float"}}},
 		{Name: "refresh", Doc: "pulled to refresh"},
 		{Name: "endReached", Doc: "the last rows are about to show: load more (once per length)"},
 		{Name: "startReached", Doc: "the first rows are about to show: load earlier ones (once per first item)"},
+		{Name: "select", Params: []Param{{"index", "int"}, {"selected", "bool"}}, Doc: "the user selected or deselected row index; what selected doesn't take back goes back as it was"},
+		{Name: "selectBegin", Params: []Param{{"index", "int"}}, Doc: "the user started selecting at row index while the list isn't selecting (a two-finger pan on iOS, a long press on Android)"},
+		{Name: "action", Params: []Param{{"index", "int"}, {"action", "int"}}, Doc: "a swipe action of row index was chosen: its index among swipeActions, or -1 - its index among leadingSwipeActions (its run has run)"},
 	}, Doc: "a for in it is the platform's recycling list: rows exist only while they're on screen. It grows into its room unless it's sized"},
+	// Navigation (ui/nav.go, router.go, split.go, window.go).
+	{Name: "Stack", Children: true, Doc: "a navigation stack (UINavigationController; a view stack with a top app bar and predictive back on Android): its child is its first screen; push(…) and pop() in it add and remove more, and the user's back pops. It grows into its room unless it's sized"},
+	{Name: "Screen", Children: true, Keys: []Key{
+		{Name: "title", Type: "string", Doc: "the bar's title (a tab's, a page's in a browser)"},
+		{Name: "largeTitle", Type: "bool", Doc: "the title large at the top, collapsing into the bar as it scrolls (iOS)"},
+		{Name: "backGesture", Type: "bool", Default: "true", Doc: "the edge swipe pops it (iOS)"},
+		{Name: "zoomFrom", Type: "string", Doc: "the shared key of a view on the screen below: the screen zooms out of it as it's pushed, and back as it's popped (iOS 18)"},
+		{Name: "barColor", Type: "Color", Doc: "the top app bar's color while it's on top (Android)"},
+		{Name: "search", Type: "string", Bind: true, Event: "search", Doc: "a search field in the bar: what's typed (typing writes it)"},
+		{Name: "searchPlaceholder", Type: "string", Doc: "the search field's placeholder (\"\": Search, in the app's language)"},
+		{Name: "searchButton", Type: "bool", Doc: "the search field stays out of the way until it's asked for"},
+		{Name: "primaryExtended", Type: "bool", Doc: "primary's title beside its icon, shrinking to the icon as the content scrolls (Android's extended FAB)"},
+	}, Events: []Event{
+		{Name: "search", Params: []Param{{"text", "string"}}, Doc: "the search field's text changed"},
+		{Name: "searchSubmit", Doc: "return pressed in the search field"},
+	}, Slots: []Slot{
+		{Name: "actions", Doc: "the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar"},
+		{Name: "toolbar", Doc: "buttons in a bar at the bottom of the screen: Buttons, as actions'"},
+		{Name: "primary", Doc: "the screen's main action (compose, add): a Button; Android's floating action button, iOS's prominent toolbar item"},
+	}, Doc: "a screen of a Stack (a screen declaration's root), sized by the platform"},
+	{Name: "Tabs", Children: true, Keys: []Key{
+		{Name: "selected", Type: "int", Bind: true, Event: "change", Doc: "the shown tab's index: the user's choice writes it"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "pages with a tab bar (UITabBarController; Material's navigation bar): its children are Tabs. It grows into its room unless it's sized"},
+	{Name: "Tab", Children: true, LazyChildren: true, Keys: []Key{
+		{Name: "title", Type: "string", Positional: true},
+		{Name: "icon", Type: "string", Doc: "a symbol"},
+		{Name: "badge", Type: "string", Doc: "shown on the tab: a count (\"3\"), or short text; empty: none"},
+	}, Doc: "a page of Tabs: its content is built when it's first chosen"},
+	{Name: "Sheet", Children: true, LazyChildren: true, Keys: []Key{
+		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "shows the sheet while true; the user dismissing it writes false"},
+		{Name: "detents", Type: "[Detent]", Doc: "the heights it rests at ([]: large)"},
+		{Name: "grabber", Type: "bool"},
+		{Name: "fullScreen", Type: "bool", Doc: "covers the screen; the user can't swipe it away"},
+	}, Events: []Event{
+		{Name: "change", Params: []Param{{"open", "bool"}}},
+		{Name: "dismiss", Doc: "the user dismissed it"},
+	}, Doc: "content in a modal sheet while open: built as it opens, disposed as it closes. It takes no room where it's declared"},
+	{Name: "Popover", Children: true, Keys: []Key{
+		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "shows the popover while true; a tap outside writes false"},
+		{Name: "maxWidth", Type: "float", Doc: "how wide it may be (0: 320); it's as big as its content"},
+	}, Events: []Event{
+		{Name: "change", Params: []Param{{"open", "bool"}}},
+		{Name: "dismiss", Doc: "the user dismissed it"},
+	}, Slots: []Slot{
+		{Name: "content", Lazy: true, Doc: "what the popover shows: built as it opens, disposed as it closes"},
+	}, Doc: "content in a bubble pointing at its children while open (UIPopoverPresentationController, a PopupWindow, NSPopover)"},
+	{Name: "Menu", Children: true, Keys: []Key{
+		{Name: "actions", Type: "[Action]", Positional: true},
+		{Name: "longPress", Type: "bool", Doc: "a context menu: shown on a long press (a right click on a desktop) rather than a tap"},
+	}, Doc: "shows a menu of actions when its children are tapped (UIMenu, PopupMenu)"},
+	{Name: "Split", Children: true, Keys: []Key{
+		{Name: "title", Type: "string", Doc: "the sidebar's"},
+		{Name: "selected", Type: "int", Bind: true, Event: "change", Doc: "the chosen destination's index: the user's choice writes it"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations"},
+	{Name: "Destination", Children: true, LazyChildren: true, Keys: []Key{
+		{Name: "title", Type: "string", Positional: true},
+		{Name: "icon", Type: "string"},
+		{Name: "badge", Type: "string"},
+		{Name: "section", Type: "string", Doc: "the sidebar section it's in: destinations next to each other with the same section are one"},
+	}, Doc: "a place a Split's sidebar leads to: its content is its first screen, built when it's chosen"},
+	{Name: "Window", Children: true, LazyChildren: true, Keys: []Key{
+		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "the window is open while true; the user closing it writes false"},
+		{Name: "title", Type: "string"},
+		{Name: "options", Type: "WindowOptions", Doc: "how it opens: its size, its place, its kind"},
+		{Name: "edited", Type: "bool", Doc: "its document has unsaved changes"},
+		{Name: "file", Type: "string", Doc: "the path of the file it shows"},
+		{Name: "watchState", Type: "bool", Doc: "follow its state (windowState(w) reads it)"},
+	}, Events: []Event{
+		{Name: "change", Params: []Param{{"open", "bool"}}},
+		{Name: "close", Doc: "the user closed it"},
+		{Name: "closeRequest", Doc: "the user asked to close it: it stays open until closeWindow(w)"},
+	}, Doc: "a desktop window of its own while open (a window in the page on the web; phones have none): its content is built as it opens"},
+	{Name: "Router", Children: true, Keys: []Key{
+		{Name: "initial", Type: "string", Default: "\"/\"", Doc: "where it starts when nothing else says (a link the app was opened with, the address its window was left at)"},
+	}, Doc: "shows its routes' screens from the address the app is at: its children are Routes"},
+	{Name: "Route", Children: true, LazyChildren: true, Params: []Param{{"params", "Params"}}, Keys: []Key{
+		{Name: "path", Type: "string", Positional: true, Doc: "relative to its parent's unless it starts with /: :name a parameter, *name the rest; \"\" its parent's index"},
+		{Name: "layout", Type: "RouteLayout", Doc: "a navigator of its child routes, or a group"},
+		{Name: "title", Type: "string"},
+		{Name: "icon", Type: "string"},
+		{Name: "badge", Type: "string"},
+		{Name: "initial", Type: "string", Doc: "the child a navigator starts with (a stack's first screen, under the one a link names)"},
+		{Name: "redirect", Type: "string", Doc: "sends whoever comes here to this href, its parameters filled in"},
+		{Name: "sheet", Type: "bool", Doc: "presented in a sheet over its navigator"},
+		{Name: "detents", Type: "[Detent]"},
+		{Name: "guard", Type: "fn(string) -> string", Doc: "asked before its screens show: \"\" lets the user in, an href sends them there"},
+	}, Doc: "maps a path to a screen (its content, built with its parameters), or holds routes"},
+	{Name: "Boundary", Children: true, LazyChildren: true, Events: []Event{
+		{Name: "error", Params: []Param{{"error", "Error"}, {"reset", "fn()"}}, Builds: true, Doc: "what shows instead when building its content, or an effect or handler in it, fails; reset builds it again"},
+	}, Doc: "an error boundary: an error its content doesn't catch shows on error's views"},
+	{Name: "PageControl", Keys: []Key{
+		{Name: "count", Type: "int", Positional: true},
+		{Name: "page", Type: "int", Bind: true, Event: "change"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"page", "int"}}}}, Doc: "a row of dots, one per page, the current one highlighted (UIPageControl)"},
 }
