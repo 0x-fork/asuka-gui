@@ -259,14 +259,16 @@ func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, 
 	}
 }
 
+// deadStrip drops what nothing calls, and symbols and debug information
+// a release doesn't need.
 func deadStrip(t Target) []string {
 	switch t.OS {
 	case "darwin", "ios", "ios-simulator":
-		return []string{"-Wl,-dead_strip"}
+		return []string{"-Wl,-dead_strip", "-Wl,-x"}
 	case "windows":
-		return nil
+		return []string{"-s"}
 	}
-	return []string{"-Wl,--gc-sections"}
+	return []string{"-Wl,--gc-sections", "-s"}
 }
 
 // exportFlags are the wasm module's exports: the C ABI (asuka.h), and
