@@ -1,0 +1,208 @@
+// What a messaging app does with notifications: a chat's messages as a
+// conversation, a reply typed in the notification, threads read and
+// cleared, channels, the badge, the chat on screen kept quiet, and pushes
+// rewritten before they show.
+
+import asuka/encoding
+import asuka/notify
+import asuka/push
+import asuka/storage
+
+let ana = notify.Person(id: "ana", name: "Ana", image: "https://i.pravatar.cc/128?u=ana")
+let bo = notify.Person(id: "bo", name: "Bo", image: "https://i.pravatar.cc/128?u=bo")
+let climb = notify.Conversation(id: "climbing", title: "Climbing", group: true)
+
+/// The chat whose screen shows: its notifications don't.
+state chatOnScreen = ""
+
+/// Pushes the rewrite counted, kept on the device (the extension's
+/// process shares it).
+let pushes = storage.Value("pushes", 0)
+
+/// Declares the categories and channels, and answers the actions: as the
+/// app starts, so a reply that wakes the app finds it.
+async fn setUpMessages() {
+  notify.setCategories([
+    notify.Category(id: "message", actions: [
+      notify.Action(id: "reply", title: "Reply", icon: "arrowshape.turn.up.left", reply: notify.Reply(button: "Send", placeholder: "Message")),
+      notify.Action(id: "read", title: "Mark as Read", icon: "checkmark"),
+      notify.Action(id: "mute", title: "Mute for an Hour", icon: "bell.slash", destructive: true),
+    ]),
+    notify.Category(id: "reminder", actions: [
+      notify.Action(id: "open", title: "Open", open: true),
+      notify.Action(id: "later", title: "In 5 Seconds"),
+    ]),
+  ])
+  notify.setChannelGroups([notify.ChannelGroup(id: "chats", name: "Chats")])
+  notify.setChannels([
+    notify.Channel(id: "messages", name: "Messages", description: "What people send you", importance: .high, group: "chats"),
+    notify.Channel(id: "reminders", name: "Reminders", importance: .default),
+  ])
+  notify.present(n => if !n.thread.isEmpty && n.thread == chatOnScreen { .hide } else { .banner })
+  for await r in notify.responses() { await answer(r) }
+}
+
+async fn answer(r: notify.Response) {
+  let n = r.notification
+  match r.action {
+    "" => status = "Opened {n.title}"
+    "reply" => {
+      // Sending takes a moment: the app keeps running until it's done.
+      let done = r.defer()
+      defer { done() }
+      await sleep(1s) // the server's round trip
+      print("services: replied \"{r.reply}\" in {n.thread}")
+      status = "Replied \"{r.reply}\""
+    }
+    "read" => {
+      notify.removeThread(n.thread)
+      notify.setBadge(0)
+      status = "Read {n.thread}"
+    }
+    "mute" => status = "Muted {n.thread}"
+    "later" => {
+      try? await notify.schedule(notify.Notification(id: n.id, title: n.title, body: n.body, category: "reminder", channel: "reminders", after: 5s))
+    }
+    _ => {}
+  }
+}
+
+/// The app's push rewrite: its server sends the message sealed ("box",
+/// base64 standing in for a real cipher), the sender and the chat in the
+/// data; it shows as a message in the chat. It runs in iOS's Notification
+/// Service Extension, and in the app's process on Android.
+fn rewriteMessage(m: push.Message) throws -> push.Message {
+  var out = m
+  if let box = m.data["box"] { out.body = try encoding.base64Decode(box).string() }
+  if let name = m.data["sender"] {
+    let title = m.data["chatTitle"] ?? ""
+    let chat = notify.Conversation(id: m.data["chat"] ?? "", title: title, group: !title.isEmpty)
+    out = out.from(notify.Person(id: m.data["senderID"] ?? "", name: name, image: m.data["avatar"] ?? ""), chat)
+    out.category = "message"
+    out.channel = "messages"
+  }
+  // What the app keeps is the same in the extension: count what came.
+  pushes.value += 1
+  storage.flush()
+  return out
+}
+
+/// The Climbing chat: while it shows, its notifications don't.
+screen Messages {
+  state said = "The Climbing chat: its notifications don't show while you're here."
+
+  title: "Climbing"
+  on appear { chatOnScreen = climb.id }
+  on disappear { chatOnScreen = "" }
+
+  async fn run(work: async fn() throws -> string) {
+    do {
+      said = try await work()
+    } catch e {
+      said = e.message
+    }
+  }
+
+  /// A message from someone in the chat, now or after a while.
+  async fn message(from: notify.Person, text: string, after: Duration) throws -> string {
+    if !(try await notify.request()) { return "Allow notifications in Settings" }
+    let n = notify.Notification(body: text, category: "message", channel: "messages", badge: 1, data: ["chat": climb.id], after: after).from(from, climb)
+    if after > 0s {
+      try await notify.schedule(n)
+    } else {
+      try await notify.show(n)
+    }
+    return "Leave this screen (or the app) to see it"
+  }
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      padding: 20
+      gap: 10
+      Text(said) {
+        font: .footnote
+        color: .secondaryLabel
+      }
+      // One at a time: a message scheduled with the conversation's ID
+      // replaces the one waiting.
+      Item("Ana writes in 5 s") {
+        on press { await run(() => try await message(ana, "Who's in for Saturday?", after: 5s)) }
+      }
+      Item("Bo answers in 5 s") {
+        on press { await run(() => try await message(bo, "Me! The usual crag?", after: 5s)) }
+      }
+      Item("Ana writes now (hidden here)") {
+        on press { await run(() => try await message(ana, "Bring the long rope", after: 0s)) }
+      }
+      Item("A reminder with actions in 5 s") {
+        on press {
+          await run(() => {
+            try await notify.schedule(notify.Notification(
+              id: "pack",
+              title: "Pack your bag",
+              body: "Shoes, harness, chalk.",
+              category: "reminder",
+              channel: "reminders",
+              image: "https://picsum.photos/seed/crag/600/400",
+              after: 5s,
+            ))
+            return "In 5 seconds: press it for its actions"
+          })
+        }
+      }
+      Item("What shows") {
+        on press {
+          await run(() => {
+            let ns = try await notify.showing()
+            return (["{ns.count} showing"] + ns.map(n => "{n.title} ({n.thread}): {n.body}")).join("\n")
+          })
+        }
+      }
+      Item("Mark Climbing as read") {
+        on press {
+          notify.removeThread(climb.id)
+          notify.setBadge(0)
+          said = "Read: its notifications and the badge are gone"
+        }
+      }
+      Item("Badge 3") {
+        on press { notify.setBadge(3) }
+      }
+      Item("Remove all") {
+        on press {
+          notify.removeAll()
+          notify.setBadge(0)
+        }
+      }
+      Item("Pushes rewritten so far") {
+        on press { said = "{pushes.value} (kept in {storage.dirName()})" }
+      }
+      Text(pushHelp()) {
+        font: .footnote
+        color: .secondaryLabel
+      }
+    }
+  }
+}
+
+/// How to send this app a push that's rewritten.
+fn pushHelp() -> string {
+  let box = encoding.base64Encode("See you at the crag at 9".bytes())
+  if devPlayer() { return "Under asuka dev's player, pushes aren't rewritten: run with --once to try it." }
+  let keys = "\"box\":\"{box}\",\"sender\":\"Ana\",\"senderID\":\"ana\",\"chat\":\"climbing\",\"chatTitle\":\"Climbing\""
+  if environment().platform == .android { return "A rewritten push: an FCM data message with {keys}." }
+  return "A rewritten push, from APNs: aps \{\"alert\":\{\"title\":\"New message\",\"body\":\"(encrypted)\"},\"mutable-content\":1}, with {keys} beside it."
+}
+
+test "a sealed push is opened and shown as the chat's" {
+  let m = push.Message(title: "New message", body: "(encrypted)", data: [
+    "box": encoding.base64Encode("See you at the crag at 9".bytes()),
+    "sender": "Ana",
+    "senderID": "ana",
+    "chat": "climbing",
+    "chatTitle": "Climbing",
+  ])
+  let out = try rewriteMessage(m)
+  expect(out.body == "See you at the crag at 9" && out.category == "message" && out.channel == "messages")
+}
