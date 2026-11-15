@@ -131,6 +131,7 @@ type SourceFile struct {
 	Imports  []*ImportDecl
 	Decls    []Decl
 	Dangling []*CommentGroup // the comments after the last declaration
+	Comments []*Comment      // every comment of the file, in source order, wherever the tree keeps it
 }
 
 // An ImportDecl is import asuka/http, import ./components .{Row, Card}
@@ -596,8 +597,8 @@ type DeferStmt struct {
 type EmitStmt struct {
 	Span
 	Trivia
-	Name   *Ident
-	Args   *ArgList // nil without parentheses
+	Name *Ident
+	Args *ArgList // nil without parentheses
 }
 
 // An AssignStmt is target op value, op one of = += -= *= /= %= ??=.

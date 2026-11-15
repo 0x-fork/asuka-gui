@@ -1,0 +1,276 @@
+SourceFile 1:1-52:3
+  Imports: [2]
+    ImportDecl 1:1-1:18
+      Path: [2]
+        Ident "asuka" 1:8-1:13
+        Ident "http" 1:14-1:18
+    ImportDecl 2:1-2:50 relative
+      Path: [1]
+        Ident "components" 2:10-2:20
+      Names: [2]
+        Ident "MessageRow" 2:22-2:32
+        Ident "EmptyState" 2:34-2:44
+      Alias: Ident "c" 2:49-2:50
+  Decls: [2]
+    ScreenDecl 5:1-39:2 comments="/// The list of a mailbox's messages." pub
+      Name: Ident "Inbox" 5:12-5:17
+      Params: ParamList 5:17-5:35
+        List: [1]
+          Param 5:18-5:34
+            Name: Ident "mailbox" 5:18-5:25
+            Type: NamedType 5:27-5:34
+              Path: [1]
+                Ident "Mailbox" 5:27-5:34
+      Body: Block 5:36-39:2
+        Items: [9]
+          UseDecl 6:3-6:20
+            Name: Ident "mail" 6:7-6:11
+            Type: NamedType 6:13-6:20
+              Path: [1]
+                Ident "Mailbox" 6:13-6:20
+          StateDecl 7:3-7:19
+            Name: Ident "query" 7:9-7:14
+            Value: StringLit 7:17-7:19 Segments=[""]
+          StateDecl 8:3-8:34
+            Name: Ident "selected" 8:9-8:17
+            Type: OptionalType 8:19-8:27
+              Elem: NamedType 8:19-8:26
+                Path: [1]
+                  Ident "Message" 8:19-8:26
+            Value: NoneLit 8:30-8:34
+          LetDecl 10:3-10:66 blank Keyword=let
+            Pattern: BindPat 10:7-10:15
+              Name: Ident "messages" 10:7-10:15
+            Value: UnaryExpr 10:18-10:66 Op=load
+              X: CallExpr 10:23-10:66
+                Fun: MemberExpr 10:23-10:36
+                  X: Ident "mail" 10:23-10:27
+                  Name: Ident "messages" 10:28-10:36
+                Args: ArgList 10:36-10:66
+                  List: [2]
+                    Arg 10:37-10:48
+                      Label: Ident "in" 10:37-10:39
+                      Value: Ident "mailbox" 10:41-10:48
+                    Arg 10:50-10:65
+                      Label: Ident "matching" 10:50-10:58
+                      Value: Ident "query" 10:60-10:65
+          PropSet 12:3-12:17 blank
+            Name: Ident "title" 12:3-12:8
+            Value: StringLit 12:10-12:17 Segments=["Inbox"]
+          PropSet 13:3-13:19
+            Name: Ident "largeTitle" 13:3-13:13
+            Value: BoolLit 13:15-13:19 Value=true
+          SlotItem 15:3-19:4 blank
+            Name: Ident "toolbar" 15:3-15:10
+            Body: Block 15:11-19:4
+              Items: [1]
+                ExprStmt 16:5-18:6
+                  X: CallExpr 16:5-18:6
+                    Fun: Ident "Button" 16:5-16:11
+                    Args: ArgList 16:11-16:22
+                      List: [1]
+                        Arg 16:12-16:21
+                          Value: StringLit 16:12-16:21 Segments=["Compose"]
+                    Block: Block 16:23-18:6
+                      Items: [1]
+                        OnHandler 17:7-17:36
+                          Name: Ident "tap" 17:10-17:13
+                          Body: Block 17:14-17:36
+                            Items: [1]
+                              ExprStmt 17:16-17:34
+                                X: CallExpr 17:16-17:34
+                                  Fun: Ident "present" 17:16-17:23
+                                  Args: ArgList 17:23-17:34
+                                    List: [1]
+                                      Arg 17:24-17:33
+                                        Value: CallExpr 17:24-17:33
+                                          Fun: Ident "Compose" 17:24-17:31
+                                          Args: ArgList 17:31-17:33
+          ExprStmt 21:3-23:4 blank
+            X: CallExpr 21:3-23:4
+              Fun: Ident "SearchField" 21:3-21:14
+              Block: Block 21:15-23:4
+                Items: [1]
+                  BindItem 22:5-22:21
+                    Name: Ident "text" 22:10-22:14
+                    Target: Ident "query" 22:16-22:21
+          MatchStmt 25:3-38:4 blank
+            Subject: Ident "messages" 25:9-25:17
+            Arms: [4]
+              MatchArm 26:5-26:31
+                Pattern: CasePat 26:5-26:13 implicit
+                  Path: [1]
+                    Ident "pending" 26:6-26:13
+                Body: ExprStmt 26:17-26:31
+                  X: CallExpr 26:17-26:31
+                    Fun: Ident "ProgressView" 26:17-26:29
+                    Args: ArgList 26:29-26:31
+              MatchArm 27:5-27:77
+                Pattern: CasePat 27:5-27:19 implicit
+                  Path: [1]
+                    Ident "failed" 27:6-27:12
+                  Args: [1]
+                    BindPat 27:13-27:18
+                      Name: Ident "error" 27:13-27:18
+                Body: ExprStmt 27:23-27:77
+                  X: CallExpr 27:23-27:77
+                    Fun: Ident "Text" 27:23-27:27
+                    Args: ArgList 27:27-27:61
+                      List: [1]
+                        Arg 27:28-27:60
+                          Value: StringLit 27:28-27:60 Segments=["Couldn't load: " ""]
+                            Interps: [1]
+                              MemberExpr 27:45-27:58
+                                X: Ident "error" 27:45-27:50
+                                Name: Ident "message" 27:51-27:58
+                    Block: Block 27:62-27:77
+                      Items: [1]
+                        PropSet 27:64-27:75
+                          Name: Ident "color" 27:64-27:69
+                          Value: ImplicitMember 27:71-27:75
+                            Name: Ident "red" 27:72-27:75
+              MatchArm 28:5-28:62
+                Pattern: CasePat 28:5-28:17 implicit
+                  Path: [1]
+                    Ident "ready" 28:6-28:11
+                  Args: [1]
+                    BindPat 28:12-28:16
+                      Name: Ident "list" 28:12-28:16
+                Guard: MemberExpr 28:21-28:33
+                  X: Ident "list" 28:21-28:25
+                  Name: Ident "isEmpty" 28:26-28:33
+                Body: ExprStmt 28:37-28:62
+                  X: CallExpr 28:37-28:62
+                    Fun: Ident "EmptyState" 28:37-28:47
+                    Args: ArgList 28:47-28:62
+                      List: [1]
+                        Arg 28:48-28:61
+                          Value: StringLit 28:48-28:61 Segments=["No messages"]
+              MatchArm 29:5-37:6
+                Pattern: CasePat 29:5-29:17 implicit
+                  Path: [1]
+                    Ident "ready" 29:6-29:11
+                  Args: [1]
+                    BindPat 29:12-29:16
+                      Name: Ident "list" 29:12-29:16
+                Body: ExprStmt 29:21-37:6
+                  X: CallExpr 29:21-37:6
+                    Fun: Ident "List" 29:21-29:25
+                    Block: Block 29:26-37:6
+                      Items: [1]
+                        ForStmt 30:7-36:8
+                          Pattern: BindPat 30:11-30:18
+                            Name: Ident "message" 30:11-30:18
+                          Seq: Ident "list" 30:22-30:26
+                          Key: MemberExpr 30:31-30:41
+                            X: Ident "message" 30:31-30:38
+                            Name: Ident "id" 30:39-30:41
+                          Body: Block 30:42-36:8
+                            Items: [1]
+                              ExprStmt 31:9-35:10
+                                X: CallExpr 31:9-35:10
+                                  Fun: Ident "MessageRow" 31:9-31:19
+                                  Args: ArgList 31:19-31:28
+                                    List: [1]
+                                      Arg 31:20-31:27
+                                        Value: Ident "message" 31:20-31:27
+                                  Block: Block 31:29-35:10
+                                    Items: [3]
+                                      PropSet 32:11-32:33
+                                        Name: Ident "compact" 32:11-32:18
+                                        Value: MemberExpr 32:20-32:33
+                                          X: Ident "query" 32:20-32:25
+                                          Name: Ident "isEmpty" 32:26-32:33
+                                      OnHandler 33:11-33:53
+                                        Name: Ident "archive" 33:14-33:21
+                                        Body: Block 33:22-33:53
+                                          Items: [1]
+                                            ExprStmt 33:24-33:51
+                                              X: UnaryExpr 33:24-33:51 Op=await
+                                                X: CallExpr 33:30-33:51
+                                                  Fun: MemberExpr 33:30-33:42
+                                                    X: Ident "mail" 33:30-33:34
+                                                    Name: Ident "archive" 33:35-33:42
+                                                  Args: ArgList 33:42-33:51
+                                                    List: [1]
+                                                      Arg 33:43-33:50
+                                                        Value: Ident "message" 33:43-33:50
+                                      OnHandler 34:11-34:52
+                                        Name: Ident "tap" 34:14-34:17
+                                        Body: Block 34:18-34:52
+                                          Items: [1]
+                                            ExprStmt 34:20-34:50
+                                              X: CallExpr 34:20-34:50
+                                                Fun: Ident "push" 34:20-34:24
+                                                Args: ArgList 34:24-34:50
+                                                  List: [1]
+                                                    Arg 34:25-34:49
+                                                      Value: CallExpr 34:25-34:49
+                                                        Fun: Ident "Detail" 34:25-34:31
+                                                        Args: ArgList 34:31-34:49
+                                                          List: [1]
+                                                            Arg 34:32-34:48
+                                                              Label: Ident "message" 34:32-34:39
+                                                              Value: Ident "message" 34:41-34:48
+    ComponentDecl 41:1-52:2 blank
+      Name: Ident "MessageRow" 41:11-41:21
+      Params: ParamList 41:21-41:39
+        List: [1]
+          Param 41:22-41:38
+            Name: Ident "message" 41:22-41:29
+            Type: NamedType 41:31-41:38
+              Path: [1]
+                Ident "Message" 41:31-41:38
+      Body: Block 41:40-52:2
+        Items: [4]
+          PropDecl 42:3-42:23
+            Name: Ident "compact" 42:8-42:15
+            Default: BoolLit 42:18-42:23 Value=false
+          PropDecl 43:3-43:31
+            Name: Ident "accessory" 43:8-43:17
+            Type: OptionalType 43:19-43:24
+              Elem: NamedType 43:19-43:23
+                Path: [1]
+                  Ident "View" 43:19-43:23
+            Default: NoneLit 43:27-43:31
+          EventDecl 44:3-44:16
+            Name: Ident "archive" 44:9-44:16
+          ExprStmt 46:3-51:4 blank
+            X: CallExpr 46:3-51:4
+              Fun: Ident "Row" 46:3-46:6
+              Block: Block 46:7-51:4
+                Items: [4]
+                  PropSet 47:5-47:12
+                    Name: Ident "gap" 47:5-47:8
+                    Value: BasicLit 47:10-47:12 Kind=integer Value="12"
+                  ExprStmt 48:5-48:26
+                    X: CallExpr 48:5-48:26
+                      Fun: Ident "Text" 48:5-48:9
+                      Args: ArgList 48:9-48:26
+                        List: [1]
+                          Arg 48:10-48:25
+                            Value: MemberExpr 48:10-48:25
+                              X: Ident "message" 48:10-48:17
+                              Name: Ident "subject" 48:18-48:25
+                  IfStmt 49:5-49:69
+                    Cond: UnaryExpr 49:8-49:16 Op=!
+                      X: Ident "compact" 49:9-49:16
+                    Then: Block 49:17-49:69
+                      Items: [1]
+                        ExprStmt 49:19-49:67
+                          X: CallExpr 49:19-49:67
+                            Fun: Ident "Text" 49:19-49:23
+                            Args: ArgList 49:23-49:40
+                              List: [1]
+                                Arg 49:24-49:39
+                                  Value: MemberExpr 49:24-49:39
+                                    X: Ident "message" 49:24-49:31
+                                    Name: Ident "preview" 49:32-49:39
+                            Block: Block 49:41-49:67
+                              Items: [1]
+                                PropSet 49:43-49:65
+                                  Name: Ident "color" 49:43-49:48
+                                  Value: ImplicitMember 49:50-49:65
+                                    Name: Ident "secondaryLabel" 49:51-49:65
+                  ExprStmt 50:5-50:14
+                    X: Ident "accessory" 50:5-50:14

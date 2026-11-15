@@ -1,0 +1,141 @@
+package main
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/egoist/asuka/lang/syntax"
+)
+
+// cmdFmt formats Asuka source (.asuka files) in its canonical form, as
+// gofmt does Go's: the files and directories named (a directory's .asuka
+// files, its subdirectories' too), or standard input without any.
+func cmdFmt(args []string) error {
+	var write, list bool
+	fs := newFlagSet("fmt", "[paths...]")
+	fs.about = "Formats Asuka source: each file named, every .asuka file in each directory named (and in\n" +
+		"their subdirectories), or standard input when none is. Prints the result unless -w or -l;\n" +
+		"a file with syntax errors is left as it is, its errors reported as file:line:col: message."
+	fs.Bool(&write, "write", 'w', "write the result to the file instead of printing it")
+	fs.Bool(&list, "list", 'l', "list the files whose formatting differs")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	return runFmt(fs.Args(), write, list, os.Stdin, os.Stdout, os.Stderr)
+}
+
+// errFmt says that some files had syntax errors, which runFmt printed.
+var errFmt = errors.New("fmt: some files have syntax errors")
+
+func runFmt(paths []string, write, list bool, stdin io.Reader, stdout, stderr io.Writer) error {
+	if len(paths) == 0 {
+		if write {
+			return errors.New("fmt: -w needs files to write: name them, or . for this directory")
+		}
+		src, err := io.ReadAll(stdin)
+		if err != nil {
+			return err
+		}
+		return fmtReport(formatSource("<standard input>", src, nil, false, list, stdout), stderr)
+	}
+	failed := false
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			if err := fmtReport(formatFile(path, info.Mode(), write, list, stdout), stderr); errors.Is(err, errFmt) {
+				failed = true
+			} else if err != nil {
+				return err
+			}
+			continue
+		}
+		err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			name := d.Name()
+			if d.IsDir() {
+				if p != path && (strings.HasPrefix(name, ".") || name == "node_modules") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(name, ".asuka") || strings.HasPrefix(name, ".") {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			if err := fmtReport(formatFile(p, info.Mode(), write, list, stdout), stderr); errors.Is(err, errFmt) {
+				failed = true
+				return nil
+			} else {
+				return err
+			}
+		})
+		if err != nil {
+			return err
+		}
+	}
+	if failed {
+		return errFmt
+	}
+	return nil
+}
+
+// fmtReport prints a file's syntax errors, one per line, and returns
+// errFmt for them; other errors it returns as they are.
+func fmtReport(err error, stderr io.Writer) error {
+	var list syntax.ErrorList
+	if errors.As(err, &list) {
+		for _, e := range list {
+			fmt.Fprintln(stderr, e)
+		}
+		return errFmt
+	}
+	return err
+}
+
+func formatFile(path string, mode fs.FileMode, write, list bool, stdout io.Writer) error {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return formatSource(path, src, func(out []byte) error {
+		return os.WriteFile(path, out, mode.Perm())
+	}, write, list, stdout)
+}
+
+// formatSource formats one file's source: lists its name if it changes
+// and list is set, writes it back with save if write is set, prints it
+// otherwise.
+func formatSource(name string, src []byte, save func([]byte) error, write, list bool, stdout io.Writer) error {
+	out, err := syntax.Format(name, src)
+	if err != nil {
+		return err
+	}
+	changed := !bytes.Equal(src, out)
+	if list && changed {
+		fmt.Fprintln(stdout, name)
+	}
+	if write {
+		if changed {
+			return save(out)
+		}
+		return nil
+	}
+	if !list {
+		_, err = stdout.Write(out)
+	}
+	return err
+}

@@ -1,0 +1,40 @@
+style card {
+  padding: 16
+  radius: 12
+  background: .secondarySystemBackground
+  shadow: Shadow(y: 2, blur: 8, color: #0000001a)
+}
+
+style title {
+  fontSize: 20
+  weight: .semibold
+  color: #333
+}
+
+component Card(heading: string) {
+  prop children: View
+
+  Column {
+    style card
+    gap: 8
+    width: 100%
+    Text(heading) {
+      style title
+      color: #ff3b30
+    }
+    children
+  }
+}
+
+component Dashboard {
+  Grid {
+    columns: [1fr, 1fr, 2fr]
+    gap: 12
+    Card("Today") {
+      Text("Sunny")
+    }
+    Card("Week") {
+      Text("Rain") { opacity: 0.6 }
+    }
+  }
+}

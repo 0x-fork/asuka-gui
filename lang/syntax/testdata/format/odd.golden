@@ -1,0 +1,40 @@
+fn f() {
+  let x = (a + // plus
+    b)
+  let y = foo(
+    1, /* one */
+    2,
+  )
+  // then
+  if a { b() } else { c() }
+  match v {
+    // first
+    .a => 1 // one
+    .b(x) if x > 0 => { print(x) }
+
+    _ => {
+      // nothing
+    }
+  }
+  let g = items.map(x => {
+    // double
+    return x * 2
+  })
+  do { try run() } catch MailError.offline { retry() } catch e { log(e) }
+  let s = """
+      keep   this
+    """
+  emit changed(value: 1)
+  let o = a?.b?.c ?? d!.e
+  let n = -(-1)
+  let t = try? await fetch()
+  let r = 0..<10
+  let m = [:]
+  let e = []
+  let tup = ()
+  let f2 = (a, b) => a + b
+  let f3 = (a: int) => { a }
+  let f4 = () => none
+  for await m in stream { print(m) }
+  while let n = next() { n.go() }
+}

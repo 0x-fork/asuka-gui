@@ -8,6 +8,7 @@
 //	asuka dev --platform linux <dir>         build, run on this Linux machine, rebuild on save
 //	asuka dev --platform web <dir>           build, serve and open in the browser, rebuild on save
 //	asuka dev <dir>                          on macOS, Windows or Linux: run on this computer
+//	asuka fmt [-w] [-l] [paths]              format Asuka source (.asuka files)
 package main
 
 import (
@@ -38,6 +39,7 @@ func usage() {
   asuka generate [dir]                      write the functions of the app's catalogs
   asuka i18n init|add|check                 start, add languages to, and check the catalogs
   asuka vet [flags] [packages]              report what builds but runs wrong, as a signal read once
+  asuka fmt [-w] [-l] [paths]               format Asuka source (.asuka files) in its canonical form
 
 asuka <command> --help lists its flags.
 `)
@@ -74,6 +76,8 @@ func main() {
 		err = cmdNative(os.Args[2:])
 	case "vet":
 		err = cmdVet(os.Args[2:])
+	case "fmt":
+		err = cmdFmt(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return

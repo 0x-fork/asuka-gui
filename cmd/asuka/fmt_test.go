@@ -1,0 +1,80 @@
+package main
+
+import (
+	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestFmt(t *testing.T) {
+	dir := t.TempDir()
+	messy := "component C {gap:8;Text( \"a\" )}\n"
+	clean := "component C {\n  gap: 8\n  Text(\"a\")\n}\n"
+	bad := "component D {\n  Text(\"a\"\n}\n"
+	files := map[string]string{
+		"a.asuka":              messy,
+		"ok.asuka":             clean,
+		"sub/b.asuka":          messy,
+		"sub/bad.asuka":        bad,
+		".hidden/c.asuka":      messy,
+		"sub/notes.txt":        messy,
+		"node_modules/d.asuka": messy,
+	}
+	for name, src := range files {
+		path := filepath.Join(dir, name)
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(name string) string {
+		b, _ := os.ReadFile(filepath.Join(dir, name))
+		return string(b)
+	}
+
+	// -l lists what would change and reports the syntax errors.
+	var out, errOut bytes.Buffer
+	err := runFmt([]string{dir}, false, true, nil, &out, &errOut)
+	if !errors.Is(err, errFmt) {
+		t.Errorf("-l: %v, want errFmt", err)
+	}
+	want := filepath.Join(dir, "a.asuka") + "\n" + filepath.Join(dir, "sub/b.asuka") + "\n"
+	if out.String() != want {
+		t.Errorf("-l listed %q, want %q", out.String(), want)
+	}
+	if e := filepath.Join(dir, "sub/bad.asuka") + ":3:1: expected ')' to close the argument list opened at 2:7"; !strings.HasPrefix(errOut.String(), e) {
+		t.Errorf("diagnostics %q, want %q", errOut.String(), e)
+	}
+
+	// Printing a file.
+	out.Reset()
+	if err := runFmt([]string{filepath.Join(dir, "a.asuka")}, false, false, nil, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != clean || read("a.asuka") != messy {
+		t.Errorf("printed %q", out.String())
+	}
+
+	// -w writes the files that change, and only those.
+	out.Reset()
+	runFmt([]string{dir}, true, false, nil, &out, &errOut)
+	if read("a.asuka") != clean || read("sub/b.asuka") != clean || read("sub/bad.asuka") != bad ||
+		read(".hidden/c.asuka") != messy || read("node_modules/d.asuka") != messy || read("sub/notes.txt") != messy {
+		t.Errorf("-w wrote the wrong files")
+	}
+	if out.Len() != 0 {
+		t.Errorf("-w printed %q", out.String())
+	}
+
+	// Standard input.
+	out.Reset()
+	if err := runFmt(nil, false, false, strings.NewReader(messy), &out, &errOut); err != nil || out.String() != clean {
+		t.Errorf("stdin: %q, %v", out.String(), err)
+	}
+	if err := runFmt(nil, true, false, strings.NewReader(messy), &out, &errOut); err == nil {
+		t.Errorf("-w with standard input")
+	}
+}

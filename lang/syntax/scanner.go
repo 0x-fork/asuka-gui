@@ -32,8 +32,10 @@ func (c *Comment) IsDoc() bool {
 // item, a member or a statement. It doesn't when the line can't end
 // there, as Go and Swift do:
 //
-//   - inside ( ), [ ], an import's .{ } or a string's {interpolation};
-//     inside { } newlines are significant again;
+//   - inside ( ), [ ] and an import's .{ }; inside { } newlines are
+//     significant again;
+//   - inside a """ string's {interpolation}; a one-line string's
+//     interpolation ends with its line (the string isn't terminated);
 //   - after an operator that needs an operand on its right (binary
 //     operators, =, the assignment operators, =>, ->, ., ?., .., ..<, |),
 //     after a , or a :, and after an opening bracket;
@@ -72,6 +74,7 @@ const (
 type frame struct {
 	kind      frameKind
 	multiline bool // interp: in a """ string
+	start     int  // interp: the string's first byte
 }
 
 const eof = -1
@@ -190,6 +193,12 @@ redo:
 			s.next()
 			continue
 		case '\n':
+			if n := len(s.frames); n > 0 && s.frames[n-1].kind == interp && !s.frames[n-1].multiline {
+				// An interpolation of a one-line string ends with its
+				// line: the string wasn't terminated.
+				s.error(s.frames[n-1].start, "string not terminated")
+				s.frames = s.frames[:n-1]
+			}
 			if s.newlineCounts() {
 				off := s.offset
 				s.next()
@@ -215,7 +224,7 @@ redo:
 	switch {
 	case ch == eof:
 		if n := len(s.frames); n > 0 && s.frames[n-1].kind == interp {
-			s.error(start, "string not terminated")
+			s.error(s.frames[n-1].start, "string not terminated")
 			s.frames = s.frames[:n-1]
 		}
 		return pos, EOF, ""
@@ -263,14 +272,22 @@ redo:
 	case '}':
 		if n := len(s.frames); n > 0 && s.frames[n-1].kind == interp {
 			// The end of an interpolation: the string goes on.
-			multiline := s.frames[n-1].multiline
+			multiline, open := s.frames[n-1].multiline, s.frames[n-1].start
 			s.frames = s.frames[:n-1]
-			return s.stringRest(start, false, multiline, true)
+			return s.stringRest(start, open, false, multiline, true)
 		}
-		if n := len(s.frames); n > 0 && s.frames[n-1].kind == dotbrace {
+		// A } closes its { and any ( or [ left open inside it, so an
+		// unclosed bracket doesn't swallow the newlines of the rest of
+		// the file; the parser reports it.
+		for n := len(s.frames); n > 0; n-- {
+			k := s.frames[n-1].kind
+			if k == interp {
+				break
+			}
 			s.frames = s.frames[:n-1]
-		} else {
-			s.pop(brace)
+			if k == brace || k == dotbrace {
+				break
+			}
 		}
 		tok = RBRACE
 	case ',':
@@ -533,23 +550,23 @@ func (s *Scanner) string(start int, raw bool) (Pos, Token, string) {
 		s.next()
 	}
 	s.next() // past the (last) opening quote
-	return s.stringRest(start, raw, multiline, false)
+	return s.stringRest(start, start, raw, multiline, false)
 }
 
 // stringRest scans a string's text from s.ch to its closing quote or
 // its next interpolation; resumed says the text follows an
-// interpolation's }.
-func (s *Scanner) stringRest(start int, raw, multiline, resumed bool) (Pos, Token, string) {
+// interpolation's }. start is the token's first byte, open the string's.
+func (s *Scanner) stringRest(start, open int, raw, multiline, resumed bool) (Pos, Token, string) {
 	pos := s.file.Pos(start)
 	done := func(t Token) (Pos, Token, string) { return pos, t, s.src[start:s.offset] }
 	for {
 		switch s.ch {
 		case eof:
-			s.error(start, "string not terminated")
+			s.error(open, "string not terminated")
 			return done(tailOr(resumed))
 		case '\n':
 			if !multiline {
-				s.error(start, "string not terminated (a string that spans lines is \"\"\"…\"\"\")")
+				s.error(open, "string not terminated (a string that spans lines is \"\"\"…\"\"\")")
 				return done(tailOr(resumed))
 			}
 		case '"':
@@ -571,7 +588,7 @@ func (s *Scanner) stringRest(start int, raw, multiline, resumed bool) (Pos, Toke
 		case '{':
 			if !raw {
 				s.next()
-				s.frames = append(s.frames, frame{kind: interp, multiline: multiline})
+				s.frames = append(s.frames, frame{kind: interp, multiline: multiline, start: open})
 				if resumed {
 					return done(STRING_MID)
 				}

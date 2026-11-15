@@ -1,0 +1,146 @@
+SourceFile 1:1-40:3
+  Decls: [4]
+    StyleDecl 1:1-6:2
+      Name: Ident "card" 1:7-1:11
+      Body: Block 1:12-6:2
+        Items: [4]
+          PropSet 2:3-2:14
+            Name: Ident "padding" 2:3-2:10
+            Value: BasicLit 2:12-2:14 Kind=integer Value="16"
+          PropSet 3:3-3:13
+            Name: Ident "radius" 3:3-3:9
+            Value: BasicLit 3:11-3:13 Kind=integer Value="12"
+          PropSet 4:3-4:41
+            Name: Ident "background" 4:3-4:13
+            Value: ImplicitMember 4:15-4:41
+              Name: Ident "secondarySystemBackground" 4:16-4:41
+          PropSet 5:3-5:50
+            Name: Ident "shadow" 5:3-5:9
+            Value: CallExpr 5:11-5:50
+              Fun: Ident "Shadow" 5:11-5:17
+              Args: ArgList 5:17-5:50
+                List: [3]
+                  Arg 5:18-5:22
+                    Label: Ident "y" 5:18-5:19
+                    Value: BasicLit 5:21-5:22 Kind=integer Value="2"
+                  Arg 5:24-5:31
+                    Label: Ident "blur" 5:24-5:28
+                    Value: BasicLit 5:30-5:31 Kind=integer Value="8"
+                  Arg 5:33-5:49
+                    Label: Ident "color" 5:33-5:38
+                    Value: BasicLit 5:40-5:49 Kind=color Value="#0000001a"
+    StyleDecl 8:1-12:2 blank
+      Name: Ident "title" 8:7-8:12
+      Body: Block 8:13-12:2
+        Items: [3]
+          PropSet 9:3-9:15
+            Name: Ident "fontSize" 9:3-9:11
+            Value: BasicLit 9:13-9:15 Kind=integer Value="20"
+          PropSet 10:3-10:20
+            Name: Ident "weight" 10:3-10:9
+            Value: ImplicitMember 10:11-10:20
+              Name: Ident "semibold" 10:12-10:20
+          PropSet 11:3-11:14
+            Name: Ident "color" 11:3-11:8
+            Value: BasicLit 11:10-11:14 Kind=color Value="#333"
+    ComponentDecl 14:1-27:2 blank
+      Name: Ident "Card" 14:11-14:15
+      Params: ParamList 14:15-14:32
+        List: [1]
+          Param 14:16-14:31
+            Name: Ident "heading" 14:16-14:23
+            Type: NamedType 14:25-14:31
+              Path: [1]
+                Ident "string" 14:25-14:31
+      Body: Block 14:33-27:2
+        Items: [2]
+          PropDecl 15:3-15:22
+            Name: Ident "children" 15:8-15:16
+            Type: NamedType 15:18-15:22
+              Path: [1]
+                Ident "View" 15:18-15:22
+          ExprStmt 17:3-26:4 blank
+            X: CallExpr 17:3-26:4
+              Fun: Ident "Column" 17:3-17:9
+              Block: Block 17:10-26:4
+                Items: [5]
+                  StyleUse 18:5-18:15
+                    Name: Ident "card" 18:11-18:15
+                  PropSet 19:5-19:11
+                    Name: Ident "gap" 19:5-19:8
+                    Value: BasicLit 19:10-19:11 Kind=integer Value="8"
+                  PropSet 20:5-20:16
+                    Name: Ident "width" 20:5-20:10
+                    Value: BasicLit 20:12-20:16 Kind=length Value="100%"
+                  ExprStmt 21:5-24:6
+                    X: CallExpr 21:5-24:6
+                      Fun: Ident "Text" 21:5-21:9
+                      Args: ArgList 21:9-21:18
+                        List: [1]
+                          Arg 21:10-21:17
+                            Value: Ident "heading" 21:10-21:17
+                      Block: Block 21:19-24:6
+                        Items: [2]
+                          StyleUse 22:7-22:18
+                            Name: Ident "title" 22:13-22:18
+                          PropSet 23:7-23:21
+                            Name: Ident "color" 23:7-23:12
+                            Value: BasicLit 23:14-23:21 Kind=color Value="#ff3b30"
+                  ExprStmt 25:5-25:13
+                    X: Ident "children" 25:5-25:13
+    ComponentDecl 29:1-40:2 blank
+      Name: Ident "Dashboard" 29:11-29:20
+      Body: Block 29:21-40:2
+        Items: [1]
+          ExprStmt 30:3-39:4
+            X: CallExpr 30:3-39:4
+              Fun: Ident "Grid" 30:3-30:7
+              Block: Block 30:8-39:4
+                Items: [4]
+                  PropSet 31:5-31:29
+                    Name: Ident "columns" 31:5-31:12
+                    Value: ArrayExpr 31:14-31:29
+                      Elems: [3]
+                        BasicLit 31:15-31:18 Kind=length Value="1fr"
+                        BasicLit 31:20-31:23 Kind=length Value="1fr"
+                        BasicLit 31:25-31:28 Kind=length Value="2fr"
+                  PropSet 32:5-32:12
+                    Name: Ident "gap" 32:5-32:8
+                    Value: BasicLit 32:10-32:12 Kind=integer Value="12"
+                  ExprStmt 33:5-35:6
+                    X: CallExpr 33:5-35:6
+                      Fun: Ident "Card" 33:5-33:9
+                      Args: ArgList 33:9-33:18
+                        List: [1]
+                          Arg 33:10-33:17
+                            Value: StringLit 33:10-33:17 Segments=["Today"]
+                      Block: Block 33:19-35:6
+                        Items: [1]
+                          ExprStmt 34:7-34:20
+                            X: CallExpr 34:7-34:20
+                              Fun: Ident "Text" 34:7-34:11
+                              Args: ArgList 34:11-34:20
+                                List: [1]
+                                  Arg 34:12-34:19
+                                    Value: StringLit 34:12-34:19 Segments=["Sunny"]
+                  ExprStmt 36:5-38:6
+                    X: CallExpr 36:5-38:6
+                      Fun: Ident "Card" 36:5-36:9
+                      Args: ArgList 36:9-36:17
+                        List: [1]
+                          Arg 36:10-36:16
+                            Value: StringLit 36:10-36:16 Segments=["Week"]
+                      Block: Block 36:18-38:6
+                        Items: [1]
+                          ExprStmt 37:7-37:36
+                            X: CallExpr 37:7-37:36
+                              Fun: Ident "Text" 37:7-37:11
+                              Args: ArgList 37:11-37:19
+                                List: [1]
+                                  Arg 37:12-37:18
+                                    Value: StringLit 37:12-37:18 Segments=["Rain"]
+                              Block: Block 37:20-37:36
+                                Items: [1]
+                                  PropSet 37:22-37:34
+                                    Name: Ident "opacity" 37:22-37:29
+                                    Value: BasicLit 37:31-37:34 Kind=float Value="0.6"

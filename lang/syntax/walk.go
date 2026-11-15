@@ -411,12 +411,13 @@ func walkTypeParams(v Visitor, list []*TypeParam) {
 type inspector func(Node) bool
 
 func (f inspector) Visit(n Node) Visitor {
-	if n != nil && f(n) {
+	if f(n) {
 		return f
 	}
 	return nil
 }
 
 // Inspect walks the tree from n, calling f for each node; f returning
-// false skips the node's children.
+// false skips the node's children. After a node's children (when f
+// returned true), f is called with nil.
 func Inspect(n Node, f func(Node) bool) { Walk(inspector(f), n) }

@@ -7,7 +7,12 @@ package syntax
 // reports what it expected, skips to the end of the item or declaration
 // (a newline, a ; or a } at the depth it started), and carries on, so a
 // file's diagnostics come out together and the tree covers everything
-// that did parse.
+// that did parse (what didn't is a Bad node). One error per line: a
+// mistake often confuses the rest of its line. A missing closer names
+// its opener: "expected '}' to close the block opened at 12:5". A
+// declaration that can only be a file's (component, struct, enum,
+// import, …) in column 1 inside a block ends the block, so a missing }
+// costs one error, not the rest of the file.
 //
 // Where the RFC's grammar is silent or ambiguous, the parser decides as
 // follows.
@@ -23,62 +28,81 @@ package syntax
 //     in a component's body" is one precise error, not a parse error
 //     that loses the rest of the block.
 //  2. Prop sets. An item that starts with a name and a colon is a prop
-//     set, the name may be a keyword (type: .email, key: id): no other
-//     item starts that way.
-//  3. Elements and slots. A lower-case name followed by { on the same
-//     line is a named slot (toolbar { … }). An upper-case name (or a
-//     qualified one, ui.Row) followed by { is an element: a call whose
-//     only argument is its trailing block. Any call f(…) followed by {
-//     takes the block as its trailing block too: withTimeout(5s) { … }.
+//     set (PropSet), and the name may be a keyword (type: .email, key:
+//     id): no other item starts that way.
+//  3. Elements and slots. A lower-case name followed by { is a named
+//     slot (toolbar { … }). An upper-case name (or a qualified one whose
+//     last part is upper-case, ui.Row) followed by { is an element: a
+//     call with no parentheses and a trailing block (Row { … }). Any
+//     call f(…) followed by { takes it as its trailing block too:
+//     Text("hi") { color: .red }, withTimeout(5s) { … }. A lower-case
+//     name and { elsewhere than at the start of an item is the name and
+//     then a block.
 //  4. Trailing blocks bind only on the call's line: a { on the next line
-//     starts a new item. They never bind in the head of an if, a while,
-//     a for (its sequence and its key), a match or a catch, where the {
-//     starts the body, as Go does with composite literals: if isEmpty {
-//     … }. Inside parentheses or brackets in such a head they bind
-//     again.
+//     starts a new item (and a block on a line of its own isn't one, an
+//     error). They never bind in the head of an if, a while, a for (its
+//     sequence and its key), a match or a catch (its pattern and type),
+//     where the { starts the body, as Go does with composite literals:
+//     if isEmpty { … }, for x in Items { … }. Inside parentheses or
+//     brackets in such a head they bind again: if f(Row { a }) { … }.
 //  5. Handlers after a trailing block, on its line, belong to the call:
 //     Boundary { … } on error(e) { … } (CallExpr.Handlers).
-//  6. else and catch may start the line after a }: } else { and }\nelse
-//     { parse the same; the printer writes the first.
+//  6. else and catch may start the line after a }: } else { and }
+//     newline else { parse the same; the printer writes the first.
 //  7. Lambdas. x => … and _ => … are lambdas; so is a parenthesized list
-//     whose ) is followed by =>, (a, b) => … and (a: int) => …, found
-//     by looking ahead to the matching parenthesis. A lambda's body is
-//     an expression, or after => a { always starts a block of
-//     statements.
+//     of names, each maybe with a type, whose ) is followed by =>:
+//     (a, b) => …, (a: int) => …, () => …, found by looking ahead to the
+//     matching parenthesis. Anything else in parentheses is a grouping
+//     ((x) without =>) or a tuple ((a, b)). A lambda's body is an
+//     expression, or after => a { always starts a block of statements.
 //  8. Maps and arrays. [:] is an empty map, [] an empty array; after [
-//     and an expression, a : makes a map. Types likewise: [T], [K: V].
-//  9. try? is try followed directly by ? (no space between). A postfix
-//     ! (force unwrap) must follow its operand directly: x!. A
-//     comparison or a range doesn't chain: a < b < c is an error.
+//     and an expression, a : makes a map ([a: b]), a , or ] an array
+//     ([a]). Types likewise: [T], [K: V].
+//  9. try? is try followed directly by ? (no space between: try ? x is
+//     try and an error). A postfix ! (force unwrap) must follow its
+//     operand directly: x!. Comparisons and ranges don't chain: a < b <
+//     c is an error that says what to write.
 //  10. Keywords as names. After . and ?. a keyword is a member's name
-//      (x.type, .default). Where an expression is expected, the
-//      keywords that can't start one (type, key, test, style, on, …)
-//      are identifiers, so a test can call type("Hi", into: "Title").
+//      (x.type, .default). The keywords that only start a declaration or
+//      an item (app bind component effect enum event interface key
+//      native on prop provide screen state store struct style task test
+//      throws type use) are names anywhere else: as an expression's
+//      start, a binding, a parameter, a lambda's parameter: let app =
+//      mount(…); app.tap("Add"); type("Hi", into: "Title"); for (key,
+//      value) in m. Each starts its declaration or item only when what
+//      follows fits (prop and a name, app and {, test and a string, …).
 //      Argument labels, prop sets, fields, enum cases and import path
-//      segments may be keywords (none, test).
+//      segments may be any keyword (none:, in:).
 //  11. Match arms are separated by newlines, commas or semicolons; an
 //      arm's body is a block, or one item (in a view or statements) or
-//      expression (in a match expression).
-//  12. An if used as a value needs an else; in a block, if, for and
-//      match are items, and an if's else is optional.
+//      expression (in a match expression); a guard is if and an
+//      expression before the =>, whose { never starts a block.
+//  12. An if used as a value (an IfExpr) needs an else; in a block, if,
+//      for and match are items, and an if's else is optional.
 //  13. Types. ( T ) groups: (fn() -> int)? is an optional function.
 //      Generic arguments follow a qualified name's last part:
 //      http.Response<T>. A type parameter may name a constraint: <T:
-//      Hashable>.
+//      Hashable>. T?? is an optional optional.
 //  14. Enums. Cases are separated by commas or newlines and come before
 //      the methods; a case's name may be a keyword (none).
 //  15. Imports come before declarations. pub may precede any
 //      declaration or member; the checker says where it means
 //      something. A var at the top level is an error: a file's mutable
 //      values are state.
-//  16. return's value is what follows on its line; emit's arguments are
-//      a ( that follows its name directly.
+//  16. return's value is what follows on its line. emit's arguments
+//      are a ( on its line after the event's name.
 //  17. A style declared inside a block, style name { … }, is parsed (a
-//      local style) and left to the checker; a component, a struct or
-//      another top-level declaration inside a block is an error, parsed
-//      to recover.
+//      local style) and left to the checker; style name without a block
+//      applies one. A component, a struct or another top-level
+//      declaration inside a block is an error, parsed to recover.
 //  18. Interpolation. Any expression goes between { and } in a string;
-//      \{ is a brace. Newlines inside an interpolation don't count.
+//      \{ is a brace. In a """ string an interpolation may span lines;
+//      in a one-line string it ends with its line, and the string isn't
+//      terminated.
+//  19. Comments. Those above a node on a line of its own, and one after
+//      it on its last line, are its Trivia; /// ones are its Doc. A
+//      comment inside an expression (between arguments, in an array)
+//      stays in SourceFile.Comments only, and the printer places it.
 //
 // The scanner documents how newlines end items (Scanner) and how a %
 // after a number reads (50% is a length, 10%3 a remainder).
@@ -97,8 +121,8 @@ type tokRec struct {
 }
 
 type parser struct {
-	file   *File
-	errors ErrorList
+	file     *File
+	errors   ErrorList
 	errLines map[int]bool
 
 	toks []tokRec
@@ -182,7 +206,7 @@ func (p *parser) error(pos Pos, msg string) {
 	if p.bail {
 		return
 	}
-	if p.errLines[p.file.Line(pos)] {
+	if p.errLines[p.line(pos)] {
 		return
 	}
 	p.addError(pos, msg)
@@ -240,6 +264,11 @@ func (p *parser) peek(n int) Token {
 	return EOF
 }
 
+// isIdentTok reports whether t can be a name where a declaration names
+// something: an identifier, or a keyword that only starts a declaration
+// or an item (decision 10).
+func isIdentTok(t Token) bool { return t == IDENT || softKeyword(t) }
+
 func (p *parser) got(tok Token) bool {
 	if p.tok == tok {
 		p.next()
@@ -279,7 +308,13 @@ func (p *parser) span(start Pos) Span {
 	return Span{start, end}
 }
 
-func (p *parser) line(pos Pos) int { return p.file.Line(pos) }
+// line is pos's line, 0 for a position outside the file.
+func (p *parser) line(pos Pos) int {
+	if int(pos) < p.file.Base() || int(pos) > p.file.Base()+p.file.Size() {
+		return 0
+	}
+	return p.file.Line(pos)
+}
 
 func (p *parser) atTerminator() bool {
 	switch p.tok {
@@ -302,7 +337,7 @@ func (p *parser) isName() bool { return p.tok == IDENT || p.tok.IsKeyword() }
 
 func (p *parser) ident() *Ident {
 	pos, name := p.pos, "_"
-	if p.tok == IDENT {
+	if isIdentTok(p.tok) {
 		name = p.lit
 		p.next()
 	} else {
@@ -380,6 +415,12 @@ func (p *parser) leading(start Pos) Trivia {
 	for p.ci < len(p.comments) && p.comments[p.ci].Pos < start {
 		c := p.comments[p.ci]
 		p.ci++
+		if c.Pos < p.prevEnd {
+			// Inside what was parsed last (an argument list, an
+			// array): not the next node's. The printer keeps it where
+			// it is, or above the line it's on.
+			continue
+		}
 		l := p.line(c.Pos)
 		if g == nil || l > last+1 {
 			g = &CommentGroup{BlankBefore: last > 0 && l > last+1}
@@ -405,7 +446,11 @@ func (p *parser) dangling(pos Pos) []*CommentGroup {
 // trailing takes a comment after end on end's line, unless another item
 // starts between them.
 func (p *parser) trailing(t *Trivia, end Pos) {
-	if t == nil || p.ci >= len(p.comments) || !end.IsValid() {
+	if t == nil || !end.IsValid() {
+		return
+	}
+	p.skipComments(end)
+	if p.ci >= len(p.comments) {
 		return
 	}
 	c := p.comments[p.ci]
@@ -423,6 +468,15 @@ func (p *parser) trailing(t *Trivia, end Pos) {
 	p.ci++
 }
 
+// skipComments passes the comments before pos that no node took: they
+// are inside a node (its arguments, an array) and stay with the file's
+// Comments for the printer.
+func (p *parser) skipComments(pos Pos) {
+	for p.ci < len(p.comments) && p.comments[p.ci].Pos < pos {
+		p.ci++
+	}
+}
+
 // endItem ends a node on a line of its own: a comment after it, then a
 // newline, a ;, or the } or the end of the file that ends the list.
 func (p *parser) endItem(n Node, what string) {
@@ -432,9 +486,43 @@ func (p *parser) endItem(n Node, what string) {
 		p.next()
 	case RBRACE, EOF:
 	default:
+		if p.line(p.pos) > p.line(p.prevEnd-1) {
+			// On a later line with no newline token between: after an
+			// unclosed ( or [, already reported. Go on from here.
+			return
+		}
 		p.error(p.pos, "expected a newline or ';' after the "+what+", found "+p.describe())
 		p.sync()
 	}
+}
+
+// declAhead reports whether a declaration that can't be in a block
+// starts here, at the start of a line: a component, a struct, … in
+// column 1 inside a block means the block's } is missing, and the
+// block ends there so the declaration parses as the file's.
+func (p *parser) declAhead() bool {
+	if p.file.Position(p.pos).Column != 1 {
+		return false
+	}
+	tok, next := p.tok, p.peek(1)
+	if tok == PUB {
+		tok, next = next, p.peek(2)
+	}
+	switch tok {
+	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE:
+		return isIdentTok(next)
+	case NATIVE:
+		return next == INTERFACE || next == COMPONENT
+	case IMPORT:
+		return true
+	case APP:
+		return next == LBRACE
+	case TEST:
+		return next == STRING || next == STRING_HEAD
+	case TYPE:
+		return isIdentTok(next)
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------
@@ -469,7 +557,8 @@ func (p *parser) parseFile() *SourceFile {
 		}
 		p.skipTerminators()
 	}
-	f.Dangling = p.dangling(p.pos + 1)
+	f.Dangling = p.dangling(p.pos)
+	f.Comments = p.comments
 	f.Span = Span{p.file.Pos(0), p.file.Pos(p.file.Size())}
 	return f
 }
@@ -794,7 +883,7 @@ func (p *parser) parseParams(lambda bool) *ParamList {
 	l := &ParamList{}
 	open := p.expect(LPAREN)
 	p.exprLev++
-	for p.tok != RPAREN && p.tok != EOF {
+	for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 		start := p.pos
 		param := &Param{}
 		if p.tok == IDENT {
@@ -882,6 +971,9 @@ func (p *parser) parseBody(what string, member func() Node) (lbrace Pos, members
 	p.next()
 	p.skipTerminators()
 	for p.tok != RBRACE && p.tok != EOF {
+		if p.declAhead() {
+			break
+		}
 		i := p.i
 		t := p.leading(p.pos)
 		m := member()
@@ -959,6 +1051,9 @@ func (p *parser) parseEnum(start Pos) *EnumDecl {
 	}
 	p.skipTerminators()
 	for p.tok != RBRACE && p.tok != EOF {
+		if p.declAhead() {
+			break
+		}
 		i := p.i
 		t := p.leading(p.pos)
 		if p.tok == FN || p.tok == ASYNC || p.tok == PUB {
@@ -1011,7 +1106,7 @@ func (p *parser) parseEnumCase() *EnumCase {
 		open := p.pos
 		p.next()
 		c.Params = &CaseParams{}
-		for p.tok != RPAREN && p.tok != EOF {
+		for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 			s := p.pos
 			cp := &CaseParam{}
 			if p.isName() && p.peek(1) == COLON {
@@ -1146,8 +1241,10 @@ func (p *parser) parseBlock() *Block {
 	}
 	defer p.leave()
 	p.next()
-	if p.tok == NEWLINE && p.ci < len(p.comments) {
-		if c := p.comments[p.ci]; c.Pos < p.pos && c.Pos > b.Lbrace {
+	p.skipComments(b.Lbrace)
+	// A comment after the {, on its line, with the items below.
+	if p.ci < len(p.comments) {
+		if c := p.comments[p.ci]; c.Pos < p.pos && p.line(c.Pos) == p.line(b.Lbrace) && p.line(c.End()-1) < p.line(p.pos) {
 			b.Comment = c
 			p.ci++
 		}
@@ -1156,6 +1253,9 @@ func (p *parser) parseBlock() *Block {
 	p.exprLev = 0
 	p.skipTerminators()
 	for p.tok != RBRACE && p.tok != EOF {
+		if p.declAhead() {
+			break
+		}
 		i := p.i
 		it := p.parseItem()
 		b.Items = append(b.Items, it)
@@ -1212,11 +1312,11 @@ func (p *parser) itemAfterPub(start Pos) Item {
 	next := p.peek(1)
 	switch p.tok {
 	case PROP:
-		if next == IDENT {
+		if isIdentTok(next) {
 			return p.parseProp(start)
 		}
 	case EVENT:
-		if next == IDENT {
+		if isIdentTok(next) {
 			p.next()
 			d := &EventDecl{Name: p.ident()}
 			d.Params = p.optParams()
@@ -1224,13 +1324,13 @@ func (p *parser) itemAfterPub(start Pos) Item {
 			return d
 		}
 	case STATE:
-		if next == IDENT {
+		if isIdentTok(next) {
 			return p.parseState(start)
 		}
 	case LET, VAR:
 		return p.parseLet(start)
 	case USE:
-		if next == IDENT {
+		if isIdentTok(next) {
 			p.next()
 			d := &UseDecl{Name: p.ident()}
 			p.expect(COLON)
@@ -1272,7 +1372,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 			return d
 		}
 	case STYLE:
-		if next == IDENT {
+		if isIdentTok(next) {
 			if p.peek(2) == LBRACE {
 				return p.parseStyleDecl(start)
 			}
@@ -1332,8 +1432,25 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		d.Span = p.span(start)
 		return d
 	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE, NATIVE, APP, TEST, IMPORT:
-		what := p.tok.String()
-		p.error(p.pos, "a "+what+" is declared at the top level of a file, not in a block")
+		// Only where a declaration follows: elsewhere these are names
+		// (decision 10), as in let app = mount(…); app.tap("Add").
+		switch {
+		case p.tok == IMPORT:
+		case p.tok == APP && next == LBRACE:
+		case p.tok == TEST && (next == STRING || next == STRING_HEAD):
+		case p.tok == NATIVE && (next == INTERFACE || next == COMPONENT):
+		case p.tok != APP && p.tok != TEST && p.tok != NATIVE && isIdentTok(next):
+		default:
+			goto expr
+		}
+		what := "a " + p.tok.String()
+		switch p.tok {
+		case APP, ENUM, INTERFACE, IMPORT:
+			what = "an " + p.tok.String()
+		case NATIVE:
+			what = "a native " + p.peek(1).String()
+		}
+		p.error(p.pos, what+" is declared at the top level of a file, not in a block")
 		if p.tok == IMPORT {
 			p.parseImport()
 		} else {
@@ -1341,7 +1458,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		}
 		return &BadItem{Span: p.span(start)}
 	case TYPE:
-		if next == IDENT {
+		if isIdentTok(next) {
 			p.error(p.pos, "a type alias is declared at the top level of a file, not in a block")
 			p.parseDecl()
 			return &BadItem{Span: p.span(start)}
@@ -1355,6 +1472,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		}
 	}
 
+expr:
 	x := p.parseExpr()
 	if p.tok.IsAssign() {
 		d := &AssignStmt{Target: x, Op: p.tok, OpPos: p.pos}
@@ -1401,7 +1519,7 @@ func (p *parser) parseTask(start Pos) *TaskDecl {
 		d.Lparen = p.pos
 		p.next()
 		p.exprLev++
-		for p.tok != RPAREN && p.tok != EOF {
+		for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 			d.Deps = append(d.Deps, p.parseExpr())
 			if !p.got(COMMA) {
 				break
@@ -1423,7 +1541,7 @@ func (p *parser) parseOn() *OnHandler {
 		d.Lparen = p.pos
 		p.next()
 		d.Params = []*Ident{}
-		for p.tok != RPAREN && p.tok != EOF {
+		for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 			d.Params = append(d.Params, p.ident())
 			if !p.got(COMMA) {
 				break
@@ -1514,7 +1632,7 @@ func (p *parser) parseDo() *DoStmt {
 		p.next()
 		c := &CatchClause{}
 		if p.tok != LBRACE {
-			if p.tok == IDENT && p.peek(1) == COLON {
+			if isIdentTok(p.tok) && p.peek(1) == COLON {
 				c.Pattern = &BindPat{Name: p.ident()}
 				setPatSpan(c.Pattern)
 				p.next()
@@ -1570,6 +1688,9 @@ func (p *parser) parseArms(expr bool) (lbrace Pos, arms []*MatchArm, rbrace Pos)
 	p.exprLev = 0
 	p.skipTerminators()
 	for p.tok != RBRACE && p.tok != EOF {
+		if p.declAhead() {
+			break
+		}
 		i := p.i
 		start := p.pos
 		a := &MatchArm{Trivia: p.leading(start)}
@@ -1623,21 +1744,20 @@ func (p *parser) parseExpr() Expr {
 
 // lambdaAhead reports whether a lambda starts here (decision 7).
 func (p *parser) lambdaAhead() bool {
-	switch p.tok {
-	case IDENT:
+	switch {
+	case isIdentTok(p.tok):
 		return p.peek(1) == FATARROW
-	case LPAREN:
-		switch p.peek(1) {
-		case RPAREN:
+	case p.tok == LPAREN:
+		if p.peek(1) == RPAREN {
 			return p.peek(2) == FATARROW
-		case IDENT:
-			switch p.peek(2) {
-			case RPAREN:
-				return p.peek(3) == FATARROW
-			case COMMA, COLON:
-			default:
-				return false
-			}
+		}
+		if !isIdentTok(p.peek(1)) {
+			return false
+		}
+		switch p.peek(2) {
+		case RPAREN:
+			return p.peek(3) == FATARROW
+		case COMMA, COLON:
 		default:
 			return false
 		}
@@ -1663,7 +1783,7 @@ func (p *parser) lambdaAhead() bool {
 func (p *parser) parseLambda() *LambdaExpr {
 	start := p.pos
 	l := &LambdaExpr{}
-	if p.tok == IDENT {
+	if isIdentTok(p.tok) {
 		id := p.ident()
 		l.Params = []*Param{{Span: id.Span, Name: id}}
 	} else {
@@ -1816,7 +1936,7 @@ func (p *parser) parseArgs() *ArgList {
 	l := &ArgList{}
 	open := p.expect(LPAREN)
 	p.exprLev++
-	for p.tok != RPAREN && p.tok != EOF {
+	for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 		start := p.pos
 		a := &Arg{Trivia: p.leading(start)}
 		if p.isName() && p.peek(1) == COLON {
@@ -1891,7 +2011,11 @@ func (p *parser) parsePrimary() Expr {
 	switch p.tok {
 	case NEWLINE, SEMICOLON, RBRACE, RPAREN, RBRACK, COMMA, EOF, STRING_MID, STRING_TAIL:
 	default:
-		p.next()
+		// Skip the token, unless it starts what comes next: a keyword,
+		// or a token on a line of its own after an unclosed bracket.
+		if !p.tok.IsKeyword() && p.line(p.pos) == p.line(p.prevEnd-1) {
+			p.next()
+		}
 	}
 	return &BadExpr{Span: p.span(start)}
 }
@@ -1910,7 +2034,7 @@ func (p *parser) parseParenOrTuple() Expr {
 		return &ParenExpr{X: x, Span: p.span(open)}
 	}
 	elems := []Expr{x}
-	for p.got(COMMA) && p.tok != RPAREN && p.tok != EOF {
+	for p.got(COMMA) && p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 		elems = append(elems, p.parseExpr())
 	}
 	p.expectClose(RPAREN, open, "tuple")
@@ -1934,7 +2058,7 @@ func (p *parser) parseArrayOrMap() Expr {
 	first := p.parseExpr()
 	if p.tok != COLON {
 		elems := []Expr{first}
-		for p.got(COMMA) && p.tok != RBRACK && p.tok != EOF {
+		for p.got(COMMA) && p.tok != RBRACK && p.tok != RBRACE && p.tok != EOF {
 			elems = append(elems, p.parseExpr())
 		}
 		p.expectClose(RBRACK, open, "array")
@@ -2127,7 +2251,7 @@ func (p *parser) parseNonOptionalType() Type {
 		p.next()
 		var elems []Type
 		comma := false
-		for p.tok != RPAREN && p.tok != EOF {
+		for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 			elems = append(elems, p.parseType())
 			if !p.got(COMMA) {
 				break
@@ -2147,7 +2271,7 @@ func (p *parser) parseNonOptionalType() Type {
 		}
 		p.expect(FN)
 		open := p.expect(LPAREN)
-		for p.tok != RPAREN && p.tok != EOF {
+		for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 			t.Params = append(t.Params, p.parseType())
 			if !p.got(COMMA) {
 				break
@@ -2192,7 +2316,7 @@ func (p *parser) parsePattern() Pattern {
 func (p *parser) parsePrimaryPattern() Pattern {
 	start := p.pos
 	switch p.tok {
-	case IDENT:
+	case IDENT, APP, BIND, COMPONENT, EFFECT, ENUM, EVENT, INTERFACE, KEY, NATIVE, ON, PROP, PROVIDE, SCREEN, STATE, STORE, STRUCT, STYLE, TASK, TEST, TYPE, USE, THROWS:
 		if p.lit == "_" {
 			p.next()
 			return &WildcardPat{Span: p.span(start)}
@@ -2227,7 +2351,7 @@ func (p *parser) parsePrimaryPattern() Pattern {
 		p.next()
 		var elems []Pattern
 		comma := false
-		for p.tok != RPAREN && p.tok != EOF {
+		for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 			elems = append(elems, p.parsePattern())
 			if !p.got(COMMA) {
 				break
@@ -2256,7 +2380,7 @@ func (p *parser) caseArgs(c *CasePat) {
 	c.Lparen = p.pos
 	p.next()
 	c.Args = []Pattern{}
-	for p.tok != RPAREN && p.tok != EOF {
+	for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 		c.Args = append(c.Args, p.parsePattern())
 		if !p.got(COMMA) {
 			break
