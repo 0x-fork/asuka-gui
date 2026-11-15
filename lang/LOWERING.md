@@ -45,6 +45,7 @@ the built-in functions and methods) into one module.
 | `fn(...)` | ref | ak_closure |
 | store | ref | an ak_struct of the store's cells, memos and methods' captures |
 | `View` | ref | ak_view (the UI runtime's) |
+| `Graphics`, `Path`, a catalog | ref | the UI runtime's objects (core/src/ui/canvas.c, i18n.c) |
 | `Task<T>` | ref | ak_future |
 | `Loading<T>` | ref | the runtime's loader (see "load") |
 | interface | ref | a struct or enum value; calls go through CALLI |
@@ -190,6 +191,143 @@ r, b, l]` are Edges; a number where a `Length` is expected is points;
 
 Each builder and row runs under its own owner, which the runtime
 disposes when the branch or row goes.
+
+## Interaction states and variants
+
+A container's (`View`, `Row`, `Column`, `SafeArea`: the elements whose
+`Variants` is set in lang/prelude/elements.go) block may hold variants:
+a block named after an interaction state (prelude.Variants: `hovered`,
+`pressed`, `dragging`, `dragOver`), holding style prop sets only. The
+parser reads `pressed { … }` as a named slot; the checker knows it's a
+variant from the element. Each prop set in it lowers as a prop set does,
+with the state:
+
+| Source | Lowered |
+|---|---|
+| `pressed { opacity: 0.6 }` | `ui.variant(v, AK_STATE_PRESSED, AK_KEY_OPACITY, 0.6)` |
+| `hovered { color: c }` (c reactive) | `ui.variant_bind(v, AK_STATE_HOVERED, AK_KEY_COLOR, thunk)` |
+| `style card` inside a variant | the style's sets, inlined into the variant |
+| `View as card { … }` then `card.hovered` | `card` is `ui.ref(v)`; the read is `ui.state(card, AK_STATE_HOVERED)`, a tracked bool |
+| `on pressedChange(p) { … }` | `ui.on(v, AK_EV_VIEW_PRESSED_CHANGE, closure)`, as any event |
+
+The runtime lays the variants of the states the view is in over its own
+values, in the states' order (a later one wins), whole values (a `font`
+in a variant replaces the font). A view reports a state from the first
+variant, read or handler that asks for it, and leaves each state it's in
+when its owner is disposed. `ref` names any element, so `card.hovered`
+works on any view the host reports states for.
+
+## Graphics
+
+`Canvas(draw)` takes a closure `fn(Graphics)`; `Shape(path)` one of
+`fn(float, float) -> Path` (the width and height it's laid out at).
+Both run in a render effect once the element knows its size (after the
+frames, as a layout handler does), and again when it changes or what
+they read changes; only a drawing that differs from the last is sent.
+
+`Graphics` and `Path` are built-in reference types (runtime objects, not
+values): a Graphics is valid only while its draw runs; a Path is a
+builder whose methods add to it and return it, so they chain. Their
+methods are builtins taking the object first:
+
+| Source | Lowered |
+|---|---|
+| `g.width`, `g.height` | `canvas.width(g)`, `canvas.height(g)` (floats) |
+| `g.path()` | `canvas.path(g)`: one of the canvas's paths, emptied, reused from draw to draw (drawing again allocates nothing) |
+| `Path()` | `path.new()` |
+| `p.move(x, y)`, `.line`, `.quad(cx, cy, x, y)`, `.cubic(...)`, `.rect`, `.roundedRect(x, y, w, h, r)`, `.ellipse`, `.arc(cx, cy, r, start, end, clockwise)`, `.close()` | `path.move(p, x, y)`, ..., `path.rounded_rect`, `path.arc` (radians, clockwise from +x), `path.close(p)`; each returns p |
+| `g.fill(p, color)`, `g.stroke(p, color, StrokeStyle(...))` | `canvas.fill(g, p, c)`, `canvas.stroke(g, p, c, style?)` |
+| `g.fill(p, LinearGradient(...))`, `RadialGradient` | `canvas.fill_gradient(g, p, gr)`, `canvas.fill_radial(g, p, gr)` (the checker picks by type) |
+| `g.stroke(p, style, gradient)` | `canvas.stroke_gradient` / `canvas.stroke_radial` |
+| `g.save()`, `.restore()`, `.translate(x, y)`, `.scale(x, y)`, `.rotate(deg)`, `.opacity(a)`, `.clip(p)`, `.transform(a, b, c, d, tx, ty)`, `.evenOdd(on)` | `canvas.save(g)`, ..., `canvas.even_odd(g, on)` |
+| `g.text(s, x, y, CanvasText(...))` | `canvas.text(g, s, x, y, style?)` |
+
+`Shader(program)` takes the compiled program as `bytes`: the compiler
+compiles `shader("""…""")`, a Kage program, at build time (package
+shader, internal/shadercode's Encode, which carries the uniforms' lane
+table) into a bytes constant. `uniforms: [Uniform(name:, value:)]` set
+its variables by name; `colorUniform(name, color)` is
+`canvas.color_uniform`.
+
+## Animation and frames
+
+| Source | Lowered |
+|---|---|
+| `animate { body }` | `ui.animate(none, closure{body})` |
+| `animate(.spring) { body }` | `ui.animate(anim, closure{body})`, anim an `Animation` |
+| `animating()` | `ui.animating()` (whether the changes made now animate) |
+| `let stop = onFrame(t => …)` | `ui.on_frame(closure(t: Duration))`, which returns the stop closure; the frames stop with the current owner too |
+
+`body` runs synchronously, its writes batched; the props and frames the
+next flush changes are sent between AnimateBegin and AnimateEnd.
+`Animation.done` is called once the animation is complete.
+
+## Keys, drags, drops, accessibility
+
+`keys: [Shortcut(key: "down", run: () => …)]` and `actions:
+[A11yAction(name: "Delete", run: …)]` are style props: any element
+takes them (a flattened container gets a view). `useKeys([...])` in a
+component is `ui.use_keys(keys)`: the root's keys while the component
+lives, the last one's winning. A container's `dragItems: [DragItem]`
+(often a binding) makes it draggable and `dropTypes: [string]` a drop
+target; their events are `dragPhase`, `dropOver`, `dropMove` and `drop`.
+`on adjust(by)` makes a view adjustable for screen readers.
+
+## Media and the system
+
+Commands on a view are builtins taking its ref:
+
+| Source | Lowered |
+|---|---|
+| `video.play()`, `.pause()`, `.seek(s)` | `ui.play(v)`, `ui.pause(v)`, `ui.seek(v, s)` |
+| `web.eval(js)`, `.back()`, `.forward()`, `.reload()`, `.stop()` | `ui.web_eval(v, js)`, `ui.web_navigate(v, 0..3)` |
+| `try await web.evalResult(js)`, `try await webCookies(url)` | `ui.web_eval_result(v, js)`, `ui.web_cookies(url)`: AWAIT on the future |
+| `field.insertText(s)`, `.format(.bold, on)`, `.toggleFormat(.bold)`, `.setLink(url)` | `ui.insert_text`, `ui.format(v, f, on)`, `ui.toggle_format(v, f)`, `ui.set_link` |
+| `share(text)`, `try await shareFiles(paths, ...)`, `haptic(.success)`, `copy(text)`, `openURL(url)`, `announce(text)`, `a11yFocus(view)` | `ui.share`, `ui.share_files`, `ui.haptic`, `ui.copy`, `ui.open_url`, `ui.announce`, `ui.a11y_focus` |
+| `onOpenURL(u => …)`, `onOpenFiles(ps => …)`, `onShare(items => …)` | `ui.on_open_url`, `ui.on_open_files`, `ui.on_share`: handlers while the component lives |
+
+A host module's method (one Asuka doesn't wrap) is `ui.call(module,
+method, args)`, a future of the answer's bytes.
+
+## Native components
+
+A `native component X(…) { prop …; event … }` of a native package
+(docs/native.md) lowers as a component whose body is one native view:
+
+| Source | Lowered |
+|---|---|
+| making it | `v = ui.native(type)`, type `"<module ID>#X"`, the module ID the platforms' generated code registers (as `native.new`'s cls) |
+| a prop, constant | `ui.native_set(v, "name", value, desc)`, desc its type's descriptor (native.h's) |
+| a prop, reactive | `ui.native_bind(v, "name", thunk, desc)` |
+| `on name(a, b) { … }` | `ui.native_on(v, "name", closure, desc)`, desc its parameters' descriptors, in order |
+| the style | `ui.set` / `ui.bind` of style keys on v |
+
+The handlers are set before the props (a view may send an event as a
+prop is set); the runtime sends the props after the listening, then each
+again only when its encoding changes. Props cross as bytes (native.go's
+type 5) in the native codec; an event's values are its one value "v",
+decoded parameter by parameter.
+
+## Languages
+
+An app's catalogs compile at build time with package i18n
+(`Catalog.Compile`): the blob, the keys sorted, and each key's arguments
+in its source message's order. The blob is a module constant; the
+module's init makes the catalog global, `i18n.catalog(blob)`, which
+registers it: its languages become the app's.
+
+| Source | Lowered |
+|---|---|
+| `tr.inbox.title(unread: n)` | `i18n.say(catalog, key, (n,), none)`, key the index of `inboxTitle`'s key; the tuple of the arguments in the key's order: an int or a float for number, plural and selectordinal arguments, a string otherwise |
+| `tr.in("de").greeting(name: n)` | `i18n.say(catalog, key, (n,), "de")` |
+| `locale()`, `setLocale(tag)`, `setLanguages(tags)`, `languages()`, `preferredLanguages()`, `isRTL()`, `region()`, `formatLocale()` | `i18n.locale`, `i18n.set_locale`, ... |
+
+`i18n.say` reads the language shown, tracked: a binding that says a
+message follows the language as it follows its arguments. A key missing
+in a language falls back as `Catalog.Format` does (its CLDR parent
+locales, then the source); a key none has says its name. Dates are the
+caller's to write (a `date` or `time` argument takes a string) until the
+language has a date type.
 
 ## load
 

@@ -44,6 +44,11 @@
 //
 // Main thread only.
 //
+// Interaction states and style variants, gestures, keys, drags and drops,
+// animation and frames, rich text, canvas, shapes and shaders, video,
+// web and native views, image placeholders, the system's commands and
+// calls, the app's language and catalogs: ui_ext.h's parts.
+//
 // ---- Deferred to the next job (the structure supports each) ----
 //
 // The rest of the Go ui package. Each is an element class (core/src/ui:
@@ -54,26 +59,18 @@
 //     router.go, back.go): host-sized layout roots with their own
 //     environment (the element's host_sized and env fields are there for
 //     them; layout() lays them out); ak_ui_push/pop/present/dismiss below.
-//     A Button's href is stored and ignored until the router lands.
-//   - rich text and Selectable (richtext.go, richfield.go): Text's
-//     selectable key is ignored until then; a TextField's rich, paste
-//     types, formats and accessory.
-//   - canvas, shapes and shaders (canvas.go, shape.go, shader.go); video
-//     and web views (video.go, web.go); native views (native.go).
-//   - gestures (pan, pinch, rotate, swipe), animation (animate.go,
-//     frame.go's OnFrame), keys (keys.go), drag and drop and interaction
-//     states: the style's Hovered and Pressed variants (interaction.go).
-//   - windows, split views, snackbars, keyboard accessories (window.go,
-//     windowhandle.go, split.go, snackbar.go); share, haptics, calls
-//     (share.go, call.go); the app's language and its catalogs
-//     (locale.go: ak_ui_set_direction is its hook for now).
+//     A Button's href is stored and ignored until the router lands; the
+//     router takes the URLs the app is opened with through
+//     ak_ui_route_url (share.c).
+//   - windows, split views, snackbars (window.go, windowhandle.go,
+//     split.go, snackbar.go); a Window's own keys (use_keys is the root's).
 //   - List: sections and headers, swipe actions, selection (list.go's
 //     Section, SwipeActions, Selecting); Scroll: paging, page control.
-//   - Image: BlurHash and ThumbHash placeholders, animated images
-//     following Reduce Motion (media.go, imagehash.go).
 //   - Error boundaries (control.go's Catch) as an element over ak_catch.
 //   - The keep registry of the dev loop: state cells kept across reloads
 //     by ak_ui_path_key (below).
+//   - Dates in messages: a catalog's date and time arguments take a
+//     string the app wrote until the language has a date type.
 #ifndef AK_UI_H
 #define AK_UI_H
 
@@ -124,8 +121,8 @@ void ak_ui_environment(ak_environment *env);
 
 // ak_ui_set_direction lays the app out right to left (or not): its
 // layout roots' direction, the start and end sides, a horizontal
-// Scroll's. The app's language decides it (locale.go's job, deferred);
-// ASUKA_DIRECTION=rtl forces it at init.
+// Scroll's. The app's language decides it (locale.c calls it as the
+// language changes); ASUKA_DIRECTION=rtl or ltr forces it.
 void ak_ui_set_direction(bool rtl);
 
 // From the host (the C ABI, core/src/abi):
