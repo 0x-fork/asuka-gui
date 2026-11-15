@@ -357,7 +357,7 @@ func (r *Root) layoutFitWindow(e *element, p *layout.Pass) {
 func (r *Root) layoutFitSheet(e *element, p *layout.Pass) {
 	env := e.env.Peek()
 	room := layout.Size{W: env.Width, H: env.Height}
-	if room.W <= 0 || room.H <= 0 || !e.box.Dirty() && e.fitSent && room == e.fitRoom {
+	if e.fitWait || room.W <= 0 || room.H <= 0 || !e.box.Dirty() && e.fitSent && room == e.fitRoom {
 		return
 	}
 	if st := e.box.Style; st.Width != layout.Pt(room.W) || st.Height != layout.Auto || st.MaxHeight != layout.Pt(room.H) {
@@ -548,6 +548,7 @@ func dispatch(ev ops.Event) {
 		setTimeZone(ev.Env.TimeZone)
 		env := classify(ev.Env)
 		if e := elems[ev.ID]; e != nil && e.env != nil && !e.dead {
+			e.fitWait = false // its own room, which a fit sheet waits for
 			e.setEnv(env)
 			return
 		}

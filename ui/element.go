@@ -119,9 +119,12 @@ type element struct {
 	// laid out), which the core tells the host with WindowAction Fit.
 	fitSheet bool
 	fitRoom  layout.Size
-	measured        bool       // the host measures its content
-	insets          [4]float32 // a measured view's ContentInset, as last sent
-	laidSize        layout.Size
+	// fitWait: a fit sheet whose host hasn't said its room yet; its
+	// environment until then is its window's, which it isn't laid out at.
+	fitWait  bool
+	measured bool       // the host measures its content
+	insets   [4]float32 // a measured view's ContentInset, as last sent
+	laidSize layout.Size
 }
 
 var (

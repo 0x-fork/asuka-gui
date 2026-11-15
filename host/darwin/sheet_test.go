@@ -124,5 +124,15 @@ func TestFitSheetDarwin(t *testing.T) {
 		is("shrunk", 140)
 		post(h, func() { lots.Set(true) })
 		is("too tall for a sheet", room.Height)
+		// Opened again, it shows, at its content's size from the first:
+		// its room is the same, and the core sizes it all the same.
+		post(h, func() { open.Set(false) })
+		post(h, func() { lots.Set(false); open.Set(true) })
+		s = find(h, ops.KindSheet)[0]
+		w = s.nav.window
+		if w == 0 || Send(w, "sheetParent") != h.window {
+			fatal(t, "opened again, the sheet doesn't show")
+		}
+		is("opened again", 140)
 	})
 }

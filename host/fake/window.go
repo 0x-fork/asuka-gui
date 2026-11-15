@@ -93,6 +93,14 @@ func (h *Host) windowCommand(v *View, c ops.CommandID, args []byte) {
 		}
 		h.reportWindow(v)
 	case ops.CmdWindowAction:
+		if v.Kind == ops.KindSheet {
+			// A sheet as tall as its content (DetentFit) is sized with
+			// Fit, which Commands shows; it has no window state.
+			if a, _, _, ok := ops.DecodeWindowAction(args); !ok || a != ops.WindowActionFit {
+				panic("fake: a WindowAction on a Sheet other than Fit")
+			}
+			return
+		}
 		if v.Kind != ops.KindWindow && v.Kind != ops.KindView {
 			panic(fmt.Sprintf("fake: WindowAction on a %s", v.Kind))
 		}

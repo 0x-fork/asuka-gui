@@ -805,6 +805,7 @@ func showSheet(r *Root, win *WindowHandle, owner *signal.Owner, p SheetProps, ro
 		sheet := newProvider(ops.KindSheet)
 		v.el = sheet
 		sheet.fitSheet = !p.FullScreen && p.Detents&DetentFit != 0 && sheetsFit(r.envV.Platform)
+		sheet.fitWait = sheet.fitSheet
 		sheet.up = win.el()
 		if sheet.up == nil {
 			sheet.up = r.el

@@ -917,3 +917,40 @@ func TestScreenToolbarAndPrimary(t *testing.T) {
 		t.Fatalf("a popped screen's toolbar was sent:\n%s", h.Log())
 	}
 }
+
+// A sheet as tall as its content waits for the room its host gives it
+// before it's laid out and sized: its environment until then is its
+// window's, as wide as the window, which it would open at.
+func TestFitSheetWaitsForItsRoom(t *testing.T) {
+	h := fake.New()
+	h.Env.Platform = ops.PlatformMacOS
+	h.Env.Width, h.Env.Height = 1120, 780
+	open := signal.New(false)
+	r := ui.Mount(h, func() ui.Node {
+		return ui.Sheet(ui.SheetProps{Open: open, Detents: ui.DetentFit, Content: func() ui.Node {
+			return ui.View(ui.ViewProps{Style: ui.Style{Height: ui.Pt(100)}})
+		}})
+	})
+	t.Cleanup(r.Dispose)
+	fits := func() [][2]float32 {
+		var out [][2]float32
+		for _, op := range h.Commands(ops.CmdWindowAction) {
+			if a, x, y, ok := ops.DecodeWindowAction(op.Value.Bytes); ok && a == ops.WindowActionFit {
+				out = append(out, [2]float32{x, y})
+			}
+		}
+		return out
+	}
+	open.Set(true)
+	r.Flush()
+	if f := fits(); len(f) != 0 {
+		t.Fatalf("sized at its window's environment: %v", f)
+	}
+	sheet := h.OfKind(ops.KindSheet)[0]
+	env := h.Env
+	env.Width, env.Height = 640, 680
+	h.Dispatch(ops.Event{ID: sheet.ID, Kind: ops.EventEnvironment, Env: env})
+	if f := fits(); !reflect.DeepEqual(f, [][2]float32{{640, 100}}) {
+		t.Fatalf("Fit %v, want 640x100", f)
+	}
+}

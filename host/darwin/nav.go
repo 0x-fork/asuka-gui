@@ -56,11 +56,14 @@ type nav struct {
 	on       ops.NodeID
 	deferred bool // presenting waits for its window to open
 	full     bool // a Sheet's FullScreen: as big as its window's content
-	alert    ID
-	order    []int // an alert's buttons' indexes, in the alert's order
-	fields   []ops.AlertField
-	inputs   []ID // its fields' NSTextFields, while it shows
-	defBtn   ID   // its default button, which return in its last field presses
+	// begin shows a sheet as tall as its content once the core has sized
+	// it (fitSheet): before, it would slide in at its room's size.
+	begin  func()
+	alert  ID
+	order  []int // an alert's buttons' indexes, in the alert's order
+	fields []ops.AlertField
+	inputs []ID // its fields' NSTextFields, while it shows
+	defBtn ID   // its default button, which return in its last field presses
 
 	// Window: its options (Config), a flyout's anchor (Flyout), and the
 	// document it shows: edited, its file.
@@ -259,7 +262,7 @@ func (h *Host) destroyNav(n *node) bool {
 			Send(w, "orderOut:", 0)
 			delete(h.byView, Send(w, "contentView"))
 			Release(w)
-			n.nav.window = 0
+			n.nav.window, n.nav.begin = 0, nil
 		}
 		for _, c := range n.children {
 			c.parent = nil
@@ -290,7 +293,7 @@ func (h *Host) destroyNav(n *node) bool {
 			Send(w, "orderOut:", 0)
 			Send(w, "close")
 			Release(w)
-			n.nav.window = 0
+			n.nav.window, n.nav.begin = 0, nil
 			if key && p != 0 {
 				h.regainKey(p)
 			}
@@ -424,15 +427,23 @@ func fitsContent(n *node) bool {
 // it out at, its top edge kept.
 func (h *Host) fitSheet(n *node, width, height float32) {
 	w := n.nav.window
-	if w == 0 || width <= 0 || height <= 0 {
+	if w == 0 {
 		return
 	}
-	f := MsgRect(w, Sel("frame"))
-	top := Point{X: f.Origin.X, Y: f.Origin.Y + f.Size.Height}
-	size := Size{Width: float64(width), Height: float64(height)}
-	MsgSetSize(w, Sel("setContentSize:"), size)
-	MsgPointID(w, Sel("setFrameTopLeftPoint:"), top)
-	MsgSetRect(n.view, selSetFrame, Rect{Size: size})
+	if width > 0 && height > 0 {
+		f := MsgRect(w, Sel("frame"))
+		top := Point{X: f.Origin.X, Y: f.Origin.Y + f.Size.Height}
+		size := Size{Width: float64(width), Height: float64(height)}
+		MsgSetSize(w, Sel("setContentSize:"), size)
+		MsgPointID(w, Sel("setFrameTopLeftPoint:"), top)
+		MsgSetRect(n.view, selSetFrame, Rect{Size: size})
+	}
+	// The first size shows it, once the batch that placed its content
+	// is applied.
+	if begin := n.nav.begin; begin != nil {
+		n.nav.begin = nil
+		h.afterCore(begin)
+	}
 }
 
 // layoutNav sizes every host-sized view again (the window resized).
@@ -691,12 +702,24 @@ func (h *Host) present(n *node) {
 		// size once the batch is applied, and lays it out then. Shown
 		// before, it slid in empty (laid out at its window's size), a
 		// field's focus ring at its corner.
+		begin := func() {
+			if h.nodes[n.id] == n && !n.dying && n.nav.window == w {
+				Send(over.window, "beginSheet:completionHandler:", uintptr(w), 0)
+			}
+		}
+		if fitsContent(n) {
+			// It shows at its content's size: the core's first Fit, for
+			// the room reported here or as the window lays out, begins it.
+			n.nav.begin = begin
+		}
 		h.afterCore(func() {
 			if h.nodes[n.id] != n || n.dying || n.nav.window != w {
 				return
 			}
 			h.reportScreen(n, size)
-			Send(over.window, "beginSheet:completionHandler:", uintptr(w), 0)
+			if !fitsContent(n) {
+				begin()
+			}
 		})
 	case ops.KindWindow:
 		h.openWindow(n)
