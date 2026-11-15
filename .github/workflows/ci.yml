@@ -11,7 +11,18 @@ jobs:
       - run: go test ./...
       - run: go test -tags asuka_debug ./signal
       - name: generated files are up to date
-        run: go generate ./ops && git diff --exit-code
+        run: go generate ./ops ./lang/bytecode ./lang/prelude && git diff --exit-code
+  # The C core: its tests under ASan and UBSan with the system's compiler
+  # (go test ./core, above, with gcc), and with clang; its builds for the
+  # web with Zig.
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+      - uses: mlugg/setup-zig@v2
+      - run: CC=clang go test ./core ./internal/cbuild -v
   swift:
     runs-on: macos-latest
     steps:
@@ -19,6 +30,8 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: stable }
       - run: swift test --package-path platform/ios
+      - name: the core builds for iOS and the simulator, and for macOS
+        run: go test ./internal/cbuild -run 'IOS|Host' -v
       - name: the app builds for the simulator
         run: |
           SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)

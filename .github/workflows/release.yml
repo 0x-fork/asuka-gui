@@ -1,0 +1,37 @@
+name: release
+# A tag v1.2.3 publishes the CLI: its npm packages (@asuka/cli and a
+# prebuilt binary per platform) and a GitHub release with the binaries,
+# for the shell installer.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+  id-token: write # npm provenance
+jobs:
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
+      - name: the packages
+        run: go run ./scripts/npm -version "${GITHUB_REF_NAME#v}" -out dist/npm
+      - name: npm
+        run: go run ./scripts/npm -version "${GITHUB_REF_NAME#v}" -out dist/npm -publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: the GitHub release
+        run: |
+          mkdir -p dist/bin
+          for d in dist/npm/cli-*; do
+            p=${d#dist/npm/cli-}
+            f=$(ls $d/bin/asuka*)
+            case "$f" in *.exe) cp "$f" "dist/bin/asuka-$p.exe" ;; *) cp "$f" "dist/bin/asuka-$p" ;; esac
+          done
+          (cd dist/bin && sha256sum * > SHA256SUMS)
+          gh release create "$GITHUB_REF_NAME" dist/bin/* --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
