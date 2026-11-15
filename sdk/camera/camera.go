@@ -1,7 +1,7 @@
 // Package camera takes a photo with the system's camera (iOS's camera
 // screen, Android's camera app) and gives the app the file. An app that
 // imports it is given what it needs (iOS's camera purpose string, which
-// asuka.json's ios.usage.NSCameraUsageDescription says better).
+// asuka.toml's ios.usage.NSCameraUsageDescription says better).
 package camera
 
 import (

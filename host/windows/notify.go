@@ -121,7 +121,7 @@ func (h *Host) notes() *notifier {
 	return h.svc.notes
 }
 
-// appUserModelID is the app's ID for the shell: asuka.json's ID, else one
+// appUserModelID is the app's ID for the shell: asuka.toml's ID, else one
 // of its name.
 func (h *Host) appUserModelID() string {
 	if boot.ID != "" {

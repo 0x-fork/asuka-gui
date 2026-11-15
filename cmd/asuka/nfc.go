@@ -15,15 +15,18 @@ import (
 // its sessions and tags need (featurePermissions, addNFC).
 const nfcPkg = "github.com/egoist/asuka/sdk/nfc"
 
-// nfcConfig is asuka.json's "nfc": what asuka/sdk/nfc needs of the
+// nfcConfig is asuka.toml's nfc: what asuka/sdk/nfc needs of the
 // platforms beyond the permissions every app that imports it has.
 //
-//	"nfc": {
-//	  "iso7816": ["D2760000850101"],
-//	  "felica": ["8008"],
-//	  "ndef": [{"uri": "https://example.com/tags/"}, {"mime": "application/vnd.example.ticket"}, {"external": "example.com:ticket"}],
-//	  "tech": [["IsoDep"], ["NfcA", "MifareUltralight"]]
-//	}
+//	[nfc]
+//	iso7816 = ["D2760000850101"]
+//	felica = ["8008"]
+//	ndef = [
+//	  {uri = "https://example.com/tags/"},
+//	  {mime = "application/vnd.example.ticket"},
+//	  {external = "example.com:ticket"},
+//	]
+//	tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
 type nfcConfig struct {
 	// ISO7816 are the applications (AIDs, in hex) iOS selects as it finds
 	// an ISO 7816 card, in order: Info.plist's

@@ -156,8 +156,8 @@ type Frame struct {
 
 // Context is what the app was doing when it crashed.
 type Context struct {
-	AppVersion    string `json:"appVersion,omitempty"`    // asuka.json's version
-	Build         string `json:"build,omitempty"`         // asuka.json's build
+	AppVersion    string `json:"appVersion,omitempty"`    // asuka.toml's version
+	Build         string `json:"build,omitempty"`         // asuka.toml's build
 	Model         string `json:"model,omitempty"`         // "iPhone17,1", "Pixel 9"; on the web, the browser's system ("macOS 15.1")
 	System        string `json:"system,omitempty"`        // "iOS", "Android", "macOS", "Windows", "Linux", "Web"
 	SystemVersion string `json:"systemVersion,omitempty"` // "26.0", "16"; on the web, the browser ("Chrome 131")

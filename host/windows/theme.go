@@ -131,7 +131,7 @@ func newPalette(dark bool, accent ops.Color) palette {
 		p.fieldFocusBg = hex(0xFFFFFF)
 	}
 	if r, g, b, _, ok := accent.RGBA(); ok {
-		// The app's accent replaces the system's, as asuka.json's does on
+		// The app's accent replaces the system's, as asuka.toml's does on
 		// iOS and Android.
 		a := rgba{r, g, b, 255}
 		p.accent, p.accentHot, p.accentPressed = a, a.withAlpha(0.9), a.withAlpha(0.8)

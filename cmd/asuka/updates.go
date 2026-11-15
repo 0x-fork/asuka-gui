@@ -30,12 +30,11 @@ import (
 // before, and the manifest (update-<target>.json) the app checks; asuka
 // publish uploads them to GitHub's releases or an S3 bucket.
 
-// updatesConfig is asuka.json's "updates".
+// updatesConfig is asuka.toml's updates.
 //
-//	"updates": {
-//	  "publicKey": "…the contents of asuka-update.pub…",
-//	  "github": "you/notes"
-//	}
+//	[updates]
+//	publicKey = "…the contents of asuka-update.pub…"
+//	github = "you/notes"
 type updatesConfig struct {
 	// PublicKey is the contents of asuka-update.pub (asuka update keygen):
 	// installed apps accept only updates signed with its private key.
@@ -90,7 +89,7 @@ func (c *appConfig) updates() (*updatesConfig, error) {
 		u.URL, u.GitHub = link, ""
 	}
 	if err := u.validate(); err != nil {
-		return nil, fmt.Errorf("asuka.json: %w", err)
+		return nil, fmt.Errorf("asuka.toml: %w", err)
 	}
 	return u, nil
 }
@@ -307,13 +306,13 @@ func writeFileList(b updateBuild) error {
 // writeUpdates writes, in out/updates, the update files of a target's
 // build: its signed archive, deltas from the versions published before,
 // and its manifest. It returns the files written (none without updates
-// in asuka.json); without the signing key it says so and writes none,
+// in asuka.toml); without the signing key it says so and writes none,
 // unless required (asuka publish), which fails then.
 func writeUpdates(app *goApp, out string, b updateBuild, required bool) ([]string, error) {
 	u, err := app.cfg.updates()
 	if err != nil || u == nil {
 		if required && err == nil {
-			err = errors.New("asuka publish needs asuka.json's updates (asuka update keygen prints them)")
+			err = errors.New("asuka publish needs asuka.toml's updates (asuka update keygen prints them)")
 		}
 		return nil, err
 	}
@@ -330,7 +329,7 @@ func writeUpdates(app *goApp, out string, b updateBuild, required bool) ([]strin
 	}
 	version := app.cfg.Version
 	if !iupdate.ValidVersion(version) {
-		return nil, fmt.Errorf("asuka.json: version %q isn't one updates compare (1.2.0, 1.3.0-beta.1)", version)
+		return nil, fmt.Errorf("asuka.toml: version %q isn't one updates compare (1.2.0, 1.3.0-beta.1)", version)
 	}
 	notes, err := u.releaseNotes(app.dir, version)
 	if err != nil {
@@ -643,7 +642,7 @@ func cmdUpdate(args []string) error {
 	var force bool
 	fs := newFlagSet("update keygen", "")
 	fs.about = `Makes the Ed25519 key pair that signs a desktop app's updates: asuka-update.key,
-the secret, and asuka-update.pub. Put asuka-update.pub's contents in asuka.json's
+the secret, and asuka-update.pub. Put asuka-update.pub's contents in asuka.toml's
 updates.publicKey, and keep asuka-update.key out of the repository: in a
 password manager, and as CI's ASUKA_UPDATE_PRIVATE_KEY secret. Installed apps
 accept only updates signed with it: losing it strands them, and whoever has
@@ -675,7 +674,7 @@ it can ship code to your users.`
 	if err := os.WriteFile(public, []byte(pubText+"\n"), 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("asuka: wrote %s (secret: keep it safe) and %s\n\nAdd to asuka.json:\n\n  \"updates\": {\n    \"publicKey\": %q,\n    \"github\": \"owner/name\"\n  }\n", secret, public, pubText)
+	fmt.Printf("asuka: wrote %s (secret: keep it safe) and %s\n\nAdd to asuka.toml:\n\n  [updates]\n  publicKey = %q\n  github = \"owner/name\"\n", secret, public, pubText)
 	return nil
 }
 

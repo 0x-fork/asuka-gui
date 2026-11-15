@@ -81,7 +81,7 @@ in the terminal.
 
 **macOS.** `asuka dev` on a Mac runs the app from an `.app` like a
 release's, in Asuka's cache: its `Info.plist` (its name, bundle ID, URL
-scheme, purpose strings and languages from `asuka.json`) and icon, signed
+scheme, purpose strings and languages from `asuka.toml`) and icon, signed
 ad hoc. So the app is itself to the system, as when it's opened from the
 Finder: the Dock shows its name and icon, notifications are its own, and
 its privacy prompts (the camera, location, contacts) ask for it, with
@@ -101,7 +101,7 @@ its state as it quits.
 which it needs installed (see [Getting
 started](getting-started.md#what-you-need)), under your session's
 display, Wayland or X11. It gets the name, ID, version and accent of
-`asuka.json`, as a release does; Asuka stops it over a connection it
+`asuka.toml`, as a release does; Asuka stops it over a connection it
 keeps to each run (or SIGINT), and it saves its state as it quits. On a Mac or a PC, `asuka dev --platform linux`
 builds the app for Linux but can't run it there, unless
 `ASUKA_LINUX_RUN` names a command that runs a program on a Linux machine
@@ -137,7 +137,7 @@ What the player can't stand in for:
   products only to the app.
 - **On iOS, `push.Rewrite`**: the player has no notification service
   extension to rewrite pushes in.
-- **On an iPhone, `asuka.json`'s `nfc.iso7816` or `nfc.felica`**: iOS
+- **On an iPhone, `asuka.toml`'s `nfc.iso7816` or `nfc.felica`**: iOS
   finds only the cards the app's own Info.plist names.
 - **On a phone, a `shareTarget` that takes files**: the files are on the
   phone, not on the computer the Go code runs on (the simulator's are the
@@ -156,7 +156,7 @@ A built app:
   `adb`, where the debug app loads it from, and restarts the app.
 
 The player has every permission any Asuka package needs, and its own
-purpose strings. What `asuka.json` gives the app itself (its name, its
+purpose strings. What `asuka.toml` gives the app itself (its name, its
 ID, a URL `scheme`, `links`, `ios.usage`, Android's NFC tag filters) only
 a built app has, and `asuka dev` says so when the app has them: try
 those with `--no-hot`. The `accent` color applies in the player too.
@@ -228,7 +228,7 @@ It skips directories starting with `.`, and `testdata`, `build` and
 `node_modules`. A build that fails prints its errors and keeps the
 running app; the next save tries again.
 
-`asuka.json`'s fields are read as `asuka dev` starts. Stop it and run it
+`asuka.toml`'s fields are read as `asuka dev` starts. Stop it and run it
 again after changing them; it rebuilds and reinstalls what changed.
 
 Native code reloads only in a built phone app, where Asuka rebuilds and
@@ -265,7 +265,7 @@ devicectl list devices` lists them). A phone paired with this Mac in
 Xcode's Devices window works over Wi-Fi too, unplugged.
 
 - **Signing**: the player and the app are signed for development by
-  your team: `--team`, else `ASUKA_TEAM_ID`, else `asuka.json`'s
+  your team: `--team`, else `ASUKA_TEAM_ID`, else `asuka.toml`'s
   `ios.team`, else the team of the Apple Development certificate in
   your keychain. The first run has Xcode make the development profiles
   it needs (`xcodebuild -allowProvisioningUpdates`), registering the
@@ -421,7 +421,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png go run .   # steps first
 - **`Xcode couldn't make the development profiles`**: sign in to Xcode
   with the team's Apple ID (Xcode › Settings › Accounts), or set an App
   Store Connect API key; a bundle ID another team has needs another
-  `id` in `asuka.json`. `the keychain has Apple Development certificates
+  `id` in `asuka.toml`. `the keychain has Apple Development certificates
   of N teams`: pick one with `--team`.
 - **`the player hasn't connected yet`**: by USB, check the cable and
   unlock the phone; over Wi-Fi, put it on the Mac's network, allow the
@@ -534,9 +534,9 @@ go run ./bench/run -android    # asuka and Compose on the running emulator or de
 `bench/results`. [`bench/README.md`](../bench/README.md) has the
 scenarios, how they're measured, and the latest results.
 
-## asuka.json
+## asuka.toml
 
-`asuka dev` and `asuka build` read the same `asuka.json`; see
-[the asuka.json reference](asuka-json.md) for its keys, and
-[Shipping](shipping.md#asukajson) for how they come together for a
+`asuka dev` and `asuka build` read the same `asuka.toml`; see
+[the asuka.toml reference](asuka-toml.md) for its keys, and
+[Shipping](shipping.md#asukatoml) for how they come together for a
 release.

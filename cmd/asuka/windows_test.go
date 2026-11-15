@@ -195,7 +195,7 @@ func tinyPE() []byte {
 	return b
 }
 
-// A Windows build carries asuka.json's ID and scheme, which the host
+// A Windows build carries asuka.toml's ID and scheme, which the host
 // registers and runs once by.
 func TestWindowsLdflags(t *testing.T) {
 	app := &goApp{name: "notes", cfg: &appConfig{ID: "com.example.notes", Scheme: "notes", Version: "1.2", Build: 3}}

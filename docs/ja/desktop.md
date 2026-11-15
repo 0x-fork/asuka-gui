@@ -72,7 +72,7 @@ ui.Window(ui.WindowProps{
 
 ## バックグラウンドで動くアプリ
 
-`app.KeepRunning()` を呼ぶと、最後のウィンドウを閉じてもアプリは動き続けます。ウィンドウは隠れるだけで、`ui.MainWindow().Show()` で再び表示できます（Mac では Dock アイコンのクリックでも表示されます）。`app.RunInBackground()`、または `asuka.json` の `"background": true` は、これに加えて、ウィンドウなしで（Mac では Dock アイコンもなしで）アプリを起動します。メニューバーやトレイに常駐するアプリ向けです。どちらも `app.Run` より前に呼んでください。
+`app.KeepRunning()` を呼ぶと、最後のウィンドウを閉じてもアプリは動き続けます。ウィンドウは隠れるだけで、`ui.MainWindow().Show()` で再び表示できます（Mac では Dock アイコンのクリックでも表示されます）。`app.RunInBackground()`、または `asuka.toml` の `background = true` は、これに加えて、ウィンドウなしで（Mac では Dock アイコンもなしで）アプリを起動します。メニューバーやトレイに常駐するアプリ向けです。どちらも `app.Run` より前に呼んでください。
 
 ## グローバルショートカット
 
@@ -190,7 +190,7 @@ Mac ではウィンドウのシートとして、Windows ではウィンドウ�
 
 ## ファイルを開く
 
-アプリが開くファイルの種類を `asuka.json` の `fileTypes` で宣言し（[配布](shipping.md)）、`ui.OnOpenFiles` で処理します。
+アプリが開くファイルの種類を `asuka.toml` の `fileTypes` で宣言し（[配布](shipping.md)）、`ui.OnOpenFiles` で処理します。
 
 ```go
 ui.OnOpenFiles(func(paths []string) {
@@ -204,7 +204,7 @@ ui.OnOpenFiles(func(paths []string) {
 
 ## 単一インスタンス
 
-Windows と Linux では、`id` を持つアプリは一つしか起動しません。もう一度起動すると、実行中のアプリが前面に出ます。`app.OnSecondInstance(func(args []string, dir string))` で、新たな起動の引数と作業ディレクトリを受け取れます。引数に含まれるファイルとリンクは、`ui.OnOpenFiles` と `ui.OnOpenURL` に渡されます。毎回新しいインスタンスを起動したい場合は、`asuka.json` で `"singleInstance": false` を設定します。Mac では、アプリは常に一つしか起動せず、渡されるのは引数ではなくファイルです。
+Windows と Linux では、`id` を持つアプリは一つしか起動しません。もう一度起動すると、実行中のアプリが前面に出ます。`app.OnSecondInstance(func(args []string, dir string))` で、新たな起動の引数と作業ディレクトリを受け取れます。引数に含まれるファイルとリンクは、`ui.OnOpenFiles` と `ui.OnOpenURL` に渡されます。毎回新しいインスタンスを起動したい場合は、`asuka.toml` で `singleInstance = false` と設定します。Mac では、アプリは常に一つしか起動せず、渡されるのは引数ではなくファイルです。
 
 ## 終了
 
@@ -218,7 +218,7 @@ Windows と Linux では、`id` を持つアプリは一つしか起動しませ
 
 アプリのルートに `update.Window(update.Options{})` を置くと、Sparkle 方式のアップデーターになります。起動直後と 1 日 1 回、新しいバージョンを確認し、リリースノートを「アップデートをインストール」「このバージョンをスキップ」「後で通知」のボタンとともに表示します。ダウンロードは進捗バー付きで行い（実行中のバージョンからの差分があれば、変更部分だけをダウンロードします）、アプリの鍵で署名されていることを確かめてからインストールし、「今すぐ再起動」を提示します。`update.AppMenu()` は、Mac では「…について」の次に「アップデートを確認…」を追加します（ほかのプラットフォームでは「ヘルプ」メニューに追加します）。独自の UI を作るには、`update.Check`、`Release.Install`、`update.Relaunch` を使います。
 
-鍵ペアは `asuka update keygen` で作ります。リリースの公開先（GitHub のリリース、S3 バケットや任意の HTTPS ディレクトリ、または自前のサーバー）は `asuka.json` の `updates` で指定し、`asuka publish --platform mac`（`windows`、`linux`）でビルド、署名、アップロードを行います（[配布](shipping.md#自動アップデート)）。Mac アプリの新しいバンドルは、アプリが終了するのを待ってから置き換わります。Windows と Linux では、実行中にアプリのファイルを置き換えます。システムのパッケージ、Flatpak、Snap、アプリストアからインストールされたアプリは、それらによって更新されます。そのことは `update.Supported()` でわかり、スマートフォンでは `ErrUnsupported` が返ります。Web では、サイトより古いページがリロードを促します。
+鍵ペアは `asuka update keygen` で作ります。リリースの公開先（GitHub のリリース、S3 バケットや任意の HTTPS ディレクトリ、または自前のサーバー）は `asuka.toml` の `updates` で指定し、`asuka publish --platform mac`（`windows`、`linux`）でビルド、署名、アップロードを行います（[配布](shipping.md#自動アップデート)）。Mac アプリの新しいバンドルは、アプリが終了するのを待ってから置き換わります。Windows と Linux では、実行中にアプリのファイルを置き換えます。システムのパッケージ、Flatpak、Snap、アプリストアからインストールされたアプリは、それらによって更新されます。そのことは `update.Supported()` でわかり、スマートフォンでは `ErrUnsupported` が返ります。Web では、サイトより古いページがリロードを促します。
 
 ## 最近使ったドキュメント
 
@@ -248,7 +248,7 @@ func main() {
 }
 ```
 
-システムがこれらのファイルを開くアプリとしてこのアプリを提示できるよう、`asuka.json` の `fileTypes` にも同じ種類を列挙してください。`examples/textedit` は、このエディターに、ステータス行と、ほかのアプリがファイルを変更したときに出るバーを加えたものです。
+システムがこれらのファイルを開くアプリとしてこのアプリを提示できるよう、`asuka.toml` の `fileTypes` にも同じ種類を列挙してください。`examples/textedit` は、このエディターに、ステータス行と、ほかのアプリがファイルを変更したときに出るバーを加えたものです。
 
 ドキュメントの `Content()` はシグナルです。ビューはこれにバインドし、値を変えるとドキュメントは編集済みになります。ただし、`Equal` がファイルの内容と等しいと判断した場合（取り消して元に戻した、1 文字入力して消した、など）は編集済みになりません。ファイルを読み込み直したときにも、このシグナルに値が設定されます。アプリがその場で書き換えるコンテンツ（モデルへのポインターなど）は、変更したことを `doc.Changed()` で知らせ、書き込む前にコピーを取る `Snapshot` を用意します。`doc.State()` は、ドキュメントの名前とファイル、そして編集済み、読み取り専用、競合中、削除済みのどれにあたるかを表すシグナルです。
 

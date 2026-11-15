@@ -13,21 +13,24 @@
 
 `--platform` を省略すると、Mac、Windows PC、Linux マシンでは、そのコンピューター向けにビルドします。iOS と Android 以外のビルドはすべて `CGO_ENABLED=0` の素の Go なので、C のツールチェーンは必要ありません。
 
-## asuka.json
+## asuka.toml
 
-```json
-{
-  "name": "Notes",
-  "id": "com.example.notes",
-  "version": "1.2",
-  "build": 7,
-  "icon": "icon.png",
-  "ios": { "team": "ABCDE12345" },
-  "android": { "keystore": "upload.jks", "keyAlias": "upload" }
-}
+```toml
+name = "Notes"
+id = "com.example.notes"
+version = "1.2"
+build = 7
+icon = "icon.png"
+
+[ios]
+team = "ABCDE12345"
+
+[android]
+keystore = "upload.jks"
+keyAlias = "upload"
 ```
 
-キーはどれも省略できます。すべてのキーとその型、デフォルト値は [asuka.json リファレンス](asuka-json.md)にまとめてあります。次のキーはすべてのプラットフォームに適用されます。
+キーはどれも省略できます。すべてのキーとその型、デフォルト値は [asuka.toml リファレンス](asuka-toml.md)にまとめてあります。次のキーはすべてのプラットフォームに適用されます。
 
 - `name` はアプリの名前です。アイコンの下、Mac のメニューバー、Windows のウィンドウのタイトル、Linux のランチャー、Web ページのタイトルに表示されます。ビルドされるファイルの名前にもなります（`Notes.app`、`Notes.exe`）。デフォルトはディレクトリの名前です。
 - `id` は、iOS と Mac では bundle ID、Android と Linux では application ID（Linux ではデスクトップファイル、アイコン、D-Bus 名に使われます）、Windows では AppUserModelID（トースト通知に使われます）になります。デフォルトは `dev.asuka.<directory>` です。
@@ -37,11 +40,16 @@
 - `scheme` を指定すると、`myapp://` の URL でアプリが開くようになります。対象は iOS、Android、Mac（`CFBundleURLTypes`）、Linux（デスクトップファイルの `x-scheme-handler`）、Windows（アプリが起動時に `HKEY_CURRENT_USER\Software\Classes` にユーザー単位で登録します）です。`links` を指定すると、自分のドメインへの https リンクでアプリが開きます（ユニバーサルリンク、App Links。iOS と Android）。どちらも `ui.OnOpenURL` で受け取ります。
 - `fileTypes` はアプリが開くファイルの種類で、そのファイルは `ui.OnOpenFiles` で受け取ります。
 
-  ```json
-  "fileTypes": [
-    {"name": "Markdown Document", "extensions": ["md", "markdown"], "role": "viewer"},
-    {"name": "Notes Document", "extensions": ["note"], "icon": "note.png"}
-  ]
+  ```toml
+  [[fileTypes]]
+  name = "Markdown Document"
+  extensions = ["md", "markdown"]
+  role = "viewer"
+
+  [[fileTypes]]
+  name = "Notes Document"
+  extensions = ["note"]
+  icon = "note.png"
   ```
 
   `extensions` は必須です。`name` のデフォルトは、最初の拡張子を大文字にして「Document」を付けたものです。`mimeTypes` と `uti` のデフォルトは、Asuka が知っている拡張子（md、txt、json、csv、pdf、png、jpg など）であれば、各システムでの呼び名になります。それ以外の拡張子では、アプリ独自の型 `application/x-<app>-<ext>` と `<id>.<ext>` になります。この型は Mac と iOS ではエクスポートされ、Linux では shared-mime-info に定義され、アプリがそのファイルのデフォルトアプリになります。`conformsTo` は、エクスポートまたはインポートする型が準拠する UTI です（デフォルトは `public.data`、`public.content`）。`role` は `editor`（デフォルト）または `viewer` です。`icon` は正方形の PNG で、Mac、Windows、Linux でそのファイルのアイコンになります。宣言のしかたはプラットフォームごとに異なります。Mac と iOS では Info.plist（`CFBundleDocumentTypes`。iOS ではドキュメントをその場で開きます）に、Android ではインテントフィルターとして宣言します。Windows ではアプリが起動時にユーザー単位で登録します（型ごとの ProgID、拡張子の `OpenWithProgids`、`.exe` に埋め込んだアイコン）。Linux ではデスクトップファイルの `MimeType` と `share/mime/packages/<id>.xml` に書かれます（`.tar.gz` を展開したあとは `update-mime-database` と `update-desktop-database` を実行してください。パッケージマネージャーや Flatpak なら自動で実行されます）。Web ではマニフェストの `file_handlers` に書かれます（Chromium でインストールしたアプリが対象です）。
@@ -60,8 +68,8 @@
 
 - `orientations`：スマートフォンでの画面の向きで、`portrait`、`landscape` を指定します（デフォルトは両方）。iPad では、Split View、Slide Over、ステージマネージャに必要なため、アプリはすべての向きに対応します。Android 16 も同様に、タブレットと折りたたみ端末ではこの設定を無視します。
 - `ios.iphoneOnly` を指定すると、iPad を対象から外します。デフォルトではアプリは iPad アプリでもあり、ユーザーがウィンドウに与えたサイズで動きます。Android では、分割画面やデスクトップのウィンドウに合わせてサイズを変えられます。レイアウトは、デバイスのサイズではなく、ウィンドウのサイズである `ui.UseEnvironment()` の `Width` と `Height` をもとに組み立ててください。
-- `shareTarget` を指定すると、ほかのアプリの共有シートにアプリが表示されます。`true` ならテキストとリンクを、`{"types": ["text", "image/*"], "max": 10}` ならファイルも受け取ります（[デバイスとサービス](device.md#ほかのアプリからの共有-uionshare)を参照）。受け取ったものは `ui.OnShare` に届きます。iOS ではアプリに含まれる共有拡張機能（Share Extension）になり、独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ちます。
-- `splash` は起動画面です。`{"image": "logo.png", "size": 96, "background": "#ffffff", "darkBackground": "#000000"}` のように指定します（[デバイスとサービス](device.md#起動画面-asukasdksplash)を参照）。
+- `shareTarget` を指定すると、ほかのアプリの共有シートにアプリが表示されます。`shareTarget = true` ならテキストとリンクを、`[shareTarget]` のテーブルに `types = ["text", "image/*"]`、`max = 10` と書けばファイルも受け取ります（[デバイスとサービス](device.md#ほかのアプリからの共有-uionshare)を参照）。受け取ったものは `ui.OnShare` に届きます。iOS ではアプリに含まれる共有拡張機能（Share Extension）になり、独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ちます。
+- `splash` は起動画面です。`[splash]` のテーブルに `image = "logo.png"`、`size = 96`、`background = "#ffffff"`、`darkBackground = "#000000"` のように指定します（[デバイスとサービス](device.md#起動画面-asukasdksplash)を参照）。
 - `widgets` はアプリのホーム画面ウィジェット、`shortcuts` は Siri、Spotlight、ランチャー向けのアクションです（[デバイスとサービス](device.md#ホーム画面ウィジェット-asukasdkwidget)を参照）。ウィジェット拡張機能は独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持ちます。そのためリリースにはこの拡張機能用のプロファイルも必要で、`ios.widgetProfile` で指定できます。
 - `android.googleServices` は、`asuka/sdk/push` に使う Firebase プロジェクトの `google-services.json` です。`android.mapsKey` は、`asuka/sdk/maps` に使う Google Maps Platform の API キーです。
 - `ios.usage` は保護されたリソースの利用目的の説明文（`NSCameraUsageDescription` など。Mac のものも含みます）を指定し、`ios.infoPlist` は Info.plist にキーを追加します。`ios.backgroundModes` は `UIBackgroundModes` に値を追加します（`"audio"` なら、画面がロックされていても録音・再生できます）。`android.permissions` はパーミッションを追加します。
@@ -86,13 +94,14 @@ asuka build --platform ios
 
 **プライバシーマニフェスト。** App Store ではプライバシーマニフェストが必須で、Apple のリストにある API のうちアプリが使うものについて、それぞれ理由を記載する必要があります。Asuka は、バイナリが使うものをもとにこのマニフェストを書き出します。Go のランタイムは時刻とファイルの日時を読み取ります。マニフェストでは、トラッキングをしないことを宣言し、アプリが収集するデータを `ios.collected` に書いたとおりに記載します。App Store Connect はこれを、アプリのプライバシーラベルと照合します。
 
-```json
-"ios": {
-  "collected": [{ "type": "EmailAddress", "linked": true, "purposes": ["AppFunctionality"] }]
-}
+```toml
+[[ios.collected]]
+type = "EmailAddress"
+linked = true
+purposes = ["AppFunctionality"]
 ```
 
-`type` と `purposes` は、Apple の名前から接頭辞（`NSPrivacyCollectedDataType`、`NSPrivacyCollectedDataTypePurpose`）を除いたものです。`linked` はデータがユーザーの身元に紐付くことを、`tracking` はデータがユーザーのトラッキングに使われることを示します（[リファレンス](asuka-json.md#ios)を参照）。アプリがトラッキングをする場合や、マニフェストにこれ以上の内容が必要な場合は、独自のマニフェストを `ios/PrivacyInfo.xcprivacy` として書き、上で述べた理由もそこに含めてください。Asuka は代わりにそのファイルを使い、その場合 `ios.collected` は無視されます。なお、アプリのマニフェストがどちらであっても、`asqlite.framework` には SQLite が使うもの（ファイルの日時、ディスクの空き容量）についての独自のマニフェストが含まれています。
+`type` と `purposes` は、Apple の名前から接頭辞（`NSPrivacyCollectedDataType`、`NSPrivacyCollectedDataTypePurpose`）を除いたものです。`linked` はデータがユーザーの身元に紐付くことを、`tracking` はデータがユーザーのトラッキングに使われることを示します（[リファレンス](asuka-toml.md#ios)を参照）。アプリがトラッキングをする場合や、マニフェストにこれ以上の内容が必要な場合は、独自のマニフェストを `ios/PrivacyInfo.xcprivacy` として書き、上で述べた理由もそこに含めてください。Asuka は代わりにそのファイルを使い、その場合 `ios.collected` は無視されます。なお、アプリのマニフェストがどちらであっても、`asqlite.framework` には SQLite が使うもの（ファイルの日時、ディスクの空き容量）についての独自のマニフェストが含まれています。
 
 ## Android
 
@@ -102,7 +111,7 @@ asuka build --platform ios
 keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-鍵を `asuka.json` で指定し（`android.keystore`、`android.keyAlias`）、パスワードを環境変数で渡します。
+鍵を `asuka.toml` で指定し（`android.keystore`、`android.keyAlias`）、パスワードを環境変数で渡します。
 
 ```sh
 ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
@@ -112,14 +121,14 @@ ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
 
 ## ストアへの公開
 
-`asuka publish` は、`asuka build` と同じようにリリースビルドを作り、ストアの API でアップロードします。最初に、アップロードを妨げそうなことをストアに確認します（アプリが登録されていて鍵にアップロードの権限があるか、そのバージョンがまだビルドを受け付けるか、TestFlight のグループが存在するか）。そのため、失敗するアップロードのためにわざわざビルドすることはありません。各ビルドの番号はストア上の最大の番号に 1 を足したもの（かつ `asuka.json` の `build` 以上）になるので、リリースのたびに番号を上げる必要はありません。`--build 42` で番号を指定することもできます。
+`asuka publish` は、`asuka build` と同じようにリリースビルドを作り、ストアの API でアップロードします。最初に、アップロードを妨げそうなことをストアに確認します（アプリが登録されていて鍵にアップロードの権限があるか、そのバージョンがまだビルドを受け付けるか、TestFlight のグループが存在するか）。そのため、失敗するアップロードのためにわざわざビルドすることはありません。各ビルドの番号はストア上の最大の番号に 1 を足したもの（かつ `asuka.toml` の `build` 以上）になるので、リリースのたびに番号を上げる必要はありません。`--build 42` で番号を指定することもできます。
 
-**App Store Connect。** App Store Connect の「ユーザとアクセス」›「統合」›「App Store Connect API」で、「App マネージャ」の役割を持つ API キーを作成し、`.p8` をダウンロードします。そのキーを `asuka.json` か環境変数（`ASUKA_ASC_KEY_ID`、`ASUKA_ASC_ISSUER_ID`、そして `.p8` のパスか中身を入れた `ASUKA_ASC_KEY`）で指定します。`key` を指定しない場合は、`altool` と同じように `~/.appstoreconnect/private_keys` にある `AuthKey_<id>.p8` を探します。`.p8` はリポジトリに入れないでください。また、事前に App Store Connect でアプリを bundle ID とともに追加しておきます（「アプリ」›「+」›「新規 App」）。
+**App Store Connect。** App Store Connect の「ユーザとアクセス」›「統合」›「App Store Connect API」で、「App マネージャ」の役割を持つ API キーを作成し、`.p8` をダウンロードします。そのキーを `asuka.toml` か環境変数（`ASUKA_ASC_KEY_ID`、`ASUKA_ASC_ISSUER_ID`、そして `.p8` のパスか中身を入れた `ASUKA_ASC_KEY`）で指定します。`key` を指定しない場合は、`altool` と同じように `~/.appstoreconnect/private_keys` にある `AuthKey_<id>.p8` を探します。`.p8` はリポジトリに入れないでください。また、事前に App Store Connect でアプリを bundle ID とともに追加しておきます（「アプリ」›「+」›「新規 App」）。
 
-```json
-"ios": {
-  "appStoreConnect": { "keyId": "ABC123DEF4", "issuerId": "57246542-96fe-1a63-e053-0824d011072a" }
-}
+```toml
+[ios.appStoreConnect]
+keyId = "ABC123DEF4"
+issuerId = "57246542-96fe-1a63-e053-0824d011072a"
 ```
 
 ```sh
@@ -132,10 +141,10 @@ asuka publish --platform ios --review --notes @release-notes/ios --release manua
 
 - `--notes` は TestFlight の「テスト内容」になり、`--review` を付けた場合は App Store の「このバージョンの新機能」にもなります。テキストか、アプリのプライマリ言語で書いた `@file` を指定します。あるいは `@dir` を指定し、言語ごとに一つずつファイルを置きます。ファイル名は App Store Connect での言語の名前に合わせます（`en-US.txt`、`ja.txt`）。アップデートでは、そのバージョンのすべての言語に「このバージョンの新機能」が必要です。
 - `--groups` は、名前で指定した TestFlight のグループにビルドを配布します。外部グループ（チーム外のテスター）を指定すると、ビルドはベータ版 App 審査に回ります。先に TestFlight でテスト情報を入力しておいてください。
-- `--review` は、App Store のバージョン（`asuka.json` の `version`）がなければ作成し、そこにビルドを割り当てて審査に提出します。初回の提出では、先に App Store Connect でストアの掲載情報、スクリーンショット、プライバシーに関する回答を入力しておく必要があります。足りないものは表示されます。`--release auto` は承認されるとすぐにリリースし、`--release manual` はリリースを手動で行うまで待ちます。
+- `--review` は、App Store のバージョン（`asuka.toml` の `version`）がなければ作成し、そこにビルドを割り当てて審査に提出します。初回の提出では、先に App Store Connect でストアの掲載情報、スクリーンショット、プライバシーに関する回答を入力しておく必要があります。足りないものは表示されます。`--release auto` は承認されるとすぐにリリースし、`--release manual` はリリースを手動で行うまで待ちます。
 - `--no-wait` は、Apple がアップロードを受け取った時点で終了します。
 
-**Google Play。** Google Play Android Developer API を有効にしたプロジェクトで、Google Cloud のサービス アカウントを作成し、JSON キーを発行します（「IAM」›「サービス アカウント」›「キー」）。Play Console の「ユーザーと権限」でそのアカウントのメールアドレスを招待し、アプリをリリースする権限を付与します。キーは `asuka.json`（`"android": {"serviceAccount": "play.json"}`）か `ASUKA_PLAY_SERVICE_ACCOUNT`（パスか JSON そのもの）で指定します。Play は、アプリの最初の `.aab` を Play Console からしか受け付けません。Play Console でアプリを作成し、最初のビルドは手動でアップロードしてください。2 つ目以降のビルドは `asuka publish` でアップロードできます。
+**Google Play。** Google Play Android Developer API を有効にしたプロジェクトで、Google Cloud のサービス アカウントを作成し、JSON キーを発行します（「IAM」›「サービス アカウント」›「キー」）。Play Console の「ユーザーと権限」でそのアカウントのメールアドレスを招待し、アプリをリリースする権限を付与します。キーは `asuka.toml`（`[android]` の `serviceAccount = "play.json"`）か `ASUKA_PLAY_SERVICE_ACCOUNT`（パスか JSON そのもの）で指定します。Play は、アプリの最初の `.aab` を Play Console からしか受け付けません。Play Console でアプリを作成し、最初のビルドは手動でアップロードしてください。2 つ目以降のビルドは `asuka publish` でアップロードできます。
 
 ```sh
 asuka publish --platform android                              # 内部テストトラック
@@ -173,9 +182,9 @@ asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)"
 asuka build --platform mac --profile Notes.provisionprofile --notarize asuka
 ```
 
-プロファイルは `Contents/embedded.provisionprofile` としてアプリに入ります。アプリは、プロファイルのエンタイトルメントのうちパッケージが必要とするもの（`com.apple.developer.aps-environment`、`com.apple.developer.applesignin`、`com.apple.developer.devicecheck.appattest-environment`）、アプリの ID とチーム、そして hardened runtime を付けて署名されます。プロファイルに足りないものはビルドが教えてくれます。`--sign` を省略すると、プロファイルが許可する、キーチェーン内の証明書（Developer ID Application）で署名します。プロファイルに含まれない証明書を `--sign` に指定するとエラーになります。`--profile` には、パス、またはインストール済みのプロファイルの名前か UUID を指定します。`ASUKA_MAC_PROFILE` や asuka.json の `mac.profile` でも同じ指定ができます。どれも指定がなければ、これらのパッケージを使うアプリは、アプリの ID に最も合うインストール済みのプロファイル（Xcode のプロファイル用フォルダーにあるもの）で署名されます。それもなければプロファイルなしで署名されます。その場合、Mac で何が動かないかをビルドが表示し、アプリのそれ以外の部分は問題なく動きます。
+プロファイルは `Contents/embedded.provisionprofile` としてアプリに入ります。アプリは、プロファイルのエンタイトルメントのうちパッケージが必要とするもの（`com.apple.developer.aps-environment`、`com.apple.developer.applesignin`、`com.apple.developer.devicecheck.appattest-environment`）、アプリの ID とチーム、そして hardened runtime を付けて署名されます。プロファイルに足りないものはビルドが教えてくれます。`--sign` を省略すると、プロファイルが許可する、キーチェーン内の証明書（Developer ID Application）で署名します。プロファイルに含まれない証明書を `--sign` に指定するとエラーになります。`--profile` には、パス、またはインストール済みのプロファイルの名前か UUID を指定します。`ASUKA_MAC_PROFILE` や asuka.toml の `mac.profile` でも同じ指定ができます。どれも指定がなければ、これらのパッケージを使うアプリは、アプリの ID に最も合うインストール済みのプロファイル（Xcode のプロファイル用フォルダーにあるもの）で署名されます。それもなければプロファイルなしで署名されます。その場合、Mac で何が動かないかをビルドが表示し、アプリのそれ以外の部分は問題なく動きます。
 
-`--appstore` を指定すると、代わりに Mac App Store 向けの `dist/<Name>.pkg` を作ります。アプリは App Sandbox に入り（ネットワークと、ユーザーが選んだファイルにアクセスできます）、Mac App Store のプロファイルの証明書（Apple Distribution）で署名されます。プロファイルは asuka.json の `mac.appStoreProfile`、なければ `--profile`、それもなければ最も合うものです。パッケージは、チームの Mac Installer Distribution 証明書で署名されます。アップロードには Transporter か `xcrun altool --upload-package` を使ってください。`asuka publish` は、まだ Mac のビルドのアップロードに対応していません。公証はストア外で配布するアプリのためのものなので、`--appstore` と `--notarize` を一緒に指定するとエラーになります。
+`--appstore` を指定すると、代わりに Mac App Store 向けの `dist/<Name>.pkg` を作ります。アプリは App Sandbox に入り（ネットワークと、ユーザーが選んだファイルにアクセスできます）、Mac App Store のプロファイルの証明書（Apple Distribution）で署名されます。プロファイルは asuka.toml の `mac.appStoreProfile`、なければ `--profile`、それもなければ最も合うものです。パッケージは、チームの Mac Installer Distribution 証明書で署名されます。アップロードには Transporter か `xcrun altool --upload-package` を使ってください。`asuka publish` は、まだ Mac のビルドのアップロードに対応していません。公証はストア外で配布するアプリのためのものなので、`--appstore` と `--notarize` を一緒に指定するとエラーになります。
 
 ## Windows
 
@@ -194,7 +203,7 @@ ASUKA_WINDOWS_CERT=cert.pfx ASUKA_WINDOWS_CERT_PASSWORD=... asuka build --platfo
 
 ビルドは SHA-256 で署名し、証明書の期限が切れたあとも署名が有効であり続けるよう、署名にタイムスタンプを付けます。タイムスタンプには、最初に応答した RFC 3161 サーバーを使います。候補は `ASUKA_WINDOWS_TIMESTAMP` に指定したサーバー（カンマ区切りのリスト）で、指定がなければ DigiCert、Sectigo、GlobalSign のサーバーです。どれも応答しなければ、ビルドはその旨を表示して失敗します。`ASUKA_WINDOWS_TIMESTAMP=none` にすると、タイムスタンプなしで署名します（その場合、署名は証明書の期限とともに無効になります）。署名には、Windows では `signtool`（Windows SDK のもの。`PATH` にあればそれを、なければインストール済みの最新のものを使います）、それ以外のシステムでは `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`）を使い、`asqlite.dll` にも同じように署名します。`ASUKA_WINDOWS_CERT` がなければ、`.exe` は署名されません。ハードウェアトークンやクラウドサービス（Azure Trusted Signing）にある証明書では、それぞれのツールで署名します。ビルドのあと、フォルダー内の `.exe`（と `asqlite.dll`）にそのツールで署名してください。
 
-通知を表示するアプリ（`asuka/sdk/notify`）では、初回にユーザーの「スタート」メニューにショートカットが作られます。Windows でアプリがトースト通知を出すには、これが必要です。ショートカットの AppUserModelID は asuka.json の `id`（なければアプリの名前から作ったもの）です。
+通知を表示するアプリ（`asuka/sdk/notify`）では、初回にユーザーの「スタート」メニューにショートカットが作られます。Windows でアプリがトースト通知を出すには、これが必要です。ショートカットの AppUserModelID は asuka.toml の `id`（なければアプリの名前から作ったもの）です。
 
 ## Linux
 
@@ -230,19 +239,18 @@ asuka build --platform linux --arch arm64   # amd64 または arm64
 
 アプリを動かす環境には、GTK 4.14 と libadwaita 1.5 以降が必要です（GNOME ランタイム 46 以降に含まれています）。アプリの ID は application ID でもあり、デスクトップファイル、アイコン、D-Bus 名（二回目に起動すると、最初に起動したアプリのウィンドウが表示されます）、データディレクトリ（`~/.local/share/<id>`）の名前になります。ID は英字、数字、`_`、`-` だけからなり、二つ以上の部分に分かれていて、どの部分も数字で始まってはいけません。
 
-デスクトップファイルと metainfo に書く内容は、`asuka.json` で指定します。
+デスクトップファイルと metainfo に書く内容は、`asuka.toml` で指定します。
 
-```json
-"linux": {
-  "summary": "Write things down",
-  "description": "Notes, kept on your computer.\n\nA second paragraph.",
-  "categories": ["Office"],
-  "keywords": ["memo"],
-  "license": "MIT",
-  "developer": "Example Inc.",
-  "homepage": "https://example.com",
-  "flatpakRuntime": "50"
-}
+```toml
+[linux]
+summary = "Write things down"
+description = "Notes, kept on your computer.\n\nA second paragraph."
+categories = ["Office"]
+keywords = ["memo"]
+license = "MIT"
+developer = "Example Inc."
+homepage = "https://example.com"
+flatpakRuntime = "50"
 ```
 
 `categories` は [freedesktop.org のカテゴリ](https://specifications.freedesktop.org/menu-spec/latest/category-registry.html)から選びます（デフォルトは `Utility`）。`license` は SPDX 式です。Flathub とソフトウェアセンターは、summary、description、license、developer を求めます。
@@ -269,13 +277,12 @@ asuka build --platform web
 asuka update keygen
 ```
 
-このコマンドは、秘密鍵 `asuka-update.key` と公開鍵 `asuka-update.pub` を設定ディレクトリの `asuka/update-keys` に書き出し（`--out` で別の場所を指定できます）、`asuka.json` に追加する内容を表示します。秘密鍵はリポジトリに入れず、パスワードマネージャーと CI のシークレットに保管してください。インストール済みのアプリはこの鍵で署名されたアップデートしか受け付けないため、鍵をなくすとアプリを更新できなくなります。また、鍵を手に入れた人は誰でも、ユーザーにコードを配信できてしまいます。
+このコマンドは、秘密鍵 `asuka-update.key` と公開鍵 `asuka-update.pub` を設定ディレクトリの `asuka/update-keys` に書き出し（`--out` で別の場所を指定できます）、`asuka.toml` に追加する `[updates]` テーブル（`publicKey` と `github`）を表示します。秘密鍵はリポジトリに入れず、パスワードマネージャーと CI のシークレットに保管してください。インストール済みのアプリはこの鍵で署名されたアップデートしか受け付けないため、鍵をなくすとアプリを更新できなくなります。また、鍵を手に入れた人は誰でも、ユーザーにコードを配信できてしまいます。
 
-```json
-"updates": {
-  "publicKey": "…the contents of asuka-update.pub…",
-  "github": "you/notes"
-}
+```toml
+[updates]
+publicKey = "…the contents of asuka-update.pub…"
+github = "you/notes"
 ```
 
 | キー | 内容 |
@@ -335,7 +342,7 @@ go func() {
 - 以前に公開したバージョンからの差分アップデート（`notes-1.1.0-to-1.2.0-<target>.delta`）。ビルドは、公開済みのマニフェストが示す場所から以前のバージョンを（署名を確かめながら）ダウンロードし、変わった部分を書き出します。内容は、インストール済みのアプリから移動またはコピーするファイル、変更されたファイルの bsdiff パッチ、そして残りのファイルです。アプリは自分のバージョンからの差分だけをダウンロードし、それが失敗したとき（インストール後にアプリが変更されていた場合）はアーカイブ全体をダウンロードします。最初のバージョンには差分はありません。
 - `update-<target>.json`：マニフェスト。バージョン、リリースノート、日付、アーカイブと差分の URL・サイズ・署名、そして以前のバージョン（次の差分を作るため）を含みます。プレリリースのマニフェストは `update-<target>-beta.json` で、そのチャンネルのアプリだけが読みます。
 
-秘密鍵がなければ、アプリをビルドするだけでアップデート用のファイルは書き出さず、その旨を表示します。`--version 1.2.0` を指定すると、`asuka.json` とは別のバージョンとしてビルドします（CI ではタグからバージョンを取ります）。Windows のフォルダーと Linux のプレフィックスには `.asuka-files` も入ります。これはそのバージョンがインストールするファイルの一覧です。アップデートの際に、次のバージョンにはもうないファイルを削除し、それ以外のファイルには一切手を付けないために使います。
+秘密鍵がなければ、アプリをビルドするだけでアップデート用のファイルは書き出さず、その旨を表示します。`--version 1.2.0` を指定すると、`asuka.toml` とは別のバージョンとしてビルドします（CI ではタグからバージョンを取ります）。Windows のフォルダーと Linux のプレフィックスには `.asuka-files` も入ります。これはそのバージョンがインストールするファイルの一覧です。アップデートの際に、次のバージョンにはもうないファイルを削除し、それ以外のファイルには一切手を付けないために使います。
 
 `asuka publish` はビルドしてから、これらをアップロードします。マニフェストは最後にアップロードするので、ファイルがまだ揃っていないマニフェストをアプリが読むことはありません。
 
@@ -353,12 +360,11 @@ asuka publish --platform linux --draft
 
 `feed` を指定すると、アプリは代わりに自分のサーバーに問い合わせます。その URL の `{target}`、`{version}`（アプリが実行中のバージョン）、`{channel}` には値が埋め込まれます。
 
-```json
-"updates": {
-  "publicKey": "…",
-  "url": "https://downloads.example.com/notes",
-  "feed": "https://api.example.com/updates?target={target}&version={version}&channel={channel}"
-}
+```toml
+[updates]
+publicKey = "…"
+url = "https://downloads.example.com/notes"
+feed = "https://api.example.com/updates?target={target}&version={version}&channel={channel}"
 ```
 
 サーバーは、新しいバージョンがなければ `204 No Content`（または 404）を返し、あればマニフェスト、つまり `asuka build` が書き出すのと同じ JSON を返します。
@@ -411,7 +417,7 @@ dependencies { implementation("dev.asuka.counter:counter:1.0.0") }
 startActivity(Intent(this, dev.asuka.AsukaActivity::class.java))
 ```
 
-組み込まれたアプリは一つの Asuka アプリで、単体のビルドと同じく一度だけマウントされます。`asuka.json` がアプリ全体に対して設定するもの（アイコン、URL スキーム、共有ターゲット、ウィジェット、パーミッションの説明文）は、組み込む側のアプリが自分のプロジェクトで設定します。
+組み込まれたアプリは一つの Asuka アプリで、単体のビルドと同じく一度だけマウントされます。`asuka.toml` がアプリ全体に対して設定するもの（アイコン、URL スキーム、共有ターゲット、ウィジェット、パーミッションの説明文）は、組み込む側のアプリが自分のプロジェクトで設定します。
 
 ## クラッシュレポート用のシンボル
 
@@ -563,7 +569,7 @@ CLI には iOS と Android のホストが含まれているため、アプリ�
 
 ### デスクトップ
 
-次のジョブを同じワークフローに加えると、タグに対してデスクトップアプリをビルドし、そのリリースの下書きに添付します。Mac 版は Developer ID で署名して公証し、Windows 版は x64 と Arm 向けにビルドして署名し、Linux 版は amd64 と arm64 向けにビルドします。Windows 版と Linux 版はどちらも Linux 上でビルドできるので、一つの Ubuntu ランナーで両方を作れます。（ここではアプリの名前を Notes としています。ファイル名は `asuka.json` の `name` をもとに付けられます。）
+次のジョブを同じワークフローに加えると、タグに対してデスクトップアプリをビルドし、そのリリースの下書きに添付します。Mac 版は Developer ID で署名して公証し、Windows 版は x64 と Arm 向けにビルドして署名し、Linux 版は amd64 と arm64 向けにビルドします。Windows 版と Linux 版はどちらも Linux 上でビルドできるので、一つの Ubuntu ランナーで両方を作れます。（ここではアプリの名前を Notes としています。ファイル名は `asuka.toml` の `name` をもとに付けられます。）
 
 ```yaml
   mac:
@@ -662,7 +668,7 @@ Windows と Linux のジョブでは次のようにします。
           done
 ```
 
-最後に下書きを公開すると（`gh release edit v1.2.0 --draft=false`、またはリリースのページから）、インストール済みのアプリがそのバージョンに更新されます。release ジョブのタグは、`tagPrefix` にバージョンを続けたもの（`v1.2.0`）です。`--version` でビルドのバージョンをタグのバージョンに合わせるので、`asuka.json` のバージョンを上げる必要はありません。差分は公開済みのリリースをもとに作られ、ランナーがそのリリースをダウンロードします（`GH_TOKEN` があると、GitHub API のリクエスト数の制限が緩和されます。`tagPrefix` を使う場合は GitHub API を使います）。
+最後に下書きを公開すると（`gh release edit v1.2.0 --draft=false`、またはリリースのページから）、インストール済みのアプリがそのバージョンに更新されます。release ジョブのタグは、`tagPrefix` にバージョンを続けたもの（`v1.2.0`）です。`--version` でビルドのバージョンをタグのバージョンに合わせるので、`asuka.toml` のバージョンを上げる必要はありません。差分は公開済みのリリースをもとに作られ、ランナーがそのリリースをダウンロードします（`GH_TOKEN` があると、GitHub API のリクエスト数の制限が緩和されます。`tagPrefix` を使う場合は GitHub API を使います）。
 
 ## 言語
 

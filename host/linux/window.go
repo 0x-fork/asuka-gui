@@ -339,7 +339,7 @@ func timeZone() string {
 	return "UTC"
 }
 
-// appName is the app's name: asuka.json's, or the executable's.
+// appName is the app's name: asuka.toml's, or the executable's.
 func appName() string {
 	if boot.Name != "" {
 		return boot.Name
@@ -347,7 +347,7 @@ func appName() string {
 	return filepath.Base(os.Args[0])
 }
 
-// appID is the application's ID: asuka.json's, else one made of its name
+// appID is the application's ID: asuka.toml's, else one made of its name
 // (GApplication wants one with a dot).
 func appID(name string) string {
 	if boot.ID != "" && ApplicationIDIsValid(boot.ID) {

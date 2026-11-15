@@ -33,7 +33,7 @@ func AppStoreURL(id string) string {
 }
 
 // PlayStoreURL is the app's Google Play page, for ui.OpenURL: id is its
-// application ID (asuka.json's id).
+// application ID (asuka.toml's id).
 func PlayStoreURL(id string) string {
 	return "https://play.google.com/store/apps/details?id=" + id + "&showAllReviews=true"
 }

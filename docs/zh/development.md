@@ -38,11 +38,11 @@ asuka dev --platform web [flags] [dir]       # 浏览器
 
 应用直接从原位置读取 `assets/`，所以修改资源后不需要复制。应用的数据（`store.Dir()` 以及其中的 SQLite 数据库）存放在 Asuka 缓存中该应用自己的 `data` 目录里（参见 [从头开始](#常见问题)），而不是已安装应用的数据目录，所以 `asuka dev` 和发布版本的数据互不共享。应用的输出（`fmt.Println`、`log`、panic）会打印到终端。
 
-**macOS。** 在 Mac 上，`asuka dev` 会从 Asuka 缓存中的一个 `.app` 运行应用，这个 `.app` 和发布版本的一样：有 `Info.plist`（其中的名称、bundle ID、URL scheme、权限用途说明和语言都来自 `asuka.json`）和图标，并使用临时签名（ad hoc）。因此在系统看来，它就是这个应用本身，和从访达打开时一样：程序坞（Dock）显示的是它的名称和图标，通知归它自己所有，隐私权限提示（相机、定位、通讯录）也是以它的名义、带着它的用途说明弹出的，而不是以终端的名义。需要描述文件（provisioning profile）授权的包（推送、通过 Apple 登录、App Attest）只能在用描述文件签名的发布构建中使用，参见 [发布](shipping.md#macos)。
+**macOS。** 在 Mac 上，`asuka dev` 会从 Asuka 缓存中的一个 `.app` 运行应用，这个 `.app` 和发布版本的一样：有 `Info.plist`（其中的名称、bundle ID、URL scheme、权限用途说明和语言都来自 `asuka.toml`）和图标，并使用临时签名（ad hoc）。因此在系统看来，它就是这个应用本身，和从访达打开时一样：程序坞（Dock）显示的是它的名称和图标，通知归它自己所有，隐私权限提示（相机、定位、通讯录）也是以它的名义、带着它的用途说明弹出的，而不是以终端的名义。需要描述文件（provisioning profile）授权的包（推送、通过 Apple 登录、App Attest）只能在用描述文件签名的发布构建中使用，参见 [发布](shipping.md#macos)。
 
 **Windows。** `asuka dev` 只能在 Windows 本机上运行；`asuka build --platform windows` 则可以在任何系统上构建。开发构建是一个控制台程序，所以输出会打印到终端；发布版本没有控制台。重载时，Asuka 通过它与每次运行保持的连接通知应用停止（Windows 无法向进程发送 Ctrl-C），应用在退出时保存状态。
 
-**Linux。** 在 Linux 上，`asuka dev` 基于 GTK 4 和 libadwaita 运行应用，因此需要先安装它们（参见 [快速上手](getting-started.md#准备工作)），应用运行在你会话的显示服务器上，Wayland 或 X11 都可以。和发布版本一样，应用会使用 `asuka.json` 中的名称、ID、版本和强调色；Asuka 通过与每次运行保持的连接（或 SIGINT）让它停止，应用在退出时保存状态。在 Mac 或 PC 上，`asuka dev --platform linux` 能为 Linux 构建应用，但无法在本机运行它，除非 `ASUKA_LINUX_RUN` 指定了一条命令，能在一台带显示器、并且能以相同路径访问本机文件的 Linux 机器上运行程序。这通常是一台虚拟机，例如 `ASUKA_LINUX_RUN="orb -m ubuntu"`（OrbStack）或 `ASUKA_LINUX_RUN="limactl shell default"`（Lima）。Asuka 会针对那台机器的架构构建应用，并用这条命令运行它。
+**Linux。** 在 Linux 上，`asuka dev` 基于 GTK 4 和 libadwaita 运行应用，因此需要先安装它们（参见 [快速上手](getting-started.md#准备工作)），应用运行在你会话的显示服务器上，Wayland 或 X11 都可以。和发布版本一样，应用会使用 `asuka.toml` 中的名称、ID、版本和强调色；Asuka 通过与每次运行保持的连接（或 SIGINT）让它停止，应用在退出时保存状态。在 Mac 或 PC 上，`asuka dev --platform linux` 能为 Linux 构建应用，但无法在本机运行它，除非 `ASUKA_LINUX_RUN` 指定了一条命令，能在一台带显示器、并且能以相同路径访问本机文件的 Linux 机器上运行程序。这通常是一台虚拟机，例如 `ASUKA_LINUX_RUN="orb -m ubuntu"`（OrbStack）或 `ASUKA_LINUX_RUN="limactl shell default"`（Lima）。Asuka 会针对那台机器的架构构建应用，并用这条命令运行它。
 
 ## 在手机上：热重载模式与构建的应用
 
@@ -55,7 +55,7 @@ iOS 开发需要 Mac；Android 开发需要 Mac、Windows 电脑或 Linux。默�
 - **iOS 上的 `asuka/sdk/icloud`**：iCloud 按应用自己的 ID 保存它的值和文档，而开发 App 的 ID 不是应用的 ID。
 - **iOS 上的 `asuka/sdk/purchase`**：App Store 只把应用的商品卖给应用本身。
 - **iOS 上的 `push.Rewrite`**：开发 App 没有用来改写推送的通知服务扩展。
-- **iPhone 上 `asuka.json` 的 `nfc.iso7816` 或 `nfc.felica`**：iOS 只会查找应用自己的 Info.plist 里列出的卡片。
+- **iPhone 上 `asuka.toml` 的 `nfc.iso7816` 或 `nfc.felica`**：iOS 只会查找应用自己的 Info.plist 里列出的卡片。
 - **手机上接收文件的 `shareTarget`**：分享过来的文件在手机上，而不在运行 Go 代码的电脑上（iOS 模拟器的文件就在 Mac 上，所以模拟器上仍然使用热重载模式）。
 
 构建应用本身时：
@@ -63,7 +63,7 @@ iOS 开发需要 Mac；Android 开发需要 Mac、Windows 电脑或 Linux。默�
 - **iOS**：宿主连同原生包的 Swift 代码只构建一次，之后只在有变化时才重新构建；每次保存都会重新构建 Go 代码、链接应用、为模拟器签名，并用 `xcrun simctl` 重新安装；在 iPhone 上则改为用开发证书签名，并用 `xcrun devicectl` 重新安装。
 - **Android**：Gradle 构建应用（包括其中的 Kotlin 代码），宿主、Kotlin 代码和清单文件的每个版本只构建一次；每次保存都会重新构建 Go 库，用 `adb` 推送到应用的私有文件目录（调试版应用会从那里加载它），然后重启应用。
 
-开发 App 拥有所有 Asuka 包可能需要的权限，并带有它自己的权限用途说明。`asuka.json` 中为应用本身配置的内容（名称、ID、URL `scheme`、`links`、`ios.usage`、Android 的 NFC 标签过滤器）只有构建出来的应用才具备，应用配置了这些时 `asuka dev` 会提示：要测试这些，请使用 `--no-hot`。`accent` 强调色在热重载模式下同样生效。
+开发 App 拥有所有 Asuka 包可能需要的权限，并带有它自己的权限用途说明。`asuka.toml` 中为应用本身配置的内容（名称、ID、URL `scheme`、`links`、`ios.usage`、Android 的 NFC 标签过滤器）只有构建出来的应用才具备，应用配置了这些时 `asuka dev` 会提示：要测试这些，请使用 `--no-hot`。`accent` 强调色在热重载模式下同样生效。
 
 ## 重载时会保留什么
 
@@ -104,7 +104,7 @@ Asuka 会监听应用所在的目录及其模块的目录，依靠系统的文�
 
 以 `.` 开头的目录以及 `testdata`、`build` 和 `node_modules` 会被跳过。构建失败时会打印错误并保留正在运行的应用，下次保存时再重试。
 
-`asuka.json` 的字段只在 `asuka dev` 启动时读取。修改之后，需要停止并重新运行它；它会重新构建并重新安装有变化的部分。
+`asuka.toml` 的字段只在 `asuka dev` 启动时读取。修改之后，需要停止并重新运行它；它会重新构建并重新安装有变化的部分。
 
 在手机上，原生代码只有在构建出来的应用中才能重载，Asuka 会在每次保存时重新构建并重新安装。Kotlin 代码变化时会重新运行 Gradle，比修改 Go 代码要慢。桌面应用中用 Go 写的原生代码和其余代码一样重载；Mac 应用中原生包的 Swift 代码会在变化时重新构建（一两秒），然后应用重新运行，signal 的值会保留下来。
 
@@ -120,7 +120,7 @@ Asuka 会监听应用所在的目录及其模块的目录，依靠系统的文�
 
 **iPhone**（或 iPad），通过 USB 或 Wi-Fi 连接，需要 Xcode 15 或更新版本：把它连上 Mac，解锁后点“信任”；再在它的“设置 › 隐私与安全性”中打开“开发者模式”（手机连接过 Xcode 之后才会出现这个选项，打开后手机会重启）。之后运行 `asuka dev --platform ios --device iphone` 就会在它上面运行；连着多台设备时，用 `--device` 加上设备名称或 UDID 指定（`xcrun devicectl list devices` 可以列出它们）。在 Xcode 的 Devices 窗口里与这台 Mac 配对过的手机，拔掉线后也能通过 Wi-Fi 使用。
 
-- **签名**：开发 App 和应用都由你的团队用开发证书签名。团队依次取自 `--team`、`ASUKA_TEAM_ID`、`asuka.json` 的 `ios.team`，都没有的话就用钥匙串里 Apple Development 证书所属的团队。第一次运行时，Asuka 会让 Xcode 生成所需的开发描述文件（`xcodebuild -allowProvisioningUpdates`），顺带把这台手机注册到团队，并打开应用用到的功能（推送、App Groups 等）。这一步使用 Xcode “设置 › 账户”中登录的 Apple ID；如果设置了 `ASUKA_ASC_KEY_ID`（或 `ios.appStoreConnect`），则改用 [App Store Connect API 密钥](shipping.md)。团队已有的描述文件如果合适（包括通配符描述文件），就直接使用。
+- **签名**：开发 App 和应用都由你的团队用开发证书签名。团队依次取自 `--team`、`ASUKA_TEAM_ID`、`asuka.toml` 的 `ios.team`，都没有的话就用钥匙串里 Apple Development 证书所属的团队。第一次运行时，Asuka 会让 Xcode 生成所需的开发描述文件（`xcodebuild -allowProvisioningUpdates`），顺带把这台手机注册到团队，并打开应用用到的功能（推送、App Groups 等）。这一步使用 Xcode “设置 › 账户”中登录的 Apple ID；如果设置了 `ASUKA_ASC_KEY_ID`（或 `ios.appStoreConnect`），则改用 [App Store Connect API 密钥](shipping.md)。团队已有的描述文件如果合适（包括通配符描述文件），就直接使用。
 - **开发 App** 在手机上属于你的团队自己，bundle ID 是 `dev.asuka.player.` 加团队 ID，因为一个 App ID 只能属于一个团队。它的分享面板、小组件和各项功能取决于团队拥有的功能：免费团队没有推送和 App Groups，开发 App 就不带这些功能，并会提示你。
 - **连接到 Mac**：通过 USB 时，由 Mac 经数据线主动连接开发 App（和 Xcode 一样通过 usbmuxd），完全不走网络。没有数据线时，开发 App 会连接 Mac 在局域网上的地址，以及它的 Bonjour 名称（Mac 换了地址也能找到）：手机必须和 Mac 在同一个网络里，而且 iOS 会询问一次是否允许开发 App 查找本地网络中的设备，请选择允许；之后也可以在手机的“设置 › App › asuka › 本地网络”中打开。如果开发 App 一直没有连上，Asuka 会告诉你该检查什么。无论哪种方式，每次保存重启 Go 代码后，开发 App 都会自动重新连接。
 - **构建出来的应用**（`--no-hot`、`--once`、含原生代码的应用）也按同样的方式签名，使用应用自己的 ID；每次保存都会重新构建、签名，并用 `xcrun devicectl` 重新安装和启动应用。
@@ -189,7 +189,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png go run .   # 先执行这
 
 - **`no iOS simulator SDK (install Xcode)`**：安装 Xcode，打开一次，然后在它的 Components 设置中添加 iOS 模拟器运行时。`no iPhone simulator; add one in Xcode` 和 `no simulator "..."` 表示没有该名称的模拟器：可以用 `xcrun simctl list devices` 列出所有模拟器。
 - **iPhone 没有准备好**：`... isn't paired with this Mac`（连上数据线，解锁后点“信任”）、`... isn't reachable`（连上数据线，或在 Mac 所在的 Wi-Fi 下唤醒它）、`... has Developer Mode off`（“设置 › 隐私与安全性 › 开发者模式”）、`... is locked`（解锁手机）。明明连着手机却提示 `no iPhone or iPad is connected` 时，检查 `xcrun devicectl list devices` 能否列出它。
-- **`Xcode couldn't make the development profiles`**：在 Xcode 中登录团队的 Apple ID（Xcode › 设置 › 账户），或者设置 App Store Connect API 密钥；如果 bundle ID 已经属于另一个团队，就需要在 `asuka.json` 里换一个 `id`。`the keychain has Apple Development certificates of N teams`：用 `--team` 选一个团队。
+- **`Xcode couldn't make the development profiles`**：在 Xcode 中登录团队的 Apple ID（Xcode › 设置 › 账户），或者设置 App Store Connect API 密钥；如果 bundle ID 已经属于另一个团队，就需要在 `asuka.toml` 里换一个 `id`。`the keychain has Apple Development certificates of N teams`：用 `--team` 选一个团队。
 - **`the player hasn't connected yet`**：使用 USB 时，检查数据线并解锁手机；使用 Wi-Fi 时，让手机连上 Mac 所在的网络，允许开发 App 访问本地网络，并在 Mac 的防火墙中允许 `asuka` 接受连接（“系统设置 › 网络 › 防火墙”）。
 - **`no Android SDK: install Android Studio or set ANDROID_HOME`**：Asuka 会依次在 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 中查找，然后是 Mac 上的 `~/Library/Android/sdk`、Windows 上的 `%LOCALAPPDATA%\Android\Sdk` 和 Linux 上的 `~/Android/Sdk`。
 - **`no Android NDK`**：在 Android Studio 的 SDK Manager 中安装一个（SDK Tools 下的 NDK）。Asuka 会选用最新的、带有你这台电脑可用版本的 NDK（任何 Windows 电脑上都是 `windows-x86_64`，Arm 电脑也一样）。
@@ -245,6 +245,6 @@ go run ./bench/run -android    # 在正在运行的 Android 模拟器或设备�
 
 `-runs` 设置每种实现运行的次数（默认 5 次），中位数结果写入 `bench/results`。[`bench/README.md`](../../bench/README.md) 介绍了测试场景、测量方法和最新结果。
 
-## asuka.json
+## asuka.toml
 
-`asuka dev` 和 `asuka build` 读取的是同一个 `asuka.json`。每个键的说明参见 [asuka.json 参考](asuka-json.md)，发布时它们如何配合参见 [发布](shipping.md#asukajson)。
+`asuka dev` 和 `asuka build` 读取的是同一个 `asuka.toml`。每个键的说明参见 [asuka.toml 参考](asuka-toml.md)，发布时它们如何配合参见 [发布](shipping.md#asukatoml)。

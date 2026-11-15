@@ -11,7 +11,7 @@ import (
 	"github.com/egoist/asuka/internal/filetype"
 )
 
-// asuka.json's fileTypes: the kinds of files the app opens, which
+// asuka.toml's fileTypes: the kinds of files the app opens, which
 // ui.OnOpenFiles gets. Each build declares them as its platform does:
 //
 //   - macOS and iOS: Info.plist's CFBundleDocumentTypes (by UTI), the
@@ -29,12 +29,16 @@ import (
 //   - The web: the manifest's file_handlers (an installed app's, in
 //     Chromium), which the host reads from the launch queue.
 //
-//	"fileTypes": [
-//	  {"name": "Markdown Document", "extensions": ["md", "markdown"]},
-//	  {"name": "Notes Document", "extensions": ["note"], "icon": "note.png"}
-//	]
+//	[[fileTypes]]
+//	name = "Markdown Document"
+//	extensions = ["md", "markdown"]
+//
+//	[[fileTypes]]
+//	name = "Notes Document"
+//	extensions = ["note"]
+//	icon = "note.png"
 
-// fileTypeConfig is one of asuka.json's fileTypes.
+// fileTypeConfig is one of asuka.toml's fileTypes.
 type fileTypeConfig struct {
 	// Name is what the files are, as the system shows it ("Markdown
 	// Document"). Default: the first extension in capitals and "Document".
@@ -133,7 +137,7 @@ type fileType struct {
 	known      bool   // the system's (Asuka knows its UTI): declared by none
 }
 
-// checkFileTypes checks asuka.json's fileTypes, their icons made absolute
+// checkFileTypes checks asuka.toml's fileTypes, their icons made absolute
 // against dir.
 func (c *appConfig) checkFileTypes(dir string) error {
 	for i := range c.FileTypes {
@@ -165,7 +169,7 @@ func (c *appConfig) checkFileTypes(dir string) error {
 	return nil
 }
 
-// fileTypes are asuka.json's fileTypes, resolved. The app's own MIME
+// fileTypes are asuka.toml's fileTypes, resolved. The app's own MIME
 // types are named for it as its Linux executable is
 // (application/x-<name>-<extension>).
 func (c *appConfig) fileTypes() []fileType {

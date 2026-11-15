@@ -23,7 +23,7 @@ import (
 // "present", then the sheet's callbacks as events ("next"), each
 // completed with the Go code's answer ("answer"), and "done". The app's
 // signature needs the in-app-payments entitlement with its merchant IDs,
-// which a provisioning profile grants (asuka.json's applePay).
+// which a provisioning profile grants (asuka.toml's applePay).
 
 type paySheet struct {
 	delegate   ID

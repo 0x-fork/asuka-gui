@@ -4,7 +4,7 @@
 //
 // The stores sell only an app they know, so the player in asuka dev
 // can't: on the iOS simulator, run it built, selling from its StoreKit
-// configuration file (Products.storekit, asuka.json's ios.storekit):
+// configuration file (Products.storekit, asuka.toml's ios.storekit):
 //
 //	go run ./cmd/asuka dev --platform ios --no-hot examples/store
 //

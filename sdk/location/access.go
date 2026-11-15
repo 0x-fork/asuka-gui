@@ -108,7 +108,7 @@ func Request() (Authorization, error) {
 // the app's location settings, to choose "Allow all the time". It
 // returns what the user allowed. Not on the main thread.
 //
-// An app that calls it is given what Always needs (asuka.json's
+// An app that calls it is given what Always needs (asuka.toml's
 // ios.usage.NSLocationAlwaysAndWhenInUseUsageDescription says why;
 // Android's ACCESS_BACKGROUND_LOCATION, which Google Play asks about).
 //
@@ -122,7 +122,7 @@ func RequestAlways() (Authorization, error) {
 // RequestPrecise asks the user who allowed only approximate positions
 // for precise ones. On iOS it's for now only (temporary full accuracy,
 // until the app leaves the foreground), and purpose is the key of the
-// reason shown, one of asuka.json's ios.locationPurposes ("default" is
+// reason shown, one of asuka.toml's ios.locationPurposes ("default" is
 // there for you, "To show exactly where you are."). On Android the user
 // is asked to change Approximate to Precise for good, and purpose isn't
 // used. It returns what the user allowed. Not on the main thread.

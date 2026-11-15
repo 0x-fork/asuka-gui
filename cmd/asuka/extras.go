@@ -21,12 +21,12 @@ import (
 	"time"
 )
 
-// What the packages an app imports and asuka.json's splash add to a build:
+// What the packages an app imports and asuka.toml's splash add to a build:
 // Info.plist's arrays and launch screen, the entitlements a release's
 // profile must have, the splash's images and colors, and Firebase's
 // settings.
 
-// splashOn: asuka.json has a splash.
+// splashOn: asuka.toml has a splash.
 func (c *appConfig) splashOn() bool { return c != nil && c.Splash.Background != "" }
 
 // plistExtras are Info.plist's keys from the packages (UIBackgroundModes,
@@ -61,7 +61,7 @@ func (c *appConfig) plistExtras() map[string]any {
 		sort.Strings(vs)
 		m["UIBackgroundModes"] = vs
 	}
-	// asuka.json's fileTypes (LSSupportsOpeningDocumentsInPlace with
+	// asuka.toml's fileTypes (LSSupportsOpeningDocumentsInPlace with
 	// them, unless asuka/sdk/library's iosTrue has it already).
 	for k, v := range c.documentTypes(c.fileTypes(), true, nil) {
 		if !slices.Contains(c.iosTrue, k) {
@@ -120,7 +120,7 @@ func (c *appConfig) missingEntitlements(ent string) []string {
 	what := map[string]string{
 		"aps-environment":                                       "Push Notifications (asuka/sdk/push)",
 		"com.apple.developer.applesignin":                       "Sign in with Apple (asuka/sdk/appleauth)",
-		"com.apple.developer.in-app-payments":                   "Apple Pay, with asuka.json's merchant IDs (asuka/sdk/pay)",
+		"com.apple.developer.in-app-payments":                   "Apple Pay, with asuka.toml's merchant IDs (asuka/sdk/pay)",
 		"com.apple.developer.devicecheck.appattest-environment": "App Attest (asuka/sdk/integrity)",
 		"com.apple.developer.declared-age-range":                "Declared Age Range (asuka/sdk/agerange)",
 		"com.apple.developer.usernotifications.communication":   "Communication Notifications (asuka/sdk/notify's From)",
@@ -420,8 +420,8 @@ func dirDigest(dir string) string {
 
 // simulatorIdentity is what a simulator build is signed with, as Xcode
 // signs one: an Apple Development identity in the keychain (the team's,
-// asuka.json's ios.team, if it has one), so the app has a team identifier,
-// which App Intents (asuka.json's shortcuts) need to run it; or ad hoc
+// asuka.toml's ios.team, if it has one), so the app has a team identifier,
+// which App Intents (asuka.toml's shortcuts) need to run it; or ad hoc
 // ("-") without one.
 func simulatorIdentity(team string) string {
 	simIdentityOnce.Do(func() {

@@ -25,7 +25,7 @@
 // Apps that make their own interface use Check, Release.Install and
 // Relaunch, or follow the updater's State (Use).
 //
-// Updates come from where asuka.json's "updates" says: GitHub releases,
+// Updates come from where asuka.toml's updates says: GitHub releases,
 // a static HTTPS location (an S3 bucket, a CDN: the JSON feed asuka build
 // writes), or a server of the app's own that answers with the same JSON.
 // asuka build builds the feed's address and the public key into the app,
@@ -58,7 +58,7 @@ import (
 	iupdate "github.com/egoist/asuka/internal/update"
 )
 
-// Set by the Asuka CLI (-ldflags -X) when asuka.json configures updates:
+// Set by the Asuka CLI (-ldflags -X) when asuka.toml configures updates:
 // the feed (the URL of the target's manifest, a feed of GitHub releases,
 // or a custom server's URL with {target}, {version} and {channel}), the
 // public key updates must be signed with, and the build's target
@@ -74,9 +74,9 @@ var (
 	// ErrUnsupported: the platform updates apps itself: the App Store and
 	// Google Play on phones.
 	ErrUnsupported = errors.New("update: apps update through their store here")
-	// ErrNotConfigured: the build has no updates: asuka.json has no
+	// ErrNotConfigured: the build has no updates: asuka.toml has no
 	// "updates", or it's a development build (asuka dev).
-	ErrNotConfigured = errors.New("update: this build has no updates (asuka.json's updates; asuka dev's builds have none)")
+	ErrNotConfigured = errors.New("update: this build has no updates (asuka.toml's updates; asuka dev's builds have none)")
 	// ErrManaged: a package manager, Flatpak, Snap, the Mac App Store or
 	// the Microsoft Store installed the app, and updates it.
 	ErrManaged = errors.New("update: " + iupdate.ErrManaged.Error())
@@ -91,7 +91,7 @@ var (
 	ErrNotInstalled = errors.New("update: " + iupdate.ErrNotInstalled.Error())
 )
 
-// Version is the running app's version, asuka.json's.
+// Version is the running app's version, asuka.toml's.
 func Version() string { return boot.Version }
 
 // Release is a newer version of the app, which Check found.
@@ -112,7 +112,7 @@ type Release struct {
 	current  string
 }
 
-// Source is where updates come from instead of the feed asuka.json
+// Source is where updates come from instead of the feed asuka.toml
 // configures (SetSource): a service that wants the user's credentials, a
 // channel chosen by an account. It serves what asuka build publishes, and
 // the updater checks it as it checks the feed's: an archive or delta that
@@ -134,7 +134,7 @@ var (
 )
 
 // SetSource makes Check read manifests from s, and Install download
-// through it, instead of from asuka.json's feed; nil goes back to the
+// through it, instead of from asuka.toml's feed; nil goes back to the
 // feed. The app must still be built with updates (the key). Any
 // goroutine.
 func SetSource(s Source) {

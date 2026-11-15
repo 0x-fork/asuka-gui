@@ -108,6 +108,7 @@
 | Now Playing | 再生中の情報（Now Playing） | macOS のコントロールセンターでは「再生中」 |
 | predictive back | 予測型「戻る」 | |
 | flyout | フライアウト | |
+| table (TOML) | テーブル | `asuka.toml` の `[ios]` など。array of tables（`[[widgets]]`）→テーブルの配列、inline table →インラインテーブル。TOML の日本語版仕様の用語に合わせる |
 
 OS が日本語で表示する名前は、それぞれの表記に従います。Apple の UI は長音を付けない表記（「ユーザとアクセス」「ステージマネージャ」）のまま引用し、ごみ箱は Mac では「ゴミ箱」、Windows では「ごみ箱」と書きます。Asuka 自身が表示する文字列（アップデートのウィンドウ、書類のメニューなど）は、カタログ（`internal/l10n/messages/ja.json`、`sdk/document/messages/ja.json`）の訳語に合わせます。
 
@@ -136,7 +137,7 @@ OS が日本語で表示する名前は、それぞれの表記に従います�
 | testing.md | テスト |
 | shipping.md | 配布 |
 | web.md | Web |
-| asuka-json.md | asuka.json |
+| asuka-toml.md | asuka.toml |
 | parity.md | SwiftUI・Expo との比較 |
 | mygo.md | Asuka と MyGo |
 

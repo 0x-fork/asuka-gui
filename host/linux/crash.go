@@ -25,7 +25,7 @@ func startCrash() {
 
 // linuxInfo is the computer and the app: its model (the firmware's
 // product name), the distribution and its version (the host's, in a
-// Flatpak), asuka.json's version.
+// Flatpak), asuka.toml's version.
 func linuxInfo() crashrun.Info {
 	i := crashrun.Info{System: "Linux", AppVersion: boot.Version, Build: boot.Build}
 	if b, err := os.ReadFile("/sys/class/dmi/id/product_name"); err == nil {

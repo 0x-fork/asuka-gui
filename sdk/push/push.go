@@ -6,7 +6,7 @@
 // iOS: the app's App ID needs the Push Notifications capability for a
 // release build (the profile's aps-environment); an app that imports this
 // package is given the entitlement. Android: Firebase's, configured by
-// the project's google-services.json, which asuka.json's
+// the project's google-services.json, which asuka.toml's
 // android.googleServices names; an app that imports this package is built
 // with Firebase Cloud Messaging and POST_NOTIFICATIONS.
 //
@@ -17,7 +17,7 @@
 // badge are a push's too; Rewrite changes a push before it shows.
 //
 // The web: Web Push, through the app's service worker, with the app's
-// VAPID key (asuka.json's web.vapidPublicKey); asuka/sdk/push/webpush is the
+// VAPID key (asuka.toml's web.vapidPublicKey); asuka/sdk/push/webpush is the
 // server's side (docs/web.md).
 package push
 

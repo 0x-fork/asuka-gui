@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"os"
@@ -10,30 +10,33 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/egoist/asuka/internal/toml"
 )
 
-// appConfig is an app's asuka.json: what the stores and the platforms need
-// to know about it. Every field is optional.
+// appConfig is an app's asuka.toml: what the stores and the platforms need
+// to know about it. Every field is optional. The file is TOML, read
+// through the fields' json tags (internal/toml).
 //
-//	{
-//	  "name": "Counter",
-//	  "id": "com.example.counter",
-//	  "version": "1.2.0",
-//	  "build": 7,
-//	  "icon": "icon.png",
-//	  "accent": "#7c3aed",
-//	  "orientations": ["portrait"],
-//	  "ios": {
-//	    "team": "ABCDE12345",
-//	    "usage": {"NSCameraUsageDescription": "To scan receipts"}
-//	  },
-//	  "android": {
-//	    "permissions": ["android.permission.CAMERA"],
-//	    "keystore": "upload.jks",
-//	    "keyAlias": "upload",
-//	    "dynamicColor": true
-//	  }
-//	}
+//	name = "Counter"
+//	id = "com.example.counter"
+//	version = "1.2.0"
+//	build = 7
+//	icon = "icon.png"
+//	accent = "#7c3aed"
+//	orientations = ["portrait"]
+//
+//	[ios]
+//	team = "ABCDE12345"
+//
+//	[ios.usage]
+//	NSCameraUsageDescription = "To scan receipts"
+//
+//	[android]
+//	permissions = ["android.permission.CAMERA"]
+//	keystore = "upload.jks"
+//	keyAlias = "upload"
+//	dynamicColor = true
 type appConfig struct {
 	// Name is the name under the icon (default: the directory's name).
 	Name string `json:"name"`
@@ -150,7 +153,12 @@ type appConfig struct {
 	NFC nfcConfig `json:"nfc"`
 	// Splash is the launch screen: an image (a square PNG, a logo) in the
 	// middle of a color, until the app's first frame (or splash.Hide).
-	//	"splash": {"image": "logo.png", "size": 120, "background": "#ffffff", "darkBackground": "#000000"}
+	//
+	//	[splash]
+	//	image = "logo.png"
+	//	size = 120
+	//	background = "#ffffff"
+	//	darkBackground = "#000000"
 	Splash struct {
 		Image string `json:"image"`
 		// Size is the image's width in points (dp): default 120; at most
@@ -320,7 +328,7 @@ var (
 )
 
 // multipleInstances is the -ldflags -X of an app that runs as often as
-// it's started (asuka.json's "singleInstance": false), or "".
+// it's started (asuka.toml's singleInstance = false), or "".
 func (c *appConfig) multipleInstances() string {
 	if c == nil || c.SingleInstance == nil || *c.SingleInstance {
 		return ""
@@ -328,13 +336,20 @@ func (c *appConfig) multipleInstances() string {
 	return " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.MultipleInstances=1")
 }
 
-// loadConfig reads dir/asuka.json, filling in the defaults.
+// configFile is an app's manifest, in its directory.
+const configFile = "asuka.toml"
+
+// loadConfig reads dir/asuka.toml, filling in the defaults.
 func loadConfig(dir string) (*appConfig, error) {
 	c := &appConfig{}
-	data, err := os.ReadFile(filepath.Join(dir, "asuka.json"))
+	data, err := os.ReadFile(filepath.Join(dir, configFile))
 	if err == nil {
-		if err := json.Unmarshal(data, c); err != nil {
-			return nil, fmt.Errorf("asuka.json: %v", err)
+		if err := toml.Unmarshal(data, c); err != nil {
+			var te *toml.Error
+			if errors.As(err, &te) {
+				return nil, fmt.Errorf("%s:%v", configFile, err) // asuka.toml:3:9: what
+			}
+			return nil, fmt.Errorf("%s: %v", configFile, err)
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, err
@@ -358,38 +373,38 @@ func loadConfig(dir string) (*appConfig, error) {
 	}
 	for _, o := range c.Orientations {
 		if o != "portrait" && o != "landscape" {
-			return nil, fmt.Errorf("asuka.json: orientation %q (want portrait or landscape)", o)
+			return nil, fmt.Errorf("asuka.toml: orientation %q (want portrait or landscape)", o)
 		}
 	}
 	if c.Accent != "" {
 		if !hexColor.MatchString(c.Accent) {
-			return nil, fmt.Errorf("asuka.json: accent %q (want #rrggbb or #rrggbbaa)", c.Accent)
+			return nil, fmt.Errorf("asuka.toml: accent %q (want #rrggbb or #rrggbbaa)", c.Accent)
 		}
 	}
 	if c.Scheme != "" && !scheme.MatchString(c.Scheme) {
-		return nil, fmt.Errorf("asuka.json: scheme %q (want letters, digits, + - .; a letter first)", c.Scheme)
+		return nil, fmt.Errorf("asuka.toml: scheme %q (want letters, digits, + - .; a letter first)", c.Scheme)
 	}
 	for _, l := range c.Links {
 		if !domain.MatchString(l) {
-			return nil, fmt.Errorf("asuka.json: link domain %q (want a host name, as example.com)", l)
+			return nil, fmt.Errorf("asuka.toml: link domain %q (want a host name, as example.com)", l)
 		}
 	}
 	for _, r := range c.Bluetooth.Background {
 		if r != "central" && r != "peripheral" {
-			return nil, fmt.Errorf("asuka.json: bluetooth background %q (want central or peripheral)", r)
+			return nil, fmt.Errorf("asuka.toml: bluetooth background %q (want central or peripheral)", r)
 		}
 	}
 	if err := c.checkFileTypes(dir); err != nil {
-		return nil, fmt.Errorf("asuka.json: %v", err)
+		return nil, fmt.Errorf("asuka.toml: %v", err)
 	}
 	if err := c.checkWidgets(); err != nil {
-		return nil, fmt.Errorf("asuka.json: %v", err)
+		return nil, fmt.Errorf("asuka.toml: %v", err)
 	}
 	if err := c.ShareTarget.check(); err != nil {
-		return nil, fmt.Errorf("asuka.json: shareTarget: %v", err)
+		return nil, fmt.Errorf("asuka.toml: shareTarget: %v", err)
 	}
 	if err := c.NFC.check(); err != nil {
-		return nil, fmt.Errorf("asuka.json: nfc: %v", err)
+		return nil, fmt.Errorf("asuka.toml: nfc: %v", err)
 	}
 	if _, err := c.updates(); err != nil {
 		return nil, err
@@ -425,14 +440,14 @@ func loadConfig(dir string) (*appConfig, error) {
 		}
 		for _, b := range []string{sp.Background, sp.DarkBackground} {
 			if !hexColor.MatchString(b) || len(strings.TrimPrefix(b, "#")) != 6 {
-				return nil, fmt.Errorf("asuka.json: splash background %q (want #rrggbb)", b)
+				return nil, fmt.Errorf("asuka.toml: splash background %q (want #rrggbb)", b)
 			}
 		}
 	}
 	return c, nil
 }
 
-// ldflags is the go build -ldflags for the app: what of asuka.json its Go
+// ldflags is the go build -ldflags for the app: what of asuka.toml its Go
 // code reads (internal/boot), and, for a release, no symbol tables; for a
 // development build, no DWARF.
 func (c *appConfig) ldflags(release bool) string {
@@ -519,7 +534,7 @@ type collectedData struct {
 
 // featurePermissions are what Asuka's packages need of the platform: an
 // app that imports one is given them (and, on iOS, a purpose string,
-// which asuka.json's ios.usage can say better), and the Android host's
+// which asuka.toml's ios.usage can say better), and the Android host's
 // optional Gradle modules (platform/android/asuka-<name>) it needs.
 var featurePermissions = []struct {
 	pkg     string
@@ -615,7 +630,7 @@ var featurePermissions = []struct {
 	{pkg: "github.com/egoist/asuka/sdk/purchase", android: []string{"com.android.vending.BILLING"}, modules: []string{"purchase"}},
 	// Google Pay: play-services-wallet, in the asuka-pay module, whose
 	// manifest enables its API and has the service Google Pay's sheet
-	// calls back. Apple Pay's entitlement has asuka.json's merchant IDs
+	// calls back. Apple Pay's entitlement has asuka.toml's merchant IDs
 	// (payEntitlement).
 	{pkg: payPkg, modules: []string{"pay"}},
 	// NFC: Android's permission (uses-feature, filters: addNFC); iOS's
@@ -640,10 +655,10 @@ var featurePermissions = []struct {
 		androidTop: []string{`<queries><intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="mailto" /></intent>` +
 			`<intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent></queries>`}},
 	// Bluetooth LE: Android 12's nearby devices permissions (the scan's
-	// "neverForLocation" unless asuka.json's bluetooth.location; Asuka's
+	// "neverForLocation" unless asuka.toml's bluetooth.location; Asuka's
 	// Android is 13 and later, so not the older Bluetooth and location
 	// permissions); the companion device chooser. Core Bluetooth's
-	// purpose string. BlueZ on the system bus, from a Flatpak. asuka.json's
+	// purpose string. BlueZ on the system bus, from a Flatpak. asuka.toml's
 	// bluetooth.background adds the background modes (bluetoothExtras).
 	{pkg: bluetoothPackage,
 		android: []string{"android.permission.BLUETOOTH_SCAN|neverForLocation", "android.permission.BLUETOOTH_CONNECT",
@@ -716,7 +731,7 @@ func (c *appConfig) useLocation(has func(symbol string) bool) {
 const payPkg = "github.com/egoist/asuka/sdk/pay"
 
 // payEntitlement gives an app that imports asuka/sdk/pay (deps; nil:
-// any app) Apple Pay's entitlement, with asuka.json's merchant IDs.
+// any app) Apple Pay's entitlement, with asuka.toml's merchant IDs.
 func (c *appConfig) payEntitlement(deps []string) {
 	if len(c.ApplePay.MerchantIDs) == 0 || deps != nil && !slices.Contains(deps, payPkg) {
 		return
@@ -733,7 +748,7 @@ var featureFlatpak = map[string][]string{
 	bluetoothPackage: {"--system-talk-name=org.bluez"},
 }
 
-// bluetoothPackage is asuka/sdk/bluetooth, whose needs asuka.json's
+// bluetoothPackage is asuka/sdk/bluetooth, whose needs asuka.toml's
 // "bluetooth" adds to (bluetoothExtras).
 const bluetoothPackage = "github.com/egoist/asuka/sdk/bluetooth"
 
@@ -846,7 +861,7 @@ func (c *appConfig) addPermission(p string) {
 	c.Android.Permissions = append(c.Android.Permissions, p)
 }
 
-// bluetoothExtras are what asuka.json's "bluetooth" asks for, for an app
+// bluetoothExtras are what asuka.toml's bluetooth asks for, for an app
 // of asuka/sdk/bluetooth: the background modes, the location from scans.
 func (c *appConfig) bluetoothExtras() {
 	if c.Bluetooth.Location {
@@ -943,7 +958,7 @@ func (c *appConfig) androidManifest(debug bool) string {
 		theme = ` android:theme="@style/Theme.Asuka.Splash"`
 	}
 	fmt.Fprintf(&b, "        <activity android:name=\"dev.asuka.AsukaActivity\" android:exported=\"true\"%s>\n", theme)
-	// asuka.json's shortcuts: the launcher's (androidShortcutRes).
+	// asuka.toml's shortcuts: the launcher's (androidShortcutRes).
 	if len(c.Shortcuts) > 0 {
 		b.WriteString("            <meta-data android:name=\"android.app.shortcuts\" android:resource=\"@xml/asuka_shortcuts\" />\n")
 	}
@@ -969,10 +984,10 @@ func (c *appConfig) androidManifest(debug bool) string {
 	if c.ShareTarget.on && !c.shareSheet {
 		b.WriteString(c.ShareTarget.intentFilters())
 	}
-	// asuka.json's fileTypes: opened from a file manager, or a mail's
+	// asuka.toml's fileTypes: opened from a file manager, or a mail's
 	// attachment (AsukaActivity copies a content:// URI's file).
 	b.WriteString(fileTypeFilters(c.fileTypes()))
-	// asuka/sdk/nfc's tags that open the app (asuka.json's nfc).
+	// asuka/sdk/nfc's tags that open the app (asuka.toml's nfc).
 	b.WriteString(c.nfcFilters())
 	b.WriteString("        </activity>\n")
 	// A share sheet (app.ShareSheet): the shares go to its Activity.

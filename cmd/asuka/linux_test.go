@@ -18,13 +18,13 @@ import (
 	"time"
 )
 
-func linuxTestApp(t *testing.T, json string) *goApp {
+func linuxTestApp(t *testing.T, config string) *goApp {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "My Notes")
 	os.MkdirAll(filepath.Join(dir, "assets", "img"), 0o755)
 	os.WriteFile(filepath.Join(dir, "assets", "img", "a.txt"), []byte("asset"), 0o644)
-	if json != "" {
-		os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(json), 0o644)
+	if config != "" {
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(config), 0o644)
 	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
@@ -36,7 +36,7 @@ func linuxTestApp(t *testing.T, json string) *goApp {
 // The build sets the host's name, ID, version and build (and the
 // accent, as every platform's).
 func TestLinuxLdflags(t *testing.T) {
-	app := linuxTestApp(t, `{"name":"Notes & Co","id":"com.example.notes","version":"2.1","build":7,"accent":"#ff8800"}`)
+	app := linuxTestApp(t, "name = \"Notes & Co\"\nid = \"com.example.notes\"\nversion = \"2.1\"\nbuild = 7\naccent = \"#ff8800\"")
 	got := linuxLdflags(app, true)
 	for _, want := range []string{
 		"-ldflags=-s -w", "boot.Accent=#ff8800",
@@ -55,7 +55,7 @@ func TestLinuxLdflags(t *testing.T) {
 	if strings.Contains(got, "MultipleInstances") {
 		t.Error("a single instance's ldflags say multiple")
 	}
-	multi := linuxTestApp(t, `{"name":"Notes","id":"com.example.notes","singleInstance":false}`)
+	multi := linuxTestApp(t, "name = \"Notes\"\nid = \"com.example.notes\"\nsingleInstance = false")
 	if !strings.Contains(linuxLdflags(multi, false), "boot.MultipleInstances=1") {
 		t.Error(`"singleInstance": false isn't in the ldflags`)
 	}
@@ -99,9 +99,19 @@ func TestLinuxArch(t *testing.T) {
 // from bin/<exe>, the icon at each size, the desktop file and the
 // metainfo, named for the ID; and its .tar.gz.
 func TestLinuxShare(t *testing.T) {
-	app := linuxTestApp(t, `{"name":"My Notes","id":"com.example.notes","version":"1.2","icon":"icon.png",
-		"linux":{"summary":"Write things down","description":"Notes, kept.\n\nOn <your> machine & synced.","categories":["Office","Utility"],
-		"keywords":["memo"],"license":"MIT","developer":"Example Inc.","homepage":"https://example.com"}}`)
+	app := linuxTestApp(t, `name = "My Notes"
+id = "com.example.notes"
+version = "1.2"
+icon = "icon.png"
+
+[linux]
+summary = "Write things down"
+description = "Notes, kept.\n\nOn <your> machine & synced."
+categories = ["Office", "Utility"]
+keywords = ["memo"]
+license = "MIT"
+developer = "Example Inc."
+homepage = "https://example.com"`)
 	img := image.NewNRGBA(image.Rect(0, 0, 64, 64))
 	for i := range img.Pix {
 		img.Pix[i] = 200
@@ -210,7 +220,7 @@ func TestLinuxShareDefaults(t *testing.T) {
 }
 
 func TestFlatpakManifest(t *testing.T) {
-	app := linuxTestApp(t, `{"id":"com.example.notes"}`)
+	app := linuxTestApp(t, `id = "com.example.notes"`)
 	m := flatpakManifest(app, "my-notes", false)
 	for _, want := range []string{
 		"\napp-id: com.example.notes\n", "\nruntime: org.gnome.Platform\n", "\nruntime-version: '" + flatpakRuntime + "'\n",

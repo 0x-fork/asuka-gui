@@ -13,21 +13,24 @@
 
 不加 `--platform` 时，在 Mac、Windows PC 或 Linux 机器上会为当前这台电脑构建。除了 iOS 和 Android，其他平台的构建都是 `CGO_ENABLED=0` 的纯 Go 构建，不需要 C 工具链。
 
-## asuka.json
+## asuka.toml
 
-```json
-{
-  "name": "Notes",
-  "id": "com.example.notes",
-  "version": "1.2",
-  "build": 7,
-  "icon": "icon.png",
-  "ios": { "team": "ABCDE12345" },
-  "android": { "keystore": "upload.jks", "keyAlias": "upload" }
-}
+```toml
+name = "Notes"
+id = "com.example.notes"
+version = "1.2"
+build = 7
+icon = "icon.png"
+
+[ios]
+team = "ABCDE12345"
+
+[android]
+keystore = "upload.jks"
+keyAlias = "upload"
 ```
 
-所有键都是可选的；[asuka.json 参考](asuka-json.md) 列出了全部的键及其类型和默认值。下面这些对每个平台都生效：
+所有键都是可选的；[asuka.toml 参考](asuka-toml.md) 列出了全部的键及其类型和默认值。下面这些对每个平台都生效：
 
 - `name` 是应用的名称：显示在图标下方和 Mac 的菜单栏里，也是 Windows 上的窗口标题、Linux 启动器里显示的名字以及网页的标题。构建产物的文件名也取自它（`Notes.app`、`Notes.exe`）。默认使用目录名。
 - `id` 在 iOS 和 Mac 上是 bundle ID；在 Android 和 Linux 上是 application ID（Linux 的 desktop 文件、图标和 D-Bus 名称都用它）；在 Windows 上是 AppUserModelID（通知要用到它）。默认是 `dev.asuka.<directory>`。
@@ -37,11 +40,16 @@
 - `scheme` 让应用可以通过 `myapp://` 这样的 URL 打开，支持 iOS、Android、Mac（`CFBundleURLTypes`）、Linux（desktop 文件中的 `x-scheme-handler`）和 Windows（应用启动时在 `HKEY_CURRENT_USER\Software\Classes` 下为当前用户注册）。`links` 则让指向你自己域名的 https 链接也能打开应用（即 universal links 和 App Links，仅限 iOS 和 Android）。这些 URL 都由 `ui.OnOpenURL` 接收。
 - `fileTypes` 是应用能打开的文件类型，打开的文件由 `ui.OnOpenFiles` 接收：
 
-  ```json
-  "fileTypes": [
-    {"name": "Markdown Document", "extensions": ["md", "markdown"], "role": "viewer"},
-    {"name": "Notes Document", "extensions": ["note"], "icon": "note.png"}
-  ]
+  ```toml
+  [[fileTypes]]
+  name = "Markdown Document"
+  extensions = ["md", "markdown"]
+  role = "viewer"
+
+  [[fileTypes]]
+  name = "Notes Document"
+  extensions = ["note"]
+  icon = "note.png"
   ```
 
   `extensions` 是必填项；`name` 默认是第一个扩展名的大写形式加上 "Document"。对于 Asuka 认识的扩展名（md、txt、json、csv、pdf、png、jpg……），`mimeTypes` 和 `uti` 默认采用系统对它的叫法；其他扩展名则视为应用自有的类型：`application/x-<app>-<ext>` 和 `<id>.<ext>`，在 Mac 和 iOS 上会被导出（exported），在 Linux 上会为 shared-mime-info 定义，并且应用会成为这类文件的默认打开方式。`conformsTo` 是导出或导入的类型所遵循的 UTI（默认 `public.data`、`public.content`）；`role` 取 `editor`（默认）或 `viewer`；`icon` 是一张正方形 PNG，在 Mac、Windows 和 Linux 上用作这类文件的图标。各平台的声明方式如下：Mac 和 iOS 写在 Info.plist 中（`CFBundleDocumentTypes`，iOS 上支持原地打开文档）；Android 声明为 intent filter；Windows 在应用启动时为当前用户注册（每种类型一个 ProgID，扩展名的 `OpenWithProgids`，图标打包在 `.exe` 中）；Linux 写在 desktop 文件的 `MimeType` 和 `share/mime/packages/<id>.xml` 中（解压 `.tar.gz` 后需要运行 `update-mime-database` 和 `update-desktop-database`，包管理器和 Flatpak 会自动完成这一步）；Web 写在 manifest 的 `file_handlers` 中（仅限 Chromium 里已安装的应用）。
@@ -60,8 +68,8 @@
 
 - `orientations`：`portrait`、`landscape`（默认两者都支持），只对手机生效。在 iPad 上，应用总是支持所有方向，因为分屏浏览（Split View）、侧拉（Slide Over）和台前调度（Stage Manager）都要求如此；同样，Android 16 在平板和折叠屏设备上也会忽略这项设置。
 - `ios.iphoneOnly` 让应用不支持 iPad。默认情况下，应用同时也是 iPad 应用，用户把窗口调成多大都能适应；在 Android 上，应用可以调整大小，以适应分屏和桌面窗口。因此布局时请依据 `ui.UseEnvironment()` 的 `Width` 和 `Height`，它们是窗口的尺寸，而不是设备的尺寸。
-- `shareTarget` 让应用出现在其他应用的分享面板里：设为 `true` 可以接收文本和链接，设为 `{"types": ["text", "image/*"], "max": 10}` 还能接收文件（见[设备](device.md#接收其他应用的分享uionshare)）；分享过来的内容由 `ui.OnShare` 接收。在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`）。
-- `splash` 是启动屏：`{"image": "logo.png", "size": 96, "background": "#ffffff", "darkBackground": "#000000"}`（见[设备](device.md#启动屏asukasdksplash)）。
+- `shareTarget` 让应用出现在其他应用的分享面板里：设为 `true` 可以接收文本和链接，设为 `{types = ["text", "image/*"], max = 10}` 这样的表还能接收文件（见[设备](device.md#接收其他应用的分享uionshare)）；分享过来的内容由 `ui.OnShare` 接收。在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`）。
+- `splash` 是启动屏：`{image = "logo.png", size = 96, background = "#ffffff", darkBackground = "#000000"}`（见[设备](device.md#启动屏asukasdksplash)）。
 - `widgets` 是应用的主屏幕小组件，`shortcuts` 是应用提供给 Siri、Spotlight 和启动器的快捷操作（见[设备](device.md#主屏幕小组件asukasdkwidget)）。小组件扩展有自己的 bundle ID（应用的 ID 加上 `.widgets`）：发布时也要为它准备描述文件，可以用 `ios.widgetProfile` 指定。
 - `android.googleServices` 是 Firebase 项目的 `google-services.json`，供 `asuka/sdk/push` 使用；`android.mapsKey` 是 Google Maps Platform 的 API 密钥，供 `asuka/sdk/maps` 使用。
 - `ios.usage` 提供访问受保护资源时的用途说明（`NSCameraUsageDescription` 等，Mac 也会用到）；`ios.infoPlist` 向 Info.plist 添加任意键；`ios.backgroundModes` 向 `UIBackgroundModes` 追加条目（例如 `"audio"`，用于锁屏时录音和播放）；`android.permissions` 用来添加权限。
@@ -86,13 +94,14 @@ asuka build --platform ios
 
 **隐私清单。** App Store 要求每个应用都提供隐私清单，为它用到的、Apple 列出的需声明理由的每个 API 说明理由。Asuka 会根据二进制实际用到的 API 自动生成这份清单：Go 运行时会读取时钟和文件时间。清单声明应用不做追踪；应用收集的数据则按 `ios.collected` 列出的写入，App Store Connect 会拿它和应用的隐私标签对照：
 
-```json
-"ios": {
-  "collected": [{ "type": "EmailAddress", "linked": true, "purposes": ["AppFunctionality"] }]
-}
+```toml
+[[ios.collected]]
+type = "EmailAddress"
+linked = true
+purposes = ["AppFunctionality"]
 ```
 
-`type` 和 `purposes` 使用 Apple 的名称并去掉前缀（`NSPrivacyCollectedDataType`、`NSPrivacyCollectedDataTypePurpose`）；`linked` 表示数据与用户身份关联，`tracking` 表示数据用于追踪用户（见 [asuka.json 参考](asuka-json.md#ios)）。如果你的应用会进行追踪，或者清单需要的内容不止这些，就自己写一份 `ios/PrivacyInfo.xcprivacy`，同时把上面那些理由也写进去。Asuka 会改用你的版本，`ios.collected` 也随之被忽略。无论应用用的是哪一份，`asqlite.framework` 都带有自己的隐私清单，说明 SQLite 用到的 API（文件时间、磁盘剩余空间）。
+`type` 和 `purposes` 使用 Apple 的名称并去掉前缀（`NSPrivacyCollectedDataType`、`NSPrivacyCollectedDataTypePurpose`）；`linked` 表示数据与用户身份关联，`tracking` 表示数据用于追踪用户（见 [asuka.toml 参考](asuka-toml.md#ios)）。如果你的应用会进行追踪，或者清单需要的内容不止这些，就自己写一份 `ios/PrivacyInfo.xcprivacy`，同时把上面那些理由也写进去。Asuka 会改用你的版本，`ios.collected` 也随之被忽略。无论应用用的是哪一份，`asqlite.framework` 都带有自己的隐私清单，说明 SQLite 用到的 API（文件时间、磁盘剩余空间）。
 
 ## Android
 
@@ -102,7 +111,7 @@ asuka build --platform ios
 keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-在 `asuka.json` 里指定它（`android.keystore`、`android.keyAlias`），并通过环境变量提供密码：
+在 `asuka.toml` 里指定它（`android.keystore`、`android.keyAlias`），并通过环境变量提供密码：
 
 ```sh
 ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
@@ -112,14 +121,14 @@ ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
 
 ## 发布到应用商店
 
-`asuka publish` 会像 `asuka build` 一样制作发布构建，然后通过商店的 API 上传。动手之前，它会先向商店确认那些可能导致失败的条件：应用是否存在、密钥是否有权上传、该版本是否还接受新构建、TestFlight 群组是否存在。这样就不会白白构建一个注定传不上去的包。每个构建的编号都是商店中现有最大编号加一（且不小于 `asuka.json` 中的 `build`），所以两次发布之间不需要手动递增。如果想指定编号，可以用 `--build 42`。
+`asuka publish` 会像 `asuka build` 一样制作发布构建，然后通过商店的 API 上传。动手之前，它会先向商店确认那些可能导致失败的条件：应用是否存在、密钥是否有权上传、该版本是否还接受新构建、TestFlight 群组是否存在。这样就不会白白构建一个注定传不上去的包。每个构建的编号都是商店中现有最大编号加一（且不小于 `asuka.toml` 中的 `build`），所以两次发布之间不需要手动递增。如果想指定编号，可以用 `--build 42`。
 
-**App Store Connect。** 在 App Store Connect 中（Users and Access › Integrations › App Store Connect API）创建一个具有 App Manager 角色的 API 密钥，下载它的 `.p8` 文件，然后在 `asuka.json` 或环境变量中指定（`ASUKA_ASC_KEY_ID`、`ASUKA_ASC_ISSUER_ID`，以及 `ASUKA_ASC_KEY`，值为 `.p8` 的路径或文件内容）。没有指定 `key` 时，会像 `altool` 那样到 `~/.appstoreconnect/private_keys` 中查找 `AuthKey_<id>.p8`。不要把 `.p8` 提交到仓库里。另外，要先在 App Store Connect 中添加这个应用（Apps › + › New App），并填上它的 bundle ID。
+**App Store Connect。** 在 App Store Connect 中（Users and Access › Integrations › App Store Connect API）创建一个具有 App Manager 角色的 API 密钥，下载它的 `.p8` 文件，然后在 `asuka.toml` 或环境变量中指定（`ASUKA_ASC_KEY_ID`、`ASUKA_ASC_ISSUER_ID`，以及 `ASUKA_ASC_KEY`，值为 `.p8` 的路径或文件内容）。没有指定 `key` 时，会像 `altool` 那样到 `~/.appstoreconnect/private_keys` 中查找 `AuthKey_<id>.p8`。不要把 `.p8` 提交到仓库里。另外，要先在 App Store Connect 中添加这个应用（Apps › + › New App），并填上它的 bundle ID。
 
-```json
-"ios": {
-  "appStoreConnect": { "keyId": "ABC123DEF4", "issuerId": "57246542-96fe-1a63-e053-0824d011072a" }
-}
+```toml
+[ios.appStoreConnect]
+keyId = "ABC123DEF4"
+issuerId = "57246542-96fe-1a63-e053-0824d011072a"
 ```
 
 ```sh
@@ -132,10 +141,10 @@ asuka publish --platform ios --review --notes @release-notes/ios --release manua
 
 - `--notes` 是 TestFlight 的“测试内容”（What to Test），加上 `--review` 时也是 App Store 的“新功能”（What's New）。可以直接写文本，也可以用 `@file` 指定一个文件（使用应用的主要语言），或者用 `@dir` 指定一个目录，每种语言一个文件，文件名使用 App Store Connect 的语言代码（`en-US.txt`、`ja.txt`）。更新版本时，该版本支持的每种语言都需要提供“新功能”说明。
 - `--groups` 按名称把构建分发给 TestFlight 群组。如果是外部群组（团队以外的测试员），构建会先进入 Beta 版审核，所以请先在 TestFlight 中填好测试信息。
-- `--review` 会在 App Store 版本（即 `asuka.json` 中的 `version`）不存在时创建它，为它关联这个构建，然后提交审核。首次提交之前，需要先在 App Store Connect 中填好商品页信息、截图和隐私问卷，缺了什么会打印出来。`--release auto` 在审核通过后自动发布，`--release manual` 则等你手动发布。
+- `--review` 会在 App Store 版本（即 `asuka.toml` 中的 `version`）不存在时创建它，为它关联这个构建，然后提交审核。首次提交之前，需要先在 App Store Connect 中填好商品页信息、截图和隐私问卷，缺了什么会打印出来。`--release auto` 在审核通过后自动发布，`--release manual` 则等你手动发布。
 - `--no-wait` 在 Apple 收到上传后就结束，不再等待处理。
 
-**Google Play。** 在 Google Cloud 中创建一个服务账号，并为它生成 JSON 密钥（IAM › Service accounts › Keys）；所在项目需要开启 Google Play Android Developer API。然后在 Play Console 的 Users and permissions 中邀请这个服务账号的邮箱，并授予它发布该应用的权限。在 `asuka.json`（`"android": {"serviceAccount": "play.json"}`）或 `ASUKA_PLAY_SERVICE_ACCOUNT`（文件路径或 JSON 内容）中指定这个密钥。注意，应用的第一个 `.aab` 只能在 Play Console 中上传：先在那里创建应用并手动上传第一个构建，之后的构建再交给 `asuka publish`。
+**Google Play。** 在 Google Cloud 中创建一个服务账号，并为它生成 JSON 密钥（IAM › Service accounts › Keys）；所在项目需要开启 Google Play Android Developer API。然后在 Play Console 的 Users and permissions 中邀请这个服务账号的邮箱，并授予它发布该应用的权限。在 `asuka.toml`（`[android]` 中的 `serviceAccount = "play.json"`）或 `ASUKA_PLAY_SERVICE_ACCOUNT`（文件路径或 JSON 内容）中指定这个密钥。注意，应用的第一个 `.aab` 只能在 Play Console 中上传：先在那里创建应用并手动上传第一个构建，之后的构建再交给 `asuka publish`。
 
 ```sh
 asuka publish --platform android                              # 内部测试轨道
@@ -173,9 +182,9 @@ asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)"
 asuka build --platform mac --profile Notes.provisionprofile --notarize asuka
 ```
 
-描述文件会以 `Contents/embedded.provisionprofile` 的形式放进应用。签名时，应用会从描述文件授予的 entitlement 中取出它的包需要的那些（`com.apple.developer.aps-environment`、`com.apple.developer.applesignin`、`com.apple.developer.devicecheck.appattest-environment`），再加上应用 ID、团队和强化运行时。描述文件缺了什么，构建会告诉你。不加 `--sign` 时，签名身份取钥匙串中该描述文件允许的证书（Developer ID Application）；如果 `--sign` 指定的身份不在描述文件中，会报错。`--profile` 可以是文件路径，也可以是已安装描述文件的名称或 UUID；`ASUKA_MAC_PROFILE` 和 asuka.json 的 `mac.profile` 作用相同。三者都没有指定时，使用了这些包的应用会用已安装的（位于 Xcode 描述文件目录中的）与其 ID 最匹配的描述文件签名；一个都找不到，就不带描述文件签名，此时构建会告诉你哪些功能在 Mac 上无法使用，应用的其余部分照常工作。
+描述文件会以 `Contents/embedded.provisionprofile` 的形式放进应用。签名时，应用会从描述文件授予的 entitlement 中取出它的包需要的那些（`com.apple.developer.aps-environment`、`com.apple.developer.applesignin`、`com.apple.developer.devicecheck.appattest-environment`），再加上应用 ID、团队和强化运行时。描述文件缺了什么，构建会告诉你。不加 `--sign` 时，签名身份取钥匙串中该描述文件允许的证书（Developer ID Application）；如果 `--sign` 指定的身份不在描述文件中，会报错。`--profile` 可以是文件路径，也可以是已安装描述文件的名称或 UUID；`ASUKA_MAC_PROFILE` 和 `asuka.toml` 的 `mac.profile` 作用相同。三者都没有指定时，使用了这些包的应用会用已安装的（位于 Xcode 描述文件目录中的）与其 ID 最匹配的描述文件签名；一个都找不到，就不带描述文件签名，此时构建会告诉你哪些功能在 Mac 上无法使用，应用的其余部分照常工作。
 
-`--appstore` 则改为生成用于 Mac App Store 的 `dist/<Name>.pkg`：应用运行在 App 沙盒中（允许访问网络和用户选择的文件），用 Mac App Store 描述文件对应的证书签名（Apple Distribution；描述文件依次取 asuka.json 的 `mac.appStoreProfile`、`--profile`、最佳匹配），安装包则用团队的 Mac Installer Distribution 证书签名。之后用 Transporter 或 `xcrun altool --upload-package` 上传即可；`asuka publish` 目前还不支持上传 Mac 构建。公证只适用于在商店之外分发的应用，所以同时使用 `--notarize` 和 `--appstore` 会报错。
+`--appstore` 则改为生成用于 Mac App Store 的 `dist/<Name>.pkg`：应用运行在 App 沙盒中（允许访问网络和用户选择的文件），用 Mac App Store 描述文件对应的证书签名（Apple Distribution；描述文件依次取 `asuka.toml` 的 `mac.appStoreProfile`、`--profile`、最佳匹配），安装包则用团队的 Mac Installer Distribution 证书签名。之后用 Transporter 或 `xcrun altool --upload-package` 上传即可；`asuka publish` 目前还不支持上传 Mac 构建。公证只适用于在商店之外分发的应用，所以同时使用 `--notarize` 和 `--appstore` 会报错。
 
 ## Windows
 
@@ -194,7 +203,7 @@ ASUKA_WINDOWS_CERT=cert.pfx ASUKA_WINDOWS_CERT_PASSWORD=... asuka build --platfo
 
 构建会用 SHA-256 签名，并为签名加盖时间戳，这样证书过期后签名依然有效。时间戳取自第一个响应的 RFC 3161 服务器：先尝试 `ASUKA_WINDOWS_TIMESTAMP` 中列出的服务器（逗号分隔），没有设置的话依次尝试 DigiCert、Sectigo 和 GlobalSign。如果都没有响应，构建会失败并说明原因；设置 `ASUKA_WINDOWS_TIMESTAMP=none` 则不加时间戳（这样签名会随证书一起失效）。在 Windows 上用 `signtool` 签名（来自 Windows SDK；优先用 `PATH` 中的，否则用已安装的最新版本），在其他系统上用 `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`），`asqlite.dll` 也会一并签名。不设置 `ASUKA_WINDOWS_CERT` 时，`.exe` 不会被签名。如果证书存放在硬件令牌或云服务（Azure Trusted Signing）中，就要用它们自己的工具签名：构建完成后，用那个工具为文件夹中的 `.exe`（以及 `asqlite.dll`）签名。
 
-会显示通知的应用（`asuka/sdk/notify`）第一次运行时，会在用户的开始菜单里创建一个快捷方式，因为 Windows 要求应用有快捷方式才能发送 toast 通知。快捷方式的 AppUserModelID 取 asuka.json 的 `id`（没有的话就根据应用名称生成一个）。
+会显示通知的应用（`asuka/sdk/notify`）第一次运行时，会在用户的开始菜单里创建一个快捷方式，因为 Windows 要求应用有快捷方式才能发送 toast 通知。快捷方式的 AppUserModelID 取 `asuka.toml` 的 `id`（没有的话就根据应用名称生成一个）。
 
 ## Linux
 
@@ -230,19 +239,18 @@ Linux 构建可以在任何系统上完成，因为宿主无需 cgo 就能调用
 
 运行应用的机器需要 GTK 4.14 和 libadwaita 1.5 或更高版本（GNOME 运行时 46 及以上都满足）。应用的 ID 就是它的 application ID：desktop 文件、图标、D-Bus 名称（再次启动时会显示第一个实例的窗口）以及数据目录（`~/.local/share/<id>`）都以它命名。ID 只能包含字母、数字、`_` 和 `-`，至少要有两段，并且每一段都不能以数字开头。
 
-desktop 文件和 metainfo 的内容在 `asuka.json` 中设置：
+desktop 文件和 metainfo 的内容在 `asuka.toml` 中设置：
 
-```json
-"linux": {
-  "summary": "Write things down",
-  "description": "Notes, kept on your computer.\n\nA second paragraph.",
-  "categories": ["Office"],
-  "keywords": ["memo"],
-  "license": "MIT",
-  "developer": "Example Inc.",
-  "homepage": "https://example.com",
-  "flatpakRuntime": "50"
-}
+```toml
+[linux]
+summary = "Write things down"
+description = "Notes, kept on your computer.\n\nA second paragraph."
+categories = ["Office"]
+keywords = ["memo"]
+license = "MIT"
+developer = "Example Inc."
+homepage = "https://example.com"
+flatpakRuntime = "50"
 ```
 
 `categories` 取自 [freedesktop.org 的分类表](https://specifications.freedesktop.org/menu-spec/latest/category-registry.html)（默认 `Utility`）；`license` 是一个 SPDX 表达式。Flathub 和软件中心都要求提供简介（summary）、描述、许可证和开发者。
@@ -269,13 +277,12 @@ asuka build --platform web
 asuka update keygen
 ```
 
-它会把私钥 `asuka-update.key` 和公钥 `asuka-update.pub` 写到你的配置目录下的 `asuka/update-keys` 中（可以用 `--out` 换一个位置），并打印出需要添加到 `asuka.json` 的内容。私钥不要放进仓库，而应该保存在密码管理器和 CI 的 secrets 里。已安装的应用只接受由这把私钥签名的更新：一旦丢失，这些应用就再也无法更新；而拿到它的人，则可以向你的用户推送任意代码。
+它会把私钥 `asuka-update.key` 和公钥 `asuka-update.pub` 写到你的配置目录下的 `asuka/update-keys` 中（可以用 `--out` 换一个位置），并打印出需要添加到 `asuka.toml` 的内容。私钥不要放进仓库，而应该保存在密码管理器和 CI 的 secrets 里。已安装的应用只接受由这把私钥签名的更新：一旦丢失，这些应用就再也无法更新；而拿到它的人，则可以向你的用户推送任意代码。
 
-```json
-"updates": {
-  "publicKey": "…the contents of asuka-update.pub…",
-  "github": "you/notes"
-}
+```toml
+[updates]
+publicKey = "…the contents of asuka-update.pub…"
+github = "you/notes"
 ```
 
 | 键 | 说明 |
@@ -335,7 +342,7 @@ go func() {
 - 从之前已发布的版本到当前版本的增量更新，命名为 `notes-1.1.0-to-1.2.0-<target>.delta`。构建时会按已发布清单中记录的位置下载旧版本（同时验证签名），然后写出差异：哪些文件可以直接从已安装的应用中移动或复制，改动过的文件的 bsdiff 补丁，以及其余文件的完整内容。应用只会下载针对自己当前版本的增量包；如果增量更新失败（比如应用在安装后被改动过），就改为下载完整的归档。第一个版本没有增量包。
 - `update-<target>.json`：清单，包含版本号、版本说明、日期，归档和各增量包的 URL、大小和签名，以及之前的各个版本（用于生成下一次的增量包）。预发布版本的清单是 `update-<target>-beta.json`，只有处在该渠道的应用才会读取。
 
-没有私钥时，构建只生成应用本身，不写任何更新文件，并会提示这一点。`--version 1.2.0` 可以构建与 `asuka.json` 中不同的版本（CI 会从标签中取版本号）。Windows 的文件夹和 Linux 的前缀中还会多出一个 `.asuka-files`，列出这个版本安装了哪些文件。这样下次更新时，就能删掉新版本中已不再需要的文件，同时不会碰你自己放进去的任何文件。
+没有私钥时，构建只生成应用本身，不写任何更新文件，并会提示这一点。`--version 1.2.0` 可以构建与 `asuka.toml` 中不同的版本（CI 会从标签中取版本号）。Windows 的文件夹和 Linux 的前缀中还会多出一个 `.asuka-files`，列出这个版本安装了哪些文件。这样下次更新时，就能删掉新版本中已不再需要的文件，同时不会碰你自己放进去的任何文件。
 
 `asuka publish` 会构建并上传这些文件，清单最后上传，确保应用读到清单时，清单里引用的文件都已经就位：
 
@@ -353,12 +360,11 @@ asuka publish --platform linux --draft
 
 配置了 `feed` 后，应用会改为向你的服务器询问更新。URL 中的 `{target}`、`{version}`（应用当前运行的版本）和 `{channel}` 会被替换为实际的值：
 
-```json
-"updates": {
-  "publicKey": "…",
-  "url": "https://downloads.example.com/notes",
-  "feed": "https://api.example.com/updates?target={target}&version={version}&channel={channel}"
-}
+```toml
+[updates]
+publicKey = "…"
+url = "https://downloads.example.com/notes"
+feed = "https://api.example.com/updates?target={target}&version={version}&channel={channel}"
 ```
 
 没有新版本时，服务器返回 `204 No Content`（或 404）；否则返回一份清单，也就是 `asuka build` 写出的那种 JSON：
@@ -411,7 +417,7 @@ dependencies { implementation("dev.asuka.counter:counter:1.0.0") }
 startActivity(Intent(this, dev.asuka.AsukaActivity::class.java))
 ```
 
-嵌入的部分就是一个完整的 Asuka 应用，和独立构建时一样只挂载一次。`asuka.json` 中那些针对整个应用的设置（图标、URL scheme、分享目标、小组件、权限说明文字），需要由外层的原生应用在它自己的项目中设置。
+嵌入的部分就是一个完整的 Asuka 应用，和独立构建时一样只挂载一次。`asuka.toml` 中那些针对整个应用的设置（图标、URL scheme、分享目标、小组件、权限说明文字），需要由外层的原生应用在它自己的项目中设置。
 
 ## 崩溃报告的符号
 
@@ -563,7 +569,7 @@ CLI 内置了 iOS 和 Android 宿主，所以安装的 CLI 版本必须与应用
 
 ### 桌面端
 
-把下面这些任务加到同一个工作流中，就能为该标签构建桌面应用，并附加到它的 Release 草稿上：Mac 版用你的 Developer ID 签名并公证；Windows 版构建 x64 和 Arm 两种架构并签名；Linux 版构建 amd64 和 arm64 两种架构。Windows 和 Linux 版都在 Linux 上构建，所以一个 Ubuntu runner 就能全部完成。（这里的应用名为 Notes，产物的文件名取自 `asuka.json` 中的 `name`。）
+把下面这些任务加到同一个工作流中，就能为该标签构建桌面应用，并附加到它的 Release 草稿上：Mac 版用你的 Developer ID 签名并公证；Windows 版构建 x64 和 Arm 两种架构并签名；Linux 版构建 amd64 和 arm64 两种架构。Windows 和 Linux 版都在 Linux 上构建，所以一个 Ubuntu runner 就能全部完成。（这里的应用名为 Notes，产物的文件名取自 `asuka.toml` 中的 `name`。）
 
 ```yaml
   mac:
@@ -662,7 +668,7 @@ Windows 和 Linux 的任务中则改为：
           done
 ```
 
-最后发布草稿（运行 `gh release edit v1.2.0 --draft=false`，或者在 Release 页面上操作），已安装的应用就会更新到这个版本。release 任务使用的标签由 `tagPrefix` 加版本号组成（`v1.2.0`）；`--version` 让构建的版本与标签保持一致，所以不必去改 `asuka.json` 里的版本号。增量包以已发布的 Release 为基准生成，runner 会下载它（`GH_TOKEN` 可以放宽 GitHub API 的请求频率限制，使用 `tagPrefix` 时会用到这个 API）。
+最后发布草稿（运行 `gh release edit v1.2.0 --draft=false`，或者在 Release 页面上操作），已安装的应用就会更新到这个版本。release 任务使用的标签由 `tagPrefix` 加版本号组成（`v1.2.0`）；`--version` 让构建的版本与标签保持一致，所以不必去改 `asuka.toml` 里的版本号。增量包以已发布的 Release 为基准生成，runner 会下载它（`GH_TOKEN` 可以放宽 GitHub API 的请求频率限制，使用 `tagPrefix` 时会用到这个 API）。
 
 ## 多语言
 

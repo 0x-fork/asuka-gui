@@ -48,7 +48,7 @@ func check(ctx context.Context, src Source, key, current, target, channel string
 // feedSource is the feed asuka build builds in (buildFeed):
 //
 //   - the URL of a target's manifest, update-<target>.json in a directory
-//     (asuka.json's updates.url: an S3 bucket, a CDN): a channel's
+//     (asuka.toml's updates.url: an S3 bucket, a CDN): a channel's
 //     prereleases are its update-<target>-<channel>.json beside it, and
 //     the newer of the two is the answer;
 //   - a feed of GitHub releases (updates.github): the latest release's

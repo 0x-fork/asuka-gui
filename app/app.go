@@ -57,7 +57,7 @@ var shareScreen func(*ui.ShareSheet) ui.Node
 
 // ShareSheet shows screen when another app shares with this one, over
 // that app, instead of opening this one: the app's own sheet, as "Save
-// to Raindrop" or "Add to Notes". Call it before Run. asuka.json's
+// to Raindrop" or "Add to Notes". Call it before Run. asuka.toml's
 // shareTarget says what the app takes; screen gets it in s.Items, and
 // ends the sheet with s.Close, s.Cancel or s.OpenApp.
 //

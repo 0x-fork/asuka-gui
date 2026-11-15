@@ -19,7 +19,7 @@
 //
 // An app that uses the key-value store is given its entitlement, and one
 // that uses documents the iCloud Documents service and its containers
-// (asuka.json's icloud, by default iCloud.<the app's ID>). Its App ID
+// (asuka.toml's icloud, by default iCloud.<the app's ID>). Its App ID
 // needs the iCloud capability, with those containers, for a device or a
 // release build (developer.apple.com). asuka dev builds such an app
 // rather than run it in the player: its iCloud is its own.

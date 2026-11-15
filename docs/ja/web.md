@@ -24,7 +24,7 @@ asuka build --platform web examples/counter     # 静的サイトを examples/co
 
 `asuka build --platform web` は、`dist/web` に静的サイトを作ります。中身は次のとおりです。
 
-- `index.html` と `manifest.webmanifest`（Web アプリマニフェスト。これがあると、ブラウザーがアプリのインストールを提案します。アイコンは `asuka.json` の `icon` から作られ、ファビコンと iOS のホーム画面アイコンも含まれます）。
+- `index.html` と `manifest.webmanifest`（Web アプリマニフェスト。これがあると、ブラウザーがアプリのインストールを提案します。アイコンは `asuka.toml` の `icon` から作られ、ファビコンと iOS のホーム画面アイコンも含まれます）。
 - アプリ本体の `app.<digest>.wasm`。シンボルを取り除き（stripped）、`-trimpath` 付きでビルドされます。
 - `asuka/<digest>/` 内の Web ホストのファイル（`asuka/sdk/sqlite` をインポートするアプリでは、SQLite の WebAssembly ビルドも含まれます。約 0.9 MB、gzip 圧縮で 0.4 MB です）と、`web/<digest>/` 内のアプリ自身のスクリプト（`web/*.js`）。
 - アプリの service worker である `sw.<digest>.js`。`index.html` と同じ場所に置かれ（スコープはサイトのフォルダー）、アプリのページが一つも開いていない間も、アプリの通知とプッシュ通知を表示します（[通知と Web Push](#通知と-web-push)）。
@@ -131,10 +131,11 @@ Web アプリにはどれも service worker があります。service worker は
 
 ### asuka/sdk/push：Web Push
 
-Web Push には VAPID の鍵ペアが必要です。アプリのサーバーは秘密鍵でプッシュに署名し、ブラウザーは公開鍵で購読します。公開鍵は `asuka.json` に書きます。
+Web Push には VAPID の鍵ペアが必要です。アプリのサーバーは秘密鍵でプッシュに署名し、ブラウザーは公開鍵で購読します。公開鍵は `asuka.toml` に書きます。
 
-```json
-{ "web": { "vapidPublicKey": "BKpYsAT0ADj2pHQQ..." } }
+```toml
+[web]
+vapidPublicKey = "BKpYsAT0ADj2pHQQ..."
 ```
 
 鍵ペアは一度だけ作り、秘密鍵はサーバーに置いておきます。鍵ペアを作り直すと、購読もすべてやり直しになります。鍵ペアは `webpush.GenerateKeys`（後述）でも、`npx web-push generate-vapid-keys` でも作れます。

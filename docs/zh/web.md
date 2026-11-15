@@ -24,7 +24,7 @@ asuka build --platform web examples/counter     # 生成静态网站，位于 ex
 
 `asuka build --platform web` 会在 `dist/web` 中生成一个静态网站，包含：
 
-- `index.html` 和 `manifest.webmanifest`（Web 应用清单，有了它浏览器才会提示安装应用；图标取自 `asuka.json` 的 `icon`，同时生成 favicon 和 iOS 主屏幕图标）；
+- `index.html` 和 `manifest.webmanifest`（Web 应用清单，有了它浏览器才会提示安装应用；图标取自 `asuka.toml` 的 `icon`，同时生成 favicon 和 iOS 主屏幕图标）；
 - 应用本身 `app.<digest>.wasm`，构建时去掉了符号表，并使用了 `-trimpath`；
 - Web 宿主的文件，放在 `asuka/<digest>/` 中（如果应用导入了 `asuka/sdk/sqlite`，还包括 SQLite 的 WebAssembly 构建，约 0.9 MB，gzip 后 0.4 MB），以及应用自己的脚本（`web/*.js`），放在 `web/<digest>/` 中；
 - 应用的 service worker `sw.<digest>.js`，与 `index.html` 放在一起（作用域是网站所在的文件夹）：即使没有打开应用的任何页面，它也能显示应用的通知和推送（见 [通知与 Web Push](#通知与-web-push)）；
@@ -33,7 +33,7 @@ asuka build --platform web examples/counter     # 生成静态网站，位于 ex
 - `_headers`，Cloudflare 和 Netlify 会读取它：`index.html` 和清单设为 `no-cache`，以摘要命名的文件则永久缓存；
 - `_redirects`，Netlify 会读取它：没有对应文件的路径都返回应用的页面，这样[路由器](#地址与历史记录)的地址才能打开应用。
 
-`index.html` 的 `<base href>` 是网站所在的路径：默认是 `/`，也可以用 `asuka.json` 的 `web.base` 或 `--base` 指定（`https://example.com/app/` 就写 `"/app/"`）。这样页面无论在它下面的哪个地址打开，都能找到自己的文件，路由器的 href 也就是它下面的页面地址（`/chat/7` 对应 `https://example.com/app/chat/7`）。
+`index.html` 的 `<base href>` 是网站所在的路径：默认是 `/`，也可以用 `asuka.toml` 的 `web.base` 或 `--base` 指定（`https://example.com/app/` 就写 `"/app/"`）。这样页面无论在它下面的哪个地址打开，都能找到自己的文件，路由器的 href 也就是它下面的页面地址（`/chat/7` 对应 `https://example.com/app/chat/7`）。
 
 这个文件夹可以放在任何 Web 服务器或 CDN 上。以内容摘要命名的文件一旦内容变化，文件名也会跟着变，所以可以放心地永久缓存，只有 `index.html` 需要重新获取。`.wasm` 文件要以 `application/wasm` 类型提供。一个计数器应用的 WebAssembly 约 6.5 MB，gzip 后 1.7 MB（用 brotli 压缩是 1.3 MB，CDN 一般可以帮你做）；应用自己的代码和它导入的包会在此基础上增加体积。
 
@@ -163,10 +163,11 @@ Asuka 的包会调用宿主的原生模块（`ui.Call`）。在浏览器中：
 
 ### asuka/sdk/push：Web Push
 
-Web Push 需要一对 VAPID 密钥：应用的服务器用私钥为推送签名，浏览器用公钥订阅。公钥写在 `asuka.json` 里：
+Web Push 需要一对 VAPID 密钥：应用的服务器用私钥为推送签名，浏览器用公钥订阅。公钥写在 `asuka.toml` 里：
 
-```json
-{ "web": { "vapidPublicKey": "BKpYsAT0ADj2pHQQ..." } }
+```toml
+[web]
+vapidPublicKey = "BKpYsAT0ADj2pHQQ..."
 ```
 
 密钥对只需生成一次，私钥保存在服务器上；换一对新密钥就需要重新订阅。可以用 `webpush.GenerateKeys`（见下文）生成，也可以用 `npx web-push generate-vapid-keys`。

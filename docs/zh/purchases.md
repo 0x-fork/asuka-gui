@@ -125,12 +125,11 @@ ui.Show(signal.Func(func() bool { return owned.Get().Has(pro.ID) }), proFeatures
 
 商店只向它认识的应用售卖商品。在 iOS 上，导入了 `asuka/sdk/purchase` 的应用在 `asuka dev` 下不走热重载模式，而是构建成应用本身运行，所以每次保存都会重新安装。在 Android 上，Play 只向从它的某个测试轨道安装的构建售卖商品，所以 `asuka dev` 下无法测试应用内购买，运行时也会提示这一点。
 
-**iOS 模拟器。** 在 Xcode 里创建一个 StoreKit 配置文件（File › New › File › StoreKit Configuration File，也可以从 App Store Connect 同步），填好商品，然后在 `asuka.json` 里指定它：
+**iOS 模拟器。** 在 Xcode 里创建一个 StoreKit 配置文件（File › New › File › StoreKit Configuration File，也可以从 App Store Connect 同步），填好商品，然后在 `asuka.toml` 里指定它：
 
-```json
-{
-  "ios": { "storekit": "Products.storekit" }
-}
+```toml
+[ios]
+storekit = "Products.storekit"
 ```
 
 `asuka dev` 为模拟器生成的构建会带上这个文件；由 `asuka dev` 启动时，它会像在 Xcode 的 scheme 里设置了这个文件的应用那样，从文件里售卖商品。价格、“询问购买”、交易失败和加速续期都由这个文件控制：

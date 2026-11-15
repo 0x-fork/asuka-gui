@@ -629,7 +629,7 @@ func pressMenuItem(it *MenuItem) {
 // keyboard shortcuts, beside the ones the platform makes: on a Mac the
 // app's menu, Edit and Window; a menu titled as one of those (File,
 // Edit, View, Window, Help) adds its items to it, and on a Mac one titled
-// as the app (asuka.json's name) adds them to the app's menu, after
+// as the app (asuka.toml's name) adds them to the app's menu, after
 // About ("Check for Updates…": asuka/sdk/update's AppMenu). Menus follows its
 // signals: an item turned off or checked, a menu that comes and goes.
 // While several are mounted, the last one shows; when it's disposed, the

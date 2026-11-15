@@ -21,11 +21,11 @@ func TestConfigDefaults(t *testing.T) {
 	if c.Name != "My App" || c.ID != "dev.asuka.my-app" || c.Version != "1.0" || c.Build != 1 || len(c.Orientations) != 2 {
 		t.Fatalf("%+v", c)
 	}
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id":"com.x.y","icon":"i.png","orientations":["sideways"]}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("id = \"com.x.y\"\nicon = \"i.png\"\norientations = [\"sideways\"]"), 0o644)
 	if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "sideways") {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id":"com.x.y","icon":"i.png","build":3}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("id = \"com.x.y\"\nicon = \"i.png\"\nbuild = 3"), 0o644)
 	c, _ = loadConfig(dir)
 	if c.ID != "com.x.y" || c.Build != 3 || c.Icon != filepath.Join(dir, "i.png") {
 		t.Fatalf("%+v", c)

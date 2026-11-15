@@ -640,7 +640,7 @@ enum {
 	AK_EVENT_DOWNLOAD = 37,
 	// a WebView's page would open a page in a new window (its URL)
 	AK_EVENT_NEW_WINDOW = 38,
-	// another app shared with the app from its share sheet (iOS's share extension, Android's ACTION_SEND and ACTION_SEND_MULTIPLE, with asuka.json's shareTarget), at launch or since; to the root: u32 count, then per item u8 ShareKind, string text (a text, a link's URL), string path (a file: the app's copy), string name (the file's name where it came from), string MIME type, i64 size (-1: unknown)
+	// another app shared with the app from its share sheet (iOS's share extension, Android's ACTION_SEND and ACTION_SEND_MULTIPLE, with asuka.toml's shareTarget), at launch or since; to the root: u32 count, then per item u8 ShareKind, string text (a text, a link's URL), string path (a file: the app's copy), string name (the file's name where it came from), string MIME type, i64 size (-1: unknown)
 	AK_EVENT_SHARED = 39,
 	// the view is pressed (true): a finger, or the mouse's primary button, went down on it (a moment later in a scrolling container, as the platform's own views are, so a scroll doesn't show it); or isn't any more (false): it lifted, moved off the view (back on, it's pressed again), or a scroll, another gesture, a long press or a drag took the touch. Listened for (or Hover), the host leaves off its own pressed and hover looks (Android's ripple, Windows' fills): the app draws them
 	AK_EVENT_PRESSED = 40,

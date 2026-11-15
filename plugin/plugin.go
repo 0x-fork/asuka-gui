@@ -1,5 +1,5 @@
 // Package plugin is what an Asuka plugin is made of: a Go package, with
-// a manifest beside it (asuka-plugin.json) naming the native libraries it
+// a manifest beside it (asuka-plugin.toml) naming the native libraries it
 // brings, prebuilt for each platform and published (a GitHub release, each
 // file named for its hash), which its Go code loads (through purego or
 // syscall: no cgo). The CLI ships the libraries of the plugins an app
@@ -9,7 +9,7 @@
 //
 // A plugin's Go code embeds its manifest and asks for its library's path:
 //
-//	//go:embed asuka-plugin.json
+//	//go:embed asuka-plugin.toml
 //	var manifest []byte
 //
 //	path, err := plugin.LibraryPath(manifest, "asqlite")
@@ -24,14 +24,16 @@
 package plugin
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
+
+	"github.com/egoist/asuka/internal/toml"
 )
 
 // ManifestFile is a plugin's manifest, in its package's directory.
-const ManifestFile = "asuka-plugin.json"
+const ManifestFile = "asuka-plugin.toml"
 
 // Manifest is a plugin's manifest.
 type Manifest struct {
@@ -107,7 +109,11 @@ func Target(goos, goarch string) string {
 // Parse reads a manifest.
 func Parse(data []byte) (*Manifest, error) {
 	var m Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
+	if err := toml.Unmarshal(data, &m); err != nil {
+		var te *toml.Error
+		if errors.As(err, &te) {
+			return nil, fmt.Errorf("plugin: %s:%w", ManifestFile, err)
+		}
 		return nil, fmt.Errorf("plugin: %s: %w", ManifestFile, err)
 	}
 	if !pluginName(m.Name) {
@@ -124,6 +130,21 @@ func Parse(data []byte) (*Manifest, error) {
 		}
 	}
 	return &m, nil
+}
+
+// manifestHeader begins a manifest asuka plugin publish writes.
+const manifestHeader = `# A plugin's manifest (package plugin). asuka plugin publish writes this
+# file whole, recording the files it publishes: comments here don't last.
+
+`
+
+// Marshal is m as its file, which asuka plugin publish writes.
+func (m *Manifest) Marshal() ([]byte, error) {
+	b, err := toml.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(manifestHeader), b...), nil
 }
 
 // Library is the manifest's library named name.

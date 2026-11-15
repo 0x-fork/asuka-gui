@@ -38,14 +38,14 @@ import (
 // manifest that packages it, for flatpak-builder.
 
 // flatpakRuntime is the GNOME runtime the Flatpak manifest asks for
-// (asuka.json's linux.flatpakRuntime overrides it): the host needs GTK
+// (asuka.toml's linux.flatpakRuntime overrides it): the host needs GTK
 // 4.14 and libadwaita 1.5, GNOME 46's, or later.
 const flatpakRuntime = "50"
 
 // linuxIconSizes are the sizes of the app's icon in the hicolor theme.
 var linuxIconSizes = []int{16, 24, 32, 48, 64, 128, 256, 512}
 
-// linuxLdflags is the -ldflags of a Linux build: asuka.json's (its
+// linuxLdflags is the -ldflags of a Linux build: asuka.toml's (its
 // accent), and the app's name (its window title), ID (its GApplication's,
 // which names its desktop file, its D-Bus name and its data directory),
 // version and build (its crash reports' and About's).
@@ -209,7 +209,7 @@ func buildLinux(app *goApp, o *buildOptions) error {
 		return err
 	}
 	if !gAppIDValid(app.bundleID) {
-		return fmt.Errorf("asuka.json: id %q isn't a valid application ID on Linux: letters, digits, _ and -, in two parts or more, none starting with a digit (com.example.notes)", app.bundleID)
+		return fmt.Errorf("asuka.toml: id %q isn't a valid application ID on Linux: letters, digits, _ and -, in two parts or more, none starting with a digit (com.example.notes)", app.bundleID)
 	}
 	exe := linuxExe(app)
 	base := filepath.Join(o.out, "linux")
@@ -273,7 +273,7 @@ func buildLinux(app *goApp, o *buildOptions) error {
 	fmt.Printf("asuka: %s, a Flatpak: flatpak-builder --user --install --force-clean build %s\n", manifest, filepath.Base(manifest))
 	l := app.cfg.Linux
 	if l.Summary == "" || l.Description == "" || l.License == "" || l.Developer == "" {
-		fmt.Println("asuka: software centers and Flathub want linux.summary, description, license and developer in asuka.json (the AppStream metainfo's)")
+		fmt.Println("asuka: software centers and Flathub want linux.summary, description, license and developer in asuka.toml (the AppStream metainfo's)")
 	}
 	return nil
 }
@@ -313,7 +313,7 @@ func writeLinuxShare(app *goApp, out, exe string) error {
 		filepath.Join(share, "applications", id+".desktop"):  desktopEntry(app, exe, icon),
 		filepath.Join(share, "metainfo", id+".metainfo.xml"): metainfo(app, icon, time.Now()),
 	}
-	// asuka.json's fileTypes: the MIME types the app defines, for
+	// asuka.toml's fileTypes: the MIME types the app defines, for
 	// shared-mime-info (named for the app's ID, as Flatpak exports it),
 	// and their icons in the hicolor theme.
 	types := app.cfg.fileTypes()

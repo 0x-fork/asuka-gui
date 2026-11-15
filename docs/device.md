@@ -43,7 +43,7 @@ web need nothing declared (see each one's section below).
 | `asuka/sdk/photos` | `READ_MEDIA_IMAGES`, `READ_MEDIA_VISUAL_USER_SELECTED`; `READ_EXTERNAL_STORAGE` (Android 12 and earlier) | `NSPhotoLibraryUsageDescription` |
 | `asuka/sdk/push` | Firebase Cloud Messaging, `POST_NOTIFICATIONS` | the `aps-environment` entitlement; `remote-notification` background mode |
 | `asuka/sdk/appleauth` | | the Sign in with Apple entitlement |
-| `asuka/sdk/pay` | Google Pay's library, its API enabled, its callbacks service | the Apple Pay entitlement, with `asuka.json`'s `applePay.merchantIds` |
+| `asuka/sdk/pay` | Google Pay's library, its API enabled, its callbacks service | the Apple Pay entitlement, with `asuka.toml`'s `applePay.merchantIds` |
 | `asuka/sdk/biometric` | `USE_BIOMETRIC` | `NSFaceIDUsageDescription` |
 | `asuka/sdk/audio/record` | `RECORD_AUDIO`, `FOREGROUND_SERVICE_MICROPHONE`; a foreground service | `NSMicrophoneUsageDescription` |
 | `asuka/sdk/nowplaying` | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`; a foreground service | the `audio` background mode (for an app that calls `nowplaying.Show`) |
@@ -63,8 +63,8 @@ web need nothing declared (see each one's section below).
 | `asuka/sdk/contacts` | `READ_CONTACTS` (for `List`) | `NSContactsUsageDescription` |
 | `asuka/sdk/calendar` | `READ_CALENDAR` (for `Calendars`, `Events`) | `NSCalendarsFullAccessUsageDescription`, `NSCalendarsUsageDescription` |
 | `asuka/sdk/compose` | the visibility of the apps for `mailto:` and `smsto:` (`<queries>`) | `mailto` in `LSApplicationQueriesSchemes` |
-| `asuka/sdk/nfc` | `NFC`; `uses-feature android.hardware.nfc` (not required); asuka.json's `nfc` filters ([NFC tags](nfc.md)) | `NFCReaderUsageDescription`; Core NFC's entitlement; asuka.json's `nfc` AIDs and FeliCa system codes |
-| `asuka/sdk/bluetooth` | `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; the scan's receiver for `asuka.json`'s `bluetooth.background` (see [Bluetooth](bluetooth.md#what-the-build-adds)) | `NSBluetoothAlwaysUsageDescription`; `bluetooth-central`, `bluetooth-peripheral` for `bluetooth.background` |
+| `asuka/sdk/nfc` | `NFC`; `uses-feature android.hardware.nfc` (not required); asuka.toml's `nfc` filters ([NFC tags](nfc.md)) | `NFCReaderUsageDescription`; Core NFC's entitlement; asuka.toml's `nfc` AIDs and FeliCa system codes |
+| `asuka/sdk/bluetooth` | `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; the scan's receiver for `asuka.toml`'s `bluetooth.background` (see [Bluetooth](bluetooth.md#what-the-build-adds)) | `NSBluetoothAlwaysUsageDescription`; `bluetooth-central`, `bluetooth-peripheral` for `bluetooth.background` |
 
 `asuka/sdk/device`, `asuka/sdk/audio`, `asuka/sdk/splash`, `asuka/sdk/imageedit`,
 `asuka/sdk/widget`, `asuka/sdk/js`, `asuka/sdk/secure`, `asuka/sdk/preview` and
@@ -77,17 +77,12 @@ profile lacks one; simulator builds have them all.
 
 The purpose strings Asuka writes are generic ("To take a photo."). iOS
 and macOS show them when they ask the user, so write your own in
-`asuka.json`'s `ios.usage`:
+`asuka.toml`'s `ios.usage`:
 
-```json
-{
-  "ios": {
-    "usage": {
-      "NSCameraUsageDescription": "To photograph your receipts.",
-      "NSLocationWhenInUseUsageDescription": "To find stores near you."
-    }
-  }
-}
+```toml
+[ios.usage]
+NSCameraUsageDescription = "To photograph your receipts."
+NSLocationWhenInUseUsageDescription = "To find stores near you."
 ```
 
 Each package asks the user the first time it needs to, not at launch.
@@ -105,7 +100,7 @@ signature has the hardened runtime's entitlements for what they ask
 which a Developer ID build is refused them. Push's `aps-environment`,
 Sign in with Apple, App Attest, Apple Pay and iCloud are entitlements only a provisioning
 profile grants: `asuka build` embeds one for an app that uses them
-(`asuka.json`'s `mac.profile`, else `ASUKA_MAC_PROFILE`, else the best
+(`asuka.toml`'s `mac.profile`, else `ASUKA_MAC_PROFILE`, else the best
 match installed). Without one, the app builds, the CLI says what won't
 work, and on the Mac registering for pushes and signing in with Apple
 fail, and App Attest says it isn't supported. `asuka dev` signs ad hoc,
@@ -141,7 +136,7 @@ UserNotifications, AuthenticationServices), except where a Mac differs:
 | `asuka/sdk/purchase` | StoreKit 2, in the app's Swift library, which the build makes for an app that imports the package ([In-app purchases](purchases.md)) |
 | `asuka/sdk/icloud` | As on iOS, in the app's Swift library. Needs a provisioning profile with iCloud (above): without one, `ErrNotAvailable` ([iCloud](icloud.md)) |
 | `asuka/sdk/splash` | A Mac app has no launch screen: `Hold` and `Hide` do nothing |
-| `ui.OnShare`, `app.ShareSheet`, shortcuts | iOS and Android only: a Mac app isn't offered in other apps' share menus, and `asuka.json`'s `shortcuts` aren't added |
+| `ui.OnShare`, `app.ShareSheet`, shortcuts | iOS and Android only: a Mac app isn't offered in other apps' share menus, and `asuka.toml`'s `shortcuts` aren't added |
 
 ## On Windows
 
@@ -575,7 +570,7 @@ ui.Button(ui.ButtonProps{Title: ui.Val("Help"), OnPress: func() {
 - `device.GetInfo()` is the device and the app: `Model` ("iPhone", "Pixel
   9", "Mac", "PC"), `System` ("iOS", "Android", "macOS", "Windows",
   "Linux"), `SystemVersion`, and `AppVersion` and
-  `Build`, `asuka.json`'s `version` and `build`. Not on the main thread.
+  `Build`, `asuka.toml`'s `version` and `build`. Not on the main thread.
 
 ```go
 func Player() ui.Node {
@@ -622,7 +617,7 @@ It ends in one of two ways:
 
 - **A callback scheme.** When the page goes to a URL of
   `CallbackScheme` (the app's own), the sheet closes and `done` gets the
-  URL. On Android the scheme must be the app's, asuka.json's `scheme`; it
+  URL. On Android the scheme must be the app's, asuka.toml's `scheme`; it
   goes to `done` rather than `ui.OnOpenURL`.
 - **The app ends it.** Without a scheme, the page redirects somewhere
   the app hears from: an OAuth server that allows a redirect to the
@@ -695,8 +690,8 @@ Linux has none: the files go on the clipboard, as a shared text does. A
 browser shares the files with the Web Share sheet where it can, else
 downloads each.
 
-To be opened with URLs yourself, see `asuka.json`'s `scheme` and `links` in
-[Shipping](shipping.md#asukajson), and `ui.OnOpenURL`.
+To be opened with URLs yourself, see `asuka.toml`'s `scheme` and `links` in
+[Shipping](shipping.md#asukatoml), and `ui.OnOpenURL`.
 
 ## Previewing files: asuka/sdk/preview
 
@@ -957,7 +952,7 @@ Location off, Android's Approximate).
 - `location.RequestPrecise(purpose)` asks a user who allowed approximate
   positions for precise ones: on iOS until the app leaves the foreground
   (temporary full accuracy), `purpose` naming the reason shown, a key of
-  asuka.json's `ios.locationPurposes` (`"default"` is there, "To show
+  asuka.toml's `ios.locationPurposes` (`"default"` is there, "To show
   exactly where you are."); on Android for good.
 - `location.Authorized()` is the authorization now, without asking;
   `location.UseAuthorization()` is it as a signal, for a component, and
@@ -1173,7 +1168,7 @@ go func() {
 - `notify.Cancel(id)` takes the notification away, waiting or shown. On
   the main thread.
 
-A `Notification`'s `URL` should be one of the app's scheme (`asuka.json`'s
+A `Notification`'s `URL` should be one of the app's scheme (`asuka.toml`'s
 `scheme`): `ui.OnOpenURL` gets it when the user taps the notification.
 Its other fields:
 
@@ -1368,7 +1363,7 @@ from: an executable run on its own (`go run`) has no bundle ID, and its
 calls fail with an error that says so. **Windows** shows toasts, now or scheduled,
 with their image, a category's actions as buttons and a reply as a text
 box. The app registers itself the first time (a Start menu shortcut with
-its AppUserModelID, asuka.json's `id`, and a COM activator: its executable,
+its AppUserModelID, asuka.toml's `id`, and a COM activator: its executable,
 in the user's registry), so that a tap or a button reaches the app,
 which Windows starts for it if it isn't running; for a background
 action it stays out of sight and quits once `OnAction` is done. The
@@ -1684,18 +1679,20 @@ without a task.
 from its share sheet: a link from YouTube or a browser, a text from
 Notes, photos from the gallery, a PDF from Files. It's iOS's and
 Android's: on the desktops and in a browser the app isn't offered in
-other apps' share menus, and `f` isn't called. `asuka.json`'s
+other apps' share menus, and `f` isn't called. `asuka.toml`'s
 `shareTarget` says what the app is offered for:
 
-```json
-{ "shareTarget": true }
+```toml
+shareTarget = true
 ```
 
-takes texts and links. An object takes files too, by MIME type, and at
+takes texts and links. A table takes files too, by MIME type, and at
 most `max` at once (default 1):
 
-```json
-{ "shareTarget": { "types": ["text", "image/*", "video/*"], "max": 10 } }
+```toml
+[shareTarget]
+types = ["text", "image/*", "video/*"]
+max = 10
 ```
 
 A type is `"text"` (texts and web links) or a MIME type: `"image/*"`,
@@ -1894,10 +1891,11 @@ func App() ui.Node {
 iOS needs the Push Notifications capability on the App ID for a release
 build; the simulator gets a token too. Android needs a Firebase project:
 add the Android app to it, download its `google-services.json`, and name
-it in `asuka.json`:
+it in `asuka.toml`:
 
-```json
-{ "android": { "googleServices": "google-services.json" } }
+```toml
+[android]
+googleServices = "google-services.json"
 ```
 
 Asuka writes its settings into the app as Google's Gradle plugin would.
@@ -1960,7 +1958,7 @@ out. What the app keeps is the same there: its data (`asuka/sdk/store`, files
 in `store.Dir`) is in the App Group the two share, its keychain items
 (`asuka/sdk/secure`) in the app's group. A release build needs a provisioning
 profile for the extension's bundle ID, the app's plus `.notification`
-(`asuka.json`'s `ios.notificationProfile` names one; by default, the best
+(`asuka.toml`'s `ios.notificationProfile` names one; by default, the best
 match installed), with the App Groups capability and the app's group.
 A rewrite can't hide a push on iOS.
 
@@ -2102,10 +2100,11 @@ merchant account), or encrypted for the app's server with `DirectKey`.
 
 Apple Pay needs a merchant ID (developer.apple.com, Identifiers, Merchant
 IDs) with the processor's payment processing certificate, in
-`asuka.json`:
+`asuka.toml`:
 
-```json
-{ "applePay": { "merchantIds": ["merchant.com.example.tea"] } }
+```toml
+[applePay]
+merchantIds = ["merchant.com.example.tea"]
 ```
 
 An app that imports the package gets the in-app-payments entitlement
@@ -2214,7 +2213,7 @@ crash, and make it an `.m4a` for keeping with `record.Finalize(stream, dst)`,
 which seeks properly: after a stop or a crash alike.
 
 `Options.Background` keeps it recording out of sight and with the screen
-locked. iOS needs `"ios": {"backgroundModes": ["audio"]}` in `asuka.json`;
+locked. iOS needs `backgroundModes = ["audio"]` in `asuka.toml`'s `[ios]`;
 Android runs a foreground service of the microphone type, with an ongoing
 notification (`BackgroundTitle`) and a button to stop. Google Play asks
 what the service is for: declare it before you upload. A desktop app
@@ -2259,7 +2258,7 @@ stop := screen.OnScreenshot(func() { note.Set("That screenshot shows your balanc
 
 - `screen.Lock(o)` turns the app to `o` and keeps it there: `Portrait`,
   `PortraitUp`, `Landscape`, `LandscapeLeft`, `LandscapeRight`; `Any`
-  unlocks it. Only the orientations `asuka.json` allows. iPads in Split
+  unlocks it. Only the orientations `asuka.toml` allows. iPads in Split
   View or Stage Manager, and Android 16's large screens, ignore it.
 - `screen.SetBars(bars)` sets the status bar's `Style` (`Auto` follows
   dark mode; `Light` is light icons, for a dark picture under them;
@@ -2286,12 +2285,16 @@ as it goes (`signal.OnCleanup`).
 
 ## The launch screen: asuka/sdk/splash
 
-`asuka.json`'s `splash` is the launch screen: an image (a square PNG, a
+`asuka.toml`'s `splash` is the launch screen: an image (a square PNG, a
 logo), `size` points wide (default 120, at most 160), in the middle of a
 color, in light and dark mode.
 
-```json
-{ "splash": { "image": "logo.png", "size": 96, "background": "#4A63B5", "darkBackground": "#1B2440" } }
+```toml
+[splash]
+image = "logo.png"
+size = 96
+background = "#4A63B5"
+darkBackground = "#1B2440"
 ```
 
 It shows from the tap on the icon until the app's first frame: iOS's
@@ -2343,7 +2346,7 @@ maps.View(maps.Props{
 - A map has no size of its own: give it one, or `Grow`.
 
 Android needs a Google Maps Platform API key with the Maps SDK for
-Android, in `asuka.json`: `{"android": {"mapsKey": "..."}}`. Without it,
+Android, in `asuka.toml`: `mapsKey = "..."` under `[android]`. Without it,
 the map says so, and `OnError` gets why. On Windows, Linux and the web,
 Satellite and Hybrid show the streets (no free imagery); `ShowsUser`
 shows nothing on Windows and Linux, and the user's location in a browser
@@ -2560,11 +2563,15 @@ browser can't read calendars; `Add` downloads an `.ics` file.
 
 ## Home screen widgets: asuka/sdk/widget
 
-`asuka.json`'s `widgets` declares the app's widgets; `widget.Set` fills
+`asuka.toml`'s `widgets` declares the app's widgets; `widget.Set` fills
 them, from the app's Go code:
 
-```json
-{ "widgets": [{ "kind": "today", "name": "Today", "description": "What's next", "sizes": ["small", "medium", "rectangular"] }] }
+```toml
+[[widgets]]
+kind = "today"
+name = "Today"
+description = "What's next"
+sizes = ["small", "medium", "rectangular"]
 ```
 
 ```go
@@ -2654,11 +2661,16 @@ settings. The desktops and the web have none: `Enabled` is false and
 
 ## Shortcuts: Siri, Spotlight, the launcher
 
-`asuka.json`'s `shortcuts` are actions the system offers for the app.
+`asuka.toml`'s `shortcuts` are actions the system offers for the app.
 Each opens the app with its URL, for `ui.OnOpenURL`:
 
-```json
-{ "shortcuts": [{ "id": "newNote", "title": "New Note", "url": "notes://new", "symbol": "square.and.pencil", "phrases": ["New note in ${app}"] }] }
+```toml
+[[shortcuts]]
+id = "newNote"
+title = "New Note"
+url = "notes://new"
+symbol = "square.and.pencil"
+phrases = ["New note in ${app}"]
 ```
 
 On iOS they're App Shortcuts: Siri hears their phrases (each with
@@ -2670,7 +2682,7 @@ the app's icon, with the symbol in the accent color. The desktops and
 the web don't add them.
 
 Simulator builds are signed as Xcode signs them, with the keychain's
-Apple Development identity (`asuka.json`'s team's): App Intents only run
+Apple Development identity (`asuka.toml`'s team's): App Intents only run
 in an app with a team. Without one, the build is signed ad hoc, and the
 CLI says the shortcuts won't run.
 
@@ -2776,7 +2788,7 @@ has no public endpoint to send to: send the reports to your server, or
 record them in Crashlytics' SDK as non-fatal errors from your own native
 module ([Native code](native.md)). Either way, App Store review asks
 about crash data: if you send it, say so (`ios.collected` in
-`asuka.json`, `{"type": "CrashData", "purposes": ["AppFunctionality"]}`).
+`asuka.toml`, `{type = "CrashData", purposes = ["AppFunctionality"]}`).
 
 **On each platform.** iOS links MetricKit only into an app that reads
 its reports (`crash.Reports` or `crash.OnReport`), and delivers its

@@ -3,7 +3,7 @@
 // Tracking Transparency prompt, which an app must show before it reads
 // the advertising identifier (IDFA) or shares data with ad networks and
 // data brokers. An app that imports it is given the prompt's purpose
-// string (NSUserTrackingUsageDescription; say yours in asuka.json's
+// string (NSUserTrackingUsageDescription; say yours in asuka.toml's
 // ios.usage).
 //
 // Android has no such prompt: the user turns personalized ads off in

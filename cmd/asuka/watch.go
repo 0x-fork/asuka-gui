@@ -51,7 +51,7 @@ func skipDir(name string) bool {
 // rebuildFile reports whether a change to the file at path named name
 // needs a rebuild: Go, native packages' code and projects (Swift, Kotlin,
 // their Gradle files, manifests, Info.plist and entitlements), the app's
-// assets, asuka.json and the language catalogs.
+// assets, its asuka.toml and the language catalogs.
 func rebuildFile(path, name string) bool {
 	if strings.HasSuffix(name, "_test.go") {
 		return false
@@ -59,8 +59,8 @@ func rebuildFile(path, name string) bool {
 	code := strings.HasSuffix(name, ".go") || name == "go.mod" || strings.HasSuffix(name, ".swift") || strings.HasSuffix(name, ".kt") ||
 		strings.HasSuffix(name, ".kts") || name == "AndroidManifest.xml" || name == "Info.plist" || strings.HasSuffix(name, ".entitlements")
 	asset := strings.Contains(filepath.ToSlash(path), "/assets/")
-	catalog := strings.HasSuffix(name, ".json") && (name == "asuka.json" || isCatalogDir(filepath.Dir(path)))
-	return code || asset || catalog
+	catalog := strings.HasSuffix(name, ".json") && isCatalogDir(filepath.Dir(path))
+	return code || asset || name == configFile || catalog
 }
 
 // watchedFile reports, quickly, whether the system should say when the
@@ -70,7 +70,7 @@ func watchedFile(path, name string) bool {
 	return !strings.HasSuffix(name, "_test.go") && (strings.HasSuffix(name, ".go") || name == "go.mod" ||
 		strings.HasSuffix(name, ".swift") || strings.HasSuffix(name, ".kt") || strings.HasSuffix(name, ".kts") ||
 		name == "AndroidManifest.xml" || name == "Info.plist" || strings.HasSuffix(name, ".entitlements") ||
-		strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".json") || strings.Contains(path, "/assets/"))
+		strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".json") || name == configFile || strings.Contains(path, "/assets/"))
 }
 
 func (w *watcher) scan() string {

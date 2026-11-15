@@ -119,7 +119,7 @@ func TestPickTeam(t *testing.T) {
 	if _, err := pickTeam(nil, names); err == nil || !strings.Contains(err.Error(), "--team") {
 		t.Fatalf("none: %v", err)
 	}
-	// The flag, the environment, asuka.json, in that order.
+	// The flag, the environment, asuka.toml, in that order.
 	t.Setenv("ASUKA_TEAM_ID", "ENVTEAM000")
 	cfg := &appConfig{}
 	cfg.IOS.Team = "CFGTEAM000"
@@ -131,7 +131,7 @@ func TestPickTeam(t *testing.T) {
 	}
 	t.Setenv("ASUKA_TEAM_ID", "")
 	if team, _ := devTeam("", cfg); team != "CFGTEAM000" {
-		t.Fatalf("asuka.json: %q", team)
+		t.Fatalf("asuka.toml: %q", team)
 	}
 }
 

@@ -29,7 +29,7 @@ import (
 //
 // The Dock menu is the Tasks of the app's jump list (ICustomDestinationList):
 // a link per item, starting the app with --asuka-dock-item=<number>. A
-// running app that runs once (asuka.json's id) is handed the number by
+// running app that runs once (asuka.toml's id) is handed the number by
 // the launch (deeplink_windows.go); one that isn't running gets it as it
 // starts. The jump list has separators, but no submenus, checks or
 // disabled items: those items are left out, as is a quit item.

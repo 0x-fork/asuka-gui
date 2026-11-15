@@ -1,9 +1,12 @@
 // Package widget fills the app's home screen widgets (expo-widgets): the
-// kinds asuka.json's widgets declare, each shown with the platform's own
+// kinds asuka.toml's widgets declare, each shown with the platform's own
 // widget template (WidgetKit on iOS, home screen and lock screen; an
 // App Widget on Android), and what they show, set from the app's Go code.
 //
-//	"widgets": [{"kind": "today", "name": "Today", "description": "What's next today"}]
+//	[[widgets]]
+//	kind = "today"
+//	name = "Today"
+//	description = "What's next today"
 //
 //	widget.Set("today", widget.Entry{Title: "Next", Value: "3 tasks", Body: "Call Ana at 4", URL: "myapp://today"})
 //

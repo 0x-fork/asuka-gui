@@ -602,7 +602,7 @@ func TestNilPropsAreZeroValues(t *testing.T) {
 	}
 }
 
-// The app's accent color (asuka.json's) goes to the host when a root
+// The app's accent color (asuka.toml's) goes to the host when a root
 // mounts, before its views.
 func TestAccent(t *testing.T) {
 	boot.Accent, boot.DynamicColor = "#7c3aed", "1"

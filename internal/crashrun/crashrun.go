@@ -44,8 +44,8 @@ type Info struct {
 	Model         string `json:"model,omitempty"`         // "iPhone17,1", "Pixel 9", "MacBookPro18,3"; on the web, the browser's system ("macOS 15.1")
 	System        string `json:"system,omitempty"`        // "iOS", "Android", "macOS", "Windows", "Web"
 	SystemVersion string `json:"systemVersion,omitempty"` // "26.0", "16"; on the web, the browser ("Chrome 131")
-	AppVersion    string `json:"appVersion,omitempty"`    // asuka.json's version
-	Build         string `json:"build,omitempty"`         // asuka.json's build
+	AppVersion    string `json:"appVersion,omitempty"`    // asuka.toml's version
+	Build         string `json:"build,omitempty"`         // asuka.toml's build
 }
 
 // Run is the first line of a run's context.

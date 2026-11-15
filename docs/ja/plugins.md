@@ -31,29 +31,28 @@ db, err := sqlite.Open("notes.db")
 
 ## プラグインの作成
 
-プラグインは、`asuka-plugin.json` というマニフェストを隣に置いたパッケージです。
+プラグインは、`asuka-plugin.toml` というマニフェストを隣に置いたパッケージです。
 
-```json
-{
-  "name": "sqlite",
-  "sources": ["csrc", "internal/build"],
-  "libraries": [
-    {
-      "name": "asqlite",
-      "version": "3.54.1",
-      "release": "https://github.com/egoist/asuka/releases/download/plugin-sqlite",
-      "files": {
-        "darwin": {"name": "libasqlite.dylib"},
-        "ios": {"name": "asqlite"},
-        "ios-simulator": {"name": "asqlite"},
-        "android-arm64": {"name": "libasqlite.so"},
-        "linux-amd64": {"name": "libasqlite.so"},
-        "windows-amd64": {"name": "asqlite.dll"},
-        "wasm": {"name": "asqlite.wasm"}
-      }
-    }
-  ]
-}
+```toml
+# プラグインのマニフェスト（package plugin）。asuka plugin publish がこのファイルを
+# まるごと書き出し、公開したファイルを記録します。ここに書いたコメントは残りません。
+
+name = "sqlite"
+sources = ["csrc", "internal/build"]
+
+[[libraries]]
+name = "asqlite"
+version = "3.54.1"
+release = "https://github.com/egoist/asuka/releases/download/plugin-sqlite"
+
+[libraries.files]
+darwin = {name = "libasqlite.dylib"}
+ios = {name = "asqlite"}
+ios-simulator = {name = "asqlite"}
+android-arm64 = {name = "libasqlite.so"}
+linux-amd64 = {name = "libasqlite.so"}
+windows-amd64 = {name = "asqlite.dll"}
+wasm = {name = "asqlite.wasm"}
 ```
 
 - `name` はプラグインの名前で、CLI のメッセージに使われます。
@@ -63,7 +62,7 @@ db, err := sqlite.Open("notes.db")
 プラグインの Go のコードは、マニフェストと同じディレクトリにあるファイルでマニフェストを埋め込み、`plugin.LibraryPath` が返すパスからライブラリを読み込みます。
 
 ```go
-//go:embed asuka-plugin.json
+//go:embed asuka-plugin.toml
 var manifest []byte
 
 func load() (uintptr, error) {
@@ -86,7 +85,7 @@ go generate ./sdk/sqlite                         # すべてのターゲット�
 go run ./cmd/asuka plugin publish sdk/sqlite     # 公開
 ```
 
-`asuka plugin publish` は、各ファイルを gzip で圧縮し、ハッシュを含む名前を付けます（`asqlite-darwin-1982f596dd7c-libasqlite.dylib.gz`）。リリースにまだないファイルを `gh` でアップロードし、リリースがなければ作成します。アップロードしたファイルはそれぞれダウンロードし直して確認し、マニフェストに記録します。コミットするのは、このマニフェストです。リリースにすでにあるファイルが置き換えられることはないので、過去のどのコミットのマニフェストも動作し続けます。プラグインのソースより古いビルドがあると、公開は中止されます。その場合は、先にビルドし直してください。
+`asuka plugin publish` は、各ファイルを gzip で圧縮し、ハッシュを含む名前を付けます（`asqlite-darwin-1982f596dd7c-libasqlite.dylib.gz`）。リリースにまだないファイルを `gh` でアップロードし、リリースがなければ作成します。アップロードしたファイルはそれぞれダウンロードし直して確認し、マニフェストに記録します。このときマニフェストはまるごと書き直されるので、手で書いたコメントは残りません（ファイルの先頭のコメントがそのことを伝えています）。コミットするのは、このマニフェストです。リリースにすでにあるファイルが置き換えられることはないので、過去のどのコミットのマニフェストも動作し続けます。プラグインのソースより古いビルドがあると、公開は中止されます。その場合は、先にビルドし直してください。
 
 ## プラットフォームのホスト向けのネイティブコード
 

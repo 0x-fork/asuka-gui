@@ -841,15 +841,13 @@ Go 没法在编译时检查字符串，所以这件事交给 `asuka vet`（`asuk
 
 ## 深度链接
 
-只要在 `asuka.json` 里声明，应用就可以通过自己 scheme 的 URL 打开，也可以通过指向自己域名的 https 链接打开：
+只要在 `asuka.toml` 里声明，应用就可以通过自己 scheme 的 URL 打开，也可以通过指向自己域名的 https 链接打开：
 
-```json
-{
-  "name": "Notes",
-  "id": "com.example.notes",
-  "scheme": "notes",
-  "links": ["notes.example.com"]
-}
+```toml
+name = "Notes"
+id = "com.example.notes"
+scheme = "notes"
+links = ["notes.example.com"]
 ```
 
 - `scheme` 让 `notes://anything` 这样的链接可以打开应用，支持的平台有：iOS 和 Android；Mac（由应用的 `Info.plist` 声明）；Linux，前提是应用已经安装（由它的 desktop 文件处理这个 scheme；应用运行时打开的链接会交给正在运行的应用，因为 GNOME 应用都是单实例的）；以及 Windows（应用启动时会在 `HKEY_CURRENT_USER\Software\Classes` 下为当前用户注册，应用被移动过的话会重新注册；应用运行时打开的链接会交给它）。在 Linux 和 Windows 上，设置了 `id` 的应用只会运行一个实例：再次启动时，已有的实例会被切到前台。`asuka dev` 在 Linux 和 Windows 上不会注册 scheme，它运行的应用也不会把自己交给已安装的那份应用，所以要测试链接，请使用构建出来的版本。
@@ -875,7 +873,7 @@ ui.OnOpenURL(func(raw string) {
 
 ## 接收其他应用的分享
 
-在 `asuka.json` 里设置 `"shareTarget": true` 后，应用就会出现在其他应用的分享面板里，可以接收文本和链接，比如浏览器或 YouTube 里的“分享”；设置 `{"types": ["image/*", ...]}` 还能接收文件（见[设备](device.md#接收其他应用的分享uionshare)）。`ui.OnShare` 会收到分享过来的内容。和 `OnOpenURL` 一样，启动应用的那次分享会交给第一个处理函数。
+在 `asuka.toml` 里设置 `shareTarget = true` 后，应用就会出现在其他应用的分享面板里，可以接收文本和链接，比如浏览器或 YouTube 里的“分享”；改成 `[shareTarget]` 表并设置 `types = ["image/*", ...]` 还能接收文件（见[设备](device.md#接收其他应用的分享uionshare)）。`ui.OnShare` 会收到分享过来的内容。和 `OnOpenURL` 一样，启动应用的那次分享会交给第一个处理函数。
 
 ```go
 ui.OnShare(func(items []ui.SharedItem) {

@@ -2,7 +2,7 @@
 // recorder): a voice note, a podcast, speech for a transcription
 // service. The file is AAC in an MPEG-4 container (.m4a), which
 // asuka/sdk/audio plays. An app that imports it is given the microphone's
-// permission and purpose string (asuka.json's
+// permission and purpose string (asuka.toml's
 // ios.usage.NSMicrophoneUsageDescription says it better).
 //
 // It records while the app is in the foreground, and with Options's
@@ -34,7 +34,7 @@ type Options struct {
 	// MaxDuration stops the recording after it, if set.
 	MaxDuration time.Duration
 	// Background keeps recording when the app goes out of sight or the
-	// screen locks. On iOS the app needs "audio" in asuka.json's
+	// screen locks. On iOS the app needs "audio" in asuka.toml's
 	// ios.backgroundModes, and the system shows the microphone's indicator.
 	// On Android it's a foreground service of the microphone type, with an
 	// ongoing notification saying BackgroundTitle and a button to stop.

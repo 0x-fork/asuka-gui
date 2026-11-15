@@ -84,14 +84,14 @@ func TestNowPlayingExtras(t *testing.T) {
 	}
 }
 
-// asuka.json's splash: checked and defaulted; the launch screen and the
+// asuka.toml's splash: checked and defaulted; the launch screen and the
 // Android theme and images that show it.
 func TestSplash(t *testing.T) {
 	dir := t.TempDir()
 	logo := image.NewNRGBA(image.Rect(0, 0, 64, 64))
 	logo.SetNRGBA(32, 32, color.NRGBA{255, 0, 0, 255})
 	writePNG(filepath.Join(dir, "logo.png"), logo)
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"splash": {"image": "logo.png", "background": "#123456"}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[splash]\nimage = \"logo.png\"\nbackground = \"#123456\""), 0o644)
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +129,7 @@ func TestSplash(t *testing.T) {
 		}
 	}
 
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"splash": {"background": "blue"}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`splash = {background = "blue"}`), 0o644)
 	if _, err := loadConfig(dir); err == nil {
 		t.Error("a bad background: no error")
 	}

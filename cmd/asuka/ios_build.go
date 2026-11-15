@@ -58,13 +58,13 @@ func buildIOS(app *goApp, o *buildOptions) error {
 		fmt.Printf("asuka: signing with %q (%s, team %s) as %s\n", prof.name, prof.kind, prof.team, prof.identityName)
 		if cfg.ShareTarget.on {
 			if shareProf, err = o.pickProfile(prof.team, cfg.shareID(), cfg.IOS.ShareProfile); err != nil {
-				return fmt.Errorf("the share extension (asuka.json's shareTarget): %v", err)
+				return fmt.Errorf("the share extension (asuka.toml's shareTarget): %v", err)
 			}
 			fmt.Printf("asuka: signing the share extension with %q\n", shareProf.name)
 		}
 		if len(cfg.Widgets) > 0 {
 			if widgetProf, err = o.pickProfile(prof.team, cfg.widgetID(), cfg.IOS.WidgetProfile); err != nil {
-				return fmt.Errorf("the widget extension (asuka.json's widgets): %v", err)
+				return fmt.Errorf("the widget extension (asuka.toml's widgets): %v", err)
 			}
 			fmt.Printf("asuka: signing the widget extension with %q\n", widgetProf.name)
 		}
@@ -154,7 +154,7 @@ func buildIOS(app *goApp, o *buildOptions) error {
 		return err
 	}
 	if cfg.Icon == "" && o.dev == nil {
-		fmt.Println("asuka: no icon in asuka.json; the App Store needs one (1024×1024 PNG)")
+		fmt.Println("asuka: no icon in asuka.toml; the App Store needs one (1024×1024 PNG)")
 	}
 	if cfg.Icon != "" || cfg.splashOn() {
 		if err := tc.compileAssets(cfg, work, bundle, infoPath, cfg.Icon != ""); err != nil {
@@ -411,7 +411,7 @@ func xcodeVersion() (string, string) {
 }
 
 // compileAssets compiles the asset catalog (writeAssetCatalog: the app
-// icon from asuka.json's icon, if icon, and the splash's image and color)
+// icon from asuka.toml's icon, if icon, and the splash's image and color)
 // into the bundle, merging the icon keys into Info.plist.
 func (t *iosToolchain) compileAssets(cfg *appConfig, work, bundle, infoPath string, icon bool) error {
 	cat, err := writeAssetCatalog(cfg, work, icon)

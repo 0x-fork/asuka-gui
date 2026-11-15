@@ -9,7 +9,7 @@ import (
 )
 
 // An app that imports asuka/sdk/bluetooth gets its permissions, its
-// purpose string and the Flatpak's bus name; asuka.json's "bluetooth"
+// purpose string and the Flatpak's bus name; asuka.toml's bluetooth
 // adds the background modes and the location from scans.
 func TestBluetoothConfig(t *testing.T) {
 	deps := []string{"github.com/egoist/asuka/ui", bluetoothPackage}
@@ -43,7 +43,7 @@ func TestBluetoothConfig(t *testing.T) {
 	// With location (another package's too): the location permission on
 	// every Android, and scans that may find it.
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"bluetooth": {"background": ["central", "peripheral"], "location": true}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[bluetooth]\nbackground = [\"central\", \"peripheral\"]\nlocation = true"), 0o644)
 	bg, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestBluetoothConfig(t *testing.T) {
 		t.Errorf("without the package: %v %v", none.plistArrays, none.androidApp)
 	}
 
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"bluetooth": {"background": ["beacon"]}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`bluetooth.background = ["beacon"]`), 0o644)
 	if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "beacon") {
 		t.Errorf("a bad background role: %v", err)
 	}

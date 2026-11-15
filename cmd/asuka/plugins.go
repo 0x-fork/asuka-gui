@@ -13,7 +13,7 @@ import (
 )
 
 // Plugins (package plugin): the packages among an app's dependencies with
-// a manifest (asuka-plugin.json) bring native libraries, which a build
+// a manifest (asuka-plugin.toml) bring native libraries, which a build
 // ships with the app for its platform, where package plugin finds them:
 // in Contents/Frameworks on macOS, beside the .exe on Windows, in
 // lib/<exe> of the prefix on Linux, as a framework each in an iOS app's

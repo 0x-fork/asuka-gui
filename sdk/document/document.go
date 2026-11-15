@@ -49,7 +49,7 @@ import (
 	"github.com/egoist/asuka/ui"
 )
 
-// Type is a kind of file the documents are. List the same in asuka.json's
+// Type is a kind of file the documents are. List the same in asuka.toml's
 // fileTypes, which makes the system offer the app for them.
 type Type struct {
 	// Name says what the files are ("Plain Text"); dialogs show it.

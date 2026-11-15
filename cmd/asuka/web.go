@@ -50,7 +50,7 @@ import (
 
 const devWebPort = 8790
 
-// webLdflags is the -ldflags of a web build: asuka.json's, the app's name
+// webLdflags is the -ldflags of a web build: asuka.toml's, the app's name
 // (the page's title) and version.
 func webLdflags(app *goApp, release bool) string {
 	f := strings.TrimPrefix(app.cfg.ldflags(release), "-ldflags=")
@@ -303,7 +303,7 @@ func webWorker(src fs.FS, settings map[string]any) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// webVAPIDKey is asuka.json's web.vapidPublicKey, checked: an uncompressed
+// webVAPIDKey is asuka.toml's web.vapidPublicKey, checked: an uncompressed
 // P-256 point in base64url (unpadded), as PushManager.subscribe takes it.
 func webVAPIDKey(app *goApp) (string, error) {
 	if app.cfg == nil || strings.TrimSpace(app.cfg.Web.VapidPublicKey) == "" {
@@ -316,7 +316,7 @@ func webVAPIDKey(app *goApp) (string, error) {
 		_, err = ecdh.P256().NewPublicKey(b)
 	}
 	if err != nil || len(b) != 65 {
-		return "", errors.New("asuka.json: web.vapidPublicKey isn't a VAPID public key (an uncompressed P-256 point, 65 bytes, in base64url): github.com/egoist/asuka/sdk/push/webpush's GenerateKeys makes a pair")
+		return "", errors.New("asuka.toml: web.vapidPublicKey isn't a VAPID public key (an uncompressed P-256 point, 65 bytes, in base64url): github.com/egoist/asuka/sdk/push/webpush's GenerateKeys makes a pair")
 	}
 	return k, nil
 }
@@ -434,7 +434,7 @@ type devServer struct {
 	scripts atomic.Pointer[[]webScript]          // the plugins' scripts (pluginScripts), likewise
 	exec    []byte
 	wasm    string
-	vapid   string // asuka.json's web.vapidPublicKey
+	vapid   string // asuka.toml's web.vapidPublicKey
 	places  *devPlaces
 	stamp   string // the build's, so the page never loads an old one
 	failed  bool
@@ -849,7 +849,7 @@ func buildWeb(app *goApp, o *buildOptions) error {
 			{"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
 		}
 	}
-	// asuka.json's fileTypes: an installed app opens them (Chromium's
+	// asuka.toml's fileTypes: an installed app opens them (Chromium's
 	// File Handling), the host reads them from the launch queue.
 	if fh := webFileHandlers(app.cfg.fileTypes()); fh != nil {
 		manifest["file_handlers"] = fh

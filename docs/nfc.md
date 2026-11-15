@@ -87,7 +87,7 @@ sheet: the app shows its own, and the alert does nothing there.
 ID and take no raw commands. With it (`nfc.PollA`, `PollB`, `PollF`,
 `PollV`, `PollPACE`, or `PollAll`), iOS's `NFCTagReaderSession` polls for
 those kinds of tags, with their IDs and commands. ISO 7816 cards need
-their applications in asuka.json's `nfc.iso7816`, and FeliCa cards their
+their applications in asuka.toml's `nfc.iso7816`, and FeliCa cards their
 system codes in `nfc.felica`: iOS finds no others.
 
 ### Android's reader mode
@@ -198,10 +198,10 @@ A tag can open the app when it isn't open, or bring it to the front:
 
 - **iOS** reads tags in the background (iPhone XS and later) and offers
   to open an app for a tag whose first record is one of its universal
-  links: asuka.json's `links`, whose domains serve the
+  links: asuka.toml's `links`, whose domains serve the
   apple-app-site-association file. The link comes to `ui.OnOpenURL`, as
   any link does.
-- **Android** opens the app for the tags of asuka.json's `nfc.ndef`
+- **Android** opens the app for the tags of asuka.toml's `nfc.ndef`
   (NDEF_DISCOVERED, by the message's first record: a URI, a MIME type,
   an external type) and `nfc.tech` (TECH_DISCOVERED, by technologies). A
   URI's tag comes to `ui.OnOpenURL`; the others to `nfc.OnOpen`, as a
@@ -223,7 +223,7 @@ with) waits for the first. `nfc.OnOpen` stops with the component's
 owner, and with the function it returns. A tag that comes while a
 session runs goes to the session, not here.
 
-## asuka.json and permissions
+## asuka.toml and permissions
 
 An app that imports `asuka/sdk/nfc` gets Android's `NFC` permission and
 `uses-feature android.hardware.nfc` (not required: phones without NFC
@@ -233,16 +233,19 @@ your own in `ios.usage`) and Core NFC's entitlement,
 release's App ID needs the NFC Tag Reading capability: `asuka build`
 says so if its profile lacks it.
 
-asuka.json's `nfc` adds what the app's tags need:
+asuka.toml's `nfc` adds what the app's tags need:
 
-```json
-"nfc": {
-  "iso7816": ["D2760000850101"],
-  "felica": ["8008"],
-  "ndef": [{ "uri": "https://example.com/t/" }, { "mime": "application/vnd.example.ticket" }, { "external": "example.com:ticket" }],
-  "tech": [["IsoDep"], ["NfcA", "MifareUltralight"]],
-  "required": true
-}
+```toml
+[nfc]
+iso7816 = ["D2760000850101"]
+felica = ["8008"]
+ndef = [
+  {uri = "https://example.com/t/"},
+  {mime = "application/vnd.example.ticket"},
+  {external = "example.com:ticket"},
+]
+tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
+required = true
 ```
 
 | Key | What it is |
@@ -254,7 +257,7 @@ asuka.json's `nfc` adds what the app's tags need:
 | `required` | The app is for phones with NFC alone: Google Play offers it to no others |
 
 They're added only for an app that imports the package. See
-[asuka.json](asuka-json.md#nfc).
+[asuka.toml](asuka-toml.md#nfc).
 
 ## In asuka dev
 

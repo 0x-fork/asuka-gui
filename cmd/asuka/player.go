@@ -102,7 +102,7 @@ type hostProcess struct {
 	bin string
 	run *hostRun // nil when none runs
 	v   bool
-	// flags is the build's -ldflags (default: asuka.json's).
+	// flags is the build's -ldflags (default: asuka.toml's).
 	flags string
 	// goos and goarch are the build's GOOS and GOARCH (default: this
 	// machine's).
@@ -870,7 +870,7 @@ func playerConfig() *appConfig {
 	c.permissionsFor(nil)
 	c.addFeatureExtras(allFeatures())
 	c.useLocation(func(string) bool { return true })
-	// Bluetooth in the background, for an app that asks (asuka.json's
+	// Bluetooth in the background, for an app that asks (asuka.toml's
 	// bluetooth.background).
 	c.Bluetooth.Background = []string{"central", "peripheral"}
 	c.bluetoothExtras()

@@ -20,7 +20,7 @@ var msgWinTitle string
 // hands the running one its working directory and arguments (files.go)
 // and reports false. One that COM started for a toast's click is always
 // the instance (COM starts it only when none runs), and an app without an
-// ID, one whose asuka.json lets it run more than once ("singleInstance":
+// ID, one whose asuka.toml lets it run more than once (singleInstance =
 // false), driven by automation or run by asuka dev runs as often as it's
 // started.
 func takeInstance(dir string, args []string) bool {

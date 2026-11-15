@@ -39,7 +39,7 @@ cd hello
 `hello` 目录里有：
 
 - `main.go`：应用本身，即一个返回界面的函数，交给 `app.Run` 运行。
-- `asuka.json`：应用的名称、ID（同时用作 bundle ID、application ID 和桌面应用 ID）和版本号，以及[各应用商店和各平台](shipping.md)需要的其他信息。
+- `asuka.toml`：应用的名称、ID（同时用作 bundle ID、application ID 和桌面应用 ID）和版本号，以及[各应用商店和各平台](shipping.md)需要的其他信息。
 - `go.mod`。
 
 ## 运行

@@ -12,7 +12,7 @@ import (
 )
 
 // winresSyso builds a COFF object (.syso) with a Windows app's
-// resources: its icon (from asuka.json's, at Windows's sizes), a manifest
+// resources: its icon (from asuka.toml's, at Windows's sizes), a manifest
 // (common controls 6, per-monitor DPI awareness v2, UTF-8, Windows 10
 // and 11) and its version information. The Go linker links the main
 // package's .syso files into the executable. (From MyGo's.) goarch is
@@ -55,7 +55,7 @@ func winresSyso(app *goApp, goarch string) ([]byte, error) {
 		}
 		res[rtGroupIcon] = map[uint16][]byte{1: group.Bytes()}
 	}
-	// asuka.json's fileTypes' icons: a group each (fileTypeIconID), which
+	// asuka.toml's fileTypes' icons: a group each (fileTypeIconID), which
 	// the types' DefaultIcon names ("app.exe",-101).
 	for i, t := range app.cfg.fileTypes() {
 		if t.icon == "" {
@@ -203,7 +203,7 @@ func sortedKeys[V any](m map[uint16]V) []uint16 {
 	return keys
 }
 
-// windowsVersion is the app's version as four numbers: asuka.json's
+// windowsVersion is the app's version as four numbers: asuka.toml's
 // version (1.2.3), then its build.
 func windowsVersion(app *goApp) [4]uint16 {
 	var out [4]uint16

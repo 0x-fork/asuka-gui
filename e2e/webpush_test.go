@@ -34,7 +34,7 @@ import (
 	"github.com/egoist/asuka/sdk/push/webpush"
 )
 
-// The test app's VAPID keys (e2e/testdata/webpush/asuka.json has the
+// The test app's VAPID keys (e2e/testdata/webpush/asuka.toml has the
 // public one): a server's, made with webpush.GenerateKeys.
 var testVAPID = webpush.Keys{
 	Public:  "BKpYsAT0ADj2pHQQZeNsXmA3fgij4OZ_7ZqkS63fvpscgjHLZys0UDBluROJdtDaGlE3WW1_IlFyzVzC2LlHyO0",

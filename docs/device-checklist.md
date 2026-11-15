@@ -11,7 +11,7 @@ should see; note anything that doesn't match.
   code runs on the Mac and reloads on save), or add `--once` for a build
   with the Go code in it.
 - **iPhone**: `go run ./cmd/asuka build --platform ios examples/gallery` makes a
-  signed `.ipa` (it needs your team in `asuka.json`'s `ios.team` and a
+  signed `.ipa` (it needs your team in `asuka.toml`'s `ios.team` and a
   provisioning profile); install it with Xcode's Devices window or
   `xcrun devicectl device install app`.
 - The benchmarks: `go run ./bench/run -android` runs on a connected

@@ -271,7 +271,7 @@ func makeKitchen() throws -> any Kitchen
 
 `Package.swift` の隣に置いた `Info.plist` には、パッケージが Apple のアプリに求めるものを書きます。
 
-- 利用目的の説明文（`NSBluetoothAlwaysUsageDescription`）。アプリ自身の `asuka.json` にある説明文が優先されます。
+- 利用目的の説明文（`NSBluetoothAlwaysUsageDescription`）。アプリ自身の `asuka.toml` にある説明文が優先されます。
 - 配列（`UIBackgroundModes`）。アプリやほかのパッケージの配列と結合されます。
 - そのほかのキー。アプリが設定していなければ、その値が設定されます。
 

@@ -7,7 +7,7 @@
 //
 // It ends in one of two ways. With a CallbackScheme, when the page goes
 // to a URL of that scheme (the app's own, "myapp://signed-in?code=…"):
-// done gets that URL. On Android the scheme must be the app's (asuka.json's
+// done gets that URL. On Android the scheme must be the app's (asuka.toml's
 // "scheme"). Without one, the app ends it: an OAuth sign-in that
 // redirects to a server of the app's on the loopback interface
 // (http://localhost:port/callback, RFC 8252) gets the code there and

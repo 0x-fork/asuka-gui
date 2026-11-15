@@ -20,7 +20,7 @@ func KeepRunning() { boot.KeepRunning = true }
 // accessory app), and its windows come to the front over the app in
 // use. On Windows and Linux it has no taskbar button while no window
 // shows (one that shows has its own). Call it in main, before Run;
-// asuka.json's "background": true does it for a built app, and on macOS
+// asuka.toml's background: true does it for a built app, and on macOS
 // from launch (LSUIElement), so that its Dock icon never shows. Phones
 // and the web ignore it.
 func RunInBackground() { boot.Background = "1" }

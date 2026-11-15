@@ -4,7 +4,7 @@
 // Reset that asks first, in a dialog over the flyout; its menu (a right
 // click) starts and pauses the timer, picks how long it runs, and opens a
 // window with the timer in it.
-// It's a background app (asuka.json's "background"): no window and, on a
+// It's a background app (asuka.toml's background): no window and, on a
 // Mac, no Dock icon at launch. The Dock icon's menu (a jump list's tasks
 // on Windows, the launcher's quicklist on Linux) starts and pauses it
 // too.
@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	// asuka.json says so for a build; this does it for go run too.
+	// asuka.toml says so for a build; this does it for go run too.
 	app.RunInBackground()
 	app.RunWindow(ui.WindowOptions{Title: ui.Val("Focus"), Width: 320, Height: 220}, Focus)
 }

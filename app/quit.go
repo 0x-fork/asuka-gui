@@ -120,7 +120,7 @@ var secondHandlers struct {
 // on to ui.OnOpenFiles and ui.OnOpenURL as well: f is for the app's own
 // flags (a --new-window of its own, say).
 //
-// An app with an ID (asuka.json's "id", which asuka build sets) runs
+// An app with an ID (asuka.toml's id, which asuka build sets) runs
 // once on Windows (a mutex of the user's session: the second launch
 // hands its arguments to the first through WM_COPYDATA and quits) and
 // Linux (a unique GApplication: through D-Bus); on a Mac, Launch

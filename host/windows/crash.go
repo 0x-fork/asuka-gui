@@ -27,7 +27,7 @@ func startCrash() {
 }
 
 // windowsInfo is the PC and the app: its model (the firmware's product
-// name), Windows's version and build, asuka.json's version.
+// name), Windows's version and build, asuka.toml's version.
 func windowsInfo() crashrun.Info {
 	return crashrun.Info{
 		Model:         registryString(`HARDWARE\DESCRIPTION\System\BIOS`, "SystemProductName"),

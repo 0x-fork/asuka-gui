@@ -45,24 +45,19 @@ Asuka のパッケージを使うと、ビューの外にあるデバイスの�
 
 リリースビルドでエンタイトルメントを使うには、アプリの App ID（developer.apple.com の Identifiers）でそのケイパビリティ（capability）を有効にしておく必要があります。そうすれば、プロビジョニングプロファイルにもそのケイパビリティが含まれます。プロファイルに足りないケイパビリティがあると、`asuka build --platform ios` は何が足りないかを示して止まります。シミュレーター向けのビルドにはすべてが含まれます。
 
-Asuka が書き込む利用目的の説明文は汎用的なもの（"To take a photo."）です。iOS と macOS はユーザーに許可を求めるときにこの文を表示するので、`asuka.json` の `ios.usage` に独自の文を書いておきましょう。
+Asuka が書き込む利用目的の説明文は汎用的なもの（"To take a photo."）です。iOS と macOS はユーザーに許可を求めるときにこの文を表示するので、`asuka.toml` の `ios.usage` に独自の文を書いておきましょう。
 
-```json
-{
-  "ios": {
-    "usage": {
-      "NSCameraUsageDescription": "To photograph your receipts.",
-      "NSLocationWhenInUseUsageDescription": "To find stores near you."
-    }
-  }
-}
+```toml
+[ios.usage]
+NSCameraUsageDescription = "To photograph your receipts."
+NSLocationWhenInUseUsageDescription = "To find stores near you."
 ```
 
 各パッケージがユーザーに許可を求めるのは、起動時ではなく、初めてその機能が必要になったときです。何かを待つ呼び出し（ユーザーの操作、位置情報の測位、プラットフォームの処理）には、以下で「メインスレッド以外から呼ぶ」と書いてあります。これらはゴルーチンから呼び、結果を `ui.Post` でメインスレッドに戻してください（[メインスレッド](concepts.md#メインスレッド)を参照）。それ以外の呼び出しはコールバックを受け取り、そのコールバックはメインスレッドで呼ばれます。
 
 ## Mac の場合
 
-Mac アプリ（`asuka dev` と `asuka build`）の Info.plist にも同じ利用目的の説明文が入ります（位置情報の説明文は `NSLocationUsageDescription` としても入ります）。アプリの署名には、許可を求める機能（カメラ、マイク、位置情報、連絡先、カレンダー、写真）に対応する Hardened Runtime のエンタイトルメントが含まれます。これがないと、Developer ID で署名したビルドはその機能へのアクセスを拒否されます。プッシュ通知の `aps-environment`、Sign in with Apple、App Attest、iCloud は、プロビジョニングプロファイルでしか付与されないエンタイトルメントです。これらを使うアプリには、`asuka build` がプロファイルを埋め込みます（`asuka.json` の `mac.profile`、なければ `ASUKA_MAC_PROFILE`、それもなければインストール済みのプロファイルからもっとも合うもの）。プロファイルがなくてもアプリはビルドでき、CLI が何が動かないかを知らせます。その場合 Mac では、プッシュ通知の登録と Sign in with Apple が失敗し、App Attest は非対応と答えます。`asuka dev` はプロファイルなしでアドホック署名するので、同じことが当てはまります。Mac App Store 向けのビルド（`--appstore`）はサンドボックス化され、ネットワークとユーザーが選んだファイルにアクセスできます。[配布](shipping.md)を参照してください。
+Mac アプリ（`asuka dev` と `asuka build`）の Info.plist にも同じ利用目的の説明文が入ります（位置情報の説明文は `NSLocationUsageDescription` としても入ります）。アプリの署名には、許可を求める機能（カメラ、マイク、位置情報、連絡先、カレンダー、写真）に対応する Hardened Runtime のエンタイトルメントが含まれます。これがないと、Developer ID で署名したビルドはその機能へのアクセスを拒否されます。プッシュ通知の `aps-environment`、Sign in with Apple、App Attest、iCloud は、プロビジョニングプロファイルでしか付与されないエンタイトルメントです。これらを使うアプリには、`asuka build` がプロファイルを埋め込みます（`asuka.toml` の `mac.profile`、なければ `ASUKA_MAC_PROFILE`、それもなければインストール済みのプロファイルからもっとも合うもの）。プロファイルがなくてもアプリはビルドでき、CLI が何が動かないかを知らせます。その場合 Mac では、プッシュ通知の登録と Sign in with Apple が失敗し、App Attest は非対応と答えます。`asuka dev` はプロファイルなしでアドホック署名するので、同じことが当てはまります。Mac App Store 向けのビルド（`--appstore`）はサンドボックス化され、ネットワークとユーザーが選んだファイルにアクセスできます。[配布](shipping.md)を参照してください。
 
 macOS でも各パッケージは iOS と同じフレームワーク（AVFoundation、PhotoKit、Core Location、MapKit、Vision、Speech、UserNotifications、AuthenticationServices）を通じて、iOS と同じように動きます。Mac で異なる点は次のとおりです。
 
@@ -88,7 +83,7 @@ macOS でも各パッケージは iOS と同じフレームワーク（AVFoundat
 | `asuka/sdk/widget`、`asuka/sdk/liveactivity`、`asuka/sdk/agerange` | Mac にはありません。`widget.Set` は何もせず、`liveactivity.Start` と `agerange.Request` は `ErrNotAvailable` で失敗します |
 | `asuka/sdk/icloud` | iOS と同じで、アプリの Swift ライブラリの中で動きます。iCloud を含むプロビジョニングプロファイルが必要です（上記）。ない場合は `ErrNotAvailable` で失敗します（[iCloud](icloud.md)） |
 | `asuka/sdk/splash` | Mac アプリには起動画面がないので、`Hold` と `Hide` は何もしません |
-| `ui.OnShare`、`app.ShareSheet`、ショートカット | iOS と Android だけです。Mac アプリはほかのアプリの共有メニューに表示されず、`asuka.json` の `shortcuts` も追加されません |
+| `ui.OnShare`、`app.ShareSheet`、ショートカット | iOS と Android だけです。Mac アプリはほかのアプリの共有メニューに表示されず、`asuka.toml` の `shortcuts` も追加されません |
 
 ## Windows の場合
 
@@ -395,7 +390,7 @@ ui.Button(ui.ButtonProps{Title: ui.Val("Help"), OnPress: func() {
 - `device.KeepAwake(on)` は、`on` が true のあいだ画面をオンのままにします。ビデオ、レシピ、地図などに使います。それを必要とする画面が閉じたらオフにしてください。
 - `device.PickFiles(options, done)` は、システムのドキュメントピッカー（iOS の「ファイル」ブラウザー、Android のストレージピッカー、デスクトップではファイルを開くダイアログ、ブラウザーではファイル選択。権限は不要）を表示します。`Types` は MIME タイプ（`"application/pdf"`、`"image/*"`。指定しなければどのファイルでも）で、`Multiple` を指定すると複数選べます。`done` には選ばれたファイルごとに `device.File` が渡されます。`Path` はアプリのキャッシュにあるコピーで、`Name`、`Type`、`Size` も持ちます。ユーザーがキャンセルした場合は空です。
 - `device.ClipboardHas()` は、クリップボードの中身を読まずに、`Text`、`Image`、`URL` のどれがあるかを返します（iOS はこのときユーザーに確認しません）。貼り付けるものがあるときだけ「ペースト」ボタンを表示する、といった使い方ができます。`device.ClipboardImage()` はクリップボードの画像を、コピーされたときの形式のままファイルに読み出します。`device.CopyImage(path, done)` は画像ファイルをクリップボードに置きます。`device.OnClipboardChange(f)` は、`stop` を呼ぶまで、クリップボードが変わるたびに `f` を呼びます。
-- `device.GetInfo()` はデバイスとアプリの情報を返します。`Model`（"iPhone"、"Pixel 9"、"Mac"、"PC"）、`System`（"iOS"、"Android"、"macOS"、"Windows"、"Linux"）、`SystemVersion`、そして `asuka.json` の `version` と `build` である `AppVersion` と `Build` です。メインスレッド以外から呼んでください。
+- `device.GetInfo()` はデバイスとアプリの情報を返します。`Model`（"iPhone"、"Pixel 9"、"Mac"、"PC"）、`System`（"iOS"、"Android"、"macOS"、"Windows"、"Linux"）、`SystemVersion`、そして `asuka.toml` の `version` と `build` である `AppVersion` と `Build` です。メインスレッド以外から呼んでください。
 
 ```go
 func Player() ui.Node {
@@ -429,7 +424,7 @@ s := webauth.Start(webauth.Options{URL: authorizeURL, CallbackScheme: "myapp"},
 
 終わり方は 2 通りあります。
 
-- **コールバックスキーム。** ページが `CallbackScheme`（アプリ自身のスキーム）の URL に移動すると、シートが閉じて `done` にその URL が渡されます。Android では、スキームはアプリのもの、つまり asuka.json の `scheme` でなければなりません。その URL は `ui.OnOpenURL` ではなく `done` に届きます。
+- **コールバックスキーム。** ページが `CallbackScheme`（アプリ自身のスキーム）の URL に移動すると、シートが閉じて `done` にその URL が渡されます。Android では、スキームはアプリのもの、つまり asuka.toml の `scheme` でなければなりません。その URL は `ui.OnOpenURL` ではなく `done` に届きます。
 - **アプリが終わらせる。** スキームを使わない場合は、アプリが受け取れる場所にページをリダイレクトさせます。ループバックインターフェースへのリダイレクト（`http://localhost:port/callback`、RFC 8252）を許す OAuth サーバーなら、そのポートでアプリが動かしているサーバーにコードを送ってくるので、そのサーバーが `s.Cancel()` を呼んでシートを閉じます。Android では、キャンセルするとタブの上にアプリが戻ってきます。
 
 ユーザーがシートを閉じたとき、または `Cancel` で閉じたとき、`done` には `webauth.ErrCanceled` が渡ります。`Ephemeral` を指定すると、ブラウザーの Cookie を使わないプライベートセッションを求めます（iOS の `prefersEphemeralWebBrowserSession`。Android の Custom Tab は Cookie を保持します）。[`examples/usage`](../../examples/usage) は、この方法とループバックサーバーで Claude にサインインします。
@@ -473,7 +468,7 @@ share = ui.Button(ui.ButtonProps{Title: ui.Val("Share"), OnPress: func() {
 
 iOS では、拡張子がタイプと合わないファイルは、expo-sharing と同じく、タイプに合う名前で共有されます。たとえば JPEG として共有した `image.pdf` は `image.pdf.jpeg` として送られます。これはコピーではなく、ファイルへのリンクです。Android では、ファイルはアプリの FileProvider を通じて渡されます。アプリ自身のフォルダーの外にあるファイルは、先にキャッシュにコピーされます。Mac では共有サービスのピッカーです。Windows では共有 UI です（Windows はいつ閉じたかを知らせないので、`done` は表示された時点で呼ばれます）。Linux には共有シートがないので、テキストの共有と同じく、ファイルはクリップボードに置かれます。ブラウザーでは、可能なら Web Share のシートでファイルを共有し、できなければファイルを一つずつダウンロードします。
 
-アプリ自身を URL で開けるようにするには、[配布](shipping.md#asukajson)の `asuka.json` の `scheme` と `links`、そして `ui.OnOpenURL` を参照してください。
+アプリ自身を URL で開けるようにするには、[配布](shipping.md#asukatoml)の `asuka.toml` の `scheme` と `links`、そして `ui.OnOpenURL` を参照してください。
 
 ## ファイルのプレビュー：asuka/sdk/preview
 
@@ -672,7 +667,7 @@ go func() {
 - `notify.Schedule(n)` は、今から `n.After` 後（1 秒以上）に `n` を表示するよう予約します。`notify.Show(n)` はすぐに表示します。待機中または表示中の通知と同じ `ID` を持つ通知は、それを置き換えます。メインスレッド以外から呼んでください。
 - `notify.Cancel(id)` は、待機中か表示済みかにかかわらず通知を取り消します。メインスレッドで呼びます。
 
-`Notification` の `URL` には、アプリのスキーム（`asuka.json` の `scheme`）の URL を指定してください。ユーザーが通知をタップすると、`ui.OnOpenURL` がそれを受け取ります。ほかのフィールドは次のとおりです。
+`Notification` の `URL` には、アプリのスキーム（`asuka.toml` の `scheme`）の URL を指定してください。ユーザーが通知をタップすると、`ui.OnOpenURL` がそれを受け取ります。ほかのフィールドは次のとおりです。
 
 | フィールド | 役割 |
 |---|---|
@@ -791,7 +786,7 @@ notify.SetChannels(
 | 表示中の通知の取得、削除 | ✓ | ✓ | ✓ | ✓（通知センターのもの） | 今回の実行でアプリが表示したもの | ✓（Service Worker のもの） |
 | Present | ✓ | ✓ | ✓ | ✓（予約した通知を除く） | ✓ | ✓ |
 
-**macOS** ではアプリのバンドルが必要です。`asuka dev` と `asuka build` はバンドルからアプリを実行します。単体で実行した実行ファイル（`go run`）には bundle ID がないので、呼び出しはその旨を示すエラーで失敗します。**Windows** はトーストを、すぐに、または予約して表示します。画像も表示でき、カテゴリーのアクションはボタン、返信はテキストボックスになります。アプリは初回に自分自身を登録します（AppUserModelID、つまり asuka.json の `id` を持つスタートメニューのショートカットと、COM のアクティベーター。どちらもユーザーのレジストリに、アプリの実行ファイルを指して登録します）。これにより、タップやボタンの操作がアプリに届き、アプリが動いていなければ Windows がアプリを起動します。バックグラウンドのアクションでは、アプリは見えないまま動き、`OnAction` が終わると終了します。バッジは、アプリのタスクバーボタンに描かれる数字です（パッケージ化されたアプリでは、システムのバッジ）。Windows は、予約したトーストを `Present` の答えにかかわらず表示します。**Linux** は、アプリにデスクトップファイルがある（またはサンドボックスで動いている）場合は GNotification として通知を送り、そうでなければデスクトップの通知サーバーに直接送ります（GNOME Shell は、デスクトップファイルのないアプリの通知を受け付けません）。タップやボタンの操作は、アプリの実行中にアプリに届きます。後で届く通知は systemd のユーザータイマー（`systemd-run --user`）になります。タイマーはアプリの実行ファイルをウィンドウなしで起動して通知を表示し、アプリが動いていればアプリに処理を渡し、タップされればアプリを起動します。systemd がない場合（Flatpak、`asuka dev`）は、アプリの実行中にしか表示されません。**ブラウザー**は、アプリの Service Worker を通じて通知を表示し、`asuka/sdk/push` には Web Push を使います。詳しくは [Web](web.md) を参照してください。
+**macOS** ではアプリのバンドルが必要です。`asuka dev` と `asuka build` はバンドルからアプリを実行します。単体で実行した実行ファイル（`go run`）には bundle ID がないので、呼び出しはその旨を示すエラーで失敗します。**Windows** はトーストを、すぐに、または予約して表示します。画像も表示でき、カテゴリーのアクションはボタン、返信はテキストボックスになります。アプリは初回に自分自身を登録します（AppUserModelID、つまり asuka.toml の `id` を持つスタートメニューのショートカットと、COM のアクティベーター。どちらもユーザーのレジストリに、アプリの実行ファイルを指して登録します）。これにより、タップやボタンの操作がアプリに届き、アプリが動いていなければ Windows がアプリを起動します。バックグラウンドのアクションでは、アプリは見えないまま動き、`OnAction` が終わると終了します。バッジは、アプリのタスクバーボタンに描かれる数字です（パッケージ化されたアプリでは、システムのバッジ）。Windows は、予約したトーストを `Present` の答えにかかわらず表示します。**Linux** は、アプリにデスクトップファイルがある（またはサンドボックスで動いている）場合は GNotification として通知を送り、そうでなければデスクトップの通知サーバーに直接送ります（GNOME Shell は、デスクトップファイルのないアプリの通知を受け付けません）。タップやボタンの操作は、アプリの実行中にアプリに届きます。後で届く通知は systemd のユーザータイマー（`systemd-run --user`）になります。タイマーはアプリの実行ファイルをウィンドウなしで起動して通知を表示し、アプリが動いていればアプリに処理を渡し、タップされればアプリを起動します。systemd がない場合（Flatpak、`asuka dev`）は、アプリの実行中にしか表示されません。**ブラウザー**は、アプリの Service Worker を通じて通知を表示し、`asuka/sdk/push` には Web Push を使います。詳しくは [Web](web.md) を参照してください。
 
 ## サウンド: asuka/sdk/audio
 
@@ -990,16 +985,18 @@ go func() {
 
 ## ほかのアプリからの共有: ui.OnShare
 
-`ui.OnShare(f)` は、ほかのアプリが共有シートからこのアプリに共有したものを渡して `f` を呼びます。YouTube やブラウザーからのリンク、メモからのテキスト、ギャラリーからの写真、「ファイル」からの PDF などです。これは iOS と Android の機能です。デスクトップとブラウザーでは、アプリがほかのアプリの共有メニューに表示されず、`f` も呼ばれません。アプリが何の共有先として表示されるかは、`asuka.json` の `shareTarget` で指定します。
+`ui.OnShare(f)` は、ほかのアプリが共有シートからこのアプリに共有したものを渡して `f` を呼びます。YouTube やブラウザーからのリンク、メモからのテキスト、ギャラリーからの写真、「ファイル」からの PDF などです。これは iOS と Android の機能です。デスクトップとブラウザーでは、アプリがほかのアプリの共有メニューに表示されず、`f` も呼ばれません。アプリが何の共有先として表示されるかは、`asuka.toml` の `shareTarget` で指定します。
 
-```json
-{ "shareTarget": true }
+```toml
+shareTarget = true
 ```
 
-こう書くと、テキストとリンクを受け取ります。オブジェクトを指定すると、MIME タイプごとにファイルも受け取れます。一度に受け取れるのは `max` 個までです（既定は 1）。
+こう書くと、テキストとリンクを受け取ります。テーブルで指定すると、MIME タイプごとにファイルも受け取れます。一度に受け取れるのは `max` 個までです（既定は 1）。
 
-```json
-{ "shareTarget": { "types": ["text", "image/*", "video/*"], "max": 10 } }
+```toml
+[shareTarget]
+types = ["text", "image/*", "video/*"]
+max = 10
 ```
 
 タイプには `"text"`（テキストと Web のリンク）か、MIME タイプを指定します。MIME タイプは `"image/*"`、`"video/*"`、`"audio/*"`、`"application/pdf"` などで、`"*/*"` はあらゆるファイルを表します。
@@ -1110,10 +1107,11 @@ func App() ui.Node {
 - `push.OnOpen(f)` は、ユーザーがタップした各通知を受け取ります。アプリの起動時に `f` を設定しておけば、アプリを起動した通知も含まれます。メッセージのデータの `"url"` は、`asuka/sdk/notify` の通知と同じように `ui.OnOpenURL` にも渡されます。
 - `push.Message` には `ID`、`Title`、`Body`、`Data` があります（`Data` は、iOS ではペイロードの `aps` 以外のキー、Android ではメッセージのデータです）。
 
-iOS のリリースビルドでは、App ID に Push Notifications ケイパビリティが必要です。シミュレーターでもトークンを取得できます。Android では Firebase プロジェクトが必要です。プロジェクトに Android アプリを追加し、その `google-services.json` をダウンロードして、`asuka.json` で指定します。
+iOS のリリースビルドでは、App ID に Push Notifications ケイパビリティが必要です。シミュレーターでもトークンを取得できます。Android では Firebase プロジェクトが必要です。プロジェクトに Android アプリを追加し、その `google-services.json` をダウンロードして、`asuka.toml` で指定します。
 
-```json
-{ "android": { "googleServices": "google-services.json" } }
+```toml
+[android]
+googleServices = "google-services.json"
 ```
 
 Asuka は、Google の Gradle プラグインと同じようにこのファイルの設定をアプリに書き込みます。このファイルがないと、`Register` は対処方法を示すエラーで失敗します。
@@ -1150,7 +1148,7 @@ func main() {
 
 `f` はメインスレッドではなく、専用のゴルーチンで実行されます。エラーを返すかパニックすると、プッシュ通知は届いたまま表示されます。`m.Image` はダウンロードされて添付されます。`m.From` は、`notify.Notification` の `From` と同じように、通知をメッセージにします。
 
-**iOS** では、Notification Service Extension の中で書き換えます。`asuka build` は、`push.Rewrite` を呼ぶアプリにこの拡張機能を作ります。拡張機能は、`aps` に `"mutable-content": 1`（と、書き換えに失敗したときに表示される `alert`）を持つプッシュ通知が届くたびに、専用のプロセスでアプリの Go のコードを実行します。まず `main` が、次に `f` が実行されます。ルートコンポーネントは実行されないので、`main` は軽くしておいてください。iOS が与えるのは 30 秒ほどの時間と 24 MB のメモリで、時間切れになるとプッシュ通知は届いたまま表示されます。アプリが保存するデータは、拡張機能からも同じように使えます。データ（`asuka/sdk/store`、`store.Dir` 内のファイル）は両者が共有する App Group に、キーチェーンの項目（`asuka/sdk/secure`）はアプリのグループにあります。リリースビルドには、拡張機能の bundle ID（アプリの ID に `.notification` を付けたもの）のプロビジョニングプロファイルが必要で、App Groups ケイパビリティとアプリのグループを含んでいなければなりません。プロファイルは `asuka.json` の `ios.notificationProfile` で指定でき、指定しなければ、インストールされているもののうち最も合うものを使います。iOS では、書き換えによってプッシュ通知を非表示にすることはできません。
+**iOS** では、Notification Service Extension の中で書き換えます。`asuka build` は、`push.Rewrite` を呼ぶアプリにこの拡張機能を作ります。拡張機能は、`aps` に `"mutable-content": 1`（と、書き換えに失敗したときに表示される `alert`）を持つプッシュ通知が届くたびに、専用のプロセスでアプリの Go のコードを実行します。まず `main` が、次に `f` が実行されます。ルートコンポーネントは実行されないので、`main` は軽くしておいてください。iOS が与えるのは 30 秒ほどの時間と 24 MB のメモリで、時間切れになるとプッシュ通知は届いたまま表示されます。アプリが保存するデータは、拡張機能からも同じように使えます。データ（`asuka/sdk/store`、`store.Dir` 内のファイル）は両者が共有する App Group に、キーチェーンの項目（`asuka/sdk/secure`）はアプリのグループにあります。リリースビルドには、拡張機能の bundle ID（アプリの ID に `.notification` を付けたもの）のプロビジョニングプロファイルが必要で、App Groups ケイパビリティとアプリのグループを含んでいなければなりません。プロファイルは `asuka.toml` の `ios.notificationProfile` で指定でき、指定しなければ、インストールされているもののうち最も合うものを使います。iOS では、書き換えによってプッシュ通知を非表示にすることはできません。
 
 **Android** では、FCM のデータメッセージをアプリのプロセスの中で書き換えます。アプリが動いていなければ Go のコードが画面なしで起動し、10 秒ほどのうちに書き換えて、通知が表示されます。書き換えた結果、タイトルも本文もなくなったデータメッセージは表示されません。
 
@@ -1212,7 +1210,7 @@ record.Stop()
 
 `Options.Stream` を指定すると、ADTS ストリーム（`.aac`）で録音します。ADTS はフレームごとに完結しているので、アプリやスマートフォンが突然落ちても、それまでに録音した分は残ります。一方、MPEG-4 のファイルは閉じるまで読めません。クラッシュしたあとでもファイルを見つけられるよう `Path` を指定しておき、保存用には `record.Finalize(stream, dst)` で `.m4a` にしてください。こうして作ったファイルは正しくシークできます。停止したあとでも、クラッシュしたあとでも同じように使えます。
 
-`Options.Background` を指定すると、アプリが画面に出ていないときや画面がロックされているときも録音を続けます。iOS では `asuka.json` に `"ios": {"backgroundModes": ["audio"]}` が必要です。Android では、マイクタイプのフォアグラウンドサービスを動かし、常駐する通知（`BackgroundTitle`）と停止ボタンを表示します。Google Play はこのサービスを何に使うのかを尋ねるので、アップロードの前に申告してください。デスクトップのアプリはもともと画面外でも録音できるので、`Background` を指定しても何も変わりません。
+`Options.Background` を指定すると、アプリが画面に出ていないときや画面がロックされているときも録音を続けます。iOS では `asuka.toml` の `[ios]` に `backgroundModes = ["audio"]` が必要です。Android では、マイクタイプのフォアグラウンドサービスを動かし、常駐する通知（`BackgroundTitle`）と停止ボタンを表示します。Google Play はこのサービスを何に使うのかを尋ねるので、アップロードの前に申告してください。デスクトップのアプリはもともと画面外でも録音できるので、`Background` を指定しても何も変わりません。
 
 ## 音声の文字起こし: asuka/sdk/transcribe
 
@@ -1240,7 +1238,7 @@ screen.PreventCapture(true) // チケットのコード
 stop := screen.OnScreenshot(func() { note.Set("That screenshot shows your balance") })
 ```
 
-- `screen.Lock(o)` は、アプリを `o` の向きに回転させ、その向きに固定します。指定できるのは `Portrait`、`PortraitUp`、`Landscape`、`LandscapeLeft`、`LandscapeRight` で、`Any` で固定を解除します。使えるのは `asuka.json` で許可した向きだけです。Split View やステージマネージャを使っている iPad と、Android 16 の大画面デバイスは、この指定を無視します。
+- `screen.Lock(o)` は、アプリを `o` の向きに回転させ、その向きに固定します。指定できるのは `Portrait`、`PortraitUp`、`Landscape`、`LandscapeLeft`、`LandscapeRight` で、`Any` で固定を解除します。使えるのは `asuka.toml` で許可した向きだけです。Split View やステージマネージャを使っている iPad と、Android 16 の大画面デバイスは、この指定を無視します。
 - `screen.SetBars(bars)` はステータスバーの `Style` を設定します（`Auto` はダークモードに従い、`Light` は暗い画像の上に置く明るいアイコン、`Dark` は暗いアイコンです）。また、ステータスバー（`HideStatus`）や Android のナビゲーションバー（`HideNavigation`）を隠せます。隠したバーは、画面の端からスワイプすると一時的に表示されます。セーフエリアもそれに合わせて変わります。
 - `screen.PreventCapture(on)` は、アプリがスクリーンショットや画面収録に写らないようにします。Android ではウィンドウをセキュアにするので、キャプチャは黒くなり、最近使ったアプリの一覧でも空白で表示されます。iOS ではスクリーンショットを防げませんが、画面収録、ミラーリング、AirPlay のあいだはアプリを覆い隠します。
 - `screen.OnScreenshot(f)` は、ユーザーがスクリーンショットを撮ると `f` を呼びます（iOS、Android 14 以降）。返される `stop` を呼ぶまで続きます。
@@ -1251,10 +1249,14 @@ stop := screen.OnScreenshot(func() { note.Set("That screenshot shows your balanc
 
 ## 起動画面: asuka/sdk/splash
 
-`asuka.json` の `splash` は起動画面です。ライトモードとダークモードそれぞれの背景色の中央に、画像（正方形の PNG、ロゴ）を `size` ポイントの幅（既定は 120、最大 160）で表示します。
+`asuka.toml` の `splash` は起動画面です。ライトモードとダークモードそれぞれの背景色の中央に、画像（正方形の PNG、ロゴ）を `size` ポイントの幅（既定は 120、最大 160）で表示します。
 
-```json
-{ "splash": { "image": "logo.png", "size": 96, "background": "#4A63B5", "darkBackground": "#1B2440" } }
+```toml
+[splash]
+image = "logo.png"
+size = 96
+background = "#4A63B5"
+darkBackground = "#1B2440"
 ```
 
 起動画面は、アイコンをタップしてからアプリの最初のフレームが出るまで表示されます。iOS では起動画面（Launch Screen）を表示し、続いて最初のフレームの準備ができるまで、その複製をアプリの上に重ねます。Android 12 以降ではスプラッシュ画面（アイコンの円の中央に画像を表示）を、それより前のバージョンではウィンドウの背景を使います。デスクトップと Web には起動画面がないので、`Hold` と `Hide` は何もしません。アプリの読み込み中も起動画面を表示し続けるには、起動時に（ルートコンポーネントの中で）`splash.Hold()` を呼び、準備ができたら `splash.Hide()` を呼びます。
@@ -1290,7 +1292,7 @@ maps.View(maps.Props{
 - `Type` は `Standard`、`Satellite`、`Hybrid`、`Muted`（iOS）のいずれかです。`ShowsUser` は、位置情報の権限があればユーザーの現在地を表示します（`asuka/sdk/location` をインポートし、先に権限を求めてください）。`NoInteraction` を指定すると、操作できない静止したプレビューになります。
 - 地図には固有のサイズがありません。サイズを指定するか、`Grow` を設定してください。
 
-Android では、Maps SDK for Android を有効にした Google Maps Platform の API キーを、`asuka.json` で `{"android": {"mapsKey": "..."}}` のように指定する必要があります。キーがないと地図にその旨が表示され、`OnError` が理由を受け取ります。Windows、Linux、Web では、Satellite と Hybrid も通常の地図になります（無料の航空写真がないためです）。`ShowsUser` は、Windows と Linux では何も表示せず、ブラウザーではページが位置情報の権限を得ると、ユーザーの現在地を表示します。`Muted` は、iOS と Web では落ち着いた色合いの地図になります。Linux では libshumate（`libshumate-1.0-1`）が必要です。タイルは、`tile.openstreetmap.org` の利用規約に従ってそこから取得し、地図上にクレジットを表示します。Web アプリでは、独自のサーバーからタイルを取得することもできます（[Web](web.md)）。
+Android では、Maps SDK for Android を有効にした Google Maps Platform の API キーを、`asuka.toml` の `[android]` に `mapsKey = "..."` のように指定する必要があります。キーがないと地図にその旨が表示され、`OnError` が理由を受け取ります。Windows、Linux、Web では、Satellite と Hybrid も通常の地図になります（無料の航空写真がないためです）。`ShowsUser` は、Windows と Linux では何も表示せず、ブラウザーではページが位置情報の権限を得ると、ユーザーの現在地を表示します。`Muted` は、iOS と Web では落ち着いた色合いの地図になります。Linux では libshumate（`libshumate-1.0-1`）が必要です。タイルは、`tile.openstreetmap.org` の利用規約に従ってそこから取得し、地図上にクレジットを表示します。Web アプリでは、独自のサーバーからタイルを取得することもできます（[Web](web.md)）。
 
 ## バックグラウンド更新: asuka/sdk/periodic
 
@@ -1389,10 +1391,14 @@ Mac では EventKit を使います。`Add` はウィンドウの上のアラー
 
 ## ホーム画面ウィジェット: asuka/sdk/widget
 
-アプリのウィジェットは `asuka.json` の `widgets` で宣言し、アプリの Go のコードから `widget.Set` で内容を設定します。
+アプリのウィジェットは `asuka.toml` の `widgets` で宣言し、アプリの Go のコードから `widget.Set` で内容を設定します。
 
-```json
-{ "widgets": [{ "kind": "today", "name": "Today", "description": "What's next", "sizes": ["small", "medium", "rectangular"] }] }
+```toml
+[[widgets]]
+kind = "today"
+name = "Today"
+description = "What's next"
+sizes = ["small", "medium", "rectangular"]
 ```
 
 ```go
@@ -1432,15 +1438,20 @@ iOS のビルドは、このパッケージを呼ぶアプリにウィジェッ�
 
 ## ショートカット: Siri、Spotlight、ランチャー
 
-`asuka.json` の `shortcuts` は、システムがアプリのために表示するアクションです。それぞれ、その URL でアプリを開き、`ui.OnOpenURL` に渡します。
+`asuka.toml` の `shortcuts` は、システムがアプリのために表示するアクションです。それぞれ、その URL でアプリを開き、`ui.OnOpenURL` に渡します。
 
-```json
-{ "shortcuts": [{ "id": "newNote", "title": "New Note", "url": "notes://new", "symbol": "square.and.pencil", "phrases": ["New note in ${app}"] }] }
+```toml
+[[shortcuts]]
+id = "newNote"
+title = "New Note"
+url = "notes://new"
+symbol = "square.and.pencil"
+phrases = ["New note in ${app}"]
 ```
 
 iOS では App Shortcuts になります。Siri がそのフレーズ（それぞれアプリ名を表す `${app}` を含みます）を聞き取り、ユーザーが何も設定しなくても、Spotlight、「ショートカット」App、アクションボタンで使えます（最大 10 個）。CLI はこれらを App Intents としてコンパイルし、Xcode と同じようにメタデータを抽出します。Android ではランチャーのショートカットになり、アプリのアイコンを長押しすると、アクセントカラーのシンボル付きで表示されます。デスクトップと Web には追加されません。
 
-シミュレーター向けのビルドは、Xcode と同じように、キーチェーンにある（`asuka.json` で指定したチームの）Apple Development の証明書で署名されます。App Intents は、チームのあるアプリでしか動かないためです。証明書がなければビルドはアドホック署名になり、CLI はショートカットが動かないことを知らせます。
+シミュレーター向けのビルドは、Xcode と同じように、キーチェーンにある（`asuka.toml` で指定したチームの）Apple Development の証明書で署名されます。App Intents は、チームのあるアプリでしか動かないためです。証明書がなければビルドはアドホック署名になり、CLI はショートカットが動かないことを知らせます。
 
 ## 触覚フィードバック: ui.Haptic
 
@@ -1494,7 +1505,7 @@ Go のクラッシュは、すべてのゴルーチンのスタックととも�
 
 レポートの `Text` は、プラットフォームが渡す内容そのもの（Go のクラッシュ出力、スタックトレース、tombstone、ANR のトレース）です。`Threads` は、それらのスタックをフレームに分解したもので、クラッシュしたスレッドが先頭に来ます。Go のフレームは関数、ファイル、行を持ちます。ネイティブのフレームは、バイナリ、バイナリの UUID（Mach-O）またはビルド ID（ELF）、アドレス、バイナリ内のオフセットを持ちます。サービスがビルドのシンボルを使ってシンボル化するには、これらの情報が必要です（[配布](shipping.md#クラッシュレポート用のシンボル)を参照）。
 
-**Sentry や Crashlytics への送信。** Sentry には、各レポートからイベントを作って送ります（送り先はエンベロープのエンドポイント `https://<host>/api/<project>/envelope/` で、DSN のキーを付けます）。`exception.values[0]` の `type` に `Kind`、`value` に `Message`、`stacktrace.frames` にクラッシュしたスレッドのフレームを入れます。フレームは外側から順に並べ（Sentry の順序で、`Thread` とは逆です）、それぞれ `function`、`filename`、`lineno` を、ネイティブのフレームなら `instruction_addr` と `package` を持たせます。また `debug_meta.images` には、フレームに出てくる各バイナリを `{"type": "macho", "debug_id": BinaryID, "image_addr": Address-Offset}`（Android では `"elf"`）として入れます。こうすると、`sentry-cli` でアップロードした dSYM やシンボルが適用されます。`Context` は `contexts`、`tags`、`breadcrumbs` に入れます。Crashlytics には、送信先となる公開のエンドポイントがありません。レポートを自分のサーバーに送るか、独自のネイティブモジュール（[ネイティブコード](native.md)）から Crashlytics の SDK に致命的でないエラーとして記録してください。どちらの場合も、App Store の審査ではクラッシュデータについて尋ねられます。送信するなら、そのことを申告してください（`asuka.json` の `ios.collected` に `{"type": "CrashData", "purposes": ["AppFunctionality"]}`）。
+**Sentry や Crashlytics への送信。** Sentry には、各レポートからイベントを作って送ります（送り先はエンベロープのエンドポイント `https://<host>/api/<project>/envelope/` で、DSN のキーを付けます）。`exception.values[0]` の `type` に `Kind`、`value` に `Message`、`stacktrace.frames` にクラッシュしたスレッドのフレームを入れます。フレームは外側から順に並べ（Sentry の順序で、`Thread` とは逆です）、それぞれ `function`、`filename`、`lineno` を、ネイティブのフレームなら `instruction_addr` と `package` を持たせます。また `debug_meta.images` には、フレームに出てくる各バイナリを `{"type": "macho", "debug_id": BinaryID, "image_addr": Address-Offset}`（Android では `"elf"`）として入れます。こうすると、`sentry-cli` でアップロードした dSYM やシンボルが適用されます。`Context` は `contexts`、`tags`、`breadcrumbs` に入れます。Crashlytics には、送信先となる公開のエンドポイントがありません。レポートを自分のサーバーに送るか、独自のネイティブモジュール（[ネイティブコード](native.md)）から Crashlytics の SDK に致命的でないエラーとして記録してください。どちらの場合も、App Store の審査ではクラッシュデータについて尋ねられます。送信するなら、そのことを申告してください（`asuka.toml` の `ios.collected` に `{type = "CrashData", purposes = ["AppFunctionality"]}`）。
 
 **プラットフォームごとの違い。** iOS では、レポートを読むアプリ（`crash.Reports` か `crash.OnReport` を使うアプリ）にだけ MetricKit をリンクし、MetricKit は診断情報を共有拡張機能ではなくアプリに届けます。独自の共有シート（`app.ShareSheet`）を持つアプリは、シートのクラッシュもアプリのクラッシュと一緒に両者の App Group に保存し、どちらからも読めます。MetricKit は iOS 17 以降ではクラッシュのプロセス ID を持っているので、その実行のコンテキストと結び付けられます。それより前のバージョンでは、クラッシュの直前の実行と結び付けます。シミュレーターでは MetricKit は診断情報を届けません。Android では追加の設定は要りませんが、Android 11 より前にはネイティブクラッシュと ANR の記録がありません。macOS では、MetricKit は macOS 12 から使えます。アプリを終了させた、捕捉されない Objective-C の例外は、MetricKit のクラッシュとして報告されます（メインスレッドの例外は AppKit が捕捉してログに出力します）。Windows では、プロセスが処理しなかった例外はすべて Go のランタイムが（最後のハンドラーとして）処理します。ランタイムは例外とゴルーチンを出力して終了します。コンソールがない場合（GUI 向けにビルドしたリリース）、Asuka はランタイムの出力をその実行用のファイルに送り、次の起動時にそれを読んで `Native` レポートにします。Asuka は独自の未処理例外フィルターを設定しません。Go のハンドラーが先に実行されるので、これを置き換えると Go の処理が壊れるためです。Windows エラー報告は、これまでどおり記録を残します。ブラウザーでは、Go のランタイムはクラッシュ出力をファイルに書けない（`SetCrashOutput` には `dup` が必要です）ので、Go の実行中はホストがランタイムの出力を保持します。そしてプログラムがパニックや致命的なエラーで終了するときに、それをアプリのファイル（IndexedDB）の中にある、その実行の記録に書き込み、次の起動時にそれが読まれます。捕捉されなかった JavaScript のエラー（ホストのものでも、アプリの `web/*.js` のものでも）は、その場で `Exception` レポートになります。致命的なエラーとしては扱われず（ページは動き続けます）、その実行のコンテキストが付きます。1 回の実行につき最大 20 件で、同じエラーは一度だけです。ページはオリジンの `localStorage` に自分の実行が生きていることを記録するので、同じアプリのほかの開いているページがその記録に手を出すことはありません。
 

@@ -73,7 +73,7 @@ func untitledNumber(name string) int {
 	return 0
 }
 
-// appName is the app's name, as the hosts name it: asuka.json's, else
+// appName is the app's name, as the hosts name it: asuka.toml's, else
 // the executable's.
 func appName() string {
 	if boot.Name != "" {

@@ -367,8 +367,8 @@ Swift, Kotlin, JavaScript and C) and prebuilt libraries (plugins). They
 live on the **npm registry**, but npm doesn't install them: the `asuka`
 CLI is the client, and it needs no Node.
 
-- **A package** is a directory with `asuka.json` (`"name"`, `"version"`,
-  `"dependencies"`, and what it is: a library, a native package, a
+- **A package** is a directory with `asuka.toml` (`name`, `version`,
+  `[dependencies]`, and what it is: a library, a native package, a
   plugin) and its `.asuka` sources. `asuka pkg publish` makes the npm
   package from it: `package.json` (name, version, `"asuka"` pointing at
   the manifest, `"files"`) and the tarball, and uploads it with the
@@ -376,9 +376,15 @@ CLI is the client, and it needs no Node.
   CI. Scoped names (`@acme/charts`) work as on npm, and so do private
   registries (GitHub Packages, Verdaccio, a company's), set in
   `.npmrc`.
-- **Depending** on one is `asuka add @acme/charts` (writes
-  `"dependencies": {"@acme/charts": "^1.2.0"}` in `asuka.json`) and
-  `import @acme/charts` in the source. Git dependencies
+- **Depending** on one is `asuka add @acme/charts`, which writes it in
+  `asuka.toml`:
+
+  ```toml
+  [dependencies]
+  "@acme/charts" = "^1.2.0"
+  ```
+
+  and `import @acme/charts` in the source. Git dependencies
   (`"github:acme/charts#v1.2.0"`) and local paths (`"file:../charts"`)
   work too, for what isn't published.
 - **Resolving** picks one version of each package for the whole app,

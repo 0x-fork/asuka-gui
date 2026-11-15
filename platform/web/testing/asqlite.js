@@ -1,6 +1,6 @@
 // asqlite.wasm for the tests, the sqlite plugin's: this checkout's build
 // (go generate ./sdk/sqlite, in sdk/sqlite/build/wasm), else the
-// published module (the plugin's manifest, asuka-plugin.json), from the
+// published module (the plugin's manifest, asuka-plugin.toml), from the
 // user's cache, where package plugin keeps it, downloaded and verified
 // there first if need be.
 
@@ -23,12 +23,47 @@ function cacheDir() {
 
 const sha256 = (b) => createHash("sha256").update(b).digest("hex");
 
+/**
+ * readManifest reads the TOML asuka plugin publish writes (internal/toml's
+ * Marshal): comments, [tables] and [[arrays of tables]] with dotted names,
+ * key = value lines of basic strings, integers, booleans and one-line
+ * arrays of them.
+ */
+export function readManifest(text) {
+  const root = {};
+  let cur = root;
+  const name = (s) => s.trim().split(".").map((k) => (k.trim().startsWith('"') ? JSON.parse(k.trim()) : k.trim()));
+  const into = (t, k) => {
+    const v = t[k] ?? (t[k] = {});
+    return Array.isArray(v) ? v[v.length - 1] : v;
+  };
+  text.split(/\r?\n/).forEach((line, i) => {
+    line = line.trim();
+    if (line === "" || line.startsWith("#")) return;
+    let m;
+    if ((m = /^\[\[(.+)\]\]$/.exec(line))) {
+      const ks = name(m[1]);
+      const t = ks.slice(0, -1).reduce(into, root);
+      const arr = (t[ks.at(-1)] ??= []);
+      arr.push((cur = {}));
+    } else if ((m = /^\[(.+)\]$/.exec(line))) {
+      cur = name(m[1]).reduce(into, root);
+    } else if ((m = /^([A-Za-z0-9_-]+|"(?:[^"\\]|\\.)*")\s*=\s*(.+)$/.exec(line))) {
+      const v = m[2].replace(/^(\[[^\]]*\]|"(?:[^"\\]|\\.)*"|\S+)\s*(#.*)?$/, "$1");
+      cur[name(m[1])[0]] = JSON.parse(v);
+    } else {
+      throw new Error(`asuka-plugin.toml:${i + 1}: not a line asuka plugin publish writes`);
+    }
+  });
+  return root;
+}
+
 /** loadWasm is the module's bytes. */
 export async function loadWasm() {
   try {
     return await readFile(new URL("build/wasm/asqlite.wasm", dir));
   } catch {}
-  const manifest = JSON.parse(await readFile(new URL("asuka-plugin.json", dir), "utf8"));
+  const manifest = readManifest(await readFile(new URL("asuka-plugin.toml", dir), "utf8"));
   const lib = manifest.libraries.find((l) => l.name === "asqlite");
   const f = lib.files.wasm;
   const path = join(cacheDir(), "asuka", "plugins", f.rawSHA256.slice(0, 16), f.name);

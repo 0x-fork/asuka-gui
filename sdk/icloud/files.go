@@ -25,7 +25,7 @@ import (
 // functions work on a file downloaded, but may race with a sync.
 
 // Container is the directory of the app's ubiquity container id (as
-// asuka.json's icloud.containers names it: "iCloud.com.example.app"), or
+// asuka.toml's icloud.containers names it: "iCloud.com.example.app"), or
 // with "" its first (by default iCloud.<the app's ID>). The first call
 // may take a while, as iCloud sets the container up. Not on the main
 // thread.

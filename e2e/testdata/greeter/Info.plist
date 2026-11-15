@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- What the greeter's Swift needs of the app's Info.plist (iOS, macOS):
-     a purpose string, which the app's asuka.json may say better, and keys
+     a purpose string, which the app's asuka.toml may say better, and keys
      joined with the app's. -->
 <plist version="1.0">
 <dict>

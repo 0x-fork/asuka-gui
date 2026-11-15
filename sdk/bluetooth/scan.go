@@ -114,7 +114,7 @@ type ScanOptions struct {
 	Duplicates bool
 	// Mode is Android's (ScanMode).
 	Mode ScanMode
-	// Background keeps scanning with the app away (asuka.json's
+	// Background keeps scanning with the app away (asuka.toml's
 	// bluetooth.background "central"): on iOS, for Services only, and
 	// slower, each device once; on Android a scan the system runs, which
 	// goes on after the app's process is gone (stop ends it while the

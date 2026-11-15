@@ -34,7 +34,7 @@ import (
 // timestamped (and its plugins' libraries with it): with signtool on Windows,
 // osslsigncode elsewhere.
 
-// windowsLdflags is the -ldflags of a Windows build: asuka.json's, the
+// windowsLdflags is the -ldflags of a Windows build: asuka.toml's, the
 // app's name (its window title), ID (its AppUserModelID, and what makes
 // it run once), scheme (registered for the user as it starts) and
 // version (its crash reports'), and for a release, the GUI subsystem (no

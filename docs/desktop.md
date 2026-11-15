@@ -131,7 +131,7 @@ resize it. On the web the main window is the tab, which fills the page.
 `app.KeepRunning()` keeps the app running when its last window closes:
 the window hides, and `ui.MainWindow().Show()` brings it back (on the
 Mac, so does a click on the Dock icon). `app.RunInBackground()`, or
-`asuka.json`'s `"background": true`, also starts the app with no
+`background = true` in `asuka.toml`, also starts the app with no
 window and, on the Mac, no Dock icon: an app of the menu bar or the
 tray. Call them before `app.Run`.
 
@@ -320,7 +320,7 @@ new tab. To show a file's contents in the app, use `asuka/sdk/preview`.
 
 ## Opening files
 
-Declare the kinds of files the app opens in `asuka.json`'s `fileTypes`
+Declare the kinds of files the app opens in `asuka.toml`'s `fileTypes`
 ([Shipping](shipping.md)), and handle them with `ui.OnOpenFiles`:
 
 ```go
@@ -345,7 +345,7 @@ On Windows and Linux an app with an `id` runs once: starting it again
 brings the running one to the front, `app.OnSecondInstance(func(args
 []string, dir string))` gets the new launch's arguments and working
 directory, and the files and links among them go to `ui.OnOpenFiles`
-and `ui.OnOpenURL`. Set `"singleInstance": false` in `asuka.json` to run
+and `ui.OnOpenURL`. Set `singleInstance = false` in `asuka.toml` to run
 a new instance each time. The Mac always runs an app once and passes
 files, not arguments.
 
@@ -378,7 +378,7 @@ with the app's key, installs it and offers Relaunch Now.
 Help elsewhere). `update.Check`, `Release.Install` and `update.Relaunch`
 make an interface of the app's own.
 
-`asuka update keygen` makes the key pair, `asuka.json`'s `updates` says
+`asuka update keygen` makes the key pair, `asuka.toml`'s `updates` says
 where releases go (GitHub's releases, an S3 bucket or any HTTPS
 directory, or a server of yours), and `asuka publish --platform mac`
 (`windows`, `linux`) builds, signs and uploads them
@@ -424,7 +424,7 @@ func main() {
 }
 ```
 
-List the same types in `asuka.json`'s `fileTypes`, so the system offers
+List the same types in `asuka.toml`'s `fileTypes`, so the system offers
 the app for them. `examples/textedit` is this editor with a status line
 and a bar for a file another app changed.
 

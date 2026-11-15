@@ -13,7 +13,7 @@ func appWithCatalogs(t *testing.T, config string, catalogs map[string]string) st
 	t.Helper()
 	dir := t.TempDir()
 	if config != "" {
-		if err := os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(config), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(config), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -43,11 +43,11 @@ func TestCatalogsAreFound(t *testing.T) {
 	if c, err = loadConfig(dir); err != nil || c.I18n.Source != "ja" {
 		t.Fatalf("source %+v, %v", c.I18n, err)
 	}
-	// None, and none in asuka.json: nothing.
+	// None, and none in asuka.toml: nothing.
 	if c, err = loadConfig(t.TempDir()); err != nil || c.I18n != nil {
 		t.Fatalf("%+v, %v", c.I18n, err)
 	}
-	dir = appWithCatalogs(t, `{"i18n": {"dir": "tr", "source": "de"}}`, map[string]string{"tr/de.json": `{"a": "Ä"}`, "tr/en.json": `{"a": "A"}`})
+	dir = appWithCatalogs(t, "[i18n]\ndir = \"tr\"\nsource = \"de\"", map[string]string{"tr/de.json": `{"a": "Ä"}`, "tr/en.json": `{"a": "A"}`})
 	if c, err = loadConfig(dir); err != nil || c.I18n.Dir != "tr" || c.I18n.Source != "de" {
 		t.Fatalf("%+v, %v", c.I18n, err)
 	}
@@ -90,7 +90,7 @@ func TestGenerateWritesOnlyWhatChanged(t *testing.T) {
 }
 
 func TestPackagingStrings(t *testing.T) {
-	dir := appWithCatalogs(t, `{"name": "Notes", "shortcuts": [{"id": "new", "title": "New note", "url": "notes://new"}]}`, map[string]string{
+	dir := appWithCatalogs(t, "name = \"Notes\"\n\n[[shortcuts]]\nid = \"new\"\ntitle = \"New note\"\nurl = \"notes://new\"", map[string]string{
 		"locales/en.json": `{"a": "A", "asuka.appName": "Notes"}`,
 		"locales/de.json": `{"a": "Ä", "asuka.appName": "Notizen", "asuka.NSCameraUsageDescription": "Um \"Belege\" zu scannen.", "asuka.shortcut.new": "Neue Notiz"}`,
 		"locales/ar.json": `{"a": "أ"}`,

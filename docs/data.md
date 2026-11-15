@@ -21,7 +21,7 @@ own files there too.
 | Linux | `$XDG_DATA_HOME/<id>` (`~/.local/share/<id>`; in a Flatpak, the sandbox's own) |
 | The web | `/data/<name>`, in a file system in memory that the page keeps in the browser's storage (IndexedDB) |
 
-`<name>` is `asuka.json`'s `name`, and `<id>` its `id`; either is the
+`<name>` is `asuka.toml`'s `name`, and `<id>` its `id`; either is the
 program's name when the app is run without the CLI (`go run`). The
 directory is made by what first writes there. On Windows and Linux, the
 host keeps a few files of its own there too (the main window's size and
@@ -344,7 +344,7 @@ the math functions, `dbstat`, `STAT4` and `soundex` built in, loadable
 extensions left out, and temporary tables kept in memory (a phone may
 have no temporary directory). It's the plugin's library, `asqlite`,
 built for each platform and published to the plugin's GitHub release;
-its manifest (`sdk/sqlite/asuka-plugin.json`) names each file and
+its manifest (`sdk/sqlite/asuka-plugin.toml`) names each file and
 its SHA-256, and the CLI and the package download them from there,
 once, into the user's cache. An app's developers need no C compiler.
 

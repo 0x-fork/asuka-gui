@@ -50,7 +50,7 @@ const (
 var playerGaps = []playerGap{
 	{
 		// StoreKit sells the app's products to the app: in the simulator
-		// from asuka.json's storekit, on a device from the sandbox.
+		// from asuka.toml's storekit, on a device from the sandbox.
 		targets: []string{"ios", "ios-device"}, build: true,
 		why:  "the App Store sells its products only to the app",
 		uses: importsGap(purchasePkg),
@@ -90,7 +90,7 @@ var playerGaps = []playerGap{
 			if c == nil || !u.imports(nfcPkg) || len(c.NFC.ISO7816) == 0 && len(c.NFC.FeliCa) == 0 {
 				return "", false
 			}
-			return "has asuka.json's nfc.iso7816 or nfc.felica", true
+			return "has asuka.toml's nfc.iso7816 or nfc.felica", true
 		},
 	},
 	{
@@ -102,7 +102,7 @@ var playerGaps = []playerGap{
 			if c == nil || !u.imports(nfcPkg) || len(c.NFC.NDEF) == 0 && len(c.NFC.Tech) == 0 {
 				return "", false
 			}
-			return "has asuka.json's nfc.ndef or nfc.tech", true
+			return "has asuka.toml's nfc.ndef or nfc.tech", true
 		},
 	},
 	{
@@ -111,7 +111,7 @@ var playerGaps = []playerGap{
 		why: "the files shared with it are on the device, not on the computer the player's Go code runs on",
 		uses: func(u gapUse) (string, bool) {
 			if c := u.app.cfg; c != nil && c.ShareTarget.files() {
-				return "takes shared files (asuka.json's shareTarget)", true
+				return "takes shared files (asuka.toml's shareTarget)", true
 			}
 			return "", false
 		},
@@ -124,7 +124,7 @@ var playerGaps = []playerGap{
 			if c == nil || c.Scheme == "" && len(c.Links) == 0 {
 				return "", false
 			}
-			return "has asuka.json's scheme or links", true
+			return "has asuka.toml's scheme or links", true
 		},
 	},
 	{
@@ -132,7 +132,7 @@ var playerGaps = []playerGap{
 		why:     "the player asks with its own purpose strings; try yours with --no-hot",
 		uses: func(u gapUse) (string, bool) {
 			if c := u.app.cfg; c != nil && len(c.IOS.Usage) > 0 {
-				return "has asuka.json's ios.usage", true
+				return "has asuka.toml's ios.usage", true
 			}
 			return "", false
 		},

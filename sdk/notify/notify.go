@@ -30,7 +30,7 @@ type Notification struct {
 	Title string
 	Body  string
 	// URL is what the app is opened with when the user taps it (one of
-	// its scheme's, asuka.json's scheme): ui.OnOpenURL gets it.
+	// its scheme's, asuka.toml's scheme): ui.OnOpenURL gets it.
 	URL string
 	// After is how long from now it shows (at least a second; Show shows
 	// it now).

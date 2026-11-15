@@ -136,14 +136,14 @@ browser.
 - [Shipping](shipping.md): builds for the App Store and Google Play, a
   signed and notarized Mac app, a Windows folder, a Linux archive and
   Flatpak manifest, desktop apps' signed updates, and what
-  `asuka.json` says of the app.
+  `asuka.toml` says of the app.
 - [The web](web.md): the same app in a browser, as WebAssembly and the
   page's DOM; `asuka dev --platform web`, a static site to deploy,
   embedding, and what it doesn't do yet.
 
 ## Reference
 
-- [asuka.json](asuka-json.md): every key of an app's `asuka.json`, its
+- [asuka.toml](asuka-toml.md): every key of an app's `asuka.toml`, its
   type, its default and what it does on each platform.
 - [Compared to SwiftUI and Expo](parity.md): what Asuka has, and what it
   doesn't yet.

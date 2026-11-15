@@ -68,12 +68,12 @@ Asuka 需要 Go 1.26 或更高版本。应用可运行在 iOS 16、Android 13（
 - [原生代码](native.md)：原生包——在 Go 里声明带类型的模块和视图，在各平台自己的项目里实现：iOS 和 macOS 用 Swift，Android 用 Kotlin，Web 用 JavaScript，Windows 和 Linux 用 Go。
 - [开发](development.md)：深入介绍各平台上的 `asuka dev`、设备、`asuka vet`、测试和常见问题。
 - [测试](testing.md)：在 `go test` 里测试应用的界面，不需要设备或显示器：点击、输入并检查屏幕上显示的内容，还有快照和等待应用的 goroutine。
-- [打包与发布](shipping.md)：面向 App Store 和 Google Play 的构建、签名并公证的 Mac 应用、Windows 文件夹、Linux 压缩包与 Flatpak 清单、桌面应用的签名更新，以及 `asuka.json` 中对应用的描述。
+- [打包与发布](shipping.md)：面向 App Store 和 Google Play 的构建、签名并公证的 Mac 应用、Windows 文件夹、Linux 压缩包与 Flatpak 清单、桌面应用的签名更新，以及 `asuka.toml` 中对应用的描述。
 - [Web](web.md)：同一个应用以 WebAssembly 加页面 DOM 的方式在浏览器中运行；`asuka dev --platform web`、可部署的静态站点、嵌入到其他页面，以及目前还不支持的功能。
 
 ## 参考
 
-- [asuka.json](asuka-json.md)：应用 `asuka.json` 里的每一个键，它的类型、默认值，以及在各个平台上的作用。
+- [asuka.toml](asuka-toml.md)：应用 `asuka.toml` 里的每一个键，它的类型、默认值，以及在各个平台上的作用。
 - [与 SwiftUI 和 Expo 对比](parity.md)：Asuka 已经有什么，还缺什么。
 - [Asuka 与 MyGo](mygo.md)：平台原生控件与框架自绘界面、各自能运行在哪里（MyGo 的手机支持即将推出），以及什么时候该选哪个。
 - Go API: `go doc -all github.com/egoist/asuka/ui`，以及模块中的其他包。

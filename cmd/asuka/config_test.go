@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,11 +12,11 @@ import (
 func TestAccent(t *testing.T) {
 	dir := t.TempDir()
 	write := func(s string) {
-		if err := os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(s), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(s), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write(`{"accent": "#7c3aed", "android": {"dynamicColor": true}}`)
+	write("accent = \"#7c3aed\"\n\n[android]\ndynamicColor = true")
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -37,11 +38,11 @@ func TestAccent(t *testing.T) {
 		t.Fatalf("Android release: %q", got)
 	}
 	// A background app says so to the desktop hosts.
-	write(`{"background": true}`)
+	write(`background = true`)
 	if c, err := loadConfig(dir); err != nil || c.ldflags(false) != "-ldflags=-w -X github.com/egoist/asuka/internal/boot.Background=1" {
 		t.Fatalf("background: %v, %v", c, err)
 	}
-	write(`{"accent": "purple"}`)
+	write(`accent = "purple"`)
 	if _, err := loadConfig(dir); err == nil {
 		t.Fatal("a bad accent was taken")
 	}
@@ -49,8 +50,12 @@ func TestAccent(t *testing.T) {
 
 func TestLinks(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id": "com.example.notes", "scheme": "notes", "links": ["notes.example.com"],
-		"android": {"permissions": ["android.permission.CAMERA"]}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`id = "com.example.notes"
+scheme = "notes"
+links = ["notes.example.com"]
+
+[android]
+permissions = ["android.permission.CAMERA"]`), 0o644)
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +73,7 @@ func TestLinks(t *testing.T) {
 	if d := c.associatedDomains(true); len(d) != 1 || d[0] != "applinks:notes.example.com?mode=developer" {
 		t.Errorf("domains %v", d)
 	}
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"scheme": "my app"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`scheme = "my app"`), 0o644)
 	if _, err := loadConfig(dir); err == nil {
 		t.Error("a bad scheme was taken")
 	}
@@ -114,13 +119,13 @@ func TestShareTarget(t *testing.T) {
 func TestShareTargetConfig(t *testing.T) {
 	dir := t.TempDir()
 	load := func(js string) (*appConfig, error) {
-		os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id": "com.example.pics", "shareTarget": `+js+`}`), 0o644)
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("id = \"com.example.pics\"\nshareTarget = "+js), 0o644)
 		return loadConfig(dir)
 	}
 	for js, want := range map[string]shareTarget{
 		"false": {},
 		"true":  textShares,
-		`{"types": ["Image/*", "video/*"], "max": 5}`: {on: true, Types: []string{"image/*", "video/*"}, Max: 5},
+		`{types = ["Image/*", "video/*"], max = 5}`: {on: true, Types: []string{"image/*", "video/*"}, Max: 5},
 		`{}`: textShares,
 	} {
 		c, err := load(js)
@@ -128,7 +133,7 @@ func TestShareTargetConfig(t *testing.T) {
 			t.Errorf("%s: %+v, %v", js, c.ShareTarget, err)
 		}
 	}
-	for _, js := range []string{`{"types": ["pictures"]}`, `{"max": -1}`, `"yes"`} {
+	for _, js := range []string{`{types = ["pictures"]}`, `{max = -1}`, `"yes"`} {
 		if _, err := load(js); err == nil {
 			t.Errorf("%s was taken", js)
 		}
@@ -136,7 +141,7 @@ func TestShareTargetConfig(t *testing.T) {
 
 	// Images and videos, five at once: Apple's keys, an App Group, and
 	// both of Android's actions.
-	c, _ := load(`{"types": ["text", "image/*", "video/*"], "max": 5}`)
+	c, _ := load(`{types = ["text", "image/*", "video/*"], max = 5}`)
 	rule := c.shareInfo(nil)["NSExtension"].(map[string]any)["NSExtensionAttributes"].(map[string]any)["NSExtensionActivationRule"].(map[string]any)
 	if rule["NSExtensionActivationSupportsImageWithMaxCount"] != 5 || rule["NSExtensionActivationSupportsMovieWithMaxCount"] != 5 ||
 		rule["NSExtensionActivationSupportsText"] != true {
@@ -153,7 +158,7 @@ func TestShareTargetConfig(t *testing.T) {
 	}
 
 	// A type Apple has no key for: a predicate on the attachments' types.
-	c, _ = load(`{"types": ["audio/*", "application/pdf", "application/x-thing"]}`)
+	c, _ = load(`{types = ["audio/*", "application/pdf", "application/x-thing"]}`)
 	want := `SUBQUERY(extensionItems, $e, SUBQUERY($e.attachments, $a, ANY $a.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio" OR ` +
 		`ANY $a.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf" OR ANY $a.registeredTypeIdentifiers UTI-CONFORMS-TO "public.data").@count >= 1).@count >= 1`
 	if got := c.ShareTarget.activationRule(); got != want {
@@ -193,11 +198,11 @@ func TestFeaturesFromImports(t *testing.T) {
 
 // An app that imports asuka/sdk/pay gets Google Pay's module (whose
 // manifest has its API and callbacks service) and Apple Pay's
-// entitlement with asuka.json's merchant IDs (none without them); one
+// entitlement with asuka.toml's merchant IDs (none without them); one
 // that doesn't, neither.
 func TestPayFeature(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"applePay": {"merchantIds": ["merchant.dev.asuka.shop"]}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[applePay]\nmerchantIds = [\"merchant.dev.asuka.shop\"]"), 0o644)
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +229,7 @@ func TestPayFeature(t *testing.T) {
 
 func TestIPad(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"orientations": ["portrait"]}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`orientations = ["portrait"]`), 0o644)
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +242,7 @@ func TestIPad(t *testing.T) {
 	if o := c.ipadOrientations(); len(o) != 4 {
 		t.Errorf("iPad orientations %v", o)
 	}
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"ios": {"iphoneOnly": true}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[ios]\niphoneOnly = true"), 0o644)
 	if c, err = loadConfig(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -333,5 +338,24 @@ func TestFeatureExtras(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("From's symbol isn't a feature's")
+	}
+}
+
+// asuka.toml's errors say where: a TOML one its line and column, a value
+// Asuka can't take its key.
+func TestConfigErrors(t *testing.T) {
+	dir := t.TempDir()
+	for doc, want := range map[string]string{
+		"name = \"Notes\"\nbuild = \"7\"":     `asuka.toml:2:9: build: want an integer, not a string`,
+		"[ios]\nteam = \"A\"\n[ios]":          `asuka.toml:3:2: table ios is defined twice`,
+		"accent = \"red\"":                    `asuka.toml: accent "red" (want #rrggbb or #rrggbbaa)`,
+		"shareTarget = \"yes\"":               `asuka.toml: shareTarget: want true, or a table of types and max`,
+		"[[widgets]]\nkind = \"a\"\nsize = 1": ``,
+	} {
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(doc), 0o644)
+		_, err := loadConfig(dir)
+		if got := fmt.Sprint(err); want == "" && err != nil || want != "" && got != want {
+			t.Errorf("%q: got %v, want %s", doc, err, want)
+		}
 	}
 }

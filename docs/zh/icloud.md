@@ -58,7 +58,7 @@ found, err := icloud.Get("lastPage", &page)
 
 ## 文档
 
-应用在 iCloud 里的文件放在它的**容器**中：容器是设备上由 iCloud 同步的目录。`icloud.Container(id)` 返回一个容器的目录；传入 `""` 时返回应用的第一个容器。默认情况下，应用只有一个容器 `iCloud.<id>`（`<id>` 是应用的 ID）；`asuka.json` 的 `icloud.containers` 可以指定其他容器，其中第一个是默认容器。第一次调用可能要花一些时间，因为 iCloud 要先把容器准备好。
+应用在 iCloud 里的文件放在它的**容器**中：容器是设备上由 iCloud 同步的目录。`icloud.Container(id)` 返回一个容器的目录；传入 `""` 时返回应用的第一个容器。默认情况下，应用只有一个容器 `iCloud.<id>`（`<id>` 是应用的 ID）；`asuka.toml` 的 `icloud.containers` 可以指定其他容器，其中第一个是默认容器。第一次调用可能要花一些时间，因为 iCloud 要先把容器准备好。
 
 `icloud.Documents()` 返回第一个容器的 `Documents` 目录，不存在时会创建它。其中的内容会出现在 iCloud Drive 里（iOS 上的“文件” App、Mac 上的访达），位于一个以应用命名的文件夹中，用户可以在里面打开、重命名和移动文件。容器里其余的部分只属于应用自己。
 
@@ -99,15 +99,14 @@ if len(vs) > 0 {
 
 `icloud.Link(path)` 返回一个文件的公开链接及其过期时间；文件还没上传时，会先上传。任何拿到链接的人都能下载这个文件当前内容的一份副本。
 
-## asuka.json 与 entitlement
+## asuka.toml 与 entitlement
 
 应用会获得哪些配置，取决于它调用了什么，这是从它的 Go 代码里找出来的。调用了键值存储函数的应用，会获得键值存储的 entitlement（`com.apple.developer.ubiquity-kvstore-identifier`，值为团队 ID 加上应用的 ID）。调用了文档函数的应用，会获得 iCloud Documents（`com.apple.developer.icloud-services`：`CloudDocuments`）和它的容器，Info.plist 里的 `NSUbiquitousContainers` 也会让第一个容器的 `Documents` 显示在 iCloud Drive 中。只查询账户的应用会获得键值存储的 entitlement，因为没有它就看不到账户。
 
-```json
-"icloud": {
-  "containers": ["iCloud.com.example.journal"],
-  "driveName": "Journal"
-}
+```toml
+[icloud]
+containers = ["iCloud.com.example.journal"]
+driveName = "Journal"
 ```
 
 | 键 | 类型 | 默认值 | 说明 |
@@ -124,7 +123,7 @@ iCloud Drive 只有在 `build` 号变化后，才会识别新的文件夹或新�
 
 iCloud 按应用自己的 ID 保存它的值和文档，而开发 App 的 ID 不是应用的 ID。因此，对于导入了这个包的应用，`asuka dev` 在 iOS 模拟器和 iPhone 上都会构建应用本身来运行，而不使用热重载模式，并且会告诉你这一点。要在 iOS 模拟器上试用 iCloud，请在模拟器的“设置”里登录 Apple 账户，并打开 iCloud Drive。
 
-在 Mac 上，iCloud 的 entitlement 要求应用用描述文件签名（`asuka build --profile`，或 `asuka.json` 的 `mac.profile`），而 `asuka dev` 不会这样签名：没有描述文件时，这些调用会以 `ErrNotAvailable` 失败，并说明原因。
+在 Mac 上，iCloud 的 entitlement 要求应用用描述文件签名（`asuka build --profile`，或 `asuka.toml` 的 `mac.profile`），而 `asuka dev` 不会这样签名：没有描述文件时，这些调用会以 `ErrNotAvailable` 失败，并说明原因。
 
 ## 各平台上的表现
 
