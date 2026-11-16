@@ -11,6 +11,7 @@
 //     routestate's asuka-routes.json);
 //   - files by UTF-8 path (Windows' are UTF-16);
 //   - where a flyout window goes against its anchor (internal/flyout);
+//   - animated images, decoded and played (internal/animimage);
 //   - Asuka's own words in the app's language (internal/l10n).
 //
 // Nothing here is thread-safe unless it says so: the hosts call it on
@@ -21,7 +22,8 @@
 // The API is stable: what's added is added in commits of platform/desktop
 // alone, each noted here:
 //   - dsk_flyout_place, dsk_flyout_center: flyouts' and panels' places;
-//   - dsk_word, dsk_word_format: Asuka's own words.
+//   - dsk_word, dsk_word_format: Asuka's own words;
+//   - dsk_anim_*: animated images (GIF, APNG, WebP) and their player.
 #ifndef ASUKA_DESKTOP_SHARED_H
 #define ASUKA_DESKTOP_SHARED_H
 
@@ -205,6 +207,68 @@ const char *dsk_word(const char *locale, const char *key);
 // {count, plural, ...} by count's case (=n, one, other; # the count). It
 // returns the length written.
 size_t dsk_word_format(char *out, size_t cap, const char *locale, const char *key, const char *const *vars, size_t nvars);
+
+// ---- Animated images (internal/animimage) ----
+//
+// Where the platform decodes a still, not an animation (WIC, GDK): GIF is
+// decoded here, APNG's and animated WebP's frames are read here and each
+// one's picture (a PNG or WebP file made of its chunks) decoded by the
+// host's still decoder. Pixels are RGBA, not premultiplied.
+
+enum { DSK_DISPOSE_NONE, DSK_DISPOSE_BACKGROUND, DSK_DISPOSE_PREVIOUS };
+
+// A frame: its picture, w by h at x, y of the canvas, shown for delay_ms
+// (10 ms or less is 100, as browsers show it); what happens to its
+// rectangle before the next (DSK_DISPOSE_*); drawn over what's there
+// (blend) or replacing it.
+typedef struct {
+	int x, y, w, h;
+	uint8_t *rgba;
+	int delay_ms, disposal;
+	bool blend;
+} dsk_anim_frame;
+
+// An animation: its canvas's size, its frames, and how many times it
+// plays (0: forever).
+typedef struct {
+	int w, h, loops;
+	dsk_anim_frame *frames;
+	size_t n;
+} dsk_anim;
+
+// A still decoder: a still image file's pixels (RGBA, malloc'd: the
+// caller frees them) and size; false if it can't.
+typedef bool (*dsk_still_decoder)(void *ctx, const uint8_t *data, size_t len, uint8_t **rgba, int *w, int *h);
+
+// dsk_anim_is_animated reports whether data looks like an animated GIF,
+// APNG or WebP, from its headers, without decoding it.
+bool dsk_anim_is_animated(const uint8_t *data, size_t len);
+// dsk_anim_decode reads an animated GIF, APNG or WebP; NULL for a still
+// one (one frame), another format, or one it can't read. still decodes
+// APNG's and WebP's frames (NULL: they aren't read). Any thread.
+dsk_anim *dsk_anim_decode(const uint8_t *data, size_t len, dsk_still_decoder still, void *ctx);
+void dsk_anim_free(dsk_anim *a);
+
+// A player composites an animation's frames in order onto its canvas
+// (a->w by a->h, RGBA not premultiplied), which keeps the last frame
+// drawn.
+typedef struct {
+	const dsk_anim *a;
+	uint8_t *canvas;
+	uint8_t *saved;  // DSK_DISPOSE_PREVIOUS's: the rectangle before the frame
+	size_t next;     // the frame dsk_anim_next draws
+	int loop;        // loops finished
+	int last;        // the frame on the canvas (-1 before the first), its disposal pending
+} dsk_anim_player;
+
+// dsk_anim_player_init readies a player at the first frame (false: no
+// memory); dsk_anim_player_free lets its canvas go.
+bool dsk_anim_player_init(dsk_anim_player *p, const dsk_anim *a);
+void dsk_anim_player_free(dsk_anim_player *p);
+// dsk_anim_next draws the next frame on the canvas and sets how long it
+// shows; false once the animation has played its loops (the canvas keeps
+// its last frame).
+bool dsk_anim_next(dsk_anim_player *p, int *delay_ms);
 
 #ifdef __cplusplus
 }
