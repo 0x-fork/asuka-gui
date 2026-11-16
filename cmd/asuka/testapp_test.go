@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/asuka/internal/appbuild/apptest"
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/std"
 )
 
 // useCounter makes appbuild.Compile compile any app to the
@@ -21,6 +22,24 @@ func useCounter(t *testing.T, label string) {
 	old := appbuild.Compile
 	appbuild.Compile = func(dir string, deps map[string]string) (*bytecode.Module, *appbuild.Uses, []string, error) {
 		return apptest.Counter(label), nil, nil, nil
+	}
+	t.Cleanup(func() { appbuild.Compile = old })
+}
+
+// useSQLiteCounter is useCounter for an app that imports std/sqlite
+// (sqliteTestApp): the module says so (its C's Std), as the compiler's
+// does, so a build links SQLite.
+func useSQLiteCounter(t *testing.T, label string) {
+	t.Helper()
+	dir, ok := std.Package("std/sqlite")
+	if !ok {
+		t.Fatal("no std/sqlite")
+	}
+	old := appbuild.Compile
+	appbuild.Compile = func(string, map[string]string) (*bytecode.Module, *appbuild.Uses, []string, error) {
+		m := apptest.Counter(label)
+		m.C = &bytecode.C{Std: []string{dir}}
+		return m, nil, nil, nil
 	}
 	t.Cleanup(func() { appbuild.Compile = old })
 }

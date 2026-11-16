@@ -79,7 +79,7 @@ func TestBuildMac(t *testing.T) {
 	if _, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: "amd64"}); err != nil {
 		t.Skip(err)
 	}
-	useCounter(t, "Count: ")
+	useSQLiteCounter(t, "Count: ")
 	app := sqliteTestApp(t)
 	out := t.TempDir()
 	if err := buildMac(app, &buildOptions{out: out}); err != nil {

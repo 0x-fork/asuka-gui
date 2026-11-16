@@ -229,7 +229,7 @@ func TestFlatpakManifest(t *testing.T) {
 // have them all.
 func TestBuildLinux(t *testing.T) {
 	needDesktopBuild(t, cbuild.Target{OS: "linux", Arch: "amd64"})
-	useCounter(t, "Count: ")
+	useSQLiteCounter(t, "Count: ")
 	app := sqliteTestApp(t)
 	machines := map[string]elf.Machine{"amd64": elf.EM_X86_64, "arm64": elf.EM_AARCH64}
 	for _, arch := range []string{"amd64", "arm64"} {

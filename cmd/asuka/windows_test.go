@@ -219,7 +219,7 @@ func TestWindowsHostConfig(t *testing.T) {
 func TestBuildWindows(t *testing.T) {
 	needDesktopBuild(t, cbuild.Target{OS: "windows", Arch: "amd64"})
 	t.Setenv("ASUKA_WINDOWS_CERT", "")
-	useCounter(t, "Count: ")
+	useSQLiteCounter(t, "Count: ")
 	app := sqliteTestApp(t)
 	for arch, machine := range map[string]uint16{"amd64": pe.IMAGE_FILE_MACHINE_AMD64, "arm64": pe.IMAGE_FILE_MACHINE_ARM64} {
 		out := t.TempDir()
