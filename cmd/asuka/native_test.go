@@ -53,7 +53,9 @@ func TestNativePackages(t *testing.T) {
 			entries = append(entries, sc.path)
 		}
 	}
-	if len(scripts) != 2 || !slices.Equal(entries, []string{"packages/github_com_egoist_asuka_internal_nativegen_testdata_kitchen/kitchen.asuka.js"}) {
+	// The glue (the entry), its declarations (enums, errors: loaded first)
+	// and the package's own JavaScript.
+	if len(scripts) != 3 || !slices.Equal(entries, []string{"packages/github_com_egoist_asuka_internal_nativegen_testdata_kitchen/kitchen.asuka.js"}) {
 		t.Errorf("scripts %+v", scripts)
 	}
 }
