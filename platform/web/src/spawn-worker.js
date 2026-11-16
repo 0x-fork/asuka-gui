@@ -58,6 +58,14 @@ export function serve(port) {
         zone_offset: (s) => -new Date(s * 1000).getTimezoneOffset() * 60,
         spawn() { throw new Error("asuka: spawn in a worker"); }, // web.c runs a worker's in place
         spawn_cancel() {},
+        // Native modules are the page's: a worker's core has none (web.c
+        // gives it no native calls), so these are never reached.
+        native_new: () => 0,
+        native_call: () => 0,
+        native_answer() {},
+        native_start() {},
+        native_cancel() {},
+        native_release() {},
         // The app's databases are the page's: what the init sends without
         // waiting goes nowhere, and a statement fails (spawn's closures
         // can't await one anyway).

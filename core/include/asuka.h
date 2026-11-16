@@ -123,10 +123,10 @@ ASUKA_API void asuka_set_app_dir(const char *path);
 ASUKA_API char *asuka_crash_start(const char *info);
 // Says the host wrote a report in the directory's inbox. Any thread.
 ASUKA_API void asuka_crash_notify(void);
-// Typed native modules' way back to the core (not available in the C
-// core until native packages land: they do nothing), from any thread: a started
-// call's answer; a Go callback's call, its answer (none: 0) into *out,
-// which the caller frees.
+// Typed native modules' way back to the core: a started call's answer
+// (any thread); a callback's call (an Asuka function the module was
+// given), on the main thread, its answer (none: 0) into *out, which the
+// caller frees (asuka_free).
 ASUKA_API void asuka_native_done(uint64_t call, const uint8_t *p, size_t len);
 ASUKA_API size_t asuka_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out);
 
