@@ -2266,41 +2266,55 @@ missing (`ErrDownloading`: try again later). The Mac uses the Speech
 framework too, on the device only. Windows, Linux and the web have no
 on-device recognizer an app can use: `File` fails with `ErrNotAvailable`.
 
-## The screen: asuka/sdk/screen
+## The screen: asuka/screen
 
-```go
-screen.Lock(screen.Landscape) // a video player
-screen.SetBars(screen.Bars{Style: screen.Light, HideStatus: true})
-screen.PreventCapture(true) // a ticket's code
-stop := screen.OnScreenshot(func() { note.Set("That screenshot shows your balance") })
+```asuka
+import asuka/screen
+
+component Player {
+  state note = ""
+
+  task {
+    screen.lock(.landscape)               // a video player
+    screen.setBars(style: .light, hideStatus: true)
+    screen.preventCapture(true)           // a ticket's code
+    defer {
+      screen.lock(.any)
+      screen.setBars()
+      screen.preventCapture(false)
+    }
+    for await _ in screen.screenshots() { note = "That screenshot shows your balance" }
+  }
+
+  Text(note)
+}
 ```
 
-- `screen.Lock(o)` turns the app to `o` and keeps it there: `Portrait`,
-  `PortraitUp`, `Landscape`, `LandscapeLeft`, `LandscapeRight`; `Any`
-  unlocks it. Only the orientations `asuka.toml` allows. iPads in Split
-  View or Stage Manager, and Android 16's large screens, ignore it.
-- `screen.SetBars(bars)` sets the status bar's `Style` (`Auto` follows
-  dark mode; `Light` is light icons, for a dark picture under them;
-  `Dark`, dark ones), and hides the status bar (`HideStatus`) or
-  Android's navigation bar (`HideNavigation`; a swipe from the edge shows
-  them a moment). The safe area follows.
-- `screen.PreventCapture(on)` keeps the app out of screenshots and
+- `screen.lock(o)` turns the app to `o` and keeps it there: `.portrait`,
+  `.portraitUp`, `.landscape`, `.landscapeLeft`, `.landscapeRight`;
+  `.any` unlocks it. Only the orientations `asuka.toml` allows. iPads in
+  Split View or Stage Manager, and Android 16's large screens, ignore it.
+- `screen.setBars(style:, hideStatus:, hideNavigation:)` sets the status
+  bar's style (`.auto` follows dark mode; `.light` is light icons, for a
+  dark picture under them; `.dark`, dark ones), and hides the status bar
+  or Android's navigation bar (a swipe from the edge shows them a
+  moment). The safe area follows.
+- `screen.preventCapture(on)` keeps the app out of screenshots and
   recordings. Android makes the window secure: captures are black, and
   the recent apps show it blank. iOS can't stop a screenshot: it covers
   the app while the screen is recorded, mirrored or on AirPlay.
-- `screen.OnScreenshot(f)` calls `f` when the user takes a screenshot
-  (iOS; Android 14 and later), until `stop`.
+- `screen.screenshots()` is a stream of the screenshots the user takes
+  (iOS; Android 14 and later).
 
-A desktop window has no orientation or system bars: `Lock` and `SetBars`
-do nothing there. `PreventCapture` keeps the app's windows out of
-screenshots and recordings on the Mac and Windows (not on Linux), and
-`OnScreenshot` hears of screenshots as they're saved (Spotlight's on a
-Mac, the Screenshots folder on Windows and Linux). A browser locks the
+A desktop window has no orientation or system bars: `lock` and
+`setBars` do nothing there. `preventCapture` keeps the app's windows out
+of screenshots and recordings on the Mac and Windows (not on Linux); a
+desktop doesn't tell the app of its screenshots. A browser locks the
 orientation only full screen or in an installed app, hides the bars by
-going full screen, and has neither `PreventCapture` nor `OnScreenshot`.
+going full screen, and has neither.
 
 These are the app's, not a screen's: a screen that sets one sets it back
-as it goes (`signal.OnCleanup`).
+as it goes (a `defer` in its task).
 
 ## The launch screen: asuka/splash
 

@@ -51,15 +51,38 @@ object AsukaDisplay {
         if (hideNavigation) c.hide(WindowInsetsCompat.Type.navigationBars()) else c.show(WindowInsetsCompat.Type.navigationBars())
     }
 
+    private val watchers = ArrayList<() -> kotlin.Unit>()
+
+    /** Applies the settings to the activity showing the app, now, as they're set (asuka/screen). Main thread. */
+    fun applyNow() {
+        val rt = AsukaRuntime.current ?: return
+        val act = rt.activity ?: return
+        apply(act, rt.isNight(act.resources.configuration))
+    }
+
+    /**
+     * Calls taken at each screenshot of the app (Android 14 and later),
+     * until the function it returns is called (asuka/screen). Main thread.
+     */
+    fun watchScreenshots(taken: () -> kotlin.Unit): () -> kotlin.Unit {
+        watchers.add(taken)
+        AsukaRuntime.current?.activity?.let { watch(it, true) }
+        return {
+            watchers.remove(taken)
+            if (watchers.isEmpty() && screenshots.isEmpty()) AsukaRuntime.current?.activity?.let { watch(it, false) }
+        }
+    }
+
     /** Follows screenshots while the Activity shows and someone waits for one (Android 14 and later). */
     fun watch(act: Activity, on: Boolean) {
         if (Build.VERSION.SDK_INT < 34) return
         try {
-            if (on && callback == null && screenshots.isNotEmpty()) {
+            if (on && callback == null && (screenshots.isNotEmpty() || watchers.isNotEmpty())) {
                 val cb = Activity.ScreenCaptureCallback {
                     val ws = ArrayList(screenshots)
                     screenshots.clear()
                     for (w in ws) w(Result.success(ByteArray(0)))
+                    for (w in ArrayList(watchers)) w()
                 }
                 act.registerScreenCaptureCallback(act.mainExecutor, cb)
                 callback = cb

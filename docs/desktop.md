@@ -533,16 +533,36 @@ nowplaying.Show(nowplaying.Props{
 
 ## Displays, power and the app's icon
 
-`screen.UseDisplays()` follows the displays: where each one is, its
-work area, scale and refresh rate, and which is primary; `Nearest` and
-`Matching` pick the one under a point or a window. Wayland has no work
-area: it's the display's bounds there.
+`screen.displays()` follows the displays (tracked: read in a binding,
+it watches them while it's read): where each one is, its work area,
+scale and refresh rate, and which is primary; `screen.nearest` and
+`screen.matching` pick the one under a point or a window. Wayland has no
+work area: it's the display's bounds there.
 
-`power.Use()` follows the battery, Low Power Mode and the thermal state.
-`power.OnSuspend`, `OnResume`, `OnLock` and `OnUnlock` say when the
-computer sleeps and wakes and when the screen locks, and
-`power.IdleTime()` how long the user has been away. Phones have lock
+`power.status()` follows the battery, Low Power Mode and the thermal
+state. `power.suspends()`, `resumes()`, `locks()` and `unlocks()` are
+streams of the computer sleeping and waking and the screen locking, and
+`power.idleTime()` is how long the user has been away. Phones have lock
 and unlock, but no suspend or idle time; the web, the battery alone.
+
+```asuka
+import asuka/power
+import asuka/screen
+
+component Status {
+  let p = power.status()
+  let displays = screen.displays()
+
+  task {
+    for await _ in power.suspends() { print("going to sleep") }
+  }
+
+  Column {
+    Text(if p.battery { "Battery {(p.level * 100).fixed(0)}%" } else { "No battery" })
+    Text(displays.map(d => "{d.name} {d.bounds.width}x{d.bounds.height}@{d.scale}x").joined(separator: "\n"))
+  }
+}
+```
 
 `dock.SetProgress` shows a task's progress on the Dock icon, the
 taskbar button, or a Linux dock that has the Unity launcher API (GNOME's
@@ -550,6 +570,6 @@ own dash shows none). `dock.RequestAttention` bounces or flashes the
 icon while the app is in the background. The count on the icon is
 `notify.SetBadge`.
 
-`appearance.Use()` gives the system's accent color, Increase Contrast
-and Reduce Transparency, for what the app draws itself; the views Asuka
-shows follow them already.
+`appearance.current()` gives the system's accent color (a `Color?`),
+Increase Contrast and Reduce Transparency, tracked, for what the app
+draws itself; the views Asuka shows follow them already.

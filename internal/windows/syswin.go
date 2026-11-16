@@ -40,3 +40,27 @@ func OnSystemMessage(f func(m uint32, wp, lp uintptr)) (stop func()) {
 	s.handlers[id] = f
 	return func() { delete(s.handlers, id) }
 }
+
+var (
+	enumThreadProc uintptr
+	enumThreadTo   *[]uintptr
+)
+
+// ThreadWindows are the visible top-level windows of the calling thread
+// (on the main thread: the app's). Main thread.
+func ThreadWindows() []uintptr {
+	if enumThreadProc == 0 {
+		enumThreadProc = syscall.NewCallback(func(hwnd, _ uintptr) uintptr {
+			if IsWindowVisible(hwnd) {
+				*enumThreadTo = append(*enumThreadTo, hwnd)
+			}
+			return 1
+		})
+	}
+	var out []uintptr
+	enumThreadTo = &out
+	tid, _, _ := procGetCurrentThreadId.Call()
+	procEnumThreadWindows.Call(tid, enumThreadProc, 0)
+	enumThreadTo = nil
+	return out
+}
