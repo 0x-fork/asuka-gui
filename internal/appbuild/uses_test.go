@@ -84,11 +84,11 @@ func TestUses(t *testing.T) {
 		}
 	}
 	// What std's packages call of each other counts as theirs: asuka/icloud
-	// calls asuka/host.
-	if !u.Ref("asuka/host", "call") {
-		t.Errorf("no asuka/host.call in %v", u.Refs)
+	// calls asuka/platform.
+	if !u.Ref("asuka/platform", "call") {
+		t.Errorf("no asuka/platform.call in %v", u.Refs)
 	}
-	if std := p.Std(); std["asuka/icloud"] == "" || std["asuka/host"] == "" {
+	if std := p.Std(); std["asuka/icloud"] == "" || std["asuka/platform"] == "" {
 		t.Errorf("std %v", std)
 	}
 }
