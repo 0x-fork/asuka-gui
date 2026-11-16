@@ -41,6 +41,7 @@ static struct {
 	// main throws is reported with.
 	void *traced;
 	char trace[4096];
+	char ctrace[4096];  // compiled functions' frames, innermost first
 	uint64_t thread;  // the main thread's
 	const char *trim;  // what the trace's files are relative to
 	asuka_host_callbacks host;  // the host's, kept
@@ -59,6 +60,31 @@ static void on_throw(void *err) {
 	if (P.traced) ak_release(P.traced);
 	P.traced = ak_retain(err);
 	ak_vm_traceback(P.trace, sizeof P.trace);
+	P.ctrace[0] = 0;
+}
+
+static void on_frame(const char *fn, const char *file, uint32_t line) {
+	if (ak_thread_id() != P.thread || !P.traced || !ak_error_pending()) return;
+	size_t n = strlen(P.ctrace);
+	if (n + 2 < sizeof P.ctrace) snprintf(P.ctrace + n, sizeof P.ctrace - n, "%s (%s:%u)\n", fn, file, line);
+}
+
+// print_frames writes a trace's lines, indented, its files relative to
+// P.trim.
+static void print_frames(const char *t) {
+	for (const char *l = t; *l;) {
+		const char *e = strchr(l, '\n');
+		size_t n = e ? (size_t)(e - l) : strlen(l);
+		// "name (file:line)": the file relative to the project's.
+		const char *open = memchr(l, '(', n);
+		size_t k = P.trim ? strlen(P.trim) : 0;
+		if (open && k && (size_t)(l + n - open) > k + 1 && strncmp(open + 1, P.trim, k) == 0 && (open[1 + k] == '/' || open[1 + k] == '\\')) {
+			fprintf(stderr, "    %.*s(%.*s\n", (int)(open - l), l, (int)(l + n - open - k - 2), open + k + 2);
+		} else {
+			fprintf(stderr, "    %.*s\n", (int)n, l);
+		}
+		l += n + (e ? 1 : 0);
+	}
 }
 
 static void report(void *err) {
@@ -66,20 +92,9 @@ static void report(void *err) {
 	ak_str *msg = ak_vm_error_text(err);
 	fprintf(stderr, "error: %s\n", msg->data);
 	ak_release(msg);
-	if (err == P.traced && P.trace[0]) {
-		for (const char *l = P.trace; *l;) {
-			const char *e = strchr(l, '\n');
-			size_t n = e ? (size_t)(e - l) : strlen(l);
-			// "name (file:line)": the file relative to the project's.
-			const char *open = memchr(l, '(', n);
-			size_t t = P.trim ? strlen(P.trim) : 0;
-			if (open && t && (size_t)(l + n - open) > t + 1 && strncmp(open + 1, P.trim, t) == 0 && (open[1 + t] == '/' || open[1 + t] == '\\')) {
-				fprintf(stderr, "    %.*s(%.*s\n", (int)(open - l), l, (int)(l + n - open - t - 2), open + t + 2);
-			} else {
-				fprintf(stderr, "    %.*s\n", (int)n, l);
-			}
-			l += n + (e ? 1 : 0);
-		}
+	if (err == P.traced) {
+		print_frames(P.ctrace);
+		print_frames(P.trace);
 	}
 	fflush(stderr);
 }
@@ -202,6 +217,7 @@ int ak_program_start(ak_module *m, int argc, char **argv, const asuka_host_callb
 		ak_native_set_host(&P.host);
 	}
 	ak_throw_hook = on_throw;
+	ak_frame_hook = on_frame;
 	data_dir();
 	// The program's own directory (asuka/fs's appDir) is there, as an
 	// app's host makes the app's.
@@ -242,6 +258,7 @@ int ak_program_loop(void) {
 	if (P.traced) ak_release(P.traced);
 	P.traced = NULL;
 	ak_throw_hook = NULL;
+	ak_frame_hook = NULL;
 	return P.code;
 }
 

@@ -328,6 +328,10 @@ bool ak_is_cancel(const void *err);
 // ak_throw_hook, when set, sees each error as it's thrown (a program
 // notes where: abi/program.c). Any thread.
 extern void (*ak_throw_hook)(void *err);
+// ak_frame_hook, when set, hears a function compiled to C (lang/cgen)
+// left by an error, from line: the frames a program's trace has that the
+// VM's stack doesn't. The error's path only.
+extern void (*ak_frame_hook)(const char *fn, const char *file, uint32_t line);
 ak_str *ak_error_message(const void *err);  // borrowed
 
 extern const ak_shape ak_shape_error;  // the built-in Error(message: string)
