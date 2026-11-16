@@ -104,5 +104,20 @@ Startup isn't comparable on this machine yet: both apps take over 3 s
 from the process's start on this simulator runtime, most of it the
 runtime's, not the apps'.
 
-`results/android.md` is from the Go core (before RFC 0007) and hasn't
-been run on the C core yet.
+Android, on the C core (a Pixel emulator, Android 17, the same Mac,
+2026-11-16; the median of 3 runs, with other builds running on the
+machine, so read Asuka against Compose of the same run):
+
+| | Asuka | Compose |
+|---|---:|---:|
+| startup | 465 | 293 |
+| mount, 1,000 rows | 427 | 377 |
+| update-one, a frame | 5.35 | 35.6 |
+| update-all, a frame | 30.7 | 50.9 |
+| scroll, a frame | 31.3 | 30.7 |
+| memory, idle | 46.9 | 34.9 |
+| memory, the rows | 81.5 (168) | 69.2 (154) |
+| memory, after the list | 82.5 (177) | 67.6 (195) |
+
+Where Asuka trails on Android: startup and idle memory, which the C
+core (no Go runtime) should win back; they're being looked into.
