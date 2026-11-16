@@ -146,6 +146,8 @@ static void system_args(void) {
 
 // ---- A test's process ----
 
+static void stdin_reset(void);
+
 static struct {
 	bool testing;  // the runner's tests: the process never ends
 	bool faked;    // os.fake: args, env and stdin are the fake's
@@ -158,6 +160,7 @@ static struct {
 	size_t in_off;
 	ak_buf out, err;  // what's written
 	int64_t exit;     // -1: exit wasn't called
+	int capturing;    // FakeOS.run's in flight: what's written is kept
 	bool loose;       // exit was called outside FakeOS.run: it ended a test
 } fake = {.exit = -1};
 
@@ -192,8 +195,9 @@ void ak_os_testing(bool on) {
 }
 
 void ak_os_reset(void) {
+	stdin_reset();
 	ak_mutex_lock(&mu);
-	if (fake.faked && ak_lib_print_hook == print_hook) ak_lib_print_hook = NULL;
+	if (ak_lib_print_hook == print_hook) ak_lib_print_hook = NULL;
 	fake_clear();
 	ak_mutex_unlock(&mu);
 }
@@ -225,7 +229,7 @@ static char **str_list(const ak_arr *a, int *n) {
 	return l;
 }
 
-// fake(args, env, hasEnv, stdin)
+// setFake(args, env, hasEnv, stdin)
 static ak_val fake_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_mutex_lock(&mu);
@@ -236,8 +240,8 @@ static ak_val fake_fn(ak_val *args, uint32_t n) {
 	fake.has_env = args[2].i != 0;
 	const ak_bytes *in = args[3].p;
 	if (in && in->len) ak_buf_put(&fake.in, in->data, in->len);
-	ak_lib_print_hook = print_hook;
 	ak_mutex_unlock(&mu);
+	stdin_reset();
 	return (ak_val){0};
 }
 
@@ -420,6 +424,15 @@ static ak_buf inbuf;
 static size_t inoff;
 static bool ineof;
 
+// stdin_reset forgets what's been read of stdin: a test's new process.
+static void stdin_reset(void) {
+	ak_mutex_lock(&in_mu);
+	ak_buf_free(&inbuf);
+	inoff = 0;
+	ineof = false;
+	ak_mutex_unlock(&in_mu);
+}
+
 // fill reads more of stdin into inbuf, blocking: false at its end. Under
 // in_mu.
 static bool fill(void) {
@@ -464,6 +477,8 @@ static ak_str *take_line(int64_t end) {
 	if (to > from && inbuf.data[to - 1] == '\r') to--;
 	return ak_str_new((const char *)inbuf.data + from, to - from);
 }
+#else
+static void stdin_reset(void) {}
 #endif
 
 static ak_val read_line_fn(ak_val *args, uint32_t n) {
@@ -519,7 +534,7 @@ static ak_val read_all_fn(ak_val *args, uint32_t n) {
 
 static void write_fd(int64_t fd, const void *p, size_t len) {
 	ak_mutex_lock(&mu);
-	if (fake.faked) {
+	if (fake.capturing) {
 		ak_buf_put(fd == 2 ? &fake.err : &fake.out, p, len);
 		ak_mutex_unlock(&mu);
 		return;
@@ -566,23 +581,34 @@ typedef struct {
 
 // run_end settles out as the program's end would: exit's code, 1 with
 // the error (written to stderr) for one main threw, else 0.
+// capture starts (on) or ends keeping what's written: print's, os's.
+static void capture(bool on) {
+	ak_mutex_lock(&mu);
+	fake.capturing += on ? 1 : -1;
+	ak_lib_print_hook = fake.capturing > 0 ? print_hook : NULL;
+	ak_mutex_unlock(&mu);
+}
+
 static void run_end(ak_future *out, void *err) {
 	int64_t code = taken_exit();
 	if (code >= 0) {
 		// exit was called: its cancellation is how main ended.
 	} else if (err && ak_is_cancel(err)) {
 		// The test went: so does what it ran.
+		capture(false);
 		ak_future_reject(out, err);
 		return;
 	} else if (err) {
-		ak_str *m = ak_error_message(err);
+		ak_str *m = ak_vm_error_text(err);
 		write_fd(2, "error: ", 7);
 		write_fd(2, m->data, m->len);
 		write_fd(2, "\n", 1);
+		ak_release(m);
 		code = 1;
 	} else {
 		code = 0;
 	}
+	capture(false);
 	if (err) ak_release(err);
 	ak_future_resolve(out, (ak_val){.i = code});
 }
@@ -615,6 +641,7 @@ static ak_val run_main_fn(ak_val *args, uint32_t n) {
 	fake.exit = -1;
 	fake.loose = false;
 	ak_mutex_unlock(&mu);
+	capture(true);
 	bool async = ak_closure_async(c);
 	ak_val v = ak_call(c, NULL, 0);
 	if (ak_error_pending()) {

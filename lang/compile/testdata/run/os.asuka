@@ -1,0 +1,92 @@
+// asuka/os in tests: a fake process (arguments, environment, stdin),
+// what's written kept, main run as the program would run it.
+
+import asuka/os
+
+fn greet() {
+  let name = os.args().first() ?? "world"
+  print("Hello, {name}!")
+  if let v = os.env("VERBOSE") {
+    os.eprint("verbose: {v}")
+  }
+}
+
+async fn echo() throws {
+  for await line in os.lines() {
+    print(line.upper())
+  }
+}
+
+enum Bad: Error { nope(why: string) }
+
+fn fails() throws {
+  throw Bad.nope(why: "no")
+}
+
+fn exits() {
+  defer { print("defer runs") }
+  print("exiting")
+  os.exit(4)
+}
+
+test "a test's process has no arguments, no stdin" {
+  print(os.args().count())
+  print(os.readLine() ?? "none")
+  print(os.terminal(.stdout))
+}
+
+test "args and env" {
+  let o = os.fake(args: ["Ann"], env: ["VERBOSE": "1"])
+  expect(await o.run(greet) == 0)
+  print(o.stdout())
+  print(o.stderr())
+  print(os.environ().count())
+  print(o.exitCode() ?? -1)
+}
+
+test "stdin" {
+  let o = os.fake(stdin: "a\nb\r\nc")
+  expect(await o.run(echo) == 0)
+  print(o.stdout())
+}
+
+test "an error main throws: 1, and its message on stderr" {
+  let o = os.fake()
+  print(await o.run(fails))
+  print(o.stderr())
+}
+
+test "exit's code; the task ends there" {
+  let o = os.fake()
+  print(await o.run(exits))
+  print(o.stdout())
+  print(o.exitCode() ?? -1)
+}
+
+// Output:
+// 0
+// none
+// false
+// ok a test's process has no arguments, no stdin
+// Hello, Ann!
+//
+// verbose: 1
+//
+// 1
+// -1
+// ok args and env
+// A
+// B
+// C
+//
+// ok stdin
+// 1
+// error: Bad.nope
+//
+// ok an error main throws: 1, and its message on stderr
+// 4
+// exiting
+// defer runs
+//
+// 4
+// ok exit's code; the task ends there

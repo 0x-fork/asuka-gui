@@ -110,6 +110,9 @@ func (l *Lowerer) flagSpec(t check.Type, top bool) (*flagSpec, error) {
 				return nil, err
 			}
 			s.CommandField, s.Commands = f.Name, cmds
+			if s.About == "" {
+				s.About = declDoc(cmd.Obj.Decl) // what the commands are of
+			}
 			continue
 		}
 		it := flagItem{Field: f.Name, Name: kebab(f.Name), Help: help, Choices: []string{}, Cases: []string{}}

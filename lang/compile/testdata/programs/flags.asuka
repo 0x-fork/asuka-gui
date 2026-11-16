@@ -1,0 +1,25 @@
+// args: -v --jobs=8 a.txt --mode fast b.txt
+// exit: 0
+import asuka/flag
+import asuka/os
+
+enum Mode { safe, fast }
+
+/// Does things to files.
+struct Options {
+  /// -v Says more.
+  verbose: bool = false
+  /// How many at once.
+  jobs: int = 4
+  mode: Mode = .safe
+  files: [string]
+}
+
+fn main() {
+  let o = flag.parse<Options>(os.args())
+  print("{o.verbose} {o.jobs} {o.mode} {o.files}")
+}
+
+// Stdout:
+// true 8 fast ["a.txt","b.txt"]
+// Stderr:

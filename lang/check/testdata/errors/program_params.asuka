@@ -1,0 +1,5 @@
+// A program's main takes no parameters: its arguments are os.args().
+
+fn main(args: [string]) { // ERROR "fn main takes no parameters: the program's arguments are os.args\(\)"
+  print(args)
+}

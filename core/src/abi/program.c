@@ -63,7 +63,9 @@ static void on_throw(void *err) {
 
 static void report(void *err) {
 	fflush(stdout);
-	fprintf(stderr, "error: %s\n", ak_error_message(err)->data);
+	ak_str *msg = ak_vm_error_text(err);
+	fprintf(stderr, "error: %s\n", msg->data);
+	ak_release(msg);
 	if (err == P.traced && P.trace[0]) {
 		for (const char *l = P.trace; *l;) {
 			const char *e = strchr(l, '\n');

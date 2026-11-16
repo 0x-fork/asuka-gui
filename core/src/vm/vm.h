@@ -56,6 +56,10 @@ bool ak_func_async(const ak_func *f);
 // ak_closure_async reports whether calling c (ak_call) starts a task and
 // returns its future, rather than running it to its end.
 bool ak_closure_async(const ak_closure *c);
+// ak_vm_error_text is an error's message as Asuka's e.message reads it:
+// a user error's message method's (its field, its fn message(), its
+// type's and case's name), a runtime error's message. Owned.
+ak_str *ak_vm_error_text(void *err);
 
 // ak_module_attach gives a module's functions their bodies compiled to
 // C (lang/cgen): bodies[i] is function i's, or NULL to interpret it.

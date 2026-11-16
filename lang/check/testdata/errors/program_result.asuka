@@ -1,0 +1,3 @@
+// A program's main returns nothing: os.exit(code) says the exit code.
+
+fn main() -> int = 0 // ERROR "fn main returns nothing"

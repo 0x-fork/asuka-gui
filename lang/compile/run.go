@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
@@ -155,4 +156,69 @@ func RunCWith(m *bytecode.Module, f *cbuild.Foreign, sanitize, test bool, patter
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err = cmd.Run()
 	return out.String(), err
+}
+
+// MainRun is how a program ran (RunMain, RunMainC): what it wrote and its
+// exit code.
+type MainRun struct {
+	Stdout, Stderr string
+	Code           int
+}
+
+// RunMain runs m's fn main on the VM with runner (asuka-run -main): args
+// its arguments, stdin its input, env more of its environment.
+func RunMain(runner string, m *bytecode.Module, args []string, stdin string, env []string) (MainRun, error) {
+	dir, err := os.MkdirTemp("", "asuka-run")
+	if err != nil {
+		return MainRun{}, err
+	}
+	defer os.RemoveAll(dir)
+	p := filepath.Join(dir, "module.akb")
+	if err := os.WriteFile(p, m.Encode(), 0o644); err != nil {
+		return MainRun{}, err
+	}
+	return runMain(runner, append([]string{"-main", "-program", "prog", p, "--"}, args...), m, stdin, env)
+}
+
+// RunMainC runs m's fn main compiled to C (lang/cgen), as RunMain does on
+// the VM.
+func RunMainC(m *bytecode.Module, sanitize bool, args []string, stdin string, env []string) (MainRun, error) {
+	core, err := FindCore()
+	if err != nil {
+		return MainRun{}, err
+	}
+	src, err := cgen.Generate(m)
+	if err != nil {
+		return MainRun{}, err
+	}
+	dir, err := os.MkdirTemp("", "asuka-runc")
+	if err != nil {
+		return MainRun{}, err
+	}
+	defer os.RemoveAll(dir)
+	app := filepath.Join(dir, "app.c")
+	if err := os.WriteFile(app, src, 0o644); err != nil {
+		return MainRun{}, err
+	}
+	exe, err := cbuild.RunnerFor(core, cbuild.RunnerOptions{Extra: []string{app}, Sanitize: sanitize, Dir: dir})
+	if err != nil {
+		return MainRun{}, errors.New("the C the module compiles to doesn't build: " + err.Error())
+	}
+	return runMain(exe, append([]string{"-main", "-program", "prog", "-aot", "--"}, args...), m, stdin, env)
+}
+
+func runMain(exe string, args []string, m *bytecode.Module, stdin string, env []string) (MainRun, error) {
+	cmd := exec.Command(exe, args...)
+	cmd.Env = append(append(os.Environ(), PluginEnv(m)...), env...)
+	var out, errb bytes.Buffer
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Run()
+	r := MainRun{Stdout: out.String(), Stderr: errb.String()}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() >= 0 {
+		r.Code = exit.ExitCode()
+		return r, nil
+	}
+	return r, err
 }

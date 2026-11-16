@@ -121,7 +121,7 @@ native async fn runMain(main: async fn() throws) -> int
 /// A test's process, from os.fake: what the program wrote, and run, which
 /// runs its main as the process would.
 pub struct FakeOS {
-  /// What was printed (print, os.writeTo(.stdout, …)).
+  /// What main printed as run ran it (print, os.writeTo(.stdout, …)).
   fn stdout() -> string = fakeOutput(1)
   /// What was written to stderr (os.eprint, an uncaught error's report).
   fn stderr() -> string = fakeOutput(2)
@@ -140,9 +140,9 @@ pub struct FakeOS {
 }
 
 /// Makes the test's process: its arguments (without the program), its
-/// environment (none: the real one) and its stdin; from now on print and
-/// os's writes are kept (FakeOS.stdout), not shown. Each test starts
-/// with a process of its own.
+/// environment (none: the real one) and its stdin. What main writes as
+/// run runs it (print, os's writes) is kept (FakeOS.stdout, stderr),
+/// not shown. Each test starts with a process of its own.
 ///
 ///   let o = os.fake(args: ["Ann"])
 ///   expect(await o.run(main) == 0)

@@ -1,0 +1,14 @@
+// A program shows no views.
+
+component Card { // ERROR "a program shows no views: Card needs an app"
+  Text("hi")
+}
+
+store Counter {
+  state n = 0
+}
+
+async fn main() throws {
+  let c = Counter()
+  print(c.n)
+}

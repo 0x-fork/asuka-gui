@@ -1,0 +1,57 @@
+// asuka/command in tests: command.fake answers for the programs, which
+// don't run; what was run is kept.
+
+import asuka/command
+
+test "run answers from the fake, and says what ran" {
+  let f = command.fake()
+  f.answer("git", stdout: "main\n")
+  f.answer("git", ["status", "--short"], stdout: " M app.asuka\n", code: 0)
+  f.answer("make", code: 2, stderr: "no rule\n")
+  let a = try await command.run("git", ["status", "--short"])
+  print("[{a.text()}]")
+  let b = try await command.run("git", ["branch", "--show-current"])
+  print(b.text().trim())
+  let c = try await command.run("make")
+  print("{c.code} {c.ok()} {c.errorText().trim()}")
+  do {
+    let _ = try await command.run("make", check: true)
+  } catch e {
+    print(e.message)
+  }
+  do {
+    let _ = try await command.run("hg")
+  } catch command.CommandError.notFound(program, _) {
+    print("not found: {program}")
+  }
+  print(f.calls)
+}
+
+test "a started program's lines, its input, its code" {
+  let f = command.fake()
+  f.answer("sort", stdout: "a\nb\nc", code: 0)
+  let p = try command.start("sort", stdin: .piped)
+  let _ = await p.write("c\nb\na\n")
+  p.closeStdin()
+  for await line in p.lines() {
+    print(line)
+  }
+  print(await p.wait())
+  print(f.input.count())
+}
+
+// Output:
+// [ M app.asuka
+// ]
+// main
+// 2 false no rule
+// make exited with 2: no rule
+// not found: hg
+// [["git","status","--short"],["git","branch","--show-current"],["make"],["make"],["hg"]]
+// ok run answers from the fake, and says what ran
+// a
+// b
+// c
+// 0
+// 6
+// ok a started program's lines, its input, its code
