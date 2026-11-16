@@ -1,0 +1,3 @@
+name = "asuka/random"
+version = "0.1.0"
+description = "Random numbers, choices and shuffles"

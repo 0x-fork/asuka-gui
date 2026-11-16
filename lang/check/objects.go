@@ -407,9 +407,7 @@ const (
 	BPanic
 	BJSONDecode
 	BJSONEncode
-	BMath // math.<name>: the builtin of the same name
-	BTimeNow
-	BTimeMonotonic
+	BMath        // math.<name>: the builtin of the same name
 	BRange       // arr.range
 	BWithTimeout // withTimeout(d) { … }
 	BStream      // Stream<T>(send => { … })

@@ -1,0 +1,25 @@
+// Package asuka/crypto has hashes, HMAC, the system's randomness and
+// UUIDs.
+//
+//   let digest = encoding.hexEncode(crypto.sha256(data))
+//   let id = crypto.uuid()
+
+/// SHA-256 of data (32 bytes).
+pub native fn sha256(data: bytes) -> bytes
+
+/// SHA-1 of data (20 bytes): for what needs it (old protocols, Git);
+/// it isn't safe against collisions.
+pub native fn sha1(data: bytes) -> bytes
+
+/// HMAC-SHA256 of data under key (32 bytes).
+pub native fn hmacSHA256(key: bytes, data: bytes) -> bytes
+
+/// count bytes of the system's randomness: safe for keys and tokens.
+pub native fn randomBytes(count: int) -> bytes
+
+/// A random (version 4) UUID, lower-case: 0f8fad5b-d9cb-469f-a165-70867728950e.
+pub native fn uuid() -> string
+
+/// Whether a and b are the same bytes, in time that doesn't depend on
+/// where they differ (for comparing MACs and tokens).
+pub native fn equal(a: bytes, b: bytes) -> bool

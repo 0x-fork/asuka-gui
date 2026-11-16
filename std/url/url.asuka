@@ -1,0 +1,134 @@
+// Package asuka/url reads and writes URLs (RFC 3986).
+//
+//   if let u = url.parse("https://example.com:8443/a/b?q=asuka+lang#top") {
+//     u.host            // "example.com"
+//     u.port            // 8443
+//     u.query("q")      // "asuka lang"
+//     u.resolve("../c") // "https://example.com:8443/c"
+//   }
+//   let q = url.encodeQuery(["q": "fish & chips", "page": "2"]) // page=2&q=fish+%26+chips
+
+/// A URL's parts, as written (percent-escapes kept): query reads the
+/// query's values unescaped.
+pub struct URL {
+  /// Lower-case: "https"; "" for a relative reference.
+  scheme: string
+  /// What's before an @ in the authority: "user:password"; "".
+  user: string
+  /// "example.com", "127.0.0.1", "::1" (an IPv6 address without its
+  /// brackets); "" for none.
+  host: string
+  port: int?
+  /// "/a/b"; "" for none.
+  path: string
+  /// What's after the ?, without it: "q=asuka+lang".
+  rawQuery: string
+  /// What's after the #, without it.
+  fragment: string
+
+  /// The first value of the query's name, unescaped; none when it has
+  /// none.
+  fn query(name: string) -> string? {
+    for (k, v) in parseQuery(rawQuery) {
+      if k == name {
+        return v
+      }
+    }
+    return none
+  }
+
+  /// Every value of the query's name, unescaped, in order.
+  fn queryAll(name: string) -> [string] {
+    var out: [string] = []
+    for (k, v) in parseQuery(rawQuery) {
+      if k == name {
+        out.push(v)
+      }
+    }
+    return out
+  }
+
+  /// The URL as text. It has an authority (//host) when it has a host, a
+  /// user or a port, or is a file: URL.
+  fn text() -> string {
+    var s = ""
+    if !scheme.isEmpty() {
+      s = scheme + ":"
+    }
+    if !host.isEmpty() || !user.isEmpty() || port.isSome() || scheme == "file" {
+      s = s + "//"
+      if !user.isEmpty() {
+        s = s + user + "@"
+      }
+      s = s + (if host.contains(":") { "[" + host + "]" } else { host })
+      if let p = port {
+        s = s + ":{p}"
+      }
+    }
+    s = s + path
+    if !rawQuery.isEmpty() {
+      s = s + "?" + rawQuery
+    }
+    if !fragment.isEmpty() {
+      s = s + "#" + fragment
+    }
+    return s
+  }
+
+  /// ref (a URL or a relative reference: "../c", "?page=2", "//cdn.example/x")
+  /// resolved against this URL (RFC 3986, section 5).
+  fn resolve(ref: string) -> string = resolveRef(text(), ref)
+}
+
+/// Reads text as a URL or a relative reference; none when it isn't one
+/// (a space or a control character, a bad %-escape, a bad port).
+pub fn parse(text: string) -> URL? {
+  if let p = parts(text) {
+    return URL(scheme: p[0], user: p[1], host: p[2], port: p[3].toInt(), path: p[4], rawQuery: p[5], fragment: p[6])
+  }
+  return none
+}
+
+/// ref resolved against base (RFC 3986, section 5).
+pub fn resolve(base: string, ref: string) -> string = resolveRef(base, ref)
+
+/// text escaped for a query: letters, digits and -_.~ kept, a space as
+/// +, the rest as %XX.
+pub native fn escape(text: string) -> string
+
+/// text escaped for a path: as escape, but / and the sub-delimiters
+/// (!$&'()*+,;=:@) kept and a space as %20.
+pub native fn pathEscape(text: string) -> string
+
+/// A query's text unescaped (%XX, and + as a space); none for a bad
+/// escape.
+pub fn unescape(text: string) -> string? = unescapeText(text, true)
+
+/// A path's text unescaped (%XX; a + stays); none for a bad escape.
+pub fn pathUnescape(text: string) -> string? = unescapeText(text, false)
+
+/// A query of the map's names and values, escaped, the names sorted:
+/// "a=1&b=two+words".
+pub fn encodeQuery(values: [string: string]) -> string = values.keys().sorted().map(k => escape(k) + "=" + escape(values[k] ?? "")).joined(separator: "&")
+
+/// A query's names and values, unescaped, in order ("a=1&b" is [("a",
+/// "1"), ("b", "")]); a pair with a bad escape is left out.
+pub fn parseQuery(raw: string) -> [(string, string)] {
+  var out: [(string, string)] = []
+  for pair in raw.split("&") {
+    if pair.isEmpty() {
+      continue
+    }
+    let kv = pair.split("=", count: 2)
+    if let k = unescape(kv[0]) {
+      if let v = unescape(kv.get(1) ?? "") {
+        out.push((k, v))
+      }
+    }
+  }
+  return out
+}
+
+native fn parts(text: string) -> [string]?
+native fn resolveRef(base: string, ref: string) -> string
+native fn unescapeText(text: string, plus: bool) -> string?

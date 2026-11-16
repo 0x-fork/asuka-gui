@@ -421,6 +421,14 @@ the future it returns when it's `async`), so it's called, passed and
 compiled as any function. Other packages reach platform code through
 native interfaces instead.
 
+The builtins are C, in core/src/std (a file and a table per package,
+registered with the rest); the package's Asuka writes the rest of its
+API on them. A builtin makes only what C can without the module's
+shapes: scalars, strings, bytes, and arrays of those (or optionals of
+them); the Asuka side builds its structs (asuka/time's `Time` from an
+instant and an offset). A failure is a runtime error. Builtins may run on spawn's
+threads, so they keep no state that isn't per thread.
+
 ## Streams
 
 `Stream(produce)` is CALLB `stream.new(produce, kind)` (kind: the
@@ -433,8 +441,8 @@ which cancels the producer (core/src/rt/stream.c).
 ## Imports
 
 The compiler (lang/compile) finds each import: `./path` beside the
-importing file's package; `asuka/json`, `asuka/math` and `asuka/time`
-in the checker itself; any other `asuka/<name>` in std/ (the CLI's
+importing file's package; `asuka/json` and `asuka/math` in the checker
+itself; any other `asuka/<name>` in std/ (the CLI's
 copy: package std); anything else through the project's asuka.lock
 (internal/pkgs.Imports), by the importing package's dependencies, so
 two packages may import different majors under one name. A package's

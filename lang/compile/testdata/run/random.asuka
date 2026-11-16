@@ -1,0 +1,69 @@
+// asuka/random: seeded sequences repeat; ranges hold.
+
+import asuka/random
+
+test "seeded" {
+  random.seed(42)
+  let a = [random.int(1, 6), random.int(1, 6), random.int(1, 6), random.int(1, 6)]
+  random.seed(42)
+  let b = [random.int(1, 6), random.int(1, 6), random.int(1, 6), random.int(1, 6)]
+  print(a == b)
+}
+
+test "ranges" {
+  var ok = true
+  var seen: [int: bool] = [:]
+  for _ in 0..<2000 {
+    let n = random.int(-2, 2)
+    if n < -2 || n > 2 {
+      ok = false
+    }
+    seen[n] = true
+    let f = random.float()
+    if f < 0.0 || f >= 1.0 {
+      ok = false
+    }
+  }
+  print(ok)
+  print(seen.count())
+  print(random.int(5, 5))
+  let r = random.int(3, 1)
+  print(r >= 1 && r <= 3)
+  print(random.chance(0.0))
+  print(random.chance(1.0))
+}
+
+test "choices" {
+  let deck = ["a", "b", "c", "d", "e"]
+  print(deck.contains(random.pick(deck) ?? "none"))
+  let empty: [string] = []
+  print(random.pick(empty).isNone())
+  let s = random.shuffled(deck)
+  print(s.count())
+  print(s.sorted() == deck)
+  print(random.shuffled(empty).isEmpty())
+}
+
+test "per thread, in spawn" {
+  let n = await spawn { random.int(1, 10) }
+  print(n >= 1 && n <= 10)
+}
+
+// Output:
+// true
+// ok seeded
+// true
+// 5
+// 5
+// true
+// false
+// true
+// ok ranges
+// true
+// true
+// 5
+// true
+// true
+// ok choices
+// true
+// ok per thread, in spawn

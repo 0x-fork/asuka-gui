@@ -774,7 +774,6 @@ static ak_val dur_rounded(ak_val *args, uint32_t n) {
 // ---- Time ----
 
 static ak_val t_sleep(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_sleep(A(0).i)); }
-static ak_val t_now(ak_val *args, uint32_t n) { AK_UNUSED(args); AK_UNUSED(n); RET_I(ak_wall_ns()); }
 static ak_val t_monotonic(ak_val *args, uint32_t n) { AK_UNUSED(args); AK_UNUSED(n); RET_I(ak_sched_now()); }
 
 // ---- Futures ----
@@ -1123,7 +1122,6 @@ const ak_lib_entry ak_lib[] = {
 	{"math.seed", m_seed},
 
 	{"time.sleep", t_sleep},
-	{"time.now", t_now},
 	{"time.monotonic", t_monotonic},
 
 	{"async.all", f_all},

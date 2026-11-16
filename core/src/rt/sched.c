@@ -128,6 +128,8 @@ static bool manual;
 static int64_t manual_now;
 
 int64_t ak_sched_now(void) { return manual ? manual_now : ak_now_ns(); }
+bool ak_sched_manual(void) { return manual; }
+int64_t ak_sched_wall(void) { return manual ? AK_TEST_EPOCH + manual_now : ak_wall_ns(); }
 
 static bool less(const timer *a, const timer *b) { return a->at < b->at || (a->at == b->at && a->id < b->id); }
 

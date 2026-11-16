@@ -458,6 +458,8 @@ core/src/vm             the bytecode loader and interpreter, values,
                         tasks
 core/src/rt             the runtime both backends call: strings,
                         arrays, maps, formatting, time, JSON
+core/src/std            the standard library's native fns: asuka/time,
+                        url, regex, encoding, crypto, html, random
 core/src/abi            asuka_start, asuka_event, … (mobile, web,
                         desktop entry points)
 core/host/fake          the test host: records ops, measures text at 8
