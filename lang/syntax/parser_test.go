@@ -51,6 +51,9 @@ func sexpr(n Node) string {
 				s += sexpr(a.Value)
 			}
 		}
+		if x.As != nil {
+			s += " as " + x.As.Name
+		}
 		if x.Block != nil {
 			s += " " + sexpr(x.Block)
 		}
@@ -194,7 +197,11 @@ func TestParseExpr(t *testing.T) {
 		{"Text(\"hi\") { color: .red }", `(call Text (str "hi") {*syntax.PropSet<color: .red>})`},
 		{"Row { a }", "(call Row {a})"},
 		{"ui.Row { a }", "(call (. ui Row) {a})"},
-		{"row { a }", "row"},
+		{"row { a }", "(call row {a})"},
+		{"animate(.spring) { a }", "(call animate .spring {a})"},
+		{"View as card { a }", "(call View as card {a})"},
+		{"Text(\"hi\") as t { a }", `(call Text (str "hi") as t {a})`},
+		{"ui.Row as r", "(call (. ui Row) as r)"},
 		{"withTimeout(5s) { go() }", "(call withTimeout 5s {(call go)})"},
 		{"Boundary { a } on error(e) { b }", "(call Boundary {a} (on error))"},
 		// Primaries.

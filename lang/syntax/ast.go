@@ -737,6 +737,7 @@ type CallExpr struct {
 	Fun      Expr
 	TypeArgs []Type   // f<T>(…): explicit type arguments; nil for none
 	Args     *ArgList // nil: no parentheses, Row { … }
+	As       *Ident   // View as card { … }: the element's name, a Ref; nil for none
 	Block    *Block   // the trailing block; nil for none
 	Handlers []*OnHandler
 }
