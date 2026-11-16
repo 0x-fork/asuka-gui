@@ -9,7 +9,8 @@
 //
 // The file is internal/routestate's, read by every desktop host: a JSON
 // object of the windows' keys, each {"href": ..., "state": ...} (the
-// state left out when it's empty).
+// state left out when it's empty), kept by the C they share (platform/
+// desktop's state.c: dsk_routes).
 //
 // The C core sends no window key (its Router's commands leave it empty)
 // and asks no host for the address at mount: the host keys the command by
@@ -17,6 +18,7 @@
 // its address in a run, gives the kept one back as the Location event
 // (what a browser's back sends), which the Router navigates to.
 import AppKit
+@_implementationOnly import CAsuka
 #if canImport(AsukaOps)
 import AsukaOps
 #endif
@@ -37,7 +39,9 @@ import AsukaOps
 
     /// The file ("": keep none).
     let path: String
-    private var entries: [String: Entry] = [:]
+    /// The store (dsk_routes: its lock lets a flush run off the main
+    /// thread).
+    private nonisolated(unsafe) let store: OpaquePointer?
     private var pending = false
     /// The windows whose kept address was given back (or that had none to
     /// give) this run.
@@ -49,12 +53,7 @@ import AsukaOps
 
     init(path: String) {
         self.path = path
-        guard !path.isEmpty, let data = FileManager.default.contents(atPath: path),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-        for (k, v) in obj {
-            guard let e = v as? [String: Any], let href = e["href"] as? String else { continue }
-            entries[k] = Entry(href: href, state: Array(((e["state"] as? String) ?? "").utf8))
-        }
+        store = path.isEmpty ? dsk_routes_open(nil) : dsk_routes_open(path)
     }
 
     /// The file's path: none in tests, automation runs and under asuka dev,
@@ -71,7 +70,15 @@ import AsukaOps
     }
 
     /// Where the window keyed key was left.
-    func entry(_ key: String) -> Entry? { key.isEmpty ? nil : entries[key] }
+    func entry(_ key: String) -> Entry? {
+        guard !key.isEmpty, let store else { return nil }
+        var href: UnsafePointer<CChar>?
+        var state: UnsafePointer<CChar>?
+        var n = 0
+        guard dsk_routes_location(store, key, &href, &state, &n), let href else { return nil }
+        let bytes = state.map { p in p.withMemoryRebound(to: UInt8.self, capacity: n) { Array(UnsafeBufferPointer(start: $0, count: n)) } } ?? []
+        return Entry(href: String(cString: href), state: bytes)
+    }
 
     /// The Location command (ops.DecodeLocation: u8 action, i32 delta, a
     /// u32-length href, state and window key), from the window's root or
@@ -90,7 +97,7 @@ import AsukaOps
             restored.insert(key)
             // The Router has just mounted (its first address, a replace):
             // it goes where the window was left.
-            if let kept = entries[key], let n, action == UInt8(AsukaLocationAction.replace.rawValue), kept.href != href {
+            if let kept = entry(key), let n, !kept.href.isEmpty, action == UInt8(AsukaLocationAction.replace.rawValue), kept.href != href {
                 var w = AsukaByteWriter()
                 w.string(kept.href)
                 w.data(kept.state)
@@ -114,10 +121,13 @@ import AsukaOps
 
     /// Keeps the window keyed key's address, written a moment later.
     func set(_ key: String, _ href: String, _ state: [UInt8]) {
-        let e = Entry(href: href, state: state)
-        guard !key.isEmpty, entries[key] != e else { return }
-        entries[key] = e
-        guard !path.isEmpty, !pending else { return }
+        guard !key.isEmpty, let store else { return }
+        // Never a null pointer, even empty: the store compares them.
+        let s = state.map { CChar(bitPattern: $0) } + [0]
+        let changed = href.withCString { h in
+            s.withUnsafeBufferPointer { dsk_routes_set(store, key, h, strlen(h), $0.baseAddress, state.count) }
+        }
+        guard changed, !path.isEmpty, !pending else { return }
         pending = true
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.delay) { [weak self] in
             MainActor.assumeIsolated { self?.write(wait: false) }
@@ -128,22 +138,9 @@ import AsukaOps
     func flush() { write(wait: true) }
 
     private func write(wait: Bool) {
-        guard pending, !path.isEmpty else { return }
+        guard pending, !path.isEmpty, let store else { return }
         pending = false
-        var obj: [String: Any] = [:]
-        for (k, e) in entries {
-            var d: [String: Any] = ["href": e.href]
-            if !e.state.isEmpty { d["state"] = String(decoding: e.state, as: UTF8.self) }
-            obj[k] = d
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) else { return }
-        let path = self.path
-        let job = {
-            let dir = (path as NSString).deletingLastPathComponent
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            let tmp = path + ".tmp"
-            if FileManager.default.createFile(atPath: tmp, contents: data) { rename(tmp, path) }
-        }
+        let job = { dsk_routes_flush(store) }
         if wait { disk.sync(execute: job) } else { disk.async(execute: job) }
     }
 }

@@ -29,6 +29,7 @@
 // has, so it never shows at another size first. Click-through is
 // ignoresMouseEvents.
 import AppKit
+@_implementationOnly import CAsuka
 #if canImport(AsukaOps)
 import AsukaOps
 #endif
@@ -56,66 +57,33 @@ struct AsukaFlyoutRect: Equatable {
     func contains(_ px: CGFloat, _ py: CGFloat) -> Bool { px >= x && py >= y && px < right && py < bottom }
 }
 
-/// Places a flyout window next to its anchor, as the desktop hosts all do
-/// (internal/flyout): on the side its Placement names, flipped to the other
-/// side where that has no room and the other has, lined up with the anchor
-/// along that side (flipped to the other end where that has no room), then
-/// slid back into the work area of its display, then shrunk to fit it, as
-/// GTK places menus and Wayland compositors place popups. Coordinates are
-/// points, y down; start is left, as frames are physical.
+/// Places a flyout window next to its anchor, as the desktop hosts all do:
+/// the C they share (platform/desktop's flyout.c, internal/flyout's). On
+/// the side its Placement names, flipped to the other side where that has
+/// no room and the other has, lined up with the anchor along that side
+/// (flipped to the other end where that has no room), then slid back into
+/// the work area of its display, then shrunk to fit it, as GTK places
+/// menus and Wayland compositors place popups. Coordinates are points, y
+/// down; start is left, as frames are physical.
 enum AsukaFlyoutPlacement {
     /// A w by h rectangle centered in r, its top a third of the way down
     /// the room left (as Spotlight's panel shows), within r.
     static func center(_ w: CGFloat, _ h: CGFloat, _ r: AsukaFlyoutRect) -> AsukaFlyoutRect {
-        let w = min(w, r.w), h = min(h, r.h)
-        return AsukaFlyoutRect(x: r.x + (r.w - w) / 2, y: r.y + (r.h - h) / 3, w: w, h: h)
+        rect(dsk_flyout_center(Double(w), Double(h), dsk(r)))
     }
 
     /// The frame of a w by h flyout next to anchor, gap away, as placement
     /// says, within work (the work area of the display the anchor is on).
     static func place(_ anchor: AsukaFlyoutRect, _ w: CGFloat, _ h: CGFloat, _ placement: Int32, _ gap: CGFloat, _ work: AsukaFlyoutRect) -> AsukaFlyoutRect {
-        var p = placement
-        if p < 0 || p > AsukaPlacement.leftEnd.rawValue { p = AsukaPlacement.bottom.rawValue }
-        // Its side (bottom, top, right, left) and alignment (center, start,
-        // end).
-        var side = p / 3
-        let align = p % 3
-        var r = AsukaFlyoutRect(w: w, h: h)
-        if side == 0 || side == 1 {
-            let after = work.bottom - (anchor.bottom + gap)
-            let before = anchor.y - gap - work.y
-            if side == 0 && h > after && before > after { side = 1 } else if side == 1 && h > before && after > before { side = 0 }
-            r.y = side == 0 ? anchor.bottom + gap : anchor.y - gap - h
-            r.x = lineUp(anchor.x, anchor.w, w, align, work.x, work.right)
-        } else {
-            let after = work.right - (anchor.right + gap)
-            let before = anchor.x - gap - work.x
-            if side == 2 && w > after && before > after { side = 3 } else if side == 3 && w > before && after > before { side = 2 }
-            r.x = side == 2 ? anchor.right + gap : anchor.x - gap - w
-            r.y = lineUp(anchor.y, anchor.h, h, align, work.y, work.bottom)
-        }
-        // Slid back into the work area, then shrunk to it.
-        r.w = min(r.w, work.w)
-        r.h = min(r.h, work.h)
-        r.x = max(min(r.x, work.right - r.w), work.x)
-        r.y = max(min(r.y, work.bottom - r.h), work.y)
-        return r
+        rect(dsk_flyout_place(dsk(anchor), Double(w), Double(h), placement, Double(gap), dsk(work)))
     }
 
-    /// Where a flyout size long starts along an anchor at pos, n long,
-    /// lined up as align says; an end with no room flips to the other end
-    /// where that has room.
-    static func lineUp(_ pos: CGFloat, _ n: CGFloat, _ size: CGFloat, _ align: Int32, _ lo: CGFloat, _ hi: CGFloat) -> CGFloat {
-        switch align {
-        case 1: // start
-            if pos + size > hi && pos + n - size >= lo { return pos + n - size }
-            return pos
-        case 2: // end
-            if pos + n - size < lo && pos + size <= hi { return pos }
-            return pos + n - size
-        default:
-            return pos + (n - size) / 2
-        }
+    private static func dsk(_ r: AsukaFlyoutRect) -> dsk_rect {
+        dsk_rect(x: Double(r.x), y: Double(r.y), w: Double(r.w), h: Double(r.h))
+    }
+
+    private static func rect(_ r: dsk_rect) -> AsukaFlyoutRect {
+        AsukaFlyoutRect(x: CGFloat(r.x), y: CGFloat(r.y), w: CGFloat(r.w), h: CGFloat(r.h))
     }
 }
 

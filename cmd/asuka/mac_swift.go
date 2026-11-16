@@ -86,6 +86,13 @@ func (b *macBuild) executable(exe string, archs []string, m *bytecode.Module) er
 		if b.packages == nil {
 			b.packages = pkgs // a Mac framework is universal
 		}
+		// The C the desktop hosts share that the host calls (CAsuka's
+		// desktop.h: the route state, flyouts' places, Asuka's words).
+		shared, err := appbuild.MacShared(arch, !b.release)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, shared...)
 		out := filepath.Join(dir, "app")
 		args := []string{"swiftc", "-target", macSwiftArch(arch) + "-apple-macos" + macMin, "-sdk", macSDK()}
 		args = append(args, objs...)
@@ -128,7 +135,13 @@ func (b *macBuild) host(arch string, natives []nativePackage) ([]string, *swiftP
 		}
 		// The core's stand-ins are the host's package's tests', never an
 		// app's: weak, they'd keep the core's archive from being linked.
-		delete(cAsuka, "stubs.c")
+		// The shared C's wrappers (shared_*.c) are the tests' too: an
+		// app links that C as objects (MacShared).
+		for name := range cAsuka {
+			if name == "stubs.c" || strings.HasPrefix(name, "shared_") {
+				delete(cAsuka, name)
+			}
+		}
 		// SwiftPM makes a target with a main.swift an executable, which a
 		// library product can't have: the entry point (@main) goes in
 		// the host's library under another name.
@@ -163,11 +176,13 @@ func (b *macBuild) hostObject(arch string, sources map[string][]byte) ([]string,
 		fmt.Fprintln(h, n, len(sources[n]))
 		h.Write(sources[n])
 	}
-	header, err := macos.Files.ReadFile("Sources/CAsuka/include/asuka.h")
-	if err != nil {
-		return nil, nil, err
+	for _, f := range []string{"asuka.h", "desktop.h", "module.modulemap"} {
+		header, err := macos.Files.ReadFile("Sources/CAsuka/include/" + f)
+		if err != nil {
+			return nil, nil, err
+		}
+		h.Write(header)
 	}
-	h.Write(header)
 	base, err := os.UserCacheDir()
 	if err != nil {
 		return nil, nil, err
@@ -198,7 +213,7 @@ func (b *macBuild) hostObject(arch string, sources map[string][]byte) ([]string,
 	if err := os.MkdirAll(inc, 0o755); err != nil {
 		return nil, nil, err
 	}
-	for _, f := range []string{"asuka.h", "module.modulemap"} {
+	for _, f := range []string{"asuka.h", "desktop.h", "module.modulemap"} {
 		data, err := macos.Files.ReadFile("Sources/CAsuka/include/" + f)
 		if err != nil {
 			return nil, nil, err

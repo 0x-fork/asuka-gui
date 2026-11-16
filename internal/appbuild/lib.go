@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/cgen"
+	"github.com/egoist/asuka/platform/desktop"
 )
 
 // AppC writes m compiled to C (lang/cgen) under the user's cache, at a
@@ -122,4 +124,33 @@ func linuxHost() (*DesktopC, error) {
 		return nil, err
 	}
 	return &DesktopC{Sources: srcs, Flags: flags}, nil
+}
+
+// MacShared compiles the C the desktop hosts share that the Mac's host
+// links too (desktop.MacShared: the route state, flyouts' places, Asuka's
+// own words) for arch, into objects cached by their sources.
+func MacShared(arch string, debug bool) ([]string, error) {
+	d, err := desktop.Dir()
+	if err != nil {
+		return nil, err
+	}
+	tc, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: arch})
+	if err != nil {
+		return nil, err
+	}
+	var srcs, hdrs []string
+	for _, f := range desktop.MacShared(d) {
+		if strings.HasSuffix(f, ".c") {
+			srcs = append(srcs, f)
+		} else {
+			hdrs = append(hdrs, f)
+		}
+	}
+	flags := []string{"-I" + desktop.Include(d), "-ffunction-sections", "-fdata-sections"}
+	if debug {
+		flags = append(flags, "-g", "-O1")
+	} else {
+		flags = append(flags, "-O2", "-DNDEBUG")
+	}
+	return tc.Objects("mac-shared", srcs, hdrs, flags)
 }
