@@ -7,7 +7,7 @@
 - **macOS**：窗口的工具栏（返回按钮、当前页面的导航栏按钮和搜索框）和标题、`NSTabView`、sheet 窗口、`NSAlert`、`NSMenu`，以及菜单栏。
 - **Windows**：盖在页面上方的顶栏（header bar）、顶部的标签栏（即 WinUI 的 `NavigationView`）、模态窗口、任务对话框、弹出菜单，以及窗口的菜单栏，全都按 Windows 11 的样子绘制。
 - **Linux**：全部来自 libadwaita：窗口的顶栏、`AdwNavigationView`、视图切换器、`AdwDialog`、`AdwAlertDialog`、GTK 的 popover 菜单，以及主菜单。
-- **Web**：由宿主绘制的顶栏、`<dialog>` 和 popover，以及浏览器的后退按钮（见 [Web](web.md)）。
+- **Web**：由 Asuka 绘制的顶栏、`<dialog>` 和 popover，以及浏览器的后退按钮（见 [Web](web.md)）。
 
 本页逐一介绍它们，也会讲到返回操作、路由（像 Web 一样，每个页面都有自己的地址），以及如何通过链接和分享打开应用。[`examples/navigation`](../../examples/navigation) 演示了上面所有内容；[`examples/notes`](../../examples/notes) 里有菜单栏和窗口的例子。
 
@@ -57,7 +57,7 @@ screen Detail(n: Note) {
 
 `push`、`pop` 和 `depth` 作用于调用它们的代码外面最近的那个导航栈：页面自己的事件处理函数，以及它们创建的东西（警告框的按钮、菜单或滑动的操作、snackbar 的操作、`await` 之后处理函数的其余部分），用的都是页面所在的栈，第一个页面也不例外。
 
-在 iOS 和 Android 上，每个导航栈都有自己的导航栏；Windows（宿主仿照 WinUI，在页面上方绘制一条顶栏）和 Web 也是这样。而在 Mac 和 Linux 上，和这两个平台的原生应用一样，一个窗口只有一条栏，它归屏幕上最内层的导航栈所有（在标签页里，就是当前标签页的导航栈）：栏上显示的是这个栈的返回按钮，以及它栈顶页面的标题、导航栏按钮和搜索框。这条栏在 Mac 上就是窗口的工具栏和标题，在 Linux 上则是窗口的 `AdwHeaderBar`。在 macOS、Linux 和 Web 上，推入和弹出页面时会有滑动动画；在 Windows 上，页面直接切换，没有过渡效果。
+在 iOS 和 Android 上，每个导航栈都有自己的导航栏；Windows（Asuka 仿照 WinUI，在页面上方绘制一条顶栏）和 Web 也是这样。而在 Mac 和 Linux 上，和这两个平台的原生应用一样，一个窗口只有一条栏，它归屏幕上最内层的导航栈所有（在标签页里，就是当前标签页的导航栈）：栏上显示的是这个栈的返回按钮，以及它栈顶页面的标题、导航栏按钮和搜索框。这条栏在 Mac 上就是窗口的工具栏和标题，在 Linux 上则是窗口的 `AdwHeaderBar`。在 macOS、Linux 和 Web 上，推入和弹出页面时会有滑动动画；在 Windows 上，页面直接切换，没有过渡效果。
 
 导航栈会填满分配给它的空间。每个页面都是一个 [owner](concepts.md)：无论是代码弹出页面，还是用户用返回手势退出，页面都会被销毁，其中的 effect 也随之停止。同一个页面再次推入时会从头开始，所以需要比页面活得更久的东西，要放在页面之外的状态里（顶层的 `state`、一个 store），或者存进[存储](data.md)。
 
@@ -643,7 +643,7 @@ component SignIn {
 | iOS | `UIAlertController` 的文本框；默认操作就是它的 `preferredAction`，以粗体显示 |
 | Android | Material 对话框里的描边 `TextInputLayout`（密码框带显示切换按钮）；输入法的操作键跳到下一个输入框，在最后一个输入框里则按下默认操作的按钮 |
 | macOS | 作为 `NSAlert` 附属视图的 `NSTextField` 和 `NSSecureTextField`；用 Tab 在它们之间切换 |
-| Windows | 宿主自己的对话框，按 WinUI `ContentDialog` 的样子排版（任务对话框放不了输入框）：标题、消息、Fluent 风格的文本框，然后是按钮，默认按钮使用强调色；Tab、Enter 和 Escape 的行为和普通对话框一致，讲述人会用占位文字来读出每个输入框 |
+| Windows | Asuka 自己的对话框，按 WinUI `ContentDialog` 的样子排版（任务对话框放不了输入框）：标题、消息、Fluent 风格的文本框，然后是按钮，默认按钮使用强调色；Tab、Enter 和 Escape 的行为和普通对话框一致，讲述人会用占位文字来读出每个输入框 |
 | Linux | 由 `AdwEntryRow` 和 `AdwPasswordEntryRow` 组成的卡片列表，作为 `AdwAlertDialog` 的额外子控件 |
 | Web | `<dialog>` 里的输入元素，以占位文字作为标签，带有 `type=password`、`inputmode` 和 `autocomplete` |
 
@@ -651,7 +651,7 @@ component SignIn {
 
 `snackbar(message, …)` 会立即在窗口底部显示一条简短的消息，可以附带一个操作，比如“撤销”；它返回一个用来关闭它的闭包：
 
-- **iOS**：UIKit 没有 snackbar，所以宿主按 iOS 显示自己简短提示的样子绘制一个：使用系统材质（iOS 26 上是 Liquid Glass）的胶囊，居中显示在标签栏或工具栏以及键盘的上方，位于最上层呈现的内容之上。它以弹簧动画出现和消失（开启“减弱动态效果”时改为淡入淡出），向下滑动可以关闭。
+- **iOS**：UIKit 没有 snackbar，所以 Asuka 按 iOS 显示自己简短提示的样子绘制一个：使用系统材质（iOS 26 上是 Liquid Glass）的胶囊，居中显示在标签栏或工具栏以及键盘的上方，位于最上层呈现的内容之上。它以弹簧动画出现和消失（开启“减弱动态效果”时改为淡入淡出），向下滑动可以关闭。
 - **Android**：Material 的 `Snackbar`，可以滑动关闭，显示在页面的底部导航栏或浮动操作按钮（它的锚点）以及键盘的上方；在弹出面板上时，显示在面板底部。
 - **macOS**：窗口底部的一个浮层，放在 `NSVisualEffectView` 里，带关闭按钮。
 - **Windows**：窗口底部的一个浮层，绘制成 Fluent InfoBar 的样子，带关闭按钮。
@@ -679,7 +679,7 @@ component Notes {
 
 消息只显示一次，所以和警告框的消息一样是字符串。操作是一个 `.button`：显示它的 `title`，它的 `role`、`icon` 和 `disabled` 都不显示。按下操作会关闭 snackbar 并运行它的 `run`。以其他任何方式消失时则运行 `onDismiss`：时间到了、用户滑掉或关掉了它、被另一个 snackbar 替换，或者调用了 `snackbar` 返回的闭包。所以用户点了“撤销”之后，`onDismiss` 不会运行：这里正适合把那个本可以撤销的操作真正落实。
 
-`duration` 是它显示多久：`.short`（默认，约四秒，与 Material 一致）、`.long`（约十秒）或 `.indefinite`（直到被关闭或按下它的操作）。宿主会按平台对无障碍的建议延长显示时间：Android 按 `AccessibilityManager.getRecommendedTimeoutMillis`，开启 TalkBack 时，带操作的 snackbar 会显示得更久；iOS、macOS 和 Linux 没有推荐的超时时间，所以屏幕阅读器开启时，带操作的 snackbar 会一直显示到被关闭，这和 Material 在没有推荐值时的做法一样；Windows 还会参考“在此时间后关闭通知”这项设置。在桌面端和 Web 上，鼠标悬停在它上面或键盘焦点在它里面时，计时会暂停。它出现时，屏幕阅读器会播报它，也能操作到它的按钮。
+`duration` 是它显示多久：`.short`（默认，约四秒，与 Material 一致）、`.long`（约十秒）或 `.indefinite`（直到被关闭或按下它的操作）。Asuka 会按平台对无障碍的建议延长显示时间：Android 按 `AccessibilityManager.getRecommendedTimeoutMillis`，开启 TalkBack 时，带操作的 snackbar 会显示得更久；iOS、macOS 和 Linux 没有推荐的超时时间，所以屏幕阅读器开启时，带操作的 snackbar 会一直显示到被关闭，这和 Material 在没有推荐值时的做法一样；Windows 还会参考“在此时间后关闭通知”这项设置。在桌面端和 Web 上，鼠标悬停在它上面或键盘焦点在它里面时，计时会暂停。它出现时，屏幕阅读器会播报它，也能操作到它的按钮。
 
 同一时间只显示一个：新的 snackbar 会替换正在显示的那个，和 Android 一样（旧的会先运行 `onDismiss`）。在桌面端，它显示在警告框会出现的那个窗口：触发它的事件所在视图的窗口，否则是调用它的组件所在的窗口，再否则是主窗口。
 
@@ -756,7 +756,7 @@ component Notes {
 | 键 | |
 |---|---|
 | `width`、`height` | 内容区的大小，单位为点 |
-| `minWidth`、`minHeight`、`maxWidth`、`maxHeight` | 用户能把窗口调到的最小和最大尺寸；为 0 时，最小值取宿主的下限，最大值不设上限 |
+| `minWidth`、`minHeight`、`maxWidth`、`maxHeight` | 用户能把窗口调到的最小和最大尺寸；为 0 时，最小值取平台的下限，最大值不设上限 |
 | `x`、`y` | 窗口框架左上角在屏幕上的位置，以主显示器的左上角为原点，单位为点；两者都为 0 时，主窗口居中，`Window` 层叠错开（设置 `center: true` 则让它居中） |
 | `resizable`、`minimizable`、`maximizable`、`closable` | 设为 false 会去掉用户的相应能力：调整窗口大小，以及对应的窗口按钮 |
 | `alwaysOnTop` | 让窗口保持在其他应用的窗口之上 |
@@ -825,7 +825,7 @@ component Main {
 - `w.setAlwaysOnTop(on)` 设置窗口是否保持在其他应用的窗口之上。
 - `w.setClickThrough(on)` 设置鼠标是否穿透窗口。
 - `w.close()` 像用户操作那样关闭窗口，会先询问（见下文）；`closeWindow()` 则不询问，直接关闭调用它的代码所在的窗口（不在任何 `Window` 里时是主窗口）。主窗口关闭时，应用就会退出，除非它保持运行。
-- 无论变化来自用户还是应用，窗口的状态都会跟着更新：`w.visible`、`w.focused`、`w.minimized`、`w.maximized`、`w.fullScreen`、`w.alwaysOnTop`、`w.clickThrough`、`w.position` 和 `w.size`（分别是 `(x, y)` 和 `(width, height)`），也可以用 `w.windowState` 一次读出全部状态。读取它们的绑定会跟随它们；只有在有东西读取时，宿主才会报告窗口的状态。最小化的窗口、被其他窗口挡住的窗口，都仍然算作可见。
+- 无论变化来自用户还是应用，窗口的状态都会跟着更新：`w.visible`、`w.focused`、`w.minimized`、`w.maximized`、`w.fullScreen`、`w.alwaysOnTop`、`w.clickThrough`、`w.position` 和 `w.size`（分别是 `(x, y)` 和 `(width, height)`），也可以用 `w.windowState` 一次读出全部状态。读取它们的绑定会跟随它们；只有在有东西读取时，才会报告窗口的状态。最小化的窗口、被其他窗口挡住的窗口，都仍然算作可见。
 
 这些操作和状态写入一样，要到刷新（flush）时才作用到窗口上。在手机上它们什么也不做，读出来的状态是什么也没显示。
 
@@ -870,7 +870,7 @@ screen NoteScreen {
 | Linux | 大小和是否最大化：Wayland 应用无法自己摆放窗口位置 |
 | Web | `Window` 面板的位置、大小以及是否最大化，保存在页面的 `localStorage` 里 |
 
-桌面宿主把这些信息存在应用数据目录下的 `asuka-window.json` 里（Windows、Linux），或者存在应用的 defaults 里（macOS）。测试和自动化运行时什么都不保存。
+桌面应用把这些信息存在应用数据目录下的 `asuka-window.json` 里（Windows、Linux），或者存在应用的 defaults 里（macOS）。测试和自动化运行时什么都不保存。
 
 ### 子窗口和模态窗口
 
@@ -970,7 +970,7 @@ component NoteList {
 ```
 
 - `MenuItem` 有一个标题、一个 `shortcut` 和它的 `press`；`disabled` 和 `checked` 会改变它的显示方式。菜单项里再放 `MenuItem`，它就成了子菜单。`MenuSeparator()` 是菜单项分组之间的分隔线。
-- `role` 说明菜单项是什么：`.destructive` 把它显示为红色（macOS、Windows；GTK 会把它单独隔开）；`.quit`、`.close` 和 `.openRecent` 是平台自己的菜单项，由宿主负责执行，并使用宿主自己的标题（除非菜单项设置了标题）和快捷键：退出应用（会先询问应用）、像点关闭按钮那样关闭当前使用的窗口，以及最近使用的文档（Mac 自带的“打开最近使用”）。
+- `role` 说明菜单项是什么：`.destructive` 把它显示为红色（macOS、Windows；GTK 会把它单独隔开）；`.quit`、`.close` 和 `.openRecent` 是平台自己的菜单项，由 Asuka 负责执行，并使用平台自己的标题（除非菜单项设置了标题）和快捷键：退出应用（会先询问应用）、像点关闭按钮那样关闭当前使用的窗口，以及最近使用的文档（Mac 自带的“打开最近使用”）。
 - `Shortcut` 由一个 `key` 和它的修饰键组成：`primary` 是平台的命令键（Mac 上是 ⌘，其他平台上是 Ctrl），`shift`、`alt`（Mac 上的 Option）和 `control` 是其他修饰键。键可以是一个字符（`"n"`、`","`、`"="`），也可以是一个键名：`enter`、`escape`、`tab`、`space`、`delete`、`backspace`、`up`、`down`、`left`、`right`、`home`、`end`、`pageup`、`pagedown`，以及 `f1` 到 `f12`。
 - 菜单项都是绑定：某个菜单项被禁用或勾选、`for` 或 `if` 显示的菜单或菜单项出现又消失，都会重新发送。同时显示了多个 `MenuBar` 时，以最后一个为准；它消失后，就换成前一个。它不占空间，放在哪里都可以。
 - `WindowKeys { keys: [Shortcut(key: "k", primary: true, run: search)] }` 在显示期间给所在的窗口加上一些按键：无论焦点在哪里，只要没有视图处理它们就会生效（以最后一个 `WindowKeys` 为准），适合那些不是菜单项的按键。

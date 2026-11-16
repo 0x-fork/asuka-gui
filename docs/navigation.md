@@ -18,7 +18,7 @@ platform's own:
 - **Linux**: libadwaita's: the window's header bar, `AdwNavigationView`,
   a view switcher, `AdwDialog`, `AdwAlertDialog`, GTK's popover menus,
   and the main menu.
-- **The web**: a header bar of the host's, `<dialog>`s and popovers, and
+- **The web**: a header bar of Asuka's, `<dialog>`s and popovers, and
   the browser's back button (see [the web](web.md)).
 
 This page covers them, along with going back, routes (every screen at
@@ -80,7 +80,7 @@ action, the rest of a handler after an `await`), on the first screen as
 on any other.
 
 On iOS and Android each stack has its own bar, and so it does on
-Windows (a header bar the host draws over the screen, as WinUI's) and
+Windows (a header bar Asuka draws over the screen, as WinUI's) and
 on the web. On a Mac and on Linux a window has one bar, as their apps
 do, and it belongs to the innermost stack on screen (in tabs, the shown
 tab's): its back button, its top screen's title, bar buttons and search
@@ -881,7 +881,7 @@ shows no fields.
 | iOS | `UIAlertController`'s text fields; the default action is its `preferredAction`, in bold |
 | Android | outlined `TextInputLayout`s in the Material dialog (a password's with its toggle); the IME's action goes to the next field, and from the last presses the default action's button |
 | macOS | `NSTextField`s and an `NSSecureTextField` as the `NSAlert`'s accessory view; Tab moves between them |
-| Windows | a dialog of the host's own, laid out as WinUI's `ContentDialog` (a task dialog can't hold fields): the title, the message, Fluent text boxes, then the buttons with the default one in the accent color; Tab, Enter and Escape work as in a dialog, and Narrator reads each field by its placeholder |
+| Windows | a dialog of Asuka's own, laid out as WinUI's `ContentDialog` (a task dialog can't hold fields): the title, the message, Fluent text boxes, then the buttons with the default one in the accent color; Tab, Enter and Escape work as in a dialog, and Narrator reads each field by its placeholder |
 | Linux | a boxed list of `AdwEntryRow`s and `AdwPasswordEntryRow`s, the `AdwAlertDialog`'s extra child |
 | The web | inputs in the `<dialog>`, labeled by their placeholders, with `type=password`, `inputmode` and `autocomplete` |
 
@@ -891,7 +891,7 @@ shows no fields.
 window now, with an optional action such as Undo, and returns a closure
 that dismisses it:
 
-- **iOS**: UIKit has none, so the host draws one as iOS draws its own
+- **iOS**: UIKit has none, so Asuka draws one as iOS draws its own
   brief messages: a capsule in the system material (Liquid Glass on iOS
   26), centered above the tab bar or toolbar and the keyboard, on the
   topmost presented content. It springs in and out (it fades with Reduce
@@ -938,7 +938,7 @@ doesn't run: it's where what the action could undo is done for good.
 `duration` is how long it shows: `.short` (the default, about four
 seconds, Material's), `.long` (about ten) or `.indefinite` (until it's
 dismissed or its action pressed).
-Hosts lengthen it as the platform recommends for accessibility: Android
+Asuka lengthens it as the platform recommends for accessibility: Android
 by `AccessibilityManager.getRecommendedTimeoutMillis`, which keeps one
 with an action longer while TalkBack is on; on iOS, macOS and Linux,
 which have no recommended timeout, one with an action stays until it's
@@ -1057,7 +1057,7 @@ handle's actions, below, but `title`, `alwaysOnTop`, `clickThrough`,
 | Key | |
 |---|---|
 | `width`, `height` | its content's size, in points |
-| `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | the least and most the user can size it to; 0: the host's least, no most |
+| `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | the least and most the user can size it to; 0: the platform's least, no most |
 | `x`, `y` | its frame's top left on the screen, in points from the main display's top left; with both 0 the main window is centered and a `Window` cascades (`center: true` centers it) |
 | `resizable`, `minimizable`, `maximizable`, `closable` | false takes the user's abilities away: resizing it, and its buttons |
 | `alwaysOnTop` | keeps it above other apps' windows |
@@ -1152,8 +1152,8 @@ component Main {
   `w.focused`, `w.minimized`, `w.maximized`, `w.fullScreen`,
   `w.alwaysOnTop`, `w.clickThrough`, `w.position` and `w.size` (each an
   `(x, y)` or `(width, height)`), and all of it at once as
-  `w.windowState`. A binding that reads them follows them; the host
-  reports a window's state only once something reads it. A minimized
+  `w.windowState`. A binding that reads them follows them; a
+  window's state is reported only once something reads it. A minimized
   window, or one behind others, is still visible.
 
 The actions act on the window at the flush, as state writes do. On a
@@ -1214,7 +1214,7 @@ when it has a `stateKey`. Give each kind of window its own
 | Linux | its size and whether it was maximized: a Wayland app can't place its window |
 | The web | a `Window` panel's place and size, and whether it was maximized, in the page's `localStorage` |
 
-The desktop hosts keep theirs in `asuka-window.json` in the app's data
+Desktop apps keep theirs in `asuka-window.json` in the app's data
 directory (Windows, Linux) or the app's defaults (macOS). Tests and
 automation runs keep none.
 
@@ -1325,7 +1325,7 @@ component NoteList {
   submenu. `MenuSeparator()` is a line between groups of items.
 - `role` is what the item is: `.destructive` draws it red (macOS,
   Windows; GTK sets it apart); `.quit`, `.close` and `.openRecent` are
-  the platform's own items, which the host does itself with its own
+  the platform's own items, which Asuka does itself with its own
   title (unless the item has one) and shortcut: quit the app (asking it
   first), close the window in use as its close button does, and the
   recent documents (a Mac's own Open Recent).
