@@ -21,9 +21,7 @@
 // (wh_update_clean). relaunch() is the Quit command's relaunch
 // (instance.c), whose new process waits for this one (wh_relaunch_wait).
 #include "modules.h"
-#include "http.h"
 
-#include <winhttp.h>
 
 #define FILE_LIST ".asuka-files"
 #define FILE_LIST_W L".asuka-files"
@@ -154,7 +152,7 @@ typedef struct dl {
 	char *url, *to;
 	SRWLOCK lock;
 	volatile bool cancel;
-	void *request;
+	asuka_abort *abort;  // m_cancel's: stops the request in flight
 	// Under lock, as the thread has them.
 	uint64_t downloaded, total;
 	int status;
@@ -185,6 +183,7 @@ static void forget(dl *d) {
 			break;
 		}
 	free(d->url), free(d->to), free(d->error);
+	asuka_abort_free(d->abort);
 	free(d);
 }
 
@@ -244,12 +243,44 @@ static void post_wake(dl *d) {
 	wh_post(wake, d);
 }
 
-static void progress(wh_http *h) {
-	dl *d = h->ctx;
+// The download's file, as asuka_fetch_stream hands it over: a 200's body
+// only, its progress reported as it comes.
+typedef struct {
+	dl *d;
+	HANDLE f;
+	bool keep;
+} dl_file;
+
+static void progress(dl *d, int status, uint64_t total, uint64_t downloaded) {
 	AcquireSRWLockExclusive(&d->lock);
-	d->downloaded = h->downloaded, d->total = h->total, d->status = h->status;
+	d->downloaded = downloaded, d->total = total, d->status = status;
 	post_wake(d);
 	ReleaseSRWLockExclusive(&d->lock);
+}
+
+static bool dl_head(void *ctx, const asuka_response *r, asuka_error *err) {
+	dl_file *x = ctx;
+	uint64_t total = 0;
+	for (size_t i = 0; i < r->nheaders; i++)
+		if (!strcmp(r->names[i], "content-length")) total = _strtoui64(r->values[i], NULL, 10);
+	progress(x->d, r->status, total, 0);
+	x->keep = r->status == 200;
+	return x->keep;  // a status but 200 is no failure: its body isn't kept
+}
+
+static bool dl_data(void *ctx, const void *p, size_t n, asuka_error *err) {
+	dl_file *x = ctx;
+	DWORD wrote = 0;
+	if (!WriteFile(x->f, p, (DWORD)n, &wrote, NULL) || wrote != n) {
+		asuka_win_fail(err, HRESULT_FROM_WIN32(GetLastError()), "writing the download");
+		return false;
+	}
+	AcquireSRWLockShared(&x->d->lock);
+	uint64_t got = x->d->downloaded + n, total = x->d->total;
+	int status = x->d->status;
+	ReleaseSRWLockShared(&x->d->lock);
+	progress(x->d, status, total, got);
+	return true;
 }
 
 static DWORD WINAPI download_thread(void *p) {
@@ -265,13 +296,12 @@ static DWORD WINAPI download_thread(void *p) {
 		sprintf(err, "writing %s: %s", d->to, m);
 		free(m);
 	} else {
+		dl_file x = {d, f, false};
+		asuka_error e = {0};
+		asuka_request rq = {.url = d->url, .agent = "asuka-updater", .abort = d->abort, .head = dl_head, .data = dl_data, .ctx = &x};
+		if (!asuka_fetch_stream(&rq, NULL, &e)) err = wh_strdup(e.message ? e.message : "downloading failed");
+		asuka_error_free(&e);
 		CloseHandle(f);
-		wh_http h = {.url = d->url, .to = d->to, .agent = "asuka-updater", .progress = progress, .ctx = d,
-			.lock = &d->lock, .cancel = &d->cancel, .request = &d->request, .err = &err};
-		wh_http_get(&h);
-		AcquireSRWLockExclusive(&d->lock);
-		d->status = h.status, d->total = h.total, d->downloaded = h.downloaded;
-		ReleaseSRWLockExclusive(&d->lock);
 	}
 	AcquireSRWLockExclusive(&d->lock);
 	if (d->cancel) {
@@ -307,6 +337,7 @@ static void m_download(wh_reply *r, const uint8_t *a, size_t n) {
 	if (!d->id) d->id = ++next_id;
 	d->url = wh_strdup(url), d->to = wh_strdup(to);
 	InitializeSRWLock(&d->lock);
+	d->abort = asuka_abort_new();
 	dsk_json_free(j);
 	d->next = downloads, downloads = d;
 	HANDLE t = CreateThread(NULL, 0, download_thread, d, 0, NULL);
@@ -350,10 +381,8 @@ static void m_cancel(wh_reply *r, const uint8_t *a, size_t n) {
 	if (d) {
 		AcquireSRWLockExclusive(&d->lock);
 		d->cancel = true;
-		// Closing its request ends what the thread waits on.
-		if (d->request) WinHttpCloseHandle(d->request);
-		d->request = NULL;
 		ReleaseSRWLockExclusive(&d->lock);
+		asuka_abort_now(d->abort);  // ends what the thread waits on
 	}
 	wh_reply_str(r, "{}");
 }

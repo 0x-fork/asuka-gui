@@ -135,6 +135,8 @@ typedef struct HSTRING__ *HSTRING;
 // asuka_hstring makes an HSTRING of s (NULL for ""), which the caller
 // frees with asuka_hstring_free.
 HSTRING asuka_hstring(const char *s);
+// asuka_hstring_w is the same of UTF-16 (NULL for "").
+HSTRING asuka_hstring_w(const wchar_t *s);
 // asuka_hstring_utf8 is h as UTF-8, of malloc's.
 char *asuka_hstring_utf8(HSTRING h);
 void asuka_hstring_free(HSTRING h);
