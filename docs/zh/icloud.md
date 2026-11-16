@@ -159,12 +159,12 @@ iCloud 按应用自己的 ID 保存它的值和文档。`asuka dev` 的开发 Ap
 
 ## 测试
 
-`asuka test` 在假宿主上运行，而假宿主没有 iCloud：账户不可用，文件列表是空的，`Value` 只保留它的默认值和测试设置的值，其他调用都会像在 Android 上一样抛出 "icloud: not available"。这个包暂时还没有模拟的 iCloud，让测试来扮演用户的其他设备。
+`asuka test` 里没有 iCloud：账户不可用，文件列表是空的，`Value` 只保留它的默认值和测试设置的值，其他调用都会像在 Android 上一样抛出 "icloud: not available"。这个包暂时还没有模拟的 iCloud，让测试来扮演用户的其他设备。
 
 ```asuka
 import platform/icloud
 
-test "no iCloud on the fake host" {
+test "no iCloud in tests" {
   expect(!icloud.account().available)
   expect(icloud.files(.documents).isEmpty())
   do {

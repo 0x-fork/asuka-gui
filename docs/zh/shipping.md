@@ -366,7 +366,7 @@ component UpdateBanner {
 
 在 Web 上没有什么需要安装：`check()` 会绕过浏览器缓存读取网站的 `version.json`，有新版本时 `relaunch()` 会重新加载页面。
 
-在测试中，假宿主和手机一样没有 update 模块；`update.fakeHost(update.FakeApp(…))` 会让它像已安装应用的宿主那样应答，并提供更新源里的文件（`host.serve(update.Served(url:, file:))`）；`host.log()` 会告诉你它下载和安装了什么。
+在测试中，和手机一样没有 update 模块；`update.fakeHost(update.FakeApp(…))` 会让测试像已安装的应用那样应答，并提供更新源里的文件（`host.serve(update.Served(url:, file:))`）；`host.log()` 会告诉你它下载和安装了什么。
 
 ### 构建与发布
 

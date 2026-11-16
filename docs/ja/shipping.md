@@ -366,7 +366,7 @@ component UpdateBanner {
 
 Web ではインストールするものはありません。`check()` はブラウザーのキャッシュを通さずにサイトの `version.json` を読み、新しいバージョンがあれば `relaunch()` がページを再読み込みします。
 
-テストでは、偽のホストはスマートフォンと同じく update モジュールを持ちません。`update.fakeHost(update.FakeApp(…))` を呼ぶと、インストール済みアプリのホストとして応答し、フィードのファイルを返すようになります（`host.serve(update.Served(url:, file:))`）。`host.log()` で、何をダウンロードしてインストールしたかがわかります。
+テストでは、スマートフォンと同じく update モジュールはありません。`update.fakeHost(update.FakeApp(…))` を呼ぶと、インストール済みのアプリとして応答し、フィードのファイルを返すようになります（`host.serve(update.Served(url:, file:))`）。`host.log()` で、何をダウンロードしてインストールしたかがわかります。
 
 ### ビルドと公開
 

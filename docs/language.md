@@ -1205,7 +1205,7 @@ where (with a comparison's two sides). JSON comes from `std/json`:
 generic function may read or write its `T` as JSON; each call then
 needs a `T` JSON can say, which the compiler checks where it's called.
 
-`asuka test` runs a package's tests on a fake host: it lays views out as
+`asuka test` runs a package's tests with no device: it lays views out as
 the platforms do, measures text at a fixed width per character, and time
 moves only when nothing else can run (a `sleep(5s)` in a test takes no
 time). `mount` returns the app, to drive and check: `tap`, `longPress`,

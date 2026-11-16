@@ -1,14 +1,14 @@
 # 快速上手
 
-应用用 Asuka 语言编写（见 [Asuka 语言](language.md)），运行在 Asuka 的核心（一个 C 库）之上，使用各平台的原生控件。`asuka` 命令行工具负责编译应用，并用每个平台自己的编译器为该平台构建核心。一条命令就能创建应用，另一条命令就能运行它，并且每次保存都会自动重新加载。
+应用用 Asuka 语言编写（见 [Asuka 语言](language.md)），显示的是各平台的原生控件。`asuka` 命令行工具用每个平台自己的工具为该平台构建应用。一条命令就能创建应用，另一条命令就能运行它，并且每次保存都会自动重新加载。
 
 ## 准备工作
 
 你需要命令行工具，以及要运行的每个平台用来构建的工具：
 
 - **iOS**：一台装有 Xcode 的 Mac，以及 iOS 模拟器或一部 iPhone。
-- **Android**：一台 Mac、一台 Windows 10 或 11 电脑（x64 或 Arm）或者 Linux 电脑，装好 Android Studio，并在它的 SDK Manager 中安装 NDK（SDK Tools → NDK）；再从 Device Manager 创建一个 Android 模拟器，或者准备一部开启了 USB 调试的手机。Asuka 会在 SDK 的默认安装位置或 `ANDROID_HOME` 中查找 SDK，并使用 Android Studio 自带的 Java；它用 NDK 自带的 clang 构建核心，用 Gradle 构建应用。在 Arm 电脑上，NDK 和 Android 模拟器都是 x64 程序，会以模拟方式运行，模拟器需要使用 x86_64 系统镜像。
-- **macOS**：一台运行 macOS 11 或更高版本的 Mac，装好 Xcode 命令行工具（`xcode-select --install`，装了 Xcode 就已经包含了）：核心由其中的 clang 构建。
+- **Android**：一台 Mac、一台 Windows 10 或 11 电脑（x64 或 Arm）或者 Linux 电脑，装好 Android Studio，并在它的 SDK Manager 中安装 NDK（SDK Tools → NDK）；再从 Device Manager 创建一个 Android 模拟器，或者准备一部开启了 USB 调试的手机。Asuka 会在 SDK 的默认安装位置或 `ANDROID_HOME` 中查找 SDK，并使用 Android Studio 自带的 Java，用 NDK 和 Gradle 构建。在 Arm 电脑上，NDK 和 Android 模拟器都是 x64 程序，会以模拟方式运行，模拟器需要使用 x86_64 系统镜像。
+- **macOS**：一台运行 macOS 11 或更高版本的 Mac，装好 Xcode 命令行工具（`xcode-select --install`，装了 Xcode 就已经包含了）。
 - **Windows**：一台运行 Windows 10 或 11 的 PC，x64 或 Arm 均可，装好 LLVM 的 clang（`winget install LLVM.LLVM`），或者装好 [Zig](https://ziglang.org/download) 并设置 `ASUKA_CC=zig`。`WebView` 和 `Video` 依赖 Microsoft Edge WebView2 Runtime，Windows 11 自带，大多数 Windows 10 电脑上也已经有了。
 - **Linux**：一个 C 编译器（`build-essential`、`gcc`、`clang`），以及 GTK 4.14 和 libadwaita 1.5 或更高版本（Ubuntu 24.04、Fedora 40、Debian 13 及之后的版本都已自带），Wayland 和 X11 均可：
 
@@ -19,9 +19,9 @@
   ```
 
   `WebView` 需要 WebKitGTK 6.0（`libwebkitgtk-6.0-4`），`Video` 和音频需要 GStreamer；如果某个包依赖的库没有安装，它会返回一个错误，告诉你缺的是哪个库。
-- **Web**：一个浏览器，以及用来把核心构建成 WebAssembly 的 [Zig](https://ziglang.org/download)。
+- **Web**：一个浏览器，以及用来构建 WebAssembly 的 [Zig](https://ziglang.org/download)。
 
-装好 Zig 之后，`asuka build` 还可以在任何系统上构建 Windows 或 Linux 应用（核心由 `zig cc` 交叉编译）；Mac 应用则需要在 Mac 上构建。
+装好 Zig 之后，`asuka build` 还可以在任何系统上构建 Windows 或 Linux 应用；Mac 应用则需要在 Mac 上构建。
 
 ## 安装命令行工具
 
@@ -56,11 +56,11 @@ asuka dev --platform web        # 你的浏览器
 
 保存 `.asuka` 文件后，应用几毫秒内就会重新加载，状态都会保留下来。应用的输出和错误会显示在终端里，还有每次重载的报告（`asuka: reloaded in 2.1 ms, 3 states kept`）。
 
-`asuka dev` 会为平台构建一次**开发 App**：它是应用的外壳（图标、名称、权限），里面有 Asuka 的核心，但没有应用的任何代码。Asuka 安装并启动它，开发 App 再回连 `asuka dev`，由后者把应用编译成字节码发送过去；每次保存，`asuka dev` 都会重新编译并发送新模块，开发 App 原地加载它。如果保存的代码无法编译，会打印错误，应用继续运行原来的代码。修改 `asuka.toml`、资源或原生代码，会让开发 App 重新构建并启动。
+`asuka dev` 会为平台构建一次**开发 App**：它是应用的外壳（图标、名称、权限），但没有应用的任何代码。Asuka 安装并启动它，然后把你的应用发送过去；每次保存都会重新编译，开发 App 原地加载新版本。如果保存的代码无法编译，会打印错误，应用继续运行原来的代码。修改 `asuka.toml`、资源或原生代码，会让开发 App 重新构建并启动。
 
 - **在电脑上运行**（`asuka dev`，或 `--platform mac`、`windows`、`linux`）时，开发 App 在一个窗口中运行。
 - **在手机上运行**时，`--device` 用来指定 iOS 模拟器或 iPhone（名称或 UDID，写 `iphone` 则表示连接着的那台）或 Android 设备（adb 序列号或 AVD 名称）。`--once` 只启动一次应用，不监听文件变化。
-- **在浏览器中运行**时，Asuka 会在 `http://localhost:8790/` 上提供应用并自动打开页面，每次保存的模块都会原地加载到页面中。加上 `--lan` 可以把应用开放给局域网，方便用手机浏览器试用。详见 [Web](web.md)。
+- **在浏览器中运行**时，Asuka 会在 `http://localhost:8790/` 上提供应用并自动打开页面，每次保存都会原地加载到页面中。加上 `--lan` 可以把应用开放给局域网，方便用手机浏览器试用。详见 [Web](web.md)。
 
 要在 iPhone 真机上运行，先把它连上 Mac，解锁后点“信任”，在“设置 › 隐私与安全性”中打开“开发者模式”，并在 Xcode 中添加你的 Apple ID（“设置 › 账户”）。然后运行 `asuka dev --platform ios --device iphone`：第一次它会用你的团队为开发 App 签名并安装，之后 iPhone 通过局域网连接 `asuka dev`。参见 [设备](development.md#设备)。
 
@@ -99,7 +99,7 @@ test "Add counts" {
 - **状态**就是 `state count = 0`：在视图中读取它（`"{count}"`）会把视图绑定到它上面；写入它（`count += 1`）会更新读取了它的地方，而且只更新那些地方。
 - **组件**声明自己的状态、属性和视图；有东西变化时，组件的主体不会重新运行，重新运行的只有读取了变化内容的那些绑定。
 - **样式**基于 flexbox，以点（pt）为单位：`grow`、`gap`、`padding`、`align`、`justify`，以及外观相关的 `background`、`radius`、`shadow` 等。不设置任何样式的应用，看起来就和该平台上的其他应用一样。
-- **测试**就是 `test` 块：`asuka test` 会在一个假宿主上运行它们，它像手机一样对视图进行布局（见[测试](testing.md)）。
+- **测试**就是 `test` 块：`asuka test` 不需要设备就能运行它们，并像手机一样对视图进行布局（见[测试](testing.md)）。
 
 同一份代码就是所有平台上的应用。其余内容见 [Asuka 语言](language.md)。
 

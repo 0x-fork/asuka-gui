@@ -713,9 +713,9 @@ On the web there's nothing to install: `check()` reads the site's
 `version.json` past the browser's caches, and a newer version's
 `relaunch()` reloads the page.
 
-In tests, the fake host has no update module, as a phone has none, until
-`update.fakeHost(update.FakeApp(…))` makes it answer as an installed
-app's host and serve the feed's files (`host.serve(update.Served(url:,
+In tests there's no update module, as on a phone, until
+`update.fakeHost(update.FakeApp(…))` makes the test answer as an
+installed app would and serve the feed's files (`host.serve(update.Served(url:,
 file:))`); `host.log()` says what it downloaded and installed.
 
 ### Build and publish

@@ -32,20 +32,20 @@ test "counts taps" {
 
 ## 工作原理
 
-应用由 Asuka 的**核心**运行，核心用 C 编写，负责应用的组件和状态、布局（flexbox 和 grid，遵循 CSS 规范），以及需要等待的工作（异步函数、task、定时器）。它把发生变化的部分按帧打成一个批次，发给所在平台的**宿主（host）**，宿主再去创建和更新平台自己的视图：
+Asuka 负责运行应用的组件和状态、布局（flexbox 和 grid，遵循 CSS 规范），以及需要等待的工作（异步函数、task、定时器），并创建和更新各平台自己的视图，每帧只更新发生变化的部分：
 
-| 平台 | 宿主 | 使用的视图 |
-| --- | --- | --- |
-| iOS | Swift，核心嵌入其中 | UIKit |
-| Android | Kotlin，核心嵌入其中 | Android Views 和 Material 3 |
-| macOS | Swift，核心和应用嵌入其中 | AppKit |
-| Windows | C，核心和应用嵌入其中 | Win32 和通用控件，绘制成 Windows 11 的样式 |
-| Linux | C，核心和应用嵌入其中（启动时才打开 GTK） | GTK 4 和 libadwaita |
-| Web | JavaScript，核心编译为 WebAssembly | 页面的 DOM 和浏览器自带的控件 |
+| 平台 | 使用的视图 |
+| --- | --- |
+| iOS | UIKit |
+| Android | Android Views 和 Material 3 |
+| macOS | AppKit |
+| Windows | Win32 和通用控件，绘制成 Windows 11 的样式 |
+| Linux | GTK 4 和 libadwaita |
+| Web | 页面的 DOM 和浏览器自带的控件 |
 
 一个文本输入框，在各平台上分别就是 `UITextField`、`EditText`、`NSTextField`、`EDIT` 控件、`GtkEntry` 或 `<input>`；页面的导航栈则分别对应 `UINavigationController`、带返回手势的 Material 顶部应用栏、Mac 窗口中带返回按钮的工具栏，或 libadwaita 的导航视图。因此，一个不设置任何样式的应用，看起来就和该平台上的其他应用一样，无障碍、文本输入和滚动也都和它们表现一致。
 
-开发时，`asuka dev` 在核心的虚拟机（VM）上运行应用：可以跑在 iOS 模拟器、Android 模拟器或手机上，也可以直接跑在电脑上，或者跑在浏览器里。保存后几毫秒内改动就会到达应用，而应用的状态和页面都会保留下来。发布构建则把应用编译成 C，再由平台自己的编译器连同核心一起构建：没有虚拟机，没有垃圾回收，也就没有停顿。
+开发时，`asuka dev` 运行你的应用：可以跑在 iOS 模拟器、Android 模拟器或手机上，也可以直接跑在电脑上，或者跑在浏览器里。保存后几毫秒内改动就会到达应用，而应用的状态和页面都会保留下来。发布构建则用平台自己的编译器把应用预先编译好：没有解释器，没有垃圾回收，也就没有停顿。
 
 同一个应用可以在所有平台上运行。在手机上，它铺满整个屏幕；在桌面端，它是一个用户可以调整大小的窗口，还可以打开更多窗口，并拥有带键盘快捷键的菜单栏（在手机上会被忽略）。如果某个包提供的功能在某个平台上并不存在（比如 Mac 上的传感器或主屏幕小组件），它在那个平台上会告诉你“不可用”，应用可以据此检查，在缺少这项功能时照常运行。
 
@@ -75,7 +75,7 @@ test "counts taps" {
 - [标准库与平台 SDK](stdlib.md)：`std/...` 和 `platform/...` 这些包，以及它们在各平台上分别做什么。
 - [在 Asuka 中调用 C](c.md)：用 `extern` 声明调用 C（应用自己的、某个库的、系统的），`asuka.toml` 的 `[c]`，以及回调。
 - [原生代码](native.md)：原生包——在 Asuka 里声明带类型的模块和视图，在各平台自己的项目里实现：iOS 和 macOS 用 Swift，Android 用 Kotlin，Web 用 JavaScript，Windows 和 Linux 用 C。
-- [开发](development.md)：深入介绍各平台上的 `asuka dev`、设备、测试和常见问题。
+- [开发](development.md)：深入介绍各平台上的 `asuka dev`、设备、编辑器和常见问题。
 - [测试](testing.md)：用 `test` 块测试应用的界面，不需要设备或显示器：点击、输入并检查屏幕上显示的内容；时间只在应用等待时才会推进。
 - [打包与发布](shipping.md)：面向 App Store 和 Google Play 的构建、签名并公证的 Mac 应用、Windows 文件夹、Linux 压缩包与 Flatpak 清单、桌面应用的签名更新，以及 `asuka.toml` 中对应用的描述。
 - [Web](web.md)：同一个应用以 WebAssembly 加页面 DOM 的方式在浏览器中运行；`asuka dev --platform web`、可部署的静态站点、嵌入到其他页面，以及目前还不支持的功能。

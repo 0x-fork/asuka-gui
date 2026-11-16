@@ -159,12 +159,12 @@ Mac では、iCloud のエンタイトルメントを使うには、アプリに
 
 ## テスト
 
-`asuka test` はフェイクホストで動き、フェイクホストには iCloud がありません。Android と同じく、アカウントは利用できず、一覧は空で、`Value` はデフォルト値と、テストが設定した値を保つだけです。呼び出しは「icloud: not available」を投げます。ユーザーのほかのデバイスの役をテストが演じられるフェイクの iCloud は、まだパッケージにありません。
+`asuka test` には iCloud がありません。Android と同じく、アカウントは利用できず、一覧は空で、`Value` はデフォルト値と、テストが設定した値を保つだけです。呼び出しは「icloud: not available」を投げます。ユーザーのほかのデバイスの役をテストが演じられるフェイクの iCloud は、まだパッケージにありません。
 
 ```asuka
 import platform/icloud
 
-test "no iCloud on the fake host" {
+test "no iCloud in tests" {
   expect(!icloud.account().available)
   expect(icloud.files(.documents).isEmpty())
   do {

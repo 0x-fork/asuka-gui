@@ -37,9 +37,9 @@ asuka: 1 of 2 tests failed
 ```
 
 It runs anywhere the CLI does, in CI too, with no simulator or emulator:
-`asuka test` compiles the package with its tests and runs them on
-`asuka-run`, the core with its VM and a fake host, built once for this
-computer with its C compiler. It exits with 1 when a test fails. For the
+`asuka test` compiles the package with its tests and runs them on this
+computer; the first run builds the test runner, which needs a C
+compiler. It exits with 1 when a test fails. For the
 platforms' real views, see [testing on the
 platforms](#testing-on-the-platforms) below.
 
@@ -49,10 +49,10 @@ trying out a component or a function without making an app.
 
 ## How it works
 
-`mount` mounts the view on Asuka's fake host (`core/host/fake`), which
-keeps the views the core makes instead of making the platform's.
-Everything else is your app as it runs: its state, effects and tasks,
-the core's layout, navigation, lists binding their rows, sheets and
+`mount` mounts the view on a stand-in for the platform, which keeps the
+views the app makes instead of making the platform's. Everything else
+is your app as it runs: its state, effects and tasks, Asuka's layout,
+navigation, lists binding their rows, sheets and
 alerts.
 
 The app runs as on an iPhone (iOS, 390 × 844 points). `asuka test
@@ -60,8 +60,8 @@ The app runs as on an iPhone (iOS, 390 × 844 points). `asuka test
 another platform, for what the app does by platform.
 
 What isn't the platform's is how text is measured: 8 points a
-character on 20-point lines, whatever the font. Frames come from the
-core's real layout, so where views are relative to each other holds;
+character on 20-point lines, whatever the font. Frames come from
+Asuka's real layout, so where views are relative to each other holds;
 their sizes to the point don't.
 
 Time moves only when nothing else can run: a `sleep(5s)` in a test, or
@@ -86,7 +86,7 @@ Only what a user could see counts:
 - the selected tab's page, and every tab's title in the tab bar;
 - the sheets, alerts and popovers presented, over the rest;
 - a list's rows that fit its height: Asuka binds a list's rows as the
-  platform asks for them, and so does the fake host, as a collection
+  platform asks for them, and so does `asuka test`, as a collection
   view would;
 - nothing hidden.
 
@@ -113,8 +113,8 @@ next `tap` chooses from it.
 
 ## Platform services and native packages
 
-A [native package](native.md)'s interface is the platform's, which the
-fake host hasn't: its calls throw, as on a platform without the
+A [native package](native.md)'s interface is the platform's, which
+`asuka test` hasn't: its calls throw, as on a platform without the
 service. Give your components what they use through a store or a
 `provide`, and the test its own:
 

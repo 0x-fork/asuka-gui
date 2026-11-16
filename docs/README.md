@@ -36,20 +36,19 @@ test "counts taps" {
 
 ## How it works
 
-Asuka's **core**, in C, runs the app: its components and state, layout
-(flexbox and grid, as the CSS specs say), and the work that waits
-(async functions, tasks, timers). It sends what changed to the
-platform's **host** in one batch a frame, and the host makes and
-updates the platform's own views:
+Asuka runs the app's components and state, its layout (flexbox and
+grid, as the CSS specs say), and the work that waits (async functions,
+tasks, timers), and it makes and updates each platform's own views,
+what changed once a frame:
 
-| Platform | Host | Its views |
-| --- | --- | --- |
-| iOS | Swift, with the core built in | UIKit |
-| Android | Kotlin, with the core built in | Android Views and Material 3 |
-| macOS | Swift, with the core and the app built in | AppKit |
-| Windows | C, with the core and the app built in | Win32 and the common controls, drawn as Windows 11's |
-| Linux | C, with the core and the app built in (GTK opened as it starts) | GTK 4 and libadwaita |
-| The web | JavaScript, with the core as WebAssembly | The page's DOM and the browser's own controls |
+| Platform | Its views |
+| --- | --- |
+| iOS | UIKit |
+| Android | Android Views and Material 3 |
+| macOS | AppKit |
+| Windows | Win32 and the common controls, drawn as Windows 11's |
+| Linux | GTK 4 and libadwaita |
+| The web | The page's DOM and the browser's own controls |
 
 A text field is a `UITextField`, an `EditText`, an `NSTextField`, an
 `EDIT` control, a `GtkEntry` or an `<input>`; a stack of screens is a
@@ -58,12 +57,11 @@ Mac window's toolbar with its back button, or libadwaita's navigation
 view. So an app that sets no style looks as the platform's apps do, and
 gets their accessibility, text input and scrolling as they have them.
 
-While you work, `asuka dev` runs the app on the core's VM: on the
-simulator, an emulator or a phone, on your computer, or in your
-browser. A save reaches the app in milliseconds, and the app keeps its
-state and its screens. A release build compiles the app to C, built
-with the core by the platform's own compiler: no VM, no garbage
-collector, no pauses.
+While you work, `asuka dev` runs the app on the simulator, an emulator
+or a phone, on your computer, or in your browser. A save reaches the
+app in milliseconds, and the app keeps its state and its screens. A
+release build compiles the app ahead of time with the platform's own
+compiler: no interpreter, no garbage collector, no pauses.
 
 The same app runs everywhere. On a phone it fills the screen; on a
 desktop it's a window the user resizes, and it can open more windows
@@ -143,7 +141,7 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
   Swift on iOS and macOS, Kotlin on Android, JavaScript on the web, C
   on Windows and Linux.
 - [Development](development.md): `asuka dev` in depth on each platform,
-  devices, tests and common problems.
+  devices, editors and common problems.
 - [Testing](testing.md): your app's interface in `test` blocks, with no
   device or display: tap, type and check what the screen shows, and
   time that moves only when the app waits.

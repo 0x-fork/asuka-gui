@@ -1,10 +1,9 @@
 # Getting started
 
-Apps are written in the Asuka language ([the language](language.md)) and
-run on Asuka's core, a C library, with each platform's own widgets. The
-`asuka` CLI compiles them and builds the core for each platform with
-that platform's own compiler; one command makes an app, and another
-runs it, reloading as you save.
+Apps are written in the Asuka language ([the language](language.md))
+and show each platform's own widgets. The `asuka` CLI builds them for
+each platform with that platform's own tools; one command makes an app,
+and another runs it, reloading as you save.
 
 ## What you need
 
@@ -15,12 +14,10 @@ The CLI, and for each platform you run on, the tools that build for it:
   Android Studio and, from its SDK Manager, an NDK (SDK Tools → NDK),
   and an emulator from its Device Manager, or a phone with USB debugging
   on. Asuka finds the SDK in its usual place, or at `ANDROID_HOME`, and
-  Android Studio's Java; it builds the core with the NDK's clang, and the
-  app with Gradle. On an Arm PC, the NDK and the emulator run emulated
+  Android Studio's Java, and builds with the NDK and Gradle. On an Arm PC, the NDK and the emulator run emulated
   (they're x64), and the emulator needs an x86_64 system image.
 - **macOS**: a Mac, macOS 11 or later, with Xcode's command line tools
-  (`xcode-select --install`; Xcode includes them): their clang builds
-  the core.
+  (`xcode-select --install`; Xcode includes them).
 - **Windows**: a PC with Windows 10 or 11, x64 or Arm, with LLVM's clang
   (`winget install LLVM.LLVM`), or [Zig](https://ziglang.org/download)
   with `ASUKA_CC=zig`. `WebView` and `Video` use the Microsoft Edge
@@ -39,11 +36,10 @@ The CLI, and for each platform you run on, the tools that build for it:
   audio GStreamer; a package that needs a library that isn't there says
   which, as an error.
 - **The web**: a browser, and [Zig](https://ziglang.org/download), which
-  builds the core as WebAssembly.
+  builds for WebAssembly.
 
 With Zig installed, `asuka build` also makes a Windows or Linux app from
-any system (the core cross-compiled by `zig cc`), and a Mac app from a
-Mac.
+any system, and a Mac app from a Mac.
 
 ## Install the CLI
 
@@ -86,11 +82,9 @@ state kept. Its output and its errors are in the terminal,
 with each reload's report (`asuka: reloaded in 2.1 ms, 3 states kept`).
 
 `asuka dev` builds the platform's **player** once: the app's shell (its
-icon, its name, its permissions) with Asuka's core, but none of the
-app's code. It installs and launches it, and the player connects back to
-`asuka dev`, which compiles the app to bytecode and sends it; on each
-save it compiles again and sends the new module, which the player loads
-in place. A save that doesn't compile prints its errors, and the app
+icon, its name, its permissions), but none of the app's code. It
+installs and launches it, then sends it your app; on each save it
+compiles again, and the player loads the new version in place. A save that doesn't compile prints its errors, and the app
 keeps running what it had. Changing `asuka.toml`, the assets or native
 code builds and launches the player again.
 
@@ -101,7 +95,7 @@ code builds and launches the player again.
   adb serial or an AVD's name). `--once` launches the app without
   watching.
 - **In a browser**, Asuka serves the app at `http://localhost:8790/` and
-  opens it; each save's module loads into the page in place. `--lan`
+  opens it; each save loads into the page in place. `--lan`
   serves it to your network, to try it in a phone's browser. See [the
   web](web.md).
 
@@ -153,8 +147,8 @@ test "Add counts" {
 - **Style** is flexbox, in points: `grow`, `gap`, `padding`, `align`,
   `justify`, and the look (`background`, `radius`, `shadow`...). An app
   that sets none looks as the platform's apps do.
-- **Tests** are `test` blocks: `asuka test` runs them on a fake host that
-  lays the views out as a phone would (see [Testing](testing.md)).
+- **Tests** are `test` blocks: `asuka test` runs them with no device,
+  laying the views out as a phone would (see [Testing](testing.md)).
 
 The same code is the app on every platform. [The language](language.md)
 has the rest of it.

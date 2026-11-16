@@ -252,7 +252,7 @@ The package doesn't use CloudKit's databases (records, queries, sharing).
 
 ## Testing
 
-`asuka test` runs on the fake host, which has no iCloud: the account
+`asuka test` has no iCloud: the account
 isn't available, the lists are empty, a `Value` keeps its default and
 what the test sets it to, and the calls throw "icloud: not available",
 as on Android. The package has no fake iCloud yet that a test could play
@@ -261,7 +261,7 @@ the other devices with.
 ```asuka
 import platform/icloud
 
-test "no iCloud on the fake host" {
+test "no iCloud in tests" {
   expect(!icloud.account().available)
   expect(icloud.files(.documents).isEmpty())
   do {

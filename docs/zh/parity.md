@@ -178,7 +178,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 |---|---|---|
 | 实时重载并保留状态 | 预览、Fast Refresh | ✓ `asuka dev`：播放器（不含应用的核心）运行应用的字节码，每次保存后在几毫秒内换上新的字节码，并保留所有 `state`；手机、桌面和浏览器都是如此（见[开发](development.md)） |
 | 在手机上运行 | Xcode 的 Run、Expo 的开发构建 | ✓ `asuka dev --platform ios` 或 `android`：iOS 模拟器、Android 模拟器、Android 手机（`adb reverse`），以及通过 USB 或 Wi-Fi 连接的 iPhone（`--device iphone`，由你的团队签名） |
-| 测试 | XCTest、Jest 加 React Native Testing Library | ✓ `asuka test`：`test` 块，应用挂载在一个模拟宿主上（`mount`、`app.tap`、`app.expect`），设备相关的包都有测试替身（见[测试](testing.md)） |
+| 测试 | XCTest、Jest 加 React Native Testing Library | ✓ `asuka test`：`test` 块，应用无需设备即可挂载（`mount`、`app.tap`、`app.expect`），设备相关的包都有测试替身（见[测试](testing.md)） |
 | 发布构建和签名 | Xcode、EAS Build | ✓ `asuka build`：应用编译成 C，和核心一起构建；生成 `.ipa`、`.aab`、经过签名和公证的通用 `.app`（或 Mac App Store 用的 `.pkg`）、包含已签名 `.exe` 的 Windows 文件夹、附带 `.tar.gz` 和 Flatpak 清单的 Linux 安装前缀、静态网站（见[发布](shipping.md)） |
 | 上传到应用商店 | Xcode、EAS Submit | ✓ `asuka publish`：TestFlight、App 审核、Google Play 的各个发布轨道；桌面构建及其签名更新；暂不支持 Mac App Store |
 | GUI 测试 | XCUITest、Detox、Maestro | ◐ 桌面应用可以执行操作步骤并截图（`ASUKA_SCRIPT`、`ASUKA_SNAPSHOT`、`ASUKA_DUMP`），在 Linux 的 CI 里可以跑在 Xvfb 下；Asuka 自己的 GUI 测试会在 iOS 模拟器、Android 模拟器和无头 Chrome 里驱动示例，但应用还没有可用的运行器 |
