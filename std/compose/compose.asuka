@@ -1,0 +1,204 @@
+// Package asuka/compose shows the system's composers, filled in for the
+// user to send: a mail (MFMailComposeViewController on iOS, the mail
+// app elsewhere, through mailto:), a text message (iOS's Messages,
+// Android's SMS app). The user sends it, or not: what they did comes
+// back, as the platform says it.
+//
+//   let r = try await compose.mail(to: ["a@example.com"], subject: "Hi", body: "…")
+
+import asuka/host
+import asuka/json
+
+/// What the user did with the composer.
+pub enum Result {
+  cancelled
+  sent
+  /// Saved as a draft.
+  saved
+  /// The platform doesn't say (a mail app was opened).
+  unknown
+}
+
+/// A file to attach: a path (or an asset's), with its type and name.
+pub struct Attachment {
+  source: string
+  /// Its MIME type ("": from its extension).
+  type: string = ""
+  /// Its name in the message ("": the file's).
+  name: string = ""
+}
+
+/// What the device can compose.
+pub struct Can {
+  /// A mail: in a composer, or a mail app.
+  mail: bool = false
+  /// The system's mail composer (iOS, with an account set up).
+  mailComposer: bool = false
+  text: bool = false
+  textAttachments: bool = false
+}
+
+struct WireAttachment {
+  source: string
+  type: string
+  name: string
+}
+
+fn base(path: string) -> string {
+  let p = path.split("?")[0].split("#")[0]
+  return p.split("/").last() ?? p
+}
+
+fn typeOf(name: string) -> string {
+  let ext = name.lower().split(".").last() ?? ""
+  return match ext {
+    "pdf" => "application/pdf"
+    "png" => "image/png"
+    "jpg" | "jpeg" => "image/jpeg"
+    "gif" => "image/gif"
+    "heic" => "image/heic"
+    "txt" => "text/plain"
+    "html" | "htm" => "text/html"
+    "csv" => "text/csv"
+    "json" => "application/json"
+    "zip" => "application/zip"
+    "mp4" => "video/mp4"
+    "mov" => "video/quicktime"
+    "m4a" => "audio/mp4"
+    "mp3" => "audio/mpeg"
+    _ => "application/octet-stream"
+  }
+}
+
+fn wire(list: [Attachment]) -> [WireAttachment] = list.map(a => {
+  let name = if a.name.isEmpty() { base(a.source) } else { a.name }
+  return WireAttachment(source: a.source, type: if a.type.isEmpty() { typeOf(name) } else { a.type }, name: name)
+})
+
+let unreserved = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~!$'()*+,;:@/?"
+let hexDigits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"]
+
+/// s percent-encoded for a mailto: URL (RFC 6068).
+pub fn escape(s: string) -> string {
+  var out = ""
+  for ch in s.chars() {
+    if unreserved.contains(ch) && ch != "&" && ch != "=" && ch != "%" {
+      out = out + ch
+      continue
+    }
+    let b = ch.bytes()
+    var i = 0
+    while i < b.count() {
+      let v = b.get(i) ?? 0
+      out = out + "%" + hexDigits[v / 16] + hexDigits[v % 16]
+      i += 1
+    }
+  }
+  return out
+}
+
+fn mailto(to: [string], cc: [string], bcc: [string], subject: string, text: string) -> string {
+  var u = "mailto:" + to.map(escape).joined(separator: ",")
+  var q: [string] = []
+  if !cc.isEmpty() {
+    q.push("cc=" + cc.map(escape).joined(separator: ","))
+  }
+  if !bcc.isEmpty() {
+    q.push("bcc=" + bcc.map(escape).joined(separator: ","))
+  }
+  if !subject.isEmpty() {
+    q.push("subject=" + escape(subject))
+  }
+  if !text.isEmpty() {
+    q.push("body=" + escape(text.replace("\r\n", "\n").replace("\n", "\r\n")))
+  }
+  if !q.isEmpty() {
+    u = u + "?" + q.joined(separator: "&")
+  }
+  return u
+}
+
+/// The text of an HTML body, roughly: its tags gone, its line breaks
+/// kept, for a mail app that takes only text.
+pub fn plainText(html: string) -> string {
+  var out = ""
+  var inTag = false
+  var tag = ""
+  for ch in html.chars() {
+    if inTag {
+      if ch == ">" {
+        inTag = false
+        let t = tag.lower()
+        if t.hasPrefix("br") || t.hasPrefix("/p") || t.hasPrefix("/div") || t.hasPrefix("/li") || t.hasPrefix("/h") {
+          out = out + "\n"
+        }
+      } else {
+        tag = tag + ch
+      }
+    } else if ch == "<" {
+      inTag = true
+      tag = ""
+    } else {
+      out = out + ch
+    }
+  }
+  return out.replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&").trim()
+}
+
+struct MailArgs {
+  to: [string]
+  cc: [string]
+  bcc: [string]
+  subject: string
+  body: string
+  html: bool
+  text: string
+  mailto: string
+  attachments: [WireAttachment]
+}
+
+struct MessageArgs {
+  to: [string]
+  subject: string
+  body: string
+  attachments: [WireAttachment]
+}
+
+fn resultOf(b: bytes) -> Result = match host.readU8(b, 0) {
+  0 => .cancelled
+  1 => .sent
+  2 => .saved
+  _ => .unknown
+}
+
+fn unavailable(e: Error) -> Error = if e.message == "unavailable" { Error("compose: unavailable") } else { e }
+
+/// Shows a mail composer with the message (body HTML when html), and
+/// answers what the user did; a device with no way to send mail throws
+/// "compose: unavailable".
+pub async fn mail(to: [string] = [], cc: [string] = [], bcc: [string] = [], subject: string = "", body: string = "", html: bool = false, attachments: [Attachment] = []) throws -> Result {
+  let text = if html { plainText(body) } else { body }
+  let a = MailArgs(to: to, cc: cc, bcc: bcc, subject: subject, body: body, html: html, text: text,
+    mailto: mailto(to, cc, bcc, subject, text), attachments: wire(attachments))
+  do {
+    return resultOf(try await host.call("compose", "mail", json.encode(a).bytes()))
+  } catch e {
+    throw unavailable(e)
+  }
+}
+
+/// Shows a text message composer, and answers what the user did.
+pub async fn message(to: [string] = [], subject: string = "", body: string = "", attachments: [Attachment] = []) throws -> Result {
+  let a = MessageArgs(to: to, subject: subject, body: body, attachments: wire(attachments))
+  do {
+    return resultOf(try await host.call("compose", "message", json.encode(a).bytes()))
+  } catch e {
+    throw unavailable(e)
+  }
+}
+
+/// What the device can compose.
+pub async fn check() throws -> Can {
+  let b = try await host.call("compose", "can", bytes())
+  return Can(mail: host.readU8(b, 0) == 1, mailComposer: host.readU8(b, 1) == 1, text: host.readU8(b, 2) == 1, textAttachments: host.readU8(b, 3) == 1)
+}

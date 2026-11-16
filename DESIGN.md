@@ -1239,6 +1239,25 @@ Info.plist, a privacy manifest of its own, signed with the app;
 `../../Frameworks` from an extension); on Android each beside
 `libasuka.so` in each ABI's `jniLibs`, loaded by name from the APK.
 
+Crash reports (asuka/crash) are the core's record of the run
+(`core/src/std/crash.c`, internal/crashrun and sdk/crash's in C, their
+files' formats the same): the host begins it as the app starts
+(`asuka_crash_start`, after `asuka_set_app_dir`, with JSON of the
+device and the app; only for an app that reads its reports, which
+lang/cgen marks, or the dev player), and the record keeps the run's
+context in `crashes/runs/<run>.ctx` (breadcrumbs, values, foreground,
+written as they change) and the core's own fatal error in its `.crash`
+(`ak_panic`'s message and the VM's stack), locked (flock) while the run
+lives. What only the host sees it writes in `crashes/inbox` (iOS: an
+uncaught NSException with its frames' binaries, MetricKit's payloads;
+Android: an uncaught JVM exception with every thread's stack, how the
+last runs ended from `getHistoricalProcessExitReasons` with a
+tombstone or an ANR's traces) and says so (`asuka_crash_notify`).
+`crash.reports()` collects in a spawn (it reads files): ended runs'
+fatal errors and the inbox become reports with the context of the run
+they were in, each once, kept until the app deletes them; what the
+system reports again of a crash already reported is left out.
+
 ## CLI (`cmd/asuka`)
 
 ```
@@ -3557,15 +3576,28 @@ core/src/abi/web.c is the core's side:
   answer in the same buffer, so nothing is allocated per measure. Events
   go in encoded (`asuka_event`), as the mobile hosts send them; `post`
   asks the page for a task (`MessageChannel`), and timers are the
-  page's (`timer_set`, `timer_clear`). The little of WASI the C library
-  calls (the clock, randomness, the console) is answered by `core.js`.
+  page's (`timer_set`, `timer_clear`). What the C library calls of WASI
+  (the clock, randomness, the console, files) `wasi.js` answers.
 - The page has one thread, which is the core's main thread: the core
   runs in the calls the page makes into it (events, list requests,
   posted work, timers). The host never calls into the core while the
   core is calling it: events raised meanwhile (a field's focus as the
   core focuses it) and work that would call back (a list tiling) wait
-  until the core returns, as on the other hosts. The wasm build has no
-  threads, so `spawn` runs its work in place, on the page's thread.
+  until the core returns, as on the other hosts.
+- `spawn` runs on the page's Web Workers (`spawn.js`): up to four (the
+  browser's cores less the page's), started as `spawn` first needs one,
+  each an instance of the same compiled `asuka.wasm` (the module posted
+  to it) with the same app (asuka dev's bytecode, which a reload sends
+  again, or the app compiled in), whose init runs there without a UI
+  (`asuka_worker_start`: apply and measure go nowhere, natives aren't
+  there, the app's databases are the page's). The page's core sends a
+  job: the closure's function by its index in the module (the VM's and
+  lang/cgen's code share it), its captures in `vm/keep.c`'s encoding,
+  which names its types; the worker's core runs it and answers its
+  result or error the same way, and the page's settles the future
+  (`asuka_spawn_done`). A cancelled job that hasn't started never does;
+  one that has runs to its end, its answer dropped. A worker that traps
+  is replaced; one whose app's init fails fails its jobs with why.
 - Each view is an absolutely positioned element at its frame; children
   are placed from the frame's corner, so a border is drawn inside the
   frame over the content (an inset outline), as a layer's is. A measured
@@ -3599,17 +3631,21 @@ core/src/abi/web.c is the core's side:
   last in the shader's code, since no compiler runs in the page; the
   host compiles it with WebGL 2 and sets the uniforms' lanes by their
   GLSL types.
-- Files: Go's `os` on `js/wasm` calls Node's `fs` API; the page gives
-  it a file system in memory that answers at once (Go waits for each
-  callback), the app's data directory (`/data/<name>`, `ASUKA_DATA`)
-  loaded from IndexedDB before Go starts and written back as it changes
-  (a large file in chunks of 64 KiB, only those changed; each data
-  directory's changes in one IndexedDB transaction). Tabs share it: a
-  tab writes holding the directory's Web Lock, then names the files on a
-  `BroadcastChannel`, and the others read them again (one a tab changed
-  and hasn't written stays its own, written whole: last writer wins,
-  never a mix of chunks).
-- SQLite: `asuka/sdk/sqlite`'s C (SQLite and `sdk/sqlite/csrc/asq.c`), built to
+- Files: the core's file calls (asuka/fs, the crash record, what the C
+  library opens) are WASI's, which `wasi.js` answers from a file system
+  in memory (`fs.js`, `/` preopened), at once: the app's directory
+  (`/data/<name>`, the core's `appDir`) loaded from IndexedDB before the
+  core starts and written back as it changes (a large file in chunks of
+  64 KiB, only those changed; each data directory's changes in one
+  IndexedDB transaction). Tabs share it: a tab writes holding the
+  directory's Web Lock, then names the files on a `BroadcastChannel`, and
+  the others read them again (one a tab changed and hasn't written stays
+  its own, written whole: last writer wins, never a mix of chunks).
+  spawn's workers each keep a copy: every change is numbered (a journal),
+  a job carries what changed since the worker's last (but its own
+  changes), and its answer what the job changed, which the page takes as
+  another writer's.
+- SQLite: the sqlite plugin's C (SQLite and `sdk/sqlite/csrc/asq.c`), built to
   WebAssembly by `sdk/sqlite/internal/build` (zig, `wasm32-wasi`, `-Os`) with
   `sdk/sqlite/csrc/asq_wasm.c` as its system (`SQLITE_OS_OTHER`, one thread:
   a VFS, the time zone and randomness imported from JavaScript, no WASI
@@ -3619,14 +3655,16 @@ core/src/abi/web.c is the core's side:
   `asqlite.wasm`. It runs in a worker of the
   page's (`platform/web/src/sqlite-worker.js`; `sqlite-engine.js` the
   module, `sqlite-vfs.js` its files, `sqlite-store.js` where they're
-  kept). Go's side (`sdk/sqlite/lib_js.go`) posts each call to the worker
-  through `sqlite.js` and waits on a channel; the page writes the answer
-  into Go's buffer (one too long is kept page-side for `TAKE`, answered
-  at once) and wakes the goroutine. The page's callbacks can't wait (the
-  page waits for them), so a call on the goroutine a callback runs on
-  fails at once: `host/web` brackets them with `internal/jsloop`, which
-  tells that goroutine by its `g` (other goroutines run while the page
-  calls back into Go, and may wait). The data directory's databases are
+  kept). std/sqlite's builtins (`core/src/sqlite/sqlite.c`) send each
+  call through `sqlite.js` (`js_sqlite_send`); the worker runs it whole,
+  a query's chunks gathered into one rows answer with the tables it read
+  and wrote, and the answer comes back to the core (`asuka_sqlite_done`),
+  which decodes the rows by their descriptor as on every platform. The
+  main thread can't wait for the worker, so what runs on it elsewhere
+  (`openConn`, `execNow`, `migrateConn`) is sent without waiting, in
+  order before what follows: the page numbers the connection; one that
+  didn't open fails each statement with why, and a call that failed
+  unseen fails its connection's next one. The data directory's databases are
   files of the origin private file system, read and written in place
   through sync access handles; without them, IndexedDB in 64 KiB chunks,
   written once each call returns. One connection per file, a rollback
@@ -3635,10 +3673,17 @@ core/src/abi/web.c is the core's side:
   keeps it until another tab asks on a `BroadcastChannel` and it isn't
   in a transaction; a statement that needs it meanwhile gets
   `SQLITE_BUSY` at once while the lock comes (SQLite never sleeps there),
-  and Go runs it again (`library.waits` is false). Between the page's own
-  connections to a file, the VFS locks as the unix VFS does between
-  processes. A database the page's files kept (before) moves to the
-  worker as it's first opened.
+  and the worker runs it again, outside a transaction, until the busy
+  timeout. Between the page's own connections to a file, the VFS locks as
+  the unix VFS does between processes. A database the page's files kept
+  (before) moves to the worker as it's first opened.
+- Crash reports: the core keeps the run's record as on the phones
+  (`core/src/std/crash.c`, begun by `core.js` with the browser as the
+  device), in the app's files; a page marks its run alive in
+  `localStorage` while it's open (`crash.js`: the core asks through
+  `crash_alive`; spawn's workers, which read the reports, are told the
+  marks and where the page's record is), writes uncaught JavaScript errors
+  to the inbox, and on the core's trap keeps its `.crash` file at once.
 - Native packages: each package's `web/` module, registered by import
   path (`native.js`), its methods decoding the core's bytes as the
   native hosts do; the host's own modules are in

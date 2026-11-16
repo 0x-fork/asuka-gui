@@ -52,8 +52,10 @@ type Checker struct {
 	genericCalls []genericCall
 	// The built-in methods' and functions' signatures that name the
 	// prelude's types, read with this checker's prelude.
-	sigs  map[*Method]parsedSig
-	fsigs map[*RuntimeFunc]parsedSig
+	sigs        map[*Method]parsedSig
+	fsigs       map[*RuntimeFunc]parsedSig
+	jsonTP      map[*TypeParam]bool // type parameters read or written as JSON: each call's argument must be JSON
+	bindingArgs bool                // inferArgs checks each argument as a binding (a store's)
 }
 
 // NewChecker makes a checker and checks the prelude with it.

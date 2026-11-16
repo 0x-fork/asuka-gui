@@ -1,0 +1,76 @@
+// Package asuka/push is push notifications: register gives the token the
+// app's server sends to (APNs' on iOS and macOS, FCM's on Android, the
+// browser's push subscription on the web), and the pushes that come and
+// are tapped come as streams. A push with an alert shows as a
+// notification (asuka/notify's categories, channels and present apply).
+//
+//   let r = try await push.register()
+//   try await api.saveToken(r.token, r.service)
+//   for await m in push.opened() { navigate(m.data["link"] ?? "/") }
+//
+// Each platform's host does it as its apps do, through asuka/host.
+
+import asuka/host
+import asuka/json
+import asuka/notify
+
+/// Where the app's server sends to.
+pub struct Registration {
+  /// The device's token: APNs' (hex), FCM's, or the web's subscription
+  /// (JSON).
+  token: string = ""
+  /// "apns", "fcm" or "webpush".
+  service: string = ""
+  /// The user allows the notifications pushes show.
+  allowed: bool = false
+}
+
+/// A push: what it shows, and its data (the payload's keys).
+pub struct Message {
+  id: string = ""
+  title: string = ""
+  body: string = ""
+  data: [string: string] = [:]
+  subtitle: string = ""
+  category: string = ""
+  thread: string = ""
+  channel: string = ""
+  image: string = ""
+  badge: int = 0
+  summary: string = ""
+  sender: notify.Person? = none
+  conversation: notify.Conversation? = none
+
+  /// Makes it a message: sender said its body in c (notify's from).
+  fn from(sender: notify.Person, c: notify.Conversation) -> Message {
+    var m = self
+    m.sender = sender
+    m.conversation = c
+    return m
+  }
+}
+
+/// Registers the device for pushes, asking the user to allow the
+/// notifications they show (the first time), and answers where the
+/// app's server sends to.
+pub async fn register() throws -> Registration {
+  let b = try await host.call("push", "register", bytes())
+  return try json.decode(b.string())
+}
+
+/// The pushes the user taps (or acts on): the one that opened the app
+/// too, which waits until this is read.
+pub fn opened() -> Stream<Message> = messages("nextOpened")
+
+/// The pushes that come while the app runs (and data messages that wake
+/// it).
+pub fn received() -> Stream<Message> = messages("nextReceived")
+
+fn messages(method: string) -> Stream<Message> = Stream(give => {
+  for await b in host.next("push", method) {
+    let m: Message? = try? json.decode(b.string())
+    if let x = m {
+      give(x)
+    }
+  }
+})

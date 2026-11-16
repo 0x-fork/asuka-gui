@@ -1,4 +1,4 @@
-//go:build !darwin && !linux && !windows && !js
+//go:build !darwin && !linux && !windows
 
 package fswatch
 

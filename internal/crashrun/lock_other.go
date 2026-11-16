@@ -1,4 +1,4 @@
-//go:build !unix && !windows && !(js && wasm)
+//go:build !unix && !windows
 
 package crashrun
 

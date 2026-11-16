@@ -59,7 +59,10 @@ the built-in functions and methods) into one module.
 | interface | ref | a struct or enum value; calls go through CALLI |
 | `void` | void | |
 
-Generic code is compiled once per instantiation (monomorphized).
+Generic code is compiled once per instantiation (monomorphized). A
+generic store too: its function, its env's shape and its fns are made
+per instantiation (`Box<int>`, `Box<[string]>`), and a let of its type
+parameters is a memo, so its env holds references whatever T is.
 
 Shapes are named so that JSON and hot reload find them: a type of the
 root package or the prelude by its name (`Todo`), of another package by
@@ -261,7 +264,8 @@ component makes reach its members through the env: those made before
 the env is whole (its lets' memos) capture a box (VBOX) the env is put
 in (VSET) once it's made, the rest the env itself. Its `fn` members are
 functions taking the env first. A store is the same, and its value is
-its env.
+its env. In a store's fns,
+`self` is the env.
 
 The function's body, in order:
 
@@ -733,7 +737,10 @@ R` has no body: the runtime implements it as the builtin `<name>.f` (a
 method's `native fn` in `struct T`: `<name>.T.f`, the receiver first). Its
 function's body is CALLB of that builtin with the parameters (AWAIT of
 the future it returns when it's `async`), so it's called, passed and
-compiled as any function. Other packages reach platform code through
+compiled as any function. A generic one (`native fn rows<T>(a: bytes) ->
+[T]`) passes, after the parameters, each type argument's descriptor
+(rt/json.h's; `-` for a type JSON can't say), as a string constant of
+its instantiation. Other packages reach platform code through
 native interfaces instead.
 
 The builtins are C, in core/src/std (a file and a table per package,

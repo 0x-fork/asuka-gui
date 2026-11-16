@@ -79,6 +79,7 @@ func Run(runner string, m *bytecode.Module, test bool, pattern string) (string, 
 	}
 	args = append(args, p)
 	cmd := exec.Command(runner, args...)
+	cmd.Env = append(os.Environ(), PluginEnv(m)...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err = cmd.Run()
@@ -119,6 +120,7 @@ func RunC(m *bytecode.Module, sanitize, test bool, pattern string) (string, erro
 	}
 	args = append(args, "-aot")
 	cmd := exec.Command(exe, args...)
+	cmd.Env = append(os.Environ(), PluginEnv(m)...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err = cmd.Run()

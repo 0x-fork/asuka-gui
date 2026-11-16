@@ -75,10 +75,11 @@ object AsukaNative {
         } else {
             System.loadLibrary("asuka")
         }
-        // Where the Go code keeps its files (asuka/sdk/store). A library from
-        // before asuka_setenv hasn't it: nothing to set then.
+        // The app's directory (asuka/fs's appDir, where the crash record is
+        // kept too): the core reads ASUKA_DATA. A library from before
+        // asuka_setenv hasn't it: nothing to set then.
         runCatching { setenv("ASUKA_DATA", context.filesDir.absolutePath) }
-        // asuka/sdk/crash's record of the run, before the Go code's main.
+        // asuka/crash's record of the run, before the app's init.
         AsukaCrash.start(context)
     }
 }

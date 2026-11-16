@@ -1,0 +1,311 @@
+// Package asuka/icloud is iCloud on iOS and macOS: whether there's an
+// account, a key-value store of small values the user's devices share
+// (Value), and the app's files in its iCloud containers, listed as they
+// change, downloaded and uploaded by the system, with their conflicts.
+// The app needs the iCloud capability (its containers' and key-value
+// store's entitlements: docs/icloud.md).
+//
+//   let account = icloud.account()            // tracked
+//   let files = icloud.files(.documents)      // tracked: as iCloud changes them
+//   let size = icloud.Value("textSize", 17.0) // a store, kept in iCloud
+//
+// Elsewhere (Android, Windows, Linux, the web) there's no iCloud: the
+// account isn't available, the lists are empty, a Value keeps its
+// default, and the calls throw "icloud: not available".
+
+import asuka/host
+import asuka/json
+
+/// The user's iCloud account, as the app sees it.
+pub struct Account {
+  /// Signed in, with iCloud Drive (or the key-value store) on for the app.
+  available: bool = false
+  /// The account's identity token, opaque: it changes when another
+  /// account signs in.
+  id: string = ""
+}
+
+/// Which of the app's files a list has.
+pub enum Scope {
+  /// In the containers' Documents: what iCloud Drive shows.
+  documents
+  /// The rest of the containers.
+  data
+}
+
+/// Whether a file is on the device.
+pub enum Status {
+  /// Only in iCloud: readFile downloads it.
+  notDownloaded
+  /// On the device, an older version than iCloud's.
+  downloaded
+  current
+}
+
+/// One of the app's files in iCloud.
+pub struct File {
+  path: string = ""
+  name: string = ""
+  dir: bool = false
+  size: int = 0
+  /// In milliseconds since 1970.
+  created: int = 0
+  modified: int = 0
+  status: Status = .current
+  downloading: bool = false
+  /// From 0 to 1.
+  downloadProgress: float = 0.0
+  uploading: bool = false
+  uploaded: bool = false
+  uploadProgress: float = 0.0
+  /// Other devices' versions wait to be settled (conflicts, resolve).
+  conflicts: bool = false
+  downloadError: string = ""
+  uploadError: string = ""
+}
+
+/// A version of a file another device saved, in conflict with this
+/// one's.
+pub struct Version {
+  id: string = ""
+  path: string = ""
+  name: string = ""
+  modified: int = 0
+  /// The device that saved it.
+  device: string = ""
+}
+
+// What the hosts say (internal/icloudspec).
+struct WireFile {
+  path: string = ""
+  name: string = ""
+  dir: bool = false
+  size: int = 0
+  created: int = 0
+  modified: int = 0
+  status: Status = .current
+  downloading: bool = false
+  downloadPercent: float = 0.0
+  uploading: bool = false
+  uploaded: bool = false
+  uploadPercent: float = 0.0
+  conflicts: bool = false
+  downloadError: string = ""
+  uploadError: string = ""
+}
+
+fn fileOf(w: WireFile) -> File = File(path: w.path, name: w.name, dir: w.dir, size: w.size, created: w.created,
+  modified: w.modified, status: w.status, downloading: w.downloading, downloadProgress: w.downloadPercent / 100.0,
+  uploading: w.uploading, uploaded: w.uploaded, uploadProgress: w.uploadPercent / 100.0, conflicts: w.conflicts,
+  downloadError: w.downloadError, uploadError: w.uploadError)
+
+struct Event {
+  type: string = ""
+  account: Account? = none
+  reason: string = ""
+  keys: [string] = []
+  scope: string = ""
+  files: [WireFile] = []
+}
+
+/// What iCloud says, as one value: the account, each scope's files, and
+/// how many times each key changed on another device.
+struct Seen {
+  account: Account = Account()
+  documents: [File] = []
+  data: [File] = []
+  changed: [string: int] = [:]
+  all: int = 0
+}
+
+fn wireError(e: Error) -> Error {
+  let m = e.message
+  if m.hasPrefix("not available") || m.hasPrefix("unsupported") || m.hasPrefix("no module") {
+    return Error("icloud: not available")
+  }
+  if m.hasPrefix("icloud:") {
+    return e
+  }
+  return Error("icloud: {m}")
+}
+
+async fn call(method: string, args: bytes) throws -> bytes {
+  do {
+    return try await host.call("icloud", method, args)
+  } catch e {
+    throw wireError(e)
+  }
+}
+
+// The host's events, folded: one reader of its queue, while something
+// reads what it knows (account, files, a Value).
+fn follow() -> Stream<Seen> = Stream(give => {
+  var seen = Seen()
+  defer {
+    host.send("icloud", "unwatch", json.encode(["scope": "documents"]).bytes())
+    host.send("icloud", "unwatch", json.encode(["scope": "data"]).bytes())
+  }
+  let ab = (try? await call("account", bytes())) ?? bytes()
+  let first: Account? = try? json.decode(ab.string())
+  if let a = first {
+    seen.account = a
+    give(seen)
+  }
+  host.send("icloud", "watch", json.encode(["scope": "documents"]).bytes())
+  host.send("icloud", "watch", json.encode(["scope": "data"]).bytes())
+  for await b in host.next("icloud", "next") {
+    let got: Event? = try? json.decode(b.string())
+    if let e = got {
+      match e.type {
+        "account" => {
+          if let a = e.account {
+            seen.account = a
+          }
+        }
+        "kv" => {
+          if e.keys.isEmpty() {
+            seen.all += 1
+          }
+          for k in e.keys {
+            seen.changed[k] = (seen.changed[k] ?? 0) + 1
+          }
+        }
+        "files" => {
+          let fs = e.files.map(fileOf)
+          if e.scope == "data" {
+            seen.data = fs
+          } else {
+            seen.documents = fs
+          }
+        }
+        _ => {}
+      }
+      give(seen)
+    }
+  }
+})
+
+let followed = live(Seen(), follow)
+
+/// The account, tracked: read in a binding, it follows sign-ins and
+/// sign-outs while it's read.
+pub fn account() -> Account = followed().account
+
+/// The app's files in scope, tracked: as iCloud lists them, and again
+/// as they change (here or on another device).
+pub fn files(scope: Scope) -> [File] = match scope {
+  .documents => followed().documents
+  .data => followed().data
+}
+
+/// How many times key changed on another device (tracked).
+fn changes(key: string) -> int {
+  let s = followed()
+  return (s.changed[key] ?? 0) + s.all
+}
+
+/// A value in iCloud's key-value store, shared by the user's devices: a
+/// store whose value is def until iCloud's is read, then iCloud's, and
+/// again as another device changes it; writing it keeps it in iCloud.
+/// Small values only (a key is at most 64 bytes, all of an app's values
+/// 1 MB). Without iCloud, it keeps def and what it's set to, here.
+pub store Value<T>(key: string, def: T) {
+  pub state value: T = def
+  state loaded = false
+
+  let version = changes(key)
+
+  task(version) {
+    do {
+      let b = try await call("kvGet", key.bytes())
+      if !b.isEmpty() {
+        let v: T = try json.decode(b.string())
+        value = v
+      }
+    } catch {
+    }
+    loaded = true
+  }
+
+  effect {
+    let text = json.encode(value)
+    if loaded {
+      host.send("icloud", "kvSet", "\{\"key\":{json.encode(key)},\"value\":{text}}".bytes())
+    }
+  }
+}
+
+/// Takes key away from iCloud's key-value store.
+pub async fn remove(key: string) throws {
+  let _ = try await call("kvDelete", key.bytes())
+}
+
+/// The account now (not tracked).
+pub async fn currentAccount() throws -> Account {
+  let b = try await call("account", bytes())
+  return try json.decode(b.string())
+}
+
+/// The directory of the app's iCloud container id ("": its first),
+/// set up if need be.
+pub async fn container(id: string = "") throws -> string {
+  let b = try await call("container", id.bytes())
+  return b.string()
+}
+
+/// The Documents directory of the app's first container: what iCloud
+/// Drive shows of the app.
+pub async fn documents() throws -> string {
+  let c = try await container()
+  return "{c}/Documents"
+}
+
+/// The files in scope now (not tracked).
+pub async fn list(scope: Scope) throws -> [File] {
+  let b = try await call("files", json.encode(["scope": "{scope}"]).bytes())
+  let ws: [WireFile] = try json.decode(b.string())
+  return ws.map(fileOf)
+}
+
+/// Downloads path, if it's only in iCloud.
+pub async fn download(path: string) throws {
+  let _ = try await call("download", path.bytes())
+}
+
+/// Removes path's local copy, keeping it in iCloud.
+pub async fn evict(path: string) throws {
+  let _ = try await call("evict", path.bytes())
+}
+
+/// path's bytes, downloaded first if it isn't here, read as iCloud
+/// coordinates them with its own writes.
+pub async fn readFile(path: string) throws -> bytes = try await call("read", path.bytes())
+
+/// Writes data to path (made with its directories), as iCloud
+/// coordinates it; iCloud uploads it.
+pub async fn writeFile(path: string, data: bytes) throws {
+  let _ = try await call("write", host.str(path).concat(data))
+}
+
+/// Deletes path, here and in iCloud.
+pub async fn delete(path: string) throws {
+  let _ = try await call("delete", path.bytes())
+}
+
+/// Renames from to to, in iCloud.
+pub async fn rename(from: string, to: string) throws {
+  let _ = try await call("move", json.encode(["from": from, "to": to]).bytes())
+}
+
+/// The versions other devices saved of path, in conflict with this one.
+pub async fn conflicts(path: string) throws -> [Version] {
+  let b = try await call("versions", path.bytes())
+  return try json.decode(b.string())
+}
+
+/// Settles path's conflict: keeping is the version to keep (another
+/// device's), none to keep this device's; the others are removed.
+pub async fn resolve(path: string, keeping: Version? = none) throws {
+  let keep = keeping?.id ?? ""
+  let _ = try await call("resolve", json.encode(["path": path, "keep": keep]).bytes())
+}

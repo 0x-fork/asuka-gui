@@ -203,10 +203,11 @@ The environment a web app sees (`ui.UseEnvironment`) is the browser's:
 
 ## The app's files
 
-`asuka/sdk/store`, crash records and the files your app writes in `store.Dir`
-are kept: the page gives Go a file system in memory, the data directory's
-files loaded from the browser's storage (IndexedDB) before the app starts
-and written back a moment after they change (a large file in chunks of
+The app's directory (`fs.appDir()`), with what `asuka/fs` writes there
+and the crash record, is kept: the page has a file system in memory,
+which the core's file calls reach (as WASI's), the directory's files
+loaded from the browser's storage (IndexedDB) before the app starts and
+written back a moment after they change (a large file in chunks of
 64 KiB: only the chunks that changed), and as the page is hidden or
 closed. Tabs of the app share them: a tab's writes reach the others,
 which read the files again (a file a tab changed and hasn't written yet
@@ -215,6 +216,15 @@ it). What the user drops, pastes or picks is copied
 into the app's caches (`/tmp`), as on iOS and Android, and comes to the
 app as a path.
 
+`spawn { … }` runs on one of the page's Web Workers (up to four, started
+as `spawn` first needs them), each running the app's code again, its
+top-level `let`s made without a UI: a value they make, as a database
+opened at the top level, is that worker's own. A worker has a copy of
+the app's files: what the page changed goes with the next block it
+runs, and what the block changed comes back with its result, as one
+more writer (the last to write a file keeps it). `asuka/sqlite`'s
+databases are the page's: a block can't use them.
+
 The browser keeps an origin's storage until the user clears it, or, when
 the device runs out of space, until it evicts the origin's (Safari also
 does after seven days without a visit, for a site that isn't installed
@@ -222,23 +232,24 @@ to the home screen).
 
 ## SQLite
 
-`asuka/sdk/sqlite` works as on the other platforms, live queries included.
+`asuka/sqlite` works as on the other platforms, live queries included.
 It's the same SQLite and the same library of Asuka's, built to
 WebAssembly (`asqlite.wasm`, which `asuka dev --platform web` and `asuka
-build --platform web` ship with the apps that import `asuka/sdk/sqlite`). It
+build --platform web` ship with the apps that import `asuka/sqlite`). It
 runs in a worker of the page's, which keeps the databases of the app's
 data directory in the browser's origin private file system: a database
 isn't loaded into memory whole, and a commit is on disk when it returns.
-Each statement is a message to the worker and its answer, about 30
-microseconds: a transaction of 1000 inserts takes some 30 ms, a query of
-10,000 rows 3 ms.
+Each statement is a message to the worker and its answer, its rows
+decoded by the core as on every platform.
 
 What differs:
 
-- `Exec`, `Tx`, `Query`, `QueryOne` and `Migrate` wait for the worker,
-  which the page's main thread can't do: there they fail at once with an
-  error that says so. Use `ExecAsync`, `TxAsync` and live queries, or a
-  goroutine, as on every platform; `main`, before `app.Run`, may wait.
+- `sqlite.open` and `db.migrate` run on the main thread elsewhere, which
+  can't wait for the worker on the web: they're sent to it without
+  waiting, and run before the statements after them. A database that
+  didn't open fails each statement with why; a migration that failed
+  (and was rolled back) fails the database's next statement with its
+  error, and the console says so.
 - The journal is a rollback journal, not write-ahead logging (which needs
   memory shared between connections), and a database has one connection,
   so reads wait for a write in progress rather than running beside it.
@@ -247,12 +258,11 @@ What differs:
   in one); a statement that finds another tab holding it is run again
   until the tab lets it go, for the busy timeout's 5 seconds, as SQLite
   waits for another process's lock. A tab's live queries don't hear of
-  another tab's writes (as another process's, natively: `db.Changed()`
+  another tab's writes (as another process's, natively: `db.changed()`
   runs them again).
 - A database is a file of the worker's, not of the page's file system:
-  Go's `os` doesn't see it. `db.Serialize()` is a copy of it (a backup to
-  write anywhere, or to give `Restore`). A database anywhere but the data
-  directory (`/tmp`) lasts as long as the page.
+  `asuka/fs` doesn't see it. A database anywhere but the data directory
+  (`/tmp`) lasts as long as the page.
 - Without the origin private file system (a page that isn't served over
   `https` or from `localhost`, as `asuka dev --lan`'s; some browsers'
   private windows), the worker keeps databases in IndexedDB, in memory

@@ -11,6 +11,7 @@
 // spare batch for what that writes, so the batch being applied is never
 // sent twice.
 #include "ui/ui_ext.h"
+#include "std/std.h"
 
 #include <stdlib.h>
 
@@ -576,6 +577,7 @@ void ak_ui_dispatch(const uint8_t *buf, size_t len) {
 		return;
 	case AK_EVENT_LIFECYCLE:
 		if (r && ev.i == AK_LIFECYCLE_MEMORY_WARNING) ak_mcache_clear(&r->measures);
+		ak_crash_lifecycle((int)ev.i);
 		return;
 	}
 	if (ak_ext_dispatch(&ev)) return;  // a frame, a call's result, a URL, a share (ui_ext.h)

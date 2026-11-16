@@ -1,0 +1,73 @@
+// Notes in SQLite, as examples/notes keeps them: a live query feeds the
+// list, following what's typed in the search and what's written.
+import asuka/sqlite
+
+struct Note {
+  id: int
+  text: string
+  done: bool
+}
+
+fn openDB() throws -> sqlite.DB {
+  let db = try sqlite.open(":memory:")
+  try db.migrate([
+    "create table notes (id integer primary key, text text not null, done bool not null default 0)",
+  ])
+  return db
+}
+
+let db = (try? openDB())!
+
+let search = "select * from notes where ?1 = '' or instr(lower(text), lower(?1)) > 0 order by done, id desc"
+
+component Notes {
+  state query = ""
+  state draft = ""
+
+  let notes: sqlite.Live<Note> = db.watch(search, [query])
+  let done = notes.rows.count(n => n.done)
+
+  Column {
+    TextField { placeholder: "Search"; bind text: query }
+    Row {
+      TextField { placeholder: "New note"; bind text: draft }
+      Button("Add") {
+        on press {
+          let t = draft
+          draft = ""
+          try? await db.exec("insert into notes (text) values (?)", [t])
+        }
+      }
+    }
+    for n in notes.rows key n.id {
+      Row {
+        Text(n.text)
+        Button("Done {n.id}") { on press { try? await db.exec("update notes set done = 1 where id = ?", [n.id]) } }
+      }
+    }
+    Text("{notes.rows.count()} notes, {done} done")
+  }
+}
+
+app { Notes() }
+
+test "a live query follows its table and its arguments" {
+  let app = mount(Notes())
+  await app.idle()
+  app.expect("0 notes, 0 done")
+  app.type("Milk", into: "New note")
+  app.tap("Add")
+  await app.idle()
+  app.type("Eggs", into: "New note")
+  app.tap("Add")
+  await app.idle()
+  app.expect("Milk")
+  app.expect("2 notes, 0 done")
+  app.tap("Done 1")
+  await app.idle()
+  app.expect("2 notes, 1 done")
+  app.type("egg", into: "Search")
+  await app.idle()
+  app.expect("1 notes, 0 done")
+  app.expectNo("Milk")
+}

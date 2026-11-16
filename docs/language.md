@@ -101,6 +101,7 @@ their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 | `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `bytes()`, `+` |
 | `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD); `bytes()` is none, `s.bytes()` a string's UTF-8 |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
+| `Duration` | `seconds()`, `minutes()`, `hours()` (floats), `milliseconds()`, `nanoseconds()` (ints) |
 | `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic) |
 | `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()`, `minutes()`, `hours()` (floats), `rounded(to:)`, `truncated(to:)`, `+`, `-`, `* n`, `/ n` |
 | `T?` | `isNone()`, `isSome()` |
@@ -396,6 +397,20 @@ screen Inbox {
 
 `state` at the top of a file is the app's: one for the whole app.
 
+A store takes type parameters as a struct does, inferred from its
+arguments or from what's expected:
+
+```asuka
+store Kept<T>(key: string, initial: T) {
+  pub state value: T = initial
+}
+
+let size = Kept("size", 17.0)                 // a Kept<float>
+let tags: Kept<[string]> = Kept("tags", [])
+```
+
+In a store's fns, `self` is the store itself, to hand to what it makes.
+
 ### Effects and tasks
 
 ```asuka
@@ -435,7 +450,8 @@ async fn loadThread(id: string) throws -> Thread {
   await untilCancelled()`).
 - `spawn { … }` runs a block on another thread, for work that would hold
   the main thread up (parsing, image processing). It may use values only,
-  not state, stores or views: the compiler says so if it does.
+  not state, stores or views: the compiler says so if it does. On the
+  web it runs on one of the page's Web Workers.
 - `for await message in socket.messages { … }` reads a stream, a
   `Stream<T>`: values that come over time. `Stream(send => { … })`
   makes one: the block runs as a task when the stream is first read,

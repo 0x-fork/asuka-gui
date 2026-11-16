@@ -195,6 +195,9 @@ func RunnerWith(core string, extra []string, sanitize bool, dir string) (string,
 	srcs = append(srcs, runner...)
 	flags := append(Includes(core), "-g", "-O1")
 	link := []string{"-lm"}
+	if runtime.GOOS == "linux" {
+		link = append(link, "-lpthread", "-ldl")
+	}
 	if sanitize && runtime.GOOS != "windows" {
 		flags = append(flags, "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer", "-DAK_TEST=1")
 		link = append(link, "-fsanitize=address,undefined")

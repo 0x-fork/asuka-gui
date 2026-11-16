@@ -453,20 +453,18 @@ func (c *Checker) load(e *syntax.UnaryExpr) Type {
 	return &Named{Obj: loadingT, Args: []Type{t}}
 }
 
-// jsonable reports why JSON can't read or write t, "" when it can.
 // jsonable says why t can't be JSON ("" when it can). A type parameter
-// of the function being checked can: each call's type argument is
-// checked instead (jsonGenerics).
+// of the function being checked (or of the store it's in) can: each
+// call's type argument is checked instead (jsonGenerics).
 func (c *Checker) jsonable(t Type) string {
 	return jsonable1(t, map[*TypeName]bool{}, func(tp *TypeParam) bool {
-		f := c.enclosingFunc()
-		if f == nil || !contains(f.TypeParams, tp) {
+		if !contains(c.enclosingParams(), tp) {
 			return false
 		}
-		if f.jsonParams == nil {
-			f.jsonParams = map[*TypeParam]bool{}
+		if c.jsonTP == nil {
+			c.jsonTP = map[*TypeParam]bool{}
 		}
-		f.jsonParams[tp] = true
+		c.jsonTP[tp] = true
 		return true
 	})
 }
@@ -481,34 +479,66 @@ func (c *Checker) enclosingFunc() *Function {
 	return nil
 }
 
+// enclosingParams are the type parameters in scope where c is: the
+// enclosing function's and its store's (or the store's whose member is
+// being checked).
+func (c *Checker) enclosingParams() []*TypeParam {
+	var out []*TypeParam
+	if f := c.enclosingFunc(); f != nil {
+		out = append(out, f.TypeParams...)
+	}
+	for x := c.ctx; x != nil; x = x.Parent {
+		if x.Comp != nil {
+			out = append(out, x.Comp.TypeParams...)
+			break
+		}
+	}
+	return out
+}
+
+// A genericCall is a call of a generic function, or the making of a
+// generic store, with its type arguments.
 type genericCall struct {
-	e    *syntax.CallExpr
-	f    *Function
-	args []Type
-	encl *Function // the function the call is in
+	e     *syntax.CallExpr
+	f     *Function // a function's
+	store *TypeName // a store's
+	args  []Type
+	encl  *Function    // the function the call is in
+	own   []*TypeParam // the type parameters where the call is
+}
+
+func (g genericCall) params() []*TypeParam {
+	if g.store != nil {
+		return g.store.TypeParams
+	}
+	return g.f.TypeParams
+}
+
+func (g genericCall) name() string {
+	if g.store != nil {
+		return g.store.name
+	}
+	return g.f.name
 }
 
 // jsonGenerics checks the type arguments of generic calls whose type
 // parameters are read or written as JSON: a call passing a type
-// parameter of its own function makes that one JSON too, until nothing
-// changes; then every concrete argument must be JSON.
+// parameter of its own function (or store) makes that one JSON too,
+// until nothing changes; then every concrete argument must be JSON.
 func (c *Checker) jsonGenerics() {
+	if c.jsonTP == nil {
+		c.jsonTP = map[*TypeParam]bool{}
+	}
 	for changed := true; changed; {
 		changed = false
 		for _, g := range c.genericCalls {
-			if g.encl == nil {
-				continue
-			}
-			for i, tp := range g.f.TypeParams {
-				if !g.f.jsonParams[tp] || i >= len(g.args) {
+			for i, tp := range g.params() {
+				if !c.jsonTP[tp] || i >= len(g.args) {
 					continue
 				}
-				for _, own := range g.encl.TypeParams {
-					if mentionsParam(g.args[i], own) && !g.encl.jsonParams[own] {
-						if g.encl.jsonParams == nil {
-							g.encl.jsonParams = map[*TypeParam]bool{}
-						}
-						g.encl.jsonParams[own] = true
+				for _, own := range g.own {
+					if mentionsParam(g.args[i], own) && !c.jsonTP[own] {
+						c.jsonTP[own] = true
 						changed = true
 					}
 				}
@@ -516,12 +546,12 @@ func (c *Checker) jsonGenerics() {
 		}
 	}
 	for _, g := range c.genericCalls {
-		for i, tp := range g.f.TypeParams {
-			if !g.f.jsonParams[tp] || i >= len(g.args) || IsInvalid(g.args[i]) {
+		for i, tp := range g.params() {
+			if !c.jsonTP[tp] || i >= len(g.args) || IsInvalid(g.args[i]) || HasTypeParams(g.args[i]) {
 				continue
 			}
 			if why := jsonable1(g.args[i], map[*TypeName]bool{}, func(*TypeParam) bool { return true }); why != "" {
-				c.errorf(g.e, "%s reads or writes its %s as JSON, and a %s can't be: %s", g.f.name, tp.Name, typeString(g.args[i]), why)
+				c.errorf(g.e, "%s reads or writes its %s as JSON, and a %s can't be: %s", g.name(), tp.Name, typeString(g.args[i]), why)
 			}
 		}
 	}

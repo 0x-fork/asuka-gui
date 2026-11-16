@@ -5,5 +5,8 @@ export function makePrefs() {
     get(key) { return localStorage.getItem(k(key)); },
     set(key, value) { localStorage.setItem(k(key), value); },
     remove(key) { localStorage.removeItem(k(key)); },
+    // localStorage writes as it's set.
+    flush() {},
+    dir() { return "localStorage"; },
   };
 }

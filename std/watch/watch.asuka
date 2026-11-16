@@ -1,0 +1,87 @@
+// Package asuka/watch follows changes to files and directories: a
+// folder the app shows, a project open in an editor, a settings file
+// another program writes.
+//
+//   let w = try await watch.path(folder, ignore: [".*"])
+//   for await events in w.events {
+//     for e in events { print("{e.op} {e.path}") }
+//   }
+//
+// A watch keeps what it saw of the files and, each time the system says
+// something changed, looks again and compares: the events are the
+// differences, a batch at a time. A file written many times in a row is
+// one write; a file replaced at its path (an editor's atomic save) is a
+// write; a file that moved within the directory is a rename with its old
+// path. Treat events as hints to read the files again.
+//
+// The desktops' own way (internal/fswatch, as asuka dev watches its
+// sources): FSEvents on macOS, inotify on Linux, ReadDirectoryChangesW on
+// Windows. Phones and the web have nothing to watch with: path throws an
+// unsupported error there.
+
+/// What happened.
+pub enum Op {
+  create
+  write
+  remove
+  rename
+  /// Permissions changed (with attributes: true).
+  attrib
+  /// The system dropped changes: the watch looked at everything again,
+  /// and the batch's other events are what it found.
+  overflow
+}
+
+/// A change to a watched file or directory.
+pub struct Event {
+  op: Op
+  /// Relative to the watched directory, with slashes; "." is the
+  /// directory (or file) itself.
+  path: string
+  /// Where a rename moved from.
+  oldPath: string = ""
+  /// A directory (as it was, for a remove).
+  isDir: bool = false
+}
+
+/// The platform's watcher.
+native interface Watcher {
+  /// The watched path, resolved (macOS's /tmp is /private/tmp).
+  fn root() -> string
+  /// Calls changed with each batch of changes, until the watch stops
+  /// (its directory went: then it returns) or the task is cancelled.
+  async fn follow(changed: fn([Event]))
+  fn close()
+}
+
+/// What makes watchers.
+native interface Watching {
+  async fn open(path: string, ignore: [string], recursive: bool, attributes: bool) -> Watcher
+}
+
+let watching = try? Watching()
+
+/// A watch of a path, started.
+pub struct Watch {
+  /// The watched path, resolved.
+  root: string
+  /// Its changes, a batch at a time, until the watch stops (its
+  /// directory went) or the stream is left.
+  events: Stream<[Event]>
+}
+
+/// Starts watching the file or directory at dir: ignore are gitignore-
+/// style patterns of what isn't watched (".*": hidden files), recursive
+/// watches its directories too, attributes reports permission changes.
+pub async fn path(dir: string, ignore: [string] = [], recursive: bool = false, attributes: bool = false) throws -> Watch {
+  if let ws = watching {
+    let w = try await ws.open(dir, ignore, recursive, attributes)
+    let root = try w.root()
+    let events: Stream<[Event]> = Stream(give => {
+      defer { try? w.close() }
+      try await w.follow(changed: es => give(es))
+    })
+    return Watch(root: root, events: events)
+  }
+  throw Error("unsupported: asuka/watch has nothing to watch with on this platform")
+}

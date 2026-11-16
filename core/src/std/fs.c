@@ -281,11 +281,17 @@ void ak_fs_set_app_dir(const char *path) {
 	ak_free(old);
 }
 
-static ak_val app_dir_fn(ak_val *args, uint32_t n) {
-	AK_UNUSED(args), AK_UNUSED(n);
-	if (app_dir) return (ak_val){.p = ak_str_c(app_dir)};
+static char *dup_path(const char *s) {
+	size_t n = strlen(s);
+	char *p = ak_alloc(n + 1);
+	memcpy(p, s, n + 1);
+	return p;
+}
+
+char *ak_fs_app_dir(void) {
+	if (app_dir) return dup_path(app_dir);
 	const char *env = getenv("ASUKA_DATA");
-	if (env && *env) return (ak_val){.p = ak_str_c(env)};
+	if (env && *env) return dup_path(env);
 #if !defined(__wasm__)
 	char buf[1024];
 #endif
@@ -299,17 +305,17 @@ static ak_val app_dir_fn(ak_val *args, uint32_t n) {
 		size_t len = strlen(name);
 		if (len > 4 && _stricmp(name + len - 4, ".exe") == 0) len -= 4;
 		snprintf(buf, sizeof buf, "%s\\%.*s", base, (int)len, name);
-		return (ak_val){.p = ak_str_c(buf)};
+		return dup_path(buf);
 	}
 #elif defined(__APPLE__)
 	// On iOS, HOME is the app's container.
 	const char *home = getenv("HOME");
 	if (home && *home) {
 		snprintf(buf, sizeof buf, "%s/Library/Application Support/%s", home, getprogname());
-		return (ak_val){.p = ak_str_c(buf)};
+		return dup_path(buf);
 	}
 #elif defined(__wasm__)
-	return (ak_val){.p = ak_str_c("/data")};
+	return dup_path("/data");
 #else
 	const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
 	char name[256] = "asuka";
@@ -320,14 +326,22 @@ static ak_val app_dir_fn(ak_val *args, uint32_t n) {
 	}
 	if (xdg && *xdg) {
 		snprintf(buf, sizeof buf, "%s/%s", xdg, name);
-		return (ak_val){.p = ak_str_c(buf)};
+		return dup_path(buf);
 	}
 	if (home && *home) {
 		snprintf(buf, sizeof buf, "%s/.local/share/%s", home, name);
-		return (ak_val){.p = ak_str_c(buf)};
+		return dup_path(buf);
 	}
 #endif
-	return (ak_val){.p = ak_str_c(".")};
+	return dup_path(".");
+}
+
+static ak_val app_dir_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+	char *d = ak_fs_app_dir();
+	ak_str *s = ak_str_c(d);
+	ak_free(d);
+	return (ak_val){.p = s};
 }
 
 // ---- The file system ----

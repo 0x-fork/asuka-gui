@@ -397,6 +397,17 @@ func mentionsFree(t Type, free map[*TypeParam]bool, s Subst) bool {
 // inferArgs checks args against params whose types mention the free
 // type parameters, binding them as it goes; it returns the bindings.
 // Lambdas go last, so that their parameters' types are known.
+// enterArg enters what an argument is checked in: a binding of its own
+// when the callee follows its arguments (a store's: bindingArgs).
+func (c *Checker) enterArg(a syntax.Expr) func() {
+	if !c.bindingArgs {
+		return func() {}
+	}
+	saved := c.ctx
+	c.enter(CtxBinding, a, "binding")
+	return func() { c.leave(saved) }
+}
+
 func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free map[*TypeParam]bool, want, result Type, what string) {
 	savedFree := c.free
 	c.free = free
@@ -422,18 +433,29 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 				continue
 			}
 			pt := params[i].Type
+			leave := c.enterArg(a)
 			if !mentionsFree(pt, free, s) {
 				c.assign(a, s.Apply(pt), "argument "+params[i].Name+" of "+what)
+				leave()
 				checked[i] = true
 				continue
 			}
 			pw := s.Apply(pt)
+			if tp, ok := pw.(*TypeParam); ok && free[tp] && s[tp] == nil {
+				if arr, ok := a.(*syntax.ArrayExpr); ok && len(arr.Elems) == 0 {
+					// [] for a type parameter nothing else tells: an array
+					// with no elements is one of any type (db.exec(sql, [])).
+					s[tp] = &Array{Int}
+					pw = s[tp]
+				}
+			}
 			w := pw
 			if !isLambda && mentionsFree(w, free, s) {
 				// What isn't known yet doesn't steer the argument.
 				w = nil
 			}
 			got := c.expr(a, w)
+			leave()
 			types[i] = got
 			if !c.unify(pw, got, s, free) {
 				c.errorf(a, "argument %s of %s is a %s, which doesn't fit %s", params[i].Name, what, typeString(got), typeString(s.Apply(pt)))
@@ -498,7 +520,7 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 	c.info.Calls[e] = call
 	c.callEffects(e, what, f.Sig.Async, f.Sig.Throws)
 	if len(f.TypeParams) > 0 {
-		c.genericCalls = append(c.genericCalls, genericCall{e, f, call.TypeArgs, c.enclosingFunc()})
+		c.genericCalls = append(c.genericCalls, genericCall{e: e, f: f, args: call.TypeArgs, encl: c.enclosingFunc(), own: c.enclosingParams()})
 	}
 	return call
 }
@@ -801,7 +823,7 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	case StructType:
 		return c.structCall(e, tn, want)
 	case StoreType:
-		return c.storeCall(e, tn)
+		return c.storeCall(e, tn, want)
 	case ComponentType:
 		return c.componentCall(e, tn)
 	case InterfaceType:
@@ -927,7 +949,7 @@ func (c *Checker) caseCall(e *syntax.CallExpr, tn *TypeName, k *Case, want Type)
 	return t
 }
 
-func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName) Type {
+func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	if e.Block != nil {
 		c.errorf(e.Block, "%s is a store: its parameters go in parentheses", tn.name)
 	}
@@ -936,13 +958,44 @@ func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName) Type {
 		params = append(params, &Param{Name: m.name, Type: m.Type, Default: m.Default})
 	}
 	args := c.matchArgs(e, params, tn.name)
-	for i, a := range args {
-		if a != nil {
-			c.bindingArg(a, params[i].Type, "argument "+params[i].Name+" of "+tn.name)
+	if len(tn.TypeParams) == 0 {
+		for i, a := range args {
+			if a != nil {
+				c.bindingArg(a, params[i].Type, "argument "+params[i].Name+" of "+tn.name)
+			}
 		}
+		c.info.Calls[e] = &Call{Kind: CallStore, Type: tn.Type.(*Named), Args: args, Params: params, Result: tn.Type}
+		return tn.Type
 	}
-	c.info.Calls[e] = &Call{Kind: CallStore, Type: tn.Type.(*Named), Args: args, Params: params, Result: tn.Type}
-	return tn.Type
+	// A generic store: its type arguments from its arguments (each a
+	// binding, as the store follows them) or from what's expected.
+	s := Subst{}
+	free := map[*TypeParam]bool{}
+	for _, tp := range tn.TypeParams {
+		free[tp] = true
+	}
+	saved := c.bindingArgs
+	c.bindingArgs = true
+	c.inferArgs(args, params, s, free, want, tn.Type, tn.name)
+	c.bindingArgs = saved
+	n := &Named{Obj: tn}
+	for _, tp := range tn.TypeParams {
+		t := s[tp]
+		if t == nil {
+			c.errorf(e, "can't tell %s's %s: pass its parameters, or say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
+			t = Invalid
+		} else if !satisfies(t, tp) {
+			c.errorf(e, "%s's %s must be %s, and %s isn't", tn.name, tp.Name, tp.Constraint, typeString(t))
+		}
+		n.Args = append(n.Args, t)
+	}
+	inst := make([]*Param, len(params))
+	for i, p := range params {
+		inst[i] = &Param{Name: p.Name, Type: s.Apply(p.Type), Default: p.Default}
+	}
+	c.info.Calls[e] = &Call{Kind: CallStore, Type: n, Args: args, Params: inst, Result: n}
+	c.genericCalls = append(c.genericCalls, genericCall{e: e, store: tn, args: n.Args, encl: c.enclosingFunc(), own: c.enclosingParams()})
+	return n
 }
 
 // bindingArg checks an argument the callee follows (an accessor): it's

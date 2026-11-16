@@ -209,14 +209,15 @@ type ScreenDecl struct {
 	Body   *Block
 }
 
-// A StoreDecl is store Name(params) { members }.
+// A StoreDecl is store Name<T>(params) { members }.
 type StoreDecl struct {
 	Span
 	Trivia
-	Pub    Pos
-	Name   *Ident
-	Params *ParamList // nil without parentheses
-	Body   *Block
+	Pub        Pos
+	Name       *Ident
+	TypeParams []*TypeParam
+	Params     *ParamList // nil without parentheses
+	Body       *Block
 }
 
 // A StructDecl is struct Name<T>: Error { fields and methods }.

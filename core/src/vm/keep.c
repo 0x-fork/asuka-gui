@@ -7,8 +7,10 @@
 //   'i' i64 | 'f' f64 | 'b' u8 | 'n' (none)
 //   's' str | 'y' bytes
 //   'B' kind value                      a boxed optional scalar
-//   'a' kind count value*               an array (elements of kind)
-//   'm' kind kind count (value value)*  a map
+//   'a' kind flags str count value*     an array (elements of kind; str:
+//                                       their shape's name, or "")
+//   'm' kind kind flags str count (value value)*
+//                                       a map (str: its values' shape's)
 //   'S' str count (str kind value)*     a struct: its shape's name, fields by name
 //   'E' str str count (kind value)*     an enum: its shape's and its case's names
 // str := u32 length, bytes
@@ -63,6 +65,8 @@ bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
 		ak_arr *a = (ak_arr *)o;
 		ak_buf_u8(b, 'a');
 		ak_buf_u8(b, (uint8_t)ak_arr_kind(a));
+		ak_buf_u8(b, (uint8_t)a->h.flags);
+		wstr(b, a->shape ? a->shape->name : NULL);
 		ak_buf_u32(b, a->len);
 		for (uint32_t i = 0; i < a->len; i++)
 			if (!ak_keep_encode(b, a->data[i], ak_arr_kind(a))) return false;
@@ -74,6 +78,8 @@ bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
 		ak_buf_u8(b, 'm');
 		ak_buf_u8(b, (uint8_t)kk);
 		ak_buf_u8(b, (uint8_t)vk);
+		ak_buf_u8(b, (uint8_t)m->h.flags);
+		wstr(b, m->vshape ? m->vshape->name : NULL);
 		ak_buf_u32(b, m->live);
 		for (uint32_t i = 0; i < m->len; i++) {
 			if (m->dead[i]) continue;
@@ -118,6 +124,17 @@ static bool rname(ak_reader *r, const uint8_t **p, uint32_t *n) {
 
 static bool name_is(const uint8_t *p, uint32_t n, const char *s) { return s && strlen(s) == n && memcmp(p, s, n) == 0; }
 
+// shape_named reads a shape's name ("" for none) and finds it.
+static const ak_shape *shape_named(ak_reader *r, ak_keep_shape_fn find, void *ctx) {
+	uint32_t n;
+	const uint8_t *p = ak_read_bytes(r, &n);
+	if (r->err || n == 0 || n >= 256 || !find) return NULL;
+	char name[256];
+	memcpy(name, p, n);
+	name[n] = 0;
+	return find(ctx, name);
+}
+
 // skip reads past one encoded value.
 static bool skip(ak_reader *r) {
 	uint8_t tag = ak_read_u8(r);
@@ -141,6 +158,8 @@ static bool skip(ak_reader *r) {
 		return skip(r);
 	case 'a':
 		ak_read_u8(r);
+		ak_read_u8(r);
+		ak_read_bytes(r, &n);
 		n = ak_read_u32(r);
 		for (uint32_t i = 0; i < n && !r->err; i++)
 			if (!skip(r)) return false;
@@ -148,6 +167,8 @@ static bool skip(ak_reader *r) {
 	case 'm':
 		ak_read_u8(r);
 		ak_read_u8(r);
+		ak_read_u8(r);
+		ak_read_bytes(r, &n);
 		n = ak_read_u32(r);
 		for (uint32_t i = 0; i < n && !r->err; i++)
 			if (!skip(r) || !skip(r)) return false;
@@ -226,9 +247,12 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 	}
 	case 'a': {
 		ak_kind ek = (ak_kind)ak_read_u8(r);
+		uint8_t flags = ak_read_u8(r);
+		const ak_shape *es = shape_named(r, find, ctx);
 		uint32_t n = ak_read_u32(r);
 		if (r->err || n > r->len) return false;
-		ak_arr *a = ak_arr_new(ek, NULL, n);
+		ak_arr *a = ak_arr_new(ek, es, n);
+		a->h.flags = flags;
 		bool ok = true;
 		for (uint32_t i = 0; i < n; i++) {
 			ak_val v;
@@ -240,8 +264,8 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 			if (ek == AK_K_REF && v.p) {
 				ak_obj *eo = v.p;
 				if (eo->tag == AK_TAG_STR) a->h.flags = 1;
-				if (eo->tag == AK_TAG_STRUCT) a->shape = ((ak_struct *)eo)->shape;
-				if (eo->tag == AK_TAG_ENUM) a->shape = ((ak_enum *)eo)->shape;
+				if (!a->shape && eo->tag == AK_TAG_STRUCT) a->shape = ((ak_struct *)eo)->shape;
+				if (!a->shape && eo->tag == AK_TAG_ENUM) a->shape = ((ak_enum *)eo)->shape;
 			}
 		}
 		if (!ok) {
@@ -253,9 +277,11 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 	}
 	case 'm': {
 		ak_kind kk = (ak_kind)ak_read_u8(r), vk = (ak_kind)ak_read_u8(r);
+		bool strkeys = ak_read_u8(r) & 1;
+		const ak_shape *vs = shape_named(r, find, ctx);
 		uint32_t n = ak_read_u32(r);
 		if (r->err || n > r->len) return false;
-		ak_map *m = NULL;
+		ak_map *m = ak_map_new(kk, strkeys, vk, vs);
 		for (uint32_t i = 0; i < n; i++) {
 			ak_val key, val;
 			if (!ak_keep_decode(r, kk, find, ctx, &key)) goto map_fail;
@@ -263,10 +289,9 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 				ak_release_val(key, kk);
 				goto map_fail;
 			}
-			if (!m) m = ak_map_new(kk, kk == AK_K_REF && key.p && ((ak_obj *)key.p)->tag == AK_TAG_STR, vk, NULL);
 			ak_map_set(&m, key, val);
 		}
-		out->p = m ? m : ak_map_new(kk, kk == AK_K_REF, vk, NULL);
+		out->p = m;
 		return true;
 	map_fail:
 		ak_release(m);

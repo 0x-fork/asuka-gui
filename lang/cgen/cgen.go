@@ -83,13 +83,30 @@ static ak_module *asuka_app_load(void) {
 }
 
 // The core finds the app through ak_app_loader, set as the program
-// starts; a core built with the app (AK_APP_COMPILED) also names
-// asuka_app_module, so that a static library's linker keeps this object.
-__attribute__((constructor)) static void register_app(void) { ak_app_loader = asuka_app_load; }
+// starts; whether it reads its crash reports (asuka/crash) through
+// ak_app_crash, which asuka_crash_start asks before the app loads. A core
+// built with the app (AK_APP_COMPILED) also names asuka_app_module, so
+// that a static library's linker keeps this object.
+extern bool ak_app_crash;
+__attribute__((constructor)) static void register_app(void) {
+	ak_app_loader = asuka_app_load;
+	ak_app_crash = %t;
+}
 ak_module *asuka_app_module(void);
 ak_module *asuka_app_module(void) { return asuka_app_load(); }
-`, len(m.Funcs))
+`, len(m.Funcs), readsCrashes(m))
 	return g.b.Bytes(), nil
+}
+
+// readsCrashes reports whether m calls asuka/crash's builtins: an app
+// that reads its crash reports, whose runs the core records.
+func readsCrashes(m *bc.Module) bool {
+	for _, b := range m.Builtins {
+		if strings.HasPrefix(b, "crash.") {
+			return true
+		}
+	}
+	return false
 }
 
 // compilable reports whether f becomes C: synchronous functions; what

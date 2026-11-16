@@ -1,0 +1,220 @@
+// Package asuka/sqlite is the app's SQLite database: a file in its data
+// directory, written with SQL and read into typed rows. SQLite is the
+// sqlite plugin's (sdk/sqlite: one version, built the same way for every
+// platform), shipped with the apps that import this package. Statements
+// run off the main thread, one after another, and rows come back decoded
+// straight into the type asked for: a struct's fields by the columns'
+// names.
+//
+//   struct Note { id: int; text: string; done: bool }
+//
+//   let db = (try? sqlite.open("notes.db"))!
+//   try db.migrate(["create table notes (id integer primary key, text text not null, done bool not null default 0)"])
+//   try await db.exec("insert into notes (text) values (?)", ["Milk"])
+//   let notes: [Note] = try await db.query("select * from notes order by id", [])
+//
+// A live query (watch) is a store of its rows, run again as its
+// arguments change and as a table it reads is written:
+//
+//   let notes: sqlite.Live<Note> = db.watch("select * from notes where text like ?", ["%{query}%"])
+//   for n in notes.rows key n.id { Text(n.text) }
+
+// The runtime's side (core/src/sqlite): the plugin's library, called a
+// statement at a time.
+native fn available() -> bool
+native fn openConn(path: string, busy: int) throws -> int
+native fn closeConn(conn: int)
+native fn execNow(conn: int, sql: string, args: bytes) throws -> [string]
+native fn migrateConn(conn: int, steps: [string]) throws -> [string]
+native async fn execAsync(conn: int, sql: string, args: bytes) throws -> [string]
+native async fn queryAsync(conn: int, sql: string, args: bytes) throws -> bytes
+native fn encodeArgs<A>(args: A) throws -> bytes
+native fn decodeRows<T>(answer: bytes) throws -> [T]
+native fn readsOf(answer: bytes) -> [string]
+native fn writesOf(answer: bytes) -> [string]
+native fn cachedAnswer(key: string) -> bytes?
+native fn keepAnswer(key: string, answer: bytes)
+
+/// Where the app keeps its files: a relative path to open is there.
+native interface Place {
+  fn dataDir() -> string
+}
+
+let place = try? Place()
+
+/// How long a statement waits for another connection's lock.
+let busyMs = 5000
+
+/// The path a database's name stands for: an absolute path as it is,
+/// ":memory:" and a file: URI too, a name in the app's data directory.
+fn resolve(name: string) -> string {
+  if name == ":memory:" || name.hasPrefix("file:") || name.hasPrefix("/") || name.slice(1, 3) == ":\\" {
+    return name
+  }
+  if let p = place {
+    if let dir = try? p.dataDir() {
+      if !dir.isEmpty() {
+        return "{dir}/{name}"
+      }
+    }
+  }
+  return name
+}
+
+/// Opens the database name (creating it): a file in the app's data
+/// directory, an absolute path, or ":memory:". On the web the page's
+/// SQLite worker opens it before the statements after it run; one that
+/// didn't open fails each statement with why.
+pub fn open(name: string) throws -> DB {
+  let path = resolve(name)
+  let conn = try openConn(path, busyMs)
+  try execNow(conn, "pragma foreign_keys = on", bytes())
+  if path != ":memory:" {
+    try execNow(conn, "pragma journal_mode = wal", bytes())
+    try execNow(conn, "pragma synchronous = normal", bytes())
+  }
+  return DB(conn, path)
+}
+
+/// An open database: one connection, its statements run in order.
+pub store DB(conn: int, path: string) {
+  // Each table's writes, counted: a live query runs again as those of
+  // the tables it reads change, and as all does (changed()).
+  state versions: [string: int] = [:]
+  state all = 0
+
+  fn wrote(tables: [string]) {
+    if tables.isEmpty() {
+      return
+    }
+    var vs = versions
+    for t in tables {
+      vs[t] = (vs[t] ?? 0) + 1
+    }
+    versions = vs
+  }
+
+  /// The version of what tables say: what a live query follows.
+  pub fn version(tables: [string]) -> int {
+    var v = all
+    for t in tables {
+      v += versions[t] ?? 0
+    }
+    return v
+  }
+
+  /// Brings the schema up to date: steps are the database's versions in
+  /// order, each SQL (statements separated by semicolons) run once, in a
+  /// transaction, recorded in PRAGMA user_version. Append steps; never
+  /// change one that has shipped. It runs on the main thread: call it as
+  /// the app starts. On the web, where the main thread can't wait for
+  /// the page's SQLite worker, it's sent to run before the statements
+  /// after it, and a step that fails fails the next statement instead.
+  pub fn migrate(steps: [string]) throws {
+    wrote(try migrateConn(conn, steps))
+  }
+
+  /// Runs a statement (insert, update, delete, create...), or several
+  /// separated by semicolons, off the main thread. args are its
+  /// arguments: a tuple or an array by position (?, ?1), a struct or a
+  /// [string: T] by name (:name) too; each an int, a float, a bool, a
+  /// string, bytes, an enum's case (its index) or an optional of one
+  /// (none: NULL).
+  pub async fn exec<A>(sql: string, args: A) throws {
+    let a = try encodeArgs(args)
+    wrote(try await execAsync(conn, sql, a))
+  }
+
+  /// Runs a query off the main thread and gives its rows as Ts: a
+  /// struct's fields by the columns' names (a field no column has is
+  /// its zero: 0, "", false, [], none), any other T from the first
+  /// column. An integer column fits an int, a float, a bool or a string;
+  /// text holding JSON fits a struct, an array or a map.
+  pub async fn query<T, A>(sql: string, args: A) throws -> [T] {
+    let a = try encodeArgs(args)
+    let answer = try await queryAsync(conn, sql, a)
+    wrote(writesOf(answer))
+    return try decodeRows(answer)
+  }
+
+  /// A live query: its rows, fetched off the main thread now, again as
+  /// its arguments change (it's made again), and as a table it reads is
+  /// written through this database. Made in a component, it stops with
+  /// the component.
+  pub fn watch<T, A>(sql: string, args: A) -> Live<T> {
+    let a = try? encodeArgs(args)
+    return Live(self, sql, a ?? bytes(), if a.isNone() { "sqlite: an argument is an int, a float, a bool, a string, bytes, an enum's case, or an optional of one" } else { "" })
+  }
+
+  /// Runs every live query again: for a change the database didn't make
+  /// (another process's, a file replaced).
+  pub fn changed() {
+    all += 1
+  }
+
+  /// Closes the connection.
+  pub fn close() {
+    closeConn(conn)
+  }
+
+  /// Runs a live query's statement: its answer, with the tables it read.
+  pub async fn fetch(sql: string, args: bytes) throws -> bytes {
+    let answer = try await queryAsync(conn, sql, args)
+    wrote(writesOf(answer))
+    return answer
+  }
+}
+
+/// A live query's rows (db.watch): rows and loading are state, so what
+/// shows them follows them.
+pub store Live<T>(db: DB, sql: string, args: bytes, bad: string) {
+  // Its SQL's last rows, while these load (as a Loading keeps its value).
+  let key = "{db.conn}|{sql}"
+
+  /// The latest rows.
+  pub state rows: [T] = cachedRows("{db.conn}|{sql}")
+  /// Nothing fetched yet.
+  pub state loading = true
+  /// The last fetch's error, none after one that worked.
+  pub state error: string? = none
+
+  // The tables it read, and the version of them it fetched.
+  state tables: [string] = []
+  state seen = -1
+
+  let version = db.version(tables)
+
+  task(version) {
+    if version == seen {
+      return
+    }
+    if !bad.isEmpty() {
+      error = bad
+      loading = false
+      return
+    }
+    do {
+      let answer = try await db.fetch(sql, args)
+      let got: [T] = try decodeRows(answer)
+      keepAnswer(key, answer)
+      let read = readsOf(answer)
+      seen = db.version(read)
+      tables = read
+      rows = got
+      error = none
+    } catch e {
+      error = e.message
+    }
+    loading = false
+  }
+}
+
+fn cachedRows<T>(key: string) -> [T] {
+  if let a = cachedAnswer(key) {
+    let rows: [T]? = try? decodeRows(a)
+    if let r = rows {
+      return r
+    }
+  }
+  return []
+}

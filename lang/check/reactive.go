@@ -71,7 +71,9 @@ func (c *Checker) finalize() {
 			}
 			for _, m := range t.Comp.Order {
 				if m.Kind == LetMember && m.Default != nil {
-					m.Memo = c.reactive(m.Default)
+					// A generic store's let of its type parameters is a
+					// memo: its env holds it as a reference whatever T is.
+					m.Memo = c.reactive(m.Default) || len(t.TypeParams) > 0 && HasTypeParams(m.Type)
 				}
 			}
 		}
@@ -175,7 +177,7 @@ func (c *Checker) reactiveOnce(m *Member) bool {
 		return true
 	}
 	c.resolving[m] = true
-	r := c.reactive(m.Default)
+	r := c.reactive(m.Default) || len(m.Owner.TypeParams) > 0 && m.Type != nil && HasTypeParams(m.Type)
 	delete(c.resolving, m)
 	m.Memo = r
 	return r

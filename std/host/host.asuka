@@ -1,0 +1,72 @@
+// Package asuka/host is how the standard library's packages reach what
+// each platform's host already does for them (notifications, pushes, crash
+// reports, iCloud, the photo library...): a host's own modules, called by
+// name with the bytes each takes (the formats sdk/<name> wrote, mostly
+// JSON), answering bytes. Apps use the packages over it (asuka/notify,
+// asuka/push, ...), not this.
+//
+// Where the app's host has no such module (asuka test's fake host, a
+// platform without it), a call fails with an unsupported error.
+
+/// The host's modules.
+native interface Modules {
+  /// Runs module's method with args, and answers its bytes.
+  /// @mainThread
+  async fn call(module: string, method: string, args: bytes) -> bytes
+  /// Runs module's method with args, not waiting for its answer.
+  /// @mainThread
+  fn send(module: string, method: string, args: bytes)
+}
+
+let modules = try? Modules()
+
+/// Whether the app's host has modules to call (none under asuka test).
+pub fn available() -> bool = modules.isSome()
+
+/// Runs the host's module's method with args, and answers its bytes.
+pub async fn call(module: string, method: string, args: bytes) throws -> bytes {
+  if let m = modules {
+    return try await m.call(module, method, args)
+  }
+  throw Error("unsupported: {module} has no host here")
+}
+
+/// Runs the host's module's method, not waiting for its answer (nothing
+/// happens without a host).
+pub fn send(module: string, method: string, args: bytes) {
+  if let m = modules {
+    try? m.send(module, method, args)
+  }
+}
+
+/// Runs the host's module's method with a string (UTF-8) and answers its
+/// bytes as text.
+pub async fn callText(module: string, method: string, args: string) throws -> string {
+  let b = try await call(module, method, args.bytes())
+  return b.string()
+}
+
+/// A stream of what a module's "next" method gives (a host keeps what
+/// comes until it's asked): each answer as bytes, until the stream is
+/// left, when "stop" ends the call that waits.
+pub fn next(module: string, method: string) -> Stream<bytes> = Stream(give => {
+  defer { send(module, "stop", method.bytes()) }
+  while true {
+    let b = try await call(module, method, bytes())
+    give(b)
+  }
+})
+
+// Little-endian values, as the modules take and answer them.
+pub native fn u8(v: int) -> bytes
+pub native fn u32(v: int) -> bytes
+pub native fn u64(v: int) -> bytes
+pub native fn f64(v: float) -> bytes
+/// A u32 length, then s's UTF-8.
+pub native fn str(s: string) -> bytes
+pub native fn readU8(b: bytes, at: int) -> int
+pub native fn readU32(b: bytes, at: int) -> int
+pub native fn readU64(b: bytes, at: int) -> int
+pub native fn readF64(b: bytes, at: int) -> float
+/// The string at a u32 length.
+pub native fn readStr(b: bytes, at: int) -> string

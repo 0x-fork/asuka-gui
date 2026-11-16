@@ -88,7 +88,7 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 // and puts it in the env's box, for the closures that read through it;
 // whole, it's in a local, the env from then on.
 func (b *fb) publishEnv(t *check.TypeName, whole bool) int {
-	shape := b.l.envShapeOf(t)
+	shape := b.l.envShapeOf(t, b.typ(t.Type))
 	var ks []bc.Kind
 	var regs []int
 	for _, m := range t.Comp.Order {
@@ -135,14 +135,24 @@ func (b *fb) readsMemo(x syntax.Expr, t *check.TypeName) bool {
 	return found
 }
 
-func (l *Lowerer) compFunc(t *check.TypeName) int {
+func (l *Lowerer) compFunc(t *check.TypeName, typ check.Type) int {
 	key := fmt.Sprintf("comp|%p", t)
+	name := t.Name()
+	n, _ := typ.(*check.Named)
+	if len(t.TypeParams) > 0 && n != nil {
+		// A generic store: a function per instantiation.
+		name = l.typeKey(n)
+		key += "|" + name
+	}
 	if i, ok := l.funcs[key]; ok {
 		return i
 	}
 	c := t.Comp
-	n := len(c.Params) + len(c.Props) + len(c.Events)
-	b := l.newFunc(t.Name(), l.fileOf(t.Decl), n, bc.KRef)
+	np := len(c.Params) + len(c.Props) + len(c.Events)
+	b := l.newFunc(name, l.fileOf(t.Decl), np, bc.KRef)
+	if len(t.TypeParams) > 0 && n != nil {
+		b.subst = n.Subst()
+	}
 	l.funcs[key] = b.idx
 	l.work = append(l.work, func() { b.lowerComponent(t) })
 	return b.idx
@@ -387,7 +397,7 @@ func (b *fb) readsAlone(e syntax.Expr) int {
 
 func (b *fb) storeCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 	t := call.Type.Obj
-	idx := b.l.compFunc(t)
+	idx := b.l.compFunc(t, b.typ(call.Type))
 	var vals []int
 	for i, a := range call.Args {
 		if a == nil {
@@ -940,7 +950,7 @@ func (b *fb) bind(v int, el string, bd *check.BindArg) {
 // parameters and props, builders of its slots, its events' handlers.
 func (b *fb) componentCall(ec *check.ElementCall) int {
 	comp := ec.Comp.Comp
-	idx := b.l.compFunc(ec.Comp)
+	idx := b.l.compFunc(ec.Comp, ec.Comp.Type)
 	var vals []int
 	none := func() int {
 		r := b.temp(bc.KRef)

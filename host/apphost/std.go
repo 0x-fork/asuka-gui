@@ -6,7 +6,12 @@ package apphost
 // runs a package's Swift instead where it has some; these answer it's
 // unsupported there.
 import (
+	_ "github.com/egoist/asuka/std/crash/desktop"
+	_ "github.com/egoist/asuka/std/document/desktop"
+	_ "github.com/egoist/asuka/std/host/desktop"
 	_ "github.com/egoist/asuka/std/http/desktop"
 	_ "github.com/egoist/asuka/std/network/desktop"
+	_ "github.com/egoist/asuka/std/sqlite/desktop"
 	_ "github.com/egoist/asuka/std/store/desktop"
+	_ "github.com/egoist/asuka/std/watch/desktop"
 )

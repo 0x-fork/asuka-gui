@@ -1,0 +1,3 @@
+name = "asuka/icloud"
+version = "0.1.0"
+description = "iCloud: the account, a key-value store, and files kept on all the user's devices"

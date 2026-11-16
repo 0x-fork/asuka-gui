@@ -1,0 +1,6 @@
+name = "asuka/library"
+version = "0.1.0"
+description = "Saving files where the user keeps theirs: Photos, Downloads, Music"
+
+[ios.usage]
+NSPhotoLibraryAddUsageDescription = "To save photos and videos to your library."

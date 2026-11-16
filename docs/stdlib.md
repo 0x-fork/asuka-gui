@@ -40,7 +40,25 @@ they do for the platform's own apps.
 | `asuka/network` | `network.status()` (tracked: `connected`, `type`, `metered`, `constrained`; it watches the network only while something reads it), `network.current()`, `network.changes()` (a stream). NWPathMonitor on iOS and macOS, ConnectivityManager on Android, the Network List Manager on Windows, GNetworkMonitor and NetworkManager on Linux, `navigator.onLine` and the Network Information API on the web |
 | `asuka/platform` | `platform.call(module, method, args)` and `platform.send`: the hosts' own modules, by name, with arguments in their little-endian encodings (`u8`, `u32`, `f64`, `str`, `readU32`, ...). For the standard library's packages; an app reaches its own platform code through [native packages](native.md) |
 | `asuka/recent` | `recent.add(path)`, `recent.clear()`, `recent.list()`: the documents the user opened lately, in Open Recent and the Dock menu, the jump list, the recently used files |
-| `asuka/store` | `store.read(key, default)`, `store.write(key, value)`, `store.remove(key)`: small values kept across launches as JSON, in the platform's preferences (UserDefaults, SharedPreferences, `localStorage`, a file on Windows and Linux) |
+| `asuka/store` | `store.read(key, default)`, `store.write(key, value)`, `store.remove(key)`, `store.flush()`, `store.dir()`: small values kept across launches as JSON, in the platform's preferences (UserDefaults, SharedPreferences, `localStorage`, a file on Windows and Linux, written a moment after a change) |
+| `asuka/notify` | Local notifications: `request()`, `show(n)`, `schedule(n)` (after `n.after`), `cancel(id)`, `showing()`, `remove(ids)`, `removeThread(t)`, `removeAll()`, `setBadge(n)`; `setCategories` (actions, replies), `setChannels`, `setChannelGroups` (Android); `Notification(…).from(person, conversation)` (messages); `present(decide)` (how one shows while the app is in front); `responses()` (a stream of taps, actions and replies; `r.defer()` keeps the app running for the work). The host's notifications on each platform: UserNotifications, Android's, Windows' toasts, Linux's, the browser's |
+| `asuka/push` | `push.register()` (the token: APNs', FCM's, the web's subscription), `push.opened()` and `push.received()` (streams of `Message`s; `Message.from(person, conversation)`) |
+| `asuka/watch` | `watch.path(dir, ignore:, recursive:, attributes:)` gives a `Watch`: its `root`, and `events`, a stream of batches of `Event`s (`op`: create, write, remove, rename, attrib, overflow; `path`, `oldPath`). FSEvents, inotify and ReadDirectoryChangesW (internal/fswatch); phones and the web: unsupported |
+| `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` gives a `Task` (`update(…)`, `end()`): long work shown by the system (Android's foreground service notification, iOS's continued processing, the desktops' progress) |
+| `asuka/calendar` | `calendar.request()` (`Access`), `calendars()`, `events(from:, to:, calendars:)`, `add(Event)` (the system's form): EventKit, the Calendar Provider |
+| `asuka/compose` | `compose.mail(to:, cc:, bcc:, subject:, body:, html:, attachments:)` and `compose.message(to:, body:, …)` show the system's composers and answer a `Result` (cancelled, sent, saved, unknown); `check()` |
+| `asuka/contacts` | `contacts.pick()` (the system's picker: a `Contact` or none), `request()`, `list(name:, limit:)`, `add(Contact)` |
+| `asuka/library` | `library.save(path, collection:, name:, folder:, mime:, move:)`: a file into Photos, the gallery, Downloads or Music; where it went |
+| `asuka/liveactivity` | `liveactivity.start(Content)` gives an `Activity` (`update(c, alert:)`, `end(c, dismiss:)`), `events()` (started, ended, push tokens), `enabled()`: iOS's Live Activities, Android 16's Live Updates |
+| `asuka/periodic` | `periodic.schedule(name, every:, network:, charging:)`, `cancel(name)`, `runs(name)` (a stream of `Run`s, `run.finish(ok)`): iOS's background tasks, WorkManager |
+| `asuka/photos` | The photo library with permission: `request()`, `current()`, `list(screenshots:, offset:, limit:)`, `thumbnail(id, size:)`, `export(id)`, `manageLimited()` |
+| `asuka/widget` | `widget.set(kind, Entry)`, `setAll(kind, entries)`, `clear(kind)`: what the app's widgets show |
+| `asuka/crash` | `crash.reports()` (a stream: the reports kept, then each as it comes; `Report`: `id`, `kind`, `fatal`, `time`, `message`, `text`, `threads`, `context` with breadcrumbs and values), `breadcrumb(message)`, `set(key, value)`, `record(e)`, `delete(id)`. The record is the desktops' hosts' (sdk/crash) and the core's on iOS, Android and the web (its own fatal errors, uncaught exceptions, iOS's MetricKit diagnostics, how Android's runs ended, uncaught JavaScript errors) |
+| `asuka/icloud` | iCloud on iOS and macOS: `account()` and `files(scope)` (tracked: as iCloud changes them), `Value(key, default)` (a store kept in iCloud's key-value store), `documents()`, `container(id)`, `readFile`, `writeFile`, `delete`, `rename`, `download`, `evict`, `conflicts(path)`, `resolve(path, keeping:)`. Elsewhere: no account, empty lists, "icloud: not available" |
+| `asuka/document` | `document.open(path, read:, write:)` gives a `Document<T>` store: `content`, `state` (loading, saved, edited, saving, conflict, failed), `error`; `edit(c)` (autosaved a moment later), `save()`, `saveAnyway()`, `revert()`. Files coordinated on iOS and macOS. The windows, menus and document browser of a document-based app (`Documents<T>`) wait for the UI runtime's windows and navigation |
+| `asuka/host` | What the packages above build on: a host's own modules (`host.call(module, method, args)`, `host.next(module, method)`); apps don't need it |
+| `asuka/sqlite` | `sqlite.open(name)` (a file in the app's data directory, an absolute path, or `":memory:"`) gives a `DB`: `migrate(steps)`, `exec(sql, args)` and `query<T>(sql, args)` (async, off the main thread; rows decoded straight into `T`, a struct's fields by the columns' names), `watch<T>(sql, args)` (a `Live<T>` store: `rows`, `loading`, `error`; run again as its arguments change and as a table it reads is written), `changed()`, `close()`. SQLite is the sqlite plugin's library (sdk/sqlite), shipped with the app; on the web, in a worker of the page's |
+| `asuka/storage` | `storage.Value(key, default)`: a store whose `value` is kept on the device (asuka/store's), tracked and written as it changes; `reset()`; `storage.flush()`, `storage.dirName()` |
 
 Where a platform has no code for a native package (an app run by
 `asuka test`, which has none), what needs it throws an `unsupported`
@@ -49,8 +67,8 @@ error; `asuka/store` keeps nothing then, and reads give their defaults.
 `asuka test` makes runs repeat: `time.now()` starts at
 2026-01-01T00:00:00Z and moves only as the test's time does (`sleep`),
 the local zone is UTC, and each test has an empty directory of its own
-as `fs.appDir()`. On the web the app has no directory yet, so `asuka/fs`'s
-calls throw there.
+as `fs.appDir()`. On the web the app's directory is the page's, kept in
+the browser's storage ([The app's files](web.md#the-apps-files)).
 
 ## Packages that aren't here
 

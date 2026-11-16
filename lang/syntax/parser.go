@@ -981,6 +981,7 @@ func (p *parser) parseStore(start Pos) *StoreDecl {
 	p.expect(STORE)
 	d := &StoreDecl{}
 	d.Name = p.ident()
+	d.TypeParams = p.parseTypeParams()
 	d.Params = p.optParams()
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)
@@ -1203,7 +1204,13 @@ func (p *parser) parseFunc(start Pos) *FuncDecl {
 		p.next()
 	}
 	p.expect(FN)
-	d.Name = p.ident()
+	if p.tok.IsKeyword() && (p.peek(1) == LPAREN || p.peek(1) == LSS) {
+		// A method named as a keyword (r.defer()), called through its
+		// value as a field of that name is.
+		d.Name = p.name()
+	} else {
+		d.Name = p.ident()
+	}
 	d.TypeParams = p.parseTypeParams()
 	if p.tok == LPAREN {
 		d.Params = p.parseParams(false)

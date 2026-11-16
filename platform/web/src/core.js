@@ -1,78 +1,36 @@
 // The C core as WebAssembly (asuka.wasm: the core, its VM, and an app
-// compiled in or loaded as bytecode), driven by the web host (host.js)
-// as the Go web host was: batches and measurements through a shared
-// buffer, events and the lists' calls into the core's C ABI (asuka.h).
+// compiled in or loaded as bytecode), driven by the web host (host.js):
+// batches and measurements through a shared buffer, events and the
+// lists' calls into the core's C ABI (asuka.h). The C library's system
+// calls are WASI's, answered by wasi.js (the app's files: fs.js); spawn
+// runs on the page's workers (spawn.js), each with the same core.
 //
-//	const core = await startCore(host, { wasm: "asuka.wasm", module: "app.akb", dev: true });
+//	const core = await startCore(host, { wasm: "asuka.wasm", module: "app.akb", dev: true, appDir: "/data/app" });
 
-/**
- * wasi is the little of WASI the core's C library calls: the clock, randomness, writing to
- * the console. The page has no directory for the core (asuka/fs's calls fail, as they would
- * with nothing preopened), so the file system's calls answer EBADF.
- */
-function wasi(memory, log) {
-  const mem = () => new DataView(memory().buffer);
-  const text = new TextDecoder();
-  const lines = { 1: "", 2: "" };
-  return {
-    fd_write(fd, iovs, n, written) {
-      const m = mem();
-      let total = 0;
-      for (let i = 0; i < n; i++) {
-        const p = m.getUint32(iovs + i * 8, true), len = m.getUint32(iovs + i * 8 + 4, true);
-        lines[fd] = (lines[fd] || "") + text.decode(new Uint8Array(memory().buffer, p, len));
-        total += len;
-      }
-      let nl;
-      while ((nl = lines[fd].indexOf("\n")) >= 0) {
-        log(fd, lines[fd].slice(0, nl));
-        lines[fd] = lines[fd].slice(nl + 1);
-      }
-      m.setUint32(written, total, true);
-      return 0;
-    },
-    fd_close() { return 0; },
-    fd_seek() { return 70; }, // ESPIPE
-    fd_fdstat_get(fd, out) {
-      const m = mem();
-      m.setUint8(out, fd <= 2 ? 2 : 0);
-      return 0;
-    },
-    fd_prestat_get() { return 8; }, // EBADF: no preopened directories
-    fd_prestat_dir_name() { return 8; },
-    fd_read() { return 8; },
-    fd_readdir() { return 8; },
-    fd_filestat_get() { return 8; },
-    path_open() { return 8; },
-    path_filestat_get() { return 8; },
-    path_create_directory() { return 8; },
-    path_remove_directory() { return 8; },
-    path_rename() { return 8; },
-    path_unlink_file() { return 8; },
-    environ_sizes_get(count, size) { const m = mem(); m.setUint32(count, 0, true); m.setUint32(size, 0, true); return 0; },
-    environ_get() { return 0; },
-    args_sizes_get(count, size) { const m = mem(); m.setUint32(count, 0, true); m.setUint32(size, 0, true); return 0; },
-    args_get() { return 0; },
-    clock_time_get(id, precision, out) {
-      const ns = id === 0 ? BigInt(Date.now()) * 1000000n : BigInt(Math.round(performance.now() * 1e6));
-      mem().setBigUint64(out, ns, true);
-      return 0;
-    },
-    random_get(p, n) { crypto.getRandomValues(new Uint8Array(memory().buffer, p, n)); return 0; },
-    proc_exit(code) { throw new Error("asuka: the core exited (" + code + ")"); },
-    sched_yield() { return 0; },
-    poll_oneoff() { return 52; }, // ENOSYS
-  };
-}
+import { wasi } from "./wasi.js";
+import { Pool } from "./spawn.js";
 
 /**
  * startCore loads the core into the page and connects it to host. Options: wasm (the
  * core's URL), module (bytecode to run: asuka dev's app), dev (asuka dev's page: the module
  * loads as its reloads do, and core.reload loads the next one keeping the app's state and
- * views), log (where the core's output goes).
+ * views), appDir (the app's data directory, asuka/fs's appDir), workers (false: spawn runs
+ * in place, on the page's thread), sqlite (a function resolving to the page's SQLite
+ * client, sqlite.js's), crash (crash.js's Crash: the run's record), makeWorker (makes a worker of a URL: Node's tests'),
+ * log (where the core's output goes).
  */
 export async function startCore(host, options = {}) {
-  let instance;
+  let instance, pool = null;
+  // asuka/sqlite: the page's SQLite worker (sqlite.js), when the app has the plugin's library.
+  let sqlite = null;
+  if (options.sqlite) {
+    try {
+      sqlite = await options.sqlite();
+      sqlite.root(options.appDir);
+    } catch (err) {
+      console.error("asuka/sqlite: SQLite didn't load:", err);
+    }
+  }
   const memory = () => instance.exports.memory;
   const timers = new Map();
   const log = options.log || ((fd, line) => (fd === 2 ? console.error : console.log)(line));
@@ -91,15 +49,28 @@ export async function startCore(host, options = {}) {
       // The zone's offset from UTC at a time (Unix seconds), in seconds east:
       // dates, and asuka/time's local zone.
       zone_offset: (s) => -new Date(s * 1000).getTimezoneOffset() * 60,
+      // spawn's jobs (core/src/abi/web.c): its bytes copied out, for a worker.
+      spawn: (id, p, n) => pool.run(id, new Uint8Array(memory().buffer, p, n).slice()),
+      spawn_cancel: (id) => pool?.cancel(id),
+      // asuka/sqlite's calls (core/src/sqlite/sqlite.c): to the page's
+      // SQLite worker, answered into the core once it isn't running.
+      // asuka/crash's record: whether a run's page is open (crash.js's marks).
+      crash_alive: (p, n) => (options.crash?.alive(new TextDecoder().decode(new Uint8Array(memory().buffer, p, n))) ? 1 : 0),
+      sqlite_available: () => (sqlite ? 1 : 0),
+      sqlite_send: (id, op, conn, p, n) => {
+        const input = new Uint8Array(memory().buffer, p, n).slice();
+        sqlite.send(id, op, conn, input, (answer) => host.call(() => withBytes(answer, (q, k) => e.asuka_sqlite_done(id, q, k))));
+      },
     },
     wasi_snapshot_preview1: wasi(memory, log),
   };
+  // Compiled once: the page's instance and each worker's.
   const url = options.wasm || "asuka.wasm";
-  const r = await WebAssembly.instantiateStreaming(fetch(url), imports).catch(async () => {
-    const bytes = await (await fetch(url)).arrayBuffer();
-    return WebAssembly.instantiate(bytes, imports);
+  const wasmModule = await WebAssembly.compileStreaming(fetch(url)).catch(async () => {
+    // A server that doesn't send application/wasm.
+    return WebAssembly.compile(await (await fetch(url)).arrayBuffer());
   });
-  instance = r.instance;
+  instance = await WebAssembly.instantiate(wasmModule, imports);
   const e = instance.exports;
   e._initialize?.();
 
@@ -123,7 +94,10 @@ export async function startCore(host, options = {}) {
   const core = {
     /** reload loads asuka dev's next module, keeping the app's state and views: { kept, micros }. */
     reload: (bytes) => new Promise((ok, fail) => host.call(() => {
-      try { ok(devLoad(bytes)); } catch (err) { fail(err); }
+      try {
+        ok(devLoad(bytes));
+        pool?.reload(bytes);
+      } catch (err) { fail(err); }
     })),
     event: (bytes) => withBytes(bytes, (p, n) => e.asuka_event(p, n)),
     listCount: (id) => Number(e.asuka_list_count(id)),
@@ -137,12 +111,36 @@ export async function startCore(host, options = {}) {
   host.attach(memory());
   host.connect(core, e.asuka_io());
   host.inGo = 1;
+  if (options.appDir) withBytes(new TextEncoder().encode(options.appDir + "\0"), (p) => e.asuka_set_app_dir(p));
+  // The run's crash record, before the app's init (crash.js).
+  options.crash?.start(e, withBytes, (p) => {
+    const b = new Uint8Array(memory().buffer, p);
+    return new TextDecoder().decode(b.subarray(0, b.indexOf(0)));
+  });
   e.asuka_web_start();
+  let bytes = null;
   if (options.module) {
     // asuka dev: the app's bytecode.
     const res = await fetch(options.module);
     if (!res.ok) throw new Error("asuka: the app's module: " + (await res.text()));
-    const bytes = new Uint8Array(await res.arrayBuffer());
+    bytes = new Uint8Array(await res.arrayBuffer());
+  }
+  if (options.workers !== false && (options.makeWorker || typeof Worker !== "undefined")) {
+    pool = new Pool({
+      wasm: wasmModule,
+      module: bytes,
+      appDir: options.appDir,
+      sqlite: !!sqlite,
+      // Where the page's crash record is, and which runs' pages are open.
+      crash: options.crash ? () => ({ where: options.crash.where(), alive: options.crash.aliveRuns() }) : null,
+      log: (line) => log(2, line),
+      ...(options.makeWorker ? { makeWorker: options.makeWorker } : {}),
+      // A job's answer: into the core, once it isn't running.
+      done: (id, status, answer) => host.call(() => withBytes(answer, (p, n) => e.asuka_spawn_done(id, status, p, n))),
+    });
+    e.asuka_web_workers(1);
+  }
+  if (bytes) {
     if (options.dev) {
       core.loaded = devLoad(bytes);
     } else if (withBytes(bytes, (p, n) => e.asuka_load(p, n, 0)) !== 0) {
