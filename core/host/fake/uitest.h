@@ -55,6 +55,12 @@ bool ak_uitest_tap(ak_uitest *a, ak_span text, ak_buf *err);
 bool ak_uitest_type(ak_uitest *a, ak_span text, ak_span label, ak_buf *err);
 bool ak_uitest_has(ak_uitest *a, ak_span text);
 bool ak_uitest_expect(ak_uitest *a, ak_span text, ak_buf *err);
+// frame is the frame, in the window's coordinates, of the first view that
+// shows text.
+bool ak_uitest_frame(ak_uitest *a, ak_span text, float out[4], ak_buf *err);
+// set_languages reports the user's preferred languages changed (BCP 47
+// tags, most preferred first, joined by commas), settled.
+void ak_uitest_set_languages(ak_uitest *a, ak_span languages);
 bool ak_uitest_expect_no(ak_uitest *a, ak_span text, ak_buf *err);
 // ak_uitest_snapshot describes what the screen shows: each layer's
 // views, with their kinds, frames, texts and states, one a line,

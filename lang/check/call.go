@@ -51,6 +51,13 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			return c.closureCall(e, fn, c.ident(fn))
 		}
 	case *syntax.MemberExpr:
+		// A message of the app's catalogs.
+		if id, ok := fn.X.(*syntax.Ident); ok {
+			if tr, ok := c.lookup(id.Name).(*TrName); ok {
+				c.info.Uses[id] = tr
+				return c.trCall(e, fn, tr)
+			}
+		}
 		// A package's function, builtin or type.
 		if id, ok := fn.X.(*syntax.Ident); ok {
 			if pn, ok := c.lookup(id.Name).(*PkgName); ok {

@@ -41,8 +41,12 @@ static struct {
 
 // ---- Tags ----
 
-// forced_direction is ASUKA_DIRECTION's ("rtl" or "ltr"), or NULL.
+static char forced_dir[4];  // ak_ui_force_locale's direction ("rtl", "ltr"), or ""
+
+// forced_direction is asuka dev's --dir (ak_ui_force_locale) or
+// ASUKA_DIRECTION's ("rtl" or "ltr"), or NULL.
 static const char *forced_direction(void) {
+	if (forced_dir[0]) return forced_dir;
 	const char *d = getenv("ASUKA_DIRECTION");
 	return d && (strcmp(d, "rtl") == 0 || strcmp(d, "ltr") == 0) ? d : NULL;
 }
@@ -237,6 +241,27 @@ void ak_ui_set_locale(ak_str *tag) {
 	update();
 }
 
+// ak_ui_force_locale shows lang (a tag; "": the user's languages) laid
+// out in dir ("rtl", "ltr"; "": the language's) whatever the user's or
+// setLocale's, for this run: asuka dev's --lang and --dir, which the
+// module's init says. Nothing is saved.
+void ak_ui_force_locale(ak_str *lang, ak_str *dir) {
+	load();
+	forced_dir[0] = 0;
+	if (dir && (ak_span_eqc(ak_span_str(dir), "rtl") || ak_span_eqc(ak_span_str(dir), "ltr"))) memcpy(forced_dir, dir->data, 4);
+	if (lang && lang->len) {
+		ak_str *n = ak_i18n_normalize(ak_span_str(lang));
+		if (n && n->len) {
+			ak_release(L.override);
+			L.override = n;
+			L.forced = true;
+		} else {
+			ak_release(n);
+		}
+	}
+	if (L.shown) update();
+}
+
 // ak_ui_set_languages sets the languages the app is written in, its own
 // first (for an app that translates itself, without catalogs).
 void ak_ui_set_languages(ak_arr *tags) {
@@ -315,6 +340,17 @@ void ak_locale_changed(void) {
 	if (L.shown) update();
 }
 
+void ak_locale_forget_choice(void) {
+	load();
+	if (!L.forced) {
+		ak_release(L.override);
+		L.override = NULL;
+	}
+	ak_release(L.pending_save);
+	L.pending_save = NULL;
+	L.has_pending_save = false;
+}
+
 // ak_locale_reset forgets the process's locale (tests).
 void ak_locale_reset(void) {
 	ak_release(L.override);
@@ -327,4 +363,5 @@ void ak_locale_reset(void) {
 	ak_release(L.region_locale);
 	ak_signal_drop(&L.node);
 	memset(&L, 0, sizeof L);
+	forced_dir[0] = 0;
 }

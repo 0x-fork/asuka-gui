@@ -433,6 +433,9 @@ func (c *Checker) funcBody(f *Function) {
 	ctx := c.enter(kind, d, name)
 	ctx.Func = f
 	f.Ctx = ctx
+	if d.Native.IsValid() && trackedNative(f.Pkg.Path, f.name) {
+		ctx.readsState = true
+	}
 	ctx.Async = f.Sig.Async
 	ctx.Throws = f.Sig.Throws
 	ctx.Result = f.Sig.Result

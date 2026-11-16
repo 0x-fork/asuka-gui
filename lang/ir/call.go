@@ -53,6 +53,8 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 		return b.copyTo(b.element(e), dst)
 	case check.CallStore:
 		return b.storeCall(e, call, dst)
+	case check.CallTr:
+		return b.trCall(e, call, dst)
 	}
 	b.l.errorf(e, "internal: unknown call")
 	return -1

@@ -256,6 +256,10 @@ ak_catalog *ak_i18n_catalog(ak_bytes *blob) {
 		ak_throw_msg("i18n.catalog: a compiled catalog cut short or malformed");
 		return NULL;
 	}
+	// The app's catalog: a reload's replaces the last, whose module is
+	// going.
+	for (uint32_t i = 0; i < registry.len; i++) ak_release(registry.data[i]);
+	registry.len = 0;
 	ak_vec_push(&registry, (ak_catalog *)ak_retain(c));
 	ak_locale_changed();
 	return c;

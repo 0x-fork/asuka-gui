@@ -34,12 +34,22 @@ type Options struct {
 	// ID; "" for the root package) imports as path (@acme/charts). Dir
 	// resolves through the project's asuka.lock when it's nil.
 	Resolve func(from, path string) (id, dir string, err error)
+	// Catalogs are the app's catalogs (tr). Dir finds them itself
+	// (CatalogsOf) when they're nil and NoCatalogs isn't set.
+	Catalogs   *Catalogs
+	NoCatalogs bool
+	// Lang and Direction are a language and a direction ("rtl", "ltr")
+	// the module shows whatever the user's (asuka dev's --lang and --dir).
+	Lang, Direction string
 }
 
 // Result is a compilation's outcome.
 type Result struct {
 	Module  *bytecode.Module // nil when there are errors
 	Diags   []check.Diagnostic
+	// Warnings are what's worth saying that doesn't stop the build: the
+	// catalogs' (a translation's missing messages, ...).
+	Warnings []check.Diagnostic
 	Program *check.Program
 	Fset    *syntax.FileSet
 	IR      *ir.Program
@@ -91,6 +101,15 @@ func Dir(dir string, opts *Options) (*Result, error) {
 	if opts.Resolve == nil {
 		o := *opts
 		o.Resolve = pkgs.NewImports(abs).Resolve
+		opts = &o
+	}
+	if opts.Catalogs == nil && !opts.NoCatalogs {
+		cs, err := CatalogsOf(abs)
+		if err != nil {
+			return nil, err
+		}
+		o := *opts
+		o.Catalogs = cs
 		opts = &o
 	}
 	l := &loader{fset: syntax.NewFileSet(), opts: opts, units: map[string]*unit{}}
@@ -222,6 +241,28 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 func (l *loader) compile(root *unit) *Result {
 	c := check.NewChecker(l.fset)
 	res := &Result{Fset: l.fset}
+	// The app's catalogs, before any package is checked: tr is theirs.
+	dates := false
+	for _, u := range l.units {
+		dates = dates || u.std["asuka/i18n"] || u.imports["asuka/i18n"] != nil
+	}
+	if cs := l.opts.Catalogs; cs != nil {
+		cat, errs, warns := cs.catalog(dates)
+		l.diags = append(l.diags, errs...)
+		res.Warnings = warns
+		if cat == nil {
+			cat = &check.Catalog{Broken: true, Dir: cs.Dir, Source: cs.Source}
+		}
+		c.SetCatalog(cat)
+	} else if dates {
+		cat, err := implicitCatalog()
+		if err != nil {
+			pos := syntax.Position{Filename: "asuka/i18n", Line: 1, Column: 1}
+			l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: pos, Msg: err.Error()})
+		} else {
+			c.SetCatalog(cat)
+		}
+	}
 	var visit func(u *unit) bool
 	visit = func(u *unit) bool {
 		switch u.state {
@@ -261,7 +302,7 @@ func (l *loader) compile(root *unit) *Result {
 	if len(res.Diags) > 0 {
 		return res
 	}
-	p, diags := ir.Lower(prog, &ir.Options{MainTest: l.opts.MainTest})
+	p, diags := ir.Lower(prog, &ir.Options{MainTest: l.opts.MainTest, Lang: l.opts.Lang, Direction: l.opts.Direction})
 	res.Diags = append(res.Diags, diags...)
 	if len(res.Diags) > 0 {
 		return res

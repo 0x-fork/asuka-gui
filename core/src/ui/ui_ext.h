@@ -184,6 +184,10 @@ ak_str *ak_locale_now(void);
 // the week (1 Sunday ... 7 Saturday); reading them follows them.
 int ak_locale_hour_cycle(void);
 int ak_locale_first_weekday(void);
+// ak_locale_forget_choice forgets the language the app chose (setLocale),
+// not one the run forced (asuka dev --lang): tests' mounts start from the
+// user's languages.
+void ak_locale_forget_choice(void);
 // ak_locale_changed tells the locale the catalogs' languages changed.
 void ak_locale_changed(void);
 

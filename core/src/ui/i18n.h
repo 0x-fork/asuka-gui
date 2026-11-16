@@ -96,7 +96,8 @@ extern const uint32_t ak_i18n_nparents;
 typedef struct ak_catalog ak_catalog;  // an rt object (AK_TAG_OPAQUE)
 
 // ak_i18n_catalog loads a compiled catalog (i18n's Catalog.Compile): its
-// languages and messages. It's registered: the app's languages are its.
+// languages and messages. It's registered, replacing the one before (a
+// reload's module registers its own): the app's languages are its.
 // It throws on bytes that aren't one.
 ak_catalog *ak_i18n_catalog(ak_bytes *blob);
 // ak_i18n_say says message key (its index in the catalog's keys) with

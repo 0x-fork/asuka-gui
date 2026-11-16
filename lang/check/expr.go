@@ -197,6 +197,9 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 	case *PkgName:
 		c.errorf(e, "%s is a package: use its members, %s.name", e.Name, e.Name)
 		return Invalid
+	case *TrName:
+		c.errorf(e, "tr says the app's messages: call one, tr.key(…)")
+		return Invalid
 	}
 	return Invalid
 }

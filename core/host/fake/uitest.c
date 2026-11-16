@@ -3,6 +3,8 @@
 #include "fake/uitest.h"
 #include "vm/vm.h"
 #include "rt/sched.h"
+#include "base/thread.h"
+#include "ui/ui_ext.h"
 #include "signal/signal.h"
 
 #include <math.h>
@@ -112,6 +114,8 @@ ak_uitest *ak_uitest_mount(ak_closure *build, const ak_environment *env) {
 	f->fail_fn = fail_cb;
 	f->fail_ctx = &a->fails;
 	active = a;
+	ak_zone_set_utc(true);  // dates are UTC's: the same on every computer
+	ak_locale_forget_choice();  // the user's languages, whatever a test before chose
 	ak_sched_set_wake(wake);
 	ak_ui_init(&(ak_host){f, apply_cb, measure_cb});
 	ak_ui_set_environment(&f->env);
@@ -695,6 +699,24 @@ bool ak_uitest_type(ak_uitest *a, ak_span text, ak_span label, ak_buf *err) {
 	return check_fails(a, err);
 }
 
+bool ak_uitest_frame(ak_uitest *a, ak_span text, float out[4], ak_buf *err) {
+	target_vec ts = {0};
+	targets(a, text, &ts);
+	ak_fake_view *v = ts.len ? ts.data[0].v : NULL;
+	ak_vec_free(&ts);
+	if (!v) return failure(a, err, "nothing shows %.*s", text);
+	out[0] = v->frame[0], out[1] = v->frame[1], out[2] = v->frame[2], out[3] = v->frame[3];
+	for (ak_fake_view *p = v->parent; p; p = p->parent) out[0] += p->frame[0], out[1] += p->frame[1];
+	return true;
+}
+
+void ak_uitest_set_languages(ak_uitest *a, ak_span languages) {
+	ak_environment env = a->f->env;
+	env.languages = languages;
+	ak_fake_set_environment(a->f, &env);
+	ak_uitest_settle(a);
+}
+
 bool ak_uitest_expect(ak_uitest *a, ak_span text, ak_buf *err) {
 	if (!check_fails(a, err)) return false;
 	return ak_uitest_has(a, text) ? true : failure(a, err, "the screen doesn't show \"%.*s\"", text);
@@ -807,6 +829,30 @@ static ak_val t_idle(ak_val *a, uint32_t n) {
 	return (ak_val){.p = f};
 }
 
+static const uint8_t frame_kinds[] = {AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT};
+static const ak_shape *const no_shapes[4];
+static const ak_shape frame_tuple = {"(float,float,float,float)", 4, frame_kinds, no_shapes, NULL, 0, NULL, false, NULL};
+
+static ak_val t_frame(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.frame");
+	ak_buf err = {0};
+	float f[4];
+	if (!ak_uitest_frame(app, span_of(a[1]), f, &err)) {
+		throw_buf(&err);
+		return (ak_val){0};
+	}
+	ak_buf_free(&err);
+	ak_struct *s = ak_struct_new(&frame_tuple);
+	for (int i = 0; i < 4; i++) s->f[i].f = f[i];
+	return (ak_val){.p = s};
+}
+
+static ak_val t_set_languages(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.set_languages");
+	ak_uitest_set_languages(app, span_of(a[1]));
+	return (ak_val){0};
+}
+
 static ak_val t_dump(ak_val *a, uint32_t n) {
 	ak_uitest *app = app_arg(a, n, "test.dump");
 	ak_buf b = {0};
@@ -824,4 +870,6 @@ void ak_uitest_builtins_init(void) {
 	ak_builtin_register("test.expect_no", t_expect_no);
 	ak_builtin_register("test.idle", t_idle);
 	ak_builtin_register("test.dump", t_dump);
+	ak_builtin_register("test.frame", t_frame);
+	ak_builtin_register("test.set_languages", t_set_languages);
 }

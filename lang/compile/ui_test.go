@@ -12,15 +12,29 @@ import (
 // UI programs compile now; they run once the runtime has the ui.*
 // builtins (core/src/ui), and skip until then.
 func TestUIPrograms(t *testing.T) {
-	files, _ := filepath.Glob("testdata/ui/*.asuka")
+	// A program is a file, or a directory: an app with its catalogs
+	// (locales/).
+	files, _ := filepath.Glob("testdata/ui/*")
 	for _, path := range files {
 		path := path
+		info, err := os.Stat(path)
+		if err != nil || !info.IsDir() && !strings.HasSuffix(path, ".asuka") {
+			continue
+		}
 		t.Run(strings.TrimSuffix(filepath.Base(path), ".asuka"), func(t *testing.T) {
-			src, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
+			var res *Result
+			if info.IsDir() {
+				var err error
+				if res, err = Dir(path, nil); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				src, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				res = Files(map[string][]byte{path: src}, nil)
 			}
-			res := Files(map[string][]byte{path: src}, nil)
 			if err := res.Err(); err != nil {
 				t.Fatalf("compile:\n%v", err)
 			}

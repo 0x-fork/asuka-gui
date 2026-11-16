@@ -1,0 +1,18 @@
+{
+  "@@locale": "en",
+  "inbox": "Inbox",
+  "@inbox": {"description": "The screen's title."},
+  "greeting": "Hello, {name}!",
+  "@greeting": {"placeholders": {"name": {"type": "String", "example": "Ada"}}},
+  "unread": "{count, plural, =0 {No unread messages} one {# unread message} other {# unread messages}}",
+  "@unread": {"placeholders": {"count": {"type": "int", "example": "3"}}},
+  "storage": "{used, number, percent} of your storage",
+  "@storage": {"placeholders": {"used": {"type": "double"}}},
+  "seen": "Seen {when, date, medium} at {when, time, short}",
+  "@seen": {"placeholders": {"when": {"type": "DateTime"}}},
+  "place": "{n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} place",
+  "replied": "{gender, select, female {She} male {He} other {They}} replied",
+  "start": "Start",
+  "end": "End",
+  "onlyEnglish": "Only in English"
+}

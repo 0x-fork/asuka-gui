@@ -449,24 +449,37 @@ decoded parameter by parameter.
 
 ## Languages
 
-An app's catalogs compile at build time with package i18n
-(`Catalog.Compile`): the blob, the keys sorted, and each key's arguments
-in its source message's order. The blob is a module constant; the
-module's init makes the catalog global, `i18n.catalog(blob)`, which
-registers it: its languages become the app's.
+The compiler (lang/compile) finds the app's catalogs (asuka.toml's
+`[i18n]`, else `locales/`), checks them with internal/i18ngen (what's
+wrong is a diagnostic at its file and line; a translation's missing
+messages are warnings), and compiles them with package i18n
+(`Catalog.CompileWith`): the blob, the keys sorted, each key's arguments
+in its source message's order, each language's number formats and, when
+a message has a date or the app imports asuka/i18n, its dates (CLDR's
+names, and the patterns of every style pair and of the messages'
+skeletons, in 12 and 24 hours). The checker gets `tr` (check.Catalog):
+each source key, its arguments typed by its placeholders (`int`, a
+number for `double` and `num`, a date for `DateTime`, a string
+otherwise). The blob is a string constant; init makes the catalog global
+before anything else, `i18n.catalog(blob.bytes())`, which registers it
+(a reload's replaces the last): its languages become the app's. An app
+without catalogs that imports asuka/i18n gets an implicit one, English's
+formats and no messages, and no `tr`.
 
 | Source | Lowered |
 |---|---|
-| `tr.inbox.title(unread: n)` | `i18n.say(catalog, key, (n,), none)`, key the index of `inboxTitle`'s key; the tuple of the arguments in the key's order: an int or a float for number, plural and selectordinal arguments, a string otherwise |
-| `tr.in("de").greeting(name: n)` | `i18n.say(catalog, key, (n,), "de")` |
-| `locale()`, `setLocale(tag)`, `setLanguages(tags)`, `languages()`, `preferredLanguages()`, `isRTL()`, `region()`, `formatLocale()` | `i18n.locale`, `i18n.set_locale`, ... |
+| `tr.inboxTitle(unread: n)` | `i18n.say(catalog, key, (n,), none)`, key the index of `inboxTitle`; the tuple of the arguments in the key's order, of their own kinds: an int or a float for number, plural and selectordinal arguments, an int (nanoseconds since 1970; a `Time`'s instant) for a date, a string otherwise; none without arguments |
+| `i18n.locale()`, `i18n.setLocale(tag)`, `i18n.languages()`, `i18n.isRTL()`, ... (asuka/i18n) | the package's `native fn`s: `i18n.locale`, `i18n.set_locale`, `i18n.languages`, `i18n.is_rtl`, `i18n.region`, `i18n.format_locale`, `i18n.format_number`, `i18n.format_int`, `i18n.format_date`, `i18n.autonym` |
 
 `i18n.say` reads the language shown, tracked: a binding that says a
-message follows the language as it follows its arguments. A key missing
-in a language falls back as `Catalog.Format` does (its CLDR parent
-locales, then the source); a key none has says its name. Dates are the
-caller's to write (a `date` or `time` argument takes a string) until the
-language has a date type.
+message follows the language as it follows its arguments, and the
+checker counts a call of tr (and asuka/i18n's natives that read the
+locale) as reading state, so a function that says one is followed too
+and spawn can't call it. A key missing in a language falls back as
+`Catalog.Format` does (its CLDR parent locales, then the source); a key
+none has says its name. Numbers and dates are written in the language
+shown's formats (the catalog's best match for it), dates in the device's
+time zone and the user's hour cycle.
 
 ## load
 
