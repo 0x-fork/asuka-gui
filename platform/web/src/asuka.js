@@ -28,6 +28,7 @@ import * as worker from "./worker.js";
 import { notifyFor } from "./modules/system-notify.js";
 import { Crash } from "./crash.js";
 import { startCore } from "./core.js";
+import { app as nativeApp } from "./native.js";
 // What packages' generated JavaScript (asuka native) builds on: globalThis.asuka.native.
 export * as native from "./native.js";
 
@@ -46,6 +47,7 @@ export async function start(options = {}) {
   const container = options.container || document.body.appendChild(document.createElement("div"));
   if (fullPage) container.classList.add("asuka-page");
   const name = options.name || "app";
+  nativeApp.name = name;
   const dev = options.dev ? devClient(options.dev) : null;
   // The app's service worker, listened to before the app starts: a tap
   // on a notification may be what opened the page.

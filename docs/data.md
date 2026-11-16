@@ -2,7 +2,7 @@
 
 An app keeps its data in a few places: small values in `asuka/sdk/store`, records
 in SQLite with `asuka/sdk/sqlite`, secrets in the platform's keychain with
-`asuka/sdk/secure`, and files of its own with Go's `os`. This page covers each,
+`asuka/secure`, and files of its own with Go's `os`. This page covers each,
 the network through `net/http`, watching files, and which calls may block
 the main thread.
 
@@ -35,7 +35,7 @@ app, and iOS and Android in the player), `store.Dir()` is a directory of
 one for each app and platform), so what you try while developing never
 mixes with an installed build's data. With the player, the store, the
 databases and your files are on the computer, not on the device.
-`asuka/sdk/secure` is the exception: it is the platform's store, as in a
+`asuka/secure` is the exception: it is the platform's store, as in a
 release build (under the player, the device's keychain). On the web,
 `asuka dev`'s page keeps its files in the browser, for the dev server's
 address.
@@ -368,9 +368,9 @@ platforms, the Android NDK, Zig for Linux, Windows and the web) into
 from then on, and `go run ./cmd/asuka plugin publish sdk/sqlite`
 publishes it.
 
-## Secrets: asuka/sdk/secure
+## Secrets: asuka/secure
 
-`asuka/sdk/secure` keeps small secrets, tokens and passwords, encrypted by the
+`asuka/secure` keeps small secrets, tokens and passwords, encrypted by the
 platform. It's for secrets, not data: keep everything else in the store
 or a database.
 
@@ -398,46 +398,40 @@ or a database.
   running in the app's origin can still have the key decrypt them: it's
   a web app's best, not a keychain. It needs https or localhost.
 
-On the main thread, `Load`, `Save` and `Remove` take a callback, called
-on the main thread:
+`secure.read(key)` is a key's value (`none` if there's none),
+`secure.write(key, value)` keeps one, and `secure.remove(key)` forgets
+it. Each waits for the platform without holding the main thread, and
+throws what it says (a locked keyring, no keyring at all); where the
+platform has no code for it (`asuka test`), an `unsupported` error.
 
-```go
-func Account() ui.Node {
-	status := signal.New("")
-	secure.Load("token", func(token string, ok bool, err error) {
-		switch {
-		case err != nil:
-			status.Set(err.Error())
-		case !ok:
-			status.Set("Signed out")
-		default:
-			status.Set("Signed in")
-		}
-	})
-	return ui.Column(nil,
-		ui.Text(status),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Sign out"), OnPress: func() {
-			secure.Remove("token", func(err error) { status.Set("Signed out") })
-		}}),
-	)
+```asuka
+import asuka/secure
+
+component Account {
+  state status = ""
+
+  task {
+    do {
+      status = if (try await secure.read("token")) != none { "Signed in" } else { "Signed out" }
+    } catch e {
+      status = e.message
+    }
+  }
+
+  Column {
+    Text(status)
+    Button("Sign out") {
+      on press {
+        try? await secure.remove("token")
+        status = "Signed out"
+      }
+    }
+  }
 }
 
-func signIn(token string) {
-	secure.Save("token", token, nil) // nil: no callback
+async fn signIn(token: string) throws {
+  try await secure.write("token", token)
 }
-```
-
-From a goroutine, `Get`, `Set` and `Delete` wait for the platform and
-return. Never call them on the main thread:
-
-```go
-go func() {
-	token, ok, err := secure.Get("token")
-	if err != nil || !ok {
-		return
-	}
-	// ... use token ...
-}()
 ```
 
 ## Files and the network
@@ -620,10 +614,10 @@ rule; for data, it comes to this:
 
 - **Don't call on the main thread**: `sqlite.Open`, `Migrate`, `Exec`,
   `Tx`, `Query` and `QueryOne` (except at launch, before `app.Run`);
-  `secure.Get`, `Set` and `Delete`; file and network calls.
+  file and network calls.
 - **Call on the main thread**: `ExecAsync`, `TxAsync`, `Watch`,
-  `WatchWith`; `secure.Load`, `Save` and `Remove`; `store.Signal`, as any
-  signal.
+  `WatchWith`; `store.Signal`, as any signal. `asuka/secure`'s
+  functions are `async`: awaited, they never hold the main thread.
 - **Either**: `store.Get`, `Set` and `Delete`, which only read and write
   memory (the file is written off the main thread).
 

@@ -147,6 +147,13 @@ export class DeclaredError extends Error {
   }
 }
 
+/**
+ * The app the page runs: its name (asuka.toml's, the host's options), for
+ * a package to keep its data under, as the host keeps the app's. Set as
+ * the host starts.
+ */
+export const app = { name: "app" };
+
 /** What the platform doesn't have: Go gets errors.ErrUnsupported. */
 export class UnsupportedError extends Error {}
 
