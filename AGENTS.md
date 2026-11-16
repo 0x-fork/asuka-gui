@@ -71,7 +71,7 @@ go test ./internal/cbuild           # the core built for this computer, iOS, And
 go build ./... && go vet ./...      # CGO_ENABLED=0: everything
 go test ./...                       # signal, layout, ui with host/fake, ops, CLI
 go test ./uitest                    # Go apps' UI tests: uitest drives them on host/fake (-uitest.update: their snapshots)
-go run ./cmd/asuka test examples/counter  # an example's tests (its test blocks); the examples are Asuka, their stdlib in examples/STDLIB.md
+go run ./cmd/asuka test examples/counter  # an example's tests (its test blocks); the examples are Asuka, what they still ask of the platforms in examples/STDLIB.md
 go test ./layout -run CSS -update-known  # after fixing layout: refresh known_failures.txt
 go test ./ops -update               # after changing the wire format: refresh golden files
 go test ./host/darwin -run Conformance   # what the macOS host draws for the style props, measured (package conformance; go generate ./conformance writes its app)
