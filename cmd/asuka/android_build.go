@@ -227,7 +227,9 @@ func buildAndroidLibs(app *asukaApp, tc *androidToolchain, work string) (string,
 			return "", fmt.Errorf("%s: %v", a.abi, err)
 		}
 	}
-	// What the app's sources use decides its manifest's share sheet and push rewrite.
+	// What the app's sources use decides its manifest's share sheet and
+	// push rewrite, and whether it has Video's player.
 	usedFeatures(app, cfg)
+	cfg.androidFeatures(app, false)
 	return jni, nil
 }

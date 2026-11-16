@@ -647,6 +647,20 @@ func (c *appConfig) bluetoothExtras() {
 	}
 }
 
+// videoSymbol is the element whose player (Media3's, the host's
+// asuka-video module) only the apps that show it are built with, as
+// iOS's ASUKA_VIDEO.
+const videoSymbol = "github.com/egoist/asuka/ui.Video"
+
+// androidFeatures adds the host's optional modules the app's sources
+// need (asuka-video, for a Video), or (player: asuka dev's, which runs
+// whatever the next save shows) all of them the elements need.
+func (c *appConfig) androidFeatures(app *asukaApp, player bool) {
+	if (player || app.hasSymbol(videoSymbol)) && !slices.Contains(c.androidModules, "video") {
+		c.androidModules = append(c.androidModules, "video")
+	}
+}
+
 // gradleProps are the Gradle properties naming the app's optional
 // modules, and its native packages' modules (name=directory, ;-separated).
 func (c *appConfig) gradleProps() []string {

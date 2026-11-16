@@ -431,8 +431,10 @@ func androidPlayer(app *asukaApp, tc *androidToolchain, work, serial string, loo
 		if err != nil {
 			return err
 		}
-		// What the app's sources use decides its manifest's share sheet and push rewrite.
+		// What the app's sources use decides its manifest's share sheet
+		// and push rewrite; the player has Video's whatever they use.
 		usedFeatures(app, app.cfg)
+		app.cfg.androidFeatures(app, true)
 		apk, hash, err := tc.buildAPK(app, work)
 		if err != nil {
 			return err

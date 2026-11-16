@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/egoist/asuka/internal/appbuild"
 )
 
 func TestAccent(t *testing.T) {
@@ -183,6 +185,25 @@ func TestFeaturesFromImports(t *testing.T) {
 		t.Errorf("no modules: %s", got)
 	}
 
+	// Video's player: in an app whose sources name Video, and in asuka
+	// dev's player, which shows whatever the next save does.
+	for _, x := range []struct {
+		names  map[string]bool
+		player bool
+		want   string
+	}{
+		{map[string]bool{"Video": true}, false, "-PasukaModules=video"},
+		{map[string]bool{"Text": true}, false, "-PasukaModules="},
+		{nil, true, "-PasukaModules=video"},
+	} {
+		var v appConfig
+		app := &asukaApp{cfg: &v, uses: &appbuild.Uses{Names: x.names}}
+		v.androidFeatures(app, x.player)
+		v.androidFeatures(app, x.player)
+		if got := strings.Join(v.gradleProps(), " "); got != x.want {
+			t.Errorf("%v, player %v: %s, want %s", x.names, x.player, got, x.want)
+		}
+	}
 }
 
 // An app that imports asuka/pay gets Apple Pay's entitlement with
