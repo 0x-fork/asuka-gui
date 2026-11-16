@@ -19,15 +19,7 @@ typedef struct {
 	char *url;
 } link;
 
-typedef struct {
-	markdown_Document base;
-	HWND hwnd, ctl;
-	char *rtf;  // what the control shows
-	link *links;
-	size_t nlinks, lcap;
-	int32_t requested;  // EN_REQUESTRESIZE's height
-	int pressed;
-} document;
+typedef struct document document;
 
 // ---- RTF ----
 
@@ -155,126 +147,199 @@ static int32_t utf16_len(const char *s) {
 	return n;
 }
 
+// A block as the control has it: its RTF (its runs, after the paragraph
+// ends that part it from the block before), its length in characters (a
+// paragraph's end is one) and its links, from its start.
 typedef struct {
-	document *v;
+	char *rtf;
+	int32_t len;
+	link *links;
+	size_t nlinks;
+} block;
+
+typedef struct {
 	asuka_writer body;
-	palette pal;
-	int32_t at;  // the characters so far: a paragraph's end is one
+	palette *pal;
+	block *b;
+	size_t lcap;
 	int half;
 } builder;
 
 static void add(builder *b, rtf_run r, const char *link_to) {
-	rgb accent;
 	if (link_to) {
-		document *v = b->v;
-		if (v->nlinks == v->lcap) {
-			v->lcap = v->lcap ? v->lcap * 2 : 8;
-			v->links = realloc(v->links, v->lcap * sizeof *v->links);
+		block *k = b->b;
+		if (k->nlinks == b->lcap) {
+			b->lcap = b->lcap ? b->lcap * 2 : 4;
+			k->links = realloc(k->links, b->lcap * sizeof *k->links);
 		}
 		int32_t n = utf16_len(r.text);
-		v->links[v->nlinks++] = (link){b->at, b->at + n, asuka_strdup(link_to)};
-		accent = semantic(ACCENT, (rgb){0, 0, 200});
+		k->links[k->nlinks++] = (link){k->len, k->len + n, asuka_strdup(link_to)};
 		r.underline = true;
-		r.color = &accent;
+		r.color = &b->pal->colors[2];  // the accent
 	}
-	b->at += utf16_len(r.text);
-	rtf_run_write(&b->body, &b->pal, &r, b->half);
+	b->b->len += utf16_len(r.text);
+	rtf_run_write(&b->body, b->pal, &r, b->half);
 }
 
-static void clear_links(document *v) {
-	for (size_t i = 0; i < v->nlinks; i++) free(v->links[i].url);
-	v->nlinks = 0;
+static void block_free(block *b) {
+	for (size_t i = 0; i < b->nlinks; i++) free(b->links[i].url);
+	free(b->links);
+	free(b->rtf);
 }
 
-// build is the paragraphs as RTF (malloc's), their links the document's.
-static char *build(document *v, markdown_list_Paragraph d) {
-	rgb label = semantic(LABEL, (rgb){0, 0, 0});
-	rgb secondary = semantic(SECONDARY_LABEL, (rgb){96, 96, 96});
-	rgb code = semantic(SECONDARY_BACKGROUND, (rgb){240, 240, 240});
-	rgb bg = semantic(BACKGROUND, (rgb){255, 255, 255});
-	const float body = 10.5f;  // points: Segoe UI at 14 pixels
+// The text's style: its colors (label, secondary label, accent, code's
+// background: the color table's first four, in every block's RTF) and
+// sizes, for the appearance and DPI shown.
+typedef struct {
+	palette pal;
+	int half;   // the body's size, in half points
+	float pts;  // a point, at the control's DPI
+} look;
+
+struct document {
+	markdown_Document base;
+	HWND hwnd, ctl;
+	block *blocks;  // what the control shows, in order
+	size_t n, cap;
+	look look;          // theirs
+	int32_t requested;  // EN_REQUESTRESIZE's height
+	int pressed;        // the link pressed (its character), or -1
+};
+
+static look look_of(document *v) {
+	look l = {0};
+	l.pal.n = 4;  // in this order, though two may be alike
+	l.pal.colors[0] = semantic(LABEL, (rgb){0, 0, 0});
+	l.pal.colors[1] = semantic(SECONDARY_LABEL, (rgb){96, 96, 96});
+	l.pal.colors[2] = semantic(ACCENT, (rgb){0, 0, 200});
+	l.pal.colors[3] = semantic(SECONDARY_BACKGROUND, (rgb){240, 240, 240});
+	l.pts = (float)dpi_of(v->hwnd) / (float)dpi_of(NULL);  // the control converts points at the system's DPI
+	l.half = (int)(10.5f * l.pts * 2 + 0.5f);              // Segoe UI at 14 pixels
+	return l;
+}
+
+static bool same_look(const look *a, const look *b) { return a->half == b->half && memcmp(a->pal.colors, b->pal.colors, 4 * sizeof(rgb)) == 0; }
+
+// make is paragraph p as a block (prev: the paragraph before it, or NULL).
+static block make(look *lk, const markdown_Paragraph *p, const markdown_Paragraph *prev) {
 	static const float sizes[] = {20, 16, 13.5f, 12, 10.5f, 10.5f};
-	float scale = (float)dpi_of(v->hwnd) / (float)dpi_of(NULL);  // the control converts points at the system's DPI
-
-	clear_links(v);
-	builder b = {.v = v, .half = (int)(body * scale * 2 + 0.5f)};
-	color_index(&b.pal, label);
-	for (size_t i = 0; i < d.len; i++) {
-		const markdown_Paragraph *p = &d.data[i];
-		if (i > 0) {
-			add(&b, (rtf_run){.text = "\n"}, NULL);
-			if (!d.data[i - 1].tight || !p->tight) add(&b, (rtf_run){.text = "\n", .size = body / 2 * scale}, NULL);
-		}
-		asuka_writer lead = {0};
-		for (int k = 1; k < p->indent; k++) asuka_writer_put(&lead, "    ", 4);
-		if (*p->marker) {
-			asuka_writer_put(&lead, p->marker, strlen(p->marker));
-			asuka_writer_put(&lead, " ", 1);
-		} else if (p->indent > 0) {
-			asuka_writer_put(&lead, "    ", 4);
-		}
-		asuka_writer_u8(&lead, 0);
-		if (lead.data[0]) add(&b, (rtf_run){.text = (char *)lead.data, .color = &secondary}, NULL);
-		asuka_writer_free(&lead);
-		if (p->rule) {
-			char line[24 * 3 + 1];
-			for (int k = 0; k < 24; k++) memcpy(line + k * 3, "―", 3);
-			line[24 * 3] = 0;
-			add(&b, (rtf_run){.text = line, .color = &secondary}, NULL);
-			continue;
-		}
-		for (size_t j = 0; j < p->runs.len; j++) {
-			const markdown_Run *r = &p->runs.data[j];
-			rtf_run x = {.text = r->text, .bold = r->bold, .italic = r->italic, .strike = r->struck, .mono = r->code};
-			char *indented = NULL;
-			if (p->code && p->indent > 0) {
-				asuka_writer w = {0};
-				for (const char *s = r->text; *s; s++) {
-					asuka_writer_put(&w, s, 1);
-					if (*s == '\n')
-						for (int k = 0; k < p->indent; k++) asuka_writer_put(&w, "    ", 4);
-				}
-				asuka_writer_u8(&w, 0);
-				indented = (char *)w.data;
-				x.text = indented;
-			}
-			if (r->code) x.background = &code;
-			if (r->quoted) x.color = &secondary;
-			if (p->heading > 0) {
-				x.bold = true;
-				x.size = sizes[(p->heading > 6 ? 6 : p->heading) - 1] * scale;
-			}
-			add(&b, x, *r->link ? r->link : NULL);
-			free(indented);
-		}
+	rgb *secondary = &lk->pal.colors[1], *code = &lk->pal.colors[3];
+	block k = {0};
+	builder b = {.pal = &lk->pal, .b = &k, .half = lk->half};
+	if (prev) {
+		add(&b, (rtf_run){.text = "\n"}, NULL);
+		if (!prev->tight || !p->tight) add(&b, (rtf_run){.text = "\n", .size = 10.5f / 2 * lk->pts}, NULL);
 	}
+	asuka_writer lead = {0};
+	for (int i = 1; i < p->indent; i++) asuka_writer_put(&lead, "    ", 4);
+	if (*p->marker) {
+		asuka_writer_put(&lead, p->marker, strlen(p->marker));
+		asuka_writer_put(&lead, " ", 1);
+	} else if (p->indent > 0) {
+		asuka_writer_put(&lead, "    ", 4);
+	}
+	asuka_writer_u8(&lead, 0);
+	if (lead.data[0]) add(&b, (rtf_run){.text = (char *)lead.data, .color = secondary}, NULL);
+	asuka_writer_free(&lead);
+	if (p->rule) {
+		char line[24 * 3 + 1];
+		for (int i = 0; i < 24; i++) memcpy(line + i * 3, "―", 3);
+		line[24 * 3] = 0;
+		add(&b, (rtf_run){.text = line, .color = secondary}, NULL);
+	}
+	for (size_t j = 0; !p->rule && j < p->runs.len; j++) {
+		const markdown_Run *r = &p->runs.data[j];
+		rtf_run x = {.text = r->text, .bold = r->bold, .italic = r->italic, .strike = r->struck, .mono = r->code};
+		char *indented = NULL;
+		if (p->code && p->indent > 0) {
+			asuka_writer w = {0};
+			for (const char *s = r->text; *s; s++) {
+				asuka_writer_put(&w, s, 1);
+				if (*s == '\n')
+					for (int i = 0; i < p->indent; i++) asuka_writer_put(&w, "    ", 4);
+			}
+			asuka_writer_u8(&w, 0);
+			indented = (char *)w.data;
+			x.text = indented;
+		}
+		if (r->code) x.background = code;
+		if (r->quoted) x.color = secondary;
+		if (p->heading > 0) {
+			x.bold = true;
+			x.size = sizes[(p->heading > 6 ? 6 : p->heading) - 1] * lk->pts;
+		}
+		add(&b, x, *r->link ? r->link : NULL);
+		free(indented);
+	}
+	asuka_writer_u8(&b.body, 0);
+	k.rtf = (char *)b.body.data;
+	return k;
+}
+
+// rtf is blocks as an RTF document, in the look.
+static char *rtf(const look *lk, const block *blocks, size_t n) {
 	asuka_writer doc = {0};
 	puts_w(&doc, "{\\rtf1\\ansi\\ansicpg1252\\deff0\\uc1{\\fonttbl{\\f0\\fnil Segoe UI;}{\\f1\\fmodern\\fprq1 Cascadia Mono;}}{\\colortbl ;");
-	for (int i = 0; i < b.pal.n; i++) {
+	for (int i = 0; i < lk->pal.n; i++) {
 		char c[64];
-		int k = snprintf(c, sizeof c, "\\red%d\\green%d\\blue%d;", b.pal.colors[i].r, b.pal.colors[i].g, b.pal.colors[i].b);
+		int k = snprintf(c, sizeof c, "\\red%d\\green%d\\blue%d;", lk->pal.colors[i].r, lk->pal.colors[i].g, lk->pal.colors[i].b);
 		asuka_writer_put(&doc, c, (size_t)k);
 	}
-	printf_w(&doc, "}\\pard\\f0\\fs%d\\cf1 ", b.half);
-	asuka_writer_put(&doc, b.body.data, b.body.len);
+	printf_w(&doc, "}\\pard\\f0\\fs%d\\cf1 ", lk->half);
+	for (size_t i = 0; i < n; i++) puts_w(&doc, blocks[i].rtf);
 	puts_w(&doc, "}");
 	asuka_writer_u8(&doc, 0);
-	asuka_writer_free(&b.body);
-	SendMessageW(v->ctl, EM_SETBKGNDCOLOR, 0, RGB(bg.r, bg.g, bg.b));
 	return (char *)doc.data;
 }
 
+// set_paragraphs keeps the blocks before the first that differs as the
+// control has them (their text, layout and selection) and replaces the
+// rest: the selection made into the control's text from where they
+// start to its end, written over with their RTF.
 static void set_paragraphs(markdown_Document *self, markdown_list_Paragraph d) {
 	document *v = (document *)self;
-	char *rtf = build(v, d);
-	if (v->rtf && strcmp(v->rtf, rtf) == 0) {  // as it is: its selection kept
-		free(rtf);
-		return;
+	look lk = look_of(v);
+	block *next = calloc(d.len ? d.len : 1, sizeof *next);
+	for (size_t i = 0; i < d.len; i++) next[i] = make(&lk, &d.data[i], i > 0 ? &d.data[i - 1] : NULL);
+	size_t keep = 0;
+	if (same_look(&lk, &v->look))
+		while (keep < v->n && keep < d.len && strcmp(v->blocks[keep].rtf, next[keep].rtf) == 0) keep++;
+	int32_t start = 0;
+	for (size_t i = 0; i < keep; i++) start += v->blocks[i].len;
+	if (keep == v->n && keep == d.len) goto kept;  // the text as it is
+	CHARRANGE sel;
+	SendMessageW(v->ctl, EM_EXGETSEL, 0, (LPARAM)&sel);
+	SendMessageW(v->ctl, EM_SETSEL, start, -1);
+	if (keep < d.len) {
+		char *tail = rtf(&lk, next + keep, d.len - keep);
+		SETTEXTEX st = {keep > 0 ? ST_SELECTION : ST_DEFAULT, CP_ACP};
+		SendMessageW(v->ctl, EM_SETTEXTEX, (WPARAM)&st, (LPARAM)tail);
+		free(tail);
+	} else {
+		SendMessageW(v->ctl, EM_REPLACESEL, FALSE, (LPARAM)L"");
 	}
-	free(v->rtf);
-	v->rtf = rtf;
-	SETTEXTEX st = {ST_DEFAULT, CP_ACP};
-	SendMessageW(v->ctl, EM_SETTEXTEX, (WPARAM)&st, (LPARAM)rtf);
+	// The selection as it was, in what's kept.
+	if (sel.cpMin > start) sel.cpMin = start;
+	if (sel.cpMax > start) sel.cpMax = start;
+	SendMessageW(v->ctl, EM_EXSETSEL, 0, (LPARAM)&sel);
+	rgb bg = semantic(BACKGROUND, (rgb){255, 255, 255});
+	SendMessageW(v->ctl, EM_SETBKGNDCOLOR, 0, RGB(bg.r, bg.g, bg.b));
+kept:
+	for (size_t i = keep; i < v->n; i++) block_free(&v->blocks[i]);
+	for (size_t i = 0; i < keep; i++) {  // the text kept, the links new (their addresses aren't in the text)
+		block old = v->blocks[i];
+		v->blocks[i].links = next[i].links, v->blocks[i].nlinks = next[i].nlinks;
+		next[i].links = old.links, next[i].nlinks = old.nlinks;
+		block_free(&next[i]);
+	}
+	if (d.len > v->cap) {
+		v->cap = d.len;
+		v->blocks = realloc(v->blocks, v->cap * sizeof *v->blocks);
+	}
+	for (size_t i = keep; i < d.len; i++) v->blocks[i] = next[i];
+	v->n = d.len;
+	v->look = lk;
+	free(next);
 }
 
 // measure is its height at the width it's given, in points.
@@ -298,13 +363,23 @@ static bool measure(markdown_Document *self, float width, float height, float *o
 	return true;
 }
 
-// link_at is the link under p (the control's pixels), or -1.
-static int link_at(document *v, POINT p) {
+// link_at is the link under p (the control's pixels), or NULL; *at its
+// first character.
+static const link *link_at(document *v, POINT p, int32_t *at) {
 	POINTL pt = {p.x, p.y};
 	int32_t c = (int32_t)SendMessageW(v->ctl, EM_CHARFROMPOS, 0, (LPARAM)&pt);
-	for (size_t i = 0; i < v->nlinks; i++)
-		if (c >= v->links[i].start && c < v->links[i].end) return (int)i;
-	return -1;
+	int32_t start = 0;
+	for (size_t i = 0; i < v->n; start += v->blocks[i++].len) {
+		const block *b = &v->blocks[i];
+		if (c >= start + b->len) continue;
+		for (size_t j = 0; j < b->nlinks; j++)
+			if (c >= start + b->links[j].start && c < start + b->links[j].end) {
+				*at = start + b->links[j].start;
+				return &b->links[j];
+			}
+		break;
+	}
+	return NULL;
 }
 
 // control is the rich edit's subclass: links take clicks and show the
@@ -318,20 +393,25 @@ static LRESULT CALLBACK control(HWND hwnd, UINT m, WPARAM w, LPARAM l, UINT_PTR 
 		POINT p;
 		GetCursorPos(&p);
 		ScreenToClient(hwnd, &p);
-		if (link_at(v, p) >= 0) {
+		int32_t at;
+		if (link_at(v, p, &at)) {
 			SetCursor(LoadCursorW(NULL, (LPCWSTR)IDC_HAND));
 			return 1;
 		}
 		break;
 	}
 	case WM_LBUTTONDOWN:
-		v->pressed = link_at(v, (POINT){(short)LOWORD(l), (short)HIWORD(l)});
+	{
+		int32_t at;
+		v->pressed = link_at(v, (POINT){(short)LOWORD(l), (short)HIWORD(l)}, &at) ? at : -1;
 		break;
+	}
 	case WM_LBUTTONUP: {
-		int k = link_at(v, (POINT){(short)LOWORD(l), (short)HIWORD(l)});
-		if (k >= 0 && k == v->pressed) {
+		int32_t at;
+		const link *k = link_at(v, (POINT){(short)LOWORD(l), (short)HIWORD(l)}, &at);
+		if (k && at == v->pressed) {
 			LRESULT r = DefSubclassProc(hwnd, m, w, l);
-			wchar_t *u = asuka_wide(v->links[k].url);
+			wchar_t *u = asuka_wide(k->url);
 			ShellExecuteW(NULL, L"open", u, NULL, NULL, SW_SHOWNORMAL);
 			free(u);
 			return r;
@@ -365,9 +445,8 @@ static bool window(void *ctx, HWND hwnd, UINT m, WPARAM wp, LPARAM lp, LRESULT *
 		break;
 	}
 	case WM_NCDESTROY:
-		clear_links(v);
-		free(v->links);
-		free(v->rtf);
+		for (size_t i = 0; i < v->n; i++) block_free(&v->blocks[i]);
+		free(v->blocks);
 		free(v);
 		break;
 	}

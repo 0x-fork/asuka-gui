@@ -446,7 +446,7 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   libraries = []
   ```
 - **自带的库**：包构建时用到的 C 库（解析器、解码器）放在 `desktop/third_party/<名字>/` 里，不做修改，附上它的许可证和版本；由包自己的某个文件引入它的源码（`#include "third_party/<名字>/<名字>.c"`），这样它和包的 C 代码一起编译，改动它也会让应用重新构建。
-- **测试**：`desktop/*_test.c` 是一个独立的程序（有自己的 `main`），和包里两个平台共用的 C 代码一起构建（不含生成的胶水代码），由 platform/desktop 的测试在任何系统上运行，用来测试 C 代码中不依赖平台的部分：解析、解码、编码。`desktop/*_linux_test.c` 则在 Linux 上借助 GTK 测试一个视图：它和胶水代码一起构建，直接引入视图的 C 代码，创建视图并像宿主那样驱动它（std/markdown 的测试给它一段流式写入的回复，并统计它替换了多少个控件）。
+- **测试**：`desktop/*_test.c` 是一个独立的程序（有自己的 `main`），和包里两个平台共用的 C 代码一起构建（不含生成的胶水代码），由 platform/desktop 的测试在任何系统上运行，用来测试 C 代码中不依赖平台的部分：解析、解码、编码。`desktop/*_linux_test.c` 则在 Linux 上借助 GTK 测试一个视图，`desktop/*_windows_test.c` 在 Windows 上测试（由 platform/windows 的 TestStdViews 运行；在其他系统上则跑在 Windows 虚拟机里）：它们和胶水代码一起构建，直接引入视图的 C 代码，创建视图并像宿主那样驱动它（std/markdown 的测试给它一段流式写入的回复，并统计它替换了多少内容）。
 
 在 macOS 上运行的是包的 Swift 代码（它的 `Package.swift`），不运行它的 C 代码。
 
