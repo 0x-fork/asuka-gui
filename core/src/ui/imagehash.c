@@ -62,9 +62,9 @@ bool ak_blurhash(const char *hash, size_t n, int w, int h, double punch, uint8_t
 	double (*colors)[3] = ak_alloc((size_t)nx * ny * sizeof *colors);
 	bool ok = true;
 	for (int i = 0; i < nx * ny && ok; i++) {
-		int v;
+		int v = 0;
 		if (i == 0) {
-			ok = decode83(hash + 2, 4, &v);
+			if (!(ok = decode83(hash + 2, 4, &v))) break;
 			colors[0][0] = srgb_to_linear(v >> 16);
 			colors[0][1] = srgb_to_linear(v >> 8 & 255);
 			colors[0][2] = srgb_to_linear(v & 255);

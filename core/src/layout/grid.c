@@ -535,7 +535,7 @@ static l_output grid(ak_lnode *n, const l_input *in, ak_lpass *p) {
 	for (int a = 0; a < 2; a++) size_tracks(n, a, items, nitems, &tracks, inner, avail, gaps[a], p);
 
 	// The container's size.
-	ak_lsize content;
+	ak_lsize content = {0};
 	for (int a = 0; a < 2; a++) l_set(&content, a, tracks_total(tracks.t[a], tracks.n[a], gaps[a]));
 	ak_lsize out_size = size;
 	for (int a = 0; a < 2; a++) {
