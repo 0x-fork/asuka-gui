@@ -96,14 +96,15 @@ their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 
 | Type | Methods |
 |---|---|
-| `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `filter(p)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `reversed()`, `slice(from, to)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
+| `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `filter(p)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `reversed()`, `slice(from, to)` (`to` left out: the end), `prefix(n)`, `suffix(n)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order) |
 | `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `bytes()`, `+` |
 | `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `s.bytes()` a string's UTF-8 |
-| `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
-| `Duration` | `seconds()`, `minutes()`, `hours()` (floats), `milliseconds()`, `nanoseconds()` (ints) |
-| `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic) |
-| `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()`, `minutes()`, `hours()` (floats), `rounded(to:)`, `truncated(to:)`, `+`, `-`, `* n`, `/ n` |
+| `int` | `float()`, `abs()`, `padded(width)` (`7.padded(2)` is `"07"`) |
+| `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()`, `int()` (toward zero), `abs()` |
+| `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic); `hex()` (`"#0a84ff"`; a semantic color, its name: `".accent"`) |
+| `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()`, `minutes()`, `hours()` (floats), `rounded(to:)`, `truncated(to:)`, `+`, `-`, `* n` (an int or a float: `1.5 * 1h`), `/ n`, `/ d` (another Duration: how many times it goes in, a float) |
+| `Length` | `* n` (`width: 50% * 2`, a point length scaled) |
 | `T?` | `isNone()`, `isSome()` |
 
 `min`, `max`, `abs`, `float(n)` and `int(x)` are functions;
@@ -168,6 +169,23 @@ their names; they can't change it (it's a value): one that would
 returns a new one. `let` in a struct's body is a constant of the
 type (`Font.title`), which `.title` names wherever a `Font` is
 expected.
+
+A struct takes operators from its methods: `fn add(o: T) -> R` is `a +
+b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, and `fn compare(o: T)
+-> int` (negative, zero or positive) is `<`, `<=`, `>` and `>=`. That's
+how `asuka/time`'s `Time` adds a `Duration` and subtracts another `Time`:
+
+```asuka
+struct Money {
+  cents: int
+
+  fn add(o: Money) -> Money = Money(cents: cents + o.cents)
+  fn compare(o: Money) -> int = cents - o.cents
+}
+
+let total = Money(cents: 250) + Money(cents: 99)
+let over = total > Money(cents: 300)
+```
 
 ### Enums
 
@@ -361,6 +379,29 @@ Toggle { bind on: notify; title: "Notifications" }
 Without `bind`, a control only reports: `TextField { text: name; on
 change(t) { name = t.trim() } }`.
 
+A component's prop can be bound the same way when the component reports
+it with `event <prop>Change`: `bind value: when` on a component with
+`prop value` and `event valueChange(value: T)` passes the state in, and
+writes it as the component emits the change:
+
+```asuka
+component Rating {
+  prop value = 0
+  event valueChange(value: int)
+
+  Stepper {
+    value: float(value)
+    on change(v) { emit valueChange(int(v)) }
+  }
+}
+
+component Review {
+  state stars = 3
+
+  Rating { bind value: stars }
+}
+```
+
 ### Lists of views
 
 ```asuka
@@ -438,7 +479,9 @@ task(query) { results = await search(query) } // and again when query changes
 An effect runs at once and again whenever what it read changes. A task
 is async (see below): it starts when the component appears, restarts
 when what's in its parentheses changes (cancelling the last run), and
-is cancelled when the component goes.
+is cancelled when the component goes. The `app` block takes them too:
+the app's own, for as long as it runs (a refresh loop, a setting that
+follows the app's state: `effect { setColorScheme(scheme) }`).
 
 ## Async
 
@@ -663,7 +706,8 @@ on press {
 ```
 
 `animate(() => …)` and `animate(anim, () => …)` are the same as
-closures. `animating()` says whether the changes made now animate.
+closures. `repeat: Animation.forever` repeats until the props change
+again. `animating()` says whether the changes made now animate.
 `onFrame(t => …)` calls its closure at each frame the display draws,
 with the frame's time, until the closure it returns is called or the
 component goes: `let stop = onFrame(t => tick(t))`. `frames()` is the
@@ -719,12 +763,25 @@ its uniforms set by name (`uniforms: [Uniform(name: "Level", value:
 | `quit()`, `relaunch()` | quits the app as the user's Quit does (and starts it again), asking it first; desktop only |
 | `closeWindow()` | closes the window the code is in, without asking |
 | `onCloseRequest(fn() -> bool)`, `onQuit(e => …)`, `onSecondInstance((args, dir) => …)` | asked before the window the component is in closes; hears the app about to quit (`e.cancel()`), or started again, while the component lives |
+| `onBack { … }` | asked when the user goes back from the screen, sheet or popover the component is in: `true` takes it (the screen stays), `false` lets it go |
+| `onLifecycle(l => …)` | hears the app go to the foreground and the background, and memory warnings (a `Lifecycle`), while the component lives |
+| `alert(title, message:, actions:)` | shows an alert now; its `actions` are `.button`s (none: an OK). An `Alert` element shows one while its `open` is true |
+| `snackbar(message, action:, duration:, onDismiss:)` | a brief message at the bottom of the window, with an action (Undo); returns a closure that dismisses it |
+| `setColorScheme(.dark)` | the app's appearance: `.light`, `.dark`, or `.system` (the platform's) |
+| `environment()`, `screenEnvironment()` | the size, safe area, text size, platform and the rest (tracked): the screen's or sheet's own, and the whole screen's |
+| `mainWindow()` | the main window's `Ref`: `show()`, `hide()`, `focus()`... from anywhere |
 
 `useKeys` and the `on…` registrations are items of a component's body
 (or the app's block). The app's block also handles them as events: `on
 openURL(url) { … }`, `on files(paths) { … }`, `on share(items) { … }`,
-`on quit(e) { … }`, `on secondInstance(args, dir) { … }`. Its first
-`Window` is the main window ([Navigation](navigation.md#windows)).
+`on quit(e) { … }`, `on secondInstance(args, dir) { … }`, `on
+foreground { … }`, `on background { … }`. Its first `Window` is the
+main window ([Navigation](navigation.md#windows)).
+
+`asuka/assets` reads a file of the package's `assets/` directory as the
+app compiles, as Go's `go:embed` does: `assets.text("welcome.md")` is
+its text, `assets.bytes("logo.png")` its bytes. A file that isn't there
+is a compile error.
 
 ## Navigation
 
@@ -751,8 +808,37 @@ screen Inbox {
 
 A `screen` is a component whose root is a screen of a stack: its block
 takes the screen's props (`title`, `largeTitle`, ...) and slots
-(`toolbar`). `push(…)` and `pop()` act on the nearest stack, `present(…)`
-and `dismiss()` on sheets. See [Navigation](navigation.md).
+(`toolbar`, `bottomToolbar`, `primary`). `push(…)` and `pop()` act on
+the nearest stack, `present(…)` and `dismiss()` on sheets. `Split` is a
+sidebar of `Destination`s (in `Sidebar` sections) beside the chosen
+one's stack.
+
+With a `Router`, every screen has an address. A screen declared with
+its pattern is routable, its parameters typed; a call of it is its
+address, checked as the app compiles:
+
+```asuka
+app {
+  Router(initial: "/inbox") {
+    Route("/inbox", layout: .stack, title: "Inbox") {
+      Inbox
+      Message
+    }
+  }
+}
+
+screen Inbox at "" {
+  title: "Inbox"
+  Button("The first") { href: Message(id: 1) } // /inbox/1
+}
+
+screen Message(id: int) at ":id" {
+  title: "Message {id}"
+  Button("Back to the inbox") { on press { navigate("/inbox") } }
+}
+```
+
+See [Navigation](navigation.md).
 
 ## Text in other languages
 
@@ -807,8 +893,13 @@ needs a `T` JSON can say, which the compiler checks where it's called.
 `asuka test` runs a package's tests on a fake host: it lays views out as
 the platforms do, measures text at a fixed width per character, and time
 moves only when nothing else can run (a `sleep(5s)` in a test takes no
-time). `mount` returns the app, to drive and check: `tap`, `type(_,
-into:)`, `scroll`, `back`, `expect`, `expectNo`, `idle`. See
+time). `mount` returns the app, to drive and check: `tap`, `longPress`,
+`type(_, into:)`, `submit`, `toggle`, `slide`, `select`, `swipe(_,
+action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
+`pickColor`, `expect`, `expectNo`, `texts()`, `disabled(text)`,
+`until`, `waitFor`, `idle`; `in(.navigationBar)`, `in(.sidebar)` and
+`nextTo(label)` narrow what a text names; with a router, `mount(…, at:
+"/inbox/1")`, `href`, `history()`, `goBack()`, `goForward()`. See
 [Testing](testing.md).
 
 ## Memory and performance

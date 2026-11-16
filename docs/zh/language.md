@@ -72,13 +72,15 @@ map 的键可以是整数、字符串、布尔值，或者成员不携带值的�
 
 | 类型 | 方法 |
 |---|---|
-| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
 | `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序） |
 | `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`bytes()`、`+` |
 | `bytes` | `count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`s.bytes()` 是字符串的 UTF-8 字节 |
-| `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()` |
-| `Color` | `opacity(a)`：以原本不透明度的 a 倍绘制（语义颜色仍然是语义颜色） |
-| `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`、`/ n` |
+| `int` | `float()`、`abs()`、`padded(width)`（`7.padded(2)` 是 `"07"`） |
+| `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（向零取整）、`abs()` |
+| `Color` | `opacity(a)`：以原本不透明度的 a 倍绘制（语义颜色仍然是语义颜色）；`hex()`（`"#0a84ff"`；语义颜色则是它的名字：`".accent"`） |
+| `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`（整数或浮点数：`1.5 * 1h`）、`/ n`、`/ d`（另一个 Duration：它能容纳几个，一个浮点数） |
+| `Length` | `* n`（`width: 50% * 2`：缩放一个长度） |
 | `T?` | `isNone()`、`isSome()` |
 
 `min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `asuka/math` 里。
@@ -132,6 +134,20 @@ let n = Message(id: m.id, subject: m.subject, read: true)
 ```
 
 创建结构体的方式是调用它，按名字或按顺序传入各个字段；有默认值的字段可以省略。结构体的方法直接用名字访问它的字段，但不能修改结构体（它是一个值）：需要修改时，就返回一个新的结构体。结构体主体里的 `let` 是这个类型的常量（`Font.title`），在任何需要 `Font` 的地方都可以简写成 `.title`。
+
+结构体可以从它的方法获得运算符：`fn add(o: T) -> R` 就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`。`asuka/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
+
+```asuka
+struct Money {
+  cents: int
+
+  fn add(o: Money) -> Money = Money(cents: cents + o.cents)
+  fn compare(o: Money) -> int = cents - o.cents
+}
+
+let total = Money(cents: 250) + Money(cents: 99)
+let over = total > Money(cents: 300)
+```
 
 ### 枚举
 
@@ -289,6 +305,26 @@ Toggle { bind on: notify; title: "Notifications" }
 
 不用 `bind` 时，控件只负责报告变化：`TextField { text: name; on change(t) { name = t.trim() } }`。
 
+组件的 prop 也可以这样绑定，只要组件用 `event <prop>Change` 报告它：一个有 `prop value` 和 `event valueChange(value: T)` 的组件，写 `bind value: when` 就会把状态传进去，并在组件发出变化时写回：
+
+```asuka
+component Rating {
+  prop value = 0
+  event valueChange(value: int)
+
+  Stepper {
+    value: float(value)
+    on change(v) { emit valueChange(int(v)) }
+  }
+}
+
+component Review {
+  state stars = 3
+
+  Rating { bind value: stars }
+}
+```
+
 ### 视图列表
 
 ```asuka
@@ -355,7 +391,7 @@ task { try? await mailbox.refresh() }         // 组件显示期间运行一次
 task(query) { results = await search(query) } // query 变化时再运行一次
 ```
 
-effect 会立即运行，之后每当它读取过的内容变化时再次运行。task 是异步的（见下文）：组件出现时启动；圆括号里的内容变化时重新启动（并取消上一次运行）；组件消失时被取消。
+effect 会立即运行，之后每当它读取过的内容变化时再次运行。task 是异步的（见下文）：组件出现时启动；圆括号里的内容变化时重新启动（并取消上一次运行）；组件消失时被取消。`app` 代码块里也可以写它们：它们属于应用本身，在应用运行期间一直有效（比如一个刷新循环，或者一个跟随应用状态的设置：`effect { setColorScheme(scheme) }`）。
 
 ## 异步
 
@@ -517,7 +553,7 @@ on press {
 }
 ```
 
-`animate(() => …)` 和 `animate(anim, () => …)` 是同样的写法，只是用闭包代替代码块。`animating()` 表示当前所做的改动是否处在动画中。`onFrame(t => …)` 在显示器绘制的每一帧调用闭包，传入这一帧的时间，直到调用它返回的闭包，或组件消失为止：`let stop = onFrame(t => tick(t))`。`frames()` 把同样的帧作为 `Stream<Duration>` 提供，只在被读取时才会绘制帧：在任务里写 `for await t in frames() { … }`，循环结束或任务消失时就会停止。
+`animate(() => …)` 和 `animate(anim, () => …)` 是同样的写法，只是用闭包代替代码块。`repeat: Animation.forever` 会一直重复，直到属性再次改变。`animating()` 表示当前所做的改动是否处在动画中。`onFrame(t => …)` 在显示器绘制的每一帧调用闭包，传入这一帧的时间，直到调用它返回的闭包，或组件消失为止：`let stop = onFrame(t => tick(t))`。`frames()` 把同样的帧作为 `Stream<Duration>` 提供，只在被读取时才会绘制帧：在任务里写 `for await t in frames() { … }`，循环结束或任务消失时就会停止。
 
 ## 绘制
 
@@ -552,8 +588,17 @@ Canvas(g => {
 | `quit()`、`relaunch()` | 像用户选择“退出”那样退出应用（并重新启动它），会先询问应用；仅桌面端 |
 | `closeWindow()` | 不询问，直接关闭代码所在的窗口 |
 | `onCloseRequest(fn() -> bool)`、`onQuit(e => …)`、`onSecondInstance((args, dir) => …)` | 组件存在期间：组件所在窗口关闭前的询问；应用即将退出（`e.cancel()`）；应用再次被启动 |
+| `onBack { … }` | 用户从组件所在的页面、弹出面板或气泡弹窗返回时询问：`true` 表示接管（页面留下），`false` 表示放行 |
+| `onLifecycle(l => …)` | 组件存在期间：接收应用进入前台、后台，以及内存警告（一个 `Lifecycle`） |
+| `alert(title, message:, actions:)` | 立即显示一个警告框；`actions` 是一组 `.button`（没有时只有一个 OK）。`Alert` 元素则在它的 `open` 为 true 时显示一个 |
+| `snackbar(message, action:, duration:, onDismiss:)` | 在窗口底部显示一条简短消息，可以带一个操作（撤销）；返回一个用来关闭它的闭包 |
+| `setColorScheme(.dark)` | 应用的外观：`.light`、`.dark`，或 `.system`（跟随平台） |
+| `environment()`、`screenEnvironment()` | 尺寸、安全区域、文字大小、平台等（会被跟踪）：页面或弹出面板自己的，以及整个屏幕的 |
+| `mainWindow()` | 主窗口的 `Ref`：在任何地方都可以 `show()`、`hide()`、`focus()` …… |
 
-`useKeys` 和这些 `on…` 注册写在组件的主体里（或 app 代码块里）。app 代码块还可以把它们当作事件来处理：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`。它的第一个 `Window` 是主窗口（见[导航](navigation.md#窗口)）。
+`useKeys` 和这些 `on…` 注册写在组件的主体里（或 app 代码块里）。app 代码块还可以把它们当作事件来处理：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`、`on foreground { … }`、`on background { … }`。它的第一个 `Window` 是主窗口（见[导航](navigation.md#窗口)）。
+
+`asuka/assets` 在应用编译时读取包的 `assets/` 目录里的文件，就像 Go 的 `go:embed`：`assets.text("welcome.md")` 是它的文本，`assets.bytes("logo.png")` 是它的字节。文件不存在就是编译错误。
 
 ## 导航
 
@@ -578,7 +623,32 @@ screen Inbox {
 }
 ```
 
-`screen` 是一种组件，它的根是导航栈中的一个页面：它的代码块接收页面的 prop（`title`、`largeTitle` ……）和插槽（`toolbar`）。`push(…)` 和 `pop()` 作用于最近的导航栈，`present(…)` 和 `dismiss()` 作用于弹出面板（sheet）。详见[导航](navigation.md)。
+`screen` 是一种组件，它的根是导航栈中的一个页面：它的代码块接收页面的 prop（`title`、`largeTitle` ……）和插槽（`toolbar`、`bottomToolbar`、`primary`）。`push(…)` 和 `pop()` 作用于最近的导航栈，`present(…)` 和 `dismiss()` 作用于弹出面板（sheet）。`Split` 是一个由 `Destination` 组成的侧边栏（可以放在 `Sidebar` 分区里），旁边是选中目的地的导航栈。
+
+有了 `Router`，每个页面都有一个地址。用模式声明的页面是可路由的，参数有类型；调用它就得到它的地址，并在编译时检查：
+
+```asuka
+app {
+  Router(initial: "/inbox") {
+    Route("/inbox", layout: .stack, title: "Inbox") {
+      Inbox
+      Message
+    }
+  }
+}
+
+screen Inbox at "" {
+  title: "Inbox"
+  Button("The first") { href: Message(id: 1) } // /inbox/1
+}
+
+screen Message(id: int) at ":id" {
+  title: "Message {id}"
+  Button("Back to the inbox") { on press { navigate("/inbox") } }
+}
+```
+
+详见[导航](navigation.md)。
 
 ## 多语言文本
 
@@ -614,7 +684,7 @@ test "archiving removes the row" {
 
 `expect(cond)` 在 cond 为 false 时让测试失败，并指出失败的是什么、在哪里（如果是比较，还会给出两边的值）。JSON 由 `asuka/json` 处理：`let notes: [Note] = try json.decode(text)` 按期望的类型读取 JSON（也可以写成 `json.decode<[Note]>(text)`），`json.encode(notes)` 把值写成 JSON。泛型函数也可以把它的 `T` 当作 JSON 读写；这样每次调用时，`T` 都必须是 JSON 能表示的类型，编译器会在调用处检查这一点。
 
-`asuka test` 在假宿主上运行包里的测试：它会像各平台那样对视图进行布局，按每个字符固定宽度来测量文字，而且只有在没有其他东西可以运行时，时间才会前进（测试里的 `sleep(5s)` 不花任何时间）。`mount` 返回应用，供你驱动和检查：`tap`、`type(_, into:)`、`scroll`、`back`、`expect`、`expectNo`、`idle`。详见[测试](testing.md)。
+`asuka test` 在假宿主上运行包里的测试：它会像各平台那样对视图进行布局，按每个字符固定宽度来测量文字，而且只有在没有其他东西可以运行时，时间才会前进（测试里的 `sleep(5s)` 不花任何时间）。`mount` 返回应用，供你驱动和检查：`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`；`in(.navigationBar)`、`in(.sidebar)` 和 `nextTo(label)` 缩小文字所指的范围；有路由器时，还有 `mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()`。详见[测试](testing.md)。
 
 ## 内存与性能
 
