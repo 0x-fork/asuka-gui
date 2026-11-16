@@ -153,8 +153,10 @@ func hasDirectives(dir string) bool {
 			continue
 		}
 		if strings.HasSuffix(n, ".asuka") {
-			// An Asuka package: native interface or native component.
-			if b, err := os.ReadFile(filepath.Join(dir, n)); err == nil && nativeDecl.Match(b) {
+			// An Asuka package: native interface or native component. A
+			// generated file's are the prelude's elements (lang/prelude's
+			// elements.asuka), the runtime's, not a package's.
+			if b, err := os.ReadFile(filepath.Join(dir, n)); err == nil && nativeDecl.Match(b) && !bytes.HasPrefix(b, []byte("// Code generated ")) {
 				return true
 			}
 			continue
