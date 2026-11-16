@@ -621,7 +621,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         val parent = old.parent as? ViewGroup
         if (parent == null) {
             // A Scroll's row out of sight: it keeps its frame to come back with.
-            if (lp != null) now.layoutParams = lp
+            now.layoutParams = lp ?: ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             now.measure(View.MeasureSpec.makeMeasureSpec(old.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(old.height, View.MeasureSpec.EXACTLY))
             now.layout(old.left, old.top, old.right, old.bottom)
             return
@@ -894,7 +894,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             parent.addView(b, i, lp)
             b.measure(View.MeasureSpec.makeMeasureSpec(old.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(old.height, View.MeasureSpec.EXACTLY))
             b.layout(old.left, old.top, old.right, old.bottom)
-        }
+        } else old.layoutParams?.let { b.layoutParams = it }
         n.view = b
         restyle(n)
         n.basePadding = null // the new button's own
