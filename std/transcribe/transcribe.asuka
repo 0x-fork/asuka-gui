@@ -1,0 +1,75 @@
+// Package asuka/transcribe turns a recording into text, on the device:
+// nothing leaves it. The Speech framework on iOS and macOS, asked to
+// stay on the device; Android's on-device recognizer (Android 13 and
+// later); Windows' speech recognition. Where the device can't, it says so
+// (TranscribeError.notAvailable) rather than sending the sound to a
+// server. An app that imports it is given the permissions it needs: iOS's
+// speech recognition, with its purpose string (asuka.toml's
+// ios.usage.NSSpeechRecognitionUsageDescription says it better), and on
+// Android the microphone's, which its recognizer asks for.
+//
+//   let r = try await transcribe.file(path)
+//   text = r.text
+
+/// What transcribing fails with.
+pub enum TranscribeError: Error {
+  /// transcribe: not available on this device
+  notAvailable
+  /// transcribe: not allowed
+  notAllowed
+  /// transcribe: the language's model is downloading
+  downloading
+}
+
+/// A word or a phrase, with where it is in the recording (seconds).
+pub struct Segment {
+  text: string
+  start: float = 0
+  duration: float = 0
+}
+
+/// What was said.
+pub struct Result {
+  text: string = ""
+  /// The text's timing, where the platform gives it (iOS, macOS, Android
+  /// 14 and later); empty elsewhere.
+  segments: [Segment] = []
+  /// The language it was recognized in.
+  language: string = ""
+}
+
+/// What the device can do.
+pub struct Availability {
+  /// It can transcribe the language here.
+  onDevice: bool = false
+  /// The language asked for, or the device's.
+  language: string = ""
+}
+
+/// The platform's recognizer. Its work is off the main thread.
+native interface Recognizer {
+  async fn check(language: string) -> Availability
+  async fn file(path: string, language: string) -> Result
+}
+
+let recognizer = try? Recognizer()
+
+fn rec() throws -> Recognizer {
+  if let r = recognizer {
+    return r
+  }
+  return try Recognizer()
+}
+
+/// Whether the device can transcribe a language (a BCP 47 tag; empty:
+/// the device's), without asking the user anything.
+pub async fn check(language: string = "") throws -> Availability {
+  return try await rec().check(language)
+}
+
+/// Transcribes an audio file. It asks for what it needs the first time,
+/// and takes a while: a long recording, some of its own length. A
+/// recording with no speech in it is an empty Result. One at a time.
+pub async fn file(path: string, language: string = "") throws -> Result {
+  return try await rec().file(path, language)
+}

@@ -157,6 +157,9 @@ func (l *aloader) load(files []*syntax.SourceFile) error {
 			}
 		}
 	}
+	if len(errEnums) == 1 {
+		l.out.ErrorName = errEnums[0].Name.Name
+	}
 	for _, e := range errEnums {
 		for _, c := range e.Cases {
 			msg := docOf(c)

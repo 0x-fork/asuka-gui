@@ -17,8 +17,13 @@ func KotlinFile(p *Package) string {
 
 // KotlinErrorType is the Kotlin enum of the package's declared errors;
 // KotlinException, the exception that throws one.
-func KotlinErrorType(p *Package) string { return upperCamel(p.Name) + "Error" }
-func KotlinException(p *Package) string { return upperCamel(p.Name) + "Exception" }
+func KotlinErrorType(p *Package) string {
+	if p.ErrorName != "" {
+		return p.ErrorName
+	}
+	return upperCamel(p.Name) + "Error"
+}
+func KotlinException(p *Package) string { return strings.TrimSuffix(KotlinErrorType(p), "Error") + "Exception" }
 
 var kotlinOf = map[Kind]string{
 	Bool: "Boolean", Int8: "Byte", Int16: "Short", Int32: "Int", Int64: "Long", Int: "Long",
@@ -364,7 +369,7 @@ func (g *kotlinGen) provider() {
 		g.printf("                    else -> throw AsukaUnsupportedException(\"no method $iface.$method\")\n                }\n            }\n")
 	}
 	g.printf("            else -> throw AsukaUnsupportedException(\"no interface $iface\")\n        }\n    }\n\n")
-	g.printf("    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {\n        when (iface) {\n")
+	g.printf("    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (kotlin.Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {\n        when (iface) {\n")
 	for _, it := range g.p.Interfaces {
 		var async []*Method
 		for _, m := range it.Methods {
@@ -391,7 +396,7 @@ func (g *kotlinGen) provider() {
 			} else {
 				g.printf("                                %s\n", call)
 			}
-			g.printf("                                done(Result.success(w))\n                            } catch (e: Throwable) {\n                                done(Result.failure(e))\n                            }\n                        }\n                    }\n")
+			g.printf("                                done(kotlin.Result.success(w))\n                            } catch (e: Throwable) {\n                                done(kotlin.Result.failure(e))\n                            }\n                        }\n                    }\n")
 		}
 		g.printf("                }\n            }\n")
 	}

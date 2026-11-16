@@ -13,7 +13,12 @@ import (
 func SwiftFile(p *Package) string { return upperCamel(p.Name) + ".asuka.swift" }
 
 // SwiftErrorType is the Swift enum of the package's declared errors.
-func SwiftErrorType(p *Package) string { return upperCamel(p.Name) + "Error" }
+func SwiftErrorType(p *Package) string {
+	if p.ErrorName != "" {
+		return p.ErrorName
+	}
+	return upperCamel(p.Name) + "Error"
+}
 
 type swiftGen struct {
 	p       *Package
@@ -456,7 +461,7 @@ func (g *swiftGen) provider() {
 	}
 	g.printf("        default: throw AsukaNativeError.unsupported(\"no method \\(iface).\\(method)\")\n        }\n    }\n\n")
 	// start
-	g.printf("    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {\n")
+	g.printf("    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {\n")
 	g.printf("        var r = input\n        switch (iface, method) {\n")
 	for _, it := range g.p.Interfaces {
 		for _, m := range it.Methods {

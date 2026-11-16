@@ -1,0 +1,130 @@
+// Package asuka/imageedit edits images and takes frames from videos,
+// with the platform's own codecs: it reads what the camera and the photo
+// picker give (HEIC, JPEG, PNG, WebP...), turned upright as their
+// orientation says, and writes JPEG or PNG, for an upload, a cache, an
+// Image. Core Graphics and Image I/O on iOS and macOS, Android's Bitmap,
+// a canvas on the web, WIC on Windows, GdkPixbuf on Linux.
+//
+//   let r = try await imageedit.edit(photo, [.resize(1080, 0)], quality: 0.8)
+//
+// A source is what Image takes: a file's path, a file:// or http(s) URL,
+// or a file in the app's assets.
+
+/// A step of an edit, done in order.
+pub enum Action {
+  /// Scales the image to width×height pixels; a 0 keeps the aspect ratio
+  /// from the other (.resize(1080, 0): 1080 wide).
+  resize(width: int, height: int)
+  /// Keeps the rectangle at x, y (from the top left), width×height
+  /// pixels, within the image.
+  crop(x: int, y: int, width: int, height: int)
+  /// Turns the image clockwise by degrees; an angle that isn't a multiple
+  /// of 90 makes the image the size of the turned one, its corners
+  /// transparent (in PNG; white in JPEG).
+  rotate(degrees: float)
+  /// Mirrors the image left to right.
+  flipHorizontal
+  /// Mirrors the image top to bottom.
+  flipVertical
+  /// Paints the rectangle in a solid color (red, green, blue, 0 to 255):
+  /// what was there is gone from the file.
+  fill(x: int, y: int, width: int, height: int, red: int, green: int, blue: int)
+  /// Turns the rectangle into squares of block pixels, each the average
+  /// of what's under it, aligned to the image. Text under small squares
+  /// can sometimes be read back: for what must stay hidden, use fill.
+  pixelate(x: int, y: int, width: int, height: int, block: int)
+}
+
+/// The file written.
+pub enum Format {
+  jpeg
+  /// Lossless, with transparency.
+  png
+}
+
+/// The image written: a file in the app's caches (move it to keep it),
+/// and its size in pixels.
+pub struct Result {
+  path: string
+  width: int
+  height: int
+}
+
+/// What editing fails with.
+pub enum EditError: Error {
+  /// imageedit: no image
+  noImage
+}
+
+/// An action as it crosses to the platform's side.
+enum Op {
+  resize
+  crop
+  rotate
+  flipHorizontal
+  flipVertical
+  fill
+  pixelate
+}
+
+struct Step {
+  op: Op
+  x: int = 0
+  y: int = 0
+  width: int = 0
+  height: int = 0
+  degrees: float = 0
+  block: int = 0
+  /// fill's: 0xRRGGBB.
+  rgb: int = 0
+}
+
+fn step(a: Action) -> Step = match a {
+  .resize(w, h) => Step(op: .resize, width: w, height: h)
+  .crop(x, y, w, h) => Step(op: .crop, x: x, y: y, width: w, height: h)
+  .rotate(d) => Step(op: .rotate, degrees: d)
+  .flipHorizontal => Step(op: .flipHorizontal)
+  .flipVertical => Step(op: .flipVertical)
+  .fill(x, y, w, h, r, g, b) => Step(op: .fill, x: x, y: y, width: w, height: h, rgb: min(max(r, 0), 255) * 65536 + min(max(g, 0), 255) * 256 + min(max(b, 0), 255))
+  .pixelate(x, y, w, h, block) => Step(op: .pixelate, x: x, y: y, width: w, height: h, block: max(block, 1))
+}
+
+/// The platform's codecs. Its work is off the main thread.
+native interface Editor {
+  async fn edit(source: string, steps: [Step], format: Format, quality: float) -> Result
+  /// The image's size, upright, without decoding it (path: "").
+  async fn size(source: string) -> Result
+  async fn videoFrame(source: string, at: Duration, steps: [Step], format: Format, quality: float) -> Result
+}
+
+let editor = try? Editor()
+
+fn ed() throws -> Editor {
+  if let e = editor {
+    return e
+  }
+  return try Editor()
+}
+
+fn q(quality: float) -> float = if quality <= 0 || quality > 1 { 0.9 } else { quality }
+
+/// Reads the image source, does the actions in order and writes the
+/// result. With none, it turns the image upright and writes it in the
+/// format asked: a HEIC photo as a JPEG, say. quality is JPEG's, from 0
+/// to 1.
+pub async fn edit(source: string, actions: [Action] = [], format: Format = .jpeg, quality: float = 0.9) throws -> Result {
+  return try await ed().edit(source, actions.map(a => step(a)), format, q(quality))
+}
+
+/// The image source's size in pixels, upright, without decoding it: its
+/// width and height (path is empty).
+pub async fn size(source: string) throws -> Result {
+  return try await ed().size(source)
+}
+
+/// Takes the video source's frame at the time at (its first for 0),
+/// upright, as an image, and does the actions on it: a thumbnail, a
+/// poster. A remote video is read only as far as the frame needs.
+pub async fn videoFrame(source: string, at: Duration = 0s, actions: [Action] = [], format: Format = .jpeg, quality: float = 0.9) throws -> Result {
+  return try await ed().videoFrame(source, at, actions.map(a => step(a)), format, q(quality))
+}

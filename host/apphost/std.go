@@ -9,9 +9,13 @@ import (
 	_ "github.com/egoist/asuka/std/audio/desktop"
 	_ "github.com/egoist/asuka/std/camera/desktop"
 	_ "github.com/egoist/asuka/std/http/desktop"
+	_ "github.com/egoist/asuka/std/imageedit/desktop"
 	_ "github.com/egoist/asuka/std/network/desktop"
 	_ "github.com/egoist/asuka/std/nowplaying/desktop"
 	_ "github.com/egoist/asuka/std/record/desktop"
+	_ "github.com/egoist/asuka/std/scan/desktop"
 	_ "github.com/egoist/asuka/std/speech/desktop"
 	_ "github.com/egoist/asuka/std/store/desktop"
+	_ "github.com/egoist/asuka/std/transcribe/desktop"
+	_ "github.com/egoist/asuka/std/vision/desktop"
 )
