@@ -1,7 +1,7 @@
 // areas.c: the areas the host asks in turn (host.h's area).
 #include "host.h"
 
-extern const area lx_area_controls, lx_area_anim, lx_area_split, lx_area_scroll, lx_area_list, lx_area_rich, lx_area_popover, lx_area_shape, lx_area_canvas, lx_area_dnd, lx_area_native, lx_area_video, lx_area_web;
+extern const area lx_area_controls, lx_area_anim, lx_area_split, lx_area_scroll, lx_area_list, lx_area_rich, lx_area_popover, lx_area_shape, lx_area_canvas, lx_area_dnd, lx_area_native, lx_area_video, lx_area_web, lx_area_shader;
 
 const area *const lx_areas[] = {
 	&lx_area_split,
@@ -15,6 +15,7 @@ const area *const lx_areas[] = {
 	&lx_area_native,
 	&lx_area_video,
 	&lx_area_web,
+	&lx_area_shader,
 	&lx_area_controls,
 	&lx_area_anim,
 };
