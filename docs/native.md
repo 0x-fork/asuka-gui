@@ -277,7 +277,7 @@ holds something to free conforms to `AsukaDestroying`, or has a
 
 ## iOS and macOS: Swift
 
-The package's Swift is a Swift package, `Package.swift` at the Go
+The package's Swift is a Swift package, `Package.swift` at the
 package's root, with its sources in `swift/`. One package serves iOS
 and macOS, using `#if canImport(UIKit)` where they differ:
 
@@ -308,7 +308,7 @@ binary targets are SwiftPM's, as in any package. The CLI builds it with
 host. It links the result into the app, and embeds the dynamic
 frameworks and resource bundles it makes. `asuka` (the product `Asuka`)
 is the Asuka host the generated code builds on; the CLI points it at
-the CLI's own copy, so it always matches the app's Go. The `platforms`
+the CLI's own copy, so it always matches the app's Asuka. The `platforms`
 the package declares count: an app built for an older iOS or macOS
 fails with what the package needs, and a package that lists only one of
 them (`platforms: [.iOS("16.0")]`) is built only for that one.
@@ -322,12 +322,12 @@ generated file's header listing them:
 
 ```swift
 func makeKitchen() throws -> any Kitchen
-@MainActor func makeOven() throws -> any Oven      // a //asuka:mainthread interface
+@MainActor func makeOven() throws -> any Oven      // a @mainThread interface
 @MainActor func makeDial(_ events: DialEvents) -> any Dial
 ```
 
-An object that's made on the platform's side and handed to Go (`Open`'s
-`Oven`) comes from your code. To make a main-actor one from a
+An object that's made on the platform's side and handed to Asuka
+(`open`'s `Oven`) comes from your code. To make a main-actor one from a
 background method, use `try AsukaNative.onMain { SwiftOven() }`.
 
 An `Info.plist` beside `Package.swift` holds what the package needs of
@@ -364,8 +364,9 @@ dependencies {
 ```
 
 Its Kotlin goes in `src/main/kotlin/`, in the package the generated file
-names: the Go package's import path, reversed host first
-(`github.com/you/app/battery` gives `com.github.you.app.battery`). The
+names: the package's name (asuka.toml's `name`), its segments lower
+case, a host reversed first (`@acme/battery` gives `_acme.battery`,
+`github.com/you/battery` gives `com.github.you.battery`). The
 CLI includes the module in the app's Gradle build, which sets the
 following, so the module needs only its namespace and dependencies:
 
@@ -391,7 +392,7 @@ view's events object has the themed context the view is made in
 (`events.context`).
 `AsukaModules.onMain { }` makes an object on the main thread, as Swift's
 `AsukaNative.onMain` does. Kotlin's `Unit` is spelled `kotlin.Unit` in
-the generated code, so a Go type named `Unit` is fine.
+the generated code, so a type of yours named `Unit` is fine.
 
 Open the app's Android project (`asuka build --platform android` writes
 it) in Android Studio to edit a module with completion. The modules are
@@ -416,8 +417,7 @@ export function makeSegmented(events) {
 }
 ```
 
-A method may return a promise, even one that has no context on the Go
-side. Throw the package's declared errors with the generated classes
+A method may return a promise, even one that isn't `async` in Asuka. Throw the package's declared errors with the generated classes
 (`import { KitchenError } from "./kitchen.asuka.js"`). Every file in
 `web/` ships with the app, so a module can import its own helpers and
 fetch its assets relative to `import.meta.url`. `asuka dev --platform
@@ -425,73 +425,61 @@ web` reloads the page as one changes. See [the web](web.md#native-code).
 
 ## Windows and Linux: Go
 
-The desktop hosts run the app's Go in their own process, so a native
-package's code there is Go: Win32 through `syscall` on Windows, and GTK 4
-through purego on Linux, without cgo. A file built for those platforms
-gives `implement<T>` its implementation from an `init`:
+The desktop hosts are Go, so a native package's code there is Go too,
+in its `desktop/` directory: Win32 through `syscall` on Windows, and
+GTK 4 through purego on Linux, without cgo. The generated
+`<package>_native.go` lists the functions yours provides, one per
+interface:
 
 ```go
-//go:build windows || (linux && !android)
-
+// desktop/battery_windows.go
 package battery
 
-func init() {
-	implementBattery(func() (Battery, error) { return desktopBattery{}, nil })
-}
+func newBattery() (Battery, error) { return winBattery{}, nil }
+
+type winBattery struct{}
+
+func (winBattery) Level() (float64, error) { ... }
+func (winBattery) Watch(ctx context.Context, changed func(float64)) error { ... }
 ```
 
-A Go implementation is the interface itself, with no encoding and no
-crossing. A view's is `<View>Native`, made from its events:
+A method that's `async` in Asuka takes a `context.Context`, cancelled
+when the task that called it is; it runs on a goroutine of its own. A
+method that isn't runs on the main thread, and must not block it. What
+touches the platform's UI (a window, a GTK widget, a COM object of the
+main thread's apartment), and every callback, runs on the main thread:
+`native.Post(f)` runs f there, `native.OnMain(f)` runs it and waits.
+Split the file by platform with build constraints (`windows`, and
+`linux && !android`, since an Android build satisfies `linux`), and
+answer `errors.ErrUnsupported` where you have nothing: Asuka throws it
+as `unsupported`.
 
-```go
-func init() {
-	implementSegmented(func(events SegmentedEvents) SegmentedNative { ... })
-}
+A view is generated the same way: its file lists the function that
+makes it and the setters of its props, and its events object sends its
+events.
 
-type SegmentedNative interface {
-	Handle() uintptr // an HWND on Windows, a GtkWidget on Linux
-	SetItems(items []string)
-	SetSelected(selected int)
-}
-```
+On macOS a package's Swift runs where it has some (its
+`Package.swift`); one with only Go runs its Go there too.
 
-`events.Changed(i)` sends an event. `events.Context.Parent()` is the
-host's view the native view goes in: create a Windows child window in it
-(`WS_CHILD`); on Linux, leave the widget unparented, and the host adds
-it. A view can also implement:
-
-- `Measure(width, height float32) (float32, float32)`: its natural size
-  for what the layout offers (`NaN`: as it likes). GTK measures a widget
-  without one; on Windows nothing does, so it takes its size from its
-  style.
-- `Destroy()`: frees what it holds.
-- `ParentMessage(msg uint32, wparam, lparam uintptr) (uintptr, bool)`
-  (Windows): the `WM_COMMAND`, `WM_NOTIFY`, `WM_*SCROLL` and
-  `WM_CTLCOLOR*` its controls send their parent.
-
-Use the build constraints `windows` and `linux && !android`, since an
-Android build satisfies `linux`. The Mac can take Go too: a file built
-for `darwin && !ios` that calls `implement<T>` wins over the package's
-Swift there, using AppKit through purego's `objc`.
-
-On the desktop, everything a Go implementation does runs on the main
-thread when it's called there, as the hosts do. A GTK signal needs a C
-callback (`purego.NewCallback`), and those are never freed, so make one
-and route by the widget. `examples/media/segmented/segmented_linux.go`
-does that.
+The standard library's Go is in every app's host. An app whose own
+packages have Go for the desktop gets a host built with them: `asuka
+build` and `asuka dev` run `go build` (Go 1.26 or later on the
+computer that builds), once per change of that Go.
 
 ## Developing native code
 
-- **iOS and Android**: `asuka dev` builds the app with its Go and its
-  native packages, installs it, and rebuilds on save, Swift, Kotlin,
-  `Package.swift`, `build.gradle.kts`, `Info.plist` and the manifests
-  included. An app with no native packages runs in the player, which
+- **iOS and Android**: `asuka dev` builds the app's shell with its
+  native packages, installs it, and rebuilds it when their native code
+  changes, Swift, Kotlin, `Package.swift`, `build.gradle.kts`,
+  `Info.plist` and the manifests included; the app's Asuka reloads as
+  you save, without a rebuild. An app with no native packages runs in the player, which
   holds only Asuka's own native code. See
   [Development](development.md#on-a-phone-the-player-and-built-apps).
 - **macOS**: the packages' Swift builds into the app's Swift library,
-  again only when it changes, and the app runs again with its signals
+  again only when it changes, and the app runs again with its state
   kept.
-- **Windows and Linux**: native code is Go, built with the app.
+- **Windows and Linux**: the packages' Go builds into the app's host,
+  again only when it changes.
 - **Web**: the page reloads as a package's JavaScript changes.
 
 The first iOS or macOS build of a package resolves its Swift
