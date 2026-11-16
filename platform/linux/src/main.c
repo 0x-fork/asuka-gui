@@ -14,6 +14,7 @@
 
 asuka_host_callbacks lx_callbacks(void);
 int lx_notify_headless(const char *id);
+void lx_update_start(void);
 void lx_install_notify_actions(void);
 void lx_notify_action_at_start(void);
 void lx_watch_desktop(void);
@@ -159,6 +160,7 @@ int main(int argc, char **argv) {
 	H.app_name = app_name(argv[0]);
 	H.app_id = app_id(H.app_name);
 	H.assets = lx_assets_dir(argv[0]);
+	lx_update_start();
 	H.automating = lx_automating();
 	// A notification's systemd timer runs the app to show it: no window,
 	// no GTK (notify_timer.c).

@@ -1112,3 +1112,14 @@ SYM(GIO, gboolean, g_subprocess_wait_check_finish, (GSubprocess *subprocess, GAs
 SYM(GIO, gint, g_unix_fd_list_append, (GUnixFDList *list, gint fd, GError **error))
 SYM(GIO, GUnixFDList *, g_unix_fd_list_new, (void))
 SYM(SOUP, SoupMessageHeaders *, soup_message_get_response_headers, (SoupMessage *msg))
+
+// ---- Updates ----
+SYM(GIO, void, g_cancellable_cancel, (GCancellable *cancellable))
+SYM(GIO, gboolean, g_cancellable_is_cancelled, (GCancellable *cancellable))
+SYM(GIO, GCancellable *, g_cancellable_new, (void))
+SYM(GIO, void, g_input_stream_read_async, (GInputStream *stream, void *buffer, gsize count, int io_priority, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data))
+SYM(GIO, gssize, g_input_stream_read_finish, (GInputStream *stream, GAsyncResult *result, GError **error))
+SYM(SOUP, goffset, soup_message_headers_get_content_length, (SoupMessageHeaders *hdrs))
+SYM(SOUP, void, soup_session_send_async, (SoupSession *session, SoupMessage *msg, int io_priority, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data))
+SYM(SOUP, GInputStream *, soup_session_send_finish, (SoupSession *session, GAsyncResult *result, GError **error))
+SYM(SOUP, void, soup_session_set_user_agent, (SoupSession *session, const char *user_agent))

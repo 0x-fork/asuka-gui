@@ -123,14 +123,20 @@ bool lx_relaunch_asked(void) { return relaunch; }
 
 // lx_relaunch_if_asked starts the app again once this process's main loop
 // has ended (the Quit command's relaunch flag), with the same arguments,
-// in a session of its own so it outlives this one's end: the executable,
-// or what an update put in place (lx_relaunch_exe).
+// in a session of its own so it outlives this one's end: the executable
+// at the path it started from (lx_relaunch_exe: an update replaces the
+// file), with ASUKA_RELAUNCH_WAIT.
 void lx_relaunch_if_asked(char **argv) {
 	if (!relaunch) return;
 	const char *exe = lx_relaunch_exe ? lx_relaunch_exe() : NULL;
 	char *self = NULL;
 	if (!exe || !*exe) exe = self = dsk_exe_path();
 	if (!exe) exe = argv[0];
+	// The new process waits for this one to end before it takes the
+	// single instance (update.c).
+	char me[32];
+	snprintf(me, sizeof me, "%d", (int)getpid());
+	setenv("ASUKA_RELAUNCH_WAIT", me, 1);
 	pid_t pid = fork();
 	if (pid == 0) {
 		setsid();
