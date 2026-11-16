@@ -317,8 +317,9 @@ func TestNavChildWindows(t *testing.T) {
 	})
 }
 
-// The main window's handle (a Ref of a view in it): hide and focus, as a
-// tray icon's menu does (TestMainWindowHideFocus).
+// The main window's handle (a Ref of a view in it): hide and show again,
+// as a tray icon's menu does (TestMainWindowHideFocus). A view's ref's
+// focus() is the keyboard's (a Window element's brings it to the front).
 func TestNavMainWindowHideFocus(t *testing.T) {
 	a := Run(t, `
 		app { Root() }
@@ -330,7 +331,7 @@ func TestNavMainWindowHideFocus(t *testing.T) {
 		      on press {
 		        c.hide()
 		        await sleep(2s)
-		        c.focus()
+		        c.show()
 		      }
 		    }
 		  }
@@ -403,7 +404,10 @@ func TestNavDocumentWindow(t *testing.T) {
 	`, Options{})
 	a.Until(func(tr *Tree) bool { w := tr.Window("notes.txt"); return w != nil && w.Visible })
 	a.Do("tap Edit")
-	a.Until(func(tr *Tree) bool { w := tr.Window("notes.txt"); return w.Props["edited"] == true && w.Props["file"] == nil })
+	a.Until(func(tr *Tree) bool {
+		w := tr.Window("notes.txt")
+		return w.Props["edited"] == true && w.Props["file"] == nil
+	})
 	a.Do("tap Save")
 	a.Until(func(tr *Tree) bool {
 		w := tr.Window("notes.txt")

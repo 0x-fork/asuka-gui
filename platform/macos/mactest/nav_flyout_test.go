@@ -220,7 +220,10 @@ func TestNavPanel(t *testing.T) {
 		  }
 		}
 	`, Options{Env: []string{shellConfig(t, `{"background": true}`)}})
-	tr := a.Until(func(tr *Tree) bool { m := tr.Main(); return m.Visible && m.Content[2] == 600 && m.Content[3] > 36 && m.Content[3] < 100 })
+	tr := a.Until(func(tr *Tree) bool {
+		m := tr.Main()
+		return m.Visible && m.Content[2] == 600 && m.Content[3] > 36 && m.Content[3] < 100
+	})
 	m := tr.Main()
 	if m.Props["class"] != "AsukaPanel" || int(winNum(m, "styleMask"))&styleNonactivating == 0 {
 		t.Fatalf("the main window is a %v, style %b", m.Props["class"], int(winNum(m, "styleMask")))

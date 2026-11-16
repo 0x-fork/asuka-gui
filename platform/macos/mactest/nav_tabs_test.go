@@ -92,7 +92,9 @@ func TestNavTabsSelect(t *testing.T) {
 	// The user's choice.
 	a.Do("tab Archive")
 	a.UntilText("selected 1")
-	tr = a.Until(func(tr *Tree) bool { return tr.Main().Title == "Archive" && tr.Kind("Tabs")[0].Str("selectedTab") == "Archive" })
+	tr = a.Until(func(tr *Tree) bool {
+		return tr.Main().Title == "Archive" && tr.Kind("Tabs")[0].Str("selectedTab") == "Archive"
+	})
 	if n := tr.FindText("archive page"); n == nil || !n.Shown {
 		t.Fatalf("the archive page doesn't show:\n%s", tr.Raw())
 	}
@@ -100,7 +102,9 @@ func TestNavTabsSelect(t *testing.T) {
 	a.Do("tab Inbox")
 	a.UntilText("selected 0")
 	a.Do("tap Second")
-	a.Until(func(tr *Tree) bool { return tr.Kind("Tabs")[0].Str("selectedTab") == "Archive" && tr.Main().Title == "Archive" })
+	a.Until(func(tr *Tree) bool {
+		return tr.Kind("Tabs")[0].Str("selectedTab") == "Archive" && tr.Main().Title == "Archive"
+	})
 }
 
 // Tabs reading right to left where AppKit reads left to right: NSTabView

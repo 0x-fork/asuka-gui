@@ -79,7 +79,9 @@ func TestVisualWebView(t *testing.T) {
 	`, srv.URL+"/", webEvalButton("Loaded", "window.loaded"), webEvalButton("Throw", "throw new Error('nope')"),
 		webEvalButton("Preloaded", "window.pre")))
 	l := &vlogger{a: a}
-	l.until(t, func(s string) bool { return strings.Contains(s, "loaded "+srv.URL+"/;") && strings.Contains(s, "state Home;") })
+	l.until(t, func(s string) bool {
+		return strings.Contains(s, "loaded "+srv.URL+"/;") && strings.Contains(s, "state Home;")
+	})
 	mu.Lock()
 	got := strings.Join(paths, " ")
 	ua := strings.Join(agents, " ")

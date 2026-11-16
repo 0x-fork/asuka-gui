@@ -212,6 +212,13 @@ func TestVisualImageModes(t *testing.T) {
 				return false
 			}
 		}
+		// A fill's image is its layer's contents once it's placed (its
+		// load and its frame may come in either order).
+		for _, n := range ims {
+			if len(n.Frame) == 4 && n.Frame[2] == 61 && !vbool(vobj(n, "image"), "layerContents") {
+				return false
+			}
+		}
 		return true
 	})
 	fit, fill, stretch, center := kindSized(t, tr, "Image", 60, 40), kindSized(t, tr, "Image", 61, 40), kindSized(t, tr, "Image", 62, 40), kindSized(t, tr, "Image", 63, 40)

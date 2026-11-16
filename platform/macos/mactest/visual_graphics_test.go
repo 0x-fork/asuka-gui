@@ -168,12 +168,16 @@ func TestVisualShader(t *testing.T) {
 	}
 	// The animated one draws on; the other only as its uniforms change.
 	drawn, drawnSolid := vnum(vobj(flow, "shader"), "drawn"), vnum(s, "drawn")
-	tr = a.Until(func(tr *Tree) bool { return vnum(vobj(kindSized(t, tr, "Shader", 51, 30), "shader"), "drawn") > drawn+5 })
+	tr = a.Until(func(tr *Tree) bool {
+		return vnum(vobj(kindSized(t, tr, "Shader", 51, 30), "shader"), "drawn") > drawn+5
+	})
 	if d := vnum(vobj(kindSized(t, tr, "Shader", 50, 30), "shader"), "drawn"); d != drawnSolid {
 		t.Errorf("the still shader drew %v times, was %v", d, drawnSolid)
 	}
 	a.Do("tap Blue")
-	a.Until(func(tr *Tree) bool { return vnum(vobj(kindSized(t, tr, "Shader", 50, 30), "shader"), "drawn") > drawnSolid })
+	a.Until(func(tr *Tree) bool {
+		return vnum(vobj(kindSized(t, tr, "Shader", 50, 30), "shader"), "drawn") > drawnSolid
+	})
 	a.Do("tap Stop")
 	tr = a.Until(func(tr *Tree) bool { return len(tr.Kind("Shader")) == 1 && !vbool(visualState(tr), "shaderClock") })
 }

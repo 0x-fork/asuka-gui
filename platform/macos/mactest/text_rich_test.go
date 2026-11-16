@@ -48,7 +48,10 @@ func TestRichText(t *testing.T) {
 		}
 		app { R() }
 	`)
-	tr := a.Until(func(tr *Tree) bool { n, _ := richOf(tr, "Hello bold it link and  end\nSecond paragraph"); return n != nil })
+	tr := a.Until(func(tr *Tree) bool {
+		n, _ := richOf(tr, "Hello bold it link and  end\nSecond paragraph")
+		return n != nil
+	})
 	n, r := richOf(tr, "Hello bold it link and  end\nSecond paragraph")
 	if n.Class != "AsukaRichTextView" || r["selectable"] != false {
 		t.Fatalf("a %s, selectable %v", n.Class, r["selectable"])

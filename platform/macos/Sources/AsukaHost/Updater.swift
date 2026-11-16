@@ -1,25 +1,12 @@
 // The updater's platform part on a Mac: the host module "update", which
 // the std package asuka/update calls (asuka/platform's call, JSON in and
-// out). The package does what's the same everywhere (the feed, channels,
-// versions, the signatures, deltas); the host what only the Mac does:
-// whether this build can update itself, downloads, and putting a verified
-// bundle in place of the app's once it has quit (internal/update's
-// Locate, CheckBundle and StageBundle, ported).
-//
-//   info                  → {installable, reason, target, version, feed, key}
-//   download {url, to}    → {id}: to is where the file goes, made whole
-//   next {id}             → {downloaded, total, done, error}, answered once
-//                           the download has moved 1% (of its size, or a
-//                           MiB when it has none) since the last answer,
-//                           or once it ends (done; error "" or why)
-//   cancel {id}           → {}: its next answers done, error "canceled"
-//   install {staged}      → {target}: staged, an archive (a gzipped tar of
-//                           the app) or a directory (the bundle, or one
-//                           holding it) the package has verified, is
-//                           checked (its code signature the running app's
-//                           signer's) and left to replace the app's bundle
-//                           once the app quits; the Quit command's relaunch
-//                           then opens the new one
+// out; DESIGN.md's "Updates" is its spec). The package does what's the
+// same everywhere (the feed, channels, versions, signatures, deltas,
+// unpacking); the host what only the Mac does: whether this build can
+// update itself, downloads (URLSession), and putting the verified bundle
+// the package staged in place of the app's once it has quit
+// (internal/update's Locate, CheckBundle and StageBundle at bf1839e2,
+// ported).
 import AppKit
 import Darwin
 
@@ -45,13 +32,26 @@ import Darwin
     func applyStagedUpdate(relaunch: Bool) -> Bool { AsukaUpdater.shared.quitting(relaunch: relaunch) }
 }
 
-/// Why an app can't update itself (internal/update's Locate's errors).
+/// Why an app can't update itself (internal/update's Locate's errors):
+/// info's reason, its words the message.
 enum AsukaUpdateError: LocalizedError {
-    case managed, translocated, notWritable, notInstalled
+    case notConfigured, managed, translocated, notWritable, notInstalled
     case other(String)
+
+    var reason: String {
+        switch self {
+        case .notConfigured: return "notConfigured"
+        case .managed: return "managed"
+        case .translocated: return "translocated"
+        case .notWritable: return "notWritable"
+        case .notInstalled: return "notInstalled"
+        case .other: return "failed"
+        }
+    }
 
     var errorDescription: String? {
         switch self {
+        case .notConfigured: return "the app has no update feed or key (asuka.toml's updates, in a build asuka build makes)"
         case .managed: return "a package manager or an app store installed the app, and updates it"
         case .translocated: return "macOS runs the app from a read-only copy: move it to the Applications folder, then open it again"
         case .notWritable: return "the app can't write where it's installed"
@@ -70,9 +70,12 @@ enum AsukaUpdateError: LocalizedError {
         let to: String
         var task: URLSessionDownloadTask?
         var downloaded: Int64 = 0
-        var total: Int64 = -1
+        /// The Content-Length, 0 while it's unknown.
+        var total: Int64 = 0
         var done = false
         var error = ""
+        /// The response's status, once known.
+        var status = 0
         /// What the last answer said.
         var told: Int64 = -1
         var toldDone = false
@@ -121,21 +124,27 @@ enum AsukaUpdateError: LocalizedError {
     }
 
     func info(_ reply: @escaping (Result<Data, Error>) -> Void) {
-        let cfg = AsukaRuntime.shared.config
+        let rt = AsukaRuntime.shared
+        let cfg = rt.config
         let target = cfg.updateTarget.isEmpty ? "darwin-universal" : cfg.updateTarget
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? cfg.version
-        let (feed, key) = (cfg.updateFeed, cfg.updateKey)
+        let (feed, key, name) = (cfg.updateFeed, cfg.updateKey, rt.appName)
         DispatchQueue.global(qos: .userInitiated).async {
-            var reason = ""
+            var d: [String: Any] = ["installable": false, "reason": "", "message": "", "target": target, "version": version,
+                                    "name": name, "feed": feed, "key": key, "kind": "bundle", "root": "", "exe": "", "work": ""]
             do {
-                let (bundle, _) = try Self.locate()
+                let (bundle, exe) = try Self.locate()
+                d["root"] = bundle
+                d["exe"] = exe
+                d["work"] = (bundle as NSString).deletingLastPathComponent
+                if feed.isEmpty || key.isEmpty { throw AsukaUpdateError.notConfigured }
                 try Self.writable(bundle)
-                Self.cleanLeftovers(bundle)
+                d["installable"] = true
             } catch {
-                reason = asukaErrorText(error)
+                let e = error as? AsukaUpdateError ?? .other(asukaErrorText(error))
+                d["reason"] = e.reason
+                d["message"] = asukaErrorText(e)
             }
-            let d: [String: Any] = ["installable": reason.isEmpty, "reason": reason, "target": target,
-                                    "version": version, "feed": feed, "key": key]
             reply(Result { try JSONSerialization.data(withJSONObject: d, options: [.sortedKeys]) })
         }
     }
@@ -156,9 +165,18 @@ enum AsukaUpdateError: LocalizedError {
         guard url.scheme == "https" || (url.scheme == "http" && (host == "127.0.0.1" || host == "localhost" || host == "::1")) else {
             return reply(.failure(AsukaModuleError("update.download: not an HTTPS URL: \(s)")))
         }
+        // The file is made, or emptied, at once: what's there is this
+        // download's.
+        let fm = FileManager.default
+        try? fm.createDirectory(atPath: (to as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        guard fm.createFile(atPath: to, contents: nil) else {
+            return reply(.failure(AsukaModuleError("update.download: can't write \(to)")))
+        }
         let d = Download(id: nextID, to: to)
         nextID += 1
-        let task = session.downloadTask(with: url)
+        var req = URLRequest(url: url)
+        req.setValue("asuka-updater", forHTTPHeaderField: "User-Agent")
+        let task = session.downloadTask(with: req)
         d.task = task
         downloads[d.id] = d
         byTask[task.taskIdentifier] = d
@@ -187,20 +205,17 @@ enum AsukaUpdateError: LocalizedError {
     /// (of the size, or a MiB without one) since the last answer.
     private func answer(_ d: Download) {
         guard let w = d.waiting else { return }
-        let step = d.total > 0 ? max(d.total / 100, 1) : 1 << 20
+        let step = d.total > 0 ? max(d.total / 100, 1) : 64 << 10
         let moved = d.told < 0 || d.downloaded - d.told >= step
         guard d.done || moved else { return }
         d.waiting = nil
         d.told = d.downloaded
         if d.done {
-            if d.toldDone {
-                // Told already: the download is gone.
-                downloads.removeValue(forKey: d.id)
-                return w(.failure(AsukaModuleError("update.next: no such download")))
-            }
+            // Told it ended: the id is forgotten.
             d.toldDone = true
+            downloads.removeValue(forKey: d.id)
         }
-        let o: [String: Any] = ["downloaded": d.downloaded, "total": d.total, "done": d.done, "error": d.error]
+        let o: [String: Any] = ["downloaded": d.downloaded, "total": d.total, "done": d.done, "error": d.error, "status": d.status]
         w(Result { try JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]) })
     }
 
@@ -218,7 +233,8 @@ enum AsukaUpdateError: LocalizedError {
         MainActor.assumeIsolated {
             guard let d = byTask[id] else { return }
             d.downloaded = totalBytesWritten
-            d.total = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : -1
+            d.total = max(totalBytesExpectedToWrite, 0)
+            if d.status == 0, let r = downloadTask.response as? HTTPURLResponse { d.status = r.statusCode }
             answer(d)
         }
     }
@@ -230,17 +246,20 @@ enum AsukaUpdateError: LocalizedError {
         let status = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? 200
         MainActor.assumeIsolated {
             guard let d = byTask[id] else { return }
-            guard status / 100 == 2 else {
-                return finish(d, "couldn't download \(downloadTask.originalRequest?.url?.absoluteString ?? ""): \(status) \(HTTPURLResponse.localizedString(forStatusCode: status))")
+            d.status = status
+            // A body is kept for 200 only: another status (a server's 204,
+            // a 404) leaves the file empty, and says so in status.
+            guard status == 200 else {
+                d.downloaded = 0
+                return finish(d, "")
             }
             let fm = FileManager.default
             do {
-                try fm.createDirectory(atPath: (d.to as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
                 try? fm.removeItem(atPath: d.to)
                 try fm.moveItem(at: location, to: URL(fileURLWithPath: d.to))
                 if let n = (try? fm.attributesOfItem(atPath: d.to))?[.size] as? Int64 {
                     d.downloaded = n
-                    if d.total < 0 { d.total = n }
+                    if d.total == 0 { d.total = n }
                 }
                 finish(d, "")
             } catch {
@@ -274,7 +293,7 @@ enum AsukaUpdateError: LocalizedError {
                     switch r {
                     case .success(let (work, target, helper)):
                         self.staged = (work, target, helper)
-                        reply(Result { try JSONSerialization.data(withJSONObject: ["target": target]) })
+                        reply(.success(Data("{}".utf8)))
                     case .failure(let e):
                         reply(.failure(e))
                     }
@@ -283,51 +302,36 @@ enum AsukaUpdateError: LocalizedError {
         }
     }
 
-    /// Makes the new bundle beside the app's (in a work directory on its
-    /// volume, so each step is a rename), checks it, and starts the helper
-    /// that puts it in place once pid has exited. Off the main thread.
+    /// Checks the bundle the package staged (a directory in the install's
+    /// work directory: .<Name>.app.update-<id>/..., on the app's volume,
+    /// so each step is a rename), and starts the helper that puts it in
+    /// place once pid has exited; the helper's pid goes in the work
+    /// directory's "staged". Off the main thread.
     nonisolated static func stage(_ staged: String, pid: pid_t) throws -> (String, String, pid_t) {
         let (target, _) = try locate()
         try writable(target)
-        cleanLeftovers(target)
-        let parent = (target as NSString).deletingLastPathComponent
-        var tmpl = Array((parent + "/." + (target as NSString).lastPathComponent + ".update-XXXXXX").utf8CString)
-        guard let w = mkdtemp(&tmpl) else { throw AsukaUpdateError.other("can't write where the app is installed: \(String(cString: strerror(errno)))") }
-        let work = String(cString: w)
-        do {
-            let tree = work + "/tree"
-            try FileManager.default.createDirectory(atPath: tree, withIntermediateDirectories: false)
-            var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: staged, isDirectory: &isDir) else {
-                throw AsukaUpdateError.other("no update at \(staged)")
-            }
-            if isDir.boolValue {
-                // A bundle, or a directory holding one: copied (ditto keeps
-                // what a bundle has: its links, attributes, signature).
-                let src = staged.hasSuffix(".app") ? staged : try Self.bundleIn(staged)
-                try run("/usr/bin/ditto", [src, tree + "/" + (src as NSString).lastPathComponent])
-            } else {
-                try run("/usr/bin/tar", ["-xzf", staged, "-C", tree])
-            }
-            let bundle = try bundleIn(tree)
-            guard FileManager.default.fileExists(atPath: bundle + "/Contents", isDirectory: &isDir), isDir.boolValue else {
-                throw AsukaUpdateError.other("the update holds no app bundle")
-            }
-            try checkBundle(bundle, running: target)
-            let helper = try startHelper(pid: pid, target: target, new: bundle, work: work)
-            try? String(helper).write(toFile: work + "/staged", atomically: true, encoding: .utf8)
-            return (work, target, helper)
-        } catch {
-            try? FileManager.default.removeItem(atPath: work)
-            throw error
+        var isDir: ObjCBool = false
+        let new = (staged as NSString).standardizingPath
+        guard FileManager.default.fileExists(atPath: new + "/Contents", isDirectory: &isDir), isDir.boolValue else {
+            var st = stat()
+            let why = stat(new + "/Contents", &st) == 0 ? "not a directory" : String(cString: strerror(errno))
+            throw AsukaUpdateError.other("the update holds no app bundle at \(staged) (\(why))")
         }
-    }
-
-    /// The one bundle in dir (an extracted archive's one entry, Name.app).
-    nonisolated static func bundleIn(_ dir: String) throws -> String {
-        let entries = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { !$0.hasPrefix(".") }
-        guard entries.count == 1, entries[0].hasSuffix(".app") else { throw AsukaUpdateError.other("the update holds no app bundle") }
-        return dir + "/" + entries[0]
+        // The work directory: the staged bundle's ancestor beside the app's.
+        let parent = (target as NSString).deletingLastPathComponent
+        let prefix = "." + (target as NSString).lastPathComponent + ".update-"
+        var work = new
+        while (work as NSString).deletingLastPathComponent != parent {
+            work = (work as NSString).deletingLastPathComponent
+            guard work != "/" && !work.isEmpty else { throw AsukaUpdateError.other("the update isn't staged beside the app (\(parent))") }
+        }
+        guard (work as NSString).lastPathComponent.hasPrefix(prefix), work != new else {
+            throw AsukaUpdateError.other("the update isn't staged in a work directory of the app's (\(prefix)*)")
+        }
+        try checkBundle(new, running: target)
+        let helper = try startHelper(pid: pid, target: target, new: new, work: work)
+        try? String(helper).write(toFile: work + "/staged", atomically: true, encoding: .utf8)
+        return (work, target, helper)
     }
 
     /// Checks, as Sparkle does, that the update's bundle may take the
@@ -440,8 +444,17 @@ enum AsukaUpdateError: LocalizedError {
         return child
     }
 
+    /// At launch: removes what updates left beside the bundle, their work
+    /// directories whose helper isn't running (the app quit while one was
+    /// made, or one failed). Off the main thread.
+    nonisolated static func cleanAtLaunch() {
+        DispatchQueue.global(qos: .utility).async {
+            if let (bundle, _) = try? locate() { cleanLeftovers(bundle) }
+        }
+    }
+
     /// Removes the work directories of updates staged before whose helper
-    /// is gone (the app quit while one was made), as the app starts.
+    /// is gone.
     nonisolated static func cleanLeftovers(_ bundle: String) {
         let parent = (bundle as NSString).deletingLastPathComponent
         let prefix = "." + (bundle as NSString).lastPathComponent + ".update-"

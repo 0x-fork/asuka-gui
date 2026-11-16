@@ -516,7 +516,10 @@ func TestLocaleControlsMirror(t *testing.T) {
 		}
 	}
 	a.Do("tap Write")
-	a.Until(func(tr *Tree) bool { _, f := fieldOf(t, tr, "Notes"); return f["string"] == "line" && f["alignment"] == "right" })
+	a.Until(func(tr *Tree) bool {
+		_, f := fieldOf(t, tr, "Notes")
+		return f["string"] == "line" && f["alignment"] == "right"
+	})
 }
 
 // A vertical Scroll's scroller is on the side the view ends, where AppKit

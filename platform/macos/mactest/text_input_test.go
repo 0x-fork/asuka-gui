@@ -4,8 +4,8 @@ package mactest
 
 import (
 	"os"
-	"strings"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 

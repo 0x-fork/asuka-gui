@@ -203,7 +203,9 @@ func TestVisualProgressRing(t *testing.T) {
 		}
 		app { Rings() }
 	`)
-	tr := a.Until(func(tr *Tree) bool { return len(tr.Kind("ProgressRing")) == len(cases) && tr.Find("Button", "Done") != nil })
+	tr := a.Until(func(tr *Tree) bool {
+		return len(tr.Kind("ProgressRing")) == len(cases) && tr.Find("Button", "Done") != nil
+	})
 	for i, c := range cases {
 		checkRing(t, tr.Kind("ProgressRing")[i], c, 0.25)
 	}

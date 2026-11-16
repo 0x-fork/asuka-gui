@@ -76,6 +76,7 @@ import AsukaOps
         AsukaNotify.install() // asuka/notify: the center's delegate before launch ends
         startQuit()
         startFiles()
+        AsukaUpdater.cleanAtLaunch() // what an update left beside the bundle
     }
 
     /// The Location command: a window's Router address, kept.

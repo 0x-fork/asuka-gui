@@ -38,6 +38,7 @@ func shellUpdateApp(buttons string) string {
 		  total: int
 		  done: bool
 		  error: string
+		  status: int
 		}
 
 		async fn call(method: string, args: string) -> string {
@@ -84,25 +85,40 @@ func shellOutWith(t *testing.T, a *App, ok func(string) bool) string {
 }
 
 // info says whether the build can install updates itself, why not, and
-// its target.
+// what the package needs to install one: the bundle, the running
+// executable, the work directory beside the bundle, the target.
 func TestShellUpdateInfo(t *testing.T) {
-	a := Run(t, shellUpdateApp(`Button("Info") { on press { out = await call("info", "") } }`))
-	a.Do("tap Info")
-	s := shellOut(t, a, "{")
-	var info struct {
-		Installable *bool   `json:"installable"`
-		Reason      *string `json:"reason"`
-		Target      string  `json:"target"`
+	type info struct {
+		Installable           bool
+		Reason, Message       string
+		Target, Version       string
+		Name, Feed, Key       string
+		Kind, Root, Exe, Work string
 	}
-	if err := json.Unmarshal([]byte(s), &info); err != nil {
-		t.Fatalf("info %q: %v", s, err)
+	read := func(a *App) info {
+		a.Do("tap Info")
+		s := shellOut(t, a, "{")
+		var i info
+		if err := json.Unmarshal([]byte(s), &i); err != nil {
+			t.Fatalf("info %q: %v", s, err)
+		}
+		return i
 	}
-	if info.Installable == nil || info.Reason == nil || info.Target != "darwin-universal" {
-		t.Fatalf("info %s", s)
+	src := shellUpdateApp(`Button("Info") { on press { out = await call("info", "") } }`)
+	// The player has no feed or key (only asuka build's builds do).
+	i := read(Run(t, src))
+	if i.Installable || i.Reason != "notConfigured" || i.Message == "" || i.Target != "darwin-universal" {
+		t.Fatalf("the player: %+v", i)
 	}
-	// The player is a bundle in a folder of the test's: it can.
-	if !*info.Installable || *info.Reason != "" {
-		t.Fatalf("the player can't update itself: %s", s)
+	if i.Kind != "bundle" || !strings.HasSuffix(i.Root, ".app") || !strings.HasPrefix(i.Exe, i.Root+"/Contents/MacOS/") || i.Work != filepath.Dir(i.Root) || i.Name == "" {
+		t.Fatalf("where the player is: %+v", i)
+	}
+	// Configured, in a folder of the test's: it can.
+	cfg := filepath.Join(t.TempDir(), "asuka-app.json")
+	os.WriteFile(cfg, []byte(`{"name":"Mac Test","version":"1.0.0","updateFeed":"https://example.com/u","updateKey":"a2V5","updateTarget":"darwin-universal"}`), 0o644)
+	i = read(RunWith(t, src, Options{Env: []string{"ASUKA_APP_CONFIG=" + cfg}}))
+	if !i.Installable || i.Reason != "" || i.Feed != "https://example.com/u" || i.Key != "a2V5" {
+		t.Fatalf("configured: %+v", i)
 	}
 }
 
@@ -112,6 +128,14 @@ func TestShellUpdateDownload(t *testing.T) {
 	const size = 2 << 20
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("User-Agent") != "asuka-updater" {
+			http.Error(w, "who are you", http.StatusForbidden)
+			return
+		}
+		if r.URL.Path == "/missing" {
+			http.Error(w, "no such file", http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Length", fmt.Sprint(size))
 		chunk := make([]byte, 64<<10)
 		for i := range chunk {
@@ -166,10 +190,22 @@ func TestShellUpdateDownload(t *testing.T) {
 		    out = "canceled {last} | {again} | {first}"
 		  }
 		}
+		Button("Missing") {
+		  on press {
+		    let s = await call("download", json.encode(DownloadArgs(url: %q, to: %q)))
+		    var last = ""
+		    while true {
+		      last = await call("next", s)
+		      if last.hasPrefix("error") { break }
+		      if let p = try? json.decode<Progress>(last) { if p.done { break } } else { break }
+		    }
+		    out = "missing {last}"
+		  }
+		}
 		Button("Plain") {
 		  on press { out = await call("download", json.encode(DownloadArgs(url: "http://example.com/a", to: %q))) }
 		}
-	`, srv.URL+"/file", to, srv.URL+"/stuck", filepath.Join(dir, "stuck"), filepath.Join(dir, "plain"))))
+	`, srv.URL+"/file", to, srv.URL+"/stuck", filepath.Join(dir, "stuck"), srv.URL+"/missing", filepath.Join(dir, "missing"), filepath.Join(dir, "plain"))))
 
 	a.Do("tap Download")
 	s := shellOutWith(t, a, func(s string) bool { return strings.Contains(s, "done") })
@@ -178,14 +214,14 @@ func TestShellUpdateDownload(t *testing.T) {
 	fmt.Sscanf(s, "%d", &answers)
 	_, last, _ = strings.Cut(s, " ")
 	var p struct {
-		Downloaded, Total int
-		Done              bool
-		Error             string
+		Downloaded, Total, Status int
+		Done                      bool
+		Error                     string
 	}
 	if err := json.Unmarshal([]byte(last), &p); err != nil {
 		t.Fatalf("next %q: %v", s, err)
 	}
-	if !p.Done || p.Error != "" || p.Downloaded != size || p.Total != size {
+	if !p.Done || p.Error != "" || p.Downloaded != size || p.Total != size || p.Status != 200 {
 		t.Fatalf("the download ended %s", s)
 	}
 	// It moved in steps of 1%: more than its start and its end, at most a
@@ -205,8 +241,19 @@ func TestShellUpdateDownload(t *testing.T) {
 	if !strings.Contains(s, "| error: ") {
 		t.Fatalf("a download told it ended is gone: %s", s)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "stuck")); err == nil {
-		t.Fatal("a canceled download's file is there")
+	if st, err := os.Stat(filepath.Join(dir, "stuck")); err == nil && st.Size() != 0 {
+		t.Fatal("a canceled download's file has its bytes")
+	}
+
+	// Another status than 200: the download ends, its status said, the
+	// file empty.
+	a.Do("tap Missing")
+	s = shellOut(t, a, "missing")
+	if !strings.Contains(s, `"status":404`) || !strings.Contains(s, `"done":true`) || !strings.Contains(s, `"error":""`) {
+		t.Fatalf("a 404: %s", s)
+	}
+	if st, err := os.Stat(filepath.Join(dir, "missing")); err != nil || st.Size() != 0 {
+		t.Fatalf("a 404's file: %v %v", st, err)
 	}
 
 	// Not HTTPS (nor the computer's own): refused.
@@ -252,37 +299,78 @@ func shellIdentity() string {
 	return ""
 }
 
+// staged copies a bundle into a new work directory of the package's
+// beside the installed one (.<Name>.app.update-<id>/app/<Name>.app), as
+// asuka/update stages a verified update, and returns the copy.
+func shellStaged(t *testing.T, installed, bundle, id string) string {
+	t.Helper()
+	dir := filepath.Join(filepath.Dir(installed), "."+filepath.Base(installed)+".update-"+id, "app")
+	os.MkdirAll(dir, 0o755)
+	dst := filepath.Join(dir, filepath.Base(installed))
+	if b, err := exec.Command("ditto", bundle, dst).CombinedOutput(); err != nil {
+		t.Fatalf("ditto: %v\n%s", err, b)
+	}
+	return dst
+}
+
 // install refuses an update signed as another app, by another signer (a
-// team, where the computer has an identity to sign with), or whose
-// signature doesn't hold, and puts one of the app's own in place of its
-// bundle once it has quit.
+// team, where the computer has an identity to sign with), whose signature
+// doesn't hold, or not staged beside the app; and puts one of the app's
+// own in place of its bundle once it has quit. At launch, the host
+// removes what an update left whose helper isn't running.
 func TestShellUpdateInstall(t *testing.T) {
 	exe := Player(t)
 	player := filepath.Dir(filepath.Dir(filepath.Dir(exe)))
 	tmp := t.TempDir()
 	running := shellSignedCopy(t, player, filepath.Join(tmp, "installed"), "dev.asuka.mactest", false)
-	other := shellSignedCopy(t, player, filepath.Join(tmp, "other"), "com.example.other", false)
-	// Changed after it was signed.
-	tampered := shellSignedCopy(t, player, filepath.Join(tmp, "tampered"), "dev.asuka.mactest", false)
-	os.WriteFile(filepath.Join(tampered, "Contents", "Info.plist"), []byte("<plist></plist>"), 0o644)
-	team := ""
+	// The bundles, signed in folders of their own, then staged beside the
+	// app once it has started (as asuka/update does: the host cleans what
+	// it finds there as it starts).
+	otherSigned := shellSignedCopy(t, player, filepath.Join(tmp, "other"), "com.example.other", false)
+	tamperedSigned := shellSignedCopy(t, player, filepath.Join(tmp, "tampered"), "dev.asuka.mactest", false)
+	teamSigned := ""
 	if id := shellIdentity(); id != "" {
-		team = shellSignedAs(t, player, filepath.Join(tmp, "team"), "dev.asuka.mactest", id, false)
+		teamSigned = shellSignedAs(t, player, filepath.Join(tmp, "team"), "dev.asuka.mactest", id, false)
 	}
-	good := shellSignedCopy(t, player, filepath.Join(tmp, "good"), "dev.asuka.mactest", true)
-	archive := filepath.Join(tmp, "update.tar.gz")
-	if b, err := exec.Command("tar", "-czf", archive, "-C", filepath.Dir(good), filepath.Base(good)).CombinedOutput(); err != nil {
-		t.Fatalf("tar: %v\n%s", err, b)
+	signed := shellSignedCopy(t, player, filepath.Join(tmp, "good"), "dev.asuka.mactest", true)
+	stagedAt := func(id string) string {
+		return filepath.Join(filepath.Dir(running), "."+filepath.Base(running)+".update-"+id, "app", filepath.Base(running))
 	}
+	other, tampered, good, team := stagedAt("other"), stagedAt("tampered"), stagedAt("good"), ""
+	if teamSigned != "" {
+		team = stagedAt("team")
+	}
+	// What a run before left: its helper gone.
+	dead := filepath.Join(filepath.Dir(running), "."+filepath.Base(running)+".update-dead")
+	os.MkdirAll(dead, 0o755)
+	os.WriteFile(filepath.Join(dead, "staged"), []byte("999999"), 0o644)
 
 	a := RunWith(t, shellUpdateApp(fmt.Sprintf(`
 		Button("Other") { on press { out = await call("install", json.encode(Staged(staged: %q))) } }
 		Button("Good") { on press { out = await call("install", json.encode(Staged(staged: %q))) } }
 		Button("Tampered") { on press { out = await call("install", json.encode(Staged(staged: %q))) } }
 		Button("Team") { on press { out = await call("install", json.encode(Staged(staged: %q))) } }
+		Button("Elsewhere") { on press { out = await call("install", json.encode(Staged(staged: %q))) } }
 		Button("Clear") { on press { out = "" } }
-	`, filepath.Dir(other), archive, tampered, team)), Options{Player: filepath.Join(running, "Contents", "MacOS", filepath.Base(exe))})
+	`, other, good, tampered, team, signed)), Options{Player: filepath.Join(running, "Contents", "MacOS", filepath.Base(exe))})
 
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if _, err := os.Stat(dead); os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("what an update left isn't removed at launch")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	shellStaged(t, running, otherSigned, "other")
+	shellStaged(t, running, tamperedSigned, "tampered")
+	os.WriteFile(filepath.Join(tampered, "Contents", "Info.plist"), []byte("<plist></plist>"), 0o644)
+	if teamSigned != "" {
+		shellStaged(t, running, teamSigned, "team")
+	}
+	shellStaged(t, running, signed, "good")
 	a.Do("tap Other")
 	if s := shellOut(t, a, "error"); !strings.Contains(s, "the update is the app com.example.other, not dev.asuka.mactest") {
 		t.Fatalf("installing another app's bundle: %s", s)
@@ -290,6 +378,10 @@ func TestShellUpdateInstall(t *testing.T) {
 	a.Do("tap Clear", "tap Tampered")
 	if s := shellOut(t, a, "error"); !strings.Contains(s, "the update's code signature isn't valid") {
 		t.Fatalf("installing a bundle changed after it was signed: %s", s)
+	}
+	a.Do("tap Clear", "tap Elsewhere")
+	if s := shellOut(t, a, "error"); !strings.Contains(s, "isn't staged beside the app") {
+		t.Fatalf("installing a bundle not staged beside the app: %s", s)
 	}
 	if team != "" {
 		a.Do("tap Clear", "tap Team")
@@ -301,11 +393,8 @@ func TestShellUpdateInstall(t *testing.T) {
 	}
 	a.Do("tap Clear")
 	a.Do("tap Good")
-	s := shellOut(t, a, "{")
-	var r struct{ Target string }
-	json.Unmarshal([]byte(s), &r)
-	if real, _ := filepath.EvalSymlinks(running); r.Target != real && r.Target != running {
-		t.Fatalf("install: %s (the app's %s)", s, running)
+	if s := shellOut(t, a, "{"); s != "{}" {
+		t.Fatalf("install: %s", s)
 	}
 	marker := filepath.Join(running, "Contents", "Resources", "asuka-update-marker")
 	if _, err := os.Stat(marker); err == nil {
@@ -313,7 +402,7 @@ func TestShellUpdateInstall(t *testing.T) {
 	}
 	// Once the app has quit, its helper puts the new bundle in place.
 	a.Stop()
-	deadline := time.Now().Add(30 * time.Second)
+	deadline = time.Now().Add(30 * time.Second)
 	for {
 		if _, err := os.Stat(marker); err == nil {
 			break
@@ -326,13 +415,13 @@ func TestShellUpdateInstall(t *testing.T) {
 	if b, err := exec.Command("codesign", "--verify", "--deep", "--strict", running).CombinedOutput(); err != nil {
 		t.Fatalf("the installed update's signature: %v\n%s", err, b)
 	}
-	// Its work directory is gone.
-	left, _ := filepath.Glob(filepath.Join(filepath.Dir(running), ".*.update-*"))
-	for time.Now().Before(deadline) && len(left) > 0 {
+	// Its work directory is gone; the ones install refused are the
+	// package's to remove (it removes what fails).
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(filepath.Dir(filepath.Dir(good))); os.IsNotExist(err) {
+			return
+		}
 		time.Sleep(100 * time.Millisecond)
-		left, _ = filepath.Glob(filepath.Join(filepath.Dir(running), ".*.update-*"))
 	}
-	if len(left) > 0 {
-		t.Fatalf("left behind: %v", left)
-	}
+	t.Fatalf("left behind: %s", filepath.Dir(filepath.Dir(good)))
 }
