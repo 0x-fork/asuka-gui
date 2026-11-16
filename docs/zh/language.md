@@ -77,6 +77,7 @@ map 的键可以是整数、字符串、布尔值，或者成员不携带值的�
 | `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new)`、`split(sep)`、`find(s)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`+` |
 | `bytes` | `count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）；`bytes()` 是空的字节序列，`s.bytes()` 是字符串的 UTF-8 字节 |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()` |
+| `Color` | `opacity(a)`：以原本不透明度的 a 倍绘制（语义颜色仍然是语义颜色） |
 | `T?` | `isNone()`、`isSome()` |
 
 `min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `asuka/math` 里。
@@ -343,9 +344,21 @@ async fn loadThread(id: string) throws -> Thread {
 
 - 调用异步函数需要 `await`。处理函数、task 和测试里可以使用 `await`；组件的主体及其中的 `let` 不行。
 - **主线程。** 所有代码都在主线程上运行；`await` 让你的代码在等待时，其他工作可以先运行。状态可以在主线程上修改，而且只能在主线程上修改。
-- `all(a, b)` 同时发起多个调用，并等待全部结果；`race(a, b)` 取第一个完成的结果，并取消其余的；此外还有 `sleep(300ms)` 和 `withTimeout(5s) { … }`。
+- `all(a, b)` 同时发起多个调用，并等待全部结果；`race(a, b)` 取第一个完成的结果，并取消其余的；此外还有 `sleep(300ms)` 和 `withTimeout(5s) { … }`。它们是结构化的：被它们取消的工作会先停下、执行完自己的 `defer`，它们才返回或抛出错误。`await untilCancelled()` 什么都不等，只等任务结束：适合在组件显示期间一直持有某样东西的 task（`defer { release() }; await untilCancelled()`）。
 - `spawn { … }` 在另一个线程上运行一段代码，用于会拖住主线程的工作（解析、图片处理）。这段代码只能使用值，不能使用状态、store 或视图：如果用了，编译器会报错。
-- `for await message in socket.messages { … }` 读取一个流。
+- `for await message in socket.messages { … }` 读取一个流，也就是 `Stream<T>`：随时间陆续到来的值。`Stream(send => { … })` 创建一个流：流第一次被读取时，这个代码块作为 task 开始运行，每次 `send(x)` 就是一个值；代码块返回时流结束，代码块抛出错误时流也以这个错误失败。离开循环（`break`、出错、owner 被销毁）会取消这个代码块。一个流只能有一个读取者。
+
+  ```asuka
+  fn levels() -> Stream<float> = Stream(send => {
+    try await battery.watch(changed: level => send(level))
+  })
+  ```
+- `live(initial, source)` 是一个由流保持最新的值，以读取它的函数的形式出现：在绑定中读取时，从第一次这样的读取开始跟随 `source()` 的流，直到最后一个读取者离开（随后流被取消：不会在没人需要时还监听平台）；在别处读取时，得到的是最后已知的值。包就是这样提供平台会变化的东西的，比如网络状态：
+
+  ```asuka
+  let level = live(1.0, levels)
+  pub fn batteryLevel() -> float = level()
+  ```
 - **取消。** task 属于启动它的那个东西。当那个东西消失时（比如用户离开了页面），task 就会被取消：它正在等待的那个 `await` 会结束它，它的 `defer` 会运行，并且不会报告任何错误。
 
 ### 需要加载的数据

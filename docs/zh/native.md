@@ -211,7 +211,7 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 
 ## iOS 和 macOS：Swift
 
-包中的 Swift 代码是一个 Swift 包：`Package.swift` 位于 Go 包的根目录，源码放在 `swift/` 中。同一个包同时服务 iOS 和 macOS，两者有差异的地方用 `#if canImport(UIKit)` 区分：
+包中的 Swift 代码是一个 Swift 包：`Package.swift` 位于包的根目录，源码放在 `swift/` 中。同一个包同时服务 iOS 和 macOS，两者有差异的地方用 `#if canImport(UIKit)` 区分：
 
 ```swift
 // swift-tools-version:5.9
@@ -234,7 +234,7 @@ let package = Package(
 )
 ```
 
-这个包完全由你掌控：它的依赖、target、资源、C target 和二进制 target 都是标准的 SwiftPM 写法，和任何 Swift 包一样。CLI 会用 `xcodebuild` 把它和应用的其他原生包以及 Asuka 的宿主一起构建，把结果链接进应用，并把生成的动态框架和资源包嵌入应用。`asuka`（产品名为 `Asuka`）是生成的代码所依赖的 Asuka 宿主；CLI 会把它指向 CLI 自带的那份副本，所以它总是与应用的 Go 代码版本一致。包中声明的 `platforms` 会真正起作用：如果应用的目标 iOS 或 macOS 版本更低，构建会失败并说明这个包的要求；只列出其中一个平台的包（`platforms: [.iOS("16.0")]`）只会为那个平台构建。
+这个包完全由你掌控：它的依赖、target、资源、C target 和二进制 target 都是标准的 SwiftPM 写法，和任何 Swift 包一样。CLI 会用 `xcodebuild` 把它和应用的其他原生包以及 Asuka 的宿主一起构建，把结果链接进应用，并把生成的动态框架和资源包嵌入应用。`asuka`（产品名为 `Asuka`）是生成的代码所依赖的 Asuka 宿主；CLI 会把它指向 CLI 自带的那份副本，所以它总是与应用的 Asuka 代码版本一致。包中声明的 `platforms` 会真正起作用：如果应用的目标 iOS 或 macOS 版本更低，构建会失败并说明这个包的要求；只列出其中一个平台的包（`platforms: [.iOS("16.0")]`）只会为那个平台构建。
 
 要在 Xcode 中编辑它，打开 `Package.swift` 即可。Xcode 会从 URL 解析 `asuka`，所以生成的代码和你的代码在 Xcode 里的类型检查结果和构建时一致。
 
@@ -242,11 +242,11 @@ let package = Package(
 
 ```swift
 func makeKitchen() throws -> any Kitchen
-@MainActor func makeOven() throws -> any Oven      // 一个 //asuka:mainthread 接口
+@MainActor func makeOven() throws -> any Oven      // 一个 @mainThread 接口
 @MainActor func makeDial(_ events: DialEvents) -> any Dial
 ```
 
-在平台端创建、再交给 Go 的对象（比如 `Open` 返回的 `Oven`）由你的代码创建。如果要在后台方法中创建一个 main actor 对象，可以用 `try AsukaNative.onMain { SwiftOven() }`。
+在平台端创建、再交给 Asuka 的对象（比如 `open` 返回的 `Oven`）由你的代码创建。如果要在后台方法中创建一个 main actor 对象，可以用 `try AsukaNative.onMain { SwiftOven() }`。
 
 `Package.swift` 旁边的 `Info.plist` 声明这个包对 Apple 应用的要求：
 
@@ -276,7 +276,7 @@ dependencies {
 }
 ```
 
-Kotlin 源码放在 `src/main/kotlin/` 下，包名与生成文件中的一致：也就是把 Go 包的导入路径中的主机名倒过来放在最前面（`github.com/you/app/battery` 对应 `com.github.you.app.battery`）。CLI 会把这个模块加入应用的 Gradle 构建，并统一设置以下内容，所以模块里只需要写命名空间和依赖：
+Kotlin 源码放在 `src/main/kotlin/` 下，包名与生成文件中的一致：也就是包的名称（asuka.toml 的 `name`），各段转为小写，主机名倒过来放在最前面（`@acme/battery` 对应 `_acme.battery`，`github.com/you/battery` 对应 `com.github.you.battery`）。CLI 会把这个模块加入应用的 Gradle 构建，并统一设置以下内容，所以模块里只需要写命名空间和依赖：
 
 - SDK 版本、Java 17 和 Kotlin 工具链；
 - 对 Asuka 宿主库（`dev.asuka`）的依赖，它会带入 AndroidX、Material Components 和协程。
@@ -291,7 +291,7 @@ private class AndroidBattery(private val context: Context) : Battery {
 fun makeBattery(): Battery = AndroidBattery(AsukaModules.context)
 ```
 
-`AsukaModules.context` 是应用的 application context，可以在任何线程上使用；`AsukaModules.activity` 是当前显示应用的 activity（如果有的话），供需要 activity 的操作使用（对话框、权限请求），要在主线程上使用。视图的事件对象中有创建该视图时使用的带主题的 context（`events.context`）。`AsukaModules.onMain { }` 会在主线程上创建对象，作用和 Swift 的 `AsukaNative.onMain` 相同。生成的代码里，Kotlin 的 `Unit` 写作 `kotlin.Unit`，所以 Go 中可以放心地定义名为 `Unit` 的类型。
+`AsukaModules.context` 是应用的 application context，可以在任何线程上使用；`AsukaModules.activity` 是当前显示应用的 activity（如果有的话），供需要 activity 的操作使用（对话框、权限请求），要在主线程上使用。视图的事件对象中有创建该视图时使用的带主题的 context（`events.context`）。`AsukaModules.onMain { }` 会在主线程上创建对象，作用和 Swift 的 `AsukaNative.onMain` 相同。生成的代码里，Kotlin 的 `Unit` 写作 `kotlin.Unit`，所以你可以放心地定义名为 `Unit` 的类型。
 
 想在编辑模块时获得代码补全，可以在 Android Studio 中打开应用的 Android 项目（由 `asuka build --platform android` 生成）。原生包的模块在其中以 `:native-<package>` 的形式出现。
 
@@ -313,51 +313,37 @@ export function makeSegmented(events) {
 }
 ```
 
-方法可以返回 promise，即使它在 Go 端没有 context 参数。要抛出包中声明的错误，就使用生成的错误类（`import { KitchenError } from "./kitchen.asuka.js"`）。`web/` 中的每个文件都会随应用一起发布，所以模块可以导入自己的辅助脚本，也可以相对于 `import.meta.url` 获取自己的资源。其中任何文件变化时，`asuka dev --platform web` 都会重新加载页面。参见 [Web](web.md#原生代码)。
+方法可以返回 promise，即使它在 Asuka 中不是 `async` 的。要抛出包中声明的错误，就使用生成的错误类（`import { KitchenError } from "./kitchen.asuka.js"`）。`web/` 中的每个文件都会随应用一起发布，所以模块可以导入自己的辅助脚本，也可以相对于 `import.meta.url` 获取自己的资源。其中任何文件变化时，`asuka dev --platform web` 都会重新加载页面。参见 [Web](web.md#原生代码)。
 
 ## Windows 和 Linux：Go
 
-桌面端宿主在自己的进程中运行应用的 Go 代码，所以原生包在这些平台上的代码也是 Go：Windows 上通过 `syscall` 调用 Win32，Linux 上通过 purego 调用 GTK 4，都不需要 cgo。为这些平台构建的文件在 `init` 中把实现交给 `implement<T>`：
+桌面宿主是用 Go 写的，所以原生包在那里的代码也是 Go，放在包的 `desktop/` 目录里：Windows 上通过 `syscall` 调用 Win32，Linux 上通过 purego 调用 GTK 4，都不需要 cgo。生成的 `<package>_native.go` 会列出你的代码要提供的函数，每个接口一个：
 
 ```go
-//go:build windows || (linux && !android)
-
+// desktop/battery_windows.go
 package battery
 
-func init() {
-	implementBattery(func() (Battery, error) { return desktopBattery{}, nil })
-}
+func newBattery() (Battery, error) { return winBattery{}, nil }
+
+type winBattery struct{}
+
+func (winBattery) Level() (float64, error) { ... }
+func (winBattery) Watch(ctx context.Context, changed func(float64)) error { ... }
 ```
 
-Go 实现就是接口本身，没有编码，也不需要跨越边界。视图的 Go 实现是 `<View>Native`，由它的事件对象创建：
+在 Asuka 中是 `async` 的方法会接收一个 `context.Context`，调用它的 task 被取消时，这个 context 也会被取消；它在自己的 goroutine 上运行。不是 `async` 的方法在主线程上运行，不能阻塞主线程。凡是操作平台界面的代码（窗口、GTK 控件、属于主线程套间的 COM 对象），以及所有回调，都在主线程上运行：`native.Post(f)` 把 f 放到主线程上运行，`native.OnMain(f)` 运行它并等待完成。用构建约束按平台拆分文件（`windows`，以及 `linux && !android`，因为 Android 构建也满足 `linux`）；某个平台没有实现时，返回 `errors.ErrUnsupported`，Asuka 会把它作为 `unsupported` 错误抛出。
 
-```go
-func init() {
-	implementSegmented(func(events SegmentedEvents) SegmentedNative { ... })
-}
+视图的生成方式相同：生成的文件列出创建视图的函数和各个属性的 setter，视图的事件对象负责发送事件。
 
-type SegmentedNative interface {
-	Handle() uintptr // Windows 上是 HWND，Linux 上是 GtkWidget
-	SetItems(items []string)
-	SetSelected(selected int)
-}
-```
+在 macOS 上，包有 Swift 代码（有 `Package.swift`）时运行 Swift；只有 Go 的包在 macOS 上也运行 Go。
 
-`events.Changed(i)` 用来发送事件。`events.Context.Parent()` 是原生视图要放入的那个宿主视图：在 Windows 上，在其中创建一个子窗口（`WS_CHILD`）；在 Linux 上，不要给控件设置父级，宿主会负责把它加进去。视图还可以实现：
-
-- `Measure(width, height float32) (float32, float32)`：在布局给出的空间下返回它的固有尺寸（`NaN` 表示不受约束）。没有实现它时，GTK 会自己测量控件；Windows 上则没有人会测量，尺寸由样式决定。
-- `Destroy()`：释放它持有的资源。
-- `ParentMessage(msg uint32, wparam, lparam uintptr) (uintptr, bool)`（Windows）：接收它的控件发给父窗口的 `WM_COMMAND`、`WM_NOTIFY`、`WM_*SCROLL` 和 `WM_CTLCOLOR*` 消息。
-
-构建约束要用 `windows` 和 `linux && !android`，因为 Android 构建也满足 `linux`。Mac 也可以使用 Go：为 `darwin && !ios` 构建、并调用了 `implement<T>` 的文件，在 Mac 上会优先于包中的 Swift 代码，通过 purego 的 `objc` 使用 AppKit。
-
-在桌面端，只要 Go 实现是在主线程上被调用的，它做的所有事情都在主线程上运行，和宿主一样。GTK 信号需要一个 C 回调（`purego.NewCallback`），而这些回调永远不会被释放，所以只创建一个，再按控件分发。`examples/media/segmented/segmented_linux.go` 就是这样做的。
+标准库的 Go 代码包含在每个应用的宿主里。如果应用自己的包有桌面端的 Go 代码，应用会得到一个带上这些代码构建的宿主：`asuka build` 和 `asuka dev` 会运行 `go build`（构建所在的电脑上需要 Go 1.26 或更高版本），只在这些 Go 代码变化时重新构建。
 
 ## 开发原生代码
 
-- **iOS 和 Android**：`asuka dev` 会构建包含 Go 代码和原生包的应用并安装，保存时重新构建，Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist` 和清单文件的修改都包括在内。没有原生包的应用则以热重载模式运行在开发 App 里，开发 App 只包含 Asuka 自己的原生代码。参见 [开发](development.md#在手机上热重载模式与构建的应用)。
-- **macOS**：原生包的 Swift 代码会构建进应用的 Swift 库，同样只在有变化时才重新构建，然后应用重新运行，signal 的值会保留下来。
-- **Windows 和 Linux**：原生代码就是 Go，和应用一起构建。
+- **iOS 和 Android**：`asuka dev` 会构建包含原生包的应用外壳并安装，原生代码变化时重新构建，Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist` 和清单文件的修改都包括在内；应用的 Asuka 代码在保存时直接重新加载，不需要重新构建。没有原生包的应用则以热重载模式运行在开发 App 里，开发 App 只包含 Asuka 自己的原生代码。参见 [开发](development.md#在手机上热重载模式与构建的应用)。
+- **macOS**：原生包的 Swift 代码会构建进应用的 Swift 库，同样只在有变化时才重新构建，然后应用重新运行，状态会保留下来。
+- **Windows 和 Linux**：原生包的 Go 代码会构建进应用的宿主，同样只在有变化时才重新构建。
 - **Web**：包的 JavaScript 变化时，页面会重新加载。
 
 一个包在 iOS 或 macOS 上第一次构建时会解析它的 Swift 依赖，之后的构建会复用它们。

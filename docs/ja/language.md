@@ -77,6 +77,7 @@ import ./theme as t               // 短い別名
 | `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new)`、`split(sep)`、`find(s)`（バイトオフセット。見つからなければ none）、`slice(from, to)`（文字単位）、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`+` |
 | `bytes` | `count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）。`bytes()` は空のバイト列、`s.bytes()` は文字列の UTF-8 |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()` |
+| `Color` | `opacity(a)`：元の不透明度の a 倍で描く（セマンティックカラーはセマンティックカラーのまま） |
 | `T?` | `isNone()`、`isSome()` |
 
 `min`、`max`、`abs`、`float(n)`、`int(x)` は関数です。それ以外（`math.sqrt`、`math.pow`、`math.pi` など）は `asuka/math` にあります。
@@ -343,9 +344,21 @@ async fn loadThread(id: string) throws -> Thread {
 
 - 非同期関数を呼ぶには `await` が必要です。ハンドラー、タスク、テストでは `await` できますが、コンポーネントの本体とその中の `let` ではできません。
 - **メインスレッド。** すべてのコードはメインスレッドで動きます。`await` で待っている間は、ほかの処理が動けます。状態を変更できるのはメインスレッドだけです。
-- `all(a, b)` は複数の呼び出しを同時に実行し、すべての結果を待ちます。`race(a, b)` は最初に終わった結果を取り、残りをキャンセルします。ほかに `sleep(300ms)` と `withTimeout(5s) { … }` があります。
+- `all(a, b)` は複数の呼び出しを同時に実行し、すべての結果を待ちます。`race(a, b)` は最初に終わった結果を取り、残りをキャンセルします。ほかに `sleep(300ms)` と `withTimeout(5s) { … }` があります。これらは構造化されていて、キャンセルした処理が止まり、その `defer` が実行されてから戻るかエラーを投げます。`await untilCancelled()` はタスクが終わるまで待つだけです。コンポーネントが表示されている間、何かを持ち続けるタスクに使います（`defer { release() }; await untilCancelled()`）。
 - `spawn { … }` はブロックを別のスレッドで実行します。メインスレッドを止めてしまうような処理（パース、画像処理）に使います。中で使えるのは値だけで、状態、ストア、ビューは使えません。使っていればコンパイラーが教えてくれます。
-- `for await message in socket.messages { … }` はストリームを読みます。
+- `for await message in socket.messages { … }` はストリーム、つまり `Stream<T>` を読みます。時間とともに届く値です。`Stream(send => { … })` で作ります。ストリームが最初に読まれたときにブロックがタスクとして動き出し、`send(x)` のたびに値が一つ届きます。ブロックが戻るとストリームは終わり、ブロックが投げたエラーでストリームも失敗します。ループを抜けると（`break`、エラー、オーナーがなくなる）ブロックはキャンセルされます。ストリームの読み手は一つだけです。
+
+  ```asuka
+  fn levels() -> Stream<float> = Stream(send => {
+    try await battery.watch(changed: level => send(level))
+  })
+  ```
+- `live(initial, source)` は、ストリームが最新に保つ値で、それを読む関数として使います。バインディングの中で読むと、最初にそう読まれたときから最後の読み手がいなくなるまで `source()` のストリームに従います（そのあとストリームはキャンセルされ、誰も見ていないのにプラットフォームを監視し続けることはありません）。それ以外の場所で読むと、最後に分かっている値になります。ネットワークの状態のように、プラットフォームが変えるものをパッケージが提供するときに使います。
+
+  ```asuka
+  let level = live(1.0, levels)
+  pub fn batteryLevel() -> float = level()
+  ```
 - **キャンセル。** タスクは、それを始めたものに属します。それがなくなると（ユーザーが画面を離れたときなど）、タスクはキャンセルされます。そのとき待っている `await` でタスクは終わり、`defer` が実行され、エラーは報告されません。
 
 ### 読み込むデータ

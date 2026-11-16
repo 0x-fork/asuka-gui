@@ -211,7 +211,7 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 
 ## iOS と macOS：Swift
 
-パッケージの Swift のコードは、Swift パッケージとして書きます。Go パッケージのルートに `Package.swift` を置き、ソースは `swift/` に入れます。一つのパッケージで iOS と macOS の両方に対応し、両者で異なる部分には `#if canImport(UIKit)` を使います。
+パッケージの Swift のコードは、Swift パッケージとして書きます。パッケージのルートに `Package.swift` を置き、ソースは `swift/` に入れます。一つのパッケージで iOS と macOS の両方に対応し、両者で異なる部分には `#if canImport(UIKit)` を使います。
 
 ```swift
 // swift-tools-version:5.9
@@ -234,7 +234,7 @@ let package = Package(
 )
 ```
 
-このパッケージは自分のもので、自由に書けます。依存関係、ターゲット、リソース、C ターゲット、バイナリターゲットは、ほかのパッケージと同じく SwiftPM の仕組みそのものです。CLI はこれを、アプリのほかのネイティブパッケージや Asuka のホストとまとめて `xcodebuild` でビルドし、その結果をアプリにリンクして、生成された動的フレームワークとリソースバンドルを埋め込みます。`asuka`（プロダクト `Asuka`）は、生成コードが土台にする Asuka のホストです。CLI はこれを CLI 自身が持つコピーに向けるので、常にアプリの Go のコードと一致します。パッケージが宣言する `platforms` も考慮されます。それより古い iOS や macOS 向けにアプリをビルドすると、パッケージが必要とするバージョンを示して失敗します。また、どちらか一方だけを挙げたパッケージ（`platforms: [.iOS("16.0")]`）は、そのプラットフォーム向けにだけビルドされます。
+このパッケージは自分のもので、自由に書けます。依存関係、ターゲット、リソース、C ターゲット、バイナリターゲットは、ほかのパッケージと同じく SwiftPM の仕組みそのものです。CLI はこれを、アプリのほかのネイティブパッケージや Asuka のホストとまとめて `xcodebuild` でビルドし、その結果をアプリにリンクして、生成された動的フレームワークとリソースバンドルを埋め込みます。`asuka`（プロダクト `Asuka`）は、生成コードが土台にする Asuka のホストです。CLI はこれを CLI 自身が持つコピーに向けるので、常にアプリの Asuka のコードと一致します。パッケージが宣言する `platforms` も考慮されます。それより古い iOS や macOS 向けにアプリをビルドすると、パッケージが必要とするバージョンを示して失敗します。また、どちらか一方だけを挙げたパッケージ（`platforms: [.iOS("16.0")]`）は、そのプラットフォーム向けにだけビルドされます。
 
 Xcode で編集するには、`Package.swift` を開きます。Xcode は `asuka` をその URL から解決するので、生成コードも自分のコードも、ビルド時と同じように型チェックされます。
 
@@ -242,11 +242,11 @@ Xcode で編集するには、`Package.swift` を開きます。Xcode は `asuka
 
 ```swift
 func makeKitchen() throws -> any Kitchen
-@MainActor func makeOven() throws -> any Oven      // //asuka:mainthread のインターフェース
+@MainActor func makeOven() throws -> any Oven      // @mainThread のインターフェース
 @MainActor func makeDial(_ events: DialEvents) -> any Dial
 ```
 
-プラットフォーム側で作って Go に渡すオブジェクト（`Open` が返す `Oven`）も、自分のコードで作ります。バックグラウンドで動くメソッドからメインアクターのオブジェクトを作るには、`try AsukaNative.onMain { SwiftOven() }` を使います。
+プラットフォーム側で作って Asuka に渡すオブジェクト（`open` が返す `Oven`）も、自分のコードで作ります。バックグラウンドで動くメソッドからメインアクターのオブジェクトを作るには、`try AsukaNative.onMain { SwiftOven() }` を使います。
 
 `Package.swift` の隣に置いた `Info.plist` には、パッケージが Apple のアプリに求めるものを書きます。
 
@@ -276,7 +276,7 @@ dependencies {
 }
 ```
 
-Kotlin のコードは、`src/main/kotlin/` の下の、生成されたファイルが指定するパッケージに置きます。パッケージ名は Go パッケージのインポートパスを、ホスト部分を逆順にして先頭に置いたものです（`github.com/you/app/battery` なら `com.github.you.app.battery`）。CLI はこのモジュールをアプリの Gradle ビルドに組み込み、そのビルドが次の設定を行います。そのため、モジュールに書く必要があるのは namespace と依存関係だけです。
+Kotlin のコードは、`src/main/kotlin/` の下の、生成されたファイルが指定するパッケージに置きます。パッケージ名は、パッケージの名前（asuka.toml の `name`）の各部分を小文字にし、ホスト部分を逆順にして先頭に置いたものです（`@acme/battery` なら `_acme.battery`、`github.com/you/battery` なら `com.github.you.battery`）。CLI はこのモジュールをアプリの Gradle ビルドに組み込み、そのビルドが次の設定を行います。そのため、モジュールに書く必要があるのは namespace と依存関係だけです。
 
 - SDK レベル、Java 17、Kotlin のツールチェーン
 - Asuka のホストライブラリ（`dev.asuka`）への依存。これにより AndroidX、Material Components、コルーチンも入ります。
@@ -291,7 +291,7 @@ private class AndroidBattery(private val context: Context) : Battery {
 fun makeBattery(): Battery = AndroidBattery(AsukaModules.context)
 ```
 
-`AsukaModules.context` はアプリケーションのコンテキストで、どのスレッドからでも使えます。`AsukaModules.activity` は、アプリを表示しているアクティビティがあればそのアクティビティで、ダイアログや権限のリクエストなど、アクティビティが必要な処理のためにメインスレッドで使います。ビューのイベントオブジェクトは、そのビューが作られたテーマ付きのコンテキストを持っています（`events.context`）。`AsukaModules.onMain { }` は、Swift の `AsukaNative.onMain` と同じく、メインスレッドでオブジェクトを作ります。生成コードでは Kotlin の `Unit` を `kotlin.Unit` と書くので、Go 側に `Unit` という名前の型があっても問題ありません。
+`AsukaModules.context` はアプリケーションのコンテキストで、どのスレッドからでも使えます。`AsukaModules.activity` は、アプリを表示しているアクティビティがあればそのアクティビティで、ダイアログや権限のリクエストなど、アクティビティが必要な処理のためにメインスレッドで使います。ビューのイベントオブジェクトは、そのビューが作られたテーマ付きのコンテキストを持っています（`events.context`）。`AsukaModules.onMain { }` は、Swift の `AsukaNative.onMain` と同じく、メインスレッドでオブジェクトを作ります。生成コードでは Kotlin の `Unit` を `kotlin.Unit` と書くので、自分のコードに `Unit` という名前の型があっても問題ありません。
 
 補完を使ってモジュールを編集するには、アプリの Android プロジェクト（`asuka build --platform android` が書き出します）を Android Studio で開きます。モジュールは、その中に `:native-<package>` として含まれています。
 
@@ -313,51 +313,37 @@ export function makeSegmented(events) {
 }
 ```
 
-メソッドは Promise を返してもかまいません。Go 側でコンテキストを受け取らないメソッドでも同じです。パッケージで宣言したエラーは、生成されたクラスで投げます（`import { KitchenError } from "./kitchen.asuka.js"`）。`web/` 内のファイルはすべてアプリに同梱されるので、モジュールは自前のヘルパーをインポートしたり、`import.meta.url` からの相対パスでアセットを取得したりできます。`asuka dev --platform web` では、ファイルが変わるとページがリロードされます。詳しくは [Web](web.md#ネイティブコード) を参照してください。
+メソッドは Promise を返してもかまいません。Asuka で `async` でないメソッドでも同じです。パッケージで宣言したエラーは、生成されたクラスで投げます（`import { KitchenError } from "./kitchen.asuka.js"`）。`web/` 内のファイルはすべてアプリに同梱されるので、モジュールは自前のヘルパーをインポートしたり、`import.meta.url` からの相対パスでアセットを取得したりできます。`asuka dev --platform web` では、ファイルが変わるとページがリロードされます。詳しくは [Web](web.md#ネイティブコード) を参照してください。
 
 ## Windows と Linux：Go
 
-デスクトップのホストはアプリの Go のコードを同じプロセスで実行するので、そこでのネイティブパッケージのコードも Go です。Windows では `syscall` 経由で Win32 を、Linux では purego 経由で GTK 4 を、どちらも cgo を使わずに呼び出します。これらのプラットフォーム向けにビルドされるファイルで、`init` から `implement<T>` に実装を渡します。
+デスクトップのホストは Go で書かれているので、そこでのネイティブパッケージのコードも Go で、パッケージの `desktop/` ディレクトリに置きます。Windows では `syscall` で Win32 を、Linux では purego で GTK 4 を呼び出し、cgo は使いません。生成される `<package>_native.go` に、自分のコードが用意する関数がインターフェースごとに一つずつ書かれています。
 
 ```go
-//go:build windows || (linux && !android)
-
+// desktop/battery_windows.go
 package battery
 
-func init() {
-	implementBattery(func() (Battery, error) { return desktopBattery{}, nil })
-}
+func newBattery() (Battery, error) { return winBattery{}, nil }
+
+type winBattery struct{}
+
+func (winBattery) Level() (float64, error) { ... }
+func (winBattery) Watch(ctx context.Context, changed func(float64)) error { ... }
 ```
 
-Go による実装はインターフェースそのものなので、エンコードも境界越えもありません。ビューの実装は `<View>Native` で、イベントから作ります。
+Asuka で `async` のメソッドは `context.Context` を受け取ります。呼び出したタスクがキャンセルされると、このコンテキストもキャンセルされます。このメソッドは専用のゴルーチンで動きます。`async` でないメソッドはメインスレッドで動くので、メインスレッドを止めてはいけません。プラットフォームの UI に触れる処理（ウィンドウ、GTK のウィジェット、メインスレッドのアパートメントに属する COM オブジェクト）と、すべてのコールバックはメインスレッドで動かします。`native.Post(f)` は f をメインスレッドで実行し、`native.OnMain(f)` は実行して終わるまで待ちます。ファイルはビルド制約でプラットフォームごとに分けます（`windows` と `linux && !android`。Android のビルドも `linux` を満たすためです）。実装がないプラットフォームでは `errors.ErrUnsupported` を返すと、Asuka はそれを `unsupported` エラーとして投げます。
 
-```go
-func init() {
-	implementSegmented(func(events SegmentedEvents) SegmentedNative { ... })
-}
+ビューも同じように生成されます。生成されたファイルに、ビューを作る関数とプロパティごとのセッターが書かれ、ビューのイベントオブジェクトがイベントを送ります。
 
-type SegmentedNative interface {
-	Handle() uintptr // Windows では HWND、Linux では GtkWidget
-	SetItems(items []string)
-	SetSelected(selected int)
-}
-```
+macOS では、パッケージに Swift（`Package.swift`）があればそれが動きます。Go しかないパッケージは macOS でも Go が動きます。
 
-`events.Changed(i)` でイベントを送ります。`events.Context.Parent()` は、ネイティブビューを入れるホスト側のビューです。Windows では、その中に子ウィンドウ（`WS_CHILD`）を作ります。Linux では、ウィジェットに親を設定しないでおけば、ホストが追加します。ビューは、さらに次のメソッドも実装できます。
-
-- `Measure(width, height float32) (float32, float32)`：レイアウトが提示したサイズに対する固有のサイズを返します（`NaN` は制約なし）。これがなくても GTK はウィジェットを計測しますが、Windows では何も計測しないので、スタイルからサイズが決まります。
-- `Destroy()`：保持しているものを解放します。
-- `ParentMessage(msg uint32, wparam, lparam uintptr) (uintptr, bool)`（Windows）：ビューのコントロールが親に送る `WM_COMMAND`、`WM_NOTIFY`、`WM_*SCROLL`、`WM_CTLCOLOR*` を受け取ります。
-
-Android のビルドも `linux` を満たすので、ビルド制約には `windows` と `linux && !android` を使ってください。Mac でも Go を使えます。`darwin && !ios` 向けにビルドされ、`implement<T>` を呼ぶファイルがあれば、Mac ではそれがパッケージの Swift より優先されます。その場合、AppKit は purego の `objc` 経由で使います。
-
-デスクトップでは、メインスレッドから呼ばれた Go の実装は、ホストと同じように、すべての処理をメインスレッドで行います。GTK のシグナルには C のコールバック（`purego.NewCallback`）が必要ですが、これは一度作ると解放されません。そのため、コールバックは一つだけ作り、ウィジェットごとに振り分けてください。`examples/media/segmented/segmented_linux.go` がその例です。
+標準ライブラリの Go は、すべてのアプリのホストに入っています。アプリ自身のパッケージにデスクトップ向けの Go があると、それを組み込んでビルドしたホストがアプリに使われます。`asuka build` と `asuka dev` が `go build` を実行します（ビルドするコンピュータに Go 1.26 以降が必要です）。その Go に変更があったときだけビルドし直します。
 
 ## ネイティブコードの開発
 
-- **iOS と Android**：`asuka dev` は、アプリをその Go のコードとネイティブパッケージとともにビルドしてインストールし、保存するたびにビルドし直します。Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist`、マニフェストの変更も対象です。ネイティブパッケージを持たないアプリは、ホットリロードモードで開発用アプリの中で実行されます。開発用アプリに入っているのは、Asuka 自身のネイティブコードだけです。[開発](development.md#スマートフォンでの実行ホットリロードモードとビルドしたアプリ)を参照してください。
-- **macOS**：パッケージの Swift は、アプリの Swift ライブラリにビルドされます。こちらも変更があったときだけビルドされ、アプリはシグナルの値を保ったまま再実行されます。
-- **Windows と Linux**：ネイティブコードは Go なので、アプリと一緒にビルドされます。
+- **iOS と Android**：`asuka dev` は、ネイティブパッケージを含むアプリの外側をビルドしてインストールし、ネイティブコードが変わったときにビルドし直します。Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist`、マニフェストの変更も対象です。アプリの Asuka のコードは、保存するとビルドし直さずにリロードされます。ネイティブパッケージを持たないアプリは、ホットリロードモードで開発用アプリの中で実行されます。開発用アプリに入っているのは、Asuka 自身のネイティブコードだけです。[開発](development.md#スマートフォンでの実行ホットリロードモードとビルドしたアプリ)を参照してください。
+- **macOS**：パッケージの Swift は、アプリの Swift ライブラリにビルドされます。こちらも変更があったときだけビルドされ、アプリは状態を保ったまま再実行されます。
+- **Windows と Linux**：パッケージの Go はアプリのホストにビルドされます。こちらも変更があったときだけです。
 - **Web**：パッケージの JavaScript が変わると、ページがリロードされます。
 
 iOS や macOS でパッケージを初めてビルドするときに Swift の依存関係を解決し、以降のビルドではそれを再利用します。
