@@ -423,8 +423,19 @@ func stdHost(t *testing.T) string {
 			return
 		}
 		dirs, _ := filepath.Glob(filepath.Join(d, "*", "desktop"))
+		// ASUKA_STD=audio,http: only those packages' C (a case that imports
+		// another fails), for working on some while others don't build.
+		only := map[string]bool{}
+		for _, n := range strings.Split(os.Getenv("ASUKA_STD"), ",") {
+			if n != "" {
+				only[n] = true
+			}
+		}
 		var pkgs []string
 		for _, x := range dirs {
+			if len(only) > 0 && !only[filepath.Base(filepath.Dir(x))] {
+				continue
+			}
 			pkgs = append(pkgs, filepath.Dir(x))
 		}
 		natives, err := appbuild.DesktopNatives(cbuild.Host(), pkgs)
