@@ -25,6 +25,6 @@ node_modules/
 # Claude Code worktrees
 .claude/worktrees/
 
-# Plugins' libraries, as their build tools build them (go run ./plugin/sqlite/internal/build);
+# Plugins' libraries, as their build tools build them (go run ./std/sqlite/internal/build);
 # asuka-plugin.toml names the published ones
-/plugin/*/build/
+/std/*/build/

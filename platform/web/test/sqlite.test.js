@@ -118,7 +118,7 @@ function rowsOf(r, ncols, rows) {
 
 test("the module is the SQLite the plugin's manifest names", async () => {
   const { e } = await engine();
-  const manifest = readManifest(await readFile(new URL("../../../plugin/sqlite/asuka-plugin.toml", import.meta.url), "utf8"));
+  const manifest = readManifest(await readFile(new URL("../../../std/sqlite/asuka-plugin.toml", import.meta.url), "utf8"));
   const [major, minor, patch] = manifest.libraries.find((l) => l.name === "asqlite").version.split(".").map(Number);
   assert.equal(e.version(), major * 1000000 + minor * 1000 + patch);
 });

@@ -1,5 +1,5 @@
 // asq: see asq.h. Compiled with SQLite's amalgamation into one library
-// (plugin/sqlite/internal/build); nothing here is called but asq_call and
+// (std/sqlite/internal/build); nothing here is called but asq_call and
 // asq_version.
 //
 // A connection is used by one thread at a time (the core's statement thread),

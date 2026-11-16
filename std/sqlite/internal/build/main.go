@@ -2,21 +2,18 @@
 // platform: SQLite's amalgamation (the pinned release below, verified by
 // its SHA3-256) and the plugin's shim (csrc), compiled the same way for
 // each, and the web's WebAssembly module, into the plugin's build
-// directory (plugin/sqlite/build/<target>, not checked in), each with
+// directory (std/sqlite/build/<target>, not checked in), each with
 // the plugin's source hash (package plugin). The plugin's tests and the
 // examples use that build in a checkout; asuka plugin publish
-// plugin/sqlite uploads it to the plugin's release and records it in
+// std/sqlite uploads it to the plugin's release and records it in
 // its manifest (asuka-plugin.toml).
 //
 // Toolchains: Xcode's (macOS, iOS), the Android NDK (ANDROID_NDK_HOME,
 // or the newest under the SDK), Zig (Linux, Windows, the web: wasm).
 //
-//	go run ./plugin/sqlite/internal/build                      # every target
-//	go run ./plugin/sqlite/internal/build -target darwin,linux-amd64
-//	go run ./cmd/asuka plugin publish plugin/sqlite            # upload, record
-//
-// std/sqlite ships the plugin: its asuka-plugin.toml is this one's,
-// copied after a publish.
+//	go run ./std/sqlite/internal/build                      # every target
+//	go run ./std/sqlite/internal/build -target darwin,linux-amd64
+//	go run ./cmd/asuka plugin publish std/sqlite            # upload, record
 package main
 
 import (
@@ -118,7 +115,7 @@ func main() {
 	log.SetFlags(0)
 	only := flag.String("target", "", "targets to build, comma-separated (default: all)")
 	flag.Parse()
-	dir = filepath.Join(findRepo(), "plugin", "sqlite")
+	dir = filepath.Join(findRepo(), "std", "sqlite")
 	data, err := os.ReadFile(filepath.Join(dir, plugin.ManifestFile))
 	if err != nil {
 		log.Fatal(err)

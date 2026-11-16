@@ -521,6 +521,6 @@ Each ends with its tests green.
       runtime's namespaces: the icon parser to `internal/svgparse`, the
       Chrome CSS fixtures and their generator to `core/test/testdata/css`
       (the C test keeps its own known failures), the sqlite plugin's C and
-      build tool to `plugin/sqlite`, the hash decoders' golden data to
+      build tool to `std/sqlite`, the hash decoders' golden data to
       `core/test/testdata/imagehash`, `asuka-app.json`'s schema to
       `internal/appconfig`.
