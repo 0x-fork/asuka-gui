@@ -129,7 +129,7 @@ fn same(info: Info, was: Info, elapsed: float) -> bool {
 }
 
 fn publish(info: Info) {
-  let now = time.now()
+  let now = time.now().instant
   if let was = sent {
     if same(info, was, float(now - sentAt) / 1e9) {
       return

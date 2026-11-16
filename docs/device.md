@@ -864,6 +864,8 @@ component Where {
 device moves. Read it in a task, and it stops with the component:
 
 ```asuka
+import asuka/location
+
 component Track {
   state here = location.Position()
 
@@ -900,6 +902,8 @@ Approximate). `location.authorization()` is what they allowed, tracked:
 read in a binding, it follows the changes they make in Settings.
 
 ```asuka
+import asuka/location
+
 component Allowed {
   let auth = location.authorization()
 
@@ -934,6 +938,8 @@ stream, of `Batch`es (`positions`, oldest first): read it as the app
 starts, so the batches the system started the app for find a reader.
 
 ```asuka
+import asuka/location
+
 async fn track() throws {
   try await location.startUpdates(
     accuracy: .high,
@@ -981,6 +987,8 @@ an `.enter` comes. It needs `.always` on iOS and Android
 `tooManyRegions`.
 
 ```asuka
+import asuka/location
+
 async fn watchHere() throws {
   let p = try await location.current()
   try await location.monitor(location.Region(id: "here", latitude: p.latitude, longitude: p.longitude, radius: 150, events: [.enter, .exit]))
@@ -1018,6 +1026,8 @@ batch comes while updates run, and the regions it enters or leaves cross),
 the events whose `hold()` isn't done.
 
 ```asuka
+import asuka/location
+
 test "a region, crossed" {
   let loc = location.fake()
   loc.answer = .always
@@ -2199,6 +2209,9 @@ component Root {
 
   if ready { Home() }
 }
+
+async fn loadSession() { await sleep(300ms) } // the app's own: what its first screen needs
+component Home { Text("Signed in") }
 ```
 
 ## Maps: asuka/maps
@@ -2385,6 +2398,8 @@ sensors `present`, and readings sent through it (`accelerate(x, y, z)`,
 no more often than they asked.
 
 ```asuka
+import asuka/sensors
+
 test "lying face up" {
   let s = sensors.fake()
   s.accelerate(0, 0, 1)
