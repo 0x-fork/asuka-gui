@@ -85,11 +85,10 @@ func (c *Checker) stmt(it syntax.Item) {
 		}
 	case *syntax.SlotItem:
 		// animate { … }: a function's call with a trailing block.
-		if b, ok := c.lookup(s.Name.Name).(*Builtin); ok {
+		if _, ok := c.lookup(s.Name.Name).(*Builtin); ok {
 			call := &syntax.CallExpr{Span: s.Span, Fun: s.Name, Block: s.Body}
 			c.info.SlotCalls[s] = call
 			c.expr(call, nil)
-			_ = b
 			return
 		}
 		c.errorf(it, "%s isn't a statement: %s", itemName(it), notStatementHint(it))
