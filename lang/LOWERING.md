@@ -447,7 +447,9 @@ values' ak_kind); `for await x in s { … }` is: s into a local; at the
 top, AWAIT CALLB `stream.next(s)` (a bool: whether a value came; it
 throws what the producer threw), JF to the end, CALLB `stream.value(s)`
 for x, the body, back to the top; at the end CALLB `stream.close(s)`,
-which cancels the producer (core/src/rt/stream.c).
+which cancels the producer (core/src/rt/stream.c). An error leaving the
+loop (the body's, the producer's) closes it too, in a handler around the
+loop that throws the error on.
 
 ## Live values
 
