@@ -470,16 +470,15 @@ extension AsukaNative {
     private static func download(_ url: URL, _ type: String) async throws -> URL {
         // The file's moved out before the task's handler returns, which
         // deletes it.
-        let fm = FileManager.default
         let (tmp, response): (URL, URLResponse) = try await withCheckedThrowingContinuation { c in
             URLSession.shared.downloadTask(with: url) { tmp, response, error in
                 guard let tmp, let response else {
                     c.resume(throwing: error ?? NSError(domain: "asuka", code: 0, userInfo: [NSLocalizedDescriptionKey: "couldn't download \(url)"]))
                     return
                 }
-                let kept = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                let kept = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
                 do {
-                    try fm.moveItem(at: tmp, to: kept)
+                    try FileManager.default.moveItem(at: tmp, to: kept)
                     c.resume(returning: (kept, response))
                 } catch {
                     c.resume(throwing: error)
@@ -495,6 +494,7 @@ extension AsukaNative {
         if (name as NSString).pathExtension.isEmpty, let ext = UTType(mimeType: mime)?.preferredFilenameExtension {
             name += "." + ext
         }
+        let fm = FileManager.default
         let dir = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("asuka-files/" + UUID().uuidString, isDirectory: true)
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         let dst = dir.appendingPathComponent(name.replacingOccurrences(of: "/", with: "_"))

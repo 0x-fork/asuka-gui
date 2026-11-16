@@ -52,18 +52,19 @@ import UIKit
     /// Locks the app to an orientation, as screen.Orientation numbers
     /// them: any (unlocked), portrait, portraitUp, landscape,
     /// landscapeLeft, landscapeRight (asuka/screen).
-    public static func setLock(_ o: Int, _ rt: AsukaRuntime? = .shared) {
+    public static func setLock(_ o: Int, _ runtime: AsukaRuntime? = nil) {
+        let rt = runtime ?? .shared
         let iPad = UIDevice.current.userInterfaceIdiom == .pad
         let masks: [UIInterfaceOrientationMask?] = [nil, iPad ? [.portrait, .portraitUpsideDown] : .portrait, .portrait,
                                                     .landscape, .landscapeLeft, .landscapeRight]
         var mask = o >= 0 && o < masks.count ? masks[o] : nil
         // Only what Info.plist allows: UIKit throws for a lock with none of it.
-        if let m = mask, let w = rt?.controller?.view.window {
+        if let m = mask, let w = rt.controller?.view.window {
             let allowed = UIApplication.shared.supportedInterfaceOrientations(for: w)
             mask = m.intersection(allowed).isEmpty ? nil : m.intersection(allowed)
         }
         lock = mask
-        if let c = rt?.controller {
+        if let c = rt.controller {
             c.setNeedsUpdateOfSupportedInterfaceOrientations()
             if let m = mask { c.view.window?.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: m)) }
         }
@@ -71,7 +72,8 @@ import UIKit
 
     /// The status bar's style (auto, light, dark) and whether it hides
     /// (asuka/screen).
-    public static func setBars(style: Int, hideStatus: Bool, _ rt: AsukaRuntime? = .shared) {
+    public static func setBars(style: Int, hideStatus: Bool, _ runtime: AsukaRuntime? = nil) {
+        let rt: AsukaRuntime? = runtime ?? .shared
         statusBarStyle = style == 1 ? .lightContent : style == 2 ? .darkContent : .default
         statusBarHidden = hideStatus
         var vc: UIViewController? = rt?.controller
