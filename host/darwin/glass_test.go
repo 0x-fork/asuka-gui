@@ -7,22 +7,24 @@ import (
 
 	. "github.com/egoist/asuka/internal/darwin"
 	"github.com/egoist/asuka/ops"
-	"github.com/egoist/asuka/signal"
-	"github.com/egoist/asuka/ui"
 )
 
 // Glass buttons are macOS 26's glass bezel: a capsule, a circle around
 // an icon alone, the prominent one tinted as the primary action. A
 // button that stops being glass loses its shape and tint.
 func TestGlassButtonsDarwin(t *testing.T) {
-	variant := signal.New(ui.ButtonGlass)
-	h, _ := mount(t, func() ui.Node {
-		return ui.Column(ui.Style{},
-			ui.Button(ui.ButtonProps{Title: ui.Val("Add"), Variant: ui.ButtonGlassProminent}),
-			ui.Button(ui.ButtonProps{Icon: ui.IconPlus, Label: ui.Val("Add"), Variant: ui.ButtonGlass}),
-			ui.Dynamic(func() ui.Node { return ui.Button(ui.ButtonProps{Title: ui.Val("Cancel"), Variant: variant.Get()}) }),
-		)
-	})
+	h := mountApp(t, `
+		component Buttons {
+		  state glass = true
+		  Column {
+		    Button("Add") { variant: .glassProminent }
+		    Button("") { icon: "plus"; label: "Add"; variant: .glass }
+		    Button("Cancel") { variant: if glass { .glass } else { .gray } }
+		    Button("Plain") { on press { glass = false } }
+		  }
+		}
+		app { Buttons() }
+	`)
 	onMain(func() {
 		bs := find(h, ops.KindButton)
 		if !hasGlass(bs[0].view) {
@@ -38,7 +40,7 @@ func TestGlassButtonsDarwin(t *testing.T) {
 		check("prominent", bs[0], bezelGlass, shapeCapsule, prominencePrimary)
 		check("an icon alone", bs[1], bezelGlass, shapeCircle, prominenceAuto)
 		check("glass", bs[2], bezelGlass, shapeCapsule, prominenceAuto)
-		post(h, func() { variant.Set(ui.ButtonGray) })
+		h.enter(func() { Send(button(h, "Plain").view, "performClick:", 0) })
 		bs = find(h, ops.KindButton)
 		check("no longer glass", bs[2], 1, shapeAutomatic, prominenceAuto)
 	})
