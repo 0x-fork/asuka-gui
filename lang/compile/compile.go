@@ -219,7 +219,7 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 			var err error
 			switch {
 			case imp.Relative:
-				rel := strings.TrimPrefix(ip, "./")
+				rel := strings.TrimPrefix(ip, "./") // ../x stays: a directory up
 				d := filepath.Join(u.dir, filepath.FromSlash(rel))
 				// Its path names it apart from another package's ./util.
 				p := ip

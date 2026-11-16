@@ -142,6 +142,7 @@ type ImportDecl struct {
 	Span
 	Trivia
 	Relative bool     // ./path: a directory beside this file's
+	Up       int      // ../path: as many directories up first (Relative too)
 	Path     []*Ident // the path's segments
 	Names    []*Ident // .{A, B}: names imported unqualified; nil for none
 	Alias    *Ident   // as name; nil for none
@@ -150,7 +151,9 @@ type ImportDecl struct {
 // PathString is the import's path as written: asuka/http, ./components.
 func (d *ImportDecl) PathString() string {
 	var b strings.Builder
-	if d.Relative {
+	if d.Up > 0 {
+		b.WriteString(strings.Repeat("../", d.Up))
+	} else if d.Relative {
 		b.WriteString("./")
 	}
 	for i, s := range d.Path {
