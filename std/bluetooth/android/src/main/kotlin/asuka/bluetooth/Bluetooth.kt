@@ -123,7 +123,7 @@ class AndroidAdapter(private val ctx: Context) : Adapter {
         if (adapter?.isEnabled != true) throw BluetoothException(BluetoothError.OFF)
     }
 
-    override suspend fun scan(options: ScanOptions, found: (Advertisement) -> Unit) {
+    override suspend fun scan(options: ScanOptions, found: (Heard) -> Unit) {
         ready(central)
         val scanner = adapter?.bluetoothLeScanner ?: throw BluetoothException(BluetoothError.OFF)
         val seen = HashSet<String>()
@@ -146,14 +146,14 @@ class AndroidAdapter(private val ctx: Context) : Adapter {
         }
     }
 
-    private fun advertisement(r: ScanResult): Advertisement {
+    private fun advertisement(r: ScanResult): Heard {
         val rec = r.scanRecord
         val sd = HashMap<String, ByteArray>()
         rec?.serviceData?.forEach { (k, v) -> sd[short(k.uuid)] = v }
         val md = HashMap<String, ByteArray>()
         rec?.manufacturerSpecificData?.let { m -> for (i in 0 until m.size()) md[String.format("%04x", m.keyAt(i))] = m.valueAt(i) }
         val name = runCatching { r.device.name }.getOrNull() ?: rec?.deviceName ?: ""
-        return Advertisement(
+        return Heard(
             device = Device(id = r.device.address, name = name), rssi = r.rssi.toLong(), localName = rec?.deviceName ?: "",
             services = rec?.serviceUuids?.map { short(it.uuid) } ?: emptyList(),
             solicited = rec?.serviceSolicitationUuids?.map { short(it.uuid) } ?: emptyList(),

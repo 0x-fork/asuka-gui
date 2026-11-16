@@ -462,7 +462,7 @@ async fn original(a: photos.Asset) throws -> string {
   again then.
 - `photos.list(screenshots:, offset:, limit:)` is newest first, from
   `offset`, at most `limit` (100 by default). An `Asset` has its `id`,
-  `width`, `height`, `created` (milliseconds since 1970) and `screenshot`.
+  `width`, `height`, `created` (a `time.Time`) and `screenshot`.
   `screenshots: true` keeps only those: iOS knows; on Android it's what's
   in a Screenshots folder.
 - `photos.thumbnail(id, size:)` is a JPEG file at least `size` pixels on
@@ -964,7 +964,8 @@ it throws there.
 A `location.Position` has `latitude`, `longitude`, `accuracy` (meters:
 the radius the device is within), `altitude` (meters above sea level; 0 if
 not known), `speed` and `course` (negative when not known) and `time`
-(nanoseconds since 1970, as `time.now()`).
+(a `time.Time`). A crossing has its `region`, `kind`, `at` (the
+position, when the system says) and `time`.
 
 ### Permission levels
 
@@ -1244,7 +1245,7 @@ come and go.
 - `notify.showing()` lists the app's notifications that show (in
   Notification Center, the shade), its pushes' too, newest first: each
   `Delivered` has its `id`, `title`, `subtitle`, `body`, `url`, `data`,
-  `category`, `thread`, `time` (milliseconds since 1970), and `remote`
+  `category`, `thread`, `time` (a `time.Time`), and `remote`
   for a push.
 - `notify.remove(ids)`, `notify.removeThread(thread)` (a chat that's
   read) and `notify.removeAll()` take them away.
@@ -1297,7 +1298,7 @@ async fn whosIn() throws {
   group's `title` and `image`, `group`, `me` (the user as the
   conversation shows them; Android names their replies with it, "You" by
   default) and `earlier` messages (each a `Message`: `from`, `text`,
-  `time`).
+  `time`, a `time.Time?`: none when not known).
 - **Android** shows a conversation as one notification, its messages in
   it: a message adds to the conversation's notification that shows (or
   `earlier` sets what comes before it). **iOS** shows each message as a
@@ -2838,7 +2839,7 @@ the app last did, and `crash.set(key, value)` sets a value they have
 (`""` removes it).
 
 A `Report` has its `id`, its `kind`, whether it was `fatal`, its `time`
-(milliseconds since 1970), a `message` (a line: what crashed, and why),
+(a `time.Time`), a `message` (a line: what crashed, and why),
 its `text` (the whole report, as the platform wrote it), its `threads`
 and its `context`. What's reported, as its `kind`, on each platform:
 

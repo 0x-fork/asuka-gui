@@ -41,8 +41,8 @@ component Adapter {
 `bluetooth.scan(services:, duplicates:)` is a stream of what devices
 advertise, as it's heard: each `Advertisement` has the `device` (its
 `id` and `name`), its `rssi`, `localName`, `services`, `serviceData`,
-`manufacturerData` (by company ID, four hex digits), `txPower` and
-`connectable`. `duplicates` gives every advertisement, not only a
+`manufacturerData` (by company ID, four hex digits), `txPower`,
+`connectable` and the `time` it was heard (a `time.Time`). `duplicates` gives every advertisement, not only a
 device's first (to follow its RSSI); `services` only those of devices
 advertising one of them. It scans while it's read, and throws
 `BluetoothError.off`, `denied` or `notAvailable`.

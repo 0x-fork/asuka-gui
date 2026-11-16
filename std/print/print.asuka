@@ -126,8 +126,7 @@ pub fn regionPage(locale: string) -> Page {
   return Page.a4
 }
 
-fn jobOf(name: string, orientation: Orientation) -> Job =
-  Job(name: name, landscape: orientation == .landscape, letter: regionPage(environment().locale) == Page.letter)
+fn jobOf(name: string, orientation: Orientation) -> Job = Job(name: name, landscape: orientation == .landscape, letter: regionPage(environment().locale) == Page.letter)
 
 /// Prints the file at source: a path, an asset's (as Image takes it), or
 /// an http(s) URL, which is downloaded first. PDFs and images print

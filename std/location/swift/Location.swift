@@ -36,13 +36,13 @@ final class CoreLocator: Locator {
         }
     }
 
-    func current() async throws -> Position {
+    func current() async throws -> Fix {
         try await withCheckedThrowingContinuation { c in
             Task { @MainActor in Hub.shared.current { c.resume(with: $0) } }
         }
     }
 
-    func watch(moved: @escaping (Position) -> Void) async throws {
+    func watch(moved: @escaping (Fix) -> Void) async throws {
         let send = Box(moved)
         let id = try await withCheckedThrowingContinuation { (c: CheckedContinuation<Int, Error>) in
             Task { @MainActor in Hub.shared.watch(send) { c.resume(with: $0) } }
@@ -140,8 +140,8 @@ func onMain<T>(_ body: @MainActor () -> T) -> T {
     private var resigned = false
     private var authReaders: [Int: Box<Authorization>] = [:]
     private var eventReaders: [Int: Box<Event>] = [:]
-    private var watchers: [Int: Box<Position>] = [:]
-    private var currents: [(Result<Position, Error>) -> Void] = []
+    private var watchers: [Int: Box<Fix>] = [:]
+    private var currents: [(Result<Fix, Error>) -> Void] = []
     private var next = 0
     #if os(iOS)
     private var holds: [Int: UIBackgroundTaskIdentifier] = [:]
@@ -284,7 +284,7 @@ func onMain<T>(_ body: @MainActor () -> T) -> T {
         }
     }
 
-    func current(_ done: @escaping (Result<Position, Error>) -> Void) {
+    func current(_ done: @escaping (Result<Fix, Error>) -> Void) {
         authorize { [unowned self] ok in
             guard ok else { done(.failure(LocationError.denied)); return }
             self.currents.append(done)
@@ -292,7 +292,7 @@ func onMain<T>(_ body: @MainActor () -> T) -> T {
         }
     }
 
-    func watch(_ f: Box<Position>, _ started: @escaping (Result<Int, Error>) -> Void) {
+    func watch(_ f: Box<Fix>, _ started: @escaping (Result<Int, Error>) -> Void) {
         authorize { [unowned self] ok in
             guard ok else { started(.failure(LocationError.denied)); return }
             self.next += 1
@@ -308,8 +308,8 @@ func onMain<T>(_ body: @MainActor () -> T) -> T {
         if watchers.isEmpty { fg.stopUpdatingLocation() }
     }
 
-    static func position(_ l: CLLocation) -> Position {
-        Position(latitude: l.coordinate.latitude, longitude: l.coordinate.longitude, accuracy: l.horizontalAccuracy,
+    static func position(_ l: CLLocation) -> Fix {
+        Fix(latitude: l.coordinate.latitude, longitude: l.coordinate.longitude, accuracy: l.horizontalAccuracy,
                  altitude: l.verticalAccuracy >= 0 ? l.altitude : 0, speed: l.speedAccuracy >= 0 ? l.speed : -1,
                  course: l.courseAccuracy >= 0 ? l.course : -1, time: Int(l.timestamp.timeIntervalSince1970 * 1e9))
     }
@@ -417,13 +417,13 @@ func onMain<T>(_ body: @MainActor () -> T) -> T {
         set { defaults.set(newValue, forKey: "asuka.location.events") }
     }
 
-    private static func encode(_ p: Position) -> [String: Any] {
+    private static func encode(_ p: Fix) -> [String: Any] {
         ["lat": p.latitude, "lon": p.longitude, "acc": p.accuracy, "alt": p.altitude, "spd": p.speed, "crs": p.course, "t": p.time]
     }
 
-    private static func decode(_ d: [String: Any]?) -> Position {
-        guard let d else { return Position() }
-        return Position(latitude: d["lat"] as? Double ?? 0, longitude: d["lon"] as? Double ?? 0, accuracy: d["acc"] as? Double ?? 0,
+    private static func decode(_ d: [String: Any]?) -> Fix {
+        guard let d else { return Fix() }
+        return Fix(latitude: d["lat"] as? Double ?? 0, longitude: d["lon"] as? Double ?? 0, accuracy: d["acc"] as? Double ?? 0,
                         altitude: d["alt"] as? Double ?? 0, speed: d["spd"] as? Double ?? -1, course: d["crs"] as? Double ?? -1, time: d["t"] as? Int ?? 0)
     }
 

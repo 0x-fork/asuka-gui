@@ -24,7 +24,7 @@ final class CoreBluetoothAdapter: Adapter {
         }
     }
 
-    func scan(options: ScanOptions, found: @escaping (Advertisement) -> Void) async throws {
+    func scan(options: ScanOptions, found: @escaping (Heard) -> Void) async throws {
         let f = Box(found)
         let id = try await MainActor.run { try Hub.shared.startScan(options, f) }
         defer { Task { @MainActor in Hub.shared.stopScan(id) } }
@@ -150,7 +150,7 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
 
     private var stateReaders: [Int: Box<State>] = [:]
     private var stateWaiters: [(State) -> Void] = []
-    private var scanners: [Int: (ScanOptions, Box<Advertisement>)] = [:]
+    private var scanners: [Int: (ScanOptions, Box<Heard>)] = [:]
     private var known: [UUID: CBPeripheral] = [:]
     private var seen = Set<UUID>()
 
@@ -246,7 +246,7 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
 
     // MARK: Scanning
 
-    func startScan(_ o: ScanOptions, _ f: Box<Advertisement>) throws -> Int {
+    func startScan(_ o: ScanOptions, _ f: Box<Heard>) throws -> Int {
         _ = central
         try check()
         next += 1
@@ -276,7 +276,7 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
         MainActor.assumeIsolated {
             known[p.identifier] = p
             let first = seen.insert(p.identifier).inserted
-            var a = Advertisement(device: Device(id: p.identifier.uuidString, name: p.name ?? (d[CBAdvertisementDataLocalNameKey] as? String ?? "")),
+            var a = Heard(device: Device(id: p.identifier.uuidString, name: p.name ?? (d[CBAdvertisementDataLocalNameKey] as? String ?? "")),
                                   rssi: rssi.intValue, localName: d[CBAdvertisementDataLocalNameKey] as? String ?? "",
                                   services: (d[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []).map(uuidString),
                                   solicited: (d[CBAdvertisementDataSolicitedServiceUUIDsKey] as? [CBUUID] ?? []).map(uuidString),

@@ -19,6 +19,7 @@
 
 import asuka/platform
 import asuka/json
+import asuka/time
 
 /// Who sent a message, or the user (Conversation.me).
 pub struct Person {
@@ -37,8 +38,8 @@ pub struct Message {
   /// Who said it; none: the user.
   from: Person? = none
   text: string
-  /// When, in milliseconds since 1970; 0: unknown.
-  time: int = 0
+  /// When; none: unknown.
+  time: time.Time? = none
 }
 
 /// Where a message was said.
@@ -116,10 +117,34 @@ pub struct Delivered {
   data: [string: string] = [:]
   category: string = ""
   thread: string = ""
-  /// When it showed, in milliseconds since 1970.
-  time: int = 0
+  /// When it showed.
+  time: time.Time = time.unix(0)
   /// A push's (asuka/push), whose data are its payload's.
   remote: bool = false
+}
+
+// A notification as the hosts say it: its time in milliseconds since
+// 1970.
+struct WireDelivered {
+  id: string = ""
+  title: string = ""
+  subtitle: string = ""
+  body: string = ""
+  url: string = ""
+  data: [string: string] = [:]
+  category: string = ""
+  thread: string = ""
+  time: int = 0
+  remote: bool = false
+}
+
+fn deliveredOf(w: WireDelivered) -> Delivered = Delivered(id: w.id, title: w.title, subtitle: w.subtitle, body: w.body, url: w.url, data: w.data, category: w.category, thread: w.thread, time: time.unixMilli(w.time), remote: w.remote)
+
+struct WireResponse {
+  action: string = ""
+  reply: string = ""
+  notification: WireDelivered = WireDelivered()
+  token: string = ""
 }
 
 /// What the user did with a notification: tapped it (action ""), or one
@@ -240,7 +265,8 @@ pub fn setBadge(n: int) = platform.send("notify", "badge", platform.u32(max(n, 0
 /// The app's notifications showing, its pushes' too, newest first.
 pub async fn showing() throws -> [Delivered] {
   let b = try await platform.call("notify", "showing", bytes())
-  return try json.decode(b.string())
+  let ws: [WireDelivered] = try json.decode(b.string())
+  return ws.map(deliveredOf)
 }
 
 /// Takes away the notifications ids that show.
@@ -271,9 +297,9 @@ pub fn setChannelGroups(gs: [ChannelGroup]) = platform.send("notify", "channelGr
 /// until this is read.
 pub fn responses() -> Stream<Response> = Stream(give => {
   for await b in platform.next("notify", "nextAction") {
-    let r: Response? = try? json.decode(b.string())
+    let r: WireResponse? = try? json.decode(b.string())
     if let x = r {
-      give(x)
+      give(Response(action: x.action, reply: x.reply, notification: deliveredOf(x.notification), token: x.token))
     }
   }
 })
@@ -322,7 +348,7 @@ store Presenter {
       if let p = got {
         var how = 0
         if let f = decide {
-          how = presentation(f(p.notification))
+          how = presentation(f(deliveredOf(p.notification)))
         }
         platform.send("notify", "presented", platform.u8(how).concat(p.token.bytes()))
       }
@@ -334,7 +360,7 @@ let presenter = Presenter()
 
 struct Present {
   token: string = ""
-  notification: Delivered = Delivered()
+  notification: WireDelivered = WireDelivered()
 }
 
 fn presentation(p: Presentation) -> int = match p {
@@ -416,8 +442,7 @@ pub fn spec(n: Notification, seconds: float) -> Spec {
   if let s = n.sender {
     let c = n.conversation ?? Conversation()
     let cid = firstOf(c.id, s.id, firstOf(s.name, "asuka", ""))
-    conv = WireConversation(id: cid, title: c.title, group: c.group, image: c.image, me: c.me,
-      earlier: c.earlier.map(m => WireMessage(sender: m.from, text: m.text, time: m.time)))
+    conv = WireConversation(id: cid, title: c.title, group: c.group, image: c.image, me: c.me, earlier: c.earlier.map(m => WireMessage(sender: m.from, text: m.text, time: m.time?.unixMilli() ?? 0)))
     if id.isEmpty() {
       id = cid
     }
@@ -428,7 +453,5 @@ pub fn spec(n: Notification, seconds: float) -> Spec {
       title = if c.group && !c.title.isEmpty() { c.title } else { s.name }
     }
   }
-  return Spec(id: id, title: title, subtitle: n.subtitle, body: n.body, url: n.url, data: n.data, seconds: seconds,
-    category: n.category, thread: thread, summary: n.summary, channel: n.channel, badge: n.badge, silent: n.silent,
-    image: n.image, sender: n.sender, conversation: conv)
+  return Spec(id: id, title: title, subtitle: n.subtitle, body: n.body, url: n.url, data: n.data, seconds: seconds, category: n.category, thread: thread, summary: n.summary, channel: n.channel, badge: n.badge, silent: n.silent, image: n.image, sender: n.sender, conversation: conv)
 }

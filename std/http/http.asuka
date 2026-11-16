@@ -85,7 +85,7 @@ pub async fn postJSON<T>(url: string, value: T, headers: [string: string] = [:])
 /// whole. It answers with the Response, its body empty; a status that
 /// isn't a success is the caller's to check (the file then holds what
 /// the server said). Cancelling the task stops it, leaving no file.
-pub async fn download(url: string, path: string, headers: [string: string] = [:], method: string = "GET", body: bytes = bytes(), timeout: Duration = 60s, progress: fn(int, int)? = none) throws -> Response {
+pub async fn download(url: string, path: string, headers: [string: string] = [:], method: string = "GET", body: bytes = bytes(), timeout: Duration = 60s, progress: (fn(int, int))? = none) throws -> Response {
   let report = (got: int, total: int) => {
     if let p = progress { p(got, total) }
   }

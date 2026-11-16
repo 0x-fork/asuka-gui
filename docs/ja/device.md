@@ -341,7 +341,7 @@ async fn original(a: photos.Asset) throws -> string {
 ```
 
 - `photos.current()` は、許可を求めずに、何が許可されているかを返します。`.notAsked`、`.denied`、`.limited`（ユーザーが選んだ写真だけ。iOS 14、Android 14）、`.allowed` のいずれかです。`photos.request()` は初回に許可を求めます。`photos.manageLimited()` を使うと、`.limited` のユーザーが対象の写真を変更できます。ユーザーが終えると戻るので、そこでもう一度一覧を取得してください。
-- `photos.list(screenshots:, offset:, limit:)` は新しい順に、`offset` から最大 `limit` 件（既定は 100）を返します。`Asset` は `id`、`width`、`height`、`created`（1970 年からのミリ秒）、`screenshot` を持ちます。`screenshots: true` にするとスクリーンショットだけに絞り込みます。iOS はスクリーンショットかどうかを知っていますが、Android では Screenshots フォルダーにあるものがスクリーンショットとして扱われます。
+- `photos.list(screenshots:, offset:, limit:)` は新しい順に、`offset` から最大 `limit` 件（既定は 100）を返します。`Asset` は `id`、`width`、`height`、`created`（`time.Time`）、`screenshot` を持ちます。`screenshots: true` にするとスクリーンショットだけに絞り込みます。iOS はスクリーンショットかどうかを知っていますが、Android では Screenshots フォルダーにあるものがスクリーンショットとして扱われます。
 - `photos.thumbnail(id, size:)` は、短辺が `size` ピクセル以上の JPEG ファイルです。次回のためにアプリのキャッシュに保存されます。
 - `photos.export(id)` は、ライブラリにあるままのフルサイズの画像（HEIC、JPEG、PNG）をファイルにコピーし、その `path` と、ライブラリでの名前 `name` を返します。iCloud の写真は先にダウンロードされます。
 
@@ -683,7 +683,7 @@ component Track {
 
 `location.placeName(latitude, longitude)` は、その場所の名前（"Mission District, San Francisco"）を返します。プラットフォームのジオコーダーがサーバーに問い合わせるので、ユーザーが名前を求めたときだけ呼んでください。Linux では、geocode-glib がインストールされていればそれに問い合わせます。Windows とブラウザーにはジオコーダーがないので、エラーを投げます。
 
-`location.Position` は、`latitude`、`longitude`、`accuracy`（メートル単位。デバイスがその半径内にいることを表します）、`altitude`（海抜のメートル数。分からなければ 0）、`speed` と `course`（分からなければ負の値）、`time`（`time.now()` と同じく、1970 年からのナノ秒）を持ちます。
+`location.Position` は、`latitude`、`longitude`、`accuracy`（メートル単位。デバイスがその半径内にいることを表します）、`altitude`（海抜のメートル数。分からなければ 0）、`speed` と `course`（分からなければ負の値）、`time`（`time.Time`）を持ちます。リージョンの出入りは、`region`、`kind`、`at`（システムが知らせたときの位置）、`time` を持ちます。
 
 ### 許可のレベル
 
@@ -874,7 +874,7 @@ app { Chats() }
 
 `thread` はチャットの通知をまとめます。iOS では通知を重ねて表示し、Android ではサマリー通知の下のグループにまとめます。このサマリー通知は、通知の出入りに合わせて Asuka が管理します。
 
-- `notify.showing()` は、表示中（通知センター、通知シェード）のアプリの通知を、プッシュ通知も含めて新しい順に返します。各 `Delivered` は、`id`、`title`、`subtitle`、`body`、`url`、`data`、`category`、`thread`、`time`（1970 年からのミリ秒）、そしてプッシュ通知かどうかを示す `remote` を持ちます。
+- `notify.showing()` は、表示中（通知センター、通知シェード）のアプリの通知を、プッシュ通知も含めて新しい順に返します。各 `Delivered` は、`id`、`title`、`subtitle`、`body`、`url`、`data`、`category`、`thread`、`time`（`time.Time`）、そしてプッシュ通知かどうかを示す `remote` を持ちます。
 - `notify.remove(ids)`、`notify.removeThread(thread)`（読み終えたチャットに使います）、`notify.removeAll()` は通知を消します。
 
 ### アプリを開いているあいだに表示する通知
@@ -910,7 +910,7 @@ async fn whosIn() throws {
 ```
 
 - `n.from(sender, c)` は `n` をメッセージにします。`sender` が `c` で `n.body` を発言した、という意味になります。`id` と `thread` の既定値は会話の `id`（1 対 1 の会話では送信者の `id`）、`title` の既定値は送信者の名前（グループではグループのタイトル）です。
-- `Person` は、`id`（毎回同じもの）、`name`、`image`（ソースは `Image` と同じ）、`bot` を持ちます。`Conversation` は、`id`、グループの `title` と `image`、`group`、`me`（会話の中でのユーザーの表示。Android はユーザーの返信にこの名前を付けます。既定は "You"）、それ以前のメッセージ `earlier`（それぞれ `Message` で、`from`、`text`、`time` を持ちます）を持ちます。
+- `Person` は、`id`（毎回同じもの）、`name`、`image`（ソースは `Image` と同じ）、`bot` を持ちます。`Conversation` は、`id`、グループの `title` と `image`、`group`、`me`（会話の中でのユーザーの表示。Android はユーザーの返信にこの名前を付けます。既定は "You"）、それ以前のメッセージ `earlier`（それぞれ `Message` で、`from`、`text`、`time` を持ちます。`time` は `time.Time?` で、分からなければ none です）を持ちます。
 - **Android** は一つの会話を一つの通知として表示し、メッセージをその中に並べます。新しいメッセージは表示中の会話の通知に加わります（または `earlier` でそれより前のメッセージを設定します）。**iOS** はメッセージを一つずつ別の通知として、会話のスレッドの中に表示します。
 - **iOS** では、App ID で Communication Notifications ケイパビリティを有効にする必要があります。`from` を呼ぶアプリにはそのエンタイトルメントと、Info.plist の `NSUserActivityTypes`（`INSendMessageIntent`）が加わります。リリースビルドのプロファイルにもこのケイパビリティが含まれていなければなりません。含まれていない場合、メッセージは普通の通知として表示されます。**macOS** はメッセージを普通の通知として表示します。
 
@@ -1880,7 +1880,7 @@ app { Root() }
 
 `crash.reports()` はストリームです。保存されているレポートを古い順に渡し、その後も新しいレポート（起動の少しあとに iOS が届ける診断情報や、記録されたエラー）が届くたびに渡します。どのレポートも一度だけです。レポートは `crash.delete(id)` を呼ぶまで残り、50 件を超えると古いものから消えます。`id` は何度読んでも同じなので、サーバーは二重に送られたレポートを見分けられます。`crash.record(e)` はアプリが処理したエラーのレポートを作ります。`crash.breadcrumb(message)` は、アプリが直前に何をしていたかとしてレポートに載る記録に追加します。`crash.set(key, value)` はレポートに含まれる値を設定します（`""` で削除します）。
 
-`Report` は、`id`、`kind`、致命的だったかどうか（`fatal`）、`time`（1970 年からのミリ秒）、`message`（何がなぜクラッシュしたかを表す一行）、`text`（プラットフォームが書いたとおりのレポート全体）、`threads`、`context` を持ちます。プラットフォームごとに報告される内容（`kind`）は次のとおりです。
+`Report` は、`id`、`kind`、致命的だったかどうか（`fatal`）、`time`（`time.Time`）、`message`（何がなぜクラッシュしたかを表す一行）、`text`（プラットフォームが書いたとおりのレポート全体）、`threads`、`context` を持ちます。プラットフォームごとに報告される内容（`kind`）は次のとおりです。
 
 | | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|

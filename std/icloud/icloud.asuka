@@ -16,6 +16,7 @@
 import asuka/fs
 import asuka/platform
 import asuka/json
+import asuka/time
 
 /// The user's iCloud account, as the app sees it.
 pub struct Account {
@@ -49,9 +50,8 @@ pub struct File {
   name: string = ""
   dir: bool = false
   size: int = 0
-  /// In milliseconds since 1970.
-  created: int = 0
-  modified: int = 0
+  created: time.Time = time.unix(0)
+  modified: time.Time = time.unix(0)
   status: Status = .current
   downloading: bool = false
   /// From 0 to 1.
@@ -71,8 +71,16 @@ pub struct Version {
   id: string = ""
   path: string = ""
   name: string = ""
-  modified: int = 0
+  modified: time.Time = time.unix(0)
   /// The device that saved it.
+  device: string = ""
+}
+
+struct WireVersion {
+  id: string = ""
+  path: string = ""
+  name: string = ""
+  modified: int = 0
   device: string = ""
 }
 
@@ -95,10 +103,7 @@ struct WireFile {
   uploadError: string = ""
 }
 
-fn fileOf(w: WireFile) -> File = File(path: w.path, name: w.name, dir: w.dir, size: w.size, created: w.created,
-  modified: w.modified, status: w.status, downloading: w.downloading, downloadProgress: w.downloadPercent / 100.0,
-  uploading: w.uploading, uploaded: w.uploaded, uploadProgress: w.uploadPercent / 100.0, conflicts: w.conflicts,
-  downloadError: w.downloadError, uploadError: w.uploadError)
+fn fileOf(w: WireFile) -> File = File(path: w.path, name: w.name, dir: w.dir, size: w.size, created: time.unixMilli(w.created), modified: time.unixMilli(w.modified), status: w.status, downloading: w.downloading, downloadProgress: w.downloadPercent / 100.0, uploading: w.uploading, uploaded: w.uploaded, uploadProgress: w.uploadPercent / 100.0, conflicts: w.conflicts, downloadError: w.downloadError, uploadError: w.uploadError)
 
 struct Event {
   type: string = ""
@@ -233,8 +238,7 @@ pub store Value<T>(key: string, def: T) {
         let v: T = try json.decode(b.string())
         value = v
       }
-    } catch {
-    }
+    } catch {}
     loaded = true
   }
 
@@ -366,7 +370,8 @@ pub async fn conflicts(path: string) throws -> [Version] {
     return f.versions.filter(v => v.path == path)
   }
   let b = try await call("versions", path.bytes())
-  return try json.decode(b.string())
+  let ws: [WireVersion] = try json.decode(b.string())
+  return ws.map(w => Version(id: w.id, path: w.path, name: w.name, modified: time.unixMilli(w.modified), device: w.device))
 }
 
 /// Settles path's conflict: keeping is the version to keep (another
@@ -461,7 +466,7 @@ pub store FakeICloud {
       let entries = (try? fs.readDir(dir)) ?? []
       for e in entries {
         let p = fs.join([dir, e.name])
-        out.push(File(path: p, name: e.name, dir: e.isDir, size: e.size, modified: e.modified.unixMilli(), conflicts: versions.any(v => v.path == p)))
+        out.push(File(path: p, name: e.name, dir: e.isDir, size: e.size, modified: e.modified, conflicts: versions.any(v => v.path == p)))
       }
     }
     for (p, data) in remote.keys().map(k => (k, remote[k] ?? bytes())) {
