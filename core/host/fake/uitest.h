@@ -67,6 +67,8 @@ bool ak_uitest_expect(ak_uitest *a, ak_span text, ak_buf *err);
 // frame is the frame, in the window's coordinates, of the first view that
 // shows text.
 bool ak_uitest_frame(ak_uitest *a, ak_span text, float out[4], ak_buf *err);
+// ak_uitest_link taps the link to url in the RichText that has one.
+bool ak_uitest_link(ak_uitest *a, ak_span url, ak_buf *err);
 // set_languages reports the user's preferred languages changed (BCP 47
 // tags, most preferred first, joined by commas), settled.
 void ak_uitest_set_languages(ak_uitest *a, ak_span languages);

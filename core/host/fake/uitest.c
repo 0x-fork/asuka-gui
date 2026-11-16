@@ -730,6 +730,26 @@ bool ak_uitest_frame(ak_uitest *a, ak_span text, float out[4], ak_buf *err) {
 	return true;
 }
 
+static bool has_bytes(ak_span hay, ak_span needle) {
+	if (needle.len == 0 || needle.len > hay.len) return false;
+	for (size_t i = 0; i + needle.len <= hay.len; i++)
+		if (memcmp(hay.p + i, needle.p, needle.len) == 0) return true;
+	return false;
+}
+
+bool ak_uitest_link(ak_uitest *a, ak_span url, ak_buf *err) {
+	ak_fake_view_vec vs = {0};
+	ak_fake_of_kind(a->f, AK_KIND_RICH_TEXT, &vs);
+	ak_fake_view *v = NULL;
+	for (uint32_t i = 0; i < vs.len && !v; i++)
+		if (has_bytes(ak_fake_string(vs.data[i], AK_PROP_RICH_TEXT_CONTENT), url)) v = vs.data[i];
+	ak_vec_free(&vs);
+	if (!v) return failure(a, err, "no rich text links to %.*s", url);
+	ak_fake_link(a->f, v, url);
+	ak_uitest_settle(a);
+	return check_fails(a, err);
+}
+
 void ak_uitest_set_languages(ak_uitest *a, ak_span languages) {
 	ak_environment env = a->f->env;
 	env.languages = languages;
@@ -769,6 +789,7 @@ bool ak_uitest_expect_no(ak_uitest *a, ak_span text, ak_buf *err) {
 //	                                                               view showing text, in the window
 //	test.set_languages app: App, tags: string                      - (the user's languages changed)
 //	test.open_url    app: App, url: string                         - (the app opened with it)
+//	test.link        app: App, url: string                         - (the user taps a rich text's link)
 //	test.emit        app: App, type: string, event: string,
 //	                 value: string                                 - (a native view's event, its
 //	                                                               one value a string)
@@ -967,6 +988,14 @@ static ak_val t_open_url(ak_val *a, uint32_t n) {
 	return (ak_val){0};
 }
 
+static ak_val t_link(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.link");
+	ak_buf err = {0};
+	if (!ak_uitest_link(app, span_of(a[1]), &err)) throw_buf(&err);
+	ak_buf_free(&err);
+	return (ak_val){0};
+}
+
 static ak_val t_emit(ak_val *a, uint32_t n) {
 	ak_uitest *app = app_arg(a, n, "test.emit");
 	ak_span type = span_of(a[1]);
@@ -1001,6 +1030,7 @@ void ak_uitest_builtins_init(void) {
 	ak_builtin_register("test.hover", t_hover);
 	ak_builtin_register("test.frame", t_frame);
 	ak_builtin_register("test.open_url", t_open_url);
+	ak_builtin_register("test.link", t_link);
 	ak_builtin_register("test.emit", t_emit);
 	ak_builtin_register("test.mount", t_mount);
 	ak_builtin_register("test.tap", t_tap);

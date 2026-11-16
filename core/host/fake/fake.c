@@ -1367,6 +1367,11 @@ void ak_fake_open_url(ak_fake *f, const char *url) {
 	ak_fake_dispatch(f, &(ak_event){.id = root_id(f), .kind = AK_EVENT_INCOMING_URL, .s = ak_cstr(url)});
 }
 
+void ak_fake_link(ak_fake *f, ak_fake_view *v, ak_span url) {
+	if (!listening(f, v, AK_EVENT_LINK)) return;
+	ak_fake_dispatch(f, &(ak_event){.id = v->id, .kind = AK_EVENT_LINK, .s = url});
+}
+
 void ak_fake_lifecycle(ak_fake *f, int64_t state) {
 	ak_fake_dispatch(f, &(ak_event){.kind = AK_EVENT_LIFECYCLE, .i = state});
 }

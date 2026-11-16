@@ -294,6 +294,9 @@ void ak_fake_set_environment(ak_fake *f, const ak_environment *e);
 // phone sizes it.
 void ak_fake_report_sheet(ak_fake *f, ak_fake_view *sheet);
 void ak_fake_open_url(ak_fake *f, const char *url);
+// ak_fake_link taps a link of a RichText, as the user does: Link with
+// its URL, to the view.
+void ak_fake_link(ak_fake *f, ak_fake_view *v, ak_span url);
 void ak_fake_lifecycle(ak_fake *f, int64_t state);  // AK_LIFECYCLE_*
 // ak_fake_emit_native sends a native view's event: its name and named
 // values (their type says which field: as ak_fake_native).

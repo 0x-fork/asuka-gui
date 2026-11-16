@@ -123,3 +123,10 @@ test "the URLs the app is opened with" {
   app.openURL("asuka://inbox")
   app.expect("Opened: asuka://inbox")
 }
+
+test "a rich text's link, tapped" {
+  let app = mount(Media())
+  app.expect("Link: ")
+  app.tapLink("https://example.com")
+  app.expect("Link: https://example.com")
+}
