@@ -5,8 +5,8 @@ package darwin
 import (
 	"testing"
 
-	. "github.com/egoist/asuka/internal/darwin"
 	"github.com/egoist/asuka/host/hosttest"
+	. "github.com/egoist/asuka/internal/darwin"
 	"github.com/egoist/asuka/ops"
 )
 
