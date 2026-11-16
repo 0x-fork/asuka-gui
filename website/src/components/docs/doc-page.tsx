@@ -1,5 +1,5 @@
 import { useMatch } from "@tanstack/react-router"
-import { ArrowLeftIcon, ArrowRightIcon, ChevronRightIcon, MenuIcon } from "lucide-react"
+import { ArrowLeftIcon, ArrowRightIcon, BookOpenIcon, CheckIcon, ChevronRightIcon, CopyIcon, MenuIcon } from "lucide-react"
 import * as React from "react"
 
 import { DocContent } from "@/components/docs/doc-content"
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { getDoc, type Doc, type Navs } from "@/lib/docs"
 import { episodeKanji, episodeNumber } from "@/lib/episode"
-import { alternates, localized, messages, useMessages, type Locale } from "@/lib/i18n"
+import { alternates, localized, messages, useLocale, useMessages, type Locale } from "@/lib/i18n"
 
 /**
  * The loader of a page: null, before anything is fetched, for a slug without
@@ -107,7 +107,22 @@ export function DocPage({ doc }: { doc: Doc }) {
             <span className="block origin-bottom-left scale-y-[1.12]">{doc.title}</span>
           </h1>
           {doc.summary && <p className="mt-5 max-w-2xl text-lg leading-8 text-foreground/70">{doc.summary}</p>}
-          <div className="hazard mt-8 h-2" />
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            {doc.references?.length ? (
+              <>
+                <span className="label mr-1 flex items-center gap-1.5">
+                  <BookOpenIcon className="size-3.5" /> {t.apiReference}
+                </span>
+                {doc.references.map((p) => (
+                  <DocLink key={p} slug={p} className="border px-2 py-0.5 font-mono text-[12.5px] text-signal-ink transition-colors hover:border-foreground/30 hover:bg-code">
+                    {p}
+                  </DocLink>
+                ))}
+              </>
+            ) : null}
+            <CopyMarkdown slug={doc.slug} />
+          </div>
+          <div className="hazard mt-6 h-2" />
         </header>
 
         <div className="mt-10">
@@ -151,6 +166,42 @@ export function DocPage({ doc }: { doc: Doc }) {
         </footer>
       </article>
     </div>
+  )
+}
+
+/**
+ * Copies the page as Markdown (its download, /docs/<slug>.md: the source,
+ * links made absolute), for pasting into a chat with a model or a note.
+ */
+function CopyMarkdown({ slug }: { slug: string }) {
+  const locale = useLocale()
+  const t = useMessages().docs
+  const [copied, setCopied] = React.useState(false)
+  React.useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 2000)
+    return () => clearTimeout(timer)
+  }, [copied])
+  async function copy() {
+    const href = localized(locale, slug ? `/docs/${slug}` : "/docs") + ".md"
+    // The text is fetched as the clipboard is written: Safari wants the
+    // write to start in the click, so it's given a promise of it.
+    const text = fetch(href).then((r) => {
+      if (!r.ok) throw new Error(`${href}: ${r.status}`)
+      return r.text()
+    })
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": text.then((s) => new Blob([s], { type: "text/plain" })) })])
+    } else {
+      await navigator.clipboard.writeText(await text)
+    }
+    setCopied(true)
+  }
+  return (
+    <Button variant="outline" size="sm" className="ml-auto gap-1.5" onClick={() => void copy().catch(() => setCopied(false))}>
+      {copied ? <CheckIcon /> : <CopyIcon />}
+      {copied ? t.copied : t.copyMarkdown}
+    </Button>
   )
 }
 

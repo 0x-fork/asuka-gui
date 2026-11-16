@@ -42,6 +42,9 @@ const en = {
     next: "Next episode",
     edit: "Edit this page on GitHub",
     copyCode: "Copy code",
+    copyMarkdown: "Copy as Markdown",
+    copied: "Copied",
+    apiReference: "API reference",
     sync: "Sync",
   },
   notFound: {
@@ -95,6 +98,9 @@ const zh: Messages = {
     next: "下一话",
     edit: "在 GitHub 上编辑此页",
     copyCode: "复制代码",
+    copyMarkdown: "复制为 Markdown",
+    copied: "已复制",
+    apiReference: "API 参考",
     sync: "同步率",
   },
   notFound: {
@@ -146,6 +152,9 @@ const ja: Messages = {
     next: "次回",
     edit: "GitHub でこのページを編集",
     copyCode: "コードをコピー",
+    copyMarkdown: "Markdown としてコピー",
+    copied: "コピーしました",
+    apiReference: "API リファレンス",
     sync: "シンクロ率",
   },
   notFound: {

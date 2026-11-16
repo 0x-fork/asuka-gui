@@ -176,7 +176,23 @@ export async function loadDoc(locale: Locale, slug: string): Promise<Doc | undef
     next: index >= 0 ? link(index + 1) : undefined,
     editUrl: file ? `${site.repo}/edit/main/${localeInfo[locale].docsDir}/${file.split(path.sep).join("/")}` : referenceSourceUrl(slug),
     reference,
+    references: file ? await importedPackages(path.join(docsDirOf(locale), file)) : undefined,
   }
+}
+
+/**
+ * The packages of the API reference a guide's examples import (import
+ * std/http, import platform/purchase), in the order they first do: what
+ * its page links to at the top.
+ */
+async function importedPackages(file: string): Promise<string[]> {
+  const source = await fs.readFile(file, "utf8")
+  const known = new Set(referencePackages(repoDir).map((p) => p.path))
+  const out: string[] = []
+  for (const m of source.matchAll(/^\s*import ((?:std|platform)\/[a-z0-9-]+)\b/gm)) {
+    if (known.has(m[1]) && !out.includes(m[1])) out.push(m[1])
+  }
+  return out
 }
 
 /** Every heading of every page, with its text, for the search of the site. */

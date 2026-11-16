@@ -45,6 +45,8 @@ export interface Doc {
   editUrl: string
   /** A page of the API reference: its source is a package's, its sidebar the reference's. */
   reference?: boolean
+  /** A guide's packages in the API reference (std/http): what its examples import. */
+  references?: string[]
 }
 
 export function docHref(locale: Locale, slug: string, id = "") {
