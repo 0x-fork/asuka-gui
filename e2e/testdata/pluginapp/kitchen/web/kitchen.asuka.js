@@ -10,17 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./kitchen.decl.asuka.js";
 import * as impl from "./kitchen.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * A weight's unit.
- */
-export const Unit = Object.freeze({
-  gram: 0,
-  ounce: 1,
-});
 
 const provider = {
   make(iface) {
