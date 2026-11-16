@@ -387,7 +387,7 @@ static void press_keys(const char *spec) {
 	if (a.fVirt & FSHIFT) st[VK_SHIFT] = 0x80;
 	if (a.fVirt & FALT) st[VK_MENU] = 0x80;
 	SetKeyboardState(st);
-	HWND target = GetFocus();
+	HWND target = typing_target();  // the focus, or the field tapped last
 	if (!target || !wh_key_window(target)) target = wh_window_in_use();
 	MSG m = {target, (a.fVirt & FALT) ? WM_SYSKEYDOWN : WM_KEYDOWN, a.key, 0, 0, {0, 0}};
 	if (!wh_pre_translate(&m)) {
@@ -488,6 +488,7 @@ static void step(const char *verb, const char *arg) {
 	} else if (!strcmp(verb, "escape")) {
 		if (open_menu_window()) EndMenu();
 		else if (H.nsheets) wh_cancel_sheet(wh_node_of(wh_nav_window(H.sheets[H.nsheets - 1])));
+	} else if (wh_interaction_step(verb, warg)) {
 	} else if (!strcmp(verb, "snap")) {
 		wh_snapshot(arg);
 		if (getenv("ASUKA_DUMP")) write_dump(arg);

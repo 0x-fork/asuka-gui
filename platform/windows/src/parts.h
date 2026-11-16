@@ -78,6 +78,9 @@ bool wh_paste_content(node *n);
 void wh_accept_drops(HWND win);
 void wh_pointer_moved(HWND hwnd, POINT screen, bool track);
 void wh_mouse_left(HWND hwnd);
+// wh_interaction_step runs ASUKA_SCRIPT's drop, drag, paste and pinch
+// steps (automation.c); false: not one of them.
+bool wh_interaction_step(const char *verb, const wchar_t *arg);
 
 // ---- keys.c ----
 void wh_set_keys(node *n, const uint8_t *b, size_t len);
@@ -100,6 +103,7 @@ void wh_clear_accessible_name(HWND hwnd);
 void wh_uia_range_changed(node *n, double old, double now);
 void wh_announce(const char *s, size_t len);
 void wh_set_tooltip(node *n, const wchar_t *tip);
+void wh_tooltip_on(HWND hwnd, const wchar_t *tip);  // any window's tooltip (a snackbar's close button)
 
 // ---- scroll.c: Scroll views and the scroll bars over them ----
 void wh_update_scroll(node *n);
@@ -168,6 +172,9 @@ void wh_set_split_prop(node *n, uint16_t p, const ak_value *v);
 void wh_layout_split(node *n);
 void wh_split_release(node *n);  // its pane, with it
 void wh_paint_pane(node *n, HDC dc, gfx g, RECT r);
+// wh_pane_chosen is a SplitView pane's chosen item's title and badge
+// (split.c), which screen readers read (a11y.c); false: none.
+bool wh_pane_chosen(node *n, const wchar_t **title, const wchar_t **badge);
 void wh_paint_snack(node *n, gfx g, float w, float h);
 void wh_paint_snack_text(node *n, HDC dc);
 bool wh_snack_is_close(node *n, HWND ctl);
