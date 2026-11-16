@@ -1,4 +1,4 @@
-// Pull to refresh (on refresh) on a Mac. Ports host/darwin's refresh.go.
+// Pull to refresh (on refresh) on a Mac.
 //
 // A trackpad's or a Magic Mouse's scroll pulls a Scroll or List past its
 // top, as its elastic overscroll lets it, and let go of beyond 60 points it

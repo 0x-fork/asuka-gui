@@ -175,7 +175,7 @@ func checkRing(t *testing.T, n *Node, c ringCase, value float64) {
 // size or in the Style's Color: the circle's track and arc as wide as
 // AppKit's stroke at that size, as large as the frame; the spinner's
 // spokes. Either way the AsukaRingView is what VoiceOver reads, as AppKit's
-// indicator. (host/darwin's TestProgressRing.)
+// indicator.
 func TestVisualProgressRing(t *testing.T) {
 	var cases []ringCase
 	var rings []string
@@ -220,7 +220,7 @@ func TestVisualProgressRing(t *testing.T) {
 
 // The ring switches between AppKit's indicator and the drawn one as its
 // size and its Color change, keeping its view, its value and what
-// VoiceOver reads. (host/darwin's TestProgressRingSwitches.)
+// VoiceOver reads.
 func TestVisualProgressRingSwitches(t *testing.T) {
 	a := Run(t, `
 		component R {
@@ -283,7 +283,6 @@ func TestVisualProgressRingSwitches(t *testing.T) {
 
 // A value change animates as AppKit's animator does, a quarter second, on
 // the drawn arc as on AppKit's indicator; not with Reduce Motion.
-// (host/darwin's TestProgressRingAnimates.)
 func TestVisualProgressRingAnimates(t *testing.T) {
 	a := Run(t, `
 		component R {
@@ -319,7 +318,6 @@ func TestVisualProgressRingAnimates(t *testing.T) {
 }
 
 // Disposing a ring lets go of what it drew and of AppKit's indicators.
-// (host/darwin's TestProgressRingDisposes.)
 func TestVisualProgressRingDisposes(t *testing.T) {
 	a := Run(t, `
 		component R {

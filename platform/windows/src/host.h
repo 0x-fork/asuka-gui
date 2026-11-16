@@ -1,7 +1,7 @@
 // host.h: the Windows host's own declarations (RFC 0008's H2): Win32 and
 // the common controls v6, GDI+'s flat API, DWM and uxtheme, in C17, the
 // C core linked in. DESIGN.md's "How the Windows host maps Asuka" says what
-// it does; each file of src/ is a part of it, as host/windows' files were.
+// it does; each file of src/ is a part of it.
 //
 // One thread: the core, every window and every call here run on the main
 // thread, which runs the message loop (main.c). Other threads reach it with
@@ -588,7 +588,7 @@ void wh_clear_fonts(void);
 float wh_font_scale(void);
 bool wh_windows11(void);
 
-// ---- gdip.c: GDI+'s flat API, as host/windows' wrappers had it ----
+// ---- gdip.c: GDI+'s flat API ----
 
 typedef GpGraphics *gfx;
 gfx g_new(HDC dc);

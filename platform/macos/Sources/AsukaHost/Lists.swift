@@ -1,5 +1,4 @@
-// Lists (List): core-virtualized, as on Windows. Ports host/darwin's
-// list.go.
+// Lists (List): core-virtualized, as on Windows.
 //
 // A List is a scroll view whose rows the host places itself: as it
 // scrolls, rows coming into view take a row view (a recycled one, or a new

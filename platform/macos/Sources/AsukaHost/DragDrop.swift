@@ -8,7 +8,6 @@
 // go from AsukaView as an NSDraggingSource (DragItems): other apps get each
 // item's text, link or file, the app's own drop targets its source view in
 // the private type; Dragging reports Began, then Dropped or Cancelled.
-// Ports host/darwin's interaction.go.
 import AppKit
 import UniformTypeIdentifiers
 #if canImport(AsukaOps)

@@ -1,7 +1,7 @@
-// sys.c: what the system says and is asked, as internal/windows' win32.go
-// had it: the registry's settings (dark mode, the accent, the text size),
-// uxtheme's dark mode, DPI awareness, the common controls' activation
-// context, the build, the user's languages, formats and time zone.
+// sys.c: what the system says and is asked: the registry's settings (dark
+// mode, the accent, the text size), uxtheme's dark mode, DPI awareness, the
+// common controls' activation context, the build, the user's languages,
+// formats and time zone.
 #include "host.h"
 #include "parts.h"
 

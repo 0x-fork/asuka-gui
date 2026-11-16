@@ -1,6 +1,6 @@
 // desktop.h: the C the Windows and Linux hosts share (RFC 0008, "Shared
-// C for Windows and Linux"), kept small: what the Go runtime's packages
-// did for both and isn't a platform's.
+// C for Windows and Linux"), kept small: what both need and isn't a
+// platform's.
 //
 //   - JSON, read into a tree and written (the app's settings, the state
 //     files, a module's arguments);

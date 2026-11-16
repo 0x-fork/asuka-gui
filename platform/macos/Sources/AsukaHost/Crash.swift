@@ -1,7 +1,7 @@
-// asuka/crash's native side on a Mac (host/darwin's crash.go). The core
-// keeps the run's record (asuka_crash_start: core/src/std/crash.c) and its
-// own fatal errors; the host writes what only it sees in the record's
-// inbox, for the core to read into reports:
+// asuka/crash's native side on a Mac. The core keeps the run's record
+// (asuka_crash_start: core/src/std/crash.c) and its own fatal errors; the
+// host writes what only it sees in the record's inbox, for the core to
+// read into reports:
 //
 // - a fatal signal (a bad access, an illegal instruction, a Swift trap,
 //   an abort that isn't the core's panic), caught on a stack of its own

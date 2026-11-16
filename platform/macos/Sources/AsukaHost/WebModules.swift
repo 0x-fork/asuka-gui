@@ -1,8 +1,7 @@
 // The web views' module, "web": it runs script in a WebView for its value
 // (a Ref's eval: the core's ui.web_eval_result) and reads the web views'
-// cookies (webCookies: ui.web_cookies). Ports host/darwin's webmore.go.
-// Its "js" module isn't: asuka/js is a native package with its own Swift,
-// and nothing calls the host's.
+// cookies (webCookies: ui.web_cookies). There's no "js" module: asuka/js
+// is a native package with its own Swift.
 import AppKit
 import WebKit
 #if canImport(AsukaOps)

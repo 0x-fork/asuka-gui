@@ -1,6 +1,5 @@
 // views.c: the views the core makes, their props, and the messages of a
-// view of the host's own class (host/windows' views.go, props.go,
-// interaction.go's presses).
+// view of the host's own class.
 #include "host.h"
 #include "win.h"
 

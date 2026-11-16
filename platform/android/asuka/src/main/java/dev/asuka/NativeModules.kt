@@ -1,6 +1,7 @@
 // Typed native modules (//asuka:native) and views (//asuka:view): what
-// the Kotlin that asuka native generates for a Go package calls, and what
-// Go's calls reach through JNI (mobile/jni_android.c), from any thread.
+// the Kotlin that asuka native generates for a package calls, and what
+// the core's calls reach through JNI (core/src/abi/jni_android.c), from
+// any thread.
 //
 // The wire format is core/src/native's: values in declaration order,
 // little-endian.

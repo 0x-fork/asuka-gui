@@ -1,7 +1,7 @@
 // Canvas: an AsukaCanvasView whose draw(_:) replays the canvas's display
 // list (ops.CanvasOp) with Core Graphics, in the view's appearance
 // (semantic colors follow dark mode), its coordinates flipped as the
-// core's are. Ports host/darwin's canvas.go.
+// core's are.
 import AppKit
 #if canImport(AsukaOps)
 import AsukaOps

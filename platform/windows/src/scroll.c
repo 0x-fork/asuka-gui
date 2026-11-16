@@ -1,8 +1,7 @@
 // scroll.c: scrolling a Scroll or a List (the wheel, the keys, the scroll
 // bar), the scroll bars as indicators over the content (a thin rounded
 // thumb that grows under the mouse and drags), refreshing with F5, and
-// paging Scrolls and PageControls (host/windows' list.go's scrolling,
-// scrollbar.go, refresh.go, pager.go).
+// paging Scrolls and PageControls.
 #include "nav.h"
 
 struct wh_scrollbar {

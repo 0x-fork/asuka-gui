@@ -1,7 +1,6 @@
-// services.c: the smaller of the host's modules (host/windows'
-// system2.go, files_windows.go, photolibrary.go, documents.go's compose),
-// answering as host/darwin's do where Windows has the same, and saying it
-// hasn't where it hasn't:
+// services.c: the smaller of the host's modules, answering as the Mac
+// host's do where Windows has the same, and saying it hasn't where it
+// hasn't:
 //
 //   - recent: the shell's recent items for the app, which its jump list's
 //     Recent shows, and its own list, newest first, in its data directory.

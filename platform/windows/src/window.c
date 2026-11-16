@@ -1,6 +1,5 @@
 // window.c: the window classes, the one window procedure (routing by
-// window to its node), the app's window and its environment (host/windows'
-// window.go).
+// window to its node), the app's window and its environment.
 #include "host.h"
 #include "parts.h"
 #include "win.h"

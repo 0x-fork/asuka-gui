@@ -1,8 +1,7 @@
-// The module that hands files to the system's composers (host/darwin's
-// documents.go): asuka/compose (NSSharingService, mailto:), and the files
-// it names. documents.go's preview (Quick Look) and
-// print modules aren't here: asuka/preview and asuka/print have their own
-// Swift.
+// The module that hands files to the system's composers: asuka/compose
+// (NSSharingService, mailto:), and the files it names. Preview (Quick
+// Look) and print modules aren't here: asuka/preview and asuka/print have
+// their own Swift.
 import AppKit
 import UniformTypeIdentifiers
 

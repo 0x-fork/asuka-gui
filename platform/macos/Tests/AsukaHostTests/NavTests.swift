@@ -5,8 +5,7 @@ import XCTest
 // Navigation's alerts and snackbars, driven as the core drives them (ops)
 // on AppKit, the events the host sends kept: the language this branch
 // compiles has no alert() or snackbar() yet, so no Asuka app reaches them
-// through the player (platform/macos/mactest). Ports host/darwin's
-// alertfields_test.go and snackbar_test.go.
+// through the player (platform/macos/mactest).
 
 /// The events the host sent the core (the stand-in's asuka_event, which
 /// this one overrides).

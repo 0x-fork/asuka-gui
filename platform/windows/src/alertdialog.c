@@ -1,12 +1,11 @@
-// alertdialog.c: an alert with text fields (host/windows' alertdialog.go).
-// A task dialog holds no edit controls, so it's a dialog of the host's
-// own, laid out as WinUI's ContentDialog: a window over the one it's
-// declared in (which is disabled meanwhile, as under a sheet), with the
-// app's name in its title bar as a task dialog has; in it the title
-// (Title2, semibold) and the message (Body), the fields (the host's own
-// text boxes, Fluent's), then a band of buttons on the window's
-// background below a stroke, as wide as each other, the cancel one last
-// and the default one in the accent color.
+// alertdialog.c: an alert with text fields. A task dialog holds no edit
+// controls, so it's a dialog of the host's own, laid out as WinUI's
+// ContentDialog: a window over the one it's declared in (which is disabled
+// meanwhile, as under a sheet), with the app's name in its title bar as a
+// task dialog has; in it the title (Title2, semibold) and the message
+// (Body), the fields (the host's own text boxes, Fluent's), then a band of
+// buttons on the window's background below a stroke, as wide as each other,
+// the cancel one last and the default one in the accent color.
 //
 // The first field has the focus. Tab goes through the fields and the
 // buttons; Enter in a field goes on to the next, and in the last presses

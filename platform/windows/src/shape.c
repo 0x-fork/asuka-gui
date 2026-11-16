@@ -1,7 +1,6 @@
 // shape.c: a Shape is a view of the host's that draws its outline with
-// GDI+, antialiased: filled, stroked (caps, joins, dashes), trimmed
-// (host/windows' shape.go). Its path's format is the Canvas's too
-// (canvas.c builds its paths here).
+// GDI+, antialiased: filled, stroked (caps, joins, dashes), trimmed. Its
+// path's format is the Canvas's too (canvas.c builds its paths here).
 #include "host.h"
 #include "parts.h"
 #include "draw.h"

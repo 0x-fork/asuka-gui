@@ -3,7 +3,7 @@
 Every example compiles and its tests pass on the fake host: the
 prelude, the elements and the standard library they call are declared
 and implemented (lang/prelude, std/, core/src/ui). What's below is what
-the Go hosts' SDK did that Asuka's library doesn't yet, each of which
+Asuka's earlier SDK did that its library doesn't yet, each of which
 needs code on the platforms (Swift, Kotlin, JavaScript, the desktop
 hosts) rather than in the compiler or the core. The examples get by
 without them, as each entry says.

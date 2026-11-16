@@ -4,8 +4,7 @@
 // the first load so the page's first requests are blocked too), a response
 // the page can't show is a Download, and its state (WebState) is reported
 // once a turn as it changes. A WKWebView can't see a page's requests
-// (Requests). Ports host/darwin's web.go and webmore.go's setBlock and
-// decideResponse.
+// (Requests).
 import AppKit
 import WebKit
 #if canImport(AsukaOps)

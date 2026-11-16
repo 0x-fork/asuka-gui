@@ -181,8 +181,8 @@ func asukaFileURL(_ path: String) -> String {
 
 @MainActor extension AsukaRuntime {
     /// The app's modules (the shell's own): tray, dock, hotkey, apps,
-    /// recent, login. host/darwin's dialog and shell modules aren't here:
-    /// asuka/dialog and asuka/shell have their own Swift.
+    /// recent, login. Dialog and shell modules aren't here: asuka/dialog
+    /// and asuka/shell have their own Swift.
     func registerAppModules() {
         registerModule("tray", AsukaTray.shared.methods())
         registerModule("dock", AsukaDock.methods())

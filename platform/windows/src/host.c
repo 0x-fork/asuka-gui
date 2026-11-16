@@ -1,6 +1,5 @@
 // host.c: the nodes the core makes, its batches applied to them, the
-// events sent back, and work posted to the main thread (host/windows'
-// host.go).
+// events sent back, and work posted to the main thread.
 #include "host.h"
 #include "parts.h"
 

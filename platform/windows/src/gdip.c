@@ -1,6 +1,5 @@
 // gdip.c: GDI+'s flat API, drawn antialiased with pixel centers at .5
-// and blended in sRGB (as WinUI does), as internal/windows' gdi.go wrapped
-// it for the Go host.
+// and blended in sRGB (as WinUI does).
 #include "host.h"
 
 static ULONG_PTR token;

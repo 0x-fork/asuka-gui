@@ -1,9 +1,8 @@
-// commands.c: the commands the core sends a view (host/windows'
-// commands.go, routes.go): focus, a list's updates, a sheet's or alert's
-// Present, animations, opening a URL, a module's call, the clipboard,
-// media, frames, announcements, sharing, scrolling, the accent and color
-// scheme, the menu bar, windows' options and actions, a router's address,
-// the language, quitting.
+// commands.c: the commands the core sends a view: focus, a list's updates,
+// a sheet's or alert's Present, animations, opening a URL, a module's call,
+// the clipboard, media, frames, announcements, sharing, scrolling, the
+// accent and color scheme, the menu bar, windows' options and actions, a
+// router's address, the language, quitting.
 #include "win.h"
 
 void wh_set_accent(ak_color c) {

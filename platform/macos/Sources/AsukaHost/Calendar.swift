@@ -5,8 +5,7 @@
 // asks with an alert over the window (the title, its dates, its place)
 // and saves it on Add, which needs only write access (macOS 14). macOS
 // asks once, with the app's NSCalendarsFullAccessUsageDescription
-// (NSCalendarsWriteOnlyAccessUsageDescription for adding only). Ports
-// host/darwin's calendar.go.
+// (NSCalendarsWriteOnlyAccessUsageDescription for adding only).
 import AppKit
 import EventKit
 

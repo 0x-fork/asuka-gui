@@ -2,9 +2,8 @@ import XCTest
 import UserNotifications
 @testable import AsukaHost
 
-// What host/darwin's TestPush checked of a push's message, APNs's answer
-// and the queues, and the presentations, categories and content the notify
-// module makes.
+// A push's message, APNs's answer and the queues, and the presentations,
+// categories and content the notify module makes.
 @MainActor final class NotifyTests: XCTestCase {
     private struct Message: Decodable {
         var id, title, body, subtitle, category, thread: String

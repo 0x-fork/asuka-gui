@@ -1,17 +1,16 @@
-// shader.c: a Shader on Windows (host/windows' shader.go, shader_d3d.go):
-// its Kage program, compiled to HLSL with the app (internal/shadercode),
-// drawn on the GPU with Direct3D 11 on a thread of its own. One device
-// (the GPU's, or WARP where there's none) draws every shader's frames,
-// one at a time: its immediate context serves one thread. A frame is a
-// triangle over a texture of the view's size in pixels, drawn by the
-// shader's pixel shader (compiled by Windows's compiler, once per
-// program), copied to a staging texture and read back: the render thread
-// waits for the GPU, never the main thread. The frame crosses back with
-// wh_post: the main thread swaps it in and paints it over the view, as
-// GDI+ paints the views around it. Inputs that change while a frame
-// renders render again once it's done. Animated, a timer starts a frame
-// whenever none is rendering, so the frame rate is what the GPU and the
-// copy afford, up to the timer's. A view larger than a texture can be
+// shader.c: a Shader on Windows: its Kage program, compiled to HLSL with
+// the app (internal/shadercode), drawn on the GPU with Direct3D 11 on a
+// thread of its own. One device (the GPU's, or WARP where there's none)
+// draws every shader's frames, one at a time: its immediate context serves
+// one thread. A frame is a triangle over a texture of the view's size in
+// pixels, drawn by the shader's pixel shader (compiled by Windows's
+// compiler, once per program), copied to a staging texture and read back:
+// the render thread waits for the GPU, never the main thread. The frame
+// crosses back with wh_post: the main thread swaps it in and paints it over
+// the view, as GDI+ paints the views around it. Inputs that change while a
+// frame renders render again once it's done. Animated, a timer starts a
+// frame whenever none is rendering, so the frame rate is what the GPU and
+// the copy afford, up to the timer's. A view larger than a texture can be
 // renders at a fraction of its pixels, which the program's positions are
 // still.
 #include "host.h"

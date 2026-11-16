@@ -1,12 +1,11 @@
-// A window's Router address comes back as the window does (host/darwin's
-// routes.go): the last Location command each window
-// was sent is kept, by the window's key ("main" for the main window, whose
-// Location the core sends without a key; a Window's StateKey, none
-// without one), in asuka-routes.json in the app's directory, and given
-// back as its Router mounts: the main window's before the app runs
-// (asuka_set_start), so its Router starts where it was left, the first
-// screen the one the user left. Written a moment after
-// it changes, off the main thread, so the main thread never waits for the
+// A window's Router address comes back as the window does: the last
+// Location command each window was sent is kept, by the window's key
+// ("main" for the main window, whose Location the core sends without a key;
+// a Window's StateKey, none without one), in asuka-routes.json in the app's
+// directory, and given back as its Router mounts: the main window's before
+// the app runs (asuka_set_start), so its Router starts where it was left,
+// the first screen the one the user left. Written a moment after it
+// changes, off the main thread, so the main thread never waits for the
 // disk; and at once as the app goes to the background or quits.
 //
 // The file is the one every desktop host reads: a JSON

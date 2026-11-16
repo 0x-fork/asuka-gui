@@ -16,8 +16,7 @@ import (
 // Text. They never ask the user here: the automation's seam
 // (ASUKA_TEST_ACCESS, the access step) answers for the system, so the
 // tests check the arguments, the encodings, the alerts and the paths
-// taken when the user hasn't allowed it, as host/darwin's did with its
-// fakes.
+// taken when the user hasn't allowed it.
 
 // m2Src is a component with a button ("go <label>") that calls
 // module.method with args and shows "<label>: ok <answer>" (as hex, or as

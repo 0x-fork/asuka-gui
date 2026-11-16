@@ -11,8 +11,7 @@
 //
 // Hover is an NSTrackingArea per view, checked again as views appear, move
 // or show under a still pointer. Gestures are Gestures.swift's, drops and
-// drags DragDrop.swift's. Ports host/darwin's interaction.go and views.go's
-// listen.
+// drags DragDrop.swift's.
 import AppKit
 #if canImport(AsukaOps)
 import AsukaOps

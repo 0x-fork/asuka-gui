@@ -14,7 +14,6 @@
 // The AsukaRingView is the accessibility element either way, read as
 // AppKit's indicator is: a progress indicator with its value, from 0 to 1
 // (VoiceOver reads its percentage), or, without a value, a busy indicator.
-// Ports host/darwin's progressring.go.
 import AppKit
 #if canImport(AsukaOps)
 import AsukaOps

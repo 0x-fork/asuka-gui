@@ -1,7 +1,6 @@
-// modules.c: the host's own modules (host/windows' modules.go,
-// callmodule.go, more.go), what asuka/platform's call and send reach (the
-// Call command on the root, answered with the Result event): found by
-// name and answered once.
+// modules.c: the host's own modules, what asuka/platform's call and send
+// reach (the Call command on the root, answered with the Result event):
+// found by name and answered once.
 #include "modules.h"
 
 #include <shlwapi.h>

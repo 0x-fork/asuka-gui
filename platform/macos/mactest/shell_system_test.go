@@ -14,8 +14,8 @@ import (
 	"time"
 )
 
-// The shell's system modules the std packages call (host/darwin's
-// system.go, system2.go, documents.go, periodic.go: share, compose,
+// The shell's system modules the std packages call (System.swift,
+// System2.swift, Documents.swift, Periodic.swift: share, compose,
 // periodic, background, widget, liveActivity), called by name as the
 // packages call them (asuka/platform's call), each call's answer or error
 // shown in a Text: "label: ok <answer's hex>" (or, as text, "label: ok

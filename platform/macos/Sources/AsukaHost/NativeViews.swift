@@ -5,7 +5,6 @@
 // native view's, which fills it as the core places it. Its props go to the
 // view's set, its events come back with the context's emit, and it's
 // measured by its sizeThatFits (AsukaSizing's, or its view's fittingSize).
-// Ports host/darwin's native.go.
 import AppKit
 #if canImport(AsukaOps)
 import AsukaOps

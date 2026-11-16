@@ -1,6 +1,6 @@
 // flyout.c: panels, flyouts, windows sized to their content and
 // click-through windows (WindowConfig's Panel, Flyout, FitContent,
-// ClickThrough) (host/windows' flyout.go).
+// ClickThrough).
 //
 //   - A panel and a flyout are frameless popups and tool windows, of a
 //     class with the drop shadow of menus, with Windows 11's rounded

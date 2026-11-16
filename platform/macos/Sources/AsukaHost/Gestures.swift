@@ -10,8 +10,6 @@
 //     goes on to the scroll views, which still scroll.
 //   - A three-finger swipe (swipe(with:)), where the system's settings
 //     leave it to apps.
-//
-// Ports host/darwin's views.go's gesture and swipe.go.
 import AppKit
 #if canImport(AsukaOps)
 import AsukaOps

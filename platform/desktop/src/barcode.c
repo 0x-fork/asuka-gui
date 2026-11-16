@@ -1,8 +1,8 @@
 // barcode.c (platform/desktop/src): asuka_barcode.h, barcodes and QR
-// codes read in images in C alone, a port of the Go host's package
-// barcode (internal/barcode), which the Go tests check this against:
-// QR codes, Data Matrix, EAN-13, EAN-8, UPC-A, UPC-E, Code 128 and
-// Code 39, upright or turned by any angle. Built on every platform.
+// codes read in images in C alone, a port of Go's internal/barcode, which
+// the Go tests check this against: QR codes, Data Matrix, EAN-13, EAN-8,
+// UPC-A, UPC-E, Code 128 and Code 39, upright or turned by any angle. Built
+// on every platform.
 #include "asuka_barcode.h"
 
 #include <float.h>

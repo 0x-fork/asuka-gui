@@ -1,10 +1,9 @@
-// datepicker.c: a DatePicker (host/windows' datepicker.go) is the date
-// and time picker control (SysDateTimePick32): the locale's short date,
-// its time, or both, its calendar dropping down. Inline
-// (DatePickerProps.Inline), a date is a month calendar in place
-// (SysMonthCal32, as WinUI's CalendarView), with a time picker under it
-// for a date and time; a time alone stays the time picker, Windows having
-// no clock to show in place.
+// datepicker.c: a DatePicker is the date and time picker control
+// (SysDateTimePick32): the locale's short date, its time, or both, its
+// calendar dropping down. Inline (DatePickerProps.Inline), a date is a
+// month calendar in place (SysMonthCal32, as WinUI's CalendarView), with a
+// time picker under it for a date and time; a time alone stays the time
+// picker, Windows having no clock to show in place.
 #include "host.h"
 #include "parts.h"
 

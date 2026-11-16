@@ -3,8 +3,7 @@
 // Toolbar's buttons go from the leading edge, each its icon with its title
 // beside it; those that don't fit go in the menu of a More options button
 // after them. The Primary action is an accent button at the trailing end.
-// The bar shows while the stack's top screen has either (host/windows'
-// cmdbar.go).
+// The bar shows while the stack's top screen has either.
 #include "nav.h"
 
 static HWND cmd_button(node *b, const wchar_t *title) {

@@ -1,9 +1,9 @@
-// asuka_barcode.h: barcodes and QR codes read in images, in C alone (a
-// port of the Go host's package barcode): QR codes, Data Matrix, EAN-13,
-// EAN-8, UPC-A, UPC-E, Code 128 and Code 39, upright or turned by any
-// angle. Packages' Windows C reads codes with it (Windows has no reader
-// a desktop app can use); Linux's has ZBar. Implemented by
-// platform/desktop/src/barcode.c (every platform). Any thread.
+// asuka_barcode.h: barcodes and QR codes read in images, in C alone (a port
+// of internal/barcode): QR codes, Data Matrix, EAN-13, EAN-8, UPC-A, UPC-E,
+// Code 128 and Code 39, upright or turned by any angle. Packages' Windows C
+// reads codes with it (Windows has no reader a desktop app can use);
+// Linux's has ZBar. Implemented by platform/desktop/src/barcode.c (every
+// platform). Any thread.
 #ifndef ASUKA_BARCODE_H
 #define ASUKA_BARCODE_H
 

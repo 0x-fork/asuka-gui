@@ -1,8 +1,7 @@
 // instance.c: the app runs once, a second launch handing the first its
 // arguments and working directory; the files and URLs the app is opened
 // with; its URL scheme and file types registered for the user; quitting
-// and relaunching (host/windows' deeplink.go, deeplink_windows.go,
-// files.go, files_windows.go).
+// and relaunching.
 //
 // An app with an ID runs once unless asuka.toml's singleInstance is
 // false: a named mutex says it runs, and a second launch finds its

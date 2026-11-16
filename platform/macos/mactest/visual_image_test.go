@@ -71,7 +71,7 @@ func imageOf(t *testing.T, tr *Tree, i int) map[string]any {
 // An animated GIF plays through ImageIO (the frame it shows moves on),
 // reports its size as it loads, and stops where it is when paused; a
 // hash placeholder shows in a layer of its own until the image loads,
-// then fades out. (host/darwin's TestAnimatedImage.)
+// then fades out.
 func TestVisualAnimatedImage(t *testing.T) {
 	path := visualGIF(t, 3)
 	a := Run(t, fmt.Sprintf(`
@@ -138,7 +138,7 @@ func TestVisualAnimatedImage(t *testing.T) {
 
 // A placeholder image (a file) shows in the placeholder's layer while the
 // source loads, in its own mode; a source that fails reports its error
-// and leaves the placeholder. (host/darwin's TestImagePlaceholderFile.)
+// and leaves the placeholder.
 func TestVisualImagePlaceholderFile(t *testing.T) {
 	ph := visualGIF(t, 1)
 	a := Run(t, fmt.Sprintf(`

@@ -8,8 +8,7 @@
 // out (Transition; 0.25s, NSAnimationContext's default, over a
 // placeholder). An animated file (GIF, APNG, WebP, HEICS) plays through
 // ImageIO's CGAnimateImageDataWithBlock, which times and loops it as the
-// file says, while it isn't Paused. Ports host/darwin's media.go and
-// imageextra.go.
+// file says, while it isn't Paused.
 import AppKit
 import ImageIO
 #if canImport(AsukaOps)

@@ -14,7 +14,7 @@ import (
 // A click presses the innermost pressable view: Pressed, Press, then
 // Pressed off; moving off and back on, it's released and pressed again;
 // released off the view, it doesn't press; a pan that takes the mouse
-// cancels it; VoiceOver's press presses. (host/darwin's TestPressed.)
+// cancels it; VoiceOver's press presses.
 func TestVisualPressed(t *testing.T) {
 	a := Run(t, `
 		component Pressed {
@@ -80,7 +80,7 @@ func TestVisualPressed(t *testing.T) {
 
 // Hover: a tracking area's entered and exited; nested views both stay
 // hovered; leaving the app, nothing is; a view that appears under the
-// pointer is hovered, and hidden it isn't. (host/darwin's TestHover.)
+// pointer is hovered, and hidden it isn't.
 func TestVisualHover(t *testing.T) {
 	a := Run(t, `
 		component Hover {
@@ -133,7 +133,7 @@ func TestVisualHover(t *testing.T) {
 // Drops: AppKit gives a drag to the innermost registered view, which
 // hands it to the innermost target above it that takes it; DragOver
 // follows it; a text, a file, image data and the app's own drag drop as
-// the core expects. (host/darwin's TestDrop.)
+// the core expects.
 func TestVisualDrop(t *testing.T) {
 	a := Run(t, `
 		component Drops {
@@ -288,8 +288,7 @@ func TestVisualDrop(t *testing.T) {
 
 // A move with the button down past the drag distance drags a draggable
 // view: its press is cancelled, its items go on the pasteboard, and the
-// session reports Began, then Dropped or Cancelled. (host/darwin's
-// TestDragSource.)
+// session reports Began, then Dropped or Cancelled.
 func TestVisualDragSource(t *testing.T) {
 	a := Run(t, `
 		component Source {
@@ -334,7 +333,7 @@ func TestVisualDragSource(t *testing.T) {
 }
 
 // A quick drag with the mouse is a swipe, on a view that takes swipes and
-// no pans; a slow one isn't. (host/darwin's TestSwipeWithMouse.)
+// no pans; a slow one isn't.
 func TestVisualSwipeWithMouse(t *testing.T) {
 	a := Run(t, `
 		component Swipes {
@@ -413,7 +412,6 @@ func wheelFlick(id string, dx, dy int) string {
 // A trackpad's two-finger flick is a swipe: across always, up and down
 // only where no scroll view around the view scrolls that way (there it's
 // the scroll view's); fingers that stop before they lift aren't one.
-// (host/darwin's swipe.go.)
 func TestVisualSwipeWithTrackpad(t *testing.T) {
 	a := Run(t, `
 		component Swipes {

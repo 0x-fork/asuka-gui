@@ -1,9 +1,8 @@
-// More of the system's modules on a Mac (host/darwin's system2.go), those
-// the app's std packages call: asuka/background (an activity that keeps
-// App Nap off), asuka/widget and asuka/liveactivity (none on a Mac).
-// system2.go's others (sensors, splash, screen, tracking, integrity,
-// ageRange, nfc) aren't here: their std packages have their own Swift, or
-// none calls them.
+// More of the system's modules on a Mac, those the app's std packages
+// call: asuka/background (an activity that keeps App Nap off),
+// asuka/widget and asuka/liveactivity (none on a Mac). Others (sensors,
+// splash, screen, tracking, integrity, ageRange, nfc) aren't here: their
+// std packages have their own Swift, or none calls them.
 import AppKit
 
 /// Answers at once, with nothing.

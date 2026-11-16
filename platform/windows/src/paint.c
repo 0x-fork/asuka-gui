@@ -1,8 +1,7 @@
 // paint.c: every view of the host's own class draws itself into a
 // buffered DC (no flicker): first what's behind it where it's not opaque
 // (its parent, and the siblings under it, drawn again into the DC), then
-// its background, border and content (host/windows' paint.go, shadow.go,
-// shadowsteps.go, opacity.go).
+// its background, border and content.
 #include "host.h"
 #include "parts.h"
 

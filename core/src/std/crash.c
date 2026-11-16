@@ -21,10 +21,10 @@
 //	                    ANR's traces in a .trace beside it)
 //	reports/<id>.json   the reports, kept until the app deletes them
 //
-// The formats are the ones apps of the Go runtime wrote too, so a record
-// an older version of an app left reads the same. A run holds a lock on its .crash file while it lives (flock),
-// so a reader tells a run that ended from one still going (the app and
-// its share extension).
+// The formats are the ones older versions of Asuka's apps wrote too, so a
+// record an older version of an app left reads the same. A run holds a
+// lock on its .crash file while it lives (flock), so a reader tells a run
+// that ended from one still going (the app and its share extension).
 //
 // Builtins (std/crash's native fns):
 //
