@@ -1,12 +1,14 @@
 package pkgs
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -25,6 +27,77 @@ type CConfig struct {
 	Windows CSettings `json:"windows"`
 	Linux   CSettings `json:"linux"`
 	Web     CSettings `json:"web"`
+	// Prebuilt are libraries a vendor ships built ([c.prebuilt]), by
+	// target (CTargets): each a static library's path, or several,
+	// relative to the project, linked for that target only.
+	Prebuilt map[string]Paths `json:"prebuilt"`
+}
+
+// Paths is a path, or a list of them.
+type Paths []string
+
+// UnmarshalJSON reads a string or a list of strings.
+func (p *Paths) UnmarshalJSON(b []byte) error {
+	var one string
+	if err := json.Unmarshal(b, &one); err == nil {
+		*p = Paths{one}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(b, &many); err != nil {
+		return errors.New("a path, or a list of paths")
+	}
+	*p = many
+	return nil
+}
+
+// CTargets are [c.prebuilt]'s keys: a target, or a platform whose one
+// library is universal (a Mac's arm64 and x86_64; the simulator's), used
+// for a target of its own that has no key.
+var CTargets = []string{
+	"ios-arm64", "ios-simulator-arm64", "ios-simulator-x64", "ios-simulator",
+	"macos-arm64", "macos-x64", "macos",
+	"android-arm64", "android-arm", "android-x64",
+	"linux-x64", "linux-arm64",
+	"windows-x64", "windows-arm64",
+	"web",
+}
+
+// staticLib reports whether p names a static library (an archive).
+func staticLib(p string) bool {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".a", ".lib":
+		return true
+	}
+	return false
+}
+
+// PrebuiltFor are [c.prebuilt]'s libraries for target (CTargets: its own
+// key, else its platform's, universal), as paths in dir. None when the
+// table is empty; an error when it has none for target, which the app
+// can't then be built for.
+func (c *CConfig) PrebuiltFor(dir, target string) ([]string, error) {
+	if len(c.Prebuilt) == 0 {
+		return nil, nil
+	}
+	ps, ok := c.Prebuilt[target]
+	if !ok {
+		if i := strings.LastIndexByte(target, '-'); i > 0 {
+			ps, ok = c.Prebuilt[target[:i]]
+		}
+	}
+	if !ok {
+		return nil, fmt.Errorf("[c.prebuilt] has no library for %s", target)
+	}
+	var out []string
+	for _, p := range ps {
+		abs := filepath.Join(dir, filepath.FromSlash(p))
+		if _, err := os.Stat(abs); err != nil {
+			return nil, fmt.Errorf("[c.prebuilt] %s: %v", target, err)
+		}
+		out = append(out, abs)
+	}
+	return out, nil
 }
 
 // CSettings are a [c] table's keys.
@@ -80,6 +153,9 @@ func (c *CConfig) For(platform string) CSettings {
 
 // Empty reports whether c says nothing.
 func (c *CConfig) Empty() bool {
+	if len(c.Prebuilt) > 0 {
+		return false
+	}
 	for _, p := range append([]string{""}, CPlatforms...) {
 		s := c.For(p)
 		if len(s.Sources)+len(s.Include)+len(s.Defines)+len(s.Flags)+len(s.Libraries)+len(s.Frameworks) > 0 {
@@ -123,6 +199,27 @@ func (c *CConfig) Check() error {
 		for _, p := range append(append([]string{}, s.Sources...), s.Include...) {
 			if filepath.IsAbs(p) || strings.HasPrefix(filepath.ToSlash(filepath.Clean(p)), "../") {
 				return fmt.Errorf("[%s]: %q is outside the project (paths are relative to asuka.toml's directory, inside it)", n, p)
+			}
+		}
+	}
+	keys := make([]string, 0, len(c.Prebuilt))
+	for k := range c.Prebuilt {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !slices.Contains(CTargets, k) {
+			return fmt.Errorf("[c.prebuilt]: %q isn't a target (%s)", k, strings.Join(CTargets, ", "))
+		}
+		if len(c.Prebuilt[k]) == 0 {
+			return fmt.Errorf("[c.prebuilt] %s: no library", k)
+		}
+		for _, p := range c.Prebuilt[k] {
+			if filepath.IsAbs(p) || strings.HasPrefix(filepath.ToSlash(filepath.Clean(p)), "../") {
+				return fmt.Errorf("[c.prebuilt] %s: %q is outside the project (paths are relative to asuka.toml's directory, inside it)", k, p)
+			}
+			if !staticLib(p) {
+				return fmt.Errorf("[c.prebuilt] %s: %q isn't a static library (.a, or .lib on Windows): a dynamic one ships in a native package's Swift package or Gradle module (docs/c.md, Prebuilt libraries)", k, p)
 			}
 		}
 	}
