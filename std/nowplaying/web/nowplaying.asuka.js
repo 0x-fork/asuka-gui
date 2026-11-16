@@ -10,34 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./nowplaying.decl.asuka.js";
 import * as impl from "./nowplaying.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * Where playback is.
- */
-export const State = Object.freeze({
-  paused: 0,
-  playing: 1,
-  stopped: 2,
-});
-
-/**
- * What the system asks of the app (internal/nowplayingspec's numbers).
- */
-export const Command = Object.freeze({
-  unknown: 0,
-  play: 1,
-  pause: 2,
-  togglePlayPause: 3,
-  stop: 4,
-  next: 5,
-  previous: 6,
-  seek: 7,
-  skipForward: 8,
-  skipBackward: 9,
-});
 
 const provider = {
   make(iface) {

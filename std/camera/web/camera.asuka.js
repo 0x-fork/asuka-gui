@@ -11,38 +11,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./camera.decl.asuka.js";
 import * as impl from "./camera.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * Which camera a View shows.
- */
-export const Facing = Object.freeze({
-  back: 0,
-  front: 1,
-});
-
-/**
- * What a View is set up for.
- */
-export const Mode = Object.freeze({
-  photo: 0,
-  video: 1,
-});
-
-const errorIndex = { noCamera: 0, noView: 1, notAllowed: 2 };
-const errorMessage = ["camera: there's no camera", "camera: no camera view is showing", "camera: not allowed"];
-
-/** One of the errors the package declares (native.NewError): throw new CameraError("noCamera"). */
-export class CameraError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "CameraError";
-  }
-}
 
 function viewView(ctx) {
   const events = {

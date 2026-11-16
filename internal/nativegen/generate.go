@@ -14,7 +14,8 @@ import (
 //	               names): its Swift in swift/
 //	android/       a Gradle module (build.gradle.kts), its Kotlin in
 //	               src/main/kotlin, in the package's Kotlin package
-//	web/           JavaScript modules: <package>.js
+//	web/           JavaScript modules: <package>.js, which may import
+//	               the package's enums and errors from <package>.asuka.js
 //
 //	desktop/       C, for Windows and Linux (DesktopDir)
 //
@@ -73,7 +74,13 @@ func Files(p *Package) (map[string][]byte, error) {
 		files[filepath.Join("android", KotlinFile(p))] = GenerateKotlin(p)
 	}
 	if HasPlatform(p.Dir, "web") {
+		if err := CheckJSImports(p); err != nil {
+			return nil, err
+		}
 		files[filepath.Join("web", JSFile(p))] = GenerateJS(p)
+		if d := GenerateJSDecl(p); d != nil {
+			files[filepath.Join("web", JSDeclFile(p))] = d
+		}
 	}
 	return files, nil
 }
@@ -117,6 +124,19 @@ func Write(p *Package) ([]string, error) {
 			return nil, err
 		}
 		wrote = append(wrote, rel)
+	}
+	// A declarations module the package no longer has (its last enum
+	// and error gone): generated, so it goes.
+	if HasPlatform(p.Dir, "web") {
+		rel := filepath.Join("web", JSDeclFile(p))
+		if _, ok := files[rel]; !ok {
+			if b, err := os.ReadFile(filepath.Join(p.Dir, rel)); err == nil && HashOf(b) != "" {
+				if err := os.Remove(filepath.Join(p.Dir, rel)); err != nil {
+					return nil, err
+				}
+				wrote = append(wrote, rel)
+			}
+		}
 	}
 	sort.Strings(wrote)
 	return wrote, nil

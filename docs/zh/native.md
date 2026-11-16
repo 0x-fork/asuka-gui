@@ -66,6 +66,7 @@ battery/
   web/
     battery.js             你写的：export function makeBattery
     battery.asuka.js       生成的
+    battery.decl.asuka.js  生成的：包中的枚举和错误（有的话）
   desktop/                 Windows 和 Linux 的 C 实现
     battery.c              你写的：battery_make_Battery（_windows.c、_linux.c 只用于一个平台）
     battery.asuka.h        生成的：类型、vtable、你要写的函数
@@ -352,7 +353,7 @@ export function makeSegmented(events) {
 }
 ```
 
-方法可以返回 promise，即使它在 Asuka 中不是 `async` 的。要抛出包中声明的错误，就使用生成的错误类（`import { KitchenError } from "./kitchen.asuka.js"`）。`web/` 中的每个文件都会随应用一起发布，所以模块可以导入自己的辅助脚本，也可以相对于 `import.meta.url` 获取自己的资源。其中任何文件变化时，`asuka dev --platform web` 都会重新加载页面。参见 [Web](web.md#原生代码)。
+方法可以返回 promise，即使它在 Asuka 中不是 `async` 的。要抛出包中声明的错误，就使用生成的错误类（`import { KitchenError } from "./kitchen.asuka.js"`）。包中的枚举和错误会在包自己的模块运行之前创建好，所以模块加载时就可以读取它们（比如按枚举的取值建一张表）；如果导入了包中没有声明的名字，`asuka native generate` 会报错。`web/` 中的每个文件都会随应用一起发布，所以模块可以导入自己的辅助脚本，也可以相对于 `import.meta.url` 获取自己的资源。其中任何文件变化时，`asuka dev --platform web` 都会重新加载页面。参见 [Web](web.md#原生代码)。
 
 ## Windows 和 Linux：C
 
