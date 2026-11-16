@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 #ifndef AK_GTK_REAL_HEADERS
 
@@ -904,6 +905,7 @@ typedef struct _AdwDialog AdwDialog;
 typedef struct _AdwAlertDialog AdwAlertDialog;
 typedef struct _AdwEntryRow AdwEntryRow;
 typedef struct _AdwPreferencesRow AdwPreferencesRow;
+typedef struct _AdwActionRow AdwActionRow;
 typedef struct _AdwPasswordEntryRow AdwPasswordEntryRow;
 typedef struct _AdwPreferencesGroup AdwPreferencesGroup;
 typedef struct _AdwStyleManager AdwStyleManager;
@@ -925,6 +927,20 @@ typedef enum { ADW_RESPONSE_DEFAULT, ADW_RESPONSE_SUGGESTED, ADW_RESPONSE_DESTRU
 typedef enum { ADW_TOOLBAR_FLAT, ADW_TOOLBAR_RAISED, ADW_TOOLBAR_RAISED_BORDER } AdwToolbarStyle;
 typedef enum { ADW_VIEW_SWITCHER_POLICY_NARROW, ADW_VIEW_SWITCHER_POLICY_WIDE } AdwViewSwitcherPolicy;
 typedef enum { ADW_TOAST_PRIORITY_NORMAL, ADW_TOAST_PRIORITY_HIGH } AdwToastPriority;
+// Evolution Data Server's and libical-glib's.
+typedef struct _ESourceRegistry ESourceRegistry;
+typedef struct _ESource ESource;
+typedef struct _ESourceExtension ESourceExtension;
+typedef struct _EClient EClient;
+typedef struct _EBookClient EBookClient;
+typedef struct _ECalClient ECalClient;
+typedef struct _EContact EContact;
+typedef struct _EVCard EVCard;
+typedef struct _ICalComponent ICalComponent;
+typedef struct _ICalTime ICalTime;
+typedef struct _ICalTimezone ICalTimezone;
+typedef gboolean (*ECalRecurInstanceCb)(ICalComponent *comp, ICalTime *start, ICalTime *end, gpointer data, GCancellable *cancellable, GError **error);
+
 typedef enum { ADW_DIALOG_AUTO, ADW_DIALOG_FLOATING, ADW_DIALOG_BOTTOM_SHEET } AdwDialogPresentationMode;
 
 #endif  // AK_GTK_REAL_HEADERS
@@ -965,6 +981,11 @@ enum {
 	AK_LIB_EPOXY,
 	AK_LIB_SECRET,
 	AK_LIB_SOUP,
+	AK_LIB_EDS,  // Evolution Data Server and libical-glib
+	AK_LIB_EBOOK,
+	AK_LIB_EBOOKC,
+	AK_LIB_ECAL,
+	AK_LIB_ICAL,
 	AK_LIB_COUNT,
 };
 

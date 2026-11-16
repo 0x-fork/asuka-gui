@@ -15,7 +15,7 @@
 #pragma GCC visibility pop
 
 typedef struct {
-	const char *names[4];  // sonames, tried in order
+	const char *names[6];  // sonames, tried in order
 } lib_names;
 
 static const lib_names sonames[AK_LIB_COUNT] = {
@@ -40,6 +40,11 @@ static const lib_names sonames[AK_LIB_COUNT] = {
 	[AK_LIB_EPOXY] = {{"libepoxy.so.0", "libepoxy.so"}},
 	[AK_LIB_SECRET] = {{"libsecret-1.so.0", "libsecret-1.so"}},
 	[AK_LIB_SOUP] = {{"libsoup-3.0.so.0", "libsoup-3.0.so"}},
+	[AK_LIB_EDS] = {{"libedataserver-1.2.so.27", "libedataserver-1.2.so.26", "libedataserver-1.2.so.25", "libedataserver-1.2.so.24", "libedataserver-1.2.so"}},
+	[AK_LIB_EBOOK] = {{"libebook-1.2.so.21", "libebook-1.2.so.20", "libebook-1.2.so.19", "libebook-1.2.so"}},
+	[AK_LIB_EBOOKC] = {{"libebook-contacts-1.2.so.4", "libebook-contacts-1.2.so.3", "libebook-contacts-1.2.so"}},
+	[AK_LIB_ECAL] = {{"libecal-2.0.so.3", "libecal-2.0.so.2", "libecal-2.0.so.1", "libecal-2.0.so"}},
+	[AK_LIB_ICAL] = {{"libical-glib.so.3", "libical-glib.so"}},
 };
 
 static void *handles[AK_LIB_COUNT];
@@ -62,7 +67,7 @@ static const sym_entry table[] = {
 static bool open_lib(int lib) {
 	if (tried[lib]) return handles[lib] != NULL;
 	tried[lib] = true;
-	for (int i = 0; i < 4 && sonames[lib].names[i]; i++) {
+	for (int i = 0; i < 6 && sonames[lib].names[i]; i++) {
 		handles[lib] = dlopen(sonames[lib].names[i], RTLD_NOW | RTLD_GLOBAL);
 		if (handles[lib]) break;
 	}
