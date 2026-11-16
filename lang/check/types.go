@@ -38,6 +38,8 @@ const (
 	KNone                      // the type of the none literal: any optional's
 	KView                      // what an element or a component makes
 	KTestApp                   // what mount returns
+	KGraphics                  // a Canvas's drawing context (the UI runtime's)
+	KPath                      // an outline a Shape or a Graphics draws (the UI runtime's)
 	KNever                     // what never returns (throw, panic)
 )
 
@@ -64,6 +66,8 @@ var (
 	NoneType = &Basic{KNone, "none"}
 	View     = &Basic{KView, "View"}
 	TestApp  = &Basic{KTestApp, "TestApp"}
+	Graphics = &Basic{KGraphics, "Graphics"}
+	Path     = &Basic{KPath, "Path"}
 	Never    = &Basic{KNever, "never"}
 )
 

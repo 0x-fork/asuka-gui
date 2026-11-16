@@ -71,6 +71,7 @@ node --test platform/web                # the JavaScript decoder, likewise
 go generate ./ops                   # Go constants, Swift, Kotlin and JavaScript decoders
 go run platform/web/gen_symbols.go  # the web host's symbols, from the Android host's
 go generate ./i18n                  # CLDR's tables, from the pinned release
+go test ./i18n -run 'CTables|CompileCases' -update-c  # the C core's CLDR tables (core/src/ui/i18n_gen.c) and its catalog test data
 go generate ./sdk/sqlite        # the sqlite plugin's library for every platform, into sdk/sqlite/build (Xcode, the NDK, Zig)
 go run ./cmd/asuka plugin publish sdk/sqlite  # upload a plugin's build to its GitHub release, record it in its asuka-plugin.toml
 go run ./cmd/asuka generate examples/i18n  # an app's catalog functions (dev and build do it too)

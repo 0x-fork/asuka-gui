@@ -42,6 +42,7 @@ enum {
 	AK_ELF_CACHE = 1 << 3,     // its size is a function of its content: the shared cache
 	AK_ELF_CHILDREN = 1 << 4,  // takes children
 	AK_ELF_FRAGMENT = 1 << 5,
+	AK_ELF_SIZED = 1 << 6,     // hears its laid-out size (cls->sized), as a layout handler does
 };
 
 // An element's class: what's particular to a kind of element.
@@ -70,6 +71,9 @@ struct ak_el_class {
 	void (*styled)(ak_view *e, uint16_t key);
 	// drop frees the class's state.
 	void (*drop)(ak_view *e);
+	// sized hears the size it's laid out at (AK_ELF_SIZED), after the
+	// frames are applied, as layout handlers do: a Canvas draws for it.
+	void (*sized)(ak_view *e, float w, float h);
 };
 
 struct ak_view {
@@ -106,6 +110,7 @@ struct ak_view {
 	ak_str *text, *text2;  // what the measure cache keys it by (Text's text; Button's title and icon)
 	int32_t variant;
 	void *impl;  // the class's state
+	struct ak_ix *ix;  // its interaction states, variants, keys, drags (ui_ext.h)
 	// A grid's tracks, converted for layout (what its style points to).
 	void *grid_mem;
 };
@@ -169,6 +174,7 @@ struct ak_ui_root {
 	int laying;
 	uint64_t flushes;
 	bool flushing;
+	struct ak_rext *ext;  // animation, frames, its own layout roots (ui_ext.h)
 };
 
 // The runtime's state, one per process.

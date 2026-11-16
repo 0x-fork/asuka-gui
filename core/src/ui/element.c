@@ -2,7 +2,7 @@
 // have a native view; flattened containers only take part in layout;
 // fragments (Show, For, Dynamic, a component's several views) have
 // neither, their children splicing into their parent.
-#include "ui/ui_int.h"
+#include "ui/ui_ext.h"
 
 ak_ui_state ak_ui;
 
@@ -114,6 +114,7 @@ static void view_drop(ak_opaque *o) {
 	}
 	ak_vec_free(&e->kids);
 	if (e->cls->drop) e->cls->drop(e);
+	ak_ix_free(e);
 	ak_style_free(e);
 	for (uint32_t i = 0; i < e->handlers.len; i++) ak_release(e->handlers.data[i].c);
 	ak_vec_free(&e->handlers);
@@ -350,7 +351,7 @@ void ak_view_emit_frame(ak_view *e) {
 			e->autofocus = false;
 			ak_batch_command(e->r->batch, e->id, AK_CMD_FOCUS, NULL, 0);
 		}
-		if (!e->layout_q && (ak_view_handler(e, AK_EV_VIEW_LAYOUT) || ak_view_handler(e, AK_EV_ROW_LAYOUT) ||
+		if (!e->layout_q && ((e->cls->flags & AK_ELF_SIZED) || ak_view_handler(e, AK_EV_VIEW_LAYOUT) || ak_view_handler(e, AK_EV_ROW_LAYOUT) ||
 		                     ak_view_handler(e, AK_EV_COLUMN_LAYOUT) || ak_view_handler(e, AK_EV_SAFE_AREA_LAYOUT))) {
 			e->layout_q = true;
 			ak_vec_push(&e->r->layout_q, (ak_view *)ak_retain(e));

@@ -8,7 +8,7 @@
 // bits 32-39 and its float32 value in bits 0-31; Edges, Font, Transform,
 // Shadow, Gradient, Transition and Grid are structs in types.asuka's
 // field order; Track and GridLine are enums with payloads.
-#include "ui/ui_int.h"
+#include "ui/ui_ext.h"
 
 // ---- Lengths ----
 
@@ -423,6 +423,9 @@ static void send(ak_view *e, uint16_t key, const ak_val *v, const ak_val *prev) 
 	case AK_KEY_A11Y_HIDDEN: ak_batch_set_bool(b, id, AK_PROP_A11Y_HIDDEN, x.i != 0); break;
 	case AK_KEY_TOOLTIP: send_string(e, AK_PROP_TOOLTIP, v); break;
 	case AK_KEY_DISABLED: ak_batch_set_bool(b, id, AK_PROP_DISABLED, x.i != 0); break;
+	default:
+		if (ak_ix_style_key(key)) ak_ix_style_set(e, key, x, prev);
+		break;
 	}
 }
 
@@ -472,6 +475,11 @@ void ak_style_set(ak_view *e, uint16_t key, ak_val v) {
 		ent->v = v;
 	} else {
 		ak_vec_push(&e->style, ((ak_style_ent){key, v}));
+	}
+	if (ak_ix_style_key(key)) {
+		ak_ix_style_set(e, key, v, had ? &prev : NULL);
+		ak_release_val(prev, k);
+		return;
 	}
 	if (key == AK_KEY_GRID) {
 		void *old = e->grid_mem;

@@ -14,6 +14,7 @@ import (
 )
 
 func main() {
+	readEnums("types.asuka")
 	write("elements.asuka", asuka())
 	write("enums.asuka", enums())
 	write(filepath.Join("..", "..", "core", "src", "ui", "elements_gen.h"), header())
@@ -63,6 +64,9 @@ func asuka() []byte {
 			if k.Positional {
 				params = append(params, k.Name+": "+k.Type)
 			}
+		}
+		if e.Variants {
+			fmt.Fprintf(&b, "///\n/// Takes the style's variants: %s { … }.\n", strings.Join(prelude.Variants, ", "))
 		}
 		fmt.Fprintf(&b, "native component %s(%s) {\n", e.Name, strings.Join(params, ", "))
 		if e.Children {
@@ -120,7 +124,7 @@ func enums() []byte {
 // The wire's enums that aren't the language's: what only the runtime
 // encodes (canvas ops, paths, window actions), and SemanticColor, whose
 // cases are Color's.
-var skipEnum = map[string]bool{"PathOp": true, "CanvasOp": true, "WindowAction": true, "GestureState": true, "Lifecycle": true, "DragPhase": true, "LocationAction": true, "SemanticColor": true}
+var skipEnum = map[string]bool{"PathOp": true, "CanvasOp": true, "WindowAction": true, "Lifecycle": true, "LocationAction": true, "SemanticColor": true}
 
 var renameEnum = map[string]string{"Placement": "PopoverPlacement"}
 
@@ -170,7 +174,35 @@ func kind(t string) string {
 	return "AK_K_REF"
 }
 
-// enumTypes are types.asuka's payloadless enums.
+// readEnums adds the payloadless enums a prelude file declares to
+// enumTypes: their values are ints.
+func readEnums(path string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	lines := strings.Split(string(b), "\n")
+	for i, l := range lines {
+		name, ok := strings.CutPrefix(l, "enum ")
+		if !ok {
+			continue
+		}
+		name = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(name), "{"))
+		payload := false
+		for _, c := range lines[i+1:] {
+			if strings.HasPrefix(c, "}") {
+				break
+			}
+			payload = payload || strings.Contains(c, "(")
+		}
+		if !payload {
+			enumTypes[name] = true
+		}
+	}
+}
+
+// enumTypes are types.asuka's payloadless enums (readEnums finds them).
 var enumTypes = map[string]bool{
 	"Axis": true, "Justify": true, "Align": true, "Platform": true, "SizeClass": true, "TextAlign": true, "Role": true, "Material": true,
 	"ButtonVariant": true, "Keyboard": true, "TextStyle": true, "FontWeight": true,
@@ -223,6 +255,18 @@ func header() []byte {
 		}
 	}
 	fmt.Fprintf(&b, "\tAK_EV__COUNT = %d,\n};\n\n", n+1)
+
+	b.WriteString("// Interaction states, which style variants follow (a bit each), in\n// the order variants are laid over the style.\nenum {\n")
+	for i, v := range prelude.Variants {
+		fmt.Fprintf(&b, "\tAK_STATE_%s = %d,\n", upper(v), 1<<i)
+	}
+	fmt.Fprintf(&b, "\tAK_STATE__COUNT = %d,\n};\n\n", len(prelude.Variants))
+
+	b.WriteString("// The elements that take variants.\nstatic const bool ak_el_variants[] = {false,")
+	for _, e := range prelude.Elements {
+		fmt.Fprintf(&b, " %v,", e.Variants)
+	}
+	b.WriteString("};\n\n")
 
 	b.WriteString("static const char *const ak_el_names[] = {\"\",")
 	for _, e := range prelude.Elements {

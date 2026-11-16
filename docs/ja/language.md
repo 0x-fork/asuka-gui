@@ -418,6 +418,19 @@ View { style card; background: .accent }   // 後に書いたプロパティが�
 
 スタイルを何も指定しない要素は、プラットフォーム純正のものと同じ見た目になります。
 
+コンテナ（`View`、`Row`、`Column`、`SafeArea`）には**バリアント**を書けます。インタラクションの状態の名前を付けたスタイルのプロパティのまとまりで、コンテナがその状態にある間、元のスタイルの上に重ねられます。CSS の `:hover` や `:active` にあたるものです。状態は `hovered`、`pressed`、`dragging`（ドラッグされている間）、`dragOver`（受け付けるドラッグが上にある間）の 4 つで、この順に重なるため、`pressed` は `hovered` より優先されます。バリアントが変えるのは書いたプロパティだけで、その値はほかのプロパティと同じくバインディングです。
+
+```asuka
+View {
+  padding: 16; radius: 12; background: .secondaryBackground
+  hovered { borderColor: .accent }
+  pressed { background: .separator; opacity: 0.8 }
+  on press { open() }
+}
+```
+
+ビューが状態を報告するのは、どこかでその状態が使われたときだけです。そのため `pressed` バリアントを持たないビューは、プラットフォーム自身の押下時の見た目をそのまま保ちます。ほかのビューは名前を通してビューの状態に追従できます。`View as card { … }` と書き、任意のバインディングで `card.hovered`（あるいは `card.pressed`、`card.dragging`、`card.dragOver`）を読みます。子ビュー（グループ全体のホバー）でも兄弟のビューでも使えます。スタイル以外の反応にはハンドラーを使います：`on pressedChange(p)`、`on hoverChange(h)`。
+
 ## ナビゲーション
 
 ```asuka

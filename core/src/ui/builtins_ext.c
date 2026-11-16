@@ -1,0 +1,295 @@
+// builtins_ext.c: the builtins of the UI runtime's interaction, media,
+// graphics and language parts (ui_ext.h), registered with ui.*'s
+// (builtins.c). As every builtin, each borrows its arguments and returns
+// an owned result. Arguments, in register order (kinds as rt.h's; "?" a
+// ref that may be none; Task<T> a future the caller awaits):
+//
+//	name                    arguments                                      result
+//	ui.variant              v: View, state: int (AK_STATE_*), key: int
+//	                        (a style key), value: the key's kind            -
+//	ui.variant_bind         v, state, key, thunk: fn() -> the key's kind     -
+//	ui.state                v: View, state: int                            bool (tracked)
+//	ui.use_keys             keys: [Shortcut]                               -
+//	ui.animate              anim: Animation?, body: fn()                   -
+//	ui.animating            -                                              bool
+//	ui.on_frame             f: fn(Duration)                                fn() (stop)
+//	ui.play, ui.pause       v: View (a Video)                              -
+//	ui.seek                 v: View, seconds: float                        -
+//	ui.web_eval             v: View (a WebView), script: string            -
+//	ui.web_navigate         v: View, to: int (0 back, 1 forward,
+//	                        2 reload, 3 stop)                              -
+//	ui.web_eval_result      v: View, script: string                        Task<string> (JSON)
+//	ui.web_cookies          url: string                                    Task<string>
+//	ui.insert_text          v: View (a TextField), text: string            -
+//	ui.format               v: View, format: int (TextFormat), on: bool    -
+//	ui.toggle_format        v: View, format: int                           -
+//	ui.set_link             v: View, url: string                           -
+//	ui.native               type: string ("<class>#<View>")                View
+//	ui.native_set           v: View, name: string, value: the prop's
+//	                        kind, desc: string (its descriptor)            -
+//	ui.native_bind          v, name, thunk: fn() -> the prop's kind, desc  -
+//	ui.native_on            v, name, handler: fn(params...), desc: string
+//	                        (the parameters' descriptors, in order)        -
+//	ui.share                text: string                                   -
+//	ui.share_files          paths: [string], mime: string, uti: string,
+//	                        title: string, from: View?                     Task<void>
+//	ui.haptic               kind: int (Haptic)                             -
+//	ui.copy                 text: string                                   -
+//	ui.open_url             url: string                                    -
+//	ui.announce             text: string                                   -
+//	ui.a11y_focus           v: View                                        -
+//	ui.call                 module: string, method: string, args: bytes    Task<bytes>
+//	ui.view_id              v: View                                        int
+//	ui.on_open_url          f: fn(string)                                  -
+//	ui.on_open_files        f: fn([string])                                -
+//	ui.on_share             f: fn([SharedItem])                            -
+//	i18n.locale             -                                              string (tracked)
+//	i18n.set_locale         tag: string ("": the user's languages)         -
+//	i18n.set_languages      tags: [string]                                 -
+//	i18n.languages          -                                              [string]
+//	i18n.preferred_languages -                                             [string] (tracked)
+//	i18n.is_rtl             -                                              bool (tracked)
+//	i18n.region             -                                              Region (tracked)
+//	i18n.format_locale      -                                              string (tracked)
+//	i18n.catalog            blob: bytes (i18n's Catalog.Compile)           Catalog
+//	i18n.say                catalog: Catalog, key: int, args: tuple?,
+//	                        lang: string? (none: the language shown)        string (tracked)
+//
+// canvas.* and path.*, a Canvas's Graphics and Path, are canvas.c's.
+#include "ui/ui_ext.h"
+#include "ui/i18n.h"
+#include "native/native.h"
+
+static ak_val none(void) { return (ak_val){0}; }
+
+static ak_view *view_arg(ak_val *a, uint32_t n, uint32_t i, const char *name) {
+	if (i >= n || !a[i].p || ((ak_obj *)a[i].p)->tag != AK_TAG_VIEW) ak_panic("%s: argument %u isn't a View", name, i);
+	return a[i].p;
+}
+
+static ak_view *view_or_none(ak_val *a, uint32_t n, uint32_t i) {
+	return i < n && a[i].p && ((ak_obj *)a[i].p)->tag == AK_TAG_VIEW ? a[i].p : NULL;
+}
+
+static ak_val b_variant(ak_val *a, uint32_t n) {
+	ak_ui_variant(view_arg(a, n, 0, "ui.variant"), (uint8_t)a[1].i, (uint16_t)a[2].i, a[3]);
+	return none();
+}
+
+static ak_val b_variant_bind(ak_val *a, uint32_t n) {
+	ak_ui_variant_bind(view_arg(a, n, 0, "ui.variant_bind"), (uint8_t)a[1].i, (uint16_t)a[2].i, a[3].p);
+	return none();
+}
+
+static ak_val b_state(ak_val *a, uint32_t n) { return (ak_val){.i = ak_ui_view_state(view_arg(a, n, 0, "ui.state"), (uint8_t)a[1].i)}; }
+
+static ak_val b_use_keys(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_use_keys(a[0].p);
+	return none();
+}
+
+static ak_val b_animate(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_animate(a[0].p, a[1].p);
+	return none();
+}
+
+static ak_val b_animating(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = ak_ui_animating()};
+}
+
+static ak_val b_on_frame(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_on_frame(a[0].p)};
+}
+
+static ak_val b_play(ak_val *a, uint32_t n) {
+	ak_ui_video_play(view_arg(a, n, 0, "ui.play"));
+	return none();
+}
+
+static ak_val b_pause(ak_val *a, uint32_t n) {
+	ak_ui_video_pause(view_arg(a, n, 0, "ui.pause"));
+	return none();
+}
+
+static ak_val b_seek(ak_val *a, uint32_t n) {
+	ak_ui_video_seek(view_arg(a, n, 0, "ui.seek"), a[1].f);
+	return none();
+}
+
+static ak_val b_web_eval(ak_val *a, uint32_t n) {
+	ak_ui_web_eval(view_arg(a, n, 0, "ui.web_eval"), a[1].p);
+	return none();
+}
+
+static ak_val b_web_navigate(ak_val *a, uint32_t n) {
+	ak_ui_web_navigate(view_arg(a, n, 0, "ui.web_navigate"), a[1].i);
+	return none();
+}
+
+static ak_val b_web_eval_result(ak_val *a, uint32_t n) { return (ak_val){.p = ak_ui_web_eval_result(view_or_none(a, n, 0), a[1].p)}; }
+
+static ak_val b_web_cookies(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_web_cookies(a[0].p)};
+}
+
+static ak_val b_insert_text(ak_val *a, uint32_t n) {
+	ak_ui_insert_text(view_arg(a, n, 0, "ui.insert_text"), a[1].p);
+	return none();
+}
+
+static ak_val b_format(ak_val *a, uint32_t n) {
+	ak_ui_format(view_arg(a, n, 0, "ui.format"), a[1].i, a[2].i ? 1 : 0);
+	return none();
+}
+
+static ak_val b_toggle_format(ak_val *a, uint32_t n) {
+	ak_ui_format(view_arg(a, n, 0, "ui.toggle_format"), a[1].i, 2);
+	return none();
+}
+
+static ak_val b_set_link(ak_val *a, uint32_t n) {
+	ak_ui_set_link(view_arg(a, n, 0, "ui.set_link"), a[1].p);
+	return none();
+}
+
+static const char *desc_arg(ak_val v) {
+	const ak_str *s = v.p;
+	return s ? s->data : "v";
+}
+
+static ak_val b_native(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_native(a[0].p)};
+}
+
+static ak_val b_native_set(ak_val *a, uint32_t n) {
+	ak_ui_native_set(view_arg(a, n, 0, "ui.native_set"), a[1].p, a[2], desc_arg(a[3]), ak_native_running_types());
+	return none();
+}
+
+static ak_val b_native_bind(ak_val *a, uint32_t n) {
+	ak_ui_native_bind(view_arg(a, n, 0, "ui.native_bind"), a[1].p, a[2].p, desc_arg(a[3]), ak_native_running_types());
+	return none();
+}
+
+static ak_val b_native_on(ak_val *a, uint32_t n) {
+	ak_ui_native_on(view_arg(a, n, 0, "ui.native_on"), a[1].p, a[2].p, desc_arg(a[3]), ak_native_running_types());
+	return none();
+}
+
+#define STR_CMD(fname, call)              \
+	static ak_val fname(ak_val *a, uint32_t n) { \
+		AK_UNUSED(n);                     \
+		call(a[0].p);                     \
+		return none();                    \
+	}
+
+STR_CMD(b_share, ak_ui_share)
+STR_CMD(b_copy, ak_ui_copy)
+STR_CMD(b_open_url, ak_ui_open_url)
+STR_CMD(b_announce, ak_ui_announce)
+STR_CMD(b_on_open_url, ak_ui_on_open_url)
+STR_CMD(b_on_open_files, ak_ui_on_open_files)
+STR_CMD(b_on_share, ak_ui_on_share)
+
+static ak_val b_share_files(ak_val *a, uint32_t n) { return (ak_val){.p = ak_ui_share_files(a[0].p, a[1].p, a[2].p, a[3].p, view_or_none(a, n, 4))}; }
+
+static ak_val b_haptic(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_haptic(a[0].i);
+	return none();
+}
+
+static ak_val b_a11y_focus(ak_val *a, uint32_t n) {
+	ak_ui_a11y_focus(view_arg(a, n, 0, "ui.a11y_focus"));
+	return none();
+}
+
+static ak_val b_call(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_call(a[0].p, a[1].p, a[2].p)};
+}
+
+static ak_val b_view_id(ak_val *a, uint32_t n) { return (ak_val){.i = ak_ui_view_id(view_or_none(a, n, 0))}; }
+
+static ak_val b_locale(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_locale()};
+}
+
+static ak_val b_set_locale(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_set_locale(a[0].p);
+	return none();
+}
+
+static ak_val b_set_languages(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_set_languages(a[0].p);
+	return none();
+}
+
+static ak_val b_languages(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_languages()};
+}
+
+static ak_val b_preferred(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_preferred_languages()};
+}
+
+static ak_val b_is_rtl(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = ak_ui_is_rtl()};
+}
+
+static ak_val b_region(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return ak_ui_region();
+}
+
+static ak_val b_format_locale(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_format_locale()};
+}
+
+static ak_val b_catalog(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_catalog(a[0].p)};
+}
+
+static ak_val b_say(ak_val *a, uint32_t n) {
+	return (ak_val){.p = ak_i18n_say(a[0].p, a[1].i, n > 2 ? a[2] : none(), n > 3 ? a[3].p : NULL)};
+}
+
+void ak_canvas_builtins_init(void);
+
+void ak_ui_ext_builtins_init(void);
+
+void ak_ui_ext_builtins_init(void) {
+	static const struct {
+		const char *name;
+		ak_builtin_fn fn;
+	} t[] = {
+		{"ui.variant", b_variant}, {"ui.variant_bind", b_variant_bind}, {"ui.state", b_state}, {"ui.use_keys", b_use_keys},
+		{"ui.animate", b_animate}, {"ui.animating", b_animating}, {"ui.on_frame", b_on_frame}, {"ui.play", b_play},
+		{"ui.pause", b_pause}, {"ui.seek", b_seek}, {"ui.web_eval", b_web_eval}, {"ui.web_navigate", b_web_navigate},
+		{"ui.web_eval_result", b_web_eval_result}, {"ui.web_cookies", b_web_cookies}, {"ui.insert_text", b_insert_text},
+		{"ui.format", b_format}, {"ui.toggle_format", b_toggle_format}, {"ui.set_link", b_set_link}, {"ui.native", b_native},
+		{"ui.native_set", b_native_set}, {"ui.native_bind", b_native_bind}, {"ui.native_on", b_native_on}, {"ui.share", b_share},
+		{"ui.share_files", b_share_files}, {"ui.haptic", b_haptic}, {"ui.copy", b_copy}, {"ui.open_url", b_open_url},
+		{"ui.announce", b_announce}, {"ui.a11y_focus", b_a11y_focus}, {"ui.call", b_call}, {"ui.view_id", b_view_id},
+		{"ui.on_open_url", b_on_open_url}, {"ui.on_open_files", b_on_open_files}, {"ui.on_share", b_on_share},
+		{"i18n.locale", b_locale}, {"i18n.set_locale", b_set_locale}, {"i18n.set_languages", b_set_languages},
+		{"i18n.languages", b_languages}, {"i18n.preferred_languages", b_preferred}, {"i18n.is_rtl", b_is_rtl},
+		{"i18n.region", b_region}, {"i18n.format_locale", b_format_locale}, {"i18n.catalog", b_catalog}, {"i18n.say", b_say},
+	};
+	for (size_t i = 0; i < AK_LEN(t); i++) ak_builtin_register(t[i].name, t[i].fn);
+	ak_canvas_builtins_init();
+}

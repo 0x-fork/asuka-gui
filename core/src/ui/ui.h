@@ -44,6 +44,11 @@
 //
 // Main thread only.
 //
+// Interaction states and style variants, gestures, keys, drags and drops,
+// animation and frames, rich text, canvas, shapes and shaders, video,
+// web and native views, image placeholders, the system's commands and
+// calls, the app's language and catalogs: ui_ext.h's parts.
+//
 // ---- Deferred to the next job (the structure supports each) ----
 //
 // The rest of the Go ui package. Each is an element class (core/src/ui:
@@ -54,30 +59,24 @@
 //     router.go, back.go): host-sized layout roots with their own
 //     environment (the element's host_sized and env fields are there for
 //     them; layout() lays them out); ak_ui_push/pop/present/dismiss below.
-//     A Button's href is stored and ignored until the router lands.
-//   - rich text and Selectable (richtext.go, richfield.go): Text's
-//     selectable key is ignored until then; a TextField's rich, paste
-//     types, formats and accessory.
-//   - canvas, shapes and shaders (canvas.go, shape.go, shader.go); video
-//     and web views (video.go, web.go); native views (native.go).
-//   - gestures (pan, pinch, rotate, swipe), animation (animate.go,
-//     frame.go's OnFrame), keys (keys.go), drag and drop and interaction
-//     states: the style's Hovered and Pressed variants (interaction.go).
-//   - windows, split views, snackbars, keyboard accessories (window.go,
-//     windowhandle.go, split.go, snackbar.go); share, haptics, calls
-//     (share.go, call.go); the app's language and its catalogs
-//     (locale.go: ak_ui_set_direction is its hook for now).
+//     A Button's href is stored and ignored until the router lands; the
+//     router takes the URLs the app is opened with through
+//     ak_ui_route_url (share.c).
+//   - windows, split views, snackbars (window.go, windowhandle.go,
+//     split.go, snackbar.go); a Window's own keys (use_keys is the root's).
 //   - List: sections and headers, swipe actions, selection (list.go's
 //     Section, SwipeActions, Selecting); Scroll: paging, page control.
-//   - Image: BlurHash and ThumbHash placeholders, animated images
-//     following Reduce Motion (media.go, imagehash.go).
 //   - Error boundaries (control.go's Catch) as an element over ak_catch.
 //   - The keep registry of the dev loop: state cells kept across reloads
 //     by ak_ui_path_key (below).
+//   - Dates in messages: a catalog's date and time arguments take a
+//     string the app wrote until the language has a date type.
 #ifndef AK_UI_H
 #define AK_UI_H
 
 #include "rt/rt.h"
+#include "rt/json.h"
+#include "rt/sched.h"
 #include "ops/ops.h"
 #include "ui/elements_gen.h"
 
@@ -122,8 +121,8 @@ void ak_ui_environment(ak_environment *env);
 
 // ak_ui_set_direction lays the app out right to left (or not): its
 // layout roots' direction, the start and end sides, a horizontal
-// Scroll's. The app's language decides it (locale.go's job, deferred);
-// ASUKA_DIRECTION=rtl forces it at init.
+// Scroll's. The app's language decides it (locale.c calls it as the
+// language changes); ASUKA_DIRECTION=rtl or ltr forces it.
 void ak_ui_set_direction(bool rtl);
 
 // From the host (the C ABI, core/src/abi):
@@ -245,6 +244,70 @@ void ak_ui_push(ak_closure *build);
 void ak_ui_pop(void);
 void ak_ui_present(ak_closure *build);
 void ak_ui_dismiss(void);
+
+// ---- Interaction, media, graphics, languages (ui_ext.h's parts) ----
+
+// Variants: a block of style keys laid over v's style while it's in an
+// interaction state (AK_STATE_*: pressed { opacity: 0.6 }), in the
+// order of the states (a later one wins). ak_ui_state reads a state (a
+// group's or a peer's style follows it: card.hovered); v reports a state
+// once a variant, a read or a handler asks for it.
+void ak_ui_variant(ak_view *v, uint8_t state, uint16_t key, ak_val value);
+void ak_ui_variant_bind(ak_view *v, uint8_t state, uint16_t key, ak_closure *thunk);
+bool ak_ui_view_state(ak_view *v, uint8_t state);
+// ak_ui_use_keys gives the root keys ([Shortcut]) while the current
+// owner lives: what no view takes, and keys with nothing focused.
+void ak_ui_use_keys(ak_arr *keys);
+// animate(anim) { body }: what body changes animates in the next flush
+// (anim an Animation, NULL: the default).
+void ak_ui_animate(const ak_struct *anim, ak_closure *body);
+bool ak_ui_animating(void);
+// ak_ui_on_frame calls f (fn(Duration)) at each frame the display draws
+// until the stop closure it returns is called or the owner is disposed.
+ak_closure *ak_ui_on_frame(ak_closure *f);
+// Video, WebView and TextField commands.
+void ak_ui_video_play(ak_view *v);
+void ak_ui_video_pause(ak_view *v);
+void ak_ui_video_seek(ak_view *v, double seconds);
+void ak_ui_web_eval(ak_view *v, ak_str *script);
+void ak_ui_web_navigate(ak_view *v, int64_t to);  // 0 back, 1 forward, 2 reload, 3 stop
+ak_future *ak_ui_web_eval_result(ak_view *v, ak_str *script);  // a string: JSON
+ak_future *ak_ui_web_cookies(ak_str *url);                      // a string: a Cookie header
+void ak_ui_insert_text(ak_view *v, ak_str *text);
+void ak_ui_format(ak_view *v, int64_t format, int64_t how);  // TextFormat; how 0 off, 1 on, 2 toggle
+void ak_ui_set_link(ak_view *v, ak_str *url);
+// Native views: a native package's view of type ("<class>#<View>"), its
+// props encoded by their descriptors (native/native.h), its events'
+// parameters decoded by theirs.
+ak_view *ak_ui_native(ak_str *type);
+void ak_ui_native_set(ak_view *v, ak_str *name, ak_val value, const char *desc, const ak_json_types *t);
+void ak_ui_native_bind(ak_view *v, ak_str *name, ak_closure *thunk, const char *desc, const ak_json_types *t);
+void ak_ui_native_on(ak_view *v, ak_str *name, ak_closure *handler, const char *desc, const ak_json_types *t);
+// The system: share, haptics, the clipboard, URLs, screen readers,
+// native modules' calls, what other apps open the app with or share.
+void ak_ui_share(ak_str *text);
+ak_future *ak_ui_share_files(ak_arr *paths, ak_str *mime, ak_str *uti, ak_str *title, ak_view *from);
+void ak_ui_haptic(int64_t kind);
+void ak_ui_copy(ak_str *text);
+void ak_ui_open_url(ak_str *url);
+void ak_ui_announce(ak_str *text);
+void ak_ui_a11y_focus(ak_view *v);
+ak_future *ak_ui_call(ak_str *module, ak_str *method, ak_bytes *args);  // bytes
+uint32_t ak_ui_view_id(ak_view *v);
+void ak_ui_on_open_url(ak_closure *f);    // fn(string)
+void ak_ui_on_open_files(ak_closure *f);  // fn([string])
+void ak_ui_on_share(ak_closure *f);       // fn([SharedItem])
+// The router's: true when it takes a URL the app is opened with.
+extern bool (*ak_ui_route_url)(ak_span url);
+// The language the app shows (locale.c): reading it follows it.
+ak_str *ak_ui_locale(void);
+void ak_ui_set_locale(ak_str *tag);
+void ak_ui_set_languages(ak_arr *tags);
+ak_arr *ak_ui_languages(void);
+ak_arr *ak_ui_preferred_languages(void);
+bool ak_ui_is_rtl(void);
+ak_val ak_ui_region(void);
+ak_str *ak_ui_format_locale(void);
 
 // ---- Builtins ----
 

@@ -1,0 +1,432 @@
+// The language the app shows and its catalogs (locale.c, i18n.c,
+// i18n_tags.c): ports of ui/locale_test.go and accessibility_test.go, and
+// every case of core/test/testdata/catalog_cases.txt (what package i18n's
+// Format says), said by the core from the compiled catalog.
+#include "uih.h"
+#include "ui/i18n.h"
+
+#include <stdlib.h>
+
+void ak_locale_reset(void);
+
+static char *read_file(const char *rel, size_t *len) {
+	const char *root = getenv("ASUKA_ROOT");
+	char path[1024];
+	snprintf(path, sizeof path, "%s/%s", root ? root : "..", rel);
+	FILE *f = fopen(path, "rb");
+	if (!f) return NULL;
+	fseek(f, 0, SEEK_END);
+	long n = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	char *b = malloc((size_t)n + 1);
+	size_t got = fread(b, 1, (size_t)n, f);
+	b[got] = 0;
+	fclose(f);
+	if (len) *len = got;
+	return b;
+}
+
+static ak_catalog *catalog;
+static ak_span keys[64];
+static uint32_t nkeys;
+static ak_bytes *blob;
+
+// load registers the compiled test catalog (its languages are the app's)
+// and reads its keys.
+static void load(void) {
+	ak_locale_reset();
+	ak_i18n_reset();
+	ak_ui_set_direction(false);
+	size_t n;
+	char *b = read_file("core/test/testdata/catalog.akc", &n);
+	if (!b) ak_panic("no catalog.akc");
+	blob = ak_bytes_new(b, n);
+	free(b);
+	catalog = ak_i18n_catalog(blob);
+	ak_reader r = {blob->data, blob->len, 4, false};
+	ak_read_str(&r);
+	nkeys = ak_read_u32(&r);
+	for (uint32_t i = 0; i < nkeys && i < AK_LEN(keys); i++) keys[i] = ak_read_str(&r);
+}
+
+static void unload(void) {
+	ak_release(catalog);
+	ak_release(blob);
+	catalog = NULL;
+	ak_i18n_reset();
+	ak_locale_reset();
+	ak_ui_set_direction(false);
+}
+
+static int64_t key_index(const char *k) {
+	for (uint32_t i = 0; i < nkeys; i++)
+		if (ak_span_eqc(keys[i], k)) return i;
+	ak_panic("no key %s", k);
+}
+
+// ---- Every case Go's Format says ----
+
+static const uint8_t tuple_kinds[3][8] = {{AK_K_INT}, {AK_K_FLOAT}, {AK_K_REF}};
+
+TEST(catalog_cases) {
+	setup();
+	load();
+	char *text = read_file("core/test/testdata/catalog_cases.txt", NULL);
+	REQUIRE(text);
+	int cases = 0, failures = 0;
+	for (char *line = strtok(text, "\n"); line; line = strtok(NULL, "\n")) {
+		if (line[0] == '#') continue;
+		char *fields[4] = {0};
+		int nf = 0;
+		for (char *p = line; nf < 4; nf++) {
+			fields[nf] = p;
+			char *tab = strchr(p, '\t');
+			if (!tab) {
+				nf++;
+				break;
+			}
+			*tab = 0;
+			p = tab + 1;
+		}
+		if (nf < 4) {
+			T_FAIL("a short line");
+			continue;
+		}
+		// The arguments: a tuple of their kinds.
+		uint8_t kinds[8];
+		ak_val vals[8];
+		uint16_t nargs = 0;
+		for (char *a = fields[2]; *a && nargs < 8;) {
+			char *comma = strchr(a, ',');
+			if (comma) *comma = 0;
+			char k = a[0];
+			const char *v = a + 2;
+			if (k == 'i') kinds[nargs] = AK_K_INT, vals[nargs].i = strtoll(v, NULL, 10);
+			else if (k == 'f') kinds[nargs] = AK_K_FLOAT, vals[nargs].f = strtod(v, NULL);
+			else kinds[nargs] = AK_K_REF, vals[nargs].p = ak_str_c(v);
+			nargs++;
+			if (!comma) break;
+			a = comma + 1;
+		}
+		ak_shape shape = {"Args", nargs, kinds, NULL, NULL, 0, NULL, false, NULL};
+		ak_struct *tuple = ak_struct_new(&shape);
+		for (uint16_t i = 0; i < nargs; i++) tuple->f[i] = vals[i];
+		ak_str *loc = ak_str_c(fields[0]);
+		ak_str *got = ak_i18n_say(catalog, key_index(fields[1]), (ak_val){.p = tuple}, loc);
+		if (strcmp(got->data, fields[3]) != 0) {
+			if (failures++ < 25) T_FAIL("%s %s (%s): %s, want %s", fields[0], fields[1], fields[2], got->data, fields[3]);
+		}
+		ak_release(got);
+		ak_release(loc);
+		ak_release(tuple);
+		cases++;
+	}
+	AK_UNUSED(tuple_kinds);
+	CHECK(cases > 300);
+	free(text);
+	unload();
+}
+
+// ---- The locale model ----
+
+static ak_val empty_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_new(AK_EL_COLUMN)};
+}
+
+static ak_uitest *mount_reading(const char *languages, ak_invoke_fn build) {
+	setup();
+	ak_environment env = {.width = 390, .height = 844, .scale = 3, .font_scale = 1, .languages = ak_cstr(languages), .platform = AK_PLATFORM_IOS};
+	ak_closure *c = fn(build, NULL);
+	ak_uitest *a = ak_uitest_mount(c, &env);
+	ak_release(c);
+	return a;
+}
+
+static ak_span last_cmd(ak_fake *f, ak_cmd c, int *count) {
+	ak_fake_index_vec cmds = {0};
+	ak_fake_commands(f, c, &cmds);
+	*count = (int)cmds.len;
+	ak_span s = cmds.len ? ak_fake_op_at(f, cmds.data[cmds.len - 1]).value.s : (ak_span){0};
+	ak_vec_free(&cmds);
+	return s;
+}
+
+static void check_locale(const char *want) {
+	ak_str *l = ak_ui_locale();
+	CHECK_EQ_STR(l->data, want);
+	ak_release(l);
+}
+
+// The language shown is what the app has of what the user reads, in
+// their order; another script doesn't suit; none, the app's own.
+TEST(locale_matches_the_apps_languages) {
+	static const char *const cases[][2] = {
+		{"de-AT,en", "de"}, {"zh-TW", "zh-Hant"}, {"fr,de", "fr"}, {"ja", "en"}, {"ar-EG,en", "ar"},
+		{"en-GB,de", "en-GB"}, {"zh-Hans,en", "en"}, {"pt-BR,ru", "ru"}, {"en-AU", "en"},
+	};
+	for (size_t i = 0; i < AK_LEN(cases); i++) {
+		load();
+		ak_uitest *a = mount_reading(cases[i][0], empty_app);
+		ak_str *l = ak_ui_locale();
+		if (strcmp(l->data, cases[i][1]) != 0) T_FAIL("reading %s: %s, want %s", cases[i][0], l->data, cases[i][1]);
+		ak_release(l);
+		int n;
+		ak_span s = last_cmd(ak_uitest_host(a), AK_CMD_LOCALE, &n);
+		if (n != 1 || !ak_span_eq((ak_span){s.p + 1, s.len - 1}, ak_cstr(cases[i][1]))) T_FAIL("reading %s: %d Locale commands", cases[i][0], n);
+		done(a);
+		unload();
+	}
+}
+
+// ---- Messages follow the language (TestMessagesFollowTheLanguage) ----
+
+static void *count;
+static int builds;
+
+static ak_val say0(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_say(catalog, key_index((const char *)c->fn), (ak_val){0}, NULL)};
+}
+
+static const uint8_t int_kind[] = {AK_K_INT};
+static const ak_shape n_shape = {"Args", 1, int_kind, NULL, NULL, 0, NULL, false, NULL};
+
+static ak_val say_files(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_struct *t = ak_struct_new(&n_shape);
+	t->f[0].i = ak_vm_cell_get(count, true).i;
+	ak_str *s = ak_i18n_say(catalog, key_index("files"), (ak_val){.p = t}, NULL);
+	ak_release(t);
+	return (ak_val){.p = s};
+}
+
+static ak_val messages_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	builds++;
+	ak_view *col = ak_ui_new(AK_EL_COLUMN);
+	ak_view *t1 = ak_ui_new(AK_EL_TEXT);
+	bind(t1, AK_KEY_TEXT_TEXT, say0, "hello");
+	add(col, t1);
+	ak_view *t2 = ak_ui_new(AK_EL_TEXT);
+	bind(t2, AK_KEY_TEXT_TEXT, say_files, NULL);
+	add(col, t2);
+	ak_view *b = ak_ui_new(AK_EL_BUTTON);
+	bind(b, AK_KEY_BUTTON_TITLE, say0, "hello");
+	add(col, b);
+	// A control's label follows too, and leaves its value (accessibility_test.go).
+	ak_view *tf = ak_ui_new(AK_EL_TEXT_FIELD);
+	set_str(tf, AK_KEY_TEXT_FIELD_TEXT, "Grace");
+	bind(tf, AK_KEY_LABEL, say0, "hello");
+	add(col, tf);
+	return (ak_val){.p = col};
+}
+
+// A message said in a binding follows the language, as it follows its
+// arguments; a change costs a prop each and no rebuild.
+TEST(messages_follow_the_language) {
+	load();
+	builds = 0;
+	count = cell_int(1);
+	ak_uitest *a = mount_reading("en", messages_app);
+	ak_fake *f = ak_uitest_host(a);
+	check_text(root(a), "Hello|1 file|Hello");
+	ak_fake_reset(f);
+	ak_str *de = ak_str_c("de");
+	ak_ui_set_locale(de);
+	ak_release(de);
+	ak_ui_flush();
+	check_text(root(a), "Hallo|1 Datei|Hallo");
+	CHECK_EQ_INT(builds, 1);
+	CHECK_EQ_INT(ak_fake_count(f, AK_OP_SET_PROP), 4);  // three messages' and the field's label
+	ak_fake_view *tf = nth(a, AK_KIND_TEXT_FIELD, 0);
+	CHECK(ak_span_eqc(ak_fake_string(tf, AK_PROP_A11Y_LABEL), "Hallo") && ak_span_eqc(ak_fake_string(tf, AK_PROP_TEXT_FIELD_VALUE), "Grace"));
+	write_i(count, 3);
+	ak_ui_flush();
+	check_text(root(a), "Hallo|3 Dateien|Hallo");
+	done(a);
+	ak_release(count);
+	unload();
+}
+
+// setLocale asks the host to keep the language, and "" to follow the
+// user's again; a tag of no language throws.
+TEST(set_locale) {
+	load();
+	ak_uitest *a = mount_reading("de,en", empty_app);
+	ak_fake *f = ak_uitest_host(a);
+	check_locale("de");
+	ak_str *en = ak_str_c("en"), *none = ak_str_c(""), *bad = ak_str_c("not a language!");
+	ak_ui_set_locale(en);
+	ak_ui_flush();
+	check_locale("en");
+	int n;
+	ak_span s = last_cmd(f, AK_CMD_SAVE_LOCALE, &n);
+	CHECK(n == 1 && ak_span_eqc(s, "en"));
+	ak_ui_set_locale(none);
+	ak_ui_flush();
+	check_locale("de");
+	s = last_cmd(f, AK_CMD_SAVE_LOCALE, &n);
+	CHECK(n == 2 && s.len == 0);
+	ak_ui_set_locale(bad);
+	CHECK(ak_error_pending());
+	ak_release(ak_error_take());
+	ak_release(en), ak_release(none), ak_release(bad);
+	done(a);
+	unload();
+}
+
+static ak_val hello_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *t = ak_ui_new(AK_EL_TEXT);
+	bind(t, AK_KEY_TEXT_TEXT, say0, "hello");
+	return (ak_val){.p = t};
+}
+
+// The environment's languages change while the app runs.
+TEST(locale_follows_the_environment) {
+	load();
+	ak_uitest *a = mount_reading("en", hello_app);
+	ak_fake *f = ak_uitest_host(a);
+	ak_environment env = f->env;
+	env.languages = AK_STR("de");
+	ak_fake_set_environment(f, &env);
+	check_text(root(a), "Hallo");
+	done(a);
+	unload();
+}
+
+// The pseudo locales: ar-XB right to left, en-XA left to right, and
+// their messages transformed.
+TEST(pseudo_locale) {
+	load();
+	ak_uitest *a = mount_reading("en", hello_app);
+	ak_str *xb = ak_str_c("ar-XB"), *xa = ak_str_c("en-XA");
+	ak_ui_set_locale(xb);
+	ak_ui_flush();
+	CHECK(ak_ui_is_rtl());
+	ak_fake_view *t = nth(a, AK_KIND_TEXT, 0);
+	CHECK(!ak_span_eqc(ak_fake_string(t, AK_PROP_TEXT_TEXT), "Hello"));
+	ak_ui_set_locale(xa);
+	ak_ui_flush();
+	CHECK(!ak_ui_is_rtl());
+	CHECK(ak_span_eqc(ak_fake_string(t, AK_PROP_TEXT_TEXT), "[Ĥéļļö one]"));
+	ak_release(xb), ak_release(xa);
+	done(a);
+	unload();
+}
+
+// The regional formats, with the rg keyword's region, and the locale to
+// format in.
+TEST(region) {
+	load();
+	setup();
+	ak_environment env = {.width = 390, .height = 844, .scale = 3, .font_scale = 1, .languages = AK_STR("en"), .locale = AK_STR("en_DE@rg=gbzzzz")};
+	ak_closure *c = fn(empty_app, NULL);
+	ak_uitest *a = ak_uitest_mount(c, &env);
+	ak_release(c);
+	ak_val r = ak_ui_region();
+	const ak_struct *s = r.p;
+	CHECK_EQ_STR(((ak_str *)s->f[0].p)->data, "en-GB");
+	CHECK_EQ_INT(s->f[1].i, 2);  // Monday
+	CHECK_EQ_INT(s->f[2].i, 24);
+	ak_release(r.p);
+	ak_str *fl = ak_ui_format_locale();
+	CHECK_EQ_STR(fl->data, "en-GB-u-fw-mon-hc-h23");
+	ak_release(fl);
+	done(a);
+	unload();
+	// What CLDR says where the system doesn't.
+	CHECK_EQ_INT(ak_i18n_first_weekday(AK_STR("en")), 1);  // the United States: Sunday
+	CHECK_EQ_INT(ak_i18n_first_weekday(AK_STR("de")), 2);
+	CHECK_EQ_INT(ak_i18n_hour_cycle(AK_STR("en")), 12);
+	CHECK_EQ_INT(ak_i18n_hour_cycle(AK_STR("de")), 24);
+	CHECK_EQ_INT(ak_i18n_first_weekday(AK_STR("ar-EG")), 7);  // Saturday
+}
+
+// ---- Right to left (TestRightToLeftLayout) ----
+
+static ak_view *labelled(const char *label, float w, float h) {
+	ak_view *v = ak_ui_new(AK_EL_VIEW);
+	set_str(v, AK_KEY_LABEL, label);
+	if (w) set_i(v, AK_KEY_WIDTH, ak_length_pt(w));
+	if (h) set_i(v, AK_KEY_HEIGHT, ak_length_pt(h));
+	return v;
+}
+
+static ak_val rtl_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *col = ak_ui_new(AK_EL_COLUMN);
+	ak_view *row = ak_ui_new(AK_EL_ROW);
+	set_i(row, AK_KEY_HEIGHT, ak_length_pt(20));
+	add(row, labelled("first", 30, 0));
+	add(row, labelled("second", 40, 0));
+	add(col, row);
+	ak_view *logical = labelled("logical", 0, 10);
+	set(logical, AK_KEY_MARGIN, edges_se(5, 7));
+	add(col, logical);
+	ak_view *physical = labelled("physical", 0, 10);
+	set(physical, AK_KEY_MARGIN, edges4(0, 7, 0, 5));
+	add(col, physical);
+	return (ak_val){.p = col};
+}
+
+static float x_of(ak_uitest *a, const char *label) {
+	ak_fake_view_vec vs = {0};
+	ak_fake_of_kind(ak_uitest_host(a), AK_KIND_VIEW, &vs);
+	float x = -1;
+	for (uint32_t i = 0; i < vs.len; i++)
+		if (ak_span_eqc(ak_fake_string(vs.data[i], AK_PROP_A11Y_LABEL), label)) x = vs.data[i]->frame[0];
+	ak_vec_free(&vs);
+	return x;
+}
+
+// A row runs from the right in a right-to-left language, start and end
+// mirror, left and right don't; the host is told with Locale.
+TEST(right_to_left_layout) {
+	load();
+	ak_uitest *a = mount_reading("en", rtl_app);
+	CHECK(x_of(a, "first") == 0 && x_of(a, "second") == 30 && x_of(a, "logical") == 5 && x_of(a, "physical") == 5);
+	ak_str *ar = ak_str_c("ar");
+	ak_ui_set_locale(ar);
+	ak_release(ar);
+	ak_ui_flush();
+	CHECK(ak_ui_is_rtl());
+	CHECK(x_of(a, "first") == 390 - 30 && x_of(a, "second") == 390 - 70 && x_of(a, "logical") == 7 && x_of(a, "physical") == 5);
+	int n;
+	ak_span s = last_cmd(ak_uitest_host(a), AK_CMD_LOCALE, &n);
+	CHECK(s.len == 3 && s.p[0] == 1 && s.p[1] == 'a' && s.p[2] == 'r');
+	ak_str *en = ak_str_c("en");
+	ak_ui_set_locale(en);
+	ak_release(en);
+	ak_ui_flush();
+	CHECK(x_of(a, "first") == 0 && x_of(a, "logical") == 5);
+	done(a);
+	unload();
+}
+
+// ---- Tags ----
+
+TEST(tags) {
+	struct {
+		const char *in, *want;
+	} norm[] = {{"en_US", "en-US"}, {"zh-hant-tw", "zh-Hant-TW"}, {"iw", "he"}, {"de_DE.UTF-8@euro", "de-DE"}, {"C", NULL}, {"", NULL}, {"und", NULL}};
+	for (size_t i = 0; i < AK_LEN(norm); i++) {
+		ak_str *n = ak_i18n_normalize(ak_cstr(norm[i].in));
+		CHECK_EQ_STR(n ? n->data : NULL, norm[i].want);
+		ak_release(n);
+	}
+	CHECK(ak_i18n_rtl(AK_STR("ar")) && ak_i18n_rtl(AK_STR("he-IL")) && ak_i18n_rtl(AK_STR("ar-XB")) && ak_i18n_rtl(AK_STR("pa-Arab")));
+	CHECK(!ak_i18n_rtl(AK_STR("en")) && !ak_i18n_rtl(AK_STR("pa")) && !ak_i18n_rtl(AK_STR("az-Latn")));
+	ak_str *rl = ak_i18n_region_locale(AK_STR("en_US@rg=gbzzzz"));
+	CHECK_EQ_STR(rl->data, "en-GB");
+	ak_release(rl);
+	ak_operands o = ak_operands_dec("1.50", 4);
+	CHECK(o.i == 1 && o.v == 2 && o.w == 1 && o.f == 50 && o.t == 5);
+	ak_operands one = ak_operands_int(1), two = ak_operands_int(2);
+	CHECK(ak_plural(AK_STR("en"), &one, false) == AK_PLURAL_ONE && ak_plural(AK_STR("ja"), &one, false) == AK_PLURAL_OTHER);
+	CHECK(ak_plural(AK_STR("en-US"), &two, true) == AK_PLURAL_TWO);
+	CHECK(ak_plural(AK_STR("ar"), &two, false) == AK_PLURAL_TWO);
+}
+
+T_MAIN()

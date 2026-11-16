@@ -31,8 +31,12 @@ func IsLoading(t Type) bool {
 // (ops/schema.go's SemanticColor, lower camel case).
 var semanticColors = []string{"none", "label", "secondaryLabel", "tertiaryLabel", "background", "secondaryBackground", "groupedBackground", "separator", "accent", "red", "orange", "yellow", "green", "blue", "purple", "pink", "gray", "clear", "secondaryGroupedBackground", "onAccent"}
 
-// SemanticColor is the ops.Color of a semantic color's name.
+// SemanticColor is the ops.Color of a semantic color's name; .default
+// is 0, the platform's own (a prop left unset).
 func SemanticColor(name string) (int64, bool) {
+	if name == "default" {
+		return 0, true
+	}
 	for i, n := range semanticColors {
 		if n == name && i > 0 {
 			return 1<<32 | int64(i), true

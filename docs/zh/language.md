@@ -418,6 +418,19 @@ View { style card; background: .accent }   // 后写的 prop 优先
 
 不设置任何样式的元素，看起来就和平台自己的一样。
 
+容器（`View`、`Row`、`Column`、`SafeArea`）可以写**变体**：以交互状态命名的一组样式 prop，在容器处于该状态时叠加到它的样式上，相当于 CSS 的 `:hover` 和 `:active`。状态有四种：`hovered`、`pressed`、`dragging`（正被拖动时）和 `dragOver`（它接受的拖动正停在它上方时），按这个顺序叠加，所以 `pressed` 会盖过 `hovered`。变体只覆盖它写出的 prop，它的值和普通 prop 一样是绑定：
+
+```asuka
+View {
+  padding: 16; radius: 12; background: .secondaryBackground
+  hovered { borderColor: .accent }
+  pressed { background: .separator; opacity: 0.8 }
+  on press { open() }
+}
+```
+
+只有当某处用到了某个状态，视图才会上报它。因此没有写 `pressed` 变体的视图，仍然保留平台自己的按下效果。其他视图可以通过名字跟随一个视图的状态：写成 `View as card { … }`，然后在任意绑定里读 `card.hovered`（或 `card.pressed`、`card.dragging`、`card.dragOver`），子视图可以这样做（整组悬停），兄弟视图也可以。与样式无关的反应则交给处理器：`on pressedChange(p)`、`on hoverChange(h)`。
+
 ## 导航
 
 ```asuka

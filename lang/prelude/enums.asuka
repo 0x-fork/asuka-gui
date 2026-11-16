@@ -146,6 +146,13 @@ enum Material {
   bar
 }
 
+enum GestureState {
+  began
+  changed
+  ended
+  cancelled
+}
+
 enum LineCap {
   butt
   round
@@ -179,6 +186,12 @@ enum ShareKind {
   video
   audio
   file
+}
+
+enum DragPhase {
+  began
+  dropped
+  cancelled
 }
 
 enum ScrollAnchor {
