@@ -106,3 +106,34 @@ func lipo(parts []string, out string) error {
 	}
 	return nil
 }
+
+// LinuxExe builds a Linux app's executable for t at out: the C host
+// (platform/linux, with platform/desktop's shared C) and the core linked
+// into one executable, with m compiled to C (lang/cgen) for a release, or
+// with m nil asuka dev's player, which loads the bytecode asuka dev sends
+// (built for debugging, as Lib's player is). natives are more C sources:
+// the app's native packages' Linux code and their glue.
+func LinuxExe(t cbuild.Target, m *bytecode.Module, natives []string, out string) error {
+	core, err := cbuild.CoreDir()
+	if err != nil {
+		return err
+	}
+	tc, err := cbuild.ForTarget(t)
+	if err != nil {
+		return err
+	}
+	h, err := cbuild.LinuxHost()
+	if err != nil {
+		return err
+	}
+	h.Sources = append(h.Sources, natives...)
+	var extra []string
+	if m != nil {
+		c, err := AppC(m)
+		if err != nil {
+			return err
+		}
+		extra = append(extra, c)
+	}
+	return tc.Exe(core, h, extra, m == nil, out)
+}

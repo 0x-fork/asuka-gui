@@ -320,3 +320,64 @@ func exportFlags() []string {
 	}
 	return f
 }
+
+// HostSources are a C desktop host's: its files, the headers they include
+// (what its objects' cache is keyed by), its include flags and what it
+// links.
+type HostSources struct {
+	Sources, Headers []string
+	Includes         []string
+	Link             []string
+}
+
+// Exe builds an app's executable for the toolchain's target: the core,
+// the host (h) and extra sources (an app compiled to C; none for asuka
+// dev's player, which loads the bytecode asuka dev sends) compiled and
+// linked into out, optimized for release unless debug. The core's, the
+// host's and the app's objects are cached each by their own sources and
+// flags, so a new build of an app compiles only the app.
+func (tc *Toolchain) Exe(core string, h HostSources, extra []string, debug bool, out string) error {
+	srcs, err := Sources(core, false)
+	if err != nil {
+		return err
+	}
+	flags := append(append(Includes(core), tc.Flags...), "-ffunction-sections", "-fdata-sections")
+	if debug {
+		flags = append(flags, "-g", "-O1", "-DAK_DEBUG=1")
+	} else {
+		flags = append(flags, "-O2", "-DNDEBUG")
+	}
+	if len(extra) > 0 {
+		flags = append(flags, "-DAK_APP_COMPILED=1")
+	}
+	hdrs, _ := headers(core)
+	objs, err := tc.compileCached(core, "core", srcs, hdrs, flags, Static)
+	if err != nil {
+		return err
+	}
+	hflags := append(append(append([]string{}, flags...), h.Includes...), "-D_GNU_SOURCE")
+	more, err := tc.compileCached(core, "host", h.Sources, append(append([]string{}, hdrs...), h.Headers...), hflags, Static)
+	if err != nil {
+		return err
+	}
+	objs = append(objs, more...)
+	if len(extra) > 0 {
+		app, err := tc.compileCached(core, "app", extra, hdrs, flags, Static)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, app...)
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return err
+	}
+	link := append(append([]string{}, tc.Flags...), h.Link...)
+	if !debug {
+		link = append(link, deadStrip(tc.Target)...)
+	}
+	tmp := tmpName(out)
+	if err := tc.CC.Link(objs, tmp, link); err != nil {
+		return err
+	}
+	return os.Rename(tmp, out)
+}

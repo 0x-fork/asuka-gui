@@ -139,7 +139,7 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 	// finds it (lib/<exe>), the app's settings in share/<exe>.
 	target := "linux-" + arch
 	t := cbuild.Target{OS: "linux", Arch: arch}
-	if err := desktopRelease(app, t, filepath.Join(out, "bin", exe), filepath.Join(linuxPluginLibs(out, exe), coreLibName("linux")), o, appbuild.HostOptions{}); err != nil {
+	if err := linuxRelease(app, t, filepath.Join(out, "bin", exe)); err != nil {
 		return err
 	}
 	if err := writeHostConfig(app, platformLinux, target, true, filepath.Join(out, "share", exe, boot.ConfigFile)); err != nil {
@@ -189,6 +189,32 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 		fmt.Println("asuka: software centers and Flathub want linux.summary, description, license and developer in asuka.toml (the AppStream metainfo's)")
 	}
 	return nil
+}
+
+// linuxRelease builds a release's executable at exe: the C host
+// (platform/linux) with the core and the app compiled in, one executable.
+func linuxRelease(app *asukaApp, t cbuild.Target, exe string) error {
+	m, err := app.compile()
+	if err != nil {
+		return err
+	}
+	return appbuild.LinuxExe(t, m, linuxNatives(app), exe)
+}
+
+// linuxNatives are the C sources of the app's native packages' Linux code
+// (a package's linux/*.c, with the glue asuka native generate writes
+// beside them), compiled into its executable.
+func linuxNatives(app *asukaApp) []string {
+	ps, err := appNatives(app)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range ps {
+		files, _ := filepath.Glob(filepath.Join(p.dir, "linux", "*.c"))
+		out = append(out, files...)
+	}
+	return out
 }
 
 // linuxPluginLibs is where a Linux build puts its plugins' libraries in
