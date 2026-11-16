@@ -18,7 +18,7 @@ Each package keeps its data where the platform's own apps keep theirs:
 | Android | SharedPreferences | the app's files directory |
 | Windows | `store.json` in `%LOCALAPPDATA%\<name>` | `%LOCALAPPDATA%\<name>` |
 | Linux | `store.json` in `$XDG_DATA_HOME/<id>` | `$XDG_DATA_HOME/<id>` (`~/.local/share/<id>`; in a Flatpak, the sandbox's own) |
-| The web | `localStorage` | not yet |
+| The web | `localStorage` | the browser's origin private file system (IndexedDB without it) |
 
 `<name>` is `asuka.toml`'s `name`, and `<id>` its `id`.
 `storage.dirName()` says where the values are on the platform the app
@@ -123,7 +123,11 @@ database's versions in order: each one's SQL (statements separated by
 semicolons) runs once, in a transaction, and its number is kept in
 `PRAGMA user_version`. A database at version 1 runs step 2 and on; a new
 one runs them all. Add steps at the end, and never change one that has
-shipped. It runs on the main thread, so call it as the app starts.
+shipped. It runs on the main thread, so call it as the app starts. On
+the web, where the page's main thread can't wait for SQLite's worker,
+`open` and `migrate` go to the worker without waiting and run before
+the statements after them: a database that didn't open fails each
+statement with why, and a migration that failed fails the next one.
 
 ### Query
 
@@ -249,7 +253,8 @@ a Linux prefix, a framework in an iOS app's `Frameworks`, beside
 `libasuka.so` in each of an APK's ABIs. `asuka dev` on a desktop, `asuka
 test` and `asuka run` point the core at the plugin's build or its
 published file (`ASUKA_LIB_ASQLITE`), downloaded once into the user's
-cache. On the web, `asuka/sqlite` isn't there yet: `open` throws.
+cache. On the web it's the same library built to WebAssembly, in a
+worker of the page's ([SQLite on the web](web.md#sqlite)).
 
 ## Values the user's devices share: asuka/icloud
 

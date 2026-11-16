@@ -8,7 +8,8 @@
 //   try await spawn { try fs.writeText(path, text: draft) }
 //
 // Paths use the system's separator (\ on Windows, which takes / too).
-// On the web the app has no directory yet: the calls throw.
+// On the web the app's directory is the page's, kept in the browser's
+// storage, and spawn's workers each have a copy (docs/web.md).
 
 import asuka/time
 

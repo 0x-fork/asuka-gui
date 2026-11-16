@@ -107,7 +107,9 @@ at a time, without changing the package's API.
 A package whose work the runtime does is plain Asuka with `native fn`s
 in C: std/sqlite (core/src/sqlite) calls the sqlite plugin's library,
 which std/sqlite's asuka-plugin.toml (sdk/sqlite's, copied) ships with
-the apps that import it.
+the apps that import it (on the web, the page's SQLite worker runs it);
+std/crash reads the core's record of the runs (core/src/std/crash.c)
+where no host keeps its own (iOS, Android, the web).
 
 ### Tests
 

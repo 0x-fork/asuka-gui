@@ -445,7 +445,8 @@ async fn loadThread(id: string) throws -> Thread {
   await untilCancelled()`).
 - `spawn { … }` runs a block on another thread, for work that would hold
   the main thread up (parsing, image processing). It may use values only,
-  not state, stores or views: the compiler says so if it does.
+  not state, stores or views: the compiler says so if it does. On the
+  web it runs on one of the page's Web Workers.
 - `for await message in socket.messages { … }` reads a stream, a
   `Stream<T>`: values that come over time. `Stream(send => { … })`
   makes one: the block runs as a task when the stream is first read,

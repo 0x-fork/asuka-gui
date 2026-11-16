@@ -13,7 +13,7 @@
 | Android | SharedPreferences | アプリの files ディレクトリ |
 | Windows | `%LOCALAPPDATA%\<name>` 内の `store.json` | `%LOCALAPPDATA%\<name>` |
 | Linux | `$XDG_DATA_HOME/<id>` 内の `store.json` | `$XDG_DATA_HOME/<id>`（`~/.local/share/<id>`。Flatpak ではサンドボックス自身のもの） |
-| Web | `localStorage` | まだ使えません |
+| Web | `localStorage` | ブラウザーの Origin Private File System（ない場合は IndexedDB） |
 
 `<name>` は `asuka.toml` の `name`、`<id>` は `id` です。アプリが動いているプラットフォームで値がどこにあるかは `storage.dirName()` で分かります。
 
@@ -88,7 +88,7 @@ let db = (try? openDB())!
 
 `sqlite.open(name)` はデータベースを開きます（なければ作ります）。名前だけならアプリのデータディレクトリ内のファイル（[データの保存場所](#データの保存場所)を参照）、絶対パスならそのファイル、`":memory:"` ならメモリ上のデータベースです。ファイルのデータベースは先行書き込みログ（WAL）で開かれ、外部キー制約が有効になります。
 
-`db.migrate(steps)` はスキーマを最新にします。steps はデータベースのバージョンを順に並べたもので、各ステップの SQL（セミコロンで区切った複数の文）は一度だけ、トランザクションの中で実行され、その番号が `PRAGMA user_version` に記録されます。バージョン 1 のデータベースはステップ 2 以降を、新しいデータベースはすべてを実行します。ステップは末尾に追加し、リリース済みのステップは変更しないでください。メインスレッドで実行されるので、アプリの起動時に呼びます。
+`db.migrate(steps)` はスキーマを最新にします。steps はデータベースのバージョンを順に並べたもので、各ステップの SQL（セミコロンで区切った複数の文）は一度だけ、トランザクションの中で実行され、その番号が `PRAGMA user_version` に記録されます。バージョン 1 のデータベースはステップ 2 以降を、新しいデータベースはすべてを実行します。ステップは末尾に追加し、リリース済みのステップは変更しないでください。メインスレッドで実行されるので、アプリの起動時に呼びます。Web では、ページのメインスレッドが SQLite のワーカーを待てないため、`open` と `migrate` は応答を待たずにワーカーへ送られ、その後のステートメントより先に実行されます。開けなかったデータベースでは以降のステートメントがすべてその理由とともに失敗し、マイグレーションが失敗すると次のステートメントがそのエラーで失敗します。
 
 ### クエリ
 
@@ -176,7 +176,7 @@ async fn signUp(email: string) -> string {
 
 ### ライブラリ
 
-SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。プラグインのライブラリ `asqlite`（`sdk/sqlite` がビルドして公開します）で、`asuka build` がコアの見つけられる場所に配置します。Mac の `Contents/Frameworks`、Windows アプリの `.exe` の隣、Linux のインストール先の `lib/<app>`、iOS アプリの `Frameworks` 内のフレームワーク、APK の各 ABI の `libasuka.so` の隣です。デスクトップでの `asuka dev`、`asuka test`、`asuka run` は、プラグインのビルド済みファイルか公開済みファイル（`ASUKA_LIB_ASQLITE`）をコアに使わせます。後者は一度だけダウンロードされ、ユーザーのキャッシュに保存されます。Web ではまだ `asuka/sqlite` は使えず、`open` はエラーを投げます。
+SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。プラグインのライブラリ `asqlite`（`sdk/sqlite` がビルドして公開します）で、`asuka build` がコアの見つけられる場所に配置します。Mac の `Contents/Frameworks`、Windows アプリの `.exe` の隣、Linux のインストール先の `lib/<app>`、iOS アプリの `Frameworks` 内のフレームワーク、APK の各 ABI の `libasuka.so` の隣です。デスクトップでの `asuka dev`、`asuka test`、`asuka run` は、プラグインのビルド済みファイルか公開済みファイル（`ASUKA_LIB_ASQLITE`）をコアに使わせます。後者は一度だけダウンロードされ、ユーザーのキャッシュに保存されます。Web では同じライブラリを WebAssembly にビルドしたものが、ページのワーカーで動きます（[Web の SQLite](web.md#sqlite)）。
 
 ## ユーザーのデバイス間で共有する値：asuka/icloud
 

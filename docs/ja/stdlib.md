@@ -32,9 +32,29 @@ state units = store.read("units", "metric")
 | `asuka/network` | `network.status()`（追跡される：`connected`、`type`、`metered`、`constrained`。読まれている間だけネットワークを監視します）、`network.current()`、`network.changes()`（ストリーム）。iOS と macOS では NWPathMonitor、Android では ConnectivityManager、Windows ではネットワーク リスト マネージャー、Linux では GNetworkMonitor と NetworkManager、ウェブでは `navigator.onLine` と Network Information API |
 | `asuka/platform` | `platform.call(module, method, args)` と `platform.send`：ホスト自身のモジュールを名前で呼び出します。引数は各モジュールのリトルエンディアンの形式（`u8`、`u32`、`f64`、`str`、`readU32` など）です。標準ライブラリのパッケージのためのもので、アプリが自分のプラットフォームのコードを呼ぶにはネイティブパッケージ（[ネイティブコード](native.md)）を使います |
 | `asuka/recent` | `recent.add(path)`、`recent.clear()`、`recent.list()`：ユーザーが最近開いた書類。「最近使った項目」メニューと Dock メニュー、ジャンプリスト、最近使ったファイルに表示されます |
-| `asuka/store` | `store.read(key, default)`、`store.write(key, value)`、`store.remove(key)`：起動をまたいで JSON として保持する小さな値。保存先はプラットフォームの環境設定です（UserDefaults、SharedPreferences、`localStorage`、Windows と Linux ではファイル） |
+| `asuka/store` | `store.read(key, default)`、`store.write(key, value)`、`store.remove(key)`、`store.flush()`、`store.dir()`：起動をまたいで JSON として保持する小さな値。保存先はプラットフォームの環境設定です（UserDefaults、SharedPreferences、`localStorage`、Windows と Linux ではファイルで、変更の少し後に書き込まれます） |
+| `asuka/notify` | ローカル通知：`request()`、`show(n)`、`schedule(n)`（`n.after` の後に表示）、`cancel(id)`、`showing()`、`remove(ids)`、`removeThread(t)`、`removeAll()`、`setBadge(n)`。`setCategories`（アクション、返信）、`setChannels`、`setChannelGroups`（Android）。`Notification(…).from(person, conversation)`（メッセージ）。`present(decide)`（アプリが前面にあるときの表示方法）。`responses()`（タップ、アクション、返信のストリーム。`r.defer()` で処理が終わるまでアプリを動かし続けます）。どのプラットフォームでもホスト自身の通知を使います：UserNotifications、Android の通知、Windows のトースト、Linux の通知、ブラウザーの通知 |
+| `asuka/push` | `push.register()`（トークン：APNs のもの、FCM のもの、Web の購読）、`push.opened()` と `push.received()`（`Message` のストリーム。`Message.from(person, conversation)`） |
+| `asuka/watch` | `watch.path(dir, ignore:, recursive:, attributes:)` は `Watch` を返します。`root` と、`Event` のまとまりのストリームである `events`（`op`：create、write、remove、rename、attrib、overflow。`path`、`oldPath`）を持ちます。FSEvents、inotify、ReadDirectoryChangesW（internal/fswatch）を使います。スマートフォンと Web では使えません |
+| `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` は `Task`（`update(…)`、`end()`）を返します：システムが表示する長い処理（Android のフォアグラウンドサービスの通知、iOS の継続処理、デスクトップの進捗表示） |
+| `asuka/calendar` | `calendar.request()`（`Access`）、`calendars()`、`events(from:, to:, calendars:)`、`add(Event)`（システムのフォーム）：EventKit、Calendar Provider |
+| `asuka/compose` | `compose.mail(to:, cc:, bcc:, subject:, body:, html:, attachments:)` と `compose.message(to:, body:, …)` はシステムの作成画面を表示し、`Result`（cancelled、sent、saved、unknown）を返します。`check()` |
+| `asuka/contacts` | `contacts.pick()`（システムのピッカー：`Contact` か none）、`request()`、`list(name:, limit:)`、`add(Contact)` |
+| `asuka/library` | `library.save(path, collection:, name:, folder:, mime:, move:)`：ファイルを写真、ギャラリー、ダウンロード、ミュージックに保存し、保存先を返します |
+| `asuka/liveactivity` | `liveactivity.start(Content)` は `Activity`（`update(c, alert:)`、`end(c, dismiss:)`）を返します。`events()`（開始、終了、プッシュトークン）、`enabled()`：iOS のライブアクティビティ、Android 16 の Live Updates |
+| `asuka/periodic` | `periodic.schedule(name, every:, network:, charging:)`、`cancel(name)`、`runs(name)`（`Run` のストリーム、`run.finish(ok)`）：iOS のバックグラウンドタスク、WorkManager |
+| `asuka/photos` | 許可を得て写真ライブラリを扱います：`request()`、`current()`、`list(screenshots:, offset:, limit:)`、`thumbnail(id, size:)`、`export(id)`、`manageLimited()` |
+| `asuka/widget` | `widget.set(kind, Entry)`、`setAll(kind, entries)`、`clear(kind)`：アプリのウィジェットに表示する内容 |
+| `asuka/crash` | `crash.reports()`（ストリーム：保持されているレポート、その後は届くたびに一つずつ。`Report`：`id`、`kind`、`fatal`、`time`、`message`、`text`、`threads`、ブレッドクラムと値を含む `context`）、`breadcrumb(message)`、`set(key, value)`、`record(e)`、`delete(id)`。実行の記録は、デスクトップではホストが（sdk/crash）、iOS、Android、Web ではコアが保持します（コア自身の致命的なエラー、捕捉されなかった例外、iOS の MetricKit の診断、Android のプロセスの終了理由、捕捉されなかった JavaScript のエラー） |
+| `asuka/icloud` | iOS と macOS の iCloud：`account()` と `files(scope)`（追跡され、iCloud が変更すると更新されます）、`Value(key, default)`（iCloud のキーバリューストアに保持されるストア）、`documents()`、`container(id)`、`readFile`、`writeFile`、`delete`、`rename`、`download`、`evict`、`conflicts(path)`、`resolve(path, keeping:)`。ほかのプラットフォームでは、アカウントなし、空のリスト、「icloud: not available」になります |
+| `asuka/document` | `document.open(path, read:, write:)` は `Document<T>` ストアを返します：`content`、`state`（loading、saved、edited、saving、conflict、failed）、`error`。`edit(c)`（少し後に自動保存）、`save()`、`saveAnyway()`、`revert()`。iOS と macOS ではファイルを協調して扱います。ドキュメントベースのアプリのウィンドウ、メニュー、ドキュメントブラウザー（`Documents<T>`）は、UI ランタイムのウィンドウとナビゲーションを待っています |
+| `asuka/host` | 上のパッケージが土台にしているもの：ホスト自身のモジュール（`host.call(module, method, args)`、`host.next(module, method)`）。アプリでは使いません |
+| `asuka/sqlite` | `sqlite.open(name)`（アプリのデータディレクトリ内のファイル、絶対パス、または `":memory:"`）は `DB` を返します：`migrate(steps)`、`exec(sql, args)` と `query<T>(sql, args)`（非同期で、メインスレッドの外で実行。行は `T` に直接デコードされ、構造体のフィールドは列名で対応します）、`watch<T>(sql, args)`（`Live<T>` ストア：`rows`、`loading`、`error`。引数が変わったとき、読み取るテーブルに書き込みがあったときに再実行されます）、`changed()`、`close()`。SQLite は sqlite プラグインのライブラリ（sdk/sqlite）で、アプリに同梱されます。Web ではページのワーカーで動きます |
+| `asuka/storage` | `storage.Value(key, default)`：`value` がデバイスに保持されるストア（asuka/store を使います）。追跡され、変わると書き込まれます。`reset()`、`storage.flush()`、`storage.dirName()` |
 
 ネイティブパッケージのコードがないプラットフォーム（`asuka test` で動かすアプリにはまったくありません）では、それを必要とする処理は `unsupported` エラーを投げます。そのとき `asuka/store` は何も保存せず、読み込むとデフォルト値が返ります。
+
+`asuka test` は実行結果を毎回同じにします。`time.now()` は 2026-01-01T00:00:00Z から始まり、テストの時間（`sleep`）が進んだときだけ進みます。ローカルのタイムゾーンは UTC で、各テストには `fs.appDir()` として専用の空のディレクトリが用意されます。Web では、アプリのディレクトリはページのもので、ブラウザーのストレージに保持されます（[アプリのファイル](web.md#アプリのファイル)）。
 
 ## ここにないパッケージ
 
