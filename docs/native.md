@@ -607,10 +607,14 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   package's C may use of the C hosts: posting to the main thread, the
   window a view is in, the app's name, ID, version and directories, its
   assets, a color resolved for the appearance shown, HTTP
-  (`asuka_fetch`) and a file an app names (`asuka_desktop_local_file`).
+  (`asuka_fetch`; `asuka_fetch_stream` for a response a piece at a
+  time, a download into a file; `asuka_abort` to stop one from any
+  thread) and a file an app names (`asuka_desktop_local_file`).
   `asuka_windows.h` has COM and WinRT's helpers (UTF-16, a vtable's
   slot, HSTRINGs, activation factories, delegates, waiting for an async
-  operation, WIC's images, the system window's broadcasts);
+  operation, WIC's images, the system window's broadcasts), the same
+  ones the Windows host uses; `asuka_barcode.h` reads QR codes and
+  barcodes from an image's gray levels, on every desktop;
   `asuka_linux.h` declares the GLib, GIO, GTK and libadwaita functions
   packages use, resolved at run time as the Linux host's are (called as
   `G(g_variant_new)(…)`), so nothing needs GTK's headers to build.

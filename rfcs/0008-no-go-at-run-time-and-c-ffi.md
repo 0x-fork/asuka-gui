@@ -299,15 +299,17 @@ Each ends with its tests green.
         removed; the CLI builds packages' C into a C host's executable;
   - [x] asuka/host folded into asuka/platform;
   - [ ] the standard library's Windows and Linux code ported from Go to
-        C: done for appearance, biometric, device, dialog, document, http,
-        js, network, power, preview, screen, secure, sensors, shell,
-        sqlite, store, tracking, transcribe, watch, webauth (lottie and
-        crash need none); left: audio, bluetooth (and
-        internal/bluetoothspec, internal/bluez), camera, imageedit,
-        location, maps, markdown (a parser in C), nowplaying, print,
-        purchase, record, scan and vision (a barcode decoder in C),
-        shader, speech, svg; then package `native`'s servers, which only
-        those packages' Go still uses.
+        C: done for appearance, audio, biometric, camera, device, dialog,
+        document, http, imageedit, js, location, maps, network,
+        nowplaying, power, preview, print, purchase, record, screen,
+        secure, sensors, shell, speech, sqlite, store, tracking,
+        transcribe, watch, webauth (lottie and crash need none), with the
+        barcode reader in C (platform/desktop's asuka_barcode.h, for scan
+        and vision too) and one WinRT, COM and WinHTTP for the Windows
+        host and the packages; left: bluetooth (and
+        internal/bluetoothspec, internal/bluez), markdown (a parser in
+        C), scan, vision, shader, svg; then package `native`'s servers,
+        which only those packages' Go still uses.
 - [ ] **H1** The macOS host in Swift: every view, navigation, windows, menus, the
       tray, the host's modules; `asuka dev` and `asuka build` for the Mac
       without Go.

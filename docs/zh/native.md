@@ -436,7 +436,7 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
 - **内存**：所有跨边界的值都用 `malloc` 分配。方法的参数归生成的代码所有，同步调用期间有效，异步调用在应答之前有效（要保留得更久就复制一份）；方法返回（或应答）的值交给生成的代码，由它释放（字面量要先 `asuka_strdup`）。回调的参数仍归你；问题型回调返回的值由你释放（`<pkg>_<Type>_free`）。vtable 的 `release` 为 `NULL` 时，Asuka 不再持有对象时会直接释放它。
 - **回调**：用 `<pkg>_fn_…_call` 调用。通知型回调可以在任意线程上调用（会被投递到主线程）；问题型回调在主线程上立即运行，在其他线程上调用时会等待它的结果。
 - **视图**：`<pkg>_make_<View>(events)` 创建视图的对象和它的 `widget`，即一个 `HWND`（`events.parent` 的子窗口）或一个 `GtkWidget *`，宿主负责显示它，并在视图离开时销毁它。每个属性在 vtable 里有一个 setter（`set_selected`）；控件自己给不出尺寸时，由 `measure` 决定尺寸；事件是生成的函数（`segmented_Segmented_selectedChange(events, i)`），可以在任意线程上调用。
-- **宿主**：`asuka_desktop.h`（platform/desktop）是包的 C 代码可以使用的 C 宿主的功能：投递到主线程、视图所在的窗口、应用的名称、ID、版本和目录、资源目录、按当前外观解析的颜色、HTTP（`asuka_fetch`），以及应用指定的文件（`asuka_desktop_local_file`）。`asuka_windows.h` 提供 COM 和 WinRT 的辅助函数（UTF-16、vtable 的槽位、HSTRING、激活工厂、委托、等待异步操作、WIC 的图片、系统窗口收到的广播）；`asuka_linux.h` 声明了包要用的 GLib、GIO、GTK 和 libadwaita 函数，像 Linux 宿主一样在运行时解析（调用方式是 `G(g_variant_new)(…)`），所以构建时不需要 GTK 的头文件。
+- **宿主**：`asuka_desktop.h`（platform/desktop）是包的 C 代码可以使用的 C 宿主的功能：投递到主线程、视图所在的窗口、应用的名称、ID、版本和目录、资源目录、按当前外观解析的颜色、HTTP（`asuka_fetch`；要逐段接收响应、把下载直接写进文件时用 `asuka_fetch_stream`，要从任意线程中止请求时用 `asuka_abort`），以及应用指定的文件（`asuka_desktop_local_file`）。`asuka_windows.h` 提供 COM 和 WinRT 的辅助函数（UTF-16、vtable 的槽位、HSTRING、激活工厂、委托、等待异步操作、WIC 的图片、系统窗口收到的广播），Windows 宿主用的也是这一套；`asuka_barcode.h` 从图像的灰度中读取二维码和条形码，所有桌面平台都能用；`asuka_linux.h` 声明了包要用的 GLib、GIO、GTK 和 libadwaita 函数，像 Linux 宿主一样在运行时解析（调用方式是 `G(g_variant_new)(…)`），所以构建时不需要 GTK 的头文件。
 - **库**：包的 C 代码在各平台上要链接的库写在它的 `asuka.toml` 里：
 
   ```toml
