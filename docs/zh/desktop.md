@@ -6,15 +6,15 @@
 
 ## 桌面应用是怎么构成的
 
-桌面应用的可执行文件是 Asuka 的桌面宿主（`cmd/asuka-host`），每个应用都一样：Mac 上用 AppKit，Windows 上用 Win32，Linux 上用 GTK 4 和 libadwaita，都用 Go 编写，不借助 cgo 调用平台接口。和它放在一起的，是编译进了应用的核心，宿主通过核心的 C ABI（`core/include/asuka.h`）加载并驱动它；以及来自 `asuka.toml` 的应用设置（`asuka-app.json`：名称、ID、版本、强调色、URL scheme、文件类型、更新）：
+在 Windows 上，一个应用就是一个可执行文件：Asuka 的 Windows 宿主（用 C 编写，基于 Win32 及其通用控件）、核心（`core/include/asuka.h` 的 C 实现）和编译成 C 的应用链接在一起，应用的图标、清单和版本信息也直接打包进去。在 Mac 和 Linux 上，可执行文件是 Asuka 的桌面宿主（`cmd/asuka-host`），每个应用都一样：Mac 上用 AppKit，Linux 上用 GTK 4 和 libadwaita，用 Go 编写，不借助 cgo 调用平台接口；和它放在一起的是编译进了应用的核心，宿主通过核心的 C ABI 加载并驱动它。每个桌面应用都带有来自 `asuka.toml` 的应用设置（`asuka-app.json`：名称、ID、版本、强调色、URL scheme、文件类型、更新）：
 
 | | 核心 | 设置 |
 |---|---|---|
 | macOS（`Name.app`） | `Contents/Frameworks/libasuka.dylib` | `Contents/Resources/asuka-app.json` |
-| Windows（一个文件夹） | `asuka.dll`，与 `Name.exe` 放在一起 | `asuka-app.json`，与它放在一起 |
+| Windows（一个文件夹） | 在 `Name.exe` 里 | `asuka-app.json`，与它放在一起 |
 | Linux（一个安装前缀） | `lib/<exe>/libasuka.so` | `share/<exe>/asuka-app.json` |
 
-`asuka build` 用目标平台的 C 编译器构建核心（交叉编译时用 Zig 的），宿主则取自 CLI 所属的发布版本（只下载一次，并校验哈希值）；如果是在 Asuka 仓库的检出中运行，就用 `go build` 构建宿主。Windows 构建会把应用的图标、清单和版本信息链接进可执行文件。`asuka dev` 运行的是同一个宿主，只是搭配一个不含应用的核心，由它从 `asuka dev` 加载应用的字节码，之后每次保存再加载新的字节码（参见[开发](development.md#在桌面端)）。
+`asuka build` 用目标平台的 C 编译器构建核心，在 Windows 上还会一并构建宿主和应用（交叉编译时用 Zig 的编译器，所以在任何系统上都能构建 Windows 应用）。在 Mac 和 Linux 上，宿主取自 CLI 所属的发布版本（只下载一次，并校验哈希值）；如果是在 Asuka 仓库的检出中运行，就用 `go build` 构建宿主。`asuka dev` 运行的是同一个宿主，只是搭配一个不含应用的核心（在 Windows 上是一个控制台程序），由它从 `asuka dev` 加载应用的字节码，之后每次保存再加载新的字节码（参见[开发](development.md#在桌面端)）。
 
 ## 托盘图标与程序坞菜单
 

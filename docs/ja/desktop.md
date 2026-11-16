@@ -6,15 +6,15 @@
 
 ## デスクトップアプリの構成
 
-デスクトップアプリの実行ファイルは Asuka のデスクトップホスト（`cmd/asuka-host`）で、どのアプリでも同じものです。Mac では AppKit、Windows では Win32、Linux では GTK 4 と libadwaita を使い、Go で書かれていて、cgo を使わずにプラットフォームを呼び出します。その隣には、アプリをコンパイルして組み込んだコアがあり、ホストはコアの C の ABI（`core/include/asuka.h`）を通じてそれを読み込み、動かします。さらに、`asuka.toml` から作られたアプリの設定（`asuka-app.json`：名前、ID、バージョン、アクセントカラー、URL スキーム、ファイルの種類、アップデート）も置かれます。
+Windows では、アプリは 1 つの実行ファイルです。Asuka の Windows ホスト（C で書かれ、Win32 とそのコモンコントロールを使います）、コア（`core/include/asuka.h` の C）、C にコンパイルしたアプリをまとめてリンクし、アプリのアイコン、マニフェスト、バージョン情報も中に組み込みます。Mac と Linux では、実行ファイルは Asuka のデスクトップホスト（`cmd/asuka-host`）で、どのアプリでも同じものです。Mac では AppKit、Linux では GTK 4 と libadwaita を使い、Go で書かれていて、cgo を使わずにプラットフォームを呼び出します。その隣には、アプリをコンパイルして組み込んだコアがあり、ホストはコアの C の ABI を通じてそれを読み込み、動かします。どのデスクトップアプリにも、`asuka.toml` から作られたアプリの設定（`asuka-app.json`：名前、ID、バージョン、アクセントカラー、URL スキーム、ファイルの種類、アップデート）が付きます。
 
 | | コア | 設定 |
 |---|---|---|
 | macOS（`Name.app`） | `Contents/Frameworks/libasuka.dylib` | `Contents/Resources/asuka-app.json` |
-| Windows（フォルダー） | `asuka.dll`（`Name.exe` の隣） | `asuka-app.json`（その隣） |
+| Windows（フォルダー） | `Name.exe` の中 | `asuka-app.json`（その隣） |
 | Linux（インストールプレフィックス） | `lib/<exe>/libasuka.so` | `share/<exe>/asuka-app.json` |
 
-`asuka build` は、ターゲット向けの C コンパイラー（クロスコンパイルでは Zig のもの）でコアをビルドします。ホストは CLI のリリースのものを使います（一度だけダウンロードし、ハッシュで検証します）。Asuka のチェックアウトから実行している場合は、`go build` でホストをビルドします。Windows のビルドでは、アプリのアイコン、マニフェスト、バージョン情報を実行ファイルにリンクします。`asuka dev` は同じホストを、アプリを含まないコアと一緒に実行します。このコアは `asuka dev` からアプリのバイトコードを読み込み、その後は保存のたびに新しいバイトコードを読み込みます（[開発](development.md#デスクトップでの実行)を参照）。
+`asuka build` は、ターゲット向けの C コンパイラーでコアをビルドし、Windows ではホストとアプリも一緒にビルドします（クロスコンパイルでは Zig のものを使うので、Windows 向けのビルドはどのシステムからでもできます）。Mac と Linux では、ホストは CLI のリリースのものを使います（一度だけダウンロードし、ハッシュで検証します）。Asuka のチェックアウトから実行している場合は、`go build` でホストをビルドします。`asuka dev` は同じホストを、アプリを含まないコアと一緒に実行します（Windows では 1 つのコンソールプログラムです）。このコアは `asuka dev` からアプリのバイトコードを読み込み、その後は保存のたびに新しいバイトコードを読み込みます（[開発](development.md#デスクトップでの実行)を参照）。
 
 ## トレイアイコンと Dock メニュー
 

@@ -43,20 +43,21 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 各プラットフォームの開発用アプリは次のとおりです。
 
-- **macOS、Windows、Linux**：デスクトップのホスト（`cmd/asuka-host`。AppKit、Win32、GTK を使い、C の ABI を通じてコアを動かします）と、その隣に置いたコア（`libasuka.dylib`、`asuka.dll`、`libasuka.so`）です。Asuka のキャッシュ内のアプリのディレクトリに置かれます。Mac ではリリースと同じ形の `.app` です。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **Windows**：コアをリンクした Windows ホスト（C で書かれ、Win32 を使います）で、1 つのコンソールプログラムです。Asuka のキャッシュ内のアプリのディレクトリに置かれます。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **macOS、Linux**：デスクトップのホスト（`cmd/asuka-host`。AppKit か GTK を使い、C の ABI を通じてコアを動かします）と、その隣に置いたコア（`libasuka.dylib`、`libasuka.so`）です。Asuka のキャッシュ内のアプリのディレクトリに置かれます。Mac ではリリースと同じ形の `.app` です。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
 - **iOS**：Swift のホストをコア（`libasuka.a`）とリンクして、アプリの `.app` にしたものです。独自のフレームワーク（WebKit、AVKit など）をリンクするホストの部分もすべて含むので、編集中のアプリはそのどれでも使えます。シミュレーターでは `xcrun simctl` で、環境変数に `ASUKA_DEV` を付けてインストール・起動します。iPhone では開発用に署名し、`xcrun devicectl` でインストールします。
 - **Android**：デバッグ版の外側のアプリ（Gradle が一度ビルドし、マニフェスト、Kotlin、リソースが変わったときにビルドし直します）です。コアはそのプライベートファイル（`files/asuka/libasuka.so`）にプッシュされ、デバッグ版のアプリはそこからコアを読み込みます。`files/asuka/dev` には `asuka dev` の場所が書かれ、`adb reverse` によってそれがデバイス自身のループバックになります。
 - **Web**：ページが開発サーバーから WebAssembly のコア（`asuka.wasm`）とアプリのモジュールを読み込み、新しいモジュールがビルドされるたびにそれを読み込みます。
 
 ## デスクトップでの実行
 
-macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。CLI を Asuka のリポジトリのチェックアウトから実行している場合、ホストはソースからビルドされます。そうでなければ CLI のリリースに含まれるホストを使います。これは Asuka のキャッシュに一度だけダウンロードされ、ハッシュで検証されます。コアは、このコンピューターの C コンパイラーでビルドされます。
+macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。Windows のホストは C で書かれていて、コアと一緒にこのコンピューターの C コンパイラー（Zig、clang、MinGW の gcc。`ASUKA_CC` で選べます）でビルドされます。Mac と Linux では、CLI を Asuka のリポジトリのチェックアウトから実行している場合、ホストはソースからビルドされます。そうでなければ CLI のリリースに含まれるホストを使います。これは Asuka のキャッシュに一度だけダウンロードされ、ハッシュで検証されます。コアは、このコンピューターの C コンパイラーでビルドされます。
 
 アプリは `assets/` をその場所から直接読むので、アセットを変更してもコピーは必要ありません。アプリのデータ（SQLite データベース、ファイル）は、インストールしたアプリのデータとは別に、Asuka のキャッシュ内にあるアプリ専用の `data` ディレクトリに保存されます（[最初からやり直す](#よくある問題)を参照）。そのため、`asuka dev` とリリース版がデータを共有することはありません。アプリの出力とエラーはターミナルに表示されます。
 
 **macOS。** 開発用アプリは、リリース版と同じ形の `.app` として Asuka のキャッシュ内に置かれます。この `.app` には、`Info.plist`（`asuka.toml` の名前、bundle ID、URL スキーム、利用目的の説明文、言語）とアイコンが含まれ、アドホック署名されます。そのため、Finder から開いたときと同じく、システムからはそのアプリ自身として扱われます。Dock にはアプリの名前とアイコンが表示され、通知もアプリ自身のものになり、プライバシーに関する許可の確認（カメラ、位置情報、連絡先）もターミナルではなくアプリに対して、アプリの利用目的の説明文とともに表示されます。プロビジョニングプロファイルのエンタイトルメントが必要なパッケージ（プッシュ通知、Sign in with Apple、App Attest）は、そのプロファイルで署名したリリースビルドでしか動きません。[配布](shipping.md#macos)を参照してください。
 
-**Windows。** `asuka dev` は Windows 上でしか動きません。一方、`asuka build --platform windows` はどのシステムからでもビルドできます。開発用アプリはコンソールプログラムなので、出力はターミナルに表示されます。リリース版にはコンソールがありません。Windows ではプロセスに Ctrl-C を送れないため、停止するときは Asuka が開発用アプリの標準入力を閉じます。
+**Windows。** `asuka dev` は Windows 上でしか動きません。一方、`asuka build --platform windows` はどのシステムからでも（Zig で）ビルドでき、アプリを含む 1 つの `.exe` ができます。開発用アプリはコンソールプログラムなので、出力はターミナルに表示されます。リリース版にはコンソールがありません。Windows ではプロセスに Ctrl-C を送れないため、停止するときは Asuka が開発用アプリの標準入力を閉じます。
 
 **Linux。** Linux では、`asuka dev` は GTK 4 と libadwaita の上で開発用アプリを実行します。これらがインストールされている必要があります（[はじめに](getting-started.md#必要なもの)を参照）。アプリは、セッションのディスプレイ（Wayland または X11）で動きます。Mac や PC で `asuka dev --platform linux` を実行できるのは、`ASUKA_LINUX_RUN` に、ディスプレイのある Linux マシンでプログラムを実行するコマンドを指定した場合だけです。そのマシンからは、このコンピューターのファイルが同じパスで見える必要があります。たとえば VM で、`ASUKA_LINUX_RUN="orb -m ubuntu"`（OrbStack）や `ASUKA_LINUX_RUN="limactl shell default"`（Lima）のように指定します。Asuka はそのマシンのアーキテクチャー向けに開発用アプリをビルドし（コアは Zig でビルドします）、開発用アプリはネットワーク経由で `asuka dev` に接続します。接続先は、このコンピューターの最初のアドレスか、`ASUKA_DEV_HOST` に指定したアドレスです。
 
@@ -162,7 +163,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 go test ./core                                     # コアの C のテスト（ASan、UBSan）と VM のテスト
 go test ./internal/appbuild ./cmd/asuka            # ビルドと開発ループ。このコンピューターで使えるすべてのプラットフォームで
 go test ./host/darwin                              # macOS：実際の AppKit のビュー
-go test ./host/windows                             # Windows：実際のウィンドウ
+go test ./platform/windows                         # Windows：Zig でビルドしたアプリを実際のウィンドウで動かす（Windows 上か VM で）
 xvfb-run -a dbus-run-session go test ./host/linux  # Linux：実際の GTK ウィジェット
 swift test --package-path platform/ios             # Swift ホストのデコーダー
 node --test platform/web                           # Web ホストのデコーダー
@@ -170,7 +171,9 @@ node --test platform/web                           # Web ホストのデコー�
 
 `go test ./cmd/asuka` は、できる範囲で開発ループをエンドツーエンドで実行します。この Mac 上（開発用アプリ、モジュール、タップ、カウントを保った次のモジュール）、ヘッドレス Chrome、起動中の iOS シミュレーター、実行中の Android エミュレーターで動かし、さらに各プラットフォーム向けにアプリをビルドします。このコンピューターでビルドや実行ができないものはスキップします。
 
-`go test ./host/darwin -run Conformance` と `go test ./host/windows -run Conformance` は、あるスタイルに対してホストが描画するもの（辺、角、枠線、影、グラデーション）を、ウィンドウのキャプチャー上で計測して確かめます。e2e テストは、シミュレーター、エミュレーター、ヘッドレス Chrome で同じことを行います（`go test -tags e2e ./e2e -run Conformance`）。
+`go test ./host/darwin -run Conformance` は、あるスタイルに対してホストが描画するもの（辺、角、枠線、影、グラデーション）を、ウィンドウのキャプチャー上で計測して確かめます。e2e テストは、シミュレーター、エミュレーター、ヘッドレス Chrome で同じことを行います（`go test -tags e2e ./e2e -run Conformance`）。Windows では、`go test ./platform/windows -run Drawing` が、画像、図形、キャンバス、シェーダー、角丸のクリップ、マテリアルを、ウィンドウのキャプチャーのピクセルで確かめます。
+
+`go test ./platform/windows` は、各テストのアプリを Windows で実行します。PC 上で実行するか、Mac からは `ASUKA_WINDOWS_VM` で指定した swiftvm の VM（既定は `Windows Fresh`）で実行します。この VM からは `~/Library/Caches/asuka/windows-vm` が `Z:\windows-vm` として見えます。どちらもない場合、これらのテストはスキップされます。
 
 ## ベンチマーク
 

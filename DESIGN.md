@@ -36,7 +36,7 @@ large audience before 1.0.
 | Layout | Our own engine (core/src/layout): CSS block, flexbox and grid, checked against Chrome, measured by the host | One layout for every platform, with the semantics web and React Native developers know. |
 | iOS host | Swift + UIKit, the core linked as a static library | UIKit subclasses and delegates are trivial in Swift. Not SwiftUI: it is a second reconciler. |
 | Android host | Kotlin + Android Views (Material Components 3), the core a shared library through JNI | Views are imperative targets for mount ops. Not Compose (a second reconciler, measuring only in its own pass). |
-| Desktop hosts | Go, in process (AppKit through purego, Win32, GTK 4), driving the core through its C ABI (host/bridge) | They are hosts behind the ops wire like the others; their cost is the platforms' calls. No cgo. |
+| Desktop hosts | In process. Windows: C on Win32, the core linked in (platform/windows). macOS and Linux, being replaced (RFC 0008): Go (AppKit through purego, GTK 4), driving the core through its C ABI (host/bridge) | They are hosts behind the ops wire like the others; their cost is the platforms' calls. No Go at run time once RFC 0008 is done; no cgo. |
 | Web | The DOM, from a JavaScript host (platform/web), the core as WebAssembly | Batches decoded in place out of the WebAssembly memory; the browser's own elements. |
 | C compiler | The platform's own (Xcode's clang, the NDK's, the system's); Zig's opted into (`ASUKA_CC=zig`) and to cross-compile | What the platforms' SDKs are tested with; Zig for what they can't do. |
 | Packages | The npm registry, with the asuka CLI as the client (`asuka add`, `asuka.lock`) | A registry with scopes, auth and private mirrors for free; one version of each package per app. |
@@ -62,7 +62,8 @@ ops/                    mount operations, binary encoding
 abi/                    asuka.h: what hosts call
 ─────────────────────────────────────────────────────────────  asuka.h
 platform/ios (Swift)   platform/android (Kotlin)   platform/web (JavaScript)
-host/darwin, host/windows, host/linux (Go, through host/bridge)
+platform/windows (C, the core linked in)   platform/desktop (C the Windows and Linux hosts share)
+host/darwin, host/linux (Go, through host/bridge)
 core/host/fake          tests: records ops, measures text at 8 points a character
 ```
 
@@ -509,8 +510,11 @@ hash). It builds:
   given the SDK levels and `:asuka`;
 - the web: each `web/` shipped at `packages/<pkg>/`, imported before the
   app starts;
-- Windows and Linux: a host executable of the app's own with its
-  packages' Go linked in (cmd/asuka-host, `HostOptions.Natives`).
+- Windows: a package's Windows code is C (`windows/*.c`), compiled with
+  the host's headers into the app's one executable
+  (`appbuild.WindowsOptions.Natives`);
+- Linux: a host executable of the app's own with its packages' Go
+  linked in (cmd/asuka-host, `HostOptions.Natives`).
 
 A package's `asuka.toml` (usage strings, background modes, permissions),
 `Info.plist`, `iOS.entitlements` and `macOS.entitlements` merge into the
@@ -1073,7 +1077,7 @@ runtime can't reach, so the same file (`Purchase.swift`, kept identical
 in platform/ios and platform/macos) is built into the app's Swift
 library for an app that imports the package (`featureMacSwift`), and
 `host/darwin` calls it through purego; Play Billing in the optional
-`asuka-purchase` module; the Microsoft Store from Go (`internal/windows`'
+`asuka-purchase` module; the Microsoft Store (WinRT's
 StoreContext); the Digital Goods API on the web; none on Linux;
 `fake.Store` in tests. Each host follows the store's transactions from
 the app's start (StoreKit's `Transaction.updates` from launch, Play's
@@ -1436,11 +1440,11 @@ asuka/
                      layout's conformance)
   i18n/              languages, catalogs, ICU messages, CLDR's formats
                      (compiled into what the core says)
-  host/              the desktop hosts, Go: darwin (AppKit through
-                     purego), windows (Win32), linux (GTK 4 and
-                     libadwaita); bridge (the core's ABI through purego);
-                     apphost (cmd/asuka-host); hosttest (their tests on
-                     the core); the Host interface
+  host/              the Go desktop hosts: darwin (AppKit through
+                     purego), linux (GTK 4 and libadwaita); bridge (the
+                     core's ABI through purego); apphost
+                     (cmd/asuka-host); hosttest (their tests on the
+                     core); the Host interface
   native/            native packages' Go runtime (the codec, the servers
                      desktop code answers with)
   internal/nativegen/ asuka native's generator (Swift, Kotlin,
@@ -1450,7 +1454,13 @@ asuka/
   platform/web/      the JavaScript host and decoder; the core runs in the
                      page as WebAssembly
   platform/macos/    the Swift runtime packages' Swift builds against
-  cmd/asuka/         the CLI; cmd/asuka-host: every desktop app's executable
+  platform/windows/  the Windows host, C17 on Win32 (src/), its tests
+                     (Go, driving apps in Windows) and portable C tests
+  platform/desktop/  the C the Windows and Linux hosts share (desktop.h:
+                     JSON, files, the app's settings and directories,
+                     window and route state, flyouts' places, Asuka's
+                     own words, animated images)
+  cmd/asuka/         the CLI; cmd/asuka-host: the Go desktop hosts' executable
   internal/          the CLI's parts: cbuild (building the core),
                      appbuild, devserver, pkgs (packages), boot, ...
   plugin/            plugins' manifests, fetching and linking
@@ -1482,11 +1492,21 @@ asuka/
   drive them by what the screen shows (`tap`, `type`, `expect`), as a
   user would; the clock moves only when nothing else can run, so a
   `sleep(5s)` takes no time and nothing waits on wall-clock time.
-- The desktop hosts (`go test ./host/darwin`, `./host/windows`,
-  `./host/linux` under Xvfb): host/hosttest compiles an Asuka app, runs
-  it on the core in the test's process, and the test drives and checks
-  the host's own views (a click through the button's action, the text
-  set again, frames, list binding, disposal).
+- The Go desktop hosts (`go test ./host/darwin`, `./host/linux` under
+  Xvfb): host/hosttest compiles an Asuka app, runs it on the core in the
+  test's process, and the test drives and checks the host's own views
+  (a click through the button's action, the text set again, frames, list
+  binding, disposal).
+- The Windows host (`go test ./platform/windows`): each test compiles an
+  Asuka app to C, builds it into one executable with Zig, and runs it in
+  Windows (on Windows, or in the swiftvm VM `ASUKA_WINDOWS_VM` names,
+  through a scheduled task in the signed-in user's session, since a
+  window needs a desktop) with `ASUKA_SCRIPT` steps, then checks the
+  view tree each `snap:` step dumps and the PNGs (a click through the
+  button's action, a sheet's form, list rows bound, rich text typed,
+  overlays, drawing by pixel, drops, UI Automation read by a client).
+  `TestPortable` runs the host's C that needs no Windows (RTF) here,
+  under ASan and UBSan; `go test ./platform/desktop` the shared C.
 - `ops`: the C encoder and the generated Swift, Kotlin and JavaScript
   decoders round-trip the same golden batches (`swift test --package-path
   platform/ios`; `./gradlew :asuka:testDebugUnitTest` in `platform/android`;
@@ -1508,7 +1528,7 @@ asuka/
   shadow's Gaussian σ, a color's mix, with tolerances, not against a
   reference, so one set holds for every host at any scale. Runners:
   `host/darwin` (Core Animation's own renderer into a Metal texture),
-  `host/windows` (`PrintWindow`), and `e2e` on the simulator, the
+  the Windows host (`PrintWindow`), and `e2e` on the simulator, the
   emulator and headless Chrome at 1×, 1.5× and 2×.
 - Tests never pass or fail on wall-clock time: wait for the condition,
   count the work.
@@ -1527,7 +1547,8 @@ green:
   the core in C (signals, layout at Chrome's parity, ops byte-identical
   to the golden files, the UI runtime, tasks and streams); iOS, Android
   and the web on it, with `asuka dev`'s bytecode reloads keeping state;
-  the desktop hosts on it through host/bridge; packages from the npm
+  the desktop hosts on it (Windows in C, the Mac and Linux through
+  host/bridge); packages from the npm
   registry; the standard library (`std/`).
 - **In progress** (RFC 0007's E1, N1 and X): every element of the
   schema in the UI runtime and the examples in Asuka; the Go SDK's
@@ -1753,16 +1774,21 @@ On the same core, `ops` and app code as the phones:
 | Platform | Host | Notes |
 |---|---|---|
 | macOS | Go, AppKit through purego (`host/darwin`) | No cgo. `internal/darwin` is MyGo's Objective-C runtime layer (classes made at runtime, blocks, `WithPool`, a main run loop source for `Post`). |
-| Windows | Go, Win32 with common controls v6 through `syscall` (`host/windows`) | No cgo; `internal/windows` is the Win32, GDI, GDI+, uxtheme, DWM and WebView2 layer. Not WinUI 3: it needs the Windows App SDK beside the app, and XAML is a second reconciler. `List` is core-virtualized: no Win32 list hosts arbitrary rows. |
+| Windows | C17, Win32 with common controls v6 (`platform/windows`) | The core and the app linked into one executable. GDI+ through its flat API, DWM, uxtheme, Direct3D 11, WebView2, UI Automation and WinRT through their COM vtables in C. Not WinUI 3: it needs the Windows App SDK beside the app, and XAML is a second reconciler. `List` is core-virtualized: no Win32 list hosts arbitrary rows. |
 | Linux | Go, GTK 4 and libadwaita through purego (`host/linux`) | No cgo; `internal/gtk` binds GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later). libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. |
 
-Desktop hosts run in the app's process: one executable for every app
-(cmd/asuka-host, with the app's native packages' Go linked in when it
-has any) locks the main OS thread and runs the platform's event loop
-there, opens the core (`libasuka`, the app compiled in for a release)
-through purego (host/bridge), and decodes each batch with `ops`' Go
-decoder, in place. The core's callbacks are made once and routed by
-user data, never per view.
+Desktop hosts run in the app's process. On macOS and Linux one
+executable for every app (cmd/asuka-host, with the app's native
+packages' Go linked in when it has any) locks the main OS thread and
+runs the platform's event loop there, opens the core (`libasuka`, the
+app compiled in for a release) through purego (host/bridge), and decodes
+each batch with `ops`' Go decoder, in place. On Windows the host is C
+(RFC 0008): the host, the C core and the app compiled to C (lang/cgen)
+are one executable per app, the host decoding each batch in place with
+the core's own reader (`core/src/ops`); `asuka dev`'s player is the host
+and the core without an app, which loads the bytecode the CLI sends
+(`asuka_dev_connect`). Either way the core's callbacks are made once and
+routed by user data, never per view.
 
 How the macOS host maps Asuka (`host/darwin`):
 
@@ -1884,16 +1910,36 @@ How the macOS host maps Asuka (`host/darwin`):
   once it has shown, without taking focus (`ASUKA_DUMP=1` writes the view
   tree beside it), then quits.
 
-How the Windows host maps Asuka (`host/windows`):
+How the Windows host maps Asuka (`platform/windows`):
 
-- One thread: the main goroutine is locked to the main thread (the
-  package's `init`), which runs the message loop; `Post` queues work and
-  posts a message to a message-only window. One window procedure, made
-  once with `syscall.NewCallback`, serves every window class and routes
-  by window to its node; controls are subclassed (`SetWindowSubclass`)
-  through one callback too. `IsDialogMessage` gives Tab and arrow key
-  navigation. A control that would run a modal loop (a menu, a task
-  dialog, the color dialog) runs it once the core has returned.
+- The host is C17 (`platform/windows/src`, a file per part: `host.c` the
+  nodes and batches, `views.c` and `controls.c` the views, `nav.c` the
+  navigation, `window.c` and `winctl.c` the windows, `menu.c`,
+  `list.c`, `rich.c`, `web.c`, `a11y.c`, `interaction.c` and so on;
+  `host.h` and `parts.h` what they share), with the C shared with the
+  Linux host in `platform/desktop` (`desktop.h`'s `dsk_` API: JSON,
+  files, the app's settings and directories, window and route state,
+  flyouts' places, Asuka's own words, animated images). It links the
+  C core statically: a release is one executable, the app compiled to C
+  (lang/cgen) in it, its icon, manifest and version a COFF object linked
+  in; `asuka dev`'s player is the host and the core without an app, a
+  console program that loads the bytecode the CLI sends
+  (`asuka_dev_connect`). It decodes each batch in place with the core's
+  own reader (`core/src/ops`: `ak_batch_next`, the payloads' decoders)
+  and encodes events with its encoders.
+- One thread: the core, every Win32 call and every state write run on
+  the main thread, which runs the message loop. Posting (the core's
+  `post` callback, `asuka_desktop.h`'s, a worker's result) appends to a
+  queue under an SRW lock and posts one message to a message-only
+  window, which takes the queue whole and runs it. One window procedure,
+  registered for every window class of the host's, routes by window to
+  its node (a map from `HWND`); controls are subclassed
+  (`SetWindowSubclass`) with one procedure that finds the handler in the
+  subclass's data. `IsDialogMessage` gives Tab and arrow key navigation.
+  Calls into the core are counted: a control that would run a modal loop
+  (a menu, a task dialog, the color dialog), or work that would enter
+  the core again, waits until the core has returned, and so do the
+  events raised meanwhile, sent in order then.
 - Every real node is a child window. The app's window holds the root;
   the environment is its client area's size in points (DIPs), its DPI
   as the scale (per-monitor DPI awareness v2), the text size
@@ -1914,9 +1960,11 @@ How the Windows host maps Asuka (`host/windows`):
   word). Views that take no mouse events are `HTTRANSPARENT`, so a
   click on a text reaches the pressable row under it. A pressable view
   shows Fluent's hover and pressed fills and takes Enter and Space.
-- A `Shader` is its program as HLSL (package hlsl), compiled by
-  Windows's compiler (`d3dcompiler_47`) once per program and drawn with
-  Direct3D 11 (the GPU's device, or WARP's), on a goroutine, into a
+- A `Shader` is its program as HLSL (compiled with the app, beside its
+  GLSL, by `internal/shadercode`), compiled by Windows's compiler
+  (`d3dcompiler_47`, loaded at run time) once per program and drawn with
+  Direct3D 11 (the GPU's device, or WARP's), on a render thread of the
+  host's, into a
   texture of the view's size in pixels that the GPU copies back to
   memory: the main thread paints it with GDI+ as it paints the views
   around it, and never waits for the GPU. Animated, a timer starts a
@@ -2002,7 +2050,7 @@ How the Windows host maps Asuka (`host/windows`):
   sheet. An `Alert` is a task dialog over the window it's declared in,
   likewise; an action sheet's buttons are command
   links. An alert with text fields is a dialog of the host's own, as
-  WinUI's `ContentDialog` (alertdialog.go): its title and message,
+  WinUI's `ContentDialog`: its title and message,
   the host's Fluent text boxes, its buttons in a band below with the
   default one in the accent color; Tab, Enter and Escape as a dialog's,
   the owner disabled meanwhile. A `Snackbar` is a child window at the
@@ -2088,7 +2136,7 @@ How the Windows host maps Asuka (`host/windows`):
   (centered in the work area; 800 by 600 points if the app gives none)
   and its least size (320 points square if the app gives none).
 - Windows' options (the main window's, a `Window`'s `Config`) are applied
-  before the window shows (`winctl.go`): the abilities taken away are
+  before the window shows: the abilities taken away are
   window styles (no `WS_THICKFRAME` and maximize box for a window that
   can't be resized, no `WS_MINIMIZEBOX` or `WS_MAXIMIZEBOX`; one that
   can't be closed has its close button and the system menu's Close
@@ -2185,7 +2233,7 @@ How the Windows host maps Asuka (`host/windows`):
   and `js` (a blank page in a WebView2 that's never shown); `share`
   (Windows's share UI, `IDataTransferManagerInterop` and the
   `DataTransferManager` of the window in use: text, a link, files as
-  `StorageFile`s through an `IIterable` of Go's; `share()` too),
+  `StorageFile`s through an `IIterable` of the host's; `share()` too),
   `network` (the Network List Manager: connectivity and its changes
   through a connection point, the connection's adapter's type, the cost
   as metered and constrained), `speech` (SAPI's `ISpVoice`, its events
@@ -2201,8 +2249,9 @@ How the Windows host maps Asuka (`host/windows`):
   gets `INotificationActivationCallback.Activate` with the toast's or
   button's arguments, JSON carrying the notification, and the reply's
   text; started by COM for a click (`-ToastActivated`, taken out of
-  `os.Args` before the app sees them) the app keeps its window hidden
-  for a background action and quits once Go is done with it; `showing`
+  the arguments before the app sees them) the app keeps its window
+  hidden for a background action and quits once it's done with it;
+  `showing`
   is `ToastNotificationHistory`'s toasts, read back from their XML; the
   badge an overlay icon on the taskbar button,
   `ITaskbarList3::SetOverlayIcon`, the count drawn, or
@@ -2210,13 +2259,14 @@ How the Windows host maps Asuka (`host/windows`):
   `Geolocator`, `RequestAccessAsync` first; place names from
   OpenStreetMap's Nominatim, a request at a time and a second apart,
   with a User-Agent naming Asuka, answers cached, as geocode-glib asks
-  it). WinRT is called from Go
-  (`internal/windows/winrt.go`): HSTRINGs, activation factories, the IIDs
-  of parameterized interfaces computed from their signatures, delegates
-  whose `Invoke` calls Go (on the thread WinRT calls them on, posted to
-  the main thread).
-- More modules, each file its own (`moduleHooks`, as on macOS; their
-  windows of a class of their own): `audioRecord` (waveIn, encoded as it
+  it). WinRT is called through its COM vtables in C: HSTRINGs and
+  activation factories from combase.dll, the IIDs of parameterized
+  interfaces computed from their signatures, delegates of the host's
+  whose `Invoke` runs on the thread WinRT calls it on and posts to the
+  main thread.
+- More of what the standard library does on Windows, each part its own
+  (their windows of a class of their own; the packages that are native
+  packages have their Windows code in C, RFC 0008): `audioRecord` (waveIn, encoded as it
   records by Media Foundation's sink writer to AAC in MPEG-4, or ADTS
   when streaming; 44.1 kHz, Windows's AAC encoder's), `camera` (Media
   Foundation's capture engine: the preview sink draws into the view's
@@ -2230,12 +2280,13 @@ How the Windows host maps Asuka (`host/windows`):
   is the callback's), `biometric` (Windows Hello:
   `UserConsentVerifier` through its interop, over the window; the
   sensor's kind from the Windows Biometric Framework), `imageEdit` (WIC
-  decodes, upright from the EXIF orientation; Go does the actions and
-  writes; a video's frame from Media Foundation's source reader),
+  decodes, upright from the EXIF orientation; the package does the
+  actions and writes; a video's frame from Media Foundation's source
+  reader),
   `vision` (Windows.Media.Ocr's lines and words, FaceAnalysis's faces,
-  `internal/barcode`'s codes) and `scan.file` (`internal/barcode`, pure
-  Go: QR codes, Data Matrix, EAN, UPC, Code 128 and Code 39, found at any
-  angle; Windows has no reader for apps), `photoLibrary` (the
+  Asuka's own barcode reader's codes) and `scan.file` (Asuka's own
+  reader: QR codes, Data Matrix, EAN, UPC, Code 128 and Code 39, found
+  at any angle; Windows has no reader for apps), `photoLibrary` (the
   Pictures folder, no permission to ask; screenshots are its
   Screenshots folder's), `library` (the known folders), `clipboard`
   (its image as PNG, from `PNG` or a DIB; copying one; changes by its
@@ -2257,16 +2308,18 @@ How the Windows host maps Asuka (`host/windows`):
   region reported once the user has moved it.
 - Screen readers (Narrator, NVDA) read the host's views through UI
   Automation: each view of the host's own drawing answers `WM_GETOBJECT`
-  with a provider of Go's (`IRawElementProviderSimple`, made once per
-  view, on top of its window's host provider) giving its name (Label; a
-  text's text; a pressable view's texts), help text (Hint, else
-  Tooltip), control type (Role; a pressable view a button; a header a
-  heading), whether it's skipped (Decorative, with what's in it), and the
-  Invoke pattern for a view that presses. `Announce` raises a UI
+  with a provider of the host's (a COM object in C,
+  `IRawElementProviderSimple`, made once per view, on top of its
+  window's host provider) giving its name (Label; a text's text; a
+  pressable view's texts), help text (Hint, else Tooltip), control type
+  (Role; a pressable view a button; a header a heading), whether it's
+  skipped (Decorative, with what's in it), the Invoke pattern for a view
+  that presses, and a ProgressRing's value (the RangeValue pattern, read
+  only, as WinUI's ring has it). A tab bar or a pane is named for its
+  chosen item and its badge ("Inbox, 3 items"). `Announce` raises a UI
   Automation notification. A view's screen reader actions are its
   context menu (Shift+F10, the menu key, a right-click); an adjustable
-  view takes the arrow keys: UI Automation's RangeValue pattern sets a
-  double, which a callback of Go's (`syscall.NewCallback`) can't take.
+  view takes the arrow keys, as a slider does.
 - Shadows are drawn by the view a view's window is in, under its
   children, around the view's shape: a child window can't draw outside
   itself. They're concentric rounded rectangles from 3σ outside the
@@ -2292,13 +2345,14 @@ How the Windows host maps Asuka (`host/windows`):
 - Frames are set with `SetWindowPos`, without copying the old pixels
   (a view's pixels depend on what's behind it). `animate { }` steps the
   frames on a timer, and transforms with them.
-- The host builds for amd64 and arm64. GDI+ takes floats: Go's Windows
-  calls pass them in the registers on amd64 (each in its position's), but
-  on arm64 a C function takes floats in the vector registers, which
-  Go's calls don't load; there a trampoline in Go's assembly (no cgo),
-  called through `syscall.SyscallN` with a frame, loads the integer and
-  float arguments and jumps to the function. A `RECT` by value goes in
-  two registers on arm64 (by reference on x64). WebView2's client
+- The host builds for amd64 and arm64: with Zig's MinGW target from any
+  system (`internal/appbuild`'s `WindowsHost`, `internal/cbuild`'s
+  `Program`, the core's objects cached by target), or clang or MSVC on
+  Windows; C17, `-Wall -Wextra -Werror`. Windows's libraries are linked
+  by their import libraries; what not every Windows or MinGW has
+  (`TaskDialogIndirect` in common controls v6, `OpenThemeDataForDpi`,
+  the dark mode's uxtheme ordinals) is looked up at run time, after the
+  common controls v6's activation context is active. WebView2's client
   library is the runtime's of the process's architecture.
 - Debug automation: `ASUKA_SNAPSHOT=file.png` writes the window (and the
   top sheet's, `file.sheet.png`, and each `Window`'s, `file.window.png`,
@@ -2307,14 +2361,19 @@ How the Windows host maps Asuka (`host/windows`):
   taking focus, then quits (`ASUKA_DUMP=1`: the view tree and the menu
   bar beside it); `ASUKA_SCRIPT` runs steps first (`tap:<text>`,
   `type:<text>`, `submit`, `back`, `escape`, `scroll:<y>`,
-  `resize:<w>,<h>`, `key:<shortcut>` such as `key:ctrl+shift+k`,
+  `resize:<w>,<h>`, `hover:<text>`, `press:<text>` and `release` (a
+  press held), `drop:<view>|file:…|text:…|link:…`, `drag:<view>|<target>`,
+  `paste:<field>|…`, `pinch:<view>|<scale>`,
+  `key:<shortcut>` such as `key:ctrl+shift+k`,
   `key:` also goes to a menu open (`key:down`, `key:d`), `menu:<item
   title>`, `open:<menu title>` (a menu bar's menu, shown below its title;
   `escape` closes it), `close` (the window in use, or the last
   `Window`), `dpi:<dpi>` (that window as if moved to a monitor at that
   DPI: `WM_DPICHANGED`, the title bar Windows draws keeping its own),
   `wait:<duration>`, `snap:<file>`), through the controls'
-  own messages and the message loop's key handling;
+  own messages and the message loop's key handling (typing goes to the
+  field last tapped when the app isn't the foreground one, as when a
+  test starts it);
   `ASUKA_COLOR_SCHEME` is light or dark whatever the system's.
 
 How the Linux host maps Asuka (`host/linux`):
