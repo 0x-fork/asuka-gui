@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,6 +40,11 @@ type devLoop struct {
 	stale    bool
 	// reloads receives each reload a player reports (tests).
 	reloads chan devReload
+	// firstLoad is closed when a player first reports the app loaded;
+	// playerErr gets what a player reports going wrong (--once's).
+	firstLoad     chan struct{}
+	firstLoadOnce sync.Once
+	playerErr     chan string
 }
 
 // devReload is a player's report of a module it loaded.
@@ -52,7 +58,8 @@ type devReload struct {
 // compiles the app once. A module that doesn't compile is printed and
 // waited on: the players get the first that does.
 func newDevLoop(app *asukaApp, addr string) (*devLoop, error) {
-	d := &devLoop{app: app, out: os.Stdout, loaded: map[*devserver.Player]bool{}, reloads: make(chan devReload, 16)}
+	d := &devLoop{app: app, out: os.Stdout, loaded: map[*devserver.Player]bool{}, reloads: make(chan devReload, 16),
+		firstLoad: make(chan struct{}), playerErr: make(chan string, 1)}
 	srv, err := devserver.Listen(addr, devserver.Events{
 		Hello: func(p *devserver.Player, b []byte) {
 			var h struct{ Platform, Device string }
@@ -72,7 +79,12 @@ func newDevLoop(app *asukaApp, addr string) (*devLoop, error) {
 		},
 		Reloaded: func(p *devserver.Player, kept, micros uint32) { d.report(p, false, kept, micros) },
 		Error: func(p *devserver.Player, text []byte) {
-			fmt.Fprintf(os.Stderr, "asuka: the player: %s\n", strings.TrimSpace(string(text)))
+			msg := strings.TrimSpace(string(text))
+			fmt.Fprintf(os.Stderr, "asuka: the player: %s\n", msg)
+			select {
+			case d.playerErr <- msg:
+			default:
+			}
 		},
 		Gone: func(p *devserver.Player, err error) {
 			d.mu.Lock()
@@ -103,6 +115,9 @@ func (d *devLoop) report(p *devserver.Player, first bool, kept, micros uint32) {
 		fmt.Fprintf(d.out, "asuka: running (loaded in %s)\n", msText(ms))
 	} else {
 		fmt.Fprintf(d.out, "asuka: reloaded in %s, %d %s kept\n", msText(ms), kept, plural(int(kept), "state", "states"))
+	}
+	if first {
+		d.firstLoadOnce.Do(func() { close(d.firstLoad) })
 	}
 	select {
 	case d.reloads <- devReload{first: first, kept: kept, micros: micros}:
@@ -212,7 +227,9 @@ type devPlayer struct {
 // run launches the player and runs the loop until stop (or the player
 // quits): a change to the sources is compiled and sent; one to the rest
 // of the app (asuka.toml, assets, native code) launches the player
-// again, built again. once launches it without watching.
+// again, built again. once launches it without watching: it returns as
+// the player has the app loaded (the app keeps running), or with what
+// the player reported going wrong first.
 func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 	defer d.close()
 	if err := d.launch(p); err != nil {
@@ -224,13 +241,18 @@ func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 	}
 	if once {
 		select {
+		case <-d.firstLoad:
+			return nil
+		case msg := <-d.playerErr:
+			return fmt.Errorf("the app didn't start: %s", msg)
 		case <-done:
+			return errors.New("the app quit before it loaded")
 		case <-stop:
+			if p.stop != nil {
+				p.stop()
+			}
+			return nil
 		}
-		if p.stop != nil {
-			p.stop()
-		}
-		return nil
 	}
 	fmt.Fprintln(d.out, "asuka: watching for changes (Ctrl-C to stop)")
 	w := newWatcher(d.app.proj.WatchRoots()...)
