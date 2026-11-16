@@ -1711,4 +1711,74 @@ TEST(builtins_are_registered) {
 		if (!ak_builtin_find(names[i])) T_FAIL("no builtin %s", names[i]);
 }
 
+// A root mounted before its window has a size (a desktop's, whose size
+// comes as it shows) lays out again once it has one: its texts measured
+// again at their new width, not the width-0 measures kept.
+static ak_val counter_text_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *col = ak_ui_new(AK_EL_COLUMN);
+	add(col, text("Count: 0"));
+	return (ak_val){.p = col};
+}
+
+// What the Windows host answers: nothing at no width, a line and a
+// button's height at any other.
+static void windows_measure(void *ctx, ak_fake_view *v, float width, float height, float aw, float ah, float *ow, float *oh) {
+	AK_UNUSED(ctx), AK_UNUSED(height), AK_UNUSED(aw), AK_UNUSED(ah);
+	bool button = v->kind == AK_KIND_BUTTON;
+	if (width == 0) {
+		*ow = -0.0f, *oh = button ? 32 : -0.0f;
+		return;
+	}
+	*ow = width == width ? width : (button ? 49 : 53);
+	*oh = button ? 32 : 19;
+}
+
+static ak_val counter_app2(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *col = ak_ui_new(AK_EL_COLUMN);
+	set_f(col, AK_KEY_GAP, 8);
+	ak_ui_set(col, AK_KEY_PADDING, edges4(16, 16, 16, 16));
+	add(col, text("Count: 0"));
+	ak_view *b = ak_ui_new(AK_EL_BUTTON);
+	set_str(b, AK_KEY_BUTTON_TITLE, "Add");
+	add(col, b);
+	return (ak_val){.p = col};
+}
+
+TEST(remeasures_once_the_root_has_a_size_windows) {
+	setup();
+	ak_uitest_set_measure(windows_measure, NULL);
+	ak_closure *c = fn(counter_app2, NULL);
+	ak_environment env = {.scale = 1, .font_scale = 1, .platform = AK_PLATFORM_WINDOWS};
+	ak_uitest *a = ak_uitest_mount(c, &env);
+	ak_release(c);
+	ak_uitest_set_measure(NULL, NULL);
+	ak_fake *f = ak_uitest_host(a);
+	env.width = 800, env.height = 600;
+	ak_fake_set_environment(f, &env);
+	ak_ui_flush();
+	ak_fake_view *t = one(a, AK_KIND_TEXT, "Count: 0");
+	CHECK_EQ_F(t->frame[2], 768);
+	CHECK_EQ_F(t->frame[3], 19);
+	CHECK_EQ_F(one(a, AK_KIND_BUTTON, "Add")->frame[3], 32);
+	done(a);
+}
+
+TEST(remeasures_once_the_root_has_a_size) {
+	setup();
+	ak_closure *c = fn(counter_text_app, NULL);
+	ak_environment env = {.scale = 1, .font_scale = 1, .platform = AK_PLATFORM_WINDOWS};
+	ak_uitest *a = ak_uitest_mount(c, &env);
+	ak_release(c);
+	ak_fake *f = ak_uitest_host(a);
+	env.width = 800, env.height = 600;
+	ak_fake_set_environment(f, &env);
+	ak_ui_flush();
+	ak_fake_view *t = one(a, AK_KIND_TEXT, "Count: 0");
+	CHECK_EQ_F(t->frame[2], 800);
+	CHECK_EQ_F(t->frame[3], 20);
+	done(a);
+}
+
 T_MAIN()

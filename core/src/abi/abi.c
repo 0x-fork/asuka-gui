@@ -57,8 +57,92 @@ static void on_error(void *ctx, void *err) {
 	fprintf(stderr, "asuka: %s\n", ak_error_message(err)->data);
 }
 
+// A host's callbacks made by Go on Windows (purego's, syscall.NewCallback:
+// the desktop host) don't keep the registers the platform's ABI says a
+// callee keeps, the floating-point ones among them (d8-d15 on arm64,
+// xmm6-xmm15 on x64): the core's layout, holding floats in them across a
+// measure, found them zeroed. So on Windows each callback is called from
+// a function of the core's own that says it clobbers them: the compiler
+// saves them as it enters it and puts them back as it returns, whatever
+// the callback did.
+#if defined(_WIN32) && defined(__GNUC__) && defined(__aarch64__)
+#define HOST_KEEPS                                                                                                      \
+	__asm__ volatile("" ::: "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15", "x19", "x20", "x21", "x22", "x23", \
+	                 "x24", "x25", "x26", "x27", "x28", "memory")
+#elif defined(_WIN32) && defined(__GNUC__) && defined(__x86_64__)
+#define HOST_KEEPS                                                                                                       \
+	__asm__ volatile("" ::: "xmm6", "xmm7", "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", "rbx", \
+	                 "rsi", "rdi", "r12", "r13", "r14", "r15", "memory")
+#endif
+
+#ifdef HOST_KEEPS
+static asuka_host_callbacks given;  // the host's own
+
+#define NOINLINE __attribute__((noinline))
+static NOINLINE void k_apply(const uint8_t *b, size_t n) {
+	given.apply(b, n);
+	HOST_KEEPS;
+}
+static NOINLINE void k_measure(uint32_t id, float w, float h, float aw, float ah, float *ow, float *oh) {
+	given.measure(id, w, h, aw, ah, ow, oh);
+	HOST_KEEPS;
+}
+static NOINLINE void k_measure_v(uint32_t id, const float *in, float *out) {
+	given.measure_v(id, in, out);
+	HOST_KEEPS;
+}
+static NOINLINE void k_post(void) {
+	given.post();
+	HOST_KEEPS;
+}
+static NOINLINE size_t k_native_new(const uint8_t *cls, size_t len, uint32_t iface, uint8_t *out, size_t cap, uint8_t **big) {
+	size_t r = given.native_new(cls, len, iface, out, cap, big);
+	HOST_KEEPS;
+	return r;
+}
+static NOINLINE size_t k_native_call(uint64_t h, uint32_t m, const uint8_t *in, size_t len, uint8_t *out, size_t cap, uint8_t **big) {
+	size_t r = given.native_call(h, m, in, len, out, cap, big);
+	HOST_KEEPS;
+	return r;
+}
+static NOINLINE void k_native_start(uint64_t h, uint32_t m, const uint8_t *in, size_t len, uint64_t call) {
+	given.native_start(h, m, in, len, call);
+	HOST_KEEPS;
+}
+static NOINLINE void k_native_cancel(uint64_t call) {
+	given.native_cancel(call);
+	HOST_KEEPS;
+}
+static NOINLINE void k_native_release(uint64_t h) {
+	given.native_release(h);
+	HOST_KEEPS;
+}
+static NOINLINE void k_native_free(void *p) {
+	given.native_free(p);
+	HOST_KEEPS;
+}
+
+static asuka_host_callbacks kept(const asuka_host_callbacks *c) {
+	given = *c;
+	asuka_host_callbacks k = {0};
+	if (c->apply) k.apply = k_apply;
+	if (c->measure) k.measure = k_measure;
+	if (c->measure_v) k.measure_v = k_measure_v;
+	if (c->post) k.post = k_post;
+	if (c->native_new) k.native_new = k_native_new;
+	if (c->native_call) k.native_call = k_native_call;
+	if (c->native_start) k.native_start = k_native_start;
+	if (c->native_cancel) k.native_cancel = k_native_cancel;
+	if (c->native_release) k.native_release = k_native_release;
+	if (c->native_free) k.native_free = k_native_free;
+	return k;
+}
+#else
+static asuka_host_callbacks kept(const asuka_host_callbacks *c) { return *c; }
+#endif
+
 void asuka_start(asuka_host_callbacks *callbacks) {
-	host = *callbacks;
+	host = kept(callbacks);
 	if (started) return;
 	started = true;
 	ak_signal_bind_thread();

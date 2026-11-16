@@ -35,10 +35,16 @@ var (
 )
 
 // Core is the core library, built for this computer (its objects cached
-// across runs) and opened once per process.
+// across runs) and opened once per process. ASUKA_HOSTTEST_CORE names a
+// library built already instead: one cross-compiled for a test run where
+// there's no compiler (the Windows host's tests under Wine).
 func Core(t testing.TB) *bridge.Core {
 	t.Helper()
 	once.Do(func() {
+		if lib := os.Getenv("ASUKA_HOSTTEST_CORE"); lib != "" {
+			core, coreErr = bridge.Open(lib)
+			return
+		}
 		tc, err := cbuild.ForTarget(cbuild.Host())
 		if err != nil {
 			coreErr = err

@@ -215,8 +215,10 @@ static sock_t dial_one(const char *host, int port) {
 		bool ok = connect(s, a->ai_addr, (int)a->ai_addrlen) == 0;
 		if (!ok && WSAGetLastError() == WSAEWOULDBLOCK) {
 			fd_set w, e;
-			FD_ZERO(&w), FD_ZERO(&e);
-			FD_SET(s, &w), FD_SET(s, &e);
+			FD_ZERO(&w);
+			FD_ZERO(&e);
+			FD_SET(s, &w);
+			FD_SET(s, &e);
 			struct timeval tv = {2, 0};
 			ok = select(0, NULL, &w, &e, &tv) > 0 && FD_ISSET(s, &w);
 		}

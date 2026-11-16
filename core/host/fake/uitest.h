@@ -29,6 +29,10 @@ ak_uitest *ak_uitest_mount(ak_closure *build, const ak_environment *env);
 // ak_uitest_set_platform sets the platform a mount with no environment
 // reports (AK_PLATFORM_IOS by default): asuka test -platform.
 void ak_uitest_set_platform(uint8_t platform);
+// ak_uitest_set_measure sets what measures views in the mounts that
+// follow, instead of the fake's own rules (NULL: those again): a test
+// that needs a real host's answers.
+void ak_uitest_set_measure(ak_fake_measure_fn fn, void *ctx);
 // ak_uitest_unmount unmounts the app and reports in err (if not NULL)
 // the native views that outlived it (an owner left undisposed). False
 // if any did.
