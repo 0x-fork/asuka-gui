@@ -2,11 +2,12 @@
 
 package e2e
 
-// SQLite's library in a release build: where the CLI puts it, signed and
-// aligned as the stores want it. The debug builds the other tests run
-// (TestNotesIOS, TestNotesAndroid) load it the same way; a release has
-// no automation to drive, so these check what's built, and on iOS that
-// the app loads the library and opens its database.
+// SQLite in a release build: linked into the app (std/sqlite's C), with
+// no library of its own beside it, and the libraries there aligned as the
+// stores want them. The debug builds the other tests run (TestNotesIOS,
+// TestNotesAndroid) link it the same way; a release has no automation to
+// drive, so these check what's built, and on iOS that the app opens its
+// database.
 
 import (
 	"archive/zip"
@@ -22,8 +23,8 @@ import (
 )
 
 // TestSQLiteReleaseIOS builds examples/notes for the simulator as a
-// release: asqlite.framework in the app's Frameworks, signed, and loaded
-// when the app opens notes.db.
+// release: SQLite in the app's executable, no framework of its own, and
+// the app opens notes.db.
 func TestSQLiteReleaseIOS(t *testing.T) {
 	if _, err := exec.LookPath("xcrun"); err != nil {
 		t.Skip("no Xcode")
@@ -31,11 +32,11 @@ func TestSQLiteReleaseIOS(t *testing.T) {
 	out := t.TempDir()
 	build(t, "--platform", "ios", "--simulator", "--out", out, "examples/notes")
 	app := filepath.Join(out, "Notes.app")
-	fw := filepath.Join(app, "Frameworks", "asqlite.framework")
-	for _, f := range []string{"asqlite", "Info.plist", "PrivacyInfo.xcprivacy", "_CodeSignature/CodeResources"} {
-		if _, err := os.Stat(filepath.Join(fw, f)); err != nil {
-			t.Errorf("asqlite.framework: %v", err)
-		}
+	if fws, _ := filepath.Glob(filepath.Join(app, "Frameworks", "*sqlite*")); len(fws) > 0 {
+		t.Errorf("SQLite beside the app: %v", fws)
+	}
+	if b, err := os.ReadFile(filepath.Join(app, "Notes")); err != nil || !strings.Contains(string(b), "SQLite format 3\x00") {
+		t.Errorf("no SQLite in the app's executable (%v)", err)
 	}
 	run(t, "codesign", "--verify", "--deep", "--strict", app)
 
@@ -47,24 +48,25 @@ func TestSQLiteReleaseIOS(t *testing.T) {
 		t.Fatalf("no pid in %q", launched)
 	}
 	// The simulator's apps are this Mac's processes: what it has open
-	// says where SQLite came from.
+	// says it opened its database.
 	deadline := time.Now().Add(within)
 	var files string
 	for time.Now().Before(deadline) {
 		b, _ := exec.Command("lsof", "-p", m[1]).Output()
 		files = string(b)
-		if strings.Contains(files, "/Notes.app/Frameworks/asqlite.framework/asqlite") && strings.Contains(files, "notes.db") {
+		if strings.Contains(files, "notes.db") {
 			return
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatalf("the app hasn't loaded asqlite.framework and opened notes.db; it has open:\n%s", files)
+	t.Fatalf("the app hasn't opened notes.db; it has open:\n%s", files)
 }
 
-// TestSQLiteReleaseAndroid builds examples/notes's .aab: libasqlite.so
-// beside libasuka.so for every ABI; the APK made from it (bundletool's,
-// as Google Play makes a device's) has them uncompressed, on 16 KB
-// boundaries, so Android maps them from the APK.
+// TestSQLiteReleaseAndroid builds examples/notes's .aab: libasuka.so
+// with SQLite in it for every ABI, no library of SQLite's beside it; the
+// APK made from it (bundletool's, as Google Play makes a device's) has
+// its libraries uncompressed, on 16 KB boundaries, so Android maps them
+// from the APK.
 func TestSQLiteReleaseAndroid(t *testing.T) {
 	keytool := androidTool("keytool")
 	if keytool == "" {
@@ -82,10 +84,11 @@ func TestSQLiteReleaseAndroid(t *testing.T) {
 	abis := []string{"arm64-v8a", "armeabi-v7a", "x86_64"}
 	names := zipNames(t, aab)
 	for _, abi := range abis {
-		for _, lib := range []string{"libasuka.so", "libasqlite.so"} {
-			if !names["base/lib/"+abi+"/"+lib] {
-				t.Errorf("the .aab has no base/lib/%s/%s", abi, lib)
-			}
+		if !names["base/lib/"+abi+"/libasuka.so"] {
+			t.Errorf("the .aab has no base/lib/%s/libasuka.so", abi)
+		}
+		if names["base/lib/"+abi+"/libasqlite.so"] {
+			t.Errorf("the .aab has a base/lib/%s/libasqlite.so: SQLite is in libasuka.so", abi)
 		}
 	}
 
@@ -126,8 +129,17 @@ func TestSQLiteReleaseAndroid(t *testing.T) {
 		if !strings.HasPrefix(f.Name, "lib/") || !strings.HasSuffix(f.Name, ".so") {
 			continue
 		}
-		if strings.HasSuffix(f.Name, "/libasqlite.so") {
+		if strings.HasSuffix(f.Name, "/libasuka.so") {
 			found++
+			r, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(r)
+			r.Close()
+			if !strings.Contains(string(b), "SQLite format 3\x00") {
+				t.Errorf("%s: no SQLite in it", f.Name)
+			}
 		}
 		off, err := f.DataOffset()
 		if err != nil {
@@ -138,7 +150,7 @@ func TestSQLiteReleaseAndroid(t *testing.T) {
 		}
 	}
 	if found != len(abis) {
-		t.Errorf("the APK has %d libasqlite.so, want %d", found, len(abis))
+		t.Errorf("the APK has %d libasuka.so, want %d", found, len(abis))
 	}
 }
 

@@ -231,7 +231,7 @@ func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string
 	if kind != Static {
 		cflags = append(cflags, "-fvisibility=hidden")
 	}
-	link, err := tc.linkSource(core, debug, len(o.Extra) > 0, ffi != nil)
+	link, err := tc.linkSource(core, debug, len(o.Extra) > 0, ffi.glue(), ffi.libs())
 	if err != nil {
 		return err
 	}
@@ -241,17 +241,31 @@ func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string
 		return err
 	}
 	objs = append(objs, Paths(more)...)
-	if ffi != nil {
+	if ffi.glue() {
 		glue, err := tc.CC.CompileCached([]string{ffi.Glue}, flags)
 		if err != nil {
 			return err
 		}
 		objs = append(objs, Paths(glue)...)
+	}
+	if ffi != nil {
 		units, err := ffi.objects(tc.CC, cflags)
 		if err != nil {
 			return err
 		}
 		objs = append(objs, units...)
+	}
+	// The std packages' C the app imports (std/sqlite's): their libraries,
+	// which link.c names.
+	var libs []archiveRef
+	for _, u := range ffi.libs() {
+		p, err := tc.UnitArchive(u, debug)
+		if err != nil {
+			return err
+		}
+		if p != "" {
+			libs = append(libs, archiveRef{p, false})
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return err
@@ -260,8 +274,12 @@ func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string
 		if !strings.Contains(strings.Join(tc.AR, " "), "libtool") {
 			return fmt.Errorf("cbuild: a static library for %s is made with libtool (Xcode's)", tc.Target)
 		}
+		members := []string{coreLib}
+		for _, l := range libs {
+			members = append(members, l.path)
+		}
 		tmp := ccache.TmpName(out)
-		if err := tc.archive(tmp, append([]string{coreLib}, objs...)); err != nil {
+		if err := tc.archive(tmp, append(members, objs...)); err != nil {
 			os.Remove(tmp)
 			return err
 		}
@@ -277,7 +295,7 @@ func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string
 	ld = append(ld, "-lm")
 	switch tc.Target.OS {
 	case "linux":
-		ld = append(ld, "-lpthread", "-ldl") // std/sqlite loads its plugin's library
+		ld = append(ld, "-lpthread", "-ldl")
 	case "windows":
 		ld = append(ld, "-lws2_32") // asuka dev's connection (abi/dev.c)
 		if tc.CC.IsZig() {
@@ -291,7 +309,7 @@ func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string
 	if !debug {
 		ld = append(ld, deadStrip(tc.Target)...)
 	}
-	return tc.link(objs, []archiveRef{{coreLib, true}}, ld, out)
+	return tc.link(objs, append([]archiveRef{{coreLib, true}}, libs...), ld, out)
 }
 
 // Objects compiles srcs, C a host links beside the core (the C the
@@ -352,8 +370,11 @@ type ExeOptions struct {
 	// player, which loads bytecode.
 	App string
 	// Link are what the link takes besides the C library.
-	Link  []string
-	Debug bool
+	Link []string
+	// Foreign is the C the app's externs call, and the std packages' it
+	// imports (std/sqlite's SQLite).
+	Foreign *Foreign
+	Debug   bool
 }
 
 // ExeWith builds an executable for the toolchain's target into out: the
@@ -367,7 +388,8 @@ func (tc *Toolchain) ExeWith(core string, o ExeOptions, out string) error {
 		return err
 	}
 	as := []archiveRef{{coreLib, false}}
-	for _, u := range o.Units {
+	units := append(append([]Unit{}, o.Units...), o.Foreign.libs()...)
+	for _, u := range units {
 		p, err := tc.UnitArchive(u, o.Debug)
 		if err != nil {
 			return err
@@ -377,17 +399,32 @@ func (tc *Toolchain) ExeWith(core string, o ExeOptions, out string) error {
 		}
 	}
 	flags := tc.coreFlags(core, o.Debug)
-	link, err := tc.linkSource(core, o.Debug, o.App != "", false)
+	link, err := tc.linkSource(core, o.Debug, o.App != "", o.Foreign.glue(), units)
 	if err != nil {
 		return err
 	}
 	objs := Paths(link)
+	srcs := []string{}
 	if o.App != "" {
-		app, err := tc.CC.CompileCached([]string{o.App}, flags)
+		srcs = append(srcs, o.App)
+	}
+	if o.Foreign.glue() {
+		srcs = append(srcs, o.Foreign.Glue)
+	}
+	if len(srcs) > 0 {
+		app, err := tc.CC.CompileCached(srcs, flags)
 		if err != nil {
 			return err
 		}
 		objs = append(objs, Paths(app)...)
+	}
+	if o.Foreign != nil {
+		cflags := append([]string{"-I" + filepath.Join(core, "include")}, tc.base(o.Debug)...)
+		fobjs, err := o.Foreign.objects(tc.CC, cflags)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, fobjs...)
 	}
 	more, err := tc.CC.CompileCached(o.Sources, append(append([]string{}, flags...), o.Flags...))
 	if err != nil {
@@ -402,6 +439,9 @@ func (tc *Toolchain) ExeWith(core string, o ExeOptions, out string) error {
 		ld = append(ld, "-lws2_32")
 	}
 	ld = append(ld, o.Link...)
+	if o.Foreign != nil {
+		ld = append(ld, o.Foreign.Link...)
+	}
 	if !o.Debug {
 		ld = append(ld, deadStrip(tc.Target)...)
 	}

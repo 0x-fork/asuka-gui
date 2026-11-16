@@ -33,6 +33,7 @@ import (
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/nativegen"
+	"github.com/egoist/asuka/lang/bytecode"
 	webhost "github.com/egoist/asuka/platform/web"
 )
 
@@ -67,34 +68,18 @@ func webSource() (fs.FS, string) {
 	return sub, ""
 }
 
-// webPluginFiles are the web's files of the plugins app uses (their
-// libraries' wasm files, plugins.go), by their paths in the host's
-// directory: lib/<file>, as Linux's are in lib/ of the prefix.
-func webPluginFiles(app *asukaApp) (map[string]pluginLib, error) {
-	libs, err := appLibs(app, "wasm")
-	if err != nil {
-		return nil, err
-	}
-	files := map[string]pluginLib{}
-	for _, l := range libs {
-		files["lib/"+l.file.Name] = l
-	}
-	return files, nil
-}
+// webSQLitePath is where a web build carries std/sqlite's module (its
+// SQLite worker's, appbuild.SQLiteWasm) in the host's directory, as the
+// page's sqlite option names it.
+const webSQLitePath = "lib/asqlite.wasm"
 
-// webPluginOptions tells the page the plugins' files, under base (the
-// host's directory, with a slash): libs, each file's URL by its name,
-// which the host looks up for what it drives itself (SQLite's worker
-// runs asqlite.wasm, platform/web/src/sqlite.js).
-func webPluginOptions(files map[string]pluginLib, base string, opts map[string]any) {
-	if len(files) == 0 {
-		return
+// webSQLite is the web's SQLite module when c (the app's) imports
+// std/sqlite, or "" (debug: asuka dev's).
+func webSQLite(c *bytecode.C, debug bool) (string, error) {
+	if !appbuild.UsesSQLite(c) {
+		return "", nil
 	}
-	libs := map[string]string{}
-	for p, l := range files {
-		libs[l.file.Name] = base + p
-	}
-	opts["libs"] = libs
+	return appbuild.SQLiteWasm(debug)
 }
 
 // fontFiles are the app's font files (assets/fonts), which a FontFamily
@@ -322,7 +307,7 @@ func devWeb(dir string, o *devOptions, stop <-chan os.Signal) error {
 			if err := s.buildPlayer(); err != nil {
 				return err
 			}
-			if err := s.findPlugins(); err != nil {
+			if err := s.findNatives(); err != nil {
 				return err
 			}
 			s.stamp = strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -370,7 +355,7 @@ func newWebDev(app *asukaApp, work string) (*devServer, *devLoop, error) {
 		loop.close()
 		return nil, nil, err
 	}
-	if err := s.findPlugins(); err != nil {
+	if err := s.findNatives(); err != nil {
 		loop.close()
 		return nil, nil, err
 	}
@@ -404,10 +389,10 @@ type devServer struct {
 	app     *asukaApp
 	loop    *devLoop
 	src     fs.FS
-	plugins atomic.Pointer[map[string]pluginLib] // webPluginFiles, as of the last build
-	scripts atomic.Pointer[[]webScript]          // the plugins' scripts (pluginScripts), likewise
-	wasm    string                               // the player: the core without an app
-	vapid   string                               // asuka.toml's web.vapidPublicKey
+	sqlite  atomic.Pointer[string]      // webSQLite, as of the last build ("": none)
+	scripts atomic.Pointer[[]webScript] // the native packages' scripts (nativeScripts), likewise
+	wasm    string                      // the player: the core without an app
+	vapid   string                      // asuka.toml's web.vapidPublicKey
 	url     string
 	stamp   string // the page's files', so the page never loads old ones
 	// moduleStamp names the app's last module, so the page never loads an
@@ -519,19 +504,14 @@ func (s *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", contentType(p))
 		http.ServeFile(w, r, (*s.scripts.Load())[i].file)
-	case strings.HasPrefix(p, "/asuka/lib/"):
-		l, ok := (*s.plugins.Load())[strings.TrimPrefix(p, "/asuka/")]
-		if !ok {
+	case p == "/asuka/"+webSQLitePath:
+		lib := *s.sqlite.Load()
+		if lib == "" {
 			http.NotFound(w, r)
 			return
 		}
-		b, err := l.read()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
 		w.Header().Set("Content-Type", contentType(p))
-		w.Write(b)
+		http.ServeFile(w, r, lib)
 	case strings.HasPrefix(p, "/asuka/"):
 		b, err := fs.ReadFile(s.src, strings.TrimPrefix(p, "/asuka/"))
 		if err != nil {
@@ -587,7 +567,9 @@ func (s *devServer) index(w http.ResponseWriter) {
 	if s.vapid != "" {
 		opts["vapidPublicKey"] = s.vapid
 	}
-	webPluginOptions(*s.plugins.Load(), "asuka/", opts)
+	if *s.sqlite.Load() != "" {
+		opts["sqlite"] = "asuka/" + webSQLitePath
+	}
 	io.WriteString(w, webIndex(webPage{
 		Name: s.app.displayName(), Lang: devLangOr("en"),
 		Host: "asuka", Core: "asuka.wasm?" + s.stamp,
@@ -772,13 +754,14 @@ func buildWeb(app *asukaApp, o *buildOptions) error {
 		}
 		return nil
 	})
-	// The plugins' files, and their modules' scripts.
-	plugins, err := webPluginFiles(app)
+	// SQLite's module, when the app imports std/sqlite, and the native
+	// packages' scripts.
+	sqlite, err := webSQLite(m.C, false)
 	if err != nil {
 		return err
 	}
-	for p, l := range plugins {
-		if files[p], err = l.read(); err != nil {
+	if sqlite != "" {
+		if files[webSQLitePath], err = os.ReadFile(sqlite); err != nil {
 			return err
 		}
 	}
@@ -874,7 +857,9 @@ func buildWeb(app *asukaApp, o *buildOptions) error {
 	if vapid != "" {
 		opts["vapidPublicKey"] = vapid
 	}
-	webPluginOptions(plugins, hostDir+"/", opts)
+	if sqlite != "" {
+		opts["sqlite"] = hostDir + "/" + webSQLitePath
+	}
 	base := o.base
 	if base == "" {
 		base = app.cfg.Web.Base
@@ -994,10 +979,11 @@ func webIcons(src, dir string) error {
 	return nil
 }
 
-// findPlugins finds the plugins the app uses again (its imports may have
-// changed), and their files for the pages.
-func (s *devServer) findPlugins() error {
-	files, err := webPluginFiles(s.app)
+// findNatives finds what the app's page loads besides the core again
+// (its imports may have changed): SQLite's module, when it imports
+// std/sqlite, and its native packages' scripts.
+func (s *devServer) findNatives() error {
+	sqlite, err := webSQLite(s.app.c, true)
 	if err != nil {
 		return err
 	}
@@ -1009,7 +995,7 @@ func (s *devServer) findPlugins() error {
 	if err != nil {
 		return err
 	}
-	s.plugins.Store(&files)
+	s.sqlite.Store(&sqlite)
 	s.scripts.Store(&scripts)
 	return nil
 }

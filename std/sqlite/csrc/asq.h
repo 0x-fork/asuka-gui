@@ -1,8 +1,9 @@
 // asq is std/sqlite's side of SQLite: one entry point that the core
 // (core/src/sqlite) calls with a whole statement's arguments and gets its
 // answer (its rows, a chunk at a time) back in one crossing, on every
-// platform: through dlopen (macOS, Linux, iOS, Android), LoadLibrary
-// (Windows) and JavaScript (the web, SQLite built to WebAssembly).
+// platform: linked into the app with SQLite (std/sqlite's [c], which
+// core/link names), and on the web from JavaScript (the page's SQLite
+// worker, SQLite and asq built to a WebAssembly module of their own).
 //
 // A call: asq_call(op, conn, arg, in, inLen, out, outCap). Its answer is
 // written into out; one that doesn't fit is kept, and the call returns
@@ -45,15 +46,9 @@
 // Columns: u32 n, then each: string name, string declared type.
 // A chunk: u8 done, u32 rows, then each row's values.
 
-#ifdef _WIN32
-#define ASQ_EXPORT __declspec(dllexport)
-#else
-#define ASQ_EXPORT __attribute__((visibility("default")))
-#endif
-
-ASQ_EXPORT intptr_t asq_call(uintptr_t op, uintptr_t conn, uintptr_t arg, const uint8_t *in, uintptr_t inLen, uint8_t *out, uintptr_t outCap);
+intptr_t asq_call(uintptr_t op, uintptr_t conn, uintptr_t arg, const uint8_t *in, uintptr_t inLen, uint8_t *out, uintptr_t outCap);
 
 // asq_version is SQLite's version, as 3054001.
-ASQ_EXPORT intptr_t asq_version(void);
+intptr_t asq_version(void);
 
 #endif

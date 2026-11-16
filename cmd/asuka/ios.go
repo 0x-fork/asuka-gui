@@ -134,7 +134,7 @@ func iosHostVariant(features []string) string {
 // packages' (native_swift.go) into one object, as buildHost's swiftc
 // build is: the packages' objects linked together. What else they bring
 // (static libraries, frameworks, resource bundles) is t.packages, which
-// linkApp links and embedPlugins puts in the app.
+// linkApp links and embedPackages puts in the app.
 func (t *iosToolchain) buildHostPackage(work string, natives []nativePackage, features []string) (string, error) {
 	host, err := swiftSources(iosHost.Files, "Sources/AsukaHost", "Sources/AsukaOps", "App")
 	if err != nil {
@@ -252,6 +252,13 @@ func (t *iosToolchain) buildCore(work string, m *bytecode.Module, c *bytecode.C)
 	return lib, appbuild.PlayerLib(target, cbuild.Static, c, lib)
 }
 
+// embedPackages puts the frameworks of the app's Swift packages in
+// bundle's Frameworks, and their resource bundles in it; signFrameworks
+// signs the frameworks.
+func (t *iosToolchain) embedPackages(bundle string) error {
+	return t.packages.embed(filepath.Join(bundle, "Frameworks"), bundle)
+}
+
 func (t *iosToolchain) link(app *asukaApp, work, hostObj, lib string) (string, error) {
 	bundle := filepath.Join(work, app.name+".app")
 	os.RemoveAll(bundle)
@@ -266,7 +273,7 @@ func (t *iosToolchain) link(app *asukaApp, work, hostObj, lib string) (string, e
 	if err != nil {
 		return "", err
 	}
-	if err := t.embedPlugins(bundle, app); err != nil {
+	if err := t.embedPackages(bundle); err != nil {
 		return "", err
 	}
 	if err := copyDir(filepath.Join(app.dir, "assets"), filepath.Join(bundle, "assets")); err != nil {

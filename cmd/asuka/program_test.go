@@ -255,7 +255,7 @@ func TestBundlePrograms(t *testing.T) {
 			continue
 		}
 		out := filepath.Join(t.TempDir(), "bundle")
-		got, err := bundlePrograms(app, c.t, c.archs, out, out, false)
+		got, err := bundlePrograms(app, c.t, c.archs, out, false)
 		if err != nil {
 			t.Fatalf("%s: %v", c.t.OS, err)
 		}

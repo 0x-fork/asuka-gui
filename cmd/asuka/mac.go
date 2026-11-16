@@ -30,9 +30,7 @@ import (
 // app, which loads the app's bytecode and each save's. asuka build
 // --platform mac makes an .app: a universal executable (arm64 and
 // x86_64) of the host and the core with the app compiled in, its
-// Info.plist, icon and assets, and its plugins' libraries
-// (Contents/Frameworks),
-// signed (ad hoc unless --sign names an
+// Info.plist, icon and assets, signed (ad hoc unless --sign names an
 // identity), with its provisioning profile
 // (Contents/embedded.provisionprofile) and the entitlements the app's
 // packages need of it (mac_profile.go); with --appstore, sandboxed, in a
@@ -155,14 +153,6 @@ func writeMacBundle(app *asukaApp, bundle, work string, release bool, run func(d
 	return exe, nil
 }
 
-// macPluginLibs is where a Mac build puts its plugins' libraries: the
-// app's Frameworks, where package plugin finds them from Contents/MacOS.
-// They're loaded by their paths, so the program needs no rpath for them;
-// signMac signs them (a .dylib each).
-func macPluginLibs(bundle string) string {
-	return filepath.Join(bundle, "Contents", "Frameworks")
-}
-
 // macResourceEntitlements are the hardened runtime's entitlements an
 // app needs for what its purpose strings ask for: without them, an app
 // signed with a Developer ID (the hardened runtime) is refused the
@@ -211,8 +201,8 @@ func signMac(bundle, identity, entitlements string, run func(dir string, env []s
 	}
 	dir := filepath.Dir(bundle)
 	// What the bundle holds first (the app's Swift library and the
-	// runtime it ships, its plugins' libraries, its Swift packages'
-	// frameworks), each signed as the app is,
+	// runtime it ships, its Swift packages' frameworks), each signed as
+	// the app is,
 	// without the entitlements, which are the executable's: with the
 	// hardened runtime, the program loads only libraries signed by its
 	// own team.
@@ -283,17 +273,9 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 	if err := writeHostConfig(app, platformMac, macTarget, !o.appStore, filepath.Join(bundle, "Contents", "Resources", appconfig.File)); err != nil {
 		return err
 	}
-	libs, err := appLibs(app, "darwin")
-	if err != nil {
-		return err
-	}
-	// The plugins' libraries, in Frameworks: signed with the app (signMac).
-	if err := writeLibs(libs, macPluginLibs(bundle)); err != nil {
-		return err
-	}
 	// The project's programs, in Helpers (a CLI the app ships, which a
 	// user links onto their PATH): signed with the app too.
-	if _, err := bundlePrograms(app, cbuild.Target{OS: "darwin"}, appbuild.MacArchs, filepath.Join(bundle, "Contents", "Helpers"), macPluginLibs(bundle), o.verbose); err != nil {
+	if _, err := bundlePrograms(app, cbuild.Target{OS: "darwin"}, appbuild.MacArchs, filepath.Join(bundle, "Contents", "Helpers"), o.verbose); err != nil {
 		return err
 	}
 

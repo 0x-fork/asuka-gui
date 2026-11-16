@@ -21,7 +21,7 @@ import { Pool } from "./spawn.js";
  */
 export async function startCore(host, options = {}) {
   let instance, pool = null;
-  // std/sqlite: the page's SQLite worker (sqlite.js), when the app has the plugin's library.
+  // std/sqlite: the page's SQLite worker (sqlite.js), when the app imports std/sqlite.
   let sqlite = null;
   if (options.sqlite) {
     try {

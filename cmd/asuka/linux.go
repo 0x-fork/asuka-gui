@@ -136,8 +136,8 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 	if err := os.MkdirAll(filepath.Join(out, "bin"), 0o755); err != nil {
 		return err
 	}
-	// The host in bin, the core with the app compiled in where the host
-	// finds it (lib/<exe>), the app's settings in share/<exe>.
+	// The executable (the host, the core and the app) in bin, the app's
+	// settings in share/<exe>.
 	target := "linux-" + arch
 	t := cbuild.Target{OS: "linux", Arch: arch}
 	if err := linuxRelease(app, t, filepath.Join(out, "bin", exe)); err != nil {
@@ -146,26 +146,10 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 	if err := writeHostConfig(app, platformLinux, target, true, filepath.Join(out, "share", exe, appconfig.File)); err != nil {
 		return err
 	}
-	libs, err := appLibs(app, target)
-	if err != nil {
-		return err
-	}
-	if err := writeLibs(libs, linuxPluginLibs(out, exe)); err != nil {
-		return err
-	}
 	// The project's programs in bin, beside the app's: on PATH where the
 	// prefix is installed (~/.local, the Flatpak's /app).
-	progs, err := bundlePrograms(app, t, nil, filepath.Join(out, "bin"), "", o.verbose)
-	if err != nil {
+	if _, err := bundlePrograms(app, t, nil, filepath.Join(out, "bin"), o.verbose); err != nil {
 		return err
-	}
-	for _, p := range progs {
-		// Their plugins' libraries where the core looks from bin/<name>.
-		if l, err := appLibs(app, target); err == nil && len(l) > 0 {
-			if err := writeLibs(l, linuxPluginLibs(out, filepath.Base(p))); err != nil {
-				return err
-			}
-		}
 	}
 	if err := writeLinuxShare(app, out, exe); err != nil {
 		return err
@@ -215,14 +199,6 @@ func linuxRelease(app *asukaApp, t cbuild.Target, exe string) error {
 		return err
 	}
 	return appbuild.LinuxExe(t, m, desktopNativeDirs(app), exe)
-}
-
-// linuxPluginLibs is where a Linux build puts its plugins' libraries in
-// the prefix out: lib/<exe>, the program's own directory in lib, where
-// package plugin finds them from bin/<exe>, and where they can't be taken
-// for the system's libraries.
-func linuxPluginLibs(out, exe string) string {
-	return filepath.Join(out, "lib", exe)
 }
 
 // writeLinuxShare writes the build's share/ in the prefix out: the
@@ -405,7 +381,7 @@ func flatpakManifest(app *asukaApp, exe string) string {
 	if rt == "" {
 		rt = flatpakRuntime
 	}
-	dirs := "bin lib share"
+	dirs := "bin share"
 	return fmt.Sprintf(`# A Flatpak of %[1]s, from asuka build --platform linux (the binary it built,
 # for one architecture): flatpak-builder --user --install --force-clean build %[2]s.yml
 # Then: flatpak run %[2]s

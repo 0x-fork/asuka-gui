@@ -1,7 +1,6 @@
 package main
 
 import (
-	"debug/macho"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,37 +39,11 @@ func TestMacEntitlements(t *testing.T) {
 	}
 }
 
-// SQLite's library goes in the app's Frameworks, where the package finds
-// it from Contents/MacOS (sqlite/locate_darwin.go): for both of the
-// app's architectures.
-func TestMacSQLiteLib(t *testing.T) {
-	bundle := filepath.Join(t.TempDir(), "Notes.app")
-	lib := filepath.Join(macPluginLibs(bundle), "libasqlite.dylib")
-	if rel, _ := filepath.Rel(filepath.Join(bundle, "Contents", "MacOS"), lib); rel != filepath.Join("..", "Frameworks", "libasqlite.dylib") {
-		t.Errorf("from the executable: %s", rel)
-	}
-	if err := writeTestPluginLib("darwin", lib); err != nil {
-		t.Fatal(err)
-	}
-	f, err := macho.OpenFat(lib)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	var cpus []macho.Cpu
-	for _, a := range f.Arches {
-		cpus = append(cpus, a.Cpu)
-	}
-	if !slices.Contains(cpus, macho.CpuArm64) || !slices.Contains(cpus, macho.CpuAmd64) {
-		t.Errorf("architectures: %v", cpus)
-	}
-}
-
 // The libraries in Frameworks are signed before the app, as it is (the
 // hardened runtime loads only its own team's), without its entitlements.
 func TestSignMacFrameworks(t *testing.T) {
 	bundle := filepath.Join(t.TempDir(), "Notes.app")
-	lib := filepath.Join(macPluginLibs(bundle), "libasqlite.dylib")
+	lib := filepath.Join(bundle, "Contents", "Frameworks", "libswift_Concurrency.dylib")
 	os.MkdirAll(filepath.Dir(lib), 0o755)
 	os.WriteFile(lib, []byte("lib"), 0o755)
 	for _, id := range []string{"-", "Developer ID Application: X (T)"} {
@@ -98,8 +71,8 @@ func TestSignMacFrameworks(t *testing.T) {
 }
 
 // A Mac build is an .app: its executable the Swift host linked with the
-// core with the app compiled in (universal), the plugins' libraries in its
-// Frameworks, signed with it, the app's settings in its Resources. It
+// core with the app compiled in (universal) and, as it imports
+// std/sqlite, SQLite, signed, the app's settings in its Resources. It
 // runs: the window shows the Counter, which counts a press.
 func TestBuildMac(t *testing.T) {
 	needMacBuild(t)
@@ -124,7 +97,8 @@ func TestBuildMac(t *testing.T) {
 	if out, _ := exec.Command("nm", "-arch", "arm64", bin).Output(); !containsField(string(out), "_asuka_run") || strings.Contains(string(out), "runtime.gopanic") {
 		t.Error("the executable isn't the Swift host with the core linked in")
 	}
-	for _, f := range []string{"Frameworks/libasqlite.dylib", "Resources/asuka-app.json", "Info.plist"} {
+	checkSQLiteLinked(t, bin)
+	for _, f := range []string{"Resources/asuka-app.json", "Info.plist"} {
 		if _, err := os.Stat(filepath.Join(bundle, "Contents", f)); err != nil {
 			t.Error(err)
 		}

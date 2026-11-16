@@ -3,7 +3,7 @@
 // as spawn's Web Workers: web_test.go's. It prints what the app prints,
 // and ends once the app prints "done" (or after a while).
 //
-// With asqlite.wasm (the sqlite plugin's), the page's SQLite worker runs
+// With asqlite.wasm (std/sqlite's module), the page's SQLite worker runs
 // on a worker thread too.
 //
 // A native package's JavaScript (native.mjs's: a module that registers

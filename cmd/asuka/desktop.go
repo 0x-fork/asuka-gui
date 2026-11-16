@@ -16,7 +16,6 @@ import (
 	"github.com/egoist/asuka/internal/appconfig"
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/nativegen"
-	"github.com/egoist/asuka/plugin"
 	"github.com/egoist/asuka/std"
 )
 
@@ -148,13 +147,6 @@ func devDesktop(dir string, o *devOptions, stop <-chan os.Signal, platform strin
 		if platform != platformMac {
 			env = append(env, "ASUKA_APP_CONFIG="+filepath.Join(filepath.Dir(exe), appconfig.File))
 		}
-		// The plugins' libraries, where the core finds them (a build puts
-		// them beside the program).
-		libEnv, err := pluginEnv(app, plugin.Target(runtime.GOOS, runtime.GOARCH))
-		if err != nil {
-			return err
-		}
-		env = append(env, libEnv...)
 		if platform == platformWindows {
 			env = append(env, "ASUKA_STOP=stdin")
 		}
@@ -170,7 +162,7 @@ func devDesktop(dir string, o *devOptions, stop <-chan os.Signal, platform strin
 				name, args = wrap[0], append(wrap[1:len(wrap):len(wrap)], "env", "ASUKA_DEV="+fmt.Sprintf("%s:%d", devHost, loop.port()),
 					"ASUKA_DATA="+data, "ASUKA_ASSETS="+filepath.Join(app.dir, "assets"),
 					"ASUKA_APP_CONFIG="+filepath.Join(filepath.Dir(exe), appconfig.File))
-				args = append(append(args, libEnv...), exe)
+				args = append(args, exe)
 			}
 			c := exec.Command(name, args...)
 			c.Dir = app.dir
@@ -238,13 +230,6 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 		if err := writeHostConfig(app, platform, "", false, filepath.Join(bundle, "Contents", "Resources", appconfig.File)); err != nil {
 			return "", err
 		}
-		libs, err := appLibs(app, "darwin")
-		if err != nil {
-			return "", err
-		}
-		if err := writeLibs(libs, macPluginLibs(bundle)); err != nil {
-			return "", err
-		}
 		ents, err := writeMacEntitlements(app, work)
 		if err != nil {
 			return "", err
@@ -253,22 +238,22 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 	}
 	if t.OS == "windows" {
 		// One console program: the host, the core, every standard
-		// package's C and the app's own; no app.
+		// package's C and the app's own, and the C it calls (its
+		// externs', std/sqlite's SQLite); no app.
 		exe := filepath.Join(dir, "asuka-player.exe")
 		natives, err := appbuild.DesktopNatives(t, append(stdNativeDirs(), desktopNativeDirs(app)...))
 		if err != nil {
 			return "", err
 		}
-		if err := appbuild.WindowsHost(t, appbuild.WindowsOptions{Native: natives, Console: true}, exe); err != nil {
+		if err := appbuild.WindowsHost(t, appbuild.WindowsOptions{C: app.c, Native: natives, Console: true}, exe); err != nil {
 			return "", err
 		}
 		return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, appconfig.File))
 	}
 	if t.OS == "linux" {
-		// One program likewise: the host, the core, every standard
-		// package's C and the app's own; no app.
+		// One program likewise; no app.
 		exe := filepath.Join(dir, "asuka-host")
-		if err := appbuild.LinuxExe(t, nil, append(stdNativeDirs(), desktopNativeDirs(app)...), exe); err != nil {
+		if err := appbuild.LinuxPlayer(t, app.c, append(stdNativeDirs(), desktopNativeDirs(app)...), exe); err != nil {
 			return "", err
 		}
 		return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, appconfig.File))

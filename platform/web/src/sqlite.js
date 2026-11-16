@@ -1,7 +1,7 @@
 // SQLite on the page, for std/sqlite: the page's side of its SQLite
 // worker (sqlite-worker.js), which runs SQLite's WebAssembly module
-// (the sqlite plugin's asqlite.wasm, which the CLI ships with the apps
-// that use std/sqlite) and keeps databases in the origin private file
+// (std/sqlite's asqlite.wasm, which the CLI builds for the apps that
+// import std/sqlite) and keeps databases in the origin private file
 // system. The core's calls (core/src/sqlite/sqlite.c on the web) come
 // through core.js: send(id, op, conn, input, answer) posts one to the
 // worker, and its answer comes back to answer(bytes) (none for id 0: a

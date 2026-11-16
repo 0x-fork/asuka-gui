@@ -133,7 +133,7 @@ func buildIOS(app *asukaApp, o *buildOptions) error {
 	if err != nil {
 		return err
 	}
-	if err := tc.embedPlugins(bundle, app); err != nil {
+	if err := tc.embedPackages(bundle); err != nil {
 		return err
 	}
 	os.RemoveAll(filepath.Join(work, "dSYMs"))

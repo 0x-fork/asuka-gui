@@ -10,9 +10,9 @@
 // load into it: asuka dev's, which with dev loads each save's in place,
 // keeping the app's state), assets (where its assets are served:
 // "assets"), name (the app's: its stored data is kept under it), fonts
-// (the app's font files, assets/fonts), libs (the URLs of the app's
-// plugins' files, by their names: an app that imports std/sqlite has
-// asqlite.wasm, and SQLite's worker starts with it), serviceWorker (the
+// (the app's font files, assets/fonts), sqlite (the URL of SQLite's
+// module, asqlite.wasm, which an app that imports std/sqlite has: SQLite's
+// worker starts with it), serviceWorker (the
 // URL of the app's service worker, sw.js with the app's settings, which
 // the page registers: its notifications and pushes), vapidPublicKey (the
 // app's VAPID key, for platform/push), icon (a notification's icon),
@@ -57,7 +57,7 @@ export async function start(options = {}) {
   // on a notification may be what opened the page.
   worker.register(options.serviceWorker);
   // SQLite's worker starts beside the app (std/sqlite), loading its module meanwhile.
-  const sqliteWasm = options.libs?.["asqlite.wasm"];
+  const sqliteWasm = options.sqlite;
   const sqlite = sqliteWasm ? import("./sqlite.js").then((m) => m.load(new URL(sqliteWasm, document.baseURI))) : null;
   sqlite?.catch(() => {});
   const data = "/data/" + name.replace(/[^\w.-]/g, "_");

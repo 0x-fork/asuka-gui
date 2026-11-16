@@ -1,6 +1,6 @@
 // std/sqlite on Windows and Linux: where a database's relative name is,
-// the app's data directory (the host's). SQLite itself is the plugin's
-// library, which the core calls.
+// the app's data directory (the host's). SQLite itself is std/sqlite's C
+// (its [c]), linked into the app, which the core calls.
 #include "sqlite.asuka.h"
 
 #include <stdlib.h>

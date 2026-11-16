@@ -197,40 +197,6 @@ func tinyPE() []byte {
 	return b
 }
 
-// SQLite's library for Windows needs only what every Windows 10 and 11
-// has: the Universal C Runtime (its api-ms-win-crt sets) and KERNEL32,
-// nothing of MinGW's (libgcc, libwinpthread); and it exports only its
-// entry points.
-func TestWindowsSQLiteImports(t *testing.T) {
-	for arch, machine := range map[string]uint16{"amd64": pe.IMAGE_FILE_MACHINE_AMD64, "arm64": pe.IMAGE_FILE_MACHINE_ARM64} {
-		dll := filepath.Join(t.TempDir(), "asqlite.dll")
-		if filepath.Base(dll) != "asqlite.dll" {
-			t.Errorf("%s: %s", arch, dll)
-		}
-		if err := writeTestPluginLib("windows-"+arch, dll); err != nil {
-			t.Fatal(err)
-		}
-		f, err := pe.Open(dll)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if f.Machine != machine {
-			t.Errorf("%s: machine %#x", arch, f.Machine)
-		}
-		libs, err := f.ImportedLibraries()
-		f.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, l := range libs {
-			l = strings.ToLower(l)
-			if l != "kernel32.dll" && !strings.HasPrefix(l, "api-ms-win-crt-") {
-				t.Errorf("%s: imports %s", arch, l)
-			}
-		}
-	}
-}
-
 // A Windows build carries asuka.toml's ID and scheme in the host's
 // settings, which it registers and runs once by.
 func TestWindowsHostConfig(t *testing.T) {
@@ -246,10 +212,10 @@ func TestWindowsHostConfig(t *testing.T) {
 	}
 }
 
-// A Windows build is a folder: one executable (the host, the core and the
-// app, its resources linked in), the plugins' libraries for its
-// architecture beside it, the app's settings. The executable needs only
-// what Windows has: no MinGW runtime's DLLs.
+// A Windows build is a folder: one executable (the host, the core, the
+// app and, as it imports std/sqlite, SQLite, its resources linked in), the
+// app's settings. The executable needs only what Windows has: no MinGW
+// runtime's DLLs.
 func TestBuildWindows(t *testing.T) {
 	needDesktopBuild(t, cbuild.Target{OS: "windows", Arch: "amd64"})
 	t.Setenv("ASUKA_WINDOWS_CERT", "")
@@ -266,10 +232,11 @@ func TestBuildWindows(t *testing.T) {
 		for _, e := range entries {
 			names = append(names, e.Name())
 		}
-		if want := []string{"asqlite.dll", "asuka-app.json", "sqliteapp.exe"}; !slices.Equal(names, want) {
+		if want := []string{"asuka-app.json", "sqliteapp.exe"}; !slices.Equal(names, want) {
 			t.Errorf("%s: %v, want %v", arch, names, want)
 		}
-		for _, n := range []string{"asqlite.dll", "sqliteapp.exe"} {
+		checkSQLiteLinked(t, filepath.Join(dir, "sqliteapp.exe"))
+		for _, n := range []string{"sqliteapp.exe"} {
 			f, err := pe.Open(filepath.Join(dir, n))
 			if err != nil {
 				t.Fatal(err)

@@ -1,5 +1,5 @@
 // asq_wasm.c is what SQLite needs of an operating system when it's built
-// to WebAssembly (SQLITE_OS_OTHER; internal/sqlitebuild's wasm target),
+// to WebAssembly (SQLITE_OS_OTHER: std/sqlite's [c.web]),
 // each a function JavaScript gives the module (its imports, from "asq":
 // platform/web/src/sqlite-engine.js): the files SQLite keeps databases
 // and journals in, their locks, the time and the time zone, randomness.

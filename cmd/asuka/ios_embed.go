@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +38,6 @@ func buildIOSFramework(app *asukaApp, o *buildOptions) error {
 		return err
 	}
 	var slices []string
-	pluginSlices := map[string][]string{} // by library
 	for _, sdk := range []string{"iphoneos", "iphonesimulator"} {
 		tc, err := newIOSToolchainFor(sdk, o.verbose)
 		if err != nil {
@@ -63,44 +61,13 @@ func buildIOSFramework(app *asukaApp, o *buildOptions) error {
 			return err
 		}
 		slices = append(slices, fw)
-		// The plugins' libraries, which the app loads from the app's
-		// Frameworks: a framework each, for the app to embed too.
-		libs, err := tc.pluginLibs(app)
-		if err != nil {
-			return err
-		}
-		for _, l := range libs {
-			pfw, err := tc.writePluginFramework(filepath.Join(work, "plugins"), l)
-			if err != nil {
-				return err
-			}
-			pluginSlices[l.lib.Name] = append(pluginSlices[l.lib.Name], pfw)
-		}
 	}
 	tc := &iosToolchain{verbose: o.verbose}
 	out := filepath.Join(o.out, embedModule+".xcframework")
 	if err := tc.createXCFramework(o.out, out, slices); err != nil {
 		return err
 	}
-	var extra []string
-	var names []string
-	for name := range pluginSlices {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		pout := filepath.Join(o.out, name+".xcframework")
-		if err := tc.createXCFramework(o.out, pout, pluginSlices[name]); err != nil {
-			return err
-		}
-		extra = append(extra, pout)
-	}
 	fmt.Printf("asuka: %s in %s\n", out, time.Since(start).Round(time.Second))
-	if len(extra) > 0 {
-		fmt.Printf("asuka: beside it, the libraries of its plugins, which the app loads: %s\n", strings.Join(extra, ", "))
-		fmt.Println("asuka: add them all to your Xcode target (Embed & Sign), then: import AsukaApp; present(AsukaViewController(), animated: true)")
-		return nil
-	}
 	fmt.Println("asuka: add it to your Xcode target (Embed & Sign), then: import AsukaApp; present(AsukaViewController(), animated: true)")
 	return nil
 }

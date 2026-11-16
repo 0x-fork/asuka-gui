@@ -40,6 +40,13 @@ func runBoth(t *testing.T, m *bc.Module) (string, error) {
 func runBothWith(t *testing.T, m *bc.Module, f *cbuild.Foreign) (string, error) {
 	t.Helper()
 	runner := testRunner(t)
+	if f == nil && m.C != nil {
+		// The C of the std packages it imports (std/sqlite's SQLite).
+		var err error
+		if f, err = Foreign(m, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if f != nil {
 		var err error
 		if runner, err = RunnerFor(f, true, t.TempDir()); err != nil {

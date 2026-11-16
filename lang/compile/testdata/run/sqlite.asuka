@@ -1,5 +1,5 @@
-// std/sqlite on the runner: the plugin's library (ASUKA_LIB_ASQLITE,
-// which the test sets to its build or cached file).
+// std/sqlite on the runner: SQLite (std/sqlite's [c]) linked into it, as
+// the program imports std/sqlite.
 import std/sqlite
 
 struct Note {

@@ -15,7 +15,6 @@ import (
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/lang/bytecode"
-	"github.com/egoist/asuka/lang/compile"
 	"github.com/egoist/asuka/platform/desktop"
 )
 
@@ -209,7 +208,7 @@ func StartProgram(m *bytecode.Module, o ProgramOptions) (*Run, error) {
 	}
 	args = append(append(args, p, "--"), o.Args...)
 	cmd := exec.Command(exe, args...)
-	cmd.Env = append(append(os.Environ(), compile.PluginEnv(m)...), o.Env...)
+	cmd.Env = append(os.Environ(), o.Env...)
 	cmd.Dir = o.Dir
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = o.Stdin, o.Stdout, o.Stderr
 	if err := cmd.Start(); err != nil {
@@ -228,9 +227,6 @@ type ProgramBuild struct {
 	// Natives are the directories of the packages it uses with C for the
 	// desktop (Windows, Linux): with any, it runs on the headless host.
 	Natives []string
-	// Plugins: it loads plugins' libraries (std/sqlite's), which a
-	// static C library can't.
-	Plugins bool
 	Debug   bool
 	// Root is what an error's trace names its files relative to (the
 	// project's directory): not the build machine's paths.
@@ -282,7 +278,9 @@ func ProgramExe(t cbuild.Target, m *bytecode.Module, o ProgramBuild, out string)
 		po.Link = natives.Libs
 	}
 	var tc *cbuild.Toolchain
-	if t.OS == "linux" && len(po.Host) == 0 && ffi == nil && !o.Plugins {
+	// Linked statically (musl) unless it needs the system's libraries:
+	// the std packages' C (std/sqlite's SQLite) is its own.
+	if t.OS == "linux" && len(po.Host) == 0 && (ffi == nil || ffi.Glue == "" && len(ffi.Units) == 0 && len(ffi.Link) == 0) {
 		if z, err := cbuild.Musl(t.Arch); err == nil {
 			tc, po.Static = z, true
 		}

@@ -1,5 +1,5 @@
-// An app that uses the sqlite plugin (std/sqlite): the builds' tests
-// ship its library.
+// An app that uses std/sqlite: the builds' tests find SQLite linked into
+// it.
 import std/sqlite
 
 app { Text("runs") }

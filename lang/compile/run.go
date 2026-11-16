@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/cgen"
+	"github.com/egoist/asuka/std"
 )
 
 // FindCore finds the C core's directory (core/, with core/runner): from
@@ -80,25 +81,37 @@ func Run(runner string, m *bytecode.Module, test bool, pattern string, flags ...
 	}
 	args = append(args, p)
 	cmd := exec.Command(runner, args...)
-	cmd.Env = append(os.Environ(), PluginEnv(m)...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err = cmd.Run()
 	return out.String(), err
 }
 
-// Foreign is the C m's externs call, for a runner: its glue, and units,
-// the C it calls (asuka.toml's [c], read by the CLI; a test's own), with
-// link's flags. Nil when m has no externs.
+// Foreign is the C m calls, for a runner: its externs' glue and units,
+// the C they call (asuka.toml's [c], read by the CLI; a test's own), with
+// link's flags, and the C of the std packages it imports (std/sqlite's
+// SQLite). Nil when m has none.
 func Foreign(m *bytecode.Module, units []cbuild.CUnit, link []string) (*cbuild.Foreign, error) {
 	if m.C == nil {
 		return nil, nil
 	}
-	glue, err := cbuild.CacheFile("ffi", "ffi.c", m.C.Glue)
-	if err != nil {
-		return nil, err
+	f := &cbuild.Foreign{Units: units, Link: link}
+	if m.C.Glue != nil {
+		glue, err := cbuild.CacheFile("ffi", "ffi.c", m.C.Glue)
+		if err != nil {
+			return nil, err
+		}
+		f.Glue = glue
 	}
-	return &cbuild.Foreign{Glue: glue, Units: units, Link: link}, nil
+	for _, d := range m.C.Std {
+		u, l, err := cbuild.StdC(d, cbuild.Host(), std.Embedded())
+		if err != nil {
+			return nil, err
+		}
+		f.Libs = append(f.Libs, u)
+		f.Link = append(f.Link, l...)
+	}
+	return f, nil
 }
 
 // RunnerFor builds asuka-run with the C m's externs call (f, from
@@ -151,7 +164,6 @@ func RunCWith(m *bytecode.Module, f *cbuild.Foreign, sanitize, test bool, patter
 	}
 	args = append(args, "-aot")
 	cmd := exec.Command(exe, args...)
-	cmd.Env = append(os.Environ(), PluginEnv(m)...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err = cmd.Run()
@@ -200,7 +212,14 @@ func RunMainC(m *bytecode.Module, sanitize bool, args []string, stdin string, en
 	if err := os.WriteFile(app, src, 0o644); err != nil {
 		return MainRun{}, err
 	}
-	exe, err := cbuild.RunnerFor(core, cbuild.RunnerOptions{Extra: []string{app}, Sanitize: sanitize, Dir: dir})
+	var f *cbuild.Foreign
+	if m.C != nil && len(m.C.Std) > 0 {
+		// The C of the std packages it imports (std/sqlite's SQLite).
+		if f, err = Foreign(&bytecode.Module{C: &bytecode.C{Std: m.C.Std}}, nil, nil); err != nil {
+			return MainRun{}, err
+		}
+	}
+	exe, err := cbuild.RunnerFor(core, cbuild.RunnerOptions{Extra: []string{app}, Foreign: f, Sanitize: sanitize, Dir: dir})
 	if err != nil {
 		return MainRun{}, errors.New("the C the module compiles to doesn't build: " + err.Error())
 	}
@@ -209,7 +228,7 @@ func RunMainC(m *bytecode.Module, sanitize bool, args []string, stdin string, en
 
 func runMain(exe string, args []string, m *bytecode.Module, stdin string, env []string) (MainRun, error) {
 	cmd := exec.Command(exe, args...)
-	cmd.Env = append(append(os.Environ(), PluginEnv(m)...), env...)
+	cmd.Env = append(os.Environ(), env...)
 	var out, errb bytes.Buffer
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Stdout, cmd.Stderr = &out, &errb

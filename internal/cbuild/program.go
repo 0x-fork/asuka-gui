@@ -38,13 +38,13 @@ func (tc *Toolchain) ProgramExe(core string, o ProgramOptions, out string) error
 	}
 	flags := tc.coreFlags(core, o.Debug)
 	cflags := append([]string{"-I" + filepath.Join(core, "include")}, tc.base(o.Debug)...)
-	link, err := tc.linkSource(core, o.Debug, true, o.Foreign != nil)
+	link, err := tc.linkSource(core, o.Debug, true, o.Foreign.glue(), o.Foreign.libs())
 	if err != nil {
 		return err
 	}
 	objs := Paths(link)
 	srcs := []string{o.App}
-	if o.Foreign != nil {
+	if o.Foreign.glue() {
 		srcs = append(srcs, o.Foreign.Glue)
 	}
 	more, err := tc.CC.CompileCached(srcs, flags)
@@ -85,7 +85,17 @@ func (tc *Toolchain) ProgramExe(core string, o ProgramOptions, out string) error
 	if !o.Debug {
 		ld = append(ld, deadStrip(tc.Target)...)
 	}
-	return tc.link(objs, []archiveRef{{coreLib, false}}, ld, out)
+	as := []archiveRef{{coreLib, false}}
+	for _, u := range o.Foreign.libs() {
+		p, err := tc.UnitArchive(u, o.Debug)
+		if err != nil {
+			return err
+		}
+		if p != "" {
+			as = append(as, archiveRef{p, false})
+		}
+	}
+	return tc.link(objs, as, ld, out)
 }
 
 // Musl is the toolchain for a Linux program linked statically (musl, with

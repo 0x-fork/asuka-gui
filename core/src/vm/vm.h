@@ -74,10 +74,13 @@ extern ak_module *(*ak_app_loader)(void);
 // each link: the core itself is the same for every app, a prebuilt
 // archive): the app compiled into it (lang/cgen's asuka_app_module; NULL
 // for a player, which loads bytecode) and its externs' glue (lang/cffi's
-// asuka_ffi_register; NULL without). Named here, so that a static
-// library's linker keeps their objects.
+// asuka_ffi_register; NULL without), and std/sqlite's SQLite when the
+// app imports std/sqlite (its asq_call, std/sqlite/csrc/asq.h; NULL
+// without). Named here, so that a static library's linker keeps their
+// objects.
 extern ak_module *(*const ak_link_app)(void);
 extern void (*const ak_link_ffi)(void);
+extern intptr_t (*const ak_link_sqlite)(uintptr_t op, uintptr_t conn, uintptr_t arg, const uint8_t *in, uintptr_t inLen, uint8_t *out, uintptr_t outCap);
 
 // ak_vm_call calls f with its arguments (borrowed).
 ak_val ak_vm_call(const ak_func *f, ak_val *args, uint32_t nargs);

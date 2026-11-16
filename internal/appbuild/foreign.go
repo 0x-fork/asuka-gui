@@ -8,34 +8,38 @@ import (
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/std"
 )
 
-// CPlatform is the [c.<platform>] table a target reads (pkgs.CPlatforms).
-func CPlatform(t cbuild.Target) string {
-	switch t.OS {
-	case "ios", "ios-simulator":
-		return "ios"
-	case "darwin":
-		return "macos"
-	case "wasm":
-		return "web"
-	}
-	return t.OS // android, windows, linux
-}
-
-// Foreign is the C c (a module's: its externs') calls, for target t: its
-// glue, and each project's asuka.toml [c] for t's platform, its sources
-// a unit and its libraries and frameworks the link's. Nil for a nil c.
+// Foreign is the C c (a module's) calls, for target t: its externs' glue,
+// and each project's asuka.toml [c] for t's platform, its sources a unit
+// and its libraries and frameworks the link's; and the C of the std
+// packages it imports (cbuild.StdC: std/sqlite's SQLite), libraries,
+// except on the web, where SQLite is its worker's module (SQLiteWasm).
+// Nil for a nil c.
 func Foreign(c *bytecode.C, t cbuild.Target) (*cbuild.Foreign, error) {
 	if c == nil {
 		return nil, nil
 	}
-	glue, err := cbuild.CacheFile("ffi", "ffi.c", c.Glue)
-	if err != nil {
-		return nil, err
+	f := &cbuild.Foreign{}
+	if c.Glue != nil {
+		glue, err := cbuild.CacheFile("ffi", "ffi.c", c.Glue)
+		if err != nil {
+			return nil, err
+		}
+		f.Glue = glue
 	}
-	f := &cbuild.Foreign{Glue: glue}
-	platform := CPlatform(t)
+	if t.OS != "wasm" {
+		for _, d := range c.Std {
+			u, link, err := cbuild.StdC(d, t, std.Embedded())
+			if err != nil {
+				return nil, err
+			}
+			f.Libs = append(f.Libs, u)
+			f.Link = append(f.Link, link...)
+		}
+	}
+	platform := t.CPlatform()
 	apple := t.OS == "ios" || t.OS == "ios-simulator" || t.OS == "darwin"
 	seen := map[string]bool{}
 	link := func(args ...string) {
@@ -77,6 +81,14 @@ func Foreign(c *bytecode.C, t cbuild.Target) (*cbuild.Foreign, error) {
 			for _, fw := range s.Frameworks {
 				link("-framework", fw)
 			}
+		}
+		// A vendor's libraries, built for the target ([c.prebuilt]).
+		libs, err := cfg.PrebuiltFor(dir, t.CTarget())
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", filepath.Join(dir, pkgs.ManifestFile), err)
+		}
+		for _, l := range libs {
+			link(l)
 		}
 	}
 	return f, nil

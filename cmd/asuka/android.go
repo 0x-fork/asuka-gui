@@ -170,36 +170,17 @@ func (t *androidToolchain) goArch(serial string) (goarch, triple string, err err
 }
 
 // buildPlayerLib builds asuka dev's player for the device's ABI: the core
-// without an app, work/libasuka.so, with the app's plugins' libraries
-// beside it (plugins: their paths).
-func (t *androidToolchain) buildPlayerLib(app *asukaApp, work, serial string) (lib string, plugins []string, err error) {
+// without an app, work/libasuka.so.
+func (t *androidToolchain) buildPlayerLib(app *asukaApp, work, serial string) (string, error) {
 	goarch, _, err := t.goArch(serial)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
-	lib = filepath.Join(work, "libasuka.so")
+	lib := filepath.Join(work, "libasuka.so")
 	if err := appbuild.PlayerLib(cbuild.Target{OS: "android", Arch: goarch}, cbuild.Shared, app.c, lib); err != nil {
-		return "", nil, err
+		return "", err
 	}
-	// An earlier build's plugins' libraries go.
-	old, _ := filepath.Glob(filepath.Join(work, "*.so"))
-	for _, p := range old {
-		if p != lib {
-			os.Remove(p)
-		}
-	}
-	libs, err := appLibs(app, "android-"+goarch)
-	if err != nil {
-		return "", nil, err
-	}
-	for _, l := range libs {
-		p := filepath.Join(work, l.file.Name)
-		if err := l.write(p); err != nil {
-			return "", nil, err
-		}
-		plugins = append(plugins, p)
-	}
-	return lib, plugins, nil
+	return lib, nil
 }
 
 // buildAPK builds the shell app for app with Gradle, cached by the host
@@ -382,7 +363,7 @@ func removeStaleSources(src string, files []string) {
 
 // devAndroid runs the app on an emulator or a device: the debug shell
 // app (installed when it changed) with the player's library (the core
-// without an app, pushed to its files, as the app's plugins'), which
+// without an app, pushed to its files), which
 // connects to asuka dev through adb reverse (files/asuka/dev says where)
 // and loads the app's bytecode, again on each save.
 func devAndroid(dir string, o *devOptions, stop <-chan os.Signal) error {
@@ -430,7 +411,7 @@ func androidPlayer(app *asukaApp, tc *androidToolchain, work, serial string, loo
 		if err := generateNatives(app); err != nil {
 			return err
 		}
-		lib, plugins, err := tc.buildPlayerLib(app, work, serial)
+		lib, err := tc.buildPlayerLib(app, work, serial)
 		if err != nil {
 			return err
 		}
@@ -445,22 +426,14 @@ func androidPlayer(app *asukaApp, tc *androidToolchain, work, serial string, loo
 		if err := tc.installOnce(serial, pkg, apk, hash, filepath.Join(work, "installed-"+serial)); err != nil {
 			return err
 		}
-		// The player's library, and its plugins' beside it.
+		// The player's library.
 		tmp := "/data/local/tmp/asuka-" + pkg + ".so"
 		if err := tc.run(work, nil, tc.adb, "-s", serial, "push", lib, tmp); err != nil {
 			return err
 		}
-		var pushed []devLib
-		for _, p := range plugins {
-			l := devLib{tmp: "/data/local/tmp/asuka-" + pkg + "-" + filepath.Base(p), name: filepath.Base(p)}
-			if err := tc.run(work, nil, tc.adb, "-s", serial, "push", p, l.tmp); err != nil {
-				return err
-			}
-			pushed = append(pushed, l)
-		}
 		tc.run(work, nil, tc.adb, "-s", serial, "shell", "am", "force-stop", pkg)
 		if err := tc.run(work, nil, tc.adb, "-s", serial, "shell", "run-as", pkg, "sh", "-c",
-			"'"+devLibsScript(tmp, pushed)+" && echo 127.0.0.1:"+port+" > files/asuka/dev'"); err != nil {
+			"'"+devLibScript(tmp)+" && echo 127.0.0.1:"+port+" > files/asuka/dev'"); err != nil {
 			return err
 		}
 		if err := tc.pushAssets(app, work, serial, pkg); err != nil {
@@ -483,20 +456,13 @@ func androidPlayer(app *asukaApp, tc *androidToolchain, work, serial string, loo
 	}, nil
 }
 
-// devLib is a plugin's library asuka dev pushed: where, and its name.
-type devLib struct{ tmp, name string }
-
-// devLibsScript is the shell script (run as the app) that puts the
-// libraries asuka dev pushed to the device's tmp in the app's
-// files/asuka: the player's core, and its plugins' (an earlier build's go).
-// Read-only: Android refuses to load writable libraries.
-func devLibsScript(goTmp string, plugins []devLib) string {
-	s := "mkdir -p files/asuka && rm -f files/asuka/*.so" +
-		" && cp " + goTmp + " files/asuka/libasuka.so && chmod 444 files/asuka/libasuka.so"
-	for _, l := range plugins {
-		s += " && cp " + l.tmp + " files/asuka/" + l.name + " && chmod 444 files/asuka/" + l.name
-	}
-	return s
+// devLibScript is the shell script (run as the app) that puts the
+// player's core asuka dev pushed to the device's tmp in the app's
+// files/asuka (an earlier build's libraries go). Read-only: Android
+// refuses to load writable libraries.
+func devLibScript(tmp string) string {
+	return "mkdir -p files/asuka && rm -f files/asuka/*.so" +
+		" && cp " + tmp + " files/asuka/libasuka.so && chmod 444 files/asuka/libasuka.so"
 }
 
 // androidPackage makes an Android package name from a bundle ID: no

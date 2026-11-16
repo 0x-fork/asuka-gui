@@ -1,11 +1,12 @@
-// SQLite's WebAssembly module (the sqlite plugin's asqlite.wasm: SQLite
-// and Asuka's shim, sqlite/csrc, built by internal/sqlitebuild), and the
-// system it imports (sqlite/csrc/asq_wasm.c): its files are a VFS's
+// SQLite's WebAssembly module (std/sqlite's asqlite.wasm: SQLite and
+// Asuka's shim, std/sqlite/csrc, std/sqlite's [c.web], which the CLI
+// links for the apps that import std/sqlite), and the system it imports
+// (std/sqlite/csrc/asq_wasm.c): its files are a VFS's
 // (sqlite-vfs.js), its time the browser's, in the page's time zone, its
 // randomness crypto.getRandomValues. It runs in the page's SQLite worker
 // (sqlite-worker.js), and in Node for the tests.
 //
-// A call is asq_call's (sqlite/csrc/asq.h): a whole statement in, its
+// A call is asq_call's (std/sqlite/csrc/asq.h): a whole statement in, its
 // answer out, written into the module's memory and copied out of it.
 
 const TAKE = 7;

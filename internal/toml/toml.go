@@ -1,5 +1,5 @@
 // Package toml reads and writes TOML 1.0 (https://toml.io/en/v1.0.0),
-// the format of Asuka's manifests (asuka.toml, asuka-plugin.toml),
+// the format of Asuka's manifests (asuka.toml, asuka.lock),
 // through encoding/json: a value's json struct tags name its keys, and its
 // UnmarshalJSON and MarshalJSON methods are used, so a type reads the
 // same from JSON and from TOML.

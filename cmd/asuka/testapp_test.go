@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -51,18 +53,30 @@ func projectAppErr(dir string, deps map[string]string) (*asukaApp, error) {
 	return app, nil
 }
 
-// sqliteDeps are testdata/sqliteapp's dependencies: the sqlite plugin of
-// this checkout (std/sqlite, with its build if there is one).
+// sqliteDeps are testdata/sqliteapp's dependencies: this checkout's
+// std/sqlite.
 func sqliteDeps() map[string]string {
 	d, _ := filepath.Abs(filepath.Join("..", "..", "std", "sqlite"))
 	return map[string]string{"std/sqlite": d}
 }
 
-// sqliteTestApp is testdata/sqliteapp, an app that uses the sqlite
-// plugin (std/sqlite).
+// sqliteTestApp is testdata/sqliteapp, an app that uses std/sqlite.
 func sqliteTestApp(t *testing.T) *asukaApp {
 	t.Helper()
 	return projectApp(t, filepath.Join("testdata", "sqliteapp"), sqliteDeps())
+}
+
+// checkSQLiteLinked fails t unless the binary at path has SQLite linked
+// in (its databases' header).
+func checkSQLiteLinked(t *testing.T, path string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b, []byte("SQLite format 3\x00")) {
+		t.Errorf("%s: no SQLite linked in", path)
+	}
 }
 
 // needDesktopBuild skips a test that builds a desktop app for t when this

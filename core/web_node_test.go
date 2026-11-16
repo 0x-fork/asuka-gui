@@ -12,10 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/compile"
-	"github.com/egoist/asuka/plugin"
-	"github.com/egoist/asuka/std"
 )
 
 // The player's core as WebAssembly (no app compiled in), built once for
@@ -133,27 +132,11 @@ done
 	}
 }
 
-// asqliteWasm is the sqlite plugin's library for the web (its build, or
-// its published file, downloaded once into the user's cache).
+// asqliteWasm is std/sqlite's C for the web, its SQLite worker's module
+// (appbuild.SQLiteWasm: built into the cache, with Zig).
 func asqliteWasm(t *testing.T) string {
 	t.Helper()
-	dir, ok := std.Package("std/sqlite")
-	if !ok {
-		t.Fatal("no std/sqlite")
-	}
-	data, err := os.ReadFile(filepath.Join(dir, plugin.ManifestFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := plugin.Parse(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	l, ok := m.Library("asqlite")
-	if !ok {
-		t.Fatal("no asqlite library")
-	}
-	p, err := plugin.FilePath(dir, l, "wasm")
+	p, err := appbuild.SQLiteWasm(false)
 	if err != nil {
 		t.Skip(err)
 	}
@@ -237,7 +220,7 @@ addEventListener("error", (e) => { lines.push("ERROR " + e.message); send(); });
 const log = console.log;
 console.log = (...a) => { const l = a.join(" "); lines.push(l); log(...a); if (l === "done") send(); };
 import { start } from "/src/asuka.js";
-await start({ core: "/asuka.wasm", module: "/app.akb", name: "webtest", libs: { "asqlite.wasm": "/asqlite.wasm" } });
+await start({ core: "/asuka.wasm", module: "/app.akb", name: "webtest", sqlite: "/asqlite.wasm" });
 </script>`
 			results := make(chan string, 1)
 			mux := http.NewServeMux()

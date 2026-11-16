@@ -49,7 +49,6 @@ func usage() {
                                             a release build, uploaded to TestFlight or Google Play;
                                             mac, windows, linux: its update, to asuka.toml's updates
   asuka update keygen                       make the key pair that signs a desktop app's updates
-  asuka plugin publish [dir]                upload a plugin's built libraries, record them in its manifest
   asuka native generate|check|new|add       native packages: Asuka declarations their Swift, Kotlin, JavaScript and C implement
   asuka generate [dir]                      write the functions of the app's catalogs
   asuka i18n init|add|check                 start, add languages to, and check the catalogs
@@ -88,8 +87,6 @@ func main() {
 		err = cmdI18n(os.Args[2:])
 	case "update":
 		err = cmdUpdate(os.Args[2:])
-	case "plugin":
-		err = cmdPlugin(os.Args[2:])
 	case "native":
 		err = cmdNative(os.Args[2:])
 	case "test":

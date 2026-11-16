@@ -1,12 +1,13 @@
 // std/sqlite's runtime (std/sqlite: its native fns are these builtins).
-// SQLite is the sqlite plugin's library (std/sqlite/csrc: asq.c, prebuilt for
-// each platform and shipped with the apps that import std/sqlite),
-// loaded on first use and called a whole statement at a time through its
-// one entry point, asq_call (std/sqlite/csrc/asq.h). Statements run on a
-// thread of their own, one after another (so a write is seen by the
-// query after it), and their rows come back as one buffer, which rows()
-// decodes on the main thread straight into the program's values by the
-// type's descriptor (rt/json.h): no JSON text, no per-cell crossing.
+// SQLite is std/sqlite's C (its asuka.toml's [c]: the SQLite amalgamation
+// and std/sqlite/csrc/asq.c), linked statically into the apps that import
+// std/sqlite (core/link: ak_link_sqlite) and called a whole statement at
+// a time through its one entry point, asq_call (std/sqlite/csrc/asq.h).
+// Statements run on a thread of their own, one after another (so a write
+// is seen by the query after it), and their rows come back as one buffer,
+// which rows() decodes on the main thread straight into the program's
+// values by the type's descriptor (rt/json.h): no JSON text, no per-cell
+// crossing.
 //
 //   sqlite.openConn(path, busyMs) -> int               a connection
 //   sqlite.closeConn(conn)
@@ -25,24 +26,17 @@
 // text and 4 blob with a u32 length); then u32 n and n strings, the tables
 // written, and the same for the tables read.
 //
-// On the web (no threads, no dlopen) SQLite is the page's: its SQLite
-// worker (platform/web/src/sqlite-worker.js) runs the plugin's library
-// built to WebAssembly, and the calls here go to it (js_sqlite_send) and
-// come back as the same answers (asuka_sqlite_done), the rows decoded
-// here as on the other platforms. The page's main thread can't wait for
-// the worker, so what runs on the main thread elsewhere (openConn,
-// execNow, migrateConn) is sent without waiting: in order, before the
-// statements after it. A connection that didn't open fails every
-// statement with why; a call sent without waiting that failed fails the
-// next statement on its connection with its error (sqlite-worker.js).
-//
-// The library is found where the CLI puts it (DESIGN.md, Plugins): ASUKA_LIB_ASQLITE
-// (asuka dev, asuka test and the tests set it to the plugin's build or
-// cached file), then where asuka build puts it beside the program, then
-// by name (Android: the APK's lib/<abi>).
-#if !defined(_WIN32) && !defined(_GNU_SOURCE)
-#define _GNU_SOURCE
-#endif
+// On the web (no threads) SQLite is the page's: its SQLite worker
+// (platform/web/src/sqlite-worker.js) runs std/sqlite's C built to a
+// WebAssembly module of its own (asqlite.wasm, which the CLI builds for
+// the apps that import std/sqlite), and the calls here go to it
+// (js_sqlite_send) and come back as the same answers (asuka_sqlite_done),
+// the rows decoded here as on the other platforms. The page's main thread
+// can't wait for the worker, so what runs on the main thread elsewhere
+// (openConn, execNow, migrateConn) is sent without waiting: in order,
+// before the statements after it. A connection that didn't open fails
+// every statement with why; a call sent without waiting that failed fails
+// the next statement on its connection with its error (sqlite-worker.js).
 #include "vm/vm_int.h"
 #include "rt/json.h"
 #include "rt/sched.h"
@@ -51,17 +45,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-
-#if defined(_WIN32)
-#include <windows.h>
-#elif !defined(__wasm__)
-#include <dlfcn.h>
-#include <unistd.h>
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#include <TargetConditionals.h>
-#endif
-#endif
 
 // asq.h's ops.
 enum { ASQ_OPEN = 1, ASQ_CLOSE = 2, ASQ_EXEC = 3, ASQ_QUERY = 4, ASQ_NEXT = 5, ASQ_CLOSE_ROWS = 6, ASQ_TAKE = 7, ASQ_INTERRUPT = 8 };
@@ -117,146 +100,13 @@ static void stmt_in(ak_buf *in, uint8_t flags, const ak_str *sql, const ak_bytes
 
 #if !defined(__wasm__)
 
-// ---- The library ----
+// ---- SQLite ----
 
-static ak_mutex lib_mu = AK_MUTEX_INIT;
-static asq_fn asq;
-static bool lib_tried;
-static char lib_err[1024];
-
-// exe_dir writes the running program's directory into buf.
-static bool exe_dir(char *buf, size_t n) {
-#if defined(_WIN32)
-	DWORD k = GetModuleFileNameA(NULL, buf, (DWORD)n);
-	if (k == 0 || k >= n) return false;
-#elif defined(__APPLE__)
-	uint32_t size = (uint32_t)n;
-	if (_NSGetExecutablePath(buf, &size) != 0) return false;
-	char real[4096];
-	if (realpath(buf, real)) snprintf(buf, n, "%s", real);
-#else
-	ssize_t k = readlink("/proc/self/exe", buf, n - 1);
-	if (k <= 0) return false;
-	buf[k] = 0;
-#endif
-	char *slash = strrchr(buf, '/');
-#if defined(_WIN32)
-	char *bs = strrchr(buf, '\\');
-	if (!slash || (bs && bs > slash)) slash = bs;
-#endif
-	if (!slash) return false;
-	*slash = 0;
-	return true;
-}
-
-static void *open_lib(const char *path) {
-#if defined(_WIN32)
-	return (void *)LoadLibraryA(path);
-#else
-	return dlopen(path, RTLD_NOW | RTLD_LOCAL);
-#endif
-}
-
-static void *lib_sym(void *h, const char *name) {
-#if defined(_WIN32)
-	return (void *)GetProcAddress((HMODULE)h, name);
-#else
-	return dlsym(h, name);
-#endif
-}
-
-static bool try_lib(const char *path, ak_buf *tried) {
-	void *h = open_lib(path);
-	if (!h) {
-		if (tried->len) ak_buf_put(tried, ", ", 2);
-		ak_buf_put(tried, path, strlen(path));
-		return false;
-	}
-	void *f = lib_sym(h, "asq_call");
-	if (!f) {
-		if (tried->len) ak_buf_put(tried, ", ", 2);
-		ak_buf_printf(tried, "%s (no asq_call)", path);
-		return false;
-	}
-	memcpy(&asq, &f, sizeof f);
-	return true;
-}
-
-static void load_lib(void) {
-	ak_buf tried = {0};
-	const char *env = getenv("ASUKA_LIB_ASQLITE");
-	if (env && *env && try_lib(env, &tried)) goto done;
-	char dir[4096], p[4600];
-	if (exe_dir(dir, sizeof dir)) {
-#if defined(_WIN32)
-		snprintf(p, sizeof p, "%s\\asqlite.dll", dir);
-		if (try_lib(p, &tried)) goto done;
-#elif defined(__APPLE__) && TARGET_OS_IPHONE
-		// A framework in the app's Frameworks; an extension finds the app's.
-		snprintf(p, sizeof p, "%s/Frameworks/asqlite.framework/asqlite", dir);
-		if (try_lib(p, &tried)) goto done;
-		snprintf(p, sizeof p, "%s/../../Frameworks/asqlite.framework/asqlite", dir);
-		if (try_lib(p, &tried)) goto done;
-#elif defined(__APPLE__)
-		snprintf(p, sizeof p, "%s/../Frameworks/libasqlite.dylib", dir);
-		if (try_lib(p, &tried)) goto done;
-		snprintf(p, sizeof p, "%s/libasqlite.dylib", dir);
-		if (try_lib(p, &tried)) goto done;
-#elif !defined(__ANDROID__)
-		snprintf(p, sizeof p, "%s/libasqlite.so", dir);
-		if (try_lib(p, &tried)) goto done;
-		const char *base = strrchr(dir, '/');
-		AK_UNUSED(base);
-		char exe[4096];
-		ssize_t k = readlink("/proc/self/exe", exe, sizeof exe - 1);
-		if (k > 0) {
-			exe[k] = 0;
-			const char *name = strrchr(exe, '/');
-			// A path that doesn't fit isn't tried.
-			if (snprintf(p, sizeof p, "%s/../lib/%s/libasqlite.so", dir, name ? name + 1 : exe) < (int)sizeof p && try_lib(p, &tried)) goto done;
-		}
-#endif
-	}
-#if !defined(_WIN32)
-	// Beside the core's own library (Linux's lib/<app>, a Mac's
-	// Frameworks when the host is elsewhere).
-	Dl_info info;
-	if (dladdr((void *)load_lib, &info) && info.dli_fname) {
-		snprintf(dir, sizeof dir, "%s", info.dli_fname);
-		char *slash = strrchr(dir, '/');
-		if (slash) {
-			*slash = 0;
-#if defined(__APPLE__)
-			snprintf(p, sizeof p, "%s/libasqlite.dylib", dir);
-#else
-			snprintf(p, sizeof p, "%s/libasqlite.so", dir);
-#endif
-			if (try_lib(p, &tried)) goto done;
-		}
-	}
-#endif
-#if defined(__ANDROID__)
-	if (try_lib("libasqlite.so", &tried)) goto done;
-#elif defined(__APPLE__)
-	if (try_lib("@rpath/asqlite.framework/asqlite", &tried)) goto done;
-	if (try_lib("@rpath/libasqlite.dylib", &tried)) goto done;
-#endif
-	snprintf(lib_err, sizeof lib_err, "sqlite: the sqlite plugin's library isn't with the app (looked for %.*s): build the app with asuka build, or set ASUKA_LIB_ASQLITE", (int)(tried.len < 900 ? tried.len : 900), tried.data ? (const char *)tried.data : "");
-done:
-	ak_buf_free(&tried);
-}
-
-// lib returns asq_call, loading the library the first time; NULL (with
-// the error thrown) when there's none.
+// lib returns asq_call: SQLite linked into the build (ak_link_sqlite), or
+// NULL (with the error thrown) in a build without it.
 static asq_fn lib(bool throw_) {
-	ak_mutex_lock(&lib_mu);
-	if (!lib_tried) {
-		lib_tried = true;
-		load_lib();
-	}
-	asq_fn f = asq;
-	ak_mutex_unlock(&lib_mu);
-	if (!f && throw_) ak_throw_msg("%s", lib_err);
+	asq_fn f = ak_link_sqlite;
+	if (!f && throw_) ak_throw_msg("sqlite: this build has no SQLite: it's linked into the apps that import std/sqlite");
 	return f;
 }
 
@@ -809,7 +659,7 @@ static ak_val b_available(ak_val *a, uint32_t n) {
 
 static ak_val b_open(ak_val *a, uint32_t n) {
 	if (!js_sqlite_available()) {
-		ak_throw_msg("sqlite: the page has no SQLite (the sqlite plugin's asqlite.wasm isn't among its libs)");
+		ak_throw_msg("sqlite: the page has no SQLite (its module, asqlite.wasm, isn't the page's sqlite option)");
 		return (ak_val){0};
 	}
 	ak_str *path = a[0].p;

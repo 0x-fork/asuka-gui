@@ -304,16 +304,12 @@ func RunnerFor(core string, o RunnerOptions) (string, error) {
 	if o.Dir == "" {
 		return "", fmt.Errorf("cbuild: a runner with extra sources needs a directory of the caller's")
 	}
-	lflags := append([]string{}, flags...)
-	if len(o.Extra) > 0 {
-		lflags = append(lflags, "-DAK_APP_COMPILED=1")
-	}
+	lflags := append(append([]string{}, flags...), linkDefines(len(o.Extra) > 0, f.glue(), f.libs())...)
 	if f != nil {
-		lflags = append(lflags, "-DAK_FFI=1")
 		link = append(link, f.Link...)
 	}
 	mine := append([]string{LinkSource(core)}, o.Extra...)
-	if f != nil {
+	if f.glue() {
 		mine = append(mine, f.Glue)
 	}
 	more, err := cc.CompileCached(mine, lflags)
@@ -327,6 +323,16 @@ func RunnerFor(core string, o RunnerOptions) (string, error) {
 			return "", err
 		}
 		paths = append(paths, units...)
+		// The std packages' C (std/sqlite's SQLite), compiled with the
+		// runner's compiler, optimized and without the sanitizers: it's
+		// not the code under test.
+		for _, u := range f.Libs {
+			objs, err := cc.CompileCached(u.Sources, append(append([]string{"-I" + filepath.Join(core, "include")}, u.Flags...), "-O2"))
+			if err != nil {
+				return "", fmt.Errorf("cbuild: %s: %v", u.Name, err)
+			}
+			paths = append(paths, Paths(objs)...)
+		}
 	}
 	exe := filepath.Join(o.Dir, name)
 	return exe, cc.Link(paths, exe, link)

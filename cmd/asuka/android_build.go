@@ -222,13 +222,6 @@ func buildAndroidLibs(app *asukaApp, tc *androidToolchain, work string) (string,
 		if err := appbuild.Lib(cbuild.Target{OS: "android", Arch: a.goarch}, cbuild.Shared, m, out); err != nil {
 			return "", fmt.Errorf("%s: %v", a.abi, err)
 		}
-		libs, err := appLibs(app, "android-"+a.goarch)
-		if err != nil {
-			return "", fmt.Errorf("%s: %v", a.abi, err)
-		}
-		if err := writeLibs(libs, filepath.Dir(out)); err != nil {
-			return "", fmt.Errorf("%s: %v", a.abi, err)
-		}
 	}
 	// What the app's sources use decides its manifest's share sheet and
 	// push rewrite, and whether it has Video's player.

@@ -14,7 +14,6 @@ import (
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
-	"github.com/egoist/asuka/lang/compile"
 )
 
 var (
@@ -38,8 +37,9 @@ func Runner() (string, error) {
 }
 
 // RunnerFor is asuka-run for m: Runner, or for a module with C (its
-// externs'), one built with that C, which the module's ffi.* builtins
-// are in, linked in dir (the caller's, which it removes).
+// externs', which the module's ffi.* builtins are in; the std packages'
+// it imports: std/sqlite's SQLite), one built with that C, linked in dir
+// (the caller's, which it removes).
 func RunnerFor(m *bytecode.Module, dir string) (string, error) {
 	if m == nil || m.C == nil {
 		return Runner()
@@ -118,9 +118,6 @@ func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, e
 		args = append(args, pattern)
 	}
 	cmd := exec.Command(exe, append(args, p)...)
-	// The plugins' libraries the program calls (std/sqlite's), as the core
-	// finds them: ASUKA_LIB_<NAME>.
-	cmd.Env = append(os.Environ(), compile.PluginEnv(m)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -226,7 +223,6 @@ func ShowApp(m *bytecode.Module, out io.Writer) error {
 	}
 	defer cleanup()
 	cmd := exec.Command(exe, "-app", p)
-	cmd.Env = append(os.Environ(), compile.PluginEnv(m)...)
 	cmd.Stdout, cmd.Stderr = out, out
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("asuka-run: %v", err)

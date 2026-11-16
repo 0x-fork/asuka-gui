@@ -163,9 +163,20 @@ func packageLibs(dir, goos string) ([]string, error) {
 }
 
 // DesktopExe builds a Windows or Linux app's executable for t at out:
-// host's C, the core, the native C and m compiled to C (a release's), or
-// with m nil a dev player's, which loads the bytecode asuka dev sends.
+// host's C, the core, the native C and m compiled to C (a release's), with
+// the C m calls (its externs', the std packages': std/sqlite's SQLite),
+// or with m nil a dev player's, which loads the bytecode asuka dev sends.
 func DesktopExe(t cbuild.Target, m *bytecode.Module, host, natives *DesktopC, out string) error {
+	var c *bytecode.C
+	if m != nil {
+		c = m.C
+	}
+	return desktopExe(t, m, c, host, natives, out)
+}
+
+// desktopExe is DesktopExe with c, the C the app calls (a player's: its
+// last compile's).
+func desktopExe(t cbuild.Target, m *bytecode.Module, c *bytecode.C, host, natives *DesktopC, out string) error {
 	core, err := cbuild.CoreDir()
 	if err != nil {
 		return err
@@ -175,18 +186,21 @@ func DesktopExe(t cbuild.Target, m *bytecode.Module, host, natives *DesktopC, ou
 		return err
 	}
 	o := cbuild.ExeOptions{Debug: m == nil}
-	for _, c := range []*DesktopC{host, natives} {
-		if c == nil {
+	if o.Foreign, err = Foreign(c, t); err != nil {
+		return err
+	}
+	for _, d := range []*DesktopC{host, natives} {
+		if d == nil {
 			continue
 		}
-		o.Units = append(o.Units, c.Units...)
-		if c.Units != nil {
-			o.Sources = append(o.Sources, c.Rest...)
+		o.Units = append(o.Units, d.Units...)
+		if d.Units != nil {
+			o.Sources = append(o.Sources, d.Rest...)
 		} else {
-			o.Sources = append(o.Sources, c.Sources...)
+			o.Sources = append(o.Sources, d.Sources...)
 		}
-		o.Flags = append(o.Flags, c.Flags...)
-		o.Link = append(o.Link, c.Libs...)
+		o.Flags = append(o.Flags, d.Flags...)
+		o.Link = append(o.Link, d.Libs...)
 	}
 	if m != nil {
 		if o.App, err = AppC(m); err != nil {

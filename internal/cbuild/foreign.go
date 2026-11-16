@@ -16,8 +16,12 @@ import (
 // the app's and its packages' own sources (asuka.toml's [c]), each unit
 // with its own flags and its own warnings.
 type Foreign struct {
-	Glue  string // the glue's .c
+	Glue  string // the glue's .c ("": the app has no externs)
 	Units []CUnit
+	// Libs are the C of the std and sdk packages the app imports (StdC:
+	// std/sqlite's SQLite), libraries (prebuilt, or built into the cache)
+	// a link takes, which core/link names.
+	Libs []Unit
 	// Link are what a link of the build adds (-lsqlite3, -framework
 	// Security, -L…). A static library has none of its own: the
 	// executable it's linked into adds them (iOS's app).
@@ -33,6 +37,17 @@ type CUnit struct {
 	// Headers are the directories of the headers the sources include
 	// (their -I): what a compile includes of them is its depfile's.
 	Headers []string
+}
+
+// glue reports whether f has externs' glue.
+func (f *Foreign) glue() bool { return f != nil && f.Glue != "" }
+
+// libs are f's Libs (none for a nil f).
+func (f *Foreign) libs() []Unit {
+	if f == nil {
+		return nil
+	}
+	return f.Libs
 }
 
 // objects compiles f's units' sources into the object cache, each with

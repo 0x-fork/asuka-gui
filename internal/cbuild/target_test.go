@@ -68,3 +68,23 @@ func TestCoreDirExtract(t *testing.T) {
 		t.Fatalf("only %d sources in %s", len(srcs), d)
 	}
 }
+
+// Each target's [c] tables: its platform's, and its key in [c.prebuilt].
+func TestCTarget(t *testing.T) {
+	for _, c := range []struct {
+		t                 Target
+		platform, ctarget string
+	}{
+		{Target{OS: "ios", Arch: "arm64"}, "ios", "ios-arm64"},
+		{Target{OS: "ios-simulator", Arch: "amd64"}, "ios", "ios-simulator-x64"},
+		{Target{OS: "darwin", Arch: "arm64"}, "macos", "macos-arm64"},
+		{Target{OS: "android", Arch: "arm"}, "android", "android-arm"},
+		{Target{OS: "linux", Arch: "amd64"}, "linux", "linux-x64"},
+		{Target{OS: "windows", Arch: "arm64"}, "windows", "windows-arm64"},
+		{Target{OS: "wasm", Arch: "wasm32"}, "web", "web"},
+	} {
+		if c.t.CPlatform() != c.platform || c.t.CTarget() != c.ctarget {
+			t.Errorf("%s: %s %s, want %s %s", c.t, c.t.CPlatform(), c.t.CTarget(), c.platform, c.ctarget)
+		}
+	}
+}

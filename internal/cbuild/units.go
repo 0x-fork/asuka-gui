@@ -17,7 +17,7 @@ import (
 // package per target); else, or for sources that aren't the CLI's own
 // (a checkout's), they're built into the cache, from the object cache.
 type Unit struct {
-	Name    string   // core, desktop, linux-host, windows-host, mac-shared, std-sqlite, sdk-device
+	Name    string   // core, desktop, linux-host, windows-host, mac-shared; std-<name>, sdk-<name> (a package's desktop C); std-sqlite-c (a package's [c])
 	Sources []string // its C (headers among them are skipped)
 	// Flags are its own compile flags (warnings, include directories,
 	// defines): the toolchain's and the configuration's come with them.
@@ -28,6 +28,10 @@ type Unit struct {
 	// Embedded: its sources are the CLI's own copies, which its prebuilt
 	// libraries were built from (else a checkout's, or another's).
 	Embedded bool
+	// Link is the macro core/link/link.c is compiled with in a build that
+	// links it (AK_STD_SQLITE: std/sqlite's C, which the core calls), or
+	// "".
+	Link string
 }
 
 // Config is a build's configuration's name: dev (a player's: assertions
@@ -127,7 +131,10 @@ func (tc *Toolchain) UnitArchive(u Unit, debug bool) (string, error) {
 // BuildUnit builds u's static library into the cache (its objects from
 // the object cache), as a release's prebuilt one is built.
 func (tc *Toolchain) BuildUnit(u Unit, debug bool) (string, error) {
-	flags := append(append([]string{}, u.Flags...), tc.base(debug)...)
+	// Its own flags after the toolchain's and the configuration's, so
+	// they can change them (std/sqlite's -Os on the web), as an app's
+	// [c] flags do.
+	flags := append(tc.base(debug), u.Flags...)
 	objs, err := tc.CC.CompileCached(u.Sources, flags)
 	if err != nil {
 		return "", fmt.Errorf("cbuild: %s for %s: %v", u.Name, tc.Target, err)
@@ -199,16 +206,28 @@ func (tc *Toolchain) mingw() bool {
 }
 
 // linkSource compiles core/link/link.c for a build: whether an app is
-// compiled in, whether its externs' glue is.
-func (tc *Toolchain) linkSource(core string, debug, app, ffi bool) ([]Object, error) {
-	flags := tc.coreFlags(core, debug)
+// compiled in, whether its externs' glue is, and the units it links that
+// the core calls (their Link macros).
+func (tc *Toolchain) linkSource(core string, debug, app, ffi bool, units []Unit) ([]Object, error) {
+	flags := append(tc.coreFlags(core, debug), linkDefines(app, ffi, units)...)
+	return tc.CC.CompileCached([]string{LinkSource(core)}, flags)
+}
+
+// linkDefines are core/link/link.c's macros for a build (linkSource).
+func linkDefines(app, ffi bool, units []Unit) []string {
+	var flags []string
 	if app {
 		flags = append(flags, "-DAK_APP_COMPILED=1")
 	}
 	if ffi {
 		flags = append(flags, "-DAK_FFI=1")
 	}
-	return tc.CC.CompileCached([]string{LinkSource(core)}, flags)
+	for _, u := range units {
+		if u.Link != "" {
+			flags = append(flags, "-D"+u.Link+"=1")
+		}
+	}
+	return flags
 }
 
 // link links objects and archives into out (written whole, then renamed:

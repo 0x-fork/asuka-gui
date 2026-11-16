@@ -33,11 +33,10 @@ import (
 // input to stop it, ASUKA_STOP=stdin). asuka build --platform windows
 // makes a folder with the .exe, its icon, manifest and version
 // information built in (a COFF object of resources linked into it), the
-// app's settings (asuka-app.json) and its assets beside it, with its
-// plugins' libraries (asqlite.dll for asuka's sqlite plugin). With
+// app's settings (asuka-app.json) and its assets beside it. With
 // ASUKA_WINDOWS_CERT (a .pfx) and ASUKA_WINDOWS_CERT_PASSWORD set, it
-// signs the .exe, timestamped (and its plugins' libraries with it): with
-// signtool on Windows, osslsigncode elsewhere.
+// signs the .exe, timestamped: with signtool on Windows, osslsigncode
+// elsewhere.
 
 // windowsArch is a Windows build's GOARCH: arch (amd64 or arm64), else
 // amd64, which runs on every Windows PC.
@@ -94,28 +93,12 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 	if err := writeHostConfig(app, platformWindows, target, true, filepath.Join(out, appconfig.File)); err != nil {
 		return err
 	}
-	libs, err := appLibs(app, target)
-	if err != nil {
-		return err
-	}
 	signed, err := signWindows(filepath.Join(out, exe), name, o.verbose)
 	if err != nil {
 		return err
 	}
-	// The plugins' libraries, beside the .exe (where package plugin finds
-	// them), signed as it is.
-	for _, l := range libs {
-		dll := filepath.Join(out, l.file.Name)
-		if err := l.write(dll); err != nil {
-			return err
-		}
-		if _, err := signWindows(dll, name, o.verbose); err != nil {
-			return err
-		}
-	}
-	// The project's programs beside the .exe (and their plugins'
-	// libraries, which they find there), signed as it is.
-	progs, err := bundlePrograms(app, t, nil, out, out, o.verbose)
+	// The project's programs beside the .exe, signed as it is.
+	progs, err := bundlePrograms(app, t, nil, out, o.verbose)
 	if err != nil {
 		return err
 	}
@@ -157,8 +140,9 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 }
 
 // windowsRelease builds a release's executable for t at exe: the host,
-// the core and the app compiled to C, with the resources (a COFF object)
-// linked in.
+// the core and the app compiled to C, with the C it calls (its externs',
+// the std packages': std/sqlite's SQLite) and the resources (a COFF
+// object) linked in.
 func windowsRelease(app *asukaApp, t cbuild.Target, res []byte, exe string, verbose bool) error {
 	m, err := app.compile()
 	if err != nil {
@@ -184,7 +168,7 @@ func windowsRelease(app *asukaApp, t cbuild.Target, res []byte, exe string, verb
 	if verbose {
 		fmt.Printf("asuka: building the Windows host for %s/%s\n", t.OS, t.Arch)
 	}
-	return appbuild.WindowsHost(t, appbuild.WindowsOptions{App: []string{c}, Native: natives, Resources: obj}, exe)
+	return appbuild.WindowsHost(t, appbuild.WindowsOptions{App: []string{c}, C: m.C, Native: natives, Resources: obj}, exe)
 }
 
 // defaultTimestamps are the RFC 3161 timestamp servers a signature is

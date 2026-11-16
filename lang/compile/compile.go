@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/internal/toml"
 	"github.com/egoist/asuka/lang/bytecode"
@@ -377,10 +378,27 @@ func (l *loader) compile(root *unit) *Result {
 		res.Module = nil
 		return res
 	}
-	if glue != nil {
-		res.Module.C = &bytecode.C{Glue: glue, Dirs: l.cDirs(root)}
+	if stdC := l.stdCDirs(); glue != nil || len(stdC) > 0 {
+		res.Module.C = &bytecode.C{Glue: glue, Std: stdC}
+		if glue != nil {
+			res.Module.C.Dirs = l.cDirs(root)
+		}
 	}
 	return res
+}
+
+// stdCDirs are the directories of the std and sdk packages the program
+// imports (all the way down) that have C of their own (their asuka.toml's
+// [c]: std/sqlite's SQLite), sorted.
+func (l *loader) stdCDirs() []string {
+	var dirs []string
+	for _, u := range l.units {
+		if u.id == "" && std.Reserved(u.path) && u.pkg != nil && cbuild.HasC(u.dir) {
+			dirs = append(dirs, u.dir)
+		}
+	}
+	sort.Strings(dirs)
+	return dirs
 }
 
 // cDirs are the projects whose asuka.toml [c] builds the C the program's

@@ -44,6 +44,9 @@ func cKey(c *bytecode.C) string {
 	for _, d := range c.Dirs {
 		h.Write([]byte("\x00" + d))
 	}
+	for _, d := range c.Std {
+		h.Write([]byte("\x01" + d))
+	}
 	return hex.EncodeToString(h.Sum(nil))
 }
 

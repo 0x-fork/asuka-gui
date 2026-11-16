@@ -9,6 +9,7 @@ import (
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/srcdir"
+	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/platform/desktop"
 	"github.com/egoist/asuka/platform/windows"
 )
@@ -38,6 +39,10 @@ type WindowsOptions struct {
 	// Tests are a test program's C sources (platform/windows/test), with
 	// the host in place of its main.
 	Tests []string
+	// C is what the app calls (a module's: its externs', the std packages'
+	// it imports, std/sqlite's SQLite; asuka dev's player's: the last
+	// compile's), or nil.
+	C *bytecode.C
 }
 
 // WindowsLibs are the system libraries the Windows host links.
@@ -73,6 +78,9 @@ func WindowsHost(t cbuild.Target, o WindowsOptions, out string) error {
 	host := unit.Sources
 	hostFlags := []string{"-I" + filepath.Join(win, "src"), "-I" + filepath.Join(dsk, "include"), "-DUNICODE", "-D_UNICODE"}
 	eo := cbuild.ExeOptions{Debug: o.Debug}
+	if eo.Foreign, err = Foreign(o.C, t); err != nil {
+		return err
+	}
 	if len(o.Tests) > 0 {
 		// The tests' own main: the host's is left out, the rest compiled
 		// with them.

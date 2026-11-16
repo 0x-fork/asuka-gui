@@ -37,8 +37,8 @@ func TestWebSiteRewritesAndHeaders(t *testing.T) {
 // pasted), and still a 404 for a file that isn't there.
 func TestDevServerServesRoutes(t *testing.T) {
 	s := &devServer{app: &asukaApp{cfg: &appConfig{ID: "com.example.notes", Name: "Notes"}}}
-	empty := map[string]pluginLib{}
-	s.plugins.Store(&empty)
+	noSQLite := ""
+	s.sqlite.Store(&noSQLite)
 	var none []webScript
 	s.scripts.Store(&none)
 	for _, c := range []struct {

@@ -210,7 +210,7 @@ func TestFlatpakManifest(t *testing.T) {
 	m := flatpakManifest(app, "my-notes")
 	for _, want := range []string{
 		"\napp-id: com.example.notes\n", "\nruntime: org.gnome.Platform\n", "\nruntime-version: '" + flatpakRuntime + "'\n",
-		"\nsdk: org.gnome.Sdk\n", "\ncommand: my-notes\n", "--socket=wayland", "cp -a bin lib share /app/", "\n        path: my-notes\n",
+		"\nsdk: org.gnome.Sdk\n", "\ncommand: my-notes\n", "--socket=wayland", "cp -a bin share /app/", "\n        path: my-notes\n",
 	} {
 		if !strings.Contains(m, want) {
 			t.Errorf("no %q in\n%s", want, m)
@@ -222,50 +222,11 @@ func TestFlatpakManifest(t *testing.T) {
 	}
 }
 
-// SQLite's library goes in the prefix's lib/<exe>, where the package
-// finds it from bin/<exe> (sqlite/locate_linux.go); it's built for the
-// build's architecture, and shows only its entry points, so a system
-// SQLite in the same process (GTK's, say) never takes its symbols, nor
-// it the system's.
-func TestLinuxSQLiteLib(t *testing.T) {
-	out := t.TempDir()
-	lib := filepath.Join(linuxPluginLibs(out, "my-notes"), "libasqlite.so")
-	if rel, _ := filepath.Rel(filepath.Join(out, "bin"), lib); rel != filepath.Join("..", "lib", "my-notes", "libasqlite.so") {
-		t.Errorf("from the executable: %s", rel)
-	}
-	for arch, machine := range map[string]elf.Machine{"amd64": elf.EM_X86_64, "arm64": elf.EM_AARCH64} {
-		if err := writeTestPluginLib("linux-"+arch, lib); err != nil {
-			t.Fatal(err)
-		}
-		f, err := elf.Open(lib)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if f.Machine != machine {
-			t.Errorf("%s: %v", arch, f.Machine)
-		}
-		syms, err := f.DynamicSymbols()
-		if err != nil {
-			t.Fatal(err)
-		}
-		var exported []string
-		for _, s := range syms {
-			if s.Section != elf.SHN_UNDEF && elf.ST_BIND(s.Info) != elf.STB_LOCAL && elf.ST_TYPE(s.Info) == elf.STT_FUNC {
-				exported = append(exported, s.Name)
-			}
-		}
-		slices.Sort(exported)
-		if !slices.Equal(exported, []string{"asq_call", "asq_version"}) {
-			t.Errorf("%s exports %v", arch, exported)
-		}
-		f.Close()
-	}
-}
-
 // A Linux build is an install prefix: one executable in bin (the host,
-// the core and the app compiled to C), the plugins' libraries in
-// lib/<exe>, where the core finds them, the app's settings in
-// share/<exe>; the tarball and the Flatpak have them all.
+// the core, the app compiled to C and, as it imports std/sqlite, SQLite,
+// whose names it doesn't export: a system SQLite GTK loads never takes
+// them), the app's settings in share/<exe>; the tarball and the Flatpak
+// have them all.
 func TestBuildLinux(t *testing.T) {
 	needDesktopBuild(t, cbuild.Target{OS: "linux", Arch: "amd64"})
 	useCounter(t, "Count: ")
@@ -277,35 +238,39 @@ func TestBuildLinux(t *testing.T) {
 			t.Fatal(err)
 		}
 		prefix := filepath.Join(out, "linux", "sqliteapp")
-		for _, f := range []string{"bin/sqliteapp", "lib/sqliteapp/libasqlite.so"} {
-			e, err := elf.Open(filepath.Join(prefix, f))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if e.Machine != machines[arch] {
-				t.Errorf("%s: %s is for %v", arch, f, e.Machine)
-			}
-			if f == "bin/sqliteapp" {
-				// The core is in the executable: no library of Asuka's
-				// beside it, GTK and the rest opened as it runs.
-				libs, _ := e.ImportedLibraries()
-				for _, l := range libs {
-					if strings.Contains(l, "asuka") {
-						t.Errorf("%s: the executable needs %s", arch, l)
-					}
-				}
-			}
-			e.Close()
+		bin := filepath.Join(prefix, "bin", "sqliteapp")
+		e, err := elf.Open(bin)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if _, err := os.Stat(filepath.Join(prefix, "lib", "sqliteapp", "libasuka.so")); err == nil {
-			t.Errorf("%s: a libasuka.so beside the executable, which has the core", arch)
+		if e.Machine != machines[arch] {
+			t.Errorf("%s: the executable is for %v", arch, e.Machine)
+		}
+		// The core and SQLite are in the executable: no library of
+		// Asuka's or SQLite beside it, GTK and the rest opened as it runs.
+		libs, _ := e.ImportedLibraries()
+		for _, l := range libs {
+			if strings.Contains(l, "asuka") || strings.Contains(l, "sqlite") {
+				t.Errorf("%s: the executable needs %s", arch, l)
+			}
+		}
+		syms, _ := e.DynamicSymbols()
+		for _, s := range syms {
+			if s.Section != elf.SHN_UNDEF && (strings.HasPrefix(s.Name, "sqlite3_") || strings.HasPrefix(s.Name, "asq_")) {
+				t.Errorf("%s: the executable exports %s", arch, s.Name)
+			}
+		}
+		e.Close()
+		checkSQLiteLinked(t, bin)
+		if _, err := os.Stat(filepath.Join(prefix, "lib")); err == nil {
+			t.Errorf("%s: a lib/ beside the executable, which has the core and SQLite", arch)
 		}
 		if b, err := os.ReadFile(filepath.Join(prefix, "share", "sqliteapp", "asuka-app.json")); err != nil || !strings.Contains(string(b), `"name": "sqliteapp"`) {
 			t.Errorf("%s: the settings: %v\n%s", arch, err, b)
 		}
 		m, _ := os.ReadFile(filepath.Join(out, "linux", app.bundleID+".yml"))
-		if !strings.Contains(string(m), "cp -a bin lib share /app/") {
-			t.Errorf("%s: the Flatpak leaves lib out:\n%s", arch, m)
+		if !strings.Contains(string(m), "cp -a bin share /app/") {
+			t.Errorf("%s: the Flatpak leaves a directory out:\n%s", arch, m)
 		}
 		tgz, _ := filepath.Glob(filepath.Join(out, "linux", "*.tar.gz"))
 		if len(tgz) != 1 {
@@ -322,7 +287,7 @@ func TestBuildLinux(t *testing.T) {
 			names = append(names, h.Name)
 		}
 		f.Close()
-		for _, want := range []string{"sqliteapp/bin/sqliteapp", "sqliteapp/lib/sqliteapp/libasqlite.so", "sqliteapp/share/sqliteapp/asuka-app.json"} {
+		for _, want := range []string{"sqliteapp/bin/sqliteapp", "sqliteapp/share/sqliteapp/asuka-app.json"} {
 			if !slices.Contains(names, want) {
 				t.Errorf("%s: the tarball has %v, not %s", arch, names, want)
 			}

@@ -128,6 +128,10 @@ type C struct {
 	// Dirs are the directories of the projects (the app, the
 	// dependencies) whose packages declare externs, the app's first.
 	Dirs []string
+	// Std are the directories of the std and sdk packages the program
+	// imports that have C of their own (their asuka.toml's [c]: std/sqlite's
+	// SQLite), which a build links.
+	Std []string
 }
 
 // String interns s and returns its index.

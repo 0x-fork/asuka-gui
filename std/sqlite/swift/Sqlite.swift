@@ -1,5 +1,6 @@
 // std/sqlite on iOS and macOS: where a database's relative name is.
-// SQLite itself is the plugin's library, which the core calls.
+// SQLite itself is std/sqlite's C (its [c]), linked into the app, which
+// the core calls.
 import Foundation
 
 final class AppPlace: Place {

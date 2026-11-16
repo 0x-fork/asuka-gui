@@ -80,6 +80,21 @@ var MacArchs = []string{"arm64", "amd64"}
 // release, or with m nil asuka dev's player, which loads the bytecode
 // asuka dev sends (built for debugging, as Lib's player is).
 func LinuxExe(t cbuild.Target, m *bytecode.Module, dirs []string, out string) error {
+	var c *bytecode.C
+	if m != nil {
+		c = m.C
+	}
+	return linuxExe(t, m, c, dirs, out)
+}
+
+// LinuxPlayer builds asuka dev's player for Linux, as LinuxExe does with
+// no module, with the C c calls (the app's last compile's: its externs',
+// the std packages' it imports) compiled in.
+func LinuxPlayer(t cbuild.Target, c *bytecode.C, dirs []string, out string) error {
+	return linuxExe(t, nil, c, dirs, out)
+}
+
+func linuxExe(t cbuild.Target, m *bytecode.Module, c *bytecode.C, dirs []string, out string) error {
 	host, err := linuxHost()
 	if err != nil {
 		return err
@@ -88,7 +103,7 @@ func LinuxExe(t cbuild.Target, m *bytecode.Module, dirs []string, out string) er
 	if err != nil {
 		return err
 	}
-	return DesktopExe(t, m, host, natives, out)
+	return desktopExe(t, m, c, host, natives, out)
 }
 
 // linuxHost is the Linux host's C (cbuild.LinuxHost: the checkout's, or
