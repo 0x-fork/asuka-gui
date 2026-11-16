@@ -52,7 +52,7 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
     /** Each product's kind, as the app said. */
     private val kinds = HashMap<String, Kind>()
     /** The purchase under way: its product and buy's continuation. */
-    private var buying: Pair<String, (kotlin.Result<Result>) -> Unit>? = null
+    private var buying: Pair<String, (kotlin.Result<StoreResult>) -> Unit>? = null
     /** What each purchase token was last given as (its state), not to give it twice. */
     private val given = HashMap<String, Int>()
     private val kept = ArrayDeque<StoreEvent>()
