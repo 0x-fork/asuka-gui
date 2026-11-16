@@ -43,6 +43,9 @@ static FILE *open_file(const char *path, const wchar_t *mode) {
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 static FILE *open_file(const char *path, const char *mode) { return fopen(path, mode); }
 #define SEP '/'
@@ -223,6 +226,12 @@ char *dsk_exe_path(void) {
 	DWORD n = GetModuleFileNameW(NULL, buf, 32768);
 	if (n == 0 || n >= 32768) return NULL;
 	return narrow(buf);
+#elif defined(__APPLE__)
+	char buf[4096];
+	uint32_t n = sizeof buf;
+	if (_NSGetExecutablePath(buf, &n) != 0) return NULL;
+	char *real = realpath(buf, NULL);
+	return real ? real : strdup(buf);
 #else
 	char buf[4096];
 	ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);

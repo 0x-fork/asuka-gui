@@ -98,6 +98,14 @@ ASUKA_API int64_t asuka_list_count(uint32_t list);
 ASUKA_API void asuka_list_bind(uint32_t list, int64_t index, uint32_t cell);
 ASUKA_API void asuka_list_unbind(uint32_t list, uint32_t cell);
 ASUKA_API void asuka_run_posted(void);
+
+// asuka_quit_request asks the app whether it may quit (its on quit
+// handlers), on the desktop, as it's about to however the quit started
+// (the user's Quit, the Quit command, closing the main window where that
+// quits, a signal); ending: the session is ending, when it can't be
+// refused. It returns 1 if the app canceled it (never while ending).
+// Main thread.
+ASUKA_API int asuka_quit_request(int ending);
 // Sets an environment variable for the Go code (os.Setenv), which copied
 // the process's as it loaded.
 ASUKA_API void asuka_setenv(const char *key, const char *value);

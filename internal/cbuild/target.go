@@ -310,6 +310,14 @@ func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string
 	}
 }
 
+// Objects compiles srcs, C a host links beside the core (the C the
+// desktop hosts share, in the Mac's host), with the toolchain's flags and
+// flags, into objects cached by what, the target and the hash of the
+// sources, hdrs (the headers they include) and the flags.
+func (tc *Toolchain) Objects(what string, srcs, hdrs, flags []string) ([]string, error) {
+	return tc.compileCached("", what, srcs, hdrs, append(append([]string{}, tc.Flags...), flags...), Static)
+}
+
 // compileCached compiles srcs with flags into a cache directory named by
 // what (core, app), the target and the hash of the sources, the headers
 // they include and the flags.

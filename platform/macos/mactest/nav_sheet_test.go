@@ -1,0 +1,185 @@
+//go:build darwin
+
+package mactest
+
+import (
+	"testing"
+)
+
+const styleResizable = 1 << 3
+
+// sheetOf is the tree's one Sheet node with its window, nil if none.
+func sheetOf(tr *Tree) *Node {
+	for _, n := range tr.Kind("Sheet") {
+		if _, ok := n.Get("sheetWindow").(map[string]any); ok {
+			return n
+		}
+	}
+	return nil
+}
+
+func sheetWindow(n *Node) map[string]any { w, _ := n.Get("sheetWindow").(map[string]any); return w }
+
+func pair(v any) (float64, float64) {
+	a, _ := v.([]any)
+	if len(a) < 2 {
+		return -1, -1
+	}
+	x, _ := a[0].(float64)
+	y, _ := a[1].(float64)
+	return x, y
+}
+
+func size(v any) (float64, float64) {
+	a, _ := v.([]any)
+	if len(a) < 4 {
+		return -1, -1
+	}
+	w, _ := a[2].(float64)
+	h, _ := a[3].(float64)
+	return w, h
+}
+
+// A full-screen sheet is a sheet of its window as big as all of that
+// window's content under its title bar and toolbar, which the user
+// doesn't resize; it follows the window as it resizes, its environment
+// with it; Escape dismisses it as it does a sheet (TestFullScreenSheetDarwin).
+func TestNavFullScreenSheet(t *testing.T) {
+	a := Run(t, `
+		app { Root() }
+		component Root {
+		  state open = false
+		  Column {
+		    padding: 20
+		    Text("open {open}")
+		    Button("Show") { on press { open = true } }
+		    Sheet {
+		      bind open: open
+		      fullScreen: true
+		      Column {
+		        padding: 20
+		        Text("sheet {environment().width}x{environment().height}")
+		        TextField { placeholder: "Name" }
+		      }
+		    }
+		  }
+		}
+	`)
+	a.UntilText("open false")
+	a.Do("tap Show")
+	covers := func(what string) *Tree {
+		t.Helper()
+		return a.Until(func(tr *Tree) bool {
+			s := sheetOf(tr)
+			if s == nil {
+				return false
+			}
+			w := sheetWindow(s)
+			cw, ch := pair(s.Get("cover"))
+			sw, sh := size(w["content"])
+			ew, eh := pair(s.Get("env"))
+			fw, fh := frameSize(s)
+			return w["isSheet"] == true && w["visible"] == true && cw > 0 && sw == cw && sh == ch && ew == cw && eh == ch && fw == cw && fh == ch
+		})
+	}
+	tr := covers("opened")
+	s := sheetOf(tr)
+	if m := sheetWindow(s)["styleMask"].(float64); int(m)&styleResizable != 0 {
+		t.Fatal("a full-screen sheet the user resizes")
+	}
+	if p := sheetWindow(s)["parent"]; p != tr.Main().Title {
+		t.Fatalf("a sheet of %q, not of the main window %q", p, tr.Main().Title)
+	}
+	// The window resizes: the sheet follows.
+	a.Do("resize 920,700")
+	covers("the window grown")
+	a.Do("resize 700,520")
+	covers("the window shrunk")
+	// Escape in its content dismisses it.
+	a.Do("cancel")
+	a.UntilText("open false")
+	a.Until(func(tr *Tree) bool { return sheetOf(tr) == nil })
+}
+
+// A sheet as tall as its content (DetentFit) opens at its content's
+// height, at a sheet's width, follows its content as it grows and shrinks,
+// and goes no taller than a sheet may, beyond which its content scrolls;
+// the user doesn't resize it (TestFitSheetDarwin).
+func TestNavFitSheet(t *testing.T) {
+	a := Run(t, `
+		app { Root() }
+		component Root {
+		  state open = false
+		  state more = false
+		  state lots = false
+		  Column {
+		    padding: 20
+		    Text("open {open}")
+		    Button("Show") { on press { open = true } }
+		    Button("Hide") { on press { open = false } }
+		    Button("More") { on press { more = !more } }
+		    Button("Lots") { on press { lots = !lots } }
+		    Sheet {
+		      bind open: open
+		      detents: [.fit]
+		      Column {
+		        padding: 20
+		        gap: 10
+		        View { height: 100; background: .blue }
+		        if more { View { height: 50; background: .green } }
+		        if lots { Scroll { shrink: 1; View { height: 5000 } } }
+		        Button("Less") { on press { more = false; lots = false } }
+		      }
+		    }
+		  }
+		}
+	`)
+	a.UntilText("open false")
+	a.Do("tap Show")
+	var roomW, roomH float64
+	is := func(what string, height float64) {
+		t.Helper()
+		a.Until(func(tr *Tree) bool {
+			s := sheetOf(tr)
+			if s == nil {
+				return false
+			}
+			w := sheetWindow(s)
+			roomW, roomH = pair(s.Get("sheetRoom"))
+			want := height
+			if want < 0 {
+				want = roomH
+			}
+			cw, ch := size(w["content"])
+			fw, fh := frameSize(s)
+			return w["isSheet"] == true && w["visible"] == true && cw == roomW && ch == want && fw == cw && fh == ch
+		})
+	}
+	// Its content: 20 + 100 + 10 + a button + 20.
+	tr := a.Until(func(tr *Tree) bool { return sheetOf(tr) != nil && tr.Find("Button", "Less") != nil })
+	bh := tr.Find("Button", "Less").Frame[3]
+	base := 20 + 100 + 10 + bh + 20
+	is("opened", base)
+	if m := sheetWindow(sheetOf(a.Tree()))["styleMask"].(float64); int(m)&styleResizable != 0 {
+		t.Fatal("a sheet as tall as its content the user resizes")
+	}
+	a.Do("tap More")
+	is("grown", base+60)
+	a.Do("tap More")
+	is("shrunk", base)
+	a.Do("tap Lots")
+	is("too tall for a sheet", -1)
+	// Opened again, it shows, at its content's size from the first.
+	a.Do("tap Less", "tap Hide")
+	a.UntilText("open false")
+	a.Do("tap Show")
+	is("opened again", base)
+}
+
+// frameSize is a node's view's size, -1 by -1 if it has no view.
+func frameSize(n *Node) (float64, float64) {
+	if len(n.Frame) < 4 {
+		return -1, -1
+	}
+	return n.Frame[2], n.Frame[3]
+}

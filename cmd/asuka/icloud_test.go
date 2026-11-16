@@ -143,9 +143,6 @@ func TestUseICloud(t *testing.T) {
 		if _, ok := c.entitlements[entContainers]; ok != x.docs {
 			t.Errorf("%s: the containers' %v", x.name, c.entitlements)
 		}
-		if !slices.Contains(c.macSwift, "ASUKA_ICLOUD") && x.name != "a dependency's" && x.app != "" {
-			t.Errorf("%s: no Mac Swift for iCloud: %v", x.name, c.macSwift)
-		}
 	}
 }
 

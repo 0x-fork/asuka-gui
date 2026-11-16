@@ -43,8 +43,8 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 各平台的开发 App 分别是：
 
+- **macOS**：和核心（以及应用的原生包的 Swift）链接在一起的 Swift 宿主，是一个和发布版本一样的 `.app`，位于 Asuka 缓存中该应用的目录里。启动时，它的环境变量中带有 `ASUKA_DEV=host:port`。
 - **Windows、Linux**：一个程序，即链接了核心、不含应用的 C 宿主（Windows 上基于 Win32；Linux 上基于 GTK 4 和 libadwaita），位于 Asuka 缓存中该应用的目录里（在 Windows 上是控制台程序）。启动时，它的环境变量中带有 `ASUKA_DEV=host:port`。
-- **macOS**：桌面宿主（`cmd/asuka-host`：AppKit，通过 C ABI 驱动核心）和放在它旁边的核心（`libasuka.dylib`），是一个和发布版本一样的 `.app`，位于 Asuka 缓存中该应用的目录里。启动时，它的环境变量中带有 `ASUKA_DEV=host:port`。
 - **iOS**：Swift 宿主与核心（`libasuka.a`）链接进应用的 `.app`，宿主中每个需要链接独立框架（WebKit、AVKit 等）的部分都包含在内，因此你在编辑时，应用可以随时用上其中任何一个。在模拟器上，用 `xcrun simctl` 安装并启动它，环境变量中带有 `ASUKA_DEV`；在 iPhone 上，则用开发证书签名，并用 `xcrun devicectl` 安装。
 - **Android**：调试版的外壳应用（Gradle 构建一次，清单文件、Kotlin 代码或资源变化时再重新构建），核心被推送到它的私有文件目录（`files/asuka/libasuka.so`），调试版应用从那里加载核心；`files/asuka/dev` 记录了 `asuka dev` 的地址，`adb reverse` 让它成为设备自己的回环地址。
 - **Web**：页面从开发服务器加载 WebAssembly 形式的核心（`asuka.wasm`）和应用的模块，并在每个新模块构建好时加载它。
@@ -139,7 +139,6 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 
 - **`the compiler isn't in this build yet`**：这个 CLI 构建时没有包含 Asuka 编译器：请安装发布版本，或者从包含编译器的检出构建 CLI。
 - **`cbuild: no C compiler`**：安装系统的 C 编译器（Xcode 命令行工具、`build-essential`、LLVM），或者安装 Zig 并设置 `ASUKA_CC=zig`。`building for the web needs Zig` 和 `cross-compiling for ... needs Zig`：安装 [Zig](https://ziglang.org/download)，它可以把核心构建成 WebAssembly，或者为其他系统构建。
-- **`this asuka has no prebuilt desktop host`**：在 Asuka 仓库检出之外从源码构建的 CLI，没有可以下载宿主的发布版本：请在检出中运行它（`go run ./cmd/asuka`），或者把 `ASUKA_HOST` 设为用 `go build ./cmd/asuka-host` 构建的宿主。
 - **`no iOS simulator SDK (install Xcode)`**：安装 Xcode，打开一次，然后在它的 Components 设置中添加 iOS 模拟器运行时。`no iPhone simulator; add one in Xcode` 和 `no simulator "..."` 表示没有该名称的模拟器：可以用 `xcrun simctl list devices` 列出所有模拟器。
 - **iPhone 没有准备好**：`... isn't paired with this Mac`（连上数据线，解锁后点“信任”）、`... isn't reachable`（连上数据线，或在 Mac 所在的 Wi-Fi 下唤醒它）、`... has Developer Mode off`（“设置 › 隐私与安全性 › 开发者模式”）、`... is locked`（解锁手机）。明明连着手机却提示 `no iPhone or iPad is connected` 时，检查 `xcrun devicectl list devices` 能否列出它。
 - **`Xcode couldn't make the development profiles`**：在 Xcode 中登录团队的 Apple ID（Xcode › 设置 › 账户），或者设置 App Store Connect API 密钥；如果 bundle ID 已经属于另一个团队，就需要在 `asuka.toml` 里换一个 `id`。`the keychain has Apple Development certificates of N teams`：用 `--team` 选一个团队。
@@ -162,16 +161,17 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 ```sh
 go test ./core                                     # 核心的 C 测试（ASan、UBSan）和虚拟机的测试
 go test ./internal/appbuild ./cmd/asuka            # 构建和开发循环，覆盖这台电脑能跑的所有平台
-go test ./host/darwin                              # macOS：真实的 AppKit 视图
+go test ./platform/macos/mactest                   # macOS：在 Mac 播放器上运行应用，检查真实的 AppKit 视图
 go test ./platform/windows                         # Windows：用 Zig 构建应用，在真实的窗口中驱动（在 Windows 上，或在虚拟机里）
 xvfb-run -a dbus-run-session go test ./platform/linux  # Linux：在真实的 GTK 窗口里驱动应用
 swift test --package-path platform/ios             # Swift 宿主的解码器
+swift test --package-path platform/macos           # Mac 宿主的 Swift 和它的解码器
 node --test platform/web                           # Web 宿主的解码器
 ```
 
 `go test ./cmd/asuka` 会尽可能端到端地运行开发循环：在这台 Mac 上（开发 App、一个模块、一次点按、保留着计数的下一个模块）、在无头 Chrome 中、在已启动的 iOS 模拟器上，以及在正在运行的 Android 模拟器上；它还会为每个平台构建应用。这台电脑无法构建或运行的部分会被跳过。
 
-`go test ./host/darwin -run Conformance` 会在窗口截图中测量宿主为某个样式绘制的效果（边缘、圆角、边框、阴影、渐变），检查是否正确；e2e 测试在 iOS 模拟器、Android 模拟器和无头 Chrome 上做同样的检查（`go test -tags e2e ./e2e -run Conformance`）。在 Windows 上，`go test ./platform/windows -run Drawing` 会在窗口截图中逐像素检查图片、形状、画布、着色器、圆角裁剪和材质。
+`go test ./platform/macos/mactest -run Conformance` 会在窗口截图中测量宿主为某个样式绘制的效果（边缘、圆角、边框、阴影、渐变），检查是否正确；e2e 测试在 iOS 模拟器、Android 模拟器和无头 Chrome 上做同样的检查（`go test -tags e2e ./e2e -run Conformance`）。在 Windows 上，`go test ./platform/windows -run Drawing` 会在窗口截图中逐像素检查图片、形状、画布、着色器、圆角裁剪和材质。
 
 `go test ./platform/windows` 会在 Windows 中运行每个测试的应用：可以在 PC 上运行，也可以在 Mac 上借助 `ASUKA_WINDOWS_VM` 指定的 swiftvm 虚拟机（默认是 `Windows Fresh`）运行，虚拟机把 `~/Library/Caches/asuka/windows-vm` 看作 `Z:\windows-vm`；两者都没有时，这些测试会跳过。
 

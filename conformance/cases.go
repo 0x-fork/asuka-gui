@@ -98,7 +98,7 @@ var Cases = []Case{
 		Name:  "pixel_aligned",
 		Scene: box(20.3, 30.3, 59.4, 39.4, "background: "+cRed),
 		Check: func(p *Probe) {
-			cov := func(c RGB) float64 { return c.Mix(white, red) }
+			cov := func(c RGB) float64 { return c.Mix(p.ref(white), p.ref(red)) }
 			for _, line := range [][4]float64{{0, 50, Cell - 1, 50}, {50, 0, 50, Cell - 1}} {
 				for _, s := range p.Profile(line[0], line[1], line[2], line[3], cov) {
 					if s.v > 0.1 && s.v < 0.9 {
@@ -268,7 +268,7 @@ func diagonal(p *Probe, x, y float64) float64 {
 	k := p.Scale()
 	prev, prevD := 0.0, 0.0
 	for d := 0.0; d < 20; d += 0.5 / k {
-		v := p.At(x+d, y+d).Mix(white, red)
+		v := p.At(x+d, y+d).Mix(p.ref(white), p.ref(red))
 		if v >= 0.5 && d > 0 {
 			return prevD + (0.5-prev)/(v-prev)*(d-prevD)
 		}
@@ -281,7 +281,7 @@ func diagonal(p *Probe, x, y float64) float64 {
 // to (x1, y1): red at its start, blue at its end, half way in the
 // middle, and never back.
 func gradient(p *Probe, x0, y0, x1, y1 float64) {
-	s := p.Profile(x0, y0, x1, y1, func(c RGB) float64 { return c.Mix(red, blue) })
+	s := p.Profile(x0, y0, x1, y1, func(c RGB) float64 { return c.Mix(p.ref(red), p.ref(blue)) })
 	if len(s) < 3 {
 		p.Errorf("no gradient")
 		return

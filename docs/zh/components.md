@@ -1299,4 +1299,4 @@ component Tags(tags: [string]) {
 
 ## 自定义视图
 
-如果某个平台有 Asuka 没有提供的控件，你可以自己实现一个 `native component`：iOS 和 macOS 上用 Swift，Android 上用 Kotlin，Web 上用 JavaScript，Windows 和 Linux 上用 Go。参见[原生代码](native.md)。
+如果某个平台有 Asuka 没有提供的控件，你可以自己实现一个 `native component`：iOS 和 macOS 上用 Swift，Android 上用 Kotlin，Windows 和 Linux 上用 C，Web 上用 JavaScript。参见[原生代码](native.md)。

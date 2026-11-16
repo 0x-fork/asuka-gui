@@ -23,8 +23,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/egoist/asuka/internal/appbuild"
 )
 
 // version is the CLI's release (-ldflags -X main.version=…; scripts/npm
@@ -65,7 +63,6 @@ asuka <command> --help lists its flags.
 }
 
 func main() {
-	appbuild.Version = version
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)

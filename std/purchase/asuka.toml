@@ -10,8 +10,3 @@ launch = "AsukaPurchaseLaunch"
 [android]
 permissions = ["com.android.vending.BILLING"]
 launch = "asuka.purchase.PurchaseLaunch"
-
-# The Mac's Go host builds platform/macos's StoreKit 2 into the app's
-# Swift library.
-[macos]
-hostFlags = ["ASUKA_PURCHASE"]

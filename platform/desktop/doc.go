@@ -1,5 +1,5 @@
 // Package desktop holds the C the Windows and Linux hosts share
-// (RFC 0008): include/asuka_desktop.h, the contract between a host and
+// (RFC 0008), some of which the macOS host links too (MacShared): include/asuka_desktop.h, the contract between a host and
 // the C its app links; src/native.c, the native packages' registry;
 // asuka_linux.h and asuka_windows.h (src/linux.c, src/windows.c), what
 // packages' Linux and Windows C share. Its
@@ -71,6 +71,19 @@ func HostShared(dir string) []string {
 	src := filepath.Join(dir, "src")
 	var out []string
 	for _, f := range []string{"app.c", "files.c", "jsontree.c", "state.c", "flyout.c", "animimage.c", "words.c", "words_gen.c", "words.h", "words_gen.h"} {
+		out = append(out, filepath.Join(src, f))
+	}
+	return append(out, filepath.Join(dir, "include", "desktop.h"))
+}
+
+// MacShared are the C of HostShared the macOS host (Swift) links too, and
+// its headers, in dir (Dir's): JSON, files, the route state, flyouts'
+// places and Asuka's own words. Its settings, directories, window frames
+// and animated images are AppKit's and ImageIO's.
+func MacShared(dir string) []string {
+	src := filepath.Join(dir, "src")
+	var out []string
+	for _, f := range []string{"jsontree.c", "files.c", "state.c", "flyout.c", "words.c", "words_gen.c", "words.h", "words_gen.h"} {
 		out = append(out, filepath.Join(src, f))
 	}
 	return append(out, filepath.Join(dir, "include", "desktop.h"))

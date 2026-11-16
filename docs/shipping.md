@@ -365,9 +365,8 @@ asuka build --platform mac
 ```
 
 makes `dist/<Name>.app` on a Mac: a universal app (Apple silicon and
-Intel), for macOS 11 and later: the desktop host as its executable, the
-core with the app compiled in as `Contents/Frameworks/libasuka.dylib`
-(both universal), its settings (`Contents/Resources/asuka-app.json`), its
+Intel), for macOS 11 and later: its executable the Swift host linked
+with the core with the app compiled in (universal), its settings (`Contents/Resources/asuka-app.json`), its
 Info.plist, icon, languages and assets, signed ad hoc: it runs on your
 Mac. The packages the app imports
 give it their purpose strings, as on iOS, from `ios.usage` (location's
@@ -376,10 +375,10 @@ is `NSLocationUsageDescription` on the Mac, taken from
 entitlements for them (`com.apple.security.device.camera`,
 `...audio-input`, `...personal-information.location`...), without which
 an app signed with a Developer ID is refused the camera, the microphone
-or the user's data. An app with Swift of its own (`macos/*.swift`) has it
-compiled for both architectures into `Contents/Frameworks`, signed with
-the app (see [Native code](native.md)). An app that uses `asuka/sqlite`
-has SQLite's library there too (`libasqlite.dylib`, for both
+or the user's data. An app's native packages' Swift is
+compiled for both architectures into its executable, with the host (see
+[Native code](native.md)). An app that uses `asuka/sqlite` has SQLite's
+library in `Contents/Frameworks` (`libasqlite.dylib`, for both
 architectures), signed as the app is: with a Developer ID, the hardened
 runtime loads only libraries signed by the app's own team, and the
 notary service checks each one ([The library](data.md#the-library)).
