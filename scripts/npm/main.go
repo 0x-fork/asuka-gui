@@ -1,6 +1,6 @@
 // Command npm builds the asuka CLI for every platform and lays out its
-// npm packages: @asuka/cli (the launcher, npm/cli) and one
-// @asuka/cli-<os>-<cpu> per build, with only its binary. With -publish
+// npm packages: @egoist/asuka (the launcher, npm/cli) and one
+// @egoist/asuka-<os>-<cpu> per build, with only its binary. With -publish
 // it publishes them (npm publish, with the user's npm credentials;
 // --provenance on CI), platform packages first.
 //
@@ -75,7 +75,7 @@ func main() {
 	var dirs []string
 	deps := map[string]string{}
 	for _, p := range platforms {
-		name := "@asuka/cli-" + p.os + "-" + p.cpu
+		name := "@egoist/asuka-" + p.os + "-" + p.cpu
 		dir := filepath.Join(*out, "cli-"+p.os+"-"+p.cpu)
 		exe := "asuka"
 		if p.goos == "windows" {
@@ -92,7 +92,7 @@ func main() {
 		writeJSON(filepath.Join(dir, "package.json"), map[string]any{
 			"name":        name,
 			"version":     *version,
-			"description": "The asuka CLI for " + p.os + " " + p.cpu + " (installed by @asuka/cli)",
+			"description": "The asuka CLI for " + p.os + " " + p.cpu + " (installed by @egoist/asuka)",
 			"license":     "MIT",
 			"repository":  "github:egoist/asuka",
 			"os":          []string{p.os},

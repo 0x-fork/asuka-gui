@@ -48,7 +48,7 @@ Mac.
 ## Install the CLI
 
 ```sh
-npm install -g @asuka/cli     # or: npx @asuka/cli new hello
+npm install -g @egoist/asuka     # or: npx @egoist/asuka new hello
 ```
 
 The package has a prebuilt `asuka` for macOS, Windows and Linux (x64 and

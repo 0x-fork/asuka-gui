@@ -1,5 +1,5 @@
 name: release
-# A tag v1.2.3 publishes the CLI: its npm packages (@asuka/cli and a
+# A tag v1.2.3 publishes the CLI: its npm packages (@egoist/asuka and a
 # prebuilt binary per platform) and a GitHub release with the binaries,
 # for the shell installer, and the desktop hosts (asuka-host-<os>-<arch>),
 # which the CLI fetches for desktop builds, checked by the hashes it was

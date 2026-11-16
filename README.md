@@ -66,7 +66,7 @@ compiler and GTK 4.14 with libadwaita 1.5. See [Getting
 started](docs/getting-started.md).
 
 ```sh
-npm install -g @asuka/cli
+npm install -g @egoist/asuka
 asuka new hello
 cd hello
 asuka dev --platform ios     # or android, web; on a Mac, PC or Linux, asuka dev alone runs it there

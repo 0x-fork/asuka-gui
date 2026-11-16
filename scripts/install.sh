@@ -13,7 +13,7 @@ dir="${ASUKA_INSTALL:-$HOME/.asuka/bin}"
 case "$(uname -s)" in
 Darwin) os=darwin ;;
 Linux) os=linux ;;
-*) echo "asuka: this script installs on macOS and Linux; on Windows: npm i -g @asuka/cli" >&2; exit 1 ;;
+*) echo "asuka: this script installs on macOS and Linux; on Windows: npm i -g @egoist/asuka" >&2; exit 1 ;;
 esac
 case "$(uname -m)" in
 arm64 | aarch64) cpu=arm64 ;;
