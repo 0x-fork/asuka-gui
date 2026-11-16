@@ -5,8 +5,9 @@
 // bytes, void, arrays [T], maps [K: V], optionals T?, tuples, functions,
 // View, Error, Task<T>, Loading<T>, Duration (300ms), Color (#7c3aed and
 // the semantic colors: .label, .secondaryLabel, .accent, ...), Length
-// (100, 50%, .auto), and Canvas's Graphics and Path (their methods are
-// builtins: lang/LOWERING.md's "Canvas").
+// (100, 50%, .auto), Canvas's Graphics and Path, and Ref, a view's
+// handle (their methods are builtins: lang/LOWERING.md's "Graphics" and
+// "Refs").
 
 /// The axis a container stacks its children on.
 enum Axis {

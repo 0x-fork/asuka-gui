@@ -697,6 +697,16 @@ static ak_val m_pow(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(pow(A(0).f, 
 static ak_val m_floor(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(floor(A(0).f)); }
 static ak_val m_ceil(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(ceil(A(0).f)); }
 static ak_val m_round(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(round(A(0).f)); }
+
+// length.points(x): a Length of x points, packed as the compiler packs a
+// constant one (its unit, 1, in bits 32-39; its float32 in bits 0-31).
+static ak_val length_points(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	float f = (float)A(0).f;
+	uint32_t bits;
+	memcpy(&bits, &f, 4);
+	RET_I((int64_t)1 << 32 | (int64_t)bits);
+}
 static ak_val m_sin(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(sin(A(0).f)); }
 static ak_val m_cos(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(cos(A(0).f)); }
 static ak_val m_atan2(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(atan2(A(0).f, A(1).f)); }
@@ -1096,6 +1106,7 @@ const ak_lib_entry ak_lib[] = {
 	{"math.floor", m_floor},
 	{"math.ceil", m_ceil},
 	{"math.round", m_round},
+	{"length.points", length_points},
 	{"math.sin", m_sin},
 	{"math.cos", m_cos},
 	{"math.atan2", m_atan2},

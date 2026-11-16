@@ -241,6 +241,7 @@ func (c *Checker) componentBody(t *TypeName) {
 			views = append(views, it)
 		}
 	}
+	views = c.bodyCalls(views)
 	c.viewBlock(views, nil, t.name)
 }
 
@@ -435,6 +436,13 @@ func (c *Checker) componentCall(e *syntax.CallExpr, tn *TypeName) Type {
 			c.propValue(a, comp.Params[i], "argument "+params[i].Name+" of "+tn.name)
 		}
 	}
+	if e.As != nil {
+		if !comp.Native {
+			c.errorf(e.As, "as names an element's view, and %s is a component: name an element inside it", tn.name)
+		} else {
+			ec.As = c.declareVar(e.As, Ref, false)
+		}
+	}
 	if e.Block != nil {
 		c.elementBlock(e.Block.Items, ec)
 	}
@@ -501,7 +509,11 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 		case *syntax.StyleUse:
 			c.styleUse(s, ec)
 		case *syntax.SlotItem:
-			c.slotItem(s, ec)
+			if isVariant(s.Name.Name) && comp.Members[s.Name.Name] == nil {
+				c.variantItem(s, ec)
+			} else {
+				c.slotItem(s, ec)
+			}
 		case *syntax.IfStmt, *syntax.ForStmt, *syntax.MatchStmt, *syntax.ExprStmt:
 			children = append(children, it)
 		default:
@@ -542,12 +554,104 @@ func childHint(t *TypeName) string {
 	return ": declare prop children: View for them"
 }
 
+// isVariant reports an interaction state's name: pressed, hovered, …
+func isVariant(name string) bool {
+	for _, v := range prelude.Variants {
+		if v == name {
+			return true
+		}
+	}
+	return false
+}
+
+// variantItem checks a variant: a block of style props a container lays
+// over its style while it's in the state.
+func (c *Checker) variantItem(s *syntax.SlotItem, ec *ElementCall) {
+	comp := ec.Comp.Comp
+	if comp.Element == nil || !comp.Element.Variants {
+		c.errorf(s.Name, "%s takes no variants: %s { … } goes in a View, a Row, a Column or a SafeArea", ec.Comp.name, s.Name.Name)
+		return
+	}
+	va := &VariantArg{State: s.Name.Name, Item: s}
+	set := func(name *syntax.Ident, value syntax.Expr) {
+		m := c.styleMember(name.Name)
+		switch {
+		case m == nil && comp.Members[name.Name] != nil:
+			c.errorf(name, "a variant holds style props, and %s is %s's own: set it outside %s { … }", name.Name, ec.Comp.name, s.Name.Name)
+		case m == nil:
+			c.errorf(name, "a variant holds style props, and %s isn't one%s", name.Name, c.propSuggest(c.styleComp(), name.Name))
+		case name.Name == "keys" || name.Name == "actions":
+			c.errorf(name, "%s don't change with a state: set them outside %s { … }", name.Name, s.Name.Name)
+			m = nil
+		}
+		if m == nil {
+			c.expr(value, nil)
+			return
+		}
+		c.propValue(value, m, name.Name)
+		va.Props = append(va.Props, &PropArg{Member: m, Value: value})
+	}
+	for _, it := range s.Body.Items {
+		switch x := it.(type) {
+		case *syntax.PropSet:
+			set(x.Name, x.Value)
+		case *syntax.StyleUse:
+			id, ok := x.Name.(*syntax.Ident)
+			if !ok {
+				c.errorf(x.Name, "styles of other packages aren't supported yet")
+				continue
+			}
+			d := c.styles[id.Name]
+			if d == nil {
+				c.errorf(id, "unknown style %s", id.Name)
+				continue
+			}
+			savedScope := c.scope
+			c.scope = c.declScope(d)
+			for _, it := range d.Body.Items {
+				if ps, ok := it.(*syntax.PropSet); ok {
+					set(ps.Name, ps.Value)
+				}
+			}
+			c.scope = savedScope
+		case *syntax.BadItem:
+		default:
+			c.errorf(it, "a variant holds style props only (name: value, style name), not %s", itemName(it))
+		}
+	}
+	ec.Variants = append(ec.Variants, va)
+}
+
+// styleComp is the prelude's Style pseudo-component.
+func (c *Checker) styleComp() *Component {
+	o, _ := c.prelude.Scope.LookupLocal("Style").(*TypeName)
+	return o.Comp
+}
+
+// refProp checks ref: r, which puts the element's view in the Ref r.
+func (c *Checker) refProp(name *syntax.Ident, value syntax.Expr, ec *ElementCall) {
+	if !ec.Comp.Comp.Native {
+		c.errorf(name, "ref names an element's view, and %s is a component: put it on an element inside it", ec.Comp.name)
+		c.expr(value, nil)
+		return
+	}
+	if ec.Ref != nil {
+		c.errorf(name, "ref is set twice")
+	}
+	c.assign(value, Ref, "ref")
+	ec.Ref = value
+}
+
 // propSet checks name: value in a block.
 func (c *Checker) propSet(name *syntax.Ident, value syntax.Expr, ec *ElementCall, style bool) {
 	comp := ec.Comp.Comp
 	m := comp.Members[name.Name]
 	if m == nil && comp.Native && !(comp.Element != nil && comp.Element.NoStyle) {
 		m = c.styleMember(name.Name)
+	}
+	if m == nil && name.Name == "ref" && !style {
+		c.refProp(name, value, ec)
+		return
 	}
 	if m == nil {
 		c.errorf(name, "%s has no prop %s%s", ec.Comp.name, name.Name, c.propSuggest(comp, name.Name))

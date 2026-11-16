@@ -33,11 +33,38 @@ func (p *goPantry) Cook(ctx context.Context, recipe string, progress func(float6
 	return Item{Name: recipe}, ctx.Err()
 }
 func (p *goPantry) Ask(question func(string) bool) (bool, error) { return question("ready?"), nil }
-func (p *goPantry) Open(name string) (Shelf, error)               { return &goShelf{}, nil }
-func (p *goPantry) Show() error                                    { return nil }
-func (p *goPantry) Counts() (map[string]int, error)                { return map[string]int{"items": len(p.items)}, nil }
+func (p *goPantry) Open(name string) (Shelf, error)              { return &goShelf{}, nil }
+func (p *goPantry) Show() error                                  { return nil }
+func (p *goPantry) Counts() (map[string]int, error) {
+	return map[string]int{"items": len(p.items)}, nil
+}
 
 type goShelf struct{}
 
 func (goShelf) Stack(count int, level Level) error { return nil }
 func (goShelf) Close() error                       { return nil }
+
+// goDial is the Dial in Go: its view is the host's (a handle of 0 here).
+type goDial struct {
+	events DialEvents
+	value  float64
+	label  string
+	items  []Item
+}
+
+func init() {
+	implementDial(func(events DialEvents) DialNative { return &goDial{events: events} })
+}
+
+func (d *goDial) Handle() uintptr { return 0 }
+func (d *goDial) SetValue(value float64) {
+	d.value = value
+	d.events.Changed(value)
+}
+func (d *goDial) SetLabel(label string) { d.label = label }
+func (d *goDial) SetItems(items []Item) {
+	d.items = items
+	if len(items) > 0 {
+		d.events.Picked(items[0], 0)
+	}
+}

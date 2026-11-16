@@ -42,10 +42,20 @@ type Method struct {
 	// Needs: what the receiver's type variable must be: "Equatable",
 	// "Comparable", "number", "string".
 	Needs string
-	Doc   string
+	// Field: read as a property, without parentheses (g.width,
+	// card.hovered); its Sig is "() -> T".
+	Field bool
+	// Consts: constant ints the lowering appends to the builtin's
+	// arguments (the state ui.state reads, where web_navigate goes).
+	Consts []int64
+	Doc    string
 
-	Params []*Param // parsed from Sig
-	Result Type
+	// Params and Result are parsed from Sig. A signature that names the
+	// prelude's types (StrokeStyle, TextFormat) has them Invalid here,
+	// and each checker reads it again with its prelude (methodSig).
+	Params  []*Param
+	Result  Type
+	prelude bool
 }
 
 // Methods lists every built-in method, the language's reference for
@@ -158,8 +168,70 @@ var Methods = []*Method{
 	{Recv: "app", Name: "expectNo", Sig: "(text: string)", Builtin: "test.expect_no", Doc: "fails the test if text is shown"},
 	{Recv: "app", Name: "idle", Sig: "()", Builtin: "test.idle", Async: true, Doc: "waits until nothing is left to run"},
 
+	{Recv: "app", Name: "ops", Sig: "() -> string", Builtin: "test.ops", Doc: "the ops the host applied since the last ops(), a line each (the fake host's log)"},
+	{Recv: "app", Name: "press", Sig: "(text: string, down: bool = true)", Builtin: "test.press", Doc: "puts a finger down on the view showing text (or the view around it that reports pressed), or lifts it: its pressed state"},
+	{Recv: "app", Name: "hover", Sig: "(text: string, over: bool = true)", Builtin: "test.hover", Doc: "moves the pointer over the view showing text, or off it"},
+	{Recv: "app", Name: "frame", Sig: "(time: Duration)", Builtin: "test.frame", Doc: "draws a frame at time: what onFrame registered runs"},
+	{Recv: "app", Name: "openURL", Sig: "(url: string)", Builtin: "test.open_url", Doc: "opens the app with url, as another app does"},
+	{Recv: "app", Name: "emit", Sig: "(view: string, event: string, value: string = \"\")", Builtin: "test.emit", Doc: "sends a native component's event: from the view of that kind (\"<package>#Name\"), its value v an encoded string"},
+
 	// Loading<T>.
 	{Recv: "loading", Name: "reload", Sig: "()", Builtin: "load.reload"},
+
+	// Graphics: a Canvas's, while its draw runs (core/src/ui/canvas.c).
+	{Recv: "graphics", Name: "width", Sig: "() -> float", Builtin: "canvas.width", Field: true, Doc: "the canvas's width, in points"},
+	{Recv: "graphics", Name: "height", Sig: "() -> float", Builtin: "canvas.height", Field: true},
+	{Recv: "graphics", Name: "path", Sig: "() -> Path", Builtin: "canvas.path", Doc: "an empty path of the canvas's own, reused from draw to draw (drawing again allocates nothing)"},
+	{Recv: "graphics", Name: "fill", Sig: "(path: Path, color: Color)", Builtin: "canvas.fill"},
+	{Recv: "graphics", Name: "fill", Sig: "(path: Path, gradient: LinearGradient)", Builtin: "canvas.fill_gradient"},
+	{Recv: "graphics", Name: "fill", Sig: "(path: Path, gradient: RadialGradient)", Builtin: "canvas.fill_radial"},
+	{Recv: "graphics", Name: "stroke", Sig: "(path: Path, color: Color, style: StrokeStyle? = none)", Builtin: "canvas.stroke"},
+	{Recv: "graphics", Name: "stroke", Sig: "(path: Path, gradient: LinearGradient, style: StrokeStyle? = none)", Builtin: "canvas.stroke_gradient", Order: []int{0, 2, 1}},
+	{Recv: "graphics", Name: "stroke", Sig: "(path: Path, gradient: RadialGradient, style: StrokeStyle? = none)", Builtin: "canvas.stroke_radial", Order: []int{0, 2, 1}},
+	{Recv: "graphics", Name: "save", Sig: "()", Builtin: "canvas.save", Doc: "keeps the transform, the clip, the opacity and the fill rule, for restore"},
+	{Recv: "graphics", Name: "restore", Sig: "()", Builtin: "canvas.restore"},
+	{Recv: "graphics", Name: "translate", Sig: "(x: float, y: float)", Builtin: "canvas.translate"},
+	{Recv: "graphics", Name: "scale", Sig: "(x: float, y: float)", Builtin: "canvas.scale"},
+	{Recv: "graphics", Name: "rotate", Sig: "(degrees: float)", Builtin: "canvas.rotate", Doc: "clockwise"},
+	{Recv: "graphics", Name: "opacity", Sig: "(alpha: float)", Builtin: "canvas.opacity"},
+	{Recv: "graphics", Name: "clip", Sig: "(path: Path)", Builtin: "canvas.clip"},
+	{Recv: "graphics", Name: "transform", Sig: "(a: float, b: float, c: float, d: float, tx: float, ty: float)", Builtin: "canvas.transform"},
+	{Recv: "graphics", Name: "evenOdd", Sig: "(on: bool)", Builtin: "canvas.even_odd", Doc: "fills by the even-odd rule (holes), not the nonzero one"},
+	{Recv: "graphics", Name: "text", Sig: "(text: string, x: float, y: float, style: CanvasText? = none)", Builtin: "canvas.text", Doc: "on one line, its baseline at y"},
+
+	// Path: an outline, built by its methods; each returns it, to chain.
+	{Recv: "path", Name: "move", Sig: "(x: float, y: float) -> Path", Builtin: "path.move"},
+	{Recv: "path", Name: "line", Sig: "(x: float, y: float) -> Path", Builtin: "path.line"},
+	{Recv: "path", Name: "quad", Sig: "(cx: float, cy: float, x: float, y: float) -> Path", Builtin: "path.quad"},
+	{Recv: "path", Name: "cubic", Sig: "(c1x: float, c1y: float, c2x: float, c2y: float, x: float, y: float) -> Path", Builtin: "path.cubic"},
+	{Recv: "path", Name: "rect", Sig: "(x: float, y: float, width: float, height: float) -> Path", Builtin: "path.rect"},
+	{Recv: "path", Name: "roundedRect", Sig: "(x: float, y: float, width: float, height: float, radius: float) -> Path", Builtin: "path.rounded_rect"},
+	{Recv: "path", Name: "ellipse", Sig: "(x: float, y: float, width: float, height: float) -> Path", Builtin: "path.ellipse", Doc: "the ellipse in the rectangle"},
+	{Recv: "path", Name: "arc", Sig: "(cx: float, cy: float, radius: float, start: float, end: float, clockwise: bool = true) -> Path", Builtin: "path.arc", Doc: "radians, from the positive x axis, clockwise as the screen turns"},
+	{Recv: "path", Name: "close", Sig: "() -> Path", Builtin: "path.close"},
+
+	// Ref: a view's handle. Each reads the view it holds; with none (the
+	// view isn't shown), a command does nothing and a state is false.
+	{Recv: "ref", Name: "hovered", Sig: "() -> bool", Builtin: "ui.state", Field: true, Consts: []int64{1}, Doc: "a pointer is over the view (tracked)"},
+	{Recv: "ref", Name: "pressed", Sig: "() -> bool", Builtin: "ui.state", Field: true, Consts: []int64{2}, Doc: "a finger or the mouse's button is down on it (tracked)"},
+	{Recv: "ref", Name: "dragging", Sig: "() -> bool", Builtin: "ui.state", Field: true, Consts: []int64{4}, Doc: "it's being dragged (tracked)"},
+	{Recv: "ref", Name: "dragOver", Sig: "() -> bool", Builtin: "ui.state", Field: true, Consts: []int64{8}, Doc: "a drag it takes is over it (tracked)"},
+	{Recv: "ref", Name: "focus", Sig: "()", Builtin: "ui.focus", Doc: "gives a field the keyboard"},
+	{Recv: "ref", Name: "blur", Sig: "()", Builtin: "ui.blur"},
+	{Recv: "ref", Name: "scrollTo", Sig: "(x: float, y: float, animated: bool = true)", Builtin: "ui.scroll_to", Doc: "scrolls a Scroll or a List to the content offset"},
+	{Recv: "ref", Name: "play", Sig: "()", Builtin: "ui.play", Doc: "plays a Video"},
+	{Recv: "ref", Name: "pause", Sig: "()", Builtin: "ui.pause"},
+	{Recv: "ref", Name: "seek", Sig: "(seconds: float)", Builtin: "ui.seek"},
+	{Recv: "ref", Name: "eval", Sig: "(script: string) -> string", Builtin: "ui.web_eval_result", Async: true, Throws: true, Doc: "runs script in a WebView's page: its value, as JSON"},
+	{Recv: "ref", Name: "run", Sig: "(script: string)", Builtin: "ui.web_eval", Doc: "runs script in a WebView's page, not waiting for it"},
+	{Recv: "ref", Name: "goBack", Sig: "()", Builtin: "ui.web_navigate", Consts: []int64{0}},
+	{Recv: "ref", Name: "goForward", Sig: "()", Builtin: "ui.web_navigate", Consts: []int64{1}},
+	{Recv: "ref", Name: "reload", Sig: "()", Builtin: "ui.web_navigate", Consts: []int64{2}},
+	{Recv: "ref", Name: "stopLoading", Sig: "()", Builtin: "ui.web_navigate", Consts: []int64{3}},
+	{Recv: "ref", Name: "insert", Sig: "(text: string)", Builtin: "ui.insert_text", Doc: "types text into a TextField where its cursor is, over its selection"},
+	{Recv: "ref", Name: "format", Sig: "(format: TextFormat, on: bool)", Builtin: "ui.format", Doc: "a rich TextField's selection (or what's typed next) in a style, or not"},
+	{Recv: "ref", Name: "toggleFormat", Sig: "(format: TextFormat)", Builtin: "ui.toggle_format"},
+	{Recv: "ref", Name: "setLink", Sig: "(url: string)", Builtin: "ui.set_link", Doc: "links a rich TextField's selection to url (\"\": unlinks it)"},
 }
 
 // The receivers' type variables.
@@ -178,6 +250,50 @@ var methodIndex = func() map[string][]*Method {
 	}
 	return idx
 }()
+
+// methodSig is m's parameters and result, the prelude's types resolved
+// in this checker's prelude.
+func (c *Checker) methodSig(m *Method) ([]*Param, Type) {
+	if !m.prelude {
+		return m.Params, m.Result
+	}
+	if s, ok := c.sigs[m]; ok {
+		return s.params, s.result
+	}
+	ps, res := c.parseSig(m.Sig, m.Recv+"."+m.Name)
+	c.sigs[m] = parsedSig{ps, res}
+	return ps, res
+}
+
+type parsedSig struct {
+	params []*Param
+	result Type
+}
+
+// parseSig reads a signature naming the prelude's types.
+func (c *Checker) parseSig(sig, what string) ([]*Param, Type) {
+	p := &sigParser{s: sig, lookup: func(name string) Type {
+		if tn, ok := c.prelude.Scope.LookupLocal(name).(*TypeName); ok {
+			c.resolveType(tn)
+			return tn.Type
+		}
+		if tn, ok := c.universe.LookupLocal(name).(*TypeName); ok {
+			return tn.Type
+		}
+		return nil
+	}}
+	ps := p.params()
+	res := Type(Void)
+	p.space()
+	if strings.HasPrefix(p.s[p.i:], "->") {
+		p.i += 2
+		res = p.typ()
+	}
+	if p.err || p.unknown {
+		panic("check: bad signature: " + what + " " + sig)
+	}
+	return ps, res
+}
 
 func recvKind(t Type) string {
 	switch x := t.(type) {
@@ -211,6 +327,12 @@ func recvKind(t Type) string {
 			return "bytes"
 		case Color:
 			return "color"
+		case Graphics:
+			return "graphics"
+		case Path:
+			return "path"
+		case Ref:
+			return "ref"
 		}
 	}
 	return ""
@@ -227,7 +349,20 @@ func lookupMethod(t Type, name string) *Method {
 
 // lookupMethodArity finds the overload taking n arguments.
 func lookupMethodArity(t Type, name string, n int) *Method {
+	if ms := methodsArity(t, name, n); len(ms) > 0 {
+		return ms[0]
+	}
+	return nil
+}
+
+// methodsArity lists the overloads taking n arguments (g.fill's by its
+// paint's type).
+func methodsArity(t Type, name string, n int) []*Method {
+	var out []*Method
 	for _, m := range methodIndex[recvKind(t)+"."+name] {
+		if m.Field {
+			continue
+		}
 		req := 0
 		for _, p := range m.Params {
 			if p.Default == nil {
@@ -235,6 +370,16 @@ func lookupMethodArity(t Type, name string, n int) *Method {
 			}
 		}
 		if n >= req && n <= len(m.Params) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// lookupField finds a built-in property of t (g.width, card.hovered).
+func lookupField(t Type, name string) *Method {
+	for _, m := range methodIndex[recvKind(t)+"."+name] {
+		if m.Field {
 			return m
 		}
 	}
@@ -315,13 +460,18 @@ func (m *Method) parse() {
 	if p.err {
 		panic("check: bad method signature: " + m.Recv + "." + m.Name + " " + m.Sig)
 	}
+	m.prelude = p.unknown
 }
 
-// sigParser reads the method table's signatures.
+// sigParser reads the method table's signatures. lookup resolves a name
+// that isn't built in (the prelude's types); without it such a name is
+// Invalid, and unknown says one was seen.
 type sigParser struct {
-	s   string
-	i   int
-	err bool
+	s       string
+	i       int
+	err     bool
+	unknown bool
+	lookup  func(string) Type
 }
 
 func (p *sigParser) space() {
@@ -342,7 +492,7 @@ func (p *sigParser) eat(tok string) bool {
 func (p *sigParser) ident() string {
 	p.space()
 	j := p.i
-	for p.i < len(p.s) && (p.s[p.i] >= 'a' && p.s[p.i] <= 'z' || p.s[p.i] >= 'A' && p.s[p.i] <= 'Z') {
+	for p.i < len(p.s) && (p.s[p.i] >= 'a' && p.s[p.i] <= 'z' || p.s[p.i] >= 'A' && p.s[p.i] <= 'Z' || p.i > j && p.s[p.i] >= '0' && p.s[p.i] <= '9') {
 		p.i++
 	}
 	if j == p.i {
@@ -450,9 +600,24 @@ func (p *sigParser) typ() Type {
 			t = tvV
 		case "U":
 			t = tvU
+		case "View":
+			t = View
+		case "Graphics":
+			t = Graphics
+		case "Path":
+			t = Path
+		case "Ref":
+			t = Ref
 		default:
-			p.err = true
 			t = Invalid
+			if n == "" {
+				p.err = true
+			} else if p.lookup == nil {
+				p.unknown = true
+			} else if t = p.lookup(n); t == nil {
+				p.unknown = true
+				t = Invalid
+			}
 		}
 	}
 	if p.eat("?") {
@@ -461,10 +626,18 @@ func (p *sigParser) typ() Type {
 	return t
 }
 
-// defaultLit is a default written in a signature: "" or a number.
+// defaultLit is a default written in a signature: "", a number, a bool
+// or none.
 func defaultLit(lit string) syntax.Expr {
-	if strings.HasPrefix(lit, `"`) {
+	switch {
+	case strings.HasPrefix(lit, `"`):
 		return &syntax.StringLit{Segments: []string{strings.Trim(lit, `"`)}}
+	case lit == "true" || lit == "false":
+		return &syntax.BoolLit{Value: lit == "true"}
+	case lit == "none":
+		return &syntax.NoneLit{}
+	case strings.Contains(lit, "."):
+		return &syntax.BasicLit{Kind: syntax.FLOAT, Value: lit}
 	}
 	return &syntax.BasicLit{Kind: syntax.INT, Value: lit}
 }

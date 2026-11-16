@@ -49,11 +49,15 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
+	// The built-in methods' and functions' signatures that name the
+	// prelude's types, read with this checker's prelude.
+	sigs  map[*Method]parsedSig
+	fsigs map[*RuntimeFunc]parsedSig
 }
 
 // NewChecker makes a checker and checks the prelude with it.
 func NewChecker(fset *syntax.FileSet) *Checker {
-	c := &Checker{fset: fset, info: newInfo(), errLines: map[string]bool{}, std: map[string]*Package{}, resolving: map[any]bool{}, chained: map[syntax.Expr]bool{}}
+	c := &Checker{fset: fset, info: newInfo(), errLines: map[string]bool{}, std: map[string]*Package{}, resolving: map[any]bool{}, chained: map[syntax.Expr]bool{}, sigs: map[*Method]parsedSig{}, fsigs: map[*RuntimeFunc]parsedSig{}}
 	c.universe = NewScope(nil)
 	c.initUniverse()
 	var files []*syntax.SourceFile
@@ -143,7 +147,7 @@ func (c *Checker) errorAt(pos, end syntax.Position, msg string) {
 // The universe: the types and functions built into the compiler
 
 func (c *Checker) initUniverse() {
-	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path} {
+	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref} {
 		c.universe.Insert(&TypeName{object: object{name: t.name}, Kind: BasicType, Type: t, resolved: true})
 	}
 	// Error: the interface every error has.
@@ -161,10 +165,13 @@ func (c *Checker) initUniverse() {
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream},
-		{"environment", BEnvironment}, {"live", BLive},
+		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {"shader", BShader},
 		{"untilCancelled", BUntilCancelled},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
+	}
+	for _, f := range RuntimeFuncs {
+		c.universe.Insert(&Builtin{object: object{name: f.Name}, ID: BRuntime, Fn: f})
 	}
 }
 

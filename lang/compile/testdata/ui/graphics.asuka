@@ -1,0 +1,72 @@
+// Canvas, Shape, Path and Shader.
+
+fn star(w: float, h: float) -> Path {
+  var p = Path()
+  for i in 0..<10 {
+    let r = if i % 2 == 1 { min(w, h) / 4 } else { min(w, h) / 2 }
+    let x = w / 2 + r * float(i)
+    p = if i == 0 { p.move(x, h / 2) } else { p.line(x, h / 2 + r) }
+  }
+  return p.close()
+}
+
+let glow = shader(r"""
+  package main
+
+  var Time float
+  var Tint vec4
+
+  func Fragment(dst vec4, pos vec2) vec4 {
+  	return Tint * (0.5 + 0.5*sin(Time))
+  }
+  """)
+
+component Gauge {
+  state level = 0.25
+
+  Column {
+    Canvas(g => {
+      let cx = g.width / 2
+      let p = g.path().arc(cx, g.height, g.height - 10, 3.14159, 6.28318)
+      g.stroke(p, .secondaryBackground, StrokeStyle(width: 14, cap: .round))
+      g.stroke(Path().arc(cx, g.height, g.height - 10, 3.14159, 3.14159 * (1 + level)), .accent, StrokeStyle(width: 14))
+      g.save()
+      g.translate(4, 4)
+      g.rotate(45)
+      g.opacity(0.5)
+      g.fill(Path().rect(0, 0, 10, 10).roundedRect(20, 0, 10, 10, 2).ellipse(40, 0, 10, 10), #ff0000)
+      g.fill(Path().rect(0, 20, 50, 10), LinearGradient(colors: [.red, .blue]))
+      g.fill(Path().rect(0, 40, 50, 10), RadialGradient(colors: [.red, .blue], radius: 20))
+      g.stroke(Path().move(0, 60).quad(10, 70, 20, 60).cubic(30, 50, 40, 70, 50, 60), LinearGradient(colors: [.green, .blue]), StrokeStyle(width: 2))
+      g.restore()
+      g.evenOdd(true)
+      g.clip(Path().rect(0, 0, g.width, g.height))
+      g.transform(1, 0, 0, 1, 0, 0)
+      g.text("{(level * 100).fixed(0)}%", cx, 30, CanvasText(size: 20, align: .center))
+    }) { height: 100 }
+    Shape(star) { fill: .yellow; stroke: .orange; lineWidth: 2; width: 40; height: 40 }
+    Shape((w, h) => Path().rect(0, 0, w, h)) { fill: .blue; trimEnd: level; width: 20; height: 20 }
+    Shader(glow) {
+      uniforms: [Uniform(name: "Time", value: [level]), colorUniform("Tint", .accent)]
+      height: 60
+    }
+    Button("More") { on press { level = 0.5 } }
+  }
+}
+
+app { Gauge() }
+
+fn short(ops: string) -> string = ops.split("\n").map(l => l.slice(0, 60)).joined(separator: "\n")
+
+test "a canvas draws, and draws again when what it read changes" {
+  let app = mount(Gauge())
+  let first = short(app.ops())
+  expect(first.contains("SetProp 2 Commands="), first)
+  expect(first.contains("SetProp 3 Path=") && first.contains("SetProp 4 Path="), first)
+  expect(first.contains("SetProp 5 Code=") && first.contains("SetProp 5 Uniforms="), first)
+  app.tap("More")
+  let next = short(app.ops())
+  expect(next.contains("SetProp 2 Commands="), next)
+  expect(next.contains("SetProp 4 TrimEnd=0.5") && next.contains("SetProp 5 Uniforms="), next)
+  expect(!next.contains("SetProp 3 Path="), next)
+}

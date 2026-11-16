@@ -443,7 +443,86 @@ View {
 }
 ```
 
-ビューが状態を報告するのは、どこかでその状態が使われたときだけです。そのため `pressed` バリアントを持たないビューは、プラットフォーム自身の押下時の見た目をそのまま保ちます。ほかのビューは名前を通してビューの状態に追従できます。`View as card { … }` と書き、任意のバインディングで `card.hovered`（あるいは `card.pressed`、`card.dragging`、`card.dragOver`）を読みます。子ビュー（グループ全体のホバー）でも兄弟のビューでも使えます。スタイル以外の反応にはハンドラーを使います：`on pressedChange(p)`、`on hoverChange(h)`。
+ビューが状態を報告するのは、どこかでその状態が使われたときだけです。そのため `pressed` バリアントを持たないビューは、プラットフォーム自身の押下時の見た目をそのまま保ちます。バリアントの中でも `style` を使えます（`pressed { style raised }`）。ほかのビューは名前を通してビューの状態に追従できます（[ビューに名前を付ける](#ビューに名前を付ける)を参照）。`View as card { … }` と書き、任意のバインディングで `card.hovered`（あるいは `card.pressed`、`card.dragging`、`card.dragOver`）を読みます。子ビュー（グループ全体のホバー）でも兄弟のビューでも使えます。スタイル以外の反応にはハンドラーを使います：`on pressedChange(p)`、`on hoverChange(h)`。
+
+## ビューに名前を付ける
+
+ビューには、値を設定するのではなく、ビューに対して何かをしたいこともあります。動画を再生する、ページでスクリプトを実行する、テキストフィールドに文字を入れる、リストをスクロールする、といった操作です。`Ref` はビューのハンドルです。任意の要素に `ref: r` と書くとそのビューが `r` に入り、`Element as name` と書くと、そのブロックの残りの部分で使えるハンドルが宣言されます。
+
+```asuka
+component Player {
+  let video = Ref()
+
+  Video("intro.mp4") { ref: video }
+  Button("Start over") {
+    on press {
+      video.seek(0)
+      video.play()
+    }
+  }
+}
+```
+
+Ref がビューを持つのは、ビューが表示されている間だけです。その前後は空なので、コマンドは何もせず、状態はすべて false になります。状態は追跡されるので、それを読むバインディングは状態の変化に追従します。
+
+| 対象 | Ref のメンバー |
+|---|---|
+| すべてのビュー | `hovered`、`pressed`、`dragging`、`dragOver`（bool、追跡される）、`focus()`、`blur()` |
+| `Scroll`、`List` | `scrollTo(x, y, animated: true)` |
+| `Video` | `play()`、`pause()`、`seek(seconds)` |
+| `WebView` | `try await eval(script)`（スクリプトの値を JSON で）、`run(script)`（完了を待たない）、`goBack()`、`goForward()`、`reload()`、`stopLoading()` |
+| `TextField` | `insert(text)`、`format(.bold, on)`、`toggleFormat(.italic)`、`setLink(url)`（リッチなフィールドの選択範囲に対して） |
+
+Ref はほかへ渡せます（`shareFiles(paths, from: button)`、`a11yFocus(field)`）。ファイルの `let` に置けば、複数のコンポーネントのビューで使えます。
+
+## アニメーション
+
+`animate { … }` はブロックをすぐに実行し、その中でフレームや描画される内容（不透明度、背景、角の半径、シェイプのトリム）に加えた変更をネイティブにアニメーションさせます。`animate(.spring) { … }` は `Animation` を受け取ります。長さ、カーブ、遅延、繰り返し回数、スプリングの減衰と初速です。`await` すると、アニメーションが完了してから戻ります。`await` しなくてもかまいません。
+
+```asuka
+on press {
+  animate { expanded = !expanded }
+}
+on press {
+  await animate(Animation(duration: 500ms, curve: .spring)) { offset = 0 }
+  done = true
+}
+```
+
+`animate(() => …)` と `animate(anim, () => …)` は、ブロックの代わりにクロージャを渡す同じ書き方です。`animating()` は、いま加えている変更がアニメーションするかどうかを返します。`onFrame(t => …)` は、ディスプレイがフレームを描くたびにそのフレームの時刻を渡してクロージャを呼びます。戻り値のクロージャを呼ぶか、コンポーネントがなくなると止まります：`let stop = onFrame(t => tick(t))`。
+
+## 描画
+
+`Canvas(g => …)` は `Graphics` を使って、左上を原点にポイント単位で描画します。レイアウトが済むと描画し、サイズや読み取った内容が変わると描き直します。`Shape(fn(width, height) -> Path)` は、プラットフォームが塗りと線を描く輪郭です（`fill`、`stroke`、`lineWidth`、`trimEnd`、`dash` など）。
+
+```asuka
+Canvas(g => {
+  let ring = g.path().arc(g.width / 2, g.height / 2, 40, 0, 6.28318)
+  g.stroke(ring, .accent, StrokeStyle(width: 8, cap: .round))
+  g.text("{percent}%", g.width / 2, g.height / 2, CanvasText(size: 20, align: .center))
+}) { height: 100 }
+```
+
+`Path` はメソッドで組み立てます。どのメソッドもパス自身を返します：`Path().move(x, y)`、`line`、`quad`、`cubic`、`rect`、`roundedRect`、`ellipse`、`arc(cx, cy, radius, start, end, clockwise: true)`（ラジアン、x 軸の正の向きから）、`close()`。`g.path()` はキャンバス自身が持つ空のパスで、描画のたびに使い回されます。`Graphics` が有効なのは描画関数の実行中だけです：`width`、`height`、`fill(path, color)`（`LinearGradient` や `RadialGradient` も渡せます）、`stroke(path, color またはグラデーション, style)`、`save()`、`restore()`、`translate`、`scale`、`rotate(degrees)`、`opacity`、`clip(path)`、`transform(a, b, c, d, tx, ty)`、`evenOdd(on)`、`text(s, x, y, style)`。
+
+`Shader(shader("""…"""))` は GPU のプログラムが描く箱です。プログラムは Kage で書き、アプリと一緒にコンパイルされます（プログラムの誤りはコンパイラーのエラーになります）。uniform は名前で設定します（`uniforms: [Uniform(name: "Level", value: [0.5]), colorUniform("Tint", .accent)]`）。
+
+## システムの機能
+
+| 関数 | 動作 |
+|---|---|
+| `share(text)` | テキストやリンクの共有シートを表示する |
+| `try await shareFiles(paths, title:, from: ref)` | ファイルの共有シートを、あるビューから（ポップオーバーが指す位置に）表示する。シートが閉じると戻る |
+| `haptic(.success)` | プラットフォームの触覚フィードバック（`Haptic`） |
+| `copy(text)` | テキストをクリップボードに入れる |
+| `openURL(url)` | url を扱えるアプリで開く |
+| `announce(text)` | スクリーンリーダーにテキストを読み上げさせる |
+| `a11yFocus(ref)` | スクリーンリーダーのフォーカスをそのビューに移す |
+| `try await webCookies(url)` | Web ビューが url について保持している Cookie |
+| `useKeys([Shortcut(…)])` | コンポーネントがある間の、ウィンドウのキー操作 |
+| `onOpenURL(u => …)`、`onOpenFiles(paths => …)`、`onShare(items => …)` | コンポーネントがある間に、アプリが開かれたときに渡されたもの、またはほかのアプリから共有されたもの |
+
+`useKeys` とこれらの `on…` による登録は、コンポーネントの本体（またはアプリのブロック）に書きます。アプリのブロックでは、これらをイベントとしても扱えます：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`。
 
 ## ナビゲーション
 

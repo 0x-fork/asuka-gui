@@ -650,7 +650,7 @@ func (c *Checker) convert(e syntax.Expr, got, want Type) bool {
 			return true
 		}
 		if got == Int || got == Float {
-			c.errorf(e, "a Length from a computed number isn't supported yet: write a number, a percentage (50%%) or .auto")
+			c.info.Convs[e] = Length // points, packed when it runs
 			return true
 		}
 	case Float:
@@ -974,6 +974,14 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 		c.errorf(e.Name, "%s has no %s%s", typeString(t), name, c.memberSuggest(t, name))
 		return Invalid
 	}
+	if m := lookupField(t, name); m != nil {
+		_, res := c.methodSig(m)
+		c.info.Selections[e] = &Selection{Kind: SelBuiltinField, Recv: t, Name: name, Method: m}
+		if m.Recv == "ref" && c.ctx != nil {
+			c.ctx.readsState = true // a view's state: tracked
+		}
+		return res
+	}
 	if lookupMethod(t, name) != nil {
 		c.errorf(e.Name, "%s is a method of %s: call it, %s()", name, typeString(t), name)
 		return Invalid
@@ -1097,6 +1105,11 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 		c.inAwait++
 		t := c.expr(e.X, want)
 		c.inAwait--
+		if ce, ok := unparen(e.X).(*syntax.CallExpr); ok {
+			if call := c.info.Calls[ce]; call != nil && call.Kind == CallBuiltin && call.Builtin.ID == BAnimate {
+				call.Awaited = true
+			}
+		}
 		if tk, ok := t.(*Task); ok {
 			return tk.Elem
 		}
@@ -1384,3 +1397,7 @@ func implicitRoot(x syntax.Expr) bool {
 		}
 	}
 }
+
+// IsConstNumber reports a number the compiler computes (a literal, and
+// arithmetic on literals): a Length of it is packed when compiling.
+func IsConstNumber(e syntax.Expr) bool { return constNumber(e) }

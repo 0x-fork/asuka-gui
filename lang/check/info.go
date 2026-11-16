@@ -25,6 +25,16 @@ type Info struct {
 	Binds    map[*syntax.OnHandler][]*Var // an on handler's parameters
 	// Trailing: a call's trailing block, as the closure it passes.
 	Trailing map[*syntax.CallExpr]*syntax.LambdaExpr
+	// SlotCalls: a slot named after a function, in a statement, read as
+	// a call of it with that block (animate { … } in a handler).
+	SlotCalls map[*syntax.SlotItem]*syntax.CallExpr
+	// BodyCalls: a component's body's (or the app's) registrations,
+	// useKeys(…) and onOpenURL(…): statements of its function.
+	BodyCalls map[syntax.Item]bool
+	// AppHandlers: the app block's events (on openURL(url) { }).
+	AppHandlers []*HandlerArg
+	// Shaders: shader("""…""")'s programs, compiled.
+	Shaders map[*syntax.CallExpr][]byte
 }
 
 func newInfo() *Info {
@@ -45,6 +55,9 @@ func newInfo() *Info {
 		Emits:      map[*syntax.EmitStmt]*Member{},
 		Binds:      map[*syntax.OnHandler][]*Var{},
 		Trailing:   map[*syntax.CallExpr]*syntax.LambdaExpr{},
+		Shaders:    map[*syntax.CallExpr][]byte{},
+		SlotCalls:  map[*syntax.SlotItem]*syntax.CallExpr{},
+		BodyCalls:  map[syntax.Item]bool{},
 	}
 }
 
@@ -90,6 +103,8 @@ type Call struct {
 	SelfCall bool
 	Optional bool // x?.f(): none when x is
 	Index    int  // CallNative: the method's number, from 1
+	// Awaited: animate(…) awaited, which returns once it's complete.
+	Awaited bool
 }
 
 // SelKind is what x.name or .name is.
@@ -109,6 +124,7 @@ const (
 	SelLengthAuto                       // .auto, a Length
 	SelLoading                          // a Loading's value, pending, error
 	SelTupleElem                        // a tuple's element (t.0 isn't parsed; unused)
+	SelBuiltinField                     // a built-in type's property: g.width, card.hovered (Method)
 )
 
 // A Selection is what a member expression or an implicit member is.
@@ -122,7 +138,8 @@ type Selection struct {
 	Obj      Object
 	Value    int64
 	Name     string
-	Optional bool // x?.name
+	Optional bool    // x?.name
+	Method   *Method // SelBuiltinField's
 }
 
 // CatchInfo is what a catch clause catches.
@@ -182,6 +199,16 @@ type ElementCall struct {
 	Binds    []*BindArg
 	Slots    []*SlotArg
 	Children []syntax.Item // the view items, for children
+	Variants []*VariantArg // a container's: pressed { … }
+	Ref      syntax.Expr   // ref: r, a Ref the element's view goes in
+	As       *Var          // Element as name: a Ref local of the enclosing view
+}
+
+// VariantArg is a container's variant: a state's block of style props.
+type VariantArg struct {
+	State string // prelude.Variants' name
+	Props []*PropArg
+	Item  *syntax.SlotItem
 }
 
 // PropArg is a prop set: name: value.

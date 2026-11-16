@@ -19,13 +19,19 @@ func GoServerFile(p *Package) string { return p.Name + "_native.go" }
 // GenerateGoServer writes the Go a package's desktop implementation is
 // compiled with: its types and interfaces in Go, and the code that
 // answers the core's calls (native.RegisterServer). The implementation
-// writes new<Interface>() (<Interface>, error) for each interface.
+// writes new<Interface>() (<Interface>, error) for each interface, and
+// for each native component a func(<View>Events) <View>Native it passes
+// to implement<View> from an init function of a file built for the
+// platform (the views: native.RegisterView).
 func GenerateGoServer(p *Package) ([]byte, error) {
 	g := &gsGen{p: p}
 	g.printf("%s\n", header("//", p.Hash))
 	g.printf("// What the package declares (%s), as its Go implements it for the\n// desktop hosts. The Go writes the functions that make each:\n//\n", p.Path)
 	for _, it := range p.Interfaces {
 		g.printf("//\tfunc new%s() (%s, error)\n", it.Name, it.Name)
+	}
+	for _, v := range p.Views {
+		g.printf("//\tfunc init() { implement%s(func(events %sEvents) %sNative { … }) }\n", v.Name, v.Name, v.Name)
 	}
 	g.printf("\npackage %s\n\nimport (\n\t\"context\"\n\t\"time\"\n\n\t\"github.com/egoist/asuka/native\"\n)\n\n", p.Name)
 	g.printf("var (\n\t_ = context.Background\n\t_ time.Duration\n)\n\n")
@@ -75,7 +81,12 @@ func GenerateGoServer(p *Package) ([]byte, error) {
 		g.printf("\t\tcase %d:\n\t\t\treturn new%s()\n", it.Index, it.Name)
 	}
 	g.printf("\t\t}\n\t\treturn nil, native.ErrClosed\n\t},\n\tCall: serve,\n}\n\tnative.RegisterServer(server)\n}\n\n")
-	g.printf("func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *native.Reader, w *native.Writer) error {\n\tswitch o := obj.(type) {\n")
+	g.printf("func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *native.Reader, w *native.Writer) error {\n")
+	if len(p.Interfaces) > 0 {
+		g.printf("\tswitch o := obj.(type) {\n")
+	} else {
+		g.printf("\tswitch obj.(type) {\n")
+	}
 	for _, it := range p.Interfaces {
 		g.printf("\tcase %s:\n\t\tswitch method {\n", it.Name)
 		for _, m := range it.Methods {
@@ -101,12 +112,70 @@ func GenerateGoServer(p *Package) ([]byte, error) {
 		g.printf("\t\t}\n")
 	}
 	g.printf("\t}\n\treturn native.ErrClosed\n}\n\n")
+	for _, v := range p.Views {
+		g.view(v)
+	}
 	g.helpers()
 	src, err := format.Source(g.b.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("nativegen: the desktop Go doesn't format: %v\n%s", err, g.b.Bytes())
 	}
 	return src, nil
+}
+
+// view writes a native component's Go side: <View>Native, the
+// platform's view and a setter per prop; <View>Events, which sends its
+// events; and implement<View>, which registers the view (native.
+// RegisterView) under the kind the C core names it by on every platform,
+// the package's path # the view's name: what the desktop hosts look up
+// (native.ViewFactory). Props and events cross by their exported names
+// (Selected, Changed), each value encoded in the native codec, as
+// core/src/ui/media.c sends and reads them.
+func (g *gsGen) view(v *View) {
+	n := v.Name
+	g.printf("// %sNative is a %s implemented in Go (Windows, Linux; the Mac too, over\n// the package's Swift, when a file built for it calls implement%s): the\n// platform's view (native.View's Handle) and a setter per prop. It may\n// also be a native.Measurer, and have Destroy.\n", n, n, n)
+	g.printf("type %sNative interface {\n\tHandle() uintptr\n", n)
+	for _, f := range v.Props {
+		g.doc(f.Doc, "\t")
+		g.printf("\tSet%s(%s %s)\n", f.Name, goParam(lowerCamel(f.Name)), g.goType(f.Type))
+	}
+	g.printf("}\n\n")
+	g.printf("// %sEvents sends a %s's events, and has its context: the host's\n// view it goes in.\n", n, n)
+	g.printf("type %sEvents struct{ Context native.Context }\n\n", n)
+	for _, e := range v.Events {
+		var params []string
+		for _, a := range e.Type.Func.Params {
+			params = append(params, goParam(a.Name)+" "+g.goType(a.Type))
+		}
+		if e.Doc != "" {
+			g.doc(e.Doc, "")
+		} else {
+			g.printf("// %s sends the %s event.\n", e.Name, e.Name)
+		}
+		g.printf("func (e %sEvents) %s(%s) {\n\tvar s *native.Session // a view's values hold no objects\n\t_ = s\n\tw := native.NewWriter()\n", n, e.Name, strings.Join(params, ", "))
+		for _, a := range e.Type.Func.Params {
+			g.printf("\t%s\n", g.enc(a.Type, "w", goParam(a.Name)))
+		}
+		g.printf("\te.Context.Emit(%q, map[string]any{\"v\": w.Take()})\n}\n\n", e.Name)
+	}
+	g.printf("// implement%s makes Go's implementation the %s on this platform: call\n// it from an init function of a file built for it.\n", n, n)
+	g.printf("func implement%s(make func(events %sEvents) %sNative) {\n", n, n, n)
+	g.printf("\tnative.RegisterView(%q, func(ctx native.Context) native.View {\n", g.p.Path+"#"+n)
+	g.printf("\t\tv := make(%sEvents{ctx})\n\t\treturn native.GoView(v, func(name string, value []byte) {\n\t\t\tvar s *native.Session // a view's values hold no objects\n\t\t\t_ = s\n\t\t\tr := native.NewReader(value)\n\t\t\tswitch name {\n", n)
+	for _, f := range v.Props {
+		g.printf("\t\t\tcase %q:\n\t\t\t\tif a := %s; r.Err() == nil {\n\t\t\t\t\tv.Set%s(a)\n\t\t\t\t}\n", f.Name, g.dec(f.Type, "r"), f.Name)
+	}
+	g.printf("\t\t\t}\n\t\t})\n\t})\n}\n\n")
+}
+
+// goParam is a name as a Go parameter: one that's a Go keyword gets a _.
+func goParam(n string) string {
+	switch n {
+	case "break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto", "if",
+		"import", "interface", "map", "package", "range", "return", "select", "struct", "switch", "type", "var", "make", "s", "w", "e", "v", "r":
+		return n + "_"
+	}
+	return n
 }
 
 type gsGen struct {

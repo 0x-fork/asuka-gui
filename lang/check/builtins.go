@@ -68,7 +68,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		}
 		return out
 	}
-	if e.Block != nil && b.ID != BMount && b.ID != BWithTimeout {
+	if e.Block != nil && b.ID != BMount && b.ID != BWithTimeout && b.ID != BAnimate && b.ID != BRuntime {
 		c.errorf(e.Block, "%s takes no block", b.name)
 	}
 	switch b.ID {
@@ -293,6 +293,18 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		call.Params = []*Param{{Name: "produce", Type: prod}}
 		call.Result = &Stream{elem}
+	case BRuntime:
+		c.runtimeCall(e, call, b.Fn)
+	case BAnimate:
+		c.animateCall(e, call)
+	case BShader:
+		c.shaderCall(e, call)
+	case BRefNew:
+		positional(0, "nothing: Ref(), then ref: it on an element")
+		call.Result = Ref
+	case BPathNew:
+		positional(0, "nothing: Path(), then its methods: Path().move(0, 0).line(10, 10)")
+		call.Result = Path
 	default:
 		c.errorf(e, "unknown builtin %s", b.name)
 		call.Result = Invalid
@@ -393,6 +405,8 @@ func (c *Checker) isAsyncCall(call *Call) bool {
 		switch call.Builtin.ID {
 		case BSleep, BAll, BRace, BIdle, BWithTimeout:
 			return true
+		case BRuntime:
+			return call.Builtin.Fn.Async
 		}
 	}
 	return false

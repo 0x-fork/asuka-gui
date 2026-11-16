@@ -414,6 +414,11 @@ const (
 	BEnvironment    // environment(): what the platform says about where the app shows (tracked)
 	BLive           // live(initial, source): a tracked value a stream keeps current while it's read
 	BUntilCancelled // untilCancelled(): waits until the task is cancelled
+	BRuntime        // a RuntimeFunc: share, haptic, onFrame, ... (Builtin.Fn)
+	BAnimate        // animate(anim) { … }
+	BRefNew         // Ref(): a view's handle
+	BPathNew        // Path(): an empty outline
+	BShader         // shader("""…"""): a Kage program, compiled with the app
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,
@@ -424,6 +429,8 @@ type Builtin struct {
 	// For BMath: the runtime builtin's name and signature.
 	RT  string
 	Sig *FuncType
+	// For BRuntime: the function.
+	Fn *RuntimeFunc
 }
 
 // ---------------------------------------------------------------------

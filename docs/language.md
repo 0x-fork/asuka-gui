@@ -558,11 +558,125 @@ View {
 ```
 
 A view reports a state only once something asks for it, so one with no
-`pressed` variant keeps the platform's own pressed look. Other views
-follow a view's states through its name: `View as card { … }` then
-`card.hovered` (or `card.pressed`, `card.dragging`, `card.dragOver`) in
-any binding, a child's (a group's hover) or a sibling's. What isn't a
-style uses the handlers: `on pressedChange(p)`, `on hoverChange(h)`.
+`pressed` variant keeps the platform's own pressed look. A variant may
+take a `style` too (`pressed { style raised }`). Other views follow a
+view's states through its name ([Naming a view](#naming-a-view)):
+`View as card { … }` then `card.hovered` (or `card.pressed`,
+`card.dragging`, `card.dragOver`) in any binding, a child's (a group's
+hover) or a sibling's. What isn't a style uses the handlers: `on
+pressedChange(p)`, `on hoverChange(h)`.
+
+## Naming a view
+
+Some things are done to a view rather than set on it: play a video,
+run script in a page, put text in a field, scroll a list. A `Ref` is a
+view's handle: `ref: r` on any element puts its view in `r`, and
+`Element as name` declares one for the rest of the block it's in.
+
+```asuka
+component Player {
+  let video = Ref()
+
+  Video("intro.mp4") { ref: video }
+  Button("Start over") {
+    on press {
+      video.seek(0)
+      video.play()
+    }
+  }
+}
+```
+
+A Ref holds its view while the view is shown, and nothing before or
+after: a command then does nothing, and a state is false. Its states
+are tracked, so a binding that reads one follows it:
+
+| On | Ref's members |
+|---|---|
+| any view | `hovered`, `pressed`, `dragging`, `dragOver` (bools, tracked); `focus()`, `blur()` |
+| `Scroll`, `List` | `scrollTo(x, y, animated: true)` |
+| `Video` | `play()`, `pause()`, `seek(seconds)` |
+| `WebView` | `try await eval(script)` (its value, as JSON), `run(script)` (without waiting), `goBack()`, `goForward()`, `reload()`, `stopLoading()` |
+| `TextField` | `insert(text)`, `format(.bold, on)`, `toggleFormat(.italic)`, `setLink(url)` (a rich field's selection) |
+
+A Ref can be passed along (`shareFiles(paths, from: button)`,
+`a11yFocus(field)`), and kept in a file's `let` for views of several
+components.
+
+## Animation
+
+`animate { … }` runs its block at once, and the changes it makes to
+frames and to what's drawn (opacity, background, a corner's radius, a
+shape's trim) animate natively. `animate(.spring) { … }` takes an
+`Animation`: its duration, curve, delay, repetitions, a spring's
+damping and velocity. Awaited, it returns once the animation is
+complete; it needn't be.
+
+```asuka
+on press {
+  animate { expanded = !expanded }
+}
+on press {
+  await animate(Animation(duration: 500ms, curve: .spring)) { offset = 0 }
+  done = true
+}
+```
+
+`animate(() => …)` and `animate(anim, () => …)` are the same as
+closures. `animating()` says whether the changes made now animate.
+`onFrame(t => …)` calls its closure at each frame the display draws,
+with the frame's time, until the closure it returns is called or the
+component goes: `let stop = onFrame(t => tick(t))`.
+
+## Drawing
+
+`Canvas(g => …)` draws with a `Graphics`, in points from its top left,
+once it's laid out, and again when its size or what it read changes;
+`Shape(fn(width, height) -> Path)` is an outline the platform fills and
+strokes (`fill`, `stroke`, `lineWidth`, `trimEnd`, `dash`, ...).
+
+```asuka
+Canvas(g => {
+  let ring = g.path().arc(g.width / 2, g.height / 2, 40, 0, 6.28318)
+  g.stroke(ring, .accent, StrokeStyle(width: 8, cap: .round))
+  g.text("{percent}%", g.width / 2, g.height / 2, CanvasText(size: 20, align: .center))
+}) { height: 100 }
+```
+
+A `Path` is built by its methods, which return it: `Path().move(x,
+y)`, `line`, `quad`, `cubic`, `rect`, `roundedRect`, `ellipse`, `arc(cx,
+cy, radius, start, end, clockwise: true)` (radians from the positive x
+axis), `close()`; `g.path()` is an empty one of the canvas's own,
+reused from draw to draw. A Graphics is valid while its draw runs:
+`width`, `height`, `fill(path, color)` (or a `LinearGradient`, a
+`RadialGradient`), `stroke(path, color or gradient, style)`, `save()`,
+`restore()`, `translate`, `scale`, `rotate(degrees)`, `opacity`,
+`clip(path)`, `transform(a, b, c, d, tx, ty)`, `evenOdd(on)`,
+`text(s, x, y, style)`.
+
+`Shader(shader("""…"""))` is a box a GPU program draws: the program is
+Kage, compiled with the app (a mistake in it is the compiler's error),
+its uniforms set by name (`uniforms: [Uniform(name: "Level", value:
+[0.5]), colorUniform("Tint", .accent)]`).
+
+## The system
+
+| Function | What it does |
+|---|---|
+| `share(text)` | the share sheet, for a text or a link |
+| `try await shareFiles(paths, title:, from: ref)` | the share sheet for files, from a view (where a popover points); returns once it's closed |
+| `haptic(.success)` | the platform's haptic feedback (a `Haptic`) |
+| `copy(text)` | puts text on the clipboard |
+| `openURL(url)` | opens url in the app that takes it |
+| `announce(text)` | has a screen reader say text |
+| `a11yFocus(ref)` | moves a screen reader to the view |
+| `try await webCookies(url)` | the web views' cookies for url |
+| `useKeys([Shortcut(…)])` | the window's keys while the component lives |
+| `onOpenURL(u => …)`, `onOpenFiles(paths => …)`, `onShare(items => …)` | what the app is opened with, or what other apps share with it, while the component lives |
+
+`useKeys` and the `on…` registrations are items of a component's body
+(or the app's block). The app's block also handles them as events: `on
+openURL(url) { … }`, `on files(paths) { … }`, `on share(items) { … }`.
 
 ## Navigation
 

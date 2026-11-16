@@ -339,6 +339,9 @@ func (c *Checker) typeBodies(t *TypeName) {
 	if t.Comp != nil && !t.Comp.Native {
 		c.componentBody(t)
 	}
+	if t.Comp != nil && t.Comp.Native && !t.Pkg.Prelude {
+		c.nativeComponent(t)
+	}
 	if t.Kind == StructType || t.Kind == EnumType {
 		for _, i := range t.Conforms {
 			c.checkImplements(t.Decl, t.Type, i)
@@ -503,8 +506,13 @@ func (c *Checker) appBody(p *Package) {
 			}
 			continue
 		}
+		if h, ok := it.(*syntax.OnHandler); ok {
+			c.appEvent(h)
+			continue
+		}
 		views = append(views, it)
 	}
+	views = c.bodyCalls(views)
 	c.viewBlock(views, nil, "app")
 	c.leave(nil)
 	c.scope, c.ctx = savedScope, savedCtx
@@ -568,4 +576,46 @@ func (c *Checker) implements(t Type, iface *Named) string {
 		return "an enum without payloads is stored as an int: declare the interface (enum " + n.Obj.name + ": " + it.name + ") to use it as one"
 	}
 	return ""
+}
+
+// nativeComponent checks a package's native component: a view its
+// platforms' code shows (docs/native.md), declared by its header
+// parameters, props and events, whose values cross the native wire.
+func (c *Checker) nativeComponent(t *TypeName) {
+	comp := t.Comp
+	if comp.Body != nil {
+		for _, it := range comp.Body.Items {
+			switch it.(type) {
+			case *syntax.PropDecl, *syntax.EventDecl, *syntax.BadItem:
+			default:
+				c.errorf(it, "a native component declares props and events only: its platforms' code shows it")
+			}
+		}
+	}
+	for _, m := range comp.Order {
+		switch m.Kind {
+		case ParamMember, PropMember:
+			if m.Default != nil {
+				c.memberValue(m)
+			}
+			if why := c.nativeValue(m.Type); why != "" {
+				c.errorf(m.Decl, "%s can't cross to the platform's view: %s", m.name, why)
+			}
+		case EventMember:
+			for _, p := range m.Params {
+				if why := c.nativeValue(p.Type); why != "" {
+					c.errorf(m.Decl, "event %s's %s can't come from the platform's view: %s", m.name, p.Name, why)
+				}
+			}
+		}
+	}
+}
+
+// nativeValue says why a native view's value can't be t, "" when it can:
+// what JSON can (the native codec's values), but no type parameters.
+func (c *Checker) nativeValue(t Type) string {
+	if IsInvalid(t) {
+		return ""
+	}
+	return jsonable1(t, map[*TypeName]bool{}, func(*TypeParam) bool { return false })
 }

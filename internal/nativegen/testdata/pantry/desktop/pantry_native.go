@@ -6,6 +6,7 @@
 //
 //	func newPantry() (Pantry, error)
 //	func newShelf() (Shelf, error)
+//	func init() { implementDial(func(events DialEvents) DialNative { … }) }
 
 package pantry
 
@@ -187,6 +188,67 @@ func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *na
 		}
 	}
 	return native.ErrClosed
+}
+
+// DialNative is a Dial implemented in Go (Windows, Linux; the Mac too, over
+// the package's Swift, when a file built for it calls implementDial): the
+// platform's view (native.View's Handle) and a setter per prop. It may
+// also be a native.Measurer, and have Destroy.
+type DialNative interface {
+	Handle() uintptr
+	SetValue(value float64)
+	SetLabel(label string)
+	SetItems(items []Item)
+}
+
+// DialEvents sends a Dial's events, and has its context: the host's
+// view it goes in.
+type DialEvents struct{ Context native.Context }
+
+// Changed sends the Changed event.
+func (e DialEvents) Changed(value float64) {
+	var s *native.Session // a view's values hold no objects
+	_ = s
+	w := native.NewWriter()
+	w.Float64(value)
+	e.Context.Emit("Changed", map[string]any{"v": w.Take()})
+}
+
+// Picked sends the Picked event.
+func (e DialEvents) Picked(item Item, index int) {
+	var s *native.Session // a view's values hold no objects
+	_ = s
+	w := native.NewWriter()
+	writeItem(s, w, item)
+	w.Int(index)
+	e.Context.Emit("Picked", map[string]any{"v": w.Take()})
+}
+
+// implementDial makes Go's implementation the Dial on this platform: call
+// it from an init function of a file built for it.
+func implementDial(make func(events DialEvents) DialNative) {
+	native.RegisterView("@asuka/pantry#Dial", func(ctx native.Context) native.View {
+		v := make(DialEvents{ctx})
+		return native.GoView(v, func(name string, value []byte) {
+			var s *native.Session // a view's values hold no objects
+			_ = s
+			r := native.NewReader(value)
+			switch name {
+			case "Value":
+				if a := r.Float64(); r.Err() == nil {
+					v.SetValue(a)
+				}
+			case "Label":
+				if a := r.String(); r.Err() == nil {
+					v.SetLabel(a)
+				}
+			case "Items":
+				if a := readSliceItem(s, r); r.Err() == nil {
+					v.SetItems(a)
+				}
+			}
+		})
+	})
 }
 
 func readSliceItem(s *native.Session, r *native.Reader) []Item {
