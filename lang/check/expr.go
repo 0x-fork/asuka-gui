@@ -343,13 +343,13 @@ func ParseFloat(s string) (float64, error) {
 }
 
 // ParseDuration reads a duration literal in nanoseconds: 300ms, 1.5s,
-// 2min, 1h.
+// 2min, 1h, 500us, 1ns.
 func ParseDuration(s string) (int64, error) {
 	s = strings.ReplaceAll(s, "_", "")
 	units := []struct {
 		suffix string
 		ns     float64
-	}{{"ms", 1e6}, {"min", 60e9}, {"s", 1e9}, {"h", 3600e9}}
+	}{{"ns", 1}, {"us", 1e3}, {"ms", 1e6}, {"min", 60e9}, {"s", 1e9}, {"h", 3600e9}}
 	for _, u := range units {
 		if strings.HasSuffix(s, u.suffix) {
 			n, err := strconv.ParseFloat(strings.TrimSuffix(s, u.suffix), 64)

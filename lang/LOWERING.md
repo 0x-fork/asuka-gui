@@ -456,16 +456,18 @@ packages.
 ## Built-in methods
 
 The built-in types' methods are a table (lang/check/methods.go's
-Methods): a receiver (an array, a map, a string, a float, an optional,
-mount's app, a Loading), a name, a signature over the receiver's type
+Methods): a receiver (an array, a map, a string, bytes, a float, a
+Duration, an optional, mount's app, a Loading), a name, a signature over the receiver's type
 variables, and the builtin (core/src/rt/lib.c) CALLB calls, the
 receiver first, then the arguments in the builtin's order. An inout
 method changes its receiver in place (see "Changing values in place").
+A method's Extra appends a constant: `map`'s result's element kind
+(last), or a bool (`padStart` and `padEnd` are one builtin, `str.pad`).
 A few the lowering does itself: `count()` of an array or a map is LEN,
 `isNone()` ISNONE, a map's `get(k)` MGET, `enumerated()` a loop making
 `(index, element)` tuples (and `for (i, x) in xs.enumerated()` makes
-none: it's a loop over the indexes). `map` passes its result's element
-kind last. Closures passed to them don't throw and don't await.
+none: it's a loop over the indexes). Closures passed to them don't
+throw and don't await.
 
 ## What isn't lowered yet
 

@@ -57,7 +57,7 @@ import ./theme as t               // 起一个更短的名字
 | `[K: V]` | map，按插入顺序保存：`["a": 1]`、`[:]` |
 | `(A, B)` | 元组：`(1, "one")` |
 | `T?` | 可选值：一个 `T`，或者 `none` |
-| `Duration` | `300ms`、`5s`、`2min`、`1h` |
+| `Duration` | `300ms`、`5s`、`2min`、`1h`（还有 `us`、`ns`） |
 | `Color` | `#7c3aed`、`#7c3aed80`，以及语义色：`.label`、`.accent` …… |
 | `Length` | `100`（点）、`50%`、`.auto` |
 | `fn(A) -> B` | 函数和闭包 |

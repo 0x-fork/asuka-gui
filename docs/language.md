@@ -73,7 +73,7 @@ declaration under it, and editors show it.
 | `[K: V]` | maps, kept in insertion order: `["a": 1]`, `[:]` |
 | `(A, B)` | tuples: `(1, "one")` |
 | `T?` | optionals: a `T`, or `none` |
-| `Duration` | `300ms`, `5s`, `2min`, `1h` |
+| `Duration` | `300ms`, `5s`, `2min`, `1h` (and `us`, `ns`) |
 | `Color` | `#7c3aed`, `#7c3aed80`, and the semantic colors: `.label`, `.accent`, ... |
 | `Length` | `100` (points), `50%`, `.auto` |
 | `fn(A) -> B` | functions and closures |
@@ -98,9 +98,10 @@ their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 |---|---|
 | `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `filter(p)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `reversed()`, `slice(from, to)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order) |
-| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new)`, `split(sep)`, `find(s)` (a byte offset, or none), `slice(from, to)` (characters), `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `+` |
+| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `bytes()`, `+` |
 | `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD); `bytes()` is none, `s.bytes()` a string's UTF-8 |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
+| `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()`, `minutes()`, `hours()` (floats), `rounded(to:)`, `truncated(to:)`, `+`, `-`, `* n`, `/ n` |
 | `T?` | `isNone()`, `isSome()` |
 
 `min`, `max`, `abs`, `float(n)` and `int(x)` are functions;
