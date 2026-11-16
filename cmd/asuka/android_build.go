@@ -84,7 +84,11 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 	if err != nil {
 		return err
 	}
-	args := []string{":app:bundleRelease",
+	task := ":app:bundleRelease"
+	if o.apk {
+		task = ":app:assembleRelease"
+	}
+	args := []string{task,
 		"-PasukaApplicationId=" + androidPackage(cfg.ID), "-PasukaAppName=" + cfg.androidLabel(),
 		"-PasukaVersionCode=" + strconv.Itoa(cfg.Build), "-PasukaVersionName=" + cfg.Version,
 		"-PasukaIcon=" + icon, "-PasukaJniLibs=" + jni, "-PasukaRes=" + res, "-PasukaManifest=" + manifest,
@@ -108,7 +112,8 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 		from, to string
 		optional bool
 	}{
-		{filepath.Join(built, "bundle", "release", "app-release.aab"), filepath.Base(aabPath(cfg, o)), false},
+		{filepath.Join(built, "bundle", "release", "app-release.aab"), filepath.Base(aabPath(cfg, o)), o.apk},
+		{filepath.Join(built, "apk", "release", "app-release.apk"), name + ".apk", !o.apk},
 		// For a crash service (the .aab has both for Google Play): the
 		// core's and the host's native symbols, and R8's map of the
 		// Kotlin it renamed.
@@ -128,6 +133,10 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 			return err
 		}
 		fmt.Println("asuka:", to)
+	}
+	if o.apk {
+		fmt.Printf("asuka: built in %.0fs; adb install installs it\n", time.Since(start).Seconds())
+		return nil
 	}
 	fmt.Printf("asuka: built in %.0fs; asuka publish --platform android builds and uploads it to Google Play\n", time.Since(start).Seconds())
 	return nil

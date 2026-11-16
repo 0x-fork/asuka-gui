@@ -119,6 +119,8 @@ ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
 
 （如果密钥的密码与 keystore 的不同，还要设置 `ASUKA_KEY_PASSWORD`；在 CI 中，可以用 `ASUKA_KEYSTORE` 和 `ASUKA_KEY_ALIAS` 指定 keystore 和别名。）这会生成一个用于 Google Play 的 `.aab`，支持 64 位和 32 位 ARM 手机以及 x86_64（Android 模拟器、Chromebook），要求 Android 13 及以上。其中是编译进了应用的核心 `libasuka.so`，由 NDK 的 clang 为每个架构构建。Play 会根据它为每台手机生成只包含该机架构的 APK。使用了 sqlite 插件的应用，会在每个架构下的核心旁边带上 SQLite 的库 `libasqlite.so`，Android 会像加载应用自身的库那样直接从 APK 中加载它（不压缩，按 16 KB 页对齐）。`asuka publish --platform android` 会构建并上传到 Google Play（见[发布到应用商店](#发布到应用商店)）。
 
+加上 `--apk` 则会生成一个已签名、包含所有架构的发布版 `.apk`，可以直接安装（`adb install dist/<Name>.apk`）：适合测试发布构建，或者不经应用商店分发应用。
+
 ## 发布到应用商店
 
 `asuka publish` 会像 `asuka build` 一样制作发布构建，然后通过商店的 API 上传。动手之前，它会先向商店确认那些可能导致失败的条件：应用是否存在、密钥是否有权上传、该版本是否还接受新构建、TestFlight 群组是否存在。这样就不会白白构建一个注定传不上去的包。每个构建的编号都是商店中现有最大编号加一（且不小于 `asuka.toml` 中的 `build`），所以两次发布之间不需要手动递增。如果想指定编号，可以用 `--build 42`。

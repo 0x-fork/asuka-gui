@@ -447,7 +447,7 @@ func buildAsukaAndroid() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := output(root, env, "go", "run", "./cmd/asuka", "build", "--platform", "android", "bench/asuka")
+	out, err := output(root, env, "go", "run", "./cmd/asuka", "build", "--platform", "android", "--apk", "bench/asuka")
 	if err != nil {
 		return "", err
 	}

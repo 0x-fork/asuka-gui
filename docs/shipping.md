@@ -271,6 +271,10 @@ architecture, `libasqlite.so`, which Android
 loads from the APK as it does the app's (uncompressed, on 16 KB pages). `asuka publish --platform android` makes it and uploads it to Google Play (see
 [Publishing](#publishing)).
 
+`--apk` makes a signed release `.apk` with every architecture instead,
+to install directly (`adb install dist/<Name>.apk`): for testing a
+release build, or for an app given out other than through a store.
+
 ## Publishing
 
 `asuka publish` makes the release build, as `asuka build` does, and
