@@ -403,7 +403,7 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
         }
         val one = p.oneTimePurchaseOfferDetails
         val offers = p.oneTimePurchaseOfferDetailsList?.map { d ->
-            Offer(id = d.offerId ?: "", type = OfferType.ONE_TIME, basePlan = d.purchaseOptionId ?: "", tags = d.offerTags, token = d.offerToken,
+            Offer(id = d.offerId ?: "", type = OfferType.ONE_TIME, basePlan = d.purchaseOptionId ?: "", tags = d.offerTags ?: emptyList(), token = d.offerToken ?: "",
                 phases = listOf(Phase(price = d.formattedPrice, priceMicros = d.priceAmountMicros, currency = d.priceCurrencyCode, cycles = 1, mode = Mode.PAY_UP_FRONT)))
         } ?: emptyList()
         return Product(id = p.productId, kind = kind, title = p.name, description = p.description,

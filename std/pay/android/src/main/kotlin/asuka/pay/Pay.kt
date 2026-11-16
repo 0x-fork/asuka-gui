@@ -56,7 +56,7 @@ private fun client(production: Boolean): PaymentsClient {
 
 class GooglePayWallets : Wallets {
     override suspend fun available(request: Sheet): Availability {
-        val ready = Google.ready(request)
+        val ready = GPay.ready(request)
         val c = client(request.google.production)
         val can = ask(c, ready.put("existingPaymentMethodRequired", false))
         if (!can) return Availability(wallet = Wallet_.GOOGLE_PAY, canPay = false)
@@ -102,7 +102,7 @@ internal object Session {
     fun present(r: Sheet, ask: (Ask) -> Unit, finish: (kotlin.Result<Payment>) -> Unit) {
         if (showing) return finish(kotlin.Result.failure(PayException(PayError.BUSY)))
         val act = AsukaModules.activity as? ComponentActivity ?: return finish(kotlin.Result.failure(Exception("pay: no screen to show Google Pay's sheet on")))
-        val json = runCatching { Google.request(r) }.getOrElse { return finish(kotlin.Result.failure(it)) }
+        val json = runCatching { GPay.request(r) }.getOrElse { return finish(kotlin.Result.failure(it)) }
         val pdr = runCatching { PaymentDataRequest.fromJson(json.toString()) }
             .getOrElse { return finish(kotlin.Result.failure(Exception("pay: Google Pay's request: ${it.message}"))) }
         request = r
@@ -123,7 +123,7 @@ internal object Session {
             if (code == CommonStatusCodes.SUCCESS && paid == null && data != null) {
                 // Paid without the callback (Google Pay didn't call it): the
                 // app authorizes it now.
-                val p = Google.payment(JSONObject(data.toJson()))
+                val p = GPay.payment(JSONObject(data.toJson()))
                 send(Ask(kind = AskKind.AUTHORIZE, payment = p)) { a -> end(if (a.failed || a.update.errors.isNotEmpty()) null else p, a.message) }
                 return@register
             }
@@ -182,13 +182,13 @@ internal object Session {
         val trigger = data.optString("callbackTrigger")
         val ask: Ask? = when (trigger) {
             "INITIALIZE", "SHIPPING_ADDRESS" -> data.optJSONObject("shippingAddress")?.takeIf { AskKind.SHIPPING_CONTACT in request.asks }?.let {
-                Ask(kind = AskKind.SHIPPING_CONTACT, contact = Google.contact(it))
+                Ask(kind = AskKind.SHIPPING_CONTACT, contact = GPay.contact(it))
             }
             "SHIPPING_OPTION" -> methods.firstOrNull { it.id == selected }?.takeIf { AskKind.SHIPPING_METHOD in request.asks }?.let {
                 Ask(kind = AskKind.SHIPPING_METHOD, method = it)
             }
             "PAYMENT_METHOD" -> data.optJSONObject("paymentMethodData")?.takeIf { AskKind.PAYMENT_METHOD in request.asks }?.let {
-                Ask(kind = AskKind.PAYMENT_METHOD, card = Google.card(it))
+                Ask(kind = AskKind.PAYMENT_METHOD, card = GPay.card(it))
             }
             else -> null
         }
@@ -196,11 +196,11 @@ internal object Session {
         val reply = { a: Answer? ->
             if (a != null) keep(a)
             val u = JSONObject()
-            Google.error(a?.update?.errors ?: emptyList(), intent)?.let { u.put("error", it) }
+            GPay.error(a?.update?.errors ?: emptyList(), intent)?.let { u.put("error", it) }
             if (request.recurring == null && request.deferred == null && request.automaticReload == null) {
-                u.put("newTransactionInfo", Google.transaction(request, items, total))
+                u.put("newTransactionInfo", GPay.transaction(request, items, total))
             }
-            if (methods.isNotEmpty()) u.put("newShippingOptionParameters", Google.options(methods, selected))
+            if (methods.isNotEmpty()) u.put("newShippingOptionParameters", GPay.options(methods, selected))
             complete(u.toString())
         }
         if (ask == null) reply(null) else send(ask) { reply(it) }
@@ -210,14 +210,14 @@ internal object Session {
     fun authorized(data: JSONObject, complete: (String) -> Unit) = main.post {
         val gone = """{"transactionState":"ERROR","error":{"reason":"OTHER_ERROR","message":"Try again","intent":"PAYMENT_AUTHORIZATION"}}"""
         if (!showing) return@post complete(gone)
-        val p = Google.payment(data).copy(shippingMethod = selected)
+        val p = GPay.payment(data).copy(shippingMethod = selected)
         send(Ask(kind = AskKind.AUTHORIZE, payment = p)) { a ->
             val errs = if (a.failed && a.update.errors.isEmpty()) listOf(FieldError(field = Field.PAYMENT, message = a.message)) else a.update.errors
             if (errs.isEmpty()) {
                 paid = p
                 complete("""{"transactionState":"SUCCESS"}""")
             } else {
-                complete(JSONObject().put("transactionState", "ERROR").put("error", Google.error(errs, "PAYMENT_AUTHORIZATION")).toString())
+                complete(JSONObject().put("transactionState", "ERROR").put("error", GPay.error(errs, "PAYMENT_AUTHORIZATION")).toString())
             }
         }
     }
@@ -237,7 +237,7 @@ class PayCallbacks : BasePaymentDataCallbacksService() {
 }
 
 /** The package's request as Google Pay's JSON, and Google's answers as the package's types. */
-internal object Google {
+internal object GPay {
     private val networks = mapOf(
         Network.VISA to "VISA", Network.MASTERCARD to "MASTERCARD", Network.AMEX to "AMEX", Network.DISCOVER to "DISCOVER",
         Network.JCB to "JCB", Network.INTERAC to "INTERAC", Network.MAESTRO to "MAESTRO", Network.ELECTRON to "ELECTRON", Network.ELO to "ELO",
@@ -469,7 +469,7 @@ class AndroidPayButton(private val events: PayButtonEvents) : PayButton {
             ButtonStyle.WHITE, ButtonStyle.WHITE_OUTLINE -> ButtonConstants.ButtonTheme.LIGHT
             else -> if (madeDark) ButtonConstants.ButtonTheme.LIGHT else ButtonConstants.ButtonTheme.DARK
         }
-        val methods = Google.ready(Sheet(networks = networks)).getJSONArray("allowedPaymentMethods").toString()
+        val methods = GPay.ready(Sheet(networks = networks)).getJSONArray("allowedPaymentMethods").toString()
         val o = ButtonOptions.newBuilder().setButtonType(googleType(type)).setButtonTheme(theme).setAllowedPaymentMethods(methods)
         if (radius >= 0) o.setCornerRadius(radius.toInt())
         val b = GooglePayButton(box.context)
