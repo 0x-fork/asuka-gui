@@ -9,7 +9,7 @@
 // A run has a budget (a minute or so on iOS): finish it when done, or it
 // ends when the budget is up.
 
-import asuka/host
+import asuka/platform
 
 /// A run of a periodic task.
 pub struct Run {
@@ -20,7 +20,7 @@ pub struct Run {
 
   /// Says the run is done: ok, or it failed (and should be tried again).
   fn finish(ok: bool) {
-    host.send("periodic", "done", host.str(id).concat(host.u8(if ok { 1 } else { 0 })))
+    platform.send("periodic", "done", platform.str(id).concat(platform.u8(if ok { 1 } else { 0 })))
   }
 }
 
@@ -36,19 +36,19 @@ pub fn schedule(name: string, every: Duration = 15min, network: bool = false, ch
   if charging {
     flags += 2
   }
-  host.send("periodic", "schedule", host.str(name).concat(host.u32(int(secs))).concat(host.u8(flags)))
+  platform.send("periodic", "schedule", platform.str(name).concat(platform.u32(int(secs))).concat(platform.u8(flags)))
 }
 
 /// Stops scheduling the task name.
-pub fn cancel(name: string) = host.send("periodic", "cancel", name.bytes())
+pub fn cancel(name: string) = platform.send("periodic", "cancel", name.bytes())
 
 /// The runs of the task id, as the system starts them; one that started
 /// the app waits until this is read. One stream reads the runs: a run of
 /// another task that comes to it is finished at once.
 pub fn runs(id: string) -> Stream<Run> = Stream(give => {
-  for await b in host.next("periodic", "next") {
-    let name = host.readStr(b, 0)
-    let secs = host.readU32(b, 4 + name.byteCount())
+  for await b in platform.next("periodic", "next") {
+    let name = platform.readStr(b, 0)
+    let secs = platform.readU32(b, 4 + name.byteCount())
     let r = Run(id: name, budget: if secs > 4 { 1s * (secs - 3) } else { 1s })
     if name == id {
       give(r)

@@ -98,7 +98,7 @@ void ak_ext_module_call(ak_span module, ak_span method, const void *args, size_t
 	if (!c) {
 		if (done) {
 			pending_call x = {.done = ak_retain(done)};
-			answer(&x, false, AK_STR("Call without a mounted root"));
+			answer(&x, false, AK_STR("unsupported: no host to call (no app is shown)"));
 		}
 		return;
 	}
@@ -110,7 +110,7 @@ static ak_future *call_future(ak_span module, ak_span method, const void *args, 
 	ak_future *f = ak_future_new(AK_K_REF);
 	pending_call *c = call_send(module, method, args, n);
 	if (!c) {
-		ak_future_reject(f, error_of(AK_STR("Call without a mounted root")));
+		ak_future_reject(f, error_of(AK_STR("unsupported: no host to call (no app is shown)")));
 		return f;
 	}
 	c->fut = ak_retain(f);

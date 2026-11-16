@@ -9,7 +9,7 @@
 //   a.update(liveactivity.Content(title: "Order #1042", value: "4 min"), alert: liveactivity.Alert(title: "Almost there"))
 //   a.end(liveactivity.Content(title: "Delivered"), dismiss: .now)
 
-import asuka/host
+import asuka/platform
 import asuka/json
 import asuka/math
 
@@ -91,7 +91,7 @@ pub struct Activity {
 
   /// Shows c now, with an alert if there's one.
   fn update(c: Content, alert: Alert? = none) {
-    host.send("liveActivity", "update", json.encode(Update(id: id, content: wire(c), alert: alert)).bytes())
+    platform.send("liveActivity", "update", json.encode(Update(id: id, content: wire(c), alert: alert)).bytes())
   }
 
   /// Ends it, showing final, going as dismiss says.
@@ -101,7 +101,7 @@ pub struct Activity {
       .now => End(id: id, content: wire(final), dismiss: "now", atMs: 0)
       .at(t) => End(id: id, content: wire(final), dismiss: "at", atMs: t)
     }
-    host.send("liveActivity", "end", json.encode(e).bytes())
+    platform.send("liveActivity", "end", json.encode(e).bytes())
   }
 }
 
@@ -128,8 +128,7 @@ struct WireEvent {
 }
 
 fn notAvailable(e: Error) -> Error {
-  let m = e.message
-  if m.hasPrefix("not available") || m.hasPrefix("unsupported") || m.hasPrefix("no module") {
+  if platform.unsupported(e) {
     return Error("liveactivity: not available")
   }
   return e
@@ -137,8 +136,8 @@ fn notAvailable(e: Error) -> Error {
 
 /// Whether the user allows the app's live activities.
 pub async fn enabled() -> bool {
-  let b = (try? await host.call("liveActivity", "enabled", bytes())) ?? bytes()
-  return host.readU8(b, 0) == 1
+  let b = (try? await platform.call("liveActivity", "enabled", bytes())) ?? bytes()
+  return platform.readU8(b, 0) == 1
 }
 
 let hexDigits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"]
@@ -155,7 +154,7 @@ fn newID() -> string {
 pub async fn start(c: Content, push: bool = false, relevance: float = 0.0) throws -> Activity {
   let a = Activity(id: newID())
   do {
-    let _ = try await host.call("liveActivity", "start", json.encode(Start(id: a.id, content: wire(c), push: push, relevance: relevance)).bytes())
+    let _ = try await platform.call("liveActivity", "start", json.encode(Start(id: a.id, content: wire(c), push: push, relevance: relevance)).bytes())
   } catch e {
     throw notAvailable(e)
   }
@@ -165,7 +164,7 @@ pub async fn start(c: Content, push: bool = false, relevance: float = 0.0) throw
 /// What happens to the app's activities: started (from a push too),
 /// ended (by the user, or the system), their tokens.
 pub fn events() -> Stream<Event> = Stream(give => {
-  for await b in host.next("liveActivity", "next") {
+  for await b in platform.next("liveActivity", "next") {
     let got: WireEvent? = try? json.decode(b.string())
     if let e = got {
       give(Event(type: e.type, activity: Activity(id: e.id), token: e.token))

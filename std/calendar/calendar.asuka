@@ -4,7 +4,7 @@
 //
 //   let saved = try await calendar.add(calendar.Event(title: "Demo", start: start, end: start + 30min))
 
-import asuka/host
+import asuka/platform
 import asuka/json
 
 /// The app's access to the calendars.
@@ -57,8 +57,8 @@ fn notAllowed(e: Error) -> Error = if e.message == "not allowed" { Error("calend
 
 /// Asks the user for access the first time, and answers what they allow.
 pub async fn request() throws -> Access {
-  let b = try await host.call("calendar", "request", bytes())
-  return match host.readU8(b, 0) {
+  let b = try await platform.call("calendar", "request", bytes())
+  return match platform.readU8(b, 0) {
     1 => .denied
     2 => .writeOnly
     3 => .full
@@ -69,7 +69,7 @@ pub async fn request() throws -> Access {
 /// The user's calendars (full access).
 pub async fn calendars() throws -> [Calendar] {
   do {
-    let b = try await host.call("calendar", "calendars", bytes())
+    let b = try await platform.call("calendar", "calendars", bytes())
     return try json.decode(b.string())
   } catch e {
     throw notAllowed(e)
@@ -86,7 +86,7 @@ struct Range {
 /// calendars ([]: all), by their start (full access).
 pub async fn events(from: int, to: int, calendars: [string] = []) throws -> [Event] {
   do {
-    let b = try await host.call("calendar", "events", json.encode(Range(from: from, to: to, calendars: calendars)).bytes())
+    let b = try await platform.call("calendar", "events", json.encode(Range(from: from, to: to, calendars: calendars)).bytes())
     let ws: [WireEvent] = try json.decode(b.string())
     return ws.map(w => Event(id: w.id, calendarId: w.calendarId, title: w.title, location: w.location, notes: w.notes,
       url: w.url, start: w.startMs, end: w.endMs, allDay: w.allDay))
@@ -101,8 +101,8 @@ pub async fn add(e: Event) throws -> bool {
   let w = WireEvent(title: e.title, location: e.location, notes: e.notes, url: e.url, calendarId: e.calendarId,
     startMs: e.start, endMs: e.end, allDay: e.allDay)
   do {
-    let b = try await host.call("calendar", "add", json.encode(w).bytes())
-    return host.readU8(b, 0) == 1
+    let b = try await platform.call("calendar", "add", json.encode(w).bytes())
+    return platform.readU8(b, 0) == 1
   } catch err {
     throw notAllowed(err)
   }

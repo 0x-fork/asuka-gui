@@ -11,13 +11,13 @@
 //
 // Each platform's host shows them as its own apps' do (iOS's and macOS's
 // UserNotifications, Android's notifications, Windows' toasts, Linux's
-// desktop notifications, the browser's), through asuka/host.
+// desktop notifications, the browser's), through asuka/platform.
 //
 //   if try await notify.request() {
 //     try await notify.schedule(notify.Notification(title: "Tea", body: "It's ready", after: 4min))
 //   }
 
-import asuka/host
+import asuka/platform
 import asuka/json
 
 /// Who sent a message, or the user (Conversation.me).
@@ -138,7 +138,7 @@ pub struct Response {
     if t.isEmpty() {
       return () => {}
     }
-    return () => host.send("notify", "actionDone", t.bytes())
+    return () => platform.send("notify", "actionDone", t.bytes())
   }
 }
 
@@ -210,8 +210,8 @@ pub enum Presentation {
 /// their answer, or what they've set in Settings since), and answers
 /// whether they're allowed.
 pub async fn request() throws -> bool {
-  let b = try await host.call("notify", "request", bytes())
-  return host.readU8(b, 0) == 1
+  let b = try await platform.call("notify", "request", bytes())
+  return platform.readU8(b, 0) == 1
 }
 
 /// Shows n after n.after (at least a second).
@@ -226,51 +226,51 @@ pub async fn show(n: Notification) throws {
 }
 
 async fn post(n: Notification, seconds: float) throws {
-  let _ = try await host.call("notify", "schedule", json.encode(spec(n, seconds)).bytes())
+  let _ = try await platform.call("notify", "schedule", json.encode(spec(n, seconds)).bytes())
 }
 
 /// Takes away the notification id: waiting, or showing.
-pub fn cancel(id: string) = host.send("notify", "cancel", id.bytes())
+pub fn cancel(id: string) = platform.send("notify", "cancel", id.bytes())
 
 /// Sets the number on the app's icon; 0 takes it away. Android has no
 /// badge of its own (launchers count the notifications): it does nothing
 /// there.
-pub fn setBadge(n: int) = host.send("notify", "badge", host.u32(max(n, 0)))
+pub fn setBadge(n: int) = platform.send("notify", "badge", platform.u32(max(n, 0)))
 
 /// The app's notifications showing, its pushes' too, newest first.
 pub async fn showing() throws -> [Delivered] {
-  let b = try await host.call("notify", "showing", bytes())
+  let b = try await platform.call("notify", "showing", bytes())
   return try json.decode(b.string())
 }
 
 /// Takes away the notifications ids that show.
-pub fn remove(ids: [string]) = host.send("notify", "remove", json.encode(ids).bytes())
+pub fn remove(ids: [string]) = platform.send("notify", "remove", json.encode(ids).bytes())
 
 /// Takes away the notifications of thread that show: a chat's, once it's
 /// read.
-pub fn removeThread(thread: string) = host.send("notify", "removeThread", thread.bytes())
+pub fn removeThread(thread: string) = platform.send("notify", "removeThread", thread.bytes())
 
 /// Takes away all the app's notifications that show (not the ones
 /// waiting: cancel them).
-pub fn removeAll() = host.send("notify", "removeAll", bytes())
+pub fn removeAll() = platform.send("notify", "removeAll", bytes())
 
 /// Sets the app's categories: the actions their notifications show.
-pub fn setCategories(cs: [Category]) = host.send("notify", "categories", json.encode(cs).bytes())
+pub fn setCategories(cs: [Category]) = platform.send("notify", "categories", json.encode(cs).bytes())
 
 /// Sets the app's Android channels (iOS and the desktops have none).
 pub fn setChannels(cs: [Channel]) {
   let wire = cs.map(c => WireChannel(id: c.id, name: c.name, description: c.description, importance: importance(c.importance), silent: c.silent, noVibration: c.noVibration, noBadge: c.noBadge, group: c.group))
-  host.send("notify", "channels", json.encode(wire).bytes())
+  platform.send("notify", "channels", json.encode(wire).bytes())
 }
 
 /// Sets the app's Android channel groups.
-pub fn setChannelGroups(gs: [ChannelGroup]) = host.send("notify", "channelGroups", json.encode(gs).bytes())
+pub fn setChannelGroups(gs: [ChannelGroup]) = platform.send("notify", "channelGroups", json.encode(gs).bytes())
 
 /// What the user does with the app's notifications (and its pushes'):
 /// taps, actions, replies. A response that comes as the app starts waits
 /// until this is read.
 pub fn responses() -> Stream<Response> = Stream(give => {
-  for await b in host.next("notify", "nextAction") {
+  for await b in platform.next("notify", "nextAction") {
     let r: Response? = try? json.decode(b.string())
     if let x = r {
       give(x)
@@ -301,7 +301,7 @@ store Presenter {
     decide = f
     if !on {
       on = true
-      host.send("notify", "present", host.u8(1))
+      platform.send("notify", "present", platform.u8(1))
     }
   }
 
@@ -309,7 +309,7 @@ store Presenter {
     decide = none
     if on {
       on = false
-      host.send("notify", "present", host.u8(0))
+      platform.send("notify", "present", platform.u8(0))
     }
   }
 
@@ -317,14 +317,14 @@ store Presenter {
     if !on {
       return
     }
-    for await b in host.next("notify", "nextPresent") {
+    for await b in platform.next("notify", "nextPresent") {
       let got: Present? = try? json.decode(b.string())
       if let p = got {
         var how = 0
         if let f = decide {
           how = presentation(f(p.notification))
         }
-        host.send("notify", "presented", host.u8(how).concat(p.token.bytes()))
+        platform.send("notify", "presented", platform.u8(how).concat(p.token.bytes()))
       }
     }
   }

@@ -23,41 +23,6 @@ fun AsukaRuntime.registerModule(name: String, methods: Map<String, AsukaModuleMe
     modules[name] = methods
 }
 
-/**
- * Runs a method of one of the host's modules (notify, push, crash...) for
- * the standard library's packages (std/host): reply gets its answer once,
- * on the main thread. Main thread.
- */
-fun AsukaRuntime.callModule(module: String, method: String, args: ByteArray, reply: (Result<ByteArray>) -> Unit) {
-    if (!builtinModules) {
-        builtinModules = true
-        val apps = HashMap(modules)
-        registerBuiltinModules()
-        modules.putAll(apps)
-    }
-    var answered = false
-    val once: (Result<ByteArray>) -> Unit = { res -> onMain { if (!answered) { answered = true; reply(res) } } }
-    val m = modules[module]?.let { it[method] ?: it["*"] }
-        ?: return once(Result.failure(UnsupportedOperationException("unsupported: $module.$method isn't in this app's host")))
-    try {
-        m(args, once)
-    } catch (e: Exception) {
-        once(Result.failure(e))
-    }
-}
-
-/**
- * The host's own modules (notify, push, crash...), for the standard
- * library's packages (std/host), from any thread: reply gets the answer
- * once, on the main thread.
- */
-object AsukaHostModules {
-    fun call(module: String, method: String, args: ByteArray, reply: (Result<ByteArray>) -> Unit) {
-        val rt = AsukaRuntime.current ?: return reply(Result.failure(UnsupportedOperationException("unsupported: the host hasn't started")))
-        rt.onMain { rt.callModule(module, method, args, reply) }
-    }
-}
-
 /** Runs a Call command and answers with a Result event. */
 fun AsukaRuntime.call(root: Int, args: ByteBuffer) {
     if (args.remaining() < 12) return

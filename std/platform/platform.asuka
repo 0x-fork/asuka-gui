@@ -26,3 +26,31 @@ pub native fn readU8(b: bytes, at: int) -> int
 pub native fn readU32(b: bytes, at: int) -> int
 pub native fn readU64(b: bytes, at: int) -> int
 pub native fn readF64(b: bytes, at: int) -> float
+/// The string at a u32 length (past the end: "").
+pub native fn readStr(b: bytes, at: int) -> string
+
+/// Calls a module's method with a string (UTF-8) and answers its bytes as
+/// text.
+pub async fn callText(module: string, method: string, args: string) throws -> string {
+  let b = try await call(module, method, args.bytes())
+  return b.string()
+}
+
+/// A stream of what a module's "next" method gives (a host keeps what
+/// comes until it's asked): each answer as bytes, until the stream is
+/// left, when "stop" ends the call that waits.
+pub fn next(module: string, method: string) -> Stream<bytes> = Stream(give => {
+  defer { send(module, "stop", method.bytes()) }
+  while true {
+    let b = try await call(module, method, bytes())
+    give(b)
+  }
+})
+
+/// Whether an error is a host's saying it has no such module or method
+/// (asuka test's fake host, a platform without it): a package answers
+/// with its own unsupported or a fallback then.
+pub fn unsupported(e: Error) -> bool {
+  let m = e.message
+  return m.hasPrefix("unsupported") || m.hasPrefix("not available") || m.hasPrefix("no module") || m.contains("isn't on") || m.contains("isn't in this app's host")
+}

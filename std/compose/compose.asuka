@@ -6,7 +6,7 @@
 //
 //   let r = try await compose.mail(to: ["a@example.com"], subject: "Hi", body: "…")
 
-import asuka/host
+import asuka/platform
 import asuka/json
 
 /// What the user did with the composer.
@@ -164,7 +164,7 @@ struct MessageArgs {
   attachments: [WireAttachment]
 }
 
-fn resultOf(b: bytes) -> Result = match host.readU8(b, 0) {
+fn resultOf(b: bytes) -> Result = match platform.readU8(b, 0) {
   0 => .cancelled
   1 => .sent
   2 => .saved
@@ -181,7 +181,7 @@ pub async fn mail(to: [string] = [], cc: [string] = [], bcc: [string] = [], subj
   let a = MailArgs(to: to, cc: cc, bcc: bcc, subject: subject, body: body, html: html, text: text,
     mailto: mailto(to, cc, bcc, subject, text), attachments: wire(attachments))
   do {
-    return resultOf(try await host.call("compose", "mail", json.encode(a).bytes()))
+    return resultOf(try await platform.call("compose", "mail", json.encode(a).bytes()))
   } catch e {
     throw unavailable(e)
   }
@@ -191,7 +191,7 @@ pub async fn mail(to: [string] = [], cc: [string] = [], bcc: [string] = [], subj
 pub async fn message(to: [string] = [], subject: string = "", body: string = "", attachments: [Attachment] = []) throws -> Result {
   let a = MessageArgs(to: to, subject: subject, body: body, attachments: wire(attachments))
   do {
-    return resultOf(try await host.call("compose", "message", json.encode(a).bytes()))
+    return resultOf(try await platform.call("compose", "message", json.encode(a).bytes()))
   } catch e {
     throw unavailable(e)
   }
@@ -199,6 +199,6 @@ pub async fn message(to: [string] = [], subject: string = "", body: string = "",
 
 /// What the device can compose.
 pub async fn check() throws -> Can {
-  let b = try await host.call("compose", "can", bytes())
-  return Can(mail: host.readU8(b, 0) == 1, mailComposer: host.readU8(b, 1) == 1, text: host.readU8(b, 2) == 1, textAttachments: host.readU8(b, 3) == 1)
+  let b = try await platform.call("compose", "can", bytes())
+  return Can(mail: platform.readU8(b, 0) == 1, mailComposer: platform.readU8(b, 1) == 1, text: platform.readU8(b, 2) == 1, textAttachments: platform.readU8(b, 3) == 1)
 }

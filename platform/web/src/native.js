@@ -312,18 +312,3 @@ export function makeView(kind, ctx) {
   return providers.get(kind.slice(0, i))?.makeView(kind.slice(i + 1), ctx) ?? null;
 }
 
-// The host's own modules (notify, push, crash...), for the standard
-// library's packages (std/host): the page's host sets them as it starts.
-let hostModules = null;
-
-/** setHostModules is the host's: what callModule reaches. */
-export function setHostModules(m) { hostModules = m; }
-
-/** callModule runs a method of one of the host's modules: a promise of its answer's bytes. */
-export async function callModule(module, method, args) {
-  const m = hostModules?.registered.get(module)?.[method] || hostModules?.builtin(module)?.[method];
-  if (!m) throw new UnsupportedError(`${module}.${method} isn't on the web`);
-  const v = await m(args, { root: hostModules.h.root ?? null, h: hostModules.h });
-  if (v == null) return new Uint8Array(0);
-  return v instanceof Uint8Array ? v : new TextEncoder().encode(String(v));
-}

@@ -30,7 +30,5 @@ void ak_vm_init(void) {
 	ak_native_vm_init();
 	extern void ak_sqlite_init(void);
 	ak_sqlite_init();
-	extern void ak_std_host_init(void);
-	ak_std_host_init();
 	ak_vm_react_init();
 }
