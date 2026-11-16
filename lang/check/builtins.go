@@ -128,6 +128,10 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = positional(0, "nothing")
 		call.Result = Void
 		c.callEffects(e, "idle", true, false)
+	case BNever:
+		call.Args = positional(0, "nothing")
+		call.Result = Void
+		c.callEffects(e, "never", true, false)
 	case BPush, BPresent:
 		args := positional(1, "a view: "+b.name+"(Screen())")
 		if len(args) > 0 {
@@ -383,7 +387,7 @@ func (c *Checker) isAsyncCall(call *Call) bool {
 		return call.Method.Async
 	case CallBuiltin:
 		switch call.Builtin.ID {
-		case BSleep, BAll, BRace, BIdle, BWithTimeout:
+		case BSleep, BAll, BRace, BIdle, BWithTimeout, BNever:
 			return true
 		}
 	}

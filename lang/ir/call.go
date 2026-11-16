@@ -451,6 +451,11 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		st := b.typ(call.Result).(*check.Stream)
 		p := b.value(call.Args[0], -1)
 		return b.copyTo(b.callB("stream.new", bc.KRef, p, b.konst(int64(b.l.kind(st.Elem)))), dst)
+	case check.BNever:
+		f := b.callB("async.never", bc.KRef)
+		w := b.temp(bc.KRef)
+		b.emit(op("AWAIT"), w, f)
+		return -1
 	case check.BIdle:
 		f := b.callB(uiTestIdle, bc.KRef)
 		w := b.temp(bc.KRef)

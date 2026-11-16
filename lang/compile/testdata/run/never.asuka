@@ -1,0 +1,29 @@
+// never(): a wait that ends only with its task, without a timer.
+
+fn quiet() -> Stream<int> = Stream(send => {
+  defer { print("producer stopped") }
+  send(1)
+  await never()
+  print("never: after never()")
+})
+
+test "a stream that ends with its reader" {
+  for await n in quiet() {
+    print("got {n}")
+    break
+  }
+  print("after")
+}
+
+test "race: never loses" {
+  await race(never(), sleep(5ms))
+  print("raced")
+}
+
+// Output:
+// got 1
+// after
+// producer stopped
+// ok a stream that ends with its reader
+// raced
+// ok race: never loses

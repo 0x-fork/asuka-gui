@@ -422,7 +422,8 @@ async fn loadThread(id: string) throws -> Thread {
   run while yours waits; state can change there and only there.
 - `all(a, b)` runs calls at once and waits for every result; `race(a, b)`
   takes the first and cancels the rest; `sleep(300ms)`;
-  `withTimeout(5s) { … }`.
+  `withTimeout(5s) { … }`; `never()` waits until its task is cancelled
+  (a stream that ends only when its reader goes).
 - `spawn { … }` runs a block on another thread, for work that would hold
   the main thread up (parsing, image processing). It may use values only,
   not state, stores or views: the compiler says so if it does.

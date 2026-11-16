@@ -554,6 +554,8 @@ static ak_val m_seed(ak_val *args, uint32_t n) {
 
 static ak_val t_sleep(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_sleep(A(0).i)); }
 static ak_val t_now(ak_val *args, uint32_t n) { AK_UNUSED(args); AK_UNUSED(n); RET_I(ak_wall_ns()); }
+// never(): a future nothing resolves; cancelling its task rejects it.
+static ak_val f_never(ak_val *args, uint32_t n) { AK_UNUSED(args); AK_UNUSED(n); RET_P(ak_future_new(AK_K_VOID)); }
 static ak_val t_monotonic(ak_val *args, uint32_t n) { AK_UNUSED(args); AK_UNUSED(n); RET_I(ak_sched_now()); }
 
 // ---- Futures ----
@@ -914,6 +916,7 @@ const ak_lib_entry ak_lib[] = {
 	{"time.now", t_now},
 	{"time.monotonic", t_monotonic},
 
+	{"async.never", f_never},
 	{"async.all", f_all},
 	{"async.race", f_race},
 	{NULL, NULL},

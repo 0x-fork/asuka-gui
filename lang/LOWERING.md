@@ -137,7 +137,7 @@ calls a closure) runs in a handler that moves the receiver back first.
   all; the tuple is made of its elements (UNBOX for scalars).
   `race(…)`'s calls have one type, and its tasks return it as it is.
   `all(tasks)` and `race(tasks)` over a `[Task<T>]` pass it through.
-- `sleep(d)`, `all`, `race` and `idle` are futures awaited at once:
+- `sleep(d)`, `never()`, `all`, `race` and `idle` are futures awaited at once:
   AWAIT follows the CALLB. `await` of a call of an async function is
   that CALL; of a `Task<T>`, AWAIT. `await` of something that doesn't
   wait does nothing.
@@ -460,6 +460,7 @@ packages.
 | `push(v)`, `present(v)` | CALLB `ui.push(builder)`, `ui.present(builder)` (the argument as a builder) |
 | `pop()`, `dismiss()` | CALLB `ui.pop`, `ui.dismiss` |
 | `sleep(d)` | CALLB `time.sleep(ns)`, AWAIT |
+| `never()` | CALLB `async.never` (a future nothing resolves; cancelling its task rejects it), AWAIT |
 | `all(a, b, …)`, `race(…)` | the calls as tasks (TASK), CALLB `async.all`/`async.race` over an array of them, AWAIT |
 | `spawn { … }` | CALLB `async.spawn(closure, kind)`, a Task |
 | `print(s)` | CALLB `print` |
