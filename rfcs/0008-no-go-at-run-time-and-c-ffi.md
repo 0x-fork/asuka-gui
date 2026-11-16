@@ -206,11 +206,77 @@ libraries = ["winhttp"]
   - `asuka test` on the fake host: the C is compiled into
     `asuka-run`.
 
+### Decided in F1
+
+What the sketch above left open, as F1 built it (docs/c.md is the
+guide, lang/LOWERING.md's "C from Asuka" the lowering):
+
+- **The C types are written in extern declarations only.** `Int32`,
+  `UInt8`, `Float32`, `CString` name C's side; Asuka sees `int`, `float`,
+  `string` (`let n: Int32` is an error that says so). `Pointer` is an
+  Asuka type of its own (an int-sized value Asuka compares and passes
+  back, never reads). `string` in a declaration is an error that says to
+  write `CString`.
+- **Narrowing wraps.** An `int` passed as an `Int8` converts as C
+  converts (300 is 44); a `UInt64` above `int`'s range comes back
+  negative. No check, no throw.
+- **`T?` is NULL.** `CString?`, `Pointer?`, an extern type's `T?` and, as
+  parameters, `bytes?` and `(fn(…))?` pass none as `NULL`; a result of
+  one of those is none for `NULL`. A non-optional `CString` or extern
+  type result that's `NULL` throws (`db_open returned NULL, and its result
+  is a Db`). Scalars have no `?`.
+- **A `CString` in is the string's own bytes** (Asuka's strings end with
+  a NUL), valid during the call: no copy. **A `CString` out is copied,
+  and C's memory isn't freed**: most C APIs return strings they own; one
+  that returns memory the caller frees is wrapped in C, or returns a
+  `Pointer` freed by another extern fn.
+- **`bytes` is two parameters**, `const uint8_t *` and `size_t`, valid
+  during the call, read-only. A function doesn't return `bytes`.
+- **Extern types** are the runtime's objects (an opaque pointer, its
+  release, its type's name). The release function is an extern fn of the
+  same package taking one `T`; calling it from Asuka releases at once, and
+  the value then holds nothing (a later call with it throws `the Db was
+  released`), so it's never freed twice. Without `with release`, nothing
+  is freed. They're equal when their pointers are; spawn can't take one.
+- **Extern structs** hold numbers, `bool`, `Pointer` and other extern
+  structs (a `CString` would outlive its call; an extern type its
+  owner), aren't generic, declare nothing, and may have defaults and
+  methods. Returning one, the wrapper gets a frozen zero value of the
+  struct (a global made in init) for its shape.
+- **Callbacks** are `R (*)(void *ctx, …)` and `void *ctx`, the context
+  first in C's call (as `sqlite3_exec` and `pthread_create` have it).
+  Their parameters are numbers, `bool`, `CString`(`?`) and `Pointer`(`?`),
+  their results numbers, `bool`, `Pointer` or nothing; not `async`, not
+  `throws`. **Lifetime**: the context lives for the extern call;
+  `asuka_callback_retain` (`asuka_ffi.h`) keeps it until
+  `asuka_callback_release`, from any thread. **Threads**: a call during
+  the extern call, on its thread, runs at once and returns the result; any
+  other is posted to the main thread, runs under the owner that made the
+  callback (not at all once it's disposed), and returns zero. An error a
+  callback raises during the call makes C's later calls of it return zero
+  and the extern call throw it once C returns. A callback made in spawn
+  can't be kept.
+- **Names.** The builtins are `ffi.<import path>.<name>` (`main` for the
+  root). The glue declares each C function from its declaration under a
+  name of its own bound to the symbol (`__asm__`), so it includes no
+  library header and clashes with none.
+- **Registration survives static linking** as the app's module does: a
+  core built with glue gets `-DAK_FFI`, and `ak_vm_builtins_init` calls
+  `asuka_ffi_register`, which names it.
+- **`[c]`** has `sources` (globs, `**` too), `include`, `defines`,
+  `flags`, `libraries` (a name, or a path) and `frameworks` (Apple's),
+  each platform's table adding to the top's; the app's covers its own
+  packages, a dependency's its own. The app's C is compiled with its own
+  flags and warnings (not the core's `-Werror`); the glue with the core's.
+- **The player** is built with the C of the last compile; asuka dev
+  rebuilds and relaunches it when a C file, `asuka.toml` or the glue (an
+  extern declaration) changes, and keeps the new module for it.
+
 ## Milestones
 
 Each ends with its tests green.
 
-- [ ] **F1** C from Asuka:
+- [x] **F1** C from Asuka:
   - `extern fn`, `extern type`, `extern struct`, callbacks;
   - the glue's generator;
   - `[c]` in asuka.toml;

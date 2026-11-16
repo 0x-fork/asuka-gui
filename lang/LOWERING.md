@@ -692,6 +692,34 @@ its name).
 JavaScript, Go on Windows and Linux, whose hosts are Go) from the same declarations, in
 native/codec.go's wire format.
 
+## C from Asuka
+
+`extern` declarations (RFC 0008, docs/c.md) are C's. The checker
+resolves their types twice: the Asuka type the program sees (`int` for
+an `Int32`, `string` for a `CString`) and its C side (check.CType), kept
+in Function.Extern, Field.C, and an extern type's TypeName (ExternType,
+its Release).
+
+| Source | Lowered |
+|---|---|
+| `extern fn f(a: Int32, s: CString) -> Int64` | a function whose body is CALLB `ffi.<package>.f(a, s)` (check.ExternBuiltin), the parameters as they are |
+| a function returning an `extern struct S` | the same, with one more argument: GGET of S's template, a frozen zero `S` init makes (init.strings), whose shape the glue makes the result with |
+| `extern type T` | a reference (the runtime's ak_ffi_obj, core/src/vm/ffi.h): an opaque pointer, its release, its name |
+| `extern struct S { … }` | a struct, as any |
+| `Pointer` | an int |
+
+lang/cffi generates the glue from the checked program: per extern fn a
+builtin that converts its arguments (an `Int8` is `(int8_t)a.i`, a
+`CString` the string's data, `bytes` its data and length, an extern type
+its pointer, a struct its fields, a callback an ak_ffi_cb), calls the C
+function between ak_ffi_enter and ak_ffi_leave, and converts the result
+(copying a `CString`, wrapping an extern type's pointer); per callback
+signature a trampoline that makes Asuka values of C's arguments and calls
+ak_ffi_cb_call; and asuka_ffi_register. A core built with the glue
+(AK_FFI) calls asuka_ffi_register in ak_vm_builtins_init, before any
+module loads, so the bytecode's CALLBs and lang/cgen's C (which calls
+builtins as the VM does) find the wrappers by name.
+
 ## The standard library's native fns
 
 In a standard library package (`asuka/<name>`, std/), `native fn f(…) ->

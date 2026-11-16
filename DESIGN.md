@@ -518,6 +518,21 @@ app's: usage strings defer to the app's asuka.toml, arrays join, and
 other keys are set if absent. Android's manifest merger takes the
 module's `AndroidManifest.xml`.
 
+### C from Asuka
+
+`extern fn`, `extern type` and `extern struct` (RFC 0008, docs/c.md)
+call C with no native package: the compiler generates C glue (lang/cffi)
+whose wrappers are builtins, `ffi.<package>.<name>`, which an extern
+fn's body calls with CALLB, so the VM and lang/cgen's C call them alike.
+The CLI compiles the glue with the core (`-DAK_FFI`: ak_vm_builtins_init
+calls its asuka_ffi_register) and the app's and its packages' `[c]`
+sources with their own flags, into every target's build of the core:
+iOS's static library (the executable links `[c]`'s libraries and
+frameworks), Android's `libasuka.so`, the desktops' library, the web's
+module, asuka-run, and the dev player, which asuka dev rebuilds when the
+C or an extern declaration changes. The runtime side (extern types'
+objects, callbacks posted to the main thread) is core/src/vm/ffi.c.
+
 ### Images, gestures, animation
 
 - `Image` takes an http(s) URL or a path in the app's `assets/`

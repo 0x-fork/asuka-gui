@@ -744,6 +744,27 @@ h.impact(.light)`. `asuka native generate` writes the Swift, Kotlin,
 JavaScript and Go each platform implements. See [Native
 packages](native.md).
 
+C is called directly. `extern` declarations say what a C function
+takes and gives back, in C's types, and Asuka sees each as one of its
+own (an `Int32` is an `int`, a `CString` a `string`):
+
+```asuka
+extern type Db with release db_close
+extern fn db_open(path: CString) -> Db?
+extern fn db_close(db: Db)
+extern fn db_each(db: Db, sql: CString, row: fn(CString?) -> bool) -> Int32
+
+extern struct Point {
+  x: Float32
+  y: Float32
+}
+```
+
+An `extern type` is a pointer C gives, freed by its release as the last
+reference goes; an `extern struct` crosses by value; a function passed
+to C is a callback. `asuka.toml`'s `[c]` says what C the app compiles
+and links. See [C from Asuka](c.md).
+
 ## Tests
 
 ```asuka
@@ -785,6 +806,6 @@ belong to the component that made them, and go with it.
 ## Keywords
 
 `app as async await bind break catch component continue defer do effect
-else emit enum event false fn for if import in interface key let load
+else emit enum event extern false fn for if import in interface key let load
 match native none on prop provide pub return screen self spawn state
 store struct style task test throw throws true try type use var while`

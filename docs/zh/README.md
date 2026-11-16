@@ -72,6 +72,7 @@ test "counts taps" {
 - [包](packages.md)：在应用之间共享代码：`asuka add`、npm registry、`asuka.lock` 和发布。
 - [插件](plugins.md)：为各平台预先构建好、随应用一起发布的原生库包，SQLite 就是其中之一。
 - [标准库](stdlib.md)：`asuka/...` 这些包，以及它们在各平台上分别做什么。
+- [在 Asuka 中调用 C](c.md)：用 `extern` 声明调用 C（应用自己的、某个库的、系统的），`asuka.toml` 的 `[c]`，以及回调。
 - [原生代码](native.md)：原生包——在 Asuka 里声明带类型的模块和视图，在各平台自己的项目里实现：iOS 和 macOS 用 Swift，Android 用 Kotlin，Web 用 JavaScript，Windows 和 Linux 用 Go。
 - [开发](development.md)：深入介绍各平台上的 `asuka dev`、设备、测试和常见问题。
 - [测试](testing.md)：用 `test` 块测试应用的界面，不需要设备或显示器：点击、输入并检查屏幕上显示的内容；时间只在应用等待时才会推进。

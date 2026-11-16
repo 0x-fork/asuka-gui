@@ -69,6 +69,7 @@ test "counts taps" {
 - [パッケージ](packages.md)：アプリ間でのコードの共有。`asuka add`、npm レジストリ、`asuka.lock`、公開
 - [プラグイン](plugins.md)：ネイティブライブラリを各プラットフォーム向けにビルド済みの状態で持ち込み、アプリに同梱するパッケージ（SQLite もその一つです）
 - [標準ライブラリ](stdlib.md)：`asuka/...` のパッケージと、それぞれが各プラットフォームで何をするか
+- [Asuka から C を呼び出す](c.md)：`extern` 宣言による C（アプリ自身のもの、ライブラリのもの、システムのもの）の呼び出し、`asuka.toml` の `[c]`、コールバック
 - [ネイティブコード](native.md)：ネイティブパッケージ。Asuka で宣言し、各プラットフォームのプロジェクトで実装する型付きのモジュールとビュー（iOS と macOS は Swift、Android は Kotlin、Web は JavaScript、Windows と Linux は Go）
 - [開発](development.md)：各プラットフォームでの `asuka dev` の詳細、デバイス、テスト、よくある問題
 - [テスト](testing.md)：デバイスもディスプレイも使わない、`test` ブロックでのアプリの UI のテスト。タップや入力と画面の表示内容の確認、アプリが待つときにだけ進む時間
