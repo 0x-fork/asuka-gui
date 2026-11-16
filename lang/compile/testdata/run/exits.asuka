@@ -1,0 +1,251 @@
+// Early exits: let … else, condition chains, throw, return, break and
+// continue as values, and catch as a value.
+
+enum MailError: Error {
+  missing(id: string)
+  offline
+
+  fn message() -> string = match self {
+    .missing(id) => "no mail {id}"
+    .offline => "offline"
+  }
+}
+
+enum Fetch {
+  ok(string)
+  failed(int)
+}
+
+fn parsePort(text: string) throws -> int {
+  let n = text.toInt() else { throw Error("not a number: {text}") }
+  if n < 1 || n > 65535 { throw Error("out of range: {n}") }
+  return n
+}
+
+fn subject(cache: [string: string], id: string) -> string {
+  let s = cache[id] else { return "(none)" }
+  return s.upper()
+}
+
+fn body(r: Fetch) -> string {
+  let .ok(text) = r else { return "failed" }
+  return "body {text}"
+}
+
+fn firstBig(xs: [int?]) -> int {
+  var found = -1
+  for x in xs {
+    let v = x else { continue }
+    if v > 10 {
+      found = v
+      break
+    }
+  }
+  return found
+}
+
+fn mail(cache: [string: string], id: string) throws -> string {
+  let m = cache[id] ?? throw MailError.missing(id)
+  return m
+}
+
+fn orReturn(cache: [string: string], id: string) -> string {
+  let m = cache[id] ?? return "default"
+  return "got {m}"
+}
+
+fn sumUntilNone(xs: [int?]) -> int {
+  var sum = 0
+  for x in xs {
+    sum += x ?? break
+  }
+  return sum
+}
+
+fn skipNone(xs: [int?]) -> int {
+  var sum = 0
+  for x in xs {
+    let v = x ?? continue
+    sum += v
+  }
+  return sum
+}
+
+fn classify(n: int) throws -> string {
+  let name = match n {
+    0 => "zero"
+    1 => "one"
+    _ => throw Error("too many: {n}")
+  }
+  return if n == 0 { name } else { "just {name}" }
+}
+
+fn pairs(a: int?, b: int?) -> string {
+  if let x = a, let y = b, x > y {
+    return "{x} > {y}"
+  } else if let x = a, x > 0 {
+    return "only {x}"
+  } else {
+    return "nothing"
+  }
+}
+
+fn countdown(start: int) -> [int] {
+  var out: [int] = []
+  var n: int? = start
+  while let v = n, v > 0, v != 3 {
+    out.push(v)
+    n = v - 1
+  }
+  return out
+}
+
+fn port(text: string) -> int = try parsePort(text) catch e {
+  print("bad port: {e.message}")
+  80
+}
+
+fn portOrNone(text: string) -> int? = try parsePort(text) catch { none }
+
+fn lookup(cache: [string: string], id: string) -> string = try mail(cache, id) catch MailError.missing(which) {
+  "missing {which}"
+} catch e {
+  "other {e.message}"
+}
+
+fn partial(cache: [string: string], id: string) throws -> string = try mail(cache, id) catch MailError.offline { "offline" }
+
+fn leaves(text: string) -> int {
+  let p = try parsePort(text) catch { return -1 }
+  return p * 2
+}
+
+async fn later(n: int) throws -> int {
+  await sleep(1ms)
+  if n < 0 { throw Error("negative") }
+  return n
+}
+
+test "let else" {
+  let cache = ["a": "hello"]
+  print(subject(cache, "a"))
+  print(subject(cache, "b"))
+  print(body(.ok("text")))
+  print(body(.failed(3)))
+  print(firstBig([1, none, 5, 12, 40]))
+  print(firstBig([1, none]))
+  print(try parsePort("8080"))
+  print(try? parsePort("x") ?? 0)
+  var counted = 0
+  let more: int? = 3
+  var m = more else { return }
+  m += 1
+  counted = m
+  print(counted)
+}
+
+test "jumps as values" {
+  let cache = ["a": "hello"]
+  print(try mail(cache, "a"))
+  do {
+    print(try mail(cache, "zz"))
+  } catch e {
+    print("caught {e.message}")
+  }
+  print(orReturn(cache, "a"))
+  print(orReturn(cache, "b"))
+  print(sumUntilNone([1, 2, none, 4]))
+  print(skipNone([1, 2, none, 4]))
+  print(try classify(0))
+  print(try classify(1))
+  print(try? classify(7) ?? "none")
+  let f = (x: int?) => x ?? throw Error("none given")
+  print(try f(4))
+  print(try? f(none) ?? -1)
+}
+
+test "condition chains" {
+  print(pairs(5, 3))
+  print(pairs(2, 3))
+  print(pairs(none, 3))
+  print(pairs(-1, none))
+  print(countdown(6))
+  print(countdown(2))
+  let words = ["a": 1, "b": 2]
+  if let a = words["a"], let b = words["b"], a < b, a + b == 3 {
+    print("chain {a} {b}")
+  }
+}
+
+test "catch as a value" {
+  print(port("443"))
+  print(port("http"))
+  print(portOrNone("22"))
+  print(portOrNone("70000"))
+  let cache = ["a": "hello"]
+  print(lookup(cache, "a"))
+  print(lookup(cache, "q"))
+  print(try? partial(cache, "q") ?? "propagated")
+  print(leaves("10"))
+  print(leaves("x"))
+  var failed = false
+  try parsePort("y") catch { failed = true }
+  print(failed)
+  let doubled = [1, -2, 3].map(n => try later2(n) catch { 0 })
+  print(doubled)
+  let v = try await later(5) catch { 0 }
+  let w = try await later(-5) catch e { print(e.message); 0 }
+  print(v + w)
+}
+
+fn later2(n: int) throws -> int {
+  if n < 0 { throw Error("neg") }
+  return n * 2
+}
+
+// Output:
+// HELLO
+// (none)
+// body text
+// failed
+// 12
+// -1
+// 8080
+// 0
+// 4
+// ok let else
+// hello
+// caught no mail zz
+// got hello
+// default
+// 3
+// 7
+// zero
+// just one
+// none
+// 4
+// -1
+// ok jumps as values
+// 5 > 3
+// only 2
+// nothing
+// nothing
+// [6,5,4]
+// [2,1]
+// chain 1 2
+// ok condition chains
+// 443
+// bad port: not a number: http
+// 80
+// 22
+// none
+// hello
+// missing q
+// propagated
+// 20
+// -1
+// true
+// [2,0,6]
+// negative
+// 5
+// ok catch as a value

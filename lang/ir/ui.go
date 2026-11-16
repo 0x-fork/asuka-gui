@@ -555,7 +555,9 @@ func (b *fb) builderItems(ctx *check.FuncCtx, items []syntax.Item, extra ...*che
 
 func (b *fb) showView(s *syntax.IfStmt) int {
 	var cond, then int
-	if lc, ok := s.Cond.(*syntax.LetCond); ok {
+	if vc := b.l.info.ViewConds[s]; vc != nil {
+		cond, then = b.showChain(s, vc)
+	} else if lc, ok := s.Cond.(*syntax.LetCond); ok {
 		condCtx := b.l.info.Ctxs[s.Cond]
 		thenCtx := b.l.info.Ctxs[s.Then]
 		cond = b.makeClosure(closure{name: "condition", ctxs: []*check.FuncCtx{condCtx}, ret: bc.KBool, throws: true, body: func(c *fb) {
@@ -1049,4 +1051,85 @@ func (b *fb) outerStyle(v int, ec *check.ElementCall) {
 		}
 		b.release(mark)
 	}
+}
+
+// showChain makes a view's if's condition and then builder when its
+// condition is a chain (if let a = x, let b = f(a), b > 0 { … }). A
+// chain with no names is a condition like any other. One with names is
+// a memo of them, a tuple, none when a clause fails: the condition is
+// whether it's none, and in the then block each name is a memo of its
+// element, so the chain runs once for both.
+func (b *fb) showChain(s *syntax.IfStmt, vc *check.ViewCond) (cond, then int) {
+	condCtx := b.l.info.Ctxs[s.Cond]
+	thenCtx := b.l.info.Ctxs[s.Then]
+	if len(vc.Chain) == 0 {
+		cond = b.makeClosure(closure{name: "condition", ctxs: []*check.FuncCtx{condCtx}, ret: bc.KBool, throws: true, body: func(c *fb) {
+			c.ctx = condCtx
+			fail := c.f.NewLabel()
+			c.openScope()
+			c.condJump(s.Cond, fail)
+			c.closeScope()
+			r := c.temp(bc.KBool)
+			c.emit(op("KSMALL"), r, 1)
+			c.emit(op("RET"), r)
+			c.f.Place(fail)
+			c.emit(op("KSMALL"), r, 0)
+			c.emit(op("RET"), r)
+		}})
+		return cond, b.builderItems(thenCtx, s.Then.Items)
+	}
+	tt := &check.Tuple{}
+	for _, v := range vc.Chain {
+		tt.Elems = append(tt.Elems, b.typ(v.Type))
+	}
+	shape := b.l.shape(tt)
+	chain := b.makeClosure(closure{name: "chain", ctxs: []*check.FuncCtx{condCtx}, ret: bc.KRef, throws: true, body: func(c *fb) {
+		c.ctx = condCtx
+		fail := c.f.NewLabel()
+		c.openScope()
+		c.condJump(s.Cond, fail)
+		var vals []int
+		for _, v := range vc.Chain {
+			vals = append(vals, c.readVar(v, s.Cond))
+		}
+		r := c.newStruct(shape, tt.Elems, vals, -1)
+		c.emit(op("RET"), r)
+		c.closeScope()
+		c.f.Place(fail)
+		n := c.temp(bc.KRef)
+		c.emit(op("KNONE"), n)
+		c.emit(op("RET"), n)
+	}})
+	mv := &check.Var{}
+	m := b.newReg(bc.KRef)
+	b.emit(op("MEMO"), m, chain, int(bc.KRef))
+	cond = b.makeClosure(closure{name: "condition", extra: []extraCap{{mv, m}}, ret: bc.KBool, throws: true, body: func(c *fb) {
+		v := c.temp(bc.KRef)
+		c.emit(op("MREAD"), v, c.vars[mv])
+		r := c.temp(bc.KBool)
+		c.emit(op("ISNONE"), r, v)
+		c.emit(op("NOT"), r, r)
+		c.emit(op("RET"), r)
+	}})
+	then = b.makeClosure(closure{name: "then", ctxs: []*check.FuncCtx{thenCtx}, extra: []extraCap{{mv, m}}, ret: bc.KRef, throws: true, body: func(c *fb) {
+		c.ctx = thenCtx
+		for i, u := range vc.Then {
+			k := c.kind(u.Type)
+			i := i
+			um := c.makeClosure(closure{name: "unwrap", extra: []extraCap{{mv, c.vars[mv]}}, ret: k, throws: true, body: func(c2 *fb) {
+				v := c2.temp(bc.KRef)
+				c2.emit(op("MREAD"), v, c2.vars[mv])
+				x := c2.unwrap(v, tt, -1, s.Cond)
+				r := c2.temp(k)
+				c2.emit(op("GETF"), r, x, i)
+				c2.ret(r, k)
+			}})
+			r := c.newReg(bc.KRef)
+			c.emit(op("MEMO"), r, um, int(k))
+			c.vars[u] = r
+		}
+		v := c.viewsOf(s.Then.Items)
+		c.emit(op("RET"), v)
+	}})
+	return cond, then
 }

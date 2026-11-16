@@ -66,6 +66,8 @@ import ./theme as t               // 短い別名
 
 マップのキーには、整数、文字列、ブール値、値を持たないケースだけの列挙型が使えます。
 
+`int` の演算はラップアラウンドします。`+`、`-`、`*` の結果が最大の `int`（2⁶³ − 1）を超えると、64 ビットの 2 の補数どおりに最小値の側から続きます（`9223372036854775807 + 1` は `-9223372036854775808`）。ハッシュ、チェックサム、バイナリプロトコルが求めるのはまさにこの動作で、しかも演算のたびにオーバーフローを検査するコストがかかりません。ゼロ除算（`/`、`%`）はエラーを投げます。範囲外の浮動小数点数に `int(x)` を使うと、いちばん近い `int` になります（NaN は `0`）。
+
 ### 組み込みメソッド
 
 文字列、バイト列、配列、マップ、オプショナルにはメソッドがあります。値そのものを変更するメソッド（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）は、`var` か状態に対してだけ呼べます。
@@ -116,6 +118,8 @@ state count = 0              // 状態：UI が追従する値
 
 型は推論されます。書いたほうがわかりやすいところでは明示します（`let ids: [int] = []`）。
 
+`type` は、ファイルのトップレベルで型に名前を付けます（`type Pair<A, B> = (A, B)`、`type Check = fn(string) -> bool`）。これは同じ型の別名（エイリアス）なので、`Pair<int, string>` は `(int, string)` そのものです。
+
 ### 構造体
 
 ```asuka
@@ -132,6 +136,17 @@ let n = Message(id: m.id, subject: m.subject, read: true)
 ```
 
 構造体は、フィールドを名前付きか順番どおりに渡して呼び出すことで作ります。デフォルト値のあるフィールドは省略できます。メソッドからはフィールドを名前でそのまま参照できます。ただし構造体は値なので、メソッドで変更することはできません。変更するメソッドは、新しい構造体を返します。構造体の本体に書いた `let` はその型の定数（`Font.title`）になり、`Font` が求められる場所ならどこでも `.title` と書けます。
+
+構造体は型パラメーターを取れます。型引数は、作るときに推論されます。
+
+```asuka
+struct Page<T> {
+  items: [T]
+  next: string? = none
+}
+
+let page = Page(items: [1, 2, 3])     // Page<int>
+```
 
 ### 列挙型
 
@@ -153,6 +168,20 @@ let f: Filter = .unread
 
 型がわかっている場所では、ケースを `.name` と書きます。`match` はすべてのケースを網羅しなければなりません（または `_ =>` で終えます）。パターンでは、ケースの値を束縛したり（`.from(p)`）、リテラルにマッチさせたり（`0`、`"x"`）、複数のケースをまとめたり（`.a | .b`）、ガードを付けたり（`.from(p) if p.vip =>`）できます。ケースのラベル付きの値のうち、ゼロ値（`false`、`0`、`""`、空の配列やマップ、`none`、列挙型の最初のケース）があるものは、作るときに省略できます。`.button(title: "Copy", run: copy)` は `Action.button` の `icon`、`role`、`disabled`、`checked` を省略しています。
 
+ケースの値には、その列挙型自身も持たせられます。そのため、列挙型で木構造を表せます。
+
+```asuka
+enum Expr {
+  num(int)
+  add(Expr, Expr)
+
+  fn eval() -> int = match self {
+    .num(n) => n
+    .add(a, b) => a.eval() + b.eval()
+  }
+}
+```
+
 ### 関数とクロージャ
 
 ```asuka
@@ -167,7 +196,16 @@ let squares = [1, 2, 3].map(x => x * x)
 let sorted = people.sorted((a, b) => a.age < b.age)
 ```
 
-引数は位置で渡すものが先、名前で渡すものが後です。クロージャは `x => expr`、`(a, b) => expr`、`x => { statements }` と書きます。値は値としてキャプチャし、状態は参照としてキャプチャします。
+引数は位置で渡すものが先、名前で渡すものが後です。クロージャは `x => expr`、`(a, b) => expr`、`x => { statements }` と書きます。クロージャは、キャプチャした変数を周りのコードと共有します。どちらかが変更すれば、もう一方にもその変更が見えます。
+
+```asuka
+var n = 0
+let inc = () => { n += 1 }
+inc()
+inc()                // n は 2
+```
+
+状態も同じように共有されます。使うものをコピーするのは `spawn` だけです（値だけを、実行を始めた時点のまま受け取ります）。別のスレッドで動くためです。
 
 ### インターフェースとジェネリクス
 
@@ -183,7 +221,63 @@ fn total<T>(items: [T], size: fn(T) -> float) -> float {
 }
 ```
 
+インターフェースはそれ自体が型でもあります。インターフェース型の値には、そのメソッドを持つどんな値でも入れられ、メソッドを呼ぶとその値のメソッドが呼ばれます。
+
+```asuka
+let shapes: [Shape] = [Circle(radius: 1), Square(side: 2)]
+let areas = shapes.map(s => s.area())
+```
+
 ジェネリックな関数と型は型パラメーターを取ります。制約には `Equatable`、`Comparable`、`Hashable` があり、構造体と列挙型は、フィールドがその制約を満たしていれば自身も満たします。
+
+### 制御フロー
+
+`if` と `match` は値としても使えます。値として使う `if` には `else` が必要で、ブロックの値はその最後の式です。
+
+```asuka
+let label = if unread > 0 { "{unread} new" } else { "Inbox" }
+let icon = match (online, unread) {
+  (false, _) => "wifi.slash"
+  (true, 0) => "tray"
+  _ => "tray.full"
+}
+```
+
+タプルパターン（`(true, 0)`）は、タプルの要素ごとにそれぞれのパターンでマッチさせます。
+
+`for` で回せるのは、配列、マップの `(key, value)` の組、範囲です。`a..<b` は `a` から `b` の手前までの整数、`a..b` は `b` を含む整数です（`0..<3` は `[0, 1, 2]`。範囲を `for` で回しても配列は作られません）。`while cond { … }` は cond が成り立つあいだ繰り返します。`break` はループを抜け、`continue` は次の周回に進みます。
+
+`if let` と `while let` は、オプショナルの中の値を取り出すか、パターンにマッチさせ、取り出せたときだけブロックを実行します（`if let u = user { … }`、`while let job = queue.pop() { … }`、`if let .ready(v) = state { … }`）。条件は、カンマで区切った節の並びにもできます。`let` とブール値の条件は、どんな順番で並べてもかまいません。各節では、それより前の節で束縛した名前を使えます。ブロックが実行されるのはすべての節が成り立ったときです（節は順に評価され、成り立たない節が出たところで止まります）。
+
+```asuka
+if let user = session.user, user.isAdmin, let team = teams[user.teamId] {
+  Text("{team.name}'s admin")
+} else {
+  Text("Not an admin")
+}
+```
+
+`let … else` は、値を束縛するか、その場を離れます。オプショナルが none のとき（またはパターンにマッチしないとき）は `else` のブロックが実行され、このブロックは必ず離れなければなりません。離れ方は `return`、`throw`、`break`、`continue`、`panic(…)` のいずれかです（先へ進めてしまう場合はコンパイラーがエラーにします）。この文より後では、名前はオプショナルではなく中の値を指します。
+
+```asuka
+fn summary(id: string) -> string {
+  let message = cache[id] else { return "(deleted)" }
+  let .ready(body) = message.body else { return message.subject }
+  return "{message.subject}: {body}"
+}
+```
+
+`throw`、`return`、`break`、`continue` は、値を書く場所にも置けます。値を返す代わりにその場を離れます（型は `never` で、どんな型の場所にも当てはまります）。`??` の後ろに書けば、none のときにどうするかを表せます。
+
+```asuka
+let user = cache[id] ?? throw MailError.missing(id)
+for line in lines {
+  let n = line.toInt() ?? continue
+  total += n
+}
+```
+
+`if` の分岐、`match` のアーム、クロージャの本体にも同じように書けます（`x => x ?? throw Error("empty")`）。
 
 ## コンポーネント
 
@@ -273,7 +367,7 @@ on press {
 
 ハンドラーの中での書き込みは、ハンドラーが終わったとき（または `await` に達したとき）にまとめて画面に反映されます。
 
-文には次のものがあります：`let`、`var`、代入（`= += -= *= /= %= ??=`）、`if`、`for x in xs`、`for (i, x) in xs.enumerated()`、`while`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`。
+文には次のものがあります：`let`、`var`、`let … else`、代入（`= += -= *= /= %= ??=`）、`if` と `if let`、`for x in xs`、`for (i, x) in xs.enumerated()`、`while` と `while let`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`（[制御フロー](#制御フロー)を参照）。
 
 ### 双方向バインディング
 
@@ -431,6 +525,19 @@ on press {
 
 let n = try? parse(text)   // エラーが投げられたら none
 ```
+
+式の後ろに `catch` を書くと、代わりの値を用意できます。普段は式の値になり、式の中でエラーが投げられたときは `catch` のブロックの値（`if` と同じく、最後の式）になります。ブロックがその場を離れる場合は別です。
+
+```asuka
+let port = try parsePort(text) catch e {
+  log(e.message)
+  80
+}
+let size = try await fileSize(path) catch { return }
+try save(draft) catch { failed = true }   // 文として使う：値は要らない
+```
+
+節は `do` のものと同じです（`catch`、`catch e`、`catch e: ParseError`、`catch MailError.server(code)`）。複数を続けて書くことができ、エラーを受け取った最初の節が実行されます。どの節も受け取らなかったエラーはそのまま先へ投げられるので、`try` と同じく、囲んでいる関数に `throws` が必要です。すべてのエラーを受け取る節があれば、式全体がエラーを投げなくなるので、`try` を置けない場所でも使えます。たとえばコンポーネントの `let`（`let port = try parsePort(text) catch { 80 }` は `text` が変わるたびに更新されます）や、エラーを投げてはいけないクロージャの中です。`try await` とも、値としての `throw` とも組み合わせられます（`let user = cache[id] ?? throw MailError.missing(id)`）。
 
 エラーの `message` は、`message` フィールド、`fn message() -> string`、または型とケースの名前です。`Error("…")` はメッセージからエラーを作ります。タスクのキャンセルは `catch` では捕まりません。キャンセルはタスクの最後まで進み、その途中で `defer` を実行していきます。
 

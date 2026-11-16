@@ -667,6 +667,10 @@ func (p *printer) node(n Node) {
 			p.write(" = ")
 			p.expr(n.Value)
 		}
+		if n.Else != nil {
+			p.write(" else ")
+			p.block(n.Else)
+		}
 	case *AppDecl:
 		p.pub(n.Pub)
 		p.write("app ")
@@ -882,6 +886,15 @@ func (p *printer) onHandler(n *OnHandler) {
 
 // cond prints an if's or a while's condition.
 func (p *printer) cond(x Expr) {
+	if l, ok := x.(*CondList); ok {
+		for i, c := range l.List {
+			if i > 0 {
+				p.write(", ")
+			}
+			p.cond(c)
+		}
+		return
+	}
 	if c, ok := x.(*LetCond); ok {
 		p.write("let ")
 		p.pattern(c.Pattern)
@@ -930,8 +943,13 @@ func exprPrec(x Expr) int {
 		return precLambda
 	case *BinaryExpr:
 		return x.Op.Precedence()
-	case *UnaryExpr, *SpawnExpr:
+	case *UnaryExpr, *SpawnExpr, *JumpExpr:
+		// A jump takes the rest of the expression, so the parser makes
+		// one an operand only on the right, where it needs no
+		// parentheses.
 		return precUnary
+	case *CatchExpr:
+		return precLambda
 	}
 	return precPostfix
 }
@@ -1107,8 +1125,20 @@ func (p *printer) expr1(x Expr) {
 		p.expr(x.Subject)
 		p.write(" ")
 		p.arms(x.Lbrace, x.Arms, x.Rbrace)
-	case *LetCond:
+	case *LetCond, *CondList:
 		p.cond(x)
+	case *JumpExpr:
+		p.write(x.Tok.String())
+		if x.Value != nil {
+			p.write(" ")
+			p.expr(x.Value)
+		}
+	case *CatchExpr:
+		p.expr(x.X)
+		for _, c := range x.Catches {
+			p.write(" ")
+			p.node(c)
+		}
 	case *BadExpr:
 		p.write("/* bad syntax */")
 	}

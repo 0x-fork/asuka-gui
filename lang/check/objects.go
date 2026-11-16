@@ -149,8 +149,13 @@ type Var struct {
 }
 
 // Boxed reports whether the var lives in a box (VBOX) so that the
-// closures that change it and the code around them see one value.
-func (v *Var) Boxed() bool { return v.Mutable && v.AssignedInClosure }
+// closures that use it and the code around them share one variable: a
+// var a closure captures, which something changes (the closure, or the
+// code around it after making it). spawn takes a copy of the value
+// instead (values only).
+func (v *Var) Boxed() bool {
+	return v.Mutable && (v.AssignedInClosure || v.Captured && v.Assigned)
+}
 
 // A Function is a declared function or method.
 type Function struct {

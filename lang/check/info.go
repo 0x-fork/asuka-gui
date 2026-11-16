@@ -21,9 +21,11 @@ type Info struct {
 	Fors     map[*syntax.ForStmt]*ForInfo
 	Elements map[*syntax.CallExpr]*ElementCall
 	Matches  map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
-	Lets     map[*syntax.LetDecl]Type   // a local let's or var's type
-	Emits    map[*syntax.EmitStmt]*Member
-	Binds    map[*syntax.OnHandler][]*Var // an on handler's parameters
+	// ViewConds: a view's if whose condition is a chain (ViewCondChain).
+	ViewConds map[*syntax.IfStmt]*ViewCond
+	Lets      map[*syntax.LetDecl]Type // a local let's or var's type
+	Emits     map[*syntax.EmitStmt]*Member
+	Binds     map[*syntax.OnHandler][]*Var // an on handler's parameters
 	// Trailing: a call's trailing block, as the closure it passes.
 	Trailing map[*syntax.CallExpr]*syntax.LambdaExpr
 	// SlotCalls: a slot named after a function, in a statement, read as
@@ -62,6 +64,7 @@ func newInfo() *Info {
 		Fors:       map[*syntax.ForStmt]*ForInfo{},
 		Elements:   map[*syntax.CallExpr]*ElementCall{},
 		Matches:    map[syntax.Node]*MatchInfo{},
+		ViewConds:  map[*syntax.IfStmt]*ViewCond{},
 		Lets:       map[*syntax.LetDecl]Type{},
 		Emits:      map[*syntax.EmitStmt]*Member{},
 		Binds:      map[*syntax.OnHandler][]*Var{},

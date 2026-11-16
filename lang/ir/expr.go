@@ -247,6 +247,10 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		return b.ifExpr(e, dst)
 	case *syntax.MatchExpr:
 		return b.matchExpr(e, dst)
+	case *syntax.JumpExpr:
+		return b.jumpExpr(e, dst)
+	case *syntax.CatchExpr:
+		return b.catchExpr(e, dst)
 	}
 	b.l.errorf(e, "can't lower this expression yet")
 	return b.valueReg(-1, b.kind(b.l.info.Types[e]))

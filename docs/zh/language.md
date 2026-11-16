@@ -66,6 +66,8 @@ import ./theme as t               // 起一个更短的名字
 
 map 的键可以是整数、字符串、布尔值，或者成员不携带值的枚举。
 
+`int` 的运算会回绕：`+`、`-`、`*` 的结果超过最大的 `int`（2⁶³ − 1）时，会按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 + 1` 等于 `-9223372036854775808`）。哈希、校验和以及二进制协议需要的正是这种行为，而且这样每次运算都不必额外检查溢出。除以零（`/`、`%`）会抛出错误；对超出范围的浮点数调用 `int(x)`，得到离它最近的 `int`（NaN 得到 `0`）。
+
 ### 内置方法
 
 字符串、bytes、数组、map 和可选值都有方法。其中会修改值本身的方法（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）只能用在 `var` 或状态上：
@@ -116,6 +118,8 @@ state count = 0              // 状态：界面会跟随变化的值
 
 类型会自动推断；在有助于阅读的地方可以写出来：`let ids: [int] = []`。
 
+`type` 在文件顶层给类型起一个名字：`type Pair<A, B> = (A, B)`、`type Check = fn(string) -> bool`。它只是同一个类型的别名：`Pair<int, string>` 就是 `(int, string)`。
+
 ### 结构体
 
 ```asuka
@@ -132,6 +136,17 @@ let n = Message(id: m.id, subject: m.subject, read: true)
 ```
 
 创建结构体的方式是调用它，按名字或按顺序传入各个字段；有默认值的字段可以省略。结构体的方法直接用名字访问它的字段，但不能修改结构体（它是一个值）：需要修改时，就返回一个新的结构体。结构体主体里的 `let` 是这个类型的常量（`Font.title`），在任何需要 `Font` 的地方都可以简写成 `.title`。
+
+结构体可以带类型参数，创建时会自动推断：
+
+```asuka
+struct Page<T> {
+  items: [T]
+  next: string? = none
+}
+
+let page = Page(items: [1, 2, 3])     // 一个 Page<int>
+```
 
 ### 枚举
 
@@ -153,6 +168,20 @@ let f: Filter = .unread
 
 在类型已知的地方，枚举的成员写作 `.name`。`match` 必须覆盖所有成员（或者以 `_ =>` 结尾）；模式可以绑定成员携带的值（`.from(p)`），可以匹配字面量（`0`、`"x"`），可以同时匹配多个成员（`.a | .b`），还可以带守卫条件（`.from(p) if p.vip =>`）。成员带标签的值如果有零值（`false`、`0`、`""`、空数组或空映射、`none`、枚举的第一个成员），构造时可以省略：`.button(title: "Copy", run: copy)` 就省略了 `Action.button` 的 `icon`、`role`、`disabled` 和 `checked`。
 
+成员携带的值可以是这个枚举本身，因此枚举可以表示一棵树：
+
+```asuka
+enum Expr {
+  num(int)
+  add(Expr, Expr)
+
+  fn eval() -> int = match self {
+    .num(n) => n
+    .add(a, b) => a.eval() + b.eval()
+  }
+}
+```
+
 ### 函数与闭包
 
 ```asuka
@@ -167,7 +196,16 @@ let squares = [1, 2, 3].map(x => x * x)
 let sorted = people.sorted((a, b) => a.age < b.age)
 ```
 
-参数先按位置传，再按名字传。闭包写作 `x => expr`、`(a, b) => expr` 或 `x => { statements }`；它按值捕获普通的值，按引用捕获状态。
+参数先按位置传，再按名字传。闭包写作 `x => expr`、`(a, b) => expr` 或 `x => { statements }`。闭包和周围的代码共享它捕获的变量：一方修改了，另一方也能看到。
+
+```asuka
+var n = 0
+let inc = () => { n += 1 }
+inc()
+inc()                // n 现在是 2
+```
+
+状态也以同样的方式共享。只有 `spawn` 会复制它用到的东西（只能是普通的值，取它开始运行那一刻的值），因为它在另一个线程上运行。
 
 ### 接口与泛型
 
@@ -183,7 +221,63 @@ fn total<T>(items: [T], size: fn(T) -> float) -> float {
 }
 ```
 
+接口本身也是一种类型：接口类型的值可以是任何具备这些方法的值，调用方法时调用的就是这个值自己的方法。
+
+```asuka
+let shapes: [Shape] = [Circle(radius: 1), Square(side: 2)]
+let areas = shapes.map(s => s.area())
+```
+
 泛型函数和泛型类型可以接收类型参数；可用的约束有 `Equatable`、`Comparable` 和 `Hashable`，当结构体和枚举的字段都满足某个约束时，它们自身也就满足这个约束。
+
+### 控制流
+
+`if` 和 `match` 也可以作为值使用。作为值时，`if` 必须带 `else`，代码块的值就是它的最后一个表达式：
+
+```asuka
+let label = if unread > 0 { "{unread} new" } else { "Inbox" }
+let icon = match (online, unread) {
+  (false, _) => "wifi.slash"
+  (true, 0) => "tray"
+  _ => "tray.full"
+}
+```
+
+元组模式（`(true, 0)`）用各自的模式分别匹配元组的每个元素。
+
+`for` 可以遍历数组、map 的 `(key, value)` 对，或者一个区间：`a..<b` 是从 `a` 到 `b` 但不包括 `b` 的整数，`a..b` 则包括 `b`（`0..<3` 就是 `[0, 1, 2]`；`for` 遍历区间时不会真的创建数组）。`while cond { … }` 在 cond 成立时一直循环；`break` 跳出循环，`continue` 直接进入下一轮。
+
+`if let` 和 `while let` 取出可选值里的值，或者匹配一个模式，只有取得到时才执行代码块：`if let u = user { … }`、`while let job = queue.pop() { … }`、`if let .ready(v) = state { … }`。它们的条件可以是一串用逗号分隔的子句，`let` 和布尔条件可以任意交替。每个子句都能用到前面子句绑定的名字；所有子句都成立时才执行代码块（子句按顺序求值，遇到第一个不成立的就停下）：
+
+```asuka
+if let user = session.user, user.isAdmin, let team = teams[user.teamId] {
+  Text("{team.name}'s admin")
+} else {
+  Text("Not an admin")
+}
+```
+
+`let … else` 要么绑定一个值，要么离开。可选值为 none（或者模式不匹配）时执行 `else` 代码块，而这个代码块必须离开：`return`、`throw`、`break`、`continue` 或 `panic(…)`（如果它可能继续往下执行，编译器会报错）。在它之后，这个名字就是其中的值，而不再是可选值：
+
+```asuka
+fn summary(id: string) -> string {
+  let message = cache[id] else { return "(deleted)" }
+  let .ready(body) = message.body else { return message.subject }
+  return "{message.subject}: {body}"
+}
+```
+
+`throw`、`return`、`break` 和 `continue` 也可以出现在需要值的地方：它们不提供值，而是直接离开（它们的类型是 `never`，可以放在任何类型的位置上）。写在 `??` 后面，就表示遇到 none 时该怎么办：
+
+```asuka
+let user = cache[id] ?? throw MailError.missing(id)
+for line in lines {
+  let n = line.toInt() ?? continue
+  total += n
+}
+```
+
+它们同样可以用作 `if` 的分支、`match` 的分支，或者闭包的主体：`x => x ?? throw Error("empty")`。
 
 ## 组件
 
@@ -273,7 +367,7 @@ on press {
 
 一个处理函数里的多次写入，会在它结束时（或者执行到 `await` 时）一起显示出来。
 
-语句有：`let`、`var`、赋值（`= += -= *= /= %= ??=`）、`if`、`for x in xs`、`for (i, x) in xs.enumerated()`、`while`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`。
+语句有：`let`、`var`、`let … else`、赋值（`= += -= *= /= %= ??=`）、`if` 和 `if let`、`for x in xs`、`for (i, x) in xs.enumerated()`、`while` 和 `while let`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`（见[控制流](#控制流)）。
 
 ### 双向绑定
 
@@ -431,6 +525,19 @@ on press {
 
 let n = try? parse(text)   // 抛出错误时为 none
 ```
+
+在表达式后面写 `catch`，可以给它一个备用值：正常时得到表达式的值；表达式里有地方抛出错误时，得到 `catch` 代码块的值（和 `if` 一样，是它的最后一个表达式），除非这个代码块直接离开：
+
+```asuka
+let port = try parsePort(text) catch e {
+  log(e.message)
+  80
+}
+let size = try await fileSize(path) catch { return }
+try save(draft) catch { failed = true }   // 作为语句：不需要提供值
+```
+
+它的子句和 `do` 的一样：`catch`、`catch e`、`catch e: ParseError`、`catch MailError.server(code)`，可以连写多个，由第一个接住错误的子句处理。没有子句接住的错误会继续往外抛，所以所在的函数必须标注 `throws`，这和 `try` 的规则相同。如果子句能接住所有错误，整个表达式就不会抛出错误，因此可以用在 `try` 不能出现的地方：组件的 `let` 里（`let port = try parsePort(text) catch { 80 }`，会随着 `text` 的变化保持更新），或者不允许抛出错误的闭包里。它也可以配合 `try await` 使用，以及配合作为值的 `throw`：`let user = cache[id] ?? throw MailError.missing(id)`。
 
 错误的 `message` 是它的 `message` 字段、它的 `fn message() -> string`，或者它的类型名和成员名。`Error("…")` 用一条消息创建一个错误。`catch` 永远不会捕获 task 的取消：取消会一直走到 task 的结尾，并在途中执行各个 `defer`。
 

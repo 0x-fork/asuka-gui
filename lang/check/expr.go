@@ -131,6 +131,13 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 	case *syntax.LetCond:
 		c.errorf(e, "let here is only an if's or a while's condition")
 		return Invalid
+	case *syntax.CondList:
+		c.errorf(e, "a condition's clauses go in an if's or a while's head: write && between bools")
+		return Invalid
+	case *syntax.JumpExpr:
+		return c.jumpExpr(e)
+	case *syntax.CatchExpr:
+		return c.catchExpr(e, want)
 	}
 	c.errorf(e, "unexpected expression")
 	return Invalid
@@ -1175,17 +1182,24 @@ func (c *Checker) mayThrow(at syntax.Node) {
 	if c.ctx.Throws {
 		return
 	}
+	if c.partial != nil && c.partial.ctx == c.ctx {
+		// Inside a do or a catch whose clauses don't take every error.
+		c.errorf(at, "the catch%s here take%s %s only, and %s: add a catch e { … } for the rest%s",
+			map[bool]string{true: "es", false: ""}[c.partial.n > 1], map[bool]string{true: "", false: "s"}[c.partial.n > 1],
+			c.partial.what, c.cantThrow(), c.throwsHint())
+		return
+	}
 	switch c.ctx.Kind {
 	case CtxFunc, CtxMethod:
-		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (do { } catch { }, try?)", c.ctx.Name)
+		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (try … catch { }, do { } catch { }, try?)", c.ctx.Name)
 	case CtxLambda:
-		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (do { } catch { }, try?)")
+		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)")
 	case CtxGlobal:
-		c.errorf(at, "a value here can't throw: catch the error (try?)")
+		c.errorf(at, "a value here can't throw: catch the error (try … catch { fallback }, try?)")
 	case CtxSpawn:
 		// spawn's error is its task's.
 	default:
-		c.errorf(at, "this can't throw here: catch the error (do { } catch { }, try?)")
+		c.errorf(at, "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)")
 	}
 }
 

@@ -97,6 +97,7 @@ func (c *Checker) typeMembers(t *TypeName) {
 				t.fieldIndex[f.Name] = f.Index
 				t.Fields = append(t.Fields, f)
 			case *syntax.LetDecl:
+				c.noLetElse(m)
 				c.typeConst(t, m)
 			case *syntax.FuncDecl:
 				c.method(t, m)
@@ -127,6 +128,7 @@ func (c *Checker) typeMembers(t *TypeName) {
 		for _, m := range d.Members {
 			switch m := m.(type) {
 			case *syntax.LetDecl:
+				c.noLetElse(m)
 				c.typeConst(t, m)
 			case *syntax.FuncDecl:
 				c.method(t, m)
@@ -332,6 +334,10 @@ func (c *Checker) valueType(t Type, e syntax.Expr) Type {
 	}
 	if t == Void {
 		c.errorf(e, "this has no value (it's void)")
+		return Invalid
+	}
+	if t == Never {
+		c.errorf(e, "this has no value: it leaves (throw, return, break, continue)")
 		return Invalid
 	}
 	return t
