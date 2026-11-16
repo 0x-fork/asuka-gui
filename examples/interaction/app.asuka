@@ -160,17 +160,17 @@ component Keys {
     if selected < results.count() { picked = results[selected] }
   }
 
-  WindowKeys { keys: [Shortcut.cmd("k"): () => { focused = true }] }
+  WindowKeys { keys: [Shortcut(key: "k", primary: true, run: () => { focused = true })] }
 
   Column {
     gap: 8
     keys: [
-      Shortcut(key: "down"): () => move(1),
-      Shortcut(key: "up"): () => move(-1),
-      Shortcut(key: "n", mods: .control): () => move(1),
-      Shortcut(key: "p", mods: .control): () => move(-1),
-      Shortcut(key: "enter"): () => pick(),
-      Shortcut(key: "escape"): () => { query = "" },
+      Shortcut(key: "down", run: () => move(1)),
+      Shortcut(key: "up", run: () => move(-1)),
+      Shortcut(key: "n", mods: [.control], run: () => move(1)),
+      Shortcut(key: "p", mods: [.control], run: () => move(-1)),
+      Shortcut(key: "enter", run: () => pick()),
+      Shortcut(key: "escape", run: () => { query = "" }),
     ]
     TextField {
       bind text: query
@@ -206,6 +206,13 @@ component Keys {
   }
 }
 
+struct Lane {
+  title: string
+  done: bool
+}
+
+let lanes = [Lane(title: "To do", done: false), Lane(title: "Done", done: true)]
+
 struct Task {
   id: int
   title: string
@@ -223,7 +230,7 @@ component Board {
 
   fn move(id: int, done: bool) {
     if let i = tasks.index(t => t.id == id) {
-      var t = tasks.remove(at: i)
+      var t = tasks.removeAt(i)
       t.done = done
       tasks.push(t)
     }
@@ -232,7 +239,7 @@ component Board {
   Row {
     gap: 8
     align: .stretch
-    for (title, done) in [("To do", false), ("Done", true)] key title {
+    for lane in lanes key lane.title {
       Column {
         grow: 1
         basis: 0
@@ -244,25 +251,25 @@ component Board {
         border: 2
         borderColor: .clear
         dragOver { borderColor: .accent }
-        drop: DropTarget(accept: [taskMime])
+        dropTypes: [taskMime]
         on drop(d) {
           for item in d.items {
-            if let id = item.text.int() {
-              animate(() => move(id, done))
+            if let id = item.text.toInt() {
+              animate(() => move(id, lane.done))
             }
           }
         }
-        Text(title) {
+        Text(lane.title) {
           font: .subheadline
           color: .secondaryLabel
         }
-        for t in tasks.filter(t => t.done == done) key t.id {
+        for t in tasks.filter(t => t.done == lane.done) key t.id {
           View {
             padding: 12
             radius: 8
             background: .background
             dragging { opacity: 0.4 }
-            drag: [DragItem(mime: taskMime, text: "{t.id}")]
+            dragItems: [DragItem(mime: taskMime, text: "{t.id}")]
             Text(t.title)
           }
         }
@@ -290,9 +297,9 @@ component DropZone {
       borderColor: .accent
       background: .secondaryGroupedBackground
     }
-    drop: DropTarget(accept: ["*/*"])
+    dropTypes: ["*/*"]
     on drop(d) {
-      let lines = d.items.map(it => if it.isFile {
+      let lines = d.items.map(it => if !it.path.isEmpty() {
         "{it.name} ({it.mime}, {it.size} bytes)"
       } else {
         "\"{it.text}\" ({it.mime})"
@@ -324,7 +331,7 @@ component Chip(label: string, item: DragItem) {
     radius: 16
     background: .secondaryBackground
     dragging { opacity: 0.4 }
-    drag: [item]
+    dragItems: [item]
     Text(label)
   }
 }

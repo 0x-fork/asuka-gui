@@ -57,7 +57,7 @@ screen Scanner {
       devices.push(f)
     }
     // The nearest first.
-    devices.sortStable((x, y) => x.rssi > y.rssi)
+    devices.sort(by: (x, y) => x.rssi > y.rssi) // stable
   }
 
   async fn toggleScan() {
@@ -129,11 +129,19 @@ screen Scanner {
   }
 }
 
-fn scanError(e: Error) -> string = match e {
-  bluetooth.BluetoothError.notAvailable => "This platform doesn't scan: Choose a device"
-  bluetooth.BluetoothError.off => "Bluetooth is off"
-  bluetooth.BluetoothError.denied => "The app isn't allowed Bluetooth: allow it in Settings"
-  _ => e.message
+fn scanError(e: Error) -> string {
+  // Thrown again, to catch it by its case.
+  do {
+    throw e
+  } catch bluetooth.BluetoothError.notAvailable {
+    return "This platform doesn't scan: Choose a device"
+  } catch bluetooth.BluetoothError.off {
+    return "Bluetooth is off"
+  } catch bluetooth.BluetoothError.denied {
+    return "The app isn't allowed Bluetooth: allow it in Settings"
+  } catch other {
+    return other.message
+  }
 }
 
 /// Connects to the device while it's on screen (the connection belongs
@@ -145,7 +153,7 @@ screen DeviceScreen(device: bluetooth.Device) {
   state info = ""
 
   let connection = bluetooth.connect(device, timeout: 20s)
-  let status = if connection.state == .disconnected && connection.error != none {
+  let status = if connection.state == .disconnected && connection.error.isSome() {
     "Disconnected: {connection.error!.message}"
   } else {
     "{connection.state}"
@@ -166,11 +174,11 @@ screen DeviceScreen(device: bluetooth.Device) {
   task {
     if let ch = try? await connection.characteristic(bluetooth.battery, bluetooth.batteryLevel) {
       if let v = try? await ch.read() {
-        if !v.isEmpty() { battery = "{v[0]}%" }
+        if !v.isEmpty() { battery = "{v.get(0) ?? 0}%" }
       }
       if ch.properties.contains(.notify) {
         for await v in ch.notifications() {
-          if !v.isEmpty() { battery = "{v[0]}%" }
+          if !v.isEmpty() { battery = "{v.get(0) ?? 0}%" }
         }
       }
     }
@@ -216,8 +224,9 @@ component Reading(label: string, value: string) {
 /// service's 0x2a37): a flags byte, whose bit 0 says the value is 16
 /// bits, then the value.
 fn heartRate(v: bytes) -> int? {
-  if v.count() >= 3 && v[0] % 2 == 1 { return v[1] + v[2] * 256 }
-  if v.count() >= 2 && v[0] % 2 == 0 { return v[1] }
+  let flags = v.get(0) ?? 0
+  if v.count() >= 3 && flags % 2 == 1 { return (v.get(1) ?? 0) + (v.get(2) ?? 0) * 256 }
+  if v.count() >= 2 && flags % 2 == 0 { return v.get(1) }
   return none
 }
 
@@ -248,7 +257,7 @@ component Monitor {
   // Served and advertised while it's shown.
   task {
     do {
-      let _ = try await all(
+      try await all(
         bluetooth.serve(services),
         bluetooth.advertise(localName: "Asuka HR", services: [bluetooth.heartRate]),
       )
@@ -285,11 +294,10 @@ fn strap() -> bluetooth.FakePeripheral = bluetooth.FakePeripheral(
 // disconnects.
 test "scan, connect, read" {
   let h10 = strap()
-  let app = mount(Stack { Scanner() }, setup: host => {
-    host.bluetooth.add(h10)
-    host.bluetooth.add(bluetooth.FakePeripheral(id: "AA:BB:CC:00:00:02", name: "Lamp", rssi: -80))
-  })
-  let bt = app.host.bluetooth
+  let bt = bluetooth.fake()
+  bt.add(h10)
+  bt.add(bluetooth.FakePeripheral(id: "AA:BB:CC:00:00:02", name: "Lamp", rssi: -80))
+  let app = mount(Stack { Scanner() })
   app.expect("Bluetooth: on")
   app.tap("Scan")
   await app.waitFor("♥ Polar H10")
@@ -300,63 +308,68 @@ test "scan, connect, read" {
   app.tap("♥ Polar H10")
   await app.waitFor("Battery")
   app.expect("connected", "64%")
-  await app.until("subscribed to the heart rate", () => h10.characteristic("180d", "2a37").subscribed)
-  h10.notify("180d", "2a37", bytes([0, 61]))
+  await app.until("subscribed to the heart rate", () => bt.subscribed(h10.id, "180d", "2a37"))
+  bt.notify(h10.id, "180d", "2a37", bytes([0, 61]))
   await app.waitFor("61 bpm")
-  h10.notify("180d", "2a37", bytes([1, 0x2c, 0x01])) // 16-bit: 300
+  bt.notify(h10.id, "180d", "2a37", bytes([1, 0x2c, 0x01])) // 16-bit: 300
   await app.waitFor("300 bpm")
 
   app.back()
-  await app.until("disconnected", () => !h10.connected)
+  await app.until("disconnected", () => !bt.connected.contains(h10.id))
   app.tap("Stop")
-  await app.until("the scan stopped", () => bt.scans.isEmpty)
+  await app.until("the scan stopped", () => bt.scans == 0)
 }
 
 // A device that goes shows why, and the scan says when Bluetooth is off.
 test "disconnected, and off" {
   let h10 = strap()
-  let app = mount(Stack { Scanner() }, setup: host => host.bluetooth.add(h10))
-  let bt = app.host.bluetooth
+  let bt = bluetooth.fake()
+  bt.add(h10)
+  let app = mount(Stack { Scanner() })
   app.tap("Scan")
   await app.waitFor("♥ Polar H10")
   app.tap("♥ Polar H10")
   await app.waitFor("64%")
-  bt.remove(h10)
+  bt.remove(h10.id)
   await app.waitFor("Disconnected: bluetooth: disconnected: the connection timed out (the peripheral went)")
   app.back()
-  bt.setState("off")
+  bt.setState(.off)
+  await app.waitFor("Bluetooth: off")
+  app.tap("Stop")
+  app.tap("Scan")
   await app.waitFor("Bluetooth is off")
   app.expect("Bluetooth: off", "Scan")
 }
 
 // The chooser gives a device, or nothing where the platform has none.
 test "choose" {
-  let app = mount(Stack { Scanner() }, setup: host => host.bluetooth.add(strap()))
+  let bt = bluetooth.fake()
+  bt.add(strap())
+  let app = mount(Stack { Scanner() })
   app.tap("Choose")
   await app.waitFor("Battery") // the device's screen, connected
   app.back()
-  app.host.bluetooth.chooserAvailable = false
+  bt.chooserAvailable = false
   app.tap("Choose")
-  await app.waitFor("bluetooth: not available: this platform has no device chooser")
+  await app.waitFor("bluetooth: not available")
 }
 
 // As a monitor, it serves and advertises the Heart Rate service, and
 // notifies its subscribers.
 test "monitor" {
+  let bt = bluetooth.fake()
   let app = mount(Stack { Scanner() })
-  let bt = app.host.bluetooth
   app.tap("Be a monitor")
   await app.waitFor("Advertising as Asuka HR: 0 subscribed")
-  expect(bt.servers.count == 1 && bt.advertising.count == 1)
+  expect(bt.servers == 1 && bt.advertising.count() == 1)
   for ad in bt.advertising {
     expect(ad.localName == "Asuka HR" && ad.services == ["180d"], "advertising {ad.localName}")
   }
-  var level = bytes()
-  bt.centralRead("phone", "2a19", (v, _) => { level = v })
-  await app.until("the battery read", () => level == bytes([87]))
+  let _ = bt.centralRead("phone", "2a19")
+  await app.until("the battery read", () => bt.lastRead() == bytes([87]))
   bt.centralSubscribe("phone", "2a37", true)
   await app.waitFor("Advertising as Asuka HR: 1 subscribed")
-  await app.until("a beat notified", () => !bt.notified.isEmpty)
+  await app.until("a beat notified", () => !bt.notified.isEmpty())
   app.tap("Stop monitor")
-  await app.until("serving stopped", () => bt.servers.isEmpty && bt.advertising.isEmpty)
+  await app.until("serving stopped", () => bt.servers == 0 && bt.advertising.isEmpty())
 }
