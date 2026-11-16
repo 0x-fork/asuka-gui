@@ -108,6 +108,12 @@ type Module struct {
 	Main     int32  // a program's fn main, -1 when none
 	Tests    []Test
 
+	// Data, for a program, is the name of the folder its data goes in,
+	// in the platform's place for an app's (asuka/fs's appDir): a
+	// program an app ships ([bin] in its asuka.toml) shares the app's.
+	// "": the program's own name. Not encoded: lang/cgen compiles it in.
+	Data string
+
 	// C is the C the module's extern declarations call (RFC 0008), nil
 	// when it has none. It isn't encoded: the CLI compiles it into the
 	// core's build, which the module's ffi.* builtins are then in.

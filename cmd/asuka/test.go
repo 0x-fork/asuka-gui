@@ -21,7 +21,7 @@ func cmdTest(args []string) error {
 	fs := newFlagSet("test", "[dir]")
 	fs.about = "Runs the test blocks of the app or package in dir (default: the working directory) on the\n" +
 		"fake host: the app's views as a phone would show them, measured and laid out, driven by\n" +
-		"tap, type and expect."
+		"tap, type and expect; and those of its programs (asuka.toml's [bin.<name>])."
 	fs.String(&pattern, "run", 0, "", "run only the tests whose names contain `text`")
 	platformFlag(fs, &platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},
 		"the `platform` the fake host says it is (what the app's platform checks see): ios (the default), android, mac, windows, linux or web")
@@ -36,11 +36,49 @@ func cmdTest(args []string) error {
 	if err != nil {
 		return err
 	}
-	m, err := compileProject(p)
-	if err != nil {
-		return err
+	targets := []*appbuild.Project{p}
+	for _, b := range p.Bins {
+		bp, err := p.Bin(b.Name)
+		if err != nil {
+			return err
+		}
+		targets = append(targets, bp)
 	}
-	return runTests(m, p, pattern, platform)
+	var failed error
+	ran := 0
+	for i, t := range targets {
+		if i > 0 || len(targets) > 1 {
+			if !hasSources(t.Dir) {
+				continue
+			}
+			name := "the project"
+			if i > 0 {
+				name = "[bin." + p.Bins[i-1].Name + "]"
+			}
+			fmt.Printf("asuka: %s (%s)\n", name, relToCwd(t.Dir))
+		}
+		m, err := compileProject(t)
+		if err != nil {
+			return err
+		}
+		if len(m.Tests) == 0 && len(targets) > 1 {
+			continue
+		}
+		ran++
+		if err := runTests(m, t, pattern, platform); err != nil && failed == nil {
+			failed = err
+		}
+	}
+	if ran == 0 && len(targets) > 1 {
+		fmt.Println("asuka: no test blocks")
+	}
+	return failed
+}
+
+// hasSources reports whether dir has .asuka files: a package.
+func hasSources(dir string) bool {
+	m, _ := filepath.Glob(filepath.Join(dir, "*.asuka"))
+	return len(m) > 0
 }
 
 // testPlatform is the fake host's name for a --platform.

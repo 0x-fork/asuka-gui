@@ -81,6 +81,13 @@ func buildProgram(p *appbuild.Project, t cbuild.Target, dir, version string, ver
 	if m.Main < 0 {
 		return "", fmt.Errorf("%s isn't a program: it has no fn main (asuka build --platform builds an app)", cwdOr(p.Dir))
 	}
+	if p.Root != "" && hasAppBlock(p.Root) {
+		// An app's program: its data is the app's (a CLI over the app's
+		// notes), where the app's host keeps it on each desktop.
+		c := *m
+		c.Data = appDataFolder(app.cfg, p.Root, t.OS)
+		m = &c
+	}
 	ptarget := plugin.Target(t.OS, t.Arch)
 	libs, err := appLibs(app, ptarget)
 	if err != nil {
@@ -141,6 +148,37 @@ func cmdBuildProgram(p *appbuild.Project, o *buildOptions) error {
 	}
 	fmt.Printf("asuka: %s\n", relToCwd(exe))
 	return nil
+}
+
+// hasAppBlock reports whether dir's package has an app block: a project
+// that's an app.
+func hasAppBlock(dir string) bool {
+	files, _ := filepath.Glob(filepath.Join(dir, "*.asuka"))
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		for _, l := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(l, "app {") || l == "app{" || strings.HasPrefix(l, "app{") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// appDataFolder is the folder an app's host keeps its data in on goos
+// (the hosts' rules: macOS's and Linux's by its ID, Windows' by its
+// name).
+func appDataFolder(cfg *appConfig, root, goos string) string {
+	if goos == "windows" {
+		if cfg.Name != "" {
+			return cfg.Name
+		}
+		return filepath.Base(root)
+	}
+	return cfg.ID
 }
 
 // isProgramDir reports whether dir is a program's directory (its package

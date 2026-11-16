@@ -98,6 +98,13 @@ __attribute__((constructor)) static void register_app(void) {
 ak_module *asuka_app_module(void);
 ak_module *asuka_app_module(void) { return asuka_app_load(); }
 `, len(m.Funcs), readsCrashes(m))
+	if m.Main >= 0 && m.Data != "" {
+		g.p(`
+// The folder the program's data goes in: the app's it ships with.
+extern const char *ak_program_data;
+__attribute__((constructor)) static void program_data(void) { ak_program_data = %s; }
+`, cbytes(m.Data))
+	}
 	if m.Main >= 0 {
 		g.p(`
 // main runs the program (docs/programs.md): its arguments the system's
@@ -240,6 +247,22 @@ func (g *gen) fn(i int) error {
 	g.p("unwind:\n\tak_op_exit(R, K, N, -1);\n\tdepth--;\n\treturn (ak_val){0};\n")
 	g.p("#undef K\n#undef N\n}\n\n")
 	return nil
+}
+
+// cbytes is s as a C string literal, byte by byte.
+func cbytes(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 32 || c > 126 || c == '"' || c == '\\' || c == '?' {
+			fmt.Fprintf(&b, "\\%03o", c)
+		} else {
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 func cstr(s string) string {

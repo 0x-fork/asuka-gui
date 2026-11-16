@@ -155,6 +155,35 @@ static void start(void *ctx) {
 
 void ak_program_trim(const char *dir) { P.trim = dir; }
 
+const char *ak_program_data;
+
+// data_dir makes the program's data the folder ak_program_data names (an
+// app's, which it ships with) in the platform's place for an app's, as
+// the app's host does: macOS's Application Support, Windows' Local
+// AppData, Linux's XDG data directory. ASUKA_DATA, when set, wins.
+static void data_dir(void) {
+	if (!ak_program_data || !*ak_program_data) return;
+	const char *set = getenv("ASUKA_DATA");
+	if (set && *set) return;
+	char buf[4096];
+	buf[0] = 0;
+#if defined(_WIN32)
+	const char *base = getenv("LOCALAPPDATA");
+	if (!base || !*base) base = getenv("APPDATA");
+	if (base && *base) snprintf(buf, sizeof buf, "%s\\%s", base, ak_program_data);
+#elif defined(__APPLE__)
+	const char *home = getenv("HOME");
+	if (home && *home) snprintf(buf, sizeof buf, "%s/Library/Application Support/%s", home, ak_program_data);
+#else
+	const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+	if (xdg && xdg[0] == '/') snprintf(buf, sizeof buf, "%s/%s", xdg, ak_program_data);
+	else if (home && *home) snprintf(buf, sizeof buf, "%s/.local/share/%s", home, ak_program_data);
+#endif
+	if (!buf[0]) return;
+	asuka_setenv("ASUKA_DATA", buf);  // the host's directories follow it
+	ak_fs_set_app_dir(buf);
+}
+
 int ak_program_start(ak_module *m, int argc, char **argv, const asuka_host_callbacks *cb) {
 	ak_cond_init(&P.cond);
 	P.thread = ak_thread_id();
@@ -171,6 +200,7 @@ int ak_program_start(ak_module *m, int argc, char **argv, const asuka_host_callb
 		ak_native_set_host(&P.host);
 	}
 	ak_throw_hook = on_throw;
+	data_dir();
 	int32_t mi = ak_module_main(m);
 	if (mi < 0) {
 		fprintf(stderr, "asuka: the module has no fn main: it isn't a program\n");
