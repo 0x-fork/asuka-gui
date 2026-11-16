@@ -88,7 +88,10 @@ func runWebNode(t *testing.T, src string, opts *compile.Options, extra ...string
 // several at once, a cancelled one.
 func TestWebSpawn(t *testing.T) {
 	got := runWebNode(t, "spawn.asuka", &compile.Options{Lang: "fr"})
-	want := `500500
+	// The registry (not a value) is made once: by the page, not by the
+	// workers too.
+	want := `registry made
+500500
 d3 3 2 -1 true 0
 path 3 5 2
 0 3

@@ -1149,6 +1149,10 @@ func hasReturnValue(items []syntax.Item) bool {
 
 // sendable reports whether values of t can cross to another thread:
 // values only, no state, stores, views, tasks or closures.
+// Sendable reports whether a value of t can cross threads (spawn's
+// captures and result, the file's values a spawn's worker makes).
+func Sendable(t Type) bool { return sendable(t) }
+
 func sendable(t Type) bool {
 	return sendable1(t, map[*TypeName]bool{})
 }
@@ -1156,7 +1160,9 @@ func sendable(t Type) bool {
 func sendable1(t Type, seen map[*TypeName]bool) bool {
 	switch x := t.(type) {
 	case *Basic:
-		return x != View && x != TestApp
+		// A C pointer is the main thread's: on the web a spawn's worker
+		// has memory of its own, where it points at nothing.
+		return x != View && x != TestApp && x != Pointer
 	case *Array:
 		return sendable1(x.Elem, seen)
 	case *Map:
@@ -1201,7 +1207,9 @@ func sendable1(t Type, seen map[*TypeName]bool) bool {
 			}
 			return true
 		case InterfaceType:
-			return true
+			// A native interface's object is the platform's, which a
+			// spawn's worker hasn't on the web: it stays on the main thread.
+			return !x.Obj.Native
 		}
 		return false
 	}

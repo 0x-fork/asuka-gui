@@ -466,8 +466,10 @@ async fn loadThread(id: string) throws -> Thread {
   await never()`), or a stream that ends only when its reader goes.
 - `spawn { … }` runs a block on another thread, for work that would hold
   the main thread up (parsing, image processing). It may use values only,
-  not state, stores or views: the compiler says so if it does. On the
-  web it runs on one of the page's Web Workers.
+  not state, stores, views, native objects or C pointers, nor a file's
+  `let` that holds one (a database): the compiler says so if it does. On
+  the web it runs on one of the page's Web Workers, which make the
+  file's values for themselves, and nothing else.
 - `for await message in socket.messages { … }` reads a stream, a
   `Stream<T>`: values that come over time. `Stream(send => { … })`
   makes one: the block runs as a task when the stream is first read,

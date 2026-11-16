@@ -3599,7 +3599,11 @@ core/src/abi/web.c is the core's side:
   to it) with the same app (asuka dev's bytecode, which a reload sends
   again, or the app compiled in), whose init runs there without a UI
   (`asuka_worker_start`: apply and measure go nowhere, natives aren't
-  there, the app's databases are the page's). The page's core sends a
+  there) and makes only the file's values a spawn can use: state,
+  memos and what isn't a value (a database, a native object, a store),
+  which the checker keeps out of spawn, and what's made from them, are
+  skipped (`async.in_worker`), so a file's database isn't opened again
+  in each worker. The page's core sends a
   job: the closure's function by its index in the module (the VM's and
   lang/cgen's code share it), its captures in `vm/keep.c`'s encoding,
   which names its types; the worker's core runs it and answers its

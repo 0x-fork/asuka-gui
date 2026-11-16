@@ -78,3 +78,22 @@ fn crosses(db: Db) {
     db_exec(db, "x") // ERROR "spawn can't use db"
   }
 }
+
+// What spawn can't take: a file's let that isn't a value (an extern
+// type's, a native object), a C pointer. They're the main thread's, and
+// on the web a spawn's worker has its own memory and no host.
+extern fn make_ptr() -> Pointer
+native interface Thing {
+  fn f() -> int
+}
+let theDb = db_open("x")
+let thing = try? Thing()
+
+async fn spawned() -> int {
+  let p = make_ptr()
+  let a = spawn { let x = theDb; 1 } // ERROR "spawn can't use theDb .a Db.*: it isn't a value"
+  let b = spawn { let y = thing; 2 } // ERROR "spawn can't use thing .a Thing.*: it isn't a value"
+  let c = spawn { let q = p; 3 } // ERROR "spawn can't use p .a Pointer."
+  let d = spawn { 1 + 1 }
+  return await a + await b + await c + await d
+}
