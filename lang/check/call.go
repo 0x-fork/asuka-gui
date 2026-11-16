@@ -528,6 +528,19 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 	for _, tp := range f.TypeParams {
 		free[tp] = true
 	}
+	if len(e.TypeArgs) > 0 {
+		// f<T>(…): the type arguments written out.
+		if len(e.TypeArgs) != len(f.TypeParams) {
+			c.errorf(e, "%s takes %s", what, plural(len(f.TypeParams), "type argument", "type arguments"))
+		}
+		for i, ta := range e.TypeArgs {
+			t := c.typeExpr(ta)
+			if i < len(f.TypeParams) {
+				s[f.TypeParams[i]] = t
+				delete(free, f.TypeParams[i])
+			}
+		}
+	}
 	c.inferArgs(args, params, s, free, want, f.Sig.Result, what)
 	call := &Call{Kind: CallFunc, Func: f, Args: args, Params: params, Recv: recv, RecvType: recvType}
 	if f.Recv != nil {
