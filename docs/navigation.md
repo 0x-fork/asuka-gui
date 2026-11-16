@@ -436,8 +436,8 @@ screen Mailbox(name: string) {
 
 Each destination's content is the first screen of a stack: code under
 it pushes with `push`, and choosing another destination replaces the
-stack's screens with its first, at once, disposing them. A destination
-built is its first screen's title unless the screen has one.
+stack's screens with its first, at once, disposing them. The first
+screen's title is the destination's unless the screen has its own.
 `bind selected` is the chosen destination, counted across the sections;
 the user's choice writes it, and writing it shows another. A
 `Sidebar`'s title heads its destinations (a destination's own
