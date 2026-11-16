@@ -1374,11 +1374,17 @@ new module, which each player loads in place:
   The player's logs come back to the CLI, which prints them.
 - **Reaching the CLI**: the simulator shares the Mac's loopback; an
   Android device or emulator through `adb reverse` (its loopback reaches
-  the computer's, on the same port); an iPhone over the local network
-  (Local Network permission), on a port kept the same from run to run so
-  the player launched again from the home screen finds it; a desktop
-  player on loopback; the web's page through the dev server, which
-  serves the page and the modules (`asuka_dev_reload`).
+  the computer's, on the same port); an iPhone through the cable, where
+  the Mac connects to the player (usbmuxd reaches a port on the phone's
+  loopback, `asuka_dev_listen`; the phone can't open one the other way),
+  else over the local network (Local Network permission: the player
+  tries each of the Mac's addresses, on a port kept the same from run to
+  run, and keeps them, so one launched again from the home screen finds
+  it); a desktop player on loopback; the web's page through the dev
+  server, which serves the page and the modules (`asuka_dev_reload`). A
+  player dials again whenever its session ends, so it comes back to an
+  `asuka dev` that restarted; a connection the Mac makes takes over from
+  the player's own.
 - **Signing for an iPhone**: the player's App ID is the team's own
   (`dev.asuka.player.<team>`). A development profile that fits (the
   device among its devices, the capabilities the build's entitlements
