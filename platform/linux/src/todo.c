@@ -2,7 +2,6 @@
 #include "host.h"
 
 bool lx_draggable(node *n) { (void)n; return false; }
-void lx_present_popover(node *n) { (void)n; }
 void lx_tray_style_changed(void) {}
 bool lx_tray_click(uint32_t icon, int *x, int *y) { (void)icon; (void)x; (void)y; return false; }
 void lx_tray_flyout_closed(uint32_t icon) { (void)icon; }
@@ -16,4 +15,3 @@ void lx_install_notify_actions(void) {}
 void lx_notify_action_at_start(void) {}
 void lx_watch_launches(void);
 void lx_read_clipboard_text(void (*done)(const char *text, bool ok, void *ctx), void *ctx) { done("", false, ctx); }
-node *lx_popover_anchor(node *n) { (void)n; return NULL; }

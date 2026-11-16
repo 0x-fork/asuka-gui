@@ -948,6 +948,8 @@ static inline const char *g_utf8_next_char(const char *p) {
 	unsigned char c = (unsigned char)*p;
 	return p + (c < 0xc0 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : c < 0xf8 ? 4 : c < 0xfc ? 5 : 6);
 }
+// GLib's main loop priorities.
+enum { G_PRIORITY_HIGH = -100, G_PRIORITY_DEFAULT = 0, G_PRIORITY_HIGH_IDLE = 100, G_PRIORITY_DEFAULT_IDLE = 200 };
 #define GPOINTER_TO_INT(p) ((int)(intptr_t)(p))
 #define GINT_TO_POINTER(i) ((gpointer)(intptr_t)(i))
 #define g_signal_connect(o, s, f, d) g_signal_connect_data((o), (s), G_CALLBACK(f), (d), NULL, (GConnectFlags)0)

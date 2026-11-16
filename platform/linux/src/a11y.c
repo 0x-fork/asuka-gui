@@ -212,7 +212,7 @@ static gboolean unparent_later(gpointer w) {
 static void on_popup_closed(GtkPopover *pop, gpointer d) {
 	(void)d;
 	// Unparented once its action (which runs after it closes) has.
-	g_idle_add_full(200, unparent_later, pop, NULL);
+	g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, unparent_later, pop, NULL);
 }
 
 // lx_popup_at shows a popover menu of model on n's view: at x, y in it,

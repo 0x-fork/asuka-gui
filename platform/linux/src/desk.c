@@ -406,7 +406,7 @@ void lx_show_desk(win *w, bool focus) {
 		// idle turn at the latest), it waits.
 		d->wait_fit = true;
 		d->wait_focus = d->wait_focus || focus;
-		if (!d->wait_src) d->wait_src = g_idle_add_full(100 /* G_PRIORITY_HIGH_IDLE */, wait_fit_idle, w, NULL);
+		if (!d->wait_src) d->wait_src = g_idle_add_full(G_PRIORITY_HIGH_IDLE, wait_fit_idle, w, NULL);
 		return;
 	}
 	before_show(w);
@@ -565,7 +565,7 @@ static void desk_active_changed(GObject *o, GParamSpec *ps, gpointer data) {
 		return;
 	}
 	if (d->dismiss_src) return;
-	d->dismiss_src = g_idle_add_full(200 /* G_PRIORITY_DEFAULT_IDLE */, dismiss_idle, w, NULL);
+	d->dismiss_src = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, dismiss_idle, w, NULL);
 }
 
 static void desk_mapped(GtkWidget *wd, gpointer data) {
