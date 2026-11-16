@@ -2,8 +2,9 @@
 // text, line by line and word by word, faces, and barcodes and QR codes,
 // each with where it is. The Vision framework on iOS and macOS, ML Kit
 // and its bundled models on Android (about 30 MB), the browser's Shape
-// Detection API where it has one, Windows' OCR and package barcode, and
-// on Linux Tesseract (where it's installed) and ZBar. Nothing leaves the
+// Detection API where it has one, Windows' OCR and face detection and
+// Asuka's code readers, and on Linux Tesseract (where it's installed) and
+// ZBar (else Asuka's readers). Nothing leaves the
 // device. asuka/scan reads the value of a code; use this package for
 // where a code is.
 //

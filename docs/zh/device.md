@@ -149,7 +149,7 @@ Linux 宿主访问桌面服务时，有门户就走门户，此外还用到 GLib
 | `asuka/library` | 用户的文件夹（XDG 的 Pictures、Videos、Music、Downloads）下指定的文件夹 |
 | `shareFiles` | 没有分享面板：文件会复制到剪贴板，并弹出一条提示（toast） |
 | `asuka/camera`、`asuka/record` | 优先用相机门户（只询问用户一次；使用 PipeWire 的摄像头，需要 `gstreamer1.0-pipewire`），否则用第一个 Video4Linux 摄像头，二者都通过 GStreamer。`take()`：窗口上弹出一个对话框，带实时预览、“拍照”和“取消”按钮。`camera.View`：镜像显示的预览画面，填满它的区域；前置和后置是同一个摄像头（电脑的摄像头本来就朝着用户）。视频优先录成 MPEG-4（x264 或 OpenH264 提供的 H.264，加上 AAC），否则录成 WebM；扫码需要 GStreamer 的 `zbar` 元素。没有摄像头时为 `CameraError.noCamera`；被拒绝时为 `.notAllowed` |
-| `asuka/scan`、`asuka/vision` | 用 ZBar（`libzbar0`）识别条码：不支持 Aztec 和 Data Matrix。用 Tesseract（`libtesseract5` 加上对应语言的数据）识别文字；没有人脸检测，`faces` 始终为空。没有 ZBar 时，`scan.file` 抛出 "not available"；`vision.analyze` 会跳过没有安装的部分 |
+| `asuka/scan`、`asuka/vision` | 安装了 ZBar（`libzbar0`）时用它识别条码（不支持 Aztec 和 Data Matrix）；没有 ZBar 时，和 Windows 上一样用 Asuka 自带的识别器（QR、Data Matrix、EAN、UPC、Code 128、Code 39）。用 Tesseract（`libtesseract5` 加上对应语言的数据）识别文字；没有人脸检测，`faces` 始终为空。没有 Tesseract 时，`vision.analyze` 的结果里没有文字 |
 | `asuka/imageedit` | 用 GdkPixbuf 的加载器解码（装了相应加载器时支持 HEIF 和 WebP），并摆正方向；各项编辑操作由宿主完成；视频帧来自 GStreamer |
 | `asuka/webauth` | 窗口上弹出一个内嵌 WebKitGTK 网页视图的对话框（设置 `ephemeral` 时使用独立的会话）；关闭对话框即取消 |
 | `asuka/js` | 一个从不显示的 WebKitGTK 网页视图 |
@@ -269,7 +269,7 @@ component Clip {
 
 打开 `scan` 的 `camera.View` 会实时识别画面里的码，每识别到一个就通过 `code` 报告一次（码一直在画面里时只报告一次）。`codes` 限定要找的种类，不写就是所有种类。种类的名字是 `"qr"`、`"aztec"`、`"datamatrix"`、`"pdf417"`、`"ean13"`、`"ean8"`、`"upca"`、`"upce"`、`"code128"`、`"code39"`、`"code93"`、`"codabar"` 和 `"itf"`。
 
-`scan.file(path)` 则识别图片文件（拍的或选的照片）里的码：在 iOS 和 Mac 上用 Vision，在 Android 上用 ML Kit（模型打包在应用里，约 2 MB，所以没有 Google Play 服务也能用），在浏览器中用 `BarcodeDetector`（浏览器支持时），在 Windows 上用 Asuka 自带的解码器，在 Linux 上用 ZBar 的 GStreamer 元素。
+`scan.file(path)` 则识别图片文件（拍的或选的照片）里的码：在 iOS 和 Mac 上用 Vision，在 Android 上用 ML Kit（模型打包在应用里，约 2 MB，所以没有 Google Play 服务也能用），在浏览器中用 `BarcodeDetector`（浏览器支持时），在 Windows 上用 Asuka 自带的识别器（QR 码用 quirc，Data Matrix 用 libdmtx），在 Linux 上用 ZBar。
 
 ```asuka
 import asuka/camera
@@ -309,7 +309,7 @@ async fn words(photo: string) throws -> [string] {
 }
 ```
 
-在 iOS 和 Mac 上用的是 Vision 框架，在 Android 上是 ML Kit 及其打包的模型（约 30 MB），在浏览器中是 Shape Detection API（浏览器支持时），在 Windows 上是系统的 OCR，在 Linux 上是 Tesseract（已安装时）和 ZBar。`asuka/scan` 读出码的内容，这个包则告诉你码在哪里。
+在 iOS 和 Mac 上用的是 Vision 框架，在 Android 上是 ML Kit 及其打包的模型（约 30 MB），在浏览器中是 Shape Detection API（浏览器支持时），在 Windows 上是系统的 OCR 和人脸检测，加上 Asuka 自带的条码识别器，在 Linux 上是 Tesseract（已安装时）和 ZBar。`asuka/scan` 读出码的内容，这个包则告诉你码在哪里。
 
 ## 照片库：asuka/photos
 

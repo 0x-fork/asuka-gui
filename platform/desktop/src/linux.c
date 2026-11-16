@@ -48,6 +48,64 @@ void *asuka_linux_sym(const char *name) {
 	return dlsym(RTLD_DEFAULT, name);
 }
 
+static struct {
+	pthread_once_t once;
+	gpointer (*from_file)(const char *, GError **);
+	gpointer (*orient)(gpointer);
+	int (*width)(gpointer), (*height)(gpointer), (*rowstride)(gpointer), (*channels)(gpointer), (*bits)(gpointer);
+	gboolean (*has_alpha)(gpointer);
+	guchar *(*pixels)(gpointer);
+} pixbuf = {.once = PTHREAD_ONCE_INIT};
+
+static void load_pixbuf(void) {
+	if (!asuka_linux()) return;
+	if (!dlopen("libgdk_pixbuf-2.0.so.0", RTLD_NOW | RTLD_GLOBAL)) return;
+	*(void **)&pixbuf.from_file = asuka_linux_sym("gdk_pixbuf_new_from_file");
+	*(void **)&pixbuf.orient = asuka_linux_sym("gdk_pixbuf_apply_embedded_orientation");
+	*(void **)&pixbuf.width = asuka_linux_sym("gdk_pixbuf_get_width");
+	*(void **)&pixbuf.height = asuka_linux_sym("gdk_pixbuf_get_height");
+	*(void **)&pixbuf.rowstride = asuka_linux_sym("gdk_pixbuf_get_rowstride");
+	*(void **)&pixbuf.channels = asuka_linux_sym("gdk_pixbuf_get_n_channels");
+	*(void **)&pixbuf.bits = asuka_linux_sym("gdk_pixbuf_get_bits_per_sample");
+	*(void **)&pixbuf.has_alpha = asuka_linux_sym("gdk_pixbuf_get_has_alpha");
+	*(void **)&pixbuf.pixels = asuka_linux_sym("gdk_pixbuf_get_pixels");
+}
+
+bool asuka_linux_image_load(const char *path, int *width, int *height, uint8_t **pixels) {
+	pthread_once(&pixbuf.once, load_pixbuf);
+	if (!pixbuf.from_file || !pixbuf.orient || !pixbuf.width || !pixbuf.height || !pixbuf.rowstride || !pixbuf.channels || !pixbuf.bits ||
+	    !pixbuf.has_alpha || !pixbuf.pixels)
+		return false;
+	GError *e = NULL;
+	gpointer pb = pixbuf.from_file(path, &e);
+	if (!pb) {
+		if (e) G(g_error_free)(e);
+		return false;
+	}
+	gpointer up = pixbuf.orient(pb);  // a new reference
+	G(g_object_unref)(pb);
+	if (!up) return false;
+	int w = pixbuf.width(up), h = pixbuf.height(up), stride = pixbuf.rowstride(up), n = pixbuf.channels(up);
+	bool alpha = pixbuf.has_alpha(up);
+	const guchar *src = pixbuf.pixels(up);
+	if (w <= 0 || h <= 0 || pixbuf.bits(up) != 8 || (n != 3 && n != 4) || !src) {
+		G(g_object_unref)(up);
+		return false;
+	}
+	uint8_t *out = malloc((size_t)w * h * 4);
+	for (int y = 0; y < h; y++) {
+		const guchar *s = src + (size_t)y * stride;
+		uint8_t *d = out + (size_t)y * w * 4;
+		for (int x = 0; x < w; x++, s += n, d += 4) {
+			d[0] = s[0], d[1] = s[1], d[2] = s[2];
+			d[3] = alpha && n == 4 ? s[3] : 255;
+		}
+	}
+	G(g_object_unref)(up);
+	*width = w, *height = h, *pixels = out;
+	return true;
+}
+
 void asuka_linux_fail(asuka_error *err, GError *e, const char *what) {
 	if (!e) {
 		asuka_error_failed(err, "gio", 0, "%s failed", what ? what : "a call");

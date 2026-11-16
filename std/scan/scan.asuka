@@ -2,8 +2,9 @@
 // photo taken or picked); asuka/camera's View reads them live. Vision on
 // iOS and macOS, ML Kit on Android (with its model, about 2 MB, so it
 // works without Google Play services), the browser's BarcodeDetector
-// where there is one, package barcode's Go on Windows, ZBar's GStreamer
-// element on Linux.
+// where there is one, Asuka's own readers on Windows (platform/desktop's
+// asuka_barcode.h: quirc, libdmtx, and its own for EAN, UPC, Code 128 and
+// Code 39), ZBar on Linux where it's installed (else those readers).
 //
 //   for c in try await scan.file(path) { print("{c.kind}: {c.value}") }
 

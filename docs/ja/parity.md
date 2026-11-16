@@ -99,7 +99,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | 写真 | `PhotosPicker` | `expo-image-picker` | ✓ `device.PickPhotos` |
 | 書類 | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.PickFiles`（MIME タイプ、複数選択） |
 | カメラ | AVFoundation | `expo-camera` | ✓ `asuka/camera`：`Take`（システムのカメラ。Mac、Windows、Linux ではライブプレビュー付きのダイアログ。Windows は Media Foundation のキャプチャーエンジン、Linux はカメラポータルか GStreamer 経由の Video4Linux）、`View`（前面か背面のライブプレビュー）、`Capture`。`asuka/record` で音声付きの動画を録画 |
-| バーコード、QR コード | AVFoundation、Vision | `expo-camera` のスキャン | ✓ `asuka/scan`：`camera.View` でのライブ読み取り（`Scan: scan.Codes(...)`）と画像ファイルからの読み取り（`scan.File`）。Android では ML Kit で、インポートしたアプリにだけ含まれる。Linux では ZBar。Windows では Go で書いた Asuka 独自のリーダー（`internal/barcode`：QR、Data Matrix、EAN、UPC、Code 128、Code 39） |
+| バーコード、QR コード | AVFoundation、Vision | `expo-camera` のスキャン | ✓ `asuka/scan`：`camera.View` でのライブ読み取り（`Scan: scan.Codes(...)`）と画像ファイルからの読み取り（`scan.File`）。Android では ML Kit で、インポートしたアプリにだけ含まれる。Linux では ZBar。Windows では C で書いた Asuka 独自のリーダー（QR は quirc、Data Matrix は libdmtx、ほかに EAN、UPC、Code 128、Code 39） |
 | 位置情報 | Core Location | `expo-location` | ✓ `asuka/location`（地名。Windows では OpenStreetMap の Nominatim） |
 | 翻訳、複数形、地域のフォーマット | String Catalogs、FormatStyle | `expo-localization`、i18next | ✓ `asuka/i18n`、カタログ（[多言語対応](i18n.md)） |
 | 右から左のレイアウト | `layoutDirection` | `I18nManager` | ✓ 言語に従う、`ui.WithDirection` |

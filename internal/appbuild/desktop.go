@@ -41,6 +41,7 @@ func DesktopNatives(t cbuild.Target, dirs []string) (*DesktopC, error) {
 	}
 	c := &DesktopC{
 		Sources: append(desktop.Shared(d), filepath.Join(desktop.Include(d), "asuka_desktop.h")),
+		Deps:    desktop.Vendored(d),
 		Flags:   []string{"-I" + desktop.Include(d)},
 		Libs:    desktop.Libs(t.OS),
 	}

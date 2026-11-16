@@ -2,6 +2,8 @@ package desktop_test
 
 import (
 	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -47,6 +49,7 @@ func TestStdLinux(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
+	images := pngFixtures(t)
 	for _, c := range []struct {
 		name, src string
 		want      []string
@@ -351,6 +354,66 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: native view asuka/shader#Shader", "host: done"}},
+		{"scan", `import asuka/scan
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let qr = try await scan.file("` + images + `/qr.png")
+      step = "qr {qr.map(c => "{c.kind} {c.value}").joined(separator: ", ")}"
+      await sleep(1ms)
+      let both = try await scan.file("` + images + `/mixed.png")
+      step = "mixed {both.count()}"
+      await sleep(1ms)
+      let ean = try await scan.file("` + images + `/mixed.png", kinds: ["ean13"])
+      step = "asked {ean.map(c => "{c.kind} {c.value}").joined(separator: ", ")}"
+      await sleep(1ms)
+      let upc = try await scan.file("` + images + `/upca.png", kinds: ["ean13"])
+      step = "upc as {upc.map(c => "{c.kind} {c.value}").joined(separator: ", ")}"
+      await sleep(1ms)
+      let empty = try await scan.file("` + images + `/none.png")
+      step = "none {empty.count()}"
+      await sleep(1ms)
+      do {
+        let _ = try await scan.file("` + images + `/missing.png")
+      } catch e {
+        step = "missing threw"
+        await sleep(1ms)
+      }
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: qr qr https://asuka.dev/scan?q=1", "host: mixed 2", "host: asked ean13 5901234123457", "host: upc as ean13 0036000291452", "host: none 0", "host: missing threw", "host: done"}},
+		{"vision", `import asuka/vision
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let r = try await vision.analyze("` + images + `/mixed.png")
+      let q = r.codes.filter(c => c.kind == "qr")
+      step = "seen {r.width}x{r.height} {r.codes.count()} codes {r.faces.count()} faces {q.count() == 1 && q[0].box.x > 0 && q[0].box.x < 0.2 && q[0].box.w > 0.2 && q[0].box.w < 0.4}"
+      await sleep(1ms)
+      let t = try await vision.analyze("` + images + `/qr.png", text: false, faces: false)
+      step = "codes only {t.codes.count()} {t.lines.count()}"
+      await sleep(1ms)
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: seen 426x168 2 codes 0 faces true", "host: codes only 1 0", "host: done"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -381,6 +444,35 @@ app { Probe() }
 			}
 		})
 	}
+}
+
+// pngFixtures writes testdata/barcode's images (gray, PGM) as PNGs in a
+// directory of the test's: what the packages read as a photo.
+func pngFixtures(t *testing.T) string {
+	dir := t.TempDir()
+	pgms, _ := filepath.Glob(filepath.Join("testdata", "barcode", "*.pgm"))
+	for _, p := range pgms {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// "P5\n<w> <h>\n255\n", then the rows.
+		head := strings.SplitN(string(b), "\n", 4)
+		var w, h int
+		if len(head) < 4 || head[0] != "P5" || head[2] != "255" {
+			t.Fatalf("%s isn't a PGM", p)
+		}
+		fmt.Sscanf(head[1], "%d %d", &w, &h)
+		img := image.NewGray(image.Rect(0, 0, w, h))
+		copy(img.Pix, b[len(b)-w*h:])
+		f, err := os.Create(filepath.Join(dir, strings.TrimSuffix(filepath.Base(p), ".pgm")+".png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		png.Encode(f, img)
+		f.Close()
+	}
+	return dir
 }
 
 var (
