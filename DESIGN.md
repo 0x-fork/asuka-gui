@@ -1616,22 +1616,16 @@ behavior.
     highlight color. A scroll view's taking the gesture over cancels the
     long press.
   - Copying leaves out the inline components.
-- `asuka/markdown` renders Markdown with incremental parsing
-  (`markdown.View(text) { streaming: true }`): a change reparses only
-  from the last block that changed, a stream's open ends are healed (an
-  unclosed emphasis, a link being written), and each block has a
-  revision. The view is a keyed `for` over blocks (by start and kind),
-  each a RichText, so a streaming reply updates only the block being
-  written. Paragraphs, headings, lists (tight and loose, ordered,
-  tasks), quotes, code, math and HTML blocks (horizontally scrolled;
-  tabs expanded to 4 columns), tables, thematic breaks and footnotes.
-  Images alone in a paragraph are images; in text they're inline
-  components, a linked one following its link. The view is selectable
-  unless it says not, and links open with `openURL` unless `on link`
-  takes them. Its theme sets fonts, colors and spacing per kind of block
-  and inline, as text styles and the platform's semantic colors, so a
-  view with no theme looks native and follows the user's text size and
-  dark mode.
+- `asuka/markdown` (`markdown.View(text) { streaming: true }`) is each
+  platform's own Markdown, so a document reads, selects and speaks as the
+  platform's text does: `AttributedString` in a text view on iOS and the
+  Mac, Markwon on Android, a vendored marked on the web (raw HTML escaped,
+  only web, mail and relative links kept), and on Windows and Linux the
+  package's own parser written as RTF into a rich edit and as Pango
+  markup in a label. While a reply streams in, its text is healed once,
+  in Asuka, before it reaches any platform (`markdown.heal`: an unclosed
+  emphasis, a link being written), so a half-written document renders as
+  it will. Links open with the platform.
 
 **Not yet:** selection for screen reader users (VoiceOver and TalkBack
 read the texts and links but don't select across them).
