@@ -1,0 +1,83 @@
+// push() from what a Stack's first screen runs: its handlers, an alert's
+// buttons, a menu's actions, a swipe action, a snackbar's action, after
+// an await. Each runs where it was made: in the screen, in its stack.
+
+screen First {
+  title: "First"
+  Column {
+    Button("Now") { on press { push(Second()) } }
+    Button("Later") {
+      on press {
+        await sleep(10ms)
+        push(Second())
+      }
+    }
+    Button("Ask") {
+      on press { alert("Open it?", actions: [.button(title: "Open", run: () => push(Second()))]) }
+    }
+    Button("More") { menu: [.button(title: "Open from the menu", run: () => push(Second()))] }
+    Button("Tell") {
+      on press { let _ = snackbar("Saved", action: .button(title: "Show", run: () => push(Second()))) }
+    }
+  }
+  List {
+    for r in ["A row"] key r {
+      Row {
+        padding: 12
+        swipeActions: [.button(title: "Show it", run: () => push(Second()))]
+        Text(r)
+      }
+    }
+  }
+}
+
+screen Second {
+  title: "Second"
+  Text("the second")
+}
+
+component App {
+  Stack { First() }
+}
+
+app { App() }
+
+test "a handler" {
+  let app = mount(App())
+  app.tap("Now")
+  app.expect("the second")
+}
+
+test "after an await" {
+  let app = mount(App())
+  app.tap("Later")
+  await app.idle()
+  app.expect("the second")
+}
+
+test "an alert's button" {
+  let app = mount(App())
+  app.tap("Ask")
+  app.tap("Open")
+  app.expect("the second")
+}
+
+test "a menu's action" {
+  let app = mount(App())
+  app.tap("More")
+  app.tap("Open from the menu")
+  app.expect("the second")
+}
+
+test "a snackbar's action" {
+  let app = mount(App())
+  app.tap("Tell")
+  app.tap("Show")
+  app.expect("the second")
+}
+
+test "a swipe action" {
+  let app = mount(App())
+  app.swipe("A row", action: "Show it")
+  app.expect("the second")
+}

@@ -74,7 +74,10 @@ screen Detail(n: Note) {
 - `depth()` is how many screens the stack holds.
 
 `push`, `pop` and `depth` act on the nearest stack around the code that
-calls them (the screen's own, from its handlers).
+calls them: the screen's own, from its handlers and from what they made
+(an alert's buttons, a menu's or a swipe's actions, a snackbar's
+action, the rest of a handler after an `await`), on the first screen as
+on any other.
 
 On iOS and Android each stack has its own bar, and so it does on
 Windows (a header bar the host draws over the screen, as WinUI's) and

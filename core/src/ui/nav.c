@@ -384,7 +384,7 @@ void ak_back_run(ak_back *b) {
 	for (uint32_t i = b->fns.len; i-- > 0;) {
 		if (i >= b->fns.len) continue;  // a handler removed others
 		ak_closure *c = ak_retain(b->fns.data[i]);
-		ak_val took = ak_call(c, NULL, 0);
+		ak_val took = ak_ui_call_under(b->e ? b->e->owner : NULL, c, NULL, 0);
 		ak_release(c);
 		if (ak_error_pending()) {
 			ak_ui_raise_pending(b->e ? b->e->owner : NULL);

@@ -273,6 +273,10 @@ void ak_view_call(ak_view *e, uint16_t ev, ak_val *args, uint32_t nargs);
 // ak_view_call_closure is the same for a handler of its own (c may be
 // NULL: nothing).
 void ak_view_call_closure(ak_view *e, ak_closure *c, ak_val *args, uint32_t nargs);
+// ak_ui_call_under calls c under owner o (when o is alive): the contexts
+// it reads (its stack, its sheet, its router) are o's, as a handler's are
+// its view's. What it returns is the caller's; an error stays pending.
+ak_val ak_ui_call_under(ak_owner *o, ak_closure *c, ak_val *args, uint32_t nargs);
 void ak_view_put_id(ak_view *e);
 void ak_view_drop_id(ak_id id);
 ak_view *ak_view_of(ak_id id);

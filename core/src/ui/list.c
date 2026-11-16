@@ -671,7 +671,7 @@ static void run_swipe(lcell *c, const ak_arr *as, int64_t k) {
 	const ak_enum *a = as->data[k].p;
 	if (!a || ak_enum_case(a) != 0 || !a->f[5].p) return;  // a swipe shows each action enabled
 	ak_closure *run = ak_retain(a->f[5].p);
-	ak_val r = ak_call(run, NULL, 0);
+	ak_val r = ak_ui_call_under(c->row.owner, run, NULL, 0);
 	if (!ak_error_pending()) ak_release(r.p);
 	else ak_ui_raise_pending(c->row.owner);
 	ak_release(run);
