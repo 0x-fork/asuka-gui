@@ -1,4 +1,4 @@
-package svg_test
+package svgparse_test
 
 import (
 	"encoding/binary"
@@ -7,12 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/egoist/asuka/colors"
-	"github.com/egoist/asuka/host/fake"
+	"github.com/egoist/asuka/internal/svgparse"
 	"github.com/egoist/asuka/ops"
-	"github.com/egoist/asuka/sdk/svg"
-	"github.com/egoist/asuka/signal"
-	"github.com/egoist/asuka/ui"
 )
 
 // Lucide's "download" and "circle-check", verbatim.
@@ -29,7 +25,7 @@ const (
 
 // layers writes an icon's layers as text: a line each, its paint then
 // its path.
-func layers(ic *svg.Icon) string {
+func layers(ic *svgparse.Icon) string {
 	var b strings.Builder
 	for _, l := range ic.Layers {
 		fmt.Fprintf(&b, "fill=%s stroke=%s", paint(l.Fill), paint(l.Stroke))
@@ -41,7 +37,7 @@ func layers(ic *svg.Icon) string {
 	return b.String()
 }
 
-func paint(p svg.Paint) string {
+func paint(p svgparse.Paint) string {
 	switch {
 	case p.Current && p.Opacity < 1:
 		return fmt.Sprintf("current@%g", p.Opacity)
@@ -54,16 +50,16 @@ func paint(p svg.Paint) string {
 	return fmt.Sprintf("#%02x%02x%02x%02x", r, g, b, a)
 }
 
-func parse(t *testing.T, markup string) *svg.Icon {
+func parse(t *testing.T, markup string) *svgparse.Icon {
 	t.Helper()
-	ic, err := svg.Parse([]byte(markup))
+	ic, err := svgparse.Parse([]byte(markup))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return ic
 }
 
-func want(t *testing.T, ic *svg.Icon, w string) {
+func want(t *testing.T, ic *svgparse.Icon, w string) {
 	t.Helper()
 	if got := layers(ic); got != w {
 		t.Fatalf("layers:\n%s\nwant:\n%s", got, w)
@@ -78,11 +74,11 @@ func TestLucide(t *testing.T) {
 	}
 	want(t, ic, fmt.Sprintf("fill=none stroke=current width=2 cap=%d join=%d: "+
 		"M 21 15 L 21 19 C 21 20.105 20.105 21 19 21 L 5 21 C 3.895 21 3 20.105 3 19 L 3 15 "+
-		"M 7 10 L 12 15 L 17 10 M 12 15 L 12 3\n", ui.CapRound, ui.JoinRound))
+		"M 7 10 L 12 15 L 17 10 M 12 15 L 12 3\n", ops.LineCapRound, ops.LineJoinRound))
 
 	ic = parse(t, lucideCircleCheck)
 	want(t, ic, fmt.Sprintf("fill=none stroke=current width=2 cap=%d join=%d: "+
-		"Ellipse 2 2 20 20 M 9 12 L 11 14 L 15 10\n", ui.CapRound, ui.JoinRound))
+		"Ellipse 2 2 20 20 M 9 12 L 11 14 L 15 10\n", ops.LineCapRound, ops.LineJoinRound))
 }
 
 func TestMaterial(t *testing.T) {
@@ -249,7 +245,7 @@ func TestPaint(t *testing.T) {
 		"fill=current stroke=none: Rect 0 0 1 1\n"+ // a gradient: the icon's color
 		"fill=#000080ff stroke=none: Rect 0 0 1 1\n"+ // its fallback
 		"fill=current stroke=none: Rect 0 0 1 1\n"+ // unknown: inherited
-		fmt.Sprintf("fill=none stroke=#0000ff80 width=3 cap=%d join=%d: M 0 0 L 1 1\n", ui.CapSquare, ui.JoinBevel))
+		fmt.Sprintf("fill=none stroke=#0000ff80 width=3 cap=%d join=%d: M 0 0 L 1 1\n", ops.LineCapSquare, ops.LineJoinBevel))
 }
 
 func TestSkipped(t *testing.T) {
@@ -307,7 +303,7 @@ func TestViewBox(t *testing.T) {
 	}
 
 	for _, bad := range []string{``, `<svg`, `<html/>`, `<svg/>`} {
-		if _, err := svg.Parse([]byte(bad)); err == nil {
+		if _, err := svgparse.Parse([]byte(bad)); err == nil {
 			t.Errorf("%q: no error", bad)
 		}
 	}
@@ -316,198 +312,26 @@ func TestViewBox(t *testing.T) {
 			t.Error("MustParse didn't panic")
 		}
 	}()
-	svg.MustParse(`<html/>`)
+	svgparse.MustParse(`<html/>`)
 }
 
-func mount(t *testing.T, root func() ui.Node) (*fake.Host, *ui.Root) {
-	t.Helper()
-	h := fake.New()
-	r := ui.Mount(h, root)
-	t.Cleanup(r.Dispose)
-	return h, r
-}
-
-// shapePath decodes a Shape's path, as Path.String writes one.
-func shapePath(v *fake.View) string {
-	b := v.Props[ops.PropShapePath].Bytes
-	var out []string
-	for len(b) > 0 {
-		op := ops.PathOp(b[0])
-		b = b[1:]
-		name, n := map[ops.PathOp]string{
-			ops.PathOpMove: "M", ops.PathOpLine: "L", ops.PathOpQuad: "Q", ops.PathOpCubic: "C",
-			ops.PathOpClose: "Z", ops.PathOpRect: "Rect", ops.PathOpRoundedRect: "RoundedRect", ops.PathOpEllipse: "Ellipse",
-		}[op], map[ops.PathOp]int{
-			ops.PathOpMove: 2, ops.PathOpLine: 2, ops.PathOpQuad: 4, ops.PathOpCubic: 6,
-			ops.PathOpRect: 4, ops.PathOpRoundedRect: 5, ops.PathOpEllipse: 4,
-		}[op]
-		out = append(out, name)
-		for range n {
-			f := math.Float32frombits(binary.LittleEndian.Uint32(b))
-			b = b[4:]
-			out = append(out, fmt.Sprint(math.Round(float64(f)*1000)/1000))
-		}
+// Encode writes the viewBox, the size and each layer as std/svg's
+// platforms read them.
+func TestEncode(t *testing.T) {
+	ic := parse(t, `<svg viewBox="0 0 24 24" width="48" height="48"><rect x="2" y="3" width="4" height="5" fill="#ff0000"/></svg>`)
+	b := ic.Encode()
+	le := binary.LittleEndian
+	f32 := func(i int) float32 { return math.Float32frombits(le.Uint32(b[i:])) }
+	if f32(0) != 0 || f32(8) != 24 || f32(12) != 24 || f32(16) != 48 || f32(20) != 48 || le.Uint32(b[24:]) != 1 {
+		t.Fatalf("header % x", b[:28])
 	}
-	return strings.Join(out, " ")
-}
-
-func TestView(t *testing.T) {
-	download := svg.MustParse(lucideDownload)
-	h, _ := mount(t, func() ui.Node {
-		return ui.Column(ui.Style{},
-			svg.View(svg.Props{Icon: download, Style: ui.Style{Width: ui.Pt(24), Height: ui.Pt(24)}}),
-			svg.View(svg.Props{Icon: download, Label: ui.Val("Download"), Color: ui.Val(colors.Accent),
-				Style: ui.Style{Width: ui.Pt(48), Height: ui.Pt(48)}}),
-		)
-	})
-	shapes := h.OfKind(ops.KindShape)
-	if len(shapes) != 2 {
-		t.Fatalf("%d shapes:\n%s", len(shapes), h.Root().Tree())
+	// The fill (a color), the stroke (none), its width, cap and join, then
+	// the path: a rect and its four arguments.
+	l := b[28:]
+	if string(l[:5]) != "\x01\xff\x00\x00\xff" || l[5] != 0 || f32(28+6) != 0 || l[10] != 0 || l[11] != 0 {
+		t.Fatalf("layer % x", l)
 	}
-	small, big := shapes[0], shapes[1]
-	if small.Parent.Frame != [4]float32{0, 0, 24, 24} || small.Frame != [4]float32{0, 0, 24, 24} ||
-		big.Frame != [4]float32{0, 0, 48, 48} {
-		t.Fatalf("frames:\n%s", h.Root().Tree())
-	}
-	if !small.Parent.Bool(ops.PropA11yHidden) || small.Parent.String(ops.PropA11yLabel) != "" {
-		t.Fatal("an icon without a label isn't decorative")
-	}
-	if big.Parent.String(ops.PropA11yLabel) != "Download" || big.Parent.Int(ops.PropA11yRole) != int64(ui.RoleImage) ||
-		big.Parent.Bool(ops.PropA11yHidden) {
-		t.Fatal("the labeled icon isn't an image to screen readers")
-	}
-	for _, c := range []struct {
-		v     *fake.View
-		color ui.Color
-		width float64
-	}{{small, colors.Label, 2}, {big, colors.Accent, 4}} {
-		if _, ok := c.v.Props[ops.PropShapeFill]; ok {
-			t.Error("a fill=none layer is filled")
-		}
-		if ui.Color(c.v.Int(ops.PropShapeStroke)) != c.color || c.v.Float(ops.PropShapeLineWidth) != c.width ||
-			ops.LineCap(c.v.Int(ops.PropShapeLineCap)) != ui.CapRound || ops.LineJoin(c.v.Int(ops.PropShapeLineJoin)) != ui.JoinRound {
-			t.Errorf("stroke %v, width %g, cap %d, join %d", c.v.Props[ops.PropShapeStroke], c.v.Float(ops.PropShapeLineWidth),
-				c.v.Int(ops.PropShapeLineCap), c.v.Int(ops.PropShapeLineJoin))
-		}
-	}
-	if got := shapePath(small); got != download.Layers[0].Path.String() {
-		t.Fatalf("24: %s", got)
-	}
-	// At 48, every coordinate doubles.
-	if got := shapePath(big); got != "M 42 30 L 42 38 C 42 40.209 40.209 42 38 42 L 10 42 C 7.791 42 6 40.209 6 38 L 6 30 "+
-		"M 14 20 L 24 30 L 34 20 M 24 30 L 24 6" {
-		t.Fatalf("48: %s", got)
-	}
-}
-
-func TestViewSize(t *testing.T) {
-	ic := svg.MustParse(`<svg viewBox="0 0 24 12" width="24" height="12"><path d="M0 0L24 12" stroke="#000" stroke-width="2"/></svg>`)
-	big := signal.New(false)
-	h, r := mount(t, func() ui.Node {
-		return ui.Column(ui.Style{Align: ui.AlignStart},
-			svg.View(svg.Props{Icon: ic}),                                     // its own size
-			svg.View(svg.Props{Icon: ic, Style: ui.Style{Height: ui.Pt(24)}}), // the width from the aspect ratio
-			// A size known once it's laid out: the stroke follows it.
-			svg.View(svg.Props{Icon: ic, Style: ui.StyleFunc(func() ui.Style {
-				if big.Get() {
-					return ui.Style{Width: ui.Pt(96), Height: ui.Pt(48)}
-				}
-				return ui.Style{Width: ui.Pt(72), Height: ui.Pt(72)}
-			})}),
-		)
-	})
-	shapes := h.OfKind(ops.KindShape)
-	if len(shapes) != 3 {
-		t.Fatalf("%d shapes:\n%s", len(shapes), h.Root().Tree())
-	}
-	for i, c := range []struct {
-		frame [4]float32
-		width float64
-		path  string
-	}{
-		{[4]float32{0, 0, 24, 12}, 2, "M 0 0 L 24 12"},
-		{[4]float32{0, 0, 48, 24}, 4, "M 0 0 L 48 24"},
-		{[4]float32{0, 0, 72, 72}, 6, "M 0 18 L 72 54"},
-	} {
-		s := shapes[i]
-		if s.Frame != c.frame || s.Float(ops.PropShapeLineWidth) != c.width || shapePath(s) != c.path {
-			t.Errorf("%d: frame %v, width %g, path %s", i, s.Frame, s.Float(ops.PropShapeLineWidth), shapePath(s))
-		}
-	}
-	big.Set(true)
-	r.Flush()
-	s := h.OfKind(ops.KindShape)[2]
-	if s.Float(ops.PropShapeLineWidth) != 8 || shapePath(s) != "M 0 0 L 96 48" {
-		t.Fatalf("width %g, path %s", s.Float(ops.PropShapeLineWidth), shapePath(s))
-	}
-}
-
-func TestViewColor(t *testing.T) {
-	ic := svg.MustParse(`<svg viewBox="0 0 24 24">
-		<circle cx="12" cy="12" r="10" fill="#ff0000"/>
-		<path d="M6 12h12" fill="none" stroke="currentColor" stroke-width="2"/>
-		<rect x="8" y="8" width="8" height="8" fill="currentColor" fill-opacity="0.5"/>
-	</svg>`)
-	color := signal.New(colors.RGB(0, 0, 255))
-	h, r := mount(t, func() ui.Node {
-		return svg.View(svg.Props{Icon: ic, Color: color, Style: ui.Style{Width: ui.Pt(24), Height: ui.Pt(24)}})
-	})
-	shapes := h.OfKind(ops.KindShape)
-	if len(shapes) != 3 {
-		t.Fatalf("%d shapes", len(shapes))
-	}
-	red := shapes[0]
-	if ui.Color(red.Int(ops.PropShapeFill)) != colors.RGB(255, 0, 0) || ui.Color(shapes[1].Int(ops.PropShapeStroke)) != colors.RGB(0, 0, 255) ||
-		ui.Color(shapes[2].Int(ops.PropShapeFill)) != colors.RGBA(0, 0, 255, 128) {
-		t.Fatalf("colors: %v %v %v", red.Props[ops.PropShapeFill], shapes[1].Props[ops.PropShapeStroke], shapes[2].Props[ops.PropShapeFill])
-	}
-
-	// The two layers painted with the icon's color are made again with
-	// the new one; the red circle isn't touched.
-	h.Reset()
-	color.Set(colors.RGB(0, 128, 0))
-	r.Flush()
-	if h.Count(ops.OpCreate) != 2 || h.Count(ops.OpDestroy) != 2 {
-		t.Fatalf("%d creates, %d destroys:\n%s", h.Count(ops.OpCreate), h.Count(ops.OpDestroy), h.Log())
-	}
-	for _, op := range h.Ops {
-		if op.ID == red.ID {
-			t.Fatalf("the red circle changed:\n%s", h.Log())
-		}
-	}
-	shapes = h.OfKind(ops.KindShape)
-	if len(shapes) != 3 || shapes[0] != red || ui.Color(shapes[1].Int(ops.PropShapeStroke)) != colors.RGB(0, 128, 0) ||
-		ui.Color(shapes[2].Int(ops.PropShapeFill)) != colors.RGBA(0, 128, 0, 128) || shapes[1].Float(ops.PropShapeLineWidth) != 2 ||
-		shapePath(shapes[1]) != "M 6 12 L 18 12" {
-		t.Fatalf("after:\n%s", h.Log())
-	}
-
-	// A semantic color can't take the layer's opacity: the view does.
-	color.Set(colors.Accent)
-	r.Flush()
-	shapes = h.OfKind(ops.KindShape)
-	if ui.Color(shapes[2].Int(ops.PropShapeFill)) != colors.Accent || shapes[2].Float(ops.PropOpacity) != 0.5 {
-		t.Fatalf("semantic: %v %v", shapes[2].Props[ops.PropShapeFill], shapes[2].Props[ops.PropOpacity])
-	}
-}
-
-func TestViewStatic(t *testing.T) {
-	// A static color and size make no effects of the icon's own: after
-	// mounting, nothing changes.
-	ic := svg.MustParse(materialHome)
-	h, r := mount(t, func() ui.Node {
-		return svg.View(svg.Props{Icon: ic, Color: ui.Val(colors.Red), Style: ui.Style{Width: ui.Pt(24), Height: ui.Pt(24)}})
-	})
-	s := h.One(ops.KindShape, "")
-	if ui.Color(s.Int(ops.PropShapeFill)) != colors.Red {
-		t.Fatal(s.Props)
-	}
-	if _, ok := s.Props[ops.PropShapeStroke]; ok {
-		t.Fatal("stroked")
-	}
-	h.Reset()
-	r.Flush()
-	if len(h.Ops) != 0 {
-		t.Fatalf("a flush with nothing changed:\n%s", h.Log())
+	if n := le.Uint32(l[12:]); n != 17 || len(l) != 16+17 || ops.PathOp(l[16]) != ops.PathOpRect || f32(28+17) != 2 || f32(28+29) != 5 {
+		t.Fatalf("path % x", l[12:])
 	}
 }

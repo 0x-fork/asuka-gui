@@ -2,8 +2,8 @@ package compile
 
 import (
 	"github.com/egoist/asuka/internal/shadercode"
+	"github.com/egoist/asuka/internal/svgparse"
 	"github.com/egoist/asuka/lang/ir"
-	"github.com/egoist/asuka/sdk/svg"
 )
 
 // The standard library's structs the compiler makes from a constant
@@ -12,7 +12,7 @@ import (
 // every platform, from its Kage source.
 func init() {
 	ir.StructHooks["asuka/svg.Icon"] = func(src string) (map[string]any, error) {
-		ic, err := svg.Parse([]byte(src))
+		ic, err := svgparse.Parse([]byte(src))
 		if err != nil {
 			return nil, err
 		}

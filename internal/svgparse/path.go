@@ -1,4 +1,4 @@
-package svg
+package svgparse
 
 import (
 	"math"
@@ -6,11 +6,10 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/ops"
-	"github.com/egoist/asuka/ui"
 )
 
 // Path is a layer's outline in viewBox units, transforms applied: per
-// segment an ops.PathOp and its arguments, as ui.Path has them.
+// segment an ops.PathOp and its arguments, as ops.PathOp lists them.
 type Path struct {
 	cmds []ops.PathOp
 	args []float32
@@ -32,36 +31,6 @@ func nargs(op ops.PathOp) int {
 
 // Empty reports whether the path has no segments.
 func (p *Path) Empty() bool { return len(p.cmds) == 0 }
-
-// Append adds the path to dst, scaled by scale and moved by dx, dy (see
-// Icon.Fit), and returns dst.
-func (p *Path) Append(dst *ui.Path, scale, dx, dy float32) *ui.Path {
-	a := p.args
-	x := func(i int) float32 { return a[i]*scale + dx }
-	y := func(i int) float32 { return a[i]*scale + dy }
-	for _, op := range p.cmds {
-		switch op {
-		case ops.PathOpMove:
-			dst.MoveTo(x(0), y(1))
-		case ops.PathOpLine:
-			dst.LineTo(x(0), y(1))
-		case ops.PathOpQuad:
-			dst.QuadTo(x(0), y(1), x(2), y(3))
-		case ops.PathOpCubic:
-			dst.CubicTo(x(0), y(1), x(2), y(3), x(4), y(5))
-		case ops.PathOpClose:
-			dst.Close()
-		case ops.PathOpRect:
-			dst.Rect(x(0), y(1), a[2]*scale, a[3]*scale)
-		case ops.PathOpRoundedRect:
-			dst.RoundedRect(x(0), y(1), a[2]*scale, a[3]*scale, a[4]*scale)
-		case ops.PathOpEllipse:
-			dst.Ellipse(x(0), y(1), a[2]*scale, a[3]*scale)
-		}
-		a = a[nargs(op):]
-	}
-	return dst
-}
 
 // String writes the path as text, for tests and debugging: "M x y",
 // "L x y", "Q", "C" and "Z" as in SVG path data (absolute), and "Rect x

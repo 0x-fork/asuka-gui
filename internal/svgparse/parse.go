@@ -1,4 +1,4 @@
-package svg
+package svgparse
 
 import (
 	"bytes"
@@ -10,8 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/egoist/asuka/colors"
-	"github.com/egoist/asuka/ui"
+	"github.com/egoist/asuka/ops"
 )
 
 const svgNS = "http://www.w3.org/2000/svg"
@@ -104,7 +103,7 @@ const (
 
 type paint struct {
 	kind  paintKind
-	color ui.Color
+	color ops.Color
 }
 
 // state is what an element inherits, and its transform.
@@ -114,9 +113,9 @@ type state struct {
 	fillOp, strokeOp  float64
 	opacity           float64 // the product of the ancestors' opacity
 	width             float64
-	cap               ui.LineCap
-	join              ui.LineJoin
-	color             ui.Color // the color property, for currentColor
+	cap               ops.LineCap
+	join              ops.LineJoin
+	color             ops.Color // the color property, for currentColor
 	hasColor, visible bool
 }
 
@@ -243,21 +242,21 @@ func inherit(e *elem, st state) state {
 	if v, ok := e.attr("stroke-linecap"); ok {
 		switch v {
 		case "butt":
-			st.cap = ui.CapButt
+			st.cap = ops.LineCapButt
 		case "round":
-			st.cap = ui.CapRound
+			st.cap = ops.LineCapRound
 		case "square":
-			st.cap = ui.CapSquare
+			st.cap = ops.LineCapSquare
 		}
 	}
 	if v, ok := e.attr("stroke-linejoin"); ok {
 		switch v {
 		case "miter", "miter-clip", "arcs":
-			st.join = ui.JoinMiter
+			st.join = ops.LineJoinMiter
 		case "round":
-			st.join = ui.JoinRound
+			st.join = ops.LineJoinRound
 		case "bevel":
-			st.join = ui.JoinBevel
+			st.join = ops.LineJoinBevel
 		}
 	}
 	if v, ok := e.attr("visibility"); ok {
@@ -266,7 +265,7 @@ func inherit(e *elem, st state) state {
 	if v, ok := e.attr("transform"); ok {
 		st.m = st.m.mul(parseTransform(v))
 	}
-	// fill-rule (evenodd) isn't supported: ui.Path fills by the nonzero
+	// fill-rule (evenodd) isn't supported: the platforms fill by the nonzero
 	// rule. clip-path, mask and filter are ignored too.
 	return st
 }
@@ -388,7 +387,7 @@ func (p *parser) shape(e *elem, st state) {
 		l.Stroke = Paint{}
 	}
 	if l.Stroke.None() {
-		l.LineWidth, l.LineCap, l.LineJoin = 0, ui.CapButt, ui.JoinMiter
+		l.LineWidth, l.LineCap, l.LineJoin = 0, ops.LineCapButt, ops.LineJoinMiter
 	}
 	if l.Fill.None() && l.Stroke.None() {
 		return
@@ -424,7 +423,7 @@ func (st *state) resolve(c paint, op float64) Paint {
 		if a == 0 {
 			return Paint{}
 		}
-		return Paint{Color: colors.RGBA(r, g, b, a)}
+		return Paint{Color: ops.RGBA(r, g, b, a)}
 	case paintCurrent:
 		return Paint{Current: true, Opacity: float32(min(op, 1))}
 	}
@@ -470,7 +469,7 @@ func parseColor(v string) (paint, bool) {
 		return paint{}, false
 	}
 	if c, ok := named[lv]; ok {
-		return paint{kind: paintColor, color: colors.Hex(c)}, true
+		return paint{kind: paintColor, color: ops.RGBA(uint8(c>>16), uint8(c>>8), uint8(c), 255)}, true
 	}
 	if strings.HasPrefix(lv, "#") {
 		h := lv[1:]
@@ -482,7 +481,7 @@ func parseColor(v string) (paint, bool) {
 			}
 			h = b.String()
 		}
-		if c, ok := colors.ParseHex(h); ok {
+		if c, ok := parseHex(h); ok {
 			return paint{kind: paintColor, color: c}, true
 		}
 		return paint{}, false
@@ -514,7 +513,7 @@ func parseColor(v string) (paint, bool) {
 			}
 			ch[i] = uint8(math.Round(min(max(x, 0), 255)))
 		}
-		return paint{kind: paintColor, color: colors.RGBA(ch[0], ch[1], ch[2], ch[3])}, true
+		return paint{kind: paintColor, color: ops.RGBA(ch[0], ch[1], ch[2], ch[3])}, true
 	}
 	return paint{}, false
 }
@@ -620,4 +619,21 @@ func parseTransform(v string) matrix {
 		}
 		m = m.mul(t)
 	}
+}
+
+// parseHex parses "#rrggbb" or "#rrggbbaa" (the "#" optional).
+func parseHex(s string) (ops.Color, bool) {
+	s = strings.TrimPrefix(s, "#")
+	if len(s) != 6 && len(s) != 8 {
+		return 0, false
+	}
+	v := [4]uint8{3: 255}
+	for i := 0; i < len(s)/2; i++ {
+		n, err := strconv.ParseUint(s[2*i:2*i+2], 16, 8)
+		if err != nil {
+			return 0, false
+		}
+		v[i] = uint8(n)
+	}
+	return ops.RGBA(v[0], v[1], v[2], v[3]), true
 }

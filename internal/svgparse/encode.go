@@ -1,4 +1,4 @@
-package svg
+package svgparse
 
 import (
 	"encoding/binary"
