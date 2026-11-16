@@ -5,6 +5,8 @@ description = "The user's calendars: their events, and new ones"
 [ios.usage]
 NSCalendarsFullAccessUsageDescription = "To show and add your events."
 NSCalendarsWriteOnlyAccessUsageDescription = "To add events to your calendar."
+# Before iOS 17's levels of access.
+NSCalendarsUsageDescription = "To show and add your events."
 
 [android]
 permissions = ["android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"]

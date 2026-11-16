@@ -2,5 +2,13 @@ name = "asuka/push"
 version = "0.1.0"
 description = "Push notifications: the device's token, and the pushes that come and are opened"
 
+# APNs: the Push Notifications capability (a release's profile must have
+# it), and the pushes that wake the app.
 [ios]
 backgroundModes = ["remote-notification"]
+entitlements = { aps-environment = "development" }
+
+# Firebase Cloud Messaging: the host's asuka-push module (its manifest has
+# POST_NOTIFICATIONS and the messaging service).
+[android]
+hostModules = ["push"]

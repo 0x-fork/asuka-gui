@@ -6,67 +6,46 @@ import (
 	"testing"
 )
 
-// asuka/sdk/location's background part costs only the apps that call it:
-// Always's purpose string and ACCESS_BACKGROUND_LOCATION for
-// RequestAlways, the location background mode and the foreground service
-// for StartUpdates, the receiver and Play services' module for
-// StartUpdates and Monitor, temporary full accuracy's purposes for
-// RequestPrecise.
+// asuka/location says what it needs itself: its permissions, purpose
+// strings and background mode in its asuka.toml, its receiver and
+// foreground service in its Gradle module's manifest (the host has none
+// of them); temporary full accuracy's purposes are the app's, for an app
+// that calls location.requestPrecise.
 func TestLocationExtras(t *testing.T) {
-	pkg := "github.com/egoist/asuka/sdk/location."
-	var fg appConfig
-	fg.permissionsFor([]string{"github.com/egoist/asuka/sdk/location"})
-	fg.useLocation(func(s string) bool { return s == pkg+"Current" })
-	fg.addFeatureExtras([]string{"ASUKA_LOCATION"})
-	man := fg.androidManifest(false)
-	for _, no := range []string{"BACKGROUND_LOCATION", "AsukaLocationService", "AsukaLocationReceiver", "BOOT_COMPLETED"} {
-		if strings.Contains(man, no) {
-			t.Errorf("foreground only: %s in the manifest:\n%s", no, man)
-		}
-	}
-	if fg.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] != "" || fg.plistArrays["UIBackgroundModes"] != nil || slices.Contains(fg.androidModules, "location") {
-		t.Errorf("foreground only: %v %v %v", fg.IOS.Usage, fg.plistArrays, fg.androidModules)
-	}
-
-	var bg appConfig
-	bg.IOS.LocationPurposes = map[string]string{"route": "To draw your route."}
-	bg.permissionsFor([]string{"github.com/egoist/asuka/sdk/location"})
-	bg.useLocation(func(s string) bool { return s == pkg+"RequestAlways" || s == pkg+"StartUpdates" || s == pkg+"Monitor" })
-	bg.addFeatureExtras([]string{"ASUKA_LOCATION", "ASUKA_LOCATION_BACKGROUND", "ASUKA_LOCATION_ALWAYS", "ASUKA_LOCATION_UPDATES", "ASUKA_LOCATION_PRECISE"})
-	man = bg.androidManifest(false)
-	for _, want := range []string{"android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE_LOCATION",
-		"android.permission.RECEIVE_BOOT_COMPLETED", `android:name="dev.asuka.AsukaLocationService" android:exported="false" android:foregroundServiceType="location"`,
-		`<receiver android:name="dev.asuka.AsukaLocationReceiver"`, "android.intent.action.BOOT_COMPLETED"} {
+	var c appConfig
+	c.IOS.LocationPurposes = map[string]string{"route": "To draw your route."}
+	importStd(t, &c, "ios", "location")
+	c.locationPrecise = true // usedFeatures: the app calls location.requestPrecise
+	man := c.androidManifest(false)
+	for _, want := range []string{"android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE_LOCATION"} {
 		if !strings.Contains(man, want) {
 			t.Errorf("no %s in the manifest:\n%s", want, man)
 		}
 	}
-	if !slices.Contains(bg.androidModules, "location") {
-		t.Errorf("modules %v", bg.androidModules)
+	if strings.Contains(man, "dev.asuka.AsukaLocation") || len(c.androidModules) > 0 {
+		t.Errorf("the host's old location service, receiver or module: %v\n%s", c.androidModules, man)
 	}
-	if bg.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] == "" || bg.IOS.Usage["NSLocationWhenInUseUsageDescription"] == "" {
-		t.Errorf("usage %v", bg.IOS.Usage)
+	mod := stdAndroidManifest(t, "location")
+	for _, want := range []string{`<service android:name="asuka.location.LocationService" android:exported="false" android:foregroundServiceType="location" />`,
+		`<receiver android:name="asuka.location.LocationReceiver"`, "android.intent.action.BOOT_COMPLETED", "android.permission.RECEIVE_BOOT_COMPLETED"} {
+		if !strings.Contains(mod, want) {
+			t.Errorf("no %s in asuka/location's module's manifest:\n%s", want, mod)
+		}
 	}
-	if m := bg.plistArrays["UIBackgroundModes"]; !slices.Equal(m, []string{"location"}) {
+	if c.IOS.Usage["NSLocationWhenInUseUsageDescription"] == "" || c.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] == "" {
+		t.Errorf("usage %v", c.IOS.Usage)
+	}
+	x := c.plistExtras()
+	if m, _ := x["UIBackgroundModes"].([]string); !slices.Equal(m, []string{"location"}) {
 		t.Errorf("background modes %v", m)
 	}
-	ps, _ := bg.plistExtras()["NSLocationTemporaryUsageDescriptionDictionary"].(map[string]any)
+	ps, _ := x["NSLocationTemporaryUsageDescriptionDictionary"].(map[string]any)
 	if ps["default"] == nil || ps["route"] != "To draw your route." {
 		t.Errorf("purposes %v", ps)
 	}
-
-	// Regions alone: the receiver and the module, no service, no background permission.
-	var rg appConfig
-	rg.useLocation(func(s string) bool { return s == pkg+"Monitor" })
-	man = rg.androidManifest(false)
-	if strings.Contains(man, "AsukaLocationService") || strings.Contains(man, "BACKGROUND_LOCATION") || !strings.Contains(man, "AsukaLocationReceiver") {
-		t.Errorf("regions alone:\n%s", man)
-	}
-
-	// Every function an app may call alone is a feature's symbol.
-	for _, f := range []string{"StartUpdates", "Monitor", "OnUpdates", "OnCrossing", "Supported", "RequestAlways", "RequestPrecise", "UseAuthorization"} {
-		if !slices.ContainsFunc(iosFeatures, func(x struct{ flag, symbol string }) bool { return x.symbol == pkg+f }) {
-			t.Errorf("%s isn't a feature's symbol", f)
-		}
+	var none appConfig
+	importStd(t, &none, "ios")
+	if _, ok := none.plistExtras()["NSLocationTemporaryUsageDescriptionDictionary"]; ok || strings.Contains(none.androidManifest(false), "LOCATION") {
+		t.Error("an app without asuka/location has its needs")
 	}
 }

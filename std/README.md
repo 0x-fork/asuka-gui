@@ -108,13 +108,25 @@ test "a region, crossed" {
 
 ### Each platform
 
-- **What an app needs**: asuka.toml's `[ios] usage` (purpose strings)
-  and `backgroundModes`, and `[android] permissions`, merged into each
-  app that imports the package; `iOS.entitlements` and
-  `macOS.entitlements` beside Package.swift. The CLI's feature tables
-  (cmd/asuka/config.go) still apply to `asuka/<name>` as to
-  `asuka/sdk/<name>`: Apple Pay's merchant IDs, asuka.toml's `nfc` and
-  `bluetooth` tables.
+- **What an app needs** is the package's to say, and only an app that
+  imports it gets it (cmd/asuka's depManifests and nativeNeeds; the
+  hosts have nothing of a package's): asuka.toml's `[ios] usage`
+  (purpose strings) and `backgroundModes`, and `[android] permissions`
+  (`"name:28"` up to an API level, `"name|neverForLocation"` with
+  flags); `iOS.entitlements`, `macOS.entitlements` and an `Info.plist`
+  beside Package.swift; the Gradle module's own
+  `src/main/AndroidManifest.xml` (services, receivers, `<queries>`,
+  `uses-feature`) and `build.gradle.kts` (its libraries). A package
+  over a host's module, which has neither, says the rest in asuka.toml
+  too: `[ios] entitlements` (a simulator build's values) and `plist`
+  (a key set to true, an array joined with the app's, or a string),
+  `[android] application` and `manifest` (elements of the manifest's
+  application and of the manifest), `hostModules` (the host's optional
+  Gradle modules, platform/android/asuka-<name>: std/push's `push`).
+  Test it in cmd/asuka's TestStdManifests. What the app's own
+  asuka.toml asks of a package is the CLI's (cmd/asuka/config.go's
+  permissionsFor): Apple Pay's merchant IDs, the `nfc` and `bluetooth`
+  tables.
 - **Swift** (iOS and macOS: one source, `#if os(iOS)` where they differ):
   move the host's code for the module from platform/ios's AsukaHost (and
   platform/macos) into the package, implementing the generated protocol.

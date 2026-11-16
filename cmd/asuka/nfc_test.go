@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -37,7 +38,7 @@ required = true`), 0o644)
 
 	// Not imported: nothing of it.
 	none := *c
-	none.permissionsFor([]string{"github.com/egoist/asuka/ui"})
+	importStd(t, &none, "ios")
 	if m := none.androidManifest(false); strings.Contains(m, "NFC") || strings.Contains(m, "nfc") {
 		t.Errorf("an app without the package has NFC:\n%s", m)
 	}
@@ -45,7 +46,7 @@ required = true`), 0o644)
 		t.Error("an app without the package has iOS's NFC keys")
 	}
 
-	c.permissionsFor([]string{"github.com/egoist/asuka/ui", nfcPkg})
+	importStd(t, c, "ios", "nfc")
 	m := c.androidManifest(false)
 	for _, want := range []string{
 		`<uses-permission android:name="android.permission.NFC" />`,
@@ -69,7 +70,7 @@ required = true`), 0o644)
 	if c.IOS.Usage["NFCReaderUsageDescription"] == "" {
 		t.Error("no NFCReaderUsageDescription")
 	}
-	if f, _ := c.entitlements["com.apple.developer.nfc.readersession.formats"].([]string); !slices.Equal(f, []string{"NDEF", "TAG"}) {
+	if f := fmt.Sprint(c.entitlements["com.apple.developer.nfc.readersession.formats"]); f != "[NDEF TAG]" {
 		t.Errorf("formats %v", c.entitlements["com.apple.developer.nfc.readersession.formats"])
 	}
 	x := c.plistExtras()
@@ -96,7 +97,7 @@ required = true`), 0o644)
 
 	// Without filters or required: optional NFC, no filters.
 	plain := &appConfig{ID: "com.example.plain"}
-	plain.permissionsFor([]string{nfcPkg})
+	importStd(t, plain, "", "nfc")
 	pm := plain.androidManifest(false)
 	if !strings.Contains(pm, `android:name="android.hardware.nfc" android:required="false"`) || strings.Contains(pm, "DISCOVERED") {
 		t.Errorf("plain:\n%s", pm)

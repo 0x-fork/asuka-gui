@@ -227,8 +227,7 @@ func buildAndroidLibs(app *asukaApp, tc *androidToolchain, work string) (string,
 			return "", fmt.Errorf("%s: %v", a.abi, err)
 		}
 	}
-	// What the app's sources use decides its manifest's services.
+	// What the app's sources use decides its manifest's share sheet and push rewrite.
 	usedFeatures(app, cfg)
-	cfg.useLocation(app.hasSymbol)
 	return jni, nil
 }

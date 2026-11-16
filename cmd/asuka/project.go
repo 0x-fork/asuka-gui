@@ -55,8 +55,8 @@ func (a *asukaApp) displayName() string {
 	return a.name
 }
 
-// sdkPrefix is the Go import path the feature tables (featurePermissions,
-// iosFeatures, …) name the standard library's packages under, as they
+// sdkPrefix is the Go import path the feature tables (iosFeatures,
+// featureMacSwift, …) name the standard library's packages under, as they
 // were written for Go apps: asuka/location is sdkPrefix + "location".
 const sdkPrefix = "github.com/egoist/asuka/sdk/"
 
@@ -170,10 +170,10 @@ func (a *asukaApp) refresh() {
 	}
 	a.uses = a.proj.Uses()
 	deps := a.deps()
-	a.cfg.permissionsFor(deps)
 	if err := a.cfg.depManifests(a.packageDirs(), a.uses); err != nil {
 		fmt.Fprintln(os.Stderr, "asuka:", err)
 	}
+	a.cfg.permissionsFor(deps)
 	a.cfg.displayName = a.displayName()
 	a.cfg.useICloud(a)
 }

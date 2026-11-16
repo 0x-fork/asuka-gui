@@ -156,34 +156,39 @@ func TestShareTargetConfig(t *testing.T) {
 	}
 }
 
+// What an app's imports need of the platforms: their manifests'
+// permissions and purpose strings; the host's optional modules only for
+// what the host still does (a Video's player, push, periodic), the std
+// packages' own libraries being their Gradle modules'.
 func TestFeaturesFromImports(t *testing.T) {
 	var c appConfig
-	c.permissionsFor([]string{"github.com/egoist/asuka/ui", "github.com/egoist/asuka/sdk/scan", "github.com/egoist/asuka/sdk/camera"})
-	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=scan" {
+	importStd(t, &c, "ios", "scan", "camera")
+	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("modules: %s", got)
 	}
 	if !slices.Contains(c.Android.Permissions, "android.permission.CAMERA") || slices.Contains(c.Android.Permissions, "android.permission.POST_NOTIFICATIONS") {
 		t.Errorf("permissions: %v", c.Android.Permissions)
 	}
 	var pics appConfig
-	pics.permissionsFor([]string{"github.com/egoist/asuka/sdk/vision", "github.com/egoist/asuka/sdk/photos"})
-	if got := strings.Join(pics.gradleProps(), " "); got != "-PasukaModules=vision" {
+	importStd(t, &pics, "ios", "vision", "photos")
+	if got := strings.Join(pics.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("modules: %s", got)
 	}
 	if !slices.Contains(pics.Android.Permissions, "android.permission.READ_MEDIA_IMAGES") || pics.IOS.Usage["NSPhotoLibraryUsageDescription"] == "" {
 		t.Errorf("photos: %v %v", pics.Android.Permissions, pics.IOS.Usage)
 	}
 	var none appConfig
-	none.permissionsFor([]string{"github.com/egoist/asuka/ui"})
+	importStd(t, &none, "ios")
 	if got := strings.Join(none.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("no modules: %s", got)
 	}
+
 }
 
-// An app that imports asuka/sdk/pay gets Google Pay's module (whose
-// manifest has its API and callbacks service) and Apple Pay's
-// entitlement with asuka.toml's merchant IDs (none without them); one
-// that doesn't, neither.
+// An app that imports asuka/pay gets Apple Pay's entitlement with
+// asuka.toml's merchant IDs (none without them), and no host module
+// (Google Pay's library, API and callbacks service are asuka/pay's
+// Gradle module's); one that doesn't, neither.
 func TestPayFeature(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[applePay]\nmerchantIds = [\"merchant.dev.asuka.shop\"]"), 0o644)
@@ -191,8 +196,8 @@ func TestPayFeature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.permissionsFor([]string{"github.com/egoist/asuka/ui", payPkg})
-	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=pay" {
+	importStd(t, c, "", "pay")
+	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("modules: %s", got)
 	}
 	if ids, _ := c.entitlements["com.apple.developer.in-app-payments"].([]string); !slices.Equal(ids, []string{"merchant.dev.asuka.shop"}) {
@@ -200,12 +205,12 @@ func TestPayFeature(t *testing.T) {
 	}
 	var without appConfig
 	without.ApplePay.MerchantIDs = []string{"merchant.dev.asuka.shop"}
-	without.permissionsFor([]string{"github.com/egoist/asuka/ui"})
+	importStd(t, &without, "")
 	if _, ok := without.entitlements["com.apple.developer.in-app-payments"]; ok || len(without.androidModules) != 0 {
 		t.Errorf("an app without the package: %v", without.entitlements)
 	}
 	var noIDs appConfig
-	noIDs.permissionsFor([]string{payPkg})
+	importStd(t, &noIDs, "", "pay")
 	if _, ok := noIDs.entitlements["com.apple.developer.in-app-payments"]; ok {
 		t.Errorf("no merchant IDs: %v", noIDs.entitlements)
 	}

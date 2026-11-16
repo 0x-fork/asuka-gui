@@ -149,7 +149,7 @@ func TestReadMacProfile(t *testing.T) {
 func TestMacProfileEntitlements(t *testing.T) {
 	cfg := &appConfig{ID: "dev.asuka.services"}
 	cfg.IOS.Usage = map[string]string{"NSCameraUsageDescription": "x"}
-	cfg.permissionsFor([]string{"github.com/egoist/asuka/sdk/push", "github.com/egoist/asuka/sdk/appleauth", "github.com/egoist/asuka/sdk/integrity", "github.com/egoist/asuka/sdk/agerange"})
+	importStd(t, cfg, "macos", "push", "appleauth", "integrity", "agerange")
 	if got := macProfileNeeds(cfg); len(got) != 3 {
 		t.Errorf("needs: %v", got)
 	}

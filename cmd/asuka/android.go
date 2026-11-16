@@ -431,9 +431,8 @@ func androidPlayer(app *asukaApp, tc *androidToolchain, work, serial string, loo
 		if err != nil {
 			return err
 		}
-		// What the app's sources use decides its manifest's services.
+		// What the app's sources use decides its manifest's share sheet and push rewrite.
 		usedFeatures(app, app.cfg)
-		app.cfg.useLocation(app.hasSymbol)
 		apk, hash, err := tc.buildAPK(app, work)
 		if err != nil {
 			return err

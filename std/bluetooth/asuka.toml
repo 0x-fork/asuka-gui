@@ -6,4 +6,7 @@ description = "Bluetooth Low Energy: central and peripheral"
 usage = { NSBluetoothAlwaysUsageDescription = "To connect to your Bluetooth devices." }
 
 [android]
-permissions = ["android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_ADVERTISE"]
+# Android 12's nearby devices permissions: the scan's "neverForLocation"
+# unless the app's asuka.toml has bluetooth.location (Asuka's Android is
+# 13 and later, so not the older Bluetooth and location permissions).
+permissions = ["android.permission.BLUETOOTH_SCAN|neverForLocation", "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_ADVERTISE"]
