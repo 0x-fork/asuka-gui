@@ -16,9 +16,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
-
-	"github.com/egoist/asuka/mobile/shareddir"
 )
 
 // goos is runtime.GOOS (tests replace it).
@@ -33,9 +30,6 @@ var goos = runtime.GOOS
 func Data() string {
 	if d := os.Getenv("ASUKA_DATA"); d != "" {
 		return d
-	}
-	if shared := shareddir.Dir(); shared != "" {
-		return sharedDir(shared)
 	}
 	// Android sets ASUKA_DATA once the library is loaded, after the
 	// packages' init: a store.Signal in a package variable reads the
@@ -159,26 +153,4 @@ func androidPackage() string {
 		return ""
 	}
 	return pkg
-}
-
-var migrate sync.Once
-
-// sharedDir is the data directory in an iOS app's App Group (shared,
-// its Application Support), where the app's data moves from its
-// container once, the first time it has a share sheet.
-func sharedDir(shared string) string {
-	dir := filepath.Join(shared, "asuka", "app")
-	migrate.Do(func() {
-		if _, err := os.Stat(dir); err == nil {
-			return
-		}
-		if base, err := os.UserConfigDir(); err == nil {
-			old := filepath.Join(base, "asuka", filepath.Base(os.Args[0]))
-			if _, err := os.Stat(old); err == nil {
-				os.MkdirAll(filepath.Dir(dir), 0o700)
-				os.Rename(old, dir)
-			}
-		}
-	})
-	return dir
 }

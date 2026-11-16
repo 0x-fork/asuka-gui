@@ -1,7 +1,6 @@
 // The C ABI of Asuka's core: what a host (Swift, Kotlin, JavaScript
 // through WebAssembly, the desktop hosts in Go through purego) calls, and
-// the callbacks it gives the core. Implemented by core/src/abi/abi.c (as
-// mobile/mobile.go implements it for the Go core). Every call comes from
+// the callbacks it gives the core. Implemented by core/src/abi/abi.c. Every call comes from
 // the main thread, unless it says otherwise.
 //
 // Starting: asuka_start(callbacks), with the host's environment reported

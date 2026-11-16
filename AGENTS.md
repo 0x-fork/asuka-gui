@@ -58,7 +58,7 @@ go run ./cmd/asuka test [dir]       # an Asuka package's test blocks, on the fak
 go run ./cmd/asuka fmt -w [paths]   # format .asuka files
 go generate ./lang/bytecode ./lang/prelude  # the VM's opcodes header; the prelude and the UI's element constants
 go test ./internal/cbuild           # the core built for this computer, iOS, Android and the web (ASUKA_CC=zig for Zig)
-go build ./... && go vet ./...      # CGO_ENABLED=0: everything but mobile/
+go build ./... && go vet ./...      # CGO_ENABLED=0: everything
 go test ./...                       # signal, layout, ui with host/fake, ops, CLI
 go test ./uitest ./examples/...     # apps' UI tests: uitest drives them on host/fake (-uitest.update: their snapshots)
 go test ./layout -run CSS -update-known  # after fixing layout: refresh known_failures.txt
