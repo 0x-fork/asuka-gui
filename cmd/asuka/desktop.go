@@ -20,28 +20,25 @@ import (
 	"github.com/egoist/asuka/std"
 )
 
-// Desktop apps: the executable is the desktop host (cmd/asuka-host: Go,
-// AppKit, Win32 or GTK, the same for every app), with the C core beside
-// it (libasuka: libasuka.dylib in a Mac app's Frameworks, asuka.dll
-// beside the .exe, libasuka.so in a Linux prefix's lib/<exe>) and the
-// app's settings (internal/boot's ConfigFile). A release's core has the
-// app compiled into it; asuka dev's player's has none, and loads the
-// bytecode the CLI sends (ASUKA_DEV).
+// Desktop apps on macOS and Linux: the executable is the desktop host
+// (cmd/asuka-host: Go, AppKit or GTK, the same for every app), with the C
+// core beside it (libasuka: libasuka.dylib in a Mac app's Frameworks,
+// libasuka.so in a Linux prefix's lib/<exe>) and the app's settings
+// (internal/boot's ConfigFile). A release's core has the app compiled
+// into it; asuka dev's player's has none, and loads the bytecode the CLI
+// sends (ASUKA_DEV).
 //
-// On Windows and Linux, once the checkout has the C host for the
-// platform (platform/windows, platform/linux: RFC 0008), the executable
-// is one program instead: the C host, the core, the native registry, the
-// native packages' C (each one's desktop/) and, in a release, the app
-// compiled to C (appbuild.DesktopExe).
+// On Windows the executable is one program: the C host (platform/windows),
+// the core, the native registry and the native packages' C, and in a
+// release the app compiled to C (windows.go). On Linux too, once the
+// checkout has its C host (platform/linux: RFC 0008), through
+// appbuild.DesktopExe.
 
 // coreLibName is the core library's file name on goos (host/bridge's
-// LibName).
+// LibName): macOS's or Linux's.
 func coreLibName(goos string) string {
-	switch goos {
-	case "darwin":
+	if goos == "darwin" {
 		return "libasuka.dylib"
-	case "windows":
-		return "asuka.dll"
 	}
 	return "libasuka.so"
 }
@@ -261,10 +258,20 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 		}
 		return exe, signMac(bundle, "-", ents, run)
 	}
-	exe := filepath.Join(dir, "asuka-host")
 	if t.OS == "windows" {
-		exe += ".exe"
+		// One console program: the host, the core, every standard
+		// package's C and the app's own; no app.
+		exe := filepath.Join(dir, "asuka-player.exe")
+		natives, err := appbuild.DesktopNatives(t, append(stdNativeDirs(), desktopNativeDirs(app)...))
+		if err != nil {
+			return "", err
+		}
+		if err := appbuild.WindowsHost(t, appbuild.WindowsOptions{Native: natives, Console: true}, exe); err != nil {
+			return "", err
+		}
+		return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, boot.ConfigFile))
 	}
+	exe := filepath.Join(dir, "asuka-host")
 	if host, ok := appbuild.CHost(t); ok {
 		// The player has every standard package's C, and the app's own.
 		natives, err := appbuild.DesktopNatives(t, append(stdNativeDirs(), desktopNativeDirs(app)...))
@@ -298,16 +305,6 @@ func desktopRelease(app *asukaApp, t cbuild.Target, exe, lib string, o *buildOpt
 		natives, err := appbuild.DesktopNatives(t, desktopNativeDirs(app))
 		if err != nil {
 			return err
-		}
-		if len(ho.Syso) > 0 {
-			// The executable's resources (icon, manifest, version): a COFF
-			// object, linked as one.
-			res := filepath.Join(filepath.Dir(exe), ".asuka-resources.o")
-			if err := os.WriteFile(res, ho.Syso, 0o644); err != nil {
-				return err
-			}
-			defer os.Remove(res)
-			natives.Libs = append(natives.Libs, res)
 		}
 		return appbuild.DesktopExe(t, m, host, natives, exe)
 	}

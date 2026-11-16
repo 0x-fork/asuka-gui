@@ -246,9 +246,10 @@ func TestWindowsHostConfig(t *testing.T) {
 	}
 }
 
-// A Windows build is a folder: the host (its resources linked in), the
-// core with the app compiled in (asuka.dll) and the plugins' libraries
-// for its architecture beside it, the app's settings.
+// A Windows build is a folder: one executable (the host, the core and the
+// app, its resources linked in), the plugins' libraries for its
+// architecture beside it, the app's settings. The executable needs only
+// what Windows has: no MinGW runtime's DLLs.
 func TestBuildWindows(t *testing.T) {
 	needDesktopBuild(t, cbuild.Target{OS: "windows", Arch: "amd64"})
 	t.Setenv("ASUKA_WINDOWS_CERT", "")
@@ -265,10 +266,10 @@ func TestBuildWindows(t *testing.T) {
 		for _, e := range entries {
 			names = append(names, e.Name())
 		}
-		if want := []string{"asqlite.dll", "asuka-app.json", "asuka.dll", "sqliteapp.exe"}; !slices.Equal(names, want) {
+		if want := []string{"asqlite.dll", "asuka-app.json", "sqliteapp.exe"}; !slices.Equal(names, want) {
 			t.Errorf("%s: %v, want %v", arch, names, want)
 		}
-		for _, n := range []string{"asqlite.dll", "asuka.dll", "sqliteapp.exe"} {
+		for _, n := range []string{"asqlite.dll", "sqliteapp.exe"} {
 			f, err := pe.Open(filepath.Join(dir, n))
 			if err != nil {
 				t.Fatal(err)
@@ -279,9 +280,13 @@ func TestBuildWindows(t *testing.T) {
 			if n == "sqliteapp.exe" && f.Section(".rsrc") == nil {
 				t.Errorf("%s: the executable has no resources (its icon, manifest, version)", arch)
 			}
-			if n == "asuka.dll" {
-				syms, _ := f.ImportedSymbols()
-				_ = syms
+			if n == "sqliteapp.exe" {
+				libs, _ := f.ImportedLibraries()
+				for _, l := range libs {
+					if l = strings.ToLower(l); strings.HasPrefix(l, "lib") || strings.Contains(l, "pthread") || strings.Contains(l, "gcc") {
+						t.Errorf("%s: the executable imports %s", arch, l)
+					}
+				}
 			}
 			f.Close()
 		}

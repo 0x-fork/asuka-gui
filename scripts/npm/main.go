@@ -46,16 +46,17 @@ func main() {
 	if err := os.RemoveAll(*out); err != nil {
 		fail(err.Error())
 	}
-	// The desktop hosts, and their hashes for the CLI.
+	// The Go desktop hosts (macOS's and Linux's: Windows's is C, built
+	// with each app from the CLI's embedded sources), and their hashes
+	// for the CLI.
 	var sums []string
 	hosts := filepath.Join(*out, "hosts")
 	for _, p := range platforms {
+		if p.goos == "windows" {
+			continue
+		}
 		name := "asuka-host-" + p.goos + "-" + p.goarch
 		ld := "-s -w -buildid="
-		if p.goos == "windows" {
-			name += ".exe"
-			ld += " -H windowsgui"
-		}
 		bin := filepath.Join(hosts, name)
 		fmt.Println("building", name)
 		cmd := exec.Command("go", "build", "-trimpath", "-ldflags", ld, "-o", bin, "./cmd/asuka-host")

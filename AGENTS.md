@@ -5,15 +5,16 @@ driven by fine-grained signals. Apps are written in the **Asuka
 language** (docs/language.md; its compiler is Go, in `lang/`, run by the
 CLI) and run on a **core in C** (`core/`: the VM, signals, the UI
 runtime, layout, ops). **Mobile first: iOS and Android.** Desktop and
-the web run on the same core: the macOS host (`host/darwin`, AppKit
-through purego, `internal/darwin`), the Windows host (`host/windows`,
-Win32 through syscall), the Linux host (`host/linux`, GTK 4 and
-libadwaita through purego, `internal/gtk`), all Go driving the C core
-through its ABI (`host/bridge`), and the web (`platform/web`, the DOM
-from JavaScript, the core as WebAssembly). The Go desktop hosts are
-being replaced (RFC 0008): the macOS host in Swift on AppKit
-(`platform/macos`), the Windows and Linux hosts in C
-(`platform/windows`, `platform/linux`). **Read [DESIGN.md](DESIGN.md),
+the web run on the same core: the Windows host (`platform/windows`, C on
+Win32, the core and the app linked into one .exe), the macOS host
+(`host/darwin`, AppKit through purego, `internal/darwin`) and the Linux
+host (`host/linux`, GTK 4 and libadwaita through purego,
+`internal/gtk`), Go driving the C core through its ABI (`host/bridge`),
+and the web (`platform/web`, the DOM from JavaScript, the core as
+WebAssembly). The Windows and Linux hosts share C in
+`platform/desktop`. The Go desktop hosts are being replaced (RFC 0008):
+the macOS host in Swift on AppKit (`platform/macos`), the Linux host in
+C (`platform/linux`). **Read [DESIGN.md](DESIGN.md),
 [RFC 0007](rfcs/0007-c-core-and-asuka-language.md) and [RFC
 0008](rfcs/0008-no-go-at-run-time-and-c-ffi.md) before changing code**;
 DESIGN.md is the source of truth for the architecture, the RFCs for the
@@ -108,19 +109,21 @@ go test ./host/darwin -run Swift               # an app's macos/*.swift, compile
 (cd examples/counter && ASUKA_SNAPSHOT=/tmp/c.png ASUKA_DUMP=1 ASUKA_SCRIPT="tap:Add" go run .)  # macOS: steps, then the window as a PNG (the window server's) and its view tree, then quit
 go run ./cmd/asuka dev examples/counter            # Windows (on a PC, no --platform: windows): the app and its Win32 host in one process, rerun on save
 go run ./cmd/asuka build --platform windows examples/counter  # a folder: the .exe (icon, manifest, version) and its assets; from any system
-go test ./host/windows                           # the Windows host, driving real Win32 windows (Windows)
+go test ./platform/windows                       # the Windows host (C), its apps built with Zig and driven in Windows (on Windows, or the swiftvm VM ASUKA_WINDOWS_VM names: "Windows Fresh")
+go test ./platform/desktop                       # the C the Windows and Linux hosts share, on this computer (ASan, UBSan)
 xvfb-run -a dbus-run-session go test ./host/linux  # the Linux host, driving real GTK windows (GTK 4.14, libadwaita 1.5)
 go run ./cmd/asuka dev examples/counter            # Linux (on Linux, no --platform: linux): the app and its GTK host in one process, rerun on save
 go run ./cmd/asuka build --platform linux examples/counter    # an install prefix, a .tar.gz and a Flatpak manifest; from any system
 go run host/linux/gen_symbols.go                 # the Linux host's fallback symbols, from the web host's
 go test -tags e2e ./e2e -run Linux               # GUI tests: the examples under Xvfb (Linux)
-(cd examples/counter && ASUKA_SNAPSHOT=c.png ASUKA_DUMP=1 ASUKA_SCRIPT="tap:Add" go run .)  # Windows: steps, then the window as a PNG and its view tree
+$env:ASUKA_SNAPSHOT='c.png'; $env:ASUKA_DUMP='1'; $env:ASUKA_SCRIPT='tap:Add'; .\examples\counter\dist\Counter\Counter.exe  # Windows (PowerShell): steps, then the window as a PNG and its view tree
 go run ./cmd/asuka dev --platform web examples/counter       # the web: served to the browser, reloaded on save (--lan: to a phone)
 go run ./cmd/asuka build --platform web examples/counter     # a static site, in examples/counter/dist/web
 go test -tags e2e ./e2e -run Web                  # GUI tests: the examples in headless Chrome
 go run ./cmd/asuka update keygen                  # the key pair that signs desktop apps' updates (asuka.toml's updates)
 go run ./cmd/asuka publish --platform linux examples/counter  # a desktop build and its signed update, uploaded (GitHub, S3)
 go test -tags e2e ./e2e -run Updater               # a desktop app updates itself and relaunches (macOS; Linux under xvfb-run)
+go test ./platform/windows -run Updater           # likewise on Windows (a PC, or the VM; the feed served in Windows)
 ```
 
 ## Conventions
@@ -138,10 +141,11 @@ go test -tags e2e ./e2e -run Updater               # a desktop app updates itsel
   through `internal/darwin` (purego), no cgo, no SwiftUI; an app's own
   Swift (`macos/*.swift`) is compiled with `platform/macos` into a
   library the host loads through purego (`host/darwin/swift.go`), never
-  linked. Windows host:
-  Win32 and the common controls, from Go through `internal/windows`
-  (syscall), no cgo, no WinUI; the controls drawn as Fluent's in custom
-  draw, so an app that sets no style looks like Windows 11. Linux host:
+  linked. Windows host: C17 on
+  Win32, the common controls v6, GDI+'s flat API, DWM, Direct3D 11,
+  WebView2 and WinRT through COM vtables in C (`platform/windows/src`),
+  no WinUI; the controls drawn as Fluent's in custom draw, so an app
+  that sets no style looks like Windows 11. Linux host:
   GTK 4 and libadwaita widgets from Go through `internal/gtk` (purego),
   no cgo, no GtkBuilder or Blueprint; an app that sets no style looks
   like a GNOME app. Web host:

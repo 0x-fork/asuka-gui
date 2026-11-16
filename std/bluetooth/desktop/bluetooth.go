@@ -1,4 +1,4 @@
-//go:build windows || (linux && !android)
+//go:build linux && !android
 
 // asuka/bluetooth on Windows and Linux (macOS runs the package's Swift).
 // The platform's work is an engine's (engine_windows.go: WinRT's
