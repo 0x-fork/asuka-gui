@@ -9,7 +9,7 @@ extern fn crc32_of(data: bytes) -> UInt32
 fn checksum(text: string) -> int = crc32_of(text.bytes())
 ```
 
-C はアプリと一緒に、すべてのプラットフォーム向けにコンパイルされます。iOS ではアプリの実行ファイルに、Android では `libasuka.so` に、デスクトップではコアのライブラリに、Web では WebAssembly モジュールに組み込まれ、`asuka test` のランナーにも組み込まれます。何をコンパイルし、何をリンクするかは `asuka.toml` の `[c]` に書きます。
+C は、すべてのプラットフォームでアプリに組み込まれ（Web では WebAssembly モジュールに）、`asuka test` のランナーにも組み込まれます。何をコンパイルし、何をリンクするかは `asuka.toml` の `[c]` に書きます。
 
 C を使うのは、C の API を持つライブラリ（SQLite、コーデック、ベンダーの SDK）を使うとき、C で書いたほうが速いコードのとき、ほかのプログラムとコードを共有するときです。プラットフォーム自身の言語からしか使えないもの（UIKit、Android の API、DOM）には、代わりに[ネイティブパッケージ](native.md)を書きます。
 
@@ -262,11 +262,11 @@ libraries = ["bcrypt"]
 defines = ["SQLITE_OS_OTHER=1"]
 ```
 
-テーブルは `[c.ios]`、`[c.android]`、`[c.macos]`、`[c.windows]`、`[c.linux]`、`[c.web]` です。ソースはターゲットごとに、そのプラットフォームのコンパイラー（Xcode のもの、NDK のもの、Web とクロスビルドでは Zig）でコンパイルされます。リリースでは最適化され、警告はアプリの設定のまま扱われます。グルーコードはコアと一緒にコンパイルされます。
+テーブルは `[c.ios]`、`[c.android]`、`[c.macos]`、`[c.windows]`、`[c.linux]`、`[c.web]` です。ソースはターゲットごとに、そのプラットフォームのコンパイラー（Xcode のもの、NDK のもの、Web とクロスビルドでは Zig）でコンパイルされます。リリースでは最適化され、警告はアプリの設定のまま扱われます。
 
-- **iOS**：C はコアの静的ライブラリに入り、ライブラリとフレームワークはアプリの実行ファイルにリンクされます。SDK には `libz`、`libsqlite3`、`libxml2`、`libc++` と Apple のフレームワークがあります。
-- **Android**：ABI ごとに `libasuka.so` に入ります。NDK には `libz`、`libm`、`liblog`、`libandroid` など、NDK の安定したライブラリがあります。それ以外のものは、ソースとして、または ABI ごとのビルド済みの `.a` として持ち込みます。
-- **macOS、Windows、Linux**：コアのライブラリに入ります。
+- **iOS**：C も、ライブラリとフレームワークも、アプリの実行ファイルにリンクされます。SDK には `libz`、`libsqlite3`、`libxml2`、`libc++` と Apple のフレームワークがあります。
+- **Android**：ABI ごとにアプリのライブラリに入ります。NDK には `libz`、`libm`、`liblog`、`libandroid` など、NDK の安定したライブラリがあります。それ以外のものは、ソースとして、または ABI ごとのビルド済みの `.a` として持ち込みます。
+- **macOS、Windows、Linux**：アプリの実行ファイルに入ります。
 - **Web**：WASI 向けにビルドされる WebAssembly モジュールに入ります。Web にはシステムのライブラリもスレッドもないので、ライブラリはソースとして持ち込み、変更点（`defines`、別の `sources`）を `[c.web]` に書きます。
 
 パッケージの C は、そのパッケージ自身の `asuka.toml` の `[c]` に、パッケージからの相対パスで書きます。パッケージをインポートしたアプリは、その C もビルドします。アプリ自身のパッケージ（`./util`）は、アプリの `[c]` を共有します。
@@ -274,16 +274,10 @@ defines = ["SQLITE_OS_OTHER=1"]
 ## 開発
 
 - `asuka dev` は、アプリの C を組み込んだ開発用アプリをビルドします。C のファイルやヘッダー、`asuka.toml`、extern 宣言を変更すると、開発用アプリをビルドし直して起動し直します。それ以外の Asuka のコードを変更したときは、状態を保ったままリロードするだけです。
-- `asuka test` と `asuka run` は、フェイクホストのランナーを C と一緒に、手元のコンピューター向け（`[c.macos]`、`[c.linux]`、`[c.windows]` のテーブル）にビルドします。そのため、テストはアプリと同じ C を呼び出します。`asuka run file.asuka` は、そのファイルと同じ場所にある `asuka.toml` を読み込みます。
+- `asuka test` と `asuka run` は、ランナーを C と一緒に、手元のコンピューター向け（`[c.macos]`、`[c.linux]`、`[c.windows]` のテーブル）にビルドします。そのため、テストはアプリと同じ C を呼び出します。`asuka run file.asuka` は、そのファイルと同じ場所にある `asuka.toml` を読み込みます。
 - コンパイラーはすべての宣言をチェックします。C との境界を越えられない型には、その理由と代わりに書くべきものを示します（`parameter s is a string: it crosses to C as a CString`、`field name of extern struct User can't be a CString: a struct crosses by value, and the string's memory wouldn't outlive the call`）。
 - C 自身の誤り（シグネチャーの間違い、解放済みのポインター）は C の側の問題です。コンパイラーには C の側が見えないので、C のヘッダーが宣言しているとおりの型で宣言し、呼び出しを `asuka test` でテストしてください。
 
 ## 仕組み
 
-extern 宣言を持つパッケージごとに、コンパイラーは次の C を生成します。
-
-- 関数ごとのラッパー。コアのビルトイン（標準ライブラリと同じ呼び出し規約）で、引数を変換し、関数を呼び出し、結果を変換します。
-- コールバックのシグネチャーごとのトランポリン。C がコンテキストを渡して呼び出し、トランポリンが Asuka の関数を呼び出します。
-- `asuka_ffi_register`。ラッパーを `ffi.<package>.<name>` という名前のビルトインとして登録します。
-
-extern fn の本体はそのビルトインの呼び出しです。そのため、開発用アプリが実行するバイトコードからも、リリースでアプリをコンパイルした C からも、同じように呼び出されます。グルーコードは extern 宣言から各 C 関数を宣言するので、ライブラリのヘッダーは必要ありません。詳しくは `lang/LOWERING.md` の「C from Asuka」を参照してください。
+extern 宣言を持つパッケージごとに、コンパイラーはグルーコードを生成します。グルーコードは、呼び出しの引数を変換して C の関数を呼び出し、結果を変換します。C から Asuka のコールバックを呼び出せるようにもします。呼び出し方は、`asuka dev` でもリリースでも同じです。グルーコードは extern 宣言から各 C 関数を宣言するので、ライブラリのヘッダーは必要ありません。

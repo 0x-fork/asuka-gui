@@ -95,7 +95,7 @@ wasm = {name = "asqlite.wasm"}
 
 Web では、ページの `libs` オプションが各ファイル名をその URL に対応づけます。
 
-`std/sqlite` の場合は、コア自身の C（[core/src/sqlite](../../core/src/sqlite/sqlite.c)）が、最初にデータベースを開くときに `asqlite` を読み込み、メインスレッドの外で動かします。Web では SQLite のワーカー（[platform/web/src/sqlite-worker.js](../../platform/web/src/sqlite-worker.js)）が `asqlite.wasm` をインスタンス化します。自分のパッケージでは、その[ネイティブコード](native.md)、つまりデスクトップの C、Swift、Kotlin、Web の JavaScript からライブラリを読み込みます。
+`std/sqlite` は、最初にデータベースを開くときに `asqlite` を読み込み、メインスレッドの外で動かします。Web では SQLite のワーカーが `asqlite.wasm` をインスタンス化します。自分のパッケージでは、その[ネイティブコード](native.md)、つまりデスクトップの C、Swift、Kotlin、Web の JavaScript からライブラリを読み込みます。
 
 ライブラリが公開するシンボルは少なく、自分のものだけにして、リンクしたものは公開しないでください。ビルド元と同じコードの別のコピーが、同じプロセスにあるかもしれません（GTK が読み込むシステムの SQLite など）。呼び出しは値ごとに関数を呼ぶのではなく、操作をまるごと一回で行います。sqlite プラグインのエントリーポイントは `asq_call` 一つだけで、文を一つまるごと実行し、その行を一つのバッファにまとめて返します。だからこそ、Web ではワーカーで動かせます。
 

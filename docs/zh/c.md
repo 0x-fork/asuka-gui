@@ -9,7 +9,7 @@ extern fn crc32_of(data: bytes) -> UInt32
 fn checksum(text: string) -> int = crc32_of(text.bytes())
 ```
 
-这些 C 代码会随应用一起为每个平台编译：编进 iOS 应用的可执行文件、Android 的 `libasuka.so`、桌面端的核心库和 Web 的 WebAssembly 模块，也会编进 `asuka test` 的运行器。编译和链接哪些内容，由 `asuka.toml` 的 `[c]` 决定。
+这些 C 代码会在每个平台上编进应用（在 Web 上编进它的 WebAssembly 模块），也会编进 `asuka test` 的运行器。编译和链接哪些内容，由 `asuka.toml` 的 `[c]` 决定。
 
 如果一个库提供的是 C API（SQLite、某个编解码器、厂商的 SDK），或者某段代码用 C 写更快，又或者要和其他程序共用代码，就用 C。如果要用的东西只有平台自己的语言才能访问（UIKit、Android 的 API、DOM），请改写一个[原生包](native.md)。
 
@@ -262,11 +262,11 @@ libraries = ["bcrypt"]
 defines = ["SQLITE_OS_OTHER=1"]
 ```
 
-平台的表有 `[c.ios]`、`[c.android]`、`[c.macos]`、`[c.windows]`、`[c.linux]` 和 `[c.web]`。源文件会针对每个目标，用该平台的编译器来编译（Xcode 的、NDK 的；Web 和交叉编译用 Zig 的），发布构建会开启优化，你的警告设置保持原样。胶水代码和核心一起编译。
+平台的表有 `[c.ios]`、`[c.android]`、`[c.macos]`、`[c.windows]`、`[c.linux]` 和 `[c.web]`。源文件会针对每个目标，用该平台的编译器来编译（Xcode 的、NDK 的；Web 和交叉编译用 Zig 的），发布构建会开启优化，你的警告设置保持原样。
 
-- **iOS**：C 代码编进核心的静态库，库和框架链接进应用的可执行文件。SDK 自带 `libz`、`libsqlite3`、`libxml2`、`libc++` 以及 Apple 的各个框架。
-- **Android**：为每个 ABI 编进 `libasuka.so`。NDK 自带 `libz`、`libm`、`liblog`、`libandroid` 以及其他稳定的 NDK 库；其他库需要以源码形式提供，或者为每个 ABI 提供预编译的 `.a`。
-- **macOS、Windows 和 Linux**：编进核心的库。
+- **iOS**：C 代码以及库和框架都链接进应用的可执行文件。SDK 自带 `libz`、`libsqlite3`、`libxml2`、`libc++` 以及 Apple 的各个框架。
+- **Android**：为每个 ABI 编进应用的库。NDK 自带 `libz`、`libm`、`liblog`、`libandroid` 以及其他稳定的 NDK 库；其他库需要以源码形式提供，或者为每个 ABI 提供预编译的 `.a`。
+- **macOS、Windows 和 Linux**：编进应用的可执行文件。
 - **Web**：编进 WebAssembly 模块，目标是 WASI。那里没有系统库，也没有线程，所以库都要以源码形式提供，再用 `[c.web]` 写明要改什么（`defines`、换一组 `sources`）。
 
 包的 C 代码由它自己 `asuka.toml` 里的 `[c]` 描述，路径相对于包目录：导入它的应用也会构建这些代码。应用自己的子包（`./util`）共用应用的 `[c]`。
@@ -274,16 +274,10 @@ defines = ["SQLITE_OS_OTHER=1"]
 ## 开发
 
 - `asuka dev` 会构建带有应用 C 代码的开发 App。修改 C 文件或头文件、`asuka.toml` 或者某个 extern 声明，会重新构建开发 App 并重新启动它；修改其余的 Asuka 代码只会热重载，状态保留。
-- `asuka test` 和 `asuka run` 会为当前这台电脑（对应 `[c.macos]`、`[c.linux]` 或 `[c.windows]` 表）构建带有这些 C 代码的假宿主运行器，因此测试调用的就是应用所用的那份 C。`asuka run file.asuka` 读取文件旁边的 `asuka.toml`。
+- `asuka test` 和 `asuka run` 会为当前这台电脑（对应 `[c.macos]`、`[c.linux]` 或 `[c.windows]` 表）构建带有这些 C 代码的运行器，因此测试调用的就是应用所用的那份 C。`asuka run file.asuka` 读取文件旁边的 `asuka.toml`。
 - 编译器会检查每一条声明：如果某个类型无法跨过边界，它会说明原因以及应该怎么写（`parameter s is a string: it crosses to C as a CString`、`field name of extern struct User can't be a CString: a struct crosses by value, and the string's memory wouldn't outlive the call`）。
 - C 自己的错误（签名写错、使用已释放的指针）由 C 负责：编译器看不到 C 那一侧，所以请按照 C 头文件里的声明来写类型，并用 `asuka test` 测试这些调用。
 
 ## 工作原理
 
-对每个包含 extern 声明的包，编译器会生成以下 C 代码：
-
-- 每个函数一个包装函数，作为核心的一个内置函数（调用约定与标准库相同），负责转换参数、调用函数、再转换返回值；
-- 每种回调签名一个跳板函数（trampoline），C 带着上下文调用它，它再调用 Asuka 函数；
-- `asuka_ffi_register`，把这些包装函数注册为名为 `ffi.<package>.<name>` 的内置函数。
-
-extern fn 的函数体就是对它那个内置函数的调用，所以无论是开发 App 运行的字节码，还是发布构建把应用编译成的 C，调用方式都一样。胶水代码根据 extern 声明来声明每个 C 函数，因此不需要库的任何头文件。详见 `lang/LOWERING.md` 中的 “C from Asuka” 一节。
+对每个包含 extern 声明的包，编译器都会生成胶水代码：它负责转换调用的参数、调用 C 函数、再转换返回值，也让 C 能够调用 Asuka 的回调。无论在 `asuka dev` 下还是在发布构建中，调用的方式都一样。胶水代码根据 extern 声明来声明每个 C 函数，因此不需要库的任何头文件。

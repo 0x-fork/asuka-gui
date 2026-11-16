@@ -162,11 +162,9 @@ order:
 
 On the web, the page's `libs` option maps each file's name to its URL.
 
-`std/sqlite`'s is the core's own C ([core/src/sqlite](../core/src/sqlite/sqlite.c)),
-which loads `asqlite` the first time a database opens and runs it
-off the main thread; on the web, SQLite's worker
-([platform/web/src/sqlite-worker.js](../platform/web/src/sqlite-worker.js))
-instantiates `asqlite.wasm`. A package of yours loads its library from
+`std/sqlite` loads `asqlite` the first time a database opens and runs
+it off the main thread; on the web, SQLite's worker instantiates
+`asqlite.wasm`. A package of yours loads its library from
 its [native code](native.md): its desktop C, Swift and Kotlin, and
 JavaScript on the web.
 

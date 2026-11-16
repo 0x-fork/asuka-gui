@@ -95,7 +95,7 @@ wasm = {name = "asqlite.wasm"}
 
 在 Web 上，页面的 `libs` 选项把每个文件名对应到它的 URL。
 
-`std/sqlite` 的加载代码是核心自己的 C（[core/src/sqlite](../../core/src/sqlite/sqlite.c)）：第一次打开数据库时加载 `asqlite`，并在主线程之外运行它；在 Web 上，由 SQLite 的 worker（[platform/web/src/sqlite-worker.js](../../platform/web/src/sqlite-worker.js)）实例化 `asqlite.wasm`。你自己的包则在它的[原生代码](native.md)里加载自己的库：桌面上的 C、Swift 和 Kotlin，以及 Web 上的 JavaScript。
+`std/sqlite` 在第一次打开数据库时加载 `asqlite`，并在主线程之外运行它；在 Web 上，由 SQLite 的 worker 实例化 `asqlite.wasm`。你自己的包则在它的[原生代码](native.md)里加载自己的库：桌面上的 C、Swift 和 Kotlin，以及 Web 上的 JavaScript。
 
 库导出的符号要尽量少，只导出它自己的，不导出它链接进来的东西：进程里可能还有另一份同源的代码（比如 GTK 加载的系统 SQLite）。调用时一次完成一整个操作，而不是每个值调用一个函数：sqlite 插件只有一个入口 `asq_call`，它执行一整条语句，把结果行放在一个缓冲区里返回；正因如此，Web 上才能把它放到 worker 里运行。
 

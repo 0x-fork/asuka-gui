@@ -14,9 +14,8 @@ extern fn crc32_of(data: bytes) -> UInt32
 fn checksum(text: string) -> int = crc32_of(text.bytes())
 ```
 
-The C is compiled with the app for every platform: into the iOS app's
-executable, Android's `libasuka.so`, the desktop's core library and the
-web's WebAssembly module, and into `asuka test`'s runner. What it
+The C is compiled into the app on every platform (on the web, into its
+WebAssembly module), and into `asuka test`'s runner. What it
 compiles and links is `asuka.toml`'s `[c]`.
 
 Use C for a library that has a C API (SQLite, a codec, a vendor SDK),
@@ -338,15 +337,14 @@ The tables are `[c.ios]`, `[c.android]`, `[c.macos]`, `[c.windows]`,
 `[c.linux]` and `[c.web]`. The sources are compiled for each target
 with the platform's compiler (Xcode's, the NDK's, Zig's for the web and
 cross builds), optimized for a release, with your warnings as they are.
-The glue is compiled with the core.
 
-- **iOS**: the C goes into the core's static library, and the libraries
-  and frameworks are linked into the app's executable. The SDK has
+- **iOS**: the C, and the libraries and frameworks, are linked into the
+  app's executable. The SDK has
   `libz`, `libsqlite3`, `libxml2`, `libc++` and Apple's frameworks.
-- **Android**: into `libasuka.so`, for each ABI. The NDK has `libz`,
+- **Android**: into the app's library, for each ABI. The NDK has `libz`,
   `libm`, `liblog`, `libandroid` and the other stable NDK libraries;
   anything else comes as sources or as a prebuilt `.a` per ABI.
-- **macOS, Windows and Linux**: into the core's library.
+- **macOS, Windows and Linux**: into the app's executable.
 - **The web**: into the WebAssembly module, built for WASI. There are no
   system libraries there and no threads, so a library comes as sources,
   and `[c.web]` says what changes (`defines`, other `sources`).
@@ -361,8 +359,8 @@ package: an app that imports it builds it too. Its own packages
   or a header, to `asuka.toml`, or to an extern declaration builds the
   player again and relaunches it; a change to the rest of the Asuka only
   reloads it, keeping its state.
-- `asuka test` and `asuka run` build the fake host's runner with the
-  C, for this computer (the `[c.macos]`, `[c.linux]` or `[c.windows]`
+- `asuka test` and `asuka run` build their runner with the C, for this
+  computer (the `[c.macos]`, `[c.linux]` or `[c.windows]`
   table), so a test calls the C the app does. `asuka run file.asuka`
   reads the `asuka.toml` beside the file.
 - The compiler checks every declaration: a type that can't cross says
@@ -376,18 +374,9 @@ package: an app that imports it builds it too. Its own packages
 
 ## How it works
 
-For each package with extern declarations, the compiler generates C:
-
-- a wrapper per function, a builtin of the core's (the same calling
-  convention as the standard library's), which converts its arguments,
-  calls the function, and converts its result;
-- a trampoline per callback signature, which C calls with the context
-  and which calls the Asuka function;
-- `asuka_ffi_register`, which registers the wrappers as builtins named
-  `ffi.<package>.<name>`.
-
-An extern fn's body is a call of its builtin, so the bytecode the
-player runs and the C a release compiles the app to call it alike. The
-glue declares each C function from its extern declaration, so it needs
-none of the library's headers. See `lang/LOWERING.md`'s "C from Asuka"
-for the details.
+For each package with extern declarations, the compiler generates the
+glue that converts a call's arguments, calls the C function, and
+converts its result, and that lets C call Asuka's callbacks. A call
+works the same under `asuka dev` and in a release. The glue declares
+each C function from its extern declaration, so it needs none of the
+library's headers.
