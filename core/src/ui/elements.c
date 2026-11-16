@@ -249,7 +249,7 @@ void ak_run_action(ak_view *e, const ak_enum *a) {
 	if (!a || ak_enum_case(a) != 0 || a->f[3].i || !a->f[5].p) return;  // a submenu, disabled, or nothing to run
 	ak_closure *run = a->f[5].p;
 	ak_retain(run);
-	ak_val r = ak_call(run, NULL, 0);
+	ak_val r = ak_ui_call_under(e ? e->owner : NULL, run, NULL, 0);  // the screen's, where it was made
 	if (!ak_error_pending()) ak_release(r.p);
 	else ak_ui_raise_pending(e ? e->owner : NULL);
 	ak_release(run);

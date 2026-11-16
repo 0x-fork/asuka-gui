@@ -84,7 +84,7 @@ async fn followStore() throws {
 }
 ```
 
-`Transaction` 有它的 `id`、`originalId`（同一订阅的各次续期共用它）、`productId`、`kind`、`state`、`quantity`、`date` 和 `expires`（自 1970 年起的纳秒数）、`revoked` 和 `revocationReason`、`autoRenews`、`familyShared`、购买时的 `accountToken`、Apple 的 `environment`、购买时所在的店面 `storefront`、它的 `offerId` 和 `offerType`，以及它的 `verification`。
+`Transaction` 有它的 `id`、`originalId`（同一订阅的各次续期共用它）、`productId`、`kind`、`state`、`quantity`、`date`、`expires` 和 `revoked`（都是 `time.Time?`，商店没有给出时为 none）、`revocationReason`、`autoRenews`、`familyShared`、购买时的 `accountToken`、Apple 的 `environment`、购买时所在的店面 `storefront`、它的 `offerId` 和 `offerType`，以及它的 `verification`。
 
 ## 已购权益与恢复购买
 
@@ -108,7 +108,7 @@ component Unlock {
 
 ## 订阅
 
-`purchase.statuses(group)` 返回一个群组里各个订阅的状态（Apple 的订阅群组；在 Play 上是订阅的产品）：它的 `state`（`.subscribed`、`.expired`、`.billingRetry`、`.gracePeriod`、`.revoked`），是否会续期（`willRenew`）以及续期成什么（`renewsTo`），它的 `renewal`、`graceExpires`、`expirationReason`，以及 Apple 签名的 `renewalJWS`。`purchase.manageSubscriptions(productId)` 打开商店里用户的订阅页面（iOS 上是系统面板，Play 上是订阅中心，或者 App Store、Microsoft Store 的账户页面）。`purchase.redeemCode()` 打开优惠码兑换面板（Apple 的）或 Play 的兑换页面；兑换到的东西通过 `events()` 送达。`purchase.requestRefund(t)` 打开 Apple 的退款面板（只有 Apple 有）。`purchase.storefront()` 是商店所在的国家或地区。
+`purchase.statuses(group)` 返回一个群组里各个订阅的状态（Apple 的订阅群组；在 Play 上是订阅的产品）：它的 `state`（`.subscribed`、`.expired`、`.billingRetry`、`.gracePeriod`、`.revoked`），是否会续期（`willRenew`）以及续期成什么（`renewsTo`），它的 `renewal` 和 `graceExpires`（都是 `time.Time?`）、`expirationReason`，以及 Apple 签名的 `renewalJWS`。`purchase.manageSubscriptions(productId)` 打开商店里用户的订阅页面（iOS 上是系统面板，Play 上是订阅中心，或者 App Store、Microsoft Store 的账户页面）。`purchase.redeemCode()` 打开优惠码兑换面板（Apple 的）或 Play 的兑换页面；兑换到的东西通过 `events()` 送达。`purchase.requestRefund(t)` 打开 Apple 的退款面板（只有 Apple 有）。`purchase.storefront()` 是商店所在的国家或地区。
 
 ## 在服务器上验证
 

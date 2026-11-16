@@ -1,6 +1,7 @@
 #include "native/native.h"
 #include "rt/sched.h"
 #include "base/thread.h"
+#include "ui/ui.h"
 
 #include <stdio.h>
 
@@ -111,6 +112,11 @@ bool ak_native_encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t
 		ak_buf_u64(b, o ? o->handle : 0);
 		return true;
 	}
+	case 'V':
+		// A view (a Ref's, read by the call): the id its host knows it
+		// by, 0 for none or one that isn't shown.
+		ak_buf_u64(b, v.p && ((ak_obj *)v.p)->tag == AK_TAG_VIEW ? ak_ui_view_id(v.p) : 0);
+		return true;
 	case 'F':
 		ak_buf_u64(b, v.p ? callback_add(v.p, d, t) : 0);
 		return true;

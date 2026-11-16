@@ -136,7 +136,7 @@ static void m_requestPrecise(location_Locator *self, const char *purpose, asuka_
 	location_Locator_requestPrecise_done(call, location_access());  // the platforms have no approximate choice to undo
 }
 
-static void fixed(void *p, const location_Position *pos, asuka_error *e) {
+static void fixed(void *p, const location_Fix *pos, asuka_error *e) {
 	asuka_call *c = settle(p);
 	if (!c) {
 		if (e) asuka_error_free(e);
@@ -148,7 +148,7 @@ static void m_current(location_Locator *self, asuka_call *call) { location_fix(f
 
 // A watch: positions to its callback until the task goes, or they fail.
 typedef struct {
-	location_fn_Position moved;
+	location_fn_Fix moved;
 	asuka_call *call;
 	void *source;
 	bool starting;
@@ -156,9 +156,9 @@ typedef struct {
 	bool over;
 } watch;
 
-static void watch_moved(void *p, const location_Position *pos) {
+static void watch_moved(void *p, const location_Fix *pos) {
 	watch *w = p;
-	if (!w->over) location_fn_Position_call(w->moved, pos);
+	if (!w->over) location_fn_Fix_call(w->moved, pos);
 }
 
 static void watch_failed(void *p, asuka_error *e) {
@@ -186,7 +186,7 @@ static void watch_cancel(void *p) {
 	free(w);
 }
 
-static void m_watch(location_Locator *self, location_fn_Position moved, asuka_call *call) {
+static void m_watch(location_Locator *self, location_fn_Fix moved, asuka_call *call) {
 	watch *w = calloc(1, sizeof *w);
 	w->moved = moved;
 	w->call = call;
@@ -227,8 +227,8 @@ static location_Support m_support(location_Locator *self, asuka_error *err) { re
 // The background updates: a source whose positions are batches.
 static void *updates;
 
-static void update_moved(void *ctx, const location_Position *p) {
-	location_Event e = {.positions = {(location_Position *)p, 1}};
+static void update_moved(void *ctx, const location_Fix *p) {
+	location_Event e = {.positions = {(location_Fix *)p, 1}};
 	event(&e);
 }
 
@@ -277,7 +277,7 @@ static void m_stopMonitoringAll(location_Locator *self, asuka_call *call) {
 
 static void m_monitored(location_Locator *self, asuka_call *call) { location_Locator_monitored_done(call, location_fences()); }
 
-static void crossed(const char *region, location_Transition kind, const location_Position *at) {
+static void crossed(const char *region, location_Transition kind, const location_Fix *at) {
 	location_Event e = {.crossing = true, .region = (char *)region, .kind = kind, .time = now_ns()};
 	if (at) e.at = *at;
 	event(&e);

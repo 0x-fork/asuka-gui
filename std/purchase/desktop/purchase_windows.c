@@ -362,10 +362,10 @@ static struct {
 	size_t nactive;
 	char **bought;  // Store IDs bought here, whose license isn't news
 	size_t nbought;
-	purchase_Event *kept;  // for the first events()
+	purchase_StoreEvent *kept;  // for the first events()
 	size_t nkept;
 	struct reader {
-		purchase_fn_Event fn;
+		purchase_fn_StoreEvent fn;
 		asuka_call *call;
 	} *readers;
 	size_t nreaders;
@@ -449,8 +449,8 @@ static int64_t now_ns(void) {
 // transaction is a purchase of a: a consumable's under a new tracking ID
 // (what its fulfillment reports), the others' under the add-on's Store
 // ID. id is the product ID asked for ("": the add-on's).
-static purchase_Transaction transaction(const add_on *a, const char *id) {
-	purchase_Transaction t = {0};
+static purchase_StoreTransaction transaction(const add_on *a, const char *id) {
+	purchase_StoreTransaction t = {0};
 	t.kind = kind_of(a);
 	t.id = t.kind == purchase_Kind_consumable ? tracking_id() : asuka_strdup(a->store_id);
 	t.productId = asuka_strdup(id && *id ? id : product_id_of(a));
@@ -485,17 +485,17 @@ static purchase_Product product(const add_on *a, const char *id) {
 
 // give gives a transaction to events(), or keeps it for the first. s.mu
 // held; t is taken.
-static void give_locked(purchase_Transaction t) {
-	purchase_Transaction *tp = malloc(sizeof *tp);
+static void give_locked(purchase_StoreTransaction t) {
+	purchase_StoreTransaction *tp = malloc(sizeof *tp);
 	*tp = t;
-	purchase_Event e = {purchase_EventType_transactionUpdated, tp, {asuka_strdup(""), asuka_strdup("")}};
+	purchase_StoreEvent e = {purchase_EventType_transactionUpdated, tp, {asuka_strdup(""), asuka_strdup("")}};
 	if (!s.nreaders) {
 		s.kept = realloc(s.kept, (s.nkept + 1) * sizeof *s.kept);
 		s.kept[s.nkept++] = e;
 		return;
 	}
-	for (size_t i = 0; i < s.nreaders; i++) purchase_fn_Event_call(s.readers[i].fn, &e);
-	purchase_Event_free(&e);
+	for (size_t i = 0; i < s.nreaders; i++) purchase_fn_StoreEvent_call(s.readers[i].fn, &e);
+	purchase_StoreEvent_free(&e);
 }
 
 static void add_on_got(void *ctx, void *p) {
@@ -637,7 +637,7 @@ static void licenses_changed(void) {
 			for (size_t k = 0; k < s.nactive; k++)
 				if (!strcmp(s.active[k].sku, id)) old = &s.active[k];
 			if (!old || old->expires != l->expires) {
-				purchase_Transaction t = transaction(a, "");
+				purchase_StoreTransaction t = transaction(a, "");
 				t.date = now_ns();
 				t.expires = l->expires;
 				give_locked(t);
@@ -649,7 +649,7 @@ static void licenses_changed(void) {
 		if (active_of(&ls, s.active[k].sku)) continue;
 		add_on *a = find_locked(s.active[k].sku);
 		if (a && !strcmp(a->store_id, s.active[k].sku) && kind_of(a) == purchase_Kind_nonConsumable) {
-			purchase_Transaction t = transaction(a, "");
+			purchase_StoreTransaction t = transaction(a, "");
 			t.state = purchase_State_revoked;
 			t.revoked = now_ns();
 			give_locked(t);
@@ -784,7 +784,7 @@ static void buy_run(job *j, asuka_error *err) {
 	void *res = SUCCEEDED(hr) ? await(op, RC_PURCHASE) : NULL;
 	int32_t status = st_server;
 	if (res) ASUKA_SLOT(res, purchase_status, get_i32)(res, &status);
-	purchase_Result r = {purchase_Status_cancelled, NULL};
+	purchase_StoreResult r = {purchase_Status_cancelled, NULL};
 	switch (status) {
 	case st_purchased: {
 		lock();
@@ -812,11 +812,11 @@ static void buy_run(job *j, asuka_error *err) {
 	asuka_com_release(res);
 	add_on_free(&a);
 	if (!err->status) purchase_Store_buy_done(j->call, r);
-	else purchase_Result_free(&r);
+	else purchase_StoreResult_free(&r);
 }
 
 static void finish_run(job *j, asuka_error *err) {
-	const purchase_Transaction *t = j->a;
+	const purchase_StoreTransaction *t = j->a;
 	if (t->kind != purchase_Kind_consumable) {  // a durable's license is its own
 		purchase_Store_finish_done(j->call);
 		return;
@@ -851,16 +851,16 @@ static void finish_run(job *j, asuka_error *err) {
 	if (!err->status) purchase_Store_finish_done(j->call);
 }
 
-static bool entitlements(purchase_list_Transaction *out, asuka_error *err) {
+static bool entitlements(purchase_list_StoreTransaction *out, asuka_error *err) {
 	licenses ls;
 	if (!read_licenses(&ls, err)) return false;
-	*out = (purchase_list_Transaction){calloc(ls.n + 1, sizeof(purchase_Transaction)), 0};
+	*out = (purchase_list_StoreTransaction){calloc(ls.n + 1, sizeof(purchase_StoreTransaction)), 0};
 	lock();
 	for (size_t i = 0; i < ls.n; i++) {
 		char *id = store_id_of(ls.list[i].sku);
 		add_on *a = find_locked(id);
 		if (a && !strcmp(a->store_id, id) && ls.list[i].active && kind_of(a) != purchase_Kind_consumable) {
-			purchase_Transaction t = transaction(a, "");
+			purchase_StoreTransaction t = transaction(a, "");
 			t.expires = ls.list[i].expires;
 			out->data[out->len++] = t;
 		}
@@ -872,13 +872,13 @@ static bool entitlements(purchase_list_Transaction *out, asuka_error *err) {
 }
 
 static void entitlements_run(job *j, asuka_error *err) {
-	purchase_list_Transaction out;
+	purchase_list_StoreTransaction out;
 	if (entitlements(&out, err)) purchase_Store_entitlements_done(j->call, out);
 }
 
 static void restore_run(job *j, asuka_error *err) {
 	licenses_changed();
-	purchase_list_Transaction out;
+	purchase_list_StoreTransaction out;
 	if (entitlements(&out, err)) purchase_Store_restore_done(j->call, out);
 }
 
@@ -886,7 +886,7 @@ static void statuses_run(job *j, asuka_error *err) {
 	const char *group = j->a;
 	licenses ls;
 	if (!read_licenses(&ls, err)) return;
-	purchase_list_SubscriptionStatus out = {calloc(ls.n + 1, sizeof(purchase_SubscriptionStatus)), 0};
+	purchase_list_StoreStatus out = {calloc(ls.n + 1, sizeof(purchase_StoreStatus)), 0};
 	lock();
 	for (size_t i = 0; i < ls.n; i++) {
 		const license *l = &ls.list[i];
@@ -894,7 +894,7 @@ static void statuses_run(job *j, asuka_error *err) {
 		add_on *a = find_locked(id);
 		free(id);
 		if (!a || !a->subscription || (strcmp(l->offer_token, group) && strcmp(a->store_id, group))) continue;
-		purchase_SubscriptionStatus st = {asuka_strdup(product_id_of(a)), l->active ? purchase_SubscriptionState_subscribed : purchase_SubscriptionState_expired,
+		purchase_StoreStatus st = {asuka_strdup(product_id_of(a)), l->active ? purchase_SubscriptionState_subscribed : purchase_SubscriptionState_expired,
 		                                  l->active};
 		st.transaction = transaction(a, "");
 		if (l->expires) st.renewal = st.transaction.expires = l->expires;
@@ -920,11 +920,11 @@ static void s_products(purchase_Store *self, purchase_list_Item items, asuka_cal
 	start_job(j);
 }
 
-static void s_buy(purchase_Store *self, const purchase_Item *item, const purchase_Options *options, asuka_call *call) {
+static void s_buy(purchase_Store *self, const purchase_Item *item, const purchase_StoreOptions *options, asuka_call *call) {
 	start(call, buy_run, item, options);
 }
 
-static void s_finish(purchase_Store *self, const purchase_Transaction *t, asuka_call *call) { start(call, finish_run, t, NULL); }
+static void s_finish(purchase_Store *self, const purchase_StoreTransaction *t, asuka_call *call) { start(call, finish_run, t, NULL); }
 static void s_entitlements(purchase_Store *self, asuka_call *call) { start(call, entitlements_run, NULL, NULL); }
 static void s_restore(purchase_Store *self, asuka_call *call) { start(call, restore_run, NULL, NULL); }
 static void s_statuses(purchase_Store *self, const char *group, asuka_call *call) { start(call, statuses_run, group, NULL); }
@@ -966,16 +966,16 @@ static void open_run(void *p) {
 	asuka_error_free(&e);
 }
 
-static void s_events(purchase_Store *self, purchase_fn_Event fn, asuka_call *call) {
+static void s_events(purchase_Store *self, purchase_fn_StoreEvent fn, asuka_call *call) {
 	lock();
 	s.readers = realloc(s.readers, (s.nreaders + 1) * sizeof *s.readers);
 	s.readers[s.nreaders++] = (struct reader){fn, call};
-	purchase_Event *kept = s.kept;
+	purchase_StoreEvent *kept = s.kept;
 	size_t n = s.nkept;
 	s.kept = NULL, s.nkept = 0;
 	for (size_t i = 0; i < n; i++) {
-		purchase_fn_Event_call(fn, &kept[i]);
-		purchase_Event_free(&kept[i]);
+		purchase_fn_StoreEvent_call(fn, &kept[i]);
+		purchase_StoreEvent_free(&kept[i]);
 	}
 	unlock();
 	free(kept);

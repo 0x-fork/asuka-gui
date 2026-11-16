@@ -5,6 +5,8 @@
 //
 // Types come as descriptors, rt/json.h's plus:
 //   o           a native object (a u64 handle; 0: none)
+//   V           a view, as a parameter (a Ref's): the u64 id its host
+//               knows it by (0: none)
 //   F<n><T...>R a function the native side calls back: n (one digit)
 //               parameter types, then the result's (v: none)
 //   v           nothing (a result)

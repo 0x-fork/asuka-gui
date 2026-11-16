@@ -51,7 +51,7 @@ typedef struct {
 	char *id;
 	int state;
 	bool has_at;
-	location_Position at;
+	location_Fix at;
 } report;
 
 static struct {
@@ -66,7 +66,7 @@ static struct {
 	void *fences;  // IGeofenceMonitor
 	bool followed;
 	location_list_Region regions;
-	void (*crossed)(const char *, location_Transition, const location_Position *);
+	void (*crossed)(const char *, location_Transition, const location_Fix *);
 } win;
 
 static void authorization_changed(void *ctx) { location_authorization_changed(); }
@@ -170,10 +170,10 @@ static double optional(void *coord, int slot) {
 }
 
 // read_fix reads an IGeoposition. Any thread.
-static bool read_fix(void *pos, location_Position *out) {
+static bool read_fix(void *pos, location_Fix *out) {
 	void *c = NULL;
 	if (FAILED(ASUKA_SLOT(pos, 6, get_ptr)(pos, &c)) || !c) return false;  // get_Coordinate
-	location_Position p = {0};
+	location_Fix p = {0};
 	INT64 ts = 0;
 	ASUKA_SLOT(c, 6, get_f64)(c, &p.latitude);
 	ASUKA_SLOT(c, 7, get_f64)(c, &p.longitude);
@@ -197,9 +197,9 @@ static bool read_fix(void *pos, location_Position *out) {
 }
 
 typedef struct {
-	void (*done)(void *ctx, const location_Position *p, asuka_error *e);
+	void (*done)(void *ctx, const location_Fix *p, asuka_error *e);
 	void *ctx;
-	location_Position p;
+	location_Fix p;
 	int failure;  // 0 none, 1 denied, 2 unavailable, 3 unavailable (denied, or off)
 } fixing;
 
@@ -245,7 +245,7 @@ static void fix_asked(void *p) {
 	asuka_com_release(op);
 }
 
-void location_fix(void (*done)(void *ctx, const location_Position *p, asuka_error *e), void *ctx) {
+void location_fix(void (*done)(void *ctx, const location_Fix *p, asuka_error *e), void *ctx) {
 	fixing *f = calloc(1, sizeof *f);
 	f->done = done;
 	f->ctx = ctx;
@@ -253,7 +253,7 @@ void location_fix(void (*done)(void *ctx, const location_Position *p, asuka_erro
 }
 
 static void moved_main(void *p) {
-	location_Position *pos = p;
+	location_Fix *pos = p;
 	for (mover *m = win.movers, *next; m; m = next) {
 		next = m->next;  // a mover may stop
 		m->sink.moved(m->sink.ctx, pos);
@@ -265,7 +265,7 @@ static void position_changed(void *ctx, void *sender, void *args) {
 	void *pos = NULL;
 	ASUKA_SLOT(args, 6, get_ptr)(args, &pos);  // get_Position
 	if (!pos) return;
-	location_Position *p = malloc(sizeof *p);
+	location_Fix *p = malloc(sizeof *p);
 	if (read_fix(pos, p)) asuka_desktop_post(moved_main, p);
 	else free(p);
 	asuka_com_release(pos);
@@ -490,7 +490,7 @@ static void reported(void *p) {
 	reports *rs = p;
 	for (size_t i = 0; i < rs->n; i++) {
 		report *r = &rs->r[i];
-		const location_Position *at = r->has_at ? &r->at : NULL;
+		const location_Fix *at = r->has_at ? &r->at : NULL;
 		if (r->state == entered && win.crossed) win.crossed(r->id, location_Transition_enter, at);
 		else if (r->state == exited && win.crossed) win.crossed(r->id, location_Transition_exit, at);
 		else if (r->state == removed) forget(r->id);
@@ -533,7 +533,7 @@ static void state_changed(void *ctx, void *sender, void *args) {
 	}
 }
 
-void location_watch_fences(void (*crossed)(const char *, location_Transition, const location_Position *)) {
+void location_watch_fences(void (*crossed)(const char *, location_Transition, const location_Fix *)) {
 	win.crossed = crossed;
 	if (!monitor() || win.followed) return;
 	win.followed = true;

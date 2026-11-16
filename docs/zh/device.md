@@ -341,7 +341,7 @@ async fn original(a: photos.Asset) throws -> string {
 ```
 
 - `photos.current()` 不询问用户，直接告诉你当前的授权状态：`.notAsked`、`.denied`、`.limited`（只能访问用户选定的照片：iOS 14、Android 14 起）或 `.allowed`。`photos.request()` 会在第一次调用时询问用户。`photos.manageLimited()` 让处于 `.limited` 状态的用户修改允许访问的照片，并在用户改完后返回：这时请重新获取列表。
-- `photos.list(screenshots:, offset:, limit:)` 按从新到旧的顺序返回，从 `offset` 开始，最多 `limit` 个（默认 100）。每个 `Asset` 包含 `id`、`width`、`height`、`created`（自 1970 年起的毫秒数）和 `screenshot`。设置 `screenshots: true` 后只返回截图：iOS 本身知道哪些是截图；Android 上则以 Screenshots 文件夹中的图片为准。
+- `photos.list(screenshots:, offset:, limit:)` 按从新到旧的顺序返回，从 `offset` 开始，最多 `limit` 个（默认 100）。每个 `Asset` 包含 `id`、`width`、`height`、`created`（一个 `time.Time`）和 `screenshot`。设置 `screenshots: true` 后只返回截图：iOS 本身知道哪些是截图；Android 上则以 Screenshots 文件夹中的图片为准。
 - `photos.thumbnail(id, size:)` 返回一个短边至少 `size` 像素的 JPEG 文件，并保存在应用的缓存目录中，下次直接复用。
 - `photos.export(id)` 按照片库中的原始格式（HEIC、JPEG、PNG）把完整的图片复制到一个文件，返回它的 `path` 以及它在照片库中的 `name`。iCloud 中的照片会先下载。
 
@@ -528,6 +528,29 @@ async fn printReceipt(receipt: string) throws -> string {
 
 - `print.file(source, job:, orientation:)` 打印 PDF 或图片（可以是路径、资源或 http(s) URL，与 `preview.show` 接受的一样）。其他类型会抛出 `print.PrintError.unsupported`，但 Windows 和 Linux 例外：Windows 上由文件所属的应用来打印，Linux 上由打印机决定接受什么（即 CUPS 能打印的内容）。
 - `print.html(markup, job:, orientation:)` 打印 HTML 标记，分页方式与浏览器打印网页相同：CSS 的 `@media print` 和 `break-before` 都会生效。图片和样式要用绝对 URL（`https:`、`data:`）。
+- `print.webView(view, job:, orientation:)` 打印 `WebView` 当前显示的页面（包括用户和页面脚本对它做过的改动），按它的浏览器打印网页的方式分页：`view` 是装着这个 WebView 的 `Ref`（用 `ref:` 放进去）。如果 Ref 里没有应用正在显示的 WebView，会抛出 `print.PrintError.unsupported`。
+
+```asuka
+import asuka/print as printing
+
+let page = Ref()
+
+component Article(url: string) {
+  Screen {
+    title: "Article"
+    toolbar {
+      Button("Print") {
+        icon: "printer"
+        on press { try? await printing.webView(page, job: "Article") }
+      }
+    }
+    WebView(url: url) {
+      ref: page
+      grow: 1
+    }
+  }
+}
+```
 
 `job` 是打印队列中的任务名（默认依次取文件名、页面标题、应用名），`orientation` 是对话框初始的纸张方向（`.portrait`、`.landscape`）。
 
@@ -542,7 +565,7 @@ async fn printReceipt(receipt: string) throws -> string {
 | Linux | GTK 的打印对话框（打印文件时用打印门户的对话框） | 直接交给打印机（CUPS：PDF、图片） | WebKitGTK 的打印操作 | 已打印或已取消 |
 | Web | 浏览器的打印对话框 | 在浏览器的查看器中打印 PDF，以及图片 | 一个隐藏的 iframe | 未知 |
 
-在 Android 和 iOS 上，宽大于高的图片默认以横向开始，这与它们打印照片时的行为一致。`asuka/print` 目前还不能打印 `WebView` 中显示的内容，也不能指定 iPad 上的弹出框指向哪个视图。
+在 Android 和 iOS 上，宽大于高的图片默认以横向开始，这与它们打印照片时的行为一致。WebView 的页面用 WebView 自己的打印功能来打印：iOS 上是它的打印格式化器，Android 上是它的打印适配器，Mac 和 Linux 上是 WebKit 的打印操作，Windows 上是 WebView2 的打印对话框。在浏览器中，与应用同源的页面（比如 `html:` 字符串生成的页面）会从它的 iframe 完整地打印出来；其他网站的页面，应用的页面无法访问其内容，因此打印的是只留下这个 WebView 的应用页面，内容就是它当前显示的样子。`asuka/print` 目前还不能指定 iPad 上的弹出框指向哪个视图。
 
 ### 用 HTML 生成 PDF
 
@@ -660,7 +683,7 @@ component Track {
 
 `location.placeName(latitude, longitude)` 返回某个地点的名称（"Mission District, San Francisco"），由平台的地理编码器提供，而地理编码器要请求自己的服务器：所以只在用户确实需要地名时才调用。Linux 上在装了 geocode-glib 时使用它；Windows 和浏览器没有地理编码器，在那里会抛出错误。
 
-`location.Position` 包含 `latitude`、`longitude`、`accuracy`（单位为米：设备所在范围的半径）、`altitude`（海拔，单位为米；未知时为 0）、`speed` 和 `course`（未知时为负数），以及 `time`（自 1970 年起的纳秒数，与 `time.now()` 相同）。
+`location.Position` 包含 `latitude`、`longitude`、`accuracy`（单位为米：设备所在范围的半径）、`altitude`（海拔，单位为米；未知时为 0）、`speed` 和 `course`（未知时为负数），以及 `time`（一个 `time.Time`）。区域穿越事件包含 `region`、`kind`、`at`（系统给出时的位置）和 `time`。
 
 ### 权限级别
 
@@ -851,7 +874,7 @@ app { Chats() }
 
 `thread` 把一个聊天的通知归为一组：iOS 会把它们叠在一起，Android 会把它们放进一个带摘要通知的组里，并由 Asuka 随着通知的增减来维护这个摘要。
 
-- `notify.showing()` 按从新到旧的顺序，列出应用当前显示着的通知（在通知中心或通知栏中），包括推送来的通知：每个 `Delivered` 包含 `id`、`title`、`subtitle`、`body`、`url`、`data`、`category`、`thread`、`time`（自 1970 年起的毫秒数），推送通知还有 `remote`。
+- `notify.showing()` 按从新到旧的顺序，列出应用当前显示着的通知（在通知中心或通知栏中），包括推送来的通知：每个 `Delivered` 包含 `id`、`title`、`subtitle`、`body`、`url`、`data`、`category`、`thread`、`time`（一个 `time.Time`），推送通知还有 `remote`。
 - `notify.remove(ids)`、`notify.removeThread(thread)`（适用于已读的聊天）和 `notify.removeAll()` 用来移除通知。
 
 ### 应用打开时显示哪些通知
@@ -887,7 +910,7 @@ async fn whosIn() throws {
 ```
 
 - `n.from(sender, c)` 把 `n` 变成一条消息：`sender` 在 `c` 中说了 `n.body`。它的 `id` 和 `thread` 默认为对话的 `id`（一对一对话的 ID 就是发送者的 ID），`title` 默认为发送者的名字（群组则为群组的标题）。
-- `Person` 包含 `id`（每次都要相同）、`name`、`image`（来源与 `Image` 相同）和 `bot`。`Conversation` 包含 `id`、群组的 `title` 和 `image`、`group`、`me`（用户本人在对话中显示的身份；Android 用它来标注用户自己的回复，默认为 "You"），以及 `earlier`（之前的消息，每条是一个 `Message`：`from`、`text`、`time`）。
+- `Person` 包含 `id`（每次都要相同）、`name`、`image`（来源与 `Image` 相同）和 `bot`。`Conversation` 包含 `id`、群组的 `title` 和 `image`、`group`、`me`（用户本人在对话中显示的身份；Android 用它来标注用户自己的回复，默认为 "You"），以及 `earlier`（之前的消息，每条是一个 `Message`：`from`、`text`、`time`，`time` 是 `time.Time?`，未知时为 none）。
 - **Android** 把一个对话显示为一条通知，所有消息都在其中：新消息会追加到当前显示着的那条对话通知里（或者由 `earlier` 设定它前面的内容）。**iOS** 则把每条消息显示为一条独立的通知，归入该对话的分组。
 - **iOS** 需要在 App ID 上开启 Communication Notifications capability：调用了 `from` 的应用会自动获得相应的 entitlement 以及 Info.plist 中的 `NSUserActivityTypes`（`INSendMessageIntent`），发布构建的描述文件也必须包含这项 capability。否则消息会以普通通知的形式显示。**macOS** 则总是把消息显示为普通通知。
 
@@ -2008,7 +2031,7 @@ app { Root() }
 
 `crash.reports()` 是一个流：先按从早到晚的顺序给出已保存的报告，之后每出现一份新报告（比如 iOS 在启动后稍晚才送达的诊断，或是记录下来的错误）就再给出一份，每份报告只给一次。报告会一直保留，直到调用 `crash.delete(id)`；超过 50 份时，最早的会被丢弃。同一份报告每次读取时的 `id` 都相同，所以服务器能够识别出重复发送的报告。`crash.record(e)` 为应用已经处理过的错误生成一份报告，`crash.breadcrumb(message)` 往报告里“应用最近做了什么”的记录中添加一条，`crash.set(key, value)` 设置报告里附带的一个值（传 `""` 会删除它）。
 
-一份 `Report` 包含 `id`、`kind`、是否致命（`fatal`）、`time`（自 1970 年起的毫秒数）、`message`（一行文字：什么崩溃了，以及原因）、`text`（平台写下的完整报告）、`threads` 和 `context`。各平台会上报哪些内容，按 `kind` 分类如下：
+一份 `Report` 包含 `id`、`kind`、是否致命（`fatal`）、`time`（一个 `time.Time`）、`message`（一行文字：什么崩溃了，以及原因）、`text`（平台写下的完整报告）、`threads` 和 `context`。各平台会上报哪些内容，按 `kind` 分类如下：
 
 | | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|

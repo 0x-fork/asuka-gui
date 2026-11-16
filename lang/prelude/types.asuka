@@ -171,7 +171,7 @@ enum GridLine {
 /// An item of a menu, a swipe, a context menu or an alert. A field left
 /// out is its zero: .button(title: "Cancel", role: .cancel) runs nothing.
 enum Action {
-  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: fn()?)
+  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: (async fn())?)
   submenu(title: string, icon: string, items: [Action])
   section(title: string, items: [Action])
 }
@@ -337,7 +337,7 @@ struct Shortcut {
 
   /// The key with primary (⌘ on Apple platforms, Ctrl elsewhere): a menu
   /// item's shortcut, MenuItem("Save") { shortcut: .cmd("s") }.
-  let cmd = (key: string) => Shortcut(key: key, primary: true)
+  static fn cmd(key: string, mods: [Modifier] = []) -> Shortcut = Shortcut(key: key, primary: true, mods: mods)
 }
 
 /// A modifier key of a Shortcut.

@@ -467,7 +467,7 @@ async fn original(a: photos.Asset) throws -> string {
   again then.
 - `photos.list(screenshots:, offset:, limit:)` is newest first, from
   `offset`, at most `limit` (100 by default). An `Asset` has its `id`,
-  `width`, `height`, `created` (milliseconds since 1970) and `screenshot`.
+  `width`, `height`, `created` (a `time.Time`) and `screenshot`.
   `screenshots: true` keeps only those: iOS knows; on Android it's what's
   in a Screenshots folder.
 - `photos.thumbnail(id, size:)` is a JPEG file at least `size` pixels on
@@ -757,6 +757,33 @@ async fn printReceipt(receipt: string) throws -> string {
 - `print.html(markup, job:, orientation:)` prints markup, paginated as a
   browser prints a page: CSS's `@media print` and `break-before` apply.
   Images and styles come from absolute URLs (`https:`, `data:`).
+- `print.webView(view, job:, orientation:)` prints the page a `WebView`
+  shows, as it is now (what the user and its scripts did on it),
+  paginated as its browser prints a page: `view` is the `Ref` the
+  WebView is in (`ref:`). A Ref that holds no WebView the app shows
+  throws `print.PrintError.unsupported`.
+
+```asuka
+import asuka/print as printing
+
+let page = Ref()
+
+component Article(url: string) {
+  Screen {
+    title: "Article"
+    toolbar {
+      Button("Print") {
+        icon: "printer"
+        on press { try? await printing.webView(page, job: "Article") }
+      }
+    }
+    WebView(url: url) {
+      ref: page
+      grow: 1
+    }
+  }
+}
+```
 
 `job` is the job's name in the queue (default: the file's name, the
 page's title, else the app's name), and `orientation` the one the dialog
@@ -777,8 +804,14 @@ says the device can't print.
 | Web | the browser's print dialog | PDFs in the browser's viewer, images | a hidden frame | unknown |
 
 An image wider than tall starts in landscape on Android and iOS, as their
-photo printing does. `asuka/print` doesn't print what a `WebView`
-shows, nor take a view for the iPad's popover to point at, yet.
+photo printing does. A WebView's page prints with the WebView's own
+printing: its print formatter on iOS, its print adapter on Android,
+WebKit's print operation on the Mac and on Linux, WebView2's print
+dialog on Windows. On the web, a page of the app's own origin (an
+`html:` string's) prints whole from its frame; another site's page
+can't be reached from the app's, so the app's page prints with only the
+WebView on it, as it shows. `asuka/print` doesn't yet take a view for
+the iPad's popover to point at.
 
 ### PDFs from HTML
 
@@ -936,7 +969,8 @@ it throws there.
 A `location.Position` has `latitude`, `longitude`, `accuracy` (meters:
 the radius the device is within), `altitude` (meters above sea level; 0 if
 not known), `speed` and `course` (negative when not known) and `time`
-(nanoseconds since 1970, as `time.now()`).
+(a `time.Time`). A crossing has its `region`, `kind`, `at` (the
+position, when the system says) and `time`.
 
 ### Permission levels
 
@@ -1216,7 +1250,7 @@ come and go.
 - `notify.showing()` lists the app's notifications that show (in
   Notification Center, the shade), its pushes' too, newest first: each
   `Delivered` has its `id`, `title`, `subtitle`, `body`, `url`, `data`,
-  `category`, `thread`, `time` (milliseconds since 1970), and `remote`
+  `category`, `thread`, `time` (a `time.Time`), and `remote`
   for a push.
 - `notify.remove(ids)`, `notify.removeThread(thread)` (a chat that's
   read) and `notify.removeAll()` take them away.
@@ -1269,7 +1303,7 @@ async fn whosIn() throws {
   group's `title` and `image`, `group`, `me` (the user as the
   conversation shows them; Android names their replies with it, "You" by
   default) and `earlier` messages (each a `Message`: `from`, `text`,
-  `time`).
+  `time`, a `time.Time?`: none when not known).
 - **Android** shows a conversation as one notification, its messages in
   it: a message adds to the conversation's notification that shows (or
   `earlier` sets what comes before it). **iOS** shows each message as a
@@ -3013,7 +3047,7 @@ the app last did, and `crash.set(key, value)` sets a value they have
 (`""` removes it).
 
 A `Report` has its `id`, its `kind`, whether it was `fatal`, its `time`
-(milliseconds since 1970), a `message` (a line: what crashed, and why),
+(a `time.Time`), a `message` (a line: what crashed, and why),
 its `text` (the whole report, as the platform wrote it), its `threads`
 and its `context`. What's reported, as its `kind`, on each platform:
 

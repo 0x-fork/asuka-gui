@@ -210,7 +210,7 @@ void bt_engine_stop_advertise(uint32_t id) {}
 uintptr_t bt_after(unsigned ms, void (*fn)(void *), void *ctx) { return 0; }
 void bt_after_stop(uintptr_t id) {}
 void bluetooth_fn_State_call(bluetooth_fn_State f, bluetooth_State p0) {}
-void bluetooth_fn_Advertisement_call(bluetooth_fn_Advertisement f, const bluetooth_Advertisement *p0) {}
+void bluetooth_fn_Heard_call(bluetooth_fn_Heard f, const bluetooth_Heard *p0) {}
 void bluetooth_fn_Link_call(bluetooth_fn_Link f, const bluetooth_Link *p0) {}
 void bluetooth_fn_bytes_call(bluetooth_fn_bytes f, asuka_bytes p0) {}
 void bluetooth_fn_Request_call(bluetooth_fn_Request f, const bluetooth_Request *p0) {}
@@ -223,4 +223,4 @@ void bluetooth_Adapter_rssi_done(asuka_call *call, int64_t value) {}
 void bluetooth_Adapter_read_done(asuka_call *call, asuka_bytes value) {}
 void bluetooth_Adapter_write_done(asuka_call *call) {}
 void bluetooth_Adapter_watchRestored_done(asuka_call *call) {}
-void bluetooth_Advertisement_free(bluetooth_Advertisement *v) {}
+void bluetooth_Heard_free(bluetooth_Heard *v) {}

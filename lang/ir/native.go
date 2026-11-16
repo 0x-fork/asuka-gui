@@ -39,6 +39,12 @@ func (b *fb) nativeMethodCall(e *syntax.CallExpr, call *check.Call, recv *int, d
 	for i, p := range call.Params {
 		types[i] = b.typ(p.Type)
 		argsDesc += b.l.nativeDesc(types[i])
+		if types[i] == check.Ref {
+			// A view crosses as the view its Ref holds now (none: 0).
+			view := b.temp(bc.KRef)
+			b.emit(op("CGET"), view, vals[i])
+			vals[i] = view
+		}
 	}
 	var args int
 	if len(vals) == 0 {
@@ -93,11 +99,14 @@ func (l *Lowerer) nativeSig(call *check.Call) *check.Signature {
 }
 
 // nativeDesc is t's descriptor on the native wire (core/src/native/
-// native.h): JSON's (desc), with native objects (o), callbacks
-// (F<n><params><result>) and nothing (v).
+// native.h): JSON's (desc), with native objects (o), views (V: a Ref's),
+// callbacks (F<n><params><result>) and nothing (v).
 func (l *Lowerer) nativeDesc(t check.Type) string {
 	if t == nil || t == check.Void {
 		return "v"
+	}
+	if t == check.Ref {
+		return "V"
 	}
 	switch x := t.(type) {
 	case *check.Named:

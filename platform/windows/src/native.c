@@ -23,6 +23,13 @@ void *asuka_desktop_window(uint32_t view) {
 	return top && top != H.park ? top : NULL;  // parked: in no window yet
 }
 
+void *asuka_desktop_view(uint32_t view) {
+	node *n = view ? wh_node(view) : NULL;
+	return n ? n->hwnd : NULL;
+}
+
+void *asuka_desktop_webview(uint32_t view) { return view ? wh_web_view(wh_node(view)) : NULL; }
+
 uint32_t asuka_desktop_color(uint64_t color) {
 	rgba c = H.theme.label;  // the platform's default: the text's
 	if (color) wh_resolve((ak_color)color, &c);

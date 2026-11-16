@@ -23,13 +23,16 @@ func KotlinErrorType(p *Package) string {
 	}
 	return upperCamel(p.Name) + "Error"
 }
-func KotlinException(p *Package) string { return strings.TrimSuffix(KotlinErrorType(p), "Error") + "Exception" }
+func KotlinException(p *Package) string {
+	return strings.TrimSuffix(KotlinErrorType(p), "Error") + "Exception"
+}
 
 var kotlinOf = map[Kind]string{
 	Bool: "Boolean", Int8: "Byte", Int16: "Short", Int32: "Int", Int64: "Long", Int: "Long",
 	Uint8: "UByte", Uint16: "UShort", Uint32: "UInt", Uint64: "ULong", Uint: "ULong",
 	Float32: "Float", Float64: "Double", String: "String", Bytes: "ByteArray",
 	Time: "java.time.Instant", Duration: "kotlin.time.Duration",
+	ViewRef: "dev.asuka.AsukaViewRef",
 }
 
 var kotlinZero = map[Kind]string{

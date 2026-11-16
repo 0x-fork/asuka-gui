@@ -14,7 +14,7 @@ import (
 // in code (file nil) prints offsets instead of lines.
 //
 // Fields that are empty (nil, false, NoPos, "") are left out, and so are
-// the positions of brackets and operators; Pub, Native, Async, Throws
+// the positions of brackets and operators; Pub, Native, Static, Async, Throws
 // and Await print as flags.
 func Fdump(w io.Writer, file *File, n Node) error {
 	d := dumper{w: w, file: file}
@@ -61,7 +61,7 @@ var (
 )
 
 // flagPos are the positions printed, as flags, when they're valid.
-var flagPos = map[string]bool{"Pub": true, "Native": true, "Extern": true, "Async": true, "Throws": true, "Await": true}
+var flagPos = map[string]bool{"Pub": true, "Native": true, "Extern": true, "Static": true, "Async": true, "Throws": true, "Await": true}
 
 func (d *dumper) node(n Node, depth int, label string) {
 	if label != "" {

@@ -276,6 +276,52 @@ async fn latest() throws -> string {
 
 在浏览器里，向其他源发请求需要那个源返回 CORS 头。
 
+较大的响应（视频、压缩包）可以边收边写进文件：`http.download(url, path, progress:)` 先写到路径旁边的文件里，全部收完后再重命名到位，每秒几次以已收到的字节数和总字节数（服务器没说时为 -1）调用 `progress`。它的 `timeout` 是等待后续数据的最长时间，而不是整个下载的时间；取消它所在的 task 就会停止下载，不留下文件。iOS 和 macOS 上用 URLSession，Android 上用 `HttpURLConnection`，Windows 和 Linux 上用 WinHTTP 和 libsoup，都是直接流式写入文件；在浏览器里，则从 fetch 的流中读出，写进应用的文件。
+
+```asuka
+import asuka/fs
+import asuka/http
+
+component Download(url: string) {
+  state got = 0
+  state total = -1
+  state problem = ""
+
+  task(url) {
+    let file = fs.join([fs.appDir(), "downloads", "video.mp4"])
+    do {
+      try fs.mkdirAll(fs.dir(file))
+      let r = try await http.download(url, file, progress: (n, all) => {
+        got = n
+        total = all
+      })
+      if !r.ok() { problem = "HTTP {r.status}" }
+    } catch e {
+      problem = e.message
+    }
+  }
+
+  Column {
+    Progress { value: if total > 0 { got.float() / total.float() } else { none } }
+    if !problem.isEmpty() { Text(problem) }
+  }
+}
+```
+
+桌面应用的 OAuth 登录会重定向到应用自己在回环接口上的服务器（RFC 8252）：`http.loopback(path:, page:)` 在系统挑选的端口上监听，它的 `url` 就是要提供的重定向 URI；`next()` 等待浏览器回来，用 `page` 应答（"可以关闭这个窗口了"），并给出浏览器访问的 URL，其中的查询参数就是授权码；`close()` 停止监听。Android 和 iOS 在应用运行期间也可以监听；浏览器不行（在那里会抛出错误）：Web 应用的登录应重定向到它自己的站点。
+
+```asuka
+import asuka/http
+
+async fn signInBack(authorize: string) throws -> string {
+  let lb = try await http.loopback()
+  defer { lb.close() }
+  openURL("{authorize}&redirect_uri={lb.url}")
+  let back = try await lb.next() // http://127.0.0.1:port/callback?code=…
+  return back
+}
+```
+
 ## 监视文件：asuka/watch
 
 `watch.path(dir)` 跟踪一个文件夹（或文件）的变化：应用显示的文件夹、编辑器里打开的项目、另一个程序会写入的设置文件。它的 `events` 是一个按批到来的变化流：

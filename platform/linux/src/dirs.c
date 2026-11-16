@@ -183,6 +183,13 @@ void *asuka_desktop_window(uint32_t view) {
 	return w ? w->window : NULL;
 }
 
+void *asuka_desktop_view(uint32_t view) {
+	node *n = view ? node_get(view) : NULL;
+	return n ? n->widget : NULL;
+}
+
+void *asuka_desktop_webview(uint32_t view) { return view ? lx_web_view(node_get(view)) : NULL; }
+
 uint32_t asuka_desktop_color(uint64_t color) {
 	GdkRGBA c;
 	if (!lx_resolve(color, &c)) c = H.theme.fg;

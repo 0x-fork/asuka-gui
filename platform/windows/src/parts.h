@@ -266,6 +266,8 @@ void wh_make_web(node *n);
 void wh_web_set_prop(node *n, uint16_t p, const ak_value *v);
 void wh_web_close(node *n, HWND hwnd);
 void wh_web_resized(node *n);
+// wh_web_view is a WebView's ICoreWebView2 (the host's), NULL until it's made.
+void *wh_web_view(node *n);
 void wh_web_command(node *n, uint16_t cmd, const uint8_t *args, size_t len);
 void wh_web_color_scheme(node *n, bool dark);
 // wh_web_environment calls fn with the app's WebView2 environment (an

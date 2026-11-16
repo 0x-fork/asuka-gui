@@ -53,11 +53,11 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
     /** Each product's kind, as the app said. */
     private val kinds = HashMap<String, Kind>()
     /** The purchase under way: its product and buy's continuation. */
-    private var buying: Pair<String, (kotlin.Result<Result>) -> Unit>? = null
+    private var buying: Pair<String, (kotlin.Result<StoreResult>) -> Unit>? = null
     /** What each purchase token was last given as (its state), not to give it twice. */
     private val given = HashMap<String, Int>()
-    private val kept = ArrayDeque<Event>()
-    private val readers = HashMap<Int, (Event) -> Unit>()
+    private val kept = ArrayDeque<StoreEvent>()
+    private val readers = HashMap<Int, (StoreEvent) -> Unit>()
     private var nextReader = 0
     /** What waits for the app to come back (a store page it opened). */
     private val onReturn = mutableListOf<() -> Unit>()
@@ -162,7 +162,7 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
         query(items) { res -> resume(res.map { items.mapNotNull { i -> details[i.id]?.let { d -> wire(d) } } }) }
     }
 
-    override suspend fun buy(item: Item, options: Options): Result = ready { resume ->
+    override suspend fun buy(item: Item, options: StoreOptions): StoreResult = ready { resume ->
         kinds[item.id] = item.kind
         val go = go@{
             val p = details[item.id] ?: return@go resume(kotlin.Result.failure(PurchaseException(PurchaseError.UNKNOWN_PRODUCT)))
@@ -223,14 +223,14 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
                 BillingClient.BillingResponseCode.OK -> {
                     mine = purchases.firstOrNull { id in it.products } ?: purchases.firstOrNull()
                     val p = mine
-                    if (p == null) resume(kotlin.Result.success(Result(status = Status.CANCELLED)))
+                    if (p == null) resume(kotlin.Result.success(StoreResult(status = Status.CANCELLED)))
                     else {
                         given[p.purchaseToken] = p.purchaseState
                         val bought = p.purchaseState == Purchase.PurchaseState.PURCHASED
-                        resume(kotlin.Result.success(Result(status = if (bought) Status.BOUGHT else Status.PENDING_APPROVAL, transaction = wire(p))))
+                        resume(kotlin.Result.success(StoreResult(status = if (bought) Status.BOUGHT else Status.PENDING_APPROVAL, transaction = wire(p))))
                     }
                 }
-                BillingClient.BillingResponseCode.USER_CANCELED -> resume(kotlin.Result.success(Result(status = Status.CANCELLED)))
+                BillingClient.BillingResponseCode.USER_CANCELED -> resume(kotlin.Result.success(StoreResult(status = Status.CANCELLED)))
                 else -> resume(kotlin.Result.failure(failure(r)))
             }
         }
@@ -243,7 +243,7 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
     private fun give(p: Purchase) {
         if (given[p.purchaseToken] == p.purchaseState) return
         given[p.purchaseToken] = p.purchaseState
-        val e = Event(type = EventType.TRANSACTION_UPDATED, transaction = wire(p))
+        val e = StoreEvent(type = EventType.TRANSACTION_UPDATED, transaction = wire(p))
         if (readers.isEmpty()) kept.addLast(e) else readers.values.toList().forEach { it(e) }
     }
 
@@ -281,21 +281,21 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
         }
     }
 
-    override suspend fun entitlements(): List<Transaction> = ready { resume ->
+    override suspend fun entitlements(): List<StoreTransaction> = ready { resume ->
         purchases(false) { res -> resume(res.map { ps -> ps.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }.map { wire(it) } }) }
     }
 
-    override suspend fun restore(): List<Transaction> {
+    override suspend fun restore(): List<StoreTransaction> {
         withContext(Dispatchers.Main) { reconcile() }
         return entitlements()
     }
 
-    override suspend fun statuses(group: String): List<SubscriptionStatus> = ready { resume ->
+    override suspend fun statuses(group: String): List<StoreStatus> = ready { resume ->
         purchases(true) { res ->
             resume(res.map { ps ->
                 ps.filter { group in it.products && it.purchaseState == Purchase.PurchaseState.PURCHASED && playType(kinds[group] ?: Kind.AUTO_RENEWABLE) == BillingClient.ProductType.SUBS }
                     .map { p ->
-                        SubscriptionStatus(productId = group, state = if (p.isSuspended) SubscriptionState.BILLING_RETRY else SubscriptionState.SUBSCRIBED,
+                        StoreStatus(productId = group, state = if (p.isSuspended) SubscriptionState.BILLING_RETRY else SubscriptionState.SUBSCRIBED,
                             willRenew = p.isAutoRenewing, transaction = wire(p))
                     }
             })
@@ -338,7 +338,7 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
         }
     }
 
-    override suspend fun events(event: (Event) -> Unit) {
+    override suspend fun events(event: (StoreEvent) -> Unit) {
         val id = withContext(Dispatchers.Main) {
             val n = ++nextReader
             readers[n] = event
@@ -352,7 +352,7 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
         }
     }
 
-    override suspend fun finish(transaction: Transaction) = ready { resume ->
+    override suspend fun finish(transaction: StoreTransaction) = ready { resume ->
         val token = transaction.verification.token
         if (token.isEmpty()) return@ready resume(kotlin.Result.failure(Failure("purchase: no purchase token")))
         val consume = (kinds[transaction.productId] ?: transaction.kind) == Kind.CONSUMABLE
@@ -411,10 +411,10 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
             price = one?.formattedPrice ?: "", priceMicros = one?.priceAmountMicros ?: 0, currency = one?.priceCurrencyCode ?: "", offers = offers)
     }
 
-    private fun wire(p: Purchase): Transaction {
+    private fun wire(p: Purchase): StoreTransaction {
         val id = p.products.firstOrNull() ?: ""
         val a = p.accountIdentifiers
-        return Transaction(
+        return StoreTransaction(
             id = p.orderId ?: p.purchaseToken, productId = id, kind = kinds[id] ?: Kind.NON_CONSUMABLE, quantity = p.quantity.toLong(),
             state = if (p.purchaseState == Purchase.PurchaseState.PURCHASED) State.PURCHASED else State.PENDING,
             date = p.purchaseTime * 1_000_000, autoRenews = p.isAutoRenewing, acknowledged = p.isAcknowledged,

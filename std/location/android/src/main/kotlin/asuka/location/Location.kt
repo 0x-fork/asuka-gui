@@ -55,7 +55,7 @@ private fun background(ctx: Context) = foreground(ctx) && granted(ctx, Manifest.
 
 private fun lm(ctx: Context) = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-fun position(l: Location) = Position(
+fun position(l: Location) = Fix(
     latitude = l.latitude, longitude = l.longitude, accuracy = l.accuracy.toDouble(),
     altitude = if (l.hasAltitude()) l.altitude else 0.0,
     speed = if (l.hasSpeed()) l.speed.toDouble() else -1.0,
@@ -63,10 +63,10 @@ fun position(l: Location) = Position(
     time = l.time * 1_000_000,
 )
 
-private fun json(p: Position) = JSONObject().put("lat", p.latitude).put("lon", p.longitude).put("acc", p.accuracy)
+private fun json(p: Fix) = JSONObject().put("lat", p.latitude).put("lon", p.longitude).put("acc", p.accuracy)
     .put("alt", p.altitude).put("spd", p.speed).put("crs", p.course).put("t", p.time)
 
-private fun unjson(o: JSONObject?) = if (o == null) Position() else Position(
+private fun unjson(o: JSONObject?) = if (o == null) Fix() else Fix(
     latitude = o.optDouble("lat"), longitude = o.optDouble("lon"), accuracy = o.optDouble("acc"), altitude = o.optDouble("alt"),
     speed = o.optDouble("spd", -1.0), course = o.optDouble("crs", -1.0), time = o.optLong("t"),
 )
@@ -125,7 +125,7 @@ class AndroidLocator(private val ctx: Context) : Locator {
         }
     }
 
-    override suspend fun current(): Position {
+    override suspend fun current(): Fix {
         if (!foreground(ctx)) request(false)
         if (!foreground(ctx)) throw LocationException(LocationError.DENIED)
         return withContext(Dispatchers.Main) {
@@ -139,7 +139,7 @@ class AndroidLocator(private val ctx: Context) : Locator {
         }
     }
 
-    override suspend fun watch(moved: (Position) -> Unit) {
+    override suspend fun watch(moved: (Fix) -> Unit) {
         if (!foreground(ctx)) request(false)
         if (!foreground(ctx)) throw LocationException(LocationError.DENIED)
         val l = LocationListener { moved(position(it)) }
@@ -391,7 +391,7 @@ object Events {
 
     fun unlisten(id: Int) { readers.remove(id) }
 
-    fun received(ctx: Context, positions: List<Position>, crossings: List<Pair<String, Transition>>, hold: BroadcastReceiver.PendingResult?) {
+    fun received(ctx: Context, positions: List<Fix>, crossings: List<Pair<String, Transition>>, hold: BroadcastReceiver.PendingResult?) {
         load(ctx)
         val out = ArrayList<JSONObject>()
         if (positions.isNotEmpty() && Store.updates(ctx) != null) out.add(JSONObject().put("positions", JSONArray(positions.map { json(it) })))

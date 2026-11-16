@@ -1,8 +1,9 @@
 // asuka/print on iOS and the Mac. iOS: UIPrintInteractionController, with
-// WebKit's print formatter for markup (paginated, as Safari prints), and
-// UIPrintPageRenderer for PDFs. The Mac: NSPrintOperation, its panel a
-// sheet on the window: PDFKit's for files, WKWebView's for markup, and a
-// save job (no panel) for PDFs.
+// WebKit's print formatter for markup and a WebView's page (paginated, as
+// Safari prints), and UIPrintPageRenderer for PDFs. The Mac:
+// NSPrintOperation, its panel a sheet on the window: PDFKit's for files,
+// WKWebView's for markup and a WebView's page, and a save job (no panel)
+// for PDFs.
 import Foundation
 import WebKit
 import Asuka
@@ -100,6 +101,32 @@ final class SystemPrinter: Printer {
         }
         #endif
         return url.path
+    }
+
+    func webView(view: AsukaViewRef, job: Job) async throws -> Outcome {
+        let (web, title) = try await MainActor.run { () throws -> (WKWebView, String) in
+            guard let w = Self.web(in: view.view) else { throw PrintError.unsupported }
+            return (w, w.title ?? "")
+        }
+        #if canImport(UIKit)
+        return try await present(job, fallback: title, photo: false) { $0.printFormatter = web.viewPrintFormatter() }
+        #else
+        return await MainActor.run { () -> NSPrintOperation in
+            let op = web.printOperation(with: Self.info(job))
+            op.view?.frame = web.bounds
+            return op
+        }.runPanel(job, fallback: title, window: await MainActor.run { web.window })
+        #endif
+    }
+
+    /// The WKWebView a view is, or holds.
+    @MainActor static func web(in v: AsukaPlatformView?) -> WKWebView? {
+        guard let v else { return nil }
+        if let w = v as? WKWebView { return w }
+        for s in v.subviews {
+            if let w = web(in: s) { return w }
+        }
+        return nil
     }
 
     /// A new PDF's file in the caches (asuka-print/), in a folder of its

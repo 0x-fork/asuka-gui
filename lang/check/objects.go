@@ -192,6 +192,7 @@ type Function struct {
 	Sig        *Signature
 	TypeParams []*TypeParam
 	Recv       *TypeName // a method's type (struct, enum, store, component); nil for a function
+	Static     *TypeName // a static fn's type (Money.of), which has no receiver
 	Ctx        *FuncCtx  // its body's
 	// Extern: an extern fn's C side (nil for the rest).
 	Extern *Extern
@@ -274,6 +275,7 @@ type TypeName struct {
 	// Structs and enums.
 	Methods  map[string]*Function
 	Consts   map[string]*Global
+	Statics  map[string]*Function // static fn: the type's functions (Money.of(…))
 	IsError  bool
 	Conforms []*TypeName // interfaces it declares
 	// Interfaces.

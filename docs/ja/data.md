@@ -276,6 +276,52 @@ async fn latest() throws -> string {
 
 ブラウザーでは、別のオリジンへのリクエストにはそのオリジンの CORS ヘッダーが必要です。
 
+大きなレスポンス（動画やアーカイブ）は、届くそばからファイルに書けます。`http.download(url, path, progress:)` は、パスの隣のファイルに書き、すべて届いたらパスへ名前を変えます。そのあいだ 1 秒に数回、届いたバイト数と全体のバイト数（サーバーが示さなければ -1）を渡して `progress` を呼びます。`timeout` は全体ではなく、次のデータを待つ最長の時間です。タスクをキャンセルするとダウンロードは止まり、ファイルは残りません。iOS と macOS では URLSession、Android では `HttpURLConnection`、Windows と Linux では WinHTTP と libsoup がそのままファイルへ書き、ブラウザーでは fetch のストリームから読んでアプリのファイルに書きます。
+
+```asuka
+import asuka/fs
+import asuka/http
+
+component Download(url: string) {
+  state got = 0
+  state total = -1
+  state problem = ""
+
+  task(url) {
+    let file = fs.join([fs.appDir(), "downloads", "video.mp4"])
+    do {
+      try fs.mkdirAll(fs.dir(file))
+      let r = try await http.download(url, file, progress: (n, all) => {
+        got = n
+        total = all
+      })
+      if !r.ok() { problem = "HTTP {r.status}" }
+    } catch e {
+      problem = e.message
+    }
+  }
+
+  Column {
+    Progress { value: if total > 0 { got.float() / total.float() } else { none } }
+    if !problem.isEmpty() { Text(problem) }
+  }
+}
+```
+
+デスクトップアプリの OAuth サインインは、ループバックインターフェース上のアプリ自身のサーバーへリダイレクトします（RFC 8252）。`http.loopback(path:, page:)` はシステムが選ぶポートで待ち受け、その `url` が渡すべきリダイレクト URI です。`next()` はブラウザーが戻ってくるのを待ち、`page`（「このウィンドウは閉じてかまいません」）で応答して、ブラウザーが来た URL を返します。そのクエリがコードです。`close()` で待ち受けを止めます。Android と iOS も、アプリの実行中は待ち受けられます。ブラウザーはできないので（そこではエラーを投げます）、Web アプリのサインインは自分のサイトへリダイレクトします。
+
+```asuka
+import asuka/http
+
+async fn signInBack(authorize: string) throws -> string {
+  let lb = try await http.loopback()
+  defer { lb.close() }
+  openURL("{authorize}&redirect_uri={lb.url}")
+  let back = try await lb.next() // http://127.0.0.1:port/callback?code=…
+  return back
+}
+```
+
 ## ファイルの監視：asuka/watch
 
 `watch.path(dir)` はフォルダー（またはファイル）の変更を追います。アプリが表示しているフォルダー、エディターで開いているプロジェクト、別のプログラムが書き込む設定ファイルなどです。その `events` は、変更のバッチが次々に届くストリームです。

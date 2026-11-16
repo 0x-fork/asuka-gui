@@ -76,6 +76,7 @@ go test ./platform/macos/mactest -run Conformance  # what the macOS host draws f
 go test -tags e2e ./e2e -run Conformance # likewise on the simulator, the emulator and headless Chrome (ASUKA_CONFORMANCE_OUT=dir: the captures)
 swift test --package-path platform/ios # the Swift decoder against the golden files (macOS)
 node --test platform/web                # the JavaScript decoder, likewise
+go test ./std                            # std packages' Swift run on this Mac (asuka/http's URLSession download)
 (cd platform/android && ./gradlew :asuka:testDebugUnitTest)  # the Kotlin decoder, likewise (ANDROID_HOME set)
 go generate ./ops                   # Go constants, Swift, Kotlin and JavaScript decoders
 go run platform/web/gen_symbols.go  # the web host's symbols, from the Android host's

@@ -30,11 +30,12 @@ var methodOf = map[Kind]string{
 	Bool: "Bool", Int8: "Int8", Int16: "Int16", Int32: "Int32", Int64: "Int64", Int: "Int",
 	Uint8: "Uint8", Uint16: "Uint16", Uint32: "Uint32", Uint64: "Uint64", Uint: "Uint",
 	Float32: "Float32", Float64: "Float64", String: "String", Bytes: "Data", Time: "Time", Duration: "Duration",
+	ViewRef: "Uint64",
 }
 
 var goBasic = map[Kind]string{
 	Int8: "int8", Int16: "int16", Int32: "int32", Int64: "int64", Int: "int",
-	Uint8: "uint8", Uint16: "uint16", Uint32: "uint32", Uint64: "uint64", Uint: "uint", String: "string",
+	Uint8: "uint8", Uint16: "uint16", Uint32: "uint32", Uint64: "uint64", Uint: "uint", String: "string", ViewRef: "uint64",
 }
 
 // mangle names a type in helper functions' names.

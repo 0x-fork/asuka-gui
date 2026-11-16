@@ -1,7 +1,7 @@
 // Downloader saves videos from links: a link pasted or shared from
-// another app (on share), downloaded while the app is out of sight
-// (asuka/background, its progress and Pause and Cancel in a
-// notification), on Wi-Fi only if asked (asuka/network), into the
+// another app (on share), downloaded as it comes (asuka/http's download)
+// while the app is out of sight (asuka/background, its progress and
+// Cancel in a notification), on Wi-Fi only if asked (asuka/network), into the
 // gallery (asuka/library). Its browser finds the videos a page plays,
 // from a script that runs before the page's own (WebView's preload), and
 // blocks ads; its icons are SVG (asuka/svg); asuka/js runs a script off
@@ -138,39 +138,23 @@ screen Downloader {
 async fn download(url: string, report: fn(string)) {
   var name = url.split("?")[0].split("/").last() ?? ""
   if name.isEmpty() || name == "." { name = "video.mp4" }
-  var paused = false
   var cancelled = false
-  let actions = () => if paused {
-    [background.Action(id: "resume", title: "Resume"), background.Action(id: "cancel", title: "Cancel")]
-  } else {
-    [background.Action(id: "pause", title: "Pause"), background.Action(id: "cancel", title: "Cancel")]
-  }
-  let task = background.start(title: "Downloading {name}", progress: -1, actions: actions(), onAction: a => {
-    match a {
-      "pause" => paused = true
-      "resume" => paused = false
-      "cancel" => cancelled = true
-      _ => {}
-    }
+  let task = background.start(title: "Downloading {name}", progress: -1, actions: [background.Action(id: "cancel", title: "Cancel")], onAction: a => {
+    if a == "cancel" { cancelled = true }
   })
   defer { task.end() }
   report("Downloading {name}")
   let file = fs.join([fs.appDir(), "downloads", name])
   do {
-    try await fetch(url, file, paused: () => paused, cancelled: () => cancelled, progress: (done, total) => {
+    try await fetch(url, file, cancelled: () => cancelled, progress: (done, total) => {
       var p = -1.0
       var text = "{(done.float() / 1e6).fixed(1)} MB"
       if total > 0 {
         p = done.float() / total.float()
         text = "{(p * 100).fixed(0)}% of {(total.float() / 1e6).fixed(1)} MB"
       }
-      var icon = dock.Progress(value: p, state: if p < 0 { .indeterminate } else { .normal })
-      if paused {
-        text = "Paused · {text}"
-        icon.state = .paused
-      }
-      task.update(title: "Downloading {name}", text: text, progress: p, actions: actions())
-      dock.setProgress(icon) // on the Dock or the taskbar, on a desktop
+      task.update(title: "Downloading {name}", text: text, progress: p, actions: [background.Action(id: "cancel", title: "Cancel")])
+      dock.setProgress(dock.Progress(value: p, state: if p < 0 { .indeterminate } else { .normal })) // on the Dock or the taskbar, on a desktop
     })
   } catch e {
     dock.setProgress(dock.Progress())
@@ -193,25 +177,22 @@ async fn download(url: string, report: fn(string)) {
   }
 }
 
-/// Downloads url to file, reporting its progress; paused holds it before
-/// it's written, cancelled stops it. (asuka/http answers with the whole
-/// body: its progress is the answer's, then the file's.)
-async fn fetch(
-  url: string,
-  file: string,
-  paused: fn() -> bool,
-  cancelled: fn() -> bool,
-  progress: fn(int, int),
-) throws {
+/// Downloads url into file as it comes (asuka/http's download), its
+/// progress reported; cancelled stops it, leaving no file.
+async fn fetch(url: string, file: string, cancelled: fn() -> bool, progress: fn(int, int)) throws {
   try fs.mkdirAll(fs.dir(file))
-  progress(0, 0)
-  let res = try await http.get(url)
-  if !res.ok() { throw DownloadError.status(res.status) }
-  while paused() && !cancelled() { await sleep(200ms) }
-  if cancelled() { throw DownloadError.cancelled }
-  let size = res.body.count()
-  try fs.write(file, res.body)
-  progress(size, size)
+  let res = try await race(http.download(url, file, progress: progress), whenCancelled(cancelled))
+  if !res.ok() {
+    try? fs.remove(file)
+    throw DownloadError.status(res.status)
+  }
+}
+
+/// Throws DownloadError.cancelled once cancelled says so: the other side
+/// of fetch's race, which cancels the download.
+async fn whenCancelled(cancelled: fn() -> bool) throws -> http.Response {
+  while !cancelled() { await sleep(200ms) }
+  throw DownloadError.cancelled
 }
 
 enum DownloadError: Error {

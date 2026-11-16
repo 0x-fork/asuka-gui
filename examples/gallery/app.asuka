@@ -96,7 +96,7 @@ component Gallery {
             }
             Button("Print") {
               icon: "printer"
-              on press { try? await print.html(webMarkup, job: "A web page") }
+              on press { try? await print.webView(webView, job: "A web page") }
             }
           }
           WebPage()

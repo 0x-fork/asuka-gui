@@ -21,6 +21,11 @@ export function color(v) { return css(null, Number(v)); }
 let assets = "assets";
 
 /** setAssets is for the host: the URL the app's assets are served from. */
+// The host's views by id (setViews): what a Ref passed to a package's
+// JavaScript is.
+let viewOf = () => null;
+export function setViews(f) { viewOf = f; }
+
 export function setAssets(url) { assets = (url || "assets").replace(/\/$/, ""); }
 
 /** assetURL is a source as the hosts take one (a URL, or a file in the app's assets) as a URL a package can load. */
@@ -120,6 +125,8 @@ export class NativeReader {
   uint32() { const at = this.take(4); return at < 0 ? 0 : this.v.getUint32(at, true); }
   int64() { const at = this.take(8); return at < 0 ? 0n : this.v.getBigInt64(at, true); }
   uint64() { const at = this.take(8); return at < 0 ? 0n : this.v.getBigUint64(at, true); }
+  /** A view the app shows (an Asuka Ref), by its id: its element, or null. */
+  viewRef() { const id = Number(this.uint64()); return id ? viewOf(id) : null; }
   int() { return Number(this.int64()); }
   uint() { return Number(this.uint64()); }
   float32() { const at = this.take(4); return at < 0 ? 0 : this.v.getFloat32(at, true); }

@@ -894,6 +894,7 @@ typedef struct {
 	ak_closure *run;        // its action's
 	ak_closure *dismissed;  // OnDismiss
 	ak_owner *owner;
+	ak_owner *from;  // the code's that showed it (retained): its action runs there
 	bool closed;
 } snack_t;
 
@@ -917,7 +918,7 @@ static bool snack_close(ak_view *e) {
 static void call_closure(ak_closure *c, ak_owner *owner) {
 	if (!c) return;
 	ak_retain(c);
-	ak_val r = ak_call(c, NULL, 0);
+	ak_val r = ak_ui_call_under(owner, c, NULL, 0);
 	if (!ak_error_pending()) ak_release(r.p);
 	else ak_ui_raise_pending(owner);
 	ak_release(c);
@@ -928,7 +929,7 @@ static void snack_dismiss(ak_view *e) {
 	snack_t *s = e->impl;
 	ak_retain(e);
 	ak_closure *d = s->dismissed ? ak_retain(s->dismissed) : NULL;
-	if (snack_close(e)) call_closure(d, NULL);
+	if (snack_close(e)) call_closure(d, s->from);
 	ak_release(d);
 	ak_release(e);
 }
@@ -938,7 +939,7 @@ static void snack_event(ak_view *e, const ak_event *ev) {
 	if (ev->kind == AK_EVENT_ACTION) {
 		ak_retain(e);
 		ak_closure *run = s->run ? ak_retain(s->run) : NULL;
-		if (snack_close(e)) call_closure(run, NULL);
+		if (snack_close(e)) call_closure(run, s->from);
 		ak_release(run);
 		ak_release(e);
 	} else if (ev->kind == AK_EVENT_DISMISSED) {
@@ -951,6 +952,7 @@ static void snack_drop(ak_view *e) {
 	if (!s) return;
 	ak_release(s->run);
 	ak_release(s->dismissed);
+	if (s->from) ak_owner_release(s->from);
 	ak_free(s);
 }
 
@@ -992,6 +994,8 @@ ak_closure *ak_ui_snackbar(ak_str *message, const ak_enum *action, int64_t durat
 	e->finalized = true;
 	s->win = win;
 	s->dismissed = on_dismiss ? ak_retain(on_dismiss) : NULL;
+	s->from = ak_current_owner();
+	if (s->from) ak_owner_retain(s->from);
 	ak_batch *b = r->batch;
 	ak_batch_set_int(b, e->id, AK_PROP_SNACKBAR_WINDOW, win->id);
 	if (message && message->len) ak_batch_set_string(b, e->id, AK_PROP_SNACKBAR_MESSAGE, message->data, message->len);

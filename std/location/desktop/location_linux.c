@@ -66,8 +66,8 @@ static double number(GVariant *dict, const char *key, bool *ok) {
 }
 
 // position is the portal's or GeoClue's properties (a{sv}) as a Position.
-static location_Position position(GVariant *dict) {
-	location_Position p = {0};
+static location_Fix position(GVariant *dict) {
+	location_Fix p = {0};
 	p.latitude = number(dict, "Latitude", NULL);
 	p.longitude = number(dict, "Longitude", NULL);
 	p.accuracy = number(dict, "Accuracy", NULL);
@@ -116,7 +116,7 @@ static void unref(gpointer p) {
 	free(s);
 }
 
-static void moved(src *s, const location_Position *p) {
+static void moved(src *s, const location_Fix *p) {
 	if (s->stopped) return;
 	saw(true);
 	s->sink.moved(s->sink.ctx, p);
@@ -186,7 +186,7 @@ static void geoclue_got(GObject *o, GAsyncResult *res, gpointer data) {
 	GVariant *r = G(g_dbus_connection_call_finish)((GDBusConnection *)o, res, NULL);
 	if (r && !s->stopped) {
 		GVariant *props = G(g_variant_get_child_value)(r, 0);
-		location_Position p = position(props);
+		location_Fix p = position(props);
 		G(g_variant_unref)(props);
 		moved(s, &p);
 	}
@@ -307,7 +307,7 @@ static void portal_updated(GDBusConnection *c, const gchar *sender, const gchar 
 	G(g_variant_unref)(session);
 	if (!ours) return;
 	GVariant *props = G(g_variant_get_child_value)(params, 1);
-	location_Position p = position(props);
+	location_Fix p = position(props);
 	G(g_variant_unref)(props);
 	moved(s, &p);
 }
@@ -452,13 +452,13 @@ void location_stop(void *source) {
 // ---- One position ----
 
 typedef struct {
-	void (*done)(void *ctx, const location_Position *p, asuka_error *e);
+	void (*done)(void *ctx, const location_Fix *p, asuka_error *e);
 	void *ctx;
 	void *source;
 	bool starting, finished;
 } fixer;
 
-static void fix_moved(void *p, const location_Position *pos) {
+static void fix_moved(void *p, const location_Fix *pos) {
 	fixer *f = p;
 	if (f->finished) return;
 	f->finished = true;
@@ -483,7 +483,7 @@ static void fix_failed(void *p, asuka_error *e) {
 	}
 }
 
-void location_fix(void (*done)(void *ctx, const location_Position *p, asuka_error *e), void *ctx) {
+void location_fix(void (*done)(void *ctx, const location_Fix *p, asuka_error *e), void *ctx) {
 	fixer *f = calloc(1, sizeof *f);
 	f->done = done;
 	f->ctx = ctx;
@@ -501,7 +501,7 @@ typedef struct {
 	void *ctx;
 } asking;
 
-static void asked(void *p, const location_Position *pos, asuka_error *e) {
+static void asked(void *p, const location_Fix *pos, asuka_error *e) {
 	asking *a = p;
 	if (e) asuka_error_free(e);
 	a->done(a->ctx);
@@ -614,4 +614,4 @@ location_Support location_support(void) { return (location_Support){.dwell = tru
 void location_add_fence(const location_Region *r, asuka_error *err) { asuka_error_declared(err, location_LocationError_unavailable); }
 void location_remove_fence(const char *id) {}
 location_list_Region location_fences(void) { return (location_list_Region){0}; }
-void location_watch_fences(void (*crossed)(const char *, location_Transition, const location_Position *)) {}
+void location_watch_fences(void (*crossed)(const char *, location_Transition, const location_Fix *)) {}

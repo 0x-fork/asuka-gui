@@ -324,6 +324,9 @@ type FuncDecl struct {
 	// Extern: extern fn f(…) -> T, with no body: a C function of that
 	// name (RFC 0008, docs/c.md).
 	Extern Pos
+	// Static: static fn f(…) in a struct's, an enum's or a store's body:
+	// the type's function (Money.of(dollars: 2)), with no self.
+	Static Pos
 }
 
 // An ExternTypeDecl is extern type Name with release fn: a pointer C

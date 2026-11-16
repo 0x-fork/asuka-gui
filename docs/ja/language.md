@@ -165,6 +165,18 @@ let n = Message(id: m.id, subject: m.subject, read: true)
 
 構造体は、フィールドを名前付きか順番どおりに渡して呼び出すことで作ります。デフォルト値のあるフィールドは省略できます。メソッドからはフィールドを名前でそのまま参照できます。ただし構造体は値なので、メソッドで変更することはできません。変更するメソッドは、新しい構造体を返します。構造体の本体に書いた `let` はその型の定数（`Font.title`）になり、`Font` が求められる場所ならどこでも `.title` と書けます。
 
+構造体や列挙型の本体に書いた `static fn` は、`self` を持たない、その型の関数です。ほかの関数と同じく名前付き引数とデフォルト値を使って型に対して呼び出せ（`Money.of(dollars: 2)`）、その型が求められる場所では `.of(…)` とも書けます。
+
+```asuka
+struct Money {
+  cents: int
+
+  static fn of(dollars: int, cents: int = 0) -> Money = Money(cents: dollars * 100 + cents)
+}
+
+let price: Money = .of(dollars: 4, cents: 50)
+```
+
 構造体は型パラメーターを取れます。型引数は、作るときに推論されます。
 
 ```asuka

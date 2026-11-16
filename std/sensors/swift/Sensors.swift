@@ -19,9 +19,9 @@ final class CoreMotionSensors: Sensors {
 
     func watch(sensor: Sensor, every: TimeInterval, reading: @escaping (Sample) -> Void) async throws {
         #if os(iOS)
-        guard await MainActor.run(body: { Hub.shared.available(sensor) }) else { throw SensorsError.notAvailable }
+        guard await MainActor.run(body: { Hub.shared.available(sensor) }) else { throw SensorError.notAvailable }
         if sensor == .pedometer, CMPedometer.authorizationStatus() == .denied || CMPedometer.authorizationStatus() == .restricted {
-            throw SensorsError.notAllowed
+            throw SensorError.notAllowed
         }
         let send = Send(reading)
         let id = await MainActor.run { Hub.shared.add(sensor, max(every, 0.005), send) }
@@ -31,13 +31,13 @@ final class CoreMotionSensors: Sensors {
             try? await Task.sleep(nanoseconds: 3_600_000_000_000)
         }
         #else
-        throw SensorsError.notAvailable
+        throw SensorError.notAvailable
         #endif
     }
 
     func steps(from: Int, to: Int) async throws -> Steps {
         #if os(iOS)
-        guard CMPedometer.isStepCountingAvailable() else { throw SensorsError.notAvailable }
+        guard CMPedometer.isStepCountingAvailable() else { throw SensorError.notAvailable }
         let pedometer = CMPedometer()
         return try await withCheckedThrowingContinuation { (c: CheckedContinuation<Steps, Error>) in
             pedometer.queryPedometerData(from: Date(timeIntervalSince1970: Double(from) / 1000), to: Date(timeIntervalSince1970: Double(to) / 1000)) { d, e in
@@ -49,7 +49,7 @@ final class CoreMotionSensors: Sensors {
             }
         }
         #else
-        throw SensorsError.notAvailable
+        throw SensorError.notAvailable
         #endif
     }
 
@@ -81,9 +81,9 @@ final class CoreMotionSensors: Sensors {
     #if os(iOS)
     static func failure(_ e: Error?) -> Error {
         if let e = e as NSError?, e.domain == CMErrorDomain, e.code == Int(CMErrorMotionActivityNotAuthorized.rawValue) {
-            return SensorsError.notAllowed
+            return SensorError.notAllowed
         }
-        return e ?? SensorsError.notAvailable
+        return e ?? SensorError.notAvailable
     }
     #endif
 }

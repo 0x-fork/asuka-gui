@@ -15,6 +15,7 @@ typedef struct {
 	asuka_call *call;  // NULL once answered
 	int refs;
 	bool file;  // file's: answers file's outcome
+	bool view;  // webView's: answers its outcome
 	print_Job job;  // a copy
 	char *source;   // file's source, html's markup (a copy)
 	print_Layout layout;  // pdf's (a copy)
@@ -39,5 +40,8 @@ char *print_new_pdf(const char *title, asuka_error *err);
 void print_file(print_task *t, const char *path);
 void print_html(print_task *t);
 void print_pdf(print_task *t);
+// print_view prints what the WebView view (its host's id) shows: its
+// own printing, as the platform's browser prints a page.
+void print_view(print_task *t, uint32_t view);
 
 #endif

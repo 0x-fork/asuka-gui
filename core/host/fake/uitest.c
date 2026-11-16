@@ -2437,7 +2437,10 @@ static ak_val t_focus_window(ak_val *a, uint32_t n) {
 	ak_uitest *app = app_arg(a, n, "test.focus_window");
 	ak_uitest_settle(app);
 	ak_fake_view *v = window_arg(app, a, n, 1);
-	if (v) ak_fake_set_key_window(app->f, v);
+	if (v) {
+		ak_fake_focus_window(app->f, v);
+		ak_uitest_settle(app);
+	}
 	return (ak_val){0};
 }
 

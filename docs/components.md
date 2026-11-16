@@ -260,7 +260,11 @@ running `on press` (a `UIMenu` on iOS, a `PopupMenu` on Android, an
 `NSMenu` on macOS, a pop-up menu on Windows, a `GtkPopoverMenu` on
 Linux, a popover in a browser). Each is an `Action`: `.button(title:,
 icon:, role:, disabled:, checked:, run:)`, its fields but the title
-optional. `role: .destructive` shows it in red.
+optional. `role: .destructive` shows it in red. `run` may await (`run:
+() => { await save() }`): it runs as a task of the code that made the
+action, which the menu doesn't wait for, as a handler does; that code's
+stack, sheet and router are its own, so `push` and `navigate` work from
+it. `runAction(a)` runs an action the same way, for a menu of your own.
 
 ```asuka
 component More {

@@ -1,9 +1,9 @@
 // asuka/print on Android: PrintManager's print screen (its "Save as PDF"
 // a printer too) for PDFs (as they are), images (fit to the page, as
-// PrintHelper prints them) and markup (a WebView that's never shown,
-// paginated as it prints); a PDF of markup written by the WebView's
-// print adapter without the screen (android.print.AsukaPdfWriter, the
-// host's).
+// PrintHelper prints them), markup (a WebView that's never shown,
+// paginated as it prints) and a WebView's page (its own print adapter);
+// a PDF of markup written by the WebView's print adapter without the
+// screen (android.print.AsukaPdfWriter, the host's).
 package asuka.print
 
 import android.content.Context
@@ -68,6 +68,20 @@ class AndroidPrinter(private val app: Context) : Printer {
         } finally {
             web.destroy()
         }
+    }
+
+    override suspend fun webView(view: dev.asuka.AsukaViewRef, job: Job): Outcome = withContext(Dispatchers.Main) {
+        val web = findWeb(view.view) ?: throw PrintException(PrintError.UNSUPPORTED)
+        val name = job.name.ifEmpty { web.title?.takeIf { it.isNotBlank() && it != "about:blank" } ?: appName }
+        print(name, web.createPrintDocumentAdapter(name), job)
+    }
+
+    /** The WebView a view is, or holds. */
+    private fun findWeb(v: android.view.View?): WebView? = when (v) {
+        null -> null
+        is WebView -> v
+        is android.view.ViewGroup -> (0 until v.childCount).firstNotNullOfOrNull { findWeb(v.getChildAt(it)) }
+        else -> null
     }
 
     override suspend fun pdf(layout: Layout): String = withContext(Dispatchers.Main) {
