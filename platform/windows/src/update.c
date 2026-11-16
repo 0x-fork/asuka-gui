@@ -26,6 +26,7 @@
 #include <winhttp.h>
 
 #define FILE_LIST ".asuka-files"
+#define FILE_LIST_W L".asuka-files"
 #define WORK_PREFIX ".asuka-update-"
 
 // ---- Where the app is installed ----
@@ -99,6 +100,15 @@ static const char *own_target(void) {
 #endif
 }
 
+// has_file_list reports whether dir has the file list asuka build writes
+// beside a Windows app's .exe.
+static bool has_file_list(const wchar_t *dir) {
+	wchar_t p[MAX_PATH * 2];
+	swprintf(p, WH_LEN(p), L"%ls\\" FILE_LIST_W, dir);
+	DWORD a = GetFileAttributesW(p);
+	return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 static void m_info(wh_reply *r, const uint8_t *a, size_t n) {
 	(void)a, (void)n;
 	wchar_t *exe = exe_path(), *dir = dir_of(exe);
@@ -112,6 +122,8 @@ static void m_info(wh_reply *r, const uint8_t *a, size_t n) {
 		reason = "notConfigured", message = "updates aren't set up for this app (asuka.toml's updates: a feed and a key)";
 	} else if (wcsstr(low, L"\\windowsapps\\")) {
 		reason = "managed", message = "a package manager or an app store installed the app, and updates it";  // MSIX: the Store, App Installer
+	} else if (!has_file_list(dir)) {
+		reason = "notInstalled", message = "the app isn't in a folder asuka build made (its .asuka-files)";
 	} else if (!writable(dir)) {
 		reason = "notWritable", message = "the app can't write where it's installed";
 	}
@@ -632,10 +644,11 @@ static void m_install(wh_reply *r, const uint8_t *a, size_t n) {
 	dsk_json_free(j);
 	wchar_t *tree = full_path(given);
 	free(given);
-	// The staged tree is in the install's work directory, the folder.
-	wchar_t *tdir = dir_of(tree);
-	bool inside = !_wcsicmp(tdir, root);
-	free(tdir);
+	// The staged tree is in the install's work directory, the folder (the
+	// package's .asuka-update-<id>\<tree>), below it.
+	size_t rl = wcslen(root);
+	while (rl && (root[rl - 1] == L'\\' || root[rl - 1] == L'/')) rl--;
+	bool inside = wcslen(tree) > rl + 1 && !_wcsnicmp(tree, root, rl) && (tree[rl] == L'\\' || tree[rl] == L'/');
 	char *err = NULL;
 	if (!inside) {
 		char *t8 = wh_utf8(tree, -1, NULL), *r8 = wh_utf8(root, -1, NULL);
