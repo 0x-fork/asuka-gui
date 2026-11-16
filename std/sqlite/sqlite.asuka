@@ -25,9 +25,9 @@ native fn available() -> bool
 native fn openConn(path: string, busy: int) throws -> int
 native fn closeConn(conn: int)
 native fn execNow(conn: int, sql: string, args: bytes) throws -> [string]
+native fn migrateConn(conn: int, steps: [string]) throws -> [string]
 native async fn execAsync(conn: int, sql: string, args: bytes) throws -> [string]
 native async fn queryAsync(conn: int, sql: string, args: bytes) throws -> bytes
-native fn queryNow(conn: int, sql: string, args: bytes) throws -> bytes
 native fn encodeArgs<A>(args: A) throws -> bytes
 native fn decodeRows<T>(answer: bytes) throws -> [T]
 native fn readsOf(answer: bytes) -> [string]
@@ -62,7 +62,9 @@ fn resolve(name: string) -> string {
 }
 
 /// Opens the database name (creating it): a file in the app's data
-/// directory, an absolute path, or ":memory:".
+/// directory, an absolute path, or ":memory:". On the web the page's
+/// SQLite worker opens it before the statements after it run; one that
+/// didn't open fails each statement with why.
 pub fn open(name: string) throws -> DB {
   let path = resolve(name)
   let conn = try openConn(path, busyMs)
@@ -105,22 +107,11 @@ pub store DB(conn: int, path: string) {
   /// order, each SQL (statements separated by semicolons) run once, in a
   /// transaction, recorded in PRAGMA user_version. Append steps; never
   /// change one that has shipped. It runs on the main thread: call it as
-  /// the app starts.
+  /// the app starts. On the web, where the main thread can't wait for
+  /// the page's SQLite worker, it's sent to run before the statements
+  /// after it, and a step that fails fails the next statement instead.
   pub fn migrate(steps: [string]) throws {
-    let found: [int] = try decodeRows(try queryNow(conn, "pragma user_version", bytes()))
-    var v = found.first() ?? 0
-    while v < steps.count() {
-      try execNow(conn, "begin immediate", bytes())
-      do {
-        wrote(try execNow(conn, steps[v], bytes()))
-        try execNow(conn, "pragma user_version = {v + 1}", bytes())
-        try execNow(conn, "commit", bytes())
-      } catch e {
-        try? execNow(conn, "rollback", bytes())
-        throw Error("sqlite: migration {v + 1}: {e.message}")
-      }
-      v += 1
-    }
+    wrote(try migrateConn(conn, steps))
   }
 
   /// Runs a statement (insert, update, delete, create...), or several

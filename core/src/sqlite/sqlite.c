@@ -10,10 +10,10 @@
 //
 //   sqlite.openConn(path, busyMs) -> int               a connection
 //   sqlite.closeConn(conn)
-//   sqlite.execNow(conn, sql, args) -> [string]        on the main thread (migrations): the tables written
+//   sqlite.execNow(conn, sql, args) -> [string]        on the main thread (open's pragmas): the tables written
+//   sqlite.migrateConn(conn, steps) -> [string]        on the main thread: migrate's steps, the tables written
 //   sqlite.execAsync(conn, sql, args) -> Task<[string]> off it
 //   sqlite.queryAsync(conn, sql, args) -> Task<bytes>  off it: a rows answer
-//   sqlite.queryNow(conn, sql, args) -> bytes          on the main thread (migrate's version)
 //   sqlite.encodeArgs(value, desc) -> bytes            a tuple, an array, a struct or a map as arguments
 //   sqlite.decodeRows(answer, desc) -> [T]             the answer's rows as T
 //   sqlite.readsOf(answer), sqlite.writesOf(answer) -> [string]
@@ -23,8 +23,18 @@
 // A rows answer: u32 columns, each a string (its name); u32 rows, then
 // each row's values as asq writes them (u8 type: 0 null, 1 i64, 2 f64, 3
 // text and 4 blob with a u32 length); then u32 n and n strings, the tables
-// written, and the same for the tables read. The web's engine (no threads,
-// no dlopen: std/sqlite/web) writes the same answers.
+// written, and the same for the tables read.
+//
+// On the web (no threads, no dlopen) SQLite is the page's: its SQLite
+// worker (platform/web/src/sqlite-worker.js) runs the plugin's library
+// built to WebAssembly, and the calls here go to it (js_sqlite_send) and
+// come back as the same answers (asuka_sqlite_done), the rows decoded
+// here as on the other platforms. The page's main thread can't wait for
+// the worker, so what runs on the main thread elsewhere (openConn,
+// execNow, migrateConn) is sent without waiting: in order, before the
+// statements after it. A connection that didn't open fails every
+// statement with why; a call sent without waiting that failed fails the
+// next statement on its connection with its error (sqlite-worker.js).
 //
 // The library is found as plugin.LibraryPath finds it: ASUKA_LIB_ASQLITE
 // (asuka dev, asuka test and the tests set it to the plugin's build or
@@ -37,6 +47,7 @@
 #include "rt/json.h"
 #include "rt/sched.h"
 #include "base/thread.h"
+#include "ui/ui.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,14 +69,60 @@ enum { ASQ_READS = 1 };
 
 typedef intptr_t (*asq_fn)(uintptr_t op, uintptr_t conn, uintptr_t arg, const uint8_t *in, uintptr_t inLen, uint8_t *out, uintptr_t outCap);
 
+// ---- Answers' cells ----
+
+typedef struct {
+	uint8_t type;  // 0 null, 1 int, 2 float, 3 text, 4 blob
+	int64_t i;
+	double f;
+	const uint8_t *p;
+	uint32_t n;
+} cell;
+
+static bool read_cell(ak_reader *r, cell *c) {
+	c->type = ak_read_u8(r);
+	switch (c->type) {
+	case 0: break;
+	case 1: c->i = (int64_t)ak_read_u64(r); break;
+	case 2: c->f = ak_read_f64(r); break;
+	case 3:
+	case 4: c->p = ak_read_bytes(r, &c->n); break;
+	default: return false;
+	}
+	return !r->err;
+}
+
+static ak_arr *names_of(ak_reader *r) {
+	uint32_t n = ak_read_u32(r);
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, n);
+	a->h.flags = 1;
+	for (uint32_t i = 0; i < n && !r->err; i++) {
+		uint32_t k;
+		const uint8_t *s = ak_read_bytes(r, &k);
+		ak_arr_push(&a, (ak_val){.p = ak_str_new((const char *)s, k)});
+	}
+	return a;
+}
+
+// stmt_in writes EXEC's (and QUERY's) input: flags, the SQL, the
+// arguments (args() made them; none: no arguments).
+static void stmt_in_n(ak_buf *in, uint8_t flags, const char *sql, size_t len, const ak_bytes *args) {
+	ak_buf_u8(in, flags);
+	ak_buf_str(in, sql, len);
+	if (args && args->len) ak_buf_put(in, args->data, args->len);
+	else ak_buf_u32(in, 0);
+}
+
+static void stmt_in(ak_buf *in, uint8_t flags, const ak_str *sql, const ak_bytes *args) { stmt_in_n(in, flags, sql->data, sql->len, args); }
+
+#if !defined(__wasm__)
+
 // ---- The library ----
 
 static ak_mutex lib_mu = AK_MUTEX_INIT;
 static asq_fn asq;
 static bool lib_tried;
 static char lib_err[1024];
-
-#if !defined(__wasm__)
 
 // exe_dir writes the running program's directory into buf.
 static bool exe_dir(char *buf, size_t n) {
@@ -189,19 +246,13 @@ done:
 	ak_buf_free(&tried);
 }
 
-#endif
-
 // lib returns asq_call, loading the library the first time; NULL (with
 // the error thrown) when there's none.
 static asq_fn lib(bool throw_) {
 	ak_mutex_lock(&lib_mu);
 	if (!lib_tried) {
 		lib_tried = true;
-#if defined(__wasm__)
-		snprintf(lib_err, sizeof lib_err, "unsupported: sqlite on this platform runs in the host's engine");
-#else
 		load_lib();
-#endif
 	}
 	asq_fn f = asq;
 	ak_mutex_unlock(&lib_mu);
@@ -266,27 +317,6 @@ static void copy_set(ak_reader *r, ak_buf *b) {
 		const uint8_t *s = ak_read_bytes(r, &k);
 		ak_buf_str(b, (const char *)s, k);
 	}
-}
-
-static ak_arr *names_of(ak_reader *r) {
-	uint32_t n = ak_read_u32(r);
-	ak_arr *a = ak_arr_new(AK_K_REF, NULL, n);
-	a->h.flags = 1;
-	for (uint32_t i = 0; i < n && !r->err; i++) {
-		uint32_t k;
-		const uint8_t *s = ak_read_bytes(r, &k);
-		ak_arr_push(&a, (ak_val){.p = ak_str_new((const char *)s, k)});
-	}
-	return a;
-}
-
-// exec_in writes EXEC's (and QUERY's) input: flags, the SQL, the
-// arguments (args() made them; none: no arguments).
-static void stmt_in(ak_buf *in, uint8_t flags, const ak_str *sql, const ak_bytes *args) {
-	ak_buf_u8(in, flags);
-	ak_buf_str(in, sql->data, sql->len);
-	if (args && args->len) ak_buf_put(in, args->data, args->len);
-	else ak_buf_u32(in, 0);
 }
 
 // run_exec runs an EXEC; out gets the tables written (u32 n, strings), or
@@ -561,19 +591,94 @@ static ak_val b_exec(ak_val *a, uint32_t n) {
 	return (ak_val){.p = res};
 }
 
-static ak_val b_query_now(ak_val *a, uint32_t n) {
+// exec_sql runs one statement of C text on conn into *names (the tables
+// it wrote, u32 n and strings, appended); false with msg on failure.
+static bool exec_sql(asq_fn f, uint64_t conn, const char *sql, ak_buf *tmp, ak_buf *names, uint32_t *count, char *msg, size_t msgn) {
+	ak_buf in = {0}, out = {0};
+	stmt_in_n(&in, 0, sql, strlen(sql), NULL);
+	bool ok = run_exec(f, conn, &in, tmp, &out, msg, msgn);
+	if (ok) {
+		ak_reader r = {.p = out.data, .len = out.len};
+		uint32_t k = ak_read_u32(&r);
+		*count += k;
+		ak_buf_put(names, r.p + r.off, r.len - r.off);
+	}
+	ak_buf_free(&in);
+	ak_buf_free(&out);
+	return ok;
+}
+
+// sqlite.migrateConn(conn, steps): migrate's steps from the database's
+// PRAGMA user_version on, each in a transaction, numbered as it commits;
+// the tables they wrote.
+static ak_val b_migrate(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	asq_fn f = lib(true);
 	if (!f) return (ak_val){0};
-	ak_buf in = {0}, tmp = {0}, out = {0};
-	stmt_in(&in, ASQ_READS, a[1].p, a[2].p);
-	char msg[512];
-	ak_bytes *res = NULL;
-	if (run_query(f, (uint64_t)a[0].i, &in, &tmp, &out, msg, sizeof msg)) res = ak_bytes_new(out.data, out.len);
-	else ak_throw_msg("%s", msg);
+	uint64_t conn = (uint64_t)a[0].i;
+	ak_arr *steps = a[1].p;
+	ak_buf in = {0}, tmp = {0}, out = {0}, names = {0};
+	uint32_t count = 0;
+	char msg[512], why[600];
+	stmt_in_n(&in, 0, "pragma user_version", 19, NULL);
+	bool ok = run_query(f, conn, &in, &tmp, &out, msg, sizeof msg);
+	int64_t v = 0;
+	if (ok) {
+		ak_reader r = {.p = out.data, .len = out.len};
+		uint32_t ncols = ak_read_u32(&r);
+		for (uint32_t i = 0; i < ncols; i++) {
+			uint32_t k;
+			ak_read_bytes(&r, &k);
+		}
+		cell c;
+		if (ak_read_u32(&r) > 0 && ncols > 0 && read_cell(&r, &c) && c.type == 1) v = c.i;
+	} else {
+		snprintf(why, sizeof why, "%s", msg);
+	}
+	for (; ok && v < (int64_t)steps->len; v++) {
+		ak_str *step = steps->data[v].p;
+		char sql[64];
+		if (!exec_sql(f, conn, "begin immediate", &tmp, &names, &count, msg, sizeof msg)) {
+			snprintf(why, sizeof why, "sqlite: migration %lld: %s", (long long)v + 1, msg);
+			ok = false;
+			break;
+		}
+		ak_buf sin = {0}, sout = {0};
+		stmt_in(&sin, 0, step, NULL);
+		ok = run_exec(f, conn, &sin, &tmp, &sout, msg, sizeof msg);
+		if (ok) {
+			ak_reader r = {.p = sout.data, .len = sout.len};
+			count += ak_read_u32(&r);
+			ak_buf_put(&names, r.p + r.off, r.len - r.off);
+			snprintf(sql, sizeof sql, "pragma user_version = %lld", (long long)v + 1);
+			ok = exec_sql(f, conn, sql, &tmp, &names, &count, msg, sizeof msg) && exec_sql(f, conn, "commit", &tmp, &names, &count, msg, sizeof msg);
+		}
+		ak_buf_free(&sin);
+		ak_buf_free(&sout);
+		if (!ok) {
+			char ignored[64];
+			uint32_t none = 0;
+			ak_buf nb = {0};
+			exec_sql(f, conn, "rollback", &tmp, &nb, &none, ignored, sizeof ignored);
+			ak_buf_free(&nb);
+			snprintf(why, sizeof why, "sqlite: migration %lld: %s", (long long)v + 1, msg);
+		}
+	}
+	ak_arr *res = NULL;
+	if (ok) {
+		ak_buf all = {0};
+		ak_buf_u32(&all, count);
+		if (names.len) ak_buf_put(&all, names.data, names.len);
+		ak_reader r = {.p = all.data, .len = all.len};
+		res = names_of(&r);
+		ak_buf_free(&all);
+	} else {
+		ak_throw_msg("%s", why);
+	}
 	ak_buf_free(&in);
 	ak_buf_free(&tmp);
 	ak_buf_free(&out);
+	ak_buf_free(&names);
 	return (ak_val){.p = res};
 }
 
@@ -592,6 +697,175 @@ static ak_val b_query(ak_val *a, uint32_t n) {
 	stmt_in(&in, ASQ_READS, a[1].p, a[2].p);
 	return (ak_val){.p = submit(true, (uint64_t)a[0].i, in)};
 }
+
+#endif  // !__wasm__
+
+#if defined(__wasm__)
+
+// ---- The web: the page's SQLite worker ----
+//
+// js_sqlite_send(id, op, conn, in): a call for the page's worker (op one
+// of WEB_*; in as asq's input, MIGRATE's the steps: u32 n, strings); id 0
+// for one sent without waiting, else asuka_sqlite_done(id, answer)
+// answers it: u8 ok, then EXEC's tables written (u32 n, strings) or
+// QUERY's rows answer, or the error's message (a string).
+
+#define IMPORT(name) __attribute__((import_module("asuka"), import_name(name)))
+#define EXPORT(name) __attribute__((export_name(name), visibility("default")))
+
+enum { WEB_OPEN = 1, WEB_CLOSE = 2, WEB_EXEC = 3, WEB_QUERY = 4, WEB_MIGRATE = 5, WEB_CANCEL = 8 };
+
+IMPORT("sqlite_available") int js_sqlite_available(void);
+IMPORT("sqlite_send") void js_sqlite_send(double id, int op, double conn, const uint8_t *in, uint32_t len);
+
+typedef struct web_call {
+	uint64_t id;
+	bool query;
+	ak_future *fut;  // retained
+	struct web_call *next;
+} web_call;
+
+static web_call *calls;
+static uint64_t last_call;
+static int64_t last_conn;
+
+static void send_now(int op, int64_t conn, const ak_buf *in) { js_sqlite_send(0, op, (double)conn, in ? in->data : NULL, in ? (uint32_t)in->len : 0); }
+
+static web_call *take_call(uint64_t id) {
+	for (web_call **p = &calls; *p; p = &(*p)->next) {
+		if ((*p)->id == id) {
+			web_call *c = *p;
+			*p = c->next;
+			return c;
+		}
+	}
+	return NULL;
+}
+
+// A cancelled statement: one queued never runs; the answer settles it.
+static void web_cancel(ak_future *f) {
+	web_call *c = f->ctx;
+	if (!c) return;
+	ak_buf in = {0};
+	ak_buf_u64(&in, c->id);
+	send_now(WEB_CANCEL, 0, &in);
+	ak_buf_free(&in);
+}
+
+static ak_future *web_submit(bool query, int64_t conn, ak_buf in) {
+	ak_future *fut = ak_future_new(AK_K_REF);
+	web_call *c = ak_alloc(sizeof *c);
+	c->id = ++last_call;
+	c->query = query;
+	c->fut = ak_retain(fut);
+	c->next = calls;
+	calls = c;
+	fut->ctx = c;
+	fut->cancel = web_cancel;
+	ak_sched_hold();  // until it's answered
+	js_sqlite_send((double)c->id, query ? WEB_QUERY : WEB_EXEC, (double)conn, in.data, (uint32_t)in.len);
+	ak_buf_free(&in);
+	return fut;
+}
+
+// asuka_sqlite_done answers call id, then runs what waited for it.
+EXPORT("asuka_sqlite_done") void asuka_sqlite_done(double id, const uint8_t *p, size_t n) {
+	web_call *c = take_call((uint64_t)id);
+	if (!c) return;
+	ak_future *f = c->fut;
+	f->cancel = NULL;
+	f->ctx = NULL;
+	ak_reader r = {.p = p, .len = n};
+	bool ok = ak_read_u8(&r) == 1;
+	if (r.err) {
+		ak_throw_msg("sqlite: a short answer from the page");
+		ak_future_reject(f, ak_error_take());
+	} else if (!ok) {
+		uint32_t k;
+		const uint8_t *m = ak_read_bytes(&r, &k);
+		ak_throw_msg("%.*s", (int)(k < 500 ? k : 500), m ? (const char *)m : "sqlite: failed");
+		ak_future_reject(f, ak_error_take());
+	} else if (c->query) {
+		ak_future_resolve(f, (ak_val){.p = ak_bytes_new(p + 1, n - 1)});
+	} else {
+		ak_future_resolve(f, (ak_val){.p = names_of(&r)});
+	}
+	ak_release(f);
+	ak_free(c);
+	ak_sched_unhold();
+	ak_ui_run_posted();
+}
+
+static ak_arr *no_names(void) {
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0);
+	a->h.flags = 1;
+	return a;
+}
+
+static ak_val b_available(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = js_sqlite_available() != 0};
+}
+
+static ak_val b_open(ak_val *a, uint32_t n) {
+	if (!js_sqlite_available()) {
+		ak_throw_msg("sqlite: the page has no SQLite (the sqlite plugin's asqlite.wasm isn't among its libs)");
+		return (ak_val){0};
+	}
+	ak_str *path = a[0].p;
+	ak_buf in = {0};
+	ak_buf_u32(&in, (uint32_t)(n > 1 ? a[1].i : 5000));
+	ak_buf_str(&in, path->data, path->len);
+	int64_t conn = ++last_conn;
+	send_now(WEB_OPEN, conn, &in);
+	ak_buf_free(&in);
+	return (ak_val){.i = conn};
+}
+
+static ak_val b_close(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	if (a[0].i) send_now(WEB_CLOSE, a[0].i, NULL);
+	return (ak_val){0};
+}
+
+static ak_val b_exec(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_buf in = {0};
+	stmt_in(&in, 0, a[1].p, a[2].p);
+	send_now(WEB_EXEC, a[0].i, &in);
+	ak_buf_free(&in);
+	return (ak_val){.p = no_names()};
+}
+
+static ak_val b_migrate(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *steps = a[1].p;
+	ak_buf in = {0};
+	ak_buf_u32(&in, steps->len);
+	for (uint32_t i = 0; i < steps->len; i++) {
+		ak_str *step = steps->data[i].p;
+		ak_buf_str(&in, step->data, step->len);
+	}
+	send_now(WEB_MIGRATE, a[0].i, &in);
+	ak_buf_free(&in);
+	return (ak_val){.p = no_names()};
+}
+
+static ak_val b_run(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_buf in = {0};
+	stmt_in(&in, 0, a[1].p, a[2].p);
+	return (ak_val){.p = web_submit(false, a[0].i, in)};
+}
+
+static ak_val b_query(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_buf in = {0};
+	stmt_in(&in, ASQ_READS, a[1].p, a[2].p);
+	return (ak_val){.p = web_submit(true, a[0].i, in)};
+}
+
+#endif  // __wasm__
 
 // One argument, by its kind (and a reference's tag).
 static bool put_arg(ak_buf *b, ak_val v, ak_kind k) {
@@ -699,26 +973,6 @@ static ak_val b_args(ak_val *a, uint32_t n) {
 
 // ---- Rows ----
 
-typedef struct {
-	uint8_t type;  // 0 null, 1 int, 2 float, 3 text, 4 blob
-	int64_t i;
-	double f;
-	const uint8_t *p;
-	uint32_t n;
-} cell;
-
-static bool read_cell(ak_reader *r, cell *c) {
-	c->type = ak_read_u8(r);
-	switch (c->type) {
-	case 0: break;
-	case 1: c->i = (int64_t)ak_read_u64(r); break;
-	case 2: c->f = ak_read_f64(r); break;
-	case 3:
-	case 4: c->p = ak_read_bytes(r, &c->n); break;
-	default: return false;
-	}
-	return !r->err;
-}
 
 static const ak_json_types *types(void) {
 	static ak_json_types t;
@@ -1090,7 +1344,7 @@ void ak_sqlite_init(void) {
 	ak_builtin_register("sqlite.execNow", b_exec);
 	ak_builtin_register("sqlite.execAsync", b_run);
 	ak_builtin_register("sqlite.queryAsync", b_query);
-	ak_builtin_register("sqlite.queryNow", b_query_now);
+	ak_builtin_register("sqlite.migrateConn", b_migrate);
 	ak_builtin_register("sqlite.encodeArgs", b_args);
 	ak_builtin_register("sqlite.decodeRows", b_rows);
 	ak_builtin_register("sqlite.readsOf", b_reads);
