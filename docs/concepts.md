@@ -31,19 +31,17 @@ indicator, and the window on a desktop; `SafeArea` keeps its content
 clear of what covers it, and of the keyboard (see [Layout and
 style](layout.md#the-safe-area-the-keyboard-and-the-window)).
 
-How it runs depends on the platform:
+How it starts depends on the platform:
 
-- **iOS and Android**: the platform starts the app; its host (Swift,
-  Kotlin) starts the core, which mounts the root.
-- **macOS, Windows and Linux**: the app's executable is the platform's
-  host; it opens the main window, mounts the root in it and runs the
-  platform's event loop until the app quits.
-- **The web**: the page loads the core as WebAssembly, which mounts the
-  root in the page.
+- **iOS and Android**: the platform starts the app, which mounts the
+  root.
+- **macOS, Windows and Linux**: the app opens its main window, mounts
+  the root in it, and runs until the app quits.
+- **The web**: the page loads the app, which mounts the root in the
+  page.
 
-A release build compiles the app to C, built with the core. `asuka dev`
-runs it on the core's VM instead, which takes each save in milliseconds
-and keeps the app's state and its views.
+Under `asuka dev`, each save reaches the running app in milliseconds,
+keeping its state and its views.
 
 ## Components
 

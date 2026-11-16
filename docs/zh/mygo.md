@@ -1,6 +1,6 @@
 # Asuka 与 MyGo
 
-[MyGo](https://mygo.run) 是一个用 Go 开发桌面应用的框架，对手机的支持即将推出。Asuka 则用它自己的语言 Asuka 编写应用，运行在一个用 C 写的核心上，面向手机、桌面和 Web。两者的区别在于应用用什么写、能运行在哪里，更重要的是由谁来呈现界面：MyGo 自己绘制界面，或者显示一个网页；Asuka 则直接使用平台原生控件。
+[MyGo](https://mygo.run) 是一个用 Go 开发桌面应用的框架，对手机的支持即将推出。Asuka 则用它自己的语言 Asuka 编写应用，面向手机、桌面和 Web。两者的区别在于应用用什么写、能运行在哪里，更重要的是由谁来呈现界面：MyGo 自己绘制界面，或者显示一个网页；Asuka 则直接使用平台原生控件。
 
 ## 由谁呈现界面
 
@@ -9,18 +9,18 @@ MyGo 的窗口里显示的是以下两者之一：
 - **MyGo 自己绘制的界面**：在 GPU 上绘制（Mac 上用 Metal，Windows 上用 Direct3D 11，此外还有 OpenGL），外观由 MyGo 的主题决定。文字由系统的文本引擎渲染，MyGo 还会为它绘制的内容构建一棵无障碍树。
 - **一个网页**：显示在系统的 Web 视图中（WKWebView、WebView2、WebKitGTK），网页通过 MyGo 生成的 TypeScript 客户端调用应用的 Go 代码。
 
-Asuka 应用显示的是平台原生控件。一个 `Button`，在 iOS 上是 `UIButton`，在 Android 上是 `MaterialButton`，在 Mac 上是 `NSButton`，在 Windows 上是绘制成 Windows 11 样式的 Win32 `BUTTON`，在 Linux 上是 `GtkButton`，在浏览器中则是 `<button>`；完整列表见[组件](components.md)。Asuka 负责布局（所有平台共用 C 核心里同一个布局引擎）并设置控件的属性，绘制则交给平台完成。这些控件的行为和平台自己的控件完全一样：文本输入和自动纠错、输入法、屏幕阅读器、菜单、滚动和焦点，都是平台原生的。
+Asuka 应用显示的是平台原生控件。一个 `Button`，在 iOS 上是 `UIButton`，在 Android 上是 `MaterialButton`，在 Mac 上是 `NSButton`，在 Windows 上是绘制成 Windows 11 样式的 Win32 `BUTTON`，在 Linux 上是 `GtkButton`，在浏览器中则是 `<button>`；完整列表见[组件](components.md)。Asuka 负责布局（所有平台共用同一个布局引擎）并设置控件的属性，绘制则交给平台完成。这些控件的行为和平台自己的控件完全一样：文本输入和自动纠错、输入法、屏幕阅读器、菜单、滚动和焦点，都是平台原生的。
 
 由此带来的不同：
 
 - **外观。** 不设置任何样式的 Asuka 应用，看起来就和各平台自己的应用一样，并且会随平台的变化而变化（新版 iOS 改了按钮的样式，新版 libadwaita 改了开关的样式）。MyGo 的窗口则按 MyGo 的主题绘制，在每个系统上都一样。
 - **文字、输入和无障碍。** Asuka 的这些都由平台完成。MyGo 的则是 MyGo 在自己绘制的内容之上实现的。
 - **没有控件可用的内容。** MyGo 可以像绘制其他部分一样绘制任何东西。Asuka 用平台的能力来绘制没有对应控件的内容：`Canvas` 和 `Shape`（见语言文档中的“绘图”）、`std/chart`、`std/svg`，以及随应用一起为各平台 GPU 编译的着色器。
-- **没有屏幕时生成图片。** MyGo 有软件渲染器：在 CPU 上、在内存里绘制，不需要窗口、显示器或 GPU，所以测试或服务器能在任何机器上把视图渲染成图片。Asuka 的控件由平台绘制，所以要得到它们的图片，就需要平台在运行：桌面上的一个窗口（`ASUKA_SNAPSHOT`；在 Linux 服务器上用 Xvfb）、模拟器或浏览器。没有这些时，`asuka test` 会在假宿主上运行应用的测试块，用文字描述屏幕：每个视图的种类、位置大小和显示的内容（见[测试](testing.md)）。
+- **没有屏幕时生成图片。** MyGo 有软件渲染器：在 CPU 上、在内存里绘制，不需要窗口、显示器或 GPU，所以测试或服务器能在任何机器上把视图渲染成图片。Asuka 的控件由平台绘制，所以要得到它们的图片，就需要平台在运行：桌面上的一个窗口（`ASUKA_SNAPSHOT`；在 Linux 服务器上用 Xvfb）、模拟器或浏览器。没有这些时，`asuka test` 会在没有设备的情况下运行应用的测试块，用文字描述屏幕：每个视图的种类、位置大小和显示的内容（见[测试](testing.md)）。
 
 ## 应用是什么
 
-MyGo 应用是一个 Go 程序。Asuka 应用用 Asuka 编写（见 [Asuka 语言](language.md)），这是一门为界面设计的类型化语言：组件的主体声明它的视图，绑定会跟随状态变化，有 async 和 await，编译器还会检查绑定读取了什么、什么代码在主线程上运行。开发时，编译器以字节码的形式发送应用，保存后几毫秒就能重新加载，并保留状态和视图，在手机上也是如此；发布时，应用会被编译成 C，和核心一起构建。Asuka 应用不附带垃圾回收器，也没有第二套运行时。应用需要平台提供的能力时，可以通过包里的 Swift、Kotlin、JavaScript 和 C 来获得，也可以直接调用 C（见[在 Asuka 中调用 C](c.md)）。
+MyGo 应用是一个 Go 程序。Asuka 应用用 Asuka 编写（见 [Asuka 语言](language.md)），这是一门为界面设计的类型化语言：组件的主体声明它的视图，绑定会跟随状态变化，有 async 和 await，编译器还会检查绑定读取了什么、什么代码在主线程上运行。开发时，保存后几毫秒就能重新加载应用，并保留状态和视图，在手机上也是如此；发布时，应用会被预先编译好。Asuka 应用不附带垃圾回收器，也没有第二套运行时。应用需要平台提供的能力时，可以通过包里的 Swift、Kotlin、JavaScript 和 C 来获得，也可以直接调用 C（见[在 Asuka 中调用 C](c.md)）。
 
 ## 运行在哪里
 
@@ -28,7 +28,7 @@ MyGo 应用是一个 Go 程序。Asuka 应用用 Asuka 编写（见 [Asuka 语�
 |---|---|---|
 | 手机 | 即将推出 | iOS 和 Android |
 | 桌面 | Mac、Windows、Linux | Mac、Windows、Linux |
-| 浏览器 | 它自己绘制的界面，用 WebGL 2 画在画布上 | 页面的 DOM，核心以 WebAssembly 运行（见 [Web](web.md)） |
+| 浏览器 | 它自己绘制的界面，用 WebGL 2 画在画布上 | 页面的 DOM，应用以 WebAssembly 运行（见 [Web](web.md)） |
 
 ## 视图如何更新
 
