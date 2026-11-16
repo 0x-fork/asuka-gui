@@ -1001,6 +1001,19 @@ static ak_val bytes_get(ak_val *args, uint32_t n) {
 	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = BYTES(0)->data[i]}));
 }
 
+// bytes.at: b[i], the byte at i as an int (0 to 255); throws out of
+// range, as an array's index does.
+static ak_val bytes_at(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t i = A(1).i;
+	uint32_t len = blen(BYTES(0));
+	if (i < 0 || i >= (int64_t)len) {
+		ak_throw_msg("index %lld out of range (length %u)", (long long)i, len);
+		RET_I(0);
+	}
+	RET_I(BYTES(0)->data[i]);
+}
+
 static ak_val bytes_slice(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	int64_t len = blen(BYTES(0)), from = A(1).i, to = A(2).i;
@@ -1115,6 +1128,7 @@ const ak_lib_entry ak_lib[] = {
 	{"bytes.len", bytes_len},
 	{"bytes.is_empty", bytes_is_empty},
 	{"bytes.get", bytes_get},
+	{"bytes.at", bytes_at},
 	{"bytes.slice", bytes_slice},
 	{"bytes.concat", bytes_concat},
 	{"bytes.str", bytes_str},

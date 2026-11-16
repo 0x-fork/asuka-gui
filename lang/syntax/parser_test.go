@@ -177,6 +177,16 @@ func TestParseExpr(t *testing.T) {
 		{"-x.y", "(- (. x y))"},
 		{"!x!", "(! (! x))"},
 		{"(a + b) * c", "(* (paren (+ a b)) c)"},
+		// Bitwise operators, with Swift's precedence.
+		{"a + b << c", "(+ a (<< b c))"},
+		{"a * b >> c", "(* a (>> b c))"},
+		{"a & b + c", "(+ (& a b) c)"},
+		{"a | b & c", "(| a (& b c))"},
+		{"a ^ b | c", "(| (^ a b) c)"},
+		{"a & b == c", "(== (& a b) c)"},
+		{"~a & -b", "(& (~ a) (- b))"},
+		{"a >> b > c", "(> (>> a b) c)"},
+		{"a > >b", "(> a BAD)"},
 		// Unary keywords.
 		{"await f()", "(await (call f))"},
 		{"try await f()", "(try (await (call f)))"},

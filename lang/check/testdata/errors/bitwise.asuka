@@ -1,0 +1,23 @@
+// The bitwise operators take ints.
+
+fn floats(x: float) -> int = 3 & x // ERROR "& takes ints, not a float"
+
+fn bools(a: bool, b: bool) -> bool = a | b // ERROR "\| takes ints, not a bool: write \|\| for bools"
+
+fn strings(s: string) -> int = s << 2 // ERROR "<< takes ints, not a string"
+
+fn notFloat(x: float) -> int = ~x // ERROR "~ takes ints, not a float"
+
+fn compound(x: float) {
+  var y = x
+  y >>= 1 // ERROR ">>= takes ints, not a float"
+}
+
+fn ok(b: bytes, i: int) -> int = b[i] >> 4 & 0xf | b[0] ^ ~i
+
+fn setByte(b: bytes) {
+  var c = b
+  c[0] = 1 // ERROR "can't assign to a byte: bytes don't change in place"
+}
+
+fn literals() -> int = 0b102 // ERROR "unexpected '2' in a binary number"

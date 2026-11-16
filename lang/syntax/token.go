@@ -202,6 +202,11 @@ const (
 	MUL // *
 	QUO // /
 	REM // %
+	AMP   // &: bitwise and
+	CARET // ^: bitwise exclusive or
+	TILDE // ~: bitwise not
+	SHL   // <<
+	SHR   // >>: the parser's, of two adjacent >s (the scanner never makes one, so a type's Box<Box<T>> closes twice)
 
 	ASSIGN          // =
 	ADD_ASSIGN      // +=
@@ -209,6 +214,11 @@ const (
 	MUL_ASSIGN      // *=
 	QUO_ASSIGN      // /=
 	REM_ASSIGN      // %=
+	AND_ASSIGN      // &=
+	OR_ASSIGN       // |=
+	XOR_ASSIGN      // ^=
+	SHL_ASSIGN      // <<=
+	SHR_ASSIGN      // >>=: the parser's, of > and an adjacent >=
 	COALESCE_ASSIGN // ??=
 
 	EQL // ==
@@ -322,6 +332,11 @@ var tokens = [...]string{
 	MUL: "*",
 	QUO: "/",
 	REM: "%",
+	AMP:   "&",
+	CARET: "^",
+	TILDE: "~",
+	SHL:   "<<",
+	SHR:   ">>",
 
 	ASSIGN:          "=",
 	ADD_ASSIGN:      "+=",
@@ -329,6 +344,11 @@ var tokens = [...]string{
 	MUL_ASSIGN:      "*=",
 	QUO_ASSIGN:      "/=",
 	REM_ASSIGN:      "%=",
+	AND_ASSIGN:      "&=",
+	OR_ASSIGN:       "|=",
+	XOR_ASSIGN:      "^=",
+	SHL_ASSIGN:      "<<=",
+	SHR_ASSIGN:      ">>=",
 	COALESCE_ASSIGN: "??=",
 
 	EQL: "==",
@@ -438,6 +458,43 @@ func (t Token) IsKeyword() bool { return keywordBeg < t && t < keywordEnd }
 // IsAssign reports whether t is = or an assignment operator (+= … ??=).
 func (t Token) IsAssign() bool { return ASSIGN <= t && t <= COALESCE_ASSIGN }
 
+// AssignOp is the binary operator of a compound assignment (+= is +),
+// ILLEGAL for = and ??=.
+func (t Token) AssignOp() Token {
+	switch t {
+	case ADD_ASSIGN:
+		return ADD
+	case SUB_ASSIGN:
+		return SUB
+	case MUL_ASSIGN:
+		return MUL
+	case QUO_ASSIGN:
+		return QUO
+	case REM_ASSIGN:
+		return REM
+	case AND_ASSIGN:
+		return AMP
+	case OR_ASSIGN:
+		return PIPE
+	case XOR_ASSIGN:
+		return CARET
+	case SHL_ASSIGN:
+		return SHL
+	case SHR_ASSIGN:
+		return SHR
+	}
+	return ILLEGAL
+}
+
+// IsBitwise reports the operators that take ints only: & | ^ << >>.
+func (t Token) IsBitwise() bool {
+	switch t {
+	case AMP, PIPE, CARET, SHL, SHR:
+		return true
+	}
+	return false
+}
+
 var keywords map[string]Token
 
 func init() {
@@ -456,8 +513,10 @@ func Lookup(ident string) Token {
 }
 
 // Precedence is a binary operator's precedence, from 1 (loosest: ??) to
-// 7 (* / %); 0 for a token that isn't a binary operator. The unary and
-// postfix operators bind tighter than any of them.
+// 8 (<< >>); 0 for a token that isn't a binary operator. The unary and
+// postfix operators bind tighter than any of them. As Swift's: the
+// shifts bind tighter than multiplication, & as tightly as *, | and ^
+// as tightly as +.
 func (t Token) Precedence() int {
 	switch t {
 	case COALESCE:
@@ -470,10 +529,12 @@ func (t Token) Precedence() int {
 		return 4
 	case RANGE, RANGELT:
 		return 5
-	case ADD, SUB:
+	case ADD, SUB, PIPE, CARET:
 		return 6
-	case MUL, QUO, REM:
+	case MUL, QUO, REM, AMP:
 		return 7
+	case SHL, SHR:
+		return 8
 	}
 	return 0
 }

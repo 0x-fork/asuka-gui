@@ -170,6 +170,9 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 			b.emit(op("MGET"), r, x, i)
 			return r
 		}
+		if b.rawType(e.X) == check.Bytes {
+			return b.copyTo(b.callB("bytes.at", bc.KInt, x, i), dst)
+		}
 		r := b.out(dst, b.kind(b.l.info.Types[e]))
 		b.emit(op("IDX"), r, x, i)
 		return r
@@ -721,6 +724,11 @@ func (b *fb) unary(e *syntax.UnaryExpr, dst int) int {
 		r := b.out(dst, bc.KBool)
 		b.emit(op("NOT"), r, x)
 		return r
+	case syntax.TILDE:
+		x := b.value(e.X, -1)
+		r := b.out(dst, bc.KInt)
+		b.emit(op("BNOT"), r, x)
+		return r
 	case syntax.SUB:
 		if lit, ok := e.X.(*syntax.BasicLit); ok && lit.Kind == syntax.INT && b.rawType(e) == check.Int {
 			v, _ := check.ParseInt(lit.Value)
@@ -821,6 +829,12 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 	return b.binop(e.Op, x, y, xt, yt, b.rawType(e), dst)
 }
 
+// intOps are the int operators' instructions.
+var intOps = map[syntax.Token]string{
+	syntax.ADD: "ADDI", syntax.SUB: "SUBI", syntax.MUL: "MULI", syntax.QUO: "DIVI", syntax.REM: "MODI",
+	syntax.AMP: "BAND", syntax.PIPE: "BOR", syntax.CARET: "BXOR", syntax.SHL: "SHL", syntax.SHR: "SHR",
+}
+
 // binop applies a binary operator to registers x and y.
 func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) int {
 	switch o {
@@ -890,7 +904,7 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 		return r
 	}
 	r := b.out(dst, bc.KInt)
-	b.emit(op(map[syntax.Token]string{syntax.ADD: "ADDI", syntax.SUB: "SUBI", syntax.MUL: "MULI", syntax.QUO: "DIVI", syntax.REM: "MODI"}[o]), r, x, y)
+	b.emit(op(intOps[o]), r, x, y)
 	return r
 }
 

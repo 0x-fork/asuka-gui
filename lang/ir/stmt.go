@@ -620,7 +620,7 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 		b.f.Place(end)
 	default:
 		v := b.value(s.Value, -1)
-		o := map[syntax.Token]syntax.Token{syntax.ADD_ASSIGN: syntax.ADD, syntax.SUB_ASSIGN: syntax.SUB, syntax.MUL_ASSIGN: syntax.MUL, syntax.QUO_ASSIGN: syntax.QUO, syntax.REM_ASSIGN: syntax.REM}[s.Op]
+		o := s.Op.AssignOp()
 		lv := b.prepare(s.Target)
 		vt := b.typeOf(s.Value)
 		if lv.kind == lvField || lv.kind == lvIndex && !lv.isMap {

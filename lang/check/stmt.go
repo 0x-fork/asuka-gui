@@ -208,12 +208,22 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		}
 		c.assign(s.Value, lt, "the value")
 	default:
-		vt := c.expr(s.Value, numOnly(lt))
+		want := numOnly(lt)
+		if s.Op.AssignOp().IsBitwise() {
+			want = Int
+		}
+		vt := c.expr(s.Value, want)
 		if IsInvalid(lt) || IsInvalid(vt) {
 			return
 		}
 		op := strings.TrimSuffix(s.Op.String(), "=")
 		switch {
+		case s.Op.AssignOp().IsBitwise():
+			if lt != Int {
+				c.errorf(s.Target, "%s= takes ints, not a %s", op, typeString(lt))
+			} else if vt != Int {
+				c.errorf(s.Value, "%s= takes ints, not a %s", op, typeString(vt))
+			}
 		case IsNumeric(lt) && Identical(lt, vt):
 		case lt == String && vt == String && s.Op == syntax.ADD_ASSIGN:
 		case lt == Duration && vt == Duration && (s.Op == syntax.ADD_ASSIGN || s.Op == syntax.SUB_ASSIGN):
@@ -315,6 +325,10 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			c.errorf(x, "can't %s %s", what, exprName(x))
 		}
 	case *syntax.IndexExpr:
+		if c.info.Types[x.X] == Bytes {
+			c.errorf(x, "can't %s a byte: bytes don't change in place; make new ones (bytes([…]) of ints, b.slice, b.concat)", what)
+			return
+		}
 		c.checkLvalue(x.X, what)
 	case *syntax.SelfExpr:
 		c.errorf(x, "can't %s self: a struct's methods can't change it (it's a value); return a new one", what)

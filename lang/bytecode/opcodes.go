@@ -79,6 +79,10 @@ var Ops = []OpDef{
 	{"LEI", []Operand{Reg, Reg, Reg}, "a = b <= c"},
 	{"BAND", []Operand{Reg, Reg, Reg}, "a = b & c"},
 	{"BOR", []Operand{Reg, Reg, Reg}, "a = b | c"},
+	{"BXOR", []Operand{Reg, Reg, Reg}, "a = b ^ c"},
+	{"BNOT", []Operand{Reg, Reg}, "a = ~b"},
+	{"SHL", []Operand{Reg, Reg, Reg}, "a = b << c (0 when c >= 64); throws on c < 0"},
+	{"SHR", []Operand{Reg, Reg, Reg}, "a = b >> c, arithmetic (0 or -1 when c >= 64); throws on c < 0"},
 
 	// Floats.
 	{"ADDF", []Operand{Reg, Reg, Reg}, "a = b + c"},

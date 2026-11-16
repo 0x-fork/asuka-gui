@@ -33,6 +33,20 @@ static inline bool ak_op_divi(ak_val *R, uint16_t a, uint16_t b, uint16_t c, boo
 	return true;
 }
 
+// ak_op_shift is b << c, or b >> c (arithmetic) when right: a count of
+// 64 or more shifts every bit out (0, or -1 for >> of a negative), as
+// Go's do; a negative count throws.
+static inline bool ak_op_shift(ak_val *R, uint16_t a, uint16_t b, uint16_t c, bool right) {
+	int64_t x = R[b].i, n = R[c].i;
+	if (n < 0) {
+		ak_throw_msg("negative shift amount");
+		return false;
+	}
+	if (right) R[a].i = n >= 64 ? (x < 0 ? -1 : 0) : x >> n;
+	else R[a].i = n >= 64 ? 0 : (int64_t)((uint64_t)x << n);
+	return true;
+}
+
 static inline int64_t ak_op_f2i(double d) {
 	return d != d ? 0 : d >= 9.2233720368547758e18 ? INT64_MAX : d <= -9.2233720368547758e18 ? INT64_MIN : (int64_t)d;
 }
