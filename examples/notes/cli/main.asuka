@@ -40,7 +40,6 @@ enum Command {
   done(DoneOptions)
 }
 
-
 async fn main() throws {
   let args = os.args()
   // notes alone lists them.

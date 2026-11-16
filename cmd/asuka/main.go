@@ -1,6 +1,6 @@
 // Command Asuka makes, runs and builds Asuka apps.
 //
-//	asuka new [--lib [--native]] <dir>       an app, or a library (with a native module)
+//	asuka new [--bin | --lib [--native]] <dir>  an app, a program (fn main), or a library (with a native module)
 //	asuka dev --platform ios <dir>           build, run on the iOS simulator or an iPhone, rebuild on save
 //	asuka dev --platform android <dir>       build, run on an Android emulator or device, rebuild on save
 //	asuka dev --platform mac <dir>           build, run on this Mac, rebuild on save
@@ -9,7 +9,7 @@
 //	asuka dev --platform web <dir>           build, serve and open in the browser, rebuild on save
 //	asuka dev <dir>                          on macOS, Windows or Linux: run on this computer
 //	asuka test [dir]                         run an app's or a package's test blocks
-//	asuka run file.asuka                     run a file's tests, or show its app
+//	asuka run [--bin name] [dir] [-- args]   run a program on the VM; a file's tests, or show its app
 //	asuka fmt [-w] [-l] [paths]              format Asuka source (.asuka files)
 //	asuka check [dir]                        report an Asuka package's problems
 //	asuka lsp                                the language server, for editors
@@ -30,14 +30,18 @@ var version = "dev"
 
 func usage() {
 	fmt.Fprint(os.Stderr, `usage:
-  asuka new [--lib [--native]] <dir>        make an app, or a library (with --native, its platforms' code)
+  asuka new [--bin | --lib [--native]] <dir>
+                                            make an app, a program (a command-line tool), or a library
+                                            (with --native, its platforms' code)
   asuka dev [-p platform] [flags] [dir]     run, rebuilding on save, on platform: ios (the
                                             simulator), android (an emulator or device), mac,
                                             windows, linux or web (the browser); default on
                                             macOS, Windows and Linux: this computer
-  asuka build [-p platform] [flags] [dir]   a release build for platform, likewise
+  asuka build [-p platform] [flags] [dir]   a release build for platform, likewise; a program's
+                                            executable (--bin name, --target os-arch)
   asuka test [-run pattern] [dir]           run the test blocks of an app or a package on the fake host
-  asuka run file.asuka                      run a file's test blocks, or show what its app shows
+  asuka run [--bin name] [dir] [-- args]    run a program's main, with its arguments; a file without
+                                            one: its test blocks, and what its app shows
   asuka publish -p platform [flags] [dir]
                                             a release build, uploaded to TestFlight or Google Play;
                                             mac, windows, linux: its update, to asuka.toml's updates
