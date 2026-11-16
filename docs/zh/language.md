@@ -207,6 +207,24 @@ inc()                // n 现在是 2
 
 状态也以同样的方式共享。只有 `spawn` 会复制它用到的东西（只能是普通的值，取它开始运行那一刻的值），因为它在另一个线程上运行。
 
+函数、处理函数、闭包和方法的主体里也可以声明 `fn`。它像闭包一样能看到周围的东西，可以调用自己，也可以调用同一个代码块里紧挨着它声明的其他 `fn`（它们也能调用它）：
+
+```asuka
+fn total(root: Node) -> int {
+  var sum = 0
+  fn walk(n: Node) {
+    sum += n.size
+    for c in n.children { walk(c) }
+  }
+  walk(root)
+  return sum
+}
+```
+
+它和其他函数一样是一个值（`items.map(walk)`）。它的参数按顺序传入，不能带标签或默认值，它也不能是泛型的。
+
+函数要调用自己，就这样写。如果把闭包存进一个变量，再通过这个变量调用自己（`var walk = …; walk = n => { … walk(c) … }`），闭包就持有这个变量，而变量又持有闭包：两者都永远不会被释放，因为没有什么会回收这样的循环引用，编译器也会对此给出警告。局部 `fn` 调用自己时不会持有自己。
+
 ### 接口与泛型
 
 接口是一组方法和字段；一个类型只要具备这些方法和字段，就实现了这个接口（不需要额外声明）。
@@ -367,7 +385,7 @@ on press {
 
 一个处理函数里的多次写入，会在它结束时（或者执行到 `await` 时）一起显示出来。
 
-语句有：`let`、`var`、`let … else`、赋值（`= += -= *= /= %= ??=`）、`if` 和 `if let`、`for x in xs`、`for (i, x) in xs.enumerated()`、`while` 和 `while let`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`（见[控制流](#控制流)）。
+语句有：`let`、`var`、`let … else`、赋值（`= += -= *= /= %= ??=`）、`if` 和 `if let`、`for x in xs`、`for (i, x) in xs.enumerated()`、`while` 和 `while let`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`（见[控制流](#控制流)），以及 `fn` 声明（见[函数与闭包](#函数与闭包)）。
 
 ### 双向绑定
 

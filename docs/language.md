@@ -258,6 +258,32 @@ inc()                // n is 2
 State is shared the same way. Only `spawn` copies what it uses (values
 only, as they are when it starts), since it runs on another thread.
 
+A `fn` may be declared in a function's, a handler's, a closure's or a
+method's body too. It sees what's around it as a closure does, and it
+may call itself and the fns declared next to it in its block (and they
+it):
+
+```asuka
+fn total(root: Node) -> int {
+  var sum = 0
+  fn walk(n: Node) {
+    sum += n.size
+    for c in n.children { walk(c) }
+  }
+  walk(root)
+  return sum
+}
+```
+
+It's a value like any function (`items.map(walk)`). Its arguments go
+in order, without labels or defaults, and it isn't generic.
+
+That's how a function calls itself. A closure kept in a var it calls
+itself through (`var walk = …; walk = n => { … walk(c) … }`) holds the
+var, and the var holds it: neither is ever freed, since nothing
+collects such a cycle, and the compiler warns of it. A local fn calls
+itself without holding itself.
+
 ### Interfaces and generics
 
 An interface is a set of methods and fields; a type has it if it has
@@ -466,7 +492,8 @@ Statements: `let`, `var`, `let … else`, assignments (`= += -= *= /=
 %= ??=`), `if` and `if let`, `for x in xs`, `for (i, x) in
 xs.enumerated()`, `while` and `while let`, `match`, `return`, `break`,
 `continue`, `throw`, `do { } catch { }`, `defer { }`, `emit`
-([Control flow](#control-flow)).
+([Control flow](#control-flow)), and `fn` declarations ([Functions and
+closures](#functions-and-closures)).
 
 ### Two-way bindings
 

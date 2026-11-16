@@ -115,7 +115,19 @@ calls a closure) runs in a handler that moves the receiver back first.
   the closure is made; a `var` it captures that anything changes (the
   closure, or the code around it) is a box (VBOX, VGET, VSET), so they
   share one variable. A `spawn` copies a box's value instead (VGET as
-  it's made: values only).
+  it's made: values only). A closure stored in a var it captures (one
+  that calls itself through it) holds the box that holds it: a cycle
+  the checker warns of, pointing at a local fn.
+- A local fn (`fn walk(…)` in a block) is a function of its own; the
+  fns declared one after another in a block are a group, which shares
+  one list of captures (the outer locals its fns use, and those the
+  local fns they call capture; check.LocalGroup). Each takes its
+  arguments, then the group's captures as the code around holds them
+  (a var's box, a value, a row item's accessor), then the env when the
+  group uses one. A call of a local fn, from its group or anywhere it's
+  in scope, is a CALL passing them on, so recursion and the group's
+  calls of each other make no closure and no cycle. Used as a value, a
+  local fn is a closure capturing them, whose function CALLs it.
 - Default arguments are filled in at the call site (a default may use
   only package-level names; a generic function's is lowered with the
   call's type arguments). An enum case's labeled payload left out takes
