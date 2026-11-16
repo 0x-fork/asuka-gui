@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/internal/appbuild"
-	"github.com/egoist/asuka/internal/boot"
+	"github.com/egoist/asuka/internal/appconfig"
 	iupdate "github.com/egoist/asuka/internal/update"
 )
 
@@ -278,7 +278,7 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 	if err := mb.embed(bundle, exePath); err != nil {
 		return err
 	}
-	if err := writeHostConfig(app, platformMac, macTarget, !o.appStore, filepath.Join(bundle, "Contents", "Resources", boot.ConfigFile)); err != nil {
+	if err := writeHostConfig(app, platformMac, macTarget, !o.appStore, filepath.Join(bundle, "Contents", "Resources", appconfig.File)); err != nil {
 		return err
 	}
 	libs, err := appLibs(app, "darwin")

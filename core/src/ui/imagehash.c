@@ -1,9 +1,9 @@
 // imagehash.c: the compact placeholders apps send ahead of an image,
 // BlurHash (blurha.sh) and ThumbHash (evanw.github.io/thumbhash), decoded
-// into small pictures the hosts show until the image loads: a port of
-// internal/imagehash, which follows the reference implementations
-// (blurhash's TypeScript, thumbhash's JavaScript) step for step, so a
-// hash decodes here to the pixels it decodes to there.
+// into small pictures the hosts show until the image loads, following the
+// reference implementations (blurhash's TypeScript, thumbhash's
+// JavaScript) step for step, so a hash decodes here to the pixels it
+// decodes to there (core/test/testdata/imagehash: their outputs).
 #include "base/base.h"
 
 #include <math.h>

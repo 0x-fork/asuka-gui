@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/egoist/asuka/internal/appbuild"
-	"github.com/egoist/asuka/internal/boot"
+	"github.com/egoist/asuka/internal/appconfig"
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/nativegen"
 	"github.com/egoist/asuka/plugin"
@@ -26,7 +26,7 @@ import (
 // the core, the native registry, the native packages' C (each one's
 // desktop/) and, in a release, the app compiled to C (windows.go; linux.go
 // through appbuild.DesktopExe). Each has the app's settings beside it
-// (internal/boot's ConfigFile); asuka dev's player has no app compiled in,
+// (internal/appconfig's File); asuka dev's player has no app compiled in,
 // and loads the bytecode the CLI sends (ASUKA_DEV).
 
 // writeHostConfig writes the app's settings for the desktop host at path:
@@ -146,7 +146,7 @@ func devDesktop(dir string, o *devOptions, stop <-chan os.Signal, platform strin
 			"ASUKA_ASSETS="+filepath.Join(app.dir, "assets"),
 		)
 		if platform != platformMac {
-			env = append(env, "ASUKA_APP_CONFIG="+filepath.Join(filepath.Dir(exe), boot.ConfigFile))
+			env = append(env, "ASUKA_APP_CONFIG="+filepath.Join(filepath.Dir(exe), appconfig.File))
 		}
 		// The plugins' libraries, where the core finds them (a build puts
 		// them beside the program).
@@ -169,7 +169,7 @@ func devDesktop(dir string, o *devOptions, stop <-chan os.Signal, platform strin
 			if wrap != nil {
 				name, args = wrap[0], append(wrap[1:len(wrap):len(wrap)], "env", "ASUKA_DEV="+fmt.Sprintf("%s:%d", devHost, loop.port()),
 					"ASUKA_DATA="+data, "ASUKA_ASSETS="+filepath.Join(app.dir, "assets"),
-					"ASUKA_APP_CONFIG="+filepath.Join(filepath.Dir(exe), boot.ConfigFile))
+					"ASUKA_APP_CONFIG="+filepath.Join(filepath.Dir(exe), appconfig.File))
 				args = append(append(args, libEnv...), exe)
 			}
 			c := exec.Command(name, args...)
@@ -235,7 +235,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 		if err := mb.embed(bundle, exe); err != nil {
 			return "", err
 		}
-		if err := writeHostConfig(app, platform, "", false, filepath.Join(bundle, "Contents", "Resources", boot.ConfigFile)); err != nil {
+		if err := writeHostConfig(app, platform, "", false, filepath.Join(bundle, "Contents", "Resources", appconfig.File)); err != nil {
 			return "", err
 		}
 		libs, err := appLibs(app, "darwin")
@@ -262,7 +262,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 		if err := appbuild.WindowsHost(t, appbuild.WindowsOptions{Native: natives, Console: true}, exe); err != nil {
 			return "", err
 		}
-		return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, boot.ConfigFile))
+		return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, appconfig.File))
 	}
 	if t.OS == "linux" {
 		// One program likewise: the host, the core, every standard
@@ -271,7 +271,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 		if err := appbuild.LinuxExe(t, nil, append(stdNativeDirs(), desktopNativeDirs(app)...), exe); err != nil {
 			return "", err
 		}
-		return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, boot.ConfigFile))
+		return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, appconfig.File))
 	}
 	return "", fmt.Errorf("no desktop player for %s", t)
 }

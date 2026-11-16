@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/egoist/asuka/internal/boot"
+	"github.com/egoist/asuka/internal/appconfig"
 	"github.com/egoist/asuka/internal/filetype"
 )
 
@@ -233,7 +233,7 @@ func TestWindowsFileTypes(t *testing.T) {
 		{Name: "MYDB Document", Extensions: []string{"mydb"}},
 	}
 	if !reflect.DeepEqual(types, want) {
-		t.Fatalf("boot.FileTypes: %+v", types)
+		t.Fatalf("fileTypes: %+v", types)
 	}
 	if dev := configFileTypes(t, app.hostConfig(platformWindows, "", false)); dev[1].Icon != 0 {
 		t.Error("a dev build's types name icons it hasn't")
@@ -250,7 +250,7 @@ func TestWindowsFileTypes(t *testing.T) {
 }
 
 // configFileTypes are the types the host's settings carry.
-func configFileTypes(t *testing.T, c boot.Config) []filetype.Type {
+func configFileTypes(t *testing.T, c appconfig.Config) []filetype.Type {
 	t.Helper()
 	if c.FileTypes == "" {
 		t.Fatalf("no file types in %+v", c)

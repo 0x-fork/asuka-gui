@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/egoist/asuka/internal/appbuild"
-	"github.com/egoist/asuka/internal/boot"
+	"github.com/egoist/asuka/internal/appconfig"
 	"github.com/egoist/asuka/internal/cbuild"
 	iupdate "github.com/egoist/asuka/internal/update"
 )
@@ -143,7 +143,7 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 	if err := linuxRelease(app, t, filepath.Join(out, "bin", exe)); err != nil {
 		return err
 	}
-	if err := writeHostConfig(app, platformLinux, target, true, filepath.Join(out, "share", exe, boot.ConfigFile)); err != nil {
+	if err := writeHostConfig(app, platformLinux, target, true, filepath.Join(out, "share", exe, appconfig.File)); err != nil {
 		return err
 	}
 	libs, err := appLibs(app, target)

@@ -1,6 +1,6 @@
 // Image's placeholders and animated images, Video, WebView, native views
-// (media.c), the hash decoders (imagehash.c): ports of ui/media_test.go
-// and internal/imagehash's tests, against their golden data.
+// (media.c), the hash decoders (imagehash.c), against the reference
+// implementations' golden data (testdata/imagehash).
 #include "uih.h"
 
 #include <stdlib.h>
@@ -108,8 +108,8 @@ static void golden(const char *file, bool blur) {
 	free(json);
 }
 
-TEST(blurhash_golden) { golden("internal/imagehash/testdata/blurhash.json", true); }
-TEST(thumbhash_golden) { golden("internal/imagehash/testdata/thumbhash.json", false); }
+TEST(blurhash_golden) { golden("core/test/testdata/imagehash/blurhash.json", true); }
+TEST(thumbhash_golden) { golden("core/test/testdata/imagehash/thumbhash.json", false); }
 
 TEST(bad_hashes) {
 	uint8_t px[32 * 32 * 4];

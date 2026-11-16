@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/internal/appbuild"
-	"github.com/egoist/asuka/internal/boot"
+	"github.com/egoist/asuka/internal/appconfig"
 	"github.com/egoist/asuka/internal/filetype"
 	"github.com/egoist/asuka/lang/bytecode"
 )
@@ -151,12 +151,12 @@ func relDiag(dir, d string) string {
 }
 
 // hostConfig is what the desktop host reads of the app as it starts
-// (internal/boot's ConfigFile): asuka.toml's, and asuka dev's --lang and
+// (internal/appconfig's File): asuka.toml's, and asuka dev's --lang and
 // --dir for its runs. target is a release's (darwin-universal,
 // windows-amd64...; "": asuka dev's player), and updates says whether
 // it updates itself (asuka.toml's updates; not from the Mac App Store).
-func (a *asukaApp) hostConfig(platform, target string, updates bool) boot.Config {
-	c := boot.Config{
+func (a *asukaApp) hostConfig(platform, target string, updates bool) appconfig.Config {
+	c := appconfig.Config{
 		Name:              a.displayName(),
 		ID:                a.cfg.ID,
 		Version:           a.cfg.Version,
