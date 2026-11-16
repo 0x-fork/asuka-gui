@@ -36,7 +36,8 @@ func (modules) Call(ctx context.Context, module, method string, args []byte) ([]
 	}
 }
 
+// Send runs where sync methods do: on the main thread.
 func (modules) Send(module, method string, args []byte) error {
-	native.OnMain(func() { callModule(module, method, args, func([]byte, error) {}) })
+	callModule(module, method, args, func([]byte, error) {})
 	return nil
 }

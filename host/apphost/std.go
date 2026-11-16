@@ -11,4 +11,5 @@ import (
 	_ "github.com/egoist/asuka/std/network/desktop"
 	_ "github.com/egoist/asuka/std/sqlite/desktop"
 	_ "github.com/egoist/asuka/std/store/desktop"
+	_ "github.com/egoist/asuka/std/watch/desktop"
 )
