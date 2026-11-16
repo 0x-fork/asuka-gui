@@ -108,6 +108,14 @@ static void table_del(ak_id id) {
 void lx_add_node(node *n);
 void lx_add_node(node *n) { table_put(n); }
 
+// lx_forget_node lets go of a view of the host's own (a list's row or
+// cell): out of the nodes, its widget let go.
+void lx_forget_node(node *n);
+void lx_forget_node(node *n) {
+	table_del(n->id);
+	lx_release(n);
+}
+
 // lx_each_node calls f for every node.
 void lx_each_node(void (*f)(node *n, void *ctx), void *ctx);
 void lx_each_node(void (*f)(node *n, void *ctx), void *ctx) {
@@ -390,6 +398,7 @@ static void free_node(node *n) {
 	lx_release_a11y(n);
 	lx_release_scroll(n);
 	lx_release_image(n);
+	lx_release_list(n);
 	ak_vec_free(&n->children);
 	free(n->font_family);
 	free(n->title);

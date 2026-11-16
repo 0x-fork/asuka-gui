@@ -701,3 +701,13 @@ SYM(SOUP, SoupMessage *, soup_message_new, (const char *method, const char *uri_
 SYM(SOUP, GBytes *, soup_session_send_and_read, (SoupSession *session, SoupMessage *msg, GCancellable *cancellable, GError **error))
 SYM(SOUP, guint, soup_message_get_status, (SoupMessage *msg))
 SYM(SOUP, const char *, soup_message_get_reason_phrase, (SoupMessage *msg))
+
+// ---- Lists ----
+SYM(GTK, void, gtk_adjustment_configure, (GtkAdjustment *adjustment, double value, double lower, double upper, double step_increment, double page_increment, double page_size))
+SYM(GTK, GtkWidget *, gtk_widget_get_last_child, (GtkWidget *widget))
+SYM(GTK, void, gtk_widget_insert_after, (GtkWidget *widget, GtkWidget *parent, GtkWidget *previous_sibling))
+SYM(ADW, AdwAnimationTarget *, adw_property_animation_target_new, (GObject *object, const char *property_name))
+SYM(ADW, AdwAnimation *, adw_timed_animation_new, (GtkWidget *widget, double from, double to, guint duration, AdwAnimationTarget *target))
+SYM(ADW, void, adw_timed_animation_set_easing, (AdwTimedAnimation *self, AdwEasing easing))
+SYM(ADW, void, adw_animation_play, (AdwAnimation *self))
+SYM(ADW, void, adw_animation_skip, (AdwAnimation *self))

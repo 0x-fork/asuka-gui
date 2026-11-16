@@ -165,6 +165,12 @@ void lx_allocate_view(GtkWidget *w, int width, int height) {
 		// A node's view; or one going out (a transition, a match: no
 		// parent any more), at the frame it goes with.
 		node *cn = lx_view_node(c);
+		if (cn && cn->parent == n && lx_is_layout_root(cn) && !cn->placed) {
+			// A root the host sizes, in another view (a screen's own Screen in
+			// the stack's): it fills it.
+			lx_allocate(c, width, height, 0, 0, NULL);
+			continue;
+		}
 		if (cn && (cn->parent == n || (!cn->parent && cn->placed))) {
 			allocate_child(cn);
 			continue;

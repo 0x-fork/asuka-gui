@@ -879,6 +879,8 @@ typedef struct _AdwStatusPage AdwStatusPage;
 typedef struct _AdwClamp AdwClamp;
 typedef struct _AdwAnimation AdwAnimation;
 typedef struct _AdwAnimationTarget AdwAnimationTarget;
+typedef struct _AdwTimedAnimation AdwTimedAnimation;
+typedef enum { ADW_LINEAR, ADW_EASE_IN_QUAD, ADW_EASE_OUT_QUAD, ADW_EASE_IN_OUT_QUAD, ADW_EASE_IN_CUBIC, ADW_EASE_OUT_CUBIC } AdwEasing;
 
 typedef enum { ADW_COLOR_SCHEME_DEFAULT, ADW_COLOR_SCHEME_FORCE_LIGHT, ADW_COLOR_SCHEME_PREFER_LIGHT, ADW_COLOR_SCHEME_PREFER_DARK, ADW_COLOR_SCHEME_FORCE_DARK } AdwColorScheme;
 typedef enum { ADW_RESPONSE_DEFAULT, ADW_RESPONSE_SUGGESTED, ADW_RESPONSE_DESTRUCTIVE } AdwResponseAppearance;

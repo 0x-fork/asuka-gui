@@ -20,7 +20,5 @@ const char *lx_word(const char *key) { return key; }
 const char *lx_badged(const char *title, const char *badge) { (void)badge; return S(title); }
 void lx_run_attrs(node *n, const ak_rich_style *s, void (*add)(PangoAttribute *a, void *ctx), void *ctx) { (void)n; (void)s; (void)add; (void)ctx; }
 void lx_read_clipboard_text(void (*done)(const char *text, bool ok, void *ctx), void *ctx) { done("", false, ctx); }
-bool lx_list_refreshable(node *n) { (void)n; return false; }
-bool lx_list_refresh(node *n) { (void)n; return false; }
 node *lx_popover_anchor(node *n) { (void)n; return NULL; }
 const char *lx_word_app(const char *key, const char *app) { (void)key; return app; }

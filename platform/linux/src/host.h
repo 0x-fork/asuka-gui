@@ -561,6 +561,7 @@ void lx_refresh_key(win *w);
 void lx_set_refreshing(node *n, bool on);
 void lx_set_paging(node *n, bool on);
 void lx_release_scroll(node *n);
+void lx_release_list(node *n);
 
 // field.c, richfield.c
 void lx_make_field(node *n);
