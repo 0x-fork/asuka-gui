@@ -26,6 +26,27 @@ public typealias AsukaPlatformColor = UIColor
 public typealias AsukaPlatformColor = NSColor
 #endif
 
+#if canImport(UIKit)
+/// Where a package's Swift presents a controller of its own (a picker,
+/// the system's camera): the frontmost controller of the app's key
+/// window.
+@MainActor public enum AsukaPresenting {
+    public static var top: UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.flatMap(\.windows).first { $0.isKeyWindow } ?? scenes.first?.windows.first
+        var c = window?.rootViewController
+        while let p = c?.presentedViewController, !p.isBeingDismissed { c = p }
+        return c
+    }
+}
+#else
+/// Where a package's Swift shows a sheet of its own: the app's key
+/// window, else its main one.
+@MainActor public enum AsukaPresenting {
+    public static var window: NSWindow? { NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible } }
+}
+#endif
+
 /// The app's assets, for a package's Swift: a source as the hosts take
 /// one (an http(s) or file URL, an absolute path, or a file in the app's
 /// assets/) as a URL.

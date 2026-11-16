@@ -325,6 +325,7 @@ func (h *Host) setup() {
 	h.loadTheme()
 	h.initLocale()
 	h.main = h.newMainWindow()
+	native.SetWindow(h.main.window)
 	h.theme = h.readPalette(h.main.content)
 	h.env = h.environment(h.main)
 	h.watchSettings()

@@ -59,3 +59,36 @@ func NewHiddenWindow(title string, handle func(msg uint32, wparam, lparam uintpt
 	}
 	return hwnd
 }
+
+var (
+	procOnce    sync.Once
+	procWindows sync.Map // hwnd → func(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool)
+)
+
+const procClass = "AsukaPackageWindow"
+
+// NewProcWindow makes a window whose messages go to handle first (ok:
+// handled, its result returned), then DefWindowProc: a native package's
+// child window (WS_CHILD in a view's parent) or top-level one. Main
+// thread.
+func NewProcWindow(ex uint32, title string, style uint32, x, y, w, h int32, parent uintptr, handle func(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool)) uintptr {
+	procOnce.Do(func() {
+		proc := syscall.NewCallback(func(hwnd, m, wp, lp uintptr) uintptr {
+			if f, ok := procWindows.Load(hwnd); ok {
+				if r, done := f.(func(uintptr, uint32, uintptr, uintptr) (uintptr, bool))(hwnd, uint32(m), wp, lp); done {
+					return r
+				}
+			}
+			if m == WM_NCDESTROY {
+				procWindows.Delete(hwnd)
+			}
+			return DefWindowProc(hwnd, uint32(m), wp, lp)
+		})
+		RegisterClass(procClass, CS_HREDRAW|CS_VREDRAW, proc, AppIcon())
+	})
+	hwnd := CreateWindow(ex, procClass, title, style, x, y, w, h, parent, 0)
+	if hwnd != 0 && handle != nil {
+		procWindows.Store(hwnd, handle)
+	}
+	return hwnd
+}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -90,7 +91,12 @@ func TestStdSwift(t *testing.T) {
 			}
 			srcs, _ := filepath.Glob(filepath.Join(pkg, nativegen.SwiftDir, "*.swift"))
 			mod := strings.ToUpper(name[:1]) + name[1:] + "Native"
-			swiftc(t, append([]string{"-target", arch + "-apple-macos11", "-module-name", mod, "-I", mac, "-wmo", "-c", "-o", filepath.Join(dir, name+".o")}, srcs...)...)
+			// The macOS the package says it needs.
+			macos := "11"
+			if m := regexp.MustCompile(`\.macOS\("([0-9.]+)"\)`).FindStringSubmatch(string(manifest)); m != nil {
+				macos = m[1]
+			}
+			swiftc(t, append([]string{"-target", arch + "-apple-macos" + macos, "-module-name", mod, "-I", mac, "-wmo", "-c", "-o", filepath.Join(dir, name+".o")}, srcs...)...)
 			if simSDK != "" {
 				swiftc(t, append([]string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", mod, "-I", ios, "-typecheck"}, srcs...)...)
 			}

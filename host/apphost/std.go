@@ -7,6 +7,7 @@ package apphost
 // unsupported there.
 import (
 	_ "github.com/egoist/asuka/std/audio/desktop"
+	_ "github.com/egoist/asuka/std/camera/desktop"
 	_ "github.com/egoist/asuka/std/http/desktop"
 	_ "github.com/egoist/asuka/std/network/desktop"
 	_ "github.com/egoist/asuka/std/nowplaying/desktop"
