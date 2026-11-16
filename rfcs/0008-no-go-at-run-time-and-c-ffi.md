@@ -292,7 +292,7 @@ Each ends with its tests green.
   - builds for every target (the player included);
   - `asuka test`;
   - the docs (language.md, a new c.md) and their translations.
-- [ ] **G1** Desktop native packages in C:
+- [x] **G1** Desktop native packages in C:
   - [x] `asuka_desktop.h`, the registry (platform/desktop), its tests on a
         test host (no Go at run time);
   - [x] nativegen's C target, its golden files; the Go server target
@@ -303,8 +303,12 @@ Each ends with its tests green.
         reader in C (platform/desktop's asuka_barcode.h, for scan and
         vision too), one WinRT, COM and WinHTTP for the Windows host and
         the packages, and Markdown read in the core (md4c) for every
-        platform; left: package `native`'s servers, internal/bluez and
-        internal/gtk, which nothing that ships uses any more.
+        platform; package `native` (its servers and Go apps' typed
+        modules: no host ran them any more), internal/bluez and
+        internal/gtk removed, with Go-declared native packages (nativegen's
+        Go loader and Go target): the e2e greeter and the examples'
+        segmented control are Asuka and C, the kitchen's tests the
+        pantry's, sdk/lottie gone for std/lottie.
 - [x] **H1** The macOS host in Swift: every view, navigation, windows, menus, the
       tray, the host's modules; `asuka dev` and `asuka build` for the Mac
       without Go. platform/macos (its tests: platform/macos/mactest and

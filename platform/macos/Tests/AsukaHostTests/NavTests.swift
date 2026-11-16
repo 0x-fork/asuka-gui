@@ -267,7 +267,7 @@ final class NavTests: XCTestCase {
         XCTAssertTrue(navSentEvents.isEmpty)
     }
 
-    // Placing a flyout (internal/flyout's tests): below its anchor and
+    // Placing a flyout (the desktop hosts' cases): below its anchor and
     // centered, flipped above where there's no room below, lined up with
     // its start, slid and shrunk into the work area.
     func testFlyoutPlacement() {

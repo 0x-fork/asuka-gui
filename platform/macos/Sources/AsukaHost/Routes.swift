@@ -1,5 +1,5 @@
 // A window's Router address comes back as the window does (host/darwin's
-// routes.go, internal/routestate): the last Location command each window
+// routes.go): the last Location command each window
 // was sent is kept, by the window's key (its WindowOptions' StateKey,
 // "main" for the main window unless it names another; a Window's
 // StateKey, none without one), in asuka-routes.json in the app's
@@ -7,7 +7,7 @@
 // it changes, off the main thread, so the main thread never waits for the
 // disk; and at once as the app goes to the background or quits.
 //
-// The file is internal/routestate's, read by every desktop host: a JSON
+// The file is the one every desktop host reads: a JSON
 // object of the windows' keys, each {"href": ..., "state": ...} (the
 // state left out when it's empty), kept by the C they share (platform/
 // desktop's state.c: dsk_routes).

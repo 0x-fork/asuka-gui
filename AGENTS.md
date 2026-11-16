@@ -85,8 +85,8 @@ go generate ./sdk/sqlite        # the sqlite plugin's library for every platform
 go run ./cmd/asuka plugin publish sdk/sqlite  # upload a plugin's build to its GitHub release, record it in its asuka-plugin.toml
 go run ./cmd/asuka i18n check examples/i18n  # an app's catalogs, checked (the compiler reads them: dev and build check them too)
 go run ./cmd/asuka native generate examples/media/segmented  # a native package's glue: Go, Swift, Kotlin, JavaScript (dev and build do it too; `native check`: CI)
-go test ./internal/nativegen -update     # after changing the generator: refresh its golden files (testdata/kitchen)
-go test ./cmd/asuka -run MacSwift        # a native package's Swift (the kitchen), built into a Mac app's executable with the host
+go test ./internal/nativegen -update     # after changing the generator: refresh its golden files (testdata/pantry)
+go test ./cmd/asuka -run MacSwift        # a native package's Swift (the pantry), built into a Mac app's executable with the host
 go test -tags e2e ./e2e -run NativePackages  # native packages on the simulator, the emulator and headless Chrome
 go run ./cmd/asuka dev --platform ios --lang ar examples/i18n  # a language for one run; --lang ar-XB, en-XA: pseudo locales; --dir rtl: any app right to left
 go run ./cmd/asuka dev --platform ios examples/counter       # iOS simulator (Xcode): the player (the core without an app) loads the bytecode asuka dev sends
@@ -173,12 +173,13 @@ go test ./platform/windows -run Updater           # likewise on Windows (a PC, o
   not word for word.
 - Keep generated files (`ops` decoders, the core's CLDR tables and catalog
   test data (`go test ./i18n -run 'CTables|CompileCases' -update-c`), native
-  packages' `*_native.go` and `*.asuka.*`) committed and up to date.
-- Platform code an app needs is a native package (docs/native.md): a Go
-  interface or props struct, implemented in each platform's own project
-  (Package.swift, an android/ Gradle module, web/, Go on the desktop).
-  Changing `internal/nativegen` or package `native`'s wire means
-  regenerating every native package in the repo (`asuka native generate`
-  from the root) and the platforms' runtimes (NativeModules.swift, kept
-  identical in platform/ios and platform/macos; NativeModules.kt;
-  native.js).
+  packages' `*.asuka.*`) committed and up to date.
+- Platform code an app needs is a native package (docs/native.md): a
+  `native interface` or `native component` in its Asuka, implemented in
+  each platform's own project (Package.swift, an android/ Gradle module,
+  web/, desktop/'s C for Windows and Linux). Changing `internal/nativegen`
+  or core/src/native's wire means regenerating every native package in
+  the repo (`asuka native generate` in each: the std packages', the
+  examples', the tests' testdata) and the platforms' runtimes
+  (NativeModules.swift, kept identical in platform/ios and
+  platform/macos; NativeModules.kt; native.js).

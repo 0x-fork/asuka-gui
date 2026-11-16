@@ -377,7 +377,8 @@ sheets as its owner goes.
   site's path (`web.base`), and the dev server and the static site
   answer every route's path with the page.
 - **The desktops** keep each window's last address with where the
-  window was (`internal/routestate`, `asuka-routes.json` in the app's
+  window was (platform/desktop's state.c on Windows and Linux, the Mac's
+  Routes.swift over it; `asuka-routes.json` in the app's
   data directory, written a moment after it changes, off the main
   thread): a window comes back at its screens. Phones don't keep it
   across launches, as their native apps don't.
@@ -1033,7 +1034,7 @@ RichText's Content encoding and comes back in the same, canonically
 the core tells the user's edit from what it sent, as with Value. Each
 host keeps a run's style as it was sent beside the platform's
 attributes (an attribute of its own, a span; Windows's rich edit has
-neither, and goes through RTF, `internal/rtf`), so what the user didn't
+neither, and goes through RTF, platform/windows's rtf.c), so what the user didn't
 change comes back as it was: bold, italic, underline, strikethrough,
 monospace and links are read from what the text has. Formatting is
 undoable with the typing around it: UIKit's, AppKit's and the rich
@@ -1530,9 +1531,8 @@ asuka/
   i18n/              languages, catalogs, ICU messages, CLDR's formats
                      (compiled into what the core says)
   host/              the Host interface; fake (the test host)
-  native/            native packages' Go runtime (Go apps' packages)
   internal/nativegen/ asuka native's generator (Swift, Kotlin,
-                     JavaScript, C; Go for Go apps' packages)
+                     JavaScript, C)
   platform/ios/      the Swift host and decoder
   platform/macos/    the Mac's Swift host (AppKit; the decoder iOS's),
                      its tests (mactest: apps on the Mac player, driven
@@ -3004,7 +3004,7 @@ core/src/ui/lifecycle.c):
   and passes files, not arguments: it never sends it.
 
 **Flyouts, panels, windows sized to their content, click-through**
-(`ui`, `tray`, `apps`; `internal/flyout`):
+(`ui`, `tray`, `apps`; platform/desktop's flyout.c):
 
 - Kinds of `Window`, not kinds of their own: `ops.WindowConfig`'s flags
   `WindowFlyout`, `WindowPanel`, `WindowFitContent` and
@@ -3019,7 +3019,8 @@ core/src/ui/lifecycle.c):
   its binding's encoding changes (placed again). A tray icon is
   `asuka/tray`'s number for it (the "set" call's), which each host's
   tray module keys its icons by: `tray.anchor(id)` is that number.
-  `internal/flyout.Place` is one placement for the desktop hosts: on
+  `dsk_flyout_place` (platform/desktop) is one placement for the
+  desktop hosts, the Mac's too (the web's window.js does the same): on
   the side the placement names, flipped to the other side where that
   has no room and the other has, lined up along it (flipped to the other
   end), slid into the work area, shrunk to it, as GTK places menus.

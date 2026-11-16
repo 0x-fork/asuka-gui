@@ -6,11 +6,10 @@
 //     files, a module's arguments);
 //   - the app's settings (internal/boot's asuka-app.json);
 //   - the app's directories (internal/appdir's rules);
-//   - the state files: where the windows were (internal/winstate's
-//     asuka-window.json) and where their routers were (internal/
-//     routestate's asuka-routes.json);
+//   - the state files: where the windows were (asuka-window.json) and
+//     where their routers were (asuka-routes.json);
 //   - files by UTF-8 path (Windows' are UTF-16);
-//   - where a flyout window goes against its anchor (internal/flyout);
+//   - where a flyout window goes against its anchor;
 //   - animated images, decoded and played (internal/animimage);
 //   - Asuka's own words in the app's language (internal/l10n).
 //
@@ -183,7 +182,7 @@ bool dsk_routes_location(dsk_routes *s, const char *key, const char **href, cons
 bool dsk_routes_set(dsk_routes *s, const char *key, const char *href, size_t href_len, const char *state, size_t state_len);
 void dsk_routes_flush(dsk_routes *s);
 
-// ---- Flyouts and panels (internal/flyout) ----
+// ---- Flyouts and panels ----
 
 // A rectangle, y down, in a host's own units (points or pixels).
 typedef struct {

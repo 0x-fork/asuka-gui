@@ -1,4 +1,4 @@
-// state.c: where the windows were (asuka-window.json, internal/winstate's
+// state.c: where the windows were (asuka-window.json, its
 // format) and where their routers were (asuka-routes.json, internal/
 // routestate's) (desktop.h).
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)

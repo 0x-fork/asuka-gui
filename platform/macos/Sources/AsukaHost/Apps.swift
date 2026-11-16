@@ -1,7 +1,8 @@
 // asuka/apps on a Mac: the .app bundles where Spotlight finds them, named
 // by Launch Services (FileManager's displayName(atPath:)), their icons
 // NSWorkspace's, drawn into a bitmap, and opened by NSWorkspace; the search
-// is internal/appsearch's ranking, as every desktop host answers it.
+// is the ranking every desktop host answers it with (platform/linux's and
+// platform/windows's apps.c).
 import AppKit
 import CryptoKit
 
@@ -244,7 +245,7 @@ import CryptoKit
 }
 
 /// Ranks names against what the user types, as a launcher does
-/// (internal/appsearch: every desktop host answers apps.search alike).
+/// (every desktop host answers apps.search alike).
 enum AsukaAppSearch {
     // The ranks, best first.
     static let exact = 0, prefix = 1, word = 2, substring = 3, subsequence = 4

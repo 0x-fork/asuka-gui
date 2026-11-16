@@ -1,5 +1,5 @@
 // flyout.c: where a flyout window goes against its anchor, and a panel
-// across its display (internal/flyout's rules) (desktop.h).
+// across its display (desktop.h).
 #include "desktop.h"
 
 static double minf(double a, double b) { return a < b ? a : b; }
