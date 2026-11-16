@@ -10,6 +10,7 @@ import (
 	_ "github.com/egoist/asuka/std/camera/desktop"
 	_ "github.com/egoist/asuka/std/http/desktop"
 	_ "github.com/egoist/asuka/std/imageedit/desktop"
+	_ "github.com/egoist/asuka/std/maps/desktop"
 	_ "github.com/egoist/asuka/std/network/desktop"
 	_ "github.com/egoist/asuka/std/nowplaying/desktop"
 	_ "github.com/egoist/asuka/std/record/desktop"

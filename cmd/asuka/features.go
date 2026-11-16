@@ -61,6 +61,9 @@ func (c *appConfig) depManifests(deps map[string]string, u *appbuild.Uses) error
 		for _, p := range m.Android.Permissions {
 			c.addPermission(p)
 		}
+		if id == "asuka/maps" {
+			c.mapsKey = true
+		}
 	}
 	return errors.Join(errs...)
 }
