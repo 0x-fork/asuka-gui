@@ -1,6 +1,7 @@
 // asuka/markdown on iOS and macOS: the paragraphs the core read (md4c)
 // as an attributed string, in a text view that isn't editable: one
-// selection, links that open, the user's text size.
+// selection, links that open, the user's text size. A change writes over
+// the text from the first block that differs (MarkdownBlocks).
 import Asuka
 import Foundation
 #if canImport(UIKit)
@@ -62,54 +63,85 @@ struct MDTheme {
     }
 }
 
-/// The paragraphs (the core's, md4c's reading) as styled text.
-func markdownText(_ paras: [Paragraph], _ th: MDTheme) -> NSAttributedString {
+/// Paragraph i of paras as styled text: after i > 0, the paragraph end
+/// that parts it from the one before (its spacing above is its own).
+func markdownBlock(_ paras: [Paragraph], _ i: Int, _ th: MDTheme) -> NSAttributedString {
+    let p = paras[i]
     let out = NSMutableAttributedString()
-    var last: NSParagraphStyle?  // the paragraph before's: its newline's
-    for (i, p) in paras.enumerated() {
-        if let last { out.append(NSAttributedString(string: "\n", attributes: [.font: th.body, .paragraphStyle: last])) }
-        let tight = p.tight && i + 1 < paras.count && paras[i + 1].tight
-        let spacing: CGFloat = tight ? (p.row ? 2 : 4) : 10
-        let style = paragraph(th, indent: p.indent, marker: !p.marker.isEmpty, spacing: spacing, tabs: p.indent > 0 || p.row)
-        if p.rule {
-            last = paragraph(th, indent: 0, marker: false, spacing: 8, tabs: false)
-            out.append(NSAttributedString(string: "\u{2003}", attributes: [
-                .font: th.body, .strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: th.separator,
-                .paragraphStyle: last!]))
-            continue
+    let spacing: CGFloat = i == 0 ? 0 : paras[i - 1].tight && p.tight ? (p.row ? 2 : 4) : 10
+    if p.rule {
+        let style = paragraph(th, indent: 0, marker: false, spacing: spacing + 4, tabs: false)
+        out.append(NSAttributedString(string: i > 0 ? "\n\u{2003}" : "\u{2003}", attributes: [
+            .font: th.body, .strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: th.separator, .paragraphStyle: style]))
+        return out
+    }
+    let style = paragraph(th, indent: p.indent, marker: !p.marker.isEmpty, spacing: spacing, tabs: p.indent > 0 || p.row)
+    if i > 0 { out.append(NSAttributedString(string: "\n", attributes: [.font: th.body, .paragraphStyle: style])) }
+    if !p.marker.isEmpty {
+        out.append(NSAttributedString(string: p.marker + "\t", attributes: [.font: th.body, .foregroundColor: th.secondary, .paragraphStyle: style]))
+    }
+    for r in p.runs {
+        let strong = r.bold || p.heading > 0
+        var font = p.heading > 0 ? th.heading(p.heading) : th.body
+        var attrs: [NSAttributedString.Key: Any] = [:]
+        if p.code || r.code {
+            font = th.mono(font, bold: strong)
+            attrs[.backgroundColor] = th.codeBackground
+        } else {
+            font = th.traits(font, bold: strong, italic: r.italic)
         }
-        last = style
-        if !p.marker.isEmpty {
-            out.append(NSAttributedString(string: p.marker + "\t", attributes: [.font: th.body, .foregroundColor: th.secondary,
-                                                                                 .paragraphStyle: style]))
-        }
-        for r in p.runs {
-            let strong = r.bold || p.heading > 0
-            var font = p.heading > 0 ? th.heading(p.heading) : th.body
-            var attrs: [NSAttributedString.Key: Any] = [:]
-            if p.code || r.code {
-                font = th.mono(font, bold: strong)
-                attrs[.backgroundColor] = th.codeBackground
-            } else {
-                font = th.traits(font, bold: strong, italic: r.italic)
-            }
-            attrs[.font] = font
-            attrs[.foregroundColor] = r.quoted ? th.secondary : th.color
-            if r.struck { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
-            if !r.link.isEmpty, let url = URL(string: r.link) { attrs[.link] = url }
-            attrs[.paragraphStyle] = style
-            out.append(NSAttributedString(string: r.text, attributes: attrs))
-        }
+        attrs[.font] = font
+        attrs[.foregroundColor] = r.quoted ? th.secondary : th.color
+        if r.struck { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+        if !r.link.isEmpty, let url = URL(string: r.link) { attrs[.link] = url }
+        attrs[.paragraphStyle] = style
+        out.append(NSAttributedString(string: r.text, attributes: attrs))
     }
     return out
 }
 
+/// What a text view shows of the paragraphs, a block each, kept while it
+/// says the same: a change (a reply streaming in) writes over the text
+/// from the first block that differs to its end, so the text before it
+/// keeps its layout and its selection.
+@MainActor final class MarkdownBlocks {
+    private(set) var blocks: [NSAttributedString] = []
+
+    /// Shows paras in storage (all: every block again, as the theme
+    /// changed): where the text written over starts, or nil when nothing
+    /// changed.
+    @discardableResult
+    func show(_ paras: [Paragraph], in storage: NSTextStorage, _ th: MDTheme, all: Bool = false) -> Int? {
+        let next = paras.indices.map { markdownBlock(paras, $0, th) }
+        var keep = 0
+        if !all {
+            while keep < blocks.count && keep < next.count && blocks[keep].isEqual(to: next[keep]) { keep += 1 }
+            if keep == blocks.count && keep == next.count { return nil }
+        }
+        let start = blocks[..<keep].reduce(0) { $0 + $1.length }
+        let tail = NSMutableAttributedString()
+        for b in next[keep...] { tail.append(b) }
+        storage.beginEditing()
+        storage.replaceCharacters(in: NSRange(location: start, length: storage.length - start), with: tail)
+        storage.endEditing()
+        blocks = next
+        return start
+    }
+}
+
+/// selection is sel as it is once the text from start on is written over:
+/// what of it was before start.
+func keptSelection(_ sel: NSRange, before start: Int) -> NSRange {
+    let from = min(sel.location, start)
+    return NSRange(location: from, length: min(NSMaxRange(sel), start) - from)
+}
+
 /// A paragraph's style: indent steps in (a marker's line starting a step
-/// before, the marker in it), its spacing after, tab stops a step apart.
+/// before, the marker in it), its spacing above, tab stops a step apart.
 private func paragraph(_ th: MDTheme, indent: Int, marker: Bool, spacing: CGFloat, tabs: Bool) -> NSParagraphStyle {
     let p = NSMutableParagraphStyle()
     let step = th.body.pointSize * 1.5
-    p.paragraphSpacing = spacing
+    p.paragraphSpacingBefore = spacing
     if indent > 0 {
         p.headIndent = step * CGFloat(indent)
         p.firstLineHeadIndent = marker ? step * CGFloat(indent - 1) : p.headIndent
@@ -123,7 +155,8 @@ private func paragraph(_ th: MDTheme, indent: Int, marker: Bool, spacing: CGFloa
 
 #if canImport(UIKit)
 final class MarkdownTextView: UITextView {
-    var paragraphs: [Paragraph] = [] { didSet { render() } }
+    let shown = MarkdownBlocks()
+    var paragraphs: [Paragraph] = [] { didSet { render(all: false) } }
 
     init() {
         super.init(frame: .zero, textContainer: nil)
@@ -139,16 +172,16 @@ final class MarkdownTextView: UITextView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) isn't used") }
 
-    func render() {
-        let t = markdownText(paragraphs, .current)
-        if attributedText.isEqual(to: t) { return }  // as it is: its selection kept
-        attributedText = t
+    func render(all: Bool) {
+        let sel = selectedRange
+        guard let start = shown.show(paragraphs, in: textStorage, .current, all: all) else { return }
+        selectedRange = keptSelection(sel, before: start)
         invalidateIntrinsicContentSize()
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
-        if previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory { render() }
+        if previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory { render(all: true) }
     }
 }
 
@@ -160,19 +193,21 @@ final class MarkdownTextView: UITextView {
 }
 #else
 final class MarkdownTextView: NSTextView {
-    var paragraphs: [Paragraph] = [] { didSet { render() } }
+    let shown = MarkdownBlocks()
+    var paragraphs: [Paragraph] = [] { didSet { render(all: false) } }
 
-    func render() {
-        let t = markdownText(paragraphs, .current)
-        guard let storage = textStorage, !storage.isEqual(to: t) else { return }  // as it is: its selection kept
-        storage.setAttributedString(t)
+    func render(all: Bool) {
+        guard let storage = textStorage else { return }
+        let sel = selectedRange()
+        guard let start = shown.show(paragraphs, in: storage, .current, all: all) else { return }
+        setSelectedRange(keptSelection(sel, before: start))
     }
 
     override var isFlipped: Bool { true }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        render()
+        render(all: true)
     }
 
     /// Its text's height at width.
