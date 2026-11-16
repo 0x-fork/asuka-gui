@@ -3,6 +3,9 @@
 enum KitchenError: Error {
   /// kitchen: busy
   busy
+
+  // Used only by the native errors' table: lowered with it.
+  fn message() -> string = "kitchen: busy"
 }
 
 native interface Oven {
