@@ -551,6 +551,7 @@ typedef struct _GdkGLTextureBuilder GdkGLTextureBuilder;
 typedef struct _GdkFileList GdkFileList;
 typedef struct _GdkAppLaunchContext GdkAppLaunchContext;
 typedef struct _GdkCursor GdkCursor;
+typedef enum { GDK_SOURCE_MOUSE, GDK_SOURCE_PEN, GDK_SOURCE_KEYBOARD, GDK_SOURCE_TOUCHSCREEN, GDK_SOURCE_TOUCHPAD, GDK_SOURCE_TRACKPOINT, GDK_SOURCE_TABLET_PAD } GdkInputSource;
 typedef struct _GdkPixbuf GdkPixbuf;
 typedef struct _GdkSnapshot GdkSnapshot;
 typedef struct _GdkPixbufAnimation GdkPixbufAnimation;
@@ -942,6 +943,11 @@ void *lx_sym(const char *name);
 
 // Conveniences over the GLib API, as its macros are.
 #define G_CALLBACK(f) ((GCallback)(f))
+// g_utf8_next_char: GLib's macro (g_utf8_skip), as a function.
+static inline const char *g_utf8_next_char(const char *p) {
+	unsigned char c = (unsigned char)*p;
+	return p + (c < 0xc0 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : c < 0xf8 ? 4 : c < 0xfc ? 5 : 6);
+}
 #define GPOINTER_TO_INT(p) ((int)(intptr_t)(p))
 #define GINT_TO_POINTER(i) ((gpointer)(intptr_t)(i))
 #define g_signal_connect(o, s, f, d) g_signal_connect_data((o), (s), G_CALLBACK(f), (d), NULL, (GConnectFlags)0)
