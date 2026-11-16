@@ -152,7 +152,7 @@ const en: Copy = {
       },
       {
         title: "Batteries, and C",
-        text: "SQLite with live queries, secure storage, the camera, photos, location, notifications, purchases, Bluetooth, and any C library through extern.",
+        text: "A standard library (std/: SQLite with live queries, HTTP, JSON, Markdown) and a platform SDK (platform/: the camera, photos, location, notifications, purchases, Bluetooth), and any C library through extern.",
         href: "/docs/stdlib",
       },
       {
@@ -279,7 +279,7 @@ const zh: Copy = {
       },
       {
         title: "开箱即用，还能调 C",
-        text: "支持实时查询的 SQLite、安全存储、相机、相册、定位、通知、内购、蓝牙，还能通过 extern 直接调用任何 C 库。",
+        text: "标准库（std/：支持实时查询的 SQLite、HTTP、JSON、Markdown）和平台 SDK（platform/：相机、相册、定位、通知、内购、蓝牙），还能通过 extern 直接调用任何 C 库。",
         href: "/zh/docs/stdlib",
       },
       {
@@ -412,7 +412,7 @@ const ja: Copy = {
       },
       {
         title: "全部入り、C も",
-        text: "ライブクエリ付きの SQLite、セキュアストレージ、カメラ、写真、位置情報、通知、アプリ内課金、Bluetooth。そして extern で、どんな C ライブラリでも呼べます。",
+        text: "標準ライブラリ（std/：ライブクエリ付きの SQLite、HTTP、JSON、Markdown）とプラットフォーム SDK（platform/：カメラ、写真、位置情報、通知、アプリ内課金、Bluetooth）。そして extern で、どんな C ライブラリでも呼べます。",
         href: "/ja/docs/stdlib",
       },
       {
