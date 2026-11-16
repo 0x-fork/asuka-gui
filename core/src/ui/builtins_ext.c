@@ -11,6 +11,8 @@
 //	ui.state                v: View, state: int                            bool (tracked)
 //	ui.use_keys             keys: [Shortcut]                               -
 //	ui.animate              anim: Animation?, body: fn()                   -
+//	ui.animate_wait         anim: Animation?, body: fn()                   Task<void> (settles once
+//	                                                                       it's complete)
 //	ui.animating            -                                              bool
 //	ui.on_frame             f: fn(Duration)                                fn() (stop)
 //	ui.play, ui.pause       v: View (a Video)                              -
@@ -93,6 +95,11 @@ static ak_val b_animate(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	ak_ui_animate(a[0].p, a[1].p);
 	return none();
+}
+
+static ak_val b_animate_wait(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_animate_wait(a[0].p, a[1].p)};
 }
 
 static ak_val b_animating(ak_val *a, uint32_t n) {
@@ -278,7 +285,7 @@ void ak_ui_ext_builtins_init(void) {
 		ak_builtin_fn fn;
 	} t[] = {
 		{"ui.variant", b_variant}, {"ui.variant_bind", b_variant_bind}, {"ui.state", b_state}, {"ui.use_keys", b_use_keys},
-		{"ui.animate", b_animate}, {"ui.animating", b_animating}, {"ui.on_frame", b_on_frame}, {"ui.play", b_play},
+		{"ui.animate", b_animate}, {"ui.animate_wait", b_animate_wait}, {"ui.animating", b_animating}, {"ui.on_frame", b_on_frame}, {"ui.play", b_play},
 		{"ui.pause", b_pause}, {"ui.seek", b_seek}, {"ui.web_eval", b_web_eval}, {"ui.web_navigate", b_web_navigate},
 		{"ui.web_eval_result", b_web_eval_result}, {"ui.web_cookies", b_web_cookies}, {"ui.insert_text", b_insert_text},
 		{"ui.format", b_format}, {"ui.toggle_format", b_toggle_format}, {"ui.set_link", b_set_link}, {"ui.native", b_native},

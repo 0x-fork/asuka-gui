@@ -4,6 +4,7 @@
 #include "vm/vm.h"
 #include "rt/sched.h"
 #include "signal/signal.h"
+#include "native/native.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -35,6 +36,7 @@ struct ak_uitest {
 	ak_fake_view *menu;     // the button whose menu is open
 	AK_VEC(list_state) lists;
 	ak_buf fails;  // the fake host's misuses
+	uint32_t ops_seen;  // the ops test.ops returned already
 };
 
 // The cap on a list's bound rows: rows of no height would bind them all.
@@ -717,6 +719,16 @@ bool ak_uitest_expect_no(ak_uitest *a, ak_span text, ak_buf *err) {
 //	test.idle        app: App                                      Task<void> (settled; the
 //	                                                               clock moved past every timer)
 //	test.dump        app: App                                      string (what the screen shows)
+//	test.ops         app: App                                      string (the ops applied since
+//	                                                               the last test.ops, a line each)
+//	test.press       app: App, text: string, down: bool            - (the pressed state of the
+//	                                                               view showing text, or around it)
+//	test.hover       app: App, text: string, over: bool            - (likewise, hovered)
+//	test.frame       app: App, time: Duration                      - (a frame the display draws)
+//	test.open_url    app: App, url: string                         - (the app opened with it)
+//	test.emit        app: App, type: string, event: string,
+//	                 value: string                                 - (a native view's event, its
+//	                                                               one value a string)
 //
 // A failed action or expectation throws an error saying what's wrong and
 // what the screen shows. The app is unmounted when the test's owner is
@@ -816,7 +828,113 @@ static ak_val t_dump(ak_val *a, uint32_t n) {
 	return (ak_val){.p = s};
 }
 
+static ak_val t_ops(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.ops");
+	ak_uitest_settle(app);
+	ak_fake *f = app->f;
+	ak_buf b = {0};
+	for (uint32_t i = app->ops_seen; i < f->ops.len; i++) {
+		ak_op op = ak_fake_op_at(f, i);
+		if (op.code == AK_OP_SET_PROP) {
+			const ak_fake_view *v = ak_fake_view_of(f, op.id);
+			ak_op_format_kind(&b, &op, v ? v->kind : 0);
+		} else {
+			ak_op_format(&b, &op);
+		}
+		ak_buf_u8(&b, '\n');
+	}
+	app->ops_seen = f->ops.len;
+	ak_str *s = ak_str_new((const char *)b.data, b.len);
+	ak_buf_free(&b);
+	return (ak_val){.p = s};
+}
+
+// state_target is the view showing text that reports kind (it, or the
+// nearest around it), or NULL and a thrown error.
+static ak_fake_view *state_target(ak_uitest *app, ak_span text, ak_event_kind kind, const char *name) {
+	target_vec ts = {0};
+	targets(app, text, &ts);
+	ak_fake_view *found = NULL;
+	for (uint32_t i = 0; i < ts.len && !found; i++)
+		for (ak_fake_view *p = ts.data[i].v; p && !found; p = p->parent)
+			if (ak_fake_listens(p, kind)) found = p;
+	ak_vec_free(&ts);
+	if (!found) {
+		ak_buf err = {0};
+		failure(app, &err, name, text);
+		throw_buf(&err);
+	}
+	return found;
+}
+
+static ak_val state_event(ak_val *a, uint32_t n, ak_event_kind kind, const char *name, const char *msg) {
+	ak_uitest *app = app_arg(a, n, name);
+	ak_fake_view *v = state_target(app, span_of(a[1]), kind, msg);
+	if (v) {
+		ak_fake_dispatch(app->f, &(ak_event){.id = v->id, .kind = kind, .b = n > 2 && a[2].i});
+		ak_uitest_settle(app);
+	}
+	return (ak_val){0};
+}
+
+static ak_val t_press(ak_val *a, uint32_t n) { return state_event(a, n, AK_EVENT_PRESSED, "test.press", "nothing at \"%.*s\" reports its pressed state"); }
+static ak_val t_hover(ak_val *a, uint32_t n) { return state_event(a, n, AK_EVENT_HOVER, "test.hover", "nothing at \"%.*s\" reports hovering"); }
+
+static ak_val t_frame(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.frame");
+	ak_fake_view *root = ak_fake_root(app->f);
+	ak_fake_dispatch(app->f, &(ak_event){.id = root ? root->id : 0, .kind = AK_EVENT_FRAME, .f = n > 1 ? (double)a[1].i / 1e9 : 0});
+	ak_uitest_settle(app);
+	return (ak_val){0};
+}
+
+static ak_val t_open_url(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.open_url");
+	ak_buf u = {0};
+	ak_span s = span_of(a[1]);
+	ak_buf_put(&u, s.p, s.len);
+	ak_buf_u8(&u, 0);
+	ak_fake_open_url(app->f, (const char *)u.data);
+	ak_buf_free(&u);
+	ak_uitest_settle(app);
+	return (ak_val){0};
+}
+
+static ak_val t_emit(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.emit");
+	ak_span type = span_of(a[1]);
+	ak_fake_view_vec vs = {0};
+	ak_fake_of_kind(app->f, AK_KIND_NATIVE, &vs);
+	ak_fake_view *v = NULL;
+	for (uint32_t i = 0; i < vs.len && !v; i++)
+		if (ak_span_eq(ak_fake_string(vs.data[i], AK_PROP_NATIVE_TYPE), type)) v = vs.data[i];
+	ak_vec_free(&vs);
+	if (!v) {
+		ak_buf err = {0};
+		failure(app, &err, "no native view of type \"%.*s\"", type);
+		throw_buf(&err);
+		return (ak_val){0};
+	}
+	ak_buf val = {0}, name = {0};
+	ak_native_encode(&val, n > 3 ? a[3] : (ak_val){0}, "s", NULL);
+	ak_span ev = span_of(a[2]);
+	ak_buf_put(&name, ev.p, ev.len);
+	ak_buf_u8(&name, 0);
+	ak_fake_native x = {.name = ak_cstr("v"), .type = 5, .s = {(const char *)val.data, (uint32_t)val.len}};
+	ak_fake_emit_native(app->f, v, (const char *)name.data, &x, 1);
+	ak_buf_free(&val);
+	ak_buf_free(&name);
+	ak_uitest_settle(app);
+	return (ak_val){0};
+}
+
 void ak_uitest_builtins_init(void) {
+	ak_builtin_register("test.ops", t_ops);
+	ak_builtin_register("test.press", t_press);
+	ak_builtin_register("test.hover", t_hover);
+	ak_builtin_register("test.frame", t_frame);
+	ak_builtin_register("test.open_url", t_open_url);
+	ak_builtin_register("test.emit", t_emit);
 	ak_builtin_register("test.mount", t_mount);
 	ak_builtin_register("test.tap", t_tap);
 	ak_builtin_register("test.type", t_type);

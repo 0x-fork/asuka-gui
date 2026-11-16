@@ -261,6 +261,10 @@ void ak_ui_use_keys(ak_arr *keys);
 // animate(anim) { body }: what body changes animates in the next flush
 // (anim an Animation, NULL: the default).
 void ak_ui_animate(const ak_struct *anim, ak_closure *body);
+// ak_ui_animate_wait is ak_ui_animate, and a future (AK_K_VOID) that
+// settles once the animation is complete: at once when nothing is
+// mounted, and for one that repeats until its props change (repeat -1).
+ak_future *ak_ui_animate_wait(const ak_struct *anim, ak_closure *body);
 bool ak_ui_animating(void);
 // ak_ui_on_frame calls f (fn(Duration)) at each frame the display draws
 // until the stop closure it returns is called or the owner is disposed.
