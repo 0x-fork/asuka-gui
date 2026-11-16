@@ -160,8 +160,9 @@ than half-written syntax. `markdown.heal(text)` is that, on its own.
 The core reads it, the same on every platform (md4c), into paragraphs
 of styled text, which each platform shows as its own: an attributed
 string in a text view on iOS and macOS, spans in a TextView on Android,
-the page's elements on the web, a rich edit on Windows and a label's
-Pango markup on Linux. See [`examples/markdown`](../examples/markdown).
+the page's elements on the web, a rich edit on Windows and a label a
+block on Linux (as GNOME apps show rich text: each block selects on its
+own). See [`examples/markdown`](../examples/markdown).
 
 ## Buttons
 

@@ -1687,7 +1687,7 @@ behavior.
   text, so a document reads, selects and speaks as the platform's text
   does: an attributed string in a text view on iOS and the Mac, spans in
   a TextView on Android, the page's elements on the web, RTF in a rich
-  edit on Windows and Pango markup in a label on Linux. Only what's
+  edit on Windows and a label a block on Linux. Only what's
   shown differs; what the Markdown says doesn't. While a reply streams in, its text is healed once,
   in the core, before it reaches any platform (`markdown.heal`: an unclosed
   emphasis, a link being written), so a half-written document renders as

@@ -389,4 +389,55 @@ TEST(markdown_heal) {
 	for (size_t i = 0; i < AK_LEN(cases); i++) CHECK_STR(call("markdown.heal", (ak_val[]){S(cases[i][0])}, 1, 1), cases[i][1]);
 }
 
+// A reply streamed in (std/markdown/tests/reply.md, a few tokens a
+// frame, as tokens come), healed and read after each piece: what the
+// platforms' views are given, frame by frame. std/markdown/tests/
+// stream.json keeps those frames, one a line, for each platform's view
+// test (they count what their view replaces); this checks it's what the
+// core reads. ASUKA_UPDATE=1 writes it again.
+TEST(markdown_stream) {
+	const char *root = getenv("ASUKA_ROOT");
+	REQUIRE(root);
+	char path[1024];
+	snprintf(path, sizeof path, "%s/std/markdown/tests/reply.md", root);
+	FILE *f = fopen(path, "rb");
+	REQUIRE(f);
+	char reply[8192];
+	size_t n = fread(reply, 1, sizeof reply, f);
+	fclose(f);
+	REQUIRE(n > 0 && n < sizeof reply);
+	enum { STEP = 12 };  // a frame's tokens
+	ak_buf want = {0};
+	ak_buf_printf(&want, "{\"step\": %d, \"frames\": [\n", STEP);
+	for (size_t end = 0; end < n;) {
+		end += STEP;
+		if (end > n) end = n;
+		while (end < n && ((unsigned char)reply[end] & 0xC0) == 0x80) end++;  // a character's end
+		ak_val healed = call("markdown.heal", (ak_val[]){{.p = ak_str_new(reply, end)}}, 1, 1);
+		ak_val frame = call("markdown.read", &healed, 1, 1);
+		ak_buf_put(&want, ((ak_str *)frame.p)->data, ((ak_str *)frame.p)->len);
+		ak_buf_put(&want, end < n ? ",\n" : "\n", end < n ? 2 : 1);
+		ak_release(frame.p);
+	}
+	ak_buf_put(&want, "]}\n", 3);
+	snprintf(path, sizeof path, "%s/std/markdown/tests/stream.json", root);
+	if (getenv("ASUKA_UPDATE")) {
+		f = fopen(path, "wb");
+		REQUIRE(f);
+		fwrite(want.data, 1, want.len, f);
+		fclose(f);
+	}
+	f = fopen(path, "rb");
+	REQUIRE(f);
+	char *got = ak_alloc(want.len + 2);
+	size_t m = fread(got, 1, want.len + 1, f);
+	fclose(f);
+	if (m != want.len || memcmp(got, want.data, m) != 0) {
+		fprintf(stderr, "std_test.c:%d: %s: std/markdown/tests/stream.json isn't what the core reads (ASUKA_UPDATE=1 writes it)\n", __LINE__, t_current);
+		t_failed++;
+	}
+	ak_free(got);
+	ak_buf_free(&want);
+}
+
 T_MAIN()

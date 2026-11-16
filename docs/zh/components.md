@@ -112,7 +112,7 @@ component Reply(text: string, writing: bool) {
 }
 ```
 
-`streaming` 表示文本还在写，比如语言模型的回复正一点点流进来：这时文本的末尾会显示成它最可能的样子（代码围栏补上结尾、`**bold` 显示为粗体、正在写的链接显示为链接），而不是写了一半的语法。单独用 `markdown.heal(text)` 也能得到同样的处理。解析由核心完成，所有平台都一样（md4c）：它把文本读成一段段带样式的文字，再由各平台用自己的方式显示：iOS 和 macOS 上是文本视图里的富文本字符串（attributed string），Android 上是 TextView 里的 span，Web 上是页面元素，Windows 上是 rich edit 控件，Linux 上是标签的 Pango 标记。参见 [`examples/markdown`](../../examples/markdown)。
+`streaming` 表示文本还在写，比如语言模型的回复正一点点流进来：这时文本的末尾会显示成它最可能的样子（代码围栏补上结尾、`**bold` 显示为粗体、正在写的链接显示为链接），而不是写了一半的语法。单独用 `markdown.heal(text)` 也能得到同样的处理。解析由核心完成，所有平台都一样（md4c）：它把文本读成一段段带样式的文字，再由各平台用自己的方式显示：iOS 和 macOS 上是文本视图里的富文本字符串（attributed string），Android 上是 TextView 里的 span，Web 上是页面元素，Windows 上是 rich edit 控件，Linux 上则是每个块一个标签（GNOME 应用显示富文本的方式：每个块各自选择）。参见 [`examples/markdown`](../../examples/markdown)。
 
 ## 按钮
 

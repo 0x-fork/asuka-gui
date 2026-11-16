@@ -19,6 +19,9 @@ import (
 // calls them), the registry and test/unit.c's host, under ASan and UBSan, and run: it
 // passes when it exits 0. What a package's C works out without a
 // platform (parsing, decoding, encoding) is tested so on every system.
+// A view's Linux test (desktop/*_linux_test.c) is built with the package's
+// glue too and runs on Linux, with GTK: it includes its view's C, makes
+// the view and drives it as the host would.
 func TestStdUnits(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("built with the POSIX test host's flags")
@@ -40,12 +43,23 @@ func TestStdUnits(t *testing.T) {
 		dir := filepath.Dir(test)
 		name := filepath.Base(filepath.Dir(dir)) + "/" + strings.TrimSuffix(filepath.Base(test), ".c")
 		t.Run(name, func(t *testing.T) {
+			// A view's test (_linux_test.c) runs on Linux, with GTK (under
+			// Xvfb), its view's C its own (it includes it) and the package's
+			// glue; a Windows one (_windows_test.c) is platform/windows'.
+			view := strings.HasSuffix(test, "_linux_test.c")
+			if strings.HasSuffix(test, "_windows_test.c") || view && runtime.GOOS != "linux" {
+				t.Skip("another platform's")
+			}
 			srcs := []string{test, filepath.Join(desk, "test", "unit.c"), filepath.Join(desk, "src", "native.c"), filepath.Join(desk, "src", "json.c"),
-				filepath.Join(desk, "src", "linux.c")}
+				filepath.Join(desk, "src", "jsontree.c"), filepath.Join(desk, "src", "linux.c")}
 			for _, f := range nativegen.CSources(dir, "unit") {
 				if !strings.HasSuffix(f, ".asuka.c") {
 					srcs = append(srcs, filepath.Join(dir, f))
 				}
+			}
+			if view {
+				glue, _ := filepath.Glob(filepath.Join(dir, "*.asuka.c"))
+				srcs = append(srcs, glue...)
 			}
 			flags := append(append([]string{}, cbuild.Flags...), "-I"+filepath.Join(desk, "include"), "-I"+dir, "-D_GNU_SOURCE")
 			work := t.TempDir()
