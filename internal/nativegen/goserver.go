@@ -133,7 +133,7 @@ func GenerateGoServer(p *Package) ([]byte, error) {
 // core/src/ui/media.c sends and reads them.
 func (g *gsGen) view(v *View) {
 	n := v.Name
-	g.printf("// %sNative is a %s implemented in Go (Windows, Linux): the platform's\n// view (native.View's Handle) and a setter per prop. It may also be a\n// native.Measurer, and have Destroy.\n", n, n)
+	g.printf("// %sNative is a %s implemented in Go (Windows, Linux; the Mac too, over\n// the package's Swift, when a file built for it calls implement%s): the\n// platform's view (native.View's Handle) and a setter per prop. It may\n// also be a native.Measurer, and have Destroy.\n", n, n, n)
 	g.printf("type %sNative interface {\n\tHandle() uintptr\n", n)
 	for _, f := range v.Props {
 		g.doc(f.Doc, "\t")

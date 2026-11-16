@@ -190,9 +190,10 @@ func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *na
 	return native.ErrClosed
 }
 
-// DialNative is a Dial implemented in Go (Windows, Linux): the platform's
-// view (native.View's Handle) and a setter per prop. It may also be a
-// native.Measurer, and have Destroy.
+// DialNative is a Dial implemented in Go (Windows, Linux; the Mac too, over
+// the package's Swift, when a file built for it calls implementDial): the
+// platform's view (native.View's Handle) and a setter per prop. It may
+// also be a native.Measurer, and have Destroy.
 type DialNative interface {
 	Handle() uintptr
 	SetValue(value float64)
