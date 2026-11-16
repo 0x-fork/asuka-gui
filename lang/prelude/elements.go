@@ -31,7 +31,11 @@ type Key struct {
 	Bind bool
 	// Event is, for a Bind key, the event the control writes it with.
 	Event string
-	Doc   string
+	// Builder: a fn returning a View the runtime calls with accessors (a
+	// List's header, of its section's key, which a recycled header
+	// follows): its lambda's parameters read as a for's row item.
+	Builder bool
+	Doc     string
 }
 
 // Param is an event's parameter.
@@ -311,7 +315,7 @@ var Elements = []Element{
 		{Name: "swipeActions", Type: "fn(int) -> [Action]", Doc: "row index's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's)"},
 		{Name: "leadingSwipeActions", Type: "fn(int) -> [Action]", Doc: "row index's actions revealed from its leading edge (Mail's Unread)"},
 		{Name: "section", Type: "fn(int) -> string", Doc: "row index's section: rows next to each other with the same key are one, headed by header"},
-		{Name: "header", Type: "fn(string) -> View", Doc: "a section's header, given its key (an accessor: a recycled header follows its new section)"},
+		{Name: "header", Type: "fn(string) -> View", Builder: true, Doc: "a section's header, given its key (an accessor: a recycled header follows its new section)"},
 		{Name: "selecting", Type: "bool", Doc: "selection mode (Mail's Edit): rows show the platform's selection control, a tap selects instead of pressing, and rows don't swipe"},
 		{Name: "selected", Type: "fn(int) -> bool", Doc: "whether row index is selected, followed as what it reads changes"},
 	}, Events: []Event{

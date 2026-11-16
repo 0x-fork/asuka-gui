@@ -80,7 +80,7 @@ pub component Editor(draft: Draft, heading: string) {
   state pickingTags = false
 
   let collections: sqlite.Live<Collection> = db.watch("select * from collections order by name", [])
-  let collectionName = collections.rows.first(c => c.id == draft.collection)?.name ?? "Unsorted"
+  let collectionName = collections.rows.find(c => c.id == draft.collection)?.name ?? "Unsorted"
 
   task { await draft.fetch() }
 

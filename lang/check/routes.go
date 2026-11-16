@@ -14,12 +14,15 @@ import (
 // Button's href: X(…) are X's address, from the one Router that routes
 // it.
 
-// RouteBuilder is a Route's screen: p => View, built for each screen of
-// the route with its Params (an accessor: p is a row item, as a for's).
+// RouteBuilder is a lambda the runtime builds views with, passing
+// accessors: a Route's screen, p => View, built for each screen of the
+// route with its Params; a List's header, key => View (an element key's
+// Builder). Its parameters are row items, as a for's.
 type RouteBuilder struct {
 	Lambda *syntax.LambdaExpr
-	Item   syntax.Item   // the block's item the lambda is
+	Item   syntax.Item   // the block's item the lambda is (a Route's)
 	Param  *Var          // p, or nil when the lambda takes none
+	Params []*Var        // every parameter's (nil: one it ignores)
 	Items  []syntax.Item // its body's view items
 }
 
@@ -214,6 +217,7 @@ func (c *Checker) routeBuilder(lam *syntax.LambdaExpr, it syntax.Item, ec *Eleme
 		v.Kind = RowItem
 		ctx.Params = append(ctx.Params, v)
 		rb.Param = v
+		rb.Params = []*Var{v}
 	}
 	switch b := lam.Body.(type) {
 	case *syntax.Block:
@@ -332,4 +336,46 @@ func (c *Checker) routeHrefs() {
 			}
 		}
 	}
+}
+
+// builderLambda checks a lambda passed to an element's Builder key: its
+// parameters, of the key's fn type, read as row items (accessors the
+// runtime passes); its body, views.
+func (c *Checker) builderLambda(lam *syntax.LambdaExpr, ft *FuncType, what string) {
+	rb := &RouteBuilder{Lambda: lam}
+	saved := c.ctx
+	ctx := c.enter(CtxBuilder, lam, what)
+	if len(lam.Params) != len(ft.Params) {
+		c.errorf(lam, "%s takes %s", what, plural(len(ft.Params), "parameter", "parameters"))
+	}
+	for i, p := range lam.Params {
+		if i >= len(ft.Params) {
+			break
+		}
+		if p.Type != nil {
+			if t := c.typeExpr(p.Type); !IsInvalid(t) && !Identical(t, ft.Params[i]) {
+				c.errorf(p.Type, "%s's parameter is a %s, not a %s", what, typeString(ft.Params[i]), typeString(t))
+			}
+		}
+		v := c.declareVar(p.Name, ft.Params[i], false)
+		v.Kind = RowItem
+		ctx.Params = append(ctx.Params, v)
+		rb.Params = append(rb.Params, v)
+	}
+	for len(rb.Params) < len(ft.Params) {
+		rb.Params = append(rb.Params, nil)
+	}
+	switch b := lam.Body.(type) {
+	case *syntax.Block:
+		rb.Items = b.Items
+	case syntax.Expr:
+		rb.Items = []syntax.Item{&syntax.ExprStmt{Span: b.Range(), X: b}}
+	}
+	savedView := c.view
+	c.view = true
+	c.viewItems(rb.Items, nil)
+	c.view = savedView
+	c.leave(saved)
+	c.info.BuilderLambdas[lam] = rb
+	c.record(lam, ft)
 }

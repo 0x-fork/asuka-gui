@@ -344,7 +344,7 @@ fn merge(old: [Window], fresh: [Window], now: time.Time) -> [Window] {
   var out = fresh
   for i in 0..<out.count() {
     let w = out[i]
-    var h = old.first(o => o.key == w.key && o.resets == w.resets)?.history ?? []
+    var h = old.find(o => o.key == w.key && o.resets == w.resets)?.history ?? []
     if let last = h.last {
       if last.used != w.used || now - last.at > 15min { h.push(Sample(at: now, used: w.used)) }
     } else {

@@ -48,7 +48,7 @@ pub store Mail {
     n => "{n}"
   }
 
-  pub fn find(id: int) -> Message? = messages.first(m => m.id == id)
+  pub fn find(id: int) -> Message? = messages.find(m => m.id == id)
 
   pub fn read(id: int) {
     if let i = messages.index(m => m.id == id) { messages[i].unread = false }

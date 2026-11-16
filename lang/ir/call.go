@@ -1021,6 +1021,10 @@ func (b *fb) caseCall(call *check.Call, dst int) int {
 // Closures
 
 func (b *fb) lambda(e *syntax.LambdaExpr) int {
+	if rb := b.l.info.BuilderLambdas[e]; rb != nil {
+		// Built with accessors: a List's header.
+		return b.routeBuilder(rb)
+	}
 	ctx := b.l.info.Ctxs[e]
 	ft, _ := b.typ(b.l.info.Types[e]).(*check.FuncType)
 	if ft == nil {

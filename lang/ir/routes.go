@@ -32,7 +32,15 @@ func (b *fb) preludeFn(name string) int {
 // accessor, p's register: reading p is AGET of it).
 func (b *fb) routeBuilder(rb *check.RouteBuilder) int {
 	ctx := b.l.info.Ctxs[rb.Lambda]
-	return b.makeClosure(closure{name: "route", ctxs: []*check.FuncCtx{ctx}, params: []*check.Var{rb.Param}, pkinds: []bc.Kind{bc.KRef}, ret: bc.KRef, throws: true, body: func(c *fb) {
+	params := rb.Params
+	if params == nil {
+		params = []*check.Var{rb.Param}
+	}
+	pkinds := make([]bc.Kind, len(params))
+	for i := range pkinds {
+		pkinds[i] = bc.KRef // accessors
+	}
+	return b.makeClosure(closure{name: "builder", ctxs: []*check.FuncCtx{ctx}, params: params, pkinds: pkinds, ret: bc.KRef, throws: true, body: func(c *fb) {
 		c.ctx = ctx
 		v := c.viewsOf(rb.Items)
 		c.emit(op("RET"), v)

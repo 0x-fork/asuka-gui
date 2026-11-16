@@ -146,7 +146,7 @@ component AddSheet(id: string) {
 async fn keepSignIn(id: string, signedIn: SignedIn) throws {
   var key = id
   if key.isEmpty() {
-    if let same = accounts.value.first(a => !a.demo && !a.email.isEmpty && a.email == signedIn.email) { key = same.id }
+    if let same = accounts.value.find(a => !a.demo && !a.email.isEmpty && a.email == signedIn.email) { key = same.id }
   }
   if key.isEmpty() { key = time.now().format("yyyyMMddHHmmss.SSS") }
   try await secure.save("token.{key}", signedIn.tokens.string())

@@ -520,6 +520,16 @@ func (c *Checker) propValue(x syntax.Expr, m *Member, what string) {
 		c.leave(saved)
 		return
 	}
+	if lam, ok := unparen(x).(*syntax.LambdaExpr); ok && m.Owner != nil && m.Owner.Comp != nil && m.Owner.Comp.Element != nil {
+		for _, k := range m.Owner.Comp.Element.Keys {
+			if k.Name == m.name && k.Builder {
+				if ft, ok := t.(*FuncType); ok {
+					c.builderLambda(lam, ft, m.Owner.name+"'s "+m.name)
+					return
+				}
+			}
+		}
+	}
 	c.enter(CtxBinding, x, "binding")
 	if m.name == "href" && m.Owner != nil && m.Owner.Comp != nil && m.Owner.Comp.Native && t == String {
 		// A Button's (a NavLink's) href: a string, or a routed screen's

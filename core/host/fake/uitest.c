@@ -22,6 +22,7 @@ typedef struct {
 typedef struct {
 	ak_id list;
 	AK_VEC(bound) cells;  // by index, sorted
+	AK_VEC(bound) headers;  // the sections' headers, by section, sorted: those whose rows show
 	ak_fake_view_vec free;
 	int64_t first;
 	bool end;
@@ -101,6 +102,7 @@ static void wake(void) {
 static void free_lists(ak_uitest *a) {
 	for (uint32_t i = 0; i < a->lists.len; i++) {
 		ak_vec_free(&a->lists.data[i].cells);
+		ak_vec_free(&a->lists.data[i].headers);
 		ak_vec_free(&a->lists.data[i].free);
 		ak_vec_free(&a->lists.data[i].items);
 	}
@@ -197,6 +199,11 @@ static list_state *list_of(ak_uitest *a, ak_id id) {
 
 typedef bool (*walk_fn)(ak_uitest *a, ak_fake_view *v, void *ctx);
 
+// header_start is the first row of a list's section s.
+static int64_t header_start(const ak_fake_view *list, int64_t s) {
+	return s >= 0 && s < list->sections.len ? list->sections.data[s].start : INT64_MAX;
+}
+
 // walk calls f on each view under v that shows, depth first, parents
 // first; f returning false skips the view's children.
 static void walk(ak_uitest *a, ak_fake_view *v, walk_fn f, void *ctx) {
@@ -213,7 +220,13 @@ static void walk(ak_uitest *a, ak_fake_view *v, walk_fn f, void *ctx) {
 	for (uint32_t i = 0; i < v->children.len; i++) walk(a, v->children.data[i], f, ctx);
 	if (v->kind == AK_KIND_LIST) {
 		list_state *st = list_of(a, v->id);
-		for (uint32_t i = 0; st && i < st->cells.len; i++) walk(a, st->cells.data[i].cell, f, ctx);
+		uint32_t h = 0;
+		for (uint32_t i = 0; st && i < st->cells.len; i++) {
+			// A section's header, before its first row.
+			for (; h < st->headers.len && header_start(v, st->headers.data[h].index) <= st->cells.data[i].index; h++)
+				walk(a, st->headers.data[h].cell, f, ctx);
+			walk(a, st->cells.data[i].cell, f, ctx);
+		}
 	}
 }
 
@@ -794,7 +807,12 @@ static void describe(ak_uitest *a, ak_buf *b, ak_fake_view *v, int depth) {
 	for (uint32_t i = 0; i < v->children.len; i++) describe(a, b, v->children.data[i], depth + 1);
 	if (v->kind == AK_KIND_LIST) {
 		list_state *st = list_of(a, v->id);
-		for (uint32_t i = 0; st && i < st->cells.len; i++) describe(a, b, st->cells.data[i].cell, depth + 1);
+		uint32_t h = 0;
+		for (uint32_t i = 0; st && i < st->cells.len; i++) {
+			for (; h < st->headers.len && header_start(v, st->headers.data[h].index) <= st->cells.data[i].index; h++)
+				describe(a, b, st->headers.data[h].cell, depth + 1);
+			describe(a, b, st->cells.data[i].cell, depth + 1);
+		}
 	}
 }
 
@@ -929,6 +947,42 @@ static bool sync_list(ak_uitest *a, ak_fake_view *list) {
 		}
 		j++;
 	}
+	// The headers of the sections whose rows show, bound at -1 - the
+	// section, as a collection view binds a section's header.
+	for (uint32_t s = 0; s < list->sections.len; s++) {
+		int64_t start = list->sections.data[s].start, end = s + 1 < list->sections.len ? list->sections.data[s + 1].start : count;
+		bool shows = start < hi && end > lo;
+		int32_t at = -1;
+		for (uint32_t j = 0; j < st->headers.len; j++)
+			if (st->headers.data[j].index == s) at = (int32_t)j;
+		if (shows && at < 0) {
+			ak_fake_view *c = st->free.len ? ak_vec_pop(&st->free) : ak_fake_new_cell(a->f);
+			uint32_t k = 0;
+			while (k < st->headers.len && st->headers.data[k].index < s) k++;
+			ak_vec_reserve(&st->headers, 1);
+			memmove(st->headers.data + k + 1, st->headers.data + k, (st->headers.len - k) * sizeof(bound));
+			st->headers.data[k] = (bound){s, c};
+			st->headers.len++;
+			ak_fake_bind(a->f, list, -1 - (int64_t)s, c);
+			b.changed = true;
+		} else if (shows && b.stale) {
+			ak_fake_bind(a->f, list, -1 - (int64_t)s, st->headers.data[at].cell);
+		}
+	}
+	for (uint32_t j = 0; j < st->headers.len;) {
+		bound c = st->headers.data[j];
+		int64_t s = c.index;
+		int64_t start = header_start(list, s), end = s + 1 < list->sections.len ? list->sections.data[s + 1].start : count;
+		if (s < list->sections.len && start < hi && end > lo) {
+			j++;
+			continue;
+		}
+		ak_fake_unbind(a->f, list, c.cell);
+		memmove(st->headers.data + j, st->headers.data + j + 1, (st->headers.len - j - 1) * sizeof(bound));
+		st->headers.len--;
+		ak_vec_push(&st->free, c.cell);
+		b.changed = true;
+	}
 	return b.changed;
 }
 
@@ -959,6 +1013,7 @@ static bool sync_lists(ak_uitest *a) {
 			continue;
 		}
 		ak_vec_free(&st->cells);
+		ak_vec_free(&st->headers);
 		ak_vec_free(&st->free);
 		ak_vec_free(&st->items);
 		a->lists.data[i] = a->lists.data[--a->lists.len];

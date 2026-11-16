@@ -196,7 +196,7 @@ component WindowRow(w: Window) {
 }
 
 /// The account with id.
-fn find(id: string) -> Account? = accounts.value.first(a => a.id == id)
+fn find(id: string) -> Account? = accounts.value.find(a => a.id == id)
 
 /// Puts a in the accounts, in its place, or adds it.
 fn save(a: Account) {
