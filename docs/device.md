@@ -44,16 +44,16 @@ web need nothing declared (see each one's section below).
 | `asuka/sdk/push` | Firebase Cloud Messaging, `POST_NOTIFICATIONS` | the `aps-environment` entitlement; `remote-notification` background mode |
 | `asuka/sdk/appleauth` | | the Sign in with Apple entitlement |
 | `asuka/sdk/pay` | Google Pay's library, its API enabled, its callbacks service | the Apple Pay entitlement, with `asuka.toml`'s `applePay.merchantIds` |
-| `asuka/sdk/biometric` | `USE_BIOMETRIC` | `NSFaceIDUsageDescription` |
+| `asuka/biometric` | `USE_BIOMETRIC` | `NSFaceIDUsageDescription` |
 | `asuka/sdk/audio/record` | `RECORD_AUDIO`, `FOREGROUND_SERVICE_MICROPHONE`; a foreground service | `NSMicrophoneUsageDescription` |
 | `asuka/sdk/nowplaying` | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`; a foreground service | the `audio` background mode (for an app that calls `nowplaying.Show`) |
 | `asuka/sdk/liveactivity` | `POST_NOTIFICATIONS`, `POST_PROMOTED_NOTIFICATIONS` | `NSSupportsLiveActivities` and the widget extension (for an app that calls it) |
 | `asuka/sdk/transcribe` | `RECORD_AUDIO` | `NSSpeechRecognitionUsageDescription` |
-| `asuka/sdk/screen` | `DETECT_SCREEN_CAPTURE` | |
-| `asuka/sdk/tracking` | | `NSUserTrackingUsageDescription` |
-| `asuka/sdk/review` | Play's in-app review library | |
-| `asuka/sdk/integrity` | Play Integrity | the App Attest entitlement |
-| `asuka/sdk/agerange` | Play Age Signals | the Declared Age Range entitlement |
+| `asuka/screen` | `DETECT_SCREEN_CAPTURE` | |
+| `asuka/tracking` | | `NSUserTrackingUsageDescription` |
+| `asuka/review` | Play's in-app review library | |
+| `asuka/integrity` | Play Integrity | the App Attest entitlement |
+| `asuka/agerange` | Play Age Signals | the Declared Age Range entitlement |
 | `asuka/sdk/purchase` | Play Billing, `com.android.vending.BILLING` | StoreKit 2 (for an app that calls it); no entitlement |
 | `asuka/sdk/icloud` | (none: no iCloud) | the key-value store's entitlement, iCloud Documents and the app's containers, `NSUbiquitousContainers`, as the app calls them ([iCloud](icloud.md)) |
 | `asuka/sdk/maps` | Google's Maps SDK | |
@@ -66,9 +66,9 @@ web need nothing declared (see each one's section below).
 | `asuka/sdk/nfc` | `NFC`; `uses-feature android.hardware.nfc` (not required); asuka.toml's `nfc` filters ([NFC tags](nfc.md)) | `NFCReaderUsageDescription`; Core NFC's entitlement; asuka.toml's `nfc` AIDs and FeliCa system codes |
 | `asuka/sdk/bluetooth` | `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; the scan's receiver for `asuka.toml`'s `bluetooth.background` (see [Bluetooth](bluetooth.md#what-the-build-adds)) | `NSBluetoothAlwaysUsageDescription`; `bluetooth-central`, `bluetooth-peripheral` for `bluetooth.background` |
 
-`asuka/sdk/device`, `asuka/sdk/audio`, `asuka/sdk/splash`, `asuka/sdk/imageedit`,
-`asuka/sdk/widget`, `asuka/sdk/js`, `asuka/sdk/secure`, `asuka/sdk/preview` and
-`asuka/sdk/print` need none.
+`asuka/device`, `asuka/sdk/audio`, `asuka/splash`, `asuka/sdk/imageedit`,
+`asuka/sdk/widget`, `asuka/js`, `asuka/secure`, `asuka/preview` and
+`asuka/print` need none.
 
 An entitlement needs its capability on the app's App ID
 (developer.apple.com, Identifiers) for a release build: the provisioning
@@ -114,28 +114,28 @@ UserNotifications, AuthenticationServices), except where a Mac differs:
 
 | Package | On a Mac |
 | --- | --- |
-| `asuka/sdk/device` | `PickPhotos` and `PickFiles`: an open panel, a sheet on the window (no permission), copies in the app's caches. `Browse` opens the page in the user's browser. `GetInfo`: `Model` `"Mac"`, `System` `"macOS"` |
+| `asuka/device` | `pickPhotos` and `pickFiles`: an open panel, a sheet on the window (no permission), copies in the app's caches. `browse` opens the page in the user's browser. `info`: `model` `"Mac"`, `system` `"macOS"` |
 | `asuka/sdk/camera` | `Take`: a sheet over the window with a live preview, Take Photo and Cancel (AppKit has no camera screen). `View`'s "back" is the built-in camera (a Mac has no back one), or the one plugged in; scanning codes in it needs macOS 13 |
 | `asuka/sdk/audio/record` | No audio session: other apps' sound plays on; `Background` changes nothing, a Mac app records out of sight anyway |
 | `asuka/sdk/nowplaying` | `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`, as on iOS: Control Center's and the menu bar's Now Playing, the keyboard's media keys, AirPods. A Mac needs no audio session or background mode |
 | `asuka/sdk/contacts`, `asuka/sdk/calendar` | `Add` asks in an alert over the window (macOS has no new contact or event screen), then saves, asking for access first |
 | `asuka/sdk/photos` | PhotoKit, as on iOS; a Mac has no limited library: `ManageLimited` does nothing |
 | `asuka/sdk/library` | Photos and videos go to Photos; `Downloads` and `Music` to the user's `~/Downloads` and `~/Music`, in the folder asked |
-| `asuka/sdk/biometric` | Touch ID's prompt, or the user's password (not with `NoPasscode`) |
+| `asuka/biometric` | Touch ID's prompt, or the user's password (not with `noPasscode`) |
 | `asuka/sdk/push` | APNs, as on iOS; no `Rewrite` (it needs a notification service extension). Needs a provisioning profile (above) |
 | `asuka/sdk/appleauth` | Apple's button and sheet, as on iOS. Needs a provisioning profile (above) |
 | `asuka/sdk/pay` | Apple Pay's sheet and button, as on iOS: a Mac with Touch ID pays, or one near the user's iPhone or Apple Watch. Needs a provisioning profile (above) |
-| `asuka/sdk/integrity` | App Attest, as on iOS. Needs a provisioning profile (above): without one `Supported` is false |
+| `asuka/integrity` | App Attest, as on iOS. Needs a provisioning profile (above): without one `supported()` is false |
 | `asuka/sdk/background` | The task keeps App Nap from slowing the app; there's no notification, so `Update` changes nothing |
 | `asuka/sdk/periodic` | `NSBackgroundActivityScheduler`: the tasks run while the app runs (it isn't launched for them); one that wants power waits while the Mac is on its battery |
-| `asuka/sdk/screen` | `Lock` and `SetBars` do nothing; `PreventCapture` leaves the app's windows out of screenshots and recordings; `OnScreenshot` hears of the screenshots Spotlight finds |
+| `asuka/screen` | `lock` and `setBars` do nothing; `preventCapture` leaves the app's windows out of screenshots and recordings; `screenshots()` says nothing |
 | `asuka/sdk/transcribe` | On the device only; the app's bundle needs its purpose string, which `asuka build` writes |
 | `asuka/sdk/sensors` | A Mac has no motion sensors: `Available` is false, watching gets nothing, `StepsBetween` fails with `ErrNotAvailable` |
 | `ui.Haptic` | The trackpad's feedback (a Force Touch trackpad): an alignment for `HapticSelection`, a level change for the others |
-| `asuka/sdk/widget`, `asuka/sdk/liveactivity`, `asuka/sdk/agerange` | Not on a Mac: `widget.Set` does nothing, `liveactivity.Start` and `agerange.Request` fail with `ErrNotAvailable` |
+| `asuka/sdk/widget`, `asuka/sdk/liveactivity`, `asuka/agerange` | Not on a Mac: `widget.Set` does nothing, `liveactivity.Start` fails with `ErrNotAvailable`, `agerange.request` with `AgeRangeError.notAvailable` |
 | `asuka/sdk/purchase` | StoreKit 2, in the app's Swift library, which the build makes for an app that imports the package ([In-app purchases](purchases.md)) |
 | `asuka/sdk/icloud` | As on iOS, in the app's Swift library. Needs a provisioning profile with iCloud (above): without one, `ErrNotAvailable` ([iCloud](icloud.md)) |
-| `asuka/sdk/splash` | A Mac app has no launch screen: `Hold` and `Hide` do nothing |
+| `asuka/splash` | A Mac app has no launch screen: `hold` and `hide` do nothing |
 | `ui.OnShare`, `app.ShareSheet`, shortcuts | iOS and Android only: a Mac app isn't offered in other apps' share menus, and `asuka.toml`'s `shortcuts` aren't added |
 
 ## On Windows
@@ -154,8 +154,8 @@ device without it:
 
 | Package | On Windows |
 | --- | --- |
-| `asuka/sdk/device` | `PickPhotos` and `PickFiles`: the open dialog over the window, copies in the app's caches. `Browse` opens the page in the user's browser. The clipboard's images are PNGs. `KeepAwake` keeps the display on. `GetInfo`: `Model` `"PC"`, `System` `"Windows"`, `SystemVersion` `"10.0.<build>"` |
-| `asuka/sdk/secure` | The user's generic credentials in the Credential Manager, named `<app>/<key>` (a value up to 2560 bytes) |
+| `asuka/device` | `pickPhotos` and `pickFiles`: the open dialog over the window, copies in the app's caches. `browse` opens the page in the user's browser. The clipboard's images are PNGs. `keepAwake` keeps the display on. `info`: `model` `"PC"`, `system` `"Windows"`, `systemVersion` `"10.0.<build>"` |
+| `asuka/secure` | The user's generic credentials in the Credential Manager, named `<app>/<key>` (a value up to 2560 bytes) |
 | `asuka/sdk/camera` | Media Foundation's capture engine. `Take`: a dialog over the window with a live preview, Take Photo and Cancel (Enter and Escape). `View` picks the camera Windows names front or rear, else the first; with `Scan`, it reads codes in four frames a second with Asuka's own reader (as `asuka/sdk/scan`'s `File`). Settings' camera switch off: "not allowed" |
 | `asuka/sdk/camera/record` | H.264 and AAC in MPEG-4 (`.mp4`), the default microphone unless muted |
 | `asuka/sdk/audio` | MCI (DirectShow's playback); a URL is downloaded to the app's caches first |
@@ -164,9 +164,9 @@ device without it:
 | `asuka/sdk/speech` | SAPI's voices, those installed (Settings, Time & language, Speech) |
 | `asuka/sdk/network` | The Network List Manager: Wi-Fi, cellular or a cable; `Metered` for a connection with a cost, `Constrained` near or over its data limit |
 | `asuka/sdk/location` | WinRT's Geolocator. `PlaceName` asks OpenStreetMap's Nominatim (Windows's own geocoder needs a Bing Maps key): one request a second at most, answers kept in the app's caches. Regions: the `GeofenceMonitor`, while the app runs; background updates computed from the positions |
-| `asuka/sdk/biometric` | Windows Hello's prompt; `Check`'s kind is the sensor's; Hello always offers its PIN, and names its own cancel button |
-| `asuka/sdk/webauth` | A window over the app's with WebView2 in it (the app's web profile; `Ephemeral`: a throwaway one) |
-| `asuka/sdk/js` | A WebView2 that's never shown |
+| `asuka/biometric` | Windows Hello's prompt; `check()`'s kind is the sensor's; Hello always offers its PIN, and names its own cancel button |
+| `asuka/webauth` | A window over the app's with WebView2 in it (the app's web profile; `ephemeral`: a throwaway one) |
+| `asuka/js` | A WebView2 that's never shown |
 | `asuka/sdk/contacts`, `asuka/sdk/calendar` | Windows gives the contacts and calendars to packaged apps only: `Request` says denied; `Add` opens a vCard or an event file in the user's contacts or calendar app (`saved` is false: it doesn't say) |
 | `asuka/sdk/photos` | The Pictures folder (no permission to ask); screenshots are its Screenshots folder's |
 | `asuka/sdk/library` | The user's Downloads, Videos, Music and Pictures folders, in the folder asked |
@@ -176,15 +176,15 @@ device without it:
 | `asuka/sdk/maps` | Windows has no map control for desktop apps (its own needs a Bing Maps key): the host draws OpenStreetMap's tiles, downloaded two at a time and kept a week in the app's caches, with "© OpenStreetMap contributors" on the map; drag, the wheel or a pinch, double-click, + and -. Satellite and Hybrid show the streets (no free imagery), and `ShowsUser` shows nothing, as on Linux |
 | `asuka/sdk/background` | The task keeps the PC from sleeping; there's no notification, so `Update` changes nothing |
 | `asuka/sdk/periodic` | Timers while the app runs (it isn't launched for them); one that wants power waits while the PC is on its battery |
-| `asuka/sdk/screen` | `Lock` and `SetBars` do nothing; `PreventCapture` leaves the app's windows out of screenshots and recordings; `OnScreenshot` hears of the screenshots saved in the Screenshots folder (Print Screen with Windows, the Snipping Tool) |
-| `asuka/sdk/tracking` | No prompt: allowed while the advertising ID is on in Settings, else denied |
-| `asuka/sdk/push`, `asuka/sdk/widget`, `asuka/sdk/review`, `asuka/sdk/integrity` | Packaged (Store) apps' or Apple's and Google's: `push.Register` fails, `widget.Set` does nothing, `review.Request` shows nothing, `integrity.Supported` is false |
+| `asuka/screen` | `lock` and `setBars` do nothing; `preventCapture` leaves the app's windows out of screenshots and recordings; `screenshots()` says nothing |
+| `asuka/tracking` | No prompt: allowed while the advertising ID is on in Settings, else denied |
+| `asuka/sdk/push`, `asuka/sdk/widget`, `asuka/review`, `asuka/integrity` | Packaged (Store) apps' or Apple's and Google's: `push.Register` fails, `widget.Set` does nothing, `review.request` shows nothing, `integrity.supported()` is false |
 | `asuka/sdk/liveactivity` | A phone's: `Enabled` is false, `Start` fails with `ErrNotAvailable` |
 | `asuka/sdk/purchase` | The Microsoft Store, for an app installed from it; otherwise `Available` is false and the rest fail with `ErrNotAvailable` ([In-app purchases](purchases.md)) |
 | `asuka/sdk/pay` | No wallet pays for a Windows app: `Available` says none, `Pay` fails with `ErrNotAvailable`, `Button` shows nothing |
-| `asuka/sdk/appleauth`, `asuka/sdk/agerange`, `asuka/sdk/icloud`, `asuka/sdk/transcribe`, `asuka/sdk/sensors` | Not on Windows: unavailable, as on a device without them |
+| `asuka/sdk/appleauth`, `asuka/agerange`, `asuka/sdk/icloud`, `asuka/sdk/transcribe`, `asuka/sdk/sensors` | Not on Windows: unavailable, as on a device without them |
 | `ui.Haptic` | A PC has no haptics: it does nothing |
-| `asuka/sdk/splash` | A Windows app has no launch screen: `Hold` and `Hide` do nothing |
+| `asuka/splash` | A Windows app has no launch screen: `hold` and `hide` do nothing |
 | `ui.OnShare`, `app.ShareSheet`, shortcuts | iOS and Android only |
 
 ## On Linux
@@ -210,8 +210,8 @@ names what's missing.
 
 | Package | On Linux |
 | --- | --- |
-| `asuka/sdk/device` | `PickPhotos` and `PickFiles`: GTK's file dialog (the portal's in a sandbox), copies in the app's caches. Clipboard images and changes through GDK's clipboard. `Browse` opens the page in the user's browser. `KeepAwake` keeps the session from idling. `GetInfo`: `Model` `"PC"`, `System` `"Linux"`, `SystemVersion` the distribution's (`/etc/os-release`) |
-| `asuka/sdk/secure` | The keyring (libsecret: GNOME Keyring, KWallet, KeePassXC), an item per key labeled with the app's name; without libsecret or a keyring, the calls fail saying so |
+| `asuka/device` | `pickPhotos` and `pickFiles`: GTK's file dialog (the portal's in a sandbox), copies in the app's caches. Clipboard images and changes through GDK's clipboard. `browse` opens the page in the user's browser. `keepAwake` keeps the session from idling. `info`: `model` `"PC"`, `system` `"Linux"`, `systemVersion` the distribution's (`/etc/os-release`) |
+| `asuka/secure` | The keyring (libsecret: GNOME Keyring, KWallet, KeePassXC), an item per key labeled with the app's name; without libsecret or a keyring, the calls fail saying so |
 | `asuka/sdk/network` | GNetworkMonitor (the portal's in a sandbox); Wi-Fi, ethernet or cellular from NetworkManager; never constrained |
 | `asuka/sdk/location` | The location portal (GeoClue's, which asks the user), else GeoClue itself; `PlaceName` with geocode-glib, when it's installed. GeoClue has no geofences: regions and background updates are computed from the positions while the app runs |
 | `asuka/sdk/speech` | Speech Dispatcher (started when it isn't running): its voices, rate, pitch, volume |
@@ -222,18 +222,18 @@ names what's missing.
 | `asuka/sdk/camera`, `asuka/sdk/camera/record` | The camera portal (it asks the user once; PipeWire's cameras, `gstreamer1.0-pipewire`), else the first Video4Linux camera, through GStreamer. `Take`: a dialog over the window with a live preview, Take Photo and Cancel. `View`: the preview, mirrored, filling its box; front and back are the same camera (a computer's face the user). Videos are MPEG-4 (H.264 from x264 or OpenH264, AAC), else WebM; scanning codes needs GStreamer's `zbar` element. No camera: `ErrNoCamera`; refused: "not allowed" |
 | `asuka/sdk/scan`, `asuka/sdk/vision` | ZBar (`libzbar0`) reads codes: no Aztec or Data Matrix. Tesseract (`libtesseract5` and a language's data) reads text; nothing finds faces: `Faces` is empty. Without ZBar, `scan.File` fails "not available"; `vision.Analyze` leaves out what isn't installed |
 | `asuka/sdk/imageedit` | GdkPixbuf's loaders decode (HEIF and WebP where their loaders are installed), upright; the actions are done in Go; video frames from GStreamer |
-| `asuka/sdk/webauth` | A dialog over the window with a WebKitGTK web view (`Ephemeral`: a session of its own); closing it cancels |
-| `asuka/sdk/js` | A WebKitGTK web view that's never shown |
+| `asuka/webauth` | A dialog over the window with a WebKitGTK web view (`ephemeral`: a session of its own); closing it cancels |
+| `asuka/js` | A WebKitGTK web view that's never shown |
 | `asuka/sdk/maps` | libshumate's map of OpenStreetMap's tiles (`libshumate-1.0-1`); Satellite and Hybrid show the streets; no user location layer. Without libshumate, the view says so and `OnError` is called |
 | `asuka/sdk/background` | The task keeps the system from suspending; no notification, `Update` changes nothing |
 | `asuka/sdk/periodic` | The tasks run on a timer while the app runs (it isn't launched for them); one that wants power waits while on the battery, one that wants the network while it's offline |
-| `asuka/sdk/screen` | `Lock`, `SetBars` and `PreventCapture` do nothing; `OnScreenshot` hears of new images in Pictures/Screenshots (GNOME's, KDE's) |
+| `asuka/screen` | `lock`, `setBars` and `preventCapture` do nothing; `screenshots()` says nothing |
 | `asuka/sdk/sensors` | iio-sensor-proxy (convertibles, tablets): the light sensor, in lux, and the accelerometer's orientation as 1 g along the axis that's up, as it turns. No others: `Available` is false, `StepsBetween` fails with `ErrNotAvailable` |
 | `asuka/sdk/contacts`, `asuka/sdk/calendar` | Evolution Data Server's address books and calendars (GNOME Contacts', GNOME Calendar's, the online accounts'): access is `Full` when it has one; `Pick` is a dialog of the contacts with a search field; `Add` asks, then saves in the default address book or the event's calendar. Without it: contacts' access is `Denied`, calendars' `WriteOnly`; `Add` opens a vCard or an iCalendar file in the user's contacts or calendar app (`saved` is false); `contacts.Pick` fails |
-| `asuka/sdk/photos`' library, `asuka/sdk/appleauth`, `asuka/sdk/transcribe`, `asuka/sdk/widget`, `asuka/sdk/liveactivity` | None on Linux: the library's access is `Denied`; `appleauth.Available` is false and its button shows nothing; `transcribe` and `liveactivity.Start` fail with `ErrNotAvailable`; `widget.Set` does nothing. `asuka/sdk/splash` has nothing to hold |
+| `asuka/sdk/photos`' library, `asuka/sdk/appleauth`, `asuka/sdk/transcribe`, `asuka/sdk/widget`, `asuka/sdk/liveactivity` | None on Linux: the library's access is `Denied`; `appleauth.Available` is false and its button shows nothing; `transcribe` and `liveactivity.Start` fail with `ErrNotAvailable`; `widget.Set` does nothing. `asuka/splash` has nothing to hold |
 | `asuka/sdk/purchase` | No store: `Available` is false, the rest fail with `ErrNotAvailable` |
 | `asuka/sdk/icloud` | No iCloud: `ErrNotAvailable` |
-| `asuka/sdk/biometric`, `asuka/sdk/integrity`, `asuka/sdk/agerange`, `asuka/sdk/push` | None on Linux: not available, not supported. `asuka/sdk/review` does nothing; `asuka/sdk/tracking` answers allowed |
+| `asuka/biometric`, `asuka/integrity`, `asuka/agerange`, `asuka/sdk/push` | None on Linux: not available, not supported. `asuka/review` does nothing; `asuka/tracking` answers allowed |
 | `asuka/sdk/pay` | No wallet pays for a Linux app: `Available` says none, `Pay` fails with `ErrNotAvailable`, `Button` shows nothing |
 | `asuka/sdk/crash` | Go's crash output, which has a crash in native code too (a signal in GTK's code, a GLib abort), reported as `Native`; the system's own record (systemd-coredump, apport) isn't read |
 | `ui.Haptic` | A desktop has no haptics: it does nothing |
@@ -250,8 +250,8 @@ and its service worker for notifications and Web Push.
 
 | Package | In a browser |
 | --- | --- |
-| `asuka/sdk/device` | `PickPhotos` and `PickFiles`: the browser's file picker, copies in the caches. `Browse`: a new tab. The clipboard: the app's own copies, and other apps' where the user lets the page read it. `KeepAwake`: the Screen Wake Lock. `GetInfo` from the user agent (Chromium's client hints give the system's version and an Android phone's model) |
-| `asuka/sdk/secure` | The values encrypted (AES-GCM) in IndexedDB, with a key the browser won't let out; not a keychain (see [the web](web.md)) |
+| `asuka/device` | `pickPhotos` and `pickFiles`: the browser's file picker, copies in the caches. `browse`: a new tab. The clipboard: the app's own copies, and other apps' where the user lets the page read it. `keepAwake`: the Screen Wake Lock. `info` from the user agent (Chromium's client hints give the system's version and an Android phone's model) |
+| `asuka/secure` | The values encrypted (AES-GCM) in IndexedDB, with a key the browser won't let out; not a keychain (see [the web](web.md)) |
 | `asuka/sdk/camera`, `asuka/sdk/camera/record` | `Take` opens a phone's camera, or a dialog with the live camera and a shutter; `View` is the camera in a `<video>`, with `Capture`, recording, and scanning codes where the browser has `BarcodeDetector` |
 | `asuka/sdk/scan`, `asuka/sdk/vision` | `BarcodeDetector` reads codes; faces and text only where the browser has them |
 | `asuka/sdk/imageedit` | A canvas: JPEG or PNG; a remote image needs CORS |
@@ -264,20 +264,20 @@ and its service worker for notifications and Web Push.
 | `asuka/sdk/nowplaying` | The Media Session API (`navigator.mediaSession`): the browser's media controls, the media keys, a phone's lock screen, shown while the page plays sound. It has no toggle (the key sends play or pause), and a browser without an action (stop, in some) leaves it out |
 | `asuka/sdk/speech` | `speechSynthesis`, the browser's voices |
 | `asuka/sdk/sensors` | The Generic Sensor API (Chrome) or device motion and orientation events (Safari asks on a tap), in Android's axes and units; no barometer or pedometer |
-| `asuka/sdk/biometric` | The platform's authenticator through WebAuthn (Touch ID, Face ID, Windows Hello, Android's screen lock): the first `Authenticate` makes a passkey for the site. The prompt is the browser's: `Reason` and `Cancel` don't show |
-| `asuka/sdk/webauth` | A popup, done when it comes back to a page of the app's own origin (a custom scheme can't open a page) |
-| `asuka/sdk/js` | A hidden, sandboxed frame |
+| `asuka/biometric` | The platform's authenticator through WebAuthn (Touch ID, Face ID, Windows Hello, Android's screen lock): the first `authenticate` makes a passkey for the site. The prompt is the browser's: `reason` and `cancel` don't show |
+| `asuka/webauth` | A popup, done when it comes back to a page of the app's own origin (a custom scheme can't open a page) |
+| `asuka/js` | A hidden, sandboxed frame |
 | `asuka/sdk/contacts`, `asuka/sdk/calendar` | `contacts.Pick` where the browser has the Contact Picker (Chrome on Android); `Add` downloads a vCard or an `.ics` file; reading them isn't on the web |
-| `asuka/sdk/screen` | `Lock` only full screen or in an installed app; hiding the bars is full screen; no `PreventCapture` or `OnScreenshot` |
+| `asuka/screen` | `lock` only full screen or in an installed app; hiding the bars is full screen; no `preventCapture` or `screenshots()` |
 | `asuka/sdk/background` | The page runs while it's open; a task adds nothing, and has no notification |
-| `asuka/sdk/tracking` | No prompt: `Denied` when the browser sends Global Privacy Control or Do Not Track, else `Allowed` |
+| `asuka/tracking` | No prompt: `.denied` when the browser sends Global Privacy Control or Do Not Track, else `.allowed` |
 | `ui.Haptic` | `navigator.vibrate`, where the browser has it (Chrome on Android) |
-| `asuka/sdk/review`, `asuka/sdk/integrity`, `asuka/sdk/agerange`, `asuka/sdk/appleauth`, `asuka/sdk/icloud`, `asuka/sdk/periodic`, `asuka/sdk/widget`, `asuka/sdk/liveactivity`, `asuka/sdk/transcribe` | Not on the web: an error that says so, or the package's `ErrNotAvailable` |
+| `asuka/review`, `asuka/integrity`, `asuka/agerange`, `asuka/sdk/appleauth`, `asuka/sdk/icloud`, `asuka/sdk/periodic`, `asuka/sdk/widget`, `asuka/sdk/liveactivity`, `asuka/sdk/transcribe` | Not on the web: an error that says so, or the package's `ErrNotAvailable` |
 | `asuka/sdk/purchase` | Google Play through the Digital Goods API, in a Trusted Web Activity; elsewhere no store (`ErrNotAvailable`) |
 | `asuka/sdk/maps` | OpenStreetMap's tiles, drawn by the host, as on Windows; `ShowsUser` once the page has the location permission |
 | `asuka/sdk/pay` | Apple Pay where the browser has it (Safari), through the Payment Request API, the merchant validated by the app's server (`OnValidateMerchant`); Google Pay elsewhere, through Google's web API (pay.js); each one's own button. A sheet shows only from a tap |
 | `asuka/sdk/crash` | Go's crashes (the host keeps the runtime's output) and uncaught JavaScript errors, as `Exception` reports that aren't fatal |
-| `asuka/sdk/splash` | `Hold` and `Hide` do nothing |
+| `asuka/splash` | `hold` and `hide` do nothing |
 | `ui.OnShare`, `app.ShareSheet`, shortcuts | iOS and Android only |
 
 ## The camera: asuka/sdk/camera
@@ -1821,7 +1821,7 @@ back cancel it). The process ends with the sheet: what's pending in
 the app keeps.
 
 What the app keeps is the same in its sheet: `asuka/sdk/store`, SQLite files
-in `store.Dir()` (`sqlite.Open("app.db")`), `asuka/sdk/secure`. Android's
+in `store.Dir()` (`sqlite.Open("app.db")`), `asuka/secure`. Android's
 two processes share the app's files. On iOS the app's data moves to the
 App Group (`group.<app ID>`), once, the first time it runs with a sheet,
 and its keychain group is shared with the extension. The app doesn't
@@ -1979,7 +1979,7 @@ then `f`; the root component doesn't, so keep `main` light. iOS gives it
 about 30 seconds and 24 MB, and shows the push as it came when time runs
 out. What the app keeps is the same there: its data (`asuka/sdk/store`, files
 in `store.Dir`) is in the App Group the two share, its keychain items
-(`asuka/sdk/secure`) in the app's group. A release build needs a provisioning
+(`asuka/secure`) in the app's group. A release build needs a provisioning
 profile for the extension's bundle ID, the app's plus `.notification`
 (`asuka.toml`'s `ios.notificationProfile` names one; by default, the best
 match installed), with the App Groups capability and the app's group.
@@ -2026,7 +2026,7 @@ them then. `ErrCanceled` is the user closing the sheet.
 in with Apple for the app (`Revoked`: sign them out). On Android there's
 none: `Button` is nothing, `Available` is false and `SignIn` fails with
 `ErrNotAvailable`; so on Windows, Linux and the web. Sign in with Apple
-there on the web (`asuka/sdk/webauth`). The Mac has it as iOS does, with a
+there on the web (`asuka/webauth`). The Mac has it as iOS does, with a
 provisioning profile (see [On a Mac](#on-a-mac)).
 
 ## Wallet payments: asuka/sdk/pay
@@ -2447,45 +2447,59 @@ A desktop doesn't launch an app for its tasks: on macOS
 while the app runs, and one that wants power waits while on the battery.
 A browser runs no page's tasks while it's closed: `Schedule` fails there.
 
-## The stores: asuka/sdk/review, asuka/sdk/tracking, asuka/sdk/integrity, asuka/sdk/agerange
+## The stores: asuka/review, asuka/tracking, asuka/integrity, asuka/agerange
 
-`review.Request(done)` asks the store for its rating prompt (the App
+`review.request()` asks the store for its rating prompt (the App
 Store's, Google Play's in-app review). The stores decide whether it
 shows, on their own quotas, and don't say; ask after a success, never
-from a button. For a "Rate us" button, `ui.OpenURL(review.AppStoreURL(id))`
-or `review.PlayStoreURL(id)`.
+from a button. For a "Rate us" button, `openURL(review.appStoreURL(id))`
+or `review.playStoreURL(id)`.
 
-`tracking.Request()` shows iOS's App Tracking Transparency prompt, which
+`tracking.request()` shows iOS's App Tracking Transparency prompt, which
 an app must before it reads the advertising identifier or shares data
-with ad networks, and reports `Allowed`, `Denied`, `Restricted` or
-`NotAsked`; `tracking.Current()` reads it without asking. Android has no
-such prompt: it's `Allowed`. Not on the main thread.
+with ad networks, and returns `.allowed`, `.denied`, `.restricted` or
+`.notAsked`; `tracking.current()` reads it without asking. Android has
+no such prompt: it's `.allowed`.
 
-`asuka/sdk/integrity` proves to your server that a request comes from your
-app on a real device. iOS: App Attest. `GenerateKey` makes a key (keep
-its ID), `AttestKey(id, challenge)` has Apple attest it for your server's
-challenge, once, and `Assert(id, data)` signs each request after. Android:
-Play Integrity. `Prepare(cloudProjectNumber)` at launch, then
-`Token(requestHash)` for each request. The server checks what they
-return with Apple or Google. `Supported` is false on the iOS simulator.
+`asuka/integrity` proves to your server that a request comes from your
+app on a real device. iOS: App Attest. `integrity.generateKey()` makes a
+key (keep its ID), `integrity.attestKey(id, challenge)` has Apple attest
+it for your server's challenge, once, and `integrity.assertion(id,
+data)` signs each request after. Android: Play Integrity.
+`integrity.prepare(cloudProjectNumber:)` at launch, then
+`integrity.token(requestHash:)` for each request. The server checks what
+they return with Apple or Google. `integrity.supported()` is false on the
+iOS simulator.
 
-`agerange.Request(13, 18)` asks for the user's age range without their
+`agerange.request(13, 18)` asks for the user's age range without their
 birth date, for the laws that ask apps to know a child: Apple's Declared
 Age Range (iOS 26) and Play's Age Signals. The platform may ask the user
-or their parent to share. The `Result` is `Shared` with a `Lower` and
-`Upper` age (0: open), `Declined`, or `VerificationRequired` (Play); its
-`Source` says how it's known. `ErrNotAvailable` where the platform can't
-answer.
+or their parent to share. The `Range` has a `status`, `.shared` with a
+`lower` and `upper` age (0: open), `.declined`, or
+`.verificationRequired` (Play); its `source` says how it's known.
+`AgeRangeError.notAvailable` where the platform can't answer.
+
+```asuka
+import asuka/agerange
+import asuka/review
+import asuka/tracking
+
+async fn afterFirstOrder() throws {
+  try? await review.request()
+  if try await tracking.request() == .allowed { print("personalized ads") }
+  let r = try await agerange.request(13, 18)
+  if r.status == .shared && r.lower >= 18 { print("an adult") }
+}
+```
 
 Off the phones: the Mac has the App Store's rating prompt, the tracking
 prompt, and App Attest (with a provisioning profile: see
 [On a Mac](#on-a-mac)), but not Declared Age Range. Windows, Linux and
-the web have no store prompt (`review.Request` shows nothing; in a
-browser `done` gets an error), no attestation (`integrity.Supported` is
-false) and no age range (`ErrNotAvailable`). Tracking needs no prompt
-there: Windows answers `Allowed` while the advertising ID is on in
-Settings, Linux `Allowed`, a browser `Denied` when it sends Global
-Privacy Control or Do Not Track.
+the web have no store prompt (`review.request` does nothing), no
+attestation (`integrity.supported` is false) and no age range
+(`.notAvailable`). Tracking needs no prompt there: Windows answers
+`.allowed` while the advertising ID is on in Settings, Linux `.allowed`,
+a browser `.denied` when it sends Global Privacy Control or Do Not Track.
 
 Selling in the app, `asuka/sdk/purchase`, has a page of its own:
 [In-app purchases](purchases.md). So does iCloud's key-value store and

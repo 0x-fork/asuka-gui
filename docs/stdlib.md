@@ -18,10 +18,12 @@ Linux), so they behave as they do for the platform's own apps.
 
 | Package | What it has |
 |---|---|
+| `asuka/integrity` | `integrity.supported()`, `generateKey()`, `attestKey(id, challenge)`, `assertion(id, data)` (App Attest on iOS and the Mac); `prepare(cloudProjectNumber:)`, `token(requestHash:)` (Play Integrity) |
 | `asuka/js` | `js.eval(script, timeout:)`: JavaScript run off screen in the platform's own engine (WKWebView, Android's WebView, WebView2, WebKitGTK, a sandboxed frame), its value as JSON; `js.JsError.timeout` |
 | `asuka/json` | `json.decode<T>(text)` and `json.encode(value, indent:)`: typed JSON, by the compiler's knowledge of `T` |
 | `asuka/math` | `sqrt`, `pow`, `floor`, `ceil`, `round`, `sin`, `cos`, `atan2`, `clamp`, `random`, `randomInt`, `seed`, `pi` |
 | `asuka/time` | `time.now()` (milliseconds since 1970), `time.monotonic()` (a `Duration` that only goes forward) |
+| `asuka/agerange` | `agerange.request(13, 18)`: the user's age range without their birth date (Declared Age Range on iOS 26, Play's Age Signals): a `Range` (`status`, `lower`, `upper`, `source`); `AgeRangeError.notAvailable` elsewhere |
 | `asuka/appearance` | `appearance.current()` (tracked: `accent` as a `Color?`, `increaseContrast`, `reduceTransparency`; it watches the settings only while something reads it), `appearance.now()`, `appearance.changes()` (a stream). The accent is the Mac's, Windows's, the settings portal's on Linux, Material You's on Android, CSS's AccentColor; iOS has none |
 | `asuka/biometric` | `biometric.check()` (`kind`, `enrolled`, `passcode`), `biometric.authenticate(reason:, cancel:, noPasscode:)`: LocalAuthentication, BiometricPrompt, Windows Hello, WebAuthn's platform authenticator; `BiometricError.canceled`, `.notAvailable`, `.failed` |
 | `asuka/device` | `device.info()` (`model`, `system`, `systemVersion`, `appVersion`, `build`), `device.browse(url)` (in the app: SFSafariViewController, a Custom Tab), `device.pickPhotos(max:)`, `device.pickFiles(types:, multiple:)` (the system's pickers, no permission; copies in the app's caches), `device.clipboardText()`, `clipboardHas()`, `clipboardImage()`, `copyImage(path)`, `clipboardChanges()` (a stream), `device.keepAwake(on)` |
