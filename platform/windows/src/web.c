@@ -328,7 +328,7 @@ typedef struct {
 	// (THEN_*) and who it goes to.
 	char *method, *params;
 	int then;
-	wh_reply reply;
+	wh_answer reply;
 	void *ctx;
 } web_op;
 
@@ -781,7 +781,7 @@ enum { THEN_RAW, THEN_EVALUATED, THEN_COOKIES };
 typedef struct {
 	char *method;
 	int then;
-	wh_reply reply;
+	wh_answer reply;
 	void *ctx;
 	HRESULT hr;
 	char *result;
@@ -867,7 +867,7 @@ static void dev_done(void *ctx, uintptr_t a, void *json) {
 
 // dev_tools calls a DevTools protocol method in view's page (an
 // ICoreWebView2's CallDevToolsProtocolMethod) and answers on a later turn.
-static void dev_tools(com view, const char *method, const char *params, int then, wh_reply reply, void *ctx) {
+static void dev_tools(com view, const char *method, const char *params, int then, wh_answer reply, void *ctx) {
 	dev_call *c = wh_alloc(sizeof *c);
 	c->method = wh_strdup(method);
 	c->then = then;
@@ -901,7 +901,7 @@ static char *evaluate_params(const char *script, size_t len) {
 	return dsk_jw_take(&w, NULL);
 }
 
-void wh_web_evaluate(void *view, const char *script, size_t len, wh_reply reply, void *ctx) {
+void wh_web_evaluate(void *view, const char *script, size_t len, wh_answer reply, void *ctx) {
 	char *p = evaluate_params(script, len);
 	dev_tools(view, "Runtime.evaluate", p, THEN_EVALUATED, reply, ctx);
 	free(p);
@@ -911,7 +911,7 @@ void wh_web_evaluate(void *view, const char *script, size_t len, wh_reply reply,
 // script: its value as JSON) and cookies (a URL: the WebViews' cookies for
 // it, as a Cookie header, from the environment's store, which every
 // WebView shares).
-bool wh_web_module(const char *method, size_t mlen, const uint8_t *args, size_t len, wh_reply reply, void *ctx) {
+bool wh_web_module(const char *method, size_t mlen, const uint8_t *args, size_t len, wh_answer reply, void *ctx) {
 	if (mlen == 4 && !memcmp(method, "eval", 4)) {
 		if (len < 4) {
 			reply(ctx, NULL, 0, "bad arguments");

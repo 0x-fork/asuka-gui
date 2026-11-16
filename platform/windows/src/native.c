@@ -332,6 +332,7 @@ static void native_cancel(uint64_t call) {
 	// what the module answers later goes nowhere.
 	wh_map_del(&host_calls, call);
 	c->done = true;
+	wh_module_call_gone(c);
 	uint8_t cancelled = 4;
 	asuka_native_done(call, &cancelled, 1);
 }

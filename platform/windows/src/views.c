@@ -1112,8 +1112,6 @@ LRESULT wh_view_message(node *n, HWND hwnd, UINT m, WPARAM wp, LPARAM lp, bool *
 		case TIMER_PINCH:
 			wh_end_wheel_pinch(n, hwnd);
 			break;
-		default:
-			wh_view_timer(n, hwnd, wp);
 		}
 		return 0;
 	case WM_SETFOCUS:

@@ -20,21 +20,21 @@ static const wh_module_def *modules[] = {
 	&wh_widget_module, &wh_live_activity_module, &wh_icloud_module,
 };
 
-static DWORD main_thread;
 
 // ---- Replies ----
 
-enum { REPLY_RESULT, REPLY_NATIVE, REPLY_NONE };
+enum { REPLY_RESULT, REPLY_FN, REPLY_NONE };
 
 struct wh_reply {
 	int kind;
 	uint32_t root, call;   // REPLY_RESULT: the root and the Call's id
-	uint64_t native;       // REPLY_NATIVE: the started call
-	bool answered, gone;   // gone: cancelled, answered then
-	struct wh_reply *next; // the started calls not answered yet
+	wh_answer fn;          // REPLY_FN: who's answered (asuka/host's Modules, native.c)
+	void *ctx;
+	bool answered, gone;   // gone: its task cancelled (its answer goes nowhere)
+	struct wh_reply *next; // the REPLY_FN replies not answered yet
 };
 
-static wh_reply *live;  // REPLY_NATIVE replies, for cancelling
+static wh_reply *live;  // REPLY_FN replies, for cancelling
 
 static void unlink_live(wh_reply *r) {
 	for (wh_reply **p = &live; *p; p = &(*p)->next)
@@ -42,15 +42,6 @@ static void unlink_live(wh_reply *r) {
 			*p = r->next;
 			return;
 		}
-}
-
-// native_answer sends a started call's answer: status, then what follows.
-static void native_answer(uint64_t call, uint8_t status, const void *p, size_t n) {
-	ak_buf b = {0};
-	ak_buf_u8(&b, status);
-	ak_buf_put(&b, p, n);
-	asuka_native_done(call, b.data, b.len);
-	ak_buf_free(&b);
 }
 
 static void answer(wh_reply *r, bool ok, const void *p, size_t n) {
@@ -74,27 +65,18 @@ static void answer(wh_reply *r, bool ok, const void *p, size_t n) {
 		}
 		break;
 	}
-	case REPLY_NATIVE:
+	case REPLY_FN: {
 		unlink_live(r);
-		if (r->gone) break;  // answered cancelled already
-		if (ok) {
-			ak_buf b = {0};
-			ak_buf_u32(&b, (uint32_t)n);
-			ak_buf_put(&b, p, n);
-			native_answer(r->native, 0, b.data, b.len);
-			ak_buf_free(&b);
-		} else {
-			// The platform's error: no domain, code 0, the message (what
-			// the package's error is).
-			ak_buf b = {0};
-			ak_buf_u32(&b, 0);
-			ak_buf_u64(&b, 0);
-			ak_buf_u32(&b, (uint32_t)n);
-			ak_buf_put(&b, p, n);
-			native_answer(r->native, 2, b.data, b.len);
-			ak_buf_free(&b);
+		// The answer's bytes, or its message as a string.
+		char *err = NULL;
+		if (!ok) {
+			err = wh_alloc(n + 1);
+			memcpy(err, p, n);
 		}
+		r->fn(r->ctx, ok ? p : NULL, ok ? n : 0, err);
+		free(err);
 		break;
+	}
 	case REPLY_NONE:
 		if (!ok) wh_log("%.*s", (int)n, (const char *)p);
 		break;
@@ -209,6 +191,12 @@ static wh_method find(ak_span module, ak_span method, bool *has_module) {
 	return NULL;
 }
 
+// web_answered is web.c's answer to r.
+static void web_answered(void *ctx, const uint8_t *b, size_t n, const char *err) {
+	if (err) wh_reply_fail(ctx, "%s", err);
+	else wh_reply_ok(ctx, b, n);
+}
+
 // run runs module's method for r, or fails it: a module the host hasn't
 // (unsupported, as the core says it), or a method it hasn't.
 static void run(wh_reply *r, ak_span module, ak_span method, const uint8_t *args, size_t len) {
@@ -218,19 +206,7 @@ static void run(wh_reply *r, ak_span module, ak_span method, const uint8_t *args
 		fn(r, args, len);
 		return;
 	}
-	if (!has && r->kind == REPLY_NATIVE) {
-		// asuka/host's: unsupported, which the core says as such.
-		unlink_live(r);
-		ak_buf b = {0};
-		char msg[256];
-		int n = snprintf(msg, sizeof msg, "%.*s isn't on Windows", (int)module.len, module.p);
-		ak_buf_u32(&b, (uint32_t)n);
-		ak_buf_put(&b, msg, (size_t)n);
-		native_answer(r->native, 3, b.data, b.len);
-		ak_buf_free(&b);
-		free(r);
-		return;
-	}
+	if (module.len == 3 && !memcmp(module.p, "web", 3) && wh_web_module(method.p, method.len, args, len, web_answered, r)) return;
 	if (!has) wh_reply_fail(r, "unsupported: %.*s isn't on Windows", (int)module.len, module.p);
 	else wh_reply_fail(r, "asuka: %.*s.%.*s isn't on Windows yet", (int)module.len, module.p, (int)method.len, method.p);
 }
@@ -255,163 +231,44 @@ void wh_call(node *root, const uint8_t *args, size_t len) {
 	run(r, module, method, args + at, len - at);
 }
 
-// ---- asuka/host: the Modules class, served by the host ----
-
-#define HOST_CLASS "asuka/host"
-#define HOST_HANDLE 0x41737531ull  // the one Modules object
-
-enum { HOST_CALL = 1, HOST_SEND = 2 };  // its methods, as nativegen numbers them
-
-// put writes an answer into out (cap bytes), else into *big.
-static size_t put(const ak_buf *b, uint8_t *out, size_t cap, uint8_t **big) {
-	if (b->len <= cap) {
-		memcpy(out, b->data, b->len);
-		return b->len;
-	}
-	*big = malloc(b->len);
-	if (!*big) return 0;
-	memcpy(*big, b->data, b->len);
-	return b->len;
-}
-
-static size_t unsupported(const char *msg, uint8_t *out, size_t cap, uint8_t **big) {
-	ak_buf b = {0};
-	ak_buf_u8(&b, 3);
-	ak_buf_u32(&b, (uint32_t)strlen(msg));
-	ak_buf_put(&b, msg, strlen(msg));
-	size_t n = put(&b, out, cap, big);
-	ak_buf_free(&b);
-	return n;
-}
-
-static size_t cb_native_new(const uint8_t *cls, size_t len, uint32_t iface, uint8_t *out, size_t cap, uint8_t **big) {
-	if (len == strlen(HOST_CLASS) && !memcmp(cls, HOST_CLASS, len) && iface == 0) {
-		ak_buf b = {0};
-		ak_buf_u8(&b, 0);
-		ak_buf_u64(&b, HOST_HANDLE);
-		size_t n = put(&b, out, cap, big);
-		ak_buf_free(&b);
-		return n;
-	}
-	char msg[300];
-	snprintf(msg, sizeof msg, "%.*s has no Windows implementation in this build", (int)(len < 200 ? len : 200), (const char *)cls);
-	return unsupported(msg, out, cap, big);
-}
-
-// A call's arguments: module, method, args (two strings and bytes).
-typedef struct {
-	ak_span module, method;
-	const uint8_t *args;
-	size_t len;
-} host_args;
-
-static bool read_args(const uint8_t *in, size_t n, host_args *a) {
-	size_t at = 0;
-	ak_span *s[2] = {&a->module, &a->method};
-	for (int i = 0; i < 2; i++) {
-		if (at + 4 > n) return false;
-		uint32_t l = wh_u32(in + at);
-		if (at + 4 + l > n) return false;
-		*s[i] = (ak_span){(const char *)in + at + 4, l};
-		at += 4 + l;
-	}
-	if (at + 4 > n) return false;
-	uint32_t l = wh_u32(in + at);
-	if (at + 4 + l > n) return false;
-	a->args = in + at + 4, a->len = l;
-	return true;
-}
+// ---- asuka/host's Modules (native.c serves the class) ----
 
 typedef struct {
-	int kind;
-	uint64_t call;
-	size_t n;
-	uint8_t in[];
-} host_job;
+	wh_answer fn;
+	void *ctx;
+	size_t module_len, method_len, len;
+	uint8_t data[];  // module, method, args
+} module_job;
 
-static void host_job_run(void *ctx) {
-	host_job *j = ctx;
-	host_args a;
+static void module_job_run(void *p) {
+	module_job *j = p;
 	wh_reply *r = wh_alloc(sizeof *r);
-	r->kind = j->kind, r->native = j->call;
-	if (r->kind == REPLY_NATIVE) r->next = live, live = r;
-	if (!read_args(j->in, j->n, &a)) wh_reply_fail(r, "asuka/host: bad arguments");
-	else run(r, a.module, a.method, a.args, a.len);
+	r->kind = REPLY_FN, r->fn = j->fn, r->ctx = j->ctx;
+	r->next = live, live = r;
+	ak_span module = {(const char *)j->data, j->module_len}, method = {(const char *)j->data + j->module_len, j->method_len};
+	run(r, module, method, j->data + j->module_len + j->method_len, j->len);
 	free(j);
 }
 
-static void host_job_post(int kind, uint64_t call, const uint8_t *in, size_t n) {
-	host_job *j = wh_alloc(sizeof *j + n);
-	j->kind = kind, j->call = call, j->n = n;
-	if (n) memcpy(j->in, in, n);
-	// The module's methods run on the main thread (@mainThread), after
-	// the core has returned.
-	if (GetCurrentThreadId() == main_thread) wh_after_core(host_job_run, j);
-	else wh_post(host_job_run, j);
+// wh_call_module runs a module's method for asuka/host's Modules: on the
+// main thread, once the core has returned (the methods are the main
+// thread's).
+void wh_call_module(const char *module, size_t module_len, const char *method, size_t method_len, const uint8_t *args, size_t len,
+	wh_answer fn, void *ctx) {
+	module_job *j = wh_alloc(sizeof *j + module_len + method_len + len + 1);
+	j->fn = fn, j->ctx = ctx, j->module_len = module_len, j->method_len = method_len, j->len = len;
+	memcpy(j->data, module, module_len);
+	memcpy(j->data + module_len, method, method_len);
+	if (len) memcpy(j->data + module_len + method_len, args, len);
+	if (asuka_desktop_on_main()) wh_after_core(module_job_run, j);
+	else wh_post(module_job_run, j);
 }
 
-static size_t cb_native_call(uint64_t handle, uint32_t method, const uint8_t *in, size_t n, uint8_t *out, size_t cap, uint8_t **big) {
-	if (handle != HOST_HANDLE) return unsupported("no such object", out, cap, big);
-	if (method == HOST_SEND) {
-		host_job_post(REPLY_NONE, 0, in, n);
-		if (cap < 1) return 0;
-		out[0] = 0;
-		return 1;
-	}
-	return unsupported("asuka/host: no such method", out, cap, big);
-}
-
-static void cb_native_start(uint64_t handle, uint32_t method, const uint8_t *in, size_t n, uint64_t call) {
-	if (handle != HOST_HANDLE || method != HOST_CALL) {
-		const char *msg = "asuka/host: no such method";
-		ak_buf b = {0};
-		ak_buf_u32(&b, (uint32_t)strlen(msg));
-		ak_buf_put(&b, msg, strlen(msg));
-		native_answer(call, 3, b.data, b.len);
-		ak_buf_free(&b);
-		return;
-	}
-	host_job_post(REPLY_NATIVE, call, in, n);
-}
-
-typedef struct {
-	uint64_t call;
-} cancel_job;
-
-static void cancel_run(void *ctx) {
-	cancel_job *j = ctx;
+// wh_module_call_gone says a call's task went (native.c answered it
+// cancelled): a long poll's reply for it takes nothing.
+void wh_module_call_gone(void *ctx) {
 	for (wh_reply *r = live; r; r = r->next)
-		if (r->native == j->call && !r->gone) {
-			// Answered cancelled now; the module's answer, when it comes,
-			// goes nowhere.
-			r->gone = true;
-			native_answer(r->native, 4, NULL, 0);
-			break;
-		}
-	free(j);
-}
-
-static void cb_native_cancel(uint64_t call) {
-	cancel_job *j = wh_alloc(sizeof *j);
-	j->call = call;
-	if (GetCurrentThreadId() == main_thread) wh_after_core(cancel_run, j);
-	else wh_post(cancel_run, j);
-}
-
-static void cb_native_release(uint64_t handle) { (void)handle; }
-static void cb_native_free(void *p) { free(p); }
-
-// wh_native_host_callbacks hooks the native packages up: asuka/host's
-// Modules, served here (the registry, when it's in the build, serves the
-// others).
-void wh_native_host_callbacks(asuka_host_callbacks *cb) {
-	main_thread = GetCurrentThreadId();
-	cb->native_new = cb_native_new;
-	cb->native_call = cb_native_call;
-	cb->native_start = cb_native_start;
-	cb->native_cancel = cb_native_cancel;
-	cb->native_release = cb_native_release;
-	cb->native_free = cb_native_free;
+		if (r->ctx == ctx) r->gone = true;
 }
 
 // ---- Work off the main thread ----

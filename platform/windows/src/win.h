@@ -240,7 +240,9 @@ void wh_call(node *root, const uint8_t *args, size_t len);
 // NULL, else a message; "unsupported: ..." for a module or method it
 // doesn't have), perhaps before wh_call_module returns.
 void wh_call_module(const char *module, size_t module_len, const char *method, size_t method_len, const uint8_t *args, size_t len,
-	wh_reply reply, void *ctx);
+	wh_answer reply, void *ctx);
+// wh_module_call_gone: the call whose answer goes to ctx was cancelled.
+void wh_module_call_gone(void *ctx);
 
 // notify.c
 void wh_wait_for_toast(void);
