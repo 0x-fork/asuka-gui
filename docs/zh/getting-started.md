@@ -6,9 +6,9 @@
 
 你需要命令行工具，以及要运行的每个平台用来构建的工具：
 
-- **iOS**：一台装有 Xcode 的 Mac，以及 iOS 模拟器或一部 iPhone。
+- **iOS**：一台装有 Xcode 26 或更高版本的 Mac，以及 iOS 模拟器或一部 iPhone。
 - **Android**：一台 Mac、一台 Windows 10 或 11 电脑（x64 或 Arm）或者 Linux 电脑，装好 Android Studio，并在它的 SDK Manager 中安装 NDK（SDK Tools → NDK）；再从 Device Manager 创建一个 Android 模拟器，或者准备一部开启了 USB 调试的手机。Asuka 会在 SDK 的默认安装位置或 `ANDROID_HOME` 中查找 SDK，并使用 Android Studio 自带的 Java，用 NDK 和 Gradle 构建。在 Arm 电脑上，NDK 和 Android 模拟器都是 x64 程序，会以模拟方式运行，模拟器需要使用 x86_64 系统镜像。
-- **macOS**：一台运行 macOS 11 或更高版本的 Mac，装好 Xcode 命令行工具（`xcode-select --install`，装了 Xcode 就已经包含了）。
+- **macOS**：一台装有 Xcode 26 或更高版本（或者它的命令行工具，用 `xcode-select --install` 安装）的 Mac。构建出的应用可以运行在 macOS 11 或更高版本上。
 - **Windows**：一台运行 Windows 10 或 11 的 PC，x64 或 Arm 均可，装好 LLVM 的 clang（`winget install LLVM.LLVM`），或者装好 [Zig](https://ziglang.org/download) 并设置 `ASUKA_CC=zig`。`WebView` 和 `Video` 依赖 Microsoft Edge WebView2 Runtime，Windows 11 自带，大多数 Windows 10 电脑上也已经有了。
 - **Linux**：一个 C 编译器（`build-essential`、`gcc`、`clang`），以及 GTK 4.14 和 libadwaita 1.5 或更高版本（Ubuntu 24.04、Fedora 40、Debian 13 及之后的版本都已自带），Wayland 和 X11 均可：
 

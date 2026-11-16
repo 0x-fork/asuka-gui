@@ -165,7 +165,7 @@ developer options, plug it in and accept the prompt, and check that
 device adb lists, phone or emulator; with several, name it with
 `--device` and its serial.
 
-**An iPhone** (or iPad), with Xcode 15 or later: plug it in, unlock it
+**An iPhone** (or iPad), with Xcode 26 or later: plug it in, unlock it
 and tap Trust; turn on Developer Mode in its Settings › Privacy &
 Security (it shows once the phone has met Xcode; the phone restarts).
 Then `asuka dev --platform ios --device iphone` runs on it, or
