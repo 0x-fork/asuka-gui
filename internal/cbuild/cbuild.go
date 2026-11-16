@@ -19,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/egoist/asuka/internal/cachedir"
 )
 
 // Compiler is a C compiler: its program and the arguments that come
@@ -330,11 +332,7 @@ func RunnerFor(core string, o RunnerOptions) (string, error) {
 // directory per version, so once per process the directories nothing has
 // used for a week go (an old checkout's, a branch's).
 func cacheDir(name string) string {
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	root := filepath.Join(cache, "asuka")
+	root := cachedir.Root()
 	dir := filepath.Join(root, name)
 	if err := os.MkdirAll(dir, 0o755); err == nil {
 		now := time.Now()

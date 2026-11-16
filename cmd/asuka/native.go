@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/egoist/asuka/internal/cachedir"
+
 	"github.com/egoist/asuka/internal/nativegen"
 )
 
@@ -213,9 +215,8 @@ func nativeStamp(dir string) string {
 
 // nativeStampPath is where a package's last generation's stamp is kept.
 func nativeStampPath(dir string) string {
-	base, _ := os.UserCacheDir()
 	sum := sha256.Sum256([]byte(dir))
-	return filepath.Join(base, "asuka", "native", hex.EncodeToString(sum[:])[:16])
+	return cachedir.Path("native", hex.EncodeToString(sum[:])[:16])
 }
 
 // generateNative writes a package's generated files, unless nothing it
@@ -320,8 +321,7 @@ func swiftPackageInfo(dir string) (swiftInfo, error) {
 		return swiftInfo{}, err
 	}
 	sum := sha256.Sum256(manifest)
-	base, _ := os.UserCacheDir()
-	cache := filepath.Join(base, "asuka", "swiftpm", hex.EncodeToString(sum[:])[:16]+".json")
+	cache := cachedir.Path("swiftpm", hex.EncodeToString(sum[:])[:16]+".json")
 	var info swiftInfo
 	if b, err := os.ReadFile(cache); err == nil && json.Unmarshal(b, &info) == nil {
 		return info, nil

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/asuka/internal/cachedir"
+
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
@@ -198,11 +200,7 @@ func (b *macBuild) hostObject(arch string, sources map[string][]byte) ([]string,
 		}
 		h.Write(header)
 	}
-	base, err := os.UserCacheDir()
-	if err != nil {
-		return nil, nil, err
-	}
-	shared := filepath.Join(base, "asuka", "mac-host") // shared by all apps
+	shared := cachedir.Path("mac-host") // shared by all apps
 	unlock, err := lockShared(shared)
 	if err != nil {
 		return nil, nil, err

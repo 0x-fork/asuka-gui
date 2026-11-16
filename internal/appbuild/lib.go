@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/egoist/asuka/internal/cachedir"
+
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/cgen"
@@ -41,13 +43,7 @@ func AppC(m *bytecode.Module) (string, error) {
 	return p, os.Rename(tmp, p)
 }
 
-func cacheDir() string {
-	d, err := os.UserCacheDir()
-	if err != nil {
-		d = os.TempDir()
-	}
-	return filepath.Join(d, "asuka")
-}
+func cacheDir() string { return cachedir.Root() }
 
 // Lib builds the core for t into out (kind: cbuild.Static for iOS,
 // Shared for Android and the desktops, Module for the web): with m

@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/egoist/asuka/internal/cachedir"
 )
 
 // Tree describes one.
@@ -73,11 +75,7 @@ func (t Tree) Extract() (string, error) {
 		h.Write([]byte(f))
 		h.Write(b)
 	}
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	dir := filepath.Join(cache, "asuka", t.Cache+"-"+hex.EncodeToString(h.Sum(nil))[:16])
+	dir := filepath.Join(cachedir.Root(), t.Cache+"-"+hex.EncodeToString(h.Sum(nil))[:16])
 	if t.Valid(dir) {
 		return dir, nil
 	}

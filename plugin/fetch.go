@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/egoist/asuka/internal/cachedir"
 )
 
 // FilePath is a library's file for target on this machine: the plugin's
@@ -74,11 +76,7 @@ func CachePath(f File) (string, error) {
 	if len(f.RawSHA256) < 16 {
 		return "", errors.New("plugin: a file with no SHA-256")
 	}
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "asuka", "plugins", f.RawSHA256[:16], f.Name), nil
+	return filepath.Join(cachedir.Root(), "plugins", f.RawSHA256[:16], f.Name), nil
 }
 
 func exists(p string) bool {
