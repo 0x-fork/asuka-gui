@@ -126,6 +126,11 @@ type appConfig struct {
 	// window at launch, kept running with none, and on macOS no Dock
 	// icon from launch (Info.plist's LSUIElement).
 	Background bool `json:"background"`
+	// KeepRunning keeps a desktop app running when its last window
+	// closes: closing the main window hides it, until the app shows it
+	// again (its tray icon, the Dock icon clicked on a Mac, the app
+	// launched again). A background app keeps running anyway.
+	KeepRunning bool `json:"keepRunning"`
 	// Scheme is the app's URL scheme: myapp://anything opens it
 	// (ui.OnOpenURL gets the URL).
 	Scheme string `json:"scheme"`

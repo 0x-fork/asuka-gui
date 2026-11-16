@@ -446,6 +446,7 @@ object AsukaEventKind {
     const val FIELD_CHANGED = 57
     const val LOCATION = 58
     const val ANIMATED = 59
+    const val SECOND_INSTANCE = 60
 }
 
 object AsukaCommand {
@@ -485,6 +486,7 @@ object AsukaCommand {
     const val REPLACE = 34
     const val WINDOW_ACTION = 35
     const val LOCATION = 36
+    const val QUIT = 37
 }
 
 object AsukaRole {
@@ -1003,4 +1005,5 @@ object AsukaEvents {
     fun fieldChanged(id: Int, v: ByteArray): ByteArray = AsukaWriter().apply { header(id, 57); u32(v.size); raw(v) }.bytes()
     fun location(id: Int, v: ByteArray): ByteArray = AsukaWriter().apply { header(id, 58); u32(v.size); raw(v) }.bytes()
     fun animated(id: Int): ByteArray = AsukaWriter().apply { header(id, 59) }.bytes()
+    fun secondInstance(id: Int, v: ByteArray): ByteArray = AsukaWriter().apply { header(id, 60); u32(v.size); raw(v) }.bytes()
 }

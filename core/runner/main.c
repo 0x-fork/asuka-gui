@@ -136,6 +136,13 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (test) {
+		// mountApp mounts the app block's view.
+		int32_t ai = ak_module_app(m);
+		if (ai >= 0) {
+			ak_closure *build = ak_vm_closure(ak_module_func(m, (uint32_t)ai));
+			ak_uitest_set_app(build);
+			ak_release(build);
+		}
 		uint32_t nt = ak_module_ntests(m);
 		for (uint32_t i = 0; i < nt; i++) {
 			uint32_t fi;
@@ -183,6 +190,7 @@ int main(int argc, char **argv) {
 			settle(NULL);
 		}
 	}
+	ak_uitest_set_app(NULL);
 	ak_owner_dispose(root);
 	ak_ui_shutdown();
 	if (!aot) ak_module_release(m);

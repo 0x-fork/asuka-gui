@@ -89,13 +89,16 @@ void ak_keys_set(ak_view *e, const ak_arr *a) {
 	ak_free(ks);
 }
 
-// ---- The root's keys ----
+// ---- A window's keys ----
 
-// A use_keys call's keys, owned by the component that made them.
-typedef struct keyreg {
-	ak_ui_root *r;
-	ak_arr *keys;  // retained
-	bool gone;
+// The keys a window takes whatever has the focus, the ones no view took
+// (ui.use_keys's and WindowKeys'): the root's for the main window, a
+// Window's view's for its window. Each registration is owned by the
+// component that made it; the last one's keys win.
+typedef struct ak_keyreg {
+	ak_view *target;  // retained
+	ak_arr *keys;     // retained
+	struct ak_keyreg **slot;  // cleared as it goes
 } keyreg;
 
 typedef struct ak_rootkeys {
@@ -109,22 +112,32 @@ void ak_rootkeys_free(ak_rootkeys *k);
 void ak_rootkeys_free(ak_rootkeys *k) {
 	if (!k) return;
 	for (uint32_t i = 0; i < k->regs.len; i++) {
-		ak_release(k->regs.data[i]->keys);
-		ak_free(k->regs.data[i]);
+		keyreg *g = k->regs.data[i];
+		if (g->slot) *g->slot = NULL;
+		ak_release(g->keys);
+		ak_release(g->target);
+		ak_free(g);
 	}
 	ak_vec_free(&k->regs);
 	ak_free(k->merged);
 	ak_free(k);
 }
 
-static ak_rootkeys *rootkeys(ak_ui_root *r) {
-	ak_rext *x = ak_rext_of(r);
-	if (!x->keys) x->keys = ak_alloc(sizeof(ak_rootkeys));
-	return x->keys;
+// keys_of is target's registry: the root's in its ext, a window's in its
+// interaction state.
+static ak_rootkeys **keys_of(ak_view *target) {
+	if (target == target->r->el) return &ak_rext_of(target->r)->keys;
+	return &ak_ix_of(target)->wkeys;
 }
 
-static void root_send(ak_ui_root *r) {
-	ak_rootkeys *k = rootkeys(r);
+static ak_rootkeys *registry(ak_view *target) {
+	ak_rootkeys **k = keys_of(target);
+	if (!*k) *k = ak_alloc(sizeof(ak_rootkeys));
+	return *k;
+}
+
+static void reg_send(ak_view *target) {
+	ak_rootkeys *k = registry(target);
 	uint32_t n = 0;
 	for (uint32_t i = 0; i < k->regs.len; i++) n += k->regs.data[i]->keys ? k->regs.data[i]->keys->len : 0;
 	ak_free(k->merged);
@@ -135,46 +148,66 @@ static void root_send(ak_ui_root *r) {
 		for (uint32_t j = 0; a && j < a->len; j++) kent_of(&k->merged[at++], a->data[j].p, j);
 	}
 	k->n = sort_keys(k->merged, at);
-	if (r->el && !r->el->dead) send_keys(r->el, k->merged, k->n);
+	if (!target->dead && target->real) send_keys(target, k->merged, k->n);
 }
 
 static void reg_gone(void *ctx) {
 	keyreg *g = ctx;
-	ak_ui_root *r = g->r;
-	ak_rootkeys *k = rootkeys(r);
-	for (uint32_t i = 0; i < k->regs.len; i++) {
+	ak_view *t = g->target;
+	ak_rootkeys *k = *keys_of(t);
+	for (uint32_t i = 0; k && i < k->regs.len; i++) {
 		if (k->regs.data[i] != g) continue;
 		memmove(k->regs.data + i, k->regs.data + i + 1, (k->regs.len - i - 1) * sizeof(keyreg *));
 		k->regs.len--;
 		break;
 	}
+	if (g->slot) *g->slot = NULL;
 	ak_release(g->keys);
 	ak_free(g);
-	if (!r->disposed) root_send(r);
-	ak_root_release(r);
+	if (!t->r->disposed && !t->dead) reg_send(t);
+	ak_release(t);
 }
+
+// ak_keys_register gives target (the root, or a Window's view) keys
+// (Shortcut structs, or NULL for none yet) while the current owner
+// lives, and returns the registration, which *slot holds until it goes
+// (slot may be NULL).
+struct ak_keyreg *ak_keys_register(ak_view *target, ak_arr *keys, struct ak_keyreg **slot) {
+	keyreg *g = ak_alloc(sizeof *g);
+	g->target = ak_retain(target);
+	if (keys) g->keys = ak_retain(keys);
+	g->slot = slot;
+	if (slot) *slot = g;
+	ak_vec_push(&registry(target)->regs, g);
+	ak_on_cleanup(reg_gone, g);
+	reg_send(target);
+	return g;
+}
+
+// ak_keys_update changes a registration's keys.
+void ak_keys_update(struct ak_keyreg *g, ak_arr *keys) {
+	if (keys) ak_retain(keys);
+	ak_release(g->keys);
+	g->keys = keys;
+	reg_send(g->target);
+}
+
+// ak_keys_forget lets go of a registration's slot (its holder goes
+// first).
+void ak_keys_forget(struct ak_keyreg *g) { g->slot = NULL; }
 
 // ak_ui_use_keys gives the root keys (Shortcut structs) while the
 // current owner lives: what no view takes, and keys with nothing
 // focused. Several: the last one's keys win.
-void ak_ui_use_keys(ak_arr *keys) {
-	ak_ui_root *r = ak_ui_current();
-	keyreg *g = ak_alloc(sizeof *g);
-	g->r = r;
-	ak_root_retain(r);
-	g->keys = ak_retain(keys);
-	ak_vec_push(&rootkeys(r)->regs, g);
-	ak_on_cleanup(reg_gone, g);
-	root_send(r);
-}
+void ak_ui_use_keys(ak_arr *keys) { ak_keys_register(ak_ui_current()->el, keys, NULL); }
 
 // ak_keys_event runs the index'th key of e's Keys prop.
 bool ak_keys_event(ak_view *e, int64_t index) {
-	if (e->r && e == e->r->el) {
-		ak_rootkeys *k = e->r->ext ? e->r->ext->keys : NULL;
+	if ((e->r && e == e->r->el) || ak_window_view(e)) {
+		ak_rootkeys *k = e == e->r->el ? (e->r->ext ? e->r->ext->keys : NULL) : (e->ix ? e->ix->wkeys : NULL);
 		if (!k || index < 0 || index >= k->n) return true;
 		ak_closure *run = k->merged[index].run;
-		ak_call_closure(run, e->r->owner, NULL, 0);
+		ak_call_closure(run, e == e->r->el ? e->r->owner : e->owner, NULL, 0);
 		return true;
 	}
 	ak_ix *ix = e->ix;

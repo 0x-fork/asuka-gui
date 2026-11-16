@@ -62,7 +62,11 @@ func asuka() []byte {
 		var params []string
 		for _, k := range e.Keys {
 			if k.Positional {
-				params = append(params, k.Name+": "+k.Type)
+				p := k.Name + ": " + k.Type
+				if k.Default != "" {
+					p += " = " + k.Default
+				}
+				params = append(params, p)
 			}
 		}
 		if e.Variants {

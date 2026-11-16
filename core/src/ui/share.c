@@ -391,6 +391,7 @@ ak_future *ak_ui_share_files(ak_arr *paths, ak_str *mime, ak_str *uti, ak_str *t
 // ---- Events that aren't a view's ----
 
 void ak_anim_frame(ak_id id, double seconds);
+void ak_app_second_instance(ak_span s);
 
 static bool begin_root_event(void) {
 	ak_batch_begin();
@@ -423,6 +424,11 @@ bool ak_ext_dispatch(const ak_event *ev) {
 	case AK_EVENT_SHARED:
 		begin_root_event();
 		shared(ev->s);
+		end_root_event();
+		return true;
+	case AK_EVENT_SECOND_INSTANCE:
+		begin_root_event();
+		ak_app_second_instance(ev->s);
 		end_root_event();
 		return true;
 	}

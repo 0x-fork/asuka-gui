@@ -1,0 +1,38 @@
+// A launcher's main window: a panel sized to its content, hidden until
+// a shortcut shows it; Escape or a click elsewhere hides it again.
+
+state shown = false
+state results: [string] = []
+
+app {
+  Window {
+    bind open: shown
+    title: "Launcher"
+    panel: true
+    fitContent: true
+    minWidth: 640
+    maxWidth: 640
+    maxHeight: 440
+    on closeRequest { shown = false }
+    Column {
+      Text("Search apps")
+      for r in results { Text(r) { height: 40 } }
+    }
+  }
+}
+
+test "a panel sized to its content, hidden until it's shown" {
+  let app = mountApp()
+  expect(app.windows() == "main \"Launcher\" 640x20 alwaysOnTop min 640x0 max 640x440 panel fit fixed noMaximize noMinimize skipTaskbar\n", app.windows())
+  expect(!app.windows().contains("visible"), app.windows())
+  shown = true
+  await app.idle()
+  expect(app.windowActions() == "fit(640,20) show", app.windowActions())
+  results = ["Notes", "Mail"]
+  await app.idle()
+  expect(app.windowActions() == "fit(640,100)", app.windowActions())
+  // Escape: the host asks, the app hides it.
+  app.closeWindow()
+  expect(!shown)
+  expect(app.windowActions() == "hide", app.windowActions())
+}

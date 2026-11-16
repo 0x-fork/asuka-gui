@@ -592,9 +592,11 @@ native component Popover() {
   prop content: View? = none
 }
 
-/// shows a menu of actions when its children are tapped (UIMenu, PopupMenu)
-native component Menu(actions: [Action]) {
+/// shows a menu of actions when its children are tapped (UIMenu, PopupMenu). In a MenuBar, one of its menus: its children are MenuItems
+native component Menu(title: string = "") {
   prop children: View? = none
+  /// the menu's actions
+  prop actions: [Action]
   /// a context menu: shown on a long press (a right click on a desktop) rather than a tap
   prop longPress: bool
 }
@@ -618,24 +620,73 @@ native component Destination(title: string) {
   prop section: string
 }
 
-/// a desktop window of its own while open (a window in the page on the web; phones have none): its content is built as it opens
+/// a desktop window of its own while open (a window in the page on the web; phones have none): its content is built as it opens, disposed as it closes. The app block's Window is the main window: its keys are the main window's
 native component Window() {
   prop children: View? = none
-  /// the window is open while true; the user closing it writes false
+  /// the window is open while true; the user closing it writes false. The app block's Window, the main window, shows unless it's false
   prop open: bool
+  /// its title bar's ("": the app's name)
   prop title: string
-  /// how it opens: its size, its place, its kind
-  prop options: WindowOptions
+  /// its content's size as it opens, in points (0: the platform's, 800 by 600)
+  prop width: float
+  prop height: float
+  /// the least the user can make it (0: the platform's)
+  prop minWidth: float
+  prop minHeight: float
+  /// the most the user can make it (0: no most)
+  prop maxWidth: float
+  prop maxHeight: float
+  /// its frame's top left on the screen, in points from the main display's (both 0: cascaded from the window in use, or centered with center)
+  prop x: float
+  prop y: float
+  /// opens centered on its display
+  prop center: bool
+  /// the user can resize it
+  prop resizable: bool = true
+  prop minimizable: bool = true
+  prop maximizable: bool = true
+  /// it has a close button
+  prop closable: bool = true
+  /// above other apps' windows (not under Wayland)
+  prop alwaysOnTop: bool
+  /// opens without showing: its content is built and laid out, and w.show() shows it ready
+  prop hidden: bool
+  /// left out of the taskbar (Windows) and the Window menu (macOS)
+  prop skipTaskbar: bool
+  /// what's behind the window shows where the content draws nothing (macOS, Linux with a compositor)
+  prop transparent: bool
+  /// opens maximized
+  prop maximized: bool
+  /// opens in full screen
+  prop fullScreen: bool
+  /// .hidden: the content goes under the title bar, the window's buttons over it (environment().safeTop is the bar's height)
+  prop titleBar: TitleBar
+  /// fills the window behind its content (none: the platform's)
+  prop background: Color
+  /// belongs to the window it's declared in: stays above it, closes with it
+  prop child: bool
+  /// a child that blocks the window it's declared in while it's open (on a Mac, a sheet of it)
+  prop modal: bool
+  /// a launcher's or a palette's window: frameless, above every app's windows, out of the taskbar, taking the keyboard without bringing the app to the front; Escape and a click elsewhere close it (on closeRequest: hide it instead)
+  prop panel: bool
+  /// a frameless window hanging from an anchor (a tray icon: asuka/tray's anchor(id); or a rectangle of the window it's declared in), closed as it loses the keyboard
+  prop flyout: Flyout?
+  /// sized to its content, within its least and most size, following it as it changes
+  prop fitContent: bool
+  /// the mouse goes through it to what's behind (an overlay's, a HUD's)
+  prop clickThrough: bool
+  /// shows the app's MenuBar as the main window does (Windows' menu bar, Linux's main menu; a Mac's is the app's)
+  prop menuBar: bool
+  /// where the platform remembers where the user left it, across launches (the main window's: "main" when it's empty)
+  prop stateKey: string
   /// its document has unsaved changes
   prop edited: bool
   /// the path of the file it shows
   prop file: string
-  /// follow its state (windowState(w) reads it)
-  prop watchState: bool
   event change(open: bool)
   /// the user closed it
   event close
-  /// the user asked to close it: it stays open until closeWindow(w)
+  /// the user asked to close it: it stays open until open is false, or closeWindow()
   event closeRequest
 }
 
@@ -676,4 +727,41 @@ native component Boundary() {
 native component PageControl(count: int) {
   prop page: int
   event change(page: int)
+}
+
+/// the app's menus (macOS's menu bar; Windows' and Linux's in the main window), with their keyboard shortcuts, beside the platform's own: its children are Menus. While several show, the last one's are the app's; when it goes, the one before's. Phones ignore it
+native component MenuBar() {
+  prop children: View? = none
+}
+
+/// an item of a MenuBar's Menu: MenuItems in it make it a submenu
+native component MenuItem(title: string) {
+  prop children: View? = none
+  /// chooses it from the keyboard, in every window of the app
+  prop shortcut: Shortcut?
+  /// .destructive draws it red; .quit, .close and .openRecent are the platform's own items
+  prop role: MenuRole
+  prop disabled: bool
+  /// a check mark beside it
+  prop checked: bool
+  /// the user chose it (a click, its shortcut)
+  event press
+}
+
+/// a line between a menu's groups of items
+native component MenuSeparator() {
+}
+
+/// keeps the window it's in open while when is true, asking the app first (unsaved changes) when the user closes it
+native component WindowCloseGuard() {
+  /// it asks while true
+  prop when: bool = true
+  /// the user asked to close the window it's in: the window stays open (closeWindow() closes it)
+  event closeRequest
+}
+
+/// keys of the window it's in while it shows, whatever has the keyboard's focus: the ones no view takes (the last WindowKeys' win)
+native component WindowKeys() {
+  /// what they run
+  prop keys: [Shortcut]
 }

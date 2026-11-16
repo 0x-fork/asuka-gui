@@ -188,6 +188,7 @@ export const Event = Object.freeze({
   FieldChanged: 57,
   Location: 58,
   Animated: 59,
+  SecondInstance: 60,
 });
 
 /** Commands the core sends. */
@@ -228,6 +229,7 @@ export const Command = Object.freeze({
   Replace: 34,
   WindowAction: 35,
   Location: 36,
+  Quit: 37,
 });
 
 export const Role = Object.freeze({ None: 0, Button: 1, Header: 2, Image: 3, Link: 4, Text: 5, Search: 6 });
@@ -459,4 +461,5 @@ export const Events = Object.freeze({
   fieldChanged: (id, v) => new Writer().header(id, 57).bytes(v).done(),
   location: (id, v) => new Writer().header(id, 58).bytes(v).done(),
   animated: (id) => new Writer().header(id, 59).done(),
+  secondInstance: (id, v) => new Writer().header(id, 60).bytes(v).done(),
 });

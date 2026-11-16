@@ -95,7 +95,7 @@ void ak_future_reject(ak_future *f, void *err);   // takes err
 void ak_future_wait(ak_future *f, ak_cb cb, void *ctx);
 // ak_future_unwait removes a waiter ak_future_wait added (a no-op once
 // it was queued).
-void ak_future_unwait(ak_future *f, ak_cb cb, void *ctx);
+bool ak_future_unwait(ak_future *f, ak_cb cb, void *ctx);  // whether it was waiting
 void ak_future_cancel(ak_future *f);
 // ak_future_take gives the result (owned, retained) or throws the error.
 ak_val ak_future_take(ak_future *f);

@@ -78,6 +78,10 @@ bool ak_uitest_expect_no(ak_uitest *a, ak_span text, ak_buf *err);
 // indented by depth (uitest's Snapshot).
 void ak_uitest_snapshot(ak_uitest *a, ak_buf *out);
 
+// ak_uitest_set_app gives mountApp the module's app function (its
+// closure; NULL: none).
+void ak_uitest_set_app(ak_closure *build);
+
 // ak_uitest_builtins_init registers the test.* builtins (uitest.c's
 // table) for `asuka test`.
 void ak_uitest_builtins_init(void);

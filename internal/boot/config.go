@@ -25,6 +25,7 @@ type Config struct {
 	Lang              string `json:"lang,omitempty"`
 	Direction         string `json:"direction,omitempty"`
 	Background        bool   `json:"background,omitempty"`
+	KeepRunning       bool   `json:"keepRunning,omitempty"`
 	MultipleInstances bool   `json:"multipleInstances,omitempty"`
 	// The updates' feed, the public key their signatures are checked
 	// with, and the build's target (asuka/sdk/update).
@@ -60,6 +61,9 @@ func (c *Config) Apply() {
 	set(&UpdateTarget, c.UpdateTarget)
 	if c.Background {
 		Background = "1"
+	}
+	if c.KeepRunning {
+		KeepRunning = true
 	}
 	if c.MultipleInstances {
 		MultipleInstances = "1"

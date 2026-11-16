@@ -209,6 +209,7 @@ func (a *asukaApp) hostConfig(platform, target string, updates bool) boot.Config
 		Lang:              devLang,
 		Direction:         devDirection,
 		Background:        a.cfg.Background,
+		KeepRunning:       a.cfg.KeepRunning,
 		MultipleInstances: a.cfg.SingleInstance != nil && !*a.cfg.SingleInstance,
 	}
 	if u, err := a.cfg.updates(); err == nil && u != nil && target != "" && updates {

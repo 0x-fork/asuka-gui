@@ -223,6 +223,21 @@ func (c *Checker) matchArgList(e *syntax.CallExpr, list []*syntax.Arg, params []
 	return out
 }
 
+// HasZero reports whether t has a zero value a left-out enum payload
+// takes: false, 0, "", an empty array or map, none, a payloadless enum's
+// first case. Functions, structs and other enums have none.
+func HasZero(t Type) bool {
+	switch x := t.(type) {
+	case *Basic:
+		return x == Bool || x == Int || x == Float || x == String || x == Bytes || x == Duration || x == Color || x == Length
+	case *Array, *Map, *Optional:
+		return true
+	case *Named:
+		return x.Obj.Kind == EnumType && !x.Obj.RefEnum() && len(x.Args) == 0
+	}
+	return false
+}
+
 // optional: a parameter that may be left out with no default: a
 // builtin's optional argument.
 func (p *Param) optional() bool { return p.Var != nil && p.Var.Kind == optionalParam }
@@ -882,6 +897,11 @@ func (c *Checker) caseCall(e *syntax.CallExpr, tn *TypeName, k *Case, want Type)
 			name = "_" + itoa(i)
 		}
 		params[i] = &Param{Name: name, Type: p}
+		// A labeled payload with a zero value may be left out: it's
+		// that (.button(title: "Copy", run: copy)).
+		if k.Labels[i] != "" && HasZero(p) {
+			params[i].Var = &Var{Kind: optionalParam}
+		}
 	}
 	args := c.matchArgs(e, params, tn.name+"."+k.Name)
 	s := Subst{}

@@ -12,10 +12,11 @@ files and folders (a folder the app shows, a document another app
 saves), see [Watching files](data.md#watching-files-asukasdkwatch), which
 phones and the web have too.
 
-Each one is a package, or a function in `ui` or `app`, and works on the
-Mac, Windows and Linux. A phone or a browser that hasn't one answers
-that it hasn't (`ErrUnsupported`, `ErrNotAvailable`, or `Supported()`
-false), so an app can offer it only where it works.
+Each one is a package of the standard library, an element or a function
+of the prelude, and works on the Mac, Windows and Linux. A phone or a
+browser that hasn't one answers that it hasn't (an `unsupported` or
+`notAvailable` error, or `supported()` false), or shows nothing, so an
+app can offer it only where it works.
 
 ## How a desktop app is made
 
@@ -43,39 +44,49 @@ and each save's after it (see [Development](development.md#on-the-desktop)).
 
 ## Tray icons and the Dock menu
 
-`tray.Show`, called inside a component, puts an icon in the tray while
-that component is mounted: an `NSStatusItem` in the Mac's menu bar, an
-icon in the notification area on Windows, a StatusNotifierItem on Linux
-(KDE, Xfce, Cinnamon, MATE, Budgie, and GNOME with the AppIndicator
-extension).
+`asuka/tray`'s `Tray` puts an icon in the tray while it's shown (it
+shows nothing where it's put): an `NSStatusItem` in the Mac's menu bar,
+an icon in the notification area on Windows, a StatusNotifierItem on
+Linux (KDE, Xfce, Cinnamon, MATE, Budgie, and GNOME with the
+AppIndicator extension).
 
-```go
-tray.Show(tray.Props{
-	Symbol:  ui.Val("moon.zzz"),
-	Title:   remaining, // a signal: "25:00" beside the icon
-	Tooltip: ui.Val("Focus timer"),
-	Menu: signal.Static([]ui.MenuItem{
-		{Title: "Start", OnPress: start},
-		{Title: "Length", Submenu: []ui.MenuItem{
-			{Title: "25 minutes", OnPress: func() { length.Set(25) }},
-			{Title: "50 minutes", OnPress: func() { length.Set(50) }},
-		}},
-		ui.MenuSeparator,
-		ui.MenuQuit,
-	}),
-})
+```asuka
+import asuka/tray
+
+component Focus {
+  state minutes = 25
+  tray.Tray("timer") {
+    symbol: "moon.zzz"
+    title: "{minutes}:00" // beside the icon
+    tooltip: "Focus timer"
+    menu: [
+      .button(title: "Start", run: () => start()),
+      .submenu(title: "Length", items: [
+        .button(title: "25 minutes", checked: minutes == 25, run: () => { minutes = 25 }),
+        .button(title: "50 minutes", checked: minutes == 50, run: () => { minutes = 50 }),
+      ]),
+      .section(title: "", items: [.button(title: "Quit", run: () => quit())]),
+    ]
+  }
+  Timer()
+}
 ```
 
-Its `Image` or `Symbol` (a template image on the Mac, which follows the
-menu bar's appearance), `Title` (the Mac, and Linux panels that show
-labels), `Tooltip` and `Menu` follow their signals, and the icon goes
-when its owner is disposed. Without `OnClick`, a click opens the menu;
-with it, a click runs `OnClick` and a right click opens the menu.
+Its id names it among the app's icons (a Mac brings it back where the
+user ⌘-dragged it). Its `image` (an asset or a file, drawn 16 points
+tall) or `symbol` (a template image on the Mac, which follows the menu
+bar's appearance; `template: true` makes an image one), `title` (the
+Mac, and Linux panels that show labels), `tooltip` and `menu` are
+bindings, sent again as they change, and the icon goes with the
+component that shows it. Without `on click`, a click opens the menu;
+with it, a click raises `click` and a right click opens the menu.
 
-Menus take `Submenu`s and `ui.MenuQuit`, as `ui.MenuBar`'s do.
-`tray.DockMenu(items)` adds items to the Dock icon's menu on the Mac;
-on Windows they're the jump list's Tasks, which reach the running app;
-on Linux, the launcher's quicklist.
+Its `menu` is `Action`s, as a `Menu`'s: `.button`s (`disabled`,
+`checked`, a `.destructive` role), `.submenu`s, and `.section`s, set
+apart by separators. `tray.DockMenu { items: […] }` adds items to the
+Dock icon's menu on the Mac; on Windows they're the jump list's Tasks,
+which reach the running app; on Linux, the launcher's quicklist. While
+several show, the last one's items are the Dock's.
 
 `examples/tray` is a timer that lives in the menu bar.
 
@@ -83,47 +94,51 @@ on Linux, the launcher's quicklist.
 
 A flyout is a window that hangs from a tray icon, as the panels of the
 Mac's menu bar extras and of Windows' notification area do, or from a
-rectangle of a window. It's a `ui.Window` with a `Flyout`:
+rectangle of a window. It's a `Window` with a `flyout`:
 
-```go
-open := signal.New(false)
-icon := tray.Show(tray.Props{
-	Symbol:  ui.Val("bolt.fill"),
-	OnClick: func() { open.Set(!open.Peek()) },
-	Menu:    ui.Val([]ui.MenuItem{ui.MenuQuit}), // a right click
-})
-ui.Window(ui.WindowProps{
-	Open:       open,
-	Flyout:     &ui.Flyout{Anchor: icon.Anchor(), Placement: ui.PlacementBottom},
-	FitContent: true, MinWidth: 260, MaxHeight: 480,
-	Content:    panel,
-})
+```asuka
+component Power {
+  state open = false
+  tray.Tray("power") {
+    symbol: "bolt.fill"
+    menu: [.button(title: "Quit", run: () => quit())] // a right click
+    on click { open = !open }
+  }
+  Window {
+    bind open: open
+    flyout: Flyout(anchor: tray.anchor("power"), placement: .bottom)
+    fitContent: true
+    minWidth: 260
+    maxHeight: 480
+    Panel()
+  }
+}
 ```
 
-- It has no frame and no taskbar button. On a Mac, with no `Background`,
+- It has no frame and no taskbar button. On a Mac, with no `background`,
   it shows the material of menus behind its content, with rounded
   corners and a shadow, so give its content no background there;
   Windows 11 rounds it and casts a shadow over the window color; Linux
   draws neither.
-- `Placement` is the side of the anchor it goes to and how it lines up
-  with it (`PlacementBottom`: below, centered). Where the display has
-  no room there it flips to the other side (below a Mac's menu bar
-  icon, above an icon of a taskbar at the bottom of the screen), then
-  slides into the display, then shrinks to fit it. `Gap` keeps it off
-  the anchor.
-- `Anchor` follows its accessor: `ui.Anchor{X, Y, Width, Height}` is a
-  rectangle of the window the flyout is declared in, in points from its
-  content's top left (a view's frame, from `OnLayout`); there it's that
-  window's child, and moves with it.
+- `placement` is the side of the anchor it goes to and how it lines up
+  with it (`.bottom`: below, centered). Where the display has no room
+  there it flips to the other side (below a Mac's menu bar icon, above
+  an icon of a taskbar at the bottom of the screen), then slides into
+  the display, then shrinks to fit it. `gap` keeps it off the anchor.
+- `anchor` is a binding: `tray.anchor(id)` is the tray icon shown with
+  that id, and `Anchor(x:, y:, width:, height:)` a rectangle of the
+  window the flyout is declared in, in points from its content's top
+  left (a view's frame); there it's that window's child, and moves with
+  it. It's placed again as the anchor changes.
 - It takes the keyboard as it shows, without bringing the app to the
-  front, and closes as the user closing it does (`Open` false,
-  `OnClose`, or `OnCloseRequest` asked) when they click elsewhere, go
-  to another app, or press an Escape its content leaves.
-- A dialog over it: a `Modal` `ui.Window` declared in its content shows
+  front, and closes as the user closing it does (`open` false, `close`,
+  or `closeRequest` asked) when they click elsewhere, go to another
+  app, or press an Escape its content leaves.
+- A dialog over it: a `modal` `Window` declared in its content shows
   over the flyout, above it and centered on it, and keeps the flyout
   open until it closes, when the flyout gets the keyboard back. An
-  `Alert` over it keeps it open too.
-- `FitContent` sizes it to its content (below), placed again against
+  alert over it keeps it open too.
+- `fitContent` sizes it to its content (below), placed again against
   its anchor as that grows or shrinks.
 
 | | Tray flyout | Placed against |
@@ -138,12 +153,12 @@ it.
 
 ## Windows sized to their content
 
-`FitContent` (`WindowProps`', `WindowOptions`') sizes a window to what
-it shows, and follows it as it changes: a flyout with a list of nodes
+`fitContent: true` (a `Window`'s, the main window's too) sizes a window
+to what it shows, and follows it as it changes: a flyout with a list of nodes
 that grows, a launcher whose results come and go. Its width is its
-content's widest line (max-content) within `MinWidth` and `MaxWidth`,
+content's widest line (max-content) within `minWidth` and `maxWidth`,
 at which its text wraps; its height is its content's at that width
-within `MinHeight` and `MaxHeight`, beyond which a `Scroll` in it
+within `minHeight` and `maxHeight`, beyond which a `Scroll` in it
 scrolls. The core lays the content out at that size as it lays out each
 frame, and the window takes it in the same pass, so it shows at its size,
 never at another first. A flyout is placed again against its anchor; a
@@ -152,12 +167,14 @@ resize it. On the web the main window is the tab, which fills the page.
 
 ## Apps in the background
 
-`app.KeepRunning()` keeps the app running when its last window closes:
-the window hides, and `ui.MainWindow().Show()` brings it back (on the
-Mac, so does a click on the Dock icon). `app.RunInBackground()`, or
-`background = true` in `asuka.toml`, also starts the app with no
-window and, on the Mac, no Dock icon: an app of the menu bar or the
-tray. Call them before `app.Run`.
+`keepRunning = true` in `asuka.toml` keeps the app running when its last
+window closes: the main window hides (its `open`, bound, goes false),
+and showing it again brings it back (on the Mac, so does a click on the
+Dock icon; on Linux, launching the app again). `background = true` also
+starts the app with no window and, on the Mac, no Dock icon: an app of
+the menu bar or the tray, whose `Tray` is the user's way in. A `Window`
+it opens shows as any. Quit such an app from its menus: a `quit()` in
+its tray icon's menu, the Dock's Quit.
 
 ## Global shortcuts
 
@@ -200,41 +217,50 @@ Space or virtual desktop the user is on and over apps in full screen,
 stays out of the taskbar, the Dock's windows and the app switcher, and
 takes the keyboard without bringing the app to the front on a Mac, so
 the app the user was in keeps its menu bar and gets the keyboard back
-as the panel goes. It's a window with `Panel`: a launcher's main
-window, in an app that runs in the background:
+as the panel goes. It's a window with `panel: true`: a launcher's main
+window, in an app that runs in the background (`background = true`):
 
-```go
-func main() {
-	app.RunInBackground()
-	app.RunWindow(ui.WindowOptions{Panel: true, Hidden: true, FitContent: true,
-		MinWidth: 640, MaxWidth: 640, MaxHeight: 440}, Launcher)
+```asuka
+import asuka/hotkey
+
+state shown = false
+
+app {
+  Window {
+    bind open: shown // hidden until the shortcut shows it
+    panel: true
+    fitContent: true
+    minWidth: 640
+    maxWidth: 640
+    maxHeight: 440
+    on closeRequest { shown = false } // Escape, a click elsewhere: hide it
+    Launcher()
+  }
 }
 
-func Launcher() ui.Node {
-	w := ui.UseWindow()
-	w.OnCloseRequest(func() bool { w.Hide(); return false }) // Escape, a click elsewhere
-	hotkey.Register(hotkey.Props{
-		Shortcut: ui.Val(ui.Shortcut{Key: "space", Mods: ui.Alt}),
-		OnPress:  func() { w.Show() },
-	})
-	// ...
+component Launcher {
+  hotkey.Hotkey(hotkey.Shortcut(key: "space", alt: true)) {
+    description: "Show the launcher"
+    on press { shown = !shown }
+  }
+  Search()
 }
 ```
 
-- It has no frame. On a Mac, with no `Background`, it shows the
+- It has no frame. On a Mac, with no `background`, it shows the
   material of popovers behind its content, rounded and with a shadow;
   Windows 11 rounds it; Linux draws it as a window's content.
-- Without `X` and `Y` (or a `StateKey`), it shows on the display with
+- Without `x` and `y` (or a `stateKey`), it shows on the display with
   the pointer, centered across it, a third of the way down, each time
-  it shows; `SetPosition` and `Center` place it for good. With
-  `FitContent` it grows down from its top as results come.
+  it shows; `w.setPosition` and `w.center()` place it for good. With
+  `fitContent` it grows down from its top as results come.
 - It closes as the user closing it does on an Escape its content leaves
   (a text field's too) and as it loses the keyboard: a click elsewhere,
-  another app. Hide it instead (`OnCloseRequest`, above), so it shows
+  another app. Hide it instead (`on closeRequest`, above), so it shows
   again at once, as it was; the main window of an app that keeps
   running hides as it closes anyway.
-- `Show` shows it with the keyboard; `Focus` does the same, never
-  bringing the app forward.
+- Showing it (`open` true, `w.show()`) gives it the keyboard;
+  `w.focus()` does the same, never bringing the app forward.
 
 | | A panel |
 |---|---|
@@ -282,16 +308,23 @@ Phones and the web answer `apps.ErrUnsupported`.
 
 ## Click-through windows
 
-`ClickThrough` (or `ui.UseWindow().SetClickThrough(true)`) lets the
+`clickThrough: true` (or `w.setClickThrough(true)`) lets the
 mouse go through a window to what's behind it, another app's window or
-the desktop: an overlay, a HUD, a desktop pet, made `Transparent` and
-`AlwaysOnTop`. `ClickThrough()` follows it as a signal. The window
+the desktop: an overlay, a HUD, a desktop pet, made `transparent` and
+`alwaysOnTop`. `w.clickThrough` reads it, followed. The window
 takes no clicks, hover or wheel at all while it's on; switch it off to
 let the user use it.
 
-```go
-ui.Window(ui.WindowProps{Open: hud, Transparent: true, AlwaysOnTop: true, ClickThrough: true,
-	Width: 240, Height: 80, Content: meters})
+```asuka
+Window {
+  bind open: hud
+  transparent: true
+  alwaysOnTop: true
+  clickThrough: true
+  width: 240
+  height: 80
+  Meters()
+}
 ```
 
 It's `ignoresMouseEvents` on a Mac, a layered `WS_EX_TRANSPARENT`
@@ -366,29 +399,54 @@ caches.
 ## One instance
 
 On Windows and Linux an app with an `id` runs once: starting it again
-brings the running one to the front, `app.OnSecondInstance(func(args
-[]string, dir string))` gets the new launch's arguments and working
-directory, and the files and links among them go to `ui.OnOpenFiles`
-and `ui.OnOpenURL`. Set `singleInstance = false` in `asuka.toml` to run
-a new instance each time. The Mac always runs an app once and passes
-files, not arguments.
+brings the running one to the front, the app block's `on
+secondInstance(args, dir)` gets the new launch's arguments and working
+directory, and the files and links among them go to `on files(paths)`
+and `on openURL(url)` too:
+
+```asuka
+app {
+  on secondInstance(args, dir) {
+    if args.contains("--new-window") { newWindow = true }
+  }
+  Window { Main() }
+}
+```
+
+`onSecondInstance(fn([string], string))` does the same from a
+component's body, for as long as it lives. Set `singleInstance = false`
+in `asuka.toml` to run a new instance each time. The Mac always runs an
+app once and passes files, not arguments: there it never runs.
 
 ## Quitting
 
-`app.Quit()` quits as the user's Quit does. `app.OnQuit(func(e
-*app.QuitEvent))` runs first, however the quit started (⌘Q, the Dock,
-closing the last window, Ctrl+C or SIGTERM, logging out), and
-`e.Cancel()` keeps the app running, to ask about unsaved changes. When
-`e.SessionEnding` is set the quit can't be canceled: save at once,
-without a dialog. A window's own close is asked first, through its
-`OnCloseRequest` ([Navigation](navigation.md#windows)).
+`quit()` quits as the user's Quit does. The app block's `on quit(e)`
+runs first, however the quit started (⌘Q, the Dock, closing the last
+window, `quit()`, Ctrl+C or SIGTERM, logging out), and `e.cancel()`
+keeps the app running, to ask about unsaved changes; `e.canceled()`
+says whether a handler did. When `e.sessionEnding` is set the quit
+can't be canceled: save at once, without a dialog.
 
-`app.DataDir`, `ConfigDir`, `CacheDir` and `LogDir` are the app's own
-folders, made as they're asked for.
+```asuka
+app {
+  on quit(e) {
+    if unsaved && !e.sessionEnding {
+      e.cancel()
+      confirmQuit = true // asks, then quit() again once it's saved
+    }
+  }
+  Window { Editor() }
+}
+```
 
-`app.Relaunch()` quits the same way (the handlers can cancel it) and
-starts the app again once it has exited: after an update, or a setting
-that takes effect at launch.
+`onQuit(fn(QuitEvent))` does the same from a component's body, for as
+long as it lives. A window's own close is asked first, through its
+guards ([Navigation](navigation.md#asking-before-a-window-closes)).
+
+`relaunch()` quits the same way (the handlers can cancel it) and starts
+the app again once it has exited, with the same arguments: after an
+update, or a setting that takes effect at launch. Phones and the web,
+whose apps don't quit themselves, ignore both.
 
 ## Updates
 

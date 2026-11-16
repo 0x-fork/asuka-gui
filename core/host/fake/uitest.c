@@ -1024,7 +1024,217 @@ static ak_val t_emit(ak_val *a, uint32_t n) {
 	return (ak_val){0};
 }
 
+// ---- The desktop ----
+
+static ak_closure *app_build;  // the module's app function (ak_uitest_set_app)
+
+void ak_uitest_set_app(ak_closure *build) {
+	if (build) ak_retain(build);
+	ak_release(app_build);
+	app_build = build;
+}
+
+static ak_val t_mount_app(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	if (!app_build) {
+		ak_throw_msg("mountApp: the program has no app");
+		return (ak_val){0};
+	}
+	ak_uitest *app = ak_uitest_mount(app_build, NULL);
+	if (ak_current_owner()) ak_on_cleanup(unmount_cleanup, ak_retain(app));
+	return (ak_val){.p = app};
+}
+
+static ak_val str_of(ak_buf *b) {
+	ak_str *s = ak_str_new((const char *)b->data, b->len);
+	ak_buf_free(b);
+	return (ak_val){.p = s};
+}
+
+// window_arg is the window titled a[i] ("": the main one), or NULL and a
+// thrown error.
+static ak_fake_view *window_arg(ak_uitest *app, ak_val *a, uint32_t n, uint32_t i) {
+	ak_span t = i < n ? span_of(a[i]) : sp("");
+	ak_fake_view *v = ak_fake_window_titled(app->f, t);
+	if (!v) {
+		ak_buf err = {0};
+		ak_buf_printf(&err, "no window titled \"%.*s\": there are\n", (int)t.len, t.p);
+		ak_fake_windows(app->f, &err);
+		throw_buf(&err);
+	}
+	return v;
+}
+
+static ak_val t_windows(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.windows");
+	ak_uitest_settle(app);
+	ak_buf b = {0};
+	ak_fake_windows(app->f, &b);
+	return str_of(&b);
+}
+
+static ak_val t_close_window(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.close_window");
+	ak_uitest_settle(app);
+	ak_fake_view *v = window_arg(app, a, n, 1);
+	if (v) {
+		ak_fake_close_window(app->f, v);
+		ak_uitest_settle(app);
+	}
+	return (ak_val){0};
+}
+
+static ak_val t_window_actions(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.window_actions");
+	ak_uitest_settle(app);
+	ak_fake_view *v = window_arg(app, a, n, 1);
+	ak_buf b = {0};
+	if (v) ak_fake_window_actions(app->f, v, &b);
+	return str_of(&b);
+}
+
+static ak_val t_set_window_state(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.set_window_state");
+	ak_uitest_settle(app);
+	ak_fake_view *v = window_arg(app, a, n, 1);
+	const ak_struct *s = n > 2 ? a[2].p : NULL;
+	if (v && s) {
+		ak_window_state st = {(float)s->f[0].f, (float)s->f[1].f, (float)s->f[2].f, (float)s->f[3].f, 0};
+		for (int i = 0; i < 7; i++)
+			if (s->f[4 + i].i) st.flags |= (uint8_t)(1 << i);
+		ak_fake_set_window_state(app->f, v, &st);
+		ak_uitest_settle(app);
+	}
+	return (ak_val){0};
+}
+
+static ak_val t_focus_window(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.focus_window");
+	ak_uitest_settle(app);
+	ak_fake_view *v = window_arg(app, a, n, 1);
+	if (v) ak_fake_set_key_window(app->f, v);
+	return (ak_val){0};
+}
+
+static ak_val t_press_key(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.press_key");
+	ak_uitest_settle(app);
+	ak_buf k = {0};
+	ak_span s = span_of(a[1]);
+	ak_buf_put(&k, s.p, s.len);
+	ak_buf_u8(&k, 0);
+	uint8_t mods = 0;
+	for (uint32_t i = 2; i < n && i < 6; i++)
+		if (a[i].i) mods |= (uint8_t)(1 << (i - 2));
+	bool took = ak_fake_key(app->f, NULL, (const char *)k.data, mods);
+	ak_buf_free(&k);
+	ak_uitest_settle(app);
+	return (ak_val){.i = took};
+}
+
+static ak_val t_menu_bar(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.menu_bar");
+	ak_uitest_settle(app);
+	ak_buf b = {0};
+	ak_fake_menu_bar(app->f, &b);
+	return str_of(&b);
+}
+
+static ak_val t_choose_menu_item(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.choose_menu_item");
+	ak_uitest_settle(app);
+	ak_buf err = {0};
+	if (!ak_fake_choose_menu_item(app->f, span_of(a[1]), &err)) throw_buf(&err);
+	else ak_buf_free(&err), ak_uitest_settle(app);
+	return (ak_val){0};
+}
+
+static ak_val t_trays(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.trays");
+	ak_uitest_settle(app);
+	ak_buf b = {0};
+	ak_fake_trays(app->f, &b);
+	return str_of(&b);
+}
+
+static ak_val t_click_tray(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.click_tray");
+	ak_uitest_settle(app);
+	ak_buf err = {0};
+	if (!ak_fake_click_tray(app->f, span_of(a[1]), &err)) throw_buf(&err);
+	else ak_buf_free(&err), ak_uitest_settle(app);
+	return (ak_val){0};
+}
+
+static ak_val t_choose_tray_item(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.choose_tray_item");
+	ak_uitest_settle(app);
+	ak_buf err = {0};
+	if (!ak_fake_choose_tray_item(app->f, span_of(a[1]), n > 2 ? span_of(a[2]) : sp(""), &err)) throw_buf(&err);
+	else ak_buf_free(&err), ak_uitest_settle(app);
+	return (ak_val){0};
+}
+
+static ak_val t_dock_menu(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.dock_menu");
+	ak_uitest_settle(app);
+	ak_buf b = {0};
+	ak_fake_dock_menu(app->f, &b);
+	return str_of(&b);
+}
+
+static ak_val t_request_quit(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.request_quit");
+	ak_uitest_settle(app);
+	bool canceled = ak_ui_quit_request(n > 1 && a[1].i);
+	ak_uitest_settle(app);
+	return (ak_val){.i = !canceled};
+}
+
+static ak_val t_quits(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.quits");
+	ak_uitest_settle(app);
+	ak_buf b = {0};
+	ak_fake_quits(app->f, &b);
+	return str_of(&b);
+}
+
+static ak_val t_second_instance(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.second_instance");
+	ak_uitest_settle(app);
+	const ak_arr *args = n > 1 ? a[1].p : NULL;
+	ak_buf b = {0};
+	ak_buf_u32(&b, args ? args->len : 0);
+	for (uint32_t i = 0; args && i < args->len; i++) {
+		ak_span s = span_of(args->data[i]);
+		ak_buf_str(&b, s.p, s.len);
+	}
+	ak_span d = n > 2 ? span_of(a[2]) : sp("");
+	ak_buf_str(&b, d.p, d.len);
+	ak_fake_view *r = ak_fake_root(app->f);
+	ak_fake_dispatch(app->f, &(ak_event){.id = r ? r->id : 0, .kind = AK_EVENT_SECOND_INSTANCE, .s = {(const char *)b.data, (uint32_t)b.len}});
+	ak_buf_free(&b);
+	ak_uitest_settle(app);
+	return (ak_val){0};
+}
+
 void ak_uitest_builtins_init(void) {
+	ak_builtin_register("test.mount_app", t_mount_app);
+	ak_builtin_register("test.windows", t_windows);
+	ak_builtin_register("test.close_window", t_close_window);
+	ak_builtin_register("test.window_actions", t_window_actions);
+	ak_builtin_register("test.set_window_state", t_set_window_state);
+	ak_builtin_register("test.focus_window", t_focus_window);
+	ak_builtin_register("test.press_key", t_press_key);
+	ak_builtin_register("test.menu_bar", t_menu_bar);
+	ak_builtin_register("test.choose_menu_item", t_choose_menu_item);
+	ak_builtin_register("test.trays", t_trays);
+	ak_builtin_register("test.click_tray", t_click_tray);
+	ak_builtin_register("test.choose_tray_item", t_choose_tray_item);
+	ak_builtin_register("test.dock_menu", t_dock_menu);
+	ak_builtin_register("test.request_quit", t_request_quit);
+	ak_builtin_register("test.quits", t_quits);
+	ak_builtin_register("test.second_instance", t_second_instance);
 	ak_builtin_register("test.ops", t_ops);
 	ak_builtin_register("test.press", t_press);
 	ak_builtin_register("test.hover", t_hover);

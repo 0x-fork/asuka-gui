@@ -402,6 +402,7 @@ var Schema = SchemaDef{
 		{Name: "FieldChanged", Payload: PBytes, Doc: "the user changed the text of an Alert's field (ops.AppendFieldChanged, ops.DecodeFieldChanged): u32 the field's index, then a string, its text"},
 		{Name: "Location", Payload: PBytes, Doc: "the user went back or forward in the browser's history to an entry a Router made, or one a Window's router left (ops.AppendLocationEvent): u32-length href (the app's path and query, /chat/7?tab=info), u32-length state (the router's, as its Location command sent it; empty: none, build it from the href); to the root, or the Window node"},
 		{Name: "Animated", Payload: PNone, Doc: "an Image that loaded (after its Loaded) has frames to play: an animated GIF, APNG, WebP, AVIF or HEIF sequence"},
+		{Name: "SecondInstance", Payload: PBytes, Doc: "the app was started again while it runs (desktop: an app runs once), to the root: u32 count, then that launch's arguments (u32-length strings), then its working directory (a u32-length string). The host has brought the app to the front, and reports the files and URLs among the arguments as it does a launch's too"},
 	},
 	Commands: []CommandDef{
 		{Name: "Focus"},
@@ -440,6 +441,7 @@ var Schema = SchemaDef{
 		{Name: "Replace", Doc: "sent to a Stack: its screens destroyed after it, and the screen inserted next (its new first), change at once, with no pop or push: a SplitView's destination changing"},
 		{Name: "WindowAction", Doc: "args: u8 WindowAction, then for Size and Fit f32 width, height (its content's, points; Fit: what its content measures, for a window sized to it, which a flyout is placed again at and a panel grows down from its top at) and for Position f32 x, y (its frame's top left, points from the main display's top left); sent to a Window node or, for the main window, the root (desktop and the web; mobile hosts have none)"},
 		{Name: "Location", Doc: "args (ops.AppendLocation): u8 LocationAction, i32 delta (Back: how many entries back, negative), u32-length href (the app's path and query, /chat/7?tab=info), u32-length state (the router's navigation state, which it reads back), u32-length window key (its StateKey, main for the main window unless it names another; empty: none); sent to the root (the main window) or a Window node as a Router's screens change: the web shows the href in the address bar and keeps the state in the history entry (Push a new entry, Replace this one's, Back to an earlier one, Forward to the one the user left: a back the app refused); a desktop host keeps the last one with where the window was, and gives it back as the window opens again (host.Locator); a phone ignores it"},
+		{Name: "Quit", Doc: "args: u8 flags (1 relaunch: the app starts again, with the same arguments, once this process has ended); sent to the root: the desktop host quits the app as the user's Quit does, asking the app first (asuka_quit_request, which may cancel it, and the relaunch with it), then closing its windows; phones and the web, whose apps don't quit themselves, ignore it"},
 	},
 	Enums: []EnumDef{
 		{Name: "Role", Values: []string{"None", "Button", "Header", "Image", "Link", "Text", "Search"}},

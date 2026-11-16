@@ -81,10 +81,10 @@ type Element struct {
 	// keys laid over the rest while it's in an interaction state
 	// (Variants below): pressed { opacity: 0.6 }.
 	Variants bool
-	Keys    []Key
-	Events  []Event
-	Slots   []Slot
-	Doc     string
+	Keys     []Key
+	Events   []Event
+	Slots    []Slot
+	Doc      string
 }
 
 // Style are the keys every element takes (unless NoStyle): layout, then
@@ -405,9 +405,10 @@ var Elements = []Element{
 		{Name: "content", Lazy: true, Doc: "what the popover shows: built as it opens, disposed as it closes"},
 	}, Doc: "content in a bubble pointing at its children while open (UIPopoverPresentationController, a PopupWindow, NSPopover)"},
 	{Name: "Menu", Children: true, Keys: []Key{
-		{Name: "actions", Type: "[Action]", Positional: true},
+		{Name: "title", Type: "string", Positional: true, Default: "\"\"", Doc: "in a MenuBar, the menu's title (File, Edit)"},
+		{Name: "actions", Type: "[Action]", Doc: "the menu's actions"},
 		{Name: "longPress", Type: "bool", Doc: "a context menu: shown on a long press (a right click on a desktop) rather than a tap"},
-	}, Doc: "shows a menu of actions when its children are tapped (UIMenu, PopupMenu)"},
+	}, Doc: "shows a menu of actions when its children are tapped (UIMenu, PopupMenu). In a MenuBar, one of its menus: its children are MenuItems"},
 	{Name: "Split", Children: true, Keys: []Key{
 		{Name: "title", Type: "string", Doc: "the sidebar's"},
 		{Name: "selected", Type: "int", Bind: true, Event: "change", Doc: "the chosen destination's index: the user's choice writes it"},
@@ -418,18 +419,45 @@ var Elements = []Element{
 		{Name: "badge", Type: "string"},
 		{Name: "section", Type: "string", Doc: "the sidebar section it's in: destinations next to each other with the same section are one"},
 	}, Doc: "a place a Split's sidebar leads to: its content is its first screen, built when it's chosen"},
-	{Name: "Window", Children: true, LazyChildren: true, Keys: []Key{
-		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "the window is open while true; the user closing it writes false"},
-		{Name: "title", Type: "string"},
-		{Name: "options", Type: "WindowOptions", Doc: "how it opens: its size, its place, its kind"},
+	{Name: "Window", Children: true, LazyChildren: true, NoStyle: true, Keys: []Key{
+		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "the window is open while true; the user closing it writes false. The app block's Window, the main window, shows unless it's false"},
+		{Name: "title", Type: "string", Doc: "its title bar's (\"\": the app's name)"},
+		{Name: "width", Type: "float", Doc: "its content's size as it opens, in points (0: the platform's, 800 by 600)"},
+		{Name: "height", Type: "float"},
+		{Name: "minWidth", Type: "float", Doc: "the least the user can make it (0: the platform's)"},
+		{Name: "minHeight", Type: "float"},
+		{Name: "maxWidth", Type: "float", Doc: "the most the user can make it (0: no most)"},
+		{Name: "maxHeight", Type: "float"},
+		{Name: "x", Type: "float", Doc: "its frame's top left on the screen, in points from the main display's (both 0: cascaded from the window in use, or centered with center)"},
+		{Name: "y", Type: "float"},
+		{Name: "center", Type: "bool", Doc: "opens centered on its display"},
+		{Name: "resizable", Type: "bool", Default: "true", Doc: "the user can resize it"},
+		{Name: "minimizable", Type: "bool", Default: "true"},
+		{Name: "maximizable", Type: "bool", Default: "true"},
+		{Name: "closable", Type: "bool", Default: "true", Doc: "it has a close button"},
+		{Name: "alwaysOnTop", Type: "bool", Doc: "above other apps' windows (not under Wayland)"},
+		{Name: "hidden", Type: "bool", Doc: "opens without showing: its content is built and laid out, and w.show() shows it ready"},
+		{Name: "skipTaskbar", Type: "bool", Doc: "left out of the taskbar (Windows) and the Window menu (macOS)"},
+		{Name: "transparent", Type: "bool", Doc: "what's behind the window shows where the content draws nothing (macOS, Linux with a compositor)"},
+		{Name: "maximized", Type: "bool", Doc: "opens maximized"},
+		{Name: "fullScreen", Type: "bool", Doc: "opens in full screen"},
+		{Name: "titleBar", Type: "TitleBar", Doc: ".hidden: the content goes under the title bar, the window's buttons over it (environment().safeTop is the bar's height)"},
+		{Name: "background", Type: "Color", Doc: "fills the window behind its content (none: the platform's)"},
+		{Name: "child", Type: "bool", Doc: "belongs to the window it's declared in: stays above it, closes with it"},
+		{Name: "modal", Type: "bool", Doc: "a child that blocks the window it's declared in while it's open (on a Mac, a sheet of it)"},
+		{Name: "panel", Type: "bool", Doc: "a launcher's or a palette's window: frameless, above every app's windows, out of the taskbar, taking the keyboard without bringing the app to the front; Escape and a click elsewhere close it (on closeRequest: hide it instead)"},
+		{Name: "flyout", Type: "Flyout?", Doc: "a frameless window hanging from an anchor (a tray icon: asuka/tray's anchor(id); or a rectangle of the window it's declared in), closed as it loses the keyboard"},
+		{Name: "fitContent", Type: "bool", Doc: "sized to its content, within its least and most size, following it as it changes"},
+		{Name: "clickThrough", Type: "bool", Doc: "the mouse goes through it to what's behind (an overlay's, a HUD's)"},
+		{Name: "menuBar", Type: "bool", Doc: "shows the app's MenuBar as the main window does (Windows' menu bar, Linux's main menu; a Mac's is the app's)"},
+		{Name: "stateKey", Type: "string", Doc: "where the platform remembers where the user left it, across launches (the main window's: \"main\" when it's empty)"},
 		{Name: "edited", Type: "bool", Doc: "its document has unsaved changes"},
 		{Name: "file", Type: "string", Doc: "the path of the file it shows"},
-		{Name: "watchState", Type: "bool", Doc: "follow its state (windowState(w) reads it)"},
 	}, Events: []Event{
 		{Name: "change", Params: []Param{{"open", "bool"}}},
 		{Name: "close", Doc: "the user closed it"},
-		{Name: "closeRequest", Doc: "the user asked to close it: it stays open until closeWindow(w)"},
-	}, Doc: "a desktop window of its own while open (a window in the page on the web; phones have none): its content is built as it opens"},
+		{Name: "closeRequest", Doc: "the user asked to close it: it stays open until open is false, or closeWindow()"},
+	}, Doc: "a desktop window of its own while open (a window in the page on the web; phones have none): its content is built as it opens, disposed as it closes. The app block's Window is the main window: its keys are the main window's"},
 	{Name: "Router", Children: true, Keys: []Key{
 		{Name: "initial", Type: "string", Default: "\"/\"", Doc: "where it starts when nothing else says (a link the app was opened with, the address its window was left at)"},
 	}, Doc: "shows its routes' screens from the address the app is at: its children are Routes"},
@@ -452,4 +480,24 @@ var Elements = []Element{
 		{Name: "count", Type: "int", Positional: true},
 		{Name: "page", Type: "int", Bind: true, Event: "change"},
 	}, Events: []Event{{Name: "change", Params: []Param{{"page", "int"}}}}, Doc: "a row of dots, one per page, the current one highlighted (UIPageControl)"},
+	// Desktop (ui/window.go, windowhandle.go).
+	{Name: "MenuBar", Children: true, LazyChildren: true, NoStyle: true, Doc: "the app's menus (macOS's menu bar; Windows' and Linux's in the main window), with their keyboard shortcuts, beside the platform's own: its children are Menus. While several show, the last one's are the app's; when it goes, the one before's. Phones ignore it"},
+	{Name: "MenuItem", Children: true, NoStyle: true, Keys: []Key{
+		{Name: "title", Type: "string", Positional: true, Doc: "what it says (\"\": its role's own)"},
+		{Name: "shortcut", Type: "Shortcut?", Doc: "chooses it from the keyboard, in every window of the app"},
+		{Name: "role", Type: "MenuRole", Doc: ".destructive draws it red; .quit, .close and .openRecent are the platform's own items"},
+		{Name: "disabled", Type: "bool"},
+		{Name: "checked", Type: "bool", Doc: "a check mark beside it"},
+	}, Events: []Event{
+		{Name: "press", Doc: "the user chose it (a click, its shortcut)"},
+	}, Doc: "an item of a MenuBar's Menu: MenuItems in it make it a submenu"},
+	{Name: "MenuSeparator", NoStyle: true, Doc: "a line between a menu's groups of items"},
+	{Name: "WindowCloseGuard", NoStyle: true, Keys: []Key{
+		{Name: "when", Type: "bool", Default: "true", Doc: "it asks while true"},
+	}, Events: []Event{
+		{Name: "closeRequest", Doc: "the user asked to close the window it's in: the window stays open (closeWindow() closes it)"},
+	}, Doc: "keeps the window it's in open while when is true, asking the app first (unsaved changes) when the user closes it"},
+	{Name: "WindowKeys", NoStyle: true, Keys: []Key{
+		{Name: "keys", Type: "[Shortcut]", Doc: "what they run"},
+	}, Doc: "keys of the window it's in while it shows, whatever has the keyboard's focus: the ones no view takes (the last WindowKeys' win)"},
 }

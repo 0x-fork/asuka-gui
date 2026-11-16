@@ -529,7 +529,7 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 		c.errorf(children[0], "%s takes no children%s", ec.Comp.name, childHint(ec.Comp))
 		return
 	}
-	if comp.Native {
+	if comp.Native && !LazyChildren(ec) {
 		// An element's children are built in place.
 		savedView := c.view
 		c.view = true
@@ -545,6 +545,15 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 	c.viewItems(children, ec)
 	c.view = savedView
 	c.leave(saved)
+}
+
+// LazyChildren reports whether an element's children are one builder
+// the runtime calls when they show (ui.lazy: a Window's content, a
+// Sheet's): an element that says so (lang/prelude's LazyChildren) and
+// whose builder takes no parameters (a Route's takes its Params).
+func LazyChildren(ec *ElementCall) bool {
+	el := ec.Comp.Comp.Element
+	return el != nil && el.LazyChildren && len(el.Params) == 0
 }
 
 func childHint(t *TypeName) string {

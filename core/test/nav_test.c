@@ -1136,12 +1136,6 @@ static ak_val win_content(ak_closure *c, ak_val *a, uint32_t n) {
 	return (ak_val){.p = text("in the window")};
 }
 
-static const uint8_t opt_kinds[29] = {AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT,
-                                      AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL,
-                                      AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL,
-                                      AK_K_BOOL, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_REF};
-static const ak_shape opt_shape = {"WindowOptions", 29, opt_kinds, NULL, NULL, 0, NULL, false, NULL};
-
 static ak_val window_app(ak_closure *c, ak_val *a, uint32_t n) {
 	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
 	ak_view *col = ak_ui_new(AK_EL_COLUMN);
@@ -1151,11 +1145,10 @@ static ak_val window_app(ak_closure *c, ak_val *a, uint32_t n) {
 	on(w, AK_EV_WINDOW_CHANGE, write_arg, open_cell);
 	on(w, AK_EV_WINDOW_CLOSE, count_up, &closes);
 	set_str(w, AK_KEY_WINDOW_TITLE, "Inspector");
-	ak_struct *o = ak_struct_new(&opt_shape);
-	o->f[0].f = 300, o->f[1].f = 400;
-	o->f[9].i = 1;  // center
-	o->f[28].p = ak_str_c("inspector");
-	set(w, AK_KEY_WINDOW_OPTIONS, (ak_val){.p = o});
+	set(w, AK_KEY_WINDOW_WIDTH, (ak_val){.f = 300});
+	set(w, AK_KEY_WINDOW_HEIGHT, (ak_val){.f = 400});
+	set_i(w, AK_KEY_WINDOW_CENTER, 1);
+	set_str(w, AK_KEY_WINDOW_STATE_KEY, "inspector");
 	lazy(w, win_content, NULL);
 	win_ref = ak_ui_ref(w);
 	add(col, w);

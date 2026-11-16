@@ -2,7 +2,7 @@
 
 ウィンドウとメニューバー（[ナビゲーション](navigation.md#ウィンドウ)）のほかにも、デスクトップにしかない機能があります。トレイアイコンと Dock メニュー、フライアウト、バックグラウンドで動き続けるアプリ、グローバルショートカット、パネルとランチャー、インストール済みアプリの検索、クリックスルーウィンドウ、ファイルダイアログとファイルマネージャー、アプリで開くファイル、単一インスタンス、終了、最近使ったドキュメント、ドキュメントベースのアプリ、ログイン時の起動、アップデート、「再生中」とメディアキー、ディスプレイ、電源、アプリアイコン上の進捗表示、そしてシステムの外観です。ファイルやフォルダーの変更（アプリが表示しているフォルダーや、ほかのアプリが保存したドキュメントなど）を追いかけるには、[ファイルの監視](data.md#ファイルの監視asukasdkwatch)を参照してください。こちらはスマートフォンと Web でも使えます。
 
-どの機能もパッケージか、`ui` または `app` の関数として提供されていて、Mac、Windows、Linux で動作します。その機能を持たないスマートフォンやブラウザーでは、使えないことを示す値が返ります（`ErrUnsupported`、`ErrNotAvailable`、または `Supported()` が false）。そのため、アプリは動作する環境でだけその機能を提供できます。
+どれも標準ライブラリのパッケージか、prelude の要素や関数で、Mac、Windows、Linux で使えます。その機能がない電話やブラウザーでは、ないことがわかるように答えるか（`unsupported` や `notAvailable` のエラー、`supported()` が false）、何も表示しません。そのため、アプリは対応しているところでだけその機能を提供できます。
 
 ## デスクトップアプリの構成
 
@@ -18,73 +18,82 @@
 
 ## トレイアイコンと Dock メニュー
 
-コンポーネントの中で `tray.Show` を呼ぶと、そのコンポーネントがマウントされているあいだ、トレイにアイコンが表示されます。Mac ではメニューバーの `NSStatusItem`、Windows では通知領域のアイコン、Linux では StatusNotifierItem になります（KDE、Xfce、Cinnamon、MATE、Budgie、そして AppIndicator 拡張機能を入れた GNOME で表示されます）。
+`asuka/tray` の `Tray` は、表示されているあいだトレイにアイコンを置きます（置いた場所には何も表示しません）。Mac ではメニューバーの `NSStatusItem`、Windows では通知領域のアイコン、Linux では StatusNotifierItem になります（KDE、Xfce、Cinnamon、MATE、Budgie、そして AppIndicator 拡張機能を入れた GNOME で表示されます）。
 
-```go
-tray.Show(tray.Props{
-	Symbol:  ui.Val("moon.zzz"),
-	Title:   remaining, // シグナル：アイコンの横に "25:00" と表示
-	Tooltip: ui.Val("Focus timer"),
-	Menu: signal.Static([]ui.MenuItem{
-		{Title: "Start", OnPress: start},
-		{Title: "Length", Submenu: []ui.MenuItem{
-			{Title: "25 minutes", OnPress: func() { length.Set(25) }},
-			{Title: "50 minutes", OnPress: func() { length.Set(50) }},
-		}},
-		ui.MenuSeparator,
-		ui.MenuQuit,
-	}),
-})
+```asuka
+import asuka/tray
+
+component Focus {
+  state minutes = 25
+  tray.Tray("timer") {
+    symbol: "moon.zzz"
+    title: "{minutes}:00" // アイコンの横に表示
+    tooltip: "Focus timer"
+    menu: [
+      .button(title: "Start", run: () => start()),
+      .submenu(title: "Length", items: [
+        .button(title: "25 minutes", checked: minutes == 25, run: () => { minutes = 25 }),
+        .button(title: "50 minutes", checked: minutes == 50, run: () => { minutes = 50 }),
+      ]),
+      .section(title: "", items: [.button(title: "Quit", run: () => quit())]),
+    ]
+  }
+  Timer()
+}
 ```
 
-`Image` または `Symbol`（Mac ではテンプレート画像になり、メニューバーの外観に合わせて色が変わります）、`Title`（Mac と、ラベルを表示する Linux のパネルで表示されます）、`Tooltip`、`Menu` は、それぞれのシグナルに追従します。オーナーが破棄されるとアイコンは消えます。`OnClick` を指定しなければ、クリックでメニューが開きます。指定した場合は、クリックで `OnClick` が実行され、右クリックでメニューが開きます。
+id はアプリのアイコンの中でそのアイコンを識別します（Mac では、ユーザーが ⌘ を押しながらドラッグした位置に戻ります）。`image`（アセットまたはファイル。高さ 16 ポイントで描かれます）または `symbol`（Mac ではテンプレート画像になり、メニューバーの外観に合わせて色が変わります。`template: true` で画像もテンプレートにできます）、`title`（Mac と、ラベルを表示する Linux のパネルで表示されます）、`tooltip`、`menu` はバインディングで、変わるたびに送り直されます。表示しているコンポーネントがなくなるとアイコンも消えます。`on click` がなければ、クリックでメニューが開きます。ある場合は、クリックで `click` が発生し、右クリックでメニューが開きます。
 
-メニューには、`ui.MenuBar` のメニューと同じく `Submenu` と `ui.MenuQuit` を使えます。`tray.DockMenu(items)` は、Mac では Dock アイコンのメニューに項目を追加します。Windows ではジャンプリストの「タスク」になり、選ぶと実行中のアプリに届きます。Linux ではランチャーのクイックリストになります。
+`menu` は `Menu` と同じく `Action` の配列です。`.button`（`disabled`、`checked`、`.destructive` のロール）、`.submenu`、それに区切り線で分けられる `.section` を使えます。`tray.DockMenu { items: […] }` は、Mac では Dock アイコンのメニューに項目を追加します。Windows ではジャンプリストの「タスク」になり、選ぶと実行中のアプリに届きます。Linux ではランチャーのクイックリストになります。複数表示されているときは、最後のものの項目が使われます。
 
 `examples/tray` は、メニューバーに常駐するタイマーです。
 
 ## フライアウト
 
-フライアウトは、トレイアイコンからぶら下がるように開くウィンドウです。Mac のメニューバーエクストラや、Windows の通知領域から開くパネルがこれにあたります。ウィンドウ内の矩形を起点に開くこともできます。実体は `Flyout` を指定した `ui.Window` です。
+フライアウトは、トレイアイコンからぶら下がるウィンドウです。Mac のメニューバーエクストラや Windows の通知領域が開くパネルのようなもので、ウィンドウ内の矩形からぶら下げることもできます。`flyout` を指定した `Window` として作ります。
 
-```go
-open := signal.New(false)
-icon := tray.Show(tray.Props{
-	Symbol:  ui.Val("bolt.fill"),
-	OnClick: func() { open.Set(!open.Peek()) },
-	Menu:    ui.Val([]ui.MenuItem{ui.MenuQuit}), // 右クリックで開く
-})
-ui.Window(ui.WindowProps{
-	Open:       open,
-	Flyout:     &ui.Flyout{Anchor: icon.Anchor(), Placement: ui.PlacementBottom},
-	FitContent: true, MinWidth: 260, MaxHeight: 480,
-	Content:    panel,
-})
+```asuka
+component Power {
+  state open = false
+  tray.Tray("power") {
+    symbol: "bolt.fill"
+    menu: [.button(title: "Quit", run: () => quit())] // 右クリックで表示
+    on click { open = !open }
+  }
+  Window {
+    bind open: open
+    flyout: Flyout(anchor: tray.anchor("power"), placement: .bottom)
+    fitContent: true
+    minWidth: 260
+    maxHeight: 480
+    Panel()
+  }
+}
 ```
 
-- 枠もタスクバーのボタンもありません。Mac では、`Background` を指定しないとコンテンツの背後にメニューと同じマテリアルが表示され、角が丸くなって影が付きます。そのため Mac では、コンテンツに背景を付けないでください。Windows 11 では、ウィンドウの色を背景に、角が丸くなって影が付きます。Linux ではどちらも描かれません。
-- `Placement` は、アンカーのどちら側に出すかと、アンカーに対する揃え方を決めます（`PlacementBottom` なら下側の中央）。ディスプレイのその側に余地がなければ反対側に回り（Mac のメニューバーのアイコンなら下、画面下端のタスクバーのアイコンなら上）、それでも足りなければディスプレイの内側へずれ、最後にはディスプレイに収まるよう縮みます。`Gap` はアンカーとのあいだに空ける間隔です。
-- `Anchor` はアクセサに追従します。`ui.Anchor{X, Y, Width, Height}` は、フライアウトを宣言したウィンドウ内の矩形で、コンテンツの左上を原点としたポイント単位で指定します（`OnLayout` で得たビューのフレームなど）。この場合、フライアウトはそのウィンドウの子になり、ウィンドウと一緒に動きます。
-- 表示されるとキーボード入力を受け取りますが、アプリを前面には出しません。ユーザーがほかの場所をクリックしたとき、ほかのアプリに切り替えたとき、コンテンツが処理しなかった Escape キーを押したときは、ユーザーが閉じたときと同じように閉じます（`Open` が false になる、`OnClose` が呼ばれる、または `OnCloseRequest` に問い合わせる）。
-- フライアウトの上に出すダイアログ：コンテンツ内で宣言した `Modal` の `ui.Window` は、フライアウトの手前に、その中央に揃えて表示されます。ダイアログが閉じるまでフライアウトは開いたままで、閉じるとキーボード入力はフライアウトに戻ります。フライアウトの上に `Alert` を出したときも、フライアウトは開いたままです。
-- `FitContent` を指定するとコンテンツに合わせたサイズになり（後述）、コンテンツが大きくなったり小さくなったりするたびに、アンカーに対して配置し直されます。
+- 枠もタスクバーボタンもありません。Mac では `background` を指定しなければ、コンテンツの背後にメニューの素材が表示され、角が丸く影が付きます。そのため、そこではコンテンツに背景を付けないでください。Windows 11 では角が丸くなり、ウィンドウの色の上に影が付きます。Linux ではどちらも描きません。
+- `placement` は、アンカーのどちら側に出すか、アンカーとどう揃えるかを決めます（`.bottom`：下、中央揃え）。ディスプレイのその側に収まらないときは、まず反対側に移り（Mac のメニューバーのアイコンなら下、画面下部のタスクバーのアイコンなら上）、次にディスプレイ内に収まるようずれ、それでも足りなければ縮みます。`gap` はアンカーとのあいだを空けます。
+- `anchor` はバインディングです。`tray.anchor(id)` はその id で表示されているトレイアイコン、`Anchor(x:, y:, width:, height:)` はフライアウトを宣言したウィンドウ内の矩形で、コンテンツの左上からのポイントで表します（ビューのフレームなど）。この場合、フライアウトはそのウィンドウの子になり、一緒に動きます。アンカーが変わると配置し直されます。
+- 表示されるとキーボードを受け取りますが、アプリを前面には出しません。ユーザーがほかの場所をクリックしたとき、ほかのアプリに移ったとき、コンテンツが処理しない Escape を押したときに、ユーザーが閉じたのと同じように閉じます（`open` が false になり、`close` が発生するか、先に `closeRequest` に確認します）。
+- その上のダイアログ：コンテンツの中で宣言した `modal` の `Window` は、フライアウトの上に、その中央に表示され、閉じるまでフライアウトを開いたままにします。閉じるとキーボードはフライアウトに戻ります。上にアラートを出しているあいだも開いたままです。
+- `fitContent` はサイズをコンテンツに合わせ（後述）、大きさが変わるたびにアンカーに合わせて配置し直します。
 
 | | トレイのフライアウト | 配置の基準 |
 |---|---|---|
-| macOS | メニューと同じレベルに置かれる、枠なしでアクティブにならない `NSPanel`。背景はメニューのマテリアル | ユーザーがクリックしたステータス項目のコピー（ディスプレイごとのメニューバーにそれぞれある） |
-| Windows | Windows 11 の角丸を持つ、枠なしで最前面のツールウィンドウ | アイコンの矩形（`Shell_NotifyIconGetRect`）。タスクバーがどの辺にあるかも考慮する |
-| Linux | 装飾がなく、タスクバーに出ないウィンドウ | X11 では、アイコンがクリックされたとパネルが報告した位置。Wayland ではアプリがウィンドウを配置できないため、デスクトップが置いた位置 |
-| Web | ページ内のパネル。トレイをアンカーにした場合はページの右上 | ページ内の、そのウィンドウの矩形 |
+| macOS | 枠のない、アプリをアクティブにしない `NSPanel`。メニューのレベルにあり、背後はメニューの素材 | ユーザーがクリックしたステータス項目のコピー（ディスプレイごとのメニューバーに一つずつある） |
+| Windows | 枠のない最前面のツールウィンドウ。Windows 11 の丸い角 | アイコンの矩形（`Shell_NotifyIconGetRect`）。タスクバーがどの辺にあるかも考慮 |
+| Linux | 装飾のない、タスクバーに出ないウィンドウ | X11 ではパネルが伝えるアイコンのクリック位置。Wayland ではアプリがウィンドウを配置できないため、デスクトップが決める位置 |
+| Web | ページ内のパネル。トレイがアンカーならページの右上 | ページ内の、そのウィンドウの矩形 |
 
-`examples/tray` のアイコンは、タイマーの入ったフライアウトを開き、その上にダイアログも出します。
+`examples/tray` のアイコンは、タイマーの入ったフライアウトと、その上のダイアログを開きます。
 
 ## コンテンツに合わせたウィンドウサイズ
 
-`FitContent`（`WindowProps` と `WindowOptions` のフィールド）は、ウィンドウを表示内容に合わせたサイズにし、内容が変わればそれに追従させます。たとえば、ノードの一覧が増えていくフライアウトや、検索結果が出たり消えたりするランチャーに使います。幅はコンテンツのいちばん長い行の幅（max-content）で、`MinWidth` から `MaxWidth` の範囲に収まります。`MaxWidth` に達すると、テキストはその幅で折り返されます。高さはその幅でのコンテンツの高さで、`MinHeight` から `MaxHeight` の範囲に収まります。`MaxHeight` を超えた分は、中にある `Scroll` がスクロールさせます。コアは各フレームのレイアウトでコンテンツをそのサイズで配置し、ウィンドウも同じパスでそのサイズになります。そのため、ウィンドウは最初から正しいサイズで表示され、いったん別のサイズで表示されることはありません。フライアウトはアンカーに対して配置し直され、通常のウィンドウやパネルは上端を保ったまま下へ伸びます。ユーザーはサイズを変更できません。Web では、メインウィンドウはタブそのもので、ページ全体を占めます。
+`fitContent`（`WindowProps` と `WindowOptions` のフィールド）は、ウィンドウを表示内容に合わせたサイズにし、内容が変わればそれに追従させます。たとえば、ノードの一覧が増えていくフライアウトや、検索結果が出たり消えたりするランチャーに使います。幅はコンテンツのいちばん長い行の幅（max-content）で、`minWidth` から `maxWidth` の範囲に収まります。`maxWidth` に達すると、テキストはその幅で折り返されます。高さはその幅でのコンテンツの高さで、`minHeight` から `maxHeight` の範囲に収まります。`maxHeight` を超えた分は、中にある `Scroll` がスクロールさせます。コアは各フレームのレイアウトでコンテンツをそのサイズで配置し、ウィンドウも同じパスでそのサイズになります。そのため、ウィンドウは最初から正しいサイズで表示され、いったん別のサイズで表示されることはありません。フライアウトはアンカーに対して配置し直され、通常のウィンドウやパネルは上端を保ったまま下へ伸びます。ユーザーはサイズを変更できません。Web では、メインウィンドウはタブそのもので、ページ全体を占めます。
 
 ## バックグラウンドで動くアプリ
 
-`app.KeepRunning()` を呼ぶと、最後のウィンドウを閉じてもアプリは動き続けます。ウィンドウは隠れるだけで、`ui.MainWindow().Show()` で再び表示できます（Mac では Dock アイコンのクリックでも表示されます）。`app.RunInBackground()`、または `asuka.toml` の `background = true` は、これに加えて、ウィンドウなしで（Mac では Dock アイコンもなしで）アプリを起動します。メニューバーやトレイに常駐するアプリ向けです。どちらも `app.Run` より前に呼んでください。
+`asuka.toml` で `keepRunning = true` にすると、最後のウィンドウを閉じてもアプリは動き続けます。メインウィンドウは隠れるだけで（バインドした `open` は false になります）、もう一度表示すれば戻ります（Mac では Dock アイコンのクリック、Linux ではアプリの再起動でも戻ります）。`background = true` にすると、さらに起動時にウィンドウを出さず、Mac では Dock アイコンも出しません。メニューバーやトレイに住み、`Tray` を入口にするアプリ向けです。このアプリが開く `Window` は通常どおり表示されます。終了はメニューから行います。トレイアイコンのメニューの `quit()` や、Dock の「終了」です。
 
 ## グローバルショートカット
 
@@ -107,30 +116,39 @@ k := hotkey.Register(hotkey.Props{
 
 ## パネルとランチャー
 
-パネルは、Spotlight や Raycast のような、ランチャー、コマンドパレット、クイック入力のためのウィンドウです。グローバルショートカットでどこからでも呼び出せ、すべてのアプリのウィンドウより手前に浮かびます。ユーザーがいる操作スペース（Space）や仮想デスクトップに表示され、フルスクリーンのアプリの上にも重なります。タスクバー、Dock のウィンドウ一覧、アプリスイッチャーには現れません。Mac では、アプリを前面に出さずにキーボード入力を受け取ります。そのため、ユーザーが使っていたアプリのメニューバーはそのまま残り、パネルが消えるとキーボード入力もそのアプリに戻ります。パネルは `Panel` を指定したウィンドウです。次の例では、バックグラウンドで動くアプリのメインウィンドウとしてランチャーを作っています。
+パネルは、Spotlight や Raycast のような、ランチャー、コマンドパレット、クイック入力のためのウィンドウです。グローバルショートカットでどこからでも呼び出せ、すべてのアプリのウィンドウより手前に浮かびます。ユーザーがいる操作スペース（Space）や仮想デスクトップに表示され、フルスクリーンのアプリの上にも重なります。タスクバー、Dock のウィンドウ一覧、アプリスイッチャーには現れません。Mac では、アプリを前面に出さずにキーボード入力を受け取ります。そのため、ユーザーが使っていたアプリのメニューバーはそのまま残り、パネルが消えるとキーボード入力もそのアプリに戻ります。パネルは `panel: true` を指定したウィンドウです。次の例では、バックグラウンドで動くアプリ（`background = true`）のメインウィンドウとしてランチャーを作っています。
 
-```go
-func main() {
-	app.RunInBackground()
-	app.RunWindow(ui.WindowOptions{Panel: true, Hidden: true, FitContent: true,
-		MinWidth: 640, MaxWidth: 640, MaxHeight: 440}, Launcher)
+```asuka
+import asuka/hotkey
+
+state shown = false
+
+app {
+  Window {
+    bind open: shown // ショートカットで表示するまで隠しておく
+    panel: true
+    fitContent: true
+    minWidth: 640
+    maxWidth: 640
+    maxHeight: 440
+    on closeRequest { shown = false } // Escape やほかの場所のクリック：隠す
+    Launcher()
+  }
 }
 
-func Launcher() ui.Node {
-	w := ui.UseWindow()
-	w.OnCloseRequest(func() bool { w.Hide(); return false }) // Escape キー、ほかの場所のクリック
-	hotkey.Register(hotkey.Props{
-		Shortcut: ui.Val(ui.Shortcut{Key: "space", Mods: ui.Alt}),
-		OnPress:  func() { w.Show() },
-	})
-	// ...
+component Launcher {
+  hotkey.Hotkey(hotkey.Shortcut(key: "space", alt: true)) {
+    description: "Show the launcher"
+    on press { shown = !shown }
+  }
+  Search()
 }
 ```
 
-- 枠はありません。Mac では、`Background` を指定しないとコンテンツの背後にポップオーバーのマテリアルが表示され、角が丸くなって影が付きます。Windows 11 では角が丸くなります。Linux では、通常のウィンドウのコンテンツと同じように描かれます。
-- `X` と `Y`（または `StateKey`）を指定しないと、表示するたびに、ポインターのあるディスプレイの左右中央、上から 3 分の 1 の位置に表示されます。`SetPosition` や `Center` を使うと、位置を固定できます。`FitContent` を指定すると、結果が増えるにつれて上端から下へ伸びます。
-- コンテンツが処理しなかった Escape キー（テキストフィールドでの Escape も含む）を押したときや、キーボードフォーカスを失ったとき（ほかの場所のクリック、ほかのアプリへの切り替え）は、ユーザーが閉じたときと同じように閉じます。閉じる代わりに隠すようにすれば（上の例の `OnCloseRequest`）、次はすぐに元の状態のまま表示できます。なお、動き続けるアプリのメインウィンドウは、どのみち閉じると隠れるだけです。
-- `Show` は、パネルをキーボード入力を受け取る状態で表示します。`Focus` も同じ動作で、アプリを前面に出すことはありません。
+- 枠はありません。Mac では、`background` を指定しないとコンテンツの背後にポップオーバーのマテリアルが表示され、角が丸くなって影が付きます。Windows 11 では角が丸くなります。Linux では、通常のウィンドウのコンテンツと同じように描かれます。
+- `x` と `y`（または `stateKey`）を指定しないと、表示するたびに、ポインターのあるディスプレイの左右中央、上から 3 分の 1 の位置に表示されます。`w.setPosition` や `w.center()` を使うと、位置を固定できます。`fitContent` を指定すると、結果が増えるにつれて上端から下へ伸びます。
+- コンテンツが処理しなかった Escape キー（テキストフィールドでの Escape も含む）を押したときや、キーボードフォーカスを失ったとき（ほかの場所のクリック、ほかのアプリへの切り替え）は、ユーザーが閉じたときと同じように閉じます。閉じる代わりに隠すようにすれば（上の例の `on closeRequest`）、次はすぐに元の状態のまま表示できます。なお、動き続けるアプリのメインウィンドウは、どのみち閉じると隠れるだけです。
+- 表示すると（`open` を true にする、`w.show()`）、パネルはキーボード入力を受け取ります。`w.focus()` も同じ動作で、アプリを前面に出すことはありません。
 
 | | パネル |
 |---|---|
@@ -167,11 +185,18 @@ apps.Open(results[0], nil)
 
 ## クリックスルーウィンドウ
 
-`ClickThrough`（または `ui.UseWindow().SetClickThrough(true)`）を指定すると、マウス操作がウィンドウを素通りして、その背後にあるもの（ほかのアプリのウィンドウやデスクトップ）に届きます。`Transparent` と `AlwaysOnTop` を組み合わせれば、オーバーレイ、HUD、デスクトップマスコットなどを作れます。`ClickThrough()` は、この状態をシグナルとして返します。有効なあいだ、ウィンドウはクリックもホバーもホイールも一切受け取りません。ユーザーに操作させたいときは無効にしてください。
+`clickThrough: true`（または `w.setClickThrough(true)`）を指定すると、マウス操作がウィンドウを素通りして、その背後にあるもの（ほかのアプリのウィンドウやデスクトップ）に届きます。`transparent` と `alwaysOnTop` を組み合わせれば、オーバーレイ、HUD、デスクトップマスコットなどを作れます。`w.clickThrough` でこの状態を読め、読んだバインディングは追従します。有効なあいだ、ウィンドウはクリックもホバーもホイールも一切受け取りません。ユーザーに操作させたいときは無効にしてください。
 
-```go
-ui.Window(ui.WindowProps{Open: hud, Transparent: true, AlwaysOnTop: true, ClickThrough: true,
-	Width: 240, Height: 80, Content: meters})
+```asuka
+Window {
+  bind open: hud
+  transparent: true
+  alwaysOnTop: true
+  clickThrough: true
+  width: 240
+  height: 80
+  Meters()
+}
 ```
 
 実装は、Mac では `ignoresMouseEvents`、Windows では `WS_EX_TRANSPARENT` を付けたレイヤードウィンドウ、Linux では空の入力領域（`gdk_surface_set_input_region`）です。Web では、ページ内のウィンドウがクリックをページに通します。ブラウザーの外までクリックを通す方法はありません。
@@ -216,15 +241,38 @@ ui.OnOpenFiles(func(paths []string) {
 
 ## 単一インスタンス
 
-Windows と Linux では、`id` を持つアプリは一つしか起動しません。もう一度起動すると、実行中のアプリが前面に出ます。`app.OnSecondInstance(func(args []string, dir string))` で、新たな起動の引数と作業ディレクトリを受け取れます。引数に含まれるファイルとリンクは、`ui.OnOpenFiles` と `ui.OnOpenURL` に渡されます。毎回新しいインスタンスを起動したい場合は、`asuka.toml` で `singleInstance = false` と設定します。Mac では、アプリは常に一つしか起動せず、渡されるのは引数ではなくファイルです。
+Windows と Linux では、`id` を持つアプリは一つしか起動しません。もう一度起動すると、実行中のアプリが前面に出ます。`app` ブロックの `on secondInstance(args, dir)` で、新たな起動の引数と作業ディレクトリを受け取れます。引数に含まれるファイルとリンクは、`on files(paths)` と `on openURL(url)` にも渡されます。
+
+```asuka
+app {
+  on secondInstance(args, dir) {
+    if args.contains("--new-window") { newWindow = true }
+  }
+  Window { Main() }
+}
+```
+
+コンポーネントの本体に書く `onSecondInstance(fn([string], string))` も同じ働きで、そのコンポーネントがあるあいだ有効です。毎回新しいインスタンスを起動したい場合は、`asuka.toml` で `singleInstance = false` と設定します。Mac では、アプリは常に一つしか起動せず、渡されるのは引数ではなくファイルなので、これは呼ばれません。
 
 ## 終了
 
-`app.Quit()` は、ユーザーが「終了」を選んだときと同じようにアプリを終了します。終了のきっかけ（⌘Q、Dock、最後のウィンドウを閉じる、Ctrl+C や SIGTERM、ログアウト）にかかわらず、まず `app.OnQuit(func(e *app.QuitEvent))` が呼ばれます。`e.Cancel()` を呼べばアプリは終了しないので、未保存の変更について確認できます。`e.SessionEnding` が設定されているときは終了を取り消せないため、ダイアログを出さずにすぐ保存してください。ウィンドウ自体を閉じるかどうかは、それより先に、そのウィンドウの `OnCloseRequest` で問い合わせられます（[ナビゲーション](navigation.md#ウィンドウ)）。
+`quit()` は、ユーザーが「終了」を選んだときと同じようにアプリを終了します。終了のきっかけ（⌘Q、Dock、最後のウィンドウを閉じる、`quit()`、Ctrl+C や SIGTERM、ログアウト）にかかわらず、まず `app` ブロックの `on quit(e)` が呼ばれます。`e.cancel()` を呼べばアプリは終了しないので、未保存の変更について確認できます。`e.canceled()` で、ほかのハンドラーが取り消したかどうかがわかります。`e.sessionEnding` が true のときは終了を取り消せないため、ダイアログを出さずにすぐ保存してください。
 
-`app.DataDir`、`ConfigDir`、`CacheDir`、`LogDir` はアプリ専用のフォルダーで、要求されたときに作られます。
+```asuka
+app {
+  on quit(e) {
+    if unsaved && !e.sessionEnding {
+      e.cancel()
+      confirmQuit = true // 確認し、保存できたらもう一度 quit() を呼ぶ
+    }
+  }
+  Window { Editor() }
+}
+```
 
-`app.Relaunch()` は同じ手順で終了し（ハンドラーで取り消すこともできます）、終了したあとでアプリを再び起動します。アップデートのあとや、起動時に反映される設定を変えたときに使います。
+コンポーネントの本体に書く `onQuit(fn(QuitEvent))` も同じ働きで、そのコンポーネントがあるあいだ有効です。ウィンドウ自体を閉じるかどうかは、それより先に、そのウィンドウのガードで問い合わせられます（[ナビゲーション](navigation.md#ウィンドウを閉じる前の確認)）。
+
+`relaunch()` は同じ手順で終了し（ハンドラーで取り消すこともできます）、終了したあとで同じ引数でアプリを再び起動します。アップデートのあとや、起動時に反映される設定を変えたときに使います。アプリが自分で終了しない電話と Web では、どちらも無視されます。
 
 ## アップデート
 

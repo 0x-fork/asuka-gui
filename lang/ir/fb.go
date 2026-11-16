@@ -40,6 +40,8 @@ type fb struct {
 	envReg     int
 	envBox     int
 	memberRegs map[*check.Member]int // in the component's function
+
+	mainWindow *check.ElementCall // the app's: the app block's first Window
 }
 
 type loop struct {
@@ -448,6 +450,12 @@ func (b *fb) readMember(m *check.Member, n syntax.Node) int {
 			return r
 		}
 		return ref
+	case check.EventMember:
+		// Whether the caller handles it: its handler isn't none.
+		r := b.temp(bc.KBool)
+		b.emit(op("ISNONE"), r, ref)
+		b.emit(op("NOT"), r, r)
+		return r
 	case check.ParamMember, check.PropMember:
 		if m.IsSlot() {
 			return ref // a builder

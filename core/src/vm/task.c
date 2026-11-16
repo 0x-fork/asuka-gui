@@ -68,7 +68,9 @@ static void task_cancel(ak_future *f) {
 	if (t->running || !t->awaiting) return;  // its next await throws
 	// Stop waiting: resume it now, and its AWAIT throws the cancellation.
 	ak_future *w = t->awaiting;
-	ak_future_unwait(w, ak_vm_task_resume, t);
+	// Settled already: its resume is on the ready queue, and the task's
+	// next await throws.
+	if (!ak_future_unwait(w, ak_vm_task_resume, t)) return;
 	// Nobody else can see what it waited for (the task's register and
 	// t->awaiting hold the only references): stop that work too.
 	if (w->h.h.rc <= 2) ak_future_cancel(w);

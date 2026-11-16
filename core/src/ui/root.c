@@ -203,10 +203,43 @@ typedef struct {
 	ak_closure *build;
 } mount_ctx;
 
-// The root view fills the window.
+// The root view fills the window, unless the window is sized to it.
 static void root_adjust(ak_view *e, ak_lstyle *ls) {
-	AK_UNUSED(e);
-	ls->width = ak_lpct(100), ls->height = ak_lpct(100);
+	ak_ui_root *r = e->r;
+	if (!r->fit) {
+		ls->width = ak_lpct(100), ls->height = ak_lpct(100);
+		return;
+	}
+	if (r->fit_min[0] > 0) ls->min_width = ak_lpt(r->fit_min[0]);
+	if (r->fit_min[1] > 0) ls->min_height = ak_lpt(r->fit_min[1]);
+	if (r->fit_max[0] > 0) ls->max_width = ak_lpt(r->fit_max[0]);
+	if (r->fit_max[1] > 0) ls->max_height = ak_lpt(r->fit_max[1]);
+}
+
+void ak_ui_root_fit(ak_ui_root *r, bool on, float min_w, float min_h, float max_w, float max_h) {
+	if (r->fit == on && !on) return;
+	r->fit = on;
+	r->fit_min[0] = min_w, r->fit_min[1] = min_h, r->fit_max[0] = max_w, r->fit_max[1] = max_h;
+	r->fit_sent = false;
+	ak_style_relayout(r->el);
+}
+
+// layout_fit lays the root of a main window sized to its content out at
+// its content's size (a second pass at its most width, which its text
+// wraps to), and sends WindowAction Fit to the root as that changes.
+static bool layout_fit(ak_ui_root *r, ak_lpass *p) {
+	ak_view *e = r->el;
+	if (!ak_lnode_dirty(e->box) && r->fit_sent) return false;
+	ak_lsize s = ak_lnode_layout(e->box, (ak_lsize){AK_LMAX_CONTENT, AK_LMAX_CONTENT}, p);
+	const ak_lstyle *st = ak_lnode_style(e->box);
+	if (st->max_width.u == AK_LUNIT_POINT && s.w >= st->max_width.v)
+		s = ak_lnode_layout(e->box, (ak_lsize){st->max_width.v, AK_LMAX_CONTENT}, p);
+	if (r->fit_sent && s.w == r->fit_laid.w && s.h == r->fit_laid.h) return true;
+	r->fit_laid = s, r->fit_sent = true;
+	ak_buf *b = ak_batch_command_begin(r->batch, e->id, AK_CMD_WINDOW_ACTION);
+	ak_append_window_action(b, AK_WINDOW_ACTION_FIT, s.w, s.h);
+	ak_batch_command_end(r->batch);
+	return true;
 }
 
 static const ak_el_class cls_root = {.name = "View", .kind = AK_KIND_VIEW, .flags = AK_ELF_CHILDREN, .adjust = root_adjust, .event = ak_root_event, .drop = ak_window_root_drop};
@@ -277,6 +310,7 @@ void ak_ui_unmount(void) {
 	release_all(&r->sync_q);
 	release_all(&r->shown);
 	release_all(&r->pagers);
+	ak_menus_free(r);
 	if (r->back) {
 		ak_back_release(r->back);
 		r->back = NULL;
@@ -376,7 +410,9 @@ static void root_layout(ak_ui_root *r) {
 	ak_lpass *p = &r->pass;
 	ak_lpass_reset(p);
 	ak_ext_layout_inlines(r, p);
-	if (ak_lnode_dirty(r->el->box) || size.w != r->size.w || size.h != r->size.h) {
+	if (r->fit) {
+		layout_fit(r, p);
+	} else if (ak_lnode_dirty(r->el->box) || size.w != r->size.w || size.h != r->size.h) {
 		r->size = size;
 		ak_lnode_layout(r->el->box, size, p);
 	}
@@ -408,7 +444,11 @@ static void root_layout(ak_ui_root *r) {
 	}
 	r->pagers.len = live;
 	if (again) {
-		ak_lnode_layout(r->el->box, size, p);
+		if (r->fit) {
+			layout_fit(r, p);
+		} else {
+			ak_lnode_layout(r->el->box, size, p);
+		}
 		ak_ext_layout(r, p);
 		ak_root_layout_provs(r, p);
 		for (uint32_t i = 0; i < r->pagers.len; i++) ak_scroll_laid(r->pagers.data[i]);

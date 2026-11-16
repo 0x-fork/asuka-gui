@@ -293,6 +293,7 @@ void ak_fake_free(ak_fake *f) {
 		ak_vec_free(&h->entries);
 	}
 	ak_vec_free(&f->histories);
+	ak_fake_desk_free(f);
 	ak_free(f);
 }
 
@@ -360,7 +361,7 @@ static void send(ak_fake *f, const uint8_t *buf, size_t len) {
 
 // post_event queues e for ak_fake_run_posted (as Go's Post of a
 // dispatch).
-static void post_event(ak_fake *f, const ak_event *e) {
+void ak_fake_post_event(ak_fake *f, const ak_event *e) {
 	size_t at = f->pending.len;
 	ak_buf_u32(&f->pending, 0);
 	ak_event_append(&f->pending, e);
@@ -493,6 +494,7 @@ static void call(ak_fake *f, ak_id root, ak_span b) {
 		return;
 	}
 	ak_span args = {b.p + r.off, (uint32_t)(r.len - r.off)};
+	if (ak_fake_desk_call(f, root, id, module, method, args)) return;  // the tray's
 	ak_buf ans = {0};
 	bool ok = false;
 	if (f->call_fn) {
@@ -504,7 +506,7 @@ static void call(ak_fake *f, ak_id root, ak_span b) {
 	ak_buf_u32(&res, id);
 	ak_buf_u8(&res, ok ? 1 : 0);
 	ak_buf_put(&res, ans.data, ans.len);
-	post_event(f, &(ak_event){.id = root, .kind = AK_EVENT_RESULT, .s = {(const char *)res.data, (uint32_t)res.len}});
+	ak_fake_post_event(f, &(ak_event){.id = root, .kind = AK_EVENT_RESULT, .s = {(const char *)res.data, (uint32_t)res.len}});
 	ak_buf_free(&ans);
 	ak_buf_free(&res);
 }
@@ -566,6 +568,7 @@ static void apply_op(ak_fake *f, const ak_op *op) {
 		if (!v) return;
 		if (v->parent) remove_child(v->parent, v);
 		for (uint32_t i = 0; i < v->children.len; i++) v->children.data[i]->parent = NULL;
+		ak_fake_desk_destroyed(f, v->id);
 		slots_delete(f, v->id);
 		free_view(v);
 		return;
@@ -612,7 +615,10 @@ static void apply_op(ak_fake *f, const ak_op *op) {
 	}
 	case AK_OP_LISTEN: {
 		ak_fake_view *v = view(f, op->id, "Listen");
-		if (v && !ak_fake_listens(v, op->event)) ak_vec_push(&v->listens, op->event);
+		if (v && !ak_fake_listens(v, op->event)) {
+			ak_vec_push(&v->listens, op->event);
+			ak_fake_desk_listen(f, v, op->event);
+		}
 		return;
 	}
 	case AK_OP_UNLISTEN: {
@@ -636,6 +642,7 @@ static void apply_op(ak_fake *f, const ak_op *op) {
 			break;
 		}
 		window_command(f, v, op->cmd, op->value.s);
+		ak_fake_desk_command(f, v, op->cmd, op->value.s);
 		return;
 	}
 	case AK_OP_SET_ROOT: {

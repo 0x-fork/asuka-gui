@@ -351,6 +351,8 @@ void asuka_event(const uint8_t *buf, size_t len) {
 	ak_buf_put(&early, buf, len);
 }
 
+int asuka_quit_request(int ending) { return started && ak_ui_quit_request(ending != 0) ? 1 : 0; }
+
 static void dispatch_early(void) {
 	ak_reader r = {early.data, early.len, 0, false};
 	while (r.off < r.len) {

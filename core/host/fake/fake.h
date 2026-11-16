@@ -20,12 +20,13 @@
 // text, a line each paragraph at least, as tall as its inline
 // components; anything else 0×0. A known width or height is kept.
 //
-// Not ported (the Go fake's platform services and desktop windows):
-// Bluetooth, NFC, payments, purchases, iCloud, location, now playing,
-// trays, the addresses a desktop host keeps by window key, and windows'
-// state (WindowState reports, sizes, closing): of windows it
-// keeps which one is in use (a Window presented, or focused with
-// WindowAction) and checks their commands go where a host takes them.
+// The desktop (desktop.c): windows as a desktop host keeps them (their
+// options and state, WindowState reports, closing), the menu bar, the
+// "tray" module and the quits the app asks for.
+//
+// Not ported (the Go fake's platform services): Bluetooth, NFC,
+// payments, purchases, iCloud, location, now playing, and the addresses
+// a desktop host keeps by window key.
 //
 // Main thread only, but post (ak_fake_callbacks') from any thread.
 #ifndef AK_FAKE_H
@@ -158,6 +159,7 @@ struct ak_fake {
 	AK_VEC(ak_fake_history) histories;
 	bool popping;  // a Location event is being sent: the browser went there already
 	int32_t pop_from;
+	struct ak_fake_desk *desk;  // desktop.c's
 };
 
 ak_fake *ak_fake_new(void);
@@ -309,6 +311,46 @@ void ak_fake_emit_native(ak_fake *f, ak_fake_view *v, const char *name, const ak
 ak_fake_history *ak_fake_history_of(ak_fake *f, const ak_fake_view *win);
 void ak_fake_hrefs(const ak_fake_history *h, ak_buf *out);
 bool ak_fake_go(ak_fake *f, ak_fake_view *win, int32_t n);
+
+// ak_fake_post_event queues an event for ak_fake_run_posted, as a host
+// answers after the batch.
+void ak_fake_post_event(ak_fake *f, const ak_event *e);
+
+// The desktop (desktop.c). Windows are named by their title ("": the
+// main window, the root's).
+typedef struct ak_fake_desk ak_fake_desk;
+void ak_fake_desk_free(ak_fake *f);
+void ak_fake_desk_command(ak_fake *f, ak_fake_view *v, ak_cmd c, ak_span args);
+void ak_fake_desk_listen(ak_fake *f, ak_fake_view *v, ak_event_kind ev);
+void ak_fake_desk_destroyed(ak_fake *f, ak_id id);
+bool ak_fake_desk_call(ak_fake *f, ak_id root, uint32_t call, ak_span module, ak_span method, ak_span args);
+ak_fake_view *ak_fake_window_titled(ak_fake *f, ak_span title);
+ak_window_state ak_fake_window_state(ak_fake *f, ak_fake_view *v);
+// ak_fake_set_window_state changes v's window's state as the user does
+// (moving, resizing, minimizing it, focusing it), and reports it at once
+// if the core listens.
+void ak_fake_set_window_state(ak_fake *f, ak_fake_view *v, const ak_window_state *s);
+// ak_fake_window_actions appends the WindowActions v's window got since
+// the last call (names, separated by spaces), and forgets them.
+void ak_fake_window_actions(ak_fake *f, ak_fake_view *v, ak_buf *out);
+// ak_fake_close_window closes v's window as the user does: asked
+// (CloseRequest) when the core listens, else a Window is dismissed and
+// the main window closed.
+void ak_fake_close_window(ak_fake *f, ak_fake_view *v);
+void ak_fake_windows(ak_fake *f, ak_buf *out);  // a line per window
+void ak_fake_menu_bar(ak_fake *f, ak_buf *out);  // a line per item: Menu > Item [shortcut] (state)
+// ak_fake_choose_menu_item chooses the menu bar's item at path ("File >
+// Export"): false, saying why in err, when there's none or it's disabled.
+bool ak_fake_choose_menu_item(ak_fake *f, ak_span path, ak_buf *err);
+void ak_fake_quits(ak_fake *f, ak_buf *out);  // "quit", "relaunch" (Quit commands), "user" (a Quit item)
+void ak_fake_trays(ak_fake *f, ak_buf *out);  // a line per icon, its menu under it
+void ak_fake_dock_menu(ak_fake *f, ak_buf *out);
+// A tray icon by its name (Tray(id)'s): clicked, or an item of its menu
+// (name "": the Dock menu's) chosen, as "next" reports them.
+bool ak_fake_click_tray(ak_fake *f, ak_span name, ak_buf *err);
+bool ak_fake_choose_tray_item(ak_fake *f, ak_span name, ak_span path, ak_buf *err);
+bool ak_fake_tray_following(ak_fake *f);  // a "next" waits
+uint32_t ak_fake_tray_count(ak_fake *f);
 
 // Lists.
 ak_fake_view *ak_fake_new_cell(ak_fake *f);  // a cell, as a collection view makes one

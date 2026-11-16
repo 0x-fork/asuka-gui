@@ -112,7 +112,10 @@ calls a closure) runs in a handler that moves the receiver back first.
   closure captures and changes is a box (VBOX, VGET, VSET).
 - Default arguments are filled in at the call site (a default may use
   only package-level names; a generic function's is lowered with the
-  call's type arguments).
+  call's type arguments). An enum case's labeled payload left out takes
+  its type's zero (check.HasZero: false, 0, KSTR "", an empty NEWA or
+  NEWM, none, a payloadless enum's 0); a function's has none, so it's
+  required.
 - A closure's function takes exactly the parameters its caller passes:
   an event handler the event's values (those it doesn't name are
   unused registers), a row builder (item, index), a key function the
@@ -282,7 +285,8 @@ element's children.
 
 `emit e(args)` calls the handler argument with args when it isn't none
 (CALLC; its result register is a reference, so the future of an async
-handler started from C is released).
+handler started from C is released). An event's name read as a value is
+whether the caller handles it: ISNONE of the handler, NOT.
 
 A store's constructor is the same function without the views: it
 returns its env. Its `task { }` is TASK (a store has no mount), owned by
@@ -305,7 +309,8 @@ core/src/ui/elements_gen.h:
 | `bind text: q` | `ui.bind(v, AK_KEY_TEXT_FIELD_TEXT, thunk{CGET q})` and `ui.on(v, AK_EV_TEXT_FIELD_CHANGE, closure(t){CSET q t})` |
 | `style card` | the style's prop sets, inlined here; a later set of the same key wins (the compiler keeps only the last) |
 | children | each built, then `ui.add(v, child)` |
-| children of a `LazyChildren` element (`Stack`, `Tab`, `Sheet`, `Destination`, `Window`, `Route`, `Boundary`) | `ui.lazy(v, builder)`: the runtime builds them when they show, under an owner of their own (a `Route`'s builder takes its `Params`, an accessor) |
+| children of a `LazyChildren` element (`Tab`, `Sheet`, `Destination`, `Window`, `Boundary`, `MenuBar`) | `ui.lazy(v, builder)`, last: one builder of them all (its own FuncCtx, the checker's `CtxBuilder` at the first child), which the runtime builds when they show, under an owner of its own (a `Route`, whose builder would take its `Params`, still adds its children in place) |
+| the app block's first `Window` | `ui.main_window(v)` right after its `ui.new`, before its keys: the main window, its keys the root's options, its children the root's content |
 | `toolbar { … }` | `ui.slot(v, AK_KEY_SCREEN_TOOLBAR, fragment)` |
 | a `Lazy` slot (`Popover`'s `content { … }`) | `ui.slot(v, key, builder)`: a closure returning the View, built as it shows |
 | `on error(e, reset) { views }` (an event that `Builds`) | `ui.on(v, ev, closure)`, the closure returning the View it builds |
@@ -386,7 +391,7 @@ is CGET, so a binding that reads a state through a Ref follows both the
 view coming and going and the state. A Ref's members are built-in
 methods (methods.go, receiver ref) on the view it holds: none, a
 command does nothing and a property is its zero (JNONE around the
-CALLB); an async one (`eval`) passes none on, and the runtime fails its
+CALLB; a tuple's or a struct's zero is one of its fields' zeros, NEWS); an async one (`eval`) passes none on, and the runtime fails its
 future. A top-level `let` of a Ref (or a Path) isn't frozen: it changes.
 
 ## Graphics
@@ -470,7 +475,7 @@ holds (see "Refs"):
 | `field.focus()`, `.blur()`, `scroll.scrollTo(x, y, animated: true)` | `ui.focus`, `ui.blur`, `ui.scroll_to` |
 | `share(text)`, `try await shareFiles(paths, mime:, uti:, title:, from: ref)`, `haptic(.success)`, `copy(text)`, `openURL(url)`, `announce(text)`, `a11yFocus(ref)` | `ui.share`, `ui.share_files` (from: the Ref's view, or none), `ui.haptic`, `ui.copy`, `ui.open_url`, `ui.announce`, `ui.a11y_focus` (not called while the Ref holds none) |
 | `useKeys([…])`, `onOpenURL(u => …)`, `onOpenFiles(ps => …)`, `onShare(items => …)` | `ui.use_keys`, `ui.on_open_url`, `ui.on_open_files`, `ui.on_share`: items of a component's body (or the app's block), called in its function before its views, so they hold while it lives |
-| the app's `on openURL(url) { }`, `on files(paths) { }`, `on share(items) { }` | `ui.on_open_url`, `ui.on_open_files`, `ui.on_share` of the handler, in the app's function |
+| the app's `on openURL(url) { }`, `on files(paths) { }`, `on share(items) { }`, `on quit(e) { }`, `on secondInstance(args, dir) { }` | `ui.on_open_url`, `ui.on_open_files`, `ui.on_share`, `ui.on_quit`, `ui.on_second_instance` of the handler, in the app's function (check.AppEvents) |
 
 These functions are a table (lang/check/runtime.go's RuntimeFuncs), as
 the built-in methods are: a name, a signature over the prelude's types,
@@ -563,8 +568,16 @@ taking the ref. The rest (core/src/ui/builtins.c has their arguments):
 | `depth()` | `ui.depth()`: the nearest stack's screens |
 | `alert("Delete?", message: m, actions: [.button(…)], fields: […])` | `ui.alert(title, message, actions, actionSheet, fields)`; `actions` a closure when they read state (a button disabled while a field is empty), followed while it shows |
 | `snackbar("Deleted", action: .button("Undo") { … })` | `ui.snackbar(message, action, duration, onDismiss)`, returning the closure that dismisses it |
-| `w.show()`, `w.setSize(w, h)`, … on `Window(…) as w` (none: the window it's in) | `ui.window_action(w, action, x, y)`; `w.close()` `ui.window_close(w)`; `w.state` `ui.window_state(w)`, followed |
-| `onCloseRequest { … return ok }` | `ui.on_close_request(closure)` |
+| `w.show()`, `hide()`, `minimize()`, `maximize()`, `restore()`, `center()`, `close()` on `Window(…) as w` (a `Ref`; another view's: the window it's in) | `ui.window_do(w, action)`, the `WindowAction` a Const; `close()` is the user's closing (it asks) |
+| `w.setSize(width, height)`, `w.setPosition(x, y)` | `ui.window_set(w, x, y, action)` |
+| `w.setFullScreen(on)`, `setAlwaysOnTop(on)`, `setClickThrough(on)` | `ui.window_toggle(w, on, onAction, offAction)` |
+| `w.focus()` | `ui.focus(w)`, which focuses a `Window`'s window |
+| `w.visible`, `focused`, `minimized`, `maximized`, `fullScreen`, `alwaysOnTop`, `clickThrough` | `ui.window_flag(w, bit)` (the `WindowState` bit a Const), followed: the first read makes the core listen for `WindowState` |
+| `w.position`, `w.size`, `w.windowState` | `ui.window_pair(w, 0 or 1)` (a `(float, float)`), `ui.window_state(w)` (a `WindowState`), followed |
+| `closeWindow()` | `ui.window_close()`: the window the calling code is in, without asking |
+| `onCloseRequest(fn() -> bool)` (a body's item) | `ui.on_close_request(closure)` |
+| `quit()`, `relaunch()` | `ui.quit()`, `ui.relaunch()`: the `Quit` command to the root |
+| `onQuit(e => …)`, `onSecondInstance((args, dir) => …)` (a body's items), the app block's `on quit(e) { }`, `on secondInstance(args, dir) { }` | `ui.on_quit(closure)`, `ui.on_second_instance(closure)`: handlers that go with the current owner; `asuka_quit_request` runs the first with a `QuitEvent` (its `cancel` and `canceled` closures the runtime's), the `SecondInstance` event the second |
 | `navigate(href)`, `navigate(X(…))` | `ui.navigate(href, mode)` (0 navigate, 1 push, 2 replace); `X(…)` a routed screen (below): its href |
 | `router.back()`, `router.dismiss()`, `router.canGoBack`, `router.href`, `router.setQuery(q)` | `ui.router_back`, `ui.router_dismiss`, `ui.can_go_back`, `ui.router_href` (followed), `ui.set_query` |
 
@@ -640,6 +653,27 @@ returns an app handle. `app.tap(text)`, `app.type(text, into:)`,
 `app.expect(texts...)`, `app.expectNo(text)`, `app.idle()` are builtins
 on it (`test.tap`, ...); a failed expectation throws, and the runner
 reports the error with its line.
+
+## The desktop
+
+`MenuBar`, `Menu`, `MenuItem`, `MenuSeparator`, `WindowCloseGuard` and
+`WindowKeys` are elements, lowered as any (`ui.new`, `ui.set`/`ui.bind`
+of their keys, `ui.on`), none of them a view: core/src/ui/menubar.c
+builds a `MenuBar`'s children (`ui.lazy`) where a `Menu` made under it
+(`ui.new` finds the bar's context) is one of its menus, and encodes them
+into the `MenuBar` command at the flush when one of them changed;
+window.c registers a `WindowCloseGuard` (its `when`, its `closeRequest`)
+and a `WindowKeys`' keys with the window they're built in.
+`asuka/tray` is plain Asuka over the `tray` host module (std/tray).
+
+In tests, `mountApp()` is CALLB `test.mount_app`, which mounts the
+module's app function on the fake host (the runner gives it with
+`ak_uitest_set_app`), and the desktop's test methods (`app.windows()`,
+`closeWindow(title)`, `windowActions(title)`, `setWindowState`,
+`focusWindow`, `pressKey`, `menuBar()`, `chooseMenuItem(path)`,
+`trays()`, `clickTray(id)`, `chooseTrayItem(id, path)`, `dockMenu()`,
+`requestQuit(sessionEnding:)`, `quits()`, `secondInstance(args, dir)`)
+are `test.*` builtins over core/host/fake/desktop.c.
 
 ## Hot reload
 

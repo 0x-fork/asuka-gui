@@ -69,6 +69,7 @@ github = "you/notes"
 | `shortcuts` | 表数组 | 无 | 提供给 Siri、聚焦搜索和启动器的快捷操作，仅限 iOS 和 Android。见 [shortcuts](#shortcuts)。 |
 | `nfc` | 表 | 无 | `asuka/sdk/nfc` 读写标签所需的配置：iOS 的 AID 和 FeliCa 系统代码，以及在 Android 上能打开应用的标签。见 [nfc](#nfc)。 |
 | `background` | 布尔值 | `false` | 在桌面端让应用常驻托盘：启动时不打开窗口，没有窗口时也继续运行；在 Mac 上从启动起就不显示程序坞（Dock）图标（`LSUIElement`）。见[后台应用](desktop.md#后台应用)。 |
+| `keepRunning` | 布尔值 | `false` | 在桌面端，最后一个窗口关闭后应用继续运行：主窗口只是被隐藏，直到应用再次显示它。`background` 应用本来就会继续运行。见[后台应用](desktop.md#后台应用)。 |
 | `singleInstance` | 布尔值 | `true` | 在 Windows 和 Linux 上，再次启动时，新进程会把文件交给正在运行的应用（由它的 `on openFiles(paths)` 接收），然后自行退出。设为 `false` 则每启动一次就运行一个新实例。Mac 上无论如何都只运行一个实例。见[单实例](desktop.md#单实例)。 |
 | `i18n` | 表 | 存在时为 `locales` | 应用的目录文件放在哪里。见 [i18n](#i18n)。 |
 | `updates` | 表 | 无 | 桌面应用的签名更新。见 [updates](#updates)。 |

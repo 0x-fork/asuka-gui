@@ -47,17 +47,26 @@ var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "onOpenURL", Body: true, Sig: "(handler: fn(string))", Builtin: "ui.on_open_url", Doc: "hears the URLs the app is opened with while the component lives"},
 	{Name: "onOpenFiles", Body: true, Sig: "(handler: fn([string]))", Builtin: "ui.on_open_files", Doc: "hears the files the app is opened with (their paths) while the component lives"},
 	{Name: "onShare", Body: true, Sig: "(handler: fn([SharedItem]))", Builtin: "ui.on_share", Doc: "hears what other apps share with the app while the component lives"},
+	{Name: "quit", Sig: "()", Builtin: "ui.quit", Doc: "quits the app as the user's Quit does (⌘Q): on quit's handlers first, which may cancel it; then its windows close (desktop; phones and the web ignore it)"},
+	{Name: "relaunch", Sig: "()", Builtin: "ui.relaunch", Doc: "quits the app as quit() does, then starts it again with the same arguments once it has (a canceled quit cancels it)"},
+	{Name: "closeWindow", Sig: "()", Builtin: "ui.window_close", Doc: "closes the window the calling code is in (the main window outside every Window) now, without asking: what a closeRequest that kept it open calls once the user has chosen"},
+	{Name: "onCloseRequest", Body: true, Sig: "(handler: fn() -> bool)", Builtin: "ui.on_close_request", Doc: "asked when the user closes the window the component is in, while it lives: false keeps it open"},
+	{Name: "onQuit", Body: true, Sig: "(handler: fn(QuitEvent))", Builtin: "ui.on_quit", Doc: "hears the app about to quit, however that started, while the component lives: e.cancel() keeps it running"},
+	{Name: "onSecondInstance", Body: true, Sig: "(handler: fn([string], string))", Builtin: "ui.on_second_instance", Doc: "hears the app started again while it runs (its arguments, its working directory), while the component lives"},
+	{Name: "mountApp", Sig: "() -> TestApp", Builtin: "test.mount_app", Doc: "in a test: mounts the app block's view on the fake host (its main window, its menus, its handlers), as mount does a view"},
 	{Name: "colorUniform", Sig: "(name: string, color: Color) -> Uniform", Builtin: "canvas.color_uniform", Doc: "a Shader's vec4 uniform of a color: its red, green, blue and alpha from 0 to 1"},
 }
 
-// AppEvents are the app block's events: on openURL(url) { }, and what
-// they lower to.
+// AppEvents are the app block's events: on openURL(url) { }, their
+// parameters, and what they lower to.
 var AppEvents = []struct {
-	Name, Param, Type, Builtin string
+	Name, Params, Builtin string
 }{
-	{"openURL", "url", "string", "ui.on_open_url"},
-	{"files", "paths", "[string]", "ui.on_open_files"},
-	{"share", "items", "[SharedItem]", "ui.on_share"},
+	{"openURL", "(url: string)", "ui.on_open_url"},
+	{"files", "(paths: [string])", "ui.on_open_files"},
+	{"share", "(items: [SharedItem])", "ui.on_share"},
+	{"quit", "(e: QuitEvent)", "ui.on_quit"},
+	{"secondInstance", "(args: [string], dir: string)", "ui.on_second_instance"},
 }
 
 // runtimeSig is f's parameters and result in this checker's prelude.
@@ -203,7 +212,7 @@ func (c *Checker) appEvent(h *syntax.OnHandler) {
 	var ev *Member
 	for _, a := range AppEvents {
 		if a.Name == h.Name.Name {
-			ps, _ := c.parseSig("("+a.Param+": "+a.Type+")", "app's "+a.Name)
+			ps, _ := c.parseSig(a.Params, "app's "+a.Name)
 			ev = &Member{object: object{name: a.Name}, Kind: EventMember, Type: Void, Params: ps}
 		}
 	}
@@ -214,7 +223,7 @@ func (c *Checker) appEvent(h *syntax.OnHandler) {
 	c.view, c.loops = false, 0
 	c.openScope()
 	if ev == nil {
-		c.errorf(h.Name, "the app has no event %s (its events: openURL, files, share)", h.Name.Name)
+		c.errorf(h.Name, "the app has no event %s (its events: openURL, files, share, quit, secondInstance)", h.Name.Name)
 		for _, p := range h.Params {
 			c.declareVar(p, Invalid, false)
 		}

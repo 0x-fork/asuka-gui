@@ -424,6 +424,17 @@ func (b *fb) lowerApp(d *syntax.AppDecl) {
 	}
 	b.appHandlers()
 	views = b.bodyCalls(views)
+	// The first Window among the app's views is its main window.
+	for _, it := range views {
+		if s, ok := it.(*syntax.ExprStmt); ok {
+			if e, ok := unparen(s.X).(*syntax.CallExpr); ok {
+				if ec := b.l.info.Elements[e]; ec != nil && ec.Comp.Comp.Native && ec.Comp.Pkg.Prelude && ec.Comp.Name() == "Window" {
+					b.mainWindow = ec
+					break
+				}
+			}
+		}
+	}
 	v := b.viewsOf(views)
 	r := b.newReg(bc.KRef)
 	b.move(r, v)
@@ -773,6 +784,10 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 	}
 	v := b.local(bc.KRef)
 	b.callBTo(uiNew, v, b.konst(int64(el)))
+	if b.mainWindow != nil && b.mainWindow == ec {
+		// The app block's Window: the main window, its keys the root's.
+		b.callBTo(uiMainWindow, bc.None, v)
+	}
 	b.elementRef(ec, v)
 	for i, m := range ec.Comp.Comp.Params {
 		if a := ec.Args[i]; a != nil {
@@ -802,6 +817,14 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 		key := prelude.KeyID(name, s.Prop.Name())
 		view := b.viewsOf(s.Block.Items)
 		b.callBTo(uiSlot, bc.None, v, b.konst(int64(key)), view)
+	}
+	if check.LazyChildren(ec) && len(ec.Children) > 0 {
+		// Built when they show, under an owner of the element's own.
+		mark := b.mark()
+		build := b.builderItems(b.l.info.Ctxs[ec.Children[0]], ec.Children)
+		b.callBTo(uiLazy, bc.None, v, build)
+		b.release(mark)
+		return v
 	}
 	for _, ch := range ec.Children {
 		mark := b.mark()

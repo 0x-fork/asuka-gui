@@ -932,8 +932,8 @@ final class AsukaTextField: UITextField {
             guard args.count >= 8 else { return }
             var r = AsukaReader(args)
             setAccent(asukaColor(r.u64()))
-        case .menuBar, .windowOptions, .windowTitle, .windowAction:
-            break // desktop hosts' (a phone has no menu bar or windows)
+        case .menuBar, .windowOptions, .windowTitle, .windowAction, .quit:
+            break // desktop hosts' (a phone has no menu bar or windows, and its app doesn't quit itself)
         case .location:
             break // a Router's address: the web's and the desktops' (a phone has no address bar, and its windows don't come back where they were)
         case .locale:

@@ -144,6 +144,7 @@ ak_ix *ak_ix_of(ak_view *e) {
 void ak_ix_free(ak_view *e) {
 	ak_ix *ix = e->ix;
 	if (!ix) return;
+	ak_rootkeys_free(ix->wkeys);
 	for (int i = 0; i < AK_STATE__COUNT; i++) ak_signal_drop(&ix->sig[i]);
 	for (uint32_t i = 0; i < ix->variants.len; i++) ak_release_val(ix->variants.data[i].v, (ak_kind)ak_key_kinds[ix->variants.data[i].key]);
 	ak_vec_free(&ix->variants);

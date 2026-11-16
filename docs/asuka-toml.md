@@ -85,6 +85,7 @@ These apply on every platform the key means something on.
 | `shortcuts` | array of tables | none | Actions for Siri, Spotlight and the launcher, on iOS and Android. See [shortcuts](#shortcuts). |
 | `nfc` | table | none | What `asuka/sdk/nfc`'s tags need: iOS's AIDs and FeliCa system codes, the tags that open the app on Android. See [nfc](#nfc). |
 | `background` | boolean | `false` | On the desktop, an app that lives in the tray: no window at launch, kept running with none, and on the Mac no Dock icon from launch (`LSUIElement`). See [Apps in the background](desktop.md#apps-in-the-background). |
+| `keepRunning` | boolean | `false` | On the desktop, the app keeps running when its last window closes: the main window hides, until the app shows it again. A `background` app keeps running anyway. See [Apps in the background](desktop.md#apps-in-the-background). |
 | `singleInstance` | boolean | `true` | On Windows and Linux, a second launch hands its files to the running app (its `on openFiles(paths)`) and quits. `false` runs the app as often as it's started. The Mac runs an app once either way. See [One instance](desktop.md#one-instance). |
 | `i18n` | table | `locales`, when there | Where the app's catalogs are. See [i18n](#i18n). |
 | `updates` | table | none | A desktop app's signed updates. See [updates](#updates). |

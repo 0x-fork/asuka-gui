@@ -926,13 +926,16 @@ const ak_el_class *ak_el_class_of(uint16_t el) {
 	case AK_EL_LIST: return &ak_class_list;
 	}
 	const ak_el_class *c = ak_nav_class_of(el);
+	if (!c) c = ak_window_class_of(el);
+	if (!c) c = ak_menu_class_of(el);
 	return c ? c : ak_ext_class_of(el);
 }
 
 // ---- The protocol ----
 
 ak_view *ak_ui_new(uint16_t el) {
-	const ak_el_class *cls = ak_el_class_of(el);
+	// A Menu in a MenuBar is one of its menus.
+	const ak_el_class *cls = el == AK_EL_MENU ? ak_menu_class_here() : ak_el_class_of(el);
 	if (!cls) ak_panic("ui: no element %u", el);
 	ak_ui_root *r = ak_ui_current();
 	ak_view *e = ak_view_new(r, cls, el, !(cls->flags & AK_ELF_FLATTEN));
@@ -1033,7 +1036,7 @@ void ak_ui_on(ak_view *v, uint16_t ev, ak_closure *handler) {
 	}
 	if (!found) ak_vec_push(&v->handlers, ((ak_handler_ent){ev, handler}));
 	// A container with a handler has a view of its own.
-	if (!v->real && (v->cls->flags & AK_ELF_FLATTEN)) ak_view_make_real(v);
+	if (!v->real && (v->cls->flags & (AK_ELF_FLATTEN | AK_ELF_FRAGMENT)) == AK_ELF_FLATTEN) ak_view_make_real(v);
 	ak_event_kind k = ak_ev_ops(ev);
 	if (k) ak_view_listen(v, k);
 	ak_ix_on(v, ev);
@@ -1065,6 +1068,10 @@ ak_view *ak_ui_fragment(void) { return ak_frag_new(); }
 // ---- Commands ----
 
 void ak_ui_focus(ak_view *v) {
+	if (v && v->el == AK_EL_WINDOW) {  // a window's: it comes to the front
+		ak_ui_window_action(v, AK_WINDOW_ACTION_FOCUS, 0, 0);
+		return;
+	}
 	if (v && v->real && !v->dead) ak_batch_command(v->r->batch, v->id, AK_CMD_FOCUS, NULL, 0);
 }
 

@@ -58,6 +58,16 @@
 //	ui.window_close   w: View?                                        -
 //	ui.window_state   w: View?                                        WindowState
 //	ui.on_close_request  handler: fn() -> bool                        -
+//	ui.window_flag    w: View?, bit: int (WindowState's)              bool
+//	ui.window_pair    w: View?, which: int (0 position, 1 size)       (float, float)
+//	ui.main_window    w: View (the app block's Window)                -
+//	ui.window_do      w: View?, action: int (WindowAction)            -
+//	ui.window_set     w: View?, x: float, y: float, action: int       -
+//	ui.window_toggle  w: View?, on: bool, onAction: int, offAction: int -
+//	ui.relaunch    -                                                  -
+//	ui.quit        relaunch: bool                                     -
+//	ui.on_quit     handler: fn(QuitEvent)                             -
+//	ui.on_second_instance  handler: fn([string], string)              -
 //	ui.navigate    href: string, mode: int (0 navigate, 1 push,
 //	               2 replace)                                         -
 //	ui.router_back    -                                               bool
@@ -264,6 +274,59 @@ static ak_val b_on_close_request(ak_val *a, uint32_t n) {
 	return none();
 }
 
+static ak_val b_window_flag(ak_val *a, uint32_t n) {
+	return (ak_val){.i = ak_ui_window_flag(opt_view(a, n, 0, "ui.window_flag"), n > 1 ? a[1].i : 0)};
+}
+
+static ak_val b_window_pair(ak_val *a, uint32_t n) { return ak_ui_window_pair(opt_view(a, n, 0, "ui.window_pair"), n > 1 ? a[1].i : 0); }
+
+// A Window's handle's commands, its methods (methods.go: the receiver,
+// then the arguments, then the action).
+static ak_val b_window_do(ak_val *a, uint32_t n) {
+	ak_ui_window_action(opt_view(a, n, 0, "ui.window_do"), n > 1 ? a[1].i : 0, 0, 0);
+	return none();
+}
+
+static ak_val b_window_set(ak_val *a, uint32_t n) {
+	if (n < 4) ak_panic("ui.window_set: want a view, two floats and an action");
+	ak_ui_window_action(opt_view(a, n, 0, "ui.window_set"), a[3].i, (float)a[1].f, (float)a[2].f);
+	return none();
+}
+
+static ak_val b_window_toggle(ak_val *a, uint32_t n) {
+	if (n < 4) ak_panic("ui.window_toggle: want a view, a bool and two actions");
+	ak_ui_window_action(opt_view(a, n, 0, "ui.window_toggle"), a[1].i ? a[2].i : a[3].i, 0, 0);
+	return none();
+}
+
+static ak_val b_relaunch(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	ak_ui_quit(true);
+	return none();
+}
+
+static ak_val b_main_window(ak_val *a, uint32_t n) {
+	ak_ui_main_window(view_arg(a, n, 0, "ui.main_window"));
+	return none();
+}
+
+static ak_val b_quit(ak_val *a, uint32_t n) {
+	ak_ui_quit(n > 0 && a[0].i);
+	return none();
+}
+
+static ak_val b_on_quit(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_on_quit(a[0].p);
+	return none();
+}
+
+static ak_val b_on_second_instance(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_on_second_instance(a[0].p);
+	return none();
+}
+
 static ak_val b_navigate(ak_val *a, uint32_t n) {
 	ak_ui_navigate(a[0].p, n > 1 ? a[1].i : 0);
 	return none();
@@ -372,6 +435,16 @@ void ak_ui_builtins_init(void) {
 		{"ui.window_close", b_window_close},
 		{"ui.window_state", b_window_state},
 		{"ui.on_close_request", b_on_close_request},
+		{"ui.window_flag", b_window_flag},
+		{"ui.window_pair", b_window_pair},
+		{"ui.main_window", b_main_window},
+		{"ui.window_do", b_window_do},
+		{"ui.window_set", b_window_set},
+		{"ui.window_toggle", b_window_toggle},
+		{"ui.relaunch", b_relaunch},
+		{"ui.quit", b_quit},
+		{"ui.on_quit", b_on_quit},
+		{"ui.on_second_instance", b_on_second_instance},
 		{"ui.navigate", b_navigate},
 		{"ui.router_back", b_router_back},
 		{"ui.router_dismiss", b_router_dismiss},

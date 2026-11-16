@@ -1260,6 +1260,7 @@ void ak_root_event(ak_view *e, const ak_event *ev) {
 		if (r->back) ak_back_run(r->back);
 		break;
 	case AK_EVENT_LOCATION: ak_router_location(e, ev); break;
+	case AK_EVENT_ACTION: ak_menubar_action(r, ev->i); break;  // the menu bar's
 	default: ak_window_event(e, ev); break;  // the main window's
 	}
 }
