@@ -87,6 +87,8 @@ func launch(t *testing.T, platform, app string) string {
 	c.Dir = root(t)
 	var logs syncBuffer
 	c.Stdout, c.Stderr = &logs, &logs
+	// What it starts may keep its output open: Wait doesn't wait for that.
+	c.WaitDelay = 5 * time.Second
 	interruptible(c)
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
@@ -793,9 +795,10 @@ func TestProgressRingWeb(t *testing.T) {
 
 // Linux
 
-// linuxScreen is an app asuka dev --platform linux --once runs on this
-// machine's display (xvfb-run's, in CI); the automation's commands go
-// through a directory (ASUKA_COMMANDS), as on iOS.
+// linuxScreen is an app asuka dev --platform linux runs on this
+// machine's display (xvfb-run's, in CI), until it's stopped (which stops
+// the app); the automation's commands go through a directory
+// (ASUKA_COMMANDS), as on iOS.
 type linuxScreen struct {
 	t    *testing.T
 	cli  string
@@ -824,10 +827,12 @@ func (b *syncBuffer) String() string {
 }
 
 func (s *linuxScreen) start() {
-	c := exec.Command(s.cli, "dev", "--platform", "linux", "--once", appDir(s.app))
+	c := exec.Command(s.cli, "dev", "--platform", "linux", appDir(s.app))
 	c.Dir = root(s.t)
 	c.Env = append(os.Environ(), "ASUKA_COMMANDS="+s.dir)
 	c.Stdout, c.Stderr = &s.logs, &s.logs
+	// The app it runs has its output too: Wait doesn't wait for that.
+	c.WaitDelay = 5 * time.Second
 	if err := c.Start(); err != nil {
 		s.t.Fatal(err)
 	}
