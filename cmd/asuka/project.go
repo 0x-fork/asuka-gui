@@ -94,6 +94,7 @@ func loadApp(dir string) (*asukaApp, error) {
 	app := &asukaApp{dir: proj.Dir, name: filepath.Base(proj.Dir), bundleID: cfg.ID, cfg: cfg, proj: proj}
 	app.refresh()
 	warnDevLang(cfg)
+	warnShareSheet(cfg)
 	return app, nil
 }
 

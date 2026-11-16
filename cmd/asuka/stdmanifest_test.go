@@ -135,10 +135,21 @@ func TestStdManifests(t *testing.T) {
 		"integrity":     {ents: []string{"com.apple.developer.devicecheck.appattest-environment"}, macEnts: []string{"com.apple.developer.devicecheck.appattest-environment"}},
 		"agerange":      {ents: []string{"com.apple.developer.declared-age-range"}},
 		"appleauth":     {ents: []string{"com.apple.developer.applesignin"}, macEnts: []string{"com.apple.developer.applesignin"}},
-		"push":          {modes: []string{"remote-notification"}, ents: []string{"aps-environment"}, macEnts: []string{"aps-environment"}, hostModules: []string{"push"}, flags: []string{"ASUKA_PUSH"}, no: []string{"ASUKA_CONVERSATIONS"}},
-		"nowplaying":    {android: []string{"FOREGROUND_SERVICE_MEDIA_PLAYBACK"}, module: []string{`android:name="asuka.nowplaying.MediaService"`}, modes: []string{"audio"}},
-		"transcribe":    {android: []string{"RECORD_AUDIO"}, usage: []string{"NSSpeechRecognitionUsageDescription"}},
-		"periodic":      {modes: []string{"fetch", "processing"}, plist: []string{"BGTaskSchedulerPermittedIdentifiers"}, hostModules: []string{"periodic"}, flags: []string{"ASUKA_PERIODIC"}},
+		"push": {modes: []string{"remote-notification"}, ents: []string{"aps-environment"}, macEnts: []string{"aps-environment"}, hostModules: []string{"push"}, flags: []string{"ASUKA_PUSH"},
+			no: []string{"ASUKA_CONVERSATIONS", "ASUKA_NOTIFICATION_SERVICE", "dev.asuka.push.rewrite"}},
+		// A push's rewrite: iOS's Notification Service Extension (the host's
+		// part, which makes the CLI build it), Android's meta-data that has
+		// the host's Firebase service rewrite data messages.
+		"push.rewrite": {hostModules: []string{"push"}, flags: []string{"ASUKA_PUSH", "ASUKA_NOTIFICATION_SERVICE"},
+			android: []string{`<meta-data android:name="dev.asuka.push.rewrite" android:value="true" />`}},
+		"push.stopRewriting": {hostModules: []string{"push"}, no: []string{"ASUKA_NOTIFICATION_SERVICE", "dev.asuka.push.rewrite"}},
+		// The app's own share sheet: what the CLI derives of asuka.toml's
+		// shareTarget (TestExtensionsFromUses).
+		"sharesheet.active": {derived: []string{"shareSheet"}},
+		"sharesheet.done":   {no: []string{"AsukaShareActivity"}},
+		"nowplaying":        {android: []string{"FOREGROUND_SERVICE_MEDIA_PLAYBACK"}, module: []string{`android:name="asuka.nowplaying.MediaService"`}, modes: []string{"audio"}},
+		"transcribe":        {android: []string{"RECORD_AUDIO"}, usage: []string{"NSSpeechRecognitionUsageDescription"}},
+		"periodic":          {modes: []string{"fetch", "processing"}, plist: []string{"BGTaskSchedulerPermittedIdentifiers"}, hostModules: []string{"periodic"}, flags: []string{"ASUKA_PERIODIC"}},
 		"liveactivity": {android: []string{"POST_PROMOTED_NOTIFICATIONS", `<receiver android:name="dev.asuka.AsukaLiveActivityReceiver" android:exported="false" />`},
 			flags: []string{"ASUKA_LIVEACTIVITY"}, plist: []string{"NSSupportsLiveActivities"}},
 		"purchase": {android: []string{"com.android.vending.BILLING", `<provider android:name="dev.asuka.AsukaLauncher" android:authorities="${applicationId}.asuka.launch" android:exported="false" />`,

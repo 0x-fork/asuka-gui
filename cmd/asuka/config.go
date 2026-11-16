@@ -66,7 +66,7 @@ type appConfig struct {
 		// the app's plus ".widgets" (default: the best match installed).
 		WidgetProfile string `json:"widgetProfile"`
 		// NotificationProfile is the Notification Service Extension's
-		// (push.Rewrite), whose ID is the app's plus ".notification"
+		// (asuka/push's rewrite), whose ID is the app's plus ".notification"
 		// (default: the best match installed).
 		NotificationProfile string `json:"notificationProfile"`
 		// Usage are the purpose strings for protected resources
@@ -212,12 +212,13 @@ type appConfig struct {
 	icloudKV, icloudDocs bool
 	displayName          string
 	// shareSheet: the share target shows the app's own sheet rather than
-	// opening the app (Asuka has no such root yet: a share opens the
-	// app, for its onShare).
+	// opening the app (asuka/sharesheet's active, whose manifest derives
+	// shareSheet): on iOS the share extension runs the app as its sheet,
+	// on Android AsukaShareActivity takes the shares.
 	shareSheet bool
 	// pushRewrite: a package asks for the ASUKA_NOTIFICATION_SERVICE
-	// host flag (a push's rewrite): on iOS the app has a Notification
-	// Service Extension, which runs it.
+	// host flag (asuka/push's rewrite): on iOS the app has a
+	// Notification Service Extension, which runs it.
 	pushRewrite bool
 	// locationPrecise: a package derives temporary full accuracy's
 	// purposes (asuka/location's requestPrecise): Info.plist has them.
@@ -547,12 +548,13 @@ func (c *appConfig) permissionsFor(deps []string) {
 
 // addDerived adds the needs the packages' manifests ask the CLI to make
 // of the app's own asuka.toml (ios.derived: iCloud's, temporary full
-// accuracy's), and notes the host's parts that have more of the app
-// (a Notification Service Extension for push's rewrites, the widget
-// extension's Live Activities).
+// accuracy's, the share sheet's), and notes the host's parts that have
+// more of the app (a Notification Service Extension for push's
+// rewrites, the widget extension's Live Activities).
 func (c *appConfig) addDerived() {
 	c.addICloud(c.derives("icloudKeyValue"), c.derives("icloudDocuments"))
 	c.locationPrecise = c.derives("locationPrecise")
+	c.shareSheet = c.derives("shareSheet")
 	c.pushRewrite = slices.Contains(c.hostFlags, "ASUKA_NOTIFICATION_SERVICE")
 	c.liveActivity = slices.Contains(c.hostFlags, "ASUKA_LIVEACTIVITY")
 }
@@ -701,10 +703,6 @@ func (c *appConfig) androidManifest(debug bool) string {
 	if c.Android.MapsKey != "" && c.mapsKey {
 		fmt.Fprintf(&b, "        <meta-data android:name=\"com.google.android.geo.API_KEY\" android:value=\"%s\" />\n", html.EscapeString(c.Android.MapsKey))
 	}
-	// push.Rewrite: FCM's data messages start the app to rewrite them.
-	if c.pushRewrite {
-		b.WriteString("        <meta-data android:name=\"dev.asuka.push.rewrite\" android:value=\"true\" />\n")
-	}
 	// The splash's theme (androidRes), which AsukaActivity leaves as it starts.
 	theme := ""
 	if c.splashOn() {
@@ -743,7 +741,7 @@ func (c *appConfig) androidManifest(debug bool) string {
 	// asuka/nfc's tags that open the app (asuka.toml's nfc).
 	b.WriteString(c.nfcFilters())
 	b.WriteString("        </activity>\n")
-	// A share sheet (app.ShareSheet): the shares go to its Activity.
+	// A share sheet (asuka/sharesheet): the shares go to its Activity.
 	if c.ShareTarget.on && c.shareSheet {
 		b.WriteString("        <activity android:name=\"dev.asuka.AsukaShareActivity\" android:exported=\"true\">\n")
 		b.WriteString(c.ShareTarget.intentFilters())

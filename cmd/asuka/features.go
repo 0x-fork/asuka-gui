@@ -101,6 +101,11 @@ var derivedNeeds = []string{
 	// NSLocationTemporaryUsageDescriptionDictionary, with asuka.toml's
 	// ios.locationPurposes).
 	"locationPrecise",
+	// The app's own share sheet (asuka/sharesheet): with asuka.toml's
+	// shareTarget, iOS's share extension runs the app as its sheet (the
+	// app's code in a framework the two share, their App Group and
+	// keychain group), and Android's shares go to AsukaShareActivity.
+	"shareSheet",
 }
 
 // readManifest reads the manifest in dir (nil, no error: none).

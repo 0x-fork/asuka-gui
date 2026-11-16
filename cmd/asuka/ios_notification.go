@@ -6,14 +6,15 @@ import (
 	"strings"
 )
 
-// The Notification Service Extension (push.Rewrite): a binary of its own
-// in the app's PlugIns, which iOS starts for a push with mutable-content
+// The Notification Service Extension (asuka/push's rewrite): a binary of
+// its own in the app's PlugIns, which iOS starts for a push with mutable-content
 // to change it before it shows. It runs the app's code: as the share
 // sheet does (ios_framework.go), it links the app's framework, whose
-// AsukaNotificationService is its principal class; main runs (setting the
-// rewrite) with a root that shows nothing. What the app keeps is the
-// same there: its data is in the App Group they share (store.Dir), its
-// keychain items in the app's group.
+// AsukaNotificationService is its principal class; the app starts there
+// without a screen (asuka/platform's process: "notification"), and its
+// push.rewrite answers. What the app keeps is the same there: its data is
+// in the App Group they share (asuka/fs's appDir), its keychain items in
+// the app's group.
 
 const notificationExe = "AsukaNotification"
 
