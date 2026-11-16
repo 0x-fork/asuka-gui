@@ -1,6 +1,10 @@
 package check
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -112,9 +116,20 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Result = c.allRace(e, b, call.Args)
 		c.callEffects(e, b.name, true, false)
 	case BMount:
-		// mount(view, provide: store): the store provided to the view.
-		ps := []*Param{{Name: "view", Type: View}, {Name: "provide", Type: nil, Default: zeroLit}}
+		// mount(view, provide: store, platform: .android, at: "/inbox"):
+		// the store provided to the view, the platform it runs on (asuka
+		// test's unless it says), where its Router starts.
+		ps := []*Param{{Name: "view", Type: View}, {Name: "provide", Type: nil, Default: zeroLit},
+			{Name: "platform", Type: nil, Default: zeroLit}, {Name: "at", Type: String, Default: zeroLit}}
 		args := c.matchArgs(e, ps, "mount")
+		if args[2] != nil {
+			pt := c.prelude.Scope.LookupLocal("Platform").(*TypeName)
+			c.resolveType(pt)
+			c.assign(args[2], pt.Type, "mount's platform")
+		}
+		if args[3] != nil {
+			c.assign(args[3], String, "where mount's Router starts")
+		}
 		if args[0] != nil {
 			c.builderExpr(args[0])
 		}
@@ -136,6 +151,19 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = positional(0, "nothing")
 		call.Result = Void
 		c.callEffects(e, "never", true, false)
+	case BAssetText, BAssetBytes:
+		c.assetCall(e, b, call)
+		call.Result = String
+		if b.ID == BAssetBytes {
+			call.Result = Bytes
+		}
+	case BNavigate, BReplace:
+		args := positional(1, "an address: "+b.name+"(\"/inbox\"), or a routed screen's: "+b.name+"(Thread(id: 7))")
+		if len(args) > 0 {
+			c.hrefArg(args[0], "the address "+b.name+" goes to")
+		}
+		call.Args = args
+		call.Result = Void
 	case BPush, BPresent:
 		args := positional(1, "a view: "+b.name+"(Screen())")
 		if len(args) > 0 {
@@ -244,11 +272,26 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		} else {
 			lam := &syntax.LambdaExpr{Span: e.Block.Span, Body: e.Block}
 			c.info.Trailing[e] = lam
-			c.expr(lam, &FuncType{Result: Void, Async: true, Throws: true})
+			// Its value is the block's: what's expected of it, else what
+			// the block returns.
+			var wf *FuncType
+			if want != nil && !IsInvalid(want) && want != Void {
+				wf = &FuncType{Result: want, Async: true, Throws: true}
+			}
+			res := Type(Void)
+			if t, ok := c.expr(lam, wf).(*FuncType); ok {
+				t.Async, t.Throws = true, true // it runs as a task
+				if t.Result != nil {
+					res = t.Result
+				}
+			}
+			call.Result = res
 			args = append(args, lam)
 		}
 		call.Args = args
-		call.Result = Void
+		if call.Result == nil {
+			call.Result = Void
+		}
 		c.callEffects(e, "withTimeout", true, true)
 	case BLive:
 		args := positional(2, "a value and a stream: live(initial, () => changes())")
@@ -698,7 +741,7 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 // library's package at path (the rest are directories of std/).
 func ProvidesStd(path string) bool {
 	switch path {
-	case "asuka/json", "asuka/math":
+	case "asuka/json", "asuka/math", "asuka/assets":
 		return true
 	}
 	return false
@@ -724,6 +767,7 @@ func (c *Checker) makeStd(path string) *Package {
 		}
 		add("pow", BMath, "math.pow", f2)
 		add("atan2", BMath, "math.atan2", f2)
+		add("hypot", BMath, "math.hypot", f2)
 		add("random", BMath, "math.random", &FuncType{Result: Float})
 		add("randomInt", BMath, "math.random_int", &FuncType{Params: []Type{Int, Int}, Result: Int})
 		add("seed", BMath, "math.seed", &FuncType{Params: []Type{Int}, Result: Void})
@@ -731,9 +775,48 @@ func (c *Checker) makeStd(path string) *Package {
 		pi := &Global{object: object{name: "pi"}, Pkg: p, Kind: ConstGlobal, Type: Float, Value: &syntax.BasicLit{Kind: syntax.FLOAT, Value: "3.141592653589793"}, Pub: true}
 		p.Scope.Insert(pi)
 		p.Globals = append(p.Globals, pi)
+	case "asuka/assets":
+		p.Name = "assets"
+		add("text", BAssetText, "", nil)
+		add("bytes", BAssetBytes, "", nil)
 	default:
 		return nil
 	}
 	c.pkgs = append(c.pkgs, p)
 	return p
+}
+
+// assetCall checks assets.text("reply.md") and assets.bytes(…): a file
+// of the package's assets/ directory, read as the app compiles (as Go's
+// go:embed), so every platform has it, with no host to ask.
+func (c *Checker) assetCall(e *syntax.CallExpr, b *Builtin, call *Call) {
+	what := "a file of the package's assets/: assets." + b.name + "(\"reply.md\")"
+	if e.Args == nil || len(e.Args.List) != 1 || e.Args.List[0].Label != nil {
+		c.errorf(e, "assets.%s takes %s", b.name, what)
+		c.checkArgsLoosely(e)
+		return
+	}
+	a := e.Args.List[0].Value
+	c.assign(a, String, "the asset's path")
+	call.Args = []syntax.Expr{a}
+	path, ok := constString(a)
+	if !ok {
+		c.errorf(a, "an asset is read as the app compiles: its path is a string literal, without {…}")
+		return
+	}
+	if c.pkg == nil || c.pkg.Dir == "" {
+		c.errorf(a, "assets.%s: this package has no directory to read assets/%s from", b.name, path)
+		return
+	}
+	clean := filepath.Clean(filepath.FromSlash(path))
+	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
+		c.errorf(a, "an asset's path is in the package's assets/: %q leaves it", path)
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(c.pkg.Dir, "assets", clean))
+	if err != nil {
+		c.errorf(a, "no asset %s: %v", path, err)
+		return
+	}
+	c.info.Assets[e] = string(data)
 }

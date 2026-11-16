@@ -91,6 +91,10 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			if k := tn.Case(fn.Name.Name); k != nil {
 				return c.caseCall(e, tn, k, want)
 			}
+			if g := tn.Consts[fn.Name.Name]; g != nil {
+				// A constant that's a function: Shortcut.cmd("k").
+				return c.closureCall(e, fn, c.expr(fn, nil))
+			}
 			if d, ok := tn.Decl.(*syntax.InterfaceDecl); ok && d.Native.IsValid() {
 				c.errorf(fn, "%s is a native interface: make one, %s(), and call %s on it", tn.name, tn.name, fn.Name.Name)
 			} else {
@@ -103,6 +107,11 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 	case *syntax.ImplicitMember:
 		c.info.Expected[fn] = want
 		w := Unopt(want)
+		if n, ok := w.(*Named); ok && n.Obj.Consts[fn.Name.Name] != nil {
+			// A constant that's a function making one: .cmd("k") where a
+			// Shortcut is expected.
+			return c.closureCall(e, fn, c.expr(fn, want))
+		}
 		if n, ok := w.(*Named); ok && n.Obj.Kind == EnumType {
 			if k := n.Obj.Case(fn.Name.Name); k != nil {
 				return c.caseCall(e, n.Obj, k, n)
@@ -931,6 +940,15 @@ func argCount(e *syntax.CallExpr) int {
 // builtinMethodCall is a built-in type's method: [T].map, string.trim.
 func (c *Checker) builtinMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type, m *Method, want Type) Type {
 	params, result := c.methodSig(m)
+	if m.Variadic && argCount(e) > len(params) {
+		// The last parameter, as many times as there are arguments.
+		last := params[len(params)-1]
+		ps := append([]*Param{}, params...)
+		for len(ps) < argCount(e) {
+			ps = append(ps, &Param{Name: last.Name, Type: last.Type})
+		}
+		params = ps
+	}
 	args := c.matchArgs(e, params, m.Name)
 	c.trailingClosure(e, params, args)
 	s := m.bind(xt)

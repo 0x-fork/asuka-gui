@@ -533,7 +533,7 @@ func (c *Checker) forBindings(fi *ForInfo, p syntax.Pattern, kind VarKind, ctx *
 		}
 		fi.Index = bind(tp.Elems[0], kt)
 		fi.Item = bind(tp.Elems[1], vt)
-		if ctx != nil && ctx.Kind == CtxBuilder {
+		if ctx != nil && ctx.Kind == CtxBuilder && fi.Index != nil && fi.Item != nil {
 			// The row closure takes (item, index).
 			ctx.Params[len(ctx.Params)-2], ctx.Params[len(ctx.Params)-1] = ctx.Params[len(ctx.Params)-1], ctx.Params[len(ctx.Params)-2]
 		}
@@ -820,6 +820,19 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		} else {
 			tn = c.casePathType(p.Path[:len(p.Path)-1])
 			if tn == nil {
+				return
+			}
+			if n, ok := et.(*Named); ok && n.Obj == c.errT && tn.IsError {
+				// An Error, matched by an error enum's case.
+				name := p.Path[len(p.Path)-1].Name
+				k := tn.Case(name)
+				if k == nil {
+					c.errorf(p, "%s has no case %s", tn.name, name)
+					return
+				}
+				c.info.Cases[p] = k
+				c.info.ErrorCases[p] = tn
+				c.caseArgs(p, k, tn.Type)
 				return
 			}
 			if n, ok := et.(*Named); !ok || n.Obj != tn {

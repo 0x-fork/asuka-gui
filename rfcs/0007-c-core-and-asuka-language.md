@@ -502,8 +502,9 @@ Each ends with its tests green.
 - [x] **W1** the web: the core as WebAssembly, `platform/web` unchanged.
 - [x] **L3** the C backend for release builds; both backends pass the
       same conformance suite.
-- [ ] **E1** every element of the schema in the UI runtime; the
-      examples ported to Asuka.
+- [x] **E1** every element of the schema in the UI runtime; the
+      examples ported to Asuka (what they still ask of the platforms:
+      `examples/STDLIB.md`).
 - [ ] **N1** native packages from `native` declarations; `sdk/` ported.
 - [x] **P1** packages: `asuka add`, `asuka pkg publish`, the resolver,
       `asuka.lock`, the cache; the CLI on npm with prebuilt binaries.

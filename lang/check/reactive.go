@@ -156,6 +156,9 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 					if call.Builtin.ID == BEnvironment {
 						found = true // it reads the root's environment, a signal
 					}
+					if call.Builtin.ID == BRuntime && call.Builtin.Fn.Tracked {
+						found = true
+					}
 					if call.Builtin.ID == BRuntime && call.Builtin.Fn.Once {
 						return false // its closure's reads are the closure's
 					}

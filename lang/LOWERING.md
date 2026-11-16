@@ -665,8 +665,9 @@ taking the ref. The rest (core/src/ui/builtins.c has their arguments):
 | `onCloseRequest(fn() -> bool)` (a body's item) | `ui.on_close_request(closure)` |
 | `quit()`, `relaunch()` | `ui.quit()`, `ui.relaunch()`: the `Quit` command to the root |
 | `onQuit(e => …)`, `onSecondInstance((args, dir) => …)` (a body's items), the app block's `on quit(e) { }`, `on secondInstance(args, dir) { }` | `ui.on_quit(closure)`, `ui.on_second_instance(closure)`: handlers that go with the current owner; `asuka_quit_request` runs the first with a `QuitEvent` (its `cancel` and `canceled` closures the runtime's), the `SecondInstance` event the second |
-| `navigate(href)`, `navigate(X(…))` | `ui.navigate(href, mode)` (0 navigate, 1 push, 2 replace); `X(…)` a routed screen (below): its href |
-| `router.back()`, `router.dismiss()`, `router.canGoBack`, `router.href`, `router.setQuery(q)` | `ui.router_back`, `ui.router_dismiss`, `ui.can_go_back`, `ui.router_href` (followed), `ui.set_query` |
+| `navigate(href)`, `navigate(X(…))`, `replace(href)` | `ui.navigate(href, mode)` (0 navigate, 1 push, 2 replace); `X(…)` a routed screen (below): its href |
+| `router.back()`, `router.dismiss()`, `router.canGoBack()`, `router.href()`, `router.setQuery(q)` (`router` a package of the universe: check.RouterFuncs) | `ui.router_back`, `ui.router_dismiss`, `ui.can_go_back` and `ui.router_href` (both followed: they read the router's address signal, written as its history changes), `ui.set_query` |
+| `mainWindow()` | `ui.main_window_ref()`: a Ref of the root's view, which window commands take as the main window's (`focus()` on it brings the window forward) |
 
 ## Routes
 
@@ -683,7 +684,7 @@ app {
       Route("/inbox", layout: .stack, title: "Inbox", icon: "tray") {
         Inbox                                    // its screen's own path: ""
         Thread                                   // ":id"
-        Route(":id/reply", sheet: true) { (p) in Reply(id: p.get("id")) }
+        Route(":id/reply", sheet: true) { p => Reply(id: p.get("id")) }
       }
       Route("/settings", layout: .stack, title: "Settings", icon: "gear") {
         Settings
@@ -699,24 +700,30 @@ screen Thread(id: int) at ":id" { … }    // id: from the path, parsed
 
 - `Router(initial:) { … }` is `ui.new(AK_EL_ROUTER)`, its keys, then
   `ui.add` of each `Route`; a `Route` with routes in it likewise. A
+  Router's and a Route's keys are header parameters (`Route("/inbox",
+  layout: .stack, title: "Inbox")`): a route table reads as one. A
   route's layout makes it a navigator of its children (`.stack`,
   `.tabs`, `.split`, `.slot`), `.group` (the default) only gathers them
   under its path and guard.
-- `Route(path) { (p) in View }` is `ui.lazy(route, closure(pAcc){…})`:
-  the runtime builds it for each screen of the route, with its `Params`
-  (an accessor: a kept screen follows its query, `setQuery`).
+- `Route(path) { p => View }` (`_ => View` when it reads none) is
+  `ui.lazy(route, closure(pAcc){…})`, last: the runtime builds it for
+  each screen of the route, with its `Params` (an accessor, as a for's
+  row item: a kept screen follows its query, `setQuery`).
 - A screen declared with `at "pattern"` is routable: named in a
   `Route`'s block, it's a `Route` of its pattern (relative to the
   parent's, unless it starts with `/`) whose builder reads each of the
   screen's parameters from the path's parameters, else the query's,
   converted to its type (`int`, `float`, `bool`, an enum's case name,
-  `string`); a value that doesn't convert throws `RouteError` to the
-  nearest `Boundary`. Its title is the screen's own.
+  `string`); a value that doesn't convert, or a parameter without a
+  default the address doesn't say, throws `RouteError` to the nearest
+  `Boundary` (lang/ir/routes.go, over types.asuka's `routeParam`,
+  `routeInt`, ...). Its title is the screen's own.
 - `navigate(Thread(id: 7))`, a Button's `href: Thread(id: 7)`: the
   compiler knows Thread's full pattern from the one Router that routes it
   (`/inbox/:id`) and lowers the href to `ui.href_of("/inbox/:id",
-  ["7"])`; a screen two Routers route, or none, is an error there. A
-  string href is checked against the routes when it's a constant.
+  ["7"])`, the screen's other parameters the call gives its query
+  (`?sort=oldest`, `url.escape`d); a screen two Routers route, or none,
+  is an error there (check's routeHrefs, once every Router is checked).
 - Guards are closures `fn(string) -> string` (the href asked for; `""`
   lets the user in, an href sends them there), asked as the router
   navigates. Redirects fill the route's parameters into theirs.

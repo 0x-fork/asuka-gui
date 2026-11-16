@@ -274,7 +274,12 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 		}
 	}
 	views = b.bodyCalls(views)
-	v := b.viewsOf(views)
+	var v int
+	if call := b.l.info.ScreenRoots[t]; call != nil {
+		v = b.element(call)
+	} else {
+		v = b.viewsOf(views)
+	}
 	r := b.newReg(bc.KRef)
 	b.move(r, v)
 	b.emit(op("RET"), r)
@@ -435,9 +440,34 @@ func (b *fb) lowerApp(d *syntax.AppDecl) {
 		if _, ok := it.(*syntax.OnHandler); ok {
 			continue // the app's events: appHandlers
 		}
+		if _, ok := it.(*syntax.TaskDecl); ok {
+			continue // after its handlers
+		}
+		if _, ok := it.(*syntax.EffectDecl); ok {
+			continue
+		}
 		views = append(views, it)
 	}
 	b.appHandlers()
+	// Its tasks and effects, while it runs.
+	for _, it := range d.Body.Items {
+		mark := b.mark()
+		switch x := it.(type) {
+		case *syntax.TaskDecl:
+			b.at(x)
+			b.taskDecl(x, false)
+		case *syntax.EffectDecl:
+			b.at(x)
+			ectx := b.l.info.Ctxs[x]
+			clos := b.makeClosure(closure{name: "effect", ctxs: []*check.FuncCtx{ectx}, ret: bc.KVoid, throws: true, body: func(c *fb) {
+				c.ctx = ectx
+				c.block(x.Body)
+				c.emit(op("RET0"))
+			}})
+			b.emit(op("EFFECT"), clos)
+		}
+		b.release(mark)
+	}
 	views = b.bodyCalls(views)
 	// The first Window among the app's views is its main window.
 	for _, it := range views {
@@ -625,7 +655,12 @@ func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int, keyKind bc.Kind) 
 		}
 		c.emit(op("RET"), v)
 	}})
-	if s.Key != nil {
+	if id, ok := s.Key.(*syntax.Ident); ok && fi.Kind == check.ForEnumerated && len(b.l.info.Ctxs[s.Key].Params) > 0 && b.l.info.Uses[id] == check.Object(b.l.info.Ctxs[s.Key].Params[0]) {
+		// for (i, x) in xs.enumerated() key i: keyed by the index, as a
+		// for without a key is.
+		key = b.temp(bc.KRef)
+		b.emit(op("KNONE"), key)
+	} else if s.Key != nil {
 		kctx := b.l.info.Ctxs[s.Key]
 		var item *check.Var
 		if len(kctx.Params) > 0 {
@@ -837,7 +872,12 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 	b.variants(v, ec)
 	for _, h := range ec.Handlers {
 		ev := prelude.EventID(name, h.Event.Name())
-		clos := b.handler(h.Handler, h.Event)
+		var clos int
+		if check.EventBuilds(ec, h.Event.Name()) {
+			clos = b.buildingHandler(h.Handler, h.Event)
+		} else {
+			clos = b.handler(h.Handler, h.Event)
+		}
 		b.callBTo(uiOn, bc.None, v, b.konst(int64(ev)), clos)
 	}
 	for _, bd := range ec.Binds {
@@ -856,8 +896,19 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 		b.release(mark)
 		return v
 	}
+	rb := b.l.info.RouteBuilders[ec]
 	for _, ch := range ec.Children {
 		mark := b.mark()
+		if rb != nil && ch == rb.Item {
+			b.release(mark)
+			continue
+		}
+		if tn := b.l.info.RoutedScreens[ch]; tn != nil {
+			// A routed screen: a Route of its pattern.
+			b.callBTo(uiAdd, bc.None, v, b.routedRoute(tn))
+			b.release(mark)
+			continue
+		}
 		if f, ok := ch.(*syntax.ForStmt); ok && b.l.info.Fors[f] != nil && b.l.info.Fors[f].Lazy {
 			// Rows the element builds only while they're on screen.
 			items, key, row, kk := b.forParts(f)
@@ -874,6 +925,12 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 			b.callBTo(uiAdd, bc.None, v, cv)
 			b.f.Place(skip)
 		}
+		b.release(mark)
+	}
+	if rb != nil {
+		// Its screen: built for each of its screens, with their Params.
+		mark := b.mark()
+		b.callBTo(uiLazy, bc.None, v, b.routeBuilder(rb))
 		b.release(mark)
 	}
 	return v
@@ -933,6 +990,27 @@ func (b *fb) handler(h *syntax.OnHandler, ev *check.Member) int {
 	}})
 }
 
+// buildingHandler makes the handler of an event that Builds (a
+// Boundary's error): it takes the event's values and returns the View
+// its block's views make.
+func (b *fb) buildingHandler(h *syntax.OnHandler, ev *check.Member) int {
+	ctx := b.l.info.Ctxs[h]
+	vars := b.l.info.Binds[h]
+	params := make([]*check.Var, len(ev.Params))
+	pkinds := make([]bc.Kind, len(ev.Params))
+	for i, p := range ev.Params {
+		pkinds[i] = b.kind(p.Type)
+		if i < len(vars) {
+			params[i] = vars[i]
+		}
+	}
+	return b.makeClosure(closure{name: "on " + h.Name.Name, ctxs: []*check.FuncCtx{ctx}, params: params, pkinds: pkinds, ret: bc.KRef, throws: true, body: func(c *fb) {
+		c.ctx = ctx
+		v := c.viewsOf(h.Body.Items)
+		c.emit(op("RET"), v)
+	}})
+}
+
 // bind makes bind name: target: a binding of the key to target, and a
 // handler of the control's change writing it.
 func (b *fb) bind(v int, el string, bd *check.BindArg) {
@@ -964,6 +1042,42 @@ func (b *fb) bind(v int, el string, bd *check.BindArg) {
 	}})
 	ev := prelude.EventID(el, bd.Event.Name())
 	b.callBTo(uiOn, bc.None, v, b.konst(int64(ev)), h)
+}
+
+// bindAccessor is the accessor of a component's bound prop: of its
+// target, read as a binding (its cell when it's one read alone).
+func (b *fb) bindAccessor(bd *check.BindArg) int {
+	t := bd.Prop.Type
+	r := b.temp(bc.KRef)
+	if ref := b.readsAlone(bd.Target); ref >= 0 {
+		b.emit(op("ACCC"), r, ref)
+		return r
+	}
+	clos := b.thunk(b.l.info.Ctxs[bd.Item], bd.Target, t)
+	b.emit(op("ACCF"), r, clos, int(b.kind(t)))
+	return r
+}
+
+// bindWriter is the handler of a component's bound prop's change event:
+// it writes the target.
+func (b *fb) bindWriter(bd *check.BindArg) int {
+	wctx := b.l.info.Ctxs[bd.Target]
+	params := make([]*check.Var, len(bd.Event.Params))
+	pkinds := make([]bc.Kind, len(bd.Event.Params))
+	for i, p := range bd.Event.Params {
+		pkinds[i] = b.kind(p.Type)
+	}
+	if len(params) > 0 && len(wctx.Params) > 0 {
+		params[0] = wctx.Params[0]
+	}
+	return b.makeClosure(closure{name: "bind " + bd.Prop.Name(), ctxs: []*check.FuncCtx{wctx}, params: params, pkinds: pkinds, ret: bc.KVoid, throws: true, body: func(c *fb) {
+		c.ctx = wctx
+		if params[0] != nil {
+			lv := c.prepare(bd.Target)
+			c.set(lv, c.vars[params[0]])
+		}
+		c.emit(op("RET0"))
+	}})
 }
 
 // componentCall calls a component's function: accessors of its
@@ -1001,7 +1115,16 @@ func (b *fb) componentCall(ec *check.ElementCall) int {
 				slot = s
 			}
 		}
+		var bd *check.BindArg
+		for _, x := range ec.Binds {
+			if x.Prop == m {
+				bd = x
+			}
+		}
 		switch {
+		case bd != nil:
+			// bind p: target: the prop reads the target.
+			vals = append(vals, b.bindAccessor(bd))
 		case val != nil && m.IsSlot():
 			vals = append(vals, b.builder(val))
 		case val != nil:
@@ -1021,9 +1144,19 @@ func (b *fb) componentCall(ec *check.ElementCall) int {
 				h = x
 			}
 		}
-		if h != nil {
+		var bd *check.BindArg
+		for _, x := range ec.Binds {
+			if x.Event == m {
+				bd = x
+			}
+		}
+		switch {
+		case h != nil:
 			vals = append(vals, b.handler(h.Handler, m))
-		} else {
+		case bd != nil:
+			// bind p: target: its pChange writes the target.
+			vals = append(vals, b.bindWriter(bd))
+		default:
 			vals = append(vals, none())
 		}
 	}

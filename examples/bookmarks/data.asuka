@@ -64,7 +64,7 @@ fn splitTags(s: string) -> [string] {
   var out: [string] = []
   for t in s.split(",") {
     let tag = t.trim()
-    if !tag.isEmpty && !out.contains(tag) { out.push(tag) }
+    if !tag.isEmpty() && !out.contains(tag) { out.push(tag) }
   }
   return out
 }
@@ -72,20 +72,20 @@ fn splitTags(s: string) -> [string] {
 /// A link's site, without "www.".
 fn host(raw: string) -> string {
   if let u = url.parse(raw) {
-    if !u.host.isEmpty { return u.host.trimPrefix("www.") }
+    if !u.host.isEmpty() { return u.host.trimPrefix("www.") }
   }
   return raw
 }
 
-let linkRE = regex.Regex(r"https?://\S+")
+let linkRE = regex.must(r"https?://\S+")
 
 /// Copies a shared file (the sheet's to read only while it's open) to the
 /// app's data directory, returning the copy's path. It blocks: call it in
 /// a spawn.
 fn keepFile(path: string) throws -> string {
-  let dir = fs.join(fs.appDir(), "covers")
+  let dir = fs.join([fs.appDir(), "covers"])
   try fs.mkdirAll(dir)
-  let dst = fs.join(dir, "{time.now().format("yyyyMMdd-HHmmss.SSS")}{fs.ext(path)}")
+  let dst = fs.join([dir, "{time.now().format("yyyyMMdd-HHmmss.SSS")}{fs.ext(path)}"])
   try fs.copy(path, dst)
   return dst
 }
@@ -98,18 +98,16 @@ struct Page {
   image: string = ""
 }
 
-let metaRE = regex.Regex(r"(?is)<meta\s[^>]*>")
-let attrRE = regex.Regex(r"""(?is)(property|name|content)\s*=\s*("([^"]*)"|'([^']*)')""")
-let titleRE = regex.Regex(r"(?is)<title[^>]*>(.*?)</title>")
+let metaRE = regex.must(r"(?is)<meta\s[^>]*>")
+let attrRE = regex.must(r"""(?is)(property|name|content)\s*=\s*("([^"]*)"|'([^']*)')""")
+let titleRE = regex.must(r"(?is)<title[^>]*>(.*?)</title>")
 
 /// Reads the head of the page at link.
 async fn fetchPage(link: string) throws -> Page {
-  let res = try await withTimeout(8s) {
-    try await http.get(link, headers: [
-      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
-    ])
-  }
-  let doc = try await res.text(limit: 512 * 1024)
+  let res = try await http.request("GET", link, headers: [
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+  ], timeout: 8s)
+  let doc = res.text().slice(0, 512 * 1024)
   var p = Page()
   for m in metaRE.findAll(doc) {
     var key = ""
@@ -120,17 +118,17 @@ async fn fetchPage(link: string) throws -> Page {
     }
     content = html.unescape(content).trim()
     match key {
-      "og:title" | "twitter:title" => if p.title.isEmpty { p.title = content }
-      "og:description" | "twitter:description" | "description" => if p.description.isEmpty { p.description = content }
-      "og:image" | "twitter:image" => if p.image.isEmpty { p.image = content }
+      "og:title" | "twitter:title" => if p.title.isEmpty() { p.title = content }
+      "og:description" | "twitter:description" | "description" => if p.description.isEmpty() { p.description = content }
+      "og:image" | "twitter:image" => if p.image.isEmpty() { p.image = content }
       _ => {}
     }
   }
-  if p.title.isEmpty {
+  if p.title.isEmpty() {
     if let m = titleRE.findSubmatch(doc) { p.title = html.unescape(m[1]).trim() }
   }
   // An image's link relative to the page: from the page's.
-  if !p.image.isEmpty {
+  if !p.image.isEmpty() {
     if let base = url.parse(res.url) { p.image = base.resolve(p.image) }
   }
   return p

@@ -44,7 +44,7 @@ component Journal {
   /// The entries, the newest first.
   let entries = files.filter(f => !f.dir && f.name.hasSuffix(".txt")).sorted((a, b) => a.name > b.name)
   /// The open entry, as iCloud lists it.
-  let current = entries.first(f => f.path == open)
+  let current = entries.find(f => f.path == open)
 
   /// Does iCloud's work, and shows its error.
   async fn run(work: async fn() throws) {
@@ -57,7 +57,7 @@ component Journal {
 
   // The Documents directory, once there's an account.
   task(account.available) {
-    if account.available && dir.isEmpty {
+    if account.available && dir.isEmpty() {
       await run(() => { dir = try await icloud.documents() })
     }
   }
@@ -76,8 +76,8 @@ component Journal {
   }
 
   async fn newEntry() {
-    let path = fs.join(dir, "{today()}.txt")
-    if entries.contains(f => f.path == path) {
+    let path = fs.join([dir, "{today()}.txt"])
+    if entries.any(f => f.path == path) {
       await read(path)
       return
     }
@@ -105,7 +105,7 @@ component Journal {
       var version: icloud.Version? = none
       if theirs {
         let versions = try await icloud.conflicts(path)
-        if versions.isEmpty { return }
+        if versions.isEmpty() { return }
         version = versions[0]
       }
       try await icloud.resolve(path, keeping: version)
@@ -126,7 +126,7 @@ component Journal {
       Button("New Entry") {
         icon: "plus"
         variant: .filled
-        disabled: dir.isEmpty
+        disabled: dir.isEmpty()
         on press { await newEntry() }
       }
       Text("Text size {size.value}") {
@@ -154,7 +154,7 @@ component Journal {
         }
       }
     }
-    if !open.isEmpty {
+    if !open.isEmpty() {
       Column {
         gap: 8
         grow: 1
@@ -204,11 +204,9 @@ style hint {
 
 app { Journal() }
 
-/// The journal with a fake iCloud, on a fixed day.
-fn mountJournal(setup: fn(icloud.FakeICloud) = _ => {}) -> TestApp = mount(Journal(), setup: host => {
-  host.now = time.date(2026, 11, 15)
-  setup(host.icloud)
-})
+/// The journal with a fake iCloud, set up first. Tests start on
+/// 2026-01-01, in UTC.
+fn mountJournal(ic: icloud.FakeICloud) -> TestApp = mount(Journal())
 
 fn contents(ic: icloud.FakeICloud, rel: string) -> string {
   do {
@@ -222,30 +220,30 @@ fn contents(ic: icloud.FakeICloud, rel: string) -> string {
 // device's comes listed before it's downloaded, and downloads as it
 // opens.
 test "entries" {
-  let app = mountJournal()
-  let ic = app.host.icloud
+  let ic = icloud.fake()
+  let app = mountJournal(ic)
   await app.until("the documents", () => !app.disabled("New Entry"))
   app.tap("New Entry")
-  await app.waitFor("2026-11-15")
+  await app.waitFor("2026-01-01")
   app.type("Walked to the lake.", into: "What happened today?")
   app.tap("Save")
   await app.waitFor("Saved")
-  expect(contents(ic, "Documents/2026-11-15.txt") == "Walked to the lake.")
+  expect(contents(ic, "Documents/2026-01-01.txt") == "Walked to the lake.")
 
-  ic.arrive("Documents/2026-11-14.txt", "Rain all day.".bytes())
-  await app.waitFor("2026-11-14")
+  ic.arrive("Documents/2025-12-31.txt", "Rain all day.".bytes())
+  await app.waitFor("2025-12-31")
   app.expect("In iCloud")
-  app.tap("2026-11-14")
+  app.tap("2025-12-31")
   await app.waitFor("Rain all day.")
-  expect(ic.downloaded("Documents/2026-11-14.txt"), "opened without downloading")
+  expect(ic.downloaded("Documents/2025-12-31.txt"), "opened without downloading")
   app.expectNo("In iCloud")
 }
 
 // The text size is in iCloud's key-value store: the app's change goes
 // there, another device's comes here.
 test "the text size" {
-  let app = mountJournal()
-  let ic = app.host.icloud
+  let ic = icloud.fake()
+  let app = mountJournal(ic)
   await app.waitFor("Text size 17")
   app.tap("A+")
   await app.waitFor("Text size 18")
@@ -256,35 +254,38 @@ test "the text size" {
 
 // A size kept before, on any device, is the one the app starts with.
 test "the text size kept" {
-  let app = mountJournal(setup: ic => ic.change("textSize", 20))
+  let ic = icloud.fake()
+  ic.change("textSize", 20)
+  let app = mountJournal(ic)
   await app.waitFor("Text size 20")
 }
 
 // An entry two devices changed shows the conflict; keeping theirs makes
 // it the entry.
 test "a conflict" {
-  let app = mountJournal(setup: ic => {
-    try? fs.mkdirAll(ic.path("Documents"))
-    try? fs.write(ic.path("Documents/2026-11-13.txt"), "Mine".bytes())
-  })
-  let ic = app.host.icloud
-  await app.waitFor("2026-11-13")
-  app.tap("2026-11-13")
+  let ic = icloud.fake()
+  try? fs.mkdirAll(ic.path("Documents"))
+  try? fs.write(ic.path("Documents/2025-12-30.txt"), "Mine".bytes())
+  let app = mountJournal(ic)
+  await app.waitFor("2025-12-30")
+  app.tap("2025-12-30")
   await app.waitFor("Mine")
-  ic.conflict("Documents/2026-11-13.txt", "Theirs".bytes(), device: "Ann's iPad")
+  ic.conflict("Documents/2025-12-30.txt", "Theirs".bytes(), device: "Ann's iPad")
   await app.waitFor("Changed on another device too.")
   app.tap("Keep Theirs")
   await app.waitFor("Theirs")
   app.expectNo("Changed on another device too.", "Conflict")
-  expect(contents(ic, "Documents/2026-11-13.txt") == "Theirs")
+  expect(contents(ic, "Documents/2025-12-30.txt") == "Theirs")
 }
 
 // Signed out, the app says how to keep the journal, and can't write one.
 test "signed out" {
-  let app = mountJournal(setup: ic => ic.signOut())
+  let ic = icloud.fake()
+  ic.signOut()
+  let app = mountJournal(ic)
   await app.waitFor("Sign in to iCloud, with iCloud Drive on, to keep your journal on all your devices.")
   expect(app.disabled("New Entry"), "New Entry without an account")
-  app.host.icloud.signIn("test")
+  ic.signIn("test")
   await app.until("the documents", () => !app.disabled("New Entry"))
   app.expectNo("Sign in to iCloud, with iCloud Drive on, to keep your journal on all your devices.")
 }

@@ -1722,14 +1722,14 @@ import asuka/calendar
 import asuka/time
 
 async fn addDemo() throws -> bool {
-  let start = time.date(2026, 12, 1, hour: 15).unixMilli()
-  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30 * 60_000))
+  let start = time.date(2026, 12, 1, hour: 15)
+  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30min))
 }
 ```
 
 - `calendar.add(event)` は、内容を入力済みにしたシステムのイベントエディターを表示し、ユーザーがそこでイベントを保存します。保存したかどうかを返します。権限は求めません（iOS 17 以降）。iOS は保存されたかどうかを伝えますが、Android のカレンダーアプリは伝えません。
 - `calendar.request()` はアクセスの許可を求めます（`.notAsked`、`.denied`、`.writeOnly`、`.full`）。`.full` なら、`calendar.calendars()` でカレンダーの一覧を、`calendar.events(from:, to:, calendars:)` で二つの時刻のあいだのイベントを取得できます。繰り返しイベントは、発生ごとに一件ずつ返ります。`.full` でなければ、これらは「calendar: not allowed」を投げます。
-- イベントの `start` と `end` は 1970 年からのミリ秒です。終日イベントでは日付を表し、それぞれ初日の UTC の午前 0 時と、最終日の翌日の UTC の午前 0 時です。
+- イベントの `start` と `end` は `time.Time` です。終日イベントでは日付を表し、それぞれ初日の UTC の午前 0 時と、最終日の翌日の UTC の午前 0 時です。
 
 Mac では EventKit を使います。`add` はウィンドウの上のアラートで確認してから保存します（macOS にはアプリ用のイベントエディターがないためです）。Linux では Evolution Data Server のカレンダーを読み書きします。Windows はパッケージ化されたアプリにしかカレンダーを渡さないので、`request` は `.denied` を返し、`add` は iCalendar ファイルをユーザーのカレンダーアプリで開きます（Windows は保存されたかどうかを伝えないので、false を返します）。ブラウザーはカレンダーを読めず、`add` は `.ics` ファイルをダウンロードします。
 
@@ -1746,9 +1746,10 @@ sizes = ["small", "medium", "rectangular"]
 ```
 
 ```asuka
+import asuka/time
 import asuka/widget
 
-fn showToday(meeting: int) {
+fn showToday(meeting: time.Time) {
   widget.set("today", widget.Entry(
     title: "Next", symbol: "calendar", value: "3 tasks", body: "Call Ana at 4",
     progress: 0.4, showProgress: true, until: meeting, url: "myapp://today",
@@ -1756,7 +1757,7 @@ fn showToday(meeting: int) {
 }
 ```
 
-ウィジェットは、プラットフォームのテンプレートを使い、サイズに合わせたレイアウトで `Entry` を表示します。表示されるのは、`title`（`symbol` 付きで、`tint` の色）、大きな `value`、`body`、`progress` バー、`until`（1970 年からのミリ秒）までリアルタイムで進むカウントダウン、`caption` です。アプリが別のエントリーを設定するまで、アプリが動いているかどうかにかかわらず表示され続けます。タップすると、その `url` でアプリが開きます（アプリの `openURL` で受け取ります）。`widget.setAll(kind, entries)` に、それぞれ `at` を持つエントリーを渡すとタイムラインになり、各エントリーはその時刻から表示されます。`widget.clear(kind)` でウィジェットを空にします。
+ウィジェットは、プラットフォームのテンプレートを使い、サイズに合わせたレイアウトで `Entry` を表示します。表示されるのは、`title`（`symbol` 付きで、`tint` の色）、大きな `value`、`body`、`progress` バー、`until`（`time.Time`）までリアルタイムで進むカウントダウン、`caption` です。アプリが別のエントリーを設定するまで、アプリが動いているかどうかにかかわらず表示され続けます。タップすると、その `url` でアプリが開きます（アプリの `openURL` で受け取ります）。`widget.setAll(kind, entries)` に、それぞれ `at` を持つエントリーを渡すとタイムラインになり、各エントリーはその時刻から表示されます。`widget.clear(kind)` でウィジェットを空にします。
 
 サイズは `small`、`medium`、`large`、そして iOS の `extraLarge`（iPad）と、ロック画面の `circular`、`rectangular`、`inline` です。iOS では、CLI がアプリに組み込む WidgetKit 拡張機能になり、アプリと App Group を共有します。リリースビルドには App Groups ケイパビリティと、拡張機能の ID（アプリの ID に `.widgets` を付けたもの）のプロビジョニングプロファイルが必要です。Android では、種類ごとに一つの App Widget になり、Material You の色を使い、ランチャーのセルに合わせたサイズになります。デスクトップと Web にはウィジェットがないので、`widget.set` は何もしません。
 
@@ -1766,8 +1767,9 @@ fn showToday(meeting: int) {
 
 ```asuka
 import asuka/liveactivity
+import asuka/time
 
-async fn followOrder(eta: int) throws {
+async fn followOrder(eta: time.Time) throws {
   let a = try await liveactivity.start(liveactivity.Content(
     title: "Order #1042", subtitle: "Ana is picking it up", value: "12 min",
     symbol: "bag.fill", until: eta, url: "myapp://orders/1042",
@@ -1780,9 +1782,9 @@ async fn followOrder(eta: int) throws {
 }
 ```
 
-アクティビティは、プラットフォームのテンプレートで `Content` を表示します。空の項目は表示されません。表示されるのは、`title` と `subtitle`、`value`（横に大きく表示され、Dynamic Island のコンパクト表示や Android 16 のステータスバーのチップにも使われます）、`tint` の色の `symbol`、`progress` バー、そしてアプリが動いていなくても進む `until`（1970 年からのミリ秒）までのカウントダウンです。`since`、`until`、`showProgress` を指定すると、バーが自動で伸びていきます。タップすると、その `url` でアプリが開きます（アプリの `openURL` で受け取ります）。
+アクティビティは、プラットフォームのテンプレートで `Content` を表示します。空の項目は表示されません。表示されるのは、`title` と `subtitle`、`value`（横に大きく表示され、Dynamic Island のコンパクト表示や Android 16 のステータスバーのチップにも使われます）、`tint` の色の `symbol`、`progress` バー、そしてアプリが動いていなくても進む `until`（`time.Time`）までのカウントダウンです。`since`、`until`、`showProgress` を指定すると、バーが自動で伸びていきます。タップすると、その `url` でアプリが開きます（アプリの `openURL` で受け取ります）。
 
-`liveactivity.start(c, push:, relevance:)` は、アプリが画面に出ているあいだだけ動作します（どちらのプラットフォームでも、バックグラウンドのアプリはアクティビティを開始できません）。`relevance` は、アプリのアクティビティの並び順を決めます。`Alert` を付けると、更新とともに画面が点灯します。iOS では Dynamic Island が展開され、Apple Watch にも表示されます。Android では通知をもう一度鳴らします。`end(c, dismiss:)` は、最後の内容を、システムが取り除くまで（既定の `.later`。最大 4 時間）か、指定した時刻まで（`.at(ms)`）表示したままにします。`.now` を指定すると、すぐに取り除きます。`liveactivity.enabled()` は、ユーザーがアクティビティを許可しているかどうかを返します（Android では最初の `start` で通知の許可を求めます）。このパッケージは、まだ実行中のアクティビティを列挙しません。
+`liveactivity.start(c, push:, relevance:)` は、アプリが画面に出ているあいだだけ動作します（どちらのプラットフォームでも、バックグラウンドのアプリはアクティビティを開始できません）。`relevance` は、アプリのアクティビティの並び順を決めます。`Alert` を付けると、更新とともに画面が点灯します。iOS では Dynamic Island が展開され、Apple Watch にも表示されます。Android では通知をもう一度鳴らします。`end(c, dismiss:)` は、最後の内容を、システムが取り除くまで（既定の `.later`。最大 4 時間）か、指定した時刻まで（`.at(t)`）表示したままにします。`.now` を指定すると、すぐに取り除きます。`liveactivity.enabled()` は、ユーザーがアクティビティを許可しているかどうかを返します（Android では最初の `start` で通知の許可を求めます）。このパッケージは、まだ実行中のアクティビティを列挙しません。
 
 `liveactivity.events()` は、アクティビティに起きたことを伝えます。（ユーザー、システム、サーバーによって）`.ended` になったもの、サーバーによって `.started` になったもの、そしてプッシュトークン（`.pushToken`、`.pushToStartToken`）で、それぞれが `activity` と `token` を持つ `Event` です。`push: true` を指定すると、アプリが動いていないあいだも、サーバーからアクティビティを更新・終了できます。そのプッシュトークンと `id` をサーバーに送ってください。iOS では、サーバーは `liveactivity` タイプの APNs プッシュを送り、その `content-state` は内容を JSON にしたものです（`Content` のフィールドで、`since` と `until` は `sinceMs` と `untilMs` になります）。Android では、`asuka.liveActivity`（`update`、`end`）、`asuka.id`、`asuka.content` を持つ Firebase のデータメッセージを送ります。サーバーからアクティビティを開始するには、iOS では iOS 17.2 の push-to-start トークンを使い（attributes の型は `AsukaActivityAttributes` で、新しいアクティビティの `id` を含めます）、Android では `asuka.liveActivity` を `start` にします。プッシュを使うには、アプリに `asuka/push` が必要です。iOS では Push Notifications ケイパビリティが、Android では Firebase が要ります。
 

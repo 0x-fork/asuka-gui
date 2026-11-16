@@ -1,40 +1,57 @@
 // Bookmarks saves links from other apps, as Raindrop does: "Share" in a
-// browser, YouTube or Photos shows the app's own sheet over that app
-// (the app's shareSheet), with the page's title, description and image
-// read from it, a note, a collection and tags. Save, and the sheet
-// closes back to the app you were in; the bookmark is in the app's list.
+// browser, YouTube or Photos to Bookmarks opens its editor, with the
+// page's title, description and image read from it, a note, a
+// collection and tags. Save, and the bookmark is in the app's list.
 //
 //   asuka dev --platform ios examples/bookmarks
 
 import asuka/device
 import asuka/sqlite
 
+/// What another app shared, waiting to be edited.
+state shared: [SharedItem] = []
+
 app {
-  // What "Share" in another app shows: the editor, filled with what's
-  // shared. It runs in a process of its own (the share extension,
-  // Android's share activity), over the other app.
-  shareSheet: sheet => ShareEditor(sheet)
-  // The share sheet writes from its own process: look again on coming
-  // back.
+  // What "Share" in another app sends: the editor, filled with it.
+  on share(items) { shared = items }
+  // Another app (or another window) may have written: look again on
+  // coming back.
   on foreground { db.changed() }
   Stack { Bookmarks() }
 }
 
-component ShareEditor(sheet: ShareSheet) {
+component ShareEditor(items: [SharedItem]) {
+  event close
   let draft = Draft()
 
-  task { await draft.fromShare(sheet.items) }
+  task { await draft.fromShare(items) }
 
-  Editor(draft, if draft.link.isEmpty && !draft.cover.isEmpty { "New image" } else { "New bookmark" }) {
-    on close { sheet.cancel() }
-    on saved { sheet.close() }
+  Editor(draft, if draft.link.isEmpty() && !draft.cover.isEmpty() { "New image" } else { "New bookmark" }) {
+    on close { emit close }
+    on saved { emit close }
   }
+}
+
+/// A bookmark's host and tags, on a line.
+fn about(b: Bookmark) -> string {
+  var parts: [string] = []
+  if !b.url.isEmpty() { parts.push(host(b.url)) }
+  return (parts + splitTags(b.tags).map(t => "#{t}")).joined(" · ")
 }
 
 screen Bookmarks {
   state query = ""
   state filter = -1 // -1: all
   state adding: Draft? = none
+  state deleting: int? = none
+
+  // A swipe's Delete.
+  task(deleting) {
+    if let id = deleting {
+      await write("delete from bookmarks where id = ?", [id])
+      deleting = none
+    }
+  }
 
   let marks: sqlite.Live<Bookmark> = db.watch(
     """
@@ -87,7 +104,7 @@ screen Bookmarks {
         }
       }
     }
-    if !marks.loading && marks.rows.isEmpty {
+    if !marks.loading && marks.rows.isEmpty() {
       Column {
         grow: 1
         justify: .center
@@ -111,11 +128,9 @@ screen Bookmarks {
           gap: 14
           padding: [12, 16]
           align: .center
-          swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => {
-            await write("delete from bookmarks where id = ?", [b.id])
-          })]
+          swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => { deleting = b.id })]
           on press {
-            if !b.url.isEmpty { try? await device.browse(b.url) }
+            if !b.url.isEmpty() { try? await device.browse(b.url) }
           }
           Image(b.cover) {
             mode: .fill
@@ -134,12 +149,12 @@ screen Bookmarks {
               font: .body.semibold()
               lines: 2
             }
-            Text(((if b.url.isEmpty { [] } else { [host(b.url)] }) + splitTags(b.tags).map(t => "#{t}")).join(" · ")) {
+            Text(about(b)) {
               font: .footnote
               color: .secondaryLabel
               lines: 1
             }
-            if !b.note.isEmpty {
+            if !b.note.isEmpty() {
               Text(b.note) {
                 font: .footnote
                 lines: 2
@@ -148,6 +163,12 @@ screen Bookmarks {
           }
         }
       }
+    }
+    // What another app shared: the editor, in a sheet.
+    Sheet {
+      open: !shared.isEmpty()
+      on dismiss { shared = [] }
+      ShareEditor(shared) { on close { shared = [] } }
     }
     // A link added in the app: the same editor, in a sheet.
     if let d = adding {
@@ -167,4 +188,13 @@ test "tags and hosts" {
   expect(splitTags(" a, b,,a ,c") == ["a", "b", "c"])
   expect(host("https://www.example.com/x") == "example.com")
   expect(host("not a link") == "not a link")
+}
+
+test "the list, and what's shared" {
+  let app = mount(Stack { Bookmarks() })
+  await app.idle()
+  app.expect("Bookmarks", "Add")
+  shared = [SharedItem(kind: .text, text: "A page https://example.com/a")]
+  await app.idle()
+  app.expect("New bookmark")
 }

@@ -47,12 +47,19 @@ type Checker struct {
 	view        bool // checking view items
 
 	chained map[syntax.Expr]bool // the members and calls of a ?. chain
-	nextTP  int
-	loadOK  bool
-	inDefer int
-	free    map[*TypeParam]bool
-	spawns  []*FuncCtx
-	errT    *TypeName // Error
+	// The Routes around the views checked: the Router, the path the
+	// Routes' paths make (routeKnown: they're constants); and the hrefs
+	// made of routed screens' calls, resolved once every Router is.
+	router     *ElementCall
+	routePath  string
+	routeKnown bool
+	hrefs      []*Href
+	nextTP     int
+	loadOK     bool
+	inDefer    int
+	free       map[*TypeParam]bool
+	spawns     []*FuncCtx
+	errT       *TypeName // Error
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
@@ -103,7 +110,13 @@ func (c *Checker) Std(path string) *Package {
 // CheckPackage checks a package's files. imports maps each import path
 // its files use to the package (checked already).
 func (c *Checker) CheckPackage(path, name string, files []*syntax.SourceFile, imports map[string]*Package) *Package {
-	p := &Package{Path: path, Name: name, qualify: path != ""}
+	return c.CheckPackageIn(path, name, "", files, imports)
+}
+
+// CheckPackageIn is CheckPackage of the package in dir, where its
+// assets/ are (assets.text).
+func (c *Checker) CheckPackageIn(path, name, dir string, files []*syntax.SourceFile, imports map[string]*Package) *Package {
+	p := &Package{Path: path, Name: name, Dir: dir, qualify: path != ""}
 	p.Scope = NewScope(c.prelude.Scope)
 	c.checkFiles(p, files, imports)
 	return p
@@ -114,6 +127,7 @@ func (c *Checker) Program(root *Package) *Program {
 	c.finishLocalFns()
 	c.finalize()
 	c.jsonGenerics()
+	c.routeHrefs()
 	pkgs := append([]*Package{c.prelude}, c.pkgs...)
 	diags := append([]Diagnostic{}, c.diags...)
 	sort.SliceStable(diags, func(i, j int) bool {
@@ -171,7 +185,7 @@ func (c *Checker) errorAt(pos, end syntax.Position, msg string) {
 // The universe: the types and functions built into the compiler
 
 func (c *Checker) initUniverse() {
-	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer} {
+	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer, TestApp} {
 		c.universe.Insert(&TypeName{object: object{name: t.name}, Kind: BasicType, Type: t, resolved: true})
 	}
 	// Error: the interface every error has.
@@ -190,13 +204,20 @@ func (c *Checker) initUniverse() {
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet},
 		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {"shader", BShader},
-		{"never", BNever},
+		{"never", BNever}, {"navigate", BNavigate}, {"replace", BReplace},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
 	}
 	for _, f := range RuntimeFuncs {
 		c.universe.Insert(&Builtin{object: object{name: f.Name}, ID: BRuntime, Fn: f})
 	}
+	// router: the router's builtins, a package of the universe.
+	rp := &Package{Path: "router", Name: "router"}
+	rp.Scope = NewScope(nil)
+	for _, f := range RouterFuncs {
+		rp.Scope.Insert(&Builtin{object: object{name: f.Name}, ID: BRuntime, Fn: f})
+	}
+	c.universe.Insert(&PkgName{object: object{name: "router"}, Pkg: rp})
 }
 
 // ErrorType is the Error interface.

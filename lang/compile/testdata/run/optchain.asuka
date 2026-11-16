@@ -1,0 +1,35 @@
+// x?.name where name is itself optional: the result is name's optional,
+// not boxed again.
+struct Use {
+  used: float? = none
+  on: bool? = none
+  n: int? = none
+}
+
+struct Reply {
+  use: Use? = none
+}
+
+test "optional members" {
+  let r = Reply(use: Use(used: 15.5, on: false, n: 3))
+  if let u = r.use?.used { print(u) }
+  print(r.use?.on == false)
+  print((r.use?.n ?? 0) + 1)
+  let empty = Reply(use: Use())
+  print(empty.use?.used == none)
+  let gone = Reply()
+  print(gone.use?.on ?? true)
+  for (k, u) in [("a", r.use), ("b", gone.use)] {
+    if let x = u?.used { print("{k} {x}") } else { print("{k} none") }
+  }
+}
+
+// Output:
+// 15.5
+// true
+// 4
+// true
+// true
+// a 15.5
+// b none
+// ok optional members

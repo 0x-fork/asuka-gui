@@ -14,6 +14,7 @@ import (
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/compile"
 )
 
 var (
@@ -117,6 +118,9 @@ func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, e
 		args = append(args, pattern)
 	}
 	cmd := exec.Command(exe, append(args, p)...)
+	// The plugins' libraries the program calls (std/sqlite's), as the core
+	// finds them: ASUKA_LIB_<NAME>.
+	cmd.Env = append(os.Environ(), compile.PluginEnv(m)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -222,6 +226,7 @@ func ShowApp(m *bytecode.Module, out io.Writer) error {
 	}
 	defer cleanup()
 	cmd := exec.Command(exe, "-app", p)
+	cmd.Env = append(os.Environ(), compile.PluginEnv(m)...)
 	cmd.Stdout, cmd.Stderr = out, out
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("asuka-run: %v", err)

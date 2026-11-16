@@ -40,6 +40,12 @@ component Focus {
   }
   Timer()
 }
+
+fn start() {}
+
+component Timer {
+  Text("25:00")
+}
 ```
 
 它的 id 在应用的各个图标中标识它（Mac 会把它放回用户按住 ⌘ 拖到的位置）。它的 `image`（一张资源图片或一个文件，绘制为 16 点高）或 `symbol`（在 Mac 上是模板图像，会跟随菜单栏的外观变化；`template: true` 让图片也成为模板图像）、`title`（Mac 上，以及会显示标签文字的 Linux 面板上可见）、`tooltip` 和 `menu` 都是绑定，变化时会重新发送；显示它的组件消失时，图标也随之消失。没有 `on click` 时，点击图标会打开菜单；有 `on click` 时，左键点击触发 `click`，右键点击才打开菜单。
@@ -53,6 +59,8 @@ component Focus {
 浮出面板（flyout）是一种从托盘图标上“垂下来”的窗口，就像 Mac 菜单栏附加功能弹出的面板，或者 Windows 通知区域弹出的面板那样；它也可以从某个窗口中的一块矩形区域弹出。它就是一个带有 `flyout` 的 `Window`：
 
 ```asuka
+import asuka/tray
+
 component Power {
   state open = false
   tray.Tray("power") {
@@ -68,6 +76,10 @@ component Power {
     maxHeight: 480
     Panel()
   }
+}
+
+component Panel {
+  Text("Charging")
 }
 ```
 
@@ -97,22 +109,31 @@ component Power {
 
 ## 全局快捷键
 
-`hotkey.Register` 注册的按键，即使其他应用在前台也能被你的应用收到，有效期与注册它的组件相同：
+`hotkey.Hotkey` 注册的按键，即使其他应用在前台也能被你的应用收到，有效期与它显示的时间相同（它本身不显示任何内容）：
 
-```go
-k := hotkey.Register(hotkey.Props{
-	Shortcut:    ui.Val(ui.Cmd("space").With(ui.Alt)),
-	Description: ui.Val("Show the launcher"),
-	OnPress:     func() { ui.MainWindow().Focus() },
-})
+```asuka
+import asuka/hotkey
+
+component Launcher {
+  state problem = ""
+
+  Column {
+    hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
+      description: "Show the launcher"
+      on press { mainWindow().focus() }
+      on error(e) { problem = e.message }
+    }
+    if !problem.isEmpty() { Text(problem) }
+  }
+}
 ```
 
-每次按下快捷键时，`OnPress` 都会在主线程上执行；快捷键本身跟随它的访问器（比如用户在设置里自选的按键）。`k.Status()` 和 `k.Err()` 会告诉你它是已生效、等待中，还是失败了以及失败的原因：`ErrTaken`（这组按键已被其他应用占用）、`ErrNotAllowed`（用户拒绝了，或者桌面环境不认识这个应用）、`ErrNotAvailable`、`ErrKey`。
+每次按下快捷键时，`on press` 都会在主线程上执行；快捷键本身跟随它的绑定（比如用户在设置里自选的按键）：绑定变化时会重新注册。`on error(e)` 会告诉你失败的原因：`.taken`（这组按键已被其他应用占用）、`.notAllowed`（用户拒绝了，或者桌面环境不认识这个应用）、`.notAvailable`、`.noKey`。`mainWindow()` 是主窗口的句柄，在哪里调用都一样：`focus()` 把它切到前台，`show()`、`hide()` 等其他方法也都作用在它上面。
 
-- **macOS**：使用 Carbon 的热键，不需要辅助功能权限。系统自带的快捷键会被视为已占用。按下快捷键不会把应用切到前台，需要的话请对某个窗口调用 `Focus`。
+- **macOS**：使用 Carbon 的热键，不需要辅助功能权限。系统自带的快捷键会被视为已占用。按下快捷键不会把应用切到前台，需要的话请对某个窗口调用 `focus()`。
 - **Windows**：使用 `RegisterHotKey`；按下快捷键后，应用可以把自己切到前台。
-- **Linux**：在 X11 下，由应用自己抓取按键。在 Wayland 下，由桌面通过 GlobalShortcuts portal（GNOME 48、KDE Plasma 6）绑定按键：桌面可能会请用户确认或换一组按键，并且要求应用已经和它的 desktop entry 一起安装。`OnPress` 中显示的窗口会凭这次按键的激活令牌（activation token）获得焦点。
-- 手机和 Web 上没有全局快捷键（`ErrNotAvailable`）。
+- **Linux**：在 X11 下，由应用自己抓取按键。在 Wayland 下，由桌面通过 GlobalShortcuts portal（GNOME 48、KDE Plasma 6）绑定按键：桌面可能会请用户确认或换一组按键，并且要求应用已经和它的 desktop entry 一起安装。`on press` 中显示的窗口会凭这次按键的激活令牌（activation token）获得焦点。
+- 手机和 Web 上没有全局快捷键（`.notAvailable`）。
 
 ## 面板与启动器
 
@@ -137,11 +158,15 @@ app {
 }
 
 component Launcher {
-  hotkey.Hotkey(hotkey.Shortcut(key: "space", alt: true)) {
+  hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
     description: "Show the launcher"
     on press { shown = !shown }
   }
   Search()
+}
+
+component Search {
+  TextField { placeholder: "Search" }
 }
 ```
 
@@ -163,17 +188,36 @@ component Launcher {
 
 `asuka/apps` 会像启动器那样列出并搜索已安装的应用：
 
-```go
-apps.List(func(list []apps.App, err error) { installed.Set(list) })
-results := apps.Search(installed.Get(), query.Get())
-apps.Icon(results[0], 32, func(path string, err error) { icon.Set(path) }) // 一个 PNG，可用于 ui.Image
-apps.Open(results[0], nil)
+```asuka
+import asuka/apps
+
+component Apps {
+  state installed: [apps.App] = []
+  state query = ""
+  state found: [apps.App] = []
+  state icon = ""
+
+  task { installed = (try? await apps.list()) ?? [] }
+  task(installed, query) {
+    found = (try? await apps.search(installed, query)) ?? []
+    // 一个 PNG，可用于 Image。
+    if let first = found.first() { icon = (try? await apps.icon(first, 32)) ?? "" }
+  }
+
+  Column {
+    TextField { bind text: query }
+    for a in found key a.id {
+      Button(a.name) { on press { try? await apps.open(a) } }
+    }
+    if !icon.isEmpty() { Image(icon) }
+  }
+}
 ```
 
-- `List` 返回每个应用的 `Name`（与系统中显示的一致，使用用户的语言）、`ID` 和 `Path`，按名称排序；它在主线程之外读取磁盘，再回到主线程给出结果。每次显示面板时都重新列一遍，因为期间可能有应用被安装或卸载。
-- `Search` 按用户输入的内容为应用排序，忽略大小写和重音符号，优先级依次为：名称完全相同、名称以输入开头、某个单词以输入开头或首字母缩写匹配（"vsc" 匹配 Visual Studio Code）、名称中任意位置包含输入，最后是名称中按顺序包含输入的各个字母。
-- `Icon` 把应用图标按指定的尺寸（单位是点）绘制成 PNG 文件，存在应用的缓存目录中供下次复用，并返回它的路径。
-- `Open` 启动这个应用，如果它已在运行，就把它切到前台。请先隐藏面板，这样在新打开的应用接管键盘之前，键盘输入会留在用户原本所在的应用里。
+- `list()` 返回每个应用的 `name`（与系统中显示的一致，使用用户的语言）、`id` 和 `path`，按名称排序；它在主线程之外读取磁盘。每次显示面板时都重新列一遍，因为期间可能有应用被安装或卸载。
+- `search` 按用户输入的内容为应用排序，忽略大小写和重音符号，优先级依次为：名称完全相同、名称以输入开头、某个单词以输入开头或首字母缩写匹配（"vsc" 匹配 Visual Studio Code）、名称中任意位置包含输入，最后是名称中按顺序包含输入的各个字母。
+- `icon` 把应用图标按指定的尺寸（单位是点）绘制成 PNG 文件，存在应用的缓存目录中供下次复用，并返回它的路径。
+- `open` 启动这个应用，如果它已在运行，就把它切到前台。请先隐藏面板，这样在新打开的应用接管键盘之前，键盘输入会留在用户原本所在的应用里。
 
 | | 查找位置 | ID | 图标 | 打开方式 |
 |---|---|---|---|---|
@@ -181,21 +225,29 @@ apps.Open(results[0], nil)
 | Windows | “开始”菜单中的应用（shell 的 Applications 文件夹），包括打包应用 | AppUserModelID | shell 为它提供的图像 | shell |
 | Linux | 菜单中会显示的 desktop entry（XDG 的，以及 Flatpak 和 Snap 的），依据 `OnlyShowIn`、`NoDisplay`、`TryExec` 筛选 | desktop file id | 从图标主题中取 entry 指定的图标 | GIO，并使用显示器的启动上下文 |
 
-手机和 Web 上返回 `apps.ErrUnsupported`。
+手机和 Web 上会抛出 `apps.AppsError.unsupported`。
 
 ## 鼠标穿透窗口
 
 `clickThrough: true`（或 `w.setClickThrough(true)`）让鼠标穿过窗口，作用到它背后的东西上，比如另一个应用的窗口或桌面。它适合做悬浮层、HUD 或桌面宠物，通常再配上 `transparent` 和 `alwaysOnTop`。读取 `w.clickThrough` 可以跟随它的状态。开启期间，窗口完全不接收点击、悬停和滚轮事件；要让用户操作窗口，就把它关掉。
 
 ```asuka
-Window {
-  bind open: hud
-  transparent: true
-  alwaysOnTop: true
-  clickThrough: true
-  width: 240
-  height: 80
-  Meters()
+state hud = true
+
+app {
+  Window {
+    bind open: hud
+    transparent: true
+    alwaysOnTop: true
+    clickThrough: true
+    width: 240
+    height: 80
+    Meters()
+  }
+}
+
+component Meters {
+  Text("CPU 12%")
 }
 ```
 
@@ -205,36 +257,43 @@ Window {
 
 `asuka/dialog` 显示系统自带的文件对话框，给你的是用户文件的真实路径，而不是副本：
 
-```go
-dialog.Save(dialog.SaveOptions{
-	Name:    "Notes.md",
-	Filters: []dialog.Filter{{Name: "Markdown", Extensions: []string{"md"}}},
-	From:    view, // 对话框所属的窗口
-}, func(path string, err error) {
-	if path != "" {
-		os.WriteFile(path, export(), 0o644)
-	}
-})
+```asuka
+import asuka/dialog
+import asuka/fs
+import asuka/shell
+
+async fn export(notes: string) throws {
+  let md = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
+  if let path = try await dialog.save(name: "Notes.md", button: "Export", filters: md) {
+    try fs.writeText(path, notes)
+    try? await shell.reveal(path)
+  }
+}
 ```
 
-有三种对话框：`dialog.Open`（用 `Multiple` 可以选多个文件，`Filters` 可以按 MIME 类型如 `image/*` 或按扩展名筛选）、`dialog.Save`（可以给一个建议的 `Name`；覆盖已有文件前对话框会先询问）和 `dialog.Folder`。`Title`、`Button`、`Start`（一个文件夹，或其中的一个文件）和 `From` 用来配置它们。用户取消时，既没有路径也没有错误。
+有这几种对话框：`dialog.open`（用 `multiple` 可以选多个文件，`filters` 可以按 MIME 类型如 `image/*` 或按扩展名筛选）、`dialog.save`（可以给一个建议的 `name`；覆盖已有文件前对话框会先询问）、`dialog.chooseFolder` 和 `dialog.chooseFolders`。`title`、`button` 和 `start`（一个文件夹，或其中的一个文件）用来配置它们。用户取消时，既没有路径（`none` 或空列表），也没有错误。
 
-在 Mac 上，它们以弹出面板（sheet）的形式附着在窗口上；在 Windows 上是通用项目对话框（common item dialog），对所属窗口模态；在 Linux 上是 GTK 的文件对话框，在 Flatpak 中则走桌面的 portal。在浏览器中，Open 和 Folder 会把选中的内容复制到应用的文件里；Save 给出的文件会被写入用户选择的文件（Chrome、Edge），或者作为下载保存。在 iOS 和 Android 上，Open 是系统的文档选择器（得到的是副本，和 `device.PickFiles` 一样），而 Save 和 Folder 返回 `dialog.ErrUnsupported`。
+在 Mac 上，它们以弹出面板（sheet）的形式附着在窗口上；在 Windows 上是通用项目对话框（common item dialog），对所属窗口模态；在 Linux 上是 GTK 的文件对话框，在 Flatpak 中则走桌面的 portal。在浏览器中，open 和 chooseFolder 会把选中的内容复制到应用的文件里；save 给出的文件会被写入用户选择的文件（Chrome、Edge），或者作为下载保存。在 iOS 和 Android 上，open 是系统的文档选择器（得到的是副本，和 `device.pickFiles` 一样），而 save 和 chooseFolder 会抛出 `unsupported` 错误。
 
 ## 文件管理器
 
-`asuka/shell` 能对文件做文件管理器会做的那些事：`shell.Reveal` 在文件所在的文件夹中选中并显示它（Finder、资源管理器，或桌面环境的文件管理器）；`shell.Open` 用用户为该类型设置的应用打开文件（没有这样的应用时返回 `shell.ErrNoApp`），对文件夹则用文件管理器打开；`shell.Trash` 把文件移到废纸篓或回收站，永远不会直接彻底删除（做不到时就返回失败）；`shell.Beep` 播放系统提示音。手机和 Web 上没有文件管理器：Reveal 和 Trash 返回 `shell.ErrUnsupported`，而在 Web 上 Open 会在新标签页中显示文件。如果要在应用内显示文件的内容，请使用 `asuka/preview`。
+`asuka/shell` 能对文件做文件管理器会做的那些事：`shell.reveal(path)` 在文件所在的文件夹中选中并显示它（Finder、资源管理器，或桌面环境的文件管理器）；`shell.open(path)` 用用户为该类型设置的应用打开文件（没有这样的应用时抛出 `shell.ShellError.noApp`），对文件夹则用文件管理器打开；`shell.trash(path)` 把文件移到废纸篓或回收站，永远不会直接彻底删除（做不到时就抛出错误）；`shell.beep()` 播放系统提示音。手机和 Web 上没有文件管理器：reveal 和 trash 会抛出 `unsupported` 错误，而在 Web 上 open 会在新标签页中显示文件。如果要在应用内显示文件的内容，请使用 `asuka/preview`。
 
 ## 打开文件
 
-在 `asuka.toml` 的 `fileTypes` 中声明应用能打开的文件类型（见[发布](shipping.md)），然后用 `ui.OnOpenFiles` 处理它们：
+在 `asuka.toml` 的 `fileTypes` 中声明应用能打开的文件类型（见[发布](shipping.md)），然后用 `app` 块的 `on files(paths)` 处理它们（或者在组件体里用 `onOpenFiles`，在组件存在期间有效）：
 
-```go
-ui.OnOpenFiles(func(paths []string) {
-	for _, p := range paths {
-		open(p)
-	}
-})
+```asuka
+state opened: [string] = []
+
+app {
+  on files(paths) {
+    for p in paths { opened.push(p) }
+  }
+  Column {
+    for p in opened key p { Text(p) }
+  }
+}
 ```
 
 一起打开的文件会在同一次调用中以绝对路径的形式送达，来源包括：在 Finder、资源管理器或“文件”应用中双击、“打开方式”、把文件拖到程序坞图标上、选择一个最近使用的文档，以及在 Windows 和 Linux 上通过命令行传入的文件。应用启动时就带着的文件，会等到第一个处理函数注册后再送达。在 iOS 上，路径指向文档的原始位置，在应用退出前都可以读取；在 Android 和 Web 上，路径指向应用在缓存目录中保存的副本。
@@ -244,11 +303,16 @@ ui.OnOpenFiles(func(paths []string) {
 在 Windows 和 Linux 上，设置了 `id` 的应用只会运行一个实例：再次启动它时，会把正在运行的那个切到前台，`app` 块的 `on secondInstance(args, dir)` 会收到这次启动的参数和工作目录，其中的文件和链接也会分别交给 `on files(paths)` 和 `on openURL(url)`：
 
 ```asuka
+state newWindow = false
+
 app {
   on secondInstance(args, dir) {
     if args.contains("--new-window") { newWindow = true }
   }
   Window { Main() }
+}
+component Main {
+  Text(if newWindow { "A new window" } else { "Main" })
 }
 ```
 
@@ -259,6 +323,9 @@ app {
 `quit()` 退出应用，效果和用户选择“退出”相同。无论退出是怎么触发的（⌘Q、程序坞、关闭最后一个窗口、`quit()`、Ctrl+C 或 SIGTERM、注销），`app` 块的 `on quit(e)` 都会先执行，调用 `e.cancel()` 可以让应用继续运行，以便询问用户是否保存未保存的更改；`e.canceled()` 说明是否已有处理函数取消了它。如果 `e.sessionEnding` 为 true，退出就无法取消：请立即保存，不要弹出对话框。
 
 ```asuka
+state unsaved = false
+state confirmQuit = false
+
 app {
   on quit(e) {
     if unsaved && !e.sessionEnding {
@@ -267,6 +334,9 @@ app {
     }
   }
   Window { Editor() }
+}
+component Editor {
+  Text("Editor")
 }
 ```
 
@@ -295,71 +365,71 @@ app {
 
 ## 最近使用的文档
 
-用户每打开或保存一个文档，就调用一次 `recent.Add(path, nil)`。Mac 会把它们列在“文件”菜单的“最近使用”和程序坞菜单中，Windows 列在跳转列表中，Linux 则记入用户的最近文件。用户选中其中一个时，会通过 `ui.OnOpenFiles` 打开它。`recent.List` 按从新到旧的顺序返回它们，并跳过已经不存在的文件；`recent.Clear` 清除本应用自己添加的记录。
+用户每打开或保存一个文档，就调用一次 `recent.add(path)`（`asuka/recent`）。Mac 会把它们列在“文件”菜单的“最近使用”和程序坞菜单中，Windows 列在跳转列表中，Linux 则记入用户的最近文件。用户选中其中一个时，会通过 `on files(paths)` 打开它。`await recent.list()` 按从新到旧的顺序返回它们，并跳过已经不存在的文件；`recent.clear()` 清除本应用自己添加的记录。
 
 ## 基于文档的应用
 
-`asuka/document` 用来编写每个窗口各显示一个文件的应用，就像文本编辑器或绘图应用那样：NSDocument 给 Mac 应用提供的能力，在所有平台上都有了。描述好文档的类型，然后运行它：
+`asuka/document` 用来编写每个窗口各显示一个文件的应用，就像文本编辑器那样：它提供文档的模型，以及围绕文档的窗口和页面。描述好文档的类型和它的编辑器：
 
-```go
-func main() {
-	document.New(document.Options[string]{
-		Types: []document.Type{{Name: "Plain Text", Extensions: []string{"txt"}}},
-		Read: func(r io.Reader) (string, error) {
-			b, err := io.ReadAll(r)
-			return string(b), err
-		},
-		Write: func(w io.Writer, text string) error {
-			_, err := io.WriteString(w, text)
-			return err
-		},
-		Equal: func(a, b string) bool { return a == b },
-		View: func(doc *document.Document[string]) ui.Node {
-			return ui.TextField(ui.TextFieldProps{Value: doc.Content(), Multiline: true, Plain: true})
-		},
-	}).Run()
+```asuka
+import asuka/document
+
+let types = [document.Type(name: "Plain Text", extensions: ["txt"])]
+
+app {
+  document.Documents(types) { editor: doc => Editor(doc) }
+}
+
+component Editor(doc: document.Document<string>) {
+  if let text = doc.content {
+    TextField {
+      text: text
+      multiline: true
+      grow: 1
+      on change(t) { doc.edit(t) }
+    }
+  }
 }
 ```
 
-在 `asuka.toml` 的 `fileTypes` 中列出同样的类型，系统才会把你的应用作为这些文件的打开方式之一。`examples/textedit` 就是这个编辑器，另外加了一行状态栏，以及一个在文件被其他应用修改时出现的提示条。
+在 `asuka.toml` 的 `fileTypes` 中列出同样的类型，系统才会把你的应用作为这些文件的打开方式之一。`examples/textedit` 就是这样一个编辑器，另外加了一行状态栏，以及一个在文件被其他应用修改时出现的提示条。
 
-文档的 `Content()` 是一个 signal：视图绑定它，修改它就等于编辑了文档——除非 `Equal` 判断它和文件中的内容相同（比如撤销回原样，或者打了一个字又删掉）。重新读取文件时也会设置它。如果应用是原地修改内容的（比如内容是指向某个模型的指针），就要调用 `doc.Changed()` 告知这一点，并提供 `Snapshot`，用来在写入之前复制一份内容。`doc.State()` 是一个 signal，包含文档的名称、文件，以及它是否已编辑、只读、有冲突或已被删除。
+`Document` 是一个 store：它的 `content`（文件读出之前为 none）和 `state`（`.loading`、`.saved`、`.edited`、`.saving`、`.conflict`、`.failed`，失败原因在 `error` 里）。`doc.edit(c)` 修改内容，最后一次修改片刻之后自动保存；`save()` 立即保存，`saveSoon()` 供不能等待的代码使用（按键、菜单项）。如果文件在读出之后被其他程序修改过，就会产生冲突：`saveAnyway()` 保留应用的内容，`revert()` 采用文件的内容。`document.open(path, read:, write:)` 可以为任意类型的内容创建文档，由你自己的 read 和 write 函数在字节和内容之间转换；`Documents` 编辑的是文本。
 
-用户在桌面端会得到这些：
+用户会得到这些：
 
-- **每个文档一个窗口**：窗口以文件命名（还没有文件时叫“Untitled”"Untitled 2"），并在用户上次放置该文件窗口的位置打开。有未保存的更改时，Mac 会在关闭按钮里显示一个圆点，并在标题栏显示文件图标；Windows 和 Linux 会在标题前加一个 `*`，标题末尾是应用名，GNOME 还会在标题下方显示文件所在的文件夹。
-- **“文件”菜单**：新建、打开…、最近使用、关闭、保存、另存为…，在 Mac 上还有复制、重新命名…、移到… 和复原到上次存储的版本（其他平台上叫“还原”），都带有对应的快捷键，作用于当前使用的窗口。`Options.Menus` 可以在它旁边添加应用自己的菜单；如果其中有一个标题为 File 的菜单，它的菜单项会并入“文件”菜单。Windows 和 Linux 会在每个文档窗口里显示这些菜单。
-- **自动保存**：有文件的文档会在用户停止输入片刻后、窗口失去焦点时以及窗口关闭时自动保存，就像 Mac 应用那样，从不询问。设置 `AutosaveOff` 后，改为在用户要求时才保存，并在关闭窗口时询问，就像传统的 Windows 应用那样。
-- **只在无法自动保存时才询问**：关闭一个未命名的文档（"Do you want to keep this new document?"），关闭一个文件是只读的或已被其他应用修改的文档（"Save Anyway""Revert"），或者在 `AutosaveOff` 下关闭任何有改动的文档。
-- **恢复副本**：用户停止输入一秒后，未保存的更改会被复制到应用的数据目录中。无论是崩溃、强制退出还是正常退出，都不会丢失任何内容：下次启动时会重新打开这些文档，并保留其中的修改。退出时默认就这样保留文档，就像 VS Code 那样；设置 `AskOnQuit` 后则改为询问（在 Mac 上是“You have 3 documents with unsaved changes. Do you want to review these changes before quitting?”；在 Windows 和 Linux 上是一个列出这些文档的问题）。会话结束时来不及询问：所有内容会立即被保存或保留下来。
-- **从外部打开的文件**：从 Finder、资源管理器、程序坞、命令行、“最近使用”或“打开…”打开文件时，如果这个文档已经打开，就会切换到它的窗口。
-- **被其他应用修改的文件**：没有编辑过的文档会重新读取文件；编辑过的文档会在下次保存时询问。文件被重命名时会继续跟踪它（在 Mac 上，用户把它移到同一磁盘的任何地方都能跟踪到）；文件被删除后，下次保存会重新写出它。
+- **在桌面上，每个文档一个窗口**：窗口以文件命名；在 Mac 上标题栏显示文件图标，有未保存的更改时关闭按钮里显示一个圆点。
+- **“文件”菜单**：新建（⌘N）在 `document.documentsDir()` 中创建一个 Untitled 文档，打开…（⌘O）显示系统的对话框；每个窗口里 ⌘S 保存、⌘W 关闭。
+- **自动保存**：用户停止输入片刻后，文档会自动保存，从不询问。
+- **在手机和浏览器上**，同一时间只有一个文档：应用打开后先显示它的文档列表，带有新建；打开某个文档时，文档页面会推入到列表之上，并在用户编辑时保存。
 
-在 Mac 上，基于文档的应用在没有窗口时也会保持运行，点击程序坞图标会新建一个文档；在 Windows 和 Linux 上，最后一个文档窗口关闭时应用就会退出。设置 `NoUntitled` 后，应用启动时什么都不打开，而不是新建一个未命名文档。
-
-在手机和浏览器上，同一时间只有一个文档：应用打开后先显示它的文档列表（在 iOS 上是它在“文件”应用中的文件夹），带有新建和打开…，打开某个文档时，文档页面会推入到列表之上。每个文档从创建那一刻起就有对应的文件，并在用户编辑时、应用进入后台时以及用户返回时自动保存，就像使用 UIDocument 的应用那样：从不询问。来自其他地方的文件会先被复制到应用的文档中。
-
-询问对话框和菜单会使用应用的语言（目前支持英语、德语、法语、西班牙语、日语和中文）：要支持其他语言或修改文案，在应用的消息目录（catalog）中添加以 `document.<key>` 为键的条目即可。
-
-只有 Mac 上的 NSDocument 才有的这些功能没有提供：版本（复原到某个版本）、锁定、在标题栏弹出框中重命名，以及本身是文件夹的文档。
+Go 宿主的 `sdk/document` 提供、而这里还没有的：另存为、最近使用、复制、重新命名和移到、未保存更改的恢复副本、关闭未命名文档时的询问，以及菜单的翻译。
 
 ## 登录时启动
 
-把 `login.Set(true, done)` 作为一个设置项提供给用户，并用 `login.Enabled` 读回当前状态。在 macOS 13 及以上，它是一个登录项（仅限打包好的应用；在用户于“系统设置”中允许之前，会返回 `login.ErrNeedsApproval`）；在 Windows 上是一个 Run 注册表项；在 Linux 上是一个 autostart 条目（在 Flatpak 中通过 Background portal）。`login.OpenedAtLogin` 可以区分这次启动是否是登录时的自动启动，这样应用就可以在后台悄悄启动。
+把 `try await login.set(true)`（`asuka/login`）作为一个设置项提供给用户，并用 `await login.enabled()` 读回当前状态。在 macOS 13 及以上，它是一个登录项（仅限打包好的应用；在用户于“系统设置”中允许之前，会抛出 `LoginError.needsApproval`）；在 Windows 上是一个 Run 注册表项；在 Linux 上是一个 autostart 条目（在 Flatpak 中通过 Background portal）。`await login.openedAtLogin()` 可以区分这次启动是否是登录时的自动启动，这样应用就可以在后台悄悄启动。
 
 ## “正在播放”与媒体键
 
-`nowplaying.Show` 把应用正在播放的内容放进系统的媒体控件中，这些控件上的按钮以及键盘上的媒体键（播放/暂停、下一首、上一首）都会交给应用的处理函数：在 Mac 上是控制中心和菜单栏里的“正在播放”；在 Windows 上是音量浮出面板和快速设置中的媒体控件（通过应用窗口的 SystemMediaTransportControls）；在 Linux 上是一个 MPRIS 播放器，可以由 GNOME 和 KDE 的媒体控件以及 `playerctl` 控制。它和手机上用的是同一个包，在手机上对应锁屏界面的媒体控件（见[设备与服务](device.md#正在播放与媒体键asukanowplaying)）：
+`nowplaying.NowPlaying` 在显示期间，把应用正在播放的内容放进系统的媒体控件中，这些控件上的按钮以及键盘上的媒体键（播放/暂停、下一首、上一首）都会交给应用的处理函数：在 Mac 上是控制中心和菜单栏里的“正在播放”；在 Windows 上是音量浮出面板和快速设置中的媒体控件（通过应用窗口的 SystemMediaTransportControls）；在 Linux 上是一个 MPRIS 播放器，可以由 GNOME 和 KDE 的媒体控件以及 `playerctl` 控制。它和手机上用的是同一个包，在手机上对应锁屏界面的媒体控件（见[设备与服务](device.md#正在播放与媒体键asukanowplaying)）：
 
-```go
-music := audio.Load("music/spring.mp3")
-signal.OnCleanup(music.Release)
-nowplaying.Show(nowplaying.Props{
-	Title:  ui.Val("Spring"),
-	Artist: ui.Val("Vivaldi"),
-	Player: music, // 从它获取播放状态和进度；播放、暂停、跳转都作用在它上面
-	OnNext: playNext,
-})
+```asuka
+import asuka/audio
+import asuka/nowplaying
+
+component Spring {
+  event next
+
+  let music = audio.Player("music/spring.mp3")
+
+  nowplaying.NowPlaying {
+    title: "Spring"
+    artist: "Vivaldi"
+    // 从它获取播放状态和进度；播放、暂停、跳转都作用在它上面。
+    player: music
+    on next { emit next }
+  }
+}
 ```
 
 ## 显示器、电源与应用图标

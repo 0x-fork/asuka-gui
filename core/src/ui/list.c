@@ -18,6 +18,7 @@
 // (selected(index)) are followed in each bound row's effects; the host's
 // Action, RowSelected and RowSelectBegin come to its cell.
 #include "ui/ui_int.h"
+#include "ui/ui_ext.h"
 
 // A bound cell: the host's view, and the row built in it.
 typedef struct lcell {
@@ -520,6 +521,8 @@ static void make_row(void *ctx) {
 
 // ---- Cells: swipe actions, selection ----
 
+extern const ak_el_class ak_class_lcell;
+
 // encode_swipe encodes a cell's swipe actions, flat: a swipe shows
 // neither children nor a disabled look, so each item's number is its
 // place.
@@ -538,18 +541,11 @@ static void encode_swipe(ak_buf *b, const ak_arr *as) {
 
 static int64_t cell_index(lcell *c, bool track) { return ak_vm_cell_get(c->row.cell_index, track).i; }
 
-// swipe_send sends one of a cell's swipe actions, if it changed.
-static void swipe_send(lcell *c, ak_closure *f, ak_arr **as, ak_buf *sent, bool *has, ak_prop p, int64_t i) {
-	ak_val arg = {.i = i};
-	ak_val v = ak_call(f, &arg, 1);
-	if (ak_error_pending()) {
-		void *err = ak_error_take();
-		if (ak_is_cancel(err)) ak_release(err);
-		else ak_raise(err);
-		return;
-	}
+// swipe_set sends one of a cell's swipe actions (v, taken), if it
+// changed.
+static void swipe_set(lcell *c, ak_arr *v, ak_arr **as, ak_buf *sent, bool *has, ak_prop p) {
 	ak_release(*as);
-	*as = v.p;
+	*as = v;
 	ak_buf b = {0};
 	encode_swipe(&b, *as);
 	if (*has && b.len == sent->len && memcmp(b.data, sent->data, b.len) == 0) {
@@ -560,6 +556,19 @@ static void swipe_send(lcell *c, ak_closure *f, ak_arr **as, ak_buf *sent, bool 
 	*sent = b;
 	*has = true;
 	ak_batch_set_bytes(c->el->r->batch, c->el->id, p, b.data, b.len);
+}
+
+// swipe_send sends the swipe actions f gives row i, if they changed.
+static void swipe_send(lcell *c, ak_closure *f, ak_arr **as, ak_buf *sent, bool *has, ak_prop p, int64_t i) {
+	ak_val arg = {.i = i};
+	ak_val v = ak_call(f, &arg, 1);
+	if (ak_error_pending()) {
+		void *err = ak_error_take();
+		if (ak_is_cancel(err)) ak_release(err);
+		else ak_raise(err);
+		return;
+	}
+	swipe_set(c, v.p, as, sent, has, p);
 }
 
 static void swipe_run(void *ctx) {
@@ -614,6 +623,49 @@ static void cell_effects(void *ctx) {
 	if (ak_view_handler(e, AK_EV_LIST_SELECT_BEGIN)) ak_view_listen(c->el, AK_EVENT_ROW_SELECT_BEGIN);
 }
 
+// ---- A row's own swipe actions and selection ----
+//
+// The container at the top of a row (View, Row, Column, SafeArea) may
+// say them itself: its swipeActions, leadingSwipeActions and selected,
+// its on select(on) and on selectBegin, rather than the List's of the
+// row's index.
+
+static bool is_container(const ak_view *v) { return v->el >= AK_EL_VIEW && v->el <= AK_EL_SAFE_AREA; }
+
+// row_view is the container at the top of cell c's row, through
+// fragments; NULL when its row has none.
+static ak_view *row_view(lcell *c) {
+	ak_view *v = c->el && c->el->kids.len ? c->el->kids.data[0] : NULL;
+	while (v && !is_container(v) && v->frag && v->kids.len) v = v->kids.data[0];
+	return v && is_container(v) ? v : NULL;
+}
+
+static void row_sync(lcell *c) {
+	ak_view *v = row_view(c);
+	if (!v || c->el->dead) return;
+	const ak_val *t = ak_style_get(v, ak_ext_key(v, AK_KEY_VIEW_SWIPE_ACTIONS));
+	const ak_val *l = ak_style_get(v, ak_ext_key(v, AK_KEY_VIEW_LEADING_SWIPE_ACTIONS));
+	const ak_val *s = ak_style_get(v, ak_ext_key(v, AK_KEY_VIEW_SELECTED));
+	if (t) swipe_set(c, t->p ? ak_retain(t->p) : NULL, &c->actions, &c->sent, &c->has_sent, AK_PROP_SWIPE_ACTIONS);
+	if (l) swipe_set(c, l->p ? ak_retain(l->p) : NULL, &c->leading, &c->sent_l, &c->has_sent_l, AK_PROP_LEADING_SWIPE_ACTIONS);
+	if (t || l) ak_view_listen(c->el, AK_EVENT_ACTION);
+	if (s) show_selected(c, s->i != 0);
+	if (s || ak_view_handler(v, ak_ext_ev(v, AK_EV_VIEW_SELECT))) ak_view_listen(c->el, AK_EVENT_ROW_SELECTED);
+	if (ak_view_handler(v, ak_ext_ev(v, AK_EV_VIEW_SELECT_BEGIN))) ak_view_listen(c->el, AK_EVENT_ROW_SELECT_BEGIN);
+}
+
+// ak_list_row_keys hears of a container's swipe actions or selected
+// changing: when it's at the top of a List's row, the row's cell sends
+// them.
+void ak_list_row_keys(ak_view *v) {
+	for (ak_view *p = v; p; p = p->parent) {
+		if (p->cls == &ak_class_lcell) {
+			if (p->impl && !((lcell *)p->impl)->header && row_view(p->impl) == v) row_sync(p->impl);
+			return;
+		}
+	}
+}
+
 static void run_swipe(lcell *c, const ak_arr *as, int64_t k) {
 	if (!as || k < 0 || k >= as->len) return;
 	const ak_enum *a = as->data[k].p;
@@ -643,6 +695,15 @@ static void lcell_event(ak_view *el, const ak_event *ev) {
 		// The host shows it as the user left it; what the app doesn't take
 		// goes back.
 		c->sel = ev->b ? 1 : 0;
+		ak_view *rv = row_view(c);
+		if (rv) {
+			ak_retain(rv);
+			ak_val on = {.i = ev->b};
+			ak_view_call(rv, ak_ext_ev(rv, AK_EV_VIEW_SELECT), &on, 1);
+			const ak_val *s = el->dead || rv->dead ? NULL : ak_style_get(rv, ak_ext_key(rv, AK_KEY_VIEW_SELECTED));
+			if (s) show_selected(c, s->i != 0);
+			ak_release(rv);
+		}
 		ak_val args[2] = {{.i = i}, {.i = ev->b}};
 		ak_view_call(st->e, AK_EV_LIST_SELECT, args, 2);
 		if (!el->dead && closure_key(st->e, AK_KEY_LIST_SELECTED)) {
@@ -655,6 +716,8 @@ static void lcell_event(ak_view *el, const ak_event *ev) {
 		break;
 	}
 	case AK_EVENT_ROW_SELECT_BEGIN: {
+		ak_view *rv = row_view(c);
+		if (rv) ak_view_call(rv, ak_ext_ev(rv, AK_EV_VIEW_SELECT_BEGIN), NULL, 0);
 		ak_val arg = {.i = i};
 		ak_view_call(st->e, AK_EV_LIST_SELECT_BEGIN, &arg, 1);
 		break;
@@ -667,7 +730,7 @@ static void lcell_adjust(ak_view *e, ak_lstyle *ls) {
 	ls->width = ak_lpct(100);
 }
 
-static const ak_el_class cls_lcell = {.name = "Cell", .kind = AK_KIND_VIEW, .flags = AK_ELF_CHILDREN, .event = lcell_event, .adjust = lcell_adjust};
+const ak_el_class ak_class_lcell = {.name = "Cell", .kind = AK_KIND_VIEW, .flags = AK_ELF_CHILDREN, .event = lcell_event, .adjust = lcell_adjust};
 
 // new_cell makes the element of a cell the host made.
 static lcell *new_cell(list_t *st, ak_id cell) {
@@ -675,7 +738,7 @@ static lcell *new_cell(list_t *st, ak_id cell) {
 	ak_ui_root *r = e->r;
 	lcell *c = ak_alloc(sizeof *c);
 	c->st = st;
-	ak_view *el = ak_view_new(r, &cls_lcell, 0, false);
+	ak_view *el = ak_view_new(r, &ak_class_lcell, 0, false);
 	el->real = true;
 	el->cell = true;
 	el->id = cell;
@@ -783,6 +846,7 @@ void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 	ak_ui.cur = r;
 	make_row(&m);
 	if (c->row.owner) ak_with_owner(c->row.owner, cell_effects, c);
+	row_sync(c);
 	ak_ui.cur = prev;
 }
 

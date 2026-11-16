@@ -61,7 +61,7 @@ component Store {
 
   async fn buy(p: purchase.Product) {
     await run(() => {
-      let r = try await purchase.buy(p.item)
+      let r = try await purchase.buy(p.item())
       match r.status {
         .bought => await deliver(r.transaction!)
         .pendingApproval => status = "Waiting for approval…"
@@ -88,8 +88,8 @@ component Store {
       gap: 16
       padding: 20
       Text("{balance} coins") { font: .largeTitle.bold() }
-      if !has.isEmpty {
-        Text("You have {has.join(" and ")}") { color: .secondaryLabel }
+      if !has.isEmpty() {
+        Text("You have {has.joined(" and ")}") { color: .secondaryLabel }
       }
       for p in products key p.id {
         Row {
@@ -138,7 +138,7 @@ fn describe(p: purchase.Product) -> string {
       "{p.price} a {s.period.unit}"
     }
     for o in s.offers {
-      if s.introEligible && o.type == .introductory && !o.phases.isEmpty && o.phases[0].mode == .freeTrial {
+      if s.introEligible && o.type == .introductory && !o.phases.isEmpty() && o.phases[0].mode == .freeTrial {
         line += ", first {o.phases[0].period.count} {o.phases[0].period.unit} free"
       }
     }
@@ -150,28 +150,25 @@ fn describe(p: purchase.Product) -> string {
 app { Store() }
 
 /// The store the tests sell from: the app's three products.
-fn products(host: TestHost) -> purchase.FakeStore {
-  let s = host.store
-  s.products = [
-    purchase.FakeProduct(id: coins.id, kind: "consumable", title: "100 Coins", price: "$0.99", priceMicros: 990_000),
-    purchase.FakeProduct(id: pro.id, kind: "nonConsumable", title: "Pro", description: "Every level, for life", price: "$9.99", priceMicros: 9_990_000),
-    purchase.FakeProduct(id: plus.id, kind: "autoRenewable", title: "Plus", price: "$4.99", priceMicros: 4_990_000, period: "P1M", trial: "P1W"),
-  ]
-  return s
-}
+fn products() -> purchase.FakeStore = purchase.fake([
+  purchase.FakeProduct(id: coins.id, kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
+  purchase.FakeProduct(id: pro.id, kind: .nonConsumable, title: "Pro", description: "Every level, for life", price: "$9.99", priceMicros: 9_990_000),
+  purchase.FakeProduct(id: plus.id, kind: .autoRenewable, title: "Plus", price: "$4.99", priceMicros: 4_990_000,
+    period: purchase.Period(unit: .month), trial: purchase.Period(unit: .week)),
+])
 
 // Coins are bought again and again, each purchase delivered and finished
 // (consumed); Pro once, then owned.
 test "buy" {
-  let app = mount(Store(), setup: host => { let _ = products(host) })
-  let store = app.host.store
+  let store = products()
+  let app = mount(Store())
   await app.waitFor("100 Coins")
   app.expect("0 coins", "$4.99 a month, first 1 week free")
   app.tap("$0.99")
   await app.waitFor("100 coins")
   app.tap("$0.99")
   await app.waitFor("200 coins")
-  await app.until("finished", () => store.unfinished().isEmpty)
+  await app.until("finished", () => store.unfinished().isEmpty())
   for tx in store.transactions {
     expect(tx.consumed, "not consumed: {tx.id}")
   }
@@ -185,16 +182,16 @@ test "buy" {
 // events; a subscription renewed outside the app is too; a refund takes
 // Pro back.
 test "outside the app" {
-  let app = mount(Store(), setup: host => { let _ = products(host) })
-  let store = app.host.store
+  let store = products()
+  let app = mount(Store())
   await app.waitFor("100 Coins")
-  store.outcome = .pending
+  store.outcome = purchase.Outcome.pending
   app.tap("$0.99")
   await app.waitFor("Waiting for approval…")
   store.approve(coins.id)
   await app.waitFor("100 coins")
 
-  store.outcome = .bought
+  store.outcome = purchase.Outcome.bought
   app.tap("$4.99")
   await app.waitFor("You have Plus")
   store.renew(plus.id)
@@ -210,6 +207,7 @@ test "outside the app" {
 // What was bought before the app started, and not finished, is delivered
 // as it starts.
 test "unfinished" {
-  let app = mount(Store(), setup: host => { products(host).deliver(coins.id) })
+  let _ = products().deliver(coins.id)
+  let app = mount(Store())
   await app.waitFor("100 coins")
 }

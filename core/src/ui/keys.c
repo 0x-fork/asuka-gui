@@ -20,9 +20,18 @@ typedef struct {
 	uint32_t index;   // in that array
 } kent;
 
-static uint8_t mods_of(const ak_struct *s) {
-	return (uint8_t)((s->f[1].i ? 1 : 0) | (s->f[2].i ? 2 : 0) | (s->f[3].i ? 4 : 0) | (s->f[4].i ? 8 : 0));
+// ak_shortcut_mods is a Shortcut's modifiers (key, primary, shift, alt,
+// control, run, mods), as the Keys prop has them: its bools and its mods'
+// Modifiers (primary 1, shift 2, alt 4, control 8).
+uint8_t ak_shortcut_mods(const ak_struct *s) {
+	uint8_t m = (uint8_t)((s->f[1].i ? 1 : 0) | (s->f[2].i ? 2 : 0) | (s->f[3].i ? 4 : 0) | (s->f[4].i ? 8 : 0));
+	const ak_arr *mods = s->shape && s->shape->nfields > 6 ? s->f[6].p : NULL;
+	for (uint32_t i = 0; mods && i < mods->len; i++)
+		if (mods->data[i].i >= 0 && mods->data[i].i < 4) m |= (uint8_t)(1 << mods->data[i].i);
+	return m;
 }
+
+static uint8_t mods_of(const ak_struct *s) { return ak_shortcut_mods(s); }
 
 static ak_span kname(const kent *k) { return k->inbuf ? (ak_span){k->buf, k->name.len} : k->name; }
 

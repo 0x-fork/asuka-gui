@@ -99,14 +99,16 @@ let out = bytes([flags, value & 0xff, value >> 8])
 
 | 型 | メソッド |
 |---|---|
-| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`+` |
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`（`to` を省くと末尾まで）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`+` |
 | `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（新しく加わったかを返す）、`remove(x)`（あったかを返す）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`。`Set(xs)` は配列の重複しない要素、`Set<T>()` は空のセット |
 | `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順） |
 | `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（0 から 255 の `int`。範囲外はエラー）、`count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）、`hex()` と `hex(separator)`（`"04 a1"`）。`bytes()` は空のバイト列、`bytes([0x04, 0xa1])` はそのバイト列、`s.bytes()` は文字列の UTF-8 |
-| `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()` |
-| `Color` | `opacity(a)`：元の不透明度の a 倍で描く（セマンティックカラーはセマンティックカラーのまま） |
-| `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮動小数点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`、`/ n` |
+| `int` | `float()`、`abs()`、`padded(width)`（`7.padded(2)` は `"07"`） |
+| `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（0 の方向へ切り捨て）、`abs()` |
+| `Color` | `opacity(a)`：元の不透明度の a 倍で描く（セマンティックカラーはセマンティックカラーのまま）。`hex()`（`"#0a84ff"`。セマンティックカラーはその名前：`".accent"`） |
+| `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮動小数点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`（整数でも浮動小数点数でも：`1.5 * 1h`）、`/ n`、`/ d`（別の Duration：何個分か。浮動小数点数） |
+| `Length` | `* n`（`width: 50% * 2`：長さを拡大縮小） |
 | `T?` | `isNone()`、`isSome()` |
 
 `min`、`max`、`abs`、`float(n)`、`int(x)` は関数です。それ以外（`math.sqrt`、`math.pow`、`math.pi` など）は `asuka/math` にあります。
@@ -182,6 +184,20 @@ match line {
   Line(from: Point(x: 0, y), to) => "from {y} on the y axis to {to.x}"
   Line(dashed) => "a line"
 }
+```
+
+構造体は、メソッドから演算子を得ます。`fn add(o: T) -> R` は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になります。`asuka/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
+
+```asuka
+struct Money {
+  cents: int
+
+  fn add(o: Money) -> Money = Money(cents: cents + o.cents)
+  fn compare(o: Money) -> int = cents - o.cents
+}
+
+let total = Money(cents: 250) + Money(cents: 99)
+let over = total > Money(cents: 300)
 ```
 
 ### 列挙型
@@ -450,6 +466,26 @@ Toggle { bind on: notify; title: "Notifications" }
 
 `bind` を使わない場合、コントロールは変更を知らせるだけです（`TextField { text: name; on change(t) { name = t.trim() } }`）。
 
+コンポーネントのプロパティも、コンポーネントが `event <prop>Change` でそれを知らせるなら、同じようにバインドできます。`prop value` と `event valueChange(value: T)` を持つコンポーネントに `bind value: when` と書くと、状態を渡し、コンポーネントが変更を発行したときに書き戻します。
+
+```asuka
+component Rating {
+  prop value = 0
+  event valueChange(value: int)
+
+  Stepper {
+    value: float(value)
+    on change(v) { emit valueChange(int(v)) }
+  }
+}
+
+component Review {
+  state stars = 3
+
+  Rating { bind value: stars }
+}
+```
+
 ### ビューのリスト
 
 ```asuka
@@ -516,7 +552,7 @@ task { try? await mailbox.refresh() }         // コンポーネントが表示�
 task(query) { results = await search(query) } // query が変わるたびにもう一度
 ```
 
-エフェクトはすぐに実行され、読んだものが変わるたびに再び実行されます。タスクは非同期です（後述）。コンポーネントが現れると始まり、丸括弧の中身が変わると前回の実行をキャンセルしてやり直し、コンポーネントがなくなるとキャンセルされます。
+エフェクトはすぐに実行され、読んだものが変わるたびに再び実行されます。タスクは非同期です（後述）。コンポーネントが現れると始まり、丸括弧の中身が変わると前回の実行をキャンセルしてやり直し、コンポーネントがなくなるとキャンセルされます。`app` ブロックにも書けます。アプリ自身のもので、アプリが動いている間ずっと有効です（更新のループや、アプリの状態に追従する設定：`effect { setColorScheme(scheme) }`）。
 
 ## 非同期処理
 
@@ -532,7 +568,7 @@ async fn loadThread(id: string) throws -> Thread {
 
 - 非同期関数を呼ぶには `await` が必要です。ハンドラー、タスク、テストでは `await` できますが、コンポーネントの本体とその中の `let` ではできません。
 - **メインスレッド。** すべてのコードはメインスレッドで動きます。`await` で待っている間は、ほかの処理が動けます。状態を変更できるのはメインスレッドだけです。
-- `all(a, b)` は複数の呼び出しを同時に実行し、すべての結果を待ちます。`race(a, b)` は最初に終わった結果を取り、残りをキャンセルします。ほかに `sleep(300ms)` と `withTimeout(5s) { … }` があります。これらは構造化されていて、キャンセルした処理が止まり、その `defer` が実行されてから戻るかエラーを投げます。`await never()` はタスクが終わるまで待つだけです。コンポーネントが表示されている間、何かを持ち続けるタスク（`defer { release() }; await never()`）や、読み手がいなくなったときにだけ終わるストリームに使います。
+- `all(a, b)` は複数の呼び出しを同時に実行し、すべての結果を待ちます。`race(a, b)` は最初に終わった結果を取り、残りをキャンセルします。ほかに `sleep(300ms)` と `withTimeout(5s) { … }` があります。`withTimeout` の値はブロックの値で（`let page = try await withTimeout(5s) { return try await fetch(url) }`）、時間切れになるとエラーを投げます。これらは構造化されていて、キャンセルした処理が止まり、その `defer` が実行されてから戻るかエラーを投げます。`await never()` はタスクが終わるまで待つだけです。コンポーネントが表示されている間、何かを持ち続けるタスク（`defer { release() }; await never()`）や、読み手がいなくなったときにだけ終わるストリームに使います。
 - `spawn { … }` はブロックを別のスレッドで実行します。メインスレッドを止めてしまうような処理（パース、画像処理）に使います。中で使えるのは値だけで、状態、ストア、ビュー、ネイティブのオブジェクト、C のポインター、そしてそれらを持つファイルの `let`（データベースなど）は使えません。使っていればコンパイラーが教えてくれます。Web では、ページの Web Worker の一つで実行されます。Worker はファイルの値だけを自分で作り、それ以外は作りません。
 - `for await message in socket.messages { … }` はストリーム、つまり `Stream<T>` を読みます。時間とともに届く値です。`Stream(send => { … })` で作ります。ストリームが最初に読まれたときにブロックがタスクとして動き出し、`send(x)` のたびに値が一つ届きます。ブロックが戻るとストリームは終わり、ブロックが投げたエラーでストリームも失敗します。ループを抜けると（`break`、エラー、オーナーがなくなる）ブロックはキャンセルされます。ストリームの読み手は一つだけです。
 
@@ -607,6 +643,8 @@ try save(draft) catch { failed = true }   // 文として使う：値は要ら�
 節は `do` のものと同じです（`catch`、`catch e`、`catch e: ParseError`、`catch MailError.server(code)`）。複数を続けて書くことができ、エラーを受け取った最初の節が実行されます。どの節も受け取らなかったエラーはそのまま先へ投げられるので、`try` と同じく、囲んでいる関数に `throws` が必要です。すべてのエラーを受け取る節があれば、式全体がエラーを投げなくなるので、`try` を置けない場所でも使えます。たとえばコンポーネントの `let`（`let port = try parsePort(text) catch { 80 }` は `text` が変わるたびに更新されます）や、エラーを投げてはいけないクロージャの中です。`try await` とも、値としての `throw` とも組み合わせられます（`let user = cache[id] ?? throw MailError.missing(id)`）。
 
 エラーの `message` は、`message` フィールド、`fn message() -> string`、または型とケースの名前です。`Error("…")` はメッセージからエラーを作ります。タスクのキャンセルは `catch` では捕まりません。キャンセルはタスクの最後まで進み、その途中で `defer` を実行していきます。
+
+`Error` は、`catch` と同じように、エラー型のケースでも照合できます：`match e { MailError.offline => …; MailError.status(code) => …; _ => e.message }`（`Error` はどんなエラーでもありうるので、`_` で終えます）。
 
 ハンドラーやタスクで捕まえなかったエラーは、そのコンポーネントを囲むいちばん近い `Boundary` に届きます。`Boundary` がなければアプリのもの（開発中は画面に表示し、リリースビルドではログに記録します）に届きます。
 
@@ -691,7 +729,7 @@ on press {
 }
 ```
 
-`animate(() => …)` と `animate(anim, () => …)` は、ブロックの代わりにクロージャを渡す同じ書き方です。`animating()` は、いま加えている変更がアニメーションするかどうかを返します。`onFrame(t => …)` は、ディスプレイがフレームを描くたびにそのフレームの時刻を渡してクロージャを呼びます。戻り値のクロージャを呼ぶか、コンポーネントがなくなると止まります：`let stop = onFrame(t => tick(t))`。`frames()` は同じフレームを `Stream<Duration>` として返し、読まれている間だけフレームを描かせます。タスクの中で `for await t in frames() { … }` と書けば、ループが終わるかタスクがなくなったときに止まります。
+`animate(() => …)` と `animate(anim, () => …)` は、ブロックの代わりにクロージャを渡す同じ書き方です。`repeat: Animation.forever` は、プロパティが再び変わるまで繰り返します。`animating()` は、いま加えている変更がアニメーションするかどうかを返します。`onFrame(t => …)` は、ディスプレイがフレームを描くたびにそのフレームの時刻を渡してクロージャを呼びます。戻り値のクロージャを呼ぶか、コンポーネントがなくなると止まります：`let stop = onFrame(t => tick(t))`。`frames()` は同じフレームを `Stream<Duration>` として返し、読まれている間だけフレームを描かせます。タスクの中で `for await t in frames() { … }` と書けば、ループが終わるかタスクがなくなったときに止まります。
 
 ## 描画
 
@@ -726,8 +764,17 @@ Canvas(g => {
 | `quit()`、`relaunch()` | ユーザーが「終了」を選んだときと同じようにアプリを終了し（再び起動し）ます。先にアプリに確認します。デスクトップのみ |
 | `closeWindow()` | コードがあるウィンドウを確認せずに閉じます |
 | `onCloseRequest(fn() -> bool)`、`onQuit(e => …)`、`onSecondInstance((args, dir) => …)` | コンポーネントがあるあいだ：そのウィンドウが閉じる前の確認、アプリの終了の直前（`e.cancel()`）、アプリの再起動を受け取ります |
+| `onBack { … }` | コンポーネントがある画面、シート、ポップオーバーからユーザーが戻ろうとしたときに問い合わせられます。`true` なら引き受け（画面は残る）、`false` なら戻らせます |
+| `onLifecycle(l => …)` | コンポーネントがある間、アプリがフォアグラウンドやバックグラウンドに移ったこと、メモリ警告（`Lifecycle`）を受け取ります |
+| `alert(title, message:, actions:)` | その場でアラートを表示します。`actions` は `.button` の配列です（なければ OK だけ）。`Alert` 要素は、`open` が true の間アラートを表示します |
+| `snackbar(message, action:, duration:, onDismiss:)` | ウィンドウの下部に短いメッセージを、アクション（元に戻す）付きで表示します。閉じるためのクロージャーを返します |
+| `setColorScheme(.dark)` | アプリの外観：`.light`、`.dark`、`.system`（プラットフォームのもの） |
+| `environment()`、`screenEnvironment()` | サイズ、セーフエリア、文字サイズ、プラットフォームなど（追跡されます）。画面やシート自身のものと、画面全体のもの |
+| `mainWindow()` | メインウィンドウの `Ref`。どこからでも `show()`、`hide()`、`focus()` などができます |
 
-`useKeys` とこれらの `on…` による登録は、コンポーネントの本体（またはアプリのブロック）に書きます。アプリのブロックでは、これらをイベントとしても扱えます：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`。ブロックの最初の `Window` がメインウィンドウです（[ナビゲーション](navigation.md#ウィンドウ)）。
+`useKeys` とこれらの `on…` による登録は、コンポーネントの本体（またはアプリのブロック）に書きます。アプリのブロックでは、これらをイベントとしても扱えます：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`、`on foreground { … }`、`on background { … }`。ブロックの最初の `Window` がメインウィンドウです（[ナビゲーション](navigation.md#ウィンドウ)）。
+
+`asuka/assets` は、Go の `go:embed` のように、アプリのコンパイル時にパッケージの `assets/` ディレクトリのファイルを読みます。`assets.text("welcome.md")` はそのテキスト、`assets.bytes("logo.png")` はそのバイト列です。ファイルがなければコンパイルエラーです。
 
 ## ナビゲーション
 
@@ -752,7 +799,32 @@ screen Inbox {
 }
 ```
 
-`screen` は、ルートがスタックの画面になるコンポーネントです。ブロックには画面のプロパティ（`title`、`largeTitle` など）とスロット（`toolbar`）を書きます。`push(…)` と `pop()` はいちばん近いスタックに、`present(…)` と `dismiss()` はシートに対して働きます。詳しくは[ナビゲーション](navigation.md)を参照してください。
+`screen` は、ルートがスタックの画面になるコンポーネントです。ブロックには画面のプロパティ（`title`、`largeTitle` など）とスロット（`toolbar`、`bottomToolbar`、`primary`）を書きます。`push(…)` と `pop()` はいちばん近いスタックに、`present(…)` と `dismiss()` はシートに対して働きます。`Split` は、`Destination`（`Sidebar` のセクションに入れられます）を並べたサイドバーと、その横の選んだ行き先のスタックです。
+
+`Router` を使うと、どの画面にもアドレスが付きます。パターン付きで宣言した画面はルートに載せられ、パラメーターには型があります。その呼び出しがアドレスになり、コンパイル時に検査されます。
+
+```asuka
+app {
+  Router(initial: "/inbox") {
+    Route("/inbox", layout: .stack, title: "Inbox") {
+      Inbox
+      Message
+    }
+  }
+}
+
+screen Inbox at "" {
+  title: "Inbox"
+  Button("The first") { href: Message(id: 1) } // /inbox/1
+}
+
+screen Message(id: int) at ":id" {
+  title: "Message {id}"
+  Button("Back to the inbox") { on press { navigate("/inbox") } }
+}
+```
+
+詳しくは[ナビゲーション](navigation.md)を参照してください。
 
 ## ほかの言語のテキスト
 
@@ -804,7 +876,7 @@ test "archiving removes the row" {
 
 `expect(cond)` は cond が false ならテストを失敗させ、何がどこで失敗したかを示します（比較なら両辺の値も示します）。JSON は `asuka/json` で扱います。`let notes: [Note] = try json.decode(text)` は求められている型として読み込み（`json.decode<[Note]>(text)` とも書けます）、`json.encode(notes)` は JSON に書き出します。ジェネリック関数も自分の `T` を JSON として読み書きできます。その場合、呼び出しごとに `T` は JSON で表せる型でなければならず、コンパイラーが呼び出し箇所でそれをチェックします。
 
-`asuka test` は、パッケージのテストをフェイクホストで実行します。フェイクホストはプラットフォームと同じようにビューをレイアウトし、テキストは 1 文字あたり固定の幅で測ります。また、時間はほかに実行できるものが何もないときにしか進みません（テストの中の `sleep(5s)` には時間がかかりません）。`mount` はアプリを返すので、それを操作して確かめます（`tap`、`type(_, into:)`、`scroll`、`back`、`expect`、`expectNo`、`idle`）。詳しくは[テスト](testing.md)を参照してください。
+`asuka test` は、パッケージのテストをフェイクホストで実行します。フェイクホストはプラットフォームと同じようにビューをレイアウトし、テキストは 1 文字あたり固定の幅で測ります。また、時間はほかに実行できるものが何もないときにしか進みません（テストの中の `sleep(5s)` には時間がかかりません）。`mount` はアプリを返すので、それを操作して確かめます（`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`）。`in(.navigationBar)`、`in(.sidebar)`、`nextTo(label)` で、テキストが指すものを絞り込めます。ルーターがあれば、`mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()` も使えます。詳しくは[テスト](testing.md)を参照してください。
 
 ## メモリとパフォーマンス
 

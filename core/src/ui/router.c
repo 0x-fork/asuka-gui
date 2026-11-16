@@ -21,8 +21,7 @@
 //
 // Not ported yet: a split view's routes (LayoutSplit shows its chosen
 // destination as a slot does), the state saved in the history (a
-// browser's back rebuilds from the href), guards followed as what they
-// read changes (they're asked as the router navigates).
+// browser's back rebuilds from the href).
 #include "ui/ui_int.h"
 
 enum { L_GROUP, L_STACK, L_TABS, L_SPLIT, L_SLOT };
@@ -1320,7 +1319,8 @@ static void present(router_t *rt, inst *in, entry *e, const edesc *d) {
 	content_ctx cc = {rt, in, e, d, NULL};
 	ak_closure *c = ak_closure_new(sheet_content, NULL, 1, int_cap);
 	c->caps[0].i = (int64_t)(uintptr_t)&cc;
-	ak_view *s = ak_sheet_present(rt->e->r, in->owner, c, NULL, 0, detents, false, false, true, dismissed, e);
+	bool grabber = int_key(e->member->route, AK_KEY_ROUTE_GRABBER) != 0, full = int_key(e->member->route, AK_KEY_ROUTE_FULL_SCREEN) != 0;
+	ak_view *s = ak_sheet_present(rt->e->r, in->owner, c, NULL, 0, detents, grabber, full, true, dismissed, e);
 	ak_release(c);
 	e->sheet = ak_retain(s);
 	if (e->member->leaf) title_screen(s->kids.len ? s->kids.data[0] : NULL, e->member);
@@ -1732,11 +1732,22 @@ static void router_add(ak_view *e, ak_view *child) {
 	ak_vec_push(&rt->routes, (ak_view *)ak_retain(child));
 }
 
+static ak_str *start_href;  // ak_router_set_start's
+
+void ak_router_set_start(ak_span href) {
+	ak_release(start_href);
+	start_href = href.len ? ak_str_new(href.p, href.len) : NULL;
+}
+
 static void start_fn(void *ctx) {
 	router_t *rt = ctx;
 	ak_view *e = rt->e;
 	const ak_val *iv = key_of(e, AK_KEY_ROUTER_INITIAL);
 	ak_str *h = iv && iv->p && ((ak_str *)iv->p)->len ? ak_retain(iv->p) : ak_str_c("/");
+	if (rt->addressed && start_href) {
+		ak_release(h);
+		h = ak_retain(start_href);
+	}
 	target t = {0};
 	if (!resolve(rt, h, &t)) {
 		ak_release(h);
@@ -1755,6 +1766,47 @@ static void start_fn(void *ctx) {
 	ak_view_append(e, v);
 	ak_release(v);
 }
+
+// guard_run asks the guards of the screen shown again, tracked: as what
+// they read changes (the user signs out), one that sends the user away
+// replaces the screen.
+static bool go_back(router_t *rt);
+
+static void guard_run(void *ctx) {
+	router_t *rt = ctx;
+	if (rt->dead || !rt->started || !rt->last_href) return;
+	ak_signal_read(&rt->href_node);
+	ak_str *h = ak_retain(rt->last_href);
+	target t = {0};
+	match_href(rt, h, &t);
+	ak_str *to = NULL;
+	for (uint32_t i = 0; t.leaf && i < t.leaf->guards.len && !to; i++) {
+		ak_val arg = {.p = h};
+		ak_val v = ak_call(t.leaf->guards.data[i], &arg, 1);
+		if (ak_error_pending()) {
+			ak_ui_raise_pending(NULL);
+			break;
+		}
+		ak_str *s = v.p;
+		if (s && s->len && !ak_str_eq(s, h)) to = s;
+		else ak_release(s);
+	}
+	target_free(&t);
+	if (to) {
+		void *tok = ak_untrack_begin();
+		// The screen it guards goes, as back would take it; then where the
+		// guard sends the user.
+		go_back(rt);
+		navigate(rt, to, MODE_NAVIGATE);
+		ak_untrack_end(tok);
+		ak_release(to);
+	}
+	ak_release(h);
+}
+
+static const ak_comp_info guard_info = {.label = "Router.guards"};
+
+static void guard_effect(void *ctx) { ak_effect_new(guard_run, ctx, AK_EFFECT_USER, &guard_info); }
 
 static void router_finalize(ak_view *e) {
 	router_t *rt = e->impl;
@@ -1775,8 +1827,10 @@ static void router_finalize(ak_view *e) {
 	rt->started = true;
 	rt->last = snapshot(rt->root);
 	rt->last_href = desc_href(rt->last);
+	ak_signal_write(&rt->href_node);  // what its screens read as they were built
 	if (rt->addressed) ak_view_listen(r->el, AK_EVENT_LOCATION);
 	send(rt, AK_LOCATION_ACTION_REPLACE, 0);
+	ak_with_owner(rt->owner, guard_effect, rt);
 }
 
 const ak_el_class ak_class_router = {.name = "Router", .kind = AK_KIND_VIEW, .flags = AK_ELF_FRAGMENT | AK_ELF_FLATTEN | AK_ELF_CHILDREN,
@@ -1874,9 +1928,12 @@ bool ak_ui_router_dismiss(void) {
 	return rt && dismiss_sheet(rt);
 }
 
+// ak_ui_can_go_back is read as the address is: a binding that reads it
+// follows each change of the history.
 bool ak_ui_can_go_back(void) {
 	router_t *rt = need("canGoBack");
 	if (!rt) return false;
+	ak_signal_read(&rt->href_node);
 	ndesc *d = snapshot(rt->root);
 	bool ok = back_desc(d);
 	ndesc_free(d);

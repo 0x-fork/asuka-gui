@@ -106,7 +106,7 @@ static void write_item(ak_menus *m, ak_view *bar, ak_view *v) {
 	if (sub) flags |= AK_MENU_SUBMENU;
 	ak_buf_u8(b, flags);
 	put_str(b, key_of(v, AK_KEY_MENU_ITEM_TITLE));
-	// Its shortcut: a Shortcut (key, primary, shift, alt, control, run).
+	// Its shortcut: a Shortcut (key, primary, shift, alt, control, run, mods).
 	const ak_struct *s = sc ? sc->p : NULL;
 	uint8_t mods = 0;
 	if (s) {
@@ -118,7 +118,7 @@ static void write_item(ak_menus *m, ak_view *bar, ak_view *v) {
 		char kb[4];
 		ak_span k = ak_key_name((ak_span){lower, n}, kb);
 		ak_buf_str(b, k.p, k.len);
-		mods = (uint8_t)((s->f[1].i ? 1 : 0) | (s->f[2].i ? 2 : 0) | (s->f[3].i ? 4 : 0) | (s->f[4].i ? 8 : 0));
+		mods = ak_shortcut_mods(s);
 	} else {
 		ak_buf_str(b, "", 0);
 	}

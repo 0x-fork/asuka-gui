@@ -1,0 +1,69 @@
+// A List's rows' own swipe actions and selection: on the row's top
+// container, followed as they change; and the List's sections.
+
+struct Item {
+  id: int
+  title: string
+  day: string
+}
+
+component Rows {
+  state items = [
+    Item(id: 1, title: "Milk", day: "Monday"),
+    Item(id: 2, title: "Eggs", day: "Monday"),
+    Item(id: 3, title: "Tea", day: "Tuesday"),
+  ]
+  state selecting = false
+  state chosen: [int] = []
+  state starred: [int] = []
+  state begun = 0
+
+  Column {
+    Button(if selecting { "Done" } else { "Select" }) { on press { selecting = !selecting } }
+    Text("{chosen.count()} chosen, {starred.count()} starred, begun {begun}")
+    List {
+      height: 400
+      selecting: selecting
+      section: i => items[i].day
+      header: day => Text("== {day}")
+      for it in items key it.id {
+        Row {
+          padding: 8
+          swipeActions: [.button(title: "Delete", role: .destructive, run: () => items.removeWhere(x => x.id == it.id))]
+          leadingSwipeActions: [.button(title: if starred.contains(it.id) { "Unstar" } else { "Star" }, run: () => {
+            if starred.contains(it.id) { starred.removeWhere(s => s == it.id) } else { starred.push(it.id) }
+          })]
+          selected: chosen.contains(it.id)
+          on select(on) {
+            chosen.removeWhere(c => c == it.id)
+            if on { chosen.push(it.id) }
+          }
+          on selectBegin { begun += 1 }
+          Text(it.title)
+        }
+      }
+    }
+  }
+}
+
+app { Rows() }
+
+test "a row's swipe actions" {
+  let app = mount(Rows())
+  app.expect("== Monday", "== Tuesday", "Milk")
+  app.swipe("Eggs", action: "Star")
+  app.expect("0 chosen, 1 starred, begun 0")
+  app.swipe("Eggs", action: "Unstar")
+  app.expect("0 chosen, 0 starred, begun 0")
+  app.swipe("Milk", action: "Delete")
+  app.expectNo("Milk")
+}
+
+test "a row's selection" {
+  let app = mount(Rows())
+  app.tap("Select")
+  app.tap("Tea")
+  app.expect("1 chosen, 0 starred, begun 0")
+  app.tap("Tea")
+  app.expect("0 chosen, 0 starred, begun 0")
+}

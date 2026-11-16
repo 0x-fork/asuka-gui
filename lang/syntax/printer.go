@@ -568,6 +568,10 @@ func (p *printer) node(n Node) {
 		p.pub(n.Pub)
 		p.write("screen " + n.Name.Name)
 		p.params(n.Params)
+		if n.At != nil {
+			p.write(" at ")
+			p.expr(n.At)
+		}
 		p.write(" ")
 		p.block(n.Body)
 	case *StoreDecl:

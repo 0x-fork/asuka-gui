@@ -31,7 +31,11 @@ type Key struct {
 	Bind bool
 	// Event is, for a Bind key, the event the control writes it with.
 	Event string
-	Doc   string
+	// Builder: a fn returning a View the runtime calls with accessors (a
+	// List's header, of its section's key, which a recycled header
+	// follows): its lambda's parameters read as a for's row item.
+	Builder bool
+	Doc     string
 }
 
 // Param is an event's parameter.
@@ -163,6 +167,10 @@ var Variants = []string{"hovered", "pressed", "dragging", "dragOver"}
 var containerKeys = []Key{
 	{Name: "dragItems", Type: "[DragItem]", Doc: "makes it draggable, within the app and to other apps: a long press then a move lifts it on a touch screen, a move with the button down with a mouse. [] (the default): not draggable"},
 	{Name: "dropTypes", Type: "[string]", Doc: "makes it take drops of these MIME types: exact (\"text/plain\"), a family (\"image/*\"), anything (\"*/*\"), or the app's own"},
+	{Name: "swipeActions", Type: "[Action]", Doc: "a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view"},
+	{Name: "leadingSwipeActions", Type: "[Action]", Doc: "a List's row's actions revealed from its leading edge (Mail's Unread)"},
+	{Name: "selected", Type: "bool", Doc: "a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)"},
+	{Name: "href", Type: "string", Doc: "goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link"},
 }
 
 // containerEvents are what View, Row, Column and SafeArea report: a
@@ -182,6 +190,8 @@ var containerEvents = []Event{
 	{Name: "dropOver", Params: []Param{{"over", "bool"}}, Doc: "a drag it takes coming over it, and leaving it (a drop zone's highlight)"},
 	{Name: "dropMove", Params: []Param{{"x", "float"}, {"y", "float"}}, Doc: "where a drag it takes is over it, in points from its top left"},
 	{Name: "drop", Params: []Param{{"drop", "Drop"}}, Doc: "what's dropped on it: the items it takes"},
+	{Name: "select", Params: []Param{{"selected", "bool"}}, Doc: "the user selected its List's row, or deselected it"},
+	{Name: "selectBegin", Doc: "the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)"},
 }
 
 // Elements are the built-in elements. core/src/ui implements each.
@@ -199,7 +209,8 @@ var Elements = []Element{
 		{Name: "variant", Type: "ButtonVariant", Doc: "how the platform draws it"},
 		{Name: "icon", Type: "string", Doc: "a symbol before the title (see Symbol); with no title, the icon alone"},
 		{Name: "menu", Type: "[Action]", Doc: "actions shown when it's tapped, instead of press"},
-		{Name: "href", Type: "string", Doc: "goes to this route when it's pressed, after press (the Router around it navigates there)"},
+		{Name: "href", Type: "string", Doc: "goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call (href: Thread(id: 7))"},
+		{Name: "role", Type: "ActionRole", Doc: "in an Alert or a Screen's bars, what it does, which the platform draws it by: .cancel, .destructive (red)"},
 	}, Events: []Event{{Name: "press"}}, Doc: "the platform's button"},
 	{Name: "TextField", Keys: []Key{
 		{Name: "text", Type: "string", Bind: true, Event: "change", Doc: "its text: typing writes it, and writing it replaces what the field shows"},
@@ -215,6 +226,7 @@ var Elements = []Element{
 		{Name: "autofocus", Type: "bool", Doc: "takes the keyboard as it shows"},
 		{Name: "selection", Type: "TextRange", Bind: true, Event: "select", Doc: "the cursor or the selected text, as byte offsets into text: the user's moves write it, and writing it moves them"},
 		{Name: "rich", Type: "[Span]", Bind: true, Event: "richChange", Doc: "makes it a text area of styled text: bold, italic, underline, strikethrough, monospaced, links. The user's typing and formatting write it; writing it replaces the text, and text follows its plain text. Inline components are left out. It makes the field multiline"},
+		{Name: "focused", Type: "bool", Bind: true, Event: "focusChange", Doc: "whether it has the keyboard: the user's tapping in and out writes it, and writing it takes the keyboard or gives it up"},
 		{Name: "pasteTypes", Type: "[string]", Doc: "the MIME types (patterns, as \"image/*\") of what on paste takes instead of the text: pasted, or put in by the keyboard (a GIF keyboard's images)"},
 	}, Events: []Event{
 		{Name: "change", Params: []Param{{"text", "string"}}},
@@ -222,6 +234,7 @@ var Elements = []Element{
 		{Name: "focus"},
 		{Name: "blur"},
 		{Name: "select", Params: []Param{{"selection", "TextRange"}}},
+		{Name: "focusChange", Params: []Param{{"focused", "bool"}}, Doc: "it took the keyboard, or gave it up"},
 		{Name: "richChange", Params: []Param{{"rich", "[Span]"}}},
 		{Name: "formats", Params: []Param{{"formats", "TextFormats"}}, Doc: "the styles where the cursor is, or that all the selection has, as they change: a toolbar's buttons show them"},
 		{Name: "paste", Params: []Param{{"items", "[SharedItem]"}}, Doc: "what was pasted of pasteTypes: images and files are the app's own copies, in its caches"},
@@ -253,6 +266,22 @@ var Elements = []Element{
 		{Name: "selected", Type: "int", Default: "-1", Bind: true, Event: "change", Doc: "the chosen item's index; out of range: none, and it shows its prompt"},
 		{Name: "prompt", Type: "string", Doc: "what it picks: shown while none is chosen (Android's floating label), and read by screen readers"},
 	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "picks one of many options from a menu, showing the chosen one"},
+	{Name: "Wheel", Keys: []Key{
+		{Name: "items", Type: "[string]", Positional: true},
+		{Name: "selected", Type: "int", Bind: true, Event: "change", Doc: "the item turned to"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "one of many options on a spinning wheel (UIPickerView; Android's NumberPicker)"},
+	{Name: "ColorPicker", Keys: []Key{
+		{Name: "value", Type: "Color", Bind: true, Event: "change", Doc: "the color chosen"},
+		{Name: "alpha", Type: "bool", Doc: "the user can choose an opacity too"},
+		{Name: "title", Type: "string", Doc: "the picker's title"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"color", "Color"}}}}, Doc: "a swatch of a color that opens the platform's picker (UIColorWell; a Material dialog of a palette on Android)"},
+	{Name: "DatePicker", Keys: []Key{
+		{Name: "value", Type: "int", Bind: true, Event: "change", Doc: "the instant chosen, in milliseconds since 1970 (asuka/time's time.Picker binds a Time)"},
+		{Name: "mode", Type: "DateMode", Doc: "a date, a time of day, or both"},
+		{Name: "min", Type: "int", Doc: "the earliest choice, in milliseconds since 1970 (0: none)"},
+		{Name: "max", Type: "int", Doc: "the latest choice (0: none)"},
+		{Name: "inline", Type: "bool", Doc: "iOS: the calendar and the time shown in place, not from a button"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"value", "int"}}}}, Doc: "a date or a time, chosen the platform's way (UIDatePicker; Material's date and time pickers), in the device's time zone and format"},
 	{Name: "Progress", Keys: []Key{
 		{Name: "value", Type: "float?", Doc: "done, from 0 to 1; none: under way, how far unknown"},
 	}, Doc: "a progress bar; its color is its fill"},
@@ -294,7 +323,7 @@ var Elements = []Element{
 		{Name: "swipeActions", Type: "fn(int) -> [Action]", Doc: "row index's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's)"},
 		{Name: "leadingSwipeActions", Type: "fn(int) -> [Action]", Doc: "row index's actions revealed from its leading edge (Mail's Unread)"},
 		{Name: "section", Type: "fn(int) -> string", Doc: "row index's section: rows next to each other with the same key are one, headed by header"},
-		{Name: "header", Type: "fn(string) -> View", Doc: "a section's header, given its key (an accessor: a recycled header follows its new section)"},
+		{Name: "header", Type: "fn(string) -> View", Builder: true, Doc: "a section's header, given its key (an accessor: a recycled header follows its new section)"},
 		{Name: "selecting", Type: "bool", Doc: "selection mode (Mail's Edit): rows show the platform's selection control, a tap selects instead of pressing, and rows don't swipe"},
 		{Name: "selected", Type: "fn(int) -> bool", Doc: "whether row index is selected, followed as what it reads changes"},
 	}, Events: []Event{
@@ -344,7 +373,7 @@ var Elements = []Element{
 		{Name: "error", Params: []Param{{"message", "string"}}},
 	}, Doc: "a video in the platform's player; sized as an Image is. Drive it with play(), pause(), seek(seconds)"},
 	{Name: "WebView", Keys: []Key{
-		{Name: "url", Type: "string", Doc: "the page: an http(s) URL, or an asset"},
+		{Name: "url", Type: "string", Positional: true, Default: "\"\"", Doc: "the page: an http(s) URL, or an asset (\"\": html's)"},
 		{Name: "html", Type: "string", Doc: "markup to show instead"},
 		{Name: "preload", Type: "string", Doc: "a script run before each page's own, in every frame (set when it's made)"},
 		{Name: "userAgent", Type: "string"},
@@ -359,7 +388,7 @@ var Elements = []Element{
 		{Name: "newWindow", Params: []Param{{"url", "string"}}, Doc: "a page it would open in a new window; without a handler it loads here"},
 	}, Doc: "a web page, in the platform's web view; with no height and no grow, it grows"},
 	// Navigation (ui/nav.go, router.go, split.go, window.go).
-	{Name: "Stack", Children: true, Doc: "a navigation stack (UINavigationController; a view stack with a top app bar and predictive back on Android): its child is its first screen; push(…) and pop() in it add and remove more, and the user's back pops. It grows into its room unless it's sized"},
+	{Name: "Stack", Children: true, LazyChildren: true, Doc: "a navigation stack (UINavigationController; a view stack with a top app bar and predictive back on Android): its child is its first screen; push(…) and pop() in it add and remove more, and the user's back pops. It grows into its room unless it's sized"},
 	{Name: "Screen", Children: true, Keys: []Key{
 		{Name: "title", Type: "string", Doc: "the bar's title (a tab's, a page's in a browser)"},
 		{Name: "largeTitle", Type: "bool", Doc: "the title large at the top, collapsing into the bar as it scrolls (iOS)"},
@@ -374,8 +403,8 @@ var Elements = []Element{
 		{Name: "searchChange", Params: []Param{{"text", "string"}}, Doc: "the search field's text changed"},
 		{Name: "searchSubmit", Doc: "return pressed in the search field"},
 	}, Slots: []Slot{
-		{Name: "actions", Doc: "the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar"},
-		{Name: "toolbar", Doc: "buttons in a bar at the bottom of the screen: Buttons, as actions'"},
+		{Name: "toolbar", Doc: "the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar (iOS's navigation bar, Android's top app bar)"},
+		{Name: "bottomToolbar", Doc: "buttons in a bar at the bottom of the screen: Buttons, as toolbar's"},
 		{Name: "primary", Doc: "the screen's main action (compose, add): a Button; Android's floating action button, iOS's prominent toolbar item"},
 	}, Doc: "a screen of a Stack (a screen declaration's root), sized by the platform"},
 	{Name: "Tabs", Children: true, Keys: []Key{
@@ -395,6 +424,15 @@ var Elements = []Element{
 		{Name: "change", Params: []Param{{"open", "bool"}}},
 		{Name: "dismiss", Doc: "the user dismissed it"},
 	}, Doc: "content in a modal sheet while open: built as it opens, disposed as it closes. It takes no room where it's declared"},
+	{Name: "Alert", Children: true, Keys: []Key{
+		{Name: "title", Type: "string", Positional: true},
+		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "shows the alert while true; choosing a button, or the user dismissing it, writes false"},
+		{Name: "message", Type: "string", Doc: "under the title"},
+		{Name: "actionSheet", Type: "bool", Doc: "an action sheet: a list of choices from the bottom of the screen (a popover on an iPad), its fields left out"},
+	}, Events: []Event{
+		{Name: "change", Params: []Param{{"open", "bool"}}},
+		{Name: "dismiss", Doc: "the user dismissed it without choosing a button (a tap outside, Android's back)"},
+	}, Doc: "an alert while open: its block's Buttons are its buttons (their title, icon, role and disabled; a cancel one's press runs as it's dismissed too), its TextFields its fields (placeholder, bind text, secure, keyboard, contentType). It takes no room where it's declared; with no Button, it has an OK"},
 	{Name: "Popover", Children: true, Keys: []Key{
 		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "shows the popover while true; a tap outside writes false"},
 		{Name: "maxWidth", Type: "float", Doc: "how wide it may be (0: 320); it's as big as its content"},
@@ -410,15 +448,18 @@ var Elements = []Element{
 		{Name: "longPress", Type: "bool", Doc: "a context menu: shown on a long press (a right click on a desktop) rather than a tap"},
 	}, Doc: "shows a menu of actions when its children are tapped (UIMenu, PopupMenu). In a MenuBar, one of its menus: its children are MenuItems"},
 	{Name: "Split", Children: true, Keys: []Key{
-		{Name: "title", Type: "string", Doc: "the sidebar's"},
+		{Name: "title", Type: "string", Positional: true, Default: "\"\"", Doc: "the sidebar's"},
 		{Name: "selected", Type: "int", Bind: true, Event: "change", Doc: "the chosen destination's index: the user's choice writes it"},
-	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations, or Sidebars of them"},
 	{Name: "Destination", Children: true, LazyChildren: true, Keys: []Key{
 		{Name: "title", Type: "string", Positional: true},
 		{Name: "icon", Type: "string"},
 		{Name: "badge", Type: "string"},
 		{Name: "section", Type: "string", Doc: "the sidebar section it's in: destinations next to each other with the same section are one"},
 	}, Doc: "a place a Split's sidebar leads to: its content is its first screen, built when it's chosen"},
+	{Name: "Sidebar", Children: true, Keys: []Key{
+		{Name: "title", Type: "string", Positional: true, Doc: "the section's heading in the sidebar"},
+	}, Doc: "a section of a Split's sidebar: its children are Destinations, under its title (a Destination's own section, if it gives one, wins)"},
 	{Name: "Window", Children: true, LazyChildren: true, NoStyle: true, Keys: []Key{
 		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "the window is open while true; the user closing it writes false. The app block's Window, the main window, shows unless it's false"},
 		{Name: "title", Type: "string", Doc: "its title bar's (\"\": the app's name)"},
@@ -459,20 +500,22 @@ var Elements = []Element{
 		{Name: "closeRequest", Doc: "the user asked to close it: it stays open until open is false, or closeWindow()"},
 	}, Doc: "a desktop window of its own while open (a window in the page on the web; phones have none): its content is built as it opens, disposed as it closes. The app block's Window is the main window: its keys are the main window's"},
 	{Name: "Router", Children: true, Keys: []Key{
-		{Name: "initial", Type: "string", Default: "\"/\"", Doc: "where it starts when nothing else says (a link the app was opened with, the address its window was left at)"},
-	}, Doc: "shows its routes' screens from the address the app is at: its children are Routes"},
+		{Name: "initial", Type: "string", Positional: true, Default: "\"/\"", Doc: "where it starts when nothing else says (a link the app was opened with, the address its window was left at)"},
+	}, Doc: "shows its routes' screens from the address the app is at: its children are Routes. Router(initial: \"/inbox\") { … }"},
 	{Name: "Route", Children: true, LazyChildren: true, Params: []Param{{"params", "Params"}}, Keys: []Key{
-		{Name: "path", Type: "string", Positional: true, Doc: "relative to its parent's unless it starts with /: :name a parameter, *name the rest; \"\" its parent's index"},
-		{Name: "layout", Type: "RouteLayout", Doc: "a navigator of its child routes, or a group"},
-		{Name: "title", Type: "string"},
-		{Name: "icon", Type: "string"},
-		{Name: "badge", Type: "string"},
-		{Name: "initial", Type: "string", Doc: "the child a navigator starts with (a stack's first screen, under the one a link names)"},
-		{Name: "redirect", Type: "string", Doc: "sends whoever comes here to this href, its parameters filled in"},
-		{Name: "sheet", Type: "bool", Doc: "presented in a sheet over its navigator"},
-		{Name: "detents", Type: "[Detent]"},
-		{Name: "guard", Type: "fn(string) -> string", Doc: "asked before its screens show: \"\" lets the user in, an href sends them there"},
-	}, Doc: "maps a path to a screen (its content, built with its parameters), or holds routes"},
+		{Name: "path", Type: "string", Positional: true, Default: "\"\"", Doc: "relative to its parent's unless it starts with /: :name a parameter, *name the rest; \"\" its parent's index"},
+		{Name: "layout", Type: "RouteLayout", Positional: true, Default: ".group", Doc: "a navigator of its child routes (.stack, .tabs, .split, .slot), or a group of them under its path"},
+		{Name: "title", Type: "string", Positional: true, Default: "\"\"", Doc: "its tab's or destination's title, and its screens' when they have none"},
+		{Name: "icon", Type: "string", Positional: true, Default: "\"\"", Doc: "its tab's or destination's symbol"},
+		{Name: "badge", Type: "string", Positional: true, Default: "\"\"", Doc: "shown on its tab: a count, or short text"},
+		{Name: "initial", Type: "string", Positional: true, Default: "\"\"", Doc: "the child a navigator starts with (a stack's first screen, under the one a link names)"},
+		{Name: "redirect", Type: "string", Positional: true, Default: "\"\"", Doc: "sends whoever comes here to this href, its parameters filled in"},
+		{Name: "sheet", Type: "bool", Positional: true, Default: "false", Doc: "presented in a sheet over its navigator"},
+		{Name: "detents", Type: "[Detent]", Positional: true, Default: "[]", Doc: "a sheet's heights ([]: large)"},
+		{Name: "grabber", Type: "bool", Positional: true, Default: "false", Doc: "a sheet's grabber, at its top"},
+		{Name: "fullScreen", Type: "bool", Positional: true, Default: "false", Doc: "a sheet that covers the screen: no swipe or tap outside dismisses it"},
+		{Name: "guard", Type: "(fn(string) -> string)?", Positional: true, Default: "none", Doc: "asked before its screens show, with the href asked for: \"\" lets the user in, an href sends them there"},
+	}, Doc: "maps a path to a screen, or holds routes: Route(\"/inbox\", layout: .stack, title: \"Inbox\") { Inbox; Thread; Route(\":id/reply\", sheet: true) { p => Reply(id: p.get(\"id\")) } }. Its block holds its child Routes, its screen (p => View, built with its Params), or routed screens named alone (screen Thread(id: int) at \":id\"), a Route of their pattern each"},
 	{Name: "Boundary", Children: true, LazyChildren: true, Events: []Event{
 		{Name: "error", Params: []Param{{"error", "Error"}, {"reset", "fn()"}}, Builds: true, Doc: "what shows instead when building its content, or an effect or handler in it, fails; reset builds it again"},
 	}, Doc: "an error boundary: an error its content doesn't catch shows on error's views"},

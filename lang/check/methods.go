@@ -45,6 +45,9 @@ type Method struct {
 	// Field: read as a property, without parentheses (g.width,
 	// card.hovered); its Sig is "() -> T".
 	Field bool
+	// Variadic: its last parameter takes any number of arguments, passed
+	// to the builtin as an array of them (app.expect("a", "b")).
+	Variadic bool
 	// Consts: constant ints the lowering appends to the builtin's
 	// arguments (the state ui.state reads, where web_navigate goes).
 	Consts []int64
@@ -84,6 +87,9 @@ var Methods = []*Method{
 	{Recv: "array", Name: "sum", Sig: "() -> T", Builtin: "arr.sum", Needs: "number"},
 	{Recv: "array", Name: "reversed", Sig: "() -> [T]", Builtin: "arr.reversed"},
 	{Recv: "array", Name: "slice", Sig: "(from: int, to: int) -> [T]", Builtin: "arr.slice", Doc: "the elements from index from up to to, clamped"},
+	{Recv: "array", Name: "slice", Sig: "(from: int) -> [T]", Builtin: "arr.slice", Doc: "the elements from index from to the end"},
+	{Recv: "array", Name: "prefix", Sig: "(count: int) -> [T]", Builtin: "arr.prefix", Doc: "the first count elements (all of them when there are fewer)"},
+	{Recv: "array", Name: "suffix", Sig: "(count: int) -> [T]", Builtin: "arr.suffix", Doc: "the last count elements (all of them when there are fewer)"},
 	{Recv: "array", Name: "sorted", Sig: "() -> [T]", Builtin: "arr.sorted", Needs: "Comparable"},
 	{Recv: "array", Name: "sorted", Sig: "(by: fn(T, T) -> bool) -> [T]", Builtin: "arr.sorted", Doc: "sorted by a less-than: (a, b) => a.age < b.age; stable"},
 	{Recv: "array", Name: "sort", Sig: "()", Builtin: "arr.sort", Inout: true, Needs: "Comparable"},
@@ -134,6 +140,7 @@ var Methods = []*Method{
 	{Recv: "string", Name: "findLast", Sig: "(text: string) -> int?", Builtin: "str.find_last", Doc: "the byte offset of the last text, or none"},
 	{Recv: "string", Name: "findAny", Sig: "(chars: string) -> int?", Builtin: "str.find_any", Doc: "the byte offset of the first character that's one of chars, or none"},
 	{Recv: "string", Name: "slice", Sig: "(from: int, to: int) -> string", Builtin: "str.slice", Doc: "the characters from from up to to, clamped"},
+	{Recv: "string", Name: "slice", Sig: "(from: int) -> string", Builtin: "str.slice", Doc: "the characters from from to the end"},
 	{Recv: "string", Name: "byteSlice", Sig: "(from: int, to: int) -> string", Builtin: "str.byte_slice", Doc: "the bytes from from up to to (the offsets find gives), clamped"},
 	{Recv: "string", Name: "padStart", Sig: "(width: int, with: string = \" \") -> string", Builtin: "str.pad", Extra: "false", Doc: "with copies of with before it, up to width characters: \"7\".padStart(2, with: \"0\") is 07"},
 	{Recv: "string", Name: "padEnd", Sig: "(width: int, with: string = \" \") -> string", Builtin: "str.pad", Extra: "true", Doc: "with copies of with after it, up to width characters"},
@@ -144,6 +151,7 @@ var Methods = []*Method{
 	{Recv: "string", Name: "bytes", Sig: "() -> bytes", Builtin: "str.to_bytes", Doc: "its UTF-8 bytes"},
 
 	// Colors.
+	{Recv: "color", Name: "hex", Sig: "() -> string", Builtin: "color.hex", Doc: "the color as it's written: #rrggbb (#rrggbbaa when it isn't opaque), a semantic color by its name (.accent); a color in a string, \"{c}\", is the same"},
 	{Recv: "color", Name: "opacity", Sig: "(alpha: float) -> Color", Builtin: "color.opacity", Doc: "the color drawn at alpha (0 to 1) times its own opacity; a semantic color stays one, so it still follows dark mode"},
 
 	// Bytes.
@@ -157,6 +165,11 @@ var Methods = []*Method{
 	{Recv: "bytes", Name: "hex", Sig: "(separator: string) -> string", Builtin: "bytes.hex", Doc: "the bytes in lowercase hexadecimal, separator between them: \"04 a1\""},
 
 	// Numbers.
+	{Recv: "int", Name: "float", Sig: "() -> float", Special: "i2f", Doc: "the int as a float, as float(n)"},
+	{Recv: "int", Name: "abs", Sig: "() -> int", Builtin: "math.absi"},
+	{Recv: "int", Name: "padded", Sig: "(width: int) -> string", Builtin: "int.padded", Doc: "in decimal, zeros before it up to width digits: 7.padded(2) is 07"},
+	{Recv: "float", Name: "int", Sig: "() -> int", Special: "f2i", Doc: "toward zero, as int(x): x.rounded().int() is the nearest"},
+	{Recv: "float", Name: "abs", Sig: "() -> float", Builtin: "math.absf"},
 	{Recv: "float", Name: "fixed", Sig: "(digits: int) -> string", Builtin: "str.fixed", Doc: "with that many digits after the point: 3.14159.fixed(2) is 3.14"},
 	{Recv: "float", Name: "rounded", Sig: "() -> float", Builtin: "math.round"},
 	{Recv: "float", Name: "floor", Sig: "() -> float", Builtin: "math.floor"},
@@ -178,8 +191,33 @@ var Methods = []*Method{
 	// What mount returns, in tests.
 	{Recv: "app", Name: "tap", Sig: "(text: string)", Builtin: "test.tap", Doc: "taps the control showing text, and waits for what it does"},
 	{Recv: "app", Name: "type", Sig: "(text: string, into: string)", Builtin: "test.type", Doc: "types text into the field labelled or showing into"},
-	{Recv: "app", Name: "expect", Sig: "(text: string)", Builtin: "test.expect", Doc: "fails the test unless text is shown"},
-	{Recv: "app", Name: "expectNo", Sig: "(text: string)", Builtin: "test.expect_no", Doc: "fails the test if text is shown"},
+	{Recv: "app", Name: "expect", Sig: "(text: string)", Builtin: "test.expect", Variadic: true, Doc: "fails the test unless each text is shown: a text, a title, a field's text or placeholder, an accessibility label, a tab, a bar button, an alert's button, an open menu's item"},
+	{Recv: "app", Name: "expectNo", Sig: "(text: string)", Builtin: "test.expect_no", Variadic: true, Doc: "fails the test if any of the texts is shown"},
+	{Recv: "app", Name: "has", Sig: "(text: string) -> bool", Builtin: "test.has", Doc: "whether the screen shows text, anywhere"},
+	{Recv: "app", Name: "texts", Sig: "() -> [string]", Builtin: "test.texts", Doc: "the texts the screen shows, in the order a screen reader reads them"},
+	{Recv: "app", Name: "snapshot", Sig: "() -> string", Builtin: "test.dump", Doc: "what the screen shows: each layer's views, a line each, with their kinds, frames, texts and states"},
+	{Recv: "app", Name: "disabled", Sig: "(text: string) -> bool", Builtin: "test.disabled", Doc: "whether what shows text is disabled: a control (or a view around it), a bar button, an alert's button, an open menu's item; it fails unless one thing shows text"},
+	{Recv: "app", Name: "longPress", Sig: "(text: string)", Builtin: "test.long_press", Doc: "long-presses what shows text: a view that takes a long press, or one with a context menu, which opens"},
+	{Recv: "app", Name: "submit", Sig: "(label: string = \"\")", Builtin: "test.submit", Doc: "presses return in the field label names (as type finds it; \"\": the field typed in last), or an alert's field"},
+	{Recv: "app", Name: "toggle", Sig: "(label: string)", Builtin: "test.toggle", Doc: "flips the switch or checkbox label names: one with that accessibility label, or the one next to a text"},
+	{Recv: "app", Name: "slide", Sig: "(label: string, value: float)", Builtin: "test.slide", Doc: "moves the slider label names (as toggle finds it) to value"},
+	{Recv: "app", Name: "select", Sig: "(option: string)", Builtin: "test.select", Doc: "chooses option in the picker, wheel or segmented control that has it"},
+	{Recv: "app", Name: "pickColor", Sig: "(label: string, color: Color)", Builtin: "test.pick_color", Doc: "chooses color in the ColorPicker label names (as toggle finds it)"},
+	{Recv: "app", Name: "pickDate", Sig: "(label: string, value: int)", Builtin: "test.pick_date", Doc: "chooses the instant value (milliseconds since 1970) in the DatePicker label names (as toggle finds it)"},
+	{Recv: "app", Name: "swipe", Sig: "(text: string, action: string)", Builtin: "test.swipe", Doc: "swipes the list row showing text and presses its swipe action titled action (a trailing one, or a leading one)"},
+	{Recv: "app", Name: "back", Sig: "()", Builtin: "test.back", Doc: "goes back as the user's back gesture or button does: an open menu closes; else the top screen of the deepest stack pops; else the top sheet, alert or popover is dismissed (onBack can keep it); else, on Android, the root takes it if it intercepts it"},
+	{Recv: "app", Name: "dismiss", Sig: "()", Builtin: "test.dismiss", Doc: "dismisses what's on top as the user does (a swipe down, a tap outside): an open menu, else the top alert, sheet or popover"},
+	{Recv: "app", Name: "refresh", Sig: "(text: string)", Builtin: "test.refresh", Doc: "pulls the scroll view or list showing text to refresh it"},
+	{Recv: "app", Name: "scrollTo", Sig: "(text: string)", Builtin: "test.scroll_to", Doc: "scrolls the lists on the screen until one shows text, as a user looking for it would"},
+	{Recv: "app", Name: "until", Sig: "(what: string, cond: fn() -> bool)", Builtin: "test.until", Async: true, Doc: "waits until cond holds, as idle does (time moves to each timer as it comes due); it fails, saying what it waited for, once nothing is left to run and cond still doesn't"},
+	{Recv: "app", Name: "waitFor", Sig: "(text: string)", Builtin: "test.wait_for", Async: true, Doc: "waits until the screen shows text (as until)"},
+	{Recv: "app", Name: "waitGone", Sig: "(text: string)", Builtin: "test.wait_gone", Async: true, Doc: "waits until the screen no longer shows text (as until)"},
+	{Recv: "app", Name: "href", Sig: "() -> string", Builtin: "test.href", Field: true, Doc: "the address the main window's Router shows (\"\" with no Router)"},
+	{Recv: "app", Name: "history", Sig: "() -> ([string], int)", Builtin: "test.history", Doc: "the main window's history, as a browser keeps it from its Router's addresses: their hrefs, oldest first, and the index of the one shown"},
+	{Recv: "app", Name: "goBack", Sig: "()", Builtin: "test.go_back", Doc: "goes back in the main window's history, as a browser's back button does"},
+	{Recv: "app", Name: "goForward", Sig: "()", Builtin: "test.go_forward", Doc: "goes forward in the main window's history, as a browser's forward button does"},
+	{Recv: "app", Name: "in", Sig: "(scope: TestScope) -> TestApp", Builtin: "test.in", Doc: "the app narrowed to a part of the screen: what it finds and taps is there (app.in(.bottomToolbar).tap(\"Star\"))"},
+	{Recv: "app", Name: "nextTo", Sig: "(label: string) -> TestApp", Builtin: "test.next_to", Doc: "the app narrowed to what's next to the view showing label, as a user reads a row or a form (app.nextTo(\"Ada\").tap(\"Remove\"))"},
 	{Recv: "app", Name: "frameOf", Sig: "(text: string) -> (float, float, float, float)", Builtin: "test.frame_of", Doc: "the frame (x, y, width, height) in the window of the view showing text"},
 	{Recv: "app", Name: "setLanguages", Sig: "(languages: string)", Builtin: "test.set_languages", Doc: "says the user's preferred languages changed (BCP 47 tags, most preferred first, joined by commas)"},
 	{Recv: "app", Name: "idle", Sig: "()", Builtin: "test.idle", Async: true, Doc: "waits until nothing is left to run"},
@@ -188,6 +226,7 @@ var Methods = []*Method{
 	{Recv: "app", Name: "press", Sig: "(text: string, down: bool = true)", Builtin: "test.press", Doc: "puts a finger down on the view showing text (or the view around it that reports pressed), or lifts it: its pressed state"},
 	{Recv: "app", Name: "hover", Sig: "(text: string, over: bool = true)", Builtin: "test.hover", Doc: "moves the pointer over the view showing text, or off it"},
 	{Recv: "app", Name: "frame", Sig: "(time: Duration)", Builtin: "test.frame", Doc: "draws a frame at time: what onFrame registered runs"},
+	{Recv: "app", Name: "lifecycle", Sig: "(state: Lifecycle)", Builtin: "test.lifecycle", Doc: "the app comes to the foreground, goes to the background, or the system runs low on memory"},
 	{Recv: "app", Name: "openURL", Sig: "(url: string)", Builtin: "test.open_url", Doc: "opens the app with url, as another app does"},
 	{Recv: "app", Name: "tapLink", Sig: "(url: string)", Builtin: "test.link", Doc: "taps the link to url in the rich text that has one"},
 	{Recv: "app", Name: "emit", Sig: "(view: string, event: string, value: string = \"\")", Builtin: "test.emit", Doc: "sends a native component's event: from the view of that kind (\"<package>#Name\"), its value v an encoded string"},
@@ -254,6 +293,8 @@ var Methods = []*Method{
 	{Recv: "ref", Name: "focus", Sig: "()", Builtin: "ui.focus", Doc: "gives a field the keyboard"},
 	{Recv: "ref", Name: "blur", Sig: "()", Builtin: "ui.blur"},
 	{Recv: "ref", Name: "scrollTo", Sig: "(x: float, y: float, animated: bool = true)", Builtin: "ui.scroll_to", Doc: "scrolls a Scroll or a List to the content offset"},
+	{Recv: "ref", Name: "scrollToEnd", Sig: "(animated: bool = true)", Builtin: "ui.scroll_to_end", Doc: "scrolls a Scroll or a List to its end (a horizontal Scroll's trailing edge)"},
+	{Recv: "ref", Name: "scrollToItem", Sig: "(index: int, animated: bool = true)", Builtin: "ui.scroll_to_item", Doc: "scrolls a List's item index into view"},
 	{Recv: "ref", Name: "play", Sig: "()", Builtin: "ui.play", Doc: "plays a Video"},
 	{Recv: "ref", Name: "pause", Sig: "()", Builtin: "ui.pause"},
 	{Recv: "ref", Name: "seek", Sig: "(seconds: float)", Builtin: "ui.seek"},
@@ -431,7 +472,7 @@ func methodsArity(t Type, name string, n int) []*Method {
 				req++
 			}
 		}
-		if n >= req && n <= len(m.Params) {
+		if n >= req && (n <= len(m.Params) || m.Variadic) {
 			out = append(out, m)
 		}
 	}

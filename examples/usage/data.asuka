@@ -15,7 +15,7 @@ struct Window {
   history: [Sample] = [] // what was used, as the window went
 
   /// The window's name.
-  fn title() -> string = if name.isEmpty { label(key) } else { name }
+  fn title() -> string = if name.isEmpty() { label(key) } else { name }
 
   /// How long the window runs.
   fn period() -> Duration = if span > 0s { span } else { periodOf(key) }
@@ -29,8 +29,8 @@ struct Window {
       let elapsed = now - (r - period())
       // Under a twentieth of the window in, a rate says little.
       if elapsed < period() / 20 || used <= 0 { return Forecast(atReset: used) }
-      let rate = used / elapsed.hours // percent an hour
-      let at = used + rate * (r - now).hours
+      let rate = used / elapsed.hours() // percent an hour
+      let at = used + rate * (r - now).hours()
       if at > 100 { return Forecast(pace: .over, atReset: at, out: now + ((100 - used) / rate) * 1h) }
       return Forecast(pace: if at > 80 { .tight } else { .ok }, atReset: at)
     }
@@ -58,7 +58,7 @@ struct Account {
   updated: time.Time? = none
   error: string = "" // why the last refresh failed
 
-  fn title() -> string = if name.isEmpty { services[service]?.name ?? service } else { name }
+  fn title() -> string = if name.isEmpty() { services[service]?.name ?? service } else { name }
 
   /// Whether the window shows on the home screen's card.
   fn shown(key: string) -> bool = !hidden.contains(key)
@@ -126,7 +126,7 @@ async fn refreshClaude(a: Account, secret: string) throws -> (Account, string) {
   do {
     return (try await readClaude(a, t.access), t.string())
   } catch e: HttpError {
-    if e.status != 401 || t.refresh.isEmpty { throw e }
+    if e.status != 401 || t.refresh.isEmpty() { throw e }
   }
   t = try await refreshedOrSignedOut(t)
   return (try await readClaude(a, t.access), t.string())
@@ -150,7 +150,7 @@ async fn readClaude(a: Account, token: string) throws -> Account {
   let text = try await getText("https://api.anthropic.com/api/oauth/usage", token)
   // The last reply, as the server sent it: to see what it says when a
   // number looks wrong. It holds no secrets, only the percentages.
-  try? fs.write(fs.join(fs.appDir(), "usage-{a.id}.json"), text.bytes())
+  try? fs.write(fs.join([fs.appDir(), "usage-{a.id}.json"]), text.bytes())
   let usage: UsageReply = try json.decode(text)
   let (fresh, extra) = try parseUsage(usage)
   var out = a
@@ -179,11 +179,9 @@ struct ProfileOrganization {
 }
 
 async fn getText(url: string, token: string) throws -> string {
-  let res = try await withTimeout(20s) {
-    try await http.get(url, headers: ["Authorization": "Bearer {token}", "anthropic-beta": "oauth-2025-04-20"])
-  }
-  let text = try await res.text()
-  if res.status != 200 { throw apiError(res.status, res.statusText, text) }
+  let res = try await http.request("GET", url, headers: ["Authorization": "Bearer {token}", "anthropic-beta": "oauth-2025-04-20"], timeout: 20s)
+  let text = res.text()
+  if res.status != 200 { throw apiError(res.status, text) }
   return text
 }
 
@@ -196,21 +194,30 @@ struct HttpError: Error {
 /// What a refused request's body may say: the API's message
 /// (\{"error": \{"type": "authentication_error", "message": "..."}}), or
 /// OAuth's (\{"error": "invalid_grant", "error_description": "..."}).
-struct ErrorReply {
-  error: json.Value = .null
+struct ApiErrorBody {
+  message: string = ""
+}
+
+struct ApiErrorReply {
+  error: ApiErrorBody = ApiErrorBody()
+}
+
+struct OAuthErrorReply {
+  error: string = ""
   error_description: string = ""
 }
 
 /// What a refused request says.
-fn apiError(status: int, statusText: string, body: string) -> HttpError {
-  let reply: ErrorReply = (try? json.decode(body)) ?? ErrorReply()
-  var message = reply.error_description
-  if let m = reply.error["message"]?.string() {
-    if !m.isEmpty { message = m }
-  } else if let code = reply.error.string() {
-    if message.isEmpty { message = code }
+fn apiError(status: int, body: string) -> HttpError {
+  var message = ""
+  let oauth: OAuthErrorReply? = try? json.decode(body)
+  let api: ApiErrorReply? = try? json.decode(body)
+  if let r = oauth {
+    message = if r.error_description.isEmpty() { r.error } else { r.error_description }
+  } else if let r = api {
+    message = r.error.message
   }
-  if message.isEmpty { message = statusText }
+  if message.isEmpty() { message = "HTTP {status}" }
   if message.contains("scope") {
     // A token for inference alone (claude setup-token's) can't read the
     // account's usage.
@@ -223,7 +230,7 @@ fn apiError(status: int, statusText: string, body: string) -> HttpError {
 
 /// A pasted token without the spaces and line breaks a terminal's
 /// wrapping puts in it.
-fn cleanToken(t: string) -> string = t.fields().join("")
+fn cleanToken(t: string) -> string = t.fields().joined("")
 
 /// The usage endpoint's reply: the server's list of meters, "limits", and
 /// the windows Claude Code knows by key. Other keys are the server's own,
@@ -273,7 +280,7 @@ struct DisplayName {
 fn parseUsage(usage: UsageReply) throws -> ([Window], bool?) {
   let extra = usage.extra_usage?.is_enabled
   var ws = parseLimits(usage.limits)
-  if ws.isEmpty {
+  if ws.isEmpty() {
     let known = [
       ("five_hour", usage.five_hour),
       ("seven_day", usage.seven_day),
@@ -286,7 +293,7 @@ fn parseUsage(usage: UsageReply) throws -> ([Window], bool?) {
       }
     }
   }
-  if ws.isEmpty { throw UsageError.empty }
+  if ws.isEmpty() { throw UsageError.empty }
   return (sortWindows(ws), extra)
 }
 
@@ -311,7 +318,7 @@ fn parseLimits(rows: [LimitRow]) -> [Window] {
         w.key = "five_hour"
       } else if r.kind == "weekly_all" {
         w.key = "seven_day"
-      } else if !scope.isEmpty {
+      } else if !scope.isEmpty() {
         // A model's week, or a surface's: named as the server names it.
         w.key = "seven_day_{slug(scope)}"
         w.name = "This week · {scope}"
@@ -326,7 +333,7 @@ fn parseLimits(rows: [LimitRow]) -> [Window] {
 }
 
 /// A name as a key: "Fable 5" is "fable_5".
-fn slug(s: string) -> string = s.lower().fields().join("_")
+fn slug(s: string) -> string = s.lower().fields().joined("_")
 
 /// The shortest first, then the week, then the models'.
 fn sortWindows(ws: [Window]) -> [Window] = ws.sorted((a, b) => if a.period() != b.period() {
@@ -342,10 +349,10 @@ fn sortWindows(ws: [Window]) -> [Window] = ws.sorted((a, b) => if a.period() != 
 /// when the use changed.
 fn merge(old: [Window], fresh: [Window], now: time.Time) -> [Window] {
   var out = fresh
-  for i in 0..<out.count {
+  for i in 0..<out.count() {
     let w = out[i]
-    var h = old.first(o => o.key == w.key && o.resets == w.resets)?.history ?? []
-    if let last = h.last {
+    var h = old.find(o => o.key == w.key && o.resets == w.resets)?.history ?? []
+    if let last = h.last() {
       if last.used != w.used || now - last.at > 15min { h.push(Sample(at: now, used: w.used)) }
     } else {
       h.push(Sample(at: now, used: w.used))
@@ -388,7 +395,7 @@ fn demo(now: time.Time) -> Account {
 /// A demo account moved along: some use since it was last refreshed, and
 /// windows that reset start again.
 fn refreshDemo(a: Account, now: time.Time) -> Account {
-  let hours = (now - (a.updated ?? now)).hours
+  let hours = (now - (a.updated ?? now)).hours()
   var fresh: [Window] = []
   for old in a.windows {
     var w = old
@@ -397,7 +404,7 @@ fn refreshDemo(a: Account, now: time.Time) -> Account {
       w = Window(key: w.key, name: w.name, span: w.span, resets: r + w.period())
     }
     if w.key != "seven_day_opus" {
-      let step = min(hours, 2) * (0.5 + random.float()) * 100 / w.period().hours * 1.6
+      let step = min(hours, 2) * (0.5 + random.float()) * 100 / w.period().hours() * 1.6
       w.used = min(100, ((w.used + step + random.float()) * 10).rounded() / 10)
     }
     fresh.push(w)
@@ -407,10 +414,10 @@ fn refreshDemo(a: Account, now: time.Time) -> Account {
   return out
 }
 
-fn upper(s: string) -> string = if s.isEmpty { s } else { s.slice(0, 1).upper() + s.slice(1) }
+fn upper(s: string) -> string = if s.isEmpty() { s } else { s.slice(0, 1).upper() + s.slice(1) }
 
 test "the forecast" {
-  let now = time.date(2026, 10, 31, hour: 0, minute: 58, zone: "UTC")
+  let now = time.date(2026, 10, 31, hour: 0, minute: 58, zone: .utc)
   // 15% in 29 hours: 87% by the reset, 13% left.
   let f = Window(key: "seven_day", used: 15, resets: now - 29h + 7 * 24h).forecast(now)
   expect(f.pace == .tight && (100 - f.atReset).rounded() == 13, "the week: {f.pace} {f.atReset}")
@@ -466,9 +473,9 @@ test "merge keeps a window's history" {
   let resets = now + 1h
   let old = [Window(key: "five_hour", used: 10, resets: resets, history: [Sample(at: now - 1h, used: 10)])]
   let ws = merge(old, [Window(key: "five_hour", used: 12, resets: resets)], now)
-  expect(ws[0].history.count == 2)
+  expect(ws[0].history.count() == 2)
   // A new window starts a new history.
-  expect(merge(ws, [Window(key: "five_hour", used: 1, resets: resets + 5h)], now)[0].history.count == 1)
+  expect(merge(ws, [Window(key: "five_hour", used: 1, resets: resets + 5h)], now)[0].history.count() == 1)
 }
 
 test "a pasted token" {
@@ -476,8 +483,8 @@ test "a pasted token" {
 }
 
 test "what a refused request says" {
-  expect(apiError(401, "Unauthorized", "\{\"type\":\"error\",\"error\":\{\"type\":\"authentication_error\",\"message\":\"OAuth access token is invalid.\"}}").message == "OAuth access token is invalid. Sign in again.")
-  expect(apiError(403, "Forbidden", "\{\"error\":\{\"message\":\"OAuth token does not meet scope requirement user:profile\"}}").message.contains("can't read usage"))
-  expect(apiError(500, "Internal Server Error", "oops").message == "Internal Server Error")
-  expect(apiError(400, "Bad Request", "\{\"error\":\"invalid_grant\",\"error_description\":\"Invalid code\"}").message == "Invalid code")
+  expect(apiError(401, "\{\"type\":\"error\",\"error\":\{\"type\":\"authentication_error\",\"message\":\"OAuth access token is invalid.\"}}").message == "OAuth access token is invalid. Sign in again.")
+  expect(apiError(403, "\{\"error\":\{\"message\":\"OAuth token does not meet scope requirement user:profile\"}}").message.contains("can't read usage"))
+  expect(apiError(500, "oops").message == "HTTP 500")
+  expect(apiError(400, "\{\"error\":\"invalid_grant\",\"error_description\":\"Invalid code\"}").message == "Invalid code")
 }

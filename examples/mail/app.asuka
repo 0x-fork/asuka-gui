@@ -16,11 +16,6 @@ struct Mail {
   unread: bool
 }
 
-struct Day {
-  name: string
-  mails: [Mail]
-}
-
 let senders = ["Ada Lovelace", "Grace Hopper", "Linus Torvalds", "Barbara Liskov", "Ken Thompson"]
 let subjects = ["Release notes for 1.0", "Lunch on Friday?", "Re: the list's anchor", "Design review", "Your invoice", "Weekly sync"]
 
@@ -28,11 +23,11 @@ fn inbox(n: int) -> [Mail] {
   var out: [Mail] = []
   var at = time.now()
   for i in 0..<n {
-    at = at - (40 + i * 13 % 90) * 1min
+    at = at.add(-(40 + i * 13 % 90) * 1min)
     out.push(Mail(
       id: i + 1,
-      from: senders[i % senders.count],
-      subject: subjects[i % subjects.count],
+      from: senders[i % senders.count()],
+      subject: subjects[i % subjects.count()],
       preview: "Here's where things stand, and what's left before we ship.",
       at: at,
       unread: i % 3 == 0,
@@ -44,22 +39,8 @@ fn inbox(n: int) -> [Mail] {
 fn day(t: time.Time) -> string {
   let today = time.now()
   if t.sameDay(today) { return "Today" }
-  if t.sameDay(today - 24h) { return "Yesterday" }
+  if t.sameDay(today.add(-24h)) { return "Yesterday" }
   return t.format("EEEE, MMMM d")
-}
-
-/// The mails as runs of the same day.
-fn byDay(mails: [Mail]) -> [Day] {
-  var days: [Day] = []
-  for m in mails {
-    let name = day(m.at)
-    if days.last?.name == name {
-      days[days.count - 1].mails.push(m)
-    } else {
-      days.push(Day(name: name, mails: [m]))
-    }
-  }
-  return days
 }
 
 screen Inbox {
@@ -68,7 +49,6 @@ screen Inbox {
   state chosen: [int] = []
   state composing = false
 
-  let days = byDay(mails)
 
   title: "Inbox"
   largeTitle: true
@@ -99,35 +79,31 @@ screen Inbox {
   SafeArea {
     grow: 1
     List {
-      bind selecting: selecting
-      for d in days key d.name {
-        Section {
-          header {
-            View {
-              padding: [6, 16]
-              Text(d.name) {
-                font: .footnote.semibold()
-                color: .secondaryLabel
-              }
-            }
-          }
-          for m in d.mails key m.id {
-            MailRow(m) {
-              leadingSwipeActions: [.button(
-                title: if m.unread { "Read" } else { "Unread" },
-                icon: "envelope",
-                run: () => toggleUnread(m.id),
-              )]
-              swipeActions: [.button(title: "Archive", icon: "archivebox", run: () => archive([m.id]))]
-              selected: chosen.contains(m.id)
-              on select(on) { choose(m.id, on) }
-              on selectBegin {
-                selecting = true
-                choose(m.id, true)
-              }
-            }
-          }
+      selecting: selecting
+      // Rows next to each other of the same day are a section, headed by
+      // its name.
+      section: i => day(mails[i].at)
+      header: name => View {
+        padding: [6, 16]
+        Text(name) {
+          font: .footnote.semibold()
+          color: .secondaryLabel
         }
+      }
+      leadingSwipeActions: i => [.button(
+        title: if mails[i].unread { "Read" } else { "Unread" },
+        icon: "envelope",
+        run: () => toggleUnread(mails[i].id),
+      )]
+      swipeActions: i => [.button(title: "Archive", icon: "archivebox", run: () => archive([mails[i].id]))]
+      selected: i => chosen.contains(mails[i].id)
+      on select(i, on) { choose(mails[i].id, on) }
+      on selectBegin(i) {
+        selecting = true
+        choose(mails[i].id, true)
+      }
+      for m in mails key m.id {
+        MailRow(m)
       }
     }
     if selecting {
@@ -135,9 +111,9 @@ screen Inbox {
         justify: .spaceBetween
         align: .center
         padding: [8, 16]
-        Text("{chosen.count} selected")
+        Text("{chosen.count()} selected")
         Button("Archive") {
-          disabled: chosen.isEmpty
+          disabled: chosen.isEmpty()
           on press {
             archive(chosen)
             selecting = false
@@ -221,7 +197,7 @@ component Compose {
       Text("New Message") { font: .headline }
       Button("Send") {
         variant: .filled
-        disabled: to.trim().isEmpty
+        disabled: to.trim().isEmpty()
         on press { emit close }
       }
     }
@@ -257,8 +233,8 @@ component Compose {
       Tool("chevron.left.forwardslash.chevron.right", "Code", lit: formats.mono) {
         on press { field.toggleFormat(.mono) }
       }
-      Tool("link", "Link", lit: !formats.link.isEmpty) {
-        on press { field.setLink(if formats.link.isEmpty { "https://example.com" } else { "" }) }
+      Tool("link", "Link", lit: !formats.link.isEmpty()) {
+        on press { field.setLink(if formats.link.isEmpty() { "https://example.com" } else { "" }) }
       }
     }
   }
@@ -268,7 +244,7 @@ component Compose {
 component Line(label: string) {
   prop text = ""
   prop keyboard: Keyboard = .default
-  event change(text: string)
+  event textChange(text: string)
 
   Row {
     gap: 8
@@ -281,7 +257,7 @@ component Line(label: string) {
       keyboard: keyboard
       autocapitalize: .off
       grow: 1
-      on change(t) { emit change(t) }
+      on change(t) { emit textChange(t) }
     }
   }
 }
@@ -305,7 +281,9 @@ app {
 
 test "selecting, and the composer" {
   let app = mount(Stack { Inbox() })
-  app.expect("Inbox", "Today")
+  // The first day's header, and its first mail.
+  expect(app.has("Today") || app.has("Yesterday"), "a day's header")
+  app.expect("Inbox", "Release notes for 1.0")
   app.tap("Select")
   app.expect("0 selected", "Done")
   app.tap("Done")

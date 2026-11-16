@@ -70,6 +70,7 @@
 #include "ui/ui_ext.h"
 #include "ui/i18n.h"
 #include "native/native.h"
+#include "abi/dev.h"
 
 static ak_val none(void) { return (ak_val){0}; }
 
@@ -219,8 +220,23 @@ STR_CMD(b_announce, ak_ui_announce)
 STR_CMD(b_on_open_url, ak_ui_on_open_url)
 STR_CMD(b_on_open_files, ak_ui_on_open_files)
 STR_CMD(b_on_share, ak_ui_on_share)
+STR_CMD(b_on_lifecycle, ak_ui_on_lifecycle)
+
+// ui.dev_player: whether asuka dev runs the app here (its player).
+static ak_val b_dev_player(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = ak_dev_player()};
+}
+STR_CMD(b_on_foreground, ak_ui_on_foreground)
+STR_CMD(b_on_background, ak_ui_on_background)
 
 static ak_val b_share_files(ak_val *a, uint32_t n) { return (ak_val){.p = ak_ui_share_files(a[0].p, a[1].p, a[2].p, a[3].p, view_or_none(a, n, 4))}; }
+
+static ak_val b_color_scheme(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_color_scheme(a[0].i);
+	return (ak_val){0};
+}
 
 static ak_val b_haptic(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
@@ -410,9 +426,11 @@ void ak_ui_ext_builtins_init(void) {
 		{"platform.u8", b_platform_u8}, {"platform.u32", b_platform_u32}, {"platform.u64", b_platform_u64},
 		{"platform.f64", b_platform_f64}, {"platform.str", b_platform_str},
 		{"platform.readU8", b_platform_read_u8}, {"platform.readU32", b_platform_read_u32},
-		{"platform.readU64", b_platform_read_u64}, {"platform.readF64", b_platform_read_f64},
+		{"platform.readU64", b_platform_read_u64}, {"platform.readF64", b_platform_read_f64}, 
 		{"platform.readStr", b_platform_read_str}, {"ui.view_id", b_view_id},
-		{"ui.on_open_url", b_on_open_url}, {"ui.on_open_files", b_on_open_files}, {"ui.on_share", b_on_share},
+		{"ui.on_open_url", b_on_open_url}, {"ui.on_open_files", b_on_open_files}, {"ui.on_share", b_on_share}, {"ui.color_scheme", b_color_scheme},
+		{"ui.dev_player", b_dev_player},
+		{"ui.on_lifecycle", b_on_lifecycle}, {"ui.on_foreground", b_on_foreground}, {"ui.on_background", b_on_background},
 		{"i18n.locale", b_locale}, {"i18n.set_locale", b_set_locale}, {"i18n.set_languages", b_set_languages},
 		{"i18n.languages", b_languages}, {"i18n.preferred_languages", b_preferred}, {"i18n.is_rtl", b_is_rtl},
 		{"i18n.region", b_region}, {"i18n.format_locale", b_format_locale}, {"i18n.catalog", b_catalog}, {"i18n.say", b_say},

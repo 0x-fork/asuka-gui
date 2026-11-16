@@ -192,6 +192,9 @@ func (c *Checker) componentBody(t *TypeName) {
 	if comp.Screen && prelude.FindElement("Screen") == nil {
 		c.errorf(t.Decl, "screen %s needs the Screen element, which the runtime doesn't have yet: make it a component", t.name)
 	}
+	if comp.Screen {
+		c.screenAt(t)
+	}
 	for _, m := range comp.Order {
 		switch m.Kind {
 		case StateMember, LetMember, PropMember, ParamMember:
@@ -243,7 +246,30 @@ func (c *Checker) componentBody(t *TypeName) {
 		}
 	}
 	views = c.bodyCalls(views)
+	if comp.Screen {
+		c.screenRoot(t, views)
+		return
+	}
 	c.viewBlock(views, nil, t.name)
+}
+
+// screenRoot checks a screen's views as the block of its root, a Screen
+// element: title: "Inbox", toolbar { … }, bind search: q and on
+// searchSubmit { } are the element's, the rest its children.
+func (c *Checker) screenRoot(t *TypeName, items []syntax.Item) {
+	d := t.Decl.(*syntax.ScreenDecl)
+	id := &syntax.Ident{Span: d.Name.Span, Name: "Screen"}
+	call := &syntax.CallExpr{Span: d.Body.Span, Fun: id, Block: &syntax.Block{Span: d.Body.Span, Items: items}}
+	c.info.ScreenRoots[t] = call
+	tn, ok := c.prelude.Scope.LookupLocal("Screen").(*TypeName)
+	if !ok {
+		return
+	}
+	c.resolveType(tn)
+	savedView := c.view
+	c.view = true
+	c.record(call, c.componentCall(call, tn))
+	c.view = savedView
 }
 
 func (c *Checker) taskDecl(d *syntax.TaskDecl) {
@@ -471,6 +497,11 @@ func (c *Checker) componentCall(e *syntax.CallExpr, tn *TypeName) Type {
 		if m.name == "children" && len(ec.Children) > 0 {
 			set = true
 		}
+		for _, bd := range ec.Binds {
+			if bd.Prop == m {
+				set = true
+			}
+		}
 		if !set {
 			c.errorf(e, "%s needs %s: set it in the block, %s { %s: … }", tn.name, m.name, tn.name, m.name)
 		}
@@ -492,8 +523,24 @@ func (c *Checker) propValue(x syntax.Expr, m *Member, what string) {
 		c.leave(saved)
 		return
 	}
+	if lam, ok := unparen(x).(*syntax.LambdaExpr); ok && m.Owner != nil && m.Owner.Comp != nil && m.Owner.Comp.Element != nil {
+		for _, k := range m.Owner.Comp.Element.Keys {
+			if k.Name == m.name && k.Builder {
+				if ft, ok := t.(*FuncType); ok {
+					c.builderLambda(lam, ft, m.Owner.name+"'s "+m.name)
+					return
+				}
+			}
+		}
+	}
 	c.enter(CtxBinding, x, "binding")
-	c.assign(x, t, what)
+	if m.name == "href" && m.Owner != nil && m.Owner.Comp != nil && m.Owner.Comp.Native && t == String {
+		// A Button's (a NavLink's) href: a string, or a routed screen's
+		// address.
+		c.hrefArg(x, what)
+	} else {
+		c.assign(x, t, what)
+	}
 	c.leave(saved)
 }
 
@@ -532,12 +579,20 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 		c.errorf(children[0], "%s takes no children%s", ec.Comp.name, childHint(ec.Comp))
 		return
 	}
+	if comp.Native && isRouteElement(ec) {
+		// Routes, a Route's screen, routed screens.
+		c.routeChildren(children, ec)
+		return
+	}
 	if comp.Native && !LazyChildren(ec) {
 		// An element's children are built in place.
 		savedView := c.view
 		c.view = true
 		c.viewItems(children, ec)
 		c.view = savedView
+		if comp.Element != nil && comp.Element.Name == "Alert" {
+			c.alertChildren(children)
+		}
 		return
 	}
 	// A component's: one builder of them all, its children prop.
@@ -548,6 +603,35 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 	c.viewItems(children, ec)
 	c.view = savedView
 	c.leave(saved)
+}
+
+// alertChildren checks that an Alert's block holds Buttons and
+// TextFields (its buttons and fields), through ifs and fors.
+func (c *Checker) alertChildren(items []syntax.Item) {
+	for _, it := range items {
+		switch s := it.(type) {
+		case *syntax.ExprStmt:
+			call, _ := s.X.(*syntax.CallExpr)
+			ec := c.info.Elements[call]
+			if ec == nil {
+				c.errorf(s, "an Alert's block holds Buttons and TextFields: its buttons and its fields")
+				continue
+			}
+			if el := ec.Comp.Comp.Element; el == nil || el.Name != "Button" && el.Name != "TextField" {
+				c.errorf(s, "an Alert's block holds Buttons and TextFields (its buttons and its fields), not a %s", ec.Comp.name)
+			}
+		case *syntax.IfStmt:
+			c.alertChildren(s.Then.Items)
+			switch e := s.Else.(type) {
+			case *syntax.Block:
+				c.alertChildren(e.Items)
+			case *syntax.IfStmt:
+				c.alertChildren([]syntax.Item{e})
+			}
+		case *syntax.ForStmt:
+			c.alertChildren(s.Body.Items)
+		}
+	}
 }
 
 // LazyChildren reports whether an element's children are one builder
@@ -709,8 +793,13 @@ func (c *Checker) onHandler(h *syntax.OnHandler, ec *ElementCall) {
 	comp := ec.Comp.Comp
 	m := comp.Members[h.Name.Name]
 	saved := c.ctx
-	ctx := c.enter(CtxHandler, h, ec.Comp.name+".on "+h.Name.Name)
-	ctx.Async, ctx.Throws = true, true
+	builds := EventBuilds(ec, h.Name.Name)
+	kind := CtxHandler
+	if builds {
+		kind = CtxBuilder
+	}
+	ctx := c.enter(kind, h, ec.Comp.name+".on "+h.Name.Name)
+	ctx.Async, ctx.Throws = !builds, true
 	savedView, savedLoops, savedTry, savedAwait, savedHandled := c.view, c.loops, c.inTry, c.inAwait, c.handled
 	c.view, c.loops, c.inTry, c.inAwait, c.handled = false, 0, 0, 0, 0
 	if m == nil || m.Kind != EventMember {
@@ -735,9 +824,30 @@ func (c *Checker) onHandler(h *syntax.OnHandler, ec *ElementCall) {
 		c.info.Binds[h] = vars
 		ec.Handlers = append(ec.Handlers, &HandlerArg{Event: m, Handler: h})
 	}
-	c.stmts(h.Body.Items)
+	if builds {
+		// What shows instead: views, as a builder's.
+		c.view = true
+		c.viewItems(h.Body.Items, nil)
+	} else {
+		c.stmts(h.Body.Items)
+	}
 	c.view, c.loops, c.inTry, c.inAwait, c.handled = savedView, savedLoops, savedTry, savedAwait, savedHandled
 	c.leave(saved)
+}
+
+// EventBuilds reports an element's event whose handler's block is views
+// and returns the View it builds (a Boundary's error).
+func EventBuilds(ec *ElementCall, name string) bool {
+	el := ec.Comp.Comp.Element
+	if el == nil {
+		return false
+	}
+	for _, e := range el.Events {
+		if e.Name == name {
+			return e.Builds
+		}
+	}
+	return false
 }
 
 func (c *Checker) eventSuggest(comp *Component, name string) string {
@@ -788,7 +898,19 @@ func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 		}
 	}
 	var ev *Member
+	if m != nil && !comp.Native && !comp.Store {
+		c.memberType(m)
+	}
 	switch {
+	case comp.Element == nil && !comp.Native && m != nil && m.Kind == PropMember:
+		// A component binds a prop it reports with an event
+		// <prop>Change(value), as a native component does.
+		ev = nativeBindEvent(comp, m)
+		if ev == nil {
+			c.errorf(b.Name, "%s can't bind %s: a component binds a prop it reports with event %sChange(%s: %s)", ec.Comp.name, b.Name.Name, b.Name.Name, b.Name.Name, typeString(m.Type))
+			c.expr(b.Target, nil)
+			return
+		}
 	case comp.Element == nil && comp.Native && m != nil && m.Kind == PropMember:
 		// A package's native component binds a prop it reports with an
 		// event <prop>Change(value) (docs/native.md).

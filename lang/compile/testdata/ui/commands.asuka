@@ -130,3 +130,16 @@ test "a rich text's link, tapped" {
   app.tapLink("https://example.com")
   app.expect("Link: https://example.com")
 }
+
+component Life {
+  state heard = ""
+  onLifecycle(s => { heard += " {s}" })
+  Text("Heard:{heard}")
+}
+
+test "the app's lifecycle" {
+  let app = mount(Life())
+  app.lifecycle(.background)
+  app.lifecycle(.foreground)
+  app.expect("Heard: background foreground")
+}

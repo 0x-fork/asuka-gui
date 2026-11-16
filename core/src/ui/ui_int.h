@@ -91,7 +91,14 @@ struct ak_el_class {
 	// sized hears the size it's laid out at (AK_ELF_SIZED), after the
 	// frames are applied, as layout handlers do: a Canvas draws for it.
 	void (*sized)(ak_view *e, float w, float h);
+	// destroy destroys the views it holds outside its kids and slots (an
+	// Alert's Buttons), as its own are.
+	void (*destroy)(ak_view *e);
 };
+
+// ak_shortcut_mods is a Shortcut's modifiers, as the Keys prop has them
+// (keys.c).
+uint8_t ak_shortcut_mods(const ak_struct *s);
 
 struct ak_view {
 	ak_opaque h;  // tag AK_TAG_VIEW
@@ -457,6 +464,9 @@ void ak_row_free(ak_row *rw, ak_kind key_kind);
 
 int64_t ak_list_count(ak_view *e);
 void ak_list_bind(ak_view *e, int64_t index, ak_id cell);
+// ak_list_row_keys hears of a container's swipeActions,
+// leadingSwipeActions or selected changing (a List's row's own).
+void ak_list_row_keys(ak_view *v);
 void ak_list_unbind(ak_view *e, ak_id cell);
 void ak_list_layout(ak_view *e, ak_lpass *p);
 void ak_list_each_cell(ak_view *e, void (*f)(ak_view *c, void *ctx), void *ctx);

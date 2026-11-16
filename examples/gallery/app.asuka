@@ -5,8 +5,11 @@
 
 import asuka/print
 
-app {
-  SplitView("Gallery") {
+app { Gallery() }
+
+/// The destinations, in the sidebar's sections.
+component Gallery {
+  Split("Gallery") {
     Sidebar("Views") {
       Destination("Text and fonts") {
         icon: "textformat"
@@ -60,14 +63,16 @@ app {
       Destination("Inbox") {
         icon: "envelope"
         // Its badge counts its messages: swiping one away counts down.
-        badge: "{inboxItems.count}"
-        toolbar {
-          Button("Top") {
-            icon: "arrow.up"
-            on press { inboxList.scrollToItem(0, animated: true) }
+        badge: "{inboxItems.count()}"
+        Screen {
+          toolbar {
+            Button("Top") {
+              icon: "arrow.up"
+              on press { inboxList.scrollToItem(0, animated: true) }
+            }
           }
+          Inbox()
         }
-        Inbox()
       }
       Destination("Settings") {
         icon: "gear"
@@ -83,17 +88,19 @@ app {
       }
       Destination("Web") {
         icon: "globe"
-        toolbar {
-          Button("Run script") {
-            icon: "curlybraces"
-            on press { try? await webView.eval("document.getElementById(\"out\").textContent = \"Set from Asuka at \" + new Date().toLocaleTimeString()") }
+        Screen {
+          toolbar {
+            Button("Run script") {
+              icon: "curlybraces"
+              on press { try? await webView.eval("document.getElementById(\"out\").textContent = \"Set from Asuka at \" + new Date().toLocaleTimeString()") }
+            }
+            Button("Print") {
+              icon: "printer"
+              on press { try? await print.html(webMarkup, job: "A web page") }
+            }
           }
-          Button("Print") {
-            icon: "printer"
-            on press { try? await print.webView(webView) }
-          }
+          WebPage()
         }
-        WebPage()
       }
     }
     Sidebar("Motion") {
@@ -160,4 +167,49 @@ component Section(title: string) {
 style caption {
   font: .footnote
   color: .secondaryLabel
+}
+
+test "the sidebar's destinations" {
+  let app = mount(Gallery())
+  app.expect("Fonts")
+  app.tap("Inbox")
+  app.expect("Message 1")
+  app.in(.sidebar).expect("Inbox")
+  app.tap("Top")
+  app.tap("Dates")
+  app.expect("Starts")
+}
+
+/// A screen the editor is pushed on, to go back to.
+screen EditorTest {
+  title: "Before"
+  Button("Edit") { on press { push(Editor()) } }
+}
+
+test "the editor asks before going back with changes" {
+  let app = mount(Stack { EditorTest() })
+  app.tap("Edit")
+  app.type("Hello", into: "Type, then go back")
+  app.back()
+  app.expect("Discard your changes?")
+  app.tap("Keep editing")
+  app.expect("Hello")
+  app.tap("Save")
+  app.back()
+  app.expect("Edit")
+  app.expectNo("Discard your changes?")
+}
+
+test "snackbars" {
+  let app = mount(Snackbars())
+  app.expect("3 drafts")
+  app.tap("Delete a draft")
+  app.expect("2 drafts", "Draft deleted")
+  app.tap("Undo")
+  app.expect("3 drafts")
+  app.tap("Upload")
+  app.expect("Uploading 3 photos…")
+  app.tap("Finish the upload")
+  app.expectNo("Uploading 3 photos…")
+  app.expect("3 photos uploaded")
 }

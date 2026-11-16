@@ -39,6 +39,8 @@
 //	ui.focus       v: View                                            -
 //	ui.blur        v: View                                            -
 //	ui.scroll_to   v: View, x: float, y: float, animated: bool        -
+//	ui.scroll_to_end  v: View, animated: bool                          -
+//	ui.scroll_to_item v: View (a List), index: int, animated: bool     -
 //	ui.environment -                                                  Environment
 //	ui.lazy        v: View, build: fn(params...) -> View? (its
 //	               LazyChildren: a Tab's page, a Route's screen)      -
@@ -61,6 +63,7 @@
 //	ui.window_flag    w: View?, bit: int (WindowState's)              bool
 //	ui.window_pair    w: View?, which: int (0 position, 1 size)       (float, float)
 //	ui.main_window    w: View (the app block's Window)                -
+//	ui.main_window_ref  -                                             Ref (a cell of the root's view: the main window's handle)
 //	ui.window_do      w: View?, action: int (WindowAction)            -
 //	ui.window_set     w: View?, x: float, y: float, action: int       -
 //	ui.window_toggle  w: View?, on: bool, onAction: int, offAction: int -
@@ -226,6 +229,16 @@ static ak_val b_blur(ak_val *a, uint32_t n) {
 	return none();
 }
 
+static ak_val b_scroll_to_end(ak_val *a, uint32_t n) {
+	ak_ui_scroll_to_end(view_arg(a, n, 0, "ui.scroll_to_end"), n > 1 && a[1].i != 0);
+	return none();
+}
+
+static ak_val b_scroll_to_item(ak_val *a, uint32_t n) {
+	ak_ui_scroll_to_item(view_arg(a, n, 0, "ui.scroll_to_item"), n > 1 ? a[1].i : 0, n > 2 && a[2].i != 0);
+	return none();
+}
+
 static ak_val b_scroll_to(ak_val *a, uint32_t n) {
 	ak_ui_scroll_to(view_arg(a, n, 0, "ui.scroll_to"), (float)a[1].f, (float)a[2].f, a[3].i != 0);
 	return none();
@@ -234,6 +247,11 @@ static ak_val b_scroll_to(ak_val *a, uint32_t n) {
 static ak_val b_environment(ak_val *a, uint32_t n) {
 	AK_UNUSED(a), AK_UNUSED(n);
 	return ak_ui_environment_value();
+}
+
+static ak_val b_screen_environment(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return ak_ui_screen_environment_value();
 }
 
 static ak_val b_lazy(ak_val *a, uint32_t n) {
@@ -313,6 +331,15 @@ static ak_val b_relaunch(ak_val *a, uint32_t n) {
 	AK_UNUSED(a), AK_UNUSED(n);
 	ak_ui_quit(true);
 	return none();
+}
+
+// A Ref of the main window: the root's view, which window commands take
+// as the main window's.
+static ak_val b_main_window_ref(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	ak_ui_root *r = ak_ui_current();
+	ak_view *v = r && r->el && !r->el->dead ? ak_ui_ref(r->el) : NULL;
+	return ak_vm_cell_new((ak_val){.p = v}, AK_K_REF, NULL);
 }
 
 static ak_val b_main_window(ak_val *a, uint32_t n) {
@@ -433,7 +460,10 @@ void ak_ui_builtins_init(void) {
 		{"ui.focus", b_focus},
 		{"ui.blur", b_blur},
 		{"ui.scroll_to", b_scroll_to},
+		{"ui.scroll_to_end", b_scroll_to_end},
+		{"ui.scroll_to_item", b_scroll_to_item},
 		{"ui.environment", b_environment},
+		{"ui.screen_environment", b_screen_environment},
 		{"ui.push", b_push},
 		{"ui.pop", b_pop},
 		{"ui.present", b_present},
@@ -450,6 +480,7 @@ void ak_ui_builtins_init(void) {
 		{"ui.window_flag", b_window_flag},
 		{"ui.window_pair", b_window_pair},
 		{"ui.main_window", b_main_window},
+		{"ui.main_window_ref", b_main_window_ref},
 		{"ui.window_do", b_window_do},
 		{"ui.window_set", b_window_set},
 		{"ui.window_toggle", b_window_toggle},

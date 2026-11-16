@@ -1722,14 +1722,14 @@ import asuka/calendar
 import asuka/time
 
 async fn addDemo() throws -> bool {
-  let start = time.date(2026, 12, 1, hour: 15).unixMilli()
-  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30 * 60_000))
+  let start = time.date(2026, 12, 1, hour: 15)
+  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30min))
 }
 ```
 
 - `calendar.add(event)` 显示系统的事件编辑器，并预先填好信息，由用户来保存事件，然后返回用户是否保存了；不需要请求权限（iOS 17 及以上）。iOS 会告诉你事件是否已保存，Android 的日历应用则不会。
 - `calendar.request()` 请求访问权限（结果是 `.notAsked`、`.denied`、`.writeOnly` 或 `.full`）；拿到 `.full` 后，`calendar.calendars()` 列出所有日历，`calendar.events(from:, to:, calendars:)` 列出两个时间点之间的事件，重复事件的每一次都会单独列出。没有 `.full` 时，它们会抛出“calendar: not allowed”。
-- 事件的 `start` 和 `end` 是自 1970 年起的毫秒数。全天事件的则以天为单位：分别是第一天的 UTC 零点，以及最后一天的次日 UTC 零点。
+- 事件的 `start` 和 `end` 是 `time.Time`。全天事件的则以天为单位：分别是第一天的 UTC 零点，以及最后一天的次日 UTC 零点。
 
 在 Mac 上用的是 EventKit：`add` 在窗口上方弹出一个警告框征求用户同意（macOS 没有供应用使用的事件编辑器），然后再保存。Linux 读写 Evolution Data Server 的日历。Windows 只向打包应用开放日历：`request` 返回 `.denied`，`add` 会在用户的日历应用中打开一个 iCalendar 文件（并返回 false，因为 Windows 不会告诉应用是否保存了）。浏览器无法读取日历；`add` 会下载一个 `.ics` 文件。
 
@@ -1746,9 +1746,10 @@ sizes = ["small", "medium", "rectangular"]
 ```
 
 ```asuka
+import asuka/time
 import asuka/widget
 
-fn showToday(meeting: int) {
+fn showToday(meeting: time.Time) {
   widget.set("today", widget.Entry(
     title: "Next", symbol: "calendar", value: "3 tasks", body: "Call Ana at 4",
     progress: 0.4, showProgress: true, until: meeting, url: "myapp://today",
@@ -1756,7 +1757,7 @@ fn showToday(meeting: int) {
 }
 ```
 
-小组件会用平台的模板显示它的 `Entry`，并按尺寸排版：`title`（带上 `symbol`，以 `tint` 着色）、大号的 `value`、`body`、`progress` 进度条、到 `until`（自 1970 年起的毫秒数）为止的实时倒计时，以及 `caption`。在应用设置新的内容之前，它会一直显示当前内容，不管应用是否在运行；点按小组件会用它的 `url` 打开应用（由应用的 `openURL` 事件接收）。`widget.setAll(kind, entries)` 中的条目各自带上 `at`，就构成了一条时间线：每个条目从各自的时间开始显示。`widget.clear(kind)` 用来清空小组件。
+小组件会用平台的模板显示它的 `Entry`，并按尺寸排版：`title`（带上 `symbol`，以 `tint` 着色）、大号的 `value`、`body`、`progress` 进度条、到 `until`（一个 `time.Time`）为止的实时倒计时，以及 `caption`。在应用设置新的内容之前，它会一直显示当前内容，不管应用是否在运行；点按小组件会用它的 `url` 打开应用（由应用的 `openURL` 事件接收）。`widget.setAll(kind, entries)` 中的条目各自带上 `at`，就构成了一条时间线：每个条目从各自的时间开始显示。`widget.clear(kind)` 用来清空小组件。
 
 尺寸有 `small`、`medium`、`large`，以及 iOS 的 `extraLarge`（iPad）和锁屏上的 `circular`、`rectangular`、`inline`。iOS：CLI 会把一个 WidgetKit 扩展构建进应用，并让它与应用共享一个 App Group（发布构建需要开启 App Groups 功能，还需要为扩展的 ID，即应用的 ID 加上 `.widgets`，准备一个描述文件）。Android：每种小组件对应一个 App Widget，使用 Material You 配色，尺寸按启动器的网格单元计算。桌面端和 Web 没有小组件：`widget.set` 在这些平台上什么也不做。
 
@@ -1766,8 +1767,9 @@ fn showToday(meeting: int) {
 
 ```asuka
 import asuka/liveactivity
+import asuka/time
 
-async fn followOrder(eta: int) throws {
+async fn followOrder(eta: time.Time) throws {
   let a = try await liveactivity.start(liveactivity.Content(
     title: "Order #1042", subtitle: "Ana is picking it up", value: "12 min",
     symbol: "bag.fill", until: eta, url: "myapp://orders/1042",
@@ -1780,9 +1782,9 @@ async fn followOrder(eta: int) throws {
 }
 ```
 
-实时活动用平台的模板显示它的 `Content`，空着的字段不显示：`title` 和 `subtitle`、`value`（大号显示在一侧；在灵动岛的紧凑视图里显示；在 Android 16 上是状态栏里的胶囊标签）、以 `tint` 着色的 `symbol`、`progress` 进度条，以及一个到 `until`（自 1970 年起的毫秒数）为止的倒计时，它不需要应用运行也会走。同时设置 `since`、`until` 和 `showProgress` 时，进度条会自己往前走。点按实时活动会用它的 `url` 打开应用（由应用的 `openURL` 事件接收）。
+实时活动用平台的模板显示它的 `Content`，空着的字段不显示：`title` 和 `subtitle`、`value`（大号显示在一侧；在灵动岛的紧凑视图里显示；在 Android 16 上是状态栏里的胶囊标签）、以 `tint` 着色的 `symbol`、`progress` 进度条，以及一个到 `until`（一个 `time.Time`）为止的倒计时，它不需要应用运行也会走。同时设置 `since`、`until` 和 `showProgress` 时，进度条会自己往前走。点按实时活动会用它的 `url` 打开应用（由应用的 `openURL` 事件接收）。
 
-`liveactivity.start(c, push:, relevance:)` 要在应用显示在屏幕上时调用（两个平台都不允许后台的应用启动实时活动）；`relevance` 决定应用的多个实时活动之间的先后顺序。带上 `Alert` 的更新会点亮屏幕：iOS 会展开灵动岛，并在 Apple Watch 上显示它；Android 会让通知再提醒一次。`end(c, dismiss:)` 之后，最后的内容会继续显示，直到系统把它移走（`.later`，这是默认值，最多 4 小时），或者显示到某个时间为止（`.at(ms)`），也可以立即移走（`.now`）。`liveactivity.enabled()` 返回用户是否允许实时活动（Android 会在第一次 `start` 时请求通知权限）。这个包不会列出仍在运行的实时活动。
+`liveactivity.start(c, push:, relevance:)` 要在应用显示在屏幕上时调用（两个平台都不允许后台的应用启动实时活动）；`relevance` 决定应用的多个实时活动之间的先后顺序。带上 `Alert` 的更新会点亮屏幕：iOS 会展开灵动岛，并在 Apple Watch 上显示它；Android 会让通知再提醒一次。`end(c, dismiss:)` 之后，最后的内容会继续显示，直到系统把它移走（`.later`，这是默认值，最多 4 小时），或者显示到某个时间为止（`.at(t)`），也可以立即移走（`.now`）。`liveactivity.enabled()` 返回用户是否允许实时活动（Android 会在第一次 `start` 时请求通知权限）。这个包不会列出仍在运行的实时活动。
 
 `liveactivity.events()` 告诉你实时活动发生了什么：某个活动 `.ended`（被用户、系统或服务器结束）、某个活动被服务器 `.started`，以及推送令牌（`.pushToken`、`.pushToStartToken`）；每一项都是一个 `Event`，带有对应的 `activity` 和 `token`。设置 `push: true` 后，服务器可以在应用不在前台时更新和结束实时活动：把它的推送令牌和 `id` 发给服务器即可。在 iOS 上，服务器发送一条 `liveactivity` 类型的 APNs 推送，其中的 `content-state` 就是 JSON 形式的内容（即 `Content` 的各个字段，其中 `since` 和 `until` 写作 `sinceMs` 和 `untilMs`）；在 Android 上，服务器发送一条 Firebase 数据消息，带上 `asuka.liveActivity`（`update` 或 `end`）、`asuka.id` 和 `asuka.content`。服务器也可以启动实时活动：在 iOS 17.2 上用 push-to-start 令牌（attributes 类型为 `AsukaActivityAttributes`，带上新活动的 `id`），在 Android 上把 `asuka.liveActivity` 设为 `start`。推送需要应用同时使用 `asuka/push`：iOS 上需要推送通知（Push Notifications）功能，Android 上需要 Firebase。
 

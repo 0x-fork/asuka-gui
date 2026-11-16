@@ -233,6 +233,7 @@ ak_str *ak_ui_path(void);             // owned: the current path
 // struct (types.asuka; ak_ui_shape_environment): reading it in a
 // binding follows it.
 ak_val ak_ui_environment_value(void);
+ak_val ak_ui_screen_environment_value(void);  // the root's, the whole screen's
 extern const ak_shape ak_ui_shape_environment;
 extern const ak_shape ak_ui_shape_text_range;
 extern const ak_shape ak_ui_shape_frame;
@@ -242,6 +243,8 @@ extern const ak_shape ak_ui_shape_frame;
 void ak_ui_focus(ak_view *v);
 void ak_ui_blur(ak_view *v);
 void ak_ui_scroll_to(ak_view *v, float x, float y, bool animated);
+void ak_ui_scroll_to_end(ak_view *v, bool animated);
+void ak_ui_scroll_to_item(ak_view *v, int64_t i, bool animated);
 // push builds the screen build() returns on the stack nearest the
 // current owner, under an owner of its own (a root under the stack's),
 // where push and pop find that stack, and OnBack the screen: a screen
@@ -366,8 +369,17 @@ uint32_t ak_ui_view_id(ak_view *v);
 void ak_ui_on_open_url(ak_closure *f);    // fn(string)
 void ak_ui_on_open_files(ak_closure *f);  // fn([string])
 void ak_ui_on_share(ak_closure *f);       // fn([SharedItem])
+void ak_ui_on_lifecycle(ak_closure *f);   // fn(Lifecycle)
+void ak_ui_color_scheme(int64_t scheme);  // AK_COLOR_SCHEME_*
+void ak_ui_on_foreground(ak_closure *f);  // fn()
+void ak_ui_on_background(ak_closure *f);  // fn()
+void ak_ui_lifecycle(int64_t state);      // the handlers hear it (root.c)
 // The router's: true when it takes a URL the app is opened with.
 extern bool (*ak_ui_route_url)(ak_span url);
+// ak_router_set_start makes the main window's first Router start at href
+// ("": its initial) when it's built next: where a browser opened at an
+// address, or a window left at one, starts (the fake host's mount at:).
+void ak_router_set_start(ak_span href);
 // The language the app shows (locale.c): reading it follows it.
 ak_str *ak_ui_locale(void);
 void ak_ui_set_locale(ak_str *tag);

@@ -10,7 +10,6 @@ todo.asuka:35:25: isEmpty is a method of string: call it, isEmpty()
 todo.asuka:36:12: Button has no event tap (its events: press)
 todo.asuka:44:18: Toggle can't bind isOn: only a control's own value binds (TextField's text, Toggle's on)
 todo.asuka:44:36: [Todo] has no method firstIndex
-todo.asuka:51:19: Role has no case or constant destructive
 todo.asuka:52:16: Button has no event tap (its events: press)
 todo.asuka:52:28: [Todo] has no method removeAll (did you mean removeAt?)
 == styles
@@ -36,16 +35,13 @@ concurrency.asuka:9:40: Accelerometer has no case updates
 concurrency.asuka:10:16: [float] has no method append
 concurrency.asuka:21:13: post can throw: call it with try (try post(…)), or try? for none on an error
 concurrency.asuka:21:13: this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)
-concurrency.asuka:25:3: title: … goes in an element's block, not here
 concurrency.asuka:31:10: Button has no event tap (its events: press)
 concurrency.asuka:35:39: Text has no prop fontSize
 concurrency.asuka:40:5: a view here does nothing: views go in a component's body
 == app
 == inbox
-inbox.asuka:12:3: title: … goes in an element's block, not here
-inbox.asuka:13:3: largeTitle: … goes in an element's block, not here
-inbox.asuka:15:3: toolbar { … } goes in an element's block, not here
-inbox.asuka:22:10: SearchField can't bind text: only a control's own value binds (TextField's text, Toggle's on)
+inbox.asuka:17:10: Button has no event tap (its events: press)
+inbox.asuka:22:10: SearchField can't bind text: a component binds a prop it reports with event textChange(text: string)
 inbox.asuka:28:21: a match in a view takes no guards: put an if in the arm
 inbox.asuka:32:26: isEmpty is a method of string: call it, isEmpty()
 == native

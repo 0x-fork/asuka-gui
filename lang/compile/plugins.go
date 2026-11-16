@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,7 +18,7 @@ import (
 // files for this computer (the plugin's build, or its published file,
 // downloaded once into the user's cache) as ASUKA_LIB_<NAME>, where the
 // core looks first (core/src/sqlite). A library that can't be had is
-// left out: the program then fails where it needs it, saying so.
+// left out, its reason printed: the program then fails where it needs it.
 func PluginEnv(m *bytecode.Module) []string {
 	pkgs := map[string]bool{}
 	for _, b := range m.Builtins {
@@ -54,9 +55,13 @@ func LibraryEnv(path string) []string {
 		if os.Getenv(name) != "" {
 			continue
 		}
-		if p, err := plugin.FilePath(dir, l, target); err == nil {
-			env = append(env, name+"="+p)
+		p, err := plugin.FilePath(dir, l, target)
+		if err != nil {
+			// The program fails where it needs the library; this says why.
+			fmt.Fprintf(os.Stderr, "asuka: %v\n", err)
+			continue
 		}
+		env = append(env, name+"="+p)
 	}
 	return env
 }

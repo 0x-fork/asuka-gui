@@ -306,6 +306,7 @@ void ak_view_destroy(ak_view *e) {
 		ak_ui.stats.native--;
 	}
 	for (uint32_t i = 0; i < e->kids.len; i++) ak_view_destroy(e->kids.data[i]);
+	if (e->cls->destroy) e->cls->destroy(e);
 	// Its slots' views (a Screen's bar buttons) go with it.
 	for (uint32_t i = 0; i < e->style.len; i++) {
 		ak_style_ent *s = &e->style.data[i];

@@ -2577,8 +2577,8 @@ import asuka/calendar
 import asuka/time
 
 async fn addDemo() throws -> bool {
-  let start = time.date(2026, 12, 1, hour: 15).unixMilli()
-  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30 * 60_000))
+  let start = time.date(2026, 12, 1, hour: 15)
+  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30min))
 }
 ```
 
@@ -2591,9 +2591,8 @@ async fn addDemo() throws -> bool {
   calendars and `calendar.events(from:, to:, calendars:)` the events
   between two times, each occurrence of a repeating one. Without it,
   they throw "calendar: not allowed".
-- An event's `start` and `end` are milliseconds since 1970. An all-day
-  event's are days: midnight UTC of the first, and of the day after the
-  last.
+- An event's `start` and `end` are `time.Time`s. An all-day event's
+  are days: midnight UTC of the first, and of the day after the last.
 
 On a Mac it's EventKit: `add` asks in an alert over the window (macOS
 has no event editor for apps), then saves. Linux reads and writes
@@ -2617,9 +2616,10 @@ sizes = ["small", "medium", "rectangular"]
 ```
 
 ```asuka
+import asuka/time
 import asuka/widget
 
-fn showToday(meeting: int) {
+fn showToday(meeting: time.Time) {
   widget.set("today", widget.Entry(
     title: "Next", symbol: "calendar", value: "3 tasks", body: "Call Ana at 4",
     progress: 0.4, showProgress: true, until: meeting, url: "myapp://today",
@@ -2629,8 +2629,8 @@ fn showToday(meeting: int) {
 
 A widget shows its `Entry` with the platform's template, laid out for
 its size: the `title` (with its `symbol`, in the `tint`), a large `value`,
-the `body`, a `progress` bar, a live countdown to `until` (milliseconds
-since 1970), a `caption`. It keeps showing it until the app sets
+the `body`, a `progress` bar, a live countdown to `until` (a
+`time.Time`), a `caption`. It keeps showing it until the app sets
 another, whether or not the app runs; tapping it opens the app with its
 `url` (the app's `openURL`). `widget.setAll(kind, entries)`, each entry
 with its `at`, is a timeline: each shows from its time.
@@ -2655,8 +2655,9 @@ the shade and the lock screen, with a chip in the status bar.
 
 ```asuka
 import asuka/liveactivity
+import asuka/time
 
-async fn followOrder(eta: int) throws {
+async fn followOrder(eta: time.Time) throws {
   let a = try await liveactivity.start(liveactivity.Content(
     title: "Order #1042", subtitle: "Ana is picking it up", value: "12 min",
     symbol: "bag.fill", until: eta, url: "myapp://orders/1042",
@@ -2673,7 +2674,7 @@ An activity shows its `Content` with the platform's template, which
 leaves out what's empty: the `title` and `subtitle`, the `value` (large
 at the side; the Dynamic Island's compact view; Android 16's status bar
 chip), the `symbol` in the `tint`, a `progress` bar, and a countdown to
-`until` (milliseconds since 1970) that runs without the app. With
+`until` (a `time.Time`) that runs without the app. With
 `since`, `until` and `showProgress`, the bar fills by itself. Tapping it
 opens the app with its `url` (the app's `openURL`).
 
@@ -2683,7 +2684,7 @@ screen (neither platform lets an app in the background start one);
 with the update: iOS expands the Dynamic Island and shows it on an Apple
 Watch; Android alerts with the notification again. `end(c, dismiss:)`
 leaves the last content showing until the system takes it (`.later`,
-the default: 4 hours at most), until a time (`.at(ms)`), or takes it at
+the default: 4 hours at most), until a time (`.at(t)`), or takes it at
 once (`.now`). `liveactivity.enabled()` answers whether the user allows
 them (Android asks for notifications at the first `start`). The package
 doesn't list the activities still running.

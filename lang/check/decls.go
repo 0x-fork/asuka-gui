@@ -545,6 +545,19 @@ func (c *Checker) appBody(p *Package) {
 			c.appEvent(h)
 			continue
 		}
+		// The app's tasks and effects: while it runs.
+		if d, ok := it.(*syntax.TaskDecl); ok {
+			c.taskDecl(d)
+			continue
+		}
+		if d, ok := it.(*syntax.EffectDecl); ok {
+			saved := c.ctx
+			ectx := c.enter(CtxEffect, d, "app.effect")
+			ectx.Throws = true
+			c.block(d.Body)
+			c.leave(saved)
+			continue
+		}
 		views = append(views, it)
 	}
 	views = c.bodyCalls(views)

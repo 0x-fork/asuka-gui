@@ -354,7 +354,7 @@ static ak_val bar_screen(ak_closure *c, ak_val *a, uint32_t n) {
 	ak_view *s = ak_ui_new(AK_EL_SCREEN);
 	set_str(s, AK_KEY_SCREEN_TITLE, "Edit");
 	add(s, text("x"));
-	slot(s, AK_KEY_SCREEN_ACTIONS, button("Save", count_up, &saved));
+	slot(s, AK_KEY_SCREEN_TOOLBAR, button("Save", count_up, &saved));
 	ak_view *tb = ak_ui_fragment();
 	ak_view *arch = ak_ui_new(AK_EL_BUTTON);
 	bind(arch, AK_KEY_BUTTON_TITLE, read_cell, archive_title);
@@ -364,7 +364,7 @@ static ak_val bar_screen(ak_closure *c, ak_val *a, uint32_t n) {
 	ak_enum *items[] = {action("Inbox", 0, false, count_up, &moved), action("Trash", 2, false, NULL, NULL)};
 	set(move, AK_KEY_BUTTON_MENU, (ak_val){.p = actions(items, 2)});
 	add(tb, move);
-	slot(s, AK_KEY_SCREEN_TOOLBAR, tb);
+	slot(s, AK_KEY_SCREEN_BOTTOM_TOOLBAR, tb);
 	ak_view *p = button("Compose", count_up, &composed);
 	set_str(p, AK_KEY_BUTTON_ICON, "square.and.pencil");
 	slot(s, AK_KEY_SCREEN_PRIMARY, p);
@@ -1062,7 +1062,7 @@ static ak_val dest_page(ak_closure *c, ak_val *a, uint32_t n) {
 static ak_view *dest(const char *title, const char *section, const char *content) {
 	ak_view *d = ak_ui_new(AK_EL_DESTINATION);
 	set_str(d, AK_KEY_DESTINATION_TITLE, title);
-	set_str(d, AK_KEY_DESTINATION_SECTION, section);
+	if (section) set_str(d, AK_KEY_DESTINATION_SECTION, section);
 	lazy(d, dest_page, content);
 	return d;
 }
@@ -1124,6 +1124,45 @@ TEST(split) {
 	ak_vec_free(&items);
 	done(a);
 	ak_release(sel_cell), ak_release(badge);
+}
+
+// A Sidebar's destinations are in its section, unless one gives its own.
+static ak_val sidebar_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *s = ak_ui_new(AK_EL_SPLIT);
+	ak_view *views = ak_ui_new(AK_EL_SIDEBAR);
+	set_str(views, AK_KEY_SIDEBAR_TITLE, "Views");
+	add(views, dest("Text", NULL, "text page"));
+	add(views, dest("Images", NULL, "images page"));
+	add(s, views);
+	ak_view *more = ak_ui_new(AK_EL_SIDEBAR);
+	set_str(more, AK_KEY_SIDEBAR_TITLE, "More");
+	add(s, more);
+	add(more, dest("About", NULL, "about page"));  // after the sidebar's in the split
+	add(more, dest("Help", "Help", "help page"));
+	add(s, dest("Last", NULL, "last page"));
+	return (ak_val){.p = s};
+}
+
+TEST(split_sidebars) {
+	ak_uitest *a = mount(sidebar_app, NULL);
+	ak_fake_view *split = nth(a, AK_KIND_SPLIT, 0);
+	REQUIRE(split);
+	ak_sidebar_heading_vec secs = {0};
+	ak_sidebar_item_vec items = {0};
+	ak_fake_sidebar(split, &secs, &items);
+	CHECK_EQ_INT(items.len, 5);
+	CHECK_EQ_INT(secs.len, 4);
+	if (secs.len == 4) {
+		CHECK(span_is(secs.data[0].title, "Views") && secs.data[0].count == 2);
+		CHECK(span_is(secs.data[1].title, "More") && secs.data[1].count == 1);
+		CHECK(span_is(secs.data[2].title, "Help") && secs.data[2].count == 1);
+		CHECK(span_is(secs.data[3].title, "") && secs.data[3].count == 1);
+	}
+	ak_vec_free(&secs);
+	ak_vec_free(&items);
+	check_text(nth(a, AK_KIND_STACK, 0), "text page");
+	done(a);
 }
 
 // ---- Window (window_test.go, windowhandle_test.go) ----

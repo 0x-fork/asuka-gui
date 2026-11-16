@@ -10,16 +10,11 @@
 import asuka/time
 
 struct Message {
-  id: int
+  id: int = 0
   from: string = "" // "" is me
   text: string = ""
   image: string = "" // a pasted image's file
   at: time.Time = time.now()
-}
-
-struct Day {
-  name: string
-  messages: [Message]
 }
 
 let people = ["Ada", "Grace", "Linus"]
@@ -47,7 +42,7 @@ fn history(firstId: int, before: time.Time, n: int) -> [Message] {
     at = at - (7 + (firstId + i) % 50) * 9min
     let id = firstId - n + i
     let from = if id % 4 == 0 { "" } else { people[(id % 3 + 3) % 3] }
-    out.insert(Message(id: id, from: from, text: lines[(id % lines.count + lines.count) % lines.count], at: at), at: 0)
+    out.insert(Message(id: id, from: from, text: lines[(id % lines.count() + lines.count()) % lines.count()], at: at), at: 0)
   }
   return out
 }
@@ -60,20 +55,6 @@ fn day(t: time.Time) -> string {
   return t.format("MMMM d, yyyy")
 }
 
-/// The messages as runs of the same day.
-fn byDay(messages: [Message]) -> [Day] {
-  var days: [Day] = []
-  for m in messages {
-    let name = day(m.at)
-    if days.last?.name == name {
-      days[days.count - 1].messages.push(m)
-    } else {
-      days.push(Day(name: name, messages: [m]))
-    }
-  }
-  return days
-}
-
 screen Chat {
   state messages = history(1000, time.now(), 40)
   state loading = false
@@ -83,7 +64,6 @@ screen Chat {
   state selection = TextRange()
   state nextId = 1000
 
-  let days = byDay(messages)
   let list = Ref()
   let field = Ref()
 
@@ -116,7 +96,7 @@ screen Chat {
 
   async fn send() {
     let text = draft.trim()
-    if text.isEmpty { return }
+    if text.isEmpty() { return }
     add(Message(text: text))
     draft = ""
     // One's own message shows, wherever the list was.
@@ -139,8 +119,8 @@ screen Chat {
   }
 
   fn reply(m: Message) {
-    draft = "@{if m.from.isEmpty { "me" } else { m.from }} "
-    selection = TextRange(start: draft.count, end: draft.count)
+    draft = "@{if m.from.isEmpty() { "me" } else { m.from }} "
+    selection = TextRange(start: draft.count(), end: draft.count())
     field.focus()
   }
 
@@ -150,39 +130,35 @@ screen Chat {
       ref: list
       appearance: .bare
       anchor: .bottom
-      bind selecting: selecting
+      selecting: selecting
       on startReached { await loadOlder() }
-      for d in days key d.name {
-        Section {
-          header {
-            Row {
-              justify: .center
-              padding: [6, 0]
-              View {
-                padding: [3, 10]
-                radius: 999
-                background: .secondaryBackground
-                Text(d.name) {
-                  font: .caption.semibold()
-                  color: .secondaryLabel
-                }
-              }
-            }
+      // A day per section, its header pinned at the top.
+      section: i => day(messages[i].at)
+      header: name => Row {
+        justify: .center
+        padding: [6, 0]
+        View {
+          padding: [3, 10]
+          radius: 999
+          background: .secondaryBackground
+          Text(name) {
+            font: .caption.semibold()
+            color: .secondaryLabel
           }
-          for m in d.messages key m.id {
-            View {
-              padding: [3, 12]
-              leadingSwipeActions: [.button(title: "Reply", icon: "arrowshape.turn.up.left", run: () => reply(m))]
-              swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => remove([m.id]))]
-              selected: chosen.contains(m.id)
-              on select(on) { choose(m.id, on) }
-              on selectBegin {
-                selecting = true
-                choose(m.id, true)
-              }
-              Bubble(m)
-            }
-          }
+        }
+      }
+      leadingSwipeActions: i => [.button(title: "Reply", icon: "arrowshape.turn.up.left", run: () => reply(messages[i]))]
+      swipeActions: i => [.button(title: "Delete", icon: "trash", role: .destructive, run: () => remove([messages[i].id]))]
+      selected: i => chosen.contains(messages[i].id)
+      on select(i, on) { choose(messages[i].id, on) }
+      on selectBegin(i) {
+        selecting = true
+        choose(messages[i].id, true)
+      }
+      for m in messages key m.id {
+        View {
+          padding: [3, 12]
+          Bubble(m)
         }
       }
     }
@@ -191,10 +167,10 @@ screen Chat {
         justify: .spaceBetween
         align: .center
         padding: [8, 16]
-        Text("{chosen.count} selected")
+        Text("{chosen.count()} selected")
         Button("Delete") {
           color: .red
-          disabled: chosen.isEmpty
+          disabled: chosen.isEmpty()
           on press {
             remove(chosen)
             endSelecting()
@@ -228,7 +204,7 @@ screen Chat {
           icon: "paperplane"
           label: "Send"
           variant: .filled
-          disabled: draft.trim().isEmpty
+          disabled: draft.trim().isEmpty()
           on press { await send() }
         }
       }
@@ -237,7 +213,7 @@ screen Chat {
 }
 
 component Bubble(m: Message) {
-  let mine = m.from.isEmpty
+  let mine = m.from.isEmpty()
 
   Column {
     padding: [8, 12]
@@ -252,7 +228,7 @@ component Bubble(m: Message) {
         color: .secondaryLabel
       }
     }
-    if !m.image.isEmpty {
+    if !m.image.isEmpty() {
       Image(m.image) {
         mode: .fill
         width: 200
@@ -260,7 +236,7 @@ component Bubble(m: Message) {
         radius: 12
       }
     }
-    if !m.text.isEmpty {
+    if !m.text.isEmpty() {
       Text(m.text) { color: if mine { .onAccent } else { .label } }
     }
   }
@@ -275,12 +251,11 @@ test "a message sent is answered" {
   app.type("Hello", into: "Message")
   app.tap("Send")
   app.expect("Hello")
-  await sleep(1200ms)
-  app.expect("Got it: “Hello”")
+  await app.waitFor("Got it: “Hello”")
 }
 
 test "history ends before the first id" {
   let h = history(1000, time.now(), 40)
-  expect(h.count == 40 && h[0].id == 960 && h[39].id == 999)
+  expect(h.count() == 40 && h[0].id == 960 && h[39].id == 999)
   expect(h[0].at < h[39].at)
 }
