@@ -1,0 +1,85 @@
+// Web Push is the web e2e's app (e2e/webpush_test.go): it registers for
+// pushes, shows what comes, what's tapped and answered, and schedules a
+// notification, each on a line the test reads.
+import asuka/notify
+import asuka/push
+
+component WebPush {
+  state status = "ready"
+  state token = "none"
+  state received = "none"
+  state opened = "none"
+  state action = "none"
+  state url = "none"
+
+  onOpenURL(u => { url = u })
+
+  task {
+    notify.setCategories([notify.Category(id: "chat", actions: [
+      notify.Action(id: "like", title: "Like"),
+      notify.Action(id: "reply", title: "Reply", reply: notify.Reply(placeholder: "Message")),
+    ])])
+  }
+  task {
+    for await m in push.received() {
+      received = "{m.title} {m.data["k"] ?? ""}"
+    }
+  }
+  task {
+    for await m in push.opened() {
+      opened = m.title
+    }
+  }
+  task {
+    for await r in notify.responses() {
+      action = "[{r.action}] [{r.reply}] {r.notification.id}"
+    }
+  }
+
+  SafeArea {
+    gap: 8
+    padding: 16
+
+    Button("Register") {
+      on press {
+        do {
+          let r = try await push.register()
+          token = r.token
+          status = "registered {r.service}"
+        } catch e {
+          status = e.message
+        }
+      }
+    }
+    Button("Schedule") {
+      on press {
+        do {
+          if !(try await notify.request()) {
+            status = "not allowed "
+            return
+          }
+          try await notify.schedule(notify.Notification(id: "later", title: "Reminder", body: "Due", after: 5s))
+          status = "scheduled"
+        } catch e {
+          status = e.message
+        }
+      }
+    }
+    Text("status: {status}")
+    Text("received: {received}")
+    Text("opened: {opened}")
+    Text("action: {action}")
+    Text("url: {url}")
+    Text("token: {token}")
+  }
+}
+
+app { WebPush() }
+
+test "registering needs the platform" {
+  let app = mount(WebPush())
+  app.expect("status: ready")
+  app.tap("Register")
+  await app.idle()
+  app.expectNo("status: ready")
+}

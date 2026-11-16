@@ -1,0 +1,67 @@
+// Web Crash is a web e2e's app (e2e/webcrash_test.go): crash reports
+// (the core's fatal error, a panic, read on the next launch; an uncaught
+// JavaScript error, at once), a map of OpenStreetMap's tiles, and a
+// native view no script registers, each on a line the test reads.
+import asuka/crash
+import asuka/maps
+
+/// A native view with no platform code: nothing shows in its place.
+native component Missing {
+  prop value: int = 0
+}
+
+let paris = maps.Coordinate(lat: 48.8584, lng: 2.2945)
+
+component WebCrash {
+  state panicReport = "none"
+  state jsReport = "none"
+  state mapLine = "none"
+  state regionLine = "none"
+  state region = maps.Region(center: paris, latDelta: 0.02, lngDelta: 0.02)
+
+  task {
+    crash.breadcrumb("started")
+    for await r in crash.reports() {
+      if r.kind == "panic" {
+        let top = r.threads.first()?.frames.first()?.function ?? ""
+        panicReport = "{r.fatal} {r.message} | {top} | {r.context.system} {r.context.systemVersion}"
+      } else if r.kind == "exception" {
+        jsReport = "{r.fatal} {r.message} | crumbs {r.context.breadcrumbs.count()}"
+      }
+    }
+  }
+
+  SafeArea {
+    padding: 12
+    gap: 6
+
+    Text("status: ready")
+    Text("panic: {panicReport}")
+    Text("exception: {jsReport}")
+    Text("map: {mapLine}")
+    Text("region: {regionLine}")
+    Missing { value: 1 }
+    Text("after: native")
+    Button("Panic") {
+      on press { panic("boom from asuka") }
+    }
+    maps.View {
+      bind region: region
+      markers: [maps.Marker(id: "eiffel", at: paris, title: "Eiffel Tower", subtitle: "Paris")]
+      height: 320
+      on markerPress(id) { mapLine = "marker {id}" }
+      on press(c) { mapLine = "press {c.lat > 48 && c.lat < 50 && c.lng > 2 && c.lng < 3}" }
+      on regionChange(r) { regionLine = "moved {r.center != paris && r.latDelta > 0 && r.lngDelta > 0}" }
+      on error(m) { mapLine = "error {m}" }
+    }
+  }
+}
+
+app { WebCrash() }
+
+test "no reports without a record" {
+  let app = mount(WebCrash())
+  await app.idle()
+  app.expect("panic: none")
+  app.expect("after: native")
+}

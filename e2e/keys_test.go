@@ -15,11 +15,11 @@ import (
 //
 //   - in a search field, Up, Down and Enter go to the view around it
 //     (a selection moves, a result opens): the field's caret and text
-//     don't move, and its OnSubmit doesn't run; a key no view has (Right)
+//     don't move, and its on submit doesn't run; a key no view has (Right)
 //     goes on to the field, and its own Escape comes first;
-//   - the window's keys (UseKeys) take ⌘S (Ctrl+S) from the field, and a
+//   - the window's keys (useKeys) take ⌘S (Ctrl+S) from the field, and a
 //     Space, held, with nothing focused;
-//   - a panel's keys end at its Window: its UseKeys take Escape (it
+//   - a panel's keys end at its Window: its useKeys take Escape (it
 //     stays open: the declared Escape comes before the host closing it),
 //     and a Space typed in its field is the field's, not the main
 //     window's.
@@ -165,7 +165,7 @@ func TestKeysWeb(t *testing.T) {
 	showsLine(t, s, "window save: 2")
 
 	// A sheet: its content's keys first (its Escape, not the window's),
-	// then the window's (UseKeys).
+	// then the window's (useKeys).
 	s.tap("Open sheet")
 	focusOn(`.asuka-sheet-dialog input.asuka-field[placeholder="In the sheet"]`)
 	press(escape)
@@ -178,7 +178,7 @@ func TestKeysWeb(t *testing.T) {
 		return c.eval(t, page, `String(!document.querySelector(".asuka-sheet-dialog[open]"))`) == "true"
 	}, func() string { return "the sheet stays" })
 
-	// The panel: its keys are its UseKeys', and go no further.
+	// The panel: its keys are its useKeys', and go no further.
 	s.tap("Open panel")
 	const inPanel = `document.querySelector(".asuka-window input.asuka-field")`
 	until(t, func() bool { return c.eval(t, page, `String(!!`+inPanel+`)`) == "true" }, func() string { return "no panel" })
@@ -242,7 +242,7 @@ func TestKeysWeb(t *testing.T) {
 	}, func() string { return "the panel's sheet stays" })
 
 	// A Window and its sheet, opened in one batch, before the Window is in
-	// use: the sheet goes on it, its keys on to its UseKeys.
+	// use: the sheet goes on it, its keys on to its useKeys.
 	s.tap("Open window two")
 	until(t, func() bool { return overPanel("In window two's sheet", "window two") == "over" }, func() string { return overPanel("In window two's sheet", "window two") })
 	focusOn(`.asuka-sheet-dialog input.asuka-field[placeholder="In window two's sheet"]`)

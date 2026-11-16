@@ -70,7 +70,6 @@ func startPlayerDev(t *testing.T, platform string) *playerDev {
 	}
 	p := &playerDev{t: t, dir: dir}
 	c := exec.Command(cli, append(args, dir)...)
-	c.Env = append(os.Environ(), "GOFLAGS=-mod=mod") // the copy's requirements are the replaced Asuka's
 	var out io.Writer = &p.logs
 	if testing.Verbose() {
 		out = io.MultiWriter(&p.logs, os.Stdout) // to follow a slow first build

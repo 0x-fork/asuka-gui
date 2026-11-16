@@ -44,15 +44,15 @@ var testVAPID = webpush.Keys{
 // TestWebPushWeb drives Web Push end to end in headless Chrome, but for
 // the browser's own push service (Chrome's is Google's, which a test
 // can't stand in for): the page's PushManager is stubbed to subscribe
-// with a key pair the test holds, at a fake push service; push.Register
+// with a key pair the test holds, at a fake push service; push.register
 // gives the app that subscription; the server's side (asuka/webpush)
 // encrypts and signs a push to it; the fake service checks the VAPID
 // token, decrypts the push as a browser would and delivers it to the
 // app's service worker (DevTools' ServiceWorker.deliverPushMessage), which
-// shows it and hands it to the page (push.OnReceive). Its click goes
+// shows it and hands it to the page (push.received). Its click goes
 // through the worker's own handler (DevTools has no way to click a
-// notification): OnAction, OnOpen, OnOpenURL. Then a notification
-// scheduled with asuka/sdk/notify, which comes due while no page is open,
+// notification): notify.responses, push.opened, onOpenURL. Then a notification
+// scheduled with asuka/notify, which comes due while no page is open,
 // shows as the app's page opens again. What shows is read from the
 // showNotification calls (recorded), not getNotifications: Chrome
 // reconciles that with what the system displays, and may leave out one
@@ -172,7 +172,7 @@ func TestWebPushWeb(t *testing.T) {
 		t.Fatal(got)
 	}
 
-	// push.Register: subscribed with the app's key; the token is the subscription.
+	// push.register: subscribed with the app's key; the token is the subscription.
 	s.tap("Register")
 	showsLine(t, s, "status: registered webpush")
 	if got := c.eval(t, page, `globalThis.asukaTestKey + " " + globalThis.asukaTestVisibleOnly`); got != testVAPID.Public+" true" {
@@ -219,7 +219,7 @@ func TestWebPushWeb(t *testing.T) {
 	showsLine(t, s, "action: [reply] [On my way] m1")
 	showsLine(t, s, "opened: Ada")
 
-	// A tap: OnAction's default action, and the push's data's URL.
+	// A tap: a response's default action, and the push's data's URL.
 	send(webpush.Notification{ID: "m2", Title: "Grace", Body: "Look", Data: map[string]string{"k": "v2", "url": "asukatest://chat/2"}})
 	showsLine(t, s, "received: Grace v2")
 	until(t, func() bool { return strings.HasSuffix(shown(), ";m2|Grace|Look|") }, func() string { return shown() + "\n" + c.workerState(t, pageURL) })

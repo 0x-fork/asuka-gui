@@ -1,0 +1,91 @@
+// Control labels names editable controls without grouping them in a
+// View (e2e's TestControlLabels*): each field's and checkbox's name is
+// its label, which the buttons change and clear.
+
+component ControlLabels {
+  state text = "Ada"
+  state notes = "A note"
+  state rich: [Span] = [Span(text: "Rich note", font: Font(weight: .bold))]
+  state on = false
+  state checked = false
+  state label = "Accept terms"
+  state fieldLabel = "Name"
+  state notesLabel = "Notes"
+  state richLabel = "Formatted notes"
+
+  SafeArea {
+    padding: 16
+    gap: 12
+
+    Text("Name")
+    TextField {
+      bind text: text
+      label: fieldLabel
+      placeholder: "Enter a name"
+    }
+    Text("Notes")
+    TextField {
+      bind text: notes
+      label: notesLabel
+      multiline: true
+    }
+    Text("Formatted notes")
+    TextField {
+      bind rich: rich
+      label: richLabel
+    }
+    Row {
+      gap: 12
+      Toggle {
+        bind on: on
+        title: "Notifications"
+      }
+      Text("Send notifications")
+    }
+    Row {
+      gap: 12
+      Toggle {
+        bind on: checked
+        title: label
+        checkbox: true
+      }
+      Text("Checkbox: {label}")
+    }
+    Text("values: {text} {on} {checked}")
+    Button("Set values") {
+      on press {
+        text = "Grace"
+        on = true
+        checked = true
+      }
+    }
+    Button("Rename") {
+      on press {
+        label = "Agree to terms"
+        fieldLabel = "Full name"
+        notesLabel = "Comments"
+        richLabel = "Formatted comments"
+      }
+    }
+    Button("Clear labels") {
+      on press {
+        label = ""
+        fieldLabel = ""
+        notesLabel = ""
+        richLabel = ""
+      }
+    }
+    Text("ready")
+  }
+}
+
+app { ControlLabels() }
+
+test "the buttons set the values and the labels" {
+  let app = mount(ControlLabels())
+  app.expect("values: Ada false false")
+  app.tap("Set values")
+  app.expect("values: Grace true true")
+  app.tap("Rename")
+  app.expect("Checkbox: Agree to terms")
+}
