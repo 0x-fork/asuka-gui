@@ -52,9 +52,8 @@ func TestVisualWebView(t *testing.T) {
 		  let page = Ref()
 		  Column {
 		    padding: 8; gap: 4; align: .start
-		    WebView {
+		    WebView(%[1]q) {
 		      ref: page
-		      url: %[1]q
 		      block: ["/ads/"]
 		      userAgent: "AsukaTest/1"
 		      preload: "window.pre = (window.loaded || 0) + 7"
@@ -146,7 +145,7 @@ func TestVisualWebViewEvalCSP(t *testing.T) {
 		  let page = Ref()
 		  Column {
 		    padding: 8; gap: 4; align: .start
-		    WebView { ref: page; url: %q; width: 300; height: 200; on loaded(u) { log = log + "loaded;" } }
+		    WebView(%q) { ref: page; width: 300; height: 200; on loaded(u) { log = log + "loaded;" } }
 		    %s
 		    Text("log:{log}")
 		  }

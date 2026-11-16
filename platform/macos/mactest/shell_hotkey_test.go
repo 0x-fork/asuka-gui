@@ -86,7 +86,7 @@ func TestShellHotkeyPackage(t *testing.T) {
 		    Text("presses {presses}")
 		    Button("Off") { on press { on = false } }
 		    if on {
-		      hotkey.Hotkey(hotkey.Shortcut(key: "f18", primary: true, shift: true, alt: true, control: true)) {
+		      hotkey.Hotkey(Shortcut(key: "f18", primary: true, shift: true, alt: true, control: true)) {
 		        on press { presses += 1 }
 		      }
 		    }

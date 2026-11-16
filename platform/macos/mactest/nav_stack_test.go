@@ -111,7 +111,7 @@ func TestNavStackPushAndBack(t *testing.T) {
 	popped("back")
 }
 
-// A screen's bar buttons, then its Toolbar's items, then its Primary last
+// A screen's bar buttons (toolbar), then its bottom toolbar's, then its primary last
 // and prominent are the window's toolbar items; each reports its own
 // Action; a disabled one is dimmed; one with a menu opens it, its items
 // reporting theirs (TestScreenToolbarItems, TestBarButtonMenu).
@@ -122,7 +122,7 @@ func TestNavScreenToolbar(t *testing.T) {
 		component Home {
 		  Screen {
 		    title: "Inbox"
-		    actions {
+		    toolbar {
 		      Button("Edit") { on press { picked.push("edit") } }
 		      Button("Add") {
 		        icon: "plus"
@@ -132,7 +132,7 @@ func TestNavScreenToolbar(t *testing.T) {
 		        ]
 		      }
 		    }
-		    toolbar {
+		    bottomToolbar {
 		      Button("Filter") { icon: "line.3.horizontal.decrease"; on press { picked.push("filter") } }
 		      Button("Sort") {
 		        icon: "arrow.up.arrow.down"

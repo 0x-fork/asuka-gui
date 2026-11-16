@@ -81,16 +81,9 @@ func (f *updateFeed) downloaded() string {
 // runUpdater runs the installed app's executable in its self-update mode
 // (a "selfupdate" file in its directory, ASUKA_DATA), waits for it to
 // quit (it relaunches), then for the relaunched one's report, and
-// returns the reports. It runs where a desktop host has the update
-// module (DESIGN.md, "Updates"): the hosts being rewritten in Swift and
-// C (RFC 0008, G2) have it, the Go hosts don't; ASUKA_E2E_UPDATER=1 runs
-// it.
+// returns the reports. Every desktop host has the update module
+// (DESIGN.md, "Updates").
 func runUpdater(t *testing.T, exe string) string {
-	// The Mac's Swift host has the update module; the Windows and Linux
-	// hosts get theirs with their C rewrites (RFC 0008, H2, H3, G2).
-	if runtime.GOOS != "darwin" && os.Getenv("ASUKA_E2E_UPDATER") == "" {
-		t.Skip("the desktop host's update module (RFC 0008, G2): ASUKA_E2E_UPDATER=1 runs it")
-	}
 	data := t.TempDir()
 	if err := os.WriteFile(filepath.Join(data, "selfupdate"), nil, 0o644); err != nil {
 		t.Fatal(err)

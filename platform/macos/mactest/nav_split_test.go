@@ -19,9 +19,8 @@ const splitApp = `
 	      Button("Twelve") { on press { unread = "12" } }
 	      Button("Clear") { on press { unread = "" } }
 	    }
-	    Split {
+	    Split("Gallery") {
 	      grow: 1
-	      title: "Gallery"
 	      bind selected: dest
 	      Destination("Text") { icon: "textformat"; section: "Views"; Text("text page") }
 	      Destination("Charts") { icon: "chart.bar"; section: "Views"; badge: unread; Text("charts page") }
