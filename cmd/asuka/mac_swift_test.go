@@ -72,8 +72,11 @@ func TestMacSwift(t *testing.T) {
 		t.Errorf("the library isn't signed: %v", err)
 	}
 
-	// An app without native packages: no library.
-	plain := sqliteTestApp(t)
+	// An app without native packages: no library. (sqliteapp has some
+	// now: asuka/sqlite's Swift says where its databases are kept.)
+	plainDir := t.TempDir()
+	os.WriteFile(filepath.Join(plainDir, "app.asuka"), []byte("app { Text(\"plain\") }\n"), 0o644)
+	plain := projectApp(t, plainDir, nil)
 	if err := macSwift(plain, bundle, work, []string{runtime.GOARCH}, false, run); err != nil {
 		t.Fatal(err)
 	}

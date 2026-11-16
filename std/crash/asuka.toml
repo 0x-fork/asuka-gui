@@ -1,0 +1,3 @@
+name = "asuka/crash"
+version = "0.1.0"
+description = "The app's crash reports, kept for it to send where it likes"

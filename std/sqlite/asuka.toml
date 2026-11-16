@@ -1,0 +1,3 @@
+name = "asuka/sqlite"
+version = "0.1.0"
+description = "The app's SQLite database: SQL off the main thread, typed rows, live queries"

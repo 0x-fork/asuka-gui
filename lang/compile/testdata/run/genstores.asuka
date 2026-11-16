@@ -1,0 +1,38 @@
+// Generic stores: a store with type parameters, made per instantiation.
+import asuka/json
+
+store Box<T>(key: string, initial: T) {
+  pub state value: T = initial
+  pub let pair: [T] = [value, value]
+  pub fn set(v: T) { value = v }
+  pub fn text() -> string = "{key}: {json.encode(value)}"
+}
+
+struct Point {
+  x: int
+  y: int
+}
+
+let count = Box("count", 1)
+let points: Box<[Point]> = Box("points", [])
+
+test "generic stores" {
+  count.value += 1
+  print(count.text())
+  points.value.push(Point(x: 1, y: 2))
+  points.set(points.value + [Point(x: 3, y: 4)])
+  print(points.text())
+  let name = Box("name", "a")
+  name.value = name.value + "b"
+  print(name.pair)
+  let f = Box("f", 0.5)
+  f.value = 1.5
+  print(f.pair)
+}
+
+// Output:
+// count: 2
+// points: [{"x":1,"y":2},{"x":3,"y":4}]
+// ["ab","ab"]
+// [1.5,1.5]
+// ok generic stores

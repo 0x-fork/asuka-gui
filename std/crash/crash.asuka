@@ -1,0 +1,134 @@
+// Package asuka/crash keeps reports of the app's crashes, for the app to
+// send where it likes: its own server, Sentry, Crashlytics. A report is
+// made of each crash (a panic or a signal in the host, a native one), and
+// of each error the app records; the app reads them on its next launch
+// (reports), sends them, and deletes them.
+//
+//   task {
+//     for await r in crash.reports() {
+//       if try? await api.send(r) { crash.delete(r.id) }
+//     }
+//   }
+//   crash.set("user", userID)
+//   crash.breadcrumb("opened the cart")
+//
+// What the app was doing is in each report's context: its version, the
+// device, how long it had run, whether it was in the foreground, its last
+// breadcrumbs and its values, written as they change so a crash can't
+// lose them. Nothing is uploaded.
+//
+// Where: the desktops (macOS, Windows, Linux), whose hosts keep their
+// runs' records (sdk/crash). Phones and the web don't have the record
+// yet (the C core's asuka_crash_start): there, reports is empty and the
+// rest does nothing.
+
+/// A frame of a thread's stack, the innermost first.
+pub struct Frame {
+  function: string = ""
+  file: string = ""
+  line: int = 0
+  /// The binary it's in, and its build's ID, for symbolicating.
+  binary: string = ""
+  binaryId: string = ""
+  address: int = 0
+  offset: int = 0
+}
+
+/// A thread as it was.
+pub struct Thread {
+  name: string = ""
+  crashed: bool = false
+  frames: [Frame] = []
+}
+
+/// Something the app said it did.
+pub struct Crumb {
+  /// In milliseconds since 1970.
+  time: int = 0
+  message: string = ""
+}
+
+/// What the app was doing.
+pub struct Context {
+  appVersion: string = ""
+  build: string = ""
+  model: string = ""
+  system: string = ""
+  systemVersion: string = ""
+  arch: string = ""
+  process: string = ""
+  pid: int = 0
+  /// When the run started, in milliseconds since 1970.
+  started: int = 0
+  uptime: Duration = 0s
+  foreground: bool = false
+  breadcrumbs: [Crumb] = []
+  values: [string: string] = [:]
+}
+
+/// A crash, or an error the app recorded.
+pub struct Report {
+  id: string = ""
+  /// What crashed: "go" (the host's), "exception", "native", "hang",
+  /// "nonfatal" (record's)...
+  kind: string = ""
+  fatal: bool = false
+  /// In milliseconds since 1970.
+  time: int = 0
+  /// A line: what crashed, and why.
+  message: string = ""
+  /// The whole report, as the platform wrote it.
+  text: string = ""
+  threads: [Thread] = []
+  context: Context = Context()
+}
+
+/// The platform's record.
+native interface Reporter {
+  fn breadcrumb(message: string)
+  fn set(key: string, value: string)
+  fn record(message: string)
+  /// Calls found with each report kept, now and as more come, each once,
+  /// until the task is cancelled.
+  async fn follow(found: fn(Report))
+  fn delete(id: string)
+}
+
+let reporter = try? Reporter()
+
+/// Adds message to what reports say the app last did, with the time.
+pub fn breadcrumb(message: string) {
+  if let r = reporter {
+    try? r.breadcrumb(message)
+  }
+}
+
+/// Sets a value reports have ("user": an ID); "" removes it.
+pub fn set(key: string, value: string) {
+  if let r = reporter {
+    try? r.set(key, value)
+  }
+}
+
+/// Makes a report of e, which the app handled: it's read with the
+/// crashes, at once.
+pub fn record(e: Error) {
+  if let r = reporter {
+    try? r.record(e.message)
+  }
+}
+
+/// Forgets report id, once the app has sent it.
+pub fn delete(id: string) {
+  if let r = reporter {
+    try? r.delete(id)
+  }
+}
+
+/// The reports kept, the oldest first, then each as it comes (a
+/// recorded error, what the platform hands over late), each once.
+pub fn reports() -> Stream<Report> = Stream(give => {
+  if let r = reporter {
+    try await r.follow(found: x => give(x))
+  }
+})

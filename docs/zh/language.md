@@ -321,6 +321,19 @@ screen Inbox {
 
 写在文件顶层的 `state` 属于整个应用：全应用只有一份。
 
+store 和结构体一样可以带类型参数，由参数或期望的类型推断出来：
+
+```asuka
+store Kept<T>(key: string, initial: T) {
+  pub state value: T = initial
+}
+
+let size = Kept("size", 17.0)                 // 一个 Kept<float>
+let tags: Kept<[string]> = Kept("tags", [])
+```
+
+在 store 的 fn 里，`self` 就是这个 store 本身，可以把它交给它创建的东西。
+
 ### Effect 与 task
 
 ```asuka

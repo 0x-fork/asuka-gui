@@ -43,6 +43,10 @@ static ak_val encode(ak_val *args, uint32_t n) {
 	return (ak_val){.p = ak_json_encode(args[0], desc->data, &t, n > 2 ? (int)args[2].i : 0)};
 }
 
+// ak_vm_json_types is what decoding by descriptor needs of the running
+// module (asuka/sqlite's rows).
+void ak_vm_json_types(ak_json_types *out) { *out = (ak_json_types){shape, cases, running()}; }
+
 void ak_vm_json_init(void) {
 	ak_builtin_register("json.decode", decode);
 	ak_builtin_register("json.encode", encode);

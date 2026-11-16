@@ -151,7 +151,7 @@ var Methods = []*Method{
 	// Durations.
 	{Recv: "duration", Name: "nanoseconds", Sig: "() -> int", Builtin: "dur.ns"},
 	{Recv: "duration", Name: "milliseconds", Sig: "() -> int", Builtin: "dur.ms", Doc: "whole milliseconds, toward zero"},
-	{Recv: "duration", Name: "seconds", Sig: "() -> float", Builtin: "dur.seconds"},
+	{Recv: "duration", Name: "seconds", Sig: "() -> float", Builtin: "dur.seconds", Doc: "how many seconds: 1500ms.seconds() is 1.5"},
 	{Recv: "duration", Name: "minutes", Sig: "() -> float", Builtin: "dur.minutes"},
 	{Recv: "duration", Name: "hours", Sig: "() -> float", Builtin: "dur.hours"},
 	{Recv: "duration", Name: "rounded", Sig: "(to: Duration) -> Duration", Builtin: "dur.rounded", Doc: "to the nearest multiple of to, halves away from zero: (90s).rounded(to: 1min) is 2min"},

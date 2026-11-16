@@ -1,0 +1,6 @@
+name = "asuka/notify"
+version = "0.1.0"
+description = "Local notifications: now or later, actions and replies, threads, channels, messages, the badge"
+
+[android]
+permissions = ["android.permission.POST_NOTIFICATIONS"]

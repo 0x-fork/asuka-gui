@@ -16,6 +16,10 @@ native interface Prefs {
   fn get(key: string) -> string?
   fn set(key: string, value: string)
   fn remove(key: string)
+  /// Writes what's changed now (before the app may be ended).
+  fn flush()
+  /// Where the values are kept: a directory, or what the platform names.
+  fn dir() -> string
 }
 
 // Made once; none where the platform has no preferences, and then
@@ -47,4 +51,24 @@ pub fn remove(key: string) {
   if let p = prefs {
     try? p.remove(key)
   }
+}
+
+/// Writes what's kept now, rather than a moment later: before the app
+/// may be ended (it goes to the background, a task's last step).
+pub fn flush() {
+  if let p = prefs {
+    try? p.flush()
+  }
+}
+
+/// Where the values are kept: the preferences' directory, or the
+/// platform's name for them ("localStorage" on the web); "" with no
+/// preferences.
+pub fn dir() -> string {
+  if let p = prefs {
+    if let d = try? p.dir() {
+      return d
+    }
+  }
+  return ""
 }

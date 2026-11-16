@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/egoist/asuka/plugin"
 )
@@ -33,13 +34,12 @@ type pluginLib struct {
 }
 
 // appPlugins are the plugins of the app: its own directory's manifest,
-// if it has one, and its dependencies' (and their packages').
+// if it has one, its dependencies' (and their packages'), and the
+// standard library packages' it imports (asuka/sqlite's).
 func appPlugins(app *asukaApp) ([]appPlugin, error) {
 	dirs := []string{app.dir}
-	if app.proj != nil {
-		for _, d := range app.proj.Deps {
-			dirs = append(dirs, d)
-		}
+	for _, d := range app.packageDirs() {
+		dirs = append(dirs, d)
 	}
 	slices.Sort(dirs)
 	var ps []appPlugin
@@ -126,4 +126,23 @@ func writeLibs(libs []pluginLib, dir string) error {
 		}
 	}
 	return nil
+}
+
+// pluginEnv is the environment that points the core at the app's plugins'
+// libraries for target, in a run that isn't a build (asuka dev on a
+// desktop): ASUKA_LIB_<NAME>=path, each downloaded first if need be.
+func pluginEnv(app *asukaApp, target string) ([]string, error) {
+	libs, err := appLibs(app, target)
+	if err != nil {
+		return nil, err
+	}
+	var env []string
+	for _, l := range libs {
+		p, err := l.path()
+		if err != nil {
+			return nil, err
+		}
+		env = append(env, "ASUKA_LIB_"+strings.ToUpper(l.lib.Name)+"="+p)
+	}
+	return env, nil
 }

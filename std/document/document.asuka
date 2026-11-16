@@ -1,0 +1,161 @@
+// Package asuka/document is a document's model: a file's content as a
+// store the app edits, read with the app's read function, autosaved a
+// moment after each change with its write function, reverted to what's
+// on disk, and a conflict when another program changed the file since
+// it was read (saveAnyway keeps the app's, revert takes theirs).
+//
+//   let doc = document.open(path, read: data => data.string(), write: text => text.bytes())
+//   if let text = doc.content { TextField { text: text; on change(t) { doc.edit(t) } } }
+//
+// The files are read and written off the main thread by each platform
+// (coordinated with iCloud and other apps on iOS and macOS). What
+// sdk/document also did, a window per document with the File menu on
+// the desktops and a document browser on the phones (Documents<T>,
+// with its editor), needs windows, menus and navigation the C UI
+// runtime doesn't have yet.
+
+/// A kind of file the documents are (list the same in asuka.toml's
+/// fileTypes).
+pub struct Type {
+  /// What the files are ("Plain Text").
+  name: string
+  /// Their extensions, without the dot ("txt"); new documents take the
+  /// first type's first.
+  extensions: [string] = []
+  mimeTypes: [string] = []
+}
+
+/// Where a document is.
+pub enum State {
+  /// Being read.
+  loading
+  /// As it is on disk.
+  saved
+  /// Changed, to be saved a moment after the last change.
+  edited
+  saving
+  /// Another program changed the file since it was read: saveAnyway
+  /// writes this one over it, revert reads theirs.
+  conflict
+  /// It couldn't be read or written: error says why.
+  failed
+}
+
+/// The platform's files.
+native interface Files {
+  /// The file's bytes.
+  async fn read(path: string) -> bytes
+  /// Writes data to path, whole (a temporary file renamed over it).
+  async fn write(path: string, data: bytes)
+  /// When the file last changed, in milliseconds since 1970 (0: it
+  /// isn't there).
+  async fn modified(path: string) -> int
+}
+
+let files = try? Files()
+
+fn need() throws -> Files {
+  if let f = files {
+    return f
+  }
+  throw Error("unsupported: asuka/document has no files on this platform")
+}
+
+/// How long after the last change a document saves itself.
+let autosaveAfter = 1s
+
+/// A document: path's content as T.
+pub store Document<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) -> bytes) {
+  /// The content; none until it's read.
+  pub state content: T? = none
+  pub state state: State = .loading
+  /// Why it's failed, or what the conflict is.
+  pub state error = ""
+  // When the file last changed as this document knows it, and its
+  // edits, counted (what autosave follows).
+  state known = 0
+  state edits = 0
+
+  task {
+    await reload()
+  }
+
+  // A moment after the last edit: saved (cancelled by the next).
+  task(edits) {
+    if edits == 0 || state != .edited {
+      return
+    }
+    await sleep(autosaveAfter)
+    await save()
+  }
+
+  async fn reload() {
+    state = .loading
+    do {
+      let f = try need()
+      let data = try await f.read(path)
+      known = try await f.modified(path)
+      content = try read(data)
+      error = ""
+      state = .saved
+    } catch e {
+      error = e.message
+      state = .failed
+    }
+  }
+
+  /// Changes the content: saved a moment after the last change.
+  pub fn edit(c: T) {
+    content = c
+    if state != .conflict {
+      state = .edited
+    }
+    edits += 1
+  }
+
+  /// Saves now, unless another program changed the file since it was
+  /// read (a conflict).
+  pub async fn save() {
+    await put(false)
+  }
+
+  /// Writes this document's content over the file, whatever changed it.
+  pub async fn saveAnyway() {
+    await put(true)
+  }
+
+  async fn put(force: bool) {
+    if let c = content {
+      do {
+        let f = try need()
+        if !force {
+          let now = try await f.modified(path)
+          if now != known && known != 0 {
+            state = .conflict
+            error = "{path} changed since it was opened"
+            return
+          }
+        }
+        state = .saving
+        try await f.write(path, write(c))
+        known = try await f.modified(path)
+        error = ""
+        if state == .saving {
+          state = .saved
+        }
+      } catch e {
+        error = e.message
+        state = .failed
+      }
+    }
+  }
+
+  /// Reads the file again, dropping this document's changes.
+  pub async fn revert() {
+    await reload()
+  }
+}
+
+/// Opens path as a document: read makes its content of the file's
+/// bytes, write the bytes of its content.
+pub fn open<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) -> bytes) -> Document<T> = Document(path, read, write)

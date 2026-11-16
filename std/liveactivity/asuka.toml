@@ -1,0 +1,6 @@
+name = "asuka/liveactivity"
+version = "0.1.0"
+description = "Live activities: what's going on, on the Lock Screen and in the Dynamic Island"
+
+[android]
+permissions = ["android.permission.POST_NOTIFICATIONS", "android.permission.POST_PROMOTED_NOTIFICATIONS"]
