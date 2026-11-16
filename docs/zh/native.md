@@ -129,6 +129,7 @@ pub native interface Oven {
 | `[T]` | `[T]` | `List<T>` | `Array` |
 | `[string: T]` | `[String: T]` | `Map<String, T>` | `object` |
 | `T?` | `T?` | `T?` | `T` 或 `null` |
+| `Color` | `Int`，即核心的编码：`AsukaColors.color(_:)` 把它变成 `UIColor` 或 `NSColor`（语义色会跟随浅色和深色模式） | `Long`：`AsukaModules.color(v, fallback)` 把它变成 ARGB 的 `Int` | `bigint`：`native.color(v)` 把它变成 CSS 颜色（语义色是一个 CSS 变量） |
 | 包中定义的结构体 | 结构体（包含自身时为 final class） | data class | 对象 |
 | 包中定义的枚举（成员不带值） | `RawRepresentable` 结构体，每个成员对应一个静态成员 | value class，每个成员对应一个常量 | 由这些成员组成的冻结对象 |
 | `native interface`（作为参数或返回值） | `any T` | `T` | 对象 |
@@ -164,7 +165,7 @@ pub native interface Oven {
 ```asuka
 pub native component Segmented(items: [string]) {
   prop selected: int = 0
-  event changed(index: int)
+  event selectedChange(selected: int)
 }
 ```
 
@@ -175,12 +176,12 @@ state selected = 0
 
 segmented.Segmented(["Day", "Week", "Month"]) {
   bind selected: selected
-  on changed(i) { selected = i }
 }
 ```
 
 - 每个属性都会跟随它读取的值：值变化时，平台端的 setter 会再次运行，而且只在变化时运行。
 - 事件在主线程上运行。
+- `bind name: target` 绑定一个属性，前提是视图用与属性同类型的事件 `nameChange(name: T)` 报告它：用户改变值时（而不是应用设置值时）视图发送这个事件，由它写入 target。
 - 它接受所有元素都接受的样式。
 
 每个平台都以协议的形式实现视图：包括视图本身、每个属性对应的 setter，以及创建时传入的事件对象：
@@ -193,7 +194,7 @@ segmented.Segmented(["Day", "Week", "Month"]) {
     init(_ events: SegmentedEvents) { self.events = events; ... }
     func setItems(_ value: [String]) { ... }
     func setSelected(_ value: Int) { ... }
-    // 值变化时：events.changed(index: i)
+    // 值变化时：events.selectedChange(selected: i)
 }
 @MainActor func makeSegmented(_ events: SegmentedEvents) -> any Segmented { SwiftSegmented(events) }
 ```
@@ -343,11 +344,13 @@ type SegmentedNative interface {
 }
 ```
 
-`events.Changed(i)` 用来发送事件。`events.Context.Parent()` 是原生视图要放入的那个宿主视图：在 Windows 上，在其中创建一个子窗口（`WS_CHILD`）；在 Linux 上，不要给控件设置父级，宿主会负责把它加进去。视图还可以实现：
+`events.SelectedChange(i)` 用来发送事件。`events.Context.Parent()` 是原生视图要放入的那个宿主视图：在 Windows 上，在其中创建一个子窗口（`WS_CHILD`）；在 Linux 上，不要给控件设置父级，宿主会负责把它加进去。视图还可以实现：
 
 - `Measure(width, height float32) (float32, float32)`：在布局给出的空间下返回它的固有尺寸（`NaN` 表示不受约束）。没有实现它时，GTK 会自己测量控件；Windows 上则没有人会测量，尺寸由样式决定。
 - `Destroy()`：释放它持有的资源。
 - `ParentMessage(msg uint32, wparam, lparam uintptr) (uintptr, bool)`（Windows）：接收它的控件发给父窗口的 `WM_COMMAND`、`WM_NOTIFY`、`WM_*SCROLL` 和 `WM_CTLCOLOR*` 消息。
+
+包 `native` 提供了桌面端实现需要从应用那里得到的东西，标准库自己的实现也在用：`native.Post(f)` 在主线程上运行 `f`（可以从 goroutine 里调用），`native.ResolveColor(c)` 把 `Color` 变成 RGBA（语义色按宿主当前的主题解析），`native.Asset` 和 `native.LocalFile` 找到一个来源指向的文件（asset、路径、`file://` URL），`native.CacheDir()` 是应用的缓存目录，`native.Window()` 是应用的主窗口（HWND 或 GtkWindow）。实现了 `native.Releaser` 的对象会在应用放开它时（在主线程上）得到通知。视图的工厂函数返回 nil 时，在 Windows 和 Linux 上什么都不显示；在 Mac 上则改用包里的 Swift 视图。
 
 构建约束要用 `windows` 和 `linux && !android`，因为 Android 构建也满足 `linux`。Mac 也可以使用 Go：为 `darwin && !ios` 构建、并调用了 `implement<T>` 的文件，在 Mac 上会优先于包中的 Swift 代码，通过 purego 的 `objc` 使用 AppKit。
 

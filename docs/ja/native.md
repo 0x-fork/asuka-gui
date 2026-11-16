@@ -129,6 +129,7 @@ pub native interface Oven {
 | `[T]` | `[T]` | `List<T>` | `Array` |
 | `[string: T]` | `[String: T]` | `Map<String, T>` | `object` |
 | `T?` | `T?` | `T?` | `T` または `null` |
+| `Color` | `Int`（コアのエンコーディング）。`AsukaColors.color(_:)` で `UIColor` か `NSColor` になります（セマンティックカラーはライトとダークに追従します） | `Long`。`AsukaModules.color(v, fallback)` で ARGB の `Int` になります | `bigint`。`native.color(v)` で CSS の色になります（セマンティックカラーは CSS 変数） |
 | パッケージの構造体 | 構造体（自身を含む場合は final class） | data class | オブジェクト |
 | パッケージの列挙型（ケースが値を持たないもの） | ケースごとに static を持つ `RawRepresentable` の構造体 | ケースごとに定数を持つ value class | ケースを収めた凍結（frozen）オブジェクト |
 | `native interface`（引数または戻り値） | `any T` | `T` | オブジェクト |
@@ -164,7 +165,7 @@ pub native interface Oven {
 ```asuka
 pub native component Segmented(items: [string]) {
   prop selected: int = 0
-  event changed(index: int)
+  event selectedChange(selected: int)
 }
 ```
 
@@ -175,12 +176,12 @@ state selected = 0
 
 segmented.Segmented(["Day", "Week", "Month"]) {
   bind selected: selected
-  on changed(i) { selected = i }
 }
 ```
 
 - どのプロパティも、読んでいる値に追従します。値が変わったときに、そしてそのときだけ、プラットフォームのセッターがもう一度呼ばれます。
 - イベントはメインスレッドで実行されます。
+- `bind name: target` は、ビューがプロパティと同じ型のイベント `nameChange(name: T)` で報告するプロパティをバインドします。ユーザーが値を変えたとき（アプリが設定したときではなく）にビューがこのイベントを送り、それが target に書き込まれます。
 - ほかの要素と同じスタイルを受け取ります。
 
 各プラットフォームは、ビューをプロトコルとして実装します。プロトコルには、ビュー本体、プロパティごとのセッター、そして作成時に受け取るイベントオブジェクトが含まれます。
@@ -193,7 +194,7 @@ segmented.Segmented(["Day", "Week", "Month"]) {
     init(_ events: SegmentedEvents) { self.events = events; ... }
     func setItems(_ value: [String]) { ... }
     func setSelected(_ value: Int) { ... }
-    // 変更時：events.changed(index: i)
+    // 変更時：events.selectedChange(selected: i)
 }
 @MainActor func makeSegmented(_ events: SegmentedEvents) -> any Segmented { SwiftSegmented(events) }
 ```
@@ -343,11 +344,13 @@ type SegmentedNative interface {
 }
 ```
 
-`events.Changed(i)` でイベントを送ります。`events.Context.Parent()` は、ネイティブビューを入れるホスト側のビューです。Windows では、その中に子ウィンドウ（`WS_CHILD`）を作ります。Linux では、ウィジェットに親を設定しないでおけば、ホストが追加します。ビューは、さらに次のメソッドも実装できます。
+`events.SelectedChange(i)` でイベントを送ります。`events.Context.Parent()` は、ネイティブビューを入れるホスト側のビューです。Windows では、その中に子ウィンドウ（`WS_CHILD`）を作ります。Linux では、ウィジェットに親を設定しないでおけば、ホストが追加します。ビューは、さらに次のメソッドも実装できます。
 
 - `Measure(width, height float32) (float32, float32)`：レイアウトが提示したサイズに対する固有のサイズを返します（`NaN` は制約なし）。これがなくても GTK はウィジェットを計測しますが、Windows では何も計測しないので、スタイルからサイズが決まります。
 - `Destroy()`：保持しているものを解放します。
 - `ParentMessage(msg uint32, wparam, lparam uintptr) (uintptr, bool)`（Windows）：ビューのコントロールが親に送る `WM_COMMAND`、`WM_NOTIFY`、`WM_*SCROLL`、`WM_CTLCOLOR*` を受け取ります。
+
+パッケージ `native` には、デスクトップの実装がアプリから必要とするものがあり、標準ライブラリ自身もこれを使っています。`native.Post(f)` は `f` をメインスレッドで実行し（goroutine から呼べます）、`native.ResolveColor(c)` は `Color` を RGBA にし（セマンティックカラーはホストの今のテーマで解決します）、`native.Asset` と `native.LocalFile` はソースが指すファイル（アセット、パス、`file://` の URL）を見つけ、`native.CacheDir()` はアプリのキャッシュ、`native.Window()` はアプリのメインウィンドウ（HWND か GtkWindow）です。`native.Releaser` を実装したオブジェクトは、アプリがそれを手放したときに（メインスレッドで）知らされます。ビューのファクトリーが nil を返すと、Windows と Linux では何も表示されず、Mac ではパッケージの Swift のビューが代わりに使われます。
 
 Android のビルドも `linux` を満たすので、ビルド制約には `windows` と `linux && !android` を使ってください。Mac でも Go を使えます。`darwin && !ios` 向けにビルドされ、`implement<T>` を呼ぶファイルがあれば、Mac ではそれがパッケージの Swift より優先されます。その場合、AppKit は purego の `objc` 経由で使います。
 

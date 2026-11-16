@@ -280,7 +280,9 @@ in its caller's block goes there. A named slot is `name { … }` in the
 block (`toolbar { … }`).
 
 `emit name(args)` raises an event; the caller's `on name(args) { }`
-handles it.
+handles it. Read by its name in the component, an event is its handler,
+or `none` when the caller gave none: `if next.isSome() { … }` shows a
+Next button only to a caller that handles it.
 
 A component that shows one element (its body's views are that one
 element, or another component that does) takes the style props too:

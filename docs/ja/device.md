@@ -10,33 +10,32 @@ Asuka のパッケージを使うと、ビューの外にあるデバイスの�
 
 | パッケージ | Android | iOS |
 | --- | --- | --- |
-| `asuka/sdk/camera` | `CAMERA` | `NSCameraUsageDescription` |
-| `asuka/sdk/camera/record` | `RECORD_AUDIO` | `NSMicrophoneUsageDescription` |
+| `asuka/camera` | `CAMERA`、`RECORD_AUDIO` | `NSCameraUsageDescription`、`NSMicrophoneUsageDescription` |
 | `asuka/sdk/location` | `ACCESS_COARSE_LOCATION`、`ACCESS_FINE_LOCATION` | `NSLocationWhenInUseUsageDescription` |
 | `asuka/sdk/notify` | `POST_NOTIFICATIONS` | |
 | `asuka/sdk/network` | `ACCESS_NETWORK_STATE` | |
 | `asuka/sdk/library` | `WRITE_EXTERNAL_STORAGE`（Android 9 以前） | `NSPhotoLibraryAddUsageDescription`。アプリの Documents を「ファイル」アプリに表示 |
 | `asuka/sdk/background` | `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC`、`POST_NOTIFICATIONS`、`WAKE_LOCK`。フォアグラウンドサービス | |
-| `asuka/sdk/scan` | ML Kit のバーコードモデル（約 2 MB） | |
-| `asuka/sdk/vision` | ML Kit のテキスト、顔、バーコードのモデル（約 30 MB） | |
+| `asuka/scan` | ML Kit のバーコードモデル（約 2 MB） | |
+| `asuka/vision` | ML Kit のテキスト、顔、バーコードのモデル（約 30 MB） | |
 | `asuka/sdk/photos` | `READ_MEDIA_IMAGES`、`READ_MEDIA_VISUAL_USER_SELECTED`。`READ_EXTERNAL_STORAGE`（Android 12 以前） | `NSPhotoLibraryUsageDescription` |
 | `asuka/sdk/push` | Firebase Cloud Messaging、`POST_NOTIFICATIONS` | `aps-environment` エンタイトルメント。`remote-notification` バックグラウンドモード |
 | `asuka/sdk/appleauth` | | Sign in with Apple のエンタイトルメント |
 | `asuka/sdk/biometric` | `USE_BIOMETRIC` | `NSFaceIDUsageDescription` |
-| `asuka/sdk/audio/record` | `RECORD_AUDIO`、`FOREGROUND_SERVICE_MICROPHONE`。フォアグラウンドサービス | `NSMicrophoneUsageDescription` |
-| `asuka/sdk/nowplaying` | `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MEDIA_PLAYBACK`。フォアグラウンドサービス | `audio` バックグラウンドモード（`nowplaying.Show` を呼ぶアプリの場合） |
+| `asuka/record` | `RECORD_AUDIO`、`FOREGROUND_SERVICE_MICROPHONE`。フォアグラウンドサービス | `NSMicrophoneUsageDescription` |
+| `asuka/nowplaying` | `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MEDIA_PLAYBACK`、`POST_NOTIFICATIONS`。フォアグラウンドサービス | `audio` バックグラウンドモード |
 | `asuka/sdk/liveactivity` | `POST_NOTIFICATIONS`、`POST_PROMOTED_NOTIFICATIONS` | `NSSupportsLiveActivities` とウィジェット拡張（呼び出すアプリの場合） |
-| `asuka/sdk/transcribe` | `RECORD_AUDIO` | `NSSpeechRecognitionUsageDescription` |
+| `asuka/transcribe` | `RECORD_AUDIO` | `NSSpeechRecognitionUsageDescription` |
 | `asuka/sdk/screen` | `DETECT_SCREEN_CAPTURE` | |
 | `asuka/sdk/tracking` | | `NSUserTrackingUsageDescription` |
 | `asuka/sdk/review` | Play のアプリ内レビューライブラリ | |
 | `asuka/sdk/integrity` | Play Integrity | App Attest のエンタイトルメント |
 | `asuka/sdk/agerange` | Play Age Signals | Declared Age Range のエンタイトルメント |
 | `asuka/sdk/icloud` | （なし：iCloud はありません） | キーバリューストアのエンタイトルメント、iCloud Documents とアプリのコンテナー、`NSUbiquitousContainers`。アプリが呼ぶものに応じて加わります（[iCloud](icloud.md)） |
-| `asuka/sdk/maps` | Google の Maps SDK | |
+| `asuka/maps` | Google の Maps SDK | |
 | `asuka/sdk/periodic` | WorkManager | `fetch` と `processing` バックグラウンドモード。タスクの識別子 |
 | `asuka/sdk/sensors` | `ACTIVITY_RECOGNITION`（歩数計） | `NSMotionUsageDescription`（歩数計） |
-| `asuka/sdk/speech` | 音声合成エンジンの可視性（`<queries>`） | |
+| `asuka/speech` | 音声合成エンジンの可視性（`<queries>`） | |
 | `asuka/sdk/contacts` | `READ_CONTACTS`（`List` 用） | `NSContactsUsageDescription` |
 | `asuka/sdk/calendar` | `READ_CALENDAR`（`Calendars`、`Events` 用） | `NSCalendarsFullAccessUsageDescription`、`NSCalendarsUsageDescription` |
 | `asuka/sdk/compose` | `mailto:` と `smsto:` を扱うアプリの可視性（`<queries>`） | `LSApplicationQueriesSchemes` に `mailto` |
@@ -64,9 +63,9 @@ macOS でも各パッケージは iOS と同じフレームワーク（AVFoundat
 | パッケージ | Mac の場合 |
 | --- | --- |
 | `asuka/sdk/device` | `PickPhotos` と `PickFiles`：ウィンドウ上のシートとして開くオープンパネル（権限は不要）で、アプリのキャッシュにコピーを作ります。`Browse` はユーザーのブラウザーでページを開きます。`GetInfo`：`Model` は `"Mac"`、`System` は `"macOS"` |
-| `asuka/sdk/camera` | `Take`：ウィンドウの上にシートを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します（AppKit にはカメラ画面がないため）。`View` の「背面」は内蔵カメラ（Mac には背面カメラがないため）か、接続されたカメラです。そこでコードを読み取るには macOS 13 が必要です |
-| `asuka/sdk/audio/record` | オーディオセッションはありません。ほかのアプリの音は鳴り続けます。`Background` は何も変えません。Mac アプリはどのみち見えていなくても録音できます |
-| `asuka/sdk/nowplaying` | iOS と同じく `MPNowPlayingInfoCenter` と `MPRemoteCommandCenter` を使います。コントロールセンターとメニューバーの「再生中」、キーボードのメディアキー、AirPods で操作できます。Mac ではオーディオセッションもバックグラウンドモードも不要です |
+| `asuka/camera` | `take`：ウィンドウの上にシートを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します（AppKit にはカメラ画面がないため）。`camera.View` の「背面」は内蔵カメラ（Mac には背面カメラがないため）か、接続されたカメラです。そこでコードを読み取るには macOS 13 が必要です |
+| `asuka/record` | オーディオセッションはありません。ほかのアプリの音は鳴り続けます。`background` は何も変えません。Mac アプリはどのみち見えていなくても録音できます |
+| `asuka/nowplaying` | iOS と同じく `MPNowPlayingInfoCenter` と `MPRemoteCommandCenter` を使います。コントロールセンターとメニューバーの「再生中」、キーボードのメディアキー、AirPods で操作できます。Mac ではオーディオセッションもバックグラウンドモードも不要です |
 | `asuka/sdk/contacts`、`asuka/sdk/calendar` | `Add` はウィンドウ上のアラートで確認してから保存します（macOS には新規連絡先や新規イベントの画面がないため）。保存の前にアクセスの許可を求めます |
 | `asuka/sdk/photos` | iOS と同じく PhotoKit です。Mac には限定アクセスのライブラリがないので、`ManageLimited` は何もしません |
 | `asuka/sdk/library` | 写真とビデオは「写真」アプリに保存されます。`Downloads` と `Music` は、ユーザーの `~/Downloads` と `~/Music` の中の指定したフォルダーに保存されます |
@@ -77,7 +76,7 @@ macOS でも各パッケージは iOS と同じフレームワーク（AVFoundat
 | `asuka/sdk/background` | タスクの実行中は App Nap によってアプリが遅くなるのを防ぎます。通知は出ないので、`Update` は何も変えません |
 | `asuka/sdk/periodic` | `NSBackgroundActivityScheduler` を使います。タスクはアプリの実行中に動きます（タスクのためにアプリが起動されることはありません）。電源を必要とするタスクは、Mac がバッテリーで動いているあいだ待ちます |
 | `asuka/sdk/screen` | `Lock` と `SetBars` は何もしません。`PreventCapture` はアプリのウィンドウをスクリーンショットと画面収録から除外します。`OnScreenshot` は Spotlight が見つけたスクリーンショットを通知します |
-| `asuka/sdk/transcribe` | デバイス上での認識のみです。アプリのバンドルに利用目的の説明文が必要で、`asuka build` がそれを書き込みます |
+| `asuka/transcribe` | デバイス上での認識のみです。アプリのバンドルに利用目的の説明文が必要で、`asuka build` がそれを書き込みます |
 | `asuka/sdk/sensors` | Mac にはモーションセンサーがありません。`Available` は false で、監視しても何も届かず、`StepsBetween` は `ErrNotAvailable` で失敗します |
 | `ui.Haptic` | トラックパッドのフィードバック（感圧タッチトラックパッド）です。`HapticSelection` では整列（alignment）、それ以外ではレベル変更（level change）のフィードバックになります |
 | `asuka/sdk/widget`、`asuka/sdk/liveactivity`、`asuka/sdk/agerange` | Mac にはありません。`widget.Set` は何もせず、`liveactivity.Start` と `agerange.Request` は `ErrNotAvailable` で失敗します |
@@ -95,12 +94,12 @@ Windows では、各パッケージは Windows 自身のサービス（Media Fou
 | --- | --- |
 | `asuka/sdk/device` | `PickPhotos` と `PickFiles`：ウィンドウの上に開くファイルを開くダイアログで、アプリのキャッシュにコピーを作ります。`Browse` はユーザーのブラウザーでページを開きます。クリップボードの画像は PNG です。`KeepAwake` はディスプレイをオンのままにします。`GetInfo`：`Model` は `"PC"`、`System` は `"Windows"`、`SystemVersion` は `"10.0.<build>"` |
 | `asuka/sdk/secure` | 資格情報マネージャーにある、ユーザーの汎用資格情報です。名前は `<app>/<key>` です（値は 2560 バイトまで） |
-| `asuka/sdk/camera` | Media Foundation のキャプチャエンジンを使います。`Take`：ウィンドウの上にダイアログを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します（Enter と Escape でも操作できます）。`View` は Windows が前面または背面と呼ぶカメラを選び、なければ最初のカメラを使います。`Scan` を指定すると、Asuka 独自のリーダー（`asuka/sdk/scan` の `File` と同じもの）で毎秒 4 フレームからコードを読み取ります。「設定」でカメラのスイッチがオフのときは "not allowed" です |
-| `asuka/sdk/camera/record` | MPEG-4（`.mp4`）の H.264 と AAC です。ミュートされていなければ既定のマイクを使います |
-| `asuka/sdk/audio` | MCI（DirectShow の再生）を使います。URL は先にアプリのキャッシュにダウンロードされます |
-| `asuka/sdk/audio/record` | 既定のマイクを使い、AAC 44.1 kHz で録音します（音声はモノラル、音楽はステレオ）。`Background` は何も変えません |
-| `asuka/sdk/nowplaying` | アプリのウィンドウの SystemMediaTransportControls を使います（ウィンドウのないアプリには専用の隠しウィンドウを用意します）。Windows 10 では音量のポップアップ、Windows 11 ではクイック設定のメディアコントロール、ロック画面、キーボードのメディアキーに表示されます。スキップは早送りと巻き戻しのボタンになります。トグルはありません（再生/一時停止キーは再生か一時停止のどちらかを送ります） |
-| `asuka/sdk/speech` | SAPI の音声のうち、インストールされているもの（「設定」の「時刻と言語」>「音声認識」） |
+| `asuka/camera` | Media Foundation のキャプチャエンジンを使います。`take`：ウィンドウの上にダイアログを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します（Enter と Escape でも操作できます）。`camera.View` は Windows が前面または背面と呼ぶカメラを選び、なければ最初のカメラを使います。`scan` を指定すると、Asuka 独自のリーダー（`asuka/scan` の `file` と同じもの）で毎秒 4 フレームからコードを読み取ります。「設定」でカメラのスイッチがオフのときは "not allowed" です |
+| `asuka/record`（ビデオ） | MPEG-4（`.mp4`）の H.264 と AAC です。ミュートされていなければ既定のマイクを使います |
+| `asuka/audio` | MCI（DirectShow の再生）を使います。URL は先にアプリのキャッシュにダウンロードされます |
+| `asuka/record`（音声） | 既定のマイクを使い、AAC 44.1 kHz で録音します（音声はモノラル、音楽はステレオ）。`background` は何も変えません |
+| `asuka/nowplaying` | アプリのウィンドウの SystemMediaTransportControls を使います（ウィンドウのないアプリには専用の隠しウィンドウを用意します）。Windows 10 では音量のポップアップ、Windows 11 ではクイック設定のメディアコントロール、ロック画面、キーボードのメディアキーに表示されます。スキップは早送りと巻き戻しのボタンになります。トグルはありません（再生/一時停止キーは再生か一時停止のどちらかを送ります） |
+| `asuka/speech` | SAPI の音声のうち、インストールされているもの（「設定」の「時刻と言語」>「音声認識」） |
 | `asuka/sdk/network` | Network List Manager を使います。Wi-Fi、モバイルデータ通信、有線のいずれかです。コストのかかる接続は `Metered`、データ上限に近いか超えている接続は `Constrained` です |
 | `asuka/sdk/location` | WinRT の Geolocator を使います。`PlaceName` は OpenStreetMap の Nominatim に問い合わせます（Windows 自身のジオコーダーには Bing Maps のキーが必要なため）。リクエストは最大で毎秒 1 回で、結果はアプリのキャッシュに保存されます |
 | `asuka/sdk/biometric` | Windows Hello のプロンプトです。`Check` が返す種類はセンサーのものです。Hello は常に PIN の入力も選択肢に出し、キャンセルボタンの名前も Hello 自身が決めます |
@@ -109,17 +108,17 @@ Windows では、各パッケージは Windows 自身のサービス（Media Fou
 | `asuka/sdk/contacts`、`asuka/sdk/calendar` | Windows はパッケージ化されたアプリにしか連絡先とカレンダーを渡しません。`Request` は拒否と答えます。`Add` は vCard かイベントのファイルを、ユーザーの連絡先アプリやカレンダーアプリで開きます（保存されたかどうかは分からないので、`saved` は false です） |
 | `asuka/sdk/photos` | ピクチャフォルダーです（求める権限はありません）。スクリーンショットはその中の Screenshots フォルダーのものです |
 | `asuka/sdk/library` | ユーザーのダウンロード、ビデオ、ミュージック、ピクチャフォルダーの、指定したフォルダーに保存されます |
-| `asuka/sdk/vision` | Windows の OCR（OCR がインストールされている言語のみ。「設定」の「時刻と言語」）と顔検出を使います。コードは `asuka/sdk/scan` と同じ方法で読み取ります |
-| `asuka/sdk/scan` | Windows にはアプリ向けのコードリーダーがありません。そのため Go で書かれた Asuka 独自のリーダーが、QR コード、Data Matrix、EAN-13 と EAN-8、UPC-A と UPC-E、Code 128、Code 39 を読み取ります（Aztec、PDF417、Code 93、Codabar、ITF は読めません） |
-| `asuka/sdk/imageedit` | Windows のコーデックで読み込みます（HEIC と WebP は、それぞれの拡張機能がインストールされている場合）。ビデオのフレームは Media Foundation で取り出します |
-| `asuka/sdk/maps` | Windows にはデスクトップアプリ向けの地図コントロールがありません（Windows 自身のものには Bing Maps のキーが必要です）。そのためホストが OpenStreetMap のタイルを描きます。タイルは 2 枚ずつダウンロードされ、アプリのキャッシュに 1 週間保存されます。地図には「© OpenStreetMap contributors」が表示されます。ドラッグ、ホイール、ピンチ、ダブルクリック、+ と - で操作できます。Satellite と Hybrid は道路地図を表示し（無料の航空写真がないため）、`ShowsUser` は Linux と同じく何も表示しません |
+| `asuka/vision` | Windows の OCR（OCR がインストールされている言語のみ。「設定」の「時刻と言語」）と顔検出を使います。コードは `asuka/scan` と同じ方法で読み取ります |
+| `asuka/scan` | Windows にはアプリ向けのコードリーダーがありません。そのため Go で書かれた Asuka 独自のリーダーが、QR コード、Data Matrix、EAN-13 と EAN-8、UPC-A と UPC-E、Code 128、Code 39 を読み取ります（Aztec、PDF417、Code 93、Codabar、ITF は読めません） |
+| `asuka/imageedit` | Windows のコーデックで読み込みます（HEIC と WebP は、それぞれの拡張機能がインストールされている場合）。ビデオのフレームは Media Foundation で取り出します |
+| `asuka/maps` | Windows にはデスクトップアプリ向けの地図コントロールがありません（Windows 自身のものには Bing Maps のキーが必要です）。そのためホストが OpenStreetMap のタイルを描きます。タイルは 2 枚ずつダウンロードされ、アプリのキャッシュに 1 週間保存されます。地図には「© OpenStreetMap contributors」が表示されます。ドラッグ、ホイール、ピンチ、ダブルクリック、+ と - で操作できます。Satellite と Hybrid は道路地図を表示し（無料の航空写真がないため）、`showsUser` は Linux と同じく何も表示しません |
 | `asuka/sdk/background` | タスクの実行中は PC がスリープしないようにします。通知は出ないので、`Update` は何も変えません |
 | `asuka/sdk/periodic` | アプリの実行中にタイマーで動きます（タスクのためにアプリが起動されることはありません）。電源を必要とするタスクは、PC がバッテリーで動いているあいだ待ちます |
 | `asuka/sdk/screen` | `Lock` と `SetBars` は何もしません。`PreventCapture` はアプリのウィンドウをスクリーンショットと画面録画から除外します。`OnScreenshot` は Screenshots フォルダーに保存されたスクリーンショット（Windows キー + Print Screen、Snipping Tool）を通知します |
 | `asuka/sdk/tracking` | プロンプトは出ません。「設定」で広告 ID がオンなら許可、オフなら拒否です |
 | `asuka/sdk/push`、`asuka/sdk/widget`、`asuka/sdk/review`、`asuka/sdk/integrity` | これらはパッケージ化された（ストアの）アプリか、Apple や Google のものです。`push.Register` は失敗し、`widget.Set` は何もせず、`review.Request` は何も表示せず、`integrity.Supported` は false です |
 | `asuka/sdk/liveactivity` | スマートフォンの機能です。`Enabled` は false で、`Start` は `ErrNotAvailable` で失敗します |
-| `asuka/sdk/appleauth`、`asuka/sdk/agerange`、`asuka/sdk/icloud`、`asuka/sdk/transcribe`、`asuka/sdk/sensors` | Windows にはありません。その機能を持たないデバイスと同じく、利用できません |
+| `asuka/sdk/appleauth`、`asuka/sdk/agerange`、`asuka/sdk/icloud`、`asuka/transcribe`、`asuka/sdk/sensors` | Windows にはありません。その機能を持たないデバイスと同じく、利用できません |
 | `ui.Haptic` | PC には触覚フィードバックがないので、何もしません |
 | `asuka/sdk/splash` | Windows アプリには起動画面がないので、`Hold` と `Hide` は何もしません |
 | `ui.OnShare`、`app.ShareSheet`、ショートカット | iOS と Android だけです |
@@ -136,23 +135,23 @@ Linux のホストは、ポータルがあればポータルを通じて、ほ�
 | `asuka/sdk/secure` | キーリング（libsecret：GNOME Keyring、KWallet、KeePassXC）に、キーごとに 1 つ、アプリ名のラベルを付けた項目を作ります。libsecret やキーリングがなければ、呼び出しはその旨を示して失敗します |
 | `asuka/sdk/network` | GNetworkMonitor（サンドボックス内ではポータルのもの）を使います。Wi-Fi、Ethernet、モバイルデータ通信の区別は NetworkManager から取得します。constrained になることはありません |
 | `asuka/sdk/location` | 位置情報ポータル（GeoClue のもので、ユーザーに確認します）、なければ GeoClue 自体を使います。`PlaceName` は geocode-glib がインストールされていれば使えます |
-| `asuka/sdk/speech` | Speech Dispatcher（動いていなければ起動します）の音声、速さ、高さ、音量を使います |
-| `asuka/sdk/audio`、`asuka/sdk/audio/record` | GStreamer を使います。録音には AAC エンコーダー（FDK、libav など）を使い、マイクは既定のソースです |
-| `asuka/sdk/nowplaying` | 何かを表示しているあいだ、セッションバスに `org.mpris.MediaPlayer2.<app>.instance<pid>` という名前の MPRIS プレイヤーを置きます。GNOME や KDE のメディアコントロールとロック画面、メディアキー、`playerctl` から操作できます。MPRIS の `Seek` は、アプリがスキップを扱う場合はスキップ、そうでなければシークになります。アートワークは `file://` か http(s) の URL です |
+| `asuka/speech` | Speech Dispatcher（動いていなければ起動します）の音声、速さ、高さ、音量を使います |
+| `asuka/audio`、`asuka/record` | GStreamer を使います。録音には AAC エンコーダー（FDK、libav など）を使い、マイクは既定のソースです |
+| `asuka/nowplaying` | 何かを表示しているあいだ、セッションバスに `org.mpris.MediaPlayer2.<app>.instance<pid>` という名前の MPRIS プレイヤーを置きます。GNOME や KDE のメディアコントロールとロック画面、メディアキー、`playerctl` から操作できます。MPRIS の `Seek` は、アプリがスキップを扱う場合はスキップ、そうでなければシークになります。アートワークは `file://` か http(s) の URL です |
 | `asuka/sdk/library` | ユーザーのフォルダー（XDG のピクチャ、ビデオ、ミュージック、ダウンロード）の、指定したフォルダーに保存されます |
 | `ui.ShareFiles` | 共有シートはありません。ファイルはクリップボードにコピーされ、トーストが表示されます |
-| `asuka/sdk/camera`、`asuka/sdk/camera/record` | カメラポータル（ユーザーへの確認は一度だけ。PipeWire のカメラで、`gstreamer1.0-pipewire` が必要）、なければ最初の Video4Linux カメラを、GStreamer を通じて使います。`Take`：ウィンドウの上にダイアログを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します。`View`：左右反転したプレビューで、枠いっぱいに表示します。前面と背面は同じカメラです（コンピューターのカメラはユーザーのほうを向いているため）。ビデオは MPEG-4（x264 か OpenH264 の H.264 と AAC）、それができなければ WebM です。コードの読み取りには GStreamer の `zbar` エレメントが必要です。カメラがなければ `ErrNoCamera`、拒否されたら "not allowed" です |
-| `asuka/sdk/scan`、`asuka/sdk/vision` | コードは ZBar（`libzbar0`）が読み取ります。Aztec と Data Matrix は読めません。テキストは Tesseract（`libtesseract5` と各言語のデータ）が読み取ります。顔を検出するものはないので、`Faces` は空です。ZBar がなければ `scan.File` は "not available" で失敗し、`vision.Analyze` はインストールされていないものを結果から省きます |
-| `asuka/sdk/imageedit` | GdkPixbuf のローダーでデコードし（HEIF と WebP は、それぞれのローダーがインストールされている場合）、向きを正しく直します。各操作は Go で行います。ビデオのフレームは GStreamer で取り出します |
+| `asuka/camera`、`asuka/record` | カメラポータル（ユーザーへの確認は一度だけ。PipeWire のカメラで、`gstreamer1.0-pipewire` が必要）、なければ最初の Video4Linux カメラを、GStreamer を通じて使います。`take`：ウィンドウの上にダイアログを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します。`camera.View`：左右反転したプレビューで、枠いっぱいに表示します。前面と背面は同じカメラです（コンピューターのカメラはユーザーのほうを向いているため）。ビデオは MPEG-4（x264 か OpenH264 の H.264 と AAC）、それができなければ WebM です。コードの読み取りには GStreamer の `zbar` エレメントが必要です。カメラがなければ `ErrNoCamera`、拒否されたら "not allowed" です |
+| `asuka/scan`、`asuka/vision` | コードは ZBar（`libzbar0`）が読み取ります。Aztec と Data Matrix は読めません。テキストは Tesseract（`libtesseract5` と各言語のデータ）が読み取ります。顔を検出するものはないので、`faces` は空です。ZBar がなければ `scan.file` は "not available" で失敗し、`vision.analyze` はインストールされていないものを結果から省きます |
+| `asuka/imageedit` | GdkPixbuf のローダーでデコードし（HEIF と WebP は、それぞれのローダーがインストールされている場合）、向きを正しく直します。各操作は Go で行います。ビデオのフレームは GStreamer で取り出します |
 | `asuka/sdk/webauth` | ウィンドウの上に WebKitGTK の Web ビューを入れたダイアログを開きます（`Ephemeral` では専用のセッション）。閉じるとキャンセルになります |
 | `asuka/sdk/js` | 一度も表示されない WebKitGTK の Web ビュー |
-| `asuka/sdk/maps` | libshumate（`libshumate-1.0-1`）で OpenStreetMap のタイルの地図を表示します。Satellite と Hybrid は道路地図を表示します。ユーザーの位置を示すレイヤーはありません。libshumate がなければ、ビューにその旨が表示され、`OnError` が呼ばれます |
+| `asuka/maps` | libshumate（`libshumate-1.0-1`）で OpenStreetMap のタイルの地図を表示します。Satellite と Hybrid は道路地図を表示します。ユーザーの位置を示すレイヤーはありません。libshumate がなければ、ビューにその旨が表示され、`error` が呼ばれます |
 | `asuka/sdk/background` | タスクの実行中はシステムがサスペンドしないようにします。通知は出ず、`Update` は何も変えません |
 | `asuka/sdk/periodic` | タスクはアプリの実行中にタイマーで動きます（タスクのためにアプリが起動されることはありません）。電源を必要とするタスクはバッテリーで動いているあいだ、ネットワークを必要とするタスクはオフラインのあいだ待ちます |
 | `asuka/sdk/screen` | `Lock`、`SetBars`、`PreventCapture` は何もしません。`OnScreenshot` は Pictures/Screenshots に新しく加わった画像（GNOME や KDE のもの）を通知します |
 | `asuka/sdk/sensors` | iio-sensor-proxy（2-in-1 PC、タブレット）を使います。照度センサーをルクス単位で、加速度センサーの向きを、上を向いている軸に沿った 1 g として、向きが変わるたびに伝えます。ほかのセンサーはないので、`Available` は false で、`StepsBetween` は `ErrNotAvailable` で失敗します |
 | `asuka/sdk/contacts`、`asuka/sdk/calendar` | Evolution Data Server のアドレス帳とカレンダー（GNOME Contacts、GNOME Calendar、オンラインアカウントのもの）を使います。アドレス帳やカレンダーがあればアクセスは `Full` です。`Pick` は検索欄付きの連絡先のダイアログです。`Add` は確認してから、既定のアドレス帳またはイベントのカレンダーに保存します。Evolution Data Server がない場合、連絡先のアクセスは `Denied`、カレンダーのアクセスは `WriteOnly` です。`Add` は vCard か iCalendar のファイルをユーザーの連絡先アプリやカレンダーアプリで開き（`saved` は false）、`contacts.Pick` は失敗します |
-| `asuka/sdk/photos` のライブラリ、`asuka/sdk/appleauth`、`asuka/sdk/transcribe`、`asuka/sdk/widget`、`asuka/sdk/liveactivity` | Linux にはありません。ライブラリのアクセスは `Denied` です。`appleauth.Available` は false で、そのボタンは何も表示しません。`transcribe` と `liveactivity.Start` は `ErrNotAvailable` で失敗します。`widget.Set` は何もしません。`asuka/sdk/splash` には保持しておく起動画面がありません |
+| `asuka/sdk/photos` のライブラリ、`asuka/sdk/appleauth`、`asuka/transcribe`、`asuka/sdk/widget`、`asuka/sdk/liveactivity` | Linux にはありません。ライブラリのアクセスは `Denied` です。`appleauth.Available` は false で、そのボタンは何も表示しません。`transcribe` と `liveactivity.Start` は `ErrNotAvailable` で失敗します。`widget.Set` は何もしません。`asuka/sdk/splash` には保持しておく起動画面がありません |
 | `asuka/sdk/icloud` | iCloud はありません。`ErrNotAvailable` で失敗します |
 | `asuka/sdk/biometric`、`asuka/sdk/integrity`、`asuka/sdk/agerange`、`asuka/sdk/push` | Linux にはありません。利用不可、非対応と答えます。`asuka/sdk/review` は何もせず、`asuka/sdk/tracking` は許可と答えます |
 | `asuka/sdk/crash` | Go のクラッシュ出力を使います。ネイティブコードでのクラッシュ（GTK のコードでのシグナル、GLib の abort）もここに含まれ、`Native` として報告されます。システム自身の記録（systemd-coredump、apport）は読みません |
@@ -167,17 +166,17 @@ Linux のホストは、ポータルがあればポータルを通じて、ほ�
 | --- | --- |
 | `asuka/sdk/device` | `PickPhotos` と `PickFiles`：ブラウザーのファイル選択で、キャッシュにコピーを作ります。`Browse`：新しいタブで開きます。クリップボード：アプリ自身がコピーしたものと、ユーザーがページに読み取りを許可した場合はほかのアプリのものです。`KeepAwake`：Screen Wake Lock です。`GetInfo` はユーザーエージェントから取得します（Chromium のクライアントヒントがあれば、システムのバージョンと Android スマートフォンの機種も分かります） |
 | `asuka/sdk/secure` | 値を AES-GCM で暗号化して IndexedDB に保存します。鍵はブラウザーが外に出さないものです。キーチェーンではありません（[Web](web.md) を参照） |
-| `asuka/sdk/camera`、`asuka/sdk/camera/record` | `Take` はスマートフォンのカメラを開くか、ライブのカメラ映像とシャッターのあるダイアログを開きます。`View` は `<video>` に映したカメラで、`Capture`、録画が使えます。ブラウザーに `BarcodeDetector` があればコードも読み取れます |
-| `asuka/sdk/scan`、`asuka/sdk/vision` | `BarcodeDetector` がコードを読み取ります。顔とテキストは、ブラウザーが対応している場合だけです |
-| `asuka/sdk/imageedit` | canvas を使い、JPEG か PNG を出力します。リモートの画像には CORS が必要です |
+| `asuka/camera`、`asuka/record` | `take` はスマートフォンのカメラを開くか、ライブのカメラ映像とシャッターのあるダイアログを開きます。`camera.View` は `<video>` に映したカメラで、`capture`、録画が使えます。ブラウザーに `BarcodeDetector` があればコードも読み取れます |
+| `asuka/scan`、`asuka/vision` | `BarcodeDetector` がコードを読み取ります。顔とテキストは、ブラウザーが対応している場合だけです |
+| `asuka/imageedit` | canvas を使い、JPEG か PNG を出力します。リモートの画像には CORS が必要です |
 | `asuka/sdk/photos` | ページはライブラリを読めないので、アクセスは `Denied` です（写真の選択には `device.PickPhotos` を使います） |
 | `asuka/sdk/library` | `Save` はファイルをダウンロードします |
 | `asuka/sdk/location` | Geolocation API を使います。Web には `PlaceName` がありません（ブラウザーにはジオコーダーがないため） |
 | `asuka/sdk/network` | オンラインかどうかは `navigator.onLine` から取得します。Wi-Fi、モバイルデータ通信、Ethernet の区別はブラウザーが教える場合（Android の Chrome）だけです。モバイルデータ通信は metered、データセーバーは constrained になります |
 | `asuka/sdk/notify`、`asuka/sdk/push` | Notification API と Web Push を、アプリの Service Worker を通じて使います（`push.Register` の `Service` は `"webpush"`）。後で届く通知は、アプリのページが一つも開いていないあいだは表示できません |
-| `asuka/sdk/audio`、`asuka/sdk/audio/record` | プレイヤーごとに audio 要素を使います（ブラウザーの自動再生のルールが適用されるので、タップから再生してください）。録音は `MediaRecorder` で、ブラウザーが対応していれば MPEG-4 の AAC、そうでなければ WebM の Opus です |
-| `asuka/sdk/nowplaying` | Media Session API（`navigator.mediaSession`）を使います。ページが音を鳴らしているあいだ、ブラウザーのメディアコントロール、メディアキー、スマートフォンのロック画面に表示されます。トグルはありません（キーは再生か一時停止のどちらかを送ります）。ブラウザーが対応していない操作（一部のブラウザーでは停止）は省かれます |
-| `asuka/sdk/speech` | `speechSynthesis` と、ブラウザーの音声を使います |
+| `asuka/audio`、`asuka/record` | プレイヤーごとに audio 要素を使います（ブラウザーの自動再生のルールが適用されるので、タップから再生してください）。録音は `MediaRecorder` で、ブラウザーが対応していれば MPEG-4 の AAC、そうでなければ WebM の Opus です |
+| `asuka/nowplaying` | Media Session API（`navigator.mediaSession`）を使います。ページが音を鳴らしているあいだ、ブラウザーのメディアコントロール、メディアキー、スマートフォンのロック画面に表示されます。トグルはありません（キーは再生か一時停止のどちらかを送ります）。ブラウザーが対応していない操作（一部のブラウザーでは停止）は省かれます |
+| `asuka/speech` | `speechSynthesis` と、ブラウザーの音声を使います |
 | `asuka/sdk/sensors` | Generic Sensor API（Chrome）か、デバイスのモーションと向きのイベント（Safari ではタップ時に許可を求めます）を、Android の軸と単位で伝えます。気圧計と歩数計はありません |
 | `asuka/sdk/biometric` | WebAuthn を通じてプラットフォームの認証器（Touch ID、Face ID、Windows Hello、Android の画面ロック）を使います。最初の `Authenticate` でそのサイトのパスキーを作ります。プロンプトはブラウザーのものなので、`Reason` と `Cancel` は表示されません |
 | `asuka/sdk/webauth` | ポップアップを開き、アプリと同じオリジンのページに戻ってきたら完了です（カスタムスキームではページを開けないため） |
@@ -187,164 +186,118 @@ Linux のホストは、ポータルがあればポータルを通じて、ほ�
 | `asuka/sdk/background` | ページは開いているあいだ動き続けます。タスクを作っても何も変わらず、通知も出ません |
 | `asuka/sdk/tracking` | プロンプトは出ません。ブラウザーが Global Privacy Control か Do Not Track を送っていれば `Denied`、そうでなければ `Allowed` です |
 | `ui.Haptic` | ブラウザーが対応していれば（Android の Chrome）`navigator.vibrate` を使います |
-| `asuka/sdk/review`、`asuka/sdk/integrity`、`asuka/sdk/agerange`、`asuka/sdk/appleauth`、`asuka/sdk/icloud`、`asuka/sdk/periodic`、`asuka/sdk/widget`、`asuka/sdk/liveactivity`、`asuka/sdk/transcribe` | Web にはありません。その旨を示すエラーか、パッケージの `ErrNotAvailable` を返します |
-| `asuka/sdk/maps` | Windows と同じく、ホストが OpenStreetMap のタイルを描きます。`ShowsUser` は、ページに位置情報の許可があれば表示されます |
+| `asuka/sdk/review`、`asuka/sdk/integrity`、`asuka/sdk/agerange`、`asuka/sdk/appleauth`、`asuka/sdk/icloud`、`asuka/sdk/periodic`、`asuka/sdk/widget`、`asuka/sdk/liveactivity`、`asuka/transcribe` | Web にはありません。その旨を示すエラーか、パッケージの `ErrNotAvailable` を返します |
+| `asuka/maps` | Windows と同じく、ホストが OpenStreetMap のタイルを描きます。`showsUser` は、ページに位置情報の許可があれば表示されます |
 | `asuka/sdk/crash` | Go のクラッシュ（ホストがランタイムの出力を保存します）と、捕捉されなかった JavaScript のエラーを、致命的でない `Exception` のレポートとして扱います |
 | `asuka/sdk/splash` | `Hold` と `Hide` は何もしません |
 | `ui.OnShare`、`app.ShareSheet`、ショートカット | iOS と Android だけです |
 
-## カメラ：asuka/sdk/camera
+## カメラ：asuka/camera
 
-`camera.Take` はシステムのカメラ（iOS のカメラ画面、Android のカメラアプリ）を表示し、撮った写真のファイル（JPEG）を引数に `done` を呼びます。ユーザーがキャンセルした場合は `""` が渡ります。カメラのないデバイス（iOS シミュレーター）では、エラーは `camera.ErrNoCamera` です。デスクトップにはカメラ画面がないので、`Take` はウィンドウの上に Asuka 独自のダイアログを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します。ブラウザーではスマートフォンのカメラか、同様のダイアログが開きます。
+`camera.View` はカメラに映っているものをライブで表示します。iOS と Mac では AVFoundation のプレビュー、Android では CameraX、ブラウザーでは `getUserMedia`、Windows では Media Foundation、Linux では GStreamer です。`camera.capture()` は画面上のこのビューから写真を撮ります。`camera.take()` は代わりにシステムのカメラ画面を開き（iOS のカメラ画面、Android のカメラアプリ。デスクトップではプレビュー付きのシート、ブラウザーではファイル選択のカメラ）、写真のファイルを返します。ユーザーがキャンセルしたときは `none` です。写真はアプリのキャッシュにある JPEG なので、残したいときは移動してください。
 
-```go
-ui.Button(ui.ButtonProps{Title: ui.Val("Take a photo"), OnPress: func() {
-	camera.Take(func(path string, err error) {
-		switch {
-		case errors.Is(err, camera.ErrNoCamera):
-			status.Set("This device has no camera")
-		case err != nil:
-			status.Set(err.Error())
-		case path != "":
-			photo.Set(path) // ui.Image で表示する
-		}
-	})
-}})
+```asuka
+import asuka/camera
+
+component Shutter {
+  state facing: camera.Facing = .back
+  state last = ""
+  state status = ""
+
+  Column {
+    camera.View {
+      facing: facing
+      grow: 1
+      on error(m) { status = m }
+    }
+    Row {
+      gap: 12
+      Button("Flip") { on press { facing = if facing == .back { .front } else { .back } } }
+      Button("Take") { on press { last = try await camera.capture() } }
+    }
+    Text(status)
+  }
+}
 ```
 
-アプリ独自の撮影画面を作るときは、`camera.View` がカメラに映っているものをライブで、枠いっぱいに表示します（iOS と Mac では AVFoundation のプレビュー、Android では CameraX の `PreviewView`、Windows では Media Foundation のもの、Linux では GStreamer のもの、ブラウザーでは `<video>`）。そして `camera.Capture` でそこから写真を撮ります。
+ビューは最初に表示されたときにカメラの許可を求めます。拒否されたときや、カメラのないデバイス（iOS シミュレーター）では `error` を報告し、`capture` は `CameraError.notAllowed` か `.noCamera` を投げます（画面に `camera.View` がないときは `.noView`）。`asuka/camera` を import したアプリには、iOS ではカメラとマイクの利用目的の文言が（asuka.toml の `[ios.usage]` で自分の文言にできます）、Android では `CAMERA` と `RECORD_AUDIO` の権限が付きます。
 
-```go
-camera.View(camera.ViewProps{
-	Mode:    camera.Video,
-	Facing:  camera.Back,
-	Style:   ui.Style{Grow: 1},
-	OnError: func(message string) { status.Set(message) },
-}),
-ui.Button(ui.ButtonProps{Title: ui.Val("Photo"), OnPress: func() {
-	camera.Capture(func(path string, err error) {
-		if err != nil {
-			status.Set(err.Error())
-			return
-		}
-		status.Set("Saved " + path)
-	})
-}}),
+## ビデオの録画：asuka/record
+
+ビデオモードの `camera.View` は録画できます。`record.start()` はビューに映っているものを、`mute` を指定しない限りマイクの音と一緒に、`record.stop()` を呼ぶまで（または `maxDuration` まで）録画し、ファイル（アプリのキャッシュにある MPEG-4 の動画）を返します。`camera.record` と `camera.stopRecording` も同じものです。
+
+```asuka
+import asuka/camera
+import asuka/record
+
+component Clip {
+  state recording = false
+  state file = ""
+
+  Column {
+    camera.View { mode: .video; grow: 1 }
+    Button(if recording { "Stop" } else { "Record" }) {
+      on press {
+        if recording {
+          record.stop()
+        } else {
+          recording = true
+          defer { recording = false }
+          file = try await record.start(maxDuration: 30s)
+        }
+      }
+    }
+  }
+}
 ```
 
-`ViewProps`：
+iOS と Mac では AVCaptureMovieFileOutput、Android では CameraX の `VideoCapture`、ブラウザーでは `MediaRecorder`（MPEG-4 を書けないときは WebM）、Windows では Media Foundation の sink writer、Linux では GStreamer を使います。
 
-- `Facing`：`camera.Back`（既定）か `camera.Front`。
-- `Mode`：`camera.Photo`（既定）か、`asuka/sdk/camera/record` で録画するための `camera.Video`。`camera.Video` でも写真は撮れます。
-- `Style`：ビューの枠。
-- `OnError`：カメラを表示できないときに呼ばれます。ユーザーが拒否した場合は `"not allowed"`、カメラがない場合は `"no camera"` です。
-- `Scan`：映っているものからコードを読み取ります。`asuka/sdk/scan` を参照してください。
+## バーコードと QR コード：asuka/scan
 
-ビューは初めて表示されたときにカメラの許可を求め、ビューが画面に出ているあいだカメラはオンになります。表示するビューは一度に一つにしてください。`Capture` と録画は画面に出ているビューを使い、ビューがなければ `"no camera view"` で失敗します。
+`scan` をオンにした `camera.View` は、映ったコードをライブで読み取り、一つごとに `code` で報告します（映り続けている間は一度だけ）。`codes` で探す種類を絞れます。指定しなければすべての種類です。種類の名前は `"qr"`、`"aztec"`、`"datamatrix"`、`"pdf417"`、`"ean13"`、`"ean8"`、`"upca"`、`"upce"`、`"code128"`、`"code39"`、`"code93"`、`"codabar"`、`"itf"` です。
 
-`Take` と `Capture` のファイルはアプリのキャッシュに置かれ、システムに消されることがあります。残しておきたいファイルは `store.Dir()` に移すか、[`asuka/sdk/library`](#ライブラリへの保存-asukasdklibrary) で写真ライブラリに保存してください。
+`scan.file(path)` は代わりに画像ファイル（撮った写真や選んだ写真）の中のコードを読み取ります。iOS と Mac では Vision、Android では ML Kit（モデルをアプリに含めるので約 2 MB 増えますが、Google Play 開発者サービスがなくても動きます）、ブラウザーでは `BarcodeDetector`（あれば）、Windows では Go のデコーダー、Linux では ZBar の GStreamer エレメントを使います。
 
-**Android**：`asuka/sdk/camera` はカメラの権限を宣言する（ビューに必要なため）ので、Android はカメラアプリを使うときにもその権限を要求します。そのため `Take` は先に権限を求め、ユーザーが拒否すると `"not allowed"` で失敗します。
+```asuka
+import asuka/camera
+import asuka/scan
 
-## ビデオの録画：asuka/sdk/camera/record
+component Scanner {
+  state found = ""
 
-`asuka/sdk/camera/record` は、画面に出ている `Mode` が `camera.Video` の `camera.View` からビデオを録画します。`record.Start` は `record.Stop` が呼ばれるまで（`MaxDuration` を設定していればその時間まで）録画し、ビデオのファイルを引数に `done` を呼びます。ファイルはアプリのキャッシュに置かれ、形式は iOS と Mac では `.mov`、Android と Windows では `.mp4`、Linux ではエンコーダーに応じて `.mp4`、それができなければ `.webm` です。
+  Column {
+    camera.View {
+      scan: true
+      codes: ["qr", "ean13"]
+      grow: 1
+      on code(c) { found = "{c.kind}: {c.value}" }
+    }
+    Text(found)
+  }
+}
 
-```go
-ui.Button(ui.ButtonProps{
-	Title: signal.Func(func() string {
-		if recording.Get() {
-			return "Stop"
-		}
-		return "Record"
-	}),
-	OnPress: func() {
-		if recording.Peek() {
-			record.Stop()
-			return
-		}
-		recording.Set(true)
-		record.Start(record.Options{MaxDuration: time.Minute}, func(path string, err error) {
-			recording.Set(false)
-			if err != nil {
-				status.Set(err.Error())
-				return
-			}
-			status.Set("Recorded " + path) // ui.Video で再生する
-		})
-	},
-})
+async fn read(photo: string) throws -> [string] {
+  var out: [string] = []
+  for c in try await scan.file(photo, kinds: ["qr"]) { out.push(c.value) }
+  return out
+}
 ```
 
-音声も一緒に録音し、初回にマイクの許可を求めます。ユーザーが拒否すると、ビデオは無音になります。`record.Options{Mute: true}` を指定すると、許可を求めずに音声なしで録画します。録画は一度に一つだけです。
+## 画像の内容の認識：asuka/vision
 
-マイクの権限と利用目的の説明文は、`asuka/sdk/camera` ではなくこのパッケージに付いてきます。写真を撮るだけのアプリには加わりません。
+`vision.analyze(path)` は画像に何が写っているかをデバイス上で見つけます。行ごと・単語ごとのテキスト、顔、バーコードが、それぞれの `Box`（画像の左上を原点に、画像の幅と高さに対する割合で表した位置。画像は正しい向きに直してあります。ビューのサイズを掛ければポイントになります）付きで返ります。必要なものだけを頼み（`text:`、`faces:`、`codes:`）、テキストの言語がわかっているときは指定してください（`languages: ["ja"]`）。データはデバイスの外に出ません。
 
-## バーコードと QR コード：asuka/sdk/scan
+```asuka
+import asuka/vision
 
-`asuka/sdk/scan` は、`camera.View` に映っているものからライブで、または画像ファイルから、バーコードと QR コードを読み取ります。iOS と Mac では AVFoundation と Vision、Android では ML Kit（`asuka/sdk/scan` をインポートしたアプリにだけ組み込まれます）、Windows では Go で書かれた Asuka 独自のリーダー、Linux では ZBar、ブラウザーでは `BarcodeDetector` を使います。すべてのリーダーがすべての種類に対応しているわけではありません。[Windows の場合](#windows-の場合)と [Linux の場合](#linux-の場合)を参照してください。
-
-`scan.Codes` はビューの `Scan` を作ります。指定した種類（指定しなければすべての種類）を読み取り、コードが視界に入るとメインスレッドで関数を呼びます。コードが映り続けているあいだは一度だけで、1 秒間視界から外れたあとにまた映ると、もう一度呼びます。
-
-```go
-camera.View(camera.ViewProps{
-	Style: ui.Style{Grow: 1},
-	Scan: scan.Codes(func(c scan.Code) {
-		found.Set(fmt.Sprintf("%s: %s", c.Kind, c.Value))
-		ui.Haptic(ui.HapticSuccess)
-	}, scan.QR, scan.EAN13),
-})
+async fn words(photo: string) throws -> [string] {
+  let r = try await vision.analyze(photo, faces: false, codes: false)
+  return r.lines.map(l => l.text)
+}
 ```
 
-`scan.File` は、撮影した写真や選んだ写真などの画像からコードを読み取り、それらを引数に `done` を呼びます（コードがなければ空です）。
-
-```go
-scan.File(path, func(codes []scan.Code, err error) {
-	switch {
-	case err != nil:
-		found.Set(err.Error())
-	case len(codes) == 0:
-		found.Set("No code in it")
-	default:
-		found.Set(codes[0].Value)
-	}
-}, scan.QR)
-```
-
-`scan.Code` は、種類を表す `Kind` と、コードが保持するテキストである `Value` からなります。種類は `QR`、`Aztec`、`DataMatrix`、`PDF417`、`EAN13`、`EAN8`、`UPCA`、`UPCE`、`Code128`、`Code39`、`Code93`、`Codabar`、`ITF` です。
-
-**iOS** は UPC-A を先頭に 0 の付いた EAN-13 として読み取ります。`UPCA` を指定した場合、Asuka はそれを UPC-A に戻して返します。
-
-## 画像の内容の認識：asuka/sdk/vision
-
-`vision.Analyze(path, options)` は、画像の中のテキスト、顔、コードと、それぞれの位置を見つけます。処理はデバイス上で行われます。iOS と Mac では Apple の Vision、Android では ML Kit の同梱モデル（`asuka/sdk/vision` をインポートしたアプリにだけ組み込まれます）、Windows では Windows の OCR と顔検出、Linux では Tesseract（顔は検出できません）、ブラウザーでは Shape Detection API が対応しているものを使います。メインスレッド以外から呼んでください。
-
-```go
-go func() {
-	r, err := vision.Analyze(photo, vision.Options{Languages: []string{"zh-Hans", "en-US"}})
-	if err != nil {
-		return
-	}
-	ui.Post(func() {
-		for _, l := range r.Lines {
-			fmt.Println(l.Text, l.Box)
-			for _, w := range l.Words {
-				fmt.Println(" ", w.Text, w.Box, w.Start, w.End)
-			}
-		}
-		fmt.Println(len(r.Faces), "faces,", len(r.Codes), "codes")
-	})
-}()
-```
-
-- `Box` は、画像を正しい向きにしたときの左上を起点に、画像に対する割合で表します。そのため、画像に重ねたビューでも `asuka/sdk/imageedit` のピクセルでも、どの縮尺でも同じ値で使えます。
-- `Line` は `Text`、`Box`、`Words` を持ちます。`Word` は、プラットフォームの単語分割が見つけた単語（中国語と日本語では辞書に基づく分割）か、句読点一つです。`Start` と `End` は行のテキストにおける単語の位置を、rune 単位で表します。
-- `Code` は `Kind`（`asuka/sdk/scan` と同じ名前）、`Value`、`Box` を持ちます。
-- `Options` で不要なもの（`NoText`、`NoFaces`、`NoCodes`）をオフにできます。`Languages` はテキストの言語を可能性の高い順に並べたもので、iOS だけで使われます。Vision がうまく読めるのは先頭の言語が属する系統の文字だけなので、中国語が含まれうる場合は中国語を先頭にしてください。中国語のモデルはラテン文字も読めます。Android は常に中国語とラテン文字を読み取ります。
-
-**iOS** は読み取ったものを一つのまとまりとして枠で囲みます。中国語の行で枠を共有する単語は、その枠を各単語の幅で分け合うので、そうした単語の枠は推定値です。Vision が返すバーコードの枠は、読み取りに使った線になることがあります。Asuka はそれをバー全体まで広げます。**Android** では、単語の枠は各文字（symbol）の枠から求めます。
-
-OCR は渡された画像を独自のサイズに縮小するので、非常に縦長のスクリーンショットでは小さな文字が読めなくなります。`imageedit.Crop` で切り分けて、それぞれを解析してください。
+iOS と Mac では Vision フレームワーク、Android では ML Kit と同梱のモデル（約 30 MB）、ブラウザーでは Shape Detection API（あれば）、Windows では OS の OCR、Linux では Tesseract（インストールされていれば）と ZBar を使います。コードの値を読むのは `asuka/scan`、コードがどこにあるかを知るのはこのパッケージです。
 
 ## 写真ライブラリ：asuka/sdk/photos
 
@@ -788,78 +741,62 @@ notify.SetChannels(
 
 **macOS** ではアプリのバンドルが必要です。`asuka dev` と `asuka build` はバンドルからアプリを実行します。単体で実行した実行ファイル（`go run`）には bundle ID がないので、呼び出しはその旨を示すエラーで失敗します。**Windows** はトーストを、すぐに、または予約して表示します。画像も表示でき、カテゴリーのアクションはボタン、返信はテキストボックスになります。アプリは初回に自分自身を登録します（AppUserModelID、つまり asuka.toml の `id` を持つスタートメニューのショートカットと、COM のアクティベーター。どちらもユーザーのレジストリに、アプリの実行ファイルを指して登録します）。これにより、タップやボタンの操作がアプリに届き、アプリが動いていなければ Windows がアプリを起動します。バックグラウンドのアクションでは、アプリは見えないまま動き、`OnAction` が終わると終了します。バッジは、アプリのタスクバーボタンに描かれる数字です（パッケージ化されたアプリでは、システムのバッジ）。Windows は、予約したトーストを `Present` の答えにかかわらず表示します。**Linux** は、アプリにデスクトップファイルがある（またはサンドボックスで動いている）場合は GNotification として通知を送り、そうでなければデスクトップの通知サーバーに直接送ります（GNOME Shell は、デスクトップファイルのないアプリの通知を受け付けません）。タップやボタンの操作は、アプリの実行中にアプリに届きます。後で届く通知は systemd のユーザータイマー（`systemd-run --user`）になります。タイマーはアプリの実行ファイルをウィンドウなしで起動して通知を表示し、アプリが動いていればアプリに処理を渡し、タップされればアプリを起動します。systemd がない場合（Flatpak、`asuka dev`）は、アプリの実行中にしか表示されません。**ブラウザー**は、アプリの Service Worker を通じて通知を表示し、`asuka/sdk/push` には Web Push を使います。詳しくは [Web](web.md) を参照してください。
 
-## サウンド: asuka/sdk/audio
+## サウンド: asuka/audio
 
-`asuka/sdk/audio` は、プラットフォームのプレイヤーで効果音や音楽を再生します。iOS と Mac では AVPlayer、Android では Media3 の ExoPlayer、Windows では MCI、Linux では GStreamer の playbin、ブラウザーでは audio 要素を使います（ブラウザーでは、ユーザーがページ内をタップかクリックするまで再生されません）。音源には、アプリの `assets/` にあるファイル、アプリが書き出したファイル、http(s) の URL（ファイルでもストリームでもかまいません）を指定できます。
+`audio.play(source)` はサウンドを一度再生します。ソースはアプリの assets にあるファイル、ファイルのパス、http(s) の URL のどれかです。`audio.Player(source)` は一つのサウンドを持つストアで、作った時点で再生できます。`play`、`pause`、`seek(seconds:)`、`setVolume`、`setRate`（音程を保つので音声向き）、`setLoop`、そして再生位置を表す `status()`（`position`、`duration`、`playing`、`ended`）があります。作ったコンポーネントがなくなるとき、または `release()` を呼んだときに、停止してサウンドを解放します。
 
-`audio.Play(source)` は、音を最初から一度だけ再生し、終わったら解放します。チャイムやクリック音に向いています。それ以上の操作が必要なら、`audio.Load` で `*audio.Player` を作ります。
+```asuka
+import asuka/audio
 
-```go
-func Sounds() ui.Node {
-	music := audio.Load("music/theme.m4a")
-	music.SetLoop(true)
-	music.SetVolume(0.5)
-	signal.OnCleanup(music.Release)
-	return ui.Column(nil,
-		ui.Button(ui.ButtonProps{Title: ui.Val("Ding"), OnPress: func() { audio.Play("sounds/ding.wav") }}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Play"), OnPress: music.Play}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Pause"), OnPress: music.Pause}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Restart"), OnPress: func() { music.Seek(0); music.Play() }}),
-	)
+component Episode(url: string) {
+  state player = audio.Player(url)
+  state status = audio.Status()
+
+  task {
+    while true {
+      status = await player.status()
+      await sleep(250ms)
+    }
+  }
+
+  Column {
+    Text("{status.position.fixed(0)} / {status.duration.fixed(0)} s")
+    Button(if status.playing { "Pause" } else { "Play" }) {
+      on press { if status.playing { player.pause() } else { player.play() } }
+    }
+    Button("Ding") { on press { audio.play("ding.wav") } }
+  }
 }
 ```
 
-`Player` のメソッドは次のとおりで、どれもメインスレッドで呼びます。`Play`（現在の位置から再生します。最後まで再生し終えたあとは最初から）、`Pause`、`Seek(seconds)`、`SetVolume`（0 から 1 で、既定は 1）、`SetRate`（0.25 から 4 で、音程は変わりません）、`SetLoop`、`Status(done)`（`Position`、`Duration`、`Playing`、`Ended` を返します。再生の進み具合を追うには、1 秒に数回読みます）、そして `Release` です。`Release` は再生を止め、プレイヤーが確保しているものを解放します。不要になったプレイヤーは解放してください。
+iOS と Mac では AVPlayer、Android では Media3 の ExoPlayer、ブラウザーでは `<audio>`、Windows では MCI、Linux では GStreamer の `playbin` を使います。画面がロックされても再生を続けるのは、アプリがメディアを再生中だとシステムに伝えたときだけです。下の「再生中の表示」を見てください。
 
-iOS では、音楽アプリやゲームと同じように、消音スイッチがオンでも音が鳴ります。また、ほかのアプリの音とは混ざりません。
+### 再生中の表示とメディアキー: asuka/nowplaying
 
-### 再生中の表示とメディアキー: asuka/sdk/nowplaying
+`nowplaying.NowPlaying` は、表示されている間、アプリが何を再生しているかをシステムに伝えます。iOS のロック画面とコントロールセンターのプレーヤー、Android のメディア通知（フォアグラウンドサービスなので再生が続きます）、Mac の「再生中」ウィジェット、Windows のメディアフライアウト（SMTC）、Linux の MPRIS（GNOME のメディアコントロール）、ブラウザーの Media Session API です。イベントはシステムからのコマンドで、メディアキー、ヘッドホンのボタン、ロック画面のボタンから届きます。`player` を渡すと、その再生位置に追従し、再生と一時停止も自分で行います。
 
-`asuka/sdk/nowplaying` は、アプリが再生しているものを、システムがメディアを表示する場所に表示し、そこにあるコントロールの操作をアプリに伝えます。表示される場所は、iOS ではロック画面、コントロールセンター、Dynamic Island、CarPlay、Android では通知シェード、ロック画面、Android Auto、Wear OS、Mac ではコントロールセンターとメニューバー、Windows ではメディアフライアウト、Linux では GNOME や KDE のメディアコントロール、そしてブラウザーのメディアコントロールです。キーボードやヘッドセットのメディアキーからも同じ操作が届きます。`Show` はコンポーネントの中で呼びます。アクセサの変化に追従し、コンポーネントのオーナーが破棄されると消えます。
+```asuka
+import asuka/audio
+import asuka/nowplaying
 
-```go
-func Episode(ep *Episode) ui.Node {
-	state := signal.New(nowplaying.Paused)
-	position := signal.New(0.0) // 秒。再生位置が飛んだときに設定する
-	nowplaying.Show(nowplaying.Props{
-		Title:          ui.Val(ep.Title),
-		Artist:         ui.Val(ep.Show),
-		Artwork:        ui.Val(ep.Cover), // アセット、ファイル、または http(s) の URL
-		Duration:       ui.Val(ep.Seconds),
-		State:          state,
-		Position:       position,
-		OnPlay:         func() { player.Play(); state.Set(nowplaying.Playing) },
-		OnPause:        func() { player.Pause(); state.Set(nowplaying.Paused) },
-		OnSeek:         func(at float64) { player.Seek(at); position.Set(at) },
-		OnSkipForward:  func(s float64) { skip(s) },
-		OnSkipBackward: func(s float64) { skip(-s) },
-		SkipInterval:   30,
-	})
-	// ...
+component Playing(url: string) {
+  state player = audio.Player(url)
+
+  Column {
+    nowplaying.NowPlaying {
+      title: "Episode 12"
+      artist: "The Show"
+      artwork: "cover.jpg"
+      player: player
+      skipInterval: 15
+      on next { player.seek(0) }
+    }
+    Button("Play") { on press { player.play() } }
+  }
 }
 ```
 
-表示されるのは `Title`、`Artist`、`Album`、`Artwork`（512 ピクセル以上の正方形の画像なら、どこでもくっきり表示されます）、`Duration`（ライブストリームでは 0 にします。その場合はシークできません）、`State`（`Playing`、`Paused`、`Stopped`）、`Position`、`Rate` です。再生中は、システムが再生速度に合わせて位置を自動で進めます。パッケージが `Position` を送り直すのは、再生位置が飛んだとき（シークや途切れ）か、状態や速度が変わったときだけです。そのため、1 秒に数回読むプレイヤーの状態に `Position` を追従させても、コストはかかりません。
-
-各操作は、そのハンドラーを設定すると有効になります。設定していない操作はグレー表示になるか、表示されません。`OnPlay`、`OnPause`、`OnTogglePlayPause` は互いの代わりになるので（ヘッドセットのボタンは一つで再生と一時停止を切り替え、ロック画面は再生か一時停止のどちらかを表示します）、どれか一つを設定すれば三つとも有効になります。`OnSeek` を有効にするには、`Duration` がわかっている必要があります。`OnSkipForward` と `OnSkipBackward` は `SkipInterval`（既定は 15 秒）ずつスキップします。iOS と Mac では「次へ」「前へ」の代わりに表示され、Android では `OnNext` や `OnPrevious` がないときにその位置に表示されます。
-
-`asuka/sdk/audio` のプレイヤーなら、`Player` に渡すだけで残りを任せられます。状態、位置、長さはそのプレイヤーから取得され（状態は 1 秒に一度読まれ、プレイヤーに対して実行した操作はすぐに反映されます）、再生、一時停止、停止、シーク、そして（`SkipInterval` があれば）スキップは、ハンドラーを設定しない限りそのプレイヤーに対して実行されます。
-
-```go
-music := audio.Load("music/spring.mp3")
-signal.OnCleanup(music.Release)
-nowplaying.Show(nowplaying.Props{
-	Title:   ui.Val("Spring"),
-	Artist:  ui.Val("Vivaldi"),
-	Artwork: ui.Val("covers/spring.jpg"),
-	Player:  music,
-	OnNext:  playNext,
-})
-```
-
-複数をマウントすることもできます。表示されるのは最後にマウントしたもので、それが消えると一つ前のものが表示されます。同じ更新の中で別のものに置き換わった場合（ある曲のコンポーネントが次の曲のコンポーネントに入れ替わるときなど）は、そのあいだもシステムのコントロールはアプリのものとして保たれます。
-
-iOS では、アプリに `audio` バックグラウンドモードが付与されるので、画面をロックしても再生が続きます。また、オーディオセッションは playback カテゴリになります。iOS は、オーディオセッションが再生中のアプリを表示するためです。Android では、MediaSession とそのメディアスタイルの通知を使います（メディアセッションの通知には、通知の権限は要りません）。再生中は、Android 14 の要件どおり、メディア再生タイプのフォアグラウンドサービスがアプリを画面外でも動かし続けます。一時停止中は通知が残り、スワイプで消せます。どちらの設定も、このパッケージを使うアプリにだけ `asuka build` が追加します。`examples/player` は、このパッケージでアルバムを再生する例です。
+`player` がないときは、`state`（`.playing`、`.paused`）、`duration`、`position` を渡し、`play`、`pause`、`seek(position)`、`skipForward(seconds)`、`skipBackward(seconds)` を処理します。いくつも表示されているときは、最後に表示されたものがシステムに表示されます。import したアプリには、iOS の `audio` バックグラウンドモードと Android のフォアグラウンドサービスの権限が付きます。
 
 ## ネットワークの状態: asuka/sdk/network
 
@@ -1192,42 +1129,49 @@ go func() {
 
 Linux には持ち主を確認するシステムのプロンプトがありません。`Check` は何もないと返し、`Authenticate` は `ErrNotAvailable` で失敗します。
 
-## 録音: asuka/sdk/audio/record
+## 録音: asuka/record
 
-`record.Start(options, done)` は、`record.Stop` を呼ぶまで（または `MaxDuration` に達するまで）マイクから録音し、終わるとファイルを渡して `done` を呼びます。ファイルは MPEG-4 コンテナーの AAC（`.m4a`）でアプリのキャッシュに保存され、`asuka/sdk/audio` で再生できます。録音には、iOS と Mac では AVAudioRecorder、Windows では Media Foundation、Linux では GStreamer、ブラウザーでは `MediaRecorder` を使います（AAC で録音できないブラウザーでは、WebM コンテナーの Opus になります）。初回はマイクの使用許可を求め、拒否されると `done` は `"not allowed"` を受け取ります。
+`record.audio()` は `record.stopAudio()` を呼ぶまで（または `maxDuration` まで）マイクの音を録音し、ファイルを返します。アプリのキャッシュ（または `path` の場所）にある AAC の MPEG-4 ファイル（.m4a）で、`asuka/audio` で再生できます。最初の録音でマイクの許可を求めます。`pauseAudio` と `resumeAudio` で一時停止と再開ができ、`audioStatus()` で今の状態（メーター用の 0 から 1 の `level`、`elapsed`）がわかります。`quality: .music` は声に必要な以上の音質で残します。
 
-```go
-record.Start(record.Options{Quality: record.Voice, MaxDuration: time.Minute}, func(path string, err error) {
-	if err == nil {
-		memo.Set(path)
-	}
-})
-// あとで
-record.Stop()
+```asuka
+import asuka/record
+
+component Memo {
+  state recording = false
+  state file = ""
+
+  Button(if recording { "Stop" } else { "Record" }) {
+    on press {
+      if recording {
+        record.stopAudio()
+      } else {
+        recording = true
+        defer { recording = false }
+        file = try await record.audio(maxDuration: 60s)
+      }
+    }
+  }
+}
 ```
 
-`Voice` は 64 kbit/s のモノラル、`Music` は 128 kbit/s のステレオです。`Pause` と `Resume` で、同じファイルへの録音を一時停止・再開できます。`record.Level()` は 0 から 1 の音量レベルで、ゴルーチンから 1 秒に数回呼んでレベルメーターに使います。`record.CurrentStatus(done)` はメインスレッドから呼び、レベル、いま音を記録しているかどうか、どれだけ記録したかを返します。タイマーに表示すべきなのはこの値です。システムが録音を一時停止することがあり（通話など）、iOS ではシステムが許可すれば、そのあと録音が再開されるためです。iOS では録音中、オーディオセッションが再生と録音の両方を行うモードになり（ほかのアプリの音は止まります）、録音が終わると元に戻ります。
+`background: true` にすると、アプリが見えていないときも録音を続けます。iOS ではアプリの asuka.toml の `ios.backgroundModes` に `"audio"` が必要です。Android ではフォアグラウンドサービスになり、その通知に `title` と停止ボタンが表示されます。iOS と Mac では AVAudioRecorder、Android とブラウザーでは `MediaRecorder`、Windows では Media Foundation、Linux では GStreamer を使います。
 
-`Options.Stream` を指定すると、ADTS ストリーム（`.aac`）で録音します。ADTS はフレームごとに完結しているので、アプリやスマートフォンが突然落ちても、それまでに録音した分は残ります。一方、MPEG-4 のファイルは閉じるまで読めません。クラッシュしたあとでもファイルを見つけられるよう `Path` を指定しておき、保存用には `record.Finalize(stream, dst)` で `.m4a` にしてください。こうして作ったファイルは正しくシークできます。停止したあとでも、クラッシュしたあとでも同じように使えます。
+## 音声の文字起こし: asuka/transcribe
 
-`Options.Background` を指定すると、アプリが画面に出ていないときや画面がロックされているときも録音を続けます。iOS では `asuka.toml` の `[ios]` に `backgroundModes = ["audio"]` が必要です。Android では、マイクタイプのフォアグラウンドサービスを動かし、常駐する通知（`BackgroundTitle`）と停止ボタンを表示します。Google Play はこのサービスを何に使うのかを尋ねるので、アップロードの前に申告してください。デスクトップのアプリはもともと画面外でも録音できるので、`Background` を指定しても何も変わりません。
+`transcribe.file(path)` は録音をデバイス上でテキストにします。音声はデバイスの外に出ません。`Result` には `text`、`segments`（単語やフレーズごとの開始時刻と長さ、秒。プラットフォームが返すときだけ）、聞き取った `language` が入ります。`transcribe.check(language)` で、録音する前にデバイスが文字起こしできるかを確かめられます。
 
-## 音声の文字起こし: asuka/sdk/transcribe
+```asuka
+import asuka/transcribe
 
-`transcribe.File(path, options)` は、録音をデバイス上でテキストに変換します。音声がデバイスの外に出ることはありません。デバイスで変換できない場合は、サーバーを使う代わりに `ErrNotAvailable` を返します。メインスレッド以外から呼びます。
-
-```go
-go func() {
-	r, err := transcribe.File(path, transcribe.Options{Language: "en-US"})
-	ui.Post(func() {
-		if err == nil {
-			text.Set(r.Text)
-		}
-	})
-}()
+async fn caption(recording: string) throws -> string {
+  let can = try await transcribe.check("en-US")
+  if !can.onDevice { return "" }
+  let r = try await transcribe.file(recording, language: "en-US")
+  return r.text
+}
 ```
 
-`Result` には `Text` と `Language` があり、iOS と Android 14 では `Segments` もあります。`Segments` は単語の並びで、それぞれ秒単位の `Start` と `Duration` を持ちます。発話のない録音では、`Text` は空になります。`transcribe.Check(language)` は、ユーザーに何も求めずに、デバイスで何ができるかを返します。iOS では Speech フレームワークを使います（モデルは iOS に含まれていますが、シミュレーターのランタイムによっては含まれていません）。初回は音声認識の許可を求めます。Android のオンデバイス認識には Android 13 が必要で、その言語のモデルも必要です。モデルがなければ取得するので、そのあいだは `ErrDownloading` が返ります（あとでもう一度試してください）。Mac でも Speech フレームワークを、デバイス上でのみ使います。Windows、Linux、Web には、アプリが使えるオンデバイスの音声認識がないため、`File` は `ErrNotAvailable` で失敗します。
+iOS と Mac では Speech フレームワークにデバイス上で処理するよう求め、Android ではデバイス上の認識エンジン（Android 13 以降）、Windows では OS の音声認識を使います。デバイスでできないとき（ブラウザー、Linux、古い Android）は、音声をサーバーに送る代わりに `TranscribeError.notAvailable` を投げます。言語のモデルをダウンロード中のときは `.downloading` です。
 
 ## 画面: asuka/sdk/screen
 
@@ -1272,27 +1216,31 @@ func App() ui.Node {
 }
 ```
 
-## 地図: asuka/sdk/maps
+## 地図: asuka/maps
 
-`maps.View` は地図です。iOS と Mac では Apple マップ、Android では Google マップを表示します。Windows、ブラウザー、Linux では OpenStreetMap のタイルを使い、Windows とブラウザーではホストが、Linux では libshumate が描画します。
+`maps.View` は地図です。iOS と Mac では Apple マップ、Android では Google マップ、Windows とブラウザーでは OpenStreetMap のタイル、Linux では libshumate のタイルです。`region`（中心と、何度分の範囲を表示するか）をバインドすると、地図を動かせるうえ、ユーザーの操作にも追従します。`markers` は地図上のピンで、`markerPress`、`press`、`regionChange` がユーザーの操作です。
 
-```go
-region := signal.New(maps.Region{Center: maps.Coordinate{Lat: 37.77, Lng: -122.42}, LatDelta: 0.05, LngDelta: 0.05})
-maps.View(maps.Props{
-	Region:         region,
-	Markers:        ui.Val([]maps.Marker{{ID: "hq", At: maps.Coordinate{Lat: 37.79, Lng: -122.39}, Title: "HQ"}}),
-	OnRegionChange: func(r maps.Region) { region.Set(r) },
-	OnMarkerPress:  func(id string) { show(id) },
-	Style:          ui.Style{Grow: 1},
-})
+```asuka
+import asuka/maps
+
+component Places {
+  state region = maps.Region(center: maps.Coordinate(lat: 37.77, lng: -122.42), latDelta: 0.08, lngDelta: 0.08)
+  state picked = ""
+
+  Column {
+    maps.View {
+      bind region: region
+      markers: [maps.Marker(id: "hq", at: maps.Coordinate(lat: 37.79, lng: -122.39), title: "HQ", color: .blue)]
+      mapType: .muted
+      grow: 1
+      on markerPress(id) { picked = id }
+    }
+    Text(picked)
+  }
+}
 ```
 
-- `Region` は表示する範囲で、中心と、その範囲が覆う緯度・経度の幅（度）で表します。設定すると、地図がその範囲に移動します。`OnRegionChange` は、ユーザーが地図を動かし終えたときに、その範囲を受け取ります。
-- `Markers` はピンで、`Title`、`Subtitle`、`Color` を持ちます。タップされたピンの `ID` は `OnMarkerPress` が、ユーザーが地図をタップした位置は `OnPress` が受け取ります。
-- `Type` は `Standard`、`Satellite`、`Hybrid`、`Muted`（iOS）のいずれかです。`ShowsUser` は、位置情報の権限があればユーザーの現在地を表示します（`asuka/sdk/location` をインポートし、先に権限を求めてください）。`NoInteraction` を指定すると、操作できない静止したプレビューになります。
-- 地図には固有のサイズがありません。サイズを指定するか、`Grow` を設定してください。
-
-Android では、Maps SDK for Android を有効にした Google Maps Platform の API キーを、`asuka.toml` の `[android]` に `mapsKey = "..."` のように指定する必要があります。キーがないと地図にその旨が表示され、`OnError` が理由を受け取ります。Windows、Linux、Web では、Satellite と Hybrid も通常の地図になります（無料の航空写真がないためです）。`ShowsUser` は、Windows と Linux では何も表示せず、ブラウザーではページが位置情報の権限を得ると、ユーザーの現在地を表示します。`Muted` は、iOS と Web では落ち着いた色合いの地図になります。Linux では libshumate（`libshumate-1.0-1`）が必要です。タイルは、`tile.openstreetmap.org` の利用規約に従ってそこから取得し、地図上にクレジットを表示します。Web アプリでは、独自のサーバーからタイルを取得することもできます（[Web](web.md)）。
+`mapType`（`.standard`、`.satellite`、`.hybrid`、`.muted`）と `showsUser`（ユーザーの現在地。先に `asuka/location` で許可を求めてください）は Apple と Google の地図のものです。OpenStreetMap の地図は道路を表示します。Android では、このパッケージを import したアプリは Google の Maps SDK と一緒にビルドされ、asuka.toml の `android.mapsKey` に Maps SDK for Android のキーが必要です。
 
 ## バックグラウンド更新: asuka/sdk/periodic
 
@@ -1343,35 +1291,42 @@ stop := sensors.WatchMotion(50*time.Millisecond, func(m sensors.MotionReading) {
 
 値はどちらのプラットフォームでも同じです。デバイスの軸は Android と W3C の定義どおり（x は画面の右方向、y は画面の上方向、z は画面から手前の方向）で、加速度は加速度センサーが測るとおりの値です（画面を上にして置いたデバイスでは z = +1 g になります。iOS の値はこれに合うよう向きを変えています）。姿勢もどちらでも同じ方法で計算します。読み取りは 1 秒に最大 200 回で、プラットフォームが渡すまとまりごとに、メインスレッドに届きます。
 
-## 画像と動画フレームの編集: asuka/sdk/imageedit
+## 画像と動画フレームの編集: asuka/imageedit
 
-`imageedit.Edit(source, actions, options)` は画像（HEIC、JPEG、PNG、WebP など、カメラや写真ピッカーが返す形式）を読み込み、向きの情報に従って正立させ、アクションを順に実行して、JPEG か PNG をアプリのキャッシュに書き出します。メインスレッド以外から呼びます。
+`imageedit.edit(source, actions)` はプラットフォーム自身のコーデックで画像を編集し、JPEG か PNG で書き出します。カメラや写真ピッカーが返すもの（HEIC、JPEG、PNG、WebP など）を読み、向きの情報どおりに正しい向きに直すので、アップロードやキャッシュ、`Image` に向いています。アクションは順に実行されます。`.resize(width, height)`（片方を 0 にすると縦横比を保ちます）、`.crop(x, y, width, height)`、`.rotate(degrees)`、`.flipHorizontal`、`.flipVertical`、`.fill(...)`（単色で塗りつぶし、元の内容はファイルから消えます）、`.pixelate(...)` です。`imageedit.size(source)` は画像のサイズを読み、`imageedit.videoFrame(source, at:)` は動画のフレームを画像として取り出します。
 
-```go
-go func() {
-	r, err := imageedit.Edit(photo, []imageedit.Action{
-		imageedit.Resize(1080, 0), // 幅 1080。0 で縦横比を保つ
-		imageedit.Crop(0, 0, 1080, 1080),
-	}, imageedit.Options{Quality: 0.8})
-	if err == nil {
-		upload(r.Path, r.Width, r.Height)
-	}
-}()
+```asuka
+import asuka/imageedit
+
+async fn thumbnail(photo: string) throws -> string {
+  let r = try await imageedit.edit(photo, [.resize(1080, 0), .crop(0, 0, 1080, 1080)], quality: 0.8)
+  return r.path
+}
+
+async fn poster(video: string) throws -> string {
+  return (try await imageedit.videoFrame(video, at: 1s, actions: [.resize(640, 0)])).path
+}
 ```
 
-アクションには `Resize`、`Crop`、`Rotate`（時計回り、任意の角度）、`FlipHorizontal`、`FlipVertical`、`Fill`、`Pixelate` があります。`Fill(x, y, w, h, r, g, b)` は矩形を単色で塗りつぶし、元の内容はファイルから消えます。`Pixelate(x, y, w, h, block)` は矩形をモザイクにします。各マスはその下にあるピクセルの平均色で、マスは画像全体を基準に並ぶので、隣り合う矩形も一つにつながって見えます。マスが小さいと、下にある文字を読み取れることがあります。確実に隠したいものには `Fill` を使ってください。書き出したファイルには、元の画像のメタデータ（位置情報やカメラの情報など）は一切含まれません。最初のアクションが `Resize` なら、画像をそのサイズに近い大きさでデコードするので、大きな写真ではメモリを節約できます。`imageedit.Size` は、画像をデコードせずにサイズを読みます。`imageedit.VideoFrame(source, at, actions, options)` は、動画の指定した時刻のフレームを正立させて取り出し（サムネイルやポスター用）、同じように編集します。リモートの動画は、そのフレームに必要なところまでしか読み込みません。ソースには `ui.Image` と同じもの、つまりパス、`file://` か `http(s)` の URL、アセットを指定できます。
+iOS と Mac では Core Graphics と Image I/O、Android では `Bitmap` と `MediaMetadataRetriever`、ブラウザーでは canvas、Windows では WIC と Media Foundation、Linux では GdkPixbuf と GStreamer を使います。画像でないソースには `EditError.noImage` を投げます。
 
-デコードには、各プラットフォームのコーデックを使います。iOS と Mac では ImageIO、Android では Android 標準のコーデック、Windows では WIC、Linux では GdkPixbuf のローダー（HEIC と WebP は、そのコーデックやローダーがインストールされている場合のみ）、ブラウザーでは canvas（JPEG か PNG。リモートの画像には CORS が必要です）です。
+## 音声読み上げ: asuka/speech
 
-## 音声読み上げ: asuka/sdk/speech
+`speech.speak(text)` はテキストの言語に合ったデバイスの声で（または `Options(language:, voice:, rate:, pitch:, volume:)` の指定で）読み上げ、読み終わってから戻ります。読み上げ中に頼まれたものは順番を待ちます。`stop()` で止め（待っている呼び出しは `SpeechError.stopped` を投げます）、`pause()` と `resume()` で単語の区切りで一時停止して再開し、`speaking()` で読み上げ中かどうかがわかり、`voices()` で声の一覧とその `quality` が得られます。
 
-`speech.Speak(text, options, done)` は、プラットフォームの音声でテキストを読み上げるよう、キューに追加します。読み終わると `done` が nil を受け取り、止められた場合は `ErrStopped` を受け取ります。
+```asuka
+import asuka/speech
 
-```go
-speech.Speak("Turn left in 200 meters", speech.Options{Rate: 1.1}, nil)
+component Reader(text: string) {
+  Row {
+    gap: 12
+    Button("Read") { on press { try await speech.speak(text, options: speech.Options(rate: 1.1)) } }
+    Button("Stop") { on press { speech.stop() } }
+  }
+}
 ```
 
-`Options` では、`Language`（BCP 47 タグ）、`Voice`（`speech.Voices()` が返す ID。各音声には名前、言語、品質があります）、`Pitch`、`Rate`、`Volume` を指定します。`Stop` はキューを破棄し、`Pause` と `Resume` は単語の区切りで一時停止・再開します（Android には一時停止の機能がありませんが、Asuka がその単語から読み上げを再開するので、Android でも使えます）。iOS では、読み上げ中はほかのアプリの音量が下がり、消音スイッチがオンでも読み上げます。Android でも同じように、ほかのアプリの音量を下げます。音声は、iOS と Mac では AVSpeechSynthesizer、Windows では SAPI、Linux では Speech Dispatcher、ブラウザーでは `speechSynthesis` のものを使います。
+iOS と Mac では AVSpeechSynthesizer、Android では OS の `TextToSpeech`、ブラウザーでは `speechSynthesis`、Windows では SAPI、Linux では Speech Dispatcher を使います。読み上げている間は、ほかのアプリの音が小さくなります。
 
 ## 連絡先: asuka/sdk/contacts
 

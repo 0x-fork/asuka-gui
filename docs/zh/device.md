@@ -10,24 +10,23 @@ Asuka 提供了一系列包，让应用用上视图之外的设备能力：相�
 
 | 包 | Android | iOS |
 | --- | --- | --- |
-| `asuka/sdk/camera` | `CAMERA` | `NSCameraUsageDescription` |
-| `asuka/sdk/camera/record` | `RECORD_AUDIO` | `NSMicrophoneUsageDescription` |
+| `asuka/camera` | `CAMERA`、`RECORD_AUDIO` | `NSCameraUsageDescription`、`NSMicrophoneUsageDescription` |
 | `asuka/sdk/location` | `ACCESS_COARSE_LOCATION`、`ACCESS_FINE_LOCATION`；调用了 `RequestAlways` 的应用另有 `ACCESS_BACKGROUND_LOCATION`；调用了 `StartUpdates` 的另有 `FOREGROUND_SERVICE_LOCATION` 和一个前台服务；调用了 `StartUpdates` 或 `Monitor` 的另有 `RECEIVE_BOOT_COMPLETED`、一个广播接收器和 Play 服务的定位库 | `NSLocationWhenInUseUsageDescription`；调用了 `RequestAlways` 的应用另有 `NSLocationAlwaysAndWhenInUseUsageDescription`；调用了 `StartUpdates` 的另有 `location` 后台模式；调用了 `RequestPrecise` 的另有 `NSLocationTemporaryUsageDescriptionDictionary` |
 | `asuka/sdk/notify` | `POST_NOTIFICATIONS` | |
 | `asuka/sdk/network` | `ACCESS_NETWORK_STATE` | |
 | `asuka/sdk/library` | `WRITE_EXTERNAL_STORAGE`（Android 9 及更早版本） | `NSPhotoLibraryAddUsageDescription`；应用的 Documents 目录会出现在“文件”App 中 |
 | `asuka/sdk/background` | `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC`、`POST_NOTIFICATIONS`、`WAKE_LOCK`；一个前台服务 | |
-| `asuka/sdk/scan` | ML Kit 的条码模型（约 2 MB） | |
-| `asuka/sdk/vision` | ML Kit 的文字、人脸和条码模型（约 30 MB） | |
+| `asuka/scan` | ML Kit 的条码模型（约 2 MB） | |
+| `asuka/vision` | ML Kit 的文字、人脸和条码模型（约 30 MB） | |
 | `asuka/sdk/photos` | `READ_MEDIA_IMAGES`、`READ_MEDIA_VISUAL_USER_SELECTED`；`READ_EXTERNAL_STORAGE`（Android 12 及更早版本） | `NSPhotoLibraryUsageDescription` |
 | `asuka/sdk/push` | Firebase Cloud Messaging、`POST_NOTIFICATIONS` | `aps-environment` entitlement；`remote-notification` 后台模式 |
 | `asuka/sdk/appleauth` | | 通过 Apple 登录（Sign in with Apple）的 entitlement |
 | `asuka/sdk/pay` | Google Pay 的库，启用它的 API，以及它的回调服务 | Apple Pay 的 entitlement，带有 `asuka.toml` 的 `applePay.merchantIds` |
 | `asuka/sdk/biometric` | `USE_BIOMETRIC` | `NSFaceIDUsageDescription` |
-| `asuka/sdk/audio/record` | `RECORD_AUDIO`、`FOREGROUND_SERVICE_MICROPHONE`；一个前台服务 | `NSMicrophoneUsageDescription` |
-| `asuka/sdk/nowplaying` | `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MEDIA_PLAYBACK`；一个前台服务 | `audio` 后台模式（仅限调用了 `nowplaying.Show` 的应用） |
+| `asuka/record` | `RECORD_AUDIO`、`FOREGROUND_SERVICE_MICROPHONE`；一个前台服务 | `NSMicrophoneUsageDescription` |
+| `asuka/nowplaying` | `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MEDIA_PLAYBACK`、`POST_NOTIFICATIONS`；一个前台服务 | `audio` 后台模式 |
 | `asuka/sdk/liveactivity` | `POST_NOTIFICATIONS`、`POST_PROMOTED_NOTIFICATIONS` | `NSSupportsLiveActivities` 和小组件扩展（仅限调用了它的应用） |
-| `asuka/sdk/transcribe` | `RECORD_AUDIO` | `NSSpeechRecognitionUsageDescription` |
+| `asuka/transcribe` | `RECORD_AUDIO` | `NSSpeechRecognitionUsageDescription` |
 | `asuka/sdk/screen` | `DETECT_SCREEN_CAPTURE` | |
 | `asuka/sdk/tracking` | | `NSUserTrackingUsageDescription` |
 | `asuka/sdk/review` | Play 的应用内评价库 | |
@@ -35,10 +34,10 @@ Asuka 提供了一系列包，让应用用上视图之外的设备能力：相�
 | `asuka/sdk/agerange` | Play Age Signals | Declared Age Range 的 entitlement |
 | `asuka/sdk/purchase` | Play Billing、`com.android.vending.BILLING` | StoreKit 2（仅限调用了它的应用）；不需要 entitlement |
 | `asuka/sdk/icloud` | （无：Android 上没有 iCloud） | 根据应用调用的功能，加上键值存储的 entitlement、iCloud Documents 和应用的容器、`NSUbiquitousContainers`（见 [iCloud](icloud.md)） |
-| `asuka/sdk/maps` | Google 的 Maps SDK | |
+| `asuka/maps` | Google 的 Maps SDK | |
 | `asuka/sdk/periodic` | WorkManager | `fetch` 和 `processing` 后台模式；各任务的标识符 |
 | `asuka/sdk/sensors` | `ACTIVITY_RECOGNITION`（计步器） | `NSMotionUsageDescription`（计步器） |
-| `asuka/sdk/speech` | 文字转语音引擎的可见性声明（`<queries>`） | |
+| `asuka/speech` | 文字转语音引擎的可见性声明（`<queries>`） | |
 | `asuka/sdk/contacts` | `READ_CONTACTS`（用于 `List`） | `NSContactsUsageDescription` |
 | `asuka/sdk/calendar` | `READ_CALENDAR`（用于 `Calendars`、`Events`） | `NSCalendarsFullAccessUsageDescription`、`NSCalendarsUsageDescription` |
 | `asuka/sdk/compose` | 处理 `mailto:` 和 `smsto:` 的应用的可见性声明（`<queries>`） | `LSApplicationQueriesSchemes` 中的 `mailto` |
@@ -68,9 +67,9 @@ Mac 应用（无论是 `asuka dev` 还是 `asuka build` 生成的）的 Info.pli
 | 包 | 在 Mac 上 |
 | --- | --- |
 | `asuka/sdk/device` | `PickPhotos` 和 `PickFiles`：一个以 sheet 形式附着在窗口上的打开面板（无需权限），选中的文件会复制到应用的缓存目录。`Browse` 在用户的浏览器中打开页面。`GetInfo`：`Model` 为 `"Mac"`，`System` 为 `"macOS"` |
-| `asuka/sdk/camera` | `Take`：在窗口上弹出一个面板，带实时预览、“拍照”和“取消”按钮（AppKit 没有相机界面）。`View` 的“后置”摄像头就是内置摄像头（Mac 没有后置摄像头），或者外接的那个；在其中扫码需要 macOS 13 |
-| `asuka/sdk/audio/record` | 没有音频会话：其他应用的声音会照常播放；`Background` 不起作用，因为 Mac 应用在后台本来就能录音 |
-| `asuka/sdk/nowplaying` | 和 iOS 一样使用 `MPNowPlayingInfoCenter` 和 `MPRemoteCommandCenter`：对应控制中心和菜单栏里的“正在播放”、键盘上的媒体键以及 AirPods。Mac 不需要音频会话，也不需要后台模式 |
+| `asuka/camera` | `take`：在窗口上弹出一个面板，带实时预览、“拍照”和“取消”按钮（AppKit 没有相机界面）。`camera.View` 的“后置”摄像头就是内置摄像头（Mac 没有后置摄像头），或者外接的那个；在其中扫码需要 macOS 13 |
+| `asuka/record` | 没有音频会话：其他应用的声音会照常播放；`background` 不起作用，因为 Mac 应用在后台本来就能录音 |
+| `asuka/nowplaying` | 和 iOS 一样使用 `MPNowPlayingInfoCenter` 和 `MPRemoteCommandCenter`：对应控制中心和菜单栏里的“正在播放”、键盘上的媒体键以及 AirPods。Mac 不需要音频会话，也不需要后台模式 |
 | `asuka/sdk/contacts`、`asuka/sdk/calendar` | `Add` 会在窗口上弹出一个警告框来确认（macOS 没有新建联系人或日程的界面），然后保存；保存前会先请求访问权限 |
 | `asuka/sdk/photos` | 和 iOS 一样使用 PhotoKit；Mac 没有“有限访问”的照片库，所以 `ManageLimited` 什么也不做 |
 | `asuka/sdk/library` | 照片和视频存入“照片”App；`Downloads` 和 `Music` 分别存到用户的 `~/Downloads` 和 `~/Music` 下指定的文件夹 |
@@ -82,7 +81,7 @@ Mac 应用（无论是 `asuka dev` 还是 `asuka build` 生成的）的 Info.pli
 | `asuka/sdk/background` | 任务会阻止 App Nap 拖慢应用；没有通知，所以 `Update` 不起作用 |
 | `asuka/sdk/periodic` | `NSBackgroundActivityScheduler`：任务只在应用运行期间执行（系统不会为了它们启动应用）；需要接通电源的任务，会在 Mac 使用电池时等待 |
 | `asuka/sdk/screen` | `Lock` 和 `SetBars` 什么也不做；`PreventCapture` 让应用的窗口不出现在截图和录屏中；`OnScreenshot` 能收到 Spotlight 找到的截图 |
-| `asuka/sdk/transcribe` | 只在本机识别；应用的 bundle 需要它的用途说明，这一项由 `asuka build` 写入 |
+| `asuka/transcribe` | 只在本机识别；应用的 bundle 需要它的用途说明，这一项由 `asuka build` 写入 |
 | `asuka/sdk/sensors` | Mac 没有运动传感器：`Available` 为 false，监听收不到任何数据，`StepsBetween` 以 `ErrNotAvailable` 失败 |
 | `ui.Haptic` | 触控板的反馈（需要 Force Touch 触控板）：`HapticSelection` 对应“对齐”反馈，其他类型对应“级别变化”反馈 |
 | `asuka/sdk/widget`、`asuka/sdk/liveactivity`、`asuka/sdk/agerange` | Mac 上不支持：`widget.Set` 什么也不做，`liveactivity.Start` 和 `agerange.Request` 以 `ErrNotAvailable` 失败 |
@@ -101,12 +100,12 @@ Windows 应用不需要声明任何东西：`asuka build --platform windows` 不
 | --- | --- |
 | `asuka/sdk/device` | `PickPhotos` 和 `PickFiles`：窗口上弹出的打开对话框，选中的文件会复制到应用的缓存目录。`Browse` 在用户的浏览器中打开页面。剪贴板里的图片是 PNG。`KeepAwake` 让显示器保持常亮。`GetInfo`：`Model` 为 `"PC"`，`System` 为 `"Windows"`，`SystemVersion` 为 `"10.0.<build>"` |
 | `asuka/sdk/secure` | 凭据管理器中用户的普通凭据，名为 `<app>/<key>`（每个值最多 2560 字节） |
-| `asuka/sdk/camera` | Media Foundation 的捕获引擎。`Take`：窗口上弹出一个对话框，带实时预览、“拍照”和“取消”按钮（对应 Enter 和 Escape 键）。`View` 选用 Windows 标为前置或后置的摄像头，找不到就用第一个；设置了 `Scan` 时，它每秒取四帧，用 Asuka 自带的识别器读取其中的条码（与 `asuka/sdk/scan` 的 `File` 相同）。“设置”中的相机开关关闭时："not allowed" |
-| `asuka/sdk/camera/record` | MPEG-4 封装（`.mp4`）的 H.264 和 AAC，使用默认麦克风，除非设置了静音 |
-| `asuka/sdk/audio` | MCI（DirectShow 的播放功能）；URL 会先下载到应用的缓存目录 |
-| `asuka/sdk/audio/record` | 默认麦克风，44.1 kHz 的 AAC（语音为单声道，音乐为立体声）；`Background` 不起作用 |
-| `asuka/sdk/nowplaying` | 应用窗口的 SystemMediaTransportControls（没有窗口的应用会用一个自己的隐藏窗口）：对应 Windows 10 的音量浮出面板、Windows 11 快速设置里的媒体控件、锁屏以及键盘上的媒体键。跳过操作对应它的快进和快退按钮；它没有切换操作（播放/暂停键发送的是播放或暂停） |
-| `asuka/sdk/speech` | SAPI 的语音，即系统已安装的那些（设置 > 时间和语言 > 语音） |
+| `asuka/camera` | Media Foundation 的捕获引擎。`take`：窗口上弹出一个对话框，带实时预览、“拍照”和“取消”按钮（对应 Enter 和 Escape 键）。`camera.View` 选用 Windows 标为前置或后置的摄像头，找不到就用第一个；设置了 `scan` 时，它每秒取四帧，用 Asuka 自带的识别器读取其中的条码（与 `asuka/scan` 的 `file` 相同）。“设置”中的相机开关关闭时："not allowed" |
+| `asuka/record`（视频） | MPEG-4 封装（`.mp4`）的 H.264 和 AAC，使用默认麦克风，除非设置了静音 |
+| `asuka/audio` | MCI（DirectShow 的播放功能）；URL 会先下载到应用的缓存目录 |
+| `asuka/record`（声音） | 默认麦克风，44.1 kHz 的 AAC（语音为单声道，音乐为立体声）；`background` 不起作用 |
+| `asuka/nowplaying` | 应用窗口的 SystemMediaTransportControls（没有窗口的应用会用一个自己的隐藏窗口）：对应 Windows 10 的音量浮出面板、Windows 11 快速设置里的媒体控件、锁屏以及键盘上的媒体键。跳过操作对应它的快进和快退按钮；它没有切换操作（播放/暂停键发送的是播放或暂停） |
+| `asuka/speech` | SAPI 的语音，即系统已安装的那些（设置 > 时间和语言 > 语音） |
 | `asuka/sdk/network` | 网络列表管理器（Network List Manager）：Wi-Fi、蜂窝网络或有线网络；按流量计费的连接为 `Metered`，接近或超出流量上限时为 `Constrained` |
 | `asuka/sdk/location` | WinRT 的 Geolocator。`PlaceName` 查询 OpenStreetMap 的 Nominatim（Windows 自带的地理编码器需要 Bing Maps 密钥）：每秒最多发一次请求，查询结果保存在应用的缓存目录中。区域监控用 `GeofenceMonitor`，仅在应用运行期间有效；后台定位更新根据位置计算 |
 | `asuka/sdk/biometric` | Windows Hello 的提示框；`Check` 返回的类型就是传感器的类型；Hello 总会提供 PIN 选项，取消按钮的文字也由它自己决定 |
@@ -115,10 +114,10 @@ Windows 应用不需要声明任何东西：`asuka build --platform windows` 不
 | `asuka/sdk/contacts`、`asuka/sdk/calendar` | Windows 只向打包（packaged）应用开放通讯录和日历：`Request` 会返回拒绝；`Add` 会在用户的联系人或日历应用中打开一个 vCard 或日程文件（`saved` 为 false，因为系统不会告知结果） |
 | `asuka/sdk/photos` | “图片”文件夹（无需申请权限）；截图就是其中“屏幕截图”文件夹里的图片 |
 | `asuka/sdk/library` | 用户的“下载”“视频”“音乐”和“图片”文件夹下指定的文件夹 |
-| `asuka/sdk/vision` | Windows 的 OCR（支持哪些语言取决于“设置 > 时间和语言”中安装了哪些 OCR 语言）及其人脸检测器；条码的识别方式与 `asuka/sdk/scan` 相同 |
-| `asuka/sdk/scan` | Windows 没有供应用使用的条码识别器，因此 Asuka 自带了一个用 Go 写的：能识别 QR 码、Data Matrix、EAN-13 和 EAN-8、UPC-A 和 UPC-E、Code 128 和 Code 39（不支持 Aztec、PDF417、Code 93、Codabar 和 ITF） |
-| `asuka/sdk/imageedit` | 用 Windows 的编解码器读取图片（装了相应扩展时支持 HEIC 和 WebP）；视频帧通过 Media Foundation 获取 |
-| `asuka/sdk/maps` | Windows 没有供桌面应用使用的地图控件（它自带的那个需要 Bing Maps 密钥），所以由宿主自己绘制 OpenStreetMap 的瓦片：每次下载两张，在应用的缓存目录中保留一周，地图上标注“© OpenStreetMap contributors”；支持拖动、滚轮或双指缩放、双击，以及 + 和 - 键。Satellite 和 Hybrid 显示的也是街道图（没有免费的卫星影像），`ShowsUser` 不显示任何东西，这两点与 Linux 相同 |
+| `asuka/vision` | Windows 的 OCR（支持哪些语言取决于“设置 > 时间和语言”中安装了哪些 OCR 语言）及其人脸检测器；条码的识别方式与 `asuka/scan` 相同 |
+| `asuka/scan` | Windows 没有供应用使用的条码识别器，因此 Asuka 自带了一个用 Go 写的：能识别 QR 码、Data Matrix、EAN-13 和 EAN-8、UPC-A 和 UPC-E、Code 128 和 Code 39（不支持 Aztec、PDF417、Code 93、Codabar 和 ITF） |
+| `asuka/imageedit` | 用 Windows 的编解码器读取图片（装了相应扩展时支持 HEIC 和 WebP）；视频帧通过 Media Foundation 获取 |
+| `asuka/maps` | Windows 没有供桌面应用使用的地图控件（它自带的那个需要 Bing Maps 密钥），所以由宿主自己绘制 OpenStreetMap 的瓦片：每次下载两张，在应用的缓存目录中保留一周，地图上标注“© OpenStreetMap contributors”；支持拖动、滚轮或双指缩放、双击，以及 + 和 - 键。Satellite 和 Hybrid 显示的也是街道图（没有免费的卫星影像），`showsUser` 不显示任何东西，这两点与 Linux 相同 |
 | `asuka/sdk/background` | 任务会阻止电脑进入睡眠；没有通知，所以 `Update` 不起作用 |
 | `asuka/sdk/periodic` | 应用运行期间用定时器执行（系统不会为了它们启动应用）；需要接通电源的任务，会在电脑使用电池时等待 |
 | `asuka/sdk/screen` | `Lock` 和 `SetBars` 什么也不做；`PreventCapture` 让应用的窗口不出现在截图和录屏中；`OnScreenshot` 能收到保存在“屏幕截图”文件夹里的截图（Windows 键 + Print Screen、截图工具） |
@@ -127,7 +126,7 @@ Windows 应用不需要声明任何东西：`asuka build --platform windows` 不
 | `asuka/sdk/liveactivity` | 这是手机的能力：`Enabled` 为 false，`Start` 以 `ErrNotAvailable` 失败 |
 | `asuka/sdk/purchase` | Microsoft Store，仅限从商店安装的应用；否则 `Available` 为 false，其余调用以 `ErrNotAvailable` 失败（见[应用内购买](purchases.md)） |
 | `asuka/sdk/pay` | Windows 上没有能为应用付款的钱包：`Available` 表示没有钱包，`Pay` 以 `ErrNotAvailable` 失败，`Button` 什么也不显示 |
-| `asuka/sdk/appleauth`、`asuka/sdk/agerange`、`asuka/sdk/icloud`、`asuka/sdk/transcribe`、`asuka/sdk/sensors` | Windows 上不支持：返回不可用，与在缺少这些功能的设备上一样 |
+| `asuka/sdk/appleauth`、`asuka/sdk/agerange`、`asuka/sdk/icloud`、`asuka/transcribe`、`asuka/sdk/sensors` | Windows 上不支持：返回不可用，与在缺少这些功能的设备上一样 |
 | `ui.Haptic` | 电脑没有触感反馈：什么也不做 |
 | `asuka/sdk/splash` | Windows 应用没有启动屏：`Hold` 和 `Hide` 什么也不做 |
 | `ui.OnShare`、`app.ShareSheet`、快捷操作 | 仅限 iOS 和 Android |
@@ -144,23 +143,23 @@ Linux 宿主访问桌面服务时，有门户就走门户，此外还用到 GLib
 | `asuka/sdk/secure` | 密钥环（通过 libsecret：GNOME Keyring、KWallet、KeePassXC），每个键存为一项，标签为应用名；没有 libsecret 或密钥环时，调用会失败并说明原因 |
 | `asuka/sdk/network` | GNetworkMonitor（在沙盒中是门户提供的）；Wi-Fi、以太网还是蜂窝网络，由 NetworkManager 提供；从不报告受限 |
 | `asuka/sdk/location` | 定位门户（背后是 GeoClue，由它询问用户），没有门户时直接使用 GeoClue；装了 geocode-glib 时，`PlaceName` 用它来查询。GeoClue 没有地理围栏：区域和后台定位更新都在应用运行期间根据位置计算 |
-| `asuka/sdk/speech` | Speech Dispatcher（没在运行时会启动它）：使用它的语音、语速、音调和音量 |
-| `asuka/sdk/audio`、`asuka/sdk/audio/record` | GStreamer：用 AAC 编码器（FDK、libav 的等等）录音，默认音源即麦克风 |
-| `asuka/sdk/nowplaying` | 有内容显示时，在会话总线上注册一个 MPRIS 播放器，名为 `org.mpris.MediaPlayer2.<app>.instance<pid>`：对应 GNOME 和 KDE 的媒体控件与锁屏、媒体键以及 `playerctl`。如果应用支持跳过，MPRIS 的 `Seek` 就是跳过，否则是跳转播放位置；封面图是一个 `file://` 或 http(s) URL |
+| `asuka/speech` | Speech Dispatcher（没在运行时会启动它）：使用它的语音、语速、音调和音量 |
+| `asuka/audio`、`asuka/record` | GStreamer：用 AAC 编码器（FDK、libav 的等等）录音，默认音源即麦克风 |
+| `asuka/nowplaying` | 有内容显示时，在会话总线上注册一个 MPRIS 播放器，名为 `org.mpris.MediaPlayer2.<app>.instance<pid>`：对应 GNOME 和 KDE 的媒体控件与锁屏、媒体键以及 `playerctl`。如果应用支持跳过，MPRIS 的 `Seek` 就是跳过，否则是跳转播放位置；封面图是一个 `file://` 或 http(s) URL |
 | `asuka/sdk/library` | 用户的文件夹（XDG 的 Pictures、Videos、Music、Downloads）下指定的文件夹 |
 | `ui.ShareFiles` | 没有分享面板：文件会复制到剪贴板，并弹出一条提示（toast） |
-| `asuka/sdk/camera`、`asuka/sdk/camera/record` | 优先用相机门户（只询问用户一次；使用 PipeWire 的摄像头，需要 `gstreamer1.0-pipewire`），否则用第一个 Video4Linux 摄像头，二者都通过 GStreamer。`Take`：窗口上弹出一个对话框，带实时预览、“拍照”和“取消”按钮。`View`：镜像显示的预览画面，填满它的区域；前置和后置是同一个摄像头（电脑的摄像头本来就朝着用户）。视频优先录成 MPEG-4（x264 或 OpenH264 提供的 H.264，加上 AAC），否则录成 WebM；扫码需要 GStreamer 的 `zbar` 元素。没有摄像头时为 `ErrNoCamera`；被拒绝时为 "not allowed" |
-| `asuka/sdk/scan`、`asuka/sdk/vision` | 用 ZBar（`libzbar0`）识别条码：不支持 Aztec 和 Data Matrix。用 Tesseract（`libtesseract5` 加上对应语言的数据）识别文字；没有人脸检测，`Faces` 始终为空。没有 ZBar 时，`scan.File` 以 "not available" 失败；`vision.Analyze` 会跳过没有安装的部分 |
-| `asuka/sdk/imageedit` | 用 GdkPixbuf 的加载器解码（装了相应加载器时支持 HEIF 和 WebP），并摆正方向；各项编辑操作用 Go 完成；视频帧来自 GStreamer |
+| `asuka/camera`、`asuka/record` | 优先用相机门户（只询问用户一次；使用 PipeWire 的摄像头，需要 `gstreamer1.0-pipewire`），否则用第一个 Video4Linux 摄像头，二者都通过 GStreamer。`take`：窗口上弹出一个对话框，带实时预览、“拍照”和“取消”按钮。`camera.View`：镜像显示的预览画面，填满它的区域；前置和后置是同一个摄像头（电脑的摄像头本来就朝着用户）。视频优先录成 MPEG-4（x264 或 OpenH264 提供的 H.264，加上 AAC），否则录成 WebM；扫码需要 GStreamer 的 `zbar` 元素。没有摄像头时为 `ErrNoCamera`；被拒绝时为 "not allowed" |
+| `asuka/scan`、`asuka/vision` | 用 ZBar（`libzbar0`）识别条码：不支持 Aztec 和 Data Matrix。用 Tesseract（`libtesseract5` 加上对应语言的数据）识别文字；没有人脸检测，`faces` 始终为空。没有 ZBar 时，`scan.file` 以 "not available" 失败；`vision.analyze` 会跳过没有安装的部分 |
+| `asuka/imageedit` | 用 GdkPixbuf 的加载器解码（装了相应加载器时支持 HEIF 和 WebP），并摆正方向；各项编辑操作用 Go 完成；视频帧来自 GStreamer |
 | `asuka/sdk/webauth` | 窗口上弹出一个内嵌 WebKitGTK 网页视图的对话框（设置 `Ephemeral` 时使用独立的会话）；关闭对话框即取消 |
 | `asuka/sdk/js` | 一个从不显示的 WebKitGTK 网页视图 |
-| `asuka/sdk/maps` | 用 libshumate（`libshumate-1.0-1`）显示 OpenStreetMap 瓦片地图；Satellite 和 Hybrid 显示的也是街道图；没有用户位置图层。没有 libshumate 时，视图会显示相应说明，并调用 `OnError` |
+| `asuka/maps` | 用 libshumate（`libshumate-1.0-1`）显示 OpenStreetMap 瓦片地图；Satellite 和 Hybrid 显示的也是街道图；没有用户位置图层。没有 libshumate 时，视图会显示相应说明，并调用 `error` |
 | `asuka/sdk/background` | 任务会阻止系统挂起；没有通知，`Update` 不起作用 |
 | `asuka/sdk/periodic` | 应用运行期间按定时器执行任务（系统不会为了它们启动应用）；需要接通电源的任务会在使用电池时等待，需要网络的任务会在离线时等待 |
 | `asuka/sdk/screen` | `Lock`、`SetBars` 和 `PreventCapture` 什么也不做；`OnScreenshot` 能收到 Pictures/Screenshots 中新增的图片（GNOME 和 KDE 都把截图存在这里） |
 | `asuka/sdk/sensors` | iio-sensor-proxy（适用于二合一设备、平板）：光线传感器（单位为 lux），以及由加速度计得出的方向，表示为沿朝上那条轴的 1 g，随设备转动而变化。没有其他传感器：`Available` 为 false，`StepsBetween` 以 `ErrNotAvailable` 失败 |
 | `asuka/sdk/contacts`、`asuka/sdk/calendar` | Evolution Data Server 中的通讯录和日历（来自 GNOME 通讯录、GNOME 日历和在线账户）：有它时访问权限为 `Full`；`Pick` 是一个带搜索框的联系人对话框；`Add` 先确认，再保存到默认通讯录或该日程所属的日历。没有它时：通讯录的访问权限为 `Denied`，日历为 `WriteOnly`；`Add` 会在用户的联系人或日历应用中打开一个 vCard 或 iCalendar 文件（`saved` 为 false）；`contacts.Pick` 会失败 |
-| `asuka/sdk/photos` 的照片库、`asuka/sdk/appleauth`、`asuka/sdk/transcribe`、`asuka/sdk/widget`、`asuka/sdk/liveactivity` | Linux 上都没有：照片库的访问权限为 `Denied`；`appleauth.Available` 为 false，它的按钮什么也不显示；`transcribe` 和 `liveactivity.Start` 以 `ErrNotAvailable` 失败；`widget.Set` 什么也不做。`asuka/sdk/splash` 也没有启动屏可以保持 |
+| `asuka/sdk/photos` 的照片库、`asuka/sdk/appleauth`、`asuka/transcribe`、`asuka/sdk/widget`、`asuka/sdk/liveactivity` | Linux 上都没有：照片库的访问权限为 `Denied`；`appleauth.Available` 为 false，它的按钮什么也不显示；`transcribe` 和 `liveactivity.Start` 以 `ErrNotAvailable` 失败；`widget.Set` 什么也不做。`asuka/sdk/splash` 也没有启动屏可以保持 |
 | `asuka/sdk/purchase` | 没有应用商店：`Available` 为 false，其余调用以 `ErrNotAvailable` 失败 |
 | `asuka/sdk/icloud` | 没有 iCloud：`ErrNotAvailable` |
 | `asuka/sdk/biometric`、`asuka/sdk/integrity`、`asuka/sdk/agerange`、`asuka/sdk/push` | Linux 上都没有：返回不可用或不受支持。`asuka/sdk/review` 什么也不做；`asuka/sdk/tracking` 总是返回允许 |
@@ -177,17 +176,17 @@ Linux 宿主访问桌面服务时，有门户就走门户，此外还用到 GLib
 | --- | --- |
 | `asuka/sdk/device` | `PickPhotos` 和 `PickFiles`：浏览器的文件选择器，选中的文件会复制到缓存中。`Browse`：打开新标签页。剪贴板：可以读取应用自己复制的内容，在用户允许页面读取剪贴板时，也能读取其他应用复制的内容。`KeepAwake`：使用 Screen Wake Lock。`GetInfo` 的信息来自 user agent（Chromium 的 client hints 能提供系统版本和 Android 手机的型号） |
 | `asuka/sdk/secure` | 值经过加密（AES-GCM）后存在 IndexedDB 中，密钥由浏览器保管、无法导出；这并不是钥匙串（见 [Web](web.md)） |
-| `asuka/sdk/camera`、`asuka/sdk/camera/record` | `Take` 在手机上打开相机，否则显示一个带实时画面和快门的对话框；`View` 是放在 `<video>` 中的摄像头画面，支持 `Capture` 和录制，浏览器有 `BarcodeDetector` 时还能扫码 |
-| `asuka/sdk/scan`、`asuka/sdk/vision` | 用 `BarcodeDetector` 识别条码；人脸和文字只在浏览器支持时才能识别 |
-| `asuka/sdk/imageedit` | 用 canvas 处理：输出 JPEG 或 PNG；远程图片需要 CORS |
+| `asuka/camera`、`asuka/record` | `take` 在手机上打开相机，否则显示一个带实时画面和快门的对话框；`camera.View` 是放在 `<video>` 中的摄像头画面，支持 `capture` 和录制，浏览器有 `BarcodeDetector` 时还能扫码 |
+| `asuka/scan`、`asuka/vision` | 用 `BarcodeDetector` 识别条码；人脸和文字只在浏览器支持时才能识别 |
+| `asuka/imageedit` | 用 canvas 处理：输出 JPEG 或 PNG；远程图片需要 CORS |
 | `asuka/sdk/photos` | 网页无法读取照片库：访问权限为 `Denied`（要选照片请用 `device.PickPhotos`） |
 | `asuka/sdk/library` | `Save` 会把文件下载下来 |
 | `asuka/sdk/location` | Geolocation API；Web 上没有 `PlaceName`（浏览器没有地理编码器）。区域和后台定位更新根据位置计算，只在页面打开期间有效 |
 | `asuka/sdk/network` | 是否在线取自 `navigator.onLine`；浏览器提供相关信息时（Android 上的 Chrome）能区分 Wi-Fi、蜂窝网络和以太网，蜂窝网络视为按流量计费，开启省流量模式（Data Saver）时视为受限 |
 | `asuka/sdk/notify`、`asuka/sdk/push` | 通过应用的 service worker 使用 Notification API 和 Web Push（`push.Register` 的 `Service` 为 `"webpush"`）；应用没有任何页面打开时，定时通知无法显示 |
-| `asuka/sdk/audio`、`asuka/sdk/audio/record` | 每个播放器对应一个 audio 元素（受浏览器的自动播放规则约束：要在用户点按时开始播放）；录音用 `MediaRecorder`，浏览器支持时录成 MPEG-4 封装的 AAC，否则录成 WebM 封装的 Opus |
-| `asuka/sdk/nowplaying` | Media Session API（`navigator.mediaSession`）：对应浏览器的媒体控件、媒体键和手机锁屏，在页面播放声音时显示。它没有切换操作（按键发送的是播放或暂停）；浏览器不支持的操作（有些浏览器不支持停止）会被略去 |
-| `asuka/sdk/speech` | `speechSynthesis`，使用浏览器提供的语音 |
+| `asuka/audio`、`asuka/record` | 每个播放器对应一个 audio 元素（受浏览器的自动播放规则约束：要在用户点按时开始播放）；录音用 `MediaRecorder`，浏览器支持时录成 MPEG-4 封装的 AAC，否则录成 WebM 封装的 Opus |
+| `asuka/nowplaying` | Media Session API（`navigator.mediaSession`）：对应浏览器的媒体控件、媒体键和手机锁屏，在页面播放声音时显示。它没有切换操作（按键发送的是播放或暂停）；浏览器不支持的操作（有些浏览器不支持停止）会被略去 |
+| `asuka/speech` | `speechSynthesis`，使用浏览器提供的语音 |
 | `asuka/sdk/sensors` | Generic Sensor API（Chrome），或设备运动和方向事件（Safari 会在用户点按时询问），坐标轴和单位与 Android 一致；没有气压计和计步器 |
 | `asuka/sdk/biometric` | 通过 WebAuthn 使用平台验证器（Touch ID、Face ID、Windows Hello、Android 的屏幕锁定）：第一次 `Authenticate` 会为该站点创建一个通行密钥（passkey）。提示框由浏览器提供，所以 `Reason` 和 `Cancel` 不会显示 |
 | `asuka/sdk/webauth` | 一个弹出窗口，回到与应用同源的页面时即完成（自定义 scheme 无法打开页面） |
@@ -197,166 +196,120 @@ Linux 宿主访问桌面服务时，有门户就走门户，此外还用到 GLib
 | `asuka/sdk/background` | 页面打开期间一直在运行；任务不会带来额外效果，也没有通知 |
 | `asuka/sdk/tracking` | 没有提示框：浏览器发送了 Global Privacy Control 或 Do Not Track 时为 `Denied`，否则为 `Allowed` |
 | `ui.Haptic` | 浏览器支持时（Android 上的 Chrome）使用 `navigator.vibrate` |
-| `asuka/sdk/review`、`asuka/sdk/integrity`、`asuka/sdk/agerange`、`asuka/sdk/appleauth`、`asuka/sdk/icloud`、`asuka/sdk/periodic`、`asuka/sdk/widget`、`asuka/sdk/liveactivity`、`asuka/sdk/transcribe` | Web 上不支持：返回一个说明这一点的错误，或者该包的 `ErrNotAvailable` |
+| `asuka/sdk/review`、`asuka/sdk/integrity`、`asuka/sdk/agerange`、`asuka/sdk/appleauth`、`asuka/sdk/icloud`、`asuka/sdk/periodic`、`asuka/sdk/widget`、`asuka/sdk/liveactivity`、`asuka/transcribe` | Web 上不支持：返回一个说明这一点的错误，或者该包的 `ErrNotAvailable` |
 | `asuka/sdk/purchase` | 在 Trusted Web Activity 里通过 Digital Goods API 使用 Google Play；其他情况下没有应用商店（`ErrNotAvailable`） |
-| `asuka/sdk/maps` | 和 Windows 一样，由宿主绘制 OpenStreetMap 的瓦片；页面获得定位权限后，`ShowsUser` 才会生效 |
+| `asuka/maps` | 和 Windows 一样，由宿主绘制 OpenStreetMap 的瓦片；页面获得定位权限后，`showsUser` 才会生效 |
 | `asuka/sdk/pay` | 浏览器支持 Apple Pay 时（Safari）通过 Payment Request API 使用它，商户验证由应用的服务器完成（`OnValidateMerchant`）；其他浏览器通过 Google 的 Web API（pay.js）使用 Google Pay；两者都使用各自的官方按钮。支付面板只在点击时显示 |
 | `asuka/sdk/crash` | Go 的崩溃（宿主会保留运行时的输出）和未捕获的 JavaScript 错误，都作为非致命的 `Exception` 报告 |
 | `asuka/sdk/splash` | `Hold` 和 `Hide` 什么也不做 |
 | `ui.OnShare`、`app.ShareSheet`、快捷操作 | 仅限 iOS 和 Android |
 
-## 相机：asuka/sdk/camera
+## 相机：asuka/camera
 
-`camera.Take` 会打开系统相机（iOS 的相机界面、Android 的相机应用），拍完后把照片文件（一个 JPEG）传给 `done`；如果用户取消了，传入的是 `""`。在没有摄像头的设备上（比如 iOS 模拟器），错误是 `camera.ErrNoCamera`。桌面系统没有相机界面，所以在那里 `Take` 会在窗口上弹出一个 Asuka 自己的对话框，带实时预览、“拍照”和“取消”按钮；浏览器则会在手机上打开相机，否则显示一个类似的对话框。
+`camera.View` 实时显示相机拍到的画面：在 iOS 和 Mac 上是 AVFoundation 的预览，在 Android 上是 CameraX，在浏览器中是 `getUserMedia`，在 Windows 上是 Media Foundation，在 Linux 上是 GStreamer。`camera.capture()` 从屏幕上的这个视图拍一张照片；`camera.take()` 则打开系统的相机界面（iOS 的相机界面、Android 的相机应用；桌面端是一个带预览的弹出面板，浏览器中是文件选择器里的相机），返回照片文件，用户取消时返回 `none`。照片是放在应用缓存目录里的 JPEG，想保留就把它移走。
 
-```go
-ui.Button(ui.ButtonProps{Title: ui.Val("Take a photo"), OnPress: func() {
-	camera.Take(func(path string, err error) {
-		switch {
-		case errors.Is(err, camera.ErrNoCamera):
-			status.Set("This device has no camera")
-		case err != nil:
-			status.Set(err.Error())
-		case path != "":
-			photo.Set(path) // 用 ui.Image 显示它
-		}
-	})
-}})
+```asuka
+import asuka/camera
+
+component Shutter {
+  state facing: camera.Facing = .back
+  state last = ""
+  state status = ""
+
+  Column {
+    camera.View {
+      facing: facing
+      grow: 1
+      on error(m) { status = m }
+    }
+    Row {
+      gap: 12
+      Button("Flip") { on press { facing = if facing == .back { .front } else { .back } } }
+      Button("Take") { on press { last = try await camera.capture() } }
+    }
+    Text(status)
+  }
+}
 ```
 
-如果想做一个应用自己的拍摄界面，可以用 `camera.View` 实时显示摄像头拍到的画面，并让它填满自己的区域（iOS 和 Mac 上是 AVFoundation 的预览，Android 上是 CameraX 的 `PreviewView`，Windows 上是 Media Foundation 的预览，Linux 上是 GStreamer 的预览，浏览器中是一个 `<video>`），再用 `camera.Capture` 从中拍照：
+视图第一次显示时会请求相机权限。如果被拒绝，或者设备没有摄像头（比如 iOS 模拟器），视图会报告 `error`，`capture` 会抛出 `CameraError.notAllowed` 或 `.noCamera`；屏幕上没有 `camera.View` 时抛出 `.noView`。导入 `asuka/camera` 的应用在 iOS 上会自动带上相机和麦克风的用途说明（在 asuka.toml 的 `[ios.usage]` 里可以写你自己的），在 Android 上会带上 `CAMERA` 和 `RECORD_AUDIO` 权限。
 
-```go
-camera.View(camera.ViewProps{
-	Mode:    camera.Video,
-	Facing:  camera.Back,
-	Style:   ui.Style{Grow: 1},
-	OnError: func(message string) { status.Set(message) },
-}),
-ui.Button(ui.ButtonProps{Title: ui.Val("Photo"), OnPress: func() {
-	camera.Capture(func(path string, err error) {
-		if err != nil {
-			status.Set(err.Error())
-			return
-		}
-		status.Set("Saved " + path)
-	})
-}}),
+## 录制视频：asuka/record
+
+处于视频模式的 `camera.View` 可以录像：`record.start()` 录下它显示的画面，除非指定 `mute`，否则同时录下麦克风的声音，直到调用 `record.stop()`（或到达 `maxDuration`），然后返回文件，即应用缓存目录里的一个 MPEG-4 视频。`camera.record` 和 `camera.stopRecording` 的作用相同。
+
+```asuka
+import asuka/camera
+import asuka/record
+
+component Clip {
+  state recording = false
+  state file = ""
+
+  Column {
+    camera.View { mode: .video; grow: 1 }
+    Button(if recording { "Stop" } else { "Record" }) {
+      on press {
+        if recording {
+          record.stop()
+        } else {
+          recording = true
+          defer { recording = false }
+          file = try await record.start(maxDuration: 30s)
+        }
+      }
+    }
+  }
+}
 ```
 
-`ViewProps`：
+在 iOS 和 Mac 上用的是 AVCaptureMovieFileOutput，在 Android 上是 CameraX 的 `VideoCapture`，在浏览器中是 `MediaRecorder`（写不了 MPEG-4 时用 WebM），在 Windows 上是 Media Foundation 的 sink writer，在 Linux 上是 GStreamer。
 
-- `Facing`：`camera.Back`（默认）或 `camera.Front`。
-- `Mode`：`camera.Photo`（默认），或者 `camera.Video`，用于配合 `asuka/sdk/camera/record` 录像，这种模式下也能拍照。
-- `Style`：视图本身的样式，决定它占据的区域。
-- `OnError`：摄像头无法显示时调用：用户拒绝时为 `"not allowed"`，没有摄像头时为 `"no camera"`。
-- `Scan`：识别画面中的条码；见 `asuka/sdk/scan`。
+## 条码和二维码：asuka/scan
 
-视图第一次显示时会请求摄像头权限；只要视图还在屏幕上，摄像头就保持开启。同一时间只显示一个相机视图：`Capture` 和录制使用的都是屏幕上的那一个，如果没有，就会以 `"no camera view"` 失败。
+打开 `scan` 的 `camera.View` 会实时识别画面里的码，每识别到一个就通过 `code` 报告一次（码一直在画面里时只报告一次）。`codes` 限定要找的种类，不写就是所有种类。种类的名字是 `"qr"`、`"aztec"`、`"datamatrix"`、`"pdf417"`、`"ean13"`、`"ean8"`、`"upca"`、`"upce"`、`"code128"`、`"code39"`、`"code93"`、`"codabar"` 和 `"itf"`。
 
-`Take` 和 `Capture` 生成的文件放在应用的缓存目录里，系统随时可能清理：想保留的话，把文件移到 `store.Dir()`，或者用 [`asuka/sdk/library`](#保存到媒体库asukasdklibrary) 存进照片库。
+`scan.file(path)` 则识别图片文件（拍的或选的照片）里的码：在 iOS 和 Mac 上用 Vision，在 Android 上用 ML Kit（模型打包在应用里，约 2 MB，所以没有 Google Play 服务也能用），在浏览器中用 `BarcodeDetector`（浏览器支持时），在 Windows 上用一个 Go 解码器，在 Linux 上用 ZBar 的 GStreamer 元素。
 
-**Android**：由于 `asuka/sdk/camera` 声明了相机权限（视图需要它），Android 要求调用相机应用时也必须拥有这项权限。因此 `Take` 会先请求权限，用户拒绝时以 `"not allowed"` 失败。
+```asuka
+import asuka/camera
+import asuka/scan
 
-## 录制视频：asuka/sdk/camera/record
+component Scanner {
+  state found = ""
 
-`asuka/sdk/camera/record` 从屏幕上那个 `Mode` 为 `camera.Video` 的 `camera.View` 录制视频。`record.Start` 会一直录到调用 `record.Stop` 为止，设置了 `MaxDuration` 的话则最多录到这个时长，然后把视频文件传给 `done`。文件放在应用的缓存目录中：iOS 和 Mac 上是 `.mov`，Android 和 Windows 上是 `.mp4`，Linux 上视可用的编码器而定，优先 `.mp4`，否则为 `.webm`。
+  Column {
+    camera.View {
+      scan: true
+      codes: ["qr", "ean13"]
+      grow: 1
+      on code(c) { found = "{c.kind}: {c.value}" }
+    }
+    Text(found)
+  }
+}
 
-```go
-ui.Button(ui.ButtonProps{
-	Title: signal.Func(func() string {
-		if recording.Get() {
-			return "Stop"
-		}
-		return "Record"
-	}),
-	OnPress: func() {
-		if recording.Peek() {
-			record.Stop()
-			return
-		}
-		recording.Set(true)
-		record.Start(record.Options{MaxDuration: time.Minute}, func(path string, err error) {
-			recording.Set(false)
-			if err != nil {
-				status.Set(err.Error())
-				return
-			}
-			status.Set("Recorded " + path) // 用 ui.Video 播放它
-		})
-	},
-})
+async fn read(photo: string) throws -> [string] {
+  var out: [string] = []
+  for c in try await scan.file(photo, kinds: ["qr"]) { out.push(c.value) }
+  return out
+}
 ```
 
-录像时也会录下声音，第一次录制时会请求麦克风权限；如果用户拒绝，视频就没有声音。使用 `record.Options{Mute: true}` 则录制无声视频，也不会请求权限。同一时间只能有一个录制在进行。
+## 识别图像内容：asuka/vision
 
-麦克风权限和对应的用途说明是随这个包带进来的，而不是随 `asuka/sdk/camera`：只拍照的应用不会带上它们。
+`vision.analyze(path)` 在设备上找出图片里的内容：逐行、逐词的文字，人脸，以及条码，每一项都带有它的 `Box`（以图片左上角为原点、按图片宽高比例表示的位置，图片已摆正；乘以视图的尺寸就得到点）。只请求你需要的（`text:`、`faces:`、`codes:`），知道文字的语言时也告诉它（`languages: ["ja"]`）。数据不会离开设备。
 
-## 条码和二维码：asuka/sdk/scan
+```asuka
+import asuka/vision
 
-`asuka/sdk/scan` 用来识别条码和二维码，既可以实时识别 `camera.View` 画面中的，也可以识别图片文件中的。iOS 和 Mac 用 AVFoundation 和 Vision 识别；Android 用 ML Kit，只有导入了 `asuka/sdk/scan` 的应用才会打包它；Windows 上用 Asuka 自带的、以 Go 编写的识别器；Linux 用 ZBar；浏览器用 `BarcodeDetector`。并不是每个识别器都支持所有类型，详见[在 Windows 上](#在-windows-上)和[在 Linux 上](#在-linux-上)。
-
-`scan.Codes` 用来生成视图的 `Scan`。它识别你指定的类型（不指定则识别所有类型）；每当有条码进入画面，就在主线程上调用传入的函数。条码一直留在画面中时只调用一次，离开画面一秒后再次出现时会再次调用。
-
-```go
-camera.View(camera.ViewProps{
-	Style: ui.Style{Grow: 1},
-	Scan: scan.Codes(func(c scan.Code) {
-		found.Set(fmt.Sprintf("%s: %s", c.Kind, c.Value))
-		ui.Haptic(ui.HapticSuccess)
-	}, scan.QR, scan.EAN13),
-})
+async fn words(photo: string) throws -> [string] {
+  let r = try await vision.analyze(photo, faces: false, codes: false)
+  return r.lines.map(l => l.text)
+}
 ```
 
-`scan.File` 识别一张图片（拍的或者选的照片）中的条码，并把结果传给 `done`（一个都没有时就是空的）：
-
-```go
-scan.File(path, func(codes []scan.Code, err error) {
-	switch {
-	case err != nil:
-		found.Set(err.Error())
-	case len(codes) == 0:
-		found.Set("No code in it")
-	default:
-		found.Set(codes[0].Value)
-	}
-}, scan.QR)
-```
-
-`scan.Code` 包含 `Kind`（类型）和 `Value`（码中的文本）。支持的类型有：`QR`、`Aztec`、`DataMatrix`、`PDF417`、`EAN13`、`EAN8`、`UPCA`、`UPCE`、`Code128`、`Code39`、`Code93`、`Codabar`、`ITF`。
-
-**iOS** 会把 UPC-A 识别成前面带一个 0 的 EAN-13；如果你指定了 `UPCA`，Asuka 会把它还原成 UPC-A。
-
-## 识别图像内容：asuka/sdk/vision
-
-`vision.Analyze(path, options)` 在图片中查找文字、人脸和条码，并给出它们各自的位置。识别完全在设备本地进行：iOS 和 Mac 上用 Apple 的 Vision；Android 上用 ML Kit 内置的模型，只有导入了 `asuka/sdk/vision` 的应用才会打包这些模型；Windows 上用系统的 OCR 和人脸检测器；Linux 上用 Tesseract（不支持人脸）；浏览器中则取决于它的 Shape Detection API 支持哪些。不能在主线程上调用。
-
-```go
-go func() {
-	r, err := vision.Analyze(photo, vision.Options{Languages: []string{"zh-Hans", "en-US"}})
-	if err != nil {
-		return
-	}
-	ui.Post(func() {
-		for _, l := range r.Lines {
-			fmt.Println(l.Text, l.Box)
-			for _, w := range l.Words {
-				fmt.Println(" ", w.Text, w.Box, w.Start, w.End)
-			}
-		}
-		fmt.Println(len(r.Faces), "faces,", len(r.Codes), "codes")
-	})
-}()
-```
-
-- `Box` 用相对于图片尺寸的比例表示，从左上角算起，并以摆正后的图片为准：因此它与缩放比例无关，既可以用于叠在图片上的视图，也可以用于 `asuka/sdk/imageedit` 的像素坐标。
-- `Line` 包含 `Text`、`Box` 和 `Words`。`Word` 是平台分词得到的一个词（中文和日文基于词典分词），或者一个标点符号。`Start` 和 `End` 是它在整行文本中的位置，以 rune 计。
-- `Code` 包含 `Kind`（名称与 `asuka/sdk/scan` 一致）、`Value` 和 `Box`。
-- 用 `Options` 可以关掉不需要的识别（`NoText`、`NoFaces`、`NoCodes`）。`Languages` 是文字可能使用的语言，可能性最大的排在最前，仅对 iOS 有效：Vision 只能很好地识别第一个语言所属的文字体系，所以如果文字中可能出现中文，就把中文放在最前面。它的中文模型也能识别拉丁字母。Android 则始终能识别中文和拉丁文字。
-
-**iOS** 会把识别出的一组内容作为一个整体给出位置框：中文行里共用同一个框的几个词，会按各自的宽度分摊这个框，所以这种情况下单个词的框只是估算值。Vision 给出的条码框有时只是它扫过的那一条线，Asuka 会把它扩展到覆盖整个条码。**Android** 上每个词的框由其中各个字符的框合成。
-
-OCR 会先把图片缩放到它自己的处理尺寸，所以在很长的截图里会漏掉小字：可以先用 `imageedit.Crop` 切成几段，再逐段分析。
+在 iOS 和 Mac 上用的是 Vision 框架，在 Android 上是 ML Kit 及其打包的模型（约 30 MB），在浏览器中是 Shape Detection API（浏览器支持时），在 Windows 上是系统的 OCR，在 Linux 上是 Tesseract（已安装时）和 ZBar。`asuka/scan` 读出码的内容，这个包则告诉你码在哪里。
 
 ## 照片库：asuka/sdk/photos
 
@@ -910,78 +863,62 @@ notify.SetChannels(
 
 **macOS** 需要应用的 bundle，而 `asuka dev` 和 `asuka build` 都是从 bundle 启动应用的：单独运行的可执行文件（`go run`）没有 bundle ID，这些调用会失败，并返回说明原因的错误。**Windows** 显示 toast 通知，可以立即显示，也可以定时显示，支持图片，类别中的操作显示为按钮，回复显示为文本框。应用第一次使用通知时会注册自己：在开始菜单中创建一个快捷方式，带上应用的 AppUserModelID（即 `asuka.toml` 中的 `id`），并在用户的注册表中登记一个 COM 激活器（也就是应用的可执行文件）。这样，点按通知或按钮时才能把响应送到应用；如果应用没在运行，Windows 会替它启动。如果是后台操作，应用会保持不可见，并在 `OnAction` 处理完后退出。角标是画在应用任务栏按钮上的一个数字（打包应用则使用系统的角标）。无论 `Present` 怎么设定，Windows 都会显示定时的 toast。**Linux** 上，如果应用有 desktop 文件（或运行在沙盒中），通知会以 GNotification 的形式发送，否则直接发给桌面的通知服务器（GNOME Shell 会拒绝没有 desktop 文件的应用）；应用运行期间，点按通知和按钮都能传到应用。定时通知是一个 systemd 用户定时器（`systemd-run --user`）：到时它会以无窗口的方式运行应用的可执行文件来显示通知，如果应用正在运行就交给应用处理，用户点按时则启动应用；没有 systemd 时（Flatpak、`asuka dev`），定时通知只在应用运行时显示。**浏览器**通过应用的 service worker 显示通知，`asuka/sdk/push` 则通过 Web Push 实现：详见 [Web](web.md)。
 
-## 播放声音：asuka/sdk/audio
+## 播放声音：asuka/audio
 
-`asuka/sdk/audio` 用平台自带的播放器播放音效和音乐：iOS 和 Mac 上是 AVPlayer，Android 上是 Media3 的 ExoPlayer，Windows 上是 MCI，Linux 上是 GStreamer 的 playbin，浏览器里则是一个 audio 元素（浏览器要求用户先在页面上点按或点击过，才允许播放）。音源可以是应用 `assets/` 里的文件、应用自己写入的文件，也可以是一个 http(s) URL，指向文件或流都行。
+`audio.play(source)` 把一段声音播放一次：可以是应用 assets 里的文件、文件路径或 http(s) URL。`audio.Player(source)` 是一个 store，持有一段声音，创建后即可播放：`play`、`pause`、`seek(seconds:)`、`setVolume`、`setRate`（保持音高，适合语音）、`setLoop`，以及表示当前进度的 `status()`（`position`、`duration`、`playing`、`ended`）。创建它的组件消失时，或者调用 `release()` 时，它会停止并释放这段声音。
 
-`audio.Play(source)` 从头播放一次声音，播完就自动释放，适合提示音、按键音这类场景。需要更多控制时，用 `audio.Load` 创建一个 `*audio.Player`：
+```asuka
+import asuka/audio
 
-```go
-func Sounds() ui.Node {
-	music := audio.Load("music/theme.m4a")
-	music.SetLoop(true)
-	music.SetVolume(0.5)
-	signal.OnCleanup(music.Release)
-	return ui.Column(nil,
-		ui.Button(ui.ButtonProps{Title: ui.Val("Ding"), OnPress: func() { audio.Play("sounds/ding.wav") }}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Play"), OnPress: music.Play}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Pause"), OnPress: music.Pause}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Restart"), OnPress: func() { music.Seek(0); music.Play() }}),
-	)
+component Episode(url: string) {
+  state player = audio.Player(url)
+  state status = audio.Status()
+
+  task {
+    while true {
+      status = await player.status()
+      await sleep(250ms)
+    }
+  }
+
+  Column {
+    Text("{status.position.fixed(0)} / {status.duration.fixed(0)} s")
+    Button(if status.playing { "Pause" } else { "Play" }) {
+      on press { if status.playing { player.pause() } else { player.play() } }
+    }
+    Button("Ding") { on press { audio.play("ding.wav") } }
+  }
 }
 ```
 
-`Player` 的方法都要在主线程上调用：`Play` 从当前位置开始播放（如果已经播完，则从头开始）；`Pause` 暂停；`Seek(seconds)` 跳到指定的秒数；`SetVolume` 设置音量，范围 0 到 1，默认为 1；`SetRate` 设置播放速度，范围 0.25 到 4，音调保持不变；`SetLoop` 设置是否循环；`Status(done)` 给出播放状态，包括 `Position`、`Duration`、`Playing` 和 `Ended`，想跟踪播放进度的话，每秒读几次即可；`Release` 停止播放，并释放它占用的资源。播放器不再需要时，记得释放它。
+在 iOS 和 Mac 上用的是 AVPlayer，在 Android 上是 Media3 的 ExoPlayer，在浏览器中是 `<audio>`，在 Windows 上是 MCI，在 Linux 上是 GStreamer 的 `playbin`。只有当应用声明自己正在播放媒体时，锁屏后声音才会继续播放：见下面的“正在播放”。
 
-和音乐类、游戏类应用一样，即使打开了 iOS 的静音开关，声音也会照常播放，而且不会和其他应用的音频混在一起播放。
+### 正在播放与媒体键：asuka/nowplaying
 
-### 正在播放与媒体键：asuka/sdk/nowplaying
+`nowplaying.NowPlaying` 在它显示期间告诉系统应用正在播放什么：iOS 锁屏和控制中心里的播放器，Android 的媒体通知（一个前台服务，所以能一直播放下去），Mac 的“正在播放”小组件，Windows 的媒体浮出控件（SMTC），Linux 上的 MPRIS（GNOME 的媒体控件），浏览器中的 Media Session API。它的事件就是系统发来的命令：媒体键、耳机按键、锁屏上的按钮。给它一个 `player`，它就会跟着播放器的进度走，并且自己去播放和暂停。
 
-`asuka/sdk/nowplaying` 把应用正在播放的内容显示在系统展示媒体信息的地方，并把那里的控制按钮发出的命令转交给应用。这些地方包括：iOS 上的锁屏、控制中心、灵动岛和 CarPlay；Android 上的通知栏、锁屏、Android Auto 和 Wear OS；Mac 上的控制中心和菜单栏；Windows 上的媒体浮出控件；Linux 上 GNOME 和 KDE 的媒体控件；以及浏览器自己的媒体控件。键盘和耳机上的媒体键发出的也是同样的命令。`Show` 在组件中调用，会跟随传入的访问器更新，并在组件的 owner 被销毁时随之消失：
+```asuka
+import asuka/audio
+import asuka/nowplaying
 
-```go
-func Episode(ep *Episode) ui.Node {
-	state := signal.New(nowplaying.Paused)
-	position := signal.New(0.0) // 单位为秒：播放位置跳变时设置
-	nowplaying.Show(nowplaying.Props{
-		Title:          ui.Val(ep.Title),
-		Artist:         ui.Val(ep.Show),
-		Artwork:        ui.Val(ep.Cover), // 资源文件、本地文件或 http(s) URL
-		Duration:       ui.Val(ep.Seconds),
-		State:          state,
-		Position:       position,
-		OnPlay:         func() { player.Play(); state.Set(nowplaying.Playing) },
-		OnPause:        func() { player.Pause(); state.Set(nowplaying.Paused) },
-		OnSeek:         func(at float64) { player.Seek(at); position.Set(at) },
-		OnSkipForward:  func(s float64) { skip(s) },
-		OnSkipBackward: func(s float64) { skip(-s) },
-		SkipInterval:   30,
-	})
-	// ...
+component Playing(url: string) {
+  state player = audio.Player(url)
+
+  Column {
+    nowplaying.NowPlaying {
+      title: "Episode 12"
+      artist: "The Show"
+      artwork: "cover.jpg"
+      player: player
+      skipInterval: 15
+      on next { player.seek(0) }
+    }
+    Button("Play") { on press { player.play() } }
+  }
 }
 ```
 
-会显示出来的有：`Title`、`Artist`、`Album`、`Artwork`（边长 512 像素以上的正方形图片在哪里都清晰）、`Duration`（直播流设为 0，此时无法拖动进度）、`State`（`Playing`、`Paused` 或 `Stopped`）、`Position` 和 `Rate`。播放期间，系统会按播放速度自行推进进度，因此只有在播放位置发生跳变（拖动进度、卡顿）或者状态、速度改变时，这个包才会重新发送 `Position`。也就是说，即便 `Position` 跟随的是一个每秒读取好几次的播放器状态，也不会带来额外开销。
-
-设置了处理函数的命令才会启用，其余的会变灰或者干脆不显示。`OnPlay`、`OnPause` 和 `OnTogglePlayPause` 可以互相替代（耳机上只有一个键，按下就切换播放和暂停；锁屏上则只显示播放或暂停其中一个按钮），所以只要设置了任意一个，三者就都会启用。`OnSeek` 要求 `Duration` 已知。`OnSkipForward` 和 `OnSkipBackward` 按 `SkipInterval` 快进或快退（默认 15 秒）；iOS 和 Mac 会用它们替换“下一首”和“上一首”按钮，Android 则在没有设置 `OnNext` 或 `OnPrevious` 时，把它们放到这两个按钮的位置上。
-
-如果用的是 `asuka/sdk/audio` 的播放器，把它交给 `Player`，剩下的事就都不用管了：状态、位置和时长都从播放器获取（每秒读一次它的状态；对它执行的命令会立即反映出来），而播放、暂停、停止、跳转以及快进快退（需设置 `SkipInterval`），只要没有设置对应的处理函数，就会直接作用在这个播放器上：
-
-```go
-music := audio.Load("music/spring.mp3")
-signal.OnCleanup(music.Release)
-nowplaying.Show(nowplaying.Props{
-	Title:   ui.Val("Spring"),
-	Artist:  ui.Val("Vivaldi"),
-	Artwork: ui.Val("covers/spring.jpg"),
-	Player:  music,
-	OnNext:  playNext,
-})
-```
-
-可以同时挂载多个：显示的是最后挂载的那个，它消失后，再显示它前面的那个。如果在同一次更新中，一个被另一个替换（比如当前曲目的组件让位给下一首的组件），系统的媒体控件在切换过程中会始终归这个应用所有，不会中途丢失。
-
-在 iOS 上，应用会获得 `audio` 后台模式，因此锁屏后仍能继续播放；它的音频会话使用 playback 类别，而 iOS 显示的正是音频会话正在播放的那个应用。在 Android 上，它是一个带有媒体样式通知的 MediaSession（媒体会话的通知不需要通知权限）；播放期间，一个媒体播放类型的前台服务会让应用在后台保持运行，这是 Android 14 的要求；暂停后通知仍然保留，用户可以把它划掉。这两项配置都只会由 `asuka build` 添加到用到这个包的应用里。`examples/player` 就用它来播放一张专辑。
+不给 `player` 时，就自己提供 `state`（`.playing`、`.paused`）、`duration` 和 `position`，并处理 `play`、`pause`、`seek(position)`、`skipForward(seconds)` 和 `skipBackward(seconds)`。同时显示了好几个时，系统显示的是最后出现的那个。导入它的应用会自动带上 iOS 的 `audio` 后台模式和 Android 的前台服务权限。
 
 ## 网络状态：asuka/sdk/network
 
@@ -1380,42 +1317,49 @@ go func() {
 
 Linux 没有用来验证设备主人的系统提示：`Check` 会报告什么都没有，`Authenticate` 会以 `ErrNotAvailable` 失败。
 
-## 录音：asuka/sdk/audio/record
+## 录音：asuka/record
 
-`record.Start(options, done)` 从麦克风录音，直到调用 `record.Stop`（或达到 `MaxDuration`），然后把录好的文件交给 `done`：文件格式是 MPEG-4 容器中的 AAC（`.m4a`），存放在应用的缓存中，可以直接用 `asuka/sdk/audio` 播放。录音在 iOS 和 Mac 上用的是 AVAudioRecorder，在 Windows 上是 Media Foundation，在 Linux 上是 GStreamer，在浏览器中是 `MediaRecorder`（无法录制 AAC 时改用 WebM 封装的 Opus）。第一次录音时会请求麦克风权限；如果被拒绝，`done` 会收到 `"not allowed"`。
+`record.audio()` 录下麦克风的声音，直到调用 `record.stopAudio()`（或到达 `maxDuration`），然后返回文件：应用缓存目录里（或 `path` 指定的位置）的一个 AAC 编码的 MPEG-4 文件（.m4a），可以用 `asuka/audio` 播放。第一次录音时会请求麦克风权限。`pauseAudio` 和 `resumeAudio` 暂停和继续；`audioStatus()` 是当前的状态（`level` 从 0 到 1，可以做电平表；`elapsed` 是已录时长）。`quality: .music` 会保留比人声所需更多的细节。
 
-```go
-record.Start(record.Options{Quality: record.Voice, MaxDuration: time.Minute}, func(path string, err error) {
-	if err == nil {
-		memo.Set(path)
-	}
-})
-// 稍后
-record.Stop()
+```asuka
+import asuka/record
+
+component Memo {
+  state recording = false
+  state file = ""
+
+  Button(if recording { "Stop" } else { "Record" }) {
+    on press {
+      if recording {
+        record.stopAudio()
+      } else {
+        recording = true
+        defer { recording = false }
+        file = try await record.audio(maxDuration: 60s)
+      }
+    }
+  }
+}
 ```
 
-`Voice` 是单声道、64 kbit/s；`Music` 是立体声、128 kbit/s。`Pause` 和 `Resume` 在同一个文件上暂停和继续录制。在 goroutine 中每秒调用几次 `record.Level()`，可以拿到 0 到 1 之间的音量电平，用来做音量表。在主线程上调用 `record.CurrentStatus(done)`，可以拿到电平、当前是否真的在录入声音，以及已经录了多长时间：计时器应该显示的就是这个时长，因为系统可能会暂停录音（比如来电），而 iOS 会在系统允许时自动继续。在 iOS 上，录音期间音频会话会切换为同时播放和录制（其他应用的声音会停下），录完后再恢复原样。
+`background: true` 让它在应用不可见时继续录音：在 iOS 上，应用需要在 asuka.toml 的 `ios.backgroundModes` 里加上 `"audio"`；在 Android 上，它是一个前台服务，通知里显示 `title`，并带一个停止按钮。在 iOS 和 Mac 上用的是 AVAudioRecorder，在 Android 和浏览器中是 `MediaRecorder`，在 Windows 上是 Media Foundation，在 Linux 上是 GStreamer。
 
-`Options.Stream` 录制的是 ADTS 流（`.aac`），它的每一帧都是完整的，所以即使应用崩溃或手机突然关机，已经录下的内容也不会丢；而 MPEG-4 文件在关闭之前是无法读取的。给它指定一个 `Path`，崩溃之后就能再找到这个文件；然后用 `record.Finalize(stream, dst)` 把它转成适合长期保存的 `.m4a`，转换后的文件可以正常拖动进度。无论录音是正常停止还是因崩溃中断，都可以这样处理。
+## 语音转文字：asuka/transcribe
 
-`Options.Background` 让录音在应用不可见、屏幕锁定时继续进行。iOS 需要在 `asuka.toml` 的 `[ios]` 中加上 `backgroundModes = ["audio"]`；Android 会运行一个麦克风类型的前台服务，并显示一条常驻通知（`BackgroundTitle`），上面带有停止按钮。Google Play 会询问这个服务是做什么用的：上传之前请先完成声明。桌面应用在不可见时本来就会继续录音，所以 `Background` 在桌面端不起作用。
+`transcribe.file(path)` 在设备上把一段录音转成文字，声音不会离开设备。它的 `Result` 包含 `text`、`segments`（每个词或短语的开始时间和时长，单位是秒，平台提供时才有）以及识别出的 `language`。`transcribe.check(language)` 可以在录音之前告诉你设备能不能转写。
 
-## 语音转文字：asuka/sdk/transcribe
+```asuka
+import asuka/transcribe
 
-`transcribe.File(path, options)` 在设备上把录音转成文字，声音不会离开设备。如果设备做不到，它会返回 `ErrNotAvailable`，而不会转而求助服务器。不要在主线程上调用。
-
-```go
-go func() {
-	r, err := transcribe.File(path, transcribe.Options{Language: "en-US"})
-	ui.Post(func() {
-		if err == nil {
-			text.Set(r.Text)
-		}
-	})
-}()
+async fn caption(recording: string) throws -> string {
+  let can = try await transcribe.check("en-US")
+  if !can.onDevice { return "" }
+  let r = try await transcribe.file(recording, language: "en-US")
+  return r.text
+}
 ```
 
-`Result` 包含 `Text`、`Language` 和 `Segments`。`Segments` 是逐个单词的列表，每个单词带有 `Start` 和 `Duration`（单位为秒），只在 iOS 和 Android 14 上提供。没有人声的录音会得到空的 `Text`。`transcribe.Check(language)` 告诉你设备能做什么，不会向用户请求任何权限。iOS 使用 Speech 框架（模型内置于 iOS 中，但并非每个模拟器运行时都有）；第一次使用时会请求语音识别权限。Android 的设备端识别器需要 Android 13，还需要对应语言的模型，缺少时会自动下载（此时返回 `ErrDownloading`：请稍后再试）。Mac 同样使用 Speech 框架，并且只在设备上识别。Windows、Linux 和 Web 没有可供应用使用的设备端识别器：`File` 会以 `ErrNotAvailable` 失败。
+在 iOS 和 Mac 上用的是 Speech 框架，并要求只在设备上处理；在 Android 上是系统的设备端识别器（Android 13 及以上）；在 Windows 上是系统的语音识别。设备做不到时（浏览器、Linux、较旧的 Android），它会抛出 `TranscribeError.notAvailable`，而不是把声音发到服务器；语言模型还在下载时抛出 `.downloading`。
 
 ## 屏幕：asuka/sdk/screen
 
@@ -1460,27 +1404,31 @@ func App() ui.Node {
 }
 ```
 
-## 地图：asuka/sdk/maps
+## 地图：asuka/maps
 
-`maps.View` 是一个地图视图：iOS 和 Mac 上是 Apple 地图，Android 上是 Google 地图，Windows 和浏览器中是 OpenStreetMap 的瓦片（由宿主绘制），Linux 上则使用 libshumate。
+`maps.View` 是一张地图：在 iOS 和 Mac 上是 Apple 地图，在 Android 上是 Google 地图，在 Windows 和浏览器中是 OpenStreetMap 的瓦片，在 Linux 上是 libshumate 的瓦片。绑定它的 `region`（中心点和跨越的度数），就能移动地图，也能跟上用户的拖动；`markers` 是地图上的标记，`markerPress`、`press` 和 `regionChange` 是用户的操作。
 
-```go
-region := signal.New(maps.Region{Center: maps.Coordinate{Lat: 37.77, Lng: -122.42}, LatDelta: 0.05, LngDelta: 0.05})
-maps.View(maps.Props{
-	Region:         region,
-	Markers:        ui.Val([]maps.Marker{{ID: "hq", At: maps.Coordinate{Lat: 37.79, Lng: -122.39}, Title: "HQ"}}),
-	OnRegionChange: func(r maps.Region) { region.Set(r) },
-	OnMarkerPress:  func(id string) { show(id) },
-	Style:          ui.Style{Grow: 1},
-})
+```asuka
+import asuka/maps
+
+component Places {
+  state region = maps.Region(center: maps.Coordinate(lat: 37.77, lng: -122.42), latDelta: 0.08, lngDelta: 0.08)
+  state picked = ""
+
+  Column {
+    maps.View {
+      bind region: region
+      markers: [maps.Marker(id: "hq", at: maps.Coordinate(lat: 37.79, lng: -122.39), title: "HQ", color: .blue)]
+      mapType: .muted
+      grow: 1
+      on markerPress(id) { picked = id }
+    }
+    Text(picked)
+  }
+}
 ```
 
-- `Region` 是地图显示的区域，由中心点和横跨的经纬度数组成；设置它会让地图移过去。用户移动地图之后，`OnRegionChange` 会收到新的区域。
-- `Markers` 是地图上的标记，可以带 `Title`、`Subtitle` 和 `Color`；`OnMarkerPress` 收到被点按标记的 `ID`，`OnPress` 则收到用户在地图上点按的位置。
-- `Type` 可以是 `Standard`、`Satellite`、`Hybrid` 或 `Muted`（iOS）；`ShowsUser` 显示用户的位置，需要定位权限（先导入 `asuka/sdk/location` 并请求权限）；`NoInteraction` 让地图变成一张静态预览。
-- 地图本身没有尺寸：要么给它设置尺寸，要么用 `Grow`。
-
-Android 需要一个启用了 Maps SDK for Android 的 Google Maps Platform API 密钥，写在 `asuka.toml` 的 `[android]` 中：`mapsKey = "..."`。没有密钥时，地图上会显示相应提示，`OnError` 也会收到原因。在 Windows、Linux 和 Web 上，`Satellite` 和 `Hybrid` 显示的都是街道图（没有免费的卫星影像）；`ShowsUser` 在 Windows 和 Linux 上不显示任何内容，在浏览器中，只要页面获得了定位权限，就会显示用户的位置。在 iOS 和 Web 上，`Muted` 显示的是更素净的街道图。Linux 需要安装 libshumate（`libshumate-1.0-1`）。瓦片按照 OpenStreetMap 使用政策的要求从 `tile.openstreetmap.org` 获取，并在地图上标注其署名；Web 应用也可以从自己的服务器获取瓦片（见 [Web](web.md)）。
+`mapType`（`.standard`、`.satellite`、`.hybrid`、`.muted`）和 `showsUser`（显示用户位置：先用 `asuka/location` 请求权限）只对 Apple 和 Google 的地图有效，OpenStreetMap 的地图只显示街道。在 Android 上，导入这个包的应用会带上 Google 的 Maps SDK 一起构建，还需要在 asuka.toml 的 `android.mapsKey` 里填一个 Maps SDK for Android 的密钥。
 
 ## 后台刷新：asuka/sdk/periodic
 
@@ -1531,35 +1479,42 @@ stop := sensors.WatchMotion(50*time.Millisecond, func(m sensors.MotionReading) {
 
 两个平台给出的数值是一致的：设备坐标轴采用 Android 和 W3C 的定义（x 指向屏幕右侧，y 指向屏幕上方，z 垂直于屏幕向外）；加速度是加速度计实际测得的值（设备屏幕朝上平放时，读数为 z = +1 g；iOS 的数据会转换成同样的方向）；姿态在两个平台上的计算方式也相同。每秒最多 200 个读数；读数在主线程上送达，按平台交付的节奏分批到来。
 
-## 编辑图片和视频帧：asuka/sdk/imageedit
+## 编辑图片和视频帧：asuka/imageedit
 
-`imageedit.Edit(source, actions, options)` 读取一张图片（HEIC、JPEG、PNG、WebP，也就是相机和照片选择器给出的那些格式），根据它的方向信息把图片摆正，依次执行各项操作，然后把结果以 JPEG 或 PNG 格式写入应用的缓存。不要在主线程上调用。
+`imageedit.edit(source, actions)` 用平台自带的编解码器编辑图片，并写成 JPEG 或 PNG：它能读取相机和照片选择器给出的格式（HEIC、JPEG、PNG、WebP ……），并按照方向信息把图片摆正，适合用来上传、缓存或交给 `Image` 显示。操作按顺序执行：`.resize(width, height)`（某一边写 0 就保持比例）、`.crop(x, y, width, height)`、`.rotate(degrees)`、`.flipHorizontal`、`.flipVertical`、`.fill(...)`（填充纯色，原来的内容会从文件里彻底消失）和 `.pixelate(...)`。`imageedit.size(source)` 读取图片尺寸；`imageedit.videoFrame(source, at:)` 把视频的某一帧取成图片。
 
-```go
-go func() {
-	r, err := imageedit.Edit(photo, []imageedit.Action{
-		imageedit.Resize(1080, 0), // 宽 1080；0 表示保持宽高比
-		imageedit.Crop(0, 0, 1080, 1080),
-	}, imageedit.Options{Quality: 0.8})
-	if err == nil {
-		upload(r.Path, r.Width, r.Height)
-	}
-}()
+```asuka
+import asuka/imageedit
+
+async fn thumbnail(photo: string) throws -> string {
+  let r = try await imageedit.edit(photo, [.resize(1080, 0), .crop(0, 0, 1080, 1080)], quality: 0.8)
+  return r.path
+}
+
+async fn poster(video: string) throws -> string {
+  return (try await imageedit.videoFrame(video, at: 1s, actions: [.resize(640, 0)])).path
+}
 ```
 
-可用的操作有 `Resize`、`Crop`、`Rotate`（顺时针，任意角度）、`FlipHorizontal`、`FlipVertical`、`Fill` 和 `Pixelate`。`Fill(x, y, w, h, r, g, b)` 把一个矩形区域涂成纯色，原来的内容会从文件中彻底抹掉；`Pixelate(x, y, w, h, block)` 给一个区域打上马赛克，每个方块取其覆盖像素的平均值，方块与整张图片对齐，所以相邻的矩形看起来是连成一片的。方块较小时，底下的文字有时还能被辨认出来：必须隐藏的内容请用 `Fill`。写出的文件不带原图的任何元数据：没有位置，也没有相机信息。如果第一个操作是 `Resize`，解码时就会直接解成接近目标的尺寸，处理大照片时能省下不少内存。`imageedit.Size` 无需解码就能读出图片的尺寸。`imageedit.VideoFrame(source, at, actions, options)` 截取视频在某个时间点的画面（用作缩略图或封面），摆正后用同样的方式编辑；如果是远程视频，只会读取截取这一帧所需的那部分。source 和 `ui.Image` 接受的一样：路径、`file://` 或 `http(s)` URL，或者资源文件。
+在 iOS 和 Mac 上用的是 Core Graphics 和 Image I/O，在 Android 上是 `Bitmap` 和 `MediaMetadataRetriever`，在浏览器中是 canvas，在 Windows 上是 WIC 和 Media Foundation，在 Linux 上是 GdkPixbuf 和 GStreamer。来源不是图片时会抛出 `EditError.noImage`。
 
-各平台使用自己的编解码器解码：iOS 和 Mac 上是 ImageIO，Android 上用系统自带的，Windows 上是 WIC，Linux 上是 GdkPixbuf 的加载器（装了相应的编解码器或加载器时才支持 HEIC 和 WebP），浏览器中则是 canvas（输出 JPEG 或 PNG；远程图片需要 CORS）。
+## 文字转语音：asuka/speech
 
-## 文字转语音：asuka/sdk/speech
+`speech.speak(text)` 用设备上对应文字语言的声音朗读（也可以用 `Options(language:, voice:, rate:, pitch:, volume:)` 指定），读完后才返回；正在朗读时又要读的内容会排队等候。`stop()` 停止朗读（正在等待的调用会抛出 `SpeechError.stopped`），`pause()` 和 `resume()` 在某个词处暂停并继续，`speaking()` 表示是否正在朗读，`voices()` 列出所有声音及其 `quality`。
 
-`speech.Speak(text, options, done)` 把一段文字加入朗读队列，用平台的语音朗读出来；读完后 `done` 收到 nil，被停止则收到 `ErrStopped`。
+```asuka
+import asuka/speech
 
-```go
-speech.Speak("Turn left in 200 meters", speech.Options{Rate: 1.1}, nil)
+component Reader(text: string) {
+  Row {
+    gap: 12
+    Button("Read") { on press { try await speech.speak(text, options: speech.Options(rate: 1.1)) } }
+    Button("Stop") { on press { speech.stop() } }
+  }
+}
 ```
 
-`Options` 可以设置 `Language`（BCP 47 标签）、`Voice`（来自 `speech.Voices()` 的 ID，`Voices()` 会列出每种语音的名称、语言和质量）、`Pitch`、`Rate` 和 `Volume`。`Stop` 清空队列，`Pause` 和 `Resume` 在单词处暂停和继续（Android 本身不支持暂停，但这里同样可用：Asuka 会从暂停的那个单词接着读）。在 iOS 上，朗读时会把其他应用的声音调低，静音开关打开时也照常朗读；Android 同样会调低其他应用的声音。所用的语音在 iOS 和 Mac 上来自 AVSpeechSynthesizer，在 Windows 上来自 SAPI，在 Linux 上来自 Speech Dispatcher，在浏览器中来自 `speechSynthesis`。
+在 iOS 和 Mac 上用的是 AVSpeechSynthesizer，在 Android 上是系统的 `TextToSpeech`，在浏览器中是 `speechSynthesis`，在 Windows 上是 SAPI，在 Linux 上是 Speech Dispatcher。朗读时，其他应用的声音会自动调低。
 
 ## 通讯录：asuka/sdk/contacts
 
