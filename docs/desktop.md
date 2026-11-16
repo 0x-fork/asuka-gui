@@ -277,46 +277,48 @@ clicks through to the page; nothing lets them out of the browser.
 
 ## File dialogs
 
-`asuka/sdk/dialog` shows the system's file dialogs and gives the user's own
+`asuka/dialog` shows the system's file dialogs and gives the user's own
 paths, not copies:
 
-```go
-dialog.Save(dialog.SaveOptions{
-	Name:    "Notes.md",
-	Filters: []dialog.Filter{{Name: "Markdown", Extensions: []string{"md"}}},
-	From:    view, // the window it belongs to
-}, func(path string, err error) {
-	if path != "" {
-		os.WriteFile(path, export(), 0o644)
-	}
-})
+```asuka
+import asuka/dialog
+import asuka/shell
+
+async fn export(notes: string) throws {
+  let md = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
+  if let path = try await dialog.save(name: "Notes.md", button: "Export", filters: md) {
+    try await write(path, notes)
+    try? await shell.reveal(path)
+  }
+}
 ```
 
-`dialog.Open` (several files with `Multiple`, `Filters` by MIME type
-such as `image/*` or by extension), `dialog.Save` (a suggested `Name`;
-the dialog asks before replacing a file) and `dialog.Folder`. `Title`,
-`Button`, `Start` (a folder, or a file in it) and `From` set them up. A
-cancel is no path and no error.
+`dialog.open` (several files with `multiple`, `filters` by MIME type
+such as `image/*` or by extension), `dialog.save` (a suggested `name`;
+the dialog asks before replacing a file), `dialog.chooseFolder` and
+`dialog.chooseFolders`. `title`, `button` and `start` (a folder, or a
+file in it) set them up. A cancel is no path (`none`, or an empty list)
+and no error.
 
 On the Mac they're sheets on the window; on Windows the common item
 dialogs, modal to the window; on Linux GTK's file dialog, which is the
-desktop's portal in a Flatpak. In a browser, Open and Folder copy what's
-picked into the app's files, and the file Save gives is written to the
-file the user chose (Chrome, Edge) or downloaded. On iOS and Android,
-Open is the document picker (copies, as `device.PickFiles` gives), and
-Save and Folder answer `dialog.ErrUnsupported`.
+desktop's portal in a Flatpak. In a browser, open and chooseFolder copy
+what's picked into the app's files, and the file save gives is written to
+the file the user chose (Chrome, Edge) or downloaded. On iOS and Android,
+open is the document picker (copies, as `device.pickFiles` gives), and
+save and chooseFolder throw an `unsupported` error.
 
 ## The file manager
 
-`asuka/sdk/shell` does what the file manager does with a file:
-`shell.Reveal` shows it selected in its folder (Finder, Explorer, or the
-desktop's file manager), `shell.Open` opens it in the user's app for its
-type (`shell.ErrNoApp` if there's none) and a folder in the file
-manager, `shell.Trash` moves it to the trash or the Recycle Bin and
-never deletes it for good (it fails instead), and `shell.Beep` sounds
-the alert. Phones and the web have no file manager: Reveal and Trash
-answer `shell.ErrUnsupported`, and on the web Open shows the file in a
-new tab. To show a file's contents in the app, use `asuka/sdk/preview`.
+`asuka/shell` does what the file manager does with a file:
+`shell.reveal(path)` shows it selected in its folder (Finder, Explorer, or the
+desktop's file manager), `shell.open(path)` opens it in the user's app for its
+type (`shell.ShellError.noApp` if there's none) and a folder in the file
+manager, `shell.trash(path)` moves it to the trash or the Recycle Bin and
+never deletes it for good (it throws instead), and `shell.beep()` sounds
+the alert. Phones and the web have no file manager: reveal and trash
+throw an `unsupported` error, and on the web open shows the file in a
+new tab. To show a file's contents in the app, use `asuka/preview`.
 
 ## Opening files
 

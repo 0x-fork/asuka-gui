@@ -232,8 +232,8 @@ Windows and Linux unless the row says otherwise.
 | Click-through windows | `setIgnoreMouseEvents` | `SetIgnoreMouseEvents`, `SetInputRegion` | ✓ `ClickThrough`, `WindowHandle.SetClickThrough` (the whole window) |
 | The apps installed, for a launcher | none | `InstalledApps`, `FileIcon`, `LaunchApp` | ✓ `asuka/sdk/apps` `List`, `Search`, `Icon`, `Open` |
 | Global shortcuts | `globalShortcut` | global shortcuts | ✓ `hotkey.Register` (Carbon's hot keys; `RegisterHotKey`; X11 grabs or Wayland's GlobalShortcuts portal) |
-| Open, save and folder dialogs | `dialog.showOpenDialog`, `showSaveDialog` | dialogs | ✓ `asuka/sdk/dialog` `Open`, `Save`, `Folder` (sheets on the Mac; the web: the File System Access pickers or the file input; phones: `Open` only) |
-| Reveal, open in its app, move to the trash | `shell.showItemInFolder`, `openPath`, `trashItem` | the shell | ✓ `asuka/sdk/shell` `Reveal`, `Open`, `Trash`, `Beep` |
+| Open, save and folder dialogs | `dialog.showOpenDialog`, `showSaveDialog` | dialogs | ✓ `asuka/dialog` `open`, `save`, `chooseFolder` (sheets on the Mac; the web: the File System Access pickers or the file input; phones: `open` only) |
+| Reveal, open in its app, move to the trash | `shell.showItemInFolder`, `openPath`, `trashItem` | the shell | ✓ `asuka/shell` `reveal`, `open`, `trash`, `beep` |
 | File associations | `fileAssociations` (electron-builder), `open-file` | file associations | ✓ `asuka.toml`'s `fileTypes`, `ui.OnOpenFiles` (also iOS, Android and installed web apps) |
 | One instance, its second launch | `requestSingleInstanceLock`, `second-instance` | a single instance | ✓ `app.OnSecondInstance`, `asuka.toml`'s `singleInstance` (the Mac passes files, not arguments) |
 | Quitting, asking first | `app.quit`, `before-quit` | quitting | ✓ `app.Quit`, `app.OnQuit` (`Cancel`, `SessionEnding`) |
