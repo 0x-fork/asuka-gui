@@ -295,11 +295,11 @@ type appConfig struct {
 	// Bluetooth is what an app of asuka/bluetooth asks of the
 	// platforms beyond what importing the package gives (docs/bluetooth.md).
 	Bluetooth struct {
-		// Background are the roles the app keeps in the background:
-		// "central" (iOS's bluetooth-central mode, with state restoration;
-		// Android's background scan's receiver, and before Android 12 the
-		// background location permission it needs) and "peripheral" (iOS's
-		// bluetooth-peripheral mode).
+		// Background are the roles the app keeps in the background on
+		// iOS: "central" (the bluetooth-central mode, with state
+		// restoration) and "peripheral" (bluetooth-peripheral), and with
+		// them asuka/bluetooth's launch class. Android's background scan
+		// is the package's, for an app that calls backgroundScan.
 		Background []string `json:"background"`
 		// Location says the app finds where the user is from its scans
 		// (beacons): Android 12's BLUETOOTH_SCAN without neverForLocation,
