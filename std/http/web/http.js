@@ -80,3 +80,9 @@ export function makeTransport() {
     },
   };
 }
+
+// A page can't listen: there's no server of the app's on the web (sign in
+// with a redirect to the app's own site instead).
+export function makeLocalServer() {
+  throw new globalThis.asuka.native.UnsupportedError("a browser can't listen on the loopback: redirect to the app's site instead");
+}

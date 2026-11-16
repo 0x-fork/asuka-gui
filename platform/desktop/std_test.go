@@ -137,6 +137,37 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: downloaded 200 0 1048576 true true false", "host: file 1048576", "host: done"}},
+		{"loopback", `import asuka/http
+
+async fn visit(base: string) throws -> (int, int, string) {
+  let other = try await http.get(base.replace("/callback", "/favicon.ico"))
+  let page = try await http.get(base + "?code=42&state=s")
+  return (other.status, page.status, page.text())
+}
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let lb = try await http.loopback(page: "<p>Signed in</p>")
+      let (url, seen) = try await all(lb.next(), visit(lb.url))
+      let (other, status, text) = seen
+      step = "redirect {url == lb.url + "?code=42&state=s"} {other} {status} {text}"
+      await sleep(1ms)
+      lb.close()
+      let gone = try? await http.get(lb.url)
+      step = "closed {gone == none}"
+      await sleep(1ms)
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: redirect true 404 200 <p>Signed in</p>", "host: closed true", "host: done"}},
 		{"monitors", `import asuka/network
 import asuka/power
 import asuka/appearance

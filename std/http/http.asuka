@@ -100,3 +100,47 @@ pub async fn download(url: string, path: string, headers: [string: string] = [:]
   }
   return r
 }
+
+// ---- A server on the loopback, for a sign-in's redirect ----
+
+/// The platform's server on the loopback interface (127.0.0.1).
+native interface LocalServer {
+  /// Listens at a port the system picks, for requests to path: the port.
+  async fn listen(path: string, page: string) -> int
+  /// Waits for the next request to the port's path, answers it with its
+  /// page, and gives the URL asked for (with its query).
+  async fn next(port: int) -> string
+  /// Stops listening at port.
+  fn close(port: int)
+}
+
+let localServer = try? LocalServer()
+
+/// A server of the app's on the loopback interface, for an OAuth sign-in
+/// that redirects to http://127.0.0.1:port/path (RFC 8252, a desktop
+/// app's way): url is the redirect URI to give; next() waits for the
+/// browser to come back to it, answers with the page (what the browser
+/// shows: "You can close this window"), and gives the URL it came to,
+/// its query the code. close() stops it; it stops as the app quits too.
+pub struct Loopback {
+  url: string
+  port: int
+
+  /// The next request's URL: the redirect, with its query.
+  async fn next() throws -> string = try await (localServer ?? try LocalServer()).next(port)
+
+  /// Stops listening.
+  fn close() {
+    if let s = localServer { try? s.close(port) }
+  }
+}
+
+/// Starts a server on the loopback interface, at a port the system picks,
+/// answering requests to path with page. Phones can (Android, iOS while
+/// the app runs); a browser can't listen: it throws there.
+pub async fn loopback(path: string = "/callback", page: string = "<!doctype html><title>Signed in</title><p>You can close this window and go back to the app.</p>") throws -> Loopback {
+  let s = localServer ?? try LocalServer()
+  let p = if path.hasPrefix("/") { path } else { "/{path}" }
+  let port = try await s.listen(p, page)
+  return Loopback(url: "http://127.0.0.1:{port}{p}", port: port)
+}

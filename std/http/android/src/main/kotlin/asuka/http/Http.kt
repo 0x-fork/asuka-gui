@@ -3,6 +3,7 @@
 package asuka.http
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -113,3 +114,63 @@ suspend fun ConnectionTransport.fetchToFile(method: String, url: String, headers
     }
 
 fun makeTransport(): Transport = ConnectionTransport()
+
+// LocalServer: a ServerSocket on the loopback, accepting on the IO
+// dispatcher a fifth of a second at a time, so a cancelled next stops
+// waiting (and the server stays for the next).
+class LoopbackServers : LocalServer {
+    private class Server(val socket: java.net.ServerSocket, val path: String, val page: String)
+
+    private val servers = java.util.concurrent.ConcurrentHashMap<Long, Server>()
+
+    override suspend fun listen(path: String, page: String): Long = withContext(Dispatchers.IO) {
+        val s = java.net.ServerSocket(0, 4, java.net.InetAddress.getLoopbackAddress())
+        s.soTimeout = 200
+        val port = s.localPort.toLong()
+        servers[port] = Server(s, path, page)
+        port
+    }
+
+    override suspend fun next(port: Long): String = withContext(Dispatchers.IO) {
+        val s = servers[port] ?: throw java.io.IOException("no loopback server at port $port")
+        while (true) {
+            val c = try {
+                s.socket.accept()
+            } catch (e: java.net.SocketTimeoutException) {
+                ensureActive()  // the scope's: cancelled, it throws
+                continue
+            }
+            try {
+                val head = StringBuilder()
+                val input = c.getInputStream()
+                val buf = ByteArray(8192)
+                while (head.length < 8192 && !head.contains("\r\n\r\n")) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    head.append(String(buf, 0, n, Charsets.ISO_8859_1))
+                }
+                val target = head.lineSequence().firstOrNull()?.split(" ")?.getOrNull(1) ?: ""
+                val ours = target == s.path || target.startsWith(s.path + "?")
+                val body = if (ours) s.page.toByteArray() else ByteArray(0)
+                val status = if (ours) "200 OK" else "404 Not Found"
+                val out = c.getOutputStream()
+                out.write("HTTP/1.1 $status\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                out.write(body)
+                out.flush()
+                if (ours) return@withContext "http://127.0.0.1:$port$target"
+            } finally {
+                c.close()
+            }
+        }
+        @Suppress("UNREACHABLE_CODE")
+        throw IllegalStateException()
+    }
+
+    override fun close(port: Long) {
+        servers.remove(port)?.socket?.close()
+    }
+}
+
+private val loopbackServers = LoopbackServers()
+
+fun makeLocalServer(): LocalServer = loopbackServers

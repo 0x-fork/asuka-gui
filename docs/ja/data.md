@@ -308,6 +308,20 @@ component Download(url: string) {
 }
 ```
 
+デスクトップアプリの OAuth サインインは、ループバックインターフェース上のアプリ自身のサーバーへリダイレクトします（RFC 8252）。`http.loopback(path:, page:)` はシステムが選ぶポートで待ち受け、その `url` が渡すべきリダイレクト URI です。`next()` はブラウザーが戻ってくるのを待ち、`page`（「このウィンドウは閉じてかまいません」）で応答して、ブラウザーが来た URL を返します。そのクエリがコードです。`close()` で待ち受けを止めます。Android と iOS も、アプリの実行中は待ち受けられます。ブラウザーはできないので（そこではエラーを投げます）、Web アプリのサインインは自分のサイトへリダイレクトします。
+
+```asuka
+import asuka/http
+
+async fn signInBack(authorize: string) throws -> string {
+  let lb = try await http.loopback()
+  defer { lb.close() }
+  openURL("{authorize}&redirect_uri={lb.url}")
+  let back = try await lb.next() // http://127.0.0.1:port/callback?code=…
+  return back
+}
+```
+
 ## ファイルの監視：asuka/watch
 
 `watch.path(dir)` はフォルダー（またはファイル）の変更を追います。アプリが表示しているフォルダー、エディターで開いているプロジェクト、別のプログラムが書き込む設定ファイルなどです。その `events` は、変更のバッチが次々に届くストリームです。

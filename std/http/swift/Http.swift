@@ -1,6 +1,7 @@
 // asuka/http on iOS and macOS: URLSession, the system's own client
 // (proxies, trusted certificates, the shared cache and cookies).
 import Foundation
+import Network
 
 final class URLSessionTransport: Transport {
     func send(method: String, url: String, headers: [String: String], body: Data, timeout: TimeInterval) async throws -> Response {
@@ -123,3 +124,128 @@ private final class Download: NSObject, URLSessionDownloadDelegate {
 }
 
 func makeTransport() throws -> any Transport { URLSessionTransport() }
+
+// ---- LocalServer: Network.framework's listener on the loopback ----
+
+// Its state is the queue's: everything that reads or writes it runs there.
+final class LoopbackServers: LocalServer, @unchecked Sendable {
+    private let queue = DispatchQueue(label: "asuka.http.loopback")
+    private var servers: [Int: Server] = [:]
+
+    private final class Server: @unchecked Sendable {
+        let listener: NWListener
+        let path: String
+        let page: String
+        var started = false  // listen has answered
+        var arrived: [String] = []
+        var waiting: [(id: UUID, k: CheckedContinuation<String, Error>)] = []
+        init(listener: NWListener, path: String, page: String) {
+            self.listener = listener
+            self.path = path
+            self.page = page
+        }
+    }
+
+    func listen(path: String, page: String) async throws -> Int {
+        let params = NWParameters.tcp
+        params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+        let listener = try NWListener(using: params)
+        let server = Server(listener: listener, path: path, page: page)
+        listener.newConnectionHandler = { [weak self] c in self?.serve(c, server) }
+        return try await withCheckedThrowingContinuation { (k: CheckedContinuation<Int, Error>) in
+            listener.stateUpdateHandler = { [weak self] state in
+                guard !server.started else { return }
+                switch state {
+                case .ready:
+                    server.started = true
+                    let port = Int(listener.port?.rawValue ?? 0)
+                    self?.servers[port] = server
+                    k.resume(returning: port)
+                case .failed(let e):
+                    server.started = true
+                    k.resume(throwing: e)
+                case .cancelled:
+                    server.started = true
+                    k.resume(throwing: CancellationError())
+                default:
+                    break
+                }
+            }
+            listener.start(queue: queue)
+        }
+    }
+
+    // serve reads a request's head and answers it: the page for the
+    // server's path (its URL to a waiting next), else a 404.
+    private func serve(_ c: NWConnection, _ server: Server) {
+        c.start(queue: queue)
+        var head = Data()
+        func read() {
+            c.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, done, error in
+                if let d = data { head.append(d) }
+                let text = String(decoding: head, as: UTF8.self)
+                if text.contains("\r\n\r\n") || done || error != nil || head.count >= 8192 {
+                    self?.answer(c, server, text)
+                } else {
+                    read()
+                }
+            }
+        }
+        read()
+    }
+
+    private func answer(_ c: NWConnection, _ server: Server, _ head: String) {
+        let parts = head.split(separator: "\r\n", maxSplits: 1).first?.split(separator: " ") ?? []
+        let target = parts.count >= 2 ? String(parts[1]) : ""
+        let ours = target == server.path || target.hasPrefix(server.path + "?")
+        let body = ours ? Data(server.page.utf8) : Data()
+        let status = ours ? "200 OK" : "404 Not Found"
+        var out = Data("HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
+        out.append(body)
+        c.send(content: out, completion: .contentProcessed { _ in c.cancel() })
+        guard ours else { return }
+        let url = "http://127.0.0.1:\(server.listener.port?.rawValue ?? 0)\(target)"
+        if !server.waiting.isEmpty {
+            server.waiting.removeFirst().k.resume(returning: url)
+        } else {
+            server.arrived.append(url)
+        }
+    }
+
+    func next(port: Int) async throws -> String {
+        let id = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (k: CheckedContinuation<String, Error>) in
+                queue.async {
+                    guard let s = self.servers[port] else {
+                        k.resume(throwing: URLError(.cannotConnectToHost))
+                        return
+                    }
+                    if !s.arrived.isEmpty {
+                        k.resume(returning: s.arrived.removeFirst())
+                    } else {
+                        s.waiting.append((id, k))
+                    }
+                }
+            }
+        } onCancel: {
+            queue.async {
+                guard let s = self.servers[port], let i = s.waiting.firstIndex(where: { $0.id == id }) else { return }
+                s.waiting.remove(at: i).k.resume(throwing: CancellationError())
+            }
+        }
+    }
+
+    func close(port: Int) throws {
+        queue.async {
+            guard let s = self.servers.removeValue(forKey: port) else { return }
+            s.listener.cancel()
+            for w in s.waiting { w.k.resume(throwing: CancellationError()) }
+            s.waiting = []
+        }
+    }
+}
+
+private let loopbackServers = LoopbackServers()
+
+func makeLocalServer() throws -> any LocalServer { loopbackServers }

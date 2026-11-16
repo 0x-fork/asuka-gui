@@ -429,6 +429,27 @@ component Download(url: string) {
 }
 ```
 
+An OAuth sign-in on a desktop redirects to a server of the app's on the
+loopback interface (RFC 8252): `http.loopback(path:, page:)` listens at
+a port the system picks, its `url` the redirect URI to give;
+`next()` waits for the browser to come back, answers it with `page`
+("You can close this window"), and gives the URL it came to, its query
+the code; `close()` stops it. Android and iOS can listen too, while the
+app runs; a browser can't (it throws there): a web app's sign-in
+redirects to its own site.
+
+```asuka
+import asuka/http
+
+async fn signInBack(authorize: string) throws -> string {
+  let lb = try await http.loopback()
+  defer { lb.close() }
+  openURL("{authorize}&redirect_uri={lb.url}")
+  let back = try await lb.next() // http://127.0.0.1:port/callback?code=…
+  return back
+}
+```
+
 ## Watching files: asuka/watch
 
 `watch.path(dir)` follows changes to a folder (or a file): a folder the

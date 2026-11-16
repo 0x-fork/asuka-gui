@@ -1,3 +1,4 @@
+import asuka/http
 import asuka/secure
 import asuka/time
 import asuka/webauth
@@ -5,10 +6,11 @@ import asuka/webauth
 /// Signs in with Claude: to add an account, or, with id, that account
 /// again. Or it adds a demo account.
 ///
-/// The sign-in is the system's sheet (asuka/webauth): Claude's page, with
-/// the browser's sessions, Google's and Apple's sign-in. It redirects to a
-/// server of the app's on localhost, which gets the code. Signing in with
-/// a code instead redirects to a page that shows it, to paste.
+/// On a phone the sign-in is the system's sheet (asuka/webauth): Claude's
+/// page, with the browser's sessions, Google's and Apple's sign-in. On a
+/// desktop it's the browser, which redirects to a server of the app's on
+/// the loopback (http.loopback) with the code. Signing in with a code
+/// instead redirects to a page that shows it, to paste.
 component AddSheet(id: string) {
   event done
   state working = false
@@ -39,10 +41,17 @@ component AddSheet(id: string) {
     }
   }
 
-  /// The sign-in: the system's sheet on Claude's page, which ends at the
-  /// page that redirects back with the code.
+  /// The sign-in: on a desktop, Claude's page in the browser, which
+  /// redirects to a server of the app's on the loopback with the code
+  /// (http.loopback, RFC 8252); on a phone, the system's sheet on Claude's
+  /// page, which ends at the page that redirects back with the code.
   async fn start() {
     failed = ""
+    let p = environment().platform
+    if p == .macOS || p == .windows || p == .linux {
+      await startLoopback()
+      return
+    }
     do {
       let l = Login(redirect: manualRedirect)
       let u = try await webauth.open(l.address())
@@ -52,6 +61,25 @@ component AddSheet(id: string) {
         failed = "Couldn't sign in: the page didn't give a code."
       }
     } catch webauth.WebAuthError.canceled {} catch e {
+      failed = "Couldn't sign in: {e.message}"
+    }
+  }
+
+  /// The browser's sign-in, back to the loopback: the server waits for
+  /// the redirect (closed as it's done, or the sheet with it).
+  async fn startLoopback() {
+    do {
+      let lb = try await http.loopback(page: "<!doctype html><title>Signed in</title><p>You're signed in to Usage: you can close this tab.</p>")
+      defer { lb.close() }
+      let l = Login(redirect: "http://localhost:{lb.port}/callback")
+      openURL(l.address())
+      let back = try await lb.next()
+      if let code = l.codeFrom(back.replace("http://127.0.0.1:", "http://localhost:")) {
+        await finish(l, code)
+      } else {
+        failed = "Couldn't sign in: the page didn't give a code."
+      }
+    } catch e {
       failed = "Couldn't sign in: {e.message}"
     }
   }

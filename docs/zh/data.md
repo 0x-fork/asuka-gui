@@ -308,6 +308,20 @@ component Download(url: string) {
 }
 ```
 
+桌面应用的 OAuth 登录会重定向到应用自己在回环接口上的服务器（RFC 8252）：`http.loopback(path:, page:)` 在系统挑选的端口上监听，它的 `url` 就是要提供的重定向 URI；`next()` 等待浏览器回来，用 `page` 应答（"可以关闭这个窗口了"），并给出浏览器访问的 URL，其中的查询参数就是授权码；`close()` 停止监听。Android 和 iOS 在应用运行期间也可以监听；浏览器不行（在那里会抛出错误）：Web 应用的登录应重定向到它自己的站点。
+
+```asuka
+import asuka/http
+
+async fn signInBack(authorize: string) throws -> string {
+  let lb = try await http.loopback()
+  defer { lb.close() }
+  openURL("{authorize}&redirect_uri={lb.url}")
+  let back = try await lb.next() // http://127.0.0.1:port/callback?code=…
+  return back
+}
+```
+
 ## 监视文件：asuka/watch
 
 `watch.path(dir)` 跟踪一个文件夹（或文件）的变化：应用显示的文件夹、编辑器里打开的项目、另一个程序会写入的设置文件。它的 `events` 是一个按批到来的变化流：

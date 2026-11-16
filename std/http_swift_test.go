@@ -46,20 +46,6 @@ func TestHTTPSwiftDownload(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	glue, err := os.ReadFile("http/swift/Http.asuka.swift")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The glue's types, without the codec (which needs the runtime).
-	var shim strings.Builder
-	shim.WriteString("import Foundation\n")
-	for _, re := range []string{`(?s)public struct Response: Sendable \{.*?\n\}\n`, `(?s)public protocol Transport: AnyObject \{.*?\n\}\n`} {
-		m := regexp.MustCompile(re).Find(glue)
-		if m == nil {
-			t.Fatalf("no %s in the glue", re)
-		}
-		shim.Write(m)
-	}
 	dir := t.TempDir()
 	out := filepath.Join(dir, "big.bin")
 	driver := `import Foundation
@@ -85,9 +71,33 @@ do {
     print("cancel: \((error as? URLError)?.code == .cancelled) \(FileManager.default.fileExists(atPath: "` + out + `.2"))")
 }
 `
-	files := map[string]string{"shim.swift": shim.String(), "main.swift": driver}
-	args := []string{"-parse-as-library", "-o", filepath.Join(dir, "probe")}
-	for name, src := range files {
+	got := runHTTPProbe(t, dir, driver)
+	for _, want := range []string{"status 200 body 0 size 1048576 reports true last 1048576 1048576 totals true", "cancel: true false"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q in:\n%s", want, got)
+		}
+	}
+}
+
+// runHTTPProbe compiles asuka/http's Swift with the generated glue's
+// types (not its codec, which needs the runtime) and driver as main,
+// runs it and gives what it printed.
+func runHTTPProbe(t *testing.T, dir, driver string) string {
+	glue, err := os.ReadFile("http/swift/Http.asuka.swift")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shim strings.Builder
+	shim.WriteString("import Foundation\n")
+	for _, re := range []string{`(?s)public struct Response: Sendable \{.*?\n\}\n`, `(?s)public protocol Transport: AnyObject \{.*?\n\}\n`, `(?s)public protocol LocalServer: AnyObject \{.*?\n\}\n`} {
+		m := regexp.MustCompile(re).Find(glue)
+		if m == nil {
+			t.Fatalf("no %s in the glue", re)
+		}
+		shim.Write(m)
+	}
+	var args []string
+	for name, src := range map[string]string{"shim.swift": shim.String(), "main.swift": driver} {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
 			t.Fatal(err)
@@ -95,18 +105,47 @@ do {
 		args = append(args, p)
 	}
 	abs, _ := filepath.Abs("http/swift/Http.swift")
-	args = append(args, abs)
-	// main.swift's top-level code: not -parse-as-library.
-	args = args[1:]
+	exe := filepath.Join(dir, "probe")
+	args = append(args, abs, "-o", exe)
 	if b, err := exec.Command("swiftc", args...).CombinedOutput(); err != nil {
 		t.Fatalf("swiftc: %v\n%s", err, b)
 	}
-	b, err := exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	b, err := exec.Command(exe).CombinedOutput()
 	if err != nil {
 		t.Fatalf("%v\n%s", err, b)
 	}
-	got := string(b)
-	for _, want := range []string{"status 200 body 0 size 1048576 reports true last 1048576 1048576 totals true", "cancel: true false"} {
+	return string(b)
+}
+
+// asuka/http's loopback server (Network.framework): a request to another
+// path is a 404, the path's answers with the page and gives next its URL;
+// close stops it.
+func TestHTTPSwiftLoopback(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Network.framework: macOS")
+	}
+	if _, err := exec.LookPath("swiftc"); err != nil {
+		t.Skip("no swiftc")
+	}
+	driver := `import Foundation
+let s = try makeLocalServer()
+let port = try await s.listen(path: "/callback", page: "<p>Done</p>")
+let base = "http://127.0.0.1:\(port)"
+let waiting = Task { try await s.next(port: port) }
+let (_, other) = try await URLSession.shared.data(from: URL(string: base + "/favicon.ico")!)
+let (page, ok) = try await URLSession.shared.data(from: URL(string: base + "/callback?code=42&state=s")!)
+let url = try await waiting.value
+print("other \((other as! HTTPURLResponse).statusCode) ok \((ok as! HTTPURLResponse).statusCode) page \(String(decoding: page, as: UTF8.self)) url \(url == base + "/callback?code=42&state=s")")
+let later = Task { try await s.next(port: port) }
+try await Task.sleep(nanoseconds: 100_000_000)
+later.cancel()
+do { _ = try await later.value; print("cancel: answered") } catch { print("cancel: \(error is CancellationError)") }
+try s.close(port: port)
+try await Task.sleep(nanoseconds: 100_000_000)
+do { _ = try await URLSession.shared.data(from: URL(string: base + "/callback")!); print("closed: answered") } catch { print("closed: refused") }
+`
+	got := runHTTPProbe(t, t.TempDir(), driver)
+	for _, want := range []string{"other 404 ok 200 page <p>Done</p> url true", "cancel: true", "closed: refused"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("want %q in:\n%s", want, got)
 		}
