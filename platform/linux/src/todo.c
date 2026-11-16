@@ -15,8 +15,5 @@ int lx_notify_headless(const char *id) { (void)id; return 0; }
 void lx_install_notify_actions(void) {}
 void lx_notify_action_at_start(void) {}
 void lx_watch_launches(void);
-const char *lx_word(const char *key) { return key; }
-const char *lx_badged(const char *title, const char *badge) { (void)badge; return S(title); }
 void lx_read_clipboard_text(void (*done)(const char *text, bool ok, void *ctx), void *ctx) { done("", false, ctx); }
 node *lx_popover_anchor(node *n) { (void)n; return NULL; }
-const char *lx_word_app(const char *key, const char *app) { (void)key; return app; }
