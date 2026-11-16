@@ -51,23 +51,23 @@ static const char *objects_xml =
 // saying which.
 static const bt_central pseudo_central = {"00:00:00:00:00:00", "BlueZ"};
 
-static GDBusInterfaceInfo *iface_info(const char *name) {
-	static GDBusNodeInfo *node;
+static gpointer iface_info(const char *name) {
+	static gpointer node;
 	if (!node) {
 		GError *e = NULL;
-		node = gx.node_info_new_for_xml(objects_xml, &e);
+		node = G(g_dbus_node_info_new_for_xml)(objects_xml, &e);
 		if (!node) {
 			if (e) G(g_error_free)(e);
 			return NULL;
 		}
 	}
-	return gx.node_info_lookup_interface(node, name);
+	return G(g_dbus_node_info_lookup_interface)(node, name);
 }
 
 static guint export(const char *path, const char *iface, const GDBusInterfaceVTable *vt, void *data, char **why) {
 	GError *e = NULL;
-	GDBusInterfaceInfo *info = iface_info(iface);
-	guint id = info ? gx.register_object(bl.conn, path, info, vt, data, NULL, &e) : 0;
+	gpointer info = iface_info(iface);
+	guint id = info ? G(g_dbus_connection_register_object)(bl.conn, path, info, vt, data, NULL, &e) : 0;
 	if (!id) {
 		*why = asuka_strdup(e ? e->message : "the object isn't exported");
 		if (e) G(g_error_free)(e);
@@ -77,7 +77,7 @@ static guint export(const char *path, const char *iface, const GDBusInterfaceVTa
 
 static void unexport(guint *ids, size_t n) {
 	for (size_t i = 0; i < n; i++)
-		if (ids[i]) gx.unregister_object(bl.conn, ids[i]);
+		if (ids[i]) G(g_dbus_connection_unregister_object)(bl.conn, ids[i]);
 }
 
 static const char *peripheral_adapter(const char *iface, char **why) {
@@ -175,7 +175,7 @@ static void run_server_stopped(void *p) {
 // end_advert ends an advertisement the platform stopped.
 static void end_advert(advert *a, const char *why) {
 	advert_unlink(a);
-	if (a->reg) gx.unregister_object(bl.conn, a->reg);
+	if (a->reg) G(g_dbus_connection_unregister_object)(bl.conn, a->reg);
 	a->reg = 0;
 	stopped_ctx *s = malloc(sizeof *s);
 	*s = (stopped_ctx){a->id, asuka_strdup(why)};
@@ -186,7 +186,7 @@ static void end_advert(advert *a, const char *why) {
 static void advert_method(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *method, GVariant *params,
                           GDBusMethodInvocation *inv, gpointer data) {
 	advert *a = data;
-	gx.return_value(inv, NULL);
+	G(g_dbus_method_invocation_return_value)(inv, NULL);
 	// BlueZ stopped it (the adapter went, its instances were taken).
 	if (!strcmp(method, "Release") && !a->gone) end_advert(a, "BlueZ released the advertisement");
 	bl_flush();
@@ -246,7 +246,7 @@ static const GDBusInterfaceVTable advert_vt = {advert_method, advert_property, N
 static void unregister_advert(advert *a) {
 	a->on = false;
 	bl_call_bluez(a->adapter, BL_IF_ADV_MANAGER, "UnregisterAdvertisement", G(g_variant_new)("(o)", a->path), ignore, NULL);
-	if (a->reg) gx.unregister_object(bl.conn, a->reg);
+	if (a->reg) G(g_dbus_connection_unregister_object)(bl.conn, a->reg);
 	a->reg = 0;
 }
 
@@ -257,7 +257,7 @@ static void advert_registered(void *ctx, GVariant *r, const char *name, const ch
 	a->done = NULL;
 	if (!r) {
 		if (!a->gone) advert_unlink(a);
-		if (a->reg) gx.unregister_object(bl.conn, a->reg);
+		if (a->reg) G(g_dbus_connection_unregister_object)(bl.conn, a->reg);
 		char *why = register_error(name, msg, "advertise it");
 		bl_answer(done, dctx, why);
 		free(why);
@@ -414,7 +414,7 @@ static void return_error(GDBusMethodInvocation *inv, int code, bool write) {
 	const char *name;
 	char *msg;
 	server_error(code, write, &name, &msg);
-	gx.return_dbus_error(inv, name, msg);
+	G(g_dbus_method_invocation_return_dbus_error)(inv, name, msg);
 	free(msg);
 }
 
@@ -505,10 +505,10 @@ static GVariant *managed_objects(server *s) {
 static void root_method(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *method, GVariant *params,
                         GDBusMethodInvocation *inv, gpointer data) {
 	if (strcmp(method, "GetManagedObjects") != 0) {
-		gx.return_dbus_error(inv, BL_ERR_UNKNOWN_METHOD, "no such method");
+		G(g_dbus_method_invocation_return_dbus_error)(inv, BL_ERR_UNKNOWN_METHOD, "no such method");
 		return;
 	}
-	gx.return_value(inv, G(g_variant_new)("(@a{oa{sa{sv}}})", managed_objects(data)));
+	G(g_dbus_method_invocation_return_value)(inv, G(g_variant_new)("(@a{oa{sa{sv}}})", managed_objects(data)));
 }
 
 static const GDBusInterfaceVTable root_vt = {root_method, NULL, NULL, {0}};
@@ -569,7 +569,7 @@ static void local_method(GDBusConnection *c, const gchar *sender, const gchar *p
 		int offset = option_int(opts, "offset");
 		if (o->has_fixed) {
 			if ((size_t)offset > o->fixed.len) return_error(inv, 0x07, false);
-			else gx.return_value(inv, G(g_variant_new)("(@ay)", bl_byte_array(o->fixed.data + offset, o->fixed.len - (size_t)offset)));
+			else G(g_dbus_method_invocation_return_value)(inv, G(g_variant_new)("(@ay)", bl_byte_array(o->fixed.data + offset, o->fixed.len - (size_t)offset)));
 		} else if (s->gone) {
 			return_error(inv, 0x0e, false);
 		} else {
@@ -600,14 +600,14 @@ static void local_method(GDBusConnection *c, const gchar *sender, const gchar *p
 				requests = r;
 				x->request = r->id;
 			} else {
-				gx.return_value(inv, NULL);
+				G(g_dbus_method_invocation_return_value)(inv, NULL);
 			}
 			bl_defer(run_request, x);
 		}
 		G(g_variant_unref)(opts);
 		G(g_variant_unref)(v);
 	} else if (!strcmp(method, "StartNotify") || !strcmp(method, "StopNotify")) {
-		gx.return_value(inv, NULL);
+		G(g_dbus_method_invocation_return_value)(inv, NULL);
 		bool on = !strcmp(method, "StartNotify");
 		if (o->notifying != on && !s->gone) {
 			o->notifying = on;
@@ -617,9 +617,9 @@ static void local_method(GDBusConnection *c, const gchar *sender, const gchar *p
 			bl_defer(run_request, x);
 		}
 	} else if (!strcmp(method, "Confirm")) {
-		gx.return_value(inv, NULL);  // an indication acknowledged
+		G(g_dbus_method_invocation_return_value)(inv, NULL);  // an indication acknowledged
 	} else {
-		gx.return_dbus_error(inv, BL_ERR_UNKNOWN_METHOD, "no such method");
+		G(g_dbus_method_invocation_return_dbus_error)(inv, BL_ERR_UNKNOWN_METHOD, "no such method");
 	}
 	bl_flush();
 }
@@ -773,8 +773,8 @@ void bt_engine_respond(uint32_t server_id, uint32_t request_id, asuka_bytes valu
 		if (r->id != request_id || r->server != server_id) continue;
 		*p = r->next;
 		if (error) return_error(r->inv, error, r->write);
-		else if (r->write) gx.return_value(r->inv, NULL);
-		else gx.return_value(r->inv, G(g_variant_new)("(@ay)", bl_byte_array(value.data, value.len)));
+		else if (r->write) G(g_dbus_method_invocation_return_value)(r->inv, NULL);
+		else G(g_dbus_method_invocation_return_value)(r->inv, G(g_variant_new)("(@ay)", bl_byte_array(value.data, value.len)));
 		free(r);
 		return;
 	}
@@ -794,7 +794,7 @@ void bt_engine_notify(uint32_t server_id, uint32_t handle, asuka_bytes value) {
 		G(g_variant_builder_init)(&b, G_VARIANT_TYPE("a{sv}"));
 		G(g_variant_builder_add)(&b, "{sv}", "Value", bl_byte_array(value.data, value.len));
 		GVariant *params = G(g_variant_new)("(s@a{sv}@as)", BL_IF_GATT_CHAR, G(g_variant_builder_end)(&b), bl_string_array(NULL, 0));
-		gx.emit_signal(bl.conn, NULL, o->path, BL_IF_PROPERTIES, "PropertiesChanged", params, NULL);
+		G(g_dbus_connection_emit_signal)(bl.conn, NULL, o->path, BL_IF_PROPERTIES, "PropertiesChanged", params, NULL);
 	}
 }
 

@@ -48,13 +48,14 @@ import ./theme as t               // 起一个更短的名字
 
 | 类型 | 值 |
 |---|---|
-| `int` | 64 位整数：`42`、`1_000`、`0xff` |
+| `int` | 64 位整数：`42`、`1_000`、`0xff`、`0b1010`、`0o17` |
 | `float` | 64 位浮点数：`3.14`、`1e-3` |
 | `bool` | `true`、`false` |
 | `string` | UTF-8 文本：`"Hello, {name}"` |
 | `bytes` | 原始字节 |
 | `[T]` | 数组：`[1, 2, 3]`、`[]` |
 | `[K: V]` | map，按插入顺序保存：`["a": 1]`、`[:]` |
+| `Set<T>` | 集合：一组互不相同的值，按插入顺序保存；在需要集合的地方写 `["a", "b"]` |
 | `(A, B)` | 元组：`(1, "one")` |
 | `T?` | 可选值：一个 `T`，或者 `none` |
 | `Duration` | `300ms`、`5s`、`2min`、`1h`（还有 `us`、`ns`） |
@@ -64,18 +65,45 @@ import ./theme as t               // 起一个更短的名字
 
 字符串的花括号里可以放任意表达式：`"{count} items"`、`"Total: {price * qty}"`。`\{` 表示一个花括号字符；`r"…"` 是原始字符串，没有转义也没有插值；`"""…"""` 可以跨多行（第一行为空时不算在内，结束引号所在那一行的缩进也会去掉）。不是数字、布尔值或字符串的值，显示为文本时是这样的：枚举成员显示为它的名字，可选值显示为 `none` 或其中的值，错误显示为它的消息，其他值显示为 JSON。
 
-map 的键可以是整数、字符串、布尔值，或者成员不携带值的枚举。
+map 的键和集合的元素可以是整数、字符串、布尔值，或者成员不携带值的枚举（也就是满足 `Hashable` 的类型）。
+
+### 运算符
+
+下表按结合从紧到松排列；同一行的运算符优先级相同，从左往右结合（`??` 从右往左）：
+
+| 运算符 | 作用 |
+|---|---|
+| `!x`、`-x`、`~x` | 取反、取负、把整数的每一位取反 |
+| `<<`、`>>` | 把整数的位左移、右移（右移保留符号） |
+| `*`、`/`、`%`、`&` | 乘、除、取余、按位与 |
+| `+`、`-`、<code>&#124;</code>、`^` | 加（也用于拼接字符串和数组）、减、按位或、按位异或 |
+| `..`、`..<` | 范围：`1..3`、`0..<n` |
+| `==`、`!=`、`<`、`<=`、`>`、`>=` | 比较（不能连写） |
+| `&&` | 与 |
+| <code>&#124;&#124;</code> | 或 |
+| `??` | 可选值里的值，为 none 时取默认值 |
+
+按位运算符只接受整数。移位 64 位或更多时，所有位都会被移出（负数右移得到 -1）；移位数为负数则是一个错误。有了这些运算符和 `b[i]`（以整数形式读出一个字节），程序就能读写二进制数据，比如蓝牙特征值或 NFC 记录：
+
+```asuka
+let raw = b[1] | b[2] << 8                         // 小端序的 uint16
+let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
+let out = bytes([flags, value & 0xff, value >> 8])
+```
+
+`int` 的运算会回绕：`+`、`-`、`*` 的结果超过最大的 `int`（2⁶³ − 1）时，会按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 + 1` 等于 `-9223372036854775808`）。哈希、校验和以及二进制协议需要的正是这种行为，而且这样每次运算都不必额外检查溢出。除以零（`/`、`%`）会抛出错误；对超出范围的浮点数调用 `int(x)`，得到离它最近的 `int`（NaN 得到 `0`）。
 
 ### 内置方法
 
-字符串、bytes、数组、map 和可选值都有方法。其中会修改值本身的方法（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）只能用在 `var` 或状态上：
+字符串、bytes、数组、集合、map 和可选值都有方法。其中会修改值本身的方法（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）只能用在 `var` 或状态上：
 
 | 类型 | 方法 |
 |---|---|
 | `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
+| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
 | `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序） |
 | `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`bytes()`、`+` |
-| `bytes` | `count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`s.bytes()` 是字符串的 UTF-8 字节 |
+| `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`s.bytes()` 是字符串的 UTF-8 字节 |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()` |
 | `Color` | `opacity(a)`：以原本不透明度的 a 倍绘制（语义颜色仍然是语义颜色） |
 | `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`、`/ n` |
@@ -85,7 +113,7 @@ map 的键可以是整数、字符串、布尔值，或者成员不携带值的�
 
 ### 值语义
 
-字符串、数组、map、结构体和枚举都是**值**：赋值或传参时，从你能观察到的行为来看，得到的都是一份副本。副本的开销很小：多个副本共享同一块内存，直到其中一个被修改；如果一个值只有一处持有，修改时会直接原地修改。
+字符串、数组、集合、map、结构体和枚举都是**值**：赋值或传参时，从你能观察到的行为来看，得到的都是一份副本。副本的开销很小：多个副本共享同一块内存，直到其中一个被修改；如果一个值只有一处持有，修改时会直接原地修改。
 
 ```asuka
 var a = [1, 2, 3]
@@ -116,6 +144,8 @@ state count = 0              // 状态：界面会跟随变化的值
 
 类型会自动推断；在有助于阅读的地方可以写出来：`let ids: [int] = []`。
 
+`type` 在文件顶层给类型起一个名字：`type Pair<A, B> = (A, B)`、`type Check = fn(string) -> bool`。它只是同一个类型的别名：`Pair<int, string>` 就是 `(int, string)`。
+
 ### 结构体
 
 ```asuka
@@ -132,6 +162,27 @@ let n = Message(id: m.id, subject: m.subject, read: true)
 ```
 
 创建结构体的方式是调用它，按名字或按顺序传入各个字段；有默认值的字段可以省略。结构体的方法直接用名字访问它的字段，但不能修改结构体（它是一个值）：需要修改时，就返回一个新的结构体。结构体主体里的 `let` 是这个类型的常量（`Font.title`），在任何需要 `Font` 的地方都可以简写成 `.title`。
+
+结构体可以带类型参数，创建时会自动推断：
+
+```asuka
+struct Page<T> {
+  items: [T]
+  next: string? = none
+}
+
+let page = Page(items: [1, 2, 3])     // 一个 Page<int>
+```
+
+在 `match` 和 `if let` 里，结构体模式按字段名匹配结构体的字段：单写一个 `y` 会绑定字段 `y`，`y: py` 把它绑定为 `py`，`x: 0` 匹配一个值，没有写出的字段匹配任何值。模式可以嵌套：
+
+```asuka
+match line {
+  Line(from: Point(x: 0, y: 0), dashed: true) => "dashed, from the origin"
+  Line(from: Point(x: 0, y), to) => "from {y} on the y axis to {to.x}"
+  Line(dashed) => "a line"
+}
+```
 
 ### 枚举
 
@@ -151,7 +202,21 @@ enum Filter {
 let f: Filter = .unread
 ```
 
-在类型已知的地方，枚举的成员写作 `.name`。`match` 必须覆盖所有成员（或者以 `_ =>` 结尾）；模式可以绑定成员携带的值（`.from(p)`），可以匹配字面量（`0`、`"x"`），可以同时匹配多个成员（`.a | .b`），还可以带守卫条件（`.from(p) if p.vip =>`）。成员带标签的值如果有零值（`false`、`0`、`""`、空数组或空映射、`none`、枚举的第一个成员），构造时可以省略：`.button(title: "Copy", run: copy)` 就省略了 `Action.button` 的 `icon`、`role`、`disabled` 和 `checked`。
+在类型已知的地方，枚举的成员写作 `.name`。`match` 必须覆盖所有成员（或者以 `_ =>` 结尾）；模式可以绑定成员携带的值（`.from(p)`，也可以按标签绑定：`.server(code: c)`），可以匹配字面量（`0`、`"x"`），可以同时匹配多个成员（`.a | .b`），可以嵌套（`.from(Person(vip: true))`），还可以带守卫条件（`.from(p) if p.vip =>`）。编译器检查 `match` 是否覆盖了所有情况时会深入嵌套的模式，并把缺少的情况写成模式告诉你：`match doesn't cover .key(_, false)`。成员带标签的值如果有零值（`false`、`0`、`""`、空数组或空映射、`none`、枚举的第一个成员），构造时可以省略：`.button(title: "Copy", run: copy)` 就省略了 `Action.button` 的 `icon`、`role`、`disabled` 和 `checked`。
+
+成员携带的值可以是这个枚举本身，因此枚举可以表示一棵树：
+
+```asuka
+enum Expr {
+  num(int)
+  add(Expr, Expr)
+
+  fn eval() -> int = match self {
+    .num(n) => n
+    .add(a, b) => a.eval() + b.eval()
+  }
+}
+```
 
 ### 函数与闭包
 
@@ -167,7 +232,16 @@ let squares = [1, 2, 3].map(x => x * x)
 let sorted = people.sorted((a, b) => a.age < b.age)
 ```
 
-参数先按位置传，再按名字传。闭包写作 `x => expr`、`(a, b) => expr` 或 `x => { statements }`；它按值捕获普通的值，按引用捕获状态。
+参数先按位置传，再按名字传。闭包写作 `x => expr`、`(a, b) => expr` 或 `x => { statements }`。闭包和周围的代码共享它捕获的变量：一方修改了，另一方也能看到。
+
+```asuka
+var n = 0
+let inc = () => { n += 1 }
+inc()
+inc()                // n 现在是 2
+```
+
+状态也以同样的方式共享。只有 `spawn` 会复制它用到的东西（只能是普通的值，取它开始运行那一刻的值），因为它在另一个线程上运行。
 
 ### 接口与泛型
 
@@ -183,7 +257,76 @@ fn total<T>(items: [T], size: fn(T) -> float) -> float {
 }
 ```
 
-泛型函数和泛型类型可以接收类型参数；可用的约束有 `Equatable`、`Comparable` 和 `Hashable`，当结构体和枚举的字段都满足某个约束时，它们自身也就满足这个约束。
+接口本身也是一种类型：接口类型的值可以是任何具备这些方法的值，调用方法时调用的就是这个值自己的方法。
+
+```asuka
+let shapes: [Shape] = [Circle(radius: 1), Square(side: 2)]
+let areas = shapes.map(s => s.area())
+```
+
+泛型函数和泛型类型可以接收类型参数。类型参数的约束可以是程序自己的接口，也可以是 `Equatable`、`Comparable` 和 `Hashable`（当结构体和枚举的字段都满足后三者之一时，它们自身也就满足），多个约束用 `&` 连接。类型实参必须具备的东西，泛型代码里它的值也都能用：接口的方法和字段会针对每一个编译出的具体类型直接调用。
+
+```asuka
+fn sortByArea<T: Shape>(xs: [T]) -> [T] = xs.sorted((a, b) => a.area() < b.area())
+
+fn largestOnce<T: Shape & Hashable>(xs: [T]) -> [T] { … }
+
+struct Labeled<T: Shape> {
+  item: T
+  fn label() -> string = "{item.area()}"
+}
+```
+
+只要具备接口的方法和字段，类型实参就满足这个接口：可以是结构体或枚举（成员不携带值的枚举也可以），可以是要求了这些方法和字段的接口，也可以是带有相应约束的另一个类型参数。`T: Error` 可以读取错误的 `message`。
+
+### 控制流
+
+`if` 和 `match` 也可以作为值使用。作为值时，`if` 必须带 `else`，代码块的值就是它的最后一个表达式：
+
+```asuka
+let label = if unread > 0 { "{unread} new" } else { "Inbox" }
+let icon = match (online, unread) {
+  (false, _) => "wifi.slash"
+  (true, 0) => "tray"
+  _ => "tray.full"
+}
+```
+
+元组模式（`(true, 0)`）用各自的模式分别匹配元组的每个元素。
+
+`for` 可以遍历数组、map 的 `(key, value)` 对，或者一个区间：`a..<b` 是从 `a` 到 `b` 但不包括 `b` 的整数，`a..b` 则包括 `b`（`0..<3` 就是 `[0, 1, 2]`；`for` 遍历区间时不会真的创建数组）。`while cond { … }` 在 cond 成立时一直循环；`break` 跳出循环，`continue` 直接进入下一轮。
+
+`if let` 和 `while let` 取出可选值里的值，或者匹配一个模式，只有取得到时才执行代码块：`if let u = user { … }`、`while let job = queue.pop() { … }`、`if let .ready(v) = state { … }`。它们的条件可以是一串用逗号分隔的子句，`let` 和布尔条件可以任意交替。每个子句都能用到前面子句绑定的名字；所有子句都成立时才执行代码块（子句按顺序求值，遇到第一个不成立的就停下）：
+
+```asuka
+if let user = session.user, user.isAdmin, let team = teams[user.teamId] {
+  Text("{team.name}'s admin")
+} else {
+  Text("Not an admin")
+}
+```
+
+`let … else` 要么绑定一个值，要么离开。可选值为 none（或者模式不匹配）时执行 `else` 代码块，而这个代码块必须离开：`return`、`throw`、`break`、`continue` 或 `panic(…)`（如果它可能继续往下执行，编译器会报错）。在它之后，这个名字就是其中的值，而不再是可选值：
+
+```asuka
+fn summary(id: string) -> string {
+  let message = cache[id] else { return "(deleted)" }
+  let .ready(body) = message.body else { return message.subject }
+  return "{message.subject}: {body}"
+}
+```
+
+`throw`、`return`、`break` 和 `continue` 也可以出现在需要值的地方：它们不提供值，而是直接离开（它们的类型是 `never`，可以放在任何类型的位置上）。写在 `??` 后面，就表示遇到 none 时该怎么办：
+
+```asuka
+let user = cache[id] ?? throw MailError.missing(id)
+for line in lines {
+  let n = line.toInt() ?? continue
+  total += n
+}
+```
+
+它们同样可以用作 `if` 的分支、`match` 的分支，或者闭包的主体：`x => x ?? throw Error("empty")`。
 
 ## 组件
 
@@ -273,7 +416,7 @@ on press {
 
 一个处理函数里的多次写入，会在它结束时（或者执行到 `await` 时）一起显示出来。
 
-语句有：`let`、`var`、赋值（`= += -= *= /= %= ??=`）、`if`、`for x in xs`、`for (i, x) in xs.enumerated()`、`while`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`。
+语句有：`let`、`var`、`let … else`、赋值（`=`、`+= -= *= /= %=`、`&= |= ^= <<= >>=`、`??=`）、`if` 和 `if let`、`for x in xs`（数组或集合）、`for (k, v) in m`、`for (i, x) in xs.enumerated()`、`while` 和 `while let`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`（见[控制流](#控制流)）。
 
 ### 双向绑定
 
@@ -431,6 +574,19 @@ on press {
 
 let n = try? parse(text)   // 抛出错误时为 none
 ```
+
+在表达式后面写 `catch`，可以给它一个备用值：正常时得到表达式的值；表达式里有地方抛出错误时，得到 `catch` 代码块的值（和 `if` 一样，是它的最后一个表达式），除非这个代码块直接离开：
+
+```asuka
+let port = try parsePort(text) catch e {
+  log(e.message)
+  80
+}
+let size = try await fileSize(path) catch { return }
+try save(draft) catch { failed = true }   // 作为语句：不需要提供值
+```
+
+它的子句和 `do` 的一样：`catch`、`catch e`、`catch e: ParseError`、`catch MailError.server(code)`，可以连写多个，由第一个接住错误的子句处理。没有子句接住的错误会继续往外抛，所以所在的函数必须标注 `throws`，这和 `try` 的规则相同。如果子句能接住所有错误，整个表达式就不会抛出错误，因此可以用在 `try` 不能出现的地方：组件的 `let` 里（`let port = try parsePort(text) catch { 80 }`，会随着 `text` 的变化保持更新），或者不允许抛出错误的闭包里。它也可以配合 `try await` 使用，以及配合作为值的 `throw`：`let user = cache[id] ?? throw MailError.missing(id)`。
 
 错误的 `message` 是它的 `message` 字段、它的 `fn message() -> string`，或者它的类型名和成员名。`Error("…")` 用一条消息创建一个错误。`catch` 永远不会捕获 task 的取消：取消会一直走到 task 的结尾，并在途中执行各个 `defer`。
 

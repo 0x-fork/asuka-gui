@@ -153,7 +153,7 @@ func (l *Lowerer) line(n syntax.Node) int32 {
 func (l *Lowerer) newFunc(name, file string, nparams int, ret bc.Kind) *fb {
 	f := &Func{Name: name, File: file, NParams: nparams, Ret: ret}
 	l.out.Funcs = append(l.out.Funcs, f)
-	return &fb{l: l, f: f, idx: len(l.out.Funcs) - 1, vars: map[*check.Var]int{}, free: map[bc.Kind][]int{},
+	return &fb{l: l, f: f, idx: len(l.out.Funcs) - 1, vars: map[*check.Var]int{}, unboxed: map[*check.Var]bool{}, free: map[bc.Kind][]int{},
 		blockFree: map[string][]int{}, memberRegs: map[*check.Member]int{}, envReg: -1, nullReg: -1}
 }
 
@@ -208,6 +208,8 @@ func (l *Lowerer) typeKey(t check.Type) string {
 		return "[" + l.typeKey(x.Elem) + "]"
 	case *check.Map:
 		return "[" + l.typeKey(x.Key) + ":" + l.typeKey(x.Elem) + "]"
+	case *check.Set:
+		return "Set<" + l.typeKey(x.Elem) + ">"
 	case *check.Optional:
 		return l.typeKey(x.Elem) + "?"
 	case *check.Tuple:
@@ -343,6 +345,8 @@ func (l *Lowerer) desc(t check.Type) string {
 		return "[" + l.desc(x.Elem)
 	case *check.Map:
 		return "{" + l.desc(x.Elem)
+	case *check.Set:
+		return "<" + l.desc(x.Elem)
 	case *check.Named:
 		switch x.Obj.Kind {
 		case check.StructType:

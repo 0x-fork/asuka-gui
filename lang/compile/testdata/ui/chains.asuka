@@ -1,0 +1,63 @@
+// A view's if with a condition chain, and one with a case pattern: the
+// chain runs as one memo, and its names follow it.
+
+enum Status {
+  idle
+  ready(count: int)
+}
+
+component Chains {
+  state first: int? = none
+  state second: int? = none
+  state status: Status = .idle
+  state big = false
+
+  Column {
+    if let a = first, let b = second, a < b {
+      Text("ordered {a} {b}")
+    } else if let a = first, a > 100 {
+      Text("large {a}")
+    } else {
+      Text("unordered")
+    }
+    if let .ready(n) = status, n > 0 {
+      Text("ready {n}")
+    }
+    if let .ready(n) = status {
+      Text("status {n}")
+    }
+    if big, first != none {
+      Text("big")
+    }
+    Button("Order") { on press { first = 1; second = 2 } }
+    Button("Raise") { on press { second = 7 } }
+    Button("Flip") { on press { first = 500; second = 3 } }
+    Button("Ready") { on press { status = .ready(count: 4) } }
+    Button("Empty") { on press { status = .ready(count: 0) } }
+    Button("Big") { on press { big = true } }
+  }
+}
+
+app { Chains() }
+
+test "chains follow their state" {
+  let app = mount(Chains())
+  app.expect("unordered")
+  app.expectNo("big")
+  app.tap("Order")
+  app.expect("ordered 1 2")
+  app.tap("Raise")
+  app.expect("ordered 1 7")
+  app.tap("Flip")
+  app.expect("large 500")
+  app.expectNo("ordered")
+  app.expectNo("status")
+  app.tap("Ready")
+  app.expect("ready 4")
+  app.expect("status 4")
+  app.tap("Empty")
+  app.expectNo("ready")
+  app.expect("status 0")
+  app.tap("Big")
+  app.expect("big")
+}

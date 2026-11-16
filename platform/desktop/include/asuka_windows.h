@@ -114,6 +114,11 @@ void asuka_win_web_page(const char *html, void (*done)(void *ctx, asuka_web_page
 // on a later turn of the main thread with the value as JSON (null for
 // undefined), or what it threw in err. Main thread.
 void asuka_win_web_page_evaluate(asuka_web_page *p, const char *script, void (*done)(void *ctx, char *json, asuka_error *err), void *ctx);
+// asuka_win_web_page_devtools calls a DevTools protocol method with its
+// parameters (a JSON object) and calls done on a later turn of the main
+// thread with its result (JSON), or why it failed in err. Main thread.
+void asuka_win_web_page_devtools(asuka_web_page *p, const char *method, const char *params,
+                                 void (*done)(void *ctx, char *json, asuka_error *err), void *ctx);
 // asuka_win_web_page_view is its ICoreWebView2.
 void *asuka_win_web_page_view(asuka_web_page *p);
 // asuka_win_web_page_print shows a print dialog for the page: the
@@ -130,6 +135,8 @@ typedef struct HSTRING__ *HSTRING;
 // asuka_hstring makes an HSTRING of s (NULL for ""), which the caller
 // frees with asuka_hstring_free.
 HSTRING asuka_hstring(const char *s);
+// asuka_hstring_w is the same of UTF-16 (NULL for "").
+HSTRING asuka_hstring_w(const wchar_t *s);
 // asuka_hstring_utf8 is h as UTF-8, of malloc's.
 char *asuka_hstring_utf8(HSTRING h);
 void asuka_hstring_free(HSTRING h);

@@ -74,7 +74,7 @@ type WebDownload struct {
 // and no Grow, it grows, as a List does. Talk to the page with OnMessage
 // and EvalJS.
 //
-// Never inlined: asuka build looks for its symbol (cmd/asuka iosFeatures).
+// Never inlined: a Go app's build looked for its symbol.
 //
 //go:noinline
 func WebView(p WebViewProps) Node {

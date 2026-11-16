@@ -342,11 +342,16 @@ bool asuka_winrt(void) {
 	return true;
 }
 
-HSTRING asuka_hstring(const char *s) {
-	if (!asuka_winrt() || !s || !*s) return NULL;
-	wchar_t *w = asuka_wide(s);
+HSTRING asuka_hstring_w(const wchar_t *s) {
 	HSTRING h = NULL;
-	pWindowsCreateString(w, (UINT32)wcslen(w), &h);
+	if (asuka_winrt() && s && *s) pWindowsCreateString(s, (UINT32)wcslen(s), &h);
+	return h;
+}
+
+HSTRING asuka_hstring(const char *s) {
+	if (!s || !*s) return NULL;
+	wchar_t *w = asuka_wide(s);
+	HSTRING h = asuka_hstring_w(w);
 	free(w);
 	return h;
 }

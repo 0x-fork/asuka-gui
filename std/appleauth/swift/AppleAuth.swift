@@ -91,7 +91,7 @@ final class AppleIDProvider: Provider {
         MainActor.assumeIsolated {
             guard let (_, done) = pending.removeValue(forKey: ObjectIdentifier(controller)) else { return }
             let code = (error as? ASAuthorizationError)?.code
-            done(.failure(code == .canceled ? AppleauthError.canceled : error))
+            done(.failure(code == .canceled ? AppleAuthError.canceled : error))
         }
     }
 }

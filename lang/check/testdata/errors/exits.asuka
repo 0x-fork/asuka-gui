@@ -1,0 +1,113 @@
+// let … else, condition chains, jumps as values, catch as a value.
+
+enum MailError: Error {
+  offline
+  missing(id: string)
+}
+
+fn fetch(n: int) throws -> int = n
+
+fn fallsThrough(m: [string: int]) -> int {
+  let v = m["a"] else {
+    print("no a")
+  } // ERROR "the else of a let … else goes on with nothing to bind: end it with return, throw, break or continue"
+  return v
+}
+
+fn notOptional(n: int) -> int {
+  let v = n else { return 0 } // ERROR "int isn't optional: let … else unwraps an optional or matches a pattern"
+  return v
+}
+
+fn elseDoesntSee(m: [string: int]) -> int {
+  let v = m["a"] else {
+    return v // ERROR "unknown name v"
+  }
+  return v
+}
+
+fn alwaysMatches(p: (int, int)) -> int {
+  let (a, b) = p else { return 0 } // ERROR "this pattern always matches a \(int, int\): drop the else"
+  return a + b
+}
+
+let topLevel = 1 else { } // ERROR "let … else is a statement"
+
+component Body(m: [string: int]) {
+  let x = m["a"] else { } // ERROR "let … else is a statement"
+  Text("{x}")
+}
+
+fn chainSeesEarlier(a: int?, b: int?) -> int {
+  if let x = a, let y = b, x > y { return x }
+  if let x = a, y > 0 { return x } // ERROR "unknown name y"
+  if 1, let z = a { return z } // ERROR "the condition is a int, not a bool"
+  return 0
+}
+
+fn breakOutside(m: [string: int]) -> int {
+  let v = m["a"] ?? break // ERROR "break outside a loop"
+  return v
+}
+
+fn noThrow(m: [string: int]) -> int {
+  let v = m["a"] ?? throw MailError.missing("a") // ERROR "noThrow doesn't throw: mark it throws"
+  return v
+}
+
+fn wrongReturn(m: [string: int]) -> int {
+  let v = m["a"] ?? return "none" // ERROR "the result is a string, not a int"
+  return v
+}
+
+fn neverValue() throws -> int {
+  let v = throw Error("x") // ERROR "this has no value: it leaves"
+  return 0
+}
+
+fn closureReturns(xs: [int?]) -> [int] = xs.map(x => x ?? return) // ERROR "return needs a int"
+
+fn inferred(a: int?) {
+  let f = () => a ?? return // ERROR "this closure's value is a int, and it returns a void"
+  print(f())
+}
+
+fn fallbackType(s: string) -> int {
+  let n = try fetch(1) catch { "zero" } // ERROR "the catch's value is a string, and the try's a int"
+  return n
+}
+
+fn fallbackNoValue() -> int {
+  let n = try fetch(1) catch { print("x") } // ERROR "this catch has no value \(it's void\)"
+  return n
+}
+
+fn partialCatch() -> int {
+  let n = try fetch(1) catch MailError.offline { 0 } // ERROR "the catch here takes MailError.offline only, and partialCatch doesn't throw: add a catch e \{ … \} for the rest, or mark partialCatch throws"
+  return n
+}
+
+fn partialDo() {
+  do {
+    try fetch(1) // ERROR "the catches here take MailError.offline, MailError.missing only, and partialDo doesn't throw"
+  } catch MailError.offline {
+  } catch MailError.missing(id) {
+  }
+}
+
+fn partialOk() throws -> int = try fetch(1) catch MailError.offline { 0 }
+
+fn nothingThrows() -> int = 1 + 2 catch { 0 } // ERROR "nothing before this catch throws"
+
+fn unreachable() -> int = try fetch(1) catch { 0 } catch MailError.offline { 1 } // ERROR "this catch is never reached"
+
+fn leaves() -> int {
+  let n = try fetch(1) catch { return -1 }
+  return n
+}
+
+component Shown {
+  let port = try fetch(80) catch { 8080 }
+  let bad = try fetch(80) catch MailError.offline { 1 } // ERROR "the catch here takes MailError.offline only, and this can't throw here"
+  Text("{port} {bad}")
+}

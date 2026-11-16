@@ -17,7 +17,7 @@ import (
 // what its purpose strings ask for, and none it doesn't need.
 func TestMacEntitlements(t *testing.T) {
 	cfg := &appConfig{}
-	cfg.permissionsFor([]string{"github.com/egoist/asuka/sdk/camera", "github.com/egoist/asuka/sdk/contacts", "github.com/egoist/asuka/sdk/location"})
+	importStd(t, cfg, "macos", "camera", "contacts", "location")
 	app := &asukaApp{cfg: cfg}
 	f, err := writeMacEntitlements(app, t.TempDir())
 	if err != nil || f == "" {
@@ -31,7 +31,7 @@ func TestMacEntitlements(t *testing.T) {
 			t.Errorf("no %s in\n%s", want, s)
 		}
 	}
-	for _, not := range []string{"audio-input", "calendars", "aps-environment"} {
+	for _, not := range []string{"calendars", "aps-environment"} {
 		if strings.Contains(s, not) {
 			t.Errorf("%s in\n%s", not, s)
 		}

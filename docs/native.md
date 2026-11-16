@@ -299,6 +299,49 @@ In an app's tests (on the fake host, with no platform code) a native
 view shows as its component's name, and `app.tap("Segmented")` sends it
 a `press` event, as a platform's button would.
 
+## What the app needs
+
+What the package needs of an app (a permission, a purpose string, a
+background mode, an entitlement) is the package's to say, and only the
+apps that use it get it. Its `asuka.toml` says it, in tables for every
+app that imports the package:
+
+```toml
+[ios]
+usage = { NSLocationWhenInUseUsageDescription = "To show where you are." }
+backgroundModes = ["audio"]
+entitlements = { aps-environment = "development" }   # a simulator build's value
+plist = { LSApplicationQueriesSchemes = ["mailto"] } # true, a string, or an array joined with the app's
+
+[android]
+permissions = ["android.permission.ACCESS_FINE_LOCATION", "android.permission.WRITE_EXTERNAL_STORAGE:28"]
+application = ['<service android:name="com.example.battery.Watcher" android:exported="false" />']
+manifest = ['<queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>']
+```
+
+A permission `"name:28"` holds up to that API level; `"name|neverForLocation"`
+has its `usesPermissionFlags`. An app's own `asuka.toml` wins over a
+package's purpose strings.
+
+What only part of the package needs goes in a `[uses.<member>]` table,
+with the same keys: the app gets it only if its code, or a dependency's,
+refers to that member (a function, a type, a store; `"Type.name"` for a
+type's member). A local function of the same name doesn't count, nor
+does a test block. asuka/location's background part is such:
+
+```toml
+[uses.requestAlways.android]
+permissions = ["android.permission.ACCESS_BACKGROUND_LOCATION"]
+
+[uses.startUpdates.ios]
+backgroundModes = ["location"]
+```
+
+The files beside the package's code are for every app that imports it:
+its Gradle module's `AndroidManifest.xml`, its Swift package's
+`Info.plist` and entitlements (see below). Put there what every app of
+the package needs, and in `[uses]` what one member does.
+
 ## iOS and macOS: Swift
 
 The package's Swift is a Swift package, `Package.swift` at the
@@ -564,10 +607,14 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   package's C may use of the C hosts: posting to the main thread, the
   window a view is in, the app's name, ID, version and directories, its
   assets, a color resolved for the appearance shown, HTTP
-  (`asuka_fetch`) and a file an app names (`asuka_desktop_local_file`).
+  (`asuka_fetch`; `asuka_fetch_stream` for a response a piece at a
+  time, a download into a file; `asuka_abort` to stop one from any
+  thread) and a file an app names (`asuka_desktop_local_file`).
   `asuka_windows.h` has COM and WinRT's helpers (UTF-16, a vtable's
   slot, HSTRINGs, activation factories, delegates, waiting for an async
-  operation, WIC's images, the system window's broadcasts);
+  operation, WIC's images, the system window's broadcasts), the same
+  ones the Windows host uses; `asuka_barcode.h` reads QR codes and
+  barcodes from an image's gray levels, on every desktop;
   `asuka_linux.h` declares the GLib, GIO, GTK and libadwaita functions
   packages use, resolved at run time as the Linux host's are (called as
   `G(g_variant_new)(…)`), so nothing needs GTK's headers to build.

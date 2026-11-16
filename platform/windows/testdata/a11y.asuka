@@ -1,0 +1,43 @@
+// The Windows host's screen reader test app (TestAccessibility): what UI
+// Automation reads of the host's views.
+
+app {
+  Mail()
+}
+
+component Mail {
+  state opened = 0
+
+  Column {
+    padding: 16
+    gap: 8
+    Text("Inbox") { role: .header }
+    Text("Opened: {opened}")
+    Row {
+      padding: 8
+      background: .secondaryBackground
+      on press { opened += 1 }
+      Text("Open the message")
+      Text("From Ann")
+      Text("Lunch?")
+    }
+    View {
+      label: "Weather"
+      hint: "Sunny all day"
+      Text("☀")
+    }
+    View {
+      padding: 8
+      background: .separator
+      tooltip: "Saves the note"
+      on press { opened += 0 }
+      Text("Save")
+    }
+    View {
+      a11yHidden: true
+      padding: 4
+      Text("Secret")
+    }
+    ProgressRing { value: 0.4; width: 40; height: 40 }
+  }
+}

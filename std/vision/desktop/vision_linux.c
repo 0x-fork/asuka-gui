@@ -3,7 +3,6 @@
 // line by line and word by word, in the languages asked for (else the
 // user's) that it has data for, else English. No library on a Linux
 // desktop finds faces: none are found.
-#include "asuka_barcode.h"
 #include "asuka_linux.h"
 #include "vision.h"
 
@@ -17,7 +16,7 @@
 
 bool vision_load(const char *path, vision_image *img) {
 	if (!asuka_linux_image_load(path, &img->w, &img->h, &img->px)) return false;
-	img->gray = asuka_barcode_gray(img->px, img->w, img->h, img->w * 4, false, false);
+	img->gray = vision_gray(img->px, img->w, img->h, false, false);
 	return true;
 }
 

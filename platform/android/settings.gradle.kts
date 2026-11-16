@@ -17,8 +17,12 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "asuka-android"
-include(":asuka", ":app", ":asuka-scan", ":asuka-vision", ":asuka-review", ":asuka-push", ":asuka-integrity", ":asuka-agerange", ":asuka-maps", ":asuka-periodic", ":asuka-purchase", ":asuka-pay")
-include(":asuka-location") // asuka/sdk/location's background part, with Play services
+// The host's optional modules, in the apps that need them (the CLI's
+// asukaModules): asuka-video (Video's player, Media3) in those that show a
+// Video; asuka-push (Firebase's messaging) and asuka-periodic
+// (WorkManager), the host's push and periodic modules' libraries, in
+// those that import asuka/push and asuka/periodic.
+include(":asuka", ":app", ":asuka-video", ":asuka-push", ":asuka-periodic")
 
 // The app's native packages' modules (their android/, the CLI's
 // asukaNativeModules: name=directory, ;-separated).

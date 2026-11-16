@@ -277,11 +277,12 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 	}
 	case 'm': {
 		ak_kind kk = (ak_kind)ak_read_u8(r), vk = (ak_kind)ak_read_u8(r);
-		bool strkeys = ak_read_u8(r) & 1;
+		uint8_t flags = ak_read_u8(r);
 		const ak_shape *vs = shape_named(r, find, ctx);
 		uint32_t n = ak_read_u32(r);
 		if (r->err || n > r->len) return false;
-		ak_map *m = ak_map_new(kk, strkeys, vk, vs);
+		ak_map *m = ak_map_new(kk, flags & AK_MAP_STRKEYS, vk, vs);
+		m->h.flags = flags & (AK_MAP_STRKEYS | AK_MAP_SET);
 		for (uint32_t i = 0; i < n; i++) {
 			ak_val key, val;
 			if (!ak_keep_decode(r, kk, find, ctx, &key)) goto map_fail;

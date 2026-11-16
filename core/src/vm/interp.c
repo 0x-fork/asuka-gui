@@ -34,7 +34,7 @@ bool ak_vm_push(ak_co *co, const ak_func *f, ak_closure *clos, ak_val *args, uin
 		if (off >= 0) args = co->regs + off;
 	}
 	ak_val *R = co->regs + base;
-	memset(R, 0, sizeof(ak_val) * f->nregs);
+	if (f->nregs) memset(R, 0, sizeof(ak_val) * f->nregs);  // a coroutine's first call may have no registers yet
 	for (uint32_t i = 0; i < nargs; i++) {
 		R[i] = args[i];
 		ak_retain_val(R[i], (ak_kind)f->kinds[i]);
@@ -199,6 +199,12 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 		case AK_OP_LEI: R[a[0]].i = R[a[1]].i <= R[a[2]].i; break;
 		case AK_OP_BAND: R[a[0]].i = R[a[1]].i & R[a[2]].i; break;
 		case AK_OP_BOR: R[a[0]].i = R[a[1]].i | R[a[2]].i; break;
+		case AK_OP_BXOR: R[a[0]].i = R[a[1]].i ^ R[a[2]].i; break;
+		case AK_OP_BNOT: R[a[0]].i = ~R[a[1]].i; break;
+		case AK_OP_SHL:
+		case AK_OP_SHR:
+			if (!ak_op_shift(R, a[0], a[1], a[2], op == AK_OP_SHR)) goto unwind;
+			break;
 
 		case AK_OP_ADDF: R[a[0]].f = R[a[1]].f + R[a[2]].f; break;
 		case AK_OP_SUBF: R[a[0]].f = R[a[1]].f - R[a[2]].f; break;

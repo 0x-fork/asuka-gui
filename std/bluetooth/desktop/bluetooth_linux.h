@@ -35,32 +35,9 @@
 #define BL_NO_TIMEOUT 0x7fffffff
 
 // GIO's functions the package calls besides asuka_linux.h's.
-typedef struct _GDBusNodeInfo GDBusNodeInfo;
-typedef struct _GDBusInterfaceInfo GDBusInterfaceInfo;
-typedef struct _GDBusMethodInvocation GDBusMethodInvocation;
-typedef struct {
-	void (*method_call)(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *method, GVariant *params,
-	                    GDBusMethodInvocation *inv, gpointer data);
-	GVariant *(*get_property)(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *name, GError **err,
-	                          gpointer data);
-	gboolean (*set_property)(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *name, GVariant *value,
-	                         GError **err, gpointer data);
-	gpointer padding[8];
-} GDBusInterfaceVTable;
 
 struct gx {
-	GDBusNodeInfo *(*node_info_new_for_xml)(const gchar *xml, GError **e);
-	GDBusInterfaceInfo *(*node_info_lookup_interface)(GDBusNodeInfo *n, const gchar *name);
-	guint (*register_object)(GDBusConnection *c, const gchar *path, GDBusInterfaceInfo *iface, const GDBusInterfaceVTable *vt, gpointer data,
-	                         GDestroyNotify free, GError **e);
-	gboolean (*unregister_object)(GDBusConnection *c, guint id);
-	gboolean (*emit_signal)(GDBusConnection *c, const gchar *dest, const gchar *path, const gchar *iface, const gchar *signal, GVariant *params, GError **e);
-	void (*return_value)(GDBusMethodInvocation *inv, GVariant *v);
-	void (*return_dbus_error)(GDBusMethodInvocation *inv, const gchar *name, const gchar *msg);
 	GVariant *(*variant_ref)(GVariant *v);
-	GVariant *(*variant_new_uint16)(guint16 v);
-	GVariant *(*variant_new_int16)(gint16 v);
-	GVariant *(*variant_new_byte)(guchar v);
 };
 extern struct gx gx;
 

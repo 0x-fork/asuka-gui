@@ -690,6 +690,58 @@ static ak_val map_keys(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_map_ke
 static ak_val map_values(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_map_values(MAP(0))); }
 static ak_val map_is_empty(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(MAP(0)->live == 0); }
 
+// ---- Sets (rt.h's ak_set_*) ----
+
+#define SET(i) ((ak_map *)args[i].p)
+
+static ak_kind set_kind(const ak_map *s) { return (ak_kind)(s->h.aux & 0xf); }
+
+// set.of(kind, elements...): a set literal, Set<T>() with none.
+static ak_val set_of(ak_val *args, uint32_t n) {
+	ak_kind k = (ak_kind)A(0).i;
+	ak_map *s = ak_set_new(k, k == AK_K_REF);
+	for (uint32_t i = 1; i < n; i++) {
+		ak_retain_val(A(i), k);
+		ak_set_insert(&s, A(i));
+	}
+	RET_P(s);
+}
+
+static ak_val set_from(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_set_from_arr(ARR(0))); }
+static ak_val set_has(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_set_has(SET(0), A(1))); }
+static ak_val set_is_empty(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(SET(0)->live == 0); }
+
+static ak_val set_insert(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_retain_val(A(1), set_kind(SET(0)));
+	RET_I(ak_set_insert((ak_map **)&args[0].p, A(1)));
+}
+
+static ak_val set_remove(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_set_remove((ak_map **)&args[0].p, A(1))); }
+static ak_val set_union(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_set_union(SET(0), SET(1))); }
+static ak_val set_intersection(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_set_intersection(SET(0), SET(1))); }
+static ak_val set_subtracting(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_set_subtracting(SET(0), SET(1))); }
+static ak_val set_is_subset(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_set_is_subset(SET(0), SET(1))); }
+static ak_val set_is_superset(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_set_is_subset(SET(1), SET(0))); }
+
+// set.next(s, i): the index of s's first live entry from i, -1 past
+// the last; set.elem(s, i): that entry's element. A for over a set
+// goes by them, allocating nothing.
+static ak_val set_next(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_map *s = SET(0);
+	for (int64_t i = A(1).i < 0 ? 0 : A(1).i; i < (int64_t)s->len; i++)
+		if (!s->dead[i]) RET_I(i);
+	RET_I(-1);
+}
+
+static ak_val set_elem(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_val x = SET(0)->keys[A(1).i];
+	ak_retain_val(x, set_kind(SET(0)));
+	return x;
+}
+
 // ---- Numbers ----
 
 static ak_val m_sqrt(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(sqrt(A(0).f)); }
@@ -1001,6 +1053,19 @@ static ak_val bytes_get(ak_val *args, uint32_t n) {
 	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = BYTES(0)->data[i]}));
 }
 
+// bytes.at: b[i], the byte at i as an int (0 to 255); throws out of
+// range, as an array's index does.
+static ak_val bytes_at(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t i = A(1).i;
+	uint32_t len = blen(BYTES(0));
+	if (i < 0 || i >= (int64_t)len) {
+		ak_throw_msg("index %lld out of range (length %u)", (long long)i, len);
+		RET_I(0);
+	}
+	RET_I(BYTES(0)->data[i]);
+}
+
 static ak_val bytes_slice(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	int64_t len = blen(BYTES(0)), from = A(1).i, to = A(2).i;
@@ -1115,6 +1180,7 @@ const ak_lib_entry ak_lib[] = {
 	{"bytes.len", bytes_len},
 	{"bytes.is_empty", bytes_is_empty},
 	{"bytes.get", bytes_get},
+	{"bytes.at", bytes_at},
 	{"bytes.slice", bytes_slice},
 	{"bytes.concat", bytes_concat},
 	{"bytes.str", bytes_str},
@@ -1151,6 +1217,19 @@ const ak_lib_entry ak_lib[] = {
 	{"map.keys", map_keys},
 	{"map.values", map_values},
 	{"map.is_empty", map_is_empty},
+	{"set.of", set_of},
+	{"set.from", set_from},
+	{"set.has", set_has},
+	{"set.is_empty", set_is_empty},
+	{"set.insert", set_insert},
+	{"set.remove", set_remove},
+	{"set.union", set_union},
+	{"set.intersection", set_intersection},
+	{"set.subtracting", set_subtracting},
+	{"set.is_subset", set_is_subset},
+	{"set.is_superset", set_is_superset},
+	{"set.next", set_next},
+	{"set.elem", set_elem},
 
 	{"math.sqrt", m_sqrt},
 	{"math.pow", m_pow},

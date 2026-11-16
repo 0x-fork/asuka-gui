@@ -34,6 +34,10 @@ func (b *fb) stmt(it syntax.Item) {
 	case *syntax.LetDecl:
 		t := b.typ(b.l.info.Lets[s])
 		v := b.value(s.Value, -1)
+		if s.Else != nil {
+			b.letElse(s, v, t)
+			return
+		}
 		b.bindLet(s.Pattern, v, t)
 	case *syntax.AssignStmt:
 		b.assignStmt(s)
@@ -78,35 +82,11 @@ func (b *fb) stmt(it syntax.Item) {
 	case *syntax.DoStmt:
 		b.doStmt(s)
 	case *syntax.ReturnStmt:
-		var r int = -1
-		k := b.f.Ret
-		if s.Value != nil {
-			r = b.value(s.Value, -1)
-			if len(b.defers) > 0 && k == bc.KRef {
-				// The defers run after the value is computed: keep it.
-				t := b.temp(bc.KRef)
-				b.move(t, r)
-				r = t
-			}
-		}
-		b.runDefers(0)
-		b.ret(r, k)
+		b.returnValue(s.Value)
 	case *syntax.ThrowStmt:
-		v := b.value(s.Value, -1)
-		t := b.temp(bc.KRef)
-		b.move(t, v)
-		b.emit(op("THROW"), t)
+		b.throw(s.Value)
 	case *syntax.BranchStmt:
-		if len(b.loops) == 0 {
-			return
-		}
-		lp := b.loops[len(b.loops)-1]
-		b.runDefers(lp.defers)
-		if s.Tok == syntax.BREAK {
-			b.jmp(lp.brk)
-		} else {
-			b.jmp(lp.cont)
-		}
+		b.branch(s.Tok)
 	case *syntax.EmitStmt:
 		b.emitStmt(s)
 	case *syntax.ExprStmt:
@@ -158,8 +138,15 @@ func (b *fb) bindLet(p syntax.Pattern, v int, t check.Type) {
 // Conditions
 
 // condJump evaluates an if's or a while's condition and jumps to els
-// when it's false (or the let doesn't match), binding the let's names.
+// when it's false (or the let doesn't match), binding the let's names; a
+// chain's clauses in order, to the first that fails.
 func (b *fb) condJump(c syntax.Expr, els Label) {
+	if l, ok := c.(*syntax.CondList); ok {
+		for _, x := range l.List {
+			b.condJump(x, els)
+		}
+		return
+	}
 	lc, ok := c.(*syntax.LetCond)
 	if !ok {
 		r := b.value(c, -1)
@@ -218,6 +205,13 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.value(fi.Seq, i)
 		limit = b.local(bc.KInt)
 		b.value(fi.End, limit)
+	case check.ForSet:
+		// The set as it is now (a local holds it, so a change in the
+		// body copies it), entry by entry: set.next is the index of the
+		// first live entry from i, or -1.
+		seq = b.local(bc.KRef)
+		b.value(fi.Seq, seq)
+		b.loadInt(i, 0)
 	case check.ForMap:
 		m := b.value(fi.Seq, -1)
 		keys = b.local(bc.KRef)
@@ -235,9 +229,14 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.loadInt(i, 0)
 	}
 	b.f.Place(top)
-	if fi.Kind == check.ForRange && fi.Incl {
+	switch {
+	case fi.Kind == check.ForSet:
+		b.callBTo("set.next", i, seq, i)
+		zero := b.konst(0)
+		b.emit(op("LEI"), cond, zero, i)
+	case fi.Kind == check.ForRange && fi.Incl:
 		b.emit(op("LEI"), cond, i, limit)
-	} else {
+	default:
 		b.emit(op("LTI"), cond, i, limit)
 	}
 	b.emitJump(op("JF"), cond, end)
@@ -245,6 +244,10 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 	switch fi.Kind {
 	case check.ForRange:
 		b.declare(fi.Item, i)
+	case check.ForSet:
+		x := b.temp(b.kind(fi.Elem))
+		b.callBTo("set.elem", x, seq, i)
+		b.declare(fi.Item, x)
 	case check.ForMap:
 		kt := fi.Elem.(*check.Tuple)
 		k := b.temp(b.kind(kt.Elems[0]))
@@ -325,6 +328,24 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 		}
 		b.f.Place(ok)
 	case *syntax.CasePat:
+		if fields, ok := b.l.info.FieldPats[p]; ok {
+			// A struct's: each field it names.
+			x := v
+			et := check.Unopt(t)
+			if check.IsOptional(t) {
+				b.emitJump(op("JNONE"), v, fail)
+				x = b.unbox(v, et, -1)
+			}
+			n, _ := et.(*check.Named)
+			for i, a := range p.Args {
+				if fields[i] == nil || n == nil || isIrrefutable(a) {
+					continue
+				}
+				r := b.getField(x, n, fields[i], -1)
+				b.testPattern(a, r, n.Subst().Apply(fields[i].Type), fail)
+			}
+			return
+		}
 		k := b.l.info.Cases[p]
 		if k == nil {
 			return
@@ -423,16 +444,26 @@ func (b *fb) bindPattern(p syntax.Pattern, v int, t check.Type) {
 			b.bindPattern(e, r, tt.Elems[i])
 		}
 	case *syntax.CasePat:
-		k := b.l.info.Cases[p]
-		if k == nil {
-			return
-		}
 		x := v
 		et := check.Unopt(t)
 		if check.IsOptional(t) && hasBinding(p) {
 			x = b.unbox(v, et, -1)
 		}
 		n, _ := et.(*check.Named)
+		if fields, ok := b.l.info.FieldPats[p]; ok {
+			for i, a := range p.Args {
+				if fields[i] == nil || n == nil || !hasBinding(a) {
+					continue
+				}
+				r := b.getField(x, n, fields[i], -1)
+				b.bindPattern(a, r, n.Subst().Apply(fields[i].Type))
+			}
+			return
+		}
+		k := b.l.info.Cases[p]
+		if k == nil {
+			return
+		}
 		for i, a := range p.Args {
 			if !hasBinding(a) {
 				continue
@@ -620,7 +651,7 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 		b.f.Place(end)
 	default:
 		v := b.value(s.Value, -1)
-		o := map[syntax.Token]syntax.Token{syntax.ADD_ASSIGN: syntax.ADD, syntax.SUB_ASSIGN: syntax.SUB, syntax.MUL_ASSIGN: syntax.MUL, syntax.QUO_ASSIGN: syntax.QUO, syntax.REM_ASSIGN: syntax.REM}[s.Op]
+		o := s.Op.AssignOp()
 		lv := b.prepare(s.Target)
 		vt := b.typeOf(s.Value)
 		if lv.kind == lvField || lv.kind == lvIndex && !lv.isMap {
@@ -690,9 +721,16 @@ func (b *fb) classify(e int, cancel Label) (isUser int) {
 }
 
 func (b *fb) doStmt(s *syntax.DoStmt) {
+	b.catchRegion(s.Catches, func() { b.block(s.Body) }, func(cl *syntax.CatchClause) { b.block(cl.Body) })
+}
+
+// catchRegion lowers body under catch clauses: when it throws, the first
+// clause that takes the error runs (clause, its names bound), and an
+// error no clause takes (or the cancellation) goes on.
+func (b *fb) catchRegion(catches []*syntax.CatchClause, body func(), clause func(*syntax.CatchClause)) {
 	start, end, target, after := b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel()
 	b.f.Place(start)
-	b.block(s.Body)
+	body()
 	b.f.Place(end)
 	b.jmp(after)
 	b.f.Place(target)
@@ -701,7 +739,7 @@ func (b *fb) doStmt(s *syntax.DoStmt) {
 	b.emit(op("CATCH"), e)
 	rethrow := b.f.NewLabel()
 	user := b.classify(e, rethrow)
-	for _, cl := range s.Catches {
+	for _, cl := range catches {
 		ci := b.l.info.Catches[cl]
 		next := b.f.NewLabel()
 		b.openScope()
@@ -728,7 +766,7 @@ func (b *fb) doStmt(s *syntax.DoStmt) {
 		if ci != nil && ci.Var != nil {
 			b.declare(ci.Var, e)
 		}
-		b.block(cl.Body)
+		clause(cl)
 		b.closeScope()
 		b.jmp(after)
 		b.f.Place(next)
@@ -738,6 +776,20 @@ func (b *fb) doStmt(s *syntax.DoStmt) {
 	b.release(mark)
 	b.f.Place(after)
 	b.f.Handlers = append(b.f.Handlers, Handler{start, end, target})
+}
+
+// catchExpr is x catch … { … }: x's value, or the value of the clause
+// that takes its error. A void one is a statement's.
+func (b *fb) catchExpr(e *syntax.CatchExpr, dst int) int {
+	t := b.rawType(e)
+	k := b.kind(t)
+	if k == bc.KVoid {
+		b.catchRegion(e.Catches, func() { b.exprStmt(e.X) }, func(cl *syntax.CatchClause) { b.block(cl.Body) })
+		return -1
+	}
+	r := b.out(dst, k)
+	b.catchRegion(e.Catches, func() { b.value(e.X, r) }, func(cl *syntax.CatchClause) { b.valueBlock(cl.Body, r) })
+	return r
 }
 
 // tryOptional is try? x: none when x throws.
@@ -880,4 +932,81 @@ func memberTypeIn(recv check.Type, m *check.Member) check.Type {
 		return n.Subst().Apply(m.Type)
 	}
 	return m.Type
+}
+
+// ---------------------------------------------------------------------
+// let … else and jumps
+
+// letElse binds let pattern = v (a t) else { … }: the else block (which
+// leaves) when the pattern doesn't match, or a name's optional is none.
+func (b *fb) letElse(s *syntax.LetDecl, v int, t check.Type) {
+	els, ok := b.f.NewLabel(), b.f.NewLabel()
+	if bp, name := s.Pattern.(*syntax.BindPat); name {
+		b.emitJump(op("JNONE"), v, els)
+		in := b.unbox(v, check.Unopt(t), -1)
+		vr, _ := b.l.info.Defs[bp.Name].(*check.Var)
+		b.declare(vr, in)
+	} else {
+		b.testPattern(s.Pattern, v, t, els)
+		b.bindPattern(s.Pattern, v, t)
+	}
+	b.jmp(ok)
+	b.f.Place(els)
+	b.block(s.Else)
+	b.f.Place(ok)
+}
+
+// throw throws value's error.
+func (b *fb) throw(value syntax.Expr) {
+	v := b.value(value, -1)
+	t := b.temp(bc.KRef)
+	b.move(t, v)
+	b.emit(op("THROW"), t)
+}
+
+// returnValue returns value (nil: nothing), running the defers in
+// effect.
+func (b *fb) returnValue(value syntax.Expr) {
+	var r int = -1
+	k := b.f.Ret
+	if value != nil {
+		r = b.value(value, -1)
+		if len(b.defers) > 0 && k == bc.KRef {
+			// The defers run after the value is computed: keep it.
+			t := b.temp(bc.KRef)
+			b.move(t, r)
+			r = t
+		}
+	}
+	b.runDefers(0)
+	b.ret(r, k)
+}
+
+// branch is break or continue: the defers of the loop's body, then the
+// jump.
+func (b *fb) branch(tok syntax.Token) {
+	if len(b.loops) == 0 {
+		return
+	}
+	lp := b.loops[len(b.loops)-1]
+	b.runDefers(lp.defers)
+	if tok == syntax.BREAK {
+		b.jmp(lp.brk)
+	} else {
+		b.jmp(lp.cont)
+	}
+}
+
+// jumpExpr is throw, return, break or continue as a value: it leaves, so
+// what it gives is a register of the kind expected that's never read.
+func (b *fb) jumpExpr(e *syntax.JumpExpr, dst int) int {
+	switch e.Tok {
+	case syntax.THROW:
+		b.throw(e.Value)
+	case syntax.RETURN:
+		b.returnValue(e.Value)
+	default:
+		b.branch(e.Tok)
+	}
+	return dst
 }

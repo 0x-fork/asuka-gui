@@ -25,6 +25,11 @@ bool vision_text(const vision_image *img, vision_list_string languages, vision_l
 // vision_faces finds the faces in the image; the platform's.
 bool vision_faces(const vision_image *img, vision_list_Box *out, asuka_error *err);
 
+// vision_gray is an image's gray levels from its pixels (4 bytes each;
+// bgr: B, G, R, A, else R, G, B, A; premultiplied or not), transparent
+// ones over white: w×h bytes of malloc's.
+uint8_t *vision_gray(const uint8_t *px, int w, int h, bool bgr, bool premultiplied);
+
 // vision_box is a rectangle of pixels as fractions of a w×h image.
 vision_Box vision_box(double x0, double y0, double x1, double y1, int w, int h);
 // vision_union is the smallest box holding both (an empty one adds

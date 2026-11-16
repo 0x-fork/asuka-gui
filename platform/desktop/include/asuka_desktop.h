@@ -297,6 +297,44 @@ bool asuka_fetch(const char *method, const char *url, const asuka_header *header
                  int timeout_ms, asuka_call *cancel, asuka_response *out, asuka_error *err);
 void asuka_response_free(asuka_response *r);
 
+// An abort stops a request in flight from any thread (asuka_abort_now):
+// it fails with ASUKA_CANCELLED, at once if it was aborted before it
+// started. Free it once the request has returned.
+typedef struct asuka_abort asuka_abort;
+asuka_abort *asuka_abort_new(void);
+void asuka_abort_now(asuka_abort *a);
+bool asuka_aborted(asuka_abort *a);
+void asuka_abort_free(asuka_abort *a);
+
+// A request whose response comes a piece at a time: what asuka_fetch is
+// made of, for a body too big to hold (a download into a file, with its
+// progress).
+typedef struct {
+	const char *method;  // NULL: GET
+	const char *url;
+	const asuka_header *headers;
+	size_t nheaders;
+	const void *body;
+	size_t len;
+	int timeout_ms;      // 0: none
+	const char *agent;   // User-Agent (NULL: "Asuka")
+	asuka_call *cancel;  // a started call whose task going stops it, or NULL
+	asuka_abort *abort;  // an abort that stops it, or NULL
+	// head hears the response's status, URL and headers (no body), once;
+	// data each piece of its body, in order. Either may return false to
+	// stop: the request fails with what it set in err, or, if it set
+	// nothing, ends there as if the body had (it's enough).
+	bool (*head)(void *ctx, const asuka_response *r, asuka_error *err);
+	bool (*data)(void *ctx, const void *p, size_t n, asuka_error *err);
+	void *ctx;
+} asuka_request;
+
+// asuka_fetch_stream makes the request (asuka_fetch's rules: the system's
+// proxies and certificates, redirects followed, blocking: never on the
+// main thread). false with err set; out (if not NULL) gets the head,
+// which the caller frees (asuka_response_free).
+bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_error *err);
+
 // asuka_desktop_local_file is a file an app names as a file on this
 // computer: an http(s) URL downloaded into the app's caches (named as
 // its server says, its extension from its type, or type's), a file:

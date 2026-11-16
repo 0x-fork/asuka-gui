@@ -131,6 +131,13 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 	case *syntax.LetCond:
 		c.errorf(e, "let here is only an if's or a while's condition")
 		return Invalid
+	case *syntax.CondList:
+		c.errorf(e, "a condition's clauses go in an if's or a while's head: write && between bools")
+		return Invalid
+	case *syntax.JumpExpr:
+		return c.jumpExpr(e)
+	case *syntax.CatchExpr:
+		return c.catchExpr(e, want)
 	}
 	c.errorf(e, "unexpected expression")
 	return Invalid
@@ -352,12 +359,25 @@ func (c *Checker) basicLit(e *syntax.BasicLit, want Type) Type {
 	return Invalid
 }
 
-// ParseInt reads an int literal: 42, 1_000, 0xff.
+// ParseInt reads an int literal: 42, 1_000, 0xff, 0b1010, 0o17. A
+// hexadecimal, binary or octal one is its 64 bits (0xffff_ffff_ffff_ffff
+// is -1); a decimal one must fit an int.
 func ParseInt(s string) (int64, error) {
 	s = strings.ReplaceAll(s, "_", "")
-	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
-		u, err := strconv.ParseUint(s[2:], 16, 64)
-		return int64(u), err
+	if len(s) > 2 && s[0] == '0' {
+		base := 0
+		switch s[1] {
+		case 'x', 'X':
+			base = 16
+		case 'b', 'B':
+			base = 2
+		case 'o', 'O':
+			base = 8
+		}
+		if base != 0 {
+			u, err := strconv.ParseUint(s[2:], base, 64)
+			return int64(u), err
+		}
 	}
 	return strconv.ParseInt(s, 10, 64)
 }
@@ -502,7 +522,27 @@ func Dedent(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+// setOf is Set<elem>, its elements Hashable (at says where it's
+// written).
+func (c *Checker) setOf(elem Type, at syntax.Node) Type {
+	if !IsInvalid(elem) && !IsHashable(elem) {
+		c.errorf(at, "a Set's elements are ints, strings, bools or enums without payloads, not %s", typeString(elem))
+	}
+	return &Set{elem}
+}
+
+// setLit is an array literal where a Set is expected: its elements.
+func (c *Checker) setLit(e *syntax.ArrayExpr, st *Set) Type {
+	for _, x := range e.Elems {
+		c.assign(x, st.Elem, "an element of "+typeString(st))
+	}
+	return st
+}
+
 func (c *Checker) arrayLit(e *syntax.ArrayExpr, want Type) Type {
+	if st, ok := Unopt(want).(*Set); ok {
+		return c.setLit(e, st)
+	}
 	var elem Type
 	if a, ok := Unopt(want).(*Array); ok {
 		elem = a.Elem
@@ -922,6 +962,21 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 // valueMember is x.name for a value x of type t.
 func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 	switch u := t.(type) {
+	case *TypeParam:
+		if f, i := paramField(u, name); f != nil {
+			if i.Obj.isErrorIface {
+				c.info.Selections[e] = &Selection{Kind: SelErrorMessage, Recv: t}
+			} else {
+				c.info.Selections[e] = &Selection{Kind: SelIfaceField, Field: f, Recv: t, Name: name}
+			}
+			return f.Type
+		}
+		if m, _ := paramMethod(u, name); m != nil {
+			c.errorf(e.Name, "%s is a method: call it, %s()", name, name)
+			return Invalid
+		}
+		c.errorf(e.Name, "%s has no %s%s", u.Name, name, paramHint(u))
+		return Invalid
 	case *Named:
 		s := u.Subst()
 		switch u.Obj.Kind {
@@ -1103,15 +1158,34 @@ func (c *Checker) index(e *syntax.IndexExpr) Type {
 		c.assign(e.Index, t.Key, "a key")
 		return MakeOptional(t.Elem)
 	}
+	if xt == Bytes {
+		c.assign(e.Index, Int, "an index")
+		return Int
+	}
 	c.expr(e.Index, nil)
 	if !IsInvalid(xt) {
-		c.errorf(e, "a %s can't be indexed: only arrays and maps can", typeString(xt))
+		c.errorf(e, "a %s can't be indexed: only arrays, maps and bytes can", typeString(xt))
 	}
 	return Invalid
 }
 
+// intOperand checks an operand of a bitwise operator, which takes ints.
+func (c *Checker) intOperand(x syntax.Expr, op syntax.Token) {
+	t := c.expr(x, Int)
+	switch {
+	case IsInvalid(t) || t == Int:
+	case t == Bool && (op == syntax.AMP || op == syntax.PIPE):
+		c.errorf(x, "%s takes ints, not a bool: write %s%s for bools", op, op, op)
+	default:
+		c.errorf(x, "%s takes ints, not a %s", op, typeString(t))
+	}
+}
+
 func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	switch e.Op {
+	case syntax.TILDE:
+		c.intOperand(e.X, e.Op)
+		return Int
 	case syntax.NOT:
 		c.assign(e.X, Bool, "the operand of !")
 		return Bool
@@ -1175,17 +1249,24 @@ func (c *Checker) mayThrow(at syntax.Node) {
 	if c.ctx.Throws {
 		return
 	}
+	if c.partial != nil && c.partial.ctx == c.ctx {
+		// Inside a do or a catch whose clauses don't take every error.
+		c.errorf(at, "the catch%s here take%s %s only, and %s: add a catch e { … } for the rest%s",
+			map[bool]string{true: "es", false: ""}[c.partial.n > 1], map[bool]string{true: "", false: "s"}[c.partial.n > 1],
+			c.partial.what, c.cantThrow(), c.throwsHint())
+		return
+	}
 	switch c.ctx.Kind {
 	case CtxFunc, CtxMethod:
-		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (do { } catch { }, try?)", c.ctx.Name)
+		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (try … catch { }, do { } catch { }, try?)", c.ctx.Name)
 	case CtxLambda:
-		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (do { } catch { }, try?)")
+		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)")
 	case CtxGlobal:
-		c.errorf(at, "a value here can't throw: catch the error (try?)")
+		c.errorf(at, "a value here can't throw: catch the error (try … catch { fallback }, try?)")
 	case CtxSpawn:
 		// spawn's error is its task's.
 	default:
-		c.errorf(at, "this can't throw here: catch the error (do { } catch { }, try?)")
+		c.errorf(at, "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)")
 	}
 }
 
@@ -1238,6 +1319,10 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		c.assign(e.X, Int, "a range's start")
 		c.assign(e.Y, Int, "a range's end")
 		return &Array{Int}
+	case syntax.AMP, syntax.PIPE, syntax.CARET, syntax.SHL, syntax.SHR:
+		c.intOperand(e.X, e.Op)
+		c.intOperand(e.Y, e.Op)
+		return Int
 	}
 	// Arithmetic and comparisons: an int literal on one side takes the
 	// other side's type.

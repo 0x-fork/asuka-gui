@@ -65,12 +65,15 @@ bool sh_decode(const uint8_t *b, size_t n, sh_code *out, const char **why) {
 	if (!r.bad && r.at < r.n) free(str(&r));  // the web's GLSL
 	bool desktop = !r.bad && r.at < r.n;
 	if (desktop) {
-		c.gl = str(&r);
-		c.gl_size = u32(&r);
-		c.gl_offsets = offsets(&r, c.lanes);
 		c.hlsl = str(&r);
 		c.hlsl_size = u32(&r);
 		c.hlsl_offsets = offsets(&r, c.lanes);
+		desktop = !r.bad && r.at < r.n;
+	}
+	if (desktop) {
+		c.gl = str(&r);
+		c.gl_size = u32(&r);
+		c.gl_offsets = offsets(&r, c.lanes);
 	}
 	if (!r.bad && (c.size + 1 >= c.lanes || c.scale >= c.lanes || c.time >= (int32_t)c.lanes)) r.bad = true;
 	for (uint32_t i = 0; desktop && !r.bad && i < c.lanes; i++)

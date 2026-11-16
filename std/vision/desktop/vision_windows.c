@@ -3,7 +3,6 @@
 // first language asked for whose OCR is installed, else the user's), its
 // faces found by Windows.Media.FaceAnalysis, from its pixels as a
 // SoftwareBitmap; WinRT's operations waited for on the call's thread.
-#include "asuka_barcode.h"
 #include "asuka_windows.h"
 #include "vision.h"
 
@@ -28,7 +27,7 @@ bool vision_load(const char *path, vision_image *img) {
 	UINT w, h;
 	if (!asuka_win_image_load(path, &w, &h, &img->px)) return false;
 	img->w = (int)w, img->h = (int)h;
-	img->gray = asuka_barcode_gray(img->px, img->w, img->h, img->w * 4, true, true);
+	img->gray = vision_gray(img->px, img->w, img->h, true, true);
 	return true;
 }
 

@@ -2,9 +2,7 @@
 // (RFC 0008): include/asuka_desktop.h, the contract between a host and
 // the C its app links; src/native.c, the native packages' registry;
 // asuka_linux.h and asuka_windows.h (src/linux.c, src/windows.c), what
-// packages' Linux and Windows C share; asuka_barcode.h (src/barcode*.c,
-// with quirc and libdmtx vendored in third_party), the barcode readers
-// packages share where the platform has none. Its
+// packages' Linux and Windows C share. Its
 // tests build them with a test host (test/host.c) and run Asuka on the
 // core, with no Go at run time.
 package desktop
@@ -21,7 +19,7 @@ import (
 // Sources are the shared C, embedded in the asuka CLI so an installed CLI
 // builds desktop apps without the repository.
 //
-//go:embed include src third_party
+//go:embed include src
 var Sources embed.FS
 
 var (
@@ -50,26 +48,13 @@ func Registry(dir string) string { return filepath.Join(dir, "src", "native.c") 
 
 // Shared are the shared C sources in dir (Dir's): the registry, and what
 // packages' C shares on Linux (asuka_linux.h: linux.c) and on Windows
-// (asuka_windows.h: windows.c), each built for its platform only.
+// (asuka_windows.h: windows.c), each built for its platform only, and
+// the barcode reader (asuka_barcode.h: barcode.c), built on every one.
 func Shared(dir string) []string {
 	src := filepath.Join(dir, "src")
 	return []string{filepath.Join(src, "native.c"), filepath.Join(src, "linux.c"), filepath.Join(src, "windows.c"), filepath.Join(src, "fetch.c"), filepath.Join(src, "json.c"), filepath.Join(src, "webview2.c"),
-		filepath.Join(src, "barcode.c"), filepath.Join(src, "barcode1d.c"), filepath.Join(src, "barcode_vendor.c"), filepath.Join(src, "barcode_internal.h"),
+		filepath.Join(src, "barcode.c"), filepath.Join(src, "barcode_jis.c"),
 		filepath.Join(dir, "include", "asuka_linux.h"), filepath.Join(dir, "include", "asuka_windows.h"), filepath.Join(dir, "include", "asuka_barcode.h")}
-}
-
-// Vendored are the files of the libraries the shared C vendors
-// (third_party: quirc, libdmtx), which barcode_vendor.c includes: they
-// count in a build cache's key, and are never compiled alone.
-func Vendored(dir string) []string {
-	var out []string
-	filepath.WalkDir(filepath.Join(dir, "third_party"), func(p string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
-			out = append(out, p)
-		}
-		return nil
-	})
-	return out
 }
 
 // Libs are the system libraries the shared C links with on goos.

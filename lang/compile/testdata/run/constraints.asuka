@@ -1,0 +1,151 @@
+// Type parameters constrained to the program's interfaces: their
+// methods and fields called on T, resolved per instantiation.
+
+interface Shape {
+  fn area() -> float
+  name: string
+}
+
+interface Scaled {
+  fn scaled(by: float) -> float
+}
+
+struct Square {
+  name: string
+  side: float
+  fn area() -> float = side * side
+  fn scaled(by: float) -> float = area() * by * by
+}
+
+struct Circle {
+  name: string
+  r: float
+  fn area() -> float = 3.0 * r * r
+}
+
+// A payloadless enum: stored as an int, its methods called directly.
+enum Tile {
+  small
+  large
+  fn area() -> float = match self {
+    .small => 1.0
+    .large => 4.0
+  }
+  fn name() -> string = "tile"
+}
+
+fn sortByArea<T: Shape>(xs: [T]) -> [T] = xs.sorted((a, b) => a.area() < b.area())
+
+fn total<T: Shape>(xs: [T]) -> float {
+  var sum = 0.0
+  for x in xs { sum += x.area() }
+  return sum
+}
+
+fn describe<T: Shape>(x: T) -> string = "{x.name}: {x.area()}"
+
+// Several constraints at once.
+fn distinctLargest<T: Shape & Hashable>(xs: [T]) -> [T] {
+  var seen: [T: bool] = [:]
+  var out: [T] = []
+  for x in sortByArea(xs).reversed() {
+    if seen[x] == none {
+      seen[x] = true
+      out.push(x)
+    }
+  }
+  return out
+}
+
+fn both<T: Shape & Scaled>(x: T) -> float = x.area() + x.scaled(by: 2)
+
+// A generic function calling another with its own T.
+fn biggest<T: Shape>(xs: [T]) -> string? = sortByArea(xs).last()?.name
+
+// Optional receivers.
+fn areaOf<T: Shape>(x: T?) -> float = x?.area() ?? -1.0
+
+// A generic struct and store constrained too.
+struct Labeled<T: Shape> {
+  item: T
+  fn label() -> string = "[{item.name}] {item.area()}"
+}
+
+store Gallery<T: Shape>(items: [T]) {
+  pub let area = total(items)
+  pub fn names() -> [string] = items.map(i => i.name)
+}
+
+// An interface as the type argument: its values called through it.
+fn anyShapes() -> [Shape] = [Square(name: "s", side: 2), Circle(name: "c", r: 1)]
+
+// T: Error reads an error's message.
+enum Oops: Error {
+  bad(code: int)
+  fn message() -> string = match self {
+    .bad(c) => "bad {c}"
+  }
+}
+
+fn report<E: Error>(e: E) -> string = "error: {e.message}"
+
+test "functions" {
+  let squares = [Square(name: "b", side: 3), Square(name: "a", side: 1)]
+  print(sortByArea(squares).map(s => s.name))
+  print(total(squares))
+  print(describe(Circle(name: "c", r: 2)))
+  print(total([Tile.large, .small, .large]))
+  print(describe(Tile.small))
+  print(both(Square(name: "q", side: 1)))
+  print(biggest(squares) ?? "none")
+  let noCircles: [Circle] = []
+  print(biggest(noCircles) ?? "none")
+  print(areaOf(Square(name: "x", side: 5)))
+  let missing: Square? = none
+  print(areaOf(missing))
+}
+
+test "several constraints" {
+  print(distinctLargest([Tile.small, .large, .small]))
+}
+
+test "types" {
+  let l = Labeled(item: Circle(name: "dot", r: 1))
+  print(l.label())
+  let g = Gallery([Square(name: "one", side: 1), Square(name: "two", side: 2)])
+  print(g.area)
+  print(g.names())
+}
+
+test "an interface as T" {
+  print(total(anyShapes()))
+  print(sortByArea(anyShapes()).map(s => s.name))
+}
+
+test "errors" {
+  print(report(Oops.bad(code: 7)))
+}
+
+// Output:
+// ["a","b"]
+// 10
+// c: 12
+// 9
+// tile: 1
+// 5
+// b
+// none
+// 25
+// -1
+// ok functions
+// ["large","small"]
+// ok several constraints
+// [dot] 3
+// 5
+// ["one","two"]
+// ok types
+// 7
+// ["c","s"]
+// ok an interface as T
+// error: bad 7
+// ok errors

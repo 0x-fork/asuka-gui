@@ -217,6 +217,37 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 
 アプリのテスト（プラットフォームのコードがないフェイクホスト上）では、ネイティブビューはコンポーネント名で表示され、`app.tap("Segmented")` はプラットフォームのボタンと同じように `press` イベントを送ります。
 
+## アプリに必要なもの
+
+パッケージがアプリに求めるもの（権限、利用目的の説明、バックグラウンドモード、entitlement）はパッケージ自身が宣言し、それを使うアプリだけに付きます。宣言はパッケージの `asuka.toml` に書きます。次の表は、パッケージをインポートするすべてのアプリに適用されます：
+
+```toml
+[ios]
+usage = { NSLocationWhenInUseUsageDescription = "To show where you are." }
+backgroundModes = ["audio"]
+entitlements = { aps-environment = "development" }   # シミュレータ向けビルドの値
+plist = { LSApplicationQueriesSchemes = ["mailto"] } # true、文字列、またはアプリのものと合わせる配列
+
+[android]
+permissions = ["android.permission.ACCESS_FINE_LOCATION", "android.permission.WRITE_EXTERNAL_STORAGE:28"]
+application = ['<service android:name="com.example.battery.Watcher" android:exported="false" />']
+manifest = ['<queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>']
+```
+
+権限を `"name:28"` と書くとその API レベルまで、`"name|neverForLocation"` と書くとその `usesPermissionFlags` 付きになります。利用目的の説明は、アプリ自身の `asuka.toml` のものがパッケージのものより優先されます。
+
+パッケージの一部だけが必要とするものは、同じキーで `[uses.<member>]` の表に書きます。アプリのコード（または依存パッケージのコード）がそのメンバー（関数、型、store。型のメンバーは `"Type.name"`）を参照したときだけ、アプリに付きます。同じ名前のローカル関数や、テストブロックの中の参照は数えません。asuka/location のバックグラウンド部分はこう宣言しています：
+
+```toml
+[uses.requestAlways.android]
+permissions = ["android.permission.ACCESS_BACKGROUND_LOCATION"]
+
+[uses.startUpdates.ios]
+backgroundModes = ["location"]
+```
+
+パッケージのコードの横にあるファイル（Gradle モジュールの `AndroidManifest.xml`、Swift パッケージの `Info.plist` と entitlements。後述）は、パッケージをインポートするすべてのアプリに適用されます。そのパッケージを使うどのアプリにも必要なものはそこに、あるメンバーだけが必要とするものは `[uses]` に書きます。
+
 ## iOS と macOS：Swift
 
 パッケージの Swift のコードは、Swift パッケージとして書きます。パッケージのルートに `Package.swift` を置き、ソースは `swift/` に入れます。一つのパッケージで iOS と macOS の両方に対応し、両者で異なる部分には `#if canImport(UIKit)` を使います。
@@ -405,7 +436,7 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
 - **メモリ**：境界を越える値はすべて `malloc` で確保します。メソッドの引数は生成されたコードのもので、同期呼び出しのあいだと、非同期呼び出しが応答するまで有効です（それより長く使うならコピーします）。メソッドが返す（または応答する）値は生成されたコードに渡り、そちらで解放されます（リテラルは `asuka_strdup` してから返します）。コールバックの引数は自分のもののままで、問い合わせ型のコールバックが返した値は自分で解放します（`<pkg>_<Type>_free`）。vtable の `release` が `NULL` なら、Asuka が手放したときにオブジェクトがそのまま解放されます。
 - **コールバック**は `<pkg>_fn_…_call` で呼び出します。通知型はどのスレッドからでも呼べます（メインスレッドに投げられます）。問い合わせ型はメインスレッドならその場で動き、ほかのスレッドからは結果を待ちます。
 - **ビュー**：`<pkg>_make_<View>(events)` が、ビューのオブジェクトとその `widget`（`HWND`（`events.parent` の子）か `GtkWidget *`）を作ります。ホストがそれを表示し、ビューがなくなるときに破棄します。プロパティごとに vtable のセッター（`set_selected`）があり、ウィジェットが自分のサイズを返せないときは `measure` がサイズを決めます。イベントは生成された関数（`segmented_Segmented_selectedChange(events, i)`）で、どのスレッドからでも呼べます。
-- **ホスト**：`asuka_desktop.h`（platform/desktop）は、パッケージの C が使える C のホストの機能です。メインスレッドへの投げ込み、ビューのあるウィンドウ、アプリの名前・ID・バージョン・ディレクトリ、アセット、表示中の外観に合わせた色、HTTP（`asuka_fetch`）、アプリが指定したファイル（`asuka_desktop_local_file`）があります。`asuka_windows.h` には COM と WinRT の補助（UTF-16、vtable のスロット、HSTRING、アクティベーションファクトリ、デリゲート、非同期操作の待機、WIC の画像、システムウィンドウが受け取るブロードキャスト）があり、`asuka_linux.h` は、パッケージが使う GLib、GIO、GTK、libadwaita の関数を宣言して、Linux のホストと同じく実行時に解決します（`G(g_variant_new)(…)` のように呼びます）。そのため、ビルドに GTK のヘッダーは要りません。
+- **ホスト**：`asuka_desktop.h`（platform/desktop）は、パッケージの C が使える C のホストの機能です。メインスレッドへの投げ込み、ビューのあるウィンドウ、アプリの名前・ID・バージョン・ディレクトリ、アセット、表示中の外観に合わせた色、HTTP（`asuka_fetch`。レスポンスを少しずつ受け取るとき、ダウンロードをそのままファイルに書くときは `asuka_fetch_stream`、どのスレッドからでもリクエストを止めるときは `asuka_abort`）、アプリが指定したファイル（`asuka_desktop_local_file`）があります。`asuka_windows.h` には COM と WinRT の補助（UTF-16、vtable のスロット、HSTRING、アクティベーションファクトリ、デリゲート、非同期操作の待機、WIC の画像、システムウィンドウが受け取るブロードキャスト）があり、Windows のホストも同じものを使います。`asuka_barcode.h` は画像のグレースケールから QR コードやバーコードを読み取り、どのデスクトップでも使えます。`asuka_linux.h` は、パッケージが使う GLib、GIO、GTK、libadwaita の関数を宣言して、Linux のホストと同じく実行時に解決します（`G(g_variant_new)(…)` のように呼びます）。そのため、ビルドに GTK のヘッダーは要りません。
 - **ライブラリ**：パッケージの C が各プラットフォームでリンクするものは、その `asuka.toml` に書きます。
 
   ```toml

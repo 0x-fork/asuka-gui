@@ -206,6 +206,8 @@ func typeNameOf(t check.Type) *check.TypeName {
 			t = x.Elem
 		case *check.Map:
 			t = x.Elem
+		case *check.Set:
+			t = x.Elem
 		case *check.Task:
 			t = x.Elem
 		case *check.Stream:

@@ -69,10 +69,5 @@ private fun AsukaRuntime.download(url: String, type: String): File {
     }
 }
 
-/** A file's MIME type: the app's, else its extension's. */
-fun fileMIME(f: File, type: String): String = type.ifEmpty {
-    MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.extension.lowercase()) ?: "application/octet-stream"
-}
-
 /** The app's name, as the launcher has it. */
 val AsukaRuntime.appName: String get() = app.applicationInfo.loadLabel(app.packageManager).toString()

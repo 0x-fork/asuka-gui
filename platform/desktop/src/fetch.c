@@ -61,6 +61,83 @@ static const char *header_of(const asuka_response *r, const char *name) {
 	return NULL;
 }
 
+// ---- Aborts ----
+
+struct asuka_abort {
+#ifdef _WIN32
+	SRWLOCK mu;
+#else
+	pthread_mutex_t mu;
+#endif
+	bool fired;
+	void (*fn)(void *ctx);  // what stops the request in flight
+	void *ctx;
+};
+
+#ifdef _WIN32
+#define LOCK(a) AcquireSRWLockExclusive(&(a)->mu)
+#define UNLOCK(a) ReleaseSRWLockExclusive(&(a)->mu)
+#else
+#define LOCK(a) pthread_mutex_lock(&(a)->mu)
+#define UNLOCK(a) pthread_mutex_unlock(&(a)->mu)
+#endif
+
+asuka_abort *asuka_abort_new(void) {
+	asuka_abort *a = calloc(1, sizeof *a);
+#ifdef _WIN32
+	InitializeSRWLock(&a->mu);
+#else
+	pthread_mutex_init(&a->mu, NULL);
+#endif
+	return a;
+}
+
+void asuka_abort_now(asuka_abort *a) {
+	LOCK(a);
+	a->fired = true;
+	if (a->fn) a->fn(a->ctx);  // under the lock: the request can't go meanwhile
+	a->fn = NULL;
+	UNLOCK(a);
+}
+
+bool asuka_aborted(asuka_abort *a) {
+	LOCK(a);
+	bool f = a->fired;
+	UNLOCK(a);
+	return f;
+}
+
+void asuka_abort_free(asuka_abort *a) {
+	if (!a) return;
+#ifndef _WIN32
+	pthread_mutex_destroy(&a->mu);
+#endif
+	free(a);
+}
+
+// hook has fn(ctx) stop the request when a fires: false if it has.
+static bool hook(asuka_abort *a, void (*fn)(void *ctx), void *ctx) {
+	if (!a) return true;
+	LOCK(a);
+	bool ok = !a->fired;
+	if (ok) a->fn = fn, a->ctx = ctx;
+	UNLOCK(a);
+	return ok;
+}
+
+static void unhook(asuka_abort *a) {
+	if (!a) return;
+	LOCK(a);
+	a->fn = NULL;
+	UNLOCK(a);
+}
+
+static bool stopped(const asuka_request *rq) {
+	return (rq->cancel && asuka_call_cancelled(rq->cancel)) || (rq->abort && asuka_aborted(rq->abort));
+}
+
+// ---- Requests ----
+
 #ifdef _WIN32
 
 typedef struct {
@@ -76,10 +153,11 @@ static void on_cancel(void *p) {
 	ReleaseSRWLockExclusive(&c->mu);
 }
 
-bool asuka_fetch(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
-                 int timeout_ms, asuka_call *cancel, asuka_response *out, asuka_error *err) {
-	*out = (asuka_response){0};
-	wchar_t *wurl = asuka_wide(url), *wmethod = asuka_wide(method && *method ? method : "GET");
+bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_error *err) {
+	asuka_response head = {0};
+	const char *url = rq->url;
+	wchar_t *wurl = asuka_wide(url), *wmethod = asuka_wide(rq->method && *rq->method ? rq->method : "GET");
+	wchar_t *agent = asuka_wide(rq->agent && *rq->agent ? rq->agent : "Asuka");
 	URL_COMPONENTS u;
 	memset(&u, 0, sizeof u);
 	u.dwStructSize = sizeof u;
@@ -91,14 +169,15 @@ bool asuka_fetch(const char *method, const char *url, const asuka_header *header
 	HINTERNET session = NULL, conn = NULL, req = NULL;
 	bool ok = false;
 	cancel_ctx *cc = NULL;
-	if (!WinHttpCrackUrl(wurl, 0, 0, &u)) {
-		asuka_error_failed(err, "http", 0, "%s isn't a URL", url);
+	uint8_t *buf = NULL;
+	if (!WinHttpCrackUrl(wurl, 0, 0, &u) || (u.nScheme != INTERNET_SCHEME_HTTP && u.nScheme != INTERNET_SCHEME_HTTPS)) {
+		asuka_error_failed(err, "http", 0, "%s isn't an http or https URL", url);
 		goto done;
 	}
-	session = WinHttpOpen(L"Asuka", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-	if (!session) session = WinHttpOpen(L"Asuka", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+	session = WinHttpOpen(agent, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+	if (!session) session = WinHttpOpen(agent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 	if (!session) goto fail;
-	if (timeout_ms > 0) WinHttpSetTimeouts(session, timeout_ms, timeout_ms, timeout_ms, timeout_ms);
+	if (rq->timeout_ms > 0) WinHttpSetTimeouts(session, rq->timeout_ms, rq->timeout_ms, rq->timeout_ms, rq->timeout_ms);
 	conn = WinHttpConnect(session, host, u.nPort, 0);
 	if (!conn) goto fail;
 	size_t pn = wcslen(path), en = wcslen(extra);
@@ -110,23 +189,30 @@ bool asuka_fetch(const char *method, const char *url, const asuka_header *header
 	if (!req) goto fail;
 	DWORD decompress = WINHTTP_DECOMPRESSION_FLAG_ALL;
 	WinHttpSetOption(req, WINHTTP_OPTION_DECOMPRESSION, &decompress, sizeof decompress);
-	for (size_t i = 0; i < nheaders; i++) {
-		char *line = asuka_sprintf("%s: %s", headers[i].name, headers[i].value);
+	DWORD redirect = WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP;
+	WinHttpSetOption(req, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof redirect);
+	for (size_t i = 0; i < rq->nheaders; i++) {
+		char *line = asuka_sprintf("%s: %s", rq->headers[i].name, rq->headers[i].value);
 		wchar_t *w = asuka_wide(line);
 		WinHttpAddRequestHeaders(req, w, (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
 		free(w);
 		free(line);
 	}
-	if (cancel) {
-		cc = calloc(1, sizeof *cc);
-		InitializeSRWLock(&cc->mu);
-		cc->request = req;
-		asuka_call_on_cancel(cancel, on_cancel, cc);
+	// A cancel or an abort closes the request, which ends what waits on it.
+	cc = calloc(1, sizeof *cc);
+	InitializeSRWLock(&cc->mu);
+	cc->request = req;
+	if (rq->cancel) asuka_call_on_cancel(rq->cancel, on_cancel, cc);
+	if (!hook(rq->abort, on_cancel, cc)) {
+		asuka_error_cancelled(err);
+		goto done;
 	}
-	if (!WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0, (void *)body, (DWORD)len, (DWORD)len, 0) || !WinHttpReceiveResponse(req, NULL)) goto fail;
+	if (!WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0, (void *)rq->body, (DWORD)rq->len, (DWORD)rq->len, 0) ||
+	    !WinHttpReceiveResponse(req, NULL))
+		goto fail;
 	DWORD status = 0, n = sizeof status;
 	WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &status, &n, WINHTTP_NO_HEADER_INDEX);
-	out->status = (int)status;
+	head.status = (int)status;
 	n = 0;
 	WinHttpQueryHeaders(req, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, NULL, &n, WINHTTP_NO_HEADER_INDEX);
 	if (n) {
@@ -137,7 +223,7 @@ bool asuka_fetch(const char *method, const char *url, const asuka_header *header
 			while (line && *++line) {
 				char *end = strchr(line, '\n');
 				char *colon = memchr(line, ':', end ? (size_t)(end - line) : strlen(line));
-				if (colon) add_header(out, line, (size_t)(colon - line), colon + 1, end ? (size_t)(end - colon - 1) : strlen(colon + 1));
+				if (colon) add_header(&head, line, (size_t)(colon - line), colon + 1, end ? (size_t)(end - colon - 1) : strlen(colon + 1));
 				line = end;
 			}
 			free(all);
@@ -148,51 +234,53 @@ bool asuka_fetch(const char *method, const char *url, const asuka_header *header
 	WinHttpQueryOption(req, WINHTTP_OPTION_URL, NULL, &n);
 	if (n) {
 		wchar_t *final = malloc(n + sizeof(wchar_t));
-		if (WinHttpQueryOption(req, WINHTTP_OPTION_URL, final, &n)) out->url = asuka_narrow(final, (int)(n / sizeof(wchar_t)));
+		if (WinHttpQueryOption(req, WINHTTP_OPTION_URL, final, &n)) head.url = asuka_narrow(final, (int)(n / sizeof(wchar_t)));
 		free(final);
 	}
-	if (!out->url) out->url = asuka_strdup(url);
-	asuka_writer b = {0};
-	for (;;) {
-		DWORD avail = 0, got = 0;
-		if (!WinHttpQueryDataAvailable(req, &avail)) {
-			asuka_writer_free(&b);
-			goto fail;
-		}
-		if (avail == 0) break;
-		uint8_t *buf = malloc(avail);
-		if (!WinHttpReadData(req, buf, avail, &got)) {
-			free(buf);
-			asuka_writer_free(&b);
-			goto fail;
-		}
-		asuka_writer_put(&b, buf, got);
-		free(buf);
-		if (got == 0) break;
+	if (!head.url) head.url = asuka_strdup(url);
+	if (rq->head && !rq->head(rq->ctx, &head, err)) {
+		ok = !err->status;
+		goto done;
 	}
-	out->body = (asuka_bytes){b.data ? b.data : malloc(1), b.len};
+	enum { piece = 64 * 1024 };
+	buf = malloc(piece);
+	for (;;) {
+		DWORD got = 0;
+		if (!WinHttpReadData(req, buf, piece, &got)) goto fail;
+		if (got == 0) break;
+		if (rq->data && !rq->data(rq->ctx, buf, got, err)) {
+			ok = !err->status;
+			goto done;
+		}
+	}
 	ok = true;
 	goto done;
 fail:;
 	DWORD code = GetLastError();
-	if (cancel && asuka_call_cancelled(cancel)) asuka_error_cancelled(err);
+	if (stopped(rq)) asuka_error_cancelled(err);
 	else if (code == ERROR_WINHTTP_TIMEOUT) asuka_error_failed(err, "http", 0, "%s: timed out", url);
 	else asuka_win_fail(err, HRESULT_FROM_WIN32(code), url);
-	asuka_response_free(out);
 done:
+	unhook(rq->abort);
 	if (cc) {
 		AcquireSRWLockExclusive(&cc->mu);
 		cc->done = true;
-		req = cc->request;  // NULL if the cancel closed it
+		req = cc->request;  // NULL if a cancel closed it
 		ReleaseSRWLockExclusive(&cc->mu);
-		// cc stays: asuka_call_on_cancel's ctx must outlive the call, which
-		// answers after this returns. It's small; the call is one request.
+		// A call's cancel's ctx must outlive the call, which answers after
+		// this returns: then cc stays (small; one per request).
+		if (!rq->cancel) free(cc);
 	}
 	if (req) WinHttpCloseHandle(req);
 	if (conn) WinHttpCloseHandle(conn);
 	if (session) WinHttpCloseHandle(session);
+	free(buf);
 	free(wurl);
 	free(wmethod);
+	free(agent);
+	if (out && ok) *out = head;
+	else asuka_response_free(&head);
+	if (out && !ok) *out = (asuka_response){0};
 	return ok;
 }
 
@@ -202,20 +290,24 @@ typedef struct _SoupSession SoupSession;
 typedef struct _SoupMessage SoupMessage;
 typedef struct _SoupMessageHeaders SoupMessageHeaders;
 typedef struct _GUri GUri;
+typedef struct _GInputStream GInputStream;
 
 static struct {
 	SoupSession *(*session_new)(void);
 	void (*session_set_timeout)(SoupSession *, guint);
+	void (*session_set_user_agent)(SoupSession *, const char *);
 	SoupMessage *(*message_new)(const char *, const char *);
 	SoupMessageHeaders *(*request_headers)(SoupMessage *);
 	SoupMessageHeaders *(*response_headers)(SoupMessage *);
 	void (*headers_append)(SoupMessageHeaders *, const char *, const char *);
 	void (*headers_foreach)(SoupMessageHeaders *, void (*)(const char *, const char *, gpointer), gpointer);
 	void (*set_request_body_from_bytes)(SoupMessage *, const char *, GBytes *);
-	GBytes *(*send_and_read)(SoupSession *, SoupMessage *, GCancellable *, GError **);
+	GInputStream *(*send)(SoupSession *, SoupMessage *, GCancellable *, GError **);
 	guint (*get_status)(SoupMessage *);
 	GUri *(*get_uri)(SoupMessage *);
 	char *(*uri_to_string)(GUri *);
+	gssize (*read)(GInputStream *, void *, gsize, GCancellable *, GError **);
+	gboolean (*close)(GInputStream *, GCancellable *, GError **);
 	bool loaded;
 } soup;
 
@@ -228,84 +320,139 @@ static void load_soup(void) {
 	if (!l) return;
 	*(void **)&soup.session_new = dlsym(l, "soup_session_new");
 	*(void **)&soup.session_set_timeout = dlsym(l, "soup_session_set_timeout");
+	*(void **)&soup.session_set_user_agent = dlsym(l, "soup_session_set_user_agent");
 	*(void **)&soup.message_new = dlsym(l, "soup_message_new");
 	*(void **)&soup.request_headers = dlsym(l, "soup_message_get_request_headers");
 	*(void **)&soup.response_headers = dlsym(l, "soup_message_get_response_headers");
 	*(void **)&soup.headers_append = dlsym(l, "soup_message_headers_append");
 	*(void **)&soup.headers_foreach = dlsym(l, "soup_message_headers_foreach");
 	*(void **)&soup.set_request_body_from_bytes = dlsym(l, "soup_message_set_request_body_from_bytes");
-	*(void **)&soup.send_and_read = dlsym(l, "soup_session_send_and_read");
+	*(void **)&soup.send = dlsym(l, "soup_session_send");
 	*(void **)&soup.get_status = dlsym(l, "soup_message_get_status");
 	*(void **)&soup.get_uri = dlsym(l, "soup_message_get_uri");
 	*(void **)&soup.uri_to_string = dlsym(l, "g_uri_to_string");
-	soup.loaded = soup.session_new && soup.message_new && soup.send_and_read && soup.get_status;
+	*(void **)&soup.read = dlsym(l, "g_input_stream_read");
+	*(void **)&soup.close = dlsym(l, "g_input_stream_close");
+	soup.loaded = soup.session_new && soup.message_new && soup.send && soup.get_status && soup.read && soup.close;
 }
 
 static void each_header(const char *name, const char *value, gpointer r) { add_header(r, name, strlen(name), value, strlen(value)); }
 
 static void cancel_soup(void *c) { G(g_cancellable_cancel)(c); }
 
-bool asuka_fetch(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
-                 int timeout_ms, asuka_call *cancel, asuka_response *out, asuka_error *err) {
+bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_error *err) {
 	static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
 	pthread_mutex_lock(&mu);
 	load_soup();
 	pthread_mutex_unlock(&mu);
-	*out = (asuka_response){0};
+	if (out) *out = (asuka_response){0};
+	const char *url = rq->url;
 	if (!soup.loaded) {
 		asuka_error_unsupported(err, "HTTP needs libsoup 3 (libsoup-3.0.so.0)");
 		return false;
 	}
-	SoupMessage *msg = soup.message_new(method && *method ? method : "GET", url);
+	SoupMessage *msg = strncmp(url, "http://", 7) == 0 || strncmp(url, "https://", 8) == 0
+	                       ? soup.message_new(rq->method && *rq->method ? rq->method : "GET", url)
+	                       : NULL;
 	if (!msg) {
-		asuka_error_failed(err, "http", 0, "%s isn't a URL", url);
+		asuka_error_failed(err, "http", 0, "%s isn't an http or https URL", url);
 		return false;
 	}
 	SoupSession *s = soup.session_new();
-	if (timeout_ms > 0 && soup.session_set_timeout) soup.session_set_timeout(s, (guint)((timeout_ms + 999) / 1000));
+	if (rq->timeout_ms > 0 && soup.session_set_timeout) soup.session_set_timeout(s, (guint)((rq->timeout_ms + 999) / 1000));
+	if (soup.session_set_user_agent) soup.session_set_user_agent(s, rq->agent && *rq->agent ? rq->agent : "Asuka");
 	SoupMessageHeaders *h = soup.request_headers(msg);
 	const char *type = NULL;
-	for (size_t i = 0; i < nheaders; i++) {
-		if (strcasecmp(headers[i].name, "content-type") == 0) type = headers[i].value;
-		else soup.headers_append(h, headers[i].name, headers[i].value);
+	for (size_t i = 0; i < rq->nheaders; i++) {
+		if (strcasecmp(rq->headers[i].name, "content-type") == 0) type = rq->headers[i].value;
+		else soup.headers_append(h, rq->headers[i].name, rq->headers[i].value);
 	}
-	if (len > 0 || type) {
-		GBytes *b = G(g_bytes_new)(body, len);
+	if (rq->len > 0 || type) {
+		GBytes *b = G(g_bytes_new)(rq->body, rq->len);
 		soup.set_request_body_from_bytes(msg, type ? type : "application/octet-stream", b);
 		G(g_bytes_unref)(b);
 	}
-	GCancellable *c = G(g_cancellable_new)();
-	if (cancel) {
-		G(g_object_ref)(c);  // the cancel's, which may come after this returns
-		asuka_call_on_cancel(cancel, cancel_soup, c);
-	}
+	asuka_response head = {0};
+	bool ok = false;
 	GError *e = NULL;
-	GBytes *got = soup.send_and_read(s, msg, c, &e);
-	bool ok = got != NULL;
-	if (ok) {
-		out->status = (int)soup.get_status(msg);
-		GUri *u = soup.get_uri ? soup.get_uri(msg) : NULL;
-		char *us = u && soup.uri_to_string ? soup.uri_to_string(u) : NULL;
-		out->url = asuka_strdup(us ? us : url);
-		G(g_free)(us);
-		if (soup.headers_foreach) soup.headers_foreach(soup.response_headers(msg), each_header, out);
-		gsize n = 0;
-		const void *p = G(g_bytes_get_data)(got, &n);
-		out->body = asuka_bytes_copy(p ? p : "", n);
-		G(g_bytes_unref)(got);
-	} else if (cancel && asuka_call_cancelled(cancel)) {
-		if (e) G(g_error_free)(e);
+	GInputStream *in = NULL;
+	char *buf = NULL;
+	GCancellable *c = G(g_cancellable_new)();
+	if (rq->cancel) {
+		G(g_object_ref)(c);  // the cancel's, which may come after this returns
+		asuka_call_on_cancel(rq->cancel, cancel_soup, c);
+	}
+	if (!hook(rq->abort, cancel_soup, c)) {
 		asuka_error_cancelled(err);
+		goto done;
+	}
+	in = soup.send(s, msg, c, &e);
+	if (!in) goto fail;
+	head.status = (int)soup.get_status(msg);
+	GUri *u = soup.get_uri ? soup.get_uri(msg) : NULL;
+	char *us = u && soup.uri_to_string ? soup.uri_to_string(u) : NULL;
+	head.url = asuka_strdup(us ? us : url);
+	G(g_free)(us);
+	if (soup.headers_foreach) soup.headers_foreach(soup.response_headers(msg), each_header, &head);
+	if (rq->head && !rq->head(rq->ctx, &head, err)) {
+		ok = !err->status;
+		goto done;
+	}
+	enum { piece = 64 * 1024 };
+	buf = malloc(piece);
+	for (;;) {
+		gssize got = soup.read(in, buf, piece, c, &e);
+		if (got < 0) goto fail;
+		if (got == 0) break;
+		if (rq->data && !rq->data(rq->ctx, buf, (size_t)got, err)) {
+			ok = !err->status;
+			goto done;
+		}
+	}
+	ok = true;
+	goto done;
+fail:
+	if (stopped(rq)) {
+		asuka_error_cancelled(err);
+		if (e) G(g_error_free)(e);
 	} else {
 		asuka_linux_fail(err, e, url);
 	}
-	G(g_object_unref)(c);  // the cancel's reference stays until the process ends: one per request
+	e = NULL;
+done:
+	unhook(rq->abort);
+	if (in) {
+		soup.close(in, NULL, NULL);
+		G(g_object_unref)(in);
+	}
+	free(buf);
+	G(g_object_unref)(c);  // a call's cancel's reference stays until the process ends: one per request
 	G(g_object_unref)(msg);
 	G(g_object_unref)(s);
+	if (out && ok) *out = head;
+	else asuka_response_free(&head);
 	return ok;
 }
 
 #endif
+
+static bool keep_data(void *ctx, const void *p, size_t n, asuka_error *err) {
+	asuka_writer_put(ctx, p, n);
+	return true;
+}
+
+bool asuka_fetch(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
+                 int timeout_ms, asuka_call *cancel, asuka_response *out, asuka_error *err) {
+	asuka_writer b = {0};
+	asuka_request rq = {.method = method, .url = url, .headers = headers, .nheaders = nheaders, .body = body, .len = len,
+	                    .timeout_ms = timeout_ms, .cancel = cancel, .data = keep_data, .ctx = &b};
+	if (!asuka_fetch_stream(&rq, out, err)) {
+		asuka_writer_free(&b);
+		return false;
+	}
+	out->body = (asuka_bytes){b.data ? b.data : malloc(1), b.len};
+	return true;
+}
 
 // ---- Local files ----
 
@@ -361,16 +508,24 @@ static const char *ext_of(const char *type) {
 	return NULL;
 }
 
-static char *download(const char *source, const char *type, asuka_error *err) {
-	asuka_response r;
-	if (!asuka_fetch("GET", source, NULL, 0, NULL, 0, 0, NULL, &r, err)) return NULL;
-	if (r.status / 100 != 2) {
-		asuka_error_failed(err, "http", r.status, "couldn't download %s: %d", source, r.status);
-		asuka_response_free(&r);
-		return NULL;
+typedef struct {
+	const char *source, *type;
+	char *path;
+	FILE *f;
+} download_to;
+
+// download_head names the file as its server does (else the URL's last
+// element), with an extension from its type, in a folder of its own in
+// the caches (so its name stays its own), and opens it.
+static bool download_head(void *ctx, const asuka_response *r, asuka_error *err) {
+	download_to *d = ctx;
+	const char *source = d->source;
+	if (r->status / 100 != 2) {
+		asuka_error_failed(err, "http", r->status, "couldn't download %s: %d", source, r->status);
+		return false;
 	}
 	char *name = NULL;
-	const char *cd = header_of(&r, "content-disposition");
+	const char *cd = header_of(r, "content-disposition");
 	const char *fn = cd ? strstr(cd, "filename=") : NULL;
 	if (fn) {
 		fn += 9;
@@ -391,13 +546,15 @@ static char *download(const char *source, const char *type, asuka_error *err) {
 		free(raw);
 	}
 	for (char *p = name; *p; p++)
-		if (*p == '/' || *p == '\\' || *p == ':') *p = '_';
-	if (!*name || strcmp(name, ".") == 0 || strcmp(name, "_") == 0) {
+		if (*p == '/' || *p == '\\' || *p == ':' || *p == '*' || *p == '?' || *p == '"' || *p == '<' || *p == '>' || *p == '|' ||
+		    (unsigned char)*p < 32)
+			*p = '_';
+	if (!*name || strcmp(name, ".") == 0 || strcmp(name, "..") == 0 || strcmp(name, "_") == 0) {
 		free(name);
 		name = asuka_strdup("file");
 	}
 	if (!strrchr(name, '.')) {
-		const char *e = ext_of(type && *type ? type : header_of(&r, "content-type"));
+		const char *e = ext_of(d->type && *d->type ? d->type : header_of(r, "content-type"));
 		if (e) {
 			char *n = asuka_sprintf("%s%s", name, e);
 			free(name);
@@ -406,36 +563,57 @@ static char *download(const char *source, const char *type, asuka_error *err) {
 	}
 	uint64_t id = 0;
 	for (int i = 0; i < 4; i++) id = id << 16 ^ (uint64_t)rand();
-	char *dir = asuka_sprintf("%s" SEP "asuka-files" SEP "%016llx", asuka_desktop_cache_dir(), (unsigned long long)id);
-	char *path = asuka_sprintf("%s" SEP "%s", dir, name);
-	free(name);
-	bool ok = false;
-#ifdef _WIN32
 	char *parent = asuka_sprintf("%s" SEP "asuka-files", asuka_desktop_cache_dir());
-	wchar_t *wp = asuka_wide(parent), *wd = asuka_wide(dir), *wf = asuka_wide(path);
+	char *dir = asuka_sprintf("%s" SEP "%016llx", parent, (unsigned long long)id);
+	d->path = asuka_sprintf("%s" SEP "%s", dir, name);
+	free(name);
+#ifdef _WIN32
+	wchar_t *wp = asuka_wide(parent), *wd = asuka_wide(dir), *wf = asuka_wide(d->path);
 	CreateDirectoryW(wp, NULL);
 	CreateDirectoryW(wd, NULL);
-	FILE *f = _wfopen(wf, L"wb");
-	free(wp), free(wd), free(wf), free(parent);
+	d->f = _wfopen(wf, L"wb");
+	free(wp), free(wd), free(wf);
 #else
-	char *parent = asuka_sprintf("%s" SEP "asuka-files", asuka_desktop_cache_dir());
 	mkdir(parent, 0755);
 	mkdir(dir, 0755);
-	free(parent);
-	FILE *f = fopen(path, "wb");
+	d->f = fopen(d->path, "wb");
 #endif
-	if (f) {
-		ok = fwrite(r.body.data, 1, r.body.len, f) == r.body.len;
-		ok = fclose(f) == 0 && ok;
-	}
-	asuka_response_free(&r);
+	free(parent);
 	free(dir);
-	if (!ok) {
-		asuka_error_failed(err, "file", 0, "couldn't write %s", path);
-		free(path);
-		return NULL;
+	if (!d->f) {
+		asuka_error_failed(err, "file", 0, "couldn't write %s", d->path);
+		return false;
 	}
-	return path;
+	return true;
+}
+
+static bool download_data(void *ctx, const void *p, size_t n, asuka_error *err) {
+	download_to *d = ctx;
+	if (fwrite(p, 1, n, d->f) == n) return true;
+	asuka_error_failed(err, "file", 0, "couldn't write %s", d->path);
+	return false;
+}
+
+static char *download(const char *source, const char *type, asuka_error *err) {
+	download_to d = {source, type, NULL, NULL};
+	asuka_request rq = {.url = source, .head = download_head, .data = download_data, .ctx = &d};
+	bool ok = asuka_fetch_stream(&rq, NULL, err);
+	if (d.f && fclose(d.f) != 0 && ok) {
+		asuka_error_failed(err, "file", 0, "couldn't write %s", d.path);
+		ok = false;
+	}
+	if (!ok && d.path) {
+#ifdef _WIN32
+		wchar_t *w = asuka_wide(d.path);
+		DeleteFileW(w);
+		free(w);
+#else
+		unlink(d.path);
+#endif
+		free(d.path);
+		d.path = NULL;
+	}
+	return d.path;
 }
 
 char *asuka_desktop_local_file(const char *source, const char *type, asuka_error *err) {

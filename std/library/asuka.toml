@@ -4,3 +4,17 @@ description = "Saving files where the user keeps theirs: Photos, Downloads, Musi
 
 [ios.usage]
 NSPhotoLibraryAddUsageDescription = "To save photos and videos to your library."
+
+# Files the app saves to Documents show in iOS's Files, opened in place.
+[ios.plist]
+UIFileSharingEnabled = true
+LSSupportsOpeningDocumentsInPlace = true
+
+# MediaStore needs no permission from Android 10; before, writing to the
+# shared folders does.
+[android]
+permissions = ["android.permission.WRITE_EXTERNAL_STORAGE:28"]
+
+# The host's library module (saving to Photos and Files).
+[ios]
+hostFlags = ["ASUKA_LIBRARY"]

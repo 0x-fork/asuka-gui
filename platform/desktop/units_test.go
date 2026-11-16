@@ -64,32 +64,3 @@ func TestStdUnits(t *testing.T) {
 		})
 	}
 }
-
-// The barcode readers (asuka_barcode.h: src/barcode*.c and the vendored
-// quirc and libdmtx), on images of codes (testdata/barcode), under ASan
-// and UBSan.
-func TestBarcode(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("built with the POSIX test host's flags")
-	}
-	core, err := cbuild.CoreDir()
-	if err != nil {
-		t.Skip(err)
-	}
-	desk, _ := filepath.Abs(".")
-	srcs := []string{filepath.Join(desk, "test", "barcode_test.c")}
-	for _, f := range []string{"barcode.c", "barcode1d.c", "barcode_vendor.c"} {
-		srcs = append(srcs, filepath.Join(desk, "src", f))
-	}
-	flags := append(append([]string{}, cbuild.Flags...), "-I"+filepath.Join(desk, "include"), "-D_GNU_SOURCE")
-	work := t.TempDir()
-	exe, err := cbuild.Exe(core, srcs, flags, nil, true, work, "barcode")
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, err := exec.Command(exe, filepath.Join(desk, "testdata", "barcode")).CombinedOutput()
-	t.Logf("%s", out)
-	if err != nil {
-		t.Fatal(err)
-	}
-}

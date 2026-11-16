@@ -209,282 +209,50 @@ func (t *iosToolchain) buildHostPackage(work string, natives []nativePackage, fe
 	return obj, nil
 }
 
-// iosFeatures are the parts of the host that link a framework of their
-// own (WebKit, AVKit...), and the function of the standard library (or
-// the element) an app uses each through. Loading a framework costs at
-// launch whether or not it's used (WebKit and AVKit's together, about a
-// second on the simulator), so a release's host is built with only those
-// its app uses: the packages it imports, whose functions its sources
-// name (asukaApp.hasSymbol). asuka dev's player has them all.
-var iosFeatures = []struct{ flag, symbol string }{
-	{"ASUKA_WEBVIEW", "github.com/egoist/asuka/ui.WebView"},
-	{"ASUKA_VIDEO", "github.com/egoist/asuka/ui.Video"},
-	{"ASUKA_SHADER", "github.com/egoist/asuka/ui.Shader"},
-	{"ASUKA_PHOTOS", "github.com/egoist/asuka/sdk/device.PickPhotos"},
-	{"ASUKA_BROWSER", "github.com/egoist/asuka/sdk/device.Browse"},
-	{"ASUKA_WEBAUTH", "github.com/egoist/asuka/sdk/webauth.Start"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.Current"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.Watch"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.PlaceName"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.Authorized"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.Request"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.RequestAlways"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.RequestPrecise"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.WatchAuthorization"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.UseAuthorization"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.OpenSettings"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.StartUpdates"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.StopUpdates"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.Updating"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.Monitor"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.StopMonitoring"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.StopMonitoringAll"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.Monitored"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.OnUpdates"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.OnCrossing"},
-	{"ASUKA_LOCATION", "github.com/egoist/asuka/sdk/location.Supported"},
-	// The background part: background updates, regions, their events
-	// (AsukaLocationBackground); Always's purpose string, the location
-	// background mode, temporary full accuracy's purposes.
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.StartUpdates"},
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.StopUpdates"},
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.Updating"},
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.Monitor"},
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.StopMonitoring"},
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.StopMonitoringAll"},
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.Monitored"},
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.OnUpdates"},
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.OnCrossing"},
-	{"ASUKA_LOCATION_BACKGROUND", "github.com/egoist/asuka/sdk/location.Supported"},
-	{"ASUKA_LOCATION_ALWAYS", "github.com/egoist/asuka/sdk/location.RequestAlways"},
-	{"ASUKA_LOCATION_UPDATES", "github.com/egoist/asuka/sdk/location.StartUpdates"},
-	{"ASUKA_LOCATION_PRECISE", "github.com/egoist/asuka/sdk/location.RequestPrecise"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Request"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Schedule"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Show"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.SetCategories"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.OnAction"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Present"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Showing"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.SetBadge"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Remove"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.RemoveThread"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.RemoveAll"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Cancel"},
-	// Messages in conversations: Intents' INSendMessageIntent.
-	{"ASUKA_CONVERSATIONS", "github.com/egoist/asuka/sdk/notify.Notification.From"},
-	{"ASUKA_CONVERSATIONS", "github.com/egoist/asuka/sdk/push.(*Message).From"},
-	// The Notification Service Extension's principal class.
-	{"ASUKA_NOTIFICATION_SERVICE", rewriteSymbol},
-	{"ASUKA_AUDIO", "github.com/egoist/asuka/sdk/audio.Load"},
-	{"ASUKA_NOWPLAYING", "github.com/egoist/asuka/sdk/nowplaying.Show"},
-	{"ASUKA_CAMERAVIEW", "github.com/egoist/asuka/sdk/camera.View"},
-	{"ASUKA_SCAN", "github.com/egoist/asuka/sdk/scan.File"},
-	{"ASUKA_VISION", "github.com/egoist/asuka/sdk/vision.Analyze"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.Current"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.Request"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.ManageLimited"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.List"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.Thumbnail"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.Export"},
-	{"ASUKA_WEBVIEW", "github.com/egoist/asuka/sdk/js.Eval"},
-	{"ASUKA_LIBRARY", "github.com/egoist/asuka/sdk/library.Save"},
-	{"ASUKA_NETWORK", "github.com/egoist/asuka/sdk/network.Current"},
-	{"ASUKA_NETWORK", "github.com/egoist/asuka/sdk/network.Watch"},
-	{"ASUKA_RECORD", "github.com/egoist/asuka/sdk/camera/record.Start"},
-	{"ASUKA_FILES", "github.com/egoist/asuka/sdk/device.PickFiles"},
-	{"ASUKA_REVIEW", "github.com/egoist/asuka/sdk/review.Request"},
-	// StoreKit 2: asuka/sdk/purchase.
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.Available"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.Products"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.Buy"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.(*Transaction).Finish"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.CurrentEntitlements"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.Restore"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.SubscriptionStatuses"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.ManageSubscriptions"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.RequestRefund"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.RedeemCode"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.CurrentStorefront"},
-	{"ASUKA_PURCHASE", "github.com/egoist/asuka/sdk/purchase.Observe"},
-	{"ASUKA_TRACKING", "github.com/egoist/asuka/sdk/tracking.Request"},
-	{"ASUKA_TRACKING", "github.com/egoist/asuka/sdk/tracking.Current"},
-	{"ASUKA_BIOMETRIC", "github.com/egoist/asuka/sdk/biometric.Check"},
-	{"ASUKA_BIOMETRIC", "github.com/egoist/asuka/sdk/biometric.Authenticate"},
-	{"ASUKA_PUSH", "github.com/egoist/asuka/sdk/push.Register"},
-	{"ASUKA_AUDIORECORD", "github.com/egoist/asuka/sdk/audio/record.Start"},
-	{"ASUKA_TRANSCRIBE", "github.com/egoist/asuka/sdk/transcribe.File"},
-	{"ASUKA_TRANSCRIBE", "github.com/egoist/asuka/sdk/transcribe.Check"},
-	{"ASUKA_INTEGRITY", "github.com/egoist/asuka/sdk/integrity.Supported"},
-	{"ASUKA_INTEGRITY", "github.com/egoist/asuka/sdk/integrity.GenerateKey"},
-	{"ASUKA_INTEGRITY", "github.com/egoist/asuka/sdk/integrity.AttestKey"},
-	{"ASUKA_INTEGRITY", "github.com/egoist/asuka/sdk/integrity.Assert"},
-	{"ASUKA_AGERANGE", "github.com/egoist/asuka/sdk/agerange.Request"},
-	{"ASUKA_MAPS", "github.com/egoist/asuka/sdk/maps.View"},
-	{"ASUKA_PERIODIC", "github.com/egoist/asuka/sdk/periodic.Schedule"},
-	{"ASUKA_WIDGET", "github.com/egoist/asuka/sdk/widget.Set"},
-	// ActivityKit, and the widget extension with the Live Activities' template.
-	{"ASUKA_LIVEACTIVITY", "github.com/egoist/asuka/sdk/liveactivity.Start"},
-	{"ASUKA_LIVEACTIVITY", "github.com/egoist/asuka/sdk/liveactivity.Enabled"},
-	{"ASUKA_LIVEACTIVITY", "github.com/egoist/asuka/sdk/liveactivity.Running"},
-	{"ASUKA_LIVEACTIVITY", "github.com/egoist/asuka/sdk/liveactivity.Observe"},
-	{"ASUKA_CONTACTS", "github.com/egoist/asuka/sdk/contacts.Request"},
-	{"ASUKA_CONTACTS", "github.com/egoist/asuka/sdk/contacts.List"},
-	{"ASUKA_CONTACTS", "github.com/egoist/asuka/sdk/contacts.Pick"},
-	{"ASUKA_CONTACTS", "github.com/egoist/asuka/sdk/contacts.Add"},
-	{"ASUKA_CALENDAR", "github.com/egoist/asuka/sdk/calendar.Request"},
-	{"ASUKA_CALENDAR", "github.com/egoist/asuka/sdk/calendar.Calendars"},
-	{"ASUKA_CALENDAR", "github.com/egoist/asuka/sdk/calendar.Events"},
-	{"ASUKA_CALENDAR", "github.com/egoist/asuka/sdk/calendar.Add"},
-	{"ASUKA_SENSORS", "github.com/egoist/asuka/sdk/sensors.setRate"},
-	{"ASUKA_SENSORS", "github.com/egoist/asuka/sdk/sensors.Available"},
-	{"ASUKA_SENSORS", "github.com/egoist/asuka/sdk/sensors.StepsBetween"},
-	// Core NFC: reader sessions, with the system's sheet.
-	{"ASUKA_NFC", "github.com/egoist/asuka/sdk/nfc.Start"},
-	{"ASUKA_NFC", "github.com/egoist/asuka/sdk/nfc.Check"},
-	{"ASUKA_NFC", "github.com/egoist/asuka/sdk/nfc.Watch"},
-	{"ASUKA_NFC", "github.com/egoist/asuka/sdk/nfc.OpenSettings"},
-	{"ASUKA_NFC", "github.com/egoist/asuka/sdk/nfc.OnOpen"},
-	{"ASUKA_SPEECH", "github.com/egoist/asuka/sdk/speech.Speak"},
-	{"ASUKA_SPEECH", "github.com/egoist/asuka/sdk/speech.Voices"},
-	{"ASUKA_IMAGEEDIT", "github.com/egoist/asuka/sdk/imageedit.Edit"},
-	{"ASUKA_IMAGEEDIT", "github.com/egoist/asuka/sdk/imageedit.Size"},
-	{"ASUKA_IMAGEEDIT", "github.com/egoist/asuka/sdk/imageedit.VideoFrame"},
-	// PassKit: Apple Pay's sheet and button.
-	{"ASUKA_PAY", "github.com/egoist/asuka/sdk/pay.Pay"},
-	{"ASUKA_PAY", "github.com/egoist/asuka/sdk/pay.Available"},
-	{"ASUKA_PAY", "github.com/egoist/asuka/sdk/pay.SetUp"},
-	{"ASUKA_PAY", "github.com/egoist/asuka/sdk/pay.Button"},
-	{"ASUKA_APPLEAUTH", "github.com/egoist/asuka/sdk/appleauth.SignIn"},
-	{"ASUKA_APPLEAUTH", "github.com/egoist/asuka/sdk/appleauth.Available"},
-	{"ASUKA_APPLEAUTH", "github.com/egoist/asuka/sdk/appleauth.CredentialState"},
-	{"ASUKA_CRASH", "github.com/egoist/asuka/sdk/crash.Reports"},
-	{"ASUKA_CRASH", "github.com/egoist/asuka/sdk/crash.OnReport"},
-	{"ASUKA_PREVIEW", "github.com/egoist/asuka/sdk/preview.Show"},
-	{"ASUKA_PRINT", "github.com/egoist/asuka/sdk/print.File"},
-	{"ASUKA_PRINT", "github.com/egoist/asuka/sdk/print.HTML"},
-	{"ASUKA_PRINT", "github.com/egoist/asuka/sdk/print.WebView"},
-	{"ASUKA_PRINT", "github.com/egoist/asuka/sdk/print.PDF"},
-	{"ASUKA_PRINTHTML", "github.com/egoist/asuka/sdk/print.HTML"},
-	{"ASUKA_PRINTHTML", "github.com/egoist/asuka/sdk/print.PDF"},
-	{"ASUKA_COMPOSE", "github.com/egoist/asuka/sdk/compose.Mail"},
-	{"ASUKA_COMPOSE", "github.com/egoist/asuka/sdk/compose.Message"},
-	{"ASUKA_COMPOSE", "github.com/egoist/asuka/sdk/compose.Check"},
-	// asuka/sdk/icloud: every call goes through one of these (its
-	// entitlements are from what the app calls: useICloud).
-	{"ASUKA_ICLOUD", "github.com/egoist/asuka/sdk/icloud.call"},
-	{"ASUKA_ICLOUD", "github.com/egoist/asuka/sdk/icloud.post"},
-	// Core Bluetooth: every call of asuka/sdk/bluetooth goes through one of these.
-	{"ASUKA_BLUETOOTH", "github.com/egoist/asuka/sdk/bluetooth.call"},
-	{"ASUKA_BLUETOOTH", "github.com/egoist/asuka/sdk/bluetooth.send"},
+// elementFlags are the parts of the iOS host that link a framework of
+// their own for one of the core's elements (WebKit, AVKit, Metal), by the
+// prelude's element: loading a framework costs at launch whether or not
+// it's used (WebKit and AVKit's together, about a second on the
+// simulator), so a release's host is built with only those its app
+// shows. The host's modules' flags are the packages' to say (their
+// manifests' ios.hostFlags, a package's or a member's: depManifests);
+// a package with Swift of its own (asuka/camera, asuka/location...)
+// brings it, and its frameworks, to the apps that import it, and needs
+// no flag. asuka dev's player has them all.
+var elementFlags = map[string]string{
+	"WebView": "ASUKA_WEBVIEW",
+	"Video":   "ASUKA_VIDEO",
+	"Shader":  "ASUKA_SHADER",
 }
 
-// featureExtras are what a feature needs of the app beyond its framework:
-// the entitlements (with a simulator build's values; a release's profile
-// must have them) and Info.plist's arrays, as featurePermissions' are a
-// package's.
-var featureExtras = map[string]struct {
-	entitlements map[string]any
-	plistArrays  map[string][]string
-	iosTrue      []string
-	usage        map[string]string
-}{
-	// Communication notifications: the capability, and the intent the
-	// app donates for each message.
-	"ASUKA_CONVERSATIONS": {
-		entitlements: map[string]any{"com.apple.developer.usernotifications.communication": true},
-		plistArrays:  map[string][]string{"NSUserActivityTypes": {"INSendMessageIntent"}},
-	},
-	// Now Playing: playing on with the screen locked and the app away,
-	// which the lock screen's controls need.
-	"ASUKA_NOWPLAYING": {
-		plistArrays: map[string][]string{"UIBackgroundModes": {"audio"}},
-	},
-	// Live Activities: the app says it has them (the widget extension
-	// draws them: liveActivity).
-	"ASUKA_LIVEACTIVITY": {
-		iosTrue: []string{"NSSupportsLiveActivities"},
-	},
-	// asuka/sdk/location: Always's purpose string (location.RequestAlways),
-	// updates in the background (location.StartUpdates). Temporary full
-	// accuracy's purposes are asuka.toml's (locationPurposes).
-	"ASUKA_LOCATION_ALWAYS": {
-		usage: map[string]string{"NSLocationAlwaysAndWhenInUseUsageDescription": "To know where you are with the app closed."},
-	},
-	"ASUKA_LOCATION_UPDATES": {
-		plistArrays: map[string][]string{"UIBackgroundModes": {"location"}},
-	},
-}
-
-// addFeatureExtras adds what the features flags need (featureExtras).
-func (c *appConfig) addFeatureExtras(flags []string) {
-	for _, f := range flags {
-		if f == "ASUKA_LIVEACTIVITY" {
-			c.liveActivity = true
-		}
-		if f == "ASUKA_LOCATION_PRECISE" {
-			c.locationPrecise = true
-		}
-		x, ok := featureExtras[f]
-		if !ok {
-			continue
-		}
-		for _, k := range x.iosTrue {
-			if !slices.Contains(c.iosTrue, k) {
-				c.iosTrue = append(c.iosTrue, k)
-			}
-		}
-		for k, v := range x.entitlements {
-			if c.entitlements == nil {
-				c.entitlements = map[string]any{}
-			}
-			c.entitlements[k] = v
-		}
-		for k, vs := range x.plistArrays {
-			if c.plistArrays == nil {
-				c.plistArrays = map[string][]string{}
-			}
-			for _, v := range vs {
-				if !slices.Contains(c.plistArrays[k], v) {
-					c.plistArrays[k] = append(c.plistArrays[k], v)
-				}
-			}
-		}
-		for k, v := range x.usage {
-			if c.IOS.Usage == nil {
-				c.IOS.Usage = map[string]string{}
-			}
-			if c.IOS.Usage[k] == "" {
-				c.IOS.Usage[k] = v
-			}
-		}
-	}
-}
-
-// allFeatures is every feature: the player runs any app.
+// allFeatures is every flag: the player runs any app.
 func allFeatures() []string {
-	var out []string
-	for _, f := range iosFeatures {
-		if !slices.Contains(out, f.flag) {
-			out = append(out, f.flag)
+	out := stdHostFlags()
+	for _, f := range elementFlags {
+		if !slices.Contains(out, f) {
+			out = append(out, f)
 		}
 	}
+	sort.Strings(out)
 	return out
 }
 
-// usedFeatures are the features the app uses, and notes in cfg whether it
-// has a share sheet or a push rewrite, and what its features need
-// (addFeatureExtras).
+// usedFeatures are the flags the app's host is built with: the elements
+// it shows, and what its packages' manifests (and their members' the
+// program refers to) ask for.
 func usedFeatures(app *asukaApp, cfg *appConfig) []string {
-	cfg.shareSheet = app.hasSymbol(sheetSymbol)
-	cfg.pushRewrite = app.hasSymbol(rewriteSymbol)
 	var used []string
-	for _, f := range iosFeatures {
-		if app.hasSymbol(f.symbol) && !slices.Contains(used, f.flag) {
-			used = append(used, f.flag)
+	for _, el := range manifestKeys(elementFlags) {
+		if app.refs("", el) {
+			used = append(used, elementFlags[el])
 		}
 	}
-	cfg.addFeatureExtras(used)
+	for _, f := range cfg.hostFlags {
+		if !slices.Contains(used, f) {
+			used = append(used, f)
+		}
+	}
+	sort.Strings(used)
 	return used
 }
 
@@ -667,7 +435,7 @@ func (t *iosToolchain) link(app *asukaApp, work, hostObj, lib string) (string, e
 // simulatorEntitlements are the linker flags that give a simulator build
 // the entitlements the keychain wants (an app identifier and its access
 // group; without them SecItemAdd fails with errSecMissingEntitlement, and
-// asuka/sdk/secure with it). As Xcode does: in the binary's __entitlements
+// asuka/secure with it). As Xcode does: in the binary's __entitlements
 // section, for an ad hoc signature can't carry them.
 func simulatorEntitlements(work string, cfg *appConfig) ([]string, error) {
 	id := "ASUKASIMULA." + cfg.ID // a team ID's shape: ten characters

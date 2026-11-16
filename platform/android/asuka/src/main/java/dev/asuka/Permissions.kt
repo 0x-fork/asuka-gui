@@ -17,3 +17,9 @@ fun AsukaRuntime.withPermission(permissions: Array<String>, done: (Boolean) -> U
     }
     launcher.launch(permissions)
 }
+
+/** Whether the app's manifest asks for permission (asuka.toml's, or a package's). */
+fun AsukaRuntime.declares(permission: String): Boolean = try {
+    app.packageManager.getPackageInfo(app.packageName, android.content.pm.PackageManager.GET_PERMISSIONS)
+        .requestedPermissions?.contains(permission) == true
+} catch (_: Exception) { false }

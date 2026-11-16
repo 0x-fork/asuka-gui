@@ -55,15 +55,9 @@ func (c *Checker) stmt(it syntax.Item) {
 	case *syntax.ReturnStmt:
 		c.returnStmt(s)
 	case *syntax.ThrowStmt:
-		t := c.expr(s.Value, c.errT.Type)
-		if !IsInvalid(t) && !IsErrorType(t) {
-			c.errorf(s.Value, "throw takes an error, and a %s isn't one (declare it: struct %s: Error, or throw Error(\"…\"))", typeString(t), typeString(t))
-		}
-		c.mayThrow(s)
+		c.throwValue(s, s.Value)
 	case *syntax.BranchStmt:
-		if c.loops == 0 {
-			c.errorf(s, "%s outside a loop", s.Tok)
-		}
+		c.branch(s, s.Tok)
 	case *syntax.DeferStmt:
 		if c.inDefer > 0 {
 			c.errorf(s, "a defer inside a defer: put the code in the first one")
@@ -77,6 +71,10 @@ func (c *Checker) stmt(it syntax.Item) {
 	case *syntax.EmitStmt:
 		c.emitStmt(s)
 	case *syntax.ExprStmt:
+		if ce, ok := s.X.(*syntax.CatchExpr); ok {
+			c.catchStmt(ce)
+			return
+		}
 		t := c.expr(s.X, nil)
 		if t == View {
 			if call, ok := s.X.(*syntax.CallExpr); ok && c.info.Elements[call] != nil {
@@ -148,6 +146,10 @@ func (c *Checker) letStmt(d *syntax.LetDecl) {
 		c.errorf(d, "a let needs a value")
 		return
 	}
+	if d.Else != nil {
+		c.letElse(d)
+		return
+	}
 	if d.Type != nil {
 		want := c.typeExpr(d.Type)
 		t = c.assign(d.Value, want, "the value")
@@ -208,12 +210,22 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		}
 		c.assign(s.Value, lt, "the value")
 	default:
-		vt := c.expr(s.Value, numOnly(lt))
+		want := numOnly(lt)
+		if s.Op.AssignOp().IsBitwise() {
+			want = Int
+		}
+		vt := c.expr(s.Value, want)
 		if IsInvalid(lt) || IsInvalid(vt) {
 			return
 		}
 		op := strings.TrimSuffix(s.Op.String(), "=")
 		switch {
+		case s.Op.AssignOp().IsBitwise():
+			if lt != Int {
+				c.errorf(s.Target, "%s= takes ints, not a %s", op, typeString(lt))
+			} else if vt != Int {
+				c.errorf(s.Value, "%s= takes ints, not a %s", op, typeString(vt))
+			}
 		case IsNumeric(lt) && Identical(lt, vt):
 		case lt == String && vt == String && s.Op == syntax.ADD_ASSIGN:
 		case lt == Duration && vt == Duration && (s.Op == syntax.ADD_ASSIGN || s.Op == syntax.SUB_ASSIGN):
@@ -315,6 +327,10 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			c.errorf(x, "can't %s %s", what, exprName(x))
 		}
 	case *syntax.IndexExpr:
+		if c.info.Types[x.X] == Bytes {
+			c.errorf(x, "can't %s a byte: bytes don't change in place; make new ones (bytes([…]) of ints, b.slice, b.concat)", what)
+			return
+		}
 		c.checkLvalue(x.X, what)
 	case *syntax.SelfExpr:
 		c.errorf(x, "can't %s self: a struct's methods can't change it (it's a value); return a new one", what)
@@ -330,9 +346,16 @@ func isParam(v *Var) bool {
 	return contains(v.Ctx.Params, v)
 }
 
-// cond checks an if's or a while's condition: a bool, or let pattern =
-// value.
+// cond checks an if's or a while's condition: a bool, let pattern =
+// value, or a chain of them; what a let binds is declared in the current
+// scope, for the clauses after it and the body.
 func (c *Checker) cond(e syntax.Expr) {
+	if l, ok := e.(*syntax.CondList); ok {
+		for _, x := range l.List {
+			c.cond(x)
+		}
+		return
+	}
 	lc, ok := e.(*syntax.LetCond)
 	if !ok {
 		c.assign(e, Bool, "the condition")
@@ -396,11 +419,13 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 			if view {
 				c.errorf(s.Seq, "a for in a view goes over an array: use the map's keys() or values()")
 			}
+		case *Set:
+			fi.Kind, fi.Elem = ForSet, u.Elem
 		default:
 			if t == String {
 				c.errorf(s.Seq, "a string isn't a list: go over its characters, s.chars()")
 			} else if !IsInvalid(t) {
-				c.errorf(s.Seq, "for goes over an array, a map or a range, not a %s", typeString(t))
+				c.errorf(s.Seq, "for goes over an array, a set, a map or a range, not a %s", typeString(t))
 			}
 			fi.Kind, fi.Elem = ForArray, Invalid
 		}
@@ -515,7 +540,11 @@ func isEnumerated(e syntax.Expr) bool {
 	return ok && m.Name.Name == "enumerated" && !m.Optional
 }
 
-func (c *Checker) returnStmt(s *syntax.ReturnStmt) {
+func (c *Checker) returnStmt(s *syntax.ReturnStmt) { c.returnValue(s, s.Value) }
+
+// returnValue checks a return (at s) of value (nil for none): a
+// statement's or a JumpExpr's.
+func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 	if c.inDefer > 0 {
 		c.errorf(s, "return in a defer: a defer runs as its block ends, and can't change how")
 	}
@@ -529,10 +558,10 @@ func (c *Checker) returnStmt(s *syntax.ReturnStmt) {
 		return
 	}
 	if ctx.inferRes {
-		if s.Value == nil {
+		if value == nil {
 			ctx.retTypes = append(ctx.retTypes, Void)
 		} else {
-			ctx.retTypes = append(ctx.retTypes, c.valueType(c.expr(s.Value, nil), s.Value))
+			ctx.retTypes = append(ctx.retTypes, c.valueType(c.expr(value, nil), value))
 		}
 		return
 	}
@@ -541,13 +570,13 @@ func (c *Checker) returnStmt(s *syntax.ReturnStmt) {
 		res = Void
 	}
 	switch {
-	case s.Value == nil && res != Void:
+	case value == nil && res != Void:
 		c.errorf(s, "return needs a %s", typeString(res))
-	case s.Value != nil && res == Void:
-		c.expr(s.Value, nil)
-		c.errorf(s.Value, "%s returns nothing: drop the value, or declare a result (-> T)", ctxLabel(ctx))
-	case s.Value != nil:
-		c.assign(s.Value, res, "the result")
+	case value != nil && res == Void:
+		c.expr(value, nil)
+		c.errorf(value, "%s returns nothing: drop the value, or declare a result (-> T)", ctxLabel(ctx))
+	case value != nil:
+		c.assign(value, res, "the result")
 	}
 }
 
@@ -606,22 +635,10 @@ func (c *Checker) emitArgs(s *syntax.EmitStmt, params []*Param) {
 // do/catch
 
 func (c *Checker) doStmt(s *syntax.DoStmt) {
-	all := false
-	for _, cl := range s.Catches {
-		if c.catchAll(cl) {
-			all = true
-		}
-	}
 	if len(s.Catches) == 0 {
 		c.errorf(s, "do needs a catch")
 	}
-	if all {
-		c.handled++
-	}
-	c.block(s.Body)
-	if all {
-		c.handled--
-	}
+	c.catching(s.Catches, func() { c.block(s.Body) })
 	for i, cl := range s.Catches {
 		if i < len(s.Catches)-1 && c.info.Catches[cl] != nil && c.info.Catches[cl].All {
 			c.errorf(s.Catches[i+1], "this catch is never reached: the one before catches everything")
@@ -729,8 +746,14 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		v := c.declareVar(p.Name, t, false)
 		v.Kind = kind
 	case *syntax.LitPat:
-		lt := c.expr(p.Value, t)
-		if !IsInvalid(lt) && !IsInvalid(t) && !c.convert(p.Value, lt, t) && !(lt == NoneType && IsOptional(t)) {
+		// A literal is compared with an optional's value, once it isn't
+		// none: it's of the value's type (not converted to the optional).
+		et := t
+		if _, none := p.Value.(*syntax.NoneLit); !none {
+			et = Unopt(t)
+		}
+		lt := c.expr(p.Value, et)
+		if !IsInvalid(lt) && !IsInvalid(t) && !c.convert(p.Value, lt, et) && !(lt == NoneType && IsOptional(t)) {
 			c.errorf(p, "a %s can't be a %s", typeString(t), typeString(lt))
 		}
 	case *syntax.TuplePat:
@@ -756,6 +779,10 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			}
 		}
 	case *syntax.CasePat:
+		if st := c.patternStruct(p); st != nil {
+			c.structPattern(p, st, t)
+			return
+		}
 		et := Unopt(t)
 		var tn *TypeName
 		if p.Implicit {
@@ -806,6 +833,16 @@ func (c *Checker) caseArgs(p *syntax.CasePat, k *Case, t Type) {
 		c.errorf(p, "case %s has %s", k.Name, plural(len(k.Params), "payload value", "payload values"))
 		return
 	}
+	for i := range p.Args {
+		// A label names the payload's: positions still say which.
+		if l := p.Label(i); l != nil && l.Name != k.Labels[i] {
+			if k.Labels[i] == "" {
+				c.errorf(l, "case %s's payload %d has no label: leave it out", k.Name, i+1)
+			} else {
+				c.errorf(l, "case %s's payload %d is %s, not %s", k.Name, i+1, k.Labels[i], l.Name)
+			}
+		}
+	}
 	var s Subst
 	if n, ok := t.(*Named); ok {
 		s = n.Subst()
@@ -837,89 +874,6 @@ func irrefutable(p syntax.Pattern) bool {
 		return true
 	}
 	return false
-}
-
-// exhaustive reports whether arms cover every value of t, and what they
-// miss.
-func (c *Checker) exhaustive(t Type, arms []*syntax.MatchArm) (bool, []string) {
-	covered := map[string]bool{}
-	none := false
-	var add func(p syntax.Pattern) bool
-	add = func(p syntax.Pattern) bool {
-		switch p := p.(type) {
-		case *syntax.WildcardPat, *syntax.BindPat:
-			return true
-		case *syntax.TuplePat:
-			return irrefutable(p)
-		case *syntax.OrPat:
-			for _, a := range p.Alts {
-				if add(a) {
-					return true
-				}
-			}
-		case *syntax.CasePat:
-			all := true
-			for _, a := range p.Args {
-				if !irrefutable(a) {
-					all = false
-				}
-			}
-			if all {
-				covered[p.Path[len(p.Path)-1].Name] = true
-			}
-		case *syntax.LitPat:
-			switch v := p.Value.(type) {
-			case *syntax.BoolLit:
-				covered[strconvBool(v.Value)] = true
-			case *syntax.NoneLit:
-				none = true
-			}
-		}
-		return false
-	}
-	for _, a := range arms {
-		if a.Guard != nil {
-			continue
-		}
-		if add(a.Pattern) {
-			return true, nil
-		}
-	}
-	if IsInvalid(t) {
-		return true, nil
-	}
-	var missing []string
-	if IsOptional(t) && !none {
-		missing = append(missing, "none")
-	}
-	switch u := Unopt(t).(type) {
-	case *Named:
-		if u.Obj.Kind == EnumType {
-			for _, k := range u.Obj.Cases {
-				if !covered[k.Name] {
-					missing = append(missing, "."+k.Name)
-				}
-			}
-			return len(missing) == 0, missing
-		}
-	case *Basic:
-		if u == Bool {
-			for _, b := range []string{"true", "false"} {
-				if !covered[b] {
-					missing = append(missing, b)
-				}
-			}
-			return len(missing) == 0, missing
-		}
-	}
-	return false, append(missing, "the rest")
-}
-
-func strconvBool(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }
 
 func (c *Checker) matchStmt(s *syntax.MatchStmt) {
@@ -998,6 +952,14 @@ func (c *Checker) terminates(items []syntax.Item) bool {
 		return false
 	}
 	switch s := items[len(items)-1].(type) {
+	case *syntax.BranchStmt:
+		// break and continue leave the block too (a loop's, which the
+		// checker made sure is around).
+		return true
+	case *syntax.ExprStmt:
+		// What never has a value: panic(…), x ?? throw E, a catch whose
+		// value and fallbacks all leave.
+		return c.info.Types[s.X] == Never
 	case *syntax.ReturnStmt, *syntax.ThrowStmt:
 		return true
 	case *syntax.IfStmt:
@@ -1040,12 +1002,6 @@ func (c *Checker) terminates(items []syntax.Item) bool {
 	case *syntax.WhileStmt:
 		if b, ok := s.Cond.(*syntax.BoolLit); ok && b.Value && !hasBreak(s.Body.Items) {
 			return true
-		}
-	case *syntax.ExprStmt:
-		if call, ok := s.X.(*syntax.CallExpr); ok {
-			if ci := c.info.Calls[call]; ci != nil && ci.Kind == CallBuiltin && ci.Builtin.ID == BPanic {
-				return true
-			}
 		}
 	}
 	return false
@@ -1100,4 +1056,282 @@ func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
 	c.block(s.Body)
 	c.loops--
 	c.closeScope()
+}
+
+// ---------------------------------------------------------------------
+// let … else, jumps as values, catch as a value
+
+// noLetElse reports a let … else where a let isn't a statement.
+func (c *Checker) noLetElse(d *syntax.LetDecl) {
+	if d.Else != nil {
+		c.errorPos(d.Else.Lbrace, "let … else is a statement, in a fn, a handler, a task or a test; a let here is derived: use if let, or ?? for a default")
+	}
+}
+
+// letElse checks let pattern = value else { … }: the else block, which
+// must leave, then the pattern's names, declared for the rest of the
+// block. A name unwraps an optional (as if let's); another pattern
+// matches as match's.
+func (c *Checker) letElse(d *syntax.LetDecl) {
+	what := d.Keyword.String() + " … else"
+	bp, name := d.Pattern.(*syntax.BindPat)
+	var t Type
+	if d.Type != nil {
+		want := c.typeExpr(d.Type)
+		if name {
+			// let user: User = cache[id] else { … }: the type is the
+			// unwrapped value's.
+			t = c.assign(d.Value, MakeOptional(want), "the value")
+		} else {
+			t = c.assign(d.Value, want, "the value")
+		}
+	} else {
+		t = c.valueType(c.expr(d.Value, nil), d.Value)
+	}
+	c.info.Lets[d] = t
+	// The else block doesn't see the names.
+	c.block(d.Else)
+	if !c.terminates(d.Else.Items) {
+		c.errorPos(d.Else.Rbrace, "the else of a %s goes on with nothing to bind: end it with return, throw, break or continue (or panic)", what)
+	}
+	if name {
+		if !IsOptional(t) && !IsInvalid(t) {
+			c.errorf(d.Value, "%s isn't optional: %s unwraps an optional or matches a pattern; this always has a value (drop the else)", typeString(t), what)
+		}
+		c.declareVar(bp.Name, Unopt(t), d.Keyword == syntax.VAR)
+		return
+	}
+	if isIrrefutablePattern(d.Pattern) && !IsOptional(t) && !IsInvalid(t) {
+		c.errorf(d.Pattern, "this pattern always matches a %s: drop the else", typeString(t))
+	}
+	if d.Keyword == syntax.VAR {
+		c.errorf(d, "var … else binds a name: var x = optional else { … }; a pattern's names are lets")
+	}
+	c.pattern(d.Pattern, t, LocalVar)
+}
+
+// isIrrefutablePattern reports a pattern that matches every value of a
+// non-optional type: names, _ and tuples of them.
+func isIrrefutablePattern(p syntax.Pattern) bool {
+	switch p := p.(type) {
+	case *syntax.WildcardPat, *syntax.BindPat:
+		return true
+	case *syntax.TuplePat:
+		for _, e := range p.Elems {
+			if !isIrrefutablePattern(e) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// throwValue checks a throw (at s) of value.
+func (c *Checker) throwValue(s syntax.Node, value syntax.Expr) {
+	t := c.expr(value, c.errT.Type)
+	if !IsInvalid(t) && !IsErrorType(t) {
+		c.errorf(value, "throw takes an error, and a %s isn't one (declare it: struct %s: Error, or throw Error(\"…\"))", typeString(t), typeString(t))
+	}
+	c.mayThrow(s)
+}
+
+// branch checks a break or a continue.
+func (c *Checker) branch(s syntax.Node, tok syntax.Token) {
+	if c.loops == 0 {
+		c.errorf(s, "%s outside a loop", tok)
+	}
+}
+
+// jumpExpr checks throw, return, break or continue used as a value: it
+// never has one.
+func (c *Checker) jumpExpr(e *syntax.JumpExpr) Type {
+	switch e.Tok {
+	case syntax.THROW:
+		c.throwValue(e, e.Value)
+	case syntax.RETURN:
+		c.returnValue(e, e.Value)
+	default:
+		c.branch(e, e.Tok)
+	}
+	return Never
+}
+
+// A partialCatch is a do or a catch whose clauses don't take every
+// error, for mayThrow's message.
+type partialCatch struct {
+	ctx  *FuncCtx
+	what string // the errors they take: MailError.offline, ParseError
+	n    int
+}
+
+// catching checks body (a do's, a catch expression's value) under
+// clauses: what they all take is handled; when they don't take
+// everything, what's left goes on, so the function must throw.
+func (c *Checker) catching(clauses []*syntax.CatchClause, body func()) {
+	all := false
+	var took []string
+	for _, cl := range clauses {
+		if c.catchAll(cl) {
+			all = true
+		}
+		switch p := cl.Pattern.(type) {
+		case *syntax.CasePat:
+			took = append(took, joinPath(p.Path))
+		case *syntax.BindPat:
+			if nt, ok := cl.Type.(*syntax.NamedType); ok {
+				took = append(took, joinPath(nt.Path))
+			}
+		}
+	}
+	if all {
+		c.handled++
+		body()
+		c.handled--
+		return
+	}
+	saved := c.partial
+	what := strings.Join(took, ", ")
+	if what == "" {
+		what = "some errors"
+	}
+	c.partial = &partialCatch{ctx: c.ctx, what: what, n: len(clauses)}
+	body()
+	c.partial = saved
+}
+
+// cantThrow says that the function around doesn't throw.
+func (c *Checker) cantThrow() string {
+	switch c.ctx.Kind {
+	case CtxFunc, CtxMethod:
+		return c.ctx.Name + " doesn't throw"
+	case CtxLambda:
+		return "this closure doesn't throw where it's passed"
+	}
+	return "this can't throw here"
+}
+
+func (c *Checker) throwsHint() string {
+	switch c.ctx.Kind {
+	case CtxFunc, CtxMethod:
+		return ", or mark " + c.ctx.Name + " throws"
+	}
+	return ""
+}
+
+// catchExpr checks x catch … { … }: x's value, or a clause's fallback
+// (its block's last expression, or it leaves) when x throws. With no
+// expected type, the fallbacks are x's type; a void x takes blocks of
+// statements.
+func (c *Checker) catchExpr(e *syntax.CatchExpr, want Type) Type {
+	if !throwsIn(e.X) {
+		c.errorf(e.Catches[0], "nothing before this catch throws: it takes the errors of a try (try f() catch { … })")
+	}
+	var xt Type
+	c.catching(e.Catches, func() {
+		if want != nil {
+			xt = c.assign(e.X, want, "the value")
+		} else {
+			xt = c.expr(e.X, nil)
+		}
+	})
+	target := want
+	if target == nil {
+		target = xt
+	}
+	if target == NoneType {
+		c.errorf(e.X, "none says nothing of the type: write it, let x: T? = none")
+		target = Invalid
+	}
+	c.catchBlocks(e.Catches, func(cl *syntax.CatchClause) {
+		if target == Void || target == Never {
+			c.block(cl.Body)
+		} else {
+			c.fallback(cl, target)
+		}
+	})
+	if want != nil {
+		return want
+	}
+	if xt == nil {
+		return Invalid
+	}
+	return xt
+}
+
+// catchStmt checks a catch expression whose value isn't used: try
+// save() catch { failed = true }. Its clauses are blocks of statements,
+// and its type is void.
+func (c *Checker) catchStmt(e *syntax.CatchExpr) {
+	if !throwsIn(e.X) {
+		c.errorf(e.Catches[0], "nothing before this catch throws: it takes the errors of a try (try f() catch { … })")
+	}
+	c.catching(e.Catches, func() { c.expr(e.X, nil) })
+	c.catchBlocks(e.Catches, func(cl *syntax.CatchClause) { c.block(cl.Body) })
+	c.record(e, Void)
+}
+
+// catchBlocks checks catch clauses: what each takes, then its block
+// (body), in a scope with what the clause binds.
+func (c *Checker) catchBlocks(catches []*syntax.CatchClause, body func(*syntax.CatchClause)) {
+	for i, cl := range catches {
+		if i < len(catches)-1 && c.catchAll(cl) {
+			c.errorf(catches[i+1], "this catch is never reached: the one before catches everything")
+		}
+		c.openScope()
+		c.catchClause(cl)
+		body(cl)
+		c.closeScope()
+	}
+}
+
+// fallback checks a catch clause's block as a value of type t.
+func (c *Checker) fallback(cl *syntax.CatchClause, t Type) {
+	b := cl.Body
+	n := len(b.Items)
+	if n == 0 {
+		c.errorPos(b.Lbrace, "this catch has no value: end it with a %s, or leave (return, throw)", typeString(t))
+		return
+	}
+	c.openScope()
+	defer c.closeScope()
+	c.stmts(b.Items[:n-1])
+	last := b.Items[n-1]
+	if es, ok := last.(*syntax.ExprStmt); ok {
+		got := c.expr(es.X, t)
+		if got == Void && !IsInvalid(t) {
+			c.errorf(es.X, "this catch has no value (it's void): end it with a %s, or leave (return, throw)", typeString(t))
+			return
+		}
+		if !c.convert(es.X, got, t) {
+			c.errorf(es.X, "the catch's value is a %s, and the try's a %s: make them the same type%s", typeString(got), typeString(t), c.convHint(got, t))
+		}
+		return
+	}
+	c.stmt(last)
+	if !c.terminates(b.Items) {
+		c.errorf(last, "this catch has no value: end it with a %s, or leave (return, throw)", typeString(t))
+	}
+}
+
+// throwsIn reports whether x may throw where it is: a try, or a throw
+// as a value, outside the closures in it.
+func throwsIn(x syntax.Expr) bool {
+	found := false
+	syntax.Inspect(x, func(n syntax.Node) bool {
+		switch n := n.(type) {
+		case *syntax.LambdaExpr, *syntax.SpawnExpr, *syntax.Block:
+			return false
+		case *syntax.UnaryExpr:
+			if n.Op == syntax.TRY && !n.Optional {
+				found = true
+			}
+		case *syntax.JumpExpr:
+			if n.Tok == syntax.THROW {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
 }

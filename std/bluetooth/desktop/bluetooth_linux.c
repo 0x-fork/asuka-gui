@@ -35,17 +35,7 @@ static bool load_gx(void) {
 	if (!asuka_linux()) return false;
 	ok = true;
 #define S(f, name) ok = (*(void **)&gx.f = asuka_linux_sym(name)) && ok
-	S(node_info_new_for_xml, "g_dbus_node_info_new_for_xml");
-	S(node_info_lookup_interface, "g_dbus_node_info_lookup_interface");
-	S(register_object, "g_dbus_connection_register_object");
-	S(unregister_object, "g_dbus_connection_unregister_object");
-	S(emit_signal, "g_dbus_connection_emit_signal");
-	S(return_value, "g_dbus_method_invocation_return_value");
-	S(return_dbus_error, "g_dbus_method_invocation_return_dbus_error");
 	S(variant_ref, "g_variant_ref");
-	S(variant_new_uint16, "g_variant_new_uint16");
-	S(variant_new_int16, "g_variant_new_int16");
-	S(variant_new_byte, "g_variant_new_byte");
 #undef S
 	return ok;
 }

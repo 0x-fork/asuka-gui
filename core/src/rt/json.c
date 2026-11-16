@@ -306,6 +306,7 @@ check:
 		if (fd[0] == 's') o->f[i].p = ak_str_empty();
 		else if (fd[0] == '[') o->f[i].p = ak_arr_new(desc_kind(fd + 1), NULL, 0);
 		else if (fd[0] == '{') o->f[i].p = ak_map_new(AK_K_REF, true, desc_kind(fd + 1), NULL);
+		else if (fd[0] == '<') o->f[i].p = ak_set_new(desc_kind(fd + 1), fd[1] == 's');
 		else {
 			fail(ps, "a missing field %s", s->names[i]);
 			goto done;
@@ -418,6 +419,33 @@ static ak_val value(parser *ps, const char *d) {
 			return (ak_val){0};
 		}
 		return (ak_val){.p = a};
+	}
+	case '<': {
+		// A set: an array of its elements (one written twice is one).
+		const char *ed = d + 1;
+		ak_kind ek = desc_kind(ed);
+		if (!lit(ps, "[")) {
+			fail(ps, "expected an array%s", "");
+			return (ak_val){0};
+		}
+		ak_map *s = ak_set_new(ek, *ed == 's');
+		ws(ps);
+		if (lit(ps, "]")) return (ak_val){.p = s};
+		for (;;) {
+			ak_val v = value(ps, ed);
+			if (ps->failed) {
+				ak_release(s);
+				return (ak_val){0};
+			}
+			ak_set_insert(&s, v);
+			ws(ps);
+			if (lit(ps, ",")) continue;
+			if (lit(ps, "]")) break;
+			fail(ps, "expected ',' or ']'%s", "");
+			ak_release(s);
+			return (ak_val){0};
+		}
+		return (ak_val){.p = s};
 	}
 	case '{': {
 		const char *vd = d + 1;
@@ -695,6 +723,21 @@ static void enc(ak_strb *b, ak_val v, const char *d, const ak_json_types *t, int
 			enc(b, a->data[i], d + 1, t, indent, depth + 1);
 		}
 		if (a && a->len) nl(b, indent, depth);
+		ak_strb_cstr(b, "]", 1);
+		return;
+	}
+	case '<': {
+		ak_map *s = v.p;
+		ak_strb_cstr(b, "[", 1);
+		bool first = true;
+		for (uint32_t i = 0; s && i < s->len; i++) {
+			if (s->dead[i]) continue;
+			if (!first) ak_strb_cstr(b, ",", 1);
+			first = false;
+			nl(b, indent, depth + 1);
+			enc(b, s->keys[i], d + 1, t, indent, depth + 1);
+		}
+		if (!first) nl(b, indent, depth);
 		ak_strb_cstr(b, "]", 1);
 		return;
 	}

@@ -1,7 +1,7 @@
 // asuka/vision on Windows and Linux: the image (a file an app names)
 // decoded upright, then what's asked for: its text and faces (each
-// platform's: vision_windows.c, vision_linux.c), and its codes (ZBar on
-// Linux where it's installed, else platform/desktop's readers), boxes as
+// platform's: vision_windows.c, vision_linux.c), and its codes
+// (platform/desktop's reader, the same on both), boxes as
 // fractions of the image from its top left. Its work is a thread of its
 // own.
 #include "asuka_barcode.h"
@@ -9,6 +9,18 @@
 
 #include <stdlib.h>
 #include <string.h>
+
+uint8_t *vision_gray(const uint8_t *px, int w, int h, bool bgr, bool premultiplied) {
+	uint8_t *g = malloc((size_t)(w > 0 ? w : 1) * (h > 0 ? h : 1));
+	for (size_t i = 0; i < (size_t)w * h; i++) {
+		const uint8_t *p = px + 4 * i;
+		unsigned r = bgr ? p[2] : p[0], gg = p[1], b = bgr ? p[0] : p[2], a = p[3];
+		unsigned l = (299 * r + 587 * gg + 114 * b + 500) / 1000;
+		unsigned v = premultiplied ? l + 255 - a : (l * a + 255 * (255 - a)) / 255;
+		g[i] = (uint8_t)(v > 255 ? 255 : v);
+	}
+	return g;
+}
 
 vision_Box vision_box(double x0, double y0, double x1, double y1, int w, int h) {
 	return (vision_Box){x0 / w, y0 / h, (x1 - x0) / w, (y1 - y0) / h};
@@ -75,14 +87,13 @@ static void run(void *p) {
 	if (ok && j->text) ok = vision_text(&img, j->languages, &r.lines, &err);
 	if (ok && j->faces) ok = vision_faces(&img, &r.faces, &err);
 	if (ok && j->codes) {
-		asuka_barcode *codes;
-		long n = asuka_barcode_zbar(img.gray, img.w, img.h, &codes);
-		if (n < 0) n = (long)asuka_barcode_decode(img.gray, img.w, img.h, img.w, ASUKA_BARCODE_ALL, &codes);
-		r.codes.data = calloc(n > 0 ? (size_t)n : 1, sizeof *r.codes.data);
-		for (long i = 0; i < n; i++)
-			r.codes.data[r.codes.len++] = (vision_Code){asuka_strdup(codes[i].kind), asuka_strdup(codes[i].text),
+		asuka_barcode *codes = NULL;
+		size_t n = asuka_barcode_decode(img.gray, img.w, img.h, img.w, ASUKA_BARCODE_ALL, &codes);
+		r.codes.data = calloc(n ? n : 1, sizeof *r.codes.data);
+		for (size_t i = 0; i < n; i++)
+			r.codes.data[r.codes.len++] = (vision_Code){asuka_strdup(asuka_barcode_name(codes[i].kind)), asuka_strdup(codes[i].text),
 			                                            vision_box(codes[i].x0, codes[i].y0, codes[i].x1, codes[i].y1, img.w, img.h)};
-		asuka_barcodes_free(codes, n > 0 ? (size_t)n : 0);
+		asuka_barcode_free(codes, n);
 	}
 	vision_image_free(&img);
 	if (ok) {

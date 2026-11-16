@@ -56,6 +56,20 @@ func (fc *fileCtx) namesAt(path []syntax.Node, pos syntax.Pos) []scoped {
 		r := n.Range()
 		return r.Start <= pos && pos <= r.End
 	}
+	// condNames adds what a condition's lets bind: all of them in its
+	// body, and in a chain, those of the clauses before pos.
+	condNames := func(cond syntax.Expr, inBody bool) {
+		clauses := []syntax.Expr{cond}
+		if l, ok := cond.(*syntax.CondList); ok {
+			clauses = l.List
+		}
+		for i := len(clauses) - 1; i >= 0; i-- {
+			lc, ok := clauses[i].(*syntax.LetCond)
+			if ok && (inBody || lc.End < pos) {
+				addPattern(lc.Pattern)
+			}
+		}
+	}
 	// Innermost first, so a local hides an outer name.
 	for i := len(path) - 1; i >= 0; i-- {
 		switch n := path[i].(type) {
@@ -95,17 +109,11 @@ func (fc *fileCtx) namesAt(path []syntax.Node, pos syntax.Pos) []scoped {
 				addPattern(n.Pattern)
 			}
 		case *syntax.IfStmt:
-			if lc, ok := n.Cond.(*syntax.LetCond); ok && within(n.Then) {
-				addPattern(lc.Pattern)
-			}
+			condNames(n.Cond, within(n.Then))
 		case *syntax.IfExpr:
-			if lc, ok := n.Cond.(*syntax.LetCond); ok && within(n.Then) {
-				addPattern(lc.Pattern)
-			}
+			condNames(n.Cond, within(n.Then))
 		case *syntax.WhileStmt:
-			if lc, ok := n.Cond.(*syntax.LetCond); ok && within(n.Body) {
-				addPattern(lc.Pattern)
-			}
+			condNames(n.Cond, within(n.Body))
 		case *syntax.CatchClause:
 			if within(n.Body) {
 				addPattern(n.Pattern)
