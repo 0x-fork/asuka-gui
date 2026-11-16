@@ -20,7 +20,6 @@
 
 #include <stdarg.h>
 #include <wincodec.h>
-#include <winhttp.h>
 
 // A decoded image: its premultiplied BGRA pixels (an animation's first
 // frame), its bitmap, and its animation; or why it isn't one.
@@ -194,69 +193,25 @@ static char *errorf(const char *fmt, ...) {
 	return wh_strdup(buf);
 }
 
-// http_get fetches a URL with WinHTTP (redirects followed), into *out.
+// http_get fetches a URL (redirects followed) into *out: NULL, or why not.
 static char *http_get(const char *url, uint8_t **out, size_t *len) {
-	wchar_t *wurl = wh_wide(url, -1);
-	URL_COMPONENTS u = {sizeof u};
-	wchar_t host[256], path[4096];
-	u.lpszHostName = host, u.dwHostNameLength = WH_LEN(host);
-	u.lpszUrlPath = path, u.dwUrlPathLength = WH_LEN(path);
-	wchar_t extra[4096];
-	u.lpszExtraInfo = extra, u.dwExtraInfoLength = WH_LEN(extra);
+	asuka_response r;
+	asuka_error e = {0};
+	if (!asuka_fetch("GET", url, NULL, 0, NULL, 0, 0, NULL, &r, &e)) {
+		char *err = errorf("%s", e.message ? e.message : url);
+		asuka_error_free(&e);
+		return err;
+	}
 	char *err = NULL;
-	HINTERNET s = NULL, c = NULL, r = NULL;
-	if (!WinHttpCrackUrl(wurl, 0, 0, &u)) {
-		err = errorf("%s: not a URL", url);
-		goto done;
+	if (r.status != 200) {
+		err = errorf("%s: %d", url, r.status);
+		asuka_response_free(&r);
+		return err;
 	}
-	if (u.dwUrlPathLength + u.dwExtraInfoLength < WH_LEN(path)) wcscat(path, extra);
-	s = WinHttpOpen(L"Asuka", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-	if (s) c = WinHttpConnect(s, host, u.nPort, 0);
-	if (c)
-		r = WinHttpOpenRequest(c, L"GET", path, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-			u.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
-	if (!r || !WinHttpSendRequest(r, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) || !WinHttpReceiveResponse(r, NULL)) {
-		err = errorf("%s: %lu", url, GetLastError());
-		goto done;
-	}
-	DWORD status = 0, size = sizeof status;
-	WinHttpQueryHeaders(r, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX);
-	if (status != 200) {
-		wchar_t text[128] = L"";
-		DWORD tl = sizeof text;
-		WinHttpQueryHeaders(r, WINHTTP_QUERY_STATUS_TEXT, WINHTTP_HEADER_NAME_BY_INDEX, text, &tl, WINHTTP_NO_HEADER_INDEX);
-		err = errorf("%s: %lu %ls", url, status, text);
-		goto done;
-	}
-	size_t cap = 64 * 1024, n = 0;
-	uint8_t *b = wh_alloc(cap);
-	for (;;) {
-		DWORD avail = 0, got = 0;
-		if (!WinHttpQueryDataAvailable(r, &avail)) {
-			free(b);
-			err = errorf("%s: %lu", url, GetLastError());
-			goto done;
-		}
-		if (!avail) break;
-		if (n + avail > cap) {
-			while (n + avail > cap) cap *= 2;
-			b = wh_realloc(b, cap);
-		}
-		if (!WinHttpReadData(r, b + n, avail, &got)) {
-			free(b);
-			err = errorf("%s: %lu", url, GetLastError());
-			goto done;
-		}
-		if (!got) break;
-		n += got;
-	}
-	*out = b, *len = n;
-done:
-	if (r) WinHttpCloseHandle(r);
-	if (c) WinHttpCloseHandle(c);
-	if (s) WinHttpCloseHandle(s);
-	free(wurl);
-	return err;
+	*out = r.body.data, *len = r.body.len;
+	r.body.data = NULL;
+	asuka_response_free(&r);
+	return NULL;
 }
 
 static bool absolute(const char *p) {

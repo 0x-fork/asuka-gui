@@ -31,8 +31,10 @@ const googleNetworks = { visa: "VISA", mastercard: "MASTERCARD", amex: "AMEX", d
   maestro: "MAESTRO", electron: "ELECTRON", elo: "ELO" };
 const appleFields = { name: "name", email: "email", phone: "phone", address: "postalAddress", phoneticName: "phoneticName" };
 
-const defaultNetworks = [Network.visa, Network.mastercard, Network.amex, Network.discover];
-const networksOf = (r) => (r.networks.length ? r.networks : defaultNetworks).map((n) => name(Network, n));
+// Made at first use, not as the module loads: the generated module imports
+// this one first, so its enums aren't made yet then.
+const defaultNetworks = () => [Network.visa, Network.mastercard, Network.amex, Network.discover];
+const networksOf = (r) => (r.networks.length ? r.networks : defaultNetworks()).map((n) => name(Network, n));
 
 function hasApplePay() {
   try {

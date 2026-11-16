@@ -1,3 +1,6 @@
 name = "asuka/markdown"
 version = "0.1.0"
 description = "Markdown shown as the platform's own styled, selectable text"
+
+[windows]
+libraries = ["comctl32"]

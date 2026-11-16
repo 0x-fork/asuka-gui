@@ -240,7 +240,8 @@ const ak_el_class ak_class_list = {.name = "List", .kind = AK_KIND_LIST, .flags 
 
 static ak_val key_of(list_t *st, ak_val item, int64_t i) {
 	if (!st->key) return (ak_val){.i = i};
-	return ak_call(st->key, &item, 1);
+	ak_val args[2] = {item, {.i = i}};  // the key's function takes (item, index)
+	return ak_call(st->key, args, 2);
 }
 
 static lid *find_id(lid *t, uint32_t cap, ak_val k, uint32_t hash, ak_kind kind) {

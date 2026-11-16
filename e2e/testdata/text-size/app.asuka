@@ -1,0 +1,51 @@
+// Text size is an e2e's app (e2e/textsize_test.go): two tabs, each a
+// stack whose screen has text in the fonts apps use (a text style, a
+// size, a weight), a pill and a button, while the system's text size
+// changes.
+
+app {
+  Tabs {
+    Tab("One") {
+      icon: "house"
+      Stack { Page("ready") }
+    }
+    Tab("Two") {
+      icon: "person"
+      Stack { Page("second") }
+    }
+  }
+}
+
+/// A tab's screen: its first text is first.
+component Page(first: string) {
+  let body = Font(style: .body, size: 16)
+
+  Screen {
+    title: "Text size"
+    Scroll {
+      grow: 1
+      Column {
+        padding: 16
+        gap: 12
+
+        Text(first)
+        Text("Title") { font: .title2.bold() }
+        Text("A paragraph long enough to wrap onto a few lines, so a larger text size needs more of them.") { font: body }
+        View {
+          padding: [3, 10]
+          radius: 999
+          background: .secondaryBackground
+          alignSelf: .start
+          Text("Pill") { font: .caption.semibold() }
+        }
+        Button("Go") { font: body.bold() }
+        Text("Below") { font: .footnote }
+      }
+    }
+  }
+}
+
+test "a tab's screen" {
+  let app = mount(Stack { Page("ready") })
+  app.expect("ready")
+}

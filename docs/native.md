@@ -608,10 +608,14 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   package's C may use of the C hosts: posting to the main thread, the
   window a view is in, the app's name, ID, version and directories, its
   assets, a color resolved for the appearance shown, HTTP
-  (`asuka_fetch`) and a file an app names (`asuka_desktop_local_file`).
+  (`asuka_fetch`; `asuka_fetch_stream` for a response a piece at a
+  time, a download into a file; `asuka_abort` to stop one from any
+  thread) and a file an app names (`asuka_desktop_local_file`).
   `asuka_windows.h` has COM and WinRT's helpers (UTF-16, a vtable's
   slot, HSTRINGs, activation factories, delegates, waiting for an async
-  operation, WIC's images, the system window's broadcasts);
+  operation, WIC's images, the system window's broadcasts), the same
+  ones the Windows host uses; `asuka_barcode.h` reads QR codes and
+  barcodes from an image's gray levels, on every desktop;
   `asuka_linux.h` declares the GLib, GIO, GTK and libadwaita functions
   packages use, resolved at run time as the Linux host's are (called as
   `G(g_variant_new)(…)`), so nothing needs GTK's headers to build.
@@ -624,6 +628,21 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   [linux]
   libraries = []
   ```
+- **A library of its own**: a C library the package builds with (a
+  parser, a decoder) goes in `desktop/third_party/<name>/`, unchanged,
+  with its license and the version it is; a file of the package's
+  includes its sources (`#include "third_party/<name>/<name>.c"`), so it's
+  compiled with the package's C, and a change to it rebuilds the app.
+- **Tests**: a `desktop/*_test.c` is a program of its own (its `main`),
+  built with the package's C for both platforms (not the generated glue)
+  and run on any system by platform/desktop's tests, for what the C
+  works out without a platform: parsing, decoding, encoding. A
+  `desktop/*_linux_test.c` tests a view on Linux, with GTK, and a
+  `desktop/*_windows_test.c` on Windows (platform/windows' TestStdViews,
+  in the Windows VM from another system): built with the glue, it
+  includes the view's C, makes the view and drives it as the host would
+  (std/markdown's give it a reply streamed in and count what it
+  replaces).
 
 On macOS a package's Swift runs (its `Package.swift`); its C doesn't.
 

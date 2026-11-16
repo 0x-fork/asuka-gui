@@ -368,20 +368,21 @@ static void *toasts(char **err) {
 		return NULL;
 	}
 	start_activator();
-	void *st = wh_factory(L"Windows.UI.Notifications.ToastNotificationManager", &IID_ToastManagerStatics);
+	void *st;
+	asuka_winrt_factory("Windows.UI.Notifications.ToastNotificationManager", &IID_ToastManagerStatics, &st);
 	if (!st) {
 		*err = wh_strdup("asuka/notify: no ToastNotificationManager");
 		free(aumid);
 		return NULL;
 	}
-	wh_hs h = wh_hstrw(aumid);
+	HSTRING h = asuka_hstring_w(aumid);
 	free(aumid);
 	void *n = NULL;
-	typedef HRESULT(STDMETHODCALLTYPE * make_fn)(void *, wh_hs, void **);
-	HRESULT hr = WH_VT(st, 7, make_fn)(st, h, &n);  // CreateToastNotifierWithId
-	wh_hstr_free(h);
+	typedef HRESULT(STDMETHODCALLTYPE * make_fn)(void *, HSTRING, void **);
+	HRESULT hr = ASUKA_SLOT(st, 7, make_fn)(st, h, &n);  // CreateToastNotifierWithId
+	asuka_hstring_free(h);
 	if (FAILED(hr) || !n) {
-		wh_release_com(st);
+		asuka_com_release(st);
 		*err = wh_alloc(48);
 		sprintf(*err, "asuka/notify: toasts: %#lx", (unsigned long)hr);
 		return NULL;
@@ -396,7 +397,7 @@ static void *toasts(char **err) {
 static bool enabled(void *n) {
 	int s = 0;
 	typedef HRESULT(STDMETHODCALLTYPE * setting_fn)(void *, int *);
-	HRESULT hr = WH_VT(n, 8, setting_fn)(n, &s);  // get_Setting
+	HRESULT hr = ASUKA_SLOT(n, 8, setting_fn)(n, &s);  // get_Setting
 	return (uint32_t)hr == 0x80070490 || (SUCCEEDED(hr) && s == 0);  // ERROR_NOT_FOUND
 }
 
@@ -406,77 +407,79 @@ static bool enabled(void *n) {
 static HRESULT show(void *n, const char *xml, const char *id, int64_t at, bool quiet) {
 	void *doc = wh_xml_document(xml);
 	if (!doc) return E_INVALIDARG;
-	wh_hs tag = wh_hstr(id), group = wh_hstr(TOAST_GROUP);
+	HSTRING tag = asuka_hstring(id), group = asuka_hstring(TOAST_GROUP);
 	HRESULT hr;
 	if (at) {
-		void *f = wh_factory(L"Windows.UI.Notifications.ScheduledToastNotification", &IID_ScheduledToastFactory);
+		void *f;
+		asuka_winrt_factory("Windows.UI.Notifications.ScheduledToastNotification", &IID_ScheduledToastFactory, &f);
 		void *st = NULL;
 		typedef HRESULT(STDMETHODCALLTYPE * make_fn)(void *, void *, int64_t, void **);
 		// A DateTime: 100 ns since 1601.
-		hr = f ? WH_VT(f, 6, make_fn)(f, doc, (at + 11644473600000LL) * 10000, &st) : E_FAIL;
-		wh_release_com(f);
+		hr = f ? ASUKA_SLOT(f, 6, make_fn)(f, doc, (at + 11644473600000LL) * 10000, &st) : E_FAIL;
+		asuka_com_release(f);
 		if (SUCCEEDED(hr) && st) {
-			WH_VT(st, 10, put_fn)(st, tag);  // put_Id
-			void *s2 = wh_qi(st, &IID_ScheduledToast2);
+			ASUKA_SLOT(st, 10, put_fn)(st, tag);  // put_Id
+			void *s2 = asuka_com_query(st, &IID_ScheduledToast2);
 			if (s2) {
-				WH_VT(s2, 6, put_fn)(s2, tag);    // put_Tag
-				WH_VT(s2, 8, put_fn)(s2, group);  // put_Group
-				if (quiet) WH_VT(s2, 10, put_bool_fn)(s2, 1);  // put_SuppressPopup
-				wh_release_com(s2);
+				ASUKA_SLOT(s2, 6, put_fn)(s2, tag);    // put_Tag
+				ASUKA_SLOT(s2, 8, put_fn)(s2, group);  // put_Group
+				if (quiet) ASUKA_SLOT(s2, 10, put_bool_fn)(s2, 1);  // put_SuppressPopup
+				asuka_com_release(s2);
 			}
-			hr = WH_VT(n, 9, put_fn)(n, st);  // AddToSchedule
+			hr = ASUKA_SLOT(n, 9, put_fn)(n, st);  // AddToSchedule
 		}
-		wh_release_com(st);
+		asuka_com_release(st);
 	} else {
-		void *f = wh_factory(L"Windows.UI.Notifications.ToastNotification", &IID_ToastFactory);
+		void *f;
+		asuka_winrt_factory("Windows.UI.Notifications.ToastNotification", &IID_ToastFactory, &f);
 		void *t = NULL;
 		typedef HRESULT(STDMETHODCALLTYPE * make_fn)(void *, void *, void **);
-		hr = f ? WH_VT(f, 6, make_fn)(f, doc, &t) : E_FAIL;
-		wh_release_com(f);
+		hr = f ? ASUKA_SLOT(f, 6, make_fn)(f, doc, &t) : E_FAIL;
+		asuka_com_release(f);
 		if (SUCCEEDED(hr) && t) {
-			void *t2 = wh_qi(t, &IID_ToastNotification2);
+			void *t2 = asuka_com_query(t, &IID_ToastNotification2);
 			if (t2) {
-				WH_VT(t2, 6, put_fn)(t2, tag);
-				WH_VT(t2, 8, put_fn)(t2, group);
-				if (quiet) WH_VT(t2, 10, put_bool_fn)(t2, 1);
-				wh_release_com(t2);
+				ASUKA_SLOT(t2, 6, put_fn)(t2, tag);
+				ASUKA_SLOT(t2, 8, put_fn)(t2, group);
+				if (quiet) ASUKA_SLOT(t2, 10, put_bool_fn)(t2, 1);
+				asuka_com_release(t2);
 			}
-			hr = WH_VT(n, 6, put_fn)(n, t);  // Show
+			hr = ASUKA_SLOT(n, 6, put_fn)(n, t);  // Show
 		}
-		wh_release_com(t);
+		asuka_com_release(t);
 	}
-	wh_hstr_free(tag);
-	wh_hstr_free(group);
-	wh_release_com(doc);
+	asuka_hstring_free(tag);
+	asuka_hstring_free(group);
+	asuka_com_release(doc);
 	return hr;
 }
 
 // cancel takes a scheduled toast off the schedule.
 static void cancel(void *n, const char *id) {
 	void *list = NULL;
-	if (FAILED(WH_VT(n, 11, get_fn)(n, &list)) || !list) return;  // GetScheduledToastNotifications
+	if (FAILED(ASUKA_SLOT(n, 11, get_fn)(n, &list)) || !list) return;  // GetScheduledToastNotifications
 	UINT32 count = 0;
-	WH_VT(list, 7, get_u32_fn)(list, &count);
+	ASUKA_SLOT(list, 7, get_u32_fn)(list, &count);
 	for (UINT32 i = 0; i < count; i++) {
 		void *st = NULL;
-		if (FAILED(WH_VT(list, 6, get_at_fn)(list, i, &st)) || !st) continue;
-		wh_hs h = NULL;
-		WH_VT(st, 11, get_fn)(st, (void **)&h);  // get_Id
-		char *s = wh_hstr_utf8(h);
-		if (!strcmp(s, id)) WH_VT(n, 10, put_fn)(n, st);  // RemoveFromSchedule
+		if (FAILED(ASUKA_SLOT(list, 6, get_at_fn)(list, i, &st)) || !st) continue;
+		HSTRING h = NULL;
+		ASUKA_SLOT(st, 11, get_fn)(st, (void **)&h);  // get_Id
+		char *s = asuka_hstring_utf8(h);
+		if (!strcmp(s, id)) ASUKA_SLOT(n, 10, put_fn)(n, st);  // RemoveFromSchedule
 		free(s);
-		wh_hstr_free(h);
-		wh_release_com(st);
+		asuka_hstring_free(h);
+		asuka_com_release(st);
 	}
-	wh_release_com(list);
+	asuka_com_release(list);
 }
 
 static void *history(void) {
-	void *s2 = wh_qi(nt.statics, &IID_ToastManagerStatics2);
+	void *s2 = asuka_com_query(nt.statics, &IID_ToastManagerStatics2);
 	if (!s2) return NULL;
 	void *h = NULL;
-	WH_VT(s2, 6, get_fn)(s2, &h);  // get_History
-	wh_release_com(s2);
+	ASUKA_SLOT(s2, 6, get_fn)(s2, &h);  // get_History
+	asuka_com_release(s2);
 	return h;
 }
 
@@ -484,11 +487,11 @@ static void *history(void) {
 static void remove_toast(const char *id) {
 	void *h = history();
 	if (!h) return;
-	wh_hs tag = wh_hstr(id), group = wh_hstr(TOAST_GROUP), app = wh_hstr(wh_app_user_model_id());
-	typedef HRESULT(STDMETHODCALLTYPE * remove_fn)(void *, wh_hs, wh_hs, wh_hs);
-	WH_VT(h, 8, remove_fn)(h, tag, group, app);  // RemoveGroupedTagWithId
-	wh_hstr_free(tag), wh_hstr_free(group), wh_hstr_free(app);
-	wh_release_com(h);
+	HSTRING tag = asuka_hstring(id), group = asuka_hstring(TOAST_GROUP), app = asuka_hstring(wh_app_user_model_id());
+	typedef HRESULT(STDMETHODCALLTYPE * remove_fn)(void *, HSTRING, HSTRING, HSTRING);
+	ASUKA_SLOT(h, 8, remove_fn)(h, tag, group, app);  // RemoveGroupedTagWithId
+	asuka_hstring_free(tag), asuka_hstring_free(group), asuka_hstring_free(app);
+	asuka_com_release(h);
 }
 
 // ---- The notifications' JSON ----
@@ -1084,47 +1087,47 @@ static int newest_first(const void *a, const void *b) {
 static bool showing(shown **out, uint32_t *count) {
 	*out = NULL, *count = 0;
 	void *h = history();
-	void *h2 = h ? wh_qi(h, &IID_ToastHistory2) : NULL;
-	wh_release_com(h);
+	void *h2 = h ? asuka_com_query(h, &IID_ToastHistory2) : NULL;
+	asuka_com_release(h);
 	if (!h2) return false;
-	wh_hs app = wh_hstr(wh_app_user_model_id());
+	HSTRING app = asuka_hstring(wh_app_user_model_id());
 	void *list = NULL;
-	typedef HRESULT(STDMETHODCALLTYPE * hist_fn)(void *, wh_hs, void **);
-	HRESULT hr = WH_VT(h2, 7, hist_fn)(h2, app, &list);  // GetHistoryWithId
-	wh_hstr_free(app);
-	wh_release_com(h2);
+	typedef HRESULT(STDMETHODCALLTYPE * hist_fn)(void *, HSTRING, void **);
+	HRESULT hr = ASUKA_SLOT(h2, 7, hist_fn)(h2, app, &list);  // GetHistoryWithId
+	asuka_hstring_free(app);
+	asuka_com_release(h2);
 	if (FAILED(hr) || !list) return false;
 	UINT32 n = 0;
-	WH_VT(list, 7, get_u32_fn)(list, &n);
+	ASUKA_SLOT(list, 7, get_u32_fn)(list, &n);
 	*out = wh_alloc((n ? n : 1) * sizeof **out);
 	for (UINT32 i = 0; i < n; i++) {
 		void *tn = NULL;
-		if (FAILED(WH_VT(list, 6, get_at_fn)(list, i, &tn)) || !tn) continue;
+		if (FAILED(ASUKA_SLOT(list, 6, get_at_fn)(list, i, &tn)) || !tn) continue;
 		shown s = {0};
-		void *t2 = wh_qi(tn, &IID_ToastNotification2);
+		void *t2 = asuka_com_query(tn, &IID_ToastNotification2);
 		if (t2) {
-			wh_hs tag = NULL;
-			WH_VT(t2, 7, get_fn)(t2, (void **)&tag);  // get_Tag
-			s.tag = wh_hstr_utf8(tag);
-			wh_hstr_free(tag);
-			wh_release_com(t2);
+			HSTRING tag = NULL;
+			ASUKA_SLOT(t2, 7, get_fn)(t2, (void **)&tag);  // get_Tag
+			s.tag = asuka_hstring_utf8(tag);
+			asuka_hstring_free(tag);
+			asuka_com_release(t2);
 		} else s.tag = wh_strdup("");
 		char *launch = NULL;
 		void *doc = NULL;
-		if (SUCCEEDED(WH_VT(tn, 6, get_fn)(tn, &doc)) && doc) {  // get_Content
-			void *ser = wh_qi(doc, &IID_XmlNodeSerialize);
+		if (SUCCEEDED(ASUKA_SLOT(tn, 6, get_fn)(tn, &doc)) && doc) {  // get_Content
+			void *ser = asuka_com_query(doc, &IID_XmlNodeSerialize);
 			if (ser) {
-				wh_hs x = NULL;
-				WH_VT(ser, 6, get_fn)(ser, (void **)&x);  // GetXml
-				char *xml = wh_hstr_utf8(x);
+				HSTRING x = NULL;
+				ASUKA_SLOT(ser, 6, get_fn)(ser, (void **)&x);  // GetXml
+				char *xml = asuka_hstring_utf8(x);
 				launch = launch_attr(xml);
 				free(xml);
-				wh_hstr_free(x);
-				wh_release_com(ser);
+				asuka_hstring_free(x);
+				asuka_com_release(ser);
 			}
-			wh_release_com(doc);
+			asuka_com_release(doc);
 		}
-		wh_release_com(tn);
+		asuka_com_release(tn);
 		dsk_json *args = launch ? dsk_json_parse(launch, strlen(launch)) : NULL;
 		const dsk_json *note = args && dsk_json_num(args, "asuka", 0) == 1 ? dsk_json_get(args, "n") : NULL;
 		dsk_jw w = {0};
@@ -1154,7 +1157,7 @@ static bool showing(shown **out, uint32_t *count) {
 		free(launch);
 		(*out)[(*count)++] = s;
 	}
-	wh_release_com(list);
+	asuka_com_release(list);
 	// Stable, newest first: the history is oldest first.
 	for (uint32_t i = 0; i < *count / 2; i++) {
 		shown t = (*out)[i];
@@ -1224,11 +1227,11 @@ static void m_remove_all(wh_reply *r, const uint8_t *a, size_t n) {
 	if (!with(r)) return;
 	void *h = history();
 	if (h) {
-		wh_hs app = wh_hstr(wh_app_user_model_id());
-		typedef HRESULT(STDMETHODCALLTYPE * clear_fn)(void *, wh_hs);
-		WH_VT(h, 12, clear_fn)(h, app);  // ClearWithId
-		wh_hstr_free(app);
-		wh_release_com(h);
+		HSTRING app = asuka_hstring(wh_app_user_model_id());
+		typedef HRESULT(STDMETHODCALLTYPE * clear_fn)(void *, HSTRING);
+		ASUKA_SLOT(h, 12, clear_fn)(h, app);  // ClearWithId
+		asuka_hstring_free(app);
+		asuka_com_release(h);
 	}
 	wh_reply_nil(r);
 }

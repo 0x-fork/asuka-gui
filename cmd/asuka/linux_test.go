@@ -262,10 +262,10 @@ func TestLinuxSQLiteLib(t *testing.T) {
 	}
 }
 
-// A Linux build is an install prefix: one executable in bin (the C host,
-// the core and the app compiled to C, linked together), the plugins'
-// libraries in lib/<exe>, where the core finds them, the app's settings
-// in share/<exe>; the tarball and the Flatpak have them all.
+// A Linux build is an install prefix: one executable in bin (the host,
+// the core and the app compiled to C), the plugins' libraries in
+// lib/<exe>, where the core finds them, the app's settings in
+// share/<exe>; the tarball and the Flatpak have them all.
 func TestBuildLinux(t *testing.T) {
 	needDesktopBuild(t, cbuild.Target{OS: "linux", Arch: "amd64"})
 	useCounter(t, "Count: ")
@@ -286,13 +286,19 @@ func TestBuildLinux(t *testing.T) {
 				t.Errorf("%s: %s is for %v", arch, f, e.Machine)
 			}
 			if f == "bin/sqliteapp" {
-				// The core is in it (stripped: its symbols gone), not a
-				// library beside it.
-				if _, err := os.Stat(filepath.Join(prefix, "lib", "sqliteapp", "libasuka.so")); err == nil {
-					t.Errorf("%s: a libasuka.so beside the executable", arch)
+				// The core is in the executable: no library of Asuka's
+				// beside it, GTK and the rest opened as it runs.
+				libs, _ := e.ImportedLibraries()
+				for _, l := range libs {
+					if strings.Contains(l, "asuka") {
+						t.Errorf("%s: the executable needs %s", arch, l)
+					}
 				}
 			}
 			e.Close()
+		}
+		if _, err := os.Stat(filepath.Join(prefix, "lib", "sqliteapp", "libasuka.so")); err == nil {
+			t.Errorf("%s: a libasuka.so beside the executable, which has the core", arch)
 		}
 		if b, err := os.ReadFile(filepath.Join(prefix, "share", "sqliteapp", "asuka-app.json")); err != nil || !strings.Contains(string(b), `"name": "sqliteapp"`) {
 			t.Errorf("%s: the settings: %v\n%s", arch, err, b)

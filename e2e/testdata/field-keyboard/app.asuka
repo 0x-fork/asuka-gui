@@ -1,0 +1,30 @@
+// Field keyboard is an e2e's app (e2e/fieldkeyboard_test.go): a one-line
+// field low in a scrolling page, where the keyboard covers it unless the
+// page scrolls it into sight.
+
+component FieldKeyboard {
+  state code = ""
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      padding: 16
+      gap: 14
+
+      Text("ready")
+      View { height: 560 }
+      TextField {
+        bind text: code
+        placeholder: "Traveler code"
+      }
+      Button("Search") { variant: .filled }
+    }
+  }
+}
+
+app { FieldKeyboard() }
+
+test "the field is there" {
+  let app = mount(FieldKeyboard())
+  app.expect("ready")
+}

@@ -2,8 +2,8 @@
 // each pixel of a view. They're written in Kage, Ebitengine's shading
 // language (Go's syntax), and compiled when the app compiles, for each
 // platform: Metal on iOS and macOS, AGSL on Android (13 and later), GLSL
-// for WebGL 2 on the web, HLSL for Direct3D 11 on Windows, and OpenGL
-// (or the CPU) on Linux. Nothing is compiled on the device but the
+// for WebGL 2 on the web, HLSL for Direct3D 11 on Windows, and GLSL for
+// OpenGL on Linux. Nothing is compiled on the device but the
 // platform's own program.
 //
 //   let glow = shader.Program(r"""

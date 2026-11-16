@@ -42,13 +42,23 @@ subprojects {
     plugins.withId("com.android.library") {
         extensions.configure<com.android.build.gradle.LibraryExtension> {
             compileSdk = 36
-            defaultConfig { minSdk = 33 }
+            defaultConfig {
+                minSdk = 33
+                testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+            }
             compileOptions {
                 sourceCompatibility = JavaVersion.VERSION_17
                 targetCompatibility = JavaVersion.VERSION_17
             }
+            // Its instrumented tests (src/androidTest, run on a device by
+            // connectedDebugAndroidTest) read its package's tests/ as assets.
+            sourceSets.getByName("androidTest").assets.srcDir(projectDir.resolve("../tests"))
         }
-        dependencies { add("implementation", project(":asuka")) }
+        dependencies {
+            add("implementation", project(":asuka"))
+            add("androidTestImplementation", "androidx.test:runner:1.6.2")
+            add("androidTestImplementation", "androidx.test.ext:junit:1.2.1")
+        }
     }
     plugins.withId("org.jetbrains.kotlin.android") {
         extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension> { jvmToolchain(17) }

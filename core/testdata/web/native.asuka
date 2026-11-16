@@ -1,0 +1,42 @@
+// A native package's module on the web: native.mjs implements Echo in
+// JavaScript, as a package's web/ code does. A call answers now; an async
+// one later; a callback is called during a call (and answers), and later
+// on its own, its writes showing.
+
+native interface Echo {
+  fn upper(s: string) -> string
+  async fn later(s: string) -> string
+  fn each(items: [string], f: fn(string) -> int) -> int
+  async fn ticks(n: int, tick: fn(int))
+}
+
+native interface Missing {
+  fn nothing()
+}
+
+component Main {
+  state seen = 0
+
+  task {
+    do {
+      let e = try Echo()
+      print(try e.upper("hello"))
+      print(try await e.later("after"))
+      print(try e.each(["a", "bb", "ccc"], f: s => s.count()))
+      try await e.ticks(3, tick: n => { seen += n })
+      print("ticks {seen}")
+    } catch err {
+      print("failed: {err.message}")
+    }
+    do {
+      let _ = try Missing()
+      print("missing made")
+    } catch err {
+      print("missing: {err.message}")
+    }
+    print("done")
+  }
+  Text("seen {seen}")
+}
+
+app { Main() }

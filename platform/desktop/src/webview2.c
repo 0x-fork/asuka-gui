@@ -341,4 +341,28 @@ void asuka_win_web_page_evaluate(asuka_web_page *p, const char *script, void (*d
 		asuka_desktop_post(answer, e);
 	}
 }
+
+static void devtools_called(void *ctx, void *a, void *b) {
+	evaluated *e = ctx;
+	HRESULT hr = (HRESULT)(INT_PTR)a;
+	if (FAILED(hr) || !b) asuka_win_fail(&e->err, FAILED(hr) ? hr : E_FAIL, "WebView2: a DevTools call");
+	else e->json = asuka_narrow(b, -1);
+	asuka_desktop_post(answer, e);
+}
+
+void asuka_win_web_page_devtools(asuka_web_page *p, const char *method, const char *params,
+                                 void (*done)(void *ctx, char *json, asuka_error *err), void *ctx) {
+	evaluated *e = calloc(1, sizeof *e);
+	e->done = done;
+	e->ctx = ctx;
+	wchar_t *wm = asuka_wide(method), *wp = asuka_wide(params && *params ? params : "{}");
+	void *h = asuka_win_handler(devtools_called, e, NULL);
+	HRESULT hr = ASUKA_SLOT(p->view, wv_call_devtools, HRESULT(STDMETHODCALLTYPE *)(void *, const wchar_t *, const wchar_t *, void *))(p->view, wm, wp, h);
+	asuka_com_release(h);
+	free(wm), free(wp);
+	if (FAILED(hr)) {
+		asuka_win_fail(&e->err, hr, "WebView2: a DevTools call");
+		asuka_desktop_post(answer, e);
+	}
+}
 #endif

@@ -32,6 +32,12 @@ export async function startCore(host, options = {}) {
     }
   }
   const memory = () => instance.exports.memory;
+  // A native call's answer, until the core copies it (native_answer).
+  let nativeAnswer = null;
+  const answerLength = (b) => {
+    nativeAnswer = b instanceof Uint8Array ? b : new Uint8Array(0);
+    return nativeAnswer.length;
+  };
   const timers = new Map();
   const log = options.log || ((fd, line) => (fd === 2 ? console.error : console.log)(line));
   const imports = {
@@ -52,6 +58,17 @@ export async function startCore(host, options = {}) {
       // spawn's jobs (core/src/abi/web.c): its bytes copied out, for a worker.
       spawn: (id, p, n) => pool.run(id, new Uint8Array(memory().buffer, p, n).slice()),
       spawn_cancel: (id) => pool?.cancel(id),
+      // Typed native modules (native.js, through the host): an answer's
+      // length, then its bytes copied where the core wants them.
+      native_new: (p, n, iface) => answerLength(host.nativeNew(new TextDecoder().decode(new Uint8Array(memory().buffer, p, n)), iface)),
+      native_call: (h, method, p, n) => answerLength(host.nativeCall(Number(h), method, new Uint8Array(memory().buffer, p, n).slice())),
+      native_answer: (dst) => {
+        new Uint8Array(memory().buffer, dst, nativeAnswer.length).set(nativeAnswer);
+        nativeAnswer = null;
+      },
+      native_start: (h, method, p, n, call) => host.nativeStart(Number(h), method, new Uint8Array(memory().buffer, p, n).slice(), Number(call)),
+      native_cancel: (call) => host.nativeCancel(Number(call)),
+      native_release: (h) => host.nativeRelease(Number(h)),
       // asuka/sqlite's calls (core/src/sqlite/sqlite.c): to the page's
       // SQLite worker, answered into the core once it isn't running.
       // asuka/crash's record: whether a run's page is open (crash.js's marks).
@@ -104,8 +121,22 @@ export async function startCore(host, options = {}) {
     listBind: (id, index, cell) => e.asuka_list_bind(id, BigInt(index), cell),
     listUnbind: (id, cell) => e.asuka_list_unbind(id, cell),
     runPosted: () => e.asuka_run_posted(),
-    nativeDone: (call, bytes) => withBytes(bytes, (p, n) => e.asuka_native_done?.(BigInt(call), p, n)),
-    nativeInvoke: () => null,
+    nativeDone: (call, bytes) => withBytes(bytes, (p, n) => e.asuka_native_done(BigInt(call), p, n)),
+    // A native package's call of an Asuka function (a callback): its
+    // answer's bytes (empty for none).
+    nativeInvoke: (id, bytes) => {
+      const out = e.asuka_alloc(4);
+      try {
+        const n = withBytes(bytes, (p, k) => e.asuka_native_invoke(BigInt(id), p, k, out));
+        const q = new DataView(memory().buffer).getUint32(out, true);
+        if (!q) return new Uint8Array(0);
+        const b = new Uint8Array(memory().buffer, q, n).slice();
+        e.asuka_free(q);
+        return b;
+      } finally {
+        e.asuka_free(out);
+      }
+    },
     saveState: () => null,
   };
   host.attach(memory());

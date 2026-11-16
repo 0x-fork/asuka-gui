@@ -1,0 +1,27 @@
+// Picker long shows a picker whose chosen item is wider than the picker
+// (e2e/picker_test.go).
+
+component PickerLong {
+  state chosen = 1
+
+  SafeArea {
+    padding: 16
+    gap: 12
+
+    Text("ready")
+    Column {
+      width: 220
+      Picker(["Solo", "Couple pack with two players and twelve rounds, 1280 yen"]) {
+        bind selected: chosen
+        prompt: "Pack"
+      }
+    }
+  }
+}
+
+app { PickerLong() }
+
+test "the long item is chosen" {
+  let app = mount(PickerLong())
+  app.expect("ready")
+}

@@ -95,6 +95,7 @@ test("the core's trap ends the run: its panic's .crash kept; without one, a fata
   fs.writeFile(`${dir}/runs/300-1.crash`, enc.encode("panic: boom\n"));
   c.exception(new WebAssembly.RuntimeError("unreachable"));
   assert.equal(inbox(dir).length, 0, "the panic says it");
+  assert.equal(c.panicMessage(), "boom", "what the page shows: the panic's message");
   await fs.flush();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(c.alive(`${dir}/runs/300-1.crash`), false);
@@ -109,6 +110,7 @@ test("the core's trap ends the run: its panic's .crash kept; without one, a fata
   const [[, rec]] = inbox(dir2);
   assert.equal(rec.name, "RuntimeError");
   assert.equal(rec.fatal, true);
+  assert.equal(c2.panicMessage(), "", "no panic: the page shows the trap's own");
 });
 
 test("a stack's frames, V8's and Firefox's and Safari's", () => {

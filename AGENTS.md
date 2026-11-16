@@ -117,6 +117,7 @@ $env:ASUKA_SNAPSHOT='c.png'; $env:ASUKA_DUMP='1'; $env:ASUKA_SCRIPT='tap:Add'; .
 go run ./cmd/asuka dev --platform web examples/counter       # the web: served to the browser, reloaded on save (--lan: to a phone)
 go run ./cmd/asuka build --platform web examples/counter     # a static site, in examples/counter/dist/web
 go test -tags e2e ./e2e -run Web                  # GUI tests: the examples in headless Chrome
+go test ./host/darwin -run StdSwiftViews; go test ./cmd/asuka -run StdAndroidViews; go test -tags e2e ./e2e -run StdWebViews; go test ./platform/windows -run StdViews  # std packages' views driven on macOS and the iOS simulator, a device, Chrome, Windows (Linux: TestStdUnits); std/markdown's count what a streamed reply replaces
 go run ./cmd/asuka update keygen                  # the key pair that signs desktop apps' updates (asuka.toml's updates)
 go run ./cmd/asuka publish --platform linux examples/counter  # a desktop build and its signed update, uploaded (GitHub, S3)
 go test -tags e2e ./e2e -run Updater               # a desktop app updates itself and relaunches (macOS; Linux under xvfb-run)
@@ -133,15 +134,15 @@ go test ./platform/windows -run Updater           # likewise on Windows (a PC, o
   how a platform behaves, read its docs or an established framework's
   implementation (React Native, react-navigation, Solid, Taffy, the CSS specs) before
   inventing one.
-- Platform widgets for UI; everything else shared. What's shown is each
-  platform's own widget, but what isn't UI (parsing, formats, codecs,
-  image operations, text processing, the app's logic) is one
-  implementation every platform runs — C in the core or a std package's
-  shared C (a pinned, permissively licensed library where one fits),
-  the web through the core's wasm — so a Markdown document, an SVG or
-  an edited image comes out the same everywhere. A platform's own API is
-  for its widgets and for what only the OS has (the camera, sensors,
-  accounts, the store, notifications, ML it alone ships).
+- Platform widgets for UI. What isn't UI may use the platform's own
+  implementation too, unless the platforms' versions give materially
+  different results for the same input: then one shared implementation
+  (C in the core or a std package's, the web through the core's wasm)
+  runs everywhere. Markdown is the case: Apple's parser, Markwon and
+  marked disagree on tables, autolinks, HTML, safe links and list
+  spacing, so the core parses it (md4c) and each host only styles the
+  runs with its own text widget. Decide per feature; don't share by
+  default.
 - Swift host: UIKit only, no SwiftUI. Kotlin host: Android Views and
   Material Components, no Compose. macOS host: Swift on AppKit only
   (`platform/macos`), no SwiftUI, the core linked in; its decoder is

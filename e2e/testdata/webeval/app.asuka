@@ -1,0 +1,104 @@
+// Web Eval is an e2e's app (e2e/webeval_test.go): a WebView whose page's
+// Content Security Policy blocks eval, and what a Ref's eval answers
+// there, each on a line the test reads; and one whose page doesn't, for
+// a promise's value, awaited.
+
+/// The page: it blocks every script of its own, and eval.
+let locked = """
+  <!doctype html><meta http-equiv="Content-Security-Policy" content="script-src 'none'"><title>Locked</title><p>Locked
+  """
+
+/// A page with no policy.
+let open = "<!doctype html><title>Open</title><p>Open"
+
+/// A script, and the name of its line.
+struct Script {
+  name: string
+  src: string
+}
+
+/// The scripts, run in order, the line of each saying what it answered.
+let scripts = [
+  Script("title", "document.title"),
+  Script("eval", "eval('1')"),
+  Script("sum", "let a = 2; a * 3"),
+  Script("object", "(\{a: [1, 'x', null]})"),
+  Script("var", "var kept = 5"),
+  Script("kept", "kept"),
+  Script("throw", "throw new Error('nope')"),
+  Script("syntax", "1 +"),
+  Script("promise", "Promise.resolve(1)"),
+]
+
+/// What eval answered: the value's JSON, or "error" and the kind of
+/// error: the page refusing eval, what the script threw (nope), a syntax
+/// error, or a value the page's policy keeps eval from returning.
+async fn answer(web: Ref, script: string) -> string {
+  do {
+    return try await web.eval(script)
+  } catch e {
+    let m = e.message
+    if m.contains("unsafe-eval") {
+      return "error eval" // the page's own EvalError
+    }
+    if m.contains("nope") {
+      return "error nope"
+    }
+    if m.contains("SyntaxError") {
+      return "error syntax"
+    }
+    if m.contains("Content Security Policy") {
+      return "error policy"
+    }
+    return "error"
+  }
+}
+
+component WebEval {
+  let web = Ref()
+  let openWeb = Ref()
+  state started = false
+  state status = "loading"
+  state answers: [string] = scripts.map(s => "…")
+  state opened = "…"
+
+  Column {
+    padding: 16
+    gap: 4
+
+    WebView {
+      ref: web
+      html: locked
+      height: 80
+      on loaded(_) {
+        if started {
+          return
+        }
+        started = true
+        for (i, s) in scripts.enumerated() {
+          answers[i] = await answer(web, s.src)
+        }
+        status = "done"
+      }
+    }
+    WebView {
+      ref: openWeb
+      html: open
+      height: 40
+      on loaded(_) { opened = await answer(openWeb, "Promise.resolve(document.title + 7)") }
+    }
+    Text("open: {opened}")
+    Text("status: {status}")
+    for (i, s) in scripts.enumerated() key i {
+      Text("{s.name}: {answers[i]}")
+    }
+  }
+}
+
+app { WebEval() }
+
+test "every script's line" {
+  let app = mount(WebEval())
+  app.expect("status: loading")
+  app.expect("promise: …")
+}

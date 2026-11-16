@@ -39,6 +39,15 @@ IMPORT("timer_clear") void js_timer_clear(double id);
 IMPORT("zone_offset") double js_zone_offset(double unix_seconds);
 IMPORT("spawn") void js_spawn(double id, const uint8_t *job, uint32_t len);
 IMPORT("spawn_cancel") void js_spawn_cancel(double id);
+// Typed native modules (native packages' JavaScript, platform/web's
+// native.js): a call's answer is its length, then native_answer copies it
+// to where the core puts it.
+IMPORT("native_new") uint32_t js_native_new(const uint8_t *cls, uint32_t len, uint32_t iface);
+IMPORT("native_call") uint32_t js_native_call(uint64_t handle, uint32_t method, const uint8_t *in, uint32_t len);
+IMPORT("native_answer") void js_native_answer(uint8_t *dst);
+IMPORT("native_start") void js_native_start(uint64_t handle, uint32_t method, const uint8_t *in, uint32_t len, uint64_t call);
+IMPORT("native_cancel") void js_native_cancel(uint64_t call);
+IMPORT("native_release") void js_native_release(uint64_t handle);
 
 // io: Apply's batch address and length (u32 0, 1); Measure's node (u32
 // 2) and its constraints, then its answer (f32 3..6).
@@ -72,10 +81,41 @@ static void timer_cancel(uint64_t id) { js_timer_clear((double)id); }
 // The browser's zone, for dates (ak_zone_offset).
 static int32_t zone_offset(int64_t t) { return (int32_t)js_zone_offset((double)t); }
 
+// A native answer of n bytes: into out when it fits, else into *big
+// (native_free's).
+static size_t native_answer(uint32_t n, uint8_t *out, size_t cap, uint8_t **big) {
+	uint8_t *dst = out;
+	if (n > cap) dst = *big = ak_alloc(n);
+	js_native_answer(dst);
+	return n;
+}
+
+static size_t native_new(const uint8_t *cls, size_t len, uint32_t iface, uint8_t *out, size_t cap, uint8_t **big) {
+	return native_answer(js_native_new(cls, (uint32_t)len, iface), out, cap, big);
+}
+
+static size_t native_call(uint64_t h, uint32_t method, const uint8_t *in, size_t len, uint8_t *out, size_t cap, uint8_t **big) {
+	return native_answer(js_native_call(h, method, in, (uint32_t)len), out, cap, big);
+}
+
+static void native_start(uint64_t h, uint32_t method, const uint8_t *in, size_t len, uint64_t call) {
+	js_native_start(h, method, in, (uint32_t)len, call);
+}
+
+static void native_cancel(uint64_t call) { js_native_cancel(call); }
+static void native_release(uint64_t h) { js_native_release(h); }
+static void native_free(void *p) { ak_free(p); }
+
 static asuka_host_callbacks callbacks = {
 	.apply = apply,
 	.measure = measure,
 	.post = post,
+	.native_new = native_new,
+	.native_call = native_call,
+	.native_start = native_start,
+	.native_cancel = native_cancel,
+	.native_release = native_release,
+	.native_free = native_free,
 };
 
 EXPORT("asuka_web_start") void asuka_web_start(void) {

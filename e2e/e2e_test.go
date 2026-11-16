@@ -13,18 +13,16 @@
 //	go test -tags e2e ./e2e -run IOS      # a booted simulator, else the newest iPhone
 //	go test -tags e2e ./e2e -run Android  # a running emulator or a device
 //	go test -tags e2e ./e2e -run Web      # headless Chrome (ASUKA_CHROME: its path)
+//	go test -tags e2e ./e2e -run StdWebViews  # std packages' web views (std/*/tests/*_view_test.js)
 //	xvfb-run -a dbus-run-session go test -tags e2e ./e2e -run Linux  # GTK 4, on Linux
 //	ASUKA_DEVICE=emulator-5556 go test -tags e2e ./e2e -run Android  # one of several
 //
 // They wait for what they expect (bounded, so a broken app fails rather
 // than hangs), never for a fixed time.
 //
-// The examples are written in Asuka (app.asuka and the files beside it),
-// not Go: there's no main package to build any more. asuka dev builds an
-// example from its directory as before; these scenarios are the same, and
-// run again once asuka dev and asuka build compile Asuka packages (RFC
-// 0007's milestones M1, W1 and D1). The apps in testdata are still Go
-// until then.
+// The examples and the apps in testdata are Asuka packages (asuka.toml,
+// app.asuka and the files beside it): asuka dev builds each from its
+// directory.
 package e2e
 
 import (
