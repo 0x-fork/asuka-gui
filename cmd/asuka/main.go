@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 )
 
@@ -137,11 +138,14 @@ type devOptions struct {
 	once      bool
 	verbose   bool
 	lang, dir string
+	bin       string // a program of asuka.toml's [bin.<name>]
 }
 
 func devFlags(o *devOptions) *flagSet {
-	fs := newFlagSet("dev", "[dir]")
-	fs.about = "Runs the app, and runs it again with each change you save."
+	fs := newFlagSet("dev", "[dir] [-- args...]")
+	fs.about = "Runs the app, and runs it again with each change you save. A program (fn main, or --bin) runs\n" +
+		"on the VM with the arguments after --, again with each change."
+	fs.String(&o.bin, "bin", 0, "", "run the `program` asuka.toml's [bin.<name>] names, instead of the app")
 	platformFlag(fs, &o.platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},
 		"the `platform` to run on: ios (the simulator, or an iPhone with --device), android (a device or emulator), mac (this Mac), windows (this PC), linux (this Linux machine, or ASUKA_LINUX_RUN's), or web (the browser: the core as WebAssembly, the views the page's DOM); default on macOS, Windows and Linux: this computer")
 	fs.Int(&o.port, "port", 0, 0, "web: the dev server's `port` (default 8790, or a free one)")
@@ -158,6 +162,10 @@ func devFlags(o *devOptions) *flagSet {
 
 func cmdDev(args []string) error {
 	var o devOptions
+	var progArgs []string
+	if i := slices.Index(args, "--"); i >= 0 {
+		args, progArgs = args[:i], args[i+1:]
+	}
 	fs := devFlags(&o)
 	if err := fs.parse(args); err != nil {
 		return err
@@ -169,13 +177,16 @@ func cmdDev(args []string) error {
 	if fs.Arg(0) != "" {
 		dir = fs.Arg(0)
 	}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	if o.bin != "" || (o.platform == "" && isProgramDir(dir)) {
+		return devProgram(dir, o.bin, progArgs, stop)
+	}
 	if o.platform == "" {
 		if o.platform = thisComputer(); o.platform == "" {
 			return errors.New("pick a platform: asuka dev --platform ios|android|web <dir>")
 		}
 	}
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	switch o.platform {
 	case platformWeb:
 		return devWeb(dir, &o, stop)

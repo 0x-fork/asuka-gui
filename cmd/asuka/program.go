@@ -310,3 +310,74 @@ func bundlePrograms(app *asukaApp, t cbuild.Target, archs []string, dir, libDir 
 	}
 	return out, nil
 }
+
+// devProgram is asuka dev for a program: it runs main on the VM with
+// args, and with each change saved, stops the run (if it's still going)
+// and runs it again, as cargo watch -x run does.
+func devProgram(dir, bin string, args []string, stop chan os.Signal) error {
+	root, err := appbuild.Load(dir)
+	if err != nil {
+		return err
+	}
+	p := root
+	if bin != "" {
+		if p, err = root.Bin(bin); err != nil {
+			return err
+		}
+	}
+	roots := p.WatchRoots()
+	if p.Root != "" {
+		roots = append(roots, p.Root)
+	}
+	w := newWatcher(roots...)
+	ended := make(chan int, 1)
+	var run *appbuild.Run
+	start := func() {
+		p.Forget()
+		m, err := compileProject(p)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "asuka:", err)
+			return
+		}
+		r, err := appbuild.StartProgram(m, appbuild.ProgramOptions{Name: p.ProgramName(), Args: args, Trim: cwdOr(p.Dir), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "asuka:", err)
+			return
+		}
+		run = r
+		go func() {
+			code, err := r.Wait()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "asuka:", err)
+			}
+			ended <- code
+		}()
+	}
+	halt := func() {
+		if run == nil {
+			return
+		}
+		run.Cmd.Process.Kill()
+		<-ended
+		run = nil
+	}
+	fmt.Printf("asuka: running %s; again with each change (Ctrl-C ends it)\n", p.ProgramName())
+	start()
+	for {
+		select {
+		case <-stop:
+			halt()
+			return nil
+		case code := <-ended:
+			run = nil
+			fmt.Printf("asuka: %s exited with %d; waiting for a change\n", p.ProgramName(), code)
+		case <-w.wake:
+			if src, proj := w.changed(); !src && !proj {
+				continue
+			}
+			halt()
+			fmt.Println("asuka: changed: running again")
+			start()
+		}
+	}
+}

@@ -152,23 +152,53 @@ type ProgramOptions struct {
 // with its arguments, its standard streams the given ones, its exit code
 // returned. An error is the runner's own failure.
 func RunProgram(m *bytecode.Module, o ProgramOptions) (int, error) {
+	r, err := StartProgram(m, o)
+	if err != nil {
+		return 0, err
+	}
+	return r.Wait()
+}
+
+// A Run is a program running on the VM (StartProgram).
+type Run struct {
+	Cmd     *exec.Cmd
+	cleanup func()
+}
+
+// Wait waits for it to end: its exit code.
+func (r *Run) Wait() (int, error) {
+	defer r.cleanup()
+	err := r.Cmd.Wait()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() >= 0 {
+		return exit.ExitCode(), nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("asuka-run: %v", err)
+	}
+	return 0, nil
+}
+
+// StartProgram starts m's fn main on the VM, as RunProgram does, and
+// returns as it runs.
+func StartProgram(m *bytecode.Module, o ProgramOptions) (*Run, error) {
 	if m.Main < 0 {
-		return 0, errors.New("not a program: it has no fn main")
+		return nil, errors.New("not a program: it has no fn main")
 	}
 	work, err := os.MkdirTemp("", "asuka-run-")
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	defer os.RemoveAll(work)
 	exe, err := RunnerFor(m, work)
 	if err != nil {
-		return 0, err
+		os.RemoveAll(work)
+		return nil, err
 	}
 	p, cleanup, err := writeModule(StripTests(m))
 	if err != nil {
-		return 0, err
+		os.RemoveAll(work)
+		return nil, err
 	}
-	defer cleanup()
 	name := o.Name
 	if name == "" {
 		name = "main"
@@ -182,15 +212,12 @@ func RunProgram(m *bytecode.Module, o ProgramOptions) (int, error) {
 	cmd.Env = append(append(os.Environ(), compile.PluginEnv(m)...), o.Env...)
 	cmd.Dir = o.Dir
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = o.Stdin, o.Stdout, o.Stderr
-	err = cmd.Run()
-	var exit *exec.ExitError
-	if errors.As(err, &exit) && exit.ExitCode() >= 0 {
-		return exit.ExitCode(), nil
+	if err := cmd.Start(); err != nil {
+		cleanup()
+		os.RemoveAll(work)
+		return nil, err
 	}
-	if err != nil {
-		return 0, fmt.Errorf("asuka-run: %v", err)
-	}
-	return 0, nil
+	return &Run{Cmd: cmd, cleanup: func() { cleanup(); os.RemoveAll(work) }}, nil
 }
 
 // ProgramBuild says how ProgramExe builds a program's executable.
