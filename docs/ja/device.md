@@ -149,7 +149,7 @@ Linux のホストは、ポータルがあればポータルを通じて、ほ�
 | `asuka/library` | ユーザーのフォルダー（XDG のピクチャ、ビデオ、ミュージック、ダウンロード）の、指定したフォルダーに保存されます |
 | `shareFiles` | 共有シートはありません。ファイルはクリップボードにコピーされ、トーストが表示されます |
 | `asuka/camera`、`asuka/record` | カメラポータル（ユーザーへの確認は一度だけ。PipeWire のカメラで、`gstreamer1.0-pipewire` が必要）、なければ最初の Video4Linux カメラを、GStreamer を通じて使います。`take()`：ウィンドウの上にダイアログを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します。`camera.View`：左右反転したプレビューで、枠いっぱいに表示します。前面と背面は同じカメラです（コンピューターのカメラはユーザーのほうを向いているため）。ビデオは MPEG-4（x264 か OpenH264 の H.264 と AAC）、それができなければ WebM です。コードの読み取りには GStreamer の `zbar` エレメントが必要です。カメラがなければ `CameraError.noCamera`、拒否されたら `.notAllowed` です |
-| `asuka/scan`、`asuka/vision` | ZBar（`libzbar0`）がインストールされていれば、コードは ZBar が読み取ります（Aztec と Data Matrix は読めません）。なければ Windows と同じく Asuka 自身のリーダーが読み取ります（QR、Data Matrix、EAN、UPC、Code 128、Code 39）。テキストは Tesseract（`libtesseract5` と各言語のデータ）が読み取ります。顔を検出するものはないので、`faces` は空です。Tesseract がなければ、`vision.analyze` の結果にテキストは含まれません |
+| `asuka/scan`、`asuka/vision` | Windows と同じく、コードは Asuka 自身のリーダーが読み取ります。QR、Data Matrix、EAN、UPC、Code 128、Code 39 です（Aztec、PDF417、Code 93、Codabar、ITF は読めません）。テキストは Tesseract（`libtesseract5` と各言語のデータ）が読み取ります。顔を検出するものはないので、`faces` は空です。Tesseract がなければ、`vision.analyze` の結果にテキストは含まれません |
 | `asuka/imageedit` | GdkPixbuf のローダーでデコードし（HEIF と WebP は、それぞれのローダーがインストールされている場合）、向きを正しく直します。各操作はホストが行います。ビデオのフレームは GStreamer で取り出します |
 | `asuka/webauth` | ウィンドウの上に WebKitGTK の Web ビューを入れたダイアログを開きます（`ephemeral` では専用のセッション）。閉じるとキャンセルになります |
 | `asuka/js` | 一度も表示されない WebKitGTK の Web ビュー |
@@ -269,7 +269,7 @@ iOS と Mac では AVCaptureMovieFileOutput、Android では CameraX の `VideoC
 
 `scan` をオンにした `camera.View` は、映ったコードをライブで読み取り、一つごとに `code` で報告します（映り続けているあいだは一度だけ）。`codes` で探す種類を絞れます。指定しなければすべての種類です。種類の名前は `"qr"`、`"aztec"`、`"datamatrix"`、`"pdf417"`、`"ean13"`、`"ean8"`、`"upca"`、`"upce"`、`"code128"`、`"code39"`、`"code93"`、`"codabar"`、`"itf"` です。
 
-`scan.file(path)` は代わりに画像ファイル（撮った写真や選んだ写真）の中のコードを読み取ります。iOS と Mac では Vision、Android では ML Kit（モデルをアプリに含めるので約 2 MB 増えますが、Google Play 開発者サービスがなくても動きます）、ブラウザーでは `BarcodeDetector`（あれば）、Windows では Asuka 自身のリーダー（QR コードは quirc、Data Matrix は libdmtx）、Linux では ZBar を使います。
+`scan.file(path)` は代わりに画像ファイル（撮った写真や選んだ写真）の中のコードを読み取ります。iOS と Mac では Vision、Android では ML Kit（モデルをアプリに含めるので約 2 MB 増えますが、Google Play 開発者サービスがなくても動きます）、ブラウザーでは `BarcodeDetector`（あれば）、Windows と Linux では Asuka 自身のリーダー（アプリが頼れるリーダーがないため。QR、Data Matrix、EAN、UPC、Code 128、Code 39）を使います。
 
 ```asuka
 import asuka/camera
@@ -309,7 +309,7 @@ async fn words(photo: string) throws -> [string] {
 }
 ```
 
-iOS と Mac では Vision フレームワーク、Android では ML Kit と同梱のモデル（約 30 MB）、ブラウザーでは Shape Detection API（あれば）、Windows では Windows の OCR と顔検出に Asuka 自身のコードリーダー、Linux では Tesseract（インストールされていれば）と ZBar を使います。コードの値を読むのは `asuka/scan`、コードがどこにあるかを知るのはこのパッケージです。
+iOS と Mac では Vision フレームワーク、Android では ML Kit と同梱のモデル（約 30 MB）、ブラウザーでは Shape Detection API（あれば）、Windows では Windows の OCR と顔検出、Linux では Tesseract（インストールされていれば）を使い、Windows と Linux のコードは Asuka 自身のリーダーが読み取ります。テキストと顔は各プラットフォーム自身の認識によるもので（すべてのプラットフォームで共有できる認識器はありません）、見つかるものはプラットフォームによって異なることがあります。コードの値を読むのは `asuka/scan`、コードがどこにあるかを知るのはこのパッケージです。
 
 ## 写真ライブラリ：asuka/photos
 

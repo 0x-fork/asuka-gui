@@ -99,7 +99,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | 写真 | `PhotosPicker` | `expo-image-picker` | ✓ `device.PickPhotos` |
 | 書類 | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.PickFiles`（MIME タイプ、複数選択） |
 | カメラ | AVFoundation | `expo-camera` | ✓ `asuka/camera`：`Take`（システムのカメラ。Mac、Windows、Linux ではライブプレビュー付きのダイアログ。Windows は Media Foundation のキャプチャーエンジン、Linux はカメラポータルか GStreamer 経由の Video4Linux）、`View`（前面か背面のライブプレビュー）、`Capture`。`asuka/record` で音声付きの動画を録画 |
-| バーコード、QR コード | AVFoundation、Vision | `expo-camera` のスキャン | ✓ `asuka/scan`：`camera.View` でのライブ読み取り（`Scan: scan.Codes(...)`）と画像ファイルからの読み取り（`scan.File`）。Android では ML Kit で、インポートしたアプリにだけ含まれる。Linux では ZBar。Windows では C で書いた Asuka 独自のリーダー（QR は quirc、Data Matrix は libdmtx、ほかに EAN、UPC、Code 128、Code 39） |
+| バーコード、QR コード | AVFoundation、Vision | `expo-camera` のスキャン | ✓ `asuka/scan`：`camera.View` でのライブ読み取り（`Scan: scan.Codes(...)`）と画像ファイルからの読み取り（`scan.File`）。Android では ML Kit で、インポートしたアプリにだけ含まれる。Windows と Linux では C で書いた Asuka 独自のリーダー（QR、Data Matrix、EAN、UPC、Code 128、Code 39） |
 | 位置情報 | Core Location | `expo-location` | ✓ `asuka/location`（地名。Windows では OpenStreetMap の Nominatim） |
 | 翻訳、複数形、地域のフォーマット | String Catalogs、FormatStyle | `expo-localization`、i18next | ✓ `asuka/i18n`、カタログ（[多言語対応](i18n.md)） |
 | 右から左のレイアウト | `layoutDirection` | `I18nManager` | ✓ 言語に従う、`ui.WithDirection` |
@@ -131,7 +131,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | 年齢層 | Declared Age Range | `expo-age-range` | ✓ `asuka/agerange`（Declared Age Range、Play Age Signals） |
 | センサー | Core Motion | `expo-sensors` | ✓ `asuka/sensors`（加速度計、ジャイロスコープ、磁力計、姿勢と方位を含むデバイスのモーション、気圧計、照度、歩数計。両 OS で同じ軸と単位。Mac と Windows にはセンサーなし。Linux では iio-sensor-proxy の照度と向き） |
 | 画像の編集 | Core Graphics、ImageIO | `expo-image-manipulator` | ✓ `asuka/imageedit`（リサイズ、切り抜き、回転、反転、塗りつぶし、モザイク。HEIC を読み込んで JPEG か PNG で出力。向きを正し、元画像のメタデータは含めない。Linux では GdkPixbuf のデコーダー、Windows では WIC のデコーダー） |
-| 画像の中のテキスト、顔、コード | Vision | なし | ✓ `asuka/vision`（それぞれの位置付き）。Android では ML Kit で、インポートしたアプリにだけ含まれる。Linux では ZBar のコードと Tesseract のテキストで、顔は非対応。Windows では OCR のテキストと顔、Asuka のリーダーのコード |
+| 画像の中のテキスト、顔、コード | Vision | なし | ✓ `asuka/vision`（それぞれの位置付き）。Android では ML Kit で、インポートしたアプリにだけ含まれる。Linux では Tesseract のテキストで、顔は非対応。Windows では OCR のテキストと顔。どちらでもコードは Asuka のリーダーが読む |
 | 写真ライブラリ | PhotoKit | `expo-media-library` | ✓ `asuka/photos`：許可、一覧、サムネイル、元のファイル（Windows ではピクチャフォルダー） |
 | 動画のサムネイル | `AVAssetImageGenerator` | `expo-video-thumbnails` | ✓ `imageedit.VideoFrame` |
 | 音声合成 | `AVSpeechSynthesizer` | `expo-speech` | ✓ `asuka/speech`（キュー、音声の種類、ピッチ、速さ、単語の区切りでの一時停止） |
