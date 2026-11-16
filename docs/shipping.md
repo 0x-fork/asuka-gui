@@ -15,7 +15,7 @@ GitHub's releases or an S3 bucket (see [Updates](#updates)).
 | `ios` | `<Name>.ipa`, signed for the App Store | a Mac with Xcode | TestFlight, the App Store (`asuka publish`) |
 | `android` | `<Name>.aab`, signed with your upload key | any system with a JDK, the Android SDK and the NDK | Google Play (`asuka publish`) |
 | `mac` | `<Name>.app`, universal; or a `.pkg` (`--appstore`) | a Mac with Xcode's command line tools | a download, signed and notarized; the Mac App Store |
-| `windows` | `<Name>/`, the `.exe`, `asuka.dll` and its assets | Windows with clang, or any system with Zig | a zip, or an installer or MSIX of yours |
+| `windows` | `<Name>/`, the `.exe` and its assets | Windows with clang, or any system with Zig | a zip, or an installer or MSIX of yours |
 | `linux` | `linux/`: an install prefix, a `.tar.gz`, a Flatpak manifest | Linux with a C compiler, or any system with Zig | the `.tar.gz`, a Flatpak |
 | `web` | `web/`, a static site | any system with Zig | any web server or CDN |
 
@@ -439,9 +439,9 @@ asuka build --platform windows               # x64, which Windows on Arm runs em
 asuka build --platform windows --arch arm64  # native on Arm PCs
 ```
 
-makes a folder, `dist/<Name>`: `<Name>.exe`, the desktop host; beside it
-`asuka.dll`, the core with the app compiled in, built for the
-architecture by clang on Windows or by Zig on any other system;
+makes a folder, `dist/<Name>`: `<Name>.exe`, the app (the Windows host,
+the core and the app compiled to C, linked into one program for the
+architecture by clang on Windows or by Zig on any system); beside it
 `asuka-app.json`, its settings; the app's assets; and for an app that
 uses the sqlite plugin, SQLite's library, `asqlite.dll`, for the same
 architecture (it needs only what every Windows 10 and 11 has: the
@@ -449,8 +449,8 @@ Universal C Runtime). The `.exe` is a GUI program (no console window)
 with its resources linked in: the icon at Windows's sizes, its version
 information (`version` and `build`), and a manifest that asks for the
 common controls 6, per-monitor DPI awareness and UTF-8, for Windows 10
-and 11. An app with a `.syso` of its own in its directory
-(`rsrc_windows_amd64.syso`) has its own resources instead. Zip the
+and 11. An app with a resource object of its own in its directory (a
+COFF `.syso`, `rsrc_windows_amd64.syso`) has its own resources instead. Zip the
 folder, or package it (an installer, MSIX).
 
 Sign the `.exe`, so SmartScreen knows who it's from, with a code signing
@@ -468,7 +468,7 @@ fails, saying so; `ASUKA_WINDOWS_TIMESTAMP=none` signs without a timestamp
 (the signature then ends with the certificate). It signs with `signtool` on
 Windows (the Windows SDK's; on the `PATH`, else the newest installed),
 with `osslsigncode` elsewhere (`brew install osslsigncode`, `apt install
-osslsigncode`), and `asuka.dll` and `asqlite.dll` with it. Without `ASUKA_WINDOWS_CERT`
+osslsigncode`), and `asqlite.dll` with it. Without `ASUKA_WINDOWS_CERT`
 the `.exe` isn't signed. A certificate on a hardware token or in a cloud
 service (Azure Trusted Signing) signs through its own tool: sign the
 `.exe` (and `asqlite.dll`) in the folder with it after the build.

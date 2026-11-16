@@ -7,7 +7,7 @@
 | `ios` | `<Name>.ipa`（App Store 向けに署名済み） | Xcode のある Mac | TestFlight、App Store（`asuka publish`） |
 | `android` | `<Name>.aab`（アップロード鍵で署名済み） | JDK、Android SDK、NDK があればどのシステムでも | Google Play（`asuka publish`） |
 | `mac` | ユニバーサルの `<Name>.app`、または `.pkg`（`--appstore`） | Xcode のコマンドラインツールのある Mac | 署名・公証済みのダウンロード、Mac App Store |
-| `windows` | `<Name>/`（`.exe`、`asuka.dll` とそのアセット） | clang のある Windows、または Zig のあるどのシステムでも | zip、または独自のインストーラーや MSIX |
+| `windows` | `<Name>/`（`.exe` とそのアセット） | clang のある Windows、または Zig のあるどのシステムでも | zip、または独自のインストーラーや MSIX |
 | `linux` | `linux/`：インストールプレフィックス、`.tar.gz`、Flatpak マニフェスト | C コンパイラーのある Linux、または Zig のあるどのシステムでも | `.tar.gz`、Flatpak |
 | `web` | `web/`（静的サイト） | Zig のあるどのシステムでも | 任意の Web サーバーや CDN |
 
@@ -195,7 +195,7 @@ asuka build --platform windows               # x64。Arm 版 Windows ではエ�
 asuka build --platform windows --arch arm64  # Arm の PC でネイティブに動きます
 ```
 
-このコマンドは、`dist/<Name>` というフォルダーを作ります。`<Name>.exe` はデスクトップホストです。その隣には、アプリをコンパイルして組み込んだコア `asuka.dll`（Windows では clang、ほかのシステムでは Zig で、アーキテクチャに合わせてビルドされます）、アプリの設定 `asuka-app.json`、アプリのアセットが置かれます。sqlite プラグインを使うアプリでは、同じアーキテクチャ向けの SQLite のライブラリ `asqlite.dll` も入ります（このライブラリが必要とするのは、Windows 10 と 11 なら必ずある Universal C Runtime だけです）。`.exe` は GUI プログラム（コンソールウィンドウを開きません）で、リソースがリンクされています。Windows が使う各サイズのアイコン、バージョン情報（`version` と `build`）、そしてコモンコントロール 6、モニターごとの DPI 対応、UTF-8 を要求する、Windows 10 と 11 向けのマニフェストです。ディレクトリに独自の `.syso`（`rsrc_windows_amd64.syso`）を置いたアプリでは、代わりにそのリソースが使われます。フォルダーを zip にするか、パッケージ（インストーラー、MSIX）にして配布してください。
+このコマンドは、`dist/<Name>` というフォルダーを作ります。`<Name>.exe` がアプリそのものです。Windows ホスト、コア、C にコンパイルされたアプリが一つのプログラムにリンクされています（Windows では clang、どのシステムでも Zig で、アーキテクチャに合わせてビルドされます）。その隣には、アプリの設定 `asuka-app.json` とアプリのアセットが置かれます。sqlite プラグインを使うアプリでは、同じアーキテクチャ向けの SQLite のライブラリ `asqlite.dll` も入ります（このライブラリが必要とするのは、Windows 10 と 11 なら必ずある Universal C Runtime だけです）。`.exe` は GUI プログラム（コンソールウィンドウを開きません）で、リソースがリンクされています。Windows が使う各サイズのアイコン、バージョン情報（`version` と `build`）、そしてコモンコントロール 6、モニターごとの DPI 対応、UTF-8 を要求する、Windows 10 と 11 向けのマニフェストです。ディレクトリに独自のリソースのオブジェクトファイル（COFF の `.syso`、`rsrc_windows_amd64.syso`）を置いたアプリでは、代わりにそのリソースが使われます。フォルダーを zip にするか、パッケージ（インストーラー、MSIX）にして配布してください。
 
 SmartScreen が発行元を認識できるように、`.pfx` 形式でエクスポートしたコード署名証明書で `.exe` に署名します。
 
@@ -203,7 +203,7 @@ SmartScreen が発行元を認識できるように、`.pfx` 形式でエクス�
 ASUKA_WINDOWS_CERT=cert.pfx ASUKA_WINDOWS_CERT_PASSWORD=... asuka build --platform windows
 ```
 
-ビルドは SHA-256 で署名し、証明書の期限が切れたあとも署名が有効であり続けるよう、署名にタイムスタンプを付けます。タイムスタンプには、最初に応答した RFC 3161 サーバーを使います。候補は `ASUKA_WINDOWS_TIMESTAMP` に指定したサーバー（カンマ区切りのリスト）で、指定がなければ DigiCert、Sectigo、GlobalSign のサーバーです。どれも応答しなければ、ビルドはその旨を表示して失敗します。`ASUKA_WINDOWS_TIMESTAMP=none` にすると、タイムスタンプなしで署名します（その場合、署名は証明書の期限とともに無効になります）。署名には、Windows では `signtool`（Windows SDK のもの。`PATH` にあればそれを、なければインストール済みの最新のものを使います）、それ以外のシステムでは `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`）を使い、`asuka.dll` と `asqlite.dll` にも同じように署名します。`ASUKA_WINDOWS_CERT` がなければ、`.exe` は署名されません。ハードウェアトークンやクラウドサービス（Azure Trusted Signing）にある証明書では、それぞれのツールで署名します。ビルドのあと、フォルダー内の `.exe`（と `asqlite.dll`）にそのツールで署名してください。
+ビルドは SHA-256 で署名し、証明書の期限が切れたあとも署名が有効であり続けるよう、署名にタイムスタンプを付けます。タイムスタンプには、最初に応答した RFC 3161 サーバーを使います。候補は `ASUKA_WINDOWS_TIMESTAMP` に指定したサーバー（カンマ区切りのリスト）で、指定がなければ DigiCert、Sectigo、GlobalSign のサーバーです。どれも応答しなければ、ビルドはその旨を表示して失敗します。`ASUKA_WINDOWS_TIMESTAMP=none` にすると、タイムスタンプなしで署名します（その場合、署名は証明書の期限とともに無効になります）。署名には、Windows では `signtool`（Windows SDK のもの。`PATH` にあればそれを、なければインストール済みの最新のものを使います）、それ以外のシステムでは `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`）を使い、`asqlite.dll` にも同じように署名します。`ASUKA_WINDOWS_CERT` がなければ、`.exe` は署名されません。ハードウェアトークンやクラウドサービス（Azure Trusted Signing）にある証明書では、それぞれのツールで署名します。ビルドのあと、フォルダー内の `.exe`（と `asqlite.dll`）にそのツールで署名してください。
 
 通知を表示するアプリ（`asuka/sdk/notify`）では、初回にユーザーの「スタート」メニューにショートカットが作られます。Windows でアプリがトースト通知を出すには、これが必要です。ショートカットの AppUserModelID は asuka.toml の `id`（なければアプリの名前から作ったもの）です。
 
