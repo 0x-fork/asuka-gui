@@ -34,6 +34,9 @@ func StripTests(m *bytecode.Module) *bytecode.Module {
 	if m.App >= 0 {
 		reach(uint32(m.App))
 	}
+	if m.Main >= 0 {
+		reach(uint32(m.Main))
+	}
 	for _, s := range m.Shapes {
 		for _, f := range s.Methods {
 			reach(f)
@@ -80,6 +83,9 @@ func StripTests(m *bytecode.Module) *bytecode.Module {
 	out.Init = funcs[m.Init]
 	if m.App >= 0 {
 		out.App = int32(funcs[m.App])
+	}
+	if m.Main >= 0 {
+		out.Main = int32(funcs[m.Main])
 	}
 	out.Shapes = slices.Clone(m.Shapes)
 	for i, s := range out.Shapes {

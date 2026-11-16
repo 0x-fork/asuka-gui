@@ -93,7 +93,7 @@ func num(r int) [2]int { return [2]int{r, int(bc.KInt)} }
 // keep each other's count across a reload (the state cell is
 // Counter.count in both).
 func Counter(label string) *bc.Module {
-	m := &bc.Module{App: -1}
+	m := &bc.Module{App: -1, Main: -1}
 	in := newFn(m, "init", 0)
 	in.op("RET0")
 	m.Init = uint32(in.done(bc.KVoid, 0))

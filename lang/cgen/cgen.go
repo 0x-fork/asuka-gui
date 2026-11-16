@@ -9,7 +9,10 @@
 // call each other freely.
 //
 // The C defines asuka_app_load, which the core's ABI calls in a release
-// build instead of waiting for bytecode.
+// build instead of waiting for bytecode; for a program (a module with a
+// fn main), a C main() too, which runs it (asuka_program_main): weak, so
+// that a headless host that needs its own (platform/desktop's, the Mac's
+// Swift for packages' Swift) replaces it.
 package cgen
 
 import (
@@ -95,6 +98,22 @@ __attribute__((constructor)) static void register_app(void) {
 ak_module *asuka_app_module(void);
 ak_module *asuka_app_module(void) { return asuka_app_load(); }
 `, len(m.Funcs), readsCrashes(m))
+	if m.Main >= 0 {
+		g.p(`
+// main runs the program (docs/programs.md): its arguments the system's
+// (on Windows, read in UTF-16 by the core), its exit code main's.
+#include "asuka.h"
+int main(int argc, char **argv);
+__attribute__((weak)) int main(int argc, char **argv) {
+#if defined(_WIN32)
+	AK_UNUSED(argc), AK_UNUSED(argv);
+	return asuka_program_main(0, NULL, NULL);
+#else
+	return asuka_program_main(argc, argv, NULL);
+#endif
+}
+`)
+	}
 	return g.b.Bytes(), nil
 }
 

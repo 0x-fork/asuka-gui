@@ -128,6 +128,7 @@ func (c *Checker) Program(root *Package) *Program {
 	c.finalize()
 	c.jsonGenerics()
 	c.routeHrefs()
+	main := c.entry(root)
 	pkgs := append([]*Package{c.prelude}, c.pkgs...)
 	diags := append([]Diagnostic{}, c.diags...)
 	sort.SliceStable(diags, func(i, j int) bool {
@@ -137,7 +138,50 @@ func (c *Checker) Program(root *Package) *Program {
 		}
 		return a.Offset < b.Offset
 	})
-	return &Program{Fset: c.fset, Packages: pkgs, Prelude: c.prelude, Root: root, Info: c.info, Diags: diags, Warnings: append([]Diagnostic{}, c.warns...), Catalog: c.catalog, checker: c}
+	return &Program{Fset: c.fset, Packages: pkgs, Prelude: c.prelude, Root: root, Main: main, Info: c.info, Diags: diags, Warnings: append([]Diagnostic{}, c.warns...), Catalog: c.catalog, checker: c}
+}
+
+// entry finds the root package's fn main, which makes it a program (a
+// command-line tool, docs/programs.md): main takes no parameters (the
+// arguments are asuka/os's), returns nothing (os.exit sets the exit
+// code), and may be async and throw. A program has no app block and
+// shows no views. Only the root package's main is an entry: an imported
+// package's is a function as any other.
+func (c *Checker) entry(root *Package) *Function {
+	if root == nil {
+		return nil
+	}
+	var main *Function
+	for _, f := range root.Funcs {
+		if f.Name() == "main" && f.Recv == nil && f.Static == nil {
+			main = f
+		}
+	}
+	if main == nil {
+		return nil
+	}
+	d := main.Decl
+	if root.App != nil {
+		c.errorf(d.Name, "a package is an app or a program, not both: it has an app block and fn main (rename main to call it from the app)")
+	}
+	if d.Native.IsValid() || d.Extern.IsValid() {
+		c.errorf(d.Name, "fn main is the program's entry: it has a body")
+	}
+	if len(main.TypeParams) > 0 {
+		c.errorf(d.Name, "fn main is the program's entry: it has no type parameters")
+	}
+	if len(main.Sig.Params) > 0 {
+		c.errorf(d.Params, "fn main takes no parameters: the program's arguments are os.args() (import asuka/os)")
+	}
+	if r := main.Sig.Result; r != Void && r != Never {
+		c.errorf(d.Result, "fn main returns nothing: os.exit(code) ends the program with a code")
+	}
+	for _, t := range root.Types {
+		if root.App == nil && t.Kind == ComponentType && t.Comp != nil && !t.Comp.Store {
+			c.errorPos(t.Pos(), "a program shows no views: %s needs an app (an app block, without fn main)", t.Name())
+		}
+	}
+	return main
 }
 
 // ---------------------------------------------------------------------
@@ -647,6 +691,12 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 					return Invalid
 				}
 				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0])
+			}
+		case "never":
+			// What a function that never returns gives (os.exit): the
+			// builtin never()'s name, as a type.
+			if o, _ := c.lookup(name).(*Builtin); o != nil && o.ID == BNever && len(t.Args) == 0 {
+				return Never
 			}
 		case "Task":
 			if c.lookup(name) == nil {

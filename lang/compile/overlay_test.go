@@ -20,7 +20,7 @@ func TestOverlay(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("app/main.asuka", "import ./util\n\nfn main() -> int = util.twice(2)\n")
+	write("app/main.asuka", "import ./util\n\nfn four() -> int = util.twice(2)\n")
 	write("app/util/util.asuka", "pub fn twice(n: int) -> int = n * 2\n")
 	dir := filepath.Join(root, "app")
 
@@ -49,7 +49,7 @@ func TestOverlay(t *testing.T) {
 
 	// A file not on disk yet, in the root package.
 	ov = map[string][]byte{
-		filepath.Join(dir, "more.asuka"): []byte("fn other() -> int = main() + 1\n"),
+		filepath.Join(dir, "more.asuka"): []byte("fn other() -> int = four() + 1\n"),
 	}
 	res, err = Dir(dir, &Options{Overlay: ov})
 	if err != nil {

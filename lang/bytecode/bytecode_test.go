@@ -18,6 +18,7 @@ func TestRoundTrip(t *testing.T) {
 		Builtins: []string{"str.len"},
 		Globals:  []Kind{KRef, KInt},
 		App:      -1,
+		Main:     -1,
 		Tests:    []Test{{"t", 0}},
 	}
 	var a Asm
@@ -41,7 +42,7 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestTruncated(t *testing.T) {
-	b := (&Module{App: -1}).Encode()
+	b := (&Module{App: -1, Main: -1}).Encode()
 	if _, err := Decode(b[:len(b)-2]); err == nil {
 		t.Fatal("want an error")
 	}

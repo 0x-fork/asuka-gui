@@ -3,7 +3,7 @@
 #ifndef AK_VM_OPCODES_GEN_H
 #define AK_VM_OPCODES_GEN_H
 
-#define AK_BC_VERSION 1
+#define AK_BC_VERSION 2
 
 enum {
 	AK_OP_NOP = 0, // : does nothing

@@ -20,7 +20,7 @@ func TestGlue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := compile.Files(map[string][]byte{"sqlite.asuka": src}, &compile.Options{MainTest: true})
+	res := compile.Files(map[string][]byte{"sqlite.asuka": src}, nil)
 	if err := res.Err(); err != nil {
 		t.Fatal(err)
 	}

@@ -10,7 +10,7 @@ import (
 // Magic starts every module; Version changes with the format.
 const (
 	Magic   = "AKBC"
-	Version = 1
+	Version = 2
 )
 
 // Kind is how a value is stored (core/src/rt/rt.h's ak_kind).
@@ -105,6 +105,7 @@ type Module struct {
 	Globals  []Kind
 	Init     uint32 // runs first: module-level state, stores
 	App      int32  // the app's root view function, -1 when none
+	Main     int32  // a program's fn main, -1 when none
 	Tests    []Test
 
 	// C is the C the module's extern declarations call (RFC 0008), nil
@@ -217,6 +218,7 @@ func (m *Module) Encode() []byte {
 	w.kinds(m.Globals)
 	w.u32(m.Init)
 	w.u32(uint32(m.App))
+	w.u32(uint32(m.Main))
 	w.u32(uint32(len(m.Tests)))
 	for _, t := range m.Tests {
 		w.str(t.Name)
@@ -278,6 +280,7 @@ func Decode(b []byte) (*Module, error) {
 	m.Globals = r.kinds()
 	m.Init = r.u32()
 	m.App = int32(r.u32())
+	m.Main = int32(r.u32())
 	for n := r.u32(); n > 0 && r.err == nil; n-- {
 		m.Tests = append(m.Tests, Test{r.str(), r.u32()})
 	}

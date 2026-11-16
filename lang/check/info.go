@@ -383,8 +383,11 @@ type Program struct {
 	Packages []*Package
 	Prelude  *Package
 	Root     *Package
-	Info     *Info
-	Diags    []Diagnostic
+	// Main is the root package's fn main: the program's entry (nil for
+	// an app or a library).
+	Main  *Function
+	Info  *Info
+	Diags []Diagnostic
 	// Warnings are what's worth saying that doesn't stop the build.
 	Warnings []Diagnostic
 	// Catalog is the app's catalogs (tr), or nil.
