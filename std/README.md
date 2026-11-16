@@ -15,6 +15,17 @@ A package is one of two kinds:
   do: its `native interface`s (modules) and `native component`s (views),
   implemented by each platform in its own language. `std/network` is the
   model to follow.
+- **Plain Asuka over a host's own module**, for what a host does as the
+  platform's host (the Dock tile and the taskbar, global shortcuts, the
+  tray, start at login, recent documents, the installed apps): the hosts
+  already answer these by name (`modules["dock"]` in each host), and
+  `asuka/platform`'s `call` and `send` reach them, with the module's
+  little-endian encodings (`platform.u8`, `u32`, `f64`, `str`, the
+  `read*`s) or JSON. `std/dock`, `std/login`, `std/recent`, `std/hotkey`
+  and `std/apps` are such; a host that has no such module answers "no
+  module", which the package turns into its `unsupported` error or a
+  fallback. Events a host reports come back through a long poll (a
+  module's `next`) in a `Stream`, shared through `live()` (std/hotkey).
 
 ## A native package, as std/network does it
 
