@@ -1359,7 +1359,7 @@ system reports again of a crash already reported is left out.
 ## CLI (`cmd/asuka`)
 
 ```
-asuka new <dir>                             a project from the template
+asuka new [--lib [--native]] <dir>          an app, or a library (with a native module)
 asuka dev --platform ios|android <dir>       build, run, rebuild and restart on save
 asuka build --platform ios|android <dir>     a release build for the stores
 asuka publish --platform ios|android <dir>   the release build, uploaded: TestFlight, App Review; a Play track
@@ -1374,7 +1374,6 @@ asuka generate <dir>                        the typed functions of the app's cat
 asuka i18n init|add|check                   start, add languages to, and check the catalogs
 asuka check|fmt|test|run [paths]            the compiler's errors; formatting; test blocks on the fake host; one file
 asuka add|remove|install                     packages from the npm registry (asuka.lock)
-asuka new [--lib [--native]]                 an app, or a library (with a native module)
 asuka native add|generate|check              native packages' projects and their glue
 asuka lsp                                    the language server, on stdio
 asuka publish --platform mac|windows|linux   the desktop build, its signed update (dist/updates), uploaded: a GitHub release, S3
