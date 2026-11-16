@@ -12,8 +12,6 @@
 //	asuka run file.asuka                     run a file's tests, or show its app
 //	asuka fmt [-w] [-l] [paths]              format Asuka source (.asuka files)
 //	asuka check [dir]                        report an Asuka package's problems
-//	asuka test [-run pattern] [dir]          run an Asuka package's tests on the VM
-//	asuka run file.asuka                     run a file's fn main() (or its tests) on the VM
 //	asuka lsp                                the language server, for editors
 package main
 
@@ -44,7 +42,7 @@ func usage() {
                                             mac, windows, linux: its update, to asuka.toml's updates
   asuka update keygen                       make the key pair that signs a desktop app's updates
   asuka plugin publish [dir]                upload a plugin's built libraries, record them in its manifest
-  asuka native generate|check|new|add       native packages: Go interfaces their Swift, Kotlin, JavaScript implement
+  asuka native generate|check|new|add       native packages: Asuka declarations their Swift, Kotlin, JavaScript and C implement
   asuka generate [dir]                      write the functions of the app's catalogs
   asuka i18n init|add|check                 start, add languages to, and check the catalogs
   asuka fmt [-w] [-l] [paths]               format Asuka source (.asuka files) in its canonical form
@@ -54,8 +52,6 @@ func usage() {
   asuka pkg pack|publish [dir]              pack, or publish to the npm registry, a package
   asuka version                             print the CLI's version
   asuka check [dir]                         report an Asuka package's problems (file:line:col: message)
-  asuka test [-run pattern] [-v] [dir]      run an Asuka package's test blocks on the VM
-  asuka run file.asuka                      run a file's fn main() (or its tests) on the VM
   asuka lsp                                 run the language server, for editors (LSP on stdio)
 
 asuka <command> --help lists its flags.
