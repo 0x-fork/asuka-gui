@@ -20,7 +20,8 @@ Linux), so they behave as they do for the platform's own apps.
 |---|---|
 | `asuka/json` | `json.decode<T>(text)` and `json.encode(value, indent:)`: typed JSON, by the compiler's knowledge of `T` |
 | `asuka/math` | `sqrt`, `pow`, `floor`, `ceil`, `round`, `sin`, `cos`, `atan2`, `clamp`, `random`, `randomInt`, `seed`, `pi` |
-| `asuka/time` | `time.now()` (milliseconds since 1970), `time.monotonic()` (a `Duration` that only goes forward) |
+| `asuka/time` | `time.now()` (nanoseconds since 1970), `time.monotonic()` (a `Duration` that only goes forward) |
+| `asuka/i18n` | the language the app shows: `i18n.locale()`, `setLocale(tag)`, `languages()`, `preferredLanguages()`, `isRTL()`, `autonym(tag)`, `region()`; numbers and dates its way: `formatNumber`, `formatInt`, `formatPercent`, `formatDate(t, date:, time:)`. The app's messages are `tr.key(…)` (see [Languages](i18n.md)) |
 | `asuka/http` | `http.get`, `http.post`, `http.postJSON`, `http.request`: requests through the platform's own client, so proxies, trusted certificates, caches and cookies work as the system's do. A `Response` has `status`, `url`, `headers`, `body`, `text()`, `json<T>()` and `ok()` |
 | `asuka/network` | `network.status()` (tracked: `connected`, `type`, `metered`, `constrained`; it watches the network only while something reads it), `network.current()`, `network.changes()` (a stream). NWPathMonitor on iOS and macOS, ConnectivityManager on Android, the Network List Manager on Windows, GNetworkMonitor and NetworkManager on Linux, `navigator.onLine` and the Network Information API on the web |
 | `asuka/store` | `store.read(key, default)`, `store.write(key, value)`, `store.remove(key)`: small values kept across launches as JSON, in the platform's preferences (UserDefaults, SharedPreferences, `localStorage`, a file on Windows and Linux) |

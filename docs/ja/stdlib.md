@@ -15,7 +15,8 @@ state units = store.read("units", "metric")
 |---|---|
 | `asuka/json` | `json.decode<T>(text)` と `json.encode(value, indent:)`：コンパイラーが `T` について知っていることにもとづく、型付きの JSON |
 | `asuka/math` | `sqrt`、`pow`、`floor`、`ceil`、`round`、`sin`、`cos`、`atan2`、`clamp`、`random`、`randomInt`、`seed`、`pi` |
-| `asuka/time` | `time.now()`（1970 年からのミリ秒）、`time.monotonic()`（前にしか進まない `Duration`） |
+| `asuka/time` | `time.now()`（1970 年からのナノ秒）、`time.monotonic()`（前にしか進まない `Duration`） |
+| `asuka/i18n` | アプリが表示する言語：`i18n.locale()`、`setLocale(tag)`、`languages()`、`preferredLanguages()`、`isRTL()`、`autonym(tag)`、`region()`。その言語の書き方で数値と日付を書く：`formatNumber`、`formatInt`、`formatPercent`、`formatDate(t, date:, time:)`。アプリのメッセージは `tr.key(…)` で使います（[多言語対応](i18n.md)を参照） |
 | `asuka/http` | `http.get`、`http.post`、`http.postJSON`、`http.request`：リクエストはプラットフォーム自身のクライアントを通るので、プロキシ、信頼された証明書、キャッシュ、Cookie はシステムと同じように働きます。`Response` には `status`、`url`、`headers`、`body`、`text()`、`json<T>()`、`ok()` があります |
 | `asuka/store` | `store.read(key, default)`、`store.write(key, value)`、`store.remove(key)`：起動をまたいで JSON として保持する小さな値。保存先はプラットフォームの環境設定です（UserDefaults、SharedPreferences、`localStorage`、Windows と Linux ではファイル） |
 
