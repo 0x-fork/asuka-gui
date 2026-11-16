@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -57,10 +56,7 @@ func waitFile(t *testing.T, path string) []byte {
 // without an app) gets the Counter's module, counts a press, and gets the
 // next module on a save, which it loads keeping the count.
 func TestDevDesktop(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("the macOS host's player, on a Mac")
-	}
-	needDesktopBuild(t, cbuild.Host())
+	needMacBuild(t)
 	useCounter(t, "Count: ")
 	app := projectApp(t, counterDir(t), nil)
 	work := t.TempDir()
