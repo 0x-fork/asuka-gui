@@ -6,14 +6,12 @@ package apphost
 // runs a package's Swift instead where it has some; these answer it's
 // unsupported there.
 import (
-	_ "github.com/egoist/asuka/std/audio/desktop"
 	_ "github.com/egoist/asuka/std/bluetooth/desktop"
 	_ "github.com/egoist/asuka/std/camera/desktop"
 	_ "github.com/egoist/asuka/std/imageedit/desktop"
 	_ "github.com/egoist/asuka/std/location/desktop"
 	_ "github.com/egoist/asuka/std/maps/desktop"
 	_ "github.com/egoist/asuka/std/markdown/desktop"
-	_ "github.com/egoist/asuka/std/nowplaying/desktop"
 	_ "github.com/egoist/asuka/std/print/desktop"
 	_ "github.com/egoist/asuka/std/purchase/desktop"
 	_ "github.com/egoist/asuka/std/record/desktop"

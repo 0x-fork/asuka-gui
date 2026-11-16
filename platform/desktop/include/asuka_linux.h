@@ -33,6 +33,7 @@ typedef int32_t gint32;
 typedef uint64_t guint64;
 typedef int64_t gint64;
 typedef uint8_t guchar;
+typedef uint8_t guint8;
 typedef int16_t gint16;
 typedef uint16_t guint16;
 typedef double gdouble;
@@ -92,10 +93,29 @@ typedef struct _GdkClipboard GdkClipboard;
 typedef struct _GdkTexture GdkTexture;
 typedef struct _GdkPaintable GdkPaintable;
 typedef struct _GListModel GListModel;
+typedef struct _GstElement GstElement;
+typedef struct _GstBus GstBus;
+typedef struct _GstCaps GstCaps;
+// GstMapInfo, as GStreamer 1.x lays it out.
+typedef struct {
+	gpointer memory;
+	int flags;
+	guint8 *data;
+	gsize size;
+	gsize maxsize;
+	gpointer user_data[4];
+	gpointer _gst_reserved[4];
+} GstMapInfo;
+enum { GST_STATE_NULL = 1, GST_STATE_READY = 2, GST_STATE_PAUSED = 3, GST_STATE_PLAYING = 4 };
+enum { GST_FORMAT_TIME = 3 };
+enum { GST_SEEK_FLAG_FLUSH = 1, GST_SEEK_FLAG_ACCURATE = 2 };
+enum { GST_SEEK_TYPE_NONE = 0, GST_SEEK_TYPE_SET = 1 };
+enum { GST_MAP_READ = 1 };
 typedef struct {
 	int x, y, width, height;
 } GdkRectangle;
 
+typedef struct _GDBusMethodInvocation GDBusMethodInvocation;
 typedef void (*GCallback)(void);
 typedef void (*GDestroyNotify)(gpointer data);
 typedef void (*GClosureNotify)(gpointer data, gpointer closure);
@@ -105,6 +125,17 @@ typedef void (*GDBusSignalCallback)(GDBusConnection *conn, const gchar *sender, 
                                     const gchar *signal, GVariant *params, gpointer data);
 
 enum { G_BUS_TYPE_SYSTEM = 1, G_BUS_TYPE_SESSION = 2 };
+
+// GDBusInterfaceVTable: an object's methods and properties, exported.
+typedef struct {
+	void (*method_call)(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *method,
+	                    GVariant *params, GDBusMethodInvocation *inv, gpointer data);
+	GVariant *(*get_property)(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *prop,
+	                          GError **e, gpointer data);
+	gboolean (*set_property)(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *prop,
+	                         GVariant *v, GError **e, gpointer data);
+	gpointer padding[8];
+} GDBusInterfaceVTable;
 enum { G_DBUS_CALL_FLAGS_NONE = 0 };
 enum { G_DBUS_SIGNAL_FLAGS_NONE = 0 };
 enum { G_DBUS_PROXY_FLAGS_NONE = 0 };
@@ -159,6 +190,7 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(glib, GVariant *, g_variant_new_uint32, (guint32 v))                                                      \
 	X(glib, GVariant *, g_variant_new_int32, (gint32 v))                                                        \
 	X(glib, GVariant *, g_variant_new_uint64, (guint64 v))                                                      \
+	X(glib, GVariant *, g_variant_new_int64, (gint64 v))                                                      \
 	X(glib, GVariant *, g_variant_new_double, (gdouble v))                                                      \
 	X(glib, GVariant *, g_variant_new_variant, (GVariant * v))                                                  \
 	X(glib, GVariant *, g_variant_new_object_path, (const gchar *p))                                            \
@@ -217,6 +249,21 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(gio, guint, g_dbus_connection_signal_subscribe, (GDBusConnection * c, const gchar *sender, const gchar *iface, const gchar *member, const gchar *path, const gchar *arg0, int flags, GDBusSignalCallback cb, gpointer data, GDestroyNotify notify)) \
 	X(gio, void, g_dbus_connection_signal_unsubscribe, (GDBusConnection * c, guint id))                         \
 	X(gio, const gchar *, g_dbus_connection_get_unique_name, (GDBusConnection * c))                             \
+	X(gio, gchar *, g_dbus_address_get_for_bus_sync, (int bus, GCancellable *c, GError **e))                    \
+	X(gio, GDBusConnection *, g_dbus_connection_new_for_address_sync, (const gchar *addr, int flags, gpointer observer, GCancellable *c, GError **e)) \
+	X(gio, gboolean, g_dbus_connection_close_sync, (GDBusConnection * c, GCancellable *x, GError **e))         \
+	X(gio, gpointer, g_dbus_node_info_new_for_xml, (const gchar *xml, GError **e))                              \
+	X(gio, gpointer, g_dbus_node_info_lookup_interface, (gpointer node, const gchar *name))                     \
+	X(gio, void, g_dbus_node_info_unref, (gpointer node))                                                       \
+	X(gio, guint, g_dbus_connection_register_object, (GDBusConnection * c, const gchar *path, gpointer iface, const GDBusInterfaceVTable *vt, gpointer data, GDestroyNotify free, GError **e)) \
+	X(gio, gboolean, g_dbus_connection_unregister_object, (GDBusConnection * c, guint id))                      \
+	X(gio, gboolean, g_dbus_connection_emit_signal, (GDBusConnection * c, const gchar *dest, const gchar *path, const gchar *iface, const gchar *signal, GVariant *params, GError **e)) \
+	X(gio, void, g_dbus_method_invocation_return_value, (GDBusMethodInvocation * i, GVariant *v))               \
+	X(gio, void, g_dbus_method_invocation_return_dbus_error, (GDBusMethodInvocation * i, const gchar *name, const gchar *msg)) \
+	X(gio, GUnixFDList *, g_unix_fd_list_new, (void))                                                           \
+	X(gio, gint, g_unix_fd_list_append, (GUnixFDList * l, gint fd, GError **e))                                 \
+	X(gio, void, g_dbus_connection_call_with_unix_fd_list, (GDBusConnection * c, const gchar *name, const gchar *path, const gchar *iface, const gchar *method, GVariant *params, const GVariantType *reply, int flags, gint timeout, GUnixFDList *fds, GCancellable *cancel, GAsyncReadyCallback cb, gpointer data)) \
+	X(gio, GVariant *, g_dbus_connection_call_with_unix_fd_list_finish, (GDBusConnection * c, GUnixFDList **out, GAsyncResult *res, GError **e)) \
 	X(gio, GCancellable *, g_cancellable_new, (void))                                                           \
 	X(gio, void, g_cancellable_cancel, (GCancellable * c))                                                      \
 	X(gio, gboolean, g_cancellable_is_cancelled, (GCancellable * c))                                            \
@@ -301,6 +348,34 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(gio, gpointer, g_application_get_default, (void))                                                         \
 	X(gtk, guint, gtk_application_inhibit, (gpointer app, GtkWindow *w, int flags, const char *reason))         \
 	X(gtk, void, gtk_application_uninhibit, (gpointer app, guint cookie))                                       \
+	X(gst, gboolean, gst_init_check, (int *argc, char ***argv, GError **e))                                     \
+	X(gst, GstElement *, gst_element_factory_make, (const char *factory, const char *name))                     \
+	X(gst, gpointer, gst_element_factory_find, (const char *name))                                              \
+	X(gst, GstElement *, gst_parse_launch, (const char *desc, GError **e))                                      \
+	X(gst, GstElement *, gst_bin_get_by_name, (GstElement * bin, const char *name))                             \
+	X(gst, GstBus *, gst_element_get_bus, (GstElement * e))                                                     \
+	X(gst, void, gst_bus_add_signal_watch, (GstBus * b))                                                        \
+	X(gst, void, gst_bus_remove_signal_watch, (GstBus * b))                                                     \
+	X(gst, void, gst_object_unref, (gpointer o))                                                                \
+	X(gst, int, gst_element_set_state, (GstElement * e, int state))                                             \
+	X(gst, gboolean, gst_element_query_position, (GstElement * e, int format, gint64 *cur))                    \
+	X(gst, gboolean, gst_element_query_duration, (GstElement * e, int format, gint64 *dur))                    \
+	X(gst, gboolean, gst_element_seek, (GstElement * e, gdouble rate, int format, int flags, int start_type, gint64 start, int stop_type, gint64 stop)) \
+	X(gst, gboolean, gst_element_send_event, (GstElement * e, gpointer event))                                  \
+	X(gst, gpointer, gst_event_new_eos, (void))                                                                 \
+	X(gst, void, gst_message_parse_error, (gpointer msg, GError **e, gchar **debug))                           \
+	X(gst, GstCaps *, gst_caps_from_string, (const char *s))                                                    \
+	X(gst, void, gst_caps_unref, (GstCaps * c))                                                                 \
+	X(gst, gboolean, gst_buffer_map, (gpointer buf, GstMapInfo *info, int flags))                              \
+	X(gst, void, gst_buffer_unmap, (gpointer buf, GstMapInfo *info))                                           \
+	X(gst, gpointer, gst_sample_get_buffer, (gpointer sample))                                                  \
+	X(gst, GstCaps *, gst_sample_get_caps, (gpointer sample))                                                   \
+	X(gst, gpointer, gst_caps_get_structure, (GstCaps * c, guint i))                                            \
+	X(gst, gboolean, gst_structure_get_int, (gpointer s, const char *field, gint *v))                           \
+	X(gst, void, gst_mini_object_unref, (gpointer o))                                                           \
+	X(gstapp, gpointer, gst_app_sink_pull_sample, (GstElement * sink))                                          \
+	X(gstapp, gpointer, gst_app_sink_try_pull_sample, (GstElement * sink, guint64 timeout))                     \
+	X(gtk, void, gtk_window_present, (GtkWindow * w))                                                           \
 	X(gtk, void, gtk_init, (void))                                                                              \
 	X(gtk, GdkDisplay *, gdk_display_get_default, (void))                                                       \
 	X(gtk, void, gdk_monitor_get_geometry, (GdkMonitor * m, GdkRectangle *r))                                   \
@@ -346,6 +421,10 @@ void asuka_linux_main(void (*fn)(void *ctx), void *ctx);
 // asuka_linux_bus is the session's or the system's bus (G_BUS_TYPE_*),
 // connected once and kept; NULL with *e set when there's none.
 GDBusConnection *asuka_linux_bus(int kind, GError **e);
+
+// asuka_linux_gst loads and initializes GStreamer (libgstreamer-1.0,
+// libgstapp-1.0), once: false when it isn't there.
+bool asuka_linux_gst(void);
 
 // asuka_linux_is_a reports whether obj is of the type named (a GType a
 // library registers: GdkX11Display), false when there's no such type.

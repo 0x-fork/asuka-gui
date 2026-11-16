@@ -1,6 +1,7 @@
 package desktop_test
 
 import (
+	"bufio"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -47,9 +48,14 @@ func TestStdLinux(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
+	// Half a second of silence, a WAV for the media packages.
+	media := t.TempDir()
+	wav := filepath.Join(media, "tone.wav")
+	os.WriteFile(wav, silentWAV(22050, 22050/2), 0o644)
 	for _, c := range []struct {
 		name, src string
 		want      []string
+		drive     func(t *testing.T, pid int, line string) // each line the host prints, as it does
 	}{
 		{"store", `import asuka/store
 
@@ -71,7 +77,7 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{`host: read 3 Ayu "quoted" ü def`, "host: removed 0 in true", "host: done"}},
+`, []string{`host: read 3 Ayu "quoted" ü def`, "host: removed 0 in true", "host: done"}, nil},
 		{"http", `import asuka/http
 
 component Probe {
@@ -96,7 +102,7 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: got 200 hello GET probe yes true", "host: posted 200 ping", "host: missing 404", "host: done"}},
+`, []string{"host: got 200 hello GET probe yes true", "host: posted 200 ping", "host: missing 404", "host: done"}, nil},
 		{"monitors", `import asuka/network
 import asuka/power
 import asuka/appearance
@@ -131,7 +137,7 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: network true", "host: power -1 false", "host: appearance false", "host: screens true true true", "host: done"}},
+`, []string{"host: network true", "host: power -1 false", "host: appearance false", "host: screens true true true", "host: done"}, nil},
 		{"device", `import asuka/device
 import asuka/sensors
 import asuka/secure
@@ -172,7 +178,7 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: info PC Linux 1.2.3 45 true", "host: sensors false false", "host: secure", "host: shell no file at /no/such/file", "host: done"}},
+`, []string{"host: info PC Linux 1.2.3 45 true", "host: sensors false false", "host: secure", "host: shell no file at /no/such/file", "host: done"}, nil},
 		{"watch", `import asuka/watch
 import asuka/fs
 
@@ -218,7 +224,7 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: watching true", "host: created a.txt", "host: renamed a.txt b.txt", "host: wrote b.txt", "host: gone", "host: done"}},
+`, []string{"host: watching true", "host: created a.txt", "host: renamed a.txt b.txt", "host: wrote b.txt", "host: gone", "host: done"}, nil},
 		{"js", `import asuka/js
 
 component Probe {
@@ -250,7 +256,7 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{`host: js 3 {"x":[1,"two"]}`, "host: threw Error: nope", "host: late", "host: done"}},
+`, []string{`host: js 3 {"x":[1,"two"]}`, "host: threw Error: nope", "host: late", "host: done"}, nil},
 		{"webauth", `import asuka/webauth
 
 component Probe {
@@ -269,7 +275,89 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: signed in myapp://done?code=42", "host: done"}},
+`, []string{"host: signed in myapp://done?code=42", "host: done"}, nil},
+		{"audio", `import asuka/audio
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    let p = audio.Player("` + wav + `")
+    p.setVolume(0.5)
+    p.play()
+    var s = await p.status()
+    var turns = 0
+    while !s.ended && turns < 400 {
+      await sleep(10ms)
+      s = await p.status()
+      turns += 1
+    }
+    step = "played {s.ended} {s.duration > 0.4 && s.duration < 0.6}"
+    await sleep(1ms)
+    p.release()
+    audio.play("` + wav + `")
+    step = "done"
+  }
+}
+
+app { Probe() }
+`, []string{"host: played true true", "host: done"}, nil},
+		{"nowplaying", `import asuka/nowplaying
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  nowplaying.NowPlaying {
+    title: "Song"
+    artist: "Someone"
+    album: "Record"
+    duration: 120
+    position: 3
+    state: .playing
+    on play { step = "play" }
+    on pause { step = "done" }
+    on next { step = "next" }
+    on seek(p) { step = "seek {p}" }
+  }
+  task {
+    await sleep(50ms)
+    step = "showing"
+  }
+}
+
+app { Probe() }
+`, []string{"host: showing", "host: next", "host: seek 60", "host: done"}, func(t *testing.T, pid int, line string) {
+			dest := fmt.Sprintf("org.mpris.MediaPlayer2.Test.instance%d", pid)
+			send := func(args ...string) string {
+				out, err := exec.Command("dbus-send", append([]string{"--session", "--print-reply", "--dest=" + dest, "/org/mpris/MediaPlayer2"}, args...)...).CombinedOutput()
+				if err != nil {
+					t.Errorf("dbus-send %v: %v\n%s", args, err, out)
+				}
+				return string(out)
+			}
+			switch line {
+			case "host: showing":
+				md := send("org.freedesktop.DBus.Properties.Get", "string:org.mpris.MediaPlayer2.Player", "string:Metadata")
+				status := send("org.freedesktop.DBus.Properties.Get", "string:org.mpris.MediaPlayer2.Player", "string:PlaybackStatus")
+				if !strings.Contains(md, `"Song"`) || !strings.Contains(md, `"Someone"`) || !strings.Contains(md, `"Record"`) || !strings.Contains(status, `"Playing"`) {
+					t.Errorf("metadata:\n%s\n%s", md, status)
+				}
+				send("org.mpris.MediaPlayer2.Player.Next")
+			case "host: next":
+				// Seconds as microseconds; the track as Metadata's trackid names it.
+				md := send("org.freedesktop.DBus.Properties.Get", "string:org.mpris.MediaPlayer2.Player", "string:Metadata")
+				i := strings.Index(md, "object path \"")
+				if i < 0 {
+					t.Errorf("no trackid in %s", md)
+					return
+				}
+				track := md[i+len("object path \""):]
+				track = track[:strings.Index(track, "\"")]
+				send("org.mpris.MediaPlayer2.Player.SetPosition", "objpath:"+track, "int64:60000000")
+			case "host: seek 60":
+				send("org.mpris.MediaPlayer2.Player.Pause")
+			}
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -285,8 +373,23 @@ app { Probe() }
 			os.WriteFile(mod, res.Module.Encode(), 0o644)
 			cmd := exec.Command(exe, mod)
 			cmd.Env = append(os.Environ(), "ASUKA_DATA="+dir, noLeaks, "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1") // WebKit's sandbox doesn't start in a container
-			out, err := cmd.CombinedOutput()
-			got := string(out)
+			var out strings.Builder
+			if c.drive == nil {
+				cmd.Stdout, cmd.Stderr = &out, &out
+				err = cmd.Run()
+			} else {
+				pipe, _ := cmd.StdoutPipe()
+				cmd.Stderr = &out
+				if err = cmd.Start(); err == nil {
+					lines := bufio.NewScanner(pipe)
+					for lines.Scan() {
+						out.WriteString(lines.Text() + "\n")
+						c.drive(t, cmd.Process.Pid, lines.Text())
+					}
+					err = cmd.Wait()
+				}
+			}
+			got := out.String()
 			if err != nil {
 				t.Fatalf("%v\n%s", err, got)
 			}
@@ -348,4 +451,28 @@ func stdHost(t *testing.T) string {
 		t.Fatal(stdErr)
 	}
 	return stdExe
+}
+
+// silentWAV is n samples of 16-bit mono silence at rate, as a WAV file.
+func silentWAV(rate, n int) []byte {
+	le := func(b []byte, v uint32, size int) []byte {
+		for i := 0; i < size; i++ {
+			b = append(b, byte(v>>(8*i)))
+		}
+		return b
+	}
+	data := n * 2
+	b := []byte("RIFF")
+	b = le(b, uint32(36+data), 4)
+	b = append(b, "WAVEfmt "...)
+	b = le(b, 16, 4)
+	b = le(b, 1, 2) // PCM
+	b = le(b, 1, 2) // mono
+	b = le(b, uint32(rate), 4)
+	b = le(b, uint32(rate*2), 4)
+	b = le(b, 2, 2)
+	b = le(b, 16, 2)
+	b = append(b, "data"...)
+	b = le(b, uint32(data), 4)
+	return append(b, make([]byte, data)...)
 }

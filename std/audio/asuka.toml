@@ -1,3 +1,6 @@
 name = "asuka/audio"
 version = "0.1.0"
 description = "Sounds and music, played with the platform's player"
+
+[windows]
+libraries = ["winmm"]
