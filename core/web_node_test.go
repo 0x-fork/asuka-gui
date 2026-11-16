@@ -195,7 +195,7 @@ func TestWebChrome(t *testing.T) {
 	asqlite := asqliteWasm(t)
 	web, _ := filepath.Abs(filepath.Join("..", "platform", "web"))
 	for _, c := range []struct{ src, want string }{
-		{"spawn.asuka", "500500\nd3 3 2 -1 true 0\npath 3 5 2\n0 3\ncaught no to 2\nnot found nowhere.txt\nfrom the page\nfrom a worker\nchanged\nfalse\nworker.txt 13\n55 210 465 820\nfirst -1\n15\ndone"},
+		{"spawn.asuka", "registry made\n500500\nd3 3 2 -1 true 0\npath 3 5 2\n0 3\ncaught no to 2\nnot found nowhere.txt\nfrom the page\nfrom a worker\nchanged\nfalse\nworker.txt 13\n55 210 465 820\nfirst -1\n15\ndone"},
 		{"sqlite.asuka", "1 milk false\n2 eggs true\ncount 2\n1 true 2 2.5\n2 false 0 -1\ncaught sqlite: no such table: nowhere (1)\ncaught sqlite: migration 2: sqlite: near \"this\": syntax error (1)\nt 1 2\nlive 1 milk\nlive 2 bread\n42\ndone"},
 		{"crash.asuka", "nonfatal false card declined u1 1 Web\ndone"},
 	} {
