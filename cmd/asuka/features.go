@@ -65,22 +65,3 @@ func (c *appConfig) depManifests(deps map[string]string, u *appbuild.Uses) error
 	return errors.Join(errs...)
 }
 
-// checkCatalogs checks the app's language catalogs (asuka.toml's i18n),
-// which the compiler reads: their problems are printed, their errors
-// the error.
-func (c *appConfig) checkCatalogs() error {
-	if c.I18n == nil {
-		return nil
-	}
-	_, diags, err := c.loadCatalogs()
-	if err != nil {
-		return err
-	}
-	for _, d := range diags {
-		fmt.Fprintln(os.Stderr, "asuka:", d)
-	}
-	if n := diags.Errors(); n > 0 {
-		return fmt.Errorf("%d %s in the catalogs in %s", n, plural(n, "error", "errors"), c.I18n.Dir)
-	}
-	return nil
-}

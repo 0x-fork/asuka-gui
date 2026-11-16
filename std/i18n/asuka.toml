@@ -1,0 +1,3 @@
+name = "asuka/i18n"
+version = "0.1.0"
+description = "The language the app shows, and numbers and dates written its way"

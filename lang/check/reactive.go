@@ -144,8 +144,8 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 					if call.Func.Ctx == nil || call.Func.Ctx.readsState || call.Func.Recv != nil && call.Func.Recv.Kind == StoreType {
 						found = true
 					}
-				case CallClosure, CallIface, CallNative:
-					found = true
+				case CallClosure, CallIface, CallNative, CallTr:
+					found = true // a message reads the language shown, a signal
 				case CallBuiltinMethod:
 					if call.Method.Recv == "loading" {
 						found = true

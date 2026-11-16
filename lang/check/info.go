@@ -88,6 +88,7 @@ const (
 	CallCase                              // an enum case with a payload
 	CallComponent                         // a component, a screen, an element: a View
 	CallStore                             // making a store
+	CallTr                                // tr.key(…): a message of the app's catalogs (TrKey)
 )
 
 // A Call is what a call expression calls, with its arguments matched to
@@ -116,6 +117,8 @@ type Call struct {
 	Index    int  // CallNative: the method's number, from 1
 	// Awaited: animate(…) awaited, which returns once it's complete.
 	Awaited bool
+	// TrKey is CallTr's message; Args are its arguments, by its Params.
+	TrKey *CatalogKey
 }
 
 // SelKind is what x.name or .name is.
@@ -332,5 +335,7 @@ type Program struct {
 	Root     *Package
 	Info     *Info
 	Diags    []Diagnostic
-	checker  *Checker
+	// Catalog is the app's catalogs (tr), or nil.
+	Catalog *Catalog
+	checker *Checker
 }

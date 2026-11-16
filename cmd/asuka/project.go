@@ -135,9 +135,8 @@ func loadApp(dir string) (*asukaApp, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := cfg.checkCatalogs(); err != nil {
-		return nil, err
-	}
+	// The catalogs: the compiler checks them (and tr's calls of them),
+	// as each compile does.
 	app := &asukaApp{dir: proj.Dir, name: filepath.Base(proj.Dir), bundleID: cfg.ID, cfg: cfg, proj: proj}
 	app.refresh()
 	warnDevLang(cfg)

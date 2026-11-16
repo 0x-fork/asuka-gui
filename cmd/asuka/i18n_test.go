@@ -1,11 +1,14 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/egoist/asuka/internal/appbuild"
 )
 
 // appWithCatalogs makes an app directory with these catalogs.
@@ -53,39 +56,32 @@ func TestCatalogsAreFound(t *testing.T) {
 	}
 }
 
-func TestGenerateWritesOnlyWhatChanged(t *testing.T) {
-	dir := appWithCatalogs(t, "", map[string]string{"locales/en.json": `{"hello": "Hello, {name}!"}`})
+func TestCheckCatalogs(t *testing.T) {
+	dir := appWithCatalogs(t, "", map[string]string{"locales/en.json": `{"hello": "Hello, {name}!"}`, "locales/de.json": `{}`})
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.generateCatalogs(); err != nil {
+	var out strings.Builder
+	if err := c.checkCatalogs(&out); err != nil {
 		t.Fatal(err)
 	}
-	gen := filepath.Join(dir, "locales", "catalog_gen.go")
-	src, err := os.ReadFile(gen)
-	if err != nil {
-		t.Fatal(err)
+	if !strings.Contains(out.String(), "warning: 1 of 1 messages missing") || !strings.Contains(out.String(), "1 message in en, de") {
+		t.Errorf("check said:\n%s", out.String())
 	}
-	for _, want := range []string{"package locales", "func Hello(name string) string", "func (LiveMessages) Hello(name signal.Accessor[string]) signal.Accessor[string]"} {
-		if !strings.Contains(string(src), want) {
-			t.Errorf("no %q in:\n%s", want, src)
-		}
+	// Nothing is written: the compiler reads the catalogs.
+	if _, err := os.Stat(filepath.Join(dir, "locales", "catalog_gen.go")); err == nil {
+		t.Error("a catalog_gen.go")
 	}
-	before, _ := os.Stat(gen)
-	if err := c.generateCatalogs(); err != nil {
-		t.Fatal(err)
-	}
-	after, _ := os.Stat(gen)
-	if !before.ModTime().Equal(after.ModTime()) {
-		t.Error("the same catalogs wrote the file again: a rebuild's watcher would see it")
-	}
-	// A broken catalog stops the build.
+	// A broken catalog is an error.
 	if err := os.WriteFile(filepath.Join(dir, "locales", "en.json"), []byte(`{"hello": "{name"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.generateCatalogs(); err == nil {
+	if err := c.checkCatalogs(io.Discard); err == nil {
 		t.Error("no error for a message that doesn't parse")
+	}
+	if err := cmdGenerate([]string{dir}); err == nil {
+		t.Error("asuka generate: no error for a message that doesn't parse")
 	}
 }
 
@@ -166,37 +162,12 @@ func TestPackagingStrings(t *testing.T) {
 	}
 }
 
-func TestFrozenMessages(t *testing.T) {
-	dir := appWithCatalogs(t, "", map[string]string{
-		"locales/en.json": `{"title": "T"}`,
-		"main.go": `package main
-
-func main() {
-	_ = ui.StaticText(locales.Title())
-	_ = ui.Val(locales.Greeting("x"))
-	_ = ui.Text(locales.Live.Title())
-	_ = ui.Val("plain")
-	_ = ui.Val(locales.In("de").Title())
-	_ = signal.Func(locales.Title)
-}
-`,
-	})
-	c, err := loadConfig(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := frozenMessages(c, dir)
-	if len(got) != 2 || !strings.HasPrefix(got[0], "main.go:4:") || !strings.Contains(got[1], "locales.Live.Greeting") {
-		t.Errorf("warnings: %q", got)
-	}
-}
-
 func TestI18nCommands(t *testing.T) {
 	dir := t.TempDir()
 	if err := cmdI18n([]string{"init", dir}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "locales", "catalog_gen.go")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "locales", "en.json")); err != nil {
 		t.Error(err)
 	}
 	if err := cmdI18n([]string{"init", dir}); err == nil {
@@ -230,5 +201,10 @@ func TestI18nCommands(t *testing.T) {
 	}
 	if c := (&asukaApp{cfg: &appConfig{}}).hostConfig(platformLinux, "", false); c.Lang != "zh-TW" || c.Direction != "rtl" {
 		t.Errorf("the host's settings: %+v", c)
+	}
+	// And the module's, which every platform's player runs.
+	defer func() { appbuild.DevLang, appbuild.DevDirection = "", "" }()
+	if appbuild.DevLang != "zh-TW" || appbuild.DevDirection != "rtl" {
+		t.Errorf("compiled in: %q %q", appbuild.DevLang, appbuild.DevDirection)
 	}
 }

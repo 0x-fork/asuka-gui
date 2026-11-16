@@ -2051,32 +2051,37 @@ it's built. Package `i18n` and the catalog generator (`internal/i18ngen`) are
 MyGo's, whose data comes from a pinned release of CLDR.
 
 - **Catalogs** are ARB files of ICU MessageFormat, one per language, in
-  `locales/`. `asuka generate` (and `dev`, `build`, as a catalog changes)
-  writes `locales/catalog_gen.go`, a package with a typed function per message,
-  which embeds and registers the catalogs. `locales.Unread(3)` says a string;
-  `locales.Live.Unread(count)` is an accessor over accessors, for props;
-  `locales.In("de").Unread(3)` says another language.
-- **The language shown** is the process's, as `time.Local` is: not a root's,
-  since a message has no context to read one from. `ui/locale.go` matches the
-  environment's `Languages` (with what `ui.SetLocale` chose, first) against
-  the languages the app has, by CLDR's distances, and falls back to the app's
-  own: a reader of Chinese sees an English-only app in English, as on UIKit.
-- **Following it.** A component runs once, so a message has to be read in an
-  effect to follow the language, and it must read like any other function:
-  a goroutine may say one too. A signal read can't do both, since subscribing
-  touches `activeSub`, which is the main thread's. So `signal.Ambient` only
-  counts a read, atomically; the main thread settles the count each time the
-  running computation changes, subscribing the one that ran. A goroutine's read
-  may subscribe whatever ran at that moment, which then runs once more at the
-  next language change: harmless, and rare. A change costs the props whose text
-  changed, as any signal does.
-- **What can't follow.** A string read outside an effect stays what it was:
-  `ui.StaticText(locales.Title())` doesn't change with the language. Every
-  prop that shows text is therefore an accessor (tabs, actions, labels,
-  placeholders, segments), and what a call shows once (an alert, a
-  notification) takes a string.
+  `locales/`. The compiler reads them (lang/compile: internal/i18ngen checks
+  them, a problem a diagnostic at its file and line) and gives the app `tr`:
+  `tr.unread(count: n)` is checked against the source's key and its
+  placeholders' types. Package i18n compiles them (`Catalog.CompileWith`) into
+  a blob the module carries: each message, per language, a small program of
+  text, arguments, plurals, selects, numbers and dates, with what the core
+  needs of CLDR for those languages only (their number symbols and patterns;
+  their dates' names, and every style's and skeleton's pattern in 12 and 24
+  hours, resolved at compile time so the core needs no pattern generator).
+  Nothing is generated into the app's directory.
+- **The core says them** (core/src/ui/i18n.c, a port of `Catalog.Format`):
+  the key's message in the best language the catalog has for the one shown,
+  falling back along CLDR's parent locales to the source; CLDR's plural rules
+  (i18n_gen.c, generated from package i18n's tables); numbers and dates in
+  the shown language's formats, dates in the device's zone and the user's
+  hour cycle; the pseudo locales. A test says over 900 cases of Go's Format
+  the same way, and every CLDR sample of every language's plural rules.
+- **The language shown** is the process's (core/src/ui/locale.c, as
+  `ui/locale.go` was): the environment's languages (or what `setLocale`
+  chose, first) matched against the catalog's languages by CLDR's distances,
+  else the app's own: a reader of Chinese sees an English-only app in
+  English, as on UIKit. It's a signal: `i18n.say` reads it, so a binding that
+  says a message follows the language as it follows its arguments, and a
+  change costs the bindings that said one. The checker counts a message as
+  reading state, so a function that says one is followed where a binding
+  calls it, and `spawn` can't say one (the language is the main thread's).
+  Said in a handler, a message is what it said then, which is what an alert
+  wants. A change of direction lays the app out again, and the host hears
+  `Locale`.
 - **Regional formats** are a setting of their own: the environment's `Locale`,
-  `FirstWeekday` and `HourCycle`, with `ui.FormatLocale()` putting them
+  `FirstWeekday` and `HourCycle`, with `i18n.formatLocale()` putting them
   together with the language (`en-GB-u-fw-mon-hc-h23`), as Apple's
   `Locale.current` does.
 - **Asuka's own words** (`internal/l10n`) are the few the platforms don't supply:

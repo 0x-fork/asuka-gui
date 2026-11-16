@@ -10,6 +10,7 @@
 
 #include "asuka.h"
 #include "rt/sched.h"
+#include "base/thread.h"
 
 #include <stdlib.h>
 
@@ -21,6 +22,7 @@ IMPORT("measure") void js_measure(void);
 IMPORT("post") void js_post(void);
 IMPORT("timer_set") void js_timer_set(double id, double ms);
 IMPORT("timer_clear") void js_timer_clear(double id);
+IMPORT("zone_offset") double js_zone_offset(double unix_seconds);
 
 // io: Apply's batch address and length (u32 0, 1); Measure's node (u32
 // 2) and its constraints, then its answer (f32 3..6).
@@ -51,6 +53,9 @@ static void post(void) { js_post(); }
 static void timer_schedule(uint64_t id, int64_t ns) { js_timer_set((double)id, (double)ns / 1e6); }
 static void timer_cancel(uint64_t id) { js_timer_clear((double)id); }
 
+// The browser's zone, for dates (ak_zone_offset).
+static int32_t zone_offset(int64_t t) { return (int32_t)js_zone_offset((double)t); }
+
 static asuka_host_callbacks callbacks = {
 	.apply = apply,
 	.measure = measure,
@@ -59,6 +64,7 @@ static asuka_host_callbacks callbacks = {
 
 EXPORT("asuka_web_start") void asuka_web_start(void) {
 	ak_sched_set_timer(timer_schedule, timer_cancel);
+	ak_zone_offset_hook = zone_offset;
 	asuka_start(&callbacks);
 }
 

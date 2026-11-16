@@ -166,6 +166,8 @@ var Methods = []*Method{
 	{Recv: "app", Name: "type", Sig: "(text: string, into: string)", Builtin: "test.type", Doc: "types text into the field labelled or showing into"},
 	{Recv: "app", Name: "expect", Sig: "(text: string)", Builtin: "test.expect", Doc: "fails the test unless text is shown"},
 	{Recv: "app", Name: "expectNo", Sig: "(text: string)", Builtin: "test.expect_no", Doc: "fails the test if text is shown"},
+	{Recv: "app", Name: "frameOf", Sig: "(text: string) -> (float, float, float, float)", Builtin: "test.frame_of", Doc: "the frame (x, y, width, height) in the window of the view showing text"},
+	{Recv: "app", Name: "setLanguages", Sig: "(languages: string)", Builtin: "test.set_languages", Doc: "says the user's preferred languages changed (BCP 47 tags, most preferred first, joined by commas)"},
 	{Recv: "app", Name: "idle", Sig: "()", Builtin: "test.idle", Async: true, Doc: "waits until nothing is left to run"},
 
 	{Recv: "app", Name: "ops", Sig: "() -> string", Builtin: "test.ops", Doc: "the ops the host applied since the last ops(), a line each (the fake host's log)"},

@@ -39,26 +39,12 @@ static ak_val wall_nanos(ak_val *args, uint32_t n) {
 	return (ak_val){.i = ak_sched_wall()};
 }
 
-#if defined(__wasm__)
-// The browser's zone (platform/web/src/core.js): wasi-libc has none.
-__attribute__((import_module("asuka"), import_name("tz_offset"))) double js_tz_offset(double unix);
-#endif
-
+// local_offset is the device's zone's offset at t, in seconds east (the
+// base's: the platform's own, the browser's through its hook, UTC when
+// asuka dev runs the app in UTC).
 static int64_t local_offset(int64_t t) {
 	if (ak_sched_manual()) return 0;
-#if defined(__wasm__)
-	return (int64_t)js_tz_offset((double)t);
-#else
-	time_t tt = (time_t)t;
-	struct tm tm;
-#if defined(_WIN32)
-	if (localtime_s(&tm, &tt) != 0) return 0;
-#else
-	if (!localtime_r(&tt, &tm)) return 0;
-#endif
-	int64_t local = days_from_civil((int64_t)tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday) * 86400 + tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec;
-	return local - t;
-#endif
+	return ak_zone_offset(t, NULL);
 }
 
 static ak_val local_offset_fn(ak_val *args, uint32_t n) {

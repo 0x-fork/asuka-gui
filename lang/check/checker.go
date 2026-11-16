@@ -19,6 +19,7 @@ type Checker struct {
 	errLines map[string]bool
 
 	universe *Scope
+	catalog  *Catalog // the app's catalogs (tr), or nil
 	prelude  *Package
 	pkgs     []*Package
 	std      map[string]*Package
@@ -112,7 +113,7 @@ func (c *Checker) Program(root *Package) *Program {
 		}
 		return a.Offset < b.Offset
 	})
-	return &Program{Fset: c.fset, Packages: pkgs, Prelude: c.prelude, Root: root, Info: c.info, Diags: diags, checker: c}
+	return &Program{Fset: c.fset, Packages: pkgs, Prelude: c.prelude, Root: root, Info: c.info, Diags: diags, Catalog: c.catalog, checker: c}
 }
 
 // ---------------------------------------------------------------------

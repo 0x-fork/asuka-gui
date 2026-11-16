@@ -88,9 +88,9 @@ export async function startCore(host, options = {}) {
         }, ms));
       },
       timer_clear: (id) => { clearTimeout(timers.get(id)); timers.delete(id); },
-      // The zone's offset from UTC at a time (Unix seconds), in seconds east: asuka/time's
-      // local zone.
-      tz_offset: (unix) => -new Date(unix * 1000).getTimezoneOffset() * 60,
+      // The zone's offset from UTC at a time (Unix seconds), in seconds east:
+      // dates, and asuka/time's local zone.
+      zone_offset: (s) => -new Date(s * 1000).getTimezoneOffset() * 60,
     },
     wasi_snapshot_preview1: wasi(memory, log),
   };
