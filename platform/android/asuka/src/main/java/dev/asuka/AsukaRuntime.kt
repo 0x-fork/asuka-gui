@@ -806,6 +806,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         val v: android.widget.FrameLayout = if (horizontal) AsukaHorizontalScroll(themed).apply { isFillViewport = false }
             else NestedScrollView(themed).apply { isFillViewport = false }
         v.layoutDirection = directionOf(n)
+        carryViewProps(old, v)
         clipsToFrame(v)
         reportScrolls(v, n.id)
         while (old.childCount > 0) {
@@ -828,22 +829,38 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         AsukaPager.apply(this, n)
     }
 
+    /**
+     * What props set on a view that's replaced by another of its node's
+     * (a button's variant, a Toggle made a checkbox, a Scroll turned
+     * horizontal) and the new one doesn't get again: what TalkBack is
+     * told, its tooltip, whether it's shown, enabled, and its transform.
+     */
+    private fun carryViewProps(old: View, v: View) {
+        v.contentDescription = old.contentDescription
+        androidx.core.view.ViewCompat.setStateDescription(v, androidx.core.view.ViewCompat.getStateDescription(old))
+        old.accessibilityDelegate?.let { v.accessibilityDelegate = it }
+        v.tooltipText = old.tooltipText
+        v.importantForAccessibility = old.importantForAccessibility
+        v.visibility = old.visibility
+        v.isEnabled = old.isEnabled
+        v.alpha = old.alpha
+        v.translationX = old.translationX
+        v.translationY = old.translationY
+        v.rotation = old.rotation
+        v.scaleX = old.scaleX
+        v.scaleY = old.scaleY
+    }
+
     /** Makes a Toggle a checkbox: Material's, in place of its switch. */
     fun makeCheckbox(n: AsukaNode) {
         val old = n.view as? MaterialSwitch ?: return
         val id = n.id
         val c = com.google.android.material.checkbox.MaterialCheckBox(themed).apply {
             isChecked = old.isChecked
-            isEnabled = old.isEnabled
             layoutDirection = directionOf(n)
             // What props set on the switch before checkbox came (they go
             // in the order the app wrote them): its name for TalkBack first.
-            contentDescription = old.contentDescription
-            androidx.core.view.ViewCompat.setStateDescription(this, androidx.core.view.ViewCompat.getStateDescription(old))
-            tooltipText = old.tooltipText
-            importantForAccessibility = old.importantForAccessibility
-            visibility = old.visibility
-            alpha = old.alpha
+            carryViewProps(old, this)
             setOnCheckedChangeListener { _, on -> if (!settingProp) emit(id, AsukaEventKind.TOGGLED) { AsukaEvents.toggled(id, on) } }
         }
         val parent = old.parent as? ViewGroup
@@ -864,7 +881,10 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         val b = makeButton(n.id, variant)
         b.layoutDirection = directionOf(n)
         b.text = old.text
-        b.isEnabled = old.isEnabled
+        // What props set on the button before its variant came (they go in
+        // the order the app wrote them): label: before variant: is its name
+        // for TalkBack.
+        carryViewProps(old, b)
         (n.props[AsukaProp.Button.ICON] as? String)?.let { setButtonIcon(n, b, it) }
         val parent = old.parent as? ViewGroup
         if (parent != null) {
