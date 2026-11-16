@@ -128,7 +128,7 @@ static int vAccess(sqlite3_vfs *v, const char *name, int flags, int *out) {
   return SQLITE_OK;
 }
 
-// Paths come from Go whole (store.Dir's, or absolute).
+// Paths come from the core whole (the app's data directory's, or absolute).
 static int vFullPathname(sqlite3_vfs *v, const char *name, int n, char *out) {
   (void)v;
   size_t len = strlen(name);

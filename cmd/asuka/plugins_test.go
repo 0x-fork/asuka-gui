@@ -327,7 +327,7 @@ func TestGitHubRelease(t *testing.T) {
 }
 
 // asuka/sqlite (std/sqlite) ships the sqlite plugin's library: its
-// manifest is the plugin's (sdk/sqlite's, which asuka plugin publish
+// manifest is the plugin's (plugin/sqlite's, which asuka plugin publish
 // writes), so each records the same files. An app that imports it, with
 // no dependencies, has the plugin.
 func TestStdSqliteManifest(t *testing.T) {
@@ -335,12 +335,12 @@ func TestStdSqliteManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sdk, err := os.ReadFile(filepath.Join("..", "..", "sdk", "sqlite", plugin.ManifestFile))
+	sdk, err := os.ReadFile(filepath.Join("..", "..", "plugin", "sqlite", plugin.ManifestFile))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(std) != string(sdk) {
-		t.Error("std/sqlite/asuka-plugin.toml isn't sdk/sqlite's: copy it there after asuka plugin publish sdk/sqlite")
+		t.Error("std/sqlite/asuka-plugin.toml isn't plugin/sqlite's: copy it there after asuka plugin publish plugin/sqlite")
 	}
 	ps, err := appPlugins(projectApp(t, filepath.Join("testdata", "sqliteapp"), nil))
 	if err != nil || len(ps) != 1 || ps[0].m.Name != "sqlite" {

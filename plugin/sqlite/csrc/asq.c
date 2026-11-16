@@ -1,8 +1,8 @@
 // asq: see asq.h. Compiled with SQLite's amalgamation into one library
-// (internal/sqlitebuild); nothing here is called but asq_call and
+// (plugin/sqlite/internal/build); nothing here is called but asq_call and
 // asq_version.
 //
-// A connection is used by one thread at a time (Go's pool hands it out),
+// A connection is used by one thread at a time (the core's statement thread),
 // but may move between threads from call to call: SQLite is built
 // multi-thread (SQLITE_THREADSAFE=2), and nothing here is global but
 // what's read only.
@@ -859,7 +859,7 @@ intptr_t asq_call(uintptr_t op, uintptr_t connp, uintptr_t arg, const uint8_t *i
   if (k.w.oom) {
     if (k.w.own) free(k.w.b);
     if (outCap < 64) return 0;
-    // Out of memory: an answer that says so fits any buffer Go passes.
+    // Out of memory: an answer that says so fits any buffer a caller passes.
     wbuf w = {.b = out, .cap = outCap};
     w_u8(&w, 0);
     w_u32(&w, 0);

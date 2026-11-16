@@ -1,6 +1,6 @@
 // Package asuka/sqlite is the app's SQLite database: a file in its data
 // directory, written with SQL and read into typed rows. SQLite is the
-// sqlite plugin's (sdk/sqlite: one version, built the same way for every
+// sqlite plugin's (plugin/sqlite: one version, built the same way for every
 // platform), shipped with the apps that import this package. Statements
 // run off the main thread, one after another, and rows come back decoded
 // straight into the type asked for: a struct's fields by the columns'

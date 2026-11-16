@@ -1,5 +1,5 @@
 // asqlite.wasm for the tests, the sqlite plugin's: this checkout's build
-// (go generate ./sdk/sqlite, in sdk/sqlite/build/wasm), else the
+// (go run ./plugin/sqlite/internal/build, in plugin/sqlite/build/wasm), else the
 // published module (the plugin's manifest, asuka-plugin.toml), from the
 // user's cache, where package plugin keeps it, downloaded and verified
 // there first if need be.
@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { gunzipSync } from "node:zlib";
 
-const dir = new URL("../../../sdk/sqlite/", import.meta.url);
+const dir = new URL("../../../plugin/sqlite/", import.meta.url);
 
 /** cacheDir is Go's os.UserCacheDir. */
 function cacheDir() {

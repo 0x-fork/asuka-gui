@@ -1,26 +1,18 @@
-// Package plugin is what an Asuka plugin is made of: a Go package, with
-// a manifest beside it (asuka-plugin.toml) naming the native libraries it
-// brings, prebuilt for each platform and published (a GitHub release, each
-// file named for its hash), which its Go code loads (through purego or
-// syscall: no cgo). The CLI ships the libraries of the plugins an app
-// uses with it, for each platform; in go run, go test and asuka dev, a
-// plugin's library is its checkout's build or the published one,
-// downloaded once into the user's cache, verified.
-//
-// A plugin's Go code embeds its manifest and asks for its library's path:
-//
-//	//go:embed asuka-plugin.toml
-//	var manifest []byte
-//
-//	path, err := plugin.LibraryPath(manifest, "asqlite")
+// Package plugin is what an Asuka plugin is made of: a manifest
+// (asuka-plugin.toml) naming the native libraries it brings, prebuilt for
+// each platform and published (a GitHub release, each file named for its
+// hash). A package that uses one carries its manifest (std/sqlite's is
+// plugin/sqlite's, copied), and its native code (in the core, or the
+// package's own) loads the library. The CLI ships the libraries of the
+// plugins an app uses with it, for each platform; in asuka dev, asuka test
+// and the tests, a plugin's library is its checkout's build or the
+// published one, downloaded once into the user's cache, verified
+// (FilePath; LibraryPath for a program that embeds the manifest).
 //
 // Its build tool (its own: a plugin's libraries are built as it needs)
 // writes each target's library with StoreBuild, into build/<target>
 // beside the manifest; asuka plugin publish uploads them and records them
-// in the manifest. sdk/sqlite is one.
-//
-// Native modules (Swift, Kotlin and JavaScript a plugin brings to the
-// hosts) will be a manifest's "modules", beside "libraries".
+// in the manifest. plugin/sqlite is one.
 package plugin
 
 import (

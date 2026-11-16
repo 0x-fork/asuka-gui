@@ -1227,46 +1227,47 @@ done.
 
 ### Plugins
 
-A plugin is a Go package with a manifest beside it, `asuka-plugin.toml`
-(package `plugin`), naming the native libraries it brings: for each
-target (`darwin`, universal; `ios`, `ios-simulator`; `android-<goarch>`;
-`linux-<goarch>`; `windows-<goarch>`; `wasm`) a file, published to the
-plugin's GitHub release gzipped and named for its hash, with the
-SHA-256 of both. Only the manifest is checked in. The plugin's Go code
-loads its library through purego or `syscall`, from the path
-`plugin.LibraryPath` gives it: where the CLI shipped it with the app;
-else, in `go run`, `go test` and `asuka dev` on a desktop, the plugin's
+A plugin is a manifest, `asuka-plugin.toml` (package `plugin`), naming
+the native libraries it brings: for each target (`darwin`, universal;
+`ios`, `ios-simulator`; `android-<goarch>`; `linux-<goarch>`;
+`windows-<goarch>`; `wasm`) a file, published to the plugin's GitHub
+release gzipped and named for its hash, with the SHA-256 of both. Only
+the manifest is checked in. An Asuka package that uses one carries the
+manifest beside its sources (std/sqlite's is plugin/sqlite's, copied),
+and its native code (the core's, for std/sqlite: core/src/sqlite) loads
+the library with `dlopen` or `LoadLibrary`: where the CLI shipped it
+with the app; else, in `asuka dev` on a desktop, `asuka test` and
+`asuka run`, the path the CLI gives in `ASUKA_LIB_<NAME>`: the plugin's
 checkout's build (`build/<target>` beside the manifest) or the
 published file, downloaded once into the user's cache and verified. A
-shipped app (`asuka_bundled`) and a phone's never download.
+phone's never download.
 
-The CLI finds an app's plugins among its dependencies for the build's
-platform (`go list -deps`, a manifest beside the package) and ships each
-library's file where `LibraryPath` looks: `Contents/Frameworks` on macOS
-(signed with the app), beside the `.exe` on Windows, `lib/<exe>` of the
-prefix on Linux, a framework of its own on iOS (named for the library;
-an Info.plist, a privacy manifest from the binary's imports, signed with
-the app), beside `libasuka.so` in each Android ABI, and `lib/` of the
-host's files on the web (the page's `libs` option names each file's
-URL): all in one place, so two plugins with a file of the same name for
-a platform don't build. A desktop build that ships any builds with `asuka_bundled`.
-A plugin builds its libraries with its own tool (they need what they
-need: SQLite, Xcode, the NDK and Zig), which writes each with
-`plugin.StoreBuild` and the hash of the plugin's sources (the manifest's
-`sources`); `asuka plugin publish` uploads them, refusing a build older
-than its sources, downloads each back to check it, and records them in
-the manifest.
+The CLI finds an app's plugins among its packages for the build's
+platform (a manifest beside the package) and ships each library's file
+where the core looks: `Contents/Frameworks` on macOS (signed with the
+app), beside the `.exe` on Windows, `lib/<exe>` of the prefix on Linux,
+a framework of its own on iOS (named for the library; an Info.plist, a
+privacy manifest from the binary's imports, signed with the app),
+beside `libasuka.so` in each Android ABI, and `lib/` of the host's
+files on the web (the page's `libs` option names each file's URL): all
+in one place, so two plugins with a file of the same name for a
+platform don't build. A plugin builds its libraries with its own tool
+(they need what they need: SQLite, Xcode, the NDK and Zig), which
+writes each with `plugin.StoreBuild` and the hash of the plugin's
+sources (the manifest's `sources`); `asuka plugin publish` uploads them,
+refusing a build older than its sources, downloads each back to check
+it, and records them in the manifest.
 
 A plugin's name, which goes in those paths, is letters, digits, `-`, `_` and `.`; two of an app's plugins can't
 share one.
 
 ### SQLite
 
-`asuka/sqlite` (std/sqlite) is a plugin: SQLite's own C, one pinned
+`asuka/sqlite` (std/sqlite) is a plugin's: SQLite's own C, one pinned
 release built with the same options for every platform by
-`sdk/sqlite/internal/build` (Xcode, the NDK, Zig), which the package's
+`plugin/sqlite/internal/build` (Xcode, the NDK, Zig), which the package's
 `asuka-plugin.toml` ships with the apps that import it. With it, one library of Asuka's
-(`sdk/sqlite/csrc/asq.c`) and one entry point: `asq_call(op, conn, arg, in,
+(`plugin/sqlite/csrc/asq.c`) and one entry point: `asq_call(op, conn, arg, in,
 inLen, out, outCap)`, every argument pointer-sized. A call is a whole
 statement: its SQL and arguments in, its answer (a query's columns and
 first rows, as many as fit the buffer) out; `next` brings the rest a
@@ -1274,24 +1275,18 @@ chunk at a time, and an answer too long for the buffer is kept for the
 caller to take with a bigger one. Statements are cached by SQL in C
 (64 per connection). The tables a call's commits wrote (the authorizer,
 the preupdate and commit hooks) and its queries read come back with
-each answer, so the live queries need no callbacks from C into Go.
+each answer, so the live queries need no callbacks.
 
-Go crosses into C once per call, never per column, which is what makes
-purego as fast as cgo here (a crossing costs more than a row): macOS,
-Linux, iOS and Android load the library with `dlopen` through purego
-(the mobile build modes' cgo is purego's way to `dlopen`, not
-Asuka's), Windows with `LoadLibrary` through `syscall`, and the web
-calls the same C built to WebAssembly from JavaScript. Every symbol but
-`asq_call` and `asq_version` is hidden, so a system SQLite in the same
-process (GTK may load one) never clashes. The CLI ships it with the app
-as any plugin's library ([Plugins](#plugins)).
-
-A database has one writer connection and, for a file, up to three
-readers (write-ahead logging), handed out by the Go side. Writes take
-turns on the writer: a semaphore that times out as SQLite's busy timeout
-does, so a write inside another's transaction fails with `ErrBusy`
-rather than hanging. Rows scan into structs by a plan made once per
-type (field offsets and kinds), written in place; no reflection per row.
+The core (core/src/sqlite) crosses into the library once per statement,
+never per column, on a thread of its own where statements run one
+after another, and decodes the rows on the main thread straight into
+the program's values by the type's descriptor: no JSON text, no
+per-cell crossing. macOS, Linux, iOS and Android load the library with
+`dlopen`, Windows with `LoadLibrary`, and the web runs the same C built
+to WebAssembly in the page's SQLite worker. Every symbol but `asq_call`
+and `asq_version` is hidden, so a system SQLite in the same process
+(GTK may load one) never clashes. The CLI ships it with the app as any
+plugin's library ([Plugins](#plugins)).
 
 ## iOS and Android: the core in the app
 
@@ -3923,9 +3918,9 @@ core/src/abi/web.c is the core's side:
   a job carries what changed since the worker's last (but its own
   changes), and its answer what the job changed, which the page takes as
   another writer's.
-- SQLite: the sqlite plugin's C (SQLite and `sdk/sqlite/csrc/asq.c`), built to
-  WebAssembly by `sdk/sqlite/internal/build` (zig, `wasm32-wasi`, `-Os`) with
-  `sdk/sqlite/csrc/asq_wasm.c` as its system (`SQLITE_OS_OTHER`, one thread:
+- SQLite: the sqlite plugin's C (SQLite and `plugin/sqlite/csrc/asq.c`), built to
+  WebAssembly by `plugin/sqlite/internal/build` (zig, `wasm32-wasi`, `-Os`) with
+  `plugin/sqlite/csrc/asq_wasm.c` as its system (`SQLITE_OS_OTHER`, one thread:
   a VFS, the time zone and randomness imported from JavaScript, no WASI
   imports): the plugin's `wasm` file, which the CLI ships with the apps
   that use it, in `lib/` (as any plugin's, [Plugins](#plugins)), named in
