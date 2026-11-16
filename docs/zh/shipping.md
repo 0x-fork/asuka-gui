@@ -269,7 +269,7 @@ asuka build --platform web
 
 这会在 `dist/web` 中生成一个静态网站，包括：`index.html`、编译进了应用的 WebAssembly 核心（由 Zig 构建）、Web 宿主的脚本、应用的 service worker、应用的资源、带图标的 Web 应用清单（manifest）、gzip 压缩副本，以及供 Cloudflare 和 Netlify 使用的 `_headers` 文件。文件名中带有内容摘要，所以除了 `index.html` 和清单之外，其他文件都可以永久缓存。你可以用任何 Web 服务器或 CDN 托管这个文件夹，但 `.wasm` 必须以 `application/wasm` 类型提供，并且要通过 HTTPS 访问（service worker、Web Push 和安全存储都依赖 HTTPS）。网站里具体有什么、在浏览器中有哪些不同的行为，请参阅 [Web](web.md)。
 
-它还会写出 `version.json`，记录本次构建的版本及其版本说明（取自 `CHANGELOG.md` 中的对应小节）。页面中的 `asuka/sdk/update` 会读取它：如果页面比网站上的版本旧，就会提示用户重新加载（见[自动更新](#自动更新)）。
+它还会写出 `version.json`，记录本次构建的版本及其版本说明（取自 `CHANGELOG.md` 中的对应小节）。页面中的 `asuka/update` 会读取它：如果页面比网站上的版本旧，就会提示用户重新加载（见[自动更新](#自动更新)）。
 
 ## 自动更新
 
@@ -307,38 +307,67 @@ github = "you/notes"
 
 ### 在应用中
 
-`update.Window` 是更新窗口，放在应用的根节点里；`update.AppMenu` 会添加“Check for Updates…”菜单项：在 Mac 上位于应用菜单的“关于”之后，在 Windows 上位于帮助菜单中，在 Linux 上位于标题栏的主菜单中。
+`asuka/update` 的 `UpdateWindow` 就是更新窗口：在应用的主窗口里放一次即可，它不占用任何空间。它的 `AppMenu` 会添加“Check for Updates…”菜单项：在 Mac 上位于应用菜单的“关于”之后，在 Windows 和 Linux 上位于帮助菜单中。`CheckForUpdates` 是单独的这一个菜单项，可以放进你自己的菜单或托盘图标的菜单。
 
-```go
-func Root() ui.Node {
-	return ui.Column(ui.Style{},
-		update.Window(update.Options{Icon: "logo.png"}), // assets/ 中的一张图片
-		ui.MenuBar(ui.Val([]ui.MenuBarMenu{update.AppMenu()})),
-		// ...
-	)
+```asuka
+import asuka/update
+
+app {
+  Window {
+    title: "Notes"
+    update.UpdateWindow { icon: "logo.png" }  // assets/ 中的一张图片
+    MenuBar { update.AppMenu() }
+    Text("Notes")
+  }
 }
 ```
 
-它会在启动 10 秒后检查一次，之后每天检查一次（`Options.Interval`）。发现新版本时，窗口会显示版本说明，并提供 **Install Update**、**Remind Me Later** 和 **Skip This Version** 三个按钮（跳过之后，后台检查不会再提示这个版本，但仍会提示下一个版本），以及一个“Automatically download and install updates in the future”选项：勾选后，之后检查到的更新会直接安装、不再询问，并在下次启动时生效。安装过程中会显示下载进度，完成后显示 **Relaunch Now**。`update.CheckForUpdates()` 执行一次由用户主动发起的检查（比如通过菜单项或按钮）：与后台检查不同，这时如果应用已是最新版本或者无法自我更新，窗口也会明确告诉用户。`AutomaticChecks`、`SetAutomaticChecks`、`AutomaticDownloads`、`SetAutomaticDownloads` 和 `LastCheck` 对应用户的这些选择（保存在应用数据目录下的 `update.json` 中），可以用来做设置页面。窗口里的文字由 Asuka 提供，会跟随应用的语言；如果想修改，可以在应用的翻译目录（catalog）中设置 `asuka.updateInstall` 等键。
+它会在启动 10 秒后检查一次，之后每天检查一次（由它的 `interval` 决定）。发现新版本时，窗口会显示版本说明，并提供 **Install Update**、**Remind Me Later** 和 **Skip This Version** 三个按钮（跳过之后，后台检查不会再提示这个版本，但仍会提示下一个版本），以及一个“Automatically download and install updates in the future”选项：勾选后，之后检查到的更新会直接安装、不再询问，并在下次启动时生效。安装过程中会显示下载进度，完成后显示 **Relaunch Now**。`update.checkForUpdates()` 执行一次由用户主动发起的检查（比如通过菜单项或按钮）：这时如果应用已是最新版本或者无法自我更新，窗口也会明确告诉用户。`automaticChecks()`、`setAutomaticChecks(on)`、`automaticDownloads()`、`setAutomaticDownloads(on)`、`lastCheck()` 和 `skippedVersion()` 对应用户的这些选择（通过 asuka/storage 保存在设备上），可以用来做设置页面；`UpdateWindow { automaticChecks: false }` 在用户打开之前不做后台检查。窗口里的文字由 Asuka 提供，会跟随应用的语言。
 
-如果应用想用自己的界面，可以在主线程之外调用这个包的函数，或者读取更新器的状态（`update.Use()`：检查中、有可用更新、下载中及已下载的字节数、准备就绪……）：
+如果应用想用自己的界面，可以使用 `check()`、`Release.install` 和 `relaunch()`，或者读取更新器的状态 `update.updater`。它是一个 store，其中的 `phase` 表示检查中、有可用更新、下载中（附带 `downloaded` 和 `total`）、准备就绪等阶段：
 
-```go
-go func() {
-	r, err := update.Check(ctx) // nil：已是最新版本
-	if err != nil || r == nil {
-		return
-	}
-	// r.Version、r.Notes（Markdown）、r.Date、r.Size
-	if err := r.Install(ctx, func(done, total int64) { /* 用 ui.Post 更新进度 */ }); err == nil {
-		update.Relaunch() // 即 app.Relaunch：先退出（OnQuit 可以取消），再启动新版本
-	}
-}()
+```asuka
+import asuka/update
+
+component UpdateBanner {
+  state found: update.Release? = none
+  state done = 0.0
+
+  task {
+    do {
+      found = try await update.check()  // none：已是最新版本
+    } catch e {
+      print(e.message)
+    }
+  }
+
+  if let r = found {
+    Row {
+      gap: 8
+      Text("Notes {r.version} is out")  // r.notes：Markdown；还有 r.date、r.size
+      Button("Install") {
+        on press {
+          do {
+            try await r.install(progress: (got, total) => { done = float(got) / float(total) })
+            update.relaunch()  // 先退出（on quit 可以取消），再启动新版本
+          } catch e {
+            print(e.message)
+          }
+        }
+      }
+      if done > 0 { Progress { value: done } }
+    }
+  }
+}
 ```
 
-`update.Supported()` 会告诉你应用能否自我更新，以及不能的原因：开发构建，或者没有配置 `updates` 的构建（`ErrNotConfigured`）；由系统包管理器、Flatpak、Snap、Mac App Store 或 Microsoft Store 安装的应用（`ErrManaged`：由它们负责更新）；直接在下载位置运行、被 macOS 做了路径随机化（translocation）的 Mac 应用（`ErrTranslocated`：需要用户把它移到“应用程序”文件夹）；所在文件夹用户没有写权限（`ErrNotWritable`）；在手机上（`ErrUnsupported`）。遇到这些情况，窗口不会在后台检查，用户手动检查时则会说明原因。
+`await update.unsupported()` 会告诉你应用为什么不能自我更新；能更新时返回 none。不能更新的情况有：开发构建，或者没有配置 `updates` 的构建（`.notConfigured`）；由系统包管理器、Flatpak、Snap、Mac App Store 或 Microsoft Store 安装的应用（`.managed`：由它们负责更新）；直接在下载位置运行、被 macOS 做了路径随机化（translocation）的 Mac 应用（`.translocated`：需要用户把它移到“应用程序”文件夹）；所在文件夹用户没有写权限（`.notWritable`）；在手机上（`.notAvailable`）。遇到这些情况，窗口不会在后台检查，用户手动检查时则会说明原因。
 
-`update.SetChannel("beta")` 让应用也接收某个渠道的预发布版本，适合那些选择加入 beta 的用户。一个版本属于哪个渠道，取决于其预发布标识中的字母部分（`1.4.0-beta.2` 属于 `beta`）；`"*"` 表示接收所有预发布版本。正式版本在每个渠道都会推送。`update.SetSource` 让应用用自己的代码读取清单和下载文件（例如服务端需要用户令牌时）；签名验证照常进行。
+`update.setChannel("beta")` 让应用也接收某个渠道的预发布版本，适合那些选择加入 beta 的用户。一个版本属于哪个渠道，取决于其预发布标识中的字母部分（`1.4.0-beta.2` 属于 `beta`）；`"*"` 表示接收所有预发布版本。正式版本在每个渠道都会推送。`update.setFeed(url)` 让应用读取 `asuka.toml` 之外的另一个更新源（比如按用户账号选定的）：可以是清单的 URL、GitHub Releases，或者带有 `{target}`、`{version}` 和 `{channel}` 的服务器 URL；签名验证照常进行。`update.compareVersions(a, b)` 按更新器的规则比较两个版本。
+
+在 Web 上没有什么需要安装：`check()` 会绕过浏览器缓存读取网站的 `version.json`，有新版本时 `relaunch()` 会重新加载页面。
+
+在测试中，假宿主和手机一样没有 update 模块；`update.fakeHost(update.FakeApp(…))` 会让它像已安装应用的宿主那样应答，并提供更新源里的文件（`host.serve(update.Served(url:, file:))`）；`host.log()` 会告诉你它下载和安装了什么。
 
 ### 构建与发布
 

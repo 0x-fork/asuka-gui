@@ -225,7 +225,7 @@ web view 应用在所有系统上都长得一样，完全按它的 HTML 和 CSS 
 | 应用图标上的进度和提醒 | `setProgressBar`、`flashFrame`、`dock.bounce` | 程序坞和任务栏 | ✓ `dock.SetProgress`、`RequestAttention`（Linux 上需要 dock 支持 Unity launcher API） |
 | 强调色、增强对比度、降低透明度 | `systemPreferences` | 强调色和无障碍设置 | ✓ `asuka/sdk/appearance`（Linux 上没有降低透明度） |
 | 正在播放和媒体键 | （无：只能用页面里的 `navigator.mediaSession`） | 正在播放 | ✓ `asuka/sdk/nowplaying`（Mac 上用 `MPNowPlayingInfoCenter`；Windows 上用窗口的 SystemMediaTransportControls；Linux 上是一个 MPRIS 播放器） |
-| 自动更新：签名发布、增量更新、Sparkle 那样的更新窗口 | `autoUpdater`（Squirrel）、electron-updater | 更新器及其插件 | ✓ `asuka/sdk/update`（`Window`、`CheckForUpdates`、`Check`、`Install`、`Relaunch`；Ed25519 签名、增量更新、更新渠道；可以发布到 GitHub releases、S3 存储桶、任意 HTTPS 目录，或者你自己的服务器；`asuka publish --platform mac\|windows\|linux`）；通过系统包管理器、Flatpak 或应用商店安装的应用由它们负责更新；Web 则重新加载页面 |
+| 自动更新：签名发布、增量更新、Sparkle 那样的更新窗口 | `autoUpdater`（Squirrel）、electron-updater | 更新器及其插件 | ✓ `asuka/update`（`UpdateWindow`、`checkForUpdates`、`check`、`install`、`relaunch`；Ed25519 签名、增量更新、更新渠道；可以发布到 GitHub releases、S3 存储桶、任意 HTTPS 目录，或者你自己的服务器；`asuka publish --platform mac\|windows\|linux`）；通过系统包管理器、Flatpak 或应用商店安装的应用由它们负责更新；Web 则重新加载页面 |
 
 MyGo 有而 Asuka 还没有的：文档方面，缺少版本（Mac 上的“浏览所有版本”）和锁定；点击穿透窗口方面，缺少输入区域（也就是窗口里仍然接收点击的那部分：Asuka 的窗口要么整个让鼠标穿过，要么完全不穿过）。
 

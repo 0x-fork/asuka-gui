@@ -217,7 +217,7 @@ Web ビューのアプリは、HTML と CSS で書いたとおりに、どのシ
 | アプリのアイコンでの進捗と注意喚起 | `setProgressBar`、`flashFrame`、`dock.bounce` | Dock とタスクバー | ✓ `dock.SetProgress`、`RequestAttention`（Linux では Unity launcher API に対応したドック） |
 | アクセントカラー、コントラストを上げる、透明度を下げる | `systemPreferences` | アクセントカラーとアクセシビリティ | ✓ `asuka/sdk/appearance`（Linux では「透明度を下げる」はなし） |
 | 再生中の情報とメディアキー | （なし：ページ内の `navigator.mediaSession`） | Now Playing | ✓ `asuka/sdk/nowplaying`（`MPNowPlayingInfoCenter`、ウィンドウの SystemMediaTransportControls、MPRIS のプレイヤー） |
-| 自動アップデート：署名付きのリリース、差分、Sparkle のウィンドウ | `autoUpdater`（Squirrel）、electron-updater | アップデーターとそのプラグイン | ✓ `asuka/sdk/update`（`Window`、`CheckForUpdates`、`Check`、`Install`、`Relaunch`。Ed25519 の署名、差分アップデート、チャンネル。GitHub のリリース、S3 のバケット、任意の HTTPS のディレクトリ、独自のサーバー。`asuka publish --platform mac\|windows\|linux`）。システムのパッケージ、Flatpak、ストアでインストールしたアプリは、それらを通じてアップデートする。Web は再読み込み |
+| 自動アップデート：署名付きのリリース、差分、Sparkle のウィンドウ | `autoUpdater`（Squirrel）、electron-updater | アップデーターとそのプラグイン | ✓ `asuka/update`（`UpdateWindow`、`checkForUpdates`、`check`、`install`、`relaunch`。Ed25519 の署名、差分アップデート、チャンネル。GitHub のリリース、S3 のバケット、任意の HTTPS のディレクトリ、独自のサーバー。`asuka publish --platform mac\|windows\|linux`）。システムのパッケージ、Flatpak、ストアでインストールしたアプリは、それらを通じてアップデートする。Web は再読み込み |
 
 MyGo にあって Asuka にまだないものは次のとおりです。書類については、バージョン（Mac の「すべてのバージョンをブラウズ」）とロック。クリックを透過するウィンドウについては、入力領域（ウィンドウのうち、クリックを受け付け続ける部分）の指定です。Asuka のウィンドウは、マウスをウィンドウ全体で透過させるか、まったく透過させないかのどちらかです。
 

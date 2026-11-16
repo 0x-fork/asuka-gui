@@ -107,6 +107,34 @@ func TestDocExamples(t *testing.T) {
 	}
 }
 
+// The updater's examples (asuka/update) in the shipping and desktop
+// guides compile, in every language's docs.
+func TestUpdateDocExamples(t *testing.T) {
+	n := 0
+	for _, lang := range []string{"", "zh", "ja"} {
+		for _, page := range []string{"shipping.md", "desktop.md"} {
+			path := filepath.Join("..", "..", "docs", lang, page)
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, ex := range asukaBlocks(string(b)) {
+				if !strings.Contains(ex.code, "import asuka/update") {
+					continue
+				}
+				n++
+				res := Files(map[string][]byte{"example.asuka": []byte(ex.code)}, nil)
+				if err := res.Err(); err != nil {
+					t.Errorf("%s:%d: the example doesn't compile:\n%v", path, ex.line, err)
+				}
+			}
+		}
+	}
+	if n < 9 {
+		t.Errorf("%d examples of asuka/update, want 3 in each language", n)
+	}
+}
+
 type example struct {
 	code string
 	line int
