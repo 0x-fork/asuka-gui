@@ -35,6 +35,15 @@ type Info struct {
 	AppHandlers []*HandlerArg
 	// Shaders: shader("""…""")'s programs, compiled.
 	Shaders map[*syntax.CallExpr][]byte
+
+	// For editors (lang/lsp).
+	//
+	// Imports: the package each import names (absent: it failed).
+	Imports map[*syntax.ImportDecl]*Package
+	// Expected: the type an implicit member (.name, .name(…)) was
+	// checked against, nil where none was known; recorded whether the
+	// member was found or not, for completion.
+	Expected map[syntax.Expr]Type
 }
 
 func newInfo() *Info {
@@ -58,6 +67,8 @@ func newInfo() *Info {
 		Shaders:    map[*syntax.CallExpr][]byte{},
 		SlotCalls:  map[*syntax.SlotItem]*syntax.CallExpr{},
 		BodyCalls:  map[syntax.Item]bool{},
+		Imports:    map[*syntax.ImportDecl]*Package{},
+		Expected:   map[syntax.Expr]Type{},
 	}
 }
 

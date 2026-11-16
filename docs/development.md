@@ -3,8 +3,8 @@
 `asuka dev` runs an app and reloads it as you save: on the iOS simulator
 or an iPhone, an Android emulator or phone, your Mac, PC or Linux
 machine, or your browser. This page covers how it does that on each,
-what a reload keeps, devices, assets and logs, the problems you may
-meet, and Asuka's own tests and benchmarks.
+what a reload keeps, devices, assets and logs, editors, the problems
+you may meet, and Asuka's own tests and benchmarks.
 
 ## asuka dev
 
@@ -240,6 +240,30 @@ them in the terminal: `print`, uncaught errors, and what the core and
 the host write, on every platform. A module the player couldn't load
 says why (`asuka: the player: ...`). In the browser, the page's errors
 print there too.
+
+## Editors
+
+`asuka lsp` is Asuka's language server: diagnostics as you type,
+completion, hover with `///` docs, go to definition, references,
+rename, formatting (`asuka fmt`'s), symbols, signature help and
+semantic highlighting for `.asuka` files. It checks the package being
+edited with your unsaved changes, and the packages that import it.
+
+For VS Code, the extension is in `editors/vscode`: it adds the
+language's highlighting and runs `asuka lsp`, the `asuka` on your `PATH`
+or the one `asuka.server.path` names.
+
+```sh
+cd editors/vscode
+npm install
+npx @vscode/vsce package
+code --install-extension asuka-0.1.0.vsix
+```
+
+Any editor with an LSP client can use it too: run `asuka lsp`, which
+speaks LSP 3.17 over standard input and output, for `.asuka` files,
+with the directory of `asuka.toml` as the root. `editors/vscode`'s
+README has Neovim's and Helix's settings.
 
 ## Snapshots and scripts
 

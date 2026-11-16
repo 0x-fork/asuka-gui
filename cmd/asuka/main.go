@@ -14,6 +14,7 @@
 //	asuka check [dir]                        report an Asuka package's problems
 //	asuka test [-run pattern] [dir]          run an Asuka package's tests on the VM
 //	asuka run file.asuka                     run a file's fn main() (or its tests) on the VM
+//	asuka lsp                                the language server, for editors
 package main
 
 import (
@@ -57,6 +58,7 @@ func usage() {
   asuka check [dir]                         report an Asuka package's problems (file:line:col: message)
   asuka test [-run pattern] [-v] [dir]      run an Asuka package's test blocks on the VM
   asuka run file.asuka                      run a file's fn main() (or its tests) on the VM
+  asuka lsp                                 run the language server, for editors (LSP on stdio)
 
 asuka <command> --help lists its flags.
 `)
@@ -107,6 +109,8 @@ func main() {
 		return
 	case "check":
 		err = cmdCheck(os.Args[2:])
+	case "lsp":
+		err = cmdLSP(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return

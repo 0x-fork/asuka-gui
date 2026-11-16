@@ -1,6 +1,6 @@
 # 开发
 
-`asuka dev` 会运行你的应用，并在你保存时重新加载。它可以运行在 iOS 模拟器或 iPhone、Android 模拟器或手机、你的 Mac、PC 或 Linux 电脑上，也可以运行在浏览器里。本页介绍它在各个平台上是怎么做到的、重载时会保留什么，以及设备、资源和日志、哪些内容无法重载、`asuka vet`、你可能遇到的问题，还有 Asuka 自己的测试和基准测试。
+`asuka dev` 会运行你的应用，并在你保存时重新加载。它可以运行在 iOS 模拟器或 iPhone、Android 模拟器或手机、你的 Mac、PC 或 Linux 电脑上，也可以运行在浏览器里。本页介绍它在各个平台上是怎么做到的、重载时会保留什么，以及设备、资源和日志、哪些内容无法重载、`asuka vet`、编辑器、你可能遇到的问题，还有 Asuka 自己的测试和基准测试。
 
 ## asuka dev
 
@@ -170,6 +170,21 @@ main.go:14:23: count.Get() is read once, while App builds its views, so the cons
 默认检查的包是 `./...`，和 `go vet` 的规则一样。参数也与 `go vet` 一致（`-tags=...`、`-json`），另外每项检查都有一个对应的参数：`-reads=false` 会关闭 reads 检查。只要报告了问题，`asuka vet` 就以状态码 1 退出，便于在 CI 中使用。它与 `go vet -vettool=$(which asuka)` 运行的检查相同，但后者不会运行 `go vet` 自己的检查。
 
 `asuka dev` 会在启动时和每次保存后在后台运行它，并把新发现的问题作为警告打印出来；`asuka build` 会在构建前运行它。两者都不会因为发现问题而中止。它与构建并行运行，耗时一两秒；`--no-vet` 可以在这两个命令中关闭它。
+
+## 编辑器
+
+`asuka lsp` 是 Asuka 的语言服务器，为 `.asuka` 文件提供：边输入边显示的诊断、补全、带 `///` 文档的悬停提示、跳转到定义、查找引用、重命名、格式化（与 `asuka fmt` 相同）、符号、签名提示和语义高亮。它会连同你尚未保存的修改一起检查正在编辑的包，以及导入它的那些包。
+
+VS Code 的扩展在 `editors/vscode` 里：它为这门语言加上语法高亮，并运行 `asuka lsp`（`PATH` 里的 `asuka`，或者 `asuka.server.path` 指定的那个）。
+
+```sh
+cd editors/vscode
+npm install
+npx @vscode/vsce package
+code --install-extension asuka-0.1.0.vsix
+```
+
+任何带 LSP 客户端的编辑器也都能用它：运行 `asuka lsp`，它通过标准输入输出使用 LSP 3.17，处理 `.asuka` 文件，以 `asuka.toml` 所在的目录为根目录。`editors/vscode` 的 README 里有 Neovim 和 Helix 的配置。
 
 ## 快照与脚本
 

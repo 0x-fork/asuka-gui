@@ -1,0 +1,76 @@
+# Asuka for Visual Studio Code
+
+Support for the [Asuka language](../../docs/language.md): highlighting,
+and everything that needs the compiler from its language server,
+`asuka lsp`.
+
+- **Diagnostics** as you type: the checker's errors, with what would fix
+  them, for the package being edited and the packages that import it.
+- **Completion**: `x.` (fields, methods, built-in methods, a package's
+  names, a type's cases), `.name` where the type is known (`.accent`,
+  `.title`, an enum's cases), an element's props, events (`on press`),
+  slots and `bind` in its block, argument labels, names in scope,
+  keywords, `import` paths.
+- **Hover**: a name's declaration and its `///` documentation; an
+  element's props and events.
+- **Go to definition** and **type definition**, into imported packages,
+  the standard library and the built-in elements.
+- **Find references**, **rename** and highlights, across the workspace.
+- **Formatting** (`asuka fmt`'s), on save by default.
+- **Outline**, **workspace symbols**, **signature help** and **semantic
+  highlighting**.
+
+## Install
+
+The extension runs the `asuka` CLI, which must be installed (or built
+from this repository: `go build -o ~/go/bin/asuka ./cmd/asuka`).
+
+From this directory:
+
+```sh
+npm install
+npx @vscode/vsce package     # asuka-0.1.0.vsix
+code --install-extension asuka-0.1.0.vsix
+```
+
+Or, to work on the extension, open this directory in VS Code and press
+F5 (Run Extension) after `npm install`.
+
+## Settings
+
+| Setting | Default | |
+|---|---|---|
+| `asuka.server.path` | `asuka` | The `asuka` command: a name on `PATH`, or a path (a relative one is from the workspace's first folder). |
+| `asuka.server.args` | `[]` | More arguments for `asuka lsp`: `--verbose` logs to the Asuka output channel. |
+| `asuka.trace.server` | `off` | `messages` or `verbose` traces LSP's messages in the Asuka output channel. |
+
+Commands: **Asuka: Restart Language Server** (after rebuilding `asuka`)
+and **Asuka: Show Language Server Output**.
+
+## Other editors
+
+Any editor with an LSP client can run `asuka lsp`: it speaks LSP 3.17
+over standard input and output. For example, Neovim:
+
+```lua
+vim.filetype.add({ extension = { asuka = "asuka" } })
+vim.lsp.config("asuka", { cmd = { "asuka", "lsp" }, filetypes = { "asuka" }, root_markers = { "asuka.toml", ".git" } })
+vim.lsp.enable("asuka")
+```
+
+and Helix (`languages.toml`):
+
+```toml
+[language-server.asuka]
+command = "asuka"
+args = ["lsp"]
+
+[[language]]
+name = "asuka"
+scope = "source.asuka"
+file-types = ["asuka"]
+roots = ["asuka.toml"]
+comment-token = "//"
+indent = { tab-width = 2, unit = "  " }
+language-servers = ["asuka"]
+```

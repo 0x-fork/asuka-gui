@@ -43,7 +43,13 @@ type Package struct {
 	Tests   []*Test
 	App     *syntax.AppDecl
 	Imports []*Package
+
+	fileScopes map[*syntax.SourceFile]*Scope
 }
+
+// FileScope is the scope of f's imports (inside the package's), nil for
+// a file that isn't the package's.
+func (p *Package) FileScope(f *syntax.SourceFile) *Scope { return p.fileScopes[f] }
 
 // A Test is a test block.
 type Test struct {
@@ -83,6 +89,10 @@ func (s *Scope) LookupType(name string) *TypeName {
 	}
 	return nil
 }
+
+// Parent is the scope s is in: a package's is the prelude's, whose is
+// the universe's (nil).
+func (s *Scope) Parent() *Scope { return s.parent }
 
 // LookupLocal finds name in s only.
 func (s *Scope) LookupLocal(name string) Object { return s.names[name] }

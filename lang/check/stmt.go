@@ -767,6 +767,13 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 				return
 			}
 			tn = n.Obj
+		} else if len(p.Path) < 2 {
+			name := "case"
+			if len(p.Path) == 1 {
+				name = p.Path[0].Name
+			}
+			c.errorf(p, "%s(…) isn't a case: write .%s(…), or Type.%s(…)", name, name, name)
+			return
 		} else {
 			tn = c.casePathType(p.Path[:len(p.Path)-1])
 			if tn == nil {

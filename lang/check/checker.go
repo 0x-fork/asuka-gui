@@ -195,6 +195,10 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	// each other's declarations, in any order.
 	for _, f := range files {
 		fs := NewScope(p.Scope)
+		if p.fileScopes == nil {
+			p.fileScopes = map[*syntax.SourceFile]*Scope{}
+		}
+		p.fileScopes[f] = fs
 		for _, imp := range f.Imports {
 			c.importDecl(fs, imp, imports)
 		}
@@ -244,6 +248,7 @@ func (c *Checker) importDecl(fs *Scope, imp *syntax.ImportDecl, imports map[stri
 		c.errorf(imp, "no package %s: %s", path, importHint(imp))
 		return
 	}
+	c.info.Imports[imp] = ip
 	if !contains(c.pkg.Imports, ip) {
 		c.pkg.Imports = append(c.pkg.Imports, ip)
 	}
@@ -599,10 +604,14 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 			c.errorf(t, "unknown type %s (%s isn't an imported package)", joinPath(t.Path), t.Path[0].Name)
 			return Invalid
 		}
+		c.info.Uses[t.Path[0]] = pn
 		o = pn.Pkg.Scope.LookupLocal(name)
 		if o == nil {
 			c.errorf(t, "package %s has no type %s", pn.Pkg.Path, name)
 			return Invalid
+		}
+		if len(t.Path) == 2 {
+			c.info.Uses[t.Path[1]] = o
 		}
 		if !c.exported(pn.Pkg, o) {
 			c.errorf(t, "%s isn't pub in package %s", name, pn.Pkg.Path)
