@@ -129,8 +129,13 @@ let package = Package(
 `, swiftPlatform(b.platform), strings.Join(deps, "\n"), strings.Join(products, ", ")), nil
 }
 
-// build writes the packages and builds them.
+// build builds the host's Swift and the native packages': as modules,
+// cached (swiftModules), when swiftc can build each alone; else as
+// packages, written here and built by xcodebuild.
 func (b *swiftBuild) build() (*swiftPackageOutput, error) {
+	if out, ok, err := b.modules(); ok || err != nil {
+		return out, err
+	}
 	if !exists("/usr/bin/xcodebuild") {
 		return nil, errors.New("the app's native packages have Swift, which xcodebuild builds: install Xcode")
 	}

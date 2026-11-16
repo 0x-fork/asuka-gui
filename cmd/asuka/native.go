@@ -307,6 +307,19 @@ func rel(p string) string {
 type swiftInfo struct {
 	Platforms []string `json:"platforms"`
 	Products  []string `json:"products"`
+	// Module is its one target when the CLI compiles it as a module of
+	// its own (swiftModules): Swift alone, depending on the host's only,
+	// with no resources or settings. Nil: xcodebuild builds it.
+	Module *swiftModuleInfo `json:"module,omitempty"`
+}
+
+// swiftModuleInfo is a package's target that swiftModules compiles.
+type swiftModuleInfo struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"` // its directory in the package
+	IOS    string `json:"ios"`  // its minimum versions ("" for the app's)
+	MacOS  string `json:"macos"`
+	Swift6 bool   `json:"swift6"` // tools version 6: Swift 6's language mode
 }
 
 func (s swiftInfo) supports(platform string) bool {
@@ -321,7 +334,7 @@ func swiftPackageInfo(dir string) (swiftInfo, error) {
 		return swiftInfo{}, err
 	}
 	sum := sha256.Sum256(manifest)
-	cache := cachedir.Path("swiftpm", hex.EncodeToString(sum[:])[:16]+".json")
+	cache := cachedir.Path("swiftpm", "2-"+hex.EncodeToString(sum[:])[:16]+".json")
 	var info swiftInfo
 	if b, err := os.ReadFile(cache); err == nil && json.Unmarshal(b, &info) == nil {
 		return info, nil
@@ -339,19 +352,85 @@ func swiftPackageInfo(dir string) (swiftInfo, error) {
 	var dump struct {
 		Platforms []struct {
 			PlatformName string `json:"platformName"`
+			Version      string `json:"version"`
 		} `json:"platforms"`
 		Products []struct {
 			Name string                     `json:"name"`
 			Type map[string]json.RawMessage `json:"type"`
 		} `json:"products"`
+		Dependencies []map[string][]struct {
+			Identity string `json:"identity"`
+		} `json:"dependencies"`
+		Targets []struct {
+			Name         string             `json:"name"`
+			Type         string             `json:"type"`
+			Path         *string            `json:"path"`
+			Sources      []string           `json:"sources"`
+			Exclude      []string           `json:"exclude"`
+			Resources    []json.RawMessage  `json:"resources"`
+			Settings     []json.RawMessage  `json:"settings"`
+			Dependencies []map[string][]any `json:"dependencies"`
+		} `json:"targets"`
+		ToolsVersion struct {
+			Version string `json:"_version"`
+		} `json:"toolsVersion"`
 	}
 	if err := json.Unmarshal(out, &dump); err != nil {
 		return info, fmt.Errorf("%s/Package.swift: %v", dir, err)
 	}
+	mod := &swiftModuleInfo{Swift6: strings.HasPrefix(dump.ToolsVersion.Version, "6")}
 	for _, p := range dump.Platforms {
+		switch p.PlatformName {
+		case "ios":
+			mod.IOS = p.Version
+		case "macos":
+			mod.MacOS = p.Version
+		}
 		if p.PlatformName == "ios" || p.PlatformName == "macos" {
 			info.Platforms = append(info.Platforms, p.PlatformName)
 		}
+	}
+	// A module of its own: its packages' only dependency the host's
+	// (asuka), one regular target that depends on the host's product
+	// alone, with no resources, settings or lists of files.
+	for _, d := range dump.Dependencies {
+		for _, refs := range d {
+			for _, r := range refs {
+				if r.Identity != "asuka" {
+					mod = nil
+				}
+			}
+		}
+	}
+	var targets int
+	for _, t := range dump.Targets {
+		if t.Type == "test" {
+			continue
+		}
+		targets++
+		if mod == nil {
+			continue
+		}
+		if t.Type != "regular" || len(t.Resources) > 0 || len(t.Settings) > 0 || len(t.Sources) > 0 || len(t.Exclude) > 0 {
+			mod = nil
+			continue
+		}
+		for _, d := range t.Dependencies {
+			p, ok := d["product"]
+			if !ok || len(p) < 2 || p[0] != "Asuka" || p[1] != "asuka" {
+				mod = nil
+			}
+		}
+		if mod != nil {
+			mod.Name = t.Name
+			mod.Path = filepath.Join("Sources", t.Name)
+			if t.Path != nil {
+				mod.Path = filepath.FromSlash(*t.Path)
+			}
+		}
+	}
+	if targets == 1 && mod != nil {
+		info.Module = mod
 	}
 	for _, p := range dump.Products {
 		if _, ok := p.Type["library"]; ok {

@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/egoist/asuka/internal/cachedir"
+	"github.com/egoist/asuka/internal/ccache"
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
@@ -210,16 +210,19 @@ func (b *macBuild) hostObject(arch string, sources map[string][]byte) ([]string,
 	if b.release {
 		kind = "release"
 	}
-	obj := filepath.Join(shared, hex.EncodeToString(h.Sum(nil))[:16]+"-"+arch+"."+kind+".o")
+	// The build cache's Swift store keeps it (evicted when used least
+	// lately, as everything there is).
+	fmt.Fprintln(h, arch, kind)
+	obj := ccache.Sharded("swift", "h", hex.EncodeToString(h.Sum(nil)), ".o")
 	if _, err := os.Stat(obj); err == nil {
-		now := time.Now()
-		os.Chtimes(obj, now, now) // used: the last to go
+		ccache.Touch(obj)
+		ccache.Hit("swift")
 		return []string{obj}, nil, nil
 	}
-	// The objects of hosts used least lately go, past a few per
-	// architecture and kind of build: another checkout's or version's
-	// build may be linking one this moment.
-	pruneHostObjects(filepath.Join(shared, "*-"+arch+"."+kind+".o"), macHostObjectsKept-1)
+	ccache.Miss("swift")
+	if err := os.MkdirAll(filepath.Dir(obj), 0o755); err != nil {
+		return nil, nil, err
+	}
 	src := filepath.Join(shared, "src")
 	os.RemoveAll(src)
 	inc := filepath.Join(src, "CAsuka")
@@ -249,12 +252,14 @@ func (b *macBuild) hostObject(arch string, sources map[string][]byte) ([]string,
 	for _, d := range macHostDefines {
 		args = append(args, "-D", d)
 	}
-	args = append(args, "-I", inc, "-c", "-o", obj)
+	tmp := ccache.TmpName(obj)
+	args = append(args, "-I", inc, "-c", "-o", tmp)
 	if err := b.run(shared, nil, "xcrun", append(args, files...)...); err != nil {
+		os.Remove(tmp)
 		return nil, nil, err
 	}
 	os.RemoveAll(src)
-	return []string{obj}, nil, nil
+	return []string{obj}, nil, ccache.Commit(tmp, obj)
 }
 
 // embed puts what the app's Swift packages bring in the bundle (their
@@ -373,30 +378,4 @@ func copyFile(src, dst string) error {
 	}
 	os.Remove(dst) // a signed file is replaced, not written over
 	return os.WriteFile(dst, data, 0o755)
-}
-
-// macHostObjectsKept is how many of the host's objects (each a version of
-// its sources) the cache keeps per architecture and kind of build.
-const macHostObjectsKept = 4
-
-// pruneHostObjects removes the files pattern matches but the keep used
-// most lately (their modification times: a use touches one).
-func pruneHostObjects(pattern string, keep int) {
-	old, _ := filepath.Glob(pattern)
-	type obj struct {
-		path string
-		at   time.Time
-	}
-	var objs []obj
-	for _, o := range old {
-		if st, err := os.Stat(o); err == nil {
-			objs = append(objs, obj{o, st.ModTime()})
-		}
-	}
-	slices.SortFunc(objs, func(a, b obj) int { return b.at.Compare(a.at) })
-	for i, o := range objs {
-		if i >= keep {
-			os.Remove(o.path)
-		}
-	}
 }

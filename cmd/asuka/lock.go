@@ -17,6 +17,9 @@ func lockShared(dir string) (unlock func(), err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
+	// Used now: the build cache evicts what was used least lately.
+	now := time.Now()
+	os.Chtimes(dir, now, now)
 	f, err := os.OpenFile(filepath.Join(dir, ".asuka-lock"), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err

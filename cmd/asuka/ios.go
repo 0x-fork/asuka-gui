@@ -20,6 +20,7 @@ import (
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
+	"github.com/egoist/asuka/internal/ccache"
 	"github.com/egoist/asuka/lang/bytecode"
 	iosHost "github.com/egoist/asuka/platform/ios"
 )
@@ -163,9 +164,17 @@ func (t *iosToolchain) buildHost(work string, app *asukaApp, features []string) 
 		}
 	}
 	t.packages = nil
-	obj := filepath.Join(shared, hex.EncodeToString(h.Sum(nil))[:16]+".o")
+	// The build cache's Swift store keeps it (evicted when used least
+	// lately, as everything there is).
+	obj := ccache.Sharded("swift", "h", hex.EncodeToString(h.Sum(nil)), ".o")
 	if _, err := os.Stat(obj); err == nil {
+		ccache.Touch(obj)
+		ccache.Hit("swift")
 		return obj, nil
+	}
+	ccache.Miss("swift")
+	if err := os.MkdirAll(filepath.Dir(obj), 0o755); err != nil {
+		return "", err
 	}
 	fmt.Println("asuka: compiling the iOS host (once)")
 	args := append([]string{"swiftc", "-target", t.target, "-sdk", t.sdk, "-swift-version", "5",
@@ -173,11 +182,13 @@ func (t *iosToolchain) buildHost(work string, app *asukaApp, features []string) 
 	for _, f := range features {
 		args = append(args, "-D", f)
 	}
-	args = append(args, "-I", filepath.Join(src, "Sources", "CAsuka", "include"), "-c", "-o", obj)
+	tmp := ccache.TmpName(obj)
+	args = append(args, "-I", filepath.Join(src, "Sources", "CAsuka", "include"), "-c", "-o", tmp)
 	if err := t.run(shared, nil, "xcrun", append(args, swift...)...); err != nil {
+		os.Remove(tmp)
 		return "", err
 	}
-	return obj, nil
+	return obj, ccache.Commit(tmp, obj)
 }
 
 // buildHostPackage builds the host's Swift with the app's native
@@ -201,6 +212,9 @@ func (t *iosToolchain) buildHostPackage(work string, natives []nativePackage, fe
 		return "", err
 	}
 	obj := filepath.Join(b.dir, "AsukaApp-linked.o")
+	if err := os.MkdirAll(b.dir, 0o755); err != nil {
+		return "", err
+	}
 	args := append([]string{"--sdk", t.sdkName, "clang", "-target", t.target, "-r", "-o", obj}, out.objects...)
 	if err := t.run(work, nil, "xcrun", args...); err != nil {
 		return "", err

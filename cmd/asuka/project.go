@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/internal/cachedir"
+	"github.com/egoist/asuka/internal/ccache"
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/appconfig"
@@ -195,7 +196,13 @@ func (a *asukaApp) hostConfig(platform, target string, updates bool) appconfig.C
 func workDir(app *asukaApp, platform string) (string, error) {
 	sum := sha256.Sum256([]byte(app.dir))
 	dir := filepath.Join(cachedir.Root(), app.name+"-"+hex.EncodeToString(sum[:])[:8], platform)
-	return dir, os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	// Used now: the build cache evicts what was used least lately (an
+	// app's work directory whole).
+	ccache.Touch(filepath.Dir(dir))
+	return dir, nil
 }
 
 // packageDirs are the app's dependencies' directories and the standard
