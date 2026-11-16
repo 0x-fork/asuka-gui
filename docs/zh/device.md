@@ -1428,7 +1428,7 @@ component Places {
 }
 ```
 
-`mapType`（`.standard`、`.satellite`、`.hybrid`、`.muted`）和 `showsUser`（显示用户位置：先用 `asuka/location` 请求权限）只对 Apple 和 Google 的地图有效，OpenStreetMap 的地图只显示街道。在 Android 上，导入这个包的应用会带上 Google 的 Maps SDK 一起构建，还需要在 asuka.toml 的 `android.mapsKey` 里填一个 Maps SDK for Android 的密钥。
+`mapType` 可以是 `.standard`、`.satellite`、`.hybrid` 或 `.muted`，`showsUser` 显示用户的位置（先用 `asuka/location` 请求权限）。OpenStreetMap 的地图只显示街道（在浏览器中 `.muted` 会用更柔和的颜色），用户位置也只在浏览器中显示。在 Android 上，导入这个包的应用会带上 Google 的 Maps SDK 一起构建，还需要在 asuka.toml 的 `android.mapsKey` 里填一个 Maps SDK for Android 的密钥。
 
 ## 后台刷新：asuka/sdk/periodic
 

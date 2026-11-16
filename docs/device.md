@@ -2229,10 +2229,10 @@ component Places {
 }
 ```
 
-`mapType` (`.standard`, `.satellite`, `.hybrid`, `.muted`) and
-`showsUser` (the user's location: ask for it first, with
-`asuka/location`) are Apple's and Google's: the OpenStreetMap maps show
-streets. On Android, an app that imports the package is built with
+`mapType` is `.standard`, `.satellite`, `.hybrid` or `.muted`, and
+`showsUser` shows the user's location (ask for it first, with
+`asuka/location`). OpenStreetMap's maps show streets (in a browser,
+`.muted` in quieter colors), and the user's location only in a browser. On Android, an app that imports the package is built with
 Google's Maps SDK and needs a Maps SDK for Android key in asuka.toml's
 `android.mapsKey`.
 

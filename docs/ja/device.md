@@ -1240,7 +1240,7 @@ component Places {
 }
 ```
 
-`mapType`（`.standard`、`.satellite`、`.hybrid`、`.muted`）と `showsUser`（ユーザーの現在地。先に `asuka/location` で許可を求めてください）は Apple と Google の地図のものです。OpenStreetMap の地図は道路を表示します。Android では、このパッケージを import したアプリは Google の Maps SDK と一緒にビルドされ、asuka.toml の `android.mapsKey` に Maps SDK for Android のキーが必要です。
+`mapType` は `.standard`、`.satellite`、`.hybrid`、`.muted` のどれかで、`showsUser` はユーザーの現在地を表示します（先に `asuka/location` で許可を求めてください）。OpenStreetMap の地図は道路を表示し（ブラウザーでは `.muted` で落ち着いた色になります）、現在地はブラウザーでだけ表示します。Android では、このパッケージを import したアプリは Google の Maps SDK と一緒にビルドされ、asuka.toml の `android.mapsKey` に Maps SDK for Android のキーが必要です。
 
 ## バックグラウンド更新: asuka/sdk/periodic
 
