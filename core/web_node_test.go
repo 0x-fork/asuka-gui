@@ -177,6 +177,7 @@ caught sqlite: migration 2: sqlite: near "this": syntax error (1)
 t 1 2
 live 1 milk
 live 2 bread
+/data/spawntest/notes.db
 42
 (1 jobs on workers)
 done
