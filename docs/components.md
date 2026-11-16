@@ -1,8 +1,9 @@
 # Components
 
-A component is a Go function that returns a `ui.Node`. This page covers
-the views package `ui` gives you, grouped by what they do, and the
-packages next to it for Markdown and SVG. Each one is the platform's own
+A component is a declaration that shows views (see [the
+language](language.md)). This page covers the elements Asuka gives you,
+grouped by what they do, and the standard library's packages for
+Markdown, SVG, Lottie, charts and shaders. Each one is the platform's own
 widget where the platform has one: UIKit on iOS, Android Views and
 Material 3 on Android, AppKit on macOS, Win32's controls drawn as
 Windows 11's (Fluent) on Windows, GTK 4 and libadwaita on Linux, the
@@ -10,10 +11,10 @@ page's elements in a browser. How views are sized and placed is in
 [Layout](layout.md); screens, tabs and sheets are in
 [Navigation](navigation.md).
 
-Most props that can change take a `signal.Accessor`: pass a signal, a
-`signal.Func`, or `ui.Val(v)` for a value that never changes. A control
-that the user changes (a field, a toggle) takes a `*signal.Signal`
-instead, and writes it. See [Concepts](concepts.md).
+Every prop is a binding: a value, or an expression of state the view
+follows as it changes. A control the user changes (a field, a toggle)
+takes `bind`, the state it writes as the user changes it: `bind text:
+query`. See [Concepts](concepts.md).
 
 ## Each platform's widgets
 
@@ -30,7 +31,7 @@ instead, and writes it. See [Concepts](concepts.md).
 | `ColorPicker` | `UIColorWell` | a swatch and a Material dialog | `NSColorWell` and the color panel | a swatch and the color dialog (`ChooseColor`) | `GtkColorDialogButton` | `<input type="color">` |
 | `DatePicker` | `UIDatePicker` | buttons opening Material's pickers | `NSDatePicker` | the date and time picker (`SysDateTimePick32`) | a button opening `GtkCalendar` and spin buttons | `<input type="date">`, `time`, `datetime-local` |
 | `Progress` | `UIProgressView` | `LinearProgressIndicator` | `NSProgressIndicator` | drawn as Fluent's | `GtkProgressBar` | `<progress>` |
-| `ProgressRing` | drawn as SwiftUI's circular gauge; `UIActivityIndicatorView` without a value | `CircularProgressIndicator` | `NSProgressIndicator`, spinning, at 16 and 32 points; drawn in its style at other sizes or in a `Color` | Fluent's `ProgressRing`, drawn | drawn in GNOME's style; `AdwSpinner` without a value | an SVG ring |
+| `ProgressRing` | drawn as SwiftUI's circular gauge; `UIActivityIndicatorView` without a value | `CircularProgressIndicator` | `NSProgressIndicator`, spinning, at 16 and 32 points; drawn in its style at other sizes or in a `color` | Fluent's `ProgressRing`, drawn | drawn in GNOME's style; `AdwSpinner` without a value | an SVG ring |
 | `Activity` | `UIActivityIndicatorView` | `CircularProgressIndicator` | `NSProgressIndicator`, spinning | Fluent's progress ring, drawn | `AdwSpinner` (`GtkSpinner` before libadwaita 1.6) | a spinner, drawn |
 | `Image` | `UIImageView` | `ImageView` | `NSImageView` | drawn with GDI+ | drawn from GDK textures | `<img>` |
 | `lottie.View` | lottie-ios | lottie-android | lottie-ios | nothing yet (an empty box) | nothing yet (an empty box) | lottie-web |
@@ -45,53 +46,60 @@ The sections below say where a platform behaves differently.
 
 ## Text
 
-### Text and StaticText
+### Text
 
-`ui.Text` shows a line or paragraph of text. It is the platform's label,
-and wraps by default; `Style.Lines` limits how many lines it takes, and
-cuts the rest with an ellipsis. `ui.StaticText` is a `Text` whose text
-never changes.
+`Text` shows a line or paragraph of text. It is the platform's label,
+and wraps by default; `lines` limits how many lines it takes, and cuts
+the rest with an ellipsis.
 
-```go
-count := signal.New(0)
-label := signal.Func(func() string { return fmt.Sprintf("%d unread", count.Get()) })
-return ui.Column(ui.Style{Gap: 8},
-	ui.StaticText("Inbox", ui.Style{Font: fonts.Title2.Weighted(fonts.Bold)}),
-	ui.Text(label, ui.Style{Color: colors.SecondaryLabel}),
-	ui.StaticText("A long description that stops after two lines.", ui.Style{Lines: 2}),
-)
+```asuka
+component Inbox {
+  state count = 3
+
+  Column {
+    gap: 8
+    Text("Inbox") { font: .title2.bold() }
+    Text("{count} unread") { color: .secondaryLabel }
+    Text("A long description that stops after two lines.") { lines: 2 }
+  }
+}
 ```
 
-The style's `Font`, `Color`, `TextAlign` and `Lines` are the text's.
-Text styles (`fonts.Body`, `fonts.Headline`, `fonts.Footnote`...) follow the
-text size the user picked.
+The style's `font`, `color`, `textAlign` and `lines` are the text's.
+Text styles (`.body`, `.headline`, `.footnote`...) follow the text size
+the user picked.
 
 ### RichText
 
-`ui.RichText` shows styled text: a `ui.Rich`, a list of spans. A `"\n"`
-in a span starts a new paragraph. A span's fields left zero come from
-the `RichText`'s style.
+`RichText` shows styled text: a list of `Span`s. A `"\n"` in a span
+starts a new paragraph. A span's fields left at their defaults come
+from the `RichText`'s style.
 
-```go
-ui.RichText(ui.RichTextProps{
-	Text: ui.Val(ui.Rich{
-		ui.Strong("asuka"), ui.Plain(" draws "), ui.Em("native"), ui.Plain(" views. Run "),
-		ui.Code("asuka dev"), ui.Plain(", or read "), ui.Link("the docs", "https://example.com/docs"),
-		ui.Plain(".\nA second paragraph, "), ui.Plain("in red").Colored(colors.Red), ui.Plain("."),
-	}),
-	OnLink: ui.OpenURL,
-})
+```asuka
+component About {
+  RichText([
+    Span(text: "asuka", font: .body.bold()),
+    Span(text: " draws "),
+    Span(text: "native", italic: true),
+    Span(text: " views. Run "),
+    Span(text: "asuka dev", mono: true),
+    Span(text: ", or read "),
+    Span(text: "the docs", link: "https://example.com/docs"),
+    Span(text: ".\nA second paragraph, "),
+    Span(text: "in red", color: .red),
+    Span(text: "."),
+  ]) {
+    on link(url) { openURL(url) }
+  }
+}
 ```
 
-- `Plain`, `Strong`, `Em`, `Code` and `Link` make spans. `Colored`,
-  `Highlighted` and `Weighted` return a span with a color, a background
-  or a weight.
-- A `ui.Span` has the rest: `Font`, `Italic`, `Mono`, `Underline`,
-  `Strike`, `Background` (drawn on each line the span covers, with
-  rounded corners).
-- A tapped link calls `OnLink` with its URL. Without `OnLink`, links
-  do nothing.
-- `Role: ui.RoleHeader` makes it a heading to screen readers.
+- A `Span` has its `text`, `font`, `italic`, `mono`, `underline`,
+  `strike`, `color`, `background` (drawn on each line the span covers,
+  with rounded corners) and `link`.
+- A tapped link runs `on link(url)`. Without it, links do nothing (in a
+  router, a link to one of the app's hrefs goes there).
+- `role: .header` makes it a heading to screen readers.
 
 On iOS and Android each paragraph is typeset by the platform's engine
 (CoreText, StaticLayout) and cached by its content and width: appending
@@ -104,39 +112,54 @@ Pango's attributes, and in a browser spans in paragraphs.
 For plain text, use `Text`: it is the platform's label, with its native
 behavior.
 
-**Inline views.** `ui.Embed` puts a component in the text: it sits on
-the baseline and wraps with the words. Its key keeps the same component,
-and its state, from one `Rich` to the next.
+**Inline views.** A span's `inline` puts a component in the text: it
+sits on the baseline and wraps with the words. Its key keeps the same
+component, and its state, from one text to the next.
 
-```go
-ui.RichText(ui.RichTextProps{Text: ui.Val(ui.Rich{
-	ui.Plain("Status: "),
-	ui.Embed("badge", func() ui.Node {
-		return ui.View(ui.ViewProps{Style: ui.Style{Background: colors.Green, CornerRadius: 6, Padding: ui.Symmetric(2, 6)}},
-			ui.StaticText("live", ui.Style{Font: fonts.Caption, Color: colors.RGB(255, 255, 255)}))
-	}),
-	ui.Plain(" since this morning."),
-})})
+```asuka
+component Status {
+  RichText([
+    Span(text: "Status: "),
+    Span(inline: Inline(key: "badge", build: () => Live())),
+    Span(text: " since this morning."),
+  ])
+}
+
+component Live {
+  View {
+    background: .green
+    radius: 6
+    padding: [2, 6]
+    Text("live") {
+      font: .caption
+      color: #ffffff
+    }
+  }
+}
 ```
 
 ### Selectable text
 
-`ui.Selectable` makes the `RichText` views inside it selectable, as one
+`Selectable` makes the `RichText` views inside it selectable, as one
 text across all of them: a long press selects a word, the platform's
 handles extend the selection, and its edit menu copies it. With a
 mouse, a drag selects and the platform's copy shortcut copies. Linux
 and the web select across the texts as one too; on macOS and Windows
 each text selects on its own.
 
-```go
-ui.Selectable(ui.SelectableProps{Style: ui.Style{Gap: 12}},
-	ui.RichText(ui.RichTextProps{Text: ui.Val(question), Role: ui.RoleHeader}),
-	ui.RichText(ui.RichTextProps{Text: ui.Val(answer)}),
-)
+```asuka
+component Answer(question: [Span], answer: [Span]) {
+  Selectable {
+    gap: 12
+    RichText(question) { role: .header }
+    RichText(answer)
+  }
+}
 ```
 
-`Text` is not selectable; use a `RichText` in a `Selectable`. To copy
-something without a selection, `ui.Copy(text)` puts it on the clipboard.
+A `Text` with `selectable: true` is selectable on its own; to select
+across several, use `RichText`s in a `Selectable`. To copy something
+without a selection, `copy(text)` puts it on the clipboard.
 
 ### Markdown
 
@@ -164,186 +187,262 @@ markup). See [`examples/markdown`](../examples/markdown).
 
 ## Buttons
 
-`ui.Button` is the platform's button: a `UIButton` configuration on
+`Button` is the platform's button: a `UIButton` configuration on
 iOS, a Material button on Android, an `NSButton` on macOS, a `BUTTON`
 drawn as Fluent's on Windows, a `GtkButton` on Linux, a `<button>` in a
 browser.
 
-```go
-saving := signal.New(false)
-return ui.Row(ui.Style{Gap: 12, Wrap: true},
-	ui.Button(ui.ButtonProps{Title: ui.Val("Save"), Variant: ui.ButtonFilled, Disabled: saving,
-		OnPress: func() { saving.Set(true) }}),
-	ui.Button(ui.ButtonProps{Title: ui.Val("Compose"), Icon: ui.IconCompose, Variant: ui.ButtonTinted}),
-	ui.Button(ui.ButtonProps{Icon: ui.IconTrash, Label: ui.Val("Delete"), Variant: ui.ButtonGray}),
-)
+```asuka
+component Actions {
+  state saving = false
+
+  Row {
+    gap: 12
+    wrap: true
+    Button("Save") {
+      variant: .filled
+      disabled: saving
+      on press { saving = true }
+    }
+    Button("Compose") {
+      icon: "square.and.pencil"
+      variant: .tinted
+    }
+    Button("") {
+      icon: "trash"
+      label: "Delete"
+      variant: .gray
+    }
+  }
+}
 ```
 
-- `Title` is its text; `Icon` a symbol before it (see
-  [Symbols](#symbols-and-icons)). A button with an icon and no title is
-  the icon alone.
-- `Label` is what VoiceOver and TalkBack read, the title by default.
+- Its title is its text; `icon` a symbol before it (see
+  [Symbols](#symbols-and-icons)). A button with an icon and an empty
+  title is the icon alone.
+- `label` is what VoiceOver and TalkBack read, the title by default.
   Give an icon-only button one.
-- `Tooltip` is a short text shown while a pointer rests on it: an
+- `tooltip` is a short text shown while a pointer rests on it: an
   iPad's pointer (`UIToolTipInteraction`), a mouse on Android, where a
   long press shows it too (`tooltipText`), and on macOS, Windows, Linux
   and the web (the element's `title`). Give an icon-only button one, its
-  name. `ViewProps.Tooltip`
-  is the same for any view. A touch screen alone never shows it on iOS,
+  name. `tooltip` is the same on any view. A touch screen alone never shows it on iOS,
   so it can't be the only place something is said.
-- `Disabled` disables it, the platform's way.
-- `Style.Font` and `Style.Color` change its text and tint.
+- `disabled` disables it, the platform's way.
+- `font` and `color` change its text and tint.
+- `href` goes to a route when it's pressed (see
+  [Routes](navigation.md#routes)).
 
-`Variant` is its look:
+`variant` is its look:
 
 | Variant | iOS | Android | macOS | Windows | Linux | Web |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ButtonPlain` (default) | plain | text button | borderless, in the accent color | subtle, in the accent color | flat, in the accent color | plain |
-| `ButtonFilled` | filled | filled button | push button in the accent color | accent button | suggested action | filled |
-| `ButtonTinted` | tinted | tonal button | push button, its title in the accent color | a wash of the accent | a wash of the accent | tinted |
-| `ButtonGray` | gray | tonal button | push button | standard button | standard button | gray |
-| `ButtonBordered` | bordered | outlined button | push button | standard button | standard button | outlined |
-| `ButtonGlass` | Liquid Glass (`glass()`, iOS 26; gray before) | tonal button | the glass bezel, a capsule or a circle around an icon alone (macOS 26; push button before) | as `ButtonGray` | standard button | as `ButtonGray` |
-| `ButtonGlassProminent` | tinted Liquid Glass (`prominentGlass()`, iOS 26; filled before) | filled button | the glass bezel tinted in the accent color, as the primary action (macOS 26; as `ButtonFilled` before) | as `ButtonFilled` | suggested action | as `ButtonFilled` |
+| `.plain` (default) | plain | text button | borderless, in the accent color | subtle, in the accent color | flat, in the accent color | plain |
+| `.filled` | filled | filled button | push button in the accent color | accent button | suggested action | filled |
+| `.tinted` | tinted | tonal button | push button, its title in the accent color | a wash of the accent | a wash of the accent | tinted |
+| `.gray` | gray | tonal button | push button | standard button | standard button | gray |
+| `.bordered` | bordered | outlined button | push button | standard button | standard button | outlined |
+| `.glass` | Liquid Glass (`glass()`, iOS 26; gray before) | tonal button | the glass bezel, a capsule or a circle around an icon alone (macOS 26; push button before) | as `.gray` | standard button | as `.gray` |
+| `.glassProminent` | tinted Liquid Glass (`prominentGlass()`, iOS 26; filled before) | filled button | the glass bezel tinted in the accent color, as the primary action (macOS 26; as `.filled` before) | as `.filled` | suggested action | as `.filled` |
 
 The glass buttons are capsules, and a glass button with an icon alone is
 a circle: a sheet's close button, as iOS 26's own.
 
 ### Menus
 
-A button with `Menu` shows its actions when it's tapped, instead of
-calling `OnPress` (a `UIMenu` on iOS, a `PopupMenu` on Android, an
+A button with a `menu` shows its actions when it's tapped, instead of
+running `on press` (a `UIMenu` on iOS, a `PopupMenu` on Android, an
 `NSMenu` on macOS, a pop-up menu on Windows, a `GtkPopoverMenu` on
-Linux, a popover in a browser). Each
-`ui.Action` has a `Title`, an optional `Icon` beside it, a `Role`, and
-`OnPress`. `ui.ActionDestructive` shows it in red.
+Linux, a popover in a browser). Each is an `Action`: `.button(title:,
+icon:, role:, disabled:, checked:, run:)`, its fields but the title
+optional. `role: .destructive` shows it in red.
 
-```go
-ui.Button(ui.ButtonProps{Icon: ui.IconMore, Label: ui.Val("More"), Menu: []ui.Action{
-	{Title: ui.Val("Copy"), Icon: ui.IconCopy, OnPress: func() { ui.Copy("https://go.dev") }},
-	{Title: ui.Val("Share"), Icon: ui.IconShare, OnPress: func() { ui.Share("https://go.dev") }},
-	{Title: ui.Val("Delete"), Icon: ui.IconTrash, Role: ui.ActionDestructive, OnPress: func() {}},
-}})
+```asuka
+component More {
+  Button("") {
+    icon: "ellipsis.circle"
+    label: "More"
+    menu: [
+      .button(title: "Copy", icon: "doc.on.doc", run: () => copy("https://example.com")),
+      .button(title: "Share", icon: "square.and.arrow.up", run: () => share("https://example.com")),
+      .button(title: "Delete", icon: "trash", role: .destructive, run: () => {}),
+    ]
+  }
+}
 ```
 
-An action can be `Disabled` (dimmed, it can't be chosen) or `Checked`
-(a checkmark by it), and both follow their signals while the menu is
-open. `Children` make it a submenu; `ui.Submenu` makes one. With
-`Inline` its children are a section of the menu instead, set off by
-dividers under its title (SwiftUI's `Section` in a `Menu`);
-`ui.MenuSection` makes one. A section with a checked item is a choice:
+An action can be `disabled` (dimmed, it can't be chosen) or `checked`
+(a checkmark by it), and both follow what they read while the menu is
+open. `.submenu(title:, icon:, items:)` is a submenu. `.section(title:,
+items:)` is a section of the menu instead, set off by dividers under
+its title (SwiftUI's `Section` in a `Menu`). A section with a checked
+item is a choice:
 
-```go
-sortBy := signal.New("Name")
-sorted := func(by string) ui.Action {
-	return ui.Action{Title: ui.Val(by), Checked: signal.Func(func() bool { return sortBy.Get() == by }),
-		OnPress: func() { sortBy.Set(by) }}
+```asuka
+component Sorting {
+  state sortBy = "Name"
+  state locked = false
+
+  fn sorted(by: string) -> Action = .button(title: by, checked: sortBy == by, run: () => { sortBy = by })
+
+  Button("") {
+    icon: "ellipsis.circle"
+    label: "More"
+    menu: [
+      .section(title: "Sort by", items: [sorted("Name"), sorted("Date")]),
+      .submenu(title: "Move to", icon: "folder", items: [
+        .button(title: "Inbox", run: () => {}),
+        .button(title: "Archive", run: () => {}),
+      ]),
+      .button(title: "Delete", role: .destructive, disabled: locked, run: () => {}),
+    ]
+  }
 }
-ui.Button(ui.ButtonProps{Icon: ui.IconMore, Label: ui.Val("More"), Menu: []ui.Action{
-	ui.MenuSection(ui.Val("Sort by"), sorted("Name"), sorted("Date")),
-	ui.Submenu(ui.Val("Move to"), ui.IconFolder,
-		ui.Action{Title: ui.Val("Inbox"), OnPress: moveToInbox},
-		ui.Action{Title: ui.Val("Archive"), OnPress: archive},
-	),
-	{Title: ui.Val("Delete"), Role: ui.ActionDestructive, Disabled: locked, OnPress: remove},
-}})
 ```
 
 | | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `Disabled` | `.disabled` | disabled item | disabled item | grayed item | disabled action | `disabled`, `aria-disabled` |
-| `Checked` | `state = .on` | checked item; a section's choice as radio buttons | `state = on` | `MF_CHECKED` | stateful action (a check) | `menuitemcheckbox` |
-| `Children` | nested `UIMenu` | `SubMenu` | submenu | submenu | GMenu submenu | submenu (the arrow key toward it opens it) |
-| `Inline` | `displayInline` `UIMenu` | group with dividers, its title a disabled item | separators, a section header (macOS 14) | separators, an owner-drawn header | GMenu section with its label | `group` between separators, under a heading |
+| `disabled` | `.disabled` | disabled item | disabled item | grayed item | disabled action | `disabled`, `aria-disabled` |
+| `checked` | `state = .on` | checked item; a section's choice as radio buttons | `state = on` | `MF_CHECKED` | stateful action (a check) | `menuitemcheckbox` |
+| `.submenu` | nested `UIMenu` | `SubMenu` | submenu | submenu | GMenu submenu | submenu (the arrow key toward it opens it) |
+| `.section` | `displayInline` `UIMenu` | group with dividers, its title a disabled item | separators, a section header (macOS 14) | separators, an owner-drawn header | GMenu section with its label | `group` between separators, under a heading |
 
-The same holds for a screen's bar buttons (`ScreenOptions.Actions`): a
-disabled one is dimmed, and one with `Children` opens them as a menu
-(SwiftUI's `Menu` in a toolbar). An alert's buttons can be disabled too,
-and follow `Disabled` while it shows (an OK that waits for a name).
-Swipe actions show neither.
+The same holds for a screen's bar buttons (its `toolbar`'s): a
+disabled one is dimmed, and one with a `menu` opens it (SwiftUI's
+`Menu` in a toolbar). An alert's buttons can be disabled too, and
+follow `disabled` while it shows (an OK that waits for a name). Swipe
+actions show neither.
 
-`ui.Menu` puts a menu on any content. With `LongPress` it's a context
-menu, shown on a long press; with a mouse (macOS, Windows, Linux, the
-web), on a secondary click:
+`Menu` puts a menu on any content. With `longPress: true` it's a
+context menu, shown on a long press; with a mouse (macOS, Windows,
+Linux, the web), on a secondary click:
 
-```go
-ui.Menu(ui.MenuProps{LongPress: true, Actions: []ui.Action{
-	{Title: ui.Val("Reply"), Icon: ui.IconMessage},
-	{Title: ui.Val("Delete"), Role: ui.ActionDestructive},
-}, Style: ui.Style{Padding: ui.All(16), Background: colors.SecondaryBackground, CornerRadius: 12}},
-	ui.StaticText("Long-press for a menu"),
-)
+```asuka
+component Message {
+  Menu {
+    longPress: true
+    actions: [
+      .button(title: "Reply", icon: "message"),
+      .button(title: "Delete", role: .destructive),
+    ]
+    View {
+      padding: 16
+      background: .secondaryBackground
+      radius: 12
+      Text("Long-press for a menu")
+    }
+  }
+}
 ```
 
 ## Text fields
 
-`ui.TextField` is a text input. `Value` is its text: typing writes the
-signal, and writing the signal from code replaces the text.
+`TextField` is a text input. `bind text` is its text: typing writes the
+state, and writing the state from code replaces the text.
 
-```go
-email := signal.New("")
-password := signal.New("")
-var pw ui.Node
-pw = ui.TextField(ui.TextFieldProps{Value: password, Placeholder: ui.Val("Password"),
-	Secure: true, ContentType: "password", ReturnKey: ui.ReturnGo,
-	OnSubmit: func() { ui.Blur(pw) }})
-em := ui.TextField(ui.TextFieldProps{Value: email, Placeholder: ui.Val("Email"),
-	Keyboard: ui.KeyboardEmail, ContentType: "email", Autocapitalize: ui.CapitalizeNone,
-	Autocorrect: ui.AutocorrectNo, ReturnKey: ui.ReturnNext, OnSubmit: func() { ui.Focus(pw) }})
-return ui.Column(ui.Style{Gap: 12}, em, pw)
+```asuka
+component SignIn {
+  state email = ""
+  state password = ""
+
+  let pw = Ref()
+
+  Column {
+    gap: 12
+    TextField {
+      bind text: email
+      placeholder: "Email"
+      keyboard: .email
+      contentType: "email"
+      autocapitalize: .off
+      autocorrect: .no
+      returnKey: .next
+      on submit { pw.focus() }
+    }
+    TextField {
+      ref: pw
+      bind text: password
+      placeholder: "Password"
+      secure: true
+      contentType: "password"
+      returnKey: .go
+      on submit { pw.blur() }
+    }
+  }
+}
 ```
 
-- `Secure` hides what's typed, for passwords.
-- `Keyboard`: `KeyboardDefault`, `KeyboardNumber`, `KeyboardDecimal`,
-  `KeyboardEmail`, `KeyboardURL`, `KeyboardPhone`.
-- `ReturnKey` is the return key's label: `ReturnDefault`, `ReturnDone`,
-  `ReturnGo`, `ReturnNext`, `ReturnSearch`, `ReturnSend`. Pressing it
-  calls `OnSubmit`.
-- `ContentType` says what it holds, for the system's AutoFill:
-  `ui.ContentUsername`, `ContentPassword`, `ContentNewPassword` (the
-  platform offers a strong password), `ContentOneTimeCode` (the code a
-  message just brought shows above the keyboard: UIKit's `oneTimeCode`,
-  Android's SMS code hint), `ContentEmail`, `ContentPhone`,
-  `ContentName`, `ContentAddress`, `ContentPostalCode`,
-  `ContentCardNumber`... Each host names it as its platform does.
-- `Autocapitalize`: `CapitalizeSentences` (the default),
-  `CapitalizeNone`, `CapitalizeWords`, `CapitalizeCharacters`.
-  `Autocorrect`: `AutocorrectDefault`, `AutocorrectYes`,
-  `AutocorrectNo`.
-- `OnFocus` and `OnBlur` follow the keyboard. `ui.Focus(field)` asks for
-  it, `ui.Blur(field)` dismisses it.
+- `secure` hides what's typed, for passwords.
+- `keyboard`: `.default`, `.number`, `.decimal`, `.email`, `.url`,
+  `.phone`.
+- `returnKey` is the return key's label: `.default`, `.done`, `.go`,
+  `.next`, `.search`, `.send`. Pressing it runs `on submit`.
+- `contentType` says what it holds, for the system's AutoFill:
+  `"username"`, `"password"`, `"newPassword"` (the platform offers a
+  strong password), `"oneTimeCode"` (the code a message just brought
+  shows above the keyboard: UIKit's `oneTimeCode`, Android's SMS code
+  hint), `"email"`, `"phone"`, `"name"`, `"address"`, `"postalCode"`,
+  `"cardNumber"`... Each host names it as its platform does.
+- `autocapitalize`: `.sentences` (the default), `.off`, `.words`,
+  `.characters`. `autocorrect`: `.default`, `.yes`, `.no`.
+- `on focus` and `on blur` follow the keyboard, and `bind focused`
+  both follows it and moves it. A `Ref`'s `focus()` asks for it,
+  `blur()` dismisses it.
 
-A desktop has no on-screen keyboard to change, so `Keyboard` and
-`ReturnKey` mostly don't show there; Return still calls `OnSubmit`. On
-macOS `ContentType` is the field's AutoFill content type. On Windows
-`KeyboardNumber` takes digits only. On Linux `Keyboard`, `ContentType`,
-`Autocapitalize` and `Autocorrect` tell the input method what the field
+A desktop has no on-screen keyboard to change, so `keyboard` and
+`returnKey` mostly don't show there; Return still runs `on submit`. On
+macOS `contentType` is the field's AutoFill content type. On Windows
+`.number` takes digits only. On Linux `keyboard`, `contentType`,
+`autocapitalize` and `autocorrect` tell the input method what the field
 takes (GTK's input purpose and hints). In a browser they're the input's
 `inputmode`, `enterkeyhint`, `autocomplete`, `autocapitalize` and
 `spellcheck`, which a phone's keyboard follows.
 
-**Lines of text.** `Multiline` makes it a text area, for a message or a
-comment: return starts a new line instead of calling `OnSubmit`, and it
-grows with its text up to `Style.Lines` lines (0: no limit), then
-scrolls.
+**Lines of text.** `multiline: true` makes it a text area, for a
+message or a comment: return starts a new line instead of running `on
+submit`, and it grows with its text up to `lines` lines (0: no limit),
+then scrolls.
 
-```go
-message := signal.New("")
-return ui.Row(ui.Style{Gap: 8, Align: ui.AlignEnd},
-	ui.TextField(ui.TextFieldProps{Value: message, Placeholder: ui.Val("Message"), Multiline: true,
-		Style: ui.Style{Grow: 1, Lines: 5}}),
-	ui.Button(ui.ButtonProps{Icon: ui.IconSend, Label: ui.Val("Send"), Variant: ui.ButtonFilled,
-		Disabled: signal.Func(func() bool { return message.Get() == "" }),
-		OnPress:  func() { message.Set("") }}),
-)
+```asuka
+component Composer {
+  state message = ""
+
+  Row {
+    gap: 8
+    align: .end
+    TextField {
+      bind text: message
+      placeholder: "Message"
+      multiline: true
+      grow: 1
+      lines: 5
+    }
+    Button("") {
+      icon: "paperplane"
+      label: "Send"
+      variant: .filled
+      disabled: message.isEmpty()
+      on press { message = "" }
+    }
+  }
+}
 ```
 
-**The text alone.** `Plain` drops the field's border, background and
-inset: its text and placeholder, for a field in a card or a form of
+**The text alone.** `plain: true` drops the field's border, background
+and inset: its text and placeholder, for a field in a card or a form of
 your own, as Notes' and Reminders' are.
 
-```go
-ui.TextField(ui.TextFieldProps{Value: note, Placeholder: ui.Val("Note"), Multiline: true, Plain: true})
+```asuka
+component NoteField {
+  state note = ""
+
+  TextField {
+    bind text: note
+    placeholder: "Note"
+    multiline: true
+    plain: true
+  }
+}
 ```
 
 A `SafeArea` is padded by the keyboard, so a field at the bottom of one
@@ -351,56 +450,96 @@ stays above it.
 
 ## Controls
 
-Each control takes the signal it changes, and a `Disabled` accessor.
-None of them has a label of its own but `Picker`: put a `Text` beside it.
+Each control binds the state it changes, and takes `disabled`. None of
+them has a label of its own but `Picker` and `Toggle`'s `title`: put a
+`Text` beside it.
 
-```go
-return ui.Column(ui.Style{Gap: 16},
-	ui.Row(ui.Style{Align: ui.AlignCenter},
-		ui.StaticText("Wi-Fi", ui.Style{Grow: 1}),
-		ui.Toggle(ui.ToggleProps{Value: wifi})),
-	ui.Slider(ui.SliderProps{Value: volume}),
-	ui.Segmented(ui.SegmentedProps{Segments: ui.Val([]string{"Day", "Week", "Month"}), Selected: period}),
-	ui.Row(ui.Style{Gap: 12, Align: ui.AlignCenter},
-		ui.Text(signal.Func(func() string { return fmt.Sprintf("%.0f cups", cups.Get()) }), ui.Style{Grow: 1}),
-		ui.Stepper(ui.StepperProps{Value: cups, Min: 1, Max: 8})),
-	ui.Wheel(ui.WheelProps{Items: ui.Val(sizes), Selected: size}),
-	ui.Picker(ui.PickerProps{Items: ui.Val(milks), Selected: milk, Label: ui.Val("Milk")}),
-	ui.Row(ui.Style{Gap: 12, Align: ui.AlignCenter},
-		ui.StaticText("Tint", ui.Style{Grow: 1}),
-		ui.ColorPicker(ui.ColorPickerProps{Value: tint, Alpha: true, Title: ui.Val("Tint")})),
-	ui.Row(ui.Style{Gap: 12, Align: ui.AlignCenter},
-		ui.StaticText("Starts", ui.Style{Grow: 1}),
-		ui.DatePicker(ui.DatePickerProps{Value: when, Mode: ui.DateAndTime, Min: time.Now()})),
-)
+```asuka
+import asuka/time
+
+component Settings {
+  state wifi = true
+  state volume = 0.5
+  state period = 0
+  state cups = 2.0
+  state size = 1
+  state milk = -1
+  state tint: Color = .blue
+  state when = time.now()
+
+  Column {
+    gap: 16
+    Row {
+      align: .center
+      Text("Wi-Fi") { grow: 1 }
+      Toggle { bind on: wifi }
+    }
+    Slider { bind value: volume }
+    Segmented(["Day", "Week", "Month"]) { bind selected: period }
+    Row {
+      gap: 12
+      align: .center
+      Text("{cups.fixed(0)} cups") { grow: 1 }
+      Stepper {
+        bind value: cups
+        min: 1
+        max: 8
+      }
+    }
+    Wheel(["Small", "Medium", "Large"]) { bind selected: size }
+    Picker(["Whole", "Oat", "None"]) {
+      bind selected: milk
+      prompt: "Milk"
+    }
+    Row {
+      gap: 12
+      align: .center
+      Text("Tint") { grow: 1 }
+      ColorPicker {
+        bind value: tint
+        alpha: true
+        title: "Tint"
+      }
+    }
+    Row {
+      gap: 12
+      align: .center
+      Text("Starts") { grow: 1 }
+      time.Picker {
+        bind value: when
+        mode: .dateTime
+        min: time.now()
+      }
+    }
+  }
+}
 ```
 
-- **Toggle** is a switch, `*signal.Signal[bool]`. With `Checkbox` it's a
+- **Toggle** is a switch, `bind on`. With `checkbox: true` it's a
   checkbox: Android's `MaterialCheckBox`, a Mac's and Windows' check
   box, a `GtkCheckButton`, a browser's check box, and on iOS, which has
   none, a circle that fills with a checkmark, as Reminders' does.
-- **Slider** picks a `float64` from `Min` to `Max`; with both 0, from 0
-  to 1.
-- **Segmented** is one of a few options side by side, `Selected` the
+- **Slider** picks a `float` from `min` to `max` (by default 0 to 1).
+- **Segmented** is one of a few options side by side, `selected` the
   index: UIKit's segmented control, Material's segmented buttons.
   Windows has none: the host draws one, as the Windows Community
   Toolkit's `Segmented`.
-- **Stepper** steps a `float64` with minus and plus, by `Step` (default
-  1), from `Min` to `Max` (both 0: 0 to 100). It's a `UIStepper` on
+- **Stepper** steps a `float` with minus and plus, by `step` (default
+  1), from `min` to `max` (by default 0 to 100). It's a `UIStepper` on
   iOS and an `NSStepper` on macOS; elsewhere it's two buttons (Material
   icon buttons on Android, linked buttons on Linux, as GNOME's spin
   buttons show them).
-- **Wheel** picks one of many `Items` on a spinning wheel:
+- **Wheel** picks one of many items on a spinning wheel:
   `UIPickerView`, Android's `NumberPicker`. The desktop and the web
   have no wheel: it's a pop-up menu of the items there (`NSPopUpButton`,
   a drop-down combo box drawn as WinUI's `ComboBox`, `GtkDropDown`,
   `<select>`).
-- **Picker** picks one of many `Items` from a menu, showing the chosen
+- **Picker** picks one of many items from a menu, showing the chosen
   one (SwiftUI's `Picker` in its menu style; Material's exposed dropdown
-  menu). `Selected` out of range (-1) is none chosen, and the picker
-  shows its `Label`, which also names it for screen readers; on Android
-  the label is the field's, floating above the chosen item. The
-  `Selected` signal can be nil: the picker keeps the user's choice.
+  menu). `selected` out of range (-1, the default) is none chosen, and
+  the picker shows its `prompt`, which also names it for screen readers;
+  on Android the prompt is the field's label, floating above the chosen
+  item. Unbound, the picker keeps the user's choice.
 
   | | Picker |
   |---|---|
@@ -411,44 +550,53 @@ return ui.Column(ui.Style{Gap: 16},
   | Linux | `GtkDropDown` over a `GtkStringList`, the label a dim label where the chosen item goes |
   | Web | `<select>`, its first option a hidden placeholder showing the label |
 - **ColorPicker** is a swatch that opens the platform's picker, writing
-  a `ui.Color`. `Alpha` lets the user pick an opacity, `Title` names the
+  a `Color`. `alpha` lets the user pick an opacity, `title` names the
   picker. On iOS it's `UIColorWell` and the system's picker; Android has
   none, so it's a Material dialog of a palette, with an opacity slider
-  for `Alpha`. On macOS it's an `NSColorWell` opening the color panel,
+  for `alpha`. On macOS it's an `NSColorWell` opening the color panel,
   on Linux a `GtkColorDialogButton`, in a browser `<input
-  type="color">`. Windows' color dialog has no opacity, so `Alpha` does
+  type="color">`. Windows' color dialog has no opacity, so `alpha` does
   nothing there.
-- **DatePicker** picks a `time.Time`, shown in the device's time zone.
-  `Mode` is `ui.DateOnly` (the default), `ui.TimeOnly` or
-  `ui.DateAndTime`; `Min` and `Max` bound it. A zero `Value` shows the
-  current time.
+- **DatePicker** picks a moment, shown in the device's time zone:
+  `asuka/time`'s `time.Picker` binds a `time.Time` (the prelude's
+  `DatePicker` binds milliseconds since 1970). `mode` is `.date` (the
+  default), `.time` or `.dateTime`; `min` and `max` bound it.
 
-  | | Compact (default) | `Inline` |
+  | | Compact (default) | `inline: true` |
   |---|---|---|
   | iOS | UIKit's compact date picker | the calendar and time in place, for a sheet of its own |
   | Android | buttons showing the date and time, opening Material's pickers | the same buttons |
   | macOS | `NSDatePicker`'s text field and stepper | its calendar and clock |
-  | Windows | the date and time picker, its calendar dropping down | a month calendar, a time picker under it for `DateAndTime` (`TimeOnly` stays compact) |
+  | Windows | the date and time picker, its calendar dropping down | a month calendar, a time picker under it for `.dateTime` (`.time` stays compact) |
   | Linux | a button opening a popover of GTK's calendar and hour and minute spin buttons | the calendar and spin buttons in place |
   | Web | `<input type="date">`, `"time"`, `"datetime-local"` | the same input |
 
 ## Progress and activity
 
-`ui.Progress` is a progress bar: its value from 0 to 1, or `nil` when
-how far is unknown. Its style's `Color` is its fill. `ui.ProgressRing`
-is the same in a circle: the ring fills clockwise from the top,
-animating as the value changes, and `nil` shows the platform's
-indeterminate circular indicator. `ui.Activity` is a spinner.
+`Progress` is a progress bar: its `value` from 0 to 1, or `none` when
+how far is unknown. Its style's `color` is its fill. `ProgressRing` is
+the same in a circle: the ring fills clockwise from the top, animating
+as the value changes, and `none` shows the platform's indeterminate
+circular indicator. `Activity` is a spinner.
 
-```go
-return ui.Column(ui.Style{Gap: 12},
-	ui.Progress(done),
-	ui.Progress(nil),
-	ui.ProgressRing(done),
-	ui.ProgressRing(done, ui.Style{Width: ui.Pt(24), Color: colors.Green}),
-	ui.ProgressRing(nil),
-	ui.Activity(),
-)
+```asuka
+component Upload {
+  state done = 0.4
+
+  Column {
+    gap: 12
+    Progress { value: done }
+    Progress()
+    ProgressRing { value: done }
+    ProgressRing {
+      value: done
+      width: 24
+      color: .green
+    }
+    ProgressRing()
+    Activity()
+  }
+}
 ```
 
 A ring is measured. Each platform gives it its own size (iOS 58 points,
@@ -460,78 +608,86 @@ readers read it as a progress indicator with its percentage.
 |---|---|---|
 | iOS | UIKit has no determinate ring, and SwiftUI's circular `ProgressView` ignores its value there. So the ring is drawn as SwiftUI's circular capacity `Gauge` is: a round-capped stroke in the tint over a track of the tint at 30%, the stroke a tenth of the ring's size | `UIActivityIndicatorView` |
 | Android | Material's `CircularProgressIndicator`, at Material 3's size for its frame (extra small, small or medium: their tracks, insets and gaps) | the same, indeterminate |
-| macOS | `NSProgressIndicator`'s determinate circle at AppKit's own sizes, 16 and 32 points, with no `Color`. AppKit draws its circle only at those sizes and only in the accent color, so any other size, or a `Color`, draws what it draws, filling the frame: a 5-point round-capped stroke at 16 to 32 points (the 32-point circle's proportions above, the 16-point one's below) over AppKit's track, in the `Color` or in the colors AppKit draws with, read from its own indicator (the accent, gray in an inactive window, light and dark). The value animates as AppKit's animator moves it, a quarter second, unless Reduce Motion is on. VoiceOver reads it as AppKit's indicator either way | its spinner at 16 and 32 points; else its spinner's 8 spokes drawn at the size (scaled, AppKit's blurs, and it takes no color), the leading spoke the `Color` |
+| macOS | `NSProgressIndicator`'s determinate circle at AppKit's own sizes, 16 and 32 points, with no `color`. AppKit draws its circle only at those sizes and only in the accent color, so any other size, or a `color`, draws what it draws, filling the frame: a 5-point round-capped stroke at 16 to 32 points (the 32-point circle's proportions above, the 16-point one's below) over AppKit's track, in the `color` or in the colors AppKit draws with, read from its own indicator (the accent, gray in an inactive window, light and dark). The value animates as AppKit's animator moves it, a quarter second, unless Reduce Motion is on. VoiceOver reads it as AppKit's indicator either way | its spinner at 16 and 32 points; else its spinner's 8 spokes drawn at the size (scaled, AppKit's blurs, and it takes no color), the leading spoke the `color` |
 | Windows | Fluent's `ProgressRing` (WinUI's): an arc with no track. Narrator reads it as a progress bar | the arc turning, as `Activity`'s |
 | Linux | drawn as `AdwSpinner` draws its circle: a track of the text color at 15%, and an arc in the accent color | `AdwSpinner` (`GtkSpinner` before libadwaita 1.6) |
 | Web | an SVG ring, `role="progressbar"` with `aria-valuenow` | the arc turning, slower with `prefers-reduced-motion` |
 
 ## Images
 
-`ui.Image` shows a picture. The platform loads and decodes it off the
+`Image` shows a picture. The platform loads and decodes it off the
 main thread, and caches it in memory. iOS and Android keep an image that
 came over http(s) on disk too, across launches; the desktop hosts keep
 it in memory only, and a browser in its own cache.
 
-```go
-return ui.Column(ui.Style{Gap: 12},
-	ui.Image(ui.ImageProps{Source: ui.Val("logo.png"), Style: ui.Style{Width: ui.Pt(64)}}),
-	ui.Image(ui.ImageProps{
-		Source:      ui.Val("https://picsum.photos/id/1015/600/400"),
-		Placeholder: "placeholder.png",
-		Mode:        ui.ImageFill,
-		Label:       ui.Val("A river in a valley"),
-		Style:       ui.Style{AspectRatio: 3.0 / 2, CornerRadius: 12, Clip: true},
-	}),
-	ui.Image(ui.ImageProps{
-		Source:     signal.Func(func() string { return photo.Get().URL }),
-		BlurHash:   signal.Func(func() string { return photo.Get().BlurHash }),
-		Mode:       ui.ImageFill,
-		Transition: 0.4,
-		Style:      ui.Style{AspectRatio: 1, CornerRadius: 12},
-	}),
-)
+```asuka
+struct Photo {
+  url: string
+  blurHash: string
+}
+
+component Pictures(photo: Photo) {
+  Column {
+    gap: 12
+    Image("logo.png") { width: 64 }
+    Image("https://picsum.photos/id/1015/600/400") {
+      placeholder: "placeholder.png"
+      mode: .fill
+      label: "A river in a valley"
+      aspectRatio: 3.0 / 2
+      radius: 12
+      clip: true
+    }
+    Image(photo.url) {
+      blurHash: photo.blurHash
+      mode: .fill
+      transition: 0.4
+      aspectRatio: 1
+      radius: 12
+    }
+  }
+}
 ```
 
-- `Source` is an http(s) URL, a path in the app's `assets` directory
+- Its source is an http(s) URL, a path in the app's `assets` directory
   (`"logo.png"` is `assets/logo.png`), or an absolute path: a file the
   app wrote, a photo the user picked.
-- `Mode` is how it fills its box: `ImageFit` (the default, all of it,
-  letterboxed), `ImageFill` (covers the box, cropped), `ImageStretch`
-  (the box's aspect ratio), `ImageCenter` (its natural size, centered).
-- `Placeholder` is shown until `Source` loads, and if it fails. Use an
+- `mode` is how it fills its box: `.fit` (the default, all of it,
+  letterboxed), `.fill` (covers the box, cropped), `.stretch` (the box's
+  aspect ratio), `.center` (its natural size, centered).
+- `placeholder` is shown until the source loads, and if it fails. Use an
   asset, which is there at once. Give the image a size so the
   placeholder has room.
-- `BlurHash` and `ThumbHash` are placeholders from a hash an app keeps
+- `blurHash` and `thumbHash` are placeholders from a hash an app keeps
   with the image ([BlurHash](https://blurha.sh),
   [ThumbHash](https://evanw.github.io/thumbhash/), in base64), as
   expo-image's are. The core decodes the hash into a small picture,
   once (the last few hundred are kept), and shows it at once in
-  `Placeholder`'s place. A BlurHash has no shape of its own: it's
-  decoded at the style's `AspectRatio`, and without one it's square and
+  `placeholder`'s place. A BlurHash has no shape of its own: it's
+  decoded at the style's `aspectRatio`, and without one it's square and
   stretched to the box. A ThumbHash keeps its image's aspect ratio and
-  transparency. They're accessors, as a list's rows change images.
-- `PlaceholderMode` is how the placeholder fills the box:
-  `PlaceholderFit`, `PlaceholderFill`, `PlaceholderStretch`,
-  `PlaceholderCenter`; by default, as the image does.
-- `Transition` is how long, in seconds, the image takes to fade in as
+  transparency. They're bindings, as a list's rows change images.
+- `placeholderMode` is how the placeholder fills the box: `.fit`,
+  `.fill`, `.stretch`, `.center`; by default, as the image does.
+- `transition` is how long, in seconds, the image takes to fade in as
   it arrives: cross-dissolving over its placeholder, or from nothing.
   By default an image fades in only over a placeholder, for the
   platform's short duration (0.25 seconds; Android's
-  `config_shortAnimTime`); `ui.NoTransition` shows it at once.
-- `Animated` plays an animated image while true, and stops it where it
+  `config_shortAnimTime`); `-1` shows it at once.
+- `animated` plays an animated image while true, and stops it where it
   is while false. Without it, an animated image plays, as many times as
   its file says, unless the user asks for less motion (Reduce Motion,
   Android's animations off, `prefers-reduced-motion`): then it shows its
   first frame.
-- `Label` describes it to screen readers; without one, the image is
+- `label` describes it to screen readers; without one, the image is
   decorative.
-- `OnLoad` gets its natural size once it's loaded; `OnError` a message
-  when it can't be.
+- `on loaded(width, height)` gets its natural size once it's loaded;
+  `on error(message)` a message when it can't be.
 
 Until it has loaded, an image without a size is empty. Then it takes its
 natural size, one point per pixel, no wider than the space it has. With
-one side set (a `Width`, or `Grow` in a row) it keeps its aspect ratio;
-`AspectRatio` sets one before it loads.
+one side set (a `width`, or `grow` in a row) it keeps its aspect ratio;
+`aspectRatio` sets one before it loads.
 
 Each platform decodes what its own decoders read:
 
@@ -545,38 +701,45 @@ Each platform decodes what its own decoders read:
 | Web | the browser | WebCodecs' `ImageDecoder` on a canvas (AVIF sequences too); where there's none (Safari), the `<img>` itself, which shows its first frame while paused |
 
 An SVG is an image on the Mac, Linux and the web only. For an SVG icon
-on every platform, draw it with [`asuka/sdk/svg`](#svg-icons), as vectors.
+on every platform, draw it with [`asuka/svg`](#svg-icons), as vectors.
 
 ## Symbols and icons
 
-`ui.Symbol` shows a symbol. It's an SF Symbol on iOS and macOS, the
+`Symbol` shows a symbol. It's an SF Symbol on iOS and macOS, the
 Material Symbol for it on Android and the web, the Segoe Fluent Icons
 glyph for it on Windows (Segoe MDL2 Assets before Windows 11), and on
 Linux the icon theme's symbolic icon for it (Adwaita's), else the
-Material Symbol. It's sized as text in its style's `Font`, so
-it follows the text size, and colored with its `Color` (the label color
-by default).
+Material Symbol. It's sized as text in its style's `font`, so it
+follows the text size, and colored with its `color` (the label color by
+default).
 
-```go
-return ui.Row(ui.Style{Gap: 14, Align: ui.AlignCenter},
-	ui.Symbol(ui.IconBell),
-	ui.Symbol(ui.IconStar.Filled(), ui.Style{Color: colors.Yellow, Font: fonts.Title}),
-	ui.Symbol(ui.Icon("archivebox"), ui.Style{Color: colors.SecondaryLabel}),
-)
+```asuka
+component Symbols {
+  Row {
+    gap: 14
+    align: .center
+    Symbol("bell")
+    Symbol("star.fill") {
+      color: .yellow
+      font: .title
+    }
+    Symbol("archivebox") { color: .secondaryLabel }
+  }
+}
 ```
 
-A `ui.Icon` is an SF Symbol name. Buttons, menu items, bar buttons and
-tabs take one too. The `Icon` constants are the common ones:
-`IconHome`, `IconSearch`, `IconSettings`, `IconPlus`, `IconClose`,
-`IconTrash`, `IconShare`, `IconMore` and about fifty more.
-`icon.Filled()` is its filled form (`"star.fill"`).
+A symbol's name is an SF Symbol name. Buttons, menu items, bar buttons
+and tabs take one too: `"house"`, `"magnifyingglass"`, `"gear"`,
+`"plus"`, `"xmark"`, `"trash"`, `"square.and.arrow.up"`,
+`"ellipsis.circle"`..., and `".fill"` after a name is its filled form
+(`"star.fill"`).
 
-iOS and macOS draw any SF Symbol. The others draw a curated set: the
-constants and more, mapped to Material Symbols in
+iOS and macOS draw any SF Symbol. The others draw a curated set, the
+common ones and more, mapped to Material Symbols in
 [`platform/android/gen_symbols.go`](../platform/android/gen_symbols.go)
 (the web's and Linux's are generated from it), and to Segoe Fluent
 Icons' glyphs on Windows. A name outside the set shows nothing there
-(the host logs a warning), so check a name you write as a string, like
+(the host logs a warning), so check a name you write, like
 `"archivebox"`, on each platform you ship. On Linux a name ending in
 `-symbolic` is an icon theme's name, used as it is.
 
@@ -633,37 +796,48 @@ browser, GDI+ on Windows and GSK's paths on Linux.
 
 ## Video
 
-`ui.Video` plays a video with the platform's player and its controls:
+`Video` plays a video with the platform's player and its controls:
 `AVPlayerViewController` on iOS, Media3's ExoPlayer on Android,
 `AVPlayerView` on macOS, a `GtkVideo` (GStreamer) on Linux, a
 `<video>` in a browser. Win32 has no video view, so on Windows it's a
-`<video>` in WebView2, with Edge's controls. `ui.Play`, `ui.Pause` and
-`ui.Seek` drive it.
+`<video>` in WebView2, with Edge's controls. A `Ref`'s `play()`,
+`pause()` and `seek(seconds)` drive it.
 
-```go
-var v ui.Node
-v = ui.Video(ui.VideoProps{
-	Source:   ui.Val("https://example.com/clip.mp4"),
-	AutoPlay: true, Muted: true, Loop: true,
-	Style: ui.Style{CornerRadius: 12},
-})
-return ui.Column(ui.Style{Gap: 12}, v,
-	ui.Button(ui.ButtonProps{Title: ui.Val("Start over"), OnPress: func() { ui.Seek(v, 0); ui.Play(v) }}),
-	ui.Button(ui.ButtonProps{Title: ui.Val("Pause"), OnPress: func() { ui.Pause(v) }}),
-)
+```asuka
+component Clip {
+  let v = Ref()
+
+  Column {
+    gap: 12
+    Video("https://example.com/clip.mp4") {
+      ref: v
+      autoPlay: true
+      muted: true
+      loop: true
+      radius: 12
+    }
+    Button("Start over") {
+      on press {
+        v.seek(0)
+        v.play()
+      }
+    }
+    Button("Pause") { on press { v.pause() } }
+  }
+}
 ```
 
-- `Source` is an http(s) URL (a file, an HLS stream) or a file in the
+- Its source is an http(s) URL (a file, an HLS stream) or a file in the
   app's assets.
-- `Mode` is `ui.ImageFit` (letterboxed, the default) or `ui.ImageFill`.
-- `HideControls` hides the platform's controls: play, the timeline, full
+- `mode` is `.fit` (letterboxed, the default) or `.fill`.
+- `hideControls: true` hides the platform's controls: play, the timeline, full
   screen, and on iOS AirPlay and picture in picture.
-- `OnEnd` is called each time it plays to its end; `OnError` if it
-  can't play.
+- `on end` runs each time it plays to its end; `on error(message)` if
+  it can't play.
 
 It sizes itself as an `Image` does: empty until the video's size is
 known, unless its style gives it one, then keeping the video's aspect
-ratio. `Seek` takes seconds from the start.
+ratio. `seek` takes seconds from the start.
 
 ## Lottie animations
 
@@ -725,109 +899,125 @@ player.
 
 ## Web pages
 
-`ui.WebView` shows a web page in the platform's web view, with its
+`WebView` shows a web page in the platform's web view, with its
 scrolling, zooming and selection: `WKWebView` on iOS and macOS,
 Android's `WebView`, WebView2 (Edge's runtime) on Windows, WebKitGTK
 6.0's `WebKitWebView` on Linux. Without WebKitGTK installed, it shows
-nothing on Linux and calls `OnError` once, saying what to install. In a
+nothing on Linux and runs `on error` once, saying what to install. In a
 browser it's an `<iframe>`, which can do all of what follows only for
 pages of the app's own site; see [the web](web.md#web-views). With no
-height and no `Grow` it grows to fill the space it's given.
+height and no `grow` it grows to fill the space it's given.
 
-```go
-state := signal.New(ui.WebState{})
-var web ui.Node
-web = ui.WebView(ui.WebViewProps{
-	URL:       ui.Val("https://go.dev"),
-	Block:     []string{"doubleclick.net", "/ads/"},
-	OnState:   func(s ui.WebState) { state.Set(s) },
-	OnMessage: func(m string) { fmt.Println("the page says", m) },
-	OnNewWindow: func(url string) {
-		ui.OpenURL(url)
-	},
-})
-return ui.Column(ui.Style{Grow: 1},
-	ui.Row(ui.Style{Gap: 8, Padding: ui.Symmetric(8, 12), Align: ui.AlignCenter},
-		ui.Button(ui.ButtonProps{Icon: ui.IconBack, Label: ui.Val("Back"),
-			Disabled: signal.Func(func() bool { return !state.Get().CanGoBack }),
-			OnPress:  func() { ui.WebBack(web) }}),
-		ui.Text(signal.Func(func() string { return state.Get().Title }), ui.Style{Grow: 1, Lines: 1}),
-		ui.Button(ui.ButtonProps{Icon: ui.IconRefresh, Label: ui.Val("Reload"), OnPress: func() { ui.WebReload(web) }}),
-	),
-	ui.Show(signal.Func(func() bool { return state.Get().Loading }), func() ui.Node {
-		return ui.Progress(signal.Func(func() float64 { return float64(state.Get().Progress) }))
-	}),
-	web,
-)
+```asuka
+component Browser {
+  state page = WebState()
+
+  let web = Ref()
+
+  Column {
+    grow: 1
+    Row {
+      gap: 8
+      padding: [8, 12]
+      align: .center
+      Button("") {
+        icon: "chevron.backward"
+        label: "Back"
+        disabled: !page.canGoBack
+        on press { web.goBack() }
+      }
+      Text(page.title) {
+        grow: 1
+        lines: 1
+      }
+      Button("") {
+        icon: "arrow.clockwise"
+        label: "Reload"
+        on press { web.reload() }
+      }
+    }
+    if page.loading { Progress { value: page.progress } }
+    WebView("https://example.com") {
+      ref: web
+      block: ["doubleclick.net", "/ads/"]
+      on state(s) { page = s }
+      on message(m) { print("the page says {m}") }
+      on newWindow(url) { openURL(url) }
+    }
+  }
+}
 ```
 
 What it shows:
 
-- `URL` is an http(s) URL, or a file in the app's assets (its relative
-  links are the assets' too). `HTML` is markup to show instead.
-- `UserAgent` is what pages are fetched with, and
+- Its URL is an http(s) URL, or a file in the app's assets (its relative
+  links are the assets' too). `html` is markup to show instead.
+- `userAgent` is what pages are fetched with, and
   `navigator.userAgent`; empty, the platform's.
-- `Preload` is script run before each page's own, in every frame: to
+- `preload` is script run before each page's own, in every frame: to
   hook `fetch`, or set globals.
-- `Block` keeps requests from loading, as an ad blocker does. Each entry
+- `block` keeps requests from loading, as an ad blocker does. Each entry
   is a host, which matches its subdomains too (`"doubleclick.net"`), or,
   with a `/`, a part of the URL (`"/ads/"`).
 
-`Preload`, `UserAgent` and `Block` are set when the view is made.
+`preload`, `userAgent` and `block` are set when the view is made.
 
 What it reports:
 
-- `OnLoad` gets the URL of each page that has loaded; `OnError` a
-  message when one couldn't.
-- `OnState` follows the page, as an address bar does: a `ui.WebState`
-  with its `URL`, `Title`, `Loading`, `Progress` (0 to 1), `CanGoBack`
-  and `CanGoForward`.
-- `OnNewWindow` gets the URL the page would open in a new window
+- `on loaded(url)` gets the URL of each page that has loaded; `on
+  error(message)` a message when one couldn't.
+- `on state(s)` follows the page, as an address bar does: a `WebState`
+  with its `url`, `title`, `loading`, `progress` (0 to 1), `canGoBack`
+  and `canGoForward`.
+- `on newWindow(url)` gets the URL the page would open in a new window
   (`window.open`, a `target="_blank"` link). Without it, that page loads
   in this view.
-- `OnDownload` gets a response the page can't show, a file to save
+- `on download(d)` gets a response the page can't show, a file to save
   (a link to a `.zip`, a `Content-Disposition: attachment`), as a
-  `ui.WebDownload` with its `URL`, `MIME`, `Filename` and `Size` (-1 when
+  `WebDownload` with its `url`, `mime`, `filename` and `size` (-1 when
   unknown). It doesn't download it.
-- `OnRequest` gets the URL of each request the page makes (scripts,
+- `on request(url)` gets the URL of each request the page makes (scripts,
   images, media, `fetch`). **Not on iOS and macOS**: `WKWebView`
   doesn't let an app see them.
 
-`ui.WebBack`, `ui.WebForward`, `ui.WebReload` and `ui.WebStop` move
-through its history, load the page again, or stop it loading.
+A `Ref`'s `goBack()`, `goForward()`, `reload()` and `stopLoading()`
+move through its history, load the page again, or stop it loading.
 
 ### Talking to the page
 
-The page posts to Go with `window.asuka.postMessage(text)`, which calls
-`OnMessage`. Go runs script in the page with `ui.EvalJS`, which returns
-nothing, or `ui.EvalJSResult`, which calls back with the value as JSON:
-the last statement's, or what a returned promise resolves to (`null` for
-`undefined`), or the error it threw.
+The page posts to the app with `window.asuka.postMessage(text)`, which
+runs `on message`. The app runs script in the page with a `Ref`'s
+`run(script)`, which returns nothing, or `try await eval(script)`,
+which returns the value as JSON: the last statement's, or what a
+returned promise resolves to (`null` for `undefined`), or throws the
+error it threw.
 
-```go
-var web ui.Node
-web = ui.WebView(ui.WebViewProps{
-	HTML: ui.Val(`<button onclick="asuka.postMessage('tapped')">Tap</button>`),
-	OnMessage: func(m string) {
-		ui.EvalJSResult(web, "document.title", func(v json.RawMessage, err error) {
-			fmt.Println(m, string(v), err)
-		})
-	},
-})
+```asuka
+component Page {
+  let web = Ref()
+
+  WebView {
+    ref: web
+    html: "<button onclick=\"asuka.postMessage('tapped')\">Tap</button>"
+    on message(m) {
+      let title = try? await web.eval("document.title")
+      print("{m} {title ?? ""}")
+    }
+  }
+}
 ```
 
-`ui.EvalJSResult` awaits a promise with the page's `eval`, which a
-page's Content Security Policy can block (without `'unsafe-eval'`). On
-such a page, on iOS, Android, macOS and Linux, it runs the script as
-`ui.EvalJS` does, which no policy applies to: the value is still the
+`eval` awaits a promise with the page's `eval`, which a page's Content
+Security Policy can block (without `'unsafe-eval'`). On such a page, on
+iOS, Android, macOS and Linux, it runs the script as `run` does, which no policy applies to: the value is still the
 last statement's, and an error is still what the script threw, but a
 promise isn't awaited (Android answers `{}` for it, the others with an
 error), and on iOS and macOS an object's keys can come back in another
 order. Windows needs no `eval` and awaits as usual. On the web the
 browser applies the page's policy to what the app runs in it, so a page
-that blocks `eval` refuses both `ui.EvalJS` and `ui.EvalJSResult`.
+that blocks `eval` refuses both `run` and `eval`.
 
-`ui.WebCookies(url, done)` gets the cookies web views have for a URL, as
+`try await webCookies(url)` gets the cookies web views have for a URL, as
 a `Cookie` header: what the user signed in to in a page, for your own
 requests.
 
@@ -836,91 +1026,112 @@ browser with an address bar, a preload script, blocking and downloads.
 
 ## Shapes
 
-`ui.Shape` draws an outline, filled, stroked or both. `Path` makes the
-outline for the shape's size; it runs again when the size changes, and
-when signals it reads change. A shape takes the size its style gives it
-(a width and height, an aspect ratio, `Grow`); with none, it's empty.
+`Shape` draws an outline, filled, stroked or both. Its path function
+makes the outline for the shape's size; it runs again when the size
+changes, and when state it reads changes. A shape takes the size its
+style gives it (a width and height, an aspect ratio, `grow`); with none,
+it's empty.
 
-```go
-ui.Shape(ui.ShapeProps{
-	Path: func(w, h float32) *ui.Path {
-		return new(ui.Path).MoveTo(w/2, 0).LineTo(w, h).LineTo(0, h).Close()
-	},
-	Fill:  colors.Orange,
-	Style: ui.Style{Width: ui.Pt(48), Height: ui.Pt(48)},
-})
+```asuka
+component Triangle {
+  Shape((w, h) => Path().move(w / 2, 0).line(w, h).line(0, h).close()) {
+    fill: .orange
+    width: 48
+    height: 48
+  }
+}
 ```
 
-A `ui.Path` is in points from the shape's top left. Its methods add to
-it and return it, to chain: `MoveTo`, `LineTo`, `QuadTo`, `CubicTo`,
-`Arc` (angles in radians, clockwise from the x axis), `Close`, and whole
-figures, `Rect`, `RoundedRect` and `Ellipse`.
+A `Path` is in points from the shape's top left. Its methods add to it
+and return it, to chain: `move`, `line`, `quad`, `cubic`, `arc` (angles
+in radians, clockwise from the x axis), `close`, and whole figures,
+`rect`, `roundedRect` and `ellipse`.
 
-`Stroke` and `LineWidth` (default 1) draw the outline, with a `LineCap`
-(`CapButt`, `CapRound`, `CapSquare`) and a `LineJoin` (`JoinMiter`,
-`JoinRound`, `JoinBevel`). `TrimStart` and `TrimEnd` draw part of it,
-from 0 to 1: a progress ring, a line that draws itself. Changing them in
-`ui.Animate` animates them (see [Motion](motion.md)).
-`Dash` dashes the stroke: lengths in points, drawn and skipped in turn
-(`[]float32{6, 4}`; an odd count repeats), as SwiftUI's
-`StrokeStyle(dash:)` does. `DashPhase` is how far into the pattern it
-starts. [`examples/usage`](../examples/usage) draws a forecast with
+`stroke` and `lineWidth` (default 1) draw the outline, with a `lineCap`
+(`.butt`, `.round`, `.square`) and a `lineJoin` (`.miter`, `.round`,
+`.bevel`). `trimStart` and `trimEnd` draw part of it, from 0 to 1: a
+progress ring, a line that draws itself. Changing them in `animate`
+animates them (see [Motion](motion.md)). `dash` dashes the stroke:
+lengths in points, drawn and skipped in turn (`[6, 4]`; an odd count
+repeats), as SwiftUI's `StrokeStyle(dash:)` does. `dashPhase` is how far
+into the pattern it starts. [`examples/usage`](../examples/usage) draws a forecast with
 one.
 
-```go
-func ring(w, h float32) *ui.Path {
-	r := min(w, h)/2 - 4
-	return new(ui.Path).Arc(w/2, h/2, r, -math.Pi/2, 3*math.Pi/2, true)
+```asuka
+import asuka/math
+
+fn ring(w: float, h: float) -> Path {
+  let r = min(w, h) / 2 - 4
+  return Path().arc(w / 2, h / 2, r, start: -math.pi / 2, end: 3 * math.pi / 2)
 }
 
-func progressRing(done signal.Accessor[float32]) ui.Node {
-	box := ui.Style{Absolute: true, Left: ui.Pt(0), Top: ui.Pt(0), Width: ui.Pct(100), Height: ui.Pct(100)}
-	return ui.View(ui.ViewProps{Label: ui.Val("Progress"), Style: ui.Style{Width: ui.Pt(72), Height: ui.Pt(72)}},
-		ui.Shape(ui.ShapeProps{Path: ring, Stroke: colors.SecondaryBackground, LineWidth: 8, Style: box}),
-		ui.Shape(ui.ShapeProps{Path: ring, Stroke: colors.Accent, LineWidth: 8, LineCap: ui.CapRound,
-			TrimEnd: done, Style: box}),
-	)
+component ProgressCircle(done: float) {
+  View {
+    label: "Progress"
+    width: 72
+    height: 72
+    Shape(ring) {
+      stroke: .secondaryBackground
+      lineWidth: 8
+      absolute: true
+      width: 100%
+      height: 100%
+    }
+    Shape(ring) {
+      stroke: .accent
+      lineWidth: 8
+      lineCap: .round
+      trimEnd: done
+      absolute: true
+      width: 100%
+      height: 100%
+    }
+  }
 }
 ```
 
 ### Canvas
 
-`ui.Canvas` draws what the app draws: a chart, a gauge, a signature, a
-game's board, whatever no view is. Its function draws with a
-`*ui.Graphics`, in points from its top left:
+`Canvas` draws what the app draws: a chart, a gauge, a signature, a
+game's board, whatever no view is. Its function draws with a `Graphics`,
+in points from its top left:
 
-```go
-ui.Canvas(func(g *ui.Graphics) {
-	w, h := g.Size()
-	g.Fill(g.Path().RoundedRect(0, 0, w, h, 12), colors.SecondaryBackground)
-	g.Fill(g.Path().RoundedRect(0, 0, w*level.Get(), h, 12), colors.Accent)
-	g.Text(fmt.Sprintf("%.0f%%", level.Get()*100), w/2, h/2+6, ui.TextStyle{Weight: fonts.Semibold, Align: ui.TextCenter})
-}, ui.Style{Height: ui.Pt(36)})
+```asuka
+component Level(level: float) {
+  Canvas(g => {
+    let w = g.width
+    let h = g.height
+    g.fill(g.path().roundedRect(0, 0, w, h, 12), .secondaryBackground)
+    g.fill(g.path().roundedRect(0, 0, w * level, h, 12), .accent)
+    g.text("{(level * 100).fixed(0)}%", w / 2, h / 2 + 6, CanvasText(weight: .semibold, align: .center))
+  }) {
+    height: 36
+  }
+}
 ```
 
-- `g.Path()` is a path to build (as a Shape's), reused from draw to draw.
-- `Fill`, `Stroke` (a `StrokeStyle`: width, caps, joins, dashes) and
-  `FillGradient` paint a path; `FillRadialGradient` fills one with a
-  `RadialGradient` (its center, radius, and a focus it starts from), and
-  `StrokeGradient` and `StrokeRadialGradient` paint its outline with a
-  gradient; `Text` draws a line of text, its baseline at y, its left
-  edge, center or right edge at x.
-- `Save` and `Restore` bracket `Translate`, `Scale`, `Rotate` (degrees,
-  clockwise), `Transform` (any affine matrix, a skew too), `Clip`,
-  `Opacity` and `EvenOdd`, which fills and clips by the even-odd rule
+- `g.path()` is a path to build (as a Shape's), reused from draw to draw.
+- `fill` and `stroke` (with a `StrokeStyle`: width, caps, joins,
+  dashes) paint a path with a color, a `LinearGradient` or a
+  `RadialGradient` (its center, radius, and a focus it starts from);
+  `text` draws a line of text, its baseline at y, its left edge, center
+  or right edge at x (a `CanvasText`'s `align`).
+- `save` and `restore` bracket `translate`, `scale`, `rotate` (degrees,
+  clockwise), `transform` (any affine matrix, a skew too), `clip`,
+  `opacity` and `evenOdd`, which fills and clips by the even-odd rule
   (by default, the nonzero rule).
-- Colors can be semantic (`colors.Label`, `colors.Separator`, `colors.Accent`):
-  they follow dark mode.
+- Colors can be semantic (`.label`, `.separator`, `.accent`): they
+  follow dark mode.
 
 It draws once it's laid out, and again when its size changes or the
-signals the function read change, like an effect. Each draw records a
+state the function read changes, like an effect. Each draw records a
 display list, sent only when it differs from the last, and the platform
 replays it: Core Graphics on iOS and macOS, Android's `Canvas`, GDI+ on
 Windows, GTK's snapshots (GSK) on Linux, a 2D `<canvas>` in a browser.
 Recording allocates nothing once the canvas has drawn as much
-before. A canvas has no presses of its own: wrap it in a `ui.View` with
-`OnPress` or `OnPan`, which report points in its coordinates. It isn't
-read by screen readers: give the view around it a `Label`.
+before. A canvas has no presses of its own: wrap it in a `View` with
+`on press` or `on pan`, which report points in its coordinates. It
+isn't read by screen readers: give the view around it a `label`.
 
 ### Charts
 
@@ -1025,93 +1236,140 @@ stands in until the first frame.
 
 ## Containers
 
-`ui.View` holds other views. `ui.Column` and `ui.Row` are views that
-stack their children top to bottom and leading to trailing. `ui.SafeArea`
-is a column padded by the notch, the system bars and the keyboard. How
+`View` holds other views. `Column` and `Row` are views that stack their
+children top to bottom and leading to trailing. `SafeArea` is a column padded by the notch, the system bars and the keyboard. How
 they size and place what's in them is in [Layout](layout.md).
 
 A view with no look, events or accessibility props makes no native view
 of its own: its children go in the nearest one that does. So nesting
 rows and columns costs nothing.
 
-```go
-open := signal.New(false)
-return ui.View(ui.ViewProps{
-	OnPress:     func() { open.Set(!open.Peek()) },
-	OnLongPress: func() { ui.Haptic(ui.HapticMedium) },
-	Label:       ui.Val("Ada, 2 unread"),
-	Style:       ui.Style{Direction: ui.RowDir, Gap: 12, Padding: ui.All(16), Background: colors.SecondaryBackground, CornerRadius: 12},
-},
-	ui.Symbol(ui.IconPerson.Filled()),
-	ui.Column(ui.Style{Grow: 1, Gap: 2},
-		ui.StaticText("Ada", ui.Style{Font: fonts.Headline}),
-		ui.StaticText("2 unread", ui.Style{Color: colors.SecondaryLabel}),
-	),
-)
+```asuka
+component Person {
+  state open = false
+
+  Row {
+    gap: 12
+    padding: 16
+    background: .secondaryBackground
+    radius: 12
+    label: "Ada, 2 unread"
+    on press { open = !open }
+    on longPress { haptic(.medium) }
+    Symbol("person.fill")
+    Column {
+      grow: 1
+      gap: 2
+      Text("Ada") { font: .headline }
+      Text("2 unread") { color: .secondaryLabel }
+    }
+  }
+}
 ```
 
-`ViewProps` has:
+A `View`, `Row`, `Column` or `SafeArea` takes:
 
-- `OnPress` and `OnLongPress`.
-- Gestures, with the platform's recognizers: `OnPan`, `OnPinch`,
-  `OnRotate` (each given a `ui.Gesture`) and `OnSwipe` (a
-  `ui.SwipeDirection`). See [Motion](motion.md).
+- `on press` and `on longPress`.
+- Gestures, with the platform's recognizers: `on pan(g)`, `on
+  pinch(g)`, `on rotate(g)` (each given a `Gesture`) and `on
+  swipe(direction)`. See [Motion](motion.md).
 - Interaction states. The view's own style follows them through its
-  variants (`Style.Pressed`, `Hovered`, `Dragging`, `DragOver`). Other
-  views follow them through `Interaction` (a `ui.Interaction`, read
-  with `Style.When` or in a `StyleFunc`). Side effects go in
-  `OnPressedChange` and `OnHoverChange`. Drag and drop: `Drag` (a
-  `ui.DragSource`) and `Drop` (a `ui.DropTarget`). See
+  variants (`pressed { … }`, `hovered { … }`, `dragging { … }`,
+  `dragOver { … }`). Other views follow them through its `Ref`
+  (`card.hovered`, `card.pressed`). Side effects go in `on
+  pressedChange` and `on hoverChange`. Drag and drop: `dragItems` and
+  `dropTypes`, with `on drop(d)`. See
   [Motion](motion.md#pressed-and-hover-states).
-- `OnLayout`, called with the view's `ui.Frame` once it's laid out and
-  each time that changes.
-- Accessibility: `Label`, `Hint`, `Role`, `Decorative`, `Actions` and
-  `OnAdjust`. See [Accessibility](accessibility.md).
+- `on layout(frame)`, run with the view's `Frame` once it's laid out
+  and each time that changes.
+- Accessibility: `label`, `hint`, `role`, `a11yHidden`, `actions` and
+  `on adjust(by)`. See [Accessibility](accessibility.md).
 
 ### Scroll
 
-`ui.Scroll` scrolls its children along one axis. Give it a size, or
-`Grow`, so it has something to scroll within. `Style` is the scroll
-view's box; `ContentStyle` is the box its children are stacked in.
+`Scroll` scrolls its children along one axis. Give it a size, or
+`grow`, so it has something to scroll within. Its style is the scroll
+view's box; its children stack in a column inside it (a `SafeArea` or
+a `Column` in it pads and spaces them).
 
-```go
-down := signal.New(false)
-var scroll ui.Node
-scroll = ui.Scroll(ui.ScrollProps{
-	Style:    ui.Style{Grow: 1},
-	OnScroll: func(_, y float32) { down.Set(y > 300) },
-}, ui.SafeArea(ui.Style{Padding: ui.All(20), Gap: 16}, content...))
-return ui.View(ui.ViewProps{Style: ui.Style{Grow: 1}}, scroll,
-	ui.Show(down, func() ui.Node {
-		return ui.View(ui.ViewProps{Style: ui.Style{Absolute: true, Right: ui.Pt(20), Bottom: ui.Pt(20)}},
-			ui.Button(ui.ButtonProps{Icon: ui.IconUp, Label: ui.Val("Back to top"), Variant: ui.ButtonFilled,
-				OnPress: func() { ui.ScrollTo(scroll, 0, 0, true) }}))
-	}))
+```asuka
+component Page {
+  state down = false
+
+  let scroll = Ref()
+
+  View {
+    grow: 1
+    Scroll {
+      ref: scroll
+      grow: 1
+      on scroll(_, y) { down = y > 300 }
+      SafeArea {
+        padding: 20
+        gap: 16
+        for i in 0..<50 key i { Text("Line {i + 1}") }
+      }
+    }
+    if down {
+      View {
+        absolute: true
+        right: 20
+        bottom: 20
+        Button("") {
+          icon: "arrow.up"
+          label: "Back to top"
+          variant: .filled
+          on press { scroll.scrollTo(0, 0) }
+        }
+      }
+    }
+  }
+}
 ```
 
-- `OnScroll` is called as it scrolls, with its content offset in points.
-- `ui.ScrollTo(scroll, x, y, animated)` scrolls to an offset (past the
-  end is the end); `ui.ScrollToEnd(scroll, animated)` to its bottom, or
-  a horizontal one's trailing edge. Both work on a `List` too.
-- `Horizontal` scrolls sideways:
+- `on scroll(x, y)` runs as it scrolls, with its content offset in
+  points.
+- A `Ref`'s `scrollTo(x, y, animated:)` scrolls to an offset (past the
+  end is the end); `scrollToEnd(animated:)` to its bottom, or a
+  horizontal one's trailing edge. Both work on a `List` too.
+- `horizontal: true` scrolls sideways:
 
-```go
-ui.Scroll(ui.ScrollProps{Horizontal: true, ContentStyle: ui.Style{Gap: 8, Padding: ui.Symmetric(0, 16)}}, kids...)
+```asuka
+component Tags(tags: [string]) {
+  Scroll {
+    horizontal: true
+    Row {
+      gap: 8
+      padding: [0, 16]
+      for t in tags key t { Text(t) }
+    }
+  }
+}
 ```
 
-**Pages.** `Paging` makes it rest only at whole pages: a carousel, an
-onboarding's steps, a feed of full-screen videos. Each child of its
-content is a page, as big as the scroll view along its axis. `Page` is
-the page shown: a swipe writes it as it settles, and writing it scrolls
-there. `ui.PageControl` shows where it is, a dot per page, and moves it
-too when one is tapped:
+**Pages.** `paging: true` makes it rest only at whole pages: a
+carousel, an onboarding's steps, a feed of full-screen videos. Each
+child is a page, as big as the scroll view along its axis. `bind page`
+is the page shown: a swipe writes it as it settles, and writing it
+scrolls there. `PageControl` shows where it is, a dot per page, and
+moves it too when one is tapped:
 
-```go
-page := signal.New(0)
-return ui.Column(ui.Style{Gap: 8},
-	ui.Scroll(ui.ScrollProps{Horizontal: true, Paging: true, Page: page, Style: ui.Style{Height: ui.Pt(200)}},
-		card(1), card(2), card(3)),
-	ui.PageControl(ui.PageControlProps{Count: ui.Val(3), Page: page}))
+```asuka
+component Carousel {
+  state page = 0
+
+  Column {
+    gap: 8
+    Scroll {
+      horizontal: true
+      paging: true
+      bind page: page
+      height: 200
+      for i in 0..<3 key i { Text("Card {i + 1}") }
+    }
+    PageControl(3) { bind page: page }
+  }
+}
 ```
 
 | | iOS | Android | macOS | Windows | Linux | Web |
@@ -1123,43 +1381,58 @@ Pages count from the reading start: right to left, the first is the
 rightmost. When the scroll view's size changes (a rotation), it stays on
 its page. Screen readers say "page 2 of 3" on the dots and adjust them.
 
-**Pull to refresh.** `OnRefresh` turns it on (`UIRefreshControl`,
-`SwipeRefreshLayout`). Set `Refreshing` true while you refresh; the
-spinner hides when it turns false. Without `Refreshing`, it hides as
-soon as `OnRefresh` returns. On macOS a trackpad's or Magic Mouse's
+**Pull to refresh.** `on refresh` turns it on (`UIRefreshControl`,
+`SwipeRefreshLayout`). Set `refreshing` true while you refresh; the
+spinner hides when it turns false. Without `refreshing`, it hides as
+soon as the handler returns. On macOS a trackpad's or Magic Mouse's
 scroll pulls it past its top, as on iOS. Windows and Linux refresh the
 desktop's way: F5 (on Linux, Ctrl+R too) refreshes the scroll view the
 focus is in, or else the innermost one on screen, a spinner over its
 top meanwhile. In a browser a touch pulls it down.
 
-```go
-refreshing := signal.New(false)
-return ui.Scroll(ui.ScrollProps{
-	Style:      ui.Style{Grow: 1},
-	Refreshing: refreshing,
-	OnRefresh: func() {
-		refreshing.Set(true)
-		go func() {
-			time.Sleep(time.Second) // fetch
-			ui.Post(func() { refreshing.Set(false) })
-		}()
-	},
-}, ui.StaticText("Pull down"))
+```asuka
+component Feed {
+  state refreshing = false
+
+  Scroll {
+    grow: 1
+    refreshing: refreshing
+    on refresh {
+      refreshing = true
+      await sleep(1s) // fetch
+      refreshing = false
+    }
+    Text("Pull down")
+  }
+}
 ```
 
-**A bar on the keyboard.** `Accessory` is a bar shown on top of the
+**A bar on the keyboard.** A `TextField`'s `accessory { … }` is a bar shown on top of the
 keyboard while the field is focused: a count and Done, formatting
 buttons, quick replies (SwiftUI's keyboard toolbar). It's as wide as the
 window and as tall as its content, built with the field and disposed
 with it.
 
-```go
-var field ui.Node
-field = ui.TextField(ui.TextFieldProps{Value: note, Multiline: true, Accessory: func() ui.Node {
-	return ui.Row(ui.Style{Padding: ui.Symmetric(6, 16), Align: ui.AlignCenter, Material: ui.MaterialBar},
-		ui.Text(signal.Func(func() string { return fmt.Sprint(len(note.Get()), " characters") }), ui.Style{Grow: 1}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Done"), OnPress: func() { ui.Blur(field) }}))
-}})
+```asuka
+component Note {
+  state note = ""
+  state focused = false
+
+  TextField {
+    bind text: note
+    bind focused: focused
+    multiline: true
+    accessory {
+      Row {
+        padding: [6, 16]
+        align: .center
+        material: .bar
+        Text("{note.count()} characters") { grow: 1 }
+        Button("Done") { on press { focused = false } }
+      }
+    }
+  }
+}
 ```
 
 On iOS it's the field's `inputAccessoryView`: it moves with the
@@ -1169,26 +1442,42 @@ keyboard, following it frame by frame. macOS, Windows and Linux, with no
 on-screen keyboard, don't show it; a browser shows it only on a touch
 screen.
 
-**Styled text.** `Rich` makes a field a text area of styled text, for a
+**Styled text.** `bind rich` makes a field a text area of styled text, for a
 mail's body or a formatted message: bold, italic, underline,
 strikethrough, monospaced code and links (colors and text styles a span
-has are kept as they are). It's the same `ui.Rich` a `RichText` shows.
+has are kept as they are). It's the same `[Span]` a `RichText` shows.
 The user's typing and formatting write it; writing it replaces the text.
-`ui.ToggleFormat(field, ui.FormatBold)` turns a style on for the
-selection unless all of it has it, then off (`FormatText` sets it either
-way); with no selection, it's what's typed next. `ui.SetLink(field, url)`
-links the selection ("" unlinks; at the cursor, the link it's in).
-`OnFormats` reports the styles where the cursor is, or that all the
+A `Ref`'s `toggleFormat(.bold)` turns a style on for the selection
+unless all of it has it, then off (`format(.bold, on:)` sets it either
+way); with no selection, it's what's typed next. `setLink(url)` links
+the selection (`""` unlinks; at the cursor, the link it's in). `on
+formats(f)` reports the styles where the cursor is, or that all the
 selection has, for a toolbar to show.
 
-```go
-body := signal.NewFunc(ui.Rich{ui.Plain("Hi,\n\nThe "), ui.Strong("1.0"), ui.Plain(" build is ready.")}, nil)
-formats := signal.New(ui.TextFormats{})
-var field ui.Node
-field = ui.TextField(ui.TextFieldProps{Rich: body, Plain: true, OnFormats: formats.Set, Style: ui.Style{Grow: 1}})
-bold := ui.Button(ui.ButtonProps{Icon: "bold", Label: ui.Val("Bold"),
-	Style:   ui.StyleFunc(func() ui.Style { if formats.Get().Has(ui.FormatBold) { return ui.Style{Background: colors.SecondaryBackground} }; return ui.Style{} }),
-	OnPress: func() { ui.ToggleFormat(field, ui.FormatBold) }})
+```asuka
+component Composer {
+  state body = [Span(text: "Hi,\n\nThe "), Span(text: "1.0", font: .body.bold()), Span(text: " build is ready.")]
+  state formats = TextFormats()
+
+  let field = Ref()
+
+  Column {
+    grow: 1
+    Button("") {
+      icon: "bold"
+      label: "Bold"
+      background: if formats.bold { .secondaryBackground } else { .clear }
+      on press { field.toggleFormat(.bold) }
+    }
+    TextField {
+      ref: field
+      bind rich: body
+      plain: true
+      grow: 1
+      on formats(f) { formats = f }
+    }
+  }
+}
 ```
 
 | | iOS | Android | macOS | Windows | Linux | Web |
@@ -1199,13 +1488,13 @@ bold := ui.Button(ui.ButtonProps{Icon: "bold", Label: ui.Val("Bold"),
 
 [`examples/mail`](../examples/mail) has a composer with a toolbar.
 
-**Padding.** A text's or a field's `Padding` (and `BorderWidth`) is
+**Padding.** A text's or a field's `padding` (and `border`) is
 inside its frame, around its content, as in CSS: its background fills
 it, its text is drawn inside it, and a field's editing happens inside it.
 
 ## Lists
 
-`ui.List` shows a row per item in the platform's recycling list
+`List` shows a row per item in the platform's recycling list
 (`UICollectionView`, `RecyclerView`). The desktop and the web have no
 list that holds rows of any view, so there the host recycles rows
 itself, in the platform's scroll view. Rows are made only for the cells
@@ -1213,86 +1502,106 @@ on screen; a cell scrolled away is reused for another item, and only the
 props that differ are updated. [`examples/list10k`](../examples/list10k)
 has ten thousand rows.
 
-```go
-messages := signal.NewFunc(fetch(0, 30), nil)
-return ui.List(ui.ListProps{}, messages, func(m message) int { return m.ID }, row)
-```
+```asuka
+struct Message {
+  id: int
+  from: string
+  subject: string
+}
 
-```go
-func row(m signal.Accessor[message], _ signal.Accessor[int]) ui.Node {
-	return ui.Column(ui.Style{Gap: 2, Padding: ui.Symmetric(12, 20)},
-		ui.Text(signal.Func(func() string { return m.Get().From }), ui.Style{Font: fonts.Headline}),
-		ui.Text(signal.Func(func() string { return m.Get().Subject }), ui.Style{Color: colors.SecondaryLabel}),
-	)
+state messages = [Message(id: 1, from: "Ada", subject: "Lunch?"), Message(id: 2, from: "Grace", subject: "The report")]
+
+component Inbox {
+  List {
+    for m in messages key m.id {
+      Column {
+        gap: 2
+        padding: [12, 20]
+        Text(m.from) { font: .headline }
+        Text(m.subject) { color: .secondaryLabel }
+      }
+    }
+  }
 }
 ```
 
-It takes the items, a key for each, and a function that builds a row
-from an item and its index, both accessors. Keys say which item is
-which from one list to the next: a changed item updates its row, a moved
-one moves it, and the platform animates the difference. Read the item in
-a `signal.Func`, as above, so a reused row follows its new item.
+Its `for` takes the items and a key for each, and builds a row from an
+item (and its index, `for (i, m) in messages.enumerated()`). Keys say
+which item is which from one list to the next: a changed item updates
+its row, a moved one moves it, and the platform animates the
+difference. A row's bindings read its item, so a reused row follows its
+new one.
 
-A list fills the space it's given: with no height and no `Grow`, it
+A list fills the space it's given: with no height and no `grow`, it
 grows. It draws the platform's separators between rows.
 
-`ListProps` has:
+A `List` takes:
 
-- `SwipeActions`, the actions of row `i`, revealed by swiping it. On
+- `swipeActions`, a row's actions, revealed by swiping it: on the
+  row's top view (`swipeActions: [...]`), or for the list, a function of
+  the row's index. On
   iOS they are its trailing actions, a destructive one red, the first
   run by a full swipe. On Android a full swipe runs the first, over its
   color and icon, as Material's swipe to dismiss. On macOS, Windows,
   Linux and the web they're the row's context menu (a secondary click;
-  on Linux and the web a long press too), leading then trailing. Give the
-  row the same as accessibility `Actions`, for screen readers.
-- `OnEndReached`, called when the last rows are about to show, once for
+  on Linux and the web a long press too), leading then trailing.
+- `on endReached`, run when the last rows are about to show, once for
   each length the list has: load more there.
-- `OnRefresh` and `Refreshing`, pull to refresh as on a `Scroll` (F5 on
-  Windows and Linux).
-- `OnScroll`, as on a `Scroll`.
-- `Appearance`, its look. `ui.ListPlain` is rows edge to edge, apart by
-  separators; `ui.ListInsetGrouped` is the platform's grouped list
-  (libadwaita's boxed lists on Linux);
-  `ui.ListBare` has no separators and nothing behind its rows, so what's
+- `on refresh` and `refreshing`, pull to refresh as on a `Scroll` (F5
+  on Windows and Linux).
+- `on scroll(x, y)`, as on a `Scroll`.
+- `appearance`, its look. `.plain` is rows edge to edge, apart by
+  separators; `.insetGrouped` is the platform's grouped list
+  (libadwaita's boxed lists on Linux); `.bare` has no separators and nothing behind its rows, so what's
   behind the list shows through, for rows that draw their own cards. A bare
   list's rows leave their own space, and can still be swiped.
 
-```go
-messages := signal.NewFunc(fetch(0, 30), nil)
-remove := func(i int) {
-	messages.Update(func(ms []message) []message { return slices.Delete(slices.Clone(ms), i, i+1) })
+```asuka
+struct Message {
+  id: int
+  subject: string
 }
-list := ui.List(ui.ListProps{
-	SwipeActions: func(i int) []ui.Action {
-		return []ui.Action{
-			{Title: ui.Val("Delete"), Icon: ui.IconTrash, Role: ui.ActionDestructive, OnPress: func() { remove(i) }},
-			{Title: ui.Val("Archive"), Icon: "archivebox", OnPress: func() { remove(i) }},
-		}
-	},
-	OnEndReached: func() {
-		ms := messages.Peek()
-		messages.Set(append(slices.Clone(ms), fetch(len(ms), 30)...))
-	},
-}, messages, func(m message) int { return m.ID }, row)
+
+fn fetch(from: int, n: int) -> [Message] = (from..<from + n).map(i => Message(id: i, subject: "Message {i + 1}"))
+
+component Inbox {
+  state messages = fetch(0, 30)
+
+  List {
+    on endReached {
+      messages += fetch(messages.count(), 30)
+    }
+    for m in messages key m.id {
+      Row {
+        padding: [12, 20]
+        swipeActions: [
+          .button(title: "Delete", icon: "trash", role: .destructive, run: () => messages.removeWhere(x => x.id == m.id)),
+          .button(title: "Archive", icon: "archivebox", run: () => messages.removeWhere(x => x.id == m.id)),
+        ]
+        Text(m.subject)
+      }
+    }
+  }
+}
 ```
 
-`LeadingSwipeActions` are revealed by swiping the other way, from the
+`leadingSwipeActions` are revealed by swiping the other way, from the
 row's leading edge (Mail's Unread, Pin): the first is at that edge, and
 a full swipe's. iOS tints them; Android shows them as Material's
 filled buttons.
 
-`ui.ScrollToItem(list, index, animated)` scrolls a list so an item
-shows; `ScrollTo` and `ScrollToEnd` work too.
+A `Ref`'s `scrollToItem(index, animated:)` scrolls a list so an item
+shows; `scrollTo` and `scrollToEnd` work too.
 
 ### Chats: a list anchored at its bottom
 
-`Anchor: ui.AnchorBottom` is a chat's list: it opens at its last row,
+`anchor: .bottom` is a chat's list: it opens at its last row,
 rows that don't fill it sit at its bottom, and while it's at its end it
 stays there: as rows are added at the end, as they change height, and
 as the list gets shorter (the keyboard). The user scrolling up leaves
-the end; scrolling back to it, or `ui.ScrollToEnd`, sticks again.
-`OnStartReached` is called when the first rows are about to show, once
-for each first item: load older messages there.
+the end; scrolling back to it, or `scrollToEnd()`, sticks again. `on
+startReached` runs when the first rows are about to show, once for each
+first item: load older messages there.
 
 Whatever the anchor, rows added or removed above the ones on screen
 don't move those (React Native's `maintainVisibleContentPosition`):
@@ -1301,16 +1610,34 @@ user reading what they were. Only at the edge the list is anchored to
 does it show the new rows: at the top of a list read from the top (a
 new mail), at the end of a chat.
 
-```go
-msgs := signal.NewFunc(latest(40), nil)
-var list ui.Node
-list = ui.List(ui.ListProps{
-	Anchor:         ui.AnchorBottom,
-	OnStartReached: func() { go loadOlder() }, // then ui.Post prepends them
-}, msgs, func(m message) int { return m.ID }, bubble)
-send := func(text string) {
-	msgs.Set(append(slices.Clone(msgs.Peek()), message{Text: text}))
-	ui.ScrollToEnd(list, true) // one's own message shows, wherever the list was
+```asuka
+struct Message {
+  id: int
+  text: string
+}
+
+component Chat {
+  state msgs: [Message] = []
+  state next = 0
+
+  let list = Ref()
+
+  fn send(text: string) {
+    next += 1
+    msgs.push(Message(id: next, text: text))
+    list.scrollToEnd() // one's own message shows, wherever the list was
+  }
+
+  Column {
+    grow: 1
+    List {
+      ref: list
+      anchor: .bottom
+      on startReached { print("load older") }
+      for m in msgs key m.id { Text(m.text) }
+    }
+    Button("Send") { on press { send("Hello") } }
+  }
 }
 ```
 
@@ -1318,19 +1645,32 @@ send := func(text string) {
 
 ### Sections
 
-`Section` puts rows in sections: rows next to each other with the same
-key are one, headed by `Header`'s view (a day in a chat, a letter in
-contacts, Today and Yesterday in a mailbox). `Header` gets the key as an
-accessor: a header is a row of its own, made as it comes into view and
-reused for another section after.
+`section` puts rows in sections: a function of a row's index to its
+section's key. Rows next to each other with the same key are one,
+headed by `header`'s view (a day in a chat, a letter in contacts, Today
+and Yesterday in a mailbox). `header` gets the key, and is followed: a
+header is a row of its own, made as it comes into view and reused for
+another section after.
 
-```go
-ui.List(ui.ListProps{
-	Section: func(i int) string { return day(msgs.Peek()[i].At) },
-	Header: func(day signal.Accessor[string]) ui.Node {
-		return ui.Text(day, ui.Style{Font: fonts.Footnote.Weighted(fonts.Semibold), Padding: ui.Symmetric(6, 20)})
-	},
-}, msgs, key, row)
+```asuka
+struct Message {
+  id: int
+  day: string
+  text: string
+}
+
+state msgs = [Message(id: 1, day: "Yesterday", text: "Hi"), Message(id: 2, day: "Today", text: "Hello")]
+
+component Chat {
+  List {
+    section: i => msgs[i].day
+    header: day => Text(day) {
+      font: .footnote.semibold()
+      padding: [6, 20]
+    }
+    for m in msgs key m.id { Text(m.text) }
+  }
+}
 ```
 
 A plain or bare list's header stays at the top while its section's rows
@@ -1344,70 +1684,89 @@ scrolls with it.
 
 ### Selecting rows
 
-`Selecting` puts a list in selection mode (Mail's Edit): each row shows
+`selecting` puts a list in selection mode (Mail's Edit): each row shows
 the platform's selection control, a tap selects or deselects it instead
-of pressing it, and rows don't swipe. `Selected` says which rows are
-(it's followed in an effect, so a selection kept in signals shows as it
-changes), and `OnSelect` hears the user's choices; what the app doesn't
-take goes back. The rows are laid out narrower by the control's room.
+of pressing it, and rows don't swipe. A row's `selected` says whether
+it is (it's followed, so a selection kept in state shows as it
+changes), and `on select(on)` hears the user's choices; what the app
+doesn't take goes back. The rows are laid out narrower by the control's room.
 
-```go
-selecting := signal.New(false)
-chosen := signal.NewFunc(map[int]bool{}, nil) // by message ID
-ui.List(ui.ListProps{
-	Selecting: selecting,
-	Selected:  func(i int) bool { return chosen.Get()[msgs.Peek()[i].ID] },
-	OnSelect: func(i int, v bool) {
-		m := maps.Clone(chosen.Peek())
-		if v {
-			m[msgs.Peek()[i].ID] = true
-		} else {
-			delete(m, msgs.Peek()[i].ID)
-		}
-		chosen.Set(m)
-	},
-	OnSelectBegin: func(i int) { selecting.Set(true) },
-}, msgs, key, row)
+```asuka
+struct Message {
+  id: int
+  text: string
+}
+
+state msgs = [Message(id: 1, text: "Hi"), Message(id: 2, text: "Hello")]
+
+component Mailbox {
+  state selecting = false
+  state chosen: [int] = []
+
+  List {
+    selecting: selecting
+    for m in msgs key m.id {
+      Row {
+        padding: [12, 20]
+        selected: chosen.contains(m.id)
+        on select(on) {
+          if on { chosen.push(m.id) } else { chosen.removeWhere(id => id == m.id) }
+        }
+        on selectBegin { selecting = true }
+        Text(m.text)
+      }
+    }
+  }
+}
 ```
 
 | | iOS | Android | macOS, Windows, Linux | Web |
 |---|---|---|---|---|
 | The control | UIKit's edit mode circles | a Material checkbox at the row's end | the row highlighted (the accent's selection color; a WinUI list's pill on Windows) | a circle at the row's leading edge that fills with a checkmark, the row tinted |
-| `OnSelectBegin` | a two-finger pan over rows, which goes on to select the rows it crosses | a long press (Gmail's) | — | — |
+| `on selectBegin` | a two-finger pan over rows, which goes on to select the rows it crosses | a long press (Gmail's) | — | — |
 | Screen readers | each row selectable | each row a checkbox, its text the label | — | each row selected or not (`aria-selected`) |
 
 ### Grids
 
-`Columns` makes a list a grid (a `LazyVGrid`, a `GridLayoutManager`):
-items fill rows of that many, each as wide as the others, `Gap` apart
+`columns` makes a list a grid (a `LazyVGrid`, a `GridLayoutManager`):
+items fill rows of that many, each as wide as the others, `gap` apart
 across and down. A row is as tall as its tallest item. A grid has no
 separators and no swipe actions.
 
-```go
-ui.List(ui.ListProps{Columns: 3, Gap: 2}, ui.Val(ids), func(id int) int { return id },
-	func(id signal.Accessor[int], _ signal.Accessor[int]) ui.Node {
-		return ui.Image(ui.ImageProps{
-			Source: signal.Func(func() string { return fmt.Sprintf("https://picsum.photos/id/%d/300/300", id.Get()) }),
-			Mode:   ui.ImageFill,
-			Style:  ui.Style{AspectRatio: 1},
-		})
-	})
+```asuka
+component Photos(ids: [int]) {
+  List {
+    columns: 3
+    gap: 2
+    for id in ids key id {
+      Image("https://picsum.photos/id/{id}/300/300") {
+        mode: .fill
+        aspectRatio: 1
+      }
+    }
+  }
+}
 ```
 
-### List or For in a Scroll
+### List or for in a Scroll
 
-`ui.For` makes a row per item too, keyed the same way, but it makes all
-of them, as plain views among their siblings. Use it in a `Scroll` for
+A `for` outside a `List` makes a view per item too, keyed the same way,
+but it makes all of them, as plain views among their siblings. Use it in a `Scroll` for
 a short list that's part of a page: a few tags, a form's rows, a
 section under a header.
 
-```go
-ui.Scroll(ui.ScrollProps{Style: ui.Style{Grow: 1}, ContentStyle: ui.Style{Padding: ui.All(20), Gap: 8}},
-	ui.StaticText("Tags", ui.Style{Font: fonts.Headline}),
-	ui.For(tags, func(t string) string { return t }, func(t signal.Accessor[string], _ signal.Accessor[int]) ui.Node {
-		return ui.Text(t)
-	}),
-)
+```asuka
+component Tags(tags: [string]) {
+  Scroll {
+    grow: 1
+    Column {
+      padding: 20
+      gap: 8
+      Text("Tags") { font: .headline }
+      for t in tags key t { Text(t) }
+    }
+  }
+}
 ```
 
 Use `List` when the items are many or unbounded (a feed, an inbox,
@@ -1417,7 +1776,7 @@ a `Scroll`.
 
 ## Your own views
 
-When a platform has a widget Asuka doesn't, write it yourself and show it
-with `ui.Native`: in Swift on iOS, Kotlin on Android, Go on macOS,
-Windows and Linux (AppKit, Win32 and GTK through package `native`), and
-JavaScript on the web. See [Native code](native.md).
+When a platform has a widget Asuka doesn't, write it yourself as a
+`native component`: in Swift on iOS and macOS, Kotlin on Android,
+JavaScript on the web, and Go on Windows and Linux. See [Native
+code](native.md).
