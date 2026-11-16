@@ -35,7 +35,7 @@ draws its own UI, see [Asuka and MyGo](mygo.md).
 | Overlays, absolute placement | `ZStack`, `.overlay` | `position: absolute` | ✓ `absolute` with `top`, `left`, `start`, `end`... |
 | Grids of views | `Grid`, `LazyVGrid` | community | ✓ `grid` (CSS grid: `Grid(columns:)`, `.fr`, `.repeat`, `.autoFill`; `gridColumn`, `gridRow`) |
 | Scrolling | `ScrollView` | `ScrollView` | ✓ `Scroll` (vertical, `horizontal`) |
-| Lazy lists, cell recycling | `List`, `LazyVStack` | `FlatList` | ✓ `List` (the platform's: `UICollectionView`, `RecyclerView`; on the Mac, Windows, Linux and the web the host recycles the rows in view, in the platform's scroll view) |
+| Lazy lists, cell recycling | `List`, `LazyVStack` | `FlatList` | ✓ `List` (the platform's: `UICollectionView`, `RecyclerView`; on the Mac, Windows, Linux and the web Asuka recycles the rows in view, in the platform's scroll view) |
 | Lazy grids | `LazyVGrid` | `FlatList numColumns` | ✓ a `List`'s `columns`, `gap` |
 | Chat lists: start at the end, load older above | `defaultScrollAnchor(.bottom)`, `scrollPosition` | `FlatList inverted`, `maintainVisibleContentPosition` | ✓ a `List`'s `anchor: .bottom`, `on startReached`; rows added above what shows leave it in place, in every list |
 | Sections, sticky headers | `Section` in a `List` | `SectionList`, `stickySectionHeadersEnabled` | ✓ a `List`'s `section` and `header` (sticky in plain and bare lists) |
@@ -48,7 +48,7 @@ draws its own UI, see [Asuka and MyGo](mygo.md).
 
 | | SwiftUI | Expo | Asuka |
 |---|---|---|---|
-| Text, styled text, links | `Text`, `AttributedString` | `Text` | ✓ `Text`, `RichText` (spans, links), `Selectable`; Markdown with `std/markdown` (parsed by the core, md4c, the same everywhere; drawn as the platform's styled text) |
+| Text, styled text, links | `Text`, `AttributedString` | `Text` | ✓ `Text`, `RichText` (spans, links), `Selectable`; Markdown with `std/markdown` (parsed by Asuka, the same everywhere; drawn as the platform's styled text) |
 | Buttons (variants, icons, menus) | `Button`, `Menu` | `Pressable` | ✓ `Button` (`variant`: plain, filled, tinted, gray, bordered, glass, glass prominent; `icon`; `menu`), `Menu` (a tap or `longPress`: context menus); items `disabled`, `checked`, in a `.submenu` or a titled `.section`; bar buttons that open menus |
 | Text fields | `TextField`, `SecureField`, `TextEditor` | `TextInput` | ✓ `TextField` (`secure`, `keyboard`, `returnKey`, `contentType` for AutoFill, `multiline`, `plain`) |
 | The cursor, inserting at it | `TextSelection` | `selection`, `onSelectionChange` | ✓ `bind selection`; a `Ref`'s `insert(text)` |
@@ -177,7 +177,7 @@ draws its own UI, see [Asuka and MyGo](mygo.md).
 | Status bar, navigation bar | `statusBarHidden`, `preferredStatusBarStyle` | `expo-status-bar`, `expo-navigation-bar` | ✓ `screen.setBars` (`platform/screen`) |
 | Orientation lock | `supportedInterfaceOrientations` | `expo-screen-orientation` | ✓ `screen.lock` |
 | Screenshots | `isCaptured`, `userDidTakeScreenshotNotification` | `expo-screen-capture` | ✓ `screen.preventCapture` (Android: black captures; iOS: covered while recorded; macOS and Windows: the windows left out), `screen.screenshots()` |
-| Crash reports | MetricKit, Crashlytics, Sentry | Sentry, Crashlytics (`@react-native-firebase/crashlytics`) | ✓ `platform/crash`: the core's fatal errors with the Asuka stack, uncaught exceptions, MetricKit's crashes and hangs, Android's native crashes and ANRs, the desktop hosts' crashes, with breadcrumbs and values; the app sends them where it likes (no service built in); symbols from `asuka build` |
+| Crash reports | MetricKit, Crashlytics, Sentry | Sentry, Crashlytics (`@react-native-firebase/crashlytics`) | ✓ `platform/crash`: Asuka's fatal errors with the Asuka stack, uncaught exceptions, MetricKit's crashes and hangs, Android's native crashes and ANRs, the desktops' crashes, with breadcrumbs and values; the app sends them where it likes (no service built in); symbols from `asuka build` |
 
 ## Appearance and accessibility
 
@@ -195,10 +195,10 @@ draws its own UI, see [Asuka and MyGo](mygo.md).
 
 | | Xcode / Expo | Asuka |
 |---|---|---|
-| Live reload, keeping state | previews, Fast Refresh | ✓ `asuka dev`: the player (the core with no app in it) runs the app's bytecode and swaps in each save's in milliseconds, keeping every `state`, on the phones, the desktops and in the browser ([Development](development.md)) |
+| Live reload, keeping state | previews, Fast Refresh | ✓ `asuka dev`: the player swaps in each save in milliseconds, keeping every `state`, on the phones, the desktops and in the browser ([Development](development.md)) |
 | Running on a phone | Xcode's Run, Expo's dev builds | ✓ `asuka dev --platform ios` or `android`: the simulator, an emulator, an Android phone (`adb reverse`), an iPhone by USB or Wi-Fi (`--device iphone`, signed by your team) |
 | Tests | XCTest, Jest with React Native Testing Library | ✓ `asuka test`: `test` blocks, the app mounted with no device (`mount`, `app.tap`, `app.expect`), fakes for the device's packages ([Testing](testing.md)) |
-| Release builds and signing | Xcode, EAS Build | ✓ `asuka build`: the app compiled to C with the core; an `.ipa`, an `.aab`, a universal `.app` signed and notarized (or a Mac App Store `.pkg`), a Windows folder with its `.exe` signed, a Linux install prefix with a `.tar.gz` and a Flatpak manifest, a static site ([Shipping](shipping.md)) |
+| Release builds and signing | Xcode, EAS Build | ✓ `asuka build`: the app compiled ahead of time; an `.ipa`, an `.aab`, a universal `.app` signed and notarized (or a Mac App Store `.pkg`), a Windows folder with its `.exe` signed, a Linux install prefix with a `.tar.gz` and a Flatpak manifest, a static site ([Shipping](shipping.md)) |
 | Uploading to the stores | Xcode, EAS Submit | ✓ `asuka publish`: TestFlight, App Review, Google Play's tracks; a desktop build and its signed update; not the Mac App Store yet |
 | GUI tests | XCUITest, Detox, Maestro | ◐ a desktop app's steps and snapshots (`ASUKA_SCRIPT`, `ASUKA_SNAPSHOT`, `ASUKA_DUMP`), under Xvfb in CI on Linux; Asuka's own GUI tests drive its examples on the simulator, an emulator and headless Chrome, but an app has no runner for them yet |
 | Benchmarks | Instruments | ✓ `bench/` (against SwiftUI and Compose) |
@@ -215,16 +215,15 @@ around HTML instead. How those frameworks compare with Asuka:
 | Platforms | Mac, Windows, Linux | Mac, Windows, Linux; iOS and Android (Tauri 2) | Mac, Windows, Linux | Windows, Mac (with React Native's iOS and Android) | Mac, Windows, Linux, iOS, Android, the web |
 | What shows the interface | HTML and CSS in Chromium | HTML and CSS in the system's web view (WKWebView, WebView2, WebKitGTK) | HTML and CSS in the system's web view | the platform's native views | the platform's widgets: AppKit; Win32 and the common controls, drawn as Windows 11's; GTK 4 and libadwaita |
 | The app's language | JavaScript (Node.js beside the page) | Rust, and JavaScript in the page | Go, and JavaScript in the page | JavaScript | Asuka (and Swift, C or JavaScript in its native packages) |
-| What ships with the app | Chromium and Node.js | the app's binary (the web view is the system's) | the app's binary (likewise) | a JavaScript engine and React Native's runtime | one executable: the app compiled to C, Asuka's core and the host (Swift on AppKit on the Mac, C elsewhere); on Linux GTK 4 and libadwaita come from the system; no web view unless the app shows a `WebView` |
+| What ships with the app | Chromium and Node.js | the app's binary (the web view is the system's) | the app's binary (likewise) | a JavaScript engine and React Native's runtime | one executable, the app compiled ahead of time; on Linux GTK 4 and libadwaita come from the system; no web view unless the app shows a `WebView` |
 
 A web view app looks the same on every system, as its HTML and CSS
 say, and uses the web's libraries. An Asuka app looks as each platform's
 apps do (an app that sets no style is a Mac app on the Mac, a GNOME app
 on Linux, a Windows 11 app on Windows) and gets their accessibility,
-text input and menus, with one layout engine, the core's, in C, for all
-of them. The Windows and Linux hosts are C, built with Zig's compiler and
-opening GTK as they start, so `asuka build` makes Windows and Linux
-builds from any system; a Mac's needs a Mac with Xcode.
+text input and menus, with one layout engine for all of them. `asuka
+build` makes Windows and Linux builds from any system (with Zig, and no
+GTK installed); a Mac's needs a Mac with Xcode.
 
 ## The desktop
 
@@ -241,7 +240,7 @@ Windows and Linux unless the row says otherwise.
 | Apps in the background | `app.dock.hide`, not quitting on `window-all-closed` | an app in the background | ✓ `asuka.toml`'s `keepRunning` and `background` |
 | Flyouts: a window hanging from a tray icon | a frameless `BrowserWindow` placed at `tray.getBounds()` by the app | flyouts | ✓ a `Window`'s `flyout`, hanging from `tray.anchor(id)` or a rectangle of its window: placed and flipped in the display, closed by a click elsewhere or Escape, a modal dialog over it (Linux: placed under X11 only) |
 | Panels for launchers | `type: 'panel'` (macOS) | panels | ✓ a `Window`'s `panel`: floating over every app and Space, the keyboard without activating the app on a Mac, closed by Escape or a click elsewhere (Linux under Wayland: a layer-shell surface where gtk4-layer-shell is there) |
-| Windows sized to their content | `setContentSize` by the app | `FitContent` | ✓ `fitContent`: the core's layout sizes the window as its content changes |
+| Windows sized to their content | `setContentSize` by the app | `FitContent` | ✓ `fitContent`: Asuka's layout sizes the window as its content changes |
 | Click-through windows | `setIgnoreMouseEvents` | `SetIgnoreMouseEvents`, `SetInputRegion` | ✓ `clickThrough`, `w.setClickThrough(on)` (the whole window) |
 | The apps installed, for a launcher | none | `InstalledApps`, `FileIcon`, `LaunchApp` | ✓ `platform/apps`'s `list`, `search`, `icon`, `open` |
 | Global shortcuts | `globalShortcut` | global shortcuts | ✓ `platform/hotkey`'s `hotkey.Hotkey` (Carbon's hot keys; `RegisterHotKey`; X11 grabs or Wayland's GlobalShortcuts portal) |
@@ -254,7 +253,7 @@ Windows and Linux unless the row says otherwise.
 | Recent documents | `app.addRecentDocument` | recent documents | ✓ `platform/recent` (Open Recent on the Mac, the jump list, the user's recent files on Linux) |
 | Document-based apps | — | documents | ✓ `platform/document`: `Documents`, a window per file, the File menu, autosave, recovery copies, save questions on close and quit, files changed by other apps (phones and the web: one document at a time, saved in place) |
 | Starting at login | `app.setLoginItemSettings` | start at login | ✓ `platform/login` (`SMAppService`, macOS 13+; the Run key; XDG autostart or the Background portal) |
-| Watching files | Node's `fs.watch` (chokidar) | `WatchFiles`, the watch plugin | ✓ `std/watch`'s `watch.path` (FSEvents, inotify, `ReadDirectoryChangesW`): renames paired, atomic saves as writes, bursts coalesced; phones and the web: unsupported |
+| Watching files | Node's `fs.watch` (chokidar) | `WatchFiles`, the watch plugin | ✓ `std/watch`'s `watch.path`: renames paired, atomic saves as writes, bursts coalesced; phones and the web: unsupported |
 | Displays | `screen` | displays | ✓ `screen.displays()`, `nearest`, `matching` (Wayland: no work area; phones and the web: theirs) |
 | Sleep, wake, lock, idle time, battery | `powerMonitor` | power | ✓ `platform/power` (phones: battery, Low Power Mode, lock; the web: the battery) |
 | Progress and attention on the app's icon | `setProgressBar`, `flashFrame`, `dock.bounce` | the Dock and the taskbar | ✓ `dock.setProgress`, `dock.requestAttention` (Linux: docks with the Unity launcher API) |

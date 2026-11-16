@@ -85,8 +85,8 @@ It's not a database: for many or large records, use SQLite.
 `std/sqlite` is the app's SQLite database. It's SQLite itself, one
 release built the same way for every platform, from the sqlite
 [plugin](plugins.md): import the package, and the CLI ships the
-plugin's library with the app. The core calls it a whole statement at a
-time, off the main thread, and decodes the rows it answers straight
+plugin's library with the app. Asuka runs each statement whole, off the
+main thread, and decodes the rows it answers straight
 into the type asked for. [`examples/notes`](../examples/notes) uses it.
 
 ### Open and migrate
@@ -248,11 +248,11 @@ SQLite is release 3.54.1 on every platform, with FTS5, R*Tree, Geopoly,
 the math functions, `dbstat`, `STAT4` and `soundex` built in, loadable
 extensions left out, and temporary tables kept in memory. It's the
 sqlite plugin's library, `asqlite` ([Plugins](plugins.md)), which
-`asuka build` ships where the core finds it: a Mac's
+`asuka build` ships with the app: in a Mac's
 `Contents/Frameworks`, beside a Windows app's `.exe`, in `lib/<app>` of
-a Linux prefix, a framework in an iOS app's `Frameworks`, beside
-`libasuka.so` in each of an APK's ABIs. `asuka dev` on a desktop, `asuka
-test` and `asuka run` point the core at the plugin's build or its
+a Linux prefix, a framework in an iOS app's `Frameworks`, in each of an
+APK's ABIs. `asuka dev` on a desktop, `asuka test` and `asuka run` use
+the plugin's build or its
 published file (`ASUKA_LIB_ASQLITE`), downloaded once into the user's
 cache. On the web it's the same library built to WebAssembly, in a
 worker of the page's ([SQLite on the web](web.md#sqlite)).
@@ -493,10 +493,9 @@ batch starts with an `overflow`.
 
 `ignore` takes `.gitignore`'s simple patterns (`*.log`, `node_modules/`,
 `/dist`, `src/**/gen`); `recursive: true` watches the folders in it too,
-and `attributes: true` reports permission changes. It's each desktop's
-own way: FSEvents on macOS (a whole tree for the cost of one stream),
-inotify on Linux (a watch per folder, up to
-`fs.inotify.max_user_watches`), `ReadDirectoryChangesW` on Windows.
+and `attributes: true` reports permission changes. On Linux each folder
+watched counts against `fs.inotify.max_user_watches`; raise it for a
+large tree.
 Phones and the web have nothing to watch with: `watch.path` throws an
 unsupported error there. Leaving the loop (or the component going)
 stops the watch. [`examples/files`](../examples/files) shows a folder

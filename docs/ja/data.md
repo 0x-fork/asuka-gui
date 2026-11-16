@@ -59,7 +59,7 @@ fn signIn(a: Account) {
 
 ## レコード：std/sqlite
 
-`std/sqlite` はアプリの SQLite データベースです。SQLite そのものであり、同じリリースをすべてのプラットフォームで同じ方法でビルドしたもので、sqlite [プラグイン](plugins.md)から提供されます。パッケージをインポートするだけで、CLI がプラグインのライブラリをアプリと一緒に配布します。コアはステートメントを一つずつ丸ごとメインスレッドの外で実行し、返ってきた行を求められた型に直接デコードします。[`examples/notes`](../../examples/notes) がこれを使っています。
+`std/sqlite` はアプリの SQLite データベースです。SQLite そのものであり、同じリリースをすべてのプラットフォームで同じ方法でビルドしたもので、sqlite [プラグイン](plugins.md)から提供されます。パッケージをインポートするだけで、CLI がプラグインのライブラリをアプリと一緒に配布します。Asuka はステートメントを一つずつ丸ごとメインスレッドの外で実行し、返ってきた行を求められた型に直接デコードします。[`examples/notes`](../../examples/notes) がこれを使っています。
 
 ### データベースを開いてマイグレーションする
 
@@ -176,7 +176,7 @@ async fn signUp(email: string) -> string {
 
 ### ライブラリ
 
-SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。sqlite プラグインのライブラリ `asqlite`（[プラグイン](plugins.md)）で、`asuka build` がコアの見つけられる場所に配置します。Mac の `Contents/Frameworks`、Windows アプリの `.exe` の隣、Linux のインストール先の `lib/<app>`、iOS アプリの `Frameworks` 内のフレームワーク、APK の各 ABI の `libasuka.so` の隣です。デスクトップでの `asuka dev`、`asuka test`、`asuka run` は、プラグインのビルド済みファイルか公開済みファイル（`ASUKA_LIB_ASQLITE`）をコアに使わせます。後者は一度だけダウンロードされ、ユーザーのキャッシュに保存されます。Web では同じライブラリを WebAssembly にビルドしたものが、ページのワーカーで動きます（[Web の SQLite](web.md#sqlite)）。
+SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。sqlite プラグインのライブラリ `asqlite`（[プラグイン](plugins.md)）で、`asuka build` がアプリと一緒に配置します。Mac の `Contents/Frameworks`、Windows アプリの `.exe` の隣、Linux のインストール先の `lib/<app>`、iOS アプリの `Frameworks` 内のフレームワーク、APK の各 ABI です。デスクトップでの `asuka dev`、`asuka test`、`asuka run` は、プラグインのビルド済みファイルか公開済みファイル（`ASUKA_LIB_ASQLITE`）を使います。後者は一度だけダウンロードされ、ユーザーのキャッシュに保存されます。Web では同じライブラリを WebAssembly にビルドしたものが、ページのワーカーで動きます（[Web の SQLite](web.md#sqlite)）。
 
 ## 秘密情報：platform/secure
 
@@ -353,7 +353,7 @@ component Folder(dir: string) {
 
 監視は見たファイルの状態を覚えておき、システムが何か変わったと伝えるたびに見直して比較します。イベントはその差分であり、差分を生んだ一つひとつの操作ではありません。何度も続けて書き込まれたファイルは一回の `write`、作られてすぐ消されたファイルは何も起きなかったことになり、同じパスで置き換えられたファイル（エディターやアトミックな保存が行う方法）は `write`、フォルダーの中で移動したファイルやフォルダーは `oldPath` 付きの `rename` になります。イベントは「ファイルを読み直す合図」として扱ってください。システムが変更を取りこぼしたときは、監視がすべてを見直し、そのバッチは `overflow` から始まります。
 
-`ignore` は `.gitignore` の簡単なパターン（`*.log`、`node_modules/`、`/dist`、`src/**/gen`）を受け取ります。`recursive: true` で中のフォルダーも監視し、`attributes: true` で権限の変更も報告します。各デスクトップ OS 自身の方法を使います。macOS では FSEvents（一つのストリームでツリー全体を監視）、Linux では inotify（フォルダーごとに一つの watch、上限は `fs.inotify.max_user_watches`）、Windows では `ReadDirectoryChangesW` です。スマートフォンと Web には監視の手段がなく、`watch.path` は unsupported エラーを投げます。ループを抜けると（またはコンポーネントがなくなると）監視は止まります。[`examples/files`](../../examples/files) は、リアルタイムに更新されるフォルダーの例です。
+`ignore` は `.gitignore` の簡単なパターン（`*.log`、`node_modules/`、`/dist`、`src/**/gen`）を受け取ります。`recursive: true` で中のフォルダーも監視し、`attributes: true` で権限の変更も報告します。Linux では、監視するフォルダーごとに `fs.inotify.max_user_watches` の枠を一つ使います。大きなツリーを監視するときは、この上限を上げてください。スマートフォンと Web には監視の手段がなく、`watch.path` は unsupported エラーを投げます。ループを抜けると（またはコンポーネントがなくなると）監視は止まります。[`examples/files`](../../examples/files) は、リアルタイムに更新されるフォルダーの例です。
 
 ## メインスレッド
 

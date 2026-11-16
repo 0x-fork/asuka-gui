@@ -59,7 +59,7 @@ fn signIn(a: Account) {
 
 ## 记录：std/sqlite
 
-`std/sqlite` 是应用的 SQLite 数据库。它就是 SQLite 本身，同一个版本在每个平台上用同样的方式构建，来自 sqlite [插件](plugins.md)：导入这个包，CLI 就会把插件的库随应用一起发布。核心每次调用它执行一整条语句，在主线程之外运行，并把返回的行直接解码成你要的类型。[`examples/notes`](../../examples/notes) 用的就是它。
+`std/sqlite` 是应用的 SQLite 数据库。它就是 SQLite 本身，同一个版本在每个平台上用同样的方式构建，来自 sqlite [插件](plugins.md)：导入这个包，CLI 就会把插件的库随应用一起发布。Asuka 每次执行一整条语句，在主线程之外运行，并把返回的行直接解码成你要的类型。[`examples/notes`](../../examples/notes) 用的就是它。
 
 ### 打开与迁移
 
@@ -176,7 +176,7 @@ async fn signUp(email: string) -> string {
 
 ### 库文件
 
-SQLite 在每个平台上都是 3.54.1 版，内置 FTS5、R*Tree、Geopoly、数学函数、`dbstat`、`STAT4` 和 `soundex`，不支持可加载扩展，临时表放在内存里。它是 sqlite 插件的库 `asqlite`（见[插件](plugins.md)），`asuka build` 会把它放到核心找得到的地方：Mac 的 `Contents/Frameworks`、Windows 应用的 `.exe` 旁边、Linux 安装前缀的 `lib/<app>` 里、iOS 应用 `Frameworks` 里的一个 framework、APK 每个 ABI 里 `libasuka.so` 的旁边。桌面上的 `asuka dev`、`asuka test` 和 `asuka run` 会让核心使用插件的构建产物或它发布的文件（`ASUKA_LIB_ASQLITE`），后者只下载一次，存进用户的缓存。在 Web 上，它是同一个库编译成的 WebAssembly，运行在页面的一个 worker 里（见 [Web 上的 SQLite](web.md#sqlite)）。
+SQLite 在每个平台上都是 3.54.1 版，内置 FTS5、R*Tree、Geopoly、数学函数、`dbstat`、`STAT4` 和 `soundex`，不支持可加载扩展，临时表放在内存里。它是 sqlite 插件的库 `asqlite`（见[插件](plugins.md)），`asuka build` 会把它随应用一起发布：放在 Mac 的 `Contents/Frameworks`、Windows 应用的 `.exe` 旁边、Linux 安装前缀的 `lib/<app>` 里、iOS 应用 `Frameworks` 里的一个 framework、APK 的每个 ABI 里。桌面上的 `asuka dev`、`asuka test` 和 `asuka run` 会使用插件的构建产物或它发布的文件（`ASUKA_LIB_ASQLITE`），后者只下载一次，存进用户的缓存。在 Web 上，它是同一个库编译成的 WebAssembly，运行在页面的一个 worker 里（见 [Web 上的 SQLite](web.md#sqlite)）。
 
 ## 机密信息：platform/secure
 
@@ -353,7 +353,7 @@ component Folder(dir: string) {
 
 监视会记住它看到的文件，每当系统说有东西变了，就再看一遍并比较：事件是前后的差异，而不是造成差异的每一步。一个文件连续写了很多次，只是一次 `write`；创建后又删掉的文件什么都不算；在原路径上被替换的文件（编辑器和原子保存就是这么做的）是一次 `write`；在文件夹内移动的文件或文件夹是一次 `rename`，带上它的 `oldPath`。把事件当作“该重新读文件了”的提示。系统丢掉变化时，监视会把所有东西重新看一遍，这一批以一个 `overflow` 开头。
 
-`ignore` 接受 `.gitignore` 的简单模式（`*.log`、`node_modules/`、`/dist`、`src/**/gen`）；`recursive: true` 也监视其中的子文件夹，`attributes: true` 会报告权限的变化。它用的是各个桌面系统自己的方式：macOS 上是 FSEvents（一个流就能覆盖整棵目录树），Linux 上是 inotify（每个文件夹一个 watch，上限是 `fs.inotify.max_user_watches`），Windows 上是 `ReadDirectoryChangesW`。手机和 Web 上没有可用的监视方式：`watch.path` 会抛出 unsupported 错误。离开循环（或组件被移除）就会停止监视。[`examples/files`](../../examples/files) 展示了一个实时更新的文件夹。
+`ignore` 接受 `.gitignore` 的简单模式（`*.log`、`node_modules/`、`/dist`、`src/**/gen`）；`recursive: true` 也监视其中的子文件夹，`attributes: true` 会报告权限的变化。在 Linux 上，每个被监视的文件夹都会占用 `fs.inotify.max_user_watches` 的一个名额；监视很大的目录树时，请调高这个上限。手机和 Web 上没有可用的监视方式：`watch.path` 会抛出 unsupported 错误。离开循环（或组件被移除）就会停止监视。[`examples/files`](../../examples/files) 展示了一个实时更新的文件夹。
 
 ## 主线程
 

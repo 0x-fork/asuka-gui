@@ -16,7 +16,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 覆盖层、绝对定位 | `ZStack`、`.overlay` | `position: absolute` | ✓ `absolute`，配合 `top`、`left`、`start`、`end`…… |
 | 视图网格 | `Grid`、`LazyVGrid` | 社区方案 | ✓ `grid`（CSS grid：`Grid(columns:)`、`.fr`、`.repeat`、`.autoFill`；`gridColumn`、`gridRow`） |
 | 滚动 | `ScrollView` | `ScrollView` | ✓ `Scroll`（纵向，或用 `horizontal` 横向） |
-| 惰性列表、单元格复用 | `List`、`LazyVStack` | `FlatList` | ✓ `List`（用平台自己的：`UICollectionView`、`RecyclerView`；在 Mac、Windows、Linux 和 Web 上，由宿主在平台的滚动视图里复用可见范围内的行） |
+| 惰性列表、单元格复用 | `List`、`LazyVStack` | `FlatList` | ✓ `List`（用平台自己的：`UICollectionView`、`RecyclerView`；在 Mac、Windows、Linux 和 Web 上，由 Asuka 在平台的滚动视图里复用可见范围内的行） |
 | 惰性网格 | `LazyVGrid` | `FlatList numColumns` | ✓ `List` 的 `columns`、`gap` |
 | 聊天列表：从末尾开始显示，往上加载更早的消息 | `defaultScrollAnchor(.bottom)`、`scrollPosition` | `FlatList inverted`、`maintainVisibleContentPosition` | ✓ `List` 的 `anchor: .bottom`、`on startReached`；在可见内容上方插入行时，可见内容保持不动，所有列表都是如此 |
 | 分区、吸顶标题 | `List` 里的 `Section` | `SectionList`、`stickySectionHeadersEnabled` | ✓ `List` 的 `section` 和 `header`（在 plain 和 bare 列表里吸顶） |
@@ -29,7 +29,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 
 | | SwiftUI | Expo | Asuka |
 |---|---|---|---|
-| 文本、富文本、链接 | `Text`、`AttributedString` | `Text` | ✓ `Text`、`RichText`（文本片段、链接）、`Selectable`；Markdown 用 `std/markdown`（由核心用 md4c 解析，各平台结果一致，再用平台自己的富文本控件绘制） |
+| 文本、富文本、链接 | `Text`、`AttributedString` | `Text` | ✓ `Text`、`RichText`（文本片段、链接）、`Selectable`；Markdown 用 `std/markdown`（由 Asuka 解析，各平台结果一致，再用平台自己的富文本控件绘制） |
 | 按钮（样式、图标、菜单） | `Button`、`Menu` | `Pressable` | ✓ `Button`（`variant`：plain、filled、tinted、gray、bordered、glass、glass prominent；`icon`；`menu`）、`Menu`（点按或 `longPress`：上下文菜单）；菜单项可以 `disabled`、`checked`，可以放进 `.submenu` 或带标题的 `.section`；栏按钮也能打开菜单 |
 | 文本输入框 | `TextField`、`SecureField`、`TextEditor` | `TextInput` | ✓ `TextField`（`secure`、`keyboard`、`returnKey`、用于自动填充的 `contentType`、`multiline`、`plain`） |
 | 光标、在光标处插入 | `TextSelection` | `selection`、`onSelectionChange` | ✓ `bind selection`；`Ref` 的 `insert(text)` |
@@ -158,7 +158,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 状态栏、导航栏 | `statusBarHidden`、`preferredStatusBarStyle` | `expo-status-bar`、`expo-navigation-bar` | ✓ `screen.setBars`（`platform/screen`） |
 | 锁定屏幕方向 | `supportedInterfaceOrientations` | `expo-screen-orientation` | ✓ `screen.lock` |
 | 截屏 | `isCaptured`、`userDidTakeScreenshotNotification` | `expo-screen-capture` | ✓ `screen.preventCapture`（Android 上截图是黑的；iOS 上录屏时内容会被遮住；macOS 和 Windows 上截图里不包含这些窗口）、`screen.screenshots()` |
-| 崩溃报告 | MetricKit、Crashlytics、Sentry | Sentry、Crashlytics（`@react-native-firebase/crashlytics`） | ✓ `platform/crash`：核心的致命错误（附 Asuka 调用栈）、未捕获的异常、MetricKit 记录的崩溃和卡顿、Android 的原生崩溃和 ANR、桌面宿主的崩溃，附带面包屑和自定义值；报告发到哪里由应用决定（没有内置服务）；`asuka build` 会生成符号文件 |
+| 崩溃报告 | MetricKit、Crashlytics、Sentry | Sentry、Crashlytics（`@react-native-firebase/crashlytics`） | ✓ `platform/crash`：Asuka 的致命错误（附 Asuka 调用栈）、未捕获的异常、MetricKit 记录的崩溃和卡顿、Android 的原生崩溃和 ANR、桌面端的崩溃，附带面包屑和自定义值；报告发到哪里由应用决定（没有内置服务）；`asuka build` 会生成符号文件 |
 
 ## 外观与无障碍
 
@@ -176,10 +176,10 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 
 | | Xcode / Expo | Asuka |
 |---|---|---|
-| 实时重载并保留状态 | 预览、Fast Refresh | ✓ `asuka dev`：播放器（不含应用的核心）运行应用的字节码，每次保存后在几毫秒内换上新的字节码，并保留所有 `state`；手机、桌面和浏览器都是如此（见[开发](development.md)） |
+| 实时重载并保留状态 | 预览、Fast Refresh | ✓ `asuka dev`：开发 App 在每次保存后几毫秒内换上新版本，并保留所有 `state`；手机、桌面和浏览器都是如此（见[开发](development.md)） |
 | 在手机上运行 | Xcode 的 Run、Expo 的开发构建 | ✓ `asuka dev --platform ios` 或 `android`：iOS 模拟器、Android 模拟器、Android 手机（`adb reverse`），以及通过 USB 或 Wi-Fi 连接的 iPhone（`--device iphone`，由你的团队签名） |
 | 测试 | XCTest、Jest 加 React Native Testing Library | ✓ `asuka test`：`test` 块，应用无需设备即可挂载（`mount`、`app.tap`、`app.expect`），设备相关的包都有测试替身（见[测试](testing.md)） |
-| 发布构建和签名 | Xcode、EAS Build | ✓ `asuka build`：应用编译成 C，和核心一起构建；生成 `.ipa`、`.aab`、经过签名和公证的通用 `.app`（或 Mac App Store 用的 `.pkg`）、包含已签名 `.exe` 的 Windows 文件夹、附带 `.tar.gz` 和 Flatpak 清单的 Linux 安装前缀、静态网站（见[发布](shipping.md)） |
+| 发布构建和签名 | Xcode、EAS Build | ✓ `asuka build`：应用预先编译；生成 `.ipa`、`.aab`、经过签名和公证的通用 `.app`（或 Mac App Store 用的 `.pkg`）、包含已签名 `.exe` 的 Windows 文件夹、附带 `.tar.gz` 和 Flatpak 清单的 Linux 安装前缀、静态网站（见[发布](shipping.md)） |
 | 上传到应用商店 | Xcode、EAS Submit | ✓ `asuka publish`：TestFlight、App 审核、Google Play 的各个发布轨道；桌面构建及其签名更新；暂不支持 Mac App Store |
 | GUI 测试 | XCUITest、Detox、Maestro | ◐ 桌面应用可以执行操作步骤并截图（`ASUKA_SCRIPT`、`ASUKA_SNAPSHOT`、`ASUKA_DUMP`），在 Linux 的 CI 里可以跑在 Xvfb 下；Asuka 自己的 GUI 测试会在 iOS 模拟器、Android 模拟器和无头 Chrome 里驱动示例，但应用还没有可用的运行器 |
 | 基准测试 | Instruments | ✓ `bench/`（与 SwiftUI 和 Compose 对比） |
@@ -195,9 +195,9 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 平台 | Mac、Windows、Linux | Mac、Windows、Linux；iOS 和 Android（Tauri 2） | Mac、Windows、Linux | Windows、Mac（配合 React Native 的 iOS 和 Android） | Mac、Windows、Linux、iOS、Android、Web |
 | 界面由什么呈现 | Chromium 里的 HTML 和 CSS | 系统 web view（WKWebView、WebView2、WebKitGTK）里的 HTML 和 CSS | 系统 web view 里的 HTML 和 CSS | 平台的原生视图 | 平台的原生控件：AppKit；Win32 和通用控件，按 Windows 11 的样子绘制；GTK 4 和 libadwaita |
 | 应用使用的语言 | JavaScript（页面之外还有 Node.js） | Rust，加上页面里的 JavaScript | Go，加上页面里的 JavaScript | JavaScript | Asuka（原生包里还可以有 Swift、C 或 JavaScript） |
-| 随应用分发的内容 | Chromium 和 Node.js | 应用的二进制文件（web view 用系统自带的） | 应用的二进制文件（同上） | 一个 JavaScript 引擎和 React Native 的运行时 | 一个可执行文件：编译成 C 的应用、Asuka 的核心和宿主（Mac 上是基于 AppKit 的 Swift，其他平台是 C）；Linux 上的 GTK 4 和 libadwaita 由系统提供；除非应用显示了 `WebView`，否则不带 web view |
+| 随应用分发的内容 | Chromium 和 Node.js | 应用的二进制文件（web view 用系统自带的） | 应用的二进制文件（同上） | 一个 JavaScript 引擎和 React Native 的运行时 | 一个可执行文件，即预先编译好的应用；Linux 上的 GTK 4 和 libadwaita 由系统提供；除非应用显示了 `WebView`，否则不带 web view |
 
-web view 应用在所有系统上都长得一样，完全按它的 HTML 和 CSS 呈现，并且能用上 Web 生态里的各种库。Asuka 应用则和各平台的原生应用看起来一样（不设置任何样式的应用，在 Mac 上就是一个 Mac 应用，在 Linux 上就是一个 GNOME 应用，在 Windows 上就是一个 Windows 11 应用），也能获得它们的无障碍支持、文本输入和菜单，同时所有平台共用核心里那一套用 C 写的布局引擎。Windows 和 Linux 的宿主是 C 写的，用 Zig 的编译器构建，GTK 在启动时才打开，所以 `asuka build` 在任何系统上都能构建 Windows 和 Linux 版本；Mac 版本则需要一台装了 Xcode 的 Mac。
+web view 应用在所有系统上都长得一样，完全按它的 HTML 和 CSS 呈现，并且能用上 Web 生态里的各种库。Asuka 应用则和各平台的原生应用看起来一样（不设置任何样式的应用，在 Mac 上就是一个 Mac 应用，在 Linux 上就是一个 GNOME 应用，在 Windows 上就是一个 Windows 11 应用），也能获得它们的无障碍支持、文本输入和菜单，同时所有平台共用同一套布局引擎。`asuka build` 在任何系统上都能构建 Windows 和 Linux 版本（借助 Zig，不需要安装 GTK）；Mac 版本则需要一台装了 Xcode 的 Mac。
 
 ## 桌面应用的能力
 
@@ -212,7 +212,7 @@ web view 应用在所有系统上都长得一样，完全按它的 HTML 和 CSS 
 | 后台运行的应用 | `app.dock.hide`、在 `window-all-closed` 时不退出 | 后台应用 | ✓ `asuka.toml` 的 `keepRunning` 和 `background` |
 | 浮出窗口：挂在托盘图标下的窗口 | 由应用把无边框 `BrowserWindow` 放到 `tray.getBounds()` 的位置 | 浮出窗口 | ✓ `Window` 的 `flyout`，挂在 `tray.anchor(id)` 或其窗口的某个矩形上：在显示器范围内定位并自动翻转，点击别处或按 Escape 关闭，上面可以再弹出模态对话框（Linux 上只有 X11 能定位） |
 | 启动器面板 | `type: 'panel'`（macOS） | 面板 | ✓ `Window` 的 `panel`：浮在所有应用和空间之上，在 Mac 上获得键盘输入但不激活应用，按 Escape 或点击别处关闭（Linux 的 Wayland 下，有 gtk4-layer-shell 时是 layer-shell 表面） |
-| 窗口大小随内容变化 | 由应用调用 `setContentSize` | `FitContent` | ✓ `fitContent`：核心的布局会随内容变化调整窗口大小 |
+| 窗口大小随内容变化 | 由应用调用 `setContentSize` | `FitContent` | ✓ `fitContent`：Asuka 的布局会随内容变化调整窗口大小 |
 | 鼠标穿透窗口 | `setIgnoreMouseEvents` | `SetIgnoreMouseEvents`、`SetInputRegion` | ✓ `clickThrough`、`w.setClickThrough(on)`（整个窗口） |
 | 列出已安装的应用（给启动器用） | 无 | `InstalledApps`、`FileIcon`、`LaunchApp` | ✓ `platform/apps` 的 `list`、`search`、`icon`、`open` |
 | 全局快捷键 | `globalShortcut` | 全局快捷键 | ✓ `platform/hotkey` 的 `hotkey.Hotkey`（Carbon 的热键；`RegisterHotKey`；X11 的按键抓取或 Wayland 的 GlobalShortcuts portal） |
@@ -225,7 +225,7 @@ web view 应用在所有系统上都长得一样，完全按它的 HTML 和 CSS 
 | 最近使用的文档 | `app.addRecentDocument` | 最近文档 | ✓ `platform/recent`（Mac 上的“打开最近使用”、跳转列表、Linux 上用户的最近文件） |
 | 基于文档的应用 | — | 文档 | ✓ `platform/document`：`Documents`，每个文件一个窗口，“文件”菜单，自动保存，恢复副本，关闭和退出时询问是否保存，处理被其他应用修改的文件（手机和 Web 上一次只打开一个文档，原地保存） |
 | 登录时启动 | `app.setLoginItemSettings` | 登录时启动 | ✓ `platform/login`（`SMAppService`，macOS 13 及以上；Run 注册表项；XDG 自启动或 Background portal） |
-| 监听文件变化 | Node 的 `fs.watch`（chokidar） | `WatchFiles`、watch 插件 | ✓ `std/watch` 的 `watch.path`（FSEvents、inotify、`ReadDirectoryChangesW`）：重命名成对报告，原子保存视为写入，连续的变化会合并；手机和 Web 不支持 |
+| 监听文件变化 | Node 的 `fs.watch`（chokidar） | `WatchFiles`、watch 插件 | ✓ `std/watch` 的 `watch.path`：重命名成对报告，原子保存视为写入，连续的变化会合并；手机和 Web 不支持 |
 | 显示器 | `screen` | 显示器 | ✓ `screen.displays()`、`nearest`、`matching`（Wayland 下没有工作区域；手机和 Web 上是它们自己的屏幕） |
 | 睡眠、唤醒、锁屏、空闲时间、电池 | `powerMonitor` | 电源 | ✓ `platform/power`（手机：电池、低电量模式、锁屏；Web：电池） |
 | 应用图标上的进度和提醒 | `setProgressBar`、`flashFrame`、`dock.bounce` | Dock 和任务栏 | ✓ `dock.setProgress`、`dock.requestAttention`（Linux：支持 Unity 启动器 API 的 dock） |

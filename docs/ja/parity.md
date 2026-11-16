@@ -16,7 +16,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | オーバーレイ、絶対配置 | `ZStack`、`.overlay` | `position: absolute` | ✓ `absolute` と `top`、`left`、`start`、`end`… |
 | ビューのグリッド | `Grid`、`LazyVGrid` | コミュニティ製 | ✓ `grid`（CSS グリッド：`Grid(columns:)`、`.fr`、`.repeat`、`.autoFill`。`gridColumn`、`gridRow`） |
 | スクロール | `ScrollView` | `ScrollView` | ✓ `Scroll`（縦、`horizontal` で横） |
-| 遅延リスト、セルの再利用 | `List`、`LazyVStack` | `FlatList` | ✓ `List`（プラットフォームのもの：`UICollectionView`、`RecyclerView`。Mac、Windows、Linux、Web では、プラットフォームのスクロールビューの中で、表示中の行をホストが再利用） |
+| 遅延リスト、セルの再利用 | `List`、`LazyVStack` | `FlatList` | ✓ `List`（プラットフォームのもの：`UICollectionView`、`RecyclerView`。Mac、Windows、Linux、Web では、プラットフォームのスクロールビューの中で、表示中の行を Asuka が再利用） |
 | 遅延グリッド | `LazyVGrid` | `FlatList numColumns` | ✓ `List` の `columns`、`gap` |
 | チャットのリスト：末尾から始め、古いものを上に読み込む | `defaultScrollAnchor(.bottom)`、`scrollPosition` | `FlatList inverted`、`maintainVisibleContentPosition` | ✓ `List` の `anchor: .bottom`、`on startReached`。どのリストでも、表示中の部分より上に行を追加しても表示位置は動かない |
 | セクション、固定ヘッダー | `List` の中の `Section` | `SectionList`、`stickySectionHeadersEnabled` | ✓ `List` の `section` と `header`（plain と bare のリストでは固定） |
@@ -29,7 +29,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 
 | | SwiftUI | Expo | Asuka |
 |---|---|---|---|
-| テキスト、スタイル付きテキスト、リンク | `Text`、`AttributedString` | `Text` | ✓ `Text`、`RichText`（スパン、リンク）、`Selectable`。Markdown は `std/markdown`（コアが md4c で解析するのでどこでも同じ結果になり、プラットフォームのスタイル付きテキストとして描画） |
+| テキスト、スタイル付きテキスト、リンク | `Text`、`AttributedString` | `Text` | ✓ `Text`、`RichText`（スパン、リンク）、`Selectable`。Markdown は `std/markdown`（Asuka が解析するのでどこでも同じ結果になり、プラットフォームのスタイル付きテキストとして描画） |
 | ボタン（スタイル、アイコン、メニュー） | `Button`、`Menu` | `Pressable` | ✓ `Button`（`variant`：plain、filled、tinted、gray、bordered、glass、glass prominent。`icon`。`menu`）、`Menu`（タップまたは `longPress`：コンテキストメニュー）。項目は `disabled`、`checked` にでき、`.submenu` やタイトル付きの `.section` に入れられる。メニューを開くバーボタン |
 | テキストフィールド | `TextField`、`SecureField`、`TextEditor` | `TextInput` | ✓ `TextField`（`secure`、`keyboard`、`returnKey`、自動入力のための `contentType`、`multiline`、`plain`） |
 | カーソル、カーソル位置への挿入 | `TextSelection` | `selection`、`onSelectionChange` | ✓ `bind selection`。`Ref` の `insert(text)` |
@@ -158,7 +158,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | ステータスバー、ナビゲーションバー | `statusBarHidden`、`preferredStatusBarStyle` | `expo-status-bar`、`expo-navigation-bar` | ✓ `screen.setBars`（`platform/screen`） |
 | 画面の向きの固定 | `supportedInterfaceOrientations` | `expo-screen-orientation` | ✓ `screen.lock` |
 | スクリーンショット | `isCaptured`、`userDidTakeScreenshotNotification` | `expo-screen-capture` | ✓ `screen.preventCapture`（Android：キャプチャーは黒くなる。iOS：録画中は覆われる。macOS と Windows：ウィンドウはキャプチャーから除かれる）、`screen.screenshots()` |
-| クラッシュレポート | MetricKit、Crashlytics、Sentry | Sentry、Crashlytics（`@react-native-firebase/crashlytics`） | ✓ `platform/crash`：Asuka のスタック付きのコアの致命的なエラー、捕捉されなかった例外、MetricKit のクラッシュとハング、Android のネイティブクラッシュと ANR、デスクトップのホストのクラッシュを、パンくずと値とともに。送り先はアプリが決める（組み込みのサービスはない）。シンボルは `asuka build` が出力 |
+| クラッシュレポート | MetricKit、Crashlytics、Sentry | Sentry、Crashlytics（`@react-native-firebase/crashlytics`） | ✓ `platform/crash`：Asuka のスタック付きの Asuka の致命的なエラー、捕捉されなかった例外、MetricKit のクラッシュとハング、Android のネイティブクラッシュと ANR、デスクトップのクラッシュを、パンくずと値とともに。送り先はアプリが決める（組み込みのサービスはない）。シンボルは `asuka build` が出力 |
 
 ## 外観とアクセシビリティ
 
@@ -176,10 +176,10 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 
 | | Xcode / Expo | Asuka |
 |---|---|---|
-| ライブリロード、状態の保持 | プレビュー、Fast Refresh | ✓ `asuka dev`：プレイヤー（アプリを含まないコア）がアプリのバイトコードを実行し、保存するたびに数ミリ秒で新しいものに入れ替え、すべての `state` を保つ。スマートフォン、デスクトップ、ブラウザーのどれでも（[開発](development.md)） |
+| ライブリロード、状態の保持 | プレビュー、Fast Refresh | ✓ `asuka dev`：開発用アプリが、保存するたびに数ミリ秒で新しいものに入れ替え、すべての `state` を保つ。スマートフォン、デスクトップ、ブラウザーのどれでも（[開発](development.md)） |
 | スマートフォンでの実行 | Xcode の Run、Expo の開発ビルド | ✓ `asuka dev --platform ios` または `android`：シミュレーター、エミュレーター、Android のスマートフォン（`adb reverse`）、USB か Wi-Fi でつないだ iPhone（`--device iphone`、自分のチームで署名） |
 | テスト | XCTest、Jest と React Native Testing Library | ✓ `asuka test`：`test` ブロック。アプリをデバイスなしでマウントし（`mount`、`app.tap`、`app.expect`）、デバイスのパッケージにはフェイクがある（[テスト](testing.md)） |
-| リリースビルドと署名 | Xcode、EAS Build | ✓ `asuka build`：アプリを C にコンパイルしてコアと一緒にビルドする。`.ipa`、`.aab`、署名と公証を済ませたユニバーサルな `.app`（または Mac App Store 用の `.pkg`）、署名済みの `.exe` を含む Windows のフォルダー、`.tar.gz` と Flatpak のマニフェストを含む Linux のインストールプレフィックス、静的サイト（[配布](shipping.md)） |
+| リリースビルドと署名 | Xcode、EAS Build | ✓ `asuka build`：アプリを事前にコンパイルする。`.ipa`、`.aab`、署名と公証を済ませたユニバーサルな `.app`（または Mac App Store 用の `.pkg`）、署名済みの `.exe` を含む Windows のフォルダー、`.tar.gz` と Flatpak のマニフェストを含む Linux のインストールプレフィックス、静的サイト（[配布](shipping.md)） |
 | ストアへのアップロード | Xcode、EAS Submit | ✓ `asuka publish`：TestFlight、App Review、Google Play のトラック。デスクトップのビルドと署名付きのアップデート。Mac App Store にはまだ非対応 |
 | GUI のテスト | XCUITest、Detox、Maestro | ◐ デスクトップアプリの操作手順とスナップショット（`ASUKA_SCRIPT`、`ASUKA_SNAPSHOT`、`ASUKA_DUMP`）。Linux の CI では Xvfb 上で動く。Asuka 自身の GUI テストはシミュレーター、エミュレーター、ヘッドレス Chrome でサンプルを操作するが、アプリ向けのランナーはまだない |
 | ベンチマーク | Instruments | ✓ `bench/`（SwiftUI、Compose との比較） |
@@ -195,9 +195,9 @@ Mac、Windows、Linux では、HTML を Web ビューで包んだアプリもよ
 | プラットフォーム | Mac、Windows、Linux | Mac、Windows、Linux。iOS と Android（Tauri 2） | Mac、Windows、Linux | Windows、Mac（React Native の iOS、Android と合わせて） | Mac、Windows、Linux、iOS、Android、Web |
 | UI を表示するもの | Chromium の中の HTML と CSS | システムの Web ビュー（WKWebView、WebView2、WebKitGTK）の中の HTML と CSS | システムの Web ビューの中の HTML と CSS | プラットフォームのネイティブのビュー | 各プラットフォーム純正のウィジェット：AppKit、Windows 11 風に描画した Win32 とコモンコントロール、GTK 4 と libadwaita |
 | アプリの言語 | JavaScript（ページとは別に Node.js） | Rust と、ページ内の JavaScript | Go と、ページ内の JavaScript | JavaScript | Asuka（ネイティブパッケージでは Swift、C、JavaScript も） |
-| アプリと一緒に配布するもの | Chromium と Node.js | アプリのバイナリ（Web ビューはシステムのもの） | アプリのバイナリ（同上） | JavaScript エンジンと React Native のランタイム | 実行ファイル一つ：C にコンパイルしたアプリ、Asuka のコア、ホスト（Mac では AppKit を使う Swift、ほかでは C）。Linux では GTK 4 と libadwaita はシステムのもの。アプリが `WebView` を表示しない限り Web ビューは含まない |
+| アプリと一緒に配布するもの | Chromium と Node.js | アプリのバイナリ（Web ビューはシステムのもの） | アプリのバイナリ（同上） | JavaScript エンジンと React Native のランタイム | 実行ファイル一つ（事前にコンパイルしたアプリ）。Linux では GTK 4 と libadwaita はシステムのもの。アプリが `WebView` を表示しない限り Web ビューは含まない |
 
-Web ビューのアプリは、HTML と CSS で書いたとおりに、どのシステムでも同じ見た目になり、Web のライブラリを使えます。Asuka のアプリは各プラットフォームのアプリと同じ見た目になり（スタイルを設定しないアプリは、Mac では Mac のアプリ、Linux では GNOME のアプリ、Windows では Windows 11 のアプリになります）、そのプラットフォームのアクセシビリティ、テキスト入力、メニューをそのまま使えます。しかも、レイアウトエンジンはコアにある C で書かれた一つだけで、すべてのプラットフォームに共通です。Windows と Linux のホストは C で書かれていて Zig のコンパイラーでビルドでき、GTK は起動時に開くので、`asuka build` はどのシステムからでも Windows と Linux のビルドを作れます。Mac のビルドには Xcode のある Mac が必要です。
+Web ビューのアプリは、HTML と CSS で書いたとおりに、どのシステムでも同じ見た目になり、Web のライブラリを使えます。Asuka のアプリは各プラットフォームのアプリと同じ見た目になり（スタイルを設定しないアプリは、Mac では Mac のアプリ、Linux では GNOME のアプリ、Windows では Windows 11 のアプリになります）、そのプラットフォームのアクセシビリティ、テキスト入力、メニューをそのまま使えます。しかも、レイアウトエンジンは一つだけで、すべてのプラットフォームに共通です。`asuka build` はどのシステムからでも（Zig を使い、GTK のインストールなしで）Windows と Linux のビルドを作れます。Mac のビルドには Xcode のある Mac が必要です。
 
 ## デスクトップアプリの機能
 
@@ -212,7 +212,7 @@ Web ビューのアプリは、HTML と CSS で書いたとおりに、どのシ
 | バックグラウンドのアプリ | `app.dock.hide`、`window-all-closed` で終了しない | バックグラウンドのアプリ | ✓ `asuka.toml` の `keepRunning` と `background` |
 | フライアウト：トレイアイコンから垂れ下がるウィンドウ | アプリが `tray.getBounds()` の位置に置くフレームなしの `BrowserWindow` | フライアウト | ✓ `Window` の `flyout`。`tray.anchor(id)` か、ウィンドウ内の矩形から垂れ下がる：ディスプレイに収まるように配置・反転し、ほかの場所のクリックか Escape で閉じ、上にモーダルダイアログも出せる（Linux では X11 の場合のみ配置） |
 | ランチャー用のパネル | `type: 'panel'`（macOS） | パネル | ✓ `Window` の `panel`：すべてのアプリと操作スペースの上に浮かび、Mac ではアプリをアクティブにせずにキーボード入力を受け、Escape かほかの場所のクリックで閉じる（Linux の Wayland では、gtk4-layer-shell があれば layer-shell のサーフェス） |
-| コンテンツに合わせたウィンドウのサイズ | アプリが `setContentSize` を呼ぶ | `FitContent` | ✓ `fitContent`：コンテンツが変わると、コアのレイアウトがウィンドウのサイズを決める |
+| コンテンツに合わせたウィンドウのサイズ | アプリが `setContentSize` を呼ぶ | `FitContent` | ✓ `fitContent`：コンテンツが変わると、Asuka のレイアウトがウィンドウのサイズを決める |
 | クリックを透過するウィンドウ | `setIgnoreMouseEvents` | `SetIgnoreMouseEvents`、`SetInputRegion` | ✓ `clickThrough`、`w.setClickThrough(on)`（ウィンドウ全体） |
 | ランチャー向けのインストール済みアプリ | なし | `InstalledApps`、`FileIcon`、`LaunchApp` | ✓ `platform/apps` の `list`、`search`、`icon`、`open` |
 | グローバルショートカット | `globalShortcut` | グローバルショートカット | ✓ `platform/hotkey` の `hotkey.Hotkey`（Carbon のホットキー、`RegisterHotKey`、X11 のグラブまたは Wayland の GlobalShortcuts ポータル） |
@@ -225,7 +225,7 @@ Web ビューのアプリは、HTML と CSS で書いたとおりに、どのシ
 | 最近使った書類 | `app.addRecentDocument` | 最近使った書類 | ✓ `platform/recent`（Mac の「最近使った項目を開く」、ジャンプリスト、Linux のユーザーの最近使ったファイル） |
 | 書類ベースのアプリ | — | 書類 | ✓ `platform/document`：`Documents`、ファイルごとのウィンドウ、「ファイル」メニュー、自動保存、復元用のコピー、閉じるときと終了するときの保存の確認、ほかのアプリによるファイルの変更（スマートフォンと Web では一度に一つの書類で、その場で保存） |
 | ログイン時の起動 | `app.setLoginItemSettings` | ログイン時に起動 | ✓ `platform/login`（`SMAppService`、macOS 13 以降。Run キー。XDG autostart または Background ポータル） |
-| ファイルの監視 | Node の `fs.watch`（chokidar） | `WatchFiles`、watch プラグイン | ✓ `std/watch` の `watch.path`（FSEvents、inotify、`ReadDirectoryChangesW`）：名前の変更は対にし、アトミックな保存は書き込みとして扱い、連続した変更はまとめる。スマートフォンと Web では非対応 |
+| ファイルの監視 | Node の `fs.watch`（chokidar） | `WatchFiles`、watch プラグイン | ✓ `std/watch` の `watch.path`：名前の変更は対にし、アトミックな保存は書き込みとして扱い、連続した変更はまとめる。スマートフォンと Web では非対応 |
 | ディスプレイ | `screen` | ディスプレイ | ✓ `screen.displays()`、`nearest`、`matching`（Wayland では作業領域なし。スマートフォンと Web ではそれぞれの画面） |
 | スリープ、スリープ解除、ロック、アイドル時間、バッテリー | `powerMonitor` | 電源 | ✓ `platform/power`（スマートフォンではバッテリー、低電力モード、ロック。Web ではバッテリー） |
 | アプリのアイコンでの進捗と注意喚起 | `setProgressBar`、`flashFrame`、`dock.bounce` | Dock とタスクバー | ✓ `dock.setProgress`、`dock.requestAttention`（Linux では Unity launcher API に対応したドック） |
