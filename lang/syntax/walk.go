@@ -157,6 +157,9 @@ func Walk(v Visitor, n Node) {
 		if n.Value != nil {
 			walk(n.Value)
 		}
+		if n.Else != nil {
+			walk(n.Else)
+		}
 	case *AppDecl:
 		walk(n.Body)
 	case *TestDecl:
@@ -355,6 +358,19 @@ func Walk(v Visitor, n Node) {
 	case *LetCond:
 		walk(n.Pattern)
 		walk(n.Value)
+	case *CondList:
+		for _, x := range n.List {
+			walk(x)
+		}
+	case *JumpExpr:
+		if n.Value != nil {
+			walk(n.Value)
+		}
+	case *CatchExpr:
+		walk(n.X)
+		for _, c := range n.Catches {
+			walk(c)
+		}
 
 	// Types.
 	case *NamedType:

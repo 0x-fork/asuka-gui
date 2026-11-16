@@ -106,6 +106,24 @@ package syntax
 //      it on its last line, are its Trivia; /// ones are its Doc. A
 //      comment inside an expression (between arguments, in an array)
 //      stays in SourceFile.Comments only, and the printer places it.
+//  20. let … else. An else on the line of a let's value starts its else
+//      block: let user = cache[id] else { return }. Any let parses so;
+//      only a statement's may have one, which the checker says.
+//  21. Condition chains. An if's or a while's condition is clauses
+//      separated by commas, each an expression or a let: if let a = x,
+//      a > 0 { … } (a CondList; a single clause stays itself).
+//  22. Jumps as values. throw, return, break and continue where an
+//      operand goes (after an operator, as an argument, a lambda's or a
+//      match arm's body) are a JumpExpr: x ?? throw E.missing, x ??
+//      return. throw takes the rest of the expression; return a value
+//      only when one starts before the line's end or what closes the
+//      expression (x ?? return, f(x ?? return)). At the start of an
+//      item they stay statements.
+//  23. catch as a value. A catch after an expression, on its line,
+//      takes the whole expression before it, the loosest of all:
+//      try parsePort(s) catch e { 80 } (a CatchExpr). Its clauses are
+//      do's, and the later ones may start the line after a }. Nothing
+//      continues the expression after its last clause.
 //
 // The scanner documents how newlines end items (Scanner) and how a %
 // after a number reads (50% is a length, 10%3 a remainder).
@@ -1325,6 +1343,11 @@ func (p *parser) parseLet(start Pos) *LetDecl {
 	} else {
 		p.errorExpected("'=' and a value")
 	}
+	if p.tok == ELSE {
+		// let … else { … } (decision 20).
+		p.next()
+		d.Else = p.parseBlock()
+	}
 	d.Span = p.span(start)
 	return d
 }
@@ -1662,12 +1685,29 @@ func (p *parser) parseOn() *OnHandler {
 	return d
 }
 
-// parseCond parses an if's or a while's condition: an expression, or
-// let pattern = value. A { in it starts the body (decision 4).
+// parseCond parses an if's or a while's condition: clauses separated by
+// commas, each an expression or let pattern = value (decision 21). A {
+// in it starts the body (decision 4).
 func (p *parser) parseCond() Expr {
 	lev := p.exprLev
 	p.exprLev = -1
 	defer func() { p.exprLev = lev }()
+	start := p.pos
+	x := p.condClause()
+	if p.tok != COMMA {
+		return x
+	}
+	l := &CondList{List: []Expr{x}}
+	for p.got(COMMA) {
+		l.List = append(l.List, p.condClause())
+	}
+	l.Span = p.span(start)
+	return l
+}
+
+// condClause parses a clause of a condition: an expression, or let
+// pattern = value.
+func (p *parser) condClause() Expr {
 	if p.tok == LET {
 		start := p.pos
 		p.next()
@@ -1736,31 +1776,49 @@ func (p *parser) parseDo() *DoStmt {
 	start := p.expect(DO)
 	d := &DoStmt{Body: p.parseBlock()}
 	for p.continues(CATCH) {
-		cs := p.pos
-		p.next()
-		c := &CatchClause{}
-		if p.tok != LBRACE {
-			if isIdentTok(p.tok) && p.peek(1) == COLON {
-				c.Pattern = &BindPat{Name: p.ident()}
-				setPatSpan(c.Pattern)
-				p.next()
-				c.Type = p.parseType()
-			} else {
-				lev := p.exprLev
-				p.exprLev = -1
-				c.Pattern = p.parsePattern()
-				p.exprLev = lev
-			}
-		}
-		c.Body = p.parseBlock()
-		c.Span = p.span(cs)
-		d.Catches = append(d.Catches, c)
+		d.Catches = append(d.Catches, p.parseCatch())
 	}
 	if len(d.Catches) == 0 {
 		p.errorExpected("'catch' after do { … }")
 	}
 	d.Span = p.span(start)
 	return d
+}
+
+// parseCatch parses a catch clause, at its catch: catch { … }, catch e
+// { … }, catch e: Type { … }, catch Type.case(…) { … }.
+func (p *parser) parseCatch() *CatchClause {
+	cs := p.expect(CATCH)
+	c := &CatchClause{}
+	if p.tok != LBRACE {
+		if isIdentTok(p.tok) && p.peek(1) == COLON {
+			c.Pattern = &BindPat{Name: p.ident()}
+			setPatSpan(c.Pattern)
+			p.next()
+			c.Type = p.parseType()
+		} else {
+			lev := p.exprLev
+			p.exprLev = -1
+			c.Pattern = p.parsePattern()
+			p.exprLev = lev
+		}
+	}
+	c.Body = p.parseBlock()
+	c.Span = p.span(cs)
+	return c
+}
+
+// parseCatchExpr parses x catch … { … }…, at the first catch (decision
+// 23): later catches may start the line after a }, as do's.
+func (p *parser) parseCatchExpr(x Expr) *CatchExpr {
+	start := x.Range().Start
+	c := &CatchExpr{X: x}
+	c.Catches = append(c.Catches, p.parseCatch())
+	for p.continues(CATCH) {
+		c.Catches = append(c.Catches, p.parseCatch())
+	}
+	c.Span = p.span(start)
+	return c
 }
 
 func setPatSpan(pt Pattern) {
@@ -1847,7 +1905,11 @@ func (p *parser) parseExpr() Expr {
 	if p.lambdaAhead() {
 		return p.parseLambda()
 	}
-	return p.parseBinary(1)
+	x := p.parseBinary(1)
+	if p.tok == CATCH {
+		return p.parseCatchExpr(x)
+	}
+	return x
 }
 
 // lambdaAhead reports whether a lambda starts here (decision 7).
@@ -1965,12 +2027,39 @@ func (p *parser) parseUnary() Expr {
 		p.next()
 		x := p.parsePostfix()
 		return &UnaryExpr{Op: LOAD, X: x, Span: p.span(start)}
+	case THROW, RETURN, BREAK, CONTINUE:
+		// A jump used as a value (decision 22): x ?? throw E.missing.
+		j := &JumpExpr{Tok: p.tok}
+		p.next()
+		if j.Tok == THROW || j.Tok == RETURN && p.valueFollows() {
+			if !p.enter() {
+				return &BadExpr{Span: p.span(start)}
+			}
+			j.Value = p.parseExpr()
+			p.leave()
+		}
+		j.Span = p.span(start)
+		return j
 	case SPAWN:
 		p.next()
 		b := p.parseBlock()
 		return &SpawnExpr{Body: b, Span: p.span(start)}
 	}
 	return p.parsePostfix()
+}
+
+// valueFollows reports whether an expression starts here, after a
+// return used as a value: not at the end of its line, nor at what closes
+// or separates the expression it's in.
+func (p *parser) valueFollows() bool {
+	if p.atTerminator() {
+		return false
+	}
+	switch p.tok {
+	case RPAREN, RBRACK, COMMA, COLON, LBRACE, CATCH, ELSE, FATARROW, STRING_MID, STRING_TAIL:
+		return false
+	}
+	return true
 }
 
 // isElement reports whether x names an element, which takes a trailing
