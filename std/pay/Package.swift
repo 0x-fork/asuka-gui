@@ -5,7 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "PayNative",
-    platforms: [.iOS("16.0"), .macOS("12.0")],
+    platforms: [.iOS("16.0"), .macOS("11.0")],
     products: [.library(name: "PayNative", targets: ["PayNative"])],
     dependencies: [
         .package(url: "https://github.com/egoist/asuka", from: "0.1.0"),

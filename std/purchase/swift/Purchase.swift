@@ -6,6 +6,7 @@
 // renewal, a refund, an offer code redeemed in the App Store) isn't lost.
 // StoreKit's Product and Transaction are StoreKit.Product and
 // StoreKit.Transaction here: Product and Transaction are the package's.
+// StoreKit 2 needs macOS 12: before, a Mac has no store.
 import Foundation
 import StoreKit
 import Asuka
@@ -15,6 +16,7 @@ import UIKit
 import AppKit
 #endif
 
+@available(macOS 12.0, *)
 final class AppStoreStore: Store {
     init() {
         Task { @MainActor in Hub.shared.start() }
@@ -79,6 +81,7 @@ final class Send: @unchecked Sendable {
     init(_ f: @escaping (Event) -> Void) { self.f = f }
 }
 
+@available(macOS 12.0, *)
 @MainActor final class Hub {
     static let shared = Hub()
 
@@ -482,4 +485,8 @@ enum StoreKitTest {
 }
 #endif
 
-func makeStore() throws -> any Store { AppStoreStore() }
+func makeStore() throws -> any Store {
+    // StoreKit 2 is macOS 12's: before, a Mac has no store for the app.
+    if #available(macOS 12.0, *) { return AppStoreStore() }
+    throw PurchaseError.notAvailable
+}

@@ -170,6 +170,7 @@ final class Asker: @unchecked Sendable {
         }
     }
 
+    @available(iOS 15.0, macOS 12.0, *)
     func paymentAuthorizationController(_ c: PKPaymentAuthorizationController, didChangeCouponCode code: String,
                                         handler completion: @escaping (PKPaymentRequestCouponCodeUpdate) -> Void) {
         guard asks(.coupon) else {
@@ -210,9 +211,10 @@ enum Requests {
         var n: [(Network, PKPaymentNetwork)] = [
             (.visa, .visa), (.mastercard, .masterCard), (.amex, .amex), (.discover, .discover), (.jcb, .JCB),
             (.interac, .interac), (.unionPay, .chinaUnionPay), (.maestro, .maestro), (.electron, .electron),
-            (.elo, .elo), (.cartesBancaires, .cartesBancaires), (.eftpos, .eftpos), (.mada, .mada), (.mir, .mir),
+            (.elo, .elo), (.cartesBancaires, .cartesBancaires), (.eftpos, .eftpos), (.mada, .mada),
             (.girocard, .girocard), (.privateLabel, .privateLabel),
         ]
+        if #available(iOS 14.5, macOS 11.5, *) { n.append((.mir, .mir)) }
         if #available(iOS 14.5, macOS 12.1, *) { n.append((.dankort, .dankort)) }
         if #available(iOS 16.0, macOS 13.0, *) { n.append((.bancontact, .bancontact)) }
         return n
@@ -452,7 +454,8 @@ enum Requests {
         case .donate: t = .donate
         case .order: t = .order
         case .subscribe: t = .subscribe
-        case .continueWith: t = .continue
+        case .continueWith:
+            if #available(iOS 15.0, macOS 12.0, *) { t = .continue } else { t = .plain }
         case .setUp: t = .setUp
         case .reload: t = .reload
         case .addMoney: t = .addMoney
