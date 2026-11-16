@@ -360,6 +360,7 @@ ak_future *ak_native_start(ak_native_obj *o, uint32_t method, ak_val args, const
 	ak_mutex_unlock(&calls_mu);
 	f->ctx = (void *)(uintptr_t)id;
 	f->cancel = start_cancel;
+	f->held = 1;  // calls' reference, until it answers
 	ak_sched_hold();  // until it answers
 	host->native_start(o->handle, method, in.data, in.len, id);
 	ak_buf_free(&in);
