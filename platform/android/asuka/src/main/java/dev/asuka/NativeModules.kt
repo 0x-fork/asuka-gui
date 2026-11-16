@@ -161,6 +161,14 @@ class AsukaNativeReader(private val b: ByteArray) {
 }
 
 /** An error a package declares (native.NewError): its Go gets that value. */
+/**
+ * An object of a package's that hears Asuka let it go (on the main
+ * thread): to free what it holds, as a Swift object's deinit does.
+ */
+interface AsukaReleasing {
+    fun released()
+}
+
 interface AsukaDeclaredError {
     val asukaIndex: Int
 }
@@ -336,7 +344,8 @@ object AsukaModules {
     }
 
     @JvmStatic fun release(h: Long) {
-        objects.remove(h)
+        val o = objects.remove(h)?.obj as? AsukaReleasing ?: return
+        onMain { o.released() }
     }
 
     // What the generated Kotlin calls.

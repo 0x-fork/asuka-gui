@@ -1,9 +1,12 @@
 package native
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/egoist/asuka/internal/localfile"
 )
 
 var (
@@ -34,4 +37,23 @@ func Asset(source string) string {
 	d := assetsDir
 	assetsMu.Unlock()
 	return filepath.Join(d, filepath.FromSlash(strings.TrimPrefix(source, "./")))
+}
+
+// LocalFile is a source's file on this computer: an asset's, a path, or
+// a download of an http(s) URL into the app's caches. Not on the main
+// thread: a download waits.
+func LocalFile(source string) (string, error) {
+	assetsMu.Lock()
+	d := assetsDir
+	assetsMu.Unlock()
+	if abs, err := filepath.Abs(d); err == nil {
+		d = abs
+	}
+	return localfile.Resolve(strings.TrimPrefix(source, "file://"), "", d, CacheDir())
+}
+
+// CacheDir is the app's caches' directory (the user's cache directory's
+// folder of the app's executable's name).
+func CacheDir() string {
+	return localfile.CacheDir(strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"))
 }
