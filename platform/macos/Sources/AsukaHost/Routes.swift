@@ -1,9 +1,11 @@
 // A window's Router address comes back as the window does (host/darwin's
 // routes.go, internal/routestate): the last Location command each window
-// was sent is kept, by the window's key (its WindowOptions' StateKey,
-// "main" for the main window unless it names another; a Window's
-// StateKey, none without one), in asuka-routes.json in the app's
-// directory, and given back as its Router mounts. Written a moment after
+// was sent is kept, by the window's key ("main" for the main window, whose
+// Location the core sends without a key; a Window's StateKey, none
+// without one), in asuka-routes.json in the app's directory, and given
+// back as its Router mounts: the main window's before the app runs
+// (asuka_set_start), so its Router starts where it was left, the first
+// screen the one the user left. Written a moment after
 // it changes, off the main thread, so the main thread never waits for the
 // disk; and at once as the app goes to the background or quits.
 //
@@ -12,11 +14,11 @@
 // state left out when it's empty), kept by the C they share (platform/
 // desktop's state.c: dsk_routes).
 //
-// The C core sends no window key (its Router's commands leave it empty)
-// and asks no host for the address at mount: the host keys the command by
-// the window it's sent to, and, the first time a window's Router tells
-// its address in a run, gives the kept one back as the Location event
-// (what a browser's back sends), which the Router navigates to.
+// The C core sends no window key (its Router's commands leave it empty):
+// the host keys the command by the window it's sent to. A Window's Router
+// is given its kept address the first time it tells its own in a run, as
+// the Location event (what a browser's back sends), which the Router
+// navigates to; the main window's started there.
 import AppKit
 @_implementationOnly import CAsuka
 #if canImport(AsukaOps)
@@ -69,6 +71,13 @@ import AsukaOps
         return AsukaRuntime.shared.appDir.appendingPathComponent(fileName).path
     }
 
+    /// Tells the core where the main window was left, before the app
+    /// runs: its Router starts there (asuka_set_start).
+    func start() {
+        guard let kept = entry("main"), !kept.href.isEmpty else { return }
+        asuka_set_start(kept.href)
+    }
+
     /// Where the window keyed key was left.
     func entry(_ key: String) -> Entry? {
         guard !key.isEmpty, let store else { return nil }
@@ -93,7 +102,7 @@ import AsukaOps
         guard !r.bad else { return }
         if key.isEmpty, let n { key = windowKey(n) }
         guard !key.isEmpty else { return }
-        if !restored.contains(key) {
+        if key != "main", !restored.contains(key) {
             restored.insert(key)
             // The Router has just mounted (its first address, a replace):
             // it goes where the window was left.
@@ -112,9 +121,7 @@ import AsukaOps
     /// The key n's window keeps its state under.
     func windowKey(_ n: AsukaNode) -> String {
         let rt = AsukaRuntime.shared
-        if let m = rt.main, n === rt.root || n === m.root {
-            return m.cfg.stateKey.isEmpty ? "main" : m.cfg.stateKey
-        }
+        if let m = rt.main, n === rt.root || n === m.root { return "main" }
         for w in rt.wins.values where w.root === n { return w.cfg.stateKey }
         return ""
     }

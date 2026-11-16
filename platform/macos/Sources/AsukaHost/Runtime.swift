@@ -177,6 +177,7 @@ import AsukaOps
     /// starts the player with), the bytecode the CLI sends; otherwise the
     /// app compiled into this build.
     private func startApp() {
+        AsukaRoutes.shared.start()
         var err: UnsafeMutablePointer<CChar>?
         var rc: Int32
         let env = ProcessInfo.processInfo.environment
