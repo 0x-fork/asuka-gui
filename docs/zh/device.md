@@ -2,7 +2,7 @@
 
 Asuka 提供了一系列包，让应用用上视图之外的设备能力：相机、条码、图像内容识别、照片和文件、文件预览、打印和 PDF、邮件和短信编辑界面、定位、通知和推送、声音、正在播放（Now Playing）和录音、网络状态、共享的媒体库、后台任务、接收其他应用的分享、JavaScript、登录和生物识别、屏幕、地图、应用商店提供的服务，以及崩溃报告。本页逐一介绍这些包：它们能做什么、API 怎么用、会给应用带来哪些权限，以及在各个平台上的表现。
 
-每个包在所有平台上都是同一套 API，iOS 和 Android 几乎支持其中的全部功能。在 macOS、Windows 和 Linux 上，宿主会用桌面系统自己的服务来实现各个包；在浏览器中则用 Web API。如果某个平台根本没有对应的能力，包的表现就和在一台缺少该功能的手机上一样：返回这个包的 `notAvailable` 错误，返回一个说明缺了什么的错误，或者调用了也什么都不做。每个包的小节都会说明它能做什么、在各平台上分别靠什么实现。每个桌面平台和浏览器也各有专门的一节（[在 Mac 上](#在-mac-上)、[在 Windows 上](#在-windows-上)、[在 Linux 上](#在-linux-上)、[在浏览器中](#在浏览器中)），介绍应用在那里需要做哪些配置，并用一张表列出它与 iOS 和 Android 的不同之处。
+每个包在所有平台上都是同一套 API，iOS 和 Android 几乎支持其中的全部功能。在 macOS、Windows 和 Linux 上，Asuka 会用桌面系统自己的服务来实现各个包；在浏览器中则用 Web API。如果某个平台根本没有对应的能力，包的表现就和在一台缺少该功能的手机上一样：返回这个包的 `notAvailable` 错误，返回一个说明缺了什么的错误，或者调用了也什么都不做。每个包的小节都会说明它能做什么、在各平台上分别靠什么实现。每个桌面平台和浏览器也各有专门的一节（[在 Mac 上](#在-mac-上)、[在 Windows 上](#在-windows-上)、[在 Linux 上](#在-linux-上)、[在浏览器中](#在浏览器中)），介绍应用在那里需要做哪些配置，并用一张表列出它与 iOS 和 Android 的不同之处。
 
 ## 权限与用途说明
 
@@ -117,7 +117,7 @@ Windows 应用不需要声明任何东西：`asuka build --platform windows` 不
 | `platform/vision` | Windows 的 OCR（支持哪些语言取决于“设置 > 时间和语言”中安装了哪些 OCR 语言）及其人脸检测器；条码的识别方式与 `platform/scan` 相同 |
 | `platform/scan` | Windows 没有供应用使用的条码识别器，因此用的是 Asuka 自带的识别器：能识别 QR 码、Data Matrix、EAN-13 和 EAN-8、UPC-A 和 UPC-E、Code 128 和 Code 39（不支持 Aztec、PDF417、Code 93、Codabar 和 ITF） |
 | `platform/imageedit` | 用 Windows 的编解码器读取图片（装了相应扩展时支持 HEIC 和 WebP）；视频帧通过 Media Foundation 获取 |
-| `platform/maps` | Windows 没有供桌面应用使用的地图控件（它自带的那个需要 Bing Maps 密钥），所以由宿主自己绘制 OpenStreetMap 的瓦片：每次下载两张，在应用的缓存目录中保留一周，地图上标注“© OpenStreetMap contributors”；支持拖动、滚轮或双指缩放、双击，以及 + 和 - 键。`.satellite` 和 `.hybrid` 显示的也是街道图（没有免费的卫星影像），`showsUser` 不显示任何东西，这两点与 Linux 相同 |
+| `platform/maps` | Windows 没有供桌面应用使用的地图控件（它自带的那个需要 Bing Maps 密钥），所以由 Asuka 自己绘制 OpenStreetMap 的瓦片：每次下载两张，在应用的缓存目录中保留一周，地图上标注“© OpenStreetMap contributors”；支持拖动、滚轮或双指缩放、双击，以及 + 和 - 键。`.satellite` 和 `.hybrid` 显示的也是街道图（没有免费的卫星影像），`showsUser` 不显示任何东西，这两点与 Linux 相同 |
 | `platform/background` | 任务会阻止电脑进入睡眠；没有通知，所以 `update` 不起作用 |
 | `platform/periodic` | 应用运行期间用定时器执行（系统不会为了它们启动应用）；需要接通电源的任务，会在电脑使用电池时等待 |
 | `platform/screen` | `lock` 和 `setBars` 什么也不做；`preventCapture` 让应用的窗口不出现在截图和录屏中；`screenshots()` 不会报告任何截图 |
@@ -133,9 +133,9 @@ Windows 应用不需要声明任何东西：`asuka build --platform windows` 不
 
 ## 在 Linux 上
 
-Linux 应用同样不需要声明任何东西。凡是宿主通过 XDG 桌面门户（portal）来做的事情（文件、相机、定位、通知、邮件、打印、打开文件和链接、阻止系统休眠），都由门户按它自己的方式询问用户，而且在 Flatpak 沙盒内外都能正常工作。`asuka build --platform linux` 生成的 Flatpak 清单只允许应用访问显示、GPU、网络和门户。宿主不经门户、直接访问的那些服务（Speech Dispatcher、提供通讯录和日历的 Evolution Data Server、提供连接类型的 NetworkManager、iio-sensor-proxy、Video4Linux 摄像头），需要你在清单里加上开放它们的 `finish-args`；否则包的表现就和在没有这项服务的系统上一样。定时通知需要沙盒外的 systemd：在 Flatpak 中，它只会在应用运行时显示（见[各平台的情况](#各平台的情况)）。
+Linux 应用同样不需要声明任何东西。凡是 Asuka 通过 XDG 桌面门户（portal）来做的事情（文件、相机、定位、通知、邮件、打印、打开文件和链接、阻止系统休眠），都由门户按它自己的方式询问用户，而且在 Flatpak 沙盒内外都能正常工作。`asuka build --platform linux` 生成的 Flatpak 清单只允许应用访问显示、GPU、网络和门户。Asuka 不经门户、直接访问的那些服务（Speech Dispatcher、提供通讯录和日历的 Evolution Data Server、提供连接类型的 NetworkManager、iio-sensor-proxy、Video4Linux 摄像头），需要你在清单里加上开放它们的 `finish-args`；否则包的表现就和在没有这项服务的系统上一样。定时通知需要沙盒外的 systemd：在 Flatpak 中，它只会在应用运行时显示（见[各平台的情况](#各平台的情况)）。
 
-Linux 宿主访问桌面服务时，有门户就走门户，此外还用到 GLib、GTK，以及桌面系统通常自带的一些库。每个库都在第一次用到时才加载：如果系统里没有，就会返回一个说明缺了什么的错误。
+在 Linux 上，Asuka 访问桌面服务时，有门户就走门户，此外还用到 GLib、GTK，以及桌面系统通常自带的一些库。每个库都在第一次用到时才加载：如果系统里没有，就会返回一个说明缺了什么的错误。
 
 | 包 | 在 Linux 上 |
 | --- | --- |
@@ -150,7 +150,7 @@ Linux 宿主访问桌面服务时，有门户就走门户，此外还用到 GLib
 | `shareFiles` | 没有分享面板：文件会复制到剪贴板，并弹出一条提示（toast） |
 | `platform/camera`、`platform/record` | 优先用相机门户（只询问用户一次；使用 PipeWire 的摄像头，需要 `gstreamer1.0-pipewire`），否则用第一个 Video4Linux 摄像头，二者都通过 GStreamer。`take()`：窗口上弹出一个对话框，带实时预览、“拍照”和“取消”按钮。`camera.View`：镜像显示的预览画面，填满它的区域；前置和后置是同一个摄像头（电脑的摄像头本来就朝着用户）。视频优先录成 MPEG-4（x264 或 OpenH264 提供的 H.264，加上 AAC），否则录成 WebM；扫码需要 GStreamer 的 `zbar` 元素。没有摄像头时为 `CameraError.noCamera`；被拒绝时为 `.notAllowed` |
 | `platform/scan`、`platform/vision` | 和 Windows 上一样，用 Asuka 自带的识别器识别条码：QR、Data Matrix、EAN、UPC、Code 128、Code 39（不支持 Aztec、PDF417、Code 93、Codabar 和 ITF）。用 Tesseract（`libtesseract5` 加上对应语言的数据）识别文字；没有人脸检测，`faces` 始终为空。没有 Tesseract 时，`vision.analyze` 的结果里没有文字 |
-| `platform/imageedit` | 用 GdkPixbuf 的加载器解码（装了相应加载器时支持 HEIF 和 WebP），并摆正方向；各项编辑操作由宿主完成；视频帧来自 GStreamer |
+| `platform/imageedit` | 用 GdkPixbuf 的加载器解码（装了相应加载器时支持 HEIF 和 WebP），并摆正方向；各项编辑操作由 Asuka 完成；视频帧来自 GStreamer |
 | `platform/webauth` | 窗口上弹出一个内嵌 WebKitGTK 网页视图的对话框（设置 `ephemeral` 时使用独立的会话）；关闭对话框即取消 |
 | `platform/js` | 一个从不显示的 WebKitGTK 网页视图 |
 | `platform/maps` | 用 libshumate（`libshumate-1.0-1`）显示 OpenStreetMap 瓦片地图；`.satellite` 和 `.hybrid` 显示的也是街道图；没有用户位置图层。没有 libshumate 时，视图会显示相应说明，并报告 `error` |
@@ -164,7 +164,7 @@ Linux 宿主访问桌面服务时，有门户就走门户，此外还用到 GLib
 | `platform/icloud` | 没有 iCloud："icloud: not available" |
 | `platform/biometric`、`platform/integrity`、`platform/agerange`、`platform/push` | Linux 上都没有：返回不可用或不受支持。`platform/review` 什么也不做；`platform/tracking` 返回 `.allowed` |
 | `platform/pay` | Linux 上没有能为应用付款的钱包：`available` 返回 `.none`，`pay` 抛出 `PayError.notAvailable`，`PayButton` 什么也不显示 |
-| `platform/crash` | 宿主的崩溃输出，其中也包括原生代码中的崩溃（GTK 代码里收到的信号、GLib 的 abort），这类崩溃报告为 `"native"`；不会读取系统自己的崩溃记录（systemd-coredump、apport） |
+| `platform/crash` | Asuka 的崩溃输出，其中也包括原生代码中的崩溃（GTK 代码里收到的信号、GLib 的 abort），这类崩溃报告为 `"native"`；不会读取系统自己的崩溃记录（systemd-coredump、apport） |
 | `haptic` | 桌面设备没有触感反馈：什么也不做 |
 | `onShare`、快捷操作 | 仅限 iOS 和 Android |
 
@@ -198,9 +198,9 @@ Linux 宿主访问桌面服务时，有门户就走门户，此外还用到 GLib
 | `haptic` | 浏览器支持时（Android 上的 Chrome）使用 `navigator.vibrate` |
 | `platform/review`、`platform/integrity`、`platform/agerange`、`platform/appleauth`、`platform/icloud`、`platform/periodic`、`platform/widget`、`platform/liveactivity`、`platform/transcribe` | Web 上不支持：返回一个说明这一点的错误，或者该包的 `notAvailable` |
 | `platform/purchase` | 在 Trusted Web Activity 里通过 Digital Goods API 使用 Google Play；其他情况下没有应用商店（`PurchaseError.notAvailable`） |
-| `platform/maps` | 和 Windows 一样，由宿主绘制 OpenStreetMap 的瓦片；页面获得定位权限后，`showsUser` 才会生效 |
+| `platform/maps` | 和 Windows 一样，由 Asuka 绘制 OpenStreetMap 的瓦片；页面获得定位权限后，`showsUser` 才会生效 |
 | `platform/pay` | 浏览器支持 Apple Pay 时（Safari）通过 Payment Request API 使用它，商户验证由应用的服务器完成（`onValidateMerchant`）；其他浏览器通过 Google 的 Web API（pay.js）使用 Google Pay；两者都使用各自的官方按钮。支付面板只在点击时显示 |
-| `platform/crash` | 核心的致命错误，以及未捕获的 JavaScript 错误；后者作为非致命的 `"exception"` 报告 |
+| `platform/crash` | Asuka 的致命错误，以及未捕获的 JavaScript 错误；后者作为非致命的 `"exception"` 报告 |
 | `platform/splash` | `hold` 和 `hide` 什么也不做 |
 | `onShare`、快捷操作 | 仅限 iOS 和 Android |
 
@@ -395,7 +395,7 @@ component Player {
 
 `webauth.open(url)` 在系统自带的登录面板中显示登录页面：iOS 上是 `ASWebAuthenticationSession`，Android 上是 Custom Tab。这个面板属于浏览器，所以用户已有的登录会话、通行密钥和密码自动填充都能用，那些拒绝应用内 `WebView` 的登录服务（比如 Google 登录）也不会拒绝它。做 OAuth 时请用它，而不是 `WebView`。
 
-Mac 上同样有 `ASWebAuthenticationSession`。Windows 和 Linux 没有系统级的登录面板，宿主会在窗口之上用应用自己的网页视图（WebView2、WebKitGTK）显示页面。这个视图使用应用的 Web 配置文件，但没有用户浏览器中的登录会话；拒绝内嵌网页视图的登录服务，在这里同样会拒绝。浏览器则会在弹出窗口中打开页面，页面回到与应用同源的地址时即完成（自定义 scheme 无法打开页面）。
+Mac 上同样有 `ASWebAuthenticationSession`。Windows 和 Linux 没有系统级的登录面板，Asuka 会在窗口之上用应用自己的网页视图（WebView2、WebKitGTK）显示页面。这个视图使用应用的 Web 配置文件，但没有用户浏览器中的登录会话；拒绝内嵌网页视图的登录服务，在这里同样会拒绝。浏览器则会在弹出窗口中打开页面，页面回到与应用同源的地址时即完成（自定义 scheme 无法打开页面）。
 
 ```asuka
 import platform/webauth
@@ -893,7 +893,7 @@ component Chat(id: string) {
 }
 ```
 
-`notify.present(decide)` 让 `decide` 决定应用在前台时收到的每条通知该如何显示：`.banner`（和应用关闭时一样）、`.quiet`（只进入通知中心或通知栏，没有横幅也没有声音），或者 `.hide`。它会在通知到达时被调用，并且必须立即给出结果：宿主最多只等一秒，超时就直接显示。`notify.stopPresenting()` 恢复为全部显示。
+`notify.present(decide)` 让 `decide` 决定应用在前台时收到的每条通知该如何显示：`.banner`（和应用关闭时一样）、`.quiet`（只进入通知中心或通知栏，没有横幅也没有声音），或者 `.hide`。它会在通知到达时被调用，并且必须立即给出结果：Asuka 最多只等一秒，超时就直接显示。`notify.stopPresenting()` 恢复为全部显示。
 
 ### 对话中的消息
 
@@ -1239,11 +1239,11 @@ app {
 
 应用作为自己的分享面板运行时，`sharesheet.active()` 为 true：这时根视图就是面板，应用的其余部分不会创建。面板和应用一样，通过 `onShare` 接收分享的内容；内容还没到齐时（比如视频还在复制），可以先显示一个加载指示器。面板通过 `sharesheet.done()`、`sharesheet.cancel()` 或 `sharesheet.openApp()` 关闭；`openApp()` 会带着分享的内容打开应用，交给应用的 `onShare`，和没有面板时一样。面板会出现在哪些内容的分享菜单里，仍由 `asuka.toml` 的 `shareTarget` 决定（见上文）；如果应用用了 `active()` 却没有设置 `shareTarget`，就不会出现在任何分享菜单里（CLI 会给出提示）。
 
-面板是一个独立的根视图，运行在独立的进程中，这和 iOS 运行分享扩展的方式一致：在 **iOS** 上，它就是应用的分享扩展，由 iOS 以弹出面板的形式显示，运行的是它与应用共用的框架中的应用代码和宿主；在 **Android** 上，它是运行在 `:share` 进程中的一个 Activity，以 Material 底部面板的形式显示在另一个应用上方（向下拖动、点按面板外部或返回都会取消分享）。面板关闭时，进程也随之结束。文件的 `path` 只在面板关闭之前有效：应用要保留的内容，请先复制出来。
+面板是一个独立的根视图，运行在独立的进程中，这和 iOS 运行分享扩展的方式一致：在 **iOS** 上，它就是应用的分享扩展，由 iOS 以弹出面板的形式显示，运行的是它与应用共用的框架中的应用代码；在 **Android** 上，它是运行在 `:share` 进程中的一个 Activity，以 Material 底部面板的形式显示在另一个应用上方（向下拖动、点按面板外部或返回都会取消分享）。面板关闭时，进程也随之结束。文件的 `path` 只在面板关闭之前有效：应用要保留的内容，请先复制出来。
 
 应用保存的数据在面板里也一样能访问：它的文件（`std/fs` 的应用目录，以及其中的 SQLite 数据库）、`std/storage` 的值、`platform/secure`。Android 上两个进程共享应用的文件。iOS 上，应用第一次带着面板运行时，它的文件和值会一次性移到 App Group（`group.<app ID>`）中，钥匙串访问组也会与扩展共享；真机构建所用的描述文件需要开启 App Groups 功能（见[发布](shipping.md#ios)）。应用运行期间，不会收到面板写入数据的通知：等它回到前台时再重新读取。
 
-CLI 发现应用用到了 `sharesheet.active`，就会构建这个面板，取代那个只负责打开应用的扩展。这时在 iOS 上，应用的代码、核心和宿主会打包成应用内的一个框架 `Frameworks/AsukaApp.framework`，应用和它的扩展都加载这个框架，就像 Xcode 让扩展共享代码那样：应用不会因为有了面板而变大。在桌面平台和浏览器中，应用不会出现在其他应用的分享菜单里：`active()` 在这些平台上为 false。
+应用用到了 `sharesheet.active` 时，Asuka 会构建这个面板，取代那个只负责打开应用的扩展。这时在 iOS 上，应用的代码会打包成一个框架，应用和它的扩展都加载这个框架，就像 Xcode 让扩展共享代码那样：应用不会因为有了面板而变大。在桌面平台和浏览器中，应用不会出现在其他应用的分享菜单里：`active()` 在这些平台上为 false。
 
 在测试中，`sharesheet.fake()` 会让应用作为分享面板运行（`mountApp()` 显示的就是面板），并记下面板是怎样关闭的（`closed`）；挂载后的应用调用 `share(items)`，就相当于另一个应用分享了这些内容：
 
@@ -1557,7 +1557,7 @@ component Checkout {
 }
 ```
 
-原生组件在假宿主上显示为它的名字，测试点按它就会触发它的 `press`。[examples/checkout](../../examples/checkout) 就是用这种方式卖一套茶具。
+在测试中，原生组件显示为它的名字，点按它就会触发它的 `press`。[examples/checkout](../../examples/checkout) 就是用这种方式卖一套茶具。
 
 ## 面容 ID 与指纹：platform/biometric
 
@@ -2035,22 +2035,22 @@ app { Root() }
 
 | | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `"panic"`：核心自身的致命错误，带有 Asuka 代码的调用栈 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `"panic"`：Asuka 自身的致命错误，带有 Asuka 代码的调用栈 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `"exception"`：未捕获的异常 | NSException（Objective-C，以及 Swift 中的 `NSException`） | JVM 的 `Throwable` | — | — | — | 未捕获的 JavaScript 错误（非致命） |
-| `"native"`：信号、Mach 异常或 Windows 异常 | MetricKit | 系统的 tombstone | MetricKit；致命信号，由宿主报告 | 宿主的报告 | 宿主的报告（原生代码中的信号） | — |
+| `"native"`：信号、Mach 异常或 Windows 异常 | MetricKit | 系统的 tombstone | MetricKit；致命信号，由 Asuka 报告 | Asuka 的报告 | Asuka 的报告（原生代码中的信号） | — |
 | `"hang"` | MetricKit 报告的卡顿（非致命）、看门狗 | ANR 及其 trace | MetricKit | — | — | — |
 | `"oom"` | 超出内存上限（由 MetricKit 报告时） | 因内存不足被系统终止 | — | — | — | — |
 | `"resource"` | CPU 和磁盘写入异常（非致命） | 资源使用过度 | MetricKit | — | — | — |
 | `"nonfatal"`：`crash.record(e)` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-在每个平台上，记录都由核心保存：核心自身的致命错误会在运行结束时连同 Asuka 调用栈一起写下，未捕获的异常则由宿主的处理函数在应用结束时写下（在它之前设置的处理函数，比如某个崩溃 SDK 的，随后依然会运行）。其余的则由系统在之后的某次启动时交给应用：iOS 和 macOS 的 MetricKit 诊断，以及 Android 对应用进程结束原因的记录（`getHistoricalProcessExitReasons`，Android 11 及以上；原生崩溃的 tombstone 从 Android 12 开始提供）。如果某次崩溃已经由宿主的处理函数报告过，系统又再报告一次（iOS 上未捕获异常导致的 SIGABRT，Android 的 `REASON_CRASH`），那么系统的这份会被排除。在 macOS、Windows 和 Linux 上，宿主会把只有它能看到的情况（致命信号、没有被处理的异常）写下来，由核心在下次启动时生成报告。
+在每个平台上，记录都由 Asuka 保存：Asuka 自身的致命错误会在运行结束时连同 Asuka 调用栈一起写下，未捕获的异常则在应用结束时写下（在它之前设置的处理函数，比如某个崩溃 SDK 的，随后依然会运行）。其余的则由系统在之后的某次启动时交给应用：iOS 和 macOS 的 MetricKit 诊断，以及 Android 对应用进程结束原因的记录（`getHistoricalProcessExitReasons`，Android 11 及以上；原生崩溃的 tombstone 从 Android 12 开始提供）。如果某次崩溃已经由 Asuka 报告过，系统又再报告一次（iOS 上未捕获异常导致的 SIGABRT，Android 的 `REASON_CRASH`），那么系统的这份会被排除。在 macOS、Windows 和 Linux 上，致命信号和没有被处理的异常会在下次启动时报告。
 
-每份报告都带有 `context`：应用的版本和构建号，设备的型号和系统版本，进程及其已运行的时长，当时是否在前台，以及最近的面包屑（最多 100 条）和设置过的值。这些信息一有变化就会写入应用的数据目录，每次追加一行（不调用 sync，所以开销和一次普通写入差不多），等文件涨到实际所需大小的两倍时再整体重写一次。这样一来，不管应用是怎么崩溃的，这些信息在崩溃之前就已经写到磁盘上了。生命周期的变化也会记成面包屑（“app: background”）。
+每份报告都带有 `context`：应用的版本和构建号，设备的型号和系统版本，进程及其已运行的时长，当时是否在前台，以及最近的面包屑（最多 100 条）和设置过的值。这些信息一有变化就会写入应用的数据目录，开销和一次普通写入差不多。这样一来，不管应用是怎么崩溃的，这些信息在崩溃之前就已经写到磁盘上了。生命周期的变化也会记成面包屑（“app: background”）。
 
-报告的 `text` 是平台给出的原始内容（核心或宿主的崩溃输出、调用栈、tombstone、ANR 的 trace）；`threads` 是把这些调用栈解析成的帧，崩溃的线程排在最前面。Asuka 的帧包含 `function`、`file` 和 `line`。原生帧包含所在的二进制文件 `binary`、该二进制的 UUID（Mach-O）或 build ID（ELF），即 `binaryId`，以及地址 `address` 和它在二进制中的偏移 `offset`，崩溃收集服务正是用这些信息，配合构建时产出的符号来做符号化（见[打包与发布](shipping.md#崩溃报告的符号)）。
+报告的 `text` 是平台给出的原始内容（Asuka 的崩溃输出、调用栈、tombstone、ANR 的 trace）；`threads` 是把这些调用栈解析成的帧，崩溃的线程排在最前面。Asuka 的帧包含 `function`、`file` 和 `line`。原生帧包含所在的二进制文件 `binary`、该二进制的 UUID（Mach-O）或 build ID（ELF），即 `binaryId`，以及地址 `address` 和它在二进制中的偏移 `offset`，崩溃收集服务正是用这些信息，配合构建时产出的符号来做符号化（见[打包与发布](shipping.md#崩溃报告的符号)）。
 
 **发送到 Sentry 或 Crashlytics。** 对于 Sentry，把每份报告转成一个事件，发到它的 envelope 端点（`https://<host>/api/<project>/envelope/`，使用你 DSN 中的 key）：`exception.values[0]` 的 `type` 为 `kind`，`value` 为 `message`，`stacktrace.frames` 为崩溃线程的帧，从最外层开始排列（这是 Sentry 的顺序，与 `Thread` 中的顺序相反），每一帧带上 `function`、`filename` 和 `lineno`，原生帧则带上 `instruction_addr` 和 `package`；再在 `debug_meta.images` 中列出这些帧所在的每个二进制文件：`{"type": "macho", "debug_id": binaryId, "image_addr": address - offset}`（Android 上为 `"elf"`），这样你用 `sentry-cli` 上传的 dSYM 或符号文件才能派上用场。`context` 放进 `contexts`、`tags` 和 `breadcrumbs`。Crashlytics 没有可以直接发送的公开端点：你可以把报告发到自己的服务器，或者在你自己的原生包里（[原生代码](native.md)）通过 Crashlytics 的 SDK 把它们记录为非致命错误。不管用哪种方式，App Store 审核都会问到崩溃数据：如果你发送了，就要如实声明（在 `asuka.toml` 的 `ios.collected` 中加上 `{type = "CrashData", purposes = ["AppFunctionality"]}`）。
 
-**各平台的细节。** iOS 只会把 MetricKit 链接进读取报告的应用，并且把诊断交给应用本身，而不是它的分享扩展。从 iOS 17 开始，MetricKit 会给出崩溃的进程 ID，借此可以把崩溃关联到那一次运行的上下文；在此之前，则关联到崩溃之前的最后一次运行。MetricKit 在模拟器上不会送达诊断。Android 不需要额外配置；Android 11 之前没有原生崩溃和 ANR 的记录。macOS：MetricKit 从 macOS 12 开始可用；导致应用退出的未捕获 Objective-C 异常会以 MetricKit 崩溃报告的形式出现（主线程上的这类异常会被 AppKit 捕获并记入日志）。Windows 错误报告（Windows Error Reporting）照常保留它自己的记录。在浏览器中，记录保存在应用的文件中（IndexedDB），下次启动时读取。未捕获的 JavaScript 错误（无论来自宿主还是应用的 `web/*.js`）会立即生成一份 `"exception"` 报告，它是非致命的（页面会继续运行），并附带本次运行的上下文；每次运行最多 20 份，同一个错误只报告一次。每个页面都会在同源的 `localStorage` 里标记自己这次运行还活着，这样应用其他开着的页面就不会去动它的记录。在没有宿主保存记录的地方（`asuka test`），`reports()` 不给出任何报告就结束，其余调用什么也不做。
+**各平台的细节。** iOS 只会把 MetricKit 链接进读取报告的应用，并且把诊断交给应用本身，而不是它的分享扩展。从 iOS 17 开始，MetricKit 会给出崩溃的进程 ID，借此可以把崩溃关联到那一次运行的上下文；在此之前，则关联到崩溃之前的最后一次运行。MetricKit 在模拟器上不会送达诊断。Android 不需要额外配置；Android 11 之前没有原生崩溃和 ANR 的记录。macOS：MetricKit 从 macOS 12 开始可用；导致应用退出的未捕获 Objective-C 异常会以 MetricKit 崩溃报告的形式出现（主线程上的这类异常会被 AppKit 捕获并记入日志）。Windows 错误报告（Windows Error Reporting）照常保留它自己的记录。在浏览器中，记录保存在应用的文件中（IndexedDB），下次启动时读取。未捕获的 JavaScript 错误（无论来自 Asuka 还是应用的 `web/*.js`）会立即生成一份 `"exception"` 报告，它是非致命的（页面会继续运行），并附带本次运行的上下文；每次运行最多 20 份，同一个错误只报告一次。每个页面都会在同源的 `localStorage` 里标记自己这次运行还活着，这样应用其他开着的页面就不会去动它的记录。在 `asuka test` 下不会保存记录：`reports()` 不给出任何报告就结束，其余调用什么也不做。
 
 **在 `asuka dev` 下**，开发 App 会像正式构建一样保存记录；开发 App 自身的原生崩溃不属于你的应用，不会报告给它；应用的构建（`asuka dev --once`、`asuka build`）则会报告所有崩溃。

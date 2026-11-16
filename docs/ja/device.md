@@ -2,7 +2,7 @@
 
 Asuka のパッケージを使うと、ビューの外にあるデバイスの機能も扱えます。カメラ、バーコードや QR コード、画像に写っているものの認識、写真とファイル、プレビュー、印刷と PDF、メールとメッセージの作成画面、位置情報、通知とプッシュ通知、サウンド、再生中の情報（Now Playing）と録音、ネットワークの状態、写真やファイルのライブラリへの保存、バックグラウンドでの処理、ほかのアプリからの共有、JavaScript、サインインと生体認証、画面、地図、ストアのサービス、クラッシュレポートです。このページでは、パッケージごとに何ができるか、その API、必要になる権限、プラットフォームごとの動作を説明します。
 
-どのパッケージも、すべてのプラットフォームで同じ API を持ちます。iOS と Android ではほぼすべての機能が使えます。macOS、Windows、Linux では、ホストが各パッケージをデスクトップ自身のサービスで実装し、ブラウザーでは Web の API で実装します。プラットフォームに対応する機能がない場合、パッケージはその機能を持たないスマートフォンと同じように振る舞います。つまり、パッケージの `notAvailable` エラーになるか、足りないものを示すエラーになるか、何もしない呼び出しになります。各パッケージの節では、何ができるか、各プラットフォームが何を使ってそれを実現しているかを説明します。さらに、各デスクトップとブラウザーにはそれぞれ専用の節があり（[Mac の場合](#mac-の場合)、[Windows の場合](#windows-の場合)、[Linux の場合](#linux-の場合)、[ブラウザーの場合](#ブラウザーの場合)）、そこで必要な設定と、iOS や Android との違いを表にまとめています。
+どのパッケージも、すべてのプラットフォームで同じ API を持ちます。iOS と Android ではほぼすべての機能が使えます。macOS、Windows、Linux では、Asuka が各パッケージをデスクトップ自身のサービスで実装し、ブラウザーでは Web の API で実装します。プラットフォームに対応する機能がない場合、パッケージはその機能を持たないスマートフォンと同じように振る舞います。つまり、パッケージの `notAvailable` エラーになるか、足りないものを示すエラーになるか、何もしない呼び出しになります。各パッケージの節では、何ができるか、各プラットフォームが何を使ってそれを実現しているかを説明します。さらに、各デスクトップとブラウザーにはそれぞれ専用の節があり（[Mac の場合](#mac-の場合)、[Windows の場合](#windows-の場合)、[Linux の場合](#linux-の場合)、[ブラウザーの場合](#ブラウザーの場合)）、そこで必要な設定と、iOS や Android との違いを表にまとめています。
 
 ## 権限と利用目的の説明文
 
@@ -117,7 +117,7 @@ Windows では、各パッケージは Windows 自身のサービス（Media Fou
 | `platform/vision` | Windows の OCR（OCR がインストールされている言語のみ。「設定」の「時刻と言語」）と顔検出を使います。コードは `platform/scan` と同じ方法で読み取ります |
 | `platform/scan` | Windows にはアプリ向けのコードリーダーがありません。そのため Asuka 独自のリーダーが、QR コード、Data Matrix、EAN-13 と EAN-8、UPC-A と UPC-E、Code 128、Code 39 を読み取ります（Aztec、PDF417、Code 93、Codabar、ITF は読めません） |
 | `platform/imageedit` | Windows のコーデックで読み込みます（HEIC と WebP は、それぞれの拡張機能がインストールされている場合）。ビデオのフレームは Media Foundation で取り出します |
-| `platform/maps` | Windows にはデスクトップアプリ向けの地図コントロールがありません（Windows 自身のものには Bing Maps のキーが必要です）。そのためホストが OpenStreetMap のタイルを描きます。タイルは 2 枚ずつダウンロードされ、アプリのキャッシュに 1 週間保存されます。地図には「© OpenStreetMap contributors」が表示されます。ドラッグ、ホイール、ピンチ、ダブルクリック、+ と - で操作できます。`.satellite` と `.hybrid` は道路地図を表示し（無料の航空写真がないため）、`showsUser` は Linux と同じく何も表示しません |
+| `platform/maps` | Windows にはデスクトップアプリ向けの地図コントロールがありません（Windows 自身のものには Bing Maps のキーが必要です）。そのため Asuka が OpenStreetMap のタイルを描きます。タイルは 2 枚ずつダウンロードされ、アプリのキャッシュに 1 週間保存されます。地図には「© OpenStreetMap contributors」が表示されます。ドラッグ、ホイール、ピンチ、ダブルクリック、+ と - で操作できます。`.satellite` と `.hybrid` は道路地図を表示し（無料の航空写真がないため）、`showsUser` は Linux と同じく何も表示しません |
 | `platform/background` | タスクの実行中は PC がスリープしないようにします。通知は出ないので、`update` は何も変えません |
 | `platform/periodic` | アプリの実行中にタイマーで動きます（タスクのためにアプリが起動されることはありません）。電源を必要とするタスクは、PC がバッテリーで動いているあいだ待ちます |
 | `platform/screen` | `lock` と `setBars` は何もしません。`preventCapture` はアプリのウィンドウをスクリーンショットと画面録画から除外します。`screenshots()` は何も知らせません |
@@ -133,9 +133,9 @@ Windows では、各パッケージは Windows 自身のサービス（Media Fou
 
 ## Linux の場合
 
-Linux アプリも何も宣言しません。ホストが XDG デスクトップポータルを通す機能（ファイル、カメラ、位置情報、通知、メール、印刷、ファイルやリンクを開く、システムをスリープさせない）では、ポータルがいつもどおりユーザーに確認します。これは Flatpak のサンドボックスの中でも外でも同じように動きます。`asuka build --platform linux` が書き出す Flatpak マニフェストで、アプリがアクセスできるのはディスプレイ、GPU、ネットワーク、ポータルだけです。ホストがポータルを通さずに使うサービス（Speech Dispatcher、連絡先とカレンダーの Evolution Data Server、接続の種類を調べる NetworkManager、iio-sensor-proxy、Video4Linux のカメラ）を使うには、それらへのアクセスを開く `finish-args` をマニフェストに追加する必要があります。追加しない場合、パッケージはそのサービスがないシステムと同じように振る舞います。後で届く通知にはサンドボックスの外の systemd が必要です。Flatpak の中では、アプリの実行中にしか表示されません（[プラットフォームごとの動作](#プラットフォームごとの動作)を参照）。
+Linux アプリも何も宣言しません。Asuka が XDG デスクトップポータルを通す機能（ファイル、カメラ、位置情報、通知、メール、印刷、ファイルやリンクを開く、システムをスリープさせない）では、ポータルがいつもどおりユーザーに確認します。これは Flatpak のサンドボックスの中でも外でも同じように動きます。`asuka build --platform linux` が書き出す Flatpak マニフェストで、アプリがアクセスできるのはディスプレイ、GPU、ネットワーク、ポータルだけです。Asuka がポータルを通さずに使うサービス（Speech Dispatcher、連絡先とカレンダーの Evolution Data Server、接続の種類を調べる NetworkManager、iio-sensor-proxy、Video4Linux のカメラ）を使うには、それらへのアクセスを開く `finish-args` をマニフェストに追加する必要があります。追加しない場合、パッケージはそのサービスがないシステムと同じように振る舞います。後で届く通知にはサンドボックスの外の systemd が必要です。Flatpak の中では、アプリの実行中にしか表示されません（[プラットフォームごとの動作](#プラットフォームごとの動作)を参照）。
 
-Linux のホストは、ポータルがあればポータルを通じて、ほかに GLib と GTK、そしてデスクトップにあるライブラリを通じて、デスクトップのサービスを使います。各ライブラリは初めて使うときに読み込まれます。ライブラリがないシステムでは、足りないものを示すエラーになります。
+Linux では、Asuka はポータルがあればポータルを通じて、ほかに GLib と GTK、そしてデスクトップにあるライブラリを通じて、デスクトップのサービスを使います。各ライブラリは初めて使うときに読み込まれます。ライブラリがないシステムでは、足りないものを示すエラーになります。
 
 | パッケージ | Linux の場合 |
 | --- | --- |
@@ -150,7 +150,7 @@ Linux のホストは、ポータルがあればポータルを通じて、ほ�
 | `shareFiles` | 共有シートはありません。ファイルはクリップボードにコピーされ、トーストが表示されます |
 | `platform/camera`、`platform/record` | カメラポータル（ユーザーへの確認は一度だけ。PipeWire のカメラで、`gstreamer1.0-pipewire` が必要）、なければ最初の Video4Linux カメラを、GStreamer を通じて使います。`take()`：ウィンドウの上にダイアログを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します。`camera.View`：左右反転したプレビューで、枠いっぱいに表示します。前面と背面は同じカメラです（コンピューターのカメラはユーザーのほうを向いているため）。ビデオは MPEG-4（x264 か OpenH264 の H.264 と AAC）、それができなければ WebM です。コードの読み取りには GStreamer の `zbar` エレメントが必要です。カメラがなければ `CameraError.noCamera`、拒否されたら `.notAllowed` です |
 | `platform/scan`、`platform/vision` | Windows と同じく、コードは Asuka 自身のリーダーが読み取ります。QR、Data Matrix、EAN、UPC、Code 128、Code 39 です（Aztec、PDF417、Code 93、Codabar、ITF は読めません）。テキストは Tesseract（`libtesseract5` と各言語のデータ）が読み取ります。顔を検出するものはないので、`faces` は空です。Tesseract がなければ、`vision.analyze` の結果にテキストは含まれません |
-| `platform/imageedit` | GdkPixbuf のローダーでデコードし（HEIF と WebP は、それぞれのローダーがインストールされている場合）、向きを正しく直します。各操作はホストが行います。ビデオのフレームは GStreamer で取り出します |
+| `platform/imageedit` | GdkPixbuf のローダーでデコードし（HEIF と WebP は、それぞれのローダーがインストールされている場合）、向きを正しく直します。各操作は Asuka が行います。ビデオのフレームは GStreamer で取り出します |
 | `platform/webauth` | ウィンドウの上に WebKitGTK の Web ビューを入れたダイアログを開きます（`ephemeral` では専用のセッション）。閉じるとキャンセルになります |
 | `platform/js` | 一度も表示されない WebKitGTK の Web ビュー |
 | `platform/maps` | libshumate（`libshumate-1.0-1`）で OpenStreetMap のタイルの地図を表示します。`.satellite` と `.hybrid` は道路地図を表示します。ユーザーの位置を示すレイヤーはありません。libshumate がなければ、ビューにその旨が表示され、`error` が報告されます |
@@ -164,7 +164,7 @@ Linux のホストは、ポータルがあればポータルを通じて、ほ�
 | `platform/icloud` | iCloud はありません。「icloud: not available」になります |
 | `platform/biometric`、`platform/integrity`、`platform/agerange`、`platform/push` | Linux にはありません。利用不可、非対応と答えます。`platform/review` は何もせず、`platform/tracking` は `.allowed` と答えます |
 | `platform/pay` | Linux アプリの支払いに使えるウォレットはありません。`available` は `.none` を返し、`pay` は `PayError.notAvailable` を投げ、`PayButton` は何も表示しません |
-| `platform/crash` | ホストのクラッシュ出力を使います。ネイティブコードでのクラッシュ（GTK のコードでのシグナル、GLib の abort）もここに含まれ、`"native"` として報告されます。システム自身の記録（systemd-coredump、apport）は読みません |
+| `platform/crash` | Asuka のクラッシュ出力を使います。ネイティブコードでのクラッシュ（GTK のコードでのシグナル、GLib の abort）もここに含まれ、`"native"` として報告されます。システム自身の記録（systemd-coredump、apport）は読みません |
 | `haptic` | デスクトップには触覚フィードバックがないので、何もしません |
 | `onShare`、ショートカット | iOS と Android だけです |
 
@@ -198,9 +198,9 @@ Linux のホストは、ポータルがあればポータルを通じて、ほ�
 | `haptic` | ブラウザーが対応していれば（Android の Chrome）`navigator.vibrate` を使います |
 | `platform/review`、`platform/integrity`、`platform/agerange`、`platform/appleauth`、`platform/icloud`、`platform/periodic`、`platform/widget`、`platform/liveactivity`、`platform/transcribe` | Web にはありません。その旨を示すエラーか、パッケージの `notAvailable` になります |
 | `platform/purchase` | Trusted Web Activity の中では、Digital Goods API を通じて Google Play を使います。それ以外ではストアはありません（`PurchaseError.notAvailable`） |
-| `platform/maps` | Windows と同じく、ホストが OpenStreetMap のタイルを描きます。`showsUser` は、ページに位置情報の許可があれば表示されます |
+| `platform/maps` | Windows と同じく、Asuka が OpenStreetMap のタイルを描きます。`showsUser` は、ページに位置情報の許可があれば表示されます |
 | `platform/pay` | ブラウザーが対応していれば（Safari）、Payment Request API を通じて Apple Pay を使います。マーチャントの検証はアプリのサーバーが行います（`onValidateMerchant`）。それ以外では、Google の Web API（pay.js）を通じて Google Pay を使います。ボタンはそれぞれ専用のものです。シートはタップからしか表示できません |
-| `platform/crash` | コアの致命的なエラーと、捕捉されなかった JavaScript のエラーを扱います。後者は致命的でない `"exception"` のレポートになります |
+| `platform/crash` | Asuka の致命的なエラーと、捕捉されなかった JavaScript のエラーを扱います。後者は致命的でない `"exception"` のレポートになります |
 | `platform/splash` | `hold` と `hide` は何もしません |
 | `onShare`、ショートカット | iOS と Android だけです |
 
@@ -893,7 +893,7 @@ component Chat(id: string) {
 }
 ```
 
-`notify.present(decide)` を使うと、アプリがフォアグラウンドにあるあいだに届いた各通知をどう表示するかを `decide` で決められます。`.banner`（アプリを閉じているときと同じ）、`.quiet`（バナーも音もなしで、通知センターや通知シェードに入れる）、`.hide` のいずれかです。`decide` は通知が届いたときに呼ばれ、すぐに答えを返す必要があります。ホストは最大 1 秒待ち、それを過ぎると通知を表示します。`notify.stopPresenting()` を呼ぶと、ふたたびすべての通知を表示します。
+`notify.present(decide)` を使うと、アプリがフォアグラウンドにあるあいだに届いた各通知をどう表示するかを `decide` で決められます。`.banner`（アプリを閉じているときと同じ）、`.quiet`（バナーも音もなしで、通知センターや通知シェードに入れる）、`.hide` のいずれかです。`decide` は通知が届いたときに呼ばれ、すぐに答えを返す必要があります。Asuka は最大 1 秒待ち、それを過ぎると通知を表示します。`notify.stopPresenting()` を呼ぶと、ふたたびすべての通知を表示します。
 
 ### 会話のメッセージ
 
@@ -1239,11 +1239,11 @@ app {
 
 アプリが共有シートとして動いているとき、`sharesheet.active()` は true になります。このときルートはシートで、アプリのほかの部分は作られません。シートは、アプリと同じように `onShare` で共有されたものを受け取ります。項目がまだ届いていない間（動画をコピーしている途中など）は、スピナーを表示してください。シートは `sharesheet.done()`、`sharesheet.cancel()`、`sharesheet.openApp()` で閉じます。`openApp()` は、シートがないときと同じように、共有された項目を持ってアプリを開き、アプリの `onShare` に渡します。シートがどんな共有で候補に出るかは、上で説明した `asuka.toml` の `shareTarget` で決まります。`active()` を使っていても `shareTarget` がなければ、どの共有メニューにも出てきません（CLI が知らせます）。
 
-シートは独立したルートで、iOS が共有拡張機能を動かすのと同じく、独立したプロセスで動きます。**iOS** ではアプリの共有拡張機能で、iOS がシートとして表示し、アプリと共有するフレームワークにあるアプリのコードとホストを動かします。**Android** では `:share` プロセスの Activity で、共有元のアプリの上に Material のボトムシートとして表示されます（下にドラッグする、外側をタップする、戻るのいずれでもキャンセルになります）。シートが閉じるとプロセスも終わります。ファイルの `path` はシートが閉じるまでしか使えないので、アプリで残すものはコピーしてください。
+シートは独立したルートで、iOS が共有拡張機能を動かすのと同じく、独立したプロセスで動きます。**iOS** ではアプリの共有拡張機能で、iOS がシートとして表示し、アプリと共有するフレームワークにあるアプリのコードを動かします。**Android** では `:share` プロセスの Activity で、共有元のアプリの上に Material のボトムシートとして表示されます（下にドラッグする、外側をタップする、戻るのいずれでもキャンセルになります）。シートが閉じるとプロセスも終わります。ファイルの `path` はシートが閉じるまでしか使えないので、アプリで残すものはコピーしてください。
 
 アプリが保存しているものは、シートからも同じように使えます。アプリのファイル（`std/fs` のアプリ用ディレクトリと、そこにある SQLite のデータベース）、`std/storage` の値、`platform/secure` です。Android では二つのプロセスがアプリのファイルを共有します。iOS では、アプリのファイルと値は、シート付きで初めて起動したときに一度だけ App Group（`group.<app ID>`）に移され、キーチェーンのアクセスグループも拡張機能と共有されます。実機向けビルドのプロビジョニングプロファイルには App Groups の機能が必要です（[配布](shipping.md#ios)を参照）。アプリの実行中にシートが書き込んだ内容は、アプリには通知されません。アプリが前面に戻ったときに読み直してください。
 
-CLI は、アプリが `sharesheet.active` を使っていることを見て、アプリを開くだけの拡張機能の代わりにシートをビルドします。このとき iOS では、アプリのコード、コア、ホストがアプリ内のフレームワーク `Frameworks/AsukaApp.framework` になり、Xcode が拡張機能とコードを共有するのと同じように、アプリと拡張機能の両方がそれを読み込みます。シートがあってもアプリのサイズは増えません。デスクトップとブラウザーでは、アプリはほかのアプリの共有メニューに出てこないので、`active()` は false です。
+アプリが `sharesheet.active` を使っていると、Asuka はアプリを開くだけの拡張機能の代わりにシートをビルドします。このとき iOS では、アプリのコードがフレームワークになり、Xcode が拡張機能とコードを共有するのと同じように、アプリと拡張機能の両方がそれを読み込みます。シートがあってもアプリのサイズは増えません。デスクトップとブラウザーでは、アプリはほかのアプリの共有メニューに出てこないので、`active()` は false です。
 
 テストでは、`sharesheet.fake()` でアプリを共有シートとして動かせます（`mountApp()` がシートを表示します）。シートがどう閉じたかは `closed` に記録されます。マウントしたアプリの `share(items)` は、ほかのアプリがそれらを共有したことを表します。
 
@@ -1557,7 +1557,7 @@ component Checkout {
 }
 ```
 
-ネイティブコンポーネントはフェイクホストでは名前で表示され、テストでそれをタップすると `press` になります。[examples/checkout](../../examples/checkout) は、この方法でティーセットを販売します。
+テストでは、ネイティブコンポーネントは名前で表示され、それをタップすると `press` になります。[examples/checkout](../../examples/checkout) は、この方法でティーセットを販売します。
 
 ## Face ID と指紋認証：platform/biometric
 
@@ -2035,22 +2035,22 @@ app { Root() }
 
 | | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `"panic"`：コア自身の致命的なエラー（Asuka のコードのスタック付き） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `"panic"`：Asuka 自身の致命的なエラー（Asuka のコードのスタック付き） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `"exception"`：捕捉されなかった例外 | NSException（Objective-C、Swift の `NSException`） | JVM の `Throwable` | — | — | — | 捕捉されなかった JavaScript のエラー（致命的ではない） |
-| `"native"`：シグナル、Mach や Windows の例外 | MetricKit | システムの tombstone | MetricKit、致命的なシグナル（ホストのレポート） | ホストのレポート | ホストのレポート（ネイティブコードでのシグナル） | — |
+| `"native"`：シグナル、Mach や Windows の例外 | MetricKit | システムの tombstone | MetricKit、致命的なシグナル（Asuka のレポート） | Asuka のレポート | Asuka のレポート（ネイティブコードでのシグナル） | — |
 | `"hang"` | MetricKit のハング（致命的ではない）、ウォッチドッグ | ANR とそのトレース | MetricKit | — | — | — |
 | `"oom"` | メモリ上限（MetricKit が報告した場合） | メモリ不足による強制終了 | — | — | — | — |
 | `"resource"` | CPU とディスク書き込みの例外（致命的ではない） | リソースの過剰使用 | MetricKit | — | — | — |
 | `"nonfatal"`：`crash.record(e)` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-どのプラットフォームでも、コアが記録を残します。コア自身の致命的なエラーは、実行が終わるときに Asuka のスタックとともに書き込まれます。捕捉されなかった例外は、アプリが終了するときにホストのハンドラーが書き込みます（それより前に設定されたハンドラー、たとえばクラッシュ SDK のハンドラーも、そのあとで実行されます）。それ以外は、次回以降の起動時にシステムが渡してくれます。iOS と macOS では MetricKit の診断情報、Android ではアプリのプロセスがどのように終了したかの記録です（`getHistoricalProcessExitReasons`、Android 11 以降。ネイティブクラッシュの tombstone は Android 12 から）。ホストのハンドラーが報告したクラッシュをシステムが改めて報告したもの（捕捉されなかった例外による iOS の SIGABRT、Android の `REASON_CRASH`）は除外されます。macOS、Windows、Linux では、致命的なシグナルや処理されなかった例外など、ホストにしか見えないものをホストが書き込み、次回の起動時にコアがレポートにします。
+どのプラットフォームでも、Asuka が記録を残します。Asuka 自身の致命的なエラーは、実行が終わるときに Asuka のスタックとともに書き込まれます。捕捉されなかった例外は、アプリが終了するときに書き込まれます（それより前に設定されたハンドラー、たとえばクラッシュ SDK のハンドラーも、そのあとで実行されます）。それ以外は、次回以降の起動時にシステムが渡してくれます。iOS と macOS では MetricKit の診断情報、Android ではアプリのプロセスがどのように終了したかの記録です（`getHistoricalProcessExitReasons`、Android 11 以降。ネイティブクラッシュの tombstone は Android 12 から）。Asuka が報告したクラッシュをシステムが改めて報告したもの（捕捉されなかった例外による iOS の SIGABRT、Android の `REASON_CRASH`）は除外されます。macOS、Windows、Linux では、致命的なシグナルや処理されなかった例外は、次回の起動時にレポートになります。
 
-各レポートには `context` があります。アプリのバージョンとビルド番号、デバイスの機種と OS、プロセスとその実行時間、フォアグラウンドにいたかどうか、最近のブレッドクラム（最大 100 件）、設定した値です。これらは変わるたびにアプリのデータディレクトリに書き込まれます。一件ごとに一行を追記するだけで（sync はしないので、書き込み一回分のコストで済みます）、ファイルが必要な大きさの 2 倍になったら書き直します。そのため、アプリが何によって終了しても、クラッシュの前にはディスクに書かれています。ライフサイクルの変化もブレッドクラムになります（「app: background」）。
+各レポートには `context` があります。アプリのバージョンとビルド番号、デバイスの機種と OS、プロセスとその実行時間、フォアグラウンドにいたかどうか、最近のブレッドクラム（最大 100 件）、設定した値です。これらは変わるたびにアプリのデータディレクトリに書き込まれ、そのコストは書き込み一回分ほどです。そのため、アプリが何によって終了しても、クラッシュの前にはディスクに書かれています。ライフサイクルの変化もブレッドクラムになります（「app: background」）。
 
-レポートの `text` は、プラットフォームが渡す内容そのもの（コアやホストのクラッシュ出力、スタックトレース、tombstone、ANR のトレース）です。`threads` は、それらのスタックをフレームに分解したもので、クラッシュしたスレッドが先頭に来ます。Asuka のフレームは `function`、`file`、`line` を持ちます。ネイティブのフレームは、`binary`、バイナリの UUID（Mach-O）またはビルド ID（ELF）である `binaryId`、`address`、バイナリ内の `offset` を持ちます。サービスがビルドのシンボルを使ってシンボル化するには、これらの情報が必要です（[配布](shipping.md#クラッシュレポート用のシンボル)を参照）。
+レポートの `text` は、プラットフォームが渡す内容そのもの（Asuka のクラッシュ出力、スタックトレース、tombstone、ANR のトレース）です。`threads` は、それらのスタックをフレームに分解したもので、クラッシュしたスレッドが先頭に来ます。Asuka のフレームは `function`、`file`、`line` を持ちます。ネイティブのフレームは、`binary`、バイナリの UUID（Mach-O）またはビルド ID（ELF）である `binaryId`、`address`、バイナリ内の `offset` を持ちます。サービスがビルドのシンボルを使ってシンボル化するには、これらの情報が必要です（[配布](shipping.md#クラッシュレポート用のシンボル)を参照）。
 
 **Sentry や Crashlytics への送信。** Sentry には、各レポートからイベントを作って送ります（送り先はエンベロープのエンドポイント `https://<host>/api/<project>/envelope/` で、DSN のキーを付けます）。`exception.values[0]` の `type` に `kind`、`value` に `message`、`stacktrace.frames` にクラッシュしたスレッドのフレームを入れます。フレームは外側から順に並べ（Sentry の順序で、`Thread` とは逆です）、それぞれ `function`、`filename`、`lineno` を、ネイティブのフレームなら `instruction_addr` と `package` を持たせます。また `debug_meta.images` には、フレームに出てくる各バイナリを `{"type": "macho", "debug_id": binaryId, "image_addr": address - offset}`（Android では `"elf"`）として入れます。こうすると、`sentry-cli` でアップロードした dSYM やシンボルが適用されます。`context` は `contexts`、`tags`、`breadcrumbs` に入れます。Crashlytics には、送信先となる公開のエンドポイントがありません。レポートを自分のサーバーに送るか、独自のネイティブパッケージ（[ネイティブコード](native.md)）から Crashlytics の SDK に致命的でないエラーとして記録してください。どちらの場合も、App Store の審査ではクラッシュデータについて尋ねられます。送信するなら、そのことを申告してください（`asuka.toml` の `ios.collected` に `{type = "CrashData", purposes = ["AppFunctionality"]}`）。
 
-**プラットフォームごとの違い。** iOS では、レポートを読むアプリにだけ MetricKit をリンクし、MetricKit は診断情報を共有拡張機能ではなくアプリに届けます。MetricKit は iOS 17 以降ではクラッシュのプロセス ID を持っているので、その実行のコンテキストと結び付けられます。それより前のバージョンでは、クラッシュの直前の実行と結び付けます。シミュレーターでは MetricKit は診断情報を届けません。Android では追加の設定は要りませんが、Android 11 より前にはネイティブクラッシュと ANR の記録がありません。macOS では、MetricKit は macOS 12 から使えます。アプリを終了させた、捕捉されない Objective-C の例外は、MetricKit のクラッシュとして報告されます（メインスレッドの例外は AppKit が捕捉してログに出力します）。Windows エラー報告は、これまでどおり記録を残します。ブラウザーでは、記録はアプリのファイル（IndexedDB）に置かれ、次の起動時に読まれます。捕捉されなかった JavaScript のエラー（ホストのものでも、アプリの `web/*.js` のものでも）は、その場で `"exception"` レポートになります。致命的なエラーとしては扱われず（ページは動き続けます）、その実行のコンテキストが付きます。1 回の実行につき最大 20 件で、同じエラーは一度だけです。ページはオリジンの `localStorage` に自分の実行が生きていることを記録するので、同じアプリのほかの開いているページがその記録に手を出すことはありません。記録を残すホストがない環境（`asuka test`）では、`reports()` は何も渡さずに終わり、ほかの関数は何もしません。
+**プラットフォームごとの違い。** iOS では、レポートを読むアプリにだけ MetricKit をリンクし、MetricKit は診断情報を共有拡張機能ではなくアプリに届けます。MetricKit は iOS 17 以降ではクラッシュのプロセス ID を持っているので、その実行のコンテキストと結び付けられます。それより前のバージョンでは、クラッシュの直前の実行と結び付けます。シミュレーターでは MetricKit は診断情報を届けません。Android では追加の設定は要りませんが、Android 11 より前にはネイティブクラッシュと ANR の記録がありません。macOS では、MetricKit は macOS 12 から使えます。アプリを終了させた、捕捉されない Objective-C の例外は、MetricKit のクラッシュとして報告されます（メインスレッドの例外は AppKit が捕捉してログに出力します）。Windows エラー報告は、これまでどおり記録を残します。ブラウザーでは、記録はアプリのファイル（IndexedDB）に置かれ、次の起動時に読まれます。捕捉されなかった JavaScript のエラー（Asuka のものでも、アプリの `web/*.js` のものでも）は、その場で `"exception"` レポートになります。致命的なエラーとしては扱われず（ページは動き続けます）、その実行のコンテキストが付きます。1 回の実行につき最大 20 件で、同じエラーは一度だけです。ページはオリジンの `localStorage` に自分の実行が生きていることを記録するので、同じアプリのほかの開いているページがその記録に手を出すことはありません。`asuka test` では記録は残らず、`reports()` は何も渡さずに終わり、ほかの関数は何もしません。
 
 **`asuka dev` では**、開発用アプリもビルドと同じように記録を残します。開発用アプリ自身のネイティブクラッシュはアプリのものではないので、アプリには報告されません。アプリのビルド（`asuka dev --once`、`asuka build`）では、すべてが報告されます。

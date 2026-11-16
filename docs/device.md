@@ -10,7 +10,7 @@ This page covers each package: what it does, its API, the permissions it
 brings and how it behaves on each platform.
 
 A package has one API everywhere. iOS and Android have nearly all of
-it. On macOS, Windows and Linux the host answers each package with the
+it. On macOS, Windows and Linux Asuka answers each package with the
 desktop's own services, and in a browser with the web's APIs. Where a
 platform has nothing to offer, the package answers as on a phone
 without it: the package's `notAvailable` error, an error that names
@@ -173,7 +173,7 @@ device without it:
 | `platform/vision` | Windows's OCR, in the languages whose OCR is installed (Settings, Time & language), and its face detector; codes as `platform/scan` reads them |
 | `platform/scan` | Windows has no reader of codes for apps: Asuka's own reads QR codes, Data Matrix, EAN-13 and EAN-8, UPC-A and UPC-E, Code 128 and Code 39 (not Aztec, PDF417, Code 93, Codabar nor ITF) |
 | `platform/imageedit` | Windows's codecs read (HEIC and WebP where their extensions are installed); a video's frame through Media Foundation |
-| `platform/maps` | Windows has no map control for desktop apps (its own needs a Bing Maps key): the host draws OpenStreetMap's tiles, downloaded two at a time and kept a week in the app's caches, with "© OpenStreetMap contributors" on the map; drag, the wheel or a pinch, double-click, + and -. `.satellite` and `.hybrid` show the streets (no free imagery), and `showsUser` shows nothing, as on Linux |
+| `platform/maps` | Windows has no map control for desktop apps (its own needs a Bing Maps key): Asuka draws OpenStreetMap's tiles, downloaded two at a time and kept a week in the app's caches, with "© OpenStreetMap contributors" on the map; drag, the wheel or a pinch, double-click, + and -. `.satellite` and `.hybrid` show the streets (no free imagery), and `showsUser` shows nothing, as on Linux |
 | `platform/background` | The task keeps the PC from sleeping; there's no notification, so `update` changes nothing |
 | `platform/periodic` | Timers while the app runs (it isn't launched for them); one that wants power waits while the PC is on its battery |
 | `platform/screen` | `lock` and `setBars` do nothing; `preventCapture` leaves the app's windows out of screenshots and recordings; `screenshots()` says nothing |
@@ -189,13 +189,13 @@ device without it:
 
 ## On Linux
 
-A Linux app declares nothing either. Where the host goes through an XDG
+A Linux app declares nothing either. Where Asuka goes through an XDG
 desktop portal (files, the camera, location, notifications, mail,
 printing, opening files and links, keeping the system awake), the
 portal asks the user as it does, and it works in a Flatpak sandbox as
 out of one. The Flatpak manifest `asuka build --platform linux` writes
 lets the app reach only the display, the GPU, the network and the
-portals. Services the host reaches without a portal (Speech Dispatcher,
+portals. Services Asuka reaches without a portal (Speech Dispatcher,
 Evolution Data Server for contacts and calendars, NetworkManager for the
 connection's type, iio-sensor-proxy, a Video4Linux camera) need the
 `finish-args` that open them, added to the manifest; without them, the
@@ -203,7 +203,7 @@ package answers as on a system without the service. A notification due
 later needs systemd outside the sandbox: in a Flatpak it shows only
 while the app runs (see [On each platform](#on-each-platform)).
 
-The Linux host reaches the desktop's services through the portals where
+On Linux, Asuka reaches the desktop's services through the portals where
 there's one, GLib and GTK, and the libraries a desktop has, each loaded
 the first time it's used: a system without it answers an error that
 names what's missing.
@@ -221,7 +221,7 @@ names what's missing.
 | `shareFiles` | No share sheet: the files are copied to the clipboard, with a toast |
 | `platform/camera`, `platform/record` | The camera portal (it asks the user once; PipeWire's cameras, `gstreamer1.0-pipewire`), else the first Video4Linux camera, through GStreamer. `take()`: a dialog over the window with a live preview, Take Photo and Cancel. `camera.View`: the preview, mirrored, filling its box; front and back are the same camera (a computer's face the user). Videos are MPEG-4 (H.264 from x264 or OpenH264, AAC), else WebM; scanning codes needs GStreamer's `zbar` element. No camera: `CameraError.noCamera`; refused: `.notAllowed` |
 | `platform/scan`, `platform/vision` | Asuka's own reader reads codes, as on Windows: QR, Data Matrix, EAN, UPC, Code 128, Code 39 (no Aztec, PDF417, Code 93, Codabar or ITF). Tesseract (`libtesseract5` and a language's data) reads text; nothing finds faces: `faces` is empty. `vision.analyze` leaves out the text without Tesseract |
-| `platform/imageedit` | GdkPixbuf's loaders decode (HEIF and WebP where their loaders are installed), upright; the host does the actions; video frames from GStreamer |
+| `platform/imageedit` | GdkPixbuf's loaders decode (HEIF and WebP where their loaders are installed), upright; Asuka does the actions; video frames from GStreamer |
 | `platform/webauth` | A dialog over the window with a WebKitGTK web view (`ephemeral`: a session of its own); closing it cancels |
 | `platform/js` | A WebKitGTK web view that's never shown |
 | `platform/maps` | libshumate's map of OpenStreetMap's tiles (`libshumate-1.0-1`); `.satellite` and `.hybrid` show the streets; no user location layer. Without libshumate, the view says so and reports `error` |
@@ -235,7 +235,7 @@ names what's missing.
 | `platform/icloud` | No iCloud: "icloud: not available" |
 | `platform/biometric`, `platform/integrity`, `platform/agerange`, `platform/push` | None on Linux: not available, not supported. `platform/review` does nothing; `platform/tracking` answers `.allowed` |
 | `platform/pay` | No wallet pays for a Linux app: `available` says `.none`, `pay` throws `PayError.notAvailable`, `PayButton` shows nothing |
-| `platform/crash` | The host's crash output, which has a crash in native code too (a signal in GTK's code, a GLib abort), reported as `"native"`; the system's own record (systemd-coredump, apport) isn't read |
+| `platform/crash` | Asuka's crash output, which has a crash in native code too (a signal in GTK's code, a GLib abort), reported as `"native"`; the system's own record (systemd-coredump, apport) isn't read |
 | `haptic` | A desktop has no haptics: it does nothing |
 | `onShare`, shortcuts | iOS and Android only |
 
@@ -274,9 +274,9 @@ and its service worker for notifications and Web Push.
 | `haptic` | `navigator.vibrate`, where the browser has it (Chrome on Android) |
 | `platform/review`, `platform/integrity`, `platform/agerange`, `platform/appleauth`, `platform/icloud`, `platform/periodic`, `platform/widget`, `platform/liveactivity`, `platform/transcribe` | Not on the web: an error that says so, or the package's `notAvailable` |
 | `platform/purchase` | Google Play through the Digital Goods API, in a Trusted Web Activity; elsewhere no store (`PurchaseError.notAvailable`) |
-| `platform/maps` | OpenStreetMap's tiles, drawn by the host, as on Windows; `showsUser` once the page has the location permission |
+| `platform/maps` | OpenStreetMap's tiles, drawn by Asuka, as on Windows; `showsUser` once the page has the location permission |
 | `platform/pay` | Apple Pay where the browser has it (Safari), through the Payment Request API, the merchant validated by the app's server (`onValidateMerchant`); Google Pay elsewhere, through Google's web API (pay.js); each one's own button. A sheet shows only from a tap |
-| `platform/crash` | The core's fatal errors, and uncaught JavaScript errors as `"exception"` reports that aren't fatal |
+| `platform/crash` | Asuka's fatal errors, and uncaught JavaScript errors as `"exception"` reports that aren't fatal |
 | `platform/splash` | `hold` and `hide` do nothing |
 | `onShare`, shortcuts | iOS and Android only |
 
@@ -1275,7 +1275,7 @@ component Chat(id: string) {
 comes while the app is in the foreground shows: `.banner` (as with the
 app closed), `.quiet` (in Notification Center, the shade, without a
 banner or sound) or `.hide`. It's called as the notification comes, and
-must answer at once: the host waits a second at most, then shows it.
+must answer at once: Asuka waits a second at most, then shows it.
 `notify.stopPresenting()` shows them all again.
 
 ### Messages in conversations
@@ -1796,8 +1796,8 @@ nothing (the CLI says so).
 
 The sheet is a root of its own, in a process of its own, as iOS runs
 share extensions: on **iOS** the app's share extension, which iOS shows
-as a sheet, running the app and the host from the framework it shares
-with the app; on **Android** an Activity in a `:share` process, shown as
+as a sheet, running the app from the framework it shares with the app;
+on **Android** an Activity in a `:share` process, shown as
 a Material bottom sheet over the other app (dragging it down, tapping
 outside and back cancel it). The process ends with the sheet. A file's
 `path` is the sheet's until it closes: copy what the app keeps.
@@ -1812,12 +1812,10 @@ Groups capability (see [Shipping](shipping.md#ios)). The app doesn't
 hear what its sheet wrote while it was running: look again when it
 comes back to the front.
 
-The CLI sees that the app uses `sharesheet.active` and builds the sheet
-instead of the extension that opens the app. On iOS the app's code, the
-core and the host are then a framework in the app,
-`Frameworks/AsukaApp.framework`, which the app and its extension both
-load, as Xcode shares code with an extension: the app isn't bigger for
-its sheet. On the desktops and in a browser the app isn't offered in
+When the app uses `sharesheet.active`, Asuka builds the sheet instead
+of the extension that opens the app. On iOS the app's code is then a
+framework that the app and its extension both load, as Xcode shares
+code with an extension: the app isn't bigger for its sheet. On the desktops and in a browser the app isn't offered in
 other apps' share menus: `active()` is false there.
 
 In a test, `sharesheet.fake()` makes the app run as its sheet
@@ -2303,7 +2301,7 @@ component Checkout {
 }
 ```
 
-A native component shows on the fake host as its name, and a test's tap
+In a test, a native component shows as its name, and a tap
 on it is its `press`. [examples/checkout](../examples/checkout) sells a
 tea set this way.
 
@@ -3053,38 +3051,35 @@ and its `context`. What's reported, as its `kind`, on each platform:
 
 | | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `"panic"`: the core's own fatal error, with the Asuka code's stack | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `"panic"`: Asuka's own fatal error, with the Asuka code's stack | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `"exception"`: uncaught | NSException (Objective-C, Swift's `NSException`s) | a JVM `Throwable` | — | — | — | an uncaught JavaScript error (not fatal) |
-| `"native"`: a signal, a Mach or Windows exception | MetricKit | the system's tombstone | MetricKit; a fatal signal, the host's report | the host's report | the host's report (a signal in native code) | — |
+| `"native"`: a signal, a Mach or Windows exception | MetricKit | the system's tombstone | MetricKit; a fatal signal, Asuka's report | Asuka's report | Asuka's report (a signal in native code) | — |
 | `"hang"` | MetricKit's hangs (not fatal), the watchdog | ANRs, with their traces | MetricKit | — | — | — |
 | `"oom"` | the memory limit, when MetricKit says | low-memory kills | — | — | — | — |
 | `"resource"` | CPU and disk-write exceptions (not fatal) | excessive resource use | MetricKit | — | — | — |
 | `"nonfatal"`: `crash.record(e)` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-The core keeps the record on every platform: its own fatal
-error is written with the Asuka stack as the run ends, and an uncaught
-exception by the host's handler as the app ends (a handler set before, a
-crash SDK's, still runs after). The rest the system hands over on a
+Asuka keeps the record on every platform: its own fatal error is
+written with the Asuka stack as the run ends, and an uncaught exception
+as the app ends (a handler set before, a crash SDK's, still runs
+after). The rest the system hands over on a
 later launch: iOS and macOS's MetricKit diagnostics, and Android's
 record of how the app's processes ended
 (`getHistoricalProcessExitReasons`, Android 11 and later; a native
 crash's tombstone from Android 12). A crash the system reports again
-after the host's handler did (iOS's SIGABRT of an uncaught exception,
-Android's `REASON_CRASH`) is left out. On macOS, Windows and Linux the
-host writes what only it sees, a fatal signal or an exception nothing
-handled, for the core to report on the next launch.
+after Asuka did (iOS's SIGABRT of an uncaught exception, Android's
+`REASON_CRASH`) is left out. On macOS, Windows and Linux, a fatal signal
+or an exception nothing handled is reported on the next launch.
 
 Each report has its `context`: the app's version and build, the device's
 model and system, the process and how long it had run, whether it was in
 the foreground, and the last breadcrumbs (100 at most) and the values
-set. They're written to the app's data directory as they change, a line
-appended each (no sync, so as cheap as a write), the file rewritten when
-it's twice what it needs: they're on disk before the crash, whatever
+set. They're written to the app's data directory as they change, about
+as cheaply as a write, so they're on disk before the crash, whatever
 kills the app. The lifecycle's changes are breadcrumbs too ("app:
 background").
 
-A report's `text` is what the platform gives (the core's or the host's
-crash output, a stack trace, a tombstone, an ANR's traces); its
+A report's `text` is what the platform gives (Asuka's crash output, a stack trace, a tombstone, an ANR's traces); its
 `threads` are those stacks read into frames, the crashed one first. An
 Asuka frame has its `function`, `file` and `line`. A native one has its
 `binary`, the binary's UUID (Mach-O) or build ID (ELF) as `binaryId`, the
@@ -3119,12 +3114,12 @@ MetricKit from macOS 12; an uncaught Objective-C exception that ends the
 app is MetricKit's crash (AppKit catches those of the main thread and
 logs them). Windows Error Reporting keeps its record as ever. In a
 browser, the record is in the app's files (IndexedDB): the next launch
-reads it. An uncaught JavaScript error, the host's or the app's
+reads it. An uncaught JavaScript error, Asuka's or the app's
 `web/*.js`, is an `"exception"` report at once, not fatal (the page goes
 on), with the run's context; at most 20 a run, each once. A page marks
 its run alive in the origin's `localStorage`, so the app's other open
-pages leave its record alone. Where no host keeps a record (`asuka
-test`), `reports()` ends empty and the rest does nothing.
+pages leave its record alone. Under `asuka test` no record is kept:
+`reports()` ends empty and the rest does nothing.
 
 **Under `asuka dev`** the player keeps the record as a build does; its
 own native crashes aren't the app's, and aren't reported to it; a build
