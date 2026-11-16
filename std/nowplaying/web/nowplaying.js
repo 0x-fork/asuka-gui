@@ -5,8 +5,10 @@
 // playbackState says.
 import { State, Command } from "./nowplaying.asuka.js";
 
-// The Media Session's actions, by the command each sends.
-const actions = [
+// The Media Session's actions, by the command each sends: made as a
+// center is, not as the module loads (the generated module imports this
+// one first, so its Command isn't made yet then).
+const actions = () => [
   ["play", Command.play], ["pause", Command.pause], ["stop", Command.stop], ["nexttrack", Command.next],
   ["previoustrack", Command.previous], ["seekto", Command.seek], ["seekforward", Command.skipForward],
   ["seekbackward", Command.skipBackward],
@@ -22,14 +24,14 @@ export function makeCenter() {
     if (!enabled(c)) return;
     for (const w of [...watchers]) w(c, v);
   };
-  const handlers = new Map(actions.map(([name, c]) => [name, (d) => {
+  const handlers = new Map(actions().map(([name, c]) => [name, (d) => {
     if (c === Command.seek) command(c, Number(d?.seekTime) || 0);
     else if (c === Command.skipForward || c === Command.skipBackward) command(c, Number(d?.seekOffset) || info?.skip || 0);
     else command(c, 0);
   }]));
   const session = () => globalThis.navigator?.mediaSession;
   const setHandlers = (s) => {
-    for (const [name, c] of actions) quiet(() => s.setActionHandler(name, enabled(c) ? handlers.get(name) : null));
+    for (const [name, c] of actions()) quiet(() => s.setActionHandler(name, enabled(c) ? handlers.get(name) : null));
   };
   return {
     set(i) {

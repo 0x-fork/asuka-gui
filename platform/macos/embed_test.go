@@ -6,21 +6,73 @@ import (
 	"testing"
 )
 
-// Typed native modules' runtime, and the Swift the Mac's iCloud builds
-// in, are one file each in the iOS host and here. (Purchase.swift is the
-// Mac's own: on iOS, std/purchase's Swift does StoreKit.)
+// The Swift the iOS host and the Mac's share is one file each in both:
+// typed native modules' runtime, iCloud's, and the ops
+// decoder (go generate ./ops writes both copies of Ops.swift).
 func TestSwiftShared(t *testing.T) {
-	for _, name := range []string{"NativeModules.swift", "ICloud.swift"} {
-		ios, err := os.ReadFile("../ios/Sources/AsukaHost/" + name)
+	for mac, ios := range map[string]string{
+		"Sources/AsukaHost/NativeModules.swift": "Sources/AsukaHost/NativeModules.swift",
+		"Sources/AsukaHost/ICloud.swift":        "Sources/AsukaHost/ICloud.swift",
+		"Sources/AsukaOps/Ops.swift":            "Sources/AsukaOps/Ops.swift",
+		"Sources/AsukaOps/Actions.swift":        "Sources/AsukaOps/Actions.swift",
+		"Sources/AsukaOps/AlertFields.swift":    "Sources/AsukaOps/AlertFields.swift",
+		"Sources/AsukaOps/Keys.swift":           "Sources/AsukaOps/Keys.swift",
+		"Sources/AsukaOps/Sidebar.swift":        "Sources/AsukaOps/Sidebar.swift",
+	} {
+		a, err := os.ReadFile("../ios/" + ios)
 		if err != nil {
 			t.Fatal(err)
 		}
-		mac, err := Files.ReadFile("Sources/AsukaMac/" + name)
+		b, err := Files.ReadFile(mac)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(ios, mac) {
-			t.Errorf("platform/macos/Sources/AsukaMac/%s isn't the iOS host's: copy it", name)
+		if !bytes.Equal(a, b) {
+			t.Errorf("platform/macos/%s isn't the iOS host's platform/ios/%s: copy it", mac, ios)
+		}
+	}
+}
+
+// The hosts' copies of the core's header are the core's.
+func TestHeader(t *testing.T) {
+	core, err := os.ReadFile("../../core/include/asuka.h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"Sources/CAsuka/include/asuka.h", "../ios/Sources/CAsuka/include/asuka.h"} {
+		var b []byte
+		if p[0] == '.' {
+			b, err = os.ReadFile(p)
+		} else {
+			b, err = Files.ReadFile(p)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(core, b) {
+			t.Errorf("%s isn't core/include/asuka.h: copy it", p)
+		}
+	}
+}
+
+// The host's copy of the desktop hosts' shared header is theirs: the
+// host links that C (the CLI's MacShared; shared_*.c in its tests).
+func TestDesktopHeader(t *testing.T) {
+	want, err := os.ReadFile("../desktop/include/desktop.h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Files.ReadFile("Sources/CAsuka/include/desktop.h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(want, got) {
+		t.Error("platform/macos/Sources/CAsuka/include/desktop.h isn't platform/desktop/include/desktop.h: copy it")
+	}
+	for _, f := range []string{"jsontree.c", "files.c", "state.c", "flyout.c", "words.c", "words_gen.c"} {
+		b, err := Files.ReadFile("Sources/CAsuka/shared_" + f)
+		if err != nil || !bytes.Contains(b, []byte(`#include "../../../desktop/src/`+f+`"`)) {
+			t.Errorf("Sources/CAsuka/shared_%s doesn't include platform/desktop's %s: %v", f, f, err)
 		}
 	}
 }

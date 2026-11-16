@@ -43,6 +43,9 @@ static FILE *open_file(const char *path, const wchar_t *mode) {
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 static FILE *open_file(const char *path, const char *mode) { return fopen(path, mode); }
 #define SEP '/'
@@ -148,6 +151,19 @@ bool dsk_mkdirs(const char *path) {
 	return ok;
 }
 
+bool dsk_exists(const char *path) {
+	if (!path || !*path) return false;
+#ifdef _WIN32
+	wchar_t *w = wide(path);
+	bool ok = w && GetFileAttributesW(w) != INVALID_FILE_ATTRIBUTES;
+	free(w);
+	return ok;
+#else
+	struct stat st;
+	return stat(path, &st) == 0;
+#endif
+}
+
 bool dsk_write_file(const char *path, const void *data, size_t len) {
 	char *dir = dsk_dir(path);
 	if (dir) dsk_mkdirs(dir);
@@ -210,6 +226,12 @@ char *dsk_exe_path(void) {
 	DWORD n = GetModuleFileNameW(NULL, buf, 32768);
 	if (n == 0 || n >= 32768) return NULL;
 	return narrow(buf);
+#elif defined(__APPLE__)
+	char buf[4096];
+	uint32_t n = sizeof buf;
+	if (_NSGetExecutablePath(buf, &n) != 0) return NULL;
+	char *real = realpath(buf, NULL);
+	return real ? real : strdup(buf);
 #else
 	char buf[4096];
 	ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);

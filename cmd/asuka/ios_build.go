@@ -110,11 +110,11 @@ func buildIOS(app *asukaApp, o *buildOptions) error {
 		}
 		fmt.Printf("asuka: signing the widget extension with %q\n", widgetProf.name)
 	}
-	// The Notification Service Extension (push.Rewrite), whose profile is
+	// The Notification Service Extension (asuka/push's rewrite), whose profile is
 	// known once the features are: signed with one of its own, likewise.
 	if cfg.pushRewrite && !o.simulator {
 		if notificationProf, err = o.pickProfile(prof.team, cfg.notificationID(), cfg.IOS.NotificationProfile); err != nil {
-			return fmt.Errorf("the Notification Service Extension (push.Rewrite): %v", err)
+			return fmt.Errorf("the Notification Service Extension (asuka/push's rewrite): %v", err)
 		}
 		fmt.Printf("asuka: signing the Notification Service Extension with %q\n", notificationProf.name)
 	}

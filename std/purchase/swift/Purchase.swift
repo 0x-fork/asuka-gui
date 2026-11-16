@@ -490,3 +490,16 @@ func makeStore() throws -> any Store {
     if #available(macOS 12.0, *) { return AppStoreStore() }
     throw PurchaseError.notAvailable
 }
+
+#if os(iOS)
+/// StoreKit's transaction listener from the app's launch (the manifest's
+/// ios.launch), as Apple asks: a transaction that comes before the app's
+/// code reads (Ask to Buy approved, a renewal, a refund, an offer code
+/// redeemed in the App Store) is kept for events().
+@objc(AsukaPurchaseLaunch) final class PurchaseLaunch: NSObject, AsukaLaunching {
+    @MainActor static func launch(_ options: [UIApplication.LaunchOptionsKey: Any]) -> Bool {
+        Hub.shared.start()
+        return false
+    }
+}
+#endif

@@ -7,81 +7,85 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/egoist/asuka/internal/cbuild"
 )
 
-// An app's native packages' Swift (testdata/nativeapp's: the kitchen,
-// internal/nativegen's testdata) is built with Asuka's Swift into the
-// bundle's library, with Swift's concurrency runtime beside it for macOS
-// 11, and signed with the app; unchanged, it isn't built again; for an app
-// without native packages, the library goes.
-func TestMacSwift(t *testing.T) {
+// needMacBuild skips a test that builds a Mac app where it can't: not on
+// a Mac, without Xcode's tools, or with -short.
+func needMacBuild(t *testing.T) {
+	t.Helper()
 	if runtime.GOOS != "darwin" {
-		t.Skip("Swift for the Mac builds on a Mac")
+		t.Skip("a Mac app builds on a Mac")
 	}
+	if testing.Short() {
+		t.Skip("builds an app (not -short)")
+	}
+	if _, err := exec.LookPath("xcrun"); err != nil {
+		t.Skip("no Xcode command line tools")
+	}
+	if _, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: runtime.GOARCH}); err != nil {
+		t.Skip(err)
+	}
+}
+
+// An app's native packages' Swift (testdata/nativeapp's: the kitchen,
+// internal/nativegen's testdata) is built with the host's Swift into the
+// app's executable, linked with the core, with Swift's concurrency runtime
+// in its Frameworks for macOS 11 when it links it. An app without native
+// packages links the host's object every app shares, compiled once.
+func TestMacSwift(t *testing.T) {
+	needMacBuild(t)
 	if _, err := exec.LookPath("xcodebuild"); err != nil {
 		t.Skip("no Xcode")
 	}
 	app := testNativeApp(t)
 	tmp := t.TempDir()
 	bundle := filepath.Join(tmp, "App.app")
-	os.MkdirAll(filepath.Join(bundle, "Contents", "MacOS"), 0o755)
-	work := filepath.Join(tmp, "work")
-	run := macRunner(false)
-	if err := macSwift(app, bundle, work, []string{runtime.GOARCH}, false, run); err != nil {
+	exe := filepath.Join(bundle, "Contents", "MacOS", "App")
+	b := &macBuild{app: app, work: filepath.Join(tmp, "work"), run: macRunner(false)}
+	if err := b.executable(exe, []string{runtime.GOARCH}, nil); err != nil {
 		t.Fatal(err)
 	}
-	fw := filepath.Join(bundle, "Contents", "Frameworks")
-	lib := filepath.Join(fw, macSwiftLib)
-	out, err := exec.Command("nm", "-gU", lib).Output()
+	if err := b.embed(bundle, exe); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("nm", exe).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, sym := range []string{"_asuka_natives_boot", "_asuka_natives_make", "_asuka_native_new", "_asuka_native_call", "_asuka_native_start"} {
-		if !containsField(string(out), sym) {
-			t.Errorf("the library doesn't export %s", sym)
+	s := string(out)
+	for _, sym := range []string{"_asuka_start", "_asuka_dev_connect"} {
+		if !containsField(s, sym) {
+			t.Errorf("the executable hasn't the core's %s", sym)
 		}
 	}
-	if !strings.Contains(string(out), "AsukaModule_github_com_egoist_asuka_internal_nativegen_testdata_kitchen") {
-		t.Error("the library hasn't the kitchen's Swift")
+	if !strings.Contains(s, "AsukaModule_github_com_egoist_asuka_internal_nativegen_testdata_kitchen") {
+		t.Error("the executable hasn't the kitchen's Swift")
 	}
-	if macImports(lib, "@rpath/libswift_Concurrency.dylib") {
+	fw := filepath.Join(bundle, "Contents", "Frameworks")
+	if macImports(exe, "@rpath/libswift_Concurrency.dylib") {
 		if _, err := os.Stat(filepath.Join(fw, "libswift_Concurrency.dylib")); err != nil {
-			t.Error("the library links Swift concurrency, and its runtime isn't beside it")
+			t.Error("the executable links Swift concurrency, and its runtime isn't in Frameworks")
 		}
 	}
 
-	// Unchanged: not built again.
-	st, _ := os.Stat(lib)
-	time.Sleep(10 * time.Millisecond)
-	if err := macSwift(app, bundle, work, []string{runtime.GOARCH}, false, run); err != nil {
-		t.Fatal(err)
-	}
-	if st2, _ := os.Stat(lib); !st2.ModTime().Equal(st.ModTime()) {
-		t.Error("built again with nothing changed")
-	}
-
-	// Signed with the app, its libraries first.
-	os.WriteFile(filepath.Join(bundle, "Contents", "MacOS", "App"), []byte("#!/bin/sh\n"), 0o755)
-	os.WriteFile(filepath.Join(bundle, "Contents", "Info.plist"), []byte(plist(map[string]any{
-		"CFBundleExecutable": "App", "CFBundleIdentifier": "dev.asuka.test", "CFBundlePackageType": "APPL"})), 0o644)
-	if err := signMac(bundle, "-", "", run); err != nil {
-		t.Fatal(err)
-	}
-	if err := exec.Command("codesign", "--verify", "--strict", lib).Run(); err != nil {
-		t.Errorf("the library isn't signed: %v", err)
-	}
-
-	// An app without native packages: no library. (sqliteapp has some
-	// now: asuka/sqlite's Swift says where its databases are kept.)
+	// An app without native packages: the shared host object, no
+	// packages' build.
 	plainDir := t.TempDir()
 	os.WriteFile(filepath.Join(plainDir, "app.asuka"), []byte("app { Text(\"plain\") }\n"), 0o644)
 	plain := projectApp(t, plainDir, nil)
-	if err := macSwift(plain, bundle, work, []string{runtime.GOARCH}, false, run); err != nil {
+	pb := &macBuild{app: plain, work: filepath.Join(tmp, "plain"), run: macRunner(false)}
+	objs, pkgs, err := pb.host(runtime.GOARCH, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(lib); err == nil {
-		t.Error("the library stayed for an app without native packages")
+	if pkgs != nil || len(objs) != 1 || !strings.Contains(objs[0], filepath.Join("asuka", "mac-host")) {
+		t.Errorf("an app without native packages: %v, %v", objs, pkgs)
+	}
+	again, _, err := pb.host(runtime.GOARCH, nil)
+	if err != nil || again[0] != objs[0] {
+		t.Errorf("compiled again: %v %v", again, err)
 	}
 }
 

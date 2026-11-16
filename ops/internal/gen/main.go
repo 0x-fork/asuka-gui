@@ -1,6 +1,7 @@
 // Command gen writes the code generated from ops.Schema: the Go
 // constants (ops/schema_gen.go) and the Swift decoder and event encoder
-// (platform/ios/Sources/AsukaOps/Ops.swift) and the Kotlin decoder and event
+// (platform/ios/Sources/AsukaOps/Ops.swift, and its copy for the Mac's host
+// in platform/macos) and the Kotlin decoder and event
 // encoder (platform/android/asuka/src/main/java/dev/asuka/Ops.kt) and the
 // JavaScript decoder and event encoder of the web host
 // (platform/web/src/ops.js) and the C core's numbers and name tables
@@ -29,7 +30,11 @@ func main() {
 	}
 	s := ops.Schema
 	write(filepath.Join(".", "schema_gen.go"), goFile(s), true)
+	// One Swift decoder, for the iOS host and the Mac's (platform/macos's
+	// copy, which its package builds from: SwiftPM takes no sources from
+	// outside a package).
 	write(filepath.Join(root, "platform", "ios", "Sources", "AsukaOps", "Ops.swift"), swiftFile(s), false)
+	write(filepath.Join(root, "platform", "macos", "Sources", "AsukaOps", "Ops.swift"), swiftFile(s), false)
 	write(filepath.Join(root, "platform", "android", "asuka", "src", "main", "java", "dev", "asuka", "Ops.kt"), kotlinFile(s), false)
 	write(filepath.Join(root, "platform", "web", "src", "ops.js"), jsFile(s), false)
 	write(filepath.Join(root, "core", "src", "ops", "ops_gen.h"), cHeader(s), false)
@@ -428,7 +433,7 @@ public struct AsukaWriter {
     public mutating func header(_ id: UInt32, _ kind: UInt16) { u32(id); u16(kind) }
     public mutating func environment(_ e: AsukaEnvironment) {
         for f in [e.width, e.height, e.safeTop, e.safeRight, e.safeBottom, e.safeLeft, e.keyboard, e.scale, e.fontScale] { f32(f) }
-        u8((e.dark ? 1 : 0) | (e.reduceMotion ? 2 : 0) | (e.platform & 3) << 2 | (e.screenReader ? 32 : 0))
+        u8((e.dark ? 1 : 0) | (e.reduceMotion ? 2 : 0) | (e.platform & 7) << 2 | (e.screenReader ? 32 : 0))
         u8((e.widthClass & 3) | (e.heightClass & 3) << 2)
         string(e.locale)
         string(e.timeZone)

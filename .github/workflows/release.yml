@@ -1,9 +1,7 @@
 name: release
 # A tag v1.2.3 publishes the CLI: its npm packages (@egoist/asuka and a
 # prebuilt binary per platform) and a GitHub release with the binaries,
-# for the shell installer, and the desktop hosts (asuka-host-<os>-<arch>),
-# which the CLI fetches for desktop builds, checked by the hashes it was
-# built with.
+# for the shell installer.
 on:
   push:
     tags: ["v*"]
@@ -33,7 +31,6 @@ jobs:
             f=$(ls $d/bin/asuka*)
             case "$f" in *.exe) cp "$f" "dist/bin/asuka-$p.exe" ;; *) cp "$f" "dist/bin/asuka-$p" ;; esac
           done
-          cp dist/npm/hosts/asuka-host-* dist/bin/
           (cd dist/bin && sha256sum * > SHA256SUMS)
           gh release create "$GITHUB_REF_NAME" dist/bin/* --generate-notes
         env:

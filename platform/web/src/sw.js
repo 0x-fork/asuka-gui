@@ -11,7 +11,7 @@
 //   - push: a Web Push message (the payload docs/web.md describes) shows
 //     as a notification. A page of the app that's open is asked first
 //     (the one in front, else any): it gets it (push.OnReceive), may
-//     rewrite it (push.Rewrite) and says how it shows (notify.Present);
+//     rewrite it (push.rewrite) and says how it shows (notify.Present);
 //     the other pages get it too. A message without a title or body is a
 //     data message: the open pages get it, nothing shows.
 //   - notificationclick: the tap, or an action (its reply's text, where
@@ -93,7 +93,7 @@
   }
 
   // How long the page in front has to answer (a rewrite runs the app's
-  // Go code: push.Rewrite).
+  // code: push.rewrite).
   const answerMs = 10000;
 
   async function onPush(event) {

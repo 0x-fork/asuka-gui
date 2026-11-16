@@ -79,6 +79,13 @@ void ak_sched_wait_posted(void) {
 
 void ak_sched_set_wake(void (*wake)(void)) { wake_host = wake; }
 
+void ak_sched_wake(void) {
+	ak_mutex_lock(&post_mu);
+	void (*w)(void) = wake_host;
+	ak_mutex_unlock(&post_mu);
+	if (w) w();
+}
+
 void ak_post(ak_cb cb, void *ctx) {
 	ak_mutex_lock(&post_mu);
 	bool first = posted.len == 0;

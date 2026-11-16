@@ -5,7 +5,7 @@
 // tap). Accelerations in g, rotation rates in radians per second, the
 // field in microteslas, device motion's attitude as a quaternion. A page
 // can't read a barometer or a pedometer.
-import { Sensor, SensorsError } from "./sensors.asuka.js";
+import { Sensor, SensorError } from "./sensors.asuka.js";
 
 const G = 9.80665;
 const deg = Math.PI / 180;
@@ -62,7 +62,10 @@ async function allowMotion() {
   }
 }
 
-const genericName = { [Sensor.accelerometer]: "Accelerometer", [Sensor.gyroscope]: "Gyroscope", [Sensor.magnetometer]: "Magnetometer", [Sensor.light]: "AmbientLightSensor" };
+// Made at first use, not as the module loads: the generated module imports
+// this one first, so its enums aren't made yet then.
+let genericNames;
+const genericName = () => (genericNames ??= { [Sensor.accelerometer]: "Accelerometer", [Sensor.gyroscope]: "Gyroscope", [Sensor.magnetometer]: "Magnetometer", [Sensor.light]: "AmbientLightSensor" });
 
 const probed = new Map(); // sensor -> Promise of "generic", "events" or false
 
@@ -70,7 +73,7 @@ const probed = new Map(); // sensor -> Promise of "generic", "events" or false
 function source(s) {
   if (!probed.has(s)) {
     probed.set(s, (async () => {
-      const name = genericName[s];
+      const name = genericName()[s];
       if (name && generic(name) && (await probeGeneric(generic(name)))) return "generic";
       if ((s === Sensor.accelerometer || s === Sensor.gyroscope || s === Sensor.motion) && motionEvents()) return "events";
       return false;
@@ -99,15 +102,15 @@ export function makeSensors() {
     // Sync, so not probed: what the browser has the API for (watch finds
     // whether it reads).
     available(s) {
-      const name = genericName[s];
+      const name = genericName()[s];
       if (name && generic(name)) return true;
       return (s === Sensor.accelerometer || s === Sensor.gyroscope || s === Sensor.motion) && motionEvents();
     },
 
     async watch(signal, s, every, reading) {
       const from = await source(s);
-      if (!from) throw new SensorsError("notAvailable");
-      if (from === "events" && !(await allowMotion())) throw new SensorsError("notAllowed");
+      if (!from) throw new SensorError("notAvailable");
+      if (from === "events" && !(await allowMotion())) throw new SensorError("notAllowed");
       const hz = Math.min(60, Math.max(1, 1000 / Math.max(every, 5)));
       let last = -1;
       const send = (t, values) => {
@@ -161,14 +164,14 @@ export function makeSensors() {
           break;
         }
         default:
-          throw new SensorsError("notAvailable");
+          throw new SensorError("notAvailable");
       }
       await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
       for (const f of stops) f();
     },
 
     async steps() {
-      throw new SensorsError("notAvailable");
+      throw new SensorError("notAvailable");
     },
 
     async simulate() {

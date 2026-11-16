@@ -1,0 +1,34 @@
+// Button Padding shows a button whose padding replaces the platform's
+// own (e2e's TestButtonPadding*): red, its title red too, under a
+// magenta square 48 points high that the test measures it against.
+
+component ButtonPadding {
+  View {
+    grow: 1
+    justify: .center
+    align: .center
+    gap: 24
+    background: #ffffff
+
+    View {
+      width: 48
+      height: 48
+      background: #ff00ff
+    }
+    Button("Continue") {
+      variant: .plain
+      minHeight: 48
+      padding: [10, 22]
+      background: #ff0000
+      color: #ff0000
+      font: Font(size: 16, weight: .bold)
+    }
+  }
+}
+
+app { ButtonPadding() }
+
+test "a button under the square" {
+  let app = mount(ButtonPadding())
+  app.expect("Continue")
+}

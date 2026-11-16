@@ -73,6 +73,32 @@ func (c Compiler) IsZig() bool {
 	return len(c.Args) > 0 && c.Args[0] == "cc" && strings.Contains(filepath.Base(c.Path), "zig")
 }
 
+// IsGCC reports whether the compiler is GCC (not clang, which defines
+// __GNUC__ too), asking it once.
+func (c Compiler) IsGCC() bool {
+	key := c.Path + " " + strings.Join(c.Args, " ")
+	gccMu.Lock()
+	defer gccMu.Unlock()
+	if v, ok := gccSeen[key]; ok {
+		return v
+	}
+	args := append(append([]string{}, c.Args...), "-dM", "-E", "-x", "c", os.DevNull)
+	out, err := exec.Command(c.Path, args...).Output()
+	v := err == nil && strings.Contains(string(out), "__GNUC__") && !strings.Contains(string(out), "__clang__")
+	gccSeen[key] = v
+	return v
+}
+
+var (
+	gccMu   sync.Mutex
+	gccSeen = map[string]bool{}
+)
+
+// GCCFlags are what GCC is given beyond Flags: its format-truncation
+// warning (-Wall's at -O2) guesses at the lengths of strings it can't
+// know, and -Werror would make a guess an error.
+var GCCFlags = []string{"-Wno-format-truncation"}
+
 // Flags are the flags every file of the core is compiled with.
 var Flags = []string{"-std=c17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-Wno-missing-field-initializers"}
 
@@ -355,7 +381,10 @@ func headers(core string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if !e.IsDir() && strings.HasSuffix(p, ".h") {
+		// Headers, and the sources of libraries the core vendors
+		// (third_party: its C includes them), which count in the cache's
+		// key as headers do.
+		if !e.IsDir() && (strings.HasSuffix(p, ".h") || strings.Contains(p, string(filepath.Separator)+"third_party"+string(filepath.Separator))) {
 			out = append(out, p)
 		}
 		return nil

@@ -80,6 +80,9 @@ void ak_ix_style_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev);
 // registration until it goes.
 struct ak_keyreg;
 struct ak_keyreg *ak_keys_register(ak_view *target, ak_arr *keys, struct ak_keyreg **slot);
+// ak_keys_window is the target keys registered now go to: the view of the
+// Window the calling code is built in, or the root (window.c).
+ak_view *ak_keys_window(void);
 void ak_keys_update(struct ak_keyreg *g, ak_arr *keys);
 void ak_keys_forget(struct ak_keyreg *g);
 void ak_rootkeys_free(struct ak_rootkeys *k);

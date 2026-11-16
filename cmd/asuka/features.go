@@ -54,12 +54,11 @@ type manifestNeeds struct {
 		// Derived are what the CLI makes of the app's own asuka.toml for
 		// the package (derivedNeeds).
 		Derived []string `json:"derived"`
+		// Launch is the package's class that runs as the app launches,
+		// before the app's code (the host's AsukaLaunching), by its
+		// Objective-C name: Info.plist's AsukaLaunch lists them.
+		Launch string `json:"launch"`
 	} `json:"ios"`
-	MacOS struct {
-		// HostFlags are compilation conditions of the Mac's Swift
-		// (platform/macos), which the app's library is built with.
-		HostFlags []string `json:"hostFlags"`
-	} `json:"macos"`
 	Android struct {
 		// Permissions: "name", "name:28" (up to API level 28), or
 		// "name|flags" (usesPermissionFlags).
@@ -73,6 +72,10 @@ type manifestNeeds struct {
 		// (platform/android/asuka-<name>) the package's host module needs:
 		// asuka/push's Firebase, asuka/periodic's WorkManager.
 		HostModules []string `json:"hostModules"`
+		// Launch is the package's class that runs as the app's process
+		// starts (the host's AsukaLaunching), by its name: the app's
+		// manifest declares the host's AsukaLauncher with them.
+		Launch string `json:"launch"`
 	} `json:"android"`
 	Linux struct {
 		// Flatpak are the Flatpak's finish-args (the system bus names
@@ -93,6 +96,11 @@ var derivedNeeds = []string{
 	// NSLocationTemporaryUsageDescriptionDictionary, with asuka.toml's
 	// ios.locationPurposes).
 	"locationPrecise",
+	// The app's own share sheet (asuka/sharesheet): with asuka.toml's
+	// shareTarget, iOS's share extension runs the app as its sheet (the
+	// app's code in a framework the two share, their App Group and
+	// keychain group), and Android's shares go to AsukaShareActivity.
+	"shareSheet",
 }
 
 // readManifest reads the manifest in dir (nil, no error: none).
@@ -212,7 +220,17 @@ func (c *appConfig) addNeeds(m *manifestNeeds) error {
 		}
 	}
 	add(&c.derived, m.IOS.Derived...)
-	add(&c.macSwift, m.MacOS.HostFlags...)
+	if l := m.IOS.Launch; l != "" {
+		if c.plistArrays == nil {
+			c.plistArrays = map[string][]string{}
+		}
+		have := c.plistArrays["AsukaLaunch"]
+		add(&have, l)
+		c.plistArrays["AsukaLaunch"] = have
+	}
+	if l := m.Android.Launch; l != "" {
+		add(&c.androidLaunch, l)
+	}
 	for _, p := range m.Android.Permissions {
 		c.addPermission(p)
 	}

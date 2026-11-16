@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
-// A button's Padding replaces the platform's own, as CSS's does
-// (e2e/testdata/buttonpadding): with a MinHeight of 48 and 10 points
+// A button's padding replaces the platform's own, as CSS's does
+// (e2e/testdata/buttonpadding): with a minHeight of 48 and 10 points
 // above and below a 16 point title, the button is 48 points high, on
 // every platform. It's measured on the screen, against a magenta square
 // 48 points high.
@@ -78,7 +78,7 @@ func checkButtonHeight(t *testing.T, shot func() ([]byte, error)) {
 	}
 	t.Logf("the button is %.1f points high", h)
 	if math.Abs(h-48) > 1 {
-		t.Errorf("the button is %.1f points high, want 48: its Padding is added to the platform's own", h)
+		t.Errorf("the button is %.1f points high, want 48: its padding is added to the platform's own", h)
 	}
 }
 

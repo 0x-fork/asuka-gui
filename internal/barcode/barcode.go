@@ -115,8 +115,15 @@ func Decode(img image.Image, kinds ...Kind) []Code {
 		}
 		return a.Bounds.Min.X - b.Bounds.Min.X
 	})
+	if decoded != nil {
+		decoded(lum.pix, lum.w, lum.h, want, off, codes)
+	}
 	return codes
 }
+
+// decoded, if set (the tests), hears each Decode of an image: its gray
+// levels, the kinds asked for, the image's origin, and the codes found.
+var decoded func(gray []uint8, w, h int, want kindSet, origin image.Point, codes []Code)
 
 // dedupe drops a code found again in the same place.
 func dedupe(codes []Code) []Code {

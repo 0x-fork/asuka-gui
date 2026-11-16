@@ -1,0 +1,180 @@
+// Keys is a web e2e's app (e2e/keys_test.go): a search field whose
+// surroundings take Up, Down and Enter (a view's keys, a launcher's), a
+// field with an Escape of its own, the window's keys (useKeys), a list's
+// rows inside a view with keys, a sheet whose keys go on to the window's,
+// a panel (a Window) with keys of its own and a sheet of its own, and a
+// Window opened with its sheet, each on a line the test reads.
+
+let fruits = ["apple", "banana", "cherry"]
+
+state sel = 0
+state opened = "none"
+state submitted = 0
+state escaped = 0
+state spaces = 0
+state saved = 0
+state mainEscapes = 0
+state panelKeys = ""
+state listKeys = ""
+state sheetKeys = ""
+state twoKeys = ""
+state sheetOpen = false
+state panelOpen = false
+state panelSheet = false
+state twoOpen = false
+state twoSheet = false
+
+fn move(by: int) {
+  sel = (sel + by + fruits.count()) % fruits.count()
+}
+
+component Keys {
+  // The window's: with nothing focused (a viewer's Space), and from
+  // anywhere in it, last (⌘S, Ctrl+S).
+  useKeys([
+    Shortcut(key: "space", run: () => { spaces += 1 }),
+    Shortcut(key: "s", primary: true, run: () => { saved += 1 }),
+    Shortcut(key: "escape", run: () => { mainEscapes += 1 }),
+  ])
+
+  SafeArea {
+    padding: 12
+    gap: 6
+
+    Text("status: ready")
+    View {
+      gap: 6
+      keys: [
+        Shortcut(key: "down", run: () => move(1)),
+        Shortcut(key: "up", run: () => move(-1)),
+        Shortcut(key: "enter", run: () => { opened = fruits[sel] }),
+      ]
+      TextField {
+        placeholder: "Search"
+        keys: [Shortcut(key: "escape", run: () => { escaped += 1 })]
+        on submit { submitted += 1 }
+      }
+      Text("selected: {fruits[sel]}")
+    }
+    Text("opened: {opened}")
+    Text("submitted: {submitted}")
+    Text("field escape: {escaped}")
+    Text("window space: {spaces}")
+    Text("window save: {saved}")
+    Text("window escape: {mainEscapes}")
+    Text("panel keys:{panelKeys}")
+    Text("list keys:{listKeys}")
+    Text("sheet keys:{sheetKeys}")
+    Text("window two keys:{twoKeys}")
+    // A list's rows: a key in a row's field goes on to the view around
+    // the list.
+    View {
+      height: 100
+      keys: [Shortcut(key: "pagedown", run: () => { listKeys += " pagedown" })]
+      List {
+        for i in [1, 2] key i {
+          Row {
+            height: 40
+            TextField { placeholder: "Row" }
+          }
+        }
+      }
+    }
+    Button("Open sheet") {
+      on press { sheetOpen = true }
+    }
+    // The sheet's keys come first, then the window's.
+    Sheet {
+      bind open: sheetOpen
+      View {
+        padding: 12
+        keys: [Shortcut(key: "escape", run: () => { sheetKeys += " escape" })]
+        TextField { placeholder: "In the sheet" }
+        Button("Close sheet") {
+          on press { sheetOpen = false }
+        }
+      }
+    }
+    Button("Open panel") {
+      on press { panelOpen = true }
+    }
+    Window {
+      bind open: panelOpen
+      panel: true
+      width: 320
+      height: 120
+      Panel()
+    }
+    // A Window and its sheet, opened together: the sheet goes on that
+    // Window before it's in use, its keys on to that Window's.
+    Button("Open window two") {
+      on press {
+        twoOpen = true
+        twoSheet = true
+      }
+    }
+    Window {
+      bind open: twoOpen
+      title: "Two"
+      width: 360
+      height: 260
+      WindowTwo()
+    }
+  }
+}
+
+/// The panel's content: a key in it goes no further than its own keys.
+component Panel {
+  useKeys([
+    Shortcut(key: "escape", run: () => { panelKeys += " escape" }),
+    Shortcut(key: "down", run: () => { panelKeys += " down" }),
+  ])
+
+  Column {
+    padding: 12
+    TextField { placeholder: "In the panel" }
+    Button("Open panel sheet") {
+      on press { panelSheet = true }
+    }
+    // Declared in the panel: on the panel, its keys on to the panel's,
+    // wherever the keyboard was as it opened.
+    Sheet {
+      bind open: panelSheet
+      Column {
+        padding: 12
+        TextField { placeholder: "In the panel's sheet" }
+        Button("Close panel sheet") {
+          on press { panelSheet = false }
+        }
+      }
+    }
+  }
+}
+
+/// The second Window's content, with a sheet of its own.
+component WindowTwo {
+  useKeys([Shortcut(key: "escape", run: () => { twoKeys += " escape" })])
+
+  Column {
+    padding: 12
+    Text("window two")
+    Sheet {
+      bind open: twoSheet
+      Column {
+        padding: 12
+        TextField { placeholder: "In window two's sheet" }
+      }
+    }
+  }
+}
+
+app { Keys() }
+
+test "the window's and the views' keys" {
+  let app = mount(Keys())
+  app.expect("selected: apple")
+  app.pressKey("space")
+  app.expect("window space: 1")
+  app.pressKey("s", primary: true)
+  app.expect("window save: 1")
+}

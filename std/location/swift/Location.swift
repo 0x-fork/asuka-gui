@@ -541,3 +541,18 @@ func onMain<T>(_ body: @MainActor () -> T) -> T {
 }
 
 func makeLocator() throws -> any Locator { CoreLocator() }
+
+#if os(iOS)
+/// The background part's managers as the app launches (the manifest's
+/// ios.launch, for an app that calls startUpdates or monitor): iOS
+/// relaunches the app for a significant change or a region and hands
+/// the event to a manager made before launch ends. The hub keeps it until
+/// the app reads it; for such a launch the app's code starts at once,
+/// without a screen.
+@objc(AsukaLocationLaunch) final class LocationLaunch: NSObject, AsukaLaunching {
+    @MainActor static func launch(_ options: [UIApplication.LaunchOptionsKey: Any]) -> Bool {
+        _ = Hub.shared
+        return options[.location] != nil
+    }
+}
+#endif

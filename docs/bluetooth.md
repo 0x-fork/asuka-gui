@@ -163,14 +163,73 @@ async fn serving(s: [bluetooth.LocalService]) { try? await bluetooth.serve(s) }
 async fn advertising() { try? await bluetooth.advertise(localName: "Thermo", services: [bluetooth.battery]) }
 ```
 
+## In the background
+
+With the app out of sight its connections go on, and a scan can too:
+
+- `bluetooth.backgroundScan(services, duplicates:)` scans for devices
+  advertising one of the services, with the app in the background too.
+  iOS scans so only for services, slower, and hears each device once; an
+  app that calls it gets iOS's `bluetooth-central` mode. Android's is a
+  scan the system runs, which goes on after the app's process has gone
+  (Android pauses one without services while the screen is off). It
+  stops as its reader does. The desktops scan only while the app runs;
+  the web throws `notAvailable`, as `scan` does.
+- With a background mode (asuka.toml's `bluetooth.background`, or
+  `backgroundScan`'s), iOS keeps the app's connections and scan when it
+  ends the app for memory, and starts the app again, without a screen,
+  when one has news: a device notifies, the scan hears one. Android's
+  background scan keeps what it hears while the app's process is gone.
+- `bluetooth.restored()` is a stream of what came back, a `Restored`:
+  `devices`, the connections iOS kept (connect to them again, which is
+  at once for one connected); `scanServices`, the services of the scan
+  iOS kept (scan for them again with `backgroundScan`, or stop it);
+  `advertisements`, what a background scan heard with no scan of the
+  app's reading it. What the launch brought comes first, kept until it's
+  read: read it as the app starts, in a task of the app's root.
+- `bluetooth.stopBackgroundScan()` stops the scan a previous run left
+  (Android's, after its process went; iOS's, restored), once the app has
+  what it heard. This run's background scans go on, and one of them
+  replaces it too.
+
+```asuka
+state heard: [string] = []
+
+async fn followRestored() throws {
+  for await r in bluetooth.restored() {
+    for a in r.advertisements { heard.push(a.device.id) }
+    if !r.scanServices.isEmpty() { bluetooth.stopBackgroundScan() }
+  }
+}
+
+async fn scanningAway() throws {
+  for await a in bluetooth.backgroundScan([bluetooth.heartRate]) {
+    heard.push(a.device.id)
+  }
+}
+
+component Straps {
+  task { try? await followRestored() }
+  task { try? await scanningAway() }
+
+  Column {
+    for id in heard key id { Text(id) }
+  }
+}
+```
+
+iOS doesn't start the app again once the user has swiped it away in the
+app switcher, and Android's scan stops with a reboot or as the user
+force-stops the app.
+
 ## What the build adds
 
 An app that imports the package is given what it needs:
 
 | Platform | What |
 | --- | --- |
-| iOS | `NSBluetoothAlwaysUsageDescription` (say yours in `ios.usage`); the background modes of asuka.toml's `bluetooth.background` |
-| Android | `BLUETOOTH_SCAN` (with `neverForLocation` unless `bluetooth.location`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; `android.hardware.bluetooth_le`, not required |
+| iOS | `NSBluetoothAlwaysUsageDescription` (say yours in `ios.usage`); the background modes of asuka.toml's `bluetooth.background`, and `bluetooth-central` for an app that calls `backgroundScan`; with a mode, the package's launch class, which makes the managers iOS restores before launch ends |
+| Android | `BLUETOOTH_SCAN` (with `neverForLocation` unless `bluetooth.location`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; `android.hardware.bluetooth_le`, not required; the background scan's receiver, for an app that calls `backgroundScan` |
 | macOS | The purpose string, and the hardened runtime's `com.apple.security.device.bluetooth` entitlement |
 | Linux | The Flatpak's `--system-talk-name=org.bluez` |
 
@@ -185,6 +244,8 @@ An app that imports the package is given what it needs:
 | Advertise | The name and services only | ✓ | Services and manufacturer data, no name | ✓ | — |
 | MTU | The system's | Asked for (517) | The system's | BlueZ's | 23 |
 | RSSI | ✓ | ✓ | — | While BlueZ hears the device | — |
+| Background scan | iOS: for services, slower; macOS: while the app runs | ✓ The system's, after the process | While the app runs | While the app runs | — |
+| `restored()` | iOS: connections, the scan and what it heard | What the background scan heard | — | — | — |
 
 On Windows, `request()` asks for the radio's access (an unpackaged app
 has it); Linux asks no permission, and `request()` is `state()`. No
@@ -205,7 +266,12 @@ a notification, `subscribed(…)` says whether the app follows one,
 lists what the app wrote, `scans` and `connected` what runs. As a
 peripheral, `centralRead`, `centralWrite` and `centralSubscribe` play a
 central against the app's services; `servers`, `advertising`,
-`notified` and `lastRead()` say what the app did.
+`notified` and `lastRead()` say what the app did. `restore(Restored(…))`
+plays the system starting the app for Bluetooth (`restored()` gives it,
+kept for its first reader); `backgroundScans` counts the background
+scans running, and `backgroundLeft` says a previous run's is left
+(`restore` leaves one when it brings back a scan or what one heard; a
+background scan of the app's or `stopBackgroundScan()` ends it).
 
 ```asuka
 test "a strap, heard" {

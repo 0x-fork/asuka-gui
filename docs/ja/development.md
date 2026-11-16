@@ -43,15 +43,15 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 各プラットフォームの開発用アプリは次のとおりです。
 
-- **Windows**：コアをリンクした Windows ホスト（C で書かれ、Win32 を使います）で、1 つのコンソールプログラムです。Asuka のキャッシュ内のアプリのディレクトリに置かれます。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
-- **macOS、Linux**：デスクトップのホスト（`cmd/asuka-host`。AppKit か GTK を使い、C の ABI を通じてコアを動かします）と、その隣に置いたコア（`libasuka.dylib`、`libasuka.so`）です。Asuka のキャッシュ内のアプリのディレクトリに置かれます。Mac ではリリースと同じ形の `.app` です。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **macOS**：コア（とアプリのネイティブパッケージの Swift）をリンクした Swift のホストで、リリースと同じ形の `.app` です。Asuka のキャッシュ内のアプリのディレクトリに置かれ、環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **Windows、Linux**：コアをリンクした、アプリを含まない C のホスト（Windows では Win32、Linux では GTK 4 と libadwaita を使います）で、1 つのプログラムです（Windows ではコンソールプログラム）。Asuka のキャッシュ内のアプリのディレクトリに置かれます。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
 - **iOS**：Swift のホストをコア（`libasuka.a`）とリンクして、アプリの `.app` にしたものです。独自のフレームワーク（WebKit、AVKit など）をリンクするホストの部分もすべて含むので、編集中のアプリはそのどれでも使えます。シミュレーターでは `xcrun simctl` で、環境変数に `ASUKA_DEV` を付けてインストール・起動します。iPhone では開発用に署名し、`xcrun devicectl` でインストールします。
 - **Android**：デバッグ版の外側のアプリ（Gradle が一度ビルドし、マニフェスト、Kotlin、リソースが変わったときにビルドし直します）です。コアはそのプライベートファイル（`files/asuka/libasuka.so`）にプッシュされ、デバッグ版のアプリはそこからコアを読み込みます。`files/asuka/dev` には `asuka dev` の場所が書かれ、`adb reverse` によってそれがデバイス自身のループバックになります。
 - **Web**：ページが開発サーバーから WebAssembly のコア（`asuka.wasm`）とアプリのモジュールを読み込み、新しいモジュールがビルドされるたびにそれを読み込みます。
 
 ## デスクトップでの実行
 
-macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。Windows のホストは C で書かれていて、コアと一緒にこのコンピューターの C コンパイラー（Zig、clang、MinGW の gcc。`ASUKA_CC` で選べます）でビルドされます。Mac と Linux では、CLI を Asuka のリポジトリのチェックアウトから実行している場合、ホストはソースからビルドされます。そうでなければ CLI のリリースに含まれるホストを使います。これは Asuka のキャッシュに一度だけダウンロードされ、ハッシュで検証されます。コアは、このコンピューターの C コンパイラーでビルドされます。
+macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。Windows と Linux のホストは C で書かれていて、CLI に含まれるソースから、コアと一緒にこのコンピューターの C コンパイラー（Zig、clang、MinGW や Linux の gcc。`ASUKA_CC` で選べます）でビルドされます。Mac では、CLI を Asuka のリポジトリのチェックアウトから実行している場合、ホストはソースからビルドされます。そうでなければ CLI のリリースに含まれるホストを使います。これは Asuka のキャッシュに一度だけダウンロードされ、ハッシュで検証されます。コアは、このコンピューターの C コンパイラーでビルドされます。
 
 アプリは `assets/` をその場所から直接読むので、アセットを変更してもコピーは必要ありません。アプリのデータ（SQLite データベース、ファイル）は、インストールしたアプリのデータとは別に、Asuka のキャッシュ内にあるアプリ専用の `data` ディレクトリに保存されます（[最初からやり直す](#よくある問題)を参照）。そのため、`asuka dev` とリリース版がデータを共有することはありません。アプリの出力とエラーはターミナルに表示されます。
 
@@ -139,7 +139,6 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 
 - **`the compiler isn't in this build yet`**：Asuka のコンパイラーを含めずにビルドされた CLI です。リリース版をインストールするか、コンパイラーを含むチェックアウトから CLI をビルドしてください。
 - **`cbuild: no C compiler`**：システムの C コンパイラー（Xcode のコマンドラインツール、`build-essential`、LLVM）をインストールするか、Zig をインストールして `ASUKA_CC=zig` を指定します。`building for the web needs Zig` と `cross-compiling for ... needs Zig` の場合は、[Zig](https://ziglang.org/download) をインストールしてください。Zig はコアを WebAssembly 向けや、ほかのシステム向けにビルドします。
-- **`this asuka has no prebuilt desktop host`**：Asuka のチェックアウトの外でソースからビルドした CLI には、ホストをダウンロードするためのリリースがありません。チェックアウトから実行する（`go run ./cmd/asuka`）か、`go build ./cmd/asuka-host` でビルドしたホストを `ASUKA_HOST` に指定してください。
 - **`no iOS simulator SDK (install Xcode)`**：Xcode をインストールして一度起動し、Xcode の設定の「Components」で iOS シミュレーターのランタイムを追加します。`no iPhone simulator; add one in Xcode` や `no simulator "..."` は、その名前のシミュレーターがないという意味です。シミュレーターの一覧は `xcrun simctl list devices` で確認できます。
 - **iPhone の準備ができていない**：`... isn't paired with this Mac`（ケーブルで接続し、ロックを解除して「信頼」をタップ）、`... isn't reachable`（ケーブルで接続するか、Mac と同じ Wi-Fi でスリープを解除）、`... has Developer Mode off`（「設定」›「プライバシーとセキュリティ」›「デベロッパモード」）、`... is locked`（ロックを解除）。接続しているのに `no iPhone or iPad is connected` と表示される場合は、`xcrun devicectl list devices` に表示されるか確かめてください。
 - **`Xcode couldn't make the development profiles`**：チームの Apple ID で Xcode にサインインするか（Xcode ›「設定」›「アカウント」）、App Store Connect API キーを設定してください。ほかのチームが持っている bundle ID なら、`asuka.toml` で別の `id` にする必要があります。`the keychain has Apple Development certificates of N teams` の場合は、`--team` でチームを選んでください。
@@ -162,16 +161,17 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 ```sh
 go test ./core                                     # コアの C のテスト（ASan、UBSan）と VM のテスト
 go test ./internal/appbuild ./cmd/asuka            # ビルドと開発ループ。このコンピューターで使えるすべてのプラットフォームで
-go test ./host/darwin                              # macOS：実際の AppKit のビュー
+go test ./platform/macos/mactest                   # macOS：Mac のプレイヤーでアプリを動かし、実際の AppKit のビューを確かめる
 go test ./platform/windows                         # Windows：Zig でビルドしたアプリを実際のウィンドウで動かす（Windows 上か VM で）
-xvfb-run -a dbus-run-session go test ./host/linux  # Linux：実際の GTK ウィジェット
+xvfb-run -a dbus-run-session go test ./platform/linux  # Linux：実際の GTK ウィンドウでアプリを操作
 swift test --package-path platform/ios             # Swift ホストのデコーダー
+swift test --package-path platform/macos           # Mac のホストの Swift とそのデコーダー
 node --test platform/web                           # Web ホストのデコーダー
 ```
 
 `go test ./cmd/asuka` は、できる範囲で開発ループをエンドツーエンドで実行します。この Mac 上（開発用アプリ、モジュール、タップ、カウントを保った次のモジュール）、ヘッドレス Chrome、起動中の iOS シミュレーター、実行中の Android エミュレーターで動かし、さらに各プラットフォーム向けにアプリをビルドします。このコンピューターでビルドや実行ができないものはスキップします。
 
-`go test ./host/darwin -run Conformance` は、あるスタイルに対してホストが描画するもの（辺、角、枠線、影、グラデーション）を、ウィンドウのキャプチャー上で計測して確かめます。e2e テストは、シミュレーター、エミュレーター、ヘッドレス Chrome で同じことを行います（`go test -tags e2e ./e2e -run Conformance`）。Windows では、`go test ./platform/windows -run Drawing` が、画像、図形、キャンバス、シェーダー、角丸のクリップ、マテリアルを、ウィンドウのキャプチャーのピクセルで確かめます。
+`go test ./platform/macos/mactest -run Conformance` は、あるスタイルに対してホストが描画するもの（辺、角、枠線、影、グラデーション）を、ウィンドウのキャプチャー上で計測して確かめます。e2e テストは、シミュレーター、エミュレーター、ヘッドレス Chrome で同じことを行います（`go test -tags e2e ./e2e -run Conformance`）。Windows では、`go test ./platform/windows -run Drawing` が、画像、図形、キャンバス、シェーダー、角丸のクリップ、マテリアルを、ウィンドウのキャプチャーのピクセルで確かめます。
 
 `go test ./platform/windows` は、各テストのアプリを Windows で実行します。PC 上で実行するか、Mac からは `ASUKA_WINDOWS_VM` で指定した swiftvm の VM（既定は `Windows Fresh`）で実行します。この VM からは `~/Library/Caches/asuka/windows-vm` が `Z:\windows-vm` として見えます。どちらもない場合、これらのテストはスキップされます。
 

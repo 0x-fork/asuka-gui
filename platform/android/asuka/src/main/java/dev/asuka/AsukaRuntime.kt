@@ -437,7 +437,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             AsukaAutomation.start(this)
             watchRegion()
             AsukaNative.load(app)
-            // A share sheet's process: the Go code's root is the app's sheet.
+            // A share sheet's process: the app runs as its sheet (asuka/sharesheet).
             if (activity is AsukaShareActivity) runCatching { AsukaNative.setenv("ASUKA_SHARE_SHEET", "1") }
             activity.sendEnvironment(force = true)
             enter {
@@ -836,6 +836,14 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             isChecked = old.isChecked
             isEnabled = old.isEnabled
             layoutDirection = directionOf(n)
+            // What props set on the switch before checkbox came (they go
+            // in the order the app wrote them): its name for TalkBack first.
+            contentDescription = old.contentDescription
+            androidx.core.view.ViewCompat.setStateDescription(this, androidx.core.view.ViewCompat.getStateDescription(old))
+            tooltipText = old.tooltipText
+            importantForAccessibility = old.importantForAccessibility
+            visibility = old.visibility
+            alpha = old.alpha
             setOnCheckedChangeListener { _, on -> if (!settingProp) emit(id, AsukaEventKind.TOGGLED) { AsukaEvents.toggled(id, on) } }
         }
         val parent = old.parent as? ViewGroup

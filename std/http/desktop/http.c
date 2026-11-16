@@ -123,16 +123,22 @@ static void remove_file(const char *p) {
 #endif
 }
 
-static bool sink(void *ctx, const asuka_response *head, const void *p, size_t n, asuka_error *err) {
+// head opens the file beside path once the response's head is in.
+static bool head(void *ctx, const asuka_response *r, asuka_error *err) {
 	download *d = ctx;
+	d->total = content_length(r);
+	d->f = open_file(d->part);
 	if (!d->f) {
-		d->total = content_length(head);
-		d->f = open_file(d->part);
-		if (!d->f) {
-			asuka_error_failed(err, "http", 0, "can't write %s", d->path);
-			return false;
-		}
+		asuka_error_failed(err, "http", 0, "can't write %s", d->path);
+		return false;
 	}
+	return true;
+}
+
+// data writes a piece of the body, and reports the progress (ten times a
+// second at most).
+static bool data(void *ctx, const void *p, size_t n, asuka_error *err) {
+	download *d = ctx;
 	if (fwrite(p, 1, n, d->f) != n) {
 		asuka_error_failed(err, "http", 0, "can't write %s", d->path);
 		return false;
@@ -154,7 +160,9 @@ static void run_download(void *p) {
 	asuka_response r;
 	asuka_error e = {0};
 	int ms = q->timeout > 0 ? (int)((q->timeout + 999999) / 1000000) : 0;
-	bool ok = asuka_fetch_to(q->method, q->url, hs, q->headers.len, q->body.data, q->body.len, ms, q->call, sink, q, &r, &e);
+	asuka_request rq = {.method = q->method, .url = q->url, .headers = hs, .nheaders = q->headers.len, .body = q->body.data, .len = q->body.len,
+	                    .timeout_ms = ms, .cancel = q->call, .head = head, .data = data, .ctx = q};
+	bool ok = asuka_fetch_stream(&rq, &r, &e);
 	if (ok && !q->f) q->f = open_file(q->part);  // an empty body: an empty file
 	if (q->f && fclose(q->f) != 0) ok = false;
 	q->f = NULL;

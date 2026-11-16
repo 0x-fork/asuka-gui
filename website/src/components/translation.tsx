@@ -49,7 +49,7 @@ const words: Record<Locale, Words> = {
 }
 
 // What each host makes of four of the core's components: the classes are the
-// ones the hosts create (platform/ios, platform/android, host/darwin,
+// ones the hosts create (platform/ios, platform/android, platform/macos,
 // host/windows, host/linux, platform/web/src).
 const platforms = [
   { id: "ios", name: "iOS", toolkit: "UIKit" },

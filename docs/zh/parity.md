@@ -102,7 +102,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 照片 | `PhotosPicker` | `expo-image-picker` | ✓ `device.PickPhotos` |
 | 文档 | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.PickFiles`（MIME 类型、多选） |
 | 相机 | AVFoundation | `expo-camera` | ✓ `asuka/camera`：`Take`（系统相机；在 Mac、Windows 和 Linux 上是一个带实时预览的对话框；Windows 上用 Media Foundation 的采集引擎；Linux 上用相机 portal，或通过 GStreamer 调用 Video4Linux）、`View`（实时预览，前置或后置摄像头）、`Capture`；`asuka/record` 可以录制带声音的视频 |
-| 条形码、二维码 | AVFoundation、Vision | `expo-camera` 的扫描功能 | ✓ `asuka/scan`：可以在 `camera.View` 里实时识别（`Scan: scan.Codes(...)`），也可以识别图片文件（`scan.File`）；Android 上用 ML Kit，只会打包进导入了它的应用；Linux 上用 ZBar；Windows 上用 Asuka 自己用 Go 写的识别器（`internal/barcode`：QR、Data Matrix、EAN、UPC、Code 128、Code 39） |
+| 条形码、二维码 | AVFoundation、Vision | `expo-camera` 的扫描功能 | ✓ `asuka/scan`：可以在 `camera.View` 里实时识别（`Scan: scan.Codes(...)`），也可以识别图片文件（`scan.File`）；Android 上用 ML Kit，只会打包进导入了它的应用；Windows 和 Linux 上用 Asuka 自己用 C 写的识别器（QR、Data Matrix、EAN、UPC、Code 128、Code 39） |
 | 定位 | Core Location | `expo-location` | ✓ `asuka/location`（地名查询：Windows 上用 OpenStreetMap 的 Nominatim）；“使用期间”和“始终”两级权限，精确或大致位置；后台定位更新和地理围栏（相当于 `expo-task-manager` 的任务：iOS 和 Android 上会为这些事件启动应用；系统不提供时，在应用运行期间根据位置计算） |
 | 翻译、复数、区域格式 | String Catalogs、FormatStyle | `expo-localization`、i18next | ✓ `asuka/i18n`、翻译目录（[多语言](i18n.md)） |
 | 从右到左布局 | `layoutDirection` | `I18nManager` | ✓ 跟随语言，也可用 `ui.WithDirection` 设置 |
@@ -138,7 +138,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | NFC 标签 | Core NFC | `react-native-nfc-manager` | ✓ `asuka/nfc`（读写 NDEF，支持文本、URI、MIME、外部类型和智能海报（smart poster）记录，可将标签设为只读、查询容量；标签的 ID 和技术类型；ISO 7816 APDU、MIFARE、FeliCa 和 ISO 15693 命令，以及 Android 的 NfcA/B/F/V、IsoDep 和 MIFARE Classic；iOS 的系统面板、Android 的读卡器模式；能打开应用的标签：iOS 通过通用链接，Android 通过 `asuka.toml` 中配置的 NDEF_DISCOVERED 和 TECH_DISCOVERED；Web 上是 Chrome for Android 的 Web NFC，仅支持 NDEF；桌面端没有） |
 | 低功耗蓝牙 | Core Bluetooth | 社区方案（`react-native-ble-plx`） | ✓ `asuka/bluetooth`（按服务过滤的扫描、重复上报和 RSSI、广播数据；连接及其断开原因、服务、读取、带响应和不带响应的写入、通知和指示、MTU、RSSI、Android 的连接优先级；已知设备和系统已连接的设备；广播和 GATT 服务端；iOS 的后台模式和状态恢复、Android 的后台扫描；Windows 上是 Windows.Devices.Bluetooth，Linux 上是 BlueZ；Web 上是 Web Bluetooth 的设备选择器，仅限 Chrome 和 Edge，没有外围设备角色） |
 | 图片编辑 | Core Graphics、ImageIO | `expo-image-manipulator` | ✓ `asuka/imageedit`（缩放、裁剪、旋转、翻转、填充、像素化；可以读入 HEIC，输出 JPEG 或 PNG，方向摆正，并去掉原图的元数据；Linux 上用 GdkPixbuf 的解码器，Windows 上用 WIC 的解码器） |
-| 识别图片里的文字、人脸和条码 | Vision | 无 | ✓ `asuka/vision`，会给出每一项的位置；Android 上用 ML Kit，只会打包进导入了它的应用；Linux 上用 ZBar 识别条码、Tesseract 识别文字，不支持人脸；Windows 上用系统 OCR 识别文字和人脸，用 Asuka 自己的识别器识别条码 |
+| 识别图片里的文字、人脸和条码 | Vision | 无 | ✓ `asuka/vision`，会给出每一项的位置；Android 上用 ML Kit，只会打包进导入了它的应用；Linux 上用 Tesseract 识别文字，不支持人脸；Windows 上用系统 OCR 识别文字和人脸；这两个平台上的条码都由 Asuka 自己的识别器识别 |
 | 照片图库 | PhotoKit | `expo-media-library` | ✓ `asuka/photos`：权限、列出照片、缩略图、原始文件（Windows 上是“图片”文件夹） |
 | 视频缩略图 | `AVAssetImageGenerator` | `expo-video-thumbnails` | ✓ `imageedit.VideoFrame` |
 | 文字转语音 | `AVSpeechSynthesizer` | `expo-speech` | ✓ `asuka/speech`（朗读队列、声音、音调、语速、在某个词处暂停） |

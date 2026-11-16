@@ -7,8 +7,8 @@ import (
 )
 
 // ConfigFile is a desktop app's settings from its asuka.toml, which the
-// Asuka CLI writes beside the executable (cmd/asuka-host, the same for
-// every app), or in a Mac app's Resources: what the host shows of the app
+// Asuka CLI writes beside the executable (Windows), in a Linux prefix's
+// share/<exe>, or in a Mac app's Resources: what the host shows of the app
 // (its name, its accent) and how it runs (its ID, its URL scheme).
 const ConfigFile = "asuka-app.json"
 

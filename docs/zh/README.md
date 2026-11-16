@@ -38,9 +38,9 @@ test "counts taps" {
 | --- | --- | --- |
 | iOS | Swift，核心嵌入其中 | UIKit |
 | Android | Kotlin，核心嵌入其中 | Android Views 和 Material 3 |
-| macOS | Go，与应用在同一进程中（通过 purego 调用 AppKit） | AppKit |
-| Windows | Go，与应用在同一进程中（通过 `syscall` 调用 Win32） | Win32 和通用控件，绘制成 Windows 11 的样式 |
-| Linux | Go，与应用在同一进程中（通过 purego 调用 GTK） | GTK 4 和 libadwaita |
+| macOS | Swift，核心和应用嵌入其中 | AppKit |
+| Windows | C，核心和应用嵌入其中 | Win32 和通用控件，绘制成 Windows 11 的样式 |
+| Linux | C，核心和应用嵌入其中（启动时才打开 GTK） | GTK 4 和 libadwaita |
 | Web | JavaScript，核心编译为 WebAssembly | 页面的 DOM 和浏览器自带的控件 |
 
 一个文本输入框，在各平台上分别就是 `UITextField`、`EditText`、`NSTextField`、`EDIT` 控件、`GtkEntry` 或 `<input>`；页面的导航栈则分别对应 `UINavigationController`、带返回手势的 Material 顶部应用栏、Mac 窗口中带返回按钮的工具栏，或 libadwaita 的导航视图。因此，一个不设置任何样式的应用，看起来就和该平台上的其他应用一样，无障碍、文本输入和滚动也都和它们表现一致。

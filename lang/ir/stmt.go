@@ -176,6 +176,11 @@ func (b *fb) condJump(c syntax.Expr, els Label) {
 		b.declare(vr, in)
 		return
 	}
+	// if let _ = x: x isn't none, as a view's if let has it.
+	if _, ok := lc.Pattern.(*syntax.WildcardPat); ok && check.IsOptional(t) {
+		b.emitJump(op("JNONE"), v, els)
+		return
+	}
 	b.testPattern(lc.Pattern, v, t, els)
 	b.bindPattern(lc.Pattern, v, t)
 }

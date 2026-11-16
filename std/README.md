@@ -75,7 +75,8 @@ and answers there as a platform without the package's code does.
 - What the platform keeps for the app until it's read (a purchase's
   transactions, a region's crossing) is read once by the package and fanned
   out to the streams that read it; what came with no reader is kept for
-  the first (std/purchase's `events()`, std/location's `crossings()`).
+  the first (std/purchase's `events()`, std/location's `crossings()`,
+  std/bluetooth's `restored()`).
 
 ### Test fakes
 
@@ -121,7 +122,8 @@ test "a region, crossed" {
   (`[uses.requestAlways.android] permissions = [...]`,
   `[uses.startUpdates.ios] backgroundModes = ["location"]`): an app gets
   them only if its program refers to that member (a function, a type, a
-  store; `"Type.name"` for a type's member), from its code or a
+  store; `"Type.name"` for a type's method or field, a field when the
+  code makes the struct with it, assigns it or reads it), from its code or a
   dependency's, as the checker resolved it (appbuild.Uses), not a local
   name that's the same nor a test block's. The files beside the code are
   for every app that imports the package: `iOS.entitlements`,
@@ -135,7 +137,7 @@ test "a region, crossed" {
   (the iOS host's parts its module needs, by their compilation
   conditions: `ASUKA_NOTIFY`), `derived` (what the CLI makes of the
   app's own asuka.toml: `icloudKeyValue`, `icloudDocuments`,
-  `locationPrecise`); `[macos] hostFlags` (the Mac's Swift);
+  `locationPrecise`);
   `[android] application` and `manifest` (elements of the manifest's
   application and of the manifest), `hostModules` (the host's optional
   Gradle modules, platform/android/asuka-<name>: std/push's `push`);
@@ -180,7 +182,7 @@ sdk/<name> Go package.
 What a host already does for its apps through a module of its own
 (notifications, pushes, iCloud, the photo library...: platform/ios's
 AsukaHost, platform/android's dev.asuka, platform/web's modules,
-host/darwin, host/windows, host/linux) a package reaches through
+platform/macos's AsukaHost, host/windows, host/linux) a package reaches through
 `asuka/platform`, as above, with no platform code of its own: it calls
 the module's methods by name (`platform.call`, `platform.send`,
 `platform.next` for a "next" method's stream), with the bytes
@@ -205,7 +207,7 @@ where no host keeps its own (iOS, Android, the web).
   under testdata/run) that imports the package and runs on the fake host,
   with no platform code: it must behave (fallbacks, errors).
 - Swift: compiles for macOS and the iOS simulator (xcrun swiftc against
-  platform/macos's runtime, as host/darwin's buildKitchenSwift does).
+  platform/macos's host, as cmd/asuka's TestMacSwift builds the kitchen).
 - C: compiled for Windows and Linux with Zig, and run on Linux by
   platform/desktop's std_test.go (an Asuka program on the test host, in
   the asuka-linux-test image) where it can be driven there.

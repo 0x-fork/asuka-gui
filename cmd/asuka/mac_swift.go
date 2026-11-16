@@ -14,18 +14,24 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/cbuild"
+	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/platform/macos"
 )
 
-// The Mac's native code in Swift: the app's native packages' (their
-// Package.swift), built with Asuka's Swift for it (platform/macos, the
-// module Asuka they import) as Swift packages (native_swift.go), linked
-// into one library in the bundle, Contents/Frameworks/AsukaNatives.dylib,
-// which the host (host/darwin) loads as it starts. The app's Go still
-// builds with no cgo: the host calls the library through purego.
+// A Mac app's executable: the Swift host (platform/macos, AppKit), with the
+// app's native packages' Swift (their Package.swift, built with the host's
+// as Swift packages: native_swift.go), linked with the C core (libasuka.a:
+// the app compiled into it for a release, none in asuka dev's player), for
+// each architecture, then one universal binary (lipo). Without native
+// packages the host's object is the same for every app, compiled once per
+// architecture and kept in the user's cache.
 
-// macSwiftLib is the library's name, as the host looks for it.
-const macSwiftLib = "AsukaNatives.dylib"
+// macHostDefines are the host's compilation conditions on the Mac: what
+// the iOS host's files it shares build in (iCloud's). Every app's host has
+// them all.
+var macHostDefines = []string{"ASUKA_ICLOUD"}
 
 // macSwiftArch is swiftc's name for a Go architecture.
 func macSwiftArch(goarch string) string {
@@ -35,149 +41,254 @@ func macSwiftArch(goarch string) string {
 	return goarch
 }
 
-// macSwiftLinkArgs is swiftc's command line linking the library for one
-// architecture from a build of the app's Swift (its packages' objects).
-func macSwiftLinkArgs(arch string, o *swiftPackageOutput, out string) []string {
-	args := []string{"swiftc", "-target", arch + "-apple-macos" + macMin, "-emit-library",
-		// The Swift runtime: the system's, else (macOS 11, for Swift
-		// concurrency) the copy beside the library.
-		"-Xlinker", "-rpath", "-Xlinker", "/usr/lib/swift",
-		"-Xlinker", "-rpath", "-Xlinker", "@loader_path",
-		"-Xlinker", "-install_name", "-Xlinker", "@rpath/" + macSwiftLib,
-	}
-	args = append(append(args, o.objects...), o.linkFlags()...)
-	return append(args, "-o", out)
+// macBuild builds a Mac app's executable.
+type macBuild struct {
+	app     *asukaApp
+	work    string // the build's work directory
+	release bool   // optimized, dead code stripped
+	run     func(dir string, env []string, cmd string, args ...string) error
+	// packages is what the app's Swift packages bring besides objects, as
+	// the first architecture's build made it (nil without any): their
+	// frameworks and resource bundles, which go in the bundle.
+	packages *swiftPackageOutput
 }
 
-// macEmbedPackages puts the build's frameworks beside the library (fw)
-// and its resource bundles in res, taking away those an earlier build put
-// there (listed in dir) that this one hasn't.
-func macEmbedPackages(o *swiftPackageOutput, dir, fw, res string) error {
-	list := filepath.Join(dir, "embedded")
-	if b, err := os.ReadFile(list); err == nil {
-		for _, p := range strings.Split(strings.TrimSpace(string(b)), "\n") {
-			if p != "" {
-				os.RemoveAll(p)
-			}
-		}
-	}
-	if o == nil {
-		os.Remove(list)
-		return nil
-	}
-	if err := os.MkdirAll(res, 0o755); err != nil {
-		return err
-	}
-	if err := o.embed(fw, res); err != nil {
-		return err
-	}
-	var put []string
-	for _, f := range o.frameworks {
-		put = append(put, filepath.Join(fw, filepath.Base(f)))
-	}
-	for _, r := range o.bundles {
-		put = append(put, filepath.Join(res, filepath.Base(r)))
-	}
-	return os.WriteFile(list, []byte(strings.Join(put, "\n")), 0o644)
-}
-
-// macSwift builds the app's native packages' Swift into the bundle's
-// Frameworks, for archs (Go's names), or takes away a library left from
-// before when it has none. In asuka dev, a build whose packages haven't
-// changed keeps the library it has.
-func macSwift(app *asukaApp, bundle, work string, archs []string, release bool, run func(dir string, env []string, cmd string, args ...string) error) error {
-	fw := filepath.Join(bundle, "Contents", "Frameworks")
-	lib := filepath.Join(fw, macSwiftLib)
-	dir := filepath.Join(work, "swift")
-	natives, err := nativeFor(app, "macos")
+// executable builds the app's executable at exe for archs (Go's names):
+// the host and the core (with m compiled in; nil, the player's) for each,
+// one universal binary of them.
+func (b *macBuild) executable(exe string, archs []string, m *bytecode.Module) error {
+	natives, err := nativeFor(b.app, "macos")
 	if err != nil {
-		return err
-	}
-	// What the app's packages build in (their manifests' macos.hostFlags:
-	// asuka/purchase's StoreKit), with or without natives.
-	var defines []string
-	if app.cfg != nil {
-		defines = app.cfg.macSwift
-	}
-	if len(natives) == 0 && len(defines) == 0 {
-		os.Remove(lib)
-		os.Remove(filepath.Join(fw, "libswift_Concurrency.dylib"))
-		return macEmbedPackages(nil, dir, fw, "")
-	}
-	if _, err := exec.LookPath("xcodebuild"); err != nil {
-		if len(natives) == 0 {
-			return fmt.Errorf("asuka: %s's packages need Swift on the Mac (%s): install Xcode", app.name, strings.Join(defines, ", "))
-		}
-		return fmt.Errorf("asuka: %s's native packages have Swift (%s): install Xcode", app.name, natives[0].path)
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	host, err := swiftSources(macos.Files, "Sources/AsukaMac")
-	if err != nil {
-		return err
-	}
-	stamp := filepath.Join(dir, "stamp")
-	h := sha256.New()
-	fmt.Fprintln(h, archs, release, bundle, defines)
-	for _, name := range slices.Sorted(maps.Keys(host)) { // in order: a map's changes run to run
-		fmt.Fprintln(h, name, len(host[name]))
-		h.Write(host[name])
-	}
-	for _, p := range natives {
-		fmt.Fprintln(h, p.dir, dirDigest(p.dir)) // a local package changes as it's worked on
-	}
-	key := hex.EncodeToString(h.Sum(nil))
-	if old, err := os.ReadFile(stamp); err == nil && string(old) == key {
-		if _, err := os.Stat(lib); err == nil {
-			return nil
-		}
-	}
-	if err := os.MkdirAll(fw, 0o755); err != nil {
 		return err
 	}
 	var parts []string
-	var built *swiftPackageOutput
-	for _, a := range archs {
-		out := filepath.Join(dir, "AsukaNatives-"+a+".dylib")
-		b := &swiftBuild{dir: filepath.Join(dir, "packages"), platform: "macos", sdkName: "macosx",
-			arch: macSwiftArch(a), release: release, defines: defines, host: host, natives: natives, run: run}
-		o, err := b.build()
+	for _, arch := range archs {
+		dir := filepath.Join(b.work, "mac-"+arch)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		// The core: a release's with the app compiled in, the player's
+		// without, both with the app's C (asuka.toml's [c], its externs').
+		lib := filepath.Join(dir, "libasuka.a")
+		target := cbuild.Target{OS: "darwin", Arch: arch}
+		if m != nil {
+			err = appbuild.Lib(target, cbuild.Static, m, lib)
+		} else {
+			err = appbuild.PlayerLib(target, cbuild.Static, b.app.c, lib)
+		}
 		if err != nil {
 			return err
 		}
-		if built == nil {
-			built = o // its frameworks and bundles: the first architecture's (a Mac framework is universal)
+		objs, pkgs, err := b.host(arch, natives)
+		if err != nil {
+			return err
 		}
-		if err := run(app.dir, nil, "xcrun", macSwiftLinkArgs(macSwiftArch(a), o, out)...); err != nil {
+		if b.packages == nil {
+			b.packages = pkgs // a Mac framework is universal
+		}
+		// The C the desktop hosts share that the host calls (CAsuka's
+		// desktop.h: the route state, flyouts' places, Asuka's words).
+		shared, err := appbuild.MacShared(arch, !b.release)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, shared...)
+		out := filepath.Join(dir, "app")
+		args := []string{"swiftc", "-target", macSwiftArch(arch) + "-apple-macos" + macMin, "-sdk", macSDK()}
+		args = append(args, objs...)
+		args = append(args, lib, "-o", out, "-lresolv",
+			// The Swift runtime: the system's, else (macOS 11, for Swift
+			// concurrency) the copy in Frameworks; packages' frameworks there.
+			"-Xlinker", "-rpath", "-Xlinker", "/usr/lib/swift",
+			"-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks")
+		if b.release {
+			args = append(args, "-Xlinker", "-dead_strip")
+		}
+		args = append(args, pkgs.linkFlags()...)
+		if err := b.run(b.work, nil, "xcrun", args...); err != nil {
 			return err
 		}
 		parts = append(parts, out)
 	}
-	if err := macEmbedPackages(built, dir, fw, filepath.Join(bundle, "Contents", "Resources")); err != nil {
+	if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil {
 		return err
 	}
 	if len(parts) == 1 {
-		if err := copyFile(parts[0], lib); err != nil {
-			return err
-		}
-	} else if err := run(dir, nil, "lipo", append([]string{"-create", "-output", lib}, parts...)...); err != nil {
-		return err
+		return copyFile(parts[0], exe)
 	}
-	if err := macSwiftBackDeploy(lib, fw); err != nil {
-		return err
-	}
-	return os.WriteFile(stamp, []byte(key), 0o644)
+	os.Remove(exe)
+	return b.run(b.work, nil, "lipo", append([]string{"-create", "-output", exe}, parts...)...)
 }
 
-// macSwiftBackDeploy copies Swift's concurrency runtime beside the
-// library when it links it: macOS 12 and later have it, macOS 11 (the
-// apps' minimum) doesn't, so the library finds this copy there (its
+// host compiles the host's Swift for arch: one object, cached by its
+// sources, or with native packages the objects of their packages' build,
+// and what else that build made.
+func (b *macBuild) host(arch string, natives []nativePackage) ([]string, *swiftPackageOutput, error) {
+	sources, err := swiftSources(macos.Files, "Sources/AsukaHost", "Sources/AsukaOps", "App")
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(natives) > 0 {
+		cAsuka, err := filesUnder(macos.Files, "Sources/CAsuka")
+		if err != nil {
+			return nil, nil, err
+		}
+		// The core's stand-ins are the host's package's tests', never an
+		// app's: weak, they'd keep the core's archive from being linked.
+		// The shared C's wrappers (shared_*.c) are the tests' too: an
+		// app links that C as objects (MacShared).
+		for name := range cAsuka {
+			if name == "stubs.c" || strings.HasPrefix(name, "shared_") {
+				delete(cAsuka, name)
+			}
+		}
+		// SwiftPM makes a target with a main.swift an executable, which a
+		// library product can't have: the entry point (@main) goes in
+		// the host's library under another name.
+		if m, ok := sources["main.swift"]; ok {
+			delete(sources, "main.swift")
+			sources["AsukaMain.swift"] = m
+		}
+		sb := &swiftBuild{dir: filepath.Join(b.work, "swift-"+arch), platform: "macos", sdkName: "macosx",
+			arch: macSwiftArch(arch), release: b.release, defines: macHostDefines, host: sources, cAsuka: cAsuka, natives: natives, run: b.run}
+		out, err := sb.build()
+		if err != nil {
+			return nil, nil, err
+		}
+		return out.objects, out, nil
+	}
+	return b.hostObject(arch, sources)
+}
+
+// hostObject compiles the host alone (no native packages) into one object
+// shared by every app, in the user's cache.
+func (b *macBuild) hostObject(arch string, sources map[string][]byte) ([]string, *swiftPackageOutput, error) {
+	opt := []string{"-Onone", "-g"}
+	if b.release {
+		opt = []string{"-O"}
+	}
+	target := macSwiftArch(arch) + "-apple-macos" + macMin
+	sdk := macSDK()
+	h := sha256.New()
+	fmt.Fprintln(h, sdk, target, opt, macHostDefines, swiftcVersion())
+	names := slices.Sorted(maps.Keys(sources))
+	for _, n := range names {
+		fmt.Fprintln(h, n, len(sources[n]))
+		h.Write(sources[n])
+	}
+	for _, f := range []string{"asuka.h", "desktop.h", "module.modulemap"} {
+		header, err := macos.Files.ReadFile("Sources/CAsuka/include/" + f)
+		if err != nil {
+			return nil, nil, err
+		}
+		h.Write(header)
+	}
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return nil, nil, err
+	}
+	shared := filepath.Join(base, "asuka", "mac-host") // shared by all apps
+	unlock, err := lockShared(shared)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer unlock()
+	kind := "debug"
+	if b.release {
+		kind = "release"
+	}
+	obj := filepath.Join(shared, hex.EncodeToString(h.Sum(nil))[:16]+"-"+arch+"."+kind+".o")
+	if _, err := os.Stat(obj); err == nil {
+		return []string{obj}, nil, nil
+	}
+	// The objects of hosts before this one go: one per architecture and
+	// kind of build is kept.
+	old, _ := filepath.Glob(filepath.Join(shared, "*-"+arch+"."+kind+".o"))
+	for _, o := range old {
+		os.Remove(o)
+	}
+	src := filepath.Join(shared, "src")
+	os.RemoveAll(src)
+	inc := filepath.Join(src, "CAsuka")
+	if err := os.MkdirAll(inc, 0o755); err != nil {
+		return nil, nil, err
+	}
+	for _, f := range []string{"asuka.h", "desktop.h", "module.modulemap"} {
+		data, err := macos.Files.ReadFile("Sources/CAsuka/include/" + f)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := os.WriteFile(filepath.Join(inc, f), data, 0o644); err != nil {
+			return nil, nil, err
+		}
+	}
+	var files []string
+	for _, n := range names {
+		p := filepath.Join(src, n)
+		if err := os.WriteFile(p, sources[n], 0o644); err != nil {
+			return nil, nil, err
+		}
+		files = append(files, p)
+	}
+	fmt.Printf("asuka: compiling the Mac host for %s (once)\n", arch)
+	args := append([]string{"swiftc", "-target", target, "-sdk", sdk, "-swift-version", "5",
+		"-module-name", "AsukaApp", "-parse-as-library", "-wmo"}, opt...)
+	for _, d := range macHostDefines {
+		args = append(args, "-D", d)
+	}
+	args = append(args, "-I", inc, "-c", "-o", obj)
+	if err := b.run(shared, nil, "xcrun", append(args, files...)...); err != nil {
+		return nil, nil, err
+	}
+	os.RemoveAll(src)
+	return []string{obj}, nil, nil
+}
+
+// embed puts what the app's Swift packages bring in the bundle (their
+// frameworks in Frameworks, their resource bundles in Resources), and
+// Swift's concurrency runtime for macOS 11 when the executable links it.
+func (b *macBuild) embed(bundle, exe string) error {
+	fw := filepath.Join(bundle, "Contents", "Frameworks")
+	if b.packages != nil {
+		if err := os.MkdirAll(fw, 0o755); err != nil {
+			return err
+		}
+		if err := b.packages.embed(fw, filepath.Join(bundle, "Contents", "Resources")); err != nil {
+			return err
+		}
+	}
+	return macSwiftBackDeploy(exe, fw)
+}
+
+var (
+	macSDKPath   string
+	swiftcVer    string
+	macSDKLoaded bool
+)
+
+// macSDK is the macOS SDK's path.
+func macSDK() string {
+	if !macSDKLoaded {
+		macSDKLoaded = true
+		macSDKPath, _ = output("xcrun", "--sdk", "macosx", "--show-sdk-path")
+		swiftcVer, _ = output("xcrun", "swiftc", "--version")
+	}
+	return macSDKPath
+}
+
+func swiftcVersion() string {
+	macSDK()
+	return swiftcVer
+}
+
+// macSwiftBackDeploy copies Swift's concurrency runtime into Frameworks
+// when the executable links it: macOS 12 and later have it, macOS 11 (the
+// apps' minimum) doesn't, so the executable finds this copy there (its
 // rpath), as Xcode's builds do.
-func macSwiftBackDeploy(lib, fw string) error {
+func macSwiftBackDeploy(exe, fw string) error {
 	const name = "libswift_Concurrency.dylib"
 	dst := filepath.Join(fw, name)
-	if !macImports(lib, "@rpath/"+name) {
+	if !macImports(exe, "@rpath/"+name) {
 		os.Remove(dst)
 		return nil
 	}
@@ -188,6 +299,9 @@ func macSwiftBackDeploy(lib, fw string) error {
 	src := filepath.Join(filepath.Dir(strings.TrimSpace(string(out))), "..", "lib", "swift-5.5", "macosx", name)
 	if _, err := os.Stat(src); err != nil {
 		return fmt.Errorf("asuka: the app's Swift uses Swift concurrency, which macOS 11 doesn't have, and this toolchain has no copy to ship (%s)", src)
+	}
+	if err := os.MkdirAll(fw, 0o755); err != nil {
+		return err
 	}
 	return copyFile(src, dst)
 }
@@ -237,7 +351,8 @@ func machoDylib(raw []byte, bo binary.ByteOrder) string {
 	return string(name)
 }
 
-// copyFile copies a library (executable, as the linker makes them).
+// copyFile copies an executable or a library (executable, as the linker
+// makes them).
 func copyFile(src, dst string) error {
 	data, err := os.ReadFile(src)
 	if err != nil {

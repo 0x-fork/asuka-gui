@@ -38,6 +38,10 @@ void ak_sched_wait_posted(void);
 // ak_sched_set_wake sets what asks the host to call ak_sched_run_posted
 // (the host's post callback). Any thread may call wake.
 void ak_sched_set_wake(void (*wake)(void));
+// ak_sched_wake asks the host to call ak_sched_run_posted soon: work made
+// ready after the last ak_sched_run of an event (a task a flush disposed,
+// resumed to unwind) runs then, not at the next event.
+void ak_sched_wake(void);
 
 // ak_after runs cb on the main thread after ns nanoseconds; the result
 // cancels it with ak_timer_cancel (a no-op once it ran).

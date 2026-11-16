@@ -143,9 +143,6 @@ func TestUseICloud(t *testing.T) {
 		if _, ok := c.entitlements[entContainers]; ok != x.docs {
 			t.Errorf("%s: the containers' %v", x.name, c.entitlements)
 		}
-		if !slices.Contains(c.macSwift, "ASUKA_ICLOUD") && x.name != "a dependency's" && x.app != "" {
-			t.Errorf("%s: no Mac Swift for iCloud: %v", x.name, c.macSwift)
-		}
 	}
 }
 
@@ -198,8 +195,9 @@ func TestMacICloudEntitlements(t *testing.T) {
 }
 
 // Communication notifications are the apps' that make a message
-// (notify's Notification.from): not those that import asuka/push, whose
-// own Message has a notify.Person.
+// (notify's Notification.from, or a Notification made with its sender):
+// not those that import asuka/push, whose own Message has a notify.Person,
+// nor those whose notifications have no sender.
 func TestConversationsByUse(t *testing.T) {
 	const tail = "\napp { Text(sync.name()) }\n"
 	plain := usesApp(t, "import asuka/push\nimport @test/sync\n\nasync fn reg() {\n  let _ = try? await push.register()\n}\n"+tail, "")
@@ -210,5 +208,13 @@ func TestConversationsByUse(t *testing.T) {
 	msg := usesApp(t, "import asuka/notify\nimport @test/sync\n\nasync fn say() {\n  let n = notify.Notification(body: \"hi\").from(notify.Person(name: \"Ann\"), notify.Conversation())\n  try? await notify.show(n)\n}\n"+tail, "")
 	if fl := usedFeatures(msg, msg.cfg); !slices.Contains(fl, "ASUKA_CONVERSATIONS") || msg.cfg.entitlements["com.apple.developer.usernotifications.communication"] != true {
 		t.Errorf("a message: %v %v", fl, msg.cfg.entitlements)
+	}
+	lit := usesApp(t, "import asuka/notify\nimport @test/sync\n\nasync fn say() {\n  try? await notify.show(notify.Notification(body: \"hi\", sender: notify.Person(name: \"Ann\")))\n}\n"+tail, "")
+	if fl := usedFeatures(lit, lit.cfg); !slices.Contains(fl, "ASUKA_CONVERSATIONS") {
+		t.Errorf("a message made with its sender: %v", fl)
+	}
+	plainNote := usesApp(t, "import asuka/notify\nimport @test/sync\n\nasync fn say() {\n  try? await notify.show(notify.Notification(title: \"hi\"))\n}\n"+tail, "")
+	if fl := usedFeatures(plainNote, plainNote.cfg); slices.Contains(fl, "ASUKA_CONVERSATIONS") {
+		t.Errorf("a notification without a sender: %v", fl)
 	}
 }

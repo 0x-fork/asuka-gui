@@ -48,8 +48,9 @@ class AsukaPushPlugin : AsukaPlugin {
  * every message while the app is in the foreground. It shows them with
  * asuka/sdk/notify's builder: a notification message, and a data message with
  * a "title" or "body" (its "channel", "category", "thread", "image"...).
- * With push.Rewrite (the manifest's dev.asuka.push.rewrite), the Go code
- * rewrites each first, started without a screen if the app isn't running.
+ * With push.rewrite (asuka/push's manifest gives the app's the
+ * dev.asuka.push.rewrite meta-data), the app rewrites each first, started
+ * without a screen if it isn't running.
  */
 class AsukaPushService : FirebaseMessagingService() {
     override fun onMessageReceived(m: RemoteMessage) {
@@ -90,7 +91,7 @@ class AsukaPushService : FirebaseMessagingService() {
             .put("summary", message.optString("summary")).put("channel", message.optString("channel"))
             .put("image", message.optString("image")).put("badge", message.optInt("badge"))
 
-        /** Whether the app rewrites its pushes (push.Rewrite): the CLI says so in the manifest. */
+        /** Whether the app rewrites its pushes (push.rewrite): the CLI says so in the manifest. */
         fun rewrites(ctx: Context): Boolean = try {
             val ai = ctx.packageManager.getApplicationInfo(ctx.packageName, PackageManager.GET_META_DATA)
             ai.metaData?.getBoolean("dev.asuka.push.rewrite") == true

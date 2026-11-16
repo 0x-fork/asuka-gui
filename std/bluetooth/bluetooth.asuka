@@ -14,6 +14,12 @@
 // ("180d"), any other as its 128 bits ("6e400001-b5a3-f393-e0a9-
 // e50e24dcca9e"), lowercase; uuid() normalizes one.
 //
+// With the app out of sight: backgroundScan scans on (Android's, after
+// the app's process has gone), and the system starts the app for
+// Bluetooth, without a screen (iOS's state restoration, with asuka.toml's
+// bluetooth.background), keeping its connections: read restored() as the
+// app starts, in a task of the app's root, for what it brought back.
+//
 // Tests drive a fake: bluetooth.fake() is a FakeBluetooth with fake
 // peripherals a test adds, and centrals that read the app's services.
 
@@ -74,7 +80,35 @@ struct Heard {
   time: int = 0
 }
 
-fn advertisementOf(h: Heard) -> Advertisement = Advertisement(device: h.device, rssi: h.rssi, localName: h.localName, services: h.services, solicited: h.solicited, serviceData: h.serviceData, manufacturerData: h.manufacturerData, txPower: h.txPower, hasTxPower: h.hasTxPower, connectable: h.connectable, time: time.unixNano(h.time))
+fn advertisementOf(h: Heard) -> Advertisement = Advertisement(device: h.device, rssi: h.rssi, localName: h.localName,
+  services: h.services, solicited: h.solicited, serviceData: h.serviceData, manufacturerData: h.manufacturerData,
+  txPower: h.txPower, hasTxPower: h.hasTxPower, connectable: h.connectable, time: time.unixNano(h.time))
+
+/// What the system brought back for the app (restored()).
+pub struct Restored {
+  /// The devices iOS kept connected, or connecting, for the app while it
+  /// wasn't running (state restoration, with asuka.toml's
+  /// bluetooth.background "central"): connect to them to use them again,
+  /// which is at once for one connected.
+  devices: [Device] = []
+  /// The services of the scan iOS kept running for the app: scan for them
+  /// again (backgroundScan) to hear what it hears, or stopBackgroundScan.
+  scanServices: [string] = []
+  /// What a background scan heard with no scan of the app's reading it:
+  /// Android's, while the app's process was gone; iOS's restored scan's,
+  /// before the app scanned again. One per device (its latest), unless
+  /// the scan wanted duplicates.
+  advertisements: [Advertisement] = []
+}
+
+// What the platforms bring back: its advertisements as they give them.
+struct Brought {
+  devices: [Device] = []
+  scanServices: [string] = []
+  advertisements: [Heard] = []
+}
+
+fn restoredOf(b: Brought) -> Restored = Restored(devices: b.devices, scanServices: b.scanServices, advertisements: b.advertisements.map(advertisementOf))
 
 /// What choose() offers: devices advertising all of services, named
 /// name or with namePrefix.
@@ -226,6 +260,8 @@ struct ScanOptions {
   services: [string] = []
   /// Every advertisement, not only a device's first.
   duplicates: bool = false
+  /// With the app out of sight too (backgroundScan).
+  background: bool = false
 }
 
 /// A connection's options.
@@ -333,6 +369,13 @@ native interface Adapter {
   /// Notifies the centrals subscribed to a local characteristic: how many.
   fn notify(service: string, characteristic: string, value: bytes) -> int
   async fn advertise(options: Advertising)
+  /// Calls restored with what the system brought back for the app (those
+  /// kept from before first), until the task is cancelled; where nothing
+  /// is (the desktops, the web), it returns.
+  async fn watchRestored(restored: fn(Brought))
+  /// Stops the background scan a previous run of the app left running;
+  /// this run's go on.
+  fn stopBackgroundScan()
 }
 
 let platform = try? Adapter()
@@ -397,8 +440,23 @@ fn check(s: State) throws {
 /// each time, not only a device's first; services: only devices
 /// advertising one of those). Throws off, denied, notAvailable (the
 /// web: choose instead).
-pub fn scan(services: [string] = [], duplicates: bool = false) -> Stream<Advertisement> = Stream(send => {
-  let o = ScanOptions(services: services.map(u => uuid(u)), duplicates: duplicates)
+pub fn scan(services: [string] = [], duplicates: bool = false) -> Stream<Advertisement> =
+  scanning(ScanOptions(services: services.map(u => uuid(u)), duplicates: duplicates))
+
+/// Scans for devices advertising one of the services, with the app out of
+/// sight too (an app that calls it gets iOS's bluetooth-central mode).
+/// iOS scans so only for services, and slower, each device once; it keeps
+/// the scan when it ends the app, and starts the app again for what it
+/// hears (restored()). Android's is a scan the system runs, which goes on
+/// after the app's process has gone (Android pauses one without services
+/// while the screen is off): what it hears then is kept for restored(),
+/// until a later run scans so again or calls stopBackgroundScan. The
+/// desktops scan only while the app runs; the web throws notAvailable,
+/// as scan does.
+pub fn backgroundScan(services: [string], duplicates: bool = false) -> Stream<Advertisement> =
+  scanning(ScanOptions(services: services.map(u => uuid(u)), duplicates: duplicates, background: true))
+
+fn scanning(o: ScanOptions) -> Stream<Advertisement> = Stream(send => {
   if let f = faked {
     try check(f.adapter)
     let id = f.startScan(o, a => send(a))
@@ -425,6 +483,74 @@ pub async fn choose(filters: [Filter], optionalServices: [string] = []) throws -
   }
   throw BluetoothError.notAvailable
 }
+
+/// Stops the background scan a previous run of the app left running
+/// (Android's, after its process went; iOS's, which it restored), once the
+/// app has what it heard (restored()). This run's background scans go on.
+/// Elsewhere it does nothing.
+pub fn stopBackgroundScan() {
+  if let f = faked {
+    f.backgroundLeft = false
+    return
+  }
+  if let p = platform {
+    try? p.stopBackgroundScan()
+  }
+}
+
+// ---------------------------------------------------------------------
+// Restoration
+
+// What the platform restored, read once and given to restored()'s
+// readers; what came with none kept for the first.
+state restoreReaders: [int: fn(Restored)] = [:]
+state restoreReaderID = 0
+state followingRestores = false
+state unreadRestored: [Restored] = []
+
+fn deliverRestored(r: Restored) {
+  if restoreReaders.isEmpty() {
+    unreadRestored.push(r)
+  } else {
+    for f in restoreReaders.values() { f(r) }
+  }
+}
+
+/// Reads what the platform restores while anything reads restored().
+async fn followRestores() {
+  if followingRestores {
+    return
+  }
+  followingRestores = true
+  defer { followingRestores = false }
+  if let f = faked {
+    let id = f.onRestore(r => deliverRestored(r))
+    defer { f.unlistenRestore(id) }
+    await never()
+  }
+  if let p = platform {
+    try? await p.watchRestored(restored: r => deliverRestored(restoredOf(r)))
+  }
+}
+
+/// What the system brought back for the app as it started it for
+/// Bluetooth (iOS's restored connections and scan, with asuka.toml's
+/// bluetooth.background), and what a background scan heard with the app
+/// away (backgroundScan): that of the launch first, then each time it
+/// starts the app again for Bluetooth while it runs. Read it as the app
+/// starts, in a task of the app's root. Nothing on the desktops and the
+/// web.
+pub fn restored() -> Stream<Restored> = Stream(send => {
+  restoreReaderID += 1
+  let id = restoreReaderID
+  restoreReaders[id] = r => send(r)
+  defer { restoreReaders.remove(id) }
+  let kept = unreadRestored
+  unreadRestored = []
+  for r in kept { send(r) }
+  await followRestores()
+  await never()
+})
 
 // ---------------------------------------------------------------------
 // Connections
@@ -896,6 +1022,13 @@ pub store FakeBluetooth {
   pub state connected: [string] = []
   /// Values written, as "<device> <service> <char> <hex>".
   pub state written: [string] = []
+  /// Background scans running (backgroundScan).
+  pub state backgroundScans = 0
+  /// A background scan a previous run of the app left running (Android's,
+  /// after its process went; iOS's, restored): a background scan of the
+  /// app's replaces it, stopBackgroundScan stops it. restore() leaves one
+  /// when it brings back a scan or what one heard.
+  pub state backgroundLeft = false
   /// As a peripheral: the services served, the advertising running, the
   /// values the app notified.
   pub state servers = 0
@@ -905,6 +1038,9 @@ pub store FakeBluetooth {
   state links: [int: LinkReader] = [:]
   state subs: [int: Sub] = [:]
   state stateReaders: [int: fn(State)] = [:]
+  state restoreReaders: [int: fn(Restored)] = [:]
+  // What restore() gave with no one reading yet.
+  state keptRestores: [Restored] = []
   state serving: [int: fn(Request)] = [:]
   state servedNow: [ServedService] = []
   state answers: [int: Answered] = [:]
@@ -928,6 +1064,20 @@ pub store FakeBluetooth {
         l.f(Link(state: .disconnected, error: "bluetooth: disconnected: Bluetooth is {s}"))
       }
     }
+  }
+
+  /// The system started the app for Bluetooth with what it restored (iOS's
+  /// connections and scan, Android's background scan's advertisements):
+  /// restored() gives it, or keeps it for its first reader.
+  pub fn restore(r: Restored) {
+    if !r.scanServices.isEmpty() || !r.advertisements.isEmpty() {
+      backgroundLeft = true
+    }
+    if restoreReaders.isEmpty() {
+      keptRestores.push(r)
+      return
+    }
+    for f in restoreReaders.values() { f(r) }
   }
 
   /// A peripheral in range: the scans running hear it.
@@ -1004,6 +1154,10 @@ pub store FakeBluetooth {
     let i = id()
     scanners[i] = Scanner(o: o, f: f)
     scans = scanners.count()
+    backgroundScans = scanners.values().filter(s => s.o.background).count()
+    if o.background {
+      backgroundLeft = false
+    }
     for p in peripherals {
       if matches(p, o) { f(advertisement(p)) }
     }
@@ -1013,6 +1167,7 @@ pub store FakeBluetooth {
   fn stopScan(i: int) {
     scanners.remove(i)
     scans = scanners.count()
+    backgroundScans = scanners.values().filter(s => s.o.background).count()
   }
 
   fn choose(filters: [Filter]) throws -> Device {
@@ -1103,6 +1258,19 @@ pub store FakeBluetooth {
 
   fn unlisten(i: int) {
     stateReaders.remove(i)
+  }
+
+  fn onRestore(f: fn(Restored)) -> int {
+    let i = id()
+    restoreReaders[i] = f
+    let kept = keptRestores
+    keptRestores = []
+    for r in kept { f(r) }
+    return i
+  }
+
+  fn unlistenRestore(i: int) {
+    restoreReaders.remove(i)
   }
 
   fn startServing(services: [ServedService], f: fn(Request)) -> int {

@@ -432,6 +432,16 @@ fn firstOf(a: string, b: string, c: string) -> string {
   return c
 }
 
+/// n shown now as a message when sender is given, said in c: asuka/push's
+/// rewrite, whose message carries its own (so that only an app that makes
+/// one has communication notifications, as with from).
+pub fn specOf(n: Notification, sender: Person?, c: Conversation?) -> Spec {
+  var m = n
+  m.sender = sender
+  m.conversation = c
+  return spec(m, 0.0)
+}
+
 /// n as the hosts take it: a message's ID, thread and title from its
 /// conversation and sender.
 pub fn spec(n: Notification, seconds: float) -> Spec {

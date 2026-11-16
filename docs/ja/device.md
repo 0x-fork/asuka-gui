@@ -42,7 +42,7 @@ Asuka のパッケージを使うと、ビューの外にあるデバイスの�
 | `asuka/calendar` | `READ_CALENDAR`、`WRITE_CALENDAR`（`calendars`、`events` 用） | `NSCalendarsFullAccessUsageDescription`、`NSCalendarsWriteOnlyAccessUsageDescription`、`NSCalendarsUsageDescription` |
 | `asuka/compose` | `mailto:` と `smsto:` を扱うアプリの可視性（`<queries>`） | `LSApplicationQueriesSchemes` に `mailto` |
 | `asuka/nfc` | `NFC`。`uses-feature android.hardware.nfc`（必須ではない）。asuka.toml の `nfc` のフィルター（[NFC タグ](nfc.md)） | `NFCReaderUsageDescription`。Core NFC のエンタイトルメント。asuka.toml の `nfc` の AID と FeliCa のシステムコード |
-| `asuka/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`。`asuka.toml` の `bluetooth.background` のためのスキャンのレシーバー（[Bluetooth](bluetooth.md#ビルドが加えるもの) を参照） | `NSBluetoothAlwaysUsageDescription`。`bluetooth.background` のための `bluetooth-central`、`bluetooth-peripheral` |
+| `asuka/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`。`backgroundScan` のためのバックグラウンドスキャンのレシーバー（[Bluetooth](bluetooth.md#ビルドが加えるもの) を参照） | `NSBluetoothAlwaysUsageDescription`。`bluetooth.background` のための `bluetooth-central`、`bluetooth-peripheral`（`backgroundScan` には `bluetooth-central`）と、iOS が復元するマネージャーを作る起動クラス |
 
 `asuka/device`、`asuka/audio`、`asuka/splash`、`asuka/imageedit`、`asuka/widget`、`asuka/js`、`asuka/secure`、`asuka/preview`、`asuka/print` は何も必要としません。
 
@@ -149,7 +149,7 @@ Linux のホストは、ポータルがあればポータルを通じて、ほ�
 | `asuka/library` | ユーザーのフォルダー（XDG のピクチャ、ビデオ、ミュージック、ダウンロード）の、指定したフォルダーに保存されます |
 | `shareFiles` | 共有シートはありません。ファイルはクリップボードにコピーされ、トーストが表示されます |
 | `asuka/camera`、`asuka/record` | カメラポータル（ユーザーへの確認は一度だけ。PipeWire のカメラで、`gstreamer1.0-pipewire` が必要）、なければ最初の Video4Linux カメラを、GStreamer を通じて使います。`take()`：ウィンドウの上にダイアログを出し、ライブプレビューと「写真を撮る」「キャンセル」を表示します。`camera.View`：左右反転したプレビューで、枠いっぱいに表示します。前面と背面は同じカメラです（コンピューターのカメラはユーザーのほうを向いているため）。ビデオは MPEG-4（x264 か OpenH264 の H.264 と AAC）、それができなければ WebM です。コードの読み取りには GStreamer の `zbar` エレメントが必要です。カメラがなければ `CameraError.noCamera`、拒否されたら `.notAllowed` です |
-| `asuka/scan`、`asuka/vision` | コードは ZBar（`libzbar0`）が読み取ります。Aztec と Data Matrix は読めません。テキストは Tesseract（`libtesseract5` と各言語のデータ）が読み取ります。顔を検出するものはないので、`faces` は空です。ZBar がなければ `scan.file` は「not available」を投げ、`vision.analyze` はインストールされていないものを結果から省きます |
+| `asuka/scan`、`asuka/vision` | Windows と同じく、コードは Asuka 自身のリーダーが読み取ります。QR、Data Matrix、EAN、UPC、Code 128、Code 39 です（Aztec、PDF417、Code 93、Codabar、ITF は読めません）。テキストは Tesseract（`libtesseract5` と各言語のデータ）が読み取ります。顔を検出するものはないので、`faces` は空です。Tesseract がなければ、`vision.analyze` の結果にテキストは含まれません |
 | `asuka/imageedit` | GdkPixbuf のローダーでデコードし（HEIF と WebP は、それぞれのローダーがインストールされている場合）、向きを正しく直します。各操作はホストが行います。ビデオのフレームは GStreamer で取り出します |
 | `asuka/webauth` | ウィンドウの上に WebKitGTK の Web ビューを入れたダイアログを開きます（`ephemeral` では専用のセッション）。閉じるとキャンセルになります |
 | `asuka/js` | 一度も表示されない WebKitGTK の Web ビュー |
@@ -269,7 +269,7 @@ iOS と Mac では AVCaptureMovieFileOutput、Android では CameraX の `VideoC
 
 `scan` をオンにした `camera.View` は、映ったコードをライブで読み取り、一つごとに `code` で報告します（映り続けているあいだは一度だけ）。`codes` で探す種類を絞れます。指定しなければすべての種類です。種類の名前は `"qr"`、`"aztec"`、`"datamatrix"`、`"pdf417"`、`"ean13"`、`"ean8"`、`"upca"`、`"upce"`、`"code128"`、`"code39"`、`"code93"`、`"codabar"`、`"itf"` です。
 
-`scan.file(path)` は代わりに画像ファイル（撮った写真や選んだ写真）の中のコードを読み取ります。iOS と Mac では Vision、Android では ML Kit（モデルをアプリに含めるので約 2 MB 増えますが、Google Play 開発者サービスがなくても動きます）、ブラウザーでは `BarcodeDetector`（あれば）、Windows では Asuka 独自のデコーダー、Linux では ZBar の GStreamer エレメントを使います。
+`scan.file(path)` は代わりに画像ファイル（撮った写真や選んだ写真）の中のコードを読み取ります。iOS と Mac では Vision、Android では ML Kit（モデルをアプリに含めるので約 2 MB 増えますが、Google Play 開発者サービスがなくても動きます）、ブラウザーでは `BarcodeDetector`（あれば）、Windows と Linux では Asuka 自身のリーダー（アプリが頼れるリーダーがないため。QR、Data Matrix、EAN、UPC、Code 128、Code 39）を使います。
 
 ```asuka
 import asuka/camera
@@ -309,7 +309,7 @@ async fn words(photo: string) throws -> [string] {
 }
 ```
 
-iOS と Mac では Vision フレームワーク、Android では ML Kit と同梱のモデル（約 30 MB）、ブラウザーでは Shape Detection API（あれば）、Windows では Windows の OCR、Linux では Tesseract（インストールされていれば）と ZBar を使います。コードの値を読むのは `asuka/scan`、コードがどこにあるかを知るのはこのパッケージです。
+iOS と Mac では Vision フレームワーク、Android では ML Kit と同梱のモデル（約 30 MB）、ブラウザーでは Shape Detection API（あれば）、Windows では Windows の OCR と顔検出、Linux では Tesseract（インストールされていれば）を使い、Windows と Linux のコードは Asuka 自身のリーダーが読み取ります。テキストと顔は各プラットフォーム自身の認識によるもので（すべてのプラットフォームで共有できる認識器はありません）、見つかるものはプラットフォームによって異なることがあります。コードの値を読むのは `asuka/scan`、コードがどこにあるかを知るのはこのパッケージです。
 
 ## 写真ライブラリ：asuka/photos
 
@@ -1178,9 +1178,110 @@ component Shared {
 
 リンクの先が何か（ページ、画像、動画）を調べるのはアプリの役目で、`asuka/http` を使います。expo-sharing の「resolved」ペイロードに当たる処理を、Asuka で書くことになります。
 
-### アプリ独自の共有シート
+### アプリ独自の共有シート：asuka/sharesheet
 
-共有すると、アプリが開きます。アプリ独自の共有シート、つまり「Raindrop に保存」や「メモに追加」のように、アプリの上に表示されて共有を受け付ける画面（ユーザーは保存したら、すぐ元の場所に戻れます）は、Asuka にはまだありません。ホストはこのシートを動かせます（iOS では共有拡張機能のシートとして、Android では `:share` プロセスの Activity として Material のボトムシートで表示します）が、言語にはシートが表示する画面を宣言する方法がまだありません。それができるまでは、共有するとアプリが開き、`onShare` が共有されたものを受け取ります。
+通常、共有するとアプリが開きます。代わりに、アプリ独自の共有シートを用意することもできます。「Raindrop に保存」や「メモに追加」のように、共有元のアプリの上に表示される画面で、ユーザーは保存したらすぐ元の場所に戻れます。`asuka/sharesheet` を使うと、アプリが共有シートとして動いているときに、app ブロックでそのシートを表示できます。
+
+```asuka
+import asuka/sharesheet
+
+component SaveLink {
+  state link = ""
+  state note = ""
+
+  onShare(items => {
+    for it in items {
+      if it.kind == .link {
+        link = it.text
+      }
+    }
+  })
+
+  Column {
+    padding: 16; gap: 12; grow: 1
+    if link.isEmpty() {
+      ProgressRing()
+    } else {
+      Text(link)
+    }
+    TextField { bind text: note; placeholder: "Note" }
+    Row {
+      gap: 12
+      Button("Cancel") {
+        on press { sharesheet.cancel() }
+      }
+      Button("Save") {
+        variant: .filled
+        on press {
+          save(link, note)
+          sharesheet.done()
+        }
+      }
+    }
+  }
+}
+
+component Root {
+  Text("Links")
+}
+
+// アプリ独自のもの。
+fn save(link: string, note: string) {}
+
+app {
+  if sharesheet.active() {
+    SaveLink()
+  } else {
+    Root()
+  }
+}
+```
+
+アプリが共有シートとして動いているとき、`sharesheet.active()` は true になります。このときルートはシートで、アプリのほかの部分は作られません。シートは、アプリと同じように `onShare` で共有されたものを受け取ります。項目がまだ届いていない間（動画をコピーしている途中など）は、スピナーを表示してください。シートは `sharesheet.done()`、`sharesheet.cancel()`、`sharesheet.openApp()` で閉じます。`openApp()` は、シートがないときと同じように、共有された項目を持ってアプリを開き、アプリの `onShare` に渡します。シートがどんな共有で候補に出るかは、上で説明した `asuka.toml` の `shareTarget` で決まります。`active()` を使っていても `shareTarget` がなければ、どの共有メニューにも出てきません（CLI が知らせます）。
+
+シートは独立したルートで、iOS が共有拡張機能を動かすのと同じく、独立したプロセスで動きます。**iOS** ではアプリの共有拡張機能で、iOS がシートとして表示し、アプリと共有するフレームワークにあるアプリのコードとホストを動かします。**Android** では `:share` プロセスの Activity で、共有元のアプリの上に Material のボトムシートとして表示されます（下にドラッグする、外側をタップする、戻るのいずれでもキャンセルになります）。シートが閉じるとプロセスも終わります。ファイルの `path` はシートが閉じるまでしか使えないので、アプリで残すものはコピーしてください。
+
+アプリが保存しているものは、シートからも同じように使えます。アプリのファイル（`asuka/fs` のアプリ用ディレクトリと、そこにある SQLite のデータベース）、`asuka/storage` の値、`asuka/secure` です。Android では二つのプロセスがアプリのファイルを共有します。iOS では、アプリのファイルと値は、シート付きで初めて起動したときに一度だけ App Group（`group.<app ID>`）に移され、キーチェーンのアクセスグループも拡張機能と共有されます。実機向けビルドのプロビジョニングプロファイルには App Groups の機能が必要です（[配布](shipping.md#ios)を参照）。アプリの実行中にシートが書き込んだ内容は、アプリには通知されません。アプリが前面に戻ったときに読み直してください。
+
+CLI は、アプリが `sharesheet.active` を使っていることを見て、アプリを開くだけの拡張機能の代わりにシートをビルドします。このとき iOS では、アプリのコード、コア、ホストがアプリ内のフレームワーク `Frameworks/AsukaApp.framework` になり、Xcode が拡張機能とコードを共有するのと同じように、アプリと拡張機能の両方がそれを読み込みます。シートがあってもアプリのサイズは増えません。デスクトップとブラウザーでは、アプリはほかのアプリの共有メニューに出てこないので、`active()` は false です。
+
+テストでは、`sharesheet.fake()` でアプリを共有シートとして動かせます（`mountApp()` がシートを表示します）。シートがどう閉じたかは `closed` に記録されます。マウントしたアプリの `share(items)` は、ほかのアプリがそれらを共有したことを表します。
+
+```asuka
+import asuka/sharesheet
+
+component SaveLink {
+  state link = ""
+
+  onShare(items => {
+    link = items[0].text
+  })
+
+  Column {
+    Text(link)
+    Button("Save") {
+      on press { sharesheet.done() }
+    }
+  }
+}
+
+app {
+  if sharesheet.active() {
+    SaveLink()
+  } else {
+    Text("Links")
+  }
+}
+
+test "the sheet saves" {
+  let sheet = sharesheet.fake()
+  let app = mountApp()
+  app.share([SharedItem(kind: .link, text: "https://asuka.dev")])
+  app.expect("https://asuka.dev")
+  app.tap("Save")
+  expect(sheet.closed == .done)
+}
+```
 
 ## JavaScript：asuka/js
 
@@ -1258,7 +1359,57 @@ Asuka は、Google の Gradle プラグインと同じようにこのファイ�
 
 ### 表示前のプッシュ通知の書き換え
 
-各プッシュ通知を表示前に書き換える機能（エンドツーエンドで暗号化されたペイロードを復号する、タイトルと本文を設定する、画像を添付する、送信者の写真付きの会話のメッセージにする）は、Asuka にはまだありません。ホストには手段があります（iOS では Notification Service Extension で、`aps` に `"mutable-content": 1` を持つプッシュ通知ごとに実行されます。Android では、FCM のデータメッセージをアプリのプロセスで処理できます）。しかし `asuka/push` にはアプリのコードをホストに渡す関数がないので、プッシュ通知は届いたまま表示されます。表示する内容はペイロードに入れてください。
+`push.rewrite(f)` を使うと、各プッシュ通知を表示前にアプリで書き換えられます。エンドツーエンドで暗号化されたペイロードを復号する、タイトルと本文を設定する、画像を添付する、送信者の写真付きの会話のメッセージにする、スレッドとカテゴリーを設定する、といったことができます。アプリの起動時に呼び出してください。
+
+```asuka
+import asuka/push
+import asuka/notify
+
+async fn reveal(m: push.Message) throws -> push.Message? {
+  let box = m.data["box"] ?? ""
+  if box.isEmpty() {
+    return none   // アプリのものではない：届いたまま表示
+  }
+  let msg = try await decrypt(box)   // 鍵は asuka/secure に保存
+  var out = m
+  out.body = msg.text
+  out.category = "message"
+  return out.from(notify.Person(id: msg.fromID, name: msg.fromName, image: msg.avatar),
+    notify.Conversation(id: m.data["chat"] ?? ""))
+}
+
+component Root {
+  task {
+    push.rewrite(reveal)
+  }
+
+  Text("Chats")
+}
+
+// アプリ独自のもの。
+struct Plain {
+  text: string
+  fromID: string
+  fromName: string
+  avatar: string
+}
+
+async fn decrypt(box: string) throws -> Plain {
+  return Plain(text: box, fromID: "ana", fromName: "Ana", avatar: "")
+}
+
+app { Root() }
+```
+
+`f` は表示するプッシュ通知を返します。`none` を返したり、エラーを投げたりすると、プッシュ通知は届いたまま表示されます。書き換えは、届いた順に一つずつ行われます。`image` はダウンロードして添付されます。`from` は、`notify.Notification` の `from` と同じように、通知を会話のメッセージにします。`push.stopRewriting()` を呼ぶと、また届いたまま表示されるようになります。
+
+**iOS** では、Notification Service Extension で書き換えます。`asuka build` は、`push.rewrite` を使うアプリにこの拡張機能を作ります。iOS は、`aps` に `"mutable-content": 1`（と、書き換えに失敗したときに表示される `alert`）を持つプッシュ通知ごとに拡張機能を起動します。拡張機能は、バックグラウンドでの起動と同じように画面なしでアプリを動かし、アプリが `push.rewrite` を呼んだ時点で書き換えが走ります。そのため、ルートが起動時に行う処理は軽くしておくか、拡張機能でのルートを `rewrite` を呼ぶだけのものにしてください（拡張機能の中では `push.inExtension()` が true です：`if push.inExtension() { Rewrites() } else { Root() }`）。iOS が与える時間はおよそ 30 秒、メモリは 24 MB で、時間切れになるとプッシュ通知は届いたまま表示されます。アプリが保存しているものは拡張機能でも同じです。ファイルと `asuka/storage` の値は両者が共有する App Group に、キーチェーンの項目（`asuka/secure`）はアプリのアクセスグループにあります。リリースビルドには、拡張機能の Bundle ID（アプリの ID に `.notification` を付けたもの）用のプロビジョニングプロファイルが必要で、App Groups の機能とアプリの App Group を含んでいなければなりません（`asuka.toml` の `ios.notificationProfile` で指定できます。省略時はインストール済みのものから最も合うものを選びます）。iOS では、書き換えでプッシュ通知を非表示にすることはできません。シミュレーターがこの拡張機能を動かすのは APNs から届いたプッシュ通知だけで、`xcrun simctl push` で送ったものには動きません。
+
+**Android** では、FCM のデータメッセージをアプリのプロセスで書き換えます。アプリが動いていなければ画面なしで起動し、10 秒ほどのうちに書き換えてから通知を表示します。書き換えたあとにタイトルも本文もないデータメッセージは表示されません。アプリがバックグラウンドにあるときに届いた通知メッセージは、書き換えずに Firebase が表示します。書き換えたい場合はデータメッセージを送ってください。
+
+**Web** では、前面にあるページが、Service Worker が表示する前にプッシュ通知を書き換えます。ページが開いていなければ、届いたまま表示されます。
+
+テストでは、`push.fakeRewrite(m)` が、届いたプッシュ通知が最終的にどう表示されるか（書き換えたプッシュ通知、または `m` そのもの）を返します。
 
 ## Apple でサインイン：asuka/appleauth
 

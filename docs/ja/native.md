@@ -237,7 +237,7 @@ manifest = ['<queries><intent><action android:name="android.intent.action.TTS_SE
 
 権限を `"name:28"` と書くとその API レベルまで、`"name|neverForLocation"` と書くとその `usesPermissionFlags` 付きになります。利用目的の説明は、アプリ自身の `asuka.toml` のものがパッケージのものより優先されます。
 
-パッケージの一部だけが必要とするものは、同じキーで `[uses.<member>]` の表に書きます。アプリのコード（または依存パッケージのコード）がそのメンバー（関数、型、store。型のメンバーは `"Type.name"`）を参照したときだけ、アプリに付きます。同じ名前のローカル関数や、テストブロックの中の参照は数えません。asuka/location のバックグラウンド部分はこう宣言しています：
+パッケージの一部だけが必要とするものは、同じキーで `[uses.<member>]` の表に書きます。アプリのコード（または依存パッケージのコード）がそのメンバー（関数、型、store。型のメソッドやフィールドは `"Type.name"`。フィールドは、コードが構造体をそのフィールド付きで作るか、代入するか、読むときに数え、既定値のままなら数えません）を参照したときだけ、アプリに付きます。同じ名前のローカル関数や、テストブロックの中の参照は数えません。asuka/location のバックグラウンド部分はこう宣言しています：
 
 ```toml
 [uses.requestAlways.android]
@@ -437,7 +437,7 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
 - **メモリ**：境界を越える値はすべて `malloc` で確保します。メソッドの引数は生成されたコードのもので、同期呼び出しのあいだと、非同期呼び出しが応答するまで有効です（それより長く使うならコピーします）。メソッドが返す（または応答する）値は生成されたコードに渡り、そちらで解放されます（リテラルは `asuka_strdup` してから返します）。コールバックの引数は自分のもののままで、問い合わせ型のコールバックが返した値は自分で解放します（`<pkg>_<Type>_free`）。vtable の `release` が `NULL` なら、Asuka が手放したときにオブジェクトがそのまま解放されます。
 - **コールバック**は `<pkg>_fn_…_call` で呼び出します。通知型はどのスレッドからでも呼べます（メインスレッドに投げられます）。問い合わせ型はメインスレッドならその場で動き、ほかのスレッドからは結果を待ちます。
 - **ビュー**：`<pkg>_make_<View>(events)` が、ビューのオブジェクトとその `widget`（`HWND`（`events.parent` の子）か `GtkWidget *`）を作ります。ホストがそれを表示し、ビューがなくなるときに破棄します。プロパティごとに vtable のセッター（`set_selected`）があり、ウィジェットが自分のサイズを返せないときは `measure` がサイズを決めます。イベントは生成された関数（`segmented_Segmented_selectedChange(events, i)`）で、どのスレッドからでも呼べます。
-- **ホスト**：`asuka_desktop.h`（platform/desktop）は、パッケージの C が使える C のホストの機能です。メインスレッドへの投げ込み、ビューのあるウィンドウ、アプリの名前・ID・バージョン・ディレクトリ、アセット、表示中の外観に合わせた色、HTTP（`asuka_fetch`）、アプリが指定したファイル（`asuka_desktop_local_file`）があります。`asuka_windows.h` には COM と WinRT の補助（UTF-16、vtable のスロット、HSTRING、アクティベーションファクトリ、デリゲート、非同期操作の待機、WIC の画像、システムウィンドウが受け取るブロードキャスト）があり、`asuka_linux.h` は、パッケージが使う GLib、GIO、GTK、libadwaita の関数を宣言して、Linux のホストと同じく実行時に解決します（`G(g_variant_new)(…)` のように呼びます）。そのため、ビルドに GTK のヘッダーは要りません。
+- **ホスト**：`asuka_desktop.h`（platform/desktop）は、パッケージの C が使える C のホストの機能です。メインスレッドへの投げ込み、ビューのあるウィンドウ、アプリの名前・ID・バージョン・ディレクトリ、アセット、表示中の外観に合わせた色、HTTP（`asuka_fetch`。レスポンスを少しずつ受け取るとき、ダウンロードをそのままファイルに書くときは `asuka_fetch_stream`、どのスレッドからでもリクエストを止めるときは `asuka_abort`）、アプリが指定したファイル（`asuka_desktop_local_file`）があります。`asuka_windows.h` には COM と WinRT の補助（UTF-16、vtable のスロット、HSTRING、アクティベーションファクトリ、デリゲート、非同期操作の待機、WIC の画像、システムウィンドウが受け取るブロードキャスト）があり、Windows のホストも同じものを使います。`asuka_barcode.h` は画像のグレースケールから QR コードやバーコードを読み取り、どのデスクトップでも使えます。`asuka_linux.h` は、パッケージが使う GLib、GIO、GTK、libadwaita の関数を宣言して、Linux のホストと同じく実行時に解決します（`G(g_variant_new)(…)` のように呼びます）。そのため、ビルドに GTK のヘッダーは要りません。
 - **ライブラリ**：パッケージの C が各プラットフォームでリンクするものは、その `asuka.toml` に書きます。
 
   ```toml
@@ -446,6 +446,8 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   [linux]
   libraries = []
   ```
+- **パッケージ自身のライブラリ**：パッケージがビルドに使う C のライブラリ（パーサー、デコーダー）は、手を加えずに `desktop/third_party/<名前>/` に置き、ライセンスとバージョンを添えます。パッケージ自身のファイルがそのソースを取り込む（`#include "third_party/<名前>/<名前>.c"`）ので、パッケージの C と一緒にコンパイルされ、変更すればアプリもビルドし直されます。
+- **テスト**：`desktop/*_test.c` は独立したプログラム（自分の `main` を持つ）で、両プラットフォーム共通のパッケージの C（生成されたグルーは含みません）と一緒にビルドされ、platform/desktop のテストがどのシステムでも実行します。プラットフォームに依存しない処理（解析、デコード、エンコード）のテストに使います。`desktop/*_linux_test.c` は Linux 上で GTK を使って、`desktop/*_windows_test.c` は Windows 上で（platform/windows の TestStdViews が実行し、他のシステムからは Windows の VM で）ビューをテストします。どちらもグルーと一緒にビルドされ、ビューの C を取り込み、ビューを作ってホストと同じように動かします（std/markdown のテストは、ストリーミングで届く返答を与え、置き換えた分を数えます）。
 
 macOS では、パッケージの Swift（`Package.swift`）が動き、C は動きません。
 

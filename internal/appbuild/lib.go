@@ -5,12 +5,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/cgen"
+	"github.com/egoist/asuka/platform/desktop"
 )
 
 // AppC writes m compiled to C (lang/cgen) under the user's cache, at a
@@ -97,41 +98,59 @@ func lib(t cbuild.Target, kind cbuild.LibKind, m *bytecode.Module, c *bytecode.C
 // MacArchs are a Mac app's architectures: a universal binary's.
 var MacArchs = []string{"arm64", "amd64"}
 
-// MacLib builds libasuka.dylib for every Mac (MacArchs) into out, one
-// universal binary (lipo), as Lib.
-func MacLib(m *bytecode.Module, out string) error {
-	return MacPlayerLib(m, nil, out)
-}
-
-// MacPlayerLib is MacLib for a player (m nil) with the C c calls.
-func MacPlayerLib(m *bytecode.Module, c *bytecode.C, out string) error {
-	work, err := os.MkdirTemp("", "asuka-mac-")
+// LinuxExe builds a Linux app's executable for t at out: the C host
+// (platform/linux, with platform/desktop's shared C), the native registry
+// and the C of the native packages in dirs (DesktopNatives), and the core,
+// linked into one executable, with m compiled to C (lang/cgen) for a
+// release, or with m nil asuka dev's player, which loads the bytecode
+// asuka dev sends (built for debugging, as Lib's player is).
+func LinuxExe(t cbuild.Target, m *bytecode.Module, dirs []string, out string) error {
+	host, err := linuxHost()
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(work)
-	var parts []string
-	for _, arch := range MacArchs {
-		p := filepath.Join(work, arch, "libasuka.dylib")
-		cc := c
-		if m != nil {
-			cc = m.C
-		}
-		if err := lib(cbuild.Target{OS: "darwin", Arch: arch}, cbuild.Shared, m, cc, p); err != nil {
-			return err
-		}
-		parts = append(parts, p)
-	}
-	return lipo(parts, out)
-}
-
-func lipo(parts []string, out string) error {
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+	natives, err := DesktopNatives(t, dirs)
+	if err != nil {
 		return err
 	}
-	args := append([]string{"lipo", "-create", "-output", out}, parts...)
-	if b, err := exec.Command("xcrun", args...).CombinedOutput(); err != nil {
-		return fmt.Errorf("lipo: %v\n%s", err, b)
+	return DesktopExe(t, m, host, natives, out)
+}
+
+// linuxHost is the Linux host's C (cbuild.LinuxHost: the checkout's, or
+// the CLI's own copy).
+func linuxHost() (*DesktopC, error) {
+	srcs, flags, err := cbuild.LinuxHost()
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	return &DesktopC{Sources: srcs, Flags: flags}, nil
+}
+
+// MacShared compiles the C the desktop hosts share that the Mac's host
+// links too (desktop.MacShared: the route state, flyouts' places, Asuka's
+// own words) for arch, into objects cached by their sources.
+func MacShared(arch string, debug bool) ([]string, error) {
+	d, err := desktop.Dir()
+	if err != nil {
+		return nil, err
+	}
+	tc, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: arch})
+	if err != nil {
+		return nil, err
+	}
+	var srcs, hdrs []string
+	for _, f := range desktop.MacShared(d) {
+		if strings.HasSuffix(f, ".c") {
+			srcs = append(srcs, f)
+		} else {
+			hdrs = append(hdrs, f)
+		}
+	}
+	flags := []string{"-I" + desktop.Include(d), "-ffunction-sections", "-fdata-sections"}
+	if debug {
+		flags = append(flags, "-g", "-O1")
+	} else {
+		flags = append(flags, "-O2", "-DNDEBUG")
+	}
+	return tc.Objects("mac-shared", srcs, hdrs, flags)
 }

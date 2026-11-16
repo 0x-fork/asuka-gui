@@ -20,6 +20,7 @@ import (
 // libraries they link.
 type DesktopC struct {
 	Sources []string // .c files (and the headers they include, for the cache)
+	Deps    []string // what the .c files include besides (a vendored library's sources), for the cache
 	Flags   []string // -I…
 	Libs    []string // -l…
 }
@@ -61,6 +62,7 @@ func DesktopNatives(t cbuild.Target, dirs []string) (*DesktopC, error) {
 		}
 		hs, _ := filepath.Glob(filepath.Join(dir, "*.h"))
 		c.Sources = append(c.Sources, hs...)
+		c.Deps = append(c.Deps, vendored(dir)...)
 		c.Flags = append(c.Flags, "-I"+dir)
 		libs, err := packageLibs(pkg, t.OS)
 		if err != nil {
@@ -71,6 +73,21 @@ func DesktopNatives(t cbuild.Target, dirs []string) (*DesktopC, error) {
 		}
 	}
 	return c, nil
+}
+
+// vendored are the files of the libraries a package's C vendors, in
+// desktop/third_party/ (each with its license): the package's own C
+// includes their sources, so they count in the cache's key but are never
+// compiled alone.
+func vendored(dir string) []string {
+	var out []string
+	filepath.WalkDir(filepath.Join(dir, "third_party"), func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			out = append(out, p)
+		}
+		return nil
+	})
+	return out
 }
 
 // packageLibs are the libraries a package's asuka.toml says its C links
@@ -96,25 +113,6 @@ func packageLibs(dir, goos string) ([]string, error) {
 	return m.Linux.Libraries, nil
 }
 
-// CHost is the C desktop host for t in this checkout (platform/windows,
-// platform/linux: their src/*.c and include/), and whether there's one:
-// until there is (RFC 0008's H2 and H3), Windows and Linux apps run in
-// the Go host.
-func CHost(t cbuild.Target) (*DesktopC, bool) {
-	root := Checkout()
-	if root == "" {
-		return nil, false
-	}
-	dir := filepath.Join(root, "platform", t.OS)
-	srcs, _ := filepath.Glob(filepath.Join(dir, "src", "*.c"))
-	if len(srcs) == 0 {
-		return nil, false
-	}
-	hs, _ := filepath.Glob(filepath.Join(dir, "src", "*.h"))
-	inc, _ := filepath.Glob(filepath.Join(dir, "include", "*.h"))
-	return &DesktopC{Sources: append(append(srcs, hs...), inc...), Flags: []string{"-I" + filepath.Join(dir, "include"), "-I" + filepath.Join(dir, "src")}}, true
-}
-
 // DesktopExe builds a Windows or Linux app's executable for t at out:
 // host's C, the core, the native C and m compiled to C (a release's), or
 // with m nil a dev player's, which loads the bytecode asuka dev sends.
@@ -127,12 +125,13 @@ func DesktopExe(t cbuild.Target, m *bytecode.Module, host, natives *DesktopC, ou
 	if err != nil {
 		return err
 	}
-	var srcs, flags, libs []string
+	var srcs, deps, flags, libs []string
 	for _, c := range []*DesktopC{host, natives} {
 		if c == nil {
 			continue
 		}
 		srcs = append(srcs, c.Sources...)
+		deps = append(deps, c.Deps...)
 		flags = append(flags, c.Flags...)
 		libs = append(libs, c.Libs...)
 	}
@@ -144,5 +143,5 @@ func DesktopExe(t cbuild.Target, m *bytecode.Module, host, natives *DesktopC, ou
 		srcs = append(srcs, app)
 		flags = append(flags, "-DAK_APP_COMPILED=1")
 	}
-	return tc.Exe(core, srcs, flags, libs, m == nil, out)
+	return tc.Exe(core, srcs, deps, flags, libs, m == nil, out)
 }

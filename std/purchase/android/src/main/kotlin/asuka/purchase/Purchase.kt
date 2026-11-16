@@ -27,6 +27,7 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.ReplacementMode as PlayMode
+import dev.asuka.AsukaLaunching
 import dev.asuka.AsukaModules
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -423,4 +424,22 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
     }
 }
 
-fun makeStore(): Store = PlayStore(AsukaModules.context.applicationContext as Application)
+/** The process's store: made as it starts (PurchaseLaunch), or as the package makes its own. */
+private object Stores {
+    private var store: PlayStore? = null
+
+    @Synchronized fun of(app: Application): PlayStore = store ?: PlayStore(app).also { store = it }
+}
+
+/**
+ * Play Billing's listener from the process's start (the manifest's
+ * android.launch): a purchase completed while the app's code doesn't
+ * read (a pending one approved, a renewal) is kept for events().
+ */
+class PurchaseLaunch : AsukaLaunching {
+    override fun launch(app: Application) {
+        Stores.of(app)
+    }
+}
+
+fun makeStore(): Store = Stores.of(AsukaModules.context.applicationContext as Application)

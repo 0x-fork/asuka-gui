@@ -167,7 +167,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-このコマンドは、Mac 上で `dist/<Name>.app` を作ります。Apple シリコンと Intel の両方で動くユニバーサルアプリで、macOS 11 以降に対応しています。実行ファイルはデスクトップホストで、アプリをコンパイルして組み込んだコアが `Contents/Frameworks/libasuka.dylib` に入ります（どちらもユニバーサル）。さらに、アプリの設定（`Contents/Resources/asuka-app.json`）、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。独自の Swift（`macos/*.swift`）を持つアプリでは、その Swift が両方のアーキテクチャ向けにコンパイルされて `Contents/Frameworks` に入り、アプリと一緒に署名されます（[ネイティブコード](native.md)を参照）。`asuka/sqlite` を使うアプリでは、SQLite のライブラリ（両方のアーキテクチャに対応した `libasqlite.dylib`）もそこに入り、アプリと同じように署名されます。Developer ID で署名した場合、hardened runtime はアプリと同じチームが署名したライブラリしか読み込まず、公証サービスも一つひとつ確認するからです（[ライブラリ](data.md#ライブラリ)）。
+このコマンドは、Mac 上で `dist/<Name>.app` を作ります。Apple シリコンと Intel の両方で動くユニバーサルアプリで、macOS 11 以降に対応しています。実行ファイルは Swift のホストで、アプリをコンパイルして組み込んだコアがリンクされています（ユニバーサル）。さらに、アプリの設定（`Contents/Resources/asuka-app.json`）、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。アプリのネイティブパッケージの Swift は、両方のアーキテクチャ向けにホストと一緒に実行ファイルへコンパイルされます（[ネイティブコード](native.md)を参照）。`asuka/sqlite` を使うアプリでは、SQLite のライブラリ（両方のアーキテクチャに対応した `libasqlite.dylib`）が `Contents/Frameworks` に入り、アプリと同じように署名されます。Developer ID で署名した場合、hardened runtime はアプリと同じチームが署名したライブラリしか読み込まず、公証サービスも一つひとつ確認するからです（[ライブラリ](data.md#ライブラリ)）。
 
 Mac App Store 以外でほかの人に配布するには、Developer ID で署名し、Apple に公証してもらいます。これで Gatekeeper がアプリを開けるようになります。
 
@@ -214,11 +214,10 @@ asuka build --platform linux                # このマシンのアーキテク�
 asuka build --platform linux --arch arm64   # amd64 または arm64
 ```
 
-ホストは cgo を使わずに GTK 4 と libadwaita を呼び出し、コアは Linux ではそのマシンの C コンパイラーで、それ以外では Zig でビルドされるので、どのシステムからでもビルドできます。`dist/linux` には次のものが作られます。
+ホストは C で書かれていて GTK 4 と libadwaita を起動時に開くので（ビルドに GTK のインストールは要りません）、コアやアプリと一緒に Linux ではそのマシンの C コンパイラーで、それ以外では Zig でビルドされ、どのシステムからでもビルドできます。`dist/linux` には次のものが作られます。
 
 - `<name>/`：インストールプレフィックスの構成になっているフォルダーで、アプリの名前を小文字にした名前が付きます（`My Notes` なら `my-notes`）。
-  - `bin/my-notes`：アプリ本体（デスクトップホスト）
-  - `lib/my-notes/libasuka.so`：アプリをコンパイルして組み込んだコア。ホストは `bin/` からの相対位置でこれを見つけます。
+  - `bin/my-notes`：アプリ本体（デスクトップホスト、コア、C にコンパイルしたアプリをリンクした 1 つの実行ファイル）
   - `share/my-notes/assets` と `share/my-notes/asuka-app.json`：アセットと設定。これも `bin/` から見つけます。
   - `lib/my-notes/libasqlite.so`：SQLite のライブラリ。`asuka/sqlite` を使うアプリに入り、これも `bin/` から見つけます（glibc 2.17 以降。SQLite 自身のシンボルを公開しないので、同じプロセスにシステムの SQLite があっても衝突しません）。
   - `share/applications/<id>.desktop`：ランチャーが表示し、起動に使うもの

@@ -187,12 +187,19 @@ export class Host {
 
   listCount(id) { return this.callNow(() => this.core.listCount(id)); }
 
-  // Typed native modules (native.js), from the app's Go: its calls'
+  // Typed native modules (native.js), from the core: its calls'
   // answers are bytes; its way back is its core's.
   get nativeBack() {
     return this._nativeBack ??= {
-      done: (call, b) => this.core.nativeDone(call, b),
-      invoke: (id, b) => this.core.nativeInvoke(id, b),
+      // An answer, into the core once it isn't running.
+      done: (call, b) => this.call(() => this.core.nativeDone(call, b)),
+      // A callback answers now: within the core's call (the core on the
+      // stack), or on its own (an event's), what it made ready run after.
+      invoke: (id, b) => {
+        const r = this.callNow(() => this.core.nativeInvoke(id, b));
+        this.drain();
+        return r;
+      },
     };
   }
   nativeNew(id, iface) { return nativeModules.makeObject(id, iface, this.nativeBack); }

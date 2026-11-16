@@ -48,6 +48,21 @@ final class AsukaCheckbox: UIButton {
         c.isOn = old.isOn
         c.isEnabled = old.isEnabled
         c.tintColor = old.onTintColor
+        // What props set on the switch before checkbox came (they go in
+        // the order the app wrote them): its name for VoiceOver first.
+        c.isAccessibilityElement = old.isAccessibilityElement
+        c.accessibilityLabel = old.accessibilityLabel
+        c.accessibilityHint = old.accessibilityHint
+        c.accessibilityIdentifier = old.accessibilityIdentifier
+        c.accessibilityElementsHidden = old.accessibilityElementsHidden
+        c.accessibilityCustomActions = old.accessibilityCustomActions
+        c.isHidden = old.isHidden
+        c.alpha = old.alpha
+        c.transform = old.transform
+        c.backgroundColor = old.backgroundColor
+        c.layer.cornerRadius = old.layer.cornerRadius
+        c.layer.borderWidth = old.layer.borderWidth
+        c.layer.borderColor = old.layer.borderColor
         if let p = old.superview {
             p.insertSubview(c, aboveSubview: old)
             c.frame = old.frame

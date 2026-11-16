@@ -116,14 +116,51 @@ async fn serving(s: [bluetooth.LocalService]) { try? await bluetooth.serve(s) }
 async fn advertising() { try? await bluetooth.advertise(localName: "Thermo", services: [bluetooth.battery]) }
 ```
 
+## 在后台
+
+应用不在前台时，它的连接会继续保持，扫描也可以继续：
+
+- `bluetooth.backgroundScan(services, duplicates:)` 扫描广播了其中某个服务的设备，应用进入后台后也不会停。iOS 在后台只能按服务扫描，频率更低，每个设备也只上报一次；调用了它的应用会自动获得 iOS 的 `bluetooth-central` 模式。Android 上它是一个由系统运行的扫描，应用进程退出后仍会继续（不指定服务的扫描在灭屏时会被 Android 暂停）。读取它的一方停止时，扫描也随之停止。桌面平台只在应用运行时扫描；Web 上和 `scan` 一样抛出 `notAvailable`。
+- 应用有后台模式时（来自 asuka.toml 的 `bluetooth.background`，或者 `backgroundScan` 带来的模式），iOS 为了回收内存结束应用时，会替它保留连接和扫描；等到其中有了新消息（设备发来通知、扫描听到了设备），再在后台重新启动应用，不显示界面。Android 的后台扫描则会在应用进程不在时，把听到的内容先保存下来。
+- `bluetooth.restored()` 是一个流，给出系统带回来的东西，即一个 `Restored`：`devices` 是 iOS 保留的连接（重新连接它们即可，已经连上的会立即就绪）；`scanServices` 是 iOS 保留的扫描所针对的服务（可以用 `backgroundScan` 重新扫描这些服务，或者把它停掉）；`advertisements` 是后台扫描在应用没有扫描读取时听到的广播。这次启动带回来的内容排在最前面，并一直保留到有人读取：应用启动时就在根组件的一个 task 里读取它。
+- 应用拿到后台扫描听到的内容之后，`bluetooth.stopBackgroundScan()` 停掉上一次运行留下的扫描（Android 上是进程退出后仍在运行的那个，iOS 上是恢复回来的那个）。本次运行自己的后台扫描不受影响；它们中的任何一个启动时也会取代旧的扫描。
+
+```asuka
+state heard: [string] = []
+
+async fn followRestored() throws {
+  for await r in bluetooth.restored() {
+    for a in r.advertisements { heard.push(a.device.id) }
+    if !r.scanServices.isEmpty() { bluetooth.stopBackgroundScan() }
+  }
+}
+
+async fn scanningAway() throws {
+  for await a in bluetooth.backgroundScan([bluetooth.heartRate]) {
+    heard.push(a.device.id)
+  }
+}
+
+component Straps {
+  task { try? await followRestored() }
+  task { try? await scanningAway() }
+
+  Column {
+    for id in heard key id { Text(id) }
+  }
+}
+```
+
+用户在多任务界面里把应用划掉之后，iOS 不会再重新启动它；Android 的扫描会在重启设备、或者用户强行停止应用时停止。
+
 ## 构建时添加的内容
 
 导入这个包的应用会得到它需要的东西：
 
 | 平台 | 内容 |
 | --- | --- |
-| iOS | `NSBluetoothAlwaysUsageDescription`（在 `ios.usage` 里写上你自己的文案）；asuka.toml 的 `bluetooth.background` 声明的后台模式 |
-| Android | `BLUETOOTH_SCAN`（除非设置了 `bluetooth.location`，否则带 `neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；`android.hardware.bluetooth_le`，不是必需的 |
+| iOS | `NSBluetoothAlwaysUsageDescription`（在 `ios.usage` 里写上你自己的文案）；asuka.toml 的 `bluetooth.background` 声明的后台模式，调用了 `backgroundScan` 的应用还会得到 `bluetooth-central`；有后台模式时，还有这个包的启动类，它会在启动结束前创建 iOS 要恢复的管理器 |
+| Android | `BLUETOOTH_SCAN`（除非设置了 `bluetooth.location`，否则带 `neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；`android.hardware.bluetooth_le`，不是必需的；调用了 `backgroundScan` 的应用还会得到后台扫描的接收器 |
 | macOS | 授权文案，以及加固运行时（hardened runtime）的 `com.apple.security.device.bluetooth` entitlement |
 | Linux | Flatpak 的 `--system-talk-name=org.bluez` |
 
@@ -138,12 +175,14 @@ async fn advertising() { try? await bluetooth.advertise(localName: "Thermo", ser
 | 广播 | 只有名称和服务 | ✓ | 服务和厂商数据，没有名称 | ✓ | — |
 | MTU | 系统决定 | 向设备申请（517） | 系统决定 | BlueZ 决定 | 23 |
 | RSSI | ✓ | ✓ | — | 仅在 BlueZ 听得到设备时 | — |
+| 后台扫描 | iOS：只按服务，频率更低；macOS：仅在应用运行时 | ✓ 由系统运行，进程退出后继续 | 仅在应用运行时 | 仅在应用运行时 | — |
+| `restored()` | iOS：连接、扫描及扫描听到的内容 | 后台扫描听到的内容 | — | — | — |
 
 在 Windows 上，`request()` 请求的是对无线电的访问权限（未打包的应用本来就有）；Linux 不请求权限，`request()` 就等于 `state()`。没有 bluetoothd 或者没有适配器时是 `unsupported`；系统总线不允许应用和 BlueZ 通信时是 `unauthorized`。Windows 不会说明设备为什么断开：连接丢失时，错误只说明连接丢失了。Safari 和 Firefox 没有 Web Bluetooth：状态是 unsupported。
 
 ## 测试
 
-`bluetooth.fake()` 给这个包换上一个 `FakeBluetooth`：它有一个适配器（`setState`），以及测试添加的外围设备（`add(FakePeripheral(id:, name:, rssi:, advertised:, services: [FakeService(uuid:, characteristics: [FakeCharacteristic(uuid:, properties:, value:)])]))`），扫描能听到它们，连接也能连上它们。`notify(device, service, char, value)` 发送一条通知，`subscribed(…)` 说明应用是否订阅了某个特征，`remove(id)` 把设备移走（它的连接随之丢失），`written` 列出应用写入的内容，`scans` 和 `connected` 列出正在进行的扫描和连接。作为外围设备时，`centralRead`、`centralWrite` 和 `centralSubscribe` 扮演中心设备来测试应用的服务；`servers`、`advertising`、`notified` 和 `lastRead()` 说明应用做了什么。
+`bluetooth.fake()` 给这个包换上一个 `FakeBluetooth`：它有一个适配器（`setState`），以及测试添加的外围设备（`add(FakePeripheral(id:, name:, rssi:, advertised:, services: [FakeService(uuid:, characteristics: [FakeCharacteristic(uuid:, properties:, value:)])]))`），扫描能听到它们，连接也能连上它们。`notify(device, service, char, value)` 发送一条通知，`subscribed(…)` 说明应用是否订阅了某个特征，`remove(id)` 把设备移走（它的连接随之丢失），`written` 列出应用写入的内容，`scans` 和 `connected` 列出正在进行的扫描和连接。作为外围设备时，`centralRead`、`centralWrite` 和 `centralSubscribe` 扮演中心设备来测试应用的服务；`servers`、`advertising`、`notified` 和 `lastRead()` 说明应用做了什么。`restore(Restored(…))` 模拟系统为蓝牙启动应用（`restored()` 会给出它，没有读取方时留给第一个读取方）；`backgroundScans` 是正在进行的后台扫描数，`backgroundLeft` 表示是否还留着上一次运行的扫描（`restore` 带回扫描或扫描听到的内容时会留下一个；应用自己的后台扫描或 `stopBackgroundScan()` 会结束它）。
 
 ```asuka
 test "a strap, heard" {

@@ -167,7 +167,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-这条命令在 Mac 上生成 `dist/<Name>.app`：一个通用应用（同时支持 Apple 芯片和 Intel），要求 macOS 11 及以上。可执行文件是桌面宿主，编译进了应用的核心是 `Contents/Frameworks/libasuka.dylib`（两者都是通用二进制），此外还有应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。如果应用有自己的 Swift 代码（`macos/*.swift`），这些代码会针对两种架构编译进 `Contents/Frameworks`，和应用一起签名（见[原生代码](native.md)）。使用了 `asuka/sqlite` 的应用，SQLite 的库（`libasqlite.dylib`，包含两种架构）也放在那里，签名方式与应用相同：用 Developer ID 签名时，强化运行时只加载由应用所属团队签名的库，公证服务也会逐个检查（见[库文件](data.md#库文件)）。
+这条命令在 Mac 上生成 `dist/<Name>.app`：一个通用应用（同时支持 Apple 芯片和 Intel），要求 macOS 11 及以上。可执行文件是 Swift 宿主，和编译进了应用的核心链接在一起（通用二进制），此外还有应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。应用的原生包的 Swift 会针对两种架构，和宿主一起编译进可执行文件（见[原生代码](native.md)）。使用了 `asuka/sqlite` 的应用，SQLite 的库（`libasqlite.dylib`，包含两种架构）放在 `Contents/Frameworks` 里，签名方式与应用相同：用 Developer ID 签名时，强化运行时只加载由应用所属团队签名的库，公证服务也会逐个检查（见[库文件](data.md#库文件)）。
 
 要在 Mac App Store 之外分发给别人，需要用你的 Developer ID 签名，再交给 Apple 公证，这样 Gatekeeper 才会放行：
 
@@ -214,11 +214,10 @@ asuka build --platform linux                # 当前机器的架构，否则为 
 asuka build --platform linux --arch arm64   # amd64 或 arm64
 ```
 
-Linux 构建可以在任何系统上完成，因为宿主无需 cgo 就能调用 GTK 4 和 libadwaita，而核心在 Linux 上由本机的 C 编译器构建，在其他系统上由 Zig 构建。它会在 `dist/linux` 中生成：
+Linux 构建可以在任何系统上完成：宿主用 C 编写，启动时才打开 GTK 4 和 libadwaita（构建时不需要安装 GTK），它和核心、应用一起在 Linux 上由本机的 C 编译器构建，在其他系统上由 Zig 构建。它会在 `dist/linux` 中生成：
 
 - `<name>/`：一个按安装前缀（install prefix）结构组织的文件夹，以应用名的小写形式命名（`My Notes` 会变成 `my-notes`），其中包括：
-  - `bin/my-notes`：应用本身，即桌面宿主；
-  - `lib/my-notes/libasuka.so`：编译进了应用的核心，宿主会以 `bin/` 为起点找到它；
+  - `bin/my-notes`：应用本身，即桌面宿主、核心和编译成 C 的应用链接成的一个可执行文件；
   - `share/my-notes/assets` 和 `share/my-notes/asuka-app.json`：应用的资源和设置，同样以 `bin/` 为起点找到；
   - `lib/my-notes/libasqlite.so`：SQLite 的库，仅限使用了 `asuka/sqlite` 的应用，同样以 `bin/` 为起点找到（要求 glibc 2.17 或更高版本；它不导出 SQLite 自身的任何符号，所以即使同一进程里还加载了系统的 SQLite，两者也不会冲突）；
   - `share/applications/<id>.desktop`：启动器显示和运行的入口；

@@ -143,6 +143,9 @@ func (d *devLoop) close() { d.srv.Close() }
 // players keep running what they have.
 func (d *devLoop) compile() bool {
 	start := time.Now()
+	if d.app.proj != nil {
+		d.app.proj.Forget() // a save: compiled, whatever the files' times say
+	}
 	m, err := d.app.compile()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "asuka:", err)
@@ -276,10 +279,12 @@ func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 				} else {
 					d.app.cfg, d.app.bundleID = cfg, cfg.ID
 				}
-				d.app.refresh()
+				// The compile's uses are what the app needs (refresh takes
+				// them, not a compile of its own).
 				if src {
 					d.compile()
 				}
+				d.app.refresh()
 				if err := d.launch(p); err != nil {
 					fmt.Fprintln(os.Stderr, "asuka:", err)
 				}
@@ -289,8 +294,8 @@ func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 				continue
 			}
 			if src {
-				d.app.refresh()
 				d.compile()
+				d.app.refresh()
 				if d.isStale() {
 					if err := d.launch(p); err != nil {
 						fmt.Fprintln(os.Stderr, "asuka:", err)

@@ -4,11 +4,13 @@
 // BluetoothLeAdvertiser for the app as a peripheral. Android 12's
 // nearby devices permissions are asked for as the app first needs them.
 // The callbacks come on binder threads: everything goes to the main
-// looper.
+// looper. A background scan is one the system runs for the app, reporting
+// to BluetoothScanReceiver (BackgroundScan), so it outlives the process.
 package asuka.bluetooth
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.PendingIntent
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
@@ -24,6 +26,7 @@ import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -36,6 +39,8 @@ import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
+import android.os.SystemClock
+import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,7 +54,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 import java.util.UUID
+import kotlin.concurrent.thread
 import kotlin.coroutines.resume
 
 private val main = Handler(Looper.getMainLooper())
@@ -126,12 +135,13 @@ class AndroidAdapter(private val ctx: Context) : Adapter {
     override suspend fun scan(options: ScanOptions, found: (Heard) -> Unit) {
         ready(central)
         val scanner = adapter?.bluetoothLeScanner ?: throw BluetoothException(BluetoothError.OFF)
+        if (options.background) return backgroundScan(scanner, options, found)
         val seen = HashSet<String>()
         val cb = object : ScanCallback() {
             override fun onScanResult(type: Int, r: ScanResult) {
                 main.post {
                     if (!options.duplicates && !seen.add(r.device.address)) return@post
-                    found(advertisement(r))
+                    found(advertisement(ctx, r))
                 }
             }
         }
@@ -146,22 +156,40 @@ class AndroidAdapter(private val ctx: Context) : Adapter {
         }
     }
 
-    private fun advertisement(r: ScanResult): Heard {
-        val rec = r.scanRecord
-        val sd = HashMap<String, ByteArray>()
-        rec?.serviceData?.forEach { (k, v) -> sd[short(k.uuid)] = v }
-        val md = HashMap<String, ByteArray>()
-        rec?.manufacturerSpecificData?.let { m -> for (i in 0 until m.size()) md[String.format("%04x", m.keyAt(i))] = m.valueAt(i) }
-        val name = runCatching { r.device.name }.getOrNull() ?: rec?.deviceName ?: ""
-        return Heard(
-            device = Device(id = r.device.address, name = name), rssi = r.rssi.toLong(), localName = rec?.deviceName ?: "",
-            services = rec?.serviceUuids?.map { short(it.uuid) } ?: emptyList(),
-            solicited = rec?.serviceSolicitationUuids?.map { short(it.uuid) } ?: emptyList(),
-            serviceData = sd, manufacturerData = md,
-            txPower = (rec?.txPowerLevel ?: Int.MIN_VALUE).let { if (it == Int.MIN_VALUE) 0L else it.toLong() },
-            hasTxPower = (rec?.txPowerLevel ?: Int.MIN_VALUE) != Int.MIN_VALUE,
-            connectable = r.isConnectable, time = System.currentTimeMillis() * 1_000_000,
-        )
+    /** A background scan: BackgroundScan's, read until the task is cancelled. */
+    private suspend fun backgroundScan(scanner: BluetoothLeScanner, options: ScanOptions, found: (Heard) -> Unit) {
+        // Its receiver is only in the apps that call backgroundScan.
+        if (!BackgroundScan.declared(ctx)) throw BluetoothException(BluetoothError.NOT_AVAILABLE)
+        val r = BackgroundScan.Reader(options.services, options.duplicates, found)
+        val id = withContext(Dispatchers.Main) {
+            try {
+                BackgroundScan.add(ctx, scanner, r)
+            } catch (e: SecurityException) {
+                throw BluetoothException(BluetoothError.DENIED)
+            }
+        }
+        try {
+            r.failed.await()
+        } finally {
+            main.post { BackgroundScan.remove(ctx, id) }
+        }
+    }
+
+    override suspend fun watchRestored(restored: (Brought) -> Unit) {
+        // What comes now goes to restored; what the receiver kept before,
+        // then.
+        val id = withContext(Dispatchers.Main) { BackgroundScan.listenRestored(restored) }
+        try {
+            val kept = withContext(Dispatchers.IO) { BackgroundScan.takeKept(ctx) }
+            if (kept.isNotEmpty()) withContext(Dispatchers.Main) { restored(Brought(advertisements = kept)) }
+            awaitCancellation()
+        } finally {
+            main.post { BackgroundScan.unlistenRestored(id) }
+        }
+    }
+
+    override fun stopBackgroundScan() {
+        main.post { BackgroundScan.stopLeft(ctx) }
     }
 
     override suspend fun choose(filters: List<Filter>, optionalServices: List<String>): Device = throw BluetoothException(BluetoothError.NOT_AVAILABLE)
@@ -521,3 +549,224 @@ class AndroidAdapter(private val ctx: Context) : Adapter {
 }
 
 fun makeAdapter(): Adapter = AndroidAdapter(AsukaModules.context)
+
+/** The advertisement a scan result is (its time: when it was heard, which a background scan's batch reports later). */
+@SuppressLint("MissingPermission") // the name only with BLUETOOTH_CONNECT granted: else none
+internal fun advertisement(ctx: Context, r: ScanResult): Heard {
+    val rec = r.scanRecord
+    val sd = HashMap<String, ByteArray>()
+    rec?.serviceData?.forEach { (k, v) -> sd[short(k.uuid)] = v }
+    val md = HashMap<String, ByteArray>()
+    rec?.manufacturerSpecificData?.let { m -> for (i in 0 until m.size()) md[String.format("%04x", m.keyAt(i))] = m.valueAt(i) }
+    val named = ctx.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+    val name = (if (named) runCatching { r.device.name }.getOrNull() else null) ?: rec?.deviceName ?: ""
+    val ago = SystemClock.elapsedRealtimeNanos() - r.timestampNanos
+    return Heard(
+        device = Device(id = r.device.address, name = name), rssi = r.rssi.toLong(), localName = rec?.deviceName ?: "",
+        services = rec?.serviceUuids?.map { short(it.uuid) } ?: emptyList(),
+        solicited = rec?.serviceSolicitationUuids?.map { short(it.uuid) } ?: emptyList(),
+        serviceData = sd, manufacturerData = md,
+        txPower = (rec?.txPowerLevel ?: Int.MIN_VALUE).let { if (it == Int.MIN_VALUE) 0L else it.toLong() },
+        hasTxPower = (rec?.txPowerLevel ?: Int.MIN_VALUE) != Int.MIN_VALUE,
+        connectable = r.isConnectable, time = System.currentTimeMillis() * 1_000_000 - ago.coerceAtLeast(0),
+    )
+}
+
+/**
+ * Android's background scan (backgroundScan): one scan the system runs
+ * for the app, reporting to a PendingIntent (BluetoothScanReceiver, which
+ * the package's asuka.toml declares only in the apps that call
+ * backgroundScan), so it goes on after the app's process has gone. What
+ * it hears goes to this process's background scans if it has some, else
+ * to watchRestored's readers, else to a file the next reader takes. The
+ * PendingIntent is the same each time: a later run's scan replaces what
+ * an earlier one left, stopBackgroundScan stops it. Main thread, but for
+ * the file.
+ */
+internal object BackgroundScan {
+    private const val ACTION = "asuka.bluetooth.SCAN"
+    private const val PREFS = "asuka.bluetooth"
+    /** At most this many advertisements wait in the file. */
+    private const val KEEP = 1000
+
+    /** A background scan of this process's. */
+    class Reader(val services: List<String>, val duplicates: Boolean, val found: (Heard) -> Unit) {
+        val seen = HashSet<String>()
+        /** Completed (exceptionally) when the system stops the scan. */
+        val failed = CompletableDeferred<Unit>()
+    }
+
+    private val readers = LinkedHashMap<Long, Reader>()
+    private val restorers = LinkedHashMap<Long, (Brought) -> Unit>()
+    private var ids = 0L
+    /** Whether this process started the scan, and for which services (null: every device). */
+    private var running = false
+    private var services: Set<String>? = null
+    private val file = Any()
+
+    private fun intent(c: Context): PendingIntent = PendingIntent.getBroadcast(c, 0,
+        Intent(c, BluetoothScanReceiver::class.java).setAction(ACTION),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE) // mutable: the system adds the results
+
+    private fun kept(c: Context) = File(c.noBackupFilesDir, "asuka-bluetooth-restored.json")
+
+    private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun declared(c: Context): Boolean =
+        c.packageManager.queryBroadcastReceivers(Intent(c, BluetoothScanReceiver::class.java), PackageManager.ResolveInfoFlags.of(0)).isNotEmpty()
+
+    /**
+     * Adds a background scan: the system's starts, or widens to its
+     * services (the readers filter what it hears, so it narrows only as
+     * it stops). Throws as it can't start.
+     */
+    @SuppressLint("MissingPermission") // asked for first (AndroidAdapter.ready)
+    fun add(c: Context, scanner: BluetoothLeScanner, r: Reader): Long {
+        val want: Set<String>? = if (r.services.isEmpty() || readers.values.any { it.services.isEmpty() }) null
+            else (readers.values.flatMap { it.services } + r.services).toSet()
+        val have = services
+        if (!running || have != null && (want == null || !have.containsAll(want))) {
+            // A previous run's scan, or this one's narrower: replaced.
+            runCatching { scanner.stopScan(intent(c)) }
+            val filters = want?.map { ScanFilter.Builder().setServiceUuid(ParcelUuid(full(it))).build() }
+            val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).build()
+            val code = scanner.startScan(filters, settings, intent(c))
+            if (code == ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED) throw BluetoothException(BluetoothError.UNSUPPORTED)
+            if (code != 0) throw Exception("bluetooth: the background scan failed ($code)")
+            running = true
+            services = want
+        }
+        val id = ++ids
+        readers[id] = r
+        // What the receiver keeps with the process gone: one per device, unless one wanted each.
+        prefs(c).edit().putBoolean("duplicates", readers.values.any { it.duplicates }).apply()
+        return id
+    }
+
+    fun remove(c: Context, id: Long) {
+        readers.remove(id) ?: return
+        if (readers.isEmpty()) stop(c)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun stop(c: Context) {
+        running = false
+        services = null
+        val scanner = c.getSystemService(BluetoothManager::class.java)?.adapter?.bluetoothLeScanner
+        runCatching { scanner?.stopScan(intent(c)) }
+        prefs(c).edit().remove("duplicates").apply()
+    }
+
+    /** Stops the scan a previous run left; this run's go on. */
+    fun stopLeft(c: Context) {
+        if (readers.isEmpty()) stop(c)
+    }
+
+    fun listenRestored(f: (Brought) -> Unit): Long {
+        val id = ++ids
+        restorers[id] = f
+        return id
+    }
+
+    fun unlistenRestored(id: Long) {
+        restorers.remove(id)
+    }
+
+    /** The receiver's broadcast: what the scan heard, or why it stopped. done once it's handled. */
+    fun received(c: Context, i: Intent, done: () -> Unit) {
+        val err = i.getIntExtra(BluetoothLeScanner.EXTRA_ERROR_CODE, 0)
+        if (err != 0) {
+            if (readers.isNotEmpty()) {
+                running = false
+                services = null
+                val e = Exception("bluetooth: the background scan stopped ($err)")
+                for (r in readers.values) r.failed.completeExceptionally(e)
+            }
+            return done()
+        }
+        val rs = i.getParcelableArrayListExtra(BluetoothLeScanner.EXTRA_LIST_SCAN_RESULT, ScanResult::class.java)
+        if (rs.isNullOrEmpty()) return done()
+        val ads = rs.map { advertisement(c, it) }
+        if (readers.isNotEmpty()) {
+            for (a in ads) for (r in readers.values.toList()) {
+                if (r.services.isNotEmpty() && r.services.none { it in a.services }) continue
+                if (!r.duplicates && !r.seen.add(a.device.id)) continue
+                r.found(a)
+            }
+            return done()
+        }
+        if (restorers.isNotEmpty()) {
+            val r = Brought(advertisements = ads)
+            for (f in restorers.values.toList()) f(r)
+            return done()
+        }
+        val dup = prefs(c).getBoolean("duplicates", false)
+        thread(name = "asuka-bluetooth-keep") {
+            try {
+                keep(c, ads, dup)
+            } finally {
+                done()
+            }
+        }
+    }
+
+    /** Adds to the file: one per device (its latest) unless duplicates, the latest KEEP. */
+    private fun keep(c: Context, ads: List<Heard>, duplicates: Boolean): Unit = synchronized(file) {
+        val f = kept(c)
+        val all = ArrayList<JSONObject>()
+        if (f.exists()) runCatching { JSONArray(f.readText()) }.getOrNull()?.let { a -> for (i in 0 until a.length()) a.optJSONObject(i)?.let { all.add(it) } }
+        for (a in ads) {
+            if (!duplicates) all.removeAll { it.optString("id") == a.device.id }
+            all.add(encode(a))
+        }
+        val tmp = File(f.path + ".tmp")
+        runCatching {
+            tmp.writeText(JSONArray(all.takeLast(KEEP)).toString())
+            tmp.renameTo(f)
+        }
+        Unit
+    }
+
+    /** What the file kept, which it forgets. Not on the main thread. */
+    fun takeKept(c: Context): List<Heard> = synchronized(file) {
+        val f = kept(c)
+        if (!f.exists()) return emptyList()
+        val a = runCatching { JSONArray(f.readText()) }.getOrNull()
+        f.delete()
+        if (a == null) return emptyList()
+        (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let(::decode) }
+    }
+
+    private fun b64(b: ByteArray) = Base64.encodeToString(b, Base64.NO_WRAP)
+
+    private fun encode(a: Heard): JSONObject = JSONObject()
+        .put("id", a.device.id).put("name", a.device.name).put("rssi", a.rssi).put("localName", a.localName)
+        .put("services", JSONArray(a.services)).put("solicited", JSONArray(a.solicited))
+        .put("serviceData", JSONObject().apply { for ((k, v) in a.serviceData) put(k, b64(v)) })
+        .put("manufacturerData", JSONObject().apply { for ((k, v) in a.manufacturerData) put(k, b64(v)) })
+        .put("txPower", a.txPower).put("hasTxPower", a.hasTxPower).put("connectable", a.connectable).put("time", a.time)
+
+    private fun decode(o: JSONObject): Heard {
+        fun strings(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
+        fun bytes(k: String) = o.optJSONObject(k)?.let { m -> m.keys().asSequence().associateWith { Base64.decode(m.optString(it), Base64.NO_WRAP) } } ?: emptyMap()
+        return Heard(
+            device = Device(id = o.optString("id"), name = o.optString("name")), rssi = o.optLong("rssi"), localName = o.optString("localName"),
+            services = strings("services"), solicited = strings("solicited"), serviceData = bytes("serviceData"), manufacturerData = bytes("manufacturerData"),
+            txPower = o.optLong("txPower"), hasTxPower = o.optBoolean("hasTxPower"), connectable = o.optBoolean("connectable", true), time = o.optLong("time"),
+        )
+    }
+}
+
+/**
+ * The background scan's results (a PendingIntent scan the system runs,
+ * which outlives the process): BackgroundScan's. It doesn't start the
+ * app's code: the system may start the process only for this, and what
+ * it heard waits for the next run's restored().
+ */
+class BluetoothScanReceiver : BroadcastReceiver() {
+    override fun onReceive(c: Context, i: Intent) {
+        val hold = goAsync()
+        BackgroundScan.received(c.applicationContext, i) { hold.finish() }
+    }
+}

@@ -643,7 +643,7 @@ func (b *fb) forView(s *syntax.ForStmt) int {
 }
 
 // forParts makes a for's closures in a view: its items' thunk, its
-// key's function (or none), its row's builder.
+// key's function of (item, index) (or none), its row's builder.
 func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int, keyKind bc.Kind) {
 	fi := b.l.info.Fors[s]
 	itemsCtx := b.l.info.Ctxs[s.Seq]
@@ -661,18 +661,20 @@ func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int, keyKind bc.Kind) 
 		key = b.temp(bc.KRef)
 		b.emit(op("KNONE"), key)
 	} else if s.Key != nil {
+		// The key's function takes (item, index): an enumerated for's
+		// key may read either (its context's params are (index, item)).
 		kctx := b.l.info.Ctxs[s.Key]
-		var item *check.Var
+		var item, index *check.Var
 		if len(kctx.Params) > 0 {
 			item = kctx.Params[0]
 			if fi.Kind == check.ForEnumerated && len(kctx.Params) > 1 {
-				item = kctx.Params[1]
+				item, index = kctx.Params[1], kctx.Params[0]
 			}
 		}
 		kt := kctx.Result
 		kk := b.kind(kt)
 		keyKind = kk
-		key = b.makeClosure(closure{name: "key", ctxs: []*check.FuncCtx{kctx}, params: []*check.Var{item}, pkinds: []bc.Kind{b.kind(fi.Elem)}, ret: kk, throws: true, body: func(c *fb) {
+		key = b.makeClosure(closure{name: "key", ctxs: []*check.FuncCtx{kctx}, params: []*check.Var{item, index}, pkinds: []bc.Kind{b.kind(fi.Elem), bc.KInt}, ret: kk, throws: true, body: func(c *fb) {
 			c.ctx = kctx
 			c.ret(c.value(s.Key, -1), kk)
 		}})
@@ -1023,6 +1025,15 @@ func (b *fb) bind(v int, el string, bd *check.BindArg) {
 	if bd.Event == nil {
 		return
 	}
+	h := b.bindWriter(bd)
+	ev := prelude.EventID(el, bd.Event.Name())
+	b.callBTo(uiOn, bc.None, v, b.konst(int64(ev)), h)
+}
+
+// bindWriter is the handler of a bind's event (an element's, a native
+// view's, a component's bound prop's change): it writes the event's
+// value to the bind's target.
+func (b *fb) bindWriter(bd *check.BindArg) int {
 	wctx := b.l.info.Ctxs[bd.Target]
 	params := make([]*check.Var, len(bd.Event.Params))
 	pkinds := make([]bc.Kind, len(bd.Event.Params))
@@ -1032,16 +1043,14 @@ func (b *fb) bind(v int, el string, bd *check.BindArg) {
 	if len(params) > 0 && len(wctx.Params) > 0 {
 		params[0] = wctx.Params[0]
 	}
-	h := b.makeClosure(closure{name: "bind " + bd.Prop.Name(), ctxs: []*check.FuncCtx{wctx}, params: params, pkinds: pkinds, ret: bc.KVoid, throws: true, body: func(c *fb) {
+	return b.makeClosure(closure{name: "bind " + bd.Prop.Name(), ctxs: []*check.FuncCtx{wctx}, params: params, pkinds: pkinds, ret: bc.KVoid, throws: true, body: func(c *fb) {
 		c.ctx = wctx
-		if params[0] != nil {
+		if len(params) > 0 && params[0] != nil {
 			lv := c.prepare(bd.Target)
 			c.set(lv, c.vars[params[0]])
 		}
 		c.emit(op("RET0"))
 	}})
-	ev := prelude.EventID(el, bd.Event.Name())
-	b.callBTo(uiOn, bc.None, v, b.konst(int64(ev)), h)
 }
 
 // bindAccessor is the accessor of a component's bound prop: of its
@@ -1056,28 +1065,6 @@ func (b *fb) bindAccessor(bd *check.BindArg) int {
 	clos := b.thunk(b.l.info.Ctxs[bd.Item], bd.Target, t)
 	b.emit(op("ACCF"), r, clos, int(b.kind(t)))
 	return r
-}
-
-// bindWriter is the handler of a component's bound prop's change event:
-// it writes the target.
-func (b *fb) bindWriter(bd *check.BindArg) int {
-	wctx := b.l.info.Ctxs[bd.Target]
-	params := make([]*check.Var, len(bd.Event.Params))
-	pkinds := make([]bc.Kind, len(bd.Event.Params))
-	for i, p := range bd.Event.Params {
-		pkinds[i] = b.kind(p.Type)
-	}
-	if len(params) > 0 && len(wctx.Params) > 0 {
-		params[0] = wctx.Params[0]
-	}
-	return b.makeClosure(closure{name: "bind " + bd.Prop.Name(), ctxs: []*check.FuncCtx{wctx}, params: params, pkinds: pkinds, ret: bc.KVoid, throws: true, body: func(c *fb) {
-		c.ctx = wctx
-		if params[0] != nil {
-			lv := c.prepare(bd.Target)
-			c.set(lv, c.vars[params[0]])
-		}
-		c.emit(op("RET0"))
-	}})
 }
 
 // componentCall calls a component's function: accessors of its

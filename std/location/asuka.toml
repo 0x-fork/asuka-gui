@@ -29,6 +29,7 @@ derived = ["locationPrecise"]
 # their PendingIntents (and a reboot, which clears them) go to.
 [uses.startUpdates.ios]
 backgroundModes = ["location"]
+launch = "AsukaLocationLaunch"
 
 [uses.startUpdates.android]
 permissions = ["android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.POST_NOTIFICATIONS", "android.permission.RECEIVE_BOOT_COMPLETED"]
@@ -37,7 +38,12 @@ application = [
   '<receiver android:name="asuka.location.LocationReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter></receiver>',
 ]
 
-# Regions: the receiver their PendingIntents (and a reboot) go to.
+# Regions: iOS relaunches the app for one, and hands it to the manager
+# made at launch; Android's receiver gets their PendingIntents (and a
+# reboot).
+[uses.monitor.ios]
+launch = "AsukaLocationLaunch"
+
 [uses.monitor.android]
 permissions = ["android.permission.RECEIVE_BOOT_COMPLETED"]
 application = ['<receiver android:name="asuka.location.LocationReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter></receiver>']

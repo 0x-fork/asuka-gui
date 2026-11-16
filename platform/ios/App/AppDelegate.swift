@@ -27,6 +27,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // action launches it without a scene).
         AsukaNotifyCenter.shared.install()
         #endif
+        // The app's packages' launch code (their manifests' ios.launch):
+        // what they must make before launch ends, and the app's code at
+        // once, without a screen, if the system launched the app for one.
+        AsukaLaunch.run(options ?? [:])
         return true
     }
 

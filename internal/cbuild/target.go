@@ -148,6 +148,9 @@ func ForTarget(t Target) (*Toolchain, error) {
 			tc.AR = []string{"ar", "rcs"}
 			tc.Shared = []string{"-shared"}
 		}
+		if tc.CC.IsGCC() {
+			tc.Flags = append(tc.Flags, GCCFlags...)
+		}
 		if t.Arch != runtime.GOARCH && t.OS != "darwin" {
 			return nil, fmt.Errorf("cbuild: %s from %s/%s needs Zig (ASUKA_CC=zig)", t, runtime.GOOS, runtime.GOARCH)
 		}
@@ -307,6 +310,14 @@ func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string
 	}
 }
 
+// Objects compiles srcs, C a host links beside the core (the C the
+// desktop hosts share, in the Mac's host), with the toolchain's flags and
+// flags, into objects cached by what, the target and the hash of the
+// sources, hdrs (the headers they include) and the flags.
+func (tc *Toolchain) Objects(what string, srcs, hdrs, flags []string) ([]string, error) {
+	return tc.compileCached("", what, srcs, hdrs, append(append([]string{}, tc.Flags...), flags...), Static)
+}
+
 // compileCached compiles srcs with flags into a cache directory named by
 // what (core, app), the target and the hash of the sources, the headers
 // they include and the flags.
@@ -378,9 +389,11 @@ func exportFlags() []string {
 // host, the native registry, packages' C, an app compiled to C),
 // optimized for release unless debug. extraFlags are the extra sources'
 // own (their include directories, the app's define); link, what the
-// executable links with besides the C library. Objects are cached as
-// Lib's are.
-func (tc *Toolchain) Exe(core string, extra, extraFlags, link []string, debug bool, out string) error {
+// executable links with besides the C library; deps, files the extra
+// sources include that aren't headers beside them (a vendored library's
+// sources, included by a package's own C), which count in the cache's
+// key and are never compiled alone. Objects are cached as Lib's are.
+func (tc *Toolchain) Exe(core string, extra, deps, extraFlags, link []string, debug bool, out string) error {
 	srcs, err := Sources(core, false)
 	if err != nil {
 		return err
@@ -397,7 +410,7 @@ func (tc *Toolchain) Exe(core string, extra, extraFlags, link []string, debug bo
 		return err
 	}
 	if len(extra) > 0 {
-		var more []string
+		more := append([]string{}, deps...)
 		for _, f := range extra {
 			if filepath.Ext(f) == ".h" {
 				more = append(more, f) // their headers count in the cache's key

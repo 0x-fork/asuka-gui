@@ -9,6 +9,7 @@
 #define ASUKA_WIN_MODULES_H
 
 #include "win.h"
+#include "asuka_windows.h"
 
 typedef struct wh_reply wh_reply;
 
@@ -112,27 +113,13 @@ char *wh_win_error(DWORD e);
 // wh_app_user_model_id is the app's AppUserModelID: asuka.toml's id, else
 // one of its name.
 const char *wh_app_user_model_id(void);
-// wh_local_file is a file a call names as a file on this computer (an
-// http(s) URL downloaded to the caches, a file: URL's path, a path, an
-// asset): NULL with *err set (free both). Blocks: never the main thread.
+// wh_local_file is a file a call names as a file on this computer
+// (asuka_desktop_local_file's: an http(s) URL downloaded to the caches, a
+// file: URL's path, a path, an asset): NULL with *err set (free both).
+// Blocks: never the main thread.
 char *wh_local_file(const char *source, char **err);
 
-// ---- WinRT and COM, as far as the modules need them ----
-
-typedef void *wh_hs;  // an HSTRING
-wh_hs wh_hstr(const char *utf8);
-wh_hs wh_hstrw(const wchar_t *s);
-void wh_hstr_free(wh_hs h);
-char *wh_hstr_utf8(wh_hs h);  // free it
-// wh_factory is a runtime class's activation factory as iid (release
-// it), or NULL.
-void *wh_factory(const wchar_t *cls, const GUID *iid);
-// wh_activate is a new instance of a runtime class (its IInspectable).
-void *wh_activate(const wchar_t *cls);
-void *wh_qi(void *o, const GUID *iid);  // QueryInterface, NULL if none
-void wh_release_com(void *o);
-// The vtable slot n of a COM object, as a function of its type.
-#define WH_VT(o, n, type) ((type)((*(void ***)(o))[n]))
+// ---- WinRT and COM: asuka_windows.h's (HSTRINGs, factories, slots) ----
 
 // wh_xml_document is an XmlDocument of xml, as IXmlDocument (release it).
 void *wh_xml_document(const char *xml);

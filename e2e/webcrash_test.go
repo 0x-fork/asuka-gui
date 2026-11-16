@@ -24,10 +24,11 @@ import (
 //   - maps.View draws OpenStreetMap's tiles (answered here, through
 //     DevTools' Fetch, so the test asks nothing of openstreetmap.org),
 //     with its attribution and its pin; a click on the pin, on the map,
-//     and a drag each reach Go;
+//     and a drag each reach the app;
 //   - an uncaught JavaScript error is a report at once, not fatal;
-//   - a Go panic ends the program, and the next launch reports it, fatal,
-//     with Go's crash output and the browser in its context.
+//   - a panic (the core's fatal error) ends the program, and the next
+//     launch reports it, fatal, with the Asuka code's stack and the
+//     browser in its context.
 func TestWebCrashAndMap(t *testing.T) {
 	browser := chrome()
 	if browser == "" {
@@ -134,7 +135,7 @@ func TestWebCrashAndMap(t *testing.T) {
 		t.Fatalf("tiles of level %s", got)
 	}
 
-	// The pin: Go hears of it, and its callout shows.
+	// The pin: the app hears of it, and its callout shows.
 	c.eval(t, page, `document.querySelector(".asuka-map-pin").click(), "ok"`)
 	showsLine(t, s, "map: marker eiffel")
 	if got := c.eval(t, page, `document.querySelector(".asuka-map-callout")?.textContent || ""`); got != "Eiffel TowerParis" {
@@ -176,10 +177,10 @@ func TestWebCrashAndMap(t *testing.T) {
 	c.eval(t, page, `setTimeout(() => { throw new TypeError("boom from js"); }, 0), "ok"`)
 	showsLine(t, s, "exception: false TypeError: boom from js | crumbs 1")
 
-	// A Go panic: the program ends; the next launch reports it.
+	// A panic: the program ends; the next launch reports it.
 	s.tap("Panic")
 	until(t, func() bool { return c.eval(t, page, `document.querySelector(".asuka-error")?.textContent || ""`) != "" }, func() string {
-		return "no error shown; " + c.eval(t, page, `(() => { const k = asukaHost.crash; return [k.go.exited, k.go.exitCode, k.path, k.ended, k.printed.length].join(" "); })()`)
+		return "no error shown; " + c.eval(t, page, `(() => { const k = asukaHost.crash; return [k.path, k.ended].join(" "); })()`)
 	})
 	// Its crash kept (the app's files written), the run's mark goes.
 	marked := func() string {
@@ -191,9 +192,9 @@ func TestWebCrashAndMap(t *testing.T) {
 		t.Fatal(err)
 	}
 	showsLine(t, s, "status: ready")
-	report := func() string { return lineOf(s, "go: ") }
-	until(t, func() bool { return strings.HasPrefix(report(), "go: true panic: assignment to entry in nil map") }, report)
-	if r := report(); !strings.Contains(r, "| main.App.func") || !strings.Contains(r, "| Web ") {
+	report := func() string { return lineOf(s, "panic: ") }
+	until(t, func() bool { return strings.HasPrefix(report(), "panic: true panic: boom from asuka") }, report)
+	if r := report(); !strings.Contains(r, "| WebCrash/on press |") || !strings.Contains(r, "| Web ") {
 		t.Fatalf("the report: %q", r)
 	}
 }

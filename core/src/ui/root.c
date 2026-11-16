@@ -554,6 +554,10 @@ static void flush_after(void) {
 	ak_sched_run();
 	ak_batch_end();
 	ak_ui_flush();
+	// The flush may have made work ready: a task of a view it disposed,
+	// resumed to unwind (its defers: a hot key unregistered, a tray icon
+	// removed). The host runs it soon, not at the next event.
+	if (ak_sched_has_ready()) ak_sched_wake();
 }
 
 void ak_ui_dispatch(const uint8_t *buf, size_t len) {

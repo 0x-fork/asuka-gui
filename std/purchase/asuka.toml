@@ -2,10 +2,11 @@ name = "asuka/purchase"
 version = "0.1.0"
 description = "Sells in the app: the App Store, Google Play, the Microsoft Store"
 
+# The store's transactions, listened to from the app's launch (StoreKit's
+# Transaction.updates, Play Billing's listener), kept for events().
+[ios]
+launch = "AsukaPurchaseLaunch"
+
 [android]
 permissions = ["com.android.vending.BILLING"]
-
-# The Mac's Go host builds platform/macos's StoreKit 2 into the app's
-# Swift library.
-[macos]
-hostFlags = ["ASUKA_PURCHASE"]
+launch = "asuka.purchase.PurchaseLaunch"

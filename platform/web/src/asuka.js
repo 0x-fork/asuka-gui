@@ -92,8 +92,24 @@ export async function start(options = {}) {
     throw e;
   }
   if (dev) dev.attach(host, core);
+  watchTrap(container, host);
   try { notifyFor(host); } catch (e) { console.warn("asuka/notify:", e); }
   return host;
+}
+
+// watchTrap shows that the app stopped when its core traps (its panic, or a
+// fault: out of memory, its stack overflowed): the page can't go on, and
+// says so rather than sitting still. The panic's message is the crash
+// record's, when it keeps one.
+function watchTrap(container, host) {
+  let shown = false;
+  const trapped = (err) => {
+    if (shown || !(err instanceof WebAssembly.RuntimeError)) return;
+    shown = true;
+    showError(container, "The app stopped: " + (host.crash?.panicMessage() || err.message));
+  };
+  globalThis.addEventListener?.("error", (e) => trapped(e.error));
+  globalThis.addEventListener?.("unhandledrejection", (e) => trapped(e.reason));
 }
 
 function showError(container, msg) {

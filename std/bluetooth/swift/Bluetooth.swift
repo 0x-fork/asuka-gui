@@ -4,9 +4,18 @@
 // queue. Scans share the central's one scan; a connection holds its
 // peripheral by handle; reads and notifications both come as
 // didUpdateValue: a read waiting takes it, else the subscriptions do.
+//
+// On iOS, with the app's bluetooth-central or bluetooth-peripheral
+// background mode, the managers have restore identifiers: iOS keeps their
+// connections and scan when it ends the app, and starts the app again for
+// them, handing them to managers made before launch ends (the launch
+// class, AsukaBluetoothLaunch). What it restored waits for watchRestored.
 import Foundation
 import CoreBluetooth
 import Asuka
+#if os(iOS)
+import UIKit
+#endif
 
 final class CoreBluetoothAdapter: Adapter {
     func state() throws -> State { onMain { Hub.shared.state } }
@@ -105,6 +114,20 @@ final class CoreBluetoothAdapter: Adapter {
         defer { Task { @MainActor in Hub.shared.stopAdvertising() } }
         await untilCancelled()
     }
+
+    func watchRestored(restored: @escaping (Brought) -> Void) async throws {
+        #if os(iOS)
+        let f = Box(restored)
+        let id = await MainActor.run { Hub.shared.listenRestored(f) }
+        defer { Task { @MainActor in Hub.shared.unlistenRestored(id) } }
+        await untilCancelled()
+        #endif
+        // macOS doesn't start an app for Bluetooth: nothing is restored.
+    }
+
+    func stopBackgroundScan() throws {
+        Task { @MainActor in Hub.shared.stopBackgroundScan() }
+    }
 }
 
 /// A callback, called on the main thread.
@@ -133,20 +156,53 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
 @MainActor final class Hub: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, CBPeripheralManagerDelegate {
     static let shared = Hub()
 
+    /// The managers' restore identifiers, which iOS's launch options name.
+    static let centralRestoreID = "dev.asuka.bluetooth.central"
+    static let peripheralRestoreID = "dev.asuka.bluetooth.peripheral"
+    private static let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+
     private var centralManager: CBCentralManager?
-    private var central: CBCentralManager {
+    private var central: CBCentralManager { centralManager ?? makeCentral() }
+    private var peripheralManager: CBPeripheralManager?
+    private var pm: CBPeripheralManager { peripheralManager ?? makePeripheralManager() }
+
+    /// The central manager, made once; with its restore identifier only
+    /// when the app has the bluetooth-central mode (one without it is
+    /// Core Bluetooth's API misuse). alert: iOS's alert when Bluetooth is
+    /// off (not for a launch in the background).
+    @discardableResult func makeCentral(alert: Bool = true) -> CBCentralManager {
         if let c = centralManager { return c }
-        let c = CBCentralManager(delegate: self, queue: .main)
+        var o: [String: Any] = [:]
+        if !alert { o[CBCentralManagerOptionShowPowerAlertKey] = false }
+        #if os(iOS)
+        if Self.backgroundModes.contains("bluetooth-central") { o[CBCentralManagerOptionRestoreIdentifierKey] = Self.centralRestoreID }
+        #endif
+        let c = CBCentralManager(delegate: self, queue: .main, options: o)
         centralManager = c
         return c
     }
-    private var peripheralManager: CBPeripheralManager?
-    private var pm: CBPeripheralManager {
+
+    /// The peripheral manager, made once; with its restore identifier only
+    /// with the bluetooth-peripheral mode.
+    @discardableResult func makePeripheralManager() -> CBPeripheralManager {
         if let p = peripheralManager { return p }
-        let p = CBPeripheralManager(delegate: self, queue: .main)
+        var o: [String: Any] = [:]
+        #if os(iOS)
+        if Self.backgroundModes.contains("bluetooth-peripheral") { o[CBPeripheralManagerOptionRestoreIdentifierKey] = Self.peripheralRestoreID }
+        #endif
+        let p = CBPeripheralManager(delegate: self, queue: .main, options: o)
         peripheralManager = p
         return p
     }
+
+    // What iOS restored, until watchRestored reads it, and who does.
+    private var restoredNow: Brought?
+    private var restoreReaders: [Int: Box<Brought>] = [:]
+    // The scan iOS restored, which goes on (what it hears restored too)
+    // until the app scans again or stops it (stopBackgroundScan).
+    private var restoredScan: (services: [CBUUID], duplicates: Bool)?
+    /// At most this many advertisements wait for a reader.
+    private static let keep = 1000
 
     private var stateReaders: [Int: Box<State>] = [:]
     private var stateWaiters: [(State) -> Void] = []
@@ -262,8 +318,14 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
 
     private func rescan() {
         guard let c = centralManager, c.state == .poweredOn else { return }
+        if scanners.isEmpty, let r = restoredScan {
+            // iOS's restored scan, for the app to take over.
+            if !c.isScanning { c.scanForPeripherals(withServices: r.services, options: [CBCentralManagerScanOptionAllowDuplicatesKey: r.duplicates]) }
+            return
+        }
         c.stopScan()
         guard !scanners.isEmpty else { return }
+        restoredScan = nil
         seen = []
         // Every scanner's services, or all: filtered again per scanner.
         let any = scanners.values.contains { $0.0.services.isEmpty }
@@ -296,8 +358,77 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
                 if !o.services.isEmpty && !o.services.contains(where: { a.services.contains($0) }) { continue }
                 f.f(a)
             }
+            // The restored scan's, before the app scans again.
+            if scanners.isEmpty, let r = restoredScan, r.duplicates || first {
+                deliverRestored(Brought(advertisements: [a]))
+            }
         }
     }
+
+    func stopBackgroundScan() {
+        guard restoredScan != nil else { return }
+        restoredScan = nil
+        if scanners.isEmpty, let c = centralManager, c.state == .poweredOn { c.stopScan() }
+    }
+
+    // MARK: Restoration
+
+    func listenRestored(_ f: Box<Brought>) -> Int {
+        next += 1
+        restoreReaders[next] = f
+        if let r = restoredNow {
+            restoredNow = nil
+            f.f(r)
+        }
+        return next
+    }
+
+    func unlistenRestored(_ id: Int) { restoreReaders[id] = nil }
+
+    /// To the readers, or kept (merged) for the first.
+    private func deliverRestored(_ r: Brought) {
+        guard restoreReaders.isEmpty else {
+            for f in restoreReaders.values { f.f(r) }
+            return
+        }
+        var k = restoredNow ?? Brought()
+        for d in r.devices where !k.devices.contains(where: { $0.id == d.id }) { k.devices.append(d) }
+        if !r.scanServices.isEmpty { k.scanServices = r.scanServices }
+        for a in r.advertisements {
+            if !(restoredScan?.duplicates ?? false) { k.advertisements.removeAll { $0.device.id == a.device.id } }
+            k.advertisements.append(a)
+        }
+        if k.advertisements.count > Self.keep { k.advertisements.removeFirst(k.advertisements.count - Self.keep) }
+        restoredNow = k
+    }
+
+    #if os(iOS)
+    /// iOS brought back the connections and the scan it kept for the app
+    /// (before centralManagerDidUpdateState): its peripherals are the
+    /// package's again, its scan goes on.
+    nonisolated func centralManager(_ c: CBCentralManager, willRestoreState dict: [String: Any]) {
+        MainActor.assumeIsolated {
+            var r = Brought()
+            for p in dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] ?? [] {
+                known[p.identifier] = p
+                p.delegate = self
+                r.devices.append(Device(id: p.identifier.uuidString, name: p.name ?? ""))
+            }
+            if let s = dict[CBCentralManagerRestoredStateScanServicesKey] as? [CBUUID], !s.isEmpty {
+                r.scanServices = s.map(uuidString)
+                let o = dict[CBCentralManagerRestoredStateScanOptionsKey] as? [String: Any]
+                restoredScan = (s, (o?[CBCentralManagerScanOptionAllowDuplicatesKey] as? NSNumber)?.boolValue ?? false)
+            }
+            guard !r.devices.isEmpty || !r.scanServices.isEmpty else { return }
+            deliverRestored(r)
+        }
+    }
+
+    /// iOS brought back the services and the advertising the app's last
+    /// run published: they go on until the app serves or advertises again
+    /// (serve replaces them).
+    nonisolated func peripheralManager(_ p: CBPeripheralManager, willRestoreState dict: [String: Any]) {}
+    #endif
 
     // MARK: Connections
 
@@ -318,6 +449,12 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
         conns[next] = conn
         p.delegate = self
         f.f(Link(state: .connecting))
+        // Connected already: iOS kept it (restored), or another connection
+        // of the app's has it.
+        if p.state == .connected {
+            f.f(Link(state: .connected, handle: next))
+            return (next, ended)
+        }
         central.connect(p, options: nil)
         if o.timeout > 0 {
             let h = next
@@ -713,3 +850,26 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
 }
 
 func makeAdapter() throws -> any Adapter { CoreBluetoothAdapter() }
+
+#if os(iOS)
+/// The managers as the app launches (the manifest's ios.launch, for an
+/// app with a Bluetooth background mode): iOS starts the app again for the
+/// connections, scan or advertising it kept, and hands them to the
+/// managers made with their restore identifiers before launch ends. For
+/// such a launch the app's code starts at once, without a screen, and
+/// reads them (restored()).
+@objc(AsukaBluetoothLaunch) final class BluetoothLaunch: NSObject, AsukaLaunching {
+    @MainActor static func launch(_ options: [UIApplication.LaunchOptionsKey: Any]) -> Bool {
+        var woke = false
+        if let ids = options[.bluetoothCentrals] as? [String], ids.contains(Hub.centralRestoreID) {
+            Hub.shared.makeCentral(alert: false)
+            woke = true
+        }
+        if let ids = options[.bluetoothPeripherals] as? [String], ids.contains(Hub.peripheralRestoreID) {
+            Hub.shared.makePeripheralManager()
+            woke = true
+        }
+        return woke
+    }
+}
+#endif

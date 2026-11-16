@@ -34,6 +34,12 @@ pub fn relaunchApp() { relaunch() }
 /// The string at a u32 length (past the end: "").
 pub native fn readStr(b: bytes, at: int) -> string
 
+/// The process the app runs in: "share" (its own share sheet, an iOS
+/// share extension or Android's :share process: asuka/sharesheet),
+/// "notification" (iOS's Notification Service Extension, which rewrites
+/// a push: asuka/push), "app" otherwise.
+pub native fn process() -> string
+
 /// Calls a module's method with a string (UTF-8) and answers its bytes as
 /// text.
 pub async fn callText(module: string, method: string, args: string) throws -> string {

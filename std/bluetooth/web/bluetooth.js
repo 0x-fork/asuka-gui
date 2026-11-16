@@ -17,6 +17,8 @@
 //     there.
 //   - A page can't be a peripheral: serve and advertise are
 //     notAvailable.
+//   - Nor is it started for Bluetooth, or scanning without its page:
+//     nothing is restored (watchRestored returns).
 import { State, ConnectionState, Property, BluetoothError } from "./bluetooth.asuka.js";
 
 const BASE = "-0000-1000-8000-00805f9b34fb";
@@ -262,5 +264,11 @@ export function makeAdapter() {
     async advertise() {
       throw new BluetoothError("notAvailable");
     },
+
+    // A page isn't started for Bluetooth, nor scans with it gone:
+    // nothing is restored.
+    async watchRestored() {},
+
+    stopBackgroundScan() {},
   };
 }

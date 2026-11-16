@@ -138,28 +138,30 @@ typedef HRESULT(STDMETHODCALLTYPE *com_make_fn)(void *, void *, void **);
 
 // package_badge sets a packaged app's badge to n (0: none).
 static bool package_badge(int n) {
-	void *st = wh_factory(L"Windows.UI.Notifications.BadgeUpdateManager", &IID_BadgeManagerStatics);
+	void *st;
+	asuka_winrt_factory("Windows.UI.Notifications.BadgeUpdateManager", &IID_BadgeManagerStatics, &st);
 	if (!st) return false;
 	void *up = NULL;
-	WH_VT(st, 6, com_get_fn)(st, &up);  // CreateBadgeUpdaterForApplication
-	wh_release_com(st);
+	ASUKA_SLOT(st, 6, com_get_fn)(st, &up);  // CreateBadgeUpdaterForApplication
+	asuka_com_release(st);
 	if (!up) return false;
 	bool ok = false;
 	if (n <= 0) {
-		ok = SUCCEEDED(WH_VT(up, 7, com_void_fn)(up));  // Clear
+		ok = SUCCEEDED(ASUKA_SLOT(up, 7, com_void_fn)(up));  // Clear
 	} else {
 		char xml[64];
 		snprintf(xml, sizeof xml, "<badge value=\"%d\"/>", n);
 		void *doc = wh_xml_document(xml);
-		void *f = doc ? wh_factory(L"Windows.UI.Notifications.BadgeNotification", &IID_BadgeFactory) : NULL;
+		void *f = NULL;
+		if (doc) asuka_winrt_factory("Windows.UI.Notifications.BadgeNotification", &IID_BadgeFactory, &f);
 		void *b = NULL;
-		if (f) WH_VT(f, 6, com_make_fn)(f, doc, &b);  // CreateBadgeNotification
-		if (b) ok = SUCCEEDED(WH_VT(up, 6, com_put_fn)(up, b));  // Update
-		wh_release_com(b);
-		wh_release_com(f);
-		wh_release_com(doc);
+		if (f) ASUKA_SLOT(f, 6, com_make_fn)(f, doc, &b);  // CreateBadgeNotification
+		if (b) ok = SUCCEEDED(ASUKA_SLOT(up, 6, com_put_fn)(up, b));  // Update
+		asuka_com_release(b);
+		asuka_com_release(f);
+		asuka_com_release(doc);
 	}
-	wh_release_com(up);
+	asuka_com_release(up);
 	return ok;
 }
 

@@ -123,7 +123,7 @@ component Reply(text: string, writing: bool) {
 }
 ```
 
-`streaming` 表示文本还在写，比如语言模型的回复正一点点流进来：这时文本的末尾会显示成它最可能的样子（代码围栏补上结尾、`**bold` 显示为粗体、正在写的链接显示为链接），而不是写了一半的语法。单独用 `markdown.heal(text)` 也能得到同样的处理。各平台用自己的 Markdown 实现来解析：iOS 和 macOS 上是 Apple 的（`AttributedString`，排在一个文本视图里），Android 上是 Markwon，Web 上是 marked，Windows（一个 rich edit 控件）和 Linux（标签的 Pango 标记）上是 Asuka 自己的解析器。参见 [`examples/markdown`](../../examples/markdown)。
+`streaming` 表示文本还在写，比如语言模型的回复正一点点流进来：这时文本的末尾会显示成它最可能的样子（代码围栏补上结尾、`**bold` 显示为粗体、正在写的链接显示为链接），而不是写了一半的语法。单独用 `markdown.heal(text)` 也能得到同样的处理。解析由核心完成，所有平台都一样（md4c）：它把文本读成一段段带样式的文字，再由各平台用自己的方式显示：iOS 和 macOS 上是文本视图里的富文本字符串（attributed string），Android 上是 TextView 里的 span，Web 上是页面元素，Windows 上是 rich edit 控件，Linux 上则是每个块一个标签（GNOME 应用显示富文本的方式：每个块各自选择）。文本每次变化都会重新解析，但视图只替换变化的部分，即从第一个不同的块开始往后的内容；所以回复流式写入时，最后一块之前的内容会保持原有的布局和选区。参见 [`examples/markdown`](../../examples/markdown)。
 
 ## 按钮
 
@@ -578,7 +578,7 @@ component Done {
 }
 ```
 
-在 iOS 和 macOS 上用的是 Core Graphics，在 Android 上是 `Canvas`，在浏览器中是 `<svg>`，在 Windows 上是 GDI+，在 Linux 上是 GSK 的路径。
+在 iOS 和 macOS 上用的是 Core Graphics，在 Android 上是 `Canvas`，在浏览器中是 `<svg>`，在 Windows 上是 GDI+，在 Linux 上是 Cairo。
 
 ## 视频
 
@@ -875,7 +875,7 @@ component Glow(level: float) {
 - `var Time float` 是着色器显示以来的秒数。`animated` 让它动起来：显示器每画一帧，框就画一帧。
 - 编译器会报告着色器的错误和行号，也会报告 Android 运行不了的部分，在所有平台上一视同仁：AGSL 是 GLSL ES 1.00 的语言，所以不支持无符号整数、位运算、整数取余（浮点数的 `mod` 可以）、导数，以及上下界不是常量的循环。
 
-在 iOS 和 macOS 上用的是 Metal（一个 `CAMetalLayer`），在 Android 13 及以上用的是 AGSL（一个 `RuntimeShader`；更早的版本上是一个空的框），在浏览器中是 WebGL 2（GLSL ES 3.00），在 Windows 上是 Direct3D 11（HLSL；没有 GPU 时用系统的软件光栅化器 WARP），在 Linux 上是 OpenGL（在 GTK 的上下文里画到一张由 GTK 绘制的纹理上）。在 Windows 上，每一帧都在主线程之外渲染，好了才显示。Linux 上没有 GL 时（没有驱动、`GDK_DISABLE=gl`），程序改在 CPU 上运行，分摊到所有核心，并且不在主线程上；这时大的或动画的框会以较低的分辨率渲染再放大。给框设一个 `background`，在第一帧出来之前先顶上。
+在 iOS 和 macOS 上用的是 Metal（一个 `CAMetalLayer`），在 Android 13 及以上用的是 AGSL（一个 `RuntimeShader`；更早的版本上是一个空的框），在浏览器中是 WebGL 2（GLSL ES 3.00），在 Windows 上是 Direct3D 11（HLSL；没有 GPU 时用系统的软件光栅化器 WARP），在 Linux 上是 OpenGL（一个 `GtkGLArea`；没有 GPU 时用 Mesa 的软件光栅化器）。每个平台的程序都随应用一起编译，设备上只编译它自己的着色语言。在 Windows 上，每一帧都在主线程之外渲染，好了才显示。Linux 上没有 GL 时（`GDK_DISABLE=gl`），显示的是一个空的框。给框设一个 `background`，在第一帧出来之前先顶上。
 
 ## 容器
 
@@ -1299,4 +1299,4 @@ component Tags(tags: [string]) {
 
 ## 自定义视图
 
-如果某个平台有 Asuka 没有提供的控件，你可以自己实现一个 `native component`：iOS 和 macOS 上用 Swift，Android 上用 Kotlin，Web 上用 JavaScript，Windows 和 Linux 上用 Go。参见[原生代码](native.md)。
+如果某个平台有 Asuka 没有提供的控件，你可以自己实现一个 `native component`：iOS 和 macOS 上用 Swift，Android 上用 Kotlin，Windows 和 Linux 上用 C，Web 上用 JavaScript。参见[原生代码](native.md)。

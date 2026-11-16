@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -98,15 +97,15 @@ func TestSignMacFrameworks(t *testing.T) {
 	}
 }
 
-// A Mac build is an .app: the host (universal) as its executable, the
-// core with the app compiled in (universal) and the plugins' libraries in
-// its Frameworks, signed with it, the app's settings in its Resources. It
+// A Mac build is an .app: its executable the Swift host linked with the
+// core with the app compiled in (universal), the plugins' libraries in its
+// Frameworks, signed with it, the app's settings in its Resources. It
 // runs: the window shows the Counter, which counts a press.
 func TestBuildMac(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("a Mac build signs on a Mac")
+	needMacBuild(t)
+	if _, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: "amd64"}); err != nil {
+		t.Skip(err)
 	}
-	needDesktopBuild(t, cbuild.Target{OS: "darwin", Arch: "arm64"})
 	useCounter(t, "Count: ")
 	app := sqliteTestApp(t)
 	out := t.TempDir()
@@ -115,11 +114,15 @@ func TestBuildMac(t *testing.T) {
 	}
 	bundle := filepath.Join(out, app.displayName()+".app")
 	bin := filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName()))
-	for _, f := range []string{bin, filepath.Join(bundle, "Contents", "Frameworks", "libasuka.dylib")} {
-		archs, err := exec.Command("lipo", "-archs", f).Output()
-		if err != nil || strings.TrimSpace(string(archs)) != "x86_64 arm64" {
-			t.Errorf("%s: %q %v", filepath.Base(f), archs, err)
-		}
+	if archs, err := exec.Command("lipo", "-archs", bin).Output(); err != nil || strings.TrimSpace(string(archs)) != "x86_64 arm64" {
+		t.Errorf("the executable: %q %v", archs, err)
+	}
+	// No Go, no core beside it: the core is linked in.
+	if _, err := os.Stat(filepath.Join(bundle, "Contents", "Frameworks", "libasuka.dylib")); err == nil {
+		t.Error("a libasuka.dylib in Frameworks")
+	}
+	if out, _ := exec.Command("nm", "-arch", "arm64", bin).Output(); !containsField(string(out), "_asuka_run") || strings.Contains(string(out), "runtime.gopanic") {
+		t.Error("the executable isn't the Swift host with the core linked in")
 	}
 	for _, f := range []string{"Frameworks/libasqlite.dylib", "Resources/asuka-app.json", "Info.plist"} {
 		if _, err := os.Stat(filepath.Join(bundle, "Contents", f)); err != nil {
@@ -147,12 +150,9 @@ func TestBuildMac(t *testing.T) {
 // the network it shows says what carries it, which only the Swift
 // (NWPathMonitor) knows; without it, the package says "other".
 func TestBuildMacStd(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("a Mac build signs on a Mac")
-	}
-	needDesktopBuild(t, cbuild.Target{OS: "darwin", Arch: "arm64"})
-	if _, err := exec.LookPath("xcrun"); err != nil {
-		t.Skip("no Xcode command line tools")
+	needMacBuild(t)
+	if _, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: "amd64"}); err != nil {
+		t.Skip(err)
 	}
 	dir := filepath.Join(t.TempDir(), "netapp")
 	os.MkdirAll(dir, 0o755)
@@ -196,9 +196,6 @@ app { Net() }
 		t.Fatal(err)
 	}
 	bundle := filepath.Join(out, app.displayName()+".app")
-	if _, err := os.Stat(filepath.Join(bundle, "Contents", "Frameworks", "AsukaNatives.dylib")); err != nil {
-		t.Fatalf("the package's Swift isn't in the app: %v", err)
-	}
 	snap := filepath.Join(t.TempDir(), "n.png")
 	c := exec.Command(filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName())))
 	c.Env = append(os.Environ(), "ASUKA_SCRIPT=until:first: F;until:recent: t", "ASUKA_SNAPSHOT="+snap, "ASUKA_DUMP=1")

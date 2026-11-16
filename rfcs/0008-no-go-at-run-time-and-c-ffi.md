@@ -298,19 +298,19 @@ Each ends with its tests green.
   - [x] nativegen's C target, its golden files; the Go server target
         removed; the CLI builds packages' C into a C host's executable;
   - [x] asuka/host folded into asuka/platform;
-  - [ ] the standard library's Windows and Linux code ported from Go to
-        C: done for appearance, biometric, device, dialog, document, http,
-        js, network, power, preview, screen, secure, sensors, shell,
-        sqlite, store, tracking, transcribe, watch, webauth (lottie and
-        crash need none); left: audio, bluetooth (and
-        internal/bluetoothspec, internal/bluez), camera, imageedit,
-        location, maps, markdown (a parser in C), nowplaying, print,
-        purchase, record, scan and vision (a barcode decoder in C),
-        shader, speech, svg; then package `native`'s servers, which only
-        those packages' Go still uses.
-- [ ] **H1** The macOS host in Swift: every view, navigation, windows, menus, the
+  - [x] the standard library's Windows and Linux code ported from Go to
+        C: every package (lottie and crash need none), with the barcode
+        reader in C (platform/desktop's asuka_barcode.h, for scan and
+        vision too), one WinRT, COM and WinHTTP for the Windows host and
+        the packages, and Markdown read in the core (md4c) for every
+        platform; left: package `native`'s servers, internal/bluez and
+        internal/gtk, which nothing that ships uses any more.
+- [x] **H1** The macOS host in Swift: every view, navigation, windows, menus, the
       tray, the host's modules; `asuka dev` and `asuka build` for the Mac
-      without Go.
+      without Go. platform/macos (its tests: platform/macos/mactest and
+      `swift test --package-path platform/macos`); host/darwin and
+      internal/darwin removed, with host/bridge, host/apphost,
+      host/hosttest and cmd/asuka-host; asuka/watch's Swift for the Mac.
 - [x] **H2** The Windows host in C, likewise:
   - platform/windows: C17 on Win32, the common controls v6, GDI+'s flat
     API, DWM, Direct3D 11, WebView2, UI Automation and WinRT through COM
@@ -325,7 +325,22 @@ Each ends with its tests green.
     `asuka_dev_connect`;
   - `go test ./platform/windows`: apps built and driven in Windows (on
     Windows, or a VM); host/windows and internal/windows removed.
-- [ ] **H3** The Linux host in C, likewise.
+- [x] **H3** The Linux host in C, likewise:
+  - platform/linux: C17 on GTK 4.14 and libadwaita 1.5, opened with
+    dlopen (one set of declarations with packages' C, asuka_linux.h and
+    asuka_linux.def); every view kind, navigation, lists, windows, menus,
+    the tray (StatusNotifierItem, dbusmenu), flyouts, keys, drag and
+    drop, AT-SPI, rich text, WebKitGTK, GStreamer video, GL shaders,
+    portals, the host's modules (`update` among them), crash records,
+    single instance, the window and route state;
+  - platform/desktop: the C it shares with the Windows host;
+  - `asuka build --platform linux` links the host, the core and the app
+    compiled to C into one executable, in an install prefix, a .tar.gz
+    and a Flatpak manifest, with Zig from any system; `asuka dev`'s
+    player likewise without the app;
+  - `go test ./platform/linux` under Xvfb: apps built and driven in real
+    GTK windows; host/linux removed (internal/gtk and internal/bluez go
+    with the standard library's Go desktop code, G1).
 - [ ] **G2** The updater, crash records and the state files in the hosts;
       conformance and e2e on the new hosts.
 - [ ] **X2** The Go runtime removed:
