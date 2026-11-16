@@ -97,6 +97,7 @@ These apply on every platform the key means something on.
 | `linux` | table | | What a Linux build says of the app. See [linux](#linux). |
 | `web` | table | | The web build's. See [web](#web). |
 | `bluetooth` | table | | What an app of `asuka/bluetooth` asks beyond the package's needs: the background, the location from scans. See [bluetooth](#bluetooth). |
+| `bin` | tables | none | The project's programs: command-line tools in directories of their own, built into the desktop apps. See [bin](#bin). |
 
 A Windows build needs nothing beyond these: its signing certificate is
 given in the environment (see [Shipping](shipping.md#windows)).
@@ -473,6 +474,33 @@ defines = ["NO_ZLIB"]
 ```
 
 See [C from Asuka](c.md#building).
+
+## bin
+
+The project's programs ([Programs](programs.md)): each `[bin.<name>]`
+is a command-line tool, a package with `fn main` in a directory of its
+own, and `<name>` is its executable's name (letters, digits, `-`, `_`
+and `.`). A project that is a program itself (`asuka new --bin`) needs
+none.
+
+| Key | Type | Default | What it is |
+|---|---|---|---|
+| `path` | path | required | The program's directory, relative to `asuka.toml`. It imports the project's packages relatively (`import ../model`). |
+
+```toml
+[bin.notes]
+path = "cli"
+
+[bin.notes-sync]
+path = "sync"
+```
+
+`asuka run --bin notes` and `asuka build --bin notes` run and build one
+(`--bin` left out when there's one), `asuka test` runs each one's tests
+with the app's. A desktop build puts them in the app: the Mac's
+`Contents/Helpers`, Linux's `bin`, beside the Windows `.exe`; phones and
+the web leave them out. An app's program keeps its data where the app
+does. See [An app's programs](programs.md#an-apps-programs).
 
 ## The environment
 

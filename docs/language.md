@@ -44,6 +44,7 @@ import @acme/charts               // a dependency (asuka add @acme/charts)
 import ./components               // a package beside this one
 import ./model.{Message, Folder}  // names used without the package's name
 import ./theme as t               // a shorter name
+import ../model                   // a package a directory up
 ```
 
 A package's names are used through it: `http.get(url)`,
@@ -59,6 +60,27 @@ goes on to the next.
 
 Comments are `// …` and `/* … */`. A `///` comment documents the
 declaration under it, and editors show it.
+
+### Apps, programs and libraries
+
+A package is an entry, or a library. One with an `app { }` block is an
+app: the block is what it shows (see [Navigation](#navigation)). One
+whose files declare `fn main()` is a **program**, a command-line tool:
+`main` takes no parameters (`os.args()` are its arguments), returns
+nothing (`os.exit(code)` ends it with a code), and may be `async` and
+throw; it ends as `main` does. A package with neither is a library,
+which others import. A package can't be an app and a program both, and
+a program declares no components: it shows no views. Only the package
+an app or a program is made of has an entry; a `main` in a package it
+imports is a function like any other. See [Programs](programs.md).
+
+```asuka
+import asuka/os
+
+fn main() {
+  print("Hello, {os.args().first() ?? "world"}!")
+}
+```
 
 ## Values and types
 
@@ -357,6 +379,11 @@ fn total(root: Node) -> int {
 It's a value like any function (`items.map(walk)`). Its arguments go
 in order, without labels or defaults, and it isn't generic.
 
+A function that never returns (it always throws, panics or ends the
+program) says so with `-> never`, as `os.exit` does; a call of one ends
+a block as a `return` would, and goes where any value does: `let port =
+text.toInt() ?? fail("not a port")`.
+
 That's how a function calls itself. A closure kept in a var it calls
 itself through (`var walk = …; walk = n => { … walk(c) … }`) holds the
 var, and the var holds it: neither is ever freed, since nothing
@@ -403,6 +430,10 @@ struct Labeled<T: Shape> {
   fn label() -> string = "{item.area()}"
 }
 ```
+
+A generic function's type arguments are inferred from its arguments
+and from what's expected of its result; `f<T>(…)` writes them out where
+nothing says them: `json.decode<[Note]>(text)`, `flag.parse<Options>(args)`.
 
 A type argument has an interface when it has its methods and fields: a
 struct or an enum (an enum without payloads too), an interface asking

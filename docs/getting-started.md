@@ -71,6 +71,10 @@ cd hello
   platform](shipping.md) need.
 - `.gitignore`.
 
+`asuka new` makes one of three kinds of project: an app (this one),
+with `--lib` a library other apps import, and with `--bin` a program,
+a command-line tool with no window ([Programs](programs.md)).
+
 ## Run it
 
 ```sh

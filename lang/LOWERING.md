@@ -743,13 +743,25 @@ the app is opened with.
 A `test` block is a function in Module.Tests (async when it awaits).
 `expect(cond)` and `expect(cond, message)` throw a runtime error when
 cond is false, saying what failed and where (`expected count == 2
-(app.asuka:12): got 1 and 2`, a comparison's sides shown). `asuka run`
-adds `fn main()` as a test named main. `mount(view)` is
+(app.asuka:12): got 1 and 2`, a comparison's sides shown). `mount(view)` is
 CALLB `test.mount(builder)`, which mounts the view on the fake host and
 returns an app handle. `app.tap(text)`, `app.type(text, into:)`,
 `app.expect(texts...)`, `app.expectNo(text)`, `app.idle()` are builtins
 on it (`test.tap`, ...); a failed expectation throws, and the runner
 reports the error with its line.
+
+## Programs
+
+The root package's `fn main` (check.Program.Main) is lowered as any
+function and recorded as Module.Main, which the module's encoding
+carries after App (-1: none). lang/cgen emits, for a module with one, a
+weak C `main()` that calls `asuka_program_main` (on Windows with no
+argv: the core reads the UTF-16 command line), and, for an app's
+program (Module.Data, not encoded), a constructor that names the app's
+data folder (`ak_program_data`). A compiled function notes the line an
+error leaves it from (`at_`, set on the error's branch only) and calls
+`ak_frame_hook` as it unwinds: the trace a program reports. `-> never`
+is Check's Never; a call of a function returning it ends a block.
 
 ## The desktop
 
@@ -902,7 +914,10 @@ the future it returns when it's `async`), so it's called, passed and
 compiled as any function. A generic one (`native fn rows<T>(a: bytes) ->
 [T]`) passes, after the parameters, each type argument's descriptor
 (rt/json.h's; `-` for a type JSON can't say), as a string constant of
-its instantiation. Other packages reach platform code through
+its instantiation; asuka/flag's `spec<T>()` gets, instead, what
+lang/ir/flag.go writes of T as JSON (its fields' kinds, defaults
+written out, doc comments and short names; its commands), and an error
+at the field for what a command line can't say. Other packages reach platform code through
 native interfaces instead.
 
 The builtins are C, in core/src/std (a file and a table per package,

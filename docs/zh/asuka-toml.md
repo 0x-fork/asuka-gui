@@ -81,6 +81,7 @@ github = "you/notes"
 | `linux` | 表 | | Linux 构建对应用的描述。见 [linux](#linux)。 |
 | `web` | 表 | | Web 构建的配置。见 [web](#web)。 |
 | `bluetooth` | 表 | | 使用 `asuka/bluetooth` 的应用在包本身所需之外的额外声明：后台运行、通过扫描定位。见 [bluetooth](#bluetooth)。 |
+| `bin` | 表 | 无 | 项目自带的程序：放在各自目录里的命令行工具，会构建进桌面应用。见 [bin](#bin)。 |
 
 Windows 构建只需要上面这些键；它的签名证书通过环境变量提供（见[打包与发布](shipping.md#windows)）。
 
@@ -416,6 +417,24 @@ defines = ["NO_ZLIB"]
 ```
 
 见[在 Asuka 中调用 C](c.md#构建)。
+
+## bin
+
+项目自带的[程序](programs.md)：每个 `[bin.<name>]` 是一个命令行工具，也就是放在自己目录里、带 `fn main` 的包，`<name>` 是它的可执行文件名（字母、数字、`-`、`_` 和 `.`）。项目本身就是程序时（`asuka new --bin`），不需要这一项。
+
+| 键 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `path` | 路径 | 必填 | 程序所在的目录，相对于 `asuka.toml`。程序用相对路径导入项目里的包（`import ../model`）。 |
+
+```toml
+[bin.notes]
+path = "cli"
+
+[bin.notes-sync]
+path = "sync"
+```
+
+`asuka run --bin notes` 和 `asuka build --bin notes` 分别运行和构建其中一个（只有一个时可以省略 `--bin`），`asuka test` 会把每个程序的测试和应用的测试一起运行。桌面构建会把它们放进应用：Mac 的 `Contents/Helpers`、Linux 的 `bin`、Windows `.exe` 的旁边；手机和 Web 会忽略它们。应用自带的程序把数据保存在应用保存的地方。见[应用自带的程序](programs.md#应用自带的程序)。
 
 ## 环境变量
 
