@@ -262,10 +262,10 @@ func TestLinuxSQLiteLib(t *testing.T) {
 	}
 }
 
-// A Linux build is an install prefix: the host in bin, the core with the
-// app compiled in and the plugins' libraries in lib/<exe>, where the host
-// finds them, the app's settings in share/<exe>; the tarball and the
-// Flatpak have them all.
+// A Linux build is an install prefix: one executable in bin (the C host,
+// the core and the app compiled to C, linked together), the plugins'
+// libraries in lib/<exe>, where the core finds them, the app's settings
+// in share/<exe>; the tarball and the Flatpak have them all.
 func TestBuildLinux(t *testing.T) {
 	needDesktopBuild(t, cbuild.Target{OS: "linux", Arch: "amd64"})
 	useCounter(t, "Count: ")
@@ -277,7 +277,7 @@ func TestBuildLinux(t *testing.T) {
 			t.Fatal(err)
 		}
 		prefix := filepath.Join(out, "linux", "sqliteapp")
-		for _, f := range []string{"bin/sqliteapp", "lib/sqliteapp/libasuka.so", "lib/sqliteapp/libasqlite.so"} {
+		for _, f := range []string{"bin/sqliteapp", "lib/sqliteapp/libasqlite.so"} {
 			e, err := elf.Open(filepath.Join(prefix, f))
 			if err != nil {
 				t.Fatal(err)
@@ -285,14 +285,11 @@ func TestBuildLinux(t *testing.T) {
 			if e.Machine != machines[arch] {
 				t.Errorf("%s: %s is for %v", arch, f, e.Machine)
 			}
-			if f == "lib/sqliteapp/libasuka.so" {
-				syms, _ := e.DynamicSymbols()
-				found := false
-				for _, s := range syms {
-					found = found || s.Name == "asuka_run"
-				}
-				if !found {
-					t.Errorf("%s: libasuka.so doesn't export asuka_run", arch)
+			if f == "bin/sqliteapp" {
+				// The core is in it (stripped: its symbols gone), not a
+				// library beside it.
+				if _, err := os.Stat(filepath.Join(prefix, "lib", "sqliteapp", "libasuka.so")); err == nil {
+					t.Errorf("%s: a libasuka.so beside the executable", arch)
 				}
 			}
 			e.Close()
@@ -319,7 +316,7 @@ func TestBuildLinux(t *testing.T) {
 			names = append(names, h.Name)
 		}
 		f.Close()
-		for _, want := range []string{"sqliteapp/bin/sqliteapp", "sqliteapp/lib/sqliteapp/libasuka.so", "sqliteapp/lib/sqliteapp/libasqlite.so", "sqliteapp/share/sqliteapp/asuka-app.json"} {
+		for _, want := range []string{"sqliteapp/bin/sqliteapp", "sqliteapp/lib/sqliteapp/libasqlite.so", "sqliteapp/share/sqliteapp/asuka-app.json"} {
 			if !slices.Contains(names, want) {
 				t.Errorf("%s: the tarball has %v, not %s", arch, names, want)
 			}
