@@ -44,6 +44,13 @@ private fun firstWeekday(l: Locale): Int =
 
 /** 12 or 24: the system's setting, or where it has none, what's usual in the formats' locale (not the app's language). */
 private fun AsukaRuntime.hourCycle(l: Locale): Int {
-    val c = app.createConfigurationContext(Configuration(app.resources.configuration).apply { setLocale(l) })
-    return if (android.text.format.DateFormat.is24HourFormat(c)) 24 else 12
+    // As DateFormat.is24HourFormat decides, without a context in l (a
+    // configuration context is a Resources of its own, made as the app
+    // starts).
+    when (android.provider.Settings.System.getString(app.contentResolver, android.provider.Settings.System.TIME_12_24)) {
+        "24" -> return 24
+        "12" -> return 12
+    }
+    val p = android.text.format.DateFormat.getBestDateTimePattern(l, "jm")
+    return if (p.contains('H') || p.contains('k')) 24 else 12
 }

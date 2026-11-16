@@ -42,9 +42,10 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         internal val current: AsukaRuntime? get() = instance
 
         fun get(context: Context): AsukaRuntime =
-            instance ?: AsukaRuntime(context.applicationContext as Application).also {
-                instance = it
+            instance ?: run {
+                // The core's library loads as the runtime is made.
                 AsukaNative.preload(context)
+                AsukaRuntime(context.applicationContext as Application).also { instance = it }
             }
     }
 
@@ -69,9 +70,22 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
     /** Whether the app is laid out right to left: the Locale command's flag, which may disagree with its tag (asuka dev --dir). */
     var rtl = false
         private set
-    /** The user's languages and formats, as the environment reports them. */
-    var region = readRegion()
-        private set
+    /**
+     * The user's languages and formats, as the environment reports them:
+     * read on a thread of its own as the app starts (ICU's calendar and
+     * patterns, the settings), while the Activity makes its window.
+     */
+    private var regionRead: java.util.concurrent.FutureTask<AsukaRegion>? =
+        java.util.concurrent.FutureTask { readRegion() }.also { Thread(it, "asuka-region").start() }
+    var region = AsukaRegion("", "", 1, 24)
+        get() {
+            regionRead?.let { regionRead = null; field = it.get() }
+            return field
+        }
+        private set(v) {
+            regionRead = null
+            field = v
+        }
 
     /** config with the language and direction the app shows: what its views' strings and resources come from. */
     fun localized(config: android.content.res.Configuration): android.content.res.Configuration {

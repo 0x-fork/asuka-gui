@@ -24,6 +24,8 @@ open class AsukaActivity : AppCompatActivity() {
     protected lateinit var runtime: AsukaRuntime
     private var safe = IntArray(4)
     private var keyboard = 0
+    /** The frame's size before its first layout: the window's, which it fills (fillsWindow). */
+    private var unlaid: IntArray? = null
     /** The keyboard's height over the window, as it animates, in px. */
     val keyboardPx get() = keyboard
     /** The frame that holds the root's view (and the overlay snackbars show in). */
@@ -94,7 +96,16 @@ open class AsukaActivity : AppCompatActivity() {
         frame.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or_, ob ->
             if (r - l != or_ - ol || b - t != ob - ot) sendEnvironment()
         }
-        frame.post { runtime.attach(this) }
+        // The core starts now, with the window's size and insets, so the
+        // first frame has the app's views; a frame that doesn't fill the
+        // window (a share sheet's) is measured first.
+        if (fillsWindow) {
+            val m = windowManager.currentWindowMetrics
+            val bars = m.windowInsets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+            safe = safeInsets(intArrayOf(bars.top, bars.right, bars.bottom, bars.left))
+            unlaid = intArrayOf(m.bounds.width(), m.bounds.height())
+            runtime.attach(this)
+        } else frame.post { runtime.attach(this) }
         // Animations turned off (or on) in the system's settings: less motion.
         contentResolver.registerContentObserver(
             android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false, motion)
@@ -118,6 +129,9 @@ open class AsukaActivity : AppCompatActivity() {
 
     /** The view the Activity shows, which holds the root's frame: the frame itself. */
     protected open fun content(frame: FrameLayout): View = frame
+
+    /** Whether the root's frame fills the window (edge to edge), whose size it has before it's laid out. */
+    protected open val fillsWindow: Boolean get() = true
 
     /** The root's safe area insets (top, right, bottom, left), from the window's. */
     protected open fun safeInsets(bars: IntArray): IntArray = bars
@@ -175,11 +189,12 @@ open class AsukaActivity : AppCompatActivity() {
     }
 
     fun sendEnvironment(force: Boolean = false) {
-        if (!::runtime.isInitialized || frame.width == 0) return
+        if (!::runtime.isInitialized) return
+        val size = if (frame.width != 0) intArrayOf(frame.width, frame.height) else unlaid ?: return
         val d = resources.displayMetrics.density
         val c = resources.configuration
         val e = AsukaEnvironment(
-            width = frame.width / d, height = frame.height / d,
+            width = size[0] / d, height = size[1] / d,
             safeTop = safe[0] / d, safeRight = safe[1] / d, safeBottom = safe[2] / d, safeLeft = safe[3] / d,
             keyboard = keyboard / d,
             scale = d,
@@ -187,7 +202,7 @@ open class AsukaActivity : AppCompatActivity() {
             dark = runtime.isNight(c),
             reduceMotion = !android.animation.ValueAnimator.areAnimatorsEnabled(),
             screenReader = a11y.isTouchExplorationEnabled,
-            widthClass = widthClass(frame.width / d), heightClass = heightClass(frame.height / d),
+            widthClass = widthClass(size[0] / d), heightClass = heightClass(size[1] / d),
             locale = runtime.region.locale,
             languages = runtime.region.languages,
             firstWeekday = runtime.region.firstWeekday,

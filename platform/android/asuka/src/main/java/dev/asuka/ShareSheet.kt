@@ -112,6 +112,8 @@ class AsukaShareActivity : AsukaActivity() {
     }
 
     /** The sheet starts below the status bar: no top inset in it. */
+    override val fillsWindow get() = false
+
     override fun safeInsets(bars: IntArray): IntArray = intArrayOf(0, bars[1], bars[2], bars[3])
 
     /** The other app shows around the sheet. */
