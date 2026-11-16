@@ -56,14 +56,16 @@ void wh_msg_timer(WPARAM id) {
 
 // ---- A router's address, kept by its window's key (asuka-routes.json),
 // written a moment after it changes and as the app goes to the
-// background or quits, and given back as the window's Router starts
+// background or quits: the main window's router starts there
+// (asuka_set_start), a keyed Window's is given it as its Router starts
 // listening for Location ----
 
 static void location(const uint8_t *args, size_t len) {
 	ak_location l;
-	if (!ak_decode_location(args, len, &l) || !l.window.len) return;
-	char key[256];
-	snprintf(key, sizeof key, "%.*s", (int)(l.window.len < 255 ? l.window.len : 255), l.window.p);
+	if (!ak_decode_location(args, len, &l)) return;
+	// Its window's key: the main window's "main", sent as none.
+	char key[256] = "main";
+	if (l.window.len) snprintf(key, sizeof key, "%.*s", (int)(l.window.len < 255 ? l.window.len : 255), l.window.p);
 	if (dsk_routes_set(H.routes, key, l.href.p, l.href.len, l.state.p, l.state.len)) SetTimer(H.msg_win, TIMER_ROUTES, 300, NULL);
 }
 
@@ -71,10 +73,10 @@ void wh_flush_routes(void) { dsk_routes_flush(H.routes); }
 
 static void give_route(void *ctx) {
 	node *n = wh_node((uint32_t)(uintptr_t)ctx);
-	if (!n) return;
+	// The main window's router started there (asuka_set_start, main.c).
+	if (!n || n == H.root) return;
 	wh_wctl *c = wh_ctl_for(n);
 	const char *key = c ? c->key : NULL;
-	if (!key && n == H.root) key = "main";
 	const char *href, *state;
 	size_t sl;
 	if (!key || !dsk_routes_location(H.routes, key, &href, &state, &sl)) return;
