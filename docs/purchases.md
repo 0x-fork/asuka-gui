@@ -1,6 +1,6 @@
 # In-app purchases
 
-`asuka/sdk/purchase` sells in the app, through each platform's own store:
+`asuka/purchase` sells in the app, through each platform's own store:
 consumables (coins, a hint), non-consumables (a level, "Pro" for life),
 subscriptions that renew, and those that don't. It covers what
 react-native-iap, expo-iap and RevenueCat's SDK do on the device, with
@@ -16,206 +16,181 @@ the stores' current APIs:
 
 Where there's no store (Linux, a browser without the Digital Goods API, a
 Windows app that wasn't installed from the Store, the player in
-`asuka dev`), `purchase.Available()` is false and the rest fail with
-`purchase.ErrNotAvailable`.
+`asuka dev`), `purchase.available()` is false and the rest throw
+`PurchaseError.notAvailable`.
 
 ## Products
 
-An `Item` is a product the app sells: its ID in the store and its kind.
+An `Item` is a product the app sells: its ID in the store and its kind
+(`.consumable`, `.nonConsumable`, `.autoRenewable`, `.nonRenewing`).
 Play doesn't know a consumable from a non-consumable, so the app says.
 
-```go
-var (
-	coins = purchase.Item{ID: "coins_100", Kind: purchase.Consumable}
-	pro   = purchase.Item{ID: "pro", Kind: purchase.NonConsumable}
-	plus  = purchase.Item{ID: "plus_monthly", Kind: purchase.AutoRenewable}
-)
+```asuka
+import asuka/purchase
 
-products, err := purchase.Products(coins, pro, plus)
+let coins = purchase.Item(id: "coins_100", kind: .consumable)
+let pro = purchase.Item(id: "pro", kind: .nonConsumable)
+let plus = purchase.Item(id: "plus_monthly", kind: .autoRenewable)
 ```
 
-The calls wait for the store, so make them off the main thread (in a
-goroutine, with `ui.Post` for what they change). `Products` answers
-those the store sells, in the user's country and language; the others
-are left out. Each `Product` has its `Title`, `Description`, `Price` for
-display ("$4.99", "4,99 €") and `PriceMicros` and `Currency` for
-arithmetic. A subscription's `Subscription` has its group, its level in
-the group, its period and its offers: Apple's introductory, promotional
-and win-back offers, Play's base plans and the offers on them (each
-with its phases: a free trial, a lower price for some periods, the
-regular price). `IntroEligible` says whether the user can still have
-the introductory offer.
+`purchase.declare(items)` says what the app sells without asking the
+store; call it as the app starts, so a consumable's transaction that comes
+first (one left unfinished) is consumed as it's finished.
+`purchase.products(items)` asks the store for them, in the user's country
+and language; those it doesn't sell are left out. A `Product` has its
+`title`, `description`, `price` (for display: "$4.99"), `priceMicros`
+and `currency`, `item()` (to buy it as), and a subscription's
+`subscription`: its `group`, `level`, `period` (`unit`, `count`), its
+`offers` (each a list of `phases`: a free trial, a lower price for a
+while) and whether the user can have the introductory offer
+(`introEligible`).
 
-The IDs are App Store Connect's product IDs, Play Console's, and on
-Windows each add-on's product ID in Partner Center (its
-`InAppOfferToken`) or its Store ID.
+```asuka
+component Shop {
+  state products: [purchase.Product] = []
 
-## Buying
+  task {
+    purchase.declare([coins, pro, plus])
+    products = (try? await purchase.products([coins, pro, plus])) ?? []
+  }
 
-```go
-r, err := purchase.Buy(coins, purchase.Options{AccountToken: userUUID})
-switch {
-case err != nil:
-	// purchase.ErrNotAllowed, ErrUnknownProduct, ErrAlreadyOwned...
-case r.Status == purchase.Bought:
-	deliver(r.Transaction)
-	r.Transaction.Finish()
-case r.Status == purchase.PendingApproval:
-	// Ask to Buy, a payment Play waits for: Observe gives it later
-case r.Status == purchase.Cancelled:
+  Column {
+    for p in products key p.id {
+      Text("{p.title} {p.price}")
+    }
+  }
 }
 ```
 
-`Buy` shows the store's sheet and answers once the user has bought,
-cancelled, or the purchase waits for approval. `Options` has:
+## Buying
 
-- `Quantity`: a consumable's (Apple's; on Play the user picks it, when
-  multi-quantity is on in Play Console).
-- `AccountToken`: ties the purchase to the app's user. Use a UUID:
-  Apple's `appAccountToken` must be one, Play takes it as its
-  `obfuscatedAccountId`. It comes back in the transaction and in the
-  stores' server notifications. Never an email or a name.
-  `ProfileToken` is Play's `obfuscatedProfileId`.
-- `Offer`: one of the product's offers. Play needs one for a
-  subscription; without it, `Buy` takes the first base plan. An Apple
-  promotional offer also needs `Signature`, which the app's server signs
-  with its In-App Purchase key (the key's ID, a nonce, the signature and
-  its time; or, from iOS 18.4, a JWS).
-- `Replace`: the Play subscription this one replaces, an upgrade or a
-  downgrade, and how (`WithTimeProration`, `ChargeProratedPrice`,
-  `ChargeFullPrice`, `WithoutProration`, `Deferred`). Apple moves a
-  subscriber within a subscription group by itself.
-- `Personalized`: Play's flag for a personalized price, which the EU
-  asks apps to show.
+`purchase.buy(item, options)` shows the store's sheet and answers once
+the user has bought, cancelled, or it waits for approval. Its `Result` has
+a `status`: `.bought` (with its `transaction`), `.pendingApproval` (Ask to
+Buy, a payment Play waits for: the transaction comes later, through
+`events()`) or `.cancelled`.
+
+```asuka
+async fn buyCoins() throws {
+  let r = try await purchase.buy(coins)
+  if r.status == .bought {
+    if let t = r.transaction { await deliver(t) }
+  }
+}
+```
+
+`Options` has a consumable's `quantity`, an `accountToken` that ties the
+purchase to the app's user (a UUID: Apple's must be one), Play's
+`profileToken`, an `offer` to buy a subscription with (Play needs one:
+without, the first base plan), an Apple promotional offer's `signature`
+(from the app's server), Play's `replace` (the subscription this one
+replaces, and how) and `personalized`. It throws `notAllowed` (payments
+turned off), `unknownProduct`, `alreadyOwned`.
 
 ## Transactions
 
-A `Transaction` is a purchase: its `ID`, `ProductID`, `Kind`, `State`
-(`Purchased`, `Pending`, `Revoked`), `Quantity`, `Date`, a
-subscription's `Expires`, and when one was revoked, `Revoked` and why.
+`purchase.events()` is what the store says outside a buy: a pending
+purchase paid for, a purchase made outside the app (on another device, an
+offer code redeemed in the store), a subscription renewed, a refund
+(`.revoked`), those left unfinished from before, and storefront changes.
+What came before anything read it, from the app's start, is kept for the
+first reader: read it as the app starts.
 
-Deliver what a transaction sold, then `Finish` it. Until it's finished,
-the store gives it again at each start. StoreKit keeps it unfinished,
-and Play refunds a purchase that isn't acknowledged within three days.
-`Finish` consumes a `Consumable` (Play's `consumeAsync`, the Microsoft
-Store's fulfillment), so the user can buy it again; for the others it's
-StoreKit's `finish` and Play's acknowledgement. A `Pending` transaction
-can't be finished.
+Deliver a transaction's content, then `finish()` it. Until then the store
+gives it again (at each start): StoreKit keeps it unfinished; Play refunds
+a purchase not finished within three days. Finishing a consumable
+consumes it, so it can be bought again; a `.pending` one isn't finished.
 
-`Observe` gives everything that happens outside a `Buy`:
+```asuka
+state balance = 0
 
-```go
-stop := purchase.Observe(func(e purchase.Event) {
-	switch e.Type {
-	case purchase.TransactionUpdated:
-		t := e.Transaction
-		switch t.State {
-		case purchase.Purchased:
-			deliver(t)
-			go t.Finish()
-		case purchase.Revoked:
-			takeBack(t)
-		}
-	case purchase.StorefrontChanged:
-		// prices are another country's: ask for the products again
-	}
-})
+async fn deliver(t: purchase.Transaction) {
+  if t.state == .pending {
+    return
+  }
+  if t.state == .purchased && t.productId == coins.id {
+    balance += 100 * t.quantity
+  }
+  try? await t.finish()
+}
+
+async fn followStore() throws {
+  for await e in purchase.events() {
+    if let t = e.transaction { await deliver(t) }
+  }
+}
 ```
 
-That's a pending purchase approved or paid, a purchase made outside the
-app (an offer code redeemed in the store, a purchase on another device),
-a subscription renewed, a purchase refunded or revoked, and those left
-unfinished from before. The host listens from the app's start (StoreKit's
-`Transaction.updates`, Play's `PurchasesUpdatedListener` and the
-unacknowledged purchases it finds as the app starts and comes back to
-the front), and keeps what comes before the first observer for it, so
-none is lost. Observe as the app starts, in its root component.
+A `Transaction` has its `id`, `originalId` (a subscription's renewals
+share it), `productId`, `kind`, `state`, `quantity`, `date` and
+`expires` (nanoseconds since 1970), `revoked` and `revocationReason`,
+`autoRenews`, `familyShared`, the buy's `accountToken`, Apple's
+`environment`, the `storefront` it was bought in, its `offerId` and
+`offerType`, and its `verification`.
 
-Call `purchase.Declare(coins, pro, plus)` before you observe, so that a
-consumable left unfinished from before is consumed when you finish it:
-Play doesn't say which kind it is. `Products` and `Buy` declare their
-items too.
+## What the user owns, and restoring
 
-What each store tells the device differs:
+`purchase.owned()` is what the user owns now (non-consumables,
+subscriptions in their period, non-renewing ones), tracked: read in a
+binding, it's asked for as it's first read, and again after each buy,
+finish and restore and each transaction, while it's read.
+`owned.has(productId)` says whether one is the product's.
 
-- Apple's says everything: renewals are transactions, refunds are
-  transactions with `Revoked` set.
-- Play's client sees no renewals (a subscription keeps its purchase
-  token), no refunds and no expiries: they're in `CurrentEntitlements`
-  as they happen, and your server hears them through Play's Real-time
-  developer notifications.
-- The Microsoft Store says when the user's licenses change: a new one is
-  a transaction, a durable's that's gone is revoked.
+```asuka
+component Unlock {
+  let owned = purchase.owned()
 
-## Entitlements and restoring
-
-`CurrentEntitlements()` is what the user owns now: non-consumables,
-subscriptions in their period or grace period, and Apple's non-renewing
-subscriptions once finished (the app decides how long those last).
-`Entitlements.Has(id)` checks one.
-
-In a component, `purchase.Use()` is the entitlements as a signal. It's
-asked for as the component mounts, and again after each `Buy`, `Finish`
-and `Restore` and each transaction the app's `Observe` gets:
-
-```go
-owned := purchase.Use()
-ui.Show(signal.Func(func() bool { return owned.Get().Has(pro.ID) }), proFeatures)
+  Column {
+    if owned.has(pro.id) {
+      Text("Pro: every level")
+    } else {
+      Button("Restore Purchases") { on press { let _ = try? await purchase.restore() } }
+    }
+  }
+}
 ```
 
-`Restore()` asks the store again and answers the entitlements. On iOS
-it's `AppStore.sync`, which asks the user to sign in, so call it only
-from a "Restore purchases" button, which App Review expects an app with
-non-consumables or subscriptions to have.
+`purchase.restore()` asks the store for the user's purchases again (iOS's
+`AppStore.sync`, which asks the user to sign in, so only from a button),
+and answers what they own. `purchase.entitlements()` answers it without
+asking.
 
 ## Subscriptions
 
-`SubscriptionStatuses(group)` has each subscription of a group (Apple's
-subscription group ID; on Play, the product ID): `Subscribed`,
-`Expired`, `BillingRetry` (the payment failed and the store retries;
-Play's account hold), `GracePeriod` (still entitled while it retries) or
-`SubscriptionRevoked`. It also says whether it renews (`WillRenew`), as
-what (`RenewsTo`, after an upgrade or a downgrade), when, and why it
-expired. `RenewalJWS` is Apple's signed renewal info.
-
-`ManageSubscriptions(productID)` shows the store's page of the user's
-subscriptions, where they cancel or change one: iOS's sheet, Play's
-subscription center (at that product), the App Store's or Microsoft's
-account page on the desktop. `RedeemCode()` shows Apple's offer code
-sheet (iOS 16, macOS 15) or opens Play's redeem page; what the code buys
-comes through `Observe`. `RequestRefund(t)` shows Apple's refund request
-sheet. Play has no such sheet: refunds are the developer's, from Play
-Console or its server.
-
-`CurrentStorefront()` is the store's country, which prices and products
-follow.
+`purchase.statuses(group)` is the status of a group's subscriptions
+(Apple's subscription group; on Play, the subscription's product): its
+`state` (`.subscribed`, `.expired`, `.billingRetry`, `.gracePeriod`,
+`.revoked`), whether it `willRenew` and as what (`renewsTo`), its
+`renewal`, `graceExpires`, `expirationReason` and Apple's signed
+`renewalJWS`. `purchase.manageSubscriptions(productId)` shows the store's
+page of the user's subscriptions (iOS's sheet, Play's subscriptions
+center, the App Store's or the Microsoft Store's account page).
+`purchase.redeemCode()` shows the offer code sheet (Apple's) or Play's
+redeem page; what it bought comes through `events()`.
+`purchase.requestRefund(t)` shows Apple's refund sheet (Apple's alone).
+`purchase.storefront()` is the store's country.
 
 ## Verifying on a server
 
 A server checks a purchase with the store before it grants what was
-sold. `Transaction.Verification` has what each store's API takes:
+sold. A transaction's `verification` has what each store's API takes:
 
-- Apple: `JWS`, the transaction signed by the App Store. Verify it with
-  the App Store Server Library (its `SignedDataVerifier`), or check its
-  certificate chain up to Apple's root yourself. `Verified` says
-  whether StoreKit already checked it on the device.
-- Google Play: `Token`, the purchase token, with `PackageName`, for the
+- Apple: `jws`, the transaction signed by the App Store. Verify it with
+  the App Store Server Library (its `SignedDataVerifier`). `verified`
+  says whether StoreKit already checked it on the device.
+- Google Play: `token`, the purchase token, with `packageName`, for the
   Google Play Developer API (`purchases.productsv2`,
-  `purchases.subscriptionsv2`). `OriginalJSON` and `Signature` are the
+  `purchases.subscriptionsv2`). `originalJSON` and `signature` are the
   purchase signed with the app's license key.
-- Windows: `Token`, the add-on's Store ID, for the Microsoft Store
+- Windows: `token`, the add-on's Store ID, for the Microsoft Store
   collections API.
-
-With a server that grants purchases, the app can deliver what the
-server says, and finish the transaction once it has.
 
 ## Testing your purchases
 
 The stores sell only to an app they know. On iOS, `asuka dev` builds an
-app that imports `asuka/sdk/purchase` as itself, without hot reload's
+app that imports `asuka/purchase` as itself, without hot reload's
 player, so a save reinstalls it. On Android, Play sells only to a build
-installed from one of its tracks, so purchases are unavailable in
-`asuka dev`, and it says so.
+installed from one of its tracks.
 
 **The iOS simulator.** Make a StoreKit configuration file in Xcode (File ›
 New › File › StoreKit Configuration File; or sync it from App Store
@@ -227,80 +202,58 @@ storekit = "Products.storekit"
 ```
 
 `asuka dev`'s build for the simulator carries it, and as `asuka dev`
-launches it, sells from it, as an app run from Xcode with the file in
-its scheme does. Prices, Ask to Buy, failed transactions and faster
-renewals come from the file:
+launches it, sells from it, as an app run from Xcode with the file in its
+scheme does: prices, Ask to Buy, failed transactions and faster renewals
+come from the file. Other builds buy from the App Store's sandbox: sign in
+with a sandbox account, or install a TestFlight build.
 
-```sh
-asuka dev --platform ios examples/store            # built, rebuilt on save
-asuka dev --platform ios --once examples/store     # built and launched once
+**Android.** Upload a build to the internal track (`asuka publish
+--platform android --track internal`), add the products in Play
+Console, add your Google account to the license testers, and install the
+build from the track's link. License testers are never charged.
+
+**Windows.** Associate the app with the Store in Partner Center and
+install it from there (a package flight for testing).
+
+**In tests.** `purchase.fake(products)` gives the package a `FakeStore`
+that sells `FakeProduct`s and keeps the transactions as StoreKit does:
+unfinished until the app finishes them, given again (`relaunch()`) until
+then.
+
+```asuka
+test "Ask to Buy, then approved" {
+  let store = purchase.fake([
+    purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
+    purchase.FakeProduct(id: "plus_monthly", kind: .autoRenewable, title: "Plus", price: "$4.99",
+      period: purchase.Period(unit: .month), trial: purchase.Period(unit: .week)),
+  ])
+  store.outcome = .pending
+  let r = try await purchase.buy(coins)
+  expect(r.status == .pendingApproval)
+  let _ = store.approve("coins_100")   // the parent approves: events() gives it
+}
 ```
 
-Launched another way (from the home screen), the app can't load the
-file itself (its session needs Xcode's XCTest, which `asuka dev` gives
-it as a test run has it); StoreKit goes on with the configuration
-`asuka dev` last gave it for the app. Other builds never
-have the file: they buy from the App Store's sandbox. Sign in with a sandbox account (Settings › Developer on the
-device, or as you buy), or install a TestFlight build.
-
-**Android.** Play sells only to a build it has. Upload one to the
-internal track (`asuka publish --platform android --track internal`),
-add the products in Play Console, add your Google account to the
-license testers (Play Console › Setup › License testing), and install
-the build from the track's link. License testers are never charged, and
-renewals come faster.
-
-**The Mac.** As on iOS, with a sandbox account; a Mac build from
-`asuka build` has StoreKit 2 in its Swift library.
-
-**Windows.** The Store sells only to the app it installed: associate the
-app with the Store in Partner Center and install it from there (a
-package flight for testing). An app run with `asuka dev` has no store.
-
-**In `go test`.** `host/fake`'s `Store` sells what a test gives it, and
-keeps the transactions as StoreKit does: unfinished until the app
-finishes them, given again until then.
-
-```go
-var store *fake.Store
-a := uitest.Mount(t, Store, uitest.Setup(func(h *fake.Host) {
-	store = h.Store()
-	store.Products = []fake.StoreProduct{
-		{ID: "coins_100", Kind: "consumable", Title: "100 Coins", Price: "$0.99", PriceMicros: 990000},
-		{ID: "plus_monthly", Kind: "autoRenewable", Title: "Plus", Price: "$4.99", Period: "P1M", Trial: "P1W"},
-	}
-}))
-a.Tap("$0.99")
-a.WaitFor("100 coins")
-
-store.Outcome = fake.PurchasePending // Ask to Buy
-a.Tap("$0.99")
-store.Approve("coins_100")           // the parent approves: Observe gets it
-store.Renew("plus_monthly")          // a renewal
-store.Refund(id)                     // a refund
-store.Deliver("pro")                 // bought on another device
-```
-
-`Outcome` also has `PurchaseCancelled` and `PurchaseFailed`;
-`Unavailable` and `NotAllowed` are a store that isn't there and payments
-turned off; `Unfinished` lists what the app hasn't finished.
+`outcome` is `.bought`, `.pending`, `.cancelled` or `.failed`;
+`unavailable` and `notAllowed` are a store that isn't there and payments
+turned off; `deliver(id)` is a purchase on another device, `renew(id)` a
+renewal, `expire(id)` a subscription that ended, `refund(id)` a refund,
+`setCountry(c)` a storefront change; `unfinished()` lists what the app
+hasn't finished, `transactions` everything, `restores`, `manages`,
+`redeems` and `refunds` the calls made.
 
 ## Setting up the app
 
 - **iOS and macOS.** The In-App Purchase capability is on for every App
-  ID, and it needs no entitlement: nothing to add. Agree to the Paid
-  Apps Agreement in App Store Connect, and add the products there.
-- **Android.** An app that imports `asuka/sdk/purchase` is built with
-  Play Billing and the `com.android.vending.BILLING` permission; others
+  ID, and it needs no entitlement. Agree to the Paid Apps Agreement in
+  App Store Connect, and add the products there. The Mac's StoreKit 2
+  needs macOS 12: before, `available()` is false.
+- **Android.** An app that imports `asuka/purchase` is built with Play
+  Billing and the `com.android.vending.BILLING` permission; others
   aren't.
 - **Windows.** Add the add-ons in Partner Center, to an app that's
   packaged (MSIX) and associated with the Store.
 - **The web.** Package the site as a Trusted Web Activity with Play
   Billing enabled (Bubblewrap's `playBilling`), and add the products in
-  Play Console. The Digital Goods API acknowledges nothing for a
-  non-consumable: acknowledge it from your server, with the Play
-  Developer API, within three days.
-
-[examples/store](../examples/store) sells 100 coins, Pro and a monthly
-subscription with a free week, with a StoreKit configuration file and
-tests on `fake.Store`.
+  Play Console. Acknowledge a non-consumable from your server, with the
+  Play Developer API, within three days.
