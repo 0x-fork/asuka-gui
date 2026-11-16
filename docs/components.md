@@ -20,7 +20,7 @@ query`. See [Concepts](concepts.md).
 
 | Component | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `Text` | `UILabel` | `TextView` | `NSTextField` (a label) | drawn by the host's view | `GtkLabel` | the page's text |
+| `Text` | `UILabel` | `TextView` | `NSTextField` (a label) | drawn by Asuka | `GtkLabel` | the page's text |
 | `Button` | `UIButton` | `MaterialButton` | `NSButton` | `BUTTON`, drawn as Fluent's | `GtkButton` | `<button>` |
 | `TextField` | `UITextField`; `UITextView` multiline | `EditText` | `NSTextField`, `NSSecureTextField`; `NSTextView` multiline | `EDIT` in a frame drawn as Fluent's | `GtkEntry`, `GtkPasswordEntry`; `GtkTextView` multiline | `<input>`; `<textarea>` multiline |
 | `Toggle` | `UISwitch` | `MaterialSwitch` | `NSSwitch` | a `BUTTON` check box drawn as a toggle switch | `GtkSwitch` | `<input type="checkbox" switch>` |
@@ -39,8 +39,8 @@ query`. See [Concepts](concepts.md).
 | `Symbol` | SF Symbols | Material Symbols | SF Symbols | Segoe Fluent Icons | the icon theme's, else Material Symbols | Material Symbols |
 | `Video` | `AVPlayerViewController` | Media3's player | `AVPlayerView` | a `<video>` in WebView2 | `GtkVideo` (GStreamer) | `<video>` |
 | `WebView` | `WKWebView` | `WebView` | `WKWebView` | WebView2 | `WebKitWebView` (WebKitGTK 6.0) | `<iframe>` |
-| `Scroll` | `UIScrollView` | `NestedScrollView` | `NSScrollView` | the host's view, Fluent's scroll indicator | `GtkScrolledWindow` | a scrolling element |
-| `List` | `UICollectionView` | `RecyclerView` | rows the host recycles, in an `NSScrollView` | rows the host recycles | rows the host recycles, in a `GtkScrolledWindow` | rows the host recycles |
+| `Scroll` | `UIScrollView` | `NestedScrollView` | `NSScrollView` | Asuka's own, with Fluent's scroll indicator | `GtkScrolledWindow` | a scrolling element |
+| `List` | `UICollectionView` | `RecyclerView` | rows Asuka recycles, in an `NSScrollView` | rows Asuka recycles | rows Asuka recycles, in a `GtkScrolledWindow` | rows Asuka recycles |
 
 The sections below say where a platform behaves differently.
 
@@ -180,7 +180,7 @@ component Reply(text: string, writing: bool) {
 reply streams in: its end shows what it will most likely become (a code
 fence closed, `**bold` as bold, a link being written as a link) rather
 than half-written syntax. `markdown.heal(text)` is that, on its own.
-The core reads it, the same on every platform (md4c), into paragraphs
+Asuka parses it, the same on every platform, into paragraphs
 of styled text, which each platform shows as its own: an attributed
 string in a text view on iOS and macOS, spans in a TextView on Android,
 the page's elements on the web, a rich edit on Windows and a label a
@@ -391,7 +391,7 @@ component SignIn {
   strong password), `"oneTimeCode"` (the code a message just brought
   shows above the keyboard: UIKit's `oneTimeCode`, Android's SMS code
   hint), `"email"`, `"phone"`, `"name"`, `"address"`, `"postalCode"`,
-  `"cardNumber"`... Each host names it as its platform does.
+  `"cardNumber"`... Each platform names it its own way.
 - `autocapitalize`: `.sentences` (the default), `.off`, `.words`,
   `.characters`. `autocorrect`: `.default`, `.yes`, `.no`.
 - `on focus` and `on blur` follow the keyboard, and `bind focused`
@@ -531,7 +531,7 @@ component Settings {
 - **Slider** picks a `float` from `min` to `max` (by default 0 to 1).
 - **Segmented** is one of a few options side by side, `selected` the
   index: UIKit's segmented control, Material's segmented buttons.
-  Windows has none: the host draws one, as the Windows Community
+  Windows has none: Asuka draws one, as the Windows Community
   Toolkit's `Segmented`.
 - **Stepper** steps a `float` with minus and plus, by `step` (default
   1), from `min` to `max` (by default 0 to 100). It's a `UIStepper` on
@@ -626,7 +626,7 @@ readers read it as a progress indicator with its percentage.
 
 `Image` shows a picture. The platform loads and decodes it off the
 main thread, and caches it in memory. iOS and Android keep an image that
-came over http(s) on disk too, across launches; the desktop hosts keep
+came over http(s) on disk too, across launches; the desktops keep
 it in memory only, and a browser in its own cache.
 
 ```asuka
@@ -670,7 +670,7 @@ component Pictures(photo: Photo) {
 - `blurHash` and `thumbHash` are placeholders from a hash an app keeps
   with the image ([BlurHash](https://blurha.sh),
   [ThumbHash](https://evanw.github.io/thumbhash/), in base64), as
-  expo-image's are. The core decodes the hash into a small picture,
+  expo-image's are. Asuka decodes the hash into a small picture,
   once (the last few hundred are kept), and shows it at once in
   `placeholder`'s place. A BlurHash has no shape of its own: it's
   decoded at the style's `aspectRatio`, and without one it's square and
@@ -705,8 +705,8 @@ Each platform decodes what its own decoders read:
 | iOS | ImageIO: PNG, JPEG, GIF, WebP, HEIC, AVIF | ImageIO's `CGAnimateImageDataWithBlock`, which times and loops it as the file says (HEIF sequences too) |
 | Android | `BitmapFactory`, then `ImageDecoder`: PNG, JPEG, GIF, WebP, HEIF, AVIF | `AnimatedImageDrawable`: GIF and WebP (and AVIF sequences where the system plays them); an APNG shows its first frame |
 | macOS | `NSImage`: PNG, JPEG, GIF, WebP, HEIC, AVIF, SVG | as iOS |
-| Windows | WIC: PNG, JPEG, GIF, BMP, TIFF, ICO, and WebP, HEIF and AVIF where their codecs are installed (WebP's comes with Windows 11; HEIF needs the HEIF and HEVC Video Extensions, AVIF the AV1 Video Extension) | the host, frame after frame; an animated WebP's pictures by WIC's WebP codec |
-| Linux | GDK's loaders: PNG, JPEG, GIF, and WebP, AVIF, HEIF, SVG and JPEG XL as installed | the host, frame after frame; an animated WebP's pictures by GDK's WebP loader |
+| Windows | WIC: PNG, JPEG, GIF, BMP, TIFF, ICO, and WebP, HEIF and AVIF where their codecs are installed (WebP's comes with Windows 11; HEIF needs the HEIF and HEVC Video Extensions, AVIF the AV1 Video Extension) | Asuka, frame after frame; an animated WebP's pictures by WIC's WebP codec |
+| Linux | GDK's loaders: PNG, JPEG, GIF, and WebP, AVIF, HEIF, SVG and JPEG XL as installed | Asuka, frame after frame; an animated WebP's pictures by GDK's WebP loader |
 | Web | the browser | WebCodecs' `ImageDecoder` on a canvas (AVIF sequences too); where there's none (Safari), the `<img>` itself, which shows its first frame while paused |
 
 An SVG is an image on the Mac, Linux and the web only. For an SVG icon
@@ -744,11 +744,9 @@ and tabs take one too: `"house"`, `"magnifyingglass"`, `"gear"`,
 (`"star.fill"`).
 
 iOS and macOS draw any SF Symbol. The others draw a curated set, the
-common ones and more, mapped to Material Symbols in
-[`platform/android/gen_symbols.go`](../platform/android/gen_symbols.go)
-(the web's and Linux's are generated from it), and to Segoe Fluent
+common ones and more, mapped to Material Symbols, and to Segoe Fluent
 Icons' glyphs on Windows. A name outside the set shows nothing there
-(the host logs a warning), so check a name you write, like
+(the log has a warning), so check a name you write, like
 `"archivebox"`, on each platform you ship. On Linux a name ending in
 `-symbolic` is an icon theme's name, used as it is.
 
@@ -1507,7 +1505,7 @@ it, its text is drawn inside it, and a field's editing happens inside it.
 
 `List` shows a row per item in the platform's recycling list
 (`UICollectionView`, `RecyclerView`). The desktop and the web have no
-list that holds rows of any view, so there the host recycles rows
+list that holds rows of any view, so there Asuka recycles rows
 itself, in the platform's scroll view. Rows are made only for the cells
 on screen; a cell scrolled away is reused for another item, and only the
 props that differ are updated. [`examples/list10k`](../examples/list10k)

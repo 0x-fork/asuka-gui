@@ -8,7 +8,7 @@
 
 | コンポーネント | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `Text` | `UILabel` | `TextView` | `NSTextField`（ラベル） | ホストのビューが描画 | `GtkLabel` | ページのテキスト |
+| `Text` | `UILabel` | `TextView` | `NSTextField`（ラベル） | Asuka が描画 | `GtkLabel` | ページのテキスト |
 | `Button` | `UIButton` | `MaterialButton` | `NSButton` | Fluent の見た目で描画した `BUTTON` | `GtkButton` | `<button>` |
 | `TextField` | `UITextField`、複数行は `UITextView` | `EditText` | `NSTextField`、`NSSecureTextField`、複数行は `NSTextView` | Fluent の見た目で描画した枠の中の `EDIT` | `GtkEntry`、`GtkPasswordEntry`、複数行は `GtkTextView` | `<input>`、複数行は `<textarea>` |
 | `Toggle` | `UISwitch` | `MaterialSwitch` | `NSSwitch` | トグルスイッチとして描画した `BUTTON` のチェックボックス | `GtkSwitch` | `<input type="checkbox" switch>` |
@@ -26,8 +26,8 @@
 | `Symbol` | SF Symbols | Material Symbols | SF Symbols | Segoe Fluent Icons | アイコンテーマのもの。なければ Material Symbols | Material Symbols |
 | `Video` | `AVPlayerViewController` | Media3 のプレイヤー | `AVPlayerView` | WebView2 内の `<video>` | `GtkVideo`（GStreamer） | `<video>` |
 | `WebView` | `WKWebView` | `WebView` | `WKWebView` | WebView2 | `WebKitWebView`（WebKitGTK 6.0） | `<iframe>` |
-| `Scroll` | `UIScrollView` | `NestedScrollView` | `NSScrollView` | ホストのビューと Fluent のスクロールインジケーター | `GtkScrolledWindow` | スクロールする要素 |
-| `List` | `UICollectionView` | `RecyclerView` | `NSScrollView` の中でホストが再利用する行 | ホストが再利用する行 | `GtkScrolledWindow` の中でホストが再利用する行 | ホストが再利用する行 |
+| `Scroll` | `UIScrollView` | `NestedScrollView` | `NSScrollView` | Asuka 自身のビューと Fluent のスクロールインジケーター | `GtkScrolledWindow` | スクロールする要素 |
+| `List` | `UICollectionView` | `RecyclerView` | `NSScrollView` の中で Asuka が再利用する行 | Asuka が再利用する行 | `GtkScrolledWindow` の中で Asuka が再利用する行 | Asuka が再利用する行 |
 
 以降のセクションでは、プラットフォームによって動作が異なる点を説明します。
 
@@ -135,7 +135,7 @@ component Reply(text: string, writing: bool) {
 }
 ```
 
-`streaming` は、言語モデルの返答が流れてくるときのように、テキストがまだ書かれている途中であることを表します。このときテキストの末尾は、書きかけの記法ではなく、最終的になりそうな姿で表示されます（コードフェンスは閉じ、`**bold` は太字に、書きかけのリンクはリンクに）。`markdown.heal(text)` で同じ処理だけを行うこともできます。解析はどのプラットフォームでも同じく、コアが md4c で行います。テキストはスタイル付きの段落として読まれ、各プラットフォームがそれを自分の方法で表示します。iOS と macOS ではテキストビューの属性付き文字列、Android では TextView の span、Web ではページの要素、Windows ではリッチエディット、Linux ではブロックごとのラベルです（GNOME アプリがリッチテキストを表示する方法で、選択はブロックごとになります）。テキストは変わるたびに読み直されますが、ビューが置き換えるのは変わった部分、つまり最初に違いが出たブロックから後だけです。そのため返答がストリーミングで届く間も、最後のブロックより前はレイアウトと選択範囲を保ちます。[`examples/markdown`](../../examples/markdown) を見てください。
+`streaming` は、言語モデルの返答が流れてくるときのように、テキストがまだ書かれている途中であることを表します。このときテキストの末尾は、書きかけの記法ではなく、最終的になりそうな姿で表示されます（コードフェンスは閉じ、`**bold` は太字に、書きかけのリンクはリンクに）。`markdown.heal(text)` で同じ処理だけを行うこともできます。解析はどのプラットフォームでも同じく、Asuka が行います。テキストはスタイル付きの段落として読まれ、各プラットフォームがそれを自分の方法で表示します。iOS と macOS ではテキストビューの属性付き文字列、Android では TextView の span、Web ではページの要素、Windows ではリッチエディット、Linux ではブロックごとのラベルです（GNOME アプリがリッチテキストを表示する方法で、選択はブロックごとになります）。テキストは変わるたびに読み直されますが、ビューが置き換えるのは変わった部分、つまり最初に違いが出たブロックから後だけです。そのため返答がストリーミングで届く間も、最後のブロックより前はレイアウトと選択範囲を保ちます。[`examples/markdown`](../../examples/markdown) を見てください。
 
 ## ボタン
 
@@ -297,7 +297,7 @@ component SignIn {
 - `secure` は、パスワード用に入力内容を隠します。
 - `keyboard`：`.default`、`.number`、`.decimal`、`.email`、`.url`、`.phone`。
 - `returnKey` はリターンキーのラベルです：`.default`、`.done`、`.go`、`.next`、`.search`、`.send`。押すと `on submit` が実行されます。
-- `contentType` は、システムの自動入力（AutoFill）のために、フィールドに入る内容の種類を示します：`"username"`、`"password"`、`"newPassword"`（プラットフォームが強力なパスワードを提案します）、`"oneTimeCode"`（届いたばかりのメッセージのコードがキーボードの上に表示されます。UIKit の `oneTimeCode`、Android の SMS コードのヒント）、`"email"`、`"phone"`、`"name"`、`"address"`、`"postalCode"`、`"cardNumber"` など。各ホストが、それぞれのプラットフォームでの名前で設定します。
+- `contentType` は、システムの自動入力（AutoFill）のために、フィールドに入る内容の種類を示します：`"username"`、`"password"`、`"newPassword"`（プラットフォームが強力なパスワードを提案します）、`"oneTimeCode"`（届いたばかりのメッセージのコードがキーボードの上に表示されます。UIKit の `oneTimeCode`、Android の SMS コードのヒント）、`"email"`、`"phone"`、`"name"`、`"address"`、`"postalCode"`、`"cardNumber"` など。各プラットフォームが、それぞれの名前で設定します。
 - `autocapitalize`：`.sentences`（デフォルト）、`.off`、`.words`、`.characters`。`autocorrect`：`.default`、`.yes`、`.no`。
 - `on focus` と `on blur` は、キーボードのフォーカスを得たとき、失ったときに実行されます。`bind focused` はそれに追従し、フォーカスを動かすこともできます。`Ref` の `focus()` でフォーカスを求め、`blur()` で外します。
 
@@ -414,7 +414,7 @@ component Settings {
 
 - **Toggle** はスイッチで、`bind on` で値を受け取ります。`checkbox: true` を指定するとチェックボックスになります。Android では `MaterialCheckBox`、Mac と Windows ではそれぞれのチェックボックス、Linux では `GtkCheckButton`、ブラウザーではチェックボックスです。チェックボックスのない iOS では、「リマインダー」と同じように、チェックマークで塗りつぶされる円になります。
 - **Slider** は、`min` から `max` までの `float` を選びます（デフォルトは 0 から 1）。
-- **Segmented** は、横に並んだ少数の選択肢から一つを選ぶコントロールで、`selected` は選ばれた項目のインデックスです。UIKit のセグメンテッドコントロールや、Material のセグメントボタンを使います。Windows には該当するものがないため、ホストが Windows Community Toolkit の `Segmented` に倣って描画します。
+- **Segmented** は、横に並んだ少数の選択肢から一つを選ぶコントロールで、`selected` は選ばれた項目のインデックスです。UIKit のセグメンテッドコントロールや、Material のセグメントボタンを使います。Windows には該当するものがないため、Asuka が Windows Community Toolkit の `Segmented` に倣って描画します。
 - **Stepper** は、マイナスとプラスで `float` を `step`（デフォルトは 1）ずつ `min` から `max`（デフォルトは 0 から 100）の範囲で増減させますです。iOS では `UIStepper`、macOS では `NSStepper` で、それ以外では 2 つのボタンになります（Android では Material のアイコンボタン、Linux では GNOME のスピンボタンと同じように連結したボタン）。
 - **Wheel** は、回転するホイールで多数の項目から一つを選びます。`UIPickerView` や Android の `NumberPicker` です。デスクトップと Web にはホイールがないため、項目を並べたポップアップメニューになります（`NSPopUpButton`、WinUI の `ComboBox` に倣って描画したドロップダウンのコンボボックス、`GtkDropDown`、`<select>`）。
 - **Picker** は、メニューから多数の項目の一つを選び、選んだ項目を表示します（メニュースタイルの SwiftUI の `Picker`、Material の exposed dropdown menu）。`selected` が範囲外（-1、デフォルト）なら何も選ばれておらず、ピッカーは `prompt` を表示します。これはスクリーンリーダーに伝える名前にもなります。Android では、`prompt` はフィールドのラベルとして、選ばれた項目の上に浮かびます。バインドしなければ、ピッカーはユーザーの選択を自分で保持します。
@@ -476,7 +476,7 @@ component Upload {
 
 ## 画像
 
-`Image` は画像を表示します。読み込みとデコードはプラットフォームがメインスレッドの外で行い、メモリにキャッシュします。iOS と Android では、http(s) で取得した画像をディスクにも保存し、アプリを起動し直しても使えるようにします。デスクトップのホストはメモリにだけ保持し、ブラウザーは自身のキャッシュに保持します。
+`Image` は画像を表示します。読み込みとデコードはプラットフォームがメインスレッドの外で行い、メモリにキャッシュします。iOS と Android では、http(s) で取得した画像をディスクにも保存し、アプリを起動し直しても使えるようにします。デスクトップではメモリにだけ保持し、ブラウザーは自身のキャッシュに保持します。
 
 ```asuka
 struct Photo {
@@ -510,7 +510,7 @@ component Pictures(photo: Photo) {
 - 画像のソースは、http(s) の URL、アプリの `assets` ディレクトリ内のパス（`"logo.png"` は `assets/logo.png`）、または絶対パス（アプリが書き出したファイルや、ユーザーが選んだ写真）です。
 - `mode` は、画像を枠にどう収めるかを決めます。`.fit`（デフォルト。全体を収め、余白ができる）、`.fill`（枠を覆い、はみ出た部分を切り取る）、`.stretch`（枠の縦横比に合わせて引き伸ばす）、`.center`（本来のサイズで中央に置く）があります。
 - `placeholder` は、ソースが読み込まれるまでと、読み込みに失敗したときに表示されます。すぐに表示できるアセットを使ってください。プレースホルダーを表示する場所を確保するため、画像にはサイズを指定してください。
-- `blurHash` と `thumbHash` は、アプリが画像と一緒に保存しておくハッシュから作るプレースホルダーです（[BlurHash](https://blurha.sh)、[ThumbHash](https://evanw.github.io/thumbhash/)。後者は base64）。expo-image と同じです。コアがハッシュを小さな画像に一度だけデコードし（最近の数百個は保持されます）、`placeholder` の代わりにすぐに表示します。BlurHash 自体は形を持たないので、スタイルの `aspectRatio` でデコードされ、指定がなければ正方形で枠に引き伸ばされます。ThumbHash は元の画像の縦横比と透明度を保ちます。リストの行が画像を差し替えるので、どちらもバインディングです。
+- `blurHash` と `thumbHash` は、アプリが画像と一緒に保存しておくハッシュから作るプレースホルダーです（[BlurHash](https://blurha.sh)、[ThumbHash](https://evanw.github.io/thumbhash/)。後者は base64）。expo-image と同じです。Asuka がハッシュを小さな画像に一度だけデコードし（最近の数百個は保持されます）、`placeholder` の代わりにすぐに表示します。BlurHash 自体は形を持たないので、スタイルの `aspectRatio` でデコードされ、指定がなければ正方形で枠に引き伸ばされます。ThumbHash は元の画像の縦横比と透明度を保ちます。リストの行が画像を差し替えるので、どちらもバインディングです。
 - `placeholderMode` は、プレースホルダーを枠にどう収めるかです。`.fit`、`.fill`、`.stretch`、`.center` があり、デフォルトでは画像と同じです。
 - `transition` は、画像が届いたときにフェードインする秒数です。プレースホルダーの上でクロスディゾルブするか、何もないところから現れます。デフォルトでは、プレースホルダーがあるときだけ、プラットフォームの短い時間（0.25 秒。Android では `config_shortAnimTime`）でフェードインします。`-1` ならすぐに表示します。
 - `animated` が true のあいだはアニメーション画像を再生し、false にするとその場で止めます。指定しなければ、ファイルが指定する回数だけ再生します。ただし、ユーザーが動きを減らすよう設定しているとき（「視差効果を減らす」、Android のアニメーションのオフ、`prefers-reduced-motion`）は、最初のフレームを表示します。
@@ -526,8 +526,8 @@ component Pictures(photo: Photo) {
 | iOS | ImageIO：PNG、JPEG、GIF、WebP、HEIC、AVIF | ImageIO の `CGAnimateImageDataWithBlock`。ファイルの指定どおりのタイミングとループで再生します（HEIF のシーケンスも） |
 | Android | `BitmapFactory`、次に `ImageDecoder`：PNG、JPEG、GIF、WebP、HEIF、AVIF | `AnimatedImageDrawable`：GIF と WebP（システムが再生できれば AVIF のシーケンスも）。APNG は最初のフレームを表示します |
 | macOS | `NSImage`：PNG、JPEG、GIF、WebP、HEIC、AVIF、SVG | iOS と同じ |
-| Windows | WIC：PNG、JPEG、GIF、BMP、TIFF、ICO。コーデックが入っていれば WebP、HEIF、AVIF も（WebP のものは Windows 11 に付属。HEIF には HEIF 画像拡張機能と HEVC ビデオ拡張機能、AVIF には AV1 ビデオ拡張機能が必要） | ホストがフレームを順に再生。アニメーション WebP の各フレームは WIC の WebP コーデックでデコード |
-| Linux | GDK のローダー：PNG、JPEG、GIF。インストールされていれば WebP、AVIF、HEIF、SVG、JPEG XL も | ホストがフレームを順に再生。アニメーション WebP の各フレームは GDK の WebP ローダーでデコード |
+| Windows | WIC：PNG、JPEG、GIF、BMP、TIFF、ICO。コーデックが入っていれば WebP、HEIF、AVIF も（WebP のものは Windows 11 に付属。HEIF には HEIF 画像拡張機能と HEVC ビデオ拡張機能、AVIF には AV1 ビデオ拡張機能が必要） | Asuka がフレームを順に再生。アニメーション WebP の各フレームは WIC の WebP コーデックでデコード |
+| Linux | GDK のローダー：PNG、JPEG、GIF。インストールされていれば WebP、AVIF、HEIF、SVG、JPEG XL も | Asuka がフレームを順に再生。アニメーション WebP の各フレームは GDK の WebP ローダーでデコード |
 | Web | ブラウザー | WebCodecs の `ImageDecoder` でキャンバスに描画（AVIF のシーケンスも）。ない場合（Safari）は `<img>` そのもので、一時停止中は最初のフレームを表示します |
 
 SVG を画像として表示できるのは、Mac、Linux、Web だけです。どのプラットフォームでも SVG のアイコンを表示するには、[`std/svg`](#svg-アイコン) でベクターとして描きます。
@@ -553,7 +553,7 @@ component Symbols {
 
 シンボルの名前は SF Symbol の名前です。ボタン、メニュー項目、バーボタン、タブも受け取ります。`"house"`、`"magnifyingglass"`、`"gear"`、`"plus"`、`"xmark"`、`"trash"`、`"square.and.arrow.up"`、`"ellipsis.circle"` などで、名前の後ろに `".fill"` を付けると塗りつぶしの形になります（`"star.fill"`）。
 
-iOS と macOS は、どの SF Symbol でも描画できます。それ以外のプラットフォームが描画できるのは、厳選したセットだけです。このセットにはよく使うものとそれ以外のシンボルが含まれ、[`platform/android/gen_symbols.go`](../../platform/android/gen_symbols.go) で Material Symbols に対応付けられています（Web と Linux の対応はこのファイルから生成されます）。Windows では Segoe Fluent Icons のグリフに対応付けられています。セットにない名前は、これらのプラットフォームでは何も表示されません（ホストは警告をログに出します）。そのため、`"archivebox"` のように文字列で書いた名前は、配布するすべてのプラットフォームで確認してください。Linux では、`-symbolic` で終わる名前はアイコンテーマの名前として、そのまま使われます。
+iOS と macOS は、どの SF Symbol でも描画できます。それ以外のプラットフォームが描画できるのは、厳選したセットだけです。このセットにはよく使うものとそれ以外のシンボルが含まれ、Material Symbols に対応付けられています。Windows では Segoe Fluent Icons のグリフに対応付けられています。セットにない名前は、これらのプラットフォームでは何も表示されません（ログに警告が出ます）。そのため、`"archivebox"` のように文字列で書いた名前は、配布するすべてのプラットフォームで確認してください。Linux では、`-symbolic` で終わる名前はアイコンテーマの名前として、そのまま使われます。
 
 ### SVG アイコン
 
@@ -1095,7 +1095,7 @@ component Composer {
 
 ## リスト
 
-`List` は、プラットフォームの再利用型のリスト（`UICollectionView`、`RecyclerView`）で、項目ごとに 1 行を表示します。デスクトップと Web には任意のビューを行として持てるリストがないため、ホストがプラットフォームのスクロールビューの中で、行を自前で再利用します。行は画面上のセルの分しか作られません。スクロールして画面外に出たセルは別の項目に再利用され、更新されるのは値が違うプロパティだけです。[`examples/list10k`](../../examples/list10k) には 1 万行があります。
+`List` は、プラットフォームの再利用型のリスト（`UICollectionView`、`RecyclerView`）で、項目ごとに 1 行を表示します。デスクトップと Web には任意のビューを行として持てるリストがないため、Asuka がプラットフォームのスクロールビューの中で、行を自前で再利用します。行は画面上のセルの分しか作られません。スクロールして画面外に出たセルは別の項目に再利用され、更新されるのは値が違うプロパティだけです。[`examples/list10k`](../../examples/list10k) には 1 万行があります。
 
 ```asuka
 struct Message {

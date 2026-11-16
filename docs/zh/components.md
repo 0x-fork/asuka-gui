@@ -8,7 +8,7 @@
 
 | 组件 | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `Text` | `UILabel` | `TextView` | `NSTextField`（作为标签） | 由宿主的视图绘制 | `GtkLabel` | 页面文本 |
+| `Text` | `UILabel` | `TextView` | `NSTextField`（作为标签） | 由 Asuka 绘制 | `GtkLabel` | 页面文本 |
 | `Button` | `UIButton` | `MaterialButton` | `NSButton` | `BUTTON`，绘制成 Fluent 风格 | `GtkButton` | `<button>` |
 | `TextField` | `UITextField`；多行时为 `UITextView` | `EditText` | `NSTextField`、`NSSecureTextField`；多行时为 `NSTextView` | `EDIT`，外框绘制成 Fluent 风格 | `GtkEntry`、`GtkPasswordEntry`；多行时为 `GtkTextView` | `<input>`；多行时为 `<textarea>` |
 | `Toggle` | `UISwitch` | `MaterialSwitch` | `NSSwitch` | 绘制成拨动开关的 `BUTTON` 复选框 | `GtkSwitch` | `<input type="checkbox" switch>` |
@@ -26,8 +26,8 @@
 | `Symbol` | SF Symbols | Material Symbols | SF Symbols | Segoe Fluent Icons | 图标主题中的图标，没有则用 Material Symbols | Material Symbols |
 | `Video` | `AVPlayerViewController` | Media3 的播放器 | `AVPlayerView` | WebView2 中的 `<video>` | `GtkVideo`（GStreamer） | `<video>` |
 | `WebView` | `WKWebView` | `WebView` | `WKWebView` | WebView2 | `WebKitWebView`（WebKitGTK 6.0） | `<iframe>` |
-| `Scroll` | `UIScrollView` | `NestedScrollView` | `NSScrollView` | 宿主的视图，配 Fluent 的滚动指示器 | `GtkScrolledWindow` | 可滚动的元素 |
-| `List` | `UICollectionView` | `RecyclerView` | 由宿主复用的行，放在 `NSScrollView` 中 | 由宿主复用的行 | 由宿主复用的行，放在 `GtkScrolledWindow` 中 | 由宿主复用的行 |
+| `Scroll` | `UIScrollView` | `NestedScrollView` | `NSScrollView` | Asuka 自己的视图，配 Fluent 的滚动指示器 | `GtkScrolledWindow` | 可滚动的元素 |
+| `List` | `UICollectionView` | `RecyclerView` | 由 Asuka 复用的行，放在 `NSScrollView` 中 | 由 Asuka 复用的行 | 由 Asuka 复用的行，放在 `GtkScrolledWindow` 中 | 由 Asuka 复用的行 |
 
 下面各节会说明平台之间行为不一致的地方。
 
@@ -135,7 +135,7 @@ component Reply(text: string, writing: bool) {
 }
 ```
 
-`streaming` 表示文本还在写，比如语言模型的回复正一点点流进来：这时文本的末尾会显示成它最可能的样子（代码围栏补上结尾、`**bold` 显示为粗体、正在写的链接显示为链接），而不是写了一半的语法。单独用 `markdown.heal(text)` 也能得到同样的处理。解析由核心完成，所有平台都一样（md4c）：它把文本读成一段段带样式的文字，再由各平台用自己的方式显示：iOS 和 macOS 上是文本视图里的富文本字符串（attributed string），Android 上是 TextView 里的 span，Web 上是页面元素，Windows 上是 rich edit 控件，Linux 上则是每个块一个标签（GNOME 应用显示富文本的方式：每个块各自选择）。文本每次变化都会重新解析，但视图只替换变化的部分，即从第一个不同的块开始往后的内容；所以回复流式写入时，最后一块之前的内容会保持原有的布局和选区。参见 [`examples/markdown`](../../examples/markdown)。
+`streaming` 表示文本还在写，比如语言模型的回复正一点点流进来：这时文本的末尾会显示成它最可能的样子（代码围栏补上结尾、`**bold` 显示为粗体、正在写的链接显示为链接），而不是写了一半的语法。单独用 `markdown.heal(text)` 也能得到同样的处理。解析由 Asuka 完成，所有平台都一样：它把文本读成一段段带样式的文字，再由各平台用自己的方式显示：iOS 和 macOS 上是文本视图里的富文本字符串（attributed string），Android 上是 TextView 里的 span，Web 上是页面元素，Windows 上是 rich edit 控件，Linux 上则是每个块一个标签（GNOME 应用显示富文本的方式：每个块各自选择）。文本每次变化都会重新解析，但视图只替换变化的部分，即从第一个不同的块开始往后的内容；所以回复流式写入时，最后一块之前的内容会保持原有的布局和选区。参见 [`examples/markdown`](../../examples/markdown)。
 
 ## 按钮
 
@@ -297,7 +297,7 @@ component SignIn {
 - `secure` 隐藏输入的内容，用于密码。
 - `keyboard`：`.default`、`.number`、`.decimal`、`.email`、`.url`、`.phone`。
 - `returnKey` 是回车键上显示的文字：`.default`、`.done`、`.go`、`.next`、`.search`、`.send`。按下回车键会运行 `on submit`。
-- `contentType` 说明输入框里填的是什么内容，供系统的自动填充使用：`"username"`、`"password"`、`"newPassword"`（平台会推荐一个强密码）、`"oneTimeCode"`（刚收到的短信验证码会出现在键盘上方，即 UIKit 的 `oneTimeCode` 和 Android 的短信验证码提示）、`"email"`、`"phone"`、`"name"`、`"address"`、`"postalCode"`、`"cardNumber"` 等。各个宿主会按自己平台的叫法来设置。
+- `contentType` 说明输入框里填的是什么内容，供系统的自动填充使用：`"username"`、`"password"`、`"newPassword"`（平台会推荐一个强密码）、`"oneTimeCode"`（刚收到的短信验证码会出现在键盘上方，即 UIKit 的 `oneTimeCode` 和 Android 的短信验证码提示）、`"email"`、`"phone"`、`"name"`、`"address"`、`"postalCode"`、`"cardNumber"` 等。各平台会按自己的叫法来设置。
 - `autocapitalize`：`.sentences`（默认）、`.off`、`.words`、`.characters`。`autocorrect`：`.default`、`.yes`、`.no`。
 - `on focus` 和 `on blur` 跟随键盘的弹出和收起，`bind focused` 既跟随键盘也能移动它。`Ref` 的 `focus()` 唤起键盘，`blur()` 收起键盘。
 
@@ -414,7 +414,7 @@ component Settings {
 
 - **Toggle** 是开关，`bind on`。设置 `checkbox: true` 后它会变成复选框：Android 上是 `MaterialCheckBox`，Mac 和 Windows 上是各自的复选框，Linux 上是 `GtkCheckButton`，浏览器中是复选框；iOS 没有复选框，于是用一个选中后填上对勾的圆圈，和提醒事项里的一样。
 - **Slider** 在 `min` 到 `max` 之间取一个 `float`（默认是 0 到 1）。
-- **Segmented** 把几个选项并排摆出来，从中选一个，`selected` 是选中项的索引。它对应 UIKit 的分段控件和 Material 的分段按钮。Windows 没有这种控件，由宿主自行绘制一个，仿照 Windows Community Toolkit 的 `Segmented`。
+- **Segmented** 把几个选项并排摆出来，从中选一个，`selected` 是选中项的索引。它对应 UIKit 的分段控件和 Material 的分段按钮。Windows 没有这种控件，由 Asuka 自行绘制一个，仿照 Windows Community Toolkit 的 `Segmented`。
 - **Stepper** 用减号和加号按 `step`（默认为 1）增减一个 `float`，范围从 `min` 到 `max`（默认是 0 到 100）。它在 iOS 上是 `UIStepper`，在 macOS 上是 `NSStepper`；在其他平台上则是两个按钮（Android 上是 Material 图标按钮，Linux 上是相连的按钮，和 GNOME 的微调按钮外观一致）。
 - **Wheel** 在滚轮上从众多选项中选一个，对应 `UIPickerView` 和 Android 的 `NumberPicker`。桌面端和 Web 没有滚轮控件，所以在那里它是一个列出所有选项的弹出菜单（`NSPopUpButton`、绘制成 WinUI `ComboBox` 样式的下拉组合框、`GtkDropDown`、`<select>`）。
 - **Picker** 从菜单中的众多选项里选一个，并显示选中的那一项（相当于菜单样式的 SwiftUI `Picker`，以及 Material 的 exposed dropdown menu）。`selected` 超出范围（-1，默认值）表示什么都没选，这时选择器显示它的 `prompt`；屏幕阅读器也用它来称呼选择器。在 Android 上，`prompt` 是输入框的标签，浮在选中项上方。不绑定时，选择器自己记住用户的选择。
@@ -476,7 +476,7 @@ component Upload {
 
 ## 图片
 
-`Image` 显示一张图片。平台会在主线程之外加载和解码图片，并缓存在内存中。iOS 和 Android 还会把通过 http(s) 获取的图片存到磁盘上，应用重启后依然有效；桌面端宿主只缓存在内存里，浏览器则使用它自己的缓存。
+`Image` 显示一张图片。平台会在主线程之外加载和解码图片，并缓存在内存中。iOS 和 Android 还会把通过 http(s) 获取的图片存到磁盘上，应用重启后依然有效；桌面端只缓存在内存里，浏览器则使用它自己的缓存。
 
 ```asuka
 struct Photo {
@@ -510,7 +510,7 @@ component Pictures(photo: Photo) {
 - 图片的来源可以是 http(s) URL、应用 `assets` 目录下的路径（`"logo.png"` 即 `assets/logo.png`），也可以是绝对路径，比如应用自己写入的文件，或者用户选取的照片。
 - `mode` 决定图片如何填充它的框：`.fit`（默认，完整显示，必要时留出空边）、`.fill`（铺满整个框，超出部分裁掉）、`.stretch`（拉伸成框的宽高比）、`.center`（按原始尺寸居中）。
 - `placeholder` 在来源加载完成之前显示，加载失败时也会显示。占位图请用资源文件（asset），这样能立即显示。记得给图片设定尺寸，让占位图有地方显示。
-- `blurHash` 和 `thumbHash` 是用应用随图片保存的哈希生成的占位图（[BlurHash](https://blurha.sh)、[ThumbHash](https://evanw.github.io/thumbhash/)，后者为 base64 编码），和 expo-image 的一样。核心会把哈希解码成一张小图，每个哈希只解码一次（最近用过的几百个会被保留），并立即显示在 `placeholder` 的位置上。BlurHash 本身不带形状信息：它按样式的 `aspectRatio` 解码，没有设置时解码成正方形并拉伸到整个框。ThumbHash 会保留原图的宽高比和透明度。它们都是绑定，因为列表的行在复用时会换成别的图片。
+- `blurHash` 和 `thumbHash` 是用应用随图片保存的哈希生成的占位图（[BlurHash](https://blurha.sh)、[ThumbHash](https://evanw.github.io/thumbhash/)，后者为 base64 编码），和 expo-image 的一样。Asuka 会把哈希解码成一张小图，每个哈希只解码一次（最近用过的几百个会被保留），并立即显示在 `placeholder` 的位置上。BlurHash 本身不带形状信息：它按样式的 `aspectRatio` 解码，没有设置时解码成正方形并拉伸到整个框。ThumbHash 会保留原图的宽高比和透明度。它们都是绑定，因为列表的行在复用时会换成别的图片。
 - `placeholderMode` 决定占位图如何填充框：`.fit`、`.fill`、`.stretch`、`.center`；默认和图片本身的方式一样。
 - `transition` 是图片加载完成时淡入所用的秒数：在占位图上交叉淡入，没有占位图时从无到有地淡入。默认只在有占位图时淡入，时长取平台的短动画时长（0.25 秒；Android 上是 `config_shortAnimTime`）；设为 `-1` 则立即显示。
 - `animated` 为 true 时播放动图，为 false 时让它停在当前帧。不设置时，动图会按文件规定的次数播放；但如果用户要求减少动态效果（“减弱动态效果”、Android 关闭动画、`prefers-reduced-motion`），它只显示第一帧。
@@ -526,8 +526,8 @@ component Pictures(photo: Photo) {
 | iOS | ImageIO：PNG、JPEG、GIF、WebP、HEIC、AVIF | ImageIO 的 `CGAnimateImageDataWithBlock`，按文件规定的时长和循环次数播放（也支持 HEIF 序列） |
 | Android | 先用 `BitmapFactory`，再用 `ImageDecoder`：PNG、JPEG、GIF、WebP、HEIF、AVIF | `AnimatedImageDrawable`：GIF 和 WebP（系统支持时也包括 AVIF 序列）；APNG 只显示第一帧 |
 | macOS | `NSImage`：PNG、JPEG、GIF、WebP、HEIC、AVIF、SVG | 同 iOS |
-| Windows | WIC：PNG、JPEG、GIF、BMP、TIFF、ICO，以及安装了对应编解码器时的 WebP、HEIF 和 AVIF（WebP 的随 Windows 11 自带；HEIF 需要 HEIF 和 HEVC 视频扩展，AVIF 需要 AV1 视频扩展） | 由宿主逐帧播放；动态 WebP 的每一帧用 WIC 的 WebP 编解码器解码 |
-| Linux | GDK 的加载器：PNG、JPEG、GIF，以及视安装情况而定的 WebP、AVIF、HEIF、SVG 和 JPEG XL | 由宿主逐帧播放；动态 WebP 的每一帧用 GDK 的 WebP 加载器解码 |
+| Windows | WIC：PNG、JPEG、GIF、BMP、TIFF、ICO，以及安装了对应编解码器时的 WebP、HEIF 和 AVIF（WebP 的随 Windows 11 自带；HEIF 需要 HEIF 和 HEVC 视频扩展，AVIF 需要 AV1 视频扩展） | 由 Asuka 逐帧播放；动态 WebP 的每一帧用 WIC 的 WebP 编解码器解码 |
+| Linux | GDK 的加载器：PNG、JPEG、GIF，以及视安装情况而定的 WebP、AVIF、HEIF、SVG 和 JPEG XL | 由 Asuka 逐帧播放；动态 WebP 的每一帧用 GDK 的 WebP 加载器解码 |
 | Web | 浏览器支持的格式 | 用 WebCodecs 的 `ImageDecoder` 在 canvas 上播放（也支持 AVIF 序列）；没有它的浏览器（Safari）由 `<img>` 自己播放，暂停时显示第一帧 |
 
 只有在 Mac、Linux 和 Web 上，SVG 才能作为图片显示。要在所有平台上显示 SVG 图标，请用 [`std/svg`](#svg-图标) 以矢量方式绘制。
@@ -553,7 +553,7 @@ component Symbols {
 
 符号的名字就是 SF Symbol 的名称。按钮、菜单项、栏按钮和标签页也都接受它：`"house"`、`"magnifyingglass"`、`"gear"`、`"plus"`、`"xmark"`、`"trash"`、`"square.and.arrow.up"`、`"ellipsis.circle"` 等；名字后面加上 `".fill"` 就是它的填充样式（`"star.fill"`）。
 
-iOS 和 macOS 能绘制任意 SF Symbol。其他平台只能绘制一组精选的符号，包括常用的那些以及更多：它们在 [`platform/android/gen_symbols.go`](../../platform/android/gen_symbols.go) 中映射到 Material Symbols（Web 和 Linux 的映射由它生成），在 Windows 上映射到 Segoe Fluent Icons 的字形。不在这组里的名称在这些平台上什么也不显示（宿主会记录一条警告），所以像 `"archivebox"` 这样直接用字符串写的名称，要在你发布的每个平台上都检查一遍。在 Linux 上，以 `-symbolic` 结尾的名称会被当作图标主题中的名称，原样使用。
+iOS 和 macOS 能绘制任意 SF Symbol。其他平台只能绘制一组精选的符号，包括常用的那些以及更多：它们映射到 Material Symbols，在 Windows 上映射到 Segoe Fluent Icons 的字形。不在这组里的名称在这些平台上什么也不显示（日志中会有一条警告），所以像 `"archivebox"` 这样直接用字符串写的名称，要在你发布的每个平台上都检查一遍。在 Linux 上，以 `-symbolic` 结尾的名称会被当作图标主题中的名称，原样使用。
 
 ### SVG 图标
 
@@ -1095,7 +1095,7 @@ component Composer {
 
 ## 列表
 
-`List` 使用平台的可复用列表（`UICollectionView`、`RecyclerView`），为每个数据项显示一行。桌面端和 Web 没有能把任意视图作为行的列表控件，所以在那里由宿主在平台的滚动视图中自行复用行。只有屏幕上的单元格才会创建行；滚出屏幕的单元格会被复用来显示另一个数据项，并且只更新有差异的属性。[`examples/list10k`](../../examples/list10k) 有一万行。
+`List` 使用平台的可复用列表（`UICollectionView`、`RecyclerView`），为每个数据项显示一行。桌面端和 Web 没有能把任意视图作为行的列表控件，所以在那里由 Asuka 在平台的滚动视图中自行复用行。只有屏幕上的单元格才会创建行；滚出屏幕的单元格会被复用来显示另一个数据项，并且只更新有差异的属性。[`examples/list10k`](../../examples/list10k) 有一万行。
 
 ```asuka
 struct Message {
