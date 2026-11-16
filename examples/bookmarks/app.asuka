@@ -5,8 +5,8 @@
 //
 //   asuka dev --platform ios examples/bookmarks
 
-import asuka/device
-import asuka/sqlite
+import platform/device
+import std/sqlite
 
 /// What another app shared, waiting to be edited.
 state shared: [SharedItem] = []

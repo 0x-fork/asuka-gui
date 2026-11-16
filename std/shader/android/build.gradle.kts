@@ -7,5 +7,5 @@ plugins {
 }
 
 android {
-    namespace = "asuka.shader"
+    namespace = "std.shader"
 }

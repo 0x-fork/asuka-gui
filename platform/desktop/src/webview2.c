@@ -1,6 +1,6 @@
 // webview2.c (platform/desktop/src): asuka_windows.h's WebView2: the
-// process's environment, and pages that are never shown (asuka/js's,
-// asuka/print's), through WebView2's COM interfaces by vtable slot.
+// process's environment, and pages that are never shown (platform/js's,
+// platform/print's), through WebView2's COM interfaces by vtable slot.
 // Built on Windows only.
 #ifdef _WIN32
 #include "asuka_windows.h"

@@ -53,11 +53,11 @@ struct AsukaModuleError: LocalizedError {
         m(payload, reply)
     }
 
-    // The host's modules: what the standard library's packages over
-    // asuka/platform call by name (notify, push, iCloud, the photo
+    // The host's modules: what the platform SDK's packages over
+    // platform/host call by name (notify, push, iCloud, the photo
     // library...), and the core's own (web, share). What a std package
-    // implements in its own Swift (asuka/secure, asuka/device,
-    // asuka/location...) isn't here: it comes with the package, in only
+    // implements in its own Swift (platform/secure, platform/device,
+    // platform/location...) isn't here: it comes with the package, in only
     // the apps that import it.
 
     func registerBuiltinModules() {
@@ -68,7 +68,7 @@ struct AsukaModuleError: LocalizedError {
         modules["library"] = AsukaLibrary.methods()
         #endif
         modules["share"] = AsukaShare.methods(self)
-        // asuka/recent, asuka/login and asuka/dock: a desktop's. iOS's
+        // platform/recent, platform/login and platform/dock: a desktop's. iOS's
         // Files keeps its own recent files, an app doesn't start at login,
         // and a phone has no Dock or taskbar.
         modules["recent"] = [
@@ -87,7 +87,7 @@ struct AsukaModuleError: LocalizedError {
             "cancelAttention": { _, reply in reply(.success(Data())) },
         ]
         #if ASUKA_ICLOUD
-        // asuka/icloud: the key-value store and the app's containers.
+        // platform/icloud: the key-value store and the app's containers.
         modules["icloud"] = Dictionary(uniqueKeysWithValues: AsukaICloud.methods.map { name in
             (name, { args, reply in AsukaICloud.shared.call(name, args, reply) } as AsukaModuleMethod)
         })

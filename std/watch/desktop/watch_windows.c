@@ -1,4 +1,4 @@
-// asuka/watch on Windows: ReadDirectoryChangesW on the watched directory
+// std/watch on Windows: ReadDirectoryChangesW on the watched directory
 // (its tree, with recursive; the file's directory, for a file), read on
 // a thread of the watch's, overlapped, woken by an event to stop. The
 // snapshot's ids are the files' (FileIdBothDirectoryInfo), for renames.

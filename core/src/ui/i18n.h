@@ -110,7 +110,7 @@ ak_str *ak_i18n_say(ak_catalog *c, int64_t key, ak_val args, const ak_str *lang)
 ak_arr *ak_i18n_catalog_languages(void);
 // Formatting in the language shown (tracked), with the registered
 // catalogs' data for it (Latin digits and English's patterns without
-// any), as asuka/i18n's functions do. flags: 1 percent, 2 integer, 4 no
+// any), as std/i18n's functions do. flags: 1 percent, 2 integer, 4 no
 // grouping, 8 half to even. A date is nanoseconds since the Unix epoch,
 // in the device's zone, in styles 0 none, 1 short, 2 medium, 3 long, 4
 // full, in the user's hour cycle. All owned.

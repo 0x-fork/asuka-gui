@@ -1,23 +1,23 @@
-// asuka/notify on macOS: UNUserNotificationCenter, as the iOS host has it
+// platform/notify on macOS: UNUserNotificationCenter, as the iOS host has it
 // (platform/ios's Notify.swift), the module's methods the same. What macOS
 // lacks of it: Android's channels (ignored, as on iOS) and communication
 // notifications (a message shows as a notification, its sender's name its
-// title). Pushes (APNs) shown or tapped go to asuka/push too (Push.swift),
+// title). Pushes (APNs) shown or tapped go to platform/push too (Push.swift),
 // their data the payload's keys beside aps. The center needs the app's
 // bundle: a process with no bundle identifier gets an error (the center
 // raises an exception for it).
 //
 // The module ("notify"):
-// - "request" (u8 allowed); "schedule" (a std/notify's Spec: seconds 0
+// - "request" (u8 allowed); "schedule" (a sdk/notify's Spec: seconds 0
 //   shows it now); "cancel" (the id).
 // - "categories" (JSON), kept in the user defaults and set again at launch.
 // - "badge" (u32: the Dock tile's); "showing" (JSON list); "remove" (JSON
 //   ids), "removeThread" (the thread), "removeAll".
-// - "present" (u8 on), "nextPresent" (a std/notify's Present), "presented"
+// - "present" (u8 on), "nextPresent" (a sdk/notify's Present), "presented"
 //   (u8 presentation, the token): with the presenter on, a notification
 //   that comes while the app is in front waits for the app's answer, a
 //   second at most.
-// - "nextAction" (a std/notify's WireResponse), "actionDone" (the token): a
+// - "nextAction" (a sdk/notify's WireResponse), "actionDone" (the token): a
 //   background action keeps the app's work going until the app is done
 //   with it (25 seconds at most); a tap or an action that opens the app is
 //   done at once.
@@ -54,7 +54,7 @@ import AsukaOps
     }
 }
 
-/// The notify module, and the notification center's delegate (asuka/push's
+/// The notify module, and the notification center's delegate (platform/push's
 /// notifications too).
 @MainActor final class AsukaNotify: NSObject, UNUserNotificationCenterDelegate {
     static let shared = AsukaNotify()
@@ -78,7 +78,7 @@ import AsukaOps
     /// Whether the process is an app bundle, which the center needs.
     static var bundled: Bool { Bundle.main.bundleIdentifier != nil }
 
-    static let noBundle = AsukaModuleError("asuka/notify: macOS's notifications need the app's bundle: build it with asuka build")
+    static let noBundle = AsukaModuleError("platform/notify: macOS's notifications need the app's bundle: build it with asuka build")
 
     /// Becomes the center's delegate, and sets the app's categories, if the
     /// app is a bundle: before it finishes launching, to see a response
@@ -367,7 +367,7 @@ import AsukaOps
         DispatchQueue.global(qos: .userInitiated).async { finish(file, file.pathExtension) }
     }
 
-    /// What's reported of a notification (a std/notify's WireDelivered).
+    /// What's reported of a notification (a sdk/notify's WireDelivered).
     nonisolated static func shown(_ n: UNNotification) -> [String: Any] {
         let c = n.request.content
         let remote = n.request.trigger is UNPushNotificationTrigger

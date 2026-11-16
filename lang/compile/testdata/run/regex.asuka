@@ -1,6 +1,6 @@
-// asuka/regex: RE2's syntax, leftmost-first matches, linear time.
+// std/regex: RE2's syntax, leftmost-first matches, linear time.
 
-import asuka/regex
+import std/regex
 
 test "finding" {
   let digits = try regex.compile(r"\d+")

@@ -75,11 +75,11 @@ func (s *shareTarget) check() error {
 	return nil
 }
 
-// warnShareSheet says that an app with a share sheet (asuka/sharesheet)
+// warnShareSheet says that an app with a share sheet (platform/sharesheet)
 // needs asuka.toml's shareTarget, without which no app shares with it.
 func warnShareSheet(c *appConfig) {
 	if c.shareSheet && !c.ShareTarget.on {
-		fmt.Fprintln(os.Stderr, "asuka: the app has a share sheet (asuka/sharesheet), but asuka.toml has no shareTarget: no app offers to share with it (shareTarget = true takes texts and links)")
+		fmt.Fprintln(os.Stderr, "asuka: the app has a share sheet (platform/sharesheet), but asuka.toml has no shareTarget: no app offers to share with it (shareTarget = true takes texts and links)")
 	}
 }
 

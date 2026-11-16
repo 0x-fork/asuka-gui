@@ -2,7 +2,7 @@
 
 下面每一行都是应用经常需要的一项功能，分别列出 SwiftUI 和 Expo 的做法，以及 Asuka 提供的对应能力。除非该行另有说明，✓ 表示 Asuka 支持的所有平台（iOS、Android、Mac、Windows、Linux 和 Web）都能用；如果某个平台本身不具备某项能力（比如 Mac 没有传感器，浏览器没有主屏幕小组件），对应的包会如实告诉调用方不支持（抛出 `unsupported` 或 `notAvailable` 错误，或者 `available()` 返回 false）。至于浏览器做不到手机能做的事时各个包会如何替代，见 [Web](web.md#原生模块)。
 
-Asuka 这一列写的是实现这项功能的元素、属性或标准库包（`asuka/...`，见[标准库](stdlib.md)），以及它在各个平台上分别是什么：Asuka 显示的是各平台自己的原生控件，调用的也是各平台自己的 API——iOS 和 Mac 上用 Swift，Android 上用 Kotlin，Web 上用 JavaScript，Windows 和 Linux 上用 C。
+Asuka 这一列写的是实现这项功能的元素、属性或包（`std/...` 或 `platform/...`，见[标准库与平台 SDK](stdlib.md)），以及它在各个平台上分别是什么：Asuka 显示的是各平台自己的原生控件，调用的也是各平台自己的 API——iOS 和 Mac 上用 Swift，Android 上用 Kotlin，Web 上用 JavaScript，Windows 和 Linux 上用 C。
 
 SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Native 则借助微软的 React Native for Windows and macOS 覆盖 Windows 和 Mac，不过这不在 Expo 的范围内。Asuka 与桌面端常用框架（Electron、Tauri、Wails）的对比，见[与桌面端框架对比](#与桌面端框架对比)；桌面应用在窗口之外还需要哪些能力，见[桌面应用的能力](#桌面应用的能力)；与自己绘制 UI 的 MyGo 的对比，见 [Asuka 与 MyGo](mygo.md)。
 
@@ -29,7 +29,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 
 | | SwiftUI | Expo | Asuka |
 |---|---|---|---|
-| 文本、富文本、链接 | `Text`、`AttributedString` | `Text` | ✓ `Text`、`RichText`（文本片段、链接）、`Selectable`；Markdown 用 `asuka/markdown`（由核心用 md4c 解析，各平台结果一致，再用平台自己的富文本控件绘制） |
+| 文本、富文本、链接 | `Text`、`AttributedString` | `Text` | ✓ `Text`、`RichText`（文本片段、链接）、`Selectable`；Markdown 用 `std/markdown`（由核心用 md4c 解析，各平台结果一致，再用平台自己的富文本控件绘制） |
 | 按钮（样式、图标、菜单） | `Button`、`Menu` | `Pressable` | ✓ `Button`（`variant`：plain、filled、tinted、gray、bordered、glass、glass prominent；`icon`；`menu`）、`Menu`（点按或 `longPress`：上下文菜单）；菜单项可以 `disabled`、`checked`，可以放进 `.submenu` 或带标题的 `.section`；栏按钮也能打开菜单 |
 | 文本输入框 | `TextField`、`SecureField`、`TextEditor` | `TextInput` | ✓ `TextField`（`secure`、`keyboard`、`returnKey`、用于自动填充的 `contentType`、`multiline`、`plain`） |
 | 光标、在光标处插入 | `TextSelection` | `selection`、`onSelectionChange` | ✓ `bind selection`；`Ref` 的 `insert(text)` |
@@ -42,15 +42,15 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 进度条、加载指示器 | `ProgressView` | `ActivityIndicator` | ✓ `Progress`、`ProgressRing`（有无具体数值均可）、`Activity` |
 | 滚轮选择器、菜单选择器、步进器 | `Picker`、`Stepper` | 社区方案 | ✓ `Wheel`（`UIPickerView`、`NumberPicker`；桌面端和 Web 上是弹出菜单）、`Picker`（iOS 和 Mac 上是弹出按钮，Android 上是 Material 的 exposed dropdown menu，Windows 上是按 WinUI 样式绘制的组合框，`GtkDropDown`，`<select>`）、`Stepper` |
 | 颜色选择器 | `ColorPicker` | 社区方案 | ✓ `ColorPicker`（`UIColorWell`；Android 没有系统颜色选择器，所以用一个带调色板的 Material 对话框，支持不透明度；`NSColorWell`、Windows 的颜色对话框、`GtkColorDialogButton`、`<input type="color">`） |
-| 图标 | SF Symbols | `@expo/vector-icons` | ✓ `Symbol`（iOS 和 Mac 上用 SF Symbols；同样的名字在 Android 和 Web 上对应 Material Symbols，在 Windows 上对应 Segoe Fluent Icons，在 Linux 上对应图标主题里的图标或 Material Symbols：这些平台支持的是一组精选图标）；SVG 图标用 `asuka/svg` 以矢量方式绘制 |
+| 图标 | SF Symbols | `@expo/vector-icons` | ✓ `Symbol`（iOS 和 Mac 上用 SF Symbols；同样的名字在 Android 和 Web 上对应 Material Symbols，在 Windows 上对应 Segoe Fluent Icons，在 Linux 上对应图标主题里的图标或 Material Symbols：这些平台支持的是一组精选图标）；SVG 图标用 `std/svg` 以矢量方式绘制 |
 | 图片（远程加载、缓存、占位图） | `AsyncImage` | `expo-image` | ✓ `Image`（`placeholder`，BlurHash 和 ThumbHash 占位图（`blurHash`、`thumbHash`），淡入的 `transition`；在内存里缓存，iOS 和 Android 上还会缓存到磁盘；解码用各平台自己的解码器：ImageIO、`ImageDecoder`、`NSImage`、WIC、GDK 的加载器、浏览器，所以平台能读的 WebP、HEIC 和 AVIF 都能显示；动图 GIF、APNG 和 WebP 在所有平台上都能播放，用 `animated` 控制；SVG 在 Mac、Linux 和 Web 上可用） |
-| Lottie 动画 | 社区方案（lottie-ios） | `lottie-react-native` | ◐ `asuka/lottie` 的 `lottie.View`（lottie-ios、lottie-android、lottie-web：JSON 和 dotLottie，`playing`、`loop`、`speed`，可读可写的 `progress`，`segment`、`marker`，按 keypath 的 `overrides`）；Windows 和 Linux 上暂不支持，只显示一个空白区域 |
+| Lottie 动画 | 社区方案（lottie-ios） | `lottie-react-native` | ◐ `std/lottie` 的 `lottie.View`（lottie-ios、lottie-android、lottie-web：JSON 和 dotLottie，`playing`、`loop`、`speed`，可读可写的 `progress`，`segment`、`marker`，按 keypath 的 `overrides`）；Windows 和 Linux 上暂不支持，只显示一个空白区域 |
 | 视频 | `VideoPlayer` | `expo-video` | ✓ `Video`（iOS 和 Mac 上用 AVKit，Android 上用 Media3，Windows 上是 WebView2 里的 `<video>`，Linux 上是 `GtkVideo`（GStreamer），Web 上用 `<video>`） |
-| 网页内容 | `WKWebView` | `react-native-webview` | ✓ `WebView`（iOS 和 Mac 上用 `WKWebView`，Android 的 `WebView`，Windows 上用 WebView2，Linux 上用 WebKitGTK：加载 URL 或 HTML，双向传递消息，在页面脚本之前运行脚本（`preload`），拦截请求，页面状态和历史记录，下载，新窗口，每一个请求，脚本的返回值，`webCookies(url)`；Web 上是 `<iframe>`，以上功能只对应用自己站点的页面完全可用）；`asuka/js` 可以在屏幕外运行 JavaScript |
-| 地图 | `Map` | `expo-maps` | ✓ `asuka/maps` 的 `maps.View`（iOS 和 Mac 上用 MapKit，Android 上用 Google Maps，Windows、Linux（libshumate）和 Web 上用 OpenStreetMap 的瓦片：区域、标记、用户位置、点按） |
-| 自定义绘制 | `Shape`、`Path`、`Canvas` | `react-native-svg`、Skia | ✓ `Shape` 和 `Path`（填充、描边、线帽、连接方式、虚线，以及可动画的裁剪）；`Canvas`（路径、渐变、文字、变换、裁剪：分别用 Core Graphics、Android 的 `Canvas`、GDI+、GSK、2D `<canvas>` 绘制）；`asuka/svg` |
-| 图表 | Swift Charts | `victory-native`、社区方案 | ✓ `asuka/chart`（柱状图、折线图、面积图、散点图；用 `svg.Shape` 绘制，各平台一致） |
-| 着色器 | `.colorEffect(ShaderLibrary...)` | Skia 的 runtime effect | ✓ `asuka/shader`（Kage 着色器，随应用一起编译：iOS 和 Mac 上是 Metal，Android 13 及以上是 AGSL，Web 上是 WebGL 2，Windows 上是 Direct3D 11，Linux 上是 OpenGL） |
+| 网页内容 | `WKWebView` | `react-native-webview` | ✓ `WebView`（iOS 和 Mac 上用 `WKWebView`，Android 的 `WebView`，Windows 上用 WebView2，Linux 上用 WebKitGTK：加载 URL 或 HTML，双向传递消息，在页面脚本之前运行脚本（`preload`），拦截请求，页面状态和历史记录，下载，新窗口，每一个请求，脚本的返回值，`webCookies(url)`；Web 上是 `<iframe>`，以上功能只对应用自己站点的页面完全可用）；`platform/js` 可以在屏幕外运行 JavaScript |
+| 地图 | `Map` | `expo-maps` | ✓ `platform/maps` 的 `maps.View`（iOS 和 Mac 上用 MapKit，Android 上用 Google Maps，Windows、Linux（libshumate）和 Web 上用 OpenStreetMap 的瓦片：区域、标记、用户位置、点按） |
+| 自定义绘制 | `Shape`、`Path`、`Canvas` | `react-native-svg`、Skia | ✓ `Shape` 和 `Path`（填充、描边、线帽、连接方式、虚线，以及可动画的裁剪）；`Canvas`（路径、渐变、文字、变换、裁剪：分别用 Core Graphics、Android 的 `Canvas`、GDI+、GSK、2D `<canvas>` 绘制）；`std/svg` |
+| 图表 | Swift Charts | `victory-native`、社区方案 | ✓ `std/chart`（柱状图、折线图、面积图、散点图；用 `svg.Shape` 绘制，各平台一致） |
+| 着色器 | `.colorEffect(ShaderLibrary...)` | Skia 的 runtime effect | ✓ `std/shader`（Kage 着色器，随应用一起编译：iOS 和 Mac 上是 Metal，Android 13 及以上是 AGSL，Web 上是 WebGL 2，Windows 上是 Direct3D 11，Linux 上是 OpenGL） |
 | 原生扩展 | `UIViewRepresentable` | 原生模块 | ✓ 原生包：在 Asuka 里声明 `native interface` 或 `native component`，在 iOS 和 Mac 上用 Swift 实现，Android 上用 Kotlin，Web 上用 JavaScript，Windows 和 Linux 上用 C（见[原生代码](native.md)）；C 库用 `extern` 直接调用（见[在 Asuka 中调用 C](c.md)） |
 | 分页、页码圆点 | `.scrollTargetBehavior(.paging)`、`TabView(.page)` | `react-native-pager-view` | ✓ `Scroll` 的 `paging`、`PageControl` |
 | 复选框 | `Toggle`（`.checkbox`，macOS） | 社区方案 | ✓ `Toggle { checkbox: true }` |
@@ -98,19 +98,19 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | | SwiftUI / Apple | Expo | Asuka |
 |---|---|---|---|
 | 状态 | `@State`、`@Observable` | hooks | ✓ `state`、store、派生的 `let`（细粒度的 signal：一次写入只更新读取它的地方）（见[核心概念](concepts.md)） |
-| 持久化的小数据 | `@AppStorage` | AsyncStorage | ✓ `asuka/storage` 的 `storage.Value`、`asuka/store`（UserDefaults、SharedPreferences、Windows 和 Linux 上的一个文件、`localStorage`） |
-| SQLite | SwiftData / GRDB | `expo-sqlite` | ✓ `asuka/sqlite`（`migrate`，把行直接解码成 `T` 的 `query<T>`，`exec`，事务，都在主线程之外执行；`watch<T>`：实时查询，读取的表被写入或参数变化时重新运行；每个平台都是同一个 SQLite，浏览器里运行在页面的一个 worker 中）（见[数据](data.md)） |
-| 安全存储 | 钥匙串 | `expo-secure-store` | ✓ `asuka/secure`（钥匙串、Android Keystore、凭据管理器、libsecret；Web 上用浏览器不允许导出的密钥加密后存进 IndexedDB，并不是真正的钥匙串） |
-| 文件、网络 | Foundation | `expo-file-system`、fetch | ✓ `asuka/fs`；`asuka/http`（用平台自己的客户端：URLSession、`HttpURLConnection`、WinHTTP、libsoup、`fetch`）、`http.download` |
+| 持久化的小数据 | `@AppStorage` | AsyncStorage | ✓ `std/storage` 的 `storage.Value`、`std/store`（UserDefaults、SharedPreferences、Windows 和 Linux 上的一个文件、`localStorage`） |
+| SQLite | SwiftData / GRDB | `expo-sqlite` | ✓ `std/sqlite`（`migrate`，把行直接解码成 `T` 的 `query<T>`，`exec`，事务，都在主线程之外执行；`watch<T>`：实时查询，读取的表被写入或参数变化时重新运行；每个平台都是同一个 SQLite，浏览器里运行在页面的一个 worker 中）（见[数据](data.md)） |
+| 安全存储 | 钥匙串 | `expo-secure-store` | ✓ `platform/secure`（钥匙串、Android Keystore、凭据管理器、libsecret；Web 上用浏览器不允许导出的密钥加密后存进 IndexedDB，并不是真正的钥匙串） |
+| 文件、网络 | Foundation | `expo-file-system`、fetch | ✓ `std/fs`；`std/http`（用平台自己的客户端：URLSession、`HttpURLConnection`、WinHTTP、libsoup、`fetch`）、`http.download` |
 | 照片 | `PhotosPicker` | `expo-image-picker` | ✓ `device.pickPhotos(max:)` |
-| 文档 | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.pickFiles(types:, multiple:)`；桌面端用 `asuka/dialog` |
-| 相机 | AVFoundation | `expo-camera` | ✓ `asuka/camera`：`camera.take()`（系统相机；在 Mac、Windows 和 Linux 上是一个带实时预览的对话框）、`camera.View`（实时预览，前置或后置）、`capture()`、`record()`（AVFoundation、CameraX、Media Foundation、GStreamer、`getUserMedia`）；`asuka/record` 可以录制带声音的视频 |
+| 文档 | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.pickFiles(types:, multiple:)`；桌面端用 `platform/dialog` |
+| 相机 | AVFoundation | `expo-camera` | ✓ `platform/camera`：`camera.take()`（系统相机；在 Mac、Windows 和 Linux 上是一个带实时预览的对话框）、`camera.View`（实时预览，前置或后置）、`capture()`、`record()`（AVFoundation、CameraX、Media Foundation、GStreamer、`getUserMedia`）；`platform/record` 可以录制带声音的视频 |
 | 条形码、二维码 | AVFoundation、Vision | `expo-camera` 的扫码 | ✓ 在 `camera.View` 里实时识别（`scan`、`on code`），也能识别图片文件（`scan.file`）：Vision，Android 上用 ML Kit（只打包进导入了它的应用），浏览器有 `BarcodeDetector` 时用它，Windows 和 Linux 上用 Asuka 自己用 C 写的识别器（QR、Data Matrix、EAN、UPC、Code 128、Code 39） |
-| 定位 | Core Location | `expo-location` | ✓ `asuka/location`（Core Location、Android 的 location manager、WinRT 的 `Geolocator`、GeoClue 或定位 portal、Geolocation API；使用期间和始终，精确或大致位置；地名；后台更新和地理围栏，iOS 和 Android 上会为这些事件启动应用，并在处理期间保持运行） |
-| 翻译、复数、地区格式 | String Catalogs、FormatStyle | `expo-localization`、i18next | ✓ 文案目录和 `tr.key(…)`、`asuka/i18n`（见[多语言](i18n.md)） |
+| 定位 | Core Location | `expo-location` | ✓ `platform/location`（Core Location、Android 的 location manager、WinRT 的 `Geolocator`、GeoClue 或定位 portal、Geolocation API；使用期间和始终，精确或大致位置；地名；后台更新和地理围栏，iOS 和 Android 上会为这些事件启动应用，并在处理期间保持运行） |
+| 翻译、复数、地区格式 | String Catalogs、FormatStyle | `expo-localization`、i18next | ✓ 文案目录和 `tr.key(…)`、`std/i18n`（见[多语言](i18n.md)） |
 | 从右到左布局 | `layoutDirection` | `I18nManager` | ✓ 跟随语言自动处理（`start` 和 `end` 会镜像）；对于在所有语言里方向都固定的内容，用 `layoutDirection` |
-| 本地通知 | UserNotifications | `expo-notifications` | ✓ `asuka/notify`（立即显示或定时显示，可带图片；iOS 和 macOS 上用 UserNotifications，Android 的通知，Windows 的 toast（带按钮和回复），Linux 的桌面通知；Web 上通过应用的 service worker 实现：应用有页面打开时定时通知会按时显示，否则在下一次打开页面时显示，因为浏览器无法定时显示通知） |
-| 推送通知 | APNs | `expo-notifications` | ✓ `asuka/push`（iOS 和 macOS 上用 APNs，Android 上用 Firebase Cloud Messaging，Web 上用基于 VAPID 的 Web Push：`register()` 获取 token，`received()`、`opened()`） |
+| 本地通知 | UserNotifications | `expo-notifications` | ✓ `platform/notify`（立即显示或定时显示，可带图片；iOS 和 macOS 上用 UserNotifications，Android 的通知，Windows 的 toast（带按钮和回复），Linux 的桌面通知；Web 上通过应用的 service worker 实现：应用有页面打开时定时通知会按时显示，否则在下一次打开页面时显示，因为浏览器无法定时显示通知） |
+| 推送通知 | APNs | `expo-notifications` | ✓ `platform/push`（iOS 和 macOS 上用 APNs，Android 上用 Firebase Cloud Messaging，Web 上用基于 VAPID 的 Web Push：`register()` 获取 token，`received()`、`opened()`） |
 | 通知操作、内联回复 | `UNNotificationCategory`、`UNTextInputNotificationAction` | `setNotificationCategoryAsync` | ✓ `notify.setCategories`、`notify.responses()`（操作和回复；`r.defer()` 让应用保持运行直到处理完；Web 上用 service worker 的通知操作，Chrome 支持时还有内联回复） |
 | 通知分组、正在显示的通知、角标 | `threadIdentifier`、`getDeliveredNotifications`、`setBadgeCount` | `getPresentedNotificationsAsync`、`setBadgeCountAsync` | ✓ 通知的 `thread`（Android 上是一个分组，并维护它的摘要通知）、`notify.showing()`、`remove`、`removeThread`、`setBadge` |
 | 前台时的通知 | `willPresent` | `setNotificationHandler` | ✓ `notify.present(decide)` |
@@ -118,47 +118,47 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 会话里的消息 | 通信通知（`INSendMessageIntent`） | 社区方案 | ✓ `Notification(…).from(person, conversation)`、`Message.from`：iOS 的通信通知，Android 的 MessagingStyle 和会话快捷方式；其他平台显示为普通通知 |
 | 在推送显示之前修改它 | Notification Service Extension | 社区方案（`expo-notifications` 不支持） | ✓ `push.rewrite(f)`：应用的代码运行在 iOS 的 Notification Service Extension 里（由 `asuka build` 构建并签名），在 Android 上运行在处理数据消息的 Firebase 服务里 |
 | 剪贴板、分享面板、浏览器 | `UIPasteboard`、`ShareLink`、`SFSafariViewController` | `expo-clipboard`、`expo-sharing`、`expo-web-browser` | ✓ `copy(text)`、`device.clipboardText()`、`clipboardHas`、`clipboardImage`、`copyImage`、`clipboardChanges()`；`share(text)`、`shareFiles(paths)`（Mac 上的分享菜单、Windows 的分享界面、浏览器的分享；Linux 没有分享面板，会复制到剪贴板并弹出提示）；`device.browse(url)`（`SFSafariViewController`、Custom Tab）、`openURL(url)` |
-| 预览文件 | `QLPreviewController`、`.quickLookPreview` | `react-native-file-viewer` | ✓ `asuka/preview`（iOS 和 Mac 上用快速查看，支持多个文件和标记；Android、Windows 和 Linux 上用打开该文件的应用；Web 上在新标签页打开） |
-| 打印、从 HTML 生成 PDF | `UIPrintInteractionController`、`UIPrintPageRenderer` | `expo-print` | ✓ `asuka/print`（打印文件、HTML、`WebView`，使用系统的打印对话框并返回结果；`print.pdf`：分页、按地区选纸张大小、页边距） |
-| 邮件和短信编辑界面 | `MFMailComposeViewController`、`MFMessageComposeViewController` | `expo-mail-composer`、`expo-sms` | ✓ `asuka/compose`（`compose.mail`：收件人、主题、HTML 正文、附件，iOS 上能知道用户做了什么，其他平台交给邮件应用；`compose.message`：iOS 的信息、Android 的短信应用） |
+| 预览文件 | `QLPreviewController`、`.quickLookPreview` | `react-native-file-viewer` | ✓ `platform/preview`（iOS 和 Mac 上用快速查看，支持多个文件和标记；Android、Windows 和 Linux 上用打开该文件的应用；Web 上在新标签页打开） |
+| 打印、从 HTML 生成 PDF | `UIPrintInteractionController`、`UIPrintPageRenderer` | `expo-print` | ✓ `platform/print`（打印文件、HTML、`WebView`，使用系统的打印对话框并返回结果；`print.pdf`：分页、按地区选纸张大小、页边距） |
+| 邮件和短信编辑界面 | `MFMailComposeViewController`、`MFMessageComposeViewController` | `expo-mail-composer`、`expo-sms` | ✓ `platform/compose`（`compose.mail`：收件人、主题、HTML 正文、附件，iOS 上能知道用户做了什么，其他平台交给邮件应用；`compose.message`：iOS 的信息、Android 的短信应用） |
 | 保持屏幕常亮、设备信息 | `isIdleTimerDisabled`、`UIDevice` | `expo-keep-awake`、`expo-device` | ✓ `device.keepAwake(on)`、`device.info()` |
-| 网络状态 | `NWPathMonitor` | `expo-network` | ✓ `asuka/network`（`network.status()`：是否在线、Wi-Fi 还是蜂窝网络、是否按流量计费、低数据模式；NWPathMonitor、ConnectivityManager、网络列表管理器、NetworkManager、Network Information API） |
-| 保存到相册、下载目录 | `PHPhotoLibrary` | `expo-media-library` | ✓ `asuka/library`（`library.save`：照片、Android 的相册和下载目录、音乐；桌面端的下载、图片、影片和音乐文件夹） |
-| 后台任务 | `beginBackgroundTask`、`BGTaskScheduler` | `expo-task-manager`、`expo-background-task` | ✓ `asuka/background`：Android 会让应用保持运行，并在通知里显示进度和按钮；iOS 大约多给 30 秒；桌面端让应用不被挂起（App Nap、睡眠）。`asuka/periodic`：系统不定期运行的任务，会在没有界面的情况下启动应用（BGTaskScheduler、WorkManager；桌面端是应用运行期间的定时器） |
-| 接收其他应用的分享 | 分享扩展 | `expo-sharing`（`useIncomingShare`） | ✓ `on share(items)`：文本、链接、图片、视频、音频和文件，可以是一个或多个，带名称、MIME 类型和大小（`asuka.toml` 的 `shareTarget`：据此生成 Android 的 intent filter，以及 iOS 的分享扩展和激活规则）；`asuka/sharesheet`：在分享来源应用上方显示应用自己的面板（iOS 的分享扩展；Android 的一个 activity），数据与应用共享；仅 iOS 和 Android |
-| 音频 | AVAudioPlayer、AVAudioRecorder | `expo-audio` | ✓ `asuka/audio`（`audio.play`、`audio.Player`：播放、暂停、跳转、音量、速率、循环；AVPlayer、Media3 的 ExoPlayer、MCI、GStreamer、`<audio>`）；`asuka/record`（`record.audio`：音质、暂停、电平） |
-| 正在播放、锁屏控制、媒体键 | `MPNowPlayingInfoCenter`、`MPRemoteCommandCenter` | `expo-audio` 的锁屏控制、社区方案（`react-native-track-player`） | ✓ `asuka/nowplaying` 的 `nowplaying.NowPlaying`（标题、艺术家、封面、时长、由系统推进的播放位置，播放、暂停、下一首、上一首、跳转；可以自动跟随一个 `audio.Player`；Android 上是 MediaSession，Windows 上是 SystemMediaTransportControls，Linux 上是 MPRIS，Web 上是 Media Session API） |
-| 通过 Apple 登录 | `SignInWithAppleButton` | `expo-apple-authentication` | ✓ `asuka/appleauth`（Apple 的 `SignInButton`、`signIn`、`credentialState`；iOS 和 macOS；其他平台通过 `asuka/webauth`） |
-| Web 登录（OAuth） | `ASWebAuthenticationSession` | `expo-auth-session`、`expo-web-browser` | ✓ `asuka/webauth`（`ASWebAuthenticationSession`、Custom Tab、WebView2 窗口、WebKitGTK 对话框、弹出窗口） |
-| iCloud：键值存储、iCloud 云盘 | `NSUbiquitousKeyValueStore`、ubiquity 容器、`NSMetadataQuery` | 社区方案（`react-native-cloud-storage`、`expo-icloud-storage`） | ✓ `asuka/icloud`（账户状态；`icloud.Value`，存放在 iCloud 的键值存储里；应用在 iCloud 云盘里的文稿，随变化列出，附带下载和上传状态，以协调方式读写，下载、移除本地副本、解决冲突；测试用 `icloud.fake()`；iOS 和 macOS；不支持 CloudKit 数据库） |
-| Apple Pay、Google Pay | PassKit（`PayWithApplePayButton`） | `@stripe/stripe-react-native` 的 Platform Pay、`react-native-payments` | ✓ `asuka/pay`（钱包的支付面板和 `PayButton`；交给应用支付服务商的 token；修改配送方式、优惠券和卡片时更新总价；按字段报错；iOS、macOS 和 Safari 上用 Apple Pay，Android 和其他浏览器上用 Google Pay） |
-| 面容 ID、指纹 | LocalAuthentication | `expo-local-authentication` | ✓ `asuka/biometric`（LocalAuthentication、BiometricPrompt、Windows Hello；Web 上通过 WebAuthn 使用平台认证器；Linux 不支持） |
-| 应用内购买、订阅 | StoreKit 2 | `expo-iap`、`react-native-iap`、RevenueCat | ✓ `asuka/purchase`（带本地化价格和优惠的商品、购买、待处理的付款、从应用启动起的交易流、完成交易、权益、恢复购买、订阅状态、管理订阅/退款/兑换码面板；iOS 和 macOS 上用 StoreKit 2，Play Billing，Microsoft Store，Trusted Web Activity 里的 Digital Goods API；测试用 `purchase.fake()`）（见[应用内购买](purchases.md)） |
-| 应用商店评分 | `requestReview` | `expo-store-review` | ✓ `asuka/review`（App Store 的评分弹窗、Play 的应用内评价） |
-| 跟踪权限 | App Tracking Transparency | `expo-tracking-transparency` | ✓ `asuka/tracking` |
-| 应用完整性 | App Attest | `expo-app-integrity` | ✓ `asuka/integrity`（App Attest、Play Integrity） |
-| 年龄段 | Declared Age Range | `expo-age-range` | ✓ `asuka/agerange`（Declared Age Range、Play Age Signals） |
-| 传感器 | Core Motion | `expo-sensors` | ✓ `asuka/sensors`（加速度计、陀螺仪、磁力计、设备运动、气压计、光线、计步器；所有平台坐标轴和单位一致；Core Motion、SensorManager、Linux 上 iio-sensor-proxy 提供的光线和方向、Generic Sensor API；Mac 和 Windows 不支持） |
-| NFC 标签 | Core NFC | `react-native-nfc-manager` | ✓ `asuka/nfc`（读写 NDEF，只读标签，标签 ID，原始命令；iOS 的系统面板，Android 的读卡器模式，可以打开应用的标签；Android 上 Chrome 的 Web NFC；桌面端不支持）（见 [NFC 标签](nfc.md)） |
-| 低功耗蓝牙 | Core Bluetooth | 社区方案（`react-native-ble-plx`） | ✓ `asuka/bluetooth`（扫描、连接、服务、读、写、通知；广播和 GATT 服务端；后台扫描和状态恢复；Core Bluetooth、Android 的 BLE、WinRT、BlueZ；Chromium 里 Web Bluetooth 的设备选择器，不支持外设角色）（见[蓝牙](bluetooth.md)） |
-| 图片编辑 | Core Graphics、ImageIO | `expo-image-manipulator` | ✓ `asuka/imageedit`（缩放、裁剪、旋转、翻转、填充、像素化；读入 HEIC，输出 JPEG 或 PNG，方向自动摆正；Image I/O、Android 的 `Bitmap`、WIC、GdkPixbuf、canvas） |
+| 网络状态 | `NWPathMonitor` | `expo-network` | ✓ `platform/network`（`network.status()`：是否在线、Wi-Fi 还是蜂窝网络、是否按流量计费、低数据模式；NWPathMonitor、ConnectivityManager、网络列表管理器、NetworkManager、Network Information API） |
+| 保存到相册、下载目录 | `PHPhotoLibrary` | `expo-media-library` | ✓ `platform/library`（`library.save`：照片、Android 的相册和下载目录、音乐；桌面端的下载、图片、影片和音乐文件夹） |
+| 后台任务 | `beginBackgroundTask`、`BGTaskScheduler` | `expo-task-manager`、`expo-background-task` | ✓ `platform/background`：Android 会让应用保持运行，并在通知里显示进度和按钮；iOS 大约多给 30 秒；桌面端让应用不被挂起（App Nap、睡眠）。`platform/periodic`：系统不定期运行的任务，会在没有界面的情况下启动应用（BGTaskScheduler、WorkManager；桌面端是应用运行期间的定时器） |
+| 接收其他应用的分享 | 分享扩展 | `expo-sharing`（`useIncomingShare`） | ✓ `on share(items)`：文本、链接、图片、视频、音频和文件，可以是一个或多个，带名称、MIME 类型和大小（`asuka.toml` 的 `shareTarget`：据此生成 Android 的 intent filter，以及 iOS 的分享扩展和激活规则）；`platform/sharesheet`：在分享来源应用上方显示应用自己的面板（iOS 的分享扩展；Android 的一个 activity），数据与应用共享；仅 iOS 和 Android |
+| 音频 | AVAudioPlayer、AVAudioRecorder | `expo-audio` | ✓ `platform/audio`（`audio.play`、`audio.Player`：播放、暂停、跳转、音量、速率、循环；AVPlayer、Media3 的 ExoPlayer、MCI、GStreamer、`<audio>`）；`platform/record`（`record.audio`：音质、暂停、电平） |
+| 正在播放、锁屏控制、媒体键 | `MPNowPlayingInfoCenter`、`MPRemoteCommandCenter` | `expo-audio` 的锁屏控制、社区方案（`react-native-track-player`） | ✓ `platform/nowplaying` 的 `nowplaying.NowPlaying`（标题、艺术家、封面、时长、由系统推进的播放位置，播放、暂停、下一首、上一首、跳转；可以自动跟随一个 `audio.Player`；Android 上是 MediaSession，Windows 上是 SystemMediaTransportControls，Linux 上是 MPRIS，Web 上是 Media Session API） |
+| 通过 Apple 登录 | `SignInWithAppleButton` | `expo-apple-authentication` | ✓ `platform/appleauth`（Apple 的 `SignInButton`、`signIn`、`credentialState`；iOS 和 macOS；其他平台通过 `platform/webauth`） |
+| Web 登录（OAuth） | `ASWebAuthenticationSession` | `expo-auth-session`、`expo-web-browser` | ✓ `platform/webauth`（`ASWebAuthenticationSession`、Custom Tab、WebView2 窗口、WebKitGTK 对话框、弹出窗口） |
+| iCloud：键值存储、iCloud 云盘 | `NSUbiquitousKeyValueStore`、ubiquity 容器、`NSMetadataQuery` | 社区方案（`react-native-cloud-storage`、`expo-icloud-storage`） | ✓ `platform/icloud`（账户状态；`icloud.Value`，存放在 iCloud 的键值存储里；应用在 iCloud 云盘里的文稿，随变化列出，附带下载和上传状态，以协调方式读写，下载、移除本地副本、解决冲突；测试用 `icloud.fake()`；iOS 和 macOS；不支持 CloudKit 数据库） |
+| Apple Pay、Google Pay | PassKit（`PayWithApplePayButton`） | `@stripe/stripe-react-native` 的 Platform Pay、`react-native-payments` | ✓ `platform/pay`（钱包的支付面板和 `PayButton`；交给应用支付服务商的 token；修改配送方式、优惠券和卡片时更新总价；按字段报错；iOS、macOS 和 Safari 上用 Apple Pay，Android 和其他浏览器上用 Google Pay） |
+| 面容 ID、指纹 | LocalAuthentication | `expo-local-authentication` | ✓ `platform/biometric`（LocalAuthentication、BiometricPrompt、Windows Hello；Web 上通过 WebAuthn 使用平台认证器；Linux 不支持） |
+| 应用内购买、订阅 | StoreKit 2 | `expo-iap`、`react-native-iap`、RevenueCat | ✓ `platform/purchase`（带本地化价格和优惠的商品、购买、待处理的付款、从应用启动起的交易流、完成交易、权益、恢复购买、订阅状态、管理订阅/退款/兑换码面板；iOS 和 macOS 上用 StoreKit 2，Play Billing，Microsoft Store，Trusted Web Activity 里的 Digital Goods API；测试用 `purchase.fake()`）（见[应用内购买](purchases.md)） |
+| 应用商店评分 | `requestReview` | `expo-store-review` | ✓ `platform/review`（App Store 的评分弹窗、Play 的应用内评价） |
+| 跟踪权限 | App Tracking Transparency | `expo-tracking-transparency` | ✓ `platform/tracking` |
+| 应用完整性 | App Attest | `expo-app-integrity` | ✓ `platform/integrity`（App Attest、Play Integrity） |
+| 年龄段 | Declared Age Range | `expo-age-range` | ✓ `platform/agerange`（Declared Age Range、Play Age Signals） |
+| 传感器 | Core Motion | `expo-sensors` | ✓ `platform/sensors`（加速度计、陀螺仪、磁力计、设备运动、气压计、光线、计步器；所有平台坐标轴和单位一致；Core Motion、SensorManager、Linux 上 iio-sensor-proxy 提供的光线和方向、Generic Sensor API；Mac 和 Windows 不支持） |
+| NFC 标签 | Core NFC | `react-native-nfc-manager` | ✓ `platform/nfc`（读写 NDEF，只读标签，标签 ID，原始命令；iOS 的系统面板，Android 的读卡器模式，可以打开应用的标签；Android 上 Chrome 的 Web NFC；桌面端不支持）（见 [NFC 标签](nfc.md)） |
+| 低功耗蓝牙 | Core Bluetooth | 社区方案（`react-native-ble-plx`） | ✓ `platform/bluetooth`（扫描、连接、服务、读、写、通知；广播和 GATT 服务端；后台扫描和状态恢复；Core Bluetooth、Android 的 BLE、WinRT、BlueZ；Chromium 里 Web Bluetooth 的设备选择器，不支持外设角色）（见[蓝牙](bluetooth.md)） |
+| 图片编辑 | Core Graphics、ImageIO | `expo-image-manipulator` | ✓ `platform/imageedit`（缩放、裁剪、旋转、翻转、填充、像素化；读入 HEIC，输出 JPEG 或 PNG，方向自动摆正；Image I/O、Android 的 `Bitmap`、WIC、GdkPixbuf、canvas） |
 | 视频缩略图 | `AVAssetImageGenerator` | `expo-video-thumbnails` | ✓ `imageedit.videoFrame` |
-| 识别图片中的文字、人脸和码 | Vision | 无 | ✓ `asuka/vision`，同时给出每一项的位置（Vision；Android 上用 ML Kit，只打包进导入了它的应用；Windows 的 OCR 和人脸检测；Linux 上用 Tesseract 识别文字，不支持人脸；浏览器有 Shape Detection API 时用它） |
-| 语音转文字 | Speech（`SFSpeechRecognizer`） | 社区方案（`expo-speech-recognition`） | ◐ `asuka/transcribe`（识别一段录音，只在设备上进行：iOS 和 macOS 上用 Speech，Android 13 的设备端识别器，Windows 的语音识别；Linux 和 Web 不支持） |
-| 照片图库 | PhotoKit | `expo-media-library` | ✓ `asuka/photos`：权限、列出照片、缩略图、原始文件（PhotoKit、MediaStore） |
-| 文字转语音 | `AVSpeechSynthesizer` | `expo-speech` | ✓ `asuka/speech`（队列、声音、音调、语速、暂停；AVSpeechSynthesizer、TextToSpeech、SAPI、Speech Dispatcher、`speechSynthesis`） |
-| 通讯录 | Contacts、ContactsUI | `expo-contacts` | ✓ `asuka/contacts`（`pick()` 和新建联系人界面不需要权限；访问通讯录需要权限） |
-| 日历 | EventKit、EventKitUI | `expo-calendar` | ✓ `asuka/calendar`（事件编辑界面不需要权限；读取日历和事件需要权限；EventKit、Calendar Provider） |
-| 主屏幕小组件 | WidgetKit | `expo-widgets` | ✓ `asuka/widget` 和 `asuka.toml` 的 `widgets`（每种尺寸一个模板，iOS 上还有锁屏小组件；时间线、倒计时、点按打开 URL；iOS 和 Android） |
-| 实时活动 | ActivityKit | `expo-live-activity` | ✓ `asuka/liveactivity`（iOS：锁屏和灵动岛；Android 16 的 Live Update；倒计时、进度、提醒，以及供服务端推送更新用的推送 token） |
+| 识别图片中的文字、人脸和码 | Vision | 无 | ✓ `platform/vision`，同时给出每一项的位置（Vision；Android 上用 ML Kit，只打包进导入了它的应用；Windows 的 OCR 和人脸检测；Linux 上用 Tesseract 识别文字，不支持人脸；浏览器有 Shape Detection API 时用它） |
+| 语音转文字 | Speech（`SFSpeechRecognizer`） | 社区方案（`expo-speech-recognition`） | ◐ `platform/transcribe`（识别一段录音，只在设备上进行：iOS 和 macOS 上用 Speech，Android 13 的设备端识别器，Windows 的语音识别；Linux 和 Web 不支持） |
+| 照片图库 | PhotoKit | `expo-media-library` | ✓ `platform/photos`：权限、列出照片、缩略图、原始文件（PhotoKit、MediaStore） |
+| 文字转语音 | `AVSpeechSynthesizer` | `expo-speech` | ✓ `platform/speech`（队列、声音、音调、语速、暂停；AVSpeechSynthesizer、TextToSpeech、SAPI、Speech Dispatcher、`speechSynthesis`） |
+| 通讯录 | Contacts、ContactsUI | `expo-contacts` | ✓ `platform/contacts`（`pick()` 和新建联系人界面不需要权限；访问通讯录需要权限） |
+| 日历 | EventKit、EventKitUI | `expo-calendar` | ✓ `platform/calendar`（事件编辑界面不需要权限；读取日历和事件需要权限；EventKit、Calendar Provider） |
+| 主屏幕小组件 | WidgetKit | `expo-widgets` | ✓ `platform/widget` 和 `asuka.toml` 的 `widgets`（每种尺寸一个模板，iOS 上还有锁屏小组件；时间线、倒计时、点按打开 URL；iOS 和 Android） |
+| 实时活动 | ActivityKit | `expo-live-activity` | ✓ `platform/liveactivity`（iOS：锁屏和灵动岛；Android 16 的 Live Update；倒计时、进度、提醒，以及供服务端推送更新用的推送 token） |
 | App Intents、快捷指令 | App Intents、App Shortcuts | — | ✓ `asuka.toml` 的 `shortcuts`（iOS：带 Siri 短语的 App Shortcuts，出现在聚焦搜索和快捷指令里；Android：启动器快捷方式） |
 | 自定义字体 | `.font(.custom)` | `expo-font` | ✓ `assets/fonts`、`Font(family:)` |
 | 生命周期 | `scenePhase` | AppState | ✓ `onLifecycle` |
-| 启动画面 | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.toml` 的 `splash`；`asuka/splash` 可以在应用加载期间保持它显示 |
-| 状态栏、导航栏 | `statusBarHidden`、`preferredStatusBarStyle` | `expo-status-bar`、`expo-navigation-bar` | ✓ `screen.setBars`（`asuka/screen`） |
+| 启动画面 | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.toml` 的 `splash`；`platform/splash` 可以在应用加载期间保持它显示 |
+| 状态栏、导航栏 | `statusBarHidden`、`preferredStatusBarStyle` | `expo-status-bar`、`expo-navigation-bar` | ✓ `screen.setBars`（`platform/screen`） |
 | 锁定屏幕方向 | `supportedInterfaceOrientations` | `expo-screen-orientation` | ✓ `screen.lock` |
 | 截屏 | `isCaptured`、`userDidTakeScreenshotNotification` | `expo-screen-capture` | ✓ `screen.preventCapture`（Android 上截图是黑的；iOS 上录屏时内容会被遮住；macOS 和 Windows 上截图里不包含这些窗口）、`screen.screenshots()` |
-| 崩溃报告 | MetricKit、Crashlytics、Sentry | Sentry、Crashlytics（`@react-native-firebase/crashlytics`） | ✓ `asuka/crash`：核心的致命错误（附 Asuka 调用栈）、未捕获的异常、MetricKit 记录的崩溃和卡顿、Android 的原生崩溃和 ANR、桌面宿主的崩溃，附带面包屑和自定义值；报告发到哪里由应用决定（没有内置服务）；`asuka build` 会生成符号文件 |
+| 崩溃报告 | MetricKit、Crashlytics、Sentry | Sentry、Crashlytics（`@react-native-firebase/crashlytics`） | ✓ `platform/crash`：核心的致命错误（附 Asuka 调用栈）、未捕获的异常、MetricKit 记录的崩溃和卡顿、Android 的原生崩溃和 ANR、桌面宿主的崩溃，附带面包屑和自定义值；报告发到哪里由应用决定（没有内置服务）；`asuka build` 会生成符号文件 |
 
 ## 外观与无障碍
 
@@ -206,7 +206,7 @@ web view 应用在所有系统上都长得一样，完全按它的 HTML 和 CSS 
 | | Electron | MyGo | Asuka |
 |---|---|---|---|
 | 控制窗口 | `BrowserWindow` | `Window` | ✓ `app` 块里的 `Window` 和其他 `Window`、`mainWindow()`、窗口的 `Ref`（`Window as w`）：显示、隐藏、聚焦、最小化、最大化、全屏、尺寸、位置、置顶，并跟随窗口状态；`on closeRequest`、`WindowCloseGuard`；用 `stateKey` 记住窗口位置；`child` 和 `modal` 窗口；`titleBar: .hidden`（Wayland 下由合成器决定，无法设置位置、居中或置顶） |
-| 托盘图标 | `Tray` | 托盘图标 | ✓ `asuka/tray` 的 `tray.Tray`（`NSStatusItem`；通知区域；Linux 上的 StatusNotifierItem）：图片或符号、标题、提示、菜单、点击 |
+| 托盘图标 | `Tray` | 托盘图标 | ✓ `platform/tray` 的 `tray.Tray`（`NSStatusItem`；通知区域；Linux 上的 StatusNotifierItem）：图片或符号、标题、提示、菜单、点击 |
 | 子菜单、退出菜单项 | `MenuItem.submenu`、roles | roles、子菜单 | ✓ `MenuBar`、`Menu`、`MenuItem`（菜单项里嵌套菜单项就是子菜单；`role: .quit`、`.close`、`.openRecent`）；托盘和 Dock 菜单里用 `Action` 的 `.submenu` 和 `.section` |
 | Dock 菜单、跳转列表任务 | `app.dock.setMenu`、`setUserTasks` | Dock 菜单、跳转列表 | ✓ `tray.DockMenu`（Dock 的菜单、跳转列表的“任务”、Linux 启动器的快捷列表） |
 | 后台运行的应用 | `app.dock.hide`、在 `window-all-closed` 时不退出 | 后台应用 | ✓ `asuka.toml` 的 `keepRunning` 和 `background` |
@@ -214,24 +214,24 @@ web view 应用在所有系统上都长得一样，完全按它的 HTML 和 CSS 
 | 启动器面板 | `type: 'panel'`（macOS） | 面板 | ✓ `Window` 的 `panel`：浮在所有应用和空间之上，在 Mac 上获得键盘输入但不激活应用，按 Escape 或点击别处关闭（Linux 的 Wayland 下，有 gtk4-layer-shell 时是 layer-shell 表面） |
 | 窗口大小随内容变化 | 由应用调用 `setContentSize` | `FitContent` | ✓ `fitContent`：核心的布局会随内容变化调整窗口大小 |
 | 鼠标穿透窗口 | `setIgnoreMouseEvents` | `SetIgnoreMouseEvents`、`SetInputRegion` | ✓ `clickThrough`、`w.setClickThrough(on)`（整个窗口） |
-| 列出已安装的应用（给启动器用） | 无 | `InstalledApps`、`FileIcon`、`LaunchApp` | ✓ `asuka/apps` 的 `list`、`search`、`icon`、`open` |
-| 全局快捷键 | `globalShortcut` | 全局快捷键 | ✓ `asuka/hotkey` 的 `hotkey.Hotkey`（Carbon 的热键；`RegisterHotKey`；X11 的按键抓取或 Wayland 的 GlobalShortcuts portal） |
-| 打开、保存和选择文件夹对话框 | `dialog.showOpenDialog`、`showSaveDialog` | 对话框 | ✓ `asuka/dialog` 的 `open`、`save`、`chooseFolder`、`chooseFolders`（Mac 上以表单形式附在窗口上，Windows 的通用文件对话框，GTK 的文件对话框或 portal；Web 上用 File System Access 选择器或文件输入框；手机上只有 `open`） |
-| 在文件夹中显示、用默认应用打开、移到废纸篓 | `shell.showItemInFolder`、`openPath`、`trashItem` | shell | ✓ `asuka/shell` 的 `reveal`、`open`、`trash`、`beep` |
+| 列出已安装的应用（给启动器用） | 无 | `InstalledApps`、`FileIcon`、`LaunchApp` | ✓ `platform/apps` 的 `list`、`search`、`icon`、`open` |
+| 全局快捷键 | `globalShortcut` | 全局快捷键 | ✓ `platform/hotkey` 的 `hotkey.Hotkey`（Carbon 的热键；`RegisterHotKey`；X11 的按键抓取或 Wayland 的 GlobalShortcuts portal） |
+| 打开、保存和选择文件夹对话框 | `dialog.showOpenDialog`、`showSaveDialog` | 对话框 | ✓ `platform/dialog` 的 `open`、`save`、`chooseFolder`、`chooseFolders`（Mac 上以表单形式附在窗口上，Windows 的通用文件对话框，GTK 的文件对话框或 portal；Web 上用 File System Access 选择器或文件输入框；手机上只有 `open`） |
+| 在文件夹中显示、用默认应用打开、移到废纸篓 | `shell.showItemInFolder`、`openPath`、`trashItem` | shell | ✓ `platform/shell` 的 `reveal`、`open`、`trash`、`beep` |
 | 文件关联 | `fileAssociations`（electron-builder）、`open-file` | 文件关联 | ✓ `asuka.toml` 的 `fileTypes`、`on files(paths)`（iOS、Android 和已安装的 Web 应用也支持） |
 | 单实例、第二次启动 | `requestSingleInstanceLock`、`second-instance` | 单实例 | ✓ `on secondInstance(args, dir)`、`asuka.toml` 的 `singleInstance`（Mac 传递的是文件，不是命令行参数） |
 | 退出、退出前询问 | `app.quit`、`before-quit` | 退出 | ✓ `quit()`、`relaunch()`、`on quit(e)`（`e.cancel()`、`e.sessionEnding`） |
 | 应用的目录 | `app.getPath` | 目录 | ◐ `fs.appDir()`，应用自己的目录（所有平台）；没有单独的配置、缓存和日志目录 |
-| 最近使用的文档 | `app.addRecentDocument` | 最近文档 | ✓ `asuka/recent`（Mac 上的“打开最近使用”、跳转列表、Linux 上用户的最近文件） |
-| 基于文档的应用 | — | 文档 | ✓ `asuka/document`：`Documents`，每个文件一个窗口，“文件”菜单，自动保存，恢复副本，关闭和退出时询问是否保存，处理被其他应用修改的文件（手机和 Web 上一次只打开一个文档，原地保存） |
-| 登录时启动 | `app.setLoginItemSettings` | 登录时启动 | ✓ `asuka/login`（`SMAppService`，macOS 13 及以上；Run 注册表项；XDG 自启动或 Background portal） |
-| 监听文件变化 | Node 的 `fs.watch`（chokidar） | `WatchFiles`、watch 插件 | ✓ `asuka/watch` 的 `watch.path`（FSEvents、inotify、`ReadDirectoryChangesW`）：重命名成对报告，原子保存视为写入，连续的变化会合并；手机和 Web 不支持 |
+| 最近使用的文档 | `app.addRecentDocument` | 最近文档 | ✓ `platform/recent`（Mac 上的“打开最近使用”、跳转列表、Linux 上用户的最近文件） |
+| 基于文档的应用 | — | 文档 | ✓ `platform/document`：`Documents`，每个文件一个窗口，“文件”菜单，自动保存，恢复副本，关闭和退出时询问是否保存，处理被其他应用修改的文件（手机和 Web 上一次只打开一个文档，原地保存） |
+| 登录时启动 | `app.setLoginItemSettings` | 登录时启动 | ✓ `platform/login`（`SMAppService`，macOS 13 及以上；Run 注册表项；XDG 自启动或 Background portal） |
+| 监听文件变化 | Node 的 `fs.watch`（chokidar） | `WatchFiles`、watch 插件 | ✓ `std/watch` 的 `watch.path`（FSEvents、inotify、`ReadDirectoryChangesW`）：重命名成对报告，原子保存视为写入，连续的变化会合并；手机和 Web 不支持 |
 | 显示器 | `screen` | 显示器 | ✓ `screen.displays()`、`nearest`、`matching`（Wayland 下没有工作区域；手机和 Web 上是它们自己的屏幕） |
-| 睡眠、唤醒、锁屏、空闲时间、电池 | `powerMonitor` | 电源 | ✓ `asuka/power`（手机：电池、低电量模式、锁屏；Web：电池） |
+| 睡眠、唤醒、锁屏、空闲时间、电池 | `powerMonitor` | 电源 | ✓ `platform/power`（手机：电池、低电量模式、锁屏；Web：电池） |
 | 应用图标上的进度和提醒 | `setProgressBar`、`flashFrame`、`dock.bounce` | Dock 和任务栏 | ✓ `dock.setProgress`、`dock.requestAttention`（Linux：支持 Unity 启动器 API 的 dock） |
-| 强调色、增强对比度、降低透明度 | `systemPreferences` | 强调色和辅助功能设置 | ✓ `asuka/appearance`（Linux 上没有降低透明度） |
-| 正在播放和媒体键 | （无：只能在页面里用 `navigator.mediaSession`） | 正在播放 | ✓ `asuka/nowplaying`（`MPNowPlayingInfoCenter`；窗口的 SystemMediaTransportControls；一个 MPRIS 播放器） |
-| 自动更新：签名的版本、增量更新、Sparkle 式窗口 | `autoUpdater`（Squirrel）、electron-updater | 更新器及其插件 | ✓ `asuka/update`（`update.UpdateWindow`、`update.AppMenu()`、`checkForUpdates`、`check`、`install`、`relaunch`；Ed25519 签名、增量更新、更新渠道；GitHub releases、S3 存储桶或任意 HTTPS 目录，或者你自己的服务器；`asuka publish --platform mac\|windows\|linux`）；由系统包管理器、Flatpak 或应用商店安装的应用通过它们更新；Web 上刷新页面即可 |
+| 强调色、增强对比度、降低透明度 | `systemPreferences` | 强调色和辅助功能设置 | ✓ `platform/appearance`（Linux 上没有降低透明度） |
+| 正在播放和媒体键 | （无：只能在页面里用 `navigator.mediaSession`） | 正在播放 | ✓ `platform/nowplaying`（`MPNowPlayingInfoCenter`；窗口的 SystemMediaTransportControls；一个 MPRIS 播放器） |
+| 自动更新：签名的版本、增量更新、Sparkle 式窗口 | `autoUpdater`（Squirrel）、electron-updater | 更新器及其插件 | ✓ `platform/update`（`update.UpdateWindow`、`update.AppMenu()`、`checkForUpdates`、`check`、`install`、`relaunch`；Ed25519 签名、增量更新、更新渠道；GitHub releases、S3 存储桶或任意 HTTPS 目录，或者你自己的服务器；`asuka publish --platform mac\|windows\|linux`）；由系统包管理器、Flatpak 或应用商店安装的应用通过它们更新；Web 上刷新页面即可 |
 
 MyGo 有而 Asuka 还没有的：文档方面的版本管理（Mac 的“浏览所有版本”）和锁定；鼠标穿透窗口方面的输入区域（窗口里仍然接收点击的那部分：Asuka 的窗口要么整个穿透，要么完全不穿透）；以及目录方面平台的配置、缓存和日志目录。
 

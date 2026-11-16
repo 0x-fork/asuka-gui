@@ -1,15 +1,15 @@
 // The packages over the hosts' modules, without a host (asuka test):
 // what waits for one fails as unsupported, what doesn't does nothing.
-import asuka/background
-import asuka/calendar
-import asuka/compose
-import asuka/contacts
-import asuka/library
-import asuka/liveactivity
-import asuka/periodic
-import asuka/photos
-import asuka/time
-import asuka/widget
+import platform/background
+import platform/calendar
+import platform/compose
+import platform/contacts
+import platform/library
+import platform/liveactivity
+import platform/periodic
+import platform/photos
+import std/time
+import platform/widget
 
 async fn report(what: string, f: async fn() throws -> string) {
   do {

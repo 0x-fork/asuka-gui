@@ -1,4 +1,4 @@
-import asuka/crash
+import platform/crash
 
 enum Oops: Error {
   /// it broke on purpose

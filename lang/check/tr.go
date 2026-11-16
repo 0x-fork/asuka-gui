@@ -26,7 +26,7 @@ type Catalog struct {
 	// Keys are the messages tr names, by key.
 	Keys map[string]*CatalogKey
 	// Implicit is the catalog of an app without catalogs that formats
-	// numbers and dates (asuka/i18n): its source language's formats, and
+	// numbers and dates (std/i18n): its source language's formats, and
 	// no tr.
 	Implicit bool
 	// Broken is a catalog whose errors were reported: tr's calls aren't
@@ -76,7 +76,7 @@ func (c *Checker) SetCatalog(cat *Catalog) {
 // regional formats): a binding that calls it follows them, and spawn
 // can't call it (they're the main thread's).
 func trackedNative(path, name string) bool {
-	if path != "asuka/i18n" {
+	if path != "std/i18n" {
 		return false
 	}
 	switch name {
@@ -95,7 +95,7 @@ func (c *Checker) trCall(e *syntax.CallExpr, fn *syntax.MemberExpr, tr *TrName) 
 		// the language where a binding calls it (and spawn can't).
 		c.ctx.readsState = true
 	}
-	if c.pkg != nil && (strings.HasPrefix(c.pkg.Path, "asuka/") || strings.HasPrefix(c.pkg.Path, "@")) {
+	if c.pkg != nil && (StdPath(c.pkg.Path) || strings.HasPrefix(c.pkg.Path, "@")) {
 		c.errorf(fn.X, "tr is the app's catalogs: a package can't say their messages (take the text as a parameter)")
 	}
 	if e.Block != nil {
@@ -184,11 +184,11 @@ func (c *Checker) trArg(x syntax.Expr, p *CatalogParam, key string) {
 	}
 }
 
-// isTime reports whether t is asuka/time's Time, whose instant a
+// isTime reports whether t is std/time's Time, whose instant a
 // message's date argument writes.
 func isTime(t Type) bool {
 	n, ok := t.(*Named)
-	if !ok || n.Obj.Kind != StructType || n.Obj.name != "Time" || n.Obj.Pkg == nil || n.Obj.Pkg.Path != "asuka/time" {
+	if !ok || n.Obj.Kind != StructType || n.Obj.name != "Time" || n.Obj.Pkg == nil || n.Obj.Pkg.Path != "std/time" {
 		return false
 	}
 	return TimeInstant(t) >= 0

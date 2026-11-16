@@ -18,7 +18,8 @@ import (
 	"github.com/egoist/asuka/internal/nativegen"
 )
 
-// Every standard library package's Swift (std/<name>/swift) builds for
+// Every standard library and platform SDK package's Swift
+// ({std,sdk}/<name>/swift) builds for
 // macOS, as an app's executable has it (with module Asuka: the Mac's
 // host), and typechecks for the iOS simulator. A package whose
 // Package.swift depends on more than Asuka needs SwiftPM to resolve it,
@@ -30,6 +31,8 @@ func TestStdSwift(t *testing.T) {
 	dir := t.TempDir()
 	mac, ios, simSDK, arch := asukaModules(t, dir)
 	pkgs, _ := filepath.Glob("../../std/*/Package.swift")
+	sdk, _ := filepath.Glob("../../sdk/*/Package.swift")
+	pkgs = append(pkgs, sdk...)
 	for _, ps := range pkgs {
 		pkg := filepath.Dir(ps)
 		name := filepath.Base(pkg)
@@ -53,7 +56,7 @@ func TestStdSwift(t *testing.T) {
 				macos = m[1]
 			}
 			swiftc(t, append([]string{"-target", arch + "-apple-macos" + macos, "-module-name", mod, "-I", mac, "-I", filepath.Join("Sources", "CAsuka", "include"), "-wmo", "-c", "-o", filepath.Join(dir, name+".o")}, srcs...)...)
-			// iOS where the package says it builds there (asuka/watch is
+			// iOS where the package says it builds there (std/watch is
 			// the Mac's alone).
 			if simSDK != "" && strings.Contains(string(manifest), ".iOS(") {
 				swiftc(t, append([]string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", mod, "-I", ios, "-I", filepath.Join("..", "ios", "Sources", "CAsuka", "include"), "-typecheck"}, srcs...)...)
@@ -175,8 +178,8 @@ func bootedSimulator() string {
 	return m[1]
 }
 
-// TestStdSwiftViews runs the standard library's Swift view tests: each
-// package's tests/*ViewTest.swift (its @main), built with the package's
+// TestStdSwiftViews runs the std and platform packages' Swift view tests:
+// each package's tests/*ViewTest.swift (its @main), built with the package's
 // Swift (one module, so it reaches the package's own types) into an
 // executable for macOS, run here, and for the iOS simulator, run in a
 // booted one (xcrun simctl spawn; none booted: skipped). Its first
@@ -186,6 +189,8 @@ func TestStdSwiftViews(t *testing.T) {
 		t.Skip("no Xcode command line tools")
 	}
 	tests, _ := filepath.Glob("../../std/*/tests/*ViewTest.swift")
+	sdk, _ := filepath.Glob("../../sdk/*/tests/*ViewTest.swift")
+	tests = append(tests, sdk...)
 	if len(tests) == 0 {
 		t.Fatal("no Swift view tests")
 	}

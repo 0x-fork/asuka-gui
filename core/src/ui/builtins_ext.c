@@ -47,7 +47,7 @@
 //	ui.on_open_url          f: fn(string)                                  -
 //	ui.on_open_files        f: fn([string])                                -
 //	ui.on_share             f: fn([SharedItem])                            -
-//	platform.process        -                                              string ("app", "share",
+//	host.process            -                                              string ("app", "share",
 //	                                                                       "notification")
 //	sharesheet.coreClose    how: int (0 done, 1 cancelled, 2 open the app) - (ShareClose)
 //	i18n.locale             -                                              string (tracked)
@@ -276,11 +276,11 @@ static ak_val b_call(ak_val *a, uint32_t n) {
 	return (ak_val){.p = ak_ui_call(a[0].p, a[1].p, a[2].p)};
 }
 
-// asuka/platform: the hosts' modules for the standard library's packages
-// (std/platform): call (a Task of the result), send (no answer), and the
+// platform/host: the hosts' modules for the platform SDK's packages
+// (sdk/host): call (a Task of the result), send (no answer), and the
 // little-endian encodings the modules' arguments and results are in.
 
-static ak_val b_platform_send(ak_val *a, uint32_t n) {
+static ak_val b_host_send(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	ak_release(ak_ui_call(a[0].p, a[1].p, a[2].p));
 	return none();
@@ -294,18 +294,18 @@ static ak_val le_bytes(uint64_t v, int n) {
 	return (ak_val){.p = ak_bytes_new(b, (size_t)n)};
 }
 
-static ak_val b_platform_u8(ak_val *a, uint32_t n) { AK_UNUSED(n); return le_bytes((uint64_t)a[0].i, 1); }
-static ak_val b_platform_u32(ak_val *a, uint32_t n) { AK_UNUSED(n); return le_bytes((uint64_t)a[0].i, 4); }
-static ak_val b_platform_u64(ak_val *a, uint32_t n) { AK_UNUSED(n); return le_bytes((uint64_t)a[0].i, 8); }
+static ak_val b_host_u8(ak_val *a, uint32_t n) { AK_UNUSED(n); return le_bytes((uint64_t)a[0].i, 1); }
+static ak_val b_host_u32(ak_val *a, uint32_t n) { AK_UNUSED(n); return le_bytes((uint64_t)a[0].i, 4); }
+static ak_val b_host_u64(ak_val *a, uint32_t n) { AK_UNUSED(n); return le_bytes((uint64_t)a[0].i, 8); }
 
-static ak_val b_platform_f64(ak_val *a, uint32_t n) {
+static ak_val b_host_f64(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	uint64_t u;
 	memcpy(&u, &a[0].f, 8);
 	return le_bytes(u, 8);
 }
 
-static ak_val b_platform_str(ak_val *a, uint32_t n) {
+static ak_val b_host_str(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	const ak_str *s = a[0].p;
 	ak_bytes *b = ak_bytes_new(NULL, 4 + (size_t)s->len);
@@ -324,11 +324,11 @@ static uint64_t le_read(ak_val *a, int n) {
 	return v;
 }
 
-static ak_val b_platform_read_u8(ak_val *a, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = (int64_t)le_read(a, 1)}; }
-static ak_val b_platform_read_u32(ak_val *a, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = (int64_t)le_read(a, 4)}; }
-static ak_val b_platform_read_u64(ak_val *a, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = (int64_t)le_read(a, 8)}; }
+static ak_val b_host_read_u8(ak_val *a, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = (int64_t)le_read(a, 1)}; }
+static ak_val b_host_read_u32(ak_val *a, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = (int64_t)le_read(a, 4)}; }
+static ak_val b_host_read_u64(ak_val *a, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = (int64_t)le_read(a, 8)}; }
 
-static ak_val b_platform_read_f64(ak_val *a, uint32_t n) {
+static ak_val b_host_read_f64(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	uint64_t u = le_read(a, 8);
 	double f;
@@ -336,7 +336,7 @@ static ak_val b_platform_read_f64(ak_val *a, uint32_t n) {
 	return (ak_val){.f = f};
 }
 
-static ak_val b_platform_read_str(ak_val *a, uint32_t n) {
+static ak_val b_host_read_str(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	const ak_bytes *b = bytes_arg(a[0]);
 	int64_t at = a[1].i;
@@ -444,12 +444,12 @@ void ak_ui_ext_builtins_init(void) {
 		{"ui.native_set", b_native_set}, {"ui.native_bind", b_native_bind}, {"ui.native_on", b_native_on}, {"ui.share", b_share},
 		{"ui.share_files", b_share_files}, {"ui.haptic", b_haptic}, {"ui.copy", b_copy}, {"ui.open_url", b_open_url},
 		{"ui.announce", b_announce}, {"ui.a11y_focus", b_a11y_focus}, {"ui.call", b_call},
-		{"platform.call", b_call}, {"platform.send", b_platform_send},
-		{"platform.u8", b_platform_u8}, {"platform.u32", b_platform_u32}, {"platform.u64", b_platform_u64},
-		{"platform.f64", b_platform_f64}, {"platform.str", b_platform_str},
-		{"platform.readU8", b_platform_read_u8}, {"platform.readU32", b_platform_read_u32},
-		{"platform.readU64", b_platform_read_u64}, {"platform.readF64", b_platform_read_f64},
-		{"platform.readStr", b_platform_read_str}, {"platform.process", b_process}, {"ui.view_id", b_view_id},
+		{"host.call", b_call}, {"host.send", b_host_send},
+		{"host.u8", b_host_u8}, {"host.u32", b_host_u32}, {"host.u64", b_host_u64},
+		{"host.f64", b_host_f64}, {"host.str", b_host_str},
+		{"host.readU8", b_host_read_u8}, {"host.readU32", b_host_read_u32},
+		{"host.readU64", b_host_read_u64}, {"host.readF64", b_host_read_f64},
+		{"host.readStr", b_host_read_str}, {"host.process", b_process}, {"ui.view_id", b_view_id},
 		{"sharesheet.coreClose", b_share_close},
 		{"ui.on_open_url", b_on_open_url}, {"ui.on_open_files", b_on_open_files}, {"ui.on_share", b_on_share}, {"ui.color_scheme", b_color_scheme},
 		{"ui.dev_player", b_dev_player},

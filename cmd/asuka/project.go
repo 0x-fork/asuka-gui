@@ -53,10 +53,10 @@ func (a *asukaApp) displayName() string {
 }
 
 // deps are the packages the program imports, all the way down, by
-// import path (asuka/location, @acme/charts).
+// import path (platform/location, @acme/charts).
 func (a *asukaApp) deps() []string { return a.used().ImportList() }
 
-// imports reports whether the program imports pkg (asuka/location).
+// imports reports whether the program imports pkg (platform/location).
 func (a *asukaApp) imports(pkg string) bool { return a.used().Import(pkg) }
 
 // refs reports whether the program refers to pkg's member (pkg "": the
@@ -201,7 +201,7 @@ func workDir(app *asukaApp, platform string) (string, error) {
 }
 
 // packageDirs are the app's dependencies' directories and the standard
-// library's packages it imports (asuka/network), by package ID: what
+// library's packages it imports (platform/network), by package ID: what
 // brings native code and asks things of the app (asuka.toml's [ios] and
 // [android]).
 func (a *asukaApp) packageDirs() map[string]string {

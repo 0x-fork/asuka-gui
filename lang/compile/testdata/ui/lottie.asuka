@@ -1,4 +1,4 @@
-import asuka/lottie
+import std/lottie
 
 component Check {
   state playing = true

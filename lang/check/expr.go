@@ -1456,7 +1456,7 @@ type Operator struct {
 }
 
 // operatorMethod finds the method of x's struct an operator calls
-// (asuka/time's Time: t + 1h, b - a, a < b), and its result.
+// (std/time's Time: t + 1h, b - a, a < b), and its result.
 func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool) {
 	n, ok := xt.(*Named)
 	if !ok || n.Obj.Kind != StructType {

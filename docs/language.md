@@ -39,7 +39,8 @@ its files see each other's declarations without importing anything.
 `pub` makes a declaration visible to other packages.
 
 ```asuka
-import asuka/http                 // the standard library
+import std/http                 // the standard library
+import platform/camera          // the platform SDK
 import @acme/charts               // a dependency (asuka add @acme/charts)
 import ./components               // a package beside this one
 import ./model.{Message, Folder}  // names used without the package's name
@@ -51,8 +52,9 @@ A package's names are used through it: `http.get(url)`,
 `components.Card("Hi")`. A package is named by its path's last segment;
 one whose name isn't a name (`@acme/line-charts`) is imported with
 `as`. The prelude (the built-in types, elements and functions) needs no
-import. [The standard library](stdlib.md) lists the `asuka/...`
-packages.
+import. [The standard library and the platform SDK](stdlib.md) lists
+the `std/...` and `platform/...` packages, which come with the CLI; no
+other package can be named under `std/` or `platform/`.
 
 Statements and declarations end at the end of a line; `;` puts several
 on one. A line that ends with an operator, a comma or an opening bracket
@@ -75,7 +77,7 @@ an app or a program is made of has an entry; a `main` in a package it
 imports is a function like any other. See [Programs](programs.md).
 
 ```asuka
-import asuka/os
+import std/os
 
 fn main() {
   print("Hello, {os.args().first() ?? "world"}!")
@@ -168,7 +170,7 @@ that change their value (`push`, `insert`, `removeAt`, `removeWhere`,
 | `T?` | `isNone()`, `isSome()` |
 
 `min`, `max`, `abs`, `float(n)` and `int(x)` are functions;
-`asuka/math` has the rest (`math.sqrt`, `math.pow`, `math.pi`, ...).
+`std/math` has the rest (`math.sqrt`, `math.pow`, `math.pi`, ...).
 
 ### Value semantics
 
@@ -274,7 +276,7 @@ match line {
 A struct takes operators from its methods: `fn add(o: T) -> R` is `a +
 b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, and `fn compare(o: T)
 -> int` (negative, zero or positive) is `<`, `<=`, `>` and `>=`. That's
-how `asuka/time`'s `Time` adds a `Duration` and subtracts another `Time`:
+how `std/time`'s `Time` adds a `Duration` and subtracts another `Time`:
 
 ```asuka
 struct Money {
@@ -1070,7 +1072,7 @@ openURL(url) { … }`, `on files(paths) { … }`, `on share(items) { … }`,
 foreground { … }`, `on background { … }`. Its first `Window` is the
 main window ([Navigation](navigation.md#windows)).
 
-`asuka/assets` reads a file of the package's `assets/` directory as the
+`std/assets` reads a file of the package's `assets/` directory as the
 app compiles, as Go's `go:embed` does: `assets.text("welcome.md")` is
 its text, `assets.bytes("logo.png")` its bytes. A file that isn't there
 is a compile error.
@@ -1138,7 +1140,7 @@ See [Navigation](navigation.md).
 (`locales/en.json`, `de.json`, ...), checked when the app compiles: a
 missing key or argument, or one of the wrong type, is an error. A message
 said in a binding follows the app's language, so switching it
-(`i18n.setLocale("de")`, asuka/i18n) changes what's shown, and a language
+(`i18n.setLocale("de")`, std/i18n) changes what's shown, and a language
 written right to left lays the app out from the right. See
 [Languages](i18n.md).
 
@@ -1197,7 +1199,7 @@ test "archiving removes the row" {
 ```
 
 `expect(cond)` fails a test when cond is false, saying what failed and
-where (with a comparison's two sides). JSON comes from `asuka/json`:
+where (with a comparison's two sides). JSON comes from `std/json`:
 `let notes: [Note] = try json.decode(text)` reads what's expected of it
 (or `json.decode<[Note]>(text)`), `json.encode(notes)` writes it. A
 generic function may read or write its `T` as JSON; each call then

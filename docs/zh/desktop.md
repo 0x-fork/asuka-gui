@@ -1,8 +1,8 @@
 # 桌面端
 
-除了窗口和菜单栏（见[导航](navigation.md#窗口)），桌面端还有许多手机上没有的东西：托盘图标和程序坞（Dock）菜单、浮出面板、在后台常驻的应用、全局快捷键、面板与启动器、查找已安装的应用、鼠标穿透窗口、文件对话框与文件管理器、应用打开的文件、单实例、退出、最近使用的文档、基于文档的应用、登录时启动、自动更新、“正在播放”与媒体键、显示器、电源、应用图标上的进度，以及系统外观。如果想跟踪文件和文件夹的变化（比如应用正在展示的文件夹，或其他应用保存的文档），请参阅[监视文件](data.md#监视文件asukawatch)，这项功能在手机和 Web 上也有。
+除了窗口和菜单栏（见[导航](navigation.md#窗口)），桌面端还有许多手机上没有的东西：托盘图标和程序坞（Dock）菜单、浮出面板、在后台常驻的应用、全局快捷键、面板与启动器、查找已安装的应用、鼠标穿透窗口、文件对话框与文件管理器、应用打开的文件、单实例、退出、最近使用的文档、基于文档的应用、登录时启动、自动更新、“正在播放”与媒体键、显示器、电源、应用图标上的进度，以及系统外观。如果想跟踪文件和文件夹的变化（比如应用正在展示的文件夹，或其他应用保存的文档），请参阅[监视文件](data.md#监视文件stdwatch)，这项功能在手机和 Web 上也有。
 
-上面每一项都是标准库里的一个包，或是 prelude 里的一个元素或函数，在 Mac、Windows 和 Linux 上都能用。手机或浏览器上没有某项功能时，会明确告诉你不支持（抛出 `unsupported`、`notAvailable` 错误，或者 `supported()` 为 false），或者什么也不显示，这样应用就可以只在支持的平台上提供它。
+上面每一项都是平台 SDK（或标准库）里的一个包，或是 prelude 里的一个元素或函数，在 Mac、Windows 和 Linux 上都能用。手机或浏览器上没有某项功能时，会明确告诉你不支持（抛出 `unsupported`、`notAvailable` 错误，或者 `supported()` 为 false），或者什么也不显示，这样应用就可以只在支持的平台上提供它。
 
 ## 桌面应用是怎么构成的
 
@@ -18,10 +18,10 @@
 
 ## 托盘图标与程序坞菜单
 
-`asuka/tray` 的 `Tray` 在显示期间往托盘里放一个图标（它在所在的位置不显示任何东西）：在 Mac 上是菜单栏里的 `NSStatusItem`，在 Windows 上是通知区域里的图标，在 Linux 上是 StatusNotifierItem（KDE、Xfce、Cinnamon、MATE、Budgie 都支持，GNOME 需要安装 AppIndicator 扩展）。
+`platform/tray` 的 `Tray` 在显示期间往托盘里放一个图标（它在所在的位置不显示任何东西）：在 Mac 上是菜单栏里的 `NSStatusItem`，在 Windows 上是通知区域里的图标，在 Linux 上是 StatusNotifierItem（KDE、Xfce、Cinnamon、MATE、Budgie 都支持，GNOME 需要安装 AppIndicator 扩展）。
 
 ```asuka
-import asuka/tray
+import platform/tray
 
 component Focus {
   state minutes = 25
@@ -59,7 +59,7 @@ component Timer {
 浮出面板（flyout）是一种从托盘图标上“垂下来”的窗口，就像 Mac 菜单栏附加功能弹出的面板，或者 Windows 通知区域弹出的面板那样；它也可以从某个窗口中的一块矩形区域弹出。它就是一个带有 `flyout` 的 `Window`：
 
 ```asuka
-import asuka/tray
+import platform/tray
 
 component Power {
   state open = false
@@ -112,7 +112,7 @@ component Panel {
 `hotkey.Hotkey` 注册的按键，即使其他应用在前台也能被你的应用收到，有效期与它显示的时间相同（它本身不显示任何内容）：
 
 ```asuka
-import asuka/hotkey
+import platform/hotkey
 
 component Launcher {
   state problem = ""
@@ -140,7 +140,7 @@ component Launcher {
 面板是启动器、命令面板或快速输入框所用的窗口，就像 Spotlight 和 Raycast 那样：用全局快捷键从任何地方都能呼出；它浮在所有应用的窗口之上，出现在用户当前所在的空间（Space）或虚拟桌面上，也能盖在全屏应用上面；它不出现在任务栏、程序坞的窗口列表和应用切换器中；在 Mac 上，它接收键盘输入却不会把应用切到前台，因此用户原本所在的应用会保留自己的菜单栏，面板消失后键盘输入也会回到那个应用。它就是一个设置了 `panel: true` 的窗口，通常作为启动器的主窗口，搭配在后台运行的应用（`background = true`）使用：
 
 ```asuka
-import asuka/hotkey
+import platform/hotkey
 
 state shown = false
 
@@ -186,10 +186,10 @@ component Search {
 
 ## 查找应用
 
-`asuka/apps` 会像启动器那样列出并搜索已安装的应用：
+`platform/apps` 会像启动器那样列出并搜索已安装的应用：
 
 ```asuka
-import asuka/apps
+import platform/apps
 
 component Apps {
   state installed: [apps.App] = []
@@ -255,12 +255,12 @@ component Meters {
 
 ## 文件对话框
 
-`asuka/dialog` 显示系统自带的文件对话框，给你的是用户文件的真实路径，而不是副本：
+`platform/dialog` 显示系统自带的文件对话框，给你的是用户文件的真实路径，而不是副本：
 
 ```asuka
-import asuka/dialog
-import asuka/fs
-import asuka/shell
+import platform/dialog
+import std/fs
+import platform/shell
 
 async fn export(notes: string) throws {
   let md = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
@@ -279,7 +279,7 @@ async fn export(notes: string) throws {
 
 ## 文件管理器
 
-`asuka/shell` 能对文件做文件管理器会做的那些事：`shell.reveal(path)` 在文件所在的文件夹中选中并显示它（Finder、资源管理器，或桌面环境的文件管理器）；`shell.open(path)` 用用户为该类型设置的应用打开文件（没有这样的应用时抛出 `shell.ShellError.noApp`），对文件夹则用文件管理器打开；`shell.trash(path)` 把文件移到废纸篓或回收站，永远不会直接彻底删除（做不到时就抛出错误）；`shell.beep()` 播放系统提示音。手机和 Web 上没有文件管理器：reveal 和 trash 会抛出 `unsupported` 错误，而在 Web 上 open 会在新标签页中显示文件。如果要在应用内显示文件的内容，请使用 `asuka/preview`。
+`platform/shell` 能对文件做文件管理器会做的那些事：`shell.reveal(path)` 在文件所在的文件夹中选中并显示它（Finder、资源管理器，或桌面环境的文件管理器）；`shell.open(path)` 用用户为该类型设置的应用打开文件（没有这样的应用时抛出 `shell.ShellError.noApp`），对文件夹则用文件管理器打开；`shell.trash(path)` 把文件移到废纸篓或回收站，永远不会直接彻底删除（做不到时就抛出错误）；`shell.beep()` 播放系统提示音。手机和 Web 上没有文件管理器：reveal 和 trash 会抛出 `unsupported` 错误，而在 Web 上 open 会在新标签页中显示文件。如果要在应用内显示文件的内容，请使用 `platform/preview`。
 
 ## 打开文件
 
@@ -348,10 +348,10 @@ component Editor {
 
 ## 自动更新
 
-`asuka/update` 的 `update.UpdateWindow()` 在应用主窗口中放一次，就得到一个 Sparkle 式的更新器：它会在启动后不久以及之后每天检查一次新版本；有新版本时显示更新说明，并提供“安装更新”“跳过此版本”和“稍后提醒”三个选项；下载时显示进度条（如果有针对当前版本的增量包，就只下载变化的部分）；校验新版本是否用应用的密钥签名；安装完成后提供“立即重新启动”。把 `update.AppMenu()` 放进 `MenuBar`，会在 Mac 上的“关于”之后加入“检查更新…”菜单项（在其他平台上则放在“帮助”菜单中）；`update.CheckForUpdates()` 是单独的这一个菜单项。如果想自己做更新界面，可以使用 `update.check()`、`Release.install(progress:)`、`update.relaunch()` 和更新器的状态（`update.updater`）。
+`platform/update` 的 `update.UpdateWindow()` 在应用主窗口中放一次，就得到一个 Sparkle 式的更新器：它会在启动后不久以及之后每天检查一次新版本；有新版本时显示更新说明，并提供“安装更新”“跳过此版本”和“稍后提醒”三个选项；下载时显示进度条（如果有针对当前版本的增量包，就只下载变化的部分）；校验新版本是否用应用的密钥签名；安装完成后提供“立即重新启动”。把 `update.AppMenu()` 放进 `MenuBar`，会在 Mac 上的“关于”之后加入“检查更新…”菜单项（在其他平台上则放在“帮助”菜单中）；`update.CheckForUpdates()` 是单独的这一个菜单项。如果想自己做更新界面，可以使用 `update.check()`、`Release.install(progress:)`、`update.relaunch()` 和更新器的状态（`update.updater`）。
 
 ```asuka
-import asuka/update
+import platform/update
 
 app {
   Window {
@@ -367,14 +367,14 @@ app {
 
 ## 最近使用的文档
 
-用户每打开或保存一个文档，就调用一次 `recent.add(path)`（`asuka/recent`）。Mac 会把它们列在“文件”菜单的“最近使用”和程序坞菜单中，Windows 列在跳转列表中，Linux 则记入用户的最近文件。用户选中其中一个时，会通过 `on files(paths)` 打开它。`await recent.list()` 按从新到旧的顺序返回它们，并跳过已经不存在的文件；`recent.clear()` 清除本应用自己添加的记录。
+用户每打开或保存一个文档，就调用一次 `recent.add(path)`（`platform/recent`）。Mac 会把它们列在“文件”菜单的“最近使用”和程序坞菜单中，Windows 列在跳转列表中，Linux 则记入用户的最近文件。用户选中其中一个时，会通过 `on files(paths)` 打开它。`await recent.list()` 按从新到旧的顺序返回它们，并跳过已经不存在的文件；`recent.clear()` 清除本应用自己添加的记录。
 
 ## 基于文档的应用
 
-`asuka/document` 用来编写每个窗口各显示一个文件的应用，就像文本编辑器那样：它提供文档的模型，以及围绕文档的窗口和页面。描述好文档的类型和它的编辑器：
+`platform/document` 用来编写每个窗口各显示一个文件的应用，就像文本编辑器那样：它提供文档的模型，以及围绕文档的窗口和页面。描述好文档的类型和它的编辑器：
 
 ```asuka
-import asuka/document
+import platform/document
 
 let types = [document.Type(name: "Plain Text", extensions: ["txt"])]
 
@@ -408,15 +408,15 @@ component Editor(doc: document.Document<string>) {
 
 ## 登录时启动
 
-把 `try await login.set(true)`（`asuka/login`）作为一个设置项提供给用户，并用 `await login.enabled()` 读回当前状态。在 macOS 13 及以上，它是一个登录项（仅限打包好的应用；在用户于“系统设置”中允许之前，会抛出 `LoginError.needsApproval`）；在 Windows 上是一个 Run 注册表项；在 Linux 上是一个 autostart 条目（在 Flatpak 中通过 Background portal）。`await login.openedAtLogin()` 可以区分这次启动是否是登录时的自动启动，这样应用就可以在后台悄悄启动。
+把 `try await login.set(true)`（`platform/login`）作为一个设置项提供给用户，并用 `await login.enabled()` 读回当前状态。在 macOS 13 及以上，它是一个登录项（仅限打包好的应用；在用户于“系统设置”中允许之前，会抛出 `LoginError.needsApproval`）；在 Windows 上是一个 Run 注册表项；在 Linux 上是一个 autostart 条目（在 Flatpak 中通过 Background portal）。`await login.openedAtLogin()` 可以区分这次启动是否是登录时的自动启动，这样应用就可以在后台悄悄启动。
 
 ## “正在播放”与媒体键
 
-`nowplaying.NowPlaying` 在显示期间，把应用正在播放的内容放进系统的媒体控件中，这些控件上的按钮以及键盘上的媒体键（播放/暂停、下一首、上一首）都会交给应用的处理函数：在 Mac 上是控制中心和菜单栏里的“正在播放”；在 Windows 上是音量浮出面板和快速设置中的媒体控件（通过应用窗口的 SystemMediaTransportControls）；在 Linux 上是一个 MPRIS 播放器，可以由 GNOME 和 KDE 的媒体控件以及 `playerctl` 控制。它和手机上用的是同一个包，在手机上对应锁屏界面的媒体控件（见[设备与服务](device.md#正在播放与媒体键asukanowplaying)）：
+`nowplaying.NowPlaying` 在显示期间，把应用正在播放的内容放进系统的媒体控件中，这些控件上的按钮以及键盘上的媒体键（播放/暂停、下一首、上一首）都会交给应用的处理函数：在 Mac 上是控制中心和菜单栏里的“正在播放”；在 Windows 上是音量浮出面板和快速设置中的媒体控件（通过应用窗口的 SystemMediaTransportControls）；在 Linux 上是一个 MPRIS 播放器，可以由 GNOME 和 KDE 的媒体控件以及 `playerctl` 控制。它和手机上用的是同一个包，在手机上对应锁屏界面的媒体控件（见[设备与服务](device.md#正在播放与媒体键platformnowplaying)）：
 
 ```asuka
-import asuka/audio
-import asuka/nowplaying
+import platform/audio
+import platform/nowplaying
 
 component Spring {
   event next
@@ -440,8 +440,8 @@ component Spring {
 `power.status()` 跟踪电池状态、低电量模式和散热状态。`power.suspends()`、`resumes()`、`locks()` 和 `unlocks()` 是电脑睡眠、唤醒以及屏幕锁定、解锁的事件流，`power.idleTime()` 则给出用户已经离开了多久。手机上有锁定和解锁，但没有睡眠和空闲时间；Web 上只有电池状态。
 
 ```asuka
-import asuka/power
-import asuka/screen
+import platform/power
+import platform/screen
 
 component Status {
   let p = power.status()

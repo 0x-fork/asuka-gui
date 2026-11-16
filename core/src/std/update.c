@@ -1,4 +1,4 @@
-// update.c: asuka/update's builtins, the updater's work over files that
+// update.c: platform/update's builtins, the updater's work over files that
 // Asuka shouldn't do itself: checking a download's signature, unpacking
 // an archive, and making a new version of the app from a delta. They
 // block, so the package calls them in spawn { }; each is safe on any

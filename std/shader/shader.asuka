@@ -1,4 +1,4 @@
-// Package asuka/shader draws fragment shaders: a GPU program that colors
+// Package std/shader draws fragment shaders: a GPU program that colors
 // each pixel of a view. They're written in Kage, Ebitengine's shading
 // language (Go's syntax), and compiled when the app compiles, for each
 // platform: Metal on iOS and macOS, AGSL on Android (13 and later), GLSL

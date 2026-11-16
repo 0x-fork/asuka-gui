@@ -1,4 +1,4 @@
-// notify.c: asuka/notify on Linux: GNotification through the app's
+// notify.c: platform/notify on Linux: GNotification through the app's
 // GApplication (GNOME Shell's notifications, the portal's in a sandbox,
 // the freedesktop server elsewhere), the module's methods as the other
 // hosts have them. A notification's tap and its buttons are actions of
@@ -64,7 +64,7 @@ bool lx_app_active(void);
 // freedesktop server; "gio" or "fdo" force one (tests).
 const char *lx_notify_backend;
 
-// A notification's spec (asuka/notify's JSON: its Spec).
+// A notification's spec (platform/notify's JSON: its Spec).
 typedef struct {
 	dsk_json *json;  // the whole of it, as it came
 	char *raw;
@@ -80,7 +80,7 @@ typedef struct {
 	AK_VEC(reply *) waiting;
 } wait_queue;
 
-// A notification shown: what's reported of it (std/notify's WireDelivered's JSON),
+// A notification shown: what's reported of it (sdk/notify's WireDelivered's JSON),
 // and its thread and time.
 typedef struct {
 	char *id, *json, *thread;
@@ -765,7 +765,7 @@ static void on_due(GSimpleAction *a, GVariant *param, gpointer data) {
 }
 
 // lx_install_notify_actions adds the application's notification actions,
-// as it starts: a run that hasn't used asuka/notify yet is handed what's
+// as it starts: a run that hasn't used platform/notify yet is handed what's
 // due and what's tapped.
 void lx_install_notify_actions(void) {
 	if (N.actions_added || !H.app) return;
@@ -795,7 +795,7 @@ static bool has_desktop_file(void) {
 static bool install(char **err) {
 	if (N.installed) return true;
 	if (!H.app || !g_application_get_is_registered((GApplication *)H.app)) {
-		*err = g_strdup("asuka/notify: the application isn't registered (no session bus?)");
+		*err = g_strdup("platform/notify: the application isn't registered (no session bus?)");
 		return false;
 	}
 	lx_install_notify_actions();
@@ -926,7 +926,7 @@ typedef struct {
 static void scheduled(void *ctx, bool ok, const char *out) {
 	sched_t *s = ctx;
 	if (!ok) {
-		lx_log("asuka/notify: systemd-run: %s", S(out));
+		lx_log("platform/notify: systemd-run: %s", S(out));
 		remove(s->path);
 		notify_later(s->spec, s->image);  // the app's timer, then
 		s->spec = NULL;
@@ -1372,7 +1372,7 @@ static void activate_remote(const char *action, const char *param, lx_dbus_reply
 static void handed_over(void *ctx, GVariant *rep, const char *err) {
 	(void)ctx;
 	(void)rep;
-	if (err) lx_log("asuka/notify: %s", err);
+	if (err) lx_log("platform/notify: %s", err);
 	finish(err ? 1 : 0);
 }
 
@@ -1403,7 +1403,7 @@ static void tap_running(void *ctx, GVariant *rep, const char *err) {
 		return;
 	}
 	if (!launch_with_tap(HL.tap)) {
-		lx_log("asuka/notify: can't launch the app");
+		lx_log("platform/notify: can't launch the app");
 		finish(1);
 		return;
 	}
@@ -1424,7 +1424,7 @@ static void headless_closed(const char *id) {
 static void headless_shown(void *ctx, bool ok) {
 	(void)ctx;
 	if (!ok) {
-		lx_log("asuka/notify: no notification server");
+		lx_log("platform/notify: no notification server");
 		finish(1);
 	}
 }
@@ -1481,7 +1481,7 @@ int lx_notify_headless(const char *id) {
 	remove(path);
 	free(path);
 	if (!lx_session_bus()) {
-		lx_log("asuka/notify: no session bus");
+		lx_log("platform/notify: no session bus");
 		return 1;
 	}
 	lx_dbus_call(lx_session_bus(), "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameHasOwner", g_variant_new("(s)", S(H.app_id)), -1, due_running, NULL);

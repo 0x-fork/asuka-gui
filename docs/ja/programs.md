@@ -3,7 +3,7 @@
 Asuka ではアプリとライブラリのほかに、**プログラム**も作れます。ウィンドウもビューも持たないコマンドラインツールです。パッケージのファイルが `fn main()` を宣言していれば、そのパッケージはプログラムになります。Go の `package main` や Cargo の `src/main.rs` と同じ考え方です。プログラムはアプリと同じコアで動き、同じ言語と同じ標準ライブラリ（ファイル、JSON、時刻、SQLite、HTTP など）を使い、macOS、Windows、Linux のネイティブな実行ファイルにコンパイルされます。
 
 ```asuka
-import asuka/os
+import std/os
 
 fn main() {
   let name = os.args().first() ?? "world"
@@ -28,7 +28,7 @@ asuka build             # 実行ファイル dist/greet
 プログラムは `fn main()` から始まります。引数は受け取らず（コマンドライン引数は `os.args()` で読みます）、値も返しません（終了コードは `os.exit(code)` で指定します）。`async` にすることも、エラーを投げることもできます。`fn main` を持つパッケージには `app` ブロックを書けず、コンポーネントも宣言できません。プログラムはビューを表示しないからです。エントリーポイントになるのは、プログラムを構成するパッケージの `main` だけです。インポートしたパッケージにある `main` は、ほかの関数と変わりません。
 
 ```asuka
-import asuka/fs
+import std/fs
 
 async fn main() throws {
   let text = try await spawn { try fs.readText("notes.txt") }
@@ -51,7 +51,7 @@ async fn main() throws {
 - `os.exit(code)` はその場で `code` を終了コードとして終了します。stdout と stderr はフラッシュされますが、`defer` やほかの task は実行されません。
 - `print` は stdout に 1 行書き、`os.eprint` は stderr に書きます。
 
-## プロセス：asuka/os
+## プロセス：std/os
 
 | 関数 | 内容 |
 |---|---|
@@ -69,7 +69,7 @@ async fn main() throws {
 | `os.terminal(.stdout)` | ストリームがパイプやファイルではなく端末（人が見ている）かどうか。色やプロンプトは端末のときだけ出す |
 
 ```asuka
-import asuka/os
+import std/os
 
 async fn main() throws {
   var total = 0
@@ -85,13 +85,13 @@ async fn main() throws {
 
 スマートフォンと Web のアプリでは、`os.args()` も stdin も空で、`os.exit` はエラーを投げます。そこでのアプリは自分のプロセスを終了できないからです。デスクトップアプリの `os.args()` は、そのアプリ自身のプロセスの引数です。
 
-## コマンドラインのフラグ：asuka/flag
+## コマンドラインのフラグ：std/flag
 
 `flag.parse<T>(os.args())` は、コンパイラーが `T` について知っていることをもとに、コマンドラインを `T` に読み込みます。フィールドと同期させておくフラグの一覧表は要りません。
 
 ```asuka
-import asuka/flag
-import asuka/os
+import std/flag
+import std/os
 
 enum Unit { lines, words, bytes }
 
@@ -158,8 +158,8 @@ Options:
 各ケースがオプションの構造体を持つ enum は、`git add` や `git commit` のようなサブコマンドの集まりになります。`flag.parse<Command>(args)` で読むか、その enum 型のフィールドを構造体に置きます。フィールドは構造体自身のオプションの後に来ます。ケースのドキュメントコメントがヘルプの説明になり、`tool add --help` はそのサブコマンド自身のヘルプを表示します。
 
 ```asuka
-import asuka/flag
-import asuka/os
+import std/flag
+import std/os
 
 struct AddOptions {
   /// -f Add ignored files too.
@@ -199,12 +199,12 @@ fn main() {
 }
 ```
 
-## ほかのプログラムの実行：asuka/command
+## ほかのプログラムの実行：std/command
 
-`asuka/command` はほかのプログラムを実行します。引数はリストで、シェルを通さずにそのまま渡されます。空白や `;` を含むファイル名も 1 つの引数です。ブロックする処理（パイプの読み取り、終了の待機）はほかのスレッドで行われるので、メインスレッドは待たされません。
+`std/command` はほかのプログラムを実行します。引数はリストで、シェルを通さずにそのまま渡されます。空白や `;` を含むファイル名も 1 つの引数です。ブロックする処理（パイプの読み取り、終了の待機）はほかのスレッドで行われるので、メインスレッドは待たされません。
 
 ```asuka
-import asuka/command
+import std/command
 
 async fn main() throws {
   let out = try await command.run("git", ["status", "--short"])
@@ -250,9 +250,9 @@ asuka build --target linux-amd64     # dist/linux-amd64/greet
 asuka build --target windows-arm64   # dist/windows-arm64/greet.exe
 ```
 
-`--target` は `darwin`、`linux`、`windows` のいずれかと、`amd64` か `arm64` の組み合わせです。このコンピューター以外のシステム向けには、デスクトップアプリと同じく Zig でビルドします。実行ファイルはシステムが許す範囲で単体で動きます。Linux では静的にリンクされます（musl、Zig を使う場合）。ただし、使っているものがシステムのライブラリを読み込む場合（asuka/http の libsoup、プラグインのライブラリ）は除きます。Windows ではシステムの DLL だけに、macOS ではシステムのライブラリだけに依存します。
+`--target` は `darwin`、`linux`、`windows` のいずれかと、`amd64` か `arm64` の組み合わせです。このコンピューター以外のシステム向けには、デスクトップアプリと同じく Zig でビルドします。実行ファイルはシステムが許す範囲で単体で動きます。Linux では静的にリンクされます（musl、Zig を使う場合）。ただし、使っているものがシステムのライブラリを読み込む場合（std/http の libsoup、プラグインのライブラリ）は除きます。Windows ではシステムの DLL だけに、macOS ではシステムのライブラリだけに依存します。
 
-プラットフォームのコードを持つパッケージも、どのデスクトップでもプログラムから使えます。`asuka/http` はアプリと同じく、macOS では URLSession、Windows では WinHTTP、Linux では libsoup でリクエストを送ります。このときプログラムはウィンドウを持たないホストで動きます。Windows と Linux ではどのデスクトップアプリも持っている C のコード（`platform/desktop`）、macOS では Mac ホストの Swift とパッケージの Swift です。プラグインのライブラリ（asuka/sqlite のものなど）は実行ファイルの隣に置かれます。
+プラットフォームのコードを持つパッケージも、どのデスクトップでもプログラムから使えます。`std/http` はアプリと同じく、macOS では URLSession、Windows では WinHTTP、Linux では libsoup でリクエストを送ります。このときプログラムはウィンドウを持たないホストで動きます。Windows と Linux ではどのデスクトップアプリも持っている C のコード（`platform/desktop`）、macOS では Mac ホストの Swift とパッケージの Swift です。プラグインのライブラリ（std/sqlite のものなど）は実行ファイルの隣に置かれます。
 
 ### アプリに付属するプログラム
 
@@ -263,7 +263,7 @@ VS Code が `code` コマンドを付けているように、アプリはプロ�
 path = "cli"
 ```
 
-プログラムは、ほかのパッケージと同じように相対パスでプロジェクトのパッケージをインポートします（`import ../model`）。`asuka run --bin notes` で実行し（プログラムが 1 つだけなら `--bin` は省略できます）、`asuka test` はアプリのテストと一緒に各プログラムのテストも実行し、`asuka build --bin notes` はそのプログラムだけをビルドします。アプリに付属するプログラムは、データをアプリと同じ場所に保存します（asuka/fs の `appDir` と、その中の SQLite データベース）。そのため両者は同じデータを読み書きします。開発中の `asuka run --bin` は `asuka dev` のデータを使います。
+プログラムは、ほかのパッケージと同じように相対パスでプロジェクトのパッケージをインポートします（`import ../model`）。`asuka run --bin notes` で実行し（プログラムが 1 つだけなら `--bin` は省略できます）、`asuka test` はアプリのテストと一緒に各プログラムのテストも実行し、`asuka build --bin notes` はそのプログラムだけをビルドします。アプリに付属するプログラムは、データをアプリと同じ場所に保存します（std/fs の `appDir` と、その中の SQLite データベース）。そのため両者は同じデータを読み書きします。開発中の `asuka run --bin` は `asuka dev` のデータを使います。
 
 デスクトップアプリのビルドは、プログラムをアプリの中に入れます。
 
@@ -280,7 +280,7 @@ path = "cli"
 プログラムのテストブロックは、アプリと同じく `asuka test` で実行します。`main` は関数なので、テストでは `os.fake` を使って本物のプロセスと同じように実行します。`os.fake` は引数、環境変数、stdin を与え、書き出された内容を保存します。
 
 ```asuka
-import asuka/os
+import std/os
 
 fn main() {
   let name = os.args().first() ?? "world"
@@ -297,7 +297,7 @@ test "greets whom it's given" {
 `o.run(main)` は、プログラムが終わるはずの終了コードを返します。0、エラーを投げたときの 1（メッセージは `o.stderr()` に入ります）、または `os.exit` が指定した値です。このときの `os.exit` は、プロセスではなくテスト内の `main` をそこで終わらせます。fake がなければ、テストの `os.args()` と stdin は空です。`command.fake()` はほかのプログラムの代わりに応答するので、それらは実際には実行されません。
 
 ```asuka
-import asuka/command
+import std/command
 
 test "reads git's branch" {
   let git = command.fake()
@@ -314,5 +314,5 @@ test "reads git's branch" {
 |---|---|---|---|---|
 | プログラム（`asuka build`） | ○ | ○ | ○ | × |
 | `os.args`、`os.exit`、stdin | ○ | ○ | ○ | アプリでは空、`exit` はエラーを投げる |
-| `asuka/command` | ○ | ○ | ○ | `unsupported` |
-| `asuka/flag` | ○ | ○ | ○ | ○（どんなリストでも解析できる） |
+| `std/command` | ○ | ○ | ○ | `unsupported` |
+| `std/flag` | ○ | ○ | ○ | ○（どんなリストでも解析できる） |

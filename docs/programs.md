@@ -8,7 +8,7 @@ standard library (files, JSON, time, SQLite, HTTP...), compiled to a
 native executable for macOS, Windows and Linux.
 
 ```asuka
-import asuka/os
+import std/os
 
 fn main() {
   let name = os.args().first() ?? "world"
@@ -40,7 +40,7 @@ views. Only the package a program is made of has an entry: a `main` in
 a package it imports is a function as any other.
 
 ```asuka
-import asuka/fs
+import std/fs
 
 async fn main() throws {
   let text = try await spawn { try fs.readText("notes.txt") }
@@ -70,7 +70,7 @@ The program runs as follows:
   flushed, but `defer`s and other tasks don't run.
 - `print` writes a line to stdout; `os.eprint` to stderr.
 
-## The process: asuka/os
+## The process: std/os
 
 | Function | What it does |
 |---|---|
@@ -88,7 +88,7 @@ The program runs as follows:
 | `os.terminal(.stdout)` | whether a stream is a terminal (a person), not a pipe or a file: colors and prompts only for one |
 
 ```asuka
-import asuka/os
+import std/os
 
 async fn main() throws {
   var total = 0
@@ -106,15 +106,15 @@ On a phone and the web, an app's `os.args()` is empty, stdin is empty
 and `os.exit` throws: an app there can't end its own process. A desktop
 app's `os.args()` are its own process's.
 
-## Command-line flags: asuka/flag
+## Command-line flags: std/flag
 
 `flag.parse<T>(os.args())` reads the command line into a `T`, from what
 the compiler knows of `T`: no table of flags to keep in step with the
 fields.
 
 ```asuka
-import asuka/flag
-import asuka/os
+import std/flag
+import std/os
 
 enum Unit { lines, words, bytes }
 
@@ -201,8 +201,8 @@ options. A case's doc comment is its line in the help; `tool add
 --help` shows the command's own.
 
 ```asuka
-import asuka/flag
-import asuka/os
+import std/flag
+import std/os
 
 struct AddOptions {
   /// -f Add ignored files too.
@@ -242,15 +242,15 @@ fn main() {
 }
 ```
 
-## Other programs: asuka/command
+## Other programs: std/command
 
-`asuka/command` runs other programs. Their arguments are a list, passed
+`std/command` runs other programs. Their arguments are a list, passed
 as they are, never through a shell: a file name with a space or a `;` is
 one argument. What blocks (reading a pipe, waiting for the end) happens
 on other threads, so the main thread doesn't wait.
 
 ```asuka
-import asuka/command
+import std/command
 
 async fn main() throws {
   let out = try await command.run("git", ["status", "--short"])
@@ -327,16 +327,16 @@ asuka build --target windows-arm64   # dist/windows-arm64/greet.exe
 another system than this computer's is built with Zig, as the desktop
 apps are. The executable stands alone, as far as the system allows: on
 Linux it's linked statically (musl, with Zig) unless what it uses loads the
-system's libraries (asuka/http's libsoup, a plugin's library); on
+system's libraries (std/http's libsoup, a plugin's library); on
 Windows it needs only the system's DLLs; on macOS, the system's
 libraries.
 
 A package with platform code works in a program on every desktop:
-`asuka/http` sends its requests with URLSession on macOS, WinHTTP on
+`std/http` sends its requests with URLSession on macOS, WinHTTP on
 Windows and libsoup on Linux, as in an app. The program then runs on a
 host with no window: on Windows and Linux the C every desktop app has
 (`platform/desktop`), on macOS the Mac host's Swift, its packages' Swift
-with it. A plugin's library (asuka/sqlite's) goes beside the executable.
+with it. A plugin's library (std/sqlite's) goes beside the executable.
 
 ### An app's programs
 
@@ -354,7 +354,7 @@ The program imports the project's packages relatively, as any package
 does (`import ../model`). `asuka run --bin notes` runs it (`--bin` can
 be left out when it's the only one), `asuka test` runs every
 program's tests with the app's, and `asuka build --bin notes` builds it
-alone. An app's program keeps its data where the app does (asuka/fs's
+alone. An app's program keeps its data where the app does (std/fs's
 `appDir`, a SQLite database in it), so the two read and write the same;
 under development, `asuka run --bin` uses `asuka dev`'s.
 
@@ -378,7 +378,7 @@ which gives it its arguments, its environment and its stdin, and keeps
 what it writes:
 
 ```asuka
-import asuka/os
+import std/os
 
 fn main() {
   let name = os.args().first() ?? "world"
@@ -399,7 +399,7 @@ a fake, a test's `os.args()` and stdin are empty. `command.fake()`
 answers for other programs, which then don't run:
 
 ```asuka
-import asuka/command
+import std/command
 
 test "reads git's branch" {
   let git = command.fake()
@@ -416,5 +416,5 @@ test "reads git's branch" {
 |---|---|---|---|---|
 | A program (`asuka build`) | yes | yes | yes | no |
 | `os.args`, `os.exit`, stdin | yes | yes | yes | an app: empty, `exit` throws |
-| `asuka/command` | yes | yes | yes | `unsupported` |
-| `asuka/flag` | yes | yes | yes | yes (it parses any list) |
+| `std/command` | yes | yes | yes | `unsupported` |
+| `std/flag` | yes | yes | yes | yes (it parses any list) |

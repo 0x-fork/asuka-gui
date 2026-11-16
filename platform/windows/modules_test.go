@@ -25,9 +25,9 @@ func hostAddress(t *testing.T, w *windows) string {
 	return strings.TrimSpace(string(out))
 }
 
-// The host's modules (testdata/modules.asuka): asuka/platform's call, a
+// The host's modules (testdata/modules.asuka): platform/host's call, a
 // module the host
-// hasn't, asuka/apps' ranking, a tray icon, and the updater: info, a
+// hasn't, platform/apps' ranking, a tray icon, and the updater: info, a
 // download over HTTP with its progress, and an install that swaps the
 // app's own folder while it runs.
 func TestModules(t *testing.T) {
@@ -86,7 +86,7 @@ func TestModules(t *testing.T) {
 	t.Logf("%s", dump)
 	shows(t, dump, "the modules", []string{
 		"supported: 1",
-		"host: asuka/push: Windows gives push channels (WNS) to packaged apps only",
+		"host: platform/push: Windows gives push channels (WNS) to packaged apps only",
 		"missing: unsupported: nope isn't on Windows",
 		"ranked: Visual Studio Code|Visual Studio Code,Xcode",
 		"info: false notConfigured folder windows-" + w.arch,
@@ -116,8 +116,8 @@ func TestModules(t *testing.T) {
 	}
 }
 
-// More of the modules (testdata/services.asuka), through asuka/platform and
-// asuka/platform: a toast shown, listed by the notification center's
+// More of the modules (testdata/services.asuka), through platform/host and
+// platform/host: a toast shown, listed by the notification center's
 // history and removed by its thread; a global hot key; recent documents;
 // start at login (the user's Run key, set and taken away); the taskbar's
 // progress, badge and attention; what Windows hasn't.

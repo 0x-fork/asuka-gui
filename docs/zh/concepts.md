@@ -264,10 +264,10 @@ if environment().widthClass == .expanded {
 
 ## 持久化的值
 
-状态只在应用运行期间存在。store 模块（`import asuka/store`）可以在多次启动之间保留设置之类的小数据：`read` 读出保存的值（没有的话就是默认值），`write` 把值保存下来。用一个 effect 就能把状态的每一个值都保存下来：
+状态只在应用运行期间存在。store 模块（`import std/store`）可以在多次启动之间保留设置之类的小数据：`read` 读出保存的值（没有的话就是默认值），`write` 把值保存下来。用一个 effect 就能把状态的每一个值都保存下来：
 
 ```asuka
-import asuka/store
+import std/store
 
 state units = store.read("units", "metric")
 effect { store.write("units", units) }

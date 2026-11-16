@@ -1,12 +1,12 @@
 # 数据
 
-应用的数据放在几个地方：小数据用 `asuka/storage`，记录用 `asuka/sqlite` 存进 SQLite，机密信息用 `asuka/secure` 存进平台的钥匙串，用户各台设备共享的值用 `asuka/icloud` 存进 iCloud，文档的文件用 `asuka/document`。本页逐一介绍它们，也介绍如何用 `asuka/http` 访问网络、用 `asuka/watch` 监视文件，以及哪些工作会在主线程之外进行。
+应用的数据放在几个地方：小数据用 `std/storage`，记录用 `std/sqlite` 存进 SQLite，机密信息用 `platform/secure` 存进平台的钥匙串，用户各台设备共享的值用 `platform/icloud` 存进 iCloud，文档的文件用 `platform/document`。本页逐一介绍它们，也介绍如何用 `std/http` 访问网络、用 `std/watch` 监视文件，以及哪些工作会在主线程之外进行。
 
 ## 数据存在哪里
 
 每个包都把数据放在平台自家应用放数据的地方：
 
-| | `asuka/storage`（以及 `asuka/store`） | `asuka/sqlite` 用普通名字打开的数据库 |
+| | `std/storage`（以及 `std/store`） | `std/sqlite` 用普通名字打开的数据库 |
 |---|---|---|
 | iOS | UserDefaults | 应用容器里的 Application Support |
 | macOS | UserDefaults | `~/Library/Application Support/<bundle ID>` |
@@ -19,12 +19,12 @@
 
 在 `asuka dev` 下，桌面应用的数据目录是 `asuka dev` 自己的一个目录（在用户的缓存目录里，每个应用一个），所以开发时试过的东西永远不会和已安装版本的数据混在一起。
 
-## 小数据：asuka/storage
+## 小数据：std/storage
 
-`asuka/storage` 用来在多次启动之间保存小数据：设置、已登录用户的名字、上次打开的标签页。`storage.Value` 是一个 [store](language.md#store)，它的 `value` 会被保存下来：一开始是上次保存的值，第一次则是默认值；之后每次给它赋值都会被保存。和任何状态一样，读取它会被跟踪，写入它会立刻显示出来：
+`std/storage` 用来在多次启动之间保存小数据：设置、已登录用户的名字、上次打开的标签页。`storage.Value` 是一个 [store](language.md#store)，它的 `value` 会被保存下来：一开始是上次保存的值，第一次则是默认值；之后每次给它赋值都会被保存。和任何状态一样，读取它会被跟踪，写入它会立刻显示出来：
 
 ```asuka
-import asuka/storage
+import std/storage
 
 let wifiOnly = storage.Value("wifiOnly", false)
 
@@ -53,18 +53,18 @@ fn signIn(a: Account) {
 
 保存的内容放进平台的偏好设置：iOS 和 macOS 上是 UserDefaults，Android 上是 SharedPreferences，Web 上是 `localStorage`，Windows 和 Linux 上是一个文件 `store.json`，改动后稍等片刻才写入。`storage.flush()` 会立即写入，适合在应用可能被结束之前调用（比如后台任务的最后一步）。`value.reset()` 会忘掉保存的值。保存的值在 store 创建时读取：如果它已经不能解码成这个类型（类型改了），得到的就是默认值。
 
-`asuka/store` 做的是同样的事，只是不包成 store：`store.read(key, default)`、`store.write(key, value)` 和 `store.remove(key)`，适合在你自己选定的时机保存某个值的代码。
+`std/store` 做的是同样的事，只是不包成 store：`store.read(key, default)`、`store.write(key, value)` 和 `store.remove(key)`，适合在你自己选定的时机保存某个值的代码。
 
 它不是数据库：记录很多或很大时，用 SQLite。
 
-## 记录：asuka/sqlite
+## 记录：std/sqlite
 
-`asuka/sqlite` 是应用的 SQLite 数据库。它就是 SQLite 本身，同一个版本在每个平台上用同样的方式构建，来自 sqlite [插件](plugins.md)：导入这个包，CLI 就会把插件的库随应用一起发布。核心每次调用它执行一整条语句，在主线程之外运行，并把返回的行直接解码成你要的类型。[`examples/notes`](../../examples/notes) 用的就是它。
+`std/sqlite` 是应用的 SQLite 数据库。它就是 SQLite 本身，同一个版本在每个平台上用同样的方式构建，来自 sqlite [插件](plugins.md)：导入这个包，CLI 就会把插件的库随应用一起发布。核心每次调用它执行一整条语句，在主线程之外运行，并把返回的行直接解码成你要的类型。[`examples/notes`](../../examples/notes) 用的就是它。
 
 ### 打开与迁移
 
 ```asuka
-import asuka/sqlite
+import std/sqlite
 
 struct Note {
   id: int
@@ -178,9 +178,9 @@ async fn signUp(email: string) -> string {
 
 SQLite 在每个平台上都是 3.54.1 版，内置 FTS5、R*Tree、Geopoly、数学函数、`dbstat`、`STAT4` 和 `soundex`，不支持可加载扩展，临时表放在内存里。它是 sqlite 插件的库 `asqlite`（见[插件](plugins.md)），`asuka build` 会把它放到核心找得到的地方：Mac 的 `Contents/Frameworks`、Windows 应用的 `.exe` 旁边、Linux 安装前缀的 `lib/<app>` 里、iOS 应用 `Frameworks` 里的一个 framework、APK 每个 ABI 里 `libasuka.so` 的旁边。桌面上的 `asuka dev`、`asuka test` 和 `asuka run` 会让核心使用插件的构建产物或它发布的文件（`ASUKA_LIB_ASQLITE`），后者只下载一次，存进用户的缓存。在 Web 上，它是同一个库编译成的 WebAssembly，运行在页面的一个 worker 里（见 [Web 上的 SQLite](web.md#sqlite)）。
 
-## 机密信息：asuka/secure
+## 机密信息：platform/secure
 
-`asuka/secure` 保存少量机密信息，比如令牌和密码，由平台负责加密。它是用来放机密的，不是用来放数据的：其他东西请放在 store 或数据库里。
+`platform/secure` 保存少量机密信息，比如令牌和密码，由平台负责加密。它是用来放机密的，不是用来放数据的：其他东西请放在 store 或数据库里。
 
 - **iOS**：钥匙串，以应用的 bundle ID 存为通用密码，设备首次解锁后可读，并且只留在本机。
 - **Android**：每个值都用 Android Keystore 里的密钥加密（AES-GCM），密钥从不离开 Keystore，加密后的值存在应用私有的偏好设置里。
@@ -192,7 +192,7 @@ SQLite 在每个平台上都是 3.54.1 版，内置 FTS5、R*Tree、Geopoly、�
 `secure.read(key)` 返回某个键的值（没有时为 `none`），`secure.write(key, value)` 保存一个值，`secure.remove(key)` 删除它。它们都会等待平台完成，但不占住主线程，平台报的错（密钥环已锁定、根本没有密钥环）会原样抛出；平台没有对应代码时（`asuka test`）抛出 `unsupported` 错误。
 
 ```asuka
-import asuka/secure
+import platform/secure
 
 component SignedIn {
   state status = ""
@@ -221,24 +221,24 @@ async fn keepToken(token: string) throws {
 }
 ```
 
-## 用户各设备共享的值：asuka/icloud
+## 用户各设备共享的值：platform/icloud
 
 在 iOS 和 macOS 上，`icloud.Value(key, default)` 是一个保存在 iCloud 键值存储里的 store，另一台设备修改它时会重新读取，就像 `storage.Value` 保存在本机一样：
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 let textSize = icloud.Value("textSize", 17.0)
 ```
 
 `icloud.account()` 和 `icloud.files(scope)` 会跟踪账户和应用在 iCloud 里的文件，`readFile`、`writeFile`、`conflicts` 和 `resolve` 用来操作这些文件：见 [iCloud](icloud.md)。在其他平台上，值保持默认值以及你在本机给它设置的值。
 
-## 文档的文件：asuka/document
+## 文档的文件：platform/document
 
 `document.open(path, read:, write:)` 把一个文件的内容变成一个 store：用应用的 `read` 在主线程之外读取，每次 `edit` 之后稍等片刻用它的 `write` 保存，可以还原；如果在读取之后另一个程序改了这个文件，就成为冲突：
 
 ```asuka
-import asuka/document
+import platform/document
 
 component Editor(path: string) {
   let doc = document.open(path, read: data => data.string(), write: text => text.bytes())
@@ -255,12 +255,12 @@ component Editor(path: string) {
 }
 ```
 
-## 网络：asuka/http
+## 网络：std/http
 
-`asuka/http` 通过平台自己的客户端发送请求，所以代理、受信任的证书、缓存和 cookie 都和系统的行为一致。请求需要等待，所以它是 `async` 的：
+`std/http` 通过平台自己的客户端发送请求，所以代理、受信任的证书、缓存和 cookie 都和系统的行为一致。请求需要等待，所以它是 `async` 的：
 
 ```asuka
-import asuka/http
+import std/http
 
 struct Release {
   name: string
@@ -279,8 +279,8 @@ async fn latest() throws -> string {
 较大的响应（视频、压缩包）可以边收边写进文件：`http.download(url, path, progress:)` 先写到路径旁边的文件里，全部收完后再重命名到位，每秒几次以已收到的字节数和总字节数（服务器没说时为 -1）调用 `progress`。它的 `timeout` 是等待后续数据的最长时间，而不是整个下载的时间；取消它所在的 task 就会停止下载，不留下文件。iOS 和 macOS 上用 URLSession，Android 上用 `HttpURLConnection`，Windows 和 Linux 上用 WinHTTP 和 libsoup，都是直接流式写入文件；在浏览器里，则从 fetch 的流中读出，写进应用的文件。
 
 ```asuka
-import asuka/fs
-import asuka/http
+import std/fs
+import std/http
 
 component Download(url: string) {
   state got = 0
@@ -311,7 +311,7 @@ component Download(url: string) {
 桌面应用的 OAuth 登录会重定向到应用自己在回环接口上的服务器（RFC 8252）：`http.loopback(path:, page:)` 在系统挑选的端口上监听，它的 `url` 就是要提供的重定向 URI；`next()` 等待浏览器回来，用 `page` 应答（"可以关闭这个窗口了"），并给出浏览器访问的 URL，其中的查询参数就是授权码；`close()` 停止监听。Android 和 iOS 在应用运行期间也可以监听；浏览器不行（在那里会抛出错误）：Web 应用的登录应重定向到它自己的站点。
 
 ```asuka
-import asuka/http
+import std/http
 
 async fn signInBack(authorize: string) throws -> string {
   let lb = try await http.loopback()
@@ -322,12 +322,12 @@ async fn signInBack(authorize: string) throws -> string {
 }
 ```
 
-## 监视文件：asuka/watch
+## 监视文件：std/watch
 
 `watch.path(dir)` 跟踪一个文件夹（或文件）的变化：应用显示的文件夹、编辑器里打开的项目、另一个程序会写入的设置文件。它的 `events` 是一个按批到来的变化流：
 
 ```asuka
-import asuka/watch
+import std/watch
 
 component Folder(dir: string) {
   state changes: [string] = []
@@ -360,6 +360,6 @@ component Folder(dir: string) {
 界面运行在主线程上，在主线程上等待的工作会让界面卡住。对数据来说：
 
 - **在主线程之外，用 await 等待**：`db.exec`、`db.query` 和实时查询的每次查询；`icloud` 的调用；`document` 的读写；`http` 的请求。它们的 `await` 让界面可以继续运行。
-- **在主线程上，很快完成**：`sqlite.open` 和 `db.migrate`（在应用启动时）；`storage.Value` 和 `asuka/store`，它们读写的是平台的偏好设置（在 Windows 和 Linux 上是内存：文件稍后才写）。
+- **在主线程上，很快完成**：`sqlite.open` 和 `db.migrate`（在应用启动时）；`storage.Value` 和 `std/store`，它们读写的是平台的偏好设置（在 Windows 和 Linux 上是内存：文件稍后才写）。
 
 你自己的、会拖住主线程的工作（解析大文件、缩放图片）放进 `spawn { … }`，它会在另一个线程上运行（[异步](language.md#异步)）。

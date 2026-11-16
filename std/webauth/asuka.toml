@@ -1,3 +1,0 @@
-name = "asuka/webauth"
-version = "0.1.0"
-description = "Signing in on the web in the system's own sign-in sheet: OAuth's redirect"

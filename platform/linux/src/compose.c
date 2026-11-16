@@ -1,4 +1,4 @@
-// compose.c: asuka/compose on Linux. Mail: the email portal (the user's
+// compose.c: platform/compose on Linux. Mail: the email portal (the user's
 // mail app's composer, with the attachments), else xdg-email, else the
 // mailto: link (no attachments). Answered 3, unknown: the mail app doesn't
 // say. No text messages.

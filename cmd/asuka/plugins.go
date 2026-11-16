@@ -35,7 +35,7 @@ type pluginLib struct {
 
 // appPlugins are the plugins of the app: its own directory's manifest,
 // if it has one, its dependencies' (and their packages'), and the
-// standard library packages' it imports (asuka/sqlite's).
+// standard library packages' it imports (std/sqlite's).
 func appPlugins(app *asukaApp) ([]appPlugin, error) {
 	dirs := []string{app.dir}
 	for _, d := range app.packageDirs() {

@@ -77,6 +77,6 @@ asuka pkg publish -tag next       # 预发布版本
 
 版本号遵循 semver。上传之前，`asuka pkg publish` 会把包的 `pub` API 与上一个版本进行比较：删除某个声明，或者以会破坏使用者代码的方式修改它，都需要发布新的主版本。
 
-## 标准库
+## 标准库与平台 SDK
 
-`asuka/http`、`asuka/json`、`asuka/storage` 等标准库随命令行工具一起提供，版本也跟着命令行工具走：不需要 `asuka add`。
+`std/http`、`std/json`、`std/storage` 等标准库，以及 `platform/camera`、`platform/notify` 等平台 SDK 的包，都随命令行工具一起提供，版本也跟着命令行工具走：不需要 `asuka add`。包不能以 `std/` 或 `platform/` 命名（`asuka pkg publish` 和 `asuka add` 都会拒绝）。

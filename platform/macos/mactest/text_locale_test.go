@@ -72,7 +72,7 @@ func runRTL(t *testing.T, src string) *App {
 // langButtons, on the locale player.
 func runLive(t *testing.T, src string) *App {
 	t.Helper()
-	return RunWith(t, "import asuka/i18n\n"+Dedent(src)+langButtons, Options{Player: localePlayer(t)})
+	return RunWith(t, "import std/i18n\n"+Dedent(src)+langButtons, Options{Player: localePlayer(t)})
 }
 
 // langButtons are buttons that show the app in English and in Arabic (the
@@ -547,7 +547,7 @@ func TestLocaleScrollerSide(t *testing.T) {
 // a pattern: KeysTests' asukaHourCycle).
 func TestLocaleEnvironment(t *testing.T) {
 	a := Run(t, `
-		import asuka/i18n
+		import std/i18n
 		app {
 		  Text("langs {i18n.preferredLanguages().count()} fw {i18n.region().firstWeekday} hc {i18n.region().hourCycle}")
 		}

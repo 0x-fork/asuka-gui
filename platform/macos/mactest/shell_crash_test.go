@@ -13,7 +13,7 @@ import (
 )
 
 const shellCrashApp = `
-	import asuka/crash
+	import platform/crash
 
 	component Main {
 	  state seen = ""

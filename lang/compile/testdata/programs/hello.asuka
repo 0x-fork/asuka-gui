@@ -1,6 +1,6 @@
 // args: Ann Bob
 // exit: 0
-import asuka/os
+import std/os
 
 fn main() {
   print("Hello, {os.args().joined(separator: " and ")}!")

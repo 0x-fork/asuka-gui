@@ -27,7 +27,7 @@ import (
 // Options say how to compile.
 type Options struct {
 	// Packages are packages given as sources rather than directories, by
-	// import path (asuka/http stubs in tests): file name → source.
+	// import path (std/http stubs in tests): file name → source.
 	Packages map[string]map[string][]byte
 	// Resolve finds a dependency: the package that from (a dependency's
 	// ID; "" for the root package) imports as path (@acme/charts). Dir
@@ -230,7 +230,7 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 			case check.ProvidesStd(ip):
 				u.std[ip] = true // the checker provides it
 				continue
-			case strings.HasPrefix(ip, "asuka/"):
+			case std.Reserved(ip):
 				d, ok := std.Package(ip)
 				if !ok {
 					// The checker says what the standard library has.
@@ -238,6 +238,11 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 					continue
 				}
 				dep, err = l.loadDir(ip, "", d)
+			case strings.HasPrefix(ip, "asuka/"):
+				pos := l.fset.Position(imp.Start)
+				l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: l.fset.Position(imp.End), Msg: retired(ip)})
+				u.imports[ip] = nil // reported: the checker skips it
+				continue
 			default:
 				if l.opts.Resolve == nil {
 					err = fmt.Errorf("a dependency needs a project (asuka.toml)")
@@ -268,13 +273,28 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 	return u
 }
 
+// retired says what an import of the retired asuka/ prefix is now: the
+// standard library's std/<name>, the platform SDK's platform/<name>.
+func retired(ip string) string {
+	name := strings.TrimPrefix(ip, "asuka/")
+	if name == "platform" {
+		return ip + " is platform/host now"
+	}
+	for _, p := range []string{std.Prefix + name, std.PlatformPrefix + name} {
+		if _, ok := std.Package(p); ok || check.ProvidesStd(p) {
+			return ip + " is " + p + " now"
+		}
+	}
+	return "no package " + ip + ": the asuka/ prefix is retired; the standard library is std/<name>, the platform SDK platform/<name> (docs/stdlib.md)"
+}
+
 func (l *loader) compile(root *unit) *Result {
 	c := check.NewChecker(l.fset)
 	res := &Result{Fset: l.fset}
 	// The app's catalogs, before any package is checked: tr is theirs.
 	dates := false
 	for _, u := range l.units {
-		dates = dates || u.std["asuka/i18n"] || u.imports["asuka/i18n"] != nil
+		dates = dates || u.std["std/i18n"] || u.imports["std/i18n"] != nil
 	}
 	if cs := l.opts.Catalogs; cs != nil {
 		cat, errs, warns := cs.catalog(dates)
@@ -287,7 +307,7 @@ func (l *loader) compile(root *unit) *Result {
 	} else if dates {
 		cat, err := implicitCatalog()
 		if err != nil {
-			pos := syntax.Position{Filename: "asuka/i18n", Line: 1, Column: 1}
+			pos := syntax.Position{Filename: "std/i18n", Line: 1, Column: 1}
 			l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: pos, Msg: err.Error()})
 		} else {
 			c.SetCatalog(cat)

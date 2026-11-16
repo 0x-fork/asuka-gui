@@ -1,8 +1,8 @@
-#if canImport(UIKit) && canImport(ActivityKit) && ASUKA_LIVEACTIVITY // asuka/liveactivity (see the CLI's iosFeatures)
+#if canImport(UIKit) && canImport(ActivityKit) && ASUKA_LIVEACTIVITY // platform/liveactivity (see the CLI's iosFeatures)
 import UIKit
 import ActivityKit
 
-/// asuka/liveactivity's module: ActivityKit's Live Activities, drawn by the
+/// platform/liveactivity's module: ActivityKit's Live Activities, drawn by the
 /// widget extension's template (Widget/LiveActivity.swift), which the
 /// build adds to an app that calls the package.
 /// - "enabled" (u8): iOS 16.2, and the user allows them.

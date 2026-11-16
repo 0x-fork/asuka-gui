@@ -4,8 +4,8 @@ A plugin is a package that brings native libraries with it: C, C++,
 Zig or Rust, prebuilt for each platform and published once, which every
 app that uses the package ships. A manifest beside the package's
 `asuka.toml`, `asuka-plugin.toml`, names each library's file for each
-platform and its SHA-256. `asuka/sqlite` is one
-([Data](data.md#records-asukasqlite)): SQLite, built once with the same
+platform and its SHA-256. `std/sqlite` is one
+([Data](data.md#records-stdsqlite)): SQLite, built once with the same
 options for every platform.
 
 ## Plugins, native packages and C
@@ -30,14 +30,14 @@ SQLite.
 Import its package:
 
 ```asuka
-import asuka/sqlite
+import std/sqlite
 
 fn openNotes() throws -> sqlite.DB = try sqlite.open("notes.db")
 ```
 
 Nothing else. `asuka build` finds the plugins among the app's packages
-(the app's own directory, its dependencies, the standard library
-packages it imports) and ships each library's file for the build's
+(the app's own directory, its dependencies, the standard library's and
+the platform SDK's packages it imports) and ships each library's file for the build's
 platform. `asuka dev`, `asuka test` and `asuka run` use the plugin's own
 build when it's a checkout with one, or else the published file,
 downloaded the first time into the user's cache (`asuka/plugins` in the
@@ -162,7 +162,7 @@ order:
 
 On the web, the page's `libs` option maps each file's name to its URL.
 
-`asuka/sqlite`'s is the core's own C ([core/src/sqlite](../core/src/sqlite/sqlite.c)),
+`std/sqlite`'s is the core's own C ([core/src/sqlite](../core/src/sqlite/sqlite.c)),
 which loads `asqlite` the first time a database opens and runs it
 off the main thread; on the web, SQLite's worker
 ([platform/web/src/sqlite-worker.js](../platform/web/src/sqlite-worker.js))

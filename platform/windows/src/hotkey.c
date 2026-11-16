@@ -1,4 +1,4 @@
-// hotkey.c: asuka/hotkey on Windows: RegisterHotKey with a message window
+// hotkey.c: platform/hotkey on Windows: RegisterHotKey with a message window
 // of the modules', which gets WM_HOTKEY for a press whichever app has the
 // keyboard. It fails while another app has the keys ("taken"); MOD_NOREPEAT
 // keeps a key held down from pressing it again. The press gives the app the

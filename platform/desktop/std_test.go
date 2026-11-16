@@ -22,8 +22,8 @@ import (
 	"github.com/egoist/asuka/std"
 )
 
-// The standard library's C on this computer's desktop, run with no Go:
-// each case is an Asuka program that uses a package through its API on
+// The std and platform packages' C on this computer's desktop, run with
+// no Go: each case is an Asuka program that uses a package through its API on
 // the test host (test/host.c), every std package's C linked in as in a
 // dev player, and what it shows is checked. Linux only (the C is the
 // Linux code; run it in the asuka-linux-test image, under xvfb-run and
@@ -79,7 +79,7 @@ func TestStdLinux(t *testing.T) {
 		want      []string
 		drive     func(t *testing.T, pid int, line string) // each line the host prints, as it does
 	}{
-		{"store", `import asuka/store
+		{"store", `import std/store
 
 component Probe {
   state step = "start"
@@ -100,7 +100,7 @@ component Probe {
 
 app { Probe() }
 `, []string{`host: read 3 Ayu "quoted" ü def`, "host: removed 0 in true", "host: done"}, nil},
-		{"http", `import asuka/http
+		{"http", `import std/http
 
 component Probe {
   state step = "start"
@@ -125,8 +125,8 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: got 200 hello GET probe yes true", "host: posted 200 ping", "host: missing 404", "host: done"}, nil},
-		{"download", `import asuka/fs
-import asuka/http
+		{"download", `import std/fs
+import std/http
 
 component Probe {
   state step = "start"
@@ -155,7 +155,7 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: downloaded 200 0 1048576 true true false", "host: file 1048576", "host: done"}, nil},
-		{"loopback", `import asuka/http
+		{"loopback", `import std/http
 
 async fn visit(base: string) throws -> (int, int, string) {
   let other = try await http.get(base.replace("/callback", "/favicon.ico"))
@@ -186,10 +186,10 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: redirect true 404 200 <p>Signed in</p>", "host: closed true", "host: done"}, nil},
-		{"monitors", `import asuka/network
-import asuka/power
-import asuka/appearance
-import asuka/screen
+		{"monitors", `import platform/network
+import platform/power
+import platform/appearance
+import platform/screen
 
 component Probe {
   state step = "start"
@@ -221,10 +221,10 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: network true", "host: power -1 false", "host: appearance false", "host: screens true true true", "host: done"}, nil},
-		{"device", `import asuka/device
-import asuka/sensors
-import asuka/secure
-import asuka/shell
+		{"device", `import platform/device
+import platform/sensors
+import platform/secure
+import platform/shell
 
 component Probe {
   state step = "start"
@@ -262,8 +262,8 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: info PC Linux 1.2.3 45 true", "host: sensors false false", "host: secure", "host: shell no file at /no/such/file", "host: done"}, nil},
-		{"watch", `import asuka/watch
-import asuka/fs
+		{"watch", `import std/watch
+import std/fs
 
 component Probe {
   state step = "start"
@@ -308,7 +308,7 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: watching true", "host: created a.txt", "host: renamed a.txt b.txt", "host: wrote b.txt", "host: gone", "host: done"}, nil},
-		{"js", `import asuka/js
+		{"js", `import platform/js
 
 component Probe {
   state step = "start"
@@ -340,7 +340,7 @@ component Probe {
 
 app { Probe() }
 `, []string{`host: js 3 {"x":[1,"two"]}`, "host: threw Error: nope", "host: late", "host: done"}, nil},
-		{"webauth", `import asuka/webauth
+		{"webauth", `import platform/webauth
 
 component Probe {
   state step = "start"
@@ -359,7 +359,7 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: signed in myapp://done?code=42", "host: done"}, nil},
-		{"audio", `import asuka/audio
+		{"audio", `import platform/audio
 
 component Probe {
   state step = "start"
@@ -385,8 +385,8 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: played true true", "host: done"}, nil},
-		{"record", `import asuka/record
-import asuka/audio
+		{"record", `import platform/record
+import platform/audio
 
 async fn probe() throws -> string {
   await sleep(500ms)
@@ -457,7 +457,7 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: status true true true busy false 0 true", "host: recorded true true", "host: stopped true", "host: cancelled false", "host: done"}, nil},
-		{"speech", `import asuka/speech
+		{"speech", `import platform/speech
 
 async fn speakLong() throws -> string {
   do {
@@ -516,7 +516,7 @@ app { Probe() }
 				}
 			}
 		}},
-		{"nowplaying", `import asuka/nowplaying
+		{"nowplaying", `import platform/nowplaying
 
 component Probe {
   state step = "start"
@@ -572,8 +572,8 @@ app { Probe() }
 				send("org.mpris.MediaPlayer2.Player.Pause")
 			}
 		}},
-		{"imageedit", `import asuka/imageedit
-import asuka/fs
+		{"imageedit", `import platform/imageedit
+import std/fs
 
 component Probe {
   state step = "start"
@@ -627,8 +627,8 @@ component Probe {
 app { Probe() }
 `, []string{"host: size 40x20 20x40 true", "host: png 10x20 10x20 true PNG", "host: jpeg 29x29 true 255 216", "host: upright 20x40",
 			"host: no image", "host: crop the crop is outside the 40×20 image", "host: video 16x12 true", "host: no video", "host: done"}, nil},
-		{"print", `import asuka/print
-import asuka/fs
+		{"print", `import platform/print
+import std/fs
 
 component Probe {
   state step = "start"
@@ -657,7 +657,7 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: pdf Report- Q1.pdf %PDF- true", "host: untitled Document.pdf true", "host: file no file at /no/such/file.pdf", "host: done"}, nil},
-		{"purchase", `import asuka/purchase
+		{"purchase", `import platform/purchase
 
 component Probe {
   state step = "start"
@@ -677,7 +677,7 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: available false", "host: not available", "host: done"}, nil},
-		{"markdown", `import asuka/markdown
+		{"markdown", `import std/markdown
 
 component Probe {
   state step = "start"
@@ -696,8 +696,8 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: native view asuka/markdown#Document", "host: measured asuka/markdown#Document 240x", "host: healed **bold and `code`**", "host: done"}, nil},
-		{"svg", `import asuka/svg
+`, []string{"host: native view std/markdown#Document", "host: measured std/markdown#Document 240x", "host: healed **bold and `code`**", "host: done"}, nil},
+		{"svg", `import std/svg
 
 let tick = svg.Icon(r"""<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"/><rect x="2" y="2" width="20" height="20" rx="4"/></svg>""")
 
@@ -721,8 +721,8 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: native view asuka/svg#View", "host: native view asuka/svg#Shape", "host: measured asuka/svg#View 22x22", "host: done"}, nil},
-		{"shader", `import asuka/shader
+`, []string{"host: native view std/svg#View", "host: native view std/svg#Shape", "host: measured std/svg#View 22x22", "host: done"}, nil},
+		{"shader", `import std/shader
 
 let glow = shader.Program(r"""
 package main
@@ -757,8 +757,8 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: native view asuka/shader#Shader", "host: done"}, nil},
-		{"scan", `import asuka/scan
+`, []string{"host: native view std/shader#Shader", "host: done"}, nil},
+		{"scan", `import platform/scan
 
 component Probe {
   state step = "start"
@@ -795,7 +795,7 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: qr qr https://asuka.dev/scan?q=1", "host: mixed 2", "host: asked ean13 5901234123457", "host: upc as ean13 0036000291452", "host: none 0", "host: missing threw", "host: done"}, nil},
-		{"vision", `import asuka/vision
+		{"vision", `import platform/vision
 
 component Probe {
   state step = "start"
@@ -921,12 +921,11 @@ func stdHost(t *testing.T) string {
 				only[n] = true
 			}
 		}
-		d, err := std.Dir()
+		dirs, err := std.Glob("desktop")
 		if err != nil {
 			stdErr = err
 			return
 		}
-		dirs, _ := filepath.Glob(filepath.Join(d, "*", "desktop"))
 		var pkgs []string
 		for _, x := range dirs {
 			if len(only) > 0 && !only[filepath.Base(filepath.Dir(x))] {

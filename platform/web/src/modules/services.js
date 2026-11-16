@@ -1,15 +1,15 @@
-// The modules the standard library's packages over asuka/host reach by
+// The modules the platform SDK's packages over platform/host reach by
 // name, as a browser can have them (each package's own JavaScript is in
 // std/<name>/web where it has some):
 //
-//   - background (asuka/background): a page runs while it's open
+//   - background (platform/background): a page runs while it's open
 //     (throttled while hidden): tasks start and end, with no notification.
-//   - library.save (asuka/library): a download. contacts.pick
-//     (asuka/contacts): the Contact Picker API (Chrome on Android).
-//     contacts.add and calendar.add (asuka/calendar): a vCard and an
+//   - library.save (platform/library): a download. contacts.pick
+//     (platform/contacts): the Contact Picker API (Chrome on Android).
+//     contacts.add and calendar.add (platform/calendar): a vCard and an
 //     iCalendar file, which the system offers to add.
 //   - The rest fail, saying why: icloud, periodic, widget, liveActivity,
-//     the photo library (asuka/photos), contacts' and calendars' reading.
+//     the photo library (platform/photos), contacts' and calendars' reading.
 //     (notify, push, compose and share are system.js's.)
 
 import * as fs from "../fs.js";
@@ -20,7 +20,7 @@ const fail = (what, why) => () => { throw notOnWeb(what, why); };
 
 // --- icloud ---
 
-/** icloud is asuka/icloud's module (std/icloud's methods): none here. */
+/** icloud is platform/icloud's module (sdk/icloud's methods): none here. */
 function icloud() {
   const m = { stop: () => new Uint8Array(0) };
   for (const k of ["account", "kvGet", "kvSet", "kvDelete", "kvAll", "kvSync", "container", "files", "watch", "unwatch",
@@ -59,7 +59,7 @@ function download(bytes, name, type) {
 
 const vEscape = (s) => String(s ?? "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/([,;])/g, "\\$1");
 
-/** vCard is a contact (asuka/contacts' JSON) as a vCard 3.0. */
+/** vCard is a contact (platform/contacts' JSON) as a vCard 3.0. */
 export function vCard(c) {
   const lines = ["BEGIN:VCARD", "VERSION:3.0"];
   const fn = c.name || [c.givenName, c.familyName].filter(Boolean).join(" ") || c.organization || "";
@@ -81,7 +81,7 @@ const icsDate = (ms, allDay) => {
   return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
 };
 
-/** iCalendar is an event (asuka/calendar's add JSON) as an iCalendar file. */
+/** iCalendar is an event (platform/calendar's add JSON) as an iCalendar file. */
 export function iCalendar(e, uid, now = Date.now()) {
   const all = !!e.allDay;
   const end = all && e.endMs <= e.startMs ? e.startMs + 86400000 : e.endMs;
@@ -158,7 +158,7 @@ function library() {
 export function modules() {
   const noLibrary = "a page can't read the photo library; device.pickPhotos picks photos";
   return {
-    // asuka/icloud: iCloud is Apple's (CloudKit JS has neither the
+    // platform/icloud: iCloud is Apple's (CloudKit JS has neither the
     // key-value store nor the app's containers).
     icloud: icloud(),
     periodic: {

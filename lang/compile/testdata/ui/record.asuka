@@ -1,4 +1,4 @@
-import asuka/record
+import platform/record
 
 component Recorder {
   state status = "idle"

@@ -1,7 +1,7 @@
-// asuka/splash with no platform code (the fake host): there's no splash,
+// platform/splash with no platform code (the fake host): there's no splash,
 // so holding and hiding it do nothing, and the app shows.
 
-import asuka/splash
+import platform/splash
 
 state ready = false
 

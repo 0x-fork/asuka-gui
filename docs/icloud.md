@@ -1,6 +1,6 @@
 # iCloud
 
-`asuka/icloud` is the user's iCloud, for an app on iOS and macOS. It
+`platform/icloud` is the user's iCloud, for an app on iOS and macOS. It
 has two parts. The **key-value store** keeps small values (settings, the
 page last read, a streak) that follow the user to each of their devices.
 The **documents** are the app's files in iCloud Drive, which the Files
@@ -10,7 +10,7 @@ and what react-native-cloud-storage and expo-icloud-storage give an
 Expo app.
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 let size = icloud.Value("textSize", 17.0)   // the same on every device
 
@@ -49,7 +49,7 @@ user signs in or out, turns iCloud off for the app, or another user
 signs in. `icloud.currentAccount()` reads it once, untracked.
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 component SignInHint {
   let account = icloud.account()
@@ -75,10 +75,10 @@ starts as `default`, then has the value iCloud keeps once it's read, and
 follows the changes other devices make, while it's in use. Setting its
 `value` keeps it in iCloud: on the device at once, and on the user's
 other devices as iCloud syncs. A value is anything JSON says
-(`asuka/json`): a number, a string, an array, a struct.
+(`std/json`): a number, a string, an array, a struct.
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 let lastPage = icloud.Value("lastPage", 0)
 
@@ -151,7 +151,7 @@ coordinate with iCloud's own reads and writes (NSFileCoordinator), so a
 sync never sees half a file, and the app never reads one iCloud is
 replacing. `readFile` downloads a file that isn't on the device first,
 and waits for it. `writeFile` writes the whole file at once and makes
-its directories, and iCloud uploads it. `asuka/fs`'s functions work on a
+its directories, and iCloud uploads it. `std/fs`'s functions work on a
 downloaded file too, but may race with a sync.
 
 `icloud.download(path)` starts downloading a file, and its `File` shows
@@ -161,7 +161,7 @@ it in iCloud, to free room: it's downloaded again when it's read.
 Moving a file of the device's into iCloud, or one out of iCloud onto the
 device, isn't in the package yet: write it with `writeFile` (and delete
 the device's copy), or read it with `readFile` and write it with
-`asuka/fs`.
+`std/fs`.
 
 ### Conflicts
 
@@ -175,7 +175,7 @@ file stays as it is, and the other versions are dropped on every device.
 To merge, write the merge with `writeFile`, then `resolve(path)`.
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 async fn keepTheOther(path: string) throws {
   let vs = try await icloud.conflicts(path)
@@ -188,7 +188,7 @@ async fn keepTheOther(path: string) throws {
 ### Sharing a link
 
 A public link to a file, which anyone with it can download a copy from,
-isn't in `asuka/icloud` yet.
+isn't in `platform/icloud` yet.
 
 ## asuka.toml and entitlements
 
@@ -259,7 +259,7 @@ as on Android. The package has no fake iCloud yet that a test could play
 the other devices with.
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 test "no iCloud on the fake host" {
   expect(!icloud.account().available)

@@ -9,11 +9,12 @@ import (
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/nativegen"
+	"github.com/egoist/asuka/std"
 )
 
 // importStd gives c what an app whose program imports the std packages
 // names gets of them, as an app's build does: each name is a package
-// (location: asuka/location) or a member the program refers to
+// (location: platform/location) or a member the program refers to
 // (location.requestAlways, which imports the package too). It adds their
 // asuka.toml's needs and their members' (depManifests), their Swift
 // packages' Info.plist and entitlements for platform ("ios", "macos"; "":
@@ -26,20 +27,17 @@ func importStd(t *testing.T, c *appConfig, platform string, names ...string) {
 	var natives []nativePackage
 	for _, n := range names {
 		pkg, member, ok := strings.Cut(n, ".")
+		path, dir := stdPackage(t, pkg)
 		if ok {
-			u.Refs["asuka/"+pkg+"."+member] = true
+			u.Refs[path+"."+member] = true
 		}
-		if u.Imports["asuka/"+pkg] {
+		if u.Imports[path] {
 			continue
 		}
-		dir := filepath.Join("..", "..", "std", pkg)
-		if _, err := os.Stat(filepath.Join(dir, configFile)); err != nil {
-			t.Fatalf("asuka/%s: %v", pkg, err)
-		}
-		u.Imports["asuka/"+pkg] = true
-		dirs["asuka/"+pkg] = dir
+		u.Imports[path] = true
+		dirs[path] = dir
 		if platform != "" && nativegen.HasPlatform(dir, "swift") {
-			natives = append(natives, nativePackage{path: "asuka/" + pkg, name: pkg, dir: dir})
+			natives = append(natives, nativePackage{path: path, name: pkg, dir: dir})
 		}
 	}
 	if err := c.depManifests(dirs, u); err != nil {
@@ -52,10 +50,25 @@ func importStd(t *testing.T, c *appConfig, platform string, names ...string) {
 	c.addDerived()
 }
 
+// stdPackage is the import path and directory of the standard library's
+// or the platform SDK's package named name (sqlite: std/sqlite; location:
+// platform/location).
+func stdPackage(t *testing.T, name string) (string, string) {
+	t.Helper()
+	for _, p := range []string{std.Prefix + name, std.PlatformPrefix + name} {
+		if d, ok := std.Package(p); ok {
+			return p, d
+		}
+	}
+	t.Fatalf("no package %s in std/ or platform/", name)
+	return "", ""
+}
+
 // stdAndroidManifest is the std package's Gradle module's manifest, which
 // Gradle merges into the app's ("": none).
 func stdAndroidManifest(t *testing.T, name string) string {
-	b, err := os.ReadFile(filepath.Join("..", "..", "std", name, "android", "src", "main", "AndroidManifest.xml"))
+	_, dir := stdPackage(t, name)
+	b, err := os.ReadFile(filepath.Join(dir, "android", "src", "main", "AndroidManifest.xml"))
 	if os.IsNotExist(err) {
 		return ""
 	}
@@ -85,7 +98,7 @@ func TestStdManifests(t *testing.T) {
 		launch      []string // iOS's launch classes (Info.plist's AsukaLaunch), all of them
 	}
 	cases := map[string]want{
-		// asuka/location's background part, only for the apps that use it.
+		// platform/location's background part, only for the apps that use it.
 		"location": {
 			android: []string{"ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"},
 			usage:   []string{"NSLocationWhenInUseUsageDescription"},
@@ -99,14 +112,14 @@ func TestStdManifests(t *testing.T) {
 		"location.startUpdates": {
 			launch: []string{"AsukaLocationLaunch"},
 			android: []string{"FOREGROUND_SERVICE_LOCATION", "RECEIVE_BOOT_COMPLETED", "POST_NOTIFICATIONS",
-				`<service android:name="asuka.location.LocationService" android:exported="false" android:foregroundServiceType="location" />`,
-				`<receiver android:name="asuka.location.LocationReceiver" android:exported="false">`},
+				`<service android:name="platform.location.LocationService" android:exported="false" android:foregroundServiceType="location" />`,
+				`<receiver android:name="platform.location.LocationReceiver" android:exported="false">`},
 			modes: []string{"location"},
 			no:    []string{"BACKGROUND_LOCATION", "NSLocationAlwaysAndWhenInUseUsageDescription"},
 		},
 		"location.monitor": {
 			launch:  []string{"AsukaLocationLaunch"},
-			android: []string{"RECEIVE_BOOT_COMPLETED", `<receiver android:name="asuka.location.LocationReceiver" android:exported="false">`},
+			android: []string{"RECEIVE_BOOT_COMPLETED", `<receiver android:name="platform.location.LocationReceiver" android:exported="false">`},
 			no:      []string{"BACKGROUND_LOCATION", "LocationService", "FOREGROUND_SERVICE"},
 		},
 		"location.requestPrecise": {derived: []string{"locationPrecise"}, plist: []string{"NSLocationTemporaryUsageDescriptionDictionary"}},
@@ -124,7 +137,7 @@ func TestStdManifests(t *testing.T) {
 		"icloud.Value":  {flags: []string{"ASUKA_ICLOUD"}, derived: []string{"icloudKeyValue"}, ents: []string{entKVStore}},
 		"icloud.delete": {derived: []string{"icloudDocuments"}, ents: []string{entContainers, entServices}, plist: []string{"NSUbiquitousContainers"}},
 		"camera":        {android: []string{"android.permission.CAMERA", "RECORD_AUDIO"}, usage: []string{"NSCameraUsageDescription", "NSMicrophoneUsageDescription"}},
-		"record":        {android: []string{"RECORD_AUDIO"}, module: []string{`android:name="asuka.record.RecordService"`, "FOREGROUND_SERVICE_MICROPHONE"}, usage: []string{"NSMicrophoneUsageDescription"}},
+		"record":        {android: []string{"RECORD_AUDIO"}, module: []string{`android:name="platform.record.RecordService"`, "FOREGROUND_SERVICE_MICROPHONE"}, usage: []string{"NSMicrophoneUsageDescription"}},
 		"network":       {android: []string{"ACCESS_NETWORK_STATE"}},
 		"library":       {android: []string{`android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"`}, usage: []string{"NSPhotoLibraryAddUsageDescription"}, plist: []string{"UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace"}},
 		"background":    {android: []string{"FOREGROUND_SERVICE_DATA_SYNC", "WAKE_LOCK", `<service android:name="dev.asuka.AsukaWorkService" android:exported="false" android:foregroundServiceType="dataSync" />`}},
@@ -147,14 +160,14 @@ func TestStdManifests(t *testing.T) {
 		// shareTarget (TestExtensionsFromUses).
 		"sharesheet.active": {derived: []string{"shareSheet"}},
 		"sharesheet.done":   {no: []string{"AsukaShareActivity"}},
-		"nowplaying":        {android: []string{"FOREGROUND_SERVICE_MEDIA_PLAYBACK"}, module: []string{`android:name="asuka.nowplaying.MediaService"`}, modes: []string{"audio"}},
+		"nowplaying":        {android: []string{"FOREGROUND_SERVICE_MEDIA_PLAYBACK"}, module: []string{`android:name="platform.nowplaying.MediaService"`}, modes: []string{"audio"}},
 		"transcribe":        {android: []string{"RECORD_AUDIO"}, usage: []string{"NSSpeechRecognitionUsageDescription"}},
 		"periodic":          {modes: []string{"fetch", "processing"}, plist: []string{"BGTaskSchedulerPermittedIdentifiers"}, hostModules: []string{"periodic"}, flags: []string{"ASUKA_PERIODIC"}},
 		"liveactivity": {android: []string{"POST_PROMOTED_NOTIFICATIONS", `<receiver android:name="dev.asuka.AsukaLiveActivityReceiver" android:exported="false" />`},
 			flags: []string{"ASUKA_LIVEACTIVITY"}, plist: []string{"NSSupportsLiveActivities"}},
 		"purchase": {android: []string{"com.android.vending.BILLING", `<provider android:name="dev.asuka.AsukaLauncher" android:authorities="${applicationId}.asuka.launch" android:exported="false" />`,
-			`<meta-data android:name="dev.asuka.launch" android:value="asuka.purchase.PurchaseLaunch" />`}, launch: []string{"AsukaPurchaseLaunch"}},
-		"pay":      {module: []string{"com.google.android.gms.wallet.api.enabled", `android:name="asuka.pay.PayCallbacks"`}},
+			`<meta-data android:name="dev.asuka.launch" android:value="platform.purchase.PurchaseLaunch" />`}, launch: []string{"AsukaPurchaseLaunch"}},
+		"pay":      {module: []string{"com.google.android.gms.wallet.api.enabled", `android:name="platform.pay.PayCallbacks"`}},
 		"nfc":      {android: []string{"android.permission.NFC", `android:name="android.hardware.nfc" android:required="false"`}, usage: []string{"NFCReaderUsageDescription"}, ents: []string{"com.apple.developer.nfc.readersession.formats"}},
 		"speech":   {module: []string{`<action android:name="android.intent.action.TTS_SERVICE" />`}},
 		"sensors":  {android: []string{"ACTIVITY_RECOGNITION"}, usage: []string{"NSMotionUsageDescription"}},
@@ -168,7 +181,7 @@ func TestStdManifests(t *testing.T) {
 			no:     []string{"BluetoothScanReceiver", "bluetooth-central"}},
 		// A background scan: iOS's mode and the launch class that makes the
 		// restored central; Android's receiver for the system's scan.
-		"bluetooth.backgroundScan": {android: []string{"BLUETOOTH_SCAN", `<receiver android:name="asuka.bluetooth.BluetoothScanReceiver" android:exported="false" />`},
+		"bluetooth.backgroundScan": {android: []string{"BLUETOOTH_SCAN", `<receiver android:name="platform.bluetooth.BluetoothScanReceiver" android:exported="false" />`},
 			modes: []string{"bluetooth-central"}, launch: []string{"AsukaBluetoothLaunch"}},
 		"bluetooth.restored":           {no: []string{"BluetoothScanReceiver", "bluetooth-central"}},
 		"bluetooth.stopBackgroundScan": {no: []string{"BluetoothScanReceiver", "bluetooth-central"}},
@@ -318,7 +331,7 @@ hostModules = ["push"]
 	}
 }
 
-// testUses is a program that refers to refs ("asuka/location.current",
+// testUses is a program that refers to refs ("platform/location.current",
 // the prelude's "Video"), and imports their packages.
 func testUses(refs map[string]bool) *appbuild.Uses {
 	u := &appbuild.Uses{Imports: map[string]bool{}, Refs: refs}
@@ -331,7 +344,7 @@ func testUses(refs map[string]bool) *appbuild.Uses {
 }
 
 // asuka.toml's bluetooth.background gives the managers their restore
-// identifiers, so the app gets asuka/bluetooth's launch class, which makes
+// identifiers, so the app gets platform/bluetooth's launch class, which makes
 // them as iOS launches the app for them; once with backgroundScan's too.
 func TestBluetoothRestoreLaunch(t *testing.T) {
 	for _, tc := range []struct {

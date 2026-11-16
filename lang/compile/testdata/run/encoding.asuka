@@ -1,8 +1,8 @@
-// asuka/encoding, asuka/crypto and asuka/html: known answers.
+// std/encoding, std/crypto and std/html: known answers.
 
-import asuka/encoding
-import asuka/crypto
-import asuka/html
+import std/encoding
+import std/crypto
+import std/html
 
 test "base64 and hex" {
   for s in ["", "f", "fo", "foo", "foob", "fooba", "foobar"] {

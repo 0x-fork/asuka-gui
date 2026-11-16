@@ -33,7 +33,7 @@ func makeBattery() throws -> any Battery { IOSBattery() }
 
 ## 什么时候需要它
 
-Asuka 的组件和标准库（`asuka/...`）已经覆盖了大多数应用需要显示和使用的功能，[与 SwiftUI 和 Expo 的对比](parity.md) 中列出了它们。如果你需要某个还没有被封装的平台 API、某个厂商的 SDK，或者 Asuka 没有提供的视图（地图、图表、只有某个平台才有的控件），就可以写一个原生包。
+Asuka 的组件、标准库（`std/...`）和平台 SDK（`platform/...`）已经覆盖了大多数应用需要显示和使用的功能，[与 SwiftUI 和 Expo 的对比](parity.md) 中列出了它们。如果你需要某个还没有被封装的平台 API、某个厂商的 SDK，或者 Asuka 没有提供的视图（地图、图表、只有某个平台才有的控件），就可以写一个原生包。
 
 原生包只需要为应用实际运行的平台提供代码。在没有代码的平台上，创建模块时会抛出一个 `unsupported` 错误，视图则什么都不显示（宿主会在日志中提示缺少这个视图）。
 
@@ -144,7 +144,7 @@ pub native interface Oven {
 | `fn(...)`（作为参数） | 闭包 | 函数 | 函数 | `<pkg>_fn_…`，用它的 `_call` 调用 |
 | `Ref`（作为参数） | `AsukaViewRef`：它的 `view`（在主 actor 上读取）是宿主显示的 `UIView` 或 `NSView`（WebView 的是 `WKWebView`），没有时为 `nil` | `AsukaViewRef`：它的 `view`（在主线程上读取）是对应的 `View`（WebView 的是 `WebView`），没有时为 `null` | 对应的元素，或 `null` | `uint32_t`，即视图的 id：`asuka_desktop_view(v)` 是它的 `HWND` 或 `GtkWidget *`，`asuka_desktop_webview(v)` 是 WebView 的 `ICoreWebView2 *` 或 `WebKitWebView *` |
 
-结构体的字段按声明顺序传递；它的常量和方法只留在 Asuka 这一端。对象（原生接口）只能作为参数或返回值传递，不能放在数组、map 或结构体里。`Ref` 只能作为参数传递：传过去的是调用时它所持有的视图（asuka/print 的 `webView(view: Ref, …)` 打印的就是用 `ref:` 放进去的那个 WebView 的页面），平台代码在主线程上查找这个视图；如果 Ref 里没有视图，或者宿主（还）没有显示它，得到的就是 `nil`。其他不支持的用法，`asuka native generate` 都会在对应位置报错，并告诉你应该改用什么。
+结构体的字段按声明顺序传递；它的常量和方法只留在 Asuka 这一端。对象（原生接口）只能作为参数或返回值传递，不能放在数组、map 或结构体里。`Ref` 只能作为参数传递：传过去的是调用时它所持有的视图（platform/print 的 `webView(view: Ref, …)` 打印的就是用 `ref:` 放进去的那个 WebView 的页面），平台代码在主线程上查找这个视图；如果 Ref 里没有视图，或者宿主（还）没有显示它，得到的就是 `nil`。其他不支持的用法，`asuka native generate` 都会在对应位置报错，并告诉你应该改用什么。
 
 ### 方法
 
@@ -240,7 +240,7 @@ manifest = ['<queries><intent><action android:name="android.intent.action.TTS_SE
 
 权限写成 `"name:28"` 表示只到这个 API 级别；写成 `"name|neverForLocation"` 会带上它的 `usesPermissionFlags`。应用自己的 `asuka.toml` 里的用途说明优先于包的。
 
-只有包的一部分才需要的东西，写在 `[uses.<member>]` 表里，键和上面相同：只有当应用的代码（或某个依赖的代码）引用了这个成员（函数、类型、store；类型的方法或字段写成 `"Type.name"`。字段只有在代码构造结构体时给了它、给它赋值或读取它时才算，保持默认值不算）时，应用才会得到它。同名的本地函数不算，测试块里的引用也不算。asuka/location 的后台部分就是这样声明的：
+只有包的一部分才需要的东西，写在 `[uses.<member>]` 表里，键和上面相同：只有当应用的代码（或某个依赖的代码）引用了这个成员（函数、类型、store；类型的方法或字段写成 `"Type.name"`。字段只有在代码构造结构体时给了它、给它赋值或读取它时才算，保持默认值不算）时，应用才会得到它。同名的本地函数不算，测试块里的引用也不算。platform/location 的后台部分就是这样声明的：
 
 ```toml
 [uses.requestAlways.android]

@@ -1,18 +1,18 @@
 # Data
 
 An app keeps its data in a few places: small values in
-`asuka/storage`, records in SQLite with `asuka/sqlite`, secrets in the
-platform's keychain with `asuka/secure`, values the user's devices
-share in iCloud with `asuka/icloud`, and a document's file with
-`asuka/document`. This page covers each, the network through
-`asuka/http`, watching files with `asuka/watch`, and what runs off the
+`std/storage`, records in SQLite with `std/sqlite`, secrets in the
+platform's keychain with `platform/secure`, values the user's devices
+share in iCloud with `platform/icloud`, and a document's file with
+`platform/document`. This page covers each, the network through
+`std/http`, watching files with `std/watch`, and what runs off the
 main thread.
 
 ## Where data lives
 
 Each package keeps its data where the platform's own apps keep theirs:
 
-| | `asuka/storage` (and `asuka/store`) | `asuka/sqlite`'s databases, by a plain name |
+| | `std/storage` (and `std/store`) | `std/sqlite`'s databases, by a plain name |
 |---|---|---|
 | iOS | UserDefaults | Application Support, in the app's container |
 | macOS | UserDefaults | `~/Library/Application Support/<bundle ID>` |
@@ -29,16 +29,16 @@ Under `asuka dev`, a desktop app's data directory is one of `asuka
 dev`'s own (in the user's cache directory, one for each app), so what
 you try while developing never mixes with an installed build's data.
 
-## Small values: asuka/storage
+## Small values: std/storage
 
-`asuka/storage` keeps small values across launches: settings, a
+`std/storage` keeps small values across launches: settings, a
 signed-in user's name, the tab last open. A `storage.Value` is a
 [store](language.md#stores) whose `value` is kept: it starts with what
 was kept, or the default the first time, and each value it's set to is
 kept. Reading it is tracked, as any state's is, and writing it shows:
 
 ```asuka
-import asuka/storage
+import std/storage
 
 let wifiOnly = storage.Value("wifiOnly", false)
 
@@ -74,15 +74,15 @@ task's last step). `value.reset()` forgets what's kept. What's kept is
 read when the store is made: a value that no longer decodes as the type
 (the type changed) gives the default.
 
-`asuka/store` is the same without a store: `store.read(key, default)`,
+`std/store` is the same without a store: `store.read(key, default)`,
 `store.write(key, value)` and `store.remove(key)`, for code that keeps a
 value at a moment of its choosing.
 
 It's not a database: for many or large records, use SQLite.
 
-## Records: asuka/sqlite
+## Records: std/sqlite
 
-`asuka/sqlite` is the app's SQLite database. It's SQLite itself, one
+`std/sqlite` is the app's SQLite database. It's SQLite itself, one
 release built the same way for every platform, from the sqlite
 [plugin](plugins.md): import the package, and the CLI ships the
 plugin's library with the app. The core calls it a whole statement at a
@@ -92,7 +92,7 @@ into the type asked for. [`examples/notes`](../examples/notes) uses it.
 ### Open and migrate
 
 ```asuka
-import asuka/sqlite
+import std/sqlite
 
 struct Note {
   id: int
@@ -257,9 +257,9 @@ published file (`ASUKA_LIB_ASQLITE`), downloaded once into the user's
 cache. On the web it's the same library built to WebAssembly, in a
 worker of the page's ([SQLite on the web](web.md#sqlite)).
 
-## Secrets: asuka/secure
+## Secrets: platform/secure
 
-`asuka/secure` keeps small secrets, tokens and passwords, encrypted by the
+`platform/secure` keeps small secrets, tokens and passwords, encrypted by the
 platform. It's for secrets, not data: keep everything else in the store
 or a database.
 
@@ -294,7 +294,7 @@ throws what it says (a locked keyring, no keyring at all); where the
 platform has no code for it (`asuka test`), an `unsupported` error.
 
 ```asuka
-import asuka/secure
+import platform/secure
 
 component SignedIn {
   state status = ""
@@ -323,14 +323,14 @@ async fn keepToken(token: string) throws {
 }
 ```
 
-## Values the user's devices share: asuka/icloud
+## Values the user's devices share: platform/icloud
 
 On iOS and macOS, `icloud.Value(key, default)` is a store kept in iCloud's
 key-value store, read again as another device changes it, as a
 `storage.Value` is kept on the device:
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 let textSize = icloud.Value("textSize", 17.0)
 ```
@@ -340,7 +340,7 @@ app's files in iCloud, and `readFile`, `writeFile`, `conflicts` and
 `resolve` work with them: see [iCloud](icloud.md). Elsewhere, a value
 keeps its default and what it's set to, on the device.
 
-## A document's file: asuka/document
+## A document's file: platform/document
 
 `document.open(path, read:, write:)` is a file's content as a store: read
 off the main thread with the app's `read`, saved with its `write` a
@@ -348,7 +348,7 @@ moment after each `edit`, reverted, and a conflict when another program
 changed the file since it was read:
 
 ```asuka
-import asuka/document
+import platform/document
 
 component Editor(path: string) {
   let doc = document.open(path, read: data => data.string(), write: text => text.bytes())
@@ -365,14 +365,14 @@ component Editor(path: string) {
 }
 ```
 
-## The network: asuka/http
+## The network: std/http
 
-`asuka/http` sends requests through the platform's own client, so
+`std/http` sends requests through the platform's own client, so
 proxies, trusted certificates, caches and cookies work as the system's
 do. A request waits, so it's `async`:
 
 ```asuka
-import asuka/http
+import std/http
 
 struct Release {
   name: string
@@ -400,8 +400,8 @@ Windows and Linux stream it to the file; in a browser it's read from
 fetch's stream into the app's files.
 
 ```asuka
-import asuka/fs
-import asuka/http
+import std/fs
+import std/http
 
 component Download(url: string) {
   state got = 0
@@ -439,7 +439,7 @@ app runs; a browser can't (it throws there): a web app's sign-in
 redirects to its own site.
 
 ```asuka
-import asuka/http
+import std/http
 
 async fn signInBack(authorize: string) throws -> string {
   let lb = try await http.loopback()
@@ -450,14 +450,14 @@ async fn signInBack(authorize: string) throws -> string {
 }
 ```
 
-## Watching files: asuka/watch
+## Watching files: std/watch
 
 `watch.path(dir)` follows changes to a folder (or a file): a folder the
 app shows, a project open in an editor, a settings file another program
 writes. Its `events` is a stream of batches of changes:
 
 ```asuka
-import asuka/watch
+import std/watch
 
 component Folder(dir: string) {
   state changes: [string] = []
@@ -511,7 +511,7 @@ freeze it. For data:
   query's fetches; `icloud`'s calls; `document`'s reads and writes;
   `http`'s requests. Their `await` lets the interface go on.
 - **On the main thread, quick**: `sqlite.open` and `db.migrate` (as the
-  app starts); `storage.Value` and `asuka/store`, which read and write
+  app starts); `storage.Value` and `std/store`, which read and write
   the platform's preferences (on Windows and Linux, memory: the file is
   written a moment later).
 

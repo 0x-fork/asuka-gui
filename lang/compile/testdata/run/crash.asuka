@@ -1,6 +1,6 @@
-// asuka/crash without a record (phones, the web, asuka test): what it
+// platform/crash without a record (phones, the web, asuka test): what it
 // keeps is nothing, and reports ends empty.
-import asuka/crash
+import platform/crash
 
 enum CheckoutError: Error {
   /// checkout: no network

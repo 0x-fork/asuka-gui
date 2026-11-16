@@ -181,8 +181,8 @@ func asukaFileURL(_ path: String) -> String {
 
 @MainActor extension AsukaRuntime {
     /// The app's modules (the shell's own): tray, dock, hotkey, apps,
-    /// recent, login. Dialog and shell modules aren't here: asuka/dialog
-    /// and asuka/shell have their own Swift.
+    /// recent, login. Dialog and shell modules aren't here: platform/dialog
+    /// and platform/shell have their own Swift.
     func registerAppModules() {
         registerModule("tray", AsukaTray.shared.methods())
         registerModule("dock", AsukaDock.methods())
@@ -196,7 +196,7 @@ func asukaFileURL(_ path: String) -> String {
         [
             "add": { args, reply in
                 let path = String(decoding: args, as: UTF8.self)
-                guard path.hasPrefix("/") else { return reply(.failure(AsukaModuleError("asuka/recent: not an absolute path"))) }
+                guard path.hasPrefix("/") else { return reply(.failure(AsukaModuleError("platform/recent: not an absolute path"))) }
                 let dc = NSDocumentController.shared
                 dc.noteNewRecentDocumentURL(URL(fileURLWithPath: path))
                 // Read back at once: AppKit coalesces the notes made before
@@ -226,7 +226,7 @@ func asukaFileURL(_ path: String) -> String {
         [
             "set": { args, reply in
                 guard #available(macOS 13.0, *) else {
-                    return reply(.failure(AsukaModuleError("asuka/login: login items need macOS 13 or later")))
+                    return reply(.failure(AsukaModuleError("platform/login: login items need macOS 13 or later")))
                 }
                 guard Bundle.main.bundleIdentifier != nil else { return reply(.failure(asukaNoLoginBundle)) }
                 let s = SMAppService.mainApp
@@ -238,13 +238,13 @@ func asukaFileURL(_ path: String) -> String {
                     } else if on {
                         do { try s.register() } catch {
                             if s.status != .requiresApproval {
-                                throw AsukaModuleError("asuka/login: the login item wasn't registered: " + asukaErrorText(error))
+                                throw AsukaModuleError("platform/login: the login item wasn't registered: " + asukaErrorText(error))
                             }
                         }
                     } else {
                         do { try s.unregister() } catch {
                             if s.status == .enabled {
-                                throw AsukaModuleError("asuka/login: the login item wasn't removed: " + asukaErrorText(error))
+                                throw AsukaModuleError("platform/login: the login item wasn't removed: " + asukaErrorText(error))
                             }
                         }
                     }
@@ -273,4 +273,4 @@ func asukaFileURL(_ path: String) -> String {
 }
 
 /// An app without a bundle (a plain executable) has no login item.
-let asukaNoLoginBundle = AsukaModuleError("asuka/login: a login item needs the app's bundle: build it with asuka build, or run it with asuka dev")
+let asukaNoLoginBundle = AsukaModuleError("platform/login: a login item needs the app's bundle: build it with asuka build, or run it with asuka dev")

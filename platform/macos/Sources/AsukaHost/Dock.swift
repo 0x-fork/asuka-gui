@@ -1,4 +1,4 @@
-// asuka/dock on a Mac. The progress is drawn on the Dock tile, under its
+// platform/dock on a Mac. The progress is drawn on the Dock tile, under its
 // badge: the tile's content view becomes the app's icon with a bar over its
 // bottom, a track and a fill. NSProgressIndicator doesn't draw in a Dock
 // tile (the tile renders its view offscreen, once per display), so the bar

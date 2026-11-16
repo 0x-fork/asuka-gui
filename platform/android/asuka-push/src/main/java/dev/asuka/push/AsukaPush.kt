@@ -14,7 +14,7 @@ import dev.asuka.AsukaRuntime
 import dev.asuka.withPermission
 import org.json.JSONObject
 
-/** asuka/push's registration: notifications allowed (Android 13's prompt), then FCM's token. */
+/** platform/push's registration: notifications allowed (Android 13's prompt), then FCM's token. */
 class AsukaPushPlugin : AsukaPlugin {
     override fun register(rt: AsukaRuntime) {
         AsukaPushHub.register = { r, reply ->
@@ -46,15 +46,15 @@ class AsukaPushPlugin : AsukaPlugin {
  * message itself, and a tap opens the app with its data as extras
  * (AsukaActivity hands them to AsukaPushHub); this sees data messages, and
  * every message while the app is in the foreground. It shows them with
- * asuka/notify's builder: a notification message, and a data message with
+ * platform/notify's builder: a notification message, and a data message with
  * a "title" or "body" (its "channel", "category", "thread", "image"...).
- * With push.rewrite (asuka/push's manifest gives the app's the
+ * With push.rewrite (platform/push's manifest gives the app's the
  * dev.asuka.push.rewrite meta-data), the app rewrites each first, started
  * without a screen if it isn't running.
  */
 class AsukaPushService : FirebaseMessagingService() {
     override fun onMessageReceived(m: RemoteMessage) {
-        // asuka/liveactivity's: a server starts, updates or ends an activity.
+        // platform/liveactivity's: a server starts, updates or ends an activity.
         if (m.data["asuka.liveActivity"] != null) {
             AsukaLiveActivities.remote(this, m.data)
             return
@@ -83,7 +83,7 @@ class AsukaPushService : FirebaseMessagingService() {
         /** What Firebase gives onMessageReceived is about 20 seconds: the rewrite has half. */
         const val REWRITE_SECONDS = 10L
 
-        /** The message as it came, as the notification to show (a std/notify's Spec). */
+        /** The message as it came, as the notification to show (a sdk/notify's Spec). */
         fun specOf(message: JSONObject): JSONObject = JSONObject()
             .put("id", message.optString("id")).put("title", message.optString("title")).put("body", message.optString("body"))
             .put("subtitle", message.optString("subtitle")).put("data", message.optJSONObject("data") ?: JSONObject())

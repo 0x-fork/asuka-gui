@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// An app that imports asuka/purchase gets Play Billing's permission (its
-// library is asuka/purchase's Gradle module's, not the host's); one that
+// An app that imports platform/purchase gets Play Billing's permission (its
+// library is platform/purchase's Gradle module's, not the host's); one that
 // doesn't, none.
 func TestPurchaseFeature(t *testing.T) {
 	var c appConfig
@@ -17,8 +17,8 @@ func TestPurchaseFeature(t *testing.T) {
 	if len(c.androidModules) > 0 || !slices.Contains(c.Android.Permissions, "com.android.vending.BILLING") {
 		t.Fatalf("modules %v, permissions %v", c.androidModules, c.Android.Permissions)
 	}
-	if b, err := os.ReadFile(filepath.Join("..", "..", "std", "purchase", "android", "build.gradle.kts")); err != nil || !strings.Contains(string(b), "com.android.billingclient:billing") {
-		t.Errorf("asuka/purchase's module hasn't Play Billing: %v", err)
+	if b, err := os.ReadFile(filepath.Join("..", "..", "sdk", "purchase", "android", "build.gradle.kts")); err != nil || !strings.Contains(string(b), "com.android.billingclient:billing") {
+		t.Errorf("platform/purchase's module hasn't Play Billing: %v", err)
 	}
 	var none appConfig
 	importStd(t, &none, "")

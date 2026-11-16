@@ -78,7 +78,7 @@ func sysTextNow(a *App, label string) string {
 // gone, it lets the keys go.
 func TestShellHotkeyPackage(t *testing.T) {
 	a := Run(t, `
-		import asuka/hotkey
+		import platform/hotkey
 		state presses = 0
 		state on = true
 		app {

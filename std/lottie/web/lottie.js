@@ -1,4 +1,4 @@
-// asuka/lottie on the web: lottie-web (vendor/: its light build, 5.12.2,
+// std/lottie on the web: lottie-web (vendor/: its light build, 5.12.2,
 // without expressions), loaded when a view is first made, drawing SVG.
 // lottie-web plays its frames and reports them (a change of at least
 // 1/200 of the animation), which a progress set back moves nothing;

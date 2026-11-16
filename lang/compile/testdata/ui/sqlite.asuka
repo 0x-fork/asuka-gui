@@ -1,6 +1,6 @@
 // Notes in SQLite, as examples/notes keeps them: a live query feeds the
 // list, following what's typed in the search and what's written.
-import asuka/sqlite
+import std/sqlite
 
 struct Note {
   id: int

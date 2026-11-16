@@ -276,7 +276,7 @@ var Elements = []Element{
 		{Name: "title", Type: "string", Doc: "the picker's title"},
 	}, Events: []Event{{Name: "change", Params: []Param{{"color", "Color"}}}}, Doc: "a swatch of a color that opens the platform's picker (UIColorWell; a Material dialog of a palette on Android)"},
 	{Name: "DatePicker", Keys: []Key{
-		{Name: "value", Type: "int", Bind: true, Event: "change", Doc: "the instant chosen, in milliseconds since 1970 (asuka/time's time.Picker binds a Time)"},
+		{Name: "value", Type: "int", Bind: true, Event: "change", Doc: "the instant chosen, in milliseconds since 1970 (std/time's time.Picker binds a Time)"},
 		{Name: "mode", Type: "DateMode", Doc: "a date, a time of day, or both"},
 		{Name: "min", Type: "int", Doc: "the earliest choice, in milliseconds since 1970 (0: none)"},
 		{Name: "max", Type: "int", Doc: "the latest choice (0: none)"},
@@ -487,7 +487,7 @@ var Elements = []Element{
 		{Name: "child", Type: "bool", Doc: "belongs to the window it's declared in: stays above it, closes with it"},
 		{Name: "modal", Type: "bool", Doc: "a child that blocks the window it's declared in while it's open (on a Mac, a sheet of it)"},
 		{Name: "panel", Type: "bool", Doc: "a launcher's or a palette's window: frameless, above every app's windows, out of the taskbar, taking the keyboard without bringing the app to the front; Escape and a click elsewhere close it (on closeRequest: hide it instead)"},
-		{Name: "flyout", Type: "Flyout?", Doc: "a frameless window hanging from an anchor (a tray icon: asuka/tray's anchor(id); or a rectangle of the window it's declared in), closed as it loses the keyboard"},
+		{Name: "flyout", Type: "Flyout?", Doc: "a frameless window hanging from an anchor (a tray icon: platform/tray's anchor(id); or a rectangle of the window it's declared in), closed as it loses the keyboard"},
 		{Name: "fitContent", Type: "bool", Doc: "sized to its content, within its least and most size, following it as it changes"},
 		{Name: "clickThrough", Type: "bool", Doc: "the mouse goes through it to what's behind (an overlay's, a HUD's)"},
 		{Name: "menuBar", Type: "bool", Doc: "shows the app's MenuBar as the main window does (Windows' menu bar, Linux's main menu; a Mac's is the app's)"},

@@ -347,12 +347,12 @@ grouped lists on iOS and Material 3's on Android.
 ## Values that persist
 
 State lives as long as the app runs. The store
-(`import asuka/store`) keeps small values, such as settings, across
+(`import std/store`) keeps small values, such as settings, across
 launches: `read` gives the kept value (or a default), `write` keeps one.
 An effect keeps the state's every value:
 
 ```asuka
-import asuka/store
+import std/store
 
 state units = store.read("units", "metric")
 effect { store.write("units", units) }

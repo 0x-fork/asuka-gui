@@ -1,4 +1,4 @@
-// asuka/http on Windows and Linux: the shared HTTP client (asuka_fetch:
+// std/http on Windows and Linux: the shared HTTP client (asuka_fetch:
 // WinHTTP, libsoup 3), with the system's proxy settings and
 // certificates, on a thread of the request's.
 #include "http.asuka.h"

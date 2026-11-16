@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// asuka/purchase's StoreKit configuration file (asuka.toml's
+// platform/purchase's StoreKit configuration file (asuka.toml's
 // ios.storekit): asuka dev's build for the simulator carries it, as
 // AsukaStoreKit.storekit, and launched by asuka dev the host sells from it
 // (platform/ios's AsukaStoreKitTest), as an app run from Xcode with the

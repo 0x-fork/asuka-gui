@@ -8,8 +8,8 @@ import AsukaOps
 #endif
 
 /// The share extension of an app with a share sheet of its own
-/// (asuka/sharesheet): its principal class, which runs the app in the
-/// extension (ASUKA_SHARE_SHEET: asuka/platform's process is "share",
+/// (platform/sharesheet): its principal class, which runs the app in the
+/// extension (ASUKA_SHARE_SHEET: platform/host's process is "share",
 /// sharesheet.active() true, and the app block shows the sheet). iOS
 /// shows it as a sheet over the app that shares. What's shared is
 /// collected (AsukaShareCollector: files into the App Group) and sent to
@@ -94,7 +94,7 @@ enum AsukaShared {
         return info["AsukaAppGroup"] as? String
     }
 
-    /// The directory the app keeps its files in (asuka/fs's appDir):
+    /// The directory the app keeps its files in (std/fs's appDir):
     /// Application Support, the App Group's when the app has extensions
     /// that run it. The first time the app runs with them, what it kept
     /// in its own moves there.

@@ -1,5 +1,5 @@
-import asuka/login
-import asuka/recent
+import platform/login
+import platform/recent
 
 component Prefs {
   Text("prefs")

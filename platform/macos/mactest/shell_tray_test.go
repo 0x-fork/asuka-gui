@@ -39,7 +39,7 @@ func shellItems(v any) []map[string]any {
 // its run; its title follows its binding; gone, it leaves the menu bar.
 func TestShellTray(t *testing.T) {
 	a := Run(t, `
-		import asuka/tray
+		import platform/tray
 		state clicks = 0
 		state chose = ""
 		state speed = "1.0 MB/s"
@@ -115,7 +115,7 @@ func TestShellTray(t *testing.T) {
 // any click. Without an image or a symbol, the icon is the app's.
 func TestShellTrayMenuOnClick(t *testing.T) {
 	a := Run(t, `
-		import asuka/tray
+		import platform/tray
 		app {
 		  tray.Tray("star") { symbol: "star"; menu: [.button(title: "Open", run: () => {})] }
 		  tray.Tray("plain") { title: "Plain" }
@@ -148,7 +148,7 @@ func TestShellTrayImage(t *testing.T) {
 	png.Encode(f, img)
 	f.Close()
 	a := Run(t, `
-		import asuka/tray
+		import platform/tray
 		app {
 		  tray.Tray("wide") { image: "`+path+`"; title: "Wide" }
 		  tray.Tray("mask") { image: "`+path+`"; template: true }
@@ -194,7 +194,7 @@ func TestShellTrayImage(t *testing.T) {
 // app's items, a chosen one its run.
 func TestShellDockMenu(t *testing.T) {
 	a := Run(t, `
-		import asuka/tray
+		import platform/tray
 		state chose = ""
 		app {
 		  tray.DockMenu {

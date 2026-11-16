@@ -1,7 +1,7 @@
 #if canImport(UIKit)
 import UIKit
 
-/// What asuka/screen sets of the app's screen: the orientation lock and
+/// What platform/screen sets of the app's screen: the orientation lock and
 /// the status bar, which the root and the screens' controllers read.
 @MainActor public enum AsukaScreen {
     /// The app's lock (screen.lock); nil: Info.plist's orientations.
@@ -11,7 +11,7 @@ import UIKit
 
     /// Locks the app to an orientation, as screen.Orientation numbers
     /// them: any (unlocked), portrait, portraitUp, landscape,
-    /// landscapeLeft, landscapeRight (asuka/screen).
+    /// landscapeLeft, landscapeRight (platform/screen).
     public static func setLock(_ o: Int, _ runtime: AsukaRuntime? = nil) {
         let rt = runtime ?? .shared
         let iPad = UIDevice.current.userInterfaceIdiom == .pad
@@ -31,7 +31,7 @@ import UIKit
     }
 
     /// The status bar's style (auto, light, dark) and whether it hides
-    /// (asuka/screen).
+    /// (platform/screen).
     public static func setBars(style: Int, hideStatus: Bool, _ runtime: AsukaRuntime? = nil) {
         let rt: AsukaRuntime? = runtime ?? .shared
         statusBarStyle = style == 1 ? .lightContent : style == 2 ? .darkContent : .default

@@ -1,4 +1,4 @@
-// asuka/http on the web: fetch, aborted when the call is cancelled.
+// std/http on the web: fetch, aborted when the call is cancelled.
 export function makeTransport() {
   return {
     async send(signal, method, url, headers, body, timeout) {

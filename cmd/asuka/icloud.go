@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// asuka/icloud: what an app that uses it is given. The key-value
+// platform/icloud: what an app that uses it is given. The key-value
 // store's entitlement (its identifier, the team's prefix and the app's
 // ID), for an app that uses the store (its manifest's members that derive
 // icloudKeyValue: Value, remove, the account); for one that uses the
@@ -39,10 +39,10 @@ var icloudEntitlements = []string{entKVStore, entContainers, entUbiquity, entSer
 
 // icloudWhat says what an entitlement is for, when a profile lacks it.
 var icloudWhat = map[string]string{
-	entKVStore:    "iCloud's key-value storage (asuka/icloud)",
-	entContainers: "iCloud Documents, with asuka.toml's icloud containers (asuka/icloud)",
-	entUbiquity:   "iCloud Documents, with asuka.toml's icloud containers (asuka/icloud)",
-	entServices:   "iCloud Documents, with asuka.toml's icloud containers (asuka/icloud)",
+	entKVStore:    "iCloud's key-value storage (platform/icloud)",
+	entContainers: "iCloud Documents, with asuka.toml's icloud containers (platform/icloud)",
+	entUbiquity:   "iCloud Documents, with asuka.toml's icloud containers (platform/icloud)",
+	entServices:   "iCloud Documents, with asuka.toml's icloud containers (platform/icloud)",
 }
 
 // icloudContainers are the app's container IDs, its default first.
@@ -187,7 +187,7 @@ func signICloud(t *iosToolchain, work, ent, team string, need *appConfig, profil
 	json.Unmarshal(js, &have)
 	set, remove, err := narrowICloud(have, need, team)
 	if err != nil {
-		return fmt.Errorf("the profile %q lacks %s, which asuka/icloud needs: turn on the iCloud capability for %s at developer.apple.com (Identifiers), with iCloud Documents and its containers, then make the profile again", profile, err, need.ID)
+		return fmt.Errorf("the profile %q lacks %s, which platform/icloud needs: turn on the iCloud capability for %s at developer.apple.com (Identifiers), with iCloud Documents and its containers, then make the profile again", profile, err, need.ID)
 	}
 	for _, k := range remove {
 		if err := t.run(work, nil, "plutil", "-remove", plistKey(k), ent); err != nil {

@@ -1,4 +1,4 @@
-// asuka/shader on Windows: a child window of the package's; the program's
+// std/shader on Windows: a child window of the package's; the program's
 // HLSL (compiled with the app: internal/shadercode's HLSL) drawn on the
 // GPU with Direct3D 11, off the main thread. One device (the GPU's, or
 // WARP where there's none) draws every shader's frames, one at a time

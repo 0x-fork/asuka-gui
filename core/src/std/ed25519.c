@@ -1,5 +1,5 @@
-// ed25519.c: Ed25519 signatures (RFC 8032), for asuka/crypto and the
-// updater's checks of what it downloads (asuka/update). The arithmetic is
+// ed25519.c: Ed25519 signatures (RFC 8032), for std/crypto and the
+// updater's checks of what it downloads (platform/update). The arithmetic is
 // TweetNaCl's (public domain): the field GF(2^255 - 19) in sixteen limbs
 // of 16 bits held in int64_t, points in extended coordinates, scalars
 // reduced mod the group's order L. It's small rather than fast (a

@@ -326,7 +326,7 @@ func TestGitHubRelease(t *testing.T) {
 	}
 }
 
-// asuka/sqlite (std/sqlite) is the sqlite plugin: its manifest's sources
+// std/sqlite is the sqlite plugin: its manifest's sources
 // are there, and an app that imports it, with no dependencies, has the
 // plugin.
 func TestStdSqliteManifest(t *testing.T) {
@@ -344,6 +344,6 @@ func TestStdSqliteManifest(t *testing.T) {
 	}
 	ps, err := appPlugins(projectApp(t, filepath.Join("testdata", "sqliteapp"), nil))
 	if err != nil || len(ps) != 1 || ps[0].m.Name != "sqlite" {
-		t.Fatalf("an app importing asuka/sqlite: %v %v", ps, err)
+		t.Fatalf("an app importing std/sqlite: %v %v", ps, err)
 	}
 }

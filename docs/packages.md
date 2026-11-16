@@ -112,7 +112,10 @@ the package's `pub` API with the last version's: removing a declaration
 or changing it in a way that breaks its users needs a new major
 version.
 
-## The standard library
+## The standard library and the platform SDK
 
-`asuka/http`, `asuka/json`, `asuka/storage` and the rest come with the
-CLI, versioned with it: they need no `asuka add`.
+`std/http`, `std/json`, `std/storage` and the rest of the standard
+library, and `platform/camera`, `platform/notify` and the rest of the
+platform SDK, come with the CLI, versioned with it: they need no `asuka
+add`. A package can't be named under `std/` or `platform/` (`asuka pkg
+publish` and `asuka add` refuse it).

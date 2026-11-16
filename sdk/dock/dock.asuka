@@ -1,0 +1,63 @@
+// Package platform/dock is the app's icon on a desktop: a progress on it
+// (macOS's Dock tile, Windows' taskbar button, the launcher on Linux
+// where it has Unity's launcher API), and asking for the user's
+// attention (the Dock's bounce, the taskbar's flash, the window's
+// urgency hint). Elsewhere (a phone, the web) it does nothing.
+//
+//   dock.setProgress(dock.Progress(value: 0.4))
+//   dock.setProgress(dock.Progress())      // off
+//   dock.requestAttention(.critical)
+
+import platform/host
+
+/// What a progress says.
+pub enum State {
+  /// No progress: off.
+  none
+  normal
+  /// Under way, how far not known.
+  indeterminate
+  paused
+  error
+}
+
+/// A progress on the app's icon.
+pub struct Progress {
+  /// From 0 to 1.
+  value: float = 0
+  /// .none with a value above 0 is .normal.
+  state: State = .none
+}
+
+/// Shows p on the app's icon, or takes it off (Progress()).
+pub fn setProgress(p: Progress) {
+  var state = p.state
+  let value = max(0.0, min(1.0, p.value))
+  if state == .none && value > 0 {
+    state = .normal
+  }
+  let s = match state {
+    .none => 0
+    .normal => 1
+    .indeterminate => 2
+    .paused => 3
+    .error => 4
+  }
+  host.send("dock", "progress", host.u8(s).concat(host.f64(value)))
+}
+
+/// How hard to ask.
+pub enum Attention {
+  /// Once: the Dock bounces once, the taskbar flashes until the app's
+  /// window is active.
+  informational
+  /// Until the app is active.
+  critical
+}
+
+/// Asks for the user's attention, while the app isn't the active one; it
+/// stops as the app becomes active.
+pub fn requestAttention(kind: Attention = .informational) {
+  let k = if kind == .critical { 1 } else { 0 }
+  host.send("dock", "attention", host.u8(k))
+}

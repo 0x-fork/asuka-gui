@@ -1,4 +1,4 @@
-// modules.c: the host's own modules, what asuka/platform's call and send
+// modules.c: the host's own modules, what platform/host's call and send
 // reach (the Call command on the root, answered with the Result event):
 // found by name and answered once.
 #include "modules.h"
@@ -169,7 +169,7 @@ static void run(wh_reply *r, ak_span module, ak_span method, const uint8_t *args
 }
 
 // wh_call is the Call command on the root: u32 call id, string module,
-// string method, then the call's bytes (asuka/platform's call and send;
+// string method, then the call's bytes (platform/host's call and send;
 // a send's answer goes nowhere: the core keeps no call for it).
 void wh_call(node *root, const uint8_t *args, size_t len) {
 	if (len < 12) return;

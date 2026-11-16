@@ -1,5 +1,5 @@
 // Files shows a folder and keeps it up to date as files appear, change,
-// are renamed and go (asuka/watch): the app's own folder at first, which
+// are renamed and go (std/watch): the app's own folder at first, which
 // New File and swiping a file away change, or, on a desktop, a folder
 // chosen with Choose Folder…, which any app may change. What changed
 // since the folder opened is listed below it.
@@ -7,10 +7,10 @@
 //   asuka dev examples/files
 //   asuka dev --platform ios examples/files
 
-import asuka/dialog
-import asuka/fs
-import asuka/time
-import asuka/watch
+import platform/dialog
+import std/fs
+import std/time
+import std/watch
 
 struct Entry {
   name: string

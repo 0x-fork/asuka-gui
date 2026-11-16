@@ -1,15 +1,15 @@
-// Package asuka/store keeps small values (settings, the last tab, a
+// Package std/store keeps small values (settings, the last tab, a
 // draft) across launches, in each platform's own preferences:
 // UserDefaults on iOS and macOS, SharedPreferences on Android,
 // localStorage on the web, a file in the app's data directory on
 // Windows and Linux. Values are kept as JSON, so any value JSON can say
 // (numbers, strings, arrays, structs) works. For records, use a
-// database (asuka/sqlite).
+// database (std/sqlite).
 //
 //   state units = store.read("units", "metric")
 //   effect { store.write("units", units) }
 
-import asuka/json
+import std/json
 
 /// The platform's preferences: strings by key.
 native interface Prefs {

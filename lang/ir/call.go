@@ -1158,7 +1158,7 @@ func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call, dst int) int {
 // from its markup, shader.Program's code from its source. A hook gives
 // the fields it makes by name (a string, []byte, float64 or int64), or an
 // error, which is the compiler's (at the literal). lang/compile registers
-// them, by the struct's package path and name ("asuka/svg.Icon").
+// them, by the struct's package path and name ("std/svg.Icon").
 var StructHooks = map[string]func(source string) (map[string]any, error){}
 
 // structHook fills the fields hook makes, for a literal whose first

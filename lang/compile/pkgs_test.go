@@ -25,10 +25,10 @@ func TestPackages(t *testing.T) {
 func TestPackageErrors(t *testing.T) {
 	res := Files(map[string][]byte{"a.asuka": []byte(`
 import ./missing
-import asuka/nope
+import std/nope
 `)}, nil)
 	got := res.Err()
-	if got == nil || !strings.Contains(got.Error(), "can't read package ./missing") || !strings.Contains(got.Error(), "no package asuka/nope") {
+	if got == nil || !strings.Contains(got.Error(), "can't read package ./missing") || !strings.Contains(got.Error(), "no package std/nope") {
 		t.Fatalf("got %v", got)
 	}
 	res2, err := Dir("testdata/pkgs/app", nil)
@@ -54,7 +54,7 @@ func TestProjectImports(t *testing.T) {
 	write("charts/asuka.toml", "name = \"@acme/line-charts\"\nversion = \"1.0.0\"\n")
 	write("charts/charts.asuka", "pub fn twice(n: int) -> int = n * 2\n")
 	write("app/asuka.toml", "name = \"app\"\n\n[dependencies]\n\"@acme/line-charts\" = \"file:../charts\"\n")
-	write("app/app.asuka", `import asuka/store
+	write("app/app.asuka", `import std/store
 import @acme/line-charts as charts
 
 test "imports" {
@@ -86,11 +86,32 @@ test "imports" {
 	}
 }
 
+// The asuka/ prefix is retired: an import of it says what the package is
+// now, the standard library's or the platform SDK's.
+func TestRetiredPrefix(t *testing.T) {
+	for imp, want := range map[string]string{
+		"asuka/json":     "asuka/json is std/json now",
+		"asuka/http":     "asuka/http is std/http now",
+		"asuka/camera":   "asuka/camera is platform/camera now",
+		"asuka/platform": "asuka/platform is platform/host now",
+		"asuka/nope":     "no package asuka/nope: the asuka/ prefix is retired",
+	} {
+		res := Files(map[string][]byte{"a.asuka": []byte("import " + imp + "\n")}, nil)
+		if got := res.Err(); got == nil || !strings.Contains(got.Error(), want) {
+			t.Errorf("import %s: %v, want %q", imp, got, want)
+		}
+	}
+	res := Files(map[string][]byte{"a.asuka": []byte("import std/json\nimport platform/device\n\nfn f() -> string = json.encode(1)\n")}, nil)
+	if err := res.Err(); err != nil {
+		t.Errorf("std/json and platform/device: %v", err)
+	}
+}
+
 // A standard library package's native fn is the runtime's builtin of
 // its package and name (here str.len, time.sleep); others can't have one.
 func TestNativeFn(t *testing.T) {
-	res := Files(map[string][]byte{"a.asuka": []byte(`import asuka/str
-import asuka/time
+	res := Files(map[string][]byte{"a.asuka": []byte(`import std/str
+import std/time
 
 test "native fns" {
   print(str.len("héllo"))
@@ -99,8 +120,8 @@ test "native fns" {
   print(f("ab"))
 }
 `)}, &Options{Packages: map[string]map[string][]byte{
-		"asuka/str":  {"str.asuka": []byte("pub native fn len(s: string) -> int\n")},
-		"asuka/time": {"time.asuka": []byte("pub native async fn sleep(d: Duration)\n")},
+		"std/str":  {"str.asuka": []byte("pub native fn len(s: string) -> int\n")},
+		"std/time": {"time.asuka": []byte("pub native async fn sleep(d: Duration)\n")},
 	}})
 	if err := res.Err(); err != nil {
 		t.Fatal(err)

@@ -11,7 +11,7 @@ import (
 	"github.com/egoist/asuka/lang/compile"
 )
 
-// asuka/camera's Linux C on the test host: a camera of GStreamer's test
+// platform/camera's Linux C on the test host: a camera of GStreamer's test
 // pattern with a QR code drawn on it (ASUKA_CAMERA_SOURCE), shown in a
 // View, photographed, recorded with and without sound (a tone for the
 // microphone), its code read by zbar; take's dialog shown and cancelled;
@@ -52,8 +52,8 @@ func TestStdLinuxCamera(t *testing.T) {
 	}
 
 	t.Run("shown", func(t *testing.T) {
-		got := run(t, `import asuka/camera
-import asuka/fs
+		got := run(t, `import platform/camera
+import std/fs
 
 async fn stopSoon() -> bool {
   await sleep(1s)
@@ -130,7 +130,7 @@ component Probe {
 app { Probe() }
 `, "ASUKA_CAMERA_SOURCE=videotestsrc is-live=true pattern=white ! video/x-raw,width=640,height=480,framerate=30/1 ! qroverlay data=asuka",
 			"ASUKA_CAMERA_SOUND=audiotestsrc is-live=true")
-		expect(t, got, "host: native view asuka/camera#View", "host: no view: CameraError.noView", "host: code qr ASUKA",
+		expect(t, got, "host: native view platform/camera#View", "host: no view: CameraError.noView", "host: code qr ASUKA",
 			"host: photo true true", "host: photo mode: the camera view isn't in video mode", "host: video true true",
 			"host: sound true true true", "host: take cancelled", "host: done")
 		if strings.Contains(got, "host: error") {
@@ -139,7 +139,7 @@ app { Probe() }
 	})
 
 	t.Run("absent", func(t *testing.T) {
-		got := run(t, `import asuka/camera
+		got := run(t, `import platform/camera
 
 component Probe {
   state step = "start"

@@ -1,5 +1,5 @@
 // update.c: the host's "update" module (DESIGN.md, Updates): what only
-// the host can do for asuka/update, which is Asuka (the feed, versions,
+// the host can do for platform/update, which is Asuka (the feed, versions,
 // verifying, extracting and deltas are the package's and the core's).
 // JSON both ways, each method answering once:
 //

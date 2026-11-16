@@ -106,15 +106,15 @@ func buildIOS(app *asukaApp, o *buildOptions) error {
 	// likewise known once its features are.
 	if cfg.widgetExtension() && widgetProf == nil && !o.simulator {
 		if widgetProf, err = o.pickProfile(prof.team, cfg.widgetID(), cfg.IOS.WidgetProfile); err != nil {
-			return fmt.Errorf("the widget extension (asuka/liveactivity's Live Activities): %v", err)
+			return fmt.Errorf("the widget extension (platform/liveactivity's Live Activities): %v", err)
 		}
 		fmt.Printf("asuka: signing the widget extension with %q\n", widgetProf.name)
 	}
-	// The Notification Service Extension (asuka/push's rewrite), whose profile is
+	// The Notification Service Extension (platform/push's rewrite), whose profile is
 	// known once the features are: signed with one of its own, likewise.
 	if cfg.pushRewrite && !o.simulator {
 		if notificationProf, err = o.pickProfile(prof.team, cfg.notificationID(), cfg.IOS.NotificationProfile); err != nil {
-			return fmt.Errorf("the Notification Service Extension (asuka/push's rewrite): %v", err)
+			return fmt.Errorf("the Notification Service Extension (platform/push's rewrite): %v", err)
 		}
 		fmt.Printf("asuka: signing the Notification Service Extension with %q\n", notificationProf.name)
 	}
@@ -742,7 +742,7 @@ func (p *profile) sign(t *iosToolchain, work, bundle, id string, domains []strin
 		}
 	}
 	// The app's keychain group, first (the one items go to), for the app
-	// and its share sheet: asuka/secure's items are the same in both.
+	// and its share sheet: platform/secure's items are the same in both.
 	if keychain != "" {
 		if err := t.run(work, nil, "plutil", "-replace", "keychain-access-groups", "-json", `["`+keychain+`"]`, ent); err != nil {
 			return err

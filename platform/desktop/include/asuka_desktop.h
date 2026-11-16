@@ -25,7 +25,7 @@
 //   - asuka_desktop_spawn: work on a thread of its own (the registry
 //     implements it).
 //   - The host's half gains asuka_desktop_app_version and
-//     asuka_desktop_app_build (asuka.toml's version and build: asuka/device's
+//     asuka_desktop_app_build (asuka.toml's version and build: platform/device's
 //     info), and one rule: asuka_desktop_post is one FIFO with the core's
 //     posts.
 //   - The host's half gains asuka_desktop_view and asuka_desktop_webview:

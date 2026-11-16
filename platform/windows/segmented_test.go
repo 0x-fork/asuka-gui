@@ -30,11 +30,10 @@ func TestSegmented(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := std.Dir()
+	dirs, err := std.Glob("desktop")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dirs, _ := filepath.Glob(filepath.Join(d, "*", "desktop"))
 	for i := range dirs {
 		dirs[i] = filepath.Dir(dirs[i])
 	}

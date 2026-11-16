@@ -1,0 +1,49 @@
+// Package platform/splash keeps the launch screen up while the app gets
+// ready: asuka.toml's splash (an image in the middle of a color) shows
+// from the tap on the icon until the app's first frame or, if the app
+// holds it as it starts, until it hides it: once its data is loaded, its
+// fonts in, the signed-in user known.
+//
+//   [splash]
+//   image = "logo.png"
+//   background = "#ffffff"
+//
+//   app {
+//     task {
+//       splash.hold()
+//       await loadSession()
+//       splash.hide()
+//     }
+//     Root()
+//   }
+//
+// iOS: the launch screen, then a copy of it over the app. Android:
+// Android 12's splash screen. Desktops and the web show no splash: hold
+// and hide do nothing there.
+
+/// The host's splash.
+/// @mainThread
+native interface Launch {
+  /// Keeps it up after the first frame, until hide.
+  fn hold()
+  /// Takes it away (a short fade).
+  fn hide()
+}
+
+// Made once; none where there's no splash.
+let launch = try? Launch()
+
+/// Keeps the splash up after the first frame, until hide: call it as the
+/// app starts (in its root component), before the first frame.
+pub fn hold() {
+  if let l = launch {
+    try? l.hold()
+  }
+}
+
+/// Takes the splash away (a short fade).
+pub fn hide() {
+  if let l = launch {
+    try? l.hide()
+  }
+}

@@ -1,4 +1,4 @@
-// asuka/lottie on iOS and macOS: lottie-ios' LottieAnimationView, driven
+// std/lottie on iOS and macOS: lottie-ios' LottieAnimationView, driven
 // as the View's props say. A timer at the display's rate reports the
 // progress while it plays (a change of at least 1/200 of the animation),
 // which a progress set back moves nothing; reaching the end, not looping,
@@ -47,7 +47,7 @@ import AppKit
 
     init(_ events: ViewEvents) {
         self.events = events
-        // Reduce Motion is the Go side's to follow (asuka/lottie).
+        // Reduce Motion is the Go side's to follow (std/lottie).
         animationView = LottieAnimationView(animation: nil, configuration: LottieConfiguration(reducedMotionOption: .standardMotion))
         animationView.backgroundBehavior = .pauseAndRestore
         #if canImport(UIKit)

@@ -1,4 +1,4 @@
-// asuka/crash in the browser (crash.js): the page's side of the core's
+// platform/crash in the browser (crash.js): the page's side of the core's
 // record: begun with the browser as the device, the run marked alive,
 // uncaught errors as exception records in the inbox (the core told), the
 // core's trap ending the run; and what the page says of the browser.

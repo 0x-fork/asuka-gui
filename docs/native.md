@@ -44,7 +44,8 @@ platform's own dependency manager: SwiftPM and Maven.
 
 ## When you need it
 
-Asuka's components and the standard library (`asuka/...`) cover what
+Asuka's components, the standard library (`std/...`) and the platform
+SDK (`platform/...`) cover what
 most apps show and use; the [comparison with SwiftUI and Expo](parity.md)
 lists them. Write a native package when you need a platform API nothing
 wraps, a vendor's SDK, or a view Asuka doesn't have (a map, a chart, a
@@ -182,7 +183,7 @@ A struct's fields cross in their order; its constants and methods stay
 on Asuka's side. Objects (native interfaces) pass only as a parameter
 or a result, not inside an array, a map or a struct. A `Ref` passes
 only as a parameter: what crosses is the view it holds at the call
-(asuka/print's `webView(view: Ref, …)` prints the page of the WebView
+(platform/print's `webView(view: Ref, …)` prints the page of the WebView
 put in it with `ref:`), which the platform's code looks up on the main
 thread; it's `nil` when the Ref holds none, or a view the host doesn't
 show (yet). `asuka native
@@ -338,7 +339,7 @@ with the same keys: the app gets it only if its code, or a dependency's,
 refers to that member (a function, a type, a store; `"Type.name"` for a
 type's method or field: a field when the code makes the struct with it,
 assigns it or reads it, not when it's left at its default). A local
-function of the same name doesn't count, nor does a test block. asuka/location's background part is such:
+function of the same name doesn't count, nor does a test block. platform/location's background part is such:
 
 ```toml
 [uses.requestAlways.android]

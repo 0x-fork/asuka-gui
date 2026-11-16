@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- asuka/bluetooth: Bluetooth LE and the companion device chooser, used
-     where the device has them (Google Play still offers the app to one
-     that hasn't). Its permissions are its asuka.toml's: an app's
-     bluetooth.location changes the scan's. -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
-    <uses-feature android:name="android.software.companion_device_setup" android:required="false" />
-</manifest>

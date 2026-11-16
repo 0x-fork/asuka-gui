@@ -2,8 +2,8 @@
 // their arguments and the language shown, which follows the user's
 // languages unless the app chose one, and lays the app out right to left
 // in Arabic.
-import asuka/i18n
-import asuka/time
+import std/i18n
+import std/time
 
 component Inbox {
   state count = 1

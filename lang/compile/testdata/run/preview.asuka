@@ -1,7 +1,7 @@
-// asuka/preview with no platform code (the fake host): no viewer, so show
+// platform/preview with no platform code (the fake host): no viewer, so show
 // throws an unsupported error; no files is nothing to show.
 
-import asuka/preview
+import platform/preview
 
 test "no viewer here" {
   try? await preview.show([])

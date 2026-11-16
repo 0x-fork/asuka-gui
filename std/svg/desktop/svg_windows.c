@@ -1,4 +1,4 @@
-// asuka/svg on Windows: a child window of the package's whose WM_PAINT
+// std/svg on Windows: a child window of the package's whose WM_PAINT
 // fills and strokes the layers as GDI+ paths, antialiased, fitted to it
 // (its pixels: points times the window's DPI); currentColor is the
 // view's color, resolved for the theme shown. A Shape's layers are

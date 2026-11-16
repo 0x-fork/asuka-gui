@@ -518,7 +518,7 @@ import AsukaOps
                                 "minSize": sizeJSON(nw.contentMinSize), "maxSize": sizeJSON(nw.contentMaxSize),
                                 "class": String(describing: type(of: nw))]
         if let u = nw.representedURL { d["file"] = u.path }
-        d["sharingType"] = nw.sharingType.rawValue // asuka/screen's preventCapture
+        d["sharingType"] = nw.sharingType.rawValue // platform/screen's preventCapture
         if let tb = nw.toolbar {
             d["toolbar"] = tb.items.map { it -> [String: Any] in
                 ["id": it.itemIdentifier.rawValue, "label": it.label, "enabled": it.isEnabled, "toolTip": it.toolTip ?? ""]

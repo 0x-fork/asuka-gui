@@ -1,4 +1,4 @@
-import asuka/svg
+import std/svg
 
 /// An account: every window, the forecasts, which windows its card shows,
 /// the account, and what can be done with it.

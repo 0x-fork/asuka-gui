@@ -54,7 +54,7 @@
     return new URL((cfg.assets || "assets").replace(/\/$/, "") + "/" + src.replace(/^\.?\//, ""), scope()).href;
   };
 
-  /** show shows spec (std/notify's Spec), with the app's categories' actions. */
+  /** show shows spec (sdk/notify's Spec), with the app's categories' actions. */
   async function show(spec, o = {}) {
     const categories = (await st.get("categories")) || [];
     const { title, options } = core.notificationOf(spec, {

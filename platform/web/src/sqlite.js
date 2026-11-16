@@ -1,7 +1,7 @@
-// SQLite on the page, for asuka/sqlite: the page's side of its SQLite
+// SQLite on the page, for std/sqlite: the page's side of its SQLite
 // worker (sqlite-worker.js), which runs SQLite's WebAssembly module
 // (the sqlite plugin's asqlite.wasm, which the CLI ships with the apps
-// that use asuka/sqlite) and keeps databases in the origin private file
+// that use std/sqlite) and keeps databases in the origin private file
 // system. The core's calls (core/src/sqlite/sqlite.c on the web) come
 // through core.js: send(id, op, conn, input, answer) posts one to the
 // worker, and its answer comes back to answer(bytes) (none for id 0: a
@@ -42,7 +42,7 @@ export class Client {
 
   fail(why) {
     this.broken = `sqlite: SQLite's worker didn't start: ${why}`;
-    console.error("asuka/sqlite:", this.broken);
+    console.error("std/sqlite:", this.broken);
     const waiting = [...this.waiting.values()];
     this.waiting.clear();
     for (const f of waiting) f(failed(this.broken));

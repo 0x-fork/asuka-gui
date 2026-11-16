@@ -4,12 +4,12 @@
 // page that shows the code to paste (manualRedirect). It asks only to
 // read the account's profile and usage (user:profile), not to use it.
 
-import asuka/crypto
-import asuka/encoding
-import asuka/http
-import asuka/json
-import asuka/time
-import asuka/url
+import std/crypto
+import std/encoding
+import std/http
+import std/json
+import std/time
+import std/url
 
 let oauthClient = "9d1c250a-e61b-44d9-88ed-5944d1962f5e" // Claude Code's
 let authorizeURL = "https://claude.com/cai/oauth/authorize"

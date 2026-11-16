@@ -1,4 +1,4 @@
-// A stub of asuka/sensors.
+// A stub of platform/sensors.
 pub struct Reading {
   x: float
   y: float

@@ -1,7 +1,7 @@
-// asuka/appearance with no platform code (the fake host): the defaults,
+// platform/appearance with no platform code (the fake host): the defaults,
 // no accent, followed while they're read.
 
-import asuka/appearance
+import platform/appearance
 
 component Look {
   let look = appearance.current()

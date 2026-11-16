@@ -1,4 +1,4 @@
-// eds.c: asuka/contacts and asuka/calendar with Evolution Data Server
+// eds.c: platform/contacts and platform/calendar with Evolution Data Server
 // (EDS), the store GNOME's apps share (GNOME Contacts and Calendar,
 // Evolution, the online accounts' address books and calendars): the
 // module's methods as macOS's.
@@ -14,7 +14,7 @@
 // the enabled calendars (their color, account, whether they're writable),
 // "events" each occurrence in the range (EDS expands repeating ones),
 // "add" asks with an alert (the title, the dates, the place) and saves
-// the event in its calendar, or the default. asuka/calendar has no edit
+// the event in its calendar, or the default. platform/calendar has no edit
 // or remove: none here either.
 //
 // EDS's libraries are opened the first time (each optional); its calls
@@ -258,7 +258,7 @@ static bool has_type(const vprop *p, const char *t) {
 }
 
 // label is a phone's or an email's label, of its TYPEs: the label
-// asuka/contacts has on the other platforms ("mobile", "home"...).
+// platform/contacts has on the other platforms ("mobile", "home"...).
 static const char *label(const vprop *p) {
 	if (has_type(p, "CELL")) return "mobile";
 	if (has_type(p, "FAX") && has_type(p, "HOME")) return "home fax";
@@ -273,7 +273,7 @@ static const char *label(const vprop *p) {
 	return "";
 }
 
-// birthday is a BDAY as asuka/contacts has it: YYYY-MM-DD, or --MM-DD
+// birthday is a BDAY as platform/contacts has it: YYYY-MM-DD, or --MM-DD
 // without a year; "" if it's not a date.
 static void birthday(const char *s, char out[16]) {
 	char d[16] = "";
@@ -289,7 +289,7 @@ static void birthday(const char *s, char out[16]) {
 		snprintf(out, 16, "%.4s-%.2s-%.2s", d, d + 4, d + 6);
 }
 
-// A contact as asuka/contacts' JSON, and its name to sort by.
+// A contact as platform/contacts' JSON, and its name to sort by.
 typedef struct {
 	char *json, *name, *key, *subtitle, *haystack;
 } contact_t;

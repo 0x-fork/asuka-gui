@@ -1,6 +1,6 @@
 # 蓝牙
 
-`asuka/bluetooth` 用来和低功耗蓝牙（Bluetooth Low Energy）设备通信，和 react-native-ble-plx、Web Bluetooth 做的事一样：作为中心设备（central），发现设备、连接设备，读写和订阅设备的特征（characteristic）；作为外围设备（peripheral），提供服务、广播自己。iOS 和 macOS 上用的是 Core Bluetooth；Android 上是 BluetoothLeScanner 和 GATT；Windows 上是 WinRT 的 Bluetooth LE；Linux 上是 BlueZ；Chromium 里则是 Web Bluetooth。
+`platform/bluetooth` 用来和低功耗蓝牙（Bluetooth Low Energy）设备通信，和 react-native-ble-plx、Web Bluetooth 做的事一样：作为中心设备（central），发现设备、连接设备，读写和订阅设备的特征（characteristic）；作为外围设备（peripheral），提供服务、广播自己。iOS 和 macOS 上用的是 Core Bluetooth；Android 上是 BluetoothLeScanner 和 GATT；Windows 上是 WinRT 的 Bluetooth LE；Linux 上是 BlueZ；Chromium 里则是 Web Bluetooth。
 
 UUID 是字符串：Bluetooth SIG 的 16 位 UUID 写成四位十六进制数字（`"180d"`），其他的写成完整的 128 位，都用小写。`bluetooth.uuid(u)` 把一个 UUID 写成这种形式，`bluetooth.fullUUID(u)` 写成 128 位。包里也为常用的 UUID 起好了名字：`heartRate`、`battery`、`deviceInformation`、`heartRateMeasurement`、`batteryLevel`、`bodySensorLocation`、`deviceName`、`manufacturerName` 等。
 
@@ -9,7 +9,7 @@ UUID 是字符串：Bluetooth SIG 的 16 位 UUID 写成四位十六进制数字
 `bluetooth.state()` 会被追踪：它是 `.on`、`.off`、`.unauthorized`（用户还没有允许应用使用蓝牙）、`.unsupported`、`.resetting` 或 `.unknown`；在绑定里读取时，它会跟随用户关闭蓝牙或给应用授权。`bluetooth.request()` 在第一次调用时请求权限（iOS 的授权弹窗、Android 12 的“附近的设备”权限），然后返回当时的状态。
 
 ```asuka
-import asuka/bluetooth
+import platform/bluetooth
 
 component Adapter {
   let adapter = bluetooth.state()

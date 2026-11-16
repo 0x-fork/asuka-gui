@@ -17,14 +17,14 @@ import (
 // The shell's system modules the std packages call (System.swift,
 // System2.swift, Documents.swift, Periodic.swift: share, compose,
 // periodic, background, widget, liveActivity), called by name as the
-// packages call them (asuka/platform's call), each call's answer or error
+// packages call them (platform/host's call), each call's answer or error
 // shown in a Text: "label: ok <answer's hex>" (or, as text, "label: ok
 // [<answer>]"), or "label: err <error>". What needs a user's click (a share
 // picker's choice, a composer sent) is checked by its answer's shape and
 // errors.
 
 const sysCallSrc = `
-	import asuka/platform
+	import platform/host
 
 	component Sys(module: string, method: string, args: bytes) {
 	  prop label = ""
@@ -32,7 +32,7 @@ const sysCallSrc = `
 	  state s = "pending"
 	  task {
 	    do {
-	      let b = try await platform.call(module, method, args)
+	      let b = try await host.call(module, method, args)
 	      s = if text { "ok [{b.string()}]" } else { "ok {b.hex()}" }
 	    } catch e {
 	      s = "err {e.message}"
@@ -132,7 +132,7 @@ func TestShellBackgroundTasks(t *testing.T) {
 		  state s = "waiting"
 		  task {
 		    do {
-		      let _ = try await platform.call(module, method, bytes())
+		      let _ = try await host.call(module, method, bytes())
 		      s = "answered"
 		    } catch e {
 		      s = "err {e.message}"
@@ -212,7 +212,7 @@ func TestShellPeriodic(t *testing.T) {
 		  state cancel = false
 		  Column {
 		    Sys("periodic", "schedule", bytes([1])) { label: "bad" }
-		    Sys("periodic", "schedule", platform.str("`+name+`").concat(platform.u32(3600)).concat(platform.u8(3))) { label: "schedule" }
+		    Sys("periodic", "schedule", host.str("`+name+`").concat(host.u32(3600)).concat(host.u8(3))) { label: "schedule" }
 		    Sys("periodic", "next", bytes()) { label: "next" }
 		    Button("Cancel") { on press { cancel = true } }
 		    if cancel { Sys("periodic", "cancel", "`+name+`".bytes()) { label: "cancel" } }

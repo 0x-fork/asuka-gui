@@ -609,7 +609,7 @@ wrong is a diagnostic at its file and line; a translation's missing
 messages are warnings), and compiles them with package i18n
 (`Catalog.CompileWith`): the blob, the keys sorted, each key's arguments
 in its source message's order, each language's number formats and, when
-a message has a date or the app imports asuka/i18n, its dates (CLDR's
+a message has a date or the app imports std/i18n, its dates (CLDR's
 names, and the patterns of every style pair and of the messages'
 skeletons, in 12 and 24 hours). The checker gets `tr` (check.Catalog):
 each source key, its arguments typed by its placeholders (`int`, a
@@ -617,17 +617,17 @@ number for `double` and `num`, a date for `DateTime`, a string
 otherwise). The blob is a string constant; init makes the catalog global
 before anything else, `i18n.catalog(blob.bytes())`, which registers it
 (a reload's replaces the last): its languages become the app's. An app
-without catalogs that imports asuka/i18n gets an implicit one, English's
+without catalogs that imports std/i18n gets an implicit one, English's
 formats and no messages, and no `tr`.
 
 | Source | Lowered |
 |---|---|
 | `tr.inboxTitle(unread: n)` | `i18n.say(catalog, key, (n,), none)`, key the index of `inboxTitle`; the tuple of the arguments in the key's order, of their own kinds: an int or a float for number, plural and selectordinal arguments, an int (nanoseconds since 1970; a `Time`'s instant) for a date, a string otherwise; none without arguments |
-| `i18n.locale()`, `i18n.setLocale(tag)`, `i18n.languages()`, `i18n.isRTL()`, ... (asuka/i18n) | the package's `native fn`s: `i18n.locale`, `i18n.set_locale`, `i18n.languages`, `i18n.is_rtl`, `i18n.region`, `i18n.format_locale`, `i18n.format_number`, `i18n.format_int`, `i18n.format_date`, `i18n.autonym` |
+| `i18n.locale()`, `i18n.setLocale(tag)`, `i18n.languages()`, `i18n.isRTL()`, ... (std/i18n) | the package's `native fn`s: `i18n.locale`, `i18n.set_locale`, `i18n.languages`, `i18n.is_rtl`, `i18n.region`, `i18n.format_locale`, `i18n.format_number`, `i18n.format_int`, `i18n.format_date`, `i18n.autonym` |
 
 `i18n.say` reads the language shown, tracked: a binding that says a
 message follows the language as it follows its arguments, and the
-checker counts a call of tr (and asuka/i18n's natives that read the
+checker counts a call of tr (and std/i18n's natives that read the
 locale) as reading state, so a function that says one is followed too
 and spawn can't call it. A key missing in a language falls back as
 `Catalog.Format` does (its CLDR parent locales, then the source); a key
@@ -773,7 +773,7 @@ builds a `MenuBar`'s children (`ui.lazy`) where a `Menu` made under it
 into the `MenuBar` command at the flush when one of them changed;
 window.c registers a `WindowCloseGuard` (its `when`, its `closeRequest`)
 and a `WindowKeys`' keys with the window they're built in.
-`asuka/tray` is plain Asuka over the `tray` host module (std/tray).
+`platform/tray` is plain Asuka over the `tray` host module (sdk/tray).
 
 In tests, `mountApp()` is CALLB `test.mount_app`, which mounts the
 module's app function on the fake host (the runner gives it with
@@ -795,7 +795,7 @@ is left, and mounts the new one.
 
 ## JSON
 
-`json.decode(text)` (asuka/json), whose T is what's expected of it
+`json.decode(text)` (std/json), whose T is what's expected of it
 (`let notes: [Note] = try json.decode(text)`: the grammar has no type
 arguments in expressions), `json.encode(value, indent: 0)` and the
 network's `.json()` lower to the builtins `json.decode(text, desc)` and
@@ -906,7 +906,8 @@ builtins as the VM does) find the wrappers by name.
 
 ## The standard library's native fns
 
-In a standard library package (`asuka/<name>`, std/), `native fn f(…) ->
+In a standard library or platform SDK package (`std/<name>` in std/,
+`platform/<name>` in sdk/), `native fn f(…) ->
 R` has no body: the runtime implements it as the builtin `<name>.f` (a
 method's `native fn` in `struct T`: `<name>.T.f`, the receiver first). Its
 function's body is CALLB of that builtin with the parameters (AWAIT of
@@ -914,7 +915,7 @@ the future it returns when it's `async`), so it's called, passed and
 compiled as any function. A generic one (`native fn rows<T>(a: bytes) ->
 [T]`) passes, after the parameters, each type argument's descriptor
 (rt/json.h's; `-` for a type JSON can't say), as a string constant of
-its instantiation; asuka/flag's `spec<T>()` gets, instead, what
+its instantiation; std/flag's `spec<T>()` gets, instead, what
 lang/ir/flag.go writes of T as JSON (its fields' kinds, defaults
 written out, doc comments and short names; its commands), and an error
 at the field for what a command line can't say. Other packages reach platform code through
@@ -924,10 +925,10 @@ The builtins are C, in core/src/std (a file and a table per package,
 registered with the rest); the package's Asuka writes the rest of its
 API on them. A builtin makes only what C can without the module's
 shapes: scalars, strings, bytes, and arrays of those (or optionals of
-them); the Asuka side builds its structs (asuka/time's `Time` from an
-instant and an offset, asuka/fs's `Entry` from a name and `[isDir,
+them); the Asuka side builds its structs (std/time's `Time` from an
+instant and an offset, std/fs's `Entry` from a name and `[isDir,
 size, modified]`). A failure is a runtime error, or for typed errors a
-status the Asuka side reads and throws as its own enum (asuka/fs's
+status the Asuka side reads and throws as its own enum (std/fs's
 `FsError`, from the thread's last failure). Builtins may run on spawn's
 threads, so they keep no state that isn't per thread.
 
@@ -965,9 +966,11 @@ starts nothing.
 ## Imports
 
 The compiler (lang/compile) finds each import: `./path` beside the
-importing file's package; `asuka/json` and `asuka/math` in the checker
-itself; any other `asuka/<name>` in std/ (the CLI's
-copy: package std); anything else through the project's asuka.lock
+importing file's package; `std/json`, `std/math` and `std/assets` in
+the checker itself; any other `std/<name>` in std/ and `platform/<name>`
+in sdk/ (the CLI's copies: packages std and sdk, std.Package); an
+`asuka/<name>`, the prefix both had once, is an error that names the
+package's path now; anything else through the project's asuka.lock
 (internal/pkgs.Imports), by the importing package's dependencies, so
 two packages may import different majors under one name. A package's
 symbols are qualified by its import path (a dependency's relative

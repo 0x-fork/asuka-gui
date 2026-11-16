@@ -61,7 +61,7 @@ fn send() {}
 
 - `Button` はタイトルを読み上げます。アイコンだけのボタンには `label` を付けてください。プラットフォームが自分で名前を付けるシンボルはごく一部で、Android では英語の名前しかありません。
 - `TextField` と `Toggle`（チェックボックスも含む）にも、`label: "Email"` のように `label` を指定できます。ラベルはコントロール自体に付けてください。名前は入力内容やチェック状態とは別に扱われ、編集や切り替えもそのまま行えます。Android では、テキストフィールドのラベルはアクセシビリティのヒント（hint）になり、TalkBack はそれをフィールドの名前として読み上げます。
-- `Image` の `label` はその画像の説明です。`label` がなければ装飾として扱われます。[`asuka/svg`](stdlib.md) のアイコンにも同じように `label` を付けられます。
+- `Image` の `label` はその画像の説明です。`label` がなければ装飾として扱われます。[`std/svg`](stdlib.md) のアイコンにも同じように `label` を付けられます。
 - `Symbol` は自分のラベルを持ちません。意味のあるシンボルは、`label` と `.image` を指定した `View` で包んでください。
 - `hint` は、iOS ではアクセシビリティのヒントとして少し間を置いてから読み上げられ（ユーザーはヒントをオフにできます）、Android では状態の説明（state description）としてラベルと一緒に読み上げられます。macOS ではビューのヘルプ（`accessibilityHelp`）、Windows ではヘルプテキスト、Linux ではアクセシブルな説明（accessible description）、Web では `aria-description` になります。「メッセージを開きます」のように短くしてください。
 
@@ -151,7 +151,7 @@ component Saved {
 
 ## 見出し
 
-スクリーンリーダーのユーザーは見出しから見出しへ移動します（VoiceOver のローター、TalkBack の見出し単位のナビゲーション、NVDA と Orca の H キー、ブラウザーのスクリーンリーダーの見出し一覧）。セクションのタイトルは見出しとしてマークしてください。`role: .header` を指定した `RichText` か、`label` とこのロールを指定した `View` を使います。[`asuka/markdown`](stdlib.md) は見出しを最初からマークします。
+スクリーンリーダーのユーザーは見出しから見出しへ移動します（VoiceOver のローター、TalkBack の見出し単位のナビゲーション、NVDA と Orca の H キー、ブラウザーのスクリーンリーダーの見出し一覧）。セクションのタイトルは見出しとしてマークしてください。`role: .header` を指定した `RichText` か、`label` とこのロールを指定した `View` を使います。[`std/markdown`](stdlib.md) は見出しを最初からマークします。
 
 ```asuka
 component Headings {

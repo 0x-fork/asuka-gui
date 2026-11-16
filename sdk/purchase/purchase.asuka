@@ -1,0 +1,1160 @@
+// Package platform/purchase sells in the app: consumables (coins, a hint),
+// non-consumables (a level, "Pro" for life), subscriptions that renew,
+// and those that don't. Each platform's own store: the App Store
+// (StoreKit 2) on iOS and macOS; Google Play (the Play Billing Library)
+// on Android; the Microsoft Store on Windows, for an app installed from
+// it; Google Play through the Digital Goods API in a Trusted Web
+// Activity. Linux and other browsers have no store: available() is false
+// and the rest throw notAvailable.
+//
+//   let coins = purchase.Item(id: "coins_100", kind: .consumable)
+//   purchase.declare([coins])
+//   for await e in purchase.events() {        // from the app's start
+//     if let t = e.transaction { deliver(t); try? await t.finish() }
+//   }
+//   let r = try await purchase.buy(coins)
+//   let owned = purchase.owned()               // tracked: owned.has("pro")
+//
+// Buy answers what the purchase came to: bought (with its transaction),
+// pendingApproval (Ask to Buy, a payment Play waits for: the transaction
+// comes later, through events()) or cancelled. events() gives the rest:
+// a pending purchase completed, one made outside the app, a renewal, a
+// refund, those left unfinished from before (kept from the app's start
+// until it reads them). Deliver a transaction's content, then finish
+// it: until then the store gives it again; finishing a consumable
+// consumes it, so it can be bought again.
+//
+// Tests sell from a fake: purchase.fake() gives the package a FakeStore.
+
+import std/time
+
+/// What kind of product it is.
+pub enum Kind {
+  /// Bought again and again, used up (coins). Finishing consumes it.
+  consumable
+  /// Bought once, kept (a level, Pro for life).
+  nonConsumable
+  /// A subscription that renews until cancelled.
+  autoRenewable
+  /// A subscription for a time, which the app ends.
+  nonRenewing
+}
+
+/// A product the app sells: its ID in the store (App Store Connect's,
+/// Play Console's, Partner Center's add-on's), and its kind (Play doesn't
+/// know a consumable from a non-consumable: the app says).
+pub struct Item {
+  id: string
+  kind: Kind = .nonConsumable
+}
+
+/// A Period's unit.
+pub enum PeriodUnit {
+  day
+  week
+  month
+  year
+}
+
+/// How long a subscription lasts before it renews: count units.
+pub struct Period {
+  unit: PeriodUnit = .month
+  count: int = 1
+}
+
+/// How an offer's phase is paid.
+pub enum Mode {
+  /// The price each period.
+  recurring
+  /// Nothing, for the phase.
+  freeTrial
+  /// A lower price each period, for cycles periods.
+  payAsYouGo
+  /// One lower price for the phase.
+  payUpFront
+}
+
+/// One price of an offer: cycles periods at price.
+pub struct Phase {
+  price: string = ""
+  priceMicros: int = 0
+  currency: string = ""
+  period: Period = Period()
+  cycles: int = 1
+  mode: Mode = .recurring
+}
+
+/// What kind of offer it is.
+pub enum OfferType {
+  /// Play's base plan.
+  base
+  /// A new subscriber's.
+  introductory
+  /// Apple's for existing or lapsed subscribers (signed by the app's
+  /// server); Play's developer-determined offers.
+  promotional
+  /// Apple's for lapsed subscribers.
+  winBack
+  /// An offer code redeemed.
+  code
+  /// Play's offer on a base plan.
+  offer
+  /// Play's purchase option of a one-time product.
+  oneTime
+}
+
+/// A way to buy a subscription: Apple's introductory, promotional and
+/// win-back offers; Play's base plans and their offers, each with the
+/// token buy takes.
+pub struct Offer {
+  id: string = ""
+  type: OfferType = .base
+  /// Play's.
+  basePlan: string = ""
+  tags: [string] = []
+  phases: [Phase] = []
+  /// Play's offer token.
+  token: string = ""
+}
+
+/// What a subscription's product has.
+pub struct Subscription {
+  /// Apple's subscription group (on Play, the product); level 1 is the
+  /// highest.
+  group: string = ""
+  level: int = 0
+  period: Period = Period()
+  /// Those the user can buy it with.
+  offers: [Offer] = []
+  /// The user can have the introductory offer.
+  introEligible: bool = false
+}
+
+/// A product as the store sells it, in the user's country and language.
+pub struct Product {
+  id: string = ""
+  kind: Kind = .nonConsumable
+  title: string = ""
+  description: string = ""
+  /// For display, in the store's currency: "$4.99".
+  price: string = ""
+  /// In millionths of the currency's unit (4990000 is 4.99); currency
+  /// its ISO 4217 code.
+  priceMicros: int = 0
+  currency: string = ""
+  subscription: Subscription? = none
+  /// Family Sharing shares it (Apple's).
+  familyShareable: bool = false
+  /// A one-time product's purchase options (Play's).
+  offers: [Offer] = []
+
+  /// The item to buy it as.
+  fn item() -> Item = Item(id: id, kind: kind)
+}
+
+/// Where a transaction is.
+pub enum State {
+  /// Paid for (bought, renewed, restored): deliver it.
+  purchased
+  /// Waiting for a parent's approval or a payment: don't deliver it yet.
+  pending
+  /// Refunded or taken back: take back what it gave.
+  revoked
+}
+
+/// What a server checks a purchase with.
+pub struct Verification {
+  /// Apple's: the transaction signed by the App Store.
+  jws: string = ""
+  /// Play's purchase token, with packageName; originalJSON and
+  /// signature, the purchase signed with the app's license key. On
+  /// Windows, the Store's ID of the add-on.
+  token: string = ""
+  packageName: string = ""
+  originalJSON: string = ""
+  signature: string = ""
+  /// The device checked the store's signature.
+  verified: bool = false
+}
+
+/// A purchase: a product bought, renewed, restored, pending or revoked.
+pub struct Transaction {
+  /// The store's: Apple's transaction ID, Play's order ID (pending: the
+  /// purchase token), the Microsoft Store's tracking ID.
+  id: string = ""
+  /// The first purchase's, which renewals and restores share (Apple's).
+  originalId: string = ""
+  productId: string = ""
+  kind: Kind = .nonConsumable
+  state: State = .purchased
+  quantity: int = 1
+  /// When it was bought (renewed), when a subscription's period ends,
+  /// when it was revoked; none when not known.
+  date: time.Time? = none
+  expires: time.Time? = none
+  revoked: time.Time? = none
+  revocationReason: string = ""
+  /// The user moved to a higher subscription in its group (Apple's).
+  upgraded: bool = false
+  /// The subscription will renew (Play's).
+  autoRenews: bool = false
+  /// A family member bought it (Apple's).
+  familyShared: bool = false
+  /// Options' of its buy.
+  accountToken: string = ""
+  profileToken: string = ""
+  /// Apple's: "Production", "Sandbox", "Xcode".
+  environment: string = ""
+  /// The country it was bought in.
+  storefront: string = ""
+  offerId: string = ""
+  offerType: OfferType = .base
+  /// Play: acknowledged (finished).
+  acknowledged: bool = false
+  verification: Verification = Verification()
+
+  /// Says the app delivered what it sold, so the store stops giving it:
+  /// StoreKit's finish; Play's acknowledgement, or a consumable's
+  /// consumption (it can be bought again); the Microsoft Store's
+  /// fulfillment. A pending one isn't finished.
+  async fn finish() throws {
+    try await finishTransaction(self)
+  }
+}
+
+/// What a purchase came to.
+pub enum Status {
+  /// Paid for: deliver the transaction, then finish it.
+  bought
+  /// Waiting (Ask to Buy, a payment Play waits for): events() gives the
+  /// transaction once it's paid for.
+  pendingApproval
+  /// The user didn't buy.
+  cancelled
+}
+
+/// What buy came to.
+pub struct Result {
+  status: Status = .cancelled
+  /// A bought one's; Play's pending one's too (state pending).
+  transaction: Transaction? = none
+}
+
+/// The store's country: what prices are in, what it sells.
+pub struct Storefront {
+  /// ISO 3166-1's: alpha-3 on Apple ("USA"), alpha-2 elsewhere ("US").
+  country: string = ""
+  /// Apple's.
+  id: string = ""
+}
+
+/// What an Event says.
+pub enum EventType {
+  /// A transaction outside a buy: the event's transaction.
+  transactionUpdated
+  /// The storefront changed: ask for the products again.
+  storefrontChanged
+}
+
+/// Something the store says.
+pub struct Event {
+  type: EventType = .transactionUpdated
+  transaction: Transaction? = none
+  storefront: Storefront = Storefront()
+}
+
+/// An Apple promotional offer's signature, from the app's server.
+pub struct OfferSignature {
+  keyId: string = ""
+  nonce: string = ""
+  /// Base64.
+  signature: string = ""
+  /// When it was signed (the server's: what it signed).
+  timestamp: time.Time = time.unix(0)
+  /// From iOS 18.4 and macOS 15.4: a JWS of the same.
+  jws: string = ""
+}
+
+/// How a Play subscription replaces another.
+pub enum ReplaceMode {
+  withTimeProration
+  chargeProratedPrice
+  chargeFullPrice
+  withoutProration
+  deferred
+}
+
+/// The Play subscription a purchase replaces.
+pub struct Replace {
+  old: Transaction = Transaction()
+  mode: ReplaceMode = .withTimeProration
+}
+
+/// How buy buys.
+pub struct Options {
+  /// How many (a consumable's).
+  quantity: int = 1
+  /// Ties the purchase to the app's user: a UUID (Apple's must be one).
+  /// Never an email or a name.
+  accountToken: string = ""
+  /// Play's obfuscatedProfileId.
+  profileToken: string = ""
+  /// Buys with one of the product's offers (Play needs one for a
+  /// subscription: without, the first base plan).
+  offer: Offer? = none
+  signature: OfferSignature? = none
+  replace: Replace? = none
+  /// The price is personalized (Play: the EU wants it said).
+  personalized: bool = false
+}
+
+/// Where a subscription is.
+pub enum SubscriptionState {
+  subscribed
+  expired
+  /// The renewal's payment failed; the store retries. Not entitled.
+  billingRetry
+  /// The renewal's payment failed; still entitled while the store retries.
+  gracePeriod
+  revoked
+}
+
+/// A subscription's status, and its renewal's.
+pub struct SubscriptionStatus {
+  productId: string = ""
+  state: SubscriptionState = .subscribed
+  willRenew: bool = false
+  renewsTo: string = ""
+  /// When it renews, and when its grace period ends; none when not known.
+  renewal: time.Time? = none
+  graceExpires: time.Time? = none
+  expirationReason: string = ""
+  renewalJWS: string = ""
+  transaction: Transaction = Transaction()
+}
+
+/// What the user owns now: non-consumables, subscriptions in their
+/// period, non-renewing ones.
+pub struct Owned {
+  transactions: [Transaction] = []
+
+  /// One of them is productId's.
+  fn has(productId: string) -> bool = transactions.any(t => t.productId == productId)
+}
+
+/// The store's errors.
+pub enum PurchaseError: Error {
+  /// purchase: no store
+  notAvailable
+  /// purchase: payments not allowed
+  notAllowed
+  /// purchase: unknown product
+  unknownProduct
+  /// purchase: already owned
+  alreadyOwned
+
+  fn message() -> string = match self {
+    .notAvailable => "purchase: no store"
+    .notAllowed => "purchase: payments not allowed"
+    .unknownProduct => "purchase: unknown product"
+    .alreadyOwned => "purchase: already owned"
+  }
+}
+
+// What crosses to the stores' code (the platforms'): times in nanoseconds
+// since 1970 (0: not known), an offer's signature's in milliseconds.
+
+struct StoreTransaction {
+  id: string = ""
+  originalId: string = ""
+  productId: string = ""
+  kind: Kind = .nonConsumable
+  state: State = .purchased
+  quantity: int = 1
+  date: int = 0
+  expires: int = 0
+  revoked: int = 0
+  revocationReason: string = ""
+  upgraded: bool = false
+  autoRenews: bool = false
+  familyShared: bool = false
+  accountToken: string = ""
+  profileToken: string = ""
+  environment: string = ""
+  storefront: string = ""
+  offerId: string = ""
+  offerType: OfferType = .base
+  acknowledged: bool = false
+  verification: Verification = Verification()
+}
+
+struct StoreResult {
+  status: Status = .cancelled
+  transaction: StoreTransaction? = none
+}
+
+struct StoreEvent {
+  type: EventType = .transactionUpdated
+  transaction: StoreTransaction? = none
+  storefront: Storefront = Storefront()
+}
+
+struct StoreStatus {
+  productId: string = ""
+  state: SubscriptionState = .subscribed
+  willRenew: bool = false
+  renewsTo: string = ""
+  renewal: int = 0
+  graceExpires: int = 0
+  expirationReason: string = ""
+  renewalJWS: string = ""
+  transaction: StoreTransaction = StoreTransaction()
+}
+
+struct StoreSignature {
+  keyId: string = ""
+  nonce: string = ""
+  signature: string = ""
+  timestamp: int = 0
+  jws: string = ""
+}
+
+struct StoreReplace {
+  old: StoreTransaction = StoreTransaction()
+  mode: ReplaceMode = .withTimeProration
+}
+
+struct StoreOptions {
+  quantity: int = 1
+  accountToken: string = ""
+  profileToken: string = ""
+  offer: Offer? = none
+  signature: StoreSignature? = none
+  replace: StoreReplace? = none
+  personalized: bool = false
+}
+
+fn nanos(t: time.Time?) -> int = t?.unixNano() ?? 0
+
+fn timeOf(ns: int) -> time.Time? = if ns == 0 { none } else { time.unixNano(ns) }
+
+fn txOpt(w: StoreTransaction?) -> Transaction? {
+  if let t = w {
+    return txOf(t)
+  }
+  return none
+}
+
+fn storeSig(s: OfferSignature?) -> StoreSignature? {
+  if let g = s {
+    return StoreSignature(keyId: g.keyId, nonce: g.nonce, signature: g.signature, timestamp: g.timestamp.unixMilli(), jws: g.jws)
+  }
+  return none
+}
+
+fn storeReplace(x: Replace?) -> StoreReplace? {
+  if let r = x {
+    return StoreReplace(old: storeTx(r.old), mode: r.mode)
+  }
+  return none
+}
+
+fn txOf(w: StoreTransaction) -> Transaction = Transaction(id: w.id, originalId: w.originalId, productId: w.productId, kind: w.kind, state: w.state, quantity: w.quantity, date: timeOf(w.date), expires: timeOf(w.expires), revoked: timeOf(w.revoked), revocationReason: w.revocationReason, upgraded: w.upgraded, autoRenews: w.autoRenews, familyShared: w.familyShared, accountToken: w.accountToken, profileToken: w.profileToken, environment: w.environment, storefront: w.storefront, offerId: w.offerId, offerType: w.offerType, acknowledged: w.acknowledged, verification: w.verification)
+
+fn storeTx(w: Transaction) -> StoreTransaction = StoreTransaction(id: w.id, originalId: w.originalId, productId: w.productId, kind: w.kind, state: w.state, quantity: w.quantity, date: nanos(w.date), expires: nanos(w.expires), revoked: nanos(w.revoked), revocationReason: w.revocationReason, upgraded: w.upgraded, autoRenews: w.autoRenews, familyShared: w.familyShared, accountToken: w.accountToken, profileToken: w.profileToken, environment: w.environment, storefront: w.storefront, offerId: w.offerId, offerType: w.offerType, acknowledged: w.acknowledged, verification: w.verification)
+
+fn resultOf(w: StoreResult) -> Result = Result(status: w.status, transaction: txOpt(w.transaction))
+
+fn eventOf(w: StoreEvent) -> Event = Event(type: w.type, transaction: txOpt(w.transaction), storefront: w.storefront)
+
+fn statusOf(w: StoreStatus) -> SubscriptionStatus = SubscriptionStatus(productId: w.productId, state: w.state, willRenew: w.willRenew, renewsTo: w.renewsTo, renewal: timeOf(w.renewal), graceExpires: timeOf(w.graceExpires), expirationReason: w.expirationReason, renewalJWS: w.renewalJWS, transaction: txOf(w.transaction))
+
+fn storeOptions(w: Options) -> StoreOptions = StoreOptions(quantity: w.quantity, accountToken: w.accountToken, profileToken: w.profileToken, offer: w.offer, signature: storeSig(w.signature), replace: storeReplace(w.replace), personalized: w.personalized)
+
+/// The platform's store.
+native interface Store {
+  /// The user can buy: there's a store, the app is its, payments are
+  /// allowed.
+  fn available() -> bool
+  /// What the app sells, without asking the store.
+  fn declare(items: [Item])
+  async fn products(items: [Item]) -> [Product]
+  async fn buy(item: Item, options: StoreOptions) -> StoreResult
+  async fn finish(transaction: StoreTransaction)
+  async fn entitlements() -> [StoreTransaction]
+  /// Asks the store again (iOS: the user signs in).
+  async fn restore() -> [StoreTransaction]
+  async fn statuses(group: string) -> [StoreStatus]
+  async fn manageSubscriptions(productId: string)
+  async fn requestRefund(transactionId: string) -> bool
+  async fn redeemCode()
+  async fn storefront() -> Storefront
+  /// Calls event with what the store says, what it said since the app
+  /// started first, until the task is cancelled.
+  async fn events(event: fn(StoreEvent))
+}
+
+let platform = try? Store()
+
+state faked: FakeStore? = none
+
+// What the app declared, by ID: its kinds, for a transaction that comes
+// before products() (one unfinished from before).
+state declared: [string: Kind] = [:]
+
+/// Whether the user can buy: the platform has a store, the app is its,
+/// and payments are allowed.
+pub fn available() -> bool {
+  if let f = faked {
+    return !f.unavailable && !f.notAllowed
+  }
+  if let p = platform {
+    return (try? p.available()) ?? false
+  }
+  return false
+}
+
+/// Says what the app sells, as products() does, without asking the store.
+pub fn declare(items: [Item]) {
+  for it in items { declared[it.id] = it.kind }
+  if let p = platform {
+    try? p.declare(items: items)
+  }
+}
+
+/// Asks the store for items, in its user's country and language. Those
+/// it doesn't sell are left out.
+pub async fn products(items: [Item]) throws -> [Product] {
+  for it in items { declared[it.id] = it.kind }
+  if let f = faked {
+    return try f.sell(items)
+  }
+  if let p = platform {
+    return try await p.products(items: items)
+  }
+  throw PurchaseError.notAvailable
+}
+
+/// Shows the store's purchase sheet for item and answers once the user
+/// has bought, cancelled, or it waits for approval.
+pub async fn buy(item: Item, options: Options = Options()) throws -> Result {
+  declared[item.id] = item.kind
+  if let f = faked {
+    let r = try f.buy(item, options)
+    ownedChanged()
+    return r
+  }
+  if let p = platform {
+    let r = resultOf(try await p.buy(item: item, options: storeOptions(options)))
+    ownedChanged()
+    return r
+  }
+  throw PurchaseError.notAvailable
+}
+
+async fn finishTransaction(t: Transaction) throws {
+  if t.state == .pending {
+    return
+  }
+  if let f = faked {
+    try f.finish(t)
+    ownedChanged()
+    return
+  }
+  if let p = platform {
+    try await p.finish(transaction: storeTx(t))
+    ownedChanged()
+    return
+  }
+  throw PurchaseError.notAvailable
+}
+
+/// What the user owns now.
+pub async fn entitlements() throws -> Owned {
+  if let f = faked {
+    return Owned(transactions: try f.entitled())
+  }
+  if let p = platform {
+    return Owned(transactions: (try await p.entitlements()).map(txOf))
+  }
+  throw PurchaseError.notAvailable
+}
+
+/// Asks the store for the user's purchases again, and answers what they
+/// own (iOS asks the user to sign in): put it behind a "Restore
+/// purchases" button.
+pub async fn restore() throws -> Owned {
+  if let f = faked {
+    f.restores += 1
+    ownedChanged()
+    return Owned(transactions: try f.entitled())
+  }
+  if let p = platform {
+    let o = Owned(transactions: (try await p.restore()).map(txOf))
+    ownedChanged()
+    return o
+  }
+  throw PurchaseError.notAvailable
+}
+
+/// The statuses of group's subscriptions (Apple's subscription group ID;
+/// on Play, the subscription's product ID).
+pub async fn statuses(group: string) throws -> [SubscriptionStatus] {
+  if let f = faked {
+    return try f.statuses(group)
+  }
+  if let p = platform {
+    return (try await p.statuses(group: group)).map(statusOf)
+  }
+  throw PurchaseError.notAvailable
+}
+
+/// Shows the store's page of the user's subscriptions, and answers once
+/// it's closed.
+pub async fn manageSubscriptions(productId: string = "") throws {
+  if let f = faked {
+    if f.unavailable {
+      throw PurchaseError.notAvailable
+    }
+    f.manages += 1
+    return
+  }
+  if let p = platform {
+    try await p.manageSubscriptions(productId: productId)
+    return
+  }
+  throw PurchaseError.notAvailable
+}
+
+/// Shows Apple's refund request sheet for t, and says whether the user
+/// asked for one (events() gives t revoked if Apple refunds). Apple's
+/// alone: elsewhere it throws notAvailable.
+pub async fn requestRefund(t: Transaction) throws -> bool {
+  if let f = faked {
+    f.refunds.push(t.id)
+    return true
+  }
+  if let p = platform {
+    return try await p.requestRefund(transactionId: t.id)
+  }
+  throw PurchaseError.notAvailable
+}
+
+/// Shows the store's sheet for an offer code (Apple's), or Play's redeem
+/// page. What it bought comes through events().
+pub async fn redeemCode() throws {
+  if let f = faked {
+    f.redeems += 1
+    return
+  }
+  if let p = platform {
+    try await p.redeemCode()
+    return
+  }
+  throw PurchaseError.notAvailable
+}
+
+/// The user's storefront.
+pub async fn storefront() throws -> Storefront {
+  if let f = faked {
+    return Storefront(country: f.country, id: "143441")
+  }
+  if let p = platform {
+    return try await p.storefront()
+  }
+  throw PurchaseError.notAvailable
+}
+
+// The store's events, read once while anything reads them: events()'s
+// readers get them (what came with no reader is kept for the first), and
+// owned() asks again.
+state eventReaders: [int: fn(Event)] = [:]
+state readerID = 0
+state reading = false
+state unread: [Event] = []
+
+fn deliver(e: Event) {
+  if eventReaders.isEmpty() {
+    unread.push(e)
+  } else {
+    for r in eventReaders.values() { r(e) }
+  }
+  ownedChanged()
+}
+
+async fn follow() {
+  if reading {
+    return
+  }
+  reading = true
+  defer { reading = false }
+  if let f = faked {
+    let id = f.listen(e => deliver(e))
+    defer { f.unlisten(id) }
+    await never()
+  }
+  if let p = platform {
+    try? await p.events(event: e => deliver(eventOf(e)))
+  }
+}
+
+/// What the store says outside a buy: transactions (a pending purchase
+/// paid for, a purchase on another device or in the store, a renewal, a
+/// refund, those unfinished from before) and storefront changes. Read it
+/// as the app starts, so purchases are delivered as they complete.
+pub fn events() -> Stream<Event> = Stream(send => {
+  readerID += 1
+  let id = readerID
+  eventReaders[id] = e => send(e)
+  defer { eventReaders.remove(id) }
+  let kept = unread
+  unread = []
+  for e in kept { send(e) }
+  await follow()
+  await never()
+})
+
+// owned(): what the user owns, asked again after each buy, finish and
+// restore and each event, while something reads it.
+state ownedReaders: [int: fn(int)] = [:]
+state ownedID = 0
+
+fn ownedChanged() {
+  for r in ownedReaders.values() { r(0) }
+}
+
+fn changes() -> Stream<int> = Stream(send => {
+  ownedID += 1
+  let id = ownedID
+  ownedReaders[id] = n => send(n)
+  defer { ownedReaders.remove(id) }
+  await never()
+})
+
+fn ownedNow() -> Stream<Owned> = Stream(send => {
+  if let o = try? await entitlements() {
+    send(o)
+  }
+  await all(followQuietly(), refreshQuietly(send))
+})
+
+async fn followQuietly() {
+  await follow()
+}
+
+async fn refreshQuietly(send: fn(Owned)) {
+  try? await refresh(send)
+}
+
+async fn refresh(send: fn(Owned)) throws {
+  for await _ in changes() {
+    if let o = try? await entitlements() {
+      send(o)
+    }
+  }
+}
+
+let followedOwned = live(Owned(), ownedNow)
+
+/// What the user owns, tracked: read in a binding, it's asked for as it's
+/// first read, and again after each buy, finish and restore and each
+/// transaction the store gives, while it's read (empty until the store
+/// answers, and where there's none).
+pub fn owned() -> Owned = followedOwned()
+
+// ---------------------------------------------------------------------
+// Testing
+
+/// How the fake store ends a purchase.
+pub enum Outcome {
+  bought
+  /// Waiting (Ask to Buy): approve or decline it.
+  pending
+  cancelled
+  /// The store fails (buy's error).
+  failed
+}
+
+/// A product the fake store sells.
+pub struct FakeProduct {
+  id: string
+  kind: Kind = .nonConsumable
+  title: string = ""
+  description: string = ""
+  price: string = ""
+  priceMicros: int = 0
+  currency: string = "USD"
+  /// A subscription's group (""; its ID) and level.
+  group: string = ""
+  level: int = 1
+  /// A subscription's period; trial, an introductory free trial's.
+  period: Period? = none
+  trial: Period? = none
+}
+
+/// A transaction of the fake store.
+pub struct FakeTransaction {
+  id: string = ""
+  originalId: string = ""
+  productId: string = ""
+  kind: Kind = .nonConsumable
+  state: State = .purchased
+  /// Declined: a pending purchase the parent declined.
+  declined: bool = false
+  quantity: int = 1
+  date: time.Time? = none
+  expires: time.Time? = none
+  accountToken: string = ""
+  /// The app finished it; consumed, a consumable's.
+  finished: bool = false
+  consumed: bool = false
+  /// A subscription whose period ended.
+  expired: bool = false
+  /// Bought outside a buy (deliver, renew, approve).
+  outside: bool = false
+}
+
+/// A store for tests: fake() installs one. It sells products, ends each
+/// purchase as outcome says, and keeps the transactions as StoreKit
+/// does: unfinished until the app finishes them, given again (relaunch)
+/// until it does, a consumable gone once finished.
+///
+///   let store = purchase.fake([
+///     purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
+///   ])
+///   store.outcome = .pending   // Ask to Buy
+///   ... the app buys ...
+///   store.approve("coins_100") // the parent approves: events() gives it
+pub store FakeStore {
+  pub state products: [FakeProduct] = []
+  pub state outcome: Outcome = .bought
+  /// No store; payments turned off.
+  pub state unavailable = false
+  pub state notAllowed = false
+  pub state country = "USA"
+  pub state transactions: [FakeTransaction] = []
+  /// Calls of restore, manageSubscriptions, redeemCode; the transactions
+  /// a refund was asked for.
+  pub state restores = 0
+  pub state manages = 0
+  pub state redeems = 0
+  pub state refunds: [string] = []
+  /// The clock the transactions are dated by.
+  pub state clock: time.Time = time.unixNano(1_700_000_000_000_000_000)
+  state queue: [Event] = []
+  state readers: [int: fn(Event)] = [:]
+  state nextID = 0
+  state nextReader = 0
+
+  fn product(id: string) -> FakeProduct? = products.find(p => p.id == id)
+
+  fn group(p: FakeProduct) -> string = if p.group.isEmpty() { p.id } else { p.group }
+
+  fn check() throws {
+    if unavailable {
+      throw PurchaseError.notAvailable
+    }
+  }
+
+  fn subscribed(g: string) -> bool = transactions.any(t => {
+    if let p = product(t.productId) {
+      return group(p) == g && t.state != .pending
+    }
+    return false
+  })
+
+  fn wire(p: FakeProduct) -> Product {
+    var sub: Subscription? = none
+    if let per = p.period {
+      var offers: [Offer] = []
+      if let tr = p.trial {
+        offers.push(Offer(type: .introductory, phases: [Phase(price: "Free", currency: p.currency, period: tr, cycles: 1, mode: .freeTrial)]))
+      }
+      sub = Subscription(group: group(p), level: p.level, period: per, offers: offers, introEligible: p.trial.isSome() && !subscribed(group(p)))
+    }
+    return Product(id: p.id, kind: p.kind, title: p.title, description: p.description, price: p.price, priceMicros: p.priceMicros, currency: p.currency, subscription: sub)
+  }
+
+  fn tx(t: FakeTransaction) -> Transaction = Transaction(
+    id: t.id,
+    originalId: t.originalId,
+    productId: t.productId,
+    kind: t.kind,
+    state: t.state,
+    quantity: t.quantity,
+    date: t.date,
+    expires: t.expires,
+    revoked: if t.state == .revoked { t.date } else { none },
+    revocationReason: if t.state == .revoked { "refundedForIssue" } else { "" },
+    autoRenews: t.kind == .autoRenewable && !t.expired,
+    accountToken: t.accountToken,
+    environment: "Xcode",
+    storefront: country,
+    acknowledged: t.finished,
+    verification: Verification(jws: "fake.{t.id}.jws", token: "token-{t.id}", packageName: "dev.asuka.fake", verified: true),
+  )
+
+  fn sell(items: [Item]) throws -> [Product] {
+    try check()
+    var out: [Product] = []
+    for it in items {
+      if let p = product(it.id) {
+        out.push(wire(p))
+      }
+    }
+    return out
+  }
+
+  fn add(p: FakeProduct, quantity: int, s: State) -> FakeTransaction {
+    nextID += 1
+    clock = clock.add(1s)
+    let id = "{2000000000 + nextID}"
+    var exp: time.Time? = none
+    if let per = p.period {
+      exp = clock.add(24h * days(per))
+    }
+    let t = FakeTransaction(id: id, originalId: id, productId: p.id, kind: p.kind, state: s, quantity: max(quantity, 1), date: clock, expires: exp)
+    transactions.push(t)
+    return t
+  }
+
+  fn days(p: Period) -> int = match p.unit {
+    .day => p.count
+    .week => 7 * p.count
+    .month => 30 * p.count
+    .year => 365 * p.count
+  }
+
+  /// The user owns a non-consumable of p's, or an active subscription.
+  fn owns(p: FakeProduct) -> bool = (p.kind == .nonConsumable || p.kind == .autoRenewable) &&
+    transactions.any(t => t.productId == p.id && t.state == .purchased && !t.expired)
+
+  fn buy(item: Item, o: Options) throws -> Result {
+    try check()
+    let found = product(item.id)
+    if found.isNone() {
+      throw PurchaseError.unknownProduct
+    }
+    let p = found!
+    if notAllowed {
+      throw PurchaseError.notAllowed
+    }
+    if owns(p) {
+      throw PurchaseError.alreadyOwned
+    }
+    if outcome == .cancelled {
+      return Result(status: .cancelled)
+    }
+    if outcome == .failed {
+      throw Error("the store failed")
+    }
+    let pending = outcome == .pending
+    let t = add(p, o.quantity, if pending { State.pending } else { State.purchased })
+    let t2 = FakeTransaction(id: t.id, originalId: t.originalId, productId: t.productId, kind: t.kind, state: t.state, quantity: t.quantity, date: t.date, expires: t.expires, accountToken: o.accountToken)
+    set(t2)
+    if pending {
+      return Result(status: .pendingApproval)
+    }
+    return Result(status: .bought, transaction: tx(t2))
+  }
+
+  fn set(t: FakeTransaction) {
+    if let i = transactions.index(x => x.id == t.id) {
+      transactions[i] = t
+    }
+  }
+
+  fn finish(t: Transaction) throws {
+    try check()
+    let at = transactions.index(x => x.id == t.id)
+    if at.isNone() {
+      throw Error("no transaction {t.id}")
+    }
+    let i = at!
+    if transactions[i].state == .pending {
+      throw Error("pending")
+    }
+    transactions[i].finished = true
+    if transactions[i].kind == .consumable {
+      transactions[i].consumed = true
+    }
+  }
+
+  /// What the user owns now: StoreKit's current entitlements (the latest
+  /// of each subscription).
+  fn entitled() throws -> [Transaction] {
+    try check()
+    var out: [Transaction] = []
+    for t in transactions {
+      if t.state != .purchased || t.expired || t.kind == .consumable || t.kind == .nonRenewing && !t.finished {
+        continue
+      }
+      if let i = out.index(x => x.productId == t.productId && t.kind == .autoRenewable) {
+        out[i] = tx(t)
+        continue
+      }
+      out.push(tx(t))
+    }
+    return out
+  }
+
+  fn statuses(g: string) throws -> [SubscriptionStatus] {
+    try check()
+    var out: [SubscriptionStatus] = []
+    for t in transactions {
+      let found = product(t.productId)
+      if found.isNone() {
+        continue
+      }
+      let p = found!
+      if p.kind != .autoRenewable || group(p) != g || t.state == .pending {
+        continue
+      }
+      var st = SubscriptionStatus(productId: t.productId, state: .subscribed, willRenew: !t.expired, renewal: t.expires, transaction: tx(t))
+      if t.state == .revoked {
+        st = SubscriptionStatus(productId: t.productId, state: .revoked, renewal: t.expires, transaction: tx(t))
+      } else if t.expired {
+        st = SubscriptionStatus(productId: t.productId, state: .expired, renewal: t.expires, expirationReason: "autoRenewDisabled", transaction: tx(t))
+      }
+      if let i = out.index(x => x.productId == t.productId) {
+        out[i] = st
+      } else {
+        out.push(st)
+      }
+    }
+    return out
+  }
+
+  /// Gives the app an event: to events(), or kept until it reads them.
+  fn send(e: Event) {
+    if readers.isEmpty() {
+      queue.push(e)
+    } else {
+      for r in readers.values() { r(e) }
+    }
+  }
+
+  fn sendTransaction(t: FakeTransaction) {
+    send(Event(type: .transactionUpdated, transaction: tx(t)))
+  }
+
+  /// Completes productId's pending purchase (a parent approved it): the
+  /// app's events() gets it. The transaction, none if none is pending.
+  pub fn approve(productId: string) -> FakeTransaction? {
+    let at = transactions.index(t => t.productId == productId && t.state == .pending && !t.declined)
+    if at.isNone() {
+      return none
+    }
+    let i = at!
+    clock = clock.add(1s)
+    transactions[i].state = .purchased
+    transactions[i].outside = true
+    transactions[i].date = clock
+    sendTransaction(transactions[i])
+    return transactions[i]
+  }
+
+  /// Drops productId's pending purchase (the parent declined): the app
+  /// hears nothing, as on iOS.
+  pub fn decline(productId: string) {
+    if let i = transactions.index(t => t.productId == productId && t.state == .pending && !t.declined) {
+      transactions[i].declined = true
+    }
+  }
+
+  /// A purchase of productId outside the app (on another device, an
+  /// offer code redeemed in the store): the app's events() gets it.
+  pub fn deliver(productId: string) -> FakeTransaction {
+    let p = product(productId) ?? FakeProduct(id: productId)
+    let t = add(p, 1, .purchased)
+    if let i = transactions.index(x => x.id == t.id) {
+      transactions[i].outside = true
+    }
+    sendTransaction(t)
+    return t
+  }
+
+  /// Renews productId's subscription: a new transaction of the same
+  /// original, for the next period, which events() gets.
+  pub fn renew(productId: string) -> FakeTransaction? {
+    let lastOne = transactions.filter(t => t.productId == productId && t.state == .purchased).last()
+    let found = product(productId)
+    if lastOne.isNone() || found.isNone() {
+      return none
+    }
+    let last = lastOne!
+    let p = found!
+    let t = add(p, 1, .purchased)
+    let renewed = FakeTransaction(id: t.id, originalId: last.originalId, productId: t.productId, kind: t.kind, state: t.state, quantity: 1, date: last.expires ?? t.date, expires: t.expires, accountToken: last.accountToken, outside: true)
+    set(renewed)
+    if let i = transactions.index(x => x.id == last.id) {
+      transactions[i].expired = true
+    }
+    sendTransaction(renewed)
+    return renewed
+  }
+
+  /// Ends productId's subscription (renewal turned off, its period
+  /// ended): no transaction, but what the user owns no longer has it.
+  pub fn expire(productId: string) {
+    for (i, t) in transactions.enumerated() {
+      if t.productId == productId && t.state == .purchased {
+        transactions[i].expired = true
+      }
+    }
+  }
+
+  /// Refunds the transaction id: revoked, which events() gets.
+  pub fn refund(id: string) {
+    if let i = transactions.index(t => t.id == id && t.state == .purchased) {
+      transactions[i].state = .revoked
+      sendTransaction(transactions[i])
+    }
+  }
+
+  /// Changes the storefront, which events() gets.
+  pub fn setCountry(c: string) {
+    country = c
+    send(Event(type: .storefrontChanged, storefront: Storefront(country: c)))
+  }
+
+  /// The transactions the app hasn't finished (not pending).
+  pub fn unfinished() -> [FakeTransaction] = transactions.filter(t => !t.finished && (t.state == .purchased || t.state == .revoked))
+
+  /// The app starting again: the store gives its unfinished transactions
+  /// again, to whoever reads events() next.
+  pub fn relaunch() {
+    queue = []
+    for t in transactions {
+      if !t.finished && t.state == .purchased {
+        queue.push(Event(type: .transactionUpdated, transaction: tx(t)))
+      }
+    }
+  }
+
+  /// The app reads the store's events.
+  pub fn following() -> bool = !readers.isEmpty()
+
+  fn listen(f: fn(Event)) -> int {
+    nextReader += 1
+    readers[nextReader] = f
+    let q = queue
+    queue = []
+    for e in q { f(e) }
+    return nextReader
+  }
+
+  fn unlisten(id: int) {
+    readers.remove(id)
+  }
+}
+
+/// Installs a FakeStore selling products, for a test: from now on the
+/// package sells from it, not the platform's store.
+pub fn fake(products: [FakeProduct] = []) -> FakeStore {
+  let f = FakeStore()
+  f.products = products
+  faked = f
+  unread = []
+  return f
+}

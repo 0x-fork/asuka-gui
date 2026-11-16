@@ -112,7 +112,7 @@ func (cs *Catalogs) position(d i18ngen.Diagnostic) syntax.Position {
 
 // catalog loads, checks and compiles the app's catalogs for the checker
 // (tr) and the module (its blob). dates says the program formats dates
-// itself (asuka/i18n), so every language's are compiled in. Errors and
+// itself (std/i18n), so every language's are compiled in. Errors and
 // warnings are diagnostics; the catalog is nil when there are errors.
 func (cs *Catalogs) catalog(dates bool) (*check.Catalog, []check.Diagnostic, []check.Diagnostic) {
 	var errs, warns []check.Diagnostic
@@ -192,7 +192,7 @@ func argType(a i18n.Arg) string {
 }
 
 // implicitCatalog is the catalog of an app that has none but formats
-// numbers and dates (asuka/i18n): its source language's (English's)
+// numbers and dates (std/i18n): its source language's (English's)
 // formats, with no messages.
 func implicitCatalog() (*check.Catalog, error) {
 	cat, err := i18n.NewCatalog(fstest.MapFS{"en.json": {Data: []byte(`{}`)}}, "en")

@@ -1,4 +1,4 @@
-// asuka/update on the fake host: its update module set up as an
+// platform/update on the fake host: its update module set up as an
 // installed app's host's (update.fakeHost), serving a feed, an archive
 // and a delta the CLI's code wrote (internal/update's WriteArchive and
 // WriteDelta, 1.0.0 to 1.1.0), signed here as `asuka build` signs them:
@@ -6,11 +6,11 @@
 // download (the delta, or the archive when the delta fails), staging and
 // the host's install, a signature that isn't the app's, and the feeds.
 
-import asuka/update
-import asuka/fs
-import asuka/json
-import asuka/crypto
-import asuka/encoding
+import platform/update
+import std/fs
+import std/json
+import std/crypto
+import std/encoding
 
 // The 1.1.0 app's archive (App, assets/a.txt, assets/b.txt), and its
 // delta from 1.0.0.
@@ -18,7 +18,7 @@ let archive64 = "H4sIAAAAAAAC/+zWS07DMBDG8VlzijlAFL5pPPGaoxg6KJFKHMXmcXzEYwFF7Np
 let delta64 = "YXN1a2EgZGVsdGEgMQqLAnTQPY4bMQwF4LuwHjgSJVI/Xc4RpBAlEp7CP5iZBEEM3z2wg/V64d2OeK94H3gBW04HqOB3budggt+6rPPpeE/8PdHjtsy6Qv1xgXPb9lDh+/kMExxOQ6FGdBOs81+Fyrdr35AYKrBKtEEOQ8tEGAS5cWuGGEqWHiU6JsLBGHtM2liSkrGFQqlxF5jeaP/XRtsa1BCv04PR1lW39dbNC9Rt+aUv5be22/5sn2KfrJSLFxJCHDTMZR7OzIn3zmSUgV4kWk+eQ7MQh8uYuaHmyMaiLrxbP6y+auQrjfdPnDKMovmoRgmjFA5cyMJwvmv2yZUg0pW7GqOk4XJ2JIlStC5q3R7f8vH68/pvAAEGCdLnZQAMAGLABIwMuAFgANJRyM0vSlXIT1PILOECDADKSy1XyMxTMNQz5AIMAA=="
 
 // The key `asuka update keygen` would make, from a fixed seed.
-let seed = crypto.sha256("asuka/update's tests".bytes())
+let seed = crypto.sha256("platform/update's tests".bytes())
 let base = "https://updates.example.com"
 let feed = "{base}/update-test.json"
 

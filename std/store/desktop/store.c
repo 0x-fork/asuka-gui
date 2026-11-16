@@ -1,4 +1,4 @@
-// asuka/store on Windows and Linux: a JSON object of strings in the app's
+// std/store on Windows and Linux: a JSON object of strings in the app's
 // data directory (store.json), written whole a moment after a change, so
 // a run of changes is one write (small values only). Flush writes now.
 #ifdef _WIN32

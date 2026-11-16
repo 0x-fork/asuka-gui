@@ -1,4 +1,4 @@
-import asuka/speech
+import platform/speech
 
 component Talk {
   state said = "nothing"

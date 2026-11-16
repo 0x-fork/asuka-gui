@@ -1,7 +1,7 @@
-// asuka/shell with no platform code (the fake host): no file manager, so
+// platform/shell with no platform code (the fake host): no file manager, so
 // reveal throws an unsupported error and beep does nothing.
 
-import asuka/shell
+import platform/shell
 
 test "no file manager here" {
   shell.beep()

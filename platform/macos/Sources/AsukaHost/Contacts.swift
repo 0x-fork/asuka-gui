@@ -1,4 +1,4 @@
-// asuka/contacts on a Mac, with the Contacts framework as on iOS:
+// platform/contacts on a Mac, with the Contacts framework as on iOS:
 // "request" answers u8 access (not asked, denied, limited, full), "list"
 // (JSON: name, limit) and "pick" contacts as iOS's JSON, "add" (a
 // contact's JSON) u8 saved. macOS has no new-contact screen: "add" asks
@@ -37,7 +37,7 @@ import ContactsUI
         store.requestAccess(for: .contacts) { _, _ in DispatchQueue.main.async { done() } }
     }
 
-    /// The status as asuka/contacts' Access: not asked, denied, limited,
+    /// The status as platform/contacts' Access: not asked, denied, limited,
     /// full.
     static func access() -> UInt8 {
         switch status() {

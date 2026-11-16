@@ -1,5 +1,5 @@
-import asuka/dock
-import asuka/platform
+import platform/dock
+import platform/host
 
 component Downloads {
   state p = 0.0
@@ -22,7 +22,7 @@ test "the dock's calls go to the host, which has no dock here" {
   await app.idle()
   // A module the host doesn't have throws, for a call that waits.
   do {
-    let _ = try await platform.call("dock", "progress", platform.u8(0))
+    let _ = try await host.call("dock", "progress", host.u8(0))
     expect(false, "the fake host has no dock")
   } catch e {
     print("no dock: {e.message}")
@@ -31,10 +31,10 @@ test "the dock's calls go to the host, which has no dock here" {
 }
 
 test "encodings" {
-  let b = platform.u32(258).concat(platform.f64(1.5)).concat(platform.str("hé"))
+  let b = host.u32(258).concat(host.f64(1.5)).concat(host.str("hé"))
   print(b.count())
-  print(platform.readU32(b, 0))
-  print(platform.readF64(b, 4))
-  print(platform.readU32(b, 12))
-  print(platform.readU8(b, 999))
+  print(host.readU32(b, 0))
+  print(host.readF64(b, 4))
+  print(host.readU32(b, 12))
+  print(host.readU8(b, 999))
 }

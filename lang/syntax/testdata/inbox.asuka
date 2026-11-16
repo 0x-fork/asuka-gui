@@ -1,4 +1,4 @@
-import asuka/http
+import std/http
 import ./components.{MessageRow, EmptyState} as c
 
 /// The list of a mailbox's messages.

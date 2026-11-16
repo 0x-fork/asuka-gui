@@ -23,9 +23,9 @@ func (o *object) Pos() syntax.Pos { return o.pos }
 // Packages and scopes
 
 // A Package is a directory of .asuka files, the prelude, or a package of
-// the standard library the compiler provides (asuka/json).
+// the standard library the compiler provides (std/json).
 type Package struct {
-	Path string // as imported: asuka/json, ./components; "" for the root, "prelude"
+	Path string // as imported: std/json, ./components; "" for the root, "prelude"
 	Name string // its last segment
 	Dir  string
 	// NativeClass is what its platforms' code registers its native
@@ -489,7 +489,7 @@ const (
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,
-// sleep, all, ...; asuka/json's decode).
+// sleep, all, ...; std/json's decode).
 type Builtin struct {
 	object
 	ID BuiltinID

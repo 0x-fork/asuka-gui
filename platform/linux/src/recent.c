@@ -1,4 +1,4 @@
-// recent.c: asuka/recent on Linux: the user's recently used files
+// recent.c: platform/recent on Linux: the user's recently used files
 // (recently-used.xbel in the XDG data directory, what GtkRecentManager
 // keeps and the file chooser's and the file manager's Recent show), the
 // app's under its name (g_set_application_name: GTK's own file chooser

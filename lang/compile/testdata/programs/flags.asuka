@@ -1,7 +1,7 @@
 // args: -v --jobs=8 a.txt --mode fast b.txt
 // exit: 0
-import asuka/flag
-import asuka/os
+import std/flag
+import std/os
 
 enum Mode { safe, fast }
 

@@ -11,7 +11,7 @@ import (
 	"github.com/egoist/asuka/lang/syntax"
 )
 
-// asuka/flag's spec<T>() (std/flag): what the compiler knows of T, a
+// std/flag's spec<T>() (std/flag): what the compiler knows of T, a
 // struct of options or an enum of commands, written as JSON for the
 // parser (std/flag/flag.asuka), in place of the descriptor a generic
 // native fn gets. A struct's field with a default is an option

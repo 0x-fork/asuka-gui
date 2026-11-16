@@ -3,7 +3,7 @@
 //
 //   asuka dev --platform ios examples/gallery
 
-import asuka/print
+import platform/print
 
 app { Gallery() }
 

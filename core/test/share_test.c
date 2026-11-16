@@ -68,7 +68,7 @@ TEST(system_commands) {
 	done(a);
 }
 
-// The app's own share sheet (asuka/sharesheet): its closes are the
+// The app's own share sheet (platform/sharesheet): its closes are the
 // ShareClose command to the root, how a u8; what isn't one sends nothing.
 // The process the app runs in is the host's to say, in the environment.
 TEST(share_sheet) {

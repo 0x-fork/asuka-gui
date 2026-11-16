@@ -1,9 +1,9 @@
 SourceFile 1:1-48:3
   Imports: [1]
-    ImportDecl 1:1-1:18
+    ImportDecl 1:1-1:16
       Path: [2]
-        Ident "asuka" 1:8-1:13
-        Ident "http" 1:14-1:18
+        Ident "std" 1:8-1:11
+        Ident "http" 1:12-1:16
   Decls: [2]
     StoreDecl 4:1-40:2 comments="/// The app's mail: what's loaded, and what changes it." pub
       Name: Ident "Mailbox" 4:11-4:18

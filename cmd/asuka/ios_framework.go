@@ -6,8 +6,8 @@ import (
 	"strconv"
 )
 
-// An app with a share sheet (asuka/sharesheet) or a push rewrite
-// (asuka/push's rewrite) runs its code and the host in more than one process:
+// An app with a share sheet (platform/sharesheet) or a push rewrite
+// (platform/push's rewrite) runs its code and the host in more than one process:
 // the app's, and its share extension's or its Notification Service
 // Extension's. All are in one dynamic framework, Frameworks/AsukaApp.framework, as Xcode
 // shares code between an app and its extensions: the app's executable is

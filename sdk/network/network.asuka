@@ -1,0 +1,68 @@
+// Package platform/network is the device's network: whether it's online,
+// over Wi-Fi or cellular, and whether the connection costs (to download
+// large files on Wi-Fi only, to say the app is offline). iOS's and
+// macOS's NWPathMonitor, Android's ConnectivityManager, Windows' Network
+// List Manager, GNetworkMonitor and NetworkManager on Linux, the
+// browser's navigator.onLine and Network Information.
+//
+//   let net = network.status()   // tracked: follows the network while it's read
+//   Text(if net.connected { "{net.type}" } else { "Offline" })
+
+/// What carries the connection.
+pub enum ConnectionType {
+  none
+  wifi
+  cellular
+  ethernet
+  /// A VPN alone, Bluetooth, or what the platform doesn't say.
+  other
+}
+
+/// The network the device uses.
+pub struct Status {
+  connected: bool = false
+  type: ConnectionType = .none
+  /// The connection costs, or is limited: mobile data, a phone's hotspot.
+  metered: bool = false
+  /// The user asked apps to use less data (iOS's Low Data Mode,
+  /// Android's Data Saver).
+  constrained: bool = false
+}
+
+/// The platform's view of the network.
+native interface Monitor {
+  /// The network now.
+  fn current() -> Status
+  /// Calls changed with the network now, then each time it changes,
+  /// until the task is cancelled.
+  async fn watch(changed: fn(Status))
+}
+
+// Made once; none where the platform says nothing of its network.
+let monitor = try? Monitor()
+
+/// The network now; a platform that says nothing of it answers
+/// connected.
+pub fn current() -> Status {
+  if let m = monitor {
+    if let s = try? m.current() {
+      return s
+    }
+  }
+  return Status(connected: true, type: .other)
+}
+
+/// The network now, then each change.
+pub fn changes() -> Stream<Status> = Stream(send => {
+  if let m = monitor {
+    try await m.watch(changed: s => send(s))
+  } else {
+    send(current())
+  }
+})
+
+let followed = live(current(), changes)
+
+/// The network, tracked: read in a binding, it follows the network
+/// while it's read (and only then does anything watch it).
+pub fn status() -> Status = followed()

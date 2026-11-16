@@ -69,7 +69,7 @@ github = "you/notes"
 | `splash` | テーブル | なし | iOS と Android の起動画面です。[splash](#splash) を参照してください。 |
 | `widgets` | テーブルの配列 | なし | iOS と Android のホーム画面ウィジェットです。[widgets](#widgets) を参照してください。 |
 | `shortcuts` | テーブルの配列 | なし | iOS と Android で、Siri、Spotlight、ランチャーに出すアクションです。[shortcuts](#shortcuts) を参照してください。 |
-| `nfc` | テーブル | なし | `asuka/nfc` のタグに必要なものです。iOS の AID と FeliCa のシステムコード、Android でアプリを開くタグを指定します。[nfc](#nfc) を参照してください。 |
+| `nfc` | テーブル | なし | `platform/nfc` のタグに必要なものです。iOS の AID と FeliCa のシステムコード、Android でアプリを開くタグを指定します。[nfc](#nfc) を参照してください。 |
 | `background` | 真偽値 | `false` | デスクトップで、トレイに常駐するアプリにします。起動時にウィンドウを開かず、ウィンドウがなくても動き続け、Mac では起動時から Dock にアイコンを出しません（`LSUIElement`）。[バックグラウンドのアプリ](desktop.md#バックグラウンドで動くアプリ)を参照してください。 |
 | `keepRunning` | 真偽値 | `false` | デスクトップで、最後のウィンドウを閉じてもアプリを動かし続けます。メインウィンドウは、アプリがもう一度表示するまで隠れるだけです。`background` のアプリはもともと動き続けます。[バックグラウンドで動くアプリ](desktop.md#バックグラウンドで動くアプリ)を参照してください。 |
 | `singleInstance` | 真偽値 | `true` | Windows と Linux で、二回目の起動はファイルを実行中のアプリに渡して（その `on openFiles(paths)` に）終了します。`false` にすると、起動した回数だけアプリが実行されます。Mac ではどちらの場合もアプリは一つしか実行されません。[単一インスタンス](desktop.md#単一インスタンス)を参照してください。 |
@@ -77,12 +77,12 @@ github = "you/notes"
 | `updates` | テーブル | なし | デスクトップアプリの署名付きアップデートです。[updates](#updates) を参照してください。 |
 | `ios` | テーブル | | iOS のビルドの設定と、Mac のビルドの設定の一部です。[ios](#ios) を参照してください。 |
 | `mac` | テーブル | | Mac のビルドのプロファイルです。[mac](#mac) を参照してください。 |
-| `icloud` | テーブル | `iCloud.<id>` | `asuka/icloud` で使う、アプリの iCloud コンテナーと iCloud Drive のフォルダーです。[icloud](#icloud) を参照してください。 |
-| `applePay` | テーブル | なし | `merchantIds = ["merchant.com.example"]`：Apple Pay（`asuka/pay`）の支払いに使うマーチャント ID です。パッケージをインポートした iOS と Mac のアプリの、アプリ内決済のエンタイトルメントに入ります。[ウォレットでの支払い](device.md#ウォレット決済asukapay)を参照してください。 |
+| `icloud` | テーブル | `iCloud.<id>` | `platform/icloud` で使う、アプリの iCloud コンテナーと iCloud Drive のフォルダーです。[icloud](#icloud) を参照してください。 |
+| `applePay` | テーブル | なし | `merchantIds = ["merchant.com.example"]`：Apple Pay（`platform/pay`）の支払いに使うマーチャント ID です。パッケージをインポートした iOS と Mac のアプリの、アプリ内決済のエンタイトルメントに入ります。[ウォレットでの支払い](device.md#ウォレット決済platformpay)を参照してください。 |
 | `android` | テーブル | | Android のビルドの設定です。[android](#android) を参照してください。 |
 | `linux` | テーブル | | Linux のビルドがアプリについて書き出す情報です。[linux](#linux) を参照してください。 |
 | `web` | テーブル | | Web のビルドの設定です。[web](#web) を参照してください。 |
-| `bluetooth` | テーブル | | `asuka/bluetooth` を使うアプリが、パッケージに必要なもの以上に求めるものです。バックグラウンドと、スキャンによる位置情報を指定します。[bluetooth](#bluetooth) を参照してください。 |
+| `bluetooth` | テーブル | | `platform/bluetooth` を使うアプリが、パッケージに必要なもの以上に求めるものです。バックグラウンドと、スキャンによる位置情報を指定します。[bluetooth](#bluetooth) を参照してください。 |
 | `bin` | テーブル | なし | プロジェクトのプログラムです。それぞれ専用のディレクトリにあるコマンドラインツールで、デスクトップアプリに組み込まれます。[bin](#bin) を参照してください。 |
 
 Windows のビルドに必要なのはこれだけです。署名の証明書は環境変数で渡します（[配布](shipping.md#windows)を参照）。
@@ -151,7 +151,7 @@ darkBackground = "#1B2440"
 | `background` | 色 | `"#ffffff"` | ライトモードでの背景色（`"#rrggbb"`）。 |
 | `darkBackground` | 色 | `background` | ダークモードでの背景色（`"#rrggbb"`）。 |
 
-[起動画面](device.md#起動画面asukasplash)を参照してください。
+[起動画面](device.md#起動画面platformsplash)を参照してください。
 
 ## widgets
 
@@ -172,7 +172,7 @@ sizes = ["small", "medium", "rectangular"]
 | `description` | 文字列 | なし | ウィジェットギャラリーに表示される説明です。 |
 | `sizes` | 文字列の配列 | `["small", "medium"]` | `small`、`medium`、`large`、そして iOS の `extraLarge`（iPad）と、ロック画面の `circular`、`rectangular`、`inline`。 |
 
-iOS では、ウィジェットは独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持つ拡張機能になり、リリースでは `ios.widgetProfile` で署名します。[ホーム画面ウィジェット](device.md#ホーム画面ウィジェットasukawidget)を参照してください。
+iOS では、ウィジェットは独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持つ拡張機能になり、リリースでは `ios.widgetProfile` で署名します。[ホーム画面ウィジェット](device.md#ホーム画面ウィジェットplatformwidget)を参照してください。
 
 ## shortcuts
 
@@ -199,7 +199,7 @@ phrases = ["New note in ${app}"]
 
 ## nfc
 
-`asuka/nfc` が、権限以外にプラットフォームに求めるものです。パッケージをインポートしたアプリにだけ適用されます（インポートしないアプリには何も加わりません）。
+`platform/nfc` が、権限以外にプラットフォームに求めるものです。パッケージをインポートしたアプリにだけ適用されます（インポートしないアプリには何も加わりません）。
 
 ```toml
 [nfc]
@@ -225,7 +225,7 @@ tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
 
 ## icloud
 
-`asuka/icloud` の書類の関数を呼ぶアプリの iCloud コンテナーと、それを iCloud Drive にどう表示するかの設定です（呼ばないアプリには何も加わりません）。
+`platform/icloud` の書類の関数を呼ぶアプリの iCloud コンテナーと、それを iCloud Drive にどう表示するかの設定です（呼ばないアプリには何も加わりません）。
 
 ```toml
 [icloud]
@@ -342,8 +342,8 @@ Android のビルドの設定です。
 | `keyAlias` | 文字列 | なし | キーストアの中のアップロード鍵のエイリアスです。 |
 | `dynamicColor` | 真偽値 | `false` | Material のアプリと同じように、ユーザーの壁紙から色を取ります（Android 12 以降）。それ以外の環境では `accent` がシードになります。 |
 | `permissions` | 文字列の配列 | 各パッケージのもの | マニフェストに追加する権限です（`"android.permission.CAMERA"`）。`"<name>:28"` と書くと、Android 9（API 28）までだけ権限を要求します。アプリがインポートするパッケージは、必要な権限を自分で追加します。 |
-| `googleServices` | パス | なし | `asuka/push` で使う、Firebase プロジェクトの `google-services.json` です。 |
-| `mapsKey` | 文字列 | なし | `asuka/maps` で使う、Google Maps Platform の API キー（Maps SDK for Android）です。 |
+| `googleServices` | パス | なし | `platform/push` で使う、Firebase プロジェクトの `google-services.json` です。 |
+| `mapsKey` | 文字列 | なし | `platform/maps` で使う、Google Maps Platform の API キー（Maps SDK for Android）です。 |
 | `serviceAccount` | パス | なし | `asuka publish` が Google Play へのアップロードに使う、Google Cloud のサービスアカウントの JSON キーです。リポジトリには入れないでください。 |
 
 [配布](shipping.md#android)を参照してください。
@@ -371,14 +371,14 @@ Web のビルドの設定です。
 
 | キー | 型 | デフォルト | 説明 |
 |---|---|---|---|
-| `vapidPublicKey` | 文字列 | なし | アプリのサーバーの VAPID 公開鍵（base64url）です。ブラウザーは、`asuka/push` の Web Push を購読するときにこれを使います。 |
+| `vapidPublicKey` | 文字列 | なし | アプリのサーバーの VAPID 公開鍵（base64url）です。ブラウザーは、`platform/push` の Web Push を購読するときにこれを使います。 |
 | `base` | 文字列 | `"/"` | サイトを配信するパスです（`https://example.com/app/` なら `"/app/"`）。ページの `<base href>` になり、ルーターの href はその下のアドレスになります。`asuka build --base` で上書きできます。[アドレスと履歴](web.md#アドレスと履歴)を参照してください。 |
 
-[Web Push](web.md#asukapushweb-push) を参照してください。
+[Web Push](web.md#platformpushweb-push) を参照してください。
 
 ## bluetooth
 
-`asuka/bluetooth` をインポートしたアプリが、パッケージが与えるもの（権限と利用目的の説明文）以上に求めるものです。パッケージをインポートしないアプリでは何もしません。
+`platform/bluetooth` をインポートしたアプリが、パッケージが与えるもの（権限と利用目的の説明文）以上に求めるものです。パッケージをインポートしないアプリでは何もしません。
 
 ```toml
 [bluetooth]

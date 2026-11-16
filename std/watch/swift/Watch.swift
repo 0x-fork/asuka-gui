@@ -1,4 +1,4 @@
-// asuka/watch on macOS: FSEvents. A watch keeps what it saw of the files
+// std/watch on macOS: FSEvents. A watch keeps what it saw of the files
 // and, a moment after FSEvents says something changed, looks again and
 // compares: the events are the differences, a batch at a time (as the
 // Windows and Linux C does: desktop/watch.c). A file written many times in

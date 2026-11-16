@@ -58,3 +58,21 @@ func TestLockRoundTrip(t *testing.T) {
 		t.Fatal("a changed range needs resolving again")
 	}
 }
+
+// std/ and platform/ are the standard library's and the platform SDK's:
+// no package or dependency is named under them (nor asuka/, theirs once).
+func TestReservedNames(t *testing.T) {
+	for _, n := range []string{"std/charts", "platform/battery", "asuka/http"} {
+		if CheckName(n) == nil {
+			t.Errorf("%s: no error", n)
+		}
+		if _, err := ParseSpec(n, "^1.0.0"); err == nil {
+			t.Errorf("a dependency %s: no error", n)
+		}
+	}
+	for _, n := range []string{"@acme/charts", "charts", "@std/charts"} {
+		if err := CheckName(n); err != nil {
+			t.Errorf("%s: %v", n, err)
+		}
+	}
+}

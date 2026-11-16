@@ -57,6 +57,19 @@ func ReadManifest(dir string) (*Manifest, error) {
 	return m, nil
 }
 
+// CheckName says why a package's or a dependency's name can't be one: std/
+// and platform/ are the standard library's and the platform SDK's (the
+// CLI carries them, an import of either never reaches a dependency), and
+// asuka/ was theirs.
+func CheckName(name string) error {
+	for _, p := range []string{"std/", "platform/", "asuka/"} {
+		if strings.HasPrefix(name, p) {
+			return fmt.Errorf("%s: %s is the standard library's and the platform SDK's namespace (std/<name>, platform/<name>), not a package's: name it @you/%s", name, p, strings.TrimPrefix(name, p))
+		}
+	}
+	return nil
+}
+
 var tableHeader = regexp.MustCompile(`^\s*\[`)
 
 // SetDependency writes key = spec in the [dependencies] table of dir's

@@ -1,4 +1,4 @@
-import asuka/shader
+import std/shader
 
 /// A band of light that flows across a night sky.
 let aurora = shader.Program(r"""

@@ -1,4 +1,4 @@
-import asuka/markdown
+import std/markdown
 
 let reply = "# Plan\n\nThree **steps**, in `order`:\n\n1. Read [the docs](https://example.com)\n2. Write\n\n```go\nfmt.Println(1)\n```\n"
 

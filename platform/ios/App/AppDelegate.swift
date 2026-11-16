@@ -18,11 +18,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         #if ASUKA_PERIODIC
-        // asuka/periodic: its tasks' handlers, which the system wants before launch ends.
+        // platform/periodic: its tasks' handlers, which the system wants before launch ends.
         AsukaPeriodic.shared.registerAtLaunch()
         #endif
         #if ASUKA_NOTIFY || ASUKA_PUSH || ASUKA_NOTIFICATION_SERVICE
-        // asuka/notify, asuka/push: the center's delegate before launch
+        // platform/notify, platform/push: the center's delegate before launch
         // ends, to see the response that launched the app (a background
         // action launches it without a scene).
         AsukaNotifyCenter.shared.install()
@@ -42,7 +42,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     #if ASUKA_PUSH
-    // asuka/push: APNs' token, and data messages.
+    // platform/push: APNs' token, and data messages.
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken token: Data) {
         AsukaPush.shared.registered(token)
     }

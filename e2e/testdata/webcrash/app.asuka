@@ -2,8 +2,8 @@
 // (the core's fatal error, a panic, read on the next launch; an uncaught
 // JavaScript error, at once), a map of OpenStreetMap's tiles, and a
 // native view no script registers, each on a line the test reads.
-import asuka/crash
-import asuka/maps
+import platform/crash
+import platform/maps
 
 /// A native view with no platform code: nothing shows in its place.
 native component Missing {

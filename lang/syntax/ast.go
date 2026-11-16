@@ -136,7 +136,7 @@ type SourceFile struct {
 	Comments []*Comment      // every comment of the file, in source order, wherever the tree keeps it
 }
 
-// An ImportDecl is import asuka/http, import ./components .{Row, Card}
+// An ImportDecl is import std/http, import ./components .{Row, Card}
 // as c.
 type ImportDecl struct {
 	Span
@@ -148,7 +148,7 @@ type ImportDecl struct {
 	Alias    *Ident   // as name; nil for none
 }
 
-// PathString is the import's path as written: asuka/http, ./components.
+// PathString is the import's path as written: std/http, ./components.
 func (d *ImportDecl) PathString() string {
 	var b strings.Builder
 	if d.Up > 0 {

@@ -1,5 +1,5 @@
 // Generic stores: a store with type parameters, made per instantiation.
-import asuka/json
+import std/json
 
 store Box<T>(key: string, initial: T) {
   pub state value: T = initial

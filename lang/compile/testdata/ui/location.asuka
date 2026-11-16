@@ -1,4 +1,4 @@
-import asuka/location
+import platform/location
 
 /// What the background updates and regions brought, newest first.
 state log: [string] = []

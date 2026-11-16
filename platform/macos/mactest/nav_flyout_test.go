@@ -80,7 +80,7 @@ func TestNavFlyoutAnchored(t *testing.T) {
 // keyboard and on Escape (TestFlyoutDarwin).
 func TestNavTrayFlyout(t *testing.T) {
 	a := Run(t, `
-		import asuka/tray
+		import platform/tray
 		app { Root() }
 		component Root {
 		  state open = false

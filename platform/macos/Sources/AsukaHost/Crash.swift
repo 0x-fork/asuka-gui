@@ -1,4 +1,4 @@
-// asuka/crash's native side on a Mac. The core keeps the run's record
+// platform/crash's native side on a Mac. The core keeps the run's record
 // (asuka_crash_start: core/src/std/crash.c) and its own fatal errors; the
 // host writes what only it sees in the record's inbox, for the core to
 // read into reports:

@@ -1,7 +1,7 @@
-// asuka/agerange with no platform code (the fake host): the platform
+// platform/agerange with no platform code (the fake host): the platform
 // can't answer.
 
-import asuka/agerange
+import platform/agerange
 
 test "no age signals here" {
   do {

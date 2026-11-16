@@ -115,7 +115,7 @@ func newBin(dir string) error {
 		".gitignore": "dist/\n",
 		"main.asuka": `// A program: asuka run runs it (asuka run -- Ada), asuka build makes it
 // an executable in dist/.
-import asuka/os
+import std/os
 
 fn main() {
   let name = os.args().first() ?? "world"

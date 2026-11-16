@@ -321,7 +321,7 @@ struct AsukaModuleError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-/// No domain: through a package's Swift (asuka/host's), the core gives the
+/// No domain: through a package's Swift (or platform/host's call), the core gives the
 /// error's message alone ("not allowed", "stopped"), which the packages
 /// compare, not "message (domain code)".
 extension AsukaModuleError: CustomNSError {
@@ -337,7 +337,7 @@ func asukaErrorText(_ e: Error) -> String {
 }
 
 /// The host's own modules (notify, push, crash...), which the standard
-/// library's packages reach through asuka/host (std/host's Swift).
+/// library's packages reach through platform/host (sdk/host).
 public enum AsukaHostModules {
     /// Runs module's method with args; reply gets its answer once, on the
     /// main thread.

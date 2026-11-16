@@ -1,9 +1,9 @@
 SourceFile 1:1-52:3
   Imports: [2]
-    ImportDecl 1:1-1:18
+    ImportDecl 1:1-1:16
       Path: [2]
-        Ident "asuka" 1:8-1:13
-        Ident "http" 1:14-1:18
+        Ident "std" 1:8-1:11
+        Ident "http" 1:12-1:16
     ImportDecl 2:1-2:50 relative
       Path: [1]
         Ident "components" 2:10-2:20

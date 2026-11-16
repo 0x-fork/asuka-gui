@@ -10,13 +10,13 @@ import (
 	"testing"
 )
 
-// asuka/watch on the Mac (its Swift: FSEvents): a directory's creates,
+// std/watch on the Mac (its Swift: FSEvents): a directory's creates,
 // writes, renames and removes, a batch at a time, what its patterns
 // ignore left out; the directory gone ends the watch with a remove of ".".
 func TestWatch(t *testing.T) {
 	dir := t.TempDir()
 	src := fmt.Sprintf(`
-		import asuka/watch
+		import std/watch
 
 		component Main {
 		  state log = ""

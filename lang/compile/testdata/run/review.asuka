@@ -1,7 +1,7 @@
-// asuka/review with no platform code (the fake host): no store prompt,
+// platform/review with no platform code (the fake host): no store prompt,
 // so request does nothing; the stores' links.
 
-import asuka/review
+import platform/review
 
 test "no store here" {
   try? await review.request()

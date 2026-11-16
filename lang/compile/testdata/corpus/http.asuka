@@ -1,4 +1,4 @@
-// A stub of asuka/http.
+// A stub of std/http.
 pub struct Response {
   status: int
   body: string

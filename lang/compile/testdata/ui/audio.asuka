@@ -1,4 +1,4 @@
-import asuka/audio
+import platform/audio
 
 component Music {
   state music: audio.Player? = none

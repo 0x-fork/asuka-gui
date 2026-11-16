@@ -1,4 +1,4 @@
-// notify.c: asuka/notify on Windows: toasts (WinRT's
+// notify.c: platform/notify on Windows: toasts (WinRT's
 // ToastNotificationManager). The app is registered with the shell as an
 // unpackaged app is (a Start menu shortcut with its AppUserModelID, the
 // AppUserModelId key) with a COM activator of its own, so that a toast's
@@ -258,7 +258,7 @@ static void start_activator(void) {
 	GUID clsid = toast_clsid();
 	HRESULT hr = CoRegisterClassObject(&clsid, (IUnknown *)&factory_obj, CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE, &nt.cookie);
 	if (FAILED(hr)) {
-		wh_log("asuka/notify: the toasts' activator: %#lx", (unsigned long)hr);
+		wh_log("platform/notify: the toasts' activator: %#lx", (unsigned long)hr);
 		return;
 	}
 	nt.activator = true;
@@ -351,7 +351,7 @@ static void *toasts(char **err) {
 	char *e = NULL;
 	if (!start_shortcut(aumid, exe, &e)) {
 		*err = wh_alloc(strlen(e) + 32);
-		sprintf(*err, "asuka/notify: %s", e);
+		sprintf(*err, "platform/notify: %s", e);
 		free(e), free(aumid), free(icon);
 		return NULL;
 	}
@@ -362,7 +362,7 @@ static void *toasts(char **err) {
 	free(icon);
 	SetCurrentProcessExplicitAppUserModelID(aumid);
 	if (!register_activator(aumid, exe)) {
-		*err = wh_strdup("asuka/notify: couldn't register the toasts' activator");
+		*err = wh_strdup("platform/notify: couldn't register the toasts' activator");
 		free(aumid);
 		return NULL;
 	}
@@ -370,7 +370,7 @@ static void *toasts(char **err) {
 	void *st;
 	asuka_winrt_factory("Windows.UI.Notifications.ToastNotificationManager", &IID_ToastManagerStatics, &st);
 	if (!st) {
-		*err = wh_strdup("asuka/notify: no ToastNotificationManager");
+		*err = wh_strdup("platform/notify: no ToastNotificationManager");
 		free(aumid);
 		return NULL;
 	}
@@ -383,7 +383,7 @@ static void *toasts(char **err) {
 	if (FAILED(hr) || !n) {
 		asuka_com_release(st);
 		*err = wh_alloc(48);
-		sprintf(*err, "asuka/notify: toasts: %#lx", (unsigned long)hr);
+		sprintf(*err, "platform/notify: toasts: %#lx", (unsigned long)hr);
 		return NULL;
 	}
 	nt.notifier = n, nt.statics = st;
@@ -957,7 +957,7 @@ static void image_done(void *ctx) {
 static void *with(wh_reply *r) {
 	char *err = NULL;
 	void *n = toasts(&err);
-	if (!n) wh_reply_fail(r, "%s", err ? err : "asuka/notify: no toasts");
+	if (!n) wh_reply_fail(r, "%s", err ? err : "platform/notify: no toasts");
 	free(err);
 	return n;
 }

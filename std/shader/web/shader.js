@@ -1,4 +1,4 @@
-// asuka/shader on the web: the program's GLSL ES 3.00 (compiled with the
+// std/shader on the web: the program's GLSL ES 3.00 (compiled with the
 // app, Program's glsl) drawn with WebGL 2 over the view's box. Its
 // uniforms are U0, U1... in the order of the code's, their values the
 // lanes the app's uniforms give; the view sets rectSize, pixelScale and

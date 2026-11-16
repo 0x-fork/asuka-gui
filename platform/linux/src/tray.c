@@ -1,4 +1,4 @@
-// tray.c: asuka/tray on Linux. GTK 4 has no tray, and the GTK 3
+// tray.c: platform/tray on Linux. GTK 4 has no tray, and the GTK 3
 // appindicator libraries can't load in a GTK 4 process, so the host
 // speaks the protocol they speak itself, through GDBus:
 //
@@ -25,7 +25,7 @@
 //     (application://<id>.desktop), which Ubuntu's Dock, Dash to Dock,
 //     Plank and KDE's task manager follow.
 //
-// The module's methods are std/tray's: supported, set, remove, dock,
+// The module's methods are sdk/tray's: supported, set, remove, dock,
 // next (a long poll of clicks and chosen items: u32 icon, u8 kind, u32
 // item), stop.
 #include "host.h"
@@ -425,7 +425,7 @@ static sni *icon_of(uint32_t id) {
 	return NULL;
 }
 
-// tray_event hands std/tray what happened: to the "next" waiting, or
+// tray_event hands sdk/tray what happened: to the "next" waiting, or
 // queued.
 static void tray_event(uint32_t id, uint8_t kind, uint32_t index) {
 	ak_buf b = {0};

@@ -1,4 +1,4 @@
-// Bluetooth finds Bluetooth LE devices nearby (asuka/bluetooth): it
+// Bluetooth finds Bluetooth LE devices nearby (platform/bluetooth): it
 // scans for them (on the web, the browser's chooser finds one), connects
 // to the one tapped, and reads its battery and its heart rate, which it
 // follows as the device notifies it. As a peripheral, it's a heart rate
@@ -7,7 +7,7 @@
 //
 //   asuka dev --platform ios examples/bluetooth
 
-import asuka/bluetooth
+import platform/bluetooth
 
 /// A device a scan heard, as the list shows it.
 struct Found {

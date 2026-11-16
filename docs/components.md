@@ -163,13 +163,13 @@ without a selection, `copy(text)` puts it on the clipboard.
 
 ### Markdown
 
-`asuka/markdown` shows Markdown (CommonMark, with GitHub's tables, task
+`std/markdown` shows Markdown (CommonMark, with GitHub's tables, task
 lists, strikethrough and autolinks) as the platform's own styled text:
 one selection, links that open, the user's text size. Raw HTML in the
 text shows as text.
 
 ```asuka
-import asuka/markdown
+import std/markdown
 
 component Reply(text: string, writing: bool) {
   markdown.View(text) { streaming: writing; padding: 16 }
@@ -464,7 +464,7 @@ them has a label of its own but `Picker` and `Toggle`'s `title`: put a
 `Text` beside it.
 
 ```asuka
-import asuka/time
+import std/time
 
 component Settings {
   state wifi = true
@@ -567,7 +567,7 @@ component Settings {
   type="color">`. Windows' color dialog has no opacity, so `alpha` does
   nothing there.
 - **DatePicker** picks a moment, shown in the device's time zone:
-  `asuka/time`'s `time.Picker` binds a `time.Time` (the prelude's
+  `std/time`'s `time.Picker` binds a `time.Time` (the prelude's
   `DatePicker` binds milliseconds since 1970). `mode` is `.date` (the
   default), `.time` or `.dateTime`; `min` and `max` bound it.
 
@@ -710,7 +710,7 @@ Each platform decodes what its own decoders read:
 | Web | the browser | WebCodecs' `ImageDecoder` on a canvas (AVIF sequences too); where there's none (Safari), the `<img>` itself, which shows its first frame while paused |
 
 An SVG is an image on the Mac, Linux and the web only. For an SVG icon
-on every platform, draw it with [`asuka/svg`](#svg-icons), as vectors.
+on every platform, draw it with [`std/svg`](#svg-icons), as vectors.
 
 ## Symbols and icons
 
@@ -754,13 +754,13 @@ Icons' glyphs on Windows. A name outside the set shows nothing there
 
 ### SVG icons
 
-For icons of your own, `asuka/svg` draws SVG with the platform's vector
+For icons of your own, `std/svg` draws SVG with the platform's vector
 drawing; nothing is rasterized. An `svg.Icon`'s markup is a string
 literal, which the compiler parses: a markup it can't read is a compile
 error, and nothing is parsed on the device.
 
 ```asuka
-import asuka/svg
+import std/svg
 
 let download = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>""")
 
@@ -788,7 +788,7 @@ left plus fractions of its size, so a shape follows its box without the
 app working it out again:
 
 ```asuka
-import asuka/svg
+import std/svg
 
 let tick = svg.Path().move(svg.Point(x: 4, fy: 0.5)).line(svg.Point(fx: 0.4, fy: 1, y: -4)).line(svg.Point(fx: 1, x: -4, y: 4))
 
@@ -850,14 +850,14 @@ ratio. `seek` takes seconds from the start.
 
 ## Lottie animations
 
-`asuka/lottie` plays Lottie animations (After Effects animations
+`std/lottie` plays Lottie animations (After Effects animations
 exported as Lottie JSON, `.json`, or as dotLottie, `.lottie`) with each
 platform's own player: lottie-ios on iOS and the Mac, lottie-android on
 Android, lottie-web on the web. Windows and Linux have no player to call
 yet: there the view is an empty box.
 
 ```asuka
-import asuka/lottie
+import std/lottie
 
 component Success {
   state playing = true
@@ -1067,7 +1067,7 @@ into the pattern it starts. [`examples/usage`](../examples/usage) draws a foreca
 one.
 
 ```asuka
-import asuka/math
+import std/math
 
 fn ring(w: float, h: float) -> Path {
   let r = min(w, h) / 2 - 4
@@ -1144,13 +1144,13 @@ isn't read by screen readers: give the view around it a `label`.
 
 ### Charts
 
-`asuka/chart` draws charts: bars, lines, areas and points over a value
+`std/chart` draws charts: bars, lines, areas and points over a value
 axis, with the platform's text for their labels (scaled with the user's
 text size). It's written in Asuka: the scale and the marks are worked
 out once, drawn by `svg.Shape`, so it's the same on every platform.
 
 ```asuka
-import asuka/chart
+import std/chart
 
 component Week(steps: [float], goal: [float]) {
   chart.View([
@@ -1179,14 +1179,14 @@ component Week(steps: [float], goal: [float]) {
 
 ### Shaders
 
-`asuka/shader` draws a box with a GPU program: flowing gradients, noise,
+`std/shader` draws a box with a GPU program: flowing gradients, noise,
 glows, ripples. The program is a Kage shader (Ebitengine's language,
 Go's syntax), compiled when the app compiles, for every platform: a
 shader that doesn't compile is a compile error, and only the platform's
 own program is compiled on the device.
 
 ```asuka
-import asuka/shader
+import std/shader
 
 let glow = shader.Program(r"""
   package main

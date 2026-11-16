@@ -94,7 +94,7 @@ func NewChecker(fset *syntax.FileSet) *Checker {
 // Fset is the file set positions are in.
 func (c *Checker) Fset() *syntax.FileSet { return c.fset }
 
-// Std returns the standard library's package at path (asuka/json), one
+// Std returns the standard library's package at path (std/json), one
 // the compiler provides, or nil.
 func (c *Checker) Std(path string) *Package {
 	if p, ok := c.std[path]; ok {
@@ -143,7 +143,7 @@ func (c *Checker) Program(root *Package) *Program {
 
 // entry finds the root package's fn main, which makes it a program (a
 // command-line tool, docs/programs.md): main takes no parameters (the
-// arguments are asuka/os's), returns nothing (os.exit sets the exit
+// arguments are std/os's), returns nothing (os.exit sets the exit
 // code), and may be async and throw. A program has no app block and
 // shows no views. Only the root package's main is an entry: an imported
 // package's is a function as any other.
@@ -171,7 +171,7 @@ func (c *Checker) entry(root *Package) *Function {
 		c.errorf(d.Name, "fn main is the program's entry: it has no type parameters")
 	}
 	if len(main.Sig.Params) > 0 {
-		c.errorf(d.Params, "fn main takes no parameters: the program's arguments are os.args() (import asuka/os)")
+		c.errorf(d.Params, "fn main takes no parameters: the program's arguments are os.args() (import std/os)")
 	}
 	if r := main.Sig.Result; r != Void && r != Never {
 		c.errorf(d.Result, "fn main returns nothing: os.exit(code) ends the program with a code")
@@ -382,7 +382,7 @@ func importHint(imp *syntax.ImportDecl) string {
 	if imp.Relative {
 		return "a package beside this one is a directory of .asuka files"
 	}
-	return "the standard library is asuka/<name> (docs/stdlib.md); a dependency is added with asuka add"
+	return "the standard library is std/<name> and the platform SDK platform/<name> (docs/stdlib.md); a dependency is added with asuka add"
 }
 
 func contains[T comparable](s []T, x T) bool {
@@ -397,7 +397,7 @@ func contains[T comparable](s []T, x T) bool {
 // exported reports whether o, declared in p, may be used from another
 // package.
 func (c *Checker) exported(p *Package, o Object) bool {
-	if p.Prelude || p.Path == "" || strings.HasPrefix(p.Path, "asuka/") && p.Dir == "" {
+	if p.Prelude || p.Path == "" || StdPath(p.Path) && p.Dir == "" {
 		return true
 	}
 	switch x := o.(type) {

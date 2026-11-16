@@ -6,7 +6,7 @@ import android.os.Looper
 import org.json.JSONObject
 
 /**
- * asuka/push's messages, kept until the Go side asks for them: those that
+ * platform/push's messages, kept until the Go side asks for them: those that
  * come while the app runs ("nextReceived") and those the user taps
  * ("nextOpened"), from any thread (Firebase's service). Its "register"
  * is the asuka-push module's (Firebase Cloud Messaging), set as it loads.
@@ -21,7 +21,7 @@ object AsukaPushHub {
 
     /**
      * The module's: Firebase's token (null: none), without asking to show
-     * notifications, for asuka/liveactivity's pushes. Null without Firebase.
+     * notifications, for platform/liveactivity's pushes. Null without Firebase.
      */
     var token: (((String?) -> Unit) -> Unit)? = null
 
@@ -40,7 +40,7 @@ object AsukaPushHub {
             .put("channel", channel ?: data["channel"].orEmpty()).put("image", image ?: data["image"].orEmpty())
             .put("badge", data["badge"]?.toIntOrNull() ?: 0)
 
-    /** The rewrites (asuka/push's rewrite) waiting for the app. */
+    /** The rewrites (platform/push's rewrite) waiting for the app. */
     private val rewrites = AsukaWaitQueue()
     private val pendingRewrites = HashMap<String, (JSONObject?) -> Unit>()
 
@@ -109,14 +109,14 @@ object AsukaPushHub {
 }
 
 /**
- * asuka/push's module: "register", "nextReceived", "nextOpened", "stop" (the
+ * platform/push's module: "register", "nextReceived", "nextOpened", "stop" (the
  * method's name); "nextRewrite" ({token, message}) and "rewritten"
  * ({token, ok, spec}) for push.rewrite.
  */
 fun AsukaRuntime.pushMethods(): Map<String, AsukaModuleMethod> = mapOf(
     "register" to { _, reply ->
         val r = AsukaPushHub.register
-        if (r == null) reply(Result.failure(Exception("asuka/push isn't in this build")))
+        if (r == null) reply(Result.failure(Exception("platform/push isn't in this build")))
         else r(this, reply)
     },
     "nextReceived" to { _, reply -> AsukaPushHub.next("nextReceived", reply) },

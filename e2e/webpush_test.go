@@ -52,7 +52,7 @@ var testVAPID = webpush.Keys{
 // shows it and hands it to the page (push.received). Its click goes
 // through the worker's own handler (DevTools has no way to click a
 // notification): notify.responses, push.opened, onOpenURL. Then a notification
-// scheduled with asuka/notify, which comes due while no page is open,
+// scheduled with platform/notify, which comes due while no page is open,
 // shows as the app's page opens again. What shows is read from the
 // showNotification calls (recorded), not getNotifications: Chrome
 // reconciles that with what the system displays, and may leave out one

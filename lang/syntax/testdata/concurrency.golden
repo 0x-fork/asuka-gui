@@ -1,15 +1,15 @@
 SourceFile 1:1-51:3
   Imports: [2]
-    ImportDecl 1:1-1:18
+    ImportDecl 1:1-1:16
       Path: [2]
-        Ident "asuka" 1:8-1:13
-        Ident "http" 1:14-1:18
-    ImportDecl 2:1-2:37
+        Ident "std" 1:8-1:11
+        Ident "http" 1:12-1:16
+    ImportDecl 2:1-2:40
       Path: [2]
-        Ident "asuka" 2:8-2:13
-        Ident "sensors" 2:14-2:21
+        Ident "platform" 2:8-2:16
+        Ident "sensors" 2:17-2:24
       Names: [1]
-        Ident "Accelerometer" 2:23-2:36
+        Ident "Accelerometer" 2:26-2:39
   Decls: [2]
     ScreenDecl 4:1-42:2 blank
       Name: Ident "Weather" 4:8-4:15

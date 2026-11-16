@@ -15,13 +15,13 @@ import (
 	"time"
 )
 
-// updateApp is an app that calls the "update" module (asuka/platform's
+// updateApp is an app that calls the "update" module (platform/host's
 // call) as its buttons are pressed, and shows each answer (or "error: "
 // and why) as "out: ...".
 func shellUpdateApp(buttons string) string {
 	return `
-		import asuka/platform
-		import asuka/json
+		import platform/host
+		import std/json
 
 		struct DownloadArgs {
 		  url: string
@@ -43,7 +43,7 @@ func shellUpdateApp(buttons string) string {
 
 		async fn call(method: string, args: string) -> string {
 		  do {
-		    let b = try await platform.call("update", method, args.bytes())
+		    let b = try await host.call("update", method, args.bytes())
 		    return b.string()
 		  } catch e {
 		    return "error: " + e.message
@@ -301,7 +301,7 @@ func shellIdentity() string {
 
 // staged copies a bundle into a new work directory of the package's
 // beside the installed one (.<Name>.app.update-<id>/app/<Name>.app), as
-// asuka/update stages a verified update, and returns the copy.
+// platform/update stages a verified update, and returns the copy.
 func shellStaged(t *testing.T, installed, bundle, id string) string {
 	t.Helper()
 	dir := filepath.Join(filepath.Dir(installed), "."+filepath.Base(installed)+".update-"+id, "app")
@@ -324,7 +324,7 @@ func TestShellUpdateInstall(t *testing.T) {
 	tmp := t.TempDir()
 	running := shellSignedCopy(t, player, filepath.Join(tmp, "installed"), "dev.asuka.mactest", false)
 	// The bundles, signed in folders of their own, then staged beside the
-	// app once it has started (as asuka/update does: the host cleans what
+	// app once it has started (as platform/update does: the host cleans what
 	// it finds there as it starts).
 	otherSigned := shellSignedCopy(t, player, filepath.Join(tmp, "other"), "com.example.other", false)
 	tamperedSigned := shellSignedCopy(t, player, filepath.Join(tmp, "tampered"), "dev.asuka.mactest", false)

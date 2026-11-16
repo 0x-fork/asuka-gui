@@ -1,25 +1,25 @@
 // Downloader saves videos from links: a link pasted or shared from
-// another app (on share), downloaded as it comes (asuka/http's download)
-// while the app is out of sight (asuka/background, its progress and
-// Cancel in a notification), on Wi-Fi only if asked (asuka/network), into the
-// gallery (asuka/library). Its browser finds the videos a page plays,
+// another app (on share), downloaded as it comes (std/http's download)
+// while the app is out of sight (platform/background, its progress and
+// Cancel in a notification), on Wi-Fi only if asked (platform/network), into the
+// gallery (platform/library). Its browser finds the videos a page plays,
 // from a script that runs before the page's own (WebView's preload), and
-// blocks ads; its icons are SVG (asuka/svg); asuka/js runs a script off
+// blocks ads; its icons are SVG (std/svg); platform/js runs a script off
 // screen.
 //
 //   asuka dev --platform android --once examples/downloader
 
-import asuka/background
-import asuka/dock
-import asuka/fs
-import asuka/http
-import asuka/js
-import asuka/library
-import asuka/network
-import asuka/regex
-import asuka/storage
-import asuka/svg
-import asuka/time
+import platform/background
+import platform/dock
+import std/fs
+import std/http
+import platform/js
+import platform/library
+import platform/network
+import std/regex
+import std/storage
+import std/svg
+import std/time
 
 // Lucide's icons.
 let iconDownload = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>""")
@@ -177,7 +177,7 @@ async fn download(url: string, report: fn(string)) {
   }
 }
 
-/// Downloads url into file as it comes (asuka/http's download), its
+/// Downloads url into file as it comes (std/http's download), its
 /// progress reported; cancelled stops it, leaving no file.
 async fn fetch(url: string, file: string, cancelled: fn() -> bool, progress: fn(int, int)) throws {
   try fs.mkdirAll(fs.dir(file))

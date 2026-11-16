@@ -1029,17 +1029,22 @@ func (c *completer) imports(typed string) {
 		}
 		c.add(CompletionItem{Label: path, Kind: kind, Detail: detail, TextEdit: &TextEdit{Range: rg, NewText: path}, FilterText: path}, prioMember)
 	}
-	// The standard library.
-	for _, p := range []string{"asuka/json", "asuka/math", "asuka/time"} {
+	// The standard library and the platform SDK.
+	for _, p := range []string{"std/assets", "std/json", "std/math"} {
 		add(p, "standard library", kindModule)
 	}
-	if d, err := std.Dir(); err == nil {
-		if entries, err := os.ReadDir(d); err == nil {
-			for _, e := range entries {
-				if _, err := os.Stat(filepath.Join(d, e.Name(), "asuka.toml")); e.IsDir() && err == nil {
-					add("asuka/"+e.Name(), "standard library", kindModule)
-				}
+	if ps, err := std.Packages(); err == nil {
+		paths := make([]string, 0, len(ps))
+		for p := range ps {
+			paths = append(paths, p)
+		}
+		sort.Strings(paths)
+		for _, p := range paths {
+			detail := "standard library"
+			if strings.HasPrefix(p, std.PlatformPrefix) {
+				detail = "platform SDK"
 			}
+			add(p, detail, kindModule)
 		}
 	}
 	// Packages beside this one.

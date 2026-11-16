@@ -1,0 +1,322 @@
+// Package platform/tray puts the app outside its windows: an icon in the
+// tray (the menu bar on macOS, the notification area on Windows, the
+// panel's status icons on Linux) with its menu, and items of the app's
+// own in its Dock icon's menu (on Windows the taskbar button's jump
+// list, on Linux the launcher's quicklist). A phone and the web have no
+// tray: there Tray and DockMenu show nothing, and supported() is false.
+//
+//   tray.Tray("timer") {
+//     symbol: if running { "timer" } else { "moon.zzz" }
+//     title: clock
+//     tooltip: "Focus"
+//     menu: [
+//       .button(title: "Open Timer", run: () => { open = true }),
+//       .section(title: "", items: [.button(title: "Quit", run: () => quit())]),
+//     ]
+//     on click { flyout = !flyout }
+//   }
+//   tray.DockMenu { items: [.button(title: "Start", run: () => start())] }
+//
+// An app that lives in the tray, with no window and no Dock icon at
+// launch, is a background app (asuka.toml's background); one that keeps
+// running when its windows close says asuka.toml's keepRunning.
+
+import platform/host
+
+// The hosts' "tray" module (each desktop host's):
+//
+//   - "supported" answers u8 1.
+//   - "set" makes or changes an icon: u32 its number (1 and up), u8 flags
+//     (1 template, 2 clickable: it has on click), string image, symbol,
+//     title, tooltip and id (where a Mac remembers its place), then its
+//     menu (ops/menu.go's: u32 count, per item u8 flags (1 separator,
+//     2 disabled, 4 checked, 8 destructive, 16 submenu), string title,
+//     string key, u8 modifiers, u8 role, then a submenu's menu).
+//   - "remove" takes an icon away: u32 its number.
+//   - "dock" sets the Dock menu's items: a menu.
+//   - "next" answers once something happens: u32 an icon's number (0:
+//     the Dock menu), u8 1 a click or 2 an item chosen, u32 the item's
+//     number (depth first, a submenu's items after the item that opens
+//     it; separators count). Asked again each time it answers, while an
+//     icon or a Dock menu shows; "stop" answers the one waiting.
+
+/// The numbers the host knows the icons shown by, by their id.
+state numbers: [string: int] = [:]
+state lastNumber = 0
+/// What happened, by icon number (0: the Dock menu), in order: -1 a
+/// click, else an item's number.
+state happened: [int: [int]] = [:]
+
+/// The DockMenus shown, in the order they came: the last one's items are
+/// the Dock's.
+state docks: [int] = []
+state dockSent = bytes()
+state dockSet = false
+
+// One poll for every icon and Dock menu shown (the hosts answer one at a
+// time), while any is.
+fn polling() -> Stream<int> = Stream(send => {
+  defer { host.send("tray", "stop", bytes()) }
+  var n = 0
+  while true {
+    let b = try await host.call("tray", "next", bytes())
+    if b.count() >= 9 {
+      let number = host.readU32(b, 0)
+      var hs = happened[number] ?? []
+      hs.push(if host.readU8(b, 4) == 1 { -1 } else { host.readU32(b, 5) })
+      happened[number] = hs
+    }
+    n += 1
+    send(n)
+  }
+})
+
+let poll = live(0, polling)
+
+/// What a flyout Window hangs from: the icon shown with this id (Tray's),
+/// below it in a Mac's menu bar, above it in a taskbar at the bottom of
+/// the screen. Linux's panels don't say where their icons are: there the
+/// flyout goes where the pointer was as the icon was clicked (X11), or
+/// where the desktop puts a new window (Wayland).
+///
+///   Window {
+///     bind open: flyout
+///     flyout: Flyout(anchor: tray.anchor("timer"), placement: .bottom, gap: 4)
+///     fitContent: true
+///     Panel()
+///   }
+pub fn anchor(id: string) -> Anchor = Anchor(tray: numbers[id] ?? 0)
+
+/// Whether the platform has a tray (on Linux, whether a
+/// StatusNotifierWatcher runs: the panel's, or GNOME's AppIndicator
+/// extension).
+pub async fn supported() -> bool {
+  if let b = try? await host.call("tray", "supported", bytes()) {
+    return b.count() > 0 && host.readU8(b, 0) == 1
+  }
+  return false
+}
+
+// A menu's entries as the hosts number them: a section is its items
+// between separators (under its title, when it has one).
+enum Entry {
+  item(action: Action)
+  header(title: string)
+  separator
+}
+
+fn entries(items: [Action]) -> [Entry] {
+  var out: [Entry] = []
+  var any = false // something came before: a section is set apart from it
+  var after = false // a section just ended: what follows is set apart
+  for a in items {
+    match a {
+      .section(title, sub) => {
+        if any { out.push(.separator) }
+        if !title.isEmpty() { out.push(.header(title)) }
+        for e in entries(sub) { out.push(e) }
+        any = true
+        after = true
+      }
+      _ => {
+        if after { out.push(.separator) }
+        out.push(.item(a))
+        any = true
+        after = false
+      }
+    }
+  }
+  return out
+}
+
+fn item(flags: int, title: string) -> bytes = host.u8(flags).concat(host.str(title)).concat(host.str("")).concat(host.u8(0)).concat(host.u8(0))
+
+fn encodeEntries(es: [Entry]) -> bytes {
+  var b = host.u32(es.count())
+  for e in es {
+    match e {
+      .separator => { b = b.concat(item(1, "")) }
+      .header(title) => { b = b.concat(item(2, title)) }
+      .item(a) => {
+        match a {
+          .button(title, _, role, disabled, checked, _) => {
+            var flags = 0
+            if disabled { flags += 2 }
+            if checked { flags += 4 }
+            if role == .destructive { flags += 8 }
+            b = b.concat(item(flags, title))
+          }
+          .submenu(title, _, sub) => {
+            b = b.concat(item(16, title)).concat(encodeEntries(entries(sub)))
+          }
+          _ => {}
+        }
+      }
+    }
+  }
+  return b
+}
+
+fn encodeMenu(items: [Action]) -> bytes = encodeEntries(entries(items))
+
+// numbered is how many numbers es take, with their submenus'.
+fn numbered(es: [Entry]) -> int {
+  var n = 0
+  for e in es {
+    n += 1
+    match e {
+      .item(.submenu(_, _, sub)) => { n += numbered(entries(sub)) }
+      _ => {}
+    }
+  }
+  return n
+}
+
+// find is the Action numbered n among es, depth first.
+fn find(es: [Entry], n: int) -> Action? {
+  var i = n
+  for e in es {
+    if i == 0 {
+      match e {
+        .item(a) => { return a }
+        _ => { return none }
+      }
+    }
+    i -= 1
+    match e {
+      .item(.submenu(_, _, sub)) => {
+        let ses = entries(sub)
+        let c = numbered(ses)
+        if i < c { return find(ses, i) }
+        i -= c
+      }
+      _ => {}
+    }
+  }
+  return none
+}
+
+// press runs a chosen item: a button's run, unless it's disabled (an
+// async one as a task of the tray's).
+fn press(a: Action?) {
+  if let x = a { runAction(x) }
+}
+
+/// An icon in the tray while it's shown (a component that shows nothing
+/// where it's put), id naming it among the app's (a Mac brings it back
+/// where the user put it). image is an image of the app's assets or a
+/// file's path, drawn 16 points tall; symbol, used when there's no image,
+/// a symbol's name, as Symbol's, always a template; template says the
+/// image is black on transparent for the platform to color as its own
+/// icons. title shows beside it (a Mac's menu bar; Linux where the panel
+/// shows one), tooltip when the pointer rests on it. menu is its menu
+/// (sections between separators; a submenu opens beside it). With on
+/// click, a click is click and the menu opens on a secondary click;
+/// without, a click opens the menu.
+pub component Tray(id: string) {
+  prop image: string = ""
+  prop symbol: string = ""
+  prop template: bool = false
+  prop title: string = ""
+  prop tooltip: string = ""
+  prop menu: [Action] = []
+  event click
+
+  state number = 0
+  state seen = 0
+  state sent = bytes()
+
+  task(id) {
+    lastNumber += 1
+    let mine = lastNumber
+    numbers[id] = mine
+    seen = 0
+    number = mine
+    defer {
+      let _ = numbers.remove(id)
+      let _ = happened.remove(mine)
+      host.send("tray", "remove", host.u32(mine))
+    }
+    await never()
+  }
+
+  // The icon whole, again whenever its encoding changes.
+  effect {
+    if number == 0 { return }
+    var flags = 0
+    if template { flags += 1 }
+    if click { flags += 2 }
+    var b = host.u32(number).concat(host.u8(flags))
+    for s in [image, symbol, title, tooltip, id] { b = b.concat(host.str(s)) }
+    b = b.concat(encodeMenu(menu))
+    if b != sent {
+      sent = b
+      host.send("tray", "set", b)
+    }
+  }
+
+  effect {
+    let _ = poll()
+    let hs = happened[number] ?? []
+    if number != 0 && hs.count() > seen {
+      let from = seen
+      seen = hs.count()
+      for i in from..<hs.count() {
+        if hs[i] < 0 {
+          emit click
+        } else {
+          press(find(entries(menu), hs[i]))
+        }
+      }
+    }
+  }
+}
+
+fn sendDock(b: bytes) {
+  if dockSet && b == dockSent { return }
+  dockSet = true
+  dockSent = b
+  host.send("tray", "dock", b)
+}
+
+/// Items of the app's own in its Dock icon's menu (macOS), above the
+/// Dock's own; on Windows the Tasks of its taskbar button's jump list
+/// (each starts the app with an argument, which a running app is handed:
+/// submenus, checks and disabled items it can't show are left out), on
+/// Linux its launcher's quicklist. While several show, the last one's
+/// items are the Dock's; when it goes, the one before's.
+pub component DockMenu {
+  prop items: [Action] = []
+
+  state number = 0
+  state seen = 0
+
+  task {
+    lastNumber += 1
+    let mine = lastNumber
+    docks.push(mine)
+    seen = (happened[0] ?? []).count()
+    number = mine
+    defer {
+      let _ = docks.removeWhere(d => d == mine)
+      if docks.isEmpty() { sendDock(encodeMenu([])) }
+    }
+    await never()
+  }
+
+  effect {
+    if number != 0 && (docks.last() ?? 0) == number { sendDock(encodeMenu(items)) }
+  }
+
+  effect {
+    let _ = poll()
+    let hs = happened[0] ?? []
+    if number != 0 && hs.count() > seen {
+      let from = seen
+      seen = hs.count()
+      if (docks.last() ?? 0) == number {
+        for i in from..<hs.count() { press(find(entries(items), hs[i])) }
+      }
+    }
+  }
+}

@@ -115,7 +115,7 @@ func programExe(p *appbuild.Project, t cbuild.Target, dir, version string, verbo
 		}
 		if len(natives) > 0 {
 			if runtime.GOOS != "darwin" {
-				return "", nil, errors.New("a program whose packages have Swift (asuka/http's URLSession) is built for macOS on a Mac")
+				return "", nil, errors.New("a program whose packages have Swift (std/http's URLSession) is built for macOS on a Mac")
 			}
 			if err := macProgram(app, m, natives, t.Arch, exe, verbose); err != nil {
 				return "", nil, err

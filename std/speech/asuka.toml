@@ -1,6 +1,0 @@
-name = "asuka/speech"
-version = "0.1.0"
-description = "Text read aloud with the platform's voices"
-
-[windows]
-libraries = ["ole32", "advapi32"]

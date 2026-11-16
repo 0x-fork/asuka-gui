@@ -1,7 +1,7 @@
 // Package fswatch follows changes to files and directories, with the
 // system's notifications (FSEvents, inotify, ReadDirectoryChangesW,
 // kqueue) where it has them: what asuka dev watches an app's sources
-// with, and what asuka/watch gives apps.
+// with, and what std/watch gives apps.
 package fswatch
 
 import (

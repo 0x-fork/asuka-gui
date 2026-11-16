@@ -1,6 +1,6 @@
 // unix
 // exit: 0
-import asuka/command
+import std/command
 
 async fn main() throws {
   let out = try await command.run("echo", ["a b", "c"])

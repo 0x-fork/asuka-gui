@@ -1,4 +1,4 @@
-import asuka/purchase
+import platform/purchase
 
 let coins = purchase.Item(id: "coins100", kind: .consumable)
 let pro = purchase.Item(id: "pro", kind: .nonConsumable)

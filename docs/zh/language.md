@@ -31,7 +31,8 @@ app { Counter() }
 源文件以 `.asuka` 结尾。一个目录里的源文件构成一个**包**：同一个包的文件不需要导入，就能看到彼此的声明。加上 `pub` 的声明才对其他包可见。
 
 ```asuka
-import asuka/http                 // 标准库
+import std/http                 // 标准库
+import platform/camera          // 平台 SDK
 import @acme/charts               // 一个依赖（asuka add @acme/charts）
 import ./components               // 与当前包并列的另一个包
 import ./model.{Message, Folder}  // 直接使用这些名字，不用加包名
@@ -39,7 +40,7 @@ import ./theme as t               // 起一个更短的名字
 import ../model                   // 上一级目录里的包
 ```
 
-包里的名字要通过包名来使用：`http.get(url)`、`components.Card("Hi")`。包名取自路径的最后一段；最后一段不能用作名字的包（比如 `@acme/line-charts`），导入时要用 `as` 给它起一个名字。预置模块（prelude，即内置的类型、元素和函数）不需要导入。`asuka/...` 这些包都列在[标准库](stdlib.md)里。
+包里的名字要通过包名来使用：`http.get(url)`、`components.Card("Hi")`。包名取自路径的最后一段；最后一段不能用作名字的包（比如 `@acme/line-charts`），导入时要用 `as` 给它起一个名字。预置模块（prelude，即内置的类型、元素和函数）不需要导入。`std/...` 和 `platform/...` 这些包随命令行工具一起提供，都列在[标准库与平台 SDK](stdlib.md)里；其他包不能以 `std/` 或 `platform/` 命名。
 
 语句和声明在行尾结束；想在一行里写多条，用 `;` 隔开。如果一行以运算符、逗号或左括号结尾，就会接着下一行继续。
 
@@ -50,7 +51,7 @@ import ../model                   // 上一级目录里的包
 一个包要么是入口，要么是库。带 `app { }` 块的包是应用：这个块就是它显示的内容（见[导航](#导航)）。文件里声明了 `fn main()` 的包是**程序**，也就是命令行工具：`main` 不接受参数（参数通过 `os.args()` 读取），不返回值（`os.exit(code)` 以某个退出码结束程序），可以是 `async` 的，也可以抛出错误；`main` 结束，程序也就结束。两者都没有的包是库，供其他包导入。一个包不能同时是应用和程序，程序也不能声明组件：它不显示视图。只有构成应用或程序的那个包才有入口；它导入的包里的 `main` 只是一个普通函数。详见[程序](programs.md)。
 
 ```asuka
-import asuka/os
+import std/os
 
 fn main() {
   print("Hello, {os.args().first() ?? "world"}!")
@@ -124,7 +125,7 @@ let out = bytes([flags, value & 0xff, value >> 8])
 | `Length` | `* n`（`width: 50% * 2`：缩放一个长度） |
 | `T?` | `isNone()`、`isSome()` |
 
-`min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `asuka/math` 里。
+`min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `std/math` 里。
 
 ### 值语义
 
@@ -211,7 +212,7 @@ match line {
 }
 ```
 
-结构体可以从它的方法获得运算符：`fn add(o: T) -> R` 就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`。`asuka/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
+结构体可以从它的方法获得运算符：`fn add(o: T) -> R` 就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
 
 ```asuka
 struct Money {
@@ -803,7 +804,7 @@ Canvas(g => {
 
 `useKeys` 和这些 `on…` 注册写在组件的主体里（或 app 代码块里）。app 代码块还可以把它们当作事件来处理：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`、`on foreground { … }`、`on background { … }`。它的第一个 `Window` 是主窗口（见[导航](navigation.md#窗口)）。
 
-`asuka/assets` 在应用编译时读取包的 `assets/` 目录里的文件，就像 Go 的 `go:embed`：`assets.text("welcome.md")` 是它的文本，`assets.bytes("logo.png")` 是它的字节。文件不存在就是编译错误。
+`std/assets` 在应用编译时读取包的 `assets/` 目录里的文件，就像 Go 的 `go:embed`：`assets.text("welcome.md")` 是它的文本，`assets.bytes("logo.png")` 是它的字节。文件不存在就是编译错误。
 
 ## 导航
 
@@ -857,7 +858,7 @@ screen Message(id: int) at ":id" {
 
 ## 多语言文本
 
-`tr.inboxTitle(unread: n)` 说出应用目录文件（`locales/en.json`、`de.json`……）里的一条文案，并在应用编译时检查：缺少键或参数，或者参数类型不对，都会报错。在绑定里说出的文案会跟随应用的语言，所以切换语言（`i18n.setLocale("de")`，来自 asuka/i18n）时，显示的内容也会随之改变；从右往左书写的语言还会让整个应用从右侧开始排版。详见[多语言](i18n.md)。
+`tr.inboxTitle(unread: n)` 说出应用目录文件（`locales/en.json`、`de.json`……）里的一条文案，并在应用编译时检查：缺少键或参数，或者参数类型不对，都会报错。在绑定里说出的文案会跟随应用的语言，所以切换语言（`i18n.setLocale("de")`，来自 std/i18n）时，显示的内容也会随之改变；从右往左书写的语言还会让整个应用从右侧开始排版。详见[多语言](i18n.md)。
 
 ## 原生代码
 
@@ -903,7 +904,7 @@ test "archiving removes the row" {
 }
 ```
 
-`expect(cond)` 在 cond 为 false 时让测试失败，并指出失败的是什么、在哪里（如果是比较，还会给出两边的值）。JSON 由 `asuka/json` 处理：`let notes: [Note] = try json.decode(text)` 按期望的类型读取 JSON（也可以写成 `json.decode<[Note]>(text)`），`json.encode(notes)` 把值写成 JSON。泛型函数也可以把它的 `T` 当作 JSON 读写；这样每次调用时，`T` 都必须是 JSON 能表示的类型，编译器会在调用处检查这一点。
+`expect(cond)` 在 cond 为 false 时让测试失败，并指出失败的是什么、在哪里（如果是比较，还会给出两边的值）。JSON 由 `std/json` 处理：`let notes: [Note] = try json.decode(text)` 按期望的类型读取 JSON（也可以写成 `json.decode<[Note]>(text)`），`json.encode(notes)` 把值写成 JSON。泛型函数也可以把它的 `T` 当作 JSON 读写；这样每次调用时，`T` 都必须是 JSON 能表示的类型，编译器会在调用处检查这一点。
 
 `asuka test` 在假宿主上运行包里的测试：它会像各平台那样对视图进行布局，按每个字符固定宽度来测量文字，而且只有在没有其他东西可以运行时，时间才会前进（测试里的 `sleep(5s)` 不花任何时间）。`mount` 返回应用，供你驱动和检查：`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`；`in(.navigationBar)`、`in(.sidebar)` 和 `nextTo(label)` 缩小文字所指的范围；有路由器时，还有 `mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()`。详见[测试](testing.md)。
 

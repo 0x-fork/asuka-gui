@@ -1,15 +1,15 @@
-// The system's modules on the web that the standard library's packages
-// still reach by name (asuka/host), and the share sheet the core's
+// The system's modules on the web that the platform SDK's packages
+// still reach by name (platform/host), and the share sheet the core's
 // ui.ShareFiles opens; the rest are the packages' own JavaScript
 // (std/<name>/web):
 //
 //   - share: the system's share sheet with the files (Web Share), or, where
 //     the browser can't share files, a download of each.
-//   - compose (asuka/compose): mailto: and sms: links; files go through the
+//   - compose (platform/compose): mailto: and sms: links; files go through the
 //     share sheet.
-//   - notify (asuka/notify): the Notification API (system-notify.js),
+//   - notify (platform/notify): the Notification API (system-notify.js),
 //     through the app's service worker (sw.js).
-//   - push (asuka/push): Web Push (system-push.js).
+//   - push (platform/push): Web Push (system-push.js).
 //
 // A method a browser can't do answers with an error that says why.
 

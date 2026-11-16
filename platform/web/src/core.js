@@ -14,21 +14,21 @@ import { Pool } from "./spawn.js";
  * startCore loads the core into the page and connects it to host. Options: wasm (the
  * core's URL), module (bytecode to run: asuka dev's app), dev (asuka dev's page: the module
  * loads as its reloads do, and core.reload loads the next one keeping the app's state and
- * views), appDir (the app's data directory, asuka/fs's appDir), workers (false: spawn runs
+ * views), appDir (the app's data directory, std/fs's appDir), workers (false: spawn runs
  * in place, on the page's thread), sqlite (a function resolving to the page's SQLite
  * client, sqlite.js's), crash (crash.js's Crash: the run's record), makeWorker (makes a worker of a URL: Node's tests'),
  * log (where the core's output goes).
  */
 export async function startCore(host, options = {}) {
   let instance, pool = null;
-  // asuka/sqlite: the page's SQLite worker (sqlite.js), when the app has the plugin's library.
+  // std/sqlite: the page's SQLite worker (sqlite.js), when the app has the plugin's library.
   let sqlite = null;
   if (options.sqlite) {
     try {
       sqlite = await options.sqlite();
       sqlite.root(options.appDir);
     } catch (err) {
-      console.error("asuka/sqlite: SQLite didn't load:", err);
+      console.error("std/sqlite: SQLite didn't load:", err);
     }
   }
   const memory = () => instance.exports.memory;
@@ -53,7 +53,7 @@ export async function startCore(host, options = {}) {
       },
       timer_clear: (id) => { clearTimeout(timers.get(id)); timers.delete(id); },
       // The zone's offset from UTC at a time (Unix seconds), in seconds east:
-      // dates, and asuka/time's local zone.
+      // dates, and std/time's local zone.
       zone_offset: (s) => -new Date(s * 1000).getTimezoneOffset() * 60,
       // spawn's jobs (core/src/abi/web.c): its bytes copied out, for a worker.
       spawn: (id, p, n) => pool.run(id, new Uint8Array(memory().buffer, p, n).slice()),
@@ -69,9 +69,9 @@ export async function startCore(host, options = {}) {
       native_start: (h, method, p, n, call) => host.nativeStart(Number(h), method, new Uint8Array(memory().buffer, p, n).slice(), Number(call)),
       native_cancel: (call) => host.nativeCancel(Number(call)),
       native_release: (h) => host.nativeRelease(Number(h)),
-      // asuka/sqlite's calls (core/src/sqlite/sqlite.c): to the page's
+      // std/sqlite's calls (core/src/sqlite/sqlite.c): to the page's
       // SQLite worker, answered into the core once it isn't running.
-      // asuka/crash's record: whether a run's page is open (crash.js's marks).
+      // platform/crash's record: whether a run's page is open (crash.js's marks).
       crash_alive: (p, n) => (options.crash?.alive(new TextDecoder().decode(new Uint8Array(memory().buffer, p, n))) ? 1 : 0),
       sqlite_available: () => (sqlite ? 1 : 0),
       sqlite_send: (id, op, conn, p, n) => {

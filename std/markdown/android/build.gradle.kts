@@ -7,5 +7,5 @@ plugins {
 }
 
 android {
-    namespace = "asuka.markdown"
+    namespace = "std.markdown"
 }

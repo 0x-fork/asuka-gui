@@ -1,4 +1,4 @@
-// asuka/markdown on Linux: the paragraphs the core read, a widget a block
+// std/markdown on Linux: the paragraphs the core read, a widget a block
 // in a vertical GtkBox, as GNOME apps show rich text: a GtkLabel of Pango
 // markup that wraps and is selectable (links GTK opens, the theme's font
 // and its text scaling), a heading's with the heading role and its level;

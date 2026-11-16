@@ -61,7 +61,7 @@ fn send() {}
 
 - `Button` 会读出自己的标题。只有图标的按钮要设置 `label`：平台自己只能为少数符号命名，Android 更是只有英文名称。
 - `TextField` 和 `Toggle`（包括复选框）也接受 `label`，例如 `label: "Email"`。直接给控件设置标签：名称与输入内容、勾选状态各自独立，控件仍可编辑或切换。在 Android 上，输入框的标签放在它的无障碍提示（hint）里，TalkBack 会把它当作输入框的名称朗读。
-- `Image` 的 `label` 用来描述图片；没有它，图片就被视为装饰。[`asuka/svg`](stdlib.md) 里的图标也同样接受 `label`。
+- `Image` 的 `label` 用来描述图片；没有它，图片就被视为装饰。[`std/svg`](stdlib.md) 里的图标也同样接受 `label`。
 - `Symbol` 本身没有标签：如果它有实际含义，就把它包进一个带 `label` 和 `.image` 的 `View`。
 - `hint` 在 iOS 上是无障碍提示，会在停顿片刻后朗读（用户可以关闭提示）；在 Android 上是状态描述，会和标签一起朗读。在 macOS 上它是视图的帮助信息（`accessibilityHelp`），在 Windows 上是帮助文本，在 Linux 上是无障碍描述，在 Web 上是 `aria-description`。尽量简短，比如“打开这条消息”。
 
@@ -151,7 +151,7 @@ component Saved {
 
 ## 标题
 
-屏幕阅读器用户经常在标题之间跳转（VoiceOver 的转子、TalkBack 的按标题导航、NVDA 和 Orca 的 H 键、浏览器屏幕阅读器的标题列表）。所以请把每个区块的标题标记出来：用设置了 `role: .header` 的 `RichText`，或者带 `label` 和该角色的 `View`。[`asuka/markdown`](stdlib.md) 已经替你标记好了它的标题。
+屏幕阅读器用户经常在标题之间跳转（VoiceOver 的转子、TalkBack 的按标题导航、NVDA 和 Orca 的 H 键、浏览器屏幕阅读器的标题列表）。所以请把每个区块的标题标记出来：用设置了 `role: .header` 的 `RichText`，或者带 `label` 和该角色的 `View`。[`std/markdown`](stdlib.md) 已经替你标记好了它的标题。
 
 ```asuka
 component Headings {

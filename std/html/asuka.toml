@@ -1,3 +1,3 @@
-name = "asuka/html"
+name = "std/html"
 version = "0.1.0"
 description = "Escaping text for HTML, and reading it back"

@@ -1,4 +1,4 @@
-// Package asuka/command runs other programs: their arguments a list,
+// Package std/command runs other programs: their arguments a list,
 // passed as they are (no shell reads them), their output read as it
 // comes, without holding the main thread. In a program and in a desktop
 // app (macOS, Windows, Linux); an app on a phone or the web can't run

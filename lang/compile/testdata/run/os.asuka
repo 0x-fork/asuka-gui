@@ -1,7 +1,7 @@
-// asuka/os in tests: a fake process (arguments, environment, stdin),
+// std/os in tests: a fake process (arguments, environment, stdin),
 // what's written kept, main run as the program would run it.
 
-import asuka/os
+import std/os
 
 fn greet() {
   let name = os.args().first() ?? "world"

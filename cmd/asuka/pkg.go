@@ -43,6 +43,10 @@ func cmdAdd(args []string) error {
 // addSpec turns what asuka add was given into a dependency's key and
 // spec: name, name@range, key=spec.
 func addSpec(c *pkgs.Client, a string) (key, spec string, err error) {
+	if pkgs.CheckName(a) != nil {
+		// key=spec's key, name@range's name: what it'd be imported as.
+		return "", "", fmt.Errorf("%s: the standard library (std/) and the platform SDK (platform/) come with the asuka CLI: import it, nothing to add (docs/stdlib.md)", a)
+	}
 	if k, s, ok := strings.Cut(a, "="); ok {
 		return k, s, nil
 	}
@@ -145,6 +149,9 @@ func packDir(dir string) ([]byte, map[string]any, error) {
 	}
 	if m.Name == "" || m.Version == "" {
 		return nil, nil, errors.New("a package's asuka.toml names it and its version (name = \"@you/pkg\", version = \"1.0.0\")")
+	}
+	if err := pkgs.CheckName(m.Name); err != nil {
+		return nil, nil, fmt.Errorf("asuka.toml's name: %v", err)
 	}
 	return pkgs.Pack(dir, pkgs.Package{Name: m.Name, Version: m.Version, Description: m.Description, License: m.License, Repository: m.Repository, Dependencies: m.Dependencies})
 }

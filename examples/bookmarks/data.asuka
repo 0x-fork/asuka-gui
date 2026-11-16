@@ -2,13 +2,13 @@
 // (fs.appDir()), which the share sheet's process shares: what it saves,
 // the app lists.
 
-import asuka/fs
-import asuka/html
-import asuka/http
-import asuka/regex
-import asuka/sqlite
-import asuka/time
-import asuka/url
+import std/fs
+import std/html
+import std/http
+import std/regex
+import std/sqlite
+import std/time
+import std/url
 
 struct Bookmark {
   id: int

@@ -4,8 +4,8 @@
 //
 //   asuka dev --platform ios examples/markdown
 
-import asuka/assets
-import asuka/markdown
+import std/assets
+import std/markdown
 
 screen Reply {
   state text = ""

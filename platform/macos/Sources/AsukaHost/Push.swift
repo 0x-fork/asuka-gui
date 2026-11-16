@@ -1,4 +1,4 @@
-// asuka/push on a Mac: APNs, as on iOS. "register" asks for notifications
+// platform/push on a Mac: APNs, as on iOS. "register" asks for notifications
 // (the user notification center: the app's bundle), registers with APNs
 // (NSApplication's registerForRemoteNotifications) and answers JSON
 // (token, service, allowed); "nextReceived" and "nextOpened" answer with
@@ -25,12 +25,12 @@ import UserNotifications
         [
             "register": { [unowned self] _, reply in
                 guard AsukaNotify.bundled else {
-                    reply(.failure(AsukaModuleError("asuka/push: APNs needs the app's bundle: build it with asuka build")))
+                    reply(.failure(AsukaModuleError("platform/push: APNs needs the app's bundle: build it with asuka build")))
                     return
                 }
                 AsukaNotify.install()
                 guard let center = AsukaNotify.shared.center else {
-                    reply(.failure(AsukaModuleError("asuka/push: no user notification center")))
+                    reply(.failure(AsukaModuleError("platform/push: no user notification center")))
                     return
                 }
                 center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
@@ -50,7 +50,7 @@ import UserNotifications
                 reply(.success(Data()))
             },
             "nextRewrite": { _, reply in
-                reply(.failure(AsukaModuleError("asuka/push: rewriting needs a notification service extension, which a Mac app doesn't have")))
+                reply(.failure(AsukaModuleError("platform/push: rewriting needs a notification service extension, which a Mac app doesn't have")))
             },
             "rewritten": { _, reply in reply(.success(Data())) },
         ]

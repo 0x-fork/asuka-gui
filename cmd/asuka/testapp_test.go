@@ -55,11 +55,11 @@ func projectAppErr(dir string, deps map[string]string) (*asukaApp, error) {
 // this checkout (std/sqlite, with its build if there is one).
 func sqliteDeps() map[string]string {
 	d, _ := filepath.Abs(filepath.Join("..", "..", "std", "sqlite"))
-	return map[string]string{"asuka/sqlite": d}
+	return map[string]string{"std/sqlite": d}
 }
 
 // sqliteTestApp is testdata/sqliteapp, an app that uses the sqlite
-// plugin (asuka/sqlite).
+// plugin (std/sqlite).
 func sqliteTestApp(t *testing.T) *asukaApp {
 	t.Helper()
 	return projectApp(t, filepath.Join("testdata", "sqliteapp"), sqliteDeps())

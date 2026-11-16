@@ -77,6 +77,6 @@ asuka pkg publish -tag next       # プレリリース
 
 バージョンは semver に従います。アップロードの前に、`asuka pkg publish` はパッケージの `pub` API を直前のバージョンと比べます。宣言を削除したり、利用者のコードが動かなくなるような形で変更したりするには、新しいメジャーバージョンが必要です。
 
-## 標準ライブラリ
+## 標準ライブラリとプラットフォーム SDK
 
-`asuka/http`、`asuka/json`、`asuka/storage` などは CLI に同梱され、CLI と同じバージョンで管理されます。`asuka add` は必要ありません。
+`std/http`、`std/json`、`std/storage` などの標準ライブラリと、`platform/camera`、`platform/notify` などのプラットフォーム SDK のパッケージは CLI に同梱され、CLI と同じバージョンで管理されます。`asuka add` は必要ありません。パッケージに `std/` や `platform/` で始まる名前は付けられません（`asuka pkg publish` も `asuka add` も受け付けません）。

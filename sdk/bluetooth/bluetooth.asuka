@@ -1,0 +1,1309 @@
+// Package platform/bluetooth talks to Bluetooth Low Energy devices: as a
+// central (scan, connect, read, write and follow characteristics) and as
+// a peripheral (serve services, advertise). Core Bluetooth on iOS and
+// macOS; Android's BluetoothLeScanner and GATT; Web Bluetooth in
+// Chromium (choose, then connect: a page can't scan freely); WinRT's
+// Bluetooth LE on Windows; BlueZ on Linux.
+//
+//   for await a in bluetooth.scan() { … a.device, a.rssi … }
+//   let c = bluetooth.connect(device)               // a store: c.state, c.error
+//   let ch = try await c.characteristic(bluetooth.battery, bluetooth.batteryLevel)
+//   let level = try await ch.read()
+//
+// UUIDs are strings: a Bluetooth SIG 16-bit one as its four hex digits
+// ("180d"), any other as its 128 bits ("6e400001-b5a3-f393-e0a9-
+// e50e24dcca9e"), lowercase; uuid() normalizes one.
+//
+// With the app out of sight: backgroundScan scans on (Android's, after
+// the app's process has gone), and the system starts the app for
+// Bluetooth, without a screen (iOS's state restoration, with asuka.toml's
+// bluetooth.background), keeping its connections: read restored() as the
+// app starts, in a task of the app's root, for what it brought back.
+//
+// Tests drive a fake: bluetooth.fake() is a FakeBluetooth with fake
+// peripherals a test adds, and centrals that read the app's services.
+
+import std/time
+
+/// The adapter's state.
+pub enum State {
+  unknown
+  resetting
+  /// The device has no Bluetooth LE.
+  unsupported
+  /// The user hasn't allowed the app Bluetooth (request asks).
+  unauthorized
+  off
+  on
+}
+
+/// A device: its platform identifier (an address on Android, Linux and
+/// Windows; a UUID the system made on Apple's platforms; Web Bluetooth's
+/// own), and its name.
+pub struct Device {
+  id: string = ""
+  name: string = ""
+}
+
+/// What a scan heard from a device.
+pub struct Advertisement {
+  device: Device = Device()
+  /// Signal strength, in dBm.
+  rssi: int = 0
+  localName: string = ""
+  services: [string] = []
+  solicited: [string] = []
+  /// By service UUID.
+  serviceData: [string: bytes] = [:]
+  /// By company ID, in four hex digits ("004c": Apple).
+  manufacturerData: [string: bytes] = [:]
+  txPower: int = 0
+  hasTxPower: bool = false
+  connectable: bool = true
+  /// When it was heard.
+  time: time.Time = time.unix(0)
+}
+
+// An advertisement as the platforms give it: its time in nanoseconds
+// since 1970.
+struct Heard {
+  device: Device = Device()
+  rssi: int = 0
+  localName: string = ""
+  services: [string] = []
+  solicited: [string] = []
+  serviceData: [string: bytes] = [:]
+  manufacturerData: [string: bytes] = [:]
+  txPower: int = 0
+  hasTxPower: bool = false
+  connectable: bool = true
+  time: int = 0
+}
+
+fn advertisementOf(h: Heard) -> Advertisement = Advertisement(device: h.device, rssi: h.rssi, localName: h.localName,
+  services: h.services, solicited: h.solicited, serviceData: h.serviceData, manufacturerData: h.manufacturerData,
+  txPower: h.txPower, hasTxPower: h.hasTxPower, connectable: h.connectable, time: time.unixNano(h.time))
+
+/// What the system brought back for the app (restored()).
+pub struct Restored {
+  /// The devices iOS kept connected, or connecting, for the app while it
+  /// wasn't running (state restoration, with asuka.toml's
+  /// bluetooth.background "central"): connect to them to use them again,
+  /// which is at once for one connected.
+  devices: [Device] = []
+  /// The services of the scan iOS kept running for the app: scan for them
+  /// again (backgroundScan) to hear what it hears, or stopBackgroundScan.
+  scanServices: [string] = []
+  /// What a background scan heard with no scan of the app's reading it:
+  /// Android's, while the app's process was gone; iOS's restored scan's,
+  /// before the app scanned again. One per device (its latest), unless
+  /// the scan wanted duplicates.
+  advertisements: [Advertisement] = []
+}
+
+// What the platforms bring back: its advertisements as they give them.
+struct Brought {
+  devices: [Device] = []
+  scanServices: [string] = []
+  advertisements: [Heard] = []
+}
+
+fn restoredOf(b: Brought) -> Restored = Restored(devices: b.devices, scanServices: b.scanServices, advertisements: b.advertisements.map(advertisementOf))
+
+/// What choose() offers: devices advertising all of services, named
+/// name or with namePrefix.
+pub struct Filter {
+  services: [string] = []
+  name: string = ""
+  namePrefix: string = ""
+}
+
+/// A characteristic's properties.
+pub enum Property {
+  broadcast
+  read
+  writeWithoutResponse
+  write
+  notify
+  indicate
+  authenticatedSignedWrites
+  extendedProperties
+}
+
+/// A local characteristic's permissions.
+pub enum Permission {
+  readable
+  writeable
+  readEncrypted
+  writeEncrypted
+}
+
+/// A connection's state.
+pub enum ConnectionState {
+  connecting
+  connected
+  disconnecting
+  disconnected
+}
+
+/// The Bluetooth errors.
+pub enum BluetoothError: Error {
+  /// bluetooth: not available
+  notAvailable
+  /// bluetooth: off
+  off
+  /// bluetooth: not allowed
+  denied
+  /// bluetooth: unsupported
+  unsupported
+  /// bluetooth: canceled
+  canceled
+  /// bluetooth: disconnected
+  disconnected
+  /// bluetooth: not found
+  notFound
+  /// bluetooth: timeout
+  timeout
+
+  fn message() -> string = match self {
+    .notAvailable => "bluetooth: not available"
+    .off => "bluetooth: off"
+    .denied => "bluetooth: not allowed"
+    .unsupported => "bluetooth: unsupported"
+    .canceled => "bluetooth: canceled"
+    .disconnected => "bluetooth: disconnected"
+    .notFound => "bluetooth: not found"
+    .timeout => "bluetooth: timeout"
+  }
+}
+
+// ---------------------------------------------------------------------
+// UUIDs
+
+let base = "-0000-1000-8000-00805f9b34fb"
+
+/// A UUID as the package writes them: lowercase; a SIG one (0000xxxx-
+/// 0000-1000-8000-00805f9b34fb, or four hex digits) as its four digits.
+pub fn uuid(u: string) -> string {
+  let l = u.trim().lower()
+  if l.count() == 4 {
+    return l
+  }
+  if l.count() == 8 && l.hasPrefix("0000") {
+    return l.slice(4, 8)
+  }
+  if l.count() == 36 && l.hasPrefix("0000") && l.hasSuffix(base) {
+    return l.slice(4, 8)
+  }
+  return l
+}
+
+fn norm(u: string) -> string = uuid(u)
+
+/// A UUID in its 128 bits, as some platforms want it.
+pub fn fullUUID(u: string) -> string {
+  let l = uuid(u)
+  if l.count() == 4 {
+    return "0000{l}{base}"
+  }
+  return l
+}
+
+// Some of the Bluetooth SIG's assigned numbers: services.
+pub let genericAccess = "1800"
+pub let genericAttribute = "1801"
+pub let immediateAlert = "1802"
+pub let linkLoss = "1803"
+pub let txPowerService = "1804"
+pub let currentTime = "1805"
+pub let deviceInformation = "180a"
+pub let heartRate = "180d"
+pub let battery = "180f"
+pub let bloodPressure = "1810"
+pub let humanInterface = "1812"
+pub let cyclingSpeed = "1816"
+pub let cyclingPower = "1818"
+pub let locationNavigation = "1819"
+pub let environmentSensing = "181a"
+pub let bodyComposition = "181b"
+pub let weightScale = "181d"
+pub let fitnessMachine = "1826"
+// Characteristics.
+pub let deviceName = "2a00"
+pub let appearance = "2a01"
+pub let serviceChanged = "2a05"
+pub let alertLevel = "2a06"
+pub let txPowerLevel = "2a07"
+pub let batteryLevel = "2a19"
+pub let systemID = "2a23"
+pub let modelNumber = "2a24"
+pub let serialNumber = "2a25"
+pub let firmwareRevision = "2a26"
+pub let hardwareRevision = "2a27"
+pub let softwareRevision = "2a28"
+pub let manufacturerName = "2a29"
+pub let heartRateMeasurement = "2a37"
+pub let bodySensorLocation = "2a38"
+pub let heartRateControlPoint = "2a39"
+pub let temperature = "2a6e"
+pub let humidity = "2a6f"
+// Descriptors.
+pub let userDescription = "2901"
+pub let clientCharacteristicConfiguration = "2902"
+
+// ---------------------------------------------------------------------
+// The platform's side
+
+/// A scan's options.
+struct ScanOptions {
+  /// Only devices advertising one of these ([]: any).
+  services: [string] = []
+  /// Every advertisement, not only a device's first.
+  duplicates: bool = false
+  /// With the app out of sight too (backgroundScan).
+  background: bool = false
+}
+
+/// A connection's options.
+struct ConnectOptions {
+  /// Connect whenever the device is in range (Android's autoConnect),
+  /// not now or never.
+  autoConnect: bool = false
+  timeout: Duration = 0ms
+}
+
+/// What happens to a connection: its state, its handle once connected,
+/// why it ended.
+struct Link {
+  state: ConnectionState = .connecting
+  handle: int = 0
+  error: string = ""
+}
+
+/// A characteristic as the platform found it.
+struct FoundCharacteristic {
+  uuid: string = ""
+  properties: [Property] = []
+  descriptors: [string] = []
+}
+
+/// A service as the platform found it.
+struct FoundService {
+  uuid: string = ""
+  characteristics: [FoundCharacteristic] = []
+}
+
+/// A local characteristic as it crosses.
+struct ServedCharacteristic {
+  uuid: string = ""
+  properties: [Property] = []
+  permissions: [Permission] = []
+  /// The value, when it's fixed (dynamic: asked of the app each read).
+  value: bytes = bytes()
+  dynamic: bool = false
+}
+
+struct ServedService {
+  uuid: string = ""
+  primary: bool = true
+  characteristics: [ServedCharacteristic] = []
+}
+
+/// What a central asks of the app's services.
+enum RequestKind {
+  read
+  write
+  subscribe
+  unsubscribe
+}
+
+struct Request {
+  id: int = 0
+  kind: RequestKind = .read
+  central: string = ""
+  service: string = ""
+  characteristic: string = ""
+  value: bytes = bytes()
+  offset: int = 0
+}
+
+/// How the app advertises.
+struct Advertising {
+  localName: string = ""
+  services: [string] = []
+  /// By service UUID.
+  serviceData: [string: bytes] = [:]
+  /// By company ID's four hex digits.
+  manufacturerData: [string: bytes] = [:]
+  connectable: bool = true
+  includeTxPower: bool = false
+}
+
+/// The platform's Bluetooth.
+native interface Adapter {
+  fn state() -> State
+  async fn watchState(changed: fn(State))
+  /// Asks for the app's Bluetooth permission (the first time).
+  async fn request() -> State
+  /// Calls found with what's heard, until the task is cancelled.
+  async fn scan(options: ScanOptions, found: fn(Heard))
+  /// The browser's device chooser (Web Bluetooth), Windows' device
+  /// picker; elsewhere notAvailable.
+  async fn choose(filters: [Filter], optionalServices: [string]) -> Device
+  /// Connects and keeps the connection until the task is cancelled,
+  /// calling changed as it changes; returns when it's lost.
+  async fn connect(device: Device, options: ConnectOptions, changed: fn(Link))
+  async fn services(connection: int) -> [FoundService]
+  async fn mtu(connection: int) -> int
+  async fn rssi(connection: int) -> int
+  async fn read(connection: int, service: string, characteristic: string) -> bytes
+  async fn write(connection: int, service: string, characteristic: string, value: bytes, response: bool)
+  /// Turns notifications on, calls value with each, until the task is
+  /// cancelled (then off).
+  async fn subscribe(connection: int, service: string, characteristic: string, value: fn(bytes))
+  /// Serves the services, calling request with what centrals ask, until
+  /// the task is cancelled.
+  async fn serve(services: [ServedService], request: fn(Request))
+  /// Answers a request: the value read (error 0), or an ATT error.
+  fn respond(request: int, value: bytes, error: int)
+  /// Notifies the centrals subscribed to a local characteristic: how many.
+  fn notify(service: string, characteristic: string, value: bytes) -> int
+  async fn advertise(options: Advertising)
+  /// Calls restored with what the system brought back for the app (those
+  /// kept from before first), until the task is cancelled; where nothing
+  /// is (the desktops, the web), it returns.
+  async fn watchRestored(restored: fn(Brought))
+  /// Stops the background scan a previous run of the app left running;
+  /// this run's go on.
+  fn stopBackgroundScan()
+}
+
+let platform = try? Adapter()
+
+state faked: FakeBluetooth? = none
+
+// ---------------------------------------------------------------------
+// The adapter
+
+fn stateNow() -> State {
+  if let f = faked {
+    return f.adapter
+  }
+  if let p = platform {
+    return (try? p.state()) ?? .unsupported
+  }
+  return .unsupported
+}
+
+fn stateChanges() -> Stream<State> = Stream(send => {
+  if let f = faked {
+    send(f.adapter)
+    let id = f.onState(s => send(s))
+    defer { f.unlisten(id) }
+    await never()
+  }
+  if let p = platform {
+    try await p.watchState(changed: s => send(s))
+  } else {
+    send(State.unsupported)
+  }
+})
+
+let followedState = live(stateNow(), stateChanges)
+
+/// The adapter's state, tracked: read in a binding, it follows changes
+/// (the user turns Bluetooth off, allows the app) while it's read.
+pub fn state() -> State = followedState()
+
+/// Asks for the app's Bluetooth permission, the first time (iOS's
+/// prompt; Android's nearby devices), and returns the state then.
+pub async fn request() throws -> State {
+  if let f = faked {
+    return f.adapter
+  }
+  if let p = platform {
+    return try await p.request()
+  }
+  return .unsupported
+}
+
+fn check(s: State) throws {
+  match s {
+    .on => {}
+    .off => throw BluetoothError.off
+    .unauthorized => throw BluetoothError.denied
+    _ => throw BluetoothError.notAvailable
+  }
+}
+
+/// Scans for devices: what each advertises, as it's heard (duplicates:
+/// each time, not only a device's first; services: only devices
+/// advertising one of those). Throws off, denied, notAvailable (the
+/// web: choose instead).
+pub fn scan(services: [string] = [], duplicates: bool = false) -> Stream<Advertisement> =
+  scanning(ScanOptions(services: services.map(u => uuid(u)), duplicates: duplicates))
+
+/// Scans for devices advertising one of the services, with the app out of
+/// sight too (an app that calls it gets iOS's bluetooth-central mode).
+/// iOS scans so only for services, and slower, each device once; it keeps
+/// the scan when it ends the app, and starts the app again for what it
+/// hears (restored()). Android's is a scan the system runs, which goes on
+/// after the app's process has gone (Android pauses one without services
+/// while the screen is off): what it hears then is kept for restored(),
+/// until a later run scans so again or calls stopBackgroundScan. The
+/// desktops scan only while the app runs; the web throws notAvailable,
+/// as scan does.
+pub fn backgroundScan(services: [string], duplicates: bool = false) -> Stream<Advertisement> =
+  scanning(ScanOptions(services: services.map(u => uuid(u)), duplicates: duplicates, background: true))
+
+fn scanning(o: ScanOptions) -> Stream<Advertisement> = Stream(send => {
+  if let f = faked {
+    try check(f.adapter)
+    let id = f.startScan(o, a => send(a))
+    defer { f.stopScan(id) }
+    await never()
+  }
+  if let p = platform {
+    try await p.scan(options: o, found: a => send(advertisementOf(a)))
+  } else {
+    throw BluetoothError.notAvailable
+  }
+})
+
+/// The browser's device chooser (Web Bluetooth), or Windows' device
+/// picker (by name only): devices that match one of the filters, and the
+/// services the app may use beyond the filters'. Throws canceled;
+/// elsewhere notAvailable (scan instead).
+pub async fn choose(filters: [Filter], optionalServices: [string] = []) throws -> Device {
+  if let f = faked {
+    return try f.choose(filters)
+  }
+  if let p = platform {
+    return try await p.choose(filters: filters, optionalServices: optionalServices.map(u => uuid(u)))
+  }
+  throw BluetoothError.notAvailable
+}
+
+/// Stops the background scan a previous run of the app left running
+/// (Android's, after its process went; iOS's, which it restored), once the
+/// app has what it heard (restored()). This run's background scans go on.
+/// Elsewhere it does nothing.
+pub fn stopBackgroundScan() {
+  if let f = faked {
+    f.backgroundLeft = false
+    return
+  }
+  if let p = platform {
+    try? p.stopBackgroundScan()
+  }
+}
+
+// ---------------------------------------------------------------------
+// Restoration
+
+// What the platform restored, read once and given to restored()'s
+// readers; what came with none kept for the first.
+state restoreReaders: [int: fn(Restored)] = [:]
+state restoreReaderID = 0
+state followingRestores = false
+state unreadRestored: [Restored] = []
+
+fn deliverRestored(r: Restored) {
+  if restoreReaders.isEmpty() {
+    unreadRestored.push(r)
+  } else {
+    for f in restoreReaders.values() { f(r) }
+  }
+}
+
+/// Reads what the platform restores while anything reads restored().
+async fn followRestores() {
+  if followingRestores {
+    return
+  }
+  followingRestores = true
+  defer { followingRestores = false }
+  if let f = faked {
+    let id = f.onRestore(r => deliverRestored(r))
+    defer { f.unlistenRestore(id) }
+    await never()
+  }
+  if let p = platform {
+    try? await p.watchRestored(restored: r => deliverRestored(restoredOf(r)))
+  }
+}
+
+/// What the system brought back for the app as it started it for
+/// Bluetooth (iOS's restored connections and scan, with asuka.toml's
+/// bluetooth.background), and what a background scan heard with the app
+/// away (backgroundScan): that of the launch first, then each time it
+/// starts the app again for Bluetooth while it runs. Read it as the app
+/// starts, in a task of the app's root. Nothing on the desktops and the
+/// web.
+pub fn restored() -> Stream<Restored> = Stream(send => {
+  restoreReaderID += 1
+  let id = restoreReaderID
+  restoreReaders[id] = r => send(r)
+  defer { restoreReaders.remove(id) }
+  let kept = unreadRestored
+  unreadRestored = []
+  for r in kept { send(r) }
+  await followRestores()
+  await never()
+})
+
+// ---------------------------------------------------------------------
+// Connections
+
+/// A connection to a device: connect()'s. It connects as it's made, and
+/// keeps the connection (connecting again with autoConnect) until its
+/// owner goes or close().
+pub store Connection {
+  pub state device: Device = Device()
+  pub state state: ConnectionState = .connecting
+  /// Why it disconnected, if it did.
+  pub state error: Error? = none
+  state handle = 0
+  state options: ConnectOptions = ConnectOptions()
+  state closed = false
+  state readyWaiters: [int: fn(int)] = [:]
+  state nextWaiter = 0
+
+  task(device.id) {
+    if device.id.isEmpty() || closed {
+      return
+    }
+    await run()
+  }
+
+  async fn run() {
+    do {
+      if let f = faked {
+        try check(f.adapter)
+        let events: Stream<Link> = Stream(send => {
+          let id = f.connect(device.id, l => send(l))
+          defer { f.disconnect(device.id, id) }
+          await never()
+        })
+        for await l in events {
+          changed(l)
+          if l.state == .disconnected {
+            break
+          }
+        }
+        return
+      }
+      if let p = platform {
+        try await p.connect(device: device, options: options, changed: l => changed(l))
+        if state != .disconnected {
+          changed(Link(state: .disconnected, error: "bluetooth: disconnected"))
+        }
+        return
+      }
+      throw BluetoothError.notAvailable
+    } catch e {
+      error = e
+      state = .disconnected
+      handle = 0
+      ready(0)
+    }
+  }
+
+  fn changed(l: Link) {
+    state = l.state
+    if l.state == .connected {
+      handle = l.handle
+      error = none
+      ready(l.handle)
+    } else if l.state == .disconnected {
+      handle = 0
+      if !l.error.isEmpty() {
+        error = Error(l.error)
+      }
+      ready(0)
+    }
+  }
+
+  fn ready(h: int) {
+    let ws = readyWaiters.values()
+    readyWaiters = [:]
+    for w in ws { w(h) }
+  }
+
+  /// The connection's handle once it's connected; throws disconnected.
+  async fn connected() throws -> int {
+    if handle != 0 {
+      return handle
+    }
+    if state == .disconnected {
+      throw error ?? BluetoothError.disconnected
+    }
+    let s: Stream<int> = Stream(send => {
+      nextWaiter += 1
+      let id = nextWaiter
+      readyWaiters[id] = h => send(h)
+      defer { readyWaiters.remove(id) }
+      await never()
+    })
+    for await h in s {
+      if h == 0 {
+        throw error ?? BluetoothError.disconnected
+      }
+      return h
+    }
+    throw BluetoothError.disconnected
+  }
+
+  /// The device's services and their characteristics (once connected).
+  pub async fn services() throws -> [Service] {
+    let h = try await connected()
+    let found = try await servicesOf(h, device.id)
+    return found.map(s => Service(uuid: s.uuid, characteristics: s.characteristics.map(c => Characteristic(uuid: c.uuid, service: s.uuid, properties: c.properties, descriptors: c.descriptors, connection: h, device: device.id))))
+  }
+
+  /// The characteristic char of the device's service; throws notFound.
+  pub async fn characteristic(service: string, char: string) throws -> Characteristic {
+    for s in try await services() {
+      if s.uuid == uuid(service) {
+        if let c = s.characteristics.find(c => c.uuid == uuid(char)) {
+          return c
+        }
+      }
+    }
+    throw BluetoothError.notFound
+  }
+
+  /// The connection's MTU: the largest value a write without response
+  /// carries is 3 less.
+  pub async fn mtu() throws -> int {
+    let h = try await connected()
+    if let f = faked {
+      return f.mtu
+    }
+    if let p = platform {
+      return try await p.mtu(connection: h)
+    }
+    throw BluetoothError.notAvailable
+  }
+
+  /// The signal's strength now, in dBm.
+  pub async fn rssi() throws -> int {
+    let h = try await connected()
+    if let f = faked {
+      return f.rssiOf(device.id)
+    }
+    if let p = platform {
+      return try await p.rssi(connection: h)
+    }
+    throw BluetoothError.notAvailable
+  }
+
+  /// Disconnects (or stops connecting).
+  pub fn close() {
+    closed = true
+    device = Device()
+    state = .disconnected
+    handle = 0
+    ready(0)
+  }
+}
+
+/// Connects to the device (a scan's, choose's) and keeps the connection
+/// while the connection's owner lives (the component that made it):
+/// read its state in a binding to follow it. timeout: give up connecting
+/// after it (0: the platform's); autoConnect: connect whenever the
+/// device is in range.
+pub fn connect(device: Device, timeout: Duration = 0ms, autoConnect: bool = false) -> Connection {
+  let c = Connection()
+  c.options = ConnectOptions(autoConnect: autoConnect, timeout: timeout)
+  c.device = device
+  return c
+}
+
+async fn servicesOf(h: int, id: string) throws -> [FoundService] {
+  if let f = faked {
+    return try f.services(id)
+  }
+  if let p = platform {
+    return try await p.services(connection: h)
+  }
+  throw BluetoothError.notAvailable
+}
+
+/// A service of a device.
+pub struct Service {
+  uuid: string = ""
+  characteristics: [Characteristic] = []
+}
+
+/// A value of a device's service: what the app reads, writes and
+/// follows.
+pub struct Characteristic {
+  uuid: string = ""
+  service: string = ""
+  properties: [Property] = []
+  descriptors: [string] = []
+  connection: int = 0
+  device: string = ""
+
+  /// Reads its value.
+  async fn read() throws -> bytes {
+    if let f = faked {
+      return try f.read(device, service, uuid)
+    }
+    if let p = platform {
+      return try await p.read(connection: connection, service: service, characteristic: uuid)
+    }
+    throw BluetoothError.notAvailable
+  }
+
+  /// Writes the value, with a response: it returns once the device took
+  /// it.
+  async fn write(value: bytes) throws {
+    try await writeIt(self, value, true)
+  }
+
+  /// Writes the value without a response (at most the MTU less 3).
+  async fn writeWithoutResponse(value: bytes) throws {
+    try await writeIt(self, value, false)
+  }
+
+  /// Its notifications (or indications): turned on as it's read, off as
+  /// the reader stops.
+  fn notifications() -> Stream<bytes> = notificationsOf(self)
+}
+
+async fn writeIt(c: Characteristic, value: bytes, response: bool) throws {
+  if let f = faked {
+    try f.write(c.device, c.service, c.uuid, value)
+    return
+  }
+  if let p = platform {
+    try await p.write(connection: c.connection, service: c.service, characteristic: c.uuid, value: value, response: response)
+    return
+  }
+  throw BluetoothError.notAvailable
+}
+
+fn notificationsOf(c: Characteristic) -> Stream<bytes> = Stream(send => {
+  if let f = faked {
+    let id = try f.subscribe(c.device, c.service, c.uuid, v => send(v))
+    defer { f.unsubscribe(c.device, c.service, c.uuid, id) }
+    await never()
+  }
+  if let p = platform {
+    try await p.subscribe(connection: c.connection, service: c.service, characteristic: c.uuid, value: v => send(v))
+  } else {
+    throw BluetoothError.notAvailable
+  }
+})
+
+// ---------------------------------------------------------------------
+// The app as a peripheral
+
+/// A characteristic the app serves: a fixed value, or onRead's.
+pub struct LocalCharacteristic {
+  uuid: string
+  properties: [Property] = []
+  permissions: [Permission] = []
+  value: bytes = bytes()
+  /// Answers each read (the central's ID): the value now.
+  onRead: (fn(string) -> bytes)? = none
+  /// Hears each write: the central's ID and the value.
+  onWrite: (fn(string, bytes))? = none
+
+  /// Notifies the centrals subscribed to it.
+  fn notify(value: bytes) {
+    notifyLocal(uuid, value)
+  }
+
+  /// The centrals subscribed to it, tracked.
+  fn subscribers() -> [string] = subscribed[norm(uuid)] ?? []
+}
+
+/// A service the app serves.
+pub struct LocalService {
+  uuid: string
+  primary: bool = true
+  characteristics: [LocalCharacteristic] = []
+}
+
+// The centrals subscribed to each local characteristic, by its UUID.
+state subscribed: [string: [string]] = [:]
+// The local characteristics served now, by UUID: their handlers.
+state served: [string: LocalCharacteristic] = [:]
+state servedService: [string: string] = [:]
+
+fn notifyLocal(char: string, value: bytes) {
+  let u = uuid(char)
+  if let f = faked {
+    f.notified.push(value)
+    return
+  }
+  if let p = platform {
+    let _ = try? p.notify(service: servedService[u] ?? "", characteristic: u, value: value)
+  }
+}
+
+/// What the app answers a central's request.
+fn answer(r: Request) -> (bytes, int) {
+  let u = uuid(r.characteristic)
+  match r.kind {
+    .read => {
+      if let c = served[u] {
+        if let h = c.onRead {
+          return (h(r.central), 0)
+        }
+        return (c.value, 0)
+      }
+      return (bytes(), 0x0a) // attribute not found
+    }
+    .write => {
+      if let c = served[u] {
+        if let h = c.onWrite {
+          h(r.central, r.value)
+        }
+        return (bytes(), 0)
+      }
+      return (bytes(), 0x0a)
+    }
+    .subscribe => {
+      var list = subscribed[u] ?? []
+      if !list.contains(r.central) {
+        list.push(r.central)
+      }
+      subscribed[u] = list
+      return (bytes(), 0)
+    }
+    .unsubscribe => {
+      subscribed[u] = (subscribed[u] ?? []).filter(x => x != r.central)
+      return (bytes(), 0)
+    }
+  }
+}
+
+/// Serves the services to the centrals that connect, until the task is
+/// cancelled (run it in a task, with advertise).
+pub async fn serve(services: [LocalService]) throws {
+  var wire: [ServedService] = []
+  for s in services {
+    var chars: [ServedCharacteristic] = []
+    for c in s.characteristics {
+      let u = uuid(c.uuid)
+      served[u] = c
+      servedService[u] = uuid(s.uuid)
+      chars.push(ServedCharacteristic(uuid: u, properties: c.properties, permissions: c.permissions, value: c.value, dynamic: c.onRead.isSome()))
+    }
+    wire.push(ServedService(uuid: uuid(s.uuid), primary: s.primary, characteristics: chars))
+  }
+  defer {
+    for s in wire {
+      for c in s.characteristics {
+        served.remove(c.uuid)
+        subscribed.remove(c.uuid)
+      }
+    }
+  }
+  if let f = faked {
+    try check(f.adapter)
+    let requests: Stream<Request> = Stream(send => {
+      let id = f.startServing(wire, r => send(r))
+      defer { f.stopServing(id) }
+      await never()
+    })
+    for await r in requests {
+      let (v, e) = answer(r)
+      f.answered(r.id, v, e)
+    }
+    return
+  }
+  if let p = platform {
+    let requests: Stream<Request> = Stream(send => {
+      try await p.serve(services: wire, request: r => send(r))
+    })
+    for await r in requests {
+      let (v, e) = answer(r)
+      try? p.respond(request: r.id, value: v, error: e)
+    }
+    return
+  }
+  throw BluetoothError.notAvailable
+}
+
+/// Advertises the app as a peripheral, until the task is cancelled.
+pub async fn advertise(localName: string = "", services: [string] = [], serviceData: [string: bytes] = [:], manufacturerData: [string: bytes] = [:], connectable: bool = true, includeTxPower: bool = false) throws {
+  let o = Advertising(localName: localName, services: services.map(u => uuid(u)), serviceData: serviceData, manufacturerData: manufacturerData, connectable: connectable, includeTxPower: includeTxPower)
+  if let f = faked {
+    try check(f.adapter)
+    let id = f.startAdvertising(o)
+    defer { f.stopAdvertising(id) }
+    await never()
+  }
+  if let p = platform {
+    try await p.advertise(options: o)
+    return
+  }
+  throw BluetoothError.notAvailable
+}
+
+// ---------------------------------------------------------------------
+// Testing
+
+/// A characteristic of a fake peripheral.
+pub struct FakeCharacteristic {
+  uuid: string
+  properties: [Property] = []
+  value: bytes = bytes()
+}
+
+/// A service of a fake peripheral.
+pub struct FakeService {
+  uuid: string
+  characteristics: [FakeCharacteristic] = []
+}
+
+/// A device a fake adapter hears and connects to.
+pub struct FakePeripheral {
+  id: string
+  name: string = ""
+  rssi: int = -60
+  /// The services it advertises.
+  advertised: [string] = []
+  services: [FakeService] = []
+  connectable: bool = true
+}
+
+struct Scanner {
+  o: ScanOptions
+  f: fn(Advertisement)
+}
+
+struct LinkReader {
+  device: string
+  f: fn(Link)
+}
+
+struct Sub {
+  key: string
+  f: fn(bytes)
+}
+
+struct Answered {
+  value: bytes
+  error: int
+}
+
+/// What a fake central heard from the app.
+pub struct FakeAdvertising {
+  localName: string = ""
+  services: [string] = []
+}
+
+/// Bluetooth a test drives: fake() installs one. Its peripherals are
+/// heard by scans and taken by connections; the test notifies from them
+/// and reads what the app wrote. As a peripheral, the app's services are
+/// read and subscribed to by fake centrals.
+///
+///   let bt = bluetooth.fake()
+///   bt.add(bluetooth.FakePeripheral(id: "AA:BB", name: "Polar H10", advertised: ["180d"], services: […]))
+///   … the app scans and connects …
+///   bt.notify("AA:BB", "180d", "2a37", bytes([0, 61]))
+pub store FakeBluetooth {
+  pub state adapter: State = .on
+  pub state peripherals: [FakePeripheral] = []
+  /// The browser's chooser is there (Web Bluetooth).
+  pub state chooserAvailable = true
+  /// What choose() answers: the first peripheral that matches, unless
+  /// cancel.
+  pub state cancelChoose = false
+  pub state mtu = 185
+  /// Scans running; peripherals connected.
+  pub state scans = 0
+  pub state connected: [string] = []
+  /// Values written, as "<device> <service> <char> <hex>".
+  pub state written: [string] = []
+  /// Background scans running (backgroundScan).
+  pub state backgroundScans = 0
+  /// A background scan a previous run of the app left running (Android's,
+  /// after its process went; iOS's, restored): a background scan of the
+  /// app's replaces it, stopBackgroundScan stops it. restore() leaves one
+  /// when it brings back a scan or what one heard.
+  pub state backgroundLeft = false
+  /// As a peripheral: the services served, the advertising running, the
+  /// values the app notified.
+  pub state servers = 0
+  pub state advertising: [FakeAdvertising] = []
+  pub state notified: [bytes] = []
+  state scanners: [int: Scanner] = [:]
+  state links: [int: LinkReader] = [:]
+  state subs: [int: Sub] = [:]
+  state stateReaders: [int: fn(State)] = [:]
+  state restoreReaders: [int: fn(Restored)] = [:]
+  // What restore() gave with no one reading yet.
+  state keptRestores: [Restored] = []
+  state serving: [int: fn(Request)] = [:]
+  state servedNow: [ServedService] = []
+  state answers: [int: Answered] = [:]
+  state nextID = 0
+
+  fn id() -> int {
+    nextID += 1
+    return nextID
+  }
+
+  fn peripheral(device: string) -> FakePeripheral? = peripherals.find(p => p.id == device)
+
+  fn advertisement(p: FakePeripheral) -> Advertisement = Advertisement(device: Device(id: p.id, name: p.name), rssi: p.rssi, localName: p.name, services: p.advertised.map(u => uuid(u)), connectable: p.connectable, time: time.now())
+
+  /// The adapter turned on or off, allowed or not.
+  pub fn setState(s: State) {
+    adapter = s
+    for r in stateReaders.values() { r(s) }
+    if s != .on {
+      for l in links.values() {
+        l.f(Link(state: .disconnected, error: "bluetooth: disconnected: Bluetooth is {s}"))
+      }
+    }
+  }
+
+  /// The system started the app for Bluetooth with what it restored (iOS's
+  /// connections and scan, Android's background scan's advertisements):
+  /// restored() gives it, or keeps it for its first reader.
+  pub fn restore(r: Restored) {
+    if !r.scanServices.isEmpty() || !r.advertisements.isEmpty() {
+      backgroundLeft = true
+    }
+    if restoreReaders.isEmpty() {
+      keptRestores.push(r)
+      return
+    }
+    for f in restoreReaders.values() { f(r) }
+  }
+
+  /// A peripheral in range: the scans running hear it.
+  pub fn add(p: FakePeripheral) {
+    peripherals.removeWhere(x => x.id == p.id)
+    peripherals.push(p)
+    for sc in scanners.values() {
+      if matches(p, sc.o) { sc.f(advertisement(p)) }
+    }
+  }
+
+  /// A peripheral gone: its connections are lost.
+  pub fn remove(device: string) {
+    peripherals.removeWhere(x => x.id == device)
+    connected.removeWhere(x => x == device)
+    for l in links.values() {
+      if l.device == device {
+        l.f(Link(state: .disconnected, error: "bluetooth: disconnected: the connection timed out (the peripheral went)"))
+      }
+    }
+  }
+
+  /// A notification from a peripheral's characteristic, to the app's
+  /// subscriptions.
+  pub fn notify(device: string, service: string, char: string, value: bytes) {
+    let key = "{device} {uuid(service)} {uuid(char)}"
+    for sb in subs.values() {
+      if sb.key == key { sb.f(value) }
+    }
+  }
+
+  /// The app follows the characteristic's notifications.
+  pub fn subscribed(device: string, service: string, char: string) -> bool {
+    let key = "{device} {uuid(service)} {uuid(char)}"
+    return subs.values().any(sb => sb.key == key)
+  }
+
+  /// A fake central reads the app's characteristic char: its answer.
+  pub fn centralRead(central: string, char: string) -> bytes? {
+    return request(Request(kind: .read, central: central, characteristic: uuid(char)))
+  }
+
+  /// A fake central writes the app's characteristic.
+  pub fn centralWrite(central: string, char: string, value: bytes) {
+    let _ = request(Request(kind: .write, central: central, characteristic: uuid(char), value: value))
+  }
+
+  /// A fake central subscribes to the app's characteristic (or not).
+  pub fn centralSubscribe(central: string, char: string, on: bool) {
+    let _ = request(Request(kind: if on { RequestKind.subscribe } else { RequestKind.unsubscribe }, central: central, characteristic: uuid(char)))
+  }
+
+  fn request(r: Request) -> bytes? {
+    let i = id()
+    for f in serving.values() { f(Request(id: i, kind: r.kind, central: r.central, characteristic: r.characteristic, value: r.value)) }
+    return none
+  }
+
+  /// The last value a central read, once the app answered.
+  pub fn lastRead() -> bytes? {
+    var last = 0
+    for k in answers.keys() {
+      if k > last { last = k }
+    }
+    if last == 0 {
+      return none
+    }
+    return answers[last]!.value
+  }
+
+  fn matches(p: FakePeripheral, o: ScanOptions) -> bool = o.services.isEmpty() || o.services.any(s => p.advertised.map(u => uuid(u)).contains(s))
+
+  fn startScan(o: ScanOptions, f: fn(Advertisement)) -> int {
+    let i = id()
+    scanners[i] = Scanner(o: o, f: f)
+    scans = scanners.count()
+    backgroundScans = scanners.values().filter(s => s.o.background).count()
+    if o.background {
+      backgroundLeft = false
+    }
+    for p in peripherals {
+      if matches(p, o) { f(advertisement(p)) }
+    }
+    return i
+  }
+
+  fn stopScan(i: int) {
+    scanners.remove(i)
+    scans = scanners.count()
+    backgroundScans = scanners.values().filter(s => s.o.background).count()
+  }
+
+  fn choose(filters: [Filter]) throws -> Device {
+    if !chooserAvailable {
+      throw BluetoothError.notAvailable
+    }
+    if cancelChoose {
+      throw BluetoothError.canceled
+    }
+    for p in peripherals {
+      for fl in filters {
+        let svc = fl.services.all(s => p.advertised.map(u => uuid(u)).contains(uuid(s)))
+        let named = (fl.name.isEmpty() || p.name == fl.name) && (fl.namePrefix.isEmpty() || p.name.hasPrefix(fl.namePrefix))
+        if svc && named {
+          return Device(id: p.id, name: p.name)
+        }
+      }
+    }
+    throw BluetoothError.canceled
+  }
+
+  fn connect(device: string, f: fn(Link)) -> int {
+    let i = id()
+    links[i] = LinkReader(device: device, f: f)
+    if peripheral(device).isSome() {
+      if !connected.contains(device) { connected.push(device) }
+      f(Link(state: .connected, handle: i))
+    } else {
+      f(Link(state: .disconnected, error: "bluetooth: not found"))
+    }
+    return i
+  }
+
+  fn disconnect(device: string, i: int) {
+    links.remove(i)
+    if !links.values().any(l => l.device == device) {
+      connected.removeWhere(x => x == device)
+    }
+  }
+
+  fn rssiOf(device: string) -> int = peripheral(device)?.rssi ?? 0
+
+  fn services(device: string) throws -> [FoundService] {
+    if let p = peripheral(device) {
+      if !connected.contains(device) {
+        throw BluetoothError.disconnected
+      }
+      return p.services.map(s => FoundService(uuid: uuid(s.uuid), characteristics: s.characteristics.map(c => FoundCharacteristic(uuid: uuid(c.uuid), properties: c.properties))))
+    }
+    throw BluetoothError.disconnected
+  }
+
+  fn charOf(device: string, service: string, char: string) throws -> FakeCharacteristic {
+    if let p = peripheral(device) {
+      if let s = p.services.find(s => uuid(s.uuid) == uuid(service)) {
+        if let c = s.characteristics.find(c => uuid(c.uuid) == uuid(char)) {
+          return c
+        }
+      }
+      throw BluetoothError.notFound
+    }
+    throw BluetoothError.disconnected
+  }
+
+  fn read(device: string, service: string, char: string) throws -> bytes = (try charOf(device, service, char)).value
+
+  fn write(device: string, service: string, char: string, value: bytes) throws {
+    let _ = try charOf(device, service, char)
+    written.push("{device} {uuid(service)} {uuid(char)} {value.hex()}")
+  }
+
+  fn subscribe(device: string, service: string, char: string, f: fn(bytes)) throws -> int {
+    let _ = try charOf(device, service, char)
+    let i = id()
+    subs[i] = Sub(key: "{device} {uuid(service)} {uuid(char)}", f: f)
+    return i
+  }
+
+  fn unsubscribe(device: string, service: string, char: string, i: int) {
+    subs.remove(i)
+  }
+
+  fn onState(f: fn(State)) -> int {
+    let i = id()
+    stateReaders[i] = f
+    return i
+  }
+
+  fn unlisten(i: int) {
+    stateReaders.remove(i)
+  }
+
+  fn onRestore(f: fn(Restored)) -> int {
+    let i = id()
+    restoreReaders[i] = f
+    let kept = keptRestores
+    keptRestores = []
+    for r in kept { f(r) }
+    return i
+  }
+
+  fn unlistenRestore(i: int) {
+    restoreReaders.remove(i)
+  }
+
+  fn startServing(services: [ServedService], f: fn(Request)) -> int {
+    let i = id()
+    serving[i] = f
+    servedNow = services
+    servers = serving.count()
+    return i
+  }
+
+  fn stopServing(i: int) {
+    serving.remove(i)
+    servers = serving.count()
+  }
+
+  fn answered(id: int, v: bytes, e: int) {
+    answers[id] = Answered(value: v, error: e)
+  }
+
+  fn startAdvertising(o: Advertising) -> int {
+    advertising.push(FakeAdvertising(localName: o.localName, services: o.services))
+    return advertising.count()
+  }
+
+  fn stopAdvertising(i: int) {
+    advertising = []
+  }
+}
+
+/// Installs a FakeBluetooth, for a test: from now on the package talks to
+/// it, not the platform.
+pub fn fake() -> FakeBluetooth {
+  let f = FakeBluetooth()
+  faked = f
+  return f
+}

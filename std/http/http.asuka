@@ -1,4 +1,4 @@
-// Package asuka/http makes HTTP requests through each platform's own
+// Package std/http makes HTTP requests through each platform's own
 // client: URLSession on iOS and macOS, HttpURLConnection on Android,
 // fetch on the web, WinHTTP on Windows and libsoup on Linux. So proxies,
 // certificates the user trusts, and the system's caches and cookies
@@ -11,8 +11,8 @@
 //
 //   try await http.download(url, path, progress: (got, total) => { done = got })
 
-import asuka/fs
-import asuka/json as codec
+import std/fs
+import std/json as codec
 
 /// What a request answered.
 pub struct Response {

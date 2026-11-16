@@ -171,7 +171,7 @@ const widgetExe = "AsukaWidgets"
 func (c *appConfig) widgetID() string { return c.ID + ".widgets" }
 
 // widgetExtension reports whether the iOS app has the widget extension:
-// for asuka.toml's widgets, and for asuka/liveactivity's Live
+// for asuka.toml's widgets, and for platform/liveactivity's Live
 // Activities, which its template draws.
 func (c *appConfig) widgetExtension() bool { return len(c.Widgets) > 0 || c.liveActivity }
 

@@ -1,11 +1,11 @@
-// asuka/sqlite on the web, run by web_test.go under Node: the core's
+// std/sqlite on the web, run by web_test.go under Node: the core's
 // calls go to the page's SQLite worker (platform/web/src/sqlite-worker.js)
 // and come back decoded as on the other platforms; what the main thread
 // can't wait for (open, migrate) runs before the statements after it,
 // and a migration that fails fails the next statement; a live query
 // follows what's written; spawn's workers run the app's init, which
 // opens the database, harmlessly.
-import asuka/sqlite
+import std/sqlite
 
 struct Note {
   id: int

@@ -4,10 +4,10 @@
 // system starts the app for them without a screen: the log shows them
 // when the user opens it) and a crossing told in a notification.
 
-import asuka/location
-import asuka/notify
-import asuka/storage
-import asuka/time
+import platform/location
+import platform/notify
+import std/storage
+import std/time
 
 /// What the background updates and regions brought, newest first, kept on
 /// the device.

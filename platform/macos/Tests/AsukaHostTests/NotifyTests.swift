@@ -83,7 +83,7 @@ import UserNotifications
         XCTAssertNil(opened)
         p.deliver("nextOpened", Data(#"{"id":"a"}"#.utf8))
         XCTAssertEqual(text(opened), #"ok {"id":"a"}"#)
-        XCTAssertEqual(text(call(m, "nextRewrite")), "err asuka/push: rewriting needs a notification service extension, which a Mac app doesn't have")
+        XCTAssertEqual(text(call(m, "nextRewrite")), "err platform/push: rewriting needs a notification service extension, which a Mac app doesn't have")
         XCTAssertEqual(text(call(m, "rewritten", Data("{}".utf8))), "ok ")
     }
 

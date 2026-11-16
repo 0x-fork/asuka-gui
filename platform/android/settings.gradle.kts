@@ -21,7 +21,7 @@ rootProject.name = "asuka-android"
 // asukaModules): asuka-video (Video's player, Media3) in those that show a
 // Video; asuka-push (Firebase's messaging) and asuka-periodic
 // (WorkManager), the host's push and periodic modules' libraries, in
-// those that import asuka/push and asuka/periodic.
+// those that import platform/push and platform/periodic.
 include(":asuka", ":app", ":asuka-video", ":asuka-push", ":asuka-periodic")
 
 // The app's native packages' modules (their android/, the CLI's

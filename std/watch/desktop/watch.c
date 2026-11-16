@@ -1,4 +1,4 @@
-// asuka/watch on Windows and Linux: what both share. A watch keeps what
+// std/watch on Windows and Linux: what both share. A watch keeps what
 // it saw of the files and, a moment after the system says something
 // changed (inotify, ReadDirectoryChangesW: watch_linux.c,
 // watch_windows.c), looks again and compares: the events are the

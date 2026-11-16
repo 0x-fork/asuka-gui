@@ -2,7 +2,7 @@
 
 各行は、アプリでよく必要になる機能です。SwiftUI と Expo がそれをどう実現しているか、Asuka には何があるかを並べています。行に特に記載がない限り、✓ は Asuka が動くすべてのプラットフォーム（iOS、Android、Mac、Windows、Linux、Web）で使えることを表します。あるプラットフォームに機能がない場合（Mac にはセンサーがなく、ブラウザーにはホーム画面ウィジェットがありません）、そのパッケージは「対応していない」と答えます（`unsupported` や `notAvailable` のエラー、または `available()` が false）。スマートフォンにできてブラウザーにはできないことについて、ブラウザーで各パッケージが代わりに何をするかは [Web](web.md#ネイティブモジュール) を参照してください。
 
-Asuka の列には、その機能を担う要素、プロパティ、標準ライブラリのパッケージ（`asuka/...`、[標準ライブラリ](stdlib.md)）と、それが各プラットフォームで何にあたるかを書いています。Asuka は各プラットフォーム純正のウィジェットを表示し、各プラットフォーム自身の API を呼び出します。iOS と Mac では Swift、Android では Kotlin、Web では JavaScript、Windows と Linux では C から呼び出します。
+Asuka の列には、その機能を担う要素、プロパティ、パッケージ（`std/...` か `platform/...`、[標準ライブラリとプラットフォーム SDK](stdlib.md)）と、それが各プラットフォームで何にあたるかを書いています。Asuka は各プラットフォーム純正のウィジェットを表示し、各プラットフォーム自身の API を呼び出します。iOS と Mac では Swift、Android では Kotlin、Web では JavaScript、Windows と Linux では C から呼び出します。
 
 SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きます。React Native は、Expo の外にある Microsoft の React Native for Windows and macOS によって Windows と Mac にも対応しています。デスクトップのフレームワーク（Electron、Tauri、Wails）と Asuka の比較は[デスクトップのフレームワーク](#デスクトップのフレームワーク)を、デスクトップアプリがウィンドウ以外に必要とするものについては[デスクトップアプリの機能](#デスクトップアプリの機能)を参照してください。UI を自前で描画する MyGo との比較は [Asuka と MyGo](mygo.md) を参照してください。
 
@@ -29,7 +29,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 
 | | SwiftUI | Expo | Asuka |
 |---|---|---|---|
-| テキスト、スタイル付きテキスト、リンク | `Text`、`AttributedString` | `Text` | ✓ `Text`、`RichText`（スパン、リンク）、`Selectable`。Markdown は `asuka/markdown`（コアが md4c で解析するのでどこでも同じ結果になり、プラットフォームのスタイル付きテキストとして描画） |
+| テキスト、スタイル付きテキスト、リンク | `Text`、`AttributedString` | `Text` | ✓ `Text`、`RichText`（スパン、リンク）、`Selectable`。Markdown は `std/markdown`（コアが md4c で解析するのでどこでも同じ結果になり、プラットフォームのスタイル付きテキストとして描画） |
 | ボタン（スタイル、アイコン、メニュー） | `Button`、`Menu` | `Pressable` | ✓ `Button`（`variant`：plain、filled、tinted、gray、bordered、glass、glass prominent。`icon`。`menu`）、`Menu`（タップまたは `longPress`：コンテキストメニュー）。項目は `disabled`、`checked` にでき、`.submenu` やタイトル付きの `.section` に入れられる。メニューを開くバーボタン |
 | テキストフィールド | `TextField`、`SecureField`、`TextEditor` | `TextInput` | ✓ `TextField`（`secure`、`keyboard`、`returnKey`、自動入力のための `contentType`、`multiline`、`plain`） |
 | カーソル、カーソル位置への挿入 | `TextSelection` | `selection`、`onSelectionChange` | ✓ `bind selection`。`Ref` の `insert(text)` |
@@ -42,15 +42,15 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | プログレス、スピナー | `ProgressView` | `ActivityIndicator` | ✓ `Progress`、`ProgressRing`（値あり・なし）、`Activity` |
 | ホイールとメニューのピッカー、ステッパー | `Picker`、`Stepper` | コミュニティ製 | ✓ `Wheel`（`UIPickerView`、`NumberPicker`。デスクトップと Web ではポップアップメニュー）、`Picker`（iOS と Mac ではポップアップボタン、Android では Material の exposed dropdown menu、Windows では WinUI 風に描画したコンボボックス、`GtkDropDown`、`<select>`）、`Stepper` |
 | カラーピッカー | `ColorPicker` | コミュニティ製 | ✓ `ColorPicker`（`UIColorWell`。Android にはないので、不透明度も選べるパレットの Material ダイアログ。`NSColorWell`、Windows の色の設定ダイアログ、`GtkColorDialogButton`、`<input type="color">`） |
-| アイコン | SF Symbols | `@expo/vector-icons` | ✓ `Symbol`（iOS と Mac では SF Symbols。同じ名前で、Android と Web では Material Symbols、Windows では Segoe Fluent Icons、Linux ではアイコンテーマのもの、なければ Material Symbols：厳選したセット）。SVG のアイコンは `asuka/svg` でベクターとして描画 |
+| アイコン | SF Symbols | `@expo/vector-icons` | ✓ `Symbol`（iOS と Mac では SF Symbols。同じ名前で、Android と Web では Material Symbols、Windows では Segoe Fluent Icons、Linux ではアイコンテーマのもの、なければ Material Symbols：厳選したセット）。SVG のアイコンは `std/svg` でベクターとして描画 |
 | 画像（リモート、キャッシュ、プレースホルダー） | `AsyncImage` | `expo-image` | ✓ `Image`（`placeholder`、`blurHash` と `thumbHash` のプレースホルダー、フェードする `transition`。メモリにキャッシュし、iOS と Android ではディスクにも。各プラットフォームのデコーダー（ImageIO、`ImageDecoder`、`NSImage`、WIC、GDK のローダー、ブラウザー）で読むので、プラットフォームが読める WebP、HEIC、AVIF も表示できる。アニメーション GIF、APNG、WebP はすべてのプラットフォームで再生、`animated`。SVG は Mac、Linux、Web） |
-| Lottie アニメーション | コミュニティ製（lottie-ios） | `lottie-react-native` | ◐ `asuka/lottie` の `lottie.View`（lottie-ios、lottie-android、lottie-web：JSON と dotLottie、`playing`、`loop`、`speed`、読み書きできる `progress`、`segment`、`marker`、キーパスによる `overrides`）。Windows と Linux ではまだ何も表示されない（空の領域） |
+| Lottie アニメーション | コミュニティ製（lottie-ios） | `lottie-react-native` | ◐ `std/lottie` の `lottie.View`（lottie-ios、lottie-android、lottie-web：JSON と dotLottie、`playing`、`loop`、`speed`、読み書きできる `progress`、`segment`、`marker`、キーパスによる `overrides`）。Windows と Linux ではまだ何も表示されない（空の領域） |
 | 動画 | `VideoPlayer` | `expo-video` | ✓ `Video`（iOS と Mac では AVKit、Android では Media3、Windows では WebView2 の中の `<video>`、Linux では `GtkVideo`（GStreamer）、Web では `<video>`） |
-| Web のコンテンツ | `WKWebView` | `react-native-webview` | ✓ `WebView`（iOS と Mac では `WKWebView`、Android の `WebView`、Windows では WebView2、Linux では WebKitGTK：URL か HTML、双方向のメッセージ、ページより先に実行するスクリプト（`preload`）、リクエストのブロック、ページの状態と履歴、ダウンロード、新しいウィンドウ、個々のリクエスト、スクリプトの値、`webCookies(url)`。Web では `<iframe>` で、すべてが使えるのはアプリ自身のサイトのページ）。`asuka/js` は画面外で JavaScript を実行する |
-| 地図 | `Map` | `expo-maps` | ✓ `asuka/maps` の `maps.View`（iOS と Mac では MapKit、Android では Google Maps、Windows、Linux（libshumate）、Web では OpenStreetMap のタイル：表示範囲、マーカー、ユーザーの現在地、タップ） |
-| 独自の描画 | `Shape`、`Path`、`Canvas` | `react-native-svg`、Skia | ✓ `Shape` と `Path`（塗り、線、線端、角の形、破線、アニメーションできるトリム）。`Canvas`（パス、グラデーション、テキスト、変形、クリップ：Core Graphics、Android の `Canvas`、GDI+、GSK、2D の `<canvas>`）。`asuka/svg` |
-| グラフ | Swift Charts | `victory-native`、コミュニティ製 | ✓ `asuka/chart`（棒、折れ線、面、点。`svg.Shape` で描くのでどこでも同じ） |
-| シェーダー | `.colorEffect(ShaderLibrary...)` | Skia のランタイムエフェクト | ✓ `asuka/shader`（Kage のシェーダーをアプリと一緒にコンパイル：iOS と Mac では Metal、Android 13 以降では AGSL、Web では WebGL 2、Windows では Direct3D 11、Linux では OpenGL） |
+| Web のコンテンツ | `WKWebView` | `react-native-webview` | ✓ `WebView`（iOS と Mac では `WKWebView`、Android の `WebView`、Windows では WebView2、Linux では WebKitGTK：URL か HTML、双方向のメッセージ、ページより先に実行するスクリプト（`preload`）、リクエストのブロック、ページの状態と履歴、ダウンロード、新しいウィンドウ、個々のリクエスト、スクリプトの値、`webCookies(url)`。Web では `<iframe>` で、すべてが使えるのはアプリ自身のサイトのページ）。`platform/js` は画面外で JavaScript を実行する |
+| 地図 | `Map` | `expo-maps` | ✓ `platform/maps` の `maps.View`（iOS と Mac では MapKit、Android では Google Maps、Windows、Linux（libshumate）、Web では OpenStreetMap のタイル：表示範囲、マーカー、ユーザーの現在地、タップ） |
+| 独自の描画 | `Shape`、`Path`、`Canvas` | `react-native-svg`、Skia | ✓ `Shape` と `Path`（塗り、線、線端、角の形、破線、アニメーションできるトリム）。`Canvas`（パス、グラデーション、テキスト、変形、クリップ：Core Graphics、Android の `Canvas`、GDI+、GSK、2D の `<canvas>`）。`std/svg` |
+| グラフ | Swift Charts | `victory-native`、コミュニティ製 | ✓ `std/chart`（棒、折れ線、面、点。`svg.Shape` で描くのでどこでも同じ） |
+| シェーダー | `.colorEffect(ShaderLibrary...)` | Skia のランタイムエフェクト | ✓ `std/shader`（Kage のシェーダーをアプリと一緒にコンパイル：iOS と Mac では Metal、Android 13 以降では AGSL、Web では WebGL 2、Windows では Direct3D 11、Linux では OpenGL） |
 | ネイティブへの抜け道 | `UIViewRepresentable` | ネイティブモジュール | ✓ ネイティブパッケージ：`native interface` や `native component` を Asuka で宣言し、iOS と Mac では Swift、Android では Kotlin、Web では JavaScript、Windows と Linux では C で実装（[ネイティブコード](native.md)）。C のライブラリは `extern` で直接呼び出せる（[Asuka から C を呼ぶ](c.md)） |
 | ページング、ページのドット | `.scrollTargetBehavior(.paging)`、`TabView(.page)` | `react-native-pager-view` | ✓ `Scroll` の `paging`、`PageControl` |
 | チェックボックス | `Toggle`（`.checkbox`、macOS） | コミュニティ製 | ✓ `Toggle { checkbox: true }` |
@@ -98,19 +98,19 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | | SwiftUI / Apple | Expo | Asuka |
 |---|---|---|---|
 | 状態 | `@State`、`@Observable` | フック | ✓ `state`、ストア、派生した `let`（細粒度のシグナル：書き込むと、それを読んでいるところだけが更新される）（[コンセプト](concepts.md)） |
-| 永続化する小さな値 | `@AppStorage` | AsyncStorage | ✓ `asuka/storage` の `storage.Value`、`asuka/store`（UserDefaults、SharedPreferences、Windows と Linux ではファイル、`localStorage`） |
-| SQLite | SwiftData / GRDB | `expo-sqlite` | ✓ `asuka/sqlite`（`migrate`、行を `T` に直接デコードする `query<T>`、`exec`、トランザクション。メインスレッドの外で実行。`watch<T>`：読んでいるテーブルに書き込みがあったときや引数が変わったときに再実行されるライブクエリ。どのプラットフォームでも同じ SQLite で、ブラウザーではページのワーカーで動く）（[データ](data.md)） |
-| セキュアストレージ | キーチェーン | `expo-secure-store` | ✓ `asuka/secure`（キーチェーン、Android Keystore、資格情報マネージャー、libsecret。Web では、ブラウザーが外に出さない鍵で暗号化して IndexedDB に保存するもので、キーチェーンではない） |
-| ファイル、ネットワーク | Foundation | `expo-file-system`、fetch | ✓ `asuka/fs`。`asuka/http`（プラットフォーム自身のクライアント：URLSession、`HttpURLConnection`、WinHTTP、libsoup、`fetch`）、`http.download` |
+| 永続化する小さな値 | `@AppStorage` | AsyncStorage | ✓ `std/storage` の `storage.Value`、`std/store`（UserDefaults、SharedPreferences、Windows と Linux ではファイル、`localStorage`） |
+| SQLite | SwiftData / GRDB | `expo-sqlite` | ✓ `std/sqlite`（`migrate`、行を `T` に直接デコードする `query<T>`、`exec`、トランザクション。メインスレッドの外で実行。`watch<T>`：読んでいるテーブルに書き込みがあったときや引数が変わったときに再実行されるライブクエリ。どのプラットフォームでも同じ SQLite で、ブラウザーではページのワーカーで動く）（[データ](data.md)） |
+| セキュアストレージ | キーチェーン | `expo-secure-store` | ✓ `platform/secure`（キーチェーン、Android Keystore、資格情報マネージャー、libsecret。Web では、ブラウザーが外に出さない鍵で暗号化して IndexedDB に保存するもので、キーチェーンではない） |
+| ファイル、ネットワーク | Foundation | `expo-file-system`、fetch | ✓ `std/fs`。`std/http`（プラットフォーム自身のクライアント：URLSession、`HttpURLConnection`、WinHTTP、libsoup、`fetch`）、`http.download` |
 | 写真 | `PhotosPicker` | `expo-image-picker` | ✓ `device.pickPhotos(max:)` |
-| 書類 | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.pickFiles(types:, multiple:)`。デスクトップでは `asuka/dialog` |
-| カメラ | AVFoundation | `expo-camera` | ✓ `asuka/camera`：`camera.take()`（システムのカメラ。Mac、Windows、Linux ではライブプレビュー付きのダイアログ）、`camera.View`（前面または背面のライブプレビュー）、`capture()`、`record()`（AVFoundation、CameraX、Media Foundation、GStreamer、`getUserMedia`）。`asuka/record` で音声付きの動画を録画 |
+| 書類 | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.pickFiles(types:, multiple:)`。デスクトップでは `platform/dialog` |
+| カメラ | AVFoundation | `expo-camera` | ✓ `platform/camera`：`camera.take()`（システムのカメラ。Mac、Windows、Linux ではライブプレビュー付きのダイアログ）、`camera.View`（前面または背面のライブプレビュー）、`capture()`、`record()`（AVFoundation、CameraX、Media Foundation、GStreamer、`getUserMedia`）。`platform/record` で音声付きの動画を録画 |
 | バーコード、QR コード | AVFoundation、Vision | `expo-camera` のスキャン | ✓ `camera.View` でライブに（`scan`、`on code`）、画像ファイルからも（`scan.file`）：Vision、Android では ML Kit（インポートしたアプリにだけ含まれる）、ブラウザーでは `BarcodeDetector` があればそれ、Windows と Linux では C で書いた Asuka 独自のリーダー（QR、Data Matrix、EAN、UPC、Code 128、Code 39） |
-| 位置情報 | Core Location | `expo-location` | ✓ `asuka/location`（Core Location、Android の位置情報マネージャー、WinRT の `Geolocator`、GeoClue または位置情報ポータル、Geolocation API。使用中と常に、正確とおおよそ。地名。バックグラウンドでの更新と領域の監視で、iOS と Android ではそのイベントのためにアプリが起動され、処理中は保持される） |
-| 翻訳、複数形、地域のフォーマット | String Catalogs、FormatStyle | `expo-localization`、i18next | ✓ カタログと `tr.key(…)`、`asuka/i18n`（[言語](i18n.md)） |
+| 位置情報 | Core Location | `expo-location` | ✓ `platform/location`（Core Location、Android の位置情報マネージャー、WinRT の `Geolocator`、GeoClue または位置情報ポータル、Geolocation API。使用中と常に、正確とおおよそ。地名。バックグラウンドでの更新と領域の監視で、iOS と Android ではそのイベントのためにアプリが起動され、処理中は保持される） |
+| 翻訳、複数形、地域のフォーマット | String Catalogs、FormatStyle | `expo-localization`、i18next | ✓ カタログと `tr.key(…)`、`std/i18n`（[言語](i18n.md)） |
 | 右から左のレイアウト | `layoutDirection` | `I18nManager` | ✓ 言語に従う（`start` と `end` は反転する）。どの言語でも同じ向きで読むものには `layoutDirection` |
-| ローカル通知 | UserNotifications | `expo-notifications` | ✓ `asuka/notify`（すぐに、または予約して表示、画像付き。iOS と macOS では UserNotifications、Android の通知、ボタンと返信付きの Windows のトースト、Linux のデスクトップ通知。Web ではアプリの Service Worker を通じて表示し、予約した通知はアプリのページが開いていればその時刻に、そうでなければ次にページを開いたときに表示する。ブラウザーには通知を予約する手段がない） |
-| プッシュ通知 | APNs | `expo-notifications` | ✓ `asuka/push`（iOS と macOS では APNs、Android では Firebase Cloud Messaging、Web では VAPID による Web Push：`register()` でトークン、`received()`、`opened()`） |
+| ローカル通知 | UserNotifications | `expo-notifications` | ✓ `platform/notify`（すぐに、または予約して表示、画像付き。iOS と macOS では UserNotifications、Android の通知、ボタンと返信付きの Windows のトースト、Linux のデスクトップ通知。Web ではアプリの Service Worker を通じて表示し、予約した通知はアプリのページが開いていればその時刻に、そうでなければ次にページを開いたときに表示する。ブラウザーには通知を予約する手段がない） |
+| プッシュ通知 | APNs | `expo-notifications` | ✓ `platform/push`（iOS と macOS では APNs、Android では Firebase Cloud Messaging、Web では VAPID による Web Push：`register()` でトークン、`received()`、`opened()`） |
 | 通知のアクション、インライン返信 | `UNNotificationCategory`、`UNTextInputNotificationAction` | `setNotificationCategoryAsync` | ✓ `notify.setCategories`、`notify.responses()`（アクションと返信。`r.defer()` で処理が終わるまでアプリを動かし続ける。Web では Service Worker の通知アクション、Chrome にあればインライン返信も） |
 | スレッド、表示中の通知、バッジ | `threadIdentifier`、`getDeliveredNotifications`、`setBadgeCount` | `getPresentedNotificationsAsync`、`setBadgeCountAsync` | ✓ 通知の `thread`（Android では概要通知を保ったグループ）、`notify.showing()`、`remove`、`removeThread`、`setBadge` |
 | フォアグラウンドでの通知 | `willPresent` | `setNotificationHandler` | ✓ `notify.present(decide)` |
@@ -118,47 +118,47 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | 会話のメッセージ | 通信通知（`INSendMessageIntent`） | コミュニティ製 | ✓ `Notification(…).from(person, conversation)`、`Message.from`：iOS の通信通知、Android の MessagingStyle と会話のショートカット。ほかでは通常の通知 |
 | 表示前のプッシュの書き換え | Notification Service Extension | コミュニティ製（`expo-notifications` にはない） | ✓ `push.rewrite(f)`：iOS の Notification Service Extension の中で（`asuka build` がビルドして署名）、Android ではデータメッセージを受ける Firebase のサービスの中でアプリのコードが動く |
 | クリップボード、共有シート、ブラウザー | `UIPasteboard`、`ShareLink`、`SFSafariViewController` | `expo-clipboard`、`expo-sharing`、`expo-web-browser` | ✓ `copy(text)`、`device.clipboardText()`、`clipboardHas`、`clipboardImage`、`copyImage`、`clipboardChanges()`。`share(text)`、`shareFiles(paths)`（Mac の共有メニュー、Windows の共有 UI、ブラウザーのもの。Linux にはないので、クリップボードにコピーしてトーストで知らせる）。`device.browse(url)`（`SFSafariViewController`、Custom Tab）、`openURL(url)` |
-| ファイルのプレビュー | `QLPreviewController`、`.quickLookPreview` | `react-native-file-viewer` | ✓ `asuka/preview`（iOS と Mac ではクイックルックで、複数のファイル、マークアップ。Android、Windows、Linux ではそのファイルのアプリ。Web では新しいタブ） |
-| 印刷、HTML からの PDF | `UIPrintInteractionController`、`UIPrintPageRenderer` | `expo-print` | ✓ `asuka/print`（ファイル、HTML、`WebView` を、システムのダイアログで印刷し、結果を返す。`print.pdf`：ページ分割、地域の用紙サイズ、余白） |
-| メールとメッセージの作成画面 | `MFMailComposeViewController`、`MFMessageComposeViewController` | `expo-mail-composer`、`expo-sms` | ✓ `asuka/compose`（`compose.mail`：宛先、件名、HTML の本文、添付ファイル。iOS ではユーザーが何をしたかがわかり、ほかではメールアプリ。`compose.message`：iOS のメッセージ、Android の SMS アプリ） |
+| ファイルのプレビュー | `QLPreviewController`、`.quickLookPreview` | `react-native-file-viewer` | ✓ `platform/preview`（iOS と Mac ではクイックルックで、複数のファイル、マークアップ。Android、Windows、Linux ではそのファイルのアプリ。Web では新しいタブ） |
+| 印刷、HTML からの PDF | `UIPrintInteractionController`、`UIPrintPageRenderer` | `expo-print` | ✓ `platform/print`（ファイル、HTML、`WebView` を、システムのダイアログで印刷し、結果を返す。`print.pdf`：ページ分割、地域の用紙サイズ、余白） |
+| メールとメッセージの作成画面 | `MFMailComposeViewController`、`MFMessageComposeViewController` | `expo-mail-composer`、`expo-sms` | ✓ `platform/compose`（`compose.mail`：宛先、件名、HTML の本文、添付ファイル。iOS ではユーザーが何をしたかがわかり、ほかではメールアプリ。`compose.message`：iOS のメッセージ、Android の SMS アプリ） |
 | スリープの防止、デバイスの情報 | `isIdleTimerDisabled`、`UIDevice` | `expo-keep-awake`、`expo-device` | ✓ `device.keepAwake(on)`、`device.info()` |
-| ネットワークの状態 | `NWPathMonitor` | `expo-network` | ✓ `asuka/network`（`network.status()`：オンラインかどうか、Wi-Fi かモバイル通信か、従量制かどうか、省データモード。NWPathMonitor、ConnectivityManager、Network List Manager、NetworkManager、Network Information API） |
-| ギャラリーやダウンロードへの保存 | `PHPhotoLibrary` | `expo-media-library` | ✓ `asuka/library`（`library.save`：写真、Android のギャラリーとダウンロード、ミュージック。デスクトップではダウンロード、ピクチャ、ムービー、ミュージックのフォルダー） |
-| バックグラウンドの処理 | `beginBackgroundTask`、`BGTaskScheduler` | `expo-task-manager`、`expo-background-task` | ✓ `asuka/background`：Android はアプリを動かし続け、進捗とボタンを通知に出す。iOS はおよそ 30 秒。デスクトップはアプリが休止されないようにする（App Nap、スリープ）。`asuka/periodic`：システムがときどき実行する処理で、画面なしでアプリを起動する（BGTaskScheduler、WorkManager。デスクトップではアプリの実行中のタイマー） |
-| ほかのアプリからの共有の受け取り | 共有拡張 | `expo-sharing`（`useIncomingShare`） | ✓ `on share(items)`：テキスト、リンク、画像、動画、音声、ファイルを一つでも複数でも、名前、MIME タイプ、サイズとともに（`asuka.toml` の `shareTarget` から、Android のインテントフィルターと、iOS の共有拡張とその起動条件を作る）。`asuka/sharesheet` は共有元のアプリの上に出すアプリ独自のシートで（iOS の共有拡張、Android のアクティビティ）、データはアプリと共有する。iOS と Android |
-| オーディオ | AVAudioPlayer、AVAudioRecorder | `expo-audio` | ✓ `asuka/audio`（`audio.play`、`audio.Player`：再生、一時停止、シーク、音量、速度、ループ。AVPlayer、Media3 の ExoPlayer、MCI、GStreamer、`<audio>`）。`asuka/record`（`record.audio`：音質、一時停止、レベル） |
-| 再生中の情報、ロック画面のコントロール、メディアキー | `MPNowPlayingInfoCenter`、`MPRemoteCommandCenter` | `expo-audio` のロック画面のコントロール、コミュニティ製（`react-native-track-player`） | ✓ `asuka/nowplaying` の `nowplaying.NowPlaying`（タイトル、アーティスト、アートワーク、長さ、システムが進める再生位置、再生、一時停止、次へ、前へ、シーク。`audio.Player` には自動で追従。Android では MediaSession、Windows では SystemMediaTransportControls、Linux では MPRIS、Web では Media Session API） |
-| Apple でサインイン | `SignInWithAppleButton` | `expo-apple-authentication` | ✓ `asuka/appleauth`（Apple の `SignInButton`、`signIn`、`credentialState`。iOS と macOS。ほかでは `asuka/webauth` で） |
-| Web のサインイン（OAuth） | `ASWebAuthenticationSession` | `expo-auth-session`、`expo-web-browser` | ✓ `asuka/webauth`（`ASWebAuthenticationSession`、Custom Tab、WebView2 のウィンドウ、WebKitGTK のダイアログ、ポップアップ） |
-| iCloud：キー値ストア、iCloud Drive | `NSUbiquitousKeyValueStore`、ユビキティコンテナ、`NSMetadataQuery` | コミュニティ製（`react-native-cloud-storage`、`expo-icloud-storage`） | ✓ `asuka/icloud`（アカウント。iCloud のキー値ストアに保存する `icloud.Value`。iCloud Drive にあるアプリの書類を、変化に合わせてダウンロード・アップロードの状態とともに一覧し、協調して読み書きし、ダウンロード、ローカルコピーの削除、競合の解決。テストには `icloud.fake()`。iOS と macOS。CloudKit のデータベースはない） |
-| Apple Pay、Google Pay | PassKit（`PayWithApplePayButton`） | `@stripe/stripe-react-native` の Platform Pay、`react-native-payments` | ✓ `asuka/pay`（ウォレットのシートと `PayButton`。アプリの決済代行会社に渡すトークン。配送、クーポン、カードの変更に合わせた合計金額の更新。項目ごとのエラー。iOS、macOS、Safari では Apple Pay、Android とほかのブラウザーでは Google Pay） |
-| Face ID、指紋 | LocalAuthentication | `expo-local-authentication` | ✓ `asuka/biometric`（LocalAuthentication、BiometricPrompt、Windows Hello。Web では WebAuthn によるプラットフォームの認証器。Linux にはない） |
-| アプリ内課金、サブスクリプション | StoreKit 2 | `expo-iap`、`react-native-iap`、RevenueCat | ✓ `asuka/purchase`（ローカライズされた価格とオファー付きの商品、購入、保留中の支払い、アプリの起動時からのトランザクションのストリーム、完了処理、エンタイトルメント、復元、サブスクリプションの状態、管理・返金・オファーコードのシート。iOS と macOS では StoreKit 2、Play Billing、Microsoft Store、Trusted Web Activity の Digital Goods API。テストには `purchase.fake()`）（[アプリ内課金](purchases.md)） |
-| ストアのレビュー | `requestReview` | `expo-store-review` | ✓ `asuka/review`（App Store のプロンプト、Play のアプリ内レビュー） |
-| トラッキングの許可 | App Tracking Transparency | `expo-tracking-transparency` | ✓ `asuka/tracking` |
-| アプリの完全性 | App Attest | `expo-app-integrity` | ✓ `asuka/integrity`（App Attest、Play Integrity） |
-| 年齢層 | Declared Age Range | `expo-age-range` | ✓ `asuka/agerange`（Declared Age Range、Play Age Signals） |
-| センサー | Core Motion | `expo-sensors` | ✓ `asuka/sensors`（加速度計、ジャイロスコープ、磁力計、デバイスモーション、気圧計、照度、歩数計。どこでも同じ軸と単位。Core Motion、SensorManager、Linux では iio-sensor-proxy の照度と向き、Generic Sensor API。Mac と Windows にはない） |
-| NFC タグ | Core NFC | `react-native-nfc-manager` | ✓ `asuka/nfc`（NDEF の読み書き、読み取り専用のタグ、タグの ID、生のコマンド。iOS のシート、Android のリーダーモード、アプリを開くタグ。Android の Chrome の Web NFC。デスクトップにはない）（[NFC タグ](nfc.md)） |
-| Bluetooth LE | Core Bluetooth | コミュニティ製（`react-native-ble-plx`） | ✓ `asuka/bluetooth`（スキャン、接続、サービス、読み取り、書き込み、通知。アドバタイズと GATT サーバー。バックグラウンドのスキャンと状態の復元。Core Bluetooth、Android の BLE、WinRT のもの、BlueZ。Chromium の Web Bluetooth のデバイス選択画面で、ペリフェラルの役割はない）（[Bluetooth](bluetooth.md)） |
-| 画像の編集 | Core Graphics、ImageIO | `expo-image-manipulator` | ✓ `asuka/imageedit`（リサイズ、切り抜き、回転、反転、塗りつぶし、モザイク。HEIC を読み、JPEG か PNG で書き出し、向きを正す。Image I/O、Android の `Bitmap`、WIC、GdkPixbuf、canvas） |
+| ネットワークの状態 | `NWPathMonitor` | `expo-network` | ✓ `platform/network`（`network.status()`：オンラインかどうか、Wi-Fi かモバイル通信か、従量制かどうか、省データモード。NWPathMonitor、ConnectivityManager、Network List Manager、NetworkManager、Network Information API） |
+| ギャラリーやダウンロードへの保存 | `PHPhotoLibrary` | `expo-media-library` | ✓ `platform/library`（`library.save`：写真、Android のギャラリーとダウンロード、ミュージック。デスクトップではダウンロード、ピクチャ、ムービー、ミュージックのフォルダー） |
+| バックグラウンドの処理 | `beginBackgroundTask`、`BGTaskScheduler` | `expo-task-manager`、`expo-background-task` | ✓ `platform/background`：Android はアプリを動かし続け、進捗とボタンを通知に出す。iOS はおよそ 30 秒。デスクトップはアプリが休止されないようにする（App Nap、スリープ）。`platform/periodic`：システムがときどき実行する処理で、画面なしでアプリを起動する（BGTaskScheduler、WorkManager。デスクトップではアプリの実行中のタイマー） |
+| ほかのアプリからの共有の受け取り | 共有拡張 | `expo-sharing`（`useIncomingShare`） | ✓ `on share(items)`：テキスト、リンク、画像、動画、音声、ファイルを一つでも複数でも、名前、MIME タイプ、サイズとともに（`asuka.toml` の `shareTarget` から、Android のインテントフィルターと、iOS の共有拡張とその起動条件を作る）。`platform/sharesheet` は共有元のアプリの上に出すアプリ独自のシートで（iOS の共有拡張、Android のアクティビティ）、データはアプリと共有する。iOS と Android |
+| オーディオ | AVAudioPlayer、AVAudioRecorder | `expo-audio` | ✓ `platform/audio`（`audio.play`、`audio.Player`：再生、一時停止、シーク、音量、速度、ループ。AVPlayer、Media3 の ExoPlayer、MCI、GStreamer、`<audio>`）。`platform/record`（`record.audio`：音質、一時停止、レベル） |
+| 再生中の情報、ロック画面のコントロール、メディアキー | `MPNowPlayingInfoCenter`、`MPRemoteCommandCenter` | `expo-audio` のロック画面のコントロール、コミュニティ製（`react-native-track-player`） | ✓ `platform/nowplaying` の `nowplaying.NowPlaying`（タイトル、アーティスト、アートワーク、長さ、システムが進める再生位置、再生、一時停止、次へ、前へ、シーク。`audio.Player` には自動で追従。Android では MediaSession、Windows では SystemMediaTransportControls、Linux では MPRIS、Web では Media Session API） |
+| Apple でサインイン | `SignInWithAppleButton` | `expo-apple-authentication` | ✓ `platform/appleauth`（Apple の `SignInButton`、`signIn`、`credentialState`。iOS と macOS。ほかでは `platform/webauth` で） |
+| Web のサインイン（OAuth） | `ASWebAuthenticationSession` | `expo-auth-session`、`expo-web-browser` | ✓ `platform/webauth`（`ASWebAuthenticationSession`、Custom Tab、WebView2 のウィンドウ、WebKitGTK のダイアログ、ポップアップ） |
+| iCloud：キー値ストア、iCloud Drive | `NSUbiquitousKeyValueStore`、ユビキティコンテナ、`NSMetadataQuery` | コミュニティ製（`react-native-cloud-storage`、`expo-icloud-storage`） | ✓ `platform/icloud`（アカウント。iCloud のキー値ストアに保存する `icloud.Value`。iCloud Drive にあるアプリの書類を、変化に合わせてダウンロード・アップロードの状態とともに一覧し、協調して読み書きし、ダウンロード、ローカルコピーの削除、競合の解決。テストには `icloud.fake()`。iOS と macOS。CloudKit のデータベースはない） |
+| Apple Pay、Google Pay | PassKit（`PayWithApplePayButton`） | `@stripe/stripe-react-native` の Platform Pay、`react-native-payments` | ✓ `platform/pay`（ウォレットのシートと `PayButton`。アプリの決済代行会社に渡すトークン。配送、クーポン、カードの変更に合わせた合計金額の更新。項目ごとのエラー。iOS、macOS、Safari では Apple Pay、Android とほかのブラウザーでは Google Pay） |
+| Face ID、指紋 | LocalAuthentication | `expo-local-authentication` | ✓ `platform/biometric`（LocalAuthentication、BiometricPrompt、Windows Hello。Web では WebAuthn によるプラットフォームの認証器。Linux にはない） |
+| アプリ内課金、サブスクリプション | StoreKit 2 | `expo-iap`、`react-native-iap`、RevenueCat | ✓ `platform/purchase`（ローカライズされた価格とオファー付きの商品、購入、保留中の支払い、アプリの起動時からのトランザクションのストリーム、完了処理、エンタイトルメント、復元、サブスクリプションの状態、管理・返金・オファーコードのシート。iOS と macOS では StoreKit 2、Play Billing、Microsoft Store、Trusted Web Activity の Digital Goods API。テストには `purchase.fake()`）（[アプリ内課金](purchases.md)） |
+| ストアのレビュー | `requestReview` | `expo-store-review` | ✓ `platform/review`（App Store のプロンプト、Play のアプリ内レビュー） |
+| トラッキングの許可 | App Tracking Transparency | `expo-tracking-transparency` | ✓ `platform/tracking` |
+| アプリの完全性 | App Attest | `expo-app-integrity` | ✓ `platform/integrity`（App Attest、Play Integrity） |
+| 年齢層 | Declared Age Range | `expo-age-range` | ✓ `platform/agerange`（Declared Age Range、Play Age Signals） |
+| センサー | Core Motion | `expo-sensors` | ✓ `platform/sensors`（加速度計、ジャイロスコープ、磁力計、デバイスモーション、気圧計、照度、歩数計。どこでも同じ軸と単位。Core Motion、SensorManager、Linux では iio-sensor-proxy の照度と向き、Generic Sensor API。Mac と Windows にはない） |
+| NFC タグ | Core NFC | `react-native-nfc-manager` | ✓ `platform/nfc`（NDEF の読み書き、読み取り専用のタグ、タグの ID、生のコマンド。iOS のシート、Android のリーダーモード、アプリを開くタグ。Android の Chrome の Web NFC。デスクトップにはない）（[NFC タグ](nfc.md)） |
+| Bluetooth LE | Core Bluetooth | コミュニティ製（`react-native-ble-plx`） | ✓ `platform/bluetooth`（スキャン、接続、サービス、読み取り、書き込み、通知。アドバタイズと GATT サーバー。バックグラウンドのスキャンと状態の復元。Core Bluetooth、Android の BLE、WinRT のもの、BlueZ。Chromium の Web Bluetooth のデバイス選択画面で、ペリフェラルの役割はない）（[Bluetooth](bluetooth.md)） |
+| 画像の編集 | Core Graphics、ImageIO | `expo-image-manipulator` | ✓ `platform/imageedit`（リサイズ、切り抜き、回転、反転、塗りつぶし、モザイク。HEIC を読み、JPEG か PNG で書き出し、向きを正す。Image I/O、Android の `Bitmap`、WIC、GdkPixbuf、canvas） |
 | 動画のサムネイル | `AVAssetImageGenerator` | `expo-video-thumbnails` | ✓ `imageedit.videoFrame` |
-| 画像の中のテキスト、顔、コード | Vision | なし | ✓ `asuka/vision`、それぞれの位置とともに（Vision。Android では ML Kit で、インポートしたアプリにだけ含まれる。Windows の OCR と顔検出。Linux では Tesseract のテキストのみで顔はない。ブラウザーでは Shape Detection API があればそれ） |
-| 音声のテキスト化 | Speech（`SFSpeechRecognizer`） | コミュニティ製（`expo-speech-recognition`） | ◐ `asuka/transcribe`（録音をデバイス上だけで：iOS と macOS では Speech、Android 13 のデバイス上の認識、Windows の音声認識。Linux と Web にはない） |
-| 写真ライブラリ | PhotoKit | `expo-media-library` | ✓ `asuka/photos`：許可、一覧、サムネイル、元のファイル（PhotoKit、MediaStore） |
-| 読み上げ | `AVSpeechSynthesizer` | `expo-speech` | ✓ `asuka/speech`（キュー、声、ピッチ、速度、一時停止。AVSpeechSynthesizer、TextToSpeech、SAPI、Speech Dispatcher、`speechSynthesis`） |
-| 連絡先 | Contacts、ContactsUI | `expo-contacts` | ✓ `asuka/contacts`（`pick()` と新規連絡先の画面は許可なしで、アドレス帳は許可を得て） |
-| カレンダー | EventKit、EventKitUI | `expo-calendar` | ✓ `asuka/calendar`（イベントの編集画面は許可なしで、カレンダーとイベントは許可を得て。EventKit、Calendar Provider） |
-| ホーム画面ウィジェット | WidgetKit | `expo-widgets` | ✓ `asuka/widget` と `asuka.toml` の `widgets`（すべてのサイズに一つのテンプレート、iOS ではロック画面のものも。タイムライン、カウントダウン、URL を開くタップ。iOS と Android） |
-| ライブアクティビティ | ActivityKit | `expo-live-activity` | ✓ `asuka/liveactivity`（iOS：ロック画面と Dynamic Island。Android 16 の Live Update。カウントダウン、進捗、アラート、サーバーからの更新のためのプッシュトークン） |
+| 画像の中のテキスト、顔、コード | Vision | なし | ✓ `platform/vision`、それぞれの位置とともに（Vision。Android では ML Kit で、インポートしたアプリにだけ含まれる。Windows の OCR と顔検出。Linux では Tesseract のテキストのみで顔はない。ブラウザーでは Shape Detection API があればそれ） |
+| 音声のテキスト化 | Speech（`SFSpeechRecognizer`） | コミュニティ製（`expo-speech-recognition`） | ◐ `platform/transcribe`（録音をデバイス上だけで：iOS と macOS では Speech、Android 13 のデバイス上の認識、Windows の音声認識。Linux と Web にはない） |
+| 写真ライブラリ | PhotoKit | `expo-media-library` | ✓ `platform/photos`：許可、一覧、サムネイル、元のファイル（PhotoKit、MediaStore） |
+| 読み上げ | `AVSpeechSynthesizer` | `expo-speech` | ✓ `platform/speech`（キュー、声、ピッチ、速度、一時停止。AVSpeechSynthesizer、TextToSpeech、SAPI、Speech Dispatcher、`speechSynthesis`） |
+| 連絡先 | Contacts、ContactsUI | `expo-contacts` | ✓ `platform/contacts`（`pick()` と新規連絡先の画面は許可なしで、アドレス帳は許可を得て） |
+| カレンダー | EventKit、EventKitUI | `expo-calendar` | ✓ `platform/calendar`（イベントの編集画面は許可なしで、カレンダーとイベントは許可を得て。EventKit、Calendar Provider） |
+| ホーム画面ウィジェット | WidgetKit | `expo-widgets` | ✓ `platform/widget` と `asuka.toml` の `widgets`（すべてのサイズに一つのテンプレート、iOS ではロック画面のものも。タイムライン、カウントダウン、URL を開くタップ。iOS と Android） |
+| ライブアクティビティ | ActivityKit | `expo-live-activity` | ✓ `platform/liveactivity`（iOS：ロック画面と Dynamic Island。Android 16 の Live Update。カウントダウン、進捗、アラート、サーバーからの更新のためのプッシュトークン） |
 | App Intents、ショートカット | App Intents、App Shortcuts | — | ✓ `asuka.toml` の `shortcuts`（iOS：Siri のフレーズ付きの App Shortcuts で、Spotlight とショートカットに出る。Android：ランチャーのショートカット） |
 | カスタムフォント | `.font(.custom)` | `expo-font` | ✓ `assets/fonts`、`Font(family:)` |
 | ライフサイクル | `scenePhase` | AppState | ✓ `onLifecycle` |
-| 起動画面 | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.toml` の `splash`。`asuka/splash` で読み込み中は表示を保つ |
-| ステータスバー、ナビゲーションバー | `statusBarHidden`、`preferredStatusBarStyle` | `expo-status-bar`、`expo-navigation-bar` | ✓ `screen.setBars`（`asuka/screen`） |
+| 起動画面 | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.toml` の `splash`。`platform/splash` で読み込み中は表示を保つ |
+| ステータスバー、ナビゲーションバー | `statusBarHidden`、`preferredStatusBarStyle` | `expo-status-bar`、`expo-navigation-bar` | ✓ `screen.setBars`（`platform/screen`） |
 | 画面の向きの固定 | `supportedInterfaceOrientations` | `expo-screen-orientation` | ✓ `screen.lock` |
 | スクリーンショット | `isCaptured`、`userDidTakeScreenshotNotification` | `expo-screen-capture` | ✓ `screen.preventCapture`（Android：キャプチャーは黒くなる。iOS：録画中は覆われる。macOS と Windows：ウィンドウはキャプチャーから除かれる）、`screen.screenshots()` |
-| クラッシュレポート | MetricKit、Crashlytics、Sentry | Sentry、Crashlytics（`@react-native-firebase/crashlytics`） | ✓ `asuka/crash`：Asuka のスタック付きのコアの致命的なエラー、捕捉されなかった例外、MetricKit のクラッシュとハング、Android のネイティブクラッシュと ANR、デスクトップのホストのクラッシュを、パンくずと値とともに。送り先はアプリが決める（組み込みのサービスはない）。シンボルは `asuka build` が出力 |
+| クラッシュレポート | MetricKit、Crashlytics、Sentry | Sentry、Crashlytics（`@react-native-firebase/crashlytics`） | ✓ `platform/crash`：Asuka のスタック付きのコアの致命的なエラー、捕捉されなかった例外、MetricKit のクラッシュとハング、Android のネイティブクラッシュと ANR、デスクトップのホストのクラッシュを、パンくずと値とともに。送り先はアプリが決める（組み込みのサービスはない）。シンボルは `asuka build` が出力 |
 
 ## 外観とアクセシビリティ
 
@@ -206,7 +206,7 @@ Web ビューのアプリは、HTML と CSS で書いたとおりに、どのシ
 | | Electron | MyGo | Asuka |
 |---|---|---|---|
 | ウィンドウの制御 | `BrowserWindow` | `Window` | ✓ `app` ブロックの `Window` とほかの `Window`、`mainWindow()`、ウィンドウの `Ref`（`Window as w`）：表示、非表示、フォーカス、最小化、最大化、フルスクリーン、サイズ、位置、常に手前に表示、状態の追従。`on closeRequest`、`WindowCloseGuard`。`stateKey` による前回の位置の復元。`child` と `modal` のウィンドウ。`titleBar: .hidden`（Wayland では位置の指定、中央への配置、常に手前に表示はできず、コンポジターが決める） |
-| トレイアイコン | `Tray` | トレイアイコン | ✓ `asuka/tray` の `tray.Tray`（`NSStatusItem`、通知領域、Linux では StatusNotifierItem）：画像またはシンボル、タイトル、ツールチップ、メニュー、クリック |
+| トレイアイコン | `Tray` | トレイアイコン | ✓ `platform/tray` の `tray.Tray`（`NSStatusItem`、通知領域、Linux では StatusNotifierItem）：画像またはシンボル、タイトル、ツールチップ、メニュー、クリック |
 | サブメニュー、終了の項目 | `MenuItem.submenu`、ロール | ロール、サブメニュー | ✓ `MenuBar`、`Menu`、`MenuItem`（項目の中の項目はサブメニュー。`role: .quit`、`.close`、`.openRecent`）。トレイと Dock のメニューでは `Action` の `.submenu` と `.section` |
 | Dock のメニュー、ジャンプリストのタスク | `app.dock.setMenu`、`setUserTasks` | Dock のメニュー、ジャンプリスト | ✓ `tray.DockMenu`（Dock のメニュー、ジャンプリストのタスク、Linux のランチャーのクイックリスト） |
 | バックグラウンドのアプリ | `app.dock.hide`、`window-all-closed` で終了しない | バックグラウンドのアプリ | ✓ `asuka.toml` の `keepRunning` と `background` |
@@ -214,24 +214,24 @@ Web ビューのアプリは、HTML と CSS で書いたとおりに、どのシ
 | ランチャー用のパネル | `type: 'panel'`（macOS） | パネル | ✓ `Window` の `panel`：すべてのアプリと操作スペースの上に浮かび、Mac ではアプリをアクティブにせずにキーボード入力を受け、Escape かほかの場所のクリックで閉じる（Linux の Wayland では、gtk4-layer-shell があれば layer-shell のサーフェス） |
 | コンテンツに合わせたウィンドウのサイズ | アプリが `setContentSize` を呼ぶ | `FitContent` | ✓ `fitContent`：コンテンツが変わると、コアのレイアウトがウィンドウのサイズを決める |
 | クリックを透過するウィンドウ | `setIgnoreMouseEvents` | `SetIgnoreMouseEvents`、`SetInputRegion` | ✓ `clickThrough`、`w.setClickThrough(on)`（ウィンドウ全体） |
-| ランチャー向けのインストール済みアプリ | なし | `InstalledApps`、`FileIcon`、`LaunchApp` | ✓ `asuka/apps` の `list`、`search`、`icon`、`open` |
-| グローバルショートカット | `globalShortcut` | グローバルショートカット | ✓ `asuka/hotkey` の `hotkey.Hotkey`（Carbon のホットキー、`RegisterHotKey`、X11 のグラブまたは Wayland の GlobalShortcuts ポータル） |
-| 開く、保存、フォルダーのダイアログ | `dialog.showOpenDialog`、`showSaveDialog` | ダイアログ | ✓ `asuka/dialog` の `open`、`save`、`chooseFolder`、`chooseFolders`（Mac ではシート、Windows のコモンアイテムダイアログ、GTK のファイルダイアログまたはポータル。Web では File System Access のピッカーかファイル入力。スマートフォンでは `open` のみ） |
-| Finder などでの表示、既定のアプリで開く、ゴミ箱に移動 | `shell.showItemInFolder`、`openPath`、`trashItem` | シェル | ✓ `asuka/shell` の `reveal`、`open`、`trash`、`beep` |
+| ランチャー向けのインストール済みアプリ | なし | `InstalledApps`、`FileIcon`、`LaunchApp` | ✓ `platform/apps` の `list`、`search`、`icon`、`open` |
+| グローバルショートカット | `globalShortcut` | グローバルショートカット | ✓ `platform/hotkey` の `hotkey.Hotkey`（Carbon のホットキー、`RegisterHotKey`、X11 のグラブまたは Wayland の GlobalShortcuts ポータル） |
+| 開く、保存、フォルダーのダイアログ | `dialog.showOpenDialog`、`showSaveDialog` | ダイアログ | ✓ `platform/dialog` の `open`、`save`、`chooseFolder`、`chooseFolders`（Mac ではシート、Windows のコモンアイテムダイアログ、GTK のファイルダイアログまたはポータル。Web では File System Access のピッカーかファイル入力。スマートフォンでは `open` のみ） |
+| Finder などでの表示、既定のアプリで開く、ゴミ箱に移動 | `shell.showItemInFolder`、`openPath`、`trashItem` | シェル | ✓ `platform/shell` の `reveal`、`open`、`trash`、`beep` |
 | ファイルの関連付け | `fileAssociations`（electron-builder）、`open-file` | ファイルの関連付け | ✓ `asuka.toml` の `fileTypes`、`on files(paths)`（iOS、Android、インストールした Web アプリでも） |
 | 単一インスタンスと二回目の起動 | `requestSingleInstanceLock`、`second-instance` | 単一インスタンス | ✓ `on secondInstance(args, dir)`、`asuka.toml` の `singleInstance`（Mac では引数ではなくファイルを渡す） |
 | 終了と、終了前の確認 | `app.quit`、`before-quit` | 終了 | ✓ `quit()`、`relaunch()`、`on quit(e)`（`e.cancel()`、`e.sessionEnding`） |
 | アプリのフォルダー | `app.getPath` | ディレクトリ | ◐ `fs.appDir()`、アプリ自身のディレクトリ（すべてのプラットフォーム）。設定、キャッシュ、ログの個別のフォルダーはない |
-| 最近使った書類 | `app.addRecentDocument` | 最近使った書類 | ✓ `asuka/recent`（Mac の「最近使った項目を開く」、ジャンプリスト、Linux のユーザーの最近使ったファイル） |
-| 書類ベースのアプリ | — | 書類 | ✓ `asuka/document`：`Documents`、ファイルごとのウィンドウ、「ファイル」メニュー、自動保存、復元用のコピー、閉じるときと終了するときの保存の確認、ほかのアプリによるファイルの変更（スマートフォンと Web では一度に一つの書類で、その場で保存） |
-| ログイン時の起動 | `app.setLoginItemSettings` | ログイン時に起動 | ✓ `asuka/login`（`SMAppService`、macOS 13 以降。Run キー。XDG autostart または Background ポータル） |
-| ファイルの監視 | Node の `fs.watch`（chokidar） | `WatchFiles`、watch プラグイン | ✓ `asuka/watch` の `watch.path`（FSEvents、inotify、`ReadDirectoryChangesW`）：名前の変更は対にし、アトミックな保存は書き込みとして扱い、連続した変更はまとめる。スマートフォンと Web では非対応 |
+| 最近使った書類 | `app.addRecentDocument` | 最近使った書類 | ✓ `platform/recent`（Mac の「最近使った項目を開く」、ジャンプリスト、Linux のユーザーの最近使ったファイル） |
+| 書類ベースのアプリ | — | 書類 | ✓ `platform/document`：`Documents`、ファイルごとのウィンドウ、「ファイル」メニュー、自動保存、復元用のコピー、閉じるときと終了するときの保存の確認、ほかのアプリによるファイルの変更（スマートフォンと Web では一度に一つの書類で、その場で保存） |
+| ログイン時の起動 | `app.setLoginItemSettings` | ログイン時に起動 | ✓ `platform/login`（`SMAppService`、macOS 13 以降。Run キー。XDG autostart または Background ポータル） |
+| ファイルの監視 | Node の `fs.watch`（chokidar） | `WatchFiles`、watch プラグイン | ✓ `std/watch` の `watch.path`（FSEvents、inotify、`ReadDirectoryChangesW`）：名前の変更は対にし、アトミックな保存は書き込みとして扱い、連続した変更はまとめる。スマートフォンと Web では非対応 |
 | ディスプレイ | `screen` | ディスプレイ | ✓ `screen.displays()`、`nearest`、`matching`（Wayland では作業領域なし。スマートフォンと Web ではそれぞれの画面） |
-| スリープ、スリープ解除、ロック、アイドル時間、バッテリー | `powerMonitor` | 電源 | ✓ `asuka/power`（スマートフォンではバッテリー、低電力モード、ロック。Web ではバッテリー） |
+| スリープ、スリープ解除、ロック、アイドル時間、バッテリー | `powerMonitor` | 電源 | ✓ `platform/power`（スマートフォンではバッテリー、低電力モード、ロック。Web ではバッテリー） |
 | アプリのアイコンでの進捗と注意喚起 | `setProgressBar`、`flashFrame`、`dock.bounce` | Dock とタスクバー | ✓ `dock.setProgress`、`dock.requestAttention`（Linux では Unity launcher API に対応したドック） |
-| アクセントカラー、コントラストを上げる、透明度を下げる | `systemPreferences` | アクセントカラーとアクセシビリティ | ✓ `asuka/appearance`（Linux では「透明度を下げる」はなし） |
-| 再生中の情報とメディアキー | （なし：ページ内の `navigator.mediaSession`） | Now Playing | ✓ `asuka/nowplaying`（`MPNowPlayingInfoCenter`、ウィンドウの SystemMediaTransportControls、MPRIS のプレイヤー） |
-| 自動アップデート：署名付きのリリース、差分、Sparkle のウィンドウ | `autoUpdater`（Squirrel）、electron-updater | アップデーターとそのプラグイン | ✓ `asuka/update`（`update.UpdateWindow`、`update.AppMenu()`、`checkForUpdates`、`check`、`install`、`relaunch`。Ed25519 の署名、差分アップデート、チャンネル。GitHub のリリース、S3 のバケット、任意の HTTPS のディレクトリ、独自のサーバー。`asuka publish --platform mac\|windows\|linux`）。システムのパッケージ、Flatpak、ストアでインストールしたアプリは、それらを通じてアップデートする。Web は再読み込み |
+| アクセントカラー、コントラストを上げる、透明度を下げる | `systemPreferences` | アクセントカラーとアクセシビリティ | ✓ `platform/appearance`（Linux では「透明度を下げる」はなし） |
+| 再生中の情報とメディアキー | （なし：ページ内の `navigator.mediaSession`） | Now Playing | ✓ `platform/nowplaying`（`MPNowPlayingInfoCenter`、ウィンドウの SystemMediaTransportControls、MPRIS のプレイヤー） |
+| 自動アップデート：署名付きのリリース、差分、Sparkle のウィンドウ | `autoUpdater`（Squirrel）、electron-updater | アップデーターとそのプラグイン | ✓ `platform/update`（`update.UpdateWindow`、`update.AppMenu()`、`checkForUpdates`、`check`、`install`、`relaunch`。Ed25519 の署名、差分アップデート、チャンネル。GitHub のリリース、S3 のバケット、任意の HTTPS のディレクトリ、独自のサーバー。`asuka publish --platform mac\|windows\|linux`）。システムのパッケージ、Flatpak、ストアでインストールしたアプリは、それらを通じてアップデートする。Web は再読み込み |
 
 MyGo にあって Asuka にまだないものは次のとおりです。書類については、バージョン（Mac の「すべてのバージョンをブラウズ」）とロック。クリックを透過するウィンドウについては、入力領域（ウィンドウのうち、クリックを受け付け続ける部分）の指定です。Asuka のウィンドウは、マウスをウィンドウ全体で透過させるか、まったく透過させないかのどちらかです。ディレクトリについては、プラットフォームの設定、キャッシュ、ログのフォルダーです。
 

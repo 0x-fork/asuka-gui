@@ -1,5 +1,5 @@
 // headless.c: the host a program runs on (docs/programs.md) on Windows and
-// Linux when its packages have platform code (asuka/http's WinHTTP and
+// Linux when its packages have platform code (std/http's WinHTTP and
 // libsoup): no window, the main thread's loop, and asuka_desktop.h's host
 // half for the packages' C, which the native registry (src/native.c)
 // serves. Its main replaces the program's own (lang/cgen's, weak).
@@ -146,7 +146,7 @@ const char *asuka_desktop_cache_dir(void) { return dir(2, "ASUKA_CACHE", "XDG_CA
 const char *asuka_desktop_logs_dir(void) { return dir(3, "ASUKA_LOGS", "XDG_STATE_HOME", ".local/state", "", NULL); }
 #endif
 
-// A program's assets are compiled in (asuka/assets): the directory it's
+// A program's assets are compiled in (std/assets): the directory it's
 // in, for a package that names a file beside it.
 const char *asuka_desktop_assets_dir(void) {
 	if (!dirs[4]) {

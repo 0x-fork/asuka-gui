@@ -7,5 +7,5 @@ plugins {
 }
 
 android {
-    namespace = "asuka.svg"
+    namespace = "std.svg"
 }

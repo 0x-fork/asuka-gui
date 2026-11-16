@@ -1,9 +1,9 @@
 # iCloud
 
-`asuka/icloud` 让 iOS 和 macOS 上的应用使用用户的 iCloud。它分为两部分。**键值存储**保存少量的值（设置、上次读到的页、连续打卡的天数），这些值会跟着用户同步到他的每一台设备上。**文档**是应用放在 iCloud Drive 里的文件，“文件” App 和访达会把它们显示在一个以应用命名的文件夹里。它对应 Swift 中的 NSUbiquitousKeyValueStore 和应用的 ubiquity 容器，也就是 react-native-cloud-storage 和 expo-icloud-storage 为 Expo 应用提供的能力。
+`platform/icloud` 让 iOS 和 macOS 上的应用使用用户的 iCloud。它分为两部分。**键值存储**保存少量的值（设置、上次读到的页、连续打卡的天数），这些值会跟着用户同步到他的每一台设备上。**文档**是应用放在 iCloud Drive 里的文件，“文件” App 和访达会把它们显示在一个以应用命名的文件夹里。它对应 Swift 中的 NSUbiquitousKeyValueStore 和应用的 ubiquity 容器，也就是 react-native-cloud-storage 和 expo-icloud-storage 为 Expo 应用提供的能力。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 let size = icloud.Value("textSize", 17.0)   // 在每台设备上都一样
 
@@ -34,7 +34,7 @@ iCloud 是 Apple 的服务。在 Android、Windows、Linux 和 Web 上没有账�
 `icloud.account()` 会被追踪：它告诉你用户是否登录了 iCloud、是否为这个应用开启了 iCloud（`available`），以及登录的是哪个账户（`id`）。在绑定里读取它时，只要还有地方在读，它就会跟随账户的变化：用户登录或退出、为应用关闭了 iCloud，或者换了另一个用户登录。`icloud.currentAccount()` 只读取一次，不会被追踪。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 component SignInHint {
   let account = icloud.account()
@@ -51,10 +51,10 @@ component SignInHint {
 
 ## 键值存储
 
-`icloud.Value(key, default)` 是一个 store，它的 `value` 就是某个键的值：一开始是 `default`，读到 iCloud 保存的值之后就变成那个值；在使用期间，它会跟随其他设备所做的修改。设置它的 `value` 会把值保存到 iCloud：立刻保存在本机，再随着 iCloud 的同步保存到用户的其他设备上。值可以是任何 JSON（`asuka/json`）能表示的东西：数字、字符串、数组、结构体。
+`icloud.Value(key, default)` 是一个 store，它的 `value` 就是某个键的值：一开始是 `default`，读到 iCloud 保存的值之后就变成那个值；在使用期间，它会跟随其他设备所做的修改。设置它的 `value` 会把值保存到 iCloud：立刻保存在本机，再随着 iCloud 的同步保存到用户的其他设备上。值可以是任何 JSON（`std/json`）能表示的东西：数字、字符串、数组、结构体。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 let lastPage = icloud.Value("lastPage", 0)
 
@@ -96,18 +96,18 @@ component Reader {
 
 ### 读取和写入
 
-用 `icloud.readFile(path)`、`writeFile(path, data)`、`delete(path)` 和 `rename(from:, to:)` 读写应用的文件。它们会和 iCloud 自己的读写相互协调（NSFileCoordinator），因此同步时不会碰到写了一半的文件，应用也不会读到 iCloud 正在替换的文件。文件不在本机时，`readFile` 会先下载它并等待下载完成。`writeFile` 一次写入整个文件，并创建所需的目录，之后由 iCloud 上传。`asuka/fs` 的函数也能处理已经下载的文件，但可能会和同步发生竞争。
+用 `icloud.readFile(path)`、`writeFile(path, data)`、`delete(path)` 和 `rename(from:, to:)` 读写应用的文件。它们会和 iCloud 自己的读写相互协调（NSFileCoordinator），因此同步时不会碰到写了一半的文件，应用也不会读到 iCloud 正在替换的文件。文件不在本机时，`readFile` 会先下载它并等待下载完成。`writeFile` 一次写入整个文件，并创建所需的目录，之后由 iCloud 上传。`std/fs` 的函数也能处理已经下载的文件，但可能会和同步发生竞争。
 
 `icloud.download(path)` 开始下载一个文件，下载的进度可以从它的 `File` 上看到。`icloud.evict(path)` 把文件从本机移除，但在 iCloud 里保留，以腾出空间：下次读取时会重新下载。
 
-这个包暂时还不能把本机的文件移进 iCloud，或者把 iCloud 里的文件移出到本机：请用 `writeFile` 写入（再删掉本机的副本），或者用 `readFile` 读出来，再用 `asuka/fs` 写入。
+这个包暂时还不能把本机的文件移进 iCloud，或者把 iCloud 里的文件移出到本机：请用 `writeFile` 写入（再删掉本机的副本），或者用 `readFile` 读出来，再用 `std/fs` 写入。
 
 ### 冲突
 
 两台设备同时修改了同一个文件（或者其中一台是在离线时修改的），iCloud 会把其中一个版本保留为这个文件，其余的作为与它冲突的版本保存起来，此时文件的 `conflicts` 为 true。`icloud.conflicts(path)` 返回这些版本：每个 `Version` 有用来读取它的 `path`、它的 `modified`，以及保存它的设备名 `device`。`icloud.resolve(path, keeping:)` 用来解决冲突：`keeping` 指定的版本会成为这个文件，不指定则文件保持原样；其他版本会在每台设备上被丢弃。如果要合并，先用 `writeFile` 写入合并后的内容，再调用 `resolve(path)`。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 async fn keepTheOther(path: string) throws {
   let vs = try await icloud.conflicts(path)
@@ -119,7 +119,7 @@ async fn keepTheOther(path: string) throws {
 
 ### 分享链接
 
-`asuka/icloud` 暂时还不能生成文件的公开链接（任何拿到链接的人都能从中下载文件的一份副本）。
+`platform/icloud` 暂时还不能生成文件的公开链接（任何拿到链接的人都能从中下载文件的一份副本）。
 
 ## asuka.toml 与 entitlement
 
@@ -162,7 +162,7 @@ iCloud 按应用自己的 ID 保存它的值和文档。`asuka dev` 的开发 Ap
 `asuka test` 在假宿主上运行，而假宿主没有 iCloud：账户不可用，文件列表是空的，`Value` 只保留它的默认值和测试设置的值，其他调用都会像在 Android 上一样抛出 "icloud: not available"。这个包暂时还没有模拟的 iCloud，让测试来扮演用户的其他设备。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 test "no iCloud on the fake host" {
   expect(!icloud.account().available)

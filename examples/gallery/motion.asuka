@@ -1,4 +1,4 @@
-import asuka/math
+import std/math
 
 /// Motion's examples, with the toast they show over the screen's bottom
 /// and a button back to the top.

@@ -437,7 +437,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             AsukaAutomation.start(this)
             watchRegion()
             AsukaNative.load(app)
-            // A share sheet's process: the app runs as its sheet (asuka/sharesheet).
+            // A share sheet's process: the app runs as its sheet (platform/sharesheet).
             if (activity is AsukaShareActivity) runCatching { AsukaNative.setenv("ASUKA_SHARE_SHEET", "1") }
             activity.sendEnvironment(force = true)
             enter {
@@ -459,7 +459,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
 
     /**
      * Starts the core without an Activity, if it hasn't started: the
-     * system runs a task (asuka/periodic) with the app in the background.
+     * system runs a task (platform/periodic) with the app in the background.
      * The root's views are made; an Activity that comes takes them (attach).
      */
     fun startHeadless() {
@@ -490,7 +490,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
 
     /** The app was opened with url (its scheme, an app link): ui.OnOpenURL gets it, once the core started. */
     fun openURL(url: String) {
-        // A native package's (asuka/webauth's redirect).
+        // A native package's (platform/webauth's redirect).
         if (AsukaModules.openedURL(url)) return
         if (!started) { pendingURLs.add(url); return }
         send(AsukaEvents.incomingURL(rootID, url))

@@ -137,9 +137,9 @@ done
 // its published file, downloaded once into the user's cache).
 func asqliteWasm(t *testing.T) string {
 	t.Helper()
-	dir, ok := std.Package("asuka/sqlite")
+	dir, ok := std.Package("std/sqlite")
 	if !ok {
-		t.Fatal("no asuka/sqlite")
+		t.Fatal("no std/sqlite")
 	}
 	data, err := os.ReadFile(filepath.Join(dir, plugin.ManifestFile))
 	if err != nil {
@@ -160,7 +160,7 @@ func asqliteWasm(t *testing.T) string {
 	return p
 }
 
-// asuka/sqlite on the web: the core's calls go to the page's SQLite
+// std/sqlite on the web: the core's calls go to the page's SQLite
 // worker and come back decoded; open and migrate run before what follows
 // them, and a failed migration fails the next statement; a live query
 // follows the writes; spawn's workers open the app's database at init
@@ -187,7 +187,7 @@ done
 	}
 }
 
-// asuka/crash on the web: the core keeps the run's record in the app's
+// platform/crash on the web: the core keeps the run's record in the app's
 // files, and reads the reports in a spawn worker, told where the page's
 // record is.
 func TestWebCrash(t *testing.T) {

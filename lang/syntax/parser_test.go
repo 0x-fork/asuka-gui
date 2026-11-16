@@ -391,7 +391,7 @@ func TestParseItems(t *testing.T) {
 
 func TestParseDecls(t *testing.T) {
 	tests := []struct{ src, want string }{
-		{"import asuka/http", "*syntax.ImportDecl"},
+		{"import std/http", "*syntax.ImportDecl"},
 		{"import ./components.{Row, Card} as c", "*syntax.ImportDecl"},
 		{"component Row<T>(item: T, n: int = 0) { }", "*syntax.ComponentDecl"},
 		{"pub screen Inbox(mailbox: Mailbox) { title: \"Inbox\" }", "*syntax.ScreenDecl"},

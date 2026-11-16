@@ -1,4 +1,4 @@
-// asuka/apps on a Mac: the .app bundles where Spotlight finds them, named
+// platform/apps on a Mac: the .app bundles where Spotlight finds them, named
 // by Launch Services (FileManager's displayName(atPath:)), their icons
 // NSWorkspace's, drawn into a bitmap, and opened by NSWorkspace; the search
 // is the ranking every desktop host answers it with (platform/linux's and
@@ -18,7 +18,7 @@ import CryptoKit
             },
             "icon": { args, reply in icon(args, reply) },
             "open": { args, reply in open(String(decoding: args, as: UTF8.self), reply) },
-            // asuka/apps' search: {"names", "query"}, the indices best first.
+            // platform/apps' search: {"names", "query"}, the indices best first.
             "search": { args, reply in
                 DispatchQueue.global(qos: .userInitiated).async {
                     guard let o = (try? JSONSerialization.jsonObject(with: args)) as? [String: Any] else {
@@ -169,7 +169,7 @@ import CryptoKit
         }
     }
 
-    /// The app's caches (asuka/fs's): ASUKA_CACHE, else Caches/<its ID>.
+    /// The app's caches (std/fs's): ASUKA_CACHE, else Caches/<its ID>.
     static func cacheDir() -> String {
         if let d = ProcessInfo.processInfo.environment["ASUKA_CACHE"], !d.isEmpty { return d }
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.path ?? NSTemporaryDirectory()

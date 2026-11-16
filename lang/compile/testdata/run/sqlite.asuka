@@ -1,6 +1,6 @@
-// asuka/sqlite on the runner: the plugin's library (ASUKA_LIB_ASQLITE,
+// std/sqlite on the runner: the plugin's library (ASUKA_LIB_ASQLITE,
 // which the test sets to its build or cached file).
-import asuka/sqlite
+import std/sqlite
 
 struct Note {
   id: int

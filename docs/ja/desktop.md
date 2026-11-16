@@ -1,8 +1,8 @@
 # デスクトップ
 
-ウィンドウとメニューバー（[ナビゲーション](navigation.md#ウィンドウ)）のほかにも、デスクトップにしかない機能があります。トレイアイコンと Dock メニュー、フライアウト、バックグラウンドで動き続けるアプリ、グローバルショートカット、パネルとランチャー、インストール済みアプリの検索、クリックスルーウィンドウ、ファイルダイアログとファイルマネージャー、アプリで開くファイル、単一インスタンス、終了、最近使ったドキュメント、ドキュメントベースのアプリ、ログイン時の起動、アップデート、「再生中」とメディアキー、ディスプレイ、電源、アプリアイコン上の進捗表示、そしてシステムの外観です。ファイルやフォルダーの変更（アプリが表示しているフォルダーや、ほかのアプリが保存したドキュメントなど）を追いかけるには、[ファイルの監視](data.md#ファイルの監視asukawatch)を参照してください。こちらはスマートフォンと Web でも使えます。
+ウィンドウとメニューバー（[ナビゲーション](navigation.md#ウィンドウ)）のほかにも、デスクトップにしかない機能があります。トレイアイコンと Dock メニュー、フライアウト、バックグラウンドで動き続けるアプリ、グローバルショートカット、パネルとランチャー、インストール済みアプリの検索、クリックスルーウィンドウ、ファイルダイアログとファイルマネージャー、アプリで開くファイル、単一インスタンス、終了、最近使ったドキュメント、ドキュメントベースのアプリ、ログイン時の起動、アップデート、「再生中」とメディアキー、ディスプレイ、電源、アプリアイコン上の進捗表示、そしてシステムの外観です。ファイルやフォルダーの変更（アプリが表示しているフォルダーや、ほかのアプリが保存したドキュメントなど）を追いかけるには、[ファイルの監視](data.md#ファイルの監視stdwatch)を参照してください。こちらはスマートフォンと Web でも使えます。
 
-どれも標準ライブラリのパッケージか、prelude の要素や関数で、Mac、Windows、Linux で使えます。その機能がない電話やブラウザーでは、ないことがわかるように答えるか（`unsupported` や `notAvailable` のエラー、`supported()` が false）、何も表示しません。そのため、アプリは対応しているところでだけその機能を提供できます。
+どれもプラットフォーム SDK（または標準ライブラリ）のパッケージか、prelude の要素や関数で、Mac、Windows、Linux で使えます。その機能がない電話やブラウザーでは、ないことがわかるように答えるか（`unsupported` や `notAvailable` のエラー、`supported()` が false）、何も表示しません。そのため、アプリは対応しているところでだけその機能を提供できます。
 
 ## デスクトップアプリの構成
 
@@ -18,10 +18,10 @@ Mac では、アプリの実行ファイルは Asuka の macOS ホストです�
 
 ## トレイアイコンと Dock メニュー
 
-`asuka/tray` の `Tray` は、表示されているあいだトレイにアイコンを置きます（置いた場所には何も表示しません）。Mac ではメニューバーの `NSStatusItem`、Windows では通知領域のアイコン、Linux では StatusNotifierItem になります（KDE、Xfce、Cinnamon、MATE、Budgie、そして AppIndicator 拡張機能を入れた GNOME で表示されます）。
+`platform/tray` の `Tray` は、表示されているあいだトレイにアイコンを置きます（置いた場所には何も表示しません）。Mac ではメニューバーの `NSStatusItem`、Windows では通知領域のアイコン、Linux では StatusNotifierItem になります（KDE、Xfce、Cinnamon、MATE、Budgie、そして AppIndicator 拡張機能を入れた GNOME で表示されます）。
 
 ```asuka
-import asuka/tray
+import platform/tray
 
 component Focus {
   state minutes = 25
@@ -59,7 +59,7 @@ id はアプリのアイコンの中でそのアイコンを識別します（Ma
 フライアウトは、トレイアイコンからぶら下がるウィンドウです。Mac のメニューバーエクストラや Windows の通知領域が開くパネルのようなもので、ウィンドウ内の矩形からぶら下げることもできます。`flyout` を指定した `Window` として作ります。
 
 ```asuka
-import asuka/tray
+import platform/tray
 
 component Power {
   state open = false
@@ -112,7 +112,7 @@ component Panel {
 `hotkey.Hotkey` は、ほかのアプリが前面にあるときでもアプリに届くキーを登録します。登録が有効なのは、それが表示されている間です（それ自体は何も表示しません）。
 
 ```asuka
-import asuka/hotkey
+import platform/hotkey
 
 component Launcher {
   state problem = ""
@@ -140,7 +140,7 @@ component Launcher {
 パネルは、Spotlight や Raycast のような、ランチャー、コマンドパレット、クイック入力のためのウィンドウです。グローバルショートカットでどこからでも呼び出せ、すべてのアプリのウィンドウより手前に浮かびます。ユーザーがいる操作スペース（Space）や仮想デスクトップに表示され、フルスクリーンのアプリの上にも重なります。タスクバー、Dock のウィンドウ一覧、アプリスイッチャーには現れません。Mac では、アプリを前面に出さずにキーボード入力を受け取ります。そのため、ユーザーが使っていたアプリのメニューバーはそのまま残り、パネルが消えるとキーボード入力もそのアプリに戻ります。パネルは `panel: true` を指定したウィンドウです。次の例では、バックグラウンドで動くアプリ（`background = true`）のメインウィンドウとしてランチャーを作っています。
 
 ```asuka
-import asuka/hotkey
+import platform/hotkey
 
 state shown = false
 
@@ -186,10 +186,10 @@ component Search {
 
 ## アプリの検索
 
-`asuka/apps` は、ランチャーのようにインストール済みのアプリを一覧し、検索します。
+`platform/apps` は、ランチャーのようにインストール済みのアプリを一覧し、検索します。
 
 ```asuka
-import asuka/apps
+import platform/apps
 
 component Apps {
   state installed: [apps.App] = []
@@ -255,12 +255,12 @@ component Meters {
 
 ## ファイルダイアログ
 
-`asuka/dialog` はシステムのファイルダイアログを表示し、コピーではなくユーザーのファイルそのもののパスを返します。
+`platform/dialog` はシステムのファイルダイアログを表示し、コピーではなくユーザーのファイルそのもののパスを返します。
 
 ```asuka
-import asuka/dialog
-import asuka/fs
-import asuka/shell
+import platform/dialog
+import std/fs
+import platform/shell
 
 async fn export(notes: string) throws {
   let md = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
@@ -279,7 +279,7 @@ Mac ではウィンドウに付くシートとして、Windows ではウィン�
 
 ## ファイルマネージャー
 
-`asuka/shell` は、ファイルマネージャーがファイルに対して行う操作を提供します。`shell.reveal(path)` は、ファイルを含むフォルダーを開き、そのファイルを選択した状態で表示します（Finder、エクスプローラー、またはデスクトップのファイルマネージャー）。`shell.open(path)` は、ファイルをその種類に対応するユーザーのアプリで開き（該当するアプリがなければ `shell.ShellError.noApp` を投げます）、フォルダーならファイルマネージャーで開きます。`shell.trash(path)` は、ファイルをゴミ箱（Windows ではごみ箱）に移します。完全に削除することはなく、移せないときはエラーを投げます。`shell.beep()` は警告音を鳴らします。スマートフォンと Web にはファイルマネージャーがないため、reveal と trash は `unsupported` のエラーを投げます。Web の open は、新しいタブでファイルを表示します。ファイルの内容をアプリの中で表示するには、`asuka/preview` を使ってください。
+`platform/shell` は、ファイルマネージャーがファイルに対して行う操作を提供します。`shell.reveal(path)` は、ファイルを含むフォルダーを開き、そのファイルを選択した状態で表示します（Finder、エクスプローラー、またはデスクトップのファイルマネージャー）。`shell.open(path)` は、ファイルをその種類に対応するユーザーのアプリで開き（該当するアプリがなければ `shell.ShellError.noApp` を投げます）、フォルダーならファイルマネージャーで開きます。`shell.trash(path)` は、ファイルをゴミ箱（Windows ではごみ箱）に移します。完全に削除することはなく、移せないときはエラーを投げます。`shell.beep()` は警告音を鳴らします。スマートフォンと Web にはファイルマネージャーがないため、reveal と trash は `unsupported` のエラーを投げます。Web の open は、新しいタブでファイルを表示します。ファイルの内容をアプリの中で表示するには、`platform/preview` を使ってください。
 
 ## ファイルを開く
 
@@ -348,10 +348,10 @@ component Editor {
 
 ## アップデート
 
-`asuka/update` の `update.UpdateWindow()` をアプリのメインウィンドウに一度置くと、Sparkle 方式のアップデーターになります。起動直後と 1 日 1 回、新しいバージョンを確認し、リリースノートを「アップデートをインストール」「このバージョンをスキップ」「後で通知」のボタンとともに表示します。ダウンロードは進捗バー付きで行い（実行中のバージョンからの差分があれば、変更部分だけをダウンロードします）、アプリの鍵で署名されていることを確かめてからインストールし、「今すぐ再起動」を提示します。`MenuBar` に `update.AppMenu()` を置くと、Mac では「…について」の次に「アップデートを確認…」が入ります（ほかのプラットフォームでは「ヘルプ」メニューに入ります）。`update.CheckForUpdates()` はその項目だけです。独自の UI を作るには、`update.check()`、`Release.install(progress:)`、`update.relaunch()` と、アップデーターの状態（`update.updater`）を使います。
+`platform/update` の `update.UpdateWindow()` をアプリのメインウィンドウに一度置くと、Sparkle 方式のアップデーターになります。起動直後と 1 日 1 回、新しいバージョンを確認し、リリースノートを「アップデートをインストール」「このバージョンをスキップ」「後で通知」のボタンとともに表示します。ダウンロードは進捗バー付きで行い（実行中のバージョンからの差分があれば、変更部分だけをダウンロードします）、アプリの鍵で署名されていることを確かめてからインストールし、「今すぐ再起動」を提示します。`MenuBar` に `update.AppMenu()` を置くと、Mac では「…について」の次に「アップデートを確認…」が入ります（ほかのプラットフォームでは「ヘルプ」メニューに入ります）。`update.CheckForUpdates()` はその項目だけです。独自の UI を作るには、`update.check()`、`Release.install(progress:)`、`update.relaunch()` と、アップデーターの状態（`update.updater`）を使います。
 
 ```asuka
-import asuka/update
+import platform/update
 
 app {
   Window {
@@ -367,14 +367,14 @@ app {
 
 ## 最近使ったドキュメント
 
-ユーザーがドキュメントを開いたり保存したりするたびに、`recent.add(path)`（`asuka/recent`）を呼びます。Mac では「ファイル」メニューの「最近使った項目を開く」と Dock メニューに、Windows ではジャンプリストに、Linux ではユーザーの最近使ったファイルに並びます。ユーザーがその一つを選ぶと、`on files(paths)` で開かれます。`await recent.list()` は、なくなったファイルを除いて新しい順に返し、`recent.clear()` はアプリ自身の項目を消します。
+ユーザーがドキュメントを開いたり保存したりするたびに、`recent.add(path)`（`platform/recent`）を呼びます。Mac では「ファイル」メニューの「最近使った項目を開く」と Dock メニューに、Windows ではジャンプリストに、Linux ではユーザーの最近使ったファイルに並びます。ユーザーがその一つを選ぶと、`on files(paths)` で開かれます。`await recent.list()` は、なくなったファイルを除いて新しい順に返し、`recent.clear()` はアプリ自身の項目を消します。
 
 ## ドキュメント
 
-`asuka/document` を使うと、テキストエディターのように、ウィンドウごとに一つのファイルを表示するアプリを作れます。ドキュメントのモデルと、その周りのウィンドウや画面を提供します。ドキュメントの種類とエディターを記述します。
+`platform/document` を使うと、テキストエディターのように、ウィンドウごとに一つのファイルを表示するアプリを作れます。ドキュメントのモデルと、その周りのウィンドウや画面を提供します。ドキュメントの種類とエディターを記述します。
 
 ```asuka
-import asuka/document
+import platform/document
 
 let types = [document.Type(name: "Plain Text", extensions: ["txt"])]
 
@@ -408,15 +408,15 @@ component Editor(doc: document.Document<string>) {
 
 ## ログイン時の起動
 
-`try await login.set(true)`（`asuka/login`）を設定として用意し、`await login.enabled()` で状態を読み戻します。macOS 13 以降ではログイン項目になります（パッケージ化したアプリのみ。ユーザーがシステム設定で許可するまでは `LoginError.needsApproval` を投げます）。Windows では Run エントリー、Linux では自動起動エントリー（Flatpak では Background ポータル）です。`await login.openedAtLogin()` でログイン時の起動かどうかを見分けられるので、アプリは目立たずに起動できます。
+`try await login.set(true)`（`platform/login`）を設定として用意し、`await login.enabled()` で状態を読み戻します。macOS 13 以降ではログイン項目になります（パッケージ化したアプリのみ。ユーザーがシステム設定で許可するまでは `LoginError.needsApproval` を投げます）。Windows では Run エントリー、Linux では自動起動エントリー（Flatpak では Background ポータル）です。`await login.openedAtLogin()` でログイン時の起動かどうかを見分けられるので、アプリは目立たずに起動できます。
 
 ## 「再生中」とメディアキー
 
-`nowplaying.NowPlaying` は、表示されている間、アプリが再生しているものをシステムのメディアコントロールに表示します。そのボタンやキーボードのメディアキー（再生／一時停止、次へ、前へ）の操作は、アプリのハンドラーに届きます。Mac ではコントロールセンターとメニューバーの「再生中」、Windows では音量のフライアウトとクイック設定のメディアコントロール（アプリのウィンドウの SystemMediaTransportControls）、Linux では MPRIS プレイヤーになり、GNOME や KDE のコントロール、`playerctl` から操作できます。スマートフォンと同じパッケージで、スマートフォンではロック画面のコントロールになります（[デバイスとサービス](device.md#再生中の表示とメディアキーasukanowplaying)）。
+`nowplaying.NowPlaying` は、表示されている間、アプリが再生しているものをシステムのメディアコントロールに表示します。そのボタンやキーボードのメディアキー（再生／一時停止、次へ、前へ）の操作は、アプリのハンドラーに届きます。Mac ではコントロールセンターとメニューバーの「再生中」、Windows では音量のフライアウトとクイック設定のメディアコントロール（アプリのウィンドウの SystemMediaTransportControls）、Linux では MPRIS プレイヤーになり、GNOME や KDE のコントロール、`playerctl` から操作できます。スマートフォンと同じパッケージで、スマートフォンではロック画面のコントロールになります（[デバイスとサービス](device.md#再生中の表示とメディアキーplatformnowplaying)）。
 
 ```asuka
-import asuka/audio
-import asuka/nowplaying
+import platform/audio
+import platform/nowplaying
 
 component Spring {
   event next
@@ -440,8 +440,8 @@ component Spring {
 `power.status()` は、バッテリー、低電力モード、温度の状態に追従します。`power.suspends()`、`resumes()`、`locks()`、`unlocks()` は、コンピューターのスリープと復帰、画面のロックとその解除のストリームです。`power.idleTime()` は、ユーザーが操作していない時間を返します。スマートフォンにはロックとロック解除はありますが、スリープとアイドル時間はありません。Web ではバッテリーだけです。
 
 ```asuka
-import asuka/power
-import asuka/screen
+import platform/power
+import platform/screen
 
 component Status {
   let p = power.status()

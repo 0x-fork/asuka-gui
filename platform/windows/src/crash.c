@@ -1,4 +1,4 @@
-// crash.c: the run's crash record (asuka/crash): the core keeps it
+// crash.c: the run's crash record (platform/crash): the core keeps it
 // (asuka_crash_start, core/src/std/crash.c), with the PC and the app; the
 // host writes what the core can't see, an exception nothing handled (an
 // access violation in the core or in a package's C), as a report in the

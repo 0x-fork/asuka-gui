@@ -322,7 +322,7 @@ static void check_str(ak_str *s, const char *want) {
 	ak_release(s);
 }
 
-// Numbers and dates outside messages (asuka/i18n): in the language shown,
+// Numbers and dates outside messages (std/i18n): in the language shown,
 // with the catalog's data for it, in the user's hour cycle.
 TEST(formatting) {
 	load();

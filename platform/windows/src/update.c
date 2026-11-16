@@ -1,6 +1,6 @@
 // update.c: the host's "update" module (DESIGN.md, "Updates": what
-// asuka/update, written once in Asuka, asks of a desktop host), JSON both
-// ways through asuka/platform's call, each method answering once:
+// platform/update, written once in Asuka, asks of a desktop host), JSON both
+// ways through platform/host's call, each method answering once:
 //
 //   info                 {installable, reason, message, target, version,
 //                        name, feed, key, kind, root, exe, work}: a Windows

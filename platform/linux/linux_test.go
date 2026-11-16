@@ -334,8 +334,8 @@ func logLines(t *testing.T, path string) []string {
 	return out
 }
 
-// The host's modules (testdata/modules.asuka): asuka/platform's call, a
-// module the host hasn't, asuka/apps' ranking, a tray icon registered
+// The host's modules (testdata/modules.asuka): platform/host's call, a
+// module the host hasn't, platform/apps' ranking, a tray icon registered
 // with the watcher, and the updater: info, a download over HTTP with its
 // progress, and an install that swaps the app's own prefix while it runs.
 func TestModules(t *testing.T) {
@@ -395,7 +395,7 @@ func TestModules(t *testing.T) {
 	t.Logf("%s", dump)
 	shows(t, dump, "the modules", []string{
 		"supported: 1",
-		"host: asuka/push isn't supported on Linux",
+		"host: platform/push isn't supported on Linux",
 		"missing: unsupported: nope.x isn't on Linux",
 		"ranked: Visual Studio Code|Visual Studio Code,Xcode",
 		"info: false notConfigured prefix linux-" + runtime.GOARCH,

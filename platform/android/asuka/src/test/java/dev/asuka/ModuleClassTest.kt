@@ -7,7 +7,7 @@ import org.junit.Test
 // it's found by is internal/nativegen's KotlinClass of that path.
 class ModuleClassTest {
     @Test fun classOfPath() {
-        assertEquals("asuka.network.AsukaModule", AsukaModules.kotlinClass("asuka/network"))
+        assertEquals("platform.network.AsukaModule", AsukaModules.kotlinClass("platform/network"))
         assertEquals("_asuka.segmented.AsukaModule", AsukaModules.kotlinClass("@asuka/segmented"))
         assertEquals("com.github.acme.go_battery.AsukaModule", AsukaModules.kotlinClass("github.com/acme/go-battery"))
         assertEquals("com.example.a_b.c.AsukaModule", AsukaModules.kotlinClass("example.com/a-b/c"))

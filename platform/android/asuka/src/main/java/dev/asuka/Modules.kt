@@ -46,8 +46,8 @@ fun AsukaRuntime.call(root: Int, args: ByteBuffer) {
 }
 
 /**
- * The host's own modules, by name: what the standard library's packages
- * over asuka/host and asuka/platform call (notify, push, the library...),
+ * The host's own modules, by name: what the platform SDK's packages
+ * over platform/host call (notify, push, the library...),
  * and what the core calls itself (web: a WebView's scripts and cookies;
  * share: ui.ShareFiles). What a std native package implements is that
  * package's (std/<name>/android), in the apps that import it.
@@ -67,7 +67,7 @@ private fun AsukaRuntime.registerBuiltinModules() {
     modules["widget"] = widgetMethods()
     modules["liveActivity"] = liveActivityMethods()
     modules["dock"] = dockMethods()
-    // asuka/recent and asuka/login: a desktop's. Android's file pickers keep
+    // platform/recent and platform/login: a desktop's. Android's file pickers keep
     // their own recent files, and an app doesn't start at login.
     val answer = { b: ByteArray -> { _: ByteArray, reply: (Result<ByteArray>) -> Unit -> reply(Result.success(b)) } }
     modules["recent"] = mapOf("add" to answer(ByteArray(0)), "clear" to answer(ByteArray(0)), "list" to answer("[]".toByteArray()))
@@ -76,14 +76,14 @@ private fun AsukaRuntime.registerBuiltinModules() {
         "enabled" to answer(byteArrayOf(0)),
         "openedAtLogin" to answer(byteArrayOf(0)),
     )
-    // asuka/icloud: iCloud is Apple's.
+    // platform/icloud: iCloud is Apple's.
     modules["icloud"] = mapOf(
         "stop" to { _, reply -> reply(Result.success(ByteArray(0))) },
         "*" to { _, reply -> reply(Result.failure(Exception("not available: iCloud is Apple's"))) },
     )
 }
 
-/** asuka/dock: a phone has no Dock or taskbar: nothing to show, nothing asked. */
+/** platform/dock: a phone has no Dock or taskbar: nothing to show, nothing asked. */
 fun dockMethods(): Map<String, AsukaModuleMethod> = mapOf(
     "progress" to { _, reply -> reply(Result.success(ByteArray(0))) },
     "attention" to { _, reply -> reply(Result.success(ByteArray(4))) },
@@ -100,7 +100,7 @@ interface AsukaPlugin {
     fun register(rt: AsukaRuntime)
 }
 
-/** The optional modules' plugins, by class name: asuka/push's, asuka/periodic's. */
+/** The optional modules' plugins, by class name: platform/push's, platform/periodic's. */
 private val plugins = listOf(
     "dev.asuka.push.AsukaPushPlugin",
     "dev.asuka.periodic.AsukaPeriodicPlugin",

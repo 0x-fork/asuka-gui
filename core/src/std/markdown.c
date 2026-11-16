@@ -1,4 +1,4 @@
-// markdown.c: asuka/markdown's builtins, the same on every platform:
+// markdown.c: std/markdown's builtins, the same on every platform:
 //
 //	markdown.read(text) -> string   the text read into styled paragraphs (JSON)
 //	markdown.heal(text) -> string   what text being written will most likely become

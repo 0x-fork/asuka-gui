@@ -7,7 +7,7 @@
 //
 //   asuka dev --platform ios examples/chat
 
-import asuka/time
+import std/time
 
 struct Message {
   id: int = 0

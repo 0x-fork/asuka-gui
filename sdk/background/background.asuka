@@ -1,0 +1,92 @@
+// Package platform/background keeps long work going out of sight (a
+// download, an export), with its progress where the system shows such
+// work: an ongoing notification with its buttons (Android's foreground
+// service). iOS gives the app about 30 seconds more while a task lives,
+// and shows nothing; the desktops keep the app from being slowed or
+// suspended (App Nap, sleep), and show nothing either: update and
+// onAction do nothing there.
+//
+//   let task = background.start(title: "Downloading", progress: -1, actions: [background.Action(id: "cancel", title: "Cancel")], onAction: a => { … })
+//   task.update(title: "Downloading", text: "3 of 10", progress: 0.3, actions: [])
+//   task.end()
+
+import platform/host
+import std/json
+
+/// A button the work's notification shows.
+pub struct Action {
+  id: string
+  title: string
+}
+
+struct Wire {
+  id: int
+  title: string
+  text: string
+  progress: float
+  actions: [Action]
+}
+
+struct Pressed {
+  id: int = 0
+  action: string = ""
+}
+
+/// Work going on, shown by the system until end.
+pub struct Task {
+  id: int
+
+  /// Shows what it's at now: progress from 0 to 1, or -1 when it can't
+  /// tell.
+  fn update(title: string, text: string = "", progress: float = -1.0, actions: [Action] = []) {
+    host.send("background", "update", json.encode(Wire(id: id, title: title, text: text, progress: progress, actions: actions)).bytes())
+  }
+
+  /// Ends it: the system no longer shows it.
+  fn end() {
+    tasks.forget(id)
+    host.send("background", "end", json.encode(["id": id]).bytes())
+  }
+}
+
+// The tasks going on, their onAction, and the one reader of the host's
+// button presses while there are any.
+store Tasks {
+  state next = 0
+  state handlers: [int: fn(string)] = [:]
+  let any = !handlers.isEmpty()
+
+  fn add(f: fn(string)) -> int {
+    next += 1
+    handlers[next] = f
+    return next
+  }
+
+  fn forget(id: int) {
+    handlers.remove(id)
+  }
+
+  task(any) {
+    if !any {
+      return
+    }
+    for await b in host.next("background", "next") {
+      let got: Pressed? = try? json.decode(b.string())
+      if let p = got {
+        if let f = handlers[p.id] {
+          f(p.action)
+        }
+      }
+    }
+  }
+}
+
+let tasks = Tasks()
+
+/// Starts showing work: its title, text, progress (0 to 1, -1 when it
+/// can't tell) and buttons, whose presses onAction gets (their IDs).
+pub fn start(title: string, text: string = "", progress: float = -1.0, actions: [Action] = [], onAction: fn(string) = _ => {}) -> Task {
+  let id = tasks.add(onAction)
+  host.send("background", "start", json.encode(Wire(id: id, title: title, text: text, progress: progress, actions: actions)).bytes())
+  return Task(id: id)
+}

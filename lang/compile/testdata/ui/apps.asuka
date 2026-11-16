@@ -1,4 +1,4 @@
-import asuka/apps
+import platform/apps
 
 component Launcher {
   state message = "listing"

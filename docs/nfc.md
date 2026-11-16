@@ -1,13 +1,13 @@
 # NFC tags
 
-`asuka/nfc` reads and writes NFC tags: their NDEF messages, the tags
+`platform/nfc` reads and writes NFC tags: their NDEF messages, the tags
 themselves, and raw commands to them, as react-native-nfc-manager and Web
 NFC do. iOS's Core NFC, with the system's sheet; Android's reader mode
 for the app's screen in front; Web NFC in Chrome on Android. A Mac, a PC
 and Linux have none.
 
 ```asuka
-import asuka/nfc
+import platform/nfc
 
 component ReadTag {
   state link = ""
@@ -152,7 +152,7 @@ async fn followOpened() throws {
 
 ## asuka.toml and permissions
 
-An app that imports `asuka/nfc` gets Android's `NFC` permission, and on
+An app that imports `platform/nfc` gets Android's `NFC` permission, and on
 iOS `NFCReaderUsageDescription` (write your own in `ios.usage`) and Core
 NFC's entitlement, `com.apple.developer.nfc.readersession.formats`
 (`NDEF` and `TAG`). A release's App ID needs the NFC Tag Reading

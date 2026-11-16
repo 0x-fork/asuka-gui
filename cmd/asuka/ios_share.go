@@ -20,7 +20,7 @@ import (
 // ACTION_SEND opens the app. Files go through the App Group the two
 // share (appGroup): the extension copies them there, the app moves
 // them to its caches. An app with a share sheet of its own
-// (asuka/sharesheet's active) has the host's sheet instead, which runs
+// (platform/sharesheet's active) has the host's sheet instead, which runs
 // the app as its sheet.
 
 const shareExe = "AsukaShare"
@@ -35,7 +35,7 @@ func (c *appConfig) shareScheme() string { return "asukashare." + c.ID }
 // shareEntitlements are the linker flags that give the extension its
 // entitlements on the simulator, as the app's (simulatorEntitlements):
 // the App Group it leaves files in, and with a share sheet, the app's
-// keychain group (asuka/secure's items are the app's there).
+// keychain group (platform/secure's items are the app's there).
 func (t *iosToolchain) shareEntitlements(work string, cfg *appConfig) ([]string, string, error) {
 	g := cfg.appGroup()
 	if g == "" || !strings.HasSuffix(t.target, "-simulator") {
@@ -57,7 +57,7 @@ func (t *iosToolchain) shareEntitlements(work string, cfg *appConfig) ([]string,
 }
 
 // buildShare makes the extension's executable for cfg's app. With a share
-// sheet (asuka/sharesheet), it links the app's framework (fw: the host
+// sheet (platform/sharesheet), it links the app's framework (fw: the host
 // and the core with the app), whose AsukaShareSheetController is its
 // principal class. Without (an app with only a push rewrite has the
 // framework too), it's platform/ios/Share, which runs no app code, cached

@@ -7,8 +7,8 @@
 //   asuka dev --platform ios --lang ar examples/i18n
 //   asuka dev --platform ios --lang en-XA examples/i18n   (a pseudo locale)
 
-import asuka/i18n
-import asuka/time
+import std/i18n
+import std/time
 
 app {
   Tabs {

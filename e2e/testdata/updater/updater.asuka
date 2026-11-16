@@ -2,11 +2,11 @@
 // updates itself to the second and relaunches into it. When its directory
 // (fs.appDir(), ASUKA_DATA in the test) holds "selfupdate", each launch
 // writes its version to "report" there; the first checks, installs and
-// relaunches with asuka/update's API, the second quits. Otherwise it's an
+// relaunches with platform/update's API, the second quits. Otherwise it's an
 // app with the update window and "Check for Updates…" in its menu.
 
-import asuka/update
-import asuka/fs
+import platform/update
+import std/fs
 
 fn marker(name: string) -> string = fs.join([fs.appDir(), name])
 

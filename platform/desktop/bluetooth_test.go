@@ -14,7 +14,7 @@ import (
 	"github.com/egoist/asuka/lang/compile"
 )
 
-// asuka/bluetooth's Linux C (BlueZ over D-Bus) against a BlueZ of the
+// platform/bluetooth's Linux C (BlueZ over D-Bus) against a BlueZ of the
 // test's own (test/bluez.c): org.bluez on the session bus, which the app
 // takes for the system's (DBUS_SYSTEM_BUS_ADDRESS), with an adapter, a
 // heart rate monitor to scan, connect to, read, write and hear, and the
@@ -135,7 +135,7 @@ func TestBluetoothLinux(t *testing.T) {
 	}
 }
 
-const bluetoothProbe = `import asuka/bluetooth
+const bluetoothProbe = `import platform/bluetooth
 
 let level = bluetooth.LocalCharacteristic(uuid: "2a37", properties: [.read, .notify], permissions: [.readable], onRead: _ => bytes([4, 5, 6]))
 let point = bluetooth.LocalCharacteristic(uuid: "2a38", properties: [.write], permissions: [.writeEncrypted])

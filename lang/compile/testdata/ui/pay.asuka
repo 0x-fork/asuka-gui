@@ -1,4 +1,4 @@
-import asuka/pay
+import platform/pay
 
 let methods = [
   pay.ShippingMethod(id: "ground", label: "Ground", detail: "Arrives in 5 to 7 days", amount: "0.00"),

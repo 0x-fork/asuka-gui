@@ -3,35 +3,35 @@
 // background (updates, regions), files, the screen, the stores'
 // services, a map, recording and work in the background; the displays,
 // the battery, the system's accent and a progress on the app's icon
-// (asuka/screen, asuka/power, asuka/appearance, asuka/dock).
+// (platform/screen, platform/power, platform/appearance, platform/dock).
 //
 //   asuka dev --platform ios examples/services
 
-import asuka/agerange
-import asuka/appearance
-import asuka/appleauth
-import asuka/audio
-import asuka/biometric
-import asuka/calendar
-import asuka/contacts
-import asuka/device
-import asuka/dock
-import asuka/imageedit
-import asuka/integrity
-import asuka/liveactivity
-import asuka/periodic
-import asuka/power
-import asuka/push as remotePush
-import asuka/record
-import asuka/review
-import asuka/screen
-import asuka/sensors
-import asuka/speech
-import asuka/splash
-import asuka/math
-import asuka/time
-import asuka/tracking
-import asuka/widget
+import platform/agerange
+import platform/appearance
+import platform/appleauth
+import platform/audio
+import platform/biometric
+import platform/calendar
+import platform/contacts
+import platform/device
+import platform/dock
+import platform/imageedit
+import platform/integrity
+import platform/liveactivity
+import platform/periodic
+import platform/power
+import platform/push as remotePush
+import platform/record
+import platform/review
+import platform/screen
+import platform/sensors
+import platform/speech
+import platform/splash
+import std/math
+import std/time
+import platform/tracking
+import platform/widget
 
 /// What the last service said: the app's, as notifications and links
 /// that open the app say something too.

@@ -1,7 +1,7 @@
-// Package svgparse turns an SVG icon's markup into what asuka/svg draws,
+// Package svgparse turns an SVG icon's markup into what std/svg draws,
 // at compile time: Parse makes it layers of paths (transforms applied,
 // arcs made curves), and Encode writes them as std/svg's platforms read
-// them (lang/compile's hook for asuka/svg.Icon). Nothing is rasterized.
+// them (lang/compile's hook for std/svg.Icon). Nothing is rasterized.
 //
 // It reads what icon sets use (Lucide, Material, Heroicons, Feather):
 // path, rect, circle, ellipse, line, polyline, polygon, g and use; fill,

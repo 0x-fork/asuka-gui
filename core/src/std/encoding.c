@@ -1,4 +1,4 @@
-// encoding.c: asuka/encoding's builtins: Base64 (RFC 4648, the standard
+// encoding.c: std/encoding's builtins: Base64 (RFC 4648, the standard
 // alphabet padded; the URL alphabet unpadded) and hexadecimal.
 #include "std/std.h"
 

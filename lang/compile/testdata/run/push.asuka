@@ -1,7 +1,7 @@
-// asuka/push without a host: registering fails as unsupported, and a
+// platform/push without a host: registering fails as unsupported, and a
 // message takes a conversation.
-import asuka/notify
-import asuka/push
+import platform/notify
+import platform/push
 
 test "push" {
   do {

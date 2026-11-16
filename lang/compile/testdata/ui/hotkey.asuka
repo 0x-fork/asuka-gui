@@ -1,4 +1,4 @@
-import asuka/hotkey
+import platform/hotkey
 
 component Launcher {
   state problem = ""

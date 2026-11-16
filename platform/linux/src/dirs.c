@@ -37,7 +37,7 @@ void lx_dirs_init(const char *argv0) {
 	}
 	dsk_dirs_find(&dirs, DSK_LINUX, data);
 	free(data);
-	// The app's own directory (asuka/fs's appDir), before the crash record
+	// The app's own directory (std/fs's appDir), before the crash record
 	// and the core start.
 	asuka_set_app_dir(lx_data_dir());
 }

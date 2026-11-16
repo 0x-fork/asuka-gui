@@ -1,4 +1,4 @@
-// crash.c: asuka/crash's record of the app's runs and its reports, in the
+// crash.c: platform/crash's record of the app's runs and its reports, in the
 // core, for every host: what only a host sees (an uncaught exception, a
 // fatal signal in native code, MetricKit's diagnostics, how Android's runs
 // ended) it writes to the record's inbox, which the core reads into
@@ -6,7 +6,7 @@
 //
 // A host begins the run's record as the app starts (asuka_crash_start,
 // before asuka_start), with JSON of the device and the app; it's kept
-// only for an app that reads its reports (one that imports asuka/crash:
+// only for an app that reads its reports (one that imports platform/crash:
 // lang/cgen says so; asuka dev's player always). The directory,
 // crashes in the app's directory, has:
 //
@@ -26,14 +26,14 @@
 // lock on its .crash file while it lives (flock), so a reader tells a run
 // that ended from one still going (the app and its share extension).
 //
-// Builtins (std/crash's native fns):
+// Builtins (sdk/crash's native fns):
 //
 //	crash.coreStarted() -> bool        the record is kept
 //	crash.coreBreadcrumb(message)      written at once
 //	crash.coreSet(key, value)          "" removes it
 //	crash.coreRecord(message)          a nonfatal report, with the VM's stack
 //	crash.coreReports() -> string      the reports, collected, as JSON of
-//	                                   std/crash's [Report] (blocks: spawn)
+//	                                   sdk/crash's [Report] (blocks: spawn)
 //	crash.coreDelete(id)
 //	crash.coreVersion() -> int         changes as reports may have come
 //	crash.coreChanged(version) async   once it's no longer version
@@ -2488,7 +2488,7 @@ static int cmp_reports(const void *a, const void *b) {
 	return x < y ? -1 : x > y;
 }
 
-// ---- std/crash's Report ----
+// ---- sdk/crash's Report ----
 
 static void out_str(ak_buf *b, const char *key, const char *v, bool comma) {
 	if (comma) ak_buf_u8(b, ',');
@@ -2509,7 +2509,7 @@ static void out_bool(ak_buf *b, const char *key, bool v) {
 	ak_buf_printf(b, ":%s", v ? "true" : "false");
 }
 
-// out_report writes a report (as kept) as std/crash's Report:
+// out_report writes a report (as kept) as sdk/crash's Report:
 // times in ms, every field there.
 static void out_report(ak_buf *b, const jv *r) {
 	ak_buf_u8(b, '{');
@@ -2572,7 +2572,7 @@ static ak_mutex collect_mu = AK_MUTEX_INIT;
 
 // collect turns what the runs that ended and the hosts left into
 // reports, and writes the reports kept (the oldest first, past
-// MAX_REPORTS the oldest deleted) as std/crash's [Report] into out. One
+// MAX_REPORTS the oldest deleted) as sdk/crash's [Report] into out. One
 // collection at a time in this process; between processes, under the
 // directory's collect.lock.
 static void collect(ak_buf *out) {

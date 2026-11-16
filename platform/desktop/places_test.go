@@ -13,7 +13,7 @@ import (
 	"github.com/egoist/asuka/lang/compile"
 )
 
-// asuka/location and asuka/maps on Linux, their C on the test host (as
+// platform/location and platform/maps on Linux, their C on the test host (as
 // TestStdLinux runs the other packages'): location against a fake
 // location portal on the session bus (test/fakeportal.c: it allows or
 // denies, then moves north), and with no location service at all; the
@@ -35,7 +35,7 @@ func TestStdLinuxPlaces(t *testing.T) {
 	t.Run("location", func(t *testing.T) {
 		bus := placesBus(t)
 		defer placesServe(t, portal, "allow", bus)()
-		got := runPlaces(t, exe, `import asuka/location
+		got := runPlaces(t, exe, `import platform/location
 
 component Probe {
   state step = "start"
@@ -107,7 +107,7 @@ app { Probe() }
 	t.Run("location-denied", func(t *testing.T) {
 		bus := placesBus(t)
 		defer placesServe(t, portal, "deny", bus)()
-		got := runPlaces(t, exe, `import asuka/location
+		got := runPlaces(t, exe, `import platform/location
 
 component Probe {
   state step = "start"
@@ -136,7 +136,7 @@ app { Probe() }
 `, "DBUS_SESSION_BUS_ADDRESS="+bus)
 		placesWant(t, got, "host: current location: not allowed", "host: level true", "host: updates location: not allowed", "host: done")
 	})
-	none := `import asuka/location
+	none := `import platform/location
 
 component Probe {
   state step = "start"
@@ -168,7 +168,7 @@ app { Probe() }
 		placesWant(t, got, "host: current location: not allowed", "host: level false true", "host: done")
 	})
 	t.Run("maps", func(t *testing.T) {
-		got := runPlaces(t, exe, `import asuka/maps
+		got := runPlaces(t, exe, `import platform/maps
 
 component Probe {
   state step = "start"
@@ -199,7 +199,7 @@ component Probe {
 
 app { Probe() }
 `)
-		placesWant(t, got, "host: native view asuka/maps#View", "host: measured asuka/maps#View 390x", "host: done")
+		placesWant(t, got, "host: native view platform/maps#View", "host: measured platform/maps#View 390x", "host: done")
 		if strings.Contains(got, "CRITICAL") {
 			t.Errorf("GTK complained:\n%s", got)
 		}

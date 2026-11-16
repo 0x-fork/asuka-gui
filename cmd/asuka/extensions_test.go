@@ -18,8 +18,8 @@ import (
 func sheetApp(t *testing.T, with bool) string {
 	t.Helper()
 	name := "Plain"
-	src := `import asuka/sharesheet
-import asuka/push
+	src := `import platform/sharesheet
+import platform/push
 
 component Root {
   task { let _ = try? await push.register() }
@@ -30,8 +30,8 @@ app { Root() }
 `
 	if with {
 		name = "Pins"
-		src = `import asuka/sharesheet
-import asuka/push
+		src = `import platform/sharesheet
+import platform/push
 
 async fn decrypt(m: push.Message) throws -> push.Message? {
   var out = m
@@ -65,7 +65,7 @@ app {
 	return dir
 }
 
-// What the app's program uses of asuka/sharesheet and asuka/push, as the
+// What the app's program uses of platform/sharesheet and platform/push, as the
 // checker resolved it, makes the CLI build their extensions: the share
 // extension that runs the app as its sheet (Android: its Activity), and
 // the Notification Service Extension (Android: the manifest's

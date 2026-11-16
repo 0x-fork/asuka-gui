@@ -1,6 +1,6 @@
-// asuka/url: parsing, resolving (RFC 3986's examples), escaping, queries.
+// std/url: parsing, resolving (RFC 3986's examples), escaping, queries.
 
-import asuka/url
+import std/url
 
 test "parsing" {
   if let u = url.parse("HTTPS://user:pw@Example.com:8443/a/b%20c?q=asuka+lang&x=1&q=two#top") {

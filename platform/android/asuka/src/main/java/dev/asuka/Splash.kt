@@ -42,7 +42,7 @@ object AsukaSplash {
         waiting?.invalidate()
     }
 
-    /** Keeps the splash up after the first frame, until release: asked before it (asuka/splash). Main thread. */
+    /** Keeps the splash up after the first frame, until release: asked before it (platform/splash). Main thread. */
     fun hold() {
         if (!ready) held = true
     }

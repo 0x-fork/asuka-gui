@@ -11,8 +11,8 @@ import (
 	"github.com/egoist/asuka/std"
 )
 
-// TestStdViews runs the standard library's view tests on Windows: each
-// package's desktop/*_windows_test.c (a main of its own, which includes
+// TestStdViews runs the std and platform packages' view tests on Windows:
+// each package's desktop/*_windows_test.c (a main of its own, which includes
 // its view's C, makes the view and drives it as the host would), built
 // with the package's Windows C (but that file), its glue, the C the
 // desktops share and the unit tests' host (platform/desktop/test/unit.c),
@@ -20,11 +20,10 @@ import (
 func TestStdViews(t *testing.T) {
 	w := onWindows(t)
 	zig(t)
-	d, err := std.Dir()
+	tests, err := std.Glob(filepath.Join("desktop", "*_windows_test.c"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	tests, _ := filepath.Glob(filepath.Join(d, "*", "desktop", "*_windows_test.c"))
 	if len(tests) == 0 {
 		t.Fatal("no Windows view tests")
 	}

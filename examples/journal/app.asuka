@@ -1,4 +1,4 @@
-// Journal keeps a journal in iCloud (asuka/icloud): each day's entry is
+// Journal keeps a journal in iCloud (platform/icloud): each day's entry is
 // a text file in the app's Documents, which the user's other devices,
 // the Files app and Finder show (in iCloud Drive's Journal folder); the
 // text size is in iCloud's key-value store, the same on each device. An
@@ -15,9 +15,9 @@
 // On a Mac, iCloud needs the app signed with a provisioning profile that
 // has iCloud (asuka build --profile; docs/icloud.md).
 
-import asuka/fs
-import asuka/icloud
-import asuka/time
+import std/fs
+import platform/icloud
+import std/time
 
 /// The day's entry's name.
 fn today() -> string = time.now().format("yyyy-MM-dd")

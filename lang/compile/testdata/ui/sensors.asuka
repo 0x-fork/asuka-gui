@@ -1,5 +1,5 @@
-import asuka/sensors
-import asuka/time
+import platform/sensors
+import std/time
 
 component Tilt {
   state z = 0.0

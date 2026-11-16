@@ -1,4 +1,4 @@
-// command.c: asuka/command's builtins: other programs, run as children,
+// command.c: std/command's builtins: other programs, run as children,
 // their arguments a list (no shell between), their standard streams
 // pipes, the null device or the program's own. fork and exec on Unix
 // (the program found on PATH before the fork; exec's failure reported

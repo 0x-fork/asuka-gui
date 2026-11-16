@@ -70,7 +70,7 @@ import AsukaOps
     /// Before the core starts: what must be in place before the app's
     /// launch ends: quitting's handlers, the launch's Apple Events.
     func beforeCore() {
-        AsukaNotify.install() // asuka/notify: the center's delegate before launch ends
+        AsukaNotify.install() // platform/notify: the center's delegate before launch ends
         startQuit()
         startFiles()
         AsukaUpdater.cleanAtLaunch() // what an update left beside the bundle

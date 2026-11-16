@@ -1,4 +1,4 @@
-import asuka/network
+import platform/network
 
 component Net {
   let net = network.status()

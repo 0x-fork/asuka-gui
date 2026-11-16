@@ -11,8 +11,8 @@ import (
 )
 
 // The personal data modules (contacts, calendar, photoLibrary, library),
-// called by name with the arguments asuka/contacts, asuka/calendar,
-// asuka/photos and asuka/library send, each answer or error shown in a
+// called by name with the arguments platform/contacts, platform/calendar,
+// platform/photos and platform/library send, each answer or error shown in a
 // Text. They never ask the user here: the automation's seam
 // (ASUKA_TEST_ACCESS, the access step) answers for the system, so the
 // tests check the arguments, the encodings, the alerts and the paths
@@ -22,8 +22,8 @@ import (
 // module.method with args and shows "<label>: ok <answer>" (as hex, or as
 // text with text: true) or "<label>: err <error>".
 const m2Src = `
-	import asuka/platform
-	import asuka/encoding
+	import platform/host
+	import std/encoding
 
 	component Call(label: string, module: string, method: string, args: bytes) {
 	  prop text = false
@@ -34,7 +34,7 @@ const m2Src = `
 	      on press {
 	        s = "pending"
 	        do {
-	          let b = try await platform.call(module, method, args)
+	          let b = try await host.call(module, method, args)
 	          s = if text { "ok {b.string()}" } else { "ok {encoding.hexEncode(b)}" }
 	        } catch e {
 	          s = "err {e.message}"

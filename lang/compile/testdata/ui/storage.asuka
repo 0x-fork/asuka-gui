@@ -1,4 +1,4 @@
-import asuka/storage
+import std/storage
 
 enum Units { metric, imperial }
 

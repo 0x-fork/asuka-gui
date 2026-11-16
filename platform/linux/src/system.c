@@ -1,8 +1,8 @@
 // system.c: more of the system's modules on Linux, as macOS answers them
-// where Linux has nothing of its own: asuka/background (a desktop app
+// where Linux has nothing of its own: platform/background (a desktop app
 // keeps running out of sight: a task holds off the system's suspending),
-// asuka/periodic (tasks on a timer while the app runs, as macOS's
-// scheduler runs them), asuka/widget and asuka/liveactivity (none),
+// platform/periodic (tasks on a timer while the app runs, as macOS's
+// scheduler runs them), platform/widget and platform/liveactivity (none),
 // iCloud (Apple's), pushes (no push service), the photo library (none an
 // app can read), contacts and calendars on a system without Evolution
 // Data Server (eds.c reads and writes its own; without it, adding one
@@ -431,7 +431,7 @@ static void icloud_any(ak_span args, reply *r) {
 }
 
 // The photo library: a Linux desktop has none an app can read (photos are
-// files: asuka/photos' pick and the file picker reach them). Access is
+// files: platform/photos' pick and the file picker reach them). Access is
 // denied, and listing fails saying so.
 static void photos_denied(ak_span args, reply *r) {
 	(void)args;
@@ -440,12 +440,12 @@ static void photos_denied(ak_span args, reply *r) {
 
 static void photos_none(ak_span args, reply *r) {
 	(void)args;
-	reply_err(r, "not available: Linux has no photo library (pick photos with asuka/photos' pick)");
+	reply_err(r, "not available: Linux has no photo library (pick photos with platform/photos' pick)");
 }
 
 static void push_none(ak_span args, reply *r) {
 	(void)args;
-	reply_err(r, "asuka/push isn't supported on Linux");
+	reply_err(r, "platform/push isn't supported on Linux");
 }
 
 // ---- Documents opened in their apps ----
@@ -535,7 +535,7 @@ static const char *v_type(const char *label) {
 static const char *jstr(const dsk_json *j, const char *k) {
 	const char *v = dsk_json_str(j, k, NULL);
 	if (v) return v;
-	// asuka/contacts' keys, as Go's JSON reads them (any case).
+	// platform/contacts' keys, as Go's JSON reads them (any case).
 	for (size_t i = 0; j && j->type == DSK_JOBJ && i < j->n; i++)
 		if (!g_ascii_strcasecmp(j->keys[i], k) && j->kids[i].type == DSK_JSTR) return j->kids[i].str;
 	return "";
@@ -547,7 +547,7 @@ static const dsk_json *jget(const dsk_json *j, const char *k) {
 	return NULL;
 }
 
-// lx_vcard appends a contact (asuka/contacts' JSON) as a vCard (3.0).
+// lx_vcard appends a contact (platform/contacts' JSON) as a vCard (3.0).
 void lx_vcard(ak_buf *b, const dsk_json *c) {
 	const char *given = jstr(c, "givenName"), *family = jstr(c, "familyName"), *name = jstr(c, "name");
 	char *full = *name ? g_strdup(name) : g_strstrip(g_strdup_printf("%s %s", given, family));

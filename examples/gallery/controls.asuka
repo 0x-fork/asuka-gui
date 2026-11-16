@@ -1,5 +1,5 @@
-import asuka/storage
-import asuka/time
+import std/storage
+import std/time
 
 let periodNames = ["Today", "This week", "This month"]
 let milks = ["Whole", "Oat", "Almond", "Soy"]

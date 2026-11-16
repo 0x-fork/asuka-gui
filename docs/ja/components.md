@@ -125,10 +125,10 @@ component Answer(question: [Span], answer: [Span]) {
 
 ### Markdown
 
-`asuka/markdown` は Markdown（CommonMark に GitHub の表、タスクリスト、取り消し線、自動リンクを加えたもの）を、プラットフォーム純正のスタイル付きテキストとして表示します。全体が一つの選択範囲になり、リンクは開けて、文字サイズはユーザーの設定に従います。テキスト中の生の HTML は文字として表示されます。
+`std/markdown` は Markdown（CommonMark に GitHub の表、タスクリスト、取り消し線、自動リンクを加えたもの）を、プラットフォーム純正のスタイル付きテキストとして表示します。全体が一つの選択範囲になり、リンクは開けて、文字サイズはユーザーの設定に従います。テキスト中の生の HTML は文字として表示されます。
 
 ```asuka
-import asuka/markdown
+import std/markdown
 
 component Reply(text: string, writing: bool) {
   markdown.View(text) { streaming: writing; padding: 16 }
@@ -352,7 +352,7 @@ component NoteField {
 各コントロールは、変更する状態を `bind` で受け取り、`disabled` も受け取ります。`Picker` と `Toggle` の `title` 以外はラベルを持たないので、横に `Text` を置いてください。
 
 ```asuka
-import asuka/time
+import std/time
 
 component Settings {
   state wifi = true
@@ -428,7 +428,7 @@ component Settings {
   | Linux | `GtkStringList` を使う `GtkDropDown`。選んだ項目が入る位置に、ラベルを淡色のラベル（dim label）として表示します |
   | Web | `<select>`。最初の option は、ラベルを表示する非表示のプレースホルダーです |
 - **ColorPicker** は、タップするとプラットフォームのピッカーを開く色見本で、選んだ色を `color` として書き込みます。`alpha` で不透明度も選べるようになり、`title` はピッカーの名前です。iOS では `UIColorWell` とシステムのピッカーです。Android にはないので、パレットを並べた Material のダイアログで、`alpha` には不透明度のスライダーが付きます。macOS ではカラーパネルを開く `NSColorWell`、Linux では `GtkColorDialogButton`、ブラウザーでは `<input type="color">` です。Windows のカラーダイアログには不透明度がないので、そこでは `alpha` は何もしません。
-- **DatePicker** は日時を選び、デバイスのタイムゾーンで表示します。`asuka/time` の `time.Picker` は `time.Time` をバインドします（プレリュードの `DatePicker` がバインドするのは 1970 年からのミリ秒です）。`mode` は `.date`（デフォルト）、`.time`、`.dateTime` のいずれかで、`min` と `max` で範囲を制限します。
+- **DatePicker** は日時を選び、デバイスのタイムゾーンで表示します。`std/time` の `time.Picker` は `time.Time` をバインドします（プレリュードの `DatePicker` がバインドするのは 1970 年からのミリ秒です）。`mode` は `.date`（デフォルト）、`.time`、`.dateTime` のいずれかで、`min` と `max` で範囲を制限します。
 
   | | コンパクト（デフォルト） | `.section` |
   |---|---|---|
@@ -530,7 +530,7 @@ component Pictures(photo: Photo) {
 | Linux | GDK のローダー：PNG、JPEG、GIF。インストールされていれば WebP、AVIF、HEIF、SVG、JPEG XL も | ホストがフレームを順に再生。アニメーション WebP の各フレームは GDK の WebP ローダーでデコード |
 | Web | ブラウザー | WebCodecs の `ImageDecoder` でキャンバスに描画（AVIF のシーケンスも）。ない場合（Safari）は `<img>` そのもので、一時停止中は最初のフレームを表示します |
 
-SVG を画像として表示できるのは、Mac、Linux、Web だけです。どのプラットフォームでも SVG のアイコンを表示するには、[`asuka/svg`](#svg-アイコン) でベクターとして描きます。
+SVG を画像として表示できるのは、Mac、Linux、Web だけです。どのプラットフォームでも SVG のアイコンを表示するには、[`std/svg`](#svg-アイコン) でベクターとして描きます。
 
 ## シンボルとアイコン
 
@@ -557,10 +557,10 @@ iOS と macOS は、どの SF Symbol でも描画できます。それ以外の�
 
 ### SVG アイコン
 
-独自のアイコンには、`asuka/svg` がプラットフォームのベクター描画で SVG を描きます。ラスター化はしません。`svg.Icon` のマークアップは文字列リテラルで、コンパイラーが解析します。読めないマークアップはコンパイルエラーになり、デバイス上では何も解析しません。
+独自のアイコンには、`std/svg` がプラットフォームのベクター描画で SVG を描きます。ラスター化はしません。`svg.Icon` のマークアップは文字列リテラルで、コンパイラーが解析します。読めないマークアップはコンパイルエラーになり、デバイス上では何も解析しません。
 
 ```asuka
-import asuka/svg
+import std/svg
 
 let download = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>""")
 
@@ -578,7 +578,7 @@ component DownloadRow {
 `svg.Shape` はアプリが作ったパスを描きます。それぞれの `svg.Layer` は一つの `svg.Path` で、塗り（`fill`。ボックスの下に向かって `fade` へフェード）と線（`stroke`、`width`、`cap`、`join`）を持ちます。`svg.Point` はボックスの左上からのポイント数にボックスのサイズに対する割合を足したものなので、ボックスの大きさが変わっても、アプリが計算し直さなくても形が追従します。
 
 ```asuka
-import asuka/svg
+import std/svg
 
 let tick = svg.Path().move(svg.Point(x: 4, fy: 0.5)).line(svg.Point(fx: 0.4, fy: 1, y: -4)).line(svg.Point(fx: 1, x: -4, y: 4))
 
@@ -629,10 +629,10 @@ component Clip {
 
 ## Lottie アニメーション
 
-`asuka/lottie` は Lottie アニメーション（After Effects から Lottie JSON `.json` または dotLottie `.lottie` として書き出したもの）を、各プラットフォーム自身のプレーヤーで再生します。iOS と Mac では lottie-ios、Android では lottie-android、Web では lottie-web です。Windows と Linux には呼び出せるプレーヤーがまだないので、そこではビューは空のボックスになります。
+`std/lottie` は Lottie アニメーション（After Effects から Lottie JSON `.json` または dotLottie `.lottie` として書き出したもの）を、各プラットフォーム自身のプレーヤーで再生します。iOS と Mac では lottie-ios、Android では lottie-android、Web では lottie-web です。Windows と Linux には呼び出せるプレーヤーがまだないので、そこではビューは空のボックスになります。
 
 ```asuka
-import asuka/lottie
+import std/lottie
 
 component Success {
   state playing = true
@@ -768,7 +768,7 @@ component Triangle {
 `stroke` と `lineWidth`（デフォルトは 1）で輪郭に線を引きます。線端は `lineCap`（`.butt`、`.round`、`.square`）、角は `lineJoin`（`.miter`、`.round`、`.bevel`）で指定します。`trimStart` と `trimEnd` は 0 から 1 で輪郭の一部だけを描き、進捗リングや、自分を描いていく線になります。`animate` の中で変えるとアニメーションします（[モーション](motion.md) を参照）。`dash` は線を破線にします。描く長さと空ける長さを交互にポイントで並べ（`[6, 4]`。個数が奇数なら繰り返します）、SwiftUI の `StrokeStyle(dash:)` と同じです。`dashPhase` は、パターンのどこから始めるかです。[`examples/usage`](../../examples/usage) は、これで予測線を描いています。
 
 ```asuka
-import asuka/math
+import std/math
 
 fn ring(w: float, h: float) -> Path {
   let r = min(w, h) / 2 - 4
@@ -827,10 +827,10 @@ component Level(level: float) {
 
 ### グラフ
 
-`asuka/chart` はグラフを描きます。値の軸の上に棒、線、面、点を描き、ラベルにはプラットフォームのテキストを使います（ユーザーの文字サイズに合わせて拡大縮小されます）。Asuka で書かれていて、目盛りと図形は一度だけ計算され、`svg.Shape` が描くので、どのプラットフォームでも同じになります。
+`std/chart` はグラフを描きます。値の軸の上に棒、線、面、点を描き、ラベルにはプラットフォームのテキストを使います（ユーザーの文字サイズに合わせて拡大縮小されます）。Asuka で書かれていて、目盛りと図形は一度だけ計算され、`svg.Shape` が描くので、どのプラットフォームでも同じになります。
 
 ```asuka
-import asuka/chart
+import std/chart
 
 component Week(steps: [float], goal: [float]) {
   chart.View([
@@ -851,10 +851,10 @@ component Week(steps: [float], goal: [float]) {
 
 ### シェーダー
 
-`asuka/shader` は GPU のプログラムでボックスを描きます。流れるグラデーション、ノイズ、光、波紋などです。プログラムは Kage シェーダー（Ebitengine の言語で、Go の構文）で、アプリのコンパイル時にすべてのプラットフォーム向けにコンパイルされます。コンパイルできないシェーダーはコンパイルエラーになり、デバイス上ではプラットフォーム自身のプログラムだけをコンパイルします。
+`std/shader` は GPU のプログラムでボックスを描きます。流れるグラデーション、ノイズ、光、波紋などです。プログラムは Kage シェーダー（Ebitengine の言語で、Go の構文）で、アプリのコンパイル時にすべてのプラットフォーム向けにコンパイルされます。コンパイルできないシェーダーはコンパイルエラーになり、デバイス上ではプラットフォーム自身のプログラムだけをコンパイルします。
 
 ```asuka
-import asuka/shader
+import std/shader
 
 let glow = shader.Program(r"""
   package main

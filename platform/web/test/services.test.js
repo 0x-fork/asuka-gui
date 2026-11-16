@@ -1,4 +1,4 @@
-// The modules the standard library's packages over asuka/host reach by name
+// The modules the platform SDK's packages over platform/host reach by name
 // (modules/services.js): node --test platform/web.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -30,7 +30,7 @@ test("what the web hasn't, and background's tasks", async () => {
   await assert.rejects(m.background.next(), { message: "ended" });
 });
 
-test("every module the file has: asuka/host's, as the registry names them", async () => {
+test("every module the file has: platform/host's, as the registry names them", async () => {
   const { files } = await import("../src/modules.js");
   const all = modules();
   for (const name of Object.keys(files).filter((n) => files[n] === "services")) assert.ok(all[name], name);

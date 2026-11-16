@@ -1087,7 +1087,7 @@ screen About {
 `guard` 会在它的页面（以及子路由的页面）显示之前被询问，参数是要去的 href：返回 `""` 表示放行，否则返回要把用户送去的地方。守卫可以读取状态：它读取的状态变化时，会重新询问当前显示的页面，不再被放行的页面会离开（连同栈里压在它们上面的页面），路由器转到守卫指定的地方。未登录的用户会被送到登录页，并带上原本要去的地方，登录后再回到那里：
 
 ```asuka
-import asuka/url
+import std/url
 
 state signedIn = false
 
@@ -1151,7 +1151,7 @@ links = ["notes.example.com"]
 没有路由器时，`on openURL(url)` 会收到打开应用的每一个 URL，无论是在启动时还是在运行中（组件体里的 `onOpenURL` 也一样，在组件存在期间有效）。启动应用的那个 URL 到达时还没有任何处理函数，所以它会交给第一个注册的处理函数。你可以在处理函数里用 `push` 跳转，或者通过设置状态来切换页面。
 
 ```asuka
-import asuka/url
+import std/url
 
 state added: [string] = []
 
@@ -1188,4 +1188,4 @@ app {
 
 在 iOS 上，应用会自带一个分享扩展（share extension），它会带着分享的内容打开应用，和 Android 的做法一样：扩展本身不显示任何界面。分享的内容常常是一个标题加一个链接（比如从 Safari 分享时，页面标题作为文本，URL 作为链接）。[`examples/downloader`](../../examples/downloader) 会从中找出那个链接。桌面端和 Web 不能作为分享目标，在这些平台上 `on share` 永远不会运行。
 
-如果想在发起分享的应用上方显示你自己应用的面板，而不打开你的应用，请参阅[设备](device.md#应用自己的分享面板asukasharesheet)里的 `asuka/sharesheet`。反过来，要从你的应用往外分享，`share(text)` 会弹出系统的分享面板，`shareFiles(paths)` 则用来分享文件：在 Mac 上是分享菜单，在 Windows 上是系统的分享界面，在 Web 上是浏览器的分享界面。Linux 没有分享面板，这两个函数会把要分享的内容复制到剪贴板，并用一个 toast 告诉用户。
+如果想在发起分享的应用上方显示你自己应用的面板，而不打开你的应用，请参阅[设备](device.md#应用自己的分享面板platformsharesheet)里的 `platform/sharesheet`。反过来，要从你的应用往外分享，`share(text)` 会弹出系统的分享面板，`shareFiles(paths)` 则用来分享文件：在 Mac 上是分享菜单，在 Windows 上是系统的分享界面，在 Web 上是浏览器的分享界面。Linux 没有分享面板，这两个函数会把要分享的内容复制到剪贴板，并用一个 toast 告诉用户。

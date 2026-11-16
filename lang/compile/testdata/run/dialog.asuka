@@ -1,8 +1,8 @@
-// asuka/dialog with no platform code (the fake host): no dialogs, so
+// platform/dialog with no platform code (the fake host): no dialogs, so
 // open falls back to the document picker (device's), and save and
 // chooseFolder throw an unsupported error.
 
-import asuka/dialog
+import platform/dialog
 
 test "no dialogs here" {
   let md = [dialog.Filter(name: "Markdown", extensions: ["*.md"])]

@@ -1,12 +1,12 @@
 # データ
 
-アプリはデータをいくつかの場所に保存します。小さな値は `asuka/storage` に、レコードは `asuka/sqlite` で SQLite に、秘密情報は `asuka/secure` でプラットフォームのキーチェーンに、ユーザーのデバイス間で共有する値は `asuka/icloud` で iCloud に、ドキュメントのファイルは `asuka/document` に置きます。このページではそれぞれを説明し、`asuka/http` によるネットワーク、`asuka/watch` によるファイルの監視、そしてどの処理がメインスレッドの外で行われるかも扱います。
+アプリはデータをいくつかの場所に保存します。小さな値は `std/storage` に、レコードは `std/sqlite` で SQLite に、秘密情報は `platform/secure` でプラットフォームのキーチェーンに、ユーザーのデバイス間で共有する値は `platform/icloud` で iCloud に、ドキュメントのファイルは `platform/document` に置きます。このページではそれぞれを説明し、`std/http` によるネットワーク、`std/watch` によるファイルの監視、そしてどの処理がメインスレッドの外で行われるかも扱います。
 
 ## データの保存場所
 
 各パッケージは、そのプラットフォーム自身のアプリがデータを置く場所に保存します。
 
-| | `asuka/storage`（と `asuka/store`） | `asuka/sqlite` で名前だけを指定して開いたデータベース |
+| | `std/storage`（と `std/store`） | `std/sqlite` で名前だけを指定して開いたデータベース |
 |---|---|---|
 | iOS | UserDefaults | アプリのコンテナー内の Application Support |
 | macOS | UserDefaults | `~/Library/Application Support/<bundle ID>` |
@@ -19,12 +19,12 @@
 
 `asuka dev` では、デスクトップアプリのデータディレクトリは `asuka dev` 専用のもの（ユーザーのキャッシュディレクトリ内、アプリごとに一つ）になります。そのため、開発中に試したことがインストール済みのビルドのデータと混ざることはありません。
 
-## 小さな値：asuka/storage
+## 小さな値：std/storage
 
-`asuka/storage` は、起動をまたいで小さな値を保存します。設定、サインインしているユーザーの名前、最後に開いていたタブなどです。`storage.Value` は、`value` が保存される[ストア](language.md#ストア)です。最初は保存されている値（初回はデフォルト値）で始まり、代入した値はそのたびに保存されます。ほかの状態と同じく、読み取りは追跡され、書き込みはすぐ画面に反映されます。
+`std/storage` は、起動をまたいで小さな値を保存します。設定、サインインしているユーザーの名前、最後に開いていたタブなどです。`storage.Value` は、`value` が保存される[ストア](language.md#ストア)です。最初は保存されている値（初回はデフォルト値）で始まり、代入した値はそのたびに保存されます。ほかの状態と同じく、読み取りは追跡され、書き込みはすぐ画面に反映されます。
 
 ```asuka
-import asuka/storage
+import std/storage
 
 let wifiOnly = storage.Value("wifiOnly", false)
 
@@ -53,18 +53,18 @@ fn signIn(a: Account) {
 
 保存先はプラットフォームの設定の仕組みです。iOS と macOS では UserDefaults、Android では SharedPreferences、Web では `localStorage`、Windows と Linux では `store.json` というファイルで、変更の少し後に書き込まれます。`storage.flush()` はすぐに書き込みます。アプリが終了されるかもしれない前（バックグラウンドタスクの最後のステップなど）に呼びます。`value.reset()` は保存された値を忘れます。保存された値はストアが作られるときに読み込まれ、もうその型としてデコードできない場合（型が変わった場合）はデフォルト値になります。
 
-`asuka/store` は同じことをストアなしで行います。`store.read(key, default)`、`store.write(key, value)`、`store.remove(key)` で、自分で決めたタイミングで値を保存するコード向けです。
+`std/store` は同じことをストアなしで行います。`store.read(key, default)`、`store.write(key, value)`、`store.remove(key)` で、自分で決めたタイミングで値を保存するコード向けです。
 
 これはデータベースではありません。レコードが多い、または大きいときは SQLite を使います。
 
-## レコード：asuka/sqlite
+## レコード：std/sqlite
 
-`asuka/sqlite` はアプリの SQLite データベースです。SQLite そのものであり、同じリリースをすべてのプラットフォームで同じ方法でビルドしたもので、sqlite [プラグイン](plugins.md)から提供されます。パッケージをインポートするだけで、CLI がプラグインのライブラリをアプリと一緒に配布します。コアはステートメントを一つずつ丸ごとメインスレッドの外で実行し、返ってきた行を求められた型に直接デコードします。[`examples/notes`](../../examples/notes) がこれを使っています。
+`std/sqlite` はアプリの SQLite データベースです。SQLite そのものであり、同じリリースをすべてのプラットフォームで同じ方法でビルドしたもので、sqlite [プラグイン](plugins.md)から提供されます。パッケージをインポートするだけで、CLI がプラグインのライブラリをアプリと一緒に配布します。コアはステートメントを一つずつ丸ごとメインスレッドの外で実行し、返ってきた行を求められた型に直接デコードします。[`examples/notes`](../../examples/notes) がこれを使っています。
 
 ### データベースを開いてマイグレーションする
 
 ```asuka
-import asuka/sqlite
+import std/sqlite
 
 struct Note {
   id: int
@@ -178,9 +178,9 @@ async fn signUp(email: string) -> string {
 
 SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。sqlite プラグインのライブラリ `asqlite`（[プラグイン](plugins.md)）で、`asuka build` がコアの見つけられる場所に配置します。Mac の `Contents/Frameworks`、Windows アプリの `.exe` の隣、Linux のインストール先の `lib/<app>`、iOS アプリの `Frameworks` 内のフレームワーク、APK の各 ABI の `libasuka.so` の隣です。デスクトップでの `asuka dev`、`asuka test`、`asuka run` は、プラグインのビルド済みファイルか公開済みファイル（`ASUKA_LIB_ASQLITE`）をコアに使わせます。後者は一度だけダウンロードされ、ユーザーのキャッシュに保存されます。Web では同じライブラリを WebAssembly にビルドしたものが、ページのワーカーで動きます（[Web の SQLite](web.md#sqlite)）。
 
-## 秘密情報：asuka/secure
+## 秘密情報：platform/secure
 
-`asuka/secure` は、トークンやパスワードのような小さな秘密情報を、プラットフォームに暗号化させて保存します。秘密情報のためのもので、データのためのものではありません。それ以外はストアかデータベースに置いてください。
+`platform/secure` は、トークンやパスワードのような小さな秘密情報を、プラットフォームに暗号化させて保存します。秘密情報のためのもので、データのためのものではありません。それ以外はストアかデータベースに置いてください。
 
 - **iOS**：キーチェーン。アプリの bundle ID で汎用パスワードとして保存し、デバイスの最初のロック解除の後に読めるようになり、このデバイスだけに残ります。
 - **Android**：各値を Android Keystore 内の鍵で暗号化し（AES-GCM）、アプリ専用の設定に保存します。鍵が Keystore の外に出ることはありません。
@@ -192,7 +192,7 @@ SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5�
 `secure.read(key)` はキーの値を返し（なければ `none`）、`secure.write(key, value)` は値を保存し、`secure.remove(key)` は削除します。どれもメインスレッドを止めずにプラットフォームを待ち、プラットフォームが返したエラー（ロックされたキーリング、キーリングがない）をそのまま投げます。プラットフォームにそのためのコードがない場合（`asuka test`）は `unsupported` エラーを投げます。
 
 ```asuka
-import asuka/secure
+import platform/secure
 
 component SignedIn {
   state status = ""
@@ -221,24 +221,24 @@ async fn keepToken(token: string) throws {
 }
 ```
 
-## ユーザーのデバイス間で共有する値：asuka/icloud
+## ユーザーのデバイス間で共有する値：platform/icloud
 
 iOS と macOS では、`icloud.Value(key, default)` は iCloud のキーバリューストアに保存されるストアで、別のデバイスが値を変えると読み直されます。`storage.Value` がデバイスに保存されるのと同じ感覚です。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 let textSize = icloud.Value("textSize", 17.0)
 ```
 
 `icloud.account()` と `icloud.files(scope)` はアカウントと iCloud 内のアプリのファイルを追跡し、`readFile`、`writeFile`、`conflicts`、`resolve` でそれらを扱います。[iCloud](icloud.md) を参照してください。ほかのプラットフォームでは、値はデフォルト値と、デバイス上で設定された値のままです。
 
-## ドキュメントのファイル：asuka/document
+## ドキュメントのファイル：platform/document
 
 `document.open(path, read:, write:)` は、ファイルの内容をストアにします。アプリの `read` でメインスレッドの外で読み込み、`edit` のたびに少し後でアプリの `write` を使って保存し、元に戻すこともできます。読み込んだ後に別のプログラムがファイルを変更していれば、競合になります。
 
 ```asuka
-import asuka/document
+import platform/document
 
 component Editor(path: string) {
   let doc = document.open(path, read: data => data.string(), write: text => text.bytes())
@@ -255,12 +255,12 @@ component Editor(path: string) {
 }
 ```
 
-## ネットワーク：asuka/http
+## ネットワーク：std/http
 
-`asuka/http` はプラットフォーム自身のクライアントでリクエストを送るので、プロキシ、信頼された証明書、キャッシュ、Cookie はシステムと同じように働きます。リクエストは待つ処理なので `async` です。
+`std/http` はプラットフォーム自身のクライアントでリクエストを送るので、プロキシ、信頼された証明書、キャッシュ、Cookie はシステムと同じように働きます。リクエストは待つ処理なので `async` です。
 
 ```asuka
-import asuka/http
+import std/http
 
 struct Release {
   name: string
@@ -279,8 +279,8 @@ async fn latest() throws -> string {
 大きなレスポンス（動画やアーカイブ）は、届くそばからファイルに書けます。`http.download(url, path, progress:)` は、パスの隣のファイルに書き、すべて届いたらパスへ名前を変えます。そのあいだ 1 秒に数回、届いたバイト数と全体のバイト数（サーバーが示さなければ -1）を渡して `progress` を呼びます。`timeout` は全体ではなく、次のデータを待つ最長の時間です。タスクをキャンセルするとダウンロードは止まり、ファイルは残りません。iOS と macOS では URLSession、Android では `HttpURLConnection`、Windows と Linux では WinHTTP と libsoup がそのままファイルへ書き、ブラウザーでは fetch のストリームから読んでアプリのファイルに書きます。
 
 ```asuka
-import asuka/fs
-import asuka/http
+import std/fs
+import std/http
 
 component Download(url: string) {
   state got = 0
@@ -311,7 +311,7 @@ component Download(url: string) {
 デスクトップアプリの OAuth サインインは、ループバックインターフェース上のアプリ自身のサーバーへリダイレクトします（RFC 8252）。`http.loopback(path:, page:)` はシステムが選ぶポートで待ち受け、その `url` が渡すべきリダイレクト URI です。`next()` はブラウザーが戻ってくるのを待ち、`page`（「このウィンドウは閉じてかまいません」）で応答して、ブラウザーが来た URL を返します。そのクエリがコードです。`close()` で待ち受けを止めます。Android と iOS も、アプリの実行中は待ち受けられます。ブラウザーはできないので（そこではエラーを投げます）、Web アプリのサインインは自分のサイトへリダイレクトします。
 
 ```asuka
-import asuka/http
+import std/http
 
 async fn signInBack(authorize: string) throws -> string {
   let lb = try await http.loopback()
@@ -322,12 +322,12 @@ async fn signInBack(authorize: string) throws -> string {
 }
 ```
 
-## ファイルの監視：asuka/watch
+## ファイルの監視：std/watch
 
 `watch.path(dir)` はフォルダー（またはファイル）の変更を追います。アプリが表示しているフォルダー、エディターで開いているプロジェクト、別のプログラムが書き込む設定ファイルなどです。その `events` は、変更のバッチが次々に届くストリームです。
 
 ```asuka
-import asuka/watch
+import std/watch
 
 component Folder(dir: string) {
   state changes: [string] = []
@@ -360,6 +360,6 @@ component Folder(dir: string) {
 UI はメインスレッドで動いており、そこで待つ処理は UI を止めてしまいます。データについてまとめると次のとおりです。
 
 - **メインスレッドの外で、await で待つもの**：`db.exec`、`db.query`、ライブクエリの各取得、`icloud` の呼び出し、`document` の読み書き、`http` のリクエスト。これらの `await` の間も UI は動き続けます。
-- **メインスレッドで、すぐ終わるもの**：`sqlite.open` と `db.migrate`（アプリの起動時に）、`storage.Value` と `asuka/store`。後者はプラットフォームの設定を読み書きします（Windows と Linux ではメモリで、ファイルは少し後に書かれます）。
+- **メインスレッドで、すぐ終わるもの**：`sqlite.open` と `db.migrate`（アプリの起動時に）、`storage.Value` と `std/store`。後者はプラットフォームの設定を読み書きします（Windows と Linux ではメモリで、ファイルは少し後に書かれます）。
 
 メインスレッドを止めてしまう自分の処理（大きなファイルの解析、画像の縮小など）は `spawn { … }` に入れると、別のスレッドで実行されます（[非同期処理](language.md#非同期処理)）。

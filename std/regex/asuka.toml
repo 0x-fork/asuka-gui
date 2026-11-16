@@ -1,3 +1,3 @@
-name = "asuka/regex"
+name = "std/regex"
 version = "0.1.0"
 description = "Regular expressions in RE2's syntax, matched in linear time"

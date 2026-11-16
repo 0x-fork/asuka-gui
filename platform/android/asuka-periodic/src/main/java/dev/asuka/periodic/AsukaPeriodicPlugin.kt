@@ -15,7 +15,7 @@ import dev.asuka.AsukaRuntime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** asuka/periodic's scheduling: a unique periodic work request for each task. */
+/** platform/periodic's scheduling: a unique periodic work request for each task. */
 class AsukaPeriodicPlugin : AsukaPlugin {
     override fun register(rt: AsukaRuntime) {
         AsukaPeriodicHub.schedule = { r, name, seconds, network, charging ->

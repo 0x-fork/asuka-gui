@@ -1,4 +1,4 @@
-import asuka/chart
+import std/chart
 
 let days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 

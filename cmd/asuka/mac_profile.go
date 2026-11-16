@@ -47,10 +47,10 @@ type macProfile struct {
 // Mac app's packages need: their iOS name (appConfig.entitlements', as
 // the packages' imports say), their Mac name, and what they're for.
 var macProfileFeatures = []struct{ ios, mac, what string }{
-	{"aps-environment", "com.apple.developer.aps-environment", "Push Notifications (asuka/push)"},
-	{"com.apple.developer.applesignin", "com.apple.developer.applesignin", "Sign in with Apple (asuka/appleauth)"},
-	{"com.apple.developer.in-app-payments", "com.apple.developer.in-app-payments", "Apple Pay (asuka/pay)"},
-	{"com.apple.developer.devicecheck.appattest-environment", "com.apple.developer.devicecheck.appattest-environment", "App Attest (asuka/integrity)"},
+	{"aps-environment", "com.apple.developer.aps-environment", "Push Notifications (platform/push)"},
+	{"com.apple.developer.applesignin", "com.apple.developer.applesignin", "Sign in with Apple (platform/appleauth)"},
+	{"com.apple.developer.in-app-payments", "com.apple.developer.in-app-payments", "Apple Pay (platform/pay)"},
+	{"com.apple.developer.devicecheck.appattest-environment", "com.apple.developer.devicecheck.appattest-environment", "App Attest (platform/integrity)"},
 	{entKVStore, entKVStore, icloudWhat[entKVStore]},
 	{entContainers, entContainers, icloudWhat[entContainers]},
 	{entUbiquity, entUbiquity, icloudWhat[entUbiquity]},
@@ -347,7 +347,7 @@ func macEntitlements(cfg *appConfig, prof *macProfile, appStore bool) (map[strin
 	// iCloud's, as the app uses them (a profile's are wildcards).
 	set, _, err := narrowICloud(prof.entitlements, cfg, prof.team)
 	if err != nil {
-		return nil, fmt.Errorf("the profile %q lacks %s, which asuka/icloud needs: turn on the iCloud capability for %s at developer.apple.com (Identifiers), with iCloud Documents and its containers, then make the profile again", prof.name, err, cfg.ID)
+		return nil, fmt.Errorf("the profile %q lacks %s, which platform/icloud needs: turn on the iCloud capability for %s at developer.apple.com (Identifiers), with iCloud Documents and its containers, then make the profile again", prof.name, err, cfg.ID)
 	}
 	for k, v := range set {
 		ents[k] = v

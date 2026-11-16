@@ -1,4 +1,4 @@
-// os.c: asuka/os's builtins: the process a program runs as (docs/
+// os.c: std/os's builtins: the process a program runs as (docs/
 // programs.md): its arguments, its environment, its standard streams and
 // its exit. libc's (POSIX), the CRT's and Win32's in UTF-16 on Windows, so
 // the same on every desktop. Phones and the web have no arguments and no
@@ -683,7 +683,7 @@ const ak_lib_entry ak_std_os[] = {
 	{NULL, NULL},
 };
 
-// ---- asuka/flag ----
+// ---- std/flag ----
 
 // flag.spec<T>() -> string: what the compiler wrote of T (lang/ir/flag.go),
 // passed as the call's last argument.

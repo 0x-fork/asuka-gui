@@ -1,6 +1,6 @@
-// asuka/sqlite's runtime (std/sqlite: its native fns are these builtins).
+// std/sqlite's runtime (std/sqlite: its native fns are these builtins).
 // SQLite is the sqlite plugin's library (std/sqlite/csrc: asq.c, prebuilt for
-// each platform and shipped with the apps that import asuka/sqlite),
+// each platform and shipped with the apps that import std/sqlite),
 // loaded on first use and called a whole statement at a time through its
 // one entry point, asq_call (std/sqlite/csrc/asq.h). Statements run on a
 // thread of their own, one after another (so a write is seen by the

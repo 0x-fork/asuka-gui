@@ -62,7 +62,7 @@ func (c *appConfig) plistExtras() map[string]any {
 		m["UIBackgroundModes"] = vs
 	}
 	// asuka.toml's fileTypes (LSSupportsOpeningDocumentsInPlace with
-	// them, unless asuka/library's iosTrue has it already).
+	// them, unless platform/library's iosTrue has it already).
 	for k, v := range c.documentTypes(c.fileTypes(), true, nil) {
 		if !slices.Contains(c.iosTrue, k) {
 			m[k] = v
@@ -118,13 +118,13 @@ func plistKeys(m map[string]any) string {
 // the profile's (ent, a plist file) lacks, with what each is for.
 func (c *appConfig) missingEntitlements(ent string) []string {
 	what := map[string]string{
-		"aps-environment":                                       "Push Notifications (asuka/push)",
-		"com.apple.developer.applesignin":                       "Sign in with Apple (asuka/appleauth)",
-		"com.apple.developer.in-app-payments":                   "Apple Pay, with asuka.toml's merchant IDs (asuka/pay)",
-		"com.apple.developer.devicecheck.appattest-environment": "App Attest (asuka/integrity)",
-		"com.apple.developer.declared-age-range":                "Declared Age Range (asuka/agerange)",
-		"com.apple.developer.usernotifications.communication":   "Communication Notifications (asuka/notify's conversations)",
-		"com.apple.developer.nfc.readersession.formats":         "NFC Tag Reading (asuka/nfc)",
+		"aps-environment":                                       "Push Notifications (platform/push)",
+		"com.apple.developer.applesignin":                       "Sign in with Apple (platform/appleauth)",
+		"com.apple.developer.in-app-payments":                   "Apple Pay, with asuka.toml's merchant IDs (platform/pay)",
+		"com.apple.developer.devicecheck.appattest-environment": "App Attest (platform/integrity)",
+		"com.apple.developer.declared-age-range":                "Declared Age Range (platform/agerange)",
+		"com.apple.developer.usernotifications.communication":   "Communication Notifications (platform/notify's conversations)",
+		"com.apple.developer.nfc.readersession.formats":         "NFC Tag Reading (platform/nfc)",
 	}
 	data, err := os.ReadFile(ent)
 	if err != nil {

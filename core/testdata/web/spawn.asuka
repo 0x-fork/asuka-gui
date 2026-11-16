@@ -2,7 +2,7 @@
 // there and back, errors, the app's files on both sides, many at once,
 // a cancelled one, and the app's init (its accent, its language) run
 // again in each worker without a UI.
-import asuka/fs
+import std/fs
 
 struct Point {
   x: int

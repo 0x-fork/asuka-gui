@@ -1,6 +1,6 @@
 // Set<T>: distinct Hashable values, in insertion order.
 
-import asuka/json
+import std/json
 
 enum Day { mon, tue, wed }
 

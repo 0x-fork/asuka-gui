@@ -569,4 +569,4 @@ Android, AppCompat's night mode; on macOS, the app's `NSAppearance`; on
 Linux, libadwaita's style manager): see [the app](navigation.md). The
 semantic colors, the platform's controls and the system bars follow,
 without remaking the app, and the environment's `dark` says which it
-is. Keep the user's choice with [`asuka/store`](stdlib.md).
+is. Keep the user's choice with [`std/store`](stdlib.md).

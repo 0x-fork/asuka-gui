@@ -1,6 +1,6 @@
 // The web views' module, "web": it runs script in a WebView for its value
 // (a Ref's eval: the core's ui.web_eval_result) and reads the web views'
-// cookies (webCookies: ui.web_cookies). There's no "js" module: asuka/js
+// cookies (webCookies: ui.web_cookies). There's no "js" module: platform/js
 // is a native package with its own Swift.
 import AppKit
 import WebKit

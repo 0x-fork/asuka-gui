@@ -4,8 +4,8 @@
 // System2.swift (background, widget, liveActivity).
 //
 // Other system modules aren't here: their std packages have their own Swift
-// (asuka/device, asuka/screen, asuka/power, asuka/appearance, asuka/dialog,
-// asuka/shell, asuka/preview, asuka/print, asuka/sensors, asuka/secure...),
+// (platform/device, platform/screen, platform/power, platform/appearance, platform/dialog,
+// platform/shell, platform/preview, platform/print, platform/sensors, platform/secure...),
 // or nothing calls them any more (the old sdk packages': secureStore,
 // browser, photos, clipboard, files, network, biometric, review, displays,
 // splash, tracking, integrity, ageRange, nfc).

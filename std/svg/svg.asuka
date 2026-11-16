@@ -1,4 +1,4 @@
-// Package asuka/svg shows SVG icons with the platform's own vector
+// Package std/svg shows SVG icons with the platform's own vector
 // drawing: Core Graphics, Android's Canvas, the browser's SVG, GDI+ on
 // Windows, Cairo on Linux. An Icon's markup is parsed when the app
 // compiles (into layers of paths: transforms applied, arcs made curves),

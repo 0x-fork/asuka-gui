@@ -158,14 +158,14 @@ func TestCatalogsOf(t *testing.T) {
 // An app without catalogs that formats numbers and dates gets English's
 // formats, and no tr.
 func TestImplicitCatalog(t *testing.T) {
-	res := Files(map[string][]byte{"app.asuka": []byte("import asuka/i18n\napp { Text(i18n.formatNumber(1.5)) }\n")}, nil)
+	res := Files(map[string][]byte{"app.asuka": []byte("import std/i18n\napp { Text(i18n.formatNumber(1.5)) }\n")}, nil)
 	if err := res.Err(); err != nil {
 		t.Fatal(err)
 	}
 	if c := res.Program.Catalog; c == nil || !c.Implicit {
 		t.Fatalf("catalog: %+v", c)
 	}
-	res = Files(map[string][]byte{"app.asuka": []byte("import asuka/i18n\napp { Text(tr.x()) }\n")}, nil)
+	res = Files(map[string][]byte{"app.asuka": []byte("import std/i18n\napp { Text(tr.x()) }\n")}, nil)
 	if err := res.Err(); err == nil || !strings.Contains(err.Error(), "unknown name tr") {
 		t.Errorf("got %v", err)
 	}
@@ -174,7 +174,7 @@ func TestImplicitCatalog(t *testing.T) {
 // asuka dev's --lang and --dir are compiled into the module: whatever the
 // user reads, the run shows them, and setLocale can't change it.
 func TestDevLocale(t *testing.T) {
-	res := Files(map[string][]byte{"app.asuka": []byte(`import asuka/i18n
+	res := Files(map[string][]byte{"app.asuka": []byte(`import std/i18n
 component A {
   Column {
     Text(tr.inbox())

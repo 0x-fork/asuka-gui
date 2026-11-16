@@ -1,4 +1,4 @@
-// asuka/shader on iOS and macOS: a CAMetalLayer the program's Metal
+// std/shader on iOS and macOS: a CAMetalLayer the program's Metal
 // library draws, a triangle over the whole box (asuka_vertex,
 // asuka_fragment), its uniforms in a buffer as the code lays them out.
 // The view sets rectSize, pixelScale and Time; pipelines are made once

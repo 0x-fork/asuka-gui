@@ -109,7 +109,7 @@ type Module struct {
 	Tests    []Test
 
 	// Data, for a program, is the name of the folder its data goes in,
-	// in the platform's place for an app's (asuka/fs's appDir): a
+	// in the platform's place for an app's (std/fs's appDir): a
 	// program an app ships ([bin] in its asuka.toml) shares the app's.
 	// "": the program's own name. Not encoded: lang/cgen compiles it in.
 	Data string

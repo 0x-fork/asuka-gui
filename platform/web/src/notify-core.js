@@ -1,8 +1,8 @@
-// What the page's asuka/notify and asuka/push (modules/system-notify.js,
+// What the page's platform/notify and platform/push (modules/system-notify.js,
 // modules/system-push.js) and the app's service worker (sw.js) share:
-// how a notification (std/notify's Spec) and a push's payload become the
+// how a notification (sdk/notify's Spec) and a push's payload become the
 // browser's notification, what the user's answer to one is on the wire
-// (std/notify's WireResponse), and the app's small shared values (the
+// (sdk/notify's WireResponse), and the app's small shared values (the
 // categories, the scheduled notifications, the answers waiting for a
 // page), kept in Cache Storage, which a page and its worker both reach.
 //
@@ -133,7 +133,7 @@
   /** newID names a notification that has no ID. */
   const newID = () => Date.now().toString(36) + "-" + (++ids).toString(36) + Math.random().toString(36).slice(2, 6);
 
-  /** shownOf is std/notify's WireDelivered: what Showing, Present and OnAction report of s. */
+  /** shownOf is sdk/notify's WireDelivered: what Showing, Present and OnAction report of s. */
   function shownOf(s, time, remote = false) {
     return {
       id: s.id || "", title: s.title || s.sender?.name || "", subtitle: s.subtitle || "", body: s.body || "", url: s.url || "",
@@ -142,7 +142,7 @@
   }
 
   /**
-   * notificationOf is s (std/notify's Spec) as showNotification's title
+   * notificationOf is s (sdk/notify's Spec) as showNotification's title
    * and options: its ID the tag (one with the same replaces it, and
    * alerts again unless silent), its subtitle the body's first line, its
    * category's actions as the notification's (a Reply one a text field,
@@ -220,7 +220,7 @@
     };
   }
 
-  /** responseOf is std/notify's WireResponse: the user's answer to the notification whose data is d. */
+  /** responseOf is sdk/notify's WireResponse: the user's answer to the notification whose data is d. */
   function responseOf(d, action, reply) {
     return { token: newID(), action: action || "", reply: reply || "", seconds: 25, notification: d.shown };
   }

@@ -1,6 +1,6 @@
 // Native interfaces, and JSON through generics.
 
-import asuka/json
+import std/json
 
 native interface Battery {
   level: float // ERROR "a native interface has methods only"

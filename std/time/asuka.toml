@@ -1,3 +1,3 @@
-name = "asuka/time"
+name = "std/time"
 version = "0.1.0"
 description = "Dates and times: now, calendars, formatting, parsing"

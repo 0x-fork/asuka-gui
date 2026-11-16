@@ -8,13 +8,13 @@
 // It ships a command, notes (cli/, asuka.toml's [bin.notes]), which
 // lists and adds the same notes from a terminal.
 
-import asuka/device
-import asuka/dialog
-import asuka/fs
-import asuka/hotkey
-import asuka/shell
-import asuka/sqlite
-import asuka/url
+import platform/device
+import platform/dialog
+import std/fs
+import platform/hotkey
+import platform/shell
+import std/sqlite
+import std/url
 import ./model.{Note, openDB, search}
 
 /// The notes' database, opened as the app starts.

@@ -1,7 +1,7 @@
 // swift-tools-version:5.9
-// asuka/lottie for iOS and macOS: lottie-ios (its binary
+// std/lottie for iOS and macOS: lottie-ios (its binary
 // distribution, lottie-spm). The Asuka CLI builds it with the apps that
-// import asuka/lottie.
+// import std/lottie.
 import PackageDescription
 
 let package = Package(

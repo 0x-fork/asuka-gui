@@ -287,7 +287,7 @@ object AsukaModules {
     /** The provider of a class's name, looked up once. */
     /**
      * The provider of a class's name: its Kotlin class, or the package's
-     * path (asuka/network, as the C core names it), whose class is
+     * path (platform/network, as the C core names it), whose class is
      * KotlinClass's (internal/nativegen): the path's host reversed, then
      * its segments, lower case, letters and digits, then .AsukaModule.
      */
@@ -437,7 +437,7 @@ object AsukaModules {
 
     /**
      * The local file a source names, for a package that hands files to
-     * the system (asuka/preview, asuka/print): a path, a file:// URL, an
+     * the system (platform/preview, platform/print): a path, a file:// URL, an
      * asset's path (pushed by asuka dev, else copied out of the APK), or an
      * http(s) URL, downloaded to the caches first (under its name, with the
      * extension of type, or the server's, if it has none). Any thread.

@@ -1,4 +1,4 @@
-// services.c: the host's modules (what asuka/platform's call reaches: the
+// services.c: the host's modules (what platform/host's call reaches: the
 // Call command), and what the host does for the app itself: opening a
 // URL, sharing, the clipboard's text, GNOME's settings GTK doesn't
 // follow.
@@ -7,7 +7,7 @@
 // that called it: a Result event (u32 call, u8 ok, then the answer's
 // bytes or the error's message) on the root that called. Each area's file
 // registers its modules' methods (area.modules); a call of a method no one
-// registered answers that it isn't on Linux, which asuka/platform's
+// registered answers that it isn't on Linux, which platform/host's
 // unsupported reads.
 #include "host.h"
 
@@ -82,7 +82,7 @@ void reply_err(reply *r, const char *fmt, ...) {
 	answer(r, false, msg, (size_t)k);
 }
 
-// lx_call runs a module's method (asuka/platform's call): args are u32
+// lx_call runs a module's method (platform/host's call): args are u32
 // call, string module, string method, then the method's arguments.
 void lx_call(node *root, ak_span args) {
 	ak_reader rd = {(const uint8_t *)args.p, args.len, 0, false};

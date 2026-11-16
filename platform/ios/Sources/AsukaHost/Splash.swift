@@ -36,7 +36,7 @@ import UIKit
     }
 
     /// Keeps the splash up after the first frame, until release: asked
-    /// before the first frame (asuka/splash).
+    /// before the first frame (platform/splash).
     public func hold() {
         if !ready { held = true }
     }

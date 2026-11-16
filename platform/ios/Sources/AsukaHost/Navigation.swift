@@ -26,7 +26,7 @@ class AsukaScreenController: UIViewController {
 
     override func loadView() { view = content }
 
-    // asuka/screen's status bar, when this screen is presented full screen.
+    // platform/screen's status bar, when this screen is presented full screen.
     override var preferredStatusBarStyle: UIStatusBarStyle { AsukaScreen.statusBarStyle }
     override var prefersStatusBarHidden: Bool { AsukaScreen.statusBarHidden }
 

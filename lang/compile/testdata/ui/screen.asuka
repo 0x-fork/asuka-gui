@@ -1,7 +1,7 @@
-// asuka/screen with no platform code (the fake host): no displays, the
+// platform/screen with no platform code (the fake host): no displays, the
 // settings do nothing; the displays' helpers.
 
-import asuka/screen
+import platform/screen
 
 component Displays {
   let ds = screen.displays()

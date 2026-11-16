@@ -1,6 +1,6 @@
 # 应用内购买
 
-`asuka/purchase` 通过各平台自己的应用商店，在应用里售卖商品：消耗型商品（金币、提示）、非消耗型商品（一个关卡、永久的“Pro”）、自动续期的订阅，以及不自动续期的订阅。它覆盖了 react-native-iap、expo-iap 和 RevenueCat 的 SDK 在设备端提供的能力，用的都是各商店当前的 API：
+`platform/purchase` 通过各平台自己的应用商店，在应用里售卖商品：消耗型商品（金币、提示）、非消耗型商品（一个关卡、永久的“Pro”）、自动续期的订阅，以及不自动续期的订阅。它覆盖了 react-native-iap、expo-iap 和 RevenueCat 的 SDK 在设备端提供的能力，用的都是各商店当前的 API：
 
 | 平台 | 应用商店 | API |
 | --- | --- | --- |
@@ -17,7 +17,7 @@
 `Item` 是应用售卖的一件商品：它在商店里的 ID 和它的类型（`.consumable`、`.nonConsumable`、`.autoRenewable`、`.nonRenewing`）。Play 分不清消耗型和非消耗型商品，所以要由应用说明。
 
 ```asuka
-import asuka/purchase
+import platform/purchase
 
 let coins = purchase.Item(id: "coins_100", kind: .consumable)
 let pro = purchase.Item(id: "pro", kind: .nonConsumable)
@@ -156,6 +156,6 @@ test "Ask to Buy, then approved" {
 ## 配置应用
 
 - **iOS 和 macOS。** 每个 App ID 都默认开启了 App 内购买项目能力，它不需要任何 entitlement。在 App Store Connect 里同意付费 App 协议，并在那里添加商品。Mac 上的 StoreKit 2 需要 macOS 12：更早的版本上 `available()` 为 false。
-- **Android。** 导入了 `asuka/purchase` 的应用，构建时会带上 Play Billing 和 `com.android.vending.BILLING` 权限；没有导入的应用不会。
+- **Android。** 导入了 `platform/purchase` 的应用，构建时会带上 Play Billing 和 `com.android.vending.BILLING` 权限；没有导入的应用不会。
 - **Windows。** 在合作伙伴中心为已打包（MSIX）并与商店关联的应用添加附加产品。
 - **Web。** 把网站打包成启用了 Play Billing 的 Trusted Web Activity（Bubblewrap 的 `playBilling`），并在 Play 管理中心添加商品。请在三天内用 Play Developer API 从你的服务器确认非消耗型商品。

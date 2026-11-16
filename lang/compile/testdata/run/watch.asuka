@@ -1,6 +1,6 @@
-// asuka/watch without platform code (phones, the web, asuka test): path
+// std/watch without platform code (phones, the web, asuka test): path
 // throws an unsupported error; events are plain values.
-import asuka/watch
+import std/watch
 
 fn describe(e: watch.Event) -> string = match e.op {
   .rename => "Renamed {e.oldPath} to {e.path}"
@@ -24,6 +24,6 @@ test "watch" {
 }
 
 // Output:
-// unsupported: asuka/watch has nothing to watch with on this platform
+// unsupported: std/watch has nothing to watch with on this platform
 // Renamed a to b
 // ok watch

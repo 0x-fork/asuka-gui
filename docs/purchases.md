@@ -1,6 +1,6 @@
 # In-app purchases
 
-`asuka/purchase` sells in the app, through each platform's own store:
+`platform/purchase` sells in the app, through each platform's own store:
 consumables (coins, a hint), non-consumables (a level, "Pro" for life),
 subscriptions that renew, and those that don't. It covers what
 react-native-iap, expo-iap and RevenueCat's SDK do on the device, with
@@ -25,7 +25,7 @@ An `Item` is a product the app sells: its ID in the store and its kind
 Play doesn't know a consumable from a non-consumable, so the app says.
 
 ```asuka
-import asuka/purchase
+import platform/purchase
 
 let coins = purchase.Item(id: "coins_100", kind: .consumable)
 let pro = purchase.Item(id: "pro", kind: .nonConsumable)
@@ -249,7 +249,7 @@ hasn't finished, `transactions` everything, `restores`, `manages`,
   ID, and it needs no entitlement. Agree to the Paid Apps Agreement in
   App Store Connect, and add the products there. The Mac's StoreKit 2
   needs macOS 12: before, `available()` is false.
-- **Android.** An app that imports `asuka/purchase` is built with Play
+- **Android.** An app that imports `platform/purchase` is built with Play
   Billing and the `com.android.vending.BILLING` permission; others
   aren't.
 - **Windows.** Add the add-ons in Partner Center, to an app that's

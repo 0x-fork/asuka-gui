@@ -4,15 +4,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/egoist/asuka/std"
 )
 
-// TestStdAndroidViews runs the standard library's instrumented Android
-// tests (std/<name>/android/src/androidTest: a view driven on a device,
-// its package's tests/ its assets): an app importing those packages has
+// TestStdAndroidViews runs the standard library's and the platform SDK's
+// instrumented Android tests ({std,sdk}/<name>/android/src/androidTest: a
+// view driven on a device, its package's tests/ its assets): an app importing those packages has
 // the Android host's Gradle project written as asuka dev writes it, its
 // packages' modules in it, and each module's connectedDebugAndroidTest
 // run on the device adb has (none: skipped). Gradle fails when a test
@@ -21,11 +22,19 @@ func TestStdAndroidViews(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds with Gradle")
 	}
-	d, err := std.Dir()
+	ps, err := std.Packages()
 	if err != nil {
 		t.Fatal(err)
 	}
-	tests, _ := filepath.Glob(filepath.Join(d, "*", "android", "src", "androidTest"))
+	var tests []string
+	imports := map[string]string{} // a test's directory → its package's import path
+	for path, d := range ps {
+		if test := filepath.Join(d, "android", "src", "androidTest"); exists(test) {
+			tests = append(tests, test)
+			imports[test] = path
+		}
+	}
+	sort.Strings(tests)
 	if len(tests) == 0 {
 		t.Fatal("no instrumented tests")
 	}
@@ -47,7 +56,7 @@ func TestStdAndroidViews(t *testing.T) {
 	for _, test := range tests {
 		name := filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(test))))
 		pkgs[name] = true
-		src.WriteString("import asuka/" + name + "\n")
+		src.WriteString("import " + imports[test] + "\n")
 	}
 	src.WriteString("\napp { Text(\"tests\") }\n")
 	os.WriteFile(filepath.Join(app, "app.asuka"), []byte(src.String()), 0o644)

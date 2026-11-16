@@ -1,9 +1,9 @@
 # NFC タグ
 
-`asuka/nfc` は NFC タグを読み書きします。react-native-nfc-manager や Web NFC と同じように、タグの NDEF メッセージ、タグそのもの、タグへの生のコマンドを扱えます。iOS ではシステムのシートを伴う Core NFC、Android では前面にあるアプリの画面に対するリーダーモード、Android の Chrome では Web NFC を使います。Mac、PC、Linux には NFC がありません。
+`platform/nfc` は NFC タグを読み書きします。react-native-nfc-manager や Web NFC と同じように、タグの NDEF メッセージ、タグそのもの、タグへの生のコマンドを扱えます。iOS ではシステムのシートを伴う Core NFC、Android では前面にあるアプリの画面に対するリーダーモード、Android の Chrome では Web NFC を使います。Mac、PC、Linux には NFC がありません。
 
 ```asuka
-import asuka/nfc
+import platform/nfc
 
 component ReadTag {
   state link = ""
@@ -109,7 +109,7 @@ async fn followOpened() throws {
 
 ## asuka.toml と権限
 
-`asuka/nfc` をインポートしたアプリには、Android の `NFC` 権限と、iOS の `NFCReaderUsageDescription`（独自の説明文は `ios.usage` に書きます）、Core NFC のエンタイトルメント `com.apple.developer.nfc.readersession.formats`（`NDEF` と `TAG`）が付きます。リリースの App ID には NFC Tag Reading のケイパビリティが必要です。
+`platform/nfc` をインポートしたアプリには、Android の `NFC` 権限と、iOS の `NFCReaderUsageDescription`（独自の説明文は `ios.usage` に書きます）、Core NFC のエンタイトルメント `com.apple.developer.nfc.readersession.formats`（`NDEF` と `TAG`）が付きます。リリースの App ID には NFC Tag Reading のケイパビリティが必要です。
 
 asuka.toml の `nfc` は、アプリのタグに必要なものを加えます。
 

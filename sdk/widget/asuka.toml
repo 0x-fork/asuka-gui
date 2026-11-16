@@ -1,0 +1,7 @@
+name = "platform/widget"
+version = "0.1.0"
+description = "The app's home screen widgets' content"
+
+# The host's widget module (WidgetKit's timelines).
+[ios]
+hostFlags = ["ASUKA_WIDGET"]

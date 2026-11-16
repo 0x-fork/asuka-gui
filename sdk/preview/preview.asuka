@@ -1,0 +1,55 @@
+// Package platform/preview shows files with the system's viewer, as Mail
+// shows an attachment: Quick Look on iOS and the Mac (PDFs, images,
+// video, audio, Office and iWork documents, text, 3D models), the app the
+// user opens such files with on Android, Windows and Linux, a new tab in
+// a browser.
+//
+//   try await preview.show(["docs/Guide.pdf"])
+//
+// iOS presents Quick Look over the app's screen, with its share and
+// Markup buttons; the user swipes between the files. The Mac shows Quick
+// Look's panel, with its arrows between the files. Android has no system
+// viewer: it opens the file in the app the user picks (a PDF in Drive's
+// viewer, an image in Photos), through the app's FileProvider, with the
+// right to read it and no other; one file at a time, as every Android
+// mail app opens attachments. Windows and Linux open the file in its
+// default app, as their file managers do.
+
+/// What a preview ran into.
+pub enum PreviewError: Error {
+  /// preview: nothing can show this file
+  noViewer
+}
+
+/// The system's viewer.
+native interface Viewer {
+  /// Shows the files (paths, assets' paths, http(s) URLs), the one at
+  /// start first; returns once it's closed, or the file handed over.
+  async fn show(files: [string], start: int, edit: bool)
+}
+
+// Made once; none where the platform has no code for it.
+let viewer = try? Viewer()
+
+/// Shows the files at sources with the system's viewer: a file's path, an
+/// asset's (as Image takes it), or an http(s) URL, which is downloaded to
+/// the app's caches first. start is the index of the file shown first
+/// (Android, Windows and Linux, which show one, show that one); edit lets
+/// the user mark up PDFs and images with Markup, which saves into the
+/// files (iOS). It returns once the viewer is closed (iOS, the Mac), the
+/// user is back in the app (Android), or the file is handed to its app
+/// (Windows, Linux, the web); it throws PreviewError.noViewer when nothing
+/// can show it.
+pub async fn show(sources: [string], start: int = 0, edit: bool = false) throws {
+  if sources.isEmpty() {
+    return
+  }
+  var i = start
+  if i < 0 { i = 0 }
+  if i >= sources.count() { i = sources.count() - 1 }
+  if let v = viewer {
+    try await v.show(files: sources, start: i, edit: edit)
+    return
+  }
+  throw Error("unsupported: no viewer here")
+}

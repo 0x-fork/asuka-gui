@@ -7,5 +7,5 @@ plugins {
 }
 
 android {
-    namespace = "asuka.http"
+    namespace = "std.http"
 }

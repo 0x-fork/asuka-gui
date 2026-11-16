@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// An app that imports asuka/bluetooth gets its permissions, its purpose
+// An app that imports platform/bluetooth gets its permissions, its purpose
 // string, its module's uses-feature and the Flatpak's bus name;
 // asuka.toml's bluetooth adds the background modes and the location from
 // scans.
@@ -26,7 +26,7 @@ func TestBluetoothConfig(t *testing.T) {
 		}
 	}
 	if mod := stdAndroidManifest(t, "bluetooth"); !strings.Contains(mod, `<uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />`) {
-		t.Errorf("asuka/bluetooth's module's manifest:\n%s", mod)
+		t.Errorf("platform/bluetooth's module's manifest:\n%s", mod)
 	}
 	if strings.Contains(m, "AsukaBluetoothScanReceiver") || strings.Contains(m, "LOCATION") {
 		t.Errorf("background scanning without asking for it:\n%s", m)

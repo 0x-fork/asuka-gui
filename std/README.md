@@ -1,11 +1,21 @@
 # The standard library
 
-Each directory here is a package apps import as `asuka/<name>`
-(docs/stdlib.md lists them). The CLI carries this directory (package
-`std`, std.go embeds it), so an installed CLI needs no checkout; the
-compiler resolves `asuka/<name>` to `std/<name>` (lang/compile).
+Each directory here is a package apps import as `std/<name>`: the
+language's own library, the same on every platform (JSON, time, files,
+HTTP, SQLite, the store, Markdown, charts...). What wraps a device, an
+operating system's service or a store is the platform SDK's, imported
+as `platform/<name>` from the directories of sdk/ (sdk/README.md).
+docs/stdlib.md lists both. The CLI carries the two directories
+(packages `std` and `sdk`, std.go and sdk.go embed them), so an
+installed CLI needs no checkout; the compiler resolves `std/<name>` to
+`std/<name>` and `platform/<name>` to `sdk/<name>` (std.Package, used by
+lang/compile), and an import of the retired `asuka/<name>` says which
+it is now. A package's asuka.toml names it by its import path (`name =
+"platform/network"`); no other package can be named under either prefix
+(internal/pkgs' CheckName).
 
-A package is one of two kinds:
+What follows is how to write a package of either. A package is one of
+three kinds:
 
 - **Plain Asuka**, with functions the runtime implements declared as
   `native fn` (no body: the builtin `<name>.<fn>`, implemented in C in
@@ -13,25 +23,25 @@ A package is one of two kinds:
   time, url, regex, encoding, crypto, fs, ...
 - **A native package** (docs/native.md), for what only the platform can
   do: its `native interface`s (modules) and `native component`s (views),
-  implemented by each platform in its own language. `std/network` is the
+  implemented by each platform in its own language. `sdk/network` is the
   model to follow.
 - **Plain Asuka over a host's own module**, for what a host does as the
   platform's host (the Dock tile and the taskbar, global shortcuts, the
   tray, start at login, recent documents, the installed apps): the hosts
   already answer these by name (`modules["dock"]` in each host), and
-  `asuka/platform`'s `call` and `send` reach them, with the module's
-  little-endian encodings (`platform.u8`, `u32`, `f64`, `str`, the
-  `read*`s) or JSON. `std/dock`, `std/login`, `std/recent`, `std/hotkey`
-  and `std/apps` are such; a host that has no such module answers "no
+  `platform/host`'s `call` and `send` reach them, with the module's
+  little-endian encodings (`host.u8`, `u32`, `f64`, `str`, the
+  `read*`s) or JSON. `sdk/dock`, `sdk/login`, `sdk/recent`, `sdk/hotkey`
+  and `sdk/apps` are such; a host that has no such module answers "no
   module", which the package turns into its `unsupported` error or a
   fallback. Events a host reports come back through a long poll (a
-  module's `next`) in a `Stream`, shared through `live()` (std/hotkey).
+  module's `next`) in a `Stream`, shared through `live()` (sdk/hotkey).
 
-## A native package, as std/network does it
+## A native package, as sdk/network does it
 
 ```
 network/
-  asuka.toml                name = "asuka/network"; what it needs of an app
+  asuka.toml                name = "platform/network"; what it needs of an app
                             ([ios] usage strings and background modes,
                             [android] permissions), merged into each app
                             that imports it
@@ -39,15 +49,17 @@ network/
   Package.swift             the Swift package (iOS and macOS)
   swift/Network.swift       yours: makeMonitor
   swift/Network.asuka.swift generated
-  android/build.gradle.kts  the Gradle library module (namespace asuka.<name>)
-  android/src/main/kotlin/asuka/network/Network.kt   yours
+  android/build.gradle.kts  the Gradle library module (namespace
+                            platform.network: the import path's, as
+                            the Kotlin's package)
+  android/src/main/kotlin/platform/network/Network.kt   yours
   web/network.js            yours: export function makeMonitor
   desktop/network_linux.c   yours: network_make_Monitor (_windows.c; a
                             .c without a suffix is both's)
   desktop/network.asuka.h   generated (and network.asuka.c)
 ```
 
-`go run ./cmd/asuka native generate ./std/<name>` writes the generated
+`go run ./cmd/asuka native generate ./sdk/<name>` (or `./std/<name>`) writes the generated
 files for each platform whose project exists (create Package.swift,
 android/build.gradle.kts, web/ and desktop/ first). Commit them. A
 package with no C for Windows or Linux has none of desktop/'s for it,
@@ -75,8 +87,8 @@ and answers there as a platform without the package's code does.
 - What the platform keeps for the app until it's read (a purchase's
   transactions, a region's crossing) is read once by the package and fanned
   out to the streams that read it; what came with no reader is kept for
-  the first (std/purchase's `events()`, std/location's `crossings()`,
-  std/bluetooth's `restored()`).
+  the first (sdk/purchase's `events()`, sdk/location's `crossings()`,
+  sdk/bluetooth's `restored()`).
 
 ### Test fakes
 
@@ -129,7 +141,7 @@ test "a region, crossed" {
   for every app that imports the package: `iOS.entitlements`,
   `macOS.entitlements` and an `Info.plist` beside Package.swift, the
   Gradle module's `src/main/AndroidManifest.xml` and `build.gradle.kts`
-  (its libraries): what one member needs (asuka/location's service and
+  (its libraries): what one member needs (platform/location's service and
   receiver) goes in asuka.toml's `[uses]` instead. A package over a
   host's module, which has neither, says the rest in asuka.toml too:
   `[ios] entitlements` (a simulator build's values), `plist` (a key set
@@ -140,7 +152,7 @@ test "a region, crossed" {
   `locationPrecise`);
   `[android] application` and `manifest` (elements of the manifest's
   application and of the manifest), `hostModules` (the host's optional
-  Gradle modules, platform/android/asuka-<name>: std/push's `push`);
+  Gradle modules, platform/android/asuka-<name>: sdk/push's `push`);
   `[linux] flatpak` (the Flatpak's finish-args). Test it in cmd/asuka's
   TestStdManifests (a member's as "location.requestAlways"). What the
   app's own asuka.toml asks of a package is the CLI's (cmd/asuka/
@@ -182,13 +194,13 @@ What a host already does for its apps through a module of its own
 (notifications, pushes, iCloud, the photo library...: platform/ios's
 AsukaHost, platform/android's dev.asuka, platform/web's modules,
 platform/macos's AsukaHost, platform/windows, platform/linux) a package reaches through
-`asuka/platform`, as above, with no platform code of its own: it calls
-the module's methods by name (`platform.call`, `platform.send`,
-`platform.next` for a "next" method's stream), with the bytes
-the module reads (mostly JSON, `platform.u32` and the like for the
+`platform/host`, as above, with no platform code of its own: it calls
+the module's methods by name (`host.call`, `host.send`,
+`host.next` for a "next" method's stream), with the bytes
+the module reads (mostly JSON, `host.u32` and the like for the
 rest), types the answers in Asuka, and answers a host without the
-module (`platform.unsupported(e)`) as unsupported or with a fallback.
-std/notify, push, icloud, library, photos, contacts, calendar, compose,
+module (`host.unsupported(e)`) as unsupported or with a fallback.
+sdk/notify, push, icloud, library, photos, contacts, calendar, compose,
 periodic, background, liveactivity and widget are such. Moving a
 module's code into its package (as above) can come after, one platform
 at a time, without changing the package's API.
@@ -198,7 +210,7 @@ in C: std/sqlite (core/src/sqlite) calls the sqlite plugin's library,
 which std/sqlite's asuka-plugin.toml (its csrc, built by its
 internal/build) ships with
 the apps that import it (on the web, the page's SQLite worker runs it);
-std/crash reads the core's record of the runs (core/src/std/crash.c)
+sdk/crash reads the core's record of the runs (core/src/std/crash.c)
 where no host keeps its own (iOS, Android, the web).
 
 ### Tests

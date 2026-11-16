@@ -1,4 +1,4 @@
-// asuka/tray on a Mac (the "tray" module; std/tray has its protocol): each
+// platform/tray on a Mac (the "tray" module; sdk/tray has its protocol): each
 // icon is an NSStatusItem in the menu bar, its button showing the image (a
 // template: AppKit colors it as the menu bar is) and the title, its menu an
 // NSMenu. Without on click the menu is the item's own, which AppKit opens on
@@ -374,7 +374,7 @@ func asukaQuote(_ s: String) -> String {
 }
 
 @MainActor extension AsukaShell {
-    /// A tray icon's button (asuka/tray's number for it): flyouts hang
+    /// A tray icon's button (platform/tray's number for it): flyouts hang
     /// from it.
     func trayButton(id: UInt32) -> NSStatusBarButton? { AsukaTray.shared.icons[id]?.item.button }
 

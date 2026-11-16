@@ -1,8 +1,8 @@
-// asuka/device with no platform code (the fake host): its calls throw an
+// platform/device with no platform code (the fake host): its calls throw an
 // unsupported error, keepAwake does nothing, and the clipboard's changes
 // end at once.
 
-import asuka/device
+import platform/device
 
 component Info {
   let info = load device.info()

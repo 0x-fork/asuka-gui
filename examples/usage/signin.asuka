@@ -1,12 +1,12 @@
-import asuka/http
-import asuka/secure
-import asuka/time
-import asuka/webauth
+import std/http
+import platform/secure
+import std/time
+import platform/webauth
 
 /// Signs in with Claude: to add an account, or, with id, that account
 /// again. Or it adds a demo account.
 ///
-/// On a phone the sign-in is the system's sheet (asuka/webauth): Claude's
+/// On a phone the sign-in is the system's sheet (platform/webauth): Claude's
 /// page, with the browser's sessions, Google's and Apple's sign-in. On a
 /// desktop it's the browser, which redirects to a server of the app's on
 /// the loopback (http.loopback) with the code. Signing in with a code

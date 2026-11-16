@@ -1,4 +1,4 @@
-import asuka/bluetooth
+import platform/bluetooth
 
 struct Found {
   device: bluetooth.Device

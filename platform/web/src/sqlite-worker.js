@@ -57,7 +57,7 @@ async function init({ wasm, module }) {
     idb.catch(() => {});
     store = (path) => new IDBStore(idb, path);
   } else {
-    console.warn("asuka/sqlite: no origin private file system or IndexedDB here: databases last only as long as the page");
+    console.warn("std/sqlite: no origin private file system or IndexedDB here: databases last only as long as the page");
   }
   vfs = new VFS({ kept, store });
   engine = await Engine.load(await res, vfs);
@@ -214,7 +214,7 @@ async function open(conn, input, migrateFrom) {
   } catch (e) {
     c.error = `sqlite: ${path}: ${e?.message ?? e} (${e?.code > 0 ? e.code : CANTOPEN})`;
   }
-  if (c.error) console.error("asuka/sqlite:", c.error);
+  if (c.error) console.error("std/sqlite:", c.error);
 }
 
 async function run({ id, op, conn, input, migrate: migrateFrom }) {
@@ -241,7 +241,7 @@ async function run({ id, op, conn, input, migrate: migrateFrom }) {
     else result = { ok: false, message: `sqlite: no op ${op}` };
     if (!id && !result.ok && c && !c.error) {
       c.deferred ??= result.message;
-      console.error("asuka/sqlite:", result.message);
+      console.error("std/sqlite:", result.message);
     }
   } catch (e) {
     result = { ok: false, message: `sqlite: ${e?.message ?? e}` };
@@ -258,7 +258,7 @@ export function handle(m, post) {
   if (post) say = post;
   if (m.init) {
     ready = init(m.init).catch((e) => {
-      console.error("asuka/sqlite: SQLite didn't load:", e);
+      console.error("std/sqlite: SQLite didn't load:", e);
       throw new Error(`SQLite didn't load: ${e?.message ?? e}`);
     });
     ready.catch(() => {}); // each call says it

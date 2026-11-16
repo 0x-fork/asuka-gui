@@ -1,7 +1,7 @@
-// asuka/flag: the command line read into a struct of options, or an
+// std/flag: the command line read into a struct of options, or an
 // enum of commands, by what the compiler knows of the type.
 
-import asuka/flag
+import std/flag
 
 enum Level { low, high, veryHigh }
 

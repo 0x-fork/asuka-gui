@@ -1,6 +1,6 @@
-// asuka/time: the test's clock, calendars, formatting, parsing.
+// std/time: the test's clock, calendars, formatting, parsing.
 
-import asuka/time
+import std/time
 
 test "the test's clock" {
   let t = time.now()

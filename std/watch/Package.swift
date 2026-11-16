@@ -1,5 +1,5 @@
 // swift-tools-version:5.9
-// The asuka/watch package's Swift, for macOS (FSEvents; phones have
+// The std/watch package's Swift, for macOS (FSEvents; phones have
 // nothing to watch with): the Asuka CLI builds it with the apps that
 // import the package (asuka native). Windows and Linux run its C
 // (desktop/).

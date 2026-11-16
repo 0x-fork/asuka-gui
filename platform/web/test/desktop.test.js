@@ -1,4 +1,4 @@
-// The desktop modules asuka/platform's packages reach by name (dock,
+// The desktop modules platform/host's packages reach by name (dock,
 // recent, login), as a page has them: node --test platform/web.
 import { test } from "node:test";
 import assert from "node:assert/strict";

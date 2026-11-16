@@ -1,4 +1,4 @@
-// fs.c: asuka/fs's builtins: paths, and the file system's calls (POSIX,
+// fs.c: std/fs's builtins: paths, and the file system's calls (POSIX,
 // Win32 in UTF-16, WASI's where the web gives it a directory). The calls
 // block, so apps make them in spawn { }; each is safe on any thread.
 //

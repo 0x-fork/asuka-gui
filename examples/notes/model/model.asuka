@@ -1,7 +1,7 @@
 // The notes and their database: what the Notes app and its notes
 // command share.
 
-import asuka/sqlite
+import std/sqlite
 
 pub struct Note {
   id: int

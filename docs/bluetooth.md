@@ -1,6 +1,6 @@
 # Bluetooth
 
-`asuka/bluetooth` talks to Bluetooth Low Energy devices, as
+`platform/bluetooth` talks to Bluetooth Low Energy devices, as
 react-native-ble-plx and Web Bluetooth do: as a central (find devices,
 connect, read, write and follow their characteristics) and as a
 peripheral (serve services, advertise). Core Bluetooth on iOS and macOS;
@@ -24,7 +24,7 @@ first time (iOS's prompt, Android 12's nearby devices), and returns the
 state then.
 
 ```asuka
-import asuka/bluetooth
+import platform/bluetooth
 
 component Adapter {
   let adapter = bluetooth.state()

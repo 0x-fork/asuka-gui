@@ -1,5 +1,5 @@
 // The web host's system modules (src/modules/system*.js): their
-// arguments and results as the core and the packages over asuka/host
+// arguments and results as the core and the packages over platform/host
 // encode and decode them (ui.ShareFiles, compose, notify), and the MIME
 // types of files.js.
 import { test } from "node:test";

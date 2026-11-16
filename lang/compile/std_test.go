@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// The standard library's runtime builtins: asuka/appearance's rgb, an
+// The standard library's runtime builtins: platform/appearance's rgb, an
 // opaque color of its channels (clamped), on both backends.
 func TestAppearanceRGB(t *testing.T) {
-	res := Files(map[string][]byte{"a.asuka": []byte(`import asuka/appearance
+	res := Files(map[string][]byte{"a.asuka": []byte(`import platform/appearance
 
 test "rgb" {
   let c: Color = #0a7cff
@@ -16,7 +16,7 @@ test "rgb" {
   print(appearance.rgb(300, -1, 0) == #ff0000)
 }
 `)}, &Options{Packages: map[string]map[string][]byte{
-		"asuka/appearance": {"a.asuka": []byte("pub native fn rgb(r: int, g: int, b: int) -> Color\n")},
+		"platform/appearance": {"a.asuka": []byte("pub native fn rgb(r: int, g: int, b: int) -> Color\n")},
 	}})
 	if err := res.Err(); err != nil {
 		t.Fatal(err)

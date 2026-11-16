@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// What another app shares with this one through its share extension
 /// (asuka.json's shareTarget), collected in the extension: the standalone
 /// one (platform/ios/Share), which opens the app with it, and the app's
-/// share sheet (asuka/sharesheet: AsukaShareSheetController), which shows
+/// share sheet (platform/sharesheet: AsukaShareSheetController), which shows
 /// it. Texts and links as they are; files (when the app takes them)
 /// copied into the App Group the app and the extension share (Info.plist's
 /// AsukaAppGroup), under AsukaShare/. Compiled into both.

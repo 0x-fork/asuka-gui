@@ -1,4 +1,4 @@
-// asuka/http's web client (std/http/web/http.js): a download read as it
+// std/http's web client (std/http/web/http.js): a download read as it
 // comes, its progress reported, written into the app's files; its
 // timeout the longest wait for more: node --test platform/web.
 import { test } from "node:test";

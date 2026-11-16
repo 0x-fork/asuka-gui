@@ -30,9 +30,9 @@ func TestNativePackages(t *testing.T) {
 			t.Errorf("%s: %+v %v", pl, ps, err)
 		}
 	}
-	// sqliteapp imports asuka/sqlite, a native package of the standard
+	// sqliteapp imports std/sqlite, a native package of the standard
 	// library's (where its databases are kept).
-	if ps, err := nativeFor(sqliteTestApp(t), "android"); err != nil || len(ps) != 1 || ps[0].path != "asuka/sqlite" || ps[0].main {
+	if ps, err := nativeFor(sqliteTestApp(t), "android"); err != nil || len(ps) != 1 || ps[0].path != "std/sqlite" || ps[0].main {
 		t.Errorf("sqliteapp: %+v %v", ps, err)
 	}
 	if err := app.cfg.androidNatives(app); err != nil {

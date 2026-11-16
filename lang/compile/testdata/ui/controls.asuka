@@ -1,8 +1,8 @@
-// Controls: Wheel, ColorPicker, DatePicker (and asuka/time's Picker, of a Time,
+// Controls: Wheel, ColorPicker, DatePicker (and std/time's Picker, of a Time,
 // bound through a component's valueChange), a component's bind, and
 // Shortcuts' mods.
 
-import asuka/time
+import std/time
 
 component Swatch {
   prop color: Color = #ff0000

@@ -1,6 +1,6 @@
 # アプリ内課金
 
-`asuka/purchase` を使うと、各プラットフォームのストアを通じてアプリ内で商品を販売できます。扱えるのは、消耗型（コイン、ヒント）、非消耗型（レベル、買い切りの「Pro」）、自動更新されるサブスクリプションと、自動更新されないサブスクリプションです。react-native-iap、expo-iap、RevenueCat の SDK がデバイス上で行うことをカバーし、各ストアの現行の API を使います。
+`platform/purchase` を使うと、各プラットフォームのストアを通じてアプリ内で商品を販売できます。扱えるのは、消耗型（コイン、ヒント）、非消耗型（レベル、買い切りの「Pro」）、自動更新されるサブスクリプションと、自動更新されないサブスクリプションです。react-native-iap、expo-iap、RevenueCat の SDK がデバイス上で行うことをカバーし、各ストアの現行の API を使います。
 
 | プラットフォーム | ストア | API |
 | --- | --- | --- |
@@ -17,7 +17,7 @@
 `Item` はアプリが販売する商品で、ストアでの ID と種類（`.consumable`、`.nonConsumable`、`.autoRenewable`、`.nonRenewing`）からなります。Play は消耗型と非消耗型を区別しないので、アプリが指定します。
 
 ```asuka
-import asuka/purchase
+import platform/purchase
 
 let coins = purchase.Item(id: "coins_100", kind: .consumable)
 let pro = purchase.Item(id: "pro", kind: .nonConsumable)
@@ -156,6 +156,6 @@ test "Ask to Buy, then approved" {
 ## アプリの設定
 
 - **iOS と macOS。** App 内課金のケイパビリティはすべての App ID で有効になっていて、エンタイトルメントは必要ありません。App Store Connect で有料 App 契約（Paid Apps Agreement）に同意し、そこで商品を追加します。Mac の StoreKit 2 には macOS 12 が必要で、それより前のバージョンでは `available()` は false です。
-- **Android。** `asuka/purchase` をインポートするアプリは、Play Billing と `com.android.vending.BILLING` 権限を含めてビルドされます。インポートしないアプリには含まれません。
+- **Android。** `platform/purchase` をインポートするアプリは、Play Billing と `com.android.vending.BILLING` 権限を含めてビルドされます。インポートしないアプリには含まれません。
 - **Windows。** パッケージ化（MSIX）され、Store に関連付けられたアプリに、パートナーセンターでアドオンを追加します。
 - **Web。** サイトを、Play Billing を有効にした Trusted Web Activity としてパッケージ化し（Bubblewrap の `playBilling`）、Play Console で商品を追加します。非消耗型は、3 日以内にサーバーから Play Developer API で承認（acknowledge）してください。

@@ -27,7 +27,7 @@ import (
 // Gradle module's AndroidManifest.xml (services, receivers, queries),
 // its Swift package's Info.plist and iOS.entitlements (nativeNeeds),
 // which every app that imports it gets. A package over a host's own
-// module (asuka/host), which has neither, says it all here.
+// module (platform/host), which has neither, says it all here.
 type depManifest struct {
 	manifestNeeds
 	Uses map[string]manifestNeeds `json:"uses"`
@@ -70,7 +70,7 @@ type manifestNeeds struct {
 		Manifest    []string `json:"manifest"`
 		// HostModules are the host's optional Gradle modules
 		// (platform/android/asuka-<name>) the package's host module needs:
-		// asuka/push's Firebase, asuka/periodic's WorkManager.
+		// platform/push's Firebase, platform/periodic's WorkManager.
 		HostModules []string `json:"hostModules"`
 		// Launch is the package's class that runs as the app's process
 		// starts (the host's AsukaLaunching), by its name: the app's
@@ -96,7 +96,7 @@ var derivedNeeds = []string{
 	// NSLocationTemporaryUsageDescriptionDictionary, with asuka.toml's
 	// ios.locationPurposes).
 	"locationPrecise",
-	// The app's own share sheet (asuka/sharesheet): with asuka.toml's
+	// The app's own share sheet (platform/sharesheet): with asuka.toml's
 	// shareTarget, iOS's share extension runs the app as its sheet (the
 	// app's code in a framework the two share, their App Group and
 	// keychain group), and Android's shares go to AsukaShareActivity.
@@ -147,7 +147,7 @@ func (c *appConfig) depManifests(deps map[string]string, u *appbuild.Uses) error
 				errs = append(errs, fmt.Errorf("%s's %s: uses.%s: %v", id, configFile, member, err))
 			}
 		}
-		if id == "asuka/maps" {
+		if id == "platform/maps" {
 			c.mapsKey = true
 		}
 	}
@@ -248,14 +248,13 @@ func (c *appConfig) derives(d string) bool { return slices.Contains(c.derived, d
 // names, its members' too: what asuka dev's player, which runs whatever
 // the app's next save imports, is built with.
 func stdHostFlags() []string {
-	dir, err := std.Dir()
+	ds, err := std.PackageDirs()
 	if err != nil {
 		return nil
 	}
-	ms, _ := filepath.Glob(filepath.Join(dir, "*", configFile))
 	var out []string
-	for _, p := range ms {
-		m, err := readManifest(filepath.Dir(p))
+	for _, d := range ds {
+		m, err := readManifest(d)
 		if err != nil || m == nil {
 			continue
 		}

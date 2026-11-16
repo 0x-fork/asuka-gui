@@ -407,4 +407,4 @@ accent = "#7c3aed"
 
 ## ライトとダーク
 
-アプリはシステムの外観に従います。iOS と macOS のダークモード、Android のダークテーマ、Windows のアプリモード（「設定」>「個人用設定」>「色」）、GNOME のダークスタイル、ブラウザーの `prefers-color-scheme` です。アプリ独自の外観設定と同じように、システムの設定にかかわらずライトかダークで表示することもできます（SwiftUI の `preferredColorScheme`、Android では AppCompat のナイトモード、macOS ではアプリの `NSAppearance`、Linux では libadwaita のスタイルマネージャーにあたります）。[アプリ](navigation.md)を参照してください。セマンティックカラー、プラットフォームのコントロール、システムバーは、アプリを作り直すことなく切り替わり、今どちらなのかは環境の `dark` でわかります。ユーザーの選択は [`asuka/store`](../stdlib.md) で保存しましょう。
+アプリはシステムの外観に従います。iOS と macOS のダークモード、Android のダークテーマ、Windows のアプリモード（「設定」>「個人用設定」>「色」）、GNOME のダークスタイル、ブラウザーの `prefers-color-scheme` です。アプリ独自の外観設定と同じように、システムの設定にかかわらずライトかダークで表示することもできます（SwiftUI の `preferredColorScheme`、Android では AppCompat のナイトモード、macOS ではアプリの `NSAppearance`、Linux では libadwaita のスタイルマネージャーにあたります）。[アプリ](navigation.md)を参照してください。セマンティックカラー、プラットフォームのコントロール、システムバーは、アプリを作り直すことなく切り替わり、今どちらなのかは環境の `dark` でわかります。ユーザーの選択は [`std/store`](../stdlib.md) で保存しましょう。

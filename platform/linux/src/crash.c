@@ -1,4 +1,4 @@
-// crash.c: crash records (asuka/crash). The core keeps the run's record
+// crash.c: crash records (platform/crash). The core keeps the run's record
 // (asuka_crash_start: core/src/std/crash.c) and its own fatal errors; the
 // host catches what only it sees, a fatal signal in native code (a
 // segmentation fault in GTK's code, an abort of GLib's, the app's C), on

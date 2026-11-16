@@ -737,11 +737,18 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 // ---------------------------------------------------------------------
 // The standard library the compiler provides
 
+// StdPath reports whether path is the standard library's (std/json) or
+// the platform SDK's (platform/camera): packages the CLI carries, whose
+// native fns the runtime implements.
+func StdPath(path string) bool {
+	return strings.HasPrefix(path, "std/") || strings.HasPrefix(path, "platform/")
+}
+
 // ProvidesStd reports whether the compiler itself provides the standard
 // library's package at path (the rest are directories of std/).
 func ProvidesStd(path string) bool {
 	switch path {
-	case "asuka/json", "asuka/math", "asuka/assets":
+	case "std/json", "std/math", "std/assets":
 		return true
 	}
 	return false
@@ -756,11 +763,11 @@ func (c *Checker) makeStd(path string) *Package {
 	f1 := &FuncType{Params: []Type{Float}, Result: Float}
 	f2 := &FuncType{Params: []Type{Float, Float}, Result: Float}
 	switch path {
-	case "asuka/json":
+	case "std/json":
 		p.Name = "json"
 		add("decode", BJSONDecode, "", nil)
 		add("encode", BJSONEncode, "", nil)
-	case "asuka/math":
+	case "std/math":
 		p.Name = "math"
 		for _, n := range []string{"sqrt", "floor", "ceil", "round", "sin", "cos"} {
 			add(n, BMath, "math."+n, f1)
@@ -775,7 +782,7 @@ func (c *Checker) makeStd(path string) *Package {
 		pi := &Global{object: object{name: "pi"}, Pkg: p, Kind: ConstGlobal, Type: Float, Value: &syntax.BasicLit{Kind: syntax.FLOAT, Value: "3.141592653589793"}, Pub: true}
 		p.Scope.Insert(pi)
 		p.Globals = append(p.Globals, pi)
-	case "asuka/assets":
+	case "std/assets":
 		p.Name = "assets"
 		add("text", BAssetText, "", nil)
 		add("bytes", BAssetBytes, "", nil)

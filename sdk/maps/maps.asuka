@@ -1,0 +1,78 @@
+// Package platform/maps shows a map: Apple Maps (MapKit) on iOS and macOS,
+// Google Maps on Android, OpenStreetMap's tiles on Windows, Linux
+// (libshumate) and the web, with markers, the user's location and the
+// region the app moves it to.
+//
+//   state region = maps.Region(center: maps.Coordinate(lat: 37.77, lng: -122.42), latDelta: 0.08, lngDelta: 0.08)
+//
+//   maps.View {
+//     bind region: region
+//     markers: pins
+//     grow: 1
+//     on markerPress(id) { picked = id }
+//   }
+//
+// Android: Google's Maps SDK, which an app that imports this package is
+// built with, and a Google Maps Platform API key (Maps SDK for Android)
+// in asuka.toml's android.mapsKey. showsUser needs the location
+// permission: ask for it first (platform/location).
+
+/// A place on Earth, in degrees.
+pub struct Coordinate {
+  lat: float = 0
+  lng: float = 0
+}
+
+/// What the map shows: its center, and how many degrees of latitude and
+/// longitude it spans (about 0.01 is a neighborhood, 0.1 a city, 10 a
+/// country). A span of 0: the platform's (the whole country, the world).
+pub struct Region {
+  center: Coordinate = Coordinate()
+  latDelta: float = 0
+  lngDelta: float = 0
+}
+
+/// A pin on the map.
+pub struct Marker {
+  /// Names it, for markerPress.
+  id: string
+  at: Coordinate
+  /// In its callout (iOS, macOS) or info window (Android).
+  title: string = ""
+  subtitle: string = ""
+  /// Tints it; none: the platform's red.
+  color: Color? = none
+}
+
+/// The map's look.
+pub enum MapType {
+  /// Streets.
+  standard
+  /// Imagery.
+  satellite
+  /// Imagery with streets.
+  hybrid
+  /// Streets in quieter colors (iOS, macOS, the web); standard elsewhere.
+  muted
+}
+
+/// A map. Give it a size, or grow.
+pub native component View {
+  /// Where the map shows; changing it moves the map there (animated).
+  /// Bound, it follows the user's moves too.
+  prop region: Region = Region()
+  prop markers: [Marker] = []
+  prop mapType: MapType = .standard
+  /// Shows the user's location, with the permission.
+  prop showsUser: bool = false
+  /// false: the user can't move or zoom it (a preview).
+  prop interactive: bool = true
+  /// The region, once the user has moved the map (not as it moves).
+  event regionChange(region: Region)
+  /// A marker the user tapped.
+  event markerPress(id: string)
+  /// Where the user tapped the map (not a marker).
+  event press(at: Coordinate)
+  /// Why the map can't show (Android: no API key).
+  event error(message: string)
+}

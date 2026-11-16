@@ -1,6 +1,6 @@
-// asuka/random: seeded sequences repeat; ranges hold.
+// std/random: seeded sequences repeat; ranges hold.
 
-import asuka/random
+import std/random
 
 test "seeded" {
   random.seed(42)

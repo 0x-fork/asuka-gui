@@ -6,9 +6,9 @@
 //   notes done 3           checks note 3 off
 //   notes list --search milk --json
 
-import asuka/flag
-import asuka/json
-import asuka/os
+import std/flag
+import std/json
+import std/os
 import ../model.{Note, openDB, search}
 
 struct ListOptions {

@@ -133,8 +133,8 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
   npm registry, `asuka.lock`, publishing
 - [Plugins](plugins.md): packages that bring native libraries, prebuilt
   for each platform, shipped with the app; SQLite is one.
-- [The standard library](stdlib.md): the `asuka/...` packages, and what
-  each one does on each platform.
+- [The standard library and the platform SDK](stdlib.md): the `std/...`
+  and `platform/...` packages, and what each one does on each platform.
 - [C from Asuka](c.md): calling C (the app's own, a library's, the
   system's) with `extern` declarations, `asuka.toml`'s `[c]`, and
   callbacks.

@@ -1,6 +1,6 @@
 // Native modules (ui.Call), by name: the app's own (asuka.registerModule),
-// and the few of the host's that the core and the standard library's
-// packages over asuka/host and asuka/platform still call by name. Every
+// and the few of the host's that the core and the platform SDK's
+// packages over platform/host still call by name. Every
 // other platform API is a package's own JavaScript (std/<name>/web),
 // loaded only by the apps that import it.
 //
@@ -22,11 +22,11 @@ const enc = new TextEncoder();
 
 /** files is which of modules/ has each of the host's modules. */
 export const files = {
-  share: "system", compose: "system", notify: "system", push: "system", // the share sheet; asuka/compose, notify, push
+  share: "system", compose: "system", notify: "system", push: "system", // the share sheet; platform/compose, notify, push
   web: "web", // WebView's eval and cookies
-  dock: "desktop", recent: "desktop", login: "desktop", // asuka/platform's
+  dock: "desktop", recent: "desktop", login: "desktop", // platform/host's
   icloud: "services", periodic: "services", background: "services", widget: "services", liveActivity: "services",
-  photoLibrary: "services", library: "services", contacts: "services", calendar: "services", // asuka/host's
+  photoLibrary: "services", library: "services", contacts: "services", calendar: "services", // platform/host's
 };
 
 const load = {

@@ -1,4 +1,4 @@
-// json.h: JSON to and from typed values, for asuka/json and the
+// json.h: JSON to and from typed values, for std/json and the
 // network's .json<T>(). A value's type comes as a descriptor (the
 // compiler writes it as a string constant):
 //

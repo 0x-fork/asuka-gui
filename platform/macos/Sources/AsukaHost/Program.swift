@@ -1,5 +1,5 @@
 // A program's entry (docs/programs.md) when its packages have Swift
-// (asuka/http's URLSession): no application and no window, the core's
+// (std/http's URLSession): no application and no window, the core's
 // program run on the main queue's loop, the packages' modules answering
 // as they do in an app. The program exits as its main ends.
 import Foundation

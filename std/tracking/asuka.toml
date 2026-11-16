@@ -1,6 +1,0 @@
-name = "asuka/tracking"
-version = "0.1.0"
-description = "Asks the user to let the app track them across other companies' apps and websites"
-
-[ios.usage]
-NSUserTrackingUsageDescription = "To show you ads that suit you."

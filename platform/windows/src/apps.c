@@ -1,4 +1,4 @@
-// apps.c: asuka/apps on Windows (its search ranked as every desktop
+// apps.c: platform/apps on Windows (its search ranked as every desktop
 // host's): the Start menu's All apps, the shell's
 // Applications folder (FOLDERID_AppsFolder: desktop apps by their
 // shortcuts, packaged apps by their AppUserModelIDs, as PowerToys' Command

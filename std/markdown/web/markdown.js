@@ -1,4 +1,4 @@
-// asuka/markdown on the web: the paragraphs the core read (md4c) as the
+// std/markdown on the web: the paragraphs the core read (md4c) as the
 // page's own elements (headings, paragraphs, code blocks, rules, tables'
 // rows), styled after the platform's text: one selection, links that open
 // in a new tab. Text is only ever text (textContent), never HTML.

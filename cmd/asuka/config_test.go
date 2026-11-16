@@ -206,9 +206,9 @@ func TestFeaturesFromImports(t *testing.T) {
 	}
 }
 
-// An app that imports asuka/pay gets Apple Pay's entitlement with
+// An app that imports platform/pay gets Apple Pay's entitlement with
 // asuka.toml's merchant IDs (none without them), and no host module
-// (Google Pay's library, API and callbacks service are asuka/pay's
+// (Google Pay's library, API and callbacks service are platform/pay's
 // Gradle module's); one that doesn't, neither.
 func TestPayFeature(t *testing.T) {
 	dir := t.TempDir()
@@ -261,7 +261,7 @@ func TestIPad(t *testing.T) {
 	}
 }
 
-// An app with its own share sheet (asuka/sharesheet): Android's share
+// An app with its own share sheet (platform/sharesheet): Android's share
 // filters are its Activity's; iOS's extension is the host's sheet, with
 // the app's ID, and an App Group for the data even for texts alone; the
 // app's keychain group for both.
@@ -286,7 +286,7 @@ func TestShareSheetConfig(t *testing.T) {
 	}
 }
 
-// A push rewrite (asuka/push's rewrite) gives the app a Notification
+// A push rewrite (platform/push's rewrite) gives the app a Notification
 // Service Extension: the shared layout, the App Group and keychain group
 // it shares, its own bundle ID; Android's manifest says so to the host.
 func TestPushRewriteConfig(t *testing.T) {

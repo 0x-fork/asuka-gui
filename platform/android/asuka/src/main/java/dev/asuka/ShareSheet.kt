@@ -20,7 +20,7 @@ import com.google.android.material.shape.ShapeAppearanceModel
 import java.io.File
 
 /**
- * The app's share sheet (asuka/sharesheet): what another app shares opens
+ * The app's share sheet (platform/sharesheet): what another app shares opens
  * this Activity over that app, in its task, in a process of its own
  * (":share"), where the app runs as its sheet (ASUKA_SHARE_SHEET:
  * sharesheet.active() is true, and the app block shows the sheet), as an

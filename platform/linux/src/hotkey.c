@@ -1,4 +1,4 @@
-// hotkey.c: asuka/hotkey on Linux, two ways:
+// hotkey.c: platform/hotkey on Linux, two ways:
 //
 //   - Wayland: apps can't see keys pressed in other apps; the desktop
 //     binds shortcuts for an app that asks the XDG desktop portal's

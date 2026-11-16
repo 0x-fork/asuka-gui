@@ -1,4 +1,4 @@
-// asuka/photos on a Mac, with PhotoKit as on iOS ("photoLibrary"):
+// platform/photos on a Mac, with PhotoKit as on iOS ("photoLibrary"):
 // "current" and "request" answer what's allowed, "list" JSON (id, width,
 // height, created in ms, screenshot), "thumbnail" a JPEG's path in the
 // caches and "export" JSON (path, name). macOS has no limited library
@@ -6,7 +6,7 @@
 // it, "list" answers none and the others "not allowed", without asking:
 // request asks, with the app's NSPhotoLibraryUsageDescription.
 //
-// asuka/library ("library": "save"): movies and pictures go to Photos
+// platform/library ("library": "save"): movies and pictures go to Photos
 // (after asking to add to it, NSPhotoLibraryAddUsageDescription),
 // answering with the asset's identifier; downloads to ~/Downloads and
 // music to ~/Music, under the folder asked, answering with the file's
@@ -39,7 +39,7 @@ import Photos
         PHPhotoLibrary.requestAuthorization(for: level) { s in DispatchQueue.main.async { done(s.rawValue) } }
     }
 
-    /// A status as asuka/photos' wire names it.
+    /// A status as platform/photos' wire names it.
     static func access(_ s: Int) -> String {
         switch s {
         case 3: return "allowed"
@@ -170,7 +170,7 @@ import Photos
     }
 }
 
-/// asuka/library's module.
+/// platform/library's module.
 @MainActor enum AsukaLibrary {
     /// Where save puts a collection that isn't Photos': Downloads (0) and
     /// Music (2). Under the automation, ASUKA_TEST_LIBRARY_DIR's Downloads

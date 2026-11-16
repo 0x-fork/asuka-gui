@@ -113,7 +113,7 @@ func TestDocExamples(t *testing.T) {
 	}
 }
 
-// The updater's examples (asuka/update) in the shipping and desktop
+// The updater's examples (platform/update) in the shipping and desktop
 // guides compile, in every language's docs.
 func TestUpdateDocExamples(t *testing.T) {
 	n := 0
@@ -125,7 +125,7 @@ func TestUpdateDocExamples(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, ex := range asukaBlocks(string(b)) {
-				if !strings.Contains(ex.code, "import asuka/update") {
+				if !strings.Contains(ex.code, "import platform/update") {
 					continue
 				}
 				n++
@@ -137,7 +137,7 @@ func TestUpdateDocExamples(t *testing.T) {
 		}
 	}
 	if n < 9 {
-		t.Errorf("%d examples of asuka/update, want 3 in each language", n)
+		t.Errorf("%d examples of platform/update, want 3 in each language", n)
 	}
 }
 

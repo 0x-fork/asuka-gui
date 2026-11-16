@@ -120,7 +120,7 @@ ASUKA_API int asuka_quit_request(int ending);
 // Sets an environment variable for the Go code (os.Setenv), which copied
 // the process's as it loaded.
 ASUKA_API void asuka_setenv(const char *key, const char *value);
-// Sets the app's own directory, where it keeps its files (asuka/fs's
+// Sets the app's own directory, where it keeps its files (std/fs's
 // appDir: Application Support on Apple platforms, the app's files
 // directory on Android, its data directory on desktops). Before
 // asuka_start; without it the core reads ASUKA_DATA, else guesses.
@@ -130,7 +130,7 @@ ASUKA_API void asuka_set_app_dir(const char *path);
 // with): where a browser opened the page, where a desktop window was left.
 // Main thread, before asuka_load or asuka_run.
 ASUKA_API void asuka_set_start(const char *href);
-// Begins the run's crash record (asuka/crash: core/src/std/crash.c), with
+// Begins the run's crash record (platform/crash: core/src/std/crash.c), with
 // info, JSON of the device and the app ("model", "system",
 // "systemVersion", "appVersion", "build"; "foreground" if the app starts
 // in front), after asuka_set_app_dir: the directory the host writes its

@@ -92,22 +92,22 @@ Web アプリから見える環境（`environment()`）は、ブラウザーの�
 
 ## アプリのファイル
 
-アプリのディレクトリ（`fs.appDir()`）は、`asuka/fs` がそこに書き込んだファイルやクラッシュの記録も含めて保持されます。ページはメモリ上のファイルシステムを持ち、コアのファイル操作（WASI の呼び出し）はそこに届きます。このディレクトリのファイルは、アプリの起動前にブラウザーのストレージ（IndexedDB）から読み込まれ、変更の少し後と、ページが非表示になったり閉じられたりしたときに書き戻されます（大きなファイルは 64 KiB のチャンク単位で、変更のあったチャンクだけが書き込まれます）。アプリのタブどうしは、これらのファイルを共有します。あるタブの書き込みはほかのタブに届き、受け取ったタブはファイルを読み直します（ただし、あるタブが変更してまだ書き戻していないファイルは、書き戻すまでそのタブの内容のままです。つまり、最後に書き込んだタブの内容が残ります）。ユーザーがドロップ、ペースト、選択したものは、iOS や Android と同じくアプリのキャッシュ（`/tmp`）にコピーされ、パスとしてアプリに渡されます。
+アプリのディレクトリ（`fs.appDir()`）は、`std/fs` がそこに書き込んだファイルやクラッシュの記録も含めて保持されます。ページはメモリ上のファイルシステムを持ち、コアのファイル操作（WASI の呼び出し）はそこに届きます。このディレクトリのファイルは、アプリの起動前にブラウザーのストレージ（IndexedDB）から読み込まれ、変更の少し後と、ページが非表示になったり閉じられたりしたときに書き戻されます（大きなファイルは 64 KiB のチャンク単位で、変更のあったチャンクだけが書き込まれます）。アプリのタブどうしは、これらのファイルを共有します。あるタブの書き込みはほかのタブに届き、受け取ったタブはファイルを読み直します（ただし、あるタブが変更してまだ書き戻していないファイルは、書き戻すまでそのタブの内容のままです。つまり、最後に書き込んだタブの内容が残ります）。ユーザーがドロップ、ペースト、選択したものは、iOS や Android と同じくアプリのキャッシュ（`/tmp`）にコピーされ、パスとしてアプリに渡されます。
 
-`spawn { … }` は、ページの Web Worker の一つで実行されます（最大 4 つ。`spawn` が初めて必要としたときに起動します）。各ワーカーはアプリのコードをもう一度実行し、トップレベルの `let` を UI なしで作ります。そこで作られる値（トップレベルで開いたデータベースなど）は、そのワーカー自身のものです。ワーカーはアプリのファイルのコピーを持っています。ページが変更したファイルは次に実行するブロックと一緒に送られ、ブロックが変更したファイルは結果と一緒に戻ってきます。書き込み手が一つ増えるのと同じで、最後にファイルを書いた側の内容が残ります。`asuka/sqlite` のデータベースはページのものなので、ブロックからは使えません。
+`spawn { … }` は、ページの Web Worker の一つで実行されます（最大 4 つ。`spawn` が初めて必要としたときに起動します）。各ワーカーはアプリのコードをもう一度実行し、トップレベルの `let` を UI なしで作ります。そこで作られる値（トップレベルで開いたデータベースなど）は、そのワーカー自身のものです。ワーカーはアプリのファイルのコピーを持っています。ページが変更したファイルは次に実行するブロックと一緒に送られ、ブロックが変更したファイルは結果と一緒に戻ってきます。書き込み手が一つ増えるのと同じで、最後にファイルを書いた側の内容が残ります。`std/sqlite` のデータベースはページのものなので、ブロックからは使えません。
 
 ブラウザーは、ユーザーが消去するまでオリジンのストレージを保持します。ただし、デバイスの空き容量がなくなると、ブラウザーがそのオリジンのストレージを削除することがあります（Safari は、ホーム画面に追加されていないサイトについては、7 日間アクセスがない場合にも削除します）。
 
 ## SQLite
 
-`asuka/sqlite` は、ライブクエリも含めて、ほかのプラットフォームと同じように動作します。同じ SQLite と同じ Asuka のライブラリを、WebAssembly にビルドしたものです（`asqlite.wasm`。`asuka dev --platform web` と `asuka build --platform web` が、`asuka/sqlite` をインポートするアプリに同梱します）。SQLite はページのワーカーで動き、アプリのデータディレクトリにあるデータベースを、ブラウザーの Origin Private File System に保存します。データベース全体がメモリに読み込まれることはなく、コミットが戻った時点でディスクに書き込まれています。各ステートメントはワーカーへのメッセージとその応答で、取得した行はどのプラットフォームとも同じくコアがデコードします。
+`std/sqlite` は、ライブクエリも含めて、ほかのプラットフォームと同じように動作します。同じ SQLite と同じ Asuka のライブラリを、WebAssembly にビルドしたものです（`asqlite.wasm`。`asuka dev --platform web` と `asuka build --platform web` が、`std/sqlite` をインポートするアプリに同梱します）。SQLite はページのワーカーで動き、アプリのデータディレクトリにあるデータベースを、ブラウザーの Origin Private File System に保存します。データベース全体がメモリに読み込まれることはなく、コミットが戻った時点でディスクに書き込まれています。各ステートメントはワーカーへのメッセージとその応答で、取得した行はどのプラットフォームとも同じくコアがデコードします。
 
 ほかのプラットフォームとの違いは次のとおりです。
 
 - `sqlite.open` と `db.migrate` は、ほかのプラットフォームではメインスレッドで実行されますが、Web のメインスレッドはワーカーを待てません。そのため、応答を待たずにワーカーへ送られ、その後のステートメントより先に実行されます。開けなかったデータベースでは、以降のステートメントがすべてその理由とともに失敗します。マイグレーションが失敗した（そしてロールバックされた）場合は、そのデータベースの次のステートメントがそのエラーで失敗し、コンソールにもその旨が表示されます。
 - ジャーナルは write-ahead logging（接続間で共有するメモリが必要）ではなく、ロールバックジャーナルです。また、データベースへの接続は一つだけです。そのため、読み取りは進行中の書き込みと並行して走るのではなく、書き込みの完了を待ちます。
 - アプリの複数のタブで、一つのデータベースを使えます。タブはデータベースを使っている間それを保持し、ほかのタブが求めると手放します（トランザクションの合間に手放し、トランザクションの途中では手放しません）。ほかのタブが保持しているデータベースに対するステートメントは、SQLite がほかのプロセスのロックを待つのと同じく、ビジータイムアウトの 5 秒間、そのタブが手放すまで再実行されます。あるタブのライブクエリには、ほかのタブの書き込みは伝わりません（ネイティブで、ほかのプロセスの書き込みが伝わらないのと同じです。`db.changed()` で再実行できます）。
-- データベースはワーカーのファイルで、ページのファイルシステムにあるわけではありません。そのため、`asuka/fs` からは見えません。データディレクトリ以外の場所（`/tmp`）にあるデータベースは、ページが開いている間しか残りません。
+- データベースはワーカーのファイルで、ページのファイルシステムにあるわけではありません。そのため、`std/fs` からは見えません。データディレクトリ以外の場所（`/tmp`）にあるデータベースは、ページが開いている間しか残りません。
 - Origin Private File System がない場合（`https` や `localhost` から配信されていないページ。たとえば `asuka dev --lan` のページや、一部のブラウザーのプライベートウィンドウ）、ワーカーはデータベースを IndexedDB に保存し、使っている間はメモリ上に置きます。この場合、コミットが永続化されるのは、コミットが戻った少し後です。セキュアコンテキストでないページでは Web Locks も使えないため、二つのタブが一つのデータベースに書き込むと、互いの書き込みが失われることがあります（コンソールにその旨が表示されます）。
 - 以前のバージョンの Asuka がアプリのファイルの中（IndexedDB）に保存していたデータベースは、アプリが初めて開いたときにワーカーへ移されます。
 
@@ -115,38 +115,38 @@ Web アプリから見える環境（`environment()`）は、ブラウザーの�
 
 ## ネイティブモジュール
 
-標準ライブラリのパッケージは、Web ホストを通じてブラウザーの機能を使います。パッケージごとの `web/` の JavaScript か、どのアプリにもある機能ならホスト自身のモジュール（`platform/web/src/modules`）です。ブラウザーでは次のようになります。
+標準ライブラリとプラットフォーム SDK のパッケージは、Web ホストを通じてブラウザーの機能を使います。パッケージごとの `web/` の JavaScript か、どのアプリにもある機能ならホスト自身のモジュール（`platform/web/src/modules`）です。ブラウザーでは次のようになります。
 
-- `asuka/secure`：値は、ブラウザーが保持して外に出さない鍵（エクスポートできない WebCrypto の鍵）で暗号化（AES-GCM）され、IndexedDB に保存されます。キーチェーンではありません。アプリのオリジンで動くスクリプトは鍵そのものを読めませんが、その鍵での復号を依頼することはできます。`https`（または `localhost`）が必要です。
-- `asuka/device`：`info()` はユーザーエージェントから取得します（Chromium のクライアントヒントからは、システムのバージョンと Android スマートフォンの機種がわかります）。クリップボード、クリップボードの画像（PNG。キャッシュに保存されます）、`clipboardChanges()`（アプリ自身のコピーと、ユーザーがページにクリップボードの読み取りを許可している場合はほかのアプリのコピー）に対応します。`keepAwake`（Screen Wake Lock。ページが再び表示されると取得し直します）、`browse`（新しいタブ）、`pickPhotos` と `pickFiles`（ブラウザーのファイル選択ダイアログ。選んだファイルはキャッシュにコピーされます）にも対応します。
-- `shareFiles`：ファイルを渡して共有シートを開きます（`navigator.share`）。共有シートがなければ、各ファイルをダウンロードします。`asuka/preview`：ファイルを新しいタブで開きます（画像、動画、音声、テキスト、PDF、HTML）。それ以外の種類は `PreviewError.noViewer` になります。
-- `asuka/print`：HTML、ファイル（PDF はブラウザーのビューアーで）、アプリ自身の Web ビューを、ブラウザーの印刷ダイアログで印刷します。結果は常に `.unknown` です（ブラウザーが結果を知らせないためです）。`print.pdf` は Web では使えません（`PrintError.unsupported`）。ブラウザーが PDF を作れるのは、印刷ダイアログ（「PDF として保存」）を通したときだけです。
-- `asuka/compose`：`mailto:` と `sms:` のリンクを使います。添付ファイルがあれば共有シートを使います。
-- `asuka/notify` と `asuka/push`：アプリの service worker を通じて、Notification API と Web Push を使います。[通知と Web Push](#通知と-web-push)を参照してください。
-- `asuka/network`：オンラインかどうかは `navigator.onLine` から取得します。Wi-Fi、モバイル回線、Ethernet の区別は、ブラウザーが教えてくれる場合（Android の Chrome）にわかります。モバイル回線は従量制（metered）、データセーバーは制限付き（constrained）として扱います。
-- `asuka/location`：Geolocation API を使います。`placeName` は Web では使えません（ブラウザーにはジオコーダーがないためです）。領域の監視とバックグラウンドの位置の更新は、位置情報から計算するので、ページが開いている間だけ働きます。
-- `asuka/sensors`：Generic Sensor API（Chrome）か、デバイスの motion イベントと orientation イベント（Safari はタップ時に許可を求めます）を使い、Android と同じ軸と単位で値を返します。気圧計と歩数計はありません。
-- `asuka/speech`：`speechSynthesis` と、ブラウザーの音声を使います。
-- `asuka/audio`：プレイヤーごとに audio 要素を一つ使います（ブラウザーの自動再生のルールが適用されるので、タップから再生してください）。`asuka/record`：`MediaRecorder` を使います。ブラウザーが対応していれば MPEG-4 の AAC で、そうでなければ WebM の Opus で録音します。`asuka/nowplaying`：Media Session API を使います。
-- `asuka/camera`：`take()` は、スマートフォンならカメラを開き、それ以外ではライブのカメラ映像とシャッターボタンのあるダイアログを開きます。`camera.View` は `<video>` に映したカメラ映像です（`capture()`、`record` に対応し、ブラウザーに `BarcodeDetector` があればコードのスキャンにも対応します）。`asuka/scan` と `asuka/vision` のコード読み取りは `BarcodeDetector` を使います。顔とテキストの認識は、ブラウザーが対応している場合にだけ使えます。
-- `asuka/imageedit`：canvas を使います（JPEG か PNG。リモートの画像には CORS が必要です）。
-- `asuka/maps`：Windows と同じく、OpenStreetMap のタイルからホストが描画する地図です。マーカーとそのコールアウト、ドラッグ、ホイール、ピンチ、ダブルクリック、キーボードによる移動、OpenStreetMap が求める帰属表示に対応します。航空写真と混合の地図は道路地図を表示します（無料の航空写真がないためです）。`showsUser` は、ページに位置情報の許可があればユーザーの現在地を表示します（許可を求めるのは `asuka/location` で、地図が求めることはありません）。タイルは、利用ポリシーが Web ページに求めるとおりに `tile.openstreetmap.org` から取得します（画面に表示する分だけを、ブラウザーのキャッシュを使い、Referer 付きで取得します）。大量に使う場合は、`start` に `mapTiles`（`{z}`、`{x}`、`{y}` を含む別のサーバーの URL）を渡してください（[埋め込み](#埋め込み)）。
-- `asuka/crash`：コアによるその実行の記録は、スマートフォンと同じくアプリのファイルに保存されます。コア自身の致命的なエラーはこの記録を書き込んでページのアプリを止め、次回の起動時に報告されます。キャッチされなかった JavaScript のエラー（ホストのものか、パッケージの `web/` のスクリプトのもの）は、その場で `"exception"` のレポートになりますが、致命的なものとしては扱われません（ページは動き続けます）。ページは `localStorage` に自分の実行が生きていることを記録するので、アプリのほかの開いているページがその実行に手を出すことはありません。
-- `asuka/biometric`：WebAuthn を通じてプラットフォームの認証器（Touch ID、Face ID、Windows Hello、Android の画面ロック）を使い、ユーザー検証を必須にします。最初の `authenticate` で、アプリの名前を付けたサイトのパスキーが作られます。プロンプトはブラウザーのものなので、`reason` と `cancel` のテキストは表示されません。
-- `asuka/webauth`：ポップアップを使い、アプリと同じオリジンのページに戻ってきた時点で完了します（カスタムスキームではページを開けないためです）。
-- `asuka/screen`：`lock` に対応します（全画面表示のとき、またはインストールしたアプリでのみ）。バーを隠すと全画面表示になります。
-- `asuka/library`：`save` はファイルをダウンロードします。`asuka/contacts`：`pick` は、ブラウザーに Contact Picker がある場合（Android の Chrome）に使えます。`add` は vCard を、`asuka/calendar` の `add` は `.ics` ファイルをダウンロードします。
-- `asuka/nfc`：Web NFC の `NDEFReader` を使います。セキュアコンテキストの Android の Chrome で、NDEF メッセージの読み書き、タグの読み取り専用化、タグのシリアル番号が使えます。生のコマンドや容量は使えず、タグでページを開くこともできません。ほかのブラウザーには Web NFC がないので `NfcError.notAvailable` になります（[NFC タグ](nfc.md)）。
-- `asuka/tracking` は、ブラウザーが Global Privacy Control か Do Not Track を送っていれば `.denied` を、そうでなければ `.allowed` を、プロンプトを出さずに返します。
-- `asuka/pay`：ブラウザーに Apple Pay がある場合（Safari）は、Payment Request API を通じて Apple Pay を使います。マーチャントの検証は、Apple に登録したドメインについてアプリのサーバーが行います（`onValidateMerchant`）。それ以外のブラウザーでは、Google の Web API（pay.google.com から読み込む `pay.js`）を通じて Google Pay を使います。ボタンはそれぞれ純正のものです。シートはタップからしか表示できません。
+- `platform/secure`：値は、ブラウザーが保持して外に出さない鍵（エクスポートできない WebCrypto の鍵）で暗号化（AES-GCM）され、IndexedDB に保存されます。キーチェーンではありません。アプリのオリジンで動くスクリプトは鍵そのものを読めませんが、その鍵での復号を依頼することはできます。`https`（または `localhost`）が必要です。
+- `platform/device`：`info()` はユーザーエージェントから取得します（Chromium のクライアントヒントからは、システムのバージョンと Android スマートフォンの機種がわかります）。クリップボード、クリップボードの画像（PNG。キャッシュに保存されます）、`clipboardChanges()`（アプリ自身のコピーと、ユーザーがページにクリップボードの読み取りを許可している場合はほかのアプリのコピー）に対応します。`keepAwake`（Screen Wake Lock。ページが再び表示されると取得し直します）、`browse`（新しいタブ）、`pickPhotos` と `pickFiles`（ブラウザーのファイル選択ダイアログ。選んだファイルはキャッシュにコピーされます）にも対応します。
+- `shareFiles`：ファイルを渡して共有シートを開きます（`navigator.share`）。共有シートがなければ、各ファイルをダウンロードします。`platform/preview`：ファイルを新しいタブで開きます（画像、動画、音声、テキスト、PDF、HTML）。それ以外の種類は `PreviewError.noViewer` になります。
+- `platform/print`：HTML、ファイル（PDF はブラウザーのビューアーで）、アプリ自身の Web ビューを、ブラウザーの印刷ダイアログで印刷します。結果は常に `.unknown` です（ブラウザーが結果を知らせないためです）。`print.pdf` は Web では使えません（`PrintError.unsupported`）。ブラウザーが PDF を作れるのは、印刷ダイアログ（「PDF として保存」）を通したときだけです。
+- `platform/compose`：`mailto:` と `sms:` のリンクを使います。添付ファイルがあれば共有シートを使います。
+- `platform/notify` と `platform/push`：アプリの service worker を通じて、Notification API と Web Push を使います。[通知と Web Push](#通知と-web-push)を参照してください。
+- `platform/network`：オンラインかどうかは `navigator.onLine` から取得します。Wi-Fi、モバイル回線、Ethernet の区別は、ブラウザーが教えてくれる場合（Android の Chrome）にわかります。モバイル回線は従量制（metered）、データセーバーは制限付き（constrained）として扱います。
+- `platform/location`：Geolocation API を使います。`placeName` は Web では使えません（ブラウザーにはジオコーダーがないためです）。領域の監視とバックグラウンドの位置の更新は、位置情報から計算するので、ページが開いている間だけ働きます。
+- `platform/sensors`：Generic Sensor API（Chrome）か、デバイスの motion イベントと orientation イベント（Safari はタップ時に許可を求めます）を使い、Android と同じ軸と単位で値を返します。気圧計と歩数計はありません。
+- `platform/speech`：`speechSynthesis` と、ブラウザーの音声を使います。
+- `platform/audio`：プレイヤーごとに audio 要素を一つ使います（ブラウザーの自動再生のルールが適用されるので、タップから再生してください）。`platform/record`：`MediaRecorder` を使います。ブラウザーが対応していれば MPEG-4 の AAC で、そうでなければ WebM の Opus で録音します。`platform/nowplaying`：Media Session API を使います。
+- `platform/camera`：`take()` は、スマートフォンならカメラを開き、それ以外ではライブのカメラ映像とシャッターボタンのあるダイアログを開きます。`camera.View` は `<video>` に映したカメラ映像です（`capture()`、`record` に対応し、ブラウザーに `BarcodeDetector` があればコードのスキャンにも対応します）。`platform/scan` と `platform/vision` のコード読み取りは `BarcodeDetector` を使います。顔とテキストの認識は、ブラウザーが対応している場合にだけ使えます。
+- `platform/imageedit`：canvas を使います（JPEG か PNG。リモートの画像には CORS が必要です）。
+- `platform/maps`：Windows と同じく、OpenStreetMap のタイルからホストが描画する地図です。マーカーとそのコールアウト、ドラッグ、ホイール、ピンチ、ダブルクリック、キーボードによる移動、OpenStreetMap が求める帰属表示に対応します。航空写真と混合の地図は道路地図を表示します（無料の航空写真がないためです）。`showsUser` は、ページに位置情報の許可があればユーザーの現在地を表示します（許可を求めるのは `platform/location` で、地図が求めることはありません）。タイルは、利用ポリシーが Web ページに求めるとおりに `tile.openstreetmap.org` から取得します（画面に表示する分だけを、ブラウザーのキャッシュを使い、Referer 付きで取得します）。大量に使う場合は、`start` に `mapTiles`（`{z}`、`{x}`、`{y}` を含む別のサーバーの URL）を渡してください（[埋め込み](#埋め込み)）。
+- `platform/crash`：コアによるその実行の記録は、スマートフォンと同じくアプリのファイルに保存されます。コア自身の致命的なエラーはこの記録を書き込んでページのアプリを止め、次回の起動時に報告されます。キャッチされなかった JavaScript のエラー（ホストのものか、パッケージの `web/` のスクリプトのもの）は、その場で `"exception"` のレポートになりますが、致命的なものとしては扱われません（ページは動き続けます）。ページは `localStorage` に自分の実行が生きていることを記録するので、アプリのほかの開いているページがその実行に手を出すことはありません。
+- `platform/biometric`：WebAuthn を通じてプラットフォームの認証器（Touch ID、Face ID、Windows Hello、Android の画面ロック）を使い、ユーザー検証を必須にします。最初の `authenticate` で、アプリの名前を付けたサイトのパスキーが作られます。プロンプトはブラウザーのものなので、`reason` と `cancel` のテキストは表示されません。
+- `platform/webauth`：ポップアップを使い、アプリと同じオリジンのページに戻ってきた時点で完了します（カスタムスキームではページを開けないためです）。
+- `platform/screen`：`lock` に対応します（全画面表示のとき、またはインストールしたアプリでのみ）。バーを隠すと全画面表示になります。
+- `platform/library`：`save` はファイルをダウンロードします。`platform/contacts`：`pick` は、ブラウザーに Contact Picker がある場合（Android の Chrome）に使えます。`add` は vCard を、`platform/calendar` の `add` は `.ics` ファイルをダウンロードします。
+- `platform/nfc`：Web NFC の `NDEFReader` を使います。セキュアコンテキストの Android の Chrome で、NDEF メッセージの読み書き、タグの読み取り専用化、タグのシリアル番号が使えます。生のコマンドや容量は使えず、タグでページを開くこともできません。ほかのブラウザーには Web NFC がないので `NfcError.notAvailable` になります（[NFC タグ](nfc.md)）。
+- `platform/tracking` は、ブラウザーが Global Privacy Control か Do Not Track を送っていれば `.denied` を、そうでなければ `.allowed` を、プロンプトを出さずに返します。
+- `platform/pay`：ブラウザーに Apple Pay がある場合（Safari）は、Payment Request API を通じて Apple Pay を使います。マーチャントの検証は、Apple に登録したドメインについてアプリのサーバーが行います（`onValidateMerchant`）。それ以外のブラウザーでは、Google の Web API（pay.google.com から読み込む `pay.js`）を通じて Google Pay を使います。ボタンはそれぞれ純正のものです。シートはタップからしか表示できません。
 - `haptic` は、ブラウザーが対応していれば（Android の Chrome）`navigator.vibrate` を使います。
-- Web では使えず、その旨のエラー（またはパッケージ独自の `notAvailable`）になるもの：`asuka/review`、`asuka/integrity`、`asuka/agerange`、`asuka/appleauth`、`asuka/icloud`、`asuka/periodic`、`asuka/widget`、`asuka/liveactivity`、`asuka/photos`（`.denied` を返します。写真の選択は `device.pickPhotos` でできます）、連絡先とカレンダーの読み取り、`asuka/transcribe` の `file`、`asuka/screen` の `preventCapture` と `screenshots()`。
+- Web では使えず、その旨のエラー（またはパッケージ独自の `notAvailable`）になるもの：`platform/review`、`platform/integrity`、`platform/agerange`、`platform/appleauth`、`platform/icloud`、`platform/periodic`、`platform/widget`、`platform/liveactivity`、`platform/photos`（`.denied` を返します。写真の選択は `device.pickPhotos` でできます）、連絡先とカレンダーの読み取り、`platform/transcribe` の `file`、`platform/screen` の `preventCapture` と `screenshots()`。
 
 ## 通知と Web Push
 
 Web アプリにはどれも service worker があります。service worker は CLI が書き出し（`asuka dev` では `sw.js`、ビルドでは `sw.<digest>.js`）、ページが起動時にアプリのフォルダーをスコープとして登録します。fetch ハンドラーは持たないので、ページは service worker がない場合と同じように読み込まれます。service worker は、アプリのページが開いているかどうかにかかわらず、アプリの通知とプッシュ通知を表示し、そのクリックに応答します。ブラウザーが service worker を動かすのは、HTTPS か `localhost` から配信されたページだけです（`asuka dev` のアドレスは対象ですが、`--lan` のアドレスは対象外です）。
 
-### asuka/notify
+### platform/notify
 
 - `notify.request()` は、ブラウザーのプロンプトで許可を求めます。ブラウザーはタップやクリックのときにしか許可を求めないので、その処理の中から呼び出してください。
 - `notify.show(n)` は service worker を通じて通知を表示するので、ページを閉じた後もボタンは残り、クリックも機能します（service worker のないページ、つまり service worker を登録しない埋め込みページでは、ページ自身の通知がボタンなしで表示され、そのクリックはそのページにしか届きません）。
@@ -168,7 +168,7 @@ Web アプリにはどれも service worker があります。service worker は
 
 アプリを閉じていても必ず指定の時刻に表示したい通知は、その時刻にサーバーからプッシュ通知を送ってください。
 
-### asuka/push：Web Push
+### platform/push：Web Push
 
 Web Push には VAPID の鍵ペア（RFC 8292）が必要です。アプリのサーバーは秘密鍵でプッシュに署名し、ブラウザーは公開鍵で購読します。公開鍵は `asuka.toml` に書きます。
 
@@ -284,7 +284,7 @@ app({ asuka: "ready", url: location.href, title: document.title });
 app({ text: "Hello from the page" }); // on message
 ```
 
-`asuka/js` は、独自のオリジンを持つ非表示の sandbox フレームでスクリプトを実行します。そのため、スクリプトはアプリのページやストレージにアクセスできません。
+`platform/js` は、独自のオリジンを持つ非表示の sandbox フレームでスクリプトを実行します。そのため、スクリプトはアプリのページやストレージにアクセスできません。
 
 ## ネイティブコード
 
@@ -329,9 +329,9 @@ export function makeSegmented(events) {
 </script>
 ```
 
-一つのページで、それぞれ別の要素に入れて、複数のアプリを動かせます。`serviceWorker` を渡すと、アプリの service worker（ビルドに含まれる `sw.<digest>.js`。対象とするページがあるフォルダーから配信します）が登録されます。渡さなければ、通知はページ自身のものになり、`asuka/push` は購読できません。`asuka/push` を使うなら、`index.html` と同じく `vapidPublicKey` も渡してください。`asuka/maps` のタイルを自前のサーバーから取得するなら、`mapTiles` を渡します（`"https://tiles.example.com/{z}/{x}/{y}.png"`。デフォルトは OpenStreetMap のタイルです）。
+一つのページで、それぞれ別の要素に入れて、複数のアプリを動かせます。`serviceWorker` を渡すと、アプリの service worker（ビルドに含まれる `sw.<digest>.js`。対象とするページがあるフォルダーから配信します）が登録されます。渡さなければ、通知はページ自身のものになり、`platform/push` は購読できません。`platform/push` を使うなら、`index.html` と同じく `vapidPublicKey` も渡してください。`platform/maps` のタイルを自前のサーバーから取得するなら、`mapTiles` を渡します（`"https://tiles.example.com/{z}/{x}/{y}.png"`。デフォルトは OpenStreetMap のタイルです）。
 
 ## 未対応の機能
 
 - テキストフィールドのアクセサリーバーは、オンスクリーンキーボードがある場合（タッチスクリーン）にだけ表示されます。
-- `asuka/notify` でスケジュールした通知は、アプリのページが一つも開いていない間は、指定の時刻に表示できません。ブラウザーに通知をスケジュールする手段がないためです（[前述](#スケジュールした通知)）。
+- `platform/notify` でスケジュールした通知は、アプリのページが一つも開いていない間は、指定の時刻に表示できません。ブラウザーに通知をスケジュールする手段がないためです（[前述](#スケジュールした通知)）。

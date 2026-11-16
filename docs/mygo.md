@@ -37,7 +37,7 @@ What follows from it:
   the platform. MyGo's are MyGo's, made over what it draws.
 - **What no widget shows.** MyGo draws anything as it draws the rest.
   Asuka draws with the platform what has no widget: `Canvas` and `Shape`
-  (docs/language.md, "Drawing"), `asuka/chart`, `asuka/svg`, and
+  (docs/language.md, "Drawing"), `std/chart`, `std/svg`, and
   shaders, compiled with the app for each platform's GPU.
 - **Images without a screen.** MyGo has a software renderer: it draws
   on the CPU, in memory, with no window, display or GPU, so a test or a

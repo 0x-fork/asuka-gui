@@ -216,7 +216,7 @@ func (t *iosToolchain) buildHostPackage(work string, natives []nativePackage, fe
 // simulator), so a release's host is built with only those its app
 // shows. The host's modules' flags are the packages' to say (their
 // manifests' ios.hostFlags, a package's or a member's: depManifests);
-// a package with Swift of its own (asuka/camera, asuka/location...)
+// a package with Swift of its own (platform/camera, platform/location...)
 // brings it, and its frameworks, to the apps that import it, and needs
 // no flag. asuka dev's player has them all.
 var elementFlags = map[string]string{
@@ -435,7 +435,7 @@ func (t *iosToolchain) link(app *asukaApp, work, hostObj, lib string) (string, e
 // simulatorEntitlements are the linker flags that give a simulator build
 // the entitlements the keychain wants (an app identifier and its access
 // group; without them SecItemAdd fails with errSecMissingEntitlement, and
-// asuka/secure with it). As Xcode does: in the binary's __entitlements
+// platform/secure with it). As Xcode does: in the binary's __entitlements
 // section, for an ad hoc signature can't carry them.
 func simulatorEntitlements(work string, cfg *appConfig) ([]string, error) {
 	id := "ASUKASIMULA." + cfg.ID // a team ID's shape: ten characters

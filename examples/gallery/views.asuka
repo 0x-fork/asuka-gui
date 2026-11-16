@@ -1,7 +1,7 @@
-import asuka/math
-import asuka/chart
-import asuka/lottie
-import asuka/shader
+import std/math
+import std/chart
+import std/lottie
+import std/shader
 
 component Symbols {
   state liked = false
@@ -183,7 +183,7 @@ component Images {
   }
 }
 
-/// Plays a Lottie animation with the platform's player (asuka/lottie):
+/// Plays a Lottie animation with the platform's player (std/lottie):
 /// play and pause it, loop it, change its speed, scrub it, play one of its
 /// markers, rewind it with animate, and color it for dark mode.
 component LottieSection {

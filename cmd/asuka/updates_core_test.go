@@ -22,7 +22,7 @@ import (
 // updater takes: a key pair from asuka update keygen, two versions'
 // update files from writeUpdates (the archive, the delta, the manifest,
 // signed with that key, as asuka build and publish write them), read by
-// asuka/update on the fake host, its downloads and signatures checked and
+// platform/update on the fake host, its downloads and signatures checked and
 // its deltas applied by the C core. The new version's tree it stages is
 // the build's. With the archive alone (the installed app changed, so its
 // delta fails) it's the same; with another key, nothing is installed.
@@ -112,7 +112,7 @@ func TestUpdatesVerifiedByCore(t *testing.T) {
 				t.Fatalf("the manifest: %+v, %v", m, err)
 			}
 
-			// installAs runs asuka/update in an app of version 1.0.0 installed in
+			// installAs runs platform/update in an app of version 1.0.0 installed in
 			// a copy of the first build (changed, if asked), with key: it returns
 			// what the program printed, and the tree it staged.
 			installAs := func(t *testing.T, key string, changed bool) (string, string) {
@@ -136,7 +136,7 @@ func TestUpdatesVerifiedByCore(t *testing.T) {
 					fmt.Fprintf(&serve, "  try await host.serve(update.Served(url: %s, file: %s))\n",
 						quoteAsuka(srv.URL+"/notes/"+e.Name()), quoteAsuka(filepath.Join(published, "notes", e.Name())))
 				}
-				src := fmt.Sprintf(`import asuka/update
+				src := fmt.Sprintf(`import platform/update
 
 		component Root {
 		  Text("notes")

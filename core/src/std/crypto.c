@@ -1,4 +1,4 @@
-// crypto.c: asuka/crypto's builtins: SHA-256, SHA-512 and SHA-1 (FIPS
+// crypto.c: std/crypto's builtins: SHA-256, SHA-512 and SHA-1 (FIPS
 // 180-4), HMAC (RFC 2104), Ed25519 (RFC 8032, ed25519.c), the system's
 // randomness and version 4 UUIDs.
 #if !defined(_WIN32) && !defined(__APPLE__) && !defined(__wasm__)

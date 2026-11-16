@@ -1,5 +1,5 @@
 // The updater's platform part on a Mac: the host module "update", which
-// the std package asuka/update calls (asuka/platform's call, JSON in and
+// the std package platform/update calls (platform/host's call, JSON in and
 // out; DESIGN.md's "Updates" is its spec). The package does what's the
 // same everywhere (the feed, channels, versions, signatures, deltas,
 // unpacking); the host what only the Mac does: whether this build can

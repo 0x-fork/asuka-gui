@@ -1,4 +1,4 @@
-// asuka/periodic on a Mac: NSBackgroundActivityScheduler, which runs a task
+// platform/periodic on a Mac: NSBackgroundActivityScheduler, which runs a task
 // about every interval while the app runs (in the background too: a Mac app
 // keeps running out of sight), when the system has the time and power for
 // it; unlike iOS's BGTaskScheduler it doesn't launch the app. "schedule"

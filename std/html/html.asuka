@@ -1,4 +1,4 @@
-// Package asuka/html escapes text for HTML, and reads it back.
+// Package std/html escapes text for HTML, and reads it back.
 //
 //   let safe = "<p>{html.escape(comment)}</p>"
 //   let text = html.unescape("Fish &amp; Chips") // Fish & Chips

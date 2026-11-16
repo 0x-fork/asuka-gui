@@ -3,10 +3,10 @@
 // cleared, channels, the badge, the chat on screen kept quiet, and pushes
 // rewritten before they show.
 
-import asuka/encoding
-import asuka/notify
-import asuka/push as remotePush
-import asuka/storage
+import std/encoding
+import platform/notify
+import platform/push as remotePush
+import std/storage
 
 let ana = notify.Person(id: "ana", name: "Ana", image: "https://i.pravatar.cc/128?u=ana")
 let bo = notify.Person(id: "bo", name: "Bo", image: "https://i.pravatar.cc/128?u=bo")

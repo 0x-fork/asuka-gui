@@ -36,7 +36,7 @@ import (
 	"github.com/egoist/asuka/plugin"
 )
 
-// The SQLite release asuka/sqlite is built from.
+// The SQLite release std/sqlite is built from.
 const (
 	version    = "3.54.1"
 	sourceURL  = "https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip"

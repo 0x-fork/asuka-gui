@@ -27,6 +27,9 @@ type Spec struct {
 
 // ParseSpec reads the spec of the dependency imported as key.
 func ParseSpec(key, s string) (Spec, error) {
+	if err := CheckName(key); err != nil {
+		return Spec{}, err
+	}
 	switch {
 	case strings.HasPrefix(s, "npm:"):
 		rest := strings.TrimPrefix(s, "npm:")

@@ -1,0 +1,119 @@
+// Package platform/speech reads text aloud with the platform's voices:
+// AVSpeechSynthesizer on iOS and macOS, TextToSpeech on Android, the
+// browser's speechSynthesis, SAPI on Windows, Speech Dispatcher on Linux.
+// Utterances queue: each speaks after the ones before it.
+//
+//   try await speech.speak("Turn left in 200 meters")
+//
+// On iOS other apps' sound ducks while it speaks, and it speaks with the
+// silent switch on, as a navigation app's voice does.
+
+/// How an utterance sounds.
+pub struct Options {
+  /// A BCP 47 tag ("en-US", "zh-CN"); empty: the user's language.
+  language: string = ""
+  /// A voice's id (voices()); it wins over language.
+  voice: string = ""
+  /// From 0.5 to 2.
+  pitch: float = 1
+  /// The speed, from 0.5 (half) to 2 (twice); 1 is the platform's normal
+  /// speaking rate.
+  rate: float = 1
+  /// From 0 to 1.
+  volume: float = 1
+}
+
+/// How good a voice sounds.
+pub enum Quality {
+  standard
+  /// Larger, better sounding (downloaded in the system's settings).
+  enhanced
+  /// The best the platform has.
+  premium
+}
+
+/// A voice the device has.
+pub struct Voice {
+  id: string
+  name: string
+  /// BCP 47.
+  language: string
+  quality: Quality = .standard
+  /// It speaks through the network (Android's online voices, a browser's
+  /// remote ones).
+  network: bool = false
+}
+
+/// What speaking fails with.
+pub enum SpeechError: Error {
+  /// speech: stopped
+  stopped
+}
+
+/// The platform's synthesizer.
+native interface Synthesizer {
+  /// Queues text, and returns once it's been spoken; it throws
+  /// SpeechError.stopped when stop ends it first, and a cancelled task
+  /// stops it.
+  async fn speak(text: string, options: Options)
+  /// Stops speaking, and drops what's queued.
+  fn stop()
+  /// Pauses at the word; resume goes on.
+  fn pause()
+  fn resume()
+  /// Whether it's speaking, or paused mid-utterance.
+  fn speaking() -> bool
+  async fn voices() -> [Voice]
+}
+
+// Made once; none where the platform can't speak (making one again says
+// why).
+let synth = try? Synthesizer()
+
+/// Speaks text after what's queued, and returns once it's been spoken
+/// (throwing SpeechError.stopped if stop ended it first).
+pub async fn speak(text: string, options: Options = Options()) throws {
+  if let s = synth {
+    try await s.speak(text, options)
+    return
+  }
+  try await Synthesizer().speak(text, options)
+}
+
+/// Stops speaking, and drops what's queued: each speak waiting throws
+/// SpeechError.stopped.
+pub fn stop() {
+  if let s = synth {
+    try? s.stop()
+  }
+}
+
+/// Pauses speaking, at the word.
+pub fn pause() {
+  if let s = synth {
+    try? s.pause()
+  }
+}
+
+/// Goes on with paused speech.
+pub fn resume() {
+  if let s = synth {
+    try? s.resume()
+  }
+}
+
+/// Whether it's speaking (or paused mid-utterance).
+pub fn speaking() -> bool {
+  if let s = synth {
+    return (try? s.speaking()) ?? false
+  }
+  return false
+}
+
+/// The voices the device has.
+pub async fn voices() throws -> [Voice] {
+  if let s = synth {
+    return try await s.voices()
+  }
+  return try await Synthesizer().voices()
+}

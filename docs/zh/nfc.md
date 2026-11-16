@@ -1,9 +1,9 @@
 # NFC 标签
 
-`asuka/nfc` 用来读写 NFC 标签：标签上的 NDEF 消息、标签本身，以及发给标签的原始命令，和 react-native-nfc-manager、Web NFC 做的事一样。iOS 上是带系统面板的 Core NFC；Android 上是为前台页面开启的读卡器模式（reader mode）；Web 上是 Chrome for Android 的 Web NFC。Mac、PC 和 Linux 都没有 NFC。
+`platform/nfc` 用来读写 NFC 标签：标签上的 NDEF 消息、标签本身，以及发给标签的原始命令，和 react-native-nfc-manager、Web NFC 做的事一样。iOS 上是带系统面板的 Core NFC；Android 上是为前台页面开启的读卡器模式（reader mode）；Web 上是 Chrome for Android 的 Web NFC。Mac、PC 和 Linux 都没有 NFC。
 
 ```asuka
-import asuka/nfc
+import platform/nfc
 
 component ReadTag {
   state link = ""
@@ -109,7 +109,7 @@ async fn followOpened() throws {
 
 ## asuka.toml 与权限
 
-导入了 `asuka/nfc` 的应用会获得 Android 的 `NFC` 权限，以及 iOS 上的 `NFCReaderUsageDescription`（在 `ios.usage` 里写你自己的说明）和 Core NFC 的 entitlement `com.apple.developer.nfc.readersession.formats`（`NDEF` 和 `TAG`）。发布构建的 App ID 需要开启 NFC Tag Reading 能力。
+导入了 `platform/nfc` 的应用会获得 Android 的 `NFC` 权限，以及 iOS 上的 `NFCReaderUsageDescription`（在 `ios.usage` 里写你自己的说明）和 Core NFC 的 entitlement `com.apple.developer.nfc.readersession.formats`（`NDEF` 和 `TAG`）。发布构建的 App ID 需要开启 NFC Tag Reading 能力。
 
 asuka.toml 的 `nfc` 用来补充应用的标签所需的配置：
 

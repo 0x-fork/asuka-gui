@@ -1,6 +1,6 @@
-// The module that hands files to the system's composers: asuka/compose
+// The module that hands files to the system's composers: platform/compose
 // (NSSharingService, mailto:), and the files it names. Preview (Quick
-// Look) and print modules aren't here: asuka/preview and asuka/print have
+// Look) and print modules aren't here: platform/preview and platform/print have
 // their own Swift.
 import AppKit
 import UniformTypeIdentifiers

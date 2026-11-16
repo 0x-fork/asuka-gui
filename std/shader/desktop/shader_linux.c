@@ -1,4 +1,4 @@
-// asuka/shader on Linux: a GtkGLArea draws the program's GLSL (compiled
+// std/shader on Linux: a GtkGLArea draws the program's GLSL (compiled
 // with the app: internal/shadercode's GL) on the GPU, a triangle over its
 // whole framebuffer, its uniforms in a std140 block. GTK renders the area
 // again when its size or scale changes; the package, when its uniforms

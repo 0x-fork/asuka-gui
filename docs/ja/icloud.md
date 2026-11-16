@@ -1,9 +1,9 @@
 # iCloud
 
-`asuka/icloud` を使うと、iOS と macOS のアプリからユーザーの iCloud を使えます。このパッケージは二つの部分からなります。**キーバリューストア**は小さな値（設定、最後に読んだページ、連続記録など）を保存し、その値はユーザーのどのデバイスにも届きます。**書類**は iCloud Drive にあるアプリのファイルで、「ファイル」アプリや Finder では、アプリの名前のフォルダーに表示されます。Swift でいえば NSUbiquitousKeyValueStore とアプリの ubiquity コンテナーに、Expo アプリでいえば react-native-cloud-storage や expo-icloud-storage が提供するものにあたります。
+`platform/icloud` を使うと、iOS と macOS のアプリからユーザーの iCloud を使えます。このパッケージは二つの部分からなります。**キーバリューストア**は小さな値（設定、最後に読んだページ、連続記録など）を保存し、その値はユーザーのどのデバイスにも届きます。**書類**は iCloud Drive にあるアプリのファイルで、「ファイル」アプリや Finder では、アプリの名前のフォルダーに表示されます。Swift でいえば NSUbiquitousKeyValueStore とアプリの ubiquity コンテナーに、Expo アプリでいえば react-native-cloud-storage や expo-icloud-storage が提供するものにあたります。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 let size = icloud.Value("textSize", 17.0)   // どのデバイスでも同じ値
 
@@ -34,7 +34,7 @@ iCloud は Apple のサービスです。Android、Windows、Linux、Web では�
 `icloud.account()` は追跡され、ユーザーが iCloud にサインインしていて、アプリの iCloud がオンになっているか（`available`）と、それがどのアカウントか（`id`）を表します。バインディングの中で読むと、読まれているあいだはアカウントの変化に追従します。変わるのは、ユーザーがサインインやサインアウトをしたとき、アプリの iCloud をオフにしたとき、別のユーザーがサインインしたときです。`icloud.currentAccount()` は、追跡せずに一度だけ読みます。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 component SignInHint {
   let account = icloud.account()
@@ -51,10 +51,10 @@ component SignInHint {
 
 ## キーバリューストア
 
-`icloud.Value(key, default)` は、`value` がキーの値になるストアです。最初は `default` で、読まれると iCloud が保持している値になり、使われているあいだは、ほかのデバイスでの変更に追従します。`value` に代入すると、その値は iCloud に保存されます。デバイスにはすぐに、ユーザーのほかのデバイスには iCloud が同期したときに保存されます。値には JSON（`asuka/json`）で表せるものなら何でも使えます。数値、文字列、配列、構造体などです。
+`icloud.Value(key, default)` は、`value` がキーの値になるストアです。最初は `default` で、読まれると iCloud が保持している値になり、使われているあいだは、ほかのデバイスでの変更に追従します。`value` に代入すると、その値は iCloud に保存されます。デバイスにはすぐに、ユーザーのほかのデバイスには iCloud が同期したときに保存されます。値には JSON（`std/json`）で表せるものなら何でも使えます。数値、文字列、配列、構造体などです。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 let lastPage = icloud.Value("lastPage", 0)
 
@@ -96,18 +96,18 @@ iCloud にあるアプリのファイルは、アプリの**コンテナー**に
 
 ### 読み書き
 
-アプリのファイルは `icloud.readFile(path)`、`writeFile(path, data)`、`delete(path)`、`rename(from:, to:)` で読み書きします。これらは iCloud 自身の読み書きと協調する（NSFileCoordinator）ので、同期処理が書きかけのファイルを見ることも、iCloud が置き換えている途中のファイルをアプリが読むこともありません。`readFile` は、デバイスにないファイルなら先にダウンロードし、それを待ちます。`writeFile` はファイル全体を一度に書き込み、必要なディレクトリも作ります。書き込んだファイルは iCloud がアップロードします。ダウンロード済みのファイルには `asuka/fs` の関数も使えますが、同期とのあいだで競合状態（レース）になることがあります。
+アプリのファイルは `icloud.readFile(path)`、`writeFile(path, data)`、`delete(path)`、`rename(from:, to:)` で読み書きします。これらは iCloud 自身の読み書きと協調する（NSFileCoordinator）ので、同期処理が書きかけのファイルを見ることも、iCloud が置き換えている途中のファイルをアプリが読むこともありません。`readFile` は、デバイスにないファイルなら先にダウンロードし、それを待ちます。`writeFile` はファイル全体を一度に書き込み、必要なディレクトリも作ります。書き込んだファイルは iCloud がアップロードします。ダウンロード済みのファイルには `std/fs` の関数も使えますが、同期とのあいだで競合状態（レース）になることがあります。
 
 `icloud.download(path)` は、ファイルのダウンロードを始めます。進み具合は、そのファイルの `File` でわかります。`icloud.evict(path)` は、ファイルを iCloud に残したままデバイスから取り除き、空き容量を増やします。取り除いたファイルは、次に読むときに再びダウンロードされます。
 
-デバイス上のファイルを iCloud に移したり、iCloud のファイルをデバイス上に移したりする機能は、まだパッケージにありません。`writeFile` で書き込む（そしてデバイス上のコピーを削除する）か、`readFile` で読んで `asuka/fs` で書き込んでください。
+デバイス上のファイルを iCloud に移したり、iCloud のファイルをデバイス上に移したりする機能は、まだパッケージにありません。`writeFile` で書き込む（そしてデバイス上のコピーを削除する）か、`readFile` で読んで `std/fs` で書き込んでください。
 
 ### 競合
 
 二つのデバイスが同時に（あるいは一方がオフラインのあいだに）ファイルを変更すると、iCloud は一方をそのファイルとして残し、残りをそのファイルと競合するバージョンとして保存します。このとき、ファイルの `conflicts` は true になります。`icloud.conflicts(path)` は、競合しているバージョンを返します。各 `Version` には、内容を読むための `path`、`modified`、保存したデバイスの名前（`device`）があります。`icloud.resolve(path, keeping:)` で競合を解決します。`keeping` に渡したバージョンがそのファイルになり、渡さなければファイルはそのまま残ります。どちらの場合も、ほかのバージョンはすべてのデバイスから削除されます。内容をマージするには、マージした結果を `writeFile` で書き込んでから `resolve(path)` を呼びます。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 async fn keepTheOther(path: string) throws {
   let vs = try await icloud.conflicts(path)
@@ -119,7 +119,7 @@ async fn keepTheOther(path: string) throws {
 
 ### リンクの共有
 
-ファイルの公開リンク（リンクを知っていれば誰でもファイルのコピーをダウンロードできるもの）は、まだ `asuka/icloud` にありません。
+ファイルの公開リンク（リンクを知っていれば誰でもファイルのコピーをダウンロードできるもの）は、まだ `platform/icloud` にありません。
 
 ## asuka.toml とエンタイトルメント
 
@@ -162,7 +162,7 @@ Mac では、iCloud のエンタイトルメントを使うには、アプリに
 `asuka test` はフェイクホストで動き、フェイクホストには iCloud がありません。Android と同じく、アカウントは利用できず、一覧は空で、`Value` はデフォルト値と、テストが設定した値を保つだけです。呼び出しは「icloud: not available」を投げます。ユーザーのほかのデバイスの役をテストが演じられるフェイクの iCloud は、まだパッケージにありません。
 
 ```asuka
-import asuka/icloud
+import platform/icloud
 
 test "no iCloud on the fake host" {
   expect(!icloud.account().available)

@@ -1,4 +1,4 @@
-// asuka/print's web code (std/print/web/print.js) printing a WebView's
+// platform/print's web code (sdk/print/web/print.js) printing a WebView's
 // page: its frame's when the page is the app's origin's, else the app's
 // page with only the WebView on it; and a Ref crossing to a package's
 // JavaScript as its element (src/native.js): node --test platform/web.
@@ -10,8 +10,8 @@ globalThis.asuka = { native };
 // The app's page: what printDialog listens on while a dialog is open.
 globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
-const { makePrinter } = await import("../../../std/print/web/print.js");
-const { Outcome, PrintError } = await import("../../../std/print/web/print.asuka.js");
+const { makePrinter } = await import("../../../sdk/print/web/print.js");
+const { Outcome, PrintError } = await import("../../../sdk/print/web/print.asuka.js");
 
 // A window whose print() opens and closes a dialog, noting what its
 // document had in it then.

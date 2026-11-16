@@ -300,7 +300,7 @@ TEST(random_seeded) {
 	CHECK_EQ_INT(a, b);
 }
 
-// asuka/markdown: the paragraphs every platform's view styles, as JSON.
+// std/markdown: the paragraphs every platform's view styles, as JSON.
 TEST(markdown_read) {
 	CHECK_STR(call("markdown.read", (ak_val[]){S("")}, 1, 1), "[]");
 	CHECK_STR(call("markdown.read",

@@ -1,4 +1,4 @@
-import asuka/appleauth
+import platform/appleauth
 
 component Account {
   state status = ""

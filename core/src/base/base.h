@@ -51,7 +51,7 @@ extern uint64_t ak_alloc_count;
 // ak_panic reports a bug in the core or the app and aborts.
 AK_NORETURN void ak_panic(const char *fmt, ...) AK_PRINTF(1, 2);
 // ak_panic_hook, when set, gets a panic's message before the core aborts
-// (asuka/crash's record keeps it).
+// (platform/crash's record keeps it).
 extern void (*ak_panic_hook)(const char *msg);
 
 #define AK_ASSERT(c) do { if (AK_UNLIKELY(!(c))) ak_panic("%s:%d: assertion failed: %s", __FILE__, __LINE__, #c); } while (0)

@@ -130,7 +130,7 @@ static bool start_core(void) {
 	callbacks.apply = cb_apply;
 	callbacks.measure = cb_measure;
 	callbacks.post = cb_post;
-	wh_native_host_callbacks(&callbacks);  // the native packages' registry, and asuka/host's modules
+	wh_native_host_callbacks(&callbacks);  // the native packages' registry, and platform/host's modules
 	asuka_set_app_dir(H.dirs.data);
 	asuka_start(&callbacks);
 	wh_report_environment(&(node){.id = 0}, &H.env);

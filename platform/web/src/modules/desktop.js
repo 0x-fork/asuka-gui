@@ -1,11 +1,11 @@
-// The modules asuka/platform's desktop packages reach by name, as a page
+// The modules platform/host's desktop packages reach by name, as a page
 // has them (a page is no desktop app):
 //
-//   - dock (asuka/dock): a page has no icon of its own: progress and
+//   - dock (platform/dock): a page has no icon of its own: progress and
 //     attention do nothing ("attention" answers 0, nothing asked).
-//   - recent (asuka/recent): a page has no recent documents of its own
+//   - recent (platform/recent): a page has no recent documents of its own
 //     with the system.
-//   - login (asuka/login): a page doesn't start at login.
+//   - login (platform/login): a page doesn't start at login.
 //
 // hotkey, tray and apps aren't a page's: their calls answer that they
 // aren't on the web, which their packages take as unsupported.

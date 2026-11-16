@@ -1,4 +1,4 @@
-// asuka/update's builtins (core/src/std/update.c, inflate.c) over what
+// platform/update's builtins (core/src/std/update.c, inflate.c) over what
 // the CLI writes: testdata/update, made by internal/update's
 // TestCoreTestdata (-update-core) with the code `asuka build` signs and
 // makes updates with. A signature checked over a file, archives (gzip,

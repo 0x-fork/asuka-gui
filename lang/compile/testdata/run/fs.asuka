@@ -1,6 +1,6 @@
-// asuka/fs: paths, and files in a directory of the test's own.
+// std/fs: paths, and files in a directory of the test's own.
 
-import asuka/fs
+import std/fs
 
 test "paths" {
   print(fs.join(["a", "b", "c.md"]))

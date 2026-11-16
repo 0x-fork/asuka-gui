@@ -7,5 +7,5 @@ plugins {
 }
 
 android {
-    namespace = "asuka.sqlite"
+    namespace = "std.sqlite"
 }

@@ -1,0 +1,794 @@
+// Package platform/pay takes payments with the platform's wallet: Apple Pay
+// on iOS, macOS and in Safari, Google Pay on Android and in the other
+// browsers. It's for physical goods and services (an order, a ride, a
+// ticket, a donation); digital goods are the stores' (platform/purchase).
+//
+// The app shows the wallet's own button (PayButton) where available()
+// says it can pay, and calls pay() with a Request: the amounts, the
+// merchant's accounts, what to ask the user for. The wallet's sheet
+// shows; as the user changes the address, the shipping method or a
+// coupon, the Request's handlers give the new totals (an Update), or
+// throw Invalid, which the sheet shows by its field. When the user pays,
+// onAuthorize gets the Payment: its token is the wallet's, for the app's
+// processor (Stripe, Adyen, Braintree), which the app's server charges;
+// what it throws the sheet shows. Asuka never charges a card itself.
+//
+// Apple Pay needs a merchant ID, in asuka.toml's applePay.merchantIds,
+// for the app's entitlement. Google Pay needs the processor's gateway and
+// the merchant's ID for production (Google(production: true)). Windows
+// and Linux have no wallet for apps: available() says so, pay() throws
+// notAvailable and PayButton shows nothing.
+//
+// Tests drive a fake: pay.fake() is a FakeWallet whose sheet a test
+// changes and pays with.
+
+/// The platform's wallet.
+pub enum Wallet {
+  /// None: Windows, Linux, a browser with neither.
+  none
+  /// iOS, macOS, Safari.
+  applePay
+  /// Android, the other browsers.
+  googlePay
+}
+
+/// What the platform's wallet can do.
+pub struct Availability {
+  wallet: Wallet = .none
+  /// The wallet takes payments here: show its button.
+  canPay: bool = false
+  /// The user has a card the request takes. Without one, Apple Pay's
+  /// guidelines show a setUp button (PayButton's type .setUp).
+  hasCard: bool = false
+}
+
+/// What a line is, for Google Pay's sheet (Apple Pay's shows every line
+/// alike).
+pub enum ItemKind {
+  lineItem
+  subtotal
+  tax
+  discount
+  shippingCost
+}
+
+/// A line of the sheet: a label and an amount.
+pub struct Item {
+  label: string = ""
+  /// A decimal in the currency's major unit, as "12.75" (at most two
+  /// decimals for Google Pay); negative for a discount.
+  amount: string = ""
+  /// The amount isn't known yet (a tip, an estimate).
+  pending: bool = false
+  kind: ItemKind = .lineItem
+}
+
+/// A card network.
+pub enum Network {
+  visa
+  mastercard
+  amex
+  discover
+  jcb
+  interac
+  /// Apple Pay's.
+  unionPay
+  maestro
+  electron
+  elo
+  cartesBancaires
+  eftpos
+  mada
+  mir
+  girocard
+  bancontact
+  dankort
+  /// A store's own card (Apple Pay).
+  privateLabel
+  /// What the wallet named otherwise.
+  other
+}
+
+/// A card's funding.
+pub enum CardKind {
+  unknown
+  credit
+  debit
+  prepaid
+  /// A store's own (Apple Pay).
+  store
+  /// A stored value card (Apple Pay).
+  eMoney
+}
+
+/// What the app asks the user for, with an address.
+pub enum ContactField {
+  name
+  email
+  phone
+  address
+  /// Their name's reading (Apple Pay; Japan).
+  phoneticName
+}
+
+/// A postal address.
+pub struct PostalAddress {
+  /// The street's lines.
+  lines: [string] = []
+  city: string = ""
+  subLocality: string = ""
+  state: string = ""
+  subAdministrativeArea: string = ""
+  postalCode: string = ""
+  /// ISO 3166 ("US"), and the country's name (Apple Pay).
+  countryCode: string = ""
+  country: string = ""
+  /// Google Pay's (a CEDEX).
+  sortingCode: string = ""
+}
+
+/// A shipping or billing contact.
+pub struct Contact {
+  /// Their whole name, as the locale writes it; its parts (Apple Pay).
+  name: string = ""
+  givenName: string = ""
+  familyName: string = ""
+  email: string = ""
+  phone: string = ""
+  address: PostalAddress = PostalAddress()
+}
+
+/// The card the user pays with.
+pub struct Card {
+  network: Network = .other
+  kind: CardKind = .unknown
+  /// How the wallet shows it ("Visa 1234"), and its last digits.
+  name: string = ""
+  last4: string = ""
+  /// Its billing contact, when the user chooses it.
+  billing: Contact = Contact()
+}
+
+/// A way to ship, with its cost.
+pub struct ShippingMethod {
+  /// It names it in Payment.shippingMethod and onShippingMethod.
+  id: string = ""
+  label: string = ""
+  /// "Arrives in 5 to 7 days"
+  detail: string = ""
+  /// Its cost: put it in the request's items too.
+  amount: string = "0"
+  /// When it arrives, as "2026-11-20" (Apple Pay; "": unsaid).
+  from: string = ""
+  to: string = ""
+}
+
+/// What an error the sheet shows is about.
+pub enum Field {
+  /// The payment itself (a declined card).
+  payment
+  shippingAddress
+  shippingStreet
+  shippingCity
+  shippingState
+  shippingPostalCode
+  shippingCountry
+  shippingName
+  shippingEmail
+  shippingPhone
+  /// No shipping to the address.
+  unserviceable
+  shippingMethod
+  billingAddress
+  billingStreet
+  billingCity
+  billingState
+  billingPostalCode
+  billingCountry
+  billingName
+  couponInvalid
+  couponExpired
+}
+
+/// An error the sheet shows by a field: Apple Pay marks the field; Google
+/// Pay says it in a dialog.
+pub struct FieldError {
+  field: Field = .payment
+  /// Shown to the user: write it for them, in their language.
+  message: string = ""
+}
+
+/// The sheet's new totals and methods: none, as they were.
+pub struct Update {
+  items: [Item]? = none
+  /// Its amount "": as it was (its label "": the same).
+  total: Item? = none
+  shippingMethods: [ShippingMethod]? = none
+  errors: [FieldError] = []
+}
+
+/// What a handler throws for the sheet to show by a field, with the
+/// totals it shows meanwhile.
+///
+///   throw pay.Invalid(field: .unserviceable, message: "We ship in the United States only.")
+pub struct Invalid: Error {
+  field: Field = .payment
+  message: string = ""
+  update: Update = Update()
+}
+
+/// The sheet's kind of shipping, as Apple Pay words it.
+pub enum ShippingType {
+  shipping
+  delivery
+  /// They pick it up at a store: its address can't be changed.
+  storePickup
+  /// They're picked up (a ride).
+  servicePickup
+}
+
+/// A recurring payment's period.
+pub enum Interval {
+  month
+  day
+  week
+  year
+}
+
+/// A recurring or deferred payment's charge.
+pub struct Billing {
+  label: string = ""
+  amount: string = ""
+  pending: bool = false
+  /// The first and last charges ("2026-11-20"; "": now, and until
+  /// canceled).
+  start: string = ""
+  end: string = ""
+  /// How often: every 1 month by default.
+  interval: Interval = .month
+  every: int = 1
+}
+
+/// Makes the payment a subscription's: the wallet shows the charges to
+/// come, and its token is for them.
+pub struct Recurring {
+  description: string = ""
+  regular: Billing = Billing()
+  trial: Billing? = none
+  /// Where the user changes or cancels it (required).
+  managementURL: string = ""
+  billingAgreement: string = ""
+  tokenNotificationURL: string = ""
+}
+
+/// Makes the payment a later one's (a hotel's stay, a preorder):
+/// authorized now, charged on date.
+pub struct Deferred {
+  description: string = ""
+  billing: Billing = Billing()
+  /// "2026-11-20"
+  date: string = ""
+  managementURL: string = ""
+  billingAgreement: string = ""
+  tokenNotificationURL: string = ""
+  /// Until when the user can cancel without a fee (Apple Pay).
+  freeCancellation: string = ""
+}
+
+/// Makes the payment a stored balance's top up when it falls below
+/// threshold.
+pub struct AutomaticReload {
+  description: string = ""
+  billing: Billing = Billing()
+  threshold: string = ""
+  managementURL: string = ""
+  billingAgreement: string = ""
+  tokenNotificationURL: string = ""
+}
+
+/// The request's Apple Pay accounts.
+pub struct Apple {
+  /// "merchant.com.example.shop", one of asuka.toml's
+  /// applePay.merchantIds.
+  merchantId: string = ""
+  /// Also EMV payments (China UnionPay's cards).
+  emv: bool = false
+  /// The app's (an order's ID), signed into the token as its hash.
+  applicationData: bytes = bytes()
+}
+
+/// The request's Google Pay accounts.
+pub struct Google {
+  /// Pays for real; else Google Pay's TEST environment.
+  production: bool = false
+  /// From the Google Pay & Wallet Console (required in production).
+  merchantId: string = ""
+  merchantName: string = ""
+  /// The processor's gateway ID ("stripe", "adyen", "braintree") and its
+  /// parameters, as its documentation says.
+  gateway: string = ""
+  gatewayParams: [string: string] = [:]
+  /// Instead of a gateway: the token encrypted for the app's own server
+  /// (Google's ECv2 public key, base64), for a PCI DSS merchant.
+  directKey: string = ""
+  /// Only cards tokenized on the device.
+  deviceTokensOnly: bool = false
+  assuranceDetails: bool = false
+  transactionId: string = ""
+  /// Labels the sheet's button "Pay now".
+  payNow: bool = false
+  totalLabel: string = ""
+}
+
+/// What the user authorized.
+pub struct Payment {
+  wallet: Wallet = .none
+  /// The payment token, for the processor: Apple Pay's paymentData (a
+  /// JSON object), Google Pay's tokenizationData.token.
+  token: string = ""
+  /// Apple Pay's transaction identifier.
+  transactionId: string = ""
+  card: Card = Card()
+  shipping: Contact = Contact()
+  billing: Contact = Contact()
+  /// The chosen method's ID.
+  shippingMethod: string = ""
+  /// Google Pay's PaymentData, as JSON.
+  raw: string = ""
+}
+
+/// A payment to ask the wallet for.
+pub struct Request {
+  /// The merchant's (its acquirer's), ISO 3166 ("US"); ISO 4217 ("USD").
+  country: string = "US"
+  currency: string = "USD"
+  /// The lines above the total (subtotal, shipping, tax).
+  items: [Item] = []
+  /// What's charged. Its label is the business's name: Apple Pay shows
+  /// "Pay <label>".
+  total: Item = Item()
+  /// The cards taken ([]: Visa, Mastercard, Amex, Discover), their kinds
+  /// ([]: all), their countries ([]: any).
+  networks: [Network] = []
+  cards: [CardKind] = []
+  cardCountries: [string] = []
+  /// What's asked for the shipping and the billing contacts.
+  shipping: [ContactField] = []
+  billing: [ContactField] = []
+  shippingType: ShippingType = .shipping
+  /// The ways to ship, the first chosen.
+  shippingMethods: [ShippingMethod] = []
+  /// Where the app ships (Google Pay; []: anywhere).
+  shippingCountries: [string] = []
+  /// The user may enter a coupon (Apple Pay), and one applied already.
+  coupons: bool = false
+  coupon: string = ""
+  /// At most one of these.
+  recurring: Recurring? = none
+  deferred: Deferred? = none
+  automaticReload: AutomaticReload? = none
+  apple: Apple = Apple()
+  google: Google = Google()
+  /// The user chose a shipping address (until they pay, only its city,
+  /// state, postal code and country): the new totals.
+  onShippingContact: (async fn(Contact) throws -> Update)? = none
+  /// The user chose a shipping method.
+  onShippingMethod: (async fn(ShippingMethod) throws -> Update)? = none
+  /// The user chose a card (a surcharge for credit).
+  onPaymentMethod: (async fn(Card) throws -> Update)? = none
+  /// The user entered a coupon code (Apple Pay).
+  onCoupon: (async fn(string) throws -> Update)? = none
+  /// The user paid: send the token to the app's server, which charges
+  /// it; what it throws the sheet shows (Invalid by its field).
+  onAuthorize: (async fn(Payment) throws)? = none
+  /// Apple Pay on the web: a merchant session from Apple's validation
+  /// URL, from the app's server.
+  onValidateMerchant: (async fn(string) throws -> bytes)? = none
+}
+
+/// The wallet's own button, which its guidelines ask for: Apple Pay's
+/// (PKPaymentButton, the CSS one in Safari), Google Pay's (PayButton),
+/// with its logo and words in the user's language. Show it where
+/// available() says the wallet can pay; elsewhere it's nothing.
+pub native component PayButton() {
+  prop type: ButtonType = .buy
+  prop style: ButtonStyle = .automatic
+  /// Rounds it (negative: the wallet's own).
+  prop cornerRadius: float = -1
+  /// What Google Pay's button shows a card of the user's for.
+  prop networks: [Network] = []
+  event press
+}
+
+/// The button's words.
+pub enum ButtonType {
+  /// The wallet's logo alone.
+  plain
+  buy
+  checkout
+  book
+  donate
+  order
+  subscribe
+  pay
+  continueWith
+  /// "Set up Apple Pay" (Google Pay: plain).
+  setUp
+  reload
+  addMoney
+  topUp
+  rent
+  support
+  contribute
+  tip
+}
+
+/// The button's colors.
+pub enum ButtonStyle {
+  /// Black in light mode, white in dark.
+  automatic
+  black
+  white
+  whiteOutline
+}
+
+/// The wallet's errors.
+pub enum PayError: Error {
+  /// pay: not available
+  notAvailable
+  /// pay: canceled
+  canceled
+  /// pay: a payment sheet shows already
+  busy
+
+  fn message() -> string = match self {
+    .notAvailable => "pay: not available"
+    .canceled => "pay: canceled"
+    .busy => "pay: a payment sheet shows already"
+  }
+}
+
+// ---------------------------------------------------------------------
+// The platform's side
+
+/// What the sheet asks the app.
+enum AskKind {
+  shippingContact
+  shippingMethod
+  paymentMethod
+  coupon
+  authorize
+  validateMerchant
+}
+
+/// A question from the sheet, answered with answer(id, …).
+struct Ask {
+  id: int = 0
+  kind: AskKind = .authorize
+  contact: Contact = Contact()
+  method: ShippingMethod = ShippingMethod()
+  card: Card = Card()
+  coupon: string = ""
+  payment: Payment = Payment()
+  validationURL: string = ""
+}
+
+/// The app's answer: the sheet's update (its errors shown), a failure's
+/// message, a merchant session.
+struct Answer {
+  update: Update = Update()
+  failed: bool = false
+  message: string = ""
+  session: bytes = bytes()
+}
+
+/// A Request as it crosses: its handlers, whether it has each.
+struct Sheet {
+  country: string = ""
+  currency: string = ""
+  items: [Item] = []
+  total: Item = Item()
+  networks: [Network] = []
+  cards: [CardKind] = []
+  cardCountries: [string] = []
+  shipping: [ContactField] = []
+  billing: [ContactField] = []
+  shippingType: ShippingType = .shipping
+  shippingMethods: [ShippingMethod] = []
+  shippingCountries: [string] = []
+  coupons: bool = false
+  coupon: string = ""
+  recurring: Recurring? = none
+  deferred: Deferred? = none
+  automaticReload: AutomaticReload? = none
+  apple: Apple = Apple()
+  google: Google = Google()
+  asks: [AskKind] = []
+}
+
+/// The platform's wallet.
+native interface Wallets {
+  async fn available(request: Sheet) -> Availability
+  /// Shows the sheet, calls asked with its questions (each answered with
+  /// answer), and returns the payment once it closes paid; throws
+  /// canceled, busy.
+  async fn pay(request: Sheet, asked: fn(Ask)) -> Payment
+  fn answer(id: int, answer: Answer)
+  /// Opens Apple Pay's screen to add a card.
+  async fn setUp()
+}
+
+let platform = try? Wallets()
+
+state faked: FakeWallet? = none
+
+fn sheetOf(r: Request) -> Sheet {
+  var asks: [AskKind] = [.authorize]
+  if r.onShippingContact.isSome() { asks.push(.shippingContact) }
+  if r.onShippingMethod.isSome() { asks.push(.shippingMethod) }
+  if r.onPaymentMethod.isSome() { asks.push(.paymentMethod) }
+  if r.onCoupon.isSome() { asks.push(.coupon) }
+  if r.onValidateMerchant.isSome() { asks.push(.validateMerchant) }
+  return Sheet(country: r.country, currency: r.currency, items: r.items, total: r.total, networks: r.networks, cards: r.cards,
+    cardCountries: r.cardCountries, shipping: r.shipping, billing: r.billing, shippingType: r.shippingType,
+    shippingMethods: r.shippingMethods, shippingCountries: r.shippingCountries, coupons: r.coupons, coupon: r.coupon,
+    recurring: r.recurring, deferred: r.deferred, automaticReload: r.automaticReload, apple: r.apple, google: r.google, asks: asks)
+}
+
+/// What the wallet can do for r (its networks, cards and accounts; its
+/// amounts don't matter).
+pub async fn available(r: Request) throws -> Availability {
+  if let f = faked {
+    return Availability(wallet: f.wallet, canPay: f.canPay, hasCard: f.hasCard)
+  }
+  if let p = platform {
+    return try await p.available(request: sheetOf(r))
+  }
+  return Availability()
+}
+
+/// Opens Apple Pay's screen to add a card (for a setUp button). Google
+/// Pay has none (its sheet adds a card): notAvailable.
+pub async fn setUp() throws {
+  if let f = faked {
+    f.setUps += 1
+    return
+  }
+  if let p = platform {
+    try await p.setUp()
+    return
+  }
+  throw PayError.notAvailable
+}
+
+/// The app's answer to a question: its handler's.
+async fn answer(r: Request, a: Ask) -> Answer {
+  do {
+    match a.kind {
+      .shippingContact => if let h = r.onShippingContact { return Answer(update: try await h(a.contact)) }
+      .shippingMethod => if let h = r.onShippingMethod { return Answer(update: try await h(a.method)) }
+      .paymentMethod => if let h = r.onPaymentMethod { return Answer(update: try await h(a.card)) }
+      .coupon => if let h = r.onCoupon { return Answer(update: try await h(a.coupon)) }
+      .authorize => if let h = r.onAuthorize { try await h(a.payment) }
+      .validateMerchant => if let h = r.onValidateMerchant { return Answer(session: try await h(a.validationURL)) }
+    }
+    return Answer()
+  } catch e: Invalid {
+    let u = e.update
+    return Answer(update: Update(items: u.items, total: u.total, shippingMethods: u.shippingMethods,
+      errors: u.errors + [FieldError(field: e.field, message: e.message)]))
+  } catch e {
+    return Answer(update: Update(errors: [FieldError(field: .payment, message: e.message)]), failed: true, message: e.message)
+  }
+}
+
+/// What the sheet does: a question, or its end.
+enum Step {
+  asked(Ask)
+  paid(Payment)
+  canceled
+}
+
+/// Shows the wallet's sheet for r, runs r's handlers as the user changes
+/// it, and returns the payment onAuthorize accepted, once the sheet
+/// closes: PayError.canceled if the user closed it first, busy while
+/// another shows.
+pub async fn pay(r: Request) throws -> Payment {
+  let sheet = sheetOf(r)
+  if let f = faked {
+    if !f.canPay {
+      throw PayError.notAvailable
+    }
+    if f.sheet.isSome() {
+      throw PayError.busy
+    }
+    let steps: Stream<Step> = Stream(send => {
+      let id = f.open(sheet, s => send(s))
+      defer { f.close(id) }
+      await never()
+    })
+    for await s in steps {
+      match s {
+        .asked(a) => f.answered(a.id, await answer(r, a))
+        .paid(p) => return p
+        .canceled => throw PayError.canceled
+      }
+    }
+    throw PayError.canceled
+  }
+  if let p = platform {
+    let steps: Stream<Step> = Stream(send => {
+      let paid = try await p.pay(request: sheet, asked: a => send(Step.asked(a)))
+      send(Step.paid(paid))
+    })
+    for await s in steps {
+      match s {
+        .asked(a) => try p.answer(id: a.id, answer: await answer(r, a))
+        .paid(pm) => return pm
+        .canceled => throw PayError.canceled
+      }
+    }
+    throw PayError.canceled
+  }
+  throw PayError.notAvailable
+}
+
+// ---------------------------------------------------------------------
+// Testing
+
+/// The sheet a fake wallet shows: what it was asked, as the app's
+/// answers left it.
+pub struct FakeSheet {
+  items: [Item] = []
+  total: Item = Item()
+  shippingMethods: [ShippingMethod] = []
+  /// The errors the last answer gave.
+  errors: [FieldError] = []
+  /// The method chosen.
+  method: string = ""
+  shipping: [ContactField] = []
+  coupons: bool = false
+}
+
+/// A wallet a test drives: fake() installs one. While pay() shows its
+/// sheet (sheet isn't none), the test does what a user would (change the
+/// contact, the method, a coupon; authorize; cancel), and the app's
+/// handlers answer (waiting while they do).
+///
+///   let w = pay.fake()
+///   ... the app calls pay.pay(…) ...
+///   w.changeShippingContact(pay.Contact(address: pay.PostalAddress(state: "CA", countryCode: "US")))
+///   await app.idle()
+///   expect(w.sheet!.total.amount == "86.40")
+///   w.authorize(pay.Payment(token: "tok_visa"))
+pub store FakeWallet {
+  pub state wallet: Wallet = .applePay
+  pub state canPay = true
+  pub state hasCard = true
+  pub state sheet: FakeSheet? = none
+  /// A question waits for the app's answer.
+  pub state waiting = false
+  /// The last authorization was accepted, and the sheet closed paid.
+  pub state authorized = false
+  pub state setUps = 0
+  /// The sheets shown.
+  pub state shown = 0
+  state send: fn(Step)? = none
+  state asks: [AskKind] = []
+  state nextID = 0
+  state current = 0
+  state pendingPayment: Payment? = none
+
+  fn open(s: Sheet, f: fn(Step)) -> int {
+    shown += 1
+    nextID += 1
+    current = nextID
+    send = f
+    asks = s.asks
+    authorized = false
+    sheet = FakeSheet(items: s.items, total: s.total, shippingMethods: s.shippingMethods,
+      method: if s.shippingMethods.isEmpty() { "" } else { s.shippingMethods[0].id }, shipping: s.shipping, coupons: s.coupons)
+    return current
+  }
+
+  fn close(id: int) {
+    if id == current {
+      sheet = none
+      send = none
+    }
+  }
+
+  fn ask(a: Ask) {
+    if let s = send {
+      nextID += 1
+      waiting = true
+      s(Step.asked(Ask(id: nextID, kind: a.kind, contact: a.contact, method: a.method, card: a.card, coupon: a.coupon, payment: a.payment)))
+    }
+  }
+
+  fn answered(id: int, a: Answer) {
+    waiting = false
+    if let s = sheet {
+      let u = a.update
+      let methods = u.shippingMethods ?? s.shippingMethods
+      sheet = FakeSheet(items: u.items ?? s.items, total: mergeTotal(s.total, u.total), shippingMethods: methods,
+        errors: u.errors, method: if methods.any(m => m.id == s.method) || methods.isEmpty() { s.method } else { methods[0].id },
+        shipping: s.shipping, coupons: s.coupons)
+    }
+    if let p = pendingPayment {
+      pendingPayment = none
+      if !a.failed && a.update.errors.isEmpty() {
+        authorized = true
+        if let f = send { f(Step.paid(p)) }
+      }
+    }
+  }
+
+  fn mergeTotal(old: Item, new: Item?) -> Item {
+    if let n = new {
+      return Item(label: if n.label.isEmpty() { old.label } else { n.label }, amount: if n.amount.isEmpty() { old.amount } else { n.amount },
+        pending: n.pending, kind: n.kind)
+    }
+    return old
+  }
+
+  /// The user chose a shipping contact.
+  pub fn changeShippingContact(c: Contact) {
+    if asks.contains(.shippingContact) {
+      ask(Ask(kind: .shippingContact, contact: c))
+    }
+  }
+
+  /// The user chose a shipping method.
+  pub fn chooseShippingMethod(id: string) {
+    if let s = sheet {
+      sheet = FakeSheet(items: s.items, total: s.total, shippingMethods: s.shippingMethods, errors: s.errors, method: id,
+        shipping: s.shipping, coupons: s.coupons)
+      if asks.contains(.shippingMethod) {
+        if let m = s.shippingMethods.find(m => m.id == id) {
+          ask(Ask(kind: .shippingMethod, method: m))
+        }
+      }
+    }
+  }
+
+  /// The user chose a card.
+  pub fn choosePaymentMethod(c: Card) {
+    if asks.contains(.paymentMethod) {
+      ask(Ask(kind: .paymentMethod, card: c))
+    }
+  }
+
+  /// The user entered a coupon code.
+  pub fn enterCoupon(code: string) {
+    if asks.contains(.coupon) {
+      ask(Ask(kind: .coupon, coupon: code))
+    }
+  }
+
+  /// The user paid with p: the app's onAuthorize answers; accepted, the
+  /// sheet closes and pay() returns p (its shipping method the one
+  /// chosen, its wallet this one's).
+  pub fn authorize(p: Payment) {
+    if let s = sheet {
+      let paid = Payment(wallet: wallet, token: p.token, transactionId: p.transactionId, card: p.card, shipping: p.shipping,
+        billing: p.billing, shippingMethod: if p.shippingMethod.isEmpty() { s.method } else { p.shippingMethod }, raw: p.raw)
+      pendingPayment = paid
+      ask(Ask(kind: .authorize, payment: paid))
+    }
+  }
+
+  /// The user closed the sheet.
+  pub fn cancel() {
+    if let f = send { f(Step.canceled) }
+  }
+}
+
+/// Installs a FakeWallet, for a test: from now on the package pays with
+/// it, not the platform's wallet.
+pub fn fake(wallet: Wallet = .applePay) -> FakeWallet {
+  let f = FakeWallet()
+  f.wallet = wallet
+  faked = f
+  return f
+}

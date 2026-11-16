@@ -1,9 +1,9 @@
-// asuka/push's rewrite with no platform code: rewrite and stopRewriting
+// platform/push's rewrite with no platform code: rewrite and stopRewriting
 // don't throw (the host has no push module: nothing comes), and a push
 // that comes in a test shows as the app's rewrite makes it, or as it
 // came when the rewrite gives none or throws.
-import asuka/push
-import asuka/notify
+import platform/push
+import platform/notify
 
 async fn decrypt(m: push.Message) throws -> push.Message? {
   if m.data["box"] == none {

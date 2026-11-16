@@ -1,11 +1,11 @@
-// The host's modules, called as the standard library's packages call
-// them (linux_test.go's TestModules): asuka/platform's call, a module the
-// host hasn't, a tray icon, asuka/apps' ranking, and the updater's
+// The host's modules, called as the platform SDK's packages call
+// them (linux_test.go's TestModules): platform/host's call, a module the
+// host hasn't, a tray icon, platform/apps' ranking, and the updater's
 // download and install into the app's own prefix (the test's job).
-import asuka/apps
-import asuka/json
-import asuka/platform
-import asuka/tray
+import platform/apps
+import std/json
+import platform/host
+import platform/tray
 
 struct Info {
   installable: bool = false
@@ -66,8 +66,8 @@ component Modules(url: string) {
 
   task {
     do {
-      let b = try await platform.call("tray", "supported", bytes())
-      supported = "{platform.readU8(b, 0)}"
+      let b = try await host.call("tray", "supported", bytes())
+      supported = "{host.readU8(b, 0)}"
     } catch e {
       supported = "error {e.message}"
     }
@@ -75,13 +75,13 @@ component Modules(url: string) {
 
   task {
     do {
-      let _ = try await platform.call("push", "register", bytes())
+      let _ = try await host.call("push", "register", bytes())
       viaHost = "registered"
     } catch e {
       viaHost = e.message
     }
     do {
-      let _ = try await platform.call("nope", "x", bytes())
+      let _ = try await host.call("nope", "x", bytes())
       missing = "answered"
     } catch e {
       missing = e.message
@@ -101,22 +101,22 @@ component Modules(url: string) {
 
   task {
     do {
-      let ib = try await platform.call("update", "info", bytes())
+      let ib = try await host.call("update", "info", bytes())
       let i: Info = try json.decode(ib.string())
       info = "{i.installable} {i.reason} {i.kind} {i.target}"
       if !url.isEmpty() {
         let to = "{i.work}/staged-test/share/app/new.txt"
-        let sb = try await platform.call("update", "download", json.encode(DownloadArgs(url: url, to: to)).bytes())
+        let sb = try await host.call("update", "download", json.encode(DownloadArgs(url: url, to: to)).bytes())
         let s: Started = try json.decode(sb.string())
         var p = Progress()
         var polls = 0
         while !p.done {
-          let pb = try await platform.call("update", "next", json.encode(ID(id: s.id)).bytes())
+          let pb = try await host.call("update", "next", json.encode(ID(id: s.id)).bytes())
           p = try json.decode(pb.string())
           polls += 1
         }
         download = "{p.status} {p.downloaded}/{p.total} [{p.error}] polls>1:{polls > 1}"
-        let _ = try await platform.call("update", "install", json.encode(Staged(staged: "{i.work}/staged-test")).bytes())
+        let _ = try await host.call("update", "install", json.encode(Staged(staged: "{i.work}/staged-test")).bytes())
         install = "installed"
       }
     } catch e {

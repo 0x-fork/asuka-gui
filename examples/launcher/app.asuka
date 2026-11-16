@@ -9,9 +9,9 @@
 //
 //   asuka dev examples/launcher
 
-import asuka/apps
-import asuka/hotkey
-import asuka/tray
+import platform/apps
+import platform/hotkey
+import platform/tray
 
 /// Whether the panel shows: hidden until the shortcut shows it.
 state shown = false

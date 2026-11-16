@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-// The kinds, as asuka/scan names them: "qr", "datamatrix", "ean13",
+// The kinds, as platform/scan names them: "qr", "datamatrix", "ean13",
 // "ean8", "upca", "upce", "code128", "code39".
 enum {
 	ASUKA_BARCODE_QR = 1 << 0,

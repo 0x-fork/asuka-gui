@@ -1,6 +1,6 @@
 // JSON: typed decoding and encoding, by the compiler's descriptors.
 
-import asuka/json
+import std/json
 
 enum Status { active, archived }
 

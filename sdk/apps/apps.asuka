@@ -1,0 +1,107 @@
+// Package platform/apps finds the apps installed on the computer, as a
+// launcher does: it lists them, draws their icons, starts them, and
+// ranks them against what the user types. macOS lists the .app bundles
+// where Spotlight finds them, Windows the Start menu's All apps (desktop
+// and packaged apps alike), Linux the desktop entries a menu shows.
+// Phones don't let an app list the others, and a page sees none: there
+// they throw AppsError.unsupported.
+//
+//   state all: [apps.App] = []
+//   task { all = try await apps.list() }
+//   let shown = load apps.search(all, query)
+
+import std/json
+import platform/host
+
+/// An app installed on the computer.
+pub struct App {
+  /// The name the system shows for it, in the user's language.
+  name: string
+  /// The system's own: its bundle identifier on macOS, its
+  /// AppUserModelID on Windows, its desktop file ID on Linux.
+  id: string
+  /// Where it is: its .app bundle, its item in the shell's Applications
+  /// folder (shell:AppsFolder\<id>), its desktop entry. icon and open
+  /// take it.
+  path: string
+}
+
+pub enum AppsError: Error {
+  unsupported
+
+  fn message() -> string = "apps: not on this platform"
+}
+
+fn hostError(e: Error) -> Error {
+  let m = e.message
+  if m == "unsupported" || m.hasPrefix("no module") || m.contains("isn't on") {
+    return AppsError.unsupported
+  }
+  return e
+}
+
+/// The installed apps, by name (case and accents aside), each once.
+pub async fn list() throws -> [App] {
+  var b = bytes()
+  do {
+    b = try await host.call("apps", "list", bytes())
+  } catch e {
+    throw hostError(e)
+  }
+  if b.isEmpty() {
+    return []
+  }
+  return try json.decode<[App]>(b.string())
+}
+
+struct SearchArgs {
+  names: [string]
+  query: string
+}
+
+/// The apps whose names match query, best first, as a launcher ranks
+/// them: the name, then its start, then a word's start or its words'
+/// starts in order ("vsc": Visual Studio Code), then anywhere, then its
+/// letters in order; case and accents don't count. An empty query is
+/// apps as they are.
+pub async fn search(apps: [App], query: string) throws -> [App] {
+  if query.trim().isEmpty() {
+    return apps
+  }
+  let args = SearchArgs(names: apps.map(a => a.name), query: query)
+  var b = bytes()
+  do {
+    b = try await host.call("apps", "search", json.encode(args).bytes())
+  } catch e {
+    throw hostError(e)
+  }
+  let order: [int] = try json.decode(b.string())
+  return order.map(i => apps[i])
+}
+
+struct IconArgs {
+  path: string
+  size: float
+}
+
+/// The app's icon as a PNG file, size points square at the display's
+/// scale, for Image (give it the size): the icon Finder, the Start menu
+/// or the icon theme shows. The files are in the app's caches.
+pub async fn icon(app: App, size: float) throws -> string {
+  do {
+    let b = try await host.call("apps", "icon", json.encode(IconArgs(path: app.path, size: size)).bytes())
+    return b.string()
+  } catch e {
+    throw hostError(e)
+  }
+}
+
+/// Starts the app, or brings it to the front if it's running, as a
+/// click in the Dock or the Start menu does.
+pub async fn open(app: App) throws {
+  do {
+    let _ = try await host.call("apps", "open", app.path.bytes())
+  } catch e {
+    throw hostError(e)
+  }
+}

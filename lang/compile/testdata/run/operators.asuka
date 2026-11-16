@@ -2,7 +2,7 @@
 // one whose parameter takes the right side), <, <=, > and >= its
 // compare.
 
-import asuka/time
+import std/time
 
 struct Money {
   cents: int

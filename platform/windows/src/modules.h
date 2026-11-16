@@ -1,7 +1,7 @@
 // modules.h: the host's own modules (modules.c and the files of each:
 // tray.c, dock.c, notify.c, hotkey.c, periodic.c, apps.c, services.c,
-// update.c), what std packages call by name: asuka/platform's call and
-// send (the Call command, answered with Result) and asuka/host's
+// update.c), what std packages call by name: platform/host's call and
+// send (the Call command, answered with Result) and platform/host's
 // Modules (a native class the host serves itself). A method gets its
 // arguments' bytes and answers once, through its reply, on the main
 // thread; a long poll keeps its reply until something comes.
@@ -47,7 +47,7 @@ void wh_reply_fail(wh_reply *r, const char *fmt, ...)
 	__attribute__((format(printf, 2, 3)))
 #endif
 	;
-// wh_reply_gone reports whether the call's task went (asuka/host's
+// wh_reply_gone reports whether the call's task went (platform/host's
 // cancelling): its answer goes nowhere.
 bool wh_reply_gone(const wh_reply *r);
 

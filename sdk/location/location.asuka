@@ -1,0 +1,881 @@
+// Package platform/location is where the device is: now, as it moves, and
+// with the app out of sight, with the user's permission, which it asks
+// for the first time. Core Location on iOS and macOS; Android's location
+// manager; Windows.Devices.Geolocation; GeoClue on Linux; the browser's
+// Geolocation API.
+//
+//   let auth = location.authorization()   // tracked: follows what the user allows
+//   let p = try await location.current()
+//
+// With the app out of sight too: background updates (startUpdates, then
+// updates()) and regions the system watches for the app (monitor, then
+// crossings()). The system starts the app for their events, without a
+// screen: read updates() and crossings() as the app starts, in a task of
+// the app's root, so the events it was started for find a reader.
+//
+// Tests drive a fake: location.fake() gives the package a FakeLocation
+// (what the user answers, where the device is, the regions it crosses).
+
+import std/math
+import std/time
+
+/// How much the user lets the app know where the device is.
+pub enum Level {
+  /// The app hasn't asked yet.
+  notAsked
+  /// The user said no (or turned it off in Settings): only Settings can
+  /// change it (openSettings).
+  denied
+  /// The user can't allow it (parental controls, a device policy).
+  restricted
+  /// While the app is in use, or with updates it started there that go
+  /// on in the background.
+  whenInUse
+  /// Also with the app in the background, which regions need, and to
+  /// start the app for their events.
+  always
+
+  /// The app may know where the device is, now.
+  fn allowed() -> bool = match self {
+    .whenInUse | .always => true
+    _ => false
+  }
+}
+
+/// What the user allowed.
+pub struct Authorization {
+  level: Level = .notAsked
+  /// Positions to a few meters; false: approximate ones, within a few
+  /// kilometers (iOS's Precise Location off, Android's Approximate).
+  precise: bool = false
+  /// Location services are off for the whole device: no position,
+  /// whatever the level.
+  off: bool = false
+}
+
+/// A place the device was at, at a time.
+pub struct Position {
+  latitude: float = 0
+  longitude: float = 0
+  /// Meters: the radius the device is within.
+  accuracy: float = 0
+  /// Meters above sea level; 0: not known.
+  altitude: float = 0
+  /// Meters per second, and degrees from true north, clockwise: negative
+  /// when not known.
+  speed: float = -1
+  course: float = -1
+  time: time.Time = time.unix(0)
+}
+
+// A position as the platforms give it: its time in nanoseconds since
+// 1970.
+struct Fix {
+  latitude: float = 0
+  longitude: float = 0
+  accuracy: float = 0
+  altitude: float = 0
+  speed: float = -1
+  course: float = -1
+  time: int = 0
+}
+
+fn positionOf(f: Fix) -> Position = Position(latitude: f.latitude, longitude: f.longitude, accuracy: f.accuracy, altitude: f.altitude, speed: f.speed, course: f.course, time: time.unixNano(f.time))
+
+fn fixOf(p: Position) -> Fix = Fix(latitude: p.latitude, longitude: p.longitude, accuracy: p.accuracy, altitude: p.altitude, speed: p.speed, course: p.course, time: p.time.unixNano())
+
+/// How exact the background updates are, against the power they use.
+pub enum Accuracy {
+  /// The best the device has, GPS outdoors.
+  high
+  /// The best, with the other sensors' help, for directions.
+  navigation
+  /// To about 100 meters, from Wi-Fi and cell towers mostly.
+  balanced
+  /// To about a kilometer.
+  low
+  /// Only the positions the device finds for others, at almost no power.
+  passive
+}
+
+/// What the user does as the device moves: iOS tunes its updates to it.
+pub enum Activity {
+  other
+  /// Driving, on roads.
+  automotive
+  /// On a boat, a train, off roads.
+  otherNavigation
+  /// Walking, running, cycling.
+  fitness
+  /// In a plane.
+  airborne
+}
+
+/// Android's foreground service's notification, while the updates run.
+pub struct Notification {
+  title: string = ""
+  text: string = ""
+}
+
+/// The background updates' options.
+pub struct Updates {
+  accuracy: Accuracy = .high
+  /// How far the device moves between two updates, in meters (0: any
+  /// move).
+  distance: float = 0
+  /// How often updates come, about (Android's; 0: every 10 seconds).
+  interval: Duration = 0ms
+  activity: Activity = .other
+  /// Updates may wait this long to come together, in one Batch: the app
+  /// wakes less often (Android's batched delivery).
+  delay: Duration = 0ms
+  /// Only the significant changes (about 500 m), at almost no power; on
+  /// iOS, with always, they start the app even after the user ended it.
+  significant: bool = false
+  /// iOS pauses the updates while the device doesn't move.
+  autoPause: bool = false
+  /// iOS's background location indicator while the app gets updates out
+  /// of sight.
+  indicator: bool = false
+  /// Android's notification: with one, a foreground service keeps the
+  /// updates coming at their rate (whenInUse is enough).
+  notification: Notification = Notification()
+}
+
+/// Background updates the system delivered together.
+pub struct Batch {
+  /// Oldest first.
+  positions: [Position] = []
+  id: int = 0
+
+  /// Keeps the app running for work that goes on after the batch is
+  /// read (sending the positions to a server), until the function it
+  /// returns is called (or the system's time is up: about 30 seconds on
+  /// iOS, 10 on Android).
+  fn hold() -> fn() = holdEvent(id)
+}
+
+/// A region's transition.
+pub enum Transition {
+  enter
+  exit
+  /// The device stayed inside for the region's dwell (Android, and the
+  /// regions this package computes).
+  dwell
+}
+
+/// A circle on the map the system watches for the app.
+pub struct Region {
+  /// Monitoring an ID that's monitored replaces that region.
+  id: string = ""
+  latitude: float = 0
+  longitude: float = 0
+  /// Meters: the systems are reliable from about 100 to 200.
+  radius: float = 100
+  /// The transitions reported ([]: enter and exit).
+  events: [Transition] = []
+  /// How long the device stays inside before a dwell.
+  dwell: Duration = 5min
+}
+
+/// A region's transition, as the system reported it.
+pub struct Crossing {
+  /// The region's ID.
+  region: string = ""
+  kind: Transition = .enter
+  /// Where the device was, when the system says (its time 1970's
+  /// first instant otherwise).
+  at: Position = Position()
+  time: time.Time = time.unix(0)
+  id: int = 0
+
+  /// Keeps the app running for work after the crossing is read, until
+  /// the function it returns is called.
+  fn hold() -> fn() = holdEvent(id)
+}
+
+/// What the system does for the app itself, and so with the app not
+/// running.
+pub struct Support {
+  /// The system delivers background updates (iOS, Android).
+  updates: bool = false
+  /// The system monitors the regions (iOS, Android, macOS, Windows); else
+  /// this package computes them from the positions while the app runs.
+  regions: bool = false
+  /// How many regions it monitors at once (0: no limit stated).
+  maxRegions: int = 0
+  /// The largest radius it takes, in meters (0: no limit stated).
+  maxRadius: float = 0
+  /// Dwell transitions come.
+  dwell: bool = false
+  /// The system starts the app, without a screen, for an event.
+  relaunch: bool = false
+}
+
+/// The location's errors.
+pub enum LocationError: Error {
+  /// location: not allowed
+  denied
+  /// location: needs the Always authorization (requestAlways)
+  needsAlways
+  /// location: too many regions
+  tooManyRegions
+  /// location: not available
+  unavailable
+
+  fn message() -> string = match self {
+    .denied => "location: not allowed"
+    .needsAlways => "location: needs the Always authorization (requestAlways)"
+    .tooManyRegions => "location: too many regions"
+    .unavailable => "location: not available"
+  }
+}
+
+/// A background event the platform keeps until the app has it: a batch
+/// of updates or a crossing (positions empty), with its id.
+struct Event {
+  id: int = 0
+  positions: [Fix] = []
+  crossing: bool = false
+  region: string = ""
+  kind: Transition = .enter
+  at: Fix = Fix()
+  time: int = 0
+}
+
+/// The platform's location.
+native interface Locator {
+  /// What the user allowed, without asking.
+  fn authorization() -> Authorization
+  /// Calls changed with what the user allowed now, then as it changes.
+  async fn watchAuthorization(changed: fn(Authorization))
+  /// Asks for whenInUse (always: for always too), the first time, and
+  /// answers what the user allowed.
+  async fn request(always: bool) -> Authorization
+  /// Asks for precise positions (iOS: for now, purpose a key of the
+  /// app's NSLocationTemporaryUsageDescriptionDictionary).
+  async fn requestPrecise(purpose: string) -> Authorization
+  /// Where the device is now (asking first). Throws denied.
+  async fn current() -> Fix
+  /// Calls moved with the position now, then as the device moves.
+  async fn watch(moved: fn(Fix))
+  /// What a place is called, from the platform's geocoder.
+  async fn placeName(latitude: float, longitude: float) -> string
+  /// @mainThread
+  fn openSettings()
+  fn support() -> Support
+  async fn startUpdates(options: Updates)
+  fn stopUpdates()
+  async fn updating() -> bool
+  /// The region monitored by the system: throws needsAlways,
+  /// tooManyRegions.
+  async fn monitor(region: Region)
+  async fn stopMonitoring(id: string)
+  async fn stopMonitoringAll()
+  async fn monitored() -> [Region]
+  /// Calls event with each background event, those kept from before
+  /// first, until the task is cancelled. Each is given again at a later
+  /// launch until done(id).
+  async fn events(event: fn(Event))
+  /// Keeps the app running for the event's work (until done).
+  fn hold(id: int)
+  /// The event is handled: the platform forgets it, and lets the app
+  /// sleep.
+  fn done(id: int)
+}
+
+// Made once; none where the platform has no code for it.
+let platform = try? Locator()
+
+// The fake a test installed (fake()).
+state faked: FakeLocation? = none
+
+fn allowedNow() -> bool = authorizationNow().level.allowed()
+
+fn authorizationNow() -> Authorization {
+  if let f = faked {
+    return f.authorization()
+  }
+  if let p = platform {
+    if let a = try? p.authorization() {
+      return a
+    }
+  }
+  return Authorization()
+}
+
+fn authorizationChanges() -> Stream<Authorization> = Stream(send => {
+  if let f = faked {
+    send(f.authorization())
+    let id = f.onAuthorization(a => send(a))
+    defer { f.unlisten(id) }
+    await never()
+  }
+  if let p = platform {
+    try await p.watchAuthorization(changed: a => send(a))
+  } else {
+    send(Authorization())
+  }
+})
+
+let followedAuthorization = live(authorizationNow(), authorizationChanges)
+
+/// What the user allowed, tracked: read in a binding, it follows changes
+/// (in Settings, or as they answer) while it's read.
+pub fn authorization() -> Authorization = followedAuthorization()
+
+/// Asks for the position while the app is in use, the first time, and
+/// returns what the user allowed. Asking again after denied shows
+/// nothing: only Settings changes it.
+pub async fn request() throws -> Authorization {
+  if let f = faked {
+    return f.ask(.whenInUse)
+  }
+  if let p = platform {
+    return try await p.request(always: false)
+  }
+  throw LocationError.unavailable
+}
+
+/// Asks for the position with the app in the background too, which
+/// regions need. iOS asks once; Android 11 and later take the user to
+/// the app's location settings ("Allow all the time").
+pub async fn requestAlways() throws -> Authorization {
+  if let f = faked {
+    return f.ask(.always)
+  }
+  if let p = platform {
+    return try await p.request(always: true)
+  }
+  throw LocationError.unavailable
+}
+
+/// Asks the user who allowed approximate positions for precise ones: on
+/// iOS for now only, purpose the key of the reason shown (asuka.toml's
+/// ios.locationPurposes); on Android for good.
+pub async fn requestPrecise(purpose: string = "default") throws -> Authorization {
+  if let f = faked {
+    return f.askPrecise()
+  }
+  if let p = platform {
+    return try await p.requestPrecise(purpose: purpose)
+  }
+  throw LocationError.unavailable
+}
+
+/// Asks for permission if it hasn't been, then returns where the device
+/// is. Throws LocationError.denied.
+pub async fn current() throws -> Position {
+  if let f = faked {
+    if f.answer == .denied || f.answer == .restricted {
+      if !f.level.allowed() {
+        let _ = f.ask(.whenInUse)
+      }
+    } else if f.level == .notAsked {
+      let _ = f.ask(.whenInUse)
+    }
+    if !f.level.allowed() {
+      throw LocationError.denied
+    }
+    return f.position
+  }
+  if let p = platform {
+    return positionOf(try await p.current())
+  }
+  throw LocationError.unavailable
+}
+
+/// The position now, then each as the device moves (asking first, as
+/// current does).
+pub fn positions() -> Stream<Position> = Stream(send => {
+  if let f = faked {
+    let _ = try await current()
+    send(f.position)
+    let id = f.onMove(p => send(p))
+    defer { f.unlisten(id) }
+    await never()
+  }
+  if let p = platform {
+    try await p.watch(moved: x => send(positionOf(x)))
+  } else {
+    throw LocationError.unavailable
+  }
+})
+
+/// What a place is called, as a person would say it ("Mission District,
+/// San Francisco"), in the device's language, from the platform's
+/// geocoder (which asks its servers).
+pub async fn placeName(latitude: float, longitude: float) throws -> string {
+  if let f = faked {
+    return f.placeName
+  }
+  if let p = platform {
+    return try await p.placeName(latitude: latitude, longitude: longitude)
+  }
+  throw LocationError.unavailable
+}
+
+/// Opens the system's location settings for the app, where the user
+/// changes what they allowed.
+pub async fn openSettings() throws {
+  if let f = faked {
+    f.settingsOpened += 1
+    return
+  }
+  if let p = platform {
+    try p.openSettings()
+    return
+  }
+  throw LocationError.unavailable
+}
+
+/// What the system does here for the app.
+pub fn supported() -> Support {
+  if let f = faked {
+    return f.support
+  }
+  if let p = platform {
+    if let s = try? p.support() {
+      return s
+    }
+  }
+  return Support()
+}
+
+/// Starts the background updates, which updates() gives: they go on with
+/// the app out of sight, and across launches, until stopUpdates. It asks
+/// for permission if the app hasn't. Start them with the app on screen.
+pub async fn startUpdates(
+  accuracy: Accuracy = .high,
+  distance: float = 0,
+  interval: Duration = 0ms,
+  activity: Activity = .other,
+  delay: Duration = 0ms,
+  significant: bool = false,
+  autoPause: bool = false,
+  indicator: bool = false,
+  notification: Notification = Notification(),
+) throws {
+  let o = Updates(accuracy: accuracy, distance: distance, interval: interval, activity: activity, delay: delay, significant: significant, autoPause: autoPause, indicator: indicator, notification: notification)
+  if let f = faked {
+    if !f.level.allowed() {
+      let _ = f.ask(.whenInUse)
+    }
+    if !f.level.allowed() {
+      throw LocationError.denied
+    }
+    f.updates = o
+    f.updatesOn = true
+    return
+  }
+  if let p = platform {
+    try await p.startUpdates(options: o)
+    return
+  }
+  throw LocationError.unavailable
+}
+
+/// Stops the background updates.
+pub fn stopUpdates() {
+  if let f = faked {
+    f.updatesOn = false
+    return
+  }
+  if let p = platform {
+    try? p.stopUpdates()
+  }
+}
+
+/// Whether the background updates run (they may have been started at an
+/// earlier launch).
+pub async fn updating() throws -> bool {
+  if let f = faked {
+    return f.updatesOn
+  }
+  if let p = platform {
+    return try await p.updating()
+  }
+  return false
+}
+
+// Regions the system doesn't monitor (supported().regions false: Linux,
+// the web) are computed here from the positions while the app runs.
+state computed: [Region] = []
+
+/// Watches region r for the app, until stopMonitoring: its transitions
+/// come through crossings(), with the app in the background or not
+/// running (iOS and Android start it). If the device is inside as
+/// monitoring starts, an enter comes. It needs always on iOS and Android
+/// (LocationError.needsAlways); past the system's limit it throws
+/// tooManyRegions.
+pub async fn monitor(region: Region) throws {
+  let r = if region.events.isEmpty() {
+    Region(id: region.id, latitude: region.latitude, longitude: region.longitude, radius: region.radius, events: [.enter, .exit], dwell: region.dwell)
+  } else {
+    region
+  }
+  if let f = faked {
+    try f.add(r)
+    return
+  }
+  if let p = platform {
+    if supported().regions {
+      try await p.monitor(region: r)
+      return
+    }
+  }
+  computed.removeWhere(x => x.id == r.id)
+  computed.push(r)
+}
+
+/// Stops monitoring the region id.
+pub async fn stopMonitoring(id: string) throws {
+  if let f = faked {
+    f.regions.removeWhere(r => r.id == id)
+    return
+  }
+  computed.removeWhere(r => r.id == id)
+  if let p = platform {
+    if supported().regions {
+      try await p.stopMonitoring(id: id)
+    }
+  }
+}
+
+/// Stops monitoring every region.
+pub async fn stopMonitoringAll() throws {
+  if let f = faked {
+    f.regions = []
+    return
+  }
+  computed = []
+  if let p = platform {
+    if supported().regions {
+      try await p.stopMonitoringAll()
+    }
+  }
+}
+
+/// The regions monitored.
+pub async fn monitored() throws -> [Region] {
+  if let f = faked {
+    return f.regions
+  }
+  if let p = platform {
+    if supported().regions {
+      return try await p.monitored()
+    }
+  }
+  return computed
+}
+
+// The platform's background events, read once: batches go to updates(),
+// crossings to crossings().
+state batchReaders: [int: fn(Batch)] = [:]
+state crossingReaders: [int: fn(Crossing)] = [:]
+state readerID = 0
+state reading = false
+// Events that came with no reader yet, kept for the first.
+state unreadBatches: [Batch] = []
+state unreadCrossings: [Crossing] = []
+
+fn deliver(e: Event) {
+  if e.crossing {
+    let c = Crossing(region: e.region, kind: e.kind, at: positionOf(e.at), time: time.unixNano(e.time), id: e.id)
+    if crossingReaders.isEmpty() {
+      unreadCrossings.push(c)
+    } else {
+      for r in crossingReaders.values() { r(c) }
+    }
+  } else {
+    let b = Batch(positions: e.positions.map(positionOf), id: e.id)
+    if batchReaders.isEmpty() {
+      unreadBatches.push(b)
+    } else {
+      for r in batchReaders.values() { r(b) }
+    }
+  }
+}
+
+/// Reads the platform's events (and, for computed regions, its
+/// positions) while anything reads updates() or crossings().
+async fn follow() {
+  if reading {
+    return
+  }
+  reading = true
+  defer { reading = false }
+  if let f = faked {
+    let id = f.onEvent(e => deliver(e))
+    defer { f.unlisten(id) }
+    await never()
+  }
+  if let p = platform {
+    if supported().regions {
+      try? await p.events(event: e => {
+        deliver(e)
+        // Handed over: the platform keeps the app awake a moment for it
+        // (hold), and forgets it.
+        try? p.done(id: e.id)
+      })
+    } else {
+      await all(computedQuietly(), eventsOnly(p))
+    }
+  }
+}
+
+async fn computedQuietly() {
+  try? await followComputed()
+}
+
+async fn eventsOnly(p: Locator) {
+  try? await p.events(event: e => {
+    deliver(e)
+    try? p.done(id: e.id)
+  })
+}
+
+/// The regions computed from the positions while the app runs.
+async fn followComputed() throws {
+  var inside: [string: int] = [:] // region → when it entered (ns), 0: dwelt
+  var nextID = -1
+  for await pos in positions() {
+    for r in computed {
+      let isIn = distance(pos.latitude, pos.longitude, r.latitude, r.longitude) <= r.radius
+      let was = inside.has(r.id)
+      if isIn && !was {
+        inside[r.id] = pos.time.unixNano()
+        if r.events.contains(.enter) {
+          nextID -= 1
+          deliver(Event(id: nextID, crossing: true, region: r.id, kind: .enter, at: fixOf(pos), time: pos.time.unixNano()))
+        }
+      } else if !isIn && was {
+        inside.remove(r.id)
+        if r.events.contains(.exit) {
+          nextID -= 1
+          deliver(Event(id: nextID, crossing: true, region: r.id, kind: .exit, at: fixOf(pos), time: pos.time.unixNano()))
+        }
+      } else if isIn {
+        let since = inside[r.id]!
+        if since > 0 && r.events.contains(.dwell) && pos.time.unixNano() - since >= r.dwell.nanoseconds() {
+          inside[r.id] = 0
+          nextID -= 1
+          deliver(Event(id: nextID, crossing: true, region: r.id, kind: .dwell, at: fixOf(pos), time: pos.time.unixNano()))
+        }
+      }
+    }
+  }
+}
+
+/// The background updates, as the system delivers them (those it started
+/// the app for, and those kept from a launch that ended before they were
+/// read, first).
+pub fn updates() -> Stream<Batch> = Stream(send => {
+  readerID += 1
+  let id = readerID
+  batchReaders[id] = b => send(b)
+  defer { batchReaders.remove(id) }
+  let kept = unreadBatches
+  unreadBatches = []
+  for b in kept { send(b) }
+  await follow()
+  await never()
+})
+
+/// The regions' transitions (those the app was started for first).
+pub fn crossings() -> Stream<Crossing> = Stream(send => {
+  readerID += 1
+  let id = readerID
+  crossingReaders[id] = c => send(c)
+  defer { crossingReaders.remove(id) }
+  let kept = unreadCrossings
+  unreadCrossings = []
+  for c in kept { send(c) }
+  await follow()
+  await never()
+})
+
+/// Keeps the app awake for an event's work: the function it returns lets
+/// it sleep.
+fn holdEvent(id: int) -> fn() {
+  if let f = faked {
+    f.pending += 1
+    var done = false
+    return () => {
+      if !done {
+        done = true
+        f.pending -= 1
+      }
+    }
+  }
+  if let p = platform {
+    if id > 0 {
+      try? p.hold(id: id)
+      return () => { try? p.done(id: id) }
+    }
+  }
+  return () => {}
+}
+
+/// The distance between two places, in meters (haversine, on a sphere of
+/// the Earth's mean radius).
+pub fn distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float {
+  let rad = math.pi / 180
+  let dlat = (lat2 - lat1) * rad
+  let dlon = (lon2 - lon1) * rad
+  let a = math.sin(dlat / 2) * math.sin(dlat / 2) + math.cos(lat1 * rad) * math.cos(lat2 * rad) * math.sin(dlon / 2) * math.sin(dlon / 2)
+  return 6371008.8 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+}
+
+// ---------------------------------------------------------------------
+// Testing
+
+/// The location a test drives: fake() installs one, and the package reads
+/// it instead of the platform. answer is what the user answers when
+/// asked; move() takes the device somewhere, and the regions it crosses
+/// report it (as a phone's system would).
+///
+///   let loc = location.fake()
+///   loc.answer = .always
+///   loc.move(35.6812, 139.7671)
+pub store FakeLocation {
+  /// What the user answers when asked (whenInUse for always's question
+  /// gives whenInUse).
+  pub state answer: Level = .whenInUse
+  /// What they allowed so far.
+  pub state level: Level = .notAsked
+  pub state precise: bool = true
+  pub state off: bool = false
+  pub state position: Position = Position(accuracy: 5)
+  pub state placeName = ""
+  /// What the system does: a phone's, by default.
+  pub state support: Support = Support(updates: true, regions: true, maxRegions: 20, maxRadius: 2000, dwell: true, relaunch: true)
+  pub state regions: [Region] = []
+  pub state updates: Updates = Updates()
+  pub state updatesOn = false
+  /// Events read whose hold() isn't done yet.
+  pub state pending = 0
+  pub state settingsOpened = 0
+  /// The clock the positions carry; move() moves it on by step.
+  pub state clock: time.Time = time.unixNano(1_700_000_000_000_000_000)
+  pub state step: Duration = 1s
+  state inside: [string] = []
+  state moveReaders: [int: fn(Position)] = [:]
+  state authReaders: [int: fn(Authorization)] = [:]
+  state eventReaders: [int: fn(Event)] = [:]
+  state nextID = 0
+
+  pub fn authorization() -> Authorization = Authorization(level: level, precise: precise, off: off)
+
+  /// The user changes what they allowed (in Settings).
+  pub fn allow(l: Level, exact: bool = true) {
+    level = l
+    precise = exact
+    let a = authorization()
+    for r in authReaders.values() { r(a) }
+  }
+
+  fn ask(want: Level) -> Authorization {
+    if level == .notAsked || want == .always && level == .whenInUse {
+      let given = if want == .whenInUse && answer == .always { Level.whenInUse } else { answer }
+      allow(given, exact: precise)
+    }
+    return authorization()
+  }
+
+  fn askPrecise() -> Authorization {
+    if level.allowed() && !precise {
+      allow(level, exact: true)
+    }
+    return authorization()
+  }
+
+  /// Takes the device to a place: the positions' readers see it, and the
+  /// regions monitored that it enters or leaves report it; with updates
+  /// on, it's a batch too.
+  pub fn move(latitude: float, longitude: float, accuracy: float = 5) {
+    clock = clock.add(step)
+    position = Position(latitude: latitude, longitude: longitude, accuracy: accuracy, time: clock)
+    for r in moveReaders.values() { r(position) }
+    if updatesOn && level.allowed() {
+      send(Event(id: next(), positions: [fixOf(position)]))
+    }
+    cross()
+  }
+
+  /// Gives the app a crossing, as the system would.
+  pub fn crossing(region: string, kind: Transition) {
+    send(Event(id: next(), crossing: true, region: region, kind: kind, at: fixOf(position), time: clock.unixNano()))
+  }
+
+  fn cross() {
+    if level != .always {
+      return
+    }
+    for r in regions {
+      let isIn = distance(position.latitude, position.longitude, r.latitude, r.longitude) <= r.radius
+      let was = inside.contains(r.id)
+      if isIn && !was {
+        inside.push(r.id)
+        if r.events.contains(.enter) { crossing(r.id, .enter) }
+      } else if !isIn && was {
+        inside.removeWhere(x => x == r.id)
+        if r.events.contains(.exit) { crossing(r.id, .exit) }
+      }
+    }
+  }
+
+  fn add(r: Region) throws {
+    if level != .always {
+      throw LocationError.needsAlways
+    }
+    regions.removeWhere(x => x.id == r.id)
+    if support.maxRegions > 0 && regions.count() >= support.maxRegions {
+      throw LocationError.tooManyRegions
+    }
+    regions.push(r)
+    inside.removeWhere(x => x == r.id)
+    cross()
+  }
+
+  fn next() -> int {
+    nextID += 1
+    return nextID
+  }
+
+  fn send(e: Event) {
+    for r in eventReaders.values() { r(e) }
+  }
+
+  fn onMove(f: fn(Position)) -> int {
+    let id = next()
+    moveReaders[id] = f
+    return id
+  }
+
+  fn onAuthorization(f: fn(Authorization)) -> int {
+    let id = next()
+    authReaders[id] = f
+    return id
+  }
+
+  fn onEvent(f: fn(Event)) -> int {
+    let id = next()
+    eventReaders[id] = f
+    return id
+  }
+
+  fn unlisten(id: int) {
+    moveReaders.remove(id)
+    authReaders.remove(id)
+    eventReaders.remove(id)
+  }
+}
+
+/// Installs a FakeLocation, for a test: from now on the package reads it,
+/// not the platform.
+pub fn fake() -> FakeLocation {
+  let f = FakeLocation()
+  faked = f
+  return f
+}

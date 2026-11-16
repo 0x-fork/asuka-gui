@@ -1,4 +1,4 @@
-// Package asuka/chart draws charts: lines, areas, bars and points over a
+// Package std/chart draws charts: lines, areas, bars and points over a
 // value axis, as Swift Charts' and Material's do. It's Asuka: the scale,
 // its ticks and the marks' geometry are worked out here, the marks drawn
 // by svg.Shape (the platform's vector drawing), the axes' labels the
@@ -11,7 +11,7 @@
 //     height: 180
 //   }
 
-import asuka/svg
+import std/svg
 
 /// How a series is drawn.
 pub enum Kind {

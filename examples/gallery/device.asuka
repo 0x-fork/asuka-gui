@@ -1,16 +1,16 @@
-import asuka/audio
-import asuka/camera
-import asuka/compose
-import asuka/crash
-import asuka/device
-import asuka/location
-import asuka/notify
-import asuka/preview
-import asuka/print
-import asuka/record
-import asuka/scan
-import asuka/secure
-import asuka/time
+import platform/audio
+import platform/camera
+import platform/compose
+import platform/crash
+import platform/device
+import platform/location
+import platform/notify
+import platform/preview
+import platform/print
+import platform/record
+import platform/scan
+import platform/secure
+import std/time
 
 component Services {
   state copied = false
@@ -245,7 +245,7 @@ enum CheckoutError: Error {
   fn message() -> string = "checkout: no network"
 }
 
-/// The crash reports kept (asuka/crash): the app's own crashes, from
+/// The crash reports kept (platform/crash): the app's own crashes, from
 /// earlier runs, and the errors it recorded. A real app sends each to its
 /// server and deletes it; here, Delete only forgets it.
 component Crashes {
@@ -334,7 +334,7 @@ fn describe(r: crash.Report) -> string {
 }
 
 /// The camera live (camera.View) with a shutter (camera.capture), and the
-/// last photo taken; it records videos (asuka/record), played on a screen
+/// last photo taken; it records videos (platform/record), played on a screen
 /// of their own, and reads the codes it sees.
 component CameraScreen {
   state last = ""

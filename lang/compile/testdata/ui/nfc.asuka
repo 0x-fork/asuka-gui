@@ -1,4 +1,4 @@
-import asuka/nfc
+import platform/nfc
 
 state status = ""
 state link = ""

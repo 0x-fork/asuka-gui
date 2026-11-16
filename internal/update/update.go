@@ -2,7 +2,7 @@
 // desktop app's updates with: the update manifest, keys and signatures,
 // versions and channels, archives and delta updates (bsdiff patches), the
 // feeds of GitHub releases, and how an installed app is laid out. The app
-// reads them with asuka/update (std/update) and the C core's update.c,
+// reads them with platform/update (sdk/update) and the C core's update.c,
 // whose tests read what this package writes (TestCoreTestdata).
 package update
 
@@ -123,7 +123,7 @@ func validIdents(s string) bool {
 	return true
 }
 
-// MaxManifestSize limits the manifests the CLI reads (asuka/update's
+// MaxManifestSize limits the manifests the CLI reads (platform/update's
 // limit too).
 const MaxManifestSize = 1 << 20
 

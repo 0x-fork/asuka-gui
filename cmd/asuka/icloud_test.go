@@ -118,7 +118,7 @@ func usesApp(t *testing.T, app, dep string) *asukaApp {
 	return projectApp(t, dir, nil)
 }
 
-// What the program refers to of asuka/icloud says what the app's given,
+// What the program refers to of platform/icloud says what the app's given,
 // by the members its manifest names: the store's (remove), the
 // documents' (writeFile, a dependency's readFile); not a local function
 // that's named as one of them (delete), nor a mere import.
@@ -128,10 +128,10 @@ func TestUseICloud(t *testing.T) {
 		name, app, dep string
 		kv, docs       bool
 	}{
-		{"store", "import asuka/icloud\nimport @test/sync\n\nasync fn clear() {\n  let _ = try? await icloud.remove(\"k\")\n}\n" + local, "", true, false},
-		{"documents", "import asuka/icloud\nimport @test/sync\n\nasync fn save() {\n  let _ = try? await icloud.writeFile(\"a\", \"b\".bytes())\n}\n" + local, "", false, true},
-		{"a dependency's", "import @test/sync\n" + local, "import asuka/icloud\n\npub async fn pull() throws -> bytes = try await icloud.readFile(\"notes.txt\")\n", false, true},
-		{"a local delete", "import asuka/icloud\nimport @test/sync\n\nfn account() -> string = \"me\"\n" + local, "", false, false},
+		{"store", "import platform/icloud\nimport @test/sync\n\nasync fn clear() {\n  let _ = try? await icloud.remove(\"k\")\n}\n" + local, "", true, false},
+		{"documents", "import platform/icloud\nimport @test/sync\n\nasync fn save() {\n  let _ = try? await icloud.writeFile(\"a\", \"b\".bytes())\n}\n" + local, "", false, true},
+		{"a dependency's", "import @test/sync\n" + local, "import platform/icloud\n\npub async fn pull() throws -> bytes = try await icloud.readFile(\"notes.txt\")\n", false, true},
+		{"a local delete", "import platform/icloud\nimport @test/sync\n\nfn account() -> string = \"me\"\n" + local, "", false, false},
 	} {
 		c := usesApp(t, x.app, x.dep).cfg
 		if c.icloudKV != x.kv || c.icloudDocs != x.docs {
@@ -146,18 +146,18 @@ func TestUseICloud(t *testing.T) {
 	}
 }
 
-// asuka/location's background part is the apps' that call it: one that
+// platform/location's background part is the apps' that call it: one that
 // asks where the device is has none of it; one whose dependency asks for
 // Always has its permission and purpose string.
 func TestLocationByUse(t *testing.T) {
-	const app = "import asuka/location\nimport @test/sync\n\nasync fn here() {\n  let _ = try? await location.current()\n}\n\napp { Text(sync.name()) }\n"
+	const app = "import platform/location\nimport @test/sync\n\nasync fn here() {\n  let _ = try? await location.current()\n}\n\napp { Text(sync.name()) }\n"
 	fg := usesApp(t, app, "").cfg
 	man := fg.androidManifest(false)
 	if !strings.Contains(man, "ACCESS_FINE_LOCATION") || strings.Contains(man, "BACKGROUND_LOCATION") || strings.Contains(man, "LocationService") ||
 		fg.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] != "" || slices.Contains(fg.IOS.BackgroundModes, "location") {
 		t.Errorf("current() alone: %v %v\n%s", fg.IOS.Usage, fg.IOS.BackgroundModes, man)
 	}
-	bg := usesApp(t, app, "import asuka/location\n\npub async fn always() throws {\n  let _ = try await location.requestAlways()\n}\n").cfg
+	bg := usesApp(t, app, "import platform/location\n\npub async fn always() throws {\n  let _ = try await location.requestAlways()\n}\n").cfg
 	if man := bg.androidManifest(false); !strings.Contains(man, "android.permission.ACCESS_BACKGROUND_LOCATION") ||
 		bg.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] == "" {
 		t.Errorf("a dependency's requestAlways(): %v\n%s", bg.IOS.Usage, man)
@@ -196,24 +196,24 @@ func TestMacICloudEntitlements(t *testing.T) {
 
 // Communication notifications are the apps' that make a message
 // (notify's Notification.from, or a Notification made with its sender):
-// not those that import asuka/push, whose own Message has a notify.Person,
+// not those that import platform/push, whose own Message has a notify.Person,
 // nor those whose notifications have no sender.
 func TestConversationsByUse(t *testing.T) {
 	const tail = "\napp { Text(sync.name()) }\n"
-	plain := usesApp(t, "import asuka/push\nimport @test/sync\n\nasync fn reg() {\n  let _ = try? await push.register()\n}\n"+tail, "")
+	plain := usesApp(t, "import platform/push\nimport @test/sync\n\nasync fn reg() {\n  let _ = try? await push.register()\n}\n"+tail, "")
 	if fl := usedFeatures(plain, plain.cfg); !slices.Contains(fl, "ASUKA_PUSH") || slices.Contains(fl, "ASUKA_CONVERSATIONS") ||
 		plain.cfg.entitlements["com.apple.developer.usernotifications.communication"] != nil {
 		t.Errorf("push alone: %v %v", fl, plain.cfg.entitlements)
 	}
-	msg := usesApp(t, "import asuka/notify\nimport @test/sync\n\nasync fn say() {\n  let n = notify.Notification(body: \"hi\").from(notify.Person(name: \"Ann\"), notify.Conversation())\n  try? await notify.show(n)\n}\n"+tail, "")
+	msg := usesApp(t, "import platform/notify\nimport @test/sync\n\nasync fn say() {\n  let n = notify.Notification(body: \"hi\").from(notify.Person(name: \"Ann\"), notify.Conversation())\n  try? await notify.show(n)\n}\n"+tail, "")
 	if fl := usedFeatures(msg, msg.cfg); !slices.Contains(fl, "ASUKA_CONVERSATIONS") || msg.cfg.entitlements["com.apple.developer.usernotifications.communication"] != true {
 		t.Errorf("a message: %v %v", fl, msg.cfg.entitlements)
 	}
-	lit := usesApp(t, "import asuka/notify\nimport @test/sync\n\nasync fn say() {\n  try? await notify.show(notify.Notification(body: \"hi\", sender: notify.Person(name: \"Ann\")))\n}\n"+tail, "")
+	lit := usesApp(t, "import platform/notify\nimport @test/sync\n\nasync fn say() {\n  try? await notify.show(notify.Notification(body: \"hi\", sender: notify.Person(name: \"Ann\")))\n}\n"+tail, "")
 	if fl := usedFeatures(lit, lit.cfg); !slices.Contains(fl, "ASUKA_CONVERSATIONS") {
 		t.Errorf("a message made with its sender: %v", fl)
 	}
-	plainNote := usesApp(t, "import asuka/notify\nimport @test/sync\n\nasync fn say() {\n  try? await notify.show(notify.Notification(title: \"hi\"))\n}\n"+tail, "")
+	plainNote := usesApp(t, "import platform/notify\nimport @test/sync\n\nasync fn say() {\n  try? await notify.show(notify.Notification(title: \"hi\"))\n}\n"+tail, "")
 	if fl := usedFeatures(plainNote, plainNote.cfg); slices.Contains(fl, "ASUKA_CONVERSATIONS") {
 		t.Errorf("a notification without a sender: %v", fl)
 	}

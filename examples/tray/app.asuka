@@ -11,7 +11,7 @@
 //
 //   asuka dev examples/tray
 
-import asuka/tray
+import platform/tray
 
 /// The timer's choices, in minutes.
 let lengths = [15, 25, 50]

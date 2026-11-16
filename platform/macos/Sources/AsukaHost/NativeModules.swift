@@ -344,7 +344,7 @@ public enum AsukaNative {
     @MainActor public static var views: (UInt64) -> AsukaPlatformView? = { _ in nil }
 
     /// The provider of a class's name, looked up once: its Objective-C
-    /// name (AsukaModule_…), or the package's path (asuka/network, as the
+    /// name (AsukaModule_…), or the package's path (platform/network, as the
     /// C core names it), which names that class (internal/nativegen's
     /// SwiftClass).
     public static func provider(_ name: String) -> AsukaModuleProvider.Type? {
@@ -558,7 +558,7 @@ extension AsukaNative {
     #endif
 }
 
-// The files packages hand the system (asuka/preview, asuka/print).
+// The files packages hand the system (platform/preview, platform/print).
 extension AsukaNative {
     /// The app's assets: the bundle's Resources/assets (an embedded app's
     /// framework's), else $ASUKA_ASSETS (asuka dev on the Mac), else

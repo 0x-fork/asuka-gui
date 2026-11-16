@@ -1,4 +1,4 @@
-// asuka/http on iOS and macOS: URLSession, the system's own client
+// std/http on iOS and macOS: URLSession, the system's own client
 // (proxies, trusted certificates, the shared cache and cookies).
 import Foundation
 import Network

@@ -1,4 +1,4 @@
-// Package asuka/encoding turns bytes into text and back: Base64
+// Package std/encoding turns bytes into text and back: Base64
 // (RFC 4648) and hexadecimal.
 //
 //   let token = encoding.base64URLEncode(crypto.randomBytes(32))

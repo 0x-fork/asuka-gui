@@ -1,5 +1,5 @@
 // swift-tools-version:5.9
-// The asuka/markdown package's Swift, for iOS and macOS: the Asuka CLI builds it
+// The std/markdown package's Swift, for iOS and macOS: the Asuka CLI builds it
 // with the apps that import the package (asuka native).
 import PackageDescription
 

@@ -1,5 +1,5 @@
 // fakeportal.c: a location portal (org.freedesktop.portal.Location) on
-// the session bus, for asuka/location's Linux tests: it owns
+// the session bus, for platform/location's Linux tests: it owns
 // org.freedesktop.portal.Desktop, answers CreateSession and Start as
 // xdg-desktop-portal does (Start's answer a Request's Response signal),
 // and moves each started session north from 52.52° N 13.405° E, 0.001°

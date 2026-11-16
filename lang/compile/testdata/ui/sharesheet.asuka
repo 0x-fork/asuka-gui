@@ -1,8 +1,8 @@
-// asuka/sharesheet: the app block shows the sheet when the app runs as
+// platform/sharesheet: the app block shows the sheet when the app runs as
 // it (a fake, in a test), the sheet hears what's shared with onShare, and
 // its closes are the ShareClose command (to the host), or kept by the
 // fake.
-import asuka/sharesheet
+import platform/sharesheet
 
 component SaveLink {
   state link = ""

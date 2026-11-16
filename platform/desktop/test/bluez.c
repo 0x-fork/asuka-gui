@@ -1,4 +1,4 @@
-// bluez.c: a BlueZ of the test's own, for asuka/bluetooth's Linux C
+// bluez.c: a BlueZ of the test's own, for platform/bluetooth's Linux C
 // (platform/desktop's TestBluetoothLinux): org.bluez on the session bus,
 // with an adapter and a heart rate monitor to scan, connect to and read,
 // and the calls BlueZ makes of an app's advertisement and GATT

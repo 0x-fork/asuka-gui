@@ -1,4 +1,4 @@
-#if canImport(UIKit) && ASUKA_NOTIFICATION_SERVICE // an app that uses push.rewrite (asuka/push's manifest)
+#if canImport(UIKit) && ASUKA_NOTIFICATION_SERVICE // an app that uses push.rewrite (platform/push's manifest)
 import UIKit
 import UserNotifications
 #if canImport(CAsuka)
@@ -6,8 +6,8 @@ import UserNotifications
 #endif
 
 /// The Notification Service Extension of an app with a push rewrite
-/// (asuka/push's rewrite): its principal class, which runs the app in the
-/// extension without a screen (ASUKA_NOTIFICATION_SERVICE: asuka/platform's
+/// (platform/push's rewrite): its principal class, which runs the app in the
+/// extension without a screen (ASUKA_NOTIFICATION_SERVICE: platform/host's
 /// process is "notification", push.inExtension() true). Each push with
 /// mutable-content is handed to the rewrite the app sets (push.rewrite);
 /// what it answers becomes the notification (AsukaNotifyContent: the

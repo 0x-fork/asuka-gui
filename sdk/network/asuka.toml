@@ -1,0 +1,9 @@
+name = "platform/network"
+version = "0.1.0"
+description = "The device's network: online or not, over what, and whether it costs"
+
+[android]
+permissions = ["android.permission.ACCESS_NETWORK_STATE"]
+
+[windows]
+libraries = ["iphlpapi"]

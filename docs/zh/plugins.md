@@ -1,6 +1,6 @@
 # 插件
 
-插件是一个自带原生库的包。这些库用 C、C++、Zig 或 Rust 编写，为每个平台预先构建好并发布一次，凡是用到这个包的应用都会把它们一起打包。包的 `asuka.toml` 旁边有一份清单 `asuka-plugin.toml`，写明每个库在每个平台上对应的文件及其 SHA-256。`asuka/sqlite` 就是一个插件（见[数据](data.md#记录asukasqlite)）：SQLite 用同一套编译选项为所有平台构建一次。
+插件是一个自带原生库的包。这些库用 C、C++、Zig 或 Rust 编写，为每个平台预先构建好并发布一次，凡是用到这个包的应用都会把它们一起打包。包的 `asuka.toml` 旁边有一份清单 `asuka-plugin.toml`，写明每个库在每个平台上对应的文件及其 SHA-256。`std/sqlite` 就是一个插件（见[数据](data.md#记录stdsqlite)）：SQLite 用同一套编译选项为所有平台构建一次。
 
 ## 插件、原生包与 C
 
@@ -19,12 +19,12 @@
 导入它的包：
 
 ```asuka
-import asuka/sqlite
+import std/sqlite
 
 fn openNotes() throws -> sqlite.DB = try sqlite.open("notes.db")
 ```
 
-这样就够了。`asuka build` 会在应用用到的包里（应用自己的目录、它的依赖、它导入的标准库包）找出插件，为构建的目标平台打包每个库的文件。`asuka dev`、`asuka test` 和 `asuka run` 会优先使用插件自己的构建产物（插件是一份带构建产物的检出时），否则使用发布的文件：第一次用到时下载到用户的缓存里（系统缓存目录下的 `asuka/plugins`），之后直接从那里使用。每个下载的文件在使用前都会和清单里写的 SHA-256 核对。从包仓库下载的包本身不带这些库，它的清单写明了去哪里取。
+这样就够了。`asuka build` 会在应用用到的包里（应用自己的目录、它的依赖、它导入的标准库和平台 SDK 的包）找出插件，为构建的目标平台打包每个库的文件。`asuka dev`、`asuka test` 和 `asuka run` 会优先使用插件自己的构建产物（插件是一份带构建产物的检出时），否则使用发布的文件：第一次用到时下载到用户的缓存里（系统缓存目录下的 `asuka/plugins`），之后直接从那里使用。每个下载的文件在使用前都会和清单里写的 SHA-256 核对。从包仓库下载的包本身不带这些库，它的清单写明了去哪里取。
 
 ### 库放在哪里
 
@@ -95,7 +95,7 @@ wasm = {name = "asqlite.wasm"}
 
 在 Web 上，页面的 `libs` 选项把每个文件名对应到它的 URL。
 
-`asuka/sqlite` 的加载代码是核心自己的 C（[core/src/sqlite](../../core/src/sqlite/sqlite.c)）：第一次打开数据库时加载 `asqlite`，并在主线程之外运行它；在 Web 上，由 SQLite 的 worker（[platform/web/src/sqlite-worker.js](../../platform/web/src/sqlite-worker.js)）实例化 `asqlite.wasm`。你自己的包则在它的[原生代码](native.md)里加载自己的库：桌面上的 C、Swift 和 Kotlin，以及 Web 上的 JavaScript。
+`std/sqlite` 的加载代码是核心自己的 C（[core/src/sqlite](../../core/src/sqlite/sqlite.c)）：第一次打开数据库时加载 `asqlite`，并在主线程之外运行它；在 Web 上，由 SQLite 的 worker（[platform/web/src/sqlite-worker.js](../../platform/web/src/sqlite-worker.js)）实例化 `asqlite.wasm`。你自己的包则在它的[原生代码](native.md)里加载自己的库：桌面上的 C、Swift 和 Kotlin，以及 Web 上的 JavaScript。
 
 库导出的符号要尽量少，只导出它自己的，不导出它链接进来的东西：进程里可能还有另一份同源的代码（比如 GTK 加载的系统 SQLite）。调用时一次完成一整个操作，而不是每个值调用一个函数：sqlite 插件只有一个入口 `asq_call`，它执行一整条语句，把结果行放在一个缓冲区里返回；正因如此，Web 上才能把它放到 worker 里运行。
 

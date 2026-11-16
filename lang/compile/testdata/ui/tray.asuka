@@ -1,4 +1,4 @@
-import asuka/tray
+import platform/tray
 
 state running = false
 state minutes = 25

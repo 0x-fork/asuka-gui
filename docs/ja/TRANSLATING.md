@@ -30,6 +30,8 @@
 | widget | ウィジェット | "the platform's own widgets" →「各プラットフォーム純正のウィジェット」。ホーム画面のウィジェットは「ホーム画面ウィジェット」 |
 | control | コントロール | Win32 の common controls は「コモンコントロール」 |
 | native | ネイティブ | |
+| standard library | 標準ライブラリ | `std/...` のパッケージ |
+| platform SDK | プラットフォーム SDK | `platform/...` のパッケージ |
 | component | コンポーネント | |
 | view | ビュー | |
 | host | ホスト | |
@@ -108,7 +110,7 @@
 | flyout | フライアウト | |
 | table (TOML) | テーブル | `asuka.toml` の `[ios]` など。array of tables（`[[widgets]]`）→テーブルの配列、inline table →インラインテーブル。TOML の日本語版仕様の用語に合わせる |
 
-OS が日本語で表示する名前は、それぞれの表記に従います。Apple の UI は長音を付けない表記（「ユーザとアクセス」「ステージマネージャ」）のまま引用し、ごみ箱は Mac では「ゴミ箱」、Windows では「ごみ箱」と書きます。Asuka 自身が表示する文字列（アップデートのウィンドウ、書類のメニューなど）は、カタログ（`internal/l10n/messages/ja.json`、`std/document/words.asuka`）の訳語に合わせます。
+OS が日本語で表示する名前は、それぞれの表記に従います。Apple の UI は長音を付けない表記（「ユーザとアクセス」「ステージマネージャ」）のまま引用し、ごみ箱は Mac では「ゴミ箱」、Windows では「ごみ箱」と書きます。Asuka 自身が表示する文字列（アップデートのウィンドウ、書類のメニューなど）は、カタログ（`internal/l10n/messages/ja.json`、`sdk/document/words.asuka`）の訳語に合わせます。
 
 製品名やフレームワーク名（UIKit、AppKit、Material 3、GTK、libadwaita、WebView2、SwiftUI、Expo、React Native ……）はすべて英語のままにします。
 
@@ -118,7 +120,7 @@ OS が日本語で表示する名前は、それぞれの表記に従います�
 | --- | --- |
 | getting-started.md | はじめに |
 | language.md | Asuka 言語 |
-| stdlib.md | 標準ライブラリ |
+| stdlib.md | 標準ライブラリとプラットフォーム SDK |
 | concepts.md | 基本概念 |
 | layout.md | レイアウトとスタイル |
 | components.md | コンポーネント |

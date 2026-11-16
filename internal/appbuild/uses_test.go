@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// usesTestApp writes an app that calls asuka/location's current() and
-// asuka/icloud's remove(), with a local function named delete, and a
+// usesTestApp writes an app that calls platform/location's current() and
+// platform/icloud's remove(), with a local function named delete, and a
 // dependency (@test/sync) that calls location.requestAlways and
 // icloud.readFile; it returns the app's directory.
 func usesTestApp(t *testing.T) string {
@@ -21,9 +21,9 @@ func usesTestApp(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	write(filepath.Join(app, "app.asuka"), `import asuka/icloud
-import asuka/location
-import asuka/notify
+	write(filepath.Join(app, "app.asuka"), `import platform/icloud
+import platform/location
+import platform/notify
 import @test/sync
 
 async fn clear() {
@@ -44,8 +44,8 @@ test "a test's calls aren't the app's" {
 app { Text(delete(sync.name())) }
 `)
 	write(filepath.Join(app, "asuka.toml"), "id = \"dev.asuka.journal\"\n\n[dependencies]\n\"@test/sync\" = \"file:../sync\"\n")
-	write(filepath.Join(sync, "sync.asuka"), `import asuka/icloud
-import asuka/location
+	write(filepath.Join(sync, "sync.asuka"), `import platform/icloud
+import platform/location
 
 pub fn name() -> string = "sync"
 
@@ -60,7 +60,7 @@ pub async fn pull() throws -> bytes {
 
 // Uses is what the checker resolved, across the app and its
 // dependencies: the members referred to from outside their packages, not
-// every identifier (the app's own delete isn't asuka/icloud's), and not a
+// every identifier (the app's own delete isn't platform/icloud's), and not a
 // test block's.
 func TestUses(t *testing.T) {
 	p, err := Load(usesTestApp(t))
@@ -68,31 +68,31 @@ func TestUses(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := p.Uses()
-	for _, imp := range []string{"asuka/icloud", "asuka/location", "@test/sync"} {
+	for _, imp := range []string{"platform/icloud", "platform/location", "@test/sync"} {
 		if !u.Import(imp) {
 			t.Errorf("no import %s: %v", imp, u.ImportList())
 		}
 	}
-	for _, r := range [][2]string{{"asuka/icloud", "remove"}, {"asuka/location", "current"}, {"@test/sync", "name"},
-		{"asuka/location", "requestAlways"}, {"asuka/icloud", "readFile"}, {"", "Text"},
-		{"asuka/notify", "Notification.from"}, {"asuka/notify", "Person"}, {"asuka/notify", "Notification.sender"},
-		{"asuka/notify", "Notification.body"}, {"asuka/notify", "Person.name"}} {
+	for _, r := range [][2]string{{"platform/icloud", "remove"}, {"platform/location", "current"}, {"@test/sync", "name"},
+		{"platform/location", "requestAlways"}, {"platform/icloud", "readFile"}, {"", "Text"},
+		{"platform/notify", "Notification.from"}, {"platform/notify", "Person"}, {"platform/notify", "Notification.sender"},
+		{"platform/notify", "Notification.body"}, {"platform/notify", "Person.name"}} {
 		if !u.Ref(r[0], r[1]) {
 			t.Errorf("no %s.%s in %v", r[0], r[1], u.Refs)
 		}
 	}
-	for _, r := range [][2]string{{"asuka/icloud", "delete"}, {"asuka/icloud", "documents"}, {"", "delete"}, {"", "clear"},
-		{"asuka/notify", "Notification.title"}, {"asuka/notify", "Person.bot"}} {
+	for _, r := range [][2]string{{"platform/icloud", "delete"}, {"platform/icloud", "documents"}, {"", "delete"}, {"", "clear"},
+		{"platform/notify", "Notification.title"}, {"platform/notify", "Person.bot"}} {
 		if u.Ref(r[0], r[1]) {
 			t.Errorf("%s.%s in %v", r[0], r[1], u.Refs)
 		}
 	}
-	// What std's packages call of each other counts as theirs: asuka/icloud
-	// calls asuka/platform.
-	if !u.Ref("asuka/platform", "call") {
-		t.Errorf("no asuka/platform.call in %v", u.Refs)
+	// What std's packages call of each other counts as theirs: platform/icloud
+	// calls platform/host.
+	if !u.Ref("platform/host", "call") {
+		t.Errorf("no platform/host.call in %v", u.Refs)
 	}
-	if std := p.Std(); std["asuka/icloud"] == "" || std["asuka/platform"] == "" {
+	if std := p.Std(); std["platform/icloud"] == "" || std["platform/host"] == "" {
 		t.Errorf("std %v", std)
 	}
 }

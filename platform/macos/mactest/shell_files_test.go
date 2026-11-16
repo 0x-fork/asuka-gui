@@ -183,7 +183,7 @@ func TestShellRecentDocuments(t *testing.T) {
 		app.Do("tap Next")
 		sysPrefix(t, app, l, "ok")
 	}
-	sysWant(t, app, "relative", "err asuka/recent: not an absolute path")
+	sysWant(t, app, "relative", "err platform/recent: not an absolute path")
 	os.Remove(gone)
 	app.Do("tap Next")
 	s := strings.TrimSuffix(strings.TrimPrefix(sysText(t, app, "list"), "ok ["), "]")

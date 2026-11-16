@@ -1,4 +1,4 @@
-// Package asuka/time is dates and times: an instant, read on a zone's
+// Package std/time is dates and times: an instant, read on a zone's
 // wall clock.
 //
 //   let t = time.now()

@@ -1,4 +1,4 @@
-name = "asuka/shader"
+name = "std/shader"
 version = "0.1.0"
 description = "Fragment shaders, written in Kage and run on each platform's GPU"
 

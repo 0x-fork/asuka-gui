@@ -1,4 +1,4 @@
-// Package asuka/markdown shows Markdown (CommonMark, with GitHub's
+// Package std/markdown shows Markdown (CommonMark, with GitHub's
 // tables, task lists, strikethrough and autolinks) as the platform's own
 // styled text: headings, emphasis, code, quotes, lists, tables and links
 // in one selection, which the user's text size scales. Raw HTML in the
@@ -17,7 +17,7 @@
 // TextView on Android, the DOM's elements on the web, a rich edit on
 // Windows and a label's Pango markup on Linux.
 
-import asuka/json
+import std/json
 
 /// Markdown, shown as styled text: as wide as its box, as tall as its
 /// text.

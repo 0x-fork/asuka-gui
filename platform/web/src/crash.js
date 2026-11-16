@@ -1,4 +1,4 @@
-// Crash reports (asuka/crash) in the browser: the page's side of the
+// Crash reports (platform/crash) in the browser: the page's side of the
 // core's record of the run (core/src/std/crash.c), which the core keeps
 // in the app's files (fs.js, kept in IndexedDB) as it does on a phone.
 //

@@ -13,8 +13,8 @@ import (
 	"testing"
 )
 
-// TestStdWebViews runs the standard library's web view tests: each
-// std/<name>/tests/*_view_test.js, a module the page imports (served
+// TestStdWebViews runs the standard library's and the platform SDK's web
+// view tests: each {std,sdk}/<name>/tests/*_view_test.js, a module the page imports (served
 // from the checkout, so it imports its package's web/ as an app does),
 // in headless Chrome, which prints the page once the test wrote its
 // result into #result: "PASS ..." or "FAIL" and why.
@@ -25,6 +25,8 @@ func TestStdWebViews(t *testing.T) {
 	}
 	r := root(t)
 	tests, _ := filepath.Glob(filepath.Join(r, "std", "*", "tests", "*_view_test.js"))
+	sdk, _ := filepath.Glob(filepath.Join(r, "sdk", "*", "tests", "*_view_test.js"))
+	tests = append(tests, sdk...)
 	if len(tests) == 0 {
 		t.Fatal("no web view tests")
 	}

@@ -1,6 +1,6 @@
-// Package asuka/random has random numbers, choices and shuffles, from a
+// Package std/random has random numbers, choices and shuffles, from a
 // fast generator each thread seeds from the system's randomness (not
-// for secrets: asuka/crypto's randomBytes is).
+// for secrets: std/crypto's randomBytes is).
 //
 //   let roll = random.int(1, 6)
 //   let card = random.pick(deck)

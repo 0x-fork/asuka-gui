@@ -1,4 +1,4 @@
-// Package asuka/regex has regular expressions in RE2's syntax, matched
+// Package std/regex has regular expressions in RE2's syntax, matched
 // in time linear in the text (no backtracking, so no pattern can take
 // forever).
 //

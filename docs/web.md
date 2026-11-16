@@ -202,7 +202,7 @@ The environment a web app sees (`environment()`) is the browser's:
 
 ## The app's files
 
-The app's directory (`fs.appDir()`), with what `asuka/fs` writes there
+The app's directory (`fs.appDir()`), with what `std/fs` writes there
 and the crash record, is kept: the page has a file system in memory,
 which the core's file calls reach (as WASI's), the directory's files
 loaded from the browser's storage (IndexedDB) before the app starts and
@@ -221,7 +221,7 @@ top-level `let`s made without a UI: a value they make, as a database
 opened at the top level, is that worker's own. A worker has a copy of
 the app's files: what the page changed goes with the next block it
 runs, and what the block changed comes back with its result, as one
-more writer (the last to write a file keeps it). `asuka/sqlite`'s
+more writer (the last to write a file keeps it). `std/sqlite`'s
 databases are the page's: a block can't use them.
 
 The browser keeps an origin's storage until the user clears it, or, when
@@ -231,10 +231,10 @@ to the home screen).
 
 ## SQLite
 
-`asuka/sqlite` works as on the other platforms, live queries included.
+`std/sqlite` works as on the other platforms, live queries included.
 It's the same SQLite and the same library of Asuka's, built to
 WebAssembly (`asqlite.wasm`, which `asuka dev --platform web` and `asuka
-build --platform web` ship with the apps that import `asuka/sqlite`). It
+build --platform web` ship with the apps that import `std/sqlite`). It
 runs in a worker of the page's, which keeps the databases of the app's
 data directory in the browser's origin private file system: a database
 isn't loaded into memory whole, and a commit is on disk when it returns.
@@ -260,7 +260,7 @@ What differs:
   another tab's writes (as another process's, natively: `db.changed()`
   runs them again).
 - A database is a file of the worker's, not of the page's file system:
-  `asuka/fs` doesn't see it. A database anywhere but the data directory
+  `std/fs` doesn't see it. A database anywhere but the data directory
   (`/tmp`) lasts as long as the page.
 - Without the origin private file system (a page that isn't served over
   `https` or from `localhost`, as `asuka dev --lan`'s; some browsers'
@@ -278,16 +278,16 @@ worker's script is the host's (`sqlite-worker.js`, beside `asuka.js`).
 
 ## Native modules
 
-The standard library's packages reach the browser through the web
-host: each package's `web/` JavaScript, or the host's own modules
+The standard library's and the platform SDK's packages reach the
+browser through the web host: each package's `web/` JavaScript, or the host's own modules
 (`platform/web/src/modules`) for what every app has. In a browser:
 
-- `asuka/secure`: the values are encrypted (AES-GCM) with a key the
+- `platform/secure`: the values are encrypted (AES-GCM) with a key the
   browser keeps and won't let out (a non-extractable WebCrypto key), in
   IndexedDB. It isn't a keychain: script running in the app's origin
   can't read the key, but it can ask it to decrypt. It needs `https`
   (or `localhost`).
-- `asuka/device`: `info()` from the user agent (Chromium's client hints
+- `platform/device`: `info()` from the user agent (Chromium's client hints
   give the system's version and an Android phone's model); the
   clipboard, its images (PNG, saved to the caches) and
   `clipboardChanges()` (the app's own copies, and other apps' where the
@@ -296,76 +296,76 @@ host: each package's `web/` JavaScript, or the host's own modules
   `pickPhotos` and `pickFiles` (the browser's file picker; the files
   copied to the caches).
 - `shareFiles`: the share sheet with the files (`navigator.share`),
-  else each file downloaded. `asuka/preview`: the file opened in a new
+  else each file downloaded. `platform/preview`: the file opened in a new
   tab (images, video, audio, text, PDF, HTML); another type is
   `PreviewError.noViewer`.
-- `asuka/print`: HTML, files (PDFs in the browser's viewer) and the app's
+- `platform/print`: HTML, files (PDFs in the browser's viewer) and the app's
   own web views, with the browser's print dialog; the outcome is always
   `.unknown` (a browser doesn't say). `print.pdf` isn't on the web
   (`PrintError.unsupported`): a browser makes PDFs only through its print
   dialog (Save as PDF).
-- `asuka/compose`: `mailto:` and `sms:` links; with attachments, the share
+- `platform/compose`: `mailto:` and `sms:` links; with attachments, the share
   sheet.
-- `asuka/notify` and `asuka/push`: the Notification API and Web Push,
+- `platform/notify` and `platform/push`: the Notification API and Web Push,
   through the app's service worker: see
   [Notifications and Web Push](#notifications-and-web-push).
-- `asuka/network`: online from `navigator.onLine`; Wi-Fi, cellular or
+- `platform/network`: online from `navigator.onLine`; Wi-Fi, cellular or
   Ethernet where the browser says (Chrome on Android), metered for
   cellular, constrained for Data Saver.
-- `asuka/location`: the Geolocation API; `placeName` isn't on the web (a
+- `platform/location`: the Geolocation API; `placeName` isn't on the web (a
   browser has no geocoder). Regions and background updates are computed
   from the positions, only while the page is open.
-- `asuka/sensors`: the Generic Sensor API (Chrome) or device motion and
+- `platform/sensors`: the Generic Sensor API (Chrome) or device motion and
   orientation events (Safari asks on a tap), in Android's axes and
   units; no barometer or pedometer.
-- `asuka/speech`: `speechSynthesis`, the browser's voices.
-- `asuka/audio`: an audio element per player (the browser's autoplay
-  rules apply: play from a tap). `asuka/record`: `MediaRecorder`,
+- `platform/speech`: `speechSynthesis`, the browser's voices.
+- `platform/audio`: an audio element per player (the browser's autoplay
+  rules apply: play from a tap). `platform/record`: `MediaRecorder`,
   AAC in MPEG-4 where the browser records it, else Opus in WebM.
-  `asuka/nowplaying`: the Media Session API.
-- `asuka/camera`: `take()` opens a phone's camera, or a dialog with the
+  `platform/nowplaying`: the Media Session API.
+- `platform/camera`: `take()` opens a phone's camera, or a dialog with the
   live camera and a shutter; `camera.View` is the camera in a `<video>`
   (`capture()`, `record`, and scanning codes where the browser has
-  `BarcodeDetector`). `asuka/scan` and `asuka/vision`'s codes use
+  `BarcodeDetector`). `platform/scan` and `platform/vision`'s codes use
   `BarcodeDetector`, faces and text only where the browser has them.
-- `asuka/imageedit`: a canvas (JPEG or PNG; a remote image needs CORS).
-- `asuka/maps`: a map the host draws of OpenStreetMap's tiles, as on
+- `platform/imageedit`: a canvas (JPEG or PNG; a remote image needs CORS).
+- `platform/maps`: a map the host draws of OpenStreetMap's tiles, as on
   Windows: markers, their callouts, a drag, the wheel, a pinch, a double
   click and the keyboard to move it, and the attribution OpenStreetMap
   asks for. The satellite and hybrid types show the streets (no free
   imagery); `showsUser` shows the user's location once the page has the
-  location permission (`asuka/location` asks; the map never does). The
+  location permission (`platform/location` asks; the map never does). The
   tiles come from `tile.openstreetmap.org` as its usage policy asks of a
   web page (only what's on screen, the browser's cache, its Referer);
   for heavy use, pass `mapTiles` (another server's URL, with `{z}`,
   `{x}` and `{y}`) to `start` ([Embedding](#embedding)).
-- `asuka/crash`: the core's record of the run is kept in the app's
+- `platform/crash`: the core's record of the run is kept in the app's
   files, as on a phone. The core's own fatal error writes it and stops
   the page's app; the next launch reports it. An uncaught JavaScript
   error (the host's, or a package's `web/` script) is an `"exception"`
   report at once, not fatal (the page goes on). A page marks its run
   alive in `localStorage`, so other open pages of the app leave it
   alone.
-- `asuka/biometric`: the platform's authenticator through WebAuthn (Touch
+- `platform/biometric`: the platform's authenticator through WebAuthn (Touch
   ID, Face ID, Windows Hello, Android's screen lock), user verification
   required: the first `authenticate` makes a passkey for the site, named
   after the app. The prompt is the browser's, so `reason` and `cancel`
   don't show.
-- `asuka/webauth`: a popup, done when it comes back to a page of the
+- `platform/webauth`: a popup, done when it comes back to a page of the
   app's own origin (a custom scheme can't open a page).
-- `asuka/screen`: `lock` (only full screen, or an installed app); hiding
+- `platform/screen`: `lock` (only full screen, or an installed app); hiding
   the bars is full screen.
-- `asuka/library`: `save` downloads the file. `asuka/contacts`: `pick`
+- `platform/library`: `save` downloads the file. `platform/contacts`: `pick`
   where the browser has the Contact Picker (Chrome on Android); `add`
-  downloads a vCard, and `asuka/calendar`'s `add` an `.ics` file.
-- `asuka/nfc`: Web NFC's `NDEFReader`, in Chrome on Android over a
+  downloads a vCard, and `platform/calendar`'s `add` an `.ics` file.
+- `platform/nfc`: Web NFC's `NDEFReader`, in Chrome on Android over a
   secure context: reading and writing NDEF messages, making tags
   read-only, the tag's serial number; no raw commands or capacity, and no
   tag opens the page. Other browsers have no Web NFC:
   `NfcError.notAvailable` ([NFC tags](nfc.md)).
-- `asuka/tracking` answers `.denied` when the browser sends Global
+- `platform/tracking` answers `.denied` when the browser sends Global
   Privacy Control or Do Not Track, else `.allowed`, without a prompt.
-- `asuka/pay`: Apple Pay where the browser has it (Safari), through the
+- `platform/pay`: Apple Pay where the browser has it (Safari), through the
   Payment Request API, the merchant validated by the app's server
   (`onValidateMerchant`) for a domain registered with Apple; Google Pay
   elsewhere, through Google's web API (`pay.js`, loaded from
@@ -373,11 +373,11 @@ host: each package's `web/` JavaScript, or the host's own modules
 - `haptic` is `navigator.vibrate`, where the browser has it (Chrome on
   Android).
 - Not on the web, with an error that says so (or the package's own
-  `notAvailable`): `asuka/review`, `asuka/integrity`, `asuka/agerange`,
-  `asuka/appleauth`, `asuka/icloud`, `asuka/periodic`, `asuka/widget`,
-  `asuka/liveactivity`, `asuka/photos` (`.denied`: `device.pickPhotos`
-  picks photos), reading contacts and calendars, `asuka/transcribe`'s
-  `file`, `asuka/screen`'s `preventCapture` and `screenshots()`.
+  `notAvailable`): `platform/review`, `platform/integrity`, `platform/agerange`,
+  `platform/appleauth`, `platform/icloud`, `platform/periodic`, `platform/widget`,
+  `platform/liveactivity`, `platform/photos` (`.denied`: `device.pickPhotos`
+  picks photos), reading contacts and calendars, `platform/transcribe`'s
+  `file`, `platform/screen`'s `preventCapture` and `screenshots()`.
 
 ## Notifications and Web Push
 
@@ -389,7 +389,7 @@ pushes, and answers their clicks, whether or not a page of the app is
 open. A browser runs service workers only for pages served over HTTPS,
 or from `localhost` (`asuka dev`'s, but not `--lan`'s addresses).
 
-### asuka/notify
+### platform/notify
 
 - `notify.request()` asks with the browser's prompt; browsers ask only
   from a tap or a click, so call it from one.
@@ -454,7 +454,7 @@ event wakes it, not on a timer. So `notify.schedule` does what a browser can:
 For a notification that must show at its time with the app closed, send
 a push from your server at that time.
 
-### asuka/push: Web Push
+### platform/push: Web Push
 
 Web Push needs a VAPID key pair (RFC 8292): the app's server signs its
 pushes with the private key, and the browser subscribes with the public
@@ -635,7 +635,7 @@ app({ asuka: "ready", url: location.href, title: document.title });
 app({ text: "Hello from the page" }); // on message
 ```
 
-`asuka/js` runs its script in a hidden sandboxed frame of an origin of its
+`platform/js` runs its script in a hidden sandboxed frame of an origin of its
 own, so it can't reach the app's page or storage.
 
 ## Native code
@@ -696,8 +696,8 @@ in it; it then follows the element's size:
 Several apps can run on one page, each in its element. `serviceWorker`
 registers the app's worker (the build's `sw.<digest>.js`, from the
 folder whose pages it serves): without it, notifications are the page's
-own and `asuka/push` can't subscribe. Pass `vapidPublicKey` too for
-`asuka/push`, as `index.html` does, and `mapTiles` for `asuka/maps`' tiles
+own and `platform/push` can't subscribe. Pass `vapidPublicKey` too for
+`platform/push`, as `index.html` does, and `mapTiles` for `platform/maps`' tiles
 from a server of your own (`"https://tiles.example.com/{z}/{x}/{y}.png"`;
 OpenStreetMap's by default).
 
@@ -705,6 +705,6 @@ OpenStreetMap's by default).
 
 - A text field's accessory bar shows only where there's an on-screen
   keyboard (a touch screen).
-- A notification scheduled with `asuka/notify` can't show at its time
+- A notification scheduled with `platform/notify` can't show at its time
   while no page of the app is open: browsers have no way to schedule one
   ([above](#scheduled-notifications)).

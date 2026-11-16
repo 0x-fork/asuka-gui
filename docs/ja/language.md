@@ -31,7 +31,8 @@ app { Counter() }
 ソースファイルの拡張子は `.asuka` です。ソースファイルを入れたディレクトリが一つの**パッケージ**になります。同じパッケージのファイルどうしは、何もインポートしなくても互いの宣言が見えます。ほかのパッケージから見えるのは、`pub` を付けた宣言だけです。
 
 ```asuka
-import asuka/http                 // 標準ライブラリ
+import std/http                 // 標準ライブラリ
+import platform/camera          // プラットフォーム SDK
 import @acme/charts               // 依存パッケージ（asuka add @acme/charts）
 import ./components               // このパッケージと同じ階層にあるパッケージ
 import ./model.{Message, Folder}  // パッケージ名を付けずに使う名前
@@ -39,7 +40,7 @@ import ./theme as t               // 短い別名
 import ../model                   // 1 つ上のディレクトリにあるパッケージ
 ```
 
-パッケージの名前は、パッケージ名を通して使います（`http.get(url)`、`components.Card("Hi")`）。パッケージ名はパスの最後の部分です。最後の部分が名前として使えないパッケージ（`@acme/line-charts`）は、`as` で名前を付けてインポートします。プレリュード（組み込みの型、要素、関数）はインポートする必要がありません。`asuka/...` のパッケージの一覧は[標準ライブラリ](stdlib.md)にあります。
+パッケージの名前は、パッケージ名を通して使います（`http.get(url)`、`components.Card("Hi")`）。パッケージ名はパスの最後の部分です。最後の部分が名前として使えないパッケージ（`@acme/line-charts`）は、`as` で名前を付けてインポートします。プレリュード（組み込みの型、要素、関数）はインポートする必要がありません。`std/...` と `platform/...` のパッケージは CLI に付属していて、一覧は[標準ライブラリとプラットフォーム SDK](stdlib.md)にあります。ほかのパッケージには `std/` や `platform/` で始まる名前を付けられません。
 
 文と宣言は行末で終わります。一行に複数書くときは `;` で区切ります。演算子、カンマ、開き括弧で終わる行は、次の行に続きます。
 
@@ -50,7 +51,7 @@ import ../model                   // 1 つ上のディレクトリにあるパ�
 パッケージはエントリーポイントになるか、ライブラリになるかのどちらかです。`app { }` ブロックを持つパッケージはアプリで、このブロックが表示する内容になります（[ナビゲーション](#ナビゲーション)を参照）。ファイルで `fn main()` を宣言しているパッケージは**プログラム**、つまりコマンドラインツールです。`main` は引数を受け取らず（引数は `os.args()` で読みます）、値も返さず（`os.exit(code)` で終了コードを指定して終了します）、`async` にすることもエラーを投げることもできます。`main` が終わるとプログラムも終わります。どちらも持たないパッケージはライブラリで、ほかのパッケージからインポートされます。1 つのパッケージがアプリとプログラムの両方になることはできず、プログラムはコンポーネントを宣言できません。ビューを表示しないからです。エントリーポイントを持つのは、アプリやプログラムを構成するパッケージだけです。インポートしたパッケージにある `main` は、ほかの関数と変わりません。詳しくは[プログラム](programs.md)を参照してください。
 
 ```asuka
-import asuka/os
+import std/os
 
 fn main() {
   print("Hello, {os.args().first() ?? "world"}!")
@@ -124,7 +125,7 @@ let out = bytes([flags, value & 0xff, value >> 8])
 | `Length` | `* n`（`width: 50% * 2`：長さを拡大縮小） |
 | `T?` | `isNone()`、`isSome()` |
 
-`min`、`max`、`abs`、`float(n)`、`int(x)` は関数です。それ以外（`math.sqrt`、`math.pow`、`math.pi` など）は `asuka/math` にあります。
+`min`、`max`、`abs`、`float(n)`、`int(x)` は関数です。それ以外（`math.sqrt`、`math.pow`、`math.pi` など）は `std/math` にあります。
 
 ### 値のセマンティクス
 
@@ -211,7 +212,7 @@ match line {
 }
 ```
 
-構造体は、メソッドから演算子を得ます。`fn add(o: T) -> R` は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になります。`asuka/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
+構造体は、メソッドから演算子を得ます。`fn add(o: T) -> R` は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になります。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
 
 ```asuka
 struct Money {
@@ -803,7 +804,7 @@ Canvas(g => {
 
 `useKeys` とこれらの `on…` による登録は、コンポーネントの本体（またはアプリのブロック）に書きます。アプリのブロックでは、これらをイベントとしても扱えます：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`、`on foreground { … }`、`on background { … }`。ブロックの最初の `Window` がメインウィンドウです（[ナビゲーション](navigation.md#ウィンドウ)）。
 
-`asuka/assets` は、Go の `go:embed` のように、アプリのコンパイル時にパッケージの `assets/` ディレクトリのファイルを読みます。`assets.text("welcome.md")` はそのテキスト、`assets.bytes("logo.png")` はそのバイト列です。ファイルがなければコンパイルエラーです。
+`std/assets` は、Go の `go:embed` のように、アプリのコンパイル時にパッケージの `assets/` ディレクトリのファイルを読みます。`assets.text("welcome.md")` はそのテキスト、`assets.bytes("logo.png")` はそのバイト列です。ファイルがなければコンパイルエラーです。
 
 ## ナビゲーション
 
@@ -857,7 +858,7 @@ screen Message(id: int) at ":id" {
 
 ## ほかの言語のテキスト
 
-`tr.inboxTitle(unread: n)` はアプリのカタログ（`locales/en.json`、`de.json` など）のメッセージを返します。カタログはアプリのコンパイル時にチェックされ、キーや引数が足りなかったり型が違ったりするとエラーになります。バインディングの中で使ったメッセージはアプリの言語に従うので、言語を切り替えると（asuka/i18n の `i18n.setLocale("de")`）表示も変わります。右から左に書く言語では、アプリ全体が右から並びます。詳しくは[多言語対応](i18n.md)を参照してください。
+`tr.inboxTitle(unread: n)` はアプリのカタログ（`locales/en.json`、`de.json` など）のメッセージを返します。カタログはアプリのコンパイル時にチェックされ、キーや引数が足りなかったり型が違ったりするとエラーになります。バインディングの中で使ったメッセージはアプリの言語に従うので、言語を切り替えると（std/i18n の `i18n.setLocale("de")`）表示も変わります。右から左に書く言語では、アプリ全体が右から並びます。詳しくは[多言語対応](i18n.md)を参照してください。
 
 ## ネイティブコード
 
@@ -903,7 +904,7 @@ test "archiving removes the row" {
 }
 ```
 
-`expect(cond)` は cond が false ならテストを失敗させ、何がどこで失敗したかを示します（比較なら両辺の値も示します）。JSON は `asuka/json` で扱います。`let notes: [Note] = try json.decode(text)` は求められている型として読み込み（`json.decode<[Note]>(text)` とも書けます）、`json.encode(notes)` は JSON に書き出します。ジェネリック関数も自分の `T` を JSON として読み書きできます。その場合、呼び出しごとに `T` は JSON で表せる型でなければならず、コンパイラーが呼び出し箇所でそれをチェックします。
+`expect(cond)` は cond が false ならテストを失敗させ、何がどこで失敗したかを示します（比較なら両辺の値も示します）。JSON は `std/json` で扱います。`let notes: [Note] = try json.decode(text)` は求められている型として読み込み（`json.decode<[Note]>(text)` とも書けます）、`json.encode(notes)` は JSON に書き出します。ジェネリック関数も自分の `T` を JSON として読み書きできます。その場合、呼び出しごとに `T` は JSON で表せる型でなければならず、コンパイラーが呼び出し箇所でそれをチェックします。
 
 `asuka test` は、パッケージのテストをフェイクホストで実行します。フェイクホストはプラットフォームと同じようにビューをレイアウトし、テキストは 1 文字あたり固定の幅で測ります。また、時間はほかに実行できるものが何もないときにしか進みません（テストの中の `sleep(5s)` には時間がかかりません）。`mount` はアプリを返すので、それを操作して確かめます（`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`）。`in(.navigationBar)`、`in(.sidebar)`、`nextTo(label)` で、テキストが指すものを絞り込めます。ルーターがあれば、`mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()` も使えます。詳しくは[テスト](testing.md)を参照してください。
 

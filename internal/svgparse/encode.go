@@ -5,7 +5,7 @@ import (
 	"math"
 )
 
-// Encode is the icon as asuka/svg's View draws it (the Asuka compiler
+// Encode is the icon as std/svg's View draws it (the Asuka compiler
 // makes it when an app compiles; std/svg's platforms read it), little
 // endian:
 //

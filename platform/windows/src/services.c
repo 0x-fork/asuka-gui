@@ -1019,7 +1019,7 @@ static wh_replies push_received, push_opened;
 
 static void m_push_register(wh_reply *r, const uint8_t *a, size_t n) {
 	(void)a, (void)n;
-	wh_reply_fail(r, "asuka/push: Windows gives push channels (WNS) to packaged apps only");
+	wh_reply_fail(r, "platform/push: Windows gives push channels (WNS) to packaged apps only");
 }
 
 // The messages "nextReceived" and "nextOpened" wait for: none ever comes,
@@ -1042,7 +1042,7 @@ static void m_push_stop(wh_reply *r, const uint8_t *a, size_t n) {
 
 static void m_push_rewrite(wh_reply *r, const uint8_t *a, size_t n) {
 	(void)a, (void)n;
-	wh_reply_fail(r, "asuka/push: rewriting needs a notification service extension, which a Windows app doesn't have");
+	wh_reply_fail(r, "platform/push: rewriting needs a notification service extension, which a Windows app doesn't have");
 }
 
 static const wh_method_def push_methods[] = {

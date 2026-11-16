@@ -1,0 +1,3 @@
+name = "platform/apps"
+version = "0.1.0"
+description = "The apps installed on the computer, as a launcher finds them"

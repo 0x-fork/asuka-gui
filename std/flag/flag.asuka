@@ -1,4 +1,4 @@
-// Package asuka/flag reads a program's command line into a struct of
+// Package std/flag reads a program's command line into a struct of
 // options, or an enum of commands, from what the compiler knows of its
 // type: no table of flags to keep in step with the fields.
 //
@@ -32,8 +32,8 @@
 // --version prints asuka.toml's version; a mistake prints what's wrong
 // and exits with 2.
 
-import asuka/json
-import asuka/os
+import std/json
+import std/os
 
 /// What went otherwise than parsing: help or the version asked for, or
 /// a mistake in the command line (usage is the usage line to show with

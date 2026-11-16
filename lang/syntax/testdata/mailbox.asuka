@@ -1,4 +1,4 @@
-import asuka/http
+import std/http
 
 /// The app's mail: what's loaded, and what changes it.
 pub store Mailbox(account: Account) {

@@ -312,7 +312,7 @@ final class AsukaTextField: UITextField {
     /// Buttons with a glass variant (roundGlass).
     var glassButtons = Set<ObjectIdentifier>()
     weak var controller: AsukaViewController?
-    /// The share sheet this runtime is in (asuka/sharesheet, in the share
+    /// The share sheet this runtime is in (platform/sharesheet, in the share
     /// extension), if it is.
     weak var sheet: AsukaShareSheetController?
     var rootID: UInt32 = 0
@@ -374,7 +374,7 @@ final class AsukaTextField: UITextField {
     func start(_ controller: AsukaViewController) {
         self.controller = controller
         guard !started else {
-            // Started without a screen (asuka/periodic's task): the root goes in it now.
+            // Started without a screen (platform/periodic's task): the root goes in it now.
             if let n = nodes[rootID], n.view.superview == nil { controller.mount(n.view) }
             return
         }
@@ -382,7 +382,7 @@ final class AsukaTextField: UITextField {
     }
 
     /// Starts the core without a screen, if it hasn't started: the system
-    /// launched the app in the background for a task (asuka/periodic). The
+    /// launched the app in the background for a task (platform/periodic). The
     /// root view is made, and goes on screen if a scene comes.
     func startHeadless() {
         guard !started else { return }
@@ -391,7 +391,7 @@ final class AsukaTextField: UITextField {
 
     private func boot() {
         started = true
-        // The app's own files (asuka/fs's appDir): Application Support,
+        // The app's own files (std/fs's appDir): Application Support,
         // which the app makes as it writes there (the App Group's, with a
         // share sheet or a push rewrite: AsukaShared). Before the crash
         // record, which is kept there.
@@ -401,7 +401,7 @@ final class AsukaTextField: UITextField {
         AsukaCrash.start() // before the app's init: its crashes are kept
         NotificationCenter.default.addObserver(self, selector: #selector(voiceOverChanged), name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
         #if ASUKA_NOTIFY || ASUKA_PUSH || ASUKA_NOTIFICATION_SERVICE
-        AsukaNotifyCenter.shared.install() // asuka/push's too
+        AsukaNotifyCenter.shared.install() // platform/push's too
         #endif
         #if DEBUG
         AsukaAutomation.start()

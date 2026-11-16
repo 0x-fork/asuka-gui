@@ -1,5 +1,5 @@
-// dock.c: asuka/dock on Windows, the taskbar button of the app's main
-// window, and the app's badge (asuka/notify's setBadge).
+// dock.c: platform/dock on Windows, the taskbar button of the app's main
+// window, and the app's badge (platform/notify's setBadge).
 //
 // "progress" is ITaskbarList3's progress (normal, indeterminate, paused in
 // yellow, error in red), set again when Explorer makes the button again

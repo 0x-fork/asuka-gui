@@ -34,7 +34,7 @@ func TestPackageExtras(t *testing.T) {
 
 	ent := filepath.Join(t.TempDir(), "e.plist")
 	os.WriteFile(ent, []byte(plist(map[string]any{"aps-environment": "production"})), 0o644)
-	if m := c.missingEntitlements(ent); !slices.Equal(m, []string{"Sign in with Apple (asuka/appleauth)"}) {
+	if m := c.missingEntitlements(ent); !slices.Equal(m, []string{"Sign in with Apple (platform/appleauth)"}) {
 		t.Errorf("missing: %v", m)
 	}
 
@@ -52,7 +52,7 @@ func TestPackageExtras(t *testing.T) {
 }
 
 // Now Playing: on iOS, the audio background mode; on Android, the media
-// playback foreground service (asuka/nowplaying's module's) and its
+// playback foreground service (platform/nowplaying's module's) and its
 // permissions for an app that imports it, and nothing for one that
 // doesn't.
 func TestNowPlayingExtras(t *testing.T) {
@@ -64,8 +64,8 @@ func TestNowPlayingExtras(t *testing.T) {
 			t.Errorf("no %s in the manifest:\n%s", want, man)
 		}
 	}
-	if mod := stdAndroidManifest(t, "nowplaying"); !strings.Contains(mod, `<service android:name="asuka.nowplaying.MediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" />`) {
-		t.Errorf("asuka/nowplaying's module's manifest:\n%s", mod)
+	if mod := stdAndroidManifest(t, "nowplaying"); !strings.Contains(mod, `<service android:name="platform.nowplaying.MediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" />`) {
+		t.Errorf("platform/nowplaying's module's manifest:\n%s", mod)
 	}
 	if m, _ := a.plistExtras()["UIBackgroundModes"].([]string); !slices.Equal(m, []string{"audio"}) {
 		t.Errorf("background modes: %v", m)

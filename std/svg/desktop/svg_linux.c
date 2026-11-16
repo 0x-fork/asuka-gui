@@ -1,4 +1,4 @@
-// asuka/svg on Linux: a GtkDrawingArea whose draw function fills and
+// std/svg on Linux: a GtkDrawingArea whose draw function fills and
 // strokes the layers with Cairo (GTK's), fitted to it; currentColor is
 // the view's color, the label's the widget's own CSS color. A Shape's
 // layers are resolved in the area's size each time it draws.

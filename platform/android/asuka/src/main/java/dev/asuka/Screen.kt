@@ -9,7 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
- * asuka/screen's settings: the app's, kept here so that an Activity made
+ * platform/screen's settings: the app's, kept here so that an Activity made
  * again (a configuration change) takes them, as AsukaActivity applies them.
  */
 object AsukaDisplay {
@@ -53,7 +53,7 @@ object AsukaDisplay {
 
     private val watchers = ArrayList<() -> kotlin.Unit>()
 
-    /** Applies the settings to the activity showing the app, now, as they're set (asuka/screen). Main thread. */
+    /** Applies the settings to the activity showing the app, now, as they're set (platform/screen). Main thread. */
     fun applyNow() {
         val rt = AsukaRuntime.current ?: return
         val act = rt.activity ?: return
@@ -62,7 +62,7 @@ object AsukaDisplay {
 
     /**
      * Calls taken at each screenshot of the app (Android 14 and later),
-     * until the function it returns is called (asuka/screen). Main thread.
+     * until the function it returns is called (platform/screen). Main thread.
      */
     fun watchScreenshots(taken: () -> kotlin.Unit): () -> kotlin.Unit {
         watchers.add(taken)
@@ -91,7 +91,7 @@ object AsukaDisplay {
                 callback = null
             }
         } catch (_: SecurityException) {
-            // No DETECT_SCREEN_CAPTURE: the app doesn't import asuka/screen's package path.
+            // No DETECT_SCREEN_CAPTURE: the app doesn't import platform/screen's package path.
         }
     }
 }

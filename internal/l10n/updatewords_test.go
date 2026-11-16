@@ -14,9 +14,9 @@ import (
 	"unicode"
 )
 
-var updateWords = flag.Bool("update-words", false, "rewrite std/update/words.asuka from the catalogs")
+var updateWords = flag.Bool("update-words", false, "rewrite sdk/update/words.asuka from the catalogs")
 
-// updateKeys are the words of asuka/update's window, in Asuka's catalogs.
+// updateKeys are the words of platform/update's window, in Asuka's catalogs.
 var updateKeys = []string{
 	"ok", "cancel", "checkForUpdates", "softwareUpdate", "updateChecking", "updateUpToDate", "updateUpToDateMessage",
 	"updateAvailable", "updateAvailableMessage", "updateReleaseNotes", "updateAutomatically", "updateSkip",
@@ -25,7 +25,7 @@ var updateKeys = []string{
 	"updateUnavailable", "updateUnavailableMessage",
 }
 
-// TestUpdateWords checks that std/update/words.asuka, the update window's
+// TestUpdateWords checks that sdk/update/words.asuka, the update window's
 // words in each language Asuka is translated to, is the catalogs' (an
 // Asuka package can't read this package's catalogs: it carries its own
 // copy). -update-words writes it.
@@ -71,7 +71,7 @@ func TestUpdateWords(t *testing.T) {
 		fmt.Fprintf(&b, "  %s: [\n%s  ],\n", quote(tag), strings.Join(entries, ""))
 	}
 	b.WriteString("]\n")
-	path := filepath.Join("..", "..", "std", "update", "words.asuka")
+	path := filepath.Join("..", "..", "sdk", "update", "words.asuka")
 	if *updateWords {
 		if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 			t.Fatal(err)

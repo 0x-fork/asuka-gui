@@ -1,7 +1,7 @@
-// asuka/icloud without iCloud (asuka test, Android, the desktops but
+// platform/icloud without iCloud (asuka test, Android, the desktops but
 // macOS, the web): the account isn't there, the lists are empty, a Value
 // keeps what it's set to, and the calls say iCloud isn't available.
-import asuka/icloud
+import platform/icloud
 
 component Journal {
   state said = ""

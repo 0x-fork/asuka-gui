@@ -1,10 +1,10 @@
 // The packages' modules of part modules1: notifications (Notify.swift)
-// and pushes (Push.swift), which asuka/notify and asuka/push reach through
-// asuka/host.
+// and pushes (Push.swift), which platform/notify and platform/push reach through
+// platform/host.
 //
 // The camera, Bluetooth, location, Apple Pay and sign-in aren't here:
-// std's asuka/camera, asuka/bluetooth, asuka/location, asuka/pay,
-// asuka/appleauth and asuka/webauth are native packages whose own Swift
+// std's platform/camera, platform/bluetooth, platform/location, platform/pay,
+// platform/appleauth and platform/webauth are native packages whose own Swift
 // does them on the Mac.
 import AppKit
 

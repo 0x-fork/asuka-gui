@@ -44,10 +44,10 @@ func TestCorpus(t *testing.T) {
 		{files: []string{"counter"}},
 		{files: []string{"todo"}, stubs: []string{"ui"}},
 		{files: []string{"styles"}, stubs: []string{"ui"}},
-		{files: []string{"model", "mailbox"}, stubs: []string{"mail"}, pkgs: map[string]map[string][]byte{"asuka/http": pkg("http")}},
-		{files: []string{"concurrency"}, stubs: []string{"ui", "concurrency"}, pkgs: map[string]map[string][]byte{"asuka/http": pkg("http"), "asuka/sensors": pkg("sensors")}},
+		{files: []string{"model", "mailbox"}, stubs: []string{"mail"}, pkgs: map[string]map[string][]byte{"std/http": pkg("http")}},
+		{files: []string{"concurrency"}, stubs: []string{"ui", "concurrency"}, pkgs: map[string]map[string][]byte{"std/http": pkg("http"), "platform/sensors": pkg("sensors")}},
 		{files: []string{"app"}, stubs: []string{"ui", "app"}, pkgs: map[string]map[string][]byte{"./screens": pkg("screens")}},
-		{files: []string{"inbox"}, stubs: []string{"ui", "inbox"}, pkgs: map[string]map[string][]byte{"asuka/http": pkg("http"), "./components": pkg("components")}},
+		{files: []string{"inbox"}, stubs: []string{"ui", "inbox"}, pkgs: map[string]map[string][]byte{"std/http": pkg("http"), "./components": pkg("components")}},
 		{files: []string{"native"}, stubs: []string{"native"}},
 		{files: []string{"tests"}, pkgs: map[string]map[string][]byte{"./app": pkg("counterapp")}},
 	}

@@ -1053,7 +1053,7 @@ static ak_val color_hex(ak_val *args, uint32_t n) {
 }
 
 // appearance.rgb(r, g, b) is an opaque RGB color, each channel 0 to 255:
-// asuka/appearance's accent, which the platform's side gives as numbers.
+// platform/appearance's accent, which the platform's side gives as numbers.
 static ak_val appearance_rgb(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	uint64_t c[3];

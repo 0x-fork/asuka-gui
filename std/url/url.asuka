@@ -1,4 +1,4 @@
-// Package asuka/url reads and writes URLs (RFC 3986).
+// Package std/url reads and writes URLs (RFC 3986).
 //
 //   if let u = url.parse("https://example.com:8443/a/b?q=asuka+lang#top") {
 //     u.host            // "example.com"

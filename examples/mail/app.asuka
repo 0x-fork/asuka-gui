@@ -5,7 +5,7 @@
 //
 //   asuka dev --platform ios examples/mail
 
-import asuka/time
+import std/time
 
 struct Mail {
   id: int

@@ -277,7 +277,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 }
 
 // desktopNativeDirs are the directories of the app's native packages
-// (its own, its dependencies', the standard library's it imports) with C
+// (its own, its dependencies', the std and platform packages it imports) with C
 // for the desktop (a desktop/), which a C host's executable is built
 // with.
 func desktopNativeDirs(app *asukaApp) []string {
@@ -294,18 +294,19 @@ func desktopNativeDirs(app *asukaApp) []string {
 	return out
 }
 
-// stdNativeDirs are the standard library's packages with C for the
-// desktop: a dev player has them all, as the phones' players have their
-// native code.
+// stdNativeDirs are the standard library's and the platform SDK's
+// packages with C for the desktop: a dev player has them all, as the
+// phones' players have their native code.
 func stdNativeDirs() []string {
-	d, err := std.Dir()
+	ds, err := std.PackageDirs()
 	if err != nil {
 		return nil
 	}
-	ds, _ := filepath.Glob(filepath.Join(d, "*", nativegen.DesktopDir))
 	var out []string
-	for _, x := range ds {
-		out = append(out, filepath.Dir(x))
+	for _, d := range ds {
+		if st, err := os.Stat(filepath.Join(d, nativegen.DesktopDir)); err == nil && st.IsDir() {
+			out = append(out, d)
+		}
 	}
 	return out
 }

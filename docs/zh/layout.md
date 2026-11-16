@@ -407,4 +407,4 @@ accent = "#7c3aed"
 
 ## 浅色与深色
 
-应用会跟随系统的外观：iOS 和 macOS 的深色模式、Android 的深色主题、Windows 的应用模式（“设置 > 个性化 > 颜色”）、GNOME 的深色样式，以及浏览器的 `prefers-color-scheme`。应用也可以无视系统设置，强制以浅色或深色显示，就像应用内置的外观设置那样（对应 SwiftUI 的 `preferredColorScheme`；Android 上 AppCompat 的夜间模式；macOS 上应用的 `NSAppearance`；Linux 上 libadwaita 的 style manager）：见[应用](navigation.md)。语义颜色、平台控件和系统栏都会随之切换，无需重建应用；当前是哪种模式，可以看环境的 `dark`。用 [`asuka/store`](../stdlib.md) 保存用户的选择。
+应用会跟随系统的外观：iOS 和 macOS 的深色模式、Android 的深色主题、Windows 的应用模式（“设置 > 个性化 > 颜色”）、GNOME 的深色样式，以及浏览器的 `prefers-color-scheme`。应用也可以无视系统设置，强制以浅色或深色显示，就像应用内置的外观设置那样（对应 SwiftUI 的 `preferredColorScheme`；Android 上 AppCompat 的夜间模式；macOS 上应用的 `NSAppearance`；Linux 上 libadwaita 的 style manager）：见[应用](navigation.md)。语义颜色、平台控件和系统栏都会随之切换，无需重建应用；当前是哪种模式，可以看环境的 `dark`。用 [`std/store`](../stdlib.md) 保存用户的选择。

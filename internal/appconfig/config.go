@@ -24,7 +24,7 @@ type Config struct {
 	KeepRunning       bool   `json:"keepRunning,omitempty"`
 	MultipleInstances bool   `json:"multipleInstances,omitempty"`
 	// The updates' feed, the public key their signatures are checked
-	// with, and the build's target (asuka/update).
+	// with, and the build's target (platform/update).
 	UpdateFeed   string `json:"updateFeed,omitempty"`
 	UpdateKey    string `json:"updateKey,omitempty"`
 	UpdateTarget string `json:"updateTarget,omitempty"`

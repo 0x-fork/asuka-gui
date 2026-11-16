@@ -1,4 +1,4 @@
-// asuka/sqlite on iOS and macOS: where a database's relative name is.
+// std/sqlite on iOS and macOS: where a database's relative name is.
 // SQLite itself is the plugin's library, which the core calls.
 import Foundation
 

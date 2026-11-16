@@ -1,4 +1,4 @@
-// regex.c: asuka/regex's builtins: regular expressions in RE2's syntax
+// regex.c: std/regex's builtins: regular expressions in RE2's syntax
 // (a subset: no \p classes), matched in time linear in the text by a
 // Pike VM (Thompson's construction, threads carrying their captures),
 // never by backtracking. Leftmost-first, as RE2 and Perl choose matches.

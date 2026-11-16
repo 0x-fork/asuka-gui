@@ -610,7 +610,7 @@ struct AlertField {
   change: fn(string)? = none // the user's typing
 }
 
-/// What a flyout Window hangs from: a tray icon (asuka/tray's
+/// What a flyout Window hangs from: a tray icon (platform/tray's
 /// anchor(id)), or a rectangle of the window it's declared in, in points
 /// from its content's top left (a rectangle of no size is a point).
 struct Anchor {

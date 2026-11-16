@@ -10,9 +10,9 @@ import (
 )
 
 // The notify and push modules (Notify.swift, Push.swift). The packages'
-// tests (asuka/notify, asuka/push) run on the notify player
-// (modules1_player_test.go), which links asuka/host's Swift; the module
-// tests call each method by name through asuka/platform, each answer or
+// tests (platform/notify, platform/push) run on the notify player
+// (modules1_player_test.go), which builds those modules in; the module
+// tests call each method by name through platform/host, each answer or
 // error shown in a Text, for what the packages don't answer (their sends)
 // and the errors they don't reach.
 // What asks the user (notify's request, push's register) is called only
@@ -23,13 +23,13 @@ import (
 // m1CallSrc is a component that calls module.method with args once and
 // shows "label: ok [answer]" or "label: err error".
 const m1CallSrc = `
-	import asuka/platform
+	import platform/host
 
 	component Call(label: string, module: string, method: string, args: bytes) {
 	  state s = "pending"
 	  task {
 	    do {
-	      let b = try await platform.call(module, method, args)
+	      let b = try await host.call(module, method, args)
 	      s = "ok [{b.string()}]"
 	    } catch e {
 	      s = "err {e.message}"
@@ -104,7 +104,7 @@ func TestNotifyModule(t *testing.T) {
 		  state s = "waiting"
 		  task {
 		    do {
-		      let b = try await platform.call(module, method, bytes())
+		      let b = try await host.call(module, method, bytes())
 		      s = "came {b.string()}"
 		    } catch e {
 		      s = "err {e.message}"
@@ -118,9 +118,9 @@ func TestNotifyModule(t *testing.T) {
 		  Column {
 		    Call("channels", "notify", "channels", bytes())
 		    Call("channelGroups", "notify", "channelGroups", "[]".bytes())
-		    Call("badge", "notify", "badge", platform.u32(3))
-		    Call("present on", "notify", "present", platform.u8(1))
-		    Call("presented", "notify", "presented", platform.u8(2).concat("no-such-token".bytes()))
+		    Call("badge", "notify", "badge", host.u32(3))
+		    Call("present on", "notify", "present", host.u8(1))
+		    Call("presented", "notify", "presented", host.u8(2).concat("no-such-token".bytes()))
 		    Call("actionDone", "notify", "actionDone", "no-such-token".bytes())
 		    Call("categories", "notify", "categories", "[\{\"id\":\"chat\",\"actions\":[\{\"id\":\"reply\",\"title\":\"Reply\",\"open\":false,\"reply\":\{\"button\":\"Send\",\"placeholder\":\"Message\"}},\{\"id\":\"open\",\"title\":\"Open\",\"open\":true,\"icon\":\"star\"}]}]".bytes())
 		    Call("cancel", "notify", "cancel", "mactest-none".bytes())
@@ -134,14 +134,14 @@ func TestNotifyModule(t *testing.T) {
 		    Waits("notify", "nextPresent")
 		    Button("Stop") {
 		      on press {
-		        platform.send("notify", "stop", "nextAction".bytes())
-		        platform.send("notify", "stop", "nextPresent".bytes())
+		        host.send("notify", "stop", "nextAction".bytes())
+		        host.send("notify", "stop", "nextPresent".bytes())
 		        stopped = true
 		      }
 		    }
 		    if stopped {
-		      Call("present off", "notify", "present", platform.u8(0))
-		      Call("badge off", "notify", "badge", platform.u32(0))
+		      Call("present off", "notify", "present", host.u8(0))
+		      Call("badge off", "notify", "badge", host.u32(0))
 		    }
 		  }
 		}
@@ -181,13 +181,13 @@ func TestNotifyModule(t *testing.T) {
 	}
 }
 
-// asuka/notify itself, on the notify player: what it answers, and what its
+// platform/notify itself, on the notify player: what it answers, and what its
 // sends do (the badge, the categories, the presenter, the responses that
 // wait). A notification scheduled is added (an hour from now, then
 // cancelled), or the center says why not (notifications not allowed).
 func TestNotifyPackage(t *testing.T) {
 	a := RunWith(t, `
-		import asuka/notify
+		import platform/notify
 
 		component Showing {
 		  state s = "pending"
@@ -313,12 +313,12 @@ func TestNotifyPackage(t *testing.T) {
 }
 
 // An executable run on its own (no bundle identifier) has no notification
-// center: asuka/notify and asuka/push say so, and what needs no center (the
+// center: platform/notify and platform/push say so, and what needs no center (the
 // Dock's badge, Android's channels) works.
 func TestNotifyWithoutBundle(t *testing.T) {
 	a := RunWith(t, `
-		import asuka/notify
-		import asuka/push
+		import platform/notify
+		import platform/push
 
 		component Request {
 		  state s = "pending"
@@ -391,9 +391,9 @@ func TestNotifyWithoutBundle(t *testing.T) {
 		}
 		app { App() }
 	`, Options{Player: unbundled(t)})
-	const noBundle = "asuka/notify: macOS's notifications need the app's bundle: build it with asuka build"
+	const noBundle = "platform/notify: macOS's notifications need the app's bundle: build it with asuka build"
 	tr := m1Until(t, a, "request: err "+noBundle, "showing: err "+noBundle, "show: err "+noBundle,
-		"register: err asuka/push: APNs needs the app's bundle: build it with asuka build")
+		"register: err platform/push: APNs needs the app's bundle: build it with asuka build")
 	if m := m1Of(t, tr); m.Notify.Bundled || m.Notify.Delegate || m.Notify.InstalledBeforeLaunch {
 		t.Errorf("without a bundle: %+v", m.Notify)
 	}

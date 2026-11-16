@@ -1,4 +1,4 @@
-// asuka/crash's record in the core (core/src/std/crash.c): a run begun
+// platform/crash's record in the core (core/src/std/crash.c): a run begun
 // as a host begins it, its breadcrumbs and values; earlier runs' files and
 // what hosts wrote in the inbox (an exception, a MetricKit payload, an
 // Android ANR and a native crash with its tombstone) collected into

@@ -96,7 +96,7 @@ export function serve(port) {
         try { return f(p, b.length); } finally { e.asuka_free(p); }
       };
       if (appDir) withBytes(enc.encode(appDir + "\0"), (p) => e.asuka_set_app_dir(p));
-      // asuka/crash: reports are read here (crash.reports() spawns it), from the page's record.
+      // platform/crash: reports are read here (crash.reports() spawns it), from the page's record.
       if (crash?.where) withBytes(enc.encode(crash.where + "\0"), (p) => e.asuka_crash_read(p));
       alive = new Set(crash?.alive ?? []);
       const ok = module ? withBytes(module, (p, n) => e.asuka_worker_start(p, n)) : e.asuka_worker_start(0, 0);

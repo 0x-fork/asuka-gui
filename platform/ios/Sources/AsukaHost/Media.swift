@@ -388,7 +388,7 @@ final class AsukaGestureDelegate: NSObject, UIGestureRecognizerDelegate {
 
 @MainActor extension AsukaRuntime {
     /// Registers a native view kind for ui.Native. Packages' typed views
-    /// (asuka/camera's, asuka/maps', asuka/pay's buttons...) aren't
+    /// (platform/camera's, platform/maps', platform/pay's buttons...) aren't
     /// registered: they're found as they're shown (AsukaNative.makeView).
     func registerNative(_ type: String, _ make: @escaping (AsukaNativeContext) -> AsukaNativeView) {
         nativeFactories[type] = make

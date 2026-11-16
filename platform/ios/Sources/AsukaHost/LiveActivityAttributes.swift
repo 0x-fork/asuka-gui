@@ -1,4 +1,4 @@
-#if canImport(ActivityKit) && ASUKA_LIVEACTIVITY // asuka/liveactivity (see the CLI's iosFeatures)
+#if canImport(ActivityKit) && ASUKA_LIVEACTIVITY // platform/liveactivity (see the CLI's iosFeatures)
 // The Live Activities' attributes, compiled into both the app (the host's
 // module, LiveActivity.swift) and the widget extension (its template,
 // Widget/LiveActivity.swift): ActivityKit matches the two by the type's
@@ -9,7 +9,7 @@ import Foundation
 
 @available(iOS 16.1, *)
 struct AsukaActivityAttributes: ActivityAttributes {
-    /// What an activity shows: asuka/liveactivity's Content on the wire,
+    /// What an activity shows: platform/liveactivity's Content on the wire,
     /// which a server's push carries as its "content-state". Each key is
     /// optional.
     struct ContentState: Codable, Hashable {
@@ -55,7 +55,7 @@ struct AsukaActivityAttributes: ActivityAttributes {
         var until: Date? { untilMs.map { Date(timeIntervalSince1970: $0 / 1000) } }
     }
 
-    /// The activity's ID: asuka/liveactivity's Activity.ID (the app's, not
+    /// The activity's ID: platform/liveactivity's Activity.ID (the app's, not
     /// ActivityKit's), so a server and the Go code name it alike.
     var id: String
 }

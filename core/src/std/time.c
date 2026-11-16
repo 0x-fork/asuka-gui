@@ -1,4 +1,4 @@
-// time.c: asuka/time's builtins. A Time (std/time/time.asuka) is an
+// time.c: std/time's builtins. A Time (std/time/time.asuka) is an
 // instant (nanoseconds since the Unix epoch), its zone, the zone's
 // offset at that instant, and the wall clock's fields, which the Asuka
 // side computes from the first three. What it needs from C:

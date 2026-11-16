@@ -1,4 +1,4 @@
-// asuka/svg on iOS and macOS: the icon's layers (the compiler's encoding:
+// std/svg on iOS and macOS: the icon's layers (the compiler's encoding:
 // internal/svgparse's Encode) as CGPaths, drawn by Core Graphics in a view of the
 // package's, fitted to its bounds; currentColor is the view's color,
 // resolved as the platform's color (a semantic one follows light and

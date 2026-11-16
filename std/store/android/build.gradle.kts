@@ -7,5 +7,5 @@ plugins {
 }
 
 android {
-    namespace = "asuka.store"
+    namespace = "std.store"
 }

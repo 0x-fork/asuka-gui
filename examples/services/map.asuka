@@ -1,4 +1,4 @@
-import asuka/maps
+import platform/maps
 
 let pins = [
   maps.Marker(id: "ferry", at: maps.Coordinate(lat: 37.7955, lng: -122.3937), title: "Ferry Building"),

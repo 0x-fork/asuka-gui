@@ -1,8 +1,8 @@
-// asuka/document on the fake host, its files asuka/fs's: a file that
+// platform/document on the fake host, its files std/fs's: a file that
 // isn't there fails, saying why; an edit saves it, a moment later; its
 // model is a store all the same.
-import asuka/document
-import asuka/fs
+import platform/document
+import std/fs
 
 let types = [document.Type(name: "Plain Text", extensions: ["txt"], mimeTypes: ["text/plain"])]
 

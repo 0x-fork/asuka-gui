@@ -1,7 +1,7 @@
-// asuka/biometric with no platform code (the fake host): no biometry, so
+// platform/biometric with no platform code (the fake host): no biometry, so
 // check answers none and authenticate notAvailable, as on Linux.
 
-import asuka/biometric
+import platform/biometric
 
 test "no biometry here" {
   let s = try await biometric.check()

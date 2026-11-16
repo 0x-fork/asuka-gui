@@ -9,11 +9,11 @@ quitting, recent documents, document-based apps, starting at login,
 updates, Now Playing and the media keys, the displays, power, progress
 on the app's icon and the system's appearance. To follow changes to
 files and folders (a folder the app shows, a document another app
-saves), see [Watching files](data.md#watching-files-asukawatch), which
+saves), see [Watching files](data.md#watching-files-stdwatch), which
 phones and the web have too.
 
-Each one is a package of the standard library, an element or a function
-of the prelude, and works on the Mac, Windows and Linux. A phone or a
+Each one is a package of the platform SDK (or the standard library), an
+element or a function of the prelude, and works on the Mac, Windows and Linux. A phone or a
 browser that hasn't one answers that it hasn't (an `unsupported` or
 `notAvailable` error, or `supported()` false), or shows nothing, so an
 app can offer it only where it works.
@@ -50,14 +50,14 @@ dev` and each save's after it (see
 
 ## Tray icons and the Dock menu
 
-`asuka/tray`'s `Tray` puts an icon in the tray while it's shown (it
+`platform/tray`'s `Tray` puts an icon in the tray while it's shown (it
 shows nothing where it's put): an `NSStatusItem` in the Mac's menu bar,
 an icon in the notification area on Windows, a StatusNotifierItem on
 Linux (KDE, Xfce, Cinnamon, MATE, Budgie, and GNOME with the
 AppIndicator extension).
 
 ```asuka
-import asuka/tray
+import platform/tray
 
 component Focus {
   state minutes = 25
@@ -109,7 +109,7 @@ Mac's menu bar extras and of Windows' notification area do, or from a
 rectangle of a window. It's a `Window` with a `flyout`:
 
 ```asuka
-import asuka/tray
+import platform/tray
 
 component Power {
   state open = false
@@ -200,7 +200,7 @@ its tray icon's menu, the Dock's Quit.
 is in front, for as long as it's shown (it shows nothing itself):
 
 ```asuka
-import asuka/hotkey
+import platform/hotkey
 
 component Launcher {
   state problem = ""
@@ -250,7 +250,7 @@ as the panel goes. It's a window with `panel: true`: a launcher's main
 window, in an app that runs in the background (`background = true`):
 
 ```asuka
-import asuka/hotkey
+import platform/hotkey
 
 state shown = false
 
@@ -308,10 +308,10 @@ icons, and Enter opens the first.
 
 ## Finding apps
 
-`asuka/apps` lists the apps installed, as a launcher searches them:
+`platform/apps` lists the apps installed, as a launcher searches them:
 
 ```asuka
-import asuka/apps
+import platform/apps
 
 component Apps {
   state installed: [apps.App] = []
@@ -394,13 +394,13 @@ clicks through to the page; nothing lets them out of the browser.
 
 ## File dialogs
 
-`asuka/dialog` shows the system's file dialogs and gives the user's own
+`platform/dialog` shows the system's file dialogs and gives the user's own
 paths, not copies:
 
 ```asuka
-import asuka/dialog
-import asuka/fs
-import asuka/shell
+import platform/dialog
+import std/fs
+import platform/shell
 
 async fn export(notes: string) throws {
   let md = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
@@ -433,7 +433,7 @@ asked for (`"save Untitled.txt"`).
 
 ## The file manager
 
-`asuka/shell` does what the file manager does with a file:
+`platform/shell` does what the file manager does with a file:
 `shell.reveal(path)` shows it selected in its folder (Finder, Explorer, or the
 desktop's file manager), `shell.open(path)` opens it in the user's app for its
 type (`shell.ShellError.noApp` if there's none) and a folder in the file
@@ -441,7 +441,7 @@ manager, `shell.trash(path)` moves it to the trash or the Recycle Bin and
 never deletes it for good (it throws instead), and `shell.beep()` sounds
 the alert. Phones and the web have no file manager: reveal and trash
 throw an `unsupported` error, and on the web open shows the file in a
-new tab. To show a file's contents in the app, use `asuka/preview`.
+new tab. To show a file's contents in the app, use `platform/preview`.
 
 ## Opening files
 
@@ -535,7 +535,7 @@ whose apps don't quit themselves, ignore both.
 
 ## Updates
 
-`asuka/update`'s `update.UpdateWindow()`, shown once in the app's main
+`platform/update`'s `update.UpdateWindow()`, shown once in the app's main
 window, is Sparkle's updater: it checks for a new version soon after
 launch and once a day, shows its release notes with Install Update,
 Skip This Version and Remind Me Later, downloads it with a progress bar
@@ -548,7 +548,7 @@ Updates…" after About on the Mac (in Help elsewhere);
 state (`update.updater`) make an interface of the app's own.
 
 ```asuka
-import asuka/update
+import platform/update
 
 app {
   Window {
@@ -573,7 +573,7 @@ On the web, a page older than the site offers to reload.
 
 ## Recent documents
 
-Call `recent.add(path)` (`asuka/recent`) for each document the user
+Call `recent.add(path)` (`platform/recent`) for each document the user
 opens or saves.
 The Mac lists them in the File menu's Open Recent and the Dock menu,
 Windows in the jump list, Linux in the user's recent files. Choosing one
@@ -583,12 +583,12 @@ removes the app's own.
 
 ## Documents
 
-`asuka/document` makes an app whose windows each show a file, as a
+`platform/document` makes an app whose windows each show a file, as a
 text editor does: a document's model, and the windows and screens
 around it. Describe the kind of document and its editor:
 
 ```asuka
-import asuka/document
+import platform/document
 
 let types = [document.Type(name: "Plain Text", extensions: ["txt"])]
 
@@ -661,7 +661,7 @@ What the user gets:
 
 ## Starting at login
 
-Offer `try await login.set(true)` (`asuka/login`) as a setting, and
+Offer `try await login.set(true)` (`platform/login`) as a setting, and
 read it back with `await login.enabled()`. It's a login item on macOS 13 and later (a packaged
 app only; `LoginError.needsApproval` until the user allows it in System
 Settings), a Run entry on Windows, and an autostart entry on Linux (the
@@ -678,11 +678,11 @@ quick settings on Windows (the app window's
 SystemMediaTransportControls), an MPRIS player on Linux, which GNOME's
 and KDE's controls and `playerctl` drive. It's the same package as on
 phones, where it's the lock screen's controls
-([Device and services](device.md#now-playing-and-the-media-keys-asukanowplaying)):
+([Device and services](device.md#now-playing-and-the-media-keys-platformnowplaying)):
 
 ```asuka
-import asuka/audio
-import asuka/nowplaying
+import platform/audio
+import platform/nowplaying
 
 component Spring {
   event next
@@ -714,8 +714,8 @@ streams of the computer sleeping and waking and the screen locking, and
 and unlock, but no suspend or idle time; the web, the battery alone.
 
 ```asuka
-import asuka/power
-import asuka/screen
+import platform/power
+import platform/screen
 
 component Status {
   let p = power.status()

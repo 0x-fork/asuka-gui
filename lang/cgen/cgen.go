@@ -86,7 +86,7 @@ static ak_module *asuka_app_load(void) {
 }
 
 // The core finds the app through ak_app_loader, set as the program
-// starts; whether it reads its crash reports (asuka/crash) through
+// starts; whether it reads its crash reports (platform/crash) through
 // ak_app_crash, which asuka_crash_start asks before the app loads. A core
 // built with the app (AK_APP_COMPILED) also names asuka_app_module, so
 // that a static library's linker keeps this object.
@@ -124,7 +124,7 @@ __attribute__((weak)) int main(int argc, char **argv) {
 	return g.b.Bytes(), nil
 }
 
-// readsCrashes reports whether m calls asuka/crash's builtins: an app
+// readsCrashes reports whether m calls platform/crash's builtins: an app
 // that reads its crash reports, whose runs the core records.
 func readsCrashes(m *bc.Module) bool {
 	for _, b := range m.Builtins {

@@ -98,7 +98,7 @@ the distance left to go, is the spring's `velocity`, so the view keeps
 the speed the finger gave it:
 
 ```asuka
-import asuka/math
+import std/math
 
 component Flung {
   state dragX = 0.0
@@ -364,7 +364,7 @@ drawn, from 0 to 1. Change them inside `animate` and the stroke
 draws itself: a progress ring, a check mark.
 
 ```asuka
-import asuka/math
+import std/math
 
 fn ring(w: float, h: float) -> Path {
   let r = min(w, h) / 2 - 4
@@ -506,7 +506,7 @@ one left off to add the next to it. Gestures on the same view work
 together: pinch and turn at once.
 
 ```asuka
-import asuka/math
+import std/math
 
 component Turner {
   state angle = 0.0
@@ -651,7 +651,7 @@ Without `on press`, a press held is a hold, as in hold to record. The
 recording is a side effect, so it goes in the handler:
 
 ```asuka
-import asuka/record
+import platform/record
 
 component HoldToRecord {
   View {

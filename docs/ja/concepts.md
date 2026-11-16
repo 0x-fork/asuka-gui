@@ -264,10 +264,10 @@ if environment().widthClass == .expanded {
 
 ## 永続化される値
 
-状態は、アプリが動いている間だけ存在します。ストア（`import asuka/store`）を使うと、設定のような小さな値をアプリの起動をまたいで保持できます。`read` は保存された値（なければデフォルト値）を返し、`write` は値を保存します。エフェクトを使えば、状態の値が変わるたびに保存できます。
+状態は、アプリが動いている間だけ存在します。ストア（`import std/store`）を使うと、設定のような小さな値をアプリの起動をまたいで保持できます。`read` は保存された値（なければデフォルト値）を返し、`write` は値を保存します。エフェクトを使えば、状態の値が変わるたびに保存できます。
 
 ```asuka
-import asuka/store
+import std/store
 
 state units = store.read("units", "metric")
 effect { store.write("units", units) }

@@ -495,7 +495,7 @@ static bool web_command(node *n, ak_cmd c, ak_span args) {
 	}
 }
 
-// ---- The web module and asuka/js ----
+// ---- The web module and platform/js ----
 
 // eval_body runs s in the page's world and answers with its value as
 // JSON: the last statement's, or what its promise resolves to. A page
@@ -648,7 +648,7 @@ static void web_cookies(ak_span args, reply *r) {
 	free(u);
 }
 
-// A asuka/js run: a web view that's never shown, and who waits for it.
+// A platform/js run: a web view that's never shown, and who waits for it.
 typedef struct {
 	WebKitWebView *view;
 	char *src;

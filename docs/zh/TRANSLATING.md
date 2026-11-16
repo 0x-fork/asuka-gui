@@ -27,6 +27,8 @@
 | --- | --- | --- |
 | widget | 控件 | "the platform's own widgets" → “平台原生控件” |
 | native | 原生 | |
+| standard library | 标准库 | `std/...` 的包 |
+| platform SDK | 平台 SDK | `platform/...` 的包 |
 | component | 组件 | |
 | view | 视图 | |
 | host | 宿主 | 首次出现可写“宿主（host）” |

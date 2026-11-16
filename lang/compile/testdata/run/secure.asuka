@@ -1,7 +1,7 @@
-// asuka/secure with no platform code (the fake host): there's no
+// platform/secure with no platform code (the fake host): there's no
 // keychain, so each call throws an unsupported error.
 
-import asuka/secure
+import platform/secure
 
 test "no keychain here" {
   do {

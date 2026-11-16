@@ -302,14 +302,14 @@ func (p *Project) Sources() []string {
 // tables), the parts of a host that link frameworks of their own.
 type Uses struct {
 	// Imports are the packages imported anywhere in the program, by
-	// import path (asuka/location, @acme/charts).
+	// import path (platform/location, @acme/charts).
 	Imports map[string]bool
 	// Refs are the members referred to from outside the package that
 	// declares them, anywhere in the program (a dependency that calls
 	// location.requestAlways counts as the app would): "<import
 	// path>.<name>" for a package's function, type, store, state or let
-	// (asuka/location.requestAlways), "<import path>.<Type>.<name>" for a
-	// member of its type (asuka/icloud.Value.set: a method or a field,
+	// (platform/location.requestAlways), "<import path>.<Type>.<name>" for a
+	// member of its type (platform/icloud.Value.set: a method or a field,
 	// which the program names as it reads it, assigns it or makes the
 	// struct with it); the prelude's by name alone (Video). Test blocks'
 	// don't count: they aren't the app's.
@@ -502,10 +502,10 @@ func (u *Uses) ImportList() []string {
 	return out
 }
 
-// Std are the standard library's packages the project imports, with
-// those they import: import path (asuka/network) → directory (package
-// std's). The compiler's own (asuka/json, asuka/math) aren't directories,
-// and aren't here.
+// Std are the standard library's and the platform SDK's packages the
+// project imports, with those they import: import path (std/http,
+// platform/network) → directory (std.Package's). The compiler's own
+// (std/json, std/math) aren't directories, and aren't here.
 func (p *Project) Std() map[string]string {
 	u := p.uses
 	if u == nil {

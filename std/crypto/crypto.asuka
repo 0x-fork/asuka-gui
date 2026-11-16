@@ -1,4 +1,4 @@
-// Package asuka/crypto has hashes, HMAC, Ed25519 signatures, the
+// Package std/crypto has hashes, HMAC, Ed25519 signatures, the
 // system's randomness and UUIDs.
 //
 //   let digest = encoding.hexEncode(crypto.sha256(data))

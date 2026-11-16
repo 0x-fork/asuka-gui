@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// asuka/http's Swift (std/http/swift/Http.swift) on this Mac: its
+// std/http's Swift (std/http/swift/Http.swift) on this Mac: its
 // URLSession download, compiled with the generated glue's Response and
 // Transport and a driver of the test's, against a local server: the
 // progress as it comes, the file renamed into place, cancelling.
@@ -79,7 +79,7 @@ do {
 	}
 }
 
-// runHTTPProbe compiles asuka/http's Swift with the generated glue's
+// runHTTPProbe compiles std/http's Swift with the generated glue's
 // types (not its codec, which needs the runtime) and driver as main,
 // runs it and gives what it printed.
 func runHTTPProbe(t *testing.T, dir, driver string) string {
@@ -117,7 +117,7 @@ func runHTTPProbe(t *testing.T, dir, driver string) string {
 	return string(b)
 }
 
-// asuka/http's loopback server (Network.framework): a request to another
+// std/http's loopback server (Network.framework): a request to another
 // path is a 404, the path's answers with the page and gives next its URL;
 // close stops it.
 func TestHTTPSwiftLoopback(t *testing.T) {

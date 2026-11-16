@@ -1,4 +1,4 @@
-// asuka/markdown on iOS and macOS: the paragraphs the core read (md4c)
+// std/markdown on iOS and macOS: the paragraphs the core read (md4c)
 // as an attributed string, in a text view that isn't editable: one
 // selection, links that open, the user's text size. A change writes over
 // the text from the first block that differs (MarkdownBlocks).

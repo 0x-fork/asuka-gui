@@ -1,4 +1,4 @@
-// asq is asuka/sqlite's side of SQLite: one entry point that the core
+// asq is std/sqlite's side of SQLite: one entry point that the core
 // (core/src/sqlite) calls with a whole statement's arguments and gets its
 // answer (its rows, a chunk at a time) back in one crossing, on every
 // platform: through dlopen (macOS, Linux, iOS, Android), LoadLibrary

@@ -1,0 +1,237 @@
+// Package platform/dialog shows the system's file dialogs, as a desktop app
+// asks for files: open picks files, save picks where a file goes,
+// chooseFolder picks a folder. They give the files' own paths, not
+// copies (device.pickFiles gives copies, as a phone's document picker
+// does): the app reads and writes the user's files where they are.
+//
+//   let md = [dialog.Filter(name: "Markdown", extensions: ["md"])]
+//   if let path = try await dialog.save(name: "Notes.md", filters: md) {
+//     try fs.write(path, notes.bytes())
+//   }
+//
+// The Mac shows NSOpenPanel and NSSavePanel as sheets on the window,
+// Windows the common item dialogs, modal to the window, and Linux GTK's
+// file dialog (the desktop's file chooser portal in a Flatpak), modal to
+// the window. Each asks before save replaces a file that's there.
+//
+// The web has no paths: open and chooseFolder copy what the user picks
+// into the app's files (a folder with all it holds); where the browser
+// has the File System Access API (Chrome, Edge) they're the system's own
+// dialogs, and the file save gives is the one the user chose: once the
+// app has written it, the browser writes it there. Elsewhere open and
+// chooseFolder are the browser's file input, and save gives a path in
+// the app's caches whose file is downloaded once it's written.
+//
+// iOS and Android have no such dialogs: open shows the document picker
+// and gives copies (device.pickFiles'), and save and chooseFolder throw
+// an unsupported error. A cancel is no path and no error everywhere.
+
+import platform/device
+
+/// A kind of file a dialog offers: by MIME type, as an HTML input's
+/// accept takes them ("application/pdf", or a family, "image/*"), by
+/// extension ("md"), or both. The dialog shows its filters in its type
+/// menu (Windows, Linux, browsers with the File System Access API); a
+/// Mac's panel has none, and takes the files of any of them.
+pub struct Filter {
+  /// What the type menu shows ("Images"); default: the types and
+  /// extensions.
+  name: string = ""
+  /// MIME types: "image/png", or a family's, "image/*".
+  types: [string] = []
+  /// File name extensions, without the dot ("md", "txt").
+  extensions: [string] = []
+}
+
+/// What a dialog shows.
+struct Request {
+  title: string = ""
+  button: string = ""
+  start: string = ""
+  name: string = ""
+  filters: [Filter] = []
+  multiple: bool = false
+  showHidden: bool = false
+}
+
+/// The system's dialogs. Each answers once the user has chosen or
+/// cancelled (none).
+native interface Chooser {
+  async fn open(r: Request) -> [string]
+  async fn save(r: Request) -> string?
+  async fn folder(r: Request) -> [string]
+}
+
+// Made once; none where the platform has no such dialogs (the phones).
+let dialogs = try? Chooser()
+
+fn unsupported(what: string) -> Error = Error("unsupported: no {what} dialog here")
+
+/// The filters as the platforms take them: MIME types lowercased,
+/// extensions without their dots, a name always; empty ones left out.
+fn normalized(filters: [Filter]) -> [Filter] {
+  var out: [Filter] = []
+  for f in filters {
+    var types: [string] = []
+    for t in f.types {
+      let s = t.trim().lower()
+      if !s.isEmpty() { types.push(s) }
+    }
+    var exts: [string] = []
+    for e in f.extensions {
+      var s = e.trim()
+      if s.hasPrefix("*.") { s = s.slice(2, s.count()) }
+      if s.hasPrefix(".") { s = s.slice(1, s.count()) }
+      if !s.isEmpty() { exts.push(s) }
+    }
+    if types.isEmpty() && exts.isEmpty() { continue }
+    var name = f.name
+    if name.isEmpty() {
+      name = (types + exts.map(e => "*.{e}")).joined(separator: ", ")
+    }
+    out.push(Filter(name: name, types: types, extensions: exts))
+  }
+  return out
+}
+
+/// The MIME types of common extensions, for a phone's document picker,
+/// which takes types only.
+let extensionTypes: [string: string] = [
+  "md": "text/markdown",
+  "markdown": "text/markdown",
+  "txt": "text/plain",
+  "csv": "text/csv",
+  "json": "application/json",
+  "html": "text/html",
+  "htm": "text/html",
+  "xml": "application/xml",
+  "pdf": "application/pdf",
+  "zip": "application/zip",
+  "png": "image/png",
+  "jpg": "image/jpeg",
+  "jpeg": "image/jpeg",
+  "gif": "image/gif",
+  "webp": "image/webp",
+  "heic": "image/heic",
+  "svg": "image/svg+xml",
+  "mp3": "audio/mpeg",
+  "m4a": "audio/mp4",
+  "wav": "audio/wav",
+  "mp4": "video/mp4",
+  "mov": "video/quicktime",
+]
+
+/// The filters' MIME types, their extensions' too; none (any file) if an
+/// extension has no type the phone could match: a filter it can't name
+/// mustn't hide the user's files.
+fn mimeTypes(filters: [Filter]) -> [string] {
+  var out: [string] = []
+  for f in filters {
+    for t in f.types { out.push(t) }
+    for e in f.extensions {
+      if let t = extensionTypes[e.lower()] {
+        out.push(t)
+      } else {
+        return []
+      }
+    }
+  }
+  return out
+}
+
+/// Shows the system's open dialog and returns the paths of the files the
+/// user picked, none if they cancelled. title is the dialog's title
+/// (Windows, Linux; on a Mac the message at the top of the panel),
+/// button the open button's label ("Import"), start the folder it starts
+/// in (or a file there, selected), filters the kinds of files offered,
+/// the first at first (none: any file).
+///
+/// On iOS and Android it shows the document picker, and the paths are
+/// copies in the app's caches (device.pickFiles' files), the app's to
+/// keep or move.
+pub async fn open(title: string = "", button: string = "", start: string = "", filters: [Filter] = [], multiple: bool = false, showHidden: bool = false) throws -> [string] {
+  if let f = faked {
+    f.shown.push(said(["open", title]))
+    return if multiple { f.opens } else { f.opens.prefix(1) }
+  }
+  let fs = normalized(filters)
+  if let d = dialogs {
+    return try await d.open(r: Request(title: title, button: button, start: start, filters: fs, multiple: multiple, showHidden: showHidden))
+  }
+  let files = try await device.pickFiles(types: mimeTypes(fs), multiple: multiple)
+  return files.map(f => f.path)
+}
+
+/// Shows the system's save dialog and returns the path the user chose,
+/// none if they cancelled. The dialog has asked already whether to
+/// replace a file that's there: the app writes the file. name is the
+/// file name it suggests ("Untitled.md"); a name typed without an
+/// extension gets the first extension of the filter chosen (the Mac,
+/// Windows).
+pub async fn save(name: string = "", title: string = "", button: string = "", start: string = "", filters: [Filter] = [], showHidden: bool = false) throws -> string? {
+  if let f = faked {
+    f.shown.push(said(["save", title, name]))
+    return f.saveTo
+  }
+  if let d = dialogs {
+    return try await d.save(r: Request(title: title, button: button, start: start, name: name, filters: normalized(filters), showHidden: showHidden))
+  }
+  throw unsupported("save")
+}
+
+/// Shows the system's dialog for choosing a folder and returns its path,
+/// none if they cancelled.
+pub async fn chooseFolder(title: string = "", button: string = "", start: string = "", showHidden: bool = false) throws -> string? {
+  if let f = faked {
+    f.shown.push(said(["folder", title]))
+    return f.folder
+  }
+  if let d = dialogs {
+    return (try await d.folder(r: Request(title: title, button: button, start: start, showHidden: showHidden))).first()
+  }
+  throw unsupported("folder")
+}
+
+/// Shows the system's dialog for choosing folders, several at once (the
+/// web: one), and returns their paths, none if they cancelled.
+pub async fn chooseFolders(title: string = "", button: string = "", start: string = "", showHidden: bool = false) throws -> [string] {
+  if let f = faked {
+    f.shown.push(said(["folders", title]))
+    return if let d = f.folder { [d] } else { [] }
+  }
+  if let d = dialogs {
+    return try await d.folder(r: Request(title: title, button: button, start: start, multiple: true, showHidden: showHidden))
+  }
+  throw unsupported("folder")
+}
+
+// ---- Testing ----
+
+state faked: FakeDialogs? = none
+
+// said is a dialog as FakeDialogs.shown says it: its words, the empty
+// ones left out.
+fn said(words: [string]) -> string = words.filter(w => !w.isEmpty()).joined(separator: " ")
+
+/// Dialogs a test answers, as the user would: fake() installs them, and
+/// from then on each dialog answers at once with what they hold.
+pub store FakeDialogs {
+  /// What open answers (its first, when it picks one): [] is a cancel.
+  pub state opens: [string] = []
+  /// What save answers: none is a cancel.
+  pub state saveTo: string? = none
+  /// What chooseFolder answers (chooseFolders: it alone): none is a
+  /// cancel.
+  pub state folder: string? = none
+  /// The dialogs shown, oldest first: "open", "save" or "folder", then
+  /// its title and the name it suggested, if any ("save Untitled.txt").
+  pub state shown: [string] = []
+}
+
+/// Installs FakeDialogs, for a test: from now on the package's dialogs
+/// answer with what it holds, not the platform's.
+pub fn fake() -> FakeDialogs {
+  let f = FakeDialogs()
+  faked = f
+  return f
+}

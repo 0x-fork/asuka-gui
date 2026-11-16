@@ -125,10 +125,10 @@ component Answer(question: [Span], answer: [Span]) {
 
 ### Markdown
 
-`asuka/markdown` 把 Markdown（CommonMark，加上 GitHub 的表格、任务列表、删除线和自动链接）显示成平台原生的带样式文本：整段内容是一个选区，链接可以打开，字号跟随用户的文字大小设置。文本里的原始 HTML 会按文字显示。
+`std/markdown` 把 Markdown（CommonMark，加上 GitHub 的表格、任务列表、删除线和自动链接）显示成平台原生的带样式文本：整段内容是一个选区，链接可以打开，字号跟随用户的文字大小设置。文本里的原始 HTML 会按文字显示。
 
 ```asuka
-import asuka/markdown
+import std/markdown
 
 component Reply(text: string, writing: bool) {
   markdown.View(text) { streaming: writing; padding: 16 }
@@ -352,7 +352,7 @@ component NoteField {
 每个控件都用 `bind` 绑定它要修改的状态，也都接受 `disabled`。除了 `Picker` 和 `Toggle` 的 `title`，它们都不带标签：需要的话，在旁边放一个 `Text`。
 
 ```asuka
-import asuka/time
+import std/time
 
 component Settings {
   state wifi = true
@@ -428,7 +428,7 @@ component Settings {
   | Linux | 基于 `GtkStringList` 的 `GtkDropDown`，标签以暗色文字显示在选中项的位置 |
   | Web | `<select>`，第一个选项是隐藏的占位项，显示标签 |
 - **ColorPicker** 是一个色块，点击后打开平台的颜色选择器，选中的结果写入一个 `color`。`alpha` 允许用户选择不透明度，`title` 是选择器的标题。iOS 上是 `UIColorWell` 加系统的颜色选择器；Android 没有颜色选择器，所以是一个列出调色板的 Material 对话框，设置了 `alpha` 时再附带一个不透明度滑块。macOS 上是打开颜色面板的 `NSColorWell`，Linux 上是 `GtkColorDialogButton`，浏览器中是 `<input type="color">`。Windows 的颜色对话框不支持不透明度，因此 `alpha` 在那里不起作用。
-- **DatePicker** 选取一个时刻，按设备所在的时区显示：`asuka/time` 的 `time.Picker` 绑定一个 `time.Time`（prelude 里的 `DatePicker` 绑定的是自 1970 年起的毫秒数）。`mode` 可以是 `.date`（默认）、`.time` 或 `.dateTime`；`min` 和 `max` 限定可选范围。
+- **DatePicker** 选取一个时刻，按设备所在的时区显示：`std/time` 的 `time.Picker` 绑定一个 `time.Time`（prelude 里的 `DatePicker` 绑定的是自 1970 年起的毫秒数）。`mode` 可以是 `.date`（默认）、`.time` 或 `.dateTime`；`min` 和 `max` 限定可选范围。
 
   | | 紧凑（默认） | `.section` |
   |---|---|---|
@@ -530,7 +530,7 @@ component Pictures(photo: Photo) {
 | Linux | GDK 的加载器：PNG、JPEG、GIF，以及视安装情况而定的 WebP、AVIF、HEIF、SVG 和 JPEG XL | 由宿主逐帧播放；动态 WebP 的每一帧用 GDK 的 WebP 加载器解码 |
 | Web | 浏览器支持的格式 | 用 WebCodecs 的 `ImageDecoder` 在 canvas 上播放（也支持 AVIF 序列）；没有它的浏览器（Safari）由 `<img>` 自己播放，暂停时显示第一帧 |
 
-只有在 Mac、Linux 和 Web 上，SVG 才能作为图片显示。要在所有平台上显示 SVG 图标，请用 [`asuka/svg`](#svg-图标) 以矢量方式绘制。
+只有在 Mac、Linux 和 Web 上，SVG 才能作为图片显示。要在所有平台上显示 SVG 图标，请用 [`std/svg`](#svg-图标) 以矢量方式绘制。
 
 ## 符号与图标
 
@@ -557,10 +557,10 @@ iOS 和 macOS 能绘制任意 SF Symbol。其他平台只能绘制一组精选�
 
 ### SVG 图标
 
-要用自己的图标，`asuka/svg` 会用平台的矢量绘图来画 SVG，不会栅格化。`svg.Icon` 的标记是一个字符串字面量，由编译器解析：读不懂的标记是编译错误，设备上不做任何解析。
+要用自己的图标，`std/svg` 会用平台的矢量绘图来画 SVG，不会栅格化。`svg.Icon` 的标记是一个字符串字面量，由编译器解析：读不懂的标记是编译错误，设备上不做任何解析。
 
 ```asuka
-import asuka/svg
+import std/svg
 
 let download = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>""")
 
@@ -578,7 +578,7 @@ component DownloadRow {
 `svg.Shape` 画应用自己生成的路径：每个 `svg.Layer` 是一条 `svg.Path`，可以填充（`fill`，沿框往下渐变到 `fade`）和描边（`stroke`、`width`、`cap`、`join`）。`svg.Point` 由相对框左上角的点数加上框尺寸的比例组成，所以框变大变小时形状会跟着变，应用不用重新计算：
 
 ```asuka
-import asuka/svg
+import std/svg
 
 let tick = svg.Path().move(svg.Point(x: 4, fy: 0.5)).line(svg.Point(fx: 0.4, fy: 1, y: -4)).line(svg.Point(fx: 1, x: -4, y: 4))
 
@@ -629,10 +629,10 @@ component Clip {
 
 ## Lottie 动画
 
-`asuka/lottie` 用各平台自己的播放器播放 Lottie 动画（从 After Effects 导出的 Lottie JSON `.json` 或 dotLottie `.lottie`）：iOS 和 Mac 上是 lottie-ios，Android 上是 lottie-android，Web 上是 lottie-web。Windows 和 Linux 目前还没有可调用的播放器，在那里这个视图是一个空的框。
+`std/lottie` 用各平台自己的播放器播放 Lottie 动画（从 After Effects 导出的 Lottie JSON `.json` 或 dotLottie `.lottie`）：iOS 和 Mac 上是 lottie-ios，Android 上是 lottie-android，Web 上是 lottie-web。Windows 和 Linux 目前还没有可调用的播放器，在那里这个视图是一个空的框。
 
 ```asuka
-import asuka/lottie
+import std/lottie
 
 component Success {
   state playing = true
@@ -768,7 +768,7 @@ component Triangle {
 `stroke` 和 `lineWidth`（默认为 1）用来描出轮廓，可以指定 `lineCap`（`.butt`、`.round`、`.square`）和 `lineJoin`（`.miter`、`.round`、`.bevel`）。`trimStart` 和 `trimEnd` 只画出轮廓的一部分，取值从 0 到 1：比如进度环，或者一条自己画出来的线。在 `animate` 中修改它们会产生动画（见[动效](motion.md)）。`dash` 把描边画成虚线：以点为单位的长度，依次是画的和空的（`[6, 4]`；个数为奇数时会重复一遍），和 SwiftUI 的 `StrokeStyle(dash:)` 一样。`dashPhase` 是虚线图案从哪里开始。[`examples/usage`](../../examples/usage) 就用它画了一条预测线。
 
 ```asuka
-import asuka/math
+import std/math
 
 fn ring(w: float, h: float) -> Path {
   let r = min(w, h) / 2 - 4
@@ -827,10 +827,10 @@ component Level(level: float) {
 
 ### 图表
 
-`asuka/chart` 绘制图表：在数值轴上画柱、线、面积和点，标签用平台的文字（随用户的文字大小缩放）。它是用 Asuka 写的：刻度和图形只计算一次，由 `svg.Shape` 绘制，所以在每个平台上都一样。
+`std/chart` 绘制图表：在数值轴上画柱、线、面积和点，标签用平台的文字（随用户的文字大小缩放）。它是用 Asuka 写的：刻度和图形只计算一次，由 `svg.Shape` 绘制，所以在每个平台上都一样。
 
 ```asuka
-import asuka/chart
+import std/chart
 
 component Week(steps: [float], goal: [float]) {
   chart.View([
@@ -851,10 +851,10 @@ component Week(steps: [float], goal: [float]) {
 
 ### 着色器
 
-`asuka/shader` 用 GPU 程序来绘制一个框：流动的渐变、噪声、光晕、波纹。程序是一个 Kage 着色器（Ebitengine 的语言，Go 的语法），在应用编译时为每个平台编译好：编译不过的着色器就是编译错误，设备上只编译平台自己的程序。
+`std/shader` 用 GPU 程序来绘制一个框：流动的渐变、噪声、光晕、波纹。程序是一个 Kage 着色器（Ebitengine 的语言，Go 的语法），在应用编译时为每个平台编译好：编译不过的着色器就是编译错误，设备上只编译平台自己的程序。
 
 ```asuka
-import asuka/shader
+import std/shader
 
 let glow = shader.Program(r"""
   package main

@@ -1,7 +1,7 @@
 // The WASI calls (preview 1) the core's C library makes, answered by the
 // page (or a spawn worker, spawn-worker.js): the clock, randomness, the
 // console, and files: the app's file system in memory (fs.js), "/"
-// preopened as the core's one directory, so asuka/fs, the core's crash
+// preopened as the core's one directory, so std/fs, the core's crash
 // record and anything else that opens a path reach it.
 //
 //	const imports = { wasi_snapshot_preview1: wasi(() => instance.exports.memory, log) };

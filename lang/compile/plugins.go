@@ -28,13 +28,16 @@ func PluginEnv(m *bytecode.Module) []string {
 	}
 	var env []string
 	for pkg := range pkgs {
-		env = append(env, LibraryEnv("asuka/"+pkg)...)
+		// A builtin is its package's last name's: sqlite.open is
+		// std/sqlite's (or platform/'s, were a plugin there).
+		env = append(env, LibraryEnv(std.Prefix+pkg)...)
+		env = append(env, LibraryEnv(std.PlatformPrefix+pkg)...)
 	}
 	return env
 }
 
 // LibraryEnv is PluginEnv for the standard library package imported as
-// path (asuka/sqlite): nothing when it isn't a plugin.
+// path (std/sqlite): nothing when it isn't a plugin.
 func LibraryEnv(path string) []string {
 	dir, ok := std.Package(path)
 	if !ok {

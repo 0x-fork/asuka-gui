@@ -99,7 +99,7 @@ func TestStandardLibrary(t *testing.T) {
 		root = r
 	}
 	os.WriteFile(filepath.Join(root, "asuka.toml"), []byte("name = \"app\"\n"), 0o644)
-	text := "import asuka/store\nimport asuka/math\n\nfn units() -> string = store.read(\"units\", \"metric\")\nfn two() -> float = math.sqrt(4)\n"
+	text := "import std/store\nimport std/math\n\nfn units() -> string = store.read(\"units\", \"metric\")\nfn two() -> float = math.sqrt(4)\n"
 	c := newClient(t, root)
 	uri := c.openText(filepath.Join(root, "a.asuka"), text)
 	c.waitDiags(uri, noDiags)
@@ -114,7 +114,7 @@ func TestStandardLibrary(t *testing.T) {
 	if err := c.call("textDocument/hover", &p, &h); err != nil || h == nil || !strings.Contains(h.Contents.Value, "fn read<T>(key: string, def: T) -> T") {
 		t.Fatalf("hover: %v %+v", err, h)
 	}
-	p = tdp(uri, posAt(t, text, "import asuka/sto|re"))
+	p = tdp(uri, posAt(t, text, "import std/sto|re"))
 	if err := c.call("textDocument/hover", &p, &h); err != nil || h == nil || !strings.Contains(h.Contents.Value, "keeps small values") {
 		t.Fatalf("package hover: %v %+v", err, h)
 	}

@@ -18,7 +18,7 @@ func TestUsesFromCompile(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("import asuka/location\n\nasync fn here() {\n  let _ = try? await location.current()\n}\n\napp { Text(\"a\") }\n")
+	write("import platform/location\n\nasync fn here() {\n  let _ = try? await location.current()\n}\n\napp { Text(\"a\") }\n")
 	old := Compile
 	defer func() { Compile = old }()
 	compiles := 0
@@ -27,7 +27,7 @@ func TestUsesFromCompile(t *testing.T) {
 		return old(dir, deps)
 	}
 	p := &Project{Dir: dir}
-	if u := p.Uses(); !u.Ref("asuka/location", "current") || compiles != 1 {
+	if u := p.Uses(); !u.Ref("platform/location", "current") || compiles != 1 {
 		t.Fatalf("uses %v, %d compiles", u.Refs, compiles)
 	}
 	if _, diags, err := p.Compile(); err != nil || len(diags) > 0 || compiles != 1 {
@@ -35,9 +35,9 @@ func TestUsesFromCompile(t *testing.T) {
 	}
 	// A save (of another size: the stamp has it): compiled again, its
 	// uses the new ones.
-	write("import asuka/location\n\nasync fn always() {\n  let _ = try? await location.requestAlways()\n}\n\napp { Text(\"a\") }\n")
+	write("import platform/location\n\nasync fn always() {\n  let _ = try? await location.requestAlways()\n}\n\napp { Text(\"a\") }\n")
 	p.Compile()
-	if u := p.Uses(); !u.Ref("asuka/location", "requestAlways") || u.Ref("asuka/location", "current") || compiles != 2 {
+	if u := p.Uses(); !u.Ref("platform/location", "requestAlways") || u.Ref("platform/location", "current") || compiles != 2 {
 		t.Fatalf("after a save: %v, %d compiles", u.Refs, compiles)
 	}
 	// A test's compile, which doesn't say: checked.
@@ -45,7 +45,7 @@ func TestUsesFromCompile(t *testing.T) {
 		return nil, nil, nil, nil
 	}
 	q := &Project{Dir: dir}
-	if u := q.Uses(); !u.Ref("asuka/location", "requestAlways") {
+	if u := q.Uses(); !u.Ref("platform/location", "requestAlways") {
 		t.Fatalf("checked: %v", u.Refs)
 	}
 }

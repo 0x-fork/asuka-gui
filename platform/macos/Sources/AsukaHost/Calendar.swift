@@ -1,4 +1,4 @@
-// asuka/calendar on a Mac, with EventKit as on iOS: "request" answers u8
+// platform/calendar on a Mac, with EventKit as on iOS: "request" answers u8
 // access (not asked, denied, write only, full), "calendars" and "events"
 // (JSON: from, to in ms, calendars) JSON, "add" (an event's JSON) u8
 // saved. macOS has no event editor for apps (EventKitUI is iOS's): "add"
@@ -41,7 +41,7 @@ import EventKit
         }
     }
 
-    /// The status as asuka/calendar's Access: not asked, denied, write
+    /// The status as platform/calendar's Access: not asked, denied, write
     /// only, full.
     static func access() -> UInt8 {
         switch status() {

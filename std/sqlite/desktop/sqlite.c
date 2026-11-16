@@ -1,4 +1,4 @@
-// asuka/sqlite on Windows and Linux: where a database's relative name is,
+// std/sqlite on Windows and Linux: where a database's relative name is,
 // the app's data directory (the host's). SQLite itself is the plugin's
 // library, which the core calls.
 #include "sqlite.asuka.h"

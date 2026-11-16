@@ -1,0 +1,81 @@
+// Package platform/sharesheet is the app's own share sheet: a screen shown
+// over the app that shares, as "Save to Raindrop" or "Add to Notes" is
+// (the user saves, and is back where they were), instead of opening the
+// app with what's shared. The app block shows it when the app runs as
+// its sheet:
+//
+//   app {
+//     if sharesheet.active() { SaveLink() } else { Root() }
+//   }
+//
+// The sheet hears what's shared with onShare, as the app does, and
+// closes with done(), cancel() or openApp(). asuka.toml's shareTarget
+// says what it's offered for.
+//
+// The sheet runs in a process of its own: iOS's share extension (the
+// app's code and the host in a framework the app and the extension
+// share, its data in their App Group), Android's AsukaShareActivity in a
+// :share process, shown as a Material bottom sheet. On the desktops and
+// in a browser the app isn't offered in share menus: active() is false.
+
+import platform/host
+
+/// Whether the app runs as its share sheet: its root is then the sheet,
+/// over the app that shares. Using it gives the app a sheet: the CLI
+/// builds the share extension (iOS) and the share activity (Android)
+/// that run the app this way.
+pub fn active() -> bool {
+  return faked.isSome() || host.process() == "share"
+}
+
+/// Closes the sheet: what was shared is handled (saved, sent).
+pub fn done() = close(.done)
+
+/// Closes the sheet without handling it: the app that shares hears it
+/// was cancelled. Dragging the sheet down, tapping outside it and going
+/// back do the same on Android.
+pub fn cancel() = close(.cancel)
+
+/// Closes the sheet and opens the app with what was shared, for its
+/// onShare (as a share does without a sheet).
+pub fn openApp() = close(.openApp)
+
+/// How a sheet closes.
+pub enum Close {
+  done
+  cancel
+  openApp
+}
+
+fn close(how: Close) {
+  if let f = faked {
+    f.closed = how
+    return
+  }
+  coreClose(match how {
+    .done => 0
+    .cancel => 1
+    .openApp => 2
+  })
+}
+
+// The ShareClose command to the root, which the sheet's host takes (a
+// host with no sheet ignores it).
+native fn coreClose(how: int)
+
+/// A sheet for a test: active() is true, and a close is kept rather than
+/// sent to the host. What's shared comes with the mounted app's share.
+pub store FakeSheet {
+  /// How the sheet closed (none: it hasn't).
+  pub state closed: Close? = none
+}
+
+state faked: FakeSheet? = none
+
+/// Installs a FakeSheet, for a test: from now on the app runs as its
+/// share sheet.
+pub fn fake() -> FakeSheet {
+  let f = FakeSheet()
+  faked = f
+  return f
+}

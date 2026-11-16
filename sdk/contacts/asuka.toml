@@ -1,0 +1,13 @@
+name = "platform/contacts"
+version = "0.1.0"
+description = "The user's contacts: one they pick, or all with their permission"
+
+[ios.usage]
+NSContactsUsageDescription = "To find the people you know."
+
+[android]
+permissions = ["android.permission.READ_CONTACTS"]
+
+# The host's contacts module (Contacts, ContactsUI).
+[ios]
+hostFlags = ["ASUKA_CONTACTS"]

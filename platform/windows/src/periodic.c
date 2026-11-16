@@ -1,4 +1,4 @@
-// periodic.c: asuka/periodic on Windows: timers while the app runs (out of
+// periodic.c: platform/periodic on Windows: timers while the app runs (out of
 // sight too: a Windows app keeps running), as a Mac's
 // NSBackgroundActivityScheduler runs them; nothing launches the app.
 // "schedule" (string name, u32 seconds, u8 flags: 1 network, 2 charging)
@@ -285,7 +285,7 @@ static void m_done(wh_reply *r, const uint8_t *a, size_t n) {
 	wh_reply_nil(r);
 }
 
-// stop ends the "next" waiting (asuka/host's next stream, left).
+// stop ends the "next" waiting (platform/host's next stream, left).
 static void m_stop(wh_reply *r, const uint8_t *a, size_t n) {
 	(void)a, (void)n;
 	wh_replies_fail(&per.waiting, "stopped");

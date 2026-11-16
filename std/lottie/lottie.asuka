@@ -1,4 +1,4 @@
-// Package asuka/lottie plays Lottie animations (Bodymovin's JSON, and
+// Package std/lottie plays Lottie animations (Bodymovin's JSON, and
 // dotLottie files) with each platform's own player: lottie-ios on iOS and
 // macOS, lottie-android, lottie-web. Its source is an asset of the app's,
 // a file's path, or an http(s) URL.

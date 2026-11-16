@@ -37,7 +37,7 @@ func TestPushModule(t *testing.T) {
 		app { App() }
 	`)
 	m1Until(t, a,
-		"nextRewrite: err asuka/push: rewriting needs a notification service extension, which a Mac app doesn't have",
+		"nextRewrite: err platform/push: rewriting needs a notification service extension, which a Mac app doesn't have",
 		"rewritten: ok []", "nextReceived: waiting", "nextOpened: waiting")
 	m1UntilState(t, a, func(m m1State) bool { return m.Push.Received.Waiting == 1 && m.Push.Opened.Waiting == 1 })
 	// Each queue stops on its own.
@@ -48,11 +48,11 @@ func TestPushModule(t *testing.T) {
 	m1UntilState(t, a, func(m m1State) bool { return m.Push.Received.Waiting == 0 && m.Push.Opened.Waiting == 0 })
 }
 
-// asuka/push itself, on the notify player: its streams wait for the
+// platform/push itself, on the notify player: its streams wait for the
 // host's next message, and leaving them stops the calls.
 func TestPushPackage(t *testing.T) {
 	a := RunWith(t, `
-		import asuka/push
+		import platform/push
 
 		component Messages {
 		  state received = 0

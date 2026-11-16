@@ -13,8 +13,8 @@ import (
 	"github.com/egoist/asuka/std"
 )
 
-// The standard library's C unit tests: each package's desktop/*_test.c
-// (a main of its own) built with the package's portable C (its files for
+// The std and platform packages' C unit tests: each package's
+// desktop/*_test.c (a main of its own) built with the package's portable C (its files for
 // both platforms; neither platform's own nor the generated glue, which
 // calls them), the registry and test/unit.c's host, under ASan and UBSan, and run: it
 // passes when it exits 0. What a package's C works out without a
@@ -30,11 +30,10 @@ func TestStdUnits(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	d, err := std.Dir()
+	tests, err := std.Glob(filepath.Join("desktop", "*_test.c"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	tests, _ := filepath.Glob(filepath.Join(d, "*", "desktop", "*_test.c"))
 	if len(tests) == 0 {
 		t.Fatal("no C tests")
 	}

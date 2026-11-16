@@ -228,7 +228,7 @@ type ProgramBuild struct {
 	// Natives are the directories of the packages it uses with C for the
 	// desktop (Windows, Linux): with any, it runs on the headless host.
 	Natives []string
-	// Plugins: it loads plugins' libraries (asuka/sqlite's), which a
+	// Plugins: it loads plugins' libraries (std/sqlite's), which a
 	// static C library can't.
 	Plugins bool
 	Debug   bool

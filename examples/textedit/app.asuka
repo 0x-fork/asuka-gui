@@ -1,4 +1,4 @@
-// TextEdit is a plain text editor with documents (asuka/document): on
+// TextEdit is a plain text editor with documents (platform/document): on
 // the desktop a window per file, the File menu (New, Open…, Open Recent,
 // Save, Save As…, Duplicate, Rename…, Move To…, Revert), autosave a
 // moment after typing stops, recovery copies of what can't be saved in
@@ -11,10 +11,10 @@
 //   asuka dev examples/textedit
 //   asuka dev --platform ios examples/textedit
 
-import asuka/dialog
-import asuka/document
-import asuka/fs
-import asuka/i18n
+import platform/dialog
+import platform/document
+import std/fs
+import std/i18n
 
 let types = [
   document.Type(name: "Plain Text", extensions: ["txt", "text"], mimeTypes: ["text/plain"]),

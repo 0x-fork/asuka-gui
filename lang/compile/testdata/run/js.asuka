@@ -1,7 +1,7 @@
-// asuka/js with no platform code (the fake host): no engine, so eval
+// platform/js with no platform code (the fake host): no engine, so eval
 // throws an unsupported error.
 
-import asuka/js
+import platform/js
 
 test "no engine here" {
   do {

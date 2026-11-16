@@ -1,4 +1,4 @@
-// Package asuka/watch follows changes to files and directories: a
+// Package std/watch follows changes to files and directories: a
 // folder the app shows, a project open in an editor, a settings file
 // another program writes.
 //
@@ -83,5 +83,5 @@ pub async fn path(dir: string, ignore: [string] = [], recursive: bool = false, a
     })
     return Watch(root: root, events: events)
   }
-  throw Error("unsupported: asuka/watch has nothing to watch with on this platform")
+  throw Error("unsupported: std/watch has nothing to watch with on this platform")
 }

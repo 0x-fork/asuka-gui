@@ -94,7 +94,7 @@ fn send() {}
   remains editable or toggleable. On Android a text field's label is its
   accessibility hint, which TalkBack reads as the field's name.
 - An `Image`'s `label` describes it; without one it's decorative. An
-  icon from [`asuka/svg`](stdlib.md) takes a `label` the same way.
+  icon from [`std/svg`](stdlib.md) takes a `label` the same way.
 - A `Symbol` has no label of its own: wrap it in a `View` with a
   `label` and `role: .image` when it means something.
 - `hint` is iOS's accessibility hint, read after a pause (users can turn
@@ -207,7 +207,7 @@ Screen reader users jump between headings (VoiceOver's rotor, TalkBack's
 navigation by headings, NVDA's and Orca's H key, a browser screen
 reader's headings list). Mark a section's title as one: a `RichText`
 with `role: .header`, or a `View` with a `label` and the role.
-[`asuka/markdown`](stdlib.md) marks its headings already.
+[`std/markdown`](stdlib.md) marks its headings already.
 
 ```asuka
 component Headings {

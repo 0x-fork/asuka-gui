@@ -219,7 +219,7 @@ int ak_program_start(ak_module *m, int argc, char **argv, const asuka_host_callb
 	ak_throw_hook = on_throw;
 	ak_frame_hook = on_frame;
 	data_dir();
-	// The program's own directory (asuka/fs's appDir) is there, as an
+	// The program's own directory (std/fs's appDir) is there, as an
 	// app's host makes the app's.
 	char *dir = ak_fs_app_dir();
 	if (dir) {

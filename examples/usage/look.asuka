@@ -2,7 +2,7 @@
 // (cards, grouped rows, headings, meters) follows each platform's design:
 // UIKit's inset grouped lists on iOS, Material 3's on Android.
 
-import asuka/device
+import platform/device
 
 let ios = environment().platform == .iOS
 

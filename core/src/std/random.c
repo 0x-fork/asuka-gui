@@ -1,7 +1,7 @@
-// random.c: asuka/random's builtins: a fast generator (xoshiro256**)
+// random.c: std/random's builtins: a fast generator (xoshiro256**)
 // per thread, seeded from the system's randomness when a thread first
 // uses it, or by random.seed for a sequence that repeats. Not for
-// secrets: asuka/crypto's randomBytes is.
+// secrets: std/crypto's randomBytes is.
 //
 //	random.float() -> float       in [0, 1)
 //	random.int(a, b) -> int       in [a, b] (either order; unbiased)

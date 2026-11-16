@@ -56,7 +56,7 @@ func TestProgramCLI(t *testing.T) {
 	}
 
 	// An exit code, and an error main throws.
-	main := `import asuka/os
+	main := `import std/os
 
 enum E: Error { bad }
 
@@ -172,7 +172,7 @@ func TestBinTargets(t *testing.T) {
 	write("asuka.toml", "name = \"Proj\"\nid = \"com.example.proj\"\nversion = \"1.0.0\"\n\n[bin.tool]\npath = \"tool\"\n\n[bin.other]\npath = \"other\"\n")
 	write("model/model.asuka", "pub fn shout(s: string) -> string = s.upper()\n")
 	write("app.asuka", "import ./model\n\napp { Text(model.shout(\"hi\")) }\n\ntest \"app\" { expect(model.shout(\"a\") == \"A\") }\n")
-	write("tool/main.asuka", "import ../model\nimport asuka/fs\nimport asuka/os\n\nfn main() {\n  print(model.shout(os.args().first() ?? \"none\"))\n  print(fs.appDir())\n}\n\ntest \"tool\" {\n  let o = os.fake(args: [\"x\"])\n  expect(await o.run(main) == 0)\n  expect(o.stdout().hasPrefix(\"X\\n\"))\n}\n")
+	write("tool/main.asuka", "import ../model\nimport std/fs\nimport std/os\n\nfn main() {\n  print(model.shout(os.args().first() ?? \"none\"))\n  print(fs.appDir())\n}\n\ntest \"tool\" {\n  let o = os.fake(args: [\"x\"])\n  expect(await o.run(main) == 0)\n  expect(o.stdout().hasPrefix(\"X\\n\"))\n}\n")
 	write("other/main.asuka", "fn main() { print(\"other\") }\n")
 	p, err := appbuild.Load(dir)
 	if err != nil {

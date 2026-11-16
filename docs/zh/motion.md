@@ -69,7 +69,7 @@ component Pulse {
 手势结束时，往往接着播放一个弹簧动画。把手势的速度除以剩下的距离，就得到弹簧的 `velocity`，这样视图就能保持手指甩出去的速度：
 
 ```asuka
-import asuka/math
+import std/math
 
 component Flung {
   state dragX = 0.0
@@ -301,7 +301,7 @@ screen Photo(id: int) {
 `Shape` 的 `trimStart` 和 `trimEnd` 决定轮廓绘制出来的那一段，取值从 0 到 1。在 `animate` 里修改它们，描边就会一点点画出来，适合做进度环、对勾之类的效果。
 
 ```asuka
-import asuka/math
+import std/math
 
 fn ring(w: float, h: float) -> Path {
   let r = min(w, h) / 2 - 4
@@ -424,7 +424,7 @@ component Puck {
 缩放和旋转都是从这次手势开始时算起的，所以要记住上一次手势结束时的值，下一次在它的基础上累加。同一个视图上的多个手势可以同时生效：一边捏合一边旋转。
 
 ```asuka
-import asuka/math
+import std/math
 
 component Turner {
   state angle = 0.0
@@ -537,7 +537,7 @@ component Person(name: string) {
 没有 `on press` 时，按下不放就只是单纯的按住，比如“按住录音”。录音属于副作用，所以要放在处理函数里：
 
 ```asuka
-import asuka/record
+import platform/record
 
 component HoldToRecord {
   View {

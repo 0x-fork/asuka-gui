@@ -1,7 +1,7 @@
-// asuka/command in tests: command.fake answers for the programs, which
+// std/command in tests: command.fake answers for the programs, which
 // don't run; what was run is kept.
 
-import asuka/command
+import std/command
 
 test "run answers from the fake, and says what ran" {
   let f = command.fake()

@@ -1,4 +1,4 @@
-// Store sells in the app (asuka/purchase): coins, a consumable bought
+// Store sells in the app (platform/purchase): coins, a consumable bought
 // again and again; Pro, a non-consumable kept for life; and Plus, a
 // subscription that renews each month, with a week's free trial.
 //
@@ -11,7 +11,7 @@
 // On Android, upload a build to Play's internal track with the same
 // products, and install it as a license tester.
 
-import asuka/purchase
+import platform/purchase
 
 // What the app sells: their IDs in App Store Connect and Play Console.
 let coins = purchase.Item(id: "dev.asuka.store.coins100", kind: .consumable)

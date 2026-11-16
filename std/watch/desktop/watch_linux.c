@@ -1,4 +1,4 @@
-// asuka/watch on Linux: inotify, a watch on each directory looked at
+// std/watch on Linux: inotify, a watch on each directory looked at
 // (the file's directory, for a file), read on a thread of the watch's,
 // woken through a pipe to stop.
 #include "watch.h"

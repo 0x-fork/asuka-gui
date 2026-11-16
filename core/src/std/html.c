@@ -1,4 +1,4 @@
-// html.c: asuka/html's builtins: escaping text for HTML, and reading
+// html.c: std/html's builtins: escaping text for HTML, and reading
 // character references back (numeric ones, and the named ones text
 // uses: XML's five, Latin-1's, typography's, arrows, Greek letters).
 #include "std/std.h"

@@ -1,4 +1,4 @@
-// asuka/store on the web: localStorage, under the app's name.
+// std/store on the web: localStorage, under the app's name.
 export function makePrefs() {
   const k = (key) => "asuka.store." + key;
   return {

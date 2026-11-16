@@ -1,7 +1,7 @@
-// asuka/integrity with no platform code (the fake host): no attestation,
+// platform/integrity with no platform code (the fake host): no attestation,
 // as on Windows, Linux and the web.
 
-import asuka/integrity
+import platform/integrity
 
 test "no attestation here" {
   print(integrity.supported())

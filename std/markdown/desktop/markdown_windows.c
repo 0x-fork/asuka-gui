@@ -1,4 +1,4 @@
-// asuka/markdown on Windows: the paragraphs the core read as RTF in a read-only rich
+// std/markdown on Windows: the paragraphs the core read as RTF in a read-only rich
 // edit (msftedit's RICHEDIT50W: its typesetter, selection, copying and
 // accessibility), in a window of the package's that it fills, which gets
 // the rich edit's EN_REQUESTRESIZE to measure it. Links are the theme's

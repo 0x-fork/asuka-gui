@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// TestCameraWords checks that std/camera/desktop/camera_words.c, the
+// TestCameraWords checks that sdk/camera/desktop/camera_words.c, the
 // words of the camera's take dialog on Windows and Linux (Take Photo,
 // Cancel) in each language Asuka is translated to, is the catalogs' (C
 // can't read this package's catalogs: it carries its own copy).
@@ -46,7 +46,7 @@ func TestCameraWords(t *testing.T) {
 		fmt.Fprintf(&b, "\t{%s, %s, %s},\n", cQuote(tag), cQuote(take), cQuote(cancel))
 	}
 	b.WriteString("\t{0, 0, 0},\n};\n")
-	path := filepath.Join("..", "..", "std", "camera", "desktop", "camera_words.c")
+	path := filepath.Join("..", "..", "sdk", "camera", "desktop", "camera_words.c")
 	if *updateWords {
 		if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 			t.Fatal(err)

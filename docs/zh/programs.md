@@ -3,7 +3,7 @@
 除了应用和库，Asuka 还能写**程序**：没有窗口、也没有视图的命令行工具。只要一个包的文件里声明了 `fn main()`，它就是程序，就像 Go 的 `package main`、Cargo 的 `src/main.rs`。程序和应用跑在同一个核心上：同一门语言、同一套标准库（文件、JSON、时间、SQLite、HTTP……），并编译成 macOS、Windows 和 Linux 上的原生可执行文件。
 
 ```asuka
-import asuka/os
+import std/os
 
 fn main() {
   let name = os.args().first() ?? "world"
@@ -28,7 +28,7 @@ asuka build             # 生成可执行文件 dist/greet
 程序从 `fn main()` 开始。它不接受参数（参数通过 `os.args()` 读取），也不返回值（退出码用 `os.exit(code)` 指定）；它可以是 `async` 的，也可以抛出错误。带 `fn main` 的包不能有 `app` 块，也不能声明组件：程序不显示视图。只有构成程序的那个包才有入口；它导入的包里如果也有 `main`，那只是一个普通函数。
 
 ```asuka
-import asuka/fs
+import std/fs
 
 async fn main() throws {
   let text = try await spawn { try fs.readText("notes.txt") }
@@ -51,7 +51,7 @@ async fn main() throws {
 - `os.exit(code)` 立即以 `code` 结束程序：stdout 和 stderr 会被刷新，但 `defer` 和其他 task 不会执行。
 - `print` 向 stdout 写一行；`os.eprint` 写到 stderr。
 
-## 进程：asuka/os
+## 进程：std/os
 
 | 函数 | 作用 |
 |---|---|
@@ -69,7 +69,7 @@ async fn main() throws {
 | `os.terminal(.stdout)` | 某个流是否是终端（有人在看），而不是管道或文件：只在终端上输出颜色和提示 |
 
 ```asuka
-import asuka/os
+import std/os
 
 async fn main() throws {
   var total = 0
@@ -85,13 +85,13 @@ async fn main() throws {
 
 在手机和 Web 上，应用的 `os.args()` 为空，stdin 也是空的，`os.exit` 会抛出错误：那里的应用不能结束自己的进程。桌面应用的 `os.args()` 是它自己进程的参数。
 
-## 命令行参数：asuka/flag
+## 命令行参数：std/flag
 
 `flag.parse<T>(os.args())` 根据编译器对 `T` 的了解，把命令行读成一个 `T`：不需要另外维护一张和字段对应的参数表。
 
 ```asuka
-import asuka/flag
-import asuka/os
+import std/flag
+import std/os
 
 enum Unit { lines, words, bytes }
 
@@ -158,8 +158,8 @@ Options:
 如果一个枚举的成员各自附带一个选项结构体，它就是一组子命令，就像 `git add` 和 `git commit`：用 `flag.parse<Command>(args)`，或者在结构体里放一个这个枚举类型的字段，它出现在结构体自己的选项之后。成员的文档注释是它在帮助里的那一行；`tool add --help` 显示这个子命令自己的帮助。
 
 ```asuka
-import asuka/flag
-import asuka/os
+import std/flag
+import std/os
 
 struct AddOptions {
   /// -f Add ignored files too.
@@ -199,12 +199,12 @@ fn main() {
 }
 ```
 
-## 运行其他程序：asuka/command
+## 运行其他程序：std/command
 
-`asuka/command` 用来运行其他程序。参数是一个列表，原样传过去，绝不经过 shell：带空格或 `;` 的文件名就是一个参数。会阻塞的操作（读管道、等待结束）都在其他线程上进行，主线程不会等待。
+`std/command` 用来运行其他程序。参数是一个列表，原样传过去，绝不经过 shell：带空格或 `;` 的文件名就是一个参数。会阻塞的操作（读管道、等待结束）都在其他线程上进行，主线程不会等待。
 
 ```asuka
-import asuka/command
+import std/command
 
 async fn main() throws {
   let out = try await command.run("git", ["status", "--short"])
@@ -250,9 +250,9 @@ asuka build --target linux-amd64     # dist/linux-amd64/greet
 asuka build --target windows-arm64   # dist/windows-arm64/greet.exe
 ```
 
-`--target` 由 `darwin`、`linux` 或 `windows` 加上 `amd64` 或 `arm64` 组成；本机以外的系统和桌面应用一样，用 Zig 构建。可执行文件在系统允许的范围内是独立的：在 Linux 上它是静态链接的（musl，需要 Zig），除非它用到的东西要加载系统的库（asuka/http 的 libsoup、插件的库）；在 Windows 上只依赖系统自带的 DLL；在 macOS 上只依赖系统的库。
+`--target` 由 `darwin`、`linux` 或 `windows` 加上 `amd64` 或 `arm64` 组成；本机以外的系统和桌面应用一样，用 Zig 构建。可执行文件在系统允许的范围内是独立的：在 Linux 上它是静态链接的（musl，需要 Zig），除非它用到的东西要加载系统的库（std/http 的 libsoup、插件的库）；在 Windows 上只依赖系统自带的 DLL；在 macOS 上只依赖系统的库。
 
-带平台代码的包在每个桌面系统上的程序里都能用：`asuka/http` 在 macOS 上用 URLSession、在 Windows 上用 WinHTTP、在 Linux 上用 libsoup 发请求，和在应用里一样。这时程序运行在一个没有窗口的宿主上：在 Windows 和 Linux 上，是每个桌面应用都有的那部分 C 代码（`platform/desktop`）；在 macOS 上，是 Mac 宿主的 Swift，连同各个包的 Swift。插件的库（比如 asuka/sqlite 的）放在可执行文件旁边。
+带平台代码的包在每个桌面系统上的程序里都能用：`std/http` 在 macOS 上用 URLSession、在 Windows 上用 WinHTTP、在 Linux 上用 libsoup 发请求，和在应用里一样。这时程序运行在一个没有窗口的宿主上：在 Windows 和 Linux 上，是每个桌面应用都有的那部分 C 代码（`platform/desktop`）；在 macOS 上，是 Mac 宿主的 Swift，连同各个包的 Swift。插件的库（比如 std/sqlite 的）放在可执行文件旁边。
 
 ### 应用自带的程序
 
@@ -263,7 +263,7 @@ asuka build --target windows-arm64   # dist/windows-arm64/greet.exe
 path = "cli"
 ```
 
-程序和其他包一样，用相对路径导入项目里的包（`import ../model`）。`asuka run --bin notes` 运行它（只有一个程序时可以省略 `--bin`），`asuka test` 会把各个程序的测试和应用的测试一起运行，`asuka build --bin notes` 单独构建它。应用自带的程序把数据保存在应用保存的地方（asuka/fs 的 `appDir`，以及其中的 SQLite 数据库），所以两者读写的是同一份数据；开发时，`asuka run --bin` 使用 `asuka dev` 的那份。
+程序和其他包一样，用相对路径导入项目里的包（`import ../model`）。`asuka run --bin notes` 运行它（只有一个程序时可以省略 `--bin`），`asuka test` 会把各个程序的测试和应用的测试一起运行，`asuka build --bin notes` 单独构建它。应用自带的程序把数据保存在应用保存的地方（std/fs 的 `appDir`，以及其中的 SQLite 数据库），所以两者读写的是同一份数据；开发时，`asuka run --bin` 使用 `asuka dev` 的那份。
 
 桌面应用的构建会把程序放进应用里：
 
@@ -280,7 +280,7 @@ path = "cli"
 和应用一样，程序的测试块用 `asuka test` 运行。`main` 是一个函数：测试里用 `os.fake` 像真正的进程那样运行它，`os.fake` 提供参数、环境变量和 stdin，并保存它写出的内容：
 
 ```asuka
-import asuka/os
+import std/os
 
 fn main() {
   let name = os.args().first() ?? "world"
@@ -297,7 +297,7 @@ test "greets whom it's given" {
 `o.run(main)` 返回程序本该结束时的退出码：0；抛出错误时为 1（消息在 `o.stderr()` 里）；或者 `os.exit` 给出的值，这时 `os.exit` 只结束测试里的 `main`，而不是整个进程。没有 fake 时，测试里的 `os.args()` 和 stdin 都是空的。`command.fake()` 替其他程序作答，这样它们就不会真的运行：
 
 ```asuka
-import asuka/command
+import std/command
 
 test "reads git's branch" {
   let git = command.fake()
@@ -314,5 +314,5 @@ test "reads git's branch" {
 |---|---|---|---|---|
 | 程序（`asuka build`） | 支持 | 支持 | 支持 | 不支持 |
 | `os.args`、`os.exit`、stdin | 支持 | 支持 | 支持 | 应用里为空，`exit` 会抛出错误 |
-| `asuka/command` | 支持 | 支持 | 支持 | `unsupported` |
-| `asuka/flag` | 支持 | 支持 | 支持 | 支持（它能解析任何列表） |
+| `std/command` | 支持 | 支持 | 支持 | `unsupported` |
+| `std/flag` | 支持 | 支持 | 支持 | 支持（它能解析任何列表） |

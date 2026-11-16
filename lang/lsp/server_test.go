@@ -179,7 +179,7 @@ func TestCompletion(t *testing.T) {
 		{"top level", "app { TodoApp() }", "|", []string{"component", "struct", "enum", "fn", "import"}, nil},
 		{"optional chain", "let next = todos.count() + 1", "let next = todos.first().|", []string{"isNone", "title", "label"}, nil},
 		{"string interpolation", "Text(\"{remaining} left\")", "Text(\"{todos.|} left\")", []string{"count"}, nil},
-		{"import", "import ./model\n", "import |\n", []string{"./model", "asuka/json", "asuka/http"}, nil},
+		{"import", "import ./model\n", "import |\n", []string{"./model", "std/json", "std/http"}, nil},
 		{"handler params", "on toggle(on) { add(todo.label()) }", "on toggle(on) { add(o|) }", []string{"on", "todo"}, nil},
 		{"emit", "{ emit toggle(on) }", "{ emit | }", []string{"toggle"}, nil},
 	} {

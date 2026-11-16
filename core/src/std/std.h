@@ -113,12 +113,12 @@ FILE *ak_update_fopen(const char *path, const char *mode);
 // fs.ValidPath, without "." and backslashes).
 bool ak_update_valid_path(const char *p, size_t n);
 
-// asuka/crash's record (crash.c): the app's lifecycle (AK_LIFECYCLE_*),
+// platform/crash's record (crash.c): the app's lifecycle (AK_LIFECYCLE_*),
 // for its reports' context; and whether the app compiled into the build
 // reads its reports (lang/cgen sets it).
 void ak_crash_lifecycle(int state);
 extern bool ak_app_crash;
-// asuka/os (os.c): the program's arguments (argv[0] the program), which
+// std/os (os.c): the program's arguments (argv[0] the program), which
 // a host that doesn't set them reads from the system (a desktop app's);
 // a test's process (the runner's tests: exit ends the test, not the
 // process; args and stdin are empty unless os.fake gives them), cleared

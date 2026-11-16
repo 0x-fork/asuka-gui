@@ -11,12 +11,12 @@
 // keeping the app's state), assets (where its assets are served:
 // "assets"), name (the app's: its stored data is kept under it), fonts
 // (the app's font files, assets/fonts), libs (the URLs of the app's
-// plugins' files, by their names: an app that imports asuka/sqlite has
+// plugins' files, by their names: an app that imports std/sqlite has
 // asqlite.wasm, and SQLite's worker starts with it), serviceWorker (the
 // URL of the app's service worker, sw.js with the app's settings, which
 // the page registers: its notifications and pushes), vapidPublicKey (the
-// app's VAPID key, for asuka/push), icon (a notification's icon),
-// mapTiles (the URL of asuka/maps' map tiles, with {z}, {x} and {y}:
+// app's VAPID key, for platform/push), icon (a notification's icon),
+// mapTiles (the URL of platform/maps' map tiles, with {z}, {x} and {y}:
 // OpenStreetMap's by default), workers (false: spawn runs on the page's
 // thread, not its workers), dev (asuka dev's: the page reloads with each
 // build, keeping the app's state, and the app's logs go to the
@@ -42,7 +42,7 @@ export function registerNative(kind, factory) { natives.set(kind, factory); }
 /** registerModule gives the page a native module (ui.Call): methods by name, each taking the call's bytes and returning (or resolving to) the result's. */
 export function registerModule(name, methods) { modules.set(name, methods); }
 
-/** mapTiles is the start option asuka/maps' view (std/maps/web) reads its tiles' URL from. */
+/** mapTiles is the start option platform/maps' view (sdk/maps/web) reads its tiles' URL from. */
 export let mapTiles = "";
 
 export async function start(options = {}) {
@@ -56,7 +56,7 @@ export async function start(options = {}) {
   // The app's service worker, listened to before the app starts: a tap
   // on a notification may be what opened the page.
   worker.register(options.serviceWorker);
-  // SQLite's worker starts beside the app (asuka/sqlite), loading its module meanwhile.
+  // SQLite's worker starts beside the app (std/sqlite), loading its module meanwhile.
   const sqliteWasm = options.libs?.["asqlite.wasm"];
   const sqlite = sqliteWasm ? import("./sqlite.js").then((m) => m.load(new URL(sqliteWasm, document.baseURI))) : null;
   sqlite?.catch(() => {});
@@ -93,7 +93,7 @@ export async function start(options = {}) {
   }
   if (dev) dev.attach(host, core);
   watchTrap(container, host);
-  try { notifyFor(host); } catch (e) { console.warn("asuka/notify:", e); }
+  try { notifyFor(host); } catch (e) { console.warn("platform/notify:", e); }
   return host;
 }
 

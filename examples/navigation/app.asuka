@@ -13,7 +13,7 @@
 //   asuka dev --platform android examples/navigation
 //   asuka dev --platform web examples/navigation
 
-import asuka/url
+import std/url
 
 struct Message {
   id: int

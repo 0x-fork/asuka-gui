@@ -162,7 +162,7 @@ let d = 1
 		},
 		{
 			name:  "import after a declaration",
-			src:   "let a = 1\nimport asuka/http\n",
+			src:   "let a = 1\nimport std/http\n",
 			errs:  []string{"2:1: an import goes before the file's declarations"},
 			decls: 1,
 		},

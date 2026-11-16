@@ -1,6 +1,6 @@
 # Bluetooth
 
-`asuka/bluetooth` は、react-native-ble-plx や Web Bluetooth と同じように、Bluetooth Low Energy のデバイスとやりとりします。セントラルとしても（デバイスを見つけ、接続し、キャラクタリスティックを読み書きし、その値を追う）、ペリフェラルとしても（サービスを提供し、アドバタイズする）動けます。iOS と macOS では Core Bluetooth、Android では BluetoothLeScanner と GATT、Windows では WinRT の Bluetooth LE、Linux では BlueZ、Chromium では Web Bluetooth を使います。
+`platform/bluetooth` は、react-native-ble-plx や Web Bluetooth と同じように、Bluetooth Low Energy のデバイスとやりとりします。セントラルとしても（デバイスを見つけ、接続し、キャラクタリスティックを読み書きし、その値を追う）、ペリフェラルとしても（サービスを提供し、アドバタイズする）動けます。iOS と macOS では Core Bluetooth、Android では BluetoothLeScanner と GATT、Windows では WinRT の Bluetooth LE、Linux では BlueZ、Chromium では Web Bluetooth を使います。
 
 UUID は文字列です。Bluetooth SIG の 16 ビットの UUID は 16 進数 4 桁（`"180d"`）、それ以外は 128 ビットを小文字で書きます。`bluetooth.uuid(u)` は UUID をこの形に、`bluetooth.fullUUID(u)` は 128 ビットの形に書き直します。よく使う UUID はパッケージに用意されています。`heartRate`、`battery`、`deviceInformation`、`heartRateMeasurement`、`batteryLevel`、`bodySensorLocation`、`deviceName`、`manufacturerName` などです。
 
@@ -9,7 +9,7 @@ UUID は文字列です。Bluetooth SIG の 16 ビットの UUID は 16 進数 4
 `bluetooth.state()` は追跡され、`.on`、`.off`、`.unauthorized`（ユーザーがアプリを許可していない）、`.unsupported`、`.resetting`、`.unknown` のいずれかです。バインディングの中で読むと、ユーザーが Bluetooth をオフにしたり、アプリを許可したりするのに追従します。`bluetooth.request()` は、初回に権限を求め（iOS のプロンプト、Android 12 の「付近のデバイス」）、その時点の状態を返します。
 
 ```asuka
-import asuka/bluetooth
+import platform/bluetooth
 
 component Adapter {
   let adapter = bluetooth.state()

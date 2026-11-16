@@ -1,7 +1,7 @@
-// asuka/notify with no platform code: what needs the host fails as
+// platform/notify with no platform code: what needs the host fails as
 // unsupported, what doesn't wait does nothing, and a message's spec takes
 // its conversation's.
-import asuka/notify
+import platform/notify
 
 let ana = notify.Person(id: "ana", name: "Ana")
 let climb = notify.Conversation(id: "climbing", title: "Climbing", group: true)

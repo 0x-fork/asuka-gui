@@ -1,8 +1,8 @@
-import asuka/fs
-import asuka/http
-import asuka/json
-import asuka/random
-import asuka/time
+import std/fs
+import std/http
+import std/json
+import std/random
+import std/time
 
 /// A quota that resets: Claude's 5-hour window, its week, its week for
 /// one model.

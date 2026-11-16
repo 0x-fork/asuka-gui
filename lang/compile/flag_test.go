@@ -18,7 +18,7 @@ func TestFlagSpecErrors(t *testing.T) {
 		{"struct O {\n  /// -o Out.\n  out: string\n}", "O.out: an argument has no short name"},
 		{"enum O { one(a: int) }", "O.one: a command carries its options' struct, not int"},
 	} {
-		src := "import asuka/flag\n\n" + c.decl + "\n\nfn main() {\n  let o = flag.parse<O>([])\n  print(\"{o}\")\n}\n"
+		src := "import std/flag\n\n" + c.decl + "\n\nfn main() {\n  let o = flag.parse<O>([])\n  print(\"{o}\")\n}\n"
 		res := Files(map[string][]byte{"main.asuka": []byte(src)}, nil)
 		if err := res.Err(); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s:\n got %v\nwant %q", c.decl, err, c.want)

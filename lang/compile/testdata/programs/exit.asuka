@@ -1,6 +1,6 @@
 // args: 7
 // exit: 7
-import asuka/os
+import std/os
 
 fn main() {
   defer { print("not run: exit ends the process at once") }

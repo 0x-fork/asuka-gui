@@ -1,8 +1,8 @@
-// asuka/print with no platform code (the fake host): no printing, so its
+// platform/print with no platform code (the fake host): no printing, so its
 // calls throw an unsupported error; the region's paper; margins that
 // leave no room. (Imported as printing: print is the prelude's too.)
 
-import asuka/print as printing
+import platform/print as printing
 
 test "no printing here" {
   do {

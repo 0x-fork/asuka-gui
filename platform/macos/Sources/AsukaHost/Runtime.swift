@@ -45,7 +45,7 @@ import AsukaOps
     var dark = false
     /// The frame clock, while the core wants Frame events.
     var frameClock: AsukaFrameClock?
-    /// Native modules' methods, by module and method (ui.Call, asuka/host).
+    /// Native modules' methods, by module and method (ui.Call, platform/host).
     var modules: [String: [String: AsukaModuleMethod]] = [:]
     var modulesRegistered = false
     /// Native views' factories, by their type (ui.Native).
@@ -111,7 +111,7 @@ import AsukaOps
     /// Starts the core and the app in it.
     private func boot() {
         started = true
-        // The app's own files (asuka/fs's appDir): ASUKA_DATA (asuka dev's
+        // The app's own files (std/fs's appDir): ASUKA_DATA (asuka dev's
         // work directory), else Application Support/<its ID>.
         appDir.path.withCString { asuka_set_app_dir($0) }
         AsukaNative.done = { call, b in b.withUnsafeBufferPointer { asuka_native_done(call, $0.baseAddress, $0.count) } }
@@ -165,7 +165,7 @@ import AsukaOps
         startApp()
     }
 
-    /// The app's directory (asuka/fs's appDir).
+    /// The app's directory (std/fs's appDir).
     lazy var appDir: URL = {
         if let d = ProcessInfo.processInfo.environment["ASUKA_DATA"], !d.isEmpty { return URL(fileURLWithPath: d, isDirectory: true) }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first

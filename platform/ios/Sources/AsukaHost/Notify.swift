@@ -1,4 +1,4 @@
-#if canImport(UIKit) && (ASUKA_NOTIFY || ASUKA_PUSH || ASUKA_NOTIFICATION_SERVICE) // asuka/notify, asuka/push (see the CLI's iosFeatures)
+#if canImport(UIKit) && (ASUKA_NOTIFY || ASUKA_PUSH || ASUKA_NOTIFICATION_SERVICE) // platform/notify, platform/push (see the CLI's iosFeatures)
 import UIKit
 import UserNotifications
 import UniformTypeIdentifiers
@@ -28,17 +28,17 @@ import Intents
     }
 }
 
-/// asuka/notify's module, and the notification center's delegate (asuka/
+/// platform/notify's module, and the notification center's delegate (asuka/
 /// push's notifications too):
-/// - "request" (u8 allowed); "schedule" (a std/notify's Spec: seconds 0
+/// - "request" (u8 allowed); "schedule" (a sdk/notify's Spec: seconds 0
 ///   shows it now); "cancel" (the id).
 /// - "categories" (JSON), kept in UserDefaults and set again at launch.
 /// - "badge" (u32); "showing" (JSON list); "remove" (JSON ids),
 ///   "removeThread" (the thread), "removeAll".
-/// - "present" (u8 on), "nextPresent" (a std/notify's Present), "presented"
+/// - "present" (u8 on), "nextPresent" (a sdk/notify's Present), "presented"
 ///   (u8 presentation, the token): with the presenter on, a notification
 ///   that comes in the foreground waits for Go's answer, a second at most.
-/// - "nextAction" (a std/notify's WireResponse), "actionDone" (the token): a
+/// - "nextAction" (a sdk/notify's WireResponse), "actionDone" (the token): a
 ///   background action keeps the app running until Go is done with it
 ///   (25 seconds at most); a tap or an action that opens the app is done
 ///   at once.
@@ -270,8 +270,8 @@ import Intents
     }
 }
 
-/// Notifications' content from their spec (std/notify's Spec):
-/// asuka/notify's, and a push's rewrite (push.rewrite, in the Notification
+/// Notifications' content from their spec (sdk/notify's Spec):
+/// platform/notify's, and a push's rewrite (push.rewrite, in the Notification
 /// Service Extension); and what's reported of one that shows.
 enum AsukaNotifyContent {
     /// Makes the content o says (into base: a push's, which keeps its aps),
@@ -413,7 +413,7 @@ enum AsukaNotifyContent {
         return b.pathExtension == "appex" ? b.deletingLastPathComponent().deletingLastPathComponent() : b
     }
 
-    /// What's reported of a notification (a std/notify's WireDelivered).
+    /// What's reported of a notification (a sdk/notify's WireDelivered).
     static func shown(_ n: UNNotification) -> [String: Any] {
         let c = n.request.content
         let remote = n.request.trigger is UNPushNotificationTrigger

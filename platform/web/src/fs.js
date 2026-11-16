@@ -1,5 +1,5 @@
 // The app's files: a file system in memory, answered at once. The core
-// reaches it through WASI (wasi.js: asuka/fs, crash records, what the C
+// reaches it through WASI (wasi.js: std/fs, crash records, what the C
 // library opens), the host's modules directly (a camera's photo, a
 // dropped file, a Save's file). What's under the app's data directory
 // (/data/<the app's name>, the core's app directory) is kept in
@@ -525,7 +525,7 @@ export function blobURL(path) {
 // --- Files that go somewhere once written ---
 
 // sinks are what's done with a file once the app has written it (closed
-// a file it opened to write, or renamed one over it): asuka/dialog's Save
+// a file it opened to write, or renamed one over it): platform/dialog's Save
 // writes it to the file the user chose, or downloads it.
 const sinks = new Map(); // path -> function(bytes)
 const pending = new Set();

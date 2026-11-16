@@ -1,6 +1,6 @@
 // SHA-512 (FIPS 180-4's vectors, and lengths around its padding) and
 // Ed25519 (RFC 8032's vectors), as the core's crypto (core/src/std) has
-// them, and asuka/crypto's builtins of them.
+// them, and std/crypto's builtins of them.
 #include "t.h"
 #include "std/std.h"
 

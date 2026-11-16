@@ -1,3 +1,3 @@
-name = "asuka/encoding"
+name = "std/encoding"
 version = "0.1.0"
 description = "Base64 and hexadecimal"

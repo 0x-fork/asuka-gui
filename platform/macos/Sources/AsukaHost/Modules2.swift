@@ -1,14 +1,14 @@
-// The packages' modules of part modules2, which the standard library's
-// packages reach through asuka/host: contacts (Contacts.swift, asuka/contacts),
-// calendar (Calendar.swift, asuka/calendar), photoLibrary and library
-// (PhotoLibrary.swift, asuka/photos and asuka/library) and icloud
-// (ICloud.swift's AsukaICloud, asuka/icloud).
+// The packages' modules of part modules2, which the platform SDK's
+// packages reach through platform/host: contacts (Contacts.swift, platform/contacts),
+// calendar (Calendar.swift, platform/calendar), photoLibrary and library
+// (PhotoLibrary.swift, platform/photos and platform/library) and icloud
+// (ICloud.swift's AsukaICloud, platform/icloud).
 //
 // The rest (vision, scan, transcribe, nowPlaying, audioRecord, audio,
-// speech, imageEdit, purchase, maps) isn't the host's: std's asuka/vision,
-// asuka/scan, asuka/transcribe, asuka/nowplaying, asuka/record,
-// asuka/audio, asuka/speech, asuka/imageedit, asuka/purchase and
-// asuka/maps are native packages whose own Swift does them on the Mac, as
+// speech, imageEdit, purchase, maps) isn't the host's: std's platform/vision,
+// platform/scan, platform/transcribe, platform/nowplaying, platform/record,
+// platform/audio, platform/speech, platform/imageedit, platform/purchase and
+// platform/maps are native packages whose own Swift does them on the Mac, as
 // on iOS.
 //
 // Here too: what the modules share (the caches' files, the alert that
@@ -141,8 +141,8 @@ enum AsukaModules2Kit {
 
     // MARK: iCloud
 
-    /// asuka/icloud's module: ICloud.swift's AsukaICloud (the iOS host's
-    /// file), std/icloud's methods. An app's host always has it
+    /// platform/icloud's module: ICloud.swift's AsukaICloud (the iOS host's
+    /// file), sdk/icloud's methods. An app's host always has it
     /// (the CLI's macHostDefines); without (the package's tests), there's
     /// no iCloud. Under the automation with ASUKA_ICLOUD_TEST_STORE, the
     /// key-value store is a UserDefaults suite of its own, emptied: the

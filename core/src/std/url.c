@@ -1,4 +1,4 @@
-// url.c: asuka/url's builtins (RFC 3986):
+// url.c: std/url's builtins (RFC 3986):
 //
 //	url.parts(s) -> [string]?     scheme (lower-cased), user, host
 //	                              (IPv6 without its brackets), port ("" for

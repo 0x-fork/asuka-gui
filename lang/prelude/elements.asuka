@@ -411,7 +411,7 @@ native component ColorPicker() {
 
 /// a date or a time, chosen the platform's way (UIDatePicker; Material's date and time pickers), in the device's time zone and format
 native component DatePicker() {
-  /// the instant chosen, in milliseconds since 1970 (asuka/time's time.Picker binds a Time)
+  /// the instant chosen, in milliseconds since 1970 (std/time's time.Picker binds a Time)
   prop value: int
   /// a date, a time of day, or both
   prop mode: DateMode
@@ -771,7 +771,7 @@ native component Window() {
   prop modal: bool
   /// a launcher's or a palette's window: frameless, above every app's windows, out of the taskbar, taking the keyboard without bringing the app to the front; Escape and a click elsewhere close it (on closeRequest: hide it instead)
   prop panel: bool
-  /// a frameless window hanging from an anchor (a tray icon: asuka/tray's anchor(id); or a rectangle of the window it's declared in), closed as it loses the keyboard
+  /// a frameless window hanging from an anchor (a tray icon: platform/tray's anchor(id); or a rectangle of the window it's declared in), closed as it loses the keyboard
   prop flyout: Flyout?
   /// sized to its content, within its least and most size, following it as it changes
   prop fitContent: bool

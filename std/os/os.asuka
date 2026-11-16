@@ -1,4 +1,4 @@
-// Package asuka/os is the process a program runs as (a command-line
+// Package std/os is the process a program runs as (a command-line
 // tool: a package whose fn main is its entry): its arguments, its
 // environment, its standard streams and its exit. The same on macOS,
 // Windows and Linux; an app's on a phone or the web has no arguments and

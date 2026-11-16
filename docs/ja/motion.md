@@ -69,7 +69,7 @@ component Pulse {
 ジェスチャーの終わりをスプリングに引き継ぐことはよくあります。ジェスチャーの速度を残りの距離で割ったものをスプリングの `velocity` にすると、指が与えた速さのままビューが動き続けます。
 
 ```asuka
-import asuka/math
+import std/math
 
 component Flung {
   state dragX = 0.0
@@ -301,7 +301,7 @@ screen Photo(id: int) {
 `Shape` の `trimStart` と `trimEnd` は、輪郭のうち描画する範囲を 0 から 1 で表します。これらを `animate` の中で変えると、線が描かれていくようにアニメーションします。進捗リングやチェックマークに使えます。
 
 ```asuka
-import asuka/math
+import std/math
 
 fn ring(w: float, h: float) -> Path {
   let r = min(w, h) / 2 - 4
@@ -424,7 +424,7 @@ component Puck {
 拡大率と回転角はそのジェスチャーの開始時からの値です。そのため、前回のジェスチャーが終わったときの値を保存しておき、次のジェスチャーの値をそれに加えます。同じビューに付けたジェスチャーは同時に働くので、ピンチしながら回転させることもできます。
 
 ```asuka
-import asuka/math
+import std/math
 
 component Turner {
   state angle = 0.0
@@ -537,7 +537,7 @@ component Person(name: string) {
 `on press` がない場合、押し続ける操作は「ホールド」になります。「押している間だけ録音する」がその例です。録音は副作用なので、ハンドラーの中で行います。
 
 ```asuka
-import asuka/record
+import platform/record
 
 component HoldToRecord {
   View {

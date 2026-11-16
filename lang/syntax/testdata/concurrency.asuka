@@ -1,5 +1,5 @@
-import asuka/http
-import asuka/sensors.{Accelerometer}
+import std/http
+import platform/sensors.{Accelerometer}
 
 screen Weather(city: string) {
   let forecast = load fetchForecast(city)

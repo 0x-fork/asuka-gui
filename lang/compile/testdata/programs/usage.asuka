@@ -1,7 +1,7 @@
 // args: --job 3
 // exit: 2
-import asuka/flag
-import asuka/os
+import std/flag
+import std/os
 
 struct Options {
   jobs: int = 4

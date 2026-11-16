@@ -1,4 +1,4 @@
-// Checkout sells a tea set with the platform's wallet (asuka/pay): Apple
+// Checkout sells a tea set with the platform's wallet (platform/pay): Apple
 // Pay on iOS, macOS and in Safari, Google Pay on Android and in the
 // other browsers. The wallet's sheet asks for a shipping address and a
 // method; the tax follows the address, the shipping the method, and the
@@ -8,7 +8,7 @@
 //   asuka dev --platform ios examples/checkout      # the simulator's Apple Pay, with its test cards
 //   asuka dev --platform android examples/checkout  # Google Pay's TEST environment
 
-import asuka/pay
+import platform/pay
 
 let price = 4000 // cents
 

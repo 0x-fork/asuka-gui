@@ -1241,7 +1241,7 @@ ak_str *ak_i18n_say(ak_catalog *c, int64_t key, ak_val args, const ak_str *lang)
 	return s;
 }
 
-// ---- Formatting outside messages (asuka/i18n) ----
+// ---- Formatting outside messages (std/i18n) ----
 
 // shown_formats is the catalog language whose numbers and dates a reader
 // of the language shown (tracked) reads: its own, else the catalog's

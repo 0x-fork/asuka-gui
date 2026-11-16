@@ -1,7 +1,7 @@
-import asuka/imageedit
-import asuka/scan
-import asuka/transcribe
-import asuka/vision
+import platform/imageedit
+import platform/scan
+import platform/transcribe
+import platform/vision
 
 component Lab {
   state status = "idle"

@@ -1535,7 +1535,7 @@ user. A signed-out user is sent to the login with where they were
 going, and back there after:
 
 ```asuka
-import asuka/url
+import std/url
 
 state signedIn = false
 
@@ -1635,7 +1635,7 @@ comes before any handler exists, so it goes to the first handler. Route
 from it with `push`, or by setting state.
 
 ```asuka
-import asuka/url
+import std/url
 
 state added: [string] = []
 
@@ -1688,8 +1688,8 @@ desktops and the web aren't share targets: `on share` never runs
 there.
 
 To show a sheet of your app's over the app that shares, without opening
-yours, see `asuka/sharesheet` in
-[Device](device.md#the-apps-own-share-sheet-asukasharesheet). To share
+yours, see `platform/sharesheet` in
+[Device](device.md#the-apps-own-share-sheet-platformsharesheet). To share
 from your app instead, `share(text)` shows the system's share sheet,
 and `shareFiles(paths)` shares files: the share menu on a Mac, the share UI
 on Windows, the browser's on the web. Linux has no share sheet: they

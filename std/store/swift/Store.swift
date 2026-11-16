@@ -1,4 +1,4 @@
-// asuka/store on iOS and macOS: UserDefaults.
+// std/store on iOS and macOS: UserDefaults.
 import Foundation
 
 final class DefaultsPrefs: Prefs {

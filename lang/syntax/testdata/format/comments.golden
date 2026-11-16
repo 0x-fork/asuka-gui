@@ -1,7 +1,7 @@
 // The file's first comment.
 
 // Imports.
-import asuka/http // the client
+import std/http // the client
 import ./ui.{Row, Card}
 
 /// A counter.

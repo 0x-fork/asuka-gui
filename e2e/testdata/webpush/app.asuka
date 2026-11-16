@@ -1,8 +1,8 @@
 // Web Push is the web e2e's app (e2e/webpush_test.go): it registers for
 // pushes, shows what comes, what's tapped and answered, and schedules a
 // notification, each on a line the test reads.
-import asuka/notify
-import asuka/push
+import platform/notify
+import platform/push
 
 component WebPush {
   state status = "ready"

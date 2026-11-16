@@ -1,7 +1,7 @@
-// asuka/power with no platform code (the fake host): no battery, no
+// platform/power with no platform code (the fake host): no battery, no
 // events, no idle time.
 
-import asuka/power
+import platform/power
 
 component Battery {
   let p = power.status()

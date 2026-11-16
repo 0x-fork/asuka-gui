@@ -1,6 +1,6 @@
 // More of the system's modules on a Mac, those the app's std packages
-// call: asuka/background (an activity that keeps App Nap off),
-// asuka/widget and asuka/liveactivity (none on a Mac). Others (sensors,
+// call: platform/background (an activity that keeps App Nap off),
+// platform/widget and platform/liveactivity (none on a Mac). Others (sensors,
 // splash, screen, tracking, integrity, ageRange, nfc) aren't here: their
 // std packages have their own Swift, or none calls them.
 import AppKit
@@ -15,11 +15,11 @@ private func notAvailable(_ why: String = "") -> AsukaModuleMethod {
 @MainActor extension AsukaRuntime {
     func registerSystem2Modules() {
         registerModule("background", AsukaBackgroundTasks.shared.methods())
-        // asuka/widget's: a Mac app from asuka build has no widget
+        // platform/widget's: a Mac app from asuka build has no widget
         // extension (WidgetKit's widgets are an extension the iOS build
         // makes), so there are none to give entries to.
         registerModule("widget", ["set": notAvailable("widgets are iOS's and Android's")])
-        // asuka/liveactivity's: Live Activities are an iPhone's (a Mac
+        // platform/liveactivity's: Live Activities are an iPhone's (a Mac
         // shows an iPhone's in its menu bar, through iPhone Mirroring, but
         // no app of its own starts one): none, and nothing to observe.
         registerModule("liveActivity", [
@@ -33,7 +33,7 @@ private func notAvailable(_ why: String = "") -> AsukaModuleMethod {
     }
 }
 
-/// asuka/background's tasks: a Mac app keeps running out of sight, so a
+/// platform/background's tasks: a Mac app keeps running out of sight, so a
 /// task holds an activity (NSProcessInfo's) that keeps App Nap from slowing
 /// it and the system from ending it to free memory, until the last one
 /// ends. There's no notification to show (iOS shows none either): "update"
@@ -56,7 +56,7 @@ private func notAvailable(_ why: String = "") -> AsukaModuleMethod {
                 if self.activity == nil {
                     var opts: ProcessInfo.ActivityOptions = [.userInitiatedAllowingIdleSystemSleep, .suddenTerminationDisabled, .automaticTerminationDisabled]
                     opts.remove(.idleSystemSleepDisabled)
-                    self.activity = ProcessInfo.processInfo.beginActivity(options: opts, reason: "asuka/background: a task")
+                    self.activity = ProcessInfo.processInfo.beginActivity(options: opts, reason: "platform/background: a task")
                 }
                 reply(.success(Data()))
             },

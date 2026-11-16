@@ -1,8 +1,8 @@
 // update.c: the fake host's "update" module (DESIGN.md, "Updates": the
-// module a desktop host implements for asuka/update), for an app's tests.
+// module a desktop host implements for platform/update), for an app's tests.
 // It has no module until a test sets one up, as the fake host has no
 // installed app: until then every method answers "no module", and the
-// package says updates aren't available. A test (asuka/update's
+// package says updates aren't available. A test (platform/update's
 // fakeHost) makes it answer as an installed app's host would, with
 // methods no real host has:
 //
@@ -84,7 +84,7 @@ void ak_fake_update_free(ak_fake *f) {
 	f->update = NULL;
 }
 
-// ---- The JSON of the calls (what asuka/json writes: no spaces) ----
+// ---- The JSON of the calls (what std/json writes: no spaces) ----
 
 // find returns where the value of key starts in args, or NULL.
 static const char *find(ak_span args, const char *key) {

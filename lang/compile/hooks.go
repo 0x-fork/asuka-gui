@@ -11,14 +11,14 @@ import (
 // once, here, rather than on the device each launch; a shader's code for
 // every platform, from its Kage source.
 func init() {
-	ir.StructHooks["asuka/svg.Icon"] = func(src string) (map[string]any, error) {
+	ir.StructHooks["std/svg.Icon"] = func(src string) (map[string]any, error) {
 		ic, err := svgparse.Parse([]byte(src))
 		if err != nil {
 			return nil, err
 		}
 		return map[string]any{"data": ic.Encode(), "width": float64(ic.Width), "height": float64(ic.Height)}, nil
 	}
-	ir.StructHooks["asuka/shader.Program"] = func(src string) (map[string]any, error) {
+	ir.StructHooks["std/shader.Program"] = func(src string) (map[string]any, error) {
 		c, err := shadercode.Compile(src)
 		if err != nil {
 			return nil, err

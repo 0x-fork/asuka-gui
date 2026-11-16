@@ -1,12 +1,12 @@
-// asuka/lottie for Android: lottie-android, in a library module the
-// Asuka CLI builds into the apps that import asuka/lottie.
+// std/lottie for Android: lottie-android, in a library module the
+// Asuka CLI builds into the apps that import std/lottie.
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
 }
 
 android {
-    namespace = "asuka.lottie"
+    namespace = "std.lottie"
 }
 
 dependencies {

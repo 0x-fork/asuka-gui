@@ -1,9 +1,0 @@
-name = "asuka/biometric"
-version = "0.1.0"
-description = "Confirms it's the device's owner: Face ID, Touch ID, a fingerprint, Windows Hello"
-
-[ios.usage]
-NSFaceIDUsageDescription = "To confirm it's you."
-
-[android]
-permissions = ["android.permission.USE_BIOMETRIC"]
