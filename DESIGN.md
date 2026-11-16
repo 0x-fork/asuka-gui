@@ -3480,6 +3480,27 @@ from releases `asuka build` signs; MyGo's updater, ported.
   manifests last. Phones answer `ErrUnsupported`; the web build writes
   `version.json`, which `update.Check` reads past caches, and `Relaunch`
   reloads the page.
+- On the C core (RFC 0008) the portable part is the std package
+  `asuka/update` (Asuka, with C builtins in the core: the feed, channels,
+  versions, signatures, deltas), and each desktop host has the platform's
+  part as its module `update`, called with `platform.call`, JSON in and
+  out: `info` answers `{installable, reason, target, version, feed, key}`
+  (whether this build can install updates itself and, if not, why:
+  `Locate`'s and `Writable`'s errors; its target, asuka-app.json's
+  `updateTarget`, `darwin-universal` by default on a Mac; its version and
+  the feed and public key asuka-app.json has); `download {url, to}`
+  answers `{id}` and downloads to `to` (HTTPS, or the loopback), and
+  `next {id}`, a long poll, answers `{downloaded, total, done, error}`
+  once the download has moved by 1% (of its size; a MiB without one) or
+  ended (`error` "" or why; `total` -1 unknown; asked again after its end:
+  no such download); `cancel {id}` ends it (`error` "canceled");
+  `install {staged}` takes what the package has verified, an archive (the
+  gzipped tar of the app) or a directory (the app, or one holding it),
+  checks it and leaves it to be put in place once the app quits,
+  answering `{target}` (the Mac: `CheckBundle`, then `StageBundle`'s
+  helper; a later install replaces an earlier). The core's `relaunch()`
+  sends `Quit` with its relaunch flag, which the helper honors: it opens
+  the new bundle once it's in place.
 
 **Documents** (`document`): document-based apps, as NSDocument and
 NSDocumentController, SwiftUI's DocumentGroup and MyGo's documents make
