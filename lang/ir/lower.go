@@ -21,7 +21,7 @@ type Lowerer struct {
 	shapes    map[string]int // a type → its shape
 	shapeType map[int]check.Type
 	globals   map[*check.Global]int
-	envShape  map[*check.TypeName]int
+	envShape  map[string]int
 	memberIdx map[*check.Member]int
 	enumNames map[string]int // an int enum → the global holding its case names
 	errIDs    map[int]int    // an error's shape → its type id
@@ -59,7 +59,7 @@ func Lower(prog *check.Program, opts *Options) (*Program, []check.Diagnostic) {
 		shapes:    map[string]int{},
 		shapeType: map[int]check.Type{},
 		globals:   map[*check.Global]int{},
-		envShape:  map[*check.TypeName]int{},
+		envShape:  map[string]int{},
 		memberIdx: map[*check.Member]int{},
 		enumNames: map[string]int{},
 		errIDs:    map[int]int{},
@@ -287,7 +287,7 @@ func (l *Lowerer) shape(t check.Type) int {
 			}
 			return i
 		case check.StoreType:
-			return l.envShapeOf(x.Obj)
+			return l.envShapeOf(x.Obj, x)
 		}
 	}
 	return -1

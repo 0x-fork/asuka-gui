@@ -32,7 +32,25 @@ state units = store.read("units", "metric")
 | `asuka/network` | `network.status()`（会被追踪：`connected`、`type`、`metered`、`constrained`；只有在有人读取时才监听网络）、`network.current()`、`network.changes()`（一个流）。iOS 和 macOS 上用 NWPathMonitor，Android 上用 ConnectivityManager，Windows 上用网络列表管理器，Linux 上用 GNetworkMonitor 和 NetworkManager，网页上用 `navigator.onLine` 和 Network Information API |
 | `asuka/platform` | `platform.call(module, method, args)` 和 `platform.send`：按名称调用宿主自己的模块，参数采用各模块的小端编码（`u8`、`u32`、`f64`、`str`、`readU32` 等）。供标准库的包使用；应用要调用自己的平台代码，请用[原生包](native.md) |
 | `asuka/recent` | `recent.add(path)`、`recent.clear()`、`recent.list()`：用户最近打开的文档，出现在“最近使用”菜单和程序坞菜单、跳转列表、最近使用的文件中 |
-| `asuka/store` | `store.read(key, default)`、`store.write(key, value)`、`store.remove(key)`：以 JSON 形式跨启动保存的小数据，存放在平台的偏好设置里（UserDefaults、SharedPreferences、`localStorage`，在 Windows 和 Linux 上是一个文件） |
+| `asuka/store` | `store.read(key, default)`、`store.write(key, value)`、`store.remove(key)`、`store.flush()`、`store.dir()`：跨启动保存的小数据，以 JSON 存在平台的偏好设置里（UserDefaults、SharedPreferences、`localStorage`，Windows 和 Linux 上是一个文件，在修改后稍过片刻写入） |
+| `asuka/notify` | 本地通知：`request()`、`show(n)`、`schedule(n)`（在 `n.after` 之后）、`cancel(id)`、`showing()`、`remove(ids)`、`removeThread(t)`、`removeAll()`、`setBadge(n)`；`setCategories`（操作、回复）、`setChannels`、`setChannelGroups`（Android）；`Notification(…).from(person, conversation)`（消息）；`present(decide)`（应用在前台时通知如何显示）；`responses()`（点按、操作和回复的流；`r.defer()` 让应用继续运行以完成工作）。每个平台上用的都是宿主自己的通知：UserNotifications、Android 的通知、Windows 的 toast、Linux 的通知、浏览器的通知 |
+| `asuka/push` | `push.register()`（令牌：APNs 的、FCM 的、Web 的订阅）、`push.opened()` 和 `push.received()`（`Message` 的流；`Message.from(person, conversation)`） |
+| `asuka/watch` | `watch.path(dir, ignore:, recursive:, attributes:)` 得到一个 `Watch`：它的 `root`，以及 `events`，即一批批 `Event` 组成的流（`op`：create、write、remove、rename、attrib、overflow；`path`、`oldPath`）。基于 FSEvents、inotify 和 ReadDirectoryChangesW（internal/fswatch）；手机和 Web 上不支持 |
+| `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` 得到一个 `Task`（`update(…)`、`end()`）：由系统显示的长时间工作（Android 前台服务的通知、iOS 的持续处理、桌面端的进度） |
+| `asuka/calendar` | `calendar.request()`（`Access`）、`calendars()`、`events(from:, to:, calendars:)`、`add(Event)`（系统的表单）：EventKit、Calendar Provider |
+| `asuka/compose` | `compose.mail(to:, cc:, bcc:, subject:, body:, html:, attachments:)` 和 `compose.message(to:, body:, …)` 打开系统的撰写界面，并返回一个 `Result`（cancelled、sent、saved、unknown）；`check()` |
+| `asuka/contacts` | `contacts.pick()`（系统的选择器：一个 `Contact` 或 none）、`request()`、`list(name:, limit:)`、`add(Contact)` |
+| `asuka/library` | `library.save(path, collection:, name:, folder:, mime:, move:)`：把文件存进照片、图库、下载或音乐；返回它存到了哪里 |
+| `asuka/liveactivity` | `liveactivity.start(Content)` 得到一个 `Activity`（`update(c, alert:)`、`end(c, dismiss:)`）、`events()`（开始、结束、推送令牌）、`enabled()`：iOS 的实时活动、Android 16 的实时更新 |
+| `asuka/periodic` | `periodic.schedule(name, every:, network:, charging:)`、`cancel(name)`、`runs(name)`（`Run` 的流，`run.finish(ok)`）：iOS 的后台任务、WorkManager |
+| `asuka/photos` | 经用户许可的照片库：`request()`、`current()`、`list(screenshots:, offset:, limit:)`、`thumbnail(id, size:)`、`export(id)`、`manageLimited()` |
+| `asuka/widget` | `widget.set(kind, Entry)`、`setAll(kind, entries)`、`clear(kind)`：应用的小组件显示的内容 |
+| `asuka/crash` | `crash.reports()`（一个流：先是已保存的报告，之后每来一份就给一份；`Report`：`id`、`kind`、`fatal`、`time`、`message`、`text`、`threads`，以及带面包屑和值的 `context`）、`breadcrumb(message)`、`set(key, value)`、`record(e)`、`delete(id)`。记录由桌面端的宿主保存（sdk/crash）；手机和 Web 上还没有（reports 为空） |
+| `asuka/icloud` | iOS 和 macOS 上的 iCloud：`account()` 和 `files(scope)`（会被追踪：随 iCloud 的变化而更新）、`Value(key, default)`（保存在 iCloud 键值存储里的 store）、`documents()`、`container(id)`、`readFile`、`writeFile`、`delete`、`rename`、`download`、`evict`、`conflicts(path)`、`resolve(path, keeping:)`。在其他平台上：没有账户，列表为空，报错 "icloud: not available" |
+| `asuka/document` | `document.open(path, read:, write:)` 得到一个 `Document<T>` store：`content`、`state`（loading、saved、edited、saving、conflict、failed）、`error`；`edit(c)`（稍后自动保存）、`save()`、`saveAnyway()`、`revert()`。在 iOS 和 macOS 上会协调文件访问。基于文档的应用所需的窗口、菜单和文档浏览器（`Documents<T>`）要等 UI 运行时的窗口和导航就绪 |
+| `asuka/host` | 上面这些包所依赖的：宿主自己的模块（`host.call(module, method, args)`、`host.next(module, method)`）；应用不需要直接用它 |
+| `asuka/sqlite` | `sqlite.open(name)`（应用数据目录里的文件、绝对路径，或 `":memory:"`）得到一个 `DB`：`migrate(steps)`、`exec(sql, args)` 和 `query<T>(sql, args)`（异步，不在主线程上执行；行直接解码成 `T`，按列名对应结构体的字段）、`watch<T>(sql, args)`（一个 `Live<T>` store：`rows`、`loading`、`error`；参数变化时、它读取的表被写入时会重新执行）、`changed()`、`close()`。SQLite 来自 sqlite 插件的库（sdk/sqlite），随应用一起发布；Web 上暂不支持 |
+| `asuka/storage` | `storage.Value(key, default)`：一个 store，它的 `value` 保存在设备上（用的是 asuka/store），会被追踪，变化时写入；`reset()`；`storage.flush()`、`storage.dirName()` |
 
 如果某个平台没有原生包的代码（比如由 `asuka test` 运行的应用，它没有任何平台代码），用到它的地方会抛出 `unsupported` 错误；这时 `asuka/store` 什么也不保存，读取时返回默认值。
 

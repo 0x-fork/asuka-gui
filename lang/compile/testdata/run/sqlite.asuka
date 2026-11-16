@@ -1,0 +1,76 @@
+// asuka/sqlite on the runner: the plugin's library (ASUKA_LIB_ASQLITE,
+// which the test sets to its build or cached file).
+import asuka/sqlite
+
+struct Note {
+  id: int
+  text: string
+  done: bool
+}
+
+enum Kind { plain, todo }
+
+struct Tagged {
+  id: int
+  kind: Kind
+  tags: [string]
+  note: string?
+  score: float
+}
+
+fn openDB() throws -> sqlite.DB {
+  let db = try sqlite.open(":memory:")
+  try db.migrate([
+    "create table notes (id integer primary key, text text not null, done bool not null default 0)",
+    "create table tagged (id integer primary key, kind text, tags text, note text, score real)",
+  ])
+  return db
+}
+
+test "queries" {
+  let db = try openDB()
+  try db.migrate(["create table notes (id integer)", "create table tagged (id integer)"])
+  try await db.exec("insert into notes (text) values (?)", ["Milk"])
+  try await db.exec("insert into notes (text, done) values (?1, ?2)", ("Eggs", true))
+  let notes: [Note] = try await db.query("select * from notes order by id", [])
+  print(notes)
+  let count: [int] = try await db.query("select count(*) from notes where done = ?", [false])
+  print(count)
+  let texts: [string] = try await db.query("select text from notes where text like ? order by id", ["%gg%"])
+  print(texts)
+  try await db.exec("insert into tagged (kind, tags, note, score) values ('todo', '[\"a\",\"b\"]', null, 2)", [])
+  let tagged: [Tagged] = try await db.query("select * from tagged", [])
+  print(tagged)
+  do {
+    try await db.exec("insert into nowhere values (1)", [])
+  } catch e {
+    print(e.message)
+  }
+}
+
+test "live queries" {
+  let db = try openDB()
+  let live: sqlite.Live<Note> = db.watch("select * from notes order by id", [])
+  print(live.loading)
+  await sleep(1ms)
+  print(live.rows.count())
+  try await db.exec("insert into notes (text) values ('One')", [])
+  await sleep(1ms)
+  print(live.rows.map(n => n.text))
+  try await db.exec("insert into tagged (kind) values ('plain')", [])
+  await sleep(1ms)
+  print(live.rows.count())
+}
+
+// Output:
+// [{"id":1,"text":"Milk","done":false},{"id":2,"text":"Eggs","done":true}]
+// [1]
+// ["Eggs"]
+// [{"id":1,"kind":"todo","tags":["a","b"],"note":null,"score":2}]
+// sqlite: no such table: nowhere (1)
+// ok queries
+// true
+// 0
+// ["One"]
+// 1
+// ok live queries

@@ -184,6 +184,11 @@ func (b *fb) nativeBody(f *check.Function, params []int) {
 			args = append([]int{b.vars[s]}, params...)
 		}
 	}
+	// A generic one gets each type argument's descriptor after its
+	// parameters (core/src/rt/json.h's; "-" for what JSON can't say).
+	for _, tp := range f.TypeParams {
+		args = append(args, b.kstr(b.l.desc(b.typ(tp))))
+	}
 	k := b.f.Ret
 	if f.Sig.Async {
 		fut := b.callB(name, bc.KRef, args...)

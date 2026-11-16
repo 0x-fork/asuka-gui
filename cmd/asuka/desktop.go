@@ -15,6 +15,7 @@ import (
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/boot"
 	"github.com/egoist/asuka/internal/cbuild"
+	"github.com/egoist/asuka/plugin"
 )
 
 // Desktop apps: the executable is the desktop host (cmd/asuka-host: Go,
@@ -156,6 +157,13 @@ func devDesktop(dir string, o *devOptions, stop <-chan os.Signal, platform strin
 		if platform != platformMac {
 			env = append(env, "ASUKA_APP_CONFIG="+filepath.Join(filepath.Dir(exe), boot.ConfigFile))
 		}
+		// The plugins' libraries, where the core finds them (a build puts
+		// them beside the program).
+		libEnv, err := pluginEnv(app, plugin.Target(runtime.GOOS, runtime.GOARCH))
+		if err != nil {
+			return err
+		}
+		env = append(env, libEnv...)
 		if platform == platformWindows {
 			env = append(env, "ASUKA_STOP=stdin")
 		}
@@ -170,7 +178,8 @@ func devDesktop(dir string, o *devOptions, stop <-chan os.Signal, platform strin
 			if wrap != nil {
 				name, args = wrap[0], append(wrap[1:len(wrap):len(wrap)], "env", "ASUKA_DEV="+fmt.Sprintf("%s:%d", devHost, loop.port()),
 					"ASUKA_DATA="+data, "ASUKA_ASSETS="+filepath.Join(app.dir, "assets"),
-					"ASUKA_APP_CONFIG="+filepath.Join(filepath.Dir(exe), boot.ConfigFile), exe)
+					"ASUKA_APP_CONFIG="+filepath.Join(filepath.Dir(exe), boot.ConfigFile))
+				args = append(append(args, libEnv...), exe)
 			}
 			c := exec.Command(name, args...)
 			c.Dir = app.dir

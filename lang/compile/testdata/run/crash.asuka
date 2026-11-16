@@ -1,0 +1,27 @@
+// asuka/crash without a record (phones, the web, asuka test): what it
+// keeps is nothing, and reports ends empty.
+import asuka/crash
+
+enum CheckoutError: Error {
+  /// checkout: no network
+  noNetwork
+}
+
+test "crash" {
+  crash.breadcrumb("opened")
+  crash.set("screen", "gallery")
+  crash.record(CheckoutError.noNetwork)
+  var n = 0
+  for await r in crash.reports() {
+    n += 1
+    crash.delete(r.id)
+  }
+  print(n)
+  let r = crash.Report(id: "a", kind: "nonfatal", message: "m")
+  print("{r.kind} {r.context.breadcrumbs.count()}")
+}
+
+// Output:
+// 0
+// nonfatal 0
+// ok crash

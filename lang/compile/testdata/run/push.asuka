@@ -1,0 +1,22 @@
+// asuka/push without a host: registering fails as unsupported, and a
+// message takes a conversation.
+import asuka/notify
+import asuka/push
+
+test "push" {
+  do {
+    let r = try await push.register()
+    print(r.token)
+  } catch e {
+    print(e.message)
+  }
+  var m = push.Message(title: "New", body: "(sealed)", data: ["chat": "c"])
+  m.body = "Hi"
+  let out = m.from(notify.Person(id: "ana", name: "Ana"), notify.Conversation(id: m.data["chat"] ?? ""))
+  print("{out.body} {out.sender?.name ?? ""} {out.conversation?.id ?? ""}")
+}
+
+// Output:
+// unsupported: push has no host here
+// Hi Ana c
+// ok push

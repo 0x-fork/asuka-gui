@@ -1,0 +1,20 @@
+// asuka/document without files (asuka test, the web): the document
+// fails, saying why; its model is a store all the same.
+import asuka/document
+
+let types = [document.Type(name: "Plain Text", extensions: ["txt"], mimeTypes: ["text/plain"])]
+
+test "document" {
+  let doc = document.open("/nowhere/a.txt", read: data => data.string(), write: text => text.bytes())
+  await sleep(1ms)
+  print("{doc.state} {doc.error}")
+  doc.edit("hello")
+  print("{doc.state} {doc.content ?? ""}")
+  print(types[0].extensions)
+}
+
+// Output:
+// failed unsupported: asuka/document has no files on this platform
+// edited hello
+// ["txt"]
+// ok document

@@ -1,0 +1,10 @@
+name = "asuka/calendar"
+version = "0.1.0"
+description = "The user's calendars: their events, and new ones"
+
+[ios.usage]
+NSCalendarsFullAccessUsageDescription = "To show and add your events."
+NSCalendarsWriteOnlyAccessUsageDescription = "To add events to your calendar."
+
+[android]
+permissions = ["android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"]

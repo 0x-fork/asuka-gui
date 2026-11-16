@@ -1,0 +1,64 @@
+// Package asuka/widget sets what the app's widgets show: iOS's and
+// macOS's WidgetKit widgets (an extension the CLI adds for asuka.toml's
+// widgets, drawn from Entry), Android's App Widgets. A kind is one of
+// asuka.toml's widgets; its entries show in turn, each from its time.
+//
+//   widget.set("energy", widget.Entry(title: "Energy", value: "72%", progress: 0.72, showProgress: true))
+
+import asuka/host
+import asuka/json
+
+/// What a widget shows.
+pub struct Entry {
+  title: string = ""
+  /// The big value.
+  value: string = ""
+  body: string = ""
+  /// A small line at the bottom.
+  caption: string = ""
+  /// An SF Symbol's name.
+  symbol: string = ""
+  /// From 0 to 1, shown with showProgress.
+  progress: float = 0.0
+  showProgress: bool = false
+  /// A count down to this time, in milliseconds since 1970.
+  until: int = 0
+  /// "#rrggbb" or "#rrggbbaa".
+  tint: string = ""
+  /// What the app is opened with when the widget is tapped.
+  url: string = ""
+  /// When it shows, in milliseconds since 1970 (0: now).
+  at: int = 0
+}
+
+struct Wire {
+  title: string
+  value: string
+  body: string
+  caption: string
+  symbol: string
+  progress: float
+  showProgress: bool
+  untilMs: int
+  atMs: int
+  tint: string
+  url: string
+}
+
+struct Set {
+  kind: string
+  entries: [Wire]
+}
+
+/// Sets what the kind of widget shows: e now.
+pub fn set(kind: string, e: Entry) = setAll(kind, [e])
+
+/// Sets the kind's entries, each from its time.
+pub fn setAll(kind: string, entries: [Entry]) {
+  let es = entries.sorted((a, b) => a.at < b.at).map(e => Wire(title: e.title, value: e.value, body: e.body, caption: e.caption,
+    symbol: e.symbol, progress: e.progress, showProgress: e.showProgress, untilMs: e.until, atMs: e.at, tint: e.tint, url: e.url))
+  host.send("widget", "set", json.encode(Set(kind: kind, entries: es)).bytes())
+}
+
+/// Clears what the kind of widget shows.
+pub fn clear(kind: string) = setAll(kind, [])
