@@ -68,7 +68,6 @@ void lx_mount(void);
 void lx_mount(void) {
 	static asuka_host_callbacks cb;
 	cb = lx_callbacks();
-	asuka_set_app_dir(lx_data_dir());
 	H.depth++;
 	asuka_start(&cb);
 	H.started = true;

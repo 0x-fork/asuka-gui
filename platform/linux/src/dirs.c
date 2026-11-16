@@ -37,6 +37,40 @@ void lx_dirs_init(const char *argv0) {
 	}
 	dsk_dirs_find(&dirs, DSK_LINUX, data);
 	free(data);
+	// The app's own directory (asuka/fs's appDir), before the crash record
+	// and the core start.
+	asuka_set_app_dir(lx_data_dir());
+}
+
+// lx_os_version is the distribution and its version: the host's, in a
+// Flatpak (os-release).
+const char *lx_os_version(void) {
+	static char v[256];
+	if (v[0]) return v;
+	static const char *const paths[] = {"/run/host/os-release", "/etc/os-release", "/usr/lib/os-release"};
+	for (size_t i = 0; i < AK_LEN(paths) && !v[0]; i++) {
+		size_t n;
+		char *text = dsk_read_file(paths[i], &n);
+		if (!text) continue;
+		char name[128] = "", ver[64] = "";
+		for (char *line = strtok(text, "\n"); line; line = strtok(NULL, "\n")) {
+			char *eq = strchr(line, '=');
+			if (!eq || line[0] == '#') continue;
+			*eq = 0;
+			char *val = eq + 1;
+			size_t vl = strlen(val);
+			if (vl >= 2 && (val[0] == '"' || val[0] == '\'') && val[vl - 1] == val[0]) {
+				val[vl - 1] = 0;
+				val++;
+			}
+			if (!strcmp(line, "NAME")) snprintf(name, sizeof name, "%s", val);
+			if (!strcmp(line, "VERSION_ID")) snprintf(ver, sizeof ver, "%s", val);
+		}
+		free(text);
+		if (name[0]) snprintf(v, sizeof v, "%s%s%s", name, ver[0] ? " " : "", ver);
+	}
+	if (!v[0]) snprintf(v, sizeof v, "linux");
+	return v;
 }
 
 static const char *made(char *d) {

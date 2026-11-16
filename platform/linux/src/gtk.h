@@ -109,6 +109,12 @@ typedef struct _GTimeZone GTimeZone;
 typedef struct _GRegex GRegex;
 typedef struct _GMatchInfo GMatchInfo;
 typedef struct _GUri GUri;
+typedef struct _GThread GThread;
+typedef gpointer (*GThreadFunc)(gpointer data);
+typedef guint (*GHashFunc)(gconstpointer key);
+typedef gboolean (*GEqualFunc)(gconstpointer a, gconstpointer b);
+typedef struct _SoupSession SoupSession;
+typedef struct _SoupMessage SoupMessage;
 
 // GVariantBuilder and GVariantIter are on the stack: opaque, as big as
 // GLib makes them.
@@ -762,6 +768,7 @@ typedef struct _GtkTooltip GtkTooltip;
 typedef struct _GtkGLArea GtkGLArea;
 typedef struct _GtkMediaControls GtkMediaControls;
 typedef struct _GtkWindowGroup GtkWindowGroup;
+typedef struct _GtkSymbolicPaintable GtkSymbolicPaintable;
 typedef struct _GtkActionBar GtkActionBar;
 
 typedef gboolean (*GtkTickCallback)(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data);

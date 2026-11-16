@@ -642,6 +642,8 @@ const char *lx_posix_locale(void);
 const char *lx_time_zone(void);
 const char *lx_user_languages(void);
 void lx_watch_signals(void);
+void lx_apply_direction(node *n);
+void lx_apply_direction_inherit(node *n, void *ctx);
 void lx_watch_memory(void);
 
 // services.c: the host's modules

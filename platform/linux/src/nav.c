@@ -709,6 +709,14 @@ void lx_tabs_resized(node *n) {
 	adw_view_switcher_bar_set_reveal((AdwViewSwitcherBar *)n->nav->bar, narrow);
 }
 
+static void label_tabs_of(node *n, void *ctx) {
+	(void)ctx;
+	if (n->kind == AK_KIND_TABS) label_tabs(n);
+}
+
+void lx_label_tabs_all(void);
+void lx_label_tabs_all(void) { lx_each_node(label_tabs_of, NULL); }
+
 GtkWidget *lx_tabs_switcher(node *tabs) { return tabs->nav ? tabs->nav->switcher : NULL; }
 bool lx_tabs_narrow(node *tabs) { return tabs->nav && tabs->nav->narrow; }
 

@@ -389,6 +389,7 @@ static void free_node(node *n) {
 	lx_release_field(n);
 	lx_release_a11y(n);
 	lx_release_scroll(n);
+	lx_release_image(n);
 	ak_vec_free(&n->children);
 	free(n->font_family);
 	free(n->title);

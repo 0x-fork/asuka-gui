@@ -284,6 +284,17 @@ static bool split_prop(node *n, ak_prop p, const ak_value *v) {
 	return false;
 }
 
+static void badges_of(node *n, void *ctx) {
+	(void)ctx;
+	split_t *s = split_of(n);
+	if (!s) return;
+	for (uint32_t i = 0; i < s->rows.len && i < s->parts.len; i++)
+		if (!s->rows.data[i].group) show_badge(s, i, &s->rows.data[i]);
+}
+
+void lx_split_badges_all(void);
+void lx_split_badges_all(void) { lx_each_node(badges_of, NULL); }
+
 // lx_insert_split puts the detail Stack in the content page, under the
 // window's header bar.
 void lx_insert_split(node *p, node *c, uint32_t index) {
