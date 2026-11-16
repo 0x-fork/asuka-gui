@@ -932,6 +932,14 @@ func (b *fb) bind(v int, el string, bd *check.BindArg) {
 	if bd.Event == nil {
 		return
 	}
+	h := b.bindWriter(bd)
+	ev := prelude.EventID(el, bd.Event.Name())
+	b.callBTo(uiOn, bc.None, v, b.konst(int64(ev)), h)
+}
+
+// bindWriter is the handler of a bind's event: it writes the event's
+// value to the bind's target.
+func (b *fb) bindWriter(bd *check.BindArg) int {
 	wctx := b.l.info.Ctxs[bd.Target]
 	params := make([]*check.Var, len(bd.Event.Params))
 	pkinds := make([]bc.Kind, len(bd.Event.Params))
@@ -941,16 +949,14 @@ func (b *fb) bind(v int, el string, bd *check.BindArg) {
 	if len(params) > 0 && len(wctx.Params) > 0 {
 		params[0] = wctx.Params[0]
 	}
-	h := b.makeClosure(closure{name: "bind " + bd.Prop.Name(), ctxs: []*check.FuncCtx{wctx}, params: params, pkinds: pkinds, ret: bc.KVoid, throws: true, body: func(c *fb) {
+	return b.makeClosure(closure{name: "bind " + bd.Prop.Name(), ctxs: []*check.FuncCtx{wctx}, params: params, pkinds: pkinds, ret: bc.KVoid, throws: true, body: func(c *fb) {
 		c.ctx = wctx
-		if params[0] != nil {
+		if len(params) > 0 && params[0] != nil {
 			lv := c.prepare(bd.Target)
 			c.set(lv, c.vars[params[0]])
 		}
 		c.emit(op("RET0"))
 	}})
-	ev := prelude.EventID(el, bd.Event.Name())
-	b.callBTo(uiOn, bc.None, v, b.konst(int64(ev)), h)
 }
 
 // componentCall calls a component's function: accessors of its
