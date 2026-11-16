@@ -88,7 +88,7 @@ func TestDataDocCompiles(t *testing.T) {
 // packages compile, each on its own, in every language's docs.
 func TestDocExamples(t *testing.T) {
 	for _, lang := range []string{"", "zh", "ja"} {
-		for _, page := range []string{"device.md", "components.md", "accessibility.md", "motion.md", "desktop.md"} {
+		for _, page := range []string{"device.md", "components.md", "accessibility.md", "motion.md", "desktop.md", "navigation.md"} {
 			path := filepath.Join("..", "..", "docs", lang, page)
 			b, err := os.ReadFile(path)
 			if err != nil {
