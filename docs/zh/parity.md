@@ -107,7 +107,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 翻译、复数、区域格式 | String Catalogs、FormatStyle | `expo-localization`、i18next | ✓ `asuka/i18n`、翻译目录（[多语言](i18n.md)） |
 | 从右到左布局 | `layoutDirection` | `I18nManager` | ✓ 跟随语言，也可用 `ui.WithDirection` 设置 |
 | 本地通知 | UserNotifications | `expo-notifications` | ✓ `asuka/sdk/notify`（立即或定时发送，支持图片；iOS、Android、macOS、Linux；Windows 上是 toast 通知，通过应用的 COM 激活器支持按钮和回复；Web 上通过应用的 service worker 发送，所以页面关闭后通知仍然保留、仍能响应操作；定时通知在应用有页面打开时会按时显示，否则等下次打开页面时再显示：浏览器无法预约通知） |
-| 推送通知 | APNs | `expo-notifications` | ✓ `asuka/sdk/push`（iOS 和 macOS 上用 APNs，另有 Firebase Cloud Messaging，Web 上用基于 VAPID 的 Web Push：获取令牌、接收消息、处理点按；`asuka/sdk/push/webpush` 可以从 Go 服务器发送 Web Push） |
+| 推送通知 | APNs | `expo-notifications` | ✓ `asuka/sdk/push`（iOS 和 macOS 上用 APNs，另有 Firebase Cloud Messaging，Web 上用基于 VAPID 的 Web Push：获取令牌、接收消息、处理点按；`asuka/webpush` 可以从 Go 服务器发送 Web Push） |
 | 通知操作、内联回复 | `UNNotificationCategory`、`UNTextInputNotificationAction` | `setNotificationCategoryAsync` | ✓ `notify.SetCategories`、`OnAction`（后台操作会运行应用的 Go 代码，应用没在运行时会以无界面方式启动；`Response.Defer`；Android 上回复会被添加回对话里；在 Web 上用 service worker 的通知操作，Chrome 支持的地方还有内联回复） |
 | 通知分组、当前显示的通知、角标 | `threadIdentifier`、`getDeliveredNotifications`、`setBadgeCount` | `getPresentedNotificationsAsync`、`setBadgeCountAsync` | ✓ `Thread`（Android：一个通知组，并保留它的摘要通知）、`notify.Showing`、`Remove`、`RemoveThread`、`SetBadge`（Android：启动器根据通知显示的角标） |
 | 前台通知 | `willPresent` | `setNotificationHandler` | ✓ `notify.Present`（横幅、静默、隐藏） |

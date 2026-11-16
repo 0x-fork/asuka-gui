@@ -301,7 +301,7 @@ type appConfig struct {
 		// VapidPublicKey is the app server's VAPID public key (base64url, an
 		// uncompressed P-256 point), for asuka/sdk/push's Web Push: the browser
 		// subscribes with it, and the server signs with its private key
-		// (asuka/sdk/push/webpush: GenerateKeys makes a pair).
+		// (asuka/webpush: GenerateKeys makes a pair).
 		VapidPublicKey string `json:"vapidPublicKey"`
 		// Base is the path the site is served at ("/app/" for
 		// https://example.com/app/; default "/"): the page's <base href>,

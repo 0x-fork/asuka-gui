@@ -263,7 +263,7 @@ func webVAPIDKey(app *asukaApp) (string, error) {
 		_, err = ecdh.P256().NewPublicKey(b)
 	}
 	if err != nil || len(b) != 65 {
-		return "", errors.New("asuka.toml: web.vapidPublicKey isn't a VAPID public key (an uncompressed P-256 point, 65 bytes, in base64url): github.com/egoist/asuka/sdk/push/webpush's GenerateKeys makes a pair")
+		return "", errors.New("asuka.toml: web.vapidPublicKey isn't a VAPID public key (an uncompressed P-256 point, 65 bytes, in base64url): github.com/egoist/asuka/webpush's GenerateKeys makes a pair")
 	}
 	return k, nil
 }

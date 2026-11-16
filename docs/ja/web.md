@@ -216,10 +216,10 @@ vapidPublicKey = "BKpYsAT0ADj2pHQQ..."
 
 `title` も `body` もないプッシュは、データメッセージです。開いているページが受け取り（`OnReceive`）、何も表示されません。データメッセージは、アプリが開いている間だけ送ってください。ブラウザーはプッシュのたびに通知が表示されることを期待しています。前面にページがないときに何も表示されないと、Chrome は独自の通知（「This site has been updated in the background」）を表示し、Safari はそれが何度か続くと購読を終了します。JSON でないペイロードは、本文として表示されます。ペイロードは最大 3993 バイトです。
 
-Go からは、`github.com/egoist/asuka/sdk/push/webpush` で暗号化、署名、送信ができます。使うのは標準ライブラリだけです。
+Go からは、`github.com/egoist/asuka/webpush` で暗号化、署名、送信ができます。使うのは標準ライブラリだけです。
 
 ```go
-import "github.com/egoist/asuka/sdk/push/webpush"
+import "github.com/egoist/asuka/webpush"
 
 var sender = &webpush.Sender{
 	Keys:    webpush.Keys{Public: os.Getenv("VAPID_PUBLIC_KEY"), Private: os.Getenv("VAPID_PRIVATE_KEY")},

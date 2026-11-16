@@ -216,10 +216,10 @@ vapidPublicKey = "BKpYsAT0ADj2pHQQ..."
 
 没有 `title` 或 `body` 的推送是数据消息：打开的页面会收到它（`OnReceive`），但不会显示任何内容。这类推送只应在应用打开时发送：浏览器期望每条推送都显示一条通知；如果没有前台页面、也没有显示通知，Chrome 会显示一条它自己的通知（“此网站已在后台更新”），Safari 则会在几次之后取消订阅。不是 JSON 的载荷会作为正文显示。载荷最大 3993 字节。
 
-在 Go 中，`github.com/egoist/asuka/sdk/push/webpush` 负责加密、签名和发送，只依赖标准库：
+在 Go 中，`github.com/egoist/asuka/webpush` 负责加密、签名和发送，只依赖标准库：
 
 ```go
-import "github.com/egoist/asuka/sdk/push/webpush"
+import "github.com/egoist/asuka/webpush"
 
 var sender = &webpush.Sender{
 	Keys:    webpush.Keys{Public: os.Getenv("VAPID_PUBLIC_KEY"), Private: os.Getenv("VAPID_PRIVATE_KEY")},

@@ -1,4 +1,4 @@
-// Package webpush is the server's side of asuka/sdk/push on the web: it sends
+// Package webpush is the server's side of asuka/push on the web: it sends
 // a Web Push message to a browser's subscription (push.Registration's
 // Token on the web), as the app's service worker expects it, with only
 // the standard library.

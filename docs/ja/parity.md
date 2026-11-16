@@ -104,7 +104,7 @@ SwiftUI は Mac でも動きます。Expo は iOS、Android、Web で動きま�
 | 翻訳、複数形、地域のフォーマット | String Catalogs、FormatStyle | `expo-localization`、i18next | ✓ `asuka/i18n`、カタログ（[多言語対応](i18n.md)） |
 | 右から左のレイアウト | `layoutDirection` | `I18nManager` | ✓ 言語に従う、`ui.WithDirection` |
 | ローカル通知 | UserNotifications | `expo-notifications` | ✓ `asuka/sdk/notify`（即時またはスケジュール、画像。iOS、Android、macOS、Linux。Windows ではトーストで、アプリの COM アクティベーターを通じてボタンと返信に対応。Web ではアプリの Service Worker を通じて表示するので、ページを閉じたあとも残り、操作に応答する。ブラウザーは通知をスケジュールできないため、スケジュールした通知はアプリのページが開いていればその時刻に、開いていなければ次にページを開いたときに表示） |
-| プッシュ通知 | APNs | `expo-notifications` | ✓ `asuka/sdk/push`（iOS と macOS では APNs、Firebase Cloud Messaging、Web では VAPID による Web Push：トークン、受信したメッセージとタップされたメッセージ。`asuka/sdk/push/webpush` で Go のサーバーから Web Push を送信） |
+| プッシュ通知 | APNs | `expo-notifications` | ✓ `asuka/sdk/push`（iOS と macOS では APNs、Firebase Cloud Messaging、Web では VAPID による Web Push：トークン、受信したメッセージとタップされたメッセージ。`asuka/webpush` で Go のサーバーから Web Push を送信） |
 | 通知のアクション、インライン返信 | `UNNotificationCategory`、`UNTextInputNotificationAction` | `setNotificationCategoryAsync` | ✓ `notify.SetCategories`、`OnAction`（バックグラウンドのアクションはアプリの Go のコードを実行し、アプリが動いていなければ画面なしで起動する。`Response.Defer`。Android では返信を会話に投稿し直す。Web では Service Worker の通知アクションで、Chrome が対応していればインライン返信も） |
 | スレッド、表示中の通知、バッジ | `threadIdentifier`、`getDeliveredNotifications`、`setBadgeCount` | `getPresentedNotificationsAsync`、`setBadgeCountAsync` | ✓ `Thread`（Android ではサマリーを保ったグループ）、`notify.Showing`、`Remove`、`RemoveThread`、`SetBadge`（Android では通知に基づくランチャーのバッジ） |
 | フォアグラウンドでの通知 | `willPresent` | `setNotificationHandler` | ✓ `notify.Present`（バナー、バナーと音なしで通知一覧のみ、非表示） |

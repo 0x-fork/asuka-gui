@@ -524,11 +524,11 @@ been updated in the background") and Safari ends the subscription after
 a few. A payload that isn't JSON shows as the body. A payload is at most
 3993 bytes.
 
-From Go, `github.com/egoist/asuka/sdk/push/webpush` encrypts, signs and sends,
+From Go, `github.com/egoist/asuka/webpush` encrypts, signs and sends,
 with the standard library only:
 
 ```go
-import "github.com/egoist/asuka/sdk/push/webpush"
+import "github.com/egoist/asuka/webpush"
 
 var sender = &webpush.Sender{
 	Keys:    webpush.Keys{Public: os.Getenv("VAPID_PUBLIC_KEY"), Private: os.Getenv("VAPID_PRIVATE_KEY")},
