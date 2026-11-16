@@ -752,6 +752,16 @@ func (b *fb) extract(p syntax.Pattern, target *check.Var, v int, t check.Type) i
 			x = b.unbox(v, et, -1)
 		}
 		n, _ := et.(*check.Named)
+		if fields, ok := b.l.info.FieldPats[p]; ok {
+			for i, a := range p.Args {
+				if fields[i] == nil || n == nil || !containsVar(a, target, b.l.info) {
+					continue
+				}
+				r := b.getField(x, n, fields[i], -1)
+				return b.extract(a, target, r, n.Subst().Apply(fields[i].Type))
+			}
+			return v
+		}
 		for i, a := range p.Args {
 			if !containsVar(a, target, b.l.info) {
 				continue

@@ -325,6 +325,24 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 		}
 		b.f.Place(ok)
 	case *syntax.CasePat:
+		if fields, ok := b.l.info.FieldPats[p]; ok {
+			// A struct's: each field it names.
+			x := v
+			et := check.Unopt(t)
+			if check.IsOptional(t) {
+				b.emitJump(op("JNONE"), v, fail)
+				x = b.unbox(v, et, -1)
+			}
+			n, _ := et.(*check.Named)
+			for i, a := range p.Args {
+				if fields[i] == nil || n == nil || isIrrefutable(a) {
+					continue
+				}
+				r := b.getField(x, n, fields[i], -1)
+				b.testPattern(a, r, n.Subst().Apply(fields[i].Type), fail)
+			}
+			return
+		}
 		k := b.l.info.Cases[p]
 		if k == nil {
 			return
@@ -423,16 +441,26 @@ func (b *fb) bindPattern(p syntax.Pattern, v int, t check.Type) {
 			b.bindPattern(e, r, tt.Elems[i])
 		}
 	case *syntax.CasePat:
-		k := b.l.info.Cases[p]
-		if k == nil {
-			return
-		}
 		x := v
 		et := check.Unopt(t)
 		if check.IsOptional(t) && hasBinding(p) {
 			x = b.unbox(v, et, -1)
 		}
 		n, _ := et.(*check.Named)
+		if fields, ok := b.l.info.FieldPats[p]; ok {
+			for i, a := range p.Args {
+				if fields[i] == nil || n == nil || !hasBinding(a) {
+					continue
+				}
+				r := b.getField(x, n, fields[i], -1)
+				b.bindPattern(a, r, n.Subst().Apply(fields[i].Type))
+			}
+			return
+		}
+		k := b.l.info.Cases[p]
+		if k == nil {
+			return
+		}
 		for i, a := range p.Args {
 			if !hasBinding(a) {
 				continue

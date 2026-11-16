@@ -743,8 +743,14 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		v := c.declareVar(p.Name, t, false)
 		v.Kind = kind
 	case *syntax.LitPat:
-		lt := c.expr(p.Value, t)
-		if !IsInvalid(lt) && !IsInvalid(t) && !c.convert(p.Value, lt, t) && !(lt == NoneType && IsOptional(t)) {
+		// A literal is compared with an optional's value, once it isn't
+		// none: it's of the value's type (not converted to the optional).
+		et := t
+		if _, none := p.Value.(*syntax.NoneLit); !none {
+			et = Unopt(t)
+		}
+		lt := c.expr(p.Value, et)
+		if !IsInvalid(lt) && !IsInvalid(t) && !c.convert(p.Value, lt, et) && !(lt == NoneType && IsOptional(t)) {
 			c.errorf(p, "a %s can't be a %s", typeString(t), typeString(lt))
 		}
 	case *syntax.TuplePat:
@@ -770,6 +776,10 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			}
 		}
 	case *syntax.CasePat:
+		if st := c.patternStruct(p); st != nil {
+			c.structPattern(p, st, t)
+			return
+		}
 		et := Unopt(t)
 		var tn *TypeName
 		if p.Implicit {
@@ -820,6 +830,16 @@ func (c *Checker) caseArgs(p *syntax.CasePat, k *Case, t Type) {
 		c.errorf(p, "case %s has %s", k.Name, plural(len(k.Params), "payload value", "payload values"))
 		return
 	}
+	for i := range p.Args {
+		// A label names the payload's: positions still say which.
+		if l := p.Label(i); l != nil && l.Name != k.Labels[i] {
+			if k.Labels[i] == "" {
+				c.errorf(l, "case %s's payload %d has no label: leave it out", k.Name, i+1)
+			} else {
+				c.errorf(l, "case %s's payload %d is %s, not %s", k.Name, i+1, k.Labels[i], l.Name)
+			}
+		}
+	}
 	var s Subst
 	if n, ok := t.(*Named); ok {
 		s = n.Subst()
@@ -851,89 +871,6 @@ func irrefutable(p syntax.Pattern) bool {
 		return true
 	}
 	return false
-}
-
-// exhaustive reports whether arms cover every value of t, and what they
-// miss.
-func (c *Checker) exhaustive(t Type, arms []*syntax.MatchArm) (bool, []string) {
-	covered := map[string]bool{}
-	none := false
-	var add func(p syntax.Pattern) bool
-	add = func(p syntax.Pattern) bool {
-		switch p := p.(type) {
-		case *syntax.WildcardPat, *syntax.BindPat:
-			return true
-		case *syntax.TuplePat:
-			return irrefutable(p)
-		case *syntax.OrPat:
-			for _, a := range p.Alts {
-				if add(a) {
-					return true
-				}
-			}
-		case *syntax.CasePat:
-			all := true
-			for _, a := range p.Args {
-				if !irrefutable(a) {
-					all = false
-				}
-			}
-			if all {
-				covered[p.Path[len(p.Path)-1].Name] = true
-			}
-		case *syntax.LitPat:
-			switch v := p.Value.(type) {
-			case *syntax.BoolLit:
-				covered[strconvBool(v.Value)] = true
-			case *syntax.NoneLit:
-				none = true
-			}
-		}
-		return false
-	}
-	for _, a := range arms {
-		if a.Guard != nil {
-			continue
-		}
-		if add(a.Pattern) {
-			return true, nil
-		}
-	}
-	if IsInvalid(t) {
-		return true, nil
-	}
-	var missing []string
-	if IsOptional(t) && !none {
-		missing = append(missing, "none")
-	}
-	switch u := Unopt(t).(type) {
-	case *Named:
-		if u.Obj.Kind == EnumType {
-			for _, k := range u.Obj.Cases {
-				if !covered[k.Name] {
-					missing = append(missing, "."+k.Name)
-				}
-			}
-			return len(missing) == 0, missing
-		}
-	case *Basic:
-		if u == Bool {
-			for _, b := range []string{"true", "false"} {
-				if !covered[b] {
-					missing = append(missing, b)
-				}
-			}
-			return len(missing) == 0, missing
-		}
-	}
-	return false, append(missing, "the rest")
-}
-
-func strconvBool(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }
 
 func (c *Checker) matchStmt(s *syntax.MatchStmt) {

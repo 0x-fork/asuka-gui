@@ -390,7 +390,10 @@ func Walk(v Visitor, n Node) {
 		walk(n.Value)
 	case *CasePat:
 		walkIdents(v, n.Path)
-		for _, a := range n.Args {
+		for i, a := range n.Args {
+			if l := n.Label(i); l != nil {
+				walk(l)
+			}
 			walk(a)
 		}
 	case *TuplePat:

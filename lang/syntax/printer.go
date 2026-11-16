@@ -1277,6 +1277,9 @@ func (p *printer) pattern(pt Pattern) {
 				if i > 0 {
 					p.write(", ")
 				}
+				if l := pt.Label(i); l != nil {
+					p.write(l.Name + ": ")
+				}
 				p.pattern(a)
 			}
 			p.write(")")

@@ -474,6 +474,20 @@ func (fc *fileCtx) resolve(path []syntax.Node) *ref {
 			}
 		}
 	case *syntax.CasePat:
+		// A label: a struct pattern's field, a case's payload's.
+		for i := range p.Args {
+			if p.Label(i) != id {
+				continue
+			}
+			if fields := info.FieldPats[p]; i < len(fields) && fields[i] != nil {
+				tn, _ := info.Uses[p.Path[len(p.Path)-1]].(*check.TypeName)
+				return fieldRef(fields[i], tn)
+			}
+			if k := info.Cases[p]; k != nil {
+				return caseRef(k)
+			}
+			return nil
+		}
 		if len(p.Path) > 0 && p.Path[len(p.Path)-1] == id {
 			if k := info.Cases[p]; k != nil {
 				return caseRef(k)

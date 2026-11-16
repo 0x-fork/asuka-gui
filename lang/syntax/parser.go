@@ -110,6 +110,10 @@ package syntax
 //  20. Shifts. << is a token; >> is two > tokens side by side (and >>=
 //      a > and a >= side by side), so a type's Kept<Box<int>> needs no
 //      space: a > b > c isn't a shift (and comparisons don't chain).
+//  21. Struct patterns. A pattern of a name and parentheses, P(…), is a
+//      case pattern whose path is P: the checker says it's a struct's
+//      when P names one. Its arguments may be labeled (P(x: 0, y)), as
+//      a case's payload's may (.server(code: c)).
 //
 // The scanner documents how newlines end items (Scanner) and how a %
 // after a number reads (50% is a length, 10%3 a remainder).
@@ -2629,7 +2633,20 @@ func (p *parser) caseArgs(c *CasePat) {
 	p.next()
 	c.Args = []Pattern{}
 	for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
+		if p.isName() && p.peek(1) == COLON {
+			// A label: a struct's field (P(x: 0, y)), a case's payload's.
+			for len(c.Labels) < len(c.Args) {
+				c.Labels = append(c.Labels, nil)
+			}
+			c.Labels = append(c.Labels, p.name())
+			p.next()
+		}
 		c.Args = append(c.Args, p.parsePattern())
+		if len(c.Labels) > 0 {
+			for len(c.Labels) < len(c.Args) {
+				c.Labels = append(c.Labels, nil)
+			}
+		}
 		if !p.got(COMMA) {
 			break
 		}

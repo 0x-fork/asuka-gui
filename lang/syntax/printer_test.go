@@ -116,6 +116,7 @@ func TestFormatCases(t *testing.T) {
 		{"let f = ( a , b ) => a", "let f = (a, b) => a\n"},
 		{"let t = try  await f()", "let t = try await f()\n"},
 		{"let n = ! a", "let n = !a\n"},
+		{"fn f() { match p { Point( x :0 ,y )=>1 } }", "fn f() { match p { Point(x: 0, y) => 1 } }\n"},
 		{"fn f<T:Shape&Hashable,U : ui.View>(x: T) {}", "fn f<T: Shape & Hashable, U: ui.View>(x: T) {}\n"},
 		{"let n = ~ a&b|c^d<<1>>2", "let n = ~a & b | c ^ d << 1 >> 2\n"},
 		{"let n = (a + b) << (c & d)", "let n = (a + b) << (c & d)\n"},

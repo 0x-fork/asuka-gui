@@ -459,6 +459,11 @@ func TestParsePatterns(t *testing.T) {
 		{"HttpError.notFound", "*syntax.CasePat"},
 		{"(a, (b, _))", "*syntax.TuplePat"},
 		{".a | .b | .c(x)", "*syntax.OrPat"},
+		{"Point(x: 0, y)", "*syntax.CasePat"},
+		{"Line(from: Point(x: 0), to: p, dashed: true)", "*syntax.CasePat"},
+		{"geo.Point(x: _)", "*syntax.CasePat"},
+		{".server(code: c, retry)", "*syntax.CasePat"},
+		{"Point()", "*syntax.CasePat"},
 	}
 	for _, tt := range tests {
 		f := parseOK(t, "fn f() {\nmatch v {\n"+tt.src+" => 1\n}\n}")
