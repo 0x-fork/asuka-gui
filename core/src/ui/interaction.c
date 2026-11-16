@@ -568,6 +568,11 @@ void ak_ix_container_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev)
 	else if (key == ak_ext_key(e, AK_KEY_VIEW_DROP_TYPES)) set_drop_types(e, v.p);
 	else if (key == ak_ext_key(e, AK_KEY_VIEW_SWIPE_ACTIONS) || key == ak_ext_key(e, AK_KEY_VIEW_LEADING_SWIPE_ACTIONS) || key == ak_ext_key(e, AK_KEY_VIEW_SELECTED))
 		ak_list_row_keys(e);  // a List's row's own (list.c)
+	else if (key == ak_ext_key(e, AK_KEY_VIEW_HREF) && v.p && ((ak_str *)v.p)->len) {
+		// A link: pressable, the router goes there (container_event).
+		if (!e->real) ak_view_make_real(e);
+		ak_view_listen(e, AK_EVENT_PRESS);
+	}
 }
 
 static const ak_arr *container_arr(const ak_view *e, uint16_t view_key) {

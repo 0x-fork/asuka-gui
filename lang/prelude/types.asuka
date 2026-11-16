@@ -560,6 +560,8 @@ struct Params {
   query: [string: string] = [:]
 
   fn get(name: string) -> string = path[name] ?? query[name] ?? ""
+  /// A parameter as a whole number: none when it isn't one, or isn't there.
+  fn int(name: string) -> int? = get(name).toInt()
 }
 
 /// What a routed screen throws, to the nearest Boundary, when its

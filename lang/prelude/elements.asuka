@@ -103,6 +103,8 @@ native component View() {
   prop leadingSwipeActions: [Action]
   /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
   prop selected: bool
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link
+  prop href: string
   /// a tap on it
   event press
   /// a press held on it
@@ -150,6 +152,8 @@ native component Row() {
   prop leadingSwipeActions: [Action]
   /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
   prop selected: bool
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link
+  prop href: string
   /// a tap on it
   event press
   /// a press held on it
@@ -197,6 +201,8 @@ native component Column() {
   prop leadingSwipeActions: [Action]
   /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
   prop selected: bool
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link
+  prop href: string
   /// a tap on it
   event press
   /// a press held on it
@@ -244,6 +250,8 @@ native component SafeArea() {
   prop leadingSwipeActions: [Action]
   /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
   prop selected: bool
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link
+  prop href: string
   /// a tap on it
   event press
   /// a press held on it

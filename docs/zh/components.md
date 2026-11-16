@@ -912,6 +912,7 @@ component Person {
 - 手势，使用平台的手势识别器：`on pan(g)`、`on pinch(g)`、`on rotate(g)`（各自收到一个 `Gesture`）和 `on swipe(direction)`。参见[动效](motion.md)。
 - 交互状态。视图自己的样式通过样式变体（`pressed { … }`、`hovered { … }`、`dragging { … }`、`dragOver { … }`）响应这些状态；其他视图则通过它的 `Ref`（`card.hovered`、`card.pressed`）跟随。副作用放在 `on pressedChange` 和 `on hoverChange` 里。拖放：`dragItems` 和 `dropTypes`，以及 `on drop(d)`。参见[动效](motion.md#按下与悬停状态)。
 - `on layout(frame)`：视图布局完成后，以及之后每次位置或尺寸变化时，都会以视图的 `Frame` 运行它。
+- `href`：按下时前往的路由（这样它就是一个链接：再加上 `role: .link`）。参见[路由](navigation.md#路由)。
 - 无障碍：`label`、`hint`、`role`、`a11yHidden`、`actions` 和 `on adjust(by)`。参见[无障碍](accessibility.md)。
 
 ### Scroll

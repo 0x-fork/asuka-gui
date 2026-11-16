@@ -37,3 +37,39 @@ test "router" {
 }
 
 app { Mail() }
+
+test "a route's parameters as numbers; not in asuka dev" {
+  let p = Params(path: ["id": "7"], query: ["n": "x"])
+  expect(p.int("id") == 7 && p.int("n") == none && p.int("z") == none)
+  expect(!devPlayer())
+}
+
+component Links {
+  Router(initial: "/a") {
+    Route("/a", layout: .stack) {
+      Route("") { _ => First() }
+      Route("b") { _ => Second() }
+    }
+  }
+}
+
+screen First {
+  title: "First"
+  Row {
+    href: "/a/b"
+    role: .link
+    Text("To the second")
+  }
+}
+
+screen Second {
+  title: "Second"
+  Text("the second")
+}
+
+test "a view with an href is a link" {
+  let app = mount(Links())
+  app.tap("To the second")
+  app.expect("the second")
+  expect(app.href == "/a/b")
+}

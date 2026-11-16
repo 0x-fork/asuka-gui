@@ -1282,6 +1282,8 @@ A `View`, `Row`, `Column` or `SafeArea` takes:
   [Motion](motion.md#pressed-and-hover-states).
 - `on layout(frame)`, run with the view's `Frame` once it's laid out
   and each time that changes.
+- `href`, a route it goes to when it's pressed (a link: give it `role:
+  .link` too). See [Routes](navigation.md#routes).
 - Accessibility: `label`, `hint`, `role`, `a11yHidden`, `actions` and
   `on adjust(by)`. See [Accessibility](accessibility.md).
 

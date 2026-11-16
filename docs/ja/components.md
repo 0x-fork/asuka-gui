@@ -898,6 +898,7 @@ component Person {
 - プラットフォームのジェスチャー認識を使うジェスチャー：`on pan(g)`、`on pinch(g)`、`on rotate(g)`（それぞれ `Gesture` を受け取ります）と `on swipe(direction)`。[モーション](motion.md) を参照してください。
 - インタラクションの状態。ビュー自身のスタイルは、バリアント（`pressed { … }`、`hovered { … }`、`dragging { … }`、`dragOver { … }`）でこれに追従します。ほかのビューは、その `Ref`（`card.hovered`、`card.pressed`）で追従します。副作用は `on pressedChange` と `on hoverChange` に書きます。ドラッグ＆ドロップは `dragItems` と `dropTypes`、そして `on drop(d)` です。[モーション](motion.md#押下とホバーの状態) を参照してください。
 - `on layout(frame)`。レイアウトが決まったときと、その後フレームが変わるたびに、ビューの `Frame` を受け取って実行されます。
+- `href`。押されたときに移動するルートです（リンクなので、`role: .link` も付けてください）。[ルート](navigation.md#ルート) を参照してください。
 - アクセシビリティ：`label`、`hint`、`role`、`a11yHidden`、`actions`、`on adjust(by)`。[アクセシビリティ](accessibility.md) を参照してください。
 
 ### Scroll

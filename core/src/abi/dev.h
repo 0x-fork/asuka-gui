@@ -47,4 +47,9 @@ bool ak_dev_listen(int port, const char *hello, bool capture, char *err, size_t 
 void ak_dev_send(uint8_t kind, const void *p, size_t len);
 bool ak_dev_connected(void);
 
+// ak_dev_player is whether this run is asuka dev's player: it connected
+// to the CLI, listens for it, or loads the modules a dev reload brings
+// (the web's page).
+bool ak_dev_player(void);
+
 #endif

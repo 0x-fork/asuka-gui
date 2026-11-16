@@ -513,7 +513,7 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 	case check.BAll, check.BRace:
 		return b.allRace(e, call, dst)
 	case check.BWithTimeout:
-		return b.withTimeout(e, call)
+		return b.withTimeout(e, call, dst)
 	case check.BLive:
 		ft := b.typ(call.Result).(*check.FuncType)
 		init := b.valueReg(b.value(call.Args[0], -1), b.l.kind(ft.Result))
@@ -1074,7 +1074,7 @@ func (b *fb) spawn(e *syntax.SpawnExpr, dst int) int {
 }
 
 // withTimeout(d) { body } races the body against a timer that throws.
-func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call) int {
+func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call, dst int) int {
 	if len(call.Args) < 2 {
 		return -1
 	}
@@ -1102,6 +1102,12 @@ func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call) int {
 	b.emit(op("NEWA"), arr, int(bc.KRef), bc.None, blk, 2)
 	b.releaseRegs(blk, ks)
 	f := b.callB("async.race", bc.KRef, arr)
+	// Its value is the block's, which wins the race (the timer throws).
+	if k := b.l.kind(b.typ(call.Result)); k != bc.KVoid {
+		r := b.out(dst, k)
+		b.emit(op("AWAIT"), r, f)
+		return r
+	}
 	w := b.temp(bc.KRef)
 	b.emit(op("AWAIT"), w, f)
 	return -1

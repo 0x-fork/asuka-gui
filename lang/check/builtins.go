@@ -272,11 +272,26 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		} else {
 			lam := &syntax.LambdaExpr{Span: e.Block.Span, Body: e.Block}
 			c.info.Trailing[e] = lam
-			c.expr(lam, &FuncType{Result: Void, Async: true, Throws: true})
+			// Its value is the block's: what's expected of it, else what
+			// the block returns.
+			var wf *FuncType
+			if want != nil && !IsInvalid(want) && want != Void {
+				wf = &FuncType{Result: want, Async: true, Throws: true}
+			}
+			res := Type(Void)
+			if t, ok := c.expr(lam, wf).(*FuncType); ok {
+				t.Async, t.Throws = true, true // it runs as a task
+				if t.Result != nil {
+					res = t.Result
+				}
+			}
+			call.Result = res
 			args = append(args, lam)
 		}
 		call.Args = args
-		call.Result = Void
+		if call.Result == nil {
+			call.Result = Void
+		}
 		c.callEffects(e, "withTimeout", true, true)
 	case BLive:
 		args := positional(2, "a value and a stream: live(initial, () => changes())")

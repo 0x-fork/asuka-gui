@@ -112,8 +112,13 @@ static uint16_t container_ev(const ak_view *e, int which) {
 }
 
 static void container_event(ak_view *e, const ak_event *ev) {
-	if (ev->kind == AK_EVENT_PRESS) call0(e, container_ev(e, 0));
-	else if (ev->kind == AK_EVENT_LONG_PRESS) call0(e, container_ev(e, 1));
+	if (ev->kind == AK_EVENT_PRESS) {
+		call0(e, container_ev(e, 0));
+		const ak_val *href = ak_style_get(e, ak_ext_key(e, AK_KEY_VIEW_HREF));
+		if (href && href->p && ((ak_str *)href->p)->len && !e->dead) ak_router_href(e, href->p);
+	} else if (ev->kind == AK_EVENT_LONG_PRESS) {
+		call0(e, container_ev(e, 1));
+	}
 }
 
 static void row_init(ak_view *e) { ak_style_set(e, AK_KEY_DIRECTION, (ak_val){.i = 1}); }

@@ -170,6 +170,7 @@ var containerKeys = []Key{
 	{Name: "swipeActions", Type: "[Action]", Doc: "a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view"},
 	{Name: "leadingSwipeActions", Type: "[Action]", Doc: "a List's row's actions revealed from its leading edge (Mail's Unread)"},
 	{Name: "selected", Type: "bool", Doc: "a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)"},
+	{Name: "href", Type: "string", Doc: "goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link"},
 }
 
 // containerEvents are what View, Row, Column and SafeArea report: a

@@ -287,6 +287,10 @@ int asuka_has_app(void) { return app_loader() != NULL; }
 
 // ---- asuka dev ----
 
+static bool dev_player;  // asuka dev runs the app here (ak_dev_player)
+
+bool ak_dev_player(void) { return dev_player; }
+
 static void reload(const uint8_t *p, size_t n) {
 	int64_t t0 = ak_now_ns();
 	char *err = NULL;
@@ -310,6 +314,7 @@ static void keep_states(void) {
 
 int asuka_dev_reload(const uint8_t *p, size_t n, uint32_t *micros, char **err) {
 	if (err) *err = NULL;
+	dev_player = true;
 	keep_states();
 	int64_t t0 = ak_now_ns();
 	if (asuka_load(p, n, err) != 0) return -1;
@@ -325,6 +330,7 @@ int asuka_dev_connect(const char *host_name, int port, const char *hello, char *
 	}
 	keep_states();
 	ak_dev_set_reload(reload);
+	dev_player = true;
 	char msg[256];
 	if (!ak_dev_connect(host_name, port, hello, true, msg, sizeof msg)) {
 		fail(err, msg);
@@ -341,6 +347,7 @@ int asuka_dev_listen(int port, const char *hello, char **err) {
 	}
 	keep_states();
 	ak_dev_set_reload(reload);
+	dev_player = true;
 	char msg[256];
 	if (!ak_dev_listen(port, hello, true, msg, sizeof msg)) {
 		fail(err, msg);
