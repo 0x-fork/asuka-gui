@@ -97,6 +97,11 @@ void *asuka_win_handler(void (*fn)(void *ctx, void *a, void *b), void *ctx, void
 // thread.
 void asuka_win_webview2(void (*done)(void *ctx, void *env, HRESULT hr), void *ctx);
 
+// asuka_win_webview2_at makes a WebView2 environment of its own, its
+// data in folder (an ephemeral profile's): done gets it (a reference the
+// caller releases) on the main thread. Main thread.
+void asuka_win_webview2_at(const wchar_t *folder, void (*done)(void *ctx, void *env, HRESULT hr), void *ctx);
+
 // A web page that's never shown: markup in a WebView2, in a hidden window
 // of its own, a Letter page wide.
 typedef struct asuka_web_page asuka_web_page;

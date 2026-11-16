@@ -183,7 +183,28 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(glib, const gchar *, g_get_real_name, (void))                                                             \
 	X(glib, const gchar *, g_get_host_name, (void))                                                             \
 	X(gobject, gpointer, g_object_ref, (gpointer o))                                                            \
-	X(gobject, gpointer, g_object_ref_sink, (gpointer o))                                                            \
+	X(gobject, gpointer, g_object_ref_sink, (gpointer o))                                                       \
+	X(gobject, gpointer, g_object_new, (GType t, const gchar *first, ...))                                      \
+	X(glib, const gchar *, g_dgettext, (const gchar *domain, const gchar *msgid))                               \
+	X(gtk, GtkWidget *, gtk_button_new_with_mnemonic, (const char *label))                                      \
+	X(gtk, void, gtk_widget_set_vexpand, (GtkWidget * w, gboolean e))                                           \
+	X(adw, GtkWidget *, adw_dialog_new, (void))                                                                 \
+	X(adw, void, adw_dialog_set_content_width, (GtkWidget * d, int w))                                          \
+	X(adw, void, adw_dialog_set_content_height, (GtkWidget * d, int h))                                         \
+	X(adw, void, adw_dialog_set_child, (GtkWidget * d, GtkWidget *c))                                           \
+	X(adw, void, adw_dialog_present, (GtkWidget * d, GtkWidget *parent))                                        \
+	X(adw, gboolean, adw_dialog_force_close, (GtkWidget * d))                                                   \
+	X(adw, GtkWidget *, adw_toolbar_view_new, (void))                                                           \
+	X(adw, void, adw_toolbar_view_add_top_bar, (GtkWidget * v, GtkWidget *bar))                                 \
+	X(adw, void, adw_toolbar_view_set_content, (GtkWidget * v, GtkWidget *c))                                  \
+	X(adw, GtkWidget *, adw_header_bar_new, (void))                                                             \
+	X(adw, void, adw_header_bar_set_show_start_title_buttons, (GtkWidget * b, gboolean s))                      \
+	X(adw, void, adw_header_bar_set_show_end_title_buttons, (GtkWidget * b, gboolean s))                        \
+	X(adw, void, adw_header_bar_pack_start, (GtkWidget * b, GtkWidget *c))                                      \
+	X(adw, void, adw_header_bar_set_title_widget, (GtkWidget * b, GtkWidget *c))                                \
+	X(adw, GtkWidget *, adw_window_title_new, (const char *title, const char *subtitle))                        \
+	X(adw, void, adw_window_title_set_title, (GtkWidget * t, const char *s))                                    \
+	X(adw, void, adw_window_title_set_subtitle, (GtkWidget * t, const char *s))                                                            \
 	X(gobject, void, g_object_unref, (gpointer o))                                                              \
 	X(gobject, void, g_object_get, (gpointer o, const gchar *first, ...))                                       \
 	X(gobject, void, g_object_set, (gpointer o, const gchar *first, ...))                                       \

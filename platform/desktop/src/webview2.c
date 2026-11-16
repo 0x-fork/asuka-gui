@@ -89,6 +89,45 @@ static void made(void *ctx, void *a, void *b) {
 	free(w);
 }
 
+// create makes an environment of data's, answering through handler h's
+// Invoke(hr, env): false (with *hr) when the runtime isn't there.
+static bool create(const wchar_t *data, void *h, HRESULT *hr) {
+	wchar_t *dll = runtime_dll();
+	HMODULE m = dll ? LoadLibraryW(dll) : NULL;
+	free(dll);
+	HRESULT(STDMETHODCALLTYPE * make)(int, int, const wchar_t *, void *, void *) = NULL;
+	if (m) *(FARPROC *)&make = GetProcAddress(m, "CreateWebViewEnvironmentWithOptionsInternal");
+	if (!make) {
+		*hr = HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+		return false;
+	}
+	*hr = make(1, 0, data, NULL, h);
+	return SUCCEEDED(*hr);
+}
+
+typedef struct {
+	env_done fn;
+	void *ctx;
+} own_env;
+
+static void own_made(void *ctx, void *a, void *b) {
+	own_env *o = ctx;
+	HRESULT hr = (HRESULT)(INT_PTR)a;
+	if (SUCCEEDED(hr) && b) ASUKA_SLOT(b, 1, ULONG(STDMETHODCALLTYPE *)(void *))(b);  // the caller's
+	o->fn(o->ctx, SUCCEEDED(hr) ? b : NULL, SUCCEEDED(hr) && b ? S_OK : FAILED(hr) ? hr : E_FAIL);
+	o->fn = NULL;
+}
+
+void asuka_win_webview2_at(const wchar_t *folder, void (*done)(void *ctx, void *env, HRESULT hr), void *ctx) {
+	own_env *o = malloc(sizeof *o);
+	*o = (own_env){done, ctx};
+	void *h = asuka_win_handler(own_made, o, free);
+	HRESULT hr;
+	bool started = create(folder, h, &hr);
+	if (!started && o->fn) done(ctx, NULL, hr);
+	asuka_com_release(h);
+}
+
 void asuka_win_webview2(void (*done)(void *ctx, void *env, HRESULT hr), void *ctx) {
 	if (web.made) {
 		done(ctx, web.env, web.hr);
@@ -100,15 +139,6 @@ void asuka_win_webview2(void (*done)(void *ctx, void *env, HRESULT hr), void *ct
 	web.started = true;
 	// Videos play without a click, as a WebView's autoPlay asks.
 	SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", L"--autoplay-policy=no-user-gesture-required");
-	wchar_t *dll = runtime_dll();
-	HMODULE m = dll ? LoadLibraryW(dll) : NULL;
-	free(dll);
-	HRESULT(STDMETHODCALLTYPE * create)(int, int, const wchar_t *, void *, void *) = NULL;
-	if (m) *(FARPROC *)&create = GetProcAddress(m, "CreateWebViewEnvironmentWithOptionsInternal");
-	if (!create) {
-		made(NULL, (void *)(INT_PTR)HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), NULL);
-		return;
-	}
 	wchar_t local[MAX_PATH];
 	if (!GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH)) wcscpy(local, L".");
 	wchar_t *app = asuka_wide(asuka_desktop_app_name());
@@ -119,9 +149,9 @@ void asuka_win_webview2(void (*done)(void *ctx, void *env, HRESULT hr), void *ct
 	CreateDirectoryW(data, NULL);
 	free(app);
 	void *h = asuka_win_handler(made, NULL, NULL);
-	HRESULT hr = create(1, 0, data, NULL, h);
+	HRESULT hr;
+	if (!create(data, h, &hr) && !web.made) made(NULL, (void *)(INT_PTR)hr, NULL);
 	asuka_com_release(h);
-	if (FAILED(hr) && !web.made) made(NULL, (void *)(INT_PTR)hr, NULL);
 }
 
 struct asuka_web_page {

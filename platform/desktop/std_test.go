@@ -36,6 +36,8 @@ func TestStdLinux(t *testing.T) {
 			fmt.Fprintf(w, "hello %s %s", r.Method, r.Header.Get("X-Who"))
 		case "/moved":
 			http.Redirect(w, r, "/hello", http.StatusFound)
+		case "/signin":
+			fmt.Fprint(w, `<!doctype html><title>Sign in</title><script>setTimeout(() => location.href = "myapp://done?code=42", 50)</script>`)
 		case "/echo":
 			b := make([]byte, r.ContentLength)
 			r.Body.Read(b)
@@ -249,6 +251,25 @@ component Probe {
 
 app { Probe() }
 `, []string{`host: js 3 {"x":[1,"two"]}`, "host: threw Error: nope", "host: late", "host: done"}},
+		{"webauth", `import asuka/webauth
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let back = try await webauth.open("` + srv.URL + `/signin", callbackScheme: "myapp", ephemeral: true)
+      step = "signed in {back}"
+      await sleep(1ms)
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: signed in myapp://done?code=42", "host: done"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()

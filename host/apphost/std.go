@@ -22,5 +22,4 @@ import (
 	_ "github.com/egoist/asuka/std/speech/desktop"
 	_ "github.com/egoist/asuka/std/svg/desktop"
 	_ "github.com/egoist/asuka/std/vision/desktop"
-	_ "github.com/egoist/asuka/std/webauth/desktop"
 )
