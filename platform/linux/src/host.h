@@ -710,7 +710,7 @@ const char *lx_data_dir(void);
 const char *lx_config_dir(void);
 const char *lx_cache_dir(void);
 const char *lx_logs_dir(void);
-// lx_dirs_init finds the app's directories (internal/appdir's rules):
+// lx_dirs_init finds the app's directories (desktop.h's dsk_dirs):
 // its data in $XDG_DATA_HOME/<id> (Flatpak's own), ASUKA_DATA set to it
 // for what reads it, before anything does.
 void lx_dirs_init(const char *argv0);

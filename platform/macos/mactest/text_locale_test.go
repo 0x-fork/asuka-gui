@@ -14,11 +14,11 @@ import (
 	"testing"
 )
 
-// The tests of languages and direction (host/darwin's locale_test.go): the
-// foundation's Locale.swift, and what reads a way in the list and text
-// parts. An app reads right to left from its launch with ASUKA_DIRECTION
-// (AppKit too: asuka dev --dir rtl), or changes language as it runs
-// (i18n.setLocale, AppKit's direction staying as it launched).
+// The tests of languages and direction: the foundation's Locale.swift,
+// and what reads a way in the list and text parts. An app reads right to
+// left from its launch with ASUKA_DIRECTION (AppKit too: asuka dev --dir
+// rtl), or changes language as it runs (i18n.setLocale, AppKit's
+// direction staying as it launched).
 
 const localePlayerID = "dev.asuka.mactest.locale"
 

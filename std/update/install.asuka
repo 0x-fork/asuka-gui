@@ -3,8 +3,8 @@
 // download's signature checked, an archive unpacked or a delta applied
 // (the core's update.* builtins, in spawn), the new version's tree
 // staged in the install's work directory, and handed to the host to put
-// in place (the Go sdk/update's desktop.go and internal/update's
-// install.go and files.go at bf1839e2, ported).
+// in place (ported from the Go updater at commit bf1839e2: its desktop
+// part, and internal/update's install.go and files.go).
 
 import asuka/platform
 import asuka/json

@@ -174,19 +174,18 @@ test "a region, crossed" {
   `asuka_desktop_local_file`, the system window, WIC's images).
 
 Once a module is a std package, remove the host's old byte-protocol
-module for it (`modules["<name>"]` in each host and its code) and the
-sdk/<name> Go package.
+module for it (`modules["<name>"]` in each host and its code).
 
 ### Over a host's module
 
 What a host already does for its apps through a module of its own
 (notifications, pushes, iCloud, the photo library...: platform/ios's
 AsukaHost, platform/android's dev.asuka, platform/web's modules,
-platform/macos's AsukaHost, host/windows, host/linux) a package reaches through
+platform/macos's AsukaHost, platform/windows, platform/linux) a package reaches through
 `asuka/platform`, as above, with no platform code of its own: it calls
 the module's methods by name (`platform.call`, `platform.send`,
 `platform.next` for a "next" method's stream), with the bytes
-sdk/<name> sent (mostly JSON, `platform.u32` and the like for the
+the module reads (mostly JSON, `platform.u32` and the like for the
 rest), types the answers in Asuka, and answers a host without the
 module (`platform.unsupported(e)`) as unsupported or with a fallback.
 std/notify, push, icloud, library, photos, contacts, calendar, compose,
@@ -196,7 +195,8 @@ at a time, without changing the package's API.
 
 A package whose work the runtime does is plain Asuka with `native fn`s
 in C: std/sqlite (core/src/sqlite) calls the sqlite plugin's library,
-which std/sqlite's asuka-plugin.toml (sdk/sqlite's, copied) ships with
+which std/sqlite's asuka-plugin.toml (its csrc, built by its
+internal/build) ships with
 the apps that import it (on the web, the page's SQLite worker runs it);
 std/crash reads the core's record of the runs (core/src/std/crash.c)
 where no host keeps its own (iOS, Android, the web).

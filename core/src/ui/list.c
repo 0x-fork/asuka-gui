@@ -1,4 +1,4 @@
-// list.c: List (ui/list.go): a for backed by the platform's recycling
+// list.c: List: a for backed by the platform's recycling
 // list (UICollectionView, RecyclerView). Rows are made only for the
 // cells on screen, when the host binds them (ListBind, from its data
 // source, on the main thread); a recycled cell rebinds its row to another

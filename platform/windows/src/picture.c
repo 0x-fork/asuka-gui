@@ -1,14 +1,13 @@
-// picture.c: pictures (host/windows' picture.go, opacity.go): what a
-// child window can't be, a view of the host's (a picture, above the view
-// in its parent, taking no clicks) draws: a rotated view, turned about its
-// center, and a view with child windows at an opacity between 0 and 1,
-// faded as a whole (child windows can't be translucent: a layered child
-// window's own children aren't painted). The picture draws what's behind
-// it, then the view's tree as it paints, turned or blended. A rotated
-// view's own window is shaped to nothing meanwhile, so neither it nor
-// what's in it shows or takes clicks: a turned view is drawn, not used. A
-// faded one stays, under its picture, and takes clicks. What's in it
-// painting, or moving, draws the picture again.
+// picture.c: pictures: what a child window can't be, a view of the host's
+// (a picture, above the view in its parent, taking no clicks) draws: a
+// rotated view, turned about its center, and a view with child windows at
+// an opacity between 0 and 1, faded as a whole (child windows can't be
+// translucent: a layered child window's own children aren't painted). The
+// picture draws what's behind it, then the view's tree as it paints, turned
+// or blended. A rotated view's own window is shaped to nothing meanwhile,
+// so neither it nor what's in it shows or takes clicks: a turned view is
+// drawn, not used. A faded one stays, under its picture, and takes clicks.
+// What's in it painting, or moving, draws the picture again.
 #include "host.h"
 #include "parts.h"
 #include "draw.h"

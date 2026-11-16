@@ -1,11 +1,11 @@
-// hotkey.c: asuka/hotkey on Windows (host/windows' hotkey.go):
-// RegisterHotKey with a message window of the modules', which gets
-// WM_HOTKEY for a press whichever app has the keyboard. It fails while
-// another app has the keys ("taken"); MOD_NOREPEAT keeps a key held down
-// from pressing it again. The press gives the app the right to take the
-// foreground, so OnPress can bring its window up. Primary and Control are
-// both Ctrl; a character is the key that types it on the keyboard's
-// layout (with Shift if it takes it), as the menu bar's accelerators are.
+// hotkey.c: asuka/hotkey on Windows: RegisterHotKey with a message window
+// of the modules', which gets WM_HOTKEY for a press whichever app has the
+// keyboard. It fails while another app has the keys ("taken"); MOD_NOREPEAT
+// keeps a key held down from pressing it again. The press gives the app the
+// right to take the foreground, so OnPress can bring its window up. Primary
+// and Control are both Ctrl; a character is the key that types it on the
+// keyboard's layout (with Shift if it takes it), as the menu bar's
+// accelerators are.
 #include "modules.h"
 
 typedef struct {

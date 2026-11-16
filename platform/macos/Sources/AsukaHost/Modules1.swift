@@ -1,13 +1,11 @@
 // The packages' modules of part modules1: notifications (Notify.swift)
 // and pushes (Push.swift), which asuka/notify and asuka/push reach through
-// asuka/host. Ports host/darwin's notify.go and push.go.
+// asuka/host.
 //
-// The Go host's other modules of this part (camera, bluetooth, location,
-// locationAccess, locationBackground, pay, appleAuth, webAuth, and the
-// "asuka.camera" and Apple Pay button views) served the Go sdk/ packages;
-// on the Swift host, std's asuka/camera, asuka/bluetooth, asuka/location,
-// asuka/pay, asuka/appleauth and asuka/webauth are native packages whose
-// own Swift does them on the Mac.
+// The camera, Bluetooth, location, Apple Pay and sign-in aren't here:
+// std's asuka/camera, asuka/bluetooth, asuka/location, asuka/pay,
+// asuka/appleauth and asuka/webauth are native packages whose own Swift
+// does them on the Mac.
 import AppKit
 
 @MainActor extension AsukaRuntime {

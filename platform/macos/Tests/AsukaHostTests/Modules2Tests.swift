@@ -5,8 +5,7 @@ import XCTest
 // What the contacts, calendar and library modules compute on their own:
 // a contact as add builds it, encoded as iOS encodes one; the alerts'
 // texts; all-day events' days on the wire and back; the thumbnails'
-// names; the library's numbered names. Ports host/darwin's
-// personal_test.go's checks of them.
+// names; the library's numbered names.
 @MainActor final class Modules2Tests: XCTestCase {
     func testContactBuiltAndEncoded() throws {
         let o = AsukaContacts.Args(try XCTUnwrap(JSONSerialization.jsonObject(with: Data("""

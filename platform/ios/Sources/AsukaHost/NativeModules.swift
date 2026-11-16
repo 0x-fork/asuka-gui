@@ -1,6 +1,6 @@
 // Typed native modules (//asuka:native) and views (//asuka:view): what
-// the Swift that asuka native generates for a Go package calls, and what
-// the host's transport calls (Go's calls, from any thread). The same file
+// the Swift that asuka native generates for a package calls, and what the
+// host's transport calls (the core's calls, from any thread). The same file
 // is in the iOS host and the Mac's runtime (platform/macos), which a test
 // keeps equal.
 //

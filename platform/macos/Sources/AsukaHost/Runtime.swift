@@ -529,7 +529,7 @@ struct AsukaAnimation {
     NSAnimationContext.endGrouping()
 }
 
-/// The app's settings from its asuka.toml (internal/boot's ConfigFile,
+/// The app's settings from its asuka.toml (internal/appconfig's File,
 /// asuka-app.json): its Resources' (or ASUKA_APP_CONFIG's).
 struct AsukaConfig: Decodable {
     var name = ""

@@ -1,5 +1,4 @@
-// theme.c: Windows 11's colors and type ramp (host/windows' theme.go,
-// fonts.go).
+// theme.c: Windows 11's colors and type ramp.
 #include "host.h"
 #include "parts.h"
 

@@ -573,7 +573,7 @@ objects, callbacks posted to the main thread) is core/src/vm/ffi.c.
   in over it (`Transition`). An animated image plays: ImageIO's player on
   Apple platforms, `AnimatedImageDrawable` on Android, the browser's (or
   WebCodecs') on the web, and the host frame by frame on Windows and Linux
-  (`internal/animimage`). The host reports `Animated` after `Loaded`, and
+  (platform/desktop's animimage.c). The host reports `Animated` after `Loaded`, and
   only then does the core follow Reduce Motion for it (`Paused`), so a
   still image costs no effect.
 - Gestures are `View` events (`on pan`, `on pinch`, `on swipe`) with the
@@ -898,14 +898,14 @@ and **grid** layout (in the spirit of Taffy, not a port of it or of Yoga), in po
   pixel, except that a measured leaf's size rounds up (rounding both
   edges can take a pixel off a label, and a label a pixel narrower
   wraps), as Yoga does for text.
-- **Correctness** is defined by Chrome: `layout/testdata/css` holds
+- **Correctness** is defined by Chrome: `core/test/testdata/css` holds
   Taffy's Chrome-generated fixtures (block, flex, grid; border-box,
-  either direction), converted for the C engine
-  (`core/test/testdata/layout_fixtures.txt`, `go run
-  layout/testdata/gen_c_fixtures.go`) and run by `go test ./core -run
-  Layout`, with what they don't cover in
-  `rtl_chrome.xml` and `ltr_chrome.xml`, each rendered by Chrome; `known_failures.txt` lists the ones
-  that don't match yet (mostly the unsupported features above).
+  either direction), with what they don't cover in `rtl_chrome.xml` and
+  `ltr_chrome.xml`, each rendered by Chrome. `gen_fixtures.go` converts
+  them for the C engine (`core/test/testdata/layout_fixtures.txt`) and
+  `go test ./core -run TestC/Layout` runs them; `known_failures.txt`
+  lists the ones that don't match yet (mostly the unsupported features
+  above), and `-update-known` rewrites it.
 
 ## ops
 
@@ -914,8 +914,9 @@ Go (`ops/schema.go`); `go generate ./ops` writes the Go constants, the
 Swift decoder (`platform/ios`), the Kotlin decoder (`platform/android`)
 and the JavaScript decoder (`platform/web/src/ops.js`), each with event
 encoders.
-Mobile hosts read the binary encoding; `host/fake` (and desktop hosts
-later) read the batch's Go structs directly.
+Every host reads the binary encoding, the C fake host
+(`core/host/fake`) too; package ops' Go decoder serves the tests and the
+CLI.
 
 ```
 NodeID   uint32, made by the core, never reused in a process
@@ -1109,8 +1110,8 @@ identifiers, StoreKit's and Play Billing's transaction listeners. Where
 the system has no background updates or regions (macOS's and Windows's
 updates, Linux's and the web's regions), the package computes them from
 the positions while the app runs. The last root's
-`Dispose` fails the Calls still waiting, so a package's goroutine ends
-with it.
+`Dispose` fails the Calls still waiting, so what a package waits on
+ends with it.
 
 Packages that need a framework or library of their own cost only the
 apps that import them: a std native package's code is its own (its
@@ -1147,14 +1148,13 @@ changes) and keeps them for the package's `events()`,
 so a purchase completed before the app observes isn't lost.
 
 iCloud (`asuka/icloud`) is a package over the hosts' module `icloud`,
-whose JSON (`internal/icloudspec`) the iOS host and the Mac speak, the
+whose JSON (std/icloud's) the iOS host and the Mac speak, the
 same Swift in both (`ICloud.swift`, kept identical in platform/ios and
 platform/macos; `ASUKA_ICLOUD`, asuka/icloud's manifest's `ios.hostFlags`
 on iOS, every Mac app's host): NSUbiquitousKeyValueStore, its values converted
 between JSON and property lists; the app's ubiquity containers through
 NSMetadataQuery, NSFileCoordinator and NSFileVersion, the file system's
-work off the main thread. The other hosts answer not available
-(`icloudspec.Unavailable`); `fake.ICloud` in tests. The package's events
+work off the main thread. The other hosts answer not available. The package's events
 (the account, the store's changes, each scope's files) come through one
 `next`, asked again from its answer on the main thread, so a root's
 disposal ends it. What the app calls, from its source (`useICloud`), says
@@ -1227,31 +1227,40 @@ done.
 
 ### Plugins
 
-A plugin is a Go package with a manifest beside it, `asuka-plugin.toml`
-(package `plugin`), naming the native libraries it brings: for each
-target (`darwin`, universal; `ios`, `ios-simulator`; `android-<goarch>`;
-`linux-<goarch>`; `windows-<goarch>`; `wasm`) a file, published to the
+docs/plugins.md is the guide. A plugin is a package that brings native
+libraries prebuilt for each platform and published once: a manifest,
+`asuka-plugin.toml` (package `plugin`), beside the package's
+`asuka.toml`, names each library's file for each target (`darwin`,
+universal; `ios`, `ios-simulator`; `android-<goarch>`;
+`linux-<goarch>`; `windows-<goarch>`; `wasm`), published to the
 plugin's GitHub release gzipped and named for its hash, with the
-SHA-256 of both. Only the manifest is checked in. The plugin's Go code
-loads its library through purego or `syscall`, from the path
-`plugin.LibraryPath` gives it: where the CLI shipped it with the app;
-else, in `go run`, `go test` and `asuka dev` on a desktop, the plugin's
-checkout's build (`build/<target>` beside the manifest) or the
-published file, downloaded once into the user's cache and verified. A
-shipped app (`asuka_bundled`) and a phone's never download.
+SHA-256 of both. Of the three ways to bring code that isn't Asuka, it's
+the one built once rather than with each app: C with `extern` (docs/c.md)
+and native packages (docs/native.md) are compiled with the app. Only the
+manifest is checked in; a package's tarball carries it, not the
+libraries.
 
-The CLI finds an app's plugins among its dependencies for the build's
-platform (`go list -deps`, a manifest beside the package) and ships each
-library's file where `LibraryPath` looks: `Contents/Frameworks` on macOS
-(signed with the app), beside the `.exe` on Windows, `lib/<exe>` of the
-prefix on Linux, a framework of its own on iOS (named for the library;
-an Info.plist, a privacy manifest from the binary's imports, signed with
-the app), beside `libasuka.so` in each Android ABI, and `lib/` of the
-host's files on the web (the page's `libs` option names each file's
-URL): all in one place, so two plugins with a file of the same name for
-a platform don't build. A desktop build that ships any builds with `asuka_bundled`.
-A plugin builds its libraries with its own tool (they need what they
-need: SQLite, Xcode, the NDK and Zig), which writes each with
+The package's native code (the core's, for std/sqlite: core/src/sqlite)
+loads the library with `dlopen`, `LoadLibrary` or WebAssembly's
+instantiation, looking first in `ASUKA_LIB_<NAME>` (where `asuka dev` on
+a desktop, `asuka test` and `asuka run` point it: the plugin's
+checkout's build, `build/<target>` beside the manifest, or the published
+file, downloaded once into the user's cache and verified), then where
+`asuka build` put it, from the executable's directory, then by name. A
+phone's never download: `asuka dev` pushes them to the player.
+
+The CLI finds an app's plugins among its packages for the build's
+platform (the app's directory, its dependencies, the std packages it
+imports) and ships each library's file where the core looks:
+`Contents/Frameworks` on macOS (signed with the app), beside the `.exe`
+on Windows, `lib/<exe>` of the prefix on Linux, a framework of its own
+on iOS (named for the library; an Info.plist, a privacy manifest from
+the binary's imports, signed with the app), beside `libasuka.so` in
+each Android ABI, and `lib/` of the host's files on the web (the page's
+`libs` option names each file's URL): all in one place, so two plugins
+with a file of the same name for a platform don't build. A plugin
+builds its libraries with its own tool (they need what they need:
+SQLite, Xcode, the NDK and Zig), which writes each with
 `plugin.StoreBuild` and the hash of the plugin's sources (the manifest's
 `sources`); `asuka plugin publish` uploads them, refusing a build older
 than its sources, downloads each back to check it, and records them in
@@ -1262,11 +1271,11 @@ share one.
 
 ### SQLite
 
-`asuka/sqlite` (std/sqlite) is a plugin: SQLite's own C, one pinned
+`asuka/sqlite` (std/sqlite) is a plugin's: SQLite's own C, one pinned
 release built with the same options for every platform by
-`sdk/sqlite/internal/build` (Xcode, the NDK, Zig), which the package's
+`std/sqlite/internal/build` (Xcode, the NDK, Zig), which the package's
 `asuka-plugin.toml` ships with the apps that import it. With it, one library of Asuka's
-(`sdk/sqlite/csrc/asq.c`) and one entry point: `asq_call(op, conn, arg, in,
+(`std/sqlite/csrc/asq.c`) and one entry point: `asq_call(op, conn, arg, in,
 inLen, out, outCap)`, every argument pointer-sized. A call is a whole
 statement: its SQL and arguments in, its answer (a query's columns and
 first rows, as many as fit the buffer) out; `next` brings the rest a
@@ -1274,24 +1283,18 @@ chunk at a time, and an answer too long for the buffer is kept for the
 caller to take with a bigger one. Statements are cached by SQL in C
 (64 per connection). The tables a call's commits wrote (the authorizer,
 the preupdate and commit hooks) and its queries read come back with
-each answer, so the live queries need no callbacks from C into Go.
+each answer, so the live queries need no callbacks.
 
-Go crosses into C once per call, never per column, which is what makes
-purego as fast as cgo here (a crossing costs more than a row): macOS,
-Linux, iOS and Android load the library with `dlopen` through purego
-(the mobile build modes' cgo is purego's way to `dlopen`, not
-Asuka's), Windows with `LoadLibrary` through `syscall`, and the web
-calls the same C built to WebAssembly from JavaScript. Every symbol but
-`asq_call` and `asq_version` is hidden, so a system SQLite in the same
-process (GTK may load one) never clashes. The CLI ships it with the app
-as any plugin's library ([Plugins](#plugins)).
-
-A database has one writer connection and, for a file, up to three
-readers (write-ahead logging), handed out by the Go side. Writes take
-turns on the writer: a semaphore that times out as SQLite's busy timeout
-does, so a write inside another's transaction fails with `ErrBusy`
-rather than hanging. Rows scan into structs by a plan made once per
-type (field offsets and kinds), written in place; no reflection per row.
+The core (core/src/sqlite) crosses into the library once per statement,
+never per column, on a thread of its own where statements run one
+after another, and decodes the rows on the main thread straight into
+the program's values by the type's descriptor: no JSON text, no
+per-cell crossing. macOS, Linux, iOS and Android load the library with
+`dlopen`, Windows with `LoadLibrary`, and the web runs the same C built
+to WebAssembly in the page's SQLite worker. Every symbol but `asq_call`
+and `asq_version` is hidden, so a system SQLite in the same process
+(GTK may load one) never clashes. The CLI ships it with the app as any
+plugin's library ([Plugins](#plugins)).
 
 ## iOS and Android: the core in the app
 
@@ -1338,8 +1341,8 @@ Info.plist, a privacy manifest of its own, signed with the app;
 `libasuka.so` in each ABI's `jniLibs`, loaded by name from the APK.
 
 Crash reports (asuka/crash) are the core's record of the run
-(`core/src/std/crash.c`, internal/crashrun and sdk/crash's in C, their
-files' formats the same): the host begins it as the app starts
+(`core/src/std/crash.c`, its files' formats those apps of the Go
+runtime wrote too): the host begins it as the app starts
 (`asuka_crash_start`, after `asuka_set_app_dir`, with JSON of the
 device and the app; only for an app that reads its reports, which
 lang/cgen marks, or the dev player), and the record keeps the run's
@@ -1530,11 +1533,10 @@ asuka/
   std/               the standard library's packages (asuka/<name>)
   ops/               the wire's schema; go generate writes the C, Swift,
                      Kotlin and JavaScript codecs
-  layout/            the layout's types and Chrome's fixtures (the C
-                     layout's conformance)
   i18n/              languages, catalogs, ICU messages, CLDR's formats
                      (compiled into what the core says)
-  host/              the Host interface; fake (the test host)
+  plugin/            plugins' manifests, builds and publishing (package
+                     plugin; std/sqlite is a plugin)
   internal/nativegen/ asuka native's generator (Swift, Kotlin,
                      JavaScript, C)
   platform/ios/      the Swift host and decoder
@@ -1658,11 +1660,10 @@ green:
   the desktop hosts on it (the Mac in Swift, Windows and Linux in C);
   packages from the npm
   registry; the standard library (`std/`).
-- **In progress** (RFC 0007's E1, N1 and X): every element of the
-  schema in the UI runtime and the examples in Asuka; the Go SDK's
-  packages as standard library packages (native packages and `native
-  fn`s); the Go core and Go apps removed, and the docs (with `zh` and
-  `ja`) on the new Asuka.
+- **In progress** (RFC 0007's N1): what the examples still ask of the
+  platforms (examples/STDLIB.md) as standard library packages (native
+  packages and `native fn`s). The Go app runtime is gone (RFC 0007's
+  X): Go is the CLI's, the compiler's, the generators' and the tests'.
 
 Later, past the rewrite: what each platform still lacks is listed in
 its section ("Desktop, later", "The web"), and in docs/parity.md
@@ -1792,8 +1793,7 @@ MyGo's, whose data comes from a pinned release of CLDR.
   the shown language's formats, dates in the device's zone and the user's
   hour cycle; the pseudo locales. A test says over 900 cases of Go's Format
   the same way, and every CLDR sample of every language's plural rules.
-- **The language shown** is the process's (core/src/ui/locale.c, as
-  `ui/locale.go` was): the environment's languages (or what `setLocale`
+- **The language shown** is the process's (core/src/ui/locale.c): the environment's languages (or what `setLocale`
   chose, first) matched against the catalog's languages by CLDR's distances,
   else the app's own: a reader of Chinese sees an English-only app in
   English, as on UIKit. It's a signal: `i18n.say` reads it, so a binding that
@@ -3131,7 +3131,7 @@ core/src/ui/lifecycle.c):
 
 - Packages over modules, not ops: what the system says about the
   computer isn't a view's. Each state the app follows is a module with
-  "current", "next" and "stop" (`internal/follow`): a goroutine asks
+  "current", "next" and "stop" (through asuka/platform): the package asks
   "next" with the state it last got, which the host answers once its
   state is another (at once for none), and hands the answer to the
   watchers on the main thread; the last watcher's stop sends "stop",
@@ -3140,9 +3140,7 @@ core/src/ui/lifecycle.c):
   queues them from the first "next" until "stop", so none is lost
   between two. Each package has `Watch` and `Use` (a signal, stopped
   with its owner); a host reads its state again as the platform says it
-  changed, and the desktop ones as each "next" comes too. `host/fake`
-  answers later as hosts do (`AsyncModules`), and `follow.Fake` is such
-  a module's host side for tests.
+  changed, and the desktop ones as each "next" comes too.
 - `screen.Displays` (Electron's `screen`): each display's ID, name,
   bounds and work area in points in the desktop's coordinates (the
   origin at the primary display's top left, y down), scale, refresh
@@ -3277,7 +3275,7 @@ core/src/ui/lifecycle.c):
   does nothing.
 
 **Files, one instance, quitting, recent documents and login**
-(`ui/call.go`, `app/quit.go`, `app/dirs.go`, `recent`, `login`):
+(core/src/ui/lifecycle.c, `recent`, `login`):
 
 - `asuka.toml`'s `fileTypes` (name, extensions, MIME types, UTI,
   `conformsTo`, role, icon) are declared by each build
@@ -3287,7 +3285,7 @@ core/src/ui/lifecycle.c):
   `ACTION_VIEW` filters; Windows a ProgID per type and the extensions'
   `OpenWithProgids` (and `Applications\<exe>\SupportedTypes`), which the
   host writes under `HKCU\Software\Classes` as it starts, from
-  `boot.FileTypes` (internal/filetype, `-ldflags -X`), the icons in the
+  asuka-app.json's `fileTypes` (internal/filetype), the icons in the
   executable; Linux the desktop file's `MimeType` (and `%U`), a
   shared-mime-info package for the app's own types and their icons; the
   web manifest's `file_handlers`.
@@ -3307,24 +3305,24 @@ core/src/ui/lifecycle.c):
   through `WM_COPYDATA`) and Linux (a unique GApplication with
   `HANDLES_COMMAND_LINE`: the second launch's command line over D-Bus),
   except under automation and `asuka dev`, or with `"singleInstance":
-  false` (`boot.MultipleInstances`). The running one comes to the front,
+  false` (asuka-app.json's `multipleInstances`). The running one comes to the front,
   `app.OnSecondInstance(args, dir)` gets the arguments, and their files
   and URLs come as above. macOS's Launch Services runs an app once by
   itself, and passes files as Apple Events, not arguments.
-- Quitting: `app.Quit` (`boot.Quit`, set by a desktop host) quits as the
-  user's Quit does. Every quit asks `boot.QuitRequested` (package app:
-  `app.OnQuit`'s handlers, with a `QuitEvent` they can `Cancel`) once;
-  one they allowed only finishes. macOS asks in
+- Quitting: `quit()` quits as the user's Quit does (the Quit command,
+  which a desktop host does as the user's Quit). Every quit asks the
+  core (`asuka_quit_request`: `on quit`'s handlers, which can cancel it)
+  once; one they allowed only finishes. macOS asks in
   `applicationShouldTerminate:` (⌘Q, the Dock, the last window, SIGINT
   and SIGTERM, which send `terminate:`), with `SessionEnding` after
   `NSWorkspaceWillPowerOffNotification`; Windows on the main window's
   `WM_CLOSE`, Ctrl+C and `WM_QUERYENDSESSION`; Linux on the last
   window's `close-request`, SIGTERM, SIGINT and SIGHUP, and `query-end`.
   The session's end can't be canceled; a second signal exits at once.
-  Phones and the browser never quit themselves (`boot.Quit` is nil).
-- `app.DataDir`, `ConfigDir`, `CacheDir` and `LogDir` are
-  internal/appdir's, each platform's place for the app (`store.Dir` is
-  DataDir).
+  Phones and the browser never quit themselves.
+- The app's data, config, cache and log directories are each
+  platform's place for the app (platform/desktop's `dsk_dirs` on
+  Windows and Linux, the Foundation's on Apple platforms).
 - `asuka/recent` (the hosts' module `recent`, through `asuka/platform`:
   `add`, `clear`, `list`):
   NSDocumentController's recent documents on macOS, in an Open Recent
@@ -3344,7 +3342,8 @@ core/src/ui/lifecycle.c):
   value (and Task Manager's `StartupApproved` for `enabled`); Linux an
   XDG autostart entry, or in a Flatpak the Background portal's
   `RequestBackground`. The Windows and Linux entries start the app with
-  `boot.LoginArg`, which the host takes out of `os.Args` in its init.
+  `--asuka-opened-at-login`, which the host takes out of its arguments
+  as it starts.
 
 **Global shortcuts** (`hotkey`): keys that reach the app while another
 app is in front (a launcher's panel, start and stop a recording).
@@ -3543,7 +3542,7 @@ their commands back.
   skips run on it unless their handlers are set, and show at once (the
   status assumed until the next read, which a read already in flight
   can't overwrite).
-- One module, `nowPlaying` (internal/nowplayingspec): `set` (the info as
+- One module, `nowPlaying` (std/nowplaying's): `set` (the info as
   JSON, with the enabled commands as bits), `clear`, and a long poll,
   `next`, answered with the commands since (u8 command, f64 value each);
   `stop` ends it. Hosts drop commands while no poll follows, or that
@@ -3589,17 +3588,15 @@ subscriptions) and as a peripheral (advertising, a GATT server).
   `Choose`, `Services`, reads, writes, MTU, RSSI) are blocking, off the
   main thread; a connection's wait for it to connect first. An error
   ends a callback's stream once (`func(v, err)`).
-- One module, `bluetooth` (internal/bluetoothspec, the wire's reference):
-  JSON both ways, byte values base64, UUIDs 128-bit lower case. Go
-  numbers scans, connections, advertisements, servers and their local
+- One module, `bluetooth`:
+  JSON both ways, byte values base64, UUIDs 128-bit lower case. The
+  package numbers scans, connections, advertisements, servers and their local
   characteristics; hosts number the remote attributes (stable handles
   per connection). Events (advertisements, disconnections with their
   reason, notifications, the server's requests, state changes) come
   through one long poll, `next`, chained from the main thread (a Call's
   callback calls again) while anything listens; `stop` when nothing
   does. Several connections to one device share the platform's link.
-  host/fake implements the protocol whole, with simulated peripherals,
-  for uitest.
 - iOS: Core Bluetooth, compiled in for an app whose archive calls the
   package (`ASUKA_BLUETOOTH`, through its `call` and `send`); state
   restoration when the app has the background modes (asuka.toml's
@@ -3674,7 +3671,7 @@ over files, as its `native fn`s; the host does what only it can.
   language (`i18n.locale()`).
 - **The host's `update` module**, JSON both ways through asuka/platform's
   `call`, each method answering once. A host without it (the phones, the
-  web, the Go macOS host) answers "no module": the package says
+  web) answers "no module": the package says
   updates aren't available (`.notAvailable`).
   - `info` → `{installable, reason, message, target, version, name,
     feed, key, kind, root, exe, work}`. `feed`, `key` and `target` are
@@ -3813,8 +3810,8 @@ their own.
   `AskOnQuit`, a Mac asks whether to review them, then each, Windows and
   Linux in one question naming them. The session's end saves at once,
   on the main thread. A Mac's app keeps running with no window
-  (`boot.KeepRunning`) and its Dock icon makes a document
-  (`boot.Reopen`, which `applicationShouldHandleReopen:` asks); Windows'
+  (asuka-app.json's `keepRunning`) and its Dock icon makes a document
+  (`applicationShouldHandleReopen:` asks); Windows'
   and Linux's quit with their last document.
 - Files other apps change: each open file is watched (asuka/watch's
   watch of it, through its folder, so a file an editor replaces stays
@@ -3923,9 +3920,9 @@ core/src/abi/web.c is the core's side:
   a job carries what changed since the worker's last (but its own
   changes), and its answer what the job changed, which the page takes as
   another writer's.
-- SQLite: the sqlite plugin's C (SQLite and `sdk/sqlite/csrc/asq.c`), built to
-  WebAssembly by `sdk/sqlite/internal/build` (zig, `wasm32-wasi`, `-Os`) with
-  `sdk/sqlite/csrc/asq_wasm.c` as its system (`SQLITE_OS_OTHER`, one thread:
+- SQLite: the sqlite plugin's C (SQLite and `std/sqlite/csrc/asq.c`), built to
+  WebAssembly by `std/sqlite/internal/build` (zig, `wasm32-wasi`, `-Os`) with
+  `std/sqlite/csrc/asq_wasm.c` as its system (`SQLITE_OS_OTHER`, one thread:
   a VFS, the time zone and randomness imported from JavaScript, no WASI
   imports): the plugin's `wasm` file, which the CLI ships with the apps
   that use it, in `lib/` (as any plugin's, [Plugins](#plugins)), named in

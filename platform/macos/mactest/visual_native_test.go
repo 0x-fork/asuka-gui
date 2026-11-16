@@ -11,7 +11,6 @@ import (
 // NSSlider, made as a package's typed view is): made by its type, its
 // props set and followed, its events handled, measured by its
 // sizeThatFits and filling its node's view; destroyed with the node.
-// (host/darwin's TestNativeView.)
 func TestVisualNativeView(t *testing.T) {
 	a := Run(t, `
 		native component MacTestSlider(label: string) {

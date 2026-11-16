@@ -14,7 +14,7 @@ import (
 
 // A view that clips and casts a shadow clips its children in a view of
 // their own, so its layer keeps its shadow; without the shadow they go
-// back, and the view clips itself again. (host/darwin's TestClipShadow.)
+// back, and the view clips itself again.
 func TestVisualClipShadow(t *testing.T) {
 	a := Run(t, `
 		component Card {
@@ -62,7 +62,6 @@ func TestVisualClipShadow(t *testing.T) {
 
 // AppKit sets a layer-backed view's layer's shadow from the view's own
 // (none) as it moves into a window: the style's shadow holds.
-// (host/darwin's TestShadowInWindow.)
 func TestVisualShadowInWindow(t *testing.T) {
 	a := Run(t, `app { Column { padding: 20; align: .start; View { width: 60; height: 30; background: #ff0000; shadow: Shadow(color: #000000, radius: 8, y: 4) } } }`)
 	tr := a.Until(func(tr *Tree) bool { return len(tr.Kind("View")) >= 2 })
@@ -81,8 +80,7 @@ func TestVisualShadowInWindow(t *testing.T) {
 }
 
 // Style.Transform holds on the layer (AppKit sets the layer's own
-// transform), and animate { } animates it. (host/darwin's
-// TestTransformHolds.)
+// transform), and animate { } animates it.
 func TestVisualTransformHolds(t *testing.T) {
 	a := Run(t, `
 		component T {
@@ -110,8 +108,7 @@ func TestVisualTransformHolds(t *testing.T) {
 
 // Glass buttons are macOS 26's glass bezel: a capsule, a circle around an
 // icon alone, the prominent one tinted as the primary action. A button
-// that stops being glass loses its shape and tint. (host/darwin's
-// TestGlassButtonsDarwin.)
+// that stops being glass loses its shape and tint.
 func TestVisualGlassButtons(t *testing.T) {
 	a := Run(t, `
 		component Buttons {
@@ -155,7 +152,7 @@ func TestVisualGlassButtons(t *testing.T) {
 
 // A Picker is a pop-up button: its prompt while none is chosen (a hidden
 // item, not in its menu), then the chosen item; the user's choice writes
-// the state, and code's selects the item. (host/darwin's TestPicker.)
+// the state, and code's selects the item.
 func TestVisualPicker(t *testing.T) {
 	a := Run(t, `
 		component P {
@@ -208,7 +205,6 @@ func TestVisualPicker(t *testing.T) {
 
 // The controls' labels are what VoiceOver reads of them, followed as they
 // change: a text field (one line, multiline, rich), a switch, a checkbox.
-// (host/darwin's TestControlLabels.)
 func TestVisualControlLabels(t *testing.T) {
 	a := Run(t, `
 		component L {

@@ -1,11 +1,11 @@
-// material.c: Style.Material (host/windows' material.go): a translucent
-// background that blurs what's behind, Fluent's acrylic in a child window
-// (DWM's backdrops are top-level windows' only). The view draws what's
-// behind it, as any view that isn't opaque does, then blurs it (three box
-// blurs, a Gaussian's likeness) and tints it light or dark, under its own
-// drawing. As what's behind it paints, it draws again. What's behind is
-// drawn into the blur's own bitmap, not read from the DC it paints into,
-// whose parts outside the update region hold nothing.
+// material.c: Style.Material: a translucent background that blurs what's
+// behind, Fluent's acrylic in a child window (DWM's backdrops are top-level
+// windows' only). The view draws what's behind it, as any view that isn't
+// opaque does, then blurs it (three box blurs, a Gaussian's likeness) and
+// tints it light or dark, under its own drawing. As what's behind it
+// paints, it draws again. What's behind is drawn into the blur's own
+// bitmap, not read from the DC it paints into, whose parts outside the
+// update region hold nothing.
 #include "host.h"
 #include "parts.h"
 #include "draw.h"

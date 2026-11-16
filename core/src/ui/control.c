@@ -1,4 +1,4 @@
-// control.c: control flow in views (ui/control.go): Show, For (keyed,
+// control.c: control flow in views: Show, For (keyed,
 // with moved rows), Switch, Dynamic; and what a component's body uses:
 // contexts (provide and use) and tasks.
 //

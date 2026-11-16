@@ -415,7 +415,7 @@ func webFileHandlers(types []fileType) []map[string]any {
 	return []map[string]any{{"action": "./", "accept": accept, "launch_type": "single-client"}}
 }
 
-// windowsFileTypes are the types for the Windows host (boot.FileTypes):
+// windowsFileTypes are the types for the Windows host (asuka-app.json's fileTypes):
 // iconIDs are their icons' group resource IDs in the executable.
 func windowsFileTypes(types []fileType, iconIDs map[int]int) []filetype.Type {
 	var out []filetype.Type

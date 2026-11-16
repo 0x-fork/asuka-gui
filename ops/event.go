@@ -51,8 +51,8 @@ const (
 	PlatformAndroid
 	PlatformMacOS
 	PlatformWindows
-	PlatformWeb   // a browser (host/web: the DOM)
-	PlatformLinux // GTK 4 and libadwaita (host/linux)
+	PlatformWeb   // a browser (platform/web: the DOM)
+	PlatformLinux // GTK 4 and libadwaita (platform/linux)
 )
 
 func (p Platform) String() string {

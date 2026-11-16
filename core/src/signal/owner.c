@@ -1,5 +1,4 @@
-// owner.c: owners, cleanups, contexts and error catchers
-// (signal/owner.go).
+// owner.c: owners, cleanups, contexts and error catchers.
 #include "signal/signal_impl.h"
 
 #define g ak_sig

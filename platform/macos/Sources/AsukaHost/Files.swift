@@ -56,7 +56,7 @@ import AsukaOps
             atLogin = p.enumCodeValue == keyAELaunchedAsLogInItem
         }
         // Windows' and Linux's login entries start the app with an argument
-        // (boot.LoginArg); a Mac app started so by hand reads it too.
+        // (--asuka-opened-at-login); a Mac app started so by hand reads it too.
         atLogin = atLogin || CommandLine.arguments.contains("--asuka-opened-at-login")
         let r = Data([atLogin ? 1 : 0])
         let ws = loginWaiting
@@ -181,8 +181,8 @@ func asukaFileURL(_ path: String) -> String {
 
 @MainActor extension AsukaRuntime {
     /// The app's modules (the shell's own): tray, dock, hotkey, apps,
-    /// recent, login. host/darwin's dialog and shell modules aren't here:
-    /// asuka/dialog and asuka/shell have their own Swift.
+    /// recent, login. Dialog and shell modules aren't here: asuka/dialog
+    /// and asuka/shell have their own Swift.
     func registerAppModules() {
         registerModule("tray", AsukaTray.shared.methods())
         registerModule("dock", AsukaDock.methods())

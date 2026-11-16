@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { loadWasm } from "../testing/asqlite.js";
+import { loadWasm, readManifest } from "../testing/asqlite.js";
 import { Engine, Reader, Writer, errorAnswer, localtime } from "../src/sqlite-engine.js";
 import { MemoryFile, VFS } from "../src/sqlite-vfs.js";
 
@@ -116,10 +116,11 @@ function rowsOf(r, ncols, rows) {
   return done;
 }
 
-test("the module is the SQLite the Go package was built for", async () => {
+test("the module is the SQLite the plugin's manifest names", async () => {
   const { e } = await engine();
-  const src = await readFile(new URL("../../../sdk/sqlite/version_gen.go", import.meta.url), "utf8");
-  assert.equal(e.version(), Number(/libVersion = (\d+)/.exec(src)[1]));
+  const manifest = readManifest(await readFile(new URL("../../../std/sqlite/asuka-plugin.toml", import.meta.url), "utf8"));
+  const [major, minor, patch] = manifest.libraries.find((l) => l.name === "asqlite").version.split(".").map(Number);
+  assert.equal(e.version(), major * 1000000 + minor * 1000 + patch);
 });
 
 test("statements, rows, and the tables commits write and queries read", async () => {

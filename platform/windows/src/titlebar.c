@@ -7,7 +7,7 @@
 // its own in a layered window, answering the buttons' hit-test codes (so
 // snap layouts open over maximize), and an invisible top edge answering
 // HTTOP. Below them, the 32-point strip answers HTCAPTION where the views
-// let the mouse through (host/windows' titlebar.go).
+// let the mouse through.
 #include "win.h"
 
 #define BUTTON_WIDTH 46

@@ -9,7 +9,7 @@
 // (platform/ios/Sources/AsukaHost/Automation.swift, a notification;
 // platform/android/asuka/src/main/java/dev/asuka/Automation.kt, a broadcast;
 // platform/web/src/automation.js, through asuka dev --platform web's server;
-// host/linux/automation.go, a file).
+// platform/linux/src/automation.c, a file).
 //
 //	go test -tags e2e ./e2e -run IOS      # a booted simulator, else the newest iPhone
 //	go test -tags e2e ./e2e -run Android  # a running emulator or a device

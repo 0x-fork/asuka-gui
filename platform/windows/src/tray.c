@@ -1,17 +1,15 @@
-// tray.c: asuka/tray on Windows (host/windows' tray.go, trayutil.go,
-// internal/windows' notifyicon.go): icons in the notification area
+// tray.c: asuka/tray on Windows: icons in the notification area
 // (Shell_NotifyIcon, NOTIFYICON_VERSION_4), owned by a hidden top-level
-// window of the modules' (a message-only window doesn't get
-// TaskbarCreated, which says Explorer started again and the icons are to
-// be added again). A click (NIN_SELECT, or Enter or Space on the focused
-// icon) is the icon's OnClick, or opens its menu if it has none; a right
-// click (WM_CONTEXTMENU) opens the menu, a popup menu built as the menu
-// bar's (submenus, checks, destructive items drawn red). The icon is the
-// image, fitted to a small icon's size at the system's DPI, or the
-// symbol's Segoe Fluent Icons glyph; a symbol, and a template image, are
-// drawn white on a dark taskbar and black on a light one, and drawn again
-// when it turns. Without either, the app's icon. Windows shows no text
-// beside an icon (Title).
+// window of the modules' (a message-only window doesn't get TaskbarCreated,
+// which says Explorer started again and the icons are to be added again). A
+// click (NIN_SELECT, or Enter or Space on the focused icon) is the icon's
+// OnClick, or opens its menu if it has none; a right click (WM_CONTEXTMENU)
+// opens the menu, a popup menu built as the menu bar's (submenus, checks,
+// destructive items drawn red). The icon is the image, fitted to a small
+// icon's size at the system's DPI, or the symbol's Segoe Fluent Icons
+// glyph; a symbol, and a template image, are drawn white on a dark taskbar
+// and black on a light one, and drawn again when it turns. Without either,
+// the app's icon. Windows shows no text beside an icon (Title).
 //
 // The Dock menu is the Tasks of the app's jump list
 // (ICustomDestinationList): a link per item, starting the app with

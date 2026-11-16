@@ -1,4 +1,4 @@
-// style.c: the style keys every element takes (ui/style.go's Style):
+// style.c: the style keys every element takes:
 // layout fields map to CSS (with React Native's defaults: a column,
 // border-box), the look to the common wire props. Each key is applied on
 // its own: a layout key derives the box's style again, a look key sends

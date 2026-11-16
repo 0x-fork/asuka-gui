@@ -1,13 +1,12 @@
-// image.c: Image views (host/windows' image.go). Images are fetched and
-// decoded off the main thread by Windows's own codecs (WIC: PNG, JPEG,
-// GIF, BMP, TIFF, ICO, and HEIF, WebP, AVIF and RAW where their
-// extensions are installed), turned upright as their EXIF orientation
-// says, kept in memory by source, and drawn with GDI+ at the view's mode,
-// clipped to its corners. An animated GIF, APNG or WebP (its frames'
-// pictures by WIC's codecs) plays here, frame after frame on a timer
-// (platform/desktop's dsk_anim), while it isn't Paused. The placeholder
-// (an asset, or the core's decoded hash, in its own mode) shows until the
-// image arrives, which fades in over it (Transition; 0.25s over a
+// image.c: Image views. Images are fetched and decoded off the main thread
+// by Windows's own codecs (WIC: PNG, JPEG, GIF, BMP, TIFF, ICO, and HEIF,
+// WebP, AVIF and RAW where their extensions are installed), turned upright
+// as their EXIF orientation says, kept in memory by source, and drawn with
+// GDI+ at the view's mode, clipped to its corners. An animated GIF, APNG or
+// WebP (its frames' pictures by WIC's codecs) plays here, frame after frame
+// on a timer (platform/desktop's dsk_anim), while it isn't Paused. The
+// placeholder (an asset, or the core's decoded hash, in its own mode) shows
+// until the image arrives, which fades in over it (Transition; 0.25s over a
 // placeholder).
 //
 // A source is fetched once at a time: the views waiting for it are kept

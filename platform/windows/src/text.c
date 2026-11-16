@@ -1,5 +1,5 @@
 // text.c: views measured as they draw themselves, in points rounded up to
-// pixels (host/windows' measure.go).
+// pixels.
 #include "host.h"
 #include "parts.h"
 

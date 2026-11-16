@@ -5,7 +5,7 @@
 // with an alert over the window (the contact's name, phones and emails)
 // and saves it on Add. "pick" is the system's CNContactPicker, a popover
 // from the top of the window. macOS asks for access once, with the app's
-// NSContactsUsageDescription. Ports host/darwin's contacts.go.
+// NSContactsUsageDescription.
 import AppKit
 import Contacts
 import ContactsUI

@@ -1,4 +1,4 @@
-// Paging Scrolls and PageControls. Ports host/darwin's pager.go.
+// Paging Scrolls and PageControls.
 //
 // AppKit has neither: a paging scroll view settles on the nearest page when
 // a live scroll (a drag, a swipe and its momentum) ends, and a PageControl

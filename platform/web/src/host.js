@@ -1,8 +1,8 @@
-// Asuka's web host: the DOM, driven by the app's Go code compiled to
-// WebAssembly (host/web). Each view the core makes is an absolutely
-// positioned element at the frame the core laid out, so the browser's own
-// layout never moves it; leaves (text, controls) are measured by the real
-// element, as the native hosts measure their widgets.
+// Asuka's web host: the DOM, driven by the core compiled to WebAssembly
+// (core.js). Each view the core makes is an absolutely positioned element
+// at the frame the core laid out, so the browser's own layout never moves
+// it; leaves (text, controls) are measured by the real element, as the
+// native hosts measure their widgets.
 //
 // The core hands over a batch at a time (apply): its encoding, read in
 // place out of the WebAssembly memory by the generated decoder (ops.js).

@@ -1,4 +1,4 @@
-// asuka/sdk/notify on the web: the Notification API, with the user's
+// asuka/notify on the web: the Notification API, with the user's
 // permission (notify.Request asks; browsers ask only from a tap or click).
 //
 //   - Show now, through the app's service worker (sw.js) where it's
@@ -105,7 +105,7 @@ export function notifyModule(h, env = {}) {
   ch.present = presentHow;
   ch.closed = (id) => own.delete(id);
 
-  /** show shows s (notifyspec.Spec) now. */
+  /** show shows s (std/notify's Spec) now. */
   const show = async (s) => {
     if (!allowed()) return;
     const time = Date.now();
@@ -126,7 +126,7 @@ export function notifyModule(h, env = {}) {
       n = new (N())(title, options);
     } catch (e) {
       // Chrome on Android: only a service worker shows notifications.
-      throw new Error("asuka/sdk/notify: this browser shows notifications only through a service worker, and the app's isn't registered (" + (e?.message || e) + ")");
+      throw new Error("asuka/notify: this browser shows notifications only through a service worker, and the app's isn't registered (" + (e?.message || e) + ")");
     }
     const entry = { n, s: options.data.shown };
     own.set(s.id, entry);
@@ -148,7 +148,7 @@ export function notifyModule(h, env = {}) {
   /** fire shows the scheduled ones that are due, then waits for the next. */
   const fire = async () => {
     for (const s of await core.takeDue(st, app, Date.now())) {
-      try { await show(s); } catch (e) { console.warn("asuka/sdk/notify:", e); }
+      try { await show(s); } catch (e) { console.warn("asuka/notify:", e); }
     }
     await arm();
   };
@@ -225,7 +225,7 @@ export function notifyModule(h, env = {}) {
     },
     schedule: async (b) => {
       if (!N()) throw unsupported("Show", noNotifications());
-      if (!allowed()) throw new Error("asuka/sdk/notify: notifications aren't allowed: ask with notify.Request first");
+      if (!allowed()) throw new Error("asuka/notify: notifications aren't allowed: ask with notify.Request first");
       const s = JSON.parse(dec.decode(b));
       if (!s.id) s.id = core.newID();
       if (s.seconds > 0) {

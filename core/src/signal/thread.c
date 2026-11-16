@@ -1,5 +1,4 @@
-// thread.c: the main-thread check (signal/thread_debug.go), over
-// pthreads or Win32.
+// thread.c: the main-thread check, over pthreads or Win32.
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
 #endif

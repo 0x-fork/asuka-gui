@@ -1,4 +1,4 @@
-// A Rich TextField. Ports host/darwin's richfield.go.
+// A Rich TextField.
 //
 // Its text view, made rich, from and to the core's styled text (RichText's
 // Content encoding). Bold, italic, underline, strikethrough, monospaced and

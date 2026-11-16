@@ -10,7 +10,7 @@
 // (after asking to add to it, NSPhotoLibraryAddUsageDescription),
 // answering with the asset's identifier; downloads to ~/Downloads and
 // music to ~/Music, under the folder asked, answering with the file's
-// path. Ports host/darwin's photolibrary.go.
+// path.
 import AppKit
 import CryptoKit
 import Photos

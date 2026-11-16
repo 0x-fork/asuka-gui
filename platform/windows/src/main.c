@@ -1,8 +1,7 @@
 // main.c: the app's executable: the host starts (the app's settings, one
 // instance, its crash record, its windows), then the core with the app
 // compiled into it, or under asuka dev the bytecode the CLI sends
-// (asuka_dev_connect), and the message loop runs until the app quits
-// (host/windows' host.go's run, state.go, crash.go; host/bridge's Mount).
+// (asuka_dev_connect), and the message loop runs until the app quits.
 #include "win.h"
 
 // ---- The core's callbacks ----

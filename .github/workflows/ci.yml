@@ -9,7 +9,6 @@ jobs:
         with: { go-version: stable }
       - run: CGO_ENABLED=0 go build ./... && go vet ./...
       - run: go test ./...
-      - run: go test -tags asuka_debug ./signal
       - name: generated files are up to date
         run: go generate ./ops ./lang/bytecode ./lang/prelude && git diff --exit-code
   # The C core: its tests under ASan and UBSan with the system's compiler
@@ -33,12 +32,7 @@ jobs:
       - name: the core builds for iOS and the simulator, and for macOS
         run: go test ./internal/cbuild -run 'IOS|Host' -v
       - name: the app builds for the simulator
-        run: |
-          SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
-          CC=$(xcrun --sdk iphonesimulator --find clang)
-          F="-isysroot $SDK -target arm64-apple-ios16.0-simulator"
-          GOOS=ios GOARCH=arm64 CGO_ENABLED=1 CC=$CC CGO_CFLAGS="$F" CGO_LDFLAGS="$F" \
-            go build -tags ios -buildmode=c-archive -o /tmp/libasuka.a ./examples/counter
+        run: go run ./cmd/asuka build --platform ios --simulator examples/counter
   android:
     runs-on: ubuntu-latest
     steps:
@@ -52,12 +46,10 @@ jobs:
       - name: the Kotlin decoder agrees with the golden files; the shell app builds
         working-directory: platform/android
         run: ./gradlew :asuka:testDebugUnitTest :app:assembleDebug
-      - name: the app builds for Android
+      - name: the core builds for Android
         run: |
-          NDK=$(ls -d $ANDROID_HOME/ndk/* 2>/dev/null | tail -1)
-          if [ -z "$NDK" ]; then sdkmanager "ndk;27.1.12297006"; NDK=$ANDROID_HOME/ndk/27.1.12297006; fi
-          GOOS=android GOARCH=arm64 CGO_ENABLED=1 CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang \
-            CGO_LDFLAGS="-Wl,-z,max-page-size=16384" go build -buildmode=c-shared -o /tmp/libasuka.so ./examples/counter
+          ls -d $ANDROID_HOME/ndk/* 2>/dev/null || sdkmanager "ndk;27.1.12297006"
+          go test ./internal/cbuild -run Android -v
   # The Linux host on real GTK 4 and libadwaita, under Xvfb and a
   # session bus; then the examples on it (e2e/).
   linux:
@@ -69,11 +61,11 @@ jobs:
       - name: GTK 4, libadwaita, a display and a session bus
         run: sudo apt-get update && sudo apt-get install -y libgtk-4-1 libadwaita-1-0 xvfb dbus
       - name: the Linux host, driving real GTK widgets
-        run: xvfb-run -a dbus-run-session go test ./host/linux
+        run: xvfb-run -a dbus-run-session go test ./platform/linux
       - name: GUI tests, the examples on GTK
         run: xvfb-run -a -s '-screen 0 1400x1000x24' dbus-run-session go test -tags e2e ./e2e -run Linux -v
       - name: a release builds
-        run: go run ./cmd/asuka build --platform linux --no-vet examples/counter && tar -tzf examples/counter/dist/linux/counter-*.tar.gz
+        run: go run ./cmd/asuka build --platform linux examples/counter && tar -tzf examples/counter/dist/linux/counter-*.tar.gz
   # GUI tests: the examples on a simulator and an emulator, driven
   # through the debug hosts' automation (e2e/).
   e2e-ios:

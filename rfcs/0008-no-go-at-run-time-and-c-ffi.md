@@ -347,7 +347,7 @@ Each ends with its tests green.
     with the standard library's Go desktop code, G1).
 - [ ] **G2** The updater, crash records and the state files in the hosts;
       conformance and e2e on the new hosts.
-- [ ] **X2** The Go runtime removed:
+- [x] **X2** The Go runtime removed:
   - host/darwin, host/windows, host/linux, host/bridge, host/apphost,
     cmd/asuka-host;
   - package `native`;
@@ -358,3 +358,9 @@ Each ends with its tests green.
   - sdk/, ui, signal, app, uitest, colors, fonts.
 
   DESIGN.md, AGENTS.md and the docs describe the result.
+  internal/animimage and internal/barcode stay as the tests' Go
+  oracles (platform/desktop's TestAnim and internal/barcode's C port
+  test compare the C against them; barcode also generates the C's JIS
+  table), and internal/update is the CLI's (signing, feeds, archives and
+  deltas it publishes); boot shrank to asuka-app.json's schema
+  (internal/appconfig). RFC 0007's X lists what moved where.

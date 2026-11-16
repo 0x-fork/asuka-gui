@@ -1,5 +1,5 @@
 // asuka/svg on Android: the icon's layers (the compiler's encoding:
-// sdk/svg's Encode) as Paths, drawn on a view's Canvas, fitted to it;
+// internal/svgparse's Encode) as Paths, drawn on a view's Canvas, fitted to it;
 // currentColor is the view's color, from the app's theme.
 package asuka.svg
 

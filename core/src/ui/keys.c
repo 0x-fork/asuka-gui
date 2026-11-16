@@ -1,6 +1,5 @@
-// keys.c: what a view does with keys while the keyboard's focus is in it
-// (ui/keys.go's KeyMap): the keys style key, a [Shortcut], and the
-// root's keys (ui.use_keys: window.go's UseKeys), which take keys no
+// keys.c: what a view does with keys while the keyboard's focus is in it:
+// the keys style key, a [Shortcut], and the root's keys (ui.use_keys), which take keys no
 // view took and keys when nothing has the focus.
 //
 // A key goes down (and repeats, held) to the nearest view, from the

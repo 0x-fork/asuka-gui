@@ -1,7 +1,6 @@
 // Video: an AVPlayerView (AVKit's controls, floating) playing an AVPlayer.
 // Loaded reports the video's natural size once AVFoundation knows it, Ended
 // each play to its end (looping, it plays again), Failed what couldn't play.
-// Ports host/darwin's video.go.
 import AppKit
 import AVFoundation
 import AVKit

@@ -3,9 +3,7 @@
 // Shader.swift, ProgressRing.swift, Video.swift, Web.swift,
 // WebModules.swift, NativeViews.swift; presses, hover, gestures and drag
 // and drop are Interaction.swift's, Gestures.swift's and DragDrop.swift's),
-// and the hooks the foundation calls (Parts.swift). Ports host/darwin's
-// media.go, imageextra.go, shape.go, canvas.go, shader.go, progressring.go,
-// video.go, web.go, webmore.go, native.go, interaction.go and swipe.go.
+// and the hooks the foundation calls (Parts.swift).
 import AppKit
 #if canImport(AsukaOps)
 import AsukaOps

@@ -1,13 +1,13 @@
-// periodic.c: asuka/periodic on Windows (host/windows' periodic.go):
-// timers while the app runs (out of sight too: a Windows app keeps
-// running), as a Mac's NSBackgroundActivityScheduler runs them; nothing
-// launches the app. "schedule" (string name, u32 seconds, u8 flags: 1
-// network, 2 charging) and "cancel" (the name) keep the app's tasks in a
-// file of the app's data, with when each last ran; when one is due,
-// "next" hands the package the task (string name, u32 seconds it has),
-// which it reports with "done" (string name, u8 ok). A task that wants
-// power waits while the PC runs on its battery, one that wants the
-// network while it has none: it's tried again a few minutes later.
+// periodic.c: asuka/periodic on Windows: timers while the app runs (out of
+// sight too: a Windows app keeps running), as a Mac's
+// NSBackgroundActivityScheduler runs them; nothing launches the app.
+// "schedule" (string name, u32 seconds, u8 flags: 1 network, 2 charging)
+// and "cancel" (the name) keep the app's tasks in a file of the app's data,
+// with when each last ran; when one is due, "next" hands the package the
+// task (string name, u32 seconds it has), which it reports with "done"
+// (string name, u8 ok). A task that wants power waits while the PC runs on
+// its battery, one that wants the network while it has none: it's tried
+// again a few minutes later.
 #include "modules.h"
 
 #include <time.h>

@@ -75,7 +75,7 @@ private class LottiePlayer(private val events: ViewEvents) : View {
 
     init {
         lottie.scaleType = ImageView.ScaleType.FIT_CENTER
-        // Reduce Motion is the Go side's to follow (asuka/sdk/lottie).
+        // Reduce Motion is the Go side's to follow (asuka/lottie).
         lottie.setIgnoreDisabledSystemAnimations(true)
         lottie.addAnimatorUpdateListener { reportNow() }
         lottie.addAnimatorListener(object : AnimatorListenerAdapter() {

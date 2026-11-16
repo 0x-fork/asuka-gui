@@ -64,7 +64,7 @@ bool lx_app_active(void);
 // freedesktop server; "gio" or "fdo" force one (tests).
 const char *lx_notify_backend;
 
-// A notification's spec (asuka/notify's JSON, internal/notifyspec's).
+// A notification's spec (asuka/notify's JSON: its Spec).
 typedef struct {
 	dsk_json *json;  // the whole of it, as it came
 	char *raw;
@@ -80,7 +80,7 @@ typedef struct {
 	AK_VEC(reply *) waiting;
 } wait_queue;
 
-// A notification shown: what's reported of it (notifyspec.Shown's JSON),
+// A notification shown: what's reported of it (std/notify's WireDelivered's JSON),
 // and its thread and time.
 typedef struct {
 	char *id, *json, *thread;

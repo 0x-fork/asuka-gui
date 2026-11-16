@@ -1,4 +1,4 @@
-// lifecycle.c: the app's lifecycle on the desktop (app/quit.go, relaunch.go):
+// lifecycle.c: the app's lifecycle on the desktop:
 // quitting (quit(), relaunch(): the Quit command, which the host does as
 // the user's Quit), what hears a quit coming and may cancel it (on quit,
 // onQuit: asuka_quit_request, which the host asks however the quit

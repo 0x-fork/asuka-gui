@@ -1,4 +1,4 @@
-// nav.c: navigation on Windows (host/windows' nav.go):
+// nav.c: navigation on Windows:
 //
 //   - A Stack shows its top Screen under a header bar of its own: a back
 //     button (Alt+Left too) while there's a screen to go back to, the

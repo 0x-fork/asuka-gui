@@ -1,7 +1,7 @@
-// rich.c: styled text (ui/richtext.go, richfield.go): RichText and its
+// rich.c: styled text: RichText and its
 // inline components, Selectable, a selectable Text, and a TextField's
 // rich text, its paste types, its formats and its accessory (the bar on
-// top of the keyboard, components.go's accessory).
+// top of the keyboard).
 //
 // Spans (types.asuka's Span) cross as ops/rich.go has styled text:
 // styles in the order runs first use them, a paragraph per line. A

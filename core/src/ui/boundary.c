@@ -1,4 +1,4 @@
-// boundary.c: error boundaries (ui/control.go's Catch): Boundary shows
+// boundary.c: error boundaries: Boundary shows
 // its content; when building it fails, or an effect, a handler or a task
 // in it does later, it shows what its error handler returns instead
 // (React's and Solid's error boundaries). The handler gets the error and

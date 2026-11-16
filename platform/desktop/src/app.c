@@ -1,5 +1,5 @@
 // app.c: the app's settings (asuka-app.json, which the CLI writes beside
-// the executable) and its directories (internal/appdir's rules)
+// the executable) and its directories (each platform's place for them)
 // (desktop.h).
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L  // strdup, readlink under -std=c17

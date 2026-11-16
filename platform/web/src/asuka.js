@@ -56,7 +56,7 @@ export async function start(options = {}) {
   // The app's service worker, listened to before the app starts: a tap
   // on a notification may be what opened the page.
   worker.register(options.serviceWorker);
-  // SQLite's worker starts beside the app (asuka/sdk/sqlite), loading its module meanwhile.
+  // SQLite's worker starts beside the app (asuka/sqlite), loading its module meanwhile.
   const sqliteWasm = options.libs?.["asqlite.wasm"];
   const sqlite = sqliteWasm ? import("./sqlite.js").then((m) => m.load(new URL(sqliteWasm, document.baseURI))) : null;
   sqlite?.catch(() => {});

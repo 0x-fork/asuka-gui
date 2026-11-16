@@ -1,6 +1,5 @@
 // A TextField's selection, insertions and pastes of content the app takes
-// (TextField's Selection, InsertText, PasteTypes). Ports host/darwin's
-// textinput.go.
+// (TextField's Selection, InsertText, PasteTypes).
 //
 // A one-line field is edited by its window's field editor, an NSTextView;
 // the host gives fields a field editor of its own class (AsukaFieldEditor),

@@ -1,4 +1,4 @@
-// Keys on a Mac (the Keys prop). Ports host/darwin's keys.go.
+// Keys on a Mac (the Keys prop).
 //
 // A local event monitor for key down, installed once, sees each key going
 // down (and each repeat) as the application takes it from its queue, before

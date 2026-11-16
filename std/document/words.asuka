@@ -1,7 +1,6 @@
 // The package's words, by language: its menus' items, its questions
-// and their buttons, untitled documents' names (from sdk/document's
-// catalogs; the placeholders, {name} and {n}, filled by say). A
-// language without them says English.
+// and their buttons, untitled documents' names (the placeholders,
+// {name} and {n}, filled by say). A language without them says English.
 let words: [string: [string: string]] = [
   "en": [
     "untitled": "Untitled",

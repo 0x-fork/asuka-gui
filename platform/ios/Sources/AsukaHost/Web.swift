@@ -265,7 +265,7 @@ final class AsukaWebMessages: NSObject, WKScriptMessageHandler {
         MainActor.assumeIsolated { view?.posted(m) }
     }
 }
-/// asuka/sdk/js's module: "eval" runs a script (args: u32 timeout ms, then the
+/// asuka/js's module: "eval" runs a script (args: u32 timeout ms, then the
 /// script) in a WKWebView that's never shown, made for it and let go
 /// after, and answers with its value as JSON: the last statement's, or
 /// what its promise resolves to. A thrown error fails with its message.

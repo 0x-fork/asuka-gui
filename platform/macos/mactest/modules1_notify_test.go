@@ -9,12 +9,12 @@ import (
 	"testing"
 )
 
-// The notify and push modules (Notify.swift, Push.swift: host/darwin's
-// notify.go and push.go). The packages' tests (asuka/notify, asuka/push)
-// run on the notify player (modules1_player_test.go), which links
-// asuka/host's Swift; the module tests call each method by name through
-// asuka/platform, each answer or error shown in a Text, for what the
-// packages don't answer (their sends) and the errors they don't reach.
+// The notify and push modules (Notify.swift, Push.swift). The packages'
+// tests (asuka/notify, asuka/push) run on the notify player
+// (modules1_player_test.go), which links asuka/host's Swift; the module
+// tests call each method by name through asuka/platform, each answer or
+// error shown in a Text, for what the packages don't answer (their sends)
+// and the errors they don't reach.
 // What asks the user (notify's request, push's register) is called only
 // where it fails before asking (no bundle): a test can't answer the
 // prompt. The players are app bundles, which the notification center

@@ -1,13 +1,12 @@
-// notify.c: asuka/notify on Windows (host/windows' notify.go,
-// internal/windows' toast.go, toastcom.go): toasts (WinRT's
+// notify.c: asuka/notify on Windows: toasts (WinRT's
 // ToastNotificationManager). The app is registered with the shell as an
 // unpackaged app is (a Start menu shortcut with its AppUserModelID, the
 // AppUserModelId key) with a COM activator of its own, so that a toast's
 // click and its buttons reach the app: the running one, or one COM starts
 // for them (-ToastActivated, then -Embedding). A toast carries its
-// notification (its ID, URL, data, category, thread, when it showed) in
-// its arguments, JSON, which come back with a click, and which the
-// notification center's history gives back for Showing.
+// notification (its ID, URL, data, category, thread, when it showed) in its
+// arguments, JSON, which come back with a click, and which the notification
+// center's history gives back for Showing.
 //
 // A category's actions are the toast's buttons (five at most), a reply a
 // text box with its send button beside it; an action that opens the app

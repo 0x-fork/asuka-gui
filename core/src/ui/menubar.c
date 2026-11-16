@@ -1,4 +1,4 @@
-// menubar.c: the app's menu bar (ui/window.go's MenuBar): MenuBar, the
+// menubar.c: the app's menu bar: MenuBar, the
 // Menus in it, their MenuItems (MenuItems in an item make a submenu)
 // and MenuSeparators. None makes a view: a MenuBar builds its children
 // under an owner of its own, outside the tree, and each item it holds is

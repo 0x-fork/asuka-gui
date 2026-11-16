@@ -1,7 +1,7 @@
 // symbols.c: SF Symbol names drawn as the Segoe Fluent Icons glyphs for
 // them (Segoe MDL2 Assets before Windows 11), a curated set (".fill"
-// variants take the filled glyph where there's one), as host/windows'
-// image.go and locale.go had them. Sorted by name: found by bsearch.
+// variants take the filled glyph where there's one). Sorted by name: found
+// by bsearch.
 #include "host.h"
 #include "parts.h"
 

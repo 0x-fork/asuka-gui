@@ -1,5 +1,4 @@
-// elements.c: the built-in elements (ui/components.go, ui/media.go): a
-// class each, and the protocol that sets their keys, binds them and
+// elements.c: the built-in elements: a class each, and the protocol that sets their keys, binds them and
 // handles their events.
 //
 // A control whose value the user changes (a text field's text, a

@@ -1,9 +1,8 @@
-// popover.c: a Popover (host/windows' popover.go) is a popup window over
-// its anchor, as WinUI's Flyout: below the anchor and centered on it
-// (above it where the monitor has no room), with Windows 11's rounded
-// corners and border, light dismissed: clicking elsewhere (it loses
-// activation) or Escape reports Dismissed, or Back while ui.OnBack in it
-// intercepts.
+// popover.c: a Popover is a popup window over its anchor, as WinUI's
+// Flyout: below the anchor and centered on it (above it where the monitor
+// has no room), with Windows 11's rounded corners and border, light
+// dismissed: clicking elsewhere (it loses activation) or Escape reports
+// Dismissed, or Back while ui.OnBack in it intercepts.
 #include "nav.h"
 #include "win.h"
 

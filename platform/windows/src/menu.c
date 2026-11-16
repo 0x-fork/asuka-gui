@@ -3,8 +3,7 @@
 // their shortcuts, which the message loop translates for any of the app's
 // windows; popup menus of actions (a view's Menu, a bar's buttons); and
 // owner-drawn menus, for a destructive item's red and a section's header,
-// drawn as the system draws a themed menu (host/windows' menubar.go,
-// menudraw.go, commands.go's actionMenu).
+// drawn as the system draws a themed menu.
 #include "win.h"
 
 #include <vssym32.h>

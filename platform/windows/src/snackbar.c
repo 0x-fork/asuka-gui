@@ -1,12 +1,12 @@
-// snackbar.c: a Snackbar on Windows (host/windows' snackbar.go). Win32
-// has none, so it's an overlay at the bottom of the window it's on, drawn
-// as Fluent's InfoBar: a card in the layer color with its stroke and 8
-// point corners, the message, a standard button for its action and a
-// subtle close button (the host's own buttons, drawn as Fluent's in
-// custom draw). It slides up in, and down out (it just shows and goes with
-// animations off); its time waits while the mouse is over it or the
-// keyboard's focus is in it; screen readers hear it as a UI Automation
-// notification, and reach its buttons, which are BUTTON controls.
+// snackbar.c: a Snackbar on Windows. Win32 has none, so it's an overlay at
+// the bottom of the window it's on, drawn as Fluent's InfoBar: a card in
+// the layer color with its stroke and 8 point corners, the message, a
+// standard button for its action and a subtle close button (the host's own
+// buttons, drawn as Fluent's in custom draw). It slides up in, and down out
+// (it just shows and goes with animations off); its time waits while the
+// mouse is over it or the keyboard's focus is in it; screen readers hear it
+// as a UI Automation notification, and reach its buttons, which are BUTTON
+// controls.
 #include "nav.h"
 
 struct wh_snack {

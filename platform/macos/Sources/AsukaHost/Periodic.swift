@@ -1,15 +1,14 @@
-// asuka/sdk/periodic on a Mac (host/darwin's periodic.go):
-// NSBackgroundActivityScheduler, which runs a task about every interval
-// while the app runs (in the background too: a Mac app keeps running out of
-// sight), when the system has the time and power for it; unlike iOS's
-// BGTaskScheduler it doesn't launch the app. "schedule" (string name, u32
-// seconds, u8 flags: 1 network, 2 charging) and "cancel" (the name) keep
-// the app's tasks (in UserDefaults, as iOS's host does) and a scheduler for
-// each; when one fires, "next" hands the app the task (string name, u32
-// seconds it has), which it reports with "done" (string name, u8 ok). A
-// task that wants power waits while the Mac runs on its battery, one that
-// wants the network while it has none (deferred: the scheduler tries again
-// soon).
+// asuka/periodic on a Mac: NSBackgroundActivityScheduler, which runs a task
+// about every interval while the app runs (in the background too: a Mac app
+// keeps running out of sight), when the system has the time and power for
+// it; unlike iOS's BGTaskScheduler it doesn't launch the app. "schedule"
+// (string name, u32 seconds, u8 flags: 1 network, 2 charging) and "cancel"
+// (the name) keep the app's tasks (in UserDefaults, as iOS's host does) and
+// a scheduler for each; when one fires, "next" hands the app the task
+// (string name, u32 seconds it has), which it reports with "done" (string
+// name, u8 ok). A task that wants power waits while the Mac runs on its
+// battery, one that wants the network while it has none (deferred: the
+// scheduler tries again soon).
 import AppKit
 import IOKit.ps
 import Network

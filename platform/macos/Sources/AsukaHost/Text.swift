@@ -1,10 +1,8 @@
 // Text on a Mac: a multiline TextField (an NSTextView in a scroll view that
 // grows with its text up to its line limit), the text views' delegate, and
-// what the text part adds to the automation. Ports host/darwin's views.go
-// (makeMultiline, plainField, textViewChanged) and measure.go's
-// measureMultiline. Rich text is RichText.swift, a Rich field
-// RichField.swift, selection, insertions and pastes TextInput.swift, keys
-// KeyWatcher.swift.
+// what the text part adds to the automation. Rich text is
+// RichText.swift, a Rich field RichField.swift, selection, insertions and
+// pastes TextInput.swift, keys KeyWatcher.swift.
 import AppKit
 #if canImport(AsukaOps)
 import AsukaOps

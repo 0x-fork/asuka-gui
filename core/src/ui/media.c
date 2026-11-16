@@ -1,6 +1,6 @@
-// media.c: Image (ui/media.go: its placeholders, hash placeholders and
-// animated images), Video (video.go), WebView (web.go) and native views
-// (native.go: what a native package's `native component` shows).
+// media.c: Image (its placeholders, hash placeholders and animated
+// images), Video, WebView and native views (what a native package's
+// `native component` shows).
 #include "ui/ui_ext.h"
 #include "native/native.h"
 

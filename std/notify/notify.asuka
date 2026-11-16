@@ -387,7 +387,7 @@ struct WireChannel {
   group: string
 }
 
-// What the hosts take (internal/notifyspec's Spec).
+// What the hosts take (std/notify's Spec).
 struct Spec {
   id: string
   title: string

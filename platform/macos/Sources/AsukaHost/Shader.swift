@@ -3,8 +3,7 @@
 // shadercode's Code), a triangle over the whole box, its uniforms in a
 // buffer as the code lays them out; the host sets the size, the scale and
 // Time. Animated shaders draw at each tick of a clock of their own (a
-// display link); the others when their size or uniforms change. Ports
-// host/darwin's shader.go.
+// display link); the others when their size or uniforms change.
 import AppKit
 import Metal
 import QuartzCore

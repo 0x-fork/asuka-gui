@@ -1,8 +1,8 @@
 // crash.c: asuka/crash's record of the app's runs and its reports, in the
-// core: what internal/crashrun and sdk/crash did in Go, for the hosts
-// that run the core without Go (iOS, Android, the web). The desktops' Go
-// hosts keep their own (sdk/crash: Go's crash output too), and std/crash
-// uses theirs there.
+// core, for every host: what only a host sees (an uncaught exception, a
+// fatal signal in native code, MetricKit's diagnostics, how Android's runs
+// ended) it writes to the record's inbox, which the core reads into
+// reports.
 //
 // A host begins the run's record as the app starts (asuka_crash_start,
 // before asuka_start), with JSON of the device and the app; it's kept
@@ -21,10 +21,10 @@
 //	                    ANR's traces in a .trace beside it)
 //	reports/<id>.json   the reports, kept until the app deletes them
 //
-// The formats are sdk/crash's, so a record an app's Go version left reads
-// the same. A run holds a lock on its .crash file while it lives (flock),
-// so a reader tells a run that ended from one still going (the app and
-// its share extension).
+// The formats are the ones older versions of Asuka's apps wrote too, so a
+// record an older version of an app left reads the same. A run holds a
+// lock on its .crash file while it lives (flock), so a reader tells a run
+// that ended from one still going (the app and its share extension).
 //
 // Builtins (std/crash's native fns):
 //
@@ -1186,7 +1186,7 @@ void asuka_crash_notify(void) { changed(); }
 
 // ---- Reports ----
 //
-// A report is a JSON object in sdk/crash's Report format (times RFC 3339,
+// A report is a JSON object in the kept reports' format (times RFC 3339,
 // an uptime in nanoseconds): what's kept in reports/. Made of a frame's
 // and a thread's objects too.
 
@@ -2509,7 +2509,7 @@ static void out_bool(ak_buf *b, const char *key, bool v) {
 	ak_buf_printf(b, ":%s", v ? "true" : "false");
 }
 
-// out_report writes a report (sdk/crash's format) as std/crash's Report:
+// out_report writes a report (as kept) as std/crash's Report:
 // times in ms, every field there.
 static void out_report(ak_buf *b, const jv *r) {
 	ak_buf_u8(b, '{');

@@ -1,4 +1,4 @@
-// RichText on a Mac. Ports host/darwin's rich.go.
+// RichText on a Mac.
 //
 // A RichText is an NSTextView (TextKit's typesetter, links, selection and
 // accessibility), not editable, without insets, so what's measured is

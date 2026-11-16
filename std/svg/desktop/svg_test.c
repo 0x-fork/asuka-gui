@@ -1,4 +1,4 @@
-// svg_test.c: icons' data decoded as sdk/svg's Encode writes it, fitted
+// svg_test.c: icons' data decoded as internal/svgparse's Encode writes it, fitted
 // to a box, and a Shape's layers resolved in one (platform/desktop's
 // TestStdUnits).
 #include "svg.h"

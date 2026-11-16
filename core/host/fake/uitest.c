@@ -186,7 +186,7 @@ ak_fake *ak_uitest_host(ak_uitest *a) { return a->f; }
 
 // ---- What the screen shows ----
 //
-// As uitest/screen.go: the layers (the root, then what's presented over
+// The layers (the root, then what's presented over
 // it), the views in each that show (a Stack's top screen, a Tabs' chosen
 // page, a List's bound rows), and the targets a text names in them.
 
@@ -1145,7 +1145,7 @@ void ak_uitest_idle(ak_uitest *a) {
 
 // ---- Actions ----
 //
-// As uitest/actions.go: what a user does, named by what the screen
+// What a user does, named by what the screen
 // shows. Each action settles, then reports the fake host's misuses.
 
 // disabled_view reports whether v or a view around it is disabled.

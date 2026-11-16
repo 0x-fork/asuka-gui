@@ -22,7 +22,6 @@ func webEvalButton(title, script string) string {
 // script for its value, hears what the page posts, sends its user agent,
 // runs its preload before the page's scripts, hands a page for a new
 // window to the app, and the web views' cookies are the app's to read.
-// (host/darwin's TestWebViewBlockDownloadEval, and more.)
 func TestVisualWebView(t *testing.T) {
 	var mu sync.Mutex
 	var paths, agents []string
@@ -126,7 +125,6 @@ func TestVisualWebView(t *testing.T) {
 // On a page whose Content Security Policy blocks eval, a WebView's eval
 // still answers with the last statement's value, as JSON; what a script
 // threw, or a value WebKit can't return (a promise), is an error.
-// (host/darwin's TestWebViewEvalContentSecurityPolicy.)
 func TestVisualWebViewEvalCSP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "script-src 'self'")

@@ -1,5 +1,5 @@
 // graph.c: links between nodes, and alien-signals' push-dirty,
-// pull-value propagation (signal/graph.go).
+// pull-value propagation.
 #include "signal/signal_impl.h"
 
 static ak_graph graph;

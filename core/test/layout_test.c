@@ -1,6 +1,9 @@
-// layout_test.c: the layout's table tests (layout/layout_test.go's) and
-// the Chrome fixtures (layout/css_test.go's), read from
-// testdata/layout_fixtures.txt (go run layout/testdata/gen_c_fixtures.go).
+// layout_test.c: the layout's table tests and the Chrome fixtures
+// (testdata/css: Taffy's, and the left-to-right and right-to-left cases
+// beyond them), read from testdata/layout_fixtures.txt (go run
+// core/test/testdata/css/gen_fixtures.go). testdata/css/known_failures.txt
+// lists the fixtures the layout doesn't match yet; go test ./core -run
+// TestC/Layout -update-known rewrites it.
 #include "t.h"
 #include "base/base.h"
 #include "layout/layout.h"
@@ -823,9 +826,8 @@ static int read_frames(scanner *s, const char *tag, frame_rec *out, int cap, int
 	return k;
 }
 
-// matches compares n's subtree to Chrome's frames from *k on, as
-// css_test.go's compare does: with a tolerance of 0.1, over the nodes
-// both have.
+// matches compares n's subtree to Chrome's frames from *k on: with a
+// tolerance of 0.1, over the nodes both have.
 static bool matches(ak_lnode *n, const frame_rec *e, int *k, char *diff, size_t ndiff) {
 	const frame_rec *r = &e[(*k)++];
 	ak_lframe g = ak_lnode_frame(n);
@@ -852,21 +854,30 @@ static bool matches(ak_lnode *n, const frame_rec *e, int *k, char *diff, size_t 
 	return ok;
 }
 
-// same_as_go compares every frame of n's subtree to the Go engine's.
-static bool same_as_go(ak_lnode *n, const frame_rec *g, int *k, char *diff, size_t ndiff) {
+// record writes n's subtree's frames, in preorder, from *k on.
+static void record(ak_lnode *n, frame_rec *out, int *k) {
+	frame_rec *r = &out[(*k)++];
+	ak_lframe f = ak_lnode_frame(n);
+	r->nkids = (int)ak_lnode_child_count(n);
+	r->f[0] = f.x, r->f[1] = f.y, r->f[2] = f.w, r->f[3] = f.h;
+	for (uint32_t c = 0; c < ak_lnode_child_count(n); c++) record(ak_lnode_child(n, c), out, k);
+}
+
+// same_frames compares every frame of n's subtree to those record wrote.
+static bool same_frames(ak_lnode *n, const frame_rec *g, int *k, char *diff, size_t ndiff) {
 	const frame_rec *r = &g[(*k)++];
 	ak_lframe f = ak_lnode_frame(n);
 	float got[4] = {f.x, f.y, f.w, f.h};
 	bool ok = (uint32_t)r->nkids == ak_lnode_child_count(n);
 	for (int j = 0; j < 4 && ok; j++) {
 		if (!(fabsf(r->f[j] - got[j]) < 0.01f || (r->f[j] != r->f[j] && got[j] != got[j]))) {
-			snprintf(diff, ndiff, "got %g,%g %gx%g, Go has %g,%g %gx%g", got[0], got[1], got[2], got[3], r->f[0], r->f[1], r->f[2], r->f[3]);
+			snprintf(diff, ndiff, "got %g,%g %gx%g, the first layout %g,%g %gx%g", got[0], got[1], got[2], got[3], r->f[0], r->f[1], r->f[2], r->f[3]);
 			ok = false;
 		}
 	}
 	if (!ok) return false;
 	for (uint32_t c = 0; c < ak_lnode_child_count(n); c++) {
-		if (!same_as_go(ak_lnode_child(n, c), g, k, diff, ndiff)) return false;
+		if (!same_frames(ak_lnode_child(n, c), g, k, diff, ndiff)) return false;
 	}
 	return true;
 }
@@ -889,16 +900,41 @@ static char *read_file(const char *path) {
 	return buf;
 }
 
+// testdata reads a file of core/test/testdata, from the test's directory
+// or, failing that, ASUKA_ROOT's.
+static char *testdata(const char *name) {
+	char path[4096];
+	snprintf(path, sizeof path, "testdata/%s", name);
+	char *data = read_file(path);
+	if (!data && getenv("ASUKA_ROOT")) {
+		snprintf(path, sizeof path, "%s/core/test/testdata/%s", getenv("ASUKA_ROOT"), name);
+		data = read_file(path);
+	}
+	return data;
+}
+
+static int cmp_str(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+#define KNOWN_FAILURES "css/known_failures.txt"
+#define MAX_FIXTURES 4096
 #define MAX_FRAMES 4096
 
 TEST(css_fixtures) {
-	char *data = read_file("testdata/layout_fixtures.txt");
-	if (!data && getenv("ASUKA_ROOT")) {
-		char path[4096];
-		snprintf(path, sizeof path, "%s/core/test/testdata/layout_fixtures.txt", getenv("ASUKA_ROOT"));
-		data = read_file(path);
-	}
+	char *data = testdata("layout_fixtures.txt");
 	REQUIRE(data != NULL);
+	// The known failures: a name a line, sorted for bsearch; # comments.
+	char *known_data = testdata(KNOWN_FAILURES);
+	REQUIRE(known_data != NULL);
+	char **known = calloc(MAX_FIXTURES, sizeof(char *));
+	int nknown = 0;
+	for (char *line = strtok(known_data, "\r\n"); line; line = strtok(NULL, "\r\n")) {
+		if (*line && *line != '#' && nknown < MAX_FIXTURES) known[nknown++] = line;
+	}
+	qsort(known, (size_t)nknown, sizeof(char *), cmp_str);
+	bool update = getenv("ASUKA_UPDATE_KNOWN") != NULL;
+	char **failing = calloc(MAX_FIXTURES, sizeof(char *));
+	int nfailing = 0;
+
 	scanner s = {data};
 	expect_tag(&s, "D");
 	REQUIRE(tok_i(&s) == NFIXED);
@@ -906,13 +942,13 @@ TEST(css_fixtures) {
 	for (int i = 0; i < NFIXED; i++) defaults[i] = tok_f(&s);
 
 	frame_rec *want = calloc(MAX_FRAMES, sizeof(frame_rec));
-	frame_rec *gof = calloc(MAX_FRAMES, sizeof(frame_rec));
+	frame_rec *first = calloc(MAX_FRAMES, sizeof(frame_rec));
 	struct {
 		char name[32];
-		int pass, total, gopass;
+		int pass, total;
 	} groups[16];
 	int ngroups = 0;
-	int total = 0, pass = 0, gopass = 0, beyond = 0, unlike_go = 0, regressions = 0, cache_fails = 0;
+	int total = 0, pass = 0, regressions = 0, fixed = 0, cache_fails = 0;
 	ak_lpass p = {0};
 	char *t;
 	while ((t = next_token(&s)) != NULL) {
@@ -923,10 +959,8 @@ TEST(css_fixtures) {
 		const char *name = next_token(&s);
 		bool rounding = tok_i(&s) != 0;
 		float vw = tok_f(&s), vh = tok_f(&s);
-		bool go_pass = tok_i(&s) != 0;
 		ak_lnode *root = read_node(&s, defaults);
 		read_frames(&s, "E", want, MAX_FRAMES, 0);
-		read_frames(&s, "G", gof, MAX_FRAMES, 0);
 		expect_tag(&s, ".");
 
 		ak_lpass_reset(&p);
@@ -935,13 +969,11 @@ TEST(css_fixtures) {
 		char diff[256] = "";
 		int k = 0;
 		bool ok = matches(root, want, &k, diff, sizeof diff);
-		char gdiff[256] = "";
 		k = 0;
-		bool like_go = same_as_go(root, gof, &k, gdiff, sizeof gdiff);
+		record(root, first, &k);
 
 		total++;
 		pass += ok;
-		gopass += go_pass;
 		const char *slash = strchr(name, '/');
 		size_t glen = slash ? (size_t)(slash - name) : strlen(name);
 		int gi = 0;
@@ -954,18 +986,19 @@ TEST(css_fixtures) {
 		if (gi < ngroups) {
 			groups[gi].total++;
 			groups[gi].pass += ok;
-			groups[gi].gopass += go_pass;
 		}
-		if (go_pass && !ok) {
-			regressions++;
-			T_FAIL("%s: matches Chrome in Go, not in C: %s", name, diff);
-		} else if (!go_pass && ok) {
-			beyond++;
-			fprintf(stderr, "  passes in C, a known failure in Go: %s\n", name);
-		}
-		if (!like_go) {
-			unlike_go++;
-			if (getenv("T_VERBOSE") || go_pass) fprintf(stderr, "  differs from Go: %s: %s\n", name, gdiff);
+		bool is_known = bsearch(&name, known, (size_t)nknown, sizeof(char *), cmp_str) != NULL;
+		if (!ok && nfailing < MAX_FIXTURES) failing[nfailing++] = (char *)name;
+		if (!update) {
+			if (!ok && !is_known) {
+				regressions++;
+				T_FAIL("%s: doesn't match Chrome (not in " KNOWN_FAILURES "): %s", name, diff);
+			} else if (ok && is_known) {
+				fixed++;
+				T_FAIL("%s: matches Chrome now: remove it from " KNOWN_FAILURES " (-update-known)", name);
+			} else if (!ok && getenv("T_VERBOSE")) {
+				fprintf(stderr, "  known failure: %s: %s\n", name, diff);
+			}
 		}
 
 		// Again, unchanged: answered from the final caches, reporting
@@ -980,8 +1013,9 @@ TEST(css_fixtures) {
 		}
 		// The last node invalidated: its ancestors recompute, the rest
 		// answers from its caches; then everything from clean caches. Both
-		// give the Go engine's frames, from the pass's warm scratch memory.
-		for (int round = 0; round < 2 && like_go; round++) {
+		// give the first layout's frames, from the pass's warm scratch
+		// memory.
+		for (int round = 0; round < 2; round++) {
 			if (round == 0) ak_lnode_mark_dirty(last_node(root));
 			else ak_lnode_mark_subtree_dirty(root);
 			before = ak_alloc_count;
@@ -990,26 +1024,41 @@ TEST(css_fixtures) {
 			uint64_t allocs = ak_alloc_count - before;
 			if (rounding) ak_lround(root, 1);
 			k = 0;
-			if (!same_as_go(root, gof, &k, gdiff, sizeof gdiff) || allocs != 0) {
+			char rdiff[256] = "";
+			if (!same_frames(root, first, &k, rdiff, sizeof rdiff) || allocs != 0) {
 				cache_fails++;
 				T_FAIL("%s: relayout %s: %llu allocations; %s", name, round == 0 ? "of the last node" : "from clean caches",
-					(unsigned long long)allocs, gdiff);
+					(unsigned long long)allocs, rdiff);
 				break;
 			}
 		}
 		free_fixture(root);
 		ak_lnode_free_tree(root);
 	}
-	fprintf(stderr, "CSS fixtures: C %d/%d match Chrome, Go %d/%d (", pass, total, gopass, total);
+	fprintf(stderr, "CSS fixtures: %d/%d match Chrome (", pass, total);
 	for (int i = 0; i < ngroups; i++) fprintf(stderr, "%s%s %d/%d", i ? ", " : "", groups[i].name, groups[i].pass, groups[i].total);
-	fprintf(stderr, "); %d fail in C and pass in Go, %d pass in C and fail in Go; %d laid out unlike Go\n", regressions, beyond, unlike_go);
+	fprintf(stderr, "); %d known failures\n", nfailing);
+	if (update) {
+		// The fixture names live in data, which is still allocated.
+		qsort(failing, (size_t)nfailing, sizeof(char *), cmp_str);
+		const char *path = "testdata/" KNOWN_FAILURES;
+		FILE *f = fopen(path, "wb");
+		REQUIRE(f != NULL);
+		fputs("# Fixtures the core's layout doesn't match yet. go test ./core -run TestC/Layout -update-known rewrites this.\n", f);
+		for (int i = 0; i < nfailing; i++) fprintf(f, "%s\n", failing[i]);
+		fclose(f);
+		fprintf(stderr, "wrote %s: %d fixtures\n", path, nfailing);
+	}
 	CHECK(total > 1900);
 	CHECK_EQ_INT(regressions, 0);
-	CHECK_EQ_INT(unlike_go, 0);
+	CHECK_EQ_INT(fixed, 0);
 	CHECK_EQ_INT(cache_fails, 0);
 	ak_lpass_free(&p);
 	free(want);
-	free(gof);
+	free(first);
+	free(known);
+	free(failing);
+	free(known_data);
 	free(data);
 }
 

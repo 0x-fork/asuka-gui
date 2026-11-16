@@ -1,6 +1,5 @@
-// interaction.c: a view's interaction states and what follows them
-// (ui/interaction.go), its gestures and screen readers' actions (the
-// View of ui/components.go), drags and drops.
+// interaction.c: a view's interaction states and what follows them,
+// its gestures and screen readers' actions (a View's), drags and drops.
 //
 // A view's states (pressed, hovered, dragged, a drag over it) are
 // reported by its host as they change, and a style follows them three

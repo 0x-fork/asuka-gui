@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/internal/appbuild"
-	"github.com/egoist/asuka/internal/boot"
+	"github.com/egoist/asuka/internal/appconfig"
 	"github.com/egoist/asuka/internal/cbuild"
 	iupdate "github.com/egoist/asuka/internal/update"
 )
@@ -91,7 +91,7 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 	if err := windowsRelease(app, t, res, filepath.Join(out, exe), o.verbose); err != nil {
 		return err
 	}
-	if err := writeHostConfig(app, platformWindows, target, true, filepath.Join(out, boot.ConfigFile)); err != nil {
+	if err := writeHostConfig(app, platformWindows, target, true, filepath.Join(out, appconfig.File)); err != nil {
 		return err
 	}
 	libs, err := appLibs(app, target)

@@ -2,8 +2,7 @@
 // as the app controls them: the options they open with (WindowOptions'
 // for the main window, a Window's Config prop), the WindowAction
 // commands, their state reported as it changes (WindowState), the user's
-// closing asked about first (CloseRequest), and where they were
-// (host/windows' winctl.go, placement.go).
+// closing asked about first (CloseRequest), and where they were.
 //
 //   - Abilities are window styles: no sizing frame or maximize button for
 //     a window that can't be resized, none of the minimize or maximize

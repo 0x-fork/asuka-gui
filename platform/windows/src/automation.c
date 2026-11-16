@@ -1,8 +1,8 @@
-// automation.c: the debug automation (host/windows' automation.go):
-// ASUKA_SCRIPT's steps, then ASUKA_SNAPSHOT (the window as a PNG once it
-// has shown, ASUKA_DUMP the view tree beside it) and quit. The steps run
-// on the main thread, a timer apart: 1.5 s before the first (images and
-// fonts load), 0.4 s between them.
+// automation.c: the debug automation: ASUKA_SCRIPT's steps, then
+// ASUKA_SNAPSHOT (the window as a PNG once it has shown, ASUKA_DUMP the
+// view tree beside it) and quit. The steps run on the main thread, a timer
+// apart: 1.5 s before the first (images and fonts load), 0.4 s between
+// them.
 #include "win.h"
 
 #include <wincodec.h>

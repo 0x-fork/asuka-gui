@@ -1,5 +1,5 @@
 // asuka/svg on the web: the icon's layers (the compiler's encoding:
-// sdk/svg's Encode) as an <svg> of <path>s the browser draws, fitted to
+// internal/svgparse's Encode) as an <svg> of <path>s the browser draws, fitted to
 // the view (xMidYMid meet); currentColor is the view's color, a semantic
 // one a variable that follows light and dark.
 const NS = "http://www.w3.org/2000/svg";

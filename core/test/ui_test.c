@@ -1,6 +1,5 @@
-// The UI runtime (core/src/ui) on the C fake host: ports of the Go ui
-// package's tests (ui/ui_test.go, textfield_test.go, media_test.go,
-// locale_test.go, bench_test.go). They build views in C, as compiled code
+// The UI runtime (core/src/ui) on the C fake host: the tree, the flush,
+// text fields, media, locales, and the work each does. They build views in C, as compiled code
 // does, through ui.h's protocol, with closures of C functions, and assert
 // the ops the fake host was sent, its view tree, and the work done.
 #include "t.h"
@@ -227,7 +226,8 @@ TEST(counter) {
 	ak_release(count);
 }
 
-// The same app through the uitest driver: tap and expect by text.
+// The same app through the test driver (host/fake/uitest.c): tap and
+// expect by text.
 TEST(uitest_counter) {
 	count = cell_int(0);
 	ak_uitest *a = mount(counter, NULL);

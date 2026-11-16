@@ -2,9 +2,7 @@
 // frames the core sets between AnimateBegin and AnimateEnd step on a
 // timer with the core's curve, transforms with them; Style.Transition's
 // views coming and going, and Style.Match's views moving from one to the
-// other; Style.Transform carried by the frame and the tree's scale
-// (host/windows' commands.go's animation, transition.go, match.go,
-// transform.go).
+// other; Style.Transform carried by the frame and the tree's scale.
 #include "win.h"
 
 typedef struct {

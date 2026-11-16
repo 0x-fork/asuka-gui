@@ -47,7 +47,7 @@ import AppKit
 
     init(_ events: ViewEvents) {
         self.events = events
-        // Reduce Motion is the Go side's to follow (asuka/sdk/lottie).
+        // Reduce Motion is the Go side's to follow (asuka/lottie).
         animationView = LottieAnimationView(animation: nil, configuration: LottieConfiguration(reducedMotionOption: .standardMotion))
         animationView.backgroundBehavior = .pauseAndRestore
         #if canImport(UIKit)

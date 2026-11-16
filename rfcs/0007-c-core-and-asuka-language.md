@@ -511,6 +511,16 @@ Each ends with its tests green.
 - [x] **D1** the desktop hosts (Go) on the C core: `libasuka` loaded
       with purego, batches decoded by `ops`, events and list calls into
       the ABI; `asuka dev` and `asuka build` for macOS, Windows, Linux.
-- [ ] **X** the Go core, `mobile/`, `host/web` and Go apps removed; DESIGN.md,
+- [x] **X** the Go core, `mobile/`, `host/web` and Go apps removed; DESIGN.md,
       AGENTS.md and the docs (with `zh` and `ja`) describe the new
-      Asuka.
+      Asuka. Its last step removed the Go app runtime that was left (about
+      95,000 lines): `app`, `ui`, `signal`, `uitest`, `colors`, `fonts`,
+      the Go SDK (`sdk/`), `host/` with `host/fake`, the Go layout engine
+      (`layout`), and `internal/follow`, `crashrun`, `appdir`, `imagehash`
+      and the `*spec` packages. What the build needs moved out of the
+      runtime's namespaces: the icon parser to `internal/svgparse`, the
+      Chrome CSS fixtures and their generator to `core/test/testdata/css`
+      (the C test keeps its own known failures), the sqlite plugin's C and
+      build tool to `std/sqlite`, the hash decoders' golden data to
+      `core/test/testdata/imagehash`, `asuka-app.json`'s schema to
+      `internal/appconfig`.

@@ -6,7 +6,7 @@
 // Columns of them), from their frames; rows not yet bound are estimated.
 // A section's header is a row of its own (one cell, bound with the index
 // -1 - the section's); a plain or bare list's header stays at the top
-// while its section's rows scroll under it (host/windows' list.go).
+// while its section's rows scroll under it.
 #include "nav.h"
 
 typedef struct {

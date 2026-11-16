@@ -1,8 +1,8 @@
 package ops
 
-// A SplitView's sidebar as the core sends it (Split's Items), read by the
-// Go hosts with DecodeSidebar (the Swift, Kotlin and JavaScript hosts
-// with their own readers of the same encoding).
+// A SplitView's sidebar as the core sends it (Split's Items), read in Go
+// with DecodeSidebar (the Swift, Kotlin and JavaScript hosts with their
+// own readers of the same encoding).
 //
 // It's u32 section count, then per section a u32-length title (empty:
 // none) and u32 item count, then per item a u32-length title, icon (an

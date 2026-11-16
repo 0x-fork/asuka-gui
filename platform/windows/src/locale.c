@@ -1,5 +1,5 @@
 // locale.c: the language the app shows and which way it goes, the user's
-// languages and formats, and Asuka's own words (host/windows' locale.go).
+// languages and formats, and Asuka's own words.
 //
 // Frames from the core are physical, and a host never mirrors what the
 // core places: a view's window and its DC stay left to right, and what the

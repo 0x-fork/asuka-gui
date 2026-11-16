@@ -32,7 +32,7 @@ pub enum State {
   stopped
 }
 
-/// What the system asks of the app (internal/nowplayingspec's numbers).
+/// What the system asks of the app (the nowPlaying module's numbers).
 enum Command {
   unknown
   play

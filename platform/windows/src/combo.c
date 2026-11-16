@@ -1,7 +1,6 @@
-// combo.c: Wheel and Picker (host/windows' combo.go): a drop-down list
-// combo box (CBS_DROPDOWNLIST) drawn as WinUI 3's ComboBox, keeping the
-// combo box's keyboard (arrows, F4, Alt+Down, typing to search, Escape),
-// focus and UI Automation.
+// combo.c: Wheel and Picker: a drop-down list combo box (CBS_DROPDOWNLIST)
+// drawn as WinUI 3's ComboBox, keeping the combo box's keyboard (arrows,
+// F4, Alt+Down, typing to search, Escape), focus and UI Automation.
 //
 // The closed box is the combo box's own WM_PAINT (it's subclassed): the
 // control fill and stroke of Fluent's standard button, its bottom edge

@@ -1,5 +1,5 @@
 // Shape: an AsukaShapeView whose layer has a CAShapeLayer filling it, its
-// path in the view's (flipped) points. Ports host/darwin's shape.go.
+// path in the view's (flipped) points.
 import AppKit
 #if canImport(AsukaOps)
 import AsukaOps

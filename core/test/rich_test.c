@@ -1,6 +1,5 @@
 // RichText and its inline components, Selectable, a selectable Text, a
-// rich TextField, its paste types, formats and accessory (rich.c): ports
-// of ui/richtext_test.go and accessory_test.go.
+// rich TextField, its paste types, formats and accessory (rich.c).
 #include "uih.h"
 
 static char log_buf[512];

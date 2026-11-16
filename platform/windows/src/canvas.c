@@ -1,9 +1,8 @@
 // canvas.c: a Canvas's display list, replayed with GDI+ as its view
 // paints, in pixels at its window's scale, semantic colors in the theme's
-// colors (host/windows' canvas.go). GDI+ has no layer opacity: Alpha
-// multiplies the colors drawn after it. A radial gradient is a path
-// gradient over its circle (its focus the path's center point), the last
-// color past it.
+// colors. GDI+ has no layer opacity: Alpha multiplies the colors drawn
+// after it. A radial gradient is a path gradient over its circle (its focus
+// the path's center point), the last color past it.
 #include "host.h"
 #include "parts.h"
 #include "draw.h"

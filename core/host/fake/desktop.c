@@ -1,5 +1,4 @@
-// desktop.c: the fake host's desktop, ported from host/fake's window.go,
-// tray.go and the menu bar's part of fake.go: windows as a desktop host
+// desktop.c: the fake host's desktop: windows as a desktop host
 // keeps them (the main window, the root's, and each Window's: their
 // options, their state, which WindowAction commands change and which it
 // reports with WindowState while the core listens, posted), the menu bar
@@ -542,8 +541,7 @@ static ficon *find_icon(ak_fake_desk *d, uint32_t id) {
 	return NULL;
 }
 
-// ak_fake_desk_call answers the "tray" module's calls (host/fake's
-// tray.go): set, remove, dock, next (held until something happens), stop.
+// ak_fake_desk_call answers the "tray" module's calls: set, remove, dock, next (held until something happens), stop.
 // It returns false for other modules.
 bool ak_fake_desk_call(ak_fake *f, ak_id root, uint32_t call, ak_span module, ak_span method, ak_span args) {
 	if (!ak_span_eq(module, ak_cstr("tray"))) return false;

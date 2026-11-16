@@ -27,7 +27,7 @@ enum Look {
     static func kind(_ s: VNBarcodeSymbology) -> String? { symbologies.first { $0.1.contains(s) }?.0 }
 
     /// The image upright, whatever its orientation says: the boxes are in
-    /// the same space as asuka/sdk/imageedit's pixels.
+    /// the same space as asuka/imageedit's pixels.
     static func upright(_ path: String) throws -> CGImage {
         let url = path.hasPrefix("file://") ? URL(string: path) : URL(fileURLWithPath: path)
         guard let url, let s = CGImageSourceCreateWithURL(url as CFURL, nil), CGImageSourceGetCount(s) > 0 else {
@@ -189,7 +189,7 @@ enum Look {
     static func findCodes(_ img: CGImage) throws -> [Code] {
         let req = VNDetectBarcodesRequest()
         #if targetEnvironment(simulator)
-        // As asuka/sdk/scan: only the first revision finds anything there.
+        // As asuka/scan: only the first revision finds anything there.
         req.revision = VNDetectBarcodesRequestRevision1
         prepare(req)
         #endif

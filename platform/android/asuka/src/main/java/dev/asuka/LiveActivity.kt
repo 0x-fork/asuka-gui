@@ -18,7 +18,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * asuka/sdk/liveactivity's live activities: an ongoing notification each, which
+ * asuka/liveactivity's live activities: an ongoing notification each, which
  * Android 16 promotes to a Live Update (requested with
  * EXTRA_REQUEST_PROMOTED_ONGOING; the user can turn promotion off for the
  * app): at the top of the shade and the lock screen, with Value as the
@@ -284,7 +284,7 @@ class AsukaLiveActivityReceiver : BroadcastReceiver() {
 }
 
 /**
- * asuka/sdk/liveactivity's module: "enabled" (u8), "start" (JSON: id, content,
+ * asuka/liveactivity's module: "enabled" (u8), "start" (JSON: id, content,
  * push, relevance; asks for notifications the first time), "update" (JSON:
  * id, content, alert), "end" (JSON: id, content, dismiss, atMs), "running"
  * (JSON), "next" (an event: type, id, token), "stop".
@@ -303,7 +303,7 @@ fun AsukaRuntime.liveActivityMethods(): Map<String, AsukaModuleMethod> {
                 val token = AsukaPushHub.token
                 when {
                     !ok || !la.enabled(app) -> reply(Result.failure(Exception("not available: notifications are off for the app")))
-                    push && token == null -> reply(Result.failure(Exception("Options.Push needs asuka/sdk/push (Firebase): import it")))
+                    push && token == null -> reply(Result.failure(Exception("Options.Push needs asuka/push (Firebase): import it")))
                     else -> {
                         val id = o.getString("id")
                         la.start(app, id, o.optJSONObject("content") ?: JSONObject(), o.optDouble("relevance", 0.0), push)

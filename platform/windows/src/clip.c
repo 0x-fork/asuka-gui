@@ -1,12 +1,12 @@
-// clip.c: rounded clips (host/windows' clip.go). A child window ignores
-// its parent's drawing, so a view that clips with a corner radius is
-// shaped by a window region (SetWindowRgn), which clips its children's
-// pixels too: the pixels its rounded rectangle covers whole. A region
-// has no partial pixels, so the corners' edge pixels, outside it, are the
-// parent's, and the parent draws them antialiased: the clipping view's
-// tree drawn there and mixed with what's behind it by how much of each
-// pixel the rounded rectangle covers. When something in the clipping
-// view paints over its corners, the parent draws them again.
+// clip.c: rounded clips. A child window ignores its parent's drawing, so a
+// view that clips with a corner radius is shaped by a window region
+// (SetWindowRgn), which clips its children's pixels too: the pixels its
+// rounded rectangle covers whole. A region has no partial pixels, so the
+// corners' edge pixels, outside it, are the parent's, and the parent draws
+// them antialiased: the clipping view's tree drawn there and mixed with
+// what's behind it by how much of each pixel the rounded rectangle covers.
+// When something in the clipping view paints over its corners, the parent
+// draws them again.
 //
 // A node's clip_rgn is its rounded clip's region (its client
 // coordinates), clip_r its radius in pixels; H.round_clips counts them.

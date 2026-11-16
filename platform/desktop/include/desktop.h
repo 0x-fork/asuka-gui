@@ -1,11 +1,11 @@
 // desktop.h: the C the Windows and Linux hosts share (RFC 0008, "Shared
-// C for Windows and Linux"), kept small: what the Go runtime's packages
-// did for both and isn't a platform's.
+// C for Windows and Linux"), kept small: what both need and isn't a
+// platform's.
 //
 //   - JSON, read into a tree and written (the app's settings, the state
 //     files, a module's arguments);
-//   - the app's settings (internal/boot's asuka-app.json);
-//   - the app's directories (internal/appdir's rules);
+//   - the app's settings (internal/appconfig's asuka-app.json);
+//   - the app's directories (each platform's place for them);
 //   - the state files: where the windows were (asuka-window.json) and
 //     where their routers were (asuka-routes.json);
 //   - files by UTF-8 path (Windows' are UTF-16);
@@ -137,7 +137,7 @@ void dsk_config_free(dsk_config *c);
 // The platforms the rules differ by.
 enum { DSK_WINDOWS, DSK_LINUX };
 
-// dsk_dirs is where the app keeps its files, by internal/appdir's rules:
+// dsk_dirs is where the app keeps its files, by each platform's rules:
 // ASUKA_DATA (else data, which the host names: Local AppData\<Name>,
 // $XDG_DATA_HOME/<id>), ASUKA_CONFIG, ASUKA_CACHE, ASUKA_LOGS overriding
 // each. The strings are the caller's to free.

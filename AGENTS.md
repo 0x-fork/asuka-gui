@@ -67,10 +67,9 @@ go run ./cmd/asuka fmt -w [paths]   # format .asuka files
 go generate ./lang/bytecode ./lang/prelude  # the VM's opcodes header; the prelude and the UI's element constants
 go test ./internal/cbuild           # the core built for this computer, iOS, Android and the web (ASUKA_CC=zig for Zig)
 go build ./... && go vet ./...      # CGO_ENABLED=0: everything
-go test ./...                       # signal, layout, ui with host/fake, ops, CLI
-go test ./uitest                    # Go apps' UI tests: uitest drives them on host/fake (-uitest.update: their snapshots)
+go test ./...                       # everything Go runs: the core's C tests, the compiler, ops, the CLI, the generators
 go run ./cmd/asuka test examples/counter  # an example's tests (its test blocks); the examples are Asuka, what they still ask of the platforms in examples/STDLIB.md
-go test ./layout -run CSS -update-known  # after fixing layout: refresh known_failures.txt
+go test ./core -run TestC/Layout -update-known  # after fixing layout: refresh core/test/testdata/css/known_failures.txt
 go test ./ops -update               # after changing the wire format: refresh golden files
 go test ./platform/macos/mactest -run Conformance  # what the macOS host draws for the style props, measured (package conformance; go generate ./conformance writes its app)
 go test -tags e2e ./e2e -run Conformance # likewise on the simulator, the emulator and headless Chrome (ASUKA_CONFORMANCE_OUT=dir: the captures)
@@ -82,8 +81,8 @@ go generate ./ops                   # Go constants, Swift, Kotlin and JavaScript
 go run platform/web/gen_symbols.go  # the web host's symbols, from the Android host's
 go generate ./i18n                  # CLDR's tables, from the pinned release
 go test ./i18n -run 'CTables|CompileCases' -update-c  # the C core's CLDR tables (core/src/ui/i18n_gen.c) and its catalog test data
-go generate ./sdk/sqlite        # the sqlite plugin's library for every platform, into sdk/sqlite/build (Xcode, the NDK, Zig)
-go run ./cmd/asuka plugin publish sdk/sqlite  # upload a plugin's build to its GitHub release, record it in its asuka-plugin.toml
+go run ./std/sqlite/internal/build  # the sqlite plugin's library for every platform, into std/sqlite/build (Xcode, the NDK, Zig)
+go run ./cmd/asuka plugin publish std/sqlite  # upload a plugin's build to its GitHub release, record it in its asuka-plugin.toml
 go run ./cmd/asuka i18n check examples/i18n  # an app's catalogs, checked (the compiler reads them: dev and build check them too)
 go run ./cmd/asuka native generate examples/media/segmented  # a native package's glue: Go, Swift, Kotlin, JavaScript (dev and build do it too; `native check`: CI)
 go test ./internal/nativegen -update     # after changing the generator: refresh its golden files (testdata/pantry)
@@ -127,7 +126,7 @@ go test ./platform/windows -run Updater           # likewise on Windows (a PC, o
 
 ## Conventions
 
-- Tests assert op streams from `host/fake` and count work (ops,
+- Tests assert op streams from the fake host (`core/host/fake`) and count work (ops,
   measurements, allocations). They never pass or fail on wall-clock
   time: wait for the condition, count the work.
 - Prefer the platform's behavior and defaults; an app that sets no style

@@ -63,9 +63,8 @@ import AsukaOps
     /// the core keeps the state itself. Nothing to wait for.
     func waitForPreviousRun() {}
 
-    /// The Go host restored its Go signals' values (ASUKA_STATE) here: the
-    /// Go apps' state. On the C core asuka dev keeps the state itself
-    /// (asuka_dev_reload), so nothing of it applies.
+    /// Nothing to restore: asuka dev keeps the app's state itself
+    /// (asuka_dev_reload).
     func restoreState() {}
 
     /// Before the core starts: what must be in place before the app's

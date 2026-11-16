@@ -96,7 +96,7 @@ function pixelate(data, w, h, x0, y0, x1, y1, block) {
 
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
-/** applyActions does asuka/sdk/imageedit's actions on an image (anything drawImage takes), returning a canvas. */
+/** applyActions does asuka/imageedit's actions on an image (anything drawImage takes), returning a canvas. */
 function applyActions(src, w, h, actions) {
   let c = canvas(w, h);
   c.getContext("2d").drawImage(src, 0, 0, w, h);

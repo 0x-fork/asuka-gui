@@ -1,10 +1,10 @@
 // animimage.c: animated images where the platform has no player of its
 // own (Windows' WIC and Linux's GDK decode a still, not an animation), as
-// internal/animimage played them for the Go hosts: GIF (decoded here),
-// APNG and animated WebP, their frames read here and each frame's picture
-// decoded by the host's still decoder (WIC's, GDK's). A player composites
-// frame after frame onto a canvas as the formats say (disposal, blending),
-// so only the canvas and the frames' own rectangles are kept.
+// internal/animimage plays them in Go: GIF (decoded here), APNG and
+// animated WebP, their frames read here and each frame's picture decoded by
+// the host's still decoder (WIC's, GDK's). A player composites frame after
+// frame onto a canvas as the formats say (disposal, blending), so only the
+// canvas and the frames' own rectangles are kept.
 #include "desktop.h"
 
 #include <stdlib.h>

@@ -3,7 +3,7 @@
 // focus and accessibility: BUTTON for buttons (Filled is the accent
 // button), a BUTTON check box drawn as a toggle switch, a trackbar for
 // sliders; fields (EDITs in a frame the host draws), the stepper and the
-// segmented control (host/windows' controls.go, textinput.go).
+// segmented control.
 #include "host.h"
 #include "parts.h"
 

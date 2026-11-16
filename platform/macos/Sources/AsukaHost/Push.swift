@@ -108,8 +108,8 @@ import UserNotifications
     // MARK: Messages
 
     /// A push's data: its payload's keys beside aps, as strings (numbers
-    /// and booleans as JSON writes them, the rest as JSON, its keys sorted
-    /// as the Go host's encoding/json wrote them).
+    /// and booleans as JSON writes them, the rest as JSON, its keys
+    /// sorted).
     nonisolated static func data(_ userInfo: [AnyHashable: Any]) -> [String: String] {
         var data: [String: String] = [:]
         for (k, v) in userInfo {

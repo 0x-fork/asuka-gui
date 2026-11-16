@@ -1,5 +1,4 @@
-// signal.c: signals, memos, effects, batching and the flush
-// (signal/signal.go).
+// signal.c: signals, memos, effects, batching and the flush.
 #include "signal/signal_impl.h"
 
 #include <stdarg.h>

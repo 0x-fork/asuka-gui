@@ -1,8 +1,8 @@
-// split.c: a SplitView (host/windows' split.go) is WinUI's NavigationView,
-// left: a pane of the destinations (drawn by the host, its section headers
-// and items, the selected one on a subtle fill with an accent pill at its
-// leading edge) beside the detail Stack, which fills the rest. And what a
-// screen reader hears as the keyboard chooses a tab or an item.
+// split.c: a SplitView is WinUI's NavigationView, left: a pane of the
+// destinations (drawn by the host, its section headers and items, the
+// selected one on a subtle fill with an accent pill at its leading edge)
+// beside the detail Stack, which fills the rest. And what a screen reader
+// hears as the keyboard chooses a tab or an item.
 #include "nav.h"
 
 #define PANE_WIDTH 280
