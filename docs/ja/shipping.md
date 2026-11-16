@@ -1,17 +1,17 @@
 # 配布
 
-`asuka build` は、アプリのディレクトリ（または指定したディレクトリ）から、一つのプラットフォーム向けのリリースビルドを作り、そのディレクトリの `dist` に出力します。`asuka publish` は、iOS と Android のビルドをそれぞれのストアにアップロードします。行き先は TestFlight と App 審査、または Google Play のトラックです（[ストアへの公開](#ストアへの公開)を参照）。デスクトップのビルドについては、インストール済みのアプリが更新に使う署名済みのアップデートを、GitHub のリリースか S3 バケットにアップロードします（[自動アップデート](#自動アップデート)を参照）。
+`asuka build` は、アプリのディレクトリ（または指定したディレクトリ）から、一つのプラットフォーム向けのリリースビルドを作り、そのディレクトリの `dist` に出力します。アプリは C にコンパイルされ（`asuka dev` が実行するのと同じバイトコードを経由します）、プラットフォーム自身の C コンパイラーで、Asuka のコアと一緒にそのプラットフォーム向けに最適化してビルドされます。配布するものにインタープリターは含まれません。`asuka publish` は、iOS と Android のビルドをそれぞれのストアにアップロードします。行き先は TestFlight と App 審査、または Google Play のトラックです（[ストアへの公開](#ストアへの公開)を参照）。デスクトップのビルドについては、インストール済みのアプリが更新に使う署名済みのアップデートを、GitHub のリリースか S3 バケットにアップロードします（[自動アップデート](#自動アップデート)を参照）。
 
 | `--platform` | `dist` に作られるもの | ビルドできる環境 | ユーザーへの届け方 |
 |---|---|---|---|
 | `ios` | `<Name>.ipa`（App Store 向けに署名済み） | Xcode のある Mac | TestFlight、App Store（`asuka publish`） |
 | `android` | `<Name>.aab`（アップロード鍵で署名済み） | JDK、Android SDK、NDK があればどのシステムでも | Google Play（`asuka publish`） |
 | `mac` | ユニバーサルの `<Name>.app`、または `.pkg`（`--appstore`） | Xcode のコマンドラインツールのある Mac | 署名・公証済みのダウンロード、Mac App Store |
-| `windows` | `<Name>/`（`.exe` とそのアセット） | どのシステムでも | zip、または独自のインストーラーや MSIX |
-| `linux` | `linux/`：インストールプレフィックス、`.tar.gz`、Flatpak マニフェスト | どのシステムでも | `.tar.gz`、Flatpak |
-| `web` | `web/`（静的サイト） | どのシステムでも | 任意の Web サーバーや CDN |
+| `windows` | `<Name>/`（`.exe`、`asuka.dll` とそのアセット） | clang のある Windows、または Zig のあるどのシステムでも | zip、または独自のインストーラーや MSIX |
+| `linux` | `linux/`：インストールプレフィックス、`.tar.gz`、Flatpak マニフェスト | C コンパイラーのある Linux、または Zig のあるどのシステムでも | `.tar.gz`、Flatpak |
+| `web` | `web/`（静的サイト） | Zig のあるどのシステムでも | 任意の Web サーバーや CDN |
 
-`--platform` を省略すると、Mac、Windows PC、Linux マシンでは、そのコンピューター向けにビルドします。iOS と Android 以外のビルドはすべて `CGO_ENABLED=0` の素の Go なので、C のツールチェーンは必要ありません。
+`--platform` を省略すると、Mac、Windows PC、Linux マシンでは、そのコンピューター向けにビルドします。コアはプラットフォームのコンパイラーでビルドされます（Apple のプラットフォームでは Xcode の clang、Android では NDK のもの、Windows と Linux ではシステムのもの）。[Zig](https://ziglang.org/download) の `zig cc` は、コアを WebAssembly としてビルドするときと、ほかのシステムから Windows と Linux 向けにビルドするときに使います（`ASUKA_CC=zig` を指定すると、どこでも Zig を使います）。デスクトップアプリの実行ファイルは Asuka のデスクトップホストで、どのアプリでも同じものです。CLI のリリースにはシステムごとのホストが含まれ、ビルドに必要なものを一度だけダウンロードし、ハッシュで検証します。Asuka のチェックアウトから実行している場合、CLI は代わりに Go でホストをビルドします（[デスクトップ](desktop.md#デスクトップアプリの構成)を参照）。
 
 ## asuka.toml
 
@@ -82,7 +82,7 @@ keyAlias = "upload"
 asuka build --platform ios
 ```
 
-このコマンドは、App Store 向けに署名した `.ipa` を作ります。署名には、チームの配布用証明書（Xcode の「Accounts」設定から取得し、キーチェーンに入っているもの）と、アプリの ID 用のプロビジョニングプロファイルを使います。プロファイルは `ios.profile` か `--profile` で指定したもの、指定がなければインストール済みのもののうち最も合うものです。`--distribution ad-hoc` または `development` を指定すると、代わりにプロファイルに登録されたデバイス向けに署名します。`--simulator` を指定すると、シミュレーター用の署名なしの `.app` を作ります。
+このコマンドは、App Store 向けに署名した `.ipa` を作ります。中身は、コアとコンパイルされたアプリ（`libasuka.a`。Xcode の clang でビルドされます）とリンクした Swift のホストで、ホストのうちアプリが使う部分（インポートしたパッケージと表示する要素に応じて、WebKit や AVKit などの部分）だけを含みます。署名には、チームの配布用証明書（Xcode の「Accounts」設定から取得し、キーチェーンに入っているもの）と、アプリの ID 用のプロビジョニングプロファイルを使います。プロファイルは `ios.profile` か `--profile` で指定したもの、指定がなければインストール済みのもののうち最も合うものです。`--distribution ad-hoc` または `development` を指定すると、代わりにプロファイルに登録されたデバイス向けに署名します。`--simulator` を指定すると、シミュレーター用の署名なしの `.app` を作ります。
 
 `asuka/sdk/sqlite` を使うアプリは、`Frameworks` に SQLite を `asqlite.framework`（実機用またはシミュレーター用）として含みます。このフレームワークはアプリと一緒に署名され、アプリが初めてデータベースを開くときに読み込まれます。アプリの拡張機能（共有シート、Notification Service Extension）は、アプリのものを読み込みます。
 
@@ -92,7 +92,7 @@ asuka build --platform ios
 
 `asuka publish --platform ios` は、ビルドしてから App Store Connect にアップロードします（[ストアへの公開](#ストアへの公開)を参照）。Apple の Transporter でもアップロードできます。
 
-**プライバシーマニフェスト。** App Store ではプライバシーマニフェストが必須で、Apple のリストにある API のうちアプリが使うものについて、それぞれ理由を記載する必要があります。Asuka は、バイナリが使うものをもとにこのマニフェストを書き出します。Go のランタイムは時刻とファイルの日時を読み取ります。マニフェストでは、トラッキングをしないことを宣言し、アプリが収集するデータを `ios.collected` に書いたとおりに記載します。App Store Connect はこれを、アプリのプライバシーラベルと照合します。
+**プライバシーマニフェスト。** App Store ではプライバシーマニフェストが必須で、Apple のリストにある API のうちアプリが使うものについて、それぞれ理由を記載する必要があります。Asuka は、バイナリが使うものをもとにこのマニフェストを書き出します。コアは時刻とファイルの日時を読み取ります。マニフェストでは、トラッキングをしないことを宣言し、アプリが収集するデータを `ios.collected` に書いたとおりに記載します。App Store Connect はこれを、アプリのプライバシーラベルと照合します。
 
 ```toml
 [[ios.collected]]
@@ -117,7 +117,7 @@ keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2
 ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
 ```
 
-（鍵のパスワードがキーストアと異なる場合は `ASUKA_KEY_PASSWORD` も渡します。CI では `ASUKA_KEYSTORE` と `ASUKA_KEY_ALIAS` でキーストアとエイリアスを指定します。）これで Google Play 向けの `.aab` ができます。対象は、64 ビットと 32 ビットの ARM のスマートフォンと x86_64（エミュレーター、Chromebook）で、Android 13 以降です。Play はこの `.aab` から、各スマートフォンのアーキテクチャだけを含む APK を作ります。`asuka/sdk/sqlite` を使うアプリでは、各アーキテクチャの Go コードの隣に SQLite の `libasqlite.so` が入ります。Android は、アプリのライブラリと同じようにこれを APK から読み込みます（非圧縮、16 KB ページ）。`asuka publish --platform android` は、ビルドしてから Google Play にアップロードします（[ストアへの公開](#ストアへの公開)を参照）。
+（鍵のパスワードがキーストアと異なる場合は `ASUKA_KEY_PASSWORD` も渡します。CI では `ASUKA_KEYSTORE` と `ASUKA_KEY_ALIAS` でキーストアとエイリアスを指定します。）これで Google Play 向けの `.aab` ができます。対象は、64 ビットと 32 ビットの ARM のスマートフォンと x86_64（エミュレーター、Chromebook）で、Android 13 以降です。中身は、アプリをコンパイルして組み込んだコア `libasuka.so` で、NDK の clang でアーキテクチャごとにビルドされます。Play はこの `.aab` から、各スマートフォンのアーキテクチャだけを含む APK を作ります。sqlite プラグインを使うアプリでは、各アーキテクチャのコアの隣に SQLite の `libasqlite.so` が入ります。Android は、アプリのライブラリと同じようにこれを APK から読み込みます（非圧縮、16 KB ページ）。`asuka publish --platform android` は、ビルドしてから Google Play にアップロードします（[ストアへの公開](#ストアへの公開)を参照）。
 
 ## ストアへの公開
 
@@ -165,7 +165,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-このコマンドは、Mac 上で `dist/<Name>.app` を作ります。Apple シリコンと Intel の両方で動くユニバーサルアプリで、macOS 11 以降に対応し、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。独自の Swift（`macos/*.swift`）を持つアプリでは、その Swift が両方のアーキテクチャ向けにコンパイルされて `Contents/Frameworks` に入り、アプリと一緒に署名されます（[ネイティブコード](native.md)を参照）。`asuka/sdk/sqlite` を使うアプリでは、SQLite のライブラリ（両方のアーキテクチャに対応した `libasqlite.dylib`）もそこに入り、アプリと同じように署名されます。Developer ID で署名した場合、hardened runtime はアプリと同じチームが署名したライブラリしか読み込まず、公証サービスも一つひとつ確認するからです（[ライブラリ](data.md#ライブラリ)）。
+このコマンドは、Mac 上で `dist/<Name>.app` を作ります。Apple シリコンと Intel の両方で動くユニバーサルアプリで、macOS 11 以降に対応しています。実行ファイルはデスクトップホストで、アプリをコンパイルして組み込んだコアが `Contents/Frameworks/libasuka.dylib` に入ります（どちらもユニバーサル）。さらに、アプリの設定（`Contents/Resources/asuka-app.json`）、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。独自の Swift（`macos/*.swift`）を持つアプリでは、その Swift が両方のアーキテクチャ向けにコンパイルされて `Contents/Frameworks` に入り、アプリと一緒に署名されます（[ネイティブコード](native.md)を参照）。`asuka/sdk/sqlite` を使うアプリでは、SQLite のライブラリ（両方のアーキテクチャに対応した `libasqlite.dylib`）もそこに入り、アプリと同じように署名されます。Developer ID で署名した場合、hardened runtime はアプリと同じチームが署名したライブラリしか読み込まず、公証サービスも一つひとつ確認するからです（[ライブラリ](data.md#ライブラリ)）。
 
 Mac App Store 以外でほかの人に配布するには、Developer ID で署名し、Apple に公証してもらいます。これで Gatekeeper がアプリを開けるようになります。
 
@@ -193,7 +193,7 @@ asuka build --platform windows               # x64。Arm 版 Windows ではエ�
 asuka build --platform windows --arch arm64  # Arm の PC でネイティブに動きます
 ```
 
-このコマンドは、どのシステムからでも `dist/<Name>` というフォルダーを作ります。中身は `<Name>.exe` とその隣に置かれたアプリのアセットです。`asuka/sdk/sqlite` を使うアプリでは、同じアーキテクチャ向けの SQLite のライブラリ `asqlite.dll` も入ります（このライブラリが必要とするのは、Windows 10 と 11 なら必ずある Universal C Runtime だけです）。`.exe` は GUI プログラム（コンソールウィンドウを開きません）で、リソースが組み込まれています。Windows が使う各サイズのアイコン、バージョン情報（`version` と `build`）、そしてコモンコントロール 6、モニターごとの DPI 対応、UTF-8 を要求する、Windows 10 と 11 向けのマニフェストです。ディレクトリに独自の `.syso` を置いたアプリでは、代わりにそのリソースが使われます。フォルダーを zip にするか、パッケージ（インストーラー、MSIX）にして配布してください。
+このコマンドは、`dist/<Name>` というフォルダーを作ります。`<Name>.exe` はデスクトップホストです。その隣には、アプリをコンパイルして組み込んだコア `asuka.dll`（Windows では clang、ほかのシステムでは Zig で、アーキテクチャに合わせてビルドされます）、アプリの設定 `asuka-app.json`、アプリのアセットが置かれます。sqlite プラグインを使うアプリでは、同じアーキテクチャ向けの SQLite のライブラリ `asqlite.dll` も入ります（このライブラリが必要とするのは、Windows 10 と 11 なら必ずある Universal C Runtime だけです）。`.exe` は GUI プログラム（コンソールウィンドウを開きません）で、リソースがリンクされています。Windows が使う各サイズのアイコン、バージョン情報（`version` と `build`）、そしてコモンコントロール 6、モニターごとの DPI 対応、UTF-8 を要求する、Windows 10 と 11 向けのマニフェストです。ディレクトリに独自の `.syso`（`rsrc_windows_amd64.syso`）を置いたアプリでは、代わりにそのリソースが使われます。フォルダーを zip にするか、パッケージ（インストーラー、MSIX）にして配布してください。
 
 SmartScreen が発行元を認識できるように、`.pfx` 形式でエクスポートしたコード署名証明書で `.exe` に署名します。
 
@@ -201,7 +201,7 @@ SmartScreen が発行元を認識できるように、`.pfx` 形式でエクス�
 ASUKA_WINDOWS_CERT=cert.pfx ASUKA_WINDOWS_CERT_PASSWORD=... asuka build --platform windows
 ```
 
-ビルドは SHA-256 で署名し、証明書の期限が切れたあとも署名が有効であり続けるよう、署名にタイムスタンプを付けます。タイムスタンプには、最初に応答した RFC 3161 サーバーを使います。候補は `ASUKA_WINDOWS_TIMESTAMP` に指定したサーバー（カンマ区切りのリスト）で、指定がなければ DigiCert、Sectigo、GlobalSign のサーバーです。どれも応答しなければ、ビルドはその旨を表示して失敗します。`ASUKA_WINDOWS_TIMESTAMP=none` にすると、タイムスタンプなしで署名します（その場合、署名は証明書の期限とともに無効になります）。署名には、Windows では `signtool`（Windows SDK のもの。`PATH` にあればそれを、なければインストール済みの最新のものを使います）、それ以外のシステムでは `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`）を使い、`asqlite.dll` にも同じように署名します。`ASUKA_WINDOWS_CERT` がなければ、`.exe` は署名されません。ハードウェアトークンやクラウドサービス（Azure Trusted Signing）にある証明書では、それぞれのツールで署名します。ビルドのあと、フォルダー内の `.exe`（と `asqlite.dll`）にそのツールで署名してください。
+ビルドは SHA-256 で署名し、証明書の期限が切れたあとも署名が有効であり続けるよう、署名にタイムスタンプを付けます。タイムスタンプには、最初に応答した RFC 3161 サーバーを使います。候補は `ASUKA_WINDOWS_TIMESTAMP` に指定したサーバー（カンマ区切りのリスト）で、指定がなければ DigiCert、Sectigo、GlobalSign のサーバーです。どれも応答しなければ、ビルドはその旨を表示して失敗します。`ASUKA_WINDOWS_TIMESTAMP=none` にすると、タイムスタンプなしで署名します（その場合、署名は証明書の期限とともに無効になります）。署名には、Windows では `signtool`（Windows SDK のもの。`PATH` にあればそれを、なければインストール済みの最新のものを使います）、それ以外のシステムでは `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`）を使い、`asuka.dll` と `asqlite.dll` にも同じように署名します。`ASUKA_WINDOWS_CERT` がなければ、`.exe` は署名されません。ハードウェアトークンやクラウドサービス（Azure Trusted Signing）にある証明書では、それぞれのツールで署名します。ビルドのあと、フォルダー内の `.exe`（と `asqlite.dll`）にそのツールで署名してください。
 
 通知を表示するアプリ（`asuka/sdk/notify`）では、初回にユーザーの「スタート」メニューにショートカットが作られます。Windows でアプリがトースト通知を出すには、これが必要です。ショートカットの AppUserModelID は asuka.toml の `id`（なければアプリの名前から作ったもの）です。
 
@@ -212,11 +212,12 @@ asuka build --platform linux                # このマシンのアーキテク�
 asuka build --platform linux --arch arm64   # amd64 または arm64
 ```
 
-ホストは cgo を使わずに GTK 4 と libadwaita を呼び出すので、どのシステムからでもビルドできます。`dist/linux` には次のものが作られます。
+ホストは cgo を使わずに GTK 4 と libadwaita を呼び出し、コアは Linux ではそのマシンの C コンパイラーで、それ以外では Zig でビルドされるので、どのシステムからでもビルドできます。`dist/linux` には次のものが作られます。
 
 - `<name>/`：インストールプレフィックスの構成になっているフォルダーで、アプリの名前を小文字にした名前が付きます（`My Notes` なら `my-notes`）。
-  - `bin/my-notes`：アプリ本体
-  - `share/my-notes/assets`：アセット。アプリは `bin/` からの相対位置でこれを見つけます。
+  - `bin/my-notes`：アプリ本体（デスクトップホスト）
+  - `lib/my-notes/libasuka.so`：アプリをコンパイルして組み込んだコア。ホストは `bin/` からの相対位置でこれを見つけます。
+  - `share/my-notes/assets` と `share/my-notes/asuka-app.json`：アセットと設定。これも `bin/` から見つけます。
   - `lib/my-notes/libasqlite.so`：SQLite のライブラリ。`asuka/sdk/sqlite` を使うアプリに入り、これも `bin/` から見つけます（glibc 2.17 以降。SQLite 自身のシンボルを公開しないので、同じプロセスにシステムの SQLite があっても衝突しません）。
   - `share/applications/<id>.desktop`：ランチャーが表示し、起動に使うもの
   - `share/icons/hicolor/<size>/apps/<id>.png`：16〜512 ピクセルの各サイズの `icon`
@@ -244,7 +245,10 @@ asuka build --platform linux --arch arm64   # amd64 または arm64
 ```toml
 [linux]
 summary = "Write things down"
-description = "Notes, kept on your computer.\n\nA second paragraph."
+description = """
+Notes, kept on your computer.
+
+A second paragraph."""
 categories = ["Office"]
 keywords = ["memo"]
 license = "MIT"
@@ -261,7 +265,7 @@ flatpakRuntime = "50"
 asuka build --platform web
 ```
 
-このコマンドは `dist/web` に静的サイトを作ります。中身は、`index.html`、WebAssembly にしたアプリ、Web ホストのスクリプト、アプリの Service Worker、アセット、アイコン付きの Web アプリマニフェスト、gzip で圧縮したコピー、そして Cloudflare と Netlify 向けの `_headers` ファイルです。ファイル名にはダイジェストが付くので、`index.html` とマニフェスト以外は無期限にキャッシュできます。このフォルダーを任意の Web サーバーや CDN から、`.wasm` を `application/wasm` として、HTTPS で配信してください（Service Worker、Web Push、セキュアストアには HTTPS が必要です）。中身の詳細と、ブラウザーでの動作の違いについては [Web](web.md) を参照してください。
+このコマンドは `dist/web` に静的サイトを作ります。中身は、`index.html`、アプリを組み込んで WebAssembly にしたコア（Zig でビルドされます）、Web ホストのスクリプト、アプリの Service Worker、アセット、アイコン付きの Web アプリマニフェスト、gzip で圧縮したコピー、そして Cloudflare と Netlify 向けの `_headers` ファイルです。ファイル名にはダイジェストが付くので、`index.html` とマニフェスト以外は無期限にキャッシュできます。このフォルダーを任意の Web サーバーや CDN から、`.wasm` を `application/wasm` として、HTTPS で配信してください（Service Worker、Web Push、セキュアストアには HTTPS が必要です）。中身の詳細と、ブラウザーでの動作の違いについては [Web](web.md) を参照してください。
 
 あわせて `version.json` も書き出します。ビルドしたバージョンとそのリリースノート（`CHANGELOG.md` の該当セクション）が入っていて、ページ内の `asuka/sdk/update` がこれを読みます。サイトより古いページは、再読み込みを提案します（[自動アップデート](#自動アップデート)）。
 
@@ -393,9 +397,9 @@ feed = "https://api.example.com/updates?target={target}&version={version}&channe
 
 ## 既存アプリへの組み込み
 
-Asuka のアプリは、Xcode や Android Studio で作ったアプリの中に組み込めます。Go で一度だけ書いた機能を、ネイティブアプリから表示できるということです。（Web では、ビルドしたアプリを自分のページの要素の中で動かせます。[Web](web.md) を参照してください。）
+Asuka のアプリは、Xcode や Android Studio で作ったアプリの中に組み込めます。Asuka で一度だけ書いた機能を、ネイティブアプリから表示できるということです。（Web では、ビルドしたアプリを自分のページの要素の中で動かせます。[Web](web.md) を参照してください。）
 
-**iOS。** `asuka build --platform ios --xcframework` は `dist/AsukaApp.xcframework` を作ります。中身は、アプリの Go コードと UIKit ホスト（実機とシミュレーターの両方向け）、Swift のモジュールインターフェース、アプリのアセットです。これをターゲットに追加し（Embed & Sign）、ほかのビューコントローラーと同じように Asuka アプリを表示します。
+**iOS。** `asuka build --platform ios --xcframework` は `dist/AsukaApp.xcframework` を作ります。中身は、アプリをコンパイルして組み込んだコアと UIKit ホスト（実機とシミュレーターの両方向け）、Swift のモジュールインターフェース、アプリのアセットです。これをターゲットに追加し（Embed & Sign）、ほかのビューコントローラーと同じように Asuka アプリを表示します。
 
 ```swift
 import AsukaApp
@@ -404,9 +408,9 @@ present(AsukaViewController(), animated: true)
 // push したり、タブにしたり、ウィンドウのルートにしたりもできます
 ```
 
-`asuka/sdk/sqlite` を使うアプリでは、その隣に SQLite のライブラリ `dist/asqlite.xcframework` もできます。これも埋め込んでください（Embed & Sign）。Go のコードは、これをアプリの `Frameworks` から読み込みます。このライブラリには独自のプライバシーマニフェストが含まれています。
+`asuka/sdk/sqlite` を使うアプリでは、その隣に SQLite のライブラリ `dist/asqlite.xcframework` もできます。これも埋め込んでください（Embed & Sign）。アプリは、これをあなたのアプリの `Frameworks` から読み込みます。このライブラリには独自のプライバシーマニフェストが含まれています。
 
-**Android。** `asuka build --platform android --aar` は `dist/maven` に Maven リポジトリを作ります。中身は、ABI ごとのアプリの Go コードを含むホストライブラリ、アセット、宣言済みの `AsukaActivity` で、依存関係（Material、AndroidX）は POM に記載されています。その隣には、アプリが使うオプションのモジュール（`asuka/sdk/push`、`asuka/sdk/maps`）も置かれ、`asuka/sdk/sqlite` を使うアプリでは ABI ごとの SQLite のライブラリも置かれます。リポジトリと、コマンドが表示する依存関係をプロジェクトに追加し、Activity を起動します。
+**Android。** `asuka build --platform android --aar` は `dist/maven` に Maven リポジトリを作ります。中身は、ABI ごとに、アプリをコンパイルして組み込んだコアを含むホストライブラリ、アセット、宣言済みの `AsukaActivity` で、依存関係（Material、AndroidX）は POM に記載されています。その隣には、アプリが使うオプションのモジュール（`asuka/sdk/push`、`asuka/sdk/maps`）も置かれ、`asuka/sdk/sqlite` を使うアプリでは ABI ごとの SQLite のライブラリも置かれます。リポジトリと、コマンドが表示する依存関係をプロジェクトに追加し、Activity を起動します。
 
 ```kotlin
 // settings.gradle.kts
@@ -421,9 +425,9 @@ startActivity(Intent(this, dev.asuka.AsukaActivity::class.java))
 
 ## クラッシュレポート用のシンボル
 
-ネイティブのクラッシュのフレームは、アプリのバイナリ内のアドレスです。クラッシュレポートのサービス（あるいは App Store Connect や Google Play）は、ビルドのシンボルを使ってこれを関数名と行番号に変換します。Go 自身のスタックトレースにはシンボルは要りません（必要なテーブルはバイナリの中にあります）。そのため、Go の panic はそのまま読めます。
+ネイティブのクラッシュのフレームは、アプリのバイナリ内のアドレスです。クラッシュレポートのサービス（あるいは App Store Connect や Google Play）は、ビルドのシンボルを使ってこれを関数名と行番号に変換します。アプリが捕捉しなかったエラーは、シンボルの有無にかかわらず、コアがそのメッセージとともに報告します。
 
-**iOS。** `asuka build --platform ios` は、ホストをデバッグ情報付きでコンパイルし、Go コードのデバッグ情報も残します。そして Xcode のアーカイブと同じように、各バイナリ（アプリ本体、共有シートがある場合はそのフレームワーク、拡張機能）の dSYM を作り、そのあとバイナリからシンボルを取り除きます。dSYM は `.ipa`（またはシミュレーター用の `.app`）の隣の `dist/<Name>.dSYMs` に置かれ、シンボルは `.ipa` の中（`Symbols/`）にも入ります。そのため、App Store Connect と Xcode の Organizer は、表示するクラッシュをシンボル化できます。SQLite のライブラリ（`asqlite.framework`）は、シンボルを取り除いた状態で dSYM なしで同梱されるので、そのフレームは `asq_call` と表示されます。dSYM は、利用しているクラッシュレポートのサービスにアップロードしてください。
+**iOS。** `asuka build --platform ios` は、ホストをデバッグ情報付きでコンパイルし、コアのシンボルも残します。そして Xcode のアーカイブと同じように、各バイナリ（アプリ本体、共有シートがある場合はそのフレームワーク、拡張機能）の dSYM を作り、そのあとバイナリからシンボルを取り除きます。dSYM は `.ipa`（またはシミュレーター用の `.app`）の隣の `dist/<Name>.dSYMs` に置かれ、シンボルは `.ipa` の中（`Symbols/`）にも入ります。そのため、App Store Connect と Xcode の Organizer は、表示するクラッシュをシンボル化できます。SQLite のライブラリ（`asqlite.framework`）は、シンボルを取り除いた状態で dSYM なしで同梱されるので、そのフレームは `asq_call` と表示されます。dSYM は、利用しているクラッシュレポートのサービスにアップロードしてください。
 
 ```sh
 sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes.dSYMs
@@ -431,14 +435,14 @@ sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes.dSYMs
 upload-symbols -gsp GoogleService-Info.plist -p ios dist/Notes.dSYMs
 ```
 
-**Android。** `asuka build --platform android` は、Go のライブラリのシンボルテーブルを Gradle のために残します。Gradle はパッケージするライブラリからシンボルを取り除き、そのシンボルを、R8 が名前を変えた Kotlin のマッピングとともに `.aab` に入れます。Google Play はこれらを使って、ネイティブのクラッシュと ANR をシンボル化し、スタックトレースの難読化を解除します。クラッシュレポートのサービス向けには、`.aab` の隣にも `dist/<Name>-native-debug-symbols.zip` と `dist/<Name>-mapping.txt` が置かれます。
+**Android。** `asuka build --platform android` は、コアのシンボルテーブルを Gradle のために残します。Gradle はパッケージするライブラリからシンボルを取り除き、そのシンボルを、R8 が名前を変えた Kotlin のマッピングとともに `.aab` に入れます。Google Play はこれらを使って、ネイティブのクラッシュと ANR をシンボル化し、スタックトレースの難読化を解除します。クラッシュレポートのサービス向けには、`.aab` の隣にも `dist/<Name>-native-debug-symbols.zip` と `dist/<Name>-mapping.txt` が置かれます。
 
 ```sh
 sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes-native-debug-symbols.zip
 sentry-cli upload-proguard --org ORG --project PROJECT dist/Notes-mapping.txt
 ```
 
-**Mac、Windows、Linux、Web。** アプリは一つの Go バイナリで、シンボルテーブルとデバッグ情報なし（`-s -w`）でビルドされます。それでも Go のスタックトレースには関数名と行番号が残るので、panic はそのまま読めます。アップロードするシンボルはありません。
+**Mac、Windows、Linux、Web。** ホストとコアは、シンボルテーブルとデバッグ情報なしでビルドされます。それでもホストの Go のスタックトレースには関数名と行番号が残るので、ホストの panic はそのまま読めます。アップロードするシンボルはありません。
 
 リリースごとのシンボルは保管しておいてください。クラッシュは、それが起きたビルドのシンボルでシンボル化されます。レポートそのものについては[デバイスとサービス](device.md#クラッシュレポート-asukasdkcrash)を参照してください。
 

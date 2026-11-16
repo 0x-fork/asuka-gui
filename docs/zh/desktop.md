@@ -4,6 +4,18 @@
 
 上面每一项都是一个包，或是 `ui`、`app` 中的一个函数，在 Mac、Windows 和 Linux 上都能用。手机或浏览器上没有某项功能时，会明确告诉你不支持（返回 `ErrUnsupported`、`ErrNotAvailable`，或者 `Supported()` 为 false），这样应用就可以只在支持的平台上提供它。
 
+## 桌面应用是怎么构成的
+
+桌面应用的可执行文件是 Asuka 的桌面宿主（`cmd/asuka-host`），每个应用都一样：Mac 上用 AppKit，Windows 上用 Win32，Linux 上用 GTK 4 和 libadwaita，都用 Go 编写，不借助 cgo 调用平台接口。和它放在一起的，是编译进了应用的核心，宿主通过核心的 C ABI（`core/include/asuka.h`）加载并驱动它；以及来自 `asuka.toml` 的应用设置（`asuka-app.json`：名称、ID、版本、强调色、URL scheme、文件类型、更新）：
+
+| | 核心 | 设置 |
+|---|---|---|
+| macOS（`Name.app`） | `Contents/Frameworks/libasuka.dylib` | `Contents/Resources/asuka-app.json` |
+| Windows（一个文件夹） | `asuka.dll`，与 `Name.exe` 放在一起 | `asuka-app.json`，与它放在一起 |
+| Linux（一个安装前缀） | `lib/<exe>/libasuka.so` | `share/<exe>/asuka-app.json` |
+
+`asuka build` 用目标平台的 C 编译器构建核心（交叉编译时用 Zig 的），宿主则取自 CLI 所属的发布版本（只下载一次，并校验哈希值）；如果是在 Asuka 仓库的检出中运行，就用 `go build` 构建宿主。Windows 构建会把应用的图标、清单和版本信息链接进可执行文件。`asuka dev` 运行的是同一个宿主，只是搭配一个不含应用的核心，由它从 `asuka dev` 加载应用的字节码，之后每次保存再加载新的字节码（参见[开发](development.md#在桌面端)）。
+
 ## 托盘图标与程序坞菜单
 
 在组件里调用 `tray.Show`，会在这个组件挂载期间往托盘里放一个图标：在 Mac 上是菜单栏里的 `NSStatusItem`，在 Windows 上是通知区域里的图标，在 Linux 上是 StatusNotifierItem（KDE、Xfce、Cinnamon、MATE、Budgie 都支持，GNOME 需要安装 AppIndicator 扩展）。

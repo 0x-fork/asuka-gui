@@ -1,17 +1,17 @@
 # 打包与发布
 
-`asuka build` 会在应用目录（或你指定的目录）下，为某个平台制作发布构建，输出到该目录的 `dist` 中。`asuka publish` 则负责上传：把 iOS 和 Android 构建传到各自的应用商店，也就是 TestFlight 和 App 审核，或者 Google Play 的某个轨道（见[发布到应用商店](#发布到应用商店)）；把桌面构建的已签名更新传到 GitHub Releases 或 S3 存储桶，已安装的应用会从那里自动更新（见[自动更新](#自动更新)）。
+`asuka build` 会在应用目录（或你指定的目录）下，为某个平台制作发布构建，输出到该目录的 `dist` 中。它把应用编译成 C（经由字节码，也就是 `asuka dev` 运行的那份），再用平台自己的 C 编译器，与 Asuka 的核心一起为该平台做优化构建：交付出去的东西里没有解释器。`asuka publish` 则负责上传：把 iOS 和 Android 构建传到各自的应用商店，也就是 TestFlight 和 App 审核，或者 Google Play 的某个轨道（见[发布到应用商店](#发布到应用商店)）；把桌面构建的已签名更新传到 GitHub Releases 或 S3 存储桶，已安装的应用会从那里自动更新（见[自动更新](#自动更新)）。
 
 | `--platform` | 产物（位于 `dist`） | 构建环境 | 如何交到用户手里 |
 |---|---|---|---|
 | `ios` | `<Name>.ipa`，已为 App Store 签名 | 装有 Xcode 的 Mac | TestFlight、App Store（`asuka publish`） |
 | `android` | `<Name>.aab`，用你的上传密钥签名 | 装有 JDK、Android SDK 和 NDK 的任意系统 | Google Play（`asuka publish`） |
 | `mac` | `<Name>.app`，通用二进制；或 `.pkg`（`--appstore`） | 装有 Xcode 命令行工具的 Mac | 签名并公证后供用户下载；Mac App Store |
-| `windows` | `<Name>/`，内含 `.exe` 及其资源 | 任意系统 | zip 压缩包，或你自己制作的安装程序、MSIX |
-| `linux` | `linux/`：一个安装前缀目录、一个 `.tar.gz`、一份 Flatpak 清单 | 任意系统 | `.tar.gz`、Flatpak |
-| `web` | `web/`，一个静态网站 | 任意系统 | 任意 Web 服务器或 CDN |
+| `windows` | `<Name>/`，内含 `.exe`、`asuka.dll` 及其资源 | 装有 clang 的 Windows，或装有 Zig 的任意系统 | zip 压缩包，或你自己制作的安装程序、MSIX |
+| `linux` | `linux/`：一个安装前缀目录、一个 `.tar.gz`、一份 Flatpak 清单 | 装有 C 编译器的 Linux，或装有 Zig 的任意系统 | `.tar.gz`、Flatpak |
+| `web` | `web/`，一个静态网站 | 装有 Zig 的任意系统 | 任意 Web 服务器或 CDN |
 
-不加 `--platform` 时，在 Mac、Windows PC 或 Linux 机器上会为当前这台电脑构建。除了 iOS 和 Android，其他平台的构建都是 `CGO_ENABLED=0` 的纯 Go 构建，不需要 C 工具链。
+不加 `--platform` 时，在 Mac、Windows PC 或 Linux 机器上会为当前这台电脑构建。核心由平台的编译器构建（Apple 平台用 Xcode 的 clang，Android 用 NDK 的，Windows 和 Linux 用系统的）；[Zig](https://ziglang.org/download) 的 `zig cc` 用来把它构建成 WebAssembly，以及在其他系统上为 Windows 和 Linux 构建（设置 `ASUKA_CC=zig` 则在所有地方都用它）。桌面应用的可执行文件是 Asuka 的桌面宿主，每个应用都一样：CLI 的发布版本为每个系统都准备了一份，构建需要哪一份就下载哪一份，只下载一次并校验哈希值；在 Asuka 仓库的检出中运行时，CLI 改用 Go 构建它（见[桌面端](desktop.md#桌面应用是怎么构成的)）。
 
 ## asuka.toml
 
@@ -82,7 +82,7 @@ keyAlias = "upload"
 asuka build --platform ios
 ```
 
-这条命令会生成一个为 App Store 签名的 `.ipa`。签名使用团队的分发证书（在你的钥匙串里，来自 Xcode 的 Accounts 设置）和对应应用 ID 的描述文件：优先用 `ios.profile` 或 `--profile` 指定的那个，否则从已安装的描述文件中挑选最匹配的。加上 `--distribution ad-hoc` 或 `development` 则改为针对描述文件中登记的设备签名；`--simulator` 会生成一个未签名的 `.app`，供 iOS 模拟器使用。
+这条命令会生成一个为 App Store 签名的 `.ipa`：其中是与核心和编译进去的应用（`libasuka.a`，由 Xcode 的 clang 构建）链接在一起的 Swift 宿主，只包含应用用到的那部分宿主（WebKit、AVKit 等相关部分，取决于应用导入的包和显示的元素）。签名使用团队的分发证书（在你的钥匙串里，来自 Xcode 的 Accounts 设置）和对应应用 ID 的描述文件：优先用 `ios.profile` 或 `--profile` 指定的那个，否则从已安装的描述文件中挑选最匹配的。加上 `--distribution ad-hoc` 或 `development` 则改为针对描述文件中登记的设备签名；`--simulator` 会生成一个未签名的 `.app`，供 iOS 模拟器使用。
 
 使用了 `asuka/sdk/sqlite` 的应用会在 `Frameworks` 里带上 SQLite，即 `asqlite.framework`（真机版或模拟器版），和应用一起签名。应用第一次打开数据库时才会加载它。应用的扩展（分享面板、Notification Service Extension）加载的也是应用里的这一份。
 
@@ -92,7 +92,7 @@ asuka build --platform ios
 
 `asuka publish --platform ios` 会构建并上传到 App Store Connect（见[发布到应用商店](#发布到应用商店)）；也可以用 Apple 的 Transporter 上传。
 
-**隐私清单。** App Store 要求每个应用都提供隐私清单，为它用到的、Apple 列出的需声明理由的每个 API 说明理由。Asuka 会根据二进制实际用到的 API 自动生成这份清单：Go 运行时会读取时钟和文件时间。清单声明应用不做追踪；应用收集的数据则按 `ios.collected` 列出的写入，App Store Connect 会拿它和应用的隐私标签对照：
+**隐私清单。** App Store 要求每个应用都提供隐私清单，为它用到的、Apple 列出的需声明理由的每个 API 说明理由。Asuka 会根据二进制实际用到的 API 自动生成这份清单：核心会读取时钟和文件时间。清单声明应用不做追踪；应用收集的数据则按 `ios.collected` 列出的写入，App Store Connect 会拿它和应用的隐私标签对照：
 
 ```toml
 [[ios.collected]]
@@ -117,7 +117,7 @@ keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2
 ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
 ```
 
-（如果密钥的密码与 keystore 的不同，还要设置 `ASUKA_KEY_PASSWORD`；在 CI 中，可以用 `ASUKA_KEYSTORE` 和 `ASUKA_KEY_ALIAS` 指定 keystore 和别名。）这会生成一个用于 Google Play 的 `.aab`，支持 64 位和 32 位 ARM 手机以及 x86_64（Android 模拟器、Chromebook），要求 Android 13 及以上。Play 会根据它为每台手机生成只包含该机架构的 APK。使用了 `asuka/sdk/sqlite` 的应用，会在每个架构下的 Go 代码旁边带上 SQLite 的库 `libasqlite.so`，Android 会像加载应用自身的库那样直接从 APK 中加载它（不压缩，按 16 KB 页对齐）。`asuka publish --platform android` 会构建并上传到 Google Play（见[发布到应用商店](#发布到应用商店)）。
+（如果密钥的密码与 keystore 的不同，还要设置 `ASUKA_KEY_PASSWORD`；在 CI 中，可以用 `ASUKA_KEYSTORE` 和 `ASUKA_KEY_ALIAS` 指定 keystore 和别名。）这会生成一个用于 Google Play 的 `.aab`，支持 64 位和 32 位 ARM 手机以及 x86_64（Android 模拟器、Chromebook），要求 Android 13 及以上。其中是编译进了应用的核心 `libasuka.so`，由 NDK 的 clang 为每个架构构建。Play 会根据它为每台手机生成只包含该机架构的 APK。使用了 sqlite 插件的应用，会在每个架构下的核心旁边带上 SQLite 的库 `libasqlite.so`，Android 会像加载应用自身的库那样直接从 APK 中加载它（不压缩，按 16 KB 页对齐）。`asuka publish --platform android` 会构建并上传到 Google Play（见[发布到应用商店](#发布到应用商店)）。
 
 ## 发布到应用商店
 
@@ -165,7 +165,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-这条命令在 Mac 上生成 `dist/<Name>.app`：一个通用应用（同时支持 Apple 芯片和 Intel），要求 macOS 11 及以上，包含 Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。如果应用有自己的 Swift 代码（`macos/*.swift`），这些代码会针对两种架构编译进 `Contents/Frameworks`，和应用一起签名（见[原生代码](native.md)）。使用了 `asuka/sdk/sqlite` 的应用，SQLite 的库（`libasqlite.dylib`，包含两种架构）也放在那里，签名方式与应用相同：用 Developer ID 签名时，强化运行时只加载由应用所属团队签名的库，公证服务也会逐个检查（见[库文件](data.md#库文件)）。
+这条命令在 Mac 上生成 `dist/<Name>.app`：一个通用应用（同时支持 Apple 芯片和 Intel），要求 macOS 11 及以上。可执行文件是桌面宿主，编译进了应用的核心是 `Contents/Frameworks/libasuka.dylib`（两者都是通用二进制），此外还有应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。如果应用有自己的 Swift 代码（`macos/*.swift`），这些代码会针对两种架构编译进 `Contents/Frameworks`，和应用一起签名（见[原生代码](native.md)）。使用了 `asuka/sdk/sqlite` 的应用，SQLite 的库（`libasqlite.dylib`，包含两种架构）也放在那里，签名方式与应用相同：用 Developer ID 签名时，强化运行时只加载由应用所属团队签名的库，公证服务也会逐个检查（见[库文件](data.md#库文件)）。
 
 要在 Mac App Store 之外分发给别人，需要用你的 Developer ID 签名，再交给 Apple 公证，这样 Gatekeeper 才会放行：
 
@@ -193,7 +193,7 @@ asuka build --platform windows               # x64，Windows on Arm 上以模拟
 asuka build --platform windows --arch arm64  # 在 Arm PC 上原生运行
 ```
 
-这会生成一个文件夹 `dist/<Name>`，在任何系统上都能构建。文件夹里是 `<Name>.exe` 和应用的资源；使用了 `asuka/sdk/sqlite` 的应用还会带上同一架构的 SQLite 库 `asqlite.dll`（它只依赖每台 Windows 10 和 11 都自带的通用 C 运行时 Universal C Runtime）。`.exe` 是一个 GUI 程序（不会弹出控制台窗口），内置了各种资源：Windows 所需各尺寸的图标、版本信息（来自 `version` 和 `build`），以及一份面向 Windows 10 和 11 的清单（manifest），声明使用通用控件 6、支持每显示器 DPI 感知和 UTF-8。如果应用目录里有自己的 `.syso` 文件，就改用其中的资源。最后，把文件夹打成 zip，或者打包成安装程序、MSIX。
+这会生成一个文件夹 `dist/<Name>`：`<Name>.exe` 是桌面宿主；旁边是 `asuka.dll`，即编译进了应用的核心，在 Windows 上由 clang、在其他系统上由 Zig 为对应架构构建；`asuka-app.json` 是应用的设置；然后是应用的资源；使用了 sqlite 插件的应用还会带上同一架构的 SQLite 库 `asqlite.dll`（它只依赖每台 Windows 10 和 11 都自带的通用 C 运行时 Universal C Runtime）。`.exe` 是一个 GUI 程序（不会弹出控制台窗口），链接进了各种资源：Windows 所需各尺寸的图标、版本信息（来自 `version` 和 `build`），以及一份面向 Windows 10 和 11 的清单（manifest），声明使用通用控件 6、支持每显示器 DPI 感知和 UTF-8。如果应用目录里有自己的 `.syso` 文件（`rsrc_windows_amd64.syso`），就改用其中的资源。最后，把文件夹打成 zip，或者打包成安装程序、MSIX。
 
 为了让 SmartScreen 知道这个 `.exe` 出自谁手，要用导出为 `.pfx` 的代码签名证书给它签名：
 
@@ -201,7 +201,7 @@ asuka build --platform windows --arch arm64  # 在 Arm PC 上原生运行
 ASUKA_WINDOWS_CERT=cert.pfx ASUKA_WINDOWS_CERT_PASSWORD=... asuka build --platform windows
 ```
 
-构建会用 SHA-256 签名，并为签名加盖时间戳，这样证书过期后签名依然有效。时间戳取自第一个响应的 RFC 3161 服务器：先尝试 `ASUKA_WINDOWS_TIMESTAMP` 中列出的服务器（逗号分隔），没有设置的话依次尝试 DigiCert、Sectigo 和 GlobalSign。如果都没有响应，构建会失败并说明原因；设置 `ASUKA_WINDOWS_TIMESTAMP=none` 则不加时间戳（这样签名会随证书一起失效）。在 Windows 上用 `signtool` 签名（来自 Windows SDK；优先用 `PATH` 中的，否则用已安装的最新版本），在其他系统上用 `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`），`asqlite.dll` 也会一并签名。不设置 `ASUKA_WINDOWS_CERT` 时，`.exe` 不会被签名。如果证书存放在硬件令牌或云服务（Azure Trusted Signing）中，就要用它们自己的工具签名：构建完成后，用那个工具为文件夹中的 `.exe`（以及 `asqlite.dll`）签名。
+构建会用 SHA-256 签名，并为签名加盖时间戳，这样证书过期后签名依然有效。时间戳取自第一个响应的 RFC 3161 服务器：先尝试 `ASUKA_WINDOWS_TIMESTAMP` 中列出的服务器（逗号分隔），没有设置的话依次尝试 DigiCert、Sectigo 和 GlobalSign。如果都没有响应，构建会失败并说明原因；设置 `ASUKA_WINDOWS_TIMESTAMP=none` 则不加时间戳（这样签名会随证书一起失效）。在 Windows 上用 `signtool` 签名（来自 Windows SDK；优先用 `PATH` 中的，否则用已安装的最新版本），在其他系统上用 `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`），`asuka.dll` 和 `asqlite.dll` 也会一并签名。不设置 `ASUKA_WINDOWS_CERT` 时，`.exe` 不会被签名。如果证书存放在硬件令牌或云服务（Azure Trusted Signing）中，就要用它们自己的工具签名：构建完成后，用那个工具为文件夹中的 `.exe`（以及 `asqlite.dll`）签名。
 
 会显示通知的应用（`asuka/sdk/notify`）第一次运行时，会在用户的开始菜单里创建一个快捷方式，因为 Windows 要求应用有快捷方式才能发送 toast 通知。快捷方式的 AppUserModelID 取 `asuka.toml` 的 `id`（没有的话就根据应用名称生成一个）。
 
@@ -212,11 +212,12 @@ asuka build --platform linux                # 当前机器的架构，否则为 
 asuka build --platform linux --arch arm64   # amd64 或 arm64
 ```
 
-Linux 构建可以在任何系统上完成，因为宿主无需 cgo 就能调用 GTK 4 和 libadwaita。它会在 `dist/linux` 中生成：
+Linux 构建可以在任何系统上完成，因为宿主无需 cgo 就能调用 GTK 4 和 libadwaita，而核心在 Linux 上由本机的 C 编译器构建，在其他系统上由 Zig 构建。它会在 `dist/linux` 中生成：
 
 - `<name>/`：一个按安装前缀（install prefix）结构组织的文件夹，以应用名的小写形式命名（`My Notes` 会变成 `my-notes`），其中包括：
-  - `bin/my-notes`：应用本身；
-  - `share/my-notes/assets`：应用的资源，应用会以 `bin/` 为起点找到它；
+  - `bin/my-notes`：应用本身，即桌面宿主；
+  - `lib/my-notes/libasuka.so`：编译进了应用的核心，宿主会以 `bin/` 为起点找到它；
+  - `share/my-notes/assets` 和 `share/my-notes/asuka-app.json`：应用的资源和设置，同样以 `bin/` 为起点找到；
   - `lib/my-notes/libasqlite.so`：SQLite 的库，仅限使用了 `asuka/sdk/sqlite` 的应用，同样以 `bin/` 为起点找到（要求 glibc 2.17 或更高版本；它不导出 SQLite 自身的任何符号，所以即使同一进程里还加载了系统的 SQLite，两者也不会冲突）；
   - `share/applications/<id>.desktop`：启动器显示和运行的入口；
   - `share/icons/hicolor/<size>/apps/<id>.png`：`icon` 从 16 到 512 像素的各个尺寸；
@@ -244,7 +245,10 @@ desktop 文件和 metainfo 的内容在 `asuka.toml` 中设置：
 ```toml
 [linux]
 summary = "Write things down"
-description = "Notes, kept on your computer.\n\nA second paragraph."
+description = """
+Notes, kept on your computer.
+
+A second paragraph."""
 categories = ["Office"]
 keywords = ["memo"]
 license = "MIT"
@@ -261,7 +265,7 @@ flatpakRuntime = "50"
 asuka build --platform web
 ```
 
-这会在 `dist/web` 中生成一个静态网站，包括：`index.html`、编译成 WebAssembly 的应用、Web 宿主的脚本、应用的 service worker、应用的资源、带图标的 Web 应用清单（manifest）、gzip 压缩副本，以及供 Cloudflare 和 Netlify 使用的 `_headers` 文件。文件名中带有内容摘要，所以除了 `index.html` 和清单之外，其他文件都可以永久缓存。你可以用任何 Web 服务器或 CDN 托管这个文件夹，但 `.wasm` 必须以 `application/wasm` 类型提供，并且要通过 HTTPS 访问（service worker、Web Push 和安全存储都依赖 HTTPS）。网站里具体有什么、在浏览器中有哪些不同的行为，请参阅 [Web](web.md)。
+这会在 `dist/web` 中生成一个静态网站，包括：`index.html`、编译进了应用的 WebAssembly 核心（由 Zig 构建）、Web 宿主的脚本、应用的 service worker、应用的资源、带图标的 Web 应用清单（manifest）、gzip 压缩副本，以及供 Cloudflare 和 Netlify 使用的 `_headers` 文件。文件名中带有内容摘要，所以除了 `index.html` 和清单之外，其他文件都可以永久缓存。你可以用任何 Web 服务器或 CDN 托管这个文件夹，但 `.wasm` 必须以 `application/wasm` 类型提供，并且要通过 HTTPS 访问（service worker、Web Push 和安全存储都依赖 HTTPS）。网站里具体有什么、在浏览器中有哪些不同的行为，请参阅 [Web](web.md)。
 
 它还会写出 `version.json`，记录本次构建的版本及其版本说明（取自 `CHANGELOG.md` 中的对应小节）。页面中的 `asuka/sdk/update` 会读取它：如果页面比网站上的版本旧，就会提示用户重新加载（见[自动更新](#自动更新)）。
 
@@ -393,9 +397,9 @@ feed = "https://api.example.com/updates?target={target}&version={version}&channe
 
 ## 嵌入现有应用
 
-Asuka 应用可以嵌入用 Xcode 或 Android Studio 开发的应用中：某个功能用 Go 写一次，就能在原生应用里展示出来。（在 Web 上，构建出的应用运行在你自己页面中的某个元素里，见 [Web](web.md)。）
+Asuka 应用可以嵌入用 Xcode 或 Android Studio 开发的应用中：某个功能用 Asuka 写一次，就能在原生应用里展示出来。（在 Web 上，构建出的应用运行在你自己页面中的某个元素里，见 [Web](web.md)。）
 
-**iOS。** `asuka build --platform ios --xcframework` 会生成 `dist/AsukaApp.xcframework`，其中包含应用的 Go 代码和 UIKit 宿主，同时支持真机和模拟器，并附带 Swift 模块接口和应用的资源。把它添加到你的 target 中（Embed & Sign），然后像展示任何视图控制器一样展示这个 Asuka 应用：
+**iOS。** `asuka build --platform ios --xcframework` 会生成 `dist/AsukaApp.xcframework`，其中包含编译进了应用的核心和 UIKit 宿主，同时支持真机和模拟器，并附带 Swift 模块接口和应用的资源。把它添加到你的 target 中（Embed & Sign），然后像展示任何视图控制器一样展示这个 Asuka 应用：
 
 ```swift
 import AsukaApp
@@ -404,9 +408,9 @@ present(AsukaViewController(), animated: true)
 // 也可以 push 它、把它作为一个标签页，或者作为窗口的根视图控制器
 ```
 
-使用了 `asuka/sdk/sqlite` 的应用，旁边还会生成 `dist/asqlite.xcframework`，也就是 SQLite 的库，同样需要嵌入（Embed & Sign）。Go 代码会从你应用的 `Frameworks` 中加载它；它带有自己的隐私清单。
+使用了 `asuka/sdk/sqlite` 的应用，旁边还会生成 `dist/asqlite.xcframework`，也就是 SQLite 的库，同样需要嵌入（Embed & Sign）。应用会从你应用的 `Frameworks` 中加载它；它带有自己的隐私清单。
 
-**Android。** `asuka build --platform android --aar` 会在 `dist/maven` 中生成一个 Maven 仓库，其中包括：宿主库（含有每个 ABI 下应用的 Go 代码）、应用的资源，以及已声明好的 `AsukaActivity`，它的依赖（Material、AndroidX）都写在 POM 里；旁边还有应用用到的可选模块（`asuka/sdk/push`、`asuka/sdk/maps`），如果应用使用了 `asuka/sdk/sqlite`，还有每个 ABI 下的 SQLite 库。添加这个仓库和命令打印出的依赖，然后启动这个 activity：
+**Android。** `asuka build --platform android --aar` 会在 `dist/maven` 中生成一个 Maven 仓库，其中包括：宿主库（含有每个 ABI 下编译进了应用的核心）、应用的资源，以及已声明好的 `AsukaActivity`，它的依赖（Material、AndroidX）都写在 POM 里；旁边还有应用用到的可选模块（`asuka/sdk/push`、`asuka/sdk/maps`），如果应用使用了 `asuka/sdk/sqlite`，还有每个 ABI 下的 SQLite 库。添加这个仓库和命令打印出的依赖，然后启动这个 activity：
 
 ```kotlin
 // settings.gradle.kts
@@ -421,9 +425,9 @@ startActivity(Intent(this, dev.asuka.AsukaActivity::class.java))
 
 ## 崩溃报告的符号
 
-原生崩溃的调用栈帧只是应用二进制中的地址；崩溃收集服务（或 App Store Connect、Google Play）要借助构建时的符号，才能把它们还原成函数名和行号。Go 自己的调用栈不需要额外的符号（符号表就在二进制里），所以 Go 的 panic 本身就是可读的。
+原生崩溃的调用栈帧只是应用二进制中的地址；崩溃收集服务（或 App Store Connect、Google Play）要借助构建时的符号，才能把它们还原成函数名和行号。应用没有捕获的错误由核心报告，并附带错误消息，与有没有符号无关。
 
-**iOS。** `asuka build --platform ios` 编译宿主时会带上调试信息，同时保留 Go 代码的调试信息，并像 Xcode 归档那样，为每个二进制（应用本身、带分享面板时的 framework、各个扩展）生成 dSYM，然后剥离二进制中的符号。dSYM 放在 `.ipa`（或模拟器的 `.app`）旁边的 `dist/<Name>.dSYMs` 中，符号也打包进了 `.ipa`（`Symbols/`），因此 App Store Connect 和 Xcode 的 Organizer 显示崩溃时会自动完成符号化。SQLite 的库（`asqlite.framework`）发布时已剥离符号，也没有 dSYM，它的栈帧会显示为 `asq_call`。把 dSYM 上传到你使用的崩溃收集服务：
+**iOS。** `asuka build --platform ios` 编译宿主时会带上调试信息，同时保留核心的符号，并像 Xcode 归档那样，为每个二进制（应用本身、带分享面板时的 framework、各个扩展）生成 dSYM，然后剥离二进制中的符号。dSYM 放在 `.ipa`（或模拟器的 `.app`）旁边的 `dist/<Name>.dSYMs` 中，符号也打包进了 `.ipa`（`Symbols/`），因此 App Store Connect 和 Xcode 的 Organizer 显示崩溃时会自动完成符号化。SQLite 的库（`asqlite.framework`）发布时已剥离符号，也没有 dSYM，它的栈帧会显示为 `asq_call`。把 dSYM 上传到你使用的崩溃收集服务：
 
 ```sh
 sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes.dSYMs
@@ -431,14 +435,14 @@ sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes.dSYMs
 upload-symbols -gsp GoogleService-Info.plist -p ios dist/Notes.dSYMs
 ```
 
-**Android。** `asuka build --platform android` 会为 Gradle 保留 Go 库的符号表。Gradle 打包时会剥离这些库的符号，并把符号连同 R8 对 Kotlin 代码的重命名映射一起放进 `.aab`。Google Play 会借助它们符号化原生崩溃和 ANR，并对调用栈进行反混淆。如果要上传到崩溃收集服务，`.aab` 旁边也各有一份：`dist/<Name>-native-debug-symbols.zip` 和 `dist/<Name>-mapping.txt`。
+**Android。** `asuka build --platform android` 会为 Gradle 保留核心的符号表。Gradle 打包时会剥离这些库的符号，并把符号连同 R8 对 Kotlin 代码的重命名映射一起放进 `.aab`。Google Play 会借助它们符号化原生崩溃和 ANR，并对调用栈进行反混淆。如果要上传到崩溃收集服务，`.aab` 旁边也各有一份：`dist/<Name>-native-debug-symbols.zip` 和 `dist/<Name>-mapping.txt`。
 
 ```sh
 sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes-native-debug-symbols.zip
 sentry-cli upload-proguard --org ORG --project PROJECT dist/Notes-mapping.txt
 ```
 
-**Mac、Windows、Linux 和 Web。** 应用是一个单独的 Go 二进制，构建时去掉了符号表和调试信息（`-s -w`）。不过 Go 的调用栈仍然保留函数名和行号，所以 panic 照样可读，也没有需要上传的符号。
+**Mac、Windows、Linux 和 Web。** 宿主和核心构建时都去掉了符号表和调试信息；宿主的 Go 调用栈仍然保留函数名和行号，所以它的 panic 照样可读，也没有需要上传的符号。
 
 请保留每个发布版本的符号，因为崩溃只能用它所在构建的符号来符号化。崩溃报告本身的说明见[设备](device.md#崩溃报告asukasdkcrash)。
 
