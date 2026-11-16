@@ -24,7 +24,7 @@ state units = store.read("units", "metric")
 | `asuka/pay` | Apple Pay と Google Pay：`available(request)`、`pay(request)`（配送先、配送方法、カード、クーポン、承認それぞれに非同期のハンドラーがあり、`Update` を返すか `throw Invalid(field:, message:)` する）、`setUp()`、ウォレット自身の `PayButton` |
 | `asuka/appleauth` | Apple でサインイン：`signIn(scopes:, nonce:, state:)`、`credentialState(user)`、`available()`、Apple の `SignInButton`。iOS と macOS のみ |
 | `asuka/nfc` | NFC タグ：`state()`（追跡される）、`start(alert:, poll:)` で得る `Session`（`next()`、`setAlert`、`fail`、`stop`）、`Tag`（`message`、`ndef`、`write`、`makeReadOnly`、`transceive`）、`opened()`、NDEF の `Message` と `Record`（`encode()`、`decode(bytes)`）。Core NFC、Android のリーダーモード、Web NFC |
-| `asuka/bluetooth` | Bluetooth LE：`state()`（追跡される）、`request()`、`scan()`（ストリーム）、`choose(filters)`、`connect(device)`（`Connection` ストア：`state`、`services()`、`characteristic(s, c)`）、キャラクタリスティックの `read`、`write`、`notifications()`、`serve(services)`、`advertise(…)`、Bluetooth SIG の UUID。Core Bluetooth、Android の BLE、Web Bluetooth |
+| `asuka/bluetooth` | Bluetooth LE：`state()`（追跡される）、`request()`、`scan()`（ストリーム）、`choose(filters)`、`connect(device)`（`Connection` ストア：`state`、`services()`、`characteristic(s, c)`）、キャラクタリスティックの `read`、`write`、`notifications()`、`serve(services)`、`advertise(…)`、Bluetooth SIG の UUID。Core Bluetooth、Android の BLE、WinRT、BlueZ、Web Bluetooth |
 
 ネイティブパッケージのコードがないプラットフォーム（`asuka test` で動かすアプリにはまったくありません）では、それを必要とする処理は `unsupported` エラーを投げます。そのとき `asuka/store` は何も保存せず、読み込むとデフォルト値が返ります。
 

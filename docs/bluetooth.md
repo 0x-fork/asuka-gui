@@ -4,7 +4,8 @@
 react-native-ble-plx and Web Bluetooth do: as a central (find devices,
 connect, read, write and follow their characteristics) and as a
 peripheral (serve services, advertise). Core Bluetooth on iOS and macOS;
-Android's BluetoothLeScanner and GATT; Web Bluetooth in Chromium.
+Android's BluetoothLeScanner and GATT; WinRT's Bluetooth LE on Windows;
+BlueZ on Linux; Web Bluetooth in Chromium.
 
 UUIDs are strings: a Bluetooth SIG 16-bit one as its four hex digits
 (`"180d"`), any other as its 128 bits, lowercase. `bluetooth.uuid(u)`
@@ -75,7 +76,8 @@ A page can't scan (but behind a Chromium flag): `bluetooth.choose(filters,
 optionalServices:)` shows the browser's chooser of devices that match one
 of the `Filter`s (`services`, `name`, `namePrefix`), and returns the one
 the user picked (`BluetoothError.canceled` if none). The page may use the
-filters' services and `optionalServices`. Elsewhere it throws
+filters' services and `optionalServices`. On Windows it's the system's
+device picker (which filters by name only). Elsewhere it throws
 `notAvailable`: scan instead.
 
 ## Connecting
@@ -169,22 +171,26 @@ An app that imports the package is given what it needs:
 | iOS | `NSBluetoothAlwaysUsageDescription` (say yours in `ios.usage`); the background modes of asuka.toml's `bluetooth.background` |
 | Android | `BLUETOOTH_SCAN` (with `neverForLocation` unless `bluetooth.location`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; `android.hardware.bluetooth_le`, not required |
 | macOS | The purpose string, and the hardened runtime's `com.apple.security.device.bluetooth` entitlement |
+| Linux | The Flatpak's `--system-talk-name=org.bluez` |
 
 ## Each platform
 
-| | iOS, macOS | Android | The web | Windows, Linux |
-| --- | --- | --- | --- | --- |
-| Scan | ✓ | ✓ | Behind Chromium's experimental flag (`requestLEScan`) | Not yet |
-| Chooser | — | — | ✓ `requestDevice` | — |
-| Connect, GATT | ✓ | ✓ | ✓ (the chooser's services) | Not yet |
-| Serve, advertise | ✓ (name and services only) | ✓ | — | Not yet |
-| MTU | The system's | Asked for (517) | 23 | |
-| RSSI | ✓ | ✓ | — | |
+| | iOS, macOS | Android | Windows | Linux | The web |
+| --- | --- | --- | --- | --- | --- |
+| Scan | ✓ | ✓ | ✓ (an active scan: the names come) | ✓ (BlueZ's discovery) | Behind Chromium's experimental flag (`requestLEScan`) |
+| Chooser | — | — | ✓ The system's device picker | — | ✓ `requestDevice` |
+| Connect, GATT | ✓ | ✓ | ✓ | ✓ | ✓ (the chooser's services) |
+| Serve | ✓ | ✓ | ✓ | ✓ | — |
+| Advertise | The name and services only | ✓ | Services and manufacturer data, no name | ✓ | — |
+| MTU | The system's | Asked for (517) | The system's | BlueZ's | 23 |
+| RSSI | ✓ | ✓ | — | While BlueZ hears the device | — |
 
-On Windows and Linux, `state()` says unsupported for now and the rest
-throw `notAvailable`: the desktop hosts' Go for them (WinRT's Bluetooth
-LE, BlueZ) isn't ported to this package yet. Safari and Firefox have no
-Web Bluetooth: unsupported.
+On Windows, `request()` asks for the radio's access (an unpackaged app
+has it); Linux asks no permission, and `request()` is `state()`. No
+bluetoothd or no adapter is `unsupported`; a bus that won't let the app
+talk to BlueZ is `unauthorized`. Windows doesn't say why a device went:
+a lost connection's error says only that it was lost.
+Safari and Firefox have no Web Bluetooth: unsupported.
 
 ## Testing
 

@@ -129,7 +129,9 @@ test "a region, crossed" {
 
 Once a module is a std package, remove the host's old byte-protocol
 module for it (`modules["<name>"]` in each host and its code) and the
-sdk/<name> Go package.
+sdk/<name> Go package. (std/bluetooth/desktop's engines are the hosts'
+old ones, moved: they still speak internal/bluetoothspec and use
+internal/bluez, which stay.)
 
 ### Tests
 

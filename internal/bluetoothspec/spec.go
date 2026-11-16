@@ -1,5 +1,7 @@
 // Package bluetoothspec is the wire format of asuka/sdk/bluetooth between
-// Go and the hosts' "bluetooth" module. Every method's arguments are a
+// Go and the hosts' "bluetooth" module, and of std/bluetooth/desktop's
+// engines (WinRT's, BlueZ's) and the bridge there that is the package's
+// Adapter: it stays while they do. Every method's arguments are a
 // JSON object (the Args type named below; an empty one for none), and
 // every reply is JSON, unless it says otherwise. Byte values are base64,
 // as encoding/json writes a []byte. UUIDs are strings, lower case, in

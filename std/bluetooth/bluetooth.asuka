@@ -291,8 +291,8 @@ native interface Adapter {
   async fn request() -> State
   /// Calls found with what's heard, until the task is cancelled.
   async fn scan(options: ScanOptions, found: fn(Advertisement))
-  /// The browser's device chooser (Web Bluetooth); elsewhere
-  /// notAvailable.
+  /// The browser's device chooser (Web Bluetooth), Windows' device
+  /// picker; elsewhere notAvailable.
   async fn choose(filters: [Filter], optionalServices: [string]) -> Device
   /// Connects and keeps the connection until the task is cancelled,
   /// calling changed as it changes; returns when it's lost.
@@ -392,9 +392,10 @@ pub fn scan(services: [string] = [], duplicates: bool = false) -> Stream<Adverti
   }
 })
 
-/// The browser's device chooser (Web Bluetooth): devices that match one
-/// of the filters, and the services the app may use beyond the filters'.
-/// Throws canceled; elsewhere notAvailable (scan instead).
+/// The browser's device chooser (Web Bluetooth), or Windows' device
+/// picker (by name only): devices that match one of the filters, and the
+/// services the app may use beyond the filters'. Throws canceled;
+/// elsewhere notAvailable (scan instead).
 pub async fn choose(filters: [Filter], optionalServices: [string] = []) throws -> Device {
   if let f = faked {
     return try f.choose(filters)

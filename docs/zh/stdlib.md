@@ -24,7 +24,7 @@ state units = store.read("units", "metric")
 | `asuka/pay` | Apple Pay 与 Google Pay：`available(request)`、`pay(request)`（配送联系人、配送方式、卡片、优惠码和授权都有异步处理函数，返回 `Update`，或 `throw Invalid(field:, message:)`）、`setUp()`，以及钱包自己的 `PayButton` |
 | `asuka/appleauth` | 通过 Apple 登录：`signIn(scopes:, nonce:, state:)`、`credentialState(user)`、`available()`，以及 Apple 的 `SignInButton`。仅限 iOS 和 macOS |
 | `asuka/nfc` | NFC 标签：`state()`（可追踪）、`start(alert:, poll:)` 得到 `Session`（`next()`、`setAlert`、`fail`、`stop`）、`Tag`（`message`、`ndef`、`write`、`makeReadOnly`、`transceive`）、`opened()`，以及 NDEF 的 `Message` 和 `Record`（`encode()`、`decode(bytes)`）。基于 Core NFC、Android 的读卡器模式和 Web NFC |
-| `asuka/bluetooth` | 低功耗蓝牙：`state()`（可追踪）、`request()`、`scan()`（流）、`choose(filters)`、`connect(device)`（返回 `Connection` store：`state`、`services()`、`characteristic(s, c)`），特征值的 `read`、`write`、`notifications()`；`serve(services)`、`advertise(…)`；以及蓝牙 SIG 定义的 UUID。基于 Core Bluetooth、Android 的 BLE 和 Web Bluetooth |
+| `asuka/bluetooth` | 低功耗蓝牙：`state()`（可追踪）、`request()`、`scan()`（流）、`choose(filters)`、`connect(device)`（返回 `Connection` store：`state`、`services()`、`characteristic(s, c)`），特征值的 `read`、`write`、`notifications()`；`serve(services)`、`advertise(…)`；以及蓝牙 SIG 定义的 UUID。基于 Core Bluetooth、Android 的 BLE、WinRT、BlueZ 和 Web Bluetooth |
 
 如果某个平台没有原生包的代码（比如由 `asuka test` 运行的应用，它没有任何平台代码），用到它的地方会抛出 `unsupported` 错误；这时 `asuka/store` 什么也不保存，读取时返回默认值。
 
