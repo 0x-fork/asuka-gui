@@ -508,6 +508,13 @@ void ak_uitest_settle(ak_uitest *a) {
 		}
 		ak_ui_flush();
 		changed = sync_lists(a) || changed;
+		if (!changed && ak_fake_pending(a->f) == 0 && ak_sched_held()) {
+			// Another thread works for the app (spawn, a database's
+			// statement): wait for what it posts back.
+			ak_sched_wait_posted();
+			ak_sched_run_posted();
+			continue;
+		}
 		if (!changed && ak_fake_pending(a->f) == 0) {
 			if (a->focused && ak_fake_view_of(a->f, a->focused->id) != a->focused) a->focused = NULL;
 			if (a->menu && ak_fake_view_of(a->f, a->menu->id) != a->menu) a->menu = NULL;

@@ -311,6 +311,8 @@ let size = Kept("size", 17.0)                 // 一个 Kept<float>
 let tags: Kept<[string]> = Kept("tags", [])
 ```
 
+在 store 的 fn 里，`self` 就是这个 store 本身，可以把它交给它创建的东西。
+
 ### Effect 与 task
 
 ```asuka

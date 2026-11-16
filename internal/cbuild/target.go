@@ -244,7 +244,7 @@ func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, 
 		link = append(link, "-lm")
 		switch tc.Target.OS {
 		case "linux":
-			link = append(link, "-lpthread")
+			link = append(link, "-lpthread", "-ldl") // asuka/sqlite loads its plugin's library
 		case "windows":
 			link = append(link, "-lws2_32") // asuka dev's connection (abi/dev.c)
 			if tc.CC.IsZig() {

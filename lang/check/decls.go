@@ -393,8 +393,8 @@ func (c *Checker) funcBody(f *Function) {
 			c.errorf(d.Name, "a native fn has no body: the runtime implements it")
 		case f.Pkg == nil || !strings.HasPrefix(f.Pkg.Path, "asuka/"):
 			c.errorf(d.Name, "native fn is the standard library's (its runtime implements it); a package's platform code is a native interface (docs/native.md)")
-		case len(f.TypeParams) > 0:
-			c.errorf(d.Name, "a native fn isn't generic")
+		case len(f.TypeParams) > 0 && f.Recv != nil:
+			c.errorf(d.Name, "a method's native fn isn't generic")
 		}
 	} else if d.Body == nil && d.Value == nil {
 		c.errorf(d.Name, "fn %s has no body", f.name)

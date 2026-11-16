@@ -311,6 +311,8 @@ let size = Kept("size", 17.0)                 // Kept<float>
 let tags: Kept<[string]> = Kept("tags", [])
 ```
 
+ストアの fn の中では、`self` はそのストア自身です。ストアが作るものに渡せます。
+
 ### エフェクトとタスク
 
 ```asuka

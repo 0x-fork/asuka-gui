@@ -142,6 +142,9 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		b.emit(op("KNONE"), r)
 		return r
 	case *syntax.SelfExpr:
+		if _, ok := b.l.info.StoreSelf[e]; ok {
+			return b.copyTo(b.env(e), dst)
+		}
 		return b.copyTo(b.readVar(b.ctx.Self, e), dst)
 	case *syntax.ImplicitMember:
 		return b.selection(e, nil, dst)

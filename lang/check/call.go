@@ -418,6 +418,14 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 				continue
 			}
 			pw := s.Apply(pt)
+			if tp, ok := pw.(*TypeParam); ok && free[tp] && s[tp] == nil {
+				if arr, ok := a.(*syntax.ArrayExpr); ok && len(arr.Elems) == 0 {
+					// [] for a type parameter nothing else tells: an array
+					// with no elements is one of any type (db.exec(sql, [])).
+					s[tp] = &Array{Int}
+					pw = s[tp]
+				}
+			}
 			w := pw
 			if !isLambda && mentionsFree(w, free, s) {
 				// What isn't known yet doesn't steer the argument.

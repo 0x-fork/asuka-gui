@@ -259,7 +259,8 @@ component makes reach its members through the env: those made before
 the env is whole (its lets' memos) capture a box (VBOX) the env is put
 in (VSET) once it's made, the rest the env itself. Its `fn` members are
 functions taking the env first. A store is the same, and its value is
-its env.
+its env. In a store's fns,
+`self` is the env.
 
 The function's body, in order:
 
@@ -421,7 +422,10 @@ R` has no body: the runtime implements it as the builtin `<name>.f` (a
 method's `native fn` in `struct T`: `<name>.T.f`, the receiver first). Its
 function's body is CALLB of that builtin with the parameters (AWAIT of
 the future it returns when it's `async`), so it's called, passed and
-compiled as any function. Other packages reach platform code through
+compiled as any function. A generic one (`native fn rows<T>(a: bytes) ->
+[T]`) passes, after the parameters, each type argument's descriptor
+(rt/json.h's; `-` for a type JSON can't say), as a string constant of
+its instantiation. Other packages reach platform code through
 native interfaces instead.
 
 ## Streams

@@ -61,7 +61,15 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 		return NoneType
 	case *syntax.SelfExpr:
 		if c.ctx == nil || c.ctx.Self == nil {
-			c.errorf(e, "self is only in a struct's or an enum's methods")
+			// In a store: the store itself (its env).
+			for cc := c.ctx; cc != nil; cc = cc.Parent {
+				if cc.Comp != nil && cc.Comp.Kind == StoreType {
+					c.envUse(cc.Comp, e, "self")
+					c.info.StoreSelf[e] = cc.Comp
+					return cc.Comp.Type
+				}
+			}
+			c.errorf(e, "self is only in a struct's, an enum's or a store's methods")
 			return Invalid
 		}
 		c.useVar(c.ctx.Self, e)

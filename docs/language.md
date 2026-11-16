@@ -402,6 +402,8 @@ let size = Kept("size", 17.0)                 // a Kept<float>
 let tags: Kept<[string]> = Kept("tags", [])
 ```
 
+In a store's fns, `self` is the store itself, to hand to what it makes.
+
 ### Effects and tasks
 
 ```asuka

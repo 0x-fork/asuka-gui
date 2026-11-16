@@ -10,6 +10,7 @@ type Info struct {
 	Defs       map[*syntax.Ident]Object   // what each name declared is
 	Calls      map[*syntax.CallExpr]*Call // what each call calls
 	Selections map[syntax.Expr]*Selection // x.name and .name
+	StoreSelf  map[syntax.Expr]*TypeName  // self in a store: the store
 	// Convs: an expression whose value converts implicitly where it's
 	// used (an int literal to a float aside, which is typed float): to
 	// an optional, an interface, a Length, Edges.
@@ -34,6 +35,7 @@ func newInfo() *Info {
 		Defs:       map[*syntax.Ident]Object{},
 		Calls:      map[*syntax.CallExpr]*Call{},
 		Selections: map[syntax.Expr]*Selection{},
+		StoreSelf:  map[syntax.Expr]*TypeName{},
 		Convs:      map[syntax.Expr]Type{},
 		Ctxs:       map[syntax.Node]*FuncCtx{},
 		Cases:      map[*syntax.CasePat]*Case{},
