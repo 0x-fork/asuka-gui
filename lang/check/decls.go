@@ -339,6 +339,15 @@ func (c *Checker) typeBodies(t *TypeName) {
 	if t.Comp != nil && !t.Comp.Native {
 		c.componentBody(t)
 	}
+	if t.Comp != nil && t.Comp.Native && t.Comp.Element == nil && !t.Comp.Style {
+		// A package's native component: its props' defaults, which its
+		// uses send.
+		for _, m := range t.Comp.Order {
+			if (m.Kind == PropMember || m.Kind == ParamMember) && m.Default != nil && m.Type != nil && c.info.Types[m.Default] == nil {
+				c.defaultValue(nil, m.Default, m.Type, m.name)
+			}
+		}
+	}
 	if t.Kind == StructType || t.Kind == EnumType {
 		for _, i := range t.Conforms {
 			c.checkImplements(t.Decl, t.Type, i)
