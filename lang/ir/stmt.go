@@ -252,12 +252,12 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		v := b.temp(b.kind(kt.Elems[1]))
 		b.emit(op("IDX"), v, vals, i)
 		b.declare(fi.Index, k)
-		b.declare(fi.Item, v)
+		b.forItem(fi, v, kt.Elems[1])
 	case check.ForEnumerated:
 		x := b.temp(b.kind(fi.Elem))
 		b.emit(op("IDX"), x, seq, i)
 		b.declare(fi.Index, i)
-		b.declare(fi.Item, x)
+		b.forItem(fi, x, fi.Elem)
 	default:
 		x := b.temp(b.kind(fi.Elem))
 		b.emit(op("IDX"), x, seq, i)
@@ -275,6 +275,19 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 	b.emit(op("ADDIK"), i, i, 1)
 	b.jmp(top)
 	b.f.Place(end)
+}
+
+// forItem binds the item of a for over pairs (an index's or a key's
+// item, x of type t): its name, or a tuple pattern's names
+// (for (i, (x, y)) in points.enumerated()).
+func (b *fb) forItem(fi *check.ForInfo, x int, t check.Type) {
+	if tp, ok := fi.Pat.(*syntax.TuplePat); ok && len(tp.Elems) == 2 {
+		if inner, ok := tp.Elems[1].(*syntax.TuplePat); ok {
+			b.bindLet(inner, x, b.typ(t))
+			return
+		}
+	}
+	b.declare(fi.Item, x)
 }
 
 // ---------------------------------------------------------------------
@@ -335,6 +348,12 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 			b.emitJump(op("JNONE"), v, fail)
 			x = b.unbox(v, et, -1)
 		}
+		if tn := b.l.info.ErrorCases[p]; tn != nil {
+			// An Error matched by an error enum's case: of that enum
+			// first (as catch T.case tests it).
+			b.errorOf(x, tn, fail)
+			et = tn.Type
+		}
 		n, _ := et.(*check.Named)
 		c := b.caseOf(x, n)
 		want := b.konst(int64(k.Index + caseBase(n)))
@@ -350,6 +369,25 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 			b.testPattern(a, r, pt, fail)
 		}
 	}
+}
+
+// errorOf jumps to fail unless error e is a tn: a value of the app's
+// (ECASE), whose type is tn (its __etype).
+func (b *fb) errorOf(e int, tn *check.TypeName, fail Label) {
+	c := b.temp(bc.KInt)
+	b.emit(op("ECASE"), c, e)
+	user := b.temp(bc.KBool)
+	b.emit(op("NEI"), user, c, b.konst(0))
+	b.emitJump(op("JF"), user, fail)
+	et := b.temp(bc.KInt)
+	blk := b.regs([]bc.Kind{bc.KRef})
+	b.move(blk, e)
+	b.emit(op("CALLI"), et, b.l.str("__etype"), blk, 1)
+	b.releaseRegs(blk, []bc.Kind{bc.KRef})
+	id := b.konst(int64(b.l.errIDs[b.l.shape(tn.Type)]))
+	eq := b.temp(bc.KBool)
+	b.emit(op("EQI"), eq, et, id)
+	b.emitJump(op("JF"), eq, fail)
 }
 
 // caseOf is the case index of enum value x.
@@ -431,6 +469,9 @@ func (b *fb) bindPattern(p syntax.Pattern, v int, t check.Type) {
 		et := check.Unopt(t)
 		if check.IsOptional(t) && hasBinding(p) {
 			x = b.unbox(v, et, -1)
+		}
+		if tn := b.l.info.ErrorCases[p]; tn != nil {
+			et = tn.Type
 		}
 		n, _ := et.(*check.Named)
 		for i, a := range p.Args {

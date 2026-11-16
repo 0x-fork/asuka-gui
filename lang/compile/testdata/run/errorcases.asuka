@@ -1,0 +1,44 @@
+// An Error matched by an error enum's case, as catch T.case does: of
+// that enum first, then its case and its payload.
+
+enum Fail: Error {
+  gone
+  bad(code: int)
+
+  fn message() -> string = match self {
+    .gone => "gone"
+    .bad(c) => "bad {c}"
+  }
+}
+
+enum Other: Error {
+  gone
+
+  fn message() -> string = "other"
+}
+
+fn describe(e: Error) -> string = match e {
+  Fail.gone => "it's gone"
+  Fail.bad(c) => "code {c}"
+  _ => "else: {e.message}"
+}
+
+test "errors by case" {
+  print(describe(Fail.gone))
+  print(describe(Fail.bad(code: 3)))
+  print(describe(Other.gone))
+  print(describe(Error("plain")))
+  do {
+    throw Fail.bad(code: 7)
+  } catch e {
+    print(describe(e))
+  }
+}
+
+// Output:
+// it's gone
+// code 3
+// else: other
+// else: plain
+// code 7
+// ok errors by case

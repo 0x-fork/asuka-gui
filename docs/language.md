@@ -502,7 +502,9 @@ async fn loadThread(id: string) throws -> Thread {
   run while yours waits; state can change there and only there.
 - `all(a, b)` runs calls at once and waits for every result; `race(a, b)`
   takes the first and cancels the rest; `sleep(300ms)`;
-  `withTimeout(5s) { … }`. They're structured: what they cancel has
+  `withTimeout(5s) { … }`, whose value is its block's (`let page = try
+  await withTimeout(5s) { return try await fetch(url) }`), and which
+  throws when the time runs out. They're structured: what they cancel has
   stopped, its `defer`s run, before they return or throw.
   `await never()` waits for nothing but the task's end: a task that
   holds something while its component is shown (`defer { release() };
@@ -589,6 +591,11 @@ An error's `message` is its `message` field, its `fn message() ->
 string`, or its type's and case's name. `Error("…")` makes an error of a
 message. A `catch` never sees a task's cancellation: it goes on to the
 task's end, running the `defer`s on its way.
+
+An `Error` is matched by an error type's cases too, as a `catch` takes
+them: `match e { MailError.offline => …; MailError.status(code) => …; _
+=> e.message }` (an `Error` can be any error, so the match ends with
+`_`).
 
 An error a handler or a task doesn't catch goes to the nearest
 `Boundary` around the component, and to the app's (shown in
