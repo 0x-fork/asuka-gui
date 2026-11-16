@@ -48,8 +48,10 @@ var WindowsLibs = []string{
 }
 
 // WindowsHost builds the Windows host's executable for t at out: the host
-// (platform/windows), the C the desktop hosts share (platform/desktop) and
-// the core, with the app compiled in (o.App) or none (asuka dev's player).
+// (platform/windows) with the C the desktop hosts share (platform/
+// desktop), a unit; the native packages' C (theirs, a std or sdk
+// package's a unit too); the core, with the app compiled in (o.App) or
+// none (asuka dev's player).
 func WindowsHost(t cbuild.Target, o WindowsOptions, out string) error {
 	tc, err := cbuild.ForTarget(t)
 	if err != nil {
@@ -59,7 +61,7 @@ func WindowsHost(t cbuild.Target, o WindowsOptions, out string) error {
 	if err != nil {
 		return err
 	}
-	win, err := windowsTree.Dir()
+	win, embedded, err := windowsTree.Find()
 	if err != nil {
 		return err
 	}
@@ -67,62 +69,74 @@ func WindowsHost(t cbuild.Target, o WindowsOptions, out string) error {
 	if err != nil {
 		return err
 	}
-	var host []string
-	for _, d := range []string{filepath.Join(win, "src"), filepath.Join(dsk, "src")} {
-		m, _ := filepath.Glob(filepath.Join(d, "*.c"))
-		host = append(host, m...)
-	}
+	unit := windowsHostUnit(core, win, dsk, embedded)
+	host := unit.Sources
+	hostFlags := []string{"-I" + filepath.Join(win, "src"), "-I" + filepath.Join(dsk, "include"), "-DUNICODE", "-D_UNICODE"}
+	eo := cbuild.ExeOptions{Debug: o.Debug}
 	if len(o.Tests) > 0 {
-		// The tests' own main: the host's is left out.
+		// The tests' own main: the host's is left out, the rest compiled
+		// with them.
 		kept := host[:0]
 		for _, s := range host {
 			if filepath.Base(s) != "main.c" || !strings.HasPrefix(s, filepath.Join(win, "src")) {
 				kept = append(kept, s)
 			}
 		}
-		host = append(kept, o.Tests...)
+		eo.Sources = append(kept, o.Tests...)
+		eo.Flags = append(append([]string{}, hostFlags...), "-I"+filepath.Join(win, "test"), "-DWH_TEST=1")
+	} else {
+		eo.Units = []cbuild.Unit{unit}
+		eo.Flags = append(eo.Flags, hostFlags...)
 	}
-	flags := []string{"-I" + filepath.Join(win, "src"), "-I" + filepath.Join(dsk, "include"), "-DUNICODE", "-D_UNICODE"}
-	var libs []string
 	if o.Native != nil {
-		// Its .c files the host's set hasn't (platform/desktop's are in it);
-		// its headers only name the cache's inputs.
+		// The registry and what else of platform/desktop's the natives
+		// name is the host's already.
 		have := map[string]bool{}
 		for _, s := range host {
 			have[filepath.Clean(s)] = true
 		}
-		for _, s := range o.Native.Sources {
-			if strings.HasSuffix(s, ".c") && !have[filepath.Clean(s)] {
-				host = append(host, s)
-				have[filepath.Clean(s)] = true
+		if o.Native.Units != nil {
+			for _, u := range o.Native.Units {
+				if u.Name != "desktop" {
+					eo.Units = append(eo.Units, u)
+				}
+			}
+			eo.Sources = append(eo.Sources, o.Native.Rest...)
+		} else {
+			for _, s := range o.Native.Sources {
+				if strings.HasSuffix(s, ".c") && !have[filepath.Clean(s)] {
+					eo.Sources = append(eo.Sources, s)
+					have[filepath.Clean(s)] = true
+				}
 			}
 		}
-		flags = append(flags, o.Native.Flags...)
-		libs = o.Native.Libs
+		eo.Flags = append(eo.Flags, o.Native.Flags...)
 	}
-	sort.Strings(host)
-	if len(o.Tests) > 0 {
-		flags = append(flags, "-I"+filepath.Join(win, "test"), "-DWH_TEST=1")
+	if len(o.App) > 0 {
+		// lang/cgen's app.c first; packages' glue after, compiled with it.
+		eo.App = o.App[0]
+		eo.Sources = append(eo.Sources, o.App[1:]...)
 	}
-	p := cbuild.Program{Host: host, HostFlags: flags, Extra: o.App, Debug: o.Debug}
 	if o.Resources != "" {
-		p.Objects = append(p.Objects, o.Resources)
+		eo.Objects = append(eo.Objects, o.Resources)
 	}
 	if mingw(tc) {
-		p.Link = append(p.Link, "-municode")
+		eo.Link = append(eo.Link, "-municode")
 		if o.Console {
-			p.Link = append(p.Link, "-mconsole")
+			eo.Link = append(eo.Link, "-mconsole")
 		} else {
-			p.Link = append(p.Link, "-mwindows")
+			eo.Link = append(eo.Link, "-mwindows")
 		}
 	} else if o.Console {
-		p.Link = append(p.Link, "-Wl,/subsystem:console")
+		eo.Link = append(eo.Link, "-Wl,/subsystem:console")
 	} else {
-		p.Link = append(p.Link, "-Wl,/subsystem:windows", "-Wl,/entry:wWinMainCRTStartup")
+		eo.Link = append(eo.Link, "-Wl,/subsystem:windows", "-Wl,/entry:wWinMainCRTStartup")
 	}
-	p.Link = append(p.Link, WindowsLibs...)
-	p.Link = append(p.Link, libs...)
-	return tc.Program(core, p, out)
+	eo.Link = append(eo.Link, WindowsLibs...)
+	if o.Native != nil {
+		eo.Link = append(eo.Link, o.Native.Libs...)
+	}
+	return tc.ExeWith(core, eo, out)
 }
 
 // mingw reports whether tc builds against MinGW-w64 (Zig's Windows target,
@@ -138,4 +152,18 @@ func mingw(tc *cbuild.Toolchain) bool {
 func cbuildOutput(name string, args ...string) (string, error) {
 	out, err := exec.Command(name, args...).Output()
 	return strings.TrimSpace(string(out)), err
+}
+
+// windowsHostUnit is the Windows host's C (platform/windows's, with all
+// of platform/desktop's) as a unit.
+func windowsHostUnit(core, win, dsk string, embedded bool) cbuild.Unit {
+	var host []string
+	for _, d := range []string{filepath.Join(win, "src"), filepath.Join(dsk, "src")} {
+		m, _ := filepath.Glob(filepath.Join(d, "*.c"))
+		host = append(host, m...)
+	}
+	sort.Strings(host)
+	flags := append(append(append([]string{}, cbuild.Flags...), cbuild.Includes(core)...),
+		"-I"+filepath.Join(win, "src"), "-I"+filepath.Join(dsk, "include"), "-DUNICODE", "-D_UNICODE")
+	return cbuild.Unit{Name: "windows-host", Sources: host, Flags: flags, Embedded: embedded && desktop.Embedded() && cbuild.CoreEmbedded()}
 }

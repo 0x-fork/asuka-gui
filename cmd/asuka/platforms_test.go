@@ -191,10 +191,15 @@ func TestBuildIOSSimulator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"_asuka_run", "_asuka_dev_connect", "_ak_app_loader"} {
+	// The core's API (its other symbols are hidden, and a release's
+	// stripped), and the app compiled in: its text.
+	for _, want := range []string{"_asuka_run", "_asuka_dev_connect"} {
 		if !bytes.Contains(syms, []byte(" "+want+"\n")) {
 			t.Errorf("the executable has no %s", want)
 		}
+	}
+	if exe, err := os.ReadFile(filepath.Join(bundle, appExe)); err != nil || !bytes.Contains(exe, []byte("Count: ")) {
+		t.Errorf("the executable hasn't the app compiled in (%v)", err)
 	}
 	info, err := os.ReadFile(filepath.Join(bundle, "Info.plist"))
 	if err != nil || !bytes.Contains(info, []byte("dev.asuka.devtest")) {

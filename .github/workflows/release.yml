@@ -1,7 +1,9 @@
 name: release
 # A tag v1.2.3 publishes the CLI: its npm packages (@egoist/asuka and a
-# prebuilt binary per platform) and a GitHub release with the binaries,
-# for the shell installer.
+# prebuilt binary per platform), the libraries it carries prebuilt (an
+# @egoist/asuka-prebuilt-<target> package per target, which the CLI
+# fetches from npm when a build first needs one), and a GitHub release
+# with the binaries, for the shell installer.
 on:
   push:
     tags: ["v*"]
@@ -9,7 +11,43 @@ permissions:
   contents: write
   id-token: write # npm provenance
 jobs:
+  # What the CLI carries prebuilt, one target each (asuka prebuilt
+  # targets): the core's, the desktop hosts' and the std and sdk packages'
+  # C as static libraries, the Swift hosts and packages as modules with
+  # library evolution, the Android host's and packages' AARs.
+  prebuilt:
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [ios-arm64, ios-sim-arm64, ios-sim-x64, darwin-universal, android-arm64-v8a, android-armeabi-v7a, android-x86_64, android-aar, wasm32, linux-x64, linux-arm64, windows-x64, windows-arm64]
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+      # The oldest Xcode Asuka supports (its SDK has the iOS 26 and macOS
+      # 26 APIs the hosts call): a module's .swiftinterface is read by the
+      # swiftc that wrote it and later ones, not earlier ones, so the
+      # prebuilt Swift serves every supported Xcode. Raise it only with
+      # the minimum.
+      - name: Xcode 26.0
+        run: sudo xcode-select -s /Applications/Xcode_26.0.app && xcrun swiftc --version
+      - uses: mlugg/setup-zig@v2
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - name: an NDK
+        run: ls -d $ANDROID_HOME/ndk/* 2>/dev/null || sdkmanager "ndk;27.1.12297006"
+      - name: build
+        run: go run ./cmd/asuka prebuilt build --target ${{ matrix.target }} --version "${GITHUB_REF_NAME#v}" --out "dist/prebuilt/${{ matrix.target }}"
+        env:
+          ASUKA_CACHE: ${{ runner.temp }}/asuka-cache
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-${{ matrix.target }}
+          path: dist/prebuilt/${{ matrix.target }}
+          if-no-files-found: error
   cli:
+    needs: prebuilt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,10 +55,16 @@ jobs:
         with: { go-version: stable }
       - uses: actions/setup-node@v4
         with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: prebuilt-*
+          path: dist/prebuilt
+      # The prebuilt packages packed, their manifest (each tarball's
+      # integrity) embedded in the CLI, which is built for each platform.
       - name: the packages
-        run: go run ./scripts/npm -version "${GITHUB_REF_NAME#v}" -out dist/npm
+        run: go run ./scripts/npm -version "${GITHUB_REF_NAME#v}" -prebuilt dist/prebuilt -out dist/npm
       - name: npm
-        run: go run ./scripts/npm -version "${GITHUB_REF_NAME#v}" -out dist/npm -publish
+        run: go run ./scripts/npm -version "${GITHUB_REF_NAME#v}" -prebuilt dist/prebuilt -out dist/npm -publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: the GitHub release

@@ -28,9 +28,10 @@ import (
 var Sources embed.FS
 
 var (
-	once sync.Once
-	dir  string
-	err  error
+	once     sync.Once
+	dir      string
+	embedded bool
+	err      error
 )
 
 // Dir is the directory of the shared C: ASUKA_DESKTOP if set; the
@@ -38,7 +39,7 @@ var (
 // the embedded copy, written once into the user's cache.
 func Dir() (string, error) {
 	once.Do(func() {
-		dir, err = srcdir.Tree{Env: "ASUKA_DESKTOP", Sub: filepath.Join("platform", "desktop"), Valid: valid, Files: Sources, Cache: "desktop-src"}.Dir()
+		dir, embedded, err = srcdir.Tree{Env: "ASUKA_DESKTOP", Sub: filepath.Join("platform", "desktop"), Valid: valid, Files: Sources, Cache: "desktop-src"}.Find()
 	})
 	return dir, err
 }
@@ -104,3 +105,10 @@ func Headless(dir string) string { return filepath.Join(dir, "program", "headles
 
 // Include is the include directory of asuka_desktop.h in dir.
 func Include(dir string) string { return filepath.Join(dir, "include") }
+
+// Embedded reports whether Dir is the copy embedded in the CLI (an
+// installed CLI's), which its prebuilt libraries were built from.
+func Embedded() bool {
+	Dir()
+	return embedded
+}

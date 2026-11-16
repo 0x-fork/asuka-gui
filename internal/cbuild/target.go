@@ -1,8 +1,6 @@
 package cbuild
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/internal/androidsdk"
+	"github.com/egoist/asuka/internal/ccache"
 )
 
 // Target is what the core is built for.
@@ -61,6 +60,8 @@ type Toolchain struct {
 	AR []string
 	// Shared links a shared library (or, for wasm, the module).
 	Shared []string
+	// Musl: a Linux program's, linked statically with musl (Musl).
+	Musl bool
 }
 
 // ForTarget finds the toolchain for t: the platform's own compiler where
@@ -190,16 +191,16 @@ func output(name string, args ...string) (string, error) {
 type LibKind int
 
 const (
-	Static LibKind = iota // libasuka.a: linked into an app (iOS)
-	Shared                // libasuka.so, .dylib, .dll: loaded by a host (Android, desktops)
+	Static LibKind = iota // libasuka.a: linked into an app (iOS, the Mac)
+	Shared                // libasuka.so: loaded by a host (Android)
 	Module                // asuka.wasm: the web's
 )
 
 // Lib builds the core (and extra sources: an app compiled to C) for the
-// toolchain's target into out, optimized for release unless debug. It
-// caches objects under the user's cache: the core's by its sources and
-// flags, the extra sources' by theirs, so a new build of an app compiles
-// only the app.
+// toolchain's target into out, optimized for release unless debug: the
+// core's library (prebuilt, or built into the cache), the extra sources'
+// objects from the object cache, so a new build of an app compiles only
+// the app.
 func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, out string) error {
 	return tc.LibWith(core, kind, LibOptions{Extra: extra, Debug: debug}, out)
 }
@@ -212,140 +213,94 @@ type LibOptions struct {
 }
 
 // LibWith is Lib as o says: with o.Foreign, its glue and units are
-// compiled in, and a shared library or a module links what it links.
+// compiled in, and a shared library or a module links what it links. A
+// static library is the core's with the build's objects added (libtool);
+// a shared library or a module links the core's whole (nothing in it
+// names the core: its exports are its roots).
 func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string) error {
-	extra, debug, ffi := o.Extra, o.Debug, o.Foreign
-	srcs, err := Sources(core, false)
+	defer ccache.Flush()
+	debug, ffi := o.Debug, o.Foreign
+	coreLib, err := tc.UnitArchive(CoreUnit(core), debug)
 	if err != nil {
 		return err
 	}
-	flags := append(append(Includes(core), tc.Flags...), "-ffunction-sections", "-fdata-sections")
+	flags := tc.coreFlags(core, debug)
 	// What the app's own C gets of the core's flags: the target, the
-	// optimization, the visibility, the C core's include directory
-	// (asuka_ffi.h).
-	cflags := append(append([]string{"-I" + filepath.Join(core, "include")}, tc.Flags...), "-ffunction-sections", "-fdata-sections")
-	if debug {
-		flags = append(flags, "-g", "-O1", "-DAK_DEBUG=1")
-		cflags = append(cflags, "-g", "-O1")
-	} else {
-		flags = append(flags, "-O2", "-DNDEBUG")
-		cflags = append(cflags, "-O2", "-DNDEBUG")
-	}
+	// optimization, the C core's include directory (asuka_ffi.h).
+	cflags := append([]string{"-I" + filepath.Join(core, "include")}, tc.base(debug)...)
 	if kind != Static {
-		flags = append(flags, "-fvisibility=hidden", "-DAK_EXPORTS=1")
 		cflags = append(cflags, "-fvisibility=hidden")
 	}
-	if ffi != nil {
-		// The glue is compiled in: the core registers it (vm/init.c).
-		flags = append(flags, "-DAK_FFI=1")
-	}
-	hdrs, _ := headers(core)
-	if len(extra) > 0 {
-		// The app is compiled in: the core names it (abi.c), so a static
-		// library's linker keeps its object.
-		flags = append(flags, "-DAK_APP_COMPILED=1")
-	}
-	objs, err := tc.compileCached(core, "core", srcs, hdrs, flags, kind)
+	link, err := tc.linkSource(core, debug, len(o.Extra) > 0, ffi != nil)
 	if err != nil {
 		return err
 	}
-	if len(extra) > 0 {
-		more, err := tc.compileCached(core, "app", extra, hdrs, flags, kind)
-		if err != nil {
-			return err
-		}
-		objs = append(objs, more...)
+	objs := Paths(link)
+	more, err := tc.CC.CompileCached(o.Extra, flags)
+	if err != nil {
+		return err
 	}
+	objs = append(objs, Paths(more)...)
 	if ffi != nil {
-		more, err := tc.compileCached(core, "ffi", []string{ffi.Glue}, hdrs, flags, kind)
+		glue, err := tc.CC.CompileCached([]string{ffi.Glue}, flags)
 		if err != nil {
 			return err
 		}
-		objs = append(objs, more...)
-		more, err = tc.compileForeign(ffi, cflags, kind)
+		objs = append(objs, Paths(glue)...)
+		units, err := ffi.objects(tc.CC, cflags)
 		if err != nil {
 			return err
 		}
-		objs = append(objs, more...)
+		objs = append(objs, units...)
 	}
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return err
 	}
-	switch kind {
-	case Static:
-		os.Remove(out)
-		args := append(append([]string{}, tc.AR[1:]...), out)
-		args = append(args, objs...)
-		cmd := exec.Command(tc.AR[0], args...)
-		if b, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("%s: %v\n%s", strings.Join(tc.AR, " "), err, b)
+	if kind == Static {
+		if !strings.Contains(strings.Join(tc.AR, " "), "libtool") {
+			return fmt.Errorf("cbuild: a static library for %s is made with libtool (Xcode's)", tc.Target)
 		}
-		return nil
-	default:
-		link := append(append([]string{}, tc.Flags...), tc.Shared...)
-		if kind == Module {
-			link = append(link, exportFlags()...)
+		tmp := ccache.TmpName(out)
+		if err := tc.archive(tmp, append([]string{coreLib}, objs...)); err != nil {
+			os.Remove(tmp)
+			return err
 		}
-		if ffi != nil {
-			link = append(link, ffi.Link...)
-		}
-		link = append(link, "-lm")
-		switch tc.Target.OS {
-		case "linux":
-			link = append(link, "-lpthread", "-ldl") // std/sqlite loads its plugin's library
-		case "windows":
-			link = append(link, "-lws2_32") // asuka dev's connection (abi/dev.c)
-			if tc.CC.IsZig() {
-				// lld writes an import library beside the DLL, named for an
-				// object; the hosts load the DLL by its path and need none.
-				implib := filepath.Join(os.TempDir(), fmt.Sprintf("asuka-%d.lib", os.Getpid()))
-				link = append(link, "-Wl,--out-implib,"+implib)
-				defer os.Remove(implib)
-			}
-		}
-		if !debug {
-			link = append(link, deadStrip(tc.Target)...)
-		}
-		return tc.CC.Link(objs, out, link)
+		return os.Rename(tmp, out)
 	}
+	ld := append(append([]string{}, tc.Flags...), tc.Shared...)
+	if kind == Module {
+		ld = append(ld, exportFlags()...)
+	}
+	if ffi != nil {
+		ld = append(ld, ffi.Link...)
+	}
+	ld = append(ld, "-lm")
+	switch tc.Target.OS {
+	case "linux":
+		ld = append(ld, "-lpthread", "-ldl") // std/sqlite loads its plugin's library
+	case "windows":
+		ld = append(ld, "-lws2_32") // asuka dev's connection (abi/dev.c)
+		if tc.CC.IsZig() {
+			// lld writes an import library beside the DLL, named for an
+			// object; the hosts load the DLL by its path and need none.
+			implib := filepath.Join(os.TempDir(), fmt.Sprintf("asuka-%d.lib", os.Getpid()))
+			ld = append(ld, "-Wl,--out-implib,"+implib)
+			defer os.Remove(implib)
+		}
+	}
+	if !debug {
+		ld = append(ld, deadStrip(tc.Target)...)
+	}
+	return tc.link(objs, []archiveRef{{coreLib, true}}, ld, out)
 }
 
 // Objects compiles srcs, C a host links beside the core (the C the
 // desktop hosts share, in the Mac's host), with the toolchain's flags and
-// flags, into objects cached by what, the target and the hash of the
-// sources, hdrs (the headers they include) and the flags.
-func (tc *Toolchain) Objects(what string, srcs, hdrs, flags []string) ([]string, error) {
-	return tc.compileCached("", what, srcs, hdrs, append(append([]string{}, tc.Flags...), flags...), Static)
-}
-
-// compileCached compiles srcs with flags into a cache directory named by
-// what (core, app), the target and the hash of the sources, the headers
-// they include and the flags.
-func (tc *Toolchain) compileCached(core, what string, srcs, hdrs, flags []string, kind LibKind) ([]string, error) {
-	h := sha256.New()
-	fmt.Fprintln(h, tc.CC.Path, tc.CC.Args, flags, kind)
-	for _, f := range append(append([]string{}, srcs...), hdrs...) {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			return nil, err
-		}
-		fmt.Fprintln(h, f, len(b))
-		h.Write(b)
-	}
-	dir := cacheDir(what + "-" + tc.Target.String() + "-" + hex.EncodeToString(h.Sum(nil))[:16])
-	return tc.CC.Compile(srcs, filepath.Join(dir, "obj"), flags)
-}
-
-// compileForeign compiles f's units with flags, into a cache directory
-// named by the target and the hash of the units' sources, headers and
-// flags.
-func (tc *Toolchain) compileForeign(f *Foreign, flags []string, kind LibKind) ([]string, error) {
-	h := sha256.New()
-	fmt.Fprintln(h, tc.CC.Path, tc.CC.Args, flags, kind)
-	if err := f.hash(h); err != nil {
-		return nil, err
-	}
-	return f.compileUnits(tc.CC, cacheDir("c-"+tc.Target.String()+"-"+hex.EncodeToString(h.Sum(nil))[:16]), flags)
+// flags, into the object cache, and returns the objects.
+func (tc *Toolchain) Objects(srcs, flags []string) ([]string, error) {
+	defer ccache.Flush()
+	objs, err := tc.CC.CompileCached(srcs, append(append([]string{}, tc.Flags...), flags...))
+	return Paths(objs), err
 }
 
 // deadStrip drops what nothing calls, and symbols and debug information
@@ -384,53 +339,61 @@ func exportFlags() []string {
 	return f
 }
 
-// Exe builds an executable for the toolchain's target into out: the core
-// (core/src, without the fake host) and extra C sources (a C desktop
-// host, the native registry, packages' C, an app compiled to C),
-// optimized for release unless debug. extraFlags are the extra sources'
-// own (their include directories, the app's define); link, what the
-// executable links with besides the C library; deps, files the extra
-// sources include that aren't headers beside them (a vendored library's
-// sources, included by a package's own C), which count in the cache's
-// key and are never compiled alone. Objects are cached as Lib's are.
-func (tc *Toolchain) Exe(core string, extra, deps, extraFlags, link []string, debug bool, out string) error {
-	srcs, err := Sources(core, false)
+// ExeOptions say what ExeWith builds an executable of besides the core.
+type ExeOptions struct {
+	// Units are libraries it links (a host's, the native registry's,
+	// packages': prebuilt, or built into the cache), Whole ones whole.
+	Units []Unit
+	// Sources are C compiled for the build with the core's flags and
+	// Flags (an app's own native packages', a host test's), Objects are
+	// linked as they are (a Windows resource object).
+	Sources, Flags, Objects []string
+	// App is the app compiled to C (lang/cgen), or "" for asuka dev's
+	// player, which loads bytecode.
+	App string
+	// Link are what the link takes besides the C library.
+	Link  []string
+	Debug bool
+}
+
+// ExeWith builds an executable for the toolchain's target into out: the
+// core's library and o's units' (prebuilt, or built into the cache), its
+// sources' objects from the object cache, optimized for release unless
+// o.Debug.
+func (tc *Toolchain) ExeWith(core string, o ExeOptions, out string) error {
+	defer ccache.Flush()
+	coreLib, err := tc.UnitArchive(CoreUnit(core), o.Debug)
 	if err != nil {
 		return err
 	}
-	flags := append(append(Includes(core), tc.Flags...), "-ffunction-sections", "-fdata-sections")
-	if debug {
-		flags = append(flags, "-g", "-O1", "-DAK_DEBUG=1")
-	} else {
-		flags = append(flags, "-O2", "-DNDEBUG")
-	}
-	hdrs, _ := headers(core)
-	objs, err := tc.compileCached(core, "core", srcs, hdrs, flags, Static)
-	if err != nil {
-		return err
-	}
-	if len(extra) > 0 {
-		more := append([]string{}, deps...)
-		for _, f := range extra {
-			if filepath.Ext(f) == ".h" {
-				more = append(more, f) // their headers count in the cache's key
-			}
-		}
-		var cs []string
-		for _, f := range extra {
-			if filepath.Ext(f) == ".c" {
-				cs = append(cs, f)
-			}
-		}
-		eobjs, err := tc.compileCached(core, "exe", cs, append(hdrs, more...), append(append([]string{}, flags...), extraFlags...), Static)
+	as := []archiveRef{{coreLib, false}}
+	for _, u := range o.Units {
+		p, err := tc.UnitArchive(u, o.Debug)
 		if err != nil {
 			return err
 		}
-		objs = append(objs, eobjs...)
+		if p != "" {
+			as = append(as, archiveRef{p, u.Whole})
+		}
 	}
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+	flags := tc.coreFlags(core, o.Debug)
+	link, err := tc.linkSource(core, o.Debug, o.App != "", false)
+	if err != nil {
 		return err
 	}
+	objs := Paths(link)
+	if o.App != "" {
+		app, err := tc.CC.CompileCached([]string{o.App}, flags)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, Paths(app)...)
+	}
+	more, err := tc.CC.CompileCached(o.Sources, append(append([]string{}, flags...), o.Flags...))
+	if err != nil {
+		return err
+	}
+	objs = append(append(objs, Paths(more)...), o.Objects...)
 	ld := append(append([]string{}, tc.Flags...), "-lm")
 	switch tc.Target.OS {
 	case "linux":
@@ -438,9 +401,9 @@ func (tc *Toolchain) Exe(core string, extra, deps, extraFlags, link []string, de
 	case "windows":
 		ld = append(ld, "-lws2_32")
 	}
-	ld = append(ld, link...)
-	if !debug {
+	ld = append(ld, o.Link...)
+	if !o.Debug {
 		ld = append(ld, deadStrip(tc.Target)...)
 	}
-	return tc.CC.Link(objs, out, ld)
+	return tc.link(objs, as, ld, out)
 }

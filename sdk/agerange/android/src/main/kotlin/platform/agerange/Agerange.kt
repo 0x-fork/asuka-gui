@@ -44,7 +44,7 @@ class PlaySignals : Signals {
     private fun failed(e: Exception?): Exception {
         val code = (e as? AgeSignalsException)?.errorCode
         return if (code == AgeSignalsErrorCode.API_NOT_AVAILABLE || code == AgeSignalsErrorCode.PLAY_STORE_NOT_FOUND ||
-            code == AgeSignalsErrorCode.PLAY_SERVICES_NOT_FOUND || code == AgeSignalsErrorCode.APP_NOT_OWNED) AgerangeException(AgerangeError.NOT_AVAILABLE)
+            code == AgeSignalsErrorCode.PLAY_SERVICES_NOT_FOUND || code == AgeSignalsErrorCode.APP_NOT_OWNED) AgeRangeException(AgeRangeError.NOT_AVAILABLE)
         else e ?: Exception("agerange: no age signals")
     }
 }

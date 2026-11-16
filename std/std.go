@@ -32,9 +32,10 @@ const (
 )
 
 var (
-	once sync.Once
-	dir  string
-	err  error
+	once     sync.Once
+	dir      string
+	embedded bool
+	err      error
 )
 
 // Dir is the standard library's directory: ASUKA_STD if set; the
@@ -42,7 +43,7 @@ var (
 // embedded in the CLI, written once into the user's cache.
 func Dir() (string, error) {
 	once.Do(func() {
-		dir, err = srcdir.Tree{Env: "ASUKA_STD", Sub: "std", Valid: isStd, Files: Files, Cache: "std"}.Dir()
+		dir, embedded, err = srcdir.Tree{Env: "ASUKA_STD", Sub: "std", Valid: isStd, Files: Files, Cache: "std"}.Find()
 	})
 	return dir, err
 }
@@ -133,4 +134,11 @@ func Glob(pattern string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// Embedded reports whether Dir is the copy embedded in the CLI (an
+// installed CLI's), which its prebuilt libraries were built from.
+func Embedded() bool {
+	Dir()
+	return embedded
 }

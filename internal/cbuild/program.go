@@ -1,8 +1,9 @@
 package cbuild
 
 import (
-	"os"
 	"path/filepath"
+
+	"github.com/egoist/asuka/internal/ccache"
 )
 
 // ProgramOptions say what ProgramExe builds a program's executable of
@@ -12,8 +13,9 @@ type ProgramOptions struct {
 	App string
 	// Host are a headless host's C sources (platform/desktop/program:
 	// the main loop and asuka_desktop.h's host half, with the native
-	// registry and packages' C), compiled with HostFlags; Deps are files
-	// they include that aren't headers beside them.
+	// registry and packages' C), compiled with HostFlags. Deps were the
+	// files they include beside their headers: what a compile includes is
+	// its depfile's now, so they're unused.
 	Host, HostFlags, Deps []string
 	// Foreign is the C the program's externs call.
 	Foreign *Foreign
@@ -26,66 +28,44 @@ type ProgramOptions struct {
 }
 
 // ProgramExe builds a program's executable for the toolchain's target at
-// out: the core (without the fake host), the program and its host, the
-// core's objects cached as Lib's are.
+// out: the core's library (prebuilt, or built into the cache), the
+// program and its host from the object cache.
 func (tc *Toolchain) ProgramExe(core string, o ProgramOptions, out string) error {
-	srcs, err := Sources(core, false)
+	defer ccache.Flush()
+	coreLib, err := tc.UnitArchive(CoreUnit(core), o.Debug)
 	if err != nil {
 		return err
 	}
-	flags := append(append(Includes(core), tc.Flags...), "-ffunction-sections", "-fdata-sections", "-DAK_APP_COMPILED=1")
-	cflags := append(append([]string{"-I" + filepath.Join(core, "include")}, tc.Flags...), "-ffunction-sections", "-fdata-sections")
-	if o.Debug {
-		flags = append(flags, "-g", "-O1", "-DAK_DEBUG=1")
-		cflags = append(cflags, "-g", "-O1")
-	} else {
-		flags = append(flags, "-O2", "-DNDEBUG")
-		cflags = append(cflags, "-O2", "-DNDEBUG")
+	flags := tc.coreFlags(core, o.Debug)
+	cflags := append([]string{"-I" + filepath.Join(core, "include")}, tc.base(o.Debug)...)
+	link, err := tc.linkSource(core, o.Debug, true, o.Foreign != nil)
+	if err != nil {
+		return err
 	}
+	objs := Paths(link)
+	srcs := []string{o.App}
 	if o.Foreign != nil {
-		flags = append(flags, "-DAK_FFI=1")
+		srcs = append(srcs, o.Foreign.Glue)
 	}
-	hdrs, _ := headers(core)
-	objs, err := tc.compileCached(core, "core", srcs, hdrs, flags, Static)
+	more, err := tc.CC.CompileCached(srcs, flags)
 	if err != nil {
 		return err
 	}
-	more, err := tc.compileCached(core, "app", []string{o.App}, hdrs, flags, Static)
-	if err != nil {
-		return err
-	}
-	objs = append(objs, more...)
+	objs = append(objs, Paths(more)...)
 	if o.Foreign != nil {
-		more, err := tc.compileCached(core, "ffi", []string{o.Foreign.Glue}, hdrs, flags, Static)
+		units, err := o.Foreign.objects(tc.CC, cflags)
 		if err != nil {
 			return err
 		}
-		objs = append(objs, more...)
-		if more, err = tc.compileForeign(o.Foreign, cflags, Static); err != nil {
-			return err
-		}
-		objs = append(objs, more...)
+		objs = append(objs, units...)
 		o.Link = append(o.Link, o.Foreign.Link...)
 	}
 	if len(o.Host) > 0 {
-		var cs, hh []string
-		hh = append(hh, hdrs...)
-		hh = append(hh, o.Deps...)
-		for _, f := range o.Host {
-			if filepath.Ext(f) == ".c" {
-				cs = append(cs, f)
-			} else {
-				hh = append(hh, f)
-			}
-		}
-		more, err := tc.compileCached(core, "host", cs, hh, append(append([]string{}, flags...), o.HostFlags...), Static)
+		host, err := tc.CC.CompileCached(o.Host, append(append([]string{}, flags...), o.HostFlags...))
 		if err != nil {
 			return err
 		}
-		objs = append(objs, more...)
-	}
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-		return err
+		objs = append(objs, Paths(host)...)
 	}
 	ld := append([]string{}, tc.Flags...)
 	if o.Static {
@@ -105,13 +85,7 @@ func (tc *Toolchain) ProgramExe(core string, o ProgramOptions, out string) error
 	if !o.Debug {
 		ld = append(ld, deadStrip(tc.Target)...)
 	}
-	tmp := tmpName(out)
-	if err := tc.CC.Link(objs, tmp, ld); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	os.Remove(tmp[:len(tmp)-len(filepath.Ext(tmp))] + ".pdb")
-	return os.Rename(tmp, out)
+	return tc.link(objs, []archiveRef{{coreLib, false}}, ld, out)
 }
 
 // Musl is the toolchain for a Linux program linked statically (musl, with
@@ -122,5 +96,5 @@ func Musl(arch string) (*Toolchain, error) {
 		return nil, err
 	}
 	return &Toolchain{Target: Target{OS: "linux", Arch: arch}, CC: z, Flags: []string{"-target", clangArch(arch) + "-linux-musl"},
-		AR: []string{z.Path, "ar", "rcs"}}, nil
+		AR: []string{z.Path, "ar", "rcs"}, Musl: true}, nil
 }

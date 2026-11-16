@@ -4,12 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"hash"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
+
+	"github.com/egoist/asuka/internal/ccache"
 )
 
 // Foreign is the C an app calls through its extern declarations (RFC
@@ -29,112 +27,42 @@ type Foreign struct {
 // CUnit is a project's C sources and how they're compiled: its include
 // directories and macros as flags (-I, -D), and any more of its own.
 type CUnit struct {
-	Name    string // what it's from, for messages and the cache (the project's directory)
+	Name    string // what it's from, for messages (the project's directory)
 	Sources []string
 	Flags   []string
-	// Headers are the directories whose .h files the sources may
-	// include: a change to one compiles them again.
+	// Headers are the directories of the headers the sources include
+	// (their -I): what a compile includes of them is its depfile's.
 	Headers []string
 }
 
-// hash writes what the units compile from: their flags, sources and
-// headers.
-func (f *Foreign) hash(h hash.Hash) error {
-	fmt.Fprintln(h, "ffi", f.Link)
-	for _, u := range f.Units {
-		fmt.Fprintln(h, u.Name, u.Flags)
-		files := append([]string{}, u.Sources...)
-		files = append(files, unitHeaders(u)...)
-		for _, p := range files {
-			b, err := os.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(h, p, len(b))
-			h.Write(b)
-		}
-	}
-	return nil
-}
-
-// unitHeaders are the .h files under u's header directories and its
-// sources' directories.
-func unitHeaders(u CUnit) []string {
-	dirs := append([]string{}, u.Headers...)
-	for _, s := range u.Sources {
-		dirs = append(dirs, filepath.Dir(s))
-	}
-	sort.Strings(dirs)
-	seen := map[string]bool{}
-	var out []string
-	for _, d := range dirs {
-		if seen[d] {
-			continue
-		}
-		seen[d] = true
-		filepath.WalkDir(d, func(p string, e fs.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if e.IsDir() && p != d && (strings.HasPrefix(e.Name(), ".") || e.Name() == "node_modules" || e.Name() == "build" || e.Name() == "dist") {
-				return filepath.SkipDir
-			}
-			if !e.IsDir() && (strings.HasSuffix(p, ".h") || strings.HasSuffix(p, ".inc")) && !seen[p] {
-				seen[p] = true
-				out = append(out, p)
-			}
-			return nil
-		})
-	}
-	sort.Strings(out)
-	return out
-}
-
-// cachedUnits compiles f's units with flags into the cache (by their
-// sources, headers and flags), for a runner.
-func (f *Foreign) cachedUnits(cc Compiler, flags []string) ([]string, error) {
-	h := sha256.New()
-	fmt.Fprintln(h, cc.Path, cc.Args, flags, "runner")
-	if err := f.hash(h); err != nil {
-		return nil, err
-	}
-	return f.compileUnits(cc, cacheDir("c-runner-"+hex.EncodeToString(h.Sum(nil))[:16]), flags)
-}
-
-// compileUnits compiles the units' sources into dir (a cache: an
-// object already there is kept), each with base, then its own flags.
-func (f *Foreign) compileUnits(cc Compiler, dir string, base []string) ([]string, error) {
+// objects compiles f's units' sources into the object cache, each with
+// base, then its own flags, and returns the objects.
+func (f *Foreign) objects(cc Compiler, base []string) ([]string, error) {
 	var objs []string
-	for i, u := range f.Units {
+	for _, u := range f.Units {
 		if len(u.Sources) == 0 {
 			continue
 		}
 		flags := append(append([]string{}, base...), u.Flags...)
-		o, err := cc.CompileWith(u.Sources, filepath.Join(dir, fmt.Sprint(i)), flags)
+		o, err := cc.CompileCached(u.Sources, flags)
 		if err != nil {
 			return nil, fmt.Errorf("the C of %s: %v", u.Name, err)
 		}
-		objs = append(objs, o...)
+		objs = append(objs, Paths(o)...)
 	}
 	return objs, nil
 }
 
-// CacheFile writes src under the user's cache at a path of its content's
-// (what+hash/name), once, and returns the path: generated C (the glue)
-// whose objects the build caches by path and content.
+// CacheFile writes src into the build cache at a path of its content's
+// (c/s/<hash>/name), once, and returns the path: generated C (an app's,
+// its glue) the object cache compiles from there. what names it in the
+// hash (ffi, app).
 func CacheFile(what, name string, src []byte) (string, error) {
-	sum := sha256.Sum256(src)
-	dir := cacheDir(what + "-" + hex.EncodeToString(sum[:])[:16])
-	p := filepath.Join(dir, name)
+	sum := sha256.Sum256(append([]byte(what+"\x00"), src...))
+	p := filepath.Join(ccache.Sharded("c", "s", hex.EncodeToString(sum[:]), ""), name)
 	if _, err := os.Stat(p); err == nil {
+		ccache.Touch(filepath.Dir(p))
 		return p, nil
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	tmp := tmpName(p)
-	if err := os.WriteFile(tmp, src, 0o644); err != nil {
-		return "", err
-	}
-	return p, os.Rename(tmp, p)
+	return p, ccache.WriteFile(p, src)
 }

@@ -30,6 +30,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/asuka/internal/cachedir"
+
 	"github.com/egoist/asuka/internal/devserver"
 	"github.com/egoist/asuka/lang/compile"
 )
@@ -68,11 +70,7 @@ func buildPlayer() (string, error) {
 	if p := os.Getenv("ASUKA_MAC_PLAYER"); p != "" {
 		return p, nil
 	}
-	base, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(base, "asuka", "mactest")
+	dir := cachedir.Path("mactest")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -84,7 +82,7 @@ func buildPlayer() (string, error) {
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
 		return "", err
 	}
-	exe, err := buildPlayerLocked(base, dir)
+	exe, err := buildPlayerLocked(dir)
 	if err != nil {
 		return "", err
 	}
@@ -100,7 +98,7 @@ func buildPlayer() (string, error) {
 	return filepath.Join(cp, "Contents", "MacOS", filepath.Base(exe)), nil
 }
 
-func buildPlayerLocked(base, dir string) (string, error) {
+func buildPlayerLocked(dir string) (string, error) {
 	app := filepath.Join(dir, "mactest") // its work directory: <cache>/asuka/mactest-<hash>/mac
 	if err := os.MkdirAll(app, 0o755); err != nil {
 		return "", err
@@ -130,7 +128,7 @@ func buildPlayerLocked(base, dir string) (string, error) {
 	deadline := time.Now().Add(10 * time.Minute)
 	for time.Now().Before(deadline) {
 		if exe == "" {
-			ms, _ := filepath.Glob(filepath.Join(base, "asuka", "mactest-*", "mac", "player", "Mac Test.app", "Contents", "MacOS", "Mac Test"))
+			ms, _ := filepath.Glob(filepath.Join(cachedir.Root(), "mactest-*", "mac", "player", "Mac Test.app", "Contents", "MacOS", "Mac Test"))
 			for _, m := range ms {
 				if st, err := os.Stat(m); err == nil && !st.ModTime().Before(started) {
 					exe = m
@@ -185,11 +183,7 @@ func NativePlayer(t testing.TB, key, src string) string {
 }
 
 func buildNativePlayer(key, src string) (string, error) {
-	base, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(base, "asuka", "mactest")
+	dir := cachedir.Path("mactest")
 	lock, err := os.OpenFile(filepath.Join(dir, ".lock-"+key), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return "", err
@@ -220,7 +214,7 @@ func buildNativePlayer(key, src string) (string, error) {
 	exe := ""
 	for deadline := time.Now().Add(15 * time.Minute); time.Now().Before(deadline); {
 		if exe == "" {
-			ms, _ := filepath.Glob(filepath.Join(base, "asuka", "mactest-"+key+"-*", "mac", "player", name+".app", "Contents", "MacOS", name))
+			ms, _ := filepath.Glob(filepath.Join(cachedir.Root(), "mactest-"+key+"-*", "mac", "player", name+".app", "Contents", "MacOS", name))
 			for _, m := range ms {
 				if st, err := os.Stat(m); err == nil && !st.ModTime().Before(started) {
 					exe = m

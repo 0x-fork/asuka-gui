@@ -33,7 +33,7 @@ func needMacBuild(t *testing.T) {
 // internal/nativegen's testdata) is built with the host's Swift into the
 // app's executable, linked with the core, with Swift's concurrency runtime
 // in its Frameworks for macOS 11 when it links it. An app without native
-// packages links the host's object every app shares, compiled once.
+// packages links the host's module every app shares, compiled once.
 func TestMacSwift(t *testing.T) {
 	needMacBuild(t)
 	if _, err := exec.LookPath("xcodebuild"); err != nil {
@@ -70,8 +70,8 @@ func TestMacSwift(t *testing.T) {
 		}
 	}
 
-	// An app without native packages: the shared host object, no
-	// packages' build.
+	// An app without native packages: the host's module from the build
+	// cache (or a release's prebuilt one), linked whole, compiled once.
 	plainDir := t.TempDir()
 	os.WriteFile(filepath.Join(plainDir, "app.asuka"), []byte("app { Text(\"plain\") }\n"), 0o644)
 	plain := projectApp(t, plainDir, nil)
@@ -80,12 +80,12 @@ func TestMacSwift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pkgs != nil || len(objs) != 1 || !strings.Contains(objs[0], filepath.Join("asuka", "mac-host")) {
-		t.Errorf("an app without native packages: %v, %v", objs, pkgs)
+	if len(objs) != 0 || pkgs == nil || len(pkgs.forceLoad) != 1 || filepath.Base(pkgs.forceLoad[0]) != "libAsuka.a" {
+		t.Fatalf("an app without native packages: %v, %+v", objs, pkgs)
 	}
-	again, _, err := pb.host(runtime.GOARCH, nil)
-	if err != nil || again[0] != objs[0] {
-		t.Errorf("compiled again: %v %v", again, err)
+	_, again, err := pb.host(runtime.GOARCH, nil)
+	if err != nil || again.forceLoad[0] != pkgs.forceLoad[0] {
+		t.Errorf("compiled again: %+v %v", again, err)
 	}
 }
 

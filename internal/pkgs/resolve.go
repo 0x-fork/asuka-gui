@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/egoist/asuka/internal/cachedir"
 )
 
 // A dependency's spec, as asuka.toml writes it:
@@ -255,11 +257,7 @@ func CacheDir() string {
 	if d := os.Getenv("ASUKA_PKG_CACHE"); d != "" {
 		return d
 	}
-	d, err := os.UserCacheDir()
-	if err != nil {
-		d = os.TempDir()
-	}
-	return filepath.Join(d, "asuka", "pkg")
+	return cachedir.Path("pkg")
 }
 
 // Fetch makes sure a locked package's files are in the cache and

@@ -124,6 +124,14 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 - `ASUKA_DUMP` 会在截图旁边写出视图树：每个视图的类型、frame（位置和尺寸）以及显示的内容。
 - `ASUKA_SCRIPT` 会在截图前执行一系列以 `;` 分隔的步骤：`tap:<text>`（点按显示该文字的视图：按钮标题、文本、标签页、侧边栏的行、分段控件的段）、`type:<text>`（在获得焦点的输入框中输入）、`back`、`key:<shortcut>`（如 `ctrl+shift+k`）、`menu:<item>`（菜单栏中的菜单项）、`escape`、`close`（关闭当前窗口）、`wait:<duration>`（如 `500ms`）、`waitfor:<file>`（等到该文件出现：由测试决定何时继续）和 `snap:<file>`。
 
+## 构建缓存
+
+构建时编译和下载的内容都保存在 Asuka 的缓存中，由这台电脑上的所有应用共享：构建第二个应用，或者小改动之后再构建时，只会编译新的部分。某个平台的第一次构建会下载 Asuka 为该平台预先构建好的库，只下载一次，来源是 npm registry：`.npmrc` 中的 registry 和 token（或 `npm_config_registry`）同样生效，可以用于镜像或代理。其中的 Swift 库只能配合构建它们的 Xcode 或更新版本使用；如果你的 Xcode 更旧，它们会改为在你的电脑上编译一次。
+
+- `asuka cache stats` 显示缓存的位置、大小，以及构建时在其中命中所需内容的次数。
+- `asuka cache clean` 清空缓存；之后的构建会重新编译所有内容。
+- 缓存会保持在 10 GB 以内，优先删除最久没用到的内容。用 `ASUKA_CACHE_MAX` 设置别的上限（`ASUKA_CACHE_MAX=20G`、`500M`；`0` 表示不设上限），用 `ASUKA_CACHE` 把它放到别的位置。
+
 ## 常见问题
 
 - **`cbuild: no C compiler`**：安装系统的 C 编译器（Xcode 命令行工具、`build-essential`、LLVM），或者安装 Zig 并设置 `ASUKA_CC=zig`。`building for the web needs Zig` 和 `cross-compiling for ... needs Zig`：安装 [Zig](https://ziglang.org/download)，它可以为 Web 和其他系统构建。
@@ -140,7 +148,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 - **`asuka dev --platform windows runs the app on this computer`**：`asuka dev` 只能在 Windows 上运行 Windows 应用。在其他系统上可以用 `asuka build --platform windows` 构建，再把生成的文件夹复制到 PC 上。
 - **Linux 上提示 `... isn't installed`**：应用需要 GTK 4.14 和 libadwaita 1.5 或更高版本，某些包还需要各自的库：`WebView` 需要 WebKitGTK 6.0，视频和音频需要 GStreamer，安全存储需要 libsecret。错误信息会指出缺少的是哪个，用发行版的包管理器安装即可。
 - **Linux 应用打不开**：它需要一个显示服务器。通过 SSH 或在 CI 中运行时，请在 Xvfb 下运行（`xvfb-run -a`），对于需要 D-Bus 的功能，还要加上会话总线（`dbus-run-session`）。
-- **从头开始**：Asuka 的构建产物、缓存以及各应用的开发数据都存放在 Asuka 的缓存目录中：Mac 上是 `~/Library/Caches/asuka`，Linux 上是 `~/.cache/asuka`，Windows 上是 `%LocalAppData%\asuka`。删除它就能在没有任何数据的情况下全部重新构建。
+- **从头开始**：Asuka 的构建产物、缓存以及各应用的开发数据都存放在 Asuka 的缓存目录中：Mac 上是 `~/Library/Caches/asuka`，Linux 上是 `~/.cache/asuka`，Windows 上是 `%LocalAppData%\asuka`。用 `asuka cache clean` 清空它，就能在没有任何数据的情况下全部重新构建。
 
 ## asuka.toml
 

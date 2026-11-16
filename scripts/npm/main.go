@@ -1,10 +1,16 @@
 // Command npm builds the asuka CLI for every platform and lays out its
 // npm packages: @egoist/asuka (the launcher, npm/cli) and one
-// @egoist/asuka-<os>-<cpu> per build, with only its binary. With -publish
-// it publishes them (npm publish, with the user's npm credentials;
-// --provenance on CI), platform packages first.
+// @egoist/asuka-<os>-<cpu> per build, with only its binary. With
+// -prebuilt, a directory of what asuka prebuilt build made for each of
+// its targets (the release workflow's), it packs those too, one
+// @egoist/asuka-prebuilt-<target> each, and writes their manifest
+// (internal/prebuilt/manifest.json: each package's version and tarball's
+// integrity, each library's path and SHA-256) before building the CLI,
+// which embeds it. With -publish it publishes them (npm publish, with
+// the user's npm credentials; --provenance on CI): the prebuilt packages,
+// the platform packages, then the launcher.
 //
-//	go run ./scripts/npm -version 0.1.0 [-out dist/npm] [-publish]
+//	go run ./scripts/npm -version 0.1.0 [-prebuilt dist/prebuilt] [-out dist/npm] [-publish]
 package main
 
 import (
@@ -30,12 +36,25 @@ func main() {
 	out := flag.String("out", filepath.Join("dist", "npm"), "where the packages go")
 	publish := flag.Bool("publish", false, "npm publish them")
 	tag := flag.String("tag", "latest", "the dist-tag to publish under")
+	pre := flag.String("prebuilt", "", "a directory of asuka prebuilt build's output, a directory per target")
+	manifest := flag.String("manifest", filepath.Join("internal", "prebuilt", "manifest.json"), "where -prebuilt writes the CLI's manifest")
+	only := flag.Bool("prebuilt-only", false, "only pack the prebuilt packages and write their manifest")
 	flag.Parse()
 	if *version == "" {
 		fail("npm: -version is required")
 	}
 	if err := os.RemoveAll(*out); err != nil {
 		fail(err.Error())
+	}
+	var tarballs []string
+	if *pre != "" {
+		var err error
+		if tarballs, err = packPrebuilt(*pre, *out, *version, *manifest); err != nil {
+			fail(err.Error())
+		}
+		if *only {
+			return
+		}
 	}
 	cliFlags := "-s -w -X main.version=" + *version
 	var dirs []string
@@ -95,6 +114,17 @@ func main() {
 	if !*publish {
 		fmt.Println("packages in", *out, "(add -publish to publish them)")
 		return
+	}
+	for _, t := range tarballs {
+		args := []string{"publish", t, "--access", "public", "--tag", *tag}
+		if os.Getenv("CI") != "" {
+			args = append(args, "--provenance")
+		}
+		cmd := exec.Command("npm", args...)
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			fail(fmt.Sprintf("npm publish %s: %v", t, err))
+		}
 	}
 	for _, d := range dirs {
 		args := []string{"publish", "--access", "public", "--tag", *tag}
