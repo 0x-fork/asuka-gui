@@ -5,7 +5,7 @@
 
 import asuka/encoding
 import asuka/notify
-import asuka/push
+import asuka/push as remotePush
 import asuka/storage
 
 let ana = notify.Person(id: "ana", name: "Ana", image: "https://i.pravatar.cc/128?u=ana")
@@ -39,7 +39,11 @@ async fn setUpMessages() {
     notify.Channel(id: "reminders", name: "Reminders", importance: .default),
   ])
   notify.present(n => if !n.thread.isEmpty() && n.thread == chatOnScreen { .hide } else { .banner })
-  for await r in notify.responses() { await answer(r) }
+  do {
+    for await r in notify.responses() { await answer(r) }
+  } catch e {
+    status = e.message
+  }
 }
 
 async fn answer(r: notify.Response) {
@@ -71,7 +75,7 @@ async fn answer(r: notify.Response) {
 /// base64 standing in for a real cipher), the sender and the chat in the
 /// data; it shows as a message in the chat. It runs in iOS's Notification
 /// Service Extension, and in the app's process on Android.
-fn rewriteMessage(m: push.Message) throws -> push.Message {
+fn rewriteMessage(m: remotePush.Message) throws -> remotePush.Message {
   var out = m
   if let box = m.data["box"] { out.body = try encoding.base64Decode(box).string() }
   if let name = m.data["sender"] {
@@ -92,8 +96,12 @@ screen Messages {
   state said = "The Climbing chat: its notifications don't show while you're here."
 
   title: "Climbing"
-  on appear { chatOnScreen = climb.id }
-  on disappear { chatOnScreen = "" }
+  // While it shows.
+  task {
+    chatOnScreen = climb.id
+    defer { chatOnScreen = "" }
+    await never()
+  }
 
   async fn run(work: async fn() throws -> string) {
     do {
@@ -189,14 +197,13 @@ screen Messages {
 /// How to send this app a push that's rewritten.
 fn pushHelp() -> string {
   let box = encoding.base64Encode("See you at the crag at 9".bytes())
-  if devPlayer() { return "Under asuka dev's player, pushes aren't rewritten: run with --once to try it." }
   let keys = "\"box\":\"{box}\",\"sender\":\"Ana\",\"senderID\":\"ana\",\"chat\":\"climbing\",\"chatTitle\":\"Climbing\""
   if environment().platform == .android { return "A rewritten push: an FCM data message with {keys}." }
   return "A rewritten push, from APNs: aps \{\"alert\":\{\"title\":\"New message\",\"body\":\"(encrypted)\"},\"mutable-content\":1}, with {keys} beside it."
 }
 
 test "a sealed push is opened and shown as the chat's" {
-  let m = push.Message(title: "New message", body: "(encrypted)", data: [
+  let m = remotePush.Message(title: "New message", body: "(encrypted)", data: [
     "box": encoding.base64Encode("See you at the crag at 9".bytes()),
     "sender": "Ana",
     "senderID": "ana",

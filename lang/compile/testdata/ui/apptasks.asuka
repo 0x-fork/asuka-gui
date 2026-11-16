@@ -1,0 +1,14 @@
+// The app block's tasks and effects, while the app runs.
+
+state n = 0
+state m = 0
+app {
+  task { await sleep(10ms); n = 5 }
+  effect { m = n * 2 }
+  Text("n {n} m {m}")
+}
+test "app tasks" {
+  let app = mountApp()
+  await app.idle()
+  app.expect("n 5 m 10")
+}

@@ -21,13 +21,14 @@ import asuka/integrity
 import asuka/liveactivity
 import asuka/periodic
 import asuka/power
-import asuka/push
+import asuka/push as remotePush
 import asuka/record
 import asuka/review
 import asuka/screen
 import asuka/sensors
 import asuka/speech
 import asuka/splash
+import asuka/math
 import asuka/time
 import asuka/tracking
 import asuka/widget
@@ -37,10 +38,6 @@ import asuka/widget
 state status = "Tap a service."
 
 app {
-  // The push rewrite: in iOS's Notification Service Extension, and in the
-  // app's process on Android (messages.asuka).
-  pushRewrite: rewriteMessage
-
   // Keep the splash a moment, as an app loading its data would.
   task {
     splash.hold()
@@ -51,7 +48,7 @@ app {
     for await _ in periodic.runs("refresh") { print("services: a periodic refresh") }
   }
   task {
-    for await m in push.opened() { print("services: opened push \"{m.title}\"") }
+    for await m in remotePush.opened() { print("services: opened push \"{m.title}\"") }
   }
   // The handlers the system starts the app for, before any screen.
   task { await followLocation() }
@@ -131,7 +128,7 @@ screen Services {
     if !sensors.available(.motion) { status = "No motion sensor here" }
     for await m in sensors.motion(every: 100ms) {
       let a = m.attitude
-      status = "pitch {(a.pitch * 180 / pi).fixed(0)}°, roll {(a.roll * 180 / pi).fixed(0)}°, heading {a.heading.fixed(0)}°"
+      status = "pitch {(a.pitch * 180 / math.pi).fixed(0)}°, roll {(a.roll * 180 / math.pi).fixed(0)}°, heading {a.heading.fixed(0)}°"
     }
   }
 
@@ -175,9 +172,9 @@ screen Services {
       Item("Register for push") {
         on press {
           await run(() => {
-            let r = try await push.register()
+            let r = try await remotePush.register()
             print("services: {r.service} token {r.token}")
-            return "{r.service} token {r.token.prefix(12)}… (allowed: {r.allowed})"
+            return "{r.service} token {r.token.slice(0, 12)}… (allowed: {r.allowed})"
           })
         }
       }
@@ -540,17 +537,25 @@ async fn simulateMotion() {
 }
 
 async fn watchMotion() {
-  let _ = await all(watchAccelerometer(), watchAttitude())
+  await all(watchAccelerometer(), watchAttitude())
 }
 
 async fn watchAccelerometer() {
-  for await v in sensors.accelerometer(every: 10ms) { motionLog.push("acc z {v.z.fixed(1)}g") }
+  do {
+    for await v in sensors.accelerometer(every: 10ms) { motionLog.push("acc z {v.z.fixed(1)}g") }
+  } catch e {
+    motionLog.push(e.message)
+  }
 }
 
 async fn watchAttitude() {
-  for await m in sensors.motion(every: 10ms) {
+  do {
+    for await m in sensors.motion(every: 10ms) {
     let a = m.attitude
-    motionLog.push("heading {a.heading.fixed(0)}° pitch {(a.pitch * 180 / pi).fixed(0)}° roll {(a.roll * 180 / pi).fixed(0)}° up {m.acceleration.z.fixed(1)}g rot {m.rotation.z.fixed(1)}")
+    motionLog.push("heading {a.heading.fixed(0)}° pitch {(a.pitch * 180 / math.pi).fixed(0)}° roll {(a.roll * 180 / math.pi).fixed(0)}° up {m.acceleration.z.fixed(1)}g rot {m.rotation.z.fixed(1)}")
+    }
+  } catch e {
+    motionLog.push(e.message)
   }
 }
 

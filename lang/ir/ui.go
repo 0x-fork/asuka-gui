@@ -435,9 +435,34 @@ func (b *fb) lowerApp(d *syntax.AppDecl) {
 		if _, ok := it.(*syntax.OnHandler); ok {
 			continue // the app's events: appHandlers
 		}
+		if _, ok := it.(*syntax.TaskDecl); ok {
+			continue // after its handlers
+		}
+		if _, ok := it.(*syntax.EffectDecl); ok {
+			continue
+		}
 		views = append(views, it)
 	}
 	b.appHandlers()
+	// Its tasks and effects, while it runs.
+	for _, it := range d.Body.Items {
+		mark := b.mark()
+		switch x := it.(type) {
+		case *syntax.TaskDecl:
+			b.at(x)
+			b.taskDecl(x, false)
+		case *syntax.EffectDecl:
+			b.at(x)
+			ectx := b.l.info.Ctxs[x]
+			clos := b.makeClosure(closure{name: "effect", ctxs: []*check.FuncCtx{ectx}, ret: bc.KVoid, throws: true, body: func(c *fb) {
+				c.ctx = ectx
+				c.block(x.Body)
+				c.emit(op("RET0"))
+			}})
+			b.emit(op("EFFECT"), clos)
+		}
+		b.release(mark)
+	}
 	views = b.bodyCalls(views)
 	// The first Window among the app's views is its main window.
 	for _, it := range views {
