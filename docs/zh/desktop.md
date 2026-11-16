@@ -276,9 +276,22 @@ app {
 
 ## 自动更新
 
-把 `update.Window(update.Options{})` 放在应用的根组件里，就得到一个 Sparkle 式的更新器：它会在启动后不久以及之后每天检查一次新版本；有新版本时显示更新说明，并提供“安装更新”“跳过此版本”和“稍后提醒”三个选项；下载时显示进度条（如果有针对当前版本的增量包，就只下载变化的部分）；校验新版本是否用应用的密钥签名；安装完成后提供“立即重新启动”。`update.AppMenu()` 会在 Mac 上的“关于”之后加入“检查更新…”菜单项（在其他平台上则放在“帮助”菜单中）。如果想自己做更新界面，可以使用 `update.Check`、`Release.Install` 和 `update.Relaunch`。
+`asuka/update` 的 `update.UpdateWindow()` 在应用主窗口中放一次，就得到一个 Sparkle 式的更新器：它会在启动后不久以及之后每天检查一次新版本；有新版本时显示更新说明，并提供“安装更新”“跳过此版本”和“稍后提醒”三个选项；下载时显示进度条（如果有针对当前版本的增量包，就只下载变化的部分）；校验新版本是否用应用的密钥签名；安装完成后提供“立即重新启动”。把 `update.AppMenu()` 放进 `MenuBar`，会在 Mac 上的“关于”之后加入“检查更新…”菜单项（在其他平台上则放在“帮助”菜单中）；`update.CheckForUpdates()` 是单独的这一个菜单项。如果想自己做更新界面，可以使用 `update.check()`、`Release.install(progress:)`、`update.relaunch()` 和更新器的状态（`update.updater`）。
 
-`asuka update keygen` 生成密钥对；`asuka.toml` 中的 `updates` 指定发布的位置（GitHub Releases、S3 存储桶、任意 HTTPS 目录，或者你自己的服务器）；`asuka publish --platform mac`（或 `windows`、`linux`）负责构建、签名和上传（见[发布](shipping.md#自动更新)）。Mac 应用的新 bundle 会等应用退出后再替换；Windows 和 Linux 则在应用运行时就替换它的文件。通过系统软件包、Flatpak、Snap 或应用商店安装的应用由它们负责更新，`update.Supported()` 会反映这一点；手机上返回 `ErrUnsupported`。在 Web 上，如果页面比网站上的版本旧，会提示用户重新加载。
+```asuka
+import asuka/update
+
+app {
+  Window {
+    title: "Notes"
+    update.UpdateWindow()
+    MenuBar { update.AppMenu() }
+    Text("Notes")
+  }
+}
+```
+
+`asuka update keygen` 生成密钥对；`asuka.toml` 中的 `updates` 指定发布的位置（GitHub Releases、S3 存储桶、任意 HTTPS 目录，或者你自己的服务器）；`asuka publish --platform mac`（或 `windows`、`linux`）负责构建、签名和上传（见[发布](shipping.md#自动更新)）。下载更新和把它放到位由宿主完成：Mac 应用的新 bundle 会等应用退出后再替换；Windows 和 Linux 则在应用运行时就替换它的文件。通过系统软件包、Flatpak、Snap 或应用商店安装的应用由它们负责更新，`await update.unsupported()` 会反映这一点；手机上返回 `.notAvailable`。在 Web 上，如果页面比网站上的版本旧，会提示用户重新加载。
 
 ## 最近使用的文档
 

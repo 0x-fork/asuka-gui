@@ -294,6 +294,7 @@ void ak_fake_free(ak_fake *f) {
 	}
 	ak_vec_free(&f->histories);
 	ak_fake_desk_free(f);
+	ak_fake_update_free(f);
 	ak_free(f);
 }
 
@@ -495,6 +496,7 @@ static void call(ak_fake *f, ak_id root, ak_span b) {
 	}
 	ak_span args = {b.p + r.off, (uint32_t)(r.len - r.off)};
 	if (ak_fake_desk_call(f, root, id, module, method, args)) return;  // the tray's
+	if (ak_fake_update_call(f, root, id, module, method, args)) return;
 	ak_buf ans = {0};
 	bool ok = false;
 	if (f->call_fn) {

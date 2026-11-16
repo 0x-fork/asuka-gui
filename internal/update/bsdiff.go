@@ -1,12 +1,9 @@
 package update
 
 import (
-	"bufio"
 	"bytes"
 	"compress/flate"
 	"encoding/binary"
-	"errors"
-	"io"
 )
 
 // Binary patches follow Colin Percival's bsdiff: the new file is made of
@@ -20,7 +17,8 @@ import (
 //	the difference bytes of all blocks, and their extra bytes,
 //
 // each stream compressed with DEFLATE on its own, as it compresses best
-// alone, and read in order: the updater patches from the delta file.
+// alone, and read in order: the updater (the C core's update.c) patches
+// from the delta file.
 
 // Diff returns the patch that turns old into new.
 func Diff(old, new []byte) []byte {
@@ -101,7 +99,7 @@ func Diff(old, new []byte) []byte {
 		b := block{lenF, scan - lenB - (lastScan + lenF), pos - lenB - (lastPos + lenF)}
 		if b.diff == 0 && b.extra == 0 && len(blocks) > 0 {
 			// Only a move: the previous block makes it, so that every block
-			// but the first makes bytes (Patch relies on it).
+			// but the first makes bytes (the patcher relies on it).
 			blocks[len(blocks)-1].seek += b.seek
 		} else {
 			blocks = append(blocks, b)
@@ -164,87 +162,4 @@ func deflate(b []byte) []byte {
 	w.Write(b)
 	w.Close()
 	return buf.Bytes()
-}
-
-var errDamagedPatch = errors.New("damaged patch")
-
-// Patch writes to w the file of size bytes that patch makes of old, a file
-// of oldSize bytes. Patches come from signed updates, but a damaged one
-// fails cleanly: it cannot make more than size bytes, bytes read out of
-// old count as zeros, as in bspatch, and the caller checks the file made.
-func Patch(w io.Writer, size int64, old io.ReaderAt, oldSize int64, patch io.ReaderAt, patchSize int64) error {
-	var head [3 * binary.MaxVarintLen64]byte
-	n, _ := patch.ReadAt(head[:min(patchSize, int64(len(head)))], 0)
-	var blocks, ctrlLen, diffLen uint64
-	start, ok := uvarints(head[:n], &blocks, &ctrlLen, &diffLen)
-	if !ok || size < 0 || blocks > uint64(size)+1 ||
-		ctrlLen > uint64(patchSize-start) || diffLen > uint64(patchSize-start)-ctrlLen {
-		return errDamagedPatch
-	}
-	extraStart := start + int64(ctrlLen) + int64(diffLen)
-	ctrl := bufio.NewReader(flate.NewReader(io.NewSectionReader(patch, start, int64(ctrlLen))))
-	diff := flate.NewReader(io.NewSectionReader(patch, start+int64(ctrlLen), int64(diffLen)))
-	extra := flate.NewReader(io.NewSectionReader(patch, extraStart, patchSize-extraStart))
-
-	buf := make([]byte, 32<<10)
-	oldBuf := make([]byte, len(buf))
-	var oldPos, left int64 = 0, size
-	for range blocks {
-		d, err1 := binary.ReadUvarint(ctrl)
-		e, err2 := binary.ReadUvarint(ctrl)
-		seek, err3 := binary.ReadVarint(ctrl)
-		if err1 != nil || err2 != nil || err3 != nil || d > uint64(left) || e > uint64(left)-d {
-			return errDamagedPatch
-		}
-		left -= int64(d + e)
-		for d > 0 {
-			n := int(min(d, uint64(len(buf))))
-			if _, err := io.ReadFull(diff, buf[:n]); err != nil {
-				return errDamagedPatch
-			}
-			clear(oldBuf[:n])
-			// Only the part of the block inside old is read.
-			if from, to := max(oldPos, 0), min(oldPos+int64(n), oldSize); from < to {
-				if _, err := old.ReadAt(oldBuf[from-oldPos:to-oldPos], from); err != nil {
-					return err
-				}
-			}
-			for i := range n {
-				buf[i] += oldBuf[i]
-			}
-			if _, err := w.Write(buf[:n]); err != nil {
-				return err
-			}
-			oldPos += int64(n)
-			d -= uint64(n)
-		}
-		if n, err := io.CopyN(w, extra, int64(e)); n != int64(e) {
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				return errDamagedPatch
-			}
-			return err
-		}
-		oldPos += seek
-		if oldPos < -(1<<40) || oldPos > 1<<40 {
-			return errDamagedPatch
-		}
-	}
-	if left != 0 {
-		return errDamagedPatch
-	}
-	return nil
-}
-
-// uvarints decodes uvarints from the start of b into vs and returns how
-// many bytes they take.
-func uvarints(b []byte, vs ...*uint64) (int64, bool) {
-	n := 0
-	for _, v := range vs {
-		x, k := binary.Uvarint(b[n:])
-		if k <= 0 {
-			return 0, false
-		}
-		*v, n = x, n+k
-	}
-	return int64(n), true
 }

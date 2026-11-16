@@ -890,7 +890,7 @@ func buildWeb(app *asukaApp, o *buildOptions) error {
 	if err := os.WriteFile(filepath.Join(out, "index.html"), []byte(page), 0o644); err != nil {
 		return err
 	}
-	// What asuka/sdk/update reads for a newer version than the page's.
+	// What asuka/update reads for a newer version than the page's.
 	if err := os.WriteFile(filepath.Join(out, "version.json"), versionFile(app), 0o644); err != nil {
 		return err
 	}

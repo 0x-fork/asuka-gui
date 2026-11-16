@@ -26,3 +26,7 @@ pub native fn readU8(b: bytes, at: int) -> int
 pub native fn readU32(b: bytes, at: int) -> int
 pub native fn readU64(b: bytes, at: int) -> int
 pub native fn readF64(b: bytes, at: int) -> float
+
+/// The prelude's relaunch(), for a package that has a relaunch of its own
+/// (asuka/update's, which reloads the page on the web).
+pub fn relaunchApp() { relaunch() }

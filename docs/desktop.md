@@ -452,26 +452,41 @@ whose apps don't quit themselves, ignore both.
 
 ## Updates
 
-`update.Window(update.Options{})`, in the app's root, is Sparkle's
-updater: it checks for a new version soon after launch and once a day,
-shows its release notes with Install Update, Skip This Version and
-Remind Me Later, downloads it with a progress bar (only what changed,
-when there's a delta from the running version), checks that it's signed
-with the app's key, installs it and offers Relaunch Now.
-`update.AppMenu()` puts "Check for Updates…" after About on the Mac (in
-Help elsewhere). `update.Check`, `Release.Install` and `update.Relaunch`
-make an interface of the app's own.
+`asuka/update`'s `update.UpdateWindow()`, shown once in the app's main
+window, is Sparkle's updater: it checks for a new version soon after
+launch and once a day, shows its release notes with Install Update,
+Skip This Version and Remind Me Later, downloads it with a progress bar
+(only what changed, when there's a delta from the running version),
+checks that it's signed with the app's key, installs it and offers
+Relaunch Now. `update.AppMenu()` in the `MenuBar` puts "Check for
+Updates…" after About on the Mac (in Help elsewhere);
+`update.CheckForUpdates()` is the item alone. `update.check()`,
+`Release.install(progress:)`, `update.relaunch()` and the updater's
+state (`update.updater`) make an interface of the app's own.
+
+```asuka
+import asuka/update
+
+app {
+  Window {
+    title: "Notes"
+    update.UpdateWindow()
+    MenuBar { update.AppMenu() }
+    Text("Notes")
+  }
+}
+```
 
 `asuka update keygen` makes the key pair, `asuka.toml`'s `updates` says
 where releases go (GitHub's releases, an S3 bucket or any HTTPS
 directory, or a server of yours), and `asuka publish --platform mac`
 (`windows`, `linux`) builds, signs and uploads them
-([Shipping](shipping.md#updates)). A Mac app's new bundle waits for it to
-quit; Windows and Linux replace the app's files while it runs. An app
-that the system's packages, Flatpak, Snap or an app store installed is
-updated by them: `update.Supported()` says so, and phones answer
-`ErrUnsupported`. On the web, a page older than the site offers to
-reload.
+([Shipping](shipping.md#updates)). The host downloads and puts the
+update in place: a Mac app's new bundle waits for it to quit; Windows and
+Linux replace the app's files while it runs. An app that the system's
+packages, Flatpak, Snap or an app store installed is updated by them:
+`await update.unsupported()` says so, and phones answer `.notAvailable`.
+On the web, a page older than the site offers to reload.
 
 ## Recent documents
 

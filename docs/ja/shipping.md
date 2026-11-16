@@ -307,38 +307,67 @@ CI やテストでは、環境変数でも同じ指定ができます。`ASUKA_U
 
 ### アプリ側の実装
 
-`update.Window` はアップデート用のウィンドウで、アプリのルートに置きます。`update.AppMenu` は、アプリのメニューに「アップデートを確認…」を追加します。Mac では「（アプリ名）について」の次に入り、Windows では「ヘルプ」メニュー、Linux ではヘッダーバーのメインメニューに入ります。
+`asuka/update` の `UpdateWindow` がアップデート用のウィンドウです。アプリのメインウィンドウに一度だけ置けばよく、場所は取りません。`AppMenu` は、アプリのメニューに「アップデートを確認…」を追加します。Mac では「（アプリ名）について」の次に入り、Windows と Linux では「ヘルプ」メニューに入ります。`CheckForUpdates` はその項目だけなので、独自のメニューやトレイアイコンのメニューに置けます。
 
-```go
-func Root() ui.Node {
-	return ui.Column(ui.Style{},
-		update.Window(update.Options{Icon: "logo.png"}), // assets/ にある画像
-		ui.MenuBar(ui.Val([]ui.MenuBarMenu{update.AppMenu()})),
-		// ...
-	)
+```asuka
+import asuka/update
+
+app {
+  Window {
+    title: "Notes"
+    update.UpdateWindow { icon: "logo.png" }  // assets/ にある画像
+    MenuBar { update.AppMenu() }
+    Text("Notes")
+  }
 }
 ```
 
-アプリは起動の 10 秒後に確認し、その後は 1 日に 1 回確認します（`Options.Interval`）。新しいバージョンが出ていれば、リリースノートとともに **アップデートをインストール**、**後で通知**、**このバージョンをスキップ** のボタンを表示します（スキップしたバージョンはバックグラウンドの確認では二度と提示されませんが、その次のバージョンは提示されます）。「今後はアップデートを自動的にダウンロードしてインストール」というチェックボックスもあり、これをオンにすると、確認で見つかったアップデートは尋ねずにインストールされ、次回の起動から新しいバージョンが動きます。インストール中はダウンロードの進捗を表示し、終わると **今すぐ再起動** を表示します。`update.CheckForUpdates()` は、ユーザーが求めたときの確認（メニュー項目やボタンから）を行います。このときウィンドウは、アプリが最新であることや、アプリが自分で更新できないことも伝えます。`AutomaticChecks`、`SetAutomaticChecks`、`AutomaticDownloads`、`SetAutomaticDownloads`、`LastCheck` はユーザーの選択（アプリのデータディレクトリの `update.json` に保存されます）で、設定画面を作るのに使えます。ウィンドウの文言は Asuka が用意したもので、アプリの言語で表示されます。文言を変えたい場合は、カタログで `asuka.updateInstall` などのキーを定義します。
+アプリは起動の 10 秒後に確認し、その後は 1 日に 1 回確認します（`interval` で変えられます）。新しいバージョンが出ていれば、リリースノートとともに **アップデートをインストール**、**後で通知**、**このバージョンをスキップ** のボタンを表示します（スキップしたバージョンはバックグラウンドの確認では二度と提示されませんが、その次のバージョンは提示されます）。「今後はアップデートを自動的にダウンロードしてインストール」というチェックボックスもあり、これをオンにすると、確認で見つかったアップデートは尋ねずにインストールされ、次回の起動から新しいバージョンが動きます。インストール中はダウンロードの進捗を表示し、終わると **今すぐ再起動** を表示します。`update.checkForUpdates()` は、ユーザーが求めたときの確認（メニュー項目やボタンから）を行います。このときウィンドウは、アプリが最新であることや、アプリが自分で更新できないことも伝えます。`automaticChecks()`、`setAutomaticChecks(on)`、`automaticDownloads()`、`setAutomaticDownloads(on)`、`lastCheck()`、`skippedVersion()` はユーザーの選択（asuka/storage でデバイスに保存されます）で、設定画面を作るのに使えます。`UpdateWindow { automaticChecks: false }` にすると、ユーザーがオンにするまでバックグラウンドでは確認しません。ウィンドウの文言は Asuka が用意したもので、アプリの言語で表示されます。
 
-アプリ独自の UI を作る場合は、パッケージの関数をメインスレッド以外から呼ぶか、アップデーターの状態（`update.Use()`：確認中、利用可能、ダウンロード中とそのバイト数、準備完了など）を使います。
+アプリ独自の UI を作る場合は、`check()`、`Release.install`、`relaunch()` を使うか、アップデーターの状態 `update.updater` を読みます。これは store で、`phase` が確認中、利用可能、ダウンロード中（`downloaded` と `total` 付き）、準備完了などを表します。
 
-```go
-go func() {
-	r, err := update.Check(ctx) // nil なら最新の状態
-	if err != nil || r == nil {
-		return
-	}
-	// r.Version、r.Notes（Markdown）、r.Date、r.Size
-	if err := r.Install(ctx, func(done, total int64) { /* 進捗を ui.Post で伝える */ }); err == nil {
-		update.Relaunch() // app.Relaunch：アプリを終了し（OnQuit で取り消せます）、新しいバージョンを起動します
-	}
-}()
+```asuka
+import asuka/update
+
+component UpdateBanner {
+  state found: update.Release? = none
+  state done = 0.0
+
+  task {
+    do {
+      found = try await update.check()  // none なら最新の状態
+    } catch e {
+      print(e.message)
+    }
+  }
+
+  if let r = found {
+    Row {
+      gap: 8
+      Text("Notes {r.version} is out")  // r.notes は Markdown。r.date、r.size もあります
+      Button("Install") {
+        on press {
+          do {
+            try await r.install(progress: (got, total) => { done = float(got) / float(total) })
+            update.relaunch()  // アプリを終了し（on quit で取り消せます）、新しいバージョンを起動します
+          } catch e {
+            print(e.message)
+          }
+        }
+      }
+      if done > 0 { Progress { value: done } }
+    }
+  }
+}
 ```
 
-`update.Supported()` は、アプリが自分自身を更新できるかどうかと、できない場合はその理由を返します。更新できないのは、開発ビルドや `updates` のないビルド（`ErrNotConfigured`）、システムのパッケージ・Flatpak・Snap・Mac App Store・Microsoft Store でインストールされたアプリ（`ErrManaged`。更新はそれらが行います）、ダウンロードした場所から実行されていて macOS に App Translocation されている Mac アプリ（`ErrTranslocated`。ユーザーが「アプリケーション」フォルダーに移動する必要があります）、ユーザーが書き込めないフォルダーにあるアプリ（`ErrNotWritable`）、そしてスマートフォン（`ErrUnsupported`）です。こうした場合、ウィンドウはバックグラウンドでは確認せず、ユーザーが確認したときにその理由を伝えます。
+`await update.unsupported()` は、アプリが自分自身を更新できない理由を返し、更新できるときは none を返します。更新できないのは、開発ビルドや `updates` のないビルド（`.notConfigured`）、システムのパッケージ・Flatpak・Snap・Mac App Store・Microsoft Store でインストールされたアプリ（`.managed`。更新はそれらが行います）、ダウンロードした場所から実行されていて macOS に App Translocation されている Mac アプリ（`.translocated`。ユーザーが「アプリケーション」フォルダーに移動する必要があります）、ユーザーが書き込めないフォルダーにあるアプリ（`.notWritable`）、そしてスマートフォン（`.notAvailable`）です。こうした場合、ウィンドウはバックグラウンドでは確認せず、ユーザーが確認したときにその理由を伝えます。
 
-`update.SetChannel("beta")` を呼ぶと、ベータ版を選んだユーザーに向けて、そのチャンネルのプレリリースも提示します。バージョンのチャンネルは、プレリリース部分の英字です（`1.4.0-beta.2` なら `beta`）。`"*"` を指定すると、すべてのプレリリースを受け取ります。正式リリースはどのチャンネルでも提示されます。`update.SetSource` を使うと、マニフェストの読み込みとファイルのダウンロードを、アプリ独自のコードで行えます（ユーザーのトークンを必要とするサービスなど）。その場合も、署名はいつもどおり検証されます。
+`update.setChannel("beta")` を呼ぶと、ベータ版を選んだユーザーに向けて、そのチャンネルのプレリリースも提示します。バージョンのチャンネルは、プレリリース部分の英字です（`1.4.0-beta.2` なら `beta`）。`"*"` を指定すると、すべてのプレリリースを受け取ります。正式リリースはどのチャンネルでも提示されます。`update.setFeed(url)` を使うと、`asuka.toml` とは別のフィード（ユーザーのアカウントごとに選んだものなど）を読みます。マニフェストの URL、GitHub のリリース、または `{target}`、`{version}`、`{channel}` を含むサーバーの URL を指定できます。その場合も、署名はいつもどおり検証されます。`update.compareVersions(a, b)` は、アップデーターと同じ規則でバージョンを比較します。
+
+Web ではインストールするものはありません。`check()` はブラウザーのキャッシュを通さずにサイトの `version.json` を読み、新しいバージョンがあれば `relaunch()` がページを再読み込みします。
+
+テストでは、偽のホストはスマートフォンと同じく update モジュールを持ちません。`update.fakeHost(update.FakeApp(…))` を呼ぶと、インストール済みアプリのホストとして応答し、フィードのファイルを返すようになります（`host.serve(update.Served(url:, file:))`）。`host.log()` で、何をダウンロードしてインストールしたかがわかります。
 
 ### ビルドと公開
 

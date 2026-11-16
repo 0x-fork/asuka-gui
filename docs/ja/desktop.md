@@ -276,9 +276,22 @@ app {
 
 ## アップデート
 
-アプリのルートに `update.Window(update.Options{})` を置くと、Sparkle 方式のアップデーターになります。起動直後と 1 日 1 回、新しいバージョンを確認し、リリースノートを「アップデートをインストール」「このバージョンをスキップ」「後で通知」のボタンとともに表示します。ダウンロードは進捗バー付きで行い（実行中のバージョンからの差分があれば、変更部分だけをダウンロードします）、アプリの鍵で署名されていることを確かめてからインストールし、「今すぐ再起動」を提示します。`update.AppMenu()` は、Mac では「…について」の次に「アップデートを確認…」を追加します（ほかのプラットフォームでは「ヘルプ」メニューに追加します）。独自の UI を作るには、`update.Check`、`Release.Install`、`update.Relaunch` を使います。
+`asuka/update` の `update.UpdateWindow()` をアプリのメインウィンドウに一度置くと、Sparkle 方式のアップデーターになります。起動直後と 1 日 1 回、新しいバージョンを確認し、リリースノートを「アップデートをインストール」「このバージョンをスキップ」「後で通知」のボタンとともに表示します。ダウンロードは進捗バー付きで行い（実行中のバージョンからの差分があれば、変更部分だけをダウンロードします）、アプリの鍵で署名されていることを確かめてからインストールし、「今すぐ再起動」を提示します。`MenuBar` に `update.AppMenu()` を置くと、Mac では「…について」の次に「アップデートを確認…」が入ります（ほかのプラットフォームでは「ヘルプ」メニューに入ります）。`update.CheckForUpdates()` はその項目だけです。独自の UI を作るには、`update.check()`、`Release.install(progress:)`、`update.relaunch()` と、アップデーターの状態（`update.updater`）を使います。
 
-鍵ペアは `asuka update keygen` で作ります。リリースの公開先（GitHub のリリース、S3 バケットや任意の HTTPS ディレクトリ、または自前のサーバー）は `asuka.toml` の `updates` で指定し、`asuka publish --platform mac`（`windows`、`linux`）でビルド、署名、アップロードを行います（[配布](shipping.md#自動アップデート)）。Mac アプリの新しいバンドルは、アプリが終了するのを待ってから置き換わります。Windows と Linux では、実行中にアプリのファイルを置き換えます。システムのパッケージ、Flatpak、Snap、アプリストアからインストールされたアプリは、それらによって更新されます。そのことは `update.Supported()` でわかり、スマートフォンでは `ErrUnsupported` が返ります。Web では、サイトより古いページがリロードを促します。
+```asuka
+import asuka/update
+
+app {
+  Window {
+    title: "Notes"
+    update.UpdateWindow()
+    MenuBar { update.AppMenu() }
+    Text("Notes")
+  }
+}
+```
+
+鍵ペアは `asuka update keygen` で作ります。リリースの公開先（GitHub のリリース、S3 バケットや任意の HTTPS ディレクトリ、または自前のサーバー）は `asuka.toml` の `updates` で指定し、`asuka publish --platform mac`（`windows`、`linux`）でビルド、署名、アップロードを行います（[配布](shipping.md#自動アップデート)）。ダウンロードとアップデートの配置はホストが行います。Mac アプリの新しいバンドルは、アプリが終了するのを待ってから置き換わります。Windows と Linux では、実行中にアプリのファイルを置き換えます。システムのパッケージ、Flatpak、Snap、アプリストアからインストールされたアプリは、それらによって更新されます。そのことは `await update.unsupported()` でわかり、スマートフォンでは `.notAvailable` が返ります。Web では、サイトより古いページがリロードを促します。
 
 ## 最近使ったドキュメント
 
