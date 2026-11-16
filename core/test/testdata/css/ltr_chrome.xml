@@ -1,4 +1,4 @@
-<!-- Left-to-right layout the Taffy fixtures in css/ get wrong or don't cover: the
+<!-- Left-to-right layout the Taffy fixtures beside it get wrong or don't cover: the
      inputs of rtl_chrome.xml without their directions.
      Each input was rendered by Chrome 155 (headless) with these rules, and the
      expectations are its getBoundingClientRect results, relative to the parent:

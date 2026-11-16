@@ -1,25 +1,26 @@
 //go:build ignore
 
-// gen_c_fixtures writes core/test/testdata/layout_fixtures.txt: the Chrome
-// fixtures css_test.go runs (testdata/css/*/*.xml, testdata/ltr_chrome.xml
-// and testdata/rtl_chrome.xml), parsed as css_test.go parses them, in a
-// format C reads a token at a time, with what Chrome drew and what the Go
-// engine lays out. The C core's layout test (core/test/layout_test.c)
-// checks its engine against both. From the repository's root:
+// gen_fixtures writes core/test/testdata/layout_fixtures.txt: the Chrome
+// fixtures (the Taffy fixtures, */*.xml, then ltr_chrome.xml and
+// rtl_chrome.xml) parsed into styles, in a format C reads a token at a
+// time, with what Chrome drew. The C core's layout test
+// (core/test/layout_test.c) lays each out and checks it against Chrome;
+// known_failures.txt lists the ones it doesn't match yet. From the
+// repository's root:
 //
-//	go run layout/testdata/gen_c_fixtures.go
+//	go run core/test/testdata/css/gen_fixtures.go
 //
 // The format, one record per line, tokens separated by spaces:
 //
-//	D n tokens...                  the default style's n fixed fields (first)
-//	F name rounding vw vh gopass   a fixture: rounding 0 or 1; the viewport
-//	                               (inf: max-content, -inf: min-content);
-//	                               gopass 1 when the Go engine matches Chrome
-//	N nkids style...               a node in preorder, then its nkids children
-//	                               (style: see writer.style)
-//	E nkids x y w h                Chrome's frames, in preorder
-//	G nkids x y w h                the Go engine's, in preorder over the tree
-//	.                              the end of the fixture
+//	D n tokens...           the default style's n fixed fields (first)
+//	F name rounding vw vh   a fixture: rounding 0 or 1; the viewport
+//	                        (inf: max-content, -inf: min-content)
+//	N nkids style...        a node in preorder, then its nkids children
+//	                        (style: see writer.style)
+//	E nkids x y w h         Chrome's frames, in preorder
+//	.                       the end of the fixture
+//
+// A style's enumerations are numbered as core/src/layout/layout.h's.
 package main
 
 import (
@@ -31,9 +32,218 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	. "github.com/egoist/asuka/layout"
 )
+
+// The style, as core/src/layout's ak_lstyle has it.
+
+type Unit uint8
+
+const (
+	UnitAuto Unit = iota
+	UnitPoint
+	UnitPercent
+)
+
+type Length struct {
+	V float32
+	U Unit
+}
+
+var Auto = Length{}
+
+func Pt(v float32) Length  { return Length{v, UnitPoint} }
+func Pct(v float32) Length { return Length{v, UnitPercent} }
+
+type Rect[T any] struct{ Top, Right, Bottom, Left T }
+
+type (
+	Display       uint8
+	Position      uint8
+	BoxSizing     uint8
+	Overflow      uint8
+	Direction     uint8
+	FlexDirection uint8
+	FlexWrap      uint8
+	Align         uint8
+	Content       uint8
+	GridAutoFlow  uint8
+	BreadthKind   uint8
+	GridLineKind  uint8
+)
+
+const (
+	DisplayFlex Display = iota
+	DisplayBlock
+	DisplayGrid
+	DisplayNone
+)
+
+const (
+	Relative Position = iota
+	Absolute
+)
+
+const (
+	BorderBox BoxSizing = iota
+	ContentBox
+)
+
+const (
+	OverflowVisible Overflow = iota
+	OverflowClip
+	OverflowHidden
+	OverflowScroll
+)
+
+const (
+	DirInherit Direction = iota
+	DirLTR
+	DirRTL
+)
+
+const (
+	Row FlexDirection = iota
+	Column
+	RowReverse
+	ColumnReverse
+)
+
+const (
+	NoWrap FlexWrap = iota
+	Wrap
+	WrapReverse
+)
+
+const (
+	AlignAuto Align = iota
+	AlignStart
+	AlignEnd
+	AlignFlexStart
+	AlignFlexEnd
+	AlignCenter
+	AlignBaseline
+	AlignStretch
+	AlignSelfStart
+	AlignSelfEnd
+)
+
+const (
+	ContentNormal Content = iota
+	ContentStart
+	ContentEnd
+	ContentFlexStart
+	ContentFlexEnd
+	ContentCenter
+	ContentStretch
+	ContentSpaceBetween
+	ContentSpaceAround
+	ContentSpaceEvenly
+)
+
+const (
+	FlowRow GridAutoFlow = iota
+	FlowColumn
+	FlowRowDense
+	FlowColumnDense
+)
+
+const (
+	BreadthAuto BreadthKind = iota
+	BreadthPoint
+	BreadthPercent
+	BreadthFr
+	BreadthMinContent
+	BreadthMaxContent
+	BreadthFitContent
+	BreadthFitContentPercent
+)
+
+type Breadth struct {
+	Kind BreadthKind
+	V    float32
+}
+
+type TrackSize struct{ Min, Max Breadth }
+
+func Fr(v float32) TrackSize { return TrackSize{Breadth{Kind: BreadthAuto}, Breadth{BreadthFr, v}} }
+func FitContent(v float32) TrackSize {
+	return TrackSize{Breadth{Kind: BreadthAuto}, Breadth{BreadthFitContent, v}}
+}
+func FitContentPct(v float32) TrackSize {
+	return TrackSize{Breadth{Kind: BreadthAuto}, Breadth{BreadthFitContentPercent, v}}
+}
+func Minmax(min, max Breadth) TrackSize { return TrackSize{min, max} }
+
+func BPx(v float32) Breadth  { return Breadth{BreadthPoint, v} }
+func BPct(v float32) Breadth { return Breadth{BreadthPercent, v} }
+func BFr(v float32) Breadth  { return Breadth{BreadthFr, v} }
+func BAuto() Breadth         { return Breadth{} }
+func BMinContent() Breadth   { return Breadth{Kind: BreadthMinContent} }
+func BMaxContent() Breadth   { return Breadth{Kind: BreadthMaxContent} }
+
+const (
+	RepeatAutoFill = -1
+	RepeatAutoFit  = -2
+)
+
+type GridTrack struct {
+	Count int
+	Sizes []TrackSize
+}
+
+func T(s TrackSize) GridTrack                        { return GridTrack{Sizes: []TrackSize{s}} }
+func Repeat(count int, sizes ...TrackSize) GridTrack { return GridTrack{Count: count, Sizes: sizes} }
+
+const (
+	LineAuto GridLineKind = iota
+	LineIndex
+	LineSpan
+)
+
+type GridLine struct {
+	Kind GridLineKind
+	N    int16
+}
+
+func Line(n int) GridLine { return GridLine{LineIndex, int16(n)} }
+func Span(n int) GridLine { return GridLine{LineSpan, int16(n)} }
+
+type Placement struct{ Start, End GridLine }
+
+type Style struct {
+	Display                               Display
+	Position                              Position
+	BoxSizing                             BoxSizing
+	OverflowX, OverflowY                  Overflow
+	ScrollbarWidth                        float32
+	Width, Height                         Length
+	MinWidth, MinHeight                   Length
+	MaxWidth, MaxHeight                   Length
+	AspectRatio                           float32
+	Margin, Padding, Border, Inset        Rect[Length]
+	ColumnGap, RowGap                     Length
+	AlignItems, AlignSelf                 Align
+	JustifyItems, JustifySelf             Align
+	AlignContent, JustifyContent          Content
+	Direction                             Direction
+	FlexDirection                         FlexDirection
+	FlexWrap                              FlexWrap
+	FlexGrow, FlexShrink                  float32
+	FlexBasis                             Length
+	GridTemplateColumns, GridTemplateRows []GridTrack
+	GridAutoColumns, GridAutoRows         []TrackSize
+	GridAutoFlow                          GridAutoFlow
+	GridColumn, GridRow                   Placement
+}
+
+var DefaultStyle = Style{FlexShrink: 1, Margin: Rect[Length]{Pt(0), Pt(0), Pt(0), Pt(0)}}
+
+var (
+	MaxContentSpace = float32(math.Inf(1))
+	MinContentSpace = float32(math.Inf(-1))
+)
+
+func isNaN(f float32) bool { return f != f }
 
 type xNode struct {
 	XMLName xml.Name
@@ -61,8 +271,6 @@ type xTest struct {
 	Input  xNode `xml:"input"`
 	Expect xNode `xml:"expectations"`
 }
-
-// The parsing below is css_test.go's.
 
 func parseLength(s string) Length {
 	switch {
@@ -373,20 +581,15 @@ func styleOf(x *xNode) Style {
 	return s
 }
 
-func isNaN(f float32) bool { return f != f }
-
-func maxf(a, b float32) float32 {
-	if a > b {
-		return a
+func space(s string) float32 {
+	switch s {
+	case "", "max-content":
+		return MaxContentSpace
+	case "min-content":
+		return MinContentSpace
 	}
-	return b
-}
-
-func minf(a, b float32) float32 {
-	if a < b {
-		return a
-	}
-	return b
+	v, _ := strconv.ParseFloat(strings.TrimSuffix(s, "px"), 32)
+	return float32(v)
 }
 
 // words are a text's words in the Ahem font, split at zero-width spaces,
@@ -397,115 +600,6 @@ func words(text string) []int {
 		out = append(out, len([]rune(w)))
 	}
 	return out
-}
-
-// ahem measures text in the Ahem font: 10×10 glyphs, breaking only at
-// zero-width spaces.
-func ahem(ws []int) MeasureFunc {
-	minW, maxW := 0, 0
-	for _, n := range ws {
-		minW = max(minW, n)
-		maxW += n
-	}
-	return func(c Constraints) Size {
-		inline := c.Width
-		if isNaN(inline) {
-			switch {
-			case c.AvailW == MinContentSpace:
-				inline = float32(minW * 10)
-			case c.AvailW == MaxContentSpace:
-				inline = float32(maxW * 10)
-			default:
-				inline = minf(c.AvailW, float32(maxW*10))
-			}
-		}
-		inline = maxf(inline, float32(minW*10))
-		block := c.Height
-		if isNaN(block) {
-			perLine := int(math.Floor(float64(inline / 10)))
-			lines, cur := 1, 0
-			for _, n := range ws {
-				if cur+n > perLine {
-					if cur > 0 {
-						lines++
-					}
-					cur = n
-				} else {
-					cur += n
-				}
-			}
-			block = float32(lines * 10)
-		}
-		return Size{W: inline, H: block}
-	}
-}
-
-func resolve0(l Length) float32 {
-	switch l.U {
-	case UnitPoint:
-		return l.V
-	case UnitPercent:
-		return 0
-	}
-	return 0
-}
-
-func build(x *xNode) *Node {
-	n := New()
-	n.Style = styleOf(x)
-	var kids []*Node
-	for i := range x.Kids {
-		kids = append(kids, build(&x.Kids[i]))
-	}
-	if len(kids) > 0 {
-		n.SetChildren(kids)
-	} else if t := strings.TrimSpace(x.Text); t != "" {
-		n.SetMeasure(ahem(words(t)))
-		st := &n.Style
-		n.SetBaseline(func(Size) float32 { return resolve0(st.Padding.Top) + resolve0(st.Border.Top) + 8 })
-	}
-	return n
-}
-
-func abs(f float32) float32 {
-	if f < 0 {
-		return -f
-	}
-	return f
-}
-
-func matches(n *Node, x *xNode) bool {
-	f := func(k string) float32 {
-		v, _ := x.attr(k)
-		r, _ := strconv.ParseFloat(v, 32)
-		return float32(r)
-	}
-	want := [4]float32{f("x"), f("y"), f("width"), f("height")}
-	got := [4]float32{n.X, n.Y, n.W, n.H}
-	for i := range want {
-		if abs(want[i]-got[i]) >= 0.1 {
-			return false
-		}
-	}
-	ok := true
-	kids := n.Children()
-	for i := range x.Kids {
-		if i < len(kids) && !matches(kids[i], &x.Kids[i]) {
-			ok = false
-		}
-	}
-	return ok
-}
-
-func space(s string) float32 {
-	switch s {
-	case "", "max-content":
-		return MaxContentSpace
-	case "min-content":
-		return MinContentSpace
-	}
-	v, _ := strconv.ParseFloat(strings.TrimSuffix(s, "px"), 32)
-	return float32(v)
 }
 
 // Output.
@@ -683,47 +777,22 @@ func (w writer) expect(x *xNode) {
 	}
 }
 
-func (w writer) got(n *Node) {
-	w.WriteString("G")
-	w.i(len(n.Children()))
-	w.f(n.X)
-	w.f(n.Y)
-	w.f(n.W)
-	w.f(n.H)
-	w.WriteString("\n")
-	for _, c := range n.Children() {
-		w.got(c)
-	}
-}
-
-func (w writer) test(name string, t *xTest) (pass bool) {
+func (w writer) test(name string, t *xTest) {
 	if len(t.Input.Kids) != 1 || len(t.Expect.Kids) != 1 {
 		fatal(fmt.Errorf("%s: want one root", name))
 	}
-	root := build(&t.Input.Kids[0])
-	vw, vh := space(t.Viewport.Width), space(t.Viewport.Height)
-	var p Pass
-	root.Layout(Size{W: vw, H: vh}, &p)
-	rounding := t.Rounding != "false"
-	if rounding {
-		Round(root, 1)
-	}
-	pass = matches(root, &t.Expect.Kids[0])
 	w.WriteString("F " + name)
-	w.i(map[bool]int{false: 0, true: 1}[rounding])
-	w.f(vw)
-	w.f(vh)
-	w.i(map[bool]int{false: 0, true: 1}[pass])
+	w.i(map[bool]int{false: 0, true: 1}[t.Rounding != "false"])
+	w.f(space(t.Viewport.Width))
+	w.f(space(t.Viewport.Height))
 	w.WriteString("\n")
 	w.input(&t.Input.Kids[0])
 	w.expect(&t.Expect.Kids[0])
-	w.got(root)
 	w.WriteString(".\n")
-	return pass
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "gen_c_fixtures:", err)
+	fmt.Fprintln(os.Stderr, "gen_fixtures:", err)
 	os.Exit(1)
 }
 
@@ -733,13 +802,13 @@ func main() {
 		fatal(err)
 	}
 	w := writer{bufio.NewWriter(out)}
-	w.WriteString("# Generated by go run layout/testdata/gen_c_fixtures.go. DO NOT EDIT.\n")
+	w.WriteString("# Generated by go run core/test/testdata/css/gen_fixtures.go. DO NOT EDIT.\n")
 	w.WriteString("D " + strconv.Itoa(len(defaults)) + " " + strings.Join(defaults, " ") + "\n")
-	files, _ := filepath.Glob("layout/testdata/css/*/*.xml")
+	files, _ := filepath.Glob("core/test/testdata/css/*/*.xml")
 	if len(files) == 0 {
 		fatal(fmt.Errorf("no fixtures: run from the repository's root"))
 	}
-	pass, total := 0, 0
+	total := 0
 	for _, path := range files {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -750,13 +819,11 @@ func main() {
 			fatal(fmt.Errorf("%s: %v", path, err))
 		}
 		name := filepath.Base(filepath.Dir(path)) + "/" + strings.TrimSuffix(filepath.Base(path), ".xml")
-		if w.test(name, &t) {
-			pass++
-		}
+		w.test(name, &t)
 		total++
 	}
 	for _, file := range []string{"ltr_chrome", "rtl_chrome"} {
-		data, err := os.ReadFile("layout/testdata/" + file + ".xml")
+		data, err := os.ReadFile("core/test/testdata/css/" + file + ".xml")
 		if err != nil {
 			fatal(err)
 		}
@@ -767,9 +834,7 @@ func main() {
 			fatal(err)
 		}
 		for i := range f.Tests {
-			if w.test(file+"/"+f.Tests[i].Name, &f.Tests[i]) {
-				pass++
-			}
+			w.test(file+"/"+f.Tests[i].Name, &f.Tests[i])
 			total++
 		}
 	}
@@ -779,5 +844,5 @@ func main() {
 	if err := out.Close(); err != nil {
 		fatal(err)
 	}
-	fmt.Printf("%d fixtures, %d match Chrome in Go\n", total, pass)
+	fmt.Printf("%d fixtures\n", total)
 }

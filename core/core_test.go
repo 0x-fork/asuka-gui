@@ -4,9 +4,13 @@
 //
 //	go test ./core              every C test
 //	go test ./core -run Layout  core/test/layout_test.c alone
+//	go test ./core -run TestC/Layout -update-known
+//	                            its Chrome fixtures' known failures,
+//	                            rewritten (core/test/testdata/css)
 package core_test
 
 import (
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +20,8 @@ import (
 
 	"github.com/egoist/asuka/internal/cbuild"
 )
+
+var updateKnown = flag.Bool("update-known", false, "rewrite core/test/testdata/css/known_failures.txt (TestC/Layout)")
 
 func TestC(t *testing.T) {
 	cc, err := cbuild.Find()
@@ -57,6 +63,9 @@ func TestC(t *testing.T) {
 			cmd.Env = append(os.Environ(), "ASUKA_ROOT="+filepath.Dir(root))
 			if testing.Verbose() {
 				cmd.Env = append(cmd.Env, "T_VERBOSE=1")
+			}
+			if *updateKnown {
+				cmd.Env = append(cmd.Env, "ASUKA_UPDATE_KNOWN=1")
 			}
 			out, err := cmd.CombinedOutput()
 			if err != nil || testing.Verbose() {

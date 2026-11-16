@@ -898,14 +898,14 @@ and **grid** layout (in the spirit of Taffy, not a port of it or of Yoga), in po
   pixel, except that a measured leaf's size rounds up (rounding both
   edges can take a pixel off a label, and a label a pixel narrower
   wraps), as Yoga does for text.
-- **Correctness** is defined by Chrome: `layout/testdata/css` holds
+- **Correctness** is defined by Chrome: `core/test/testdata/css` holds
   Taffy's Chrome-generated fixtures (block, flex, grid; border-box,
-  either direction), converted for the C engine
-  (`core/test/testdata/layout_fixtures.txt`, `go run
-  layout/testdata/gen_c_fixtures.go`) and run by `go test ./core -run
-  Layout`, with what they don't cover in
-  `rtl_chrome.xml` and `ltr_chrome.xml`, each rendered by Chrome; `known_failures.txt` lists the ones
-  that don't match yet (mostly the unsupported features above).
+  either direction), with what they don't cover in `rtl_chrome.xml` and
+  `ltr_chrome.xml`, each rendered by Chrome. `gen_fixtures.go` converts
+  them for the C engine (`core/test/testdata/layout_fixtures.txt`) and
+  `go test ./core -run TestC/Layout` runs them; `known_failures.txt`
+  lists the ones that don't match yet (mostly the unsupported features
+  above), and `-update-known` rewrites it.
 
 ## ops
 

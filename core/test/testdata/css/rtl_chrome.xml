@@ -1,4 +1,4 @@
-<!-- Right-to-left layout the Taffy fixtures in css/ don't cover: margins,
+<!-- Right-to-left layout the Taffy fixtures beside it don't cover: margins,
      auto margins, overflow, inset precedence, wrap-reverse and scrollbars.
      Each input was rendered by Chrome 155 (headless) with these rules, and the
      expectations are its getBoundingClientRect results, relative to the parent:
