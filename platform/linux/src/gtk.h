@@ -286,6 +286,11 @@ typedef struct _GResolver GResolver;
 typedef struct _GVolumeMonitor GVolumeMonitor;
 typedef struct _GMount GMount;
 
+typedef enum {
+	G_OUTPUT_STREAM_SPLICE_NONE = 0,
+	G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE = 1,
+	G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET = 2,
+} GOutputStreamSpliceFlags;
 typedef void (*GAsyncReadyCallback)(GObject *source_object, GAsyncResult *res, gpointer data);
 
 typedef enum {
@@ -678,6 +683,14 @@ typedef struct _GtkTextTag GtkTextTag;
 typedef struct _GtkTextTagTable GtkTextTagTable;
 typedef struct _GtkTextMark GtkTextMark;
 typedef struct _GtkTextChildAnchor GtkTextChildAnchor;
+// GtkTextIter lives on the stack: GTK's layout.
+typedef struct _GtkTextIter {
+	gpointer dummy1, dummy2;
+	gint dummy3, dummy4, dummy5, dummy6, dummy7, dummy8;
+	gpointer dummy9, dummy10;
+	gint dummy11, dummy12, dummy13;
+	gpointer dummy14;
+} GtkTextIter;
 typedef struct _GtkScrolledWindow GtkScrolledWindow;
 typedef struct _GtkViewport GtkViewport;
 typedef struct _GtkBox GtkBox;

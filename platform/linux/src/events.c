@@ -105,7 +105,7 @@ static void on_cancel(GtkGesture *g, gpointer seq, node *n) {
 	end_press(n);
 }
 
-static void listen_click(node *n) {
+void lx_listen_click(node *n) {
 	events *e = ev_of(n);
 	if (e->click) return;
 	GtkGesture *g = gtk_gesture_click_new();
@@ -178,7 +178,7 @@ static void on_secondary(GtkGestureClick *g, int count, double x, double y, node
 
 // listen_long_press: a held press, or a secondary click (a mouse's right
 // button, a touchpad's two-finger click), as macOS and Windows take it.
-static void listen_long_press(node *n) {
+void lx_listen_long_press(node *n) {
 	events *e = ev_of(n);
 	if (e->lng) return;
 	GtkGesture *g = gtk_gesture_long_press_new();
@@ -456,11 +456,11 @@ void lx_listen(node *n, ak_event_kind e) {
 	case AK_EVENT_PRESS:
 	case AK_EVENT_PRESSED:
 		if (n->kind == AK_KIND_BUTTON) return;  // clicked
-		listen_click(n);
+		lx_listen_click(n);
 		if (e == AK_EVENT_PRESS) lx_make_pressable(n);
 		return;
 	case AK_EVENT_LONG_PRESS:
-		listen_long_press(n);
+		lx_listen_long_press(n);
 		return;
 	case AK_EVENT_PAN:
 	case AK_EVENT_SWIPE:

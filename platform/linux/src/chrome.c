@@ -399,3 +399,10 @@ bool lx_go_back(node *stack) {
 	adw_navigation_view_pop((AdwNavigationView *)stack->nav->view);
 	return true;
 }
+
+// lx_search_entry is a window's search entry and the screen it searches.
+GtkWidget *lx_search_entry(win *w, node **screen);
+GtkWidget *lx_search_entry(win *w, node **screen) {
+	*screen = w->search ? w->search->screen : NULL;
+	return w->search ? w->search->entry : NULL;
+}

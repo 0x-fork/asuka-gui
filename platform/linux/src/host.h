@@ -554,11 +554,8 @@ struct scroll_view {
 	node *content;
 	GtkAdjustment *hadj, *vadj;
 	double reported[2];
-	bool paging;
-	bool refreshable, refreshing;
-	GtkWidget *spinner;  // the refresh card
-	int page;
-	void *pager;  // paging state (pager.c)
+	void *spinner_state;  // a refreshable one's (scroll.c)
+	void *pager;          // a paging one's
 };
 void lx_refresh_key(win *w);
 void lx_set_refreshing(node *n, bool on);
@@ -573,6 +570,8 @@ void lx_focus_field(node *n);
 void lx_insert_text(node *n, ak_span text);
 float lx_measure_multiline(node *n, float width);
 void lx_release_field(node *n);
+bool lx_composing(GtkWidget *w);
+void lx_watch_preedit(GtkWidget *w);
 void lx_field_command(node *n, ak_cmd c, ak_span args);
 
 // controls.c
@@ -653,6 +652,9 @@ void reply_str(reply *r, const char *s);
 void lx_register_methods(const method_t *m, size_t n);
 method_fn lx_method(const char *module, const char *name);
 void lx_open_url(const char *u);
+// lx_word is a word of Asuka's (internal/l10n's key) in the app's language.
+const char *lx_word(const char *key);
+const char *lx_badged(const char *title, const char *badge);
 void lx_toast(const char *text);
 void lx_modules_init(void);
 
