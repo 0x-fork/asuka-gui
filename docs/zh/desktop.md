@@ -6,15 +6,15 @@
 
 ## 桌面应用是怎么构成的
 
-在 Mac 上，应用的可执行文件是 Asuka 的 macOS 宿主：它用 Swift 编写、基于 AppKit，和核心（编译进了应用）以及应用的原生包的 Swift 链接在一起，在 `Name.app` 里是一个通用二进制，和 iOS 应用一样。在 Windows 和 Linux 上，一个应用就是一个可执行文件：Asuka 用 C 编写的宿主（Windows 上基于 Win32 及其通用控件；Linux 上基于 GTK 4 和 libadwaita，启动时才打开）、核心（`core/include/asuka.h` 的 C 实现）和编译成 C 的应用链接在一起；在 Windows 上，应用的图标、清单和版本信息也直接打包进去。每个桌面应用都带有来自 `asuka.toml` 的应用设置（`asuka-app.json`：名称、ID、版本、强调色、URL scheme、文件类型、更新）：
+在 Mac 上，应用是 `Name.app` 里的一个通用二进制，和 iOS 应用一样，原生包的 Swift 也构建在里面。在 Windows 和 Linux 上，一个应用就是一个可执行文件；在 Windows 上，应用的图标、清单和版本信息也直接打包进去。在任何系统上都能构建 Windows 和 Linux 应用（借助 Zig），也不需要安装 GTK。每个桌面应用都带有来自 `asuka.toml` 的应用设置（`asuka-app.json`：名称、ID、版本、强调色、URL scheme、文件类型、更新）：
 
-| | 核心 | 设置 |
+| | 应用 | 设置 |
 |---|---|---|
-| macOS（`Name.app`） | 和宿主一起在 `Contents/MacOS/Name` 里 | `Contents/Resources/asuka-app.json` |
-| Windows（一个文件夹） | 在 `Name.exe` 里 | `asuka-app.json`，与它放在一起 |
-| Linux（一个安装前缀） | 在 `bin/<exe>` 里 | `share/<exe>/asuka-app.json` |
+| macOS（`Name.app`） | `Contents/MacOS/Name` | `Contents/Resources/asuka-app.json` |
+| Windows（一个文件夹） | `Name.exe` | `asuka-app.json`，与它放在一起 |
+| Linux（一个安装前缀） | `bin/<exe>` | `share/<exe>/asuka-app.json` |
 
-`asuka build` 用目标平台的 C 编译器构建核心，在 Windows 和 Linux 上还会一并构建宿主和应用（交叉编译时用 Zig 的编译器，所以在任何系统上都能构建 Windows 和 Linux 应用，也不需要安装 GTK）。在 Mac 上，它用 Xcode 的 `swiftc` 编译宿主的 Swift（每种架构只编译一次，保存在 Asuka 的缓存里；应用有原生包的 Swift 时则通过 `xcodebuild` 一起构建），再和核心链接。`asuka dev` 运行的是同一个宿主，只是搭配一个不含应用的核心（在每个桌面平台上都是一个程序），由它从 `asuka dev` 加载应用的字节码，之后每次保存再加载新的字节码（参见[开发](development.md#在桌面端)）。
+`asuka dev` 则在开发 App 中运行应用，每次保存都会立即生效（参见[开发](development.md#在桌面端)）。
 
 ## 托盘图标与程序坞菜单
 
@@ -101,7 +101,7 @@ component Panel {
 
 ## 大小适应内容的窗口
 
-`fitContent: true`（`Window` 的键，主窗口也有）让窗口的大小适应它显示的内容，并随内容变化而调整：比如一个浮出面板里的节点列表不断变长，或者一个启动器的搜索结果时多时少。窗口的宽度取内容中最宽一行的宽度（max-content），并限制在 `minWidth` 与 `maxWidth` 之间，达到 `maxWidth` 时文字就会换行；高度取内容在这个宽度下的高度，并限制在 `minHeight` 与 `maxHeight` 之间，超出时由其中的 `Scroll` 负责滚动。核心在布局每一帧时都会按这个尺寸布局内容，窗口也在同一轮里采用这个尺寸，所以窗口一出现就是正确的大小，不会先以别的尺寸出现。浮出面板会重新依锚点摆放；普通窗口或面板则保持顶边不动，向下伸展。用户无法手动调整它的大小。在 Web 上，主窗口就是标签页，它总是铺满整个页面。
+`fitContent: true`（`Window` 的键，主窗口也有）让窗口的大小适应它显示的内容，并随内容变化而调整：比如一个浮出面板里的节点列表不断变长，或者一个启动器的搜索结果时多时少。窗口的宽度取内容中最宽一行的宽度（max-content），并限制在 `minWidth` 与 `maxWidth` 之间，达到 `maxWidth` 时文字就会换行；高度取内容在这个宽度下的高度，并限制在 `minHeight` 与 `maxHeight` 之间，超出时由其中的 `Scroll` 负责滚动。Asuka 在布局每一帧时都会按这个尺寸布局内容，窗口也在同一轮里采用这个尺寸，所以窗口一出现就是正确的大小，不会先以别的尺寸出现。浮出面板会重新依锚点摆放；普通窗口或面板则保持顶边不动，向下伸展。用户无法手动调整它的大小。在 Web 上，主窗口就是标签页，它总是铺满整个页面。
 
 ## 后台应用
 
@@ -363,7 +363,7 @@ app {
 }
 ```
 
-`asuka update keygen` 生成密钥对；`asuka.toml` 中的 `updates` 指定发布的位置（GitHub Releases、S3 存储桶、任意 HTTPS 目录，或者你自己的服务器）；`asuka publish --platform mac`（或 `windows`、`linux`）负责构建、签名和上传（见[发布](shipping.md#自动更新)）。下载更新和把它放到位由宿主完成：Mac 应用的新 bundle 会等应用退出后再替换；Windows 和 Linux 则在应用运行时就替换它的文件。通过系统软件包、Flatpak、Snap 或应用商店安装的应用由它们负责更新，`await update.unsupported()` 会反映这一点；手机上返回 `.notAvailable`。在 Web 上，如果页面比网站上的版本旧，会提示用户重新加载。
+`asuka update keygen` 生成密钥对；`asuka.toml` 中的 `updates` 指定发布的位置（GitHub Releases、S3 存储桶、任意 HTTPS 目录，或者你自己的服务器）；`asuka publish --platform mac`（或 `windows`、`linux`）负责构建、签名和上传（见[发布](shipping.md#自动更新)）。下载更新和把它放到位由应用自己完成：Mac 应用的新 bundle 会等应用退出后再替换；Windows 和 Linux 则在应用运行时就替换它的文件。通过系统软件包、Flatpak、Snap 或应用商店安装的应用由它们负责更新，`await update.unsupported()` 会反映这一点；手机上返回 `.notAvailable`。在 Web 上，如果页面比网站上的版本旧，会提示用户重新加载。
 
 ## 最近使用的文档
 

@@ -20,33 +20,22 @@ app can offer it only where it works.
 
 ## How a desktop app is made
 
-On the Mac, an app's executable is Asuka's macOS host, in Swift on
-AppKit, linked with the core (the app compiled into it) and with its
-native packages' Swift: one universal binary in `Name.app`, as an iOS
-app's is. On Windows and Linux an app is one executable: Asuka's C host
-(on Win32 and its common controls; on GTK 4 and libadwaita, which it
-opens as it starts), the core (`core/include/asuka.h`'s C) and the app
-compiled to C, linked together; on Windows with the app's icon,
-manifest and version built in. Every desktop app carries its settings
-from `asuka.toml` (`asuka-app.json`: its name, ID, version, accent, URL
-scheme, file types, updates):
+On the Mac, an app is one universal binary in `Name.app`, as an iOS
+app is, with its native packages' Swift built in. On Windows and Linux
+an app is one executable, on Windows with the app's icon, manifest and
+version built in; a Windows or Linux build comes from any system (with
+Zig), with no GTK installed to build against. Every desktop app carries
+its settings from `asuka.toml` (`asuka-app.json`: its name, ID,
+version, accent, URL scheme, file types, updates):
 
-| | the core | the settings |
+| | the app | the settings |
 |---|---|---|
-| macOS (`Name.app`) | in `Contents/MacOS/Name`, with the host | `Contents/Resources/asuka-app.json` |
-| Windows (a folder) | in `Name.exe` | `asuka-app.json`, beside it |
-| Linux (a prefix) | in `bin/<exe>` | `share/<exe>/asuka-app.json` |
+| macOS (`Name.app`) | `Contents/MacOS/Name` | `Contents/Resources/asuka-app.json` |
+| Windows (a folder) | `Name.exe` | `asuka-app.json`, beside it |
+| Linux (a prefix) | `bin/<exe>` | `share/<exe>/asuka-app.json` |
 
-`asuka build` compiles the core, and on Windows and Linux the host and
-the app, with the target's C compiler (Zig's to cross-compile: a Windows
-or Linux build comes from any system, with no GTK installed to build
-against). On a Mac it compiles the host's Swift with Xcode's `swiftc`
-(once per architecture, kept in Asuka's cache; with the app's native
-packages' Swift, through `xcodebuild`) and links it with the core.
-`asuka dev` runs the same host with a core that has no app in it (one
-program on every desktop), which loads the app's bytecode from `asuka
-dev` and each save's after it (see
-[Development](development.md#on-the-desktop)).
+`asuka dev` runs the app in a player instead, which takes each save as
+you make it (see [Development](development.md#on-the-desktop)).
 
 ## Tray icons and the Dock menu
 
@@ -177,7 +166,7 @@ that grows, a launcher whose results come and go. Its width is its
 content's widest line (max-content) within `minWidth` and `maxWidth`,
 at which its text wraps; its height is its content's at that width
 within `minHeight` and `maxHeight`, beyond which a `Scroll` in it
-scrolls. The core lays the content out at that size as it lays out each
+scrolls. Asuka lays the content out at that size as it lays out each
 frame, and the window takes it in the same pass, so it shows at its size,
 never at another first. A flyout is placed again against its anchor; a
 window or a panel keeps its top edge and grows down. The user can't
@@ -564,7 +553,7 @@ app {
 where releases go (GitHub's releases, an S3 bucket or any HTTPS
 directory, or a server of yours), and `asuka publish --platform mac`
 (`windows`, `linux`) builds, signs and uploads them
-([Shipping](shipping.md#updates)). The host downloads and puts the
+([Shipping](shipping.md#updates)). The app downloads and puts the
 update in place: a Mac app's new bundle waits for it to quit; Windows and
 Linux replace the app's files while it runs. An app that the system's
 packages, Flatpak, Snap or an app store installed is updated by them:
