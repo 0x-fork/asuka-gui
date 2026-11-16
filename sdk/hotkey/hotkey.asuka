@@ -13,6 +13,7 @@
 
 import platform/host
 
+/// Why a Hotkey couldn't be registered: its error event's.
 pub enum HotkeyError: Error {
   /// hotkey: the shortcut is taken
   taken
@@ -23,6 +24,8 @@ pub enum HotkeyError: Error {
   /// hotkey: no such key
   noKey
 
+  /// The error's text: "hotkey: " and what went wrong, as each case's
+  /// comment says (without notAllowed's parenthesis).
   fn message() -> string = match self {
     .taken => "hotkey: the shortcut is taken"
     .notAllowed => "hotkey: not allowed"

@@ -142,6 +142,8 @@ pub enum NfcError: Error {
   /// nfc: not an NDEF message
   badMessage
 
+  /// The error's text: "nfc: " and what went wrong, as each case's
+  /// comment says.
   fn message() -> string = match self {
     .notAvailable => "nfc: not available"
     .disabled => "nfc: turned off"
@@ -668,12 +670,21 @@ pub struct FakeSession {
 ///   ... the app starts a session ...
 ///   n.tap(nfc.FakeTag(ndef: nfc.Message(records: [nfc.Record.uri("https://example.com")]).encode()))
 pub store FakeNfc {
+  /// The device has NFC: false makes state() say unsupported and start
+  /// throw notAvailable.
   pub state supported = true
+  /// NFC is turned on (setEnabled changes it): false makes start throw
+  /// disabled.
   pub state enabled = true
+  /// The session looking for tags now, as the app started it (its alert,
+  /// what it polls); none when there's none, or it ended.
   pub state session: FakeSession? = none
-  /// Sessions begun; times the settings opened.
+  /// Sessions begun.
   pub state sessions = 0
+  /// How many times openSettings() was called.
   pub state settings = 0
+  /// Every tag tapped or opened with, in order, as the app left it
+  /// (written to, made read-only).
   pub state tags: [FakeTag] = []
   state waiters: [int: fn(Happened)] = [:]
   state stateReaders: [int: fn()] = [:]

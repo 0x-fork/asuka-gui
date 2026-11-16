@@ -65,6 +65,33 @@ repository = "github:acme/charts"
 
 パッケージの `pub` 宣言が、アプリからインポートできるものになります。パッケージにはネイティブコード（[ネイティブコード](native.md)）や C（自身のソースや、ベンダーのビルド済みライブラリ。[Asuka から C を呼び出す](c.md)）も含められ、それらも一緒に公開されます。
 
+### ドキュメントを書く
+
+パッケージのドキュメントはソースに書きます。最初の宣言の上にある `// Package <name> …` というコメントでパッケージが何かを説明し、`pub` 宣言のすぐ上の `///` コメントでその宣言が何をするかを書きます。構造体のフィールド、列挙型のケース、メソッドの上の `///` コメントは、それぞれが何かを説明します。周りより 2 文字深くインデントした行は例で、Asuka のコードとして表示されます。
+
+```asuka
+// Package @acme/charts は Asuka の Canvas でチャートを描きます。棒、
+// 折れ線、円グラフがあり、データが変わるとアニメーションします。
+//
+//   Bars(data: sales) { color: .blue }
+
+/// 値ごとに棒を一本描き、最大値に合わせて縮尺します。
+pub component Bars(data: [float]) {
+  …
+}
+```
+
+`asuka doc` はパッケージのドキュメントを Markdown で出力します。まずパッケージのコメント、次に `pub` 宣言それぞれのシグネチャとコメントが、関数、コンポーネント、store、型に分けて並びます。インポートパス、ディレクトリ、または何も渡さなければ（このディレクトリのパッケージ）そのパッケージを、名前を加えればその宣言だけを出力します。
+
+```sh
+asuka doc                         # このディレクトリのパッケージ
+asuka doc @acme/colors            # 依存パッケージ
+asuka doc std/time Time.add       # 一つの宣言
+asuka doc ./charts -o API.md      # ファイルに書き出す
+```
+
+このサイトの標準ライブラリとプラットフォーム SDK のページも、同じようにソースから作られています。エディタでは、ホバーすると `///` コメントが表示されます（[エディタ](development.md#エディター)）。
+
 ### 公開
 
 ```sh
@@ -79,4 +106,4 @@ asuka pkg publish -tag next       # プレリリース
 
 ## 標準ライブラリとプラットフォーム SDK
 
-`std/http`、`std/json`、`std/storage` などの標準ライブラリと、`platform/camera`、`platform/notify` などのプラットフォーム SDK のパッケージは CLI に同梱され、CLI と同じバージョンで管理されます。`asuka add` は必要ありません。パッケージに `std/` や `platform/` で始まる名前は付けられません（`asuka pkg publish` も `asuka add` も受け付けません）。
+`std/http`、`std/json`、`std/storage` などの標準ライブラリと、`platform/camera`、`platform/notify` などのプラットフォーム SDK のパッケージは CLI に同梱され、CLI と同じバージョンで管理されます。`asuka add` は必要ありません。パッケージに `std/` や `platform/` で始まる名前は付けられません（`asuka pkg publish` も `asuka add` も受け付けません）。それぞれの API はリファレンスにあります：[標準ライブラリ](std.md)と[プラットフォーム SDK](platform.md)（ターミナルでは `asuka doc std/time`）。

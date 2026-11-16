@@ -165,6 +165,8 @@ pub enum BluetoothError: Error {
   /// bluetooth: timeout
   timeout
 
+  /// The error's text: "bluetooth: " and what went wrong, as each case's
+  /// comment says.
   fn message() -> string = match self {
     .notAvailable => "bluetooth: not available"
     .off => "bluetooth: off"
@@ -210,45 +212,107 @@ pub fn fullUUID(u: string) -> string {
 }
 
 // Some of the Bluetooth SIG's assigned numbers: services.
+
+/// The Generic Access service: the device's name and appearance.
 pub let genericAccess = "1800"
+/// The Generic Attribute service: its Service Changed characteristic says
+/// the device's services changed.
 pub let genericAttribute = "1801"
+/// The Immediate Alert service: write an alert level to make the device
+/// alert now (a key finder's beep).
 pub let immediateAlert = "1802"
+/// The Link Loss service: the alert level the device sounds when the
+/// connection is lost.
 pub let linkLoss = "1803"
+/// The Tx Power service: the device's transmit power (txPowerLevel).
 pub let txPowerService = "1804"
+/// The Current Time service: the device's date and time.
 pub let currentTime = "1805"
+/// The Device Information service: its manufacturer, model, serial number
+/// and revisions.
 pub let deviceInformation = "180a"
+/// The Heart Rate service: heartRateMeasurement, bodySensorLocation,
+/// heartRateControlPoint.
 pub let heartRate = "180d"
+/// The Battery service: batteryLevel.
 pub let battery = "180f"
+/// The Blood Pressure service.
 pub let bloodPressure = "1810"
+/// The Human Interface Device service (HID over GATT): keyboards, mice,
+/// game controllers.
 pub let humanInterface = "1812"
+/// The Cycling Speed and Cadence service.
 pub let cyclingSpeed = "1816"
+/// The Cycling Power service.
 pub let cyclingPower = "1818"
+/// The Location and Navigation service.
 pub let locationNavigation = "1819"
+/// The Environmental Sensing service: temperature, humidity and the like.
 pub let environmentSensing = "181a"
+/// The Body Composition service.
 pub let bodyComposition = "181b"
+/// The Weight Scale service.
 pub let weightScale = "181d"
+/// The Fitness Machine service: treadmills, bikes, rowers.
 pub let fitnessMachine = "1826"
+
 // Characteristics.
+
+/// The Device Name characteristic: the name, in UTF-8.
 pub let deviceName = "2a00"
+/// The Appearance characteristic: what kind of device it is, a 16-bit
+/// category from the SIG's list, little-endian.
 pub let appearance = "2a01"
+/// The Service Changed characteristic: indicates the range of handles
+/// whose services changed.
 pub let serviceChanged = "2a05"
+/// The Alert Level characteristic: one byte, 0 no alert, 1 mild, 2 high.
 pub let alertLevel = "2a06"
+/// The Tx Power Level characteristic: one signed byte, in dBm.
 pub let txPowerLevel = "2a07"
+/// The Battery Level characteristic: one byte, the charge in percent
+/// (0–100).
 pub let batteryLevel = "2a19"
+/// The System ID characteristic: 8 bytes, a manufacturer-defined
+/// identifier and an organizationally unique identifier.
 pub let systemID = "2a23"
+/// The Model Number String characteristic (UTF-8).
 pub let modelNumber = "2a24"
+/// The Serial Number String characteristic (UTF-8).
 pub let serialNumber = "2a25"
+/// The Firmware Revision String characteristic (UTF-8).
 pub let firmwareRevision = "2a26"
+/// The Hardware Revision String characteristic (UTF-8).
 pub let hardwareRevision = "2a27"
+/// The Software Revision String characteristic (UTF-8).
 pub let softwareRevision = "2a28"
+/// The Manufacturer Name String characteristic (UTF-8).
 pub let manufacturerName = "2a29"
+/// The Heart Rate Measurement characteristic, which notifies: a flags
+/// byte (bit 0: the rate is 16 bits), then the rate in beats per minute,
+/// one byte or two little-endian; then what the flags add.
 pub let heartRateMeasurement = "2a37"
+/// The Body Sensor Location characteristic: one byte, 0 other, 1 chest,
+/// 2 wrist, 3 finger, 4 hand, 5 ear lobe, 6 foot.
 pub let bodySensorLocation = "2a38"
+/// The Heart Rate Control Point characteristic: write 1 to reset the
+/// energy expended.
 pub let heartRateControlPoint = "2a39"
+/// The Temperature characteristic: a signed 16-bit little-endian value,
+/// in hundredths of a degree Celsius.
 pub let temperature = "2a6e"
+/// The Humidity characteristic: an unsigned 16-bit little-endian value,
+/// in hundredths of a percent.
 pub let humidity = "2a6f"
+
 // Descriptors.
+
+/// The Characteristic User Description descriptor: the characteristic's
+/// name for people, in UTF-8.
 pub let userDescription = "2901"
+/// The Client Characteristic Configuration descriptor: the bits that turn
+/// a characteristic's notifications (1) and indications (2) on.
+/// Characteristic.notifications() sets it as it's read.
 pub let clientCharacteristicConfiguration = "2902"
 
 // ---------------------------------------------------------------------
@@ -559,7 +623,10 @@ pub fn restored() -> Stream<Restored> = Stream(send => {
 /// keeps the connection (connecting again with autoConnect) until its
 /// owner goes or close().
 pub store Connection {
+  /// The device it connects to (connect's); Device() once closed.
   pub state device: Device = Device()
+  /// Where the connection is: connecting as it's made, then connected,
+  /// and disconnected once it's lost or closed (error says why).
   pub state state: ConnectionState = .connecting
   /// Why it disconnected, if it did.
   pub state error: Error? = none
@@ -1009,16 +1076,24 @@ pub struct FakeAdvertising {
 ///   … the app scans and connects …
 ///   bt.notify("AA:BB", "180d", "2a37", bytes([0, 61]))
 pub store FakeBluetooth {
+  /// The adapter's state, what state() and request() answer: on, unless
+  /// setState changes it. Anything but on makes scans, connections,
+  /// serve and advertise throw (off: off; unauthorized: denied; the rest:
+  /// notAvailable).
   pub state adapter: State = .on
+  /// The peripherals in range (add, remove): scans hear them and
+  /// connections take them.
   pub state peripherals: [FakePeripheral] = []
   /// The browser's chooser is there (Web Bluetooth).
   pub state chooserAvailable = true
   /// What choose() answers: the first peripheral that matches, unless
   /// cancel.
   pub state cancelChoose = false
+  /// What Connection.mtu() answers.
   pub state mtu = 185
-  /// Scans running; peripherals connected.
+  /// Scans running.
   pub state scans = 0
+  /// The IDs of the peripherals the app is connected to.
   pub state connected: [string] = []
   /// Values written, as "<device> <service> <char> <hex>".
   pub state written: [string] = []
@@ -1029,10 +1104,13 @@ pub store FakeBluetooth {
   /// app's replaces it, stopBackgroundScan stops it. restore() leaves one
   /// when it brings back a scan or what one heard.
   pub state backgroundLeft = false
-  /// As a peripheral: the services served, the advertising running, the
-  /// values the app notified.
+  /// As a peripheral: the serve() calls serving now.
   pub state servers = 0
+  /// As a peripheral: what advertise() is advertising, one per call
+  /// running ([] once it stops).
   pub state advertising: [FakeAdvertising] = []
+  /// As a peripheral: the values the app notified (LocalCharacteristic's
+  /// notify), in order.
   pub state notified: [bytes] = []
   state scanners: [int: Scanner] = [:]
   state links: [int: LinkReader] = [:]

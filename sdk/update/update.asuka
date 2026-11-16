@@ -68,6 +68,8 @@ pub enum UpdateError: Error {
   /// update: checking or installing failed
   failed(reason: string)
 
+  /// The error's text: "update: " and what went wrong, as each case's
+  /// comment says (failed's: its reason).
   fn message() -> string = match self {
     .notAvailable => "update: this platform updates apps itself (its app store)"
     .notConfigured => "update: this build has no updates (asuka.toml's [updates]; asuka dev's builds have none)"
@@ -266,6 +268,8 @@ pub fn setAutomaticChecks(on: bool) {
 /// asking (the update window's checkbox): it runs at the next launch.
 pub fn automaticDownloads() -> bool = prefs.value.automaticDownloads
 
+/// Turns installing what a check in the background finds without asking
+/// on or off (the update window's checkbox), for a setting of the app.
 pub fn setAutomaticDownloads(on: bool) { prefs.value.automaticDownloads = on }
 
 /// When the app last checked for updates successfully, or none.
@@ -306,11 +310,14 @@ pub enum Phase {
 /// The updater's state, for an interface of the app's own (a badge on
 /// its settings, a banner): `update.updater.phase`, read as any state.
 pub store Updater {
+  /// Where the updater is; idle until a check starts.
   pub state phase: Phase = .idle
   /// The version offered, downloading, or installed.
   pub state release: Release? = none
   /// The download's bytes, while downloading.
   pub state downloaded = 0
+  /// The download's size in bytes, while downloading: the release's
+  /// size, then what the download reports.
   pub state total = 0
   /// Why the updater failed, or is unavailable.
   pub state error: Error? = none

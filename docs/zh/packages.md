@@ -65,6 +65,33 @@ repository = "github:acme/charts"
 
 包里的 `pub` 声明就是应用可以导入的内容。包还可以包含原生代码（[原生代码](native.md)）和 C 代码，可以是自己的源码，也可以是厂商预编译好的库（[在 Asuka 中调用 C](c.md)），它们会随包一起发布。
 
+### 编写文档
+
+包的文档写在源码里。第一个声明上方写一段 `// Package <name> …` 注释，说明这个包是做什么的；每个 `pub` 声明正上方的 `///` 注释说明它的作用，结构体的字段、枚举的分支和方法上方的 `///` 注释则说明它们各是什么。比周围多缩进两个空格的行是示例，会作为 Asuka 代码显示：
+
+```asuka
+// Package @acme/charts 用 Asuka 的 Canvas 画图表：柱状图、折线图
+// 和饼图，数据变化时带动画。
+//
+//   Bars(data: sales) { color: .blue }
+
+/// 每个值画一根柱子，按最大值缩放。
+pub component Bars(data: [float]) {
+  …
+}
+```
+
+`asuka doc` 把包的文档输出为 Markdown：先是包的注释，然后是每个 `pub` 声明的签名和注释，按函数、组件、store 和类型分组。它接受一个导入路径、一个目录，或者什么都不写（当前目录的包），再加一个名字就只输出那一项：
+
+```sh
+asuka doc                         # 当前目录的包
+asuka doc @acme/colors            # 一个依赖
+asuka doc std/time Time.add       # 一个声明
+asuka doc ./charts -o API.md      # 写进文件
+```
+
+本站上标准库和平台 SDK 的页面也是这样从源码生成的。编辑器在悬停时会显示 `///` 注释（见[编辑器](development.md#编辑器)）。
+
 ### 发布
 
 ```sh
@@ -79,4 +106,4 @@ asuka pkg publish -tag next       # 预发布版本
 
 ## 标准库与平台 SDK
 
-`std/http`、`std/json`、`std/storage` 等标准库，以及 `platform/camera`、`platform/notify` 等平台 SDK 的包，都随命令行工具一起提供，版本也跟着命令行工具走：不需要 `asuka add`。包不能以 `std/` 或 `platform/` 命名（`asuka pkg publish` 和 `asuka add` 都会拒绝）。
+`std/http`、`std/json`、`std/storage` 等标准库，以及 `platform/camera`、`platform/notify` 等平台 SDK 的包，都随命令行工具一起提供，版本也跟着命令行工具走：不需要 `asuka add`。包不能以 `std/` 或 `platform/` 命名（`asuka pkg publish` 和 `asuka add` 都会拒绝）。每个包的 API 都在参考里：[标准库](std.md)和[平台 SDK](platform.md)（在终端里用 `asuka doc std/time`）。

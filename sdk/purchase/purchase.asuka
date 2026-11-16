@@ -353,6 +353,8 @@ pub enum PurchaseError: Error {
   /// purchase: already owned
   alreadyOwned
 
+  /// The error's text: "purchase: " and what went wrong, as each case's
+  /// comment says.
   fn message() -> string = match self {
     .notAvailable => "purchase: no store"
     .notAllowed => "purchase: payments not allowed"
@@ -826,18 +828,28 @@ pub struct FakeTransaction {
 ///   ... the app buys ...
 ///   store.approve("coins_100") // the parent approves: events() gives it
 pub store FakeStore {
+  /// The products it sells (fake()'s): products() answers those the app
+  /// asks for, and buying another throws unknownProduct.
   pub state products: [FakeProduct] = []
+  /// How the next buy ends: bought by default.
   pub state outcome: Outcome = .bought
-  /// No store; payments turned off.
+  /// No store: available() is false and the calls throw notAvailable.
   pub state unavailable = false
+  /// Payments turned off (parental controls): available() is false and
+  /// buy throws notAllowed.
   pub state notAllowed = false
+  /// The storefront's country, what storefront() answers (ISO 3166-1
+  /// alpha-3).
   pub state country = "USA"
+  /// Every transaction so far, finished or not, in order.
   pub state transactions: [FakeTransaction] = []
-  /// Calls of restore, manageSubscriptions, redeemCode; the transactions
-  /// a refund was asked for.
+  /// How many times restore() was called.
   pub state restores = 0
+  /// How many times manageSubscriptions() was called.
   pub state manages = 0
+  /// How many times redeemCode() was called.
   pub state redeems = 0
+  /// The IDs of the transactions requestRefund() asked a refund for.
   pub state refunds: [string] = []
   /// The clock the transactions are dated by.
   pub state clock: time.Time = time.unixNano(1_700_000_000_000_000_000)

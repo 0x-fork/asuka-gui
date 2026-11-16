@@ -116,6 +116,8 @@ pub enum EventType {
   pushToStartToken
 }
 
+/// One of events(): what happened (type), to which activity (none's ID,
+/// "", for pushToStartToken), and a token event's token, in hex.
 pub struct Event {
   type: EventType = .started
   activity: Activity = Activity(id: "")

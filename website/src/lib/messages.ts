@@ -7,7 +7,21 @@ const en = {
   siteTitle: "Asuka — Native widgets in Asuka, on phones, desktops and the web",
   siteDescription:
     "Build apps in Asuka, a language made for interfaces, with each platform's own widgets on iOS, Android, macOS, Windows, Linux and the web. Each platform shows the app with its own widgets (UIKit, Material 3, AppKit, Win32, GTK 4 and libadwaita, the DOM), updated by fine-grained state, with live reload as you save and release builds for every platform.",
-  nav: { docs: "Docs", examples: "Examples", releases: "Releases", menu: "Navigation menu", license: "MIT License" },
+  nav: { docs: "Docs", references: "References", examples: "Examples", releases: "Releases", menu: "Navigation menu", license: "MIT License" },
+  reference: {
+    std: "Standard library",
+    platform: "Platform SDK",
+    stdAbout: "The language's own packages, the same on every platform: import std/<name>.",
+    platformAbout: "What wraps a device, an operating system's service or a store: import platform/<name>.",
+    stdIntro:
+      "The standard library is the language's own: JSON, time, URLs, files, HTTP, SQLite, the store, Markdown, charts… the same on every platform. The `asuka` CLI carries it, so a package needs no `asuka add`: import it and use it. Each page is the package's API and its documentation, from its source; `asuka doc std/<name>` prints the same in a terminal.",
+    platformIntro:
+      "The platform SDK wraps a device (the camera, location, Bluetooth, the sensors), an operating system's service (notifications, the share sheet, the Dock and the tray, the keychain) or a store (purchases, Apple Pay, reviews), with each platform's own APIs. The `asuka` CLI carries it: import a package and use it. Each page is the package's API and its documentation, from its source; `asuka doc platform/<name>` prints the same in a terminal.",
+    package: "Package",
+    about: "What it is",
+    source: "View the source on GitHub",
+    english: "",
+  },
   language: { label: "Language", auto: "Auto" },
   search: {
     button: "Search docs…",
@@ -46,7 +60,21 @@ const zh: Messages = {
   siteTitle: "Asuka — 用 Asuka 写原生控件应用，手机、桌面、Web 全覆盖",
   siteDescription:
     "用 Asuka——一门专为界面设计的语言——开发应用，在 iOS、Android、macOS、Windows、Linux 和 Web 上使用各平台自己的控件（UIKit、Material 3、AppKit、Win32、GTK 4 与 libadwaita、DOM）。界面采用细粒度更新，保存即重载，每个平台都能直接打出发布构建。",
-  nav: { docs: "文档", examples: "示例", releases: "版本发布", menu: "导航菜单", license: "MIT 许可证" },
+  nav: { docs: "文档", references: "参考", examples: "示例", releases: "版本发布", menu: "导航菜单", license: "MIT 许可证" },
+  reference: {
+    std: "标准库",
+    platform: "平台 SDK",
+    stdAbout: "语言自带的包，在每个平台上都一样：import std/<name>。",
+    platformAbout: "封装设备、操作系统服务或应用商店的包：import platform/<name>。",
+    stdIntro:
+      "标准库是语言自带的库：JSON、时间、URL、文件、HTTP、SQLite、store、Markdown、图表……在每个平台上都一样。`asuka` 命令行工具自带标准库，所以不需要 `asuka add`，直接 import 就能用。每个页面都是该包的 API 及其文档，从源码生成；在终端里运行 `asuka doc std/<name>` 能看到同样的内容。",
+    platformIntro:
+      "平台 SDK 封装了设备（相机、定位、蓝牙、传感器）、操作系统的服务（通知、分享面板、Dock 和托盘、钥匙串）以及应用商店（内购、Apple Pay、评分），在每个平台上使用该平台自己的 API。`asuka` 命令行工具自带平台 SDK：直接 import 就能用。每个页面都是该包的 API 及其文档，从源码生成；在终端里运行 `asuka doc platform/<name>` 能看到同样的内容。",
+    package: "包",
+    about: "用途",
+    source: "在 GitHub 上查看源码",
+    english: "API 参考由源码中的注释生成，目前只有英文版。",
+  },
   language: { label: "语言", auto: "自动" },
   search: {
     button: "搜索文档…",
@@ -83,7 +111,21 @@ const ja: Messages = {
   siteTitle: "Asuka — Asuka で書く、ネイティブ UI のアプリ。スマートフォンにも、デスクトップにも、Web にも",
   siteDescription:
     "インターフェースのための言語 Asuka で書いたアプリを、iOS、Android、macOS、Windows、Linux、Web で、各プラットフォーム純正のウィジェット（UIKit、Material 3、AppKit、Win32、GTK 4 と libadwaita、DOM）で動かせます。画面はきめ細かな状態の更新で必要な部分だけが書き換わり、保存するたびにライブでリロードされます。リリースビルドもすべてのプラットフォーム向けに作れます。",
-  nav: { docs: "ドキュメント", examples: "サンプル", releases: "リリース", menu: "ナビゲーションメニュー", license: "MIT ライセンス" },
+  nav: { docs: "ドキュメント", references: "リファレンス", examples: "サンプル", releases: "リリース", menu: "ナビゲーションメニュー", license: "MIT ライセンス" },
+  reference: {
+    std: "標準ライブラリ",
+    platform: "プラットフォーム SDK",
+    stdAbout: "言語に付属するパッケージで、どのプラットフォームでも同じです：import std/<name>。",
+    platformAbout: "デバイス、OS のサービス、ストアを包むパッケージです：import platform/<name>。",
+    stdIntro:
+      "標準ライブラリは言語に付属するライブラリです。JSON、時刻、URL、ファイル、HTTP、SQLite、store、Markdown、チャートなどがあり、どのプラットフォームでも同じように動きます。`asuka` CLI に含まれているので `asuka add` は要らず、import するだけで使えます。各ページはパッケージの API とそのドキュメントで、ソースから生成されています。ターミナルで `asuka doc std/<name>` を実行しても同じ内容が表示されます。",
+    platformIntro:
+      "プラットフォーム SDK は、デバイス（カメラ、位置情報、Bluetooth、センサー）、OS のサービス（通知、共有シート、Dock とトレイ、キーチェーン）、ストア（課金、Apple Pay、レビュー）を、それぞれのプラットフォーム自身の API で包みます。`asuka` CLI に含まれているので、import するだけで使えます。各ページはパッケージの API とそのドキュメントで、ソースから生成されています。ターミナルで `asuka doc platform/<name>` を実行しても同じ内容が表示されます。",
+    package: "パッケージ",
+    about: "内容",
+    source: "GitHub でソースを見る",
+    english: "API リファレンスはソースのコメントから生成されており、現在は英語のみです。",
+  },
   language: { label: "言語", auto: "自動" },
   search: {
     button: "ドキュメントを検索…",

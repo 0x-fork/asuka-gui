@@ -62,10 +62,14 @@ pub async fn request(method: string, url: string, headers: [string: string] = [:
   return try await Transport().send(method, url, headers, body, timeout)
 }
 
+/// Sends a GET request to url, waiting up to 60 s for the answer: a
+/// network failure throws, an answer of any status returns (check ok()).
 pub async fn get(url: string, headers: [string: string] = [:]) throws -> Response {
   return try await request("GET", url, headers: headers)
 }
 
+/// Sends a POST request with body to url, waiting up to 60 s, as get
+/// does. Say what body is with a content-type header.
 pub async fn post(url: string, body: bytes, headers: [string: string] = [:]) throws -> Response {
   return try await request("POST", url, headers: headers, body: body)
 }

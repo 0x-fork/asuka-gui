@@ -93,6 +93,42 @@ code too ([Native code](native.md)) and C, its own sources or a
 vendor's prebuilt libraries ([C from Asuka](c.md)); they're published
 with it.
 
+### Documenting it
+
+A package documents itself in its source. A `// Package <name> …`
+comment above its first declaration says what it is; a `///` comment
+right above a `pub` declaration says what that one does, and above a
+struct's fields, an enum's cases and its methods, what they are. Lines
+indented by two spaces more are an example, shown as Asuka:
+
+```asuka
+// Package @acme/charts draws charts with Asuka's Canvas: bars, lines
+// and pies, animated as their data changes.
+//
+//   Bars(data: sales) { color: .blue }
+
+/// A bar for each value, scaled to the largest.
+pub component Bars(data: [float]) {
+  …
+}
+```
+
+`asuka doc` prints a package's documentation as Markdown: the package's
+comment, then each `pub` declaration's signature and comment, grouped
+as functions, components, stores and types. It takes an import path, a
+directory or nothing (the package here), and a name for just that one:
+
+```sh
+asuka doc                         # the package in this directory
+asuka doc @acme/colors            # a dependency
+asuka doc std/time Time.add       # one declaration
+asuka doc ./charts -o API.md      # into a file
+```
+
+The standard library's and the platform SDK's pages on this site are
+the same, from their source. Editors show the `///` comments on hover
+([Editors](development.md#editors)).
+
 ### Publishing
 
 ```sh
@@ -119,4 +155,6 @@ version.
 library, and `platform/camera`, `platform/notify` and the rest of the
 platform SDK, come with the CLI, versioned with it: they need no `asuka
 add`. A package can't be named under `std/` or `platform/` (`asuka pkg
-publish` and `asuka add` refuse it).
+publish` and `asuka add` refuse it). Each one's API is in the reference:
+the [standard library](std.md)'s and the [platform SDK](platform.md)'s
+(`asuka doc std/time` in a terminal).

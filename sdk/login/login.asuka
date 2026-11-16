@@ -12,10 +12,12 @@
 
 import platform/host
 
+/// Why set didn't take effect.
 pub enum LoginError: Error {
   /// login: allow the app to open at login in System Settings › General › Login Items
   needsApproval
 
+  /// The error's text, which tells the user where to allow it.
   fn message() -> string = "login: allow the app to open at login in System Settings › General › Login Items"
 }
 

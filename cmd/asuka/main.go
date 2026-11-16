@@ -11,6 +11,7 @@
 //	asuka test [dir]                         run an app's or a package's test blocks
 //	asuka run [--bin name] [dir] [-- args]   run a program on the VM; a file's tests, or show its app
 //	asuka fmt [-w] [-l] [paths]              format Asuka source (.asuka files)
+//	asuka doc [package] [name]               a package's documentation, as Markdown
 //	asuka check [dir]                        report an Asuka package's problems
 //	asuka lsp                                the language server, for editors
 //	asuka cache stats|clean                  the build cache's size and hits; empty it
@@ -53,6 +54,7 @@ func usage() {
   asuka generate [dir]                      write the functions of the app's catalogs
   asuka i18n init|add|check                 start, add languages to, and check the catalogs
   asuka fmt [-w] [-l] [paths]               format Asuka source (.asuka files) in its canonical form
+  asuka doc [package] [name]                a package's documentation (std/time, platform/camera, ./util), as Markdown
   asuka add <package>[@range]               add dependencies: asuka.toml, asuka.lock, fetched
   asuka remove <package>                    remove dependencies
   asuka install [-update] [dir]             fetch what asuka.lock names (resolving again with -update)
@@ -95,6 +97,8 @@ func main() {
 		err = cmdRun(os.Args[2:])
 	case "fmt":
 		err = cmdFmt(os.Args[2:])
+	case "doc":
+		err = cmdDoc(os.Args[2:])
 	case "add":
 		err = cmdAdd(os.Args[2:])
 	case "remove":

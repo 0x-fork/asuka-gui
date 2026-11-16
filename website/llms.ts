@@ -13,6 +13,7 @@ import type { Plugin } from "vite"
 import { localeInfo, locales, localized, prefixPattern, type Locale } from "./src/lib/locales.ts"
 import { docsBase, isPublished, omitRepositoryOnly, rewriteHref, slugOf, type LinkOptions } from "./src/lib/markdown-source.ts"
 import { messages } from "./src/lib/messages.ts"
+import { referenceSlugs, referenceSource } from "./src/lib/reference.ts"
 import { site } from "./src/lib/site.ts"
 
 // The downloads' paths, in any language: /llms.txt, /zh/docs/shipping.md.
@@ -70,6 +71,25 @@ async function localeAssets(repoDir: string, locale: Locale, assets: Map<string,
     full.push(`---\n\nSource: ${url}\n\n${source.trimEnd()}`)
   }
 
+  // The API reference: each package's page, and the lists.
+  const reference: string[] = []
+  for (const slug of referenceSlugs(repoDir)) {
+    const source = referenceSource(repoDir, locale, slug)
+    if (source === undefined) continue
+    const tree = processor.parse(source) as Root
+    visit(tree, (node) => {
+      if (node.type === "link" && node.url.startsWith("/") && !node.url.startsWith("//")) node.url = new URL(node.url, site.url).href
+    })
+    const pathname = localized(locale, `/docs/${slug}`) + ".md"
+    const url = site.url + pathname
+    const text = processor.stringify(tree)
+    assets.set(pathname, text)
+    const title = tree.children.find((node) => node.type === "heading" && node.depth === 1)
+    const name = title ? toString(title) : slug
+    reference.push(`- [${name.replace(/[\[\]\\]/g, "\\$&")}](${url})`)
+    full.push(`---\n\nSource: ${url}\n\n${text.trimEnd()}`)
+  }
+
   const llms = localized(locale, "/llms.txt")
   const llmsFull = localized(locale, "/llms-full.txt")
   assets.set(llms, [
@@ -77,6 +97,7 @@ async function localeAssets(repoDir: string, locale: Locale, assets: Map<string,
     `> ${description}`,
     `Individual Markdown pages are listed below. All documentation is also available at ${site.url}${llmsFull}.`,
     "## Documentation\n\n" + pages.join("\n"),
+    "## API reference\n\n" + reference.join("\n"),
   ].join("\n\n") + "\n")
   assets.set(llmsFull, full.join("\n\n") + "\n")
 }

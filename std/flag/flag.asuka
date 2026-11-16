@@ -43,6 +43,8 @@ pub enum FlagError: Error {
   version(text: string)
   usage(problem: string, usage: string, program: string)
 
+  /// The error's text: the help or the version to print, or the
+  /// mistake's problem (without the usage line).
   fn message() -> string {
     match self {
       .help(text) => return text

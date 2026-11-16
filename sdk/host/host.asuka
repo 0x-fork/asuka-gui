@@ -13,18 +13,25 @@ pub native async fn call(module: string, method: string, args: bytes) throws -> 
 /// Calls a module's method, not waiting for an answer.
 pub native fn send(module: string, method: string, args: bytes)
 
-/// An unsigned byte, 4 or 8 bytes of an int; 8 bytes of a float; a
-/// string as a u32 length and its UTF-8.
+/// An unsigned byte: n's low 8 bits.
 pub native fn u8(n: int) -> bytes
+/// 4 bytes of an int: n's low 32 bits, little-endian.
 pub native fn u32(n: int) -> bytes
+/// 8 bytes of an int, little-endian (a negative one in two's complement).
 pub native fn u64(n: int) -> bytes
+/// 8 bytes of a float: its IEEE 754 double, little-endian.
 pub native fn f64(x: float) -> bytes
+/// A string as a u32 length (in bytes) and its UTF-8.
 pub native fn str(s: string) -> bytes
 
-/// Reads what the encodings write, at a byte offset (past the end: 0).
+/// Reads what the encodings write, at a byte offset; a value that runs
+/// past the end reads 0. This one: u8's byte.
 pub native fn readU8(b: bytes, at: int) -> int
+/// Reads u32's 4 bytes at a byte offset, unsigned (past the end: 0).
 pub native fn readU32(b: bytes, at: int) -> int
+/// Reads u64's 8 bytes at a byte offset (past the end: 0).
 pub native fn readU64(b: bytes, at: int) -> int
+/// Reads f64's 8 bytes at a byte offset (past the end: 0).
 pub native fn readF64(b: bytes, at: int) -> float
 
 /// The prelude's relaunch(), for a package that has a relaunch of its own

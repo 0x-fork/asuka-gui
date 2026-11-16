@@ -30,6 +30,8 @@ pub enum FsError: Error {
   /// Another failure, as the system says it.
   failed(path: string, reason: string)
 
+  /// The error's text, as Unix tools say it: the path, then what's wrong
+  /// ("notes.md: no such file or directory").
   fn message() -> string = match self {
     .notFound(p) => "{p}: no such file or directory"
     .exists(p) => "{p}: already exists"
@@ -133,6 +135,8 @@ pub fn append(path: string, data: bytes) throws {
   }
 }
 
+/// Adds text, as UTF-8, at the end of the file at path, making it if it
+/// isn't there.
 pub fn appendText(path: string, text: string) throws {
   try append(path, data: text.bytes())
 }

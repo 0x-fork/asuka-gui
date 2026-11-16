@@ -22,6 +22,7 @@ pub enum Stdio { inherit, piped, null }
 /// A signal for kill. Windows ends the program whichever it is.
 pub enum Signal { term, kill, interrupt, hangup }
 
+/// Why a program couldn't run, or ran and failed.
 pub enum CommandError: Error {
   /// No such program on PATH, or no such working directory.
   notFound(program: string, reason: string)
@@ -32,6 +33,9 @@ pub enum CommandError: Error {
   /// An app on a phone or the web can't run other programs.
   unsupported
 
+  /// The error's text: the system's reason it wasn't found or couldn't
+  /// start; "<program> exited with <code>" and stderr's text, trimmed,
+  /// when it failed; that an app here can't run programs, unsupported.
   fn message() -> string {
     match self {
       .notFound(_, reason) => return reason
@@ -121,6 +125,8 @@ pub struct Process {
   /// Writes text to its stdin (started .piped); false once it's closed
   /// (the program ended, or closeStdin).
   async fn write(text: string) -> bool = await writeBytes(text.bytes())
+  /// Writes data to its stdin, as write does text; false once it's
+  /// closed.
   async fn writeBytes(data: bytes) -> bool {
     if let f = fake {
       recordInput(f, data)

@@ -8,7 +8,42 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/egoist/asuka/lang/doc"
+	"github.com/egoist/asuka/std"
 )
+
+// referencePage is the Markdown of the API reference's page a docs link
+// names (docs/std/time.md, docs/zh/platform/camera.md: asuka doc's, which
+// the website serves at /docs/std/time; docs/std.md, the list, which has
+// no anchors to check), and whether it is one.
+func referencePage(path string) (string, bool) {
+	slash := filepath.ToSlash(path)
+	i := strings.LastIndex(slash, "/docs/")
+	if i < 0 || !strings.HasSuffix(slash, ".md") {
+		return "", false
+	}
+	rel := strings.TrimSuffix(slash[i+len("/docs/"):], ".md")
+	rel = strings.TrimPrefix(strings.TrimPrefix(rel, "zh/"), "ja/")
+	if rel == "std" || rel == "platform" {
+		return "", true // the list of the set's packages
+	}
+	if !strings.HasPrefix(rel, "std/") && !strings.HasPrefix(rel, "platform/") {
+		return "", false
+	}
+	if p, ok := doc.Builtin(rel); ok {
+		return p.Markdown(), true
+	}
+	dir, ok := std.Package(rel)
+	if !ok {
+		return "", false
+	}
+	p, err := doc.Load(dir, rel)
+	if err != nil {
+		return "", false
+	}
+	return p.Markdown(), true
+}
 
 // The docs' links resolve, in every language: each relative link names a
 // file of the repository, and each #anchor a heading of its page (as
@@ -121,11 +156,15 @@ func TestDocLinks(t *testing.T) {
 		if a, ok := cache[path]; ok {
 			return a, nil
 		}
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
+		text, ok := referencePage(path)
+		if !ok {
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return nil, err
+			}
+			text = string(b)
 		}
-		cache[path] = anchors(string(b))
+		cache[path] = anchors(text)
 		return cache[path], nil
 	}
 	for _, page := range docPages(t) {
@@ -145,7 +184,9 @@ func TestDocLinks(t *testing.T) {
 				path := page
 				if file != "" {
 					path = filepath.Join(filepath.Dir(page), filepath.FromSlash(file))
-					if _, err := os.Stat(path); err != nil {
+					if _, ok := referencePage(path); ok {
+						// A page of the API reference, generated.
+					} else if _, err := os.Stat(path); err != nil {
 						t.Errorf("%s:%d: %s: no such file", page, nums[i], target)
 						continue
 					}

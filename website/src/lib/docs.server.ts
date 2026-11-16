@@ -1,6 +1,7 @@
 // The docs of the repository (../docs), read and rendered on the server. The
 // site is prerendered, so this runs at build time only.
 
+import fsSync from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
 import type { List, Root } from "mdast"
@@ -12,6 +13,7 @@ import type { Doc, Navs, NavItem, NavSection, SearchEntry } from "@/lib/docs"
 import { localeInfo, messages, type Locale } from "@/lib/i18n"
 import { renderMarkdown, slugOf, type RenderedMarkdown } from "@/lib/markdown.server"
 import { docsBase, isPublished } from "@/lib/markdown-source"
+import { referenceGroupOf, referenceGroups, referencePackages, referenceSource, referenceSourceDir } from "@/lib/reference"
 import { site } from "@/lib/site"
 
 // Vite runs in website/, next to the repository's docs.
@@ -49,6 +51,17 @@ const cache = new Map<string, Promise<RenderedMarkdown | undefined>>()
 function render(locale: Locale, slug: string) {
   const key = `${locale}:${slug}`
   let page = cache.get(key)
+  if (!page && referenceGroupOf(slug)) {
+    // A page of the reference: asuka doc's, or a list of packages.
+    const docsDir = docsDirOf(locale)
+    const source = referenceSource(repoDir, locale, slug)
+    page = Promise.resolve(
+      source === undefined
+        ? undefined
+        : renderMarkdown(source, path.join(docsDir, `${slug}.md`), { docsDir, repoDir, repoUrl: site.repo, base: docsBase(locale) }, { copyCode: messages[locale].docs.copyCode })
+    )
+    if (!import.meta.env.DEV) cache.set(key, page)
+  }
   if (!page) {
     const docsDir = docsDirOf(locale)
     page = fileOf(locale, slug).then((file) => {
@@ -89,7 +102,33 @@ export async function loadNav(locale: Locale): Promise<Navs> {
     rest.push({ slug, title: page?.title || slug })
   }
   if (rest.length) sections.push({ title: words.more, items: rest })
-  return sections
+  return [...sections, ...referenceNav(locale)]
+}
+
+/**
+ * The reference's sidebar: the standard library's packages and the
+ * platform SDK's, each set's list first. The docs' sidebar is the
+ * sections without a group; a page of the reference shows these.
+ */
+function referenceNav(locale: Locale): NavSection[] {
+  const words = messages[locale].reference
+  const packages = referencePackages(repoDir)
+  return referenceGroups.map((group) => ({
+    title: words[group],
+    group: "reference",
+    items: [
+      { slug: group, title: messages[locale].docs.overview, description: words[`${group}About`] },
+      ...packages.filter((p) => p.path.startsWith(group + "/")).map((p) => ({ slug: p.slug, title: p.path, description: p.description })),
+    ],
+  }))
+}
+
+/** Where a page of the reference's source is: the package's directory, or for one the compiler provides, its documentation's file. */
+function referenceSourceUrl(slug: string) {
+  const dir = referenceSourceDir(slug)
+  if (!dir) return `${site.repo}/tree/main/website/src/lib/reference.ts`
+  if (fsSync.existsSync(path.join(repoDir, dir))) return `${site.repo}/tree/main/${dir}`
+  return `${site.repo}/blob/main/lang/doc/builtin/${slug.split("/")[1]}.asuka`
 }
 
 function navItems(list: List, base: string): NavItem[] {
@@ -112,9 +151,11 @@ function sentence(text: string) {
 }
 
 export async function loadDoc(locale: Locale, slug: string): Promise<Doc | undefined> {
-  const [page, nav, file] = await Promise.all([render(locale, slug), loadNav(locale), fileOf(locale, slug)])
-  if (!page || !file) return undefined
-  const sections = nav
+  const reference = referenceGroupOf(slug) !== undefined
+  const [page, nav, file] = await Promise.all([render(locale, slug), loadNav(locale), reference ? undefined : fileOf(locale, slug)])
+  if (!page || (!file && !reference)) return undefined
+  // The page's sidebar: the docs', or the reference's.
+  const sections = nav.filter((s) => (s.group === "reference") === reference)
   const order = sections.flatMap((s) => s.items).filter((i) => i.slug !== undefined)
   const index = order.findIndex((i) => i.slug === slug)
   const item = order[index]
@@ -128,12 +169,13 @@ export async function loadDoc(locale: Locale, slug: string): Promise<Doc | undef
     description: item?.description || page.lead,
     summary: item?.description,
     section: sections.find((s) => s.items.includes(item!))?.title,
-    episode: index >= 0 ? index : undefined,
+    episode: index >= 0 && !reference ? index : undefined,
     html: page.html,
     toc: page.toc,
     prev: index > 0 ? link(index - 1) : undefined,
     next: index >= 0 ? link(index + 1) : undefined,
-    editUrl: `${site.repo}/edit/main/${localeInfo[locale].docsDir}/${file.split(path.sep).join("/")}`,
+    editUrl: file ? `${site.repo}/edit/main/${localeInfo[locale].docsDir}/${file.split(path.sep).join("/")}` : referenceSourceUrl(slug),
+    reference,
   }
 }
 

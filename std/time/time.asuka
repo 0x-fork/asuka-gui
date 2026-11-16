@@ -60,7 +60,9 @@ pub struct Time {
   /// fields overflow into the next (October 32 is November 1).
   fn addDate(years: int = 0, months: int = 0, days: int = 0) -> Time = date(year + years, month + months, day + days, hour: hour, minute: minute, second: second, nanosecond: nanosecond, zone: zone)
 
+  /// Whether this is earlier than t, whatever their zones: a < b.
   fn isBefore(t: Time) -> bool = instant < t.instant
+  /// Whether this is later than t, whatever their zones: a > b.
   fn isAfter(t: Time) -> bool = instant > t.instant
   /// -1, 0 or 1 as this is before, at or after t (whatever their zones):
   /// what a < b, <=, > and >= compare.
@@ -68,7 +70,9 @@ pub struct Time {
 
   /// The same instant on zone's clock.
   fn inZone(zone: Zone) -> Time = at(instant, zone)
+  /// The same instant on UTC's clock.
   fn utc() -> Time = at(instant, .utc)
+  /// The same instant on the device's clock (its zone, with its rules).
   fn local() -> Time = at(instant, .local)
 
   /// Whether t is on the same day as this, on this one's clock.
@@ -133,7 +137,9 @@ pub fn since(t: Time) -> Duration = now().sub(t)
 
 /// The time seconds after 1970-01-01T00:00:00Z.
 pub fn unix(seconds: int, zone: Zone = .local) -> Time = at(seconds * nsPerSecond, zone)
+/// The time milliseconds after 1970-01-01T00:00:00Z.
 pub fn unixMilli(milliseconds: int, zone: Zone = .local) -> Time = at(milliseconds * 1_000_000, zone)
+/// The time nanoseconds after 1970-01-01T00:00:00Z.
 pub fn unixNano(nanoseconds: int, zone: Zone = .local) -> Time = at(nanoseconds, zone)
 
 /// The time at a date and a time of day on zone's clock. Fields out of

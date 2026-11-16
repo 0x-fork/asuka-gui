@@ -441,6 +441,8 @@ pub enum PayError: Error {
   /// pay: a payment sheet shows already
   busy
 
+  /// The error's text: "pay: " and what went wrong, as each case's
+  /// comment says.
   fn message() -> string = match self {
     .notAvailable => "pay: not available"
     .canceled => "pay: canceled"
@@ -662,14 +664,21 @@ pub struct FakeSheet {
 ///   expect(w.sheet!.total.amount == "86.40")
 ///   w.authorize(pay.Payment(token: "tok_visa"))
 pub store FakeWallet {
+  /// The wallet it is, what available() answers (fake()'s wallet).
   pub state wallet: Wallet = .applePay
+  /// What available() answers for canPay; false makes pay throw
+  /// notAvailable.
   pub state canPay = true
+  /// What available() answers for hasCard.
   pub state hasCard = true
+  /// The sheet pay() shows, as the app's answers left it; none while
+  /// there's none.
   pub state sheet: FakeSheet? = none
   /// A question waits for the app's answer.
   pub state waiting = false
   /// The last authorization was accepted, and the sheet closed paid.
   pub state authorized = false
+  /// How many times setUp() was called.
   pub state setUps = 0
   /// The sheets shown.
   pub state shown = 0

@@ -4,6 +4,7 @@ import * as React from "react"
 
 import { DocContent } from "@/components/docs/doc-content"
 import { DocLink } from "@/components/docs/doc-link"
+import { sidebarOf } from "@/components/docs/docs-layout"
 import { DocsNav } from "@/components/docs/docs-nav"
 import { NotFound } from "@/components/not-found"
 import { Button } from "@/components/ui/button"
@@ -55,8 +56,9 @@ function useNav(): Navs {
 }
 
 export function DocPage({ doc }: { doc: Doc }) {
-  const nav = useNav()
-  const t = useMessages().docs
+  const nav = sidebarOf(useNav(), doc)
+  const words = useMessages()
+  const t = words.docs
   const [menuOpen, setMenuOpen] = React.useState(false)
   const article = React.useRef<HTMLElement>(null)
   const bar = React.useRef<HTMLDivElement>(null)
@@ -71,7 +73,7 @@ export function DocPage({ doc }: { doc: Doc }) {
           </SheetTrigger>
           <SheetContent side="left" className="w-72 overflow-y-auto">
             <SheetHeader>
-              <SheetTitle>{t.documentation}</SheetTitle>
+              <SheetTitle>{doc.reference ? words.nav.references : t.documentation}</SheetTitle>
             </SheetHeader>
             <div className="px-2 pb-8">
               <DocsNav sections={nav} page={doc} onNavigate={() => setMenuOpen(false)} />
@@ -119,9 +121,11 @@ export function DocPage({ doc }: { doc: Doc }) {
                 <span className="label flex items-center gap-1.5">
                   <ArrowLeftIcon className="size-3" /> {t.previous}
                 </span>
-                <span lang="ja" className="display text-sm text-unit-ink">
-                  {episodeKanji(doc.prev.episode)}
-                </span>
+                {!doc.reference && (
+                  <span lang="ja" className="display text-sm text-unit-ink">
+                    {episodeKanji(doc.prev.episode)}
+                  </span>
+                )}
                 <span className="display text-xl leading-tight transition-colors group-hover:text-unit-ink">{doc.prev.title}</span>
               </DocLink>
             ) : (
@@ -132,15 +136,17 @@ export function DocPage({ doc }: { doc: Doc }) {
                 <span className="label flex items-center gap-1.5 text-signal-ink">
                   {t.next} <ArrowRightIcon className="size-3" />
                 </span>
-                <span lang="ja" className="display text-sm text-unit-ink">
-                  {episodeKanji(doc.next.episode)}
-                </span>
+                {!doc.reference && (
+                  <span lang="ja" className="display text-sm text-unit-ink">
+                    {episodeKanji(doc.next.episode)}
+                  </span>
+                )}
                 <span className="display text-xl leading-tight transition-colors group-hover:text-unit-ink">{doc.next.title}</span>
               </DocLink>
             )}
           </nav>
           <a href={doc.editUrl} className="mt-6 inline-block text-sm text-muted-foreground hover:text-foreground">
-            {t.edit}
+            {doc.reference ? words.reference.source : t.edit}
           </a>
         </footer>
       </article>

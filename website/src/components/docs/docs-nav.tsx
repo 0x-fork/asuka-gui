@@ -31,10 +31,17 @@ export function DocsNav({ sections, page, onNavigate }: { sections: NavSection[]
                     className={`group ${item}`}
                     activeProps={{ className: "bg-muted font-medium text-foreground! shadow-[inset_2px_0_0_var(--unit)]" }}
                   >
-                    <span className="w-5 shrink-0 font-mono text-[10.5px] text-muted-foreground/60 group-data-[status=active]:text-unit-ink">
-                      {episodeNumber(pages.indexOf(p))}
-                    </span>
-                    {p.title}
+                    {section.group === "reference" ? (
+                      // A package of the API reference: its name (time, for std/time).
+                      <span className={p.slug.includes("/") ? "font-mono text-[13px]" : undefined}>{p.title.replace(/^(std|platform)\//, "")}</span>
+                    ) : (
+                      <>
+                        <span className="w-5 shrink-0 font-mono text-[10.5px] text-muted-foreground/60 group-data-[status=active]:text-unit-ink">
+                          {episodeNumber(pages.indexOf(p))}
+                        </span>
+                        {p.title}
+                      </>
+                    )}
                   </DocLink>
                 ) : (
                   <a href={p.href} className={item}>

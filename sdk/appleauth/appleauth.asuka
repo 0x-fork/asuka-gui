@@ -81,6 +81,8 @@ pub enum AppleAuthError: Error {
   /// appleauth: not available
   notAvailable
 
+  /// The error's text: "appleauth: " and what went wrong, as each case's
+  /// comment says.
   fn message() -> string = match self {
     .canceled => "appleauth: canceled"
     .notAvailable => "appleauth: not available"
@@ -157,14 +159,22 @@ pub async fn credentialState(user: string) throws -> CredentialState {
 ///   let apple = appleauth.fake()
 ///   apple.credential = appleauth.Credential(user: "001", email: "a@example.com")
 pub store FakeAppleID {
+  /// What available() answers; false makes signIn throw notAvailable.
   pub state available = true
+  /// Who signs in: signIn returns it, with the email and the name only
+  /// when its scopes ask for them, and with signIn's state.
   pub state credential: Credential = Credential(user: "000000.fake", identityToken: "fake.jwt.token", authorizationCode: "fake-code", realUser: true)
   /// The user closes the sheet.
   pub state cancel = false
+  /// What credentialState answers, by user (notFound for one not in it).
+  /// A sign-in sets its user's to authorized; set one to revoked to test
+  /// signing out.
   pub state states: [string: CredentialState] = [:]
   /// The sheets shown, and what the last asked for.
   pub state shown = 0
+  /// The scopes the last sheet asked for.
   pub state scopes: [Scope] = []
+  /// The nonce the last sheet was given.
   pub state nonce = ""
 
   fn signIn(s: [Scope], n: string, st: string) throws -> Credential {

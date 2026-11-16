@@ -124,6 +124,8 @@ pub fn recoveryDir() -> string = fs.join([fs.appDir(), "Recovery"])
 pub store Document<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) -> bytes) {
   /// The content; none until it's read.
   pub state content: T? = none
+  /// Where it is between the disk and the edits: loading as it's read,
+  /// then saved, edited, saving, conflict or failed.
   pub state state: State = .loading
   /// Why it's failed, or what the conflict is.
   pub state error = ""

@@ -14,6 +14,8 @@ import std/store
 /// A value kept on the device under key: def until something's kept
 /// (or when what's kept isn't a T any more). Writing value keeps it.
 pub store Value<T>(key: string, def: T) {
+  /// The value kept under key, read as the store is made; setting it
+  /// writes it to the device.
   pub state value: T = store.read(key, def)
 
   effect { store.write(key, value) }

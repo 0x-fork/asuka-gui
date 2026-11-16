@@ -103,6 +103,8 @@ pub enum SensorError: Error {
   /// sensors: not allowed
   notAllowed
 
+  /// The error's text: "sensors: " and what went wrong, as each case's
+  /// comment says.
   fn message() -> string = match self {
     .notAvailable => "sensors: not available"
     .notAllowed => "sensors: not allowed"
@@ -397,6 +399,8 @@ pub store FakeSensors {
   pub state history: Steps = Steps()
   /// The clock the readings carry: each one moves it on by tick.
   pub state clock: Duration = 0ms
+  /// How far each reading sent moves clock on (10 ms: 100 a second);
+  /// a stream asking for fewer skips the readings that come too soon.
   pub state tick: Duration = 10ms
   state listeners: [int: Listener] = [:]
   state nextID = 0

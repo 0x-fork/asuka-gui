@@ -83,6 +83,8 @@ pub fn pauseAudio() {
   if let r = recorder { try? r.pause() }
 }
 
+/// Goes on with a recording of sound pauseAudio paused, into the same
+/// file.
 pub fn resumeAudio() {
   if let r = recorder { try? r.resume() }
 }

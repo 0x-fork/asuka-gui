@@ -216,6 +216,8 @@ fn changes(key: string) -> int {
 /// Small values only (a key is at most 64 bytes, all of an app's values
 /// 1 MB). Without iCloud, it keeps def and what it's set to, here.
 pub store Value<T>(key: string, def: T) {
+  /// The value: def, then iCloud's once read, then another device's as it
+  /// changes it. Setting it writes it to iCloud.
   pub state value: T = def
   state loaded = false
 
@@ -408,7 +410,11 @@ fn followFake(f: FakeICloud) -> Stream<Seen> = Stream(give => {
 ///   let app = mount(Journal())
 ///   ic.arrive("Documents/today.txt", "Rain all day.".bytes())
 pub store FakeICloud {
+  /// The user is signed in to iCloud (signOut, signIn change it): signed
+  /// out, account() isn't available, files() lists nothing, and
+  /// container, list, download, readFile and writeFile throw.
   pub state signedIn = true
+  /// The signed-in account's identity token, as Account.id gives it.
   pub state id = "test"
   /// The container's directory.
   pub state root = fs.join([fs.appDir(), "icloud"])
@@ -429,6 +435,8 @@ pub store FakeICloud {
   /// The path of rel in the container.
   pub fn path(rel: string) -> string = fs.join([root, rel])
 
+  /// The account as the app sees it: available while signed in, with id
+  /// ("" when signed out).
   pub fn account() -> Account = Account(available: signedIn, id: if signedIn { id } else { "" })
 
   fn need() throws {
@@ -541,12 +549,14 @@ pub store FakeICloud {
     changed()
   }
 
-  /// The user signs out of iCloud, or in.
+  /// The user signs out of iCloud.
   pub fn signOut() {
     signedIn = false
     changed()
   }
 
+  /// The user signs in to iCloud as account (its identity token): a
+  /// different one than before is another account.
   pub fn signIn(account: string) {
     id = account
     signedIn = true

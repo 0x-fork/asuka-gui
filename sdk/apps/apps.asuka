@@ -26,9 +26,12 @@ pub struct App {
   path: string
 }
 
+/// Why a call failed, besides the host's own errors.
 pub enum AppsError: Error {
+  /// The platform doesn't let the app list the others: a phone, the web.
   unsupported
 
+  /// The error's text: "apps: not on this platform".
   fn message() -> string = "apps: not on this platform"
 }
 

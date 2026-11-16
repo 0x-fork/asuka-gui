@@ -223,6 +223,8 @@ pub enum LocationError: Error {
   /// location: not available
   unavailable
 
+  /// The error's text: "location: " and what went wrong, as each case's
+  /// comment says.
   fn message() -> string = match self {
     .denied => "location: not allowed"
     .needsAlways => "location: needs the Always authorization (requestAlways)"
@@ -744,20 +746,36 @@ pub store FakeLocation {
   pub state answer: Level = .whenInUse
   /// What they allowed so far.
   pub state level: Level = .notAsked
+  /// Whether what they allowed is precise (allow's exact; requestPrecise
+  /// makes it so).
   pub state precise: bool = true
+  /// Location services are off for the whole device, as authorization()
+  /// reports it. It only changes what's reported: positions still come.
   pub state off: bool = false
+  /// Where the device is: what current() and positions() give. move()
+  /// changes it.
   pub state position: Position = Position(accuracy: 5)
+  /// What placeName() answers, wherever it's asked about.
   pub state placeName = ""
   /// What the system does: a phone's, by default.
   pub state support: Support = Support(updates: true, regions: true, maxRegions: 20, maxRadius: 2000, dwell: true, relaunch: true)
+  /// The regions monitored (monitor, stopMonitoring), which move() checks
+  /// for crossings with always allowed.
   pub state regions: [Region] = []
+  /// The options the background updates were last started with
+  /// (startUpdates).
   pub state updates: Updates = Updates()
+  /// The background updates run: startUpdates turns it on, stopUpdates
+  /// off; while it's on (and allowed), each move() is a batch for
+  /// updates().
   pub state updatesOn = false
   /// Events read whose hold() isn't done yet.
   pub state pending = 0
+  /// How many times openSettings() was called.
   pub state settingsOpened = 0
   /// The clock the positions carry; move() moves it on by step.
   pub state clock: time.Time = time.unixNano(1_700_000_000_000_000_000)
+  /// How far each move() moves clock on.
   pub state step: Duration = 1s
   state inside: [string] = []
   state moveReaders: [int: fn(Position)] = [:]
@@ -765,6 +783,8 @@ pub store FakeLocation {
   state eventReaders: [int: fn(Event)] = [:]
   state nextID = 0
 
+  /// What the user allowed now (level, precise, off), as
+  /// location.authorization() reports it.
   pub fn authorization() -> Authorization = Authorization(level: level, precise: precise, off: off)
 
   /// The user changes what they allowed (in Settings).
