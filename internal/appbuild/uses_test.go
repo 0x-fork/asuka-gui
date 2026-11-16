@@ -30,6 +30,8 @@ async fn clear() {
   let _ = try? await icloud.remove("k")
   let _ = try? await location.current()
   let n = notify.Notification(body: "hi").from(notify.Person(name: "Ann"), notify.Conversation())
+  let m = notify.Notification(sender: notify.Person(name: "Bo"))
+  try? await notify.show(m)
   try? await notify.show(n)
 }
 
@@ -73,12 +75,14 @@ func TestUses(t *testing.T) {
 	}
 	for _, r := range [][2]string{{"asuka/icloud", "remove"}, {"asuka/location", "current"}, {"@test/sync", "name"},
 		{"asuka/location", "requestAlways"}, {"asuka/icloud", "readFile"}, {"", "Text"},
-		{"asuka/notify", "Notification.from"}, {"asuka/notify", "Person"}} {
+		{"asuka/notify", "Notification.from"}, {"asuka/notify", "Person"}, {"asuka/notify", "Notification.sender"},
+		{"asuka/notify", "Notification.body"}, {"asuka/notify", "Person.name"}} {
 		if !u.Ref(r[0], r[1]) {
 			t.Errorf("no %s.%s in %v", r[0], r[1], u.Refs)
 		}
 	}
-	for _, r := range [][2]string{{"asuka/icloud", "delete"}, {"asuka/icloud", "documents"}, {"", "delete"}, {"", "clear"}} {
+	for _, r := range [][2]string{{"asuka/icloud", "delete"}, {"asuka/icloud", "documents"}, {"", "delete"}, {"", "clear"},
+		{"asuka/notify", "Notification.title"}, {"asuka/notify", "Person.bot"}} {
 		if u.Ref(r[0], r[1]) {
 			t.Errorf("%s.%s in %v", r[0], r[1], u.Refs)
 		}

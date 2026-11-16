@@ -261,7 +261,7 @@ func TestIPad(t *testing.T) {
 	}
 }
 
-// An app with its own share sheet (app.ShareSheet): Android's share
+// An app with its own share sheet (asuka/sharesheet): Android's share
 // filters are its Activity's; iOS's extension is the host's sheet, with
 // the app's ID, and an App Group for the data even for texts alone; the
 // app's keychain group for both.
@@ -286,18 +286,23 @@ func TestShareSheetConfig(t *testing.T) {
 	}
 }
 
-// A push rewrite (push.Rewrite) gives the app a Notification Service
-// Extension: the shared layout, the App Group and keychain group it
-// shares, its own bundle ID; Android's manifest says so to the host.
+// A push rewrite (asuka/push's rewrite) gives the app a Notification
+// Service Extension: the shared layout, the App Group and keychain group
+// it shares, its own bundle ID; Android's manifest says so to the host.
 func TestPushRewriteConfig(t *testing.T) {
 	c := &appConfig{ID: "com.example.chat"}
-	if c.sharedLayout() || c.appGroup() != "" || c.keychainGroup("TEAM") != "" {
+	importStd(t, c, "ios", "push.register")
+	if c.pushRewrite || c.sharedLayout() || c.appGroup() != "" || c.keychainGroup("TEAM") != "" {
 		t.Fatal("no rewrite: one executable, no group")
 	}
 	if strings.Contains(c.androidManifest(false), "dev.asuka.push.rewrite") {
 		t.Fatal("no rewrite: no meta-data")
 	}
-	c.pushRewrite = true
+	c = &appConfig{ID: "com.example.chat"}
+	importStd(t, c, "ios", "push.rewrite")
+	if !c.pushRewrite {
+		t.Fatal("push.rewrite: no rewrite")
+	}
 	if !c.sharedLayout() || c.appGroup() != "group.com.example.chat" || c.keychainGroup("TEAM") != "TEAM.com.example.chat" {
 		t.Fatalf("rewrite: %v %q %q", c.sharedLayout(), c.appGroup(), c.keychainGroup("TEAM"))
 	}

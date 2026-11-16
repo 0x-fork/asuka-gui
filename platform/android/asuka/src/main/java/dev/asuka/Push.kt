@@ -40,15 +40,15 @@ object AsukaPushHub {
             .put("channel", channel ?: data["channel"].orEmpty()).put("image", image ?: data["image"].orEmpty())
             .put("badge", data["badge"]?.toIntOrNull() ?: 0)
 
-    /** The rewrites (push.Rewrite) waiting for Go. */
+    /** The rewrites (asuka/push's rewrite) waiting for the app. */
     private val rewrites = AsukaWaitQueue()
     private val pendingRewrites = HashMap<String, (JSONObject?) -> Unit>()
 
     /**
-     * Has Go rewrite message (push.Message's JSON), starting the core
+     * Has the app rewrite message (push.Message's JSON), starting the core
      * without a screen if it hasn't: the notification to show, or null to
-     * show it as it came (the rewrite failed, or took more than seconds).
-     * Not on the main thread.
+     * show it as it came (the rewrite failed, gave none, or took more than
+     * seconds). Not on the main thread.
      */
     fun rewrite(rt: AsukaRuntime, message: JSONObject, seconds: Long): JSONObject? {
         var out: JSONObject? = null
@@ -84,6 +84,7 @@ object AsukaPushHub {
     }
 
     fun stop(kind: String) {
+        if (kind == "nextRewrite") return rewrites.stop()
         val ws = waiting[kind]?.toList() ?: return
         waiting[kind]?.clear()
         for (w in ws) w(Result.failure(Exception("stopped")))
@@ -108,9 +109,9 @@ object AsukaPushHub {
 }
 
 /**
- * asuka/sdk/push's module: "register", "nextReceived", "nextOpened", "stop" (the
+ * asuka/push's module: "register", "nextReceived", "nextOpened", "stop" (the
  * method's name); "nextRewrite" ({token, message}) and "rewritten"
- * ({token, ok, spec}) for push.Rewrite.
+ * ({token, ok, spec}) for push.rewrite.
  */
 fun AsukaRuntime.pushMethods(): Map<String, AsukaModuleMethod> = mapOf(
     "register" to { _, reply ->

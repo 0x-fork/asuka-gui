@@ -2,9 +2,9 @@
     <!-- ui.Image loads http(s) URLs. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <application>
-        <!-- app.ShareSheet: the app's sheet over another app that shares, in a
+        <!-- asuka/sharesheet: the app's sheet over another app that shares, in a
              process of its own. The CLI gives it the share intent filters
-             (asuka.json's shareTarget) when the app has a sheet. -->
+             (asuka.toml's shareTarget) when the app has a sheet. -->
         <activity
             android:name="dev.asuka.AsukaShareActivity"
             android:process=":share"

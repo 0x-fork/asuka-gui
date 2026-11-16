@@ -374,6 +374,15 @@ void ak_ui_color_scheme(int64_t scheme);  // AK_COLOR_SCHEME_*
 void ak_ui_on_foreground(ak_closure *f);  // fn()
 void ak_ui_on_background(ak_closure *f);  // fn()
 void ak_ui_lifecycle(int64_t state);      // the handlers hear it (root.c)
+// The app's own share sheet (asuka/sharesheet): closes it, how an
+// AK_SHARE_CLOSE_* (0 done, 1 cancelled, 2 open the app with what was
+// shared); outside a sheet the host ignores it.
+void ak_ui_share_close(int64_t how);
+// The process the app runs in (asuka/platform's process): "share" (its
+// share sheet), "notification" (iOS's Notification Service Extension,
+// for a push's rewrite) or "app"; the host says so in the environment
+// before the core starts (ASUKA_SHARE_SHEET, ASUKA_NOTIFICATION_SERVICE).
+const char *ak_ui_process(void);
 // The router's: true when it takes a URL the app is opened with.
 extern bool (*ak_ui_route_url)(ak_span url);
 // ak_router_set_start makes the main window's first Router start at href

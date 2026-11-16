@@ -49,6 +49,10 @@ test "optionals" {
   while let top = stack.pop() { sum += top }
   print(sum)
   expect(n.isSome() && m.isSome() && none1.isNone())
+  var some = 0
+  if let _ = none1 { some += 1 }
+  if let _ = a { some += 10 }
+  expect(some == 10)
 }
 
 test "unwrap none" {
@@ -71,4 +75,4 @@ test "unwrap none" {
 // 5 none
 // 6
 // ok optionals
-// FAIL unwrap none: unwrapped none (optionals.asuka:56)
+// FAIL unwrap none: unwrapped none (optionals.asuka:60)

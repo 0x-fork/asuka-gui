@@ -8,6 +8,8 @@
 package appbuild
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
@@ -26,7 +28,8 @@ import (
 )
 
 // Compile compiles the app (or package) in dir, with its dependencies
-// (deps: package ID → directory, from internal/pkgs), to a module; its
+// (deps: package ID → directory, from internal/pkgs), to a module, and
+// says what its program uses (nil: not known: Uses checks it then); its
 // diagnostics are "file:line:col: message". An error with no diagnostics
 // is one that isn't the source's (a file that can't be read). main adds
 // the package's fn main() as a test named main (asuka run). It's
@@ -42,12 +45,17 @@ var DevLang, DevDirection string
 // catalogs' missing translations), "file:line:col: warning: message".
 var Warnings io.Writer = os.Stderr
 
-func compileDir(dir string, deps map[string]string, main bool) (*bytecode.Module, []string, error) {
+func compileDir(dir string, deps map[string]string, main bool) (*bytecode.Module, *Uses, []string, error) {
 	// Imports resolve through the project's asuka.lock (compile.Dir's
 	// own), which Load made ready.
 	res, err := compile.Dir(dir, &compile.Options{MainTest: main, Lang: DevLang, Direction: DevDirection})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+	var u *Uses
+	if res.Program != nil {
+		u = &Uses{Imports: map[string]bool{}, Refs: map[string]bool{}}
+		usesOf(res.Program, u)
 	}
 	if Warnings != nil {
 		for _, w := range res.Warnings {
@@ -63,9 +71,9 @@ func compileDir(dir string, deps map[string]string, main bool) (*bytecode.Module
 		for i, d := range res.Diags {
 			diags[i] = d.String()
 		}
-		return nil, diags, nil
+		return nil, u, diags, nil
 	}
-	return res.Module, nil, nil
+	return res.Module, u, nil, nil
 }
 
 // Project is an app or a package: its directory and its dependencies'.
@@ -79,8 +87,11 @@ type Project struct {
 	Local []string
 	// File, for a project of one file (asuka run file.asuka), is that file.
 	File string
-	// uses is what Uses last found.
-	uses *Uses
+	// uses is what the last compile (or check) found its program uses,
+	// usesStamp the files' stamp they're of; last is the last compile.
+	uses      *Uses
+	usesStamp string
+	last      *compiled
 }
 
 // Load reads the project in dir (or the one file dir names): its
@@ -136,24 +147,86 @@ func Load(dir string) (*Project, error) {
 	return p, nil
 }
 
-// Compile compiles the project (Compile).
+// Compile compiles the project (Compile), and notes what its program
+// uses (Uses). A project whose files haven't changed since its last
+// compile (stamp) isn't compiled again: loading an app and building it
+// is one compile.
 func (p *Project) Compile() (*bytecode.Module, []string, error) {
+	stamp := p.stamp()
+	if l := p.last; l != nil && l.stamp == stamp {
+		return l.m, l.diags, l.err
+	}
+	m, u, diags, err := p.compile()
+	if u != nil {
+		p.uses, p.usesStamp = u, stamp
+	}
+	p.last = &compiled{stamp: stamp, m: m, diags: diags, err: err}
+	return m, diags, err
+}
+
+// Forget drops the last compile: the next Compile compiles (asuka dev's,
+// for a save, which a file's time may not tell from the last).
+func (p *Project) Forget() { p.last = nil }
+
+// compiled is a project's last compile, and what its files were.
+type compiled struct {
+	stamp string
+	m     *bytecode.Module
+	diags []string
+	err   error
+}
+
+// stamp is what the project's compile reads, as it is now: its files'
+// (and its dependencies') paths, sizes and times, and asuka dev's
+// language and direction.
+func (p *Project) stamp() string {
+	h := sha256.New()
+	fmt.Fprintln(h, DevLang, DevDirection, p.File)
+	roots := []string{p.Dir}
+	if p.File != "" {
+		roots = []string{p.File}
+	}
+	for _, d := range p.Deps {
+		roots = append(roots, d)
+	}
+	slices.Sort(roots)
+	for _, r := range slices.Compact(roots) {
+		filepath.WalkDir(r, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				if path != r && skipDir(d.Name()) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if info, err := d.Info(); err == nil {
+				fmt.Fprintln(h, path, info.Size(), info.ModTime().UnixNano())
+			}
+			return nil
+		})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (p *Project) compile() (*bytecode.Module, *Uses, []string, error) {
 	if p.File != "" {
 		// One file: a directory of its own, so that what's beside it
 		// isn't compiled with it.
 		tmp, err := os.MkdirTemp("", "asuka-run-")
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		defer os.RemoveAll(tmp)
 		b, err := os.ReadFile(p.File)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if err := os.WriteFile(filepath.Join(tmp, filepath.Base(p.File)), b, 0o644); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		m, diags, err := Compile(tmp, p.Deps, true)
+		m, u, diags, err := Compile(tmp, p.Deps, true)
 		for i, d := range diags {
 			diags[i] = strings.ReplaceAll(d, filepath.Join(tmp, filepath.Base(p.File)), p.File)
 		}
@@ -163,7 +236,7 @@ func (p *Project) Compile() (*bytecode.Module, []string, error) {
 			c.Dirs = append([]string{p.Dir}, c.Dirs[1:]...)
 			m.C = &c
 		}
-		return m, diags, err
+		return m, u, diags, err
 	}
 	return Compile(p.Dir, p.Deps, false)
 }
@@ -225,8 +298,10 @@ type Uses struct {
 	// location.requestAlways counts as the app would): "<import
 	// path>.<name>" for a package's function, type, store, state or let
 	// (asuka/location.requestAlways), "<import path>.<Type>.<name>" for a
-	// member of its type (asuka/icloud.Value.set); the prelude's by name
-	// alone (Video). Test blocks' don't count: they aren't the app's.
+	// member of its type (asuka/icloud.Value.set: a method or a field,
+	// which the program names as it reads it, assigns it or makes the
+	// struct with it); the prelude's by name alone (Video). Test blocks'
+	// don't count: they aren't the app's.
 	Refs map[string]bool
 }
 
@@ -242,10 +317,25 @@ func (u *Uses) Ref(pkg, member string) bool {
 	return u.Refs[pkg+"."+member]
 }
 
-// Uses checks the project's program (nothing more than the checker: no
-// lowering) for what it imports and refers to. A program with errors
-// counts for what the checker resolved.
+// Uses is what the project's program uses, as its compile's checker
+// resolved it (a program with errors counts for what it resolved):
+// Compile's, which it compiles if its files changed since. A Compile
+// that doesn't say (a test's) has the program checked alone.
 func (p *Project) Uses() *Uses {
+	p.Compile()
+	if p.uses != nil && p.last != nil && p.usesStamp == p.last.stamp {
+		return p.uses
+	}
+	u := p.check()
+	if p.last != nil {
+		p.usesStamp = p.last.stamp
+	}
+	return u
+}
+
+// check checks the project's program alone (nothing more than the
+// checker: no lowering) for what it imports and refers to.
+func (p *Project) check() *Uses {
 	u := &Uses{Imports: map[string]bool{}, Refs: map[string]bool{}}
 	p.uses = u
 	dir := p.Dir
@@ -355,9 +445,21 @@ func usesOf(prog *check.Program, u *Uses) {
 					if e := info.Elements[n]; e != nil && e.Comp != nil {
 						object(pkg, e.Comp)
 					}
-					// A method's call (n.from(…)): the method.
-					if c := info.Calls[n]; c != nil && c.Func != nil {
-						object(pkg, c.Func)
+					// A method's call (n.from(…)): the method. A struct
+					// made with a field (Notification(sender: p)): that
+					// field, as a read or an assignment of it is; a field
+					// left at its default isn't.
+					if c := info.Calls[n]; c != nil {
+						if c.Func != nil {
+							object(pkg, c.Func)
+						}
+						if c.Kind == check.CallStruct && c.Type != nil {
+							for i, a := range c.Args {
+								if a != nil && i < len(c.Params) {
+									ref(pkg, nil, c.Type.Obj, c.Params[i].Name)
+								}
+							}
+						}
 					}
 				case *syntax.MemberExpr:
 					if sel := info.Selections[n]; sel != nil {

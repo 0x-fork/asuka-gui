@@ -76,6 +76,7 @@ print(app.dump())         // 画面に表示されているもの（1 行に 1 �
 app.tap("Add")                      // ボタン、行、タブ、トグル、セグメント、メニューの項目
 app.type("ada@example.com", into: "Email")  // そのプレースホルダーかラベルを持つフィールド
 app.tapLink("https://asuka.dev")     // RichText の中の、そこへのリンク
+app.share([SharedItem(kind: .link, text: "https://asuka.dev")])  // ほかのアプリが共有：onShare が受け取る
 await app.idle()                    // 実行するものがなくなるまで：タスク、タイマー、読み込み
 ```
 

@@ -385,7 +385,7 @@ location = false
 
 | 键 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `background` | 字符串数组 | 无 | 应用在后台保持的角色。`"central"`：iOS 的 `bluetooth-central` 模式，以及 Android 后台扫描的接收器；`asuka/bluetooth` 目前还没有状态恢复，也没有自己在后台进行的扫描。`"peripheral"`：iOS 的 `bluetooth-peripheral` 模式。 |
+| `background` | 字符串数组 | 无 | 应用在后台保持的角色，并带有 iOS 的状态恢复（`bluetooth.restored()`）。`"central"`：iOS 的 `bluetooth-central` 模式（调用了 `backgroundScan` 的应用本来就有）。`"peripheral"`：iOS 的 `bluetooth-peripheral` 模式。Android 上两者都不需要额外声明：调用 `backgroundScan` 的应用会自动得到扫描的接收器。 |
 | `location` | 布尔值 | `false` | 应用会通过扫描确定用户的位置（比如信标）：Android 的 `BLUETOOTH_SCAN` 不再带 `neverForLocation`，`bluetooth.request()` 也会一并请求位置权限（iOS：`NSLocationWhenInUseUsageDescription`）。 |
 
 见[蓝牙](bluetooth.md#构建时添加的内容)。

@@ -103,6 +103,7 @@ lists are bound, and what the app's tasks posted has run.
 app.tap("Add")                      // a button, a row, a tab, a toggle, a segment, a menu's item
 app.type("ada@example.com", into: "Email")  // the field with that placeholder or label
 app.tapLink("https://asuka.dev")     // the link in a RichText
+app.share([SharedItem(kind: .link, text: "https://asuka.dev")])  // another app shares it: onShare hears it
 await app.idle()                    // until nothing is left to run: tasks, timers, loads
 ```
 

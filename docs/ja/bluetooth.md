@@ -116,14 +116,51 @@ async fn serving(s: [bluetooth.LocalService]) { try? await bluetooth.serve(s) }
 async fn advertising() { try? await bluetooth.advertise(localName: "Thermo", services: [bluetooth.battery]) }
 ```
 
+## バックグラウンドでの動作
+
+アプリが見えなくなっても接続は続き、スキャンも続けられます。
+
+- `bluetooth.backgroundScan(services, duplicates:)` は、指定したサービスのどれかをアドバタイズしているデバイスを、アプリがバックグラウンドにあるあいだもスキャンします。iOS はバックグラウンドではサービスを指定したスキャンしかできず、頻度も下がり、各デバイスは一度しか報告されません。これを呼ぶアプリには iOS の `bluetooth-central` モードが与えられます。Android ではシステムが実行するスキャンになり、アプリのプロセスが終了したあとも続きます（サービスを指定しないスキャンは、画面がオフのあいだ Android が一時停止します）。読み手がいなくなるとスキャンも止まります。デスクトップではアプリの実行中だけスキャンし、Web では `scan` と同じく `notAvailable` を投げます。
+- バックグラウンドモード（asuka.toml の `bluetooth.background`、または `backgroundScan` によるもの）があると、iOS はメモリーを空けるためにアプリを終了させるときも、その接続とスキャンを保持します。そして、デバイスからの通知やスキャンでの受信といった知らせがあると、画面を出さずにアプリをもう一度起動します。Android のバックグラウンドスキャンは、アプリのプロセスがないあいだに受信したものを保存しておきます。
+- `bluetooth.restored()` は、システムが戻してきたもの（`Restored`）のストリームです。`devices` は iOS が保持していた接続で、もう一度接続すれば使えます（接続済みのものはすぐにつながります）。`scanServices` は iOS が保持していたスキャンのサービスで、`backgroundScan` でもう一度スキャンするか、止めます。`advertisements` は、アプリのスキャンが読んでいないあいだにバックグラウンドスキャンが受信したものです。起動時に戻ってきたものが最初に届き、読まれるまで保持されます。アプリの起動時に、ルートのタスクで読んでください。
+- `bluetooth.stopBackgroundScan()` は、前回の実行が残したスキャン（Android ではプロセスの終了後も続いていたもの、iOS では復元されたもの）を、受信した内容を受け取ったあとに止めます。今回の実行のバックグラウンドスキャンは続き、それを始めた場合も残っていたスキャンは置き換えられます。
+
+```asuka
+state heard: [string] = []
+
+async fn followRestored() throws {
+  for await r in bluetooth.restored() {
+    for a in r.advertisements { heard.push(a.device.id) }
+    if !r.scanServices.isEmpty() { bluetooth.stopBackgroundScan() }
+  }
+}
+
+async fn scanningAway() throws {
+  for await a in bluetooth.backgroundScan([bluetooth.heartRate]) {
+    heard.push(a.device.id)
+  }
+}
+
+component Straps {
+  task { try? await followRestored() }
+  task { try? await scanningAway() }
+
+  Column {
+    for id in heard key id { Text(id) }
+  }
+}
+```
+
+ユーザーがアプリスイッチャーでアプリを上にスワイプして終了させると、iOS はアプリをもう起動しません。Android のスキャンは、端末の再起動や、ユーザーがアプリを強制停止したときに止まります。
+
 ## ビルドが加えるもの
 
 パッケージをインポートしたアプリには、必要なものが与えられます。
 
 | プラットフォーム | 内容 |
 | --- | --- |
-| iOS | `NSBluetoothAlwaysUsageDescription`（独自の説明文は `ios.usage` に書きます）。asuka.toml の `bluetooth.background` で指定したバックグラウンドモード |
-| Android | `BLUETOOTH_SCAN`（`bluetooth.location` がなければ `neverForLocation` 付き）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`。`android.hardware.bluetooth_le`（必須にはしません） |
+| iOS | `NSBluetoothAlwaysUsageDescription`（独自の説明文は `ios.usage` に書きます）。asuka.toml の `bluetooth.background` で指定したバックグラウンドモードと、`backgroundScan` を呼ぶアプリには `bluetooth-central`。モードがあれば、iOS が復元するマネージャーを起動の完了前に作る、パッケージの起動クラス |
+| Android | `BLUETOOTH_SCAN`（`bluetooth.location` がなければ `neverForLocation` 付き）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`。`android.hardware.bluetooth_le`（必須にはしません）。`backgroundScan` を呼ぶアプリには、バックグラウンドスキャンのレシーバー |
 | macOS | 利用目的の説明文と、Hardened Runtime の `com.apple.security.device.bluetooth` エンタイトルメント |
 | Linux | Flatpak の `--system-talk-name=org.bluez` |
 
@@ -138,12 +175,14 @@ async fn advertising() { try? await bluetooth.advertise(localName: "Thermo", ser
 | アドバタイズ | 名前とサービスだけ | ✓ | サービスとメーカーデータ。名前はなし | ✓ | — |
 | MTU | システムが決める | 要求する（517） | システムが決める | BlueZ が決める | 23 |
 | RSSI | ✓ | ✓ | — | BlueZ がデバイスを受信しているあいだ | — |
+| バックグラウンドスキャン | iOS：サービス指定のみで頻度は低め。macOS：アプリの実行中だけ | ✓ システムが実行し、プロセスの終了後も続く | アプリの実行中だけ | アプリの実行中だけ | — |
+| `restored()` | iOS：接続、スキャンとその受信内容 | バックグラウンドスキャンの受信内容 | — | — | — |
 
 Windows では、`request()` は無線へのアクセスを求めます（パッケージ化されていないアプリには、このアクセスがあります）。Linux は権限を求めず、`request()` は `state()` と同じです。bluetoothd やアダプターがなければ `unsupported`、アプリが BlueZ とやりとりすることをバスが許さなければ `unauthorized` になります。Windows はデバイスが切断された理由を伝えないので、接続が失われたときのエラーは、失われたことしか伝えません。Safari と Firefox には Web Bluetooth がなく、unsupported になります。
 
 ## テスト
 
-`bluetooth.fake()` は `FakeBluetooth` をパッケージに与えます。`FakeBluetooth` は、アダプター（`setState`）と、テストが追加するペリフェラル（`add(FakePeripheral(id:, name:, rssi:, advertised:, services: [FakeService(uuid:, characteristics: [FakeCharacteristic(uuid:, properties:, value:)])]))`）を持ち、スキャンはそのペリフェラルを受信し、接続はそれにつながります。`notify(device, service, char, value)` は通知を送り、`subscribed(…)` はアプリがそのキャラクタリスティックを購読しているかどうかを返し、`remove(id)` はデバイスを取り除きます（その接続は失われます）。`written` はアプリが書き込んだものの一覧、`scans` と `connected` は動いているものの一覧です。ペリフェラルとしては、`centralRead`、`centralWrite`、`centralSubscribe` がアプリのサービスに対してセントラルの役を演じ、`servers`、`advertising`、`notified`、`lastRead()` がアプリのしたことを示します。
+`bluetooth.fake()` は `FakeBluetooth` をパッケージに与えます。`FakeBluetooth` は、アダプター（`setState`）と、テストが追加するペリフェラル（`add(FakePeripheral(id:, name:, rssi:, advertised:, services: [FakeService(uuid:, characteristics: [FakeCharacteristic(uuid:, properties:, value:)])]))`）を持ち、スキャンはそのペリフェラルを受信し、接続はそれにつながります。`notify(device, service, char, value)` は通知を送り、`subscribed(…)` はアプリがそのキャラクタリスティックを購読しているかどうかを返し、`remove(id)` はデバイスを取り除きます（その接続は失われます）。`written` はアプリが書き込んだものの一覧、`scans` と `connected` は動いているものの一覧です。ペリフェラルとしては、`centralRead`、`centralWrite`、`centralSubscribe` がアプリのサービスに対してセントラルの役を演じ、`servers`、`advertising`、`notified`、`lastRead()` がアプリのしたことを示します。`restore(Restored(…))` は、システムが Bluetooth のためにアプリを起動したところを再現します（`restored()` がそれを返し、読み手がまだいなければ最初の読み手のために保持します）。`backgroundScans` は動いているバックグラウンドスキャンの数で、`backgroundLeft` は前回の実行のスキャンが残っているかどうかです（`restore` がスキャンかその受信内容を戻すと残り、アプリのバックグラウンドスキャンか `stopBackgroundScan()` で終わります）。
 
 ```asuka
 test "a strap, heard" {

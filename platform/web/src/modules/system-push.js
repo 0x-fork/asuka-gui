@@ -10,7 +10,7 @@
 //     subscription made with another key is replaced.
 //   - The worker (sw.js) shows each push; the page gets it
 //     (nextReceived), and its tap (nextOpened), through worker.js.
-//   - push.Rewrite: the page in front rewrites a push before the worker
+//   - push.rewrite: the page in front rewrites a push before the worker
 //     shows it (nextRewrite, rewritten), within a few seconds; with no
 //     page open, a push shows as it came.
 

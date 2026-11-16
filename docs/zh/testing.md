@@ -76,6 +76,7 @@ print(app.dump())         // 屏幕上显示的内容，每行一个视图
 app.tap("Add")                      // 按钮、行、标签页、开关、分段控件的段、菜单项
 app.type("ada@example.com", into: "Email")  // 占位文字或标签为 Email 的输入框
 app.tapLink("https://asuka.dev")     // RichText 中指向它的链接
+app.share([SharedItem(kind: .link, text: "https://asuka.dev")])  // 另一个应用分享了它：onShare 会收到
 await app.idle()                    // 直到没有任何东西要运行：task、定时器、加载
 ```
 

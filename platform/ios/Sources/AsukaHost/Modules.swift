@@ -111,7 +111,7 @@ struct AsukaModuleError: LocalizedError {
         modules["push"] = AsukaPush.shared.methods()
         #endif
         #if ASUKA_NOTIFICATION_SERVICE
-        modules["push", default: [:]].merge(AsukaRewrites.shared.methods()) { _, new in new }
+        modules["push", default: [:]].merge(AsukaRewrites.shared.methods(stop: modules["push"]?["stop"])) { _, new in new }
         #endif
         #if ASUKA_COMPOSE
         modules["compose"] = AsukaCompose.shared.methods(self)
