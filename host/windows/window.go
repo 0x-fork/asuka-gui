@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	. "github.com/egoist/asuka/internal/windows"
+	"github.com/egoist/asuka/native"
 	"github.com/egoist/asuka/ops"
 )
 
@@ -179,6 +180,7 @@ const (
 func (h *Host) makeWindow() {
 	style := uint32(WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN)
 	h.window = CreateWindow(0, classWindow, h.appName, style, 0, 0, 100, 100, 0, 0)
+	native.SetWindow(h.window)
 	// Before anything that sends the window messages: SetWindowPos sends
 	// WM_WINDOWPOSCHANGING before it returns, which windowMessage hands
 	// the main control.

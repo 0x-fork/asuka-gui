@@ -247,6 +247,7 @@ func newHost() *Host {
 	h.appID = appID(h.appName)
 	h.assets = assetsDir()
 	native.SetAssets(h.assets)
+	native.SetRaise(func() { h.afterCore(h.showMain) })
 	h.wake = Waker(h.runPosted)
 	return h
 }

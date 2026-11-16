@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- asuka/nowplaying: the foreground service that keeps the app playing
+     out of sight (Android 14's media playback type). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <application>
+        <service android:name="asuka.nowplaying.MediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+    </application>
+</manifest>

@@ -23,6 +23,15 @@ const msgClass = "AsukaPackageMessages"
 // (the main thread: its messages come there, through the host's message
 // loop) whose messages handle hears. Destroy it with DestroyWindow.
 func NewMessageWindow(handle func(msg uint32, wparam, lparam uintptr)) uintptr {
+	registerMsgClass()
+	hwnd := CreateWindow(0, msgClass, "", 0, 0, 0, 0, 0, hwndMessage, 0)
+	if hwnd != 0 {
+		msgHandlers.Store(hwnd, handle)
+	}
+	return hwnd
+}
+
+func registerMsgClass() {
 	msgOnce.Do(func() {
 		msgProc = syscall.NewCallback(func(hwnd uintptr, m uint32, w, l uintptr) uintptr {
 			if f, ok := msgHandlers.Load(hwnd); ok && m >= WM_USER {
@@ -37,7 +46,14 @@ func NewMessageWindow(handle func(msg uint32, wparam, lparam uintptr)) uintptr {
 		})
 		RegisterClass(msgClass, 0, msgProc, 0)
 	})
-	hwnd := CreateWindow(0, msgClass, "", 0, 0, 0, 0, 0, hwndMessage, 0)
+}
+
+// NewHiddenWindow makes a top-level window that's never shown, of the
+// same class (its messages go to handle): what the platform ties to a
+// window (media controls) when the app has none of its own.
+func NewHiddenWindow(title string, handle func(msg uint32, wparam, lparam uintptr)) uintptr {
+	registerMsgClass()
+	hwnd := CreateWindow(0, msgClass, title, WS_OVERLAPPEDWINDOW, 0, 0, 0, 0, 0, 0)
 	if hwnd != 0 {
 		msgHandlers.Store(hwnd, handle)
 	}

@@ -57,3 +57,47 @@ func LocalFile(source string) (string, error) {
 func CacheDir() string {
 	return localfile.CacheDir(strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"))
 }
+
+var (
+	windowMu sync.Mutex
+	window   uintptr
+)
+
+// SetWindow is for hosts: the app's main window (an HWND on Windows, a
+// GtkWindow on Linux), for what the platform ties to a window.
+func SetWindow(w uintptr) {
+	windowMu.Lock()
+	window = w
+	windowMu.Unlock()
+}
+
+// Window is the app's main window (0: none yet, or a background app's).
+func Window() uintptr {
+	windowMu.Lock()
+	defer windowMu.Unlock()
+	return window
+}
+
+var (
+	raiseMu sync.Mutex
+	raise   func()
+)
+
+// SetRaise is for hosts: how to bring the app's main window to the front
+// (shown, if it's hidden).
+func SetRaise(f func()) {
+	raiseMu.Lock()
+	raise = f
+	raiseMu.Unlock()
+}
+
+// Raise brings the app's main window to the front, where the host can
+// (a media player's Raise). Main thread.
+func Raise() {
+	raiseMu.Lock()
+	f := raise
+	raiseMu.Unlock()
+	if f != nil {
+		f()
+	}
+}

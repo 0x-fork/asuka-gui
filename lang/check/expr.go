@@ -253,8 +253,13 @@ func (c *Checker) useMember(m *Member, at syntax.Node) Type {
 	c.envUse(m.Owner, at, m.name)
 	switch m.Kind {
 	case EventMember:
-		c.errorf(at, "%s is an event: raise it with emit %s", m.name, m.name)
-		return Invalid
+		// Its handler, or none: whether the caller handles it (raise it
+		// with emit).
+		var ps []Type
+		for _, p := range m.Params {
+			ps = append(ps, p.Type)
+		}
+		return &Optional{Elem: &FuncType{Params: ps, Result: Void, Async: true, Throws: true}}
 	case FnMember:
 		c.errorf(at, "%s is a fn: call it, %s()", m.name, m.name)
 		return Invalid
