@@ -187,3 +187,58 @@ test "a native component" {
 		t.Fatalf("got (%v):\n%s", err, out)
 	}
 }
+
+// A package's pub style is another's as style pkg.name: its props, set
+// where it's applied (later props win), its values read in its own
+// package (a private constant of it, here); a style that isn't pub
+// isn't.
+func TestPackageStyles(t *testing.T) {
+	theme := map[string][]byte{"theme.asuka": []byte(`let pad = 12
+
+pub style card {
+  padding: pad; radius: 8
+}
+
+style secret { opacity: 0.5 }
+`)}
+	res := Files(map[string][]byte{"a.asuka": []byte(`import ./theme
+
+component Card {
+  View {
+    style theme.card
+    radius: 4
+    Text("in a card")
+  }
+}
+
+app { Card() }
+
+test "a package's style" {
+  let app = mount(Card())
+  app.expect("in a card")
+  print(app.ops())
+}
+`)}, &Options{Packages: map[string]map[string][]byte{"./theme": theme}})
+	if err := res.Err(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runBoth(t, res.Module)
+	if err != nil || !strings.Contains(out, "ok a package's style") {
+		t.Fatalf("got (%v):\n%s", err, out)
+	}
+	// The padding is the layout's: the text sits inside it.
+	for _, want := range []string{"SetFrame 3 12,12 ", "CornerRadius=4"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the ops lack %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "CornerRadius=8") {
+		t.Errorf("the style's radius won over the view's own:\n%s", out)
+	}
+
+	res = Files(map[string][]byte{"a.asuka": []byte("import ./theme\n\ncomponent C { View { style theme.secret } }\n\napp { C() }\n")},
+		&Options{Packages: map[string]map[string][]byte{"./theme": theme}})
+	if got := res.Err(); got == nil || !strings.Contains(got.Error(), "style secret isn't pub in ./theme") {
+		t.Errorf("a style that isn't pub: %v", got)
+	}
+}

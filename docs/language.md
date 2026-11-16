@@ -538,6 +538,9 @@ style card {
 View { style card; background: .accent }   // later props win
 ```
 
+A `pub style` is another package's too: `style theme.card`, its values
+read in the package that declares it.
+
 An element that sets no style looks like the platform's own.
 
 A container (`View`, `Row`, `Column`, `SafeArea`) takes **variants**:

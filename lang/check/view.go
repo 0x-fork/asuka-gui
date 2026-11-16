@@ -596,18 +596,12 @@ func (c *Checker) variantItem(s *syntax.SlotItem, ec *ElementCall) {
 		case *syntax.PropSet:
 			set(x.Name, x.Value)
 		case *syntax.StyleUse:
-			id, ok := x.Name.(*syntax.Ident)
-			if !ok {
-				c.errorf(x.Name, "styles of other packages aren't supported yet")
-				continue
-			}
-			d := c.styles[id.Name]
+			d, scope := c.styleOf(x.Name)
 			if d == nil {
-				c.errorf(id, "unknown style %s", id.Name)
 				continue
 			}
 			savedScope := c.scope
-			c.scope = c.declScope(d)
+			c.scope = scope
 			for _, it := range d.Body.Items {
 				if ps, ok := it.(*syntax.PropSet); ok {
 					set(ps.Name, ps.Value)
@@ -796,20 +790,56 @@ func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 	ec.Binds = append(ec.Binds, &BindArg{Prop: m, Event: ev, Target: b.Target, Item: b})
 }
 
+// styleOf finds the style name names (style card, or style pkg.card: a
+// pub style of a package the file imports) and the scope of the file
+// that declares it, which its values are checked in; nil after an error.
+func (c *Checker) styleOf(name syntax.Expr) (*syntax.StyleDecl, *Scope) {
+	switch n := name.(type) {
+	case *syntax.Ident:
+		d := c.styles[n.Name]
+		if d == nil {
+			c.errorf(n, "unknown style %s", n.Name)
+			return nil, nil
+		}
+		return d, c.declScope(d)
+	case *syntax.MemberExpr:
+		id, ok := n.X.(*syntax.Ident)
+		pn, _ := c.lookup(idName(id, ok)).(*PkgName)
+		if !ok || pn == nil {
+			c.errorf(n.X, "a style is named style name, or style pkg.name for another package's")
+			return nil, nil
+		}
+		c.info.Uses[id] = pn
+		d := pn.Pkg.styles[n.Name.Name]
+		if d == nil {
+			c.errorf(n.Name, "%s has no style %s", pn.Pkg.Path, n.Name.Name)
+			return nil, nil
+		}
+		if !d.Pub.IsValid() {
+			c.errorf(n.Name, "style %s isn't pub in %s", n.Name.Name, pn.Pkg.Path)
+			return nil, nil
+		}
+		return d, pn.Pkg.styleScope[d]
+	}
+	c.errorf(name, "a style is named style name, or style pkg.name for another package's")
+	return nil, nil
+}
+
+func idName(id *syntax.Ident, ok bool) string {
+	if !ok || id == nil {
+		return ""
+	}
+	return id.Name
+}
+
 // styleUse expands style name: its props, set where it's applied.
 func (c *Checker) styleUse(s *syntax.StyleUse, ec *ElementCall) {
-	id, ok := s.Name.(*syntax.Ident)
-	if !ok {
-		c.errorf(s.Name, "styles of other packages aren't supported yet")
-		return
-	}
-	d := c.styles[id.Name]
+	d, scope := c.styleOf(s.Name)
 	if d == nil {
-		c.errorf(id, "unknown style %s", id.Name)
 		return
 	}
 	savedScope := c.scope
-	c.scope = c.declScope(d)
+	c.scope = scope
 	for _, it := range d.Body.Items {
 		ps, ok := it.(*syntax.PropSet)
 		if !ok {

@@ -416,6 +416,11 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 			c.errorf(d.Name, "style %s is declared twice", d.Name.Name)
 		}
 		c.styles[d.Name.Name] = d
+		if p.styles == nil {
+			p.styles, p.styleScope = map[string]*syntax.StyleDecl{}, map[*syntax.StyleDecl]*Scope{}
+		}
+		p.styles[d.Name.Name] = d
+		p.styleScope[d] = c.declScope(d)
 	case *syntax.AppDecl:
 		if p.App != nil {
 			c.errorf(d, "a package has one app")

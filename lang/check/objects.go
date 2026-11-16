@@ -45,6 +45,10 @@ type Package struct {
 	Imports []*Package
 
 	fileScopes map[*syntax.SourceFile]*Scope
+	// styles are its style declarations, and the scope of each's file:
+	// another package uses a pub one as style pkg.name.
+	styles     map[string]*syntax.StyleDecl
+	styleScope map[*syntax.StyleDecl]*Scope
 }
 
 // FileScope is the scope of f's imports (inside the package's), nil for

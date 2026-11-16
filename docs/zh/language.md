@@ -430,6 +430,8 @@ style card {
 View { style card; background: .accent }   // 后写的 prop 优先
 ```
 
+`pub style` 也能在别的包里使用：写作 `style theme.card`，其中的值在声明它的包里求值。
+
 不设置任何样式的元素，看起来就和平台自己的一样。
 
 容器（`View`、`Row`、`Column`、`SafeArea`）可以写**变体**：以交互状态命名的一组样式 prop，在容器处于该状态时叠加到它的样式上，相当于 CSS 的 `:hover` 和 `:active`。状态有四种：`hovered`、`pressed`、`dragging`（正被拖动时）和 `dragOver`（它接受的拖动正停在它上方时），按这个顺序叠加，所以 `pressed` 会盖过 `hovered`。变体只覆盖它写出的 prop，它的值和普通 prop 一样是绑定：

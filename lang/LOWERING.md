@@ -779,9 +779,8 @@ of an array or a map is LEN,
 none: it's a loop over the indexes). Closures passed to them don't
 throw and don't await.
 
-## What isn't lowered yet
+## Notes
 
-- Styles of other packages (`style card` names the package's own).
 - A `Length` from a number computed at run time is `length.points` of
   it (a constant one is packed when compiling).
 - The runtime reports a user error's message only where the lowering
