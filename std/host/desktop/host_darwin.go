@@ -4,5 +4,5 @@ package host
 
 import "github.com/egoist/asuka/host/darwin"
 
-// The Mac's host is Go (the package has no Swift for macOS).
+// The Go Mac host's modules (the Swift host's: swift/Host.swift).
 var callModule = darwin.CallModule

@@ -1,5 +1,5 @@
-// asuka/host on iOS: the host's own modules (AsukaHostModules), on the
-// main thread.
+// asuka/host on iOS and macOS: the host's own modules (AsukaHostModules),
+// on the main thread.
 import Foundation
 import Asuka
 
