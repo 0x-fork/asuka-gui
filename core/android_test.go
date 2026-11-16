@@ -92,8 +92,11 @@ func TestAndroidCounter(t *testing.T) {
 	if m2 == nil {
 		t.Fatalf("no Add button:\n%s", s)
 	}
+	// The Counter's Column isn't in a SafeArea: drawn edge to edge, its
+	// button starts under the status bar, which takes a tap there. Its
+	// bottom edge is the part furthest from it.
 	x := (atoi(m2[1]) + atoi(m2[3])) / 2
-	y := (atoi(m2[2]) + atoi(m2[4])) / 2
+	y := atoi(m2[4]) - 8
 	run("shell", "input", "tap", itoa(x), itoa(y))
 	wait("Count: 1")
 }
