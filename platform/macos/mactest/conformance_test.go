@@ -13,7 +13,9 @@ import (
 
 // TestConformance draws the conformance sheet in the player's window and
 // measures it (package conformance): the window server's image of the
-// window's content, as it shows.
+// window's content, as it shows, in the display's color space, where the
+// window server blends (the sheet's swatches say how it shows the cases'
+// colors).
 func TestConformance(t *testing.T) {
 	a := Run(t, conformance.Sheet()+"app { ConformanceSheet() }")
 	a.Until(func(tr *Tree) bool {
@@ -26,7 +28,7 @@ func TestConformance(t *testing.T) {
 	})
 	// Images and fonts load; the window settles.
 	a.Do("wait 1s")
-	shot := filepath.Join(t.TempDir(), "sheet.content.png")
+	shot := filepath.Join(t.TempDir(), "sheet.content.display.png")
 	a.Snap(shot)
 	f, err := os.Open(shot)
 	if err != nil {

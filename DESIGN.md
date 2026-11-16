@@ -1625,8 +1625,13 @@ asuka/
   between two registration markers; its runner captures the screen, and
   the cases measure the pixels: where an edge is to the device pixel, a
   shadow's Gaussian σ, a color's mix, with tolerances, not against a
-  reference, so one set holds for every host at any scale. Runners:
-  `platform/macos/mactest` (the window server's image of the window),
+  reference, so one set holds for every host at any scale. A mix is
+  measured between the colors as the capture shows them (the sheet's
+  swatches of the cases' colors), in the space the host blended in: the
+  Mac's window server blends in the display's (Display P3 on its own
+  screen), where sRGB red at half opacity over white is half way to that
+  red, not to sRGB's. Runners: `platform/macos/mactest` (the window
+  server's image of the window, in the display's space),
   the Windows host (`PrintWindow`), and `e2e` on the simulator, the
   emulator and headless Chrome at 1×, 1.5× and 2×.
 - Tests never pass or fail on wall-clock time: wait for the condition,

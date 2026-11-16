@@ -290,7 +290,8 @@ import AsukaOps
         var w = rt.main.window
         if !w.isVisible { w = rt.keyWin.window } // the main window hidden: the one in use
         guard var v = w.contentView else { return }
-        if !path.hasSuffix(".content.png"), let f = v.superview { v = f } // the frame view: the title bar and toolbar too
+        let content = path.hasSuffix(".content.png") || path.hasSuffix(".content.display.png")
+        if !content, let f = v.superview { v = f } // the frame view: the title bar and toolbar too
         // The window server's image, as the window shows: a view can't draw
         // what the system composites (Liquid Glass, a sidebar's or a bar's
         // material). Drawn by the view when the window server gives none.
@@ -326,9 +327,12 @@ import AsukaOps
             img = part
         }
         // In sRGB: the window server's image is in the display's color
-        // space (a P3 display's red isn't sRGB's), and what's measured
-        // (conformance) and compared is the app's colors as it gave them.
-        if let srgb = CGColorSpace(name: CGColorSpace.sRGB), img.colorSpace?.name != CGColorSpace.sRGB,
+        // space (a P3 display's red isn't sRGB's), and what's compared is
+        // the app's colors as it gave them. A path ending .display.png
+        // keeps the display's: the window server blends there (a
+        // half-transparent view over another), so a blend is measured
+        // there (conformance), converting it would bend it.
+        if !path.hasSuffix(".display.png"), let srgb = CGColorSpace(name: CGColorSpace.sRGB), img.colorSpace?.name != CGColorSpace.sRGB,
            let ctx = CGContext(data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: 0, space: srgb,
                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
             ctx.interpolationQuality = .none

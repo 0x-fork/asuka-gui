@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,6 +80,21 @@ const (
 // Magenta is the registration markers' color, which no case uses.
 const Magenta = "#ff00ff"
 
+// swatches are the cases' colors, each a marker-sized square in the
+// sheet's top margin, right of the top left marker, a marker apart: what
+// a host's capture shows for each, solid. A host blends in its own color
+// space (the Mac's window server in the display's, Display P3 on its own
+// screen), and a mix is measured between the colors as captured, in that
+// space: half-transparent red is half way from the white to the red the
+// capture has, which in sRGB it needn't be.
+var swatches = []struct {
+	hex string
+	rgb RGB
+}{{cRed, red}, {cBlue, blue}, {cYellow, yellow}}
+
+// swatchX is swatch i's left, in the sheet's points.
+func swatchX(i int) float32 { return 2*marker + float32(i)*2*marker }
+
 // SheetSize is the sheet's size in points.
 func SheetSize() (w, h float32) {
 	rows := (len(Cases) + Columns - 1) / Columns
@@ -102,6 +118,9 @@ func Sheet() string {
 	fmt.Fprintf(&b, "  View {\n    width: %g; height: %g; background: #ffffff; alignSelf: .center\n", w, h)
 	fmt.Fprintf(&b, "    %s\n", box(0, 0, marker, marker, "background: "+Magenta))
 	fmt.Fprintf(&b, "    %s\n", box(w-marker, h-marker, marker, marker, "background: "+Magenta))
+	for i, s := range swatches {
+		fmt.Fprintf(&b, "    %s\n", box(swatchX(i), 0, marker, marker, "background: "+s.hex))
+	}
 	for i, c := range Cases {
 		x, y := cellOrigin(i)
 		// A View with only layout props makes no native view: the case's
@@ -205,6 +224,9 @@ type sheet struct {
 	ox, oy     float64
 	sx, sy     float64
 	maxX, maxY int
+	// colors are how the capture shows the cases' colors (white, the
+	// swatches'), by their sRGB values.
+	colors map[RGB]RGB
 }
 
 // locate finds the sheet by its markers: the magenta square nearest the
@@ -279,5 +301,35 @@ func locate(img image.Image) (*sheet, error) {
 	if d := s.sx - s.sy; d > 0.02 || d < -0.02 {
 		return nil, fmt.Errorf("the sheet's scale differs across (%.3f) and down (%.3f)", s.sx, s.sy)
 	}
+	// The colors as the capture shows them: the white between the marker
+	// and the first swatch, each swatch's middle.
+	s.colors = map[RGB]RGB{white: s.at(1.5*marker, marker/2)}
+	for i, sw := range swatches {
+		got := s.at(float64(swatchX(i))+marker/2, marker/2)
+		// A display's space moves a color, never this far (sRGB's red is
+		// (234,51,35) in Display P3).
+		if d := math.Abs(got.R-sw.rgb.R) + math.Abs(got.G-sw.rgb.G) + math.Abs(got.B-sw.rgb.B); d > 160 {
+			return nil, fmt.Errorf("the swatch of %s shows %v: is the sheet the cases' own?", sw.hex, got)
+		}
+		s.colors[sw.rgb] = got
+	}
 	return s, nil
+}
+
+// pixel is the capture's color at pixel coordinates (clamped to it).
+func (s *sheet) pixel(px, py int) RGB {
+	px = min(max(px, s.img.Bounds().Min.X), s.maxX)
+	py = min(max(py, s.img.Bounds().Min.Y), s.maxY)
+	r, g, b, a := s.img.At(px, py).RGBA()
+	if a == 0 {
+		return RGB{}
+	}
+	// Straight, not premultiplied: captures are opaque, but be safe.
+	k := 255 / float64(a)
+	return RGB{float64(r) * k, float64(g) * k, float64(b) * k}
+}
+
+// at is the color at the point (x, y) of the sheet.
+func (s *sheet) at(x, y float64) RGB {
+	return s.pixel(int(math.Floor(s.ox+x*s.sx)), int(math.Floor(s.oy+y*s.sy)))
 }
