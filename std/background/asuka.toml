@@ -1,0 +1,6 @@
+name = "asuka/background"
+version = "0.1.0"
+description = "Long work that goes on out of sight, with its progress shown by the system"
+
+[android]
+permissions = ["android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_DATA_SYNC", "android.permission.POST_NOTIFICATIONS"]

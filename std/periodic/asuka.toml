@@ -1,0 +1,6 @@
+name = "asuka/periodic"
+version = "0.1.0"
+description = "Background refresh: work the system runs now and again, the app open or not"
+
+[ios]
+backgroundModes = ["fetch", "processing"]

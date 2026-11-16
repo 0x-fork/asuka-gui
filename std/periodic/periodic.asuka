@@ -1,0 +1,59 @@
+// Package asuka/periodic is background refresh: work the system runs
+// now and again (at most every so often, when it judges best), whether
+// the app is open or not: iOS's background tasks, Android's WorkManager,
+// the desktops' timers while the app runs.
+//
+//   periodic.schedule("refresh", every: 1h, network: true)
+//   task { for await run in periodic.runs("refresh") { await sync(); run.finish(true) } }
+//
+// A run has a budget (a minute or so on iOS): finish it when done, or it
+// ends when the budget is up.
+
+import asuka/host
+
+/// A run of a periodic task.
+pub struct Run {
+  /// The task's name.
+  id: string
+  /// How long the run may take.
+  budget: Duration
+
+  /// Says the run is done: ok, or it failed (and should be tried again).
+  fn finish(ok: bool) {
+    host.send("periodic", "done", host.str(id).concat(host.u8(if ok { 1 } else { 0 })))
+  }
+}
+
+/// Schedules the task name every every (at least 15 minutes): with
+/// network, only on a network; with charging, only while charging.
+/// Scheduling it again changes it.
+pub fn schedule(name: string, every: Duration = 15min, network: bool = false, charging: bool = false) {
+  let secs = max(every.seconds(), 900.0).floor()
+  var flags = 0
+  if network {
+    flags += 1
+  }
+  if charging {
+    flags += 2
+  }
+  host.send("periodic", "schedule", host.str(name).concat(host.u32(int(secs))).concat(host.u8(flags)))
+}
+
+/// Stops scheduling the task name.
+pub fn cancel(name: string) = host.send("periodic", "cancel", name.bytes())
+
+/// The runs of the task id, as the system starts them; one that started
+/// the app waits until this is read. One stream reads the runs: a run of
+/// another task that comes to it is finished at once.
+pub fn runs(id: string) -> Stream<Run> = Stream(give => {
+  for await b in host.next("periodic", "next") {
+    let name = host.readStr(b, 0)
+    let secs = host.readU32(b, 4 + name.byteCount())
+    let r = Run(id: name, budget: if secs > 4 { 1s * (secs - 3) } else { 1s })
+    if name == id {
+      give(r)
+    } else {
+      r.finish(true)
+    }
+  }
+})
