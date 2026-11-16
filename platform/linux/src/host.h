@@ -660,6 +660,7 @@ void lx_open_url(const char *u);
 const char *lx_word(const char *key);
 const char *lx_badged(const char *title, const char *badge);
 const char *lx_word_app(const char *key, const char *app);
+char *lx_file_mime(const char *path);  // dragdrop.c (free it)
 void lx_toast(const char *text);
 void lx_modules_init(void);
 
