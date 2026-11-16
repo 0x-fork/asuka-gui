@@ -28,11 +28,21 @@
 
 #include <string.h>
 
-// md4c, compiled in; its two exported names the core's own.
+// md4c, compiled in; its two exported names the core's own. GCC at -O2
+// reads a link label's line (md_is_link_reference_definition's
+// label_contents_line_index) as maybe unset where md_is_link_label, which
+// sets it whenever it succeeds, inlines: md4c stays as released.
 #define md_parse ak_md_parse
 #define entity_lookup ak_md_entity_lookup
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 #include "../../third_party/md4c/entity.c"
 #include "../../third_party/md4c/md4c.c"
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #define ARG_STR(i) ((ak_str *)args[i].p)
 
