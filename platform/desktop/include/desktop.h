@@ -10,7 +10,8 @@
 //     asuka-window.json) and where their routers were (internal/
 //     routestate's asuka-routes.json);
 //   - files by UTF-8 path (Windows' are UTF-16);
-//   - where a flyout window goes against its anchor (internal/flyout).
+//   - where a flyout window goes against its anchor (internal/flyout);
+//   - Asuka's own words in the app's language (internal/l10n).
 //
 // Nothing here is thread-safe unless it says so: the hosts call it on
 // their main thread. It's portable C17 (POSIX on Linux, Win32 on
@@ -19,7 +20,8 @@
 //
 // The API is stable: what's added is added in commits of platform/desktop
 // alone, each noted here:
-//   - dsk_flyout_place, dsk_flyout_center: flyouts' and panels' places.
+//   - dsk_flyout_place, dsk_flyout_center: flyouts' and panels' places;
+//   - dsk_word, dsk_word_format: Asuka's own words.
 #ifndef ASUKA_DESKTOP_SHARED_H
 #define ASUKA_DESKTOP_SHARED_H
 
@@ -190,6 +192,19 @@ dsk_rect dsk_flyout_center(double w, double h, dsk_rect r);
 // has no room), then slid back into work (the work area of the anchor's
 // display) and shrunk to it, as GTK places menus.
 dsk_rect dsk_flyout_place(dsk_rect anchor, double w, double h, int placement, double gap, dsk_rect work);
+
+// ---- Asuka's own words (internal/l10n's catalogs, generated into
+// src/words_gen.c: go generate ./platform/desktop) ----
+
+// dsk_word is a word of Asuka's (its key: "back", "search", "ok"...) in
+// locale's language (a BCP 47 tag, _ or -; its catalog's, else English),
+// UTF-8, as the catalog has it ({app} not filled in).
+const char *dsk_word(const char *locale, const char *key);
+// dsk_word_format writes the word into out (cap bytes, NUL-terminated),
+// its {name}s filled from vars (name, value pairs, nvars strings) and a
+// {count, plural, ...} by count's case (=n, one, other; # the count). It
+// returns the length written.
+size_t dsk_word_format(char *out, size_t cap, const char *locale, const char *key, const char *const *vars, size_t nvars);
 
 #ifdef __cplusplus
 }

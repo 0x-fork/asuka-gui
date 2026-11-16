@@ -94,7 +94,25 @@ static void test_flyout(void) {
 	CHECK(same(dsk_flyout_center(600, 60, work), (dsk_rect){420, 25 + 815.0 / 3, 600, 60}));
 }
 
+static void test_words(void) {
+	CHECK(strcmp(dsk_word("ja_JP", "back"), "\xe6\x88\xbb\xe3\x82\x8b") == 0);  // 戻る
+	CHECK(strcmp(dsk_word("en-US", "ok"), "OK") == 0);
+	CHECK(strcmp(dsk_word("xx", "search"), "Search") == 0);
+	CHECK(strcmp(dsk_word("zh-TW", "back"), dsk_word("zh-Hant", "back")) == 0);
+	char out[256];
+	const char *vars[] = {"app", "Notes"};
+	dsk_word_format(out, sizeof out, "en", "quit", vars, 2);
+	CHECK(strcmp(out, "Quit Notes") == 0);
+	const char *count[] = {"count", "3"};
+	dsk_word_format(out, sizeof out, "en", "badgeCount", count, 2);
+	CHECK(strcmp(out, "3 items") == 0);
+	const char *one[] = {"count", "1"};
+	dsk_word_format(out, sizeof out, "en", "badgeCount", one, 2);
+	CHECK(strcmp(out, "1 item") == 0);
+}
+
 int main(int argc, char **argv) {
+	test_words();
 	test_flyout();
 	test_json();
 	if (argc > 1) test_state(argv[1]);
