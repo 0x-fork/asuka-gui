@@ -3,7 +3,7 @@
 A plugin is a Go package that brings libraries with it: C, Zig or Rust,
 prebuilt for each platform, that its Go code calls without cgo. Using
 one means importing it, and the CLI ships its libraries with the app on
-every platform. `asuka/sdk/sqlite` is one ([Data](data.md#records-the-sqlite-plugin)).
+every platform. `asuka/sdk/sqlite` is one ([Data](data.md#records-asukasqlite)).
 
 ## Using a plugin
 

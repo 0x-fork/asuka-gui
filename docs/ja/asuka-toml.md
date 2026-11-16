@@ -78,7 +78,7 @@ github = "you/notes"
 | `ios` | テーブル | | iOS のビルドの設定と、Mac のビルドの設定の一部です。[ios](#ios) を参照してください。 |
 | `mac` | テーブル | | Mac のビルドのプロファイルです。[mac](#mac) を参照してください。 |
 | `icloud` | テーブル | `iCloud.<id>` | `asuka/sdk/icloud` で使う、アプリの iCloud コンテナーと iCloud Drive のフォルダーです。[icloud](#icloud) を参照してください。 |
-| `applePay` | テーブル | なし | `merchantIds = ["merchant.com.example"]`：Apple Pay（`asuka/sdk/pay`）の支払いに使うマーチャント ID です。パッケージをインポートした iOS と Mac のアプリの、アプリ内決済のエンタイトルメントに入ります。[ウォレットでの支払い](../device.md#wallet-payments-asukasdkpay)を参照してください。 |
+| `applePay` | テーブル | なし | `merchantIds = ["merchant.com.example"]`：Apple Pay（`asuka/sdk/pay`）の支払いに使うマーチャント ID です。パッケージをインポートした iOS と Mac のアプリの、アプリ内決済のエンタイトルメントに入ります。[ウォレットでの支払い](device.md#ウォレット決済asukapay)を参照してください。 |
 | `android` | テーブル | | Android のビルドの設定です。[android](#android) を参照してください。 |
 | `linux` | テーブル | | Linux のビルドがアプリについて書き出す情報です。[linux](#linux) を参照してください。 |
 | `web` | テーブル | | Web のビルドの設定です。[web](#web) を参照してください。 |
@@ -129,7 +129,7 @@ max = 10
 | `types` | 文字列の配列 | `["text"]` | `"text"`（テキストと Web のリンク）と、MIME タイプで指定するファイル（`"image/*"`、`"video/*"`、`"audio/*"`、`"application/pdf"`、何でも受け取るなら `"*/*"`）。 |
 | `max` | 整数 | `1` | 一度に受け取るファイルの数で、1 以上です。 |
 
-iOS では、アプリの中の共有拡張機能（share extension）になります。独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ち、リリースでは `ios.shareProfile` で署名します。ファイルを受け取る場合は、App Group `group.<id>` も必要です。[配布](shipping.md#ios)と[ほかのアプリからの共有](device.md#ほかのアプリからの共有-uionshare)を参照してください。
+iOS では、アプリの中の共有拡張機能（share extension）になります。独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ち、リリースでは `ios.shareProfile` で署名します。ファイルを受け取る場合は、App Group `group.<id>` も必要です。[配布](shipping.md#ios)と[ほかのアプリからの共有](device.md#ほかのアプリからの共有onshare)を参照してください。
 
 ## splash
 
@@ -150,7 +150,7 @@ darkBackground = "#1B2440"
 | `background` | 色 | `"#ffffff"` | ライトモードでの背景色（`"#rrggbb"`）。 |
 | `darkBackground` | 色 | `background` | ダークモードでの背景色（`"#rrggbb"`）。 |
 
-[起動画面](device.md#起動画面-asukasdksplash)を参照してください。
+[起動画面](device.md#起動画面asukasplash)を参照してください。
 
 ## widgets
 
@@ -171,7 +171,7 @@ sizes = ["small", "medium", "rectangular"]
 | `description` | 文字列 | なし | ウィジェットギャラリーに表示される説明です。 |
 | `sizes` | 文字列の配列 | `["small", "medium"]` | `small`、`medium`、`large`、そして iOS の `extraLarge`（iPad）と、ロック画面の `circular`、`rectangular`、`inline`。 |
 
-iOS では、ウィジェットは独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持つ拡張機能になり、リリースでは `ios.widgetProfile` で署名します。[ホーム画面ウィジェット](device.md#ホーム画面ウィジェット-asukasdkwidget)を参照してください。
+iOS では、ウィジェットは独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持つ拡張機能になり、リリースでは `ios.widgetProfile` で署名します。[ホーム画面ウィジェット](device.md#ホーム画面ウィジェットasukawidget)を参照してください。
 
 ## shortcuts
 
@@ -194,7 +194,7 @@ phrases = ["New note in ${app}"]
 | `symbol` | 文字列 | なし | `Symbol` が受け取るのと同じ、SF Symbol の名前です。 |
 | `phrases` | 文字列の配列 | `"<title> in ${app}"` | Siri が聞き取るフレーズで、どれにもアプリの名前を表す `${app}` を含めます。iOS だけで使われます。 |
 
-[ショートカット](device.md#ショートカット-sirispotlightランチャー)を参照してください。
+[ショートカット](device.md#ショートカットsirispotlightランチャー)を参照してください。
 
 ## nfc
 
@@ -220,7 +220,7 @@ tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
 | `tech` | 文字列の配列の配列 | なし | Android で、技術によってアプリを開くタグ（TECH_DISCOVERED）です。各リストには、タグがすべて備えている必要のある `android.nfc.tech` のクラス（`IsoDep`、`NfcA`、`MifareUltralight` など）を並べます。 |
 | `required` | 真偽値 | `false` | NFC のあるスマートフォン専用のアプリにします。Google Play は、NFC のない端末にはアプリを表示しません。 |
 
-[NFC タグ](../nfc.md#asukatoml-and-permissions)を参照してください。
+[NFC タグ](nfc.md#asukatoml-と権限)を参照してください。
 
 ## icloud
 
@@ -296,7 +296,7 @@ iOS のビルドの設定です。`team` は Mac のビルドのチームにも�
 | `infoPlist` | テーブル | なし | Info.plist に追加する文字列のキーです。 |
 | `backgroundModes` | 文字列の配列 | なし | Info.plist の `UIBackgroundModes` に追加します。`"audio"` を指定すると、画面がロックされていても録音と再生ができます。 |
 | `iphoneOnly` | 真偽値 | `false` | iPad を対象から外します。iPad ではアプリは iPhone アプリとして、スマートフォンサイズのウィンドウで動きます。 |
-| `storekit` | 文字列 | なし | StoreKit の構成ファイル（Xcode の `.storekit`）です。Xcode のスキームと同じように、`asuka dev` のシミュレーター向けビルドはこのファイルの商品を販売します。[アプリ内課金](../purchases.md#testing-your-purchases)を参照してください。 |
+| `storekit` | 文字列 | なし | StoreKit の構成ファイル（Xcode の `.storekit`）です。Xcode のスキームと同じように、`asuka dev` のシミュレーター向けビルドはこのファイルの商品を販売します。[アプリ内課金](purchases.md#購入のテスト)を参照してください。 |
 | `nonExemptEncryption` | 文字列 | `"no"` | ビルドが暗号化について申告する内容（`ITSAppUsesNonExemptEncryption`）です。これは法的な申告で、内容は開発者が判断します。`"no"`、`"yes"`、または何も申告しない `"ask"` を指定します。`"ask"` の場合は、アップロードのたびに App Store Connect が尋ねます。 |
 | `collected` | テーブルの配列 | なし | アプリが収集するデータで、プライバシーマニフェストに使います（下記を参照）。 |
 | `appStoreConnect` | テーブル | | `asuka publish` がアップロードに使う App Store Connect API キーです。`keyId`、`issuerId`（個人キーでは不要）、`key`（`.p8` のパス。デフォルトは、`altool` と同じく `~/.appstoreconnect/private_keys` にある `AuthKey_<keyId>.p8`）を指定します。[公開](shipping.md#ストアへの公開)を参照してください。 |
@@ -387,10 +387,10 @@ location = false
 
 | キー | 型 | デフォルト | 説明 |
 |---|---|---|---|
-| `background` | 文字列の配列 | なし | アプリがバックグラウンドで続ける役割です。`"central"`：iOS の `bluetooth-central` モードと状態の復元（`bluetooth.OnRestore`）、Android のバックグラウンドスキャンの受け取り（`ScanOptions.Background`）。`"peripheral"`：iOS の `bluetooth-peripheral` モード。 |
-| `location` | 真偽値 | `false` | アプリがスキャン（ビーコン）からユーザーの居場所を割り出す場合に指定します。Android の `BLUETOOTH_SCAN` に `neverForLocation` を付けず、`bluetooth.Request` は位置情報の権限も求めるようになります（iOS：`NSLocationWhenInUseUsageDescription`）。 |
+| `background` | 文字列の配列 | なし | アプリがバックグラウンドで続ける役割です。`"central"`：iOS の `bluetooth-central` モードと、Android のバックグラウンドスキャンの受け取り。`asuka/bluetooth` には、状態の復元も、見えないところで続く独自のスキャンもまだありません。`"peripheral"`：iOS の `bluetooth-peripheral` モード。 |
+| `location` | 真偽値 | `false` | アプリがスキャン（ビーコン）からユーザーの居場所を割り出す場合に指定します。Android の `BLUETOOTH_SCAN` に `neverForLocation` を付けず、`bluetooth.request()` は位置情報の権限も求めるようになります（iOS：`NSLocationWhenInUseUsageDescription`）。 |
 
-[Bluetooth](../bluetooth.md#in-the-background)を参照してください。
+[Bluetooth](bluetooth.md#ビルドが加えるもの)を参照してください。
 
 ## c
 

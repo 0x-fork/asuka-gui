@@ -92,7 +92,7 @@ These apply on every platform the key means something on.
 | `ios` | table | | The iOS build's, and some of the Mac's. See [ios](#ios). |
 | `mac` | table | | The Mac build's profiles. See [mac](#mac). |
 | `icloud` | table | `iCloud.<id>` | The app's iCloud containers and its iCloud Drive folder, for `asuka/sdk/icloud`. See [icloud](#icloud). |
-| `applePay` | table | none | `merchantIds = ["merchant.com.example"]`: the merchant IDs Apple Pay pays with (`asuka/sdk/pay`), in the in-app-payments entitlement of an iOS or Mac app that imports the package. See [Wallet payments](device.md#wallet-payments-asukasdkpay). |
+| `applePay` | table | none | `merchantIds = ["merchant.com.example"]`: the merchant IDs Apple Pay pays with (`asuka/sdk/pay`), in the in-app-payments entitlement of an iOS or Mac app that imports the package. See [Wallet payments](device.md#wallet-payments-asukapay). |
 | `android` | table | | The Android build's. See [android](#android). |
 | `linux` | table | | What a Linux build says of the app. See [linux](#linux). |
 | `web` | table | | The web build's. See [web](#web). |
@@ -157,7 +157,7 @@ On iOS it's a share extension in the app, with its own bundle ID (the
 app's plus `.share`), which a release signs with `ios.shareProfile`. One
 that takes files also needs the App Group `group.<id>`. See
 [Shipping](shipping.md#ios) and
-[Shares from other apps](device.md#shares-from-other-apps-uionshare).
+[Shares from other apps](device.md#shares-from-other-apps-onshare).
 
 ## splash
 
@@ -180,7 +180,7 @@ darkBackground = "#1B2440"
 | `background` | color | `"#ffffff"` | `"#rrggbb"`, in light mode. |
 | `darkBackground` | color | `background` | `"#rrggbb"`, in dark mode. |
 
-See [The launch screen](device.md#the-launch-screen-asukasdksplash).
+See [The launch screen](device.md#the-launch-screen-asukasplash).
 
 ## widgets
 
@@ -204,7 +204,7 @@ sizes = ["small", "medium", "rectangular"]
 
 On iOS the widgets are an extension with its own bundle ID (the app's
 plus `.widgets`), which a release signs with `ios.widgetProfile`. See
-[Home screen widgets](device.md#home-screen-widgets-asukasdkwidget).
+[Home screen widgets](device.md#home-screen-widgets-asukawidget).
 
 ## shortcuts
 
@@ -438,10 +438,10 @@ location = false
 
 | Key | Type | Default | What it is |
 |---|---|---|---|
-| `background` | strings | none | The roles the app keeps in the background. `"central"`: iOS's `bluetooth-central` mode, with state restoration (`bluetooth.OnRestore`), and the receiver of Android's background scan (`ScanOptions.Background`). `"peripheral"`: iOS's `bluetooth-peripheral` mode. |
-| `location` | boolean | `false` | The app finds where the user is from its scans (beacons): Android's `BLUETOOTH_SCAN` without `neverForLocation`, and the location permission `bluetooth.Request` then asks for too (iOS: `NSLocationWhenInUseUsageDescription`). |
+| `background` | strings | none | The roles the app keeps in the background. `"central"`: iOS's `bluetooth-central` mode, and the receiver of Android's background scan; `asuka/bluetooth` has no state restoration nor a scan of its own out of sight yet. `"peripheral"`: iOS's `bluetooth-peripheral` mode. |
+| `location` | boolean | `false` | The app finds where the user is from its scans (beacons): Android's `BLUETOOTH_SCAN` without `neverForLocation`, and the location permission `bluetooth.request()` then asks for too (iOS: `NSLocationWhenInUseUsageDescription`). |
 
-See [Bluetooth](bluetooth.md#in-the-background).
+See [Bluetooth](bluetooth.md#what-the-build-adds).
 
 ## c
 

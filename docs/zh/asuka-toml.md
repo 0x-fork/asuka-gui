@@ -76,7 +76,7 @@ github = "you/notes"
 | `ios` | 表 | | iOS 构建的配置，部分也用于 Mac。见 [ios](#ios)。 |
 | `mac` | 表 | | Mac 构建的描述文件。见 [mac](#mac)。 |
 | `icloud` | 表 | `iCloud.<id>` | `asuka/sdk/icloud` 所用的 iCloud 容器和应用在 iCloud Drive 中的文件夹。见 [icloud](#icloud)。 |
-| `applePay` | 表 | 无 | `merchantIds = ["merchant.com.example"]`：Apple Pay 付款所用的商户 ID（`asuka/sdk/pay`），会写进导入了这个包的 iOS 或 Mac 应用的 in-app-payments entitlement。见[钱包支付](device.md#钱包支付asukasdkpay)。 |
+| `applePay` | 表 | 无 | `merchantIds = ["merchant.com.example"]`：Apple Pay 付款所用的商户 ID（`asuka/sdk/pay`），会写进导入了这个包的 iOS 或 Mac 应用的 in-app-payments entitlement。见[钱包支付](device.md#钱包支付asukapay)。 |
 | `android` | 表 | | Android 构建的配置。见 [android](#android)。 |
 | `linux` | 表 | | Linux 构建对应用的描述。见 [linux](#linux)。 |
 | `web` | 表 | | Web 构建的配置。见 [web](#web)。 |
@@ -127,7 +127,7 @@ max = 10
 | `types` | 字符串数组 | `["text"]` | `"text"`（文本和网页链接），以及按 MIME 类型指定的文件：`"image/*"`、`"video/*"`、`"audio/*"`、`"application/pdf"`，`"*/*"` 表示任意文件。 |
 | `max` | 整数 | `1` | 一次最多接收几个文件，至少为 1。 |
 
-在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`），发布构建用 `ios.shareProfile` 为它签名。接收文件的分享扩展还需要 App Group `group.<id>`。见[打包与发布](shipping.md#ios)和[接收其他应用的分享](device.md#接收其他应用的分享uionshare)。
+在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`），发布构建用 `ios.shareProfile` 为它签名。接收文件的分享扩展还需要 App Group `group.<id>`。见[打包与发布](shipping.md#ios)和[接收其他应用的分享](device.md#接收其他应用的分享onshare)。
 
 ## splash
 
@@ -148,7 +148,7 @@ darkBackground = "#1B2440"
 | `background` | 颜色 | `"#ffffff"` | `"#rrggbb"`，浅色模式下的背景色。 |
 | `darkBackground` | 颜色 | 同 `background` | `"#rrggbb"`，深色模式下的背景色。 |
 
-见[启动屏](device.md#启动屏asukasdksplash)。
+见[启动屏](device.md#启动屏asukasplash)。
 
 ## widgets
 
@@ -169,7 +169,7 @@ sizes = ["small", "medium", "rectangular"]
 | `description` | 字符串 | 无 | 小组件库里显示的描述。 |
 | `sizes` | 字符串数组 | `["small", "medium"]` | `small`、`medium`、`large`，以及 iOS 的 `extraLarge`（iPad）和锁屏上的 `circular`、`rectangular`、`inline`。 |
 
-在 iOS 上，小组件是一个扩展，有自己的 bundle ID（应用的 ID 加上 `.widgets`），发布构建用 `ios.widgetProfile` 为它签名。见[主屏幕小组件](device.md#主屏幕小组件asukasdkwidget)。
+在 iOS 上，小组件是一个扩展，有自己的 bundle ID（应用的 ID 加上 `.widgets`），发布构建用 `ios.widgetProfile` 为它签名。见[主屏幕小组件](device.md#主屏幕小组件asukawidget)。
 
 ## shortcuts
 
@@ -385,10 +385,10 @@ location = false
 
 | 键 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `background` | 字符串数组 | 无 | 应用在后台保持的角色。`"central"`：iOS 的 `bluetooth-central` 模式，并启用状态恢复（`bluetooth.OnRestore`），以及 Android 后台扫描（`ScanOptions.Background`）的接收器。`"peripheral"`：iOS 的 `bluetooth-peripheral` 模式。 |
-| `location` | 布尔值 | `false` | 应用会通过扫描确定用户的位置（比如信标）：Android 的 `BLUETOOTH_SCAN` 不再带 `neverForLocation`，`bluetooth.Request` 也会一并请求位置权限（iOS：`NSLocationWhenInUseUsageDescription`）。 |
+| `background` | 字符串数组 | 无 | 应用在后台保持的角色。`"central"`：iOS 的 `bluetooth-central` 模式，以及 Android 后台扫描的接收器；`asuka/bluetooth` 目前还没有状态恢复，也没有自己在后台进行的扫描。`"peripheral"`：iOS 的 `bluetooth-peripheral` 模式。 |
+| `location` | 布尔值 | `false` | 应用会通过扫描确定用户的位置（比如信标）：Android 的 `BLUETOOTH_SCAN` 不再带 `neverForLocation`，`bluetooth.request()` 也会一并请求位置权限（iOS：`NSLocationWhenInUseUsageDescription`）。 |
 
-见[蓝牙](bluetooth.md#在后台)。
+见[蓝牙](bluetooth.md#构建时添加的内容)。
 
 ## c
 
