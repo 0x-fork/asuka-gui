@@ -54,19 +54,12 @@ fn formatName(f: nfc.Format) -> string = match f {
 
 /// Says how a session ended without a tag.
 fn ended(e: Error) {
-  // Thrown again, to catch it by its case.
-  do {
-    throw e
-  } catch nfc.NfcError.canceled {
-    status = "Canceled."
-  } catch nfc.NfcError.timeout {
-    status = "No tag came near in time."
-  } catch nfc.NfcError.notAvailable {
-    status = "This device can't read NFC tags."
-  } catch nfc.NfcError.disabled {
-    status = "Turn NFC on to read tags."
-  } catch other {
-    status = other.message
+  status = match e {
+    nfc.NfcError.canceled => "Canceled."
+    nfc.NfcError.timeout => "No tag came near in time."
+    nfc.NfcError.notAvailable => "This device can't read NFC tags."
+    nfc.NfcError.disabled => "Turn NFC on to read tags."
+    _ => e.message
   }
 }
 

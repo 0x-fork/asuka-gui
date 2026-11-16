@@ -174,8 +174,7 @@ fn forecastEnd(w: Window, now: time.Time, width: float, height: float) -> (float
 
 fn polyline(pts: [(float, float)]) -> Path {
   var p = Path()
-  for (i, pt) in pts.enumerated() {
-    let (x, y) = pt
+  for (i, (x, y)) in pts.enumerated() {
     p = if i == 0 { p.move(x, y) } else { p.line(x, y) }
   }
   return p

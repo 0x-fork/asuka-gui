@@ -129,19 +129,11 @@ screen Scanner {
   }
 }
 
-fn scanError(e: Error) -> string {
-  // Thrown again, to catch it by its case.
-  do {
-    throw e
-  } catch bluetooth.BluetoothError.notAvailable {
-    return "This platform doesn't scan: Choose a device"
-  } catch bluetooth.BluetoothError.off {
-    return "Bluetooth is off"
-  } catch bluetooth.BluetoothError.denied {
-    return "The app isn't allowed Bluetooth: allow it in Settings"
-  } catch other {
-    return other.message
-  }
+fn scanError(e: Error) -> string = match e {
+  bluetooth.BluetoothError.notAvailable => "This platform doesn't scan: Choose a device"
+  bluetooth.BluetoothError.off => "Bluetooth is off"
+  bluetooth.BluetoothError.denied => "The app isn't allowed Bluetooth: allow it in Settings"
+  _ => e.message
 }
 
 /// Connects to the device while it's on screen (the connection belongs
