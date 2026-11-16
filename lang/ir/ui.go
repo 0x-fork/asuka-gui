@@ -61,6 +61,11 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 		b.closeScope()
 		return
 	}
+	if f.Extern != nil {
+		b.externBody(f, params)
+		b.closeScope()
+		return
+	}
 	if d.Value != nil {
 		k := b.f.Ret
 		if k == bc.KVoid {

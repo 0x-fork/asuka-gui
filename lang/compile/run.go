@@ -85,10 +85,40 @@ func Run(runner string, m *bytecode.Module, test bool, pattern string) (string, 
 	return out.String(), err
 }
 
+// Foreign is the C m's externs call, for a runner: its glue, and units,
+// the C it calls (asuka.toml's [c], read by the CLI; a test's own), with
+// link's flags. Nil when m has no externs.
+func Foreign(m *bytecode.Module, units []cbuild.CUnit, link []string) (*cbuild.Foreign, error) {
+	if m.C == nil {
+		return nil, nil
+	}
+	glue, err := cbuild.CacheFile("ffi", "ffi.c", m.C.Glue)
+	if err != nil {
+		return nil, err
+	}
+	return &cbuild.Foreign{Glue: glue, Units: units, Link: link}, nil
+}
+
+// RunnerFor builds (once, cached) asuka-run with the C m's externs call
+// (f, from Foreign) in it.
+func RunnerFor(f *cbuild.Foreign, sanitize bool) (string, error) {
+	core, err := FindCore()
+	if err != nil {
+		return "", err
+	}
+	return cbuild.RunnerFor(core, cbuild.RunnerOptions{Foreign: f, Sanitize: sanitize})
+}
+
 // RunC runs a module compiled to C (lang/cgen), as a release build runs
 // it: the C is built with the core into a runner (its objects cached),
 // which runs it as Run's runner runs bytecode.
 func RunC(m *bytecode.Module, sanitize, test bool, pattern string) (string, error) {
+	return RunCWith(m, nil, sanitize, test, pattern)
+}
+
+// RunCWith is RunC with the C m's externs call (f, from Foreign) built
+// in.
+func RunCWith(m *bytecode.Module, f *cbuild.Foreign, sanitize, test bool, pattern string) (string, error) {
 	core, err := FindCore()
 	if err != nil {
 		return "", err
@@ -106,7 +136,7 @@ func RunC(m *bytecode.Module, sanitize, test bool, pattern string) (string, erro
 	if err := os.WriteFile(app, src, 0o644); err != nil {
 		return "", err
 	}
-	exe, err := cbuild.RunnerWith(core, []string{app}, sanitize)
+	exe, err := cbuild.RunnerFor(core, cbuild.RunnerOptions{Extra: []string{app}, Foreign: f, Sanitize: sanitize})
 	if err != nil {
 		return "", errors.New("the C the module compiles to doesn't build: " + err.Error())
 	}

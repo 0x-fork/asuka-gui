@@ -810,6 +810,8 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		c.errorf(e.Fun, "%s is an interface: make a struct or an enum that has it", tn.name)
 	case EnumType:
 		c.errorf(e.Fun, "%s is an enum: make one of its cases, %s.name", tn.name, tn.name)
+	case ExternType:
+		c.errorf(e.Fun, "%s is an extern type: C makes one, and an extern fn returns it", tn.name)
 	case BasicType:
 		switch tn.Type {
 		case Float, Int:

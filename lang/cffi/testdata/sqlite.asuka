@@ -1,0 +1,43 @@
+// The RFC's example: a binding of SQLite's C.
+
+extern type Db with release db_close
+
+extern fn sqlite3_libversion() -> CString
+extern fn db_open(path: CString) -> Db?
+extern fn db_close(db: Db) -> Int32
+extern fn db_exec(db: Db, sql: CString) -> Int32
+extern fn db_each(db: Db, sql: CString, row: fn(CString?, Int64) -> bool) -> Int32
+extern fn db_blob(db: Db, data: bytes?, tag: Pointer?) -> UInt64
+
+extern struct Version {
+  major: Int32
+  minor: Int32
+}
+
+extern struct Info {
+  version: Version
+  threadsafe: bool
+  ratio: Float32
+}
+
+extern fn db_info(db: Db) -> Info
+extern fn db_check(info: Info) -> bool
+
+pub fn version() -> string = sqlite3_libversion()
+
+pub fn count(db: Db) -> int {
+  var n = 0
+  db_each(db, "select * from t", (name, i) => {
+    n += 1
+    return name != none
+  })
+  return n
+}
+
+fn main() {
+  if let db = db_open(":memory:") {
+    print(db_info(db).version.major)
+    print(db_check(db_info(db)))
+    print(db_blob(db, none, none))
+  }
+}

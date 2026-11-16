@@ -148,7 +148,7 @@ func (c *Checker) errorAt(pos, end syntax.Position, msg string) {
 // The universe: the types and functions built into the compiler
 
 func (c *Checker) initUniverse() {
-	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref} {
+	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer} {
 		c.universe.Insert(&TypeName{object: object{name: t.name}, Kind: BasicType, Type: t, resolved: true})
 	}
 	// Error: the interface every error has.
@@ -336,6 +336,8 @@ func pubOf(n syntax.Node) bool {
 		return d.Pub.IsValid()
 	case *syntax.TypeAliasDecl:
 		return d.Pub.IsValid()
+	case *syntax.ExternTypeDecl:
+		return d.Pub.IsValid()
 	}
 	return true
 }
@@ -350,7 +352,11 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 	}
 	switch d := d.(type) {
 	case *syntax.StructDecl:
-		t := &TypeName{object: object{d.Name.Name, d.Name.Start}, Pkg: p, Kind: StructType, Decl: d}
+		t := &TypeName{object: object{d.Name.Name, d.Name.Start}, Pkg: p, Kind: StructType, Decl: d, Extern: d.Extern.IsValid()}
+		p.Types = append(p.Types, t)
+		declare(d.Name, t)
+	case *syntax.ExternTypeDecl:
+		t := &TypeName{object: object{d.Name.Name, d.Name.Start}, Pkg: p, Kind: ExternType, Decl: d}
 		p.Types = append(p.Types, t)
 		declare(d.Name, t)
 	case *syntax.EnumDecl:
@@ -599,6 +605,10 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 			o = c.lookup(name)
 		}
 		if o == nil {
+			if IsCTypeName(name) {
+				c.errorf(t, "%s is a C type: it's written in extern declarations, and Asuka sees it as %s", name, map[bool]string{true: "a string", false: map[bool]string{true: "a float", false: "an int"}[name == "Float32"]}[name == "CString"])
+				return Invalid
+			}
 			c.errorf(t, "unknown type %s%s", name, c.suggest(name))
 			return Invalid
 		}

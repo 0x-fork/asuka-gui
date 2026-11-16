@@ -11,7 +11,9 @@ import "strings"
 //   - a Decl is a top-level declaration: a component, a screen, a store,
 //     a struct, an enum, an interface, a function, a type alias, a
 //     style, a state, a let, an app or a test (native interfaces and
-//     components are InterfaceDecl and ComponentDecl with Native set);
+//     components are InterfaceDecl and ComponentDecl with Native set;
+//     extern fns and structs FuncDecl and StructDecl with Extern set,
+//     extern types ExternTypeDecl);
 //   - a Block's Items are members (prop, event, state, let, use,
 //     provide, fn, task, effect), view items (a prop set, on, bind,
 //     style, a named slot, if, for, match, an element or any
@@ -219,11 +221,13 @@ type StoreDecl struct {
 	Body   *Block
 }
 
-// A StructDecl is struct Name<T>: Error { fields and methods }.
+// A StructDecl is struct Name<T>: Error { fields and methods }, or with
+// Extern set, extern struct Name { fields }: a C struct, passed by value.
 type StructDecl struct {
 	Span
 	Trivia
 	Pub        Pos
+	Extern     Pos // the extern keyword; NoPos for an Asuka struct
 	Name       *Ident
 	TypeParams []*TypeParam
 	Conforms   []Type // after the colon; nil for none
@@ -312,6 +316,21 @@ type FuncDecl struct {
 	// Native: native fn f(…) -> T, with no body: the runtime implements
 	// it (the standard library's).
 	Native Pos
+	// Extern: extern fn f(…) -> T, with no body: a C function of that
+	// name (RFC 0008, docs/c.md).
+	Extern Pos
+}
+
+// An ExternTypeDecl is extern type Name with release fn: a pointer C
+// gives, which Asuka holds and frees with Release (nil: never) as the
+// last reference goes.
+type ExternTypeDecl struct {
+	Span
+	Trivia
+	Pub     Pos
+	Extern  Pos
+	Name    *Ident
+	Release *Ident // nil without with release
 }
 
 // A TypeAliasDecl is type Name<T> = Type.
@@ -379,20 +398,21 @@ type BadDecl struct {
 	Trivia
 }
 
-func (*ComponentDecl) declNode() {}
-func (*ScreenDecl) declNode()    {}
-func (*StoreDecl) declNode()     {}
-func (*StructDecl) declNode()    {}
-func (*EnumDecl) declNode()      {}
-func (*InterfaceDecl) declNode() {}
-func (*FuncDecl) declNode()      {}
-func (*TypeAliasDecl) declNode() {}
-func (*StyleDecl) declNode()     {}
-func (*StateDecl) declNode()     {}
-func (*LetDecl) declNode()       {}
-func (*AppDecl) declNode()       {}
-func (*TestDecl) declNode()      {}
-func (*BadDecl) declNode()       {}
+func (*ComponentDecl) declNode()  {}
+func (*ScreenDecl) declNode()     {}
+func (*StoreDecl) declNode()      {}
+func (*StructDecl) declNode()     {}
+func (*EnumDecl) declNode()       {}
+func (*InterfaceDecl) declNode()  {}
+func (*FuncDecl) declNode()       {}
+func (*TypeAliasDecl) declNode()  {}
+func (*ExternTypeDecl) declNode() {}
+func (*StyleDecl) declNode()      {}
+func (*StateDecl) declNode()      {}
+func (*LetDecl) declNode()        {}
+func (*AppDecl) declNode()        {}
+func (*TestDecl) declNode()       {}
+func (*BadDecl) declNode()        {}
 
 // ---------------------------------------------------------------------
 // Blocks and items

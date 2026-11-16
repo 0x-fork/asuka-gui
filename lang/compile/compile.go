@@ -17,6 +17,7 @@ import (
 	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/internal/toml"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/cffi"
 	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/ir"
 	"github.com/egoist/asuka/lang/syntax"
@@ -95,6 +96,8 @@ type loader struct {
 	opts  *Options
 	units map[string]*unit // by directory (or overlay path)
 	diags []check.Diagnostic
+	// depDirs are the dependencies' directories, by ID.
+	depDirs map[string]string
 }
 
 // Dir compiles the package in dir.
@@ -235,6 +238,10 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 				}
 				var id, d string
 				if id, d, err = l.opts.Resolve(u.id, ip); err == nil {
+					if l.depDirs == nil {
+						l.depDirs = map[string]string{}
+					}
+					l.depDirs[id] = d
 					dep, err = l.loadDir(ip, id, d)
 				}
 			}
@@ -331,7 +338,49 @@ func (l *loader) compile(root *unit) *Result {
 	}
 	res.IR = p
 	res.Module = p.Encode()
+	glue, err := cffi.Generate(prog)
+	if err != nil {
+		pos := syntax.Position{Filename: root.dir, Line: 1, Column: 1}
+		res.Diags = append(res.Diags, check.Diagnostic{Pos: pos, End: pos, Msg: err.Error()})
+		res.Module = nil
+		return res
+	}
+	if glue != nil {
+		res.Module.C = &bytecode.C{Glue: glue, Dirs: l.cDirs(root)}
+	}
 	return res
+}
+
+// cDirs are the projects whose asuka.toml [c] builds the C the program's
+// externs call: the app's (its packages' and their relative imports'),
+// then each dependency's with externs, by its ID.
+func (l *loader) cDirs(root *unit) []string {
+	dirs := []string{root.dir}
+	seen := map[string]bool{root.dir: true}
+	var ids []string
+	for _, u := range l.units {
+		if u.id == "" || u.pkg == nil || !hasExterns(u.pkg) {
+			continue
+		}
+		if d := l.depDirs[u.id]; d != "" && !seen[d] {
+			seen[d] = true
+			ids = append(ids, u.id)
+		}
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		dirs = append(dirs, l.depDirs[id])
+	}
+	return dirs
+}
+
+func hasExterns(p *check.Package) bool {
+	for _, f := range p.Funcs {
+		if f.Extern != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // appAccent is the app's accent color from its asuka.toml (accent =

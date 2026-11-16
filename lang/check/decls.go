@@ -72,7 +72,11 @@ func (c *Checker) typeMembers(t *TypeName) {
 	switch d := t.Decl.(type) {
 	case *syntax.StructDecl:
 		t.fieldIndex = map[string]int{}
-		c.conforms(t, d.Conforms)
+		if t.Extern {
+			c.externStructDecl(t, d)
+		} else {
+			c.conforms(t, d.Conforms)
+		}
 		for _, m := range d.Members {
 			switch m := m.(type) {
 			case *syntax.Field:
@@ -80,7 +84,14 @@ func (c *Checker) typeMembers(t *TypeName) {
 					c.errorf(m.Name, "field %s is declared twice", m.Name.Name)
 					continue
 				}
-				f := &Field{Name: m.Name.Name, Type: c.typeExpr(m.Type), Default: m.Default, Index: len(t.Fields), Pos: m.Name.Start}
+				var ft Type
+				var fc *CType
+				if t.Extern {
+					ft, fc = c.cType(m.Type, cField, "field "+m.Name.Name+" of extern struct "+t.name)
+				} else {
+					ft = c.typeExpr(m.Type)
+				}
+				f := &Field{Name: m.Name.Name, Type: ft, Default: m.Default, Index: len(t.Fields), Pos: m.Name.Start, C: fc}
 				t.fieldIndex[f.Name] = f.Index
 				t.Fields = append(t.Fields, f)
 			case *syntax.LetDecl:
@@ -247,7 +258,11 @@ func (c *Checker) funcSig(f *Function) {
 		c.scope = NewScope(c.declScope(f.Decl))
 	}
 	f.TypeParams = c.typeParams(f.Decl.TypeParams)
-	f.Sig = c.signature(f.Decl, f)
+	if f.Decl.Extern.IsValid() {
+		c.externSig(f)
+	} else {
+		f.Sig = c.signature(f.Decl, f)
+	}
 	c.scope = savedScope
 }
 
@@ -347,6 +362,12 @@ func (c *Checker) typeBodies(t *TypeName) {
 			c.checkImplements(t.Decl, t.Type, i)
 		}
 	}
+	if t.Kind == ExternType {
+		c.externType(t)
+	}
+	if t.Extern {
+		c.externStructCycle(t)
+	}
 }
 
 func sortedMethodNames(t *TypeName) []string {
@@ -397,6 +418,8 @@ func (c *Checker) funcBody(f *Function) {
 		case len(f.TypeParams) > 0:
 			c.errorf(d.Name, "a native fn isn't generic")
 		}
+	} else if d.Extern.IsValid() {
+		c.externFunc(f)
 	} else if d.Body == nil && d.Value == nil {
 		c.errorf(d.Name, "fn %s has no body", f.name)
 		return
@@ -459,8 +482,9 @@ func (c *Checker) funcBody(f *Function) {
 			c.defaultValue(nil, p.Default, p.Type, "parameter "+p.Name)
 		}
 	}
-	if d.Native.IsValid() {
-		// The runtime's builtin is the body (lang/LOWERING.md).
+	if d.Native.IsValid() || d.Extern.IsValid() {
+		// The runtime's builtin, or the glue's, is the body
+		// (lang/LOWERING.md).
 	} else if d.Value != nil {
 		if ctx.Result == Void {
 			c.expr(d.Value, nil)

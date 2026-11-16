@@ -128,6 +128,11 @@ func Walk(v Visitor, n Node) {
 		if n.Value != nil {
 			walk(n.Value)
 		}
+	case *ExternTypeDecl:
+		walk(n.Name)
+		if n.Release != nil {
+			walk(n.Release)
+		}
 	case *TypeAliasDecl:
 		walk(n.Name)
 		walkTypeParams(v, n.TypeParams)

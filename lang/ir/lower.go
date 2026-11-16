@@ -33,6 +33,7 @@ type Lowerer struct {
 	consts         map[string]int // a hoisted literal (and its type) → its global
 	pendingConsts  []pendingConst
 	pendingNative  []pendingNative
+	pendingExtern  []pendingExtern
 	stringsFn      *fb
 	catalog        int // the app's catalog's global, or -1
 }
@@ -121,6 +122,7 @@ func (l *Lowerer) lower() {
 		l.finishConsts()
 	}
 	l.finishNativeErrors()
+	l.finishExternTemplates()
 	l.finishStrings()
 }
 
@@ -157,7 +159,7 @@ func (l *Lowerer) kind(t check.Type) bc.Kind {
 	switch x := t.(type) {
 	case *check.Basic:
 		switch x {
-		case check.Int, check.Duration, check.Color, check.Length:
+		case check.Int, check.Duration, check.Color, check.Length, check.Pointer:
 			return bc.KInt
 		case check.Float:
 			return bc.KFloat
@@ -317,7 +319,7 @@ func (l *Lowerer) desc(t check.Type) string {
 	switch x := t.(type) {
 	case *check.Basic:
 		switch x {
-		case check.Int, check.Duration, check.Color, check.Length:
+		case check.Int, check.Duration, check.Color, check.Length, check.Pointer:
 			return "i"
 		case check.Float:
 			return "f"

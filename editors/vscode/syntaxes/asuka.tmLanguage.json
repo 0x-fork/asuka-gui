@@ -287,7 +287,7 @@
     "declarations": {
       "patterns": [
         {
-          "match": "\\b(native)\\s+(component|interface)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(native|extern)\\s+(component|interface|struct|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": {
               "name": "storage.modifier.asuka"
@@ -430,7 +430,7 @@
         },
         {
           "name": "storage.modifier.asuka",
-          "match": "\\b(pub|native|async|throws)\\b"
+          "match": "\\b(pub|native|extern|async|throws)\\b"
         },
         {
           "name": "keyword.other.asuka",
