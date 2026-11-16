@@ -172,12 +172,26 @@ static void portal_called(void *ctx, GVariant *rep, const char *err) {
 	portal_unref(q);
 }
 
+static void portal_called_fds(GObject *src, GAsyncResult *res, gpointer data) {
+	GError *e = NULL;
+	GVariant *r = g_dbus_connection_call_with_unix_fd_list_finish((GDBusConnection *)src, NULL, res, &e);
+	portal_called(data, r, e ? e->message : NULL);
+	if (r) g_variant_unref(r);
+	if (e) g_error_free(e);
+}
+
 // lx_portal_request calls a portal's method that answers through a
 // Request (its Response signal): params gets the handle token to put in
 // its options and returns the call's parameters (floating). done gets the
 // response (0 done, 1 cancelled by the user, 2 another end) and its
 // results (a{sv}; NULL on an error), once, on the main thread.
 void lx_portal_request(const char *iface, const char *method, GVariant *(*params)(const char *token, void *ctx), lx_portal_done done, void *ctx) {
+	lx_portal_request_fds(iface, method, params, NULL, done, ctx);
+}
+
+// lx_portal_request_fds is lx_portal_request passing file descriptors
+// (the call's handles index them).
+void lx_portal_request_fds(const char *iface, const char *method, GVariant *(*params)(const char *token, void *ctx), GUnixFDList *fds, lx_portal_done done, void *ctx) {
 	GDBusConnection *bus = lx_session_bus();
 	if (!bus) {
 		done(ctx, 2, NULL, "no session bus");
@@ -199,6 +213,10 @@ void lx_portal_request(const char *iface, const char *method, GVariant *(*params
 	ak_buf_free(&sender);
 	q->path = str_dup(ak_cstr(path));
 	portal_listen(q);
+	if (fds) {
+		g_dbus_connection_call_with_unix_fd_list(bus, LX_PORTAL, LX_PORTAL_PATH, iface, method, params(token, ctx), NULL, G_DBUS_CALL_FLAGS_NONE, -1, fds, NULL, portal_called_fds, q);
+		return;
+	}
 	lx_dbus_call(bus, LX_PORTAL, LX_PORTAL_PATH, iface, method, params(token, ctx), -1, portal_called, q);
 }
 

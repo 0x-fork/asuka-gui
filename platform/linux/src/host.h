@@ -736,6 +736,9 @@ void lx_dbus_emit(GDBusConnection *conn, const char *path, const char *iface, co
 typedef void (*lx_portal_done)(void *ctx, uint32_t code, GVariant *results, const char *err);
 void lx_portal_request(const char *iface, const char *method, GVariant *(*params)(const char *token, void *ctx), lx_portal_done done, void *ctx);
 bool lx_no_portal(const char *err);
+void lx_portal_request_fds(const char *iface, const char *method, GVariant *(*params)(const char *token, void *ctx), GUnixFDList *fds, lx_portal_done done, void *ctx);
+bool lx_in_flatpak(void);  // login.c
+void lx_local_files(const char *const *sources, const char *const *types, size_t n, void (*done)(void *ctx, char **paths, size_t n, const char *err), void *ctx);  // compose.c
 void lx_key_gdk_name(const char *key, char *out, size_t n);  // menus.c
 
 #endif
