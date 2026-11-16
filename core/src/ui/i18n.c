@@ -2,10 +2,16 @@
 // i18n (Catalog.Compile: its format is documented there), said in the
 // language the app shows (locale.c), by CLDR's plural rules
 // (i18n_gen.c) and the catalog's languages' number formats. A port of
-// i18n's Catalog.Format, format.go and pseudo.go, which a test checks
-// against, case by case (core/test/testdata/catalog_cases.txt).
+// i18n's Catalog.Format, format.go, date.go and pseudo.go, which a test
+// checks against, case by case (core/test/testdata/catalog_cases.txt).
+//
+// Dates: the compiler resolved every pattern (each style pair's and each
+// skeleton's, for both hour cycles) with package i18n, so the core only
+// interprets CLDR's pattern letters over the language's names, in the
+// device's time zone (ak_zone_offset).
 #include "ui/i18n.h"
 #include "ui/ui_ext.h"
+#include "base/thread.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,6 +110,16 @@ typedef struct {
 	ak_span decimal, group;
 	uint8_t min_grouping;
 	num_pattern dec, pct;
+	ak_span autonym;
+	// Dates (when the catalog has them).
+	bool dates;
+	uint8_t hour_cycle;  // its own: 12 or 24
+	ak_span names[170];  // months, weekdays, day periods, eras (Compile's order)
+	ak_span zone[5];     // GMT format, GMT's name, hour format, UTC long, short
+	bool periods, noon;  // day period rules: each hour's period (B)
+	uint8_t by_hour[24];
+	ak_span styles[50];  // (date style * 5 + time style) * 2 + (24 hours)
+	ak_span *skels;      // 2 per skeleton
 	uint32_t *msgs;  // per key, the offset of its nodes in the blob + 1 (0: none)
 } cat_lang;
 
@@ -115,11 +131,12 @@ struct ak_catalog {
 	uint32_t nkeys;
 	cat_lang *langs;
 	uint32_t nlangs;
+	uint32_t nskels;
 };
 
 static void catalog_drop(ak_opaque *o) {
 	ak_catalog *c = (ak_catalog *)o;
-	for (uint32_t i = 0; i < c->nlangs; i++) ak_free(c->langs[i].msgs);
+	for (uint32_t i = 0; i < c->nlangs; i++) ak_free(c->langs[i].msgs), ak_free(c->langs[i].skels);
 	ak_free(c->langs);
 	ak_free(c->keys);
 	ak_release(c->blob);
@@ -137,8 +154,8 @@ static bool skip_nodes(ak_reader *r, int depth) {
 		uint8_t kind = ak_read_u8(r);
 		switch (kind) {
 		case 0: ak_read_str(r); break;
-		case 1:
-		case 4: ak_read_u8(r); break;
+		case 1: ak_read_u8(r); break;
+		case 4: ak_read_u8(r), ak_read_u8(r), ak_read_u8(r), ak_read_u32(r); break;
 		case 2: break;
 		case 3: ak_read_u8(r), ak_read_u8(r), ak_read_u8(r), ak_read_u8(r); break;
 		case 5:
@@ -175,7 +192,7 @@ static void read_pattern(ak_reader *r, num_pattern *p) {
 }
 
 ak_catalog *ak_i18n_catalog(ak_bytes *blob) {
-	if (!blob || blob->len < 4 || memcmp(blob->data, "AKC1", 4) != 0) {
+	if (!blob || blob->len < 4 || memcmp(blob->data, "AKC2", 4) != 0) {
 		ak_throw_msg("i18n.catalog: not a compiled catalog");
 		return NULL;
 	}
@@ -187,6 +204,8 @@ ak_catalog *ak_i18n_catalog(ak_bytes *blob) {
 	if (c->nkeys > blob->len) r.err = true;
 	c->keys = ak_alloc((c->nkeys ? c->nkeys : 1) * sizeof(ak_span));
 	for (uint32_t i = 0; i < c->nkeys && !r.err; i++) c->keys[i] = ak_read_str(&r);
+	c->nskels = ak_read_u32(&r);
+	if (c->nskels > blob->len) r.err = true;
 	c->nlangs = ak_read_u32(&r);
 	if (c->nlangs > blob->len) r.err = true;
 	c->langs = ak_alloc((c->nlangs && !r.err ? c->nlangs : 1) * sizeof(cat_lang));
@@ -194,6 +213,7 @@ ak_catalog *ak_i18n_catalog(ak_bytes *blob) {
 		cat_lang *l = &c->langs[i];
 		l->tag = ak_read_str(&r);
 		l->rtl = ak_read_u8(&r) & 1;
+		l->autonym = ak_read_str(&r);
 		l->latin = true;
 		for (int d = 0; d < 10; d++) {
 			l->digits[d] = ak_read_str(&r);
@@ -203,6 +223,25 @@ ak_catalog *ak_i18n_catalog(ak_bytes *blob) {
 		l->min_grouping = ak_read_u8(&r);
 		read_pattern(&r, &l->dec);
 		read_pattern(&r, &l->pct);
+		l->dates = ak_read_u8(&r) == 1;
+		if (l->dates && !r.err) {
+			l->hour_cycle = ak_read_u8(&r);
+			for (int k = 0; k < 170; k++) l->names[k] = ak_read_str(&r);
+			for (int k = 0; k < 5; k++) l->zone[k] = ak_read_str(&r);
+			l->periods = ak_read_u8(&r) == 1;
+			if (l->periods) {
+				for (int k = 0; k < 24; k++) {
+					l->by_hour[k] = ak_read_u8(&r);
+					if (l->by_hour[k] >= 12) r.err = true;
+				}
+				l->noon = ak_read_u8(&r) == 1;
+			}
+			for (int k = 0; k < 50; k++) l->styles[k] = ak_read_str(&r);
+			if (!r.err && c->nskels) {
+				l->skels = ak_alloc(2 * c->nskels * sizeof(ak_span));
+				for (uint32_t k = 0; k < 2 * c->nskels && !r.err; k++) l->skels[k] = ak_read_str(&r);
+			}
+		}
 		l->msgs = ak_alloc((c->nkeys ? c->nkeys : 1) * sizeof(uint32_t));
 		uint32_t n = ak_read_u32(&r);
 		for (uint32_t k = 0; k < n && !r.err; k++) {
@@ -411,6 +450,287 @@ static void format_number(sbuf *out, const cat_lang *l, const char *in, num_opts
 	sb_span(out, neg ? p->neg_suffix : p->suffix);
 }
 
+// ---- Dates (date.go's DateFormatter.Format) ----
+
+// A time's wall clock in a zone.
+typedef struct {
+	int64_t year;
+	int month, day, yday;  // 1-based
+	int hour, minute, second, nanosecond;
+	int weekday;  // 0 Sunday
+	int32_t offset;
+	bool utc;
+} civil;
+
+static civil civil_of(int64_t ns) {
+	int64_t secs = ns / 1000000000, sub = ns % 1000000000;
+	if (sub < 0) sub += 1000000000, secs--;
+	civil c = {0};
+	c.offset = ak_zone_offset(secs, &c.utc);
+	secs += c.offset;
+	int64_t days = secs / 86400, rem = secs % 86400;
+	if (rem < 0) rem += 86400, days--;
+	c.hour = (int)(rem / 3600), c.minute = (int)(rem % 3600 / 60), c.second = (int)(rem % 60);
+	c.nanosecond = (int)sub;
+	c.weekday = (int)(((days % 7) + 7 + 4) % 7);  // 1970-01-01 was a Thursday
+	// civil_from_days (Howard Hinnant's algorithm).
+	int64_t z = days + 719468;
+	int64_t era = (z >= 0 ? z : z - 146096) / 146097;
+	int64_t doe = z - era * 146097;
+	int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+	int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+	int64_t mp = (5 * doy + 2) / 153;
+	c.day = (int)(doy - (153 * mp + 2) / 5 + 1);
+	c.month = (int)(mp < 10 ? mp + 3 : mp - 9);
+	c.year = yoe + era * 400 + (c.month <= 2);
+	bool leap = (c.year % 4 == 0 && c.year % 100 != 0) || c.year % 400 == 0;
+	static const int before[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+	c.yday = before[c.month - 1] + c.day + (leap && c.month > 2);
+	return c;
+}
+
+typedef struct {
+	sbuf *out;
+	const cat_lang *l;
+	const civil *t;
+	int first_weekday;  // 1 Sunday ... 7 Saturday
+	bool has_min, has_sec;
+} date_ctx;
+
+// date_num writes v with at least n digits, in the language's digits.
+static void date_num(sbuf *b, const cat_lang *l, int64_t v, int n) {
+	if (v < 0) {
+		sb_span(b, l->dec.neg_prefix.len ? l->dec.neg_prefix : AK_STR("-"));
+		v = -v;
+	}
+	char s[32];
+	int len = snprintf(s, sizeof s, "%lld", (long long)v);
+	for (int i = len; i < n; i++) write_digits(b, l, "0", 1);
+	write_digits(b, l, s, (size_t)len);
+}
+
+static int width3(int n) { return n == 4 ? 2 : n == 5 ? 1 : 0; }  // abbreviated, narrow, wide
+
+static void date_field(date_ctx *d, char c, int n);
+
+// date_zone writes the zone: UTC's names for UTC, else the offset from
+// GMT in the language's format.
+static void date_zone(date_ctx *d, char c, int n) {
+	const cat_lang *l = d->l;
+	int32_t off = d->t->offset;
+	bool lng = n >= 4 || c == 'V';
+	if ((c == 'z' || c == 'v') && off == 0 && d->t->utc) {
+		sb_span(d->out, l->zone[lng ? 3 : 4]);
+		return;
+	}
+	if (off == 0) {
+		sb_span(d->out, l->zone[1]);
+		return;
+	}
+	ak_span hf = l->zone[2], p = hf;
+	const char *semi = memchr(hf.p, ';', hf.len);
+	if (semi) p = (ak_span){hf.p, (uint32_t)(semi - hf.p)};
+	if (off < 0) {
+		if (semi) p = (ak_span){semi + 1, (uint32_t)(hf.p + hf.len - semi - 1)};
+		off = -off;
+	}
+	int hours = off / 3600, mins = off % 3600 / 60;
+	int hour_digits = 2;
+	if (!lng) {
+		// The short form: one digit of hours at least, and the pattern cut
+		// after its hours when there are no minutes.
+		hour_digits = 1;
+		if (mins == 0) {
+			int mm = -1;
+			for (uint32_t i = 0; i + 1 < p.len; i++)
+				if (p.p[i] == 'm' && p.p[i + 1] == 'm') {
+					mm = (int)i;
+					break;
+				}
+			int last_h = -1;
+			for (int i = 0; i < (mm < 0 ? 0 : mm); i++)
+				if (p.p[i] == 'H') last_h = i;
+			if (last_h >= 0) p.len = (uint32_t)last_h + 1;
+		}
+	}
+	sbuf o = {0};
+	for (uint32_t i = 0; i < p.len;) {
+		if (p.p[i] == 'H') {
+			date_num(&o, l, hours, hour_digits);
+			while (i < p.len && p.p[i] == 'H') i++;
+		} else if (i + 1 < p.len && p.p[i] == 'm' && p.p[i + 1] == 'm') {
+			date_num(&o, l, mins, 2);
+			i += 2;
+		} else {
+			sb_put(&o, p.p + i, 1);
+			i++;
+		}
+	}
+	ak_span gmt = l->zone[0];
+	const char *at = NULL;
+	for (uint32_t i = 0; i + 2 < gmt.len && !at; i++)
+		if (gmt.p[i] == '{' && gmt.p[i + 1] == '0' && gmt.p[i + 2] == '}') at = gmt.p + i;
+	if (at) {
+		sb_put(d->out, gmt.p, (size_t)(at - gmt.p));
+		if (o.len) sb_put(d->out, o.p, o.len);
+		sb_put(d->out, at + 3, (size_t)(gmt.p + gmt.len - at - 3));
+	} else {
+		sb_span(d->out, gmt);
+		if (o.len) sb_put(d->out, o.p, o.len);
+	}
+	ak_free(o.p);
+}
+
+// date_period writes B, the day period of the language's rules ("in the
+// morning", "下午"): noon only at noon sharp, AM or PM without rules.
+static void date_period(date_ctx *d, int n) {
+	const cat_lang *l = d->l;
+	int w = n == 4 || n > 5 ? 2 : n == 5 ? 1 : 0;
+	if (!l->periods) {
+		date_field(d, 'a', n);
+		return;
+	}
+	const civil *t = d->t;
+	int p = -1;
+	if (t->hour == 12 && (!d->has_min || t->minute == 0) && (!d->has_sec || t->second == 0) && l->noon) p = 3;
+	if (p < 0 || !l->names[128 + w * 12 + p].len) p = l->by_hour[t->hour];
+	ak_span name = p >= 2 ? l->names[128 + w * 12 + p] : AK_STR("");
+	if (!name.len) {
+		date_field(d, 'a', n < 5 ? n : 5);
+		return;
+	}
+	sb_span(d->out, name);
+}
+
+static void date_field(date_ctx *d, char c, int n) {
+	const cat_lang *l = d->l;
+	const civil *t = d->t;
+	sbuf *b = d->out;
+	switch (c) {
+	case 'G': sb_span(b, l->names[164 + (n == 4 ? 2 : n == 5 ? 1 : 0) * 2 + (t->year > 0)]); break;
+	case 'y':
+	case 'Y':  // the week's year: the calendar's (CLDR's patterns don't use it)
+	case 'u': {
+		int64_t y = t->year;
+		if (c != 'u' && y <= 0) y = 1 - y;
+		if (n == 2) date_num(b, l, y % 100, 2);
+		else date_num(b, l, y, n);
+		break;
+	}
+	case 'M':
+	case 'L':
+		if (n <= 2) date_num(b, l, t->month, n);
+		else sb_span(b, l->names[((c == 'L') * 3 + width3(n)) * 12 + t->month - 1]);
+		break;
+	case 'd': date_num(b, l, t->day, n); break;
+	case 'D': date_num(b, l, t->yday, n); break;
+	case 'E':
+	case 'e':
+	case 'c': {
+		if (c != 'E' && n <= 2) {
+			int first = d->first_weekday >= 1 && d->first_weekday <= 7 ? d->first_weekday - 1 : 1;
+			date_num(b, l, (t->weekday - first + 7) % 7 + 1, n);
+			break;
+		}
+		int w = n == 4 ? 3 : n == 5 ? 1 : n == 6 ? 2 : 0;  // abbreviated, narrow, short, wide
+		sb_span(b, l->names[72 + ((c == 'c') * 4 + w) * 7 + t->weekday]);
+		break;
+	}
+	case 'a':
+	case 'b': sb_span(b, l->names[128 + width3(n) * 12 + (t->hour >= 12)]); break;
+	case 'B': date_period(d, n); break;
+	case 'h': date_num(b, l, t->hour % 12 ? t->hour % 12 : 12, n); break;
+	case 'H': date_num(b, l, t->hour, n); break;
+	case 'K': date_num(b, l, t->hour % 12, n); break;
+	case 'k': date_num(b, l, t->hour ? t->hour : 24, n); break;
+	case 'm': date_num(b, l, t->minute, n); break;
+	case 's': date_num(b, l, t->second, n); break;
+	case 'S': {
+		char frac[16];
+		snprintf(frac, sizeof frac, "%09d", t->nanosecond);
+		for (int i = 0; i < n; i++) write_digits(b, l, i < 9 ? frac + i : "0", 1);
+		break;
+	}
+	case 'z':
+	case 'O':
+	case 'v':
+	case 'V':
+	case 'Z':
+	case 'X':
+	case 'x': date_zone(d, c, n); break;
+	default:
+		for (int i = 0; i < n; i++) sb_put(b, &c, 1);
+	}
+}
+
+static bool is_letter(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+
+// format_date writes ns (since the Unix epoch, in the device's zone) by
+// pattern, a pattern of CLDR's, in language l's names and digits.
+static void format_date(sbuf *out, const cat_lang *l, ak_span pattern, int64_t ns, int first_weekday) {
+	civil t = civil_of(ns);
+	sbuf b = {0};
+	date_ctx d = {&b, l, &t, first_weekday, false, false};
+	for (uint32_t i = 0; i < pattern.len; i++) {
+		d.has_min |= pattern.p[i] == 'm';
+		d.has_sec |= pattern.p[i] == 's';
+	}
+	for (uint32_t i = 0; i < pattern.len;) {
+		char c = pattern.p[i];
+		if (c == '\'') {
+			// '' is an apostrophe; 'text' is text.
+			if (i + 1 < pattern.len && pattern.p[i + 1] == '\'') {
+				sb_put(&b, "'", 1);
+				i += 2;
+				continue;
+			}
+			i++;
+			while (i < pattern.len) {
+				if (pattern.p[i] == '\'') {
+					if (i + 1 < pattern.len && pattern.p[i + 1] == '\'') {
+						sb_put(&b, "'", 1);
+						i += 2;
+						continue;
+					}
+					i++;
+					break;
+				}
+				sb_put(&b, pattern.p + i, 1);
+				i++;
+			}
+			continue;
+		}
+		if (is_letter(c)) {
+			int n = 0;
+			while (i < pattern.len && pattern.p[i] == c) n++, i++;
+			date_field(&d, c, n);
+			continue;
+		}
+		sb_put(&b, &c, 1);
+		i++;
+	}
+	// The narrow no-break spaces of CLDR's times (1:07 PM) as spaces, as
+	// V8 writes them (date.go's Format).
+	for (size_t i = 0; i < b.len; i++) {
+		if (i + 2 < b.len && (uint8_t)b.p[i] == 0xE2 && (uint8_t)b.p[i + 1] == 0x80 && (uint8_t)b.p[i + 2] == 0xAF) {
+			sb_put(out, " ", 1);
+			i += 2;
+		} else {
+			sb_put(out, b.p + i, 1);
+		}
+	}
+	ak_free(b.p);
+}
+
+// date_pattern is language l's pattern for a date style and a time style
+// (0 none, 1 short ... 4 full), or skeleton sk (ds 255), in an hour cycle.
+static ak_span date_pattern(const ak_catalog *c, const cat_lang *l, int ds, int ts, uint32_t sk, int hour_cycle) {
+	int h24 = hour_cycle == 24;
+	if (ds == 255) return sk < c->nskels && l->skels ? l->skels[sk * 2 + (uint32_t)h24] : AK_STR("");
+	if (ds < 0 || ds > 4 || ts < 0 || ts > 4) return AK_STR("");
+	return l->styles[(ds * 5 + ts) * 2 + h24];
+}
+
 // ---- Pseudo locales (pseudo.go) ----
 
 static const char *const accented[52] = {
@@ -426,6 +746,8 @@ typedef struct {
 	const cat_lang *lang;     // the message's: its plural rules
 	const cat_lang *formats;  // whose numbers
 	const ak_struct *args;
+	const ak_catalog *cat;
+	int hour_cycle, first_weekday;  // the reader's: dates' patterns
 	sbuf out;
 } fmt_ctx;
 
@@ -688,7 +1010,18 @@ static void run_nodes(fmt_ctx *f, ak_reader *r, const decimal *pound, int depth)
 		}
 		case 4: {
 			arg_val a = arg_of(f, ak_read_u8(r));
-			if (a.present) put_value(f, a);  // a date the caller wrote
+			int ds = ak_read_u8(r), ts = ak_read_u8(r);
+			uint32_t sk = ak_read_u32(r);
+			const cat_lang *l = f->formats && f->formats->dates ? f->formats : f->lang;
+			if (!a.present) break;
+			if (a.kind != AK_K_INT || !l || !l->dates) {
+				put_value(f, a);
+				break;
+			}
+			sbuf s = {0};
+			format_date(&s, l, date_pattern(f->cat, l, ds, ts, sk, f->hour_cycle), a.v.i, f->first_weekday);
+			put_placeholder(f, s.p ? s.p : "", s.len);
+			ak_free(s.p);
 			break;
 		}
 		case 5: run_plural(f, r, false, depth); break;
@@ -758,6 +1091,33 @@ static bool starts_ltr(const char *s, size_t n) {
 	return false;
 }
 
+// ext_prefs reads a locale's Unicode extension's hour cycle (hc: 12 or
+// 24) and first day of the week (fw: 1 Sunday ... 7 Saturday), leaving
+// what it doesn't say.
+static void ext_prefs(ak_span tag, int *hc, int *fw) {
+	static const char *const days[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
+	uint32_t i = 0;
+	bool in_u = false;
+	ak_span prev = {0};
+	while (i < tag.len) {
+		uint32_t j = i;
+		while (j < tag.len && tag.p[j] != '-' && tag.p[j] != '_') j++;
+		ak_span part = {tag.p + i, j - i};
+		if (part.len == 1) in_u = part.p[0] == 'u' || part.p[0] == 'U';
+		else if (in_u && prev.len == 2) {
+			if (ak_span_eqc(prev, "hc")) {
+				if (ak_span_eqc(part, "h12") || ak_span_eqc(part, "h11")) *hc = 12;
+				else if (ak_span_eqc(part, "h23") || ak_span_eqc(part, "h24")) *hc = 24;
+			} else if (ak_span_eqc(prev, "fw")) {
+				for (int d = 0; d < 7; d++)
+					if (ak_span_eqc(part, days[d])) *fw = d + 1;
+			}
+		}
+		prev = part;
+		i = j + 1;
+	}
+}
+
 ak_str *ak_i18n_say(ak_catalog *c, int64_t key, ak_val args, const ak_str *lang) {
 	if (!c || key < 0 || (uint64_t)key >= c->nkeys) return ak_str_c("");
 	ak_span locale;
@@ -786,7 +1146,7 @@ ak_str *ak_i18n_say(ak_catalog *c, int64_t key, ak_val args, const ak_str *lang)
 		}
 	}
 	add_chain(cands, &n, bufs, c->source);
-	fmt_ctx f = {.pseudo = pseudo, .args = args.p};
+	fmt_ctx f = {.pseudo = pseudo, .args = args.p, .cat = c};
 	const uint8_t *prog = NULL;
 	for (uint32_t i = 0; i < n && !prog; i++) {
 		cat_lang *l = lang_of(c, cands[i]);
@@ -803,6 +1163,17 @@ ak_str *ak_i18n_say(ak_catalog *c, int64_t key, ak_val args, const ak_str *lang)
 	// has it, else of the message's.
 	f.formats = pseudo ? f.lang : lang_of(c, tag);
 	if (!f.formats) f.formats = f.lang;
+	// Dates in the reader's hour cycle and week: an explicit locale's
+	// (its extension's, else its region's), or the user's regional formats.
+	if (lang && lang->len) {
+		const cat_lang *own = f.formats && f.formats->dates ? f.formats : f.lang;
+		f.hour_cycle = own && own->dates ? own->hour_cycle : 12;
+		f.first_weekday = ak_i18n_first_weekday(pseudo || !tag.len ? AK_STR("en") : tag);
+		ext_prefs(locale, &f.hour_cycle, &f.first_weekday);
+	} else {
+		f.hour_cycle = ak_locale_hour_cycle();
+		f.first_weekday = ak_locale_first_weekday();
+	}
 	ak_release(norm);
 	ak_reader r = {prog, (size_t)(c->blob->data + c->blob->len - prog), 0, false};
 	run_nodes(&f, &r, NULL, 0);
@@ -838,5 +1209,100 @@ ak_str *ak_i18n_say(ak_catalog *c, int64_t key, ak_val args, const ak_str *lang)
 		s = ak_str_new(f.out.p ? f.out.p : "", f.out.len);
 	}
 	ak_free(f.out.p);
+	return s;
+}
+
+// ---- Formatting outside messages (asuka/i18n) ----
+
+// shown_formats is the catalog language whose numbers and dates a reader
+// of the language shown (tracked) reads: its own, else the catalog's
+// best match for it, else the source's (English's for the pseudo
+// locales). NULL without catalogs.
+static const cat_lang *shown_formats(void) {
+	ak_str *norm = ak_i18n_normalize(ak_span_str(ak_locale_now()));
+	ak_span tag = strip_ext(ak_span_str(norm));
+	const cat_lang *out = NULL;
+	for (uint32_t i = 0; i < registry.len && !out; i++) {
+		ak_catalog *c = registry.data[i];
+		if (ak_i18n_is_pseudo(tag)) {
+			out = lang_of(c, AK_STR("en"));
+			if (!out) out = lang_of(c, c->source);
+			break;
+		}
+		char bufs[8][64];
+		ak_span cands[8];
+		uint32_t n = 0;
+		add_chain(cands, &n, bufs, tag);
+		for (uint32_t k = 0; k < n && !out; k++) out = lang_of(c, cands[k]);
+		if (!out && c->nlangs) {
+			ak_arr *pref = ak_arr_new(AK_K_REF, NULL, 1), *sup = ak_arr_new(AK_K_REF, NULL, c->nlangs);
+			ak_arr_push(&pref, (ak_val){.p = ak_str_span(tag)});
+			for (uint32_t k = 0; k < c->nlangs; k++) ak_arr_push(&sup, (ak_val){.p = ak_str_span(c->langs[k].tag)});
+			int m = ak_i18n_match(pref, sup);
+			ak_release(pref), ak_release(sup);
+			out = m >= 0 ? &c->langs[m] : lang_of(c, c->source);
+		}
+	}
+	ak_release(norm);
+	return out;
+}
+
+static ak_str *sb_str(sbuf *b) {
+	ak_str *s = ak_str_new(b->p ? b->p : "", b->len);
+	ak_free(b->p);
+	return s;
+}
+
+ak_str *ak_i18n_format_number(double v, int flags, int min_frac, int max_frac) {
+	decimal d;
+	if (v != v) return ak_str_c("NaN");
+	if (v == (double)INFINITY || v == -(double)INFINITY) return ak_str_c(v > 0 ? "∞" : "-∞");
+	dec_float(&d, v);
+	num_opts o = {.percent = flags & 1, .integer = flags & 2, .no_grouping = flags & 4, .half_even = flags & 8, .min_frac = min_frac, .max_frac = max_frac};
+	sbuf s = {0};
+	format_number(&s, shown_formats(), d.s, o);
+	return sb_str(&s);
+}
+
+ak_str *ak_i18n_format_int(int64_t v, int flags) {
+	decimal d;
+	dec_int(&d, v);
+	sbuf s = {0};
+	format_number(&s, shown_formats(), d.s, (num_opts){.no_grouping = flags & 4, .integer = true});
+	return sb_str(&s);
+}
+
+ak_str *ak_i18n_format_date(int64_t ns, int date_style, int time_style) {
+	const cat_lang *l = shown_formats();
+	if (date_style == 0 && time_style == 0) date_style = 2;
+	if (!l || !l->dates || date_style < 0 || date_style > 4 || time_style < 0 || time_style > 4) {
+		// No catalog's dates: ISO 8601, in the device's zone.
+		civil t = civil_of(ns);
+		char buf[64];
+		snprintf(buf, sizeof buf, "%04lld-%02d-%02d %02d:%02d", (long long)t.year, t.month, t.day, t.hour, t.minute);
+		return ak_str_c(buf);
+	}
+	sbuf s = {0};
+	int hc = ak_locale_hour_cycle();
+	format_date(&s, l, l->styles[(date_style * 5 + time_style) * 2 + (hc == 24)], ns, ak_locale_first_weekday());
+	return sb_str(&s);
+}
+
+ak_str *ak_i18n_autonym(const ak_str *tag) {
+	ak_str *norm = ak_i18n_normalize(ak_span_str(tag));
+	if (!norm || !norm->len) {
+		ak_release(norm);
+		return ak_retain((ak_str *)tag);
+	}
+	ak_span t = strip_ext(ak_span_str(norm));
+	for (uint32_t i = 0; i < registry.len; i++) {
+		const cat_lang *l = lang_of(registry.data[i], t);
+		if (l && l->autonym.len) {
+			ak_release(norm);
+			return ak_str_span(l->autonym);
+		}
+	}
+	ak_str *s = ak_str_span(t);
+	ak_release(norm);
 	return s;
 }

@@ -107,6 +107,18 @@ ak_str *ak_i18n_say(ak_catalog *c, int64_t key, ak_val args, const ak_str *lang)
 // ak_i18n_catalog_languages is the registered catalogs' languages, the
 // first's source first (NULL: none). Owned.
 ak_arr *ak_i18n_catalog_languages(void);
+// Formatting in the language shown (tracked), with the registered
+// catalogs' data for it (Latin digits and English's patterns without
+// any), as asuka/i18n's functions do. flags: 1 percent, 2 integer, 4 no
+// grouping, 8 half to even. A date is nanoseconds since the Unix epoch,
+// in the device's zone, in styles 0 none, 1 short, 2 medium, 3 long, 4
+// full, in the user's hour cycle. All owned.
+ak_str *ak_i18n_format_number(double v, int flags, int min_frac, int max_frac);
+ak_str *ak_i18n_format_int(int64_t v, int flags);
+ak_str *ak_i18n_format_date(int64_t ns, int date_style, int time_style);
+// ak_i18n_autonym is a language's name in itself ("Deutsch"), of the
+// catalogs' languages; another tag as it is. Owned.
+ak_str *ak_i18n_autonym(const ak_str *tag);
 // ak_i18n_reset forgets the registered catalogs (tests, a reload).
 void ak_i18n_reset(void);
 

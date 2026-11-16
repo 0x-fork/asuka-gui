@@ -39,6 +39,15 @@ bool ak_thread_start(void (*fn)(void *), void *arg);
 int64_t ak_now_ns(void);
 // ak_wall_ns is the time since the Unix epoch in nanoseconds.
 int64_t ak_wall_ns(void);
+// ak_zone_offset is the device's time zone's offset from UTC at unix
+// second t, in seconds east; *utc says the zone is UTC itself (which
+// dates name "UTC" rather than "GMT"). ak_zone_set_utc makes the zone
+// UTC whatever the device's (tests: the same dates on every computer);
+// ak_zone_offset_hook, when set, answers for the platform (the web
+// host's, from the browser's Date).
+int32_t ak_zone_offset(int64_t t, bool *utc);
+void ak_zone_set_utc(bool on);
+extern int32_t (*ak_zone_offset_hook)(int64_t t);
 // ak_thread_id names the calling thread, for main-thread checks.
 uint64_t ak_thread_id(void);
 

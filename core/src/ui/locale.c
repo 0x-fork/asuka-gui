@@ -300,6 +300,16 @@ ak_str *ak_locale_now(void) {
 	return L.locale;
 }
 
+int ak_locale_hour_cycle(void) {
+	track();
+	return L.hour_cycle;
+}
+
+int ak_locale_first_weekday(void) {
+	track();
+	return L.first_weekday;
+}
+
 // ak_locale_changed tells the locale the catalogs' languages changed.
 void ak_locale_changed(void) {
 	if (L.shown) update();

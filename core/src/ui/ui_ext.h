@@ -180,6 +180,10 @@ bool ak_ext_reduce_motion(ak_ui_root *r);
 bool ak_locale_rtl(void);
 // ak_locale_now is the language shown (borrowed); reading it follows it.
 ak_str *ak_locale_now(void);
+// The user's regional formats' hour cycle (12 or 24) and first day of
+// the week (1 Sunday ... 7 Saturday); reading them follows them.
+int ak_locale_hour_cycle(void);
+int ak_locale_first_weekday(void);
 // ak_locale_changed tells the locale the catalogs' languages changed.
 void ak_locale_changed(void);
 

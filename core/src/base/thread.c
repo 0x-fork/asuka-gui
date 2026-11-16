@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L  // clock_gettime under -std=c17
 #include "base/thread.h"
 
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #if defined(_WIN32)
@@ -121,3 +123,55 @@ int64_t ak_wall_ns(void) {
 uint64_t ak_thread_id(void) { return (uint64_t)(uintptr_t)pthread_self(); }
 
 #endif
+
+// ---- The time zone ----
+
+int32_t (*ak_zone_offset_hook)(int64_t t);
+static bool zone_utc;
+
+void ak_zone_set_utc(bool on) { zone_utc = on; }
+
+#if !defined(__wasm__)
+// days_from_civil is the days since 1970-01-01 of a proleptic Gregorian
+// date (Howard Hinnant's algorithm).
+static inline int64_t days_from_civil(int64_t y, int m, int d) {
+	y -= m <= 2;
+	int64_t era = (y >= 0 ? y : y - 399) / 400;
+	int64_t yoe = y - era * 400;
+	int64_t doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+	int64_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+	return era * 146097 + doe - 719468;
+}
+#endif
+
+int32_t ak_zone_offset(int64_t t, bool *utc) {
+	if (utc) *utc = false;
+	if (zone_utc) {
+		if (utc) *utc = true;
+		return 0;
+	}
+	if (ak_zone_offset_hook) return ak_zone_offset_hook(t);
+#if defined(__wasm__)
+	if (utc) *utc = true;
+	return 0;
+#else
+#if defined(_WIN32)
+	uint64_t ft = (uint64_t)(t + 11644473600LL) * 10000000ull;
+	FILETIME f = {(DWORD)ft, (DWORD)(ft >> 32)};
+	SYSTEMTIME st, lt;
+	if (!FileTimeToSystemTime(&f, &st) || !SystemTimeToTzSpecificLocalTime(NULL, &st, &lt)) return 0;
+	int64_t local = days_from_civil(lt.wYear, lt.wMonth, lt.wDay) * 86400 + lt.wHour * 3600 + lt.wMinute * 60 + lt.wSecond;
+#else
+	time_t tt = (time_t)t;
+	struct tm tm;
+	if (!localtime_r(&tt, &tm)) return 0;
+	int64_t local = days_from_civil((int64_t)tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday) * 86400 + tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec;
+#endif
+	int32_t off = (int32_t)(local - t);
+	if (off == 0 && utc) {
+		const char *tz = getenv("TZ");
+		*utc = tz && (strncmp(tz, "UTC", 3) == 0 || strncmp(tz, "Etc/UTC", 7) == 0 || strcmp(tz, "Universal") == 0);
+	}
+	return off;
+#endif
+}

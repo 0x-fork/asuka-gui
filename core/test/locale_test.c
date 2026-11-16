@@ -4,6 +4,7 @@
 // Format says), said by the core from the compiled catalog.
 #include "uih.h"
 #include "ui/i18n.h"
+#include "base/thread.h"
 
 #include <stdlib.h>
 
@@ -37,6 +38,7 @@ static void load(void) {
 	ak_locale_reset();
 	ak_i18n_reset();
 	ak_ui_set_direction(false);
+	ak_zone_set_utc(true);  // the cases' dates are UTC's
 	size_t n;
 	char *b = read_file("core/test/testdata/catalog.akc", &n);
 	if (!b) ak_panic("no catalog.akc");
@@ -314,6 +316,52 @@ TEST(pseudo_locale) {
 	ak_release(xb), ak_release(xa);
 	done(a);
 	unload();
+}
+
+static void check_str(ak_str *s, const char *want) {
+	if (strcmp(s->data, want) != 0) T_FAIL("%s, want %s", s->data, want);
+	ak_release(s);
+}
+
+// Numbers and dates outside messages (asuka/i18n): in the language shown,
+// with the catalog's data for it, in the user's hour cycle.
+TEST(formatting) {
+	load();
+	ak_uitest *a = mount_reading("de-DE", empty_app);
+	check_str(ak_i18n_format_number(1234567.891, 0, 0, 3), "1.234.567,891");
+	check_str(ak_i18n_format_number(0.256, 1, 0, 0), "26\u00a0%");
+	check_str(ak_i18n_format_number(2.5, 0, 2, 2), "2,50");
+	check_str(ak_i18n_format_int(-1234567, 0), "-1.234.567");
+	check_str(ak_i18n_format_int(1234567, 4), "1234567");
+	int64_t t = 1767618429000000000;  // 2026-01-05 13:07:09 UTC
+	check_str(ak_i18n_format_date(t, 2, 0), "05.01.2026");
+	check_str(ak_i18n_format_date(t, 4, 1), "Montag, 5. Januar 2026 um 13:07");
+	check_str(ak_i18n_format_date(t, 0, 2), "13:07:09");
+	// Another reader's hour cycle: their regional formats'.
+	ak_fake *f = ak_uitest_host(a);
+	ak_environment env = f->env;
+	env.hour_cycle = 12;
+	ak_fake_set_environment(f, &env);
+	check_str(ak_i18n_format_date(t, 0, 1), "01:07 PM");  // as Go writes de-u-hc-h12
+	ak_str *hi = ak_str_c("hi"), *ar = ak_str_c("ar"), *xx = ak_str_c("zz-Qaaa");
+	ak_ui_set_locale(hi);
+	check_str(ak_i18n_format_number(1234567, 0, 0, 3), "12,34,567");
+	ak_ui_set_locale(ar);
+	check_str(ak_i18n_format_date(t, 1, 0), "5\u200f/1\u200f/2026");
+	// Languages by their own names.
+	ak_str *de = ak_str_c("de"), *zh = ak_str_c("zh-Hant");
+	check_str(ak_i18n_autonym(de), "Deutsch");
+	check_str(ak_i18n_autonym(zh), "繁體中文");
+	check_str(ak_i18n_autonym(ar), "العربية");
+	check_str(ak_i18n_autonym(xx), "zz-Qaaa");
+	ak_release(hi), ak_release(ar), ak_release(xx), ak_release(de), ak_release(zh);
+	done(a);
+	unload();
+	// Without catalogs: Latin digits, English's patterns, ISO dates.
+	ak_locale_reset();
+	ak_i18n_reset();
+	check_str(ak_i18n_format_number(1234.5, 0, 0, 3), "1,234.5");
+	check_str(ak_i18n_format_date(t, 2, 0), "2026-01-05 13:07");
 }
 
 // The regional formats, with the rg keyword's region, and the locale to

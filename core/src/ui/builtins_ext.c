@@ -54,6 +54,12 @@
 //	i18n.catalog            blob: bytes (i18n's Catalog.Compile)           Catalog
 //	i18n.say                catalog: Catalog, key: int, args: tuple?,
 //	                        lang: string? (none: the language shown)        string (tracked)
+//	i18n.format_number      n: float, flags: int (1 percent, 2 integer,
+//	                        4 no grouping, 8 half even), minFrac, maxFrac   string (tracked)
+//	i18n.format_int         n: int, flags: int                             string (tracked)
+//	i18n.format_date        ns: int, date: int, time: int (0 none, 1
+//	                        short, 2 medium, 3 long, 4 full)               string (tracked)
+//	i18n.autonym            tag: string                                    string
 //
 // canvas.* and path.*, a Canvas's Graphics and Path, are canvas.c's.
 #include "ui/ui_ext.h"
@@ -268,6 +274,26 @@ static ak_val b_say(ak_val *a, uint32_t n) {
 	return (ak_val){.p = ak_i18n_say(a[0].p, a[1].i, n > 2 ? a[2] : none(), n > 3 ? a[3].p : NULL)};
 }
 
+static ak_val b_format_number(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_format_number(a[0].f, (int)a[1].i, (int)a[2].i, (int)a[3].i)};
+}
+
+static ak_val b_format_int(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_format_int(a[0].i, (int)a[1].i)};
+}
+
+static ak_val b_format_date(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_format_date(a[0].i, (int)a[1].i, (int)a[2].i)};
+}
+
+static ak_val b_autonym(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_autonym(a[0].p)};
+}
+
 void ak_canvas_builtins_init(void);
 
 void ak_ui_ext_builtins_init(void);
@@ -289,6 +315,8 @@ void ak_ui_ext_builtins_init(void) {
 		{"i18n.locale", b_locale}, {"i18n.set_locale", b_set_locale}, {"i18n.set_languages", b_set_languages},
 		{"i18n.languages", b_languages}, {"i18n.preferred_languages", b_preferred}, {"i18n.is_rtl", b_is_rtl},
 		{"i18n.region", b_region}, {"i18n.format_locale", b_format_locale}, {"i18n.catalog", b_catalog}, {"i18n.say", b_say},
+		{"i18n.format_number", b_format_number}, {"i18n.format_int", b_format_int}, {"i18n.format_date", b_format_date},
+		{"i18n.autonym", b_autonym},
 	};
 	for (size_t i = 0; i < AK_LEN(t); i++) ak_builtin_register(t[i].name, t[i].fn);
 	ak_canvas_builtins_init();
