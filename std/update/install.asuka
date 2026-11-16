@@ -1,0 +1,388 @@
+// The host's "update" module (DESIGN.md, "Updates": info, download,
+// next, cancel, install), downloads through it, and installing: a
+// download's signature checked, an archive unpacked or a delta applied
+// (the core's update.* builtins, in spawn), the new version's tree
+// staged in the install's work directory, and handed to the host to put
+// in place (sdk/update's desktop.go, internal/update's install.go and
+// files.go, ported).
+
+import asuka/platform
+import asuka/json
+import asuka/fs
+import asuka/crypto
+import asuka/encoding
+
+// What the host's info answers.
+struct HostInfo {
+  installable: bool = false
+  /// Why not: notConfigured, managed, translocated, notWritable,
+  /// notInstalled; message says it in words.
+  reason: string = ""
+  message: string = ""
+  target: string = ""
+  version: string = ""
+  name: string = ""
+  feed: string = ""
+  key: string = ""
+  /// bundle (macOS), folder (Windows), prefix (Linux).
+  kind: string = ""
+  root: string = ""
+  exe: string = ""
+  work: string = ""
+}
+
+state hostInfo: HostInfo? = none
+state hostAsked = false
+
+// info is the host's info, asked once; none where the host has no update
+// module (a phone, the web, a host that doesn't update apps).
+async fn info() -> HostInfo? {
+  if !hostAsked {
+    var got: HostInfo? = none
+    if let b = try? await platform.call("update", "info", bytes()) {
+      got = try? json.decode<HostInfo>(b.string())
+    }
+    hostInfo = got
+    hostAsked = true
+  }
+  return hostInfo
+}
+
+fn reasonError(i: HostInfo) -> UpdateError = match i.reason {
+  "notConfigured" => UpdateError.notConfigured
+  "managed" => UpdateError.managed
+  "translocated" => UpdateError.translocated
+  "notWritable" => UpdateError.notWritable
+  "notInstalled" => UpdateError.notInstalled
+  _ => UpdateError.failed(reason: if i.message.isEmpty() { i.reason } else { i.message })
+}
+
+// hostProblem is why the app can't update itself, none when it can.
+async fn hostProblem() -> UpdateError? {
+  if let i = await info() {
+    if !i.installable { return reasonError(i) }
+    if (i.feed.isEmpty() && feedOverride.isEmpty()) || i.key.isEmpty() || i.target.isEmpty() || i.version.isEmpty() {
+      return UpdateError.notConfigured
+    }
+    return none
+  }
+  return UpdateError.notAvailable
+}
+
+// installable is the host's info when the app can update itself, and
+// throws why when it can't.
+async fn installable() throws -> HostInfo {
+  if let e = await hostProblem() { throw e }
+  return hostInfo ?? HostInfo()
+}
+
+// ---- Downloads ----
+
+struct DownloadArgs {
+  url: string
+  to: string
+}
+
+struct DownloadID {
+  id: int = 0
+}
+
+struct DownloadProgress {
+  downloaded: int = 0
+  total: int = 0
+  done: bool = false
+  error: string = ""
+  status: int = 0
+}
+
+fn isLoopback(host: string) -> bool = host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
+
+// checkURL refuses what isn't HTTPS (or plain HTTP from this computer,
+// for tests and a server of the app's own here).
+fn checkURL(u: string) throws {
+  if u.hasPrefix("https://") { return }
+  if u.hasPrefix("http://") {
+    var host = u.trimPrefix("http://").split("/", count: 2)[0]
+    if let i = host.findLast(":") {
+      if !host.hasSuffix("]") { host = host.byteSlice(0, i) }
+    }
+    if isLoopback(host) { return }
+  }
+  throw UpdateError.failed(reason: "refusing to download {u}: updates need HTTPS")
+}
+
+fn transient(status: int) -> bool = status == 429 || status == 500 || status == 502 || status == 503 || status == 504
+
+// How long a failed request waits before each try after the first: three
+// tries in all.
+let retries = [1s, 3s]
+
+// download downloads u into the file to with the host's module, calling
+// progress as it moves on, and returns the answer's status: 200 with the
+// file there, or another (a server's 204, 404). A failure a moment may
+// mend (the network, a gateway's 5xx, a rate limit) is tried again.
+async fn download(u: string, to: string, progress: fn(int, int)) throws -> int {
+  try checkURL(u)
+  var attempt = 0
+  while true {
+    let args = json.encode(DownloadArgs(url: u, to: to)).bytes()
+    let started = try await platform.call("update", "download", args)
+    let id = (try json.decode<DownloadID>(started.string())).id
+    var finished = false
+    defer {
+      if !finished { platform.send("update", "cancel", json.encode(DownloadID(id: id)).bytes()) }
+    }
+    var p = DownloadProgress()
+    while !p.done {
+      let b = try await platform.call("update", "next", json.encode(DownloadID(id: id)).bytes())
+      p = try json.decode<DownloadProgress>(b.string())
+      if p.error.isEmpty() && p.status == 200 { progress(p.downloaded, p.total) }
+    }
+    finished = true
+    if p.error.isEmpty() && !transient(p.status) { return p.status }
+    if attempt >= retries.count() {
+      if !p.error.isEmpty() { throw UpdateError.failed(reason: "downloading {u}: {p.error}") }
+      throw UpdateError.failed(reason: "GET {u}: {p.status}")
+    }
+    await sleep(retries[attempt])
+    attempt += 1
+  }
+  return 0
+}
+
+fn noProgress(done: int, total: int) {}
+
+// The most a manifest or a page of releases may be.
+let maxManifestSize = 1_048_576
+let maxPageSize = 67_108_864
+
+// scratch is a new file's path for what a check reads (a manifest, a
+// page of releases): the app's own directory.
+fn scratch() -> string = fs.join([fs.appDir(), ".asuka-update", "{crypto.uuid()}.json"])
+
+// fetchTextOrNone downloads u's text: none for 204 and 404 (a server of
+// the app's own with nothing newer; a channel with no prerelease yet).
+async fn fetchTextOrNone(u: string) throws -> string? {
+  let path = scratch()
+  try await spawn { try fs.mkdirAll(fs.dir(path)) }
+  defer { try? fs.remove(path) }
+  let status = try await download(u, path, noProgress)
+  if status == 204 || status == 404 { return none }
+  if status != 200 { throw UpdateError.failed(reason: "GET {u}: {status}") }
+  let data = try await spawn { try fs.read(path) }
+  if data.count() > maxPageSize { throw UpdateError.failed(reason: "{u} is too large") }
+  return data.string()
+}
+
+async fn fetchText(u: string) throws -> string {
+  if let t = try await fetchTextOrNone(u) { return t }
+  throw UpdateError.failed(reason: "GET {u}: not found")
+}
+
+// downloadSigned downloads a file of an update into path, and checks its
+// size and its signature with the app's key.
+async fn downloadSigned(u: string, size: int, signature: string, key: bytes, path: string, progress: fn(int, int)) throws {
+  if size <= 0 || size > 1_073_741_824 { throw UpdateError.failed(reason: "invalid size {size}") }
+  let status = try await download(u, path, progress)
+  if status != 200 { throw UpdateError.failed(reason: "GET {u}: {status}") }
+  let got = (try await spawn { try fs.stat(path) }).size
+  if got != size { throw UpdateError.failed(reason: "downloaded {got} bytes, want {size}") }
+  let sig = (try? encoding.base64Decode(signature)) ?? bytes()
+  let ok = await spawn { verifyFile(path, key, sig) }
+  if !ok { throw UpdateError.notSigned }
+}
+
+// ---- The core's work over files (core/src/std/update.c) ----
+
+native fn verifyFile(path: string, publicKey: bytes, signature: bytes) -> bool
+native fn extract(archive: string, dir: string) -> bool
+native fn deltaIndex(delta: string) -> string?
+native fn deltaStart(delta: string) -> int
+native fn deltaFile(delta: string, offset: int, length: int, oldDir: string, from: string, newDir: string, path: string, size: int, sha256: string, mode: int) -> bool
+native fn makeDir(root: string, path: string) -> bool
+native fn makeLink(root: string, path: string, target: string) -> bool
+native fn validPath(path: string) -> bool
+native fn failure() -> string
+
+struct DeltaIndex {
+  from: string = ""
+  version: string = ""
+  entries: [DeltaEntry] = []
+}
+
+struct DeltaEntry {
+  path: string = ""
+  dir: bool = false
+  link: string = ""
+  mode: int = 0
+  size: int = 0
+  sha256: string = ""
+  from: string = ""
+  data: int = 0
+
+  fn isFile() -> bool = !dir && link.isEmpty()
+}
+
+fn damaged() -> UpdateError = UpdateError.failed(reason: "damaged delta update")
+
+// applyDelta makes in newDir, which must not exist, the app that the delta
+// of size bytes makes of the app in oldDir (delta.go's ApplyDelta): it
+// must update version from to version to, and every file it makes must
+// have its index's size and SHA-256. Blocking: in spawn.
+fn applyDelta(delta: string, size: int, from: string, to: string, oldDir: string, newDir: string) throws {
+  let text = deltaIndex(delta) ?? ""
+  if text.isEmpty() { throw UpdateError.failed(reason: failure()) }
+  var index = DeltaIndex()
+  do {
+    index = try json.decode<DeltaIndex>(text)
+  } catch {
+    throw damaged()
+  }
+  if index.from != from || index.version != to {
+    throw UpdateError.failed(reason: "the delta updates {index.from} to {index.version}, not {from} to {to}")
+  }
+  // The index, checked before anything is made.
+  let start = deltaStart(delta)
+  var offset = start
+  var seen: [string: bool] = [:]
+  for e in index.entries {
+    if !validPath(e.path) || seen.has(e.path) || e.size < 0 || e.data < 0 || e.data > size - offset ||
+      (e.dir && !e.link.isEmpty()) || (!e.isFile() && (e.size != 0 || e.data != 0 || !e.from.isEmpty())) ||
+      (!e.from.isEmpty() && !validPath(e.from)) || (e.isFile() && e.from.isEmpty() && e.data == 0) {
+      throw damaged()
+    }
+    seen[e.path] = true
+    offset += e.data
+  }
+  if start < 0 || offset != size { throw damaged() }
+  if fs.exists(newDir) { throw UpdateError.failed(reason: "{newDir}: already exists") }
+  try fs.mkdirAll(newDir)
+  offset = start
+  for e in index.entries {
+    var ok = true
+    if e.dir {
+      ok = makeDir(newDir, e.path)
+    } else if !e.link.isEmpty() {
+      ok = makeLink(newDir, e.path, e.link)
+    } else {
+      ok = deltaFile(delta, offset, e.data, oldDir, e.from, newDir, e.path, e.size, e.sha256, e.mode)
+      offset += e.data
+    }
+    if !ok { throw UpdateError.failed(reason: failure()) }
+  }
+}
+
+fn unpack(archive: string, dir: string) throws {
+  if !extract(archive, dir) { throw UpdateError.failed(reason: failure()) }
+}
+
+// ---- Staging (internal/update's install.go: Tree, ExeIn, MakeWork) ----
+
+// treeOf is the app's tree in dir, an unpacked archive: a bundle's one
+// entry (Name.app); a Linux tarball's one directory, or dir with its bin;
+// a Windows folder's entries as they are.
+fn treeOf(i: HostInfo, dir: string) throws -> string {
+  let entries = try fs.readDir(dir)
+  if i.kind == "bundle" {
+    if entries.count() != 1 || !entries[0].name.hasSuffix(".app") || !entries[0].isDir {
+      throw UpdateError.failed(reason: "the update holds no app bundle")
+    }
+    return fs.join([dir, entries[0].name])
+  }
+  if i.kind == "prefix" {
+    if entries.count() == 1 && entries[0].isDir && fs.exists(fs.join([dir, entries[0].name, "bin"])) {
+      return fs.join([dir, entries[0].name])
+    }
+    if !fs.exists(fs.join([dir, "bin"])) { throw UpdateError.failed(reason: "the update holds no bin directory") }
+  }
+  return dir
+}
+
+// runningUnit is the path of the executable in the install's root, with
+// slashes ("" when it isn't in it).
+fn runningUnit(i: HostInfo) -> string {
+  let root = fs.clean(i.root)
+  let exe = fs.clean(i.exe)
+  let sep = exe.byteSlice(root.byteCount(), root.byteCount() + 1)
+  if !exe.hasPrefix(root) || (sep != "/" && sep != "\\") { return "" }
+  return exe.byteSlice(root.byteCount() + 1, exe.byteCount()).replace("\\", "/")
+}
+
+// exeIn is the running executable's counterpart in tree, which a folder's
+// or a prefix's update must have (relaunch starts it); "" when it has
+// none.
+fn exeIn(i: HostInfo, tree: string) -> string {
+  let unit = runningUnit(i)
+  if unit.isEmpty() || i.kind == "bundle" { return "" }
+  let p = if i.kind == "folder" { fs.join([tree, fs.base(i.exe)]) } else { fs.join([tree] + unit.split("/")) }
+  return if fs.exists(p) { p } else { "" }
+}
+
+// workDir is a new directory's path for an update, in the install's work
+// directory, named as the host's leftovers' cleaning finds it.
+fn workDir(i: HostInfo) -> string {
+  let id = crypto.uuid().slice(0, 8)
+  if i.kind == "bundle" { return fs.join([i.work, ".{fs.base(i.root)}.update-{id}"]) }
+  return fs.join([i.work, ".asuka-update-{id}"])
+}
+
+// deltaTree is where a delta makes the new app in dir: the bundle's or
+// the prefix's tree as an archive unpacks them.
+fn deltaTree(i: HostInfo, dir: string) -> string {
+  if i.kind == "bundle" { return fs.join([dir, fs.base(i.root)]) }
+  if i.kind == "prefix" { return fs.join([dir, fs.base(i.exe)]) }
+  return dir
+}
+
+struct InstallArgs {
+  staged: string
+}
+
+// installManifest installs the version of m in place of the running one,
+// current: from its delta from current when there's one, else (or when
+// the delta fails) from its archive.
+async fn installManifest(m: Manifest, current: string, progress: fn(int, int)) throws {
+  let i = try await installable()
+  let key = (try? encoding.base64Decode(i.key.trim())) ?? bytes()
+  if key.count() != 32 { throw UpdateError.failed(reason: "invalid update public key") }
+  let work = workDir(i)
+  try await spawn { try fs.mkdirAll(work) }
+  var staged = false
+  defer {
+    if !staged { try? fs.removeAll(work) }
+  }
+  let unpacked = fs.join([work, "app"])
+  var tree = ""
+  if let d = m.deltaFrom(current) {
+    let path = fs.join([work, "update.delta"])
+    let into = deltaTree(i, unpacked)
+    do {
+      try await downloadSigned(d.url, d.size, d.signature, key, path, progress)
+      let root = i.root
+      let version = m.version
+      try await spawn {
+        try fs.mkdirAll(fs.dir(into))
+        try applyDelta(path, d.size, d.from, version, root, into)
+      }
+      tree = into
+    } catch e {
+      print("asuka: update: downloading the whole update, as its delta failed: {messageOf(e)}")
+      try await spawn { try fs.removeAll(unpacked) }
+    }
+    try? await spawn { try fs.remove(path) }
+  }
+  if tree.isEmpty() {
+    let archive = fs.join([work, "update.tar.gz"])
+    try await downloadSigned(m.url, m.size, m.signature, key, archive, progress)
+    try await spawn {
+      try unpack(archive, unpacked)
+      try fs.remove(archive)
+    }
+    tree = try await spawn { try treeOf(i, unpacked) }
+  }
+  if i.kind != "bundle" && exeIn(i, tree).isEmpty() {
+    throw UpdateError.failed(reason: "the update has no {fs.base(i.exe)}")
+  }
+  let _ = try await platform.call("update", "install", json.encode(InstallArgs(staged: tree)).bytes())
+  staged = true
+}
