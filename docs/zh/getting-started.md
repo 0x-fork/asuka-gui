@@ -29,8 +29,6 @@
 npm install -g @egoist/asuka     # 或者：npx @egoist/asuka new hello
 ```
 
-这个包里带有为 macOS、Windows 和 Linux（x64 和 Arm）预先构建好的 `asuka`，安装时不需要构建任何东西。在 Asuka 仓库的检出中，可以用 `go run ./cmd/asuka` 从源码运行命令行工具（需要 Go 1.26 或更高版本）。
-
 ## 创建应用
 
 ```sh

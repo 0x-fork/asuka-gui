@@ -51,7 +51,7 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 ## デスクトップでの実行
 
-macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。Windows と Linux のホストは C で書かれていて、CLI に含まれるソースから、コアと一緒にこのコンピューターの C コンパイラー（Zig、clang、MinGW や Linux の gcc。`ASUKA_CC` で選べます）でビルドされます。Mac では、CLI を Asuka のリポジトリのチェックアウトから実行している場合、ホストはソースからビルドされます。そうでなければ CLI のリリースに含まれるホストを使います。これは Asuka のキャッシュに一度だけダウンロードされ、ハッシュで検証されます。コアは、このコンピューターの C コンパイラーでビルドされます。
+macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。初回の実行では、このコンピューター向けに開発用アプリをビルドするので少し時間がかかります。2 回目以降はすぐに起動します。ビルドには C コンパイラーが必要です。Mac では Xcode のコマンドラインツール、Windows と Linux では Zig、clang、gcc のいずれか（`ASUKA_CC` で選べます）です。
 
 アプリは `assets/` をその場所から直接読むので、アセットを変更してもコピーは必要ありません。アプリのデータ（SQLite データベース、ファイル）は、インストールしたアプリのデータとは別に、Asuka のキャッシュ内にあるアプリ専用の `data` ディレクトリに保存されます（[最初からやり直す](#よくある問題)を参照）。そのため、`asuka dev` とリリース版がデータを共有することはありません。アプリの出力とエラーはターミナルに表示されます。
 
@@ -79,7 +79,6 @@ Asuka は、アプリのディレクトリとそのローカルの依存関係�
 
 - `.asuka` ファイル：コンパイルして開発用アプリに送ります。
 - `asuka.toml` と `asuka.lock`、`assets/` 以下のファイル、言語のカタログ、ネイティブパッケージの Swift・Kotlin・JavaScript、`Info.plist` とエンタイトルメント：開発用アプリをビルドし直して起動します（アプリは何もない状態から始まります）。
-- `--platform web` の場合、Asuka のリポジトリのチェックアウトでは Web ホスト自身の JavaScript（`platform/web/src`）：ページがリロードされます。
 
 `.` で始まるディレクトリと、`testdata`、`build`、`dist`、`node_modules` は監視の対象外です。
 
@@ -137,7 +136,6 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 
 ## よくある問題
 
-- **`the compiler isn't in this build yet`**：Asuka のコンパイラーを含めずにビルドされた CLI です。リリース版をインストールするか、コンパイラーを含むチェックアウトから CLI をビルドしてください。
 - **`cbuild: no C compiler`**：システムの C コンパイラー（Xcode のコマンドラインツール、`build-essential`、LLVM）をインストールするか、Zig をインストールして `ASUKA_CC=zig` を指定します。`building for the web needs Zig` と `cross-compiling for ... needs Zig` の場合は、[Zig](https://ziglang.org/download) をインストールしてください。Zig はコアを WebAssembly 向けや、ほかのシステム向けにビルドします。
 - **`no iOS simulator SDK (install Xcode)`**：Xcode をインストールして一度起動し、Xcode の設定の「Components」で iOS シミュレーターのランタイムを追加します。`no iPhone simulator; add one in Xcode` や `no simulator "..."` は、その名前のシミュレーターがないという意味です。シミュレーターの一覧は `xcrun simctl list devices` で確認できます。
 - **iPhone の準備ができていない**：`... isn't paired with this Mac`（ケーブルで接続し、ロックを解除して「信頼」をタップ）、`... isn't reachable`（ケーブルで接続するか、Mac と同じ Wi-Fi でスリープを解除）、`... has Developer Mode off`（「設定」›「プライバシーとセキュリティ」›「デベロッパモード」）、`... is locked`（ロックを解除）。接続しているのに `no iPhone or iPad is connected` と表示される場合は、`xcrun devicectl list devices` に表示されるか確かめてください。
