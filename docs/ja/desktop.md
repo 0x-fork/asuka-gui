@@ -4,6 +4,18 @@
 
 どの機能もパッケージか、`ui` または `app` の関数として提供されていて、Mac、Windows、Linux で動作します。その機能を持たないスマートフォンやブラウザーでは、使えないことを示す値が返ります（`ErrUnsupported`、`ErrNotAvailable`、または `Supported()` が false）。そのため、アプリは動作する環境でだけその機能を提供できます。
 
+## デスクトップアプリの構成
+
+デスクトップアプリの実行ファイルは Asuka のデスクトップホスト（`cmd/asuka-host`）で、どのアプリでも同じものです。Mac では AppKit、Windows では Win32、Linux では GTK 4 と libadwaita を使い、Go で書かれていて、cgo を使わずにプラットフォームを呼び出します。その隣には、アプリをコンパイルして組み込んだコアがあり、ホストはコアの C の ABI（`core/include/asuka.h`）を通じてそれを読み込み、動かします。さらに、`asuka.toml` から作られたアプリの設定（`asuka-app.json`：名前、ID、バージョン、アクセントカラー、URL スキーム、ファイルの種類、アップデート）も置かれます。
+
+| | コア | 設定 |
+|---|---|---|
+| macOS（`Name.app`） | `Contents/Frameworks/libasuka.dylib` | `Contents/Resources/asuka-app.json` |
+| Windows（フォルダー） | `asuka.dll`（`Name.exe` の隣） | `asuka-app.json`（その隣） |
+| Linux（インストールプレフィックス） | `lib/<exe>/libasuka.so` | `share/<exe>/asuka-app.json` |
+
+`asuka build` は、ターゲット向けの C コンパイラー（クロスコンパイルでは Zig のもの）でコアをビルドします。ホストは CLI のリリースのものを使います（一度だけダウンロードし、ハッシュで検証します）。Asuka のチェックアウトから実行している場合は、`go build` でホストをビルドします。Windows のビルドでは、アプリのアイコン、マニフェスト、バージョン情報を実行ファイルにリンクします。`asuka dev` は同じホストを、アプリを含まないコアと一緒に実行します。このコアは `asuka dev` からアプリのバイトコードを読み込み、その後は保存のたびに新しいバイトコードを読み込みます（[開発](development.md#デスクトップでの実行)を参照）。
+
 ## トレイアイコンと Dock メニュー
 
 コンポーネントの中で `tray.Show` を呼ぶと、そのコンポーネントがマウントされているあいだ、トレイにアイコンが表示されます。Mac ではメニューバーの `NSStatusItem`、Windows では通知領域のアイコン、Linux では StatusNotifierItem になります（KDE、Xfce、Cinnamon、MATE、Budgie、そして AppIndicator 拡張機能を入れた GNOME で表示されます）。

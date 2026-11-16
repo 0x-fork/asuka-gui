@@ -69,6 +69,7 @@ github = "you/notes"
 | `splash` | テーブル | なし | iOS と Android の起動画面です。[splash](#splash) を参照してください。 |
 | `widgets` | テーブルの配列 | なし | iOS と Android のホーム画面ウィジェットです。[widgets](#widgets) を参照してください。 |
 | `shortcuts` | テーブルの配列 | なし | iOS と Android で、Siri、Spotlight、ランチャーに出すアクションです。[shortcuts](#shortcuts) を参照してください。 |
+| `nfc` | テーブル | なし | `asuka/sdk/nfc` のタグに必要なものです。iOS の AID と FeliCa のシステムコード、Android でアプリを開くタグを指定します。[nfc](#nfc) を参照してください。 |
 | `background` | 真偽値 | `false` | デスクトップで、トレイに常駐するアプリにします。起動時にウィンドウを開かず、ウィンドウがなくても動き続け、Mac では起動時から Dock にアイコンを出しません（`LSUIElement`）。[バックグラウンドのアプリ](desktop.md#バックグラウンドで動くアプリ)を参照してください。 |
 | `singleInstance` | 真偽値 | `true` | Windows と Linux で、二回目の起動はファイルを実行中のアプリに渡して（その `on openFiles(paths)` に）終了します。`false` にすると、起動した回数だけアプリが実行されます。Mac ではどちらの場合もアプリは一つしか実行されません。[単一インスタンス](desktop.md#単一インスタンス)を参照してください。 |
 | `i18n` | テーブル | `locales`（あれば） | アプリのカタログの場所です。[i18n](#i18n) を参照してください。 |
@@ -76,9 +77,11 @@ github = "you/notes"
 | `ios` | テーブル | | iOS のビルドの設定と、Mac のビルドの設定の一部です。[ios](#ios) を参照してください。 |
 | `mac` | テーブル | | Mac のビルドのプロファイルです。[mac](#mac) を参照してください。 |
 | `icloud` | テーブル | `iCloud.<id>` | `asuka/sdk/icloud` で使う、アプリの iCloud コンテナーと iCloud Drive のフォルダーです。[icloud](#icloud) を参照してください。 |
+| `applePay` | テーブル | なし | `merchantIds = ["merchant.com.example"]`：Apple Pay（`asuka/sdk/pay`）の支払いに使うマーチャント ID です。パッケージをインポートした iOS と Mac のアプリの、アプリ内決済のエンタイトルメントに入ります。[ウォレットでの支払い](../device.md#wallet-payments-asukasdkpay)を参照してください。 |
 | `android` | テーブル | | Android のビルドの設定です。[android](#android) を参照してください。 |
 | `linux` | テーブル | | Linux のビルドがアプリについて書き出す情報です。[linux](#linux) を参照してください。 |
 | `web` | テーブル | | Web のビルドの設定です。[web](#web) を参照してください。 |
+| `bluetooth` | テーブル | | `asuka/sdk/bluetooth` を使うアプリが、パッケージに必要なもの以上に求めるものです。バックグラウンドと、スキャンによる位置情報を指定します。[bluetooth](#bluetooth) を参照してください。 |
 
 Windows のビルドに必要なのはこれだけです。署名の証明書は環境変数で渡します（[配布](shipping.md#windows)を参照）。
 
@@ -192,6 +195,32 @@ phrases = ["New note in ${app}"]
 
 [ショートカット](device.md#ショートカット-sirispotlightランチャー)を参照してください。
 
+## nfc
+
+`asuka/sdk/nfc` が、権限以外にプラットフォームに求めるものです。パッケージをインポートしたアプリにだけ適用されます（インポートしないアプリには何も加わりません）。
+
+```toml
+[nfc]
+iso7816 = ["D2760000850101"]
+felica = ["8008"]
+ndef = [
+  {uri = "https://example.com/t/"},
+  {mime = "application/vnd.example.ticket"},
+  {external = "example.com:ticket"},
+]
+tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
+```
+
+| キー | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `iso7816` | 文字列の配列 | なし | iOS がカードを見つけたときに、この順に選択する ISO 7816 のアプリケーション（AID：5〜16 バイト、16 進数）です。Info.plist の `com.apple.developer.nfc.readersession.iso7816.select-identifiers` になります。`Poll` を使うセッションは、このどれかを持つカードだけを見つけます。 |
+| `felica` | 文字列の配列 | なし | iOS がポーリングする FeliCa のシステムコード（16 進数 4 桁、`FFFF` 以外）です。`com.apple.developer.nfc.readersession.felica.systemcodes` になります。これがないと、FeliCa をポーリングするセッションは失敗します。 |
+| `ndef` | テーブルの配列 | なし | Android で、メッセージの最初のレコードによってアプリを開くタグ（NDEF_DISCOVERED）です。それぞれ `uri`（スキーム、ホスト、パスのプレフィックス。URI はアプリの `on openURL(url)` に届きます）、`mime`（MIME タイプ。テキストのレコードは `text/plain`）、`external`（`domain:type`）のどれか一つを指定します。タグは `nfc.opened()` に届きます。 |
+| `tech` | 文字列の配列の配列 | なし | Android で、技術によってアプリを開くタグ（TECH_DISCOVERED）です。各リストには、タグがすべて備えている必要のある `android.nfc.tech` のクラス（`IsoDep`、`NfcA`、`MifareUltralight` など）を並べます。 |
+| `required` | 真偽値 | `false` | NFC のあるスマートフォン専用のアプリにします。Google Play は、NFC のない端末にはアプリを表示しません。 |
+
+[NFC タグ](../nfc.md#asukatoml-and-permissions)を参照してください。
+
 ## icloud
 
 `asuka/sdk/icloud` の書類の関数を呼ぶアプリの iCloud コンテナーと、それを iCloud Drive にどう表示するかの設定です（呼ばないアプリには何も加わりません）。
@@ -266,6 +295,7 @@ iOS のビルドの設定です。`team` は Mac のビルドのチームにも�
 | `infoPlist` | テーブル | なし | Info.plist に追加する文字列のキーです。 |
 | `backgroundModes` | 文字列の配列 | なし | Info.plist の `UIBackgroundModes` に追加します。`"audio"` を指定すると、画面がロックされていても録音と再生ができます。 |
 | `iphoneOnly` | 真偽値 | `false` | iPad を対象から外します。iPad ではアプリは iPhone アプリとして、スマートフォンサイズのウィンドウで動きます。 |
+| `storekit` | 文字列 | なし | StoreKit の構成ファイル（Xcode の `.storekit`）です。Xcode のスキームと同じように、`asuka dev` のシミュレーター向けビルドはこのファイルの商品を販売します。[アプリ内課金](../purchases.md#testing-your-purchases)を参照してください。 |
 | `nonExemptEncryption` | 文字列 | `"no"` | ビルドが暗号化について申告する内容（`ITSAppUsesNonExemptEncryption`）です。これは法的な申告で、内容は開発者が判断します。`"no"`、`"yes"`、または何も申告しない `"ask"` を指定します。`"ask"` の場合は、アップロードのたびに App Store Connect が尋ねます。 |
 | `collected` | テーブルの配列 | なし | アプリが収集するデータで、プライバシーマニフェストに使います（下記を参照）。 |
 | `appStoreConnect` | テーブル | | `asuka publish` がアップロードに使う App Store Connect API キーです。`keyId`、`issuerId`（個人キーでは不要）、`key`（`.p8` のパス。デフォルトは、`altool` と同じく `~/.appstoreconnect/private_keys` にある `AuthKey_<keyId>.p8`）を指定します。[公開](shipping.md#ストアへの公開)を参照してください。 |
@@ -340,8 +370,26 @@ Web のビルドの設定です。
 | キー | 型 | デフォルト | 説明 |
 |---|---|---|---|
 | `vapidPublicKey` | 文字列 | なし | アプリのサーバーの VAPID 公開鍵（base64url）です。ブラウザーは、`asuka/sdk/push` の Web Push を購読するときにこれを使います。 |
+| `base` | 文字列 | `"/"` | サイトを配信するパスです（`https://example.com/app/` なら `"/app/"`）。ページの `<base href>` になり、ルーターの href はその下のアドレスになります。`asuka build --base` で上書きできます。[アドレスと履歴](web.md#アドレスと履歴)を参照してください。 |
 
 [Web Push](web.md#asukasdkpushweb-push) を参照してください。
+
+## bluetooth
+
+`asuka/sdk/bluetooth` をインポートしたアプリが、パッケージが与えるもの（権限と利用目的の説明文）以上に求めるものです。パッケージをインポートしないアプリでは何もしません。
+
+```toml
+[bluetooth]
+background = ["central"]
+location = false
+```
+
+| キー | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `background` | 文字列の配列 | なし | アプリがバックグラウンドで続ける役割です。`"central"`：iOS の `bluetooth-central` モードと状態の復元（`bluetooth.OnRestore`）、Android のバックグラウンドスキャンの受け取り（`ScanOptions.Background`）。`"peripheral"`：iOS の `bluetooth-peripheral` モード。 |
+| `location` | 真偽値 | `false` | アプリがスキャン（ビーコン）からユーザーの居場所を割り出す場合に指定します。Android の `BLUETOOTH_SCAN` に `neverForLocation` を付けず、`bluetooth.Request` は位置情報の権限も求めるようになります（iOS：`NSLocationWhenInUseUsageDescription`）。 |
+
+[Bluetooth](../bluetooth.md#in-the-background)を参照してください。
 
 ## 環境変数
 

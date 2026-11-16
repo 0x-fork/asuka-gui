@@ -341,7 +341,7 @@ func (winBattery) Watch(ctx context.Context, changed func(float64)) error { ... 
 
 ## 开发原生代码
 
-- **iOS 和 Android**：`asuka dev` 会构建包含原生包的应用外壳并安装，原生代码变化时重新构建，Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist` 和清单文件的修改都包括在内；应用的 Asuka 代码在保存时直接重新加载，不需要重新构建。没有原生包的应用则以热重载模式运行在开发 App 里，开发 App 只包含 Asuka 自己的原生代码。参见 [开发](development.md#在手机上热重载模式与构建的应用)。
+- **iOS 和 Android**：`asuka dev` 会构建包含原生包的应用外壳并安装，原生代码变化时重新构建，Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist` 和清单文件的修改都包括在内；应用的 Asuka 代码在保存时直接重新加载，不需要重新构建。没有原生包的应用则以热重载模式运行在开发 App 里，开发 App 只包含 Asuka 自己的原生代码。参见 [开发](development.md#工作原理开发-app)。
 - **macOS**：原生包的 Swift 代码会构建进应用的 Swift 库，同样只在有变化时才重新构建，然后应用重新运行，状态会保留下来。
 - **Windows 和 Linux**：原生包的 Go 代码会构建进应用的宿主，同样只在有变化时才重新构建。
 - **Web**：包的 JavaScript 变化时，页面会重新加载。

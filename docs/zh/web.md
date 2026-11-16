@@ -1,32 +1,36 @@
 # Web
 
-同一个应用也能在浏览器里运行：Go 代码编译成 WebAssembly，视图就是页面的 DOM。Web 和 iOS、Android、Mac、Windows、Linux 一样，是 Asuka 支持的平台之一，用的是同一份 Go 代码。核心创建的每个视图都对应一个元素，摆放在核心布局算出的位置上，原生宿主摆放自己的控件也是这样做的。因此布局用的是 Asuka 自己的实现（用 Go 写的 flexbox 和 grid），在每个平台上都一致；叶子节点则由真实的元素来测量，和原生宿主测量自己的控件一样。控件直接用浏览器自带的（`<button>`、`<input>`、`<select>`、`<progress>`、`<dialog>`），所以键盘操作、焦点、自动填充、拼写检查和屏幕阅读器支持都是现成的。
+同一个应用也能在浏览器里运行：Asuka 的核心编译成 WebAssembly（应用编译进核心，或者由核心加载应用的字节码），视图就是页面的 DOM。Web 和 iOS、Android、Mac、Windows、Linux 一样，是 Asuka 支持的平台之一，用的是同一份代码。核心创建的每个视图都对应一个元素，摆放在核心布局算出的位置上，原生宿主摆放自己的控件也是这样做的。因此布局用的是 Asuka 自己的实现（在核心里实现的 flexbox 和 grid），在每个平台上都一致；叶子节点则由真实的元素来测量，和原生宿主测量自己的控件一样。控件直接用浏览器自带的（`<button>`、`<input>`、`<select>`、`<progress>`、`<dialog>`），所以键盘操作、焦点、自动填充、拼写检查和屏幕阅读器支持都是现成的。
 
 ```sh
 asuka dev --platform web examples/counter       # 启动服务并在浏览器中打开；保存即重载
 asuka build --platform web examples/counter     # 生成静态网站，位于 examples/counter/dist/web
 ```
 
+两者都用 [Zig](https://ziglang.org/download)（`zig cc`）把核心构建成 WebAssembly，所以需要先安装 Zig。
+
 下面介绍 Web 上的各项行为；遇到浏览器做不到、而手机能做到的事情时，也会说明实际会怎样处理。
 
 ## asuka dev --platform web
 
-`asuka dev --platform web` 会为浏览器构建应用（`GOOS=js GOARCH=wasm`），在 `http://localhost:8790/`（端口被占用时换一个空闲端口）上提供服务并自动打开。每次保存都会重新构建，示例项目通常远不到一秒就能完成；页面加载新构建时，应用中 signal 的值会保留下来，和其他平台的重载一样。应用的输出（`fmt.Println`、`log`、panic）以及页面上的错误都会打印到终端；如果构建失败，错误信息会覆盖在页面上，直到下一次构建成功为止。
+`asuka dev --platform web` 会构建一次开发 App（WebAssembly 形式的核心 `asuka.wasm`，里面没有应用），在 `http://localhost:8790/`（端口被占用时换一个空闲端口）上提供页面并自动打开。页面先加载核心，再从开发服务器加载应用的字节码。每次保存都会在几毫秒内重新编译应用，页面原地加载新模块并保留应用的状态，和其他平台的开发 App 一样；终端会报告每次重载（`asuka: reloaded in 1.1 ms, 3 states kept`）。应用的输出以及页面上的错误都会打印到终端；如果保存的代码无法编译，错误信息会覆盖在页面上，直到下一次编译成功为止。修改 `asuka.toml`、资源或原生包的 JavaScript 会让页面重新加载（应用从头开始）。
 
-除了 `asuka dev` 本身的参数（`--lang`、`--dir`、`--no-vet`、`-v`），还有这些参数：
+除了 `asuka dev` 本身的参数（`--lang`、`--dir`、`-v`），还有这些参数：
 
 - `--port`：服务器端口。
 - `--lan`：同时向局域网提供服务，并打印可访问的地址，方便在手机浏览器里打开应用。
 - `--no-open`：不自动打开浏览器。
-- `--once`：只构建并提供服务，不监听文件变化。
+- `--once`：只提供服务，不监听文件变化。
+
+开发服务器还接受 GUI 测试的命令（`POST /__asuka/automation`，每行一条命令，如 `tap Add`、`dump`），由页面执行（`platform/web/src/automation.js`）。
 
 ## asuka build --platform web
 
-`asuka build --platform web` 会在 `dist/web` 中生成一个静态网站，包含：
+`asuka build --platform web` 会把应用编译成 C，与核心一起构建成 WebAssembly，然后在 `dist/web` 中生成一个静态网站，包含：
 
 - `index.html` 和 `manifest.webmanifest`（Web 应用清单，有了它浏览器才会提示安装应用；图标取自 `asuka.toml` 的 `icon`，同时生成 favicon 和 iOS 主屏幕图标）；
-- 应用本身 `app.<digest>.wasm`，构建时去掉了符号表，并使用了 `-trimpath`；
-- Web 宿主的文件，放在 `asuka/<digest>/` 中（如果应用导入了 `asuka/sdk/sqlite`，还包括 SQLite 的 WebAssembly 构建，约 0.9 MB，gzip 后 0.4 MB），以及应用自己的脚本（`web/*.js`），放在 `web/<digest>/` 中；
+- 包含应用的核心 `asuka.<digest>.wasm`，经过优化并去掉了符号表；
+- Web 宿主的文件，放在 `asuka/<digest>/` 中（如果应用用到了插件，还包括插件的文件，比如 SQLite 的 WebAssembly 构建），以及原生包的脚本；
 - 应用的 service worker `sw.<digest>.js`，与 `index.html` 放在一起（作用域是网站所在的文件夹）：即使没有打开应用的任何页面，它也能显示应用的通知和推送（见 [通知与 Web Push](#通知与-web-push)）；
 - 应用的 `assets/`；
 - 每个脚本和 wasm 文件的 gzip 压缩副本（`.gz`），供支持预压缩文件的服务器使用；
@@ -35,7 +39,7 @@ asuka build --platform web examples/counter     # 生成静态网站，位于 ex
 
 `index.html` 的 `<base href>` 是网站所在的路径：默认是 `/`，也可以用 `asuka.toml` 的 `web.base` 或 `--base` 指定（`https://example.com/app/` 就写 `"/app/"`）。这样页面无论在它下面的哪个地址打开，都能找到自己的文件，路由器的 href 也就是它下面的页面地址（`/chat/7` 对应 `https://example.com/app/chat/7`）。
 
-这个文件夹可以放在任何 Web 服务器或 CDN 上。以内容摘要命名的文件一旦内容变化，文件名也会跟着变，所以可以放心地永久缓存，只有 `index.html` 需要重新获取。`.wasm` 文件要以 `application/wasm` 类型提供。一个计数器应用的 WebAssembly 约 6.5 MB，gzip 后 1.7 MB（用 brotli 压缩是 1.3 MB，CDN 一般可以帮你做）；应用自己的代码和它导入的包会在此基础上增加体积。
+这个文件夹可以放在任何 Web 服务器或 CDN 上。以内容摘要命名的文件一旦内容变化，文件名也会跟着变，所以可以放心地永久缓存，只有 `index.html` 需要重新获取。`.wasm` 文件要以 `application/wasm` 类型提供。包含一个计数器应用的核心约 300 KB WebAssembly，gzip 后 115 KB；应用自己的代码会在此基础上增加体积，另外还有 Web 宿主的 JavaScript。
 
 ## 地址与历史记录
 
