@@ -102,11 +102,18 @@ func TestTextFieldRich(t *testing.T) {
 // A one-line field's padding is inside it: its cell's drawing rect (its
 // text's, and its field editor's) is inset by it.
 func TestTextFieldPadding(t *testing.T) {
-	h, _ := mount(t, func() ui.Node {
-		return ui.Column(ui.Style{Align: ui.AlignStart},
-			ui.TextField(ui.TextFieldProps{Value: signal.New("hi"), Style: ui.Style{Width: ui.Pt(200), Padding: ui.Edges{Left: 30, Top: 4}}}),
-			ui.TextField(ui.TextFieldProps{Value: signal.New("hi"), Style: ui.Style{Width: ui.Pt(200)}}))
-	})
+	h := mountApp(t, `
+		component Fields {
+		  state a = "hi"
+		  state b = "hi"
+		  Column {
+		    align: .start
+		    TextField { bind text: a; width: 200; padding: Edges(top: 4, left: 30) }
+		    TextField { bind text: b; width: 200 }
+		  }
+		}
+		app { Fields() }
+	`)
 	onMain(func() {
 		fs := find(h, ops.KindTextField)
 		rect := func(n *node) Rect {
