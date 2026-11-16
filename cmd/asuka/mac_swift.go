@@ -29,9 +29,9 @@ import (
 // architecture and kept in the user's cache.
 
 // macHostDefines are the host's compilation conditions on the Mac: what
-// the iOS host's files it shares build in (StoreKit's, iCloud's). Every
-// app's host has them all.
-var macHostDefines = []string{"ASUKA_PURCHASE", "ASUKA_ICLOUD"}
+// the iOS host's files it shares build in (iCloud's). Every app's host has
+// them all.
+var macHostDefines = []string{"ASUKA_ICLOUD"}
 
 // macSwiftArch is swiftc's name for a Go architecture.
 func macSwiftArch(goarch string) string {

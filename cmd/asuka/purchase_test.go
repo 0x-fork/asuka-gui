@@ -9,22 +9,21 @@ import (
 )
 
 // An app that imports asuka/purchase gets Play Billing's permission (its
-// library is asuka/purchase's Gradle module's, not the host's), and the
-// Mac's StoreKit; one that doesn't, none of them.
+// library is asuka/purchase's Gradle module's, not the host's); one that
+// doesn't, none.
 func TestPurchaseFeature(t *testing.T) {
 	var c appConfig
 	importStd(t, &c, "", "purchase")
-	if len(c.androidModules) > 0 || !slices.Contains(c.Android.Permissions, "com.android.vending.BILLING") ||
-		!slices.Equal(c.macSwift, []string{"ASUKA_PURCHASE"}) {
-		t.Fatalf("modules %v, permissions %v, macSwift %v", c.androidModules, c.Android.Permissions, c.macSwift)
+	if len(c.androidModules) > 0 || !slices.Contains(c.Android.Permissions, "com.android.vending.BILLING") {
+		t.Fatalf("modules %v, permissions %v", c.androidModules, c.Android.Permissions)
 	}
 	if b, err := os.ReadFile(filepath.Join("..", "..", "std", "purchase", "android", "build.gradle.kts")); err != nil || !strings.Contains(string(b), "com.android.billingclient:billing") {
 		t.Errorf("asuka/purchase's module hasn't Play Billing: %v", err)
 	}
 	var none appConfig
 	importStd(t, &none, "")
-	if slices.Contains(none.Android.Permissions, "com.android.vending.BILLING") || len(none.macSwift) > 0 {
-		t.Fatalf("permissions %v, macSwift %v", none.Android.Permissions, none.macSwift)
+	if slices.Contains(none.Android.Permissions, "com.android.vending.BILLING") {
+		t.Fatalf("permissions %v", none.Android.Permissions)
 	}
 }
 

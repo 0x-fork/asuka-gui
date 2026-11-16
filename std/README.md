@@ -137,7 +137,7 @@ test "a region, crossed" {
   (the iOS host's parts its module needs, by their compilation
   conditions: `ASUKA_NOTIFY`), `derived` (what the CLI makes of the
   app's own asuka.toml: `icloudKeyValue`, `icloudDocuments`,
-  `locationPrecise`); `[macos] hostFlags` (the Mac's Swift);
+  `locationPrecise`);
   `[android] application` and `manifest` (elements of the manifest's
   application and of the manifest), `hostModules` (the host's optional
   Gradle modules, platform/android/asuka-<name>: std/push's `push`);

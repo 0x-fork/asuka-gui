@@ -59,11 +59,6 @@ type manifestNeeds struct {
 		// Objective-C name: Info.plist's AsukaLaunch lists them.
 		Launch string `json:"launch"`
 	} `json:"ios"`
-	MacOS struct {
-		// HostFlags are compilation conditions of the Mac's Swift
-		// (platform/macos), which the app's library is built with.
-		HostFlags []string `json:"hostFlags"`
-	} `json:"macos"`
 	Android struct {
 		// Permissions: "name", "name:28" (up to API level 28), or
 		// "name|flags" (usesPermissionFlags).
@@ -236,7 +231,6 @@ func (c *appConfig) addNeeds(m *manifestNeeds) error {
 	if l := m.Android.Launch; l != "" {
 		add(&c.androidLaunch, l)
 	}
-	add(&c.macSwift, m.MacOS.HostFlags...)
 	for _, p := range m.Android.Permissions {
 		c.addPermission(p)
 	}

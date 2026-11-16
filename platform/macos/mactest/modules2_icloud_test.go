@@ -71,24 +71,3 @@ func TestModules2ICloud(t *testing.T) {
 	m2Want(t, "stop", strings.TrimSpace(m2Go(t, a, "stop")), "ok")
 	m2Want(t, "next, stopped", m2Answer(t, a, "next"), "err stopped")
 }
-
-// purchase through the host's Purchase.swift (the iOS host's StoreKit 2):
-// "available" answers a u8, and a waiting "next" ends with "stopped" at
-// "stop".
-func TestModules2Purchase(t *testing.T) {
-	a := Run(t, m2Src+`
-		app {
-		  Column {
-		    Call("available", "purchase", "available", bytes())
-		    Call("next", "purchase", "next", bytes())
-		    Call("stop", "purchase", "stop", bytes())
-		  }
-		}
-	`)
-	if got := m2Go(t, a, "available"); got != "ok 00" && got != "ok 01" {
-		t.Errorf("available: %s", got)
-	}
-	a.Do("tap go next")
-	m2Want(t, "stop", strings.TrimSpace(m2Go(t, a, "stop")), "ok")
-	m2Want(t, "next, stopped", m2Answer(t, a, "next"), "err stopped")
-}

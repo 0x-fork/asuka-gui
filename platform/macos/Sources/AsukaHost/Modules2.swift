@@ -1,17 +1,15 @@
 // The packages' modules of part modules2, which the standard library's
 // packages reach through asuka/host: contacts (Contacts.swift, asuka/contacts),
 // calendar (Calendar.swift, asuka/calendar), photoLibrary and library
-// (PhotoLibrary.swift, asuka/photos and asuka/library), icloud
-// (ICloud.swift's AsukaICloud, asuka/icloud) and purchase (Purchase.swift's
-// AsukaStore). Ports host/darwin's contacts.go, calendar.go,
-// photolibrary.go, icloud.go and purchase.go.
+// (PhotoLibrary.swift, asuka/photos and asuka/library) and icloud
+// (ICloud.swift's AsukaICloud, asuka/icloud).
 //
-// The Go host's other modules of this part (vision, scan, transcribe,
-// nowPlaying, audioRecord, audio, speech, imageEdit, and the "asuka.map"
-// view) served the Go sdk/ packages; on the Swift host, std's
-// asuka/vision, asuka/scan, asuka/transcribe, asuka/nowplaying,
-// asuka/record, asuka/audio, asuka/speech, asuka/imageedit and asuka/maps
-// are native packages whose own Swift does them on the Mac.
+// The rest (vision, scan, transcribe, nowPlaying, audioRecord, audio,
+// speech, imageEdit, purchase, maps) isn't the host's: std's asuka/vision,
+// asuka/scan, asuka/transcribe, asuka/nowplaying, asuka/record,
+// asuka/audio, asuka/speech, asuka/imageedit, asuka/purchase and
+// asuka/maps are native packages whose own Swift does them on the Mac, as
+// on iOS.
 //
 // Here too: what the modules share (the caches' files, the alert that
 // asks before adding a contact or an event), and the automation's seams,
@@ -27,7 +25,6 @@ import AppKit
         registerModule("photoLibrary", AsukaPhotoLibrary.shared.methods())
         registerModule("library", AsukaLibrary.methods())
         registerModule("icloud", AsukaModules2Kit.icloudMethods())
-        registerModule("purchase", AsukaModules2Kit.purchaseMethods())
     }
 
     /// The automation's steps of this part (Automation.swift's default):
@@ -142,7 +139,7 @@ enum AsukaModules2Kit {
         }
     }
 
-    // MARK: iCloud and purchases
+    // MARK: iCloud
 
     /// asuka/icloud's module: ICloud.swift's AsukaICloud (the iOS host's
     /// file), internal/icloudspec's methods. An app's host always has it
@@ -169,34 +166,6 @@ enum AsukaModules2Kit {
         m["stop"] = { _, reply in reply(.success(Data())) }
         return m
         #endif
-    }
-
-    /// asuka/sdk/purchase's module: Purchase.swift's AsukaStore (the iOS
-    /// host's file, StoreKit 2: macOS 12), internal/purchasespec's
-    /// methods. Its listener starts with the first call: on this host,
-    /// asuka/purchase is a native package whose own Swift listens from the
-    /// app's start (std/purchase), so a listener of the host's at every
-    /// app's launch would only listen twice.
-    @MainActor static func purchaseMethods() -> [String: AsukaModuleMethod] {
-        let names = ["available", "products", "buy", "finish", "entitlements", "restore", "status",
-                     "manage", "refund", "redeem", "storefront", "next", "stop"]
-        var m: [String: AsukaModuleMethod] = [:]
-        for name in names {
-            m[name] = { args, reply in
-                #if ASUKA_PURCHASE
-                if #available(macOS 12.0, *) {
-                    AsukaStore.shared.call(name, args, reply)
-                    return
-                }
-                #endif
-                switch name {
-                case "available": reply(.success(Data([0])))
-                case "stop": reply(.success(Data()))
-                default: reply(.failure(AsukaModuleError("not available: the App Store needs macOS 12")))
-                }
-            }
-        }
-        return m
     }
 }
 

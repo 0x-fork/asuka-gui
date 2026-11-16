@@ -1144,8 +1144,8 @@ so a purchase completed before the app observes isn't lost.
 iCloud (`asuka/icloud`) is a package over the hosts' module `icloud`,
 whose JSON (`internal/icloudspec`) the iOS host and the Mac speak, the
 same Swift in both (`ICloud.swift`, kept identical in platform/ios and
-platform/macos, as `Purchase.swift` is; `ASUKA_ICLOUD`, asuka/icloud's
-manifest's `hostFlags`): NSUbiquitousKeyValueStore, its values converted
+platform/macos; `ASUKA_ICLOUD`, asuka/icloud's manifest's `ios.hostFlags`
+on iOS, every Mac app's host): NSUbiquitousKeyValueStore, its values converted
 between JSON and property lists; the app's ubiquity containers through
 NSMetadataQuery, NSFileCoordinator and NSFileVersion, the file system's
 work off the main thread. The other hosts answer not available

@@ -244,10 +244,6 @@ type appConfig struct {
 	// mapsKey: the app imports asuka/maps, whose Google Maps reads the
 	// key (android.mapsKey) from the manifest.
 	mapsKey bool
-	// macSwift are the Mac's Swift's compilation conditions the app's
-	// packages need (their manifests' macos.hostFlags): the Mac's library
-	// (AsukaNatives.dylib) is built with them, natives or not.
-	macSwift []string
 	// iosTrue and androidApp: the packages' Info.plist keys set to true
 	// (their asuka.toml's ios.plist), and application elements of the
 	// Android manifest (android.application).
