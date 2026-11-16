@@ -15,9 +15,10 @@ import (
 // packPrebuilt makes an npm package of each target's directory in dir
 // (asuka prebuilt build's: its files and prebuilt.json), packs it into
 // out/tarballs, and writes the CLI's manifest of them, pinning each
-// tarball's integrity, into internal/prebuilt/manifest.json (and out).
+// tarball's integrity, into manifest (internal/prebuilt/manifest.json)
+// and out.
 // It returns the tarballs.
-func packPrebuilt(dir, out, version string) ([]string, error) {
+func packPrebuilt(dir, out, version, manifest string) ([]string, error) {
 	es, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -106,7 +107,7 @@ func packPrebuilt(dir, out, version string) ([]string, error) {
 		return nil, err
 	}
 	b = append(b, '\n')
-	if err := os.WriteFile(filepath.Join("internal", "prebuilt", "manifest.json"), b, 0o644); err != nil {
+	if err := os.WriteFile(manifest, b, 0o644); err != nil {
 		return nil, err
 	}
 	if err := os.WriteFile(filepath.Join(out, "prebuilt-manifest.json"), b, 0o644); err != nil {

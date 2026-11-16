@@ -37,6 +37,8 @@ func main() {
 	publish := flag.Bool("publish", false, "npm publish them")
 	tag := flag.String("tag", "latest", "the dist-tag to publish under")
 	pre := flag.String("prebuilt", "", "a directory of asuka prebuilt build's output, a directory per target")
+	manifest := flag.String("manifest", filepath.Join("internal", "prebuilt", "manifest.json"), "where -prebuilt writes the CLI's manifest")
+	only := flag.Bool("prebuilt-only", false, "only pack the prebuilt packages and write their manifest")
 	flag.Parse()
 	if *version == "" {
 		fail("npm: -version is required")
@@ -47,8 +49,11 @@ func main() {
 	var tarballs []string
 	if *pre != "" {
 		var err error
-		if tarballs, err = packPrebuilt(*pre, *out, *version); err != nil {
+		if tarballs, err = packPrebuilt(*pre, *out, *version, *manifest); err != nil {
 			fail(err.Error())
+		}
+		if *only {
+			return
 		}
 	}
 	cliFlags := "-s -w -X main.version=" + *version
