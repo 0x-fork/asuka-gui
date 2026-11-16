@@ -3053,16 +3053,15 @@ and its `context`. What's reported, as its `kind`, on each platform:
 
 | | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `"panic"`: the core's own fatal error, with the Asuka code's stack | ✓ | ✓ | — | — | — | ✓ |
-| `"go"`: the desktop host's own panic or fatal error | — | — | ✓ | ✓ | ✓ | — |
+| `"panic"`: the core's own fatal error, with the Asuka code's stack | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `"exception"`: uncaught | NSException (Objective-C, Swift's `NSException`s) | a JVM `Throwable` | — | — | — | an uncaught JavaScript error (not fatal) |
-| `"native"`: a signal, a Mach or Windows exception | MetricKit | the system's tombstone | MetricKit; a signal in the core | the host's report | the host's report (a signal in native code) | — |
+| `"native"`: a signal, a Mach or Windows exception | MetricKit | the system's tombstone | MetricKit; a fatal signal, the host's report | the host's report | the host's report (a signal in native code) | — |
 | `"hang"` | MetricKit's hangs (not fatal), the watchdog | ANRs, with their traces | MetricKit | — | — | — |
 | `"oom"` | the memory limit, when MetricKit says | low-memory kills | — | — | — | — |
 | `"resource"` | CPU and disk-write exceptions (not fatal) | excessive resource use | MetricKit | — | — | — |
 | `"nonfatal"`: `crash.record(e)` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-On iOS, Android and the web the core keeps the record: its own fatal
+The core keeps the record on every platform: its own fatal
 error is written with the Asuka stack as the run ends, and an uncaught
 exception by the host's handler as the app ends (a handler set before, a
 crash SDK's, still runs after). The rest the system hands over on a
@@ -3072,7 +3071,8 @@ record of how the app's processes ended
 crash's tombstone from Android 12). A crash the system reports again
 after the host's handler did (iOS's SIGABRT of an uncaught exception,
 Android's `REASON_CRASH`) is left out. On macOS, Windows and Linux the
-desktop host keeps the record, as it starts the app.
+host writes what only it sees, a fatal signal or an exception nothing
+handled, for the core to report on the next launch.
 
 Each report has its `context`: the app's version and build, the device's
 model and system, the process and how long it had run, whether it was in

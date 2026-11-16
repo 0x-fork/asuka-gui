@@ -2035,16 +2035,15 @@ app { Root() }
 
 | | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `"panic"`：核心自身的致命错误，带有 Asuka 代码的调用栈 | ✓ | ✓ | — | — | — | ✓ |
-| `"go"`：桌面宿主自身的 panic 或致命错误 | — | — | ✓ | ✓ | ✓ | — |
+| `"panic"`：核心自身的致命错误，带有 Asuka 代码的调用栈 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `"exception"`：未捕获的异常 | NSException（Objective-C，以及 Swift 中的 `NSException`） | JVM 的 `Throwable` | — | — | — | 未捕获的 JavaScript 错误（非致命） |
-| `"native"`：信号、Mach 异常或 Windows 异常 | MetricKit | 系统的 tombstone | MetricKit；核心中的信号 | 宿主的报告 | 宿主的报告（原生代码中的信号） | — |
+| `"native"`：信号、Mach 异常或 Windows 异常 | MetricKit | 系统的 tombstone | MetricKit；致命信号，由宿主报告 | 宿主的报告 | 宿主的报告（原生代码中的信号） | — |
 | `"hang"` | MetricKit 报告的卡顿（非致命）、看门狗 | ANR 及其 trace | MetricKit | — | — | — |
 | `"oom"` | 超出内存上限（由 MetricKit 报告时） | 因内存不足被系统终止 | — | — | — | — |
 | `"resource"` | CPU 和磁盘写入异常（非致命） | 资源使用过度 | MetricKit | — | — | — |
 | `"nonfatal"`：`crash.record(e)` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-在 iOS、Android 和 Web 上，记录由核心保存：核心自身的致命错误会在运行结束时连同 Asuka 调用栈一起写下，未捕获的异常则由宿主的处理函数在应用结束时写下（在它之前设置的处理函数，比如某个崩溃 SDK 的，随后依然会运行）。其余的则由系统在之后的某次启动时交给应用：iOS 和 macOS 的 MetricKit 诊断，以及 Android 对应用进程结束原因的记录（`getHistoricalProcessExitReasons`，Android 11 及以上；原生崩溃的 tombstone 从 Android 12 开始提供）。如果某次崩溃已经由宿主的处理函数报告过，系统又再报告一次（iOS 上未捕获异常导致的 SIGABRT，Android 的 `REASON_CRASH`），那么系统的这份会被排除。在 macOS、Windows 和 Linux 上，记录由启动应用的桌面宿主保存。
+在每个平台上，记录都由核心保存：核心自身的致命错误会在运行结束时连同 Asuka 调用栈一起写下，未捕获的异常则由宿主的处理函数在应用结束时写下（在它之前设置的处理函数，比如某个崩溃 SDK 的，随后依然会运行）。其余的则由系统在之后的某次启动时交给应用：iOS 和 macOS 的 MetricKit 诊断，以及 Android 对应用进程结束原因的记录（`getHistoricalProcessExitReasons`，Android 11 及以上；原生崩溃的 tombstone 从 Android 12 开始提供）。如果某次崩溃已经由宿主的处理函数报告过，系统又再报告一次（iOS 上未捕获异常导致的 SIGABRT，Android 的 `REASON_CRASH`），那么系统的这份会被排除。在 macOS、Windows 和 Linux 上，宿主会把只有它能看到的情况（致命信号、没有被处理的异常）写下来，由核心在下次启动时生成报告。
 
 每份报告都带有 `context`：应用的版本和构建号，设备的型号和系统版本，进程及其已运行的时长，当时是否在前台，以及最近的面包屑（最多 100 条）和设置过的值。这些信息一有变化就会写入应用的数据目录，每次追加一行（不调用 sync，所以开销和一次普通写入差不多），等文件涨到实际所需大小的两倍时再整体重写一次。这样一来，不管应用是怎么崩溃的，这些信息在崩溃之前就已经写到磁盘上了。生命周期的变化也会记成面包屑（“app: background”）。
 
