@@ -82,6 +82,12 @@ func (f *Func) validate(p *Program) error {
 				ri++
 				continue
 			}
+			// The base of an empty block of registers (a call with no
+			// arguments, a closure with no captures) names none.
+			if j+1 < len(def.Operands) && def.Operands[j+1] == bc.Imm && j > 0 && in.Args[j+1] == 0 {
+				ri++
+				continue
+			}
 			if r < 0 || r >= len(f.Kinds) {
 				return fmt.Errorf("instruction %d (%s): register r%d out of %d", pc, def.Name, r, len(f.Kinds))
 			}

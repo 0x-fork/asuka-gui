@@ -375,15 +375,16 @@ void ak_future_wait(ak_future *f, ak_cb cb, void *ctx) {
 	f->waiters = w;
 }
 
-void ak_future_unwait(ak_future *f, ak_cb cb, void *ctx) {
+bool ak_future_unwait(ak_future *f, ak_cb cb, void *ctx) {
 	for (ak_waiter **pp = &f->waiters; *pp; pp = &(*pp)->next) {
 		ak_waiter *w = *pp;
 		if (w->cb == cb && w->ctx == ctx) {
 			*pp = w->next;
 			ak_free(w);
-			return;
+			return true;
 		}
 	}
+	return false;
 }
 
 void ak_future_cancel(ak_future *f) {
