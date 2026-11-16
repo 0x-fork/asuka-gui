@@ -33,7 +33,7 @@ func (c *appConfig) shareScheme() string { return "asukashare." + c.ID }
 // shareEntitlements are the linker flags that give the extension its
 // entitlements on the simulator, as the app's (simulatorEntitlements):
 // the App Group it leaves files in, and with a share sheet, the app's
-// keychain group (asuka/sdk/secure's items are the app's there).
+// keychain group (asuka/secure's items are the app's there).
 func (t *iosToolchain) shareEntitlements(work string, cfg *appConfig) ([]string, string, error) {
 	g := cfg.appGroup()
 	if g == "" || !strings.HasSuffix(t.target, "-simulator") {
@@ -134,10 +134,6 @@ func (c *appConfig) sharePrincipal() string {
 	}
 	return "AsukaShareViewController"
 }
-
-// sheetSymbol is app.ShareSheet's: the app's Go calls it (its share
-// target shows a sheet) if the archive has it.
-const sheetSymbol = "github.com/egoist/asuka/app.ShareSheet"
 
 // shareInfo is the extension's Info.plist. It takes the app's name,
 // version, platform and build keys from app (the app's Info.plist),

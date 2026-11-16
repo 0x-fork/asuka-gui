@@ -4,3 +4,14 @@ description = "Local notifications: now or later, actions and replies, threads, 
 
 [android]
 permissions = ["android.permission.POST_NOTIFICATIONS"]
+
+# The host's notify module (UserNotifications).
+[ios]
+hostFlags = ["ASUKA_NOTIFY"]
+
+# Messages in conversations, from a Person: communication notifications
+# (their capability, the intent the app donates for each message).
+[uses.Person.ios]
+hostFlags = ["ASUKA_CONVERSATIONS"]
+entitlements = { "com.apple.developer.usernotifications.communication" = true }
+plist = { NSUserActivityTypes = ["INSendMessageIntent"] }

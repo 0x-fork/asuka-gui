@@ -7,37 +7,49 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/nativegen"
 )
 
-// importStd gives c what an app that imports the std packages names
-// (asuka/<name>) gets of them, as an app's build does: their asuka.toml's
-// (depManifests), their Swift packages' Info.plist and entitlements for
-// platform ("ios", "macos"; "": none), then what asuka.toml's own tables
-// ask of them (permissionsFor).
+// importStd gives c what an app whose program imports the std packages
+// names gets of them, as an app's build does: each name is a package
+// (location: asuka/location) or a member the program refers to
+// (location.requestAlways, which imports the package too). It adds their
+// asuka.toml's needs and their members' (depManifests), their Swift
+// packages' Info.plist and entitlements for platform ("ios", "macos"; "":
+// none), what asuka.toml's own tables ask of them (permissionsFor) and
+// what the CLI derives for them (addDerived).
 func importStd(t *testing.T, c *appConfig, platform string, names ...string) {
 	t.Helper()
+	u := &appbuild.Uses{Imports: map[string]bool{}, Refs: map[string]bool{}}
 	dirs := map[string]string{}
-	deps := []string{"github.com/egoist/asuka/app", "github.com/egoist/asuka/ui"}
 	var natives []nativePackage
 	for _, n := range names {
-		dir := filepath.Join("..", "..", "std", n)
-		if _, err := os.Stat(filepath.Join(dir, configFile)); err != nil {
-			t.Fatalf("asuka/%s: %v", n, err)
+		pkg, member, ok := strings.Cut(n, ".")
+		if ok {
+			u.Refs["asuka/"+pkg+"."+member] = true
 		}
-		dirs["asuka/"+n] = dir
-		deps = append(deps, goPath("asuka/"+n))
+		if u.Imports["asuka/"+pkg] {
+			continue
+		}
+		dir := filepath.Join("..", "..", "std", pkg)
+		if _, err := os.Stat(filepath.Join(dir, configFile)); err != nil {
+			t.Fatalf("asuka/%s: %v", pkg, err)
+		}
+		u.Imports["asuka/"+pkg] = true
+		dirs["asuka/"+pkg] = dir
 		if platform != "" && nativegen.HasPlatform(dir, "swift") {
-			natives = append(natives, nativePackage{path: "asuka/" + n, name: n, dir: dir})
+			natives = append(natives, nativePackage{path: "asuka/" + pkg, name: pkg, dir: dir})
 		}
 	}
-	if err := c.depManifests(dirs, nil); err != nil {
+	if err := c.depManifests(dirs, u); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.nativeNeeds(natives, platform); err != nil {
 		t.Fatal(err)
 	}
-	c.permissionsFor(deps)
+	c.permissionsFor(u.ImportList())
+	c.addDerived()
 }
 
 // stdAndroidManifest is the std package's Gradle module's manifest, which
@@ -67,41 +79,69 @@ func TestStdManifests(t *testing.T) {
 		ents        []string // iOS entitlements
 		macEnts     []string // the Mac's (macOS.entitlements, asuka.toml's)
 		hostModules []string // the host's optional Gradle modules
+		flags       []string // the iOS host's (usedFeatures)
+		derived     []string // what the CLI derives (ios.derived)
+		no          []string // in neither the app's manifest nor its purpose strings and modes
 	}
 	cases := map[string]want{
+		// asuka/location's background part, only for the apps that use it.
 		"location": {
-			android: []string{"ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "ACCESS_BACKGROUND_LOCATION", "FOREGROUND_SERVICE_LOCATION"},
-			module:  []string{`android:name="asuka.location.LocationService"`, `android:name="asuka.location.LocationReceiver"`, "RECEIVE_BOOT_COMPLETED"},
-			usage:   []string{"NSLocationWhenInUseUsageDescription", "NSLocationAlwaysAndWhenInUseUsageDescription"},
-			modes:   []string{"location"},
+			android: []string{"ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"},
+			usage:   []string{"NSLocationWhenInUseUsageDescription"},
+			no:      []string{"BACKGROUND_LOCATION", "FOREGROUND_SERVICE", "BOOT_COMPLETED", "LocationService", "LocationReceiver", "NSLocationAlwaysAndWhenInUseUsageDescription", "location"},
 		},
-		"notify":       {android: []string{"POST_NOTIFICATIONS"}},
-		"camera":       {android: []string{"android.permission.CAMERA", "RECORD_AUDIO"}, usage: []string{"NSCameraUsageDescription", "NSMicrophoneUsageDescription"}},
-		"record":       {android: []string{"RECORD_AUDIO"}, module: []string{`android:name="asuka.record.RecordService"`, "FOREGROUND_SERVICE_MICROPHONE"}, usage: []string{"NSMicrophoneUsageDescription"}},
-		"network":      {android: []string{"ACCESS_NETWORK_STATE"}},
-		"library":      {android: []string{`android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"`}, usage: []string{"NSPhotoLibraryAddUsageDescription"}, plist: []string{"UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace"}},
-		"background":   {android: []string{"FOREGROUND_SERVICE_DATA_SYNC", "WAKE_LOCK", `<service android:name="dev.asuka.AsukaWorkService" android:exported="false" android:foregroundServiceType="dataSync" />`}},
-		"photos":       {android: []string{"READ_MEDIA_IMAGES", "READ_MEDIA_VISUAL_USER_SELECTED", `READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"`}, usage: []string{"NSPhotoLibraryUsageDescription"}},
-		"screen":       {android: []string{"DETECT_SCREEN_CAPTURE"}},
-		"biometric":    {android: []string{"USE_BIOMETRIC"}, usage: []string{"NSFaceIDUsageDescription"}},
-		"tracking":     {usage: []string{"NSUserTrackingUsageDescription"}},
-		"integrity":    {ents: []string{"com.apple.developer.devicecheck.appattest-environment"}, macEnts: []string{"com.apple.developer.devicecheck.appattest-environment"}},
-		"agerange":     {ents: []string{"com.apple.developer.declared-age-range"}},
-		"appleauth":    {ents: []string{"com.apple.developer.applesignin"}, macEnts: []string{"com.apple.developer.applesignin"}},
-		"push":         {modes: []string{"remote-notification"}, ents: []string{"aps-environment"}, macEnts: []string{"aps-environment"}, hostModules: []string{"push"}},
-		"nowplaying":   {android: []string{"FOREGROUND_SERVICE_MEDIA_PLAYBACK"}, module: []string{`android:name="asuka.nowplaying.MediaService"`}, modes: []string{"audio"}},
-		"transcribe":   {android: []string{"RECORD_AUDIO"}, usage: []string{"NSSpeechRecognitionUsageDescription"}},
-		"periodic":     {modes: []string{"fetch", "processing"}, plist: []string{"BGTaskSchedulerPermittedIdentifiers"}, hostModules: []string{"periodic"}},
-		"liveactivity": {android: []string{"POST_PROMOTED_NOTIFICATIONS", `<receiver android:name="dev.asuka.AsukaLiveActivityReceiver" android:exported="false" />`}},
-		"purchase":     {android: []string{"com.android.vending.BILLING"}},
-		"pay":          {module: []string{"com.google.android.gms.wallet.api.enabled", `android:name="asuka.pay.PayCallbacks"`}},
-		"nfc":          {android: []string{"android.permission.NFC", `android:name="android.hardware.nfc" android:required="false"`}, usage: []string{"NFCReaderUsageDescription"}, ents: []string{"com.apple.developer.nfc.readersession.formats"}},
-		"speech":       {module: []string{`<action android:name="android.intent.action.TTS_SERVICE" />`}},
-		"sensors":      {android: []string{"ACTIVITY_RECOGNITION"}, usage: []string{"NSMotionUsageDescription"}},
-		"contacts":     {android: []string{"READ_CONTACTS"}, usage: []string{"NSContactsUsageDescription"}},
-		"calendar":     {android: []string{"READ_CALENDAR"}, usage: []string{"NSCalendarsFullAccessUsageDescription", "NSCalendarsUsageDescription"}},
+		"location.requestAlways": {
+			android: []string{"ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION"},
+			usage:   []string{"NSLocationAlwaysAndWhenInUseUsageDescription"},
+			no:      []string{"FOREGROUND_SERVICE", "LocationService", "LocationReceiver"},
+		},
+		"location.startUpdates": {
+			android: []string{"FOREGROUND_SERVICE_LOCATION", "RECEIVE_BOOT_COMPLETED", "POST_NOTIFICATIONS",
+				`<service android:name="asuka.location.LocationService" android:exported="false" android:foregroundServiceType="location" />`,
+				`<receiver android:name="asuka.location.LocationReceiver" android:exported="false">`},
+			modes: []string{"location"},
+			no:    []string{"BACKGROUND_LOCATION", "NSLocationAlwaysAndWhenInUseUsageDescription"},
+		},
+		"location.monitor": {
+			android: []string{"RECEIVE_BOOT_COMPLETED", `<receiver android:name="asuka.location.LocationReceiver" android:exported="false">`},
+			no:      []string{"BACKGROUND_LOCATION", "LocationService", "FOREGROUND_SERVICE"},
+		},
+		"location.requestPrecise": {derived: []string{"locationPrecise"}, plist: []string{"NSLocationTemporaryUsageDescriptionDictionary"}},
+		"notify":                  {android: []string{"POST_NOTIFICATIONS"}, flags: []string{"ASUKA_NOTIFY"}, no: []string{"ASUKA_CONVERSATIONS"}},
+		"notify.Person": {flags: []string{"ASUKA_NOTIFY", "ASUKA_CONVERSATIONS"}, plist: []string{"NSUserActivityTypes"},
+			ents: []string{"com.apple.developer.usernotifications.communication"}},
+		"crash":         {no: []string{"ASUKA_CRASH"}},
+		"crash.reports": {flags: []string{"ASUKA_CRASH"}},
+		"icloud":        {flags: []string{"ASUKA_ICLOUD"}},
+		"icloud.Value":  {flags: []string{"ASUKA_ICLOUD"}, derived: []string{"icloudKeyValue"}, ents: []string{entKVStore}},
+		"icloud.delete": {derived: []string{"icloudDocuments"}, ents: []string{entContainers, entServices}, plist: []string{"NSUbiquitousContainers"}},
+		"camera":        {android: []string{"android.permission.CAMERA", "RECORD_AUDIO"}, usage: []string{"NSCameraUsageDescription", "NSMicrophoneUsageDescription"}},
+		"record":        {android: []string{"RECORD_AUDIO"}, module: []string{`android:name="asuka.record.RecordService"`, "FOREGROUND_SERVICE_MICROPHONE"}, usage: []string{"NSMicrophoneUsageDescription"}},
+		"network":       {android: []string{"ACCESS_NETWORK_STATE"}},
+		"library":       {android: []string{`android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"`}, usage: []string{"NSPhotoLibraryAddUsageDescription"}, plist: []string{"UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace"}},
+		"background":    {android: []string{"FOREGROUND_SERVICE_DATA_SYNC", "WAKE_LOCK", `<service android:name="dev.asuka.AsukaWorkService" android:exported="false" android:foregroundServiceType="dataSync" />`}},
+		"photos":        {android: []string{"READ_MEDIA_IMAGES", "READ_MEDIA_VISUAL_USER_SELECTED", `READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"`}, usage: []string{"NSPhotoLibraryUsageDescription"}},
+		"screen":        {android: []string{"DETECT_SCREEN_CAPTURE"}},
+		"biometric":     {android: []string{"USE_BIOMETRIC"}, usage: []string{"NSFaceIDUsageDescription"}},
+		"tracking":      {usage: []string{"NSUserTrackingUsageDescription"}},
+		"integrity":     {ents: []string{"com.apple.developer.devicecheck.appattest-environment"}, macEnts: []string{"com.apple.developer.devicecheck.appattest-environment"}},
+		"agerange":      {ents: []string{"com.apple.developer.declared-age-range"}},
+		"appleauth":     {ents: []string{"com.apple.developer.applesignin"}, macEnts: []string{"com.apple.developer.applesignin"}},
+		"push":          {modes: []string{"remote-notification"}, ents: []string{"aps-environment"}, macEnts: []string{"aps-environment"}, hostModules: []string{"push"}, flags: []string{"ASUKA_PUSH"}},
+		"nowplaying":    {android: []string{"FOREGROUND_SERVICE_MEDIA_PLAYBACK"}, module: []string{`android:name="asuka.nowplaying.MediaService"`}, modes: []string{"audio"}},
+		"transcribe":    {android: []string{"RECORD_AUDIO"}, usage: []string{"NSSpeechRecognitionUsageDescription"}},
+		"periodic":      {modes: []string{"fetch", "processing"}, plist: []string{"BGTaskSchedulerPermittedIdentifiers"}, hostModules: []string{"periodic"}, flags: []string{"ASUKA_PERIODIC"}},
+		"liveactivity": {android: []string{"POST_PROMOTED_NOTIFICATIONS", `<receiver android:name="dev.asuka.AsukaLiveActivityReceiver" android:exported="false" />`},
+			flags: []string{"ASUKA_LIVEACTIVITY"}, plist: []string{"NSSupportsLiveActivities"}},
+		"purchase": {android: []string{"com.android.vending.BILLING"}},
+		"pay":      {module: []string{"com.google.android.gms.wallet.api.enabled", `android:name="asuka.pay.PayCallbacks"`}},
+		"nfc":      {android: []string{"android.permission.NFC", `android:name="android.hardware.nfc" android:required="false"`}, usage: []string{"NFCReaderUsageDescription"}, ents: []string{"com.apple.developer.nfc.readersession.formats"}},
+		"speech":   {module: []string{`<action android:name="android.intent.action.TTS_SERVICE" />`}},
+		"sensors":  {android: []string{"ACTIVITY_RECOGNITION"}, usage: []string{"NSMotionUsageDescription"}},
+		"contacts": {android: []string{"READ_CONTACTS"}, usage: []string{"NSContactsUsageDescription"}, flags: []string{"ASUKA_CONTACTS"}},
+		"calendar": {android: []string{"READ_CALENDAR"}, usage: []string{"NSCalendarsFullAccessUsageDescription", "NSCalendarsUsageDescription"}, flags: []string{"ASUKA_CALENDAR"}},
 		"compose": {android: []string{`<queries><intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="mailto" /></intent><intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent></queries>`},
-			plist: []string{"LSApplicationQueriesSchemes"}},
+			plist: []string{"LSApplicationQueriesSchemes"}, flags: []string{"ASUKA_COMPOSE"}},
 		"bluetooth": {android: []string{`<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />`, "BLUETOOTH_CONNECT", "BLUETOOTH_ADVERTISE"},
 			module: []string{`android:name="android.hardware.bluetooth_le" android:required="false"`, "companion_device_setup"},
 			usage:  []string{"NSBluetoothAlwaysUsageDescription"}},
@@ -116,7 +156,8 @@ func TestStdManifests(t *testing.T) {
 					t.Errorf("the app's manifest has no %s:\n%s", x, man)
 				}
 			}
-			mod := stdAndroidManifest(t, name)
+			pkg, _, _ := strings.Cut(name, ".")
+			mod := stdAndroidManifest(t, pkg)
 			for _, x := range w.module {
 				if !strings.Contains(mod, x) {
 					t.Errorf("the module's manifest has no %s:\n%s", x, mod)
@@ -151,6 +192,23 @@ func TestStdManifests(t *testing.T) {
 			}
 			if len(w.hostModules) == 0 && len(c.androidModules) > 0 {
 				t.Errorf("host modules %v", c.androidModules)
+			}
+			flags := usedFeatures(&asukaApp{cfg: c}, c)
+			for _, f := range w.flags {
+				if !slices.Contains(flags, f) {
+					t.Errorf("the host's flags %v, no %s", flags, f)
+				}
+			}
+			for _, d := range w.derived {
+				if !c.derives(d) {
+					t.Errorf("derived %v, no %s", c.derived, d)
+				}
+			}
+			usage := strings.Join(manifestKeys(c.IOS.Usage), " ")
+			for _, x := range w.no {
+				if strings.Contains(man, x) || strings.Contains(usage, x) || slices.Contains(modes, x) || slices.Contains(flags, x) {
+					t.Errorf("%s, for an app that doesn't use it: flags %v, modes %v, usage %s\n%s", x, flags, modes, usage, man)
+				}
 			}
 			mac := &appConfig{ID: "dev.asuka.test"}
 			importStd(t, mac, "macos", name)
@@ -225,4 +283,16 @@ hostModules = ["push"]
 	if err := (&appConfig{}).depManifests(map[string]string{"@x/y": dir}, nil); err == nil || !strings.Contains(err.Error(), "UIFileSharingEnabled") {
 		t.Errorf("false: %v", err)
 	}
+}
+
+// testUses is a program that refers to refs ("asuka/location.current",
+// the prelude's "Video"), and imports their packages.
+func testUses(refs map[string]bool) *appbuild.Uses {
+	u := &appbuild.Uses{Imports: map[string]bool{}, Refs: refs}
+	for r := range refs {
+		if i := strings.LastIndex(r, "."); i > 0 {
+			u.Imports[r[:i]] = true
+		}
+	}
+	return u
 }

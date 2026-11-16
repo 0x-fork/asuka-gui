@@ -209,164 +209,50 @@ func (t *iosToolchain) buildHostPackage(work string, natives []nativePackage, fe
 	return obj, nil
 }
 
-// iosFeatures are the parts of the host that link a framework of their
-// own (WebKit, AVKit...), and the function of the standard library (or
-// the element) an app uses each through. Loading a framework costs at
-// launch whether or not it's used (WebKit and AVKit's together, about a
-// second on the simulator), so a release's host is built with only those
-// its app uses: the packages it imports, whose functions its sources
-// name (asukaApp.hasSymbol). asuka dev's player has them all. They're
-// the core's elements and the host's own modules, which the packages over
-// asuka/host call (notify, push, iCloud...); a package with Swift of its
-// own (asuka/camera, asuka/location...) brings it, and its frameworks, to
-// the apps that import it, and needs no flag.
-var iosFeatures = []struct{ flag, symbol string }{
-	{"ASUKA_WEBVIEW", "github.com/egoist/asuka/ui.WebView"},
-	{"ASUKA_VIDEO", "github.com/egoist/asuka/ui.Video"},
-	{"ASUKA_SHADER", "github.com/egoist/asuka/ui.Shader"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Request"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Schedule"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Show"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.SetCategories"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.OnAction"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Present"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Showing"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.SetBadge"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Remove"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.RemoveThread"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.RemoveAll"},
-	{"ASUKA_NOTIFY", "github.com/egoist/asuka/sdk/notify.Cancel"},
-	// Messages in conversations: Intents' INSendMessageIntent.
-	{"ASUKA_CONVERSATIONS", "github.com/egoist/asuka/sdk/notify.Notification.From"},
-	{"ASUKA_CONVERSATIONS", "github.com/egoist/asuka/sdk/push.(*Message).From"},
-	// The Notification Service Extension's principal class.
-	{"ASUKA_NOTIFICATION_SERVICE", rewriteSymbol},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.Current"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.Request"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.ManageLimited"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.List"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.Thumbnail"},
-	{"ASUKA_PHOTOLIBRARY", "github.com/egoist/asuka/sdk/photos.Export"},
-	{"ASUKA_LIBRARY", "github.com/egoist/asuka/sdk/library.Save"},
-	{"ASUKA_PUSH", "github.com/egoist/asuka/sdk/push.Register"},
-	{"ASUKA_PERIODIC", "github.com/egoist/asuka/sdk/periodic.Schedule"},
-	{"ASUKA_WIDGET", "github.com/egoist/asuka/sdk/widget.Set"},
-	// ActivityKit, and the widget extension with the Live Activities' template.
-	{"ASUKA_LIVEACTIVITY", "github.com/egoist/asuka/sdk/liveactivity.Start"},
-	{"ASUKA_LIVEACTIVITY", "github.com/egoist/asuka/sdk/liveactivity.Enabled"},
-	{"ASUKA_LIVEACTIVITY", "github.com/egoist/asuka/sdk/liveactivity.Running"},
-	{"ASUKA_LIVEACTIVITY", "github.com/egoist/asuka/sdk/liveactivity.Observe"},
-	{"ASUKA_CONTACTS", "github.com/egoist/asuka/sdk/contacts.Request"},
-	{"ASUKA_CONTACTS", "github.com/egoist/asuka/sdk/contacts.List"},
-	{"ASUKA_CONTACTS", "github.com/egoist/asuka/sdk/contacts.Pick"},
-	{"ASUKA_CONTACTS", "github.com/egoist/asuka/sdk/contacts.Add"},
-	{"ASUKA_CALENDAR", "github.com/egoist/asuka/sdk/calendar.Request"},
-	{"ASUKA_CALENDAR", "github.com/egoist/asuka/sdk/calendar.Calendars"},
-	{"ASUKA_CALENDAR", "github.com/egoist/asuka/sdk/calendar.Events"},
-	{"ASUKA_CALENDAR", "github.com/egoist/asuka/sdk/calendar.Add"},
-	{"ASUKA_CRASH", "github.com/egoist/asuka/sdk/crash.Reports"},
-	{"ASUKA_CRASH", "github.com/egoist/asuka/sdk/crash.OnReport"},
-	{"ASUKA_COMPOSE", "github.com/egoist/asuka/sdk/compose.Mail"},
-	{"ASUKA_COMPOSE", "github.com/egoist/asuka/sdk/compose.Message"},
-	{"ASUKA_COMPOSE", "github.com/egoist/asuka/sdk/compose.Check"},
-	// asuka/sdk/icloud: every call goes through one of these (its
-	// entitlements are from what the app calls: useICloud).
-	{"ASUKA_ICLOUD", "github.com/egoist/asuka/sdk/icloud.call"},
-	{"ASUKA_ICLOUD", "github.com/egoist/asuka/sdk/icloud.post"},
+// elementFlags are the parts of the iOS host that link a framework of
+// their own for one of the core's elements (WebKit, AVKit, Metal), by the
+// prelude's element: loading a framework costs at launch whether or not
+// it's used (WebKit and AVKit's together, about a second on the
+// simulator), so a release's host is built with only those its app
+// shows. The host's modules' flags are the packages' to say (their
+// manifests' ios.hostFlags, a package's or a member's: depManifests);
+// a package with Swift of its own (asuka/camera, asuka/location...)
+// brings it, and its frameworks, to the apps that import it, and needs
+// no flag. asuka dev's player has them all.
+var elementFlags = map[string]string{
+	"WebView": "ASUKA_WEBVIEW",
+	"Video":   "ASUKA_VIDEO",
+	"Shader":  "ASUKA_SHADER",
 }
 
-// featureExtras are what a feature needs of the app beyond its framework:
-// the entitlements (with a simulator build's values; a release's profile
-// must have them) and Info.plist's arrays, as featurePermissions' are a
-// package's.
-var featureExtras = map[string]struct {
-	entitlements map[string]any
-	plistArrays  map[string][]string
-	iosTrue      []string
-	usage        map[string]string
-}{
-	// Communication notifications: the capability, and the intent the
-	// app donates for each message.
-	"ASUKA_CONVERSATIONS": {
-		entitlements: map[string]any{"com.apple.developer.usernotifications.communication": true},
-		plistArrays:  map[string][]string{"NSUserActivityTypes": {"INSendMessageIntent"}},
-	},
-	// Live Activities: the app says it has them (the widget extension
-	// draws them: liveActivity).
-	"ASUKA_LIVEACTIVITY": {
-		iosTrue: []string{"NSSupportsLiveActivities"},
-	},
-}
-
-// addFeatureExtras adds what the features flags need (featureExtras).
-func (c *appConfig) addFeatureExtras(flags []string) {
-	for _, f := range flags {
-		if f == "ASUKA_LIVEACTIVITY" {
-			c.liveActivity = true
-		}
-		x, ok := featureExtras[f]
-		if !ok {
-			continue
-		}
-		for _, k := range x.iosTrue {
-			if !slices.Contains(c.iosTrue, k) {
-				c.iosTrue = append(c.iosTrue, k)
-			}
-		}
-		for k, v := range x.entitlements {
-			if c.entitlements == nil {
-				c.entitlements = map[string]any{}
-			}
-			c.entitlements[k] = v
-		}
-		for k, vs := range x.plistArrays {
-			if c.plistArrays == nil {
-				c.plistArrays = map[string][]string{}
-			}
-			for _, v := range vs {
-				if !slices.Contains(c.plistArrays[k], v) {
-					c.plistArrays[k] = append(c.plistArrays[k], v)
-				}
-			}
-		}
-		for k, v := range x.usage {
-			if c.IOS.Usage == nil {
-				c.IOS.Usage = map[string]string{}
-			}
-			if c.IOS.Usage[k] == "" {
-				c.IOS.Usage[k] = v
-			}
-		}
-	}
-}
-
-// allFeatures is every feature: the player runs any app.
+// allFeatures is every flag: the player runs any app.
 func allFeatures() []string {
-	var out []string
-	for _, f := range iosFeatures {
-		if !slices.Contains(out, f.flag) {
-			out = append(out, f.flag)
+	out := stdHostFlags()
+	for _, f := range elementFlags {
+		if !slices.Contains(out, f) {
+			out = append(out, f)
 		}
 	}
+	sort.Strings(out)
 	return out
 }
 
-// usedFeatures are the features the app uses, and notes in cfg whether it
-// has a share sheet or a push rewrite, and what its features need
-// (addFeatureExtras).
+// usedFeatures are the flags the app's host is built with: the elements
+// it shows, and what its packages' manifests (and their members' the
+// program refers to) ask for.
 func usedFeatures(app *asukaApp, cfg *appConfig) []string {
-	cfg.shareSheet = app.hasSymbol(sheetSymbol)
-	cfg.pushRewrite = app.hasSymbol(rewriteSymbol)
-	// asuka/location's temporary full accuracy: Info.plist has the
-	// purposes (asuka.toml's locationPurposes) only for an app that asks.
-	cfg.locationPrecise = app.hasSymbol(sdkPrefix + "location.RequestPrecise")
 	var used []string
-	for _, f := range iosFeatures {
-		if app.hasSymbol(f.symbol) && !slices.Contains(used, f.flag) {
-			used = append(used, f.flag)
+	for _, el := range manifestKeys(elementFlags) {
+		if app.refs("", el) {
+			used = append(used, elementFlags[el])
 		}
 	}
-	cfg.addFeatureExtras(used)
+	for _, f := range cfg.hostFlags {
+		if !slices.Contains(used, f) {
+			used = append(used, f)
+		}
+	}
+	sort.Strings(used)
 	return used
 }
 
@@ -549,7 +435,7 @@ func (t *iosToolchain) link(app *asukaApp, work, hostObj, lib string) (string, e
 // simulatorEntitlements are the linker flags that give a simulator build
 // the entitlements the keychain wants (an app identifier and its access
 // group; without them SecItemAdd fails with errSecMissingEntitlement, and
-// asuka/sdk/secure with it). As Xcode does: in the binary's __entitlements
+// asuka/secure with it). As Xcode does: in the binary's __entitlements
 // section, for an ad hoc signature can't carry them.
 func simulatorEntitlements(work string, cfg *appConfig) ([]string, error) {
 	id := "ASUKASIMULA." + cfg.ID // a team ID's shape: ten characters

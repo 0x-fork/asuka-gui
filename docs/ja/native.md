@@ -214,6 +214,37 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 
 アプリのテスト（プラットフォームのコードがないフェイクホスト上）では、ネイティブビューはコンポーネント名で表示され、`app.tap("Segmented")` はプラットフォームのボタンと同じように `press` イベントを送ります。
 
+## アプリに必要なもの
+
+パッケージがアプリに求めるもの（権限、利用目的の説明、バックグラウンドモード、entitlement）はパッケージ自身が宣言し、それを使うアプリだけに付きます。宣言はパッケージの `asuka.toml` に書きます。次の表は、パッケージをインポートするすべてのアプリに適用されます：
+
+```toml
+[ios]
+usage = { NSLocationWhenInUseUsageDescription = "To show where you are." }
+backgroundModes = ["audio"]
+entitlements = { aps-environment = "development" }   # シミュレータ向けビルドの値
+plist = { LSApplicationQueriesSchemes = ["mailto"] } # true、文字列、またはアプリのものと合わせる配列
+
+[android]
+permissions = ["android.permission.ACCESS_FINE_LOCATION", "android.permission.WRITE_EXTERNAL_STORAGE:28"]
+application = ['<service android:name="com.example.battery.Watcher" android:exported="false" />']
+manifest = ['<queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>']
+```
+
+権限を `"name:28"` と書くとその API レベルまで、`"name|neverForLocation"` と書くとその `usesPermissionFlags` 付きになります。利用目的の説明は、アプリ自身の `asuka.toml` のものがパッケージのものより優先されます。
+
+パッケージの一部だけが必要とするものは、同じキーで `[uses.<member>]` の表に書きます。アプリのコード（または依存パッケージのコード）がそのメンバー（関数、型、store。型のメンバーは `"Type.name"`）を参照したときだけ、アプリに付きます。同じ名前のローカル関数や、テストブロックの中の参照は数えません。asuka/location のバックグラウンド部分はこう宣言しています：
+
+```toml
+[uses.requestAlways.android]
+permissions = ["android.permission.ACCESS_BACKGROUND_LOCATION"]
+
+[uses.startUpdates.ios]
+backgroundModes = ["location"]
+```
+
+パッケージのコードの横にあるファイル（Gradle モジュールの `AndroidManifest.xml`、Swift パッケージの `Info.plist` と entitlements。後述）は、パッケージをインポートするすべてのアプリに適用されます。そのパッケージを使うどのアプリにも必要なものはそこに、あるメンバーだけが必要とするものは `[uses]` に書きます。
+
 ## iOS と macOS：Swift
 
 パッケージの Swift のコードは、Swift パッケージとして書きます。パッケージのルートに `Package.swift` を置き、ソースは `swift/` に入れます。一つのパッケージで iOS と macOS の両方に対応し、両者で異なる部分には `#if canImport(UIKit)` を使います。

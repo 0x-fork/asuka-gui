@@ -14,3 +14,7 @@ LSSupportsOpeningDocumentsInPlace = true
 # shared folders does.
 [android]
 permissions = ["android.permission.WRITE_EXTERNAL_STORAGE:28"]
+
+# The host's library module (saving to Photos and Files).
+[ios]
+hostFlags = ["ASUKA_LIBRARY"]

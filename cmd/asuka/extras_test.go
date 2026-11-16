@@ -34,7 +34,7 @@ func TestPackageExtras(t *testing.T) {
 
 	ent := filepath.Join(t.TempDir(), "e.plist")
 	os.WriteFile(ent, []byte(plist(map[string]any{"aps-environment": "production"})), 0o644)
-	if m := c.missingEntitlements(ent); !slices.Equal(m, []string{"Sign in with Apple (asuka/sdk/appleauth)"}) {
+	if m := c.missingEntitlements(ent); !slices.Equal(m, []string{"Sign in with Apple (asuka/appleauth)"}) {
 		t.Errorf("missing: %v", m)
 	}
 

@@ -9,3 +9,7 @@ LSApplicationQueriesSchemes = ["mailto"]
 
 [android]
 manifest = ['<queries><intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="mailto" /></intent><intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent></queries>']
+
+# The host's compose module (MessageUI).
+[ios]
+hostFlags = ["ASUKA_COMPOSE"]

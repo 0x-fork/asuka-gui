@@ -5,6 +5,8 @@ description = "Push notifications: the device's token, and the pushes that come 
 # APNs: the Push Notifications capability (a release's profile must have
 # it), and the pushes that wake the app.
 [ios]
+# The host's push module (APNs' registration and its notifications).
+hostFlags = ["ASUKA_PUSH"]
 backgroundModes = ["remote-notification"]
 entitlements = { aps-environment = "development" }
 

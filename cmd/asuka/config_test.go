@@ -188,7 +188,7 @@ func TestFeaturesFromImports(t *testing.T) {
 	// Video's player: in an app whose sources name Video, and in asuka
 	// dev's player, which shows whatever the next save does.
 	for _, x := range []struct {
-		names  map[string]bool
+		refs   map[string]bool
 		player bool
 		want   string
 	}{
@@ -197,11 +197,11 @@ func TestFeaturesFromImports(t *testing.T) {
 		{nil, true, "-PasukaModules=video"},
 	} {
 		var v appConfig
-		app := &asukaApp{cfg: &v, uses: &appbuild.Uses{Names: x.names}}
+		app := &asukaApp{cfg: &v, uses: &appbuild.Uses{Refs: x.refs}}
 		v.androidFeatures(app, x.player)
 		v.androidFeatures(app, x.player)
 		if got := strings.Join(v.gradleProps(), " "); got != x.want {
-			t.Errorf("%v, player %v: %s, want %s", x.names, x.player, got, x.want)
+			t.Errorf("%v, player %v: %s, want %s", x.refs, x.player, got, x.want)
 		}
 	}
 }
@@ -310,35 +310,6 @@ func TestPushRewriteConfig(t *testing.T) {
 	}
 	if !strings.Contains(c.androidManifest(false), `<meta-data android:name="dev.asuka.push.rewrite" android:value="true" />`) {
 		t.Fatal("rewrite: no meta-data")
-	}
-}
-
-// Messages in conversations (notify's From) need the Communication
-// Notifications entitlement and the intent in Info.plist: only in the
-// apps whose Go code calls From.
-func TestFeatureExtras(t *testing.T) {
-	c := &appConfig{ID: "com.example.chat"}
-	c.addFeatureExtras([]string{"ASUKA_NOTIFY"})
-	if c.entitlements != nil || c.plistArrays != nil {
-		t.Fatalf("notify alone: %v %v", c.entitlements, c.plistArrays)
-	}
-	c.addFeatureExtras([]string{"ASUKA_CONVERSATIONS"})
-	c.addFeatureExtras([]string{"ASUKA_CONVERSATIONS"})
-	if c.entitlements["com.apple.developer.usernotifications.communication"] != true ||
-		len(c.plistArrays["NSUserActivityTypes"]) != 1 || c.plistArrays["NSUserActivityTypes"][0] != "INSendMessageIntent" {
-		t.Fatalf("conversations: %v %v", c.entitlements, c.plistArrays)
-	}
-	if got := c.plistExtras()["NSUserActivityTypes"]; len(got.([]string)) != 1 {
-		t.Fatalf("Info.plist %v", got)
-	}
-	found := false
-	for _, f := range iosFeatures {
-		if f.flag == "ASUKA_CONVERSATIONS" && f.symbol == "github.com/egoist/asuka/sdk/notify.Notification.From" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("From's symbol isn't a feature's")
 	}
 }
 

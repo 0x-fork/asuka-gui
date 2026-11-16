@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// An app that imports asuka/sdk/nfc gets Android's permission and
+// An app that imports asuka/nfc gets Android's permission and
 // uses-feature, iOS's purpose string and entitlement, and its config's
 // AIDs, system codes and filters; one that doesn't gets none of them,
 // config or not.
@@ -91,7 +91,7 @@ required = true`), 0o644)
 	}
 	ent := filepath.Join(t.TempDir(), "e.plist")
 	os.WriteFile(ent, []byte("<plist><dict></dict></plist>"), 0o644)
-	if missing := c.missingEntitlements(ent); !slices.Contains(missing, "NFC Tag Reading (asuka/sdk/nfc)") {
+	if missing := c.missingEntitlements(ent); !slices.Contains(missing, "NFC Tag Reading (asuka/nfc)") {
 		t.Errorf("missing %v", missing)
 	}
 

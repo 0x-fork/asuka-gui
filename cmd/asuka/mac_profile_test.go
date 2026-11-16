@@ -191,7 +191,7 @@ func TestMacProfileEntitlements(t *testing.T) {
 	}
 	// A profile without push.
 	delete(p.entitlements, "com.apple.developer.aps-environment")
-	if _, err := macEntitlements(cfg, p, false); err == nil || !strings.Contains(err.Error(), "lacks Push Notifications (asuka/sdk/push)") {
+	if _, err := macEntitlements(cfg, p, false); err == nil || !strings.Contains(err.Error(), "lacks Push Notifications (asuka/push)") {
 		t.Errorf("no push: %v", err)
 	}
 	// An app that needs none: no profile entitlements but its ID and team.

@@ -5,6 +5,8 @@ description = "Background refresh: work the system runs now and again, the app o
 # iOS's background tasks, by the identifiers the host schedules
 # (AsukaPeriodic).
 [ios]
+# The host's periodic module (BGTaskScheduler).
+hostFlags = ["ASUKA_PERIODIC"]
 backgroundModes = ["fetch", "processing"]
 plist = { BGTaskSchedulerPermittedIdentifiers = ["dev.asuka.refresh", "dev.asuka.processing"] }
 

@@ -6,16 +6,16 @@ import (
 	"testing"
 )
 
-// asuka/location says what it needs itself: its permissions, purpose
-// strings and background mode in its asuka.toml, its receiver and
-// foreground service in its Gradle module's manifest (the host has none
-// of them); temporary full accuracy's purposes are the app's, for an app
-// that calls location.requestPrecise.
+// asuka/location says what it needs itself, in its asuka.toml: its
+// background part's permissions, purpose string, background mode,
+// receiver and foreground service in the [uses] of the functions that
+// need them (the host has none of them; TestStdManifests checks an app
+// that calls one alone); temporary full accuracy's purposes are the
+// app's, for an app that calls location.requestPrecise.
 func TestLocationExtras(t *testing.T) {
 	var c appConfig
 	c.IOS.LocationPurposes = map[string]string{"route": "To draw your route."}
-	importStd(t, &c, "ios", "location")
-	c.locationPrecise = true // usedFeatures: the app calls location.requestPrecise
+	importStd(t, &c, "ios", "location.requestAlways", "location.startUpdates", "location.requestPrecise")
 	man := c.androidManifest(false)
 	for _, want := range []string{"android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE_LOCATION"} {
 		if !strings.Contains(man, want) {
@@ -25,12 +25,17 @@ func TestLocationExtras(t *testing.T) {
 	if strings.Contains(man, "dev.asuka.AsukaLocation") || len(c.androidModules) > 0 {
 		t.Errorf("the host's old location service, receiver or module: %v\n%s", c.androidModules, man)
 	}
-	mod := stdAndroidManifest(t, "location")
 	for _, want := range []string{`<service android:name="asuka.location.LocationService" android:exported="false" android:foregroundServiceType="location" />`,
 		`<receiver android:name="asuka.location.LocationReceiver"`, "android.intent.action.BOOT_COMPLETED", "android.permission.RECEIVE_BOOT_COMPLETED"} {
-		if !strings.Contains(mod, want) {
-			t.Errorf("no %s in asuka/location's module's manifest:\n%s", want, mod)
+		if !strings.Contains(man, want) {
+			t.Errorf("no %s in the manifest:\n%s", want, man)
 		}
+	}
+	if n := strings.Count(man, "asuka.location.LocationReceiver"); n != 1 {
+		t.Errorf("the receiver %d times:\n%s", n, man)
+	}
+	if stdAndroidManifest(t, "location") != "" {
+		t.Error("asuka/location's module has a manifest, which every app that imports it would get")
 	}
 	if c.IOS.Usage["NSLocationWhenInUseUsageDescription"] == "" || c.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] == "" {
 		t.Errorf("usage %v", c.IOS.Usage)

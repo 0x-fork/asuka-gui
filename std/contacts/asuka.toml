@@ -7,3 +7,7 @@ NSContactsUsageDescription = "To find the people you know."
 
 [android]
 permissions = ["android.permission.READ_CONTACTS"]
+
+# The host's contacts module (Contacts, ContactsUI).
+[ios]
+hostFlags = ["ASUKA_CONTACTS"]

@@ -103,24 +103,67 @@ func TestICloudPlistAndSimulator(t *testing.T) {
 	}
 }
 
-// What an app calls says what it's given: an app that imports
-// asuka/icloud and names its store's and its documents' functions both;
-// one that doesn't, neither.
+// usesApp writes an app (with a dependency, @test/sync, beside it) whose
+// sources are app's and dep's, and loads it as asuka build does.
+func usesApp(t *testing.T, app, dep string) *asukaApp {
+	t.Helper()
+	root := t.TempDir()
+	dir, sync := filepath.Join(root, "app"), filepath.Join(root, "sync")
+	os.MkdirAll(dir, 0o755)
+	os.MkdirAll(sync, 0o755)
+	os.WriteFile(filepath.Join(dir, "app.asuka"), []byte(app), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("id = \"dev.asuka.journal\"\n\n[dependencies]\n\"@test/sync\" = \"file:../sync\"\n"), 0o644)
+	os.WriteFile(filepath.Join(sync, "sync.asuka"), []byte("pub fn name() -> string = \"sync\"\n"+dep), 0o644)
+	os.WriteFile(filepath.Join(sync, "asuka.toml"), []byte("name = \"@test/sync\"\nversion = \"0.1.0\"\n"), 0o644)
+	return projectApp(t, dir, nil)
+}
+
+// What the program refers to of asuka/icloud says what the app's given,
+// by the members its manifest names: the store's (remove), the
+// documents' (writeFile, a dependency's readFile); not a local function
+// that's named as one of them (delete), nor a mere import.
 func TestUseICloud(t *testing.T) {
-	both := t.TempDir()
-	os.WriteFile(filepath.Join(both, "app.asuka"), []byte("import asuka/icloud\n\nfn save() { icloud.set(\"k\", \"v\"); icloud.writeFile(\"a\", \"b\") }\n\napp { Text(\"a\") }\n"), 0o644)
-	os.WriteFile(filepath.Join(both, "asuka.toml"), []byte("id = \"dev.asuka.journal\"\n"), 0o644)
-	c := projectApp(t, both, nil).cfg
-	if !c.icloudKV || !c.icloudDocs || c.entitlements[entKVStore] != teamPrefix+"dev.asuka.journal" {
-		t.Errorf("both: kv %v, docs %v, %v", c.icloudKV, c.icloudDocs, c.entitlements)
+	const local = "\nfn delete(x: string) -> string = x\n\napp { Text(delete(sync.name())) }\n"
+	for _, x := range []struct {
+		name, app, dep string
+		kv, docs       bool
+	}{
+		{"store", "import asuka/icloud\nimport @test/sync\n\nasync fn clear() {\n  let _ = try? await icloud.remove(\"k\")\n}\n" + local, "", true, false},
+		{"documents", "import asuka/icloud\nimport @test/sync\n\nasync fn save() {\n  let _ = try? await icloud.writeFile(\"a\", \"b\".bytes())\n}\n" + local, "", false, true},
+		{"a dependency's", "import @test/sync\n" + local, "import asuka/icloud\n\npub async fn pull() throws -> bytes = try await icloud.readFile(\"notes.txt\")\n", false, true},
+		{"a local delete", "import asuka/icloud\nimport @test/sync\n\nfn account() -> string = \"me\"\n" + local, "", false, false},
+	} {
+		c := usesApp(t, x.app, x.dep).cfg
+		if c.icloudKV != x.kv || c.icloudDocs != x.docs {
+			t.Errorf("%s: kv %v, docs %v, %v", x.name, c.icloudKV, c.icloudDocs, c.entitlements)
+		}
+		if _, ok := c.entitlements[entKVStore]; ok != x.kv {
+			t.Errorf("%s: the store's entitlement %v", x.name, c.entitlements)
+		}
+		if _, ok := c.entitlements[entContainers]; ok != x.docs {
+			t.Errorf("%s: the containers' %v", x.name, c.entitlements)
+		}
+		if !slices.Contains(c.macSwift, "ASUKA_ICLOUD") && x.name != "a dependency's" && x.app != "" {
+			t.Errorf("%s: no Mac Swift for iCloud: %v", x.name, c.macSwift)
+		}
 	}
-	none := t.TempDir()
-	os.WriteFile(filepath.Join(none, "app.asuka"), []byte("app { Text(\"set\") }\n"), 0o644)
-	if c := projectApp(t, none, nil).cfg; c.icloudKV || c.icloudDocs || len(c.entitlements) != 0 {
-		t.Errorf("none: %v", c.entitlements)
+}
+
+// asuka/location's background part is the apps' that call it: one that
+// asks where the device is has none of it; one whose dependency asks for
+// Always has its permission and purpose string.
+func TestLocationByUse(t *testing.T) {
+	const app = "import asuka/location\nimport @test/sync\n\nasync fn here() {\n  let _ = try? await location.current()\n}\n\napp { Text(sync.name()) }\n"
+	fg := usesApp(t, app, "").cfg
+	man := fg.androidManifest(false)
+	if !strings.Contains(man, "ACCESS_FINE_LOCATION") || strings.Contains(man, "BACKGROUND_LOCATION") || strings.Contains(man, "LocationService") ||
+		fg.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] != "" || slices.Contains(fg.IOS.BackgroundModes, "location") {
+		t.Errorf("current() alone: %v %v\n%s", fg.IOS.Usage, fg.IOS.BackgroundModes, man)
 	}
-	if !slices.Equal(featureMacSwift[icloudPkg], []string{"ASUKA_ICLOUD"}) {
-		t.Error("no Mac Swift for iCloud")
+	bg := usesApp(t, app, "import asuka/location\n\npub async fn always() throws {\n  let _ = try await location.requestAlways()\n}\n").cfg
+	if man := bg.androidManifest(false); !strings.Contains(man, "android.permission.ACCESS_BACKGROUND_LOCATION") ||
+		bg.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] == "" {
+		t.Errorf("a dependency's requestAlways(): %v\n%s", bg.IOS.Usage, man)
 	}
 }
 

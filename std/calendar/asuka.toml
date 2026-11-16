@@ -10,3 +10,7 @@ NSCalendarsUsageDescription = "To show and add your events."
 
 [android]
 permissions = ["android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"]
+
+# The host's calendar module (EventKit).
+[ios]
+hostFlags = ["ASUKA_CALENDAR"]
