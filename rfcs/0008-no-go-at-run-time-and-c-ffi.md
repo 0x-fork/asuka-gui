@@ -298,18 +298,13 @@ Each ends with its tests green.
   - [x] nativegen's C target, its golden files; the Go server target
         removed; the CLI builds packages' C into a C host's executable;
   - [x] asuka/host folded into asuka/platform;
-  - [ ] the standard library's Windows and Linux code ported from Go to
-        C: done for appearance, audio, biometric, camera, device, dialog,
-        document, http, imageedit, js, location, maps, network,
-        nowplaying, power, preview, print, purchase, record, screen,
-        secure, sensors, shell, speech, sqlite, store, tracking,
-        transcribe, watch, webauth (lottie and crash need none), with the
-        barcode reader in C (platform/desktop's asuka_barcode.h, for scan
-        and vision too) and one WinRT, COM and WinHTTP for the Windows
-        host and the packages; left: bluetooth (and
-        internal/bluetoothspec, internal/bluez), markdown (a parser in
-        C), scan, vision, shader, svg; then package `native`'s servers,
-        which only those packages' Go still uses.
+  - [x] the standard library's Windows and Linux code ported from Go to
+        C: every package (lottie and crash need none), with the barcode
+        reader in C (platform/desktop's asuka_barcode.h, for scan and
+        vision too), one WinRT, COM and WinHTTP for the Windows host and
+        the packages, and Markdown read in the core (md4c) for every
+        platform; left: package `native`'s servers, internal/bluez and
+        internal/gtk, which nothing that ships uses any more.
 - [x] **H1** The macOS host in Swift: every view, navigation, windows, menus, the
       tray, the host's modules; `asuka dev` and `asuka build` for the Mac
       without Go. platform/macos (its tests: platform/macos/mactest and
