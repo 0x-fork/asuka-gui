@@ -520,13 +520,17 @@ The CLI generates the app's own native packages' glue before each
 build (others must ship current generated code, which is checked by
 hash). It builds:
 
-- iOS: one `xcodebuild` of a root package depending on the materialized
-  host package `asuka` (the iOS host and the app's feature defines) and
-  the app's native packages, its objects merged with `clang -r`, its
+- iOS: the host's Swift and each native package's as modules with
+  library evolution, prebuilt or cached ("The build cache"), merged with
+  `clang -r`; a package swiftc can't build alone (SwiftPM dependencies
+  of its own, resources, settings) makes it one `xcodebuild` of a root
+  package depending on the materialized host package `asuka` (the iOS
+  host and the app's feature defines) and the app's native packages, its
   frameworks embedded and its bundles copied;
 - macOS: the same per architecture, into the Swift library, then lipo;
-- Android: each module included as `:native-<pkg>` (`-PasukaNativeModules`),
-  given the SDK levels and `:asuka`;
+- Android: the std and sdk packages' AARs, and the app's own modules
+  included as `:native-<pkg>` (`-PasukaNativeModules`), given the SDK
+  levels and the host's AAR;
 - the web: each `web/` shipped at `packages/<pkg>/`, imported before the
   app starts;
 - Windows: a package's Windows code is C (`windows/*.c`), compiled with
@@ -1384,6 +1388,7 @@ asuka native add|generate|check              native packages' projects and their
 asuka lsp                                    the language server, on stdio
 asuka publish --platform mac|windows|linux   the desktop build, its signed update (dist/updates), uploaded: a GitHub release, S3
 asuka update keygen                         the Ed25519 key pair that signs desktop updates
+asuka cache stats|clean                     the build cache's size, cap and hits; empty it
 ```
 
 **Programs** (docs/programs.md) are the third kind of project, beside
@@ -1544,6 +1549,104 @@ new module, which each player loads in place:
   relaunches the player (generating the glue first); a change to Asuka
   code reloads. `--once` builds and launches once, without watching.
 
+### The build cache
+
+Everything a build makes that another build could use is kept in one
+content-addressed cache (`internal/ccache`; `ASUKA_CACHE`, default the
+user's cache directory's `asuka`), shared by every app, checkout,
+worktree and configuration on the machine, and capped: past
+`ASUKA_CACHE_MAX` (10 GB by default; 0: no cap) the entries used least
+lately go, down to 90%, at most once an hour as a build ends, keeping
+anything used in the last hour (another build may be linking it). Its
+entries: an object, an archive, a module, a downloaded package, an AAR's
+version, and, whole, each top-level directory that isn't one of its
+stores (an app's work directory, a host's shared Gradle project, an
+extracted source tree). `asuka cache stats` prints its size and its
+hits and misses by kind (C objects, Swift modules, prebuilt packages);
+`asuka cache clean` empties it.
+
+**C: an object cache, and units.** Every C file compiled locally goes
+through `cbuild`'s object cache, ccache's direct mode: a source's first
+key is the compiler's identity (its path, `--version`, Zig's version),
+its flags, its directory and its bytes; under it a manifest (`c/m`)
+lists the objects compiled from it (`c/o`), each with the headers that
+compile included (the compiler's `-MMD` depfile) and their hashes, and a
+lookup takes the one whose headers all still hash the same. Paths under
+the checkout or the cache are written relative to them, so another
+worktree's build hits what this one compiled. The core is the same for
+every app: what used to differ by `-D` (an app compiled in, its externs'
+glue) is `core/link/link.c`'s, compiled per link (`ak_link_app`,
+`ak_link_ffi`, which name the app's and the glue's objects so a static
+library's link keeps them). The core, the desktop hosts' C, the native
+registry and each std and sdk package's desktop C are **units**
+(`cbuild.Unit`, `appbuild.Units`): one static library per target and
+configuration (dev: `-g -O1 -DAK_DEBUG=1`; release: `-O2 -DNDEBUG`), its
+key its objects' keys. A link searches them (a package's whole: its
+provider registers itself in a constructor); a static library (iOS, the
+Mac) is the core's with the build's objects added; a shared library or
+the web's module links the core's whole, its exports its roots.
+
+**Prebuilt, from npm.** A release builds every unit for every target
+(`asuka prebuilt build`, the release workflow; Zig, Xcode and the NDK as
+a local build would) and publishes them with the CLI as npm packages, one
+per target, versioned as the CLI: `@egoist/asuka-prebuilt-<target>`
+(ios-arm64, ios-sim-arm64, ios-sim-x64, darwin-universal,
+android-arm64-v8a, android-armeabi-v7a, android-x86_64, wasm32,
+linux-x64, linux-arm64, windows-x64, windows-arm64) and
+`@egoist/asuka-prebuilt-android-aar` (Kotlin is the same for every ABI,
+and the dev player needs one ABI's C, not three). They aren't the CLI's
+optional dependencies: those install the host's platform only, and a
+build cross-compiles. The CLI embeds only their manifest
+(`internal/prebuilt/manifest.json`: each package's exact version and
+tarball integrity, each library's path and SHA-256, what compiler built
+it); the first build that needs a target's fetches its package from the
+npm registry (`npm_config_registry`, the project's `.npmrc` beside its
+`asuka.toml` or `package.json`, the user's: `registry`,
+`@egoist:registry`, `//host/:_authToken` or `_auth`, `${VAR}`
+expanded), checks the tarball against the pinned `sha512` (a registry
+or mirror can't give another), unpacks it into the cache (`prebuilt/`)
+and checks each library's hash as it's first used. A prebuilt library
+is used only when its sources are the CLI's own (not a checkout's, not
+`ASUKA_CORE`'s) and the build's compiler is the family that built it
+(Zig's, Xcode's, the NDK's); a CLI run from a checkout has an empty
+manifest and builds the same units into the cache.
+
+**Swift: modules with library evolution.** The host's Swift (the module
+`Asuka`, with its compilation conditions) and each native package's
+(its one target, against the host's module) are compiled by swiftc as
+modules with `-enable-library-evolution`, each a static library and a
+module interface (`<Name>.swiftmodule/<triple>.swiftinterface`): the
+stable form Apple ships its frameworks in, which the swiftc that wrote it
+and later ones read. A release prebuilds them with the oldest Xcode
+Asuka supports (pinned in the release workflow), an XCFramework per
+module of each package's slice: the host's variants a build can share
+(iOS: `base`, none of its optional parts, most apps'; `all`, asuka dev's
+player's; the Mac: an app's and a program's, their entries the only
+difference) and every std and sdk package's, built against the
+interface of `all` (the Mac's app), which every variant's is a subset of
+in its additions only, so a package links with any. A build uses them
+when its swiftc is that one or newer; else (an older Xcode, a checkout,
+a host variant with other parts) it compiles them into the cache's Swift
+store, keyed by swiftc's version, the SDK's, the target, the
+configuration and the sources. An app with no Swift of its own then
+links only; its own packages compile against the modules' interfaces
+(swiftc's module cache is in the store). A package swiftc can't build
+alone (SwiftPM dependencies of its own, resources, settings:
+std/lottie) is built with the rest by xcodebuild, as Xcode would.
+Library evolution costs little on the native call path: the generated
+glue's reader and writer calls across the module boundary measured 85-90
+ns against 84-86 ns without it (in a 2M-call loop of the glue's shape).
+
+**Kotlin: AARs.** An app's Gradle build depends on AARs of the host's
+modules (`dev.asuka:asuka`, `asuka-video`, `asuka-push`,
+`asuka-periodic`) and of the std and sdk packages' (`dev.asuka:std-<name>`,
+`sdk-<name>`) from a local Maven repository instead of compiling their
+modules: the release's (the android-aar package's `maven/`, versioned
+as the CLI), else published once by the CLI into the cache's `maven/`,
+each versioned by a hash of its sources (a package's POM depending on
+the host's version). The app's own native packages' modules compile
+with it as before; Gradle's build cache is on for what remains.
+
 ## Repository layout
 
 ```
@@ -1584,8 +1687,10 @@ asuka/
                      directories, window and route state, flyouts'
                      places, Asuka's own words, animated images)
   cmd/asuka/         the CLI
-  internal/          the CLI's parts: cbuild (building the core),
-                     appbuild, devserver, pkgs (packages), boot, ...
+  internal/          the CLI's parts: cbuild (building the core, the
+                     object cache), ccache (the build cache), prebuilt
+                     (what a release carries, from npm), appbuild,
+                     devserver, pkgs (packages), boot, ...
   plugin/            plugins' manifests, fetching and linking
   template/          what `asuka new` copies
   examples/          apps in Asuka
@@ -2489,7 +2594,8 @@ How the Windows host maps Asuka (`platform/windows`):
   frames on a timer, and transforms with them.
 - The host builds for amd64 and arm64: with Zig's MinGW target from any
   system (`internal/appbuild`'s `WindowsHost`, `internal/cbuild`'s
-  `Program`, the core's objects cached by target), or clang or MSVC on
+  `ExeWith`, the core and the host as units: prebuilt, or built into
+  the build cache), or clang or MSVC on
   Windows; C17, `-Wall -Wextra -Werror`. Windows's libraries are linked
   by their import libraries; what not every Windows or MinGW has
   (`TaskDialogIndirect` in common controls v6, `OpenThemeDataForDpi`,

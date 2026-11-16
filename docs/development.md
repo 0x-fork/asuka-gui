@@ -300,6 +300,25 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # steps firs
   automation (`platform/macos/Sources/AsukaHost/Automation.swift`,
   `platform/windows/src/automation.c`, `platform/linux/src/automation.c`).
 
+## The build cache
+
+What builds compile and download is kept in Asuka's cache and shared by
+every app on your computer: a second app, or a build after a small
+change, compiles only what's new. The first build for a platform
+downloads Asuka's prebuilt libraries for it, once, from the npm
+registry: the registry and token in your `.npmrc` (or
+`npm_config_registry`) apply, for a mirror or a proxy. Its Swift
+libraries are used with the Xcode they were built with or a newer one;
+with an older Xcode, they're compiled once on your computer instead.
+
+- `asuka cache stats` prints where the cache is, its size, and how often
+  builds found what they needed in it.
+- `asuka cache clean` empties it; the next builds compile everything
+  again.
+- The cache stays under 10 GB, removing what was used least lately.
+  `ASUKA_CACHE_MAX` sets another limit (`ASUKA_CACHE_MAX=20G`, `500M`;
+  `0` for none), and `ASUKA_CACHE` another place for it.
+
 ## Common problems
 
 - **`cbuild: no C compiler`**: install your system's (Xcode's command
@@ -359,7 +378,8 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # steps firs
 - **Starting over**: Asuka's builds, caches and the apps' development
   data are in Asuka's cache directory: `~/Library/Caches/asuka` on a
   Mac, `~/.cache/asuka` on Linux, `%LocalAppData%\asuka` on Windows.
-  Delete it to build everything again, with no data.
+  `asuka cache clean` empties it, to build everything again, with no
+  data.
 
 ## Tests
 

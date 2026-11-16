@@ -134,6 +134,14 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 - `ASUKA_DUMP`：その PNG の隣にビューツリーを書き出します。各ビューの種類、フレーム、表示内容が含まれます。
 - `ASUKA_SCRIPT`：スナップショットの前に、`;` で区切った操作を順に実行します。使える操作は、`tap:<text>`（そのテキストを表示しているビュー。ボタンのタイトル、テキスト、タブ、サイドバーの行、セグメントなど）、`type:<text>`（フォーカスのある入力欄に入力）、`back`、`key:<shortcut>`（`ctrl+shift+k`）、`menu:<item>`（メニューバーの項目）、`escape`、`close`（使用中のウィンドウを閉じる）、`wait:<duration>`（`500ms`）、`waitfor:<file>`（そのファイルができるまで待つ。続けるタイミングをテストが知らせる）、`snap:<file>` です。ホストごとに追加の操作もいくつかあります。それぞれの自動化のコード（`platform/macos/Sources/AsukaHost/Automation.swift`、`platform/windows/src/automation.c`、`platform/linux/src/automation.c`）を参照してください。
 
+## ビルドキャッシュ
+
+ビルドでコンパイルしたものやダウンロードしたものは Asuka のキャッシュに保存され、このコンピューター上のすべてのアプリで共有されます。2 つ目のアプリをビルドするときや、少し変更してからビルドし直すときは、新しい部分だけがコンパイルされます。あるプラットフォーム向けの最初のビルドでは、そのプラットフォーム向けにビルド済みの Asuka のライブラリを npm レジストリから一度だけダウンロードします。`.npmrc` のレジストリとトークン（または `npm_config_registry`）もそのまま使われるので、ミラーやプロキシーも利用できます。Swift のライブラリは、ビルドに使われた Xcode か、それより新しい Xcode でのみ使われます。Xcode がそれより古い場合は、代わりにお使いのコンピューターで一度だけコンパイルされます。
+
+- `asuka cache stats` は、キャッシュの場所とサイズ、ビルドが必要なものをキャッシュから見つけられた回数を表示します。
+- `asuka cache clean` はキャッシュを空にします。次のビルドでは、すべてがコンパイルし直されます。
+- キャッシュは 10 GB 以内に保たれ、最も長く使われていないものから削除されます。`ASUKA_CACHE_MAX` で別の上限を（`ASUKA_CACHE_MAX=20G`、`500M`、上限なしなら `0`）、`ASUKA_CACHE` で別の場所を指定できます。
+
 ## よくある問題
 
 - **`cbuild: no C compiler`**：システムの C コンパイラー（Xcode のコマンドラインツール、`build-essential`、LLVM）をインストールするか、Zig をインストールして `ASUKA_CC=zig` を指定します。`building for the web needs Zig` と `cross-compiling for ... needs Zig` の場合は、[Zig](https://ziglang.org/download) をインストールしてください。Zig はコアを WebAssembly 向けや、ほかのシステム向けにビルドします。
@@ -150,7 +158,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 - **`asuka dev --platform windows runs the app on this computer`**：`asuka dev` で Windows のアプリを実行できるのは、Windows 上だけです。ほかのシステムでは `asuka build --platform windows` でビルドし、できたフォルダーを PC にコピーしてください。
 - **Linux での `... isn't installed`**：ホストには GTK 4.14 以降と libadwaita 1.5 以降が必要です。また、パッケージによっては独自のライブラリが必要です。`WebView` には WebKitGTK 6.0、動画とオーディオには GStreamer、セキュアストレージには libsecret が必要です。足りないライブラリはエラーメッセージに示されるので、ディストリビューションのパッケージマネージャーでインストールしてください。
 - **Linux のアプリが開かない**：アプリにはディスプレイが必要です。SSH 経由や CI では Xvfb（`xvfb-run -a`）の下で実行し、D-Bus を使う機能のためにセッションバス（`dbus-run-session`）も用意してください。
-- **最初からやり直す**：Asuka のビルド、キャッシュ、アプリの開発用データは、Asuka のキャッシュディレクトリにあります。場所は Mac では `~/Library/Caches/asuka`、Linux では `~/.cache/asuka`、Windows では `%LocalAppData%\asuka` です。このディレクトリを削除すると、データのない状態から、すべてをビルドし直せます。
+- **最初からやり直す**：Asuka のビルド、キャッシュ、アプリの開発用データは、Asuka のキャッシュディレクトリにあります。場所は Mac では `~/Library/Caches/asuka`、Linux では `~/.cache/asuka`、Windows では `%LocalAppData%\asuka` です。`asuka cache clean` でこのディレクトリを空にすると、データのない状態から、すべてをビルドし直せます。
 
 ## テスト
 
