@@ -120,7 +120,9 @@ calls a closure) runs in a handler that moves the receiver back first.
 ## Functions
 
 - A function is a FuncDef; its parameters are its first registers.
-  Methods take `self` first. A closure captures a value as it is when
+  Methods take `self` first. A `static fn` of a struct or an enum is a
+  function of the package's (check.Function.Static its type), called as
+  any (`Money.of(…)`, `.of(…)` where the type is expected): no `self`. A closure captures a value as it is when
   the closure is made; a `var` it captures that anything changes (the
   closure, or the code around it) is a box (VBOX, VGET, VSET), so they
   share one variable. A `spawn` copies a box's value instead (VGET as

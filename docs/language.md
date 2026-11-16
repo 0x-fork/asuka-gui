@@ -210,7 +210,20 @@ fields with a default may be left out. Its methods see its fields by
 their names; they can't change it (it's a value): one that would
 returns a new one. `let` in a struct's body is a constant of the
 type (`Font.title`), which `.title` names wherever a `Font` is
-expected.
+expected. `static fn` in a struct's or an enum's body is a function of
+the type's, with no `self`: called on the type with named arguments and
+defaults as any function (`Money.of(dollars: 2)`), or as `.of(…)`
+wherever the type is expected.
+
+```asuka
+struct Money {
+  cents: int
+
+  static fn of(dollars: int, cents: int = 0) -> Money = Money(cents: dollars * 100 + cents)
+}
+
+let price: Money = .of(dollars: 4, cents: 50)
+```
 
 A struct may take type parameters, inferred where it's made:
 

@@ -955,6 +955,16 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 		c.info.Selections[e] = &Selection{Kind: SelConst, Global: g, Recv: t}
 		return c.useGlobal(g, e)
 	}
+	if f := tn.Statics[name]; f != nil {
+		// A static fn as a value: Money.of.
+		c.info.Selections[e] = &Selection{Kind: SelPkg, Obj: f}
+		if m, ok := e.(*syntax.MemberExpr); ok {
+			c.info.Uses[m.Name] = f
+		}
+		c.funcSig(f)
+		c.noteCall(f)
+		return f.Sig.Type()
+	}
 	if tn.Type == Color {
 		// Color.accent: the semantic color, as .accent where a Color is
 		// expected.

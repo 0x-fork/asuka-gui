@@ -337,7 +337,7 @@ struct Shortcut {
 
   /// The key with primary (⌘ on Apple platforms, Ctrl elsewhere): a menu
   /// item's shortcut, MenuItem("Save") { shortcut: .cmd("s") }.
-  let cmd = (key: string) => Shortcut(key: key, primary: true)
+  static fn cmd(key: string, mods: [Modifier] = []) -> Shortcut = Shortcut(key: key, primary: true, mods: mods)
 }
 
 /// A modifier key of a Shortcut.

@@ -489,6 +489,9 @@ func (p *printer) conforms(list []Type) {
 
 func (p *printer) funcDecl(d *FuncDecl) {
 	p.pub(d.Pub)
+	if d.Static.IsValid() {
+		p.write("static ")
+	}
 	if d.Native.IsValid() {
 		p.write("native ")
 	}

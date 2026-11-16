@@ -218,6 +218,10 @@ func (c *Checker) typeConst(t *TypeName, d *syntax.LetDecl) {
 }
 
 func (c *Checker) method(t *TypeName, d *syntax.FuncDecl) {
+	if d.Static.IsValid() {
+		c.staticFunc(t, d)
+		return
+	}
 	if _, dup := t.Methods[d.Name.Name]; dup {
 		c.errorf(d.Name, "method %s is declared twice in %s", d.Name.Name, t.name)
 		return
@@ -225,6 +229,27 @@ func (c *Checker) method(t *TypeName, d *syntax.FuncDecl) {
 	f := &Function{object: object{d.Name.Name, d.Name.Start}, Pkg: t.Pkg, Decl: d, Recv: t}
 	c.info.Defs[d.Name] = f
 	t.Methods[f.name] = f
+}
+
+// staticFunc declares a static fn of t's: a function in t's namespace
+// (Money.of(dollars: 2), .of(…) where a Money is expected), checked and
+// lowered as any of the package's functions, with no self.
+func (c *Checker) staticFunc(t *TypeName, d *syntax.FuncDecl) {
+	if len(t.TypeParams) > 0 {
+		c.errorf(d.Name, "%s is generic: its static functions would need its type parameters; declare a function outside it", t.name)
+		return
+	}
+	if t.Statics == nil {
+		t.Statics = map[string]*Function{}
+	}
+	if _, dup := t.Statics[d.Name.Name]; dup || t.Methods[d.Name.Name] != nil || t.Consts[d.Name.Name] != nil {
+		c.errorf(d.Name, "%s is declared twice in %s", d.Name.Name, t.name)
+		return
+	}
+	f := &Function{object: object{d.Name.Name, d.Name.Start}, Pkg: t.Pkg, Decl: d, Static: t}
+	c.info.Defs[d.Name] = f
+	t.Statics[f.name] = f
+	t.Pkg.Funcs = append(t.Pkg.Funcs, f)
 }
 
 // signature resolves a function's parameters and result in the current
