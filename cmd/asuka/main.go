@@ -147,8 +147,8 @@ type devOptions struct {
 
 func devFlags(o *devOptions) *flagSet {
 	fs := newFlagSet("dev", "[dir] [-- args...]")
-	fs.about = "Runs the app, and runs it again with each change you save. A program (fn main, or --bin) runs\n" +
-		"on the VM with the arguments after --, again with each change."
+	fs.about = "Runs the app, and runs it again with each change you save. A program (fn main,\n" +
+		"or --bin) runs on the VM with the arguments after --, again with each change."
 	fs.String(&o.bin, "bin", 0, "", "run the `program` asuka.toml's [bin.<name>] names, instead of the app")
 	platformFlag(fs, &o.platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},
 		"the `platform` to run on: ios (the simulator, or an iPhone with --device), android (a device or emulator), mac (this Mac), windows (this PC), linux (this Linux machine, or ASUKA_LINUX_RUN's), or web (the browser: the core as WebAssembly, the views the page's DOM); default on macOS, Windows and Linux: this computer")

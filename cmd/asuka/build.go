@@ -39,8 +39,8 @@ type buildOptions struct {
 
 func buildFlags(o *buildOptions) *flagSet {
 	fs := newFlagSet("build", "[dir]")
-	fs.about = "Makes a release build of the app, in dist in its directory; of a program (fn main, or --bin),\n" +
-		"an executable for this computer (or --target's)."
+	fs.about = "Makes a release build of the app, in dist in its directory; of a program\n" +
+		"(fn main, or --bin), an executable for this computer (or --target's)."
 	fs.String(&o.bin, "bin", 0, "", "build the `program` asuka.toml's [bin.<name>] names, instead of the app")
 	fs.String(&o.target, "target", 0, "", "a program's `os-arch`: darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, windows-amd64 or windows-arm64 (default: this computer's; another needs Zig)")
 	platformFlag(fs, &o.platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},

@@ -150,9 +150,10 @@ func cmdRun(args []string) error {
 		args, progArgs = args[:i], args[i+1:]
 	}
 	fs := newFlagSet("run", "[dir | file.asuka] [-- args...]")
-	fs.about = "Runs a program (a package with fn main, or asuka.toml's [bin.<name>]) on the VM, with the\n" +
-		"arguments after --, and exits with its code. A file or a package that isn't a program runs on\n" +
-		"the fake host: its test blocks, if it has any, and its app, whose screen it prints."
+	fs.about = "Runs a program (a package with fn main, or asuka.toml's [bin.<name>]) on the VM,\n" +
+		"with the arguments after --, and exits with its code. A file or a package that isn't a\n" +
+		"program runs on the fake host: its test blocks, if it has any, and its app, whose screen\n" +
+		"it prints."
 	fs.String(&bin, "bin", 0, "", "the `program` to run: one of asuka.toml's [bin.<name>] (needed when there are several)")
 	fs.String(&pattern, "run", 0, "", "run only the tests whose names contain `text`")
 	if err := fs.parse(args); err != nil {
