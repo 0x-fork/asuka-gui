@@ -7,6 +7,12 @@
 #define WEAK __attribute__((weak))
 
 WEAK void asuka_start(asuka_host_callbacks *callbacks) { (void)callbacks; }
+WEAK int asuka_program_start(int argc, char **argv, asuka_host_callbacks *callbacks) {
+	(void)argc;
+	(void)argv;
+	(void)callbacks;
+	return 1;
+}
 WEAK void asuka_unload(void) {}
 WEAK int asuka_load(const uint8_t *module, size_t len, char **err) { (void)module; (void)len; (void)err; return -1; }
 WEAK int asuka_run(char **err) { (void)err; return -1; }
