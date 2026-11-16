@@ -140,6 +140,13 @@ export class Crash {
     if (this.write(err, false)) this.host?.afterCore?.(() => this.notify?.());
   }
 
+  /** panicMessage is the core's panic, from the run's .crash file ("" if none). */
+  panicMessage() {
+    const b = this.path ? fs.readFile(this.path) : null;
+    if (!b?.length) return "";
+    return new TextDecoder().decode(b).trim().split("\n")[0].replace(/^panic: /, "");
+  }
+
   write(err, fatal) {
     const isError = err instanceof Error || (err && typeof err === "object" && "message" in err);
     const name = isError ? String(err.name || "Error") : "Uncaught";

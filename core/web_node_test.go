@@ -113,6 +113,26 @@ done
 	}
 }
 
+// A native package's module on the web: the core makes it and calls it
+// through the page's JavaScript (native.mjs's), now and async, and its
+// callbacks answer, during a call and on their own; an interface its
+// JavaScript doesn't make is unsupported.
+func TestWebNative(t *testing.T) {
+	mjs, _ := filepath.Abs(filepath.Join("testdata", "web", "native.mjs"))
+	got := runWebNode(t, "native.asuka", nil, mjs)
+	want := `HELLO
+after!
+6
+ticks 6
+missing: unsupported: no interface 1
+(0 jobs on workers)
+done
+`
+	if strings.TrimSpace(got) != strings.TrimSpace(want) {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 // asqliteWasm is the sqlite plugin's library for the web (its build, or
 // its published file, downloaded once into the user's cache).
 func asqliteWasm(t *testing.T) string {

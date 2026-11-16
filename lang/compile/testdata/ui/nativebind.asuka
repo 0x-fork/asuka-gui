@@ -1,0 +1,37 @@
+// bind on a native package's view: its prop follows the state, and the
+// prop's change event (<prop>Change) writes the state back. A handler of
+// that event (on labelChange) runs too, after the bind's write.
+
+native component Dial {
+  prop label: string = "unset"
+  prop level: float = 0
+  event labelChange(label: string)
+}
+
+component Root {
+  state label = "Heat"
+  state heard = "nothing"
+
+  Column {
+    Dial {
+      bind label: label
+      on labelChange(l) { heard = "heard {l}, state {label}" }
+    }
+    Text("label {label}")
+    Text(heard)
+    Button("Rename") { on press { label = "Cool" } }
+  }
+}
+
+app { Root() }
+
+test "a native view's bound prop" {
+  let app = mount(Root())
+  await app.idle()
+  app.expect("label Heat")
+  app.emit(".#Dial", "LabelChange", "Warm")
+  app.expect("label Warm")
+  app.expect("heard Warm, state Warm")
+  app.tap("Rename")
+  app.expect("label Cool")
+}

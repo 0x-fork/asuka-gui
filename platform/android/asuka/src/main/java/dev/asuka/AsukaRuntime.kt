@@ -836,6 +836,14 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             isChecked = old.isChecked
             isEnabled = old.isEnabled
             layoutDirection = directionOf(n)
+            // What props set on the switch before checkbox came (they go
+            // in the order the app wrote them): its name for TalkBack first.
+            contentDescription = old.contentDescription
+            androidx.core.view.ViewCompat.setStateDescription(this, androidx.core.view.ViewCompat.getStateDescription(old))
+            tooltipText = old.tooltipText
+            importantForAccessibility = old.importantForAccessibility
+            visibility = old.visibility
+            alpha = old.alpha
             setOnCheckedChangeListener { _, on -> if (!settingProp) emit(id, AsukaEventKind.TOGGLED) { AsukaEvents.toggled(id, on) } }
         }
         val parent = old.parent as? ViewGroup

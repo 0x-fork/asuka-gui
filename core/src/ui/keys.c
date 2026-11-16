@@ -205,10 +205,11 @@ void ak_keys_update(struct ak_keyreg *g, ak_arr *keys) {
 // first).
 void ak_keys_forget(struct ak_keyreg *g) { g->slot = NULL; }
 
-// ak_ui_use_keys gives the root keys (Shortcut structs) while the
-// current owner lives: what no view takes, and keys with nothing
-// focused. Several: the last one's keys win.
-void ak_ui_use_keys(ak_arr *keys) { ak_keys_register(ak_ui_current()->el, keys, NULL); }
+// ak_ui_use_keys gives the window the calling code is built in (the
+// root for the main window, a Window's view for its own) keys (Shortcut
+// structs) while the current owner lives: what no view takes, and keys
+// with nothing focused. Several: the last one's keys win.
+void ak_ui_use_keys(ak_arr *keys) { ak_keys_register(ak_keys_window(), keys, NULL); }
 
 // ak_keys_event runs the index'th key of e's Keys prop.
 bool ak_keys_event(ak_view *e, int64_t index) {

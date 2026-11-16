@@ -19,12 +19,9 @@
 // They wait for what they expect (bounded, so a broken app fails rather
 // than hangs), never for a fixed time.
 //
-// The examples are written in Asuka (app.asuka and the files beside it),
-// not Go: there's no main package to build any more. asuka dev builds an
-// example from its directory as before; these scenarios are the same, and
-// run again once asuka dev and asuka build compile Asuka packages (RFC
-// 0007's milestones M1, W1 and D1). The apps in testdata are still Go
-// until then.
+// The examples and the apps in testdata are Asuka packages (asuka.toml,
+// app.asuka and the files beside it): asuka dev builds each from its
+// directory.
 package e2e
 
 import (

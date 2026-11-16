@@ -6,13 +6,21 @@
 // With asqlite.wasm (the sqlite plugin's), the page's SQLite worker runs
 // on a worker thread too.
 //
-//	node run.mjs <platform/web/src> <asuka.wasm> <app.akb> [asqlite.wasm]
+// A native package's JavaScript (native.mjs's: a module that registers
+// providers) is imported before the core starts, as the page imports
+// packages' web/ code.
+//
+//	node run.mjs <platform/web/src> <asuka.wasm> <app.akb> [asqlite.wasm | native.mjs]
 import { readFile } from "node:fs/promises";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 
-const [src, wasm, akb, asqlite] = process.argv.slice(2);
+const [src, wasm, akb, extra] = process.argv.slice(2);
+const asqlite = extra?.endsWith(".wasm") ? extra : null;
 const { startCore } = await import(pathToFileURL(src + "/core.js"));
+const native = await import(pathToFileURL(src + "/native.js"));
+globalThis.asuka = { native };
+if (extra?.endsWith(".mjs")) await import(pathToFileURL(extra));
 const fs = await import(pathToFileURL(src + "/fs.js"));
 
 // fetch of files: the core and the module.
@@ -57,6 +65,21 @@ const host = {
   },
   drain() { while (!this.inGo && this.pending.length) this.call(this.pending.shift()); },
   started() { this.inGo = 0; this.drain(); },
+  // Typed native modules, as host.js's.
+  get nativeBack() {
+    return (this._back ??= {
+      done: (call, b) => this.call(() => this.core.nativeDone(call, b)),
+      invoke: (id, b) => {
+        this.inGo++;
+        try { return this.core.nativeInvoke(id, b); } finally { this.inGo--; this.drain(); }
+      },
+    });
+  },
+  nativeNew(id, iface) { return native.makeObject(id, iface, this.nativeBack); },
+  nativeCall(h, method, input) { return native.call(h, method, input, this.nativeBack); },
+  nativeStart(h, method, input, call) { native.start(h, method, input, call, this.nativeBack); },
+  nativeCancel(call) { native.cancel(call); },
+  nativeRelease(h) { native.release(h); },
 };
 
 const end = (code) => {

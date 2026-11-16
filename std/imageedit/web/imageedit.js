@@ -6,7 +6,10 @@ import { Op, Format, EditError } from "./imageedit.asuka.js";
 
 const native = () => globalThis.asuka.native;
 const noImage = () => new EditError("noImage");
-const ops = { [Op.resize]: "resize", [Op.crop]: "crop", [Op.rotate]: "rotate", [Op.flipHorizontal]: "flipH", [Op.flipVertical]: "flipV", [Op.fill]: "fill", [Op.pixelate]: "pixelate" };
+// Made at first use, not as the module loads: the generated module imports
+// this one first, so its enums aren't made yet then.
+let opNames;
+const ops = () => (opNames ??= { [Op.resize]: "resize", [Op.crop]: "crop", [Op.rotate]: "rotate", [Op.flipHorizontal]: "flipH", [Op.flipVertical]: "flipV", [Op.fill]: "fill", [Op.pixelate]: "pixelate" });
 
 function canvas(w, h) {
   if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(w, h);
@@ -187,7 +190,7 @@ function videoFrame(src, atMs) {
 }
 
 /** The package's steps as the actions applyActions takes. */
-const actionsOf = (steps) => steps.map((s) => ({ op: ops[s.op], x: s.x, y: s.y, width: s.width, height: s.height, degrees: s.degrees, block: s.block, rgb: s.rgb }));
+const actionsOf = (steps) => steps.map((s) => ({ op: ops()[s.op], x: s.x, y: s.y, width: s.width, height: s.height, degrees: s.degrees, block: s.block, rgb: s.rgb }));
 
 async function run(src, w, h, steps, format, quality, frame) {
   if (!w || !h) throw noImage();

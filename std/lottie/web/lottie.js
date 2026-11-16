@@ -184,7 +184,10 @@ function ease(curve, damping, x, seconds) {
 
 const fits = ["xMidYMid meet", "xMidYMid slice", "none", "xMidYMid meet"];
 
-const fitModes = { [Fit.contain]: 0, [Fit.cover]: 1, [Fit.stretch]: 2, [Fit.center]: 3 };
+// Made at first use, not as the module loads: the generated module imports
+// this one first, so its enums aren't made yet then.
+let fitTable;
+const fitModes = () => (fitTable ??= { [Fit.contain]: 0, [Fit.cover]: 1, [Fit.stretch]: 2, [Fit.center]: 3 });
 
 export function makeView(events) {
   const el = document.createElement("div");
@@ -335,7 +338,7 @@ export function makeView(events) {
     setSource(v) { source = v; if (v) load(); },
     setData(v) { data = v; if (v.length && !source) load(); },
     setAnimation(v) { animationId = v; },
-    setFit(v) { mode = fitModes[v] ?? 0; if (anim) library().then((lib) => build(lib, true)); },
+    setFit(v) { mode = fitModes()[v] ?? 0; if (anim) library().then((lib) => build(lib, true)); },
     setLoop(v) { loop = v; },
     setPlaying(v) {
       playing = v;

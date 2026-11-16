@@ -5,7 +5,7 @@ package e2e
 import "testing"
 
 // webEval runs on a page whose Content Security Policy blocks eval
-// (e2e/testdata/webeval): EvalJSResult still answers with the last
+// (e2e/testdata/webeval): a Ref's eval still answers with the last
 // statement's value, as JSON, and with what a script threw; a syntax
 // error is an error. A promise isn't awaited there: iOS says so, and
 // Android's WebView answers with the promise's JSON, {}. On a page that

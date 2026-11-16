@@ -541,13 +541,14 @@ static native_handler *find_handler(native_state *s, ak_span name) {
 
 // A Native event: string name, u32 count, per value a string key, u8
 // type, the value; a typed view's has one, "v", its parameters encoded.
+// Each handler of the name runs, in the order they were given (a bind's
+// write, then the app's on).
 static void native_event(ak_view *e, const ak_event *ev) {
 	if (ev->kind != AK_EVENT_NATIVE) return;
 	native_state *s = e->impl;
 	ak_reader r = {(const uint8_t *)ev->s.p, ev->s.len, 0, false};
 	ak_span name = ak_read_str(&r);
-	native_handler *h = find_handler(s, name);
-	if (!h || r.err) return;
+	if (!find_handler(s, name) || r.err) return;
 	uint32_t n = ak_read_u32(&r);
 	ak_span v = {0};
 	for (uint32_t i = 0; i < n && !r.err; i++) {
@@ -567,29 +568,38 @@ static void native_event(ak_view *e, const ak_event *ev) {
 		}
 	}
 	if (r.err) return;
-	// The parameters, each decoded by its descriptor in turn.
-	ak_closure *handler = ak_retain(h->handler);
-	const char *d = h->desc;
-	const ak_json_types *types = h->types;
-	ak_val args[16];
-	ak_kind kinds[16];
-	uint32_t nargs = 0;
-	ak_reader vr = {(const uint8_t *)v.p, v.len, 0, false};
-	while (d && *d && nargs < AK_LEN(args)) {
-		kinds[nargs] = (*d == 'i' || *d == 'e') ? AK_K_INT : *d == 'f' ? AK_K_FLOAT : *d == 'b' ? AK_K_BOOL : AK_K_REF;
-		args[nargs++] = ak_native_decode(&vr, d, types);
-		if (ak_error_pending()) break;
-		d = ak_native_desc_skip(d);
+	// The handlers, held: one may dispose the view (and its state).
+	uint32_t nh = 0;
+	native_handler *hs = ak_alloc(s->handlers.len * sizeof *hs);
+	for (uint32_t i = 0; i < s->handlers.len; i++)
+		if (ak_span_eq(ak_span_str(s->handlers.data[i].name), name)) {
+			hs[nh] = s->handlers.data[i];
+			ak_retain(hs[nh++].handler);
+		}
+	ak_retain(e);
+	for (uint32_t k = 0; k < nh; k++) {
+		// The parameters, each decoded by its descriptor in turn.
+		const char *d = hs[k].desc;
+		ak_val args[16];
+		ak_kind kinds[16];
+		uint32_t nargs = 0;
+		ak_reader vr = {(const uint8_t *)v.p, v.len, 0, false};
+		while (d && *d && nargs < AK_LEN(args)) {
+			kinds[nargs] = (*d == 'i' || *d == 'e') ? AK_K_INT : *d == 'f' ? AK_K_FLOAT : *d == 'b' ? AK_K_BOOL : AK_K_REF;
+			args[nargs++] = ak_native_decode(&vr, d, hs[k].types);
+			if (ak_error_pending()) break;
+			d = ak_native_desc_skip(d);
+		}
+		if (ak_error_pending()) {
+			ak_release(ak_error_take());  // a bad event: dropped, as Go's DecodeEvent
+		} else {
+			ak_call_closure(hs[k].handler, e->owner, args, nargs);
+		}
+		for (uint32_t i = 0; i < nargs; i++) ak_release_val(args[i], kinds[i]);
 	}
-	if (ak_error_pending()) {
-		ak_release(ak_error_take());  // a bad event: dropped, as Go's DecodeEvent
-	} else {
-		ak_retain(e);
-		ak_call_closure(handler, e->owner, args, nargs);
-		ak_release(e);
-	}
-	for (uint32_t i = 0; i < nargs; i++) ak_release_val(args[i], kinds[i]);
-	ak_release(handler);
+	ak_release(e);
+	for (uint32_t k = 0; k < nh; k++) ak_release(hs[k].handler);
+	ak_free(hs);
 }
 
 const ak_el_class ak_class_native = {.name = "Native", .kind = AK_KIND_NATIVE, .flags = AK_ELF_MEASURED, .init = native_init,
@@ -685,16 +695,8 @@ void ak_ui_native_on(ak_view *v, ak_str *name, ak_closure *handler, const char *
 	check_native(v, "native_on");
 	if (!handler) return;
 	native_state *s = v->impl;
-	native_handler *h = find_handler(s, ak_span_str(name));
 	ak_retain(handler);
-	if (h) {
-		ak_release(h->handler);
-		h->handler = handler;
-		h->desc = desc;
-		h->types = t;
-	} else {
-		ak_vec_push(&s->handlers, ((native_handler){ak_retain(name), handler, desc, t}));
-	}
+	ak_vec_push(&s->handlers, ((native_handler){ak_retain(name), handler, desc, t}));
 	ak_view_listen(v, AK_EVENT_NATIVE);
 }
 
