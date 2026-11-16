@@ -39,8 +39,12 @@ func DesktopNatives(t cbuild.Target, dirs []string) (*DesktopC, error) {
 		return nil, err
 	}
 	c := &DesktopC{
-		Sources: []string{desktop.Registry(d), filepath.Join(desktop.Include(d), "asuka_desktop.h")},
+		Sources: append(desktop.Shared(d), filepath.Join(desktop.Include(d), "asuka_desktop.h")),
 		Flags:   []string{"-I" + desktop.Include(d)},
+		Libs:    desktop.Libs(t.OS),
+	}
+	if t.OS == "linux" {
+		c.Flags = append(c.Flags, "-D_GNU_SOURCE") // POSIX's and GNU's declarations, beside C17's
 	}
 	seen := map[string]bool{}
 	sorted := append([]string{}, dirs...)

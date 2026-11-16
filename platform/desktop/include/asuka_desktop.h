@@ -167,6 +167,8 @@ void asuka_writer_bool(asuka_writer *w, bool v);
 // asuka_writer_string writes s (NULL: "").
 void asuka_writer_string(asuka_writer *w, const char *s);
 void asuka_writer_bytes(asuka_writer *w, const void *p, size_t n);
+// asuka_writer_put appends n raw bytes (no length): a buffer to grow.
+void asuka_writer_put(asuka_writer *w, const void *p, size_t n);
 void asuka_writer_free(asuka_writer *w);
 
 typedef struct {
@@ -257,6 +259,40 @@ void asuka_native_notify(uint64_t callback, asuka_writer *args);
 // asuka_native_ask's answer is into *answer (the result encoded; empty if
 // it failed), which the caller frees (asuka_writer_free).
 void asuka_native_ask(uint64_t callback, asuka_writer *args, asuka_writer *answer);
+
+// ---- Shared: what packages' C may use (platform/desktop/src) ----
+
+// An HTTP header.
+typedef struct {
+	const char *name, *value;
+} asuka_header;
+
+// An HTTP response: its status, the URL it came from (after redirects),
+// its headers (names lower case; one name's values joined with ", "),
+// its body. All malloc's: asuka_response_free.
+typedef struct {
+	int status;
+	char *url;
+	char **names, **values;
+	size_t nheaders;
+	asuka_bytes body;
+} asuka_response;
+
+// asuka_fetch makes an HTTP(S) request with the system's proxy settings
+// and certificates (WinHTTP; libsoup 3 on Linux), following redirects,
+// and blocks until the whole response is in: never on the main thread.
+// timeout_ms 0 is none; cancel, if not NULL, is a started call whose
+// task going stops it (failing with ASUKA_CANCELLED). false with err set.
+bool asuka_fetch(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
+                 int timeout_ms, asuka_call *cancel, asuka_response *out, asuka_error *err);
+void asuka_response_free(asuka_response *r);
+
+// asuka_desktop_local_file is a file an app names as a file on this
+// computer: an http(s) URL downloaded into the app's caches (named as
+// its server says, its extension from its type, or type's), a file:
+// URL's path, an absolute path, or a path in the app's assets; NULL with
+// err set when there's no such file. It blocks: never on the main thread.
+char *asuka_desktop_local_file(const char *source, const char *type, asuka_error *err);
 
 // ---- The providers' half: native packages' C ----
 //

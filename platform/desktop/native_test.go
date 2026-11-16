@@ -38,7 +38,7 @@ func TestPantry(t *testing.T) {
 
 	desk, _ := filepath.Abs(".")
 	pdesk, _ := filepath.Abs(filepath.Join(pantry, "desktop"))
-	srcs := []string{filepath.Join(desk, "src", "native.c"), filepath.Join(desk, "test", "host.c")}
+	srcs := []string{filepath.Join(desk, "src", "native.c"), filepath.Join(desk, "src", "linux.c"), filepath.Join(desk, "test", "host.c")}
 	for _, f := range nativegen.CSources(pdesk, "linux") {
 		srcs = append(srcs, filepath.Join(pdesk, f))
 	}
@@ -48,7 +48,7 @@ func TestPantry(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(exe, mod)
-	cmd.Env = append(os.Environ(), "ASUKA_DATA="+work)
+	cmd.Env = append(os.Environ(), "ASUKA_DATA="+work, noLeaks)
 	checkProbe(t, cmd)
 }
 
@@ -73,12 +73,16 @@ func TestDesktopExe(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(exe)
-	cmd.Env = append(os.Environ(), "ASUKA_DATA="+work)
+	cmd.Env = append(os.Environ(), "ASUKA_DATA="+work, noLeaks)
 	out := checkProbe(t, cmd)
 	if !strings.Contains(out, "host: the app compiled in") {
 		t.Error("the app isn't the one compiled in")
 	}
 }
+
+// noLeaks turns LeakSanitizer off: asuka_unload leaves the module's
+// globals (the core's, not what these tests check).
+const noLeaks = "ASAN_OPTIONS=detect_leaks=0"
 
 func compileProbe(t *testing.T) *compile.Result {
 	t.Helper()

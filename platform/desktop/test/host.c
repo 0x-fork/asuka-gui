@@ -9,6 +9,9 @@
 //	asuka-test-host              a release's: the app compiled in
 #include "asuka_desktop.h"
 #include "ops/ops.h"
+#ifdef __linux__
+#include "asuka_linux.h"
+#endif
 
 #include <pthread.h>
 #include <stdio.h>
@@ -207,20 +210,44 @@ int main(int argc, char **argv) {
 		free(m);
 	}
 	// Run what's posted until the app says it's done; a deadline only
-	// for a run that hangs (never to pass).
+	// for a run that hangs (never to pass). On Linux, GLib's main context
+	// runs too, as the GTK host's main loop would (packages' D-Bus calls,
+	// their signals).
+#ifdef __linux__
+	bool glib = asuka_linux() != NULL;
+#else
+	bool glib = false;
+#endif
 	time_t deadline = time(NULL) + 60;
 	while (!finished) {
+#ifdef __linux__
+		if (glib)
+			while (G(g_main_context_iteration)(NULL, false)) {
+			}
+#endif
 		pthread_mutex_lock(&mu);
 		while (!head) {
-			struct timespec ts = {time(NULL) + 1, 0};
+			struct timespec ts;
+			clock_gettime(CLOCK_REALTIME, &ts);
+			if (glib) {
+				ts.tv_nsec += 2000000;  // GLib's turn again soon
+				if (ts.tv_nsec >= 1000000000) ts.tv_sec++, ts.tv_nsec -= 1000000000;
+			} else {
+				ts.tv_sec++;
+			}
 			pthread_cond_timedwait(&cv, &mu, &ts);
 			if (time(NULL) > deadline) {
 				pthread_mutex_unlock(&mu);
 				fprintf(stderr, "host: the app didn't finish\n");
 				return 1;
 			}
+			if (glib && !head) break;
 		}
 		posted *p = head;
+		if (!p) {
+			pthread_mutex_unlock(&mu);
+			continue;
+		}
 		head = p->next;
 		if (!head) tail = NULL;
 		pthread_mutex_unlock(&mu);

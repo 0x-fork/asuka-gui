@@ -181,6 +181,8 @@ void asuka_writer_bytes(asuka_writer *w, const void *p, size_t n) {
 	put(w, p, n);
 }
 
+void asuka_writer_put(asuka_writer *w, const void *p, size_t n) { put(w, p, n); }
+
 void asuka_writer_string(asuka_writer *w, const char *s) { asuka_writer_bytes(w, s ? s : "", s ? strlen(s) : 0); }
 
 void asuka_writer_free(asuka_writer *w) {

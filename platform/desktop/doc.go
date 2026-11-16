@@ -1,6 +1,8 @@
 // Package desktop holds the C the Windows and Linux hosts share
 // (RFC 0008): include/asuka_desktop.h, the contract between a host and
-// the C its app links; src/native.c, the native packages' registry. Its
+// the C its app links; src/native.c, the native packages' registry;
+// asuka_linux.h and asuka_windows.h (src/linux.c, src/windows.c), what
+// packages' Linux and Windows C share. Its
 // tests build them with a test host (test/host.c) and run Asuka on the
 // core, with no Go at run time.
 package desktop
@@ -43,6 +45,23 @@ func valid(d string) bool {
 
 // Registry is the registry's C source in dir (Dir's).
 func Registry(dir string) string { return filepath.Join(dir, "src", "native.c") }
+
+// Shared are the shared C sources in dir (Dir's): the registry, and what
+// packages' C shares on Linux (asuka_linux.h: linux.c) and on Windows
+// (asuka_windows.h: windows.c), each built for its platform only.
+func Shared(dir string) []string {
+	src := filepath.Join(dir, "src")
+	return []string{filepath.Join(src, "native.c"), filepath.Join(src, "linux.c"), filepath.Join(src, "windows.c"), filepath.Join(src, "fetch.c"),
+		filepath.Join(dir, "include", "asuka_linux.h"), filepath.Join(dir, "include", "asuka_windows.h")}
+}
+
+// Libs are the system libraries the shared C links with on goos.
+func Libs(goos string) []string {
+	if goos == "windows" {
+		return []string{"-lwinhttp", "-lole32", "-loleaut32", "-luuid", "-lshell32", "-luser32", "-lgdi32", "-ladvapi32"}
+	}
+	return nil
+}
 
 // Include is the include directory of asuka_desktop.h in dir.
 func Include(dir string) string { return filepath.Join(dir, "include") }
