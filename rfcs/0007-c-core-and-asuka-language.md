@@ -93,7 +93,7 @@ project is experimental; nothing is kept for compatibility.
 ```ebnf
 File        = { Import } { Decl } .
 Import      = "import" ImportPath [ ".{" Ident { "," Ident } "}" ] [ "as" Ident ] .
-ImportPath  = Ident { "/" Ident }                    (* a package: asuka/http *)
+ImportPath  = Ident { "/" Ident }                    (* a package: std/http *)
             | "./" Ident { "/" Ident } .              (* a directory beside this one *)
 
 Decl        = [ "pub" ] ( Component | Screen | Store | Struct | Enum | Interface
@@ -354,7 +354,8 @@ app's language updates what's shown with no app code.
 
 A directory of `.asuka` files is a package: its files see each other's
 declarations. `pub` exports a declaration from its package. `import
-asuka/http` imports a package of the standard library or a dependency;
+std/http` imports a package of the standard library (`platform/camera`,
+of the platform SDK) or a dependency;
 `import ./components` one beside the importer; `.{A, B}` imports names
 unqualified; `as` renames. The built-in elements, `Color`'s semantic
 colors, fonts and the core functions (`push`, `sleep`, `all`, …) are in
@@ -405,8 +406,9 @@ CLI is the client, and it needs no Node.
   the last one: a `pub` declaration removed or changed incompatibly
   needs a new major version (the checker compares the two packages'
   exported APIs).
-- The standard library (`asuka/http`, `asuka/sqlite`, ...) comes with
-  the CLI: it's versioned with it and needs no install.
+- The standard library (`std/http`, `std/sqlite`, ...) and the
+  platform SDK (`platform/camera`, ...) come with the CLI: they're
+  versioned with it and need no install.
 
 ### Native code
 
@@ -458,7 +460,7 @@ core/src/vm             the bytecode loader and interpreter, values,
                         tasks
 core/src/rt             the runtime both backends call: strings,
                         arrays, maps, formatting, time, JSON
-core/src/std            the standard library's native fns: asuka/time,
+core/src/std            the standard library's native fns: std/time,
                         url, regex, encoding, crypto, html, random, fs
 core/src/abi            asuka_start, asuka_event, … (mobile, web,
                         desktop entry points)

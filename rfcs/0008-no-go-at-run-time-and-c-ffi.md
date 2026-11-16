@@ -102,7 +102,7 @@ Shared C for Windows and Linux (the JSON the state files need, files,
 the app's settings and directories, window and route state, flyouts'
 places, Asuka's own words, animated images) lives in platform/desktop.
 The updater's portable part (the feed, channels, versions, Ed25519,
-deltas) is the standard library's `asuka/update`, in Asuka with C
+deltas) is the platform SDK's `platform/update`, in Asuka with C
 builtins in the core; a host answers only its `update` module (whether
 it can install, the download, putting a staged update in place).
 

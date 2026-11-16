@@ -1076,18 +1076,18 @@ Material views again, replaying the props it was sent and keeping the
 user's state (text, selection, checked, value). There's one Activity
 (`singleTask`), and whichever instance comes to the front takes the
 views. Process death loses state, as in any native app; what must outlive
-it is stored (`asuka/storage`'s `Value<T>(key, default)` over
+it is stored (`std/storage`'s `Value<T>(key, default)` over
 `UserDefaults` / `SharedPreferences`), not to be confused with keeping
 state across `asuka dev` reloads (below), which needs no code.
 
 The core can also start without a screen: when the system runs a
-background task (`asuka/periodic`: BGTaskScheduler, WorkManager) with the
+background task (`platform/periodic`: BGTaskScheduler, WorkManager) with the
 app closed, the host starts the core headless (`startHeadless`): the
 app's init runs, the root component mounts into views no window holds
 yet, and the task's code runs. A screen that comes later (the user opens the app)
 takes that root as a recreated Activity does (`asuka_attach` on Android;
 the root controller mounts the existing root view on iOS).
-`asuka/location`'s background updates and regions start it the same
+`platform/location`'s background updates and regions start it the same
 way on Android (its `PendingIntent`s reach the package's
 `LocationReceiver`, which starts the core headless); the package keeps
 each event until the app reads it. On iOS the system relaunches the app
@@ -1120,7 +1120,7 @@ and what it needs of the app (permissions, purpose strings,
 entitlements, services) is in its asuka.toml and beside its code, merged
 into the apps that import it (std/README.md). The hosts keep only what
 the core's elements need and the modules std packages call by name
-(`asuka/host`, `asuka/platform`), and what of those links a framework or
+(`platform/host`), and what of those links a framework or
 library is built only into the apps that use it: on iOS, under a flag
 (`ASUKA_VIDEO`, `ASUKA_NOTIFY`...) for an element the app shows
 (`elementFlags`) or a package's manifest's `ios.hostFlags`; on Android,
@@ -1132,11 +1132,11 @@ resolved across its program, its dependencies' code too
 (appbuild.Uses: the packages imported, and the members referred to from
 outside their own package), not the identifiers its sources spell: a
 package's needs apply to the apps that import it, a `[uses.<member>]`
-table's to those that refer to the member (asuka/location's background
+table's to those that refer to the member (platform/location's background
 part, iCloud's store or documents). The host makes their views and hooks by name
 when first used (`AsukaVideo`, `AsukaPlugin`).
 
-In-app purchases (`asuka/purchase`) are a std native package: StoreKit 2
+In-app purchases (`platform/purchase`) are a std native package: StoreKit 2
 in its Swift (iOS and macOS), Play
 Billing in its Gradle module, the Microsoft Store (WinRT's StoreContext) in its desktop C, the
 Digital Goods API in its web module; none on Linux; `purchase.fake()` in
@@ -1147,10 +1147,10 @@ each return to the front) or the package's start (the Store's license
 changes) and keeps them for the package's `events()`,
 so a purchase completed before the app observes isn't lost.
 
-iCloud (`asuka/icloud`) is a package over the hosts' module `icloud`,
-whose JSON (std/icloud's) the iOS host and the Mac speak, the
+iCloud (`platform/icloud`) is a package over the hosts' module `icloud`,
+whose JSON (sdk/icloud's) the iOS host and the Mac speak, the
 same Swift in both (`ICloud.swift`, kept identical in platform/ios and
-platform/macos; `ASUKA_ICLOUD`, asuka/icloud's manifest's `ios.hostFlags`
+platform/macos; `ASUKA_ICLOUD`, platform/icloud's manifest's `ios.hostFlags`
 on iOS, every Mac app's host): NSUbiquitousKeyValueStore, its values converted
 between JSON and property lists; the app's ubiquity containers through
 NSMetadataQuery, NSFileCoordinator and NSFileVersion, the file system's
@@ -1164,9 +1164,9 @@ profile's `*` and `TEAMID.*` as the app's values).
 What runs outside the app's process is built from `asuka.toml`. iOS's
 widget extension is WidgetKit's, so SwiftUI's (the one place the host
 uses it): one template (platform/ios/Widget) with the app's kinds,
-reading the entries the app's code sets (`asuka/widget`) from the App
+reading the entries the app's code sets (`platform/widget`) from the App
 Group they share; it runs none of the app's code. The same extension
-draws the Live Activities (`asuka/liveactivity`), for an app that imports
+draws the Live Activities (`platform/liveactivity`), for an app that imports
 the package (its manifest's `ios.hostFlags`: `ASUKA_LIVEACTIVITY`), with
 or without widgets: one template,
 its attributes (`AsukaActivityAttributes`) compiled into both the host
@@ -1184,15 +1184,15 @@ than `asuka.toml`: its own share sheet and the Notification Service
 Extension. Both are the standard library's, not the language's: the
 process the app runs in is a fact the host sets before the core starts
 (`ASUKA_SHARE_SHEET`, `ASUKA_NOTIFICATION_SERVICE`), which
-`asuka/platform`'s `process()` reads, and the app decides what its root
-is there. `asuka/sharesheet`'s `active()` is true in the sheet's process,
+`platform/host`'s `process()` reads, and the app decides what its root
+is there. `platform/sharesheet`'s `active()` is true in the sheet's process,
 so the app block shows the sheet there (`if sharesheet.active() {
 SaveLink() } else { Root() }`); the sheet hears what's shared with
 `onShare` (the host sends the root the `Shared` event once the items are
 collected), and `done()`, `cancel()` and `openApp()` are the `ShareClose`
 command, which the sheet's host takes. `push.rewrite(f)` keeps `f` in a
 store whose task serves the host's rewrites (`nextRewrite`, answered by
-`rewritten` with the notification to show, `asuka/notify`'s spec), as
+`rewritten` with the notification to show, `platform/notify`'s spec), as
 `notify.present` serves its decisions: one at a time, in order, `f`'s
 none or a throw showing the push as it came. The app's root runs in
 either extension, as it does for a background launch (`push.inExtension()`
@@ -1216,7 +1216,7 @@ app rewrite each data message, starting the core headless as a
 background task does, ten seconds at most). With either extension on
 iOS, the app's code, the core and the host are one dynamic framework
 (AsukaApp.framework) that the app and the extension link; their files
-(`asuka/fs`'s `appDir`) and `asuka/store`'s values are in the App Group
+(`std/fs`'s `appDir`) and `std/store`'s values are in the App Group
 they share, moved there from the app's own the first time it runs with
 one, and their keychain group is the app's. On the web the page in
 front rewrites a push before the service worker shows it.
@@ -1271,7 +1271,7 @@ share one.
 
 ### SQLite
 
-`asuka/sqlite` (std/sqlite) is a plugin's: SQLite's own C, one pinned
+`std/sqlite` is a plugin's: SQLite's own C, one pinned
 release built with the same options for every platform by
 `std/sqlite/internal/build` (Xcode, the NDK, Zig), which the package's
 `asuka-plugin.toml` ships with the apps that import it. With it, one library of Asuka's
@@ -1340,7 +1340,7 @@ Info.plist, a privacy manifest of its own, signed with the app;
 `../../Frameworks` from an extension); on Android each beside
 `libasuka.so` in each ABI's `jniLibs`, loaded by name from the APK.
 
-Crash reports (asuka/crash) are the core's record of the run
+Crash reports (platform/crash) are the core's record of the run
 (`core/src/std/crash.c`, its files' formats those apps of the Go
 runtime wrote too): the host begins it as the app starts
 (`asuka_crash_start`, after `asuka_set_app_dir`, with JSON of the
@@ -1397,8 +1397,8 @@ variable) or a host's (`asuka_program_start`: macOS's dispatch queue);
 as main ends, what's left is cancelled and the process exits 0, 1 with
 `error: <message>` and the trace (the VM's frames, and compiled
 functions' noted on the error's path only: `ak_frame_hook`), or what
-`os.exit` said. asuka/os, asuka/command (fork and exec; CreateProcess)
-and asuka/flag (lang/ir/flag.go writes `flag.spec<T>()`'s description
+`os.exit` said. std/os, std/command (fork and exec; CreateProcess)
+and std/flag (lang/ir/flag.go writes `flag.spec<T>()`'s description
 of T) are the core's C and Asuka. A program whose packages have
 platform code runs on a headless host: platform/desktop/program on
 Windows and Linux (asuka_desktop.h's host half, GLib's loop when it's
@@ -1555,7 +1555,8 @@ asuka/
   lang/              the Asuka compiler: syntax, check, ir, bytecode, cgen
                      (bytecode to C), prelude (the elements), compile
                      (the driver), lsp (the language server)
-  std/               the standard library's packages (asuka/<name>)
+  std/               the standard library's packages (std/<name>)
+  sdk/               the platform SDK's packages (platform/<name>)
   ops/               the wire's schema; go generate writes the C, Swift,
                      Kotlin and JavaScript codecs
   i18n/              languages, catalogs, ICU messages, CLDR's formats
@@ -1771,7 +1772,7 @@ behavior.
     highlight color. A scroll view's taking the gesture over cancels the
     long press.
   - Copying leaves out the inline components.
-- `asuka/markdown` (`markdown.View(text) { streaming: true }`) is read
+- `std/markdown` (`markdown.View(text) { streaming: true }`) is read
   once, in the core, the same on every platform: md4c (core/third_party)
   into paragraphs of styled runs (`markdown.read`; raw HTML as text, only
   web, mail and phone links kept), which each platform shows as its own
@@ -1968,7 +1969,7 @@ a file of their own, `Sources/AsukaHost`):
   (the page loads once it's compiled, so its first requests are blocked
   too), a response it can't show a `Download`, its state observed (KVO)
   and reported once a turn; the `web` module runs script for its value
-  (`callAsyncJavaScript`) and reads the cookies (asuka/js has its own
+  (`callAsyncJavaScript`) and reads the cookies (platform/js has its own
   Swift).
 - `RichText` is a non-editable `NSTextView` (TextKit lays it out and
   draws it, links, selection and accessibility come with it); outside
@@ -1983,8 +1984,9 @@ a file of their own, `Sources/AsukaHost`):
   Asuka they import: NativeModules.swift, the iOS host's) into the app's
   executable, as on iOS; a package's view is an `AsukaNativeView` holding
   an `NSView`, put in the node's view and filling it. On Windows a
-  package's Go view is a child window made in the context's `Parent`,
-  its controls' notifications given to it.
+  package's view is a child window its C makes in the parent the
+  registry gives it (`asuka_native_view`'s HWND), its controls'
+  notifications given to it.
 - Visual props are the views' layers'. The layers under the window's
   flipped content view have y down: gradients' points, shadows' offsets
   and transforms are given so. AppKit owns a layer-backed view's
@@ -1996,8 +1998,8 @@ a file of their own, `Sources/AsukaHost`):
   view's shape (`shadowPath`), as on iOS; a view that clips and casts
   one clips its children in a view of their own that fills it, as on
   iOS: a layer that masks to its bounds masks its own shadow too.
-- The host's modules are those the standard library calls through
-  asuka/platform, iOS's methods and replies through the Mac's
+- The host's modules are those the platform SDK's packages call
+  through platform/host, iOS's methods and replies through the Mac's
   frameworks: notifications (UserNotifications; APNs through the
   application delegate), contacts, calendars and the photo library
   (Contacts, EventKit and PhotoKit), iCloud and purchases (the iOS host's
@@ -2009,9 +2011,10 @@ a file of their own, `Sources/AsukaHost`):
   save. A Mac has no back camera ("back" is the built-in one), no motion
   sensors, no widget extension; a task in the background holds an
   activity (App Nap off: a Mac app runs out of sight), periodic ones run
-  while the app does; `PreventCapture` keeps its windows out of
-  screenshots and recordings (`NSWindowSharingNone`) and `OnScreenshot`
-  sees the files Spotlight finds (`kMDItemIsScreenCapture`).
+  while the app does; `screen.preventCapture` keeps its windows out of
+  screenshots and recordings (`NSWindowSharingNone`) and
+  `screen.screenshots()` sees the files Spotlight finds
+  (`kMDItemIsScreenCapture`).
 - Windows' options are `NSWindow`'s, set as it opens (Windows.swift):
   its style mask (no resize, close or minimize button), the zoom button
   turned off, the content's least and most size, the floating level for
@@ -2536,8 +2539,8 @@ How the Linux host maps Asuka (`platform/linux`, C17):
   Its own symbols are `lx_`; it reads the core's batches with the core's
   own decoders (core/src/ops).
 - Every node's view is a `AsukaView`, a `GtkWidget` subclass the host
-  registers (`g_type_register_static_simple`, its class's vfuncs set from
-  Go at GTK 4's stable offsets): `size_allocate` places its children at
+  registers (`g_type_register_static_simple`, its class's vfuncs set in
+  C at GTK 4's stable offsets): `size_allocate` places its children at
   the frames the core gave them (whole sizes, the fractional origin in
   the allocation's transform, with `Style.Transform` about the center),
   `snapshot` draws the node's shadow, background or gradient, its own
@@ -2636,7 +2639,7 @@ How the Linux host maps Asuka (`platform/linux`, C17):
   shows (hidden, or its GdkToplevel minimized or suspended), and as it
   quits (its last window closing, GtkApplication's `query-end` as the
   session ends, `shutdown`, or SIGTERM, SIGINT and SIGHUP, which quit it
-  as closing it does), so `asuka/store` writes what's pending; GLib's
+  as closing it does), so `std/store` writes what's pending; GLib's
   memory monitor's warnings are MemoryWarning. Crash reports: the core's
   record (`asuka_crash_start`), and a fatal signal in native code caught
   on an alternate stack (crash.c), its frames written to the record's
@@ -2884,7 +2887,7 @@ menu are the same bytes: a menu is u32 count, then per item u8 flags
 (separator, disabled, checked, destructive, submenu), its title, its
 shortcut's key and modifiers, u8 role, and with the submenu flag the
 submenu, a menu. The core encodes the menu bar (menubar.c);
-`asuka/tray` encodes its menus in Asuka (an `Action`'s `.section` its
+`platform/tray` encodes its menus in Asuka (an `Action`'s `.section` its
 items between separators, under a disabled item of its title when it
 has one) and finds a chosen item by its number the same way; the
 desktop hosts decode with `ops.DecodeMenu` and `ops.DecodeMenuBar`
@@ -2892,7 +2895,7 @@ desktop hosts decode with `ops.DecodeMenu` and `ops.DecodeMenuBar`
 items; the web host reads the menu bar's shortcuts with the same
 layout.
 
-**The tray, the Dock menu, background apps, quitting** (std/tray,
+**The tray, the Dock menu, background apps, quitting** (sdk/tray,
 core/src/ui/lifecycle.c):
 
 - `tray.Tray(id) { image, symbol, template, title, tooltip, menu:
@@ -2901,7 +2904,7 @@ core/src/ui/lifecycle.c):
   status icons on Linux. Its keys are bindings; disposed, the icon
   goes. `tray.DockMenu { items }` adds items to the app icon's menu,
   the last shown showing, as `MenuBar`. Neither is a node: they're
-  plain Asuka over the hosts' `tray` module (`asuka/platform`'s `call`
+  plain Asuka over the hosts' `tray` module (`platform/host`'s `call`
   and `send`): `set` sends an icon whole (u32 its number, 1 and up, u8
   flags: 1 template, 2 clickable, strings image, symbol, title, tooltip
   and id, then its menu), again only when its encoding changed;
@@ -2923,10 +2926,10 @@ core/src/ui/lifecycle.c):
   click` (an event's name read as a value is whether the caller handles
   it) a click opens the menu; with it, a click is `click` and the menu
   opens on a secondary click.
-- macOS: an `NSStatusItem` (variable length; `ID` its autosave name,
+- macOS: an `NSStatusItem` (variable length; its `id` its autosave name,
   so it comes back where the user ⌘-dragged it), its button the template
   image and the title in the menu bar's font with monospaced digits;
-  without `OnClick` its menu is the item's own, with it the button's
+  without `on click` its menu is the item's own, with it the button's
   action opens the menu on a right or Control click (the menu set on the
   item for one `performClick:`). Its menu and the Dock's enable items as
   the app says (no validation) and show no shortcuts. The Dock menu is
@@ -2940,17 +2943,18 @@ core/src/ui/lifecycle.c):
   Template is white on a dark taskbar and black on a light one
   (`SystemUsesLightTheme`, drawn again on `ImmersiveColorSet`). The
   tooltip is `szTip`; Windows shows no title. `NIN_SELECT` and
-  `NIN_KEYSELECT` are `OnClick`, else the menu; `WM_CONTEXTMENU` the
+  `NIN_KEYSELECT` are `click`, else the menu; `WM_CONTEXTMENU` the
   menu, made by the menu bar's code (submenus, checks, destructive items
   owner-drawn), opened at the event's anchor after the tray window comes
-  to the foreground, `WM_NULL` posted after it. `ID` is unused: an
+  to the foreground, `WM_NULL` posted after it. The `id` is unused: an
   `NIF_GUID` is tied to the executable's path. The Dock menu is the
   jump list's Tasks (`ICustomDestinationList`): each top-level item a
   shell link to the executable with `--asuka-dock-item=<number>`, titled
   by `System.Title`; separators `IsDestListSeparator` links; submenus,
   disabled items and roles left out (a jump list can't show them); none
   deletes the list; tests and automation and dev runs don't touch the
-  user's. The argument is taken out of `os.Args`; a running app (one
+  user's. A launch with the argument reports the item and opens nothing
+  else (`wh_dock_item_launch`); a running app (one
   with asuka.toml's `id` runs once) is handed `asuka-dock-item:<n>`, and
   reports the item without coming to the front. Submenus in the menu bar
   are `MF_POPUP`s, with access keys per level; an owner-drawn item that
@@ -2972,7 +2976,7 @@ core/src/ui/lifecycle.c):
   `IconPixmap` (ARGB32, big-endian, at its size and 48 down to 16), a
   Template white while libadwaita's style is dark; the title is
   `XAyatanaLabel` (GNOME's AppIndicator extension shows it). Without
-  `OnClick`, `ItemIsMenu` has the panel open the menu on a click; with
+  `on click`, `ItemIsMenu` has the panel open the menu on a click; with
   it, `Activate` is the click. The dbusmenu's items have labels (`_`
   doubled), enabled, a checkmark toggle and `children-display` for a
   submenu; a destructive item is set apart by separators, as the
@@ -3046,7 +3050,7 @@ core/src/ui/lifecycle.c):
   u32 tray icon, f32 x, y, width, height of a rectangle of its parent's
   content, u8 `Placement`, f32 gap), sent before `Present` and again as
   its binding's encoding changes (placed again). A tray icon is
-  `asuka/tray`'s number for it (the "set" call's), which each host's
+  `platform/tray`'s number for it (the "set" call's), which each host's
   tray module keys its icons by: `tray.anchor(id)` is that number.
   `dsk_flyout_place` (platform/desktop) is one placement for the
   desktop hosts, the Mac's too (the web's window.js does the same): on
@@ -3123,8 +3127,8 @@ core/src/ui/lifecycle.c):
   its parent's rectangle (`XTranslateCoordinates`) or where its tray
   icon was clicked (StatusNotifierItem's `Activate` x, y, where the
   panel says: KDE Plasma, GNOME's AppIndicator extension), in the work
-  area; and with it a window's `X`, `Y`, `SetPosition`, `Center` and
-  `AlwaysOnTop`. Under Wayland the compositor places an ordinary window
+  area; and with it a window's `x`, `y`, `setPosition`, `center` and
+  `alwaysOnTop`. Under Wayland the compositor places an ordinary window
   and keeps it in the taskbar (an `xdg_popup` needs a parent surface,
   which a tray flyout hasn't); a panel is an overlay layer-shell surface
   where the app runs with gtk4-layer-shell (`LD_PRELOAD`: it must load
@@ -3140,53 +3144,59 @@ core/src/ui/lifecycle.c):
   page's top right), closed on Escape and a press outside them;
   click-through is `pointer-events: none` on the panel, the page under
   it taking the clicks.
-- `asuka/apps` lists the apps installed (the hosts' module "apps",
-  through `asuka/platform`: "list" answers JSON, "icon" draws a PNG in
+- `platform/apps` lists the apps installed (the hosts' module "apps",
+  through `platform/host`: "list" answers JSON, "icon" draws a PNG in
   the caches and answers its path, "open"), sorted, deduplicated and
   ranked for a search in the package's Asuka. macOS reads
   the application folders (`displayNameAtPath:`, bundle identifiers,
   `iconForFile:`, `openApplicationAtURL:`), Windows the shell's
   Applications folder (`FOLDERID_AppsFolder`, `IShellItemImageFactory`,
-  `ShellExecute`), Linux the XDG desktop entries in Go (the theme's
-  icons drawn by GTK, `g_app_info_launch_uris_async` with the display's
-  launch context). Phones and the web answer `ErrUnsupported`.
+  `ShellExecute`), Linux the XDG desktop entries, read in C as the XDG
+  specs say (platform/linux/src/apps.c: the theme's icons drawn by GTK,
+  `g_app_info_launch_uris_async` with the display's launch context).
+  Phones and the web have no module: `AppsError.unsupported`.
 
 **Displays, power, the Dock and the system's appearance** (`screen`,
 `power`, `dock`, `appearance`):
 
-- Packages over modules, not ops: what the system says about the
-  computer isn't a view's. Each state the app follows is a module with
-  "current", "next" and "stop" (through asuka/platform): the package asks
-  "next" with the state it last got, which the host answers once its
-  state is another (at once for none), and hands the answer to the
-  watchers on the main thread; the last watcher's stop sends "stop",
-  which answers the waiting "next" with "stopped". Events (`power`'s
-  sleep and lock) ride the same answer, after the state: the host
-  queues them from the first "next" until "stop", so none is lost
-  between two. Each package has `Watch` and `Use` (a signal, stopped
-  with its owner); a host reads its state again as the platform says it
-  changed, and the desktop ones as each "next" comes too.
-- `screen.Displays` (Electron's `screen`): each display's ID, name,
+- Packages, not ops: what the system says about the computer isn't a
+  view's. `screen`, `power` and `appearance` are native packages (Swift
+  on iOS and the Mac, Kotlin, JavaScript, C on Windows and Linux in
+  their desktop/), each a `native interface` with the state now
+  (`displays()`, `current()`) and an async `watch(changed:)` that calls
+  back with the state, then each change, until its task is cancelled.
+  The Asuka over it is the same for all three: `now()`, `changes()` (a
+  `Stream`), and a tracked read through `live(now(), changes)`
+  (`screen.displays()`, `power.status()`, `appearance.current()`):
+  read in a binding, it follows the state while something reads it, and
+  only then does anything watch the system. Events (`power`'s sleep and
+  lock) are a stream of their own, `events(happened:)`. A platform
+  without the package's code answers its fallback (no displays, no
+  battery, no accent).
+- `screen.displays()` (Electron's `screen`): each `Display`'s id, name,
   bounds and work area in points in the desktop's coordinates (the
   origin at the primary display's top left, y down), scale, refresh
-  rate and whether it's the primary; `Primary`, `Nearest` and
-  `Matching` pick one. Where displays have different scales (Windows),
-  each one's origin is its pixels over the least scale of the displays
-  and it goes on in its own, so displays never overlap. JSON on the
-  wire, the primary first, the same bytes for the same displays (what
-  "next" compares).
-- `power`: whether there's a battery and the computer runs on it, its
-  level and charging, Low Power Mode, the thermal state; `OnSuspend`,
-  `OnResume`, `OnLock`, `OnUnlock`; `IdleTime`, since the user's last
-  input in any app (`ErrIdleUnknown` where the system doesn't say).
-  Keeping the display on stays asuka/device's `keepAwake`, working out
-  of sight `asuka/background`.
-- `dock.SetProgress` shows a task's progress on the app's icon (Normal,
-  Indeterminate, Paused, Error); `dock.RequestAttention` asks the user
-  to come to the app (Informational, Critical), and does nothing while
-  the app is in use. The icon's count stays `notify.SetBadge`.
-- `appearance`: the system's accent color (0 where it has none),
-  Increase Contrast and Reduce Transparency, beside what
+  rate and whether it's the primary, the primary first;
+  `screen.primary`, `nearest` and `matching` pick one. Where displays
+  have different scales (Windows), each one's origin is its pixels over
+  the least scale of the displays and it goes on in its own, so
+  displays never overlap.
+- `power.status()`: whether there's a battery and the computer runs on
+  it, its level and charging, Low Power Mode, the thermal state
+  (`Status`); `suspends()`, `resumes()`, `locks()`, `unlocks()`
+  (streams of `events()`); `idleTime()`, since the user's last input in
+  any app (`PowerError.idleUnknown` where the system doesn't say).
+  Keeping the display on stays platform/device's `keepAwake`, working
+  out of sight `platform/background`.
+- `dock.setProgress(Progress(value:, state:))` shows a task's progress
+  on the app's icon (`.normal`, `.indeterminate`, `.paused`, `.error`;
+  `.none` takes it away); `dock.requestAttention(.critical)` asks the
+  user to come to the app (`.informational` by default), and does
+  nothing while the app is in use. `dock` is plain Asuka over the
+  hosts' `dock` module (`host.send` through platform/host); the icon's
+  count stays `notify.setBadge`.
+- `appearance.current()`: the system's accent color (none where it has
+  none), Increase Contrast and Reduce Transparency, beside what
   `Environment` carries (dark mode, Reduce Motion, the text size).
 - macOS: the displays are `NSScreen`'s (the first has the menu bar;
   AppKit's bottom-left coordinates flipped; `visibleFrame` the work
@@ -3211,9 +3221,10 @@ core/src/ui/lifecycle.c):
   accessibility display options, followed through
   `NSSystemColorsDidChangeNotification` and
   `NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification`.
-- Windows: one hidden top-level window of the modules' class, never
-  shown, hears what Windows broadcasts to top-level windows only (a
-  message-only window hears none): `WM_DISPLAYCHANGE`,
+- Windows: the system window (platform/desktop's
+  `asuka_win_system_message`), a top-level window never shown, hears
+  what Windows broadcasts to top-level windows only (a message-only
+  window hears none) and hands it to the packages' C: `WM_DISPLAYCHANGE`,
   `WM_SETTINGCHANGE`, `WM_SYSCOLORCHANGE`,
   `WM_DWMCOLORIZATIONCOLORCHANGED`, `WM_POWERBROADCAST`; the power and
   session notifications are registered for it. Displays are the
@@ -3317,23 +3328,26 @@ core/src/ui/lifecycle.c):
 - Files reach the core with no event of their own: `IncomingURL`'s
   string carries `file://` URLs, one per line (internal/fileurl; a URL
   has no raw line break), so the files opened together arrive together.
-  `ui.incoming` splits them: the paths go to `ui.OnOpenFiles`, the other
-  URLs to `ui.OnOpenURL`; both are owner-scoped and keep what came before
-  any handler for the first. macOS: `application:openURLs:` (Finder,
-  Open With, the Dock icon, the File menu's Open Recent). Windows and
-  Linux: the command line's files that exist (taken from the launch's
-  working directory) and `file://` URIs, with the scheme's URLs
-  (`fileurl.FromArgs`); Linux's GApplication `open` too. The web: the
-  launch queue's files, read into the app's caches.
+  The core splits them (core/src/ui/share.c's `incoming`): the paths go
+  to the app block's `on files(paths)` and `onOpenFiles`, the other URLs
+  to `on openURL(url)`, the router and `onOpenURL`; the handlers are
+  owner-scoped and what came before any handler is kept for the first.
+  macOS: `application:openURLs:` (Finder, Open With, the Dock icon, the
+  File menu's Open Recent). Windows and Linux: the command line's files
+  that exist (taken from the launch's working directory) and `file://`
+  URIs, with the scheme's URLs (internal/fileurl's encoding, in each
+  host's C: Linux's files.c); Linux's GApplication `open` too. The web:
+  the launch queue's files, read into the app's caches.
 - One instance: an app with an ID runs once on Windows (a mutex of the
   session; the second launch sends its working directory and arguments
   through `WM_COPYDATA`) and Linux (a unique GApplication with
   `HANDLES_COMMAND_LINE`: the second launch's command line over D-Bus),
   except under automation and `asuka dev`, or with `"singleInstance":
-  false` (asuka-app.json's `multipleInstances`). The running one comes to the front,
-  `app.OnSecondInstance(args, dir)` gets the arguments, and their files
-  and URLs come as above. macOS's Launch Services runs an app once by
-  itself, and passes files as Apple Events, not arguments.
+  false` (asuka-app.json's `multipleInstances`). The running one comes
+  to the front, `on secondInstance(args, dir)` (and `onSecondInstance`)
+  gets the arguments, and their files and URLs come as above. macOS's
+  Launch Services runs an app once by itself, and passes files as Apple
+  Events, not arguments.
 - Quitting: `quit()` quits as the user's Quit does (the Quit command,
   which a desktop host does as the user's Quit). Every quit asks the
   core (`asuka_quit_request`: `on quit`'s handlers, which can cancel it)
@@ -3348,7 +3362,7 @@ core/src/ui/lifecycle.c):
 - The app's data, config, cache and log directories are each
   platform's place for the app (platform/desktop's `dsk_dirs` on
   Windows and Linux, the Foundation's on Apple platforms).
-- `asuka/recent` (the hosts' module `recent`, through `asuka/platform`:
+- `platform/recent` (the hosts' module `recent`, through `platform/host`:
   `add`, `clear`, `list`):
   NSDocumentController's recent documents on macOS, in an Open Recent
   menu the host fills as it opens (in the File menu once the app
@@ -3359,10 +3373,11 @@ core/src/ui/lifecycle.c):
   user's `recently-used.xbel`, through GBookmarkFile, as the app's (its
   application name), clearing only the app's. Phones and the web answer
   nothing.
-- `asuka/login` (the hosts' module `login`, through `asuka/platform`:
+- `platform/login` (the hosts' module `login`, through `platform/host`:
   `set`, `enabled`, `openedAtLogin`):
   SMAppService's `mainAppService` on macOS 13 (a bundle only;
-  `requiresApproval` is `ErrNeedsApproval`), the opening Apple Event's
+  `requiresApproval` is `LoginError.needsApproval`), the opening Apple
+  Event's
   `keyAELaunchedAsLogInItem` for `openedAtLogin`; Windows the HKCU `Run`
   value (and Task Manager's `StartupApproved` for `enabled`); Linux an
   XDG autostart entry, or in a Flatpak the Background portal's
@@ -3373,22 +3388,24 @@ core/src/ui/lifecycle.c):
 **Global shortcuts** (`hotkey`): keys that reach the app while another
 app is in front (a launcher's panel, start and stop a recording).
 
-- `hotkey.Register(Props{Shortcut, Description, OnPress})` registers a
-  `ui.Shortcut` while the calling component's owner lives; disposed (or
-  `Unregister`), the keys are let go. The shortcut follows its accessor:
-  the old keys go as the new ones are taken, and a Shortcut without a
-  Key registers nothing (a setting the user cleared). `OnPress` runs on
-  the main thread at each press; a key held down doesn't repeat it, and
-  only the press is reported (Windows tells no release).
-- `Status()` (off, pending, active, failed) and `Err()` are signals:
-  `ErrTaken` (another app has the keys, or this one already does),
-  `ErrNotAllowed` (the user declined, or the desktop won't bind them for
-  an app it can't place), `ErrNotAvailable` (phones, the web, a Wayland
-  desktop without the portal), `ErrKey` (no such key).
-- One module, `hotkey`: `register` (id, modifiers, key, description),
+- `hotkey.Hotkey(Shortcut(key:, primary:, shift:, alt:, control:)) {
+  description; on press; on error(e) }` is a component that shows
+  nothing: its shortcut (the prelude's `Shortcut`) is registered while
+  it's shown, and let go as it goes. Its task follows the shortcut and
+  the description: the old keys go as the new ones are taken. `press`
+  is emitted on the main thread at each press; a key held down doesn't
+  repeat it, and only the press is reported (Windows tells no release).
+- `error(e)` says why it isn't registered, a `HotkeyError`: `.taken`
+  (another app has the keys, or this one already does), `.notAllowed`
+  (the user declined, or the desktop won't bind them for an app it
+  can't place), `.notAvailable` (phones, the web, a Wayland desktop
+  without the portal), `.noKey` (no such key).
+- Plain Asuka over one module, `hotkey`, through platform/host:
+  `register` (u32 id, u8 modifiers, the key, the description),
   `unregister`, and a long poll, `next`, answered with the ids pressed
-  since; one runs while any shortcut is active, `stop` ends it. Phones and
-  the web have no module, which the package reports as `ErrNotAvailable`.
+  since (u32 each); one runs while any `Hotkey` is shown (a `live`
+  stream they read), `stop` ends it. Phones and the web have no module,
+  which the package reports as `.notAvailable`.
 - macOS: Carbon's `RegisterEventHotKey` (the Swift host's Hotkey.swift), as every Mac
   app's global shortcut (no Accessibility permission), registered
   exclusively; the system's own shortcuts (`CopySymbolicHotKeys`) are
@@ -3405,27 +3422,28 @@ app is in front (a launcher's panel, start and stop a recording).
   descriptions and preferred triggers; the desktop may ask the user to
   confirm or pick other keys, remembers them by the shortcut's id, and
   knows the app by its desktop entry. `Activated` is a press; its
-  activation token is the display's while `OnPress` runs, so a window
+  activation token is the display's while `press` is handled, so a window
   it shows takes the focus. Linux, X11: `XGrabKey` on the root window
   (in Caps Lock's and Num Lock's states too), taken while another client
   has the keys; presses come through GDK's `xevent`. Neither (GNOME
   before 48, XWayland alone, whose grabs see only X11 windows' keys):
-  `ErrNotAvailable`.
+  `.notAvailable`.
 
 **File dialogs and the file manager** (`dialog`, `shell`):
 
-- `dialog.Open`, `dialog.Save` and `dialog.Folder` give the user's own
-  paths, not copies (`device.PickFiles` gives copies, as a phone's
-  document picker does): the app reads and writes the files where they
-  are. Their options are a title, the button's label, where the dialog
-  starts (a folder, or a file in it: selected on macOS and Windows, or
-  its name suggested), filters (`dialog.Filter`: MIME types as an
-  input's accept takes them, `image/*` a family, or extensions, or
-  both), several files or folders, hidden files, and `From`, a view in
-  the window the dialog belongs to (default: the one in use). They're module calls (`dialog`:
-  `open`, `save`, `folder`, the options as JSON), answered with the
-  paths (JSON) or the path once the user has chosen; nothing is a
-  cancel.
+- `dialog.open`, `dialog.save`, `dialog.chooseFolder` and
+  `chooseFolders` give the user's own paths, not copies
+  (`device.pickFiles` gives copies, as a phone's document picker does):
+  the app reads and writes the files where they are. Their parameters
+  are a title, the button's label, where the dialog starts (a folder,
+  or a file in it: selected on macOS and Windows, or its name
+  suggested), filters (`dialog.Filter(name:, types:, extensions:)`:
+  MIME types as an input's accept takes them, `image/*` a family, or
+  extensions, or both), several files, hidden files, and `save`'s
+  suggested name. The dialog belongs to the main window. A native
+  package: its `Chooser` (`open`, `save`, `folder`, each an async call
+  with the `Request`) answers with the paths once the user has chosen;
+  none is a cancel, everywhere. `dialog.fake()` answers in tests.
 - macOS: `NSOpenPanel` and `NSSavePanel` as sheets on the window (on
   the sheet it has, if it has one: a sheet on a window with one waits
   for it to close), the title the panel's message (a sheet has no
@@ -3442,136 +3460,120 @@ app is in front (a launcher's panel, start and stop a recording).
   a sandbox it's the desktop's file chooser portal, and the paths are
   the document portal's. Each asks before Save replaces a file.
 - The web has no paths: a browser gives a page files, never where they
-  are. `Open` and `Folder` copy what's picked into the app's caches
+  are. `open` and `chooseFolder` copy what's picked into the app's caches
   (`/tmp/shared`, `/tmp/folders`: a folder with all it holds), through
   the File System Access API's dialogs (`showOpenFilePicker`,
   `showDirectoryPicker`: Chrome, Edge) or, without them, the file input
-  (`webkitdirectory` for a folder). `Save` gives a path in the caches
+  (`webkitdirectory` for a folder). `save` gives a path in the caches
   (`/tmp/saved/<n>/<name>`) whose file, each time the app has written
   it (closed a file it opened to write, or renamed one over it: fs.js's
   `onWritten`), goes to the file the user chose with
   `showSaveFilePicker`, or is downloaded by its name where the browser
   has no such dialog. A path a dialog gave is where a later one starts
   (`startIn`, the handle behind it).
-- Phones: iOS and Android have no such dialogs. `Open` is the document
-  picker, through `device.PickFiles` (a phone's host has no `dialog`
-  module: its "no module method" answer sends the package there), and
-  gives its copies; `Save` and `Folder` are `dialog.ErrUnsupported`.
-- `shell.Reveal` shows a file selected in its folder: Finder
+- Phones: iOS and Android have no such dialogs (no `Chooser` there).
+  `open` is the document picker, through `device.pickFiles`, and gives
+  its copies; `save` and `chooseFolder` throw an unsupported error.
+- `platform/shell`, a native package: `shell.reveal` shows a file
+  selected in its folder: Finder
   (`activateFileViewerSelectingURLs:`), Explorer
   (`SHOpenFolderAndSelectItems`, on a thread of its own: a window already
   showing the folder is used), the file manager's
   `org.freedesktop.FileManager1.ShowItems` over D-Bus (Files, Dolphin,
-  Nemo, Thunar; without one, the folder opens). `shell.Open` opens a
+  Nemo, Thunar; without one, the folder opens). `shell.open` opens a
   file in its app and a folder in the file manager (`NSWorkspace`,
-  `ShellExecuteEx`, `GtkFileLauncher`; `ErrNoApp` for a type no app
-  opens, though Windows asks first, as Explorer does); on the web,
-  preview's new tab. `shell.Trash` moves an item to the trash and never
+  `ShellExecuteEx`, `GtkFileLauncher`; `ShellError.noApp` for a type
+  no app opens, though Windows asks first, as Explorer does); on the
+  web, a new tab with what the browser shows. `shell.trash` moves an
+  item to the trash and never
   deletes: `NSFileManager`'s `trashItemAtURL:` (off the main thread),
   GIO's `g_file_trash_async`, which fail on a volume without a trash,
   and on Windows `IFileOperation` with `FOFX_RECYCLEONDELETE` (on a
   thread of its own) and a progress sink whose `PreDeleteItem` refuses a
   delete that wouldn't recycle (too big for the Recycle Bin, a drive
   without one), which Windows would otherwise do without asking.
-  `shell.Beep` is `NSBeep`, `MessageBeep(MB_OK)`, `gdk_display_beep`.
-  Phones and the web have no file manager: Reveal and Trash are
-  `shell.ErrUnsupported` there (Open too on phones: `preview.Show`
-  shows a file), Beep nothing.
+  `shell.beep` is `NSBeep`, `MessageBeep(MB_OK)`, `gdk_display_beep`.
+  Phones and the web have no file manager: `reveal` and `trash` throw
+  an unsupported error there (`open` too on phones: `preview.show`
+  shows a file), `beep` does nothing.
 
-**Watching files** (`watch`): changes to a file or a directory, and with
-`Recursive` the directories in it; every platform, phones and the web
-too. MyGo's `WatchFiles`, ported.
+**Watching files** (`std/watch`): changes to a file or a directory,
+and with `recursive` the directories in it, on the desktops. MyGo's
+`WatchFiles`, ported to Swift and C.
 
-- No module and no host: the package calls each system from Go, in
-  the app's process (on iOS and Android, the Go library's), without
-  cgo. `watch.New(ctx, path, Options)` from any goroutine, `Next` for
-  each batch, `Close`; `watch.Path(path accessor, Options, f)` in a
-  component: the watch starts on a goroutine, follows its accessor,
-  stops with its owner, `f` runs on the main thread (`ui.Post`), and the
-  next batch waits until it has; `Err()`, `Watching()` and `Root()` are
-  signals.
+- A native package with no host module: `watch.path(dir, ignore:,
+  recursive:, attributes:)` opens a `Watcher` (macOS's Swift, Windows'
+  and Linux's C) and returns a `Watch`: its `root` (the path resolved:
+  macOS's /tmp is /private/tmp) and `events`, a `Stream<[Event]>` of
+  batches, which closes the watcher as its reader leaves it. The
+  watcher's `follow(changed:)` calls back on the main thread with each
+  batch until the watch ends or the task is cancelled. Phones and the
+  web have nothing to watch with: `path` throws an unsupported error
+  there.
 - A watch is a snapshot and a comparison, not a relay of the system's
-  events: it keeps each entry's identity (device and inode; volume and
-  file ID on Windows, read when the stat is taken), size, modification
-  time and mode, and where the system says something changed (a
-  notice: a directory, or an entry in one, with a kind that's only a
-  hint), it lists or stats again, once the notices stop for `Debounce`
-  (50 ms; never more than `MaxDelay`, 500 ms). The differences are the
-  events: `Create`, `Write`, `Remove`, `Rename` (paired by identity when
-  exactly one entry has it before and after: any platform, any
-  distance within the tree; a directory renamed is one event),
-  `Attrib` (the mode, with `Attributes`), and `Overflow` first in a
-  batch the system dropped changes for, after which it looked at
-  everything. A file replaced at its path by another file (an atomic
-  save) is a `Write`, never a removal and a creation, and the new file
-  is watched. A file is watched through its directory. The watched
-  directory removed, renamed or replaced ends the watch with a
-  `Remove` of `.`. The watch doesn't look again until `Next` took the
-  last batch, so a slow reader gets one batch of what changed meanwhile;
-  notices that come while it looks wait (spilled, up to `MaxEntries`,
-  then a look at everything).
-- It never leaves the tree: entries are stat'ed and directories
-  opened relative to their directory (`os.Root`), symlinks and
-  junctions are entries, not followed, and each target the system
-  watches is checked to be what the scan saw. What it can't read is
-  left out, not an error; `Ignore` (`watch.Patterns`, gitignore-like)
-  leaves out entries, and a directory it ignores is never opened.
-  `MaxEntries` (65536 on macOS, 8192 elsewhere) bounds a tree.
-- macOS: FSEvents (std/watch's Swift), a stream per directory target with
-  `kFSEventStreamCreateFlagFileEvents` and `WatchRoot`, on one serial
-  dispatch queue, one callback for the process; a stream covers its
-  tree, so directories below need none. Dropped events
+  events: it keeps each entry's identity (device and inode; the file ID
+  on Windows), size, modification time and mode, and where the system
+  says something changed, it looks again once the notices stop for 50
+  ms (never more than 500 ms after the first). The differences are the
+  events (`Op`): `create`, `write`, `remove`, `rename` (with `oldPath`,
+  paired by identity), `attrib` (the mode, with `attributes`), and
+  `overflow` first in a batch the system dropped changes for, after
+  which it looked at everything. A file replaced at its path by another
+  file (an atomic save) is a `write`, never a removal and a creation,
+  and the new file is watched. A file is watched through its directory.
+  The watched directory going ends the watch (`follow` returns, the
+  stream ends).
+- It never leaves the tree: entries are `lstat`ed, symlinks and
+  junctions are entries, not followed. What it can't read is left out,
+  not an error; `ignore` (gitignore-style lines, `path.Match`'s
+  patterns) leaves out entries, and a directory it ignores is never
+  opened.
+- macOS: FSEvents (std/watch's Swift), a stream for the directory (a
+  file's: its folder's) with file events and its root watched; a stream
+  covers its tree, so directories below need none. Its callbacks and
+  the looking again run on the watch's serial queue; dropped events
   (`MustScanSubDirs`, user or kernel drops) are an overflow.
-- iOS: kqueue's `EVFILT_VNODE` on an `O_EVTONLY` descriptor per
-  directory and file, an `EVFILT_USER` event to wake it (macOS runs it
-  too, and the tests run every case through both).
-- Linux and Android: inotify, one instance for the process (watch
-  descriptors, not instances, are what a user has many of), a watch
-  descriptor per directory, `IN_Q_OVERFLOW` an overflow. inotify says a
-  directory was removed (`IN_DELETE_SELF`) only once nothing holds it
-  open, and the watch does: a directory's watch watches its parent too,
-  which says so at once, when it may.
-- Windows: `ReadDirectoryChangesW` on a completion port, one handle for
-  a recursive tree (its directories stay renamable), its parent's too
-  (a directory's own handle says nothing when it's renamed), the
-  buffer's overflow (`ERROR_NOTIFY_ENUM_DIR`, or nothing returned) an
-  overflow. `FILE_NOTIFY_CHANGE_ATTRIBUTES` only with `Attributes`.
-- The web: Go's `os` on js/wasm calls the page's `fs`, fs.js's file
-  system in memory, whose `watch` is Node's `fs.watch` (rename and
-  change, by name, recursive), told after the call that changed it;
-  its entries have inode numbers of their own, kept as they're renamed.
-  Under Node (`go test`), Node's `fs.watch`.
+- Linux: inotify, a watch on each directory looked at (`IN_DONT_FOLLOW`,
+  `IN_EXCL_UNLINK`), read on a thread of the watch's, woken through a
+  pipe to stop; `IN_Q_OVERFLOW` an overflow.
+- Windows: `ReadDirectoryChangesW` on the watched directory (its tree,
+  with `recursive`), overlapped, on a thread of the watch's, woken by an
+  event to stop; the snapshot's ids are `FileIdBothDirectoryInfo`'s,
+  for renames, and a read that returns nothing (the buffer overflowed)
+  an overflow.
+- What both desktops' C share is desktop/watch.c (the snapshot, the
+  comparison, the patterns, the debounce); the Swift does the same.
 
 **Now Playing and the media keys** (`nowplaying`), on every platform
 (phones first): what the app plays in the system's media controls, and
 their commands back.
 
-- `nowplaying.Show(Props)` in a component: accessors for the title,
-  artist, album, artwork (a source, as `Image`'s), duration, state
-  (`Paused`, `Playing`, `Stopped`), position and rate, read in one render
-  effect; handlers for play, pause, toggle, stop, next, previous, seek
-  (to a position) and the skips (by `SkipInterval`, 15 s). A handler
-  enables its command; play, pause and toggle stand in for each other;
-  seek needs a duration. Several mounted: the last shows (a stack). The
-  last one disposed clears the controls once the flush is over (a posted
-  check), so a component replaced by another (a track's, in a `Dynamic`)
-  doesn't drop the app out of them in between.
-- The position is published with the state and the rate, and the host
-  takes its time on receipt, so the system advances it; the package
-  sends it again only when it's half a second off where the system has
-  it while playing (a seek, a stall), or changes while paused. A
-  position signal written from a polled status costs nothing.
-- `Props.Player`, an `*audio.Player`: its `Status` is read once a
-  second (a timer, `ui.Post`) and fills the state, position and
-  duration; play, pause, stop, seek and, with a `SkipInterval`, the
+- `nowplaying.NowPlaying { title; artist; album; artwork; duration;
+  state; position; rate; player; skipInterval }` is a component that
+  shows nothing on screen: while it's mounted, its props are what the
+  system shows (the artwork a source, as `Image`'s; `state` `.paused`,
+  `.playing`, `.stopped`), computed in one effect; its events (`play`,
+  `pause`, `togglePlayPause`, `stop`, `next`, `previous`,
+  `seek(position)`, `skipForward(seconds)`, `skipBackward(seconds)`)
+  are the commands back. A handled event enables its command; play,
+  pause and toggle stand in for each other; seek needs a duration.
+  Several mounted: the last shows (a stack of serials). The last one
+  going clears the controls.
+- The position is published with the state and the rate, and the
+  platform takes its time on receipt, so the system advances it; the
+  package sets it again only when it's half a second off where the
+  system has it while playing (a seek, a stall), or changes while
+  paused. A position read from a polled status costs nothing.
+- `player:`, a platform/audio `audio.Player`: its `status()` is read
+  once a second while it shows (a task) and fills the state, position
+  and duration; play, pause, stop, seek and, with a `skipInterval`, the
   skips run on it unless their handlers are set, and show at once (the
-  status assumed until the next read, which a read already in flight
-  can't overwrite).
-- One module, `nowPlaying` (std/nowplaying's): `set` (the info as
-  JSON, with the enabled commands as bits), `clear`, and a long poll,
-  `next`, answered with the commands since (u8 command, f64 value each);
-  `stop` ends it. Hosts drop commands while no poll follows, or that
-  aren't enabled.
+  status assumed until the next read).
+- A native package: its `Center` (`set` the info, with the enabled
+  commands as bits; `clear`; `watch(command:)`, called back with each
+  command and its value until its task is cancelled) is each
+  platform's own code, on the main thread. A platform without it shows
+  nothing.
 - iOS and macOS: `MPNowPlayingInfoCenter` (the playback rate 0 while
   paused; `playbackState` on the Mac) and `MPRemoteCommandCenter`'s
   commands, their targets added once, enabled per `set`; the artwork an
@@ -3579,18 +3581,20 @@ their commands back.
   Mac its handler decodes the bytes it holds, so the image goes with the
   artwork). iOS puts the audio session in the playback category; the CLI
   adds the `audio` background mode for an app that imports
-  asuka/nowplaying (its manifest's `backgroundModes`). The Mac's is the
-  package's Swift, which also routes the keyboard's media keys.
+  platform/nowplaying (its manifest's `backgroundModes`). Both are the
+  package's Swift; on the Mac it also routes the keyboard's media keys.
 - Android: a platform `MediaSession` (its `PlaybackState` actions the
   commands; the skips also custom actions, which fill the previous and
   next slots of Android 13's media controls), with a `MediaStyle`
-  notification; `AsukaMediaService`, a foreground service of the
-  `mediaPlayback` type, runs while playing and detaches the notification
-  when paused (Android 14's rules; a start the system refuses in the
-  background leaves the notification alone). The build declares it and
-  its permissions only for apps that import the package.
-- Windows: `ISystemMediaTransportControlsInterop::GetForWindow` on the
-  app's window (or a hidden one of the host's), its buttons (fast
+  notification; `MediaService` (the package's Kotlin), a foreground
+  service of the `mediaPlayback` type, runs while playing and detaches
+  the notification when paused (Android 14's rules; a start the system
+  refuses in the background leaves the notification alone). The build
+  declares it and its permissions only for apps that import the
+  package.
+- Windows (the package's C): `ISystemMediaTransportControlsInterop::
+  GetForWindow` on the app's window (or a hidden one of the package's),
+  its buttons (fast
   forward and rewind the skips) and timeline, delegates that post to
   the main thread; the artwork read off it into a stream. Linux: an MPRIS
   player (`org.mpris.MediaPlayer2` and `.Player`) on a session bus
@@ -3598,43 +3602,49 @@ their commands back.
   `org.mpris.MediaPlayer2.<app>.instance<pid>`; `Position` extrapolated
   as it's read, `Seeked` on jumps, a new track id when the track
   changes, `Seek` a skip or a seek; `clear` closes the connection, so
-  the name goes. The web: the Media Session API (`metadata`,
+  the name goes. The web (the package's JavaScript): the Media Session
+  API (`metadata`,
   `playbackState`, action handlers, `setPositionState`).
 
 **Bluetooth LE** (`bluetooth`), on every platform: the app as a central
 (scans, the system's chooser, connections, GATT reads, writes and
 subscriptions) and as a peripheral (advertising, a GATT server).
 
-- Lasting things start on the main thread and stop with their owner, or
-  their stop: `Scan`, `Connect` (a `Connection` at once, `Connecting`; its
-  `State` a signal, `Wait`, `Done` and `Err` for goroutines),
-  `Characteristic.Subscribe`, `Advertise`, `Serve`, `Watch`/`Use`,
-  `OnRestore`. Calls that wait for a device or the user (`Request`,
-  `Choose`, `Services`, reads, writes, MTU, RSSI) are blocking, off the
-  main thread; a connection's wait for it to connect first. An error
-  ends a callback's stream once (`func(v, err)`).
-- One module, `bluetooth`:
-  JSON both ways, byte values base64, UUIDs 128-bit lower case. The
-  package numbers scans, connections, advertisements, servers and their local
-  characteristics; hosts number the remote attributes (stable handles
-  per connection). Events (advertisements, disconnections with their
-  reason, notifications, the server's requests, state changes) come
-  through one long poll, `next`, chained from the main thread (a Call's
-  callback calls again) while anything listens; `stop` when nothing
-  does. Several connections to one device share the platform's link.
-- iOS: Core Bluetooth, compiled in for an app whose archive calls the
-  package (`ASUKA_BLUETOOTH`, through its `call` and `send`); state
+- What lasts is a `Stream` or a store, stopped as its reader or its
+  owner goes: `bluetooth.scan(services:, duplicates:)` and
+  `backgroundScan` (streams of `Advertisement`s), `connect(device,
+  timeout:, autoConnect:)` (a `Connection` store at once: its `state`,
+  `.connecting` first, and `error` follow the link, read in a binding;
+  `close()` or its owner going ends it), a `Characteristic`'s
+  `notifications()` (on as it's read, off as the reader stops),
+  `serve(services)` and `advertise(…)` (until their task is
+  cancelled), `state()` (tracked, through `live`) and `restored()`.
+  What waits for a device or the user (`request()`, `choose(filters)`,
+  `services()`, `characteristic(…)`, `read()`, `write(value)`, `mtu()`,
+  `rssi()`) is `async` and throws a `BluetoothError`. `bluetooth.fake()`
+  drives it in tests.
+- A native package: one `Adapter` (`native interface`) per platform,
+  its long-running calls async with a callback (`scan(found:)`,
+  `connect(changed:)`, `subscribe(value:)`, `serve(request:)`,
+  `watchRestored`) that ends with its task. The package numbers
+  connections; the platforms number the remote attributes (stable
+  handles per connection). UUIDs are strings, 16-bit SIG ones as four
+  hex digits, others 128-bit lower case (`uuid()` normalizes). Several
+  connections to one device share the platform's link.
+- iOS and macOS: Core Bluetooth (the package's Swift); state
   restoration when the app has the background modes (asuka.toml's
-  `bluetooth.background`), the managers made at launch for a relaunch.
-  macOS: the same, the package's Swift. Android: one merged scan, one GATT
-  operation at a time per connection, the companion device chooser, a
-  `PendingIntent` background scan whose results wait in a file for
-  `restore`. Windows: WinRT's Bluetooth, GATT and advertisement APIs, the
-  device picker. Linux: BlueZ on the system bus, the app's advertisement
-  and GATT application exported objects. The web: Web Bluetooth, the
-  chooser instead of a scan; no peripheral role (`not available`).
+  `bluetooth.background`), the managers made at launch for a relaunch
+  (`AsukaBluetoothLaunch`, the manifest's launch class). Android (the
+  package's Kotlin): one merged scan, one GATT operation at a time per
+  connection, the companion device chooser, a `PendingIntent`
+  background scan (`BluetoothScanReceiver`) whose results wait in a
+  file for `restored()`. Windows (the package's C): WinRT's Bluetooth,
+  GATT and advertisement APIs, the device picker. Linux: BlueZ on the
+  system bus (the package's C), the app's advertisement and GATT
+  application exported objects. The web: Web Bluetooth, the chooser
+  instead of a scan; no peripheral role (`BluetoothError.notAvailable`).
 
-**Updates** (`asuka/update`, std/update; core/src/std/update.c,
+**Updates** (`platform/update`, sdk/update; core/src/std/update.c,
 inflate.c, ed25519.c; the hosts' `update` module; `internal/update` and
 `cmd/asuka/updates.go` for the CLI): a desktop app updates itself as
 Sparkle's do, from releases `asuka build` signs; MyGo's updater, ported.
@@ -3658,9 +3668,10 @@ over files, as its `native fn`s; the host does what only it can.
   Diff, Sign); internal/update's TestCoreTestdata writes the core's test
   data with that code, so the core reads what the CLI writes.
 - The core (`update.*`, blocking, called in spawn): `verifyFile` (the
-  file's SHA-256 streamed, Ed25519 verified, strict as Go's:
-  ed25519.c, TweetNaCl's arithmetic; asuka/crypto has the same
-  `ed25519Verify`, `ed25519Sign`, `sha512`), `extract` (gzip and tar
+  file's SHA-256 streamed, Ed25519 verified, as strictly as Go's
+  crypto/ed25519 (the CLI's signer): ed25519.c, TweetNaCl's
+  arithmetic; std/crypto has the same `ed25519Verify`, `ed25519Sign`,
+  `sha512`), `extract` (gzip and tar
   read as streams: ustar, PAX and GNU names, files, directories, links),
   `deltaIndex`, `deltaStart` and `deltaFile` (a file inflated, copied or
   bspatched; DEFLATE pulled from three sections of the delta at once),
@@ -3668,12 +3679,12 @@ over files, as its `native fn`s; the host does what only it can.
   the tree (a path whose parent is a link or a file is refused; a link's
   target, read from where it is, stays inside). Tested under ASan with
   the CLI's archives, deltas and patches, cut and flipped.
-- The package (std/update): `check()`, `Release.install(progress:)`,
+- The package (sdk/update): `check()`, `Release.install(progress:)`,
   `relaunch()`, `unsupported()`, `setFeed`, `setChannel`,
   `compareVersions`; the updater's state, the store `update.updater`
   (phase, release, downloaded, total, error, user, installing);
   `checkForUpdates()`; automatic checks and downloads, the skipped
-  version and the last check as preferences (asuka/storage's
+  version and the last check as preferences (std/storage's
   `asuka.update`); `onInstalled`; `UpdateWindow` (its tasks run what's
   asked and the next background check: soon after launch, then an
   interval after the last that succeeded, waking at least hourly to
@@ -3692,9 +3703,9 @@ over files, as its `native fn`s; the host does what only it can.
   unpacked; a folder's and a prefix's tree must hold the running
   executable's counterpart; then the host's `install`. What fails is
   removed. The window's words are internal/l10n's, copied into
-  std/update/words.asuka (internal/l10n's TestUpdateWords), in the app's
+  sdk/update/words.asuka (internal/l10n's TestUpdateWords), in the app's
   language (`i18n.locale()`).
-- **The host's `update` module**, JSON both ways through asuka/platform's
+- **The host's `update` module**, JSON both ways through platform/host's
   `call`, each method answering once. A host without it (the phones, the
   web) answers "no module": the package says
   updates aren't available (`.notAvailable`).
@@ -3765,7 +3776,7 @@ over files, as its `native fn`s; the host does what only it can.
   cancelled) and what it downloaded and installed.
 - The web: the page's version is the host's (`asuka.native.app.version`,
   "" under asuka dev); the build writes `version.json` (`Cache-Control:
-  no-cache`), which the package's web side (std/update/web) reads past
+  no-cache`), which the package's web side (sdk/update/web) reads past
   caches; a newer version is a release with nothing to download, and
   `relaunch()` reloads the page.
 - The CLI: `asuka update keygen`; `asuka build` writes `dist/updates`
@@ -3777,83 +3788,62 @@ over files, as its `native fn`s; the host does what only it can.
   cmd/asuka's TestUpdatesVerifiedByCore checks that what it signs, the
   core verifies, unpacks and applies.
 
-**Documents** (`document`): document-based apps, as NSDocument and
-NSDocumentController, SwiftUI's DocumentGroup and MyGo's documents make
-them, built on the desktop's own pieces (`ui.Window`, `MenuBar`,
-`OnOpenFiles`, `app.OnQuit`, `recent`, `dialog`) rather than ops of
-their own.
+**Documents** (`platform/document`): document-based apps, as
+NSDocument and NSDocumentController, SwiftUI's DocumentGroup and MyGo's
+documents make them, built in Asuka on the pieces any app has
+(`Window`, `MenuBar`, `onOpenFiles`, `onQuit`, platform/recent,
+platform/dialog, std/fs) rather than ops of their own.
 
-- `document.New(Options[T]{Types, Read, Write, View, ...})` describes
-  one kind of document whose content is a `T`; `Run` runs the app with
-  it (`app.RunWindow` with the main window hidden), `Root` is its root
-  for an app that runs itself. A `Document[T]`'s content is a signal
-  (`Content()`): the view binds it (a text field's `Value`), and an
-  effect owned by the document marks it edited as it changes, unless
-  `Equal` finds it equal to the file's. Reading the file (open, revert,
-  another app's change) sets it without editing. A mutable content says
-  `Changed()`, and `Snapshot` copies it before a write.
-- Everything is on the main thread. Each document's reads and writes are
-  jobs run one at a time: a job starts on the main thread (where it
-  takes its snapshot of the content), works on a goroutine, and comes
-  back with `ui.Post` before the next starts, so no lock guards a
-  document. Questions are callbacks (alerts, dialogs): a close or a quit
-  that must ask is refused, then done again once answered.
-- Files are written as NSDocument and GIO write them: a sibling file,
-  flushed, renamed over the old one (its permissions, owner and group
-  kept; on a Mac its extended attributes, Finder's tags; on Windows
-  `ReplaceFileW`, which keeps its security, streams and creation time);
-  a file with other hard links, or in a folder the user can't write,
-  in place. Before writing, the file's stamp (modification time, size)
-  is compared with what the document read: a changed file puts it in
-  conflict instead.
-- Desktop: one `ui.Window` per document (`For` over the open ones), its
-  `StateKey` the file's, with the `Edited` and `File` props (the
-  Window kind's): a Mac's `setDocumentEdited:` and `setRepresentedURL:`,
-  a `*` before the title on Windows, Linux and the web, the file's
-  folder as a GNOME title's subtitle; the title is the name, and "name -
-  App" on Windows and Linux. `WindowMenuBar` (a `WindowConfig` flag)
-  gives the window the app's menu bar where it's per window (Windows'
-  HMENU, Linux's main menu). The File menu is the package's `MenuBar`
-  (with `Options.Menus` beside it), its items enabled for the document
-  in use (the window focused last); two `MenuRole`s are the hosts':
-  `MenuRoleClose` closes the window in use as its close button does
-  (`performClose:`, `WM_CLOSE`, `gtk_window_close`), and on a Mac
-  replaces the host's Close Window; `MenuRoleOpenRecent` is a Mac's
-  NSDocumentController submenu, in its place, and elsewhere the item's
-  submenu, which the package fills from `recent.List`.
-- Autosave (`AutosaveInPlace`, the default): a document with a file it
-  can write is saved a moment after the edits stop (5 s, at most 30 s
-  apart), when its window loses the focus and when it closes; others
-  (untitled, read-only, in conflict, deleted, or `AutosaveOff`) keep a
-  recovery copy a second after the edits stop, in `Recovery/<kind>` of
-  `app.DataDir`, in a session a lock file says is alive. A launch claims
-  the sessions no instance holds and opens their documents, edited.
-- Closing: an unedited document closes; an edited one is saved in place
-  or asks (`OnCloseRequest` false; the answer `Destroy`s the window).
-  Quitting (`app.OnQuit`): documents are saved in place or kept in their
-  copies, the quit canceled meanwhile and asked for again; with
-  `AskOnQuit`, a Mac asks whether to review them, then each, Windows and
-  Linux in one question naming them. The session's end saves at once,
-  on the main thread. A Mac's app keeps running with no window
-  (asuka-app.json's `keepRunning`) and its Dock icon makes a document
-  (`applicationShouldHandleReopen:` asks); Windows'
-  and Linux's quit with their last document.
-- Files other apps change: each open file is watched (asuka/watch's
-  watch of it, through its folder, so a file an editor replaces stays
-  watched; where there's none, or once its folder went, a poll of its
-  stamp every two seconds) and looked at when its window
-  comes to the front: an unedited document reads it again, an edited one
-  is in conflict; a file gone is looked for by its identity (a Mac:
-  anywhere on its volume, `/.vol/<dev>/<ino>` and `F_GETPATH`; elsewhere
-  its folder, by inode or Windows' file index), else the document is
-  Deleted.
-- Phones and the web: one document at a time in the root's `Stack`: a
-  list of the app's documents (its documents folder: iOS's container's
-  Documents), and a document's screen pushed over it. Every document has
-  a file from the start, is saved in place (also as the app goes to the
-  background), and closes as its screen goes; files from elsewhere are
-  copied in; a crash's copies are written back quietly (beside the file,
-  "(Recovered)", where it changed).
+- `document.open(path, read:, write:)` is a `Document<T>`, a store:
+  its `content` (`T?`, none until read), `state` (`.loading`, `.saved`,
+  `.edited`, `.saving`, `.conflict`, `.failed`), `error`, `file` ("" for
+  an untitled one) and `name`, read in bindings. `edit(c)` changes the
+  content; `save()`, `saveSoon()`, `saveAnyway()`, `saveAs(target)`,
+  `rename(name)`, `moveTo(dir)`, `revert()`, `discard()` and
+  `settle()` are its actions. Reading the file (open, revert) sets the
+  content without editing it.
+- Everything is on the main thread but the files: a `native interface
+  Files` (`read`, `write`, `modified`) reads and writes off it, through
+  NSFileCoordinator on iOS and macOS (iCloud's and other apps' writes
+  coordinated), on Android's IO dispatcher (a path or a `content://`
+  URI), on a thread of the call's on Windows and Linux (desktop/
+  document.c); where there's none (the web, a test), std/fs. A write is
+  a temporary file renamed over the file, its permissions kept. Before
+  writing, the file's stamp (its modification time) is compared with
+  what the document read: a changed file puts it in `.conflict`
+  instead, which `saveAnyway` writes over and `revert` gives up.
+- Autosave: each `edit` starts a task that, a second after the last
+  change, saves the document, or, when it can't be saved in place
+  (untitled, in conflict, failed), writes a recovery copy (the content
+  and a JSON record of its file, name and stamp) in `recoveryDir()`
+  (`Recovery` in `fs.appDir()`); a save drops the copy.
+- `document.Documents(types) { editor: doc => … }` is a text editor's
+  documents (UTF-8 `Document<string>`s) the platform's way. On a desktop
+  (`environment().platform`) it hides the main window and shows one
+  `Window` per document (`DocumentWindow`: its `title` the name, `file`
+  and `edited` its props, so a Mac's `setRepresentedURL:` and
+  `setDocumentEdited:`, a `*` before the title on Windows, Linux and the
+  web), and a `MenuBar` with the File menu: New, Open… (`dialog.open`),
+  Open Recent (a Mac's NSDocumentController submenu, `role:
+  .openRecent`; elsewhere filled from `recent.list()`), Close, Save,
+  Save As… (`dialog.save`), Duplicate, Rename…, Move To…
+  (`dialog.chooseFolder`) and Revert, enabled for the document in use
+  (the window focused last). Files the app is opened with
+  (`onOpenFiles`) open in windows of their own; each opened or saved
+  file goes to `recent.add`. At launch the last run's recovery copies
+  open again, edited.
+- Closing: a document without unsaved changes closes; an edited one
+  with a file is saved first, and asks only if that failed or it's
+  untitled (`on closeRequest`, an `alert`: Save, Don't Save, Cancel; an
+  untitled one Save…, Delete, Cancel). Quitting (`onQuit`): with
+  unsaved documents the quit is canceled, each document `settle`s (its
+  file, else its recovery copy), then the app quits again; nothing is
+  lost and nothing asks.
+- Phones and the web: one document at a time in a `Stack`: a list of
+  the documents in `documentsDir()` (New; a row's swipe Duplicates,
+  Renames or Deletes it), and a document's screen pushed over it, saved
+  as it changes. The words are the package's own (words.asuka), in the
+  app's language (`i18n.locale()`).
 
 ## The web
 
@@ -3931,7 +3921,7 @@ core/src/abi/web.c is the core's side:
   last in the shader's code, since no compiler runs in the page; the
   host compiles it with WebGL 2 and sets the uniforms' lanes by their
   GLSL types.
-- Files: the core's file calls (asuka/fs, the crash record, what the C
+- Files: the core's file calls (std/fs, the crash record, what the C
   library opens) are WASI's, which `wasi.js` answers from a file system
   in memory (`fs.js`, `/` preopened), at once: the app's directory
   (`/data/<name>`, the core's `appDir`) loaded from IndexedDB before the

@@ -11,7 +11,11 @@ on AppKit, the core linked in, as iOS's), the Windows host
 on GTK 4 and libadwaita, opened with dlopen), those two each linked with
 the core and the app into one executable and sharing C in
 `platform/desktop`, and the web (`platform/web`, the DOM from
-JavaScript, the core as WebAssembly). **Read [DESIGN.md](DESIGN.md),
+JavaScript, the core as WebAssembly). The packages the CLI carries are
+the standard library (`std/<name>`, the language's own, the same
+everywhere: in `std/`) and the platform SDK (`platform/<name>`, what
+wraps a device, an OS service or a store: in `sdk/`); no other package
+is named under either prefix. **Read [DESIGN.md](DESIGN.md),
 [RFC 0007](rfcs/0007-c-core-and-asuka-language.md) and [RFC
 0008](rfcs/0008-no-go-at-run-time-and-c-ffi.md) before changing code**;
 DESIGN.md is the source of truth for the architecture, the RFCs for the
@@ -75,7 +79,7 @@ go test ./platform/macos/mactest -run Conformance  # what the macOS host draws f
 go test -tags e2e ./e2e -run Conformance # likewise on the simulator, the emulator and headless Chrome (ASUKA_CONFORMANCE_OUT=dir: the captures)
 swift test --package-path platform/ios # the Swift decoder against the golden files (macOS)
 node --test platform/web                # the JavaScript decoder, likewise
-go test ./std                            # std packages' Swift run on this Mac (asuka/http's URLSession download)
+go test ./std                            # std packages' Swift run on this Mac (std/http's URLSession download)
 (cd platform/android && ./gradlew :asuka:testDebugUnitTest)  # the Kotlin decoder, likewise (ANDROID_HOME set)
 go generate ./ops                   # Go constants, Swift, Kotlin and JavaScript decoders
 go run platform/web/gen_symbols.go  # the web host's symbols, from the Android host's
@@ -96,7 +100,7 @@ go run ./cmd/asuka run file.asuka                # one file: its test blocks, th
 go run ./cmd/asuka new --bin /tmp/greet          # a program (fn main): asuka.toml, main.asuka
 go run ./cmd/asuka run examples/notes -- add Hi  # a program's main on the VM (here [bin.notes]), the arguments after --
 go run ./cmd/asuka build --bin notes --target linux-arm64 examples/notes  # a program's executable (another desktop's with Zig)
-go test ./lang/compile -run 'TestPrograms|TestRun/(os|flag|command)'      # programs on the VM and compiled to C; asuka/os, flag, command
+go test ./lang/compile -run 'TestPrograms|TestRun/(os|flag|command)'      # programs on the VM and compiled to C; std/os, flag, command
 go test -timeout 30m ./internal/appbuild ./cmd/asuka  # the builds for every target, the dev loop end to end (mac, Chrome, simulator, emulator)
 go test -tags e2e ./e2e -run IOS                 # GUI tests: the examples on the simulator (Android: -run Android, an emulator running)
 go run ./cmd/asuka build --platform ios --simulator examples/counter    # a release build (--platform ios alone: a signed .ipa)
@@ -121,7 +125,7 @@ $env:ASUKA_SNAPSHOT='c.png'; $env:ASUKA_DUMP='1'; $env:ASUKA_SCRIPT='tap:Add'; .
 go run ./cmd/asuka dev --platform web examples/counter       # the web: served to the browser, reloaded on save (--lan: to a phone)
 go run ./cmd/asuka build --platform web examples/counter     # a static site, in examples/counter/dist/web
 go test -tags e2e ./e2e -run Web                  # GUI tests: the examples in headless Chrome
-go test ./platform/macos -run StdSwift; go test ./cmd/asuka -run StdAndroidViews; go test -tags e2e ./e2e -run StdWebViews; go test ./platform/windows -run StdViews  # std packages' views driven on macOS and the iOS simulator, a device, Chrome, Windows (Linux: TestStdUnits); std/markdown's count what a streamed reply replaces
+go test ./platform/macos -run StdSwift; go test ./cmd/asuka -run StdAndroidViews; go test -tags e2e ./e2e -run StdWebViews; go test ./platform/windows -run StdViews  # std and sdk packages' views driven on macOS and the iOS simulator, a device, Chrome, Windows (Linux: TestStdUnits); std/markdown's count what a streamed reply replaces
 go run ./cmd/asuka update keygen                  # the key pair that signs desktop apps' updates (asuka.toml's updates)
 go run ./cmd/asuka publish --platform linux examples/counter  # a desktop build and its signed update, uploaded (GitHub, S3)
 go test -tags e2e ./e2e -run Updater               # a desktop app updates itself and relaunches (macOS; Linux under xvfb-run)
@@ -183,7 +187,7 @@ go test ./platform/windows -run Updater           # likewise on Windows (a PC, o
   each platform's own project (Package.swift, an android/ Gradle module,
   web/, desktop/'s C for Windows and Linux). Changing `internal/nativegen`
   or core/src/native's wire means regenerating every native package in
-  the repo (`asuka native generate` in each: the std packages', the
-  examples', the tests' testdata) and the platforms' runtimes
+  the repo (`asuka native generate` in each: std's and sdk's packages,
+  the examples', the tests' testdata) and the platforms' runtimes
   (NativeModules.swift, kept identical in platform/ios and
   platform/macos; NativeModules.kt; native.js).
