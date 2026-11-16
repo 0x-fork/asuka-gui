@@ -138,7 +138,7 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
   Swift on iOS and macOS, Kotlin on Android, JavaScript on the web, Go
   on Windows and Linux.
 - [Development](development.md): `asuka dev` in depth on each platform,
-  devices, `asuka vet`, tests and common problems.
+  devices, tests and common problems.
 - [Testing](testing.md): your app's interface in `test` blocks, with no
   device or display: tap, type and check what the screen shows, and
   time that moves only when the app waits.
