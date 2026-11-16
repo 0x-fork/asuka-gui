@@ -29,8 +29,6 @@ Zig をインストールしておけば、`asuka build` で Windows や Linux �
 npm install -g @egoist/asuka     # または：npx @egoist/asuka new hello
 ```
 
-このパッケージには、macOS、Windows、Linux（x64 と Arm）向けにビルド済みの `asuka` が入っており、インストール時には何もビルドしません。リポジトリをチェックアウトしている場合は、`go run ./cmd/asuka` でソースから CLI を実行できます（Go 1.26 以降）。
-
 ## アプリの作成
 
 ```sh

@@ -51,7 +51,7 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 ## 在桌面端
 
-在 macOS、Windows 和 Linux 上，`asuka dev` 在一个窗口中运行开发 App。在 Windows 和 Linux 上，宿主是 C 写的，和核心一起用这台电脑的 C 编译器从 CLI 自带的源码构建（Zig、clang，或 MinGW 和 Linux 的 gcc，可以用 `ASUKA_CC` 指定）。在 Mac 上，如果 CLI 是从 Asuka 仓库的检出运行的，宿主会从源码构建；否则使用 CLI 所属发布版本中的宿主，只下载一次到 Asuka 的缓存中，并校验其哈希值。核心则用这台电脑的 C 编译器构建。
+在 macOS、Windows 和 Linux 上，`asuka dev` 在一个窗口中运行开发 App。第一次运行时会为这台电脑构建开发 App，需要稍等片刻；之后就能立即启动。构建需要一个 C 编译器：Mac 上是 Xcode 的命令行工具；Windows 和 Linux 上是 Zig、clang 或 gcc（可以用 `ASUKA_CC` 指定）。
 
 应用直接从原位置读取 `assets/`，所以修改资源后不需要复制。应用的数据（SQLite 数据库、文件）存放在 Asuka 缓存中该应用自己的 `data` 目录里（参见 [从头开始](#常见问题)），而不是已安装应用的数据目录，所以 `asuka dev` 和发布版本的数据互不共享。应用的输出和错误会打印到终端。
 
@@ -78,8 +78,7 @@ asuka: reloaded in 2.2 ms, 4 states kept
 Asuka 会监听应用所在的目录及其本地依赖（`asuka.toml` 中的 `file:`）的目录，依靠系统的文件变化通知（FSEvents、inotify、ReadDirectoryChangesW；不支持时改用轮询）：
 
 - `.asuka` 文件：编译后发送给开发 App；
-- `asuka.toml` 和 `asuka.lock`、`assets/` 下的文件、语言目录（catalog）、原生包的 Swift、Kotlin 和 JavaScript 代码、`Info.plist` 和授权文件（entitlements）：重新构建并启动开发 App（应用从零开始）；
-- 使用 `--platform web` 时，在 Asuka 仓库的检出中，还包括 Web 宿主自己的 JavaScript（`platform/web/src`）：页面会重新加载。
+- `asuka.toml` 和 `asuka.lock`、`assets/` 下的文件、语言目录（catalog）、原生包的 Swift、Kotlin 和 JavaScript 代码、`Info.plist` 和授权文件（entitlements）：重新构建并启动开发 App（应用从零开始）。
 
 以 `.` 开头的目录以及 `testdata`、`build`、`dist` 和 `node_modules` 会被跳过。
 
@@ -137,7 +136,6 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 
 ## 常见问题
 
-- **`the compiler isn't in this build yet`**：这个 CLI 构建时没有包含 Asuka 编译器：请安装发布版本，或者从包含编译器的检出构建 CLI。
 - **`cbuild: no C compiler`**：安装系统的 C 编译器（Xcode 命令行工具、`build-essential`、LLVM），或者安装 Zig 并设置 `ASUKA_CC=zig`。`building for the web needs Zig` 和 `cross-compiling for ... needs Zig`：安装 [Zig](https://ziglang.org/download)，它可以把核心构建成 WebAssembly，或者为其他系统构建。
 - **`no iOS simulator SDK (install Xcode)`**：安装 Xcode，打开一次，然后在它的 Components 设置中添加 iOS 模拟器运行时。`no iPhone simulator; add one in Xcode` 和 `no simulator "..."` 表示没有该名称的模拟器：可以用 `xcrun simctl list devices` 列出所有模拟器。
 - **iPhone 没有准备好**：`... isn't paired with this Mac`（连上数据线，解锁后点“信任”）、`... isn't reachable`（连上数据线，或在 Mac 所在的 Wi-Fi 下唤醒它）、`... has Developer Mode off`（“设置 › 隐私与安全性 › 开发者模式”）、`... is locked`（解锁手机）。明明连着手机却提示 `no iPhone or iPad is connected` 时，检查 `xcrun devicectl list devices` 能否列出它。

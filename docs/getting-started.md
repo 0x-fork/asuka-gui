@@ -51,10 +51,6 @@ Mac.
 npm install -g @egoist/asuka     # or: npx @egoist/asuka new hello
 ```
 
-The package has a prebuilt `asuka` for macOS, Windows and Linux (x64 and
-Arm); nothing is built on install. From a checkout of the repository,
-`go run ./cmd/asuka` runs the CLI from source (Go 1.26 or later).
-
 ## Make an app
 
 ```sh

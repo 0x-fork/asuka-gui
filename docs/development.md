@@ -103,12 +103,10 @@ What each platform's player is:
 ## On the desktop
 
 On macOS, Windows and Linux, `asuka dev` runs the player in a window.
-On Windows and Linux the host is C, built with the core by this
-computer's C compiler (Zig, clang, or MinGW's or Linux's gcc;
-`ASUKA_CC` picks one) from the source the CLI carries. On the Mac the
-host is built from Asuka's source when the CLI runs from a checkout of
-it, else it's the CLI's release's, fetched once into Asuka's cache and
-checked by its hash; the core is built with this computer's C compiler.
+The first run builds the player for this computer, which takes a
+moment; later runs start at once. It needs a C compiler: Xcode's command
+line tools on a Mac; on Windows and Linux Zig, clang or gcc (`ASUKA_CC`
+picks one).
 
 The app reads its `assets/` where they are, so changing one needs no
 copy. Its data (SQLite databases, files) is in a `data` directory of its
@@ -181,9 +179,7 @@ inotify, ReadDirectoryChangesW; where it can't, by polling):
 - `asuka.toml` and `asuka.lock`, files under `assets/`, the language
   catalogs, native packages' Swift, Kotlin and JavaScript, `Info.plist`
   and entitlements: the player is built and launched again (the app
-  starts from nothing);
-- with `--platform web`, in a checkout of Asuka the web host's own
-  JavaScript (`platform/web/src`): the page loads again.
+  starts from nothing).
 
 It skips directories starting with `.`, and `testdata`, `build`, `dist`
 and `node_modules`.
@@ -306,9 +302,6 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # steps firs
 
 ## Common problems
 
-- **`the compiler isn't in this build yet`**: the CLI was built without
-  the Asuka compiler: install a release, or build the CLI from a
-  checkout that has it.
 - **`cbuild: no C compiler`**: install your system's (Xcode's command
   line tools, `build-essential`, LLVM), or Zig with `ASUKA_CC=zig`.
   `building for the web needs Zig` and `cross-compiling for ... needs
