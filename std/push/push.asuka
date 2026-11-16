@@ -142,7 +142,7 @@ store Rewriter {
       let req: Request? = try? json.decode(b.string())
       if let r = req {
         if let out = await rewritten(r.message) {
-          platform.send("push", "rewritten", json.encode(Answer(token: r.token, ok: true, spec: notify.spec(notification(out), 0.0))).bytes())
+          platform.send("push", "rewritten", shown(r.token, out).bytes())
         } else {
           platform.send("push", "rewritten", json.encode(NoAnswer(token: r.token, ok: false)).bytes())
         }
@@ -183,15 +183,13 @@ struct NoAnswer {
   ok: bool
 }
 
-/// m as asuka/notify's Notification: a message's ID is its
-/// conversation's (on Android, the conversation's one notification).
-fn notification(m: Message) -> notify.Notification {
-  var n = notify.Notification(id: m.id, title: m.title, body: m.body, url: m.data["url"] ?? "", subtitle: m.subtitle, data: m.data, category: m.category, thread: m.thread, summary: m.summary, channel: m.channel, badge: m.badge, image: m.image)
-  if let s = m.sender {
-    n.id = ""
-    n = n.from(s, m.conversation ?? notify.Conversation())
-  }
-  return n
+/// The answer that shows m (asuka/notify's spec, as the hosts take it):
+/// a message's ID is its conversation's (on Android, the conversation's
+/// one notification).
+fn shown(token: string, m: Message) -> string {
+  let n = notify.Notification(id: if m.sender.isSome() { "" } else { m.id }, title: m.title, body: m.body, url: m.data["url"] ?? "", subtitle: m.subtitle, data: m.data, category: m.category, thread: m.thread, summary: m.summary, channel: m.channel, badge: m.badge, image: m.image)
+  let c = if m.sender.isSome() { m.conversation ?? notify.Conversation() } else { none }
+  return json.encode(Answer(token: token, ok: true, spec: notify.specOf(n, m.sender, c)))
 }
 
 /// A push that comes, for a test: what shows of m after the app's

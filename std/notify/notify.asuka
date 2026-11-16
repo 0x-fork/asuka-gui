@@ -406,6 +406,16 @@ fn firstOf(a: string, b: string, c: string) -> string {
   return c
 }
 
+/// n shown now as a message when sender is given, said in c: asuka/push's
+/// rewrite, whose message carries its own (so that only an app that makes
+/// one has communication notifications, as with from).
+pub fn specOf(n: Notification, sender: Person?, c: Conversation?) -> Spec {
+  var m = n
+  m.sender = sender
+  m.conversation = c
+  return spec(m, 0.0)
+}
+
 /// n as the hosts take it: a message's ID, thread and title from its
 /// conversation and sender.
 pub fn spec(n: Notification, seconds: float) -> Spec {
@@ -416,8 +426,7 @@ pub fn spec(n: Notification, seconds: float) -> Spec {
   if let s = n.sender {
     let c = n.conversation ?? Conversation()
     let cid = firstOf(c.id, s.id, firstOf(s.name, "asuka", ""))
-    conv = WireConversation(id: cid, title: c.title, group: c.group, image: c.image, me: c.me,
-      earlier: c.earlier.map(m => WireMessage(sender: m.from, text: m.text, time: m.time)))
+    conv = WireConversation(id: cid, title: c.title, group: c.group, image: c.image, me: c.me, earlier: c.earlier.map(m => WireMessage(sender: m.from, text: m.text, time: m.time)))
     if id.isEmpty() {
       id = cid
     }
@@ -428,7 +437,5 @@ pub fn spec(n: Notification, seconds: float) -> Spec {
       title = if c.group && !c.title.isEmpty() { c.title } else { s.name }
     }
   }
-  return Spec(id: id, title: title, subtitle: n.subtitle, body: n.body, url: n.url, data: n.data, seconds: seconds,
-    category: n.category, thread: thread, summary: n.summary, channel: n.channel, badge: n.badge, silent: n.silent,
-    image: n.image, sender: n.sender, conversation: conv)
+  return Spec(id: id, title: title, subtitle: n.subtitle, body: n.body, url: n.url, data: n.data, seconds: seconds, category: n.category, thread: thread, summary: n.summary, channel: n.channel, badge: n.badge, silent: n.silent, image: n.image, sender: n.sender, conversation: conv)
 }
