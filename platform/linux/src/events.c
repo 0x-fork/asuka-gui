@@ -484,3 +484,11 @@ void lx_unlisten(node *n, ak_event_kind e) {
 	(void)n;
 	(void)e;
 }
+
+// lx_drag_took ends a view's press and pan as a drag and drop starts
+// from it (dragdrop.c): the drag takes the pointer.
+void lx_drag_took(node *n) {
+	if (!n->events) return;
+	end_press(n);
+	on_drag_cancel(NULL, NULL, n);
+}

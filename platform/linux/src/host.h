@@ -523,7 +523,6 @@ void lx_set_adjustable(node *n, bool on);
 void lx_release_a11y(node *n);
 void lx_set_drag_items(node *n, ak_span b);
 void lx_set_drop_accept(node *n, ak_span b);
-void lx_release_dnd(node *n);
 bool lx_draggable(node *n);
 void lx_set_selected_state(node *n, bool on);
 
