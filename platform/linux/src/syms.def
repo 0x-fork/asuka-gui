@@ -1045,3 +1045,15 @@ SYM(GTK, gboolean, gsk_renderer_realize, (GskRenderer *renderer, GdkSurface *sur
 SYM(GTK, gboolean, gsk_renderer_realize_for_display, (GskRenderer *renderer, GdkDisplay *display, GError **error))
 SYM(GTK, GFile *, gtk_icon_paintable_get_file, (GtkIconPaintable *self))
 SYM(GTK, GtkIconPaintable *, gtk_icon_paintable_new_for_file, (GFile *file, int size, int scale))
+
+// ---- The system's modules ----
+SYM(GLIB, gchar *, g_strchomp, (gchar *string))
+SYM(GLIB, gchar *, g_strchug, (gchar *string))
+SYM(GLIB, const gchar *, g_get_user_special_dir, (GUserDirectory directory))
+SYM(GLIB, gint32, g_random_int_range, (gint32 begin, gint32 end))
+SYM(GIO, GNetworkMonitor *, g_network_monitor_get_default, (void))
+SYM(GIO, gboolean, g_network_monitor_get_network_available, (GNetworkMonitor *monitor))
+SYM(GTK, void, gdk_clipboard_set_value, (GdkClipboard *clipboard, const GValue *value))
+SYM(GTK, GtkFileLauncher *, gtk_file_launcher_new, (GFile *file))
+SYM(GTK, void, gtk_file_launcher_launch, (GtkFileLauncher *self, GtkWindow *parent, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data))
+SYM(GTK, gboolean, gtk_file_launcher_launch_finish, (GtkFileLauncher *self, GAsyncResult *result, GError **error))

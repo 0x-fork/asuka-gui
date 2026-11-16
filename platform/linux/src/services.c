@@ -28,11 +28,16 @@ void lx_register_methods(const method_t *m, size_t n) {
 	for (size_t i = 0; i < n; i++) ak_vec_push(&methods, m[i]);
 }
 
-// lx_method is a module's method, NULL if no one registered it.
+// lx_method is a module's method, NULL if no one registered it: the
+// method of its name, else the module's "*", which answers every other.
 method_fn lx_method(const char *module, const char *name) {
-	for (uint32_t i = 0; i < methods.len; i++)
-		if (!strcmp(methods.data[i].module, module) && !strcmp(methods.data[i].name, name)) return methods.data[i].fn;
-	return NULL;
+	method_fn any = NULL;
+	for (uint32_t i = 0; i < methods.len; i++) {
+		if (strcmp(methods.data[i].module, module)) continue;
+		if (!strcmp(methods.data[i].name, name)) return methods.data[i].fn;
+		if (!strcmp(methods.data[i].name, "*")) any = methods.data[i].fn;
+	}
+	return any;
 }
 
 typedef struct {

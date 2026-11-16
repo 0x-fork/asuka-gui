@@ -411,6 +411,11 @@ typedef enum {
 	G_SUBPROCESS_FLAGS_STDERR_MERGE = 64,
 } GSubprocessFlags;
 
+typedef enum {
+	G_USER_DIRECTORY_DESKTOP, G_USER_DIRECTORY_DOCUMENTS, G_USER_DIRECTORY_DOWNLOAD, G_USER_DIRECTORY_MUSIC,
+	G_USER_DIRECTORY_PICTURES, G_USER_DIRECTORY_PUBLIC_SHARE, G_USER_DIRECTORY_TEMPLATES, G_USER_DIRECTORY_VIDEOS,
+} GUserDirectory;
+
 // GLib's Unicode, as far as the host reads it.
 typedef enum {
 	G_UNICODE_CONTROL, G_UNICODE_FORMAT, G_UNICODE_UNASSIGNED, G_UNICODE_PRIVATE_USE, G_UNICODE_SURROGATE,
@@ -984,6 +989,8 @@ static inline const char *g_utf8_next_char(const char *p) {
 enum { G_PRIORITY_HIGH = -100, G_PRIORITY_DEFAULT = 0, G_PRIORITY_HIGH_IDLE = 100, G_PRIORITY_DEFAULT_IDLE = 200 };
 // A GVariantType is its type string.
 #define G_VARIANT_TYPE(s) ((const GVariantType *)(s))
+// g_strstrip: GLib's macro.
+#define g_strstrip(s) g_strchomp(g_strchug(s))
 #define GPOINTER_TO_INT(p) ((int)(intptr_t)(p))
 #define GINT_TO_POINTER(i) ((gpointer)(intptr_t)(i))
 #define g_signal_connect(o, s, f, d) g_signal_connect_data((o), (s), G_CALLBACK(f), (d), NULL, (GConnectFlags)0)
