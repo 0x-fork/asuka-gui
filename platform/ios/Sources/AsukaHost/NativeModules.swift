@@ -233,14 +233,26 @@ public enum AsukaNative {
     /// host's: to Go).
     public static var invoke: (UInt64, [UInt8]) -> [UInt8]? = { _, _ in nil }
 
-    /// The provider of a class's name, looked up once.
+    /// The provider of a class's name, looked up once: its Objective-C
+    /// name (AsukaModule_…), or the package's path (asuka/network, as the
+    /// C core names it), which names that class (internal/nativegen's
+    /// SwiftClass).
     public static func provider(_ name: String) -> AsukaModuleProvider.Type? {
         lock.lock()
         defer { lock.unlock() }
         if let p = providers[name] { return p }
-        guard let p = NSClassFromString(name) as? AsukaModuleProvider.Type else { return nil }
+        let cls = name.hasPrefix("AsukaModule_") ? name : swiftClass(name)
+        guard let p = NSClassFromString(cls) as? AsukaModuleProvider.Type else { return nil }
         providers[name] = p
         return p
+    }
+
+    /// A package path's Swift class: AsukaModule_ and its letters and
+    /// digits, the rest _.
+    static func swiftClass(_ path: String) -> String {
+        "AsukaModule_" + String(path.unicodeScalars.map { s -> Character in
+            s.isASCII && (CharacterSet.letters.contains(s) || CharacterSet.decimalDigits.contains(s)) ? Character(s) : "_"
+        })
     }
 
     /// Keeps an object for Go: its handle.

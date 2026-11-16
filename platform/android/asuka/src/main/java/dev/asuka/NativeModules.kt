@@ -214,10 +214,36 @@ object AsukaModules {
     @JvmStatic external fun invoke(id: Long, args: ByteArray): ByteArray?
 
     /** The provider of a class's name, looked up once. */
+    /**
+     * The provider of a class's name: its Kotlin class, or the package's
+     * path (asuka/network, as the C core names it), whose class is
+     * KotlinClass's (internal/nativegen): the path's host reversed, then
+     * its segments, lower case, letters and digits, then .AsukaModule.
+     */
     fun provider(name: String): AsukaModuleProvider? = providers[name] ?: try {
-        (Class.forName(name).getField("INSTANCE").get(null) as AsukaModuleProvider).also { providers[name] = it }
+        val cls = if (name.endsWith(".AsukaModule")) name else kotlinClass(name)
+        (Class.forName(cls).getField("INSTANCE").get(null) as AsukaModuleProvider).also { providers[name] = it }
     } catch (_: ReflectiveOperationException) {
         null
+    }
+
+    private val reserved = ("as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while " +
+        "abstract assert boolean byte case catch char const default double enum extends final finally float goto implements import instanceof int long native new private protected public short static strictfp switch synchronized throws transient void volatile").split(" ").toSet()
+
+    internal fun kotlinClass(path: String): String {
+        var parts = path.split("/")
+        val segs = ArrayList<String>()
+        if (parts[0].contains('.')) {
+            segs.addAll(parts[0].split(".").reversed())
+            parts = parts.drop(1)
+        }
+        segs.addAll(parts)
+        return segs.joinToString(".") { seg ->
+            var s = seg.map { c -> if (c.code < 128 && c.isLetterOrDigit()) c else '_' }.joinToString("").lowercase()
+            if (s.isEmpty() || s[0].isDigit()) s = "_$s"
+            if (s in reserved) s += "_"
+            s
+        } + ".AsukaModule"
     }
 
     /** Keeps an object for Go: its handle. */
