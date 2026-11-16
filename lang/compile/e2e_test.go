@@ -78,6 +78,7 @@ func TestRun(t *testing.T) {
 		path := path
 		name := strings.TrimSuffix(filepath.Base(path), ".asuka")
 		t.Run(name, func(t *testing.T) {
+			t.Parallel() // each runs in processes of its own
 			src, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
