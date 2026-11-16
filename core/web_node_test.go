@@ -1,12 +1,16 @@
 package core_test
 
 import (
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/compile"
@@ -170,5 +174,88 @@ done
 `
 	if strings.TrimSpace(got) != strings.TrimSpace(want) {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// The same programs in headless Chrome, on the web host's page: spawn on
+// real Web Workers, the app's files in IndexedDB, SQLite's worker over
+// the origin private file system, the crash record.
+func TestWebChrome(t *testing.T) {
+	if testing.Short() {
+		t.Skip("headless Chrome (not -short)")
+	}
+	browser := chromePath()
+	if browser == "" {
+		t.Skip("no Chrome (ASUKA_CHROME)")
+	}
+	wasm := webPlayer(t)
+	asqlite := asqliteWasm(t)
+	web, _ := filepath.Abs(filepath.Join("..", "platform", "web"))
+	for _, c := range []struct{ src, want string }{
+		{"spawn.asuka", "500500\nd3 3 2 -1 true 0\npath 3 5 2\n0 3\ncaught no to 2\nnot found nowhere.txt\nfrom the page\nfrom a worker\nchanged\nfalse\nworker.txt 13\n55 210 465 820\nfirst -1\n15\ndone"},
+		{"sqlite.asuka", "1 milk false\n2 eggs true\ncount 2\n1 true 2 2.5\n2 false 0 -1\ncaught sqlite: no such table: nowhere (1)\ncaught sqlite: migration 2: sqlite: near \"this\": syntax error (1)\nt 1 2\nlive 1 milk\nlive 2 bread\n42\ndone"},
+		{"crash.asuka", "nonfatal false card declined u1 1 Web\ndone"},
+	} {
+		t.Run(strings.TrimSuffix(c.src, ".asuka"), func(t *testing.T) {
+			b, err := os.ReadFile(filepath.Join("testdata", "web", c.src))
+			if err != nil {
+				t.Fatal(err)
+			}
+			res := compile.Files(map[string][]byte{c.src: b}, nil)
+			if err := res.Err(); err != nil {
+				t.Fatal(err)
+			}
+			akb := res.Module.Encode()
+			page := `<!doctype html><meta charset="utf-8"><body><script type="module">
+const lines = [];
+const send = () => fetch("/result", { method: "POST", body: lines.join("\n") });
+addEventListener("error", (e) => { lines.push("ERROR " + e.message); send(); });
+const log = console.log;
+console.log = (...a) => { const l = a.join(" "); lines.push(l); log(...a); if (l === "done") send(); };
+import { start } from "/src/asuka.js";
+await start({ core: "/asuka.wasm", module: "/app.akb", name: "webtest", libs: { "asqlite.wasm": "/asqlite.wasm" } });
+</script>`
+			results := make(chan string, 1)
+			mux := http.NewServeMux()
+			mux.Handle("/src/", http.FileServer(http.Dir(web)))
+			wasmFile := func(path string) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/wasm")
+					http.ServeFile(w, r, path)
+				}
+			}
+			mux.HandleFunc("/asuka.wasm", wasmFile(wasm))
+			mux.HandleFunc("/asqlite.wasm", wasmFile(asqlite))
+			mux.HandleFunc("/app.akb", func(w http.ResponseWriter, r *http.Request) { w.Write(akb) })
+			mux.HandleFunc("/result", func(w http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				select {
+				case results <- string(b):
+				default:
+				}
+			})
+			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, page) })
+			l, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			srv := &http.Server{Handler: mux}
+			go srv.Serve(l)
+			defer srv.Close()
+			cmd := exec.Command(browser, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu",
+				"--user-data-dir="+t.TempDir(), "http://"+l.Addr().String()+"/")
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { cmd.Process.Kill(); cmd.Wait() }()
+			select {
+			case got := <-results:
+				if strings.TrimSpace(got) != c.want {
+					t.Fatalf("the page printed:\n%s\nwant:\n%s", got, c.want)
+				}
+			case <-time.After(60 * time.Second):
+				t.Fatal("the page never reported")
+			}
+		})
 	}
 }
