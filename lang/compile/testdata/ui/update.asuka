@@ -71,12 +71,6 @@ struct GitHubRelease {
   prerelease: bool = false
 }
 
-// settled waits for what the test's host calls left to run: a test
-// resumed by a call's answer runs inside the core's batch, which ends
-// once the test waits (a moment's sleep; app.idle() returns at once
-// there).
-async fn settled() { await sleep(1ms) }
-
 fn read(p: string) -> string = (try? fs.readText(p)) ?? "(none)"
 
 test "versions compare as semantic versioning orders them" {
@@ -97,7 +91,7 @@ test "versions compare as semantic versioning orders them" {
 
 test "without the host's module, updates aren't available" {
   let app = mount(Notes())
-  await settled()
+  await app.idle()
   expect(await update.unsupported() == update.UpdateError.notAvailable)
   do {
     let _ = try await update.check()
@@ -124,7 +118,7 @@ test "a host that can't install says why" {
 test "check finds the newer version, and none when it's the one running" {
   let app = mount(Notes())
   let host = try await installed()
-  await settled()
+  await app.idle()
   let r = (try await update.check())!
   expect(r.version == "1.1.0")
   expect(r.current == "1.0.0")
@@ -140,7 +134,7 @@ test "check finds the newer version, and none when it's the one running" {
 test "Install Update downloads the delta, stages the new version, and relaunches" {
   let app = mount(Notes())
   let host = try await installed()
-  await settled()
+  await app.idle()
   var installedVersion = ""
   let stop = update.onInstalled(r => { installedVersion = r.version })
   defer { stop() }
@@ -150,7 +144,7 @@ test "Install Update downloads the delta, stages the new version, and relaunches
   app.expect("Release Notes:")
   expect(app.windows().contains("\"Software Update\""), app.windows())
   app.tap("Install Update")
-  await settled()
+  await app.idle()
   app.expect("Ready to Relaunch")
   app.expect("Notes ready")
   expect(installedVersion == "1.1.0")
@@ -170,10 +164,10 @@ test "Install Update downloads the delta, stages the new version, and relaunches
 test "a delta that fails takes the whole archive" {
   let app = mount(Notes())
   let host = try await installed(changed: true)
-  await settled()
+  await app.idle()
   app.tap("Check")
   app.tap("Install Update")
-  await settled()
+  await app.idle()
   app.expect("Ready to Relaunch")
   let log = try await host.log()
   expect(log.downloads == [feed, "{base}/app.delta", "{base}/app.tar.gz"], "{log.downloads}")
@@ -183,17 +177,17 @@ test "a delta that fails takes the whole archive" {
 test "an update not signed with the app's key is never installed" {
   let app = mount(Notes())
   let host = try await installed(signer: crypto.sha256("another key".bytes()))
-  await settled()
+  await app.idle()
   app.tap("Check")
   app.tap("Install Update")
-  await settled()
+  await app.idle()
   app.expect("Update Error!")
   app.expect("An error occurred while installing the update. Please try again later.")
   app.expect("the update is not signed with the app's key")
   expect((try await host.log()).installed.isEmpty())
   // Nothing is left of it beside the install.
   expect(!(try fs.readDir(path(["install"]))).any(e => e.name.hasPrefix(".asuka-update-")))
-  await settled()
+  await app.idle()
   app.tap("OK")
   app.expect("Notes idle")
 }
@@ -201,7 +195,7 @@ test "an update not signed with the app's key is never installed" {
 test "Skip This Version, and Remind Me Later" {
   let app = mount(Notes())
   let _ = try await installed()
-  await settled()
+  await app.idle()
   app.tap("Check")
   app.tap("Remind Me Later")
   app.expect("Notes idle")
@@ -219,7 +213,7 @@ test "Skip This Version, and Remind Me Later" {
 test "the window's checkbox installs the next ones without asking" {
   let app = mount(Notes())
   let _ = try await installed()
-  await settled()
+  await app.idle()
   app.tap("Check")
   app.tap("Automatically download and install updates in the future")
   app.tap("Remind Me Later")
@@ -229,9 +223,9 @@ test "the window's checkbox installs the next ones without asking" {
 test "up to date, said when the user asked" {
   let app = mount(Notes())
   let _ = try await installed()
-  await settled()
+  await app.idle()
   let _ = try await update.fakeHost(update.FakeApp(version: "1.1.0", name: "Notes", feed: feed, key: "k", root: "r", exe: "r/App", work: "r"))
-  await settled()
+  await app.idle()
   app.chooseMenuItem("Help > Check for Updates…")
   app.expect("You’re up to date!")
   app.expect("Notes 1.1.0 is currently the newest version available.")
@@ -242,7 +236,7 @@ test "up to date, said when the user asked" {
 test "a check in the background offers what it finds" {
   let app = mount(Notes() { automatic: true })
   let _ = try await installed()
-  await settled()
+  await app.idle()
   await sleep(15s)
   app.expect("A new version of Notes is available!")
   expect(update.lastCheck().isSome())
@@ -251,7 +245,7 @@ test "a check in the background offers what it finds" {
 test "a server of the app's own: its URL filled in, 204 when nothing's newer" {
   let app = mount(Notes())
   let host = try await installed()
-  await settled()
+  await app.idle()
   update.setFeed("{base}/check?target=\{target}&version=\{version}&channel=\{channel}")
   defer { update.setFeed("") }
   update.setChannel("beta")
@@ -266,7 +260,7 @@ test "a server of the app's own: its URL filled in, 204 when nothing's newer" {
 test "a channel's prerelease, beside the release" {
   let app = mount(Notes())
   let host = try await installed()
-  await settled()
+  await app.idle()
   let beta = update.Manifest(version: "1.2.0-beta.1", url: "{base}/beta.tar.gz", size: 10, signature: "c2ln")
   write(path(["feed", "beta.json"]), json.encode(beta).bytes())
   try await host.serve(update.Served(url: "{base}/update-test-beta.json", file: path(["feed", "beta.json"])))
@@ -280,7 +274,7 @@ test "a channel's prerelease, beside the release" {
 test "GitHub's releases: the latest, or a tagged one through the API" {
   let app = mount(Notes())
   let host = try await installed()
-  await settled()
+  await app.idle()
   let _ = try await update.fakeHost(update.FakeApp(version: "1.0.0", name: "Notes", feed: "https://github.com/acme/notes/releases/download/desktop-v\{version}/update-test.json", key: encoding.base64Encode(crypto.ed25519PublicKey(seed)), root: path(["install"]), exe: path(["install", "App"]), work: path(["install"])))
   let releases = [GitHubRelease(tag_name: "cli-v9.0.0"), GitHubRelease(tag_name: "desktop-v1.2.0-beta.1", prerelease: true), GitHubRelease(tag_name: "desktop-v1.1.0")]
   write(path(["feed", "releases.json"]), json.encode(releases).bytes())
@@ -293,14 +287,14 @@ test "GitHub's releases: the latest, or a tagged one through the API" {
 test "a download is cancelled with the window" {
   let app = mount(Notes())
   let host = try await installed()
-  await settled()
+  await app.idle()
   try await host.serve(update.Served(url: "{base}/app.delta", hold: true))
-  await settled()
+  await app.idle()
   app.tap("Check")
   app.tap("Install Update")
   app.expect("Downloading update…")
   app.tap("Cancel")
-  await settled()
+  await app.idle()
   app.expect("Notes idle")
   expect((try await host.log()).canceled == 1)
 }

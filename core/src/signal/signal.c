@@ -210,6 +210,19 @@ void ak_signal_batch(void (*fn)(void *ctx), void *ctx) {
 }
 
 bool ak_signal_batching(void) { return g->batch_depth > 0; }
+
+int ak_batch_suspend(void) {
+	AK_ASSERT(!g->flushing);
+	int d = g->batch_depth;
+	g->batch_depth = 0;
+	if (d && g->queue.len) ak_sig_flush();
+	return d;
+}
+
+void ak_batch_resume(int depth) {
+	AK_ASSERT(g->batch_depth == 0);
+	g->batch_depth = depth;
+}
 bool ak_signal_flushing(void) { return g->flushing; }
 
 void ak_signal_set_after_flush(void (*fn)(void *ctx), void *ctx) {
