@@ -20,7 +20,7 @@ const (
 	uiFragment  = "ui.fragment"   // () -> view: views without a native view, spliced into their parent
 
 	uiShow    = "ui.show"     // (cond thunk -> bool, then builder, else builder or none) -> view
-	uiFor     = "ui.for"      // (items thunk -> [T], key closure (T) -> K or none, row closure (itemAcc, indexAcc) -> view, keyKind int) -> view
+	uiFor     = "ui.for"      // (items thunk -> [T], key closure (T, int) -> K or none, row closure (itemAcc, indexAcc) -> view, keyKind int) -> view
 	uiLazyFor = "ui.lazy_for" // (view, items, key, row, keyKind int) -> void: directly in an element that builds rows lazily (List)
 	uiLazy    = "ui.lazy"     // (view, builder closure) -> void: a LazyChildren element's children, built when they show
 

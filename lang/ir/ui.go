@@ -611,7 +611,7 @@ func (b *fb) forView(s *syntax.ForStmt) int {
 }
 
 // forParts makes a for's closures in a view: its items' thunk, its
-// key's function (or none), its row's builder.
+// key's function of (item, index) (or none), its row's builder.
 func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int, keyKind bc.Kind) {
 	fi := b.l.info.Fors[s]
 	itemsCtx := b.l.info.Ctxs[s.Seq]
@@ -621,18 +621,20 @@ func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int, keyKind bc.Kind) 
 		c.emit(op("RET"), v)
 	}})
 	if s.Key != nil {
+		// The key's function takes (item, index): an enumerated for's
+		// key may read either (its context's params are (index, item)).
 		kctx := b.l.info.Ctxs[s.Key]
-		var item *check.Var
+		var item, index *check.Var
 		if len(kctx.Params) > 0 {
 			item = kctx.Params[0]
 			if fi.Kind == check.ForEnumerated && len(kctx.Params) > 1 {
-				item = kctx.Params[1]
+				item, index = kctx.Params[1], kctx.Params[0]
 			}
 		}
 		kt := kctx.Result
 		kk := b.kind(kt)
 		keyKind = kk
-		key = b.makeClosure(closure{name: "key", ctxs: []*check.FuncCtx{kctx}, params: []*check.Var{item}, pkinds: []bc.Kind{b.kind(fi.Elem)}, ret: kk, throws: true, body: func(c *fb) {
+		key = b.makeClosure(closure{name: "key", ctxs: []*check.FuncCtx{kctx}, params: []*check.Var{item, index}, pkinds: []bc.Kind{b.kind(fi.Elem), bc.KInt}, ret: kk, throws: true, body: func(c *fb) {
 			c.ctx = kctx
 			c.ret(c.value(s.Key, -1), kk)
 		}})

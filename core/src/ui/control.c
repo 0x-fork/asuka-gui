@@ -287,7 +287,8 @@ void ak_row_free(ak_row *rw, ak_kind key_kind) {
 
 static ak_val key_of(for_t *s, ak_val item, int64_t i) {
 	if (!s->key) return (ak_val){.i = i};
-	return ak_call(s->key, &item, 1);
+	ak_val args[2] = {item, {.i = i}};  // the key's function takes (item, index)
+	return ak_call(s->key, args, 2);
 }
 
 static uint32_t find_old(for_t *s, ak_val k, uint32_t hash) {

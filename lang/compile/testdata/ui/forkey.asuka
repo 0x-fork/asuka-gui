@@ -1,0 +1,48 @@
+// A keyed for's key reads the row's item, or an enumerated for's index:
+// the key's function takes both. A row keyed by its index stays where it
+// is as the items change; one keyed by its item moves with it.
+struct Line {
+  name: string
+  text: string
+}
+
+component Lines {
+  state lines = [Line(name: "a", text: "one"), Line(name: "b", text: "two")]
+
+  Column {
+    for (i, l) in lines.enumerated() key i {
+      Text("{i}. {l.name}: {l.text}")
+    }
+    for (i, l) in lines.enumerated() key l.name {
+      Text("{l.name} at {i}")
+    }
+    List {
+      for (i, l) in lines.enumerated() key "{i}-{l.name}" {
+        Text("row {i} {l.name}")
+      }
+    }
+    Button("Swap") {
+      on press { lines = [lines[1], lines[0]] }
+    }
+    Button("Edit") {
+      on press { lines[0].text = "edited" }
+    }
+  }
+}
+
+app { Lines() }
+
+test "an enumerated for keyed by its index" {
+  let app = mount(Lines())
+  app.expect("0. a: one")
+  app.expect("1. b: two")
+  app.expect("a at 0")
+  app.expect("row 1 b")
+  app.tap("Swap")
+  app.expect("0. b: two")
+  app.expect("1. a: one")
+  app.expect("a at 1")
+  app.expect("row 0 b")
+  app.tap("Edit")
+  app.expect("0. b: edited")
+}
