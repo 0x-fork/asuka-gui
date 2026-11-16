@@ -26,16 +26,16 @@ func writeTree(t *testing.T, files map[string]string) string {
 // compiled to C.
 func TestEmbed(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"asuka.toml":        "name = \"embedtest\"\n",
-		"README.md":         "# Hello\n",
-		"art/logo.bin":      "\x00\x01\x02\xff",
-		"config.json":       `{"api": "https://example.com", "retries": 3, "mode": "fast", "extra": [1, {"x": null}]}`,
-		"posts/b.md":        "B",
-		"posts/a.md":        "A",
-		"posts/.draft.md":   "hidden",
-		"posts/old/c.md":    "C",
-		"icons/x/y.svg":     "<svg/>",
-		"icons/z.svg":       "<svg z/>",
+		"asuka.toml":         "name = \"embedtest\"\n",
+		"README.md":          "# Hello\n",
+		"art/logo.bin":       "\x00\x01\x02\xff",
+		"config.json":        `{"api": "https://example.com", "retries": 3, "mode": "fast", "extra": [1, {"x": null}]}`,
+		"posts/b.md":         "B",
+		"posts/a.md":         "A",
+		"posts/.draft.md":    "hidden",
+		"posts/old/c.md":     "C",
+		"icons/x/y.svg":      "<svg/>",
+		"icons/z.svg":        "<svg z/>",
 		"icons/.cache/q.svg": "hidden",
 		"app.asuka": `import std/embed
 

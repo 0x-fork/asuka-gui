@@ -789,4 +789,3 @@ func (c *Checker) makeStd(path string) *Package {
 	c.pkgs = append(c.pkgs, p)
 	return p
 }
-
