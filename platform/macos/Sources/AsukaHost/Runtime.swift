@@ -315,6 +315,9 @@ import AsukaOps
         applyFont(n)
         applyColor(n)
         applyDirection(n)
+        // What VoiceOver reads of it goes with it: its Label may have come
+        // before what made the new view (a checkbox, a multiline field).
+        if !n.a11yLabel.isEmpty { (n.textView ?? v).setAccessibilityLabel(n.a11yLabel) }
     }
 
     public func destroy(_ id: UInt32) {

@@ -126,6 +126,21 @@ import AsukaOps
             snapshot(arg)
             if env["ASUKA_DUMP"] != nil { try? (dump() + AsukaShell.shared.trayDump).write(toFile: arg + ".txt", atomically: true, encoding: .utf8) }
         default:
+            if let err = rt.modules2Step(verb, arg) { return err } // access, sheet, closepicker (Modules2.swift)
+            // The shell's (trayclick, traymenu, dockmenu, reopen, hotkey, panel):
+            // "" done.
+            if let r = AsukaShell.shared.step(verb, arg) { return r.isEmpty ? nil : r }
+            // Navigation's and windows' (pick, alerttype, alertreturn, cancel,
+            // dismiss, search, snackhover, closewindow, focuswindow, action):
+            // "" done (Navigation.swift).
+            if let r = rt.navStep(verb, arg) { return r.isEmpty ? nil : r }
+            // Lists' and text's (select, mark, undo, paste, link, click,
+            // rowaction, pull, endscroll, dot, selectall, ...): Text.swift.
+            if let r = rt.listTextStep(verb, arg) { return r }
+            // The visual part's (mouse, hover, hoverprobe, appactive, hide,
+            // a11ypress, pasteboard, dragging, fakedrag, dragmask, enddrag,
+            // nativeemit, module): "" done (VisualAutomation.swift).
+            if let r = rt.visualStep(verb, arg) { return r.isEmpty ? nil : r }
             return "unknown step"
         }
         return nil
@@ -393,6 +408,12 @@ import AsukaOps
     func tree() -> [String: Any] {
         var roots: [[String: Any]] = []
         if let r = rt.root { roots.append(nodeJSON(r)) }
+        // Other windows' content (a Window's), after the main window's, as
+        // the dump has it.
+        for w in rt.wins.values { if let r = w.root, r !== rt.root, r.parent == nil { roots.append(nodeJSON(r)) } }
+        // What's presented (sheets, alerts, popovers, snackbars): no view's
+        // child (Navigation.swift).
+        for n in rt.presentedRoots() { roots.append(nodeJSON(n)) }
         var windows: [[String: Any]] = []
         for w in rt.allWins { windows.append(windowJSON(w)) }
         var out: [String: Any] = ["roots": roots, "windows": windows, "menuBar": menuJSON(NSApp.mainMenu)]
@@ -400,6 +421,8 @@ import AsukaOps
                               "safeTop": rt.env.safeTop, "locale": rt.env.locale]
         out["keyWindow"] = NSApp.keyWindow?.title ?? ""
         AsukaShell.shared.dumpJSON(&out)
+        rt.modules1JSON(&out)
+        rt.modules2JSON(&out)
         return out
     }
 
@@ -481,6 +504,7 @@ import AsukaOps
                                 "minSize": sizeJSON(nw.contentMinSize), "maxSize": sizeJSON(nw.contentMaxSize),
                                 "class": String(describing: type(of: nw))]
         if let u = nw.representedURL { d["file"] = u.path }
+        d["sharingType"] = nw.sharingType.rawValue // asuka/screen's preventCapture
         if let tb = nw.toolbar {
             d["toolbar"] = tb.items.map { it -> [String: Any] in
                 ["id": it.itemIdentifier.rawValue, "label": it.label, "enabled": it.isEnabled, "toolTip": it.toolTip ?? ""]

@@ -79,7 +79,7 @@ import AsukaOps
         case .windowTitle:
             setWindowTitle(String(decoding: args, as: UTF8.self))
         case .location:
-            AsukaShell.shared.location(Array(args))
+            AsukaRoutes.shared.location(Array(args), from: n)
         case .locale:
             setLocale(args)
         case .saveLocale:
@@ -88,7 +88,7 @@ import AsukaOps
             guard args.count > 0 else { return }
             setColorScheme(AsukaColorScheme(rawValue: Int32(args[0])) ?? .system)
         case .quit:
-            AsukaShell.shared.quit()
+            AsukaShell.shared.quit(Array(args))
         case .shareClose, .backExit:
             break // a share extension's; a phone's back out of the app
         }
@@ -319,6 +319,13 @@ struct AsukaModuleError: LocalizedError {
     let message: String
     init(_ m: String) { message = m }
     var errorDescription: String? { message }
+}
+
+/// No domain: through a package's Swift (asuka/host's), the core gives the
+/// error's message alone ("not allowed", "stopped"), which the packages
+/// compare, not "message (domain code)".
+extension AsukaModuleError: CustomNSError {
+    static var errorDomain: String { "" }
 }
 
 /// What a module answers when the user hasn't allowed it (the packages

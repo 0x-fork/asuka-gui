@@ -174,6 +174,9 @@ type Options struct {
 	Env []string
 	// Files are the app's other sources, by name, beside app.asuka.
 	Files map[string]string
+	// Player is the player's executable to run instead of the one built
+	// (a copy of Player's, signed as a test needs).
+	Player string
 }
 
 // Run runs src (an Asuka file with its app { }) on the Mac player until
@@ -183,7 +186,10 @@ func Run(t testing.TB, src string) *App { return RunWith(t, src, Options{}) }
 // RunWith runs src with options.
 func RunWith(t testing.TB, src string, o Options) *App {
 	t.Helper()
-	exe := Player(t)
+	exe := o.Player
+	if exe == "" {
+		exe = Player(t)
+	}
 	files := map[string][]byte{"app.asuka": []byte(Dedent(src))}
 	for k, v := range o.Files {
 		files[k] = []byte(Dedent(v))

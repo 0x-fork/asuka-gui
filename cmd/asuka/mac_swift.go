@@ -121,6 +121,13 @@ func (b *macBuild) host(arch string, natives []nativePackage) ([]string, *swiftP
 		// The core's stand-ins are the host's package's tests', never an
 		// app's: weak, they'd keep the core's archive from being linked.
 		delete(cAsuka, "stubs.c")
+		// SwiftPM makes a target with a main.swift an executable, which a
+		// library product can't have: the entry point (@main) goes in
+		// the host's library under another name.
+		if m, ok := sources["main.swift"]; ok {
+			delete(sources, "main.swift")
+			sources["AsukaMain.swift"] = m
+		}
 		sb := &swiftBuild{dir: filepath.Join(b.work, "swift-"+arch), platform: "macos", sdkName: "macosx",
 			arch: macSwiftArch(arch), release: b.release, defines: macHostDefines, host: sources, cAsuka: cAsuka, natives: natives, run: b.run}
 		out, err := sb.build()

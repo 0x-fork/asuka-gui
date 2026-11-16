@@ -61,6 +61,9 @@ class AsukaView: NSView, NSDraggingSource {
 
     // Presses, hover and drag and drop (Interaction.swift).
     override func mouseDown(with event: NSEvent) {
+        // A row of a selecting list, a Selectable's selection (Lists.swift,
+        // Selectable.swift).
+        if rt.partMouseDown(self, event) { return }
         if !rt.mouseDown(self, event) { super.mouseDown(with: event) }
     }
     override func mouseDragged(with event: NSEvent) {
