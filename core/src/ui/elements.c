@@ -1190,7 +1190,7 @@ ak_view *ak_ui_fragment(void) { return ak_frag_new(); }
 // ---- Commands ----
 
 void ak_ui_focus(ak_view *v) {
-	if (v && v->el == AK_EL_WINDOW) {  // a window's: it comes to the front
+	if (v && (v->el == AK_EL_WINDOW || v == v->r->el)) {  // a window's (the root: the main one's): it comes to the front
 		ak_ui_window_action(v, AK_WINDOW_ACTION_FOCUS, 0, 0);
 		return;
 	}

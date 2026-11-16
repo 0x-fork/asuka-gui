@@ -57,6 +57,7 @@ var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "onShare", Body: true, Sig: "(handler: fn([SharedItem]))", Builtin: "ui.on_share", Doc: "hears what other apps share with the app while the component lives"},
 	{Name: "quit", Sig: "()", Builtin: "ui.quit", Doc: "quits the app as the user's Quit does (⌘Q): on quit's handlers first, which may cancel it; then its windows close (desktop; phones and the web ignore it)"},
 	{Name: "relaunch", Sig: "()", Builtin: "ui.relaunch", Doc: "quits the app as quit() does, then starts it again with the same arguments once it has (a canceled quit cancels it)"},
+	{Name: "mainWindow", Sig: "() -> Ref", Builtin: "ui.main_window_ref", Doc: "the main window's handle (the app block's Window, or the window the app shows): show(), hide(), focus() and the rest act on it, wherever they're called from"},
 	{Name: "closeWindow", Sig: "()", Builtin: "ui.window_close", Doc: "closes the window the calling code is in (the main window outside every Window) now, without asking: what a closeRequest that kept it open calls once the user has chosen"},
 	{Name: "onCloseRequest", Body: true, Sig: "(handler: fn() -> bool)", Builtin: "ui.on_close_request", Doc: "asked when the user closes the window the component is in, while it lives: false keeps it open"},
 	{Name: "onQuit", Body: true, Sig: "(handler: fn(QuitEvent))", Builtin: "ui.on_quit", Doc: "hears the app about to quit, however that started, while the component lives: e.cancel() keeps it running"},
