@@ -1072,10 +1072,31 @@ openURL(url) { … }`, `on files(paths) { … }`, `on share(items) { … }`,
 foreground { … }`, `on background { … }`. Its first `Window` is the
 main window ([Navigation](navigation.md#windows)).
 
-`std/assets` reads a file of the package's `assets/` directory as the
-app compiles, as Go's `go:embed` does: `assets.text("welcome.md")` is
-its text, `assets.bytes("logo.png")` its bytes. A file that isn't there
-is a compile error.
+`std/embed` compiles the package's files into the app, read as it
+compiles, so every platform has them with nothing to load:
+
+```asuka
+import std/embed
+
+struct Config { api: string; retries: int }
+
+let welcome = embed.text("welcome.md")         // string
+let logo = embed.bytes("art/logo.png")         // bytes
+let config: Config = embed.json("config.json") // checked as the app compiles
+let posts = embed.texts("posts/*.md")          // [path: text]
+let icons = embed.files("icons/**/*.svg")      // [path: bytes]
+```
+
+A path is a string literal, relative to the package's directory (where
+its `asuka.toml` is), inside it; a glob has `*`, `?`, `[abc]` and `**`
+(any directories) and never names a file whose name starts with a dot.
+`embed.json` reads the file as `json.decode` does, but as the app
+compiles: a file that doesn't fit the type is a compile error, with its
+line and column, not one at run time. A file that isn't there, or a
+glob that names none, is a compile error too. With `asuka dev`,
+changing an embedded file reloads the app in place, as changing its
+code does. Files a platform reads as the app runs (images, fonts) go in
+`assets/` instead ([std/embed](std/embed.md)).
 
 ## Navigation
 

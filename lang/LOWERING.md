@@ -966,7 +966,7 @@ starts nothing.
 ## Imports
 
 The compiler (lang/compile) finds each import: `./path` beside the
-importing file's package; `std/json`, `std/math` and `std/assets` in
+importing file's package; `std/json`, `std/math` and `std/embed` in
 the checker itself; any other `std/<name>` in std/ and `platform/<name>`
 in sdk/ (the CLI's copies: packages std and sdk, std.Package); an
 `asuka/<name>`, the prefix both had once, is an error that names the

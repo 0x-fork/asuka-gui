@@ -804,7 +804,21 @@ Canvas(g => {
 
 `useKeys` 和这些 `on…` 注册写在组件的主体里（或 app 代码块里）。app 代码块还可以把它们当作事件来处理：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`、`on foreground { … }`、`on background { … }`。它的第一个 `Window` 是主窗口（见[导航](navigation.md#窗口)）。
 
-`std/assets` 在应用编译时读取包的 `assets/` 目录里的文件，就像 Go 的 `go:embed`：`assets.text("welcome.md")` 是它的文本，`assets.bytes("logo.png")` 是它的字节。文件不存在就是编译错误。
+`std/embed` 在应用编译时读取包里的文件，把它们编进应用，所以每个平台都直接拥有这些文件，运行时不需要加载：
+
+```asuka
+import std/embed
+
+struct Config { api: string; retries: int }
+
+let welcome = embed.text("welcome.md")         // string
+let logo = embed.bytes("art/logo.png")         // bytes
+let config: Config = embed.json("config.json") // 编译时检查
+let posts = embed.texts("posts/*.md")          // [路径: 文本]
+let icons = embed.files("icons/**/*.svg")      // [路径: 字节]
+```
+
+路径是字符串字面量，相对于包的目录（`asuka.toml` 所在的目录），且必须在这个目录之内；通配符支持 `*`、`?`、`[abc]` 和 `**`（任意层目录），不会匹配名字以点开头的文件。`embed.json` 和 `json.decode` 的读法一样，只是发生在编译时：文件和类型对不上就是编译错误，并指出行和列，而不会等到运行时才出错。文件不存在、通配符一个文件也没匹配到，同样是编译错误。用 `asuka dev` 时，修改被嵌入的文件会让应用就地重新加载，就像修改代码一样。运行时由平台读取的文件（图片、字体）应放在 `assets/` 里（见 [std/embed](std/embed.md)）。
 
 ## 导航
 

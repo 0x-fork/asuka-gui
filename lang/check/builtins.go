@@ -1,8 +1,6 @@
 package check
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/egoist/asuka/lang/syntax"
@@ -151,12 +149,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = positional(0, "nothing")
 		call.Result = Void
 		c.callEffects(e, "never", true, false)
-	case BAssetText, BAssetBytes:
-		c.assetCall(e, b, call)
-		call.Result = String
-		if b.ID == BAssetBytes {
-			call.Result = Bytes
-		}
+	case BEmbedText, BEmbedBytes, BEmbedJSON, BEmbedTexts, BEmbedFiles:
+		c.embedCall(e, b, call, want)
 	case BNavigate, BReplace:
 		args := positional(1, "an address: "+b.name+"(\"/inbox\"), or a routed screen's: "+b.name+"(Thread(id: 7))")
 		if len(args) > 0 {
@@ -748,7 +742,7 @@ func StdPath(path string) bool {
 // library's package at path (the rest are directories of std/).
 func ProvidesStd(path string) bool {
 	switch path {
-	case "std/json", "std/math", "std/assets":
+	case "std/json", "std/math", "std/embed":
 		return true
 	}
 	return false
@@ -782,10 +776,13 @@ func (c *Checker) makeStd(path string) *Package {
 		pi := &Global{object: object{name: "pi"}, Pkg: p, Kind: ConstGlobal, Type: Float, Value: &syntax.BasicLit{Kind: syntax.FLOAT, Value: "3.141592653589793"}, Pub: true}
 		p.Scope.Insert(pi)
 		p.Globals = append(p.Globals, pi)
-	case "std/assets":
-		p.Name = "assets"
-		add("text", BAssetText, "", nil)
-		add("bytes", BAssetBytes, "", nil)
+	case "std/embed":
+		p.Name = "embed"
+		add("text", BEmbedText, "", nil)
+		add("bytes", BEmbedBytes, "", nil)
+		add("json", BEmbedJSON, "", nil)
+		add("texts", BEmbedTexts, "", nil)
+		add("files", BEmbedFiles, "", nil)
 	default:
 		return nil
 	}
@@ -793,37 +790,3 @@ func (c *Checker) makeStd(path string) *Package {
 	return p
 }
 
-// assetCall checks assets.text("reply.md") and assets.bytes(…): a file
-// of the package's assets/ directory, read as the app compiles (as Go's
-// go:embed), so every platform has it, with no host to ask.
-func (c *Checker) assetCall(e *syntax.CallExpr, b *Builtin, call *Call) {
-	what := "a file of the package's assets/: assets." + b.name + "(\"reply.md\")"
-	if e.Args == nil || len(e.Args.List) != 1 || e.Args.List[0].Label != nil {
-		c.errorf(e, "assets.%s takes %s", b.name, what)
-		c.checkArgsLoosely(e)
-		return
-	}
-	a := e.Args.List[0].Value
-	c.assign(a, String, "the asset's path")
-	call.Args = []syntax.Expr{a}
-	path, ok := constString(a)
-	if !ok {
-		c.errorf(a, "an asset is read as the app compiles: its path is a string literal, without {…}")
-		return
-	}
-	if c.pkg == nil || c.pkg.Dir == "" {
-		c.errorf(a, "assets.%s: this package has no directory to read assets/%s from", b.name, path)
-		return
-	}
-	clean := filepath.Clean(filepath.FromSlash(path))
-	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
-		c.errorf(a, "an asset's path is in the package's assets/: %q leaves it", path)
-		return
-	}
-	data, err := os.ReadFile(filepath.Join(c.pkg.Dir, "assets", clean))
-	if err != nil {
-		c.errorf(a, "no asset %s: %v", path, err)
-		return
-	}
-	c.info.Assets[e] = string(data)
-}

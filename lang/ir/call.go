@@ -597,10 +597,37 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 			at = b.value(x, -1)
 		}
 		return b.copyTo(b.callB(uiTestMount, bc.KRef, bl, platform, at), dst)
-	case check.BAssetText:
-		return b.copyTo(b.kstr(b.l.info.Assets[e]), dst)
-	case check.BAssetBytes:
-		return b.copyTo(b.callB("str.to_bytes", bc.KRef, b.kstr(b.l.info.Assets[e])), dst)
+	case check.BEmbedText:
+		return b.copyTo(b.kstr(b.l.info.Embedded[e]), dst)
+	case check.BEmbedBytes:
+		return b.copyTo(b.callB("str.to_bytes", bc.KRef, b.kstr(b.l.info.Embedded[e])), dst)
+	case check.BEmbedJSON:
+		// Read as json.decode reads it; the checker read it the same way
+		// (check.checkJSON), so it doesn't fail.
+		t := b.typ(call.Result)
+		return b.copyTo(b.callB("json.decode", b.l.kind(t), b.kstr(b.l.info.Embedded[e]), b.kstr(b.l.desc(t))), dst)
+	case check.BEmbedTexts, check.BEmbedFiles:
+		// [path: contents]: a map of the files, made as a literal is.
+		files := b.l.info.EmbeddedFiles[e]
+		vk := bc.KRef
+		var ks []bc.Kind
+		var vals []int
+		for _, f := range files {
+			v := b.kstr(f.Data)
+			if call.Builtin.ID == check.BEmbedFiles {
+				v = b.callB("str.to_bytes", bc.KRef, v)
+			}
+			ks = append(ks, bc.KRef, vk)
+			vals = append(vals, b.kstr(f.Path), v)
+		}
+		blk := b.regs(ks)
+		for i, v := range vals {
+			b.move(blk+i, v)
+		}
+		r := b.out(dst, bc.KRef)
+		b.emit(op("NEWM"), r, int(bc.KRef), int(vk), blk, len(files))
+		b.releaseRegs(blk, ks)
+		return r
 	case check.BNavigate:
 		return b.navigate(call, 0)
 	case check.BReplace:

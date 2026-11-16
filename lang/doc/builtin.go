@@ -6,7 +6,7 @@ import (
 )
 
 // The documentation of the standard library's packages the compiler
-// provides (check.ProvidesStd: std/json, std/math, std/assets), which
+// provides (check.ProvidesStd: std/json, std/math, std/embed), which
 // have no directory: their declarations as Asuka would say them, each
 // with its ///, in builtin/<name>.asuka (TestBuiltinMatchesCompiler
 // keeps them to what the compiler declares).

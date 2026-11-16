@@ -804,7 +804,21 @@ Canvas(g => {
 
 `useKeys` とこれらの `on…` による登録は、コンポーネントの本体（またはアプリのブロック）に書きます。アプリのブロックでは、これらをイベントとしても扱えます：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`、`on foreground { … }`、`on background { … }`。ブロックの最初の `Window` がメインウィンドウです（[ナビゲーション](navigation.md#ウィンドウ)）。
 
-`std/assets` は、Go の `go:embed` のように、アプリのコンパイル時にパッケージの `assets/` ディレクトリのファイルを読みます。`assets.text("welcome.md")` はそのテキスト、`assets.bytes("logo.png")` はそのバイト列です。ファイルがなければコンパイルエラーです。
+`std/embed` は、アプリのコンパイル時にパッケージのファイルを読んでアプリに組み込みます。どのプラットフォームでも、実行時に読み込むことなくそのファイルを使えます。
+
+```asuka
+import std/embed
+
+struct Config { api: string; retries: int }
+
+let welcome = embed.text("welcome.md")         // string
+let logo = embed.bytes("art/logo.png")         // bytes
+let config: Config = embed.json("config.json") // コンパイル時に検査される
+let posts = embed.texts("posts/*.md")          // [パス: テキスト]
+let icons = embed.files("icons/**/*.svg")      // [パス: バイト列]
+```
+
+パスは文字列リテラルで、パッケージのディレクトリ（`asuka.toml` のある場所）からの相対パスです。その外は指せません。グロブには `*`、`?`、`[abc]`、`**`（任意の階層のディレクトリ）が使え、名前がドットで始まるファイルには一致しません。`embed.json` は `json.decode` と同じようにファイルを読みますが、それをコンパイル時に行います。型に合わないファイルは、行と列を示すコンパイルエラーになり、実行時のエラーにはなりません。ファイルがない場合や、グロブに一致するファイルがない場合もコンパイルエラーです。`asuka dev` では、組み込んだファイルを変更するとコードを変更したときと同じようにアプリがその場で再読み込みされます。実行時にプラットフォームが読むファイル（画像、フォント）は `assets/` に置きます（[std/embed](std/embed.md)）。
 
 ## ナビゲーション
 

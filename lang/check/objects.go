@@ -482,8 +482,11 @@ const (
 	BRefNew      // Ref(): a view's handle
 	BPathNew     // Path(): an empty outline
 	BShader      // shader("""…"""): a Kage program, compiled with the app
-	BAssetText   // assets.text("reply.md"): a file of the package's assets/, read as it compiles
-	BAssetBytes  // assets.bytes(…): likewise, its bytes
+	BEmbedText   // embed.text("reply.md"): a file of the package, read as it compiles
+	BEmbedBytes  // embed.bytes(…): likewise, its bytes
+	BEmbedJSON   // embed.json<T>(…): likewise, read as a T, checked as it compiles
+	BEmbedTexts  // embed.texts("posts/*.md"): the files a glob names, [path: text]
+	BEmbedFiles  // embed.files(…): likewise, [path: bytes]
 	BNavigate    // navigate(href), navigate(X(…)): the Router's
 	BReplace     // replace(href): the Router's, replacing where it is
 )

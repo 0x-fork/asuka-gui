@@ -9,8 +9,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/fswatch"
 )
 
@@ -28,6 +30,43 @@ type watcher struct {
 	// wake receives when something under the roots may have changed: a
 	// value may stand for many changes.
 	wake <-chan struct{}
+	// embedded reports whether the program embeds a file (std/embed's,
+	// by its absolute path): a change to it is a change to the sources,
+	// whatever its name. embedKey says which set it is.
+	embedded atomic.Pointer[func(string) bool]
+	embedKey string
+}
+
+// watchEmbeds tells w what the program embeds, as u (its last compile's)
+// says.
+func watchEmbeds(w *watcher, u *appbuild.Uses) {
+	if u == nil {
+		return
+	}
+	var key strings.Builder
+	for _, p := range u.Embeds {
+		key.WriteString(p.Dir + "\x00" + p.Pattern + "\n")
+	}
+	w.setEmbedded(key.String(), u.Embedded)
+}
+
+// isEmbedded reports whether the program embeds the file at path.
+func (w *watcher) isEmbedded(path string) bool {
+	f := w.embedded.Load()
+	return f != nil && (*f)(path)
+}
+
+// setEmbedded says what the program embeds, as its last compile found:
+// key names the set (when it's the same, nothing changes), embedded
+// matches a file's path. The files it names count as sources from now
+// on: what they are now is the starting point.
+func (w *watcher) setEmbedded(key string, embedded func(string) bool) {
+	if key == w.embedKey {
+		return
+	}
+	w.embedKey = key
+	w.embedded.Store(&embedded)
+	w.lastSrc, w.lastP = w.scan()
 }
 
 // newWatcher watches roots (and what's in them). Its loop waits on wake
@@ -35,7 +74,7 @@ type watcher struct {
 func newWatcher(roots ...string) *watcher {
 	roots = slices.DeleteFunc(slices.Clone(roots), func(r string) bool { return r == "" })
 	w := &watcher{roots: roots}
-	w.wake = newWakeup(roots).c // before the first scan, so that no change falls between
+	w.wake = newWakeup(roots, w.isEmbedded).c // before the first scan, so that no change falls between
 	w.lastSrc, w.lastP = w.scan()
 	return w
 }
@@ -83,16 +122,27 @@ func (w *watcher) scan() (src, proj string) {
 				}
 				return nil
 			}
-			b := &bp
+			// An embedded file is a source, whatever its name; one under
+			// assets/ is the platform's too, which a player is given again.
+			embedded := w.isEmbedded(path)
+			asset := embedded && strings.Contains(filepath.ToSlash(path), "/assets/")
+			var bufs []*strings.Builder
 			switch {
-			case sourceFile(name):
-				b = &bs
-			case !projectFile(path, name):
+			case sourceFile(name) || embedded:
+				bufs = append(bufs, &bs)
+				if asset {
+					bufs = append(bufs, &bp)
+				}
+			case projectFile(path, name):
+				bufs = append(bufs, &bp)
+			default:
 				return nil
 			}
 			if info, err := d.Info(); err == nil {
-				b.WriteString(path)
-				b.WriteString(info.ModTime().Format(time.RFC3339Nano))
+				for _, b := range bufs {
+					b.WriteString(path)
+					b.WriteString(info.ModTime().Format(time.RFC3339Nano))
+				}
 			}
 			return nil
 		})
@@ -127,7 +177,7 @@ const (
 	pollEvery = 300 * time.Millisecond
 )
 
-func newWakeup(roots []string) *wakeup {
+func newWakeup(roots []string, embedded func(string) bool) *wakeup {
 	u := &wakeup{c: make(chan struct{}, 1)}
 	var ws []*fswatch.Watcher
 	for _, root := range outermost(roots) {
@@ -141,7 +191,7 @@ func newWakeup(roots []string) *wakeup {
 				if isDir {
 					return skipDir(name)
 				}
-				return !watchedFile("/"+path, name)
+				return !watchedFile("/"+path, name) && !embedded(filepath.Join(root, filepath.FromSlash(path)))
 			},
 			Debounce:   wakeDebounce,
 			MaxEntries: 1 << 18,

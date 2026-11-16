@@ -14,7 +14,7 @@ state units = store.read("units", "metric")
 
 以前のバージョンの `asuka/...` というパスをインポートすると、そのパッケージの今の名前が表示されます（`asuka/camera is platform/camera now`）。
 
-標準ライブラリのほとんどのパッケージはプラットフォームのコードを必要としません。Asuka で書かれていて、Asuka で書けない部分はランタイム自身の C が担うので、どこでも同じように動きます（`std/json` と `std/math` はコンパイラーの一部です）。それ以外のパッケージ（とプラットフォーム SDK のほとんど）は、ほかの[ネイティブパッケージ](native.md)と同じで、各プラットフォームがそれぞれの API で動かします（iOS と macOS では URLSession、Android では Android 自身のクラス、Web ではブラウザーの API、Windows と Linux では C）。そのため、そのプラットフォームのアプリと同じように振る舞います。
+標準ライブラリのほとんどのパッケージはプラットフォームのコードを必要としません。Asuka で書かれていて、Asuka で書けない部分はランタイム自身の C が担うので、どこでも同じように動きます（`std/json`、`std/math`、`std/embed` はコンパイラーの一部です）。それ以外のパッケージ（とプラットフォーム SDK のほとんど）は、ほかの[ネイティブパッケージ](native.md)と同じで、各プラットフォームがそれぞれの API で動かします（iOS と macOS では URLSession、Android では Android 自身のクラス、Web ではブラウザーの API、Windows と Linux では C）。そのため、そのプラットフォームのアプリと同じように振る舞います。
 
 ## 標準ライブラリ：`std/`
 
@@ -22,6 +22,7 @@ state units = store.read("units", "metric")
 |---|---|
 | [`std/json`](std/json.md) | `json.decode<T>(text)` と `json.encode(value, indent:)`：コンパイラーが `T` について知っていることにもとづく、型付きの JSON |
 | [`std/math`](std/math.md) | `sqrt`、`pow`、`floor`、`ceil`、`round`、`sin`、`cos`、`atan2`、`clamp`、`random`、`randomInt`、`seed`、`pi` |
+| [`std/embed`](std/embed.md) | パッケージのファイルをアプリに組み込みます：`embed.text(path)`、`bytes(path)`、`json<T>(path)`（`T` として読み、コンパイル時に検査）、`texts(glob)` と `files(glob)`（`[パス: テキスト]`、`[パス: バイト列]`） |
 | [`std/time`](std/time.md) | `time.now()`、`time.date(2026, 3, 7, hour: 9, zone: .utc)`、`time.unix(s)`、`time.parse(rfc3339)`：`Time` を返します。タイムゾーン（`.local`、`.utc`、`.fixed(seconds:)`）付きの時刻で、壁時計としての `year`、`month`、`day`、`hour`、`minute`、`second`、`nanosecond`、`weekday` を持ちます。メソッドは `format("EEE d MMM, HH:mm")`（Unicode の日付パターン、英語で出力）、`rfc3339()`、`add(d)`、`sub(t)`（`Duration` を返す）、`addDate(years:, months:, days:)`、`isBefore`、`isAfter`、`compare`、`sameDay`、`startOfDay`、`truncate(d)`、`inZone`、`utc`、`local`、`unix`、`unixMilli`、`unixNano` です。ほかに `time.monotonic()`（前にしか進まない `Duration`）、`time.since(t)`、`time.ticks(1s)` と `time.ticker(1s)`（時刻のストリーム） |
 | [`std/url`](std/url.md) | `url.parse(text)`：`URL?` を返します。`scheme`、`user`、`host`、`port`、`path`、`rawQuery`、`fragment` と、`query(name)`、`queryAll(name)`、`text()`、`resolve(ref)`（RFC 3986）を持ちます。ほかに `url.resolve(base, ref)`、`escape`、`unescape`、`pathEscape`、`pathUnescape`、`encodeQuery(map)`（名前順）、`parseQuery(raw)` |
 | [`std/regex`](std/regex.md) | `regex.compile(pattern)`（不正なパターンではエラーを投げる）：`Regex` を返し、`matches`、`find`、`findAll`、`findRange`、`findSubmatch`、`findAllSubmatches`、`replace(text, with: "$1")`、`replaceEach(text, f:)`、`split`、`groupNames` を持ちます。`regex.quote(text)` もあります。構文は RE2 で、照合は線形時間です（バックトラックしません） |

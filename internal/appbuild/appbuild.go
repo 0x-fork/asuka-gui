@@ -314,6 +314,20 @@ type Uses struct {
 	// struct with it); the prelude's by name alone (Video). Test blocks'
 	// don't count: they aren't the app's.
 	Refs map[string]bool
+	// Embeds are the files and globs the program embeds (std/embed): a
+	// change to a file one matches is a change to the program's source.
+	Embeds []check.EmbedPath
+}
+
+// Embedded reports whether the program embeds the file at path (an
+// absolute path), or would if it were there (a glob's).
+func (u *Uses) Embedded(path string) bool {
+	for _, p := range u.Embeds {
+		if p.Match(path) {
+			return true
+		}
+	}
+	return false
 }
 
 // Import reports whether the program imports pkg.
@@ -378,6 +392,10 @@ func (p *Project) check() *Uses {
 // other's members to u.
 func usesOf(prog *check.Program, u *Uses) {
 	info := prog.Info
+	for p := range info.EmbedPaths {
+		u.Embeds = append(u.Embeds, p)
+	}
+	slices.SortFunc(u.Embeds, func(a, b check.EmbedPath) int { return strings.Compare(a.Dir+"\x00"+a.Pattern, b.Dir+"\x00"+b.Pattern) })
 	for _, pkg := range prog.Packages {
 		if pkg.Prelude || pkg == prog.Root {
 			continue

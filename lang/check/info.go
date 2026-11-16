@@ -63,8 +63,15 @@ type Info struct {
 	DurationFloats map[*syntax.BinaryExpr]bool
 	// Operators: the binary operators a struct's method does (t + 1h).
 	Operators map[*syntax.BinaryExpr]*Operator
-	// Assets: the files assets.text(…) and assets.bytes(…) read.
-	Assets map[*syntax.CallExpr]string
+	// Embedded: the file embed.text(…), bytes(…) or json(…) reads.
+	Embedded map[*syntax.CallExpr]string
+	// EmbeddedFiles: the files embed.texts(…) or files(…) names, by their
+	// paths in the package, sorted.
+	EmbeddedFiles map[*syntax.CallExpr][]EmbeddedFile
+	// EmbedPaths are what the program embeds: a file, or a glob that a
+	// new file matching it would change; asuka dev compiles again when one
+	// changes.
+	EmbedPaths map[EmbedPath]bool
 	// Shaders: shader("""…""")'s programs, compiled.
 	Shaders map[*syntax.CallExpr][]byte
 
@@ -109,7 +116,9 @@ func newInfo() *Info {
 		RoutedScreens:  map[syntax.Item]*TypeName{},
 		ScreenRoutes:   map[*TypeName][]*ScreenRoute{},
 		Hrefs:          map[*syntax.CallExpr]*Href{},
-		Assets:         map[*syntax.CallExpr]string{},
+		Embedded:       map[*syntax.CallExpr]string{},
+		EmbeddedFiles:  map[*syntax.CallExpr][]EmbeddedFile{},
+		EmbedPaths:     map[EmbedPath]bool{},
 		Operators:      map[*syntax.BinaryExpr]*Operator{},
 		LengthScales:   map[*syntax.BinaryExpr]bool{},
 		DurationFloats: map[*syntax.BinaryExpr]bool{},

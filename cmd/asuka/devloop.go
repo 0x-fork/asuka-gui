@@ -259,6 +259,7 @@ func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 	}
 	fmt.Fprintln(d.out, "asuka: watching for changes (Ctrl-C to stop)")
 	w := newWatcher(d.app.proj.WatchRoots()...)
+	watchEmbeds(w, d.app.used())
 	for {
 		select {
 		case <-stop:
@@ -285,6 +286,7 @@ func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 					d.compile()
 				}
 				d.app.refresh()
+				watchEmbeds(w, d.app.used())
 				if err := d.launch(p); err != nil {
 					fmt.Fprintln(os.Stderr, "asuka:", err)
 				}
@@ -296,6 +298,7 @@ func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 			if src {
 				d.compile()
 				d.app.refresh()
+				watchEmbeds(w, d.app.used())
 				if d.isStale() {
 					if err := d.launch(p); err != nil {
 						fmt.Fprintln(os.Stderr, "asuka:", err)

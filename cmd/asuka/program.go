@@ -317,6 +317,7 @@ func devProgram(dir, bin string, args []string, stop chan os.Signal) error {
 	start := func() {
 		p.Forget()
 		m, err := compileProject(p)
+		watchEmbeds(w, p.Uses())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "asuka:", err)
 			return

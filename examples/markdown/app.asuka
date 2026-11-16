@@ -4,7 +4,7 @@
 //
 //   asuka dev --platform ios examples/markdown
 
-import std/assets
+import std/embed
 import std/markdown
 
 screen Reply {
@@ -19,7 +19,7 @@ screen Reply {
     streaming = true
     defer { streaming = false }
     text = ""
-    let reply = assets.text("reply.md")
+    let reply = embed.text("reply.md")
     var end = 0
     while end < reply.count() {
       await sleep(12ms)

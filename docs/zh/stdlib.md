@@ -14,7 +14,7 @@ state units = store.read("units", "metric")
 
 导入旧版本的 `asuka/...` 路径时，编译器会告诉你这个包现在叫什么（`asuka/camera is platform/camera now`）。
 
-标准库的大多数包不需要平台代码：它们用 Asuka 写成，Asuka 表达不了的部分由运行时自己的 C 完成，所以在每个平台上的行为都一样（`std/json` 和 `std/math` 是编译器的一部分）。其余的包（以及平台 SDK 的大多数包）和别的[原生包](native.md)一样：每个平台用自己的 API 来实现（iOS 和 macOS 上用 URLSession，Android 上用它自己的类，Web 上用浏览器的 API，Windows 和 Linux 上用 C），所以它们的行为和平台原生应用里的一致。
+标准库的大多数包不需要平台代码：它们用 Asuka 写成，Asuka 表达不了的部分由运行时自己的 C 完成，所以在每个平台上的行为都一样（`std/json`、`std/math` 和 `std/embed` 是编译器的一部分）。其余的包（以及平台 SDK 的大多数包）和别的[原生包](native.md)一样：每个平台用自己的 API 来实现（iOS 和 macOS 上用 URLSession，Android 上用它自己的类，Web 上用浏览器的 API，Windows 和 Linux 上用 C），所以它们的行为和平台原生应用里的一致。
 
 ## 标准库：`std/`
 
@@ -22,6 +22,7 @@ state units = store.read("units", "metric")
 |---|---|
 | [`std/json`](std/json.md) | `json.decode<T>(text)` 和 `json.encode(value, indent:)`：带类型的 JSON，依据编译器对 `T` 的了解来读写 |
 | [`std/math`](std/math.md) | `sqrt`、`pow`、`floor`、`ceil`、`round`、`sin`、`cos`、`atan2`、`clamp`、`random`、`randomInt`、`seed`、`pi` |
+| [`std/embed`](std/embed.md) | 把包里的文件编进应用：`embed.text(path)`、`bytes(path)`、`json<T>(path)`（按 `T` 读取，编译时检查）、`texts(glob)` 和 `files(glob)`（`[路径: 文本]`、`[路径: 字节]`） |
 | [`std/time`](std/time.md) | `time.now()`、`time.date(2026, 3, 7, hour: 9, zone: .utc)`、`time.unix(s)`、`time.parse(rfc3339)`：得到一个 `Time`，即带时区（`.local`、`.utc`、`.fixed(seconds:)`）的时刻，以及它在挂钟上的 `year`、`month`、`day`、`hour`、`minute`、`second`、`nanosecond`、`weekday`。它的方法有：`format("EEE d MMM, HH:mm")`（Unicode 的日期模式，英文输出）、`rfc3339()`、`add(d)`、`sub(t)`（得到 `Duration`）、`addDate(years:, months:, days:)`、`isBefore`、`isAfter`、`compare`、`sameDay`、`startOfDay`、`truncate(d)`、`inZone`、`utc`、`local`、`unix`、`unixMilli`、`unixNano`。另有 `time.monotonic()`（只会向前走的 `Duration`）、`time.since(t)`、`time.ticks(1s)` 和 `time.ticker(1s)`（时刻的流） |
 | [`std/url`](std/url.md) | `url.parse(text)`：得到 `URL?`，含 `scheme`、`user`、`host`、`port`、`path`、`rawQuery`、`fragment`，以及 `query(name)`、`queryAll(name)`、`text()` 和 `resolve(ref)`（RFC 3986）；还有 `url.resolve(base, ref)`、`escape`、`unescape`、`pathEscape`、`pathUnescape`、`encodeQuery(map)`（参数名排序）、`parseQuery(raw)` |
 | [`std/regex`](std/regex.md) | `regex.compile(pattern)`（模式有误时抛出错误）：得到 `Regex`，有 `matches`、`find`、`findAll`、`findRange`、`findSubmatch`、`findAllSubmatches`、`replace(text, with: "$1")`、`replaceEach(text, f:)`、`split`、`groupNames`；以及 `regex.quote(text)`。语法是 RE2 的，匹配时间是线性的（不回溯） |

@@ -338,6 +338,10 @@ func (c *Checker) importDecl(fs *Scope, imp *syntax.ImportDecl, imports map[stri
 	if ip == nil {
 		ip = c.Std(path)
 	}
+	if ip == nil && path == "std/assets" {
+		c.errorf(imp, "std/assets is std/embed now: embed.text(\"assets/reply.md\"), its paths relative to the package's directory")
+		return
+	}
 	if ip == nil {
 		c.errorf(imp, "no package %s: %s", path, importHint(imp))
 		return

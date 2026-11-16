@@ -23,7 +23,7 @@ package is now (`asuka/camera is platform/camera now`).
 
 Most of the standard library needs no platform code: it's Asuka, and
 what Asuka can't say is the runtime's own C, so it works the same
-everywhere (`std/json` and `std/math` are part of the compiler). The
+everywhere (`std/json`, `std/math` and `std/embed` are part of the compiler). The
 rest of it, and most of the platform SDK, are
 [native packages](native.md) like any other: each platform runs them
 with its own APIs (URLSession on iOS and macOS, Android's own classes,
@@ -36,6 +36,7 @@ they do for the platform's own apps.
 |---|---|
 | [`std/json`](std/json.md) | `json.decode<T>(text)` and `json.encode(value, indent:)`: typed JSON, by the compiler's knowledge of `T` |
 | [`std/math`](std/math.md) | `sqrt`, `pow`, `floor`, `ceil`, `round`, `sin`, `cos`, `atan2`, `clamp`, `random`, `randomInt`, `seed`, `pi` |
+| [`std/embed`](std/embed.md) | The package's files compiled into the app: `embed.text(path)`, `bytes(path)`, `json<T>(path)` (read as a `T` and checked as the app compiles), `texts(glob)` and `files(glob)` (`[path: text]`, `[path: bytes]`) |
 | [`std/time`](std/time.md) | `time.now()`, `time.date(2026, 3, 7, hour: 9, zone: .utc)`, `time.unix(s)`, `time.parse(rfc3339)`: a `Time`, an instant with its zone (`.local`, `.utc`, `.fixed(seconds:)`) and its wall clock's `year`, `month`, `day`, `hour`, `minute`, `second`, `nanosecond`, `weekday`. Its methods: `format("EEE d MMM, HH:mm")` (Unicode's date patterns, in English), `rfc3339()`, `add(d)`, `sub(t)` (a `Duration`), `addDate(years:, months:, days:)`, `isBefore`, `isAfter`, `compare`, `sameDay`, `startOfDay`, `truncate(d)`, `inZone`, `utc`, `local`, `unix`, `unixMilli`, `unixNano`. `time.monotonic()` (a `Duration` that only goes forward), `time.since(t)`, `time.ticks(1s)` and `time.ticker(1s)` (a stream of times) |
 | [`std/url`](std/url.md) | `url.parse(text)`: a `URL?` of `scheme`, `user`, `host`, `port`, `path`, `rawQuery`, `fragment`, with `query(name)`, `queryAll(name)`, `text()` and `resolve(ref)` (RFC 3986); `url.resolve(base, ref)`, `escape`, `unescape`, `pathEscape`, `pathUnescape`, `encodeQuery(map)` (names sorted), `parseQuery(raw)` |
 | [`std/regex`](std/regex.md) | `regex.compile(pattern)` (it throws a bad pattern): a `Regex` with `matches`, `find`, `findAll`, `findRange`, `findSubmatch`, `findAllSubmatches`, `replace(text, with: "$1")`, `replaceEach(text, f:)`, `split`, `groupNames`; `regex.quote(text)`. RE2's syntax, matched in linear time (no backtracking) |

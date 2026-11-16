@@ -15,7 +15,7 @@ import (
 func TestBuiltinMatchesCompiler(t *testing.T) {
 	c := check.NewChecker(syntax.NewFileSet())
 	paths := BuiltinPaths()
-	for _, path := range []string{"std/json", "std/math", "std/assets"} {
+	for _, path := range []string{"std/json", "std/math", "std/embed"} {
 		if !slices.Contains(paths, path) {
 			t.Errorf("%s isn't documented", path)
 		}

@@ -1030,7 +1030,7 @@ func (c *completer) imports(typed string) {
 		c.add(CompletionItem{Label: path, Kind: kind, Detail: detail, TextEdit: &TextEdit{Range: rg, NewText: path}, FilterText: path}, prioMember)
 	}
 	// The standard library and the platform SDK.
-	for _, p := range []string{"std/assets", "std/json", "std/math"} {
+	for _, p := range []string{"std/embed", "std/json", "std/math"} {
 		add(p, "standard library", kindModule)
 	}
 	if ps, err := std.Packages(); err == nil {
