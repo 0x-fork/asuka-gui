@@ -8,7 +8,7 @@ import DeclaredAgeRange
 
 final class DeclaredSignals: Signals {
     func request(gates: [Int]) async throws -> Range {
-        guard #available(iOS 26.0, *) else { throw AgerangeError.notAvailable }
+        guard #available(iOS 26.0, *) else { throw AgeRangeError.notAvailable }
         let g = gates.isEmpty ? [18] : Array(gates.prefix(3))
         return try await MainActor.run { () -> UIViewController in
             guard let vc = AsukaNative.presenter else { throw AsukaNativeError.unsupported("agerange: no screen to ask on") }
@@ -38,7 +38,7 @@ extension UIViewController {
                 return Range(status: .declined)
             }
         } catch let e as AgeRangeService.Error where e == .notAvailable {
-            throw AgerangeError.notAvailable
+            throw AgeRangeError.notAvailable
         }
     }
 }

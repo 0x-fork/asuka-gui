@@ -3,46 +3,24 @@
 package macos
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/nativegen"
 )
 
-// iosHost is what a package's Swift sees of the iOS host (platform/ios's
-// AsukaHost, Media.swift) besides NativeModules.swift: enough to
-// typecheck it for the iOS simulator without building the host.
-const iosHost = `import UIKit
-
-public enum AsukaNativeValue {
-    case bool(Bool), int(Int64), float(Double), string(String), bytes(Data)
-    public var bool: Bool { if case .bool(let v) = self { return v }; return false }
-    public var int: Int64 { if case .int(let v) = self { return v }; return 0 }
-    public var float: Double { if case .float(let v) = self { return v }; return 0 }
-    public var string: String { if case .string(let v) = self { return v }; return "" }
-    public var bytes: Data { if case .bytes(let v) = self { return v }; return Data() }
-}
-
-@MainActor public protocol AsukaNativeView: AnyObject {
-    var view: UIView { get }
-    func set(_ name: String, _ value: AsukaNativeValue)
-}
-
-@MainActor public final class AsukaNativeContext {
-    public let id: UInt32
-    init(id: UInt32) { self.id = id }
-    public func emit(_ name: String, _ values: [String: AsukaNativeValue] = [:]) {}
-}
-`
-
 // Every standard library package's Swift (std/<name>/swift) builds for
-// macOS, as an app's library has it (with module Asuka: platform/macos's
-// runtime), and typechecks for the iOS simulator. A package whose
+// macOS, as an app's executable has it (with module Asuka: the Mac's
+// host), and typechecks for the iOS simulator. A package whose
 // Package.swift depends on more than Asuka needs SwiftPM to resolve it,
 // and is skipped.
 func TestStdSwift(t *testing.T) {
@@ -74,37 +52,106 @@ func TestStdSwift(t *testing.T) {
 			if m := regexp.MustCompile(`\.macOS\("([0-9.]+)"\)`).FindStringSubmatch(string(manifest)); m != nil {
 				macos = m[1]
 			}
-			swiftc(t, append([]string{"-target", arch + "-apple-macos" + macos, "-module-name", mod, "-I", mac, "-wmo", "-c", "-o", filepath.Join(dir, name+".o")}, srcs...)...)
-			if simSDK != "" {
-				swiftc(t, append([]string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", mod, "-I", ios, "-typecheck"}, srcs...)...)
+			swiftc(t, append([]string{"-target", arch + "-apple-macos" + macos, "-module-name", mod, "-I", mac, "-I", filepath.Join("Sources", "CAsuka", "include"), "-wmo", "-c", "-o", filepath.Join(dir, name+".o")}, srcs...)...)
+			// iOS where the package says it builds there (asuka/watch is
+			// the Mac's alone).
+			if simSDK != "" && strings.Contains(string(manifest), ".iOS(") {
+				swiftc(t, append([]string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", mod, "-I", ios, "-I", filepath.Join("..", "ios", "Sources", "CAsuka", "include"), "-typecheck"}, srcs...)...)
 			}
 		})
 	}
 }
 
 // asukaModules builds module Asuka as a package's Swift sees it: for
-// macOS (platform/macos's runtime) in mac and, when there's the iOS
-// simulator's SDK (simSDK), for it in ios (iosHost's shim and the iOS
-// host's NativeModules.swift): each its Asuka.swiftmodule and Asuka.o.
+// macOS in mac and, when there's the iOS simulator's SDK (simSDK), for it
+// in ios: each its Asuka.swiftmodule and Asuka.o.
+//
+// Module Asuka is the host itself, as an app's Swift packages build
+// against it (the CLI's Mac and iOS builds): its Sources/AsukaHost and
+// Sources/AsukaOps, CAsuka's headers, its conditions (the Mac's
+// HostDefines; on iOS every part, as asuka dev's player has), not its
+// App's entry point. Its Asuka.o links with the core and, on the Mac, the
+// desktop hosts' C the host calls (hostLink).
 func asukaModules(t *testing.T, dir string) (mac, ios, simSDK, arch string) {
 	t.Helper()
 	arch = map[string]string{"arm64": "arm64", "amd64": "x86_64"}[runtime.GOARCH]
-	src := "../../platform/macos/Sources/AsukaMac/"
 	mac = filepath.Join(dir, "mac")
 	os.MkdirAll(mac, 0o755)
-	swiftc(t, "-target", arch+"-apple-macos11", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(mac, "Asuka.swiftmodule"), "-wmo", "-c",
-		src+"AsukaMacRuntime.swift", src+"NativeModules.swift", "-o", filepath.Join(mac, "Asuka.o"))
+	var srcs []string
+	for _, d := range []string{"AsukaHost", "AsukaOps"} {
+		fs, _ := filepath.Glob(filepath.Join("Sources", d, "*.swift"))
+		srcs = append(srcs, fs...)
+	}
+	args := []string{"-target", arch + "-apple-macos11", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(mac, "Asuka.swiftmodule"), "-wmo", "-c",
+		"-I", filepath.Join("Sources", "CAsuka", "include"), "-o", filepath.Join(mac, "Asuka.o")}
+	for _, d := range HostDefines {
+		args = append(args, "-D", d)
+	}
+	swiftc(t, append(args, srcs...)...)
 	sim, _ := exec.Command("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path").Output()
 	simSDK = strings.TrimSpace(string(sim))
 	if simSDK != "" {
+		// The iOS host likewise, with every part (asuka dev's player's
+		// conditions: each ASUKA_ one its sources test).
 		ios = filepath.Join(dir, "ios")
 		os.MkdirAll(ios, 0o755)
-		shim := filepath.Join(ios, "Host.swift")
-		os.WriteFile(shim, []byte(iosHost), 0o644)
-		swiftc(t, "-sdk", simSDK, "-target", arch+"-apple-ios16.0-simulator", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(ios, "Asuka.swiftmodule"),
-			"-wmo", "-c", shim, "../../platform/ios/Sources/AsukaHost/NativeModules.swift", "-o", filepath.Join(ios, "Asuka.o"))
+		iosSrc := filepath.Join("..", "ios", "Sources")
+		var srcs []string
+		for _, d := range []string{"AsukaHost", "AsukaOps"} {
+			fs, _ := filepath.Glob(filepath.Join(iosSrc, d, "*.swift"))
+			srcs = append(srcs, fs...)
+		}
+		args := []string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(ios, "Asuka.swiftmodule"),
+			"-wmo", "-c", "-I", filepath.Join(iosSrc, "CAsuka", "include"), "-o", filepath.Join(ios, "Asuka.o")}
+		for _, d := range hostConditions(t, srcs) {
+			args = append(args, "-D", d)
+		}
+		swiftc(t, append(args, srcs...)...)
 	}
 	return mac, ios, simSDK, arch
+}
+
+// hostLink is what an executable with a host's Asuka.o links besides, for
+// target (darwin, ios-simulator): the core (a player's: no app compiled
+// in) and, on the Mac, the desktop hosts' shared C the host calls, as the
+// CLI links an app.
+func hostLink(t *testing.T, dir, target string) []string {
+	t.Helper()
+	core := filepath.Join(dir, "core-"+target, "libasuka.a")
+	if err := appbuild.PlayerLib(cbuild.Target{OS: target, Arch: runtime.GOARCH}, cbuild.Static, nil, core); err != nil {
+		t.Fatal(err)
+	}
+	out := []string{core, "-lresolv"}
+	if target == "darwin" {
+		shared, err := appbuild.MacShared(runtime.GOARCH, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(shared, out...)
+	}
+	return out
+}
+
+// hostConditions are the ASUKA_ conditions the host's sources test.
+func hostConditions(t *testing.T, srcs []string) []string {
+	t.Helper()
+	cond := regexp.MustCompile(`^\s*#(?:if|elseif)\b.*`)
+	name := regexp.MustCompile(`ASUKA_[A-Z0-9_]+`)
+	seen := map[string]bool{}
+	for _, f := range srcs {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, l := range strings.Split(string(b), "\n") {
+			if cond.MatchString(l) {
+				for _, n := range name.FindAllString(l, -1) {
+					seen[n] = true
+				}
+			}
+		}
+	}
+	return slices.Sorted(maps.Keys(seen))
 }
 
 func swiftc(t *testing.T, args ...string) {
@@ -160,7 +207,8 @@ func TestStdSwiftViews(t *testing.T) {
 		}
 		t.Run(name+"/macos", func(t *testing.T) {
 			exe := filepath.Join(dir, name+"-macos")
-			swiftc(t, append([]string{"-target", arch + "-apple-macos13", "-module-name", mod, "-I", mac, "-wmo", filepath.Join(mac, "Asuka.o"), "-o", exe}, srcs...)...)
+			args := []string{"-target", arch + "-apple-macos13", "-module-name", mod, "-I", mac, "-I", filepath.Join("Sources", "CAsuka", "include"), "-wmo", filepath.Join(mac, "Asuka.o"), "-o", exe}
+			swiftc(t, append(append(args, hostLink(t, dir, "darwin")...), srcs...)...)
 			run(t, exe, filepath.Join(data, "stream.json"))
 		})
 		t.Run(name+"/ios", func(t *testing.T) {
@@ -172,8 +220,9 @@ func TestStdSwiftViews(t *testing.T) {
 				t.Skip("no booted iOS simulator")
 			}
 			exe := filepath.Join(dir, name+"-ios")
-			swiftc(t, append([]string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", mod, "-I", ios, "-wmo",
-				filepath.Join(ios, "Asuka.o"), "-o", exe}, srcs...)...)
+			args := []string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", mod, "-I", ios, "-I", filepath.Join("..", "ios", "Sources", "CAsuka", "include"), "-wmo",
+				filepath.Join(ios, "Asuka.o"), "-o", exe}
+			swiftc(t, append(append(args, hostLink(t, dir, "ios-simulator")...), srcs...)...)
 			run(t, "xcrun", "simctl", "spawn", udid, exe, filepath.Join(data, "stream.json"))
 		})
 	}
