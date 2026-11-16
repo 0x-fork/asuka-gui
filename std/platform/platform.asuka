@@ -1,0 +1,28 @@
+// Package asuka/platform reaches the hosts' own modules: what each
+// platform's host does for an app beyond its views (the Dock tile, the
+// taskbar, the tray, global shortcuts), by a module's and a method's
+// name, with arguments and results encoded as the module says
+// (little-endian). It's for the standard library's packages (asuka/dock,
+// asuka/tray, ...); apps use those, and reach code of their own through
+// native packages (docs/native.md).
+
+/// Calls a module's method and waits for its result; a host without the
+/// module throws.
+pub native async fn call(module: string, method: string, args: bytes) throws -> bytes
+
+/// Calls a module's method, not waiting for an answer.
+pub native fn send(module: string, method: string, args: bytes)
+
+/// An unsigned byte, 4 or 8 bytes of an int; 8 bytes of a float; a
+/// string as a u32 length and its UTF-8.
+pub native fn u8(n: int) -> bytes
+pub native fn u32(n: int) -> bytes
+pub native fn u64(n: int) -> bytes
+pub native fn f64(x: float) -> bytes
+pub native fn str(s: string) -> bytes
+
+/// Reads what the encodings write, at a byte offset (past the end: 0).
+pub native fn readU8(b: bytes, at: int) -> int
+pub native fn readU32(b: bytes, at: int) -> int
+pub native fn readU64(b: bytes, at: int) -> int
+pub native fn readF64(b: bytes, at: int) -> float

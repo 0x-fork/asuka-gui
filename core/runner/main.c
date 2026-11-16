@@ -52,6 +52,7 @@ static void settle(ak_future *fut) {
 	for (int guard = 0; guard < 1000000; guard++) {
 		ak_sched_run_posted();
 		if (ak_sched_run()) continue;
+		if (ak_uitest_pump()) continue;  // the fake host's answers
 		if (fut && fut->state != AK_FUT_PENDING) return;
 		if (ak_sched_held()) {
 			// Another thread works for us: wait for what it posts.

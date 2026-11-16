@@ -517,6 +517,18 @@ void ak_uitest_settle(ak_uitest *a) {
 	ak_buf_printf(&a->fails, "the app never settles (it posts or rebinds forever)\n");
 }
 
+bool ak_uitest_pump(void) {
+	if (!active || !active->mounted) return false;
+	ak_ui_flush();  // a call waits in the batch until it's sent
+	if (ak_fake_pending(active->f) == 0) return false;
+	// What's delivered may end the test, which lets the app go: it's
+	// held until its settle returns.
+	ak_uitest *a = ak_retain(active);
+	ak_uitest_settle(a);
+	ak_release(a);
+	return true;
+}
+
 // ak_uitest_idle settles, then moves the clock (a manual one, under
 // test) to each timer that's due and settles again, until no timer is
 // left. Ten minutes of the app's time is the most it moves: a timer that

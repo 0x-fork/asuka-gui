@@ -41,6 +41,11 @@ void ak_uitest_settle(ak_uitest *a);
 // ak_uitest_idle settles, moving the clock past each timer as it comes
 // due (ten minutes of the app's time at most).
 void ak_uitest_idle(ak_uitest *a);
+// ak_uitest_pump delivers what the mounted app's fake host posted (a
+// module call's answer, an image's load) and settles: the runner's
+// settle calls it, so an await of the host's answer outside app.idle()
+// completes. It reports whether there was any.
+bool ak_uitest_pump(void);
 
 // Actions and expectations: true, or false with what went wrong and what
 // the screen shows in err.

@@ -21,8 +21,10 @@ Linux), so they behave as they do for the platform's own apps.
 | `asuka/json` | `json.decode<T>(text)` and `json.encode(value, indent:)`: typed JSON, by the compiler's knowledge of `T` |
 | `asuka/math` | `sqrt`, `pow`, `floor`, `ceil`, `round`, `sin`, `cos`, `atan2`, `clamp`, `random`, `randomInt`, `seed`, `pi` |
 | `asuka/time` | `time.now()` (milliseconds since 1970), `time.monotonic()` (a `Duration` that only goes forward) |
+| `asuka/dock` | `dock.setProgress(Progress(value:, state:))` and `dock.requestAttention(.critical)`: the app's icon on macOS's Dock, Windows' taskbar and Linux's launcher (Unity's launcher API, where the desktop has it); nothing on a phone or the web |
 | `asuka/http` | `http.get`, `http.post`, `http.postJSON`, `http.request`: requests through the platform's own client, so proxies, trusted certificates, caches and cookies work as the system's do. A `Response` has `status`, `url`, `headers`, `body`, `text()`, `json<T>()` and `ok()` |
 | `asuka/network` | `network.status()` (tracked: `connected`, `type`, `metered`, `constrained`; it watches the network only while something reads it), `network.current()`, `network.changes()` (a stream). NWPathMonitor on iOS and macOS, ConnectivityManager on Android, the Network List Manager on Windows, GNetworkMonitor and NetworkManager on Linux, `navigator.onLine` and the Network Information API on the web |
+| `asuka/platform` | `platform.call(module, method, args)` and `platform.send`: the hosts' own modules, by name, with arguments in their little-endian encodings (`u8`, `u32`, `f64`, `str`, `readU32`, ...). For the standard library's packages; an app reaches its own platform code through [native packages](native.md) |
 | `asuka/store` | `store.read(key, default)`, `store.write(key, value)`, `store.remove(key)`: small values kept across launches as JSON, in the platform's preferences (UserDefaults, SharedPreferences, `localStorage`, a file on Windows and Linux) |
 
 Where a platform has no code for a native package (an app run by

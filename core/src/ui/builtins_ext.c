@@ -215,6 +215,66 @@ static ak_val b_call(ak_val *a, uint32_t n) {
 	return (ak_val){.p = ak_ui_call(a[0].p, a[1].p, a[2].p)};
 }
 
+// asuka/platform: the hosts' modules for the standard library's packages
+// (std/platform): call (a Task of the result), send (no answer), and the
+// little-endian encodings the modules' arguments and results are in.
+
+static ak_val b_platform_send(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_release(ak_ui_call(a[0].p, a[1].p, a[2].p));
+	return none();
+}
+
+static const ak_bytes *bytes_arg(ak_val v) { return v.p; }
+
+static ak_val le_bytes(uint64_t v, int n) {
+	uint8_t b[8];
+	for (int i = 0; i < n; i++) b[i] = (uint8_t)(v >> (8 * i));
+	return (ak_val){.p = ak_bytes_new(b, (size_t)n)};
+}
+
+static ak_val b_platform_u8(ak_val *a, uint32_t n) { AK_UNUSED(n); return le_bytes((uint64_t)a[0].i, 1); }
+static ak_val b_platform_u32(ak_val *a, uint32_t n) { AK_UNUSED(n); return le_bytes((uint64_t)a[0].i, 4); }
+static ak_val b_platform_u64(ak_val *a, uint32_t n) { AK_UNUSED(n); return le_bytes((uint64_t)a[0].i, 8); }
+
+static ak_val b_platform_f64(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	uint64_t u;
+	memcpy(&u, &a[0].f, 8);
+	return le_bytes(u, 8);
+}
+
+static ak_val b_platform_str(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *s = a[0].p;
+	ak_bytes *b = ak_bytes_new(NULL, 4 + (size_t)s->len);
+	for (int i = 0; i < 4; i++) b->data[i] = (uint8_t)(s->len >> (8 * i));
+	memcpy(b->data + 4, s->data, s->len);
+	return (ak_val){.p = b};
+}
+
+// The readers take an offset; past the end, 0.
+static uint64_t le_read(ak_val *a, int n) {
+	const ak_bytes *b = bytes_arg(a[0]);
+	int64_t at = a[1].i;
+	uint64_t v = 0;
+	if (!b || at < 0 || at + n > (int64_t)b->len) return 0;
+	for (int i = 0; i < n; i++) v |= (uint64_t)b->data[at + i] << (8 * i);
+	return v;
+}
+
+static ak_val b_platform_read_u8(ak_val *a, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = (int64_t)le_read(a, 1)}; }
+static ak_val b_platform_read_u32(ak_val *a, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = (int64_t)le_read(a, 4)}; }
+static ak_val b_platform_read_u64(ak_val *a, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = (int64_t)le_read(a, 8)}; }
+
+static ak_val b_platform_read_f64(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	uint64_t u = le_read(a, 8);
+	double f;
+	memcpy(&f, &u, 8);
+	return (ak_val){.f = f};
+}
+
 static ak_val b_view_id(ak_val *a, uint32_t n) { return (ak_val){.i = ak_ui_view_id(view_or_none(a, n, 0))}; }
 
 static ak_val b_locale(ak_val *a, uint32_t n) {
@@ -284,7 +344,12 @@ void ak_ui_ext_builtins_init(void) {
 		{"ui.format", b_format}, {"ui.toggle_format", b_toggle_format}, {"ui.set_link", b_set_link}, {"ui.native", b_native},
 		{"ui.native_set", b_native_set}, {"ui.native_bind", b_native_bind}, {"ui.native_on", b_native_on}, {"ui.share", b_share},
 		{"ui.share_files", b_share_files}, {"ui.haptic", b_haptic}, {"ui.copy", b_copy}, {"ui.open_url", b_open_url},
-		{"ui.announce", b_announce}, {"ui.a11y_focus", b_a11y_focus}, {"ui.call", b_call}, {"ui.view_id", b_view_id},
+		{"ui.announce", b_announce}, {"ui.a11y_focus", b_a11y_focus}, {"ui.call", b_call},
+		{"platform.call", b_call}, {"platform.send", b_platform_send},
+		{"platform.u8", b_platform_u8}, {"platform.u32", b_platform_u32}, {"platform.u64", b_platform_u64},
+		{"platform.f64", b_platform_f64}, {"platform.str", b_platform_str},
+		{"platform.readU8", b_platform_read_u8}, {"platform.readU32", b_platform_read_u32},
+		{"platform.readU64", b_platform_read_u64}, {"platform.readF64", b_platform_read_f64}, {"ui.view_id", b_view_id},
 		{"ui.on_open_url", b_on_open_url}, {"ui.on_open_files", b_on_open_files}, {"ui.on_share", b_on_share},
 		{"i18n.locale", b_locale}, {"i18n.set_locale", b_set_locale}, {"i18n.set_languages", b_set_languages},
 		{"i18n.languages", b_languages}, {"i18n.preferred_languages", b_preferred}, {"i18n.is_rtl", b_is_rtl},
