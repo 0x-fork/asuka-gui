@@ -37,11 +37,11 @@ test "services" {
 }
 
 // Output:
-// library: unsupported: library has no host here
-// photos: unsupported: photoLibrary has no host here
-// contacts: unsupported: contacts has no host here
-// calendar: unsupported: calendar has no host here
-// compose: unsupported: compose has no host here
+// library: unsupported: no host to call (no app is shown)
+// photos: unsupported: no host to call (no app is shown)
+// contacts: unsupported: no host to call (no app is shown)
+// calendar: unsupported: no host to call (no app is shown)
+// compose: unsupported: no host to call (no app is shown)
 // liveactivity: liveactivity: not available
 // a%20b%26c%3Dd/%C3%A9
 // Hello & bye

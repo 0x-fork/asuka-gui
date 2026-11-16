@@ -372,3 +372,62 @@ func exportFlags() []string {
 	}
 	return f
 }
+
+// Exe builds an executable for the toolchain's target into out: the core
+// (core/src, without the fake host) and extra C sources (a C desktop
+// host, the native registry, packages' C, an app compiled to C),
+// optimized for release unless debug. extraFlags are the extra sources'
+// own (their include directories, the app's define); link, what the
+// executable links with besides the C library. Objects are cached as
+// Lib's are.
+func (tc *Toolchain) Exe(core string, extra, extraFlags, link []string, debug bool, out string) error {
+	srcs, err := Sources(core, false)
+	if err != nil {
+		return err
+	}
+	flags := append(append(Includes(core), tc.Flags...), "-ffunction-sections", "-fdata-sections")
+	if debug {
+		flags = append(flags, "-g", "-O1", "-DAK_DEBUG=1")
+	} else {
+		flags = append(flags, "-O2", "-DNDEBUG")
+	}
+	hdrs, _ := headers(core)
+	objs, err := tc.compileCached(core, "core", srcs, hdrs, flags, Static)
+	if err != nil {
+		return err
+	}
+	if len(extra) > 0 {
+		var more []string
+		for _, f := range extra {
+			if filepath.Ext(f) == ".h" {
+				more = append(more, f) // their headers count in the cache's key
+			}
+		}
+		var cs []string
+		for _, f := range extra {
+			if filepath.Ext(f) == ".c" {
+				cs = append(cs, f)
+			}
+		}
+		eobjs, err := tc.compileCached(core, "exe", cs, append(hdrs, more...), append(append([]string{}, flags...), extraFlags...), Static)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, eobjs...)
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return err
+	}
+	ld := append(append([]string{}, tc.Flags...), "-lm")
+	switch tc.Target.OS {
+	case "linux":
+		ld = append(ld, "-lpthread", "-ldl")
+	case "windows":
+		ld = append(ld, "-lws2_32")
+	}
+	ld = append(ld, link...)
+	if !debug {
+		ld = append(ld, deadStrip(tc.Target)...)
+	}
+	return tc.CC.Link(objs, out, ld)
+}

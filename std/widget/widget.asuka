@@ -6,7 +6,7 @@
 //
 //   widget.set("energy", widget.Entry(title: "Energy", value: "72%", progress: 0.72, showProgress: true))
 
-import asuka/host
+import asuka/platform
 import asuka/json
 
 /// What a widget shows.
@@ -58,7 +58,7 @@ pub fn set(kind: string, e: Entry) = setAll(kind, [e])
 pub fn setAll(kind: string, entries: [Entry]) {
   let es = entries.sorted((a, b) => a.at < b.at).map(e => Wire(title: e.title, value: e.value, body: e.body, caption: e.caption,
     symbol: e.symbol, progress: e.progress, showProgress: e.showProgress, untilMs: e.until, atMs: e.at, tint: e.tint, url: e.url))
-  host.send("widget", "set", json.encode(Set(kind: kind, entries: es)).bytes())
+  platform.send("widget", "set", json.encode(Set(kind: kind, entries: es)).bytes())
 }
 
 /// Clears what the kind of widget shows.

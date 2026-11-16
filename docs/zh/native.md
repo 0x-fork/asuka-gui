@@ -1,6 +1,6 @@
 # 原生代码
 
-Asuka 没有封装的功能，应用可以通过**原生包**来使用。原生包用 Asuka 声明一个模块（`native interface`）或一个视图（`native component`），再由每个平台用自己的语言实现：iOS 和 macOS 上用 Swift，Android 上用 Kotlin，Web 上用 JavaScript，Windows 和 Linux 上用 Go。`asuka native generate` 会为每一端生成带类型的胶水代码。在 Asuka 里，调用模块的方法和调用任何方法一样，显示视图也和显示任何组件一样。值以紧凑的二进制格式在两端之间传递，不经过 JSON，也不用反射。
+Asuka 没有封装的功能，应用可以通过**原生包**来使用。原生包用 Asuka 声明一个模块（`native interface`）或一个视图（`native component`），再由每个平台用自己的语言实现：iOS 和 macOS 上用 Swift，Android 上用 Kotlin，Web 上用 JavaScript，Windows 和 Linux 上用 C。`asuka native generate` 会为每一端生成带类型的胶水代码。在 Asuka 里，调用模块的方法和调用任何方法一样，显示视图也和显示任何组件一样。值以紧凑的二进制格式在两端之间传递，不经过 JSON，也不用反射。
 
 ```asuka
 /// 设备的电池。
@@ -42,7 +42,7 @@ Asuka 的组件和标准库（`asuka/...`）已经覆盖了大多数应用需要
 ## 创建原生包
 
 ```sh
-asuka native new ./battery                # Asuka、Swift、Kotlin、JavaScript，以及桌面端的 Go
+asuka native new ./battery                # Asuka、Swift、Kotlin、JavaScript，以及桌面端的 C
 asuka native new --projects swift,android ./battery
 asuka native add web ./battery            # 之后再添加某个平台的项目
 ```
@@ -66,7 +66,10 @@ battery/
   web/
     battery.js             你写的：export function makeBattery
     battery.asuka.js       生成的
-  desktop/                 Windows 和 Linux 的 Go 实现
+  desktop/                 Windows 和 Linux 的 C 实现
+    battery.c              你写的：battery_make_Battery（_windows.c、_linux.c 只用于一个平台）
+    battery.asuka.h        生成的：类型、vtable、你要写的函数
+    battery.asuka.c        生成的：编解码、provider
   Info.plist               （可选）这个包对 Apple 应用的要求
   iOS.entitlements         （可选）
   macOS.entitlements       （可选）
@@ -120,32 +123,32 @@ pub native interface Oven {
 
 ### 类型
 
-| Asuka | Swift | Kotlin | JavaScript |
-| --- | --- | --- | --- |
-| `bool` | `Bool` | `Boolean` | `boolean` |
-| `int` | `Int` | `Long` | `bigint` |
-| `float` | `Double` | `Double` | `number` |
-| `string` | `String` | `String` | `string` |
-| `bytes` | `Data` | `ByteArray` | `Uint8Array` |
-| `Duration` | `TimeInterval`（秒） | `kotlin.time.Duration` | `number`（毫秒） |
-| `[T]` | `[T]` | `List<T>` | `Array` |
-| `[string: T]` | `[String: T]` | `Map<String, T>` | `object` |
-| `T?` | `T?` | `T?` | `T` 或 `null` |
-| `Color` | `Int`，即核心的编码：`AsukaColors.color(_:)` 把它变成 `UIColor` 或 `NSColor`（语义色会跟随浅色和深色模式） | `Long`：`AsukaModules.color(v, fallback)` 把它变成 ARGB 的 `Int` | `bigint`：`native.color(v)` 把它变成 CSS 颜色（语义色是一个 CSS 变量） |
-| 包中定义的结构体 | 结构体（包含自身时为 final class） | data class | 对象 |
-| 包中定义的枚举（成员不带值） | `RawRepresentable` 结构体，每个成员对应一个静态成员 | value class，每个成员对应一个常量 | 由这些成员组成的冻结对象 |
-| `native interface`（作为参数或返回值） | `any T` | `T` | 对象 |
-| `fn(...)`（作为参数） | 闭包 | 函数 | 函数 |
+| Asuka | Swift | Kotlin | JavaScript | C |
+| --- | --- | --- | --- | --- |
+| `bool` | `Bool` | `Boolean` | `boolean` | `bool` |
+| `int` | `Int` | `Long` | `bigint` | `int64_t` |
+| `float` | `Double` | `Double` | `number` | `double` |
+| `string` | `String` | `String` | `string` | `char *`，UTF-8，以 NUL 结尾 |
+| `bytes` | `Data` | `ByteArray` | `Uint8Array` | `asuka_bytes`（`data`、`len`） |
+| `Duration` | `TimeInterval`（秒） | `kotlin.time.Duration` | `number`（毫秒） | `int64_t`（纳秒） |
+| `[T]` | `[T]` | `List<T>` | `Array` | `<pkg>_list_T`（`data`、`len`） |
+| `[string: T]` | `[String: T]` | `Map<String, T>` | `object` | `<pkg>_map_T`（`keys`、`values`、`len`） |
+| `T?` | `T?` | `T?` | `T` 或 `null` | `T *`（`NULL` 表示没有值；`string?` 是 `char *`） |
+| `Color` | `Int`，即核心的编码：`AsukaColors.color(_:)` 把它变成 `UIColor` 或 `NSColor`（语义色会跟随浅色和深色模式） | `Long`：`AsukaModules.color(v, fallback)` 把它变成 ARGB 的 `Int` | `bigint`：`native.color(v)` 把它变成 CSS 颜色（语义色是一个 CSS 变量） | `uint64_t`：`asuka_desktop_color(v)` 按当前的外观把它变成 RGBA |
+| 包中定义的结构体 | 结构体（包含自身时为 final class） | data class | 对象 | 结构体 `<pkg>_Name` |
+| 包中定义的枚举（成员不带值） | `RawRepresentable` 结构体，每个成员对应一个静态成员 | value class，每个成员对应一个常量 | 由这些成员组成的冻结对象 | `int64_t`，每个成员对应一个常量（`<pkg>_Level_low`） |
+| `native interface`（作为参数或返回值） | `any T` | `T` | 对象 | `<pkg>_T *` |
+| `fn(...)`（作为参数） | 闭包 | 函数 | 函数 | `<pkg>_fn_…`，用它的 `_call` 调用 |
 
 结构体的字段按声明顺序传递；它的常量和方法只留在 Asuka 这一端。对象（原生接口）只能作为参数或返回值传递，不能放在数组、map 或结构体里。其他不支持的用法，`asuka native generate` 都会在对应位置报错，并告诉你应该改用什么。
 
 ### 方法
 
 - **错误。** 平台端抛出的错误会以下面几种形式返回：
-  - 包中声明的某个错误（声明为 `: Error` 的枚举的成员，成员的 `///` 文档就是错误消息）。平台端这样抛出它：Swift 中是 `KitchenError.busy`，Kotlin 中是 `KitchenException(KitchenError.BUSY)`，JavaScript 中是 `new KitchenError("busy")`。在 Asuka 中用 `catch KitchenError.busy` 捕获它。
-  - `AsukaNativeError.unsupported(msg)`、`AsukaUnsupportedException` 或 `asuka.native.UnsupportedError`：它们会变成一个 `unsupported` 错误。
+  - 包中声明的某个错误（声明为 `: Error` 的枚举的成员，成员的 `///` 文档就是错误消息）。平台端这样抛出它：Swift 中是 `KitchenError.busy`，Kotlin 中是 `KitchenException(KitchenError.BUSY)`，JavaScript 中是 `new KitchenError("busy")`，C 中是 `asuka_error_declared(err, kitchen_KitchenError_busy)`。在 Asuka 中用 `catch KitchenError.busy` 捕获它。
+  - `AsukaNativeError.unsupported(msg)`、`AsukaUnsupportedException`、`asuka.native.UnsupportedError` 或 `asuka_error_unsupported`：它们会变成一个 `unsupported` 错误。
   - 其他任何错误，都会变成一个带有域（`NSError` 的域，或异常的类名）、错误码和消息的错误。
-- **`async`** 让方法变成异步的：在 Swift 中是 `async`，在 Kotlin 中是 `suspend`，在 JavaScript 中是一个第一个参数为 `AbortSignal` 的 `async` 函数。Asuka 等待它的结果时不会占住主线程。task 被取消时（比如启动它的页面已经离开），平台端的任务也会被取消（Swift 的 task、Kotlin 的协程、`AbortSignal` 的 abort）。凡是耗时的操作都应该这样写：网络、文件、等待对话框的回答。
+- **`async`** 让方法变成异步的：在 Swift 中是 `async`，在 Kotlin 中是 `suspend`，在 JavaScript 中是一个第一个参数为 `AbortSignal` 的 `async` 函数，在 C 中是一个接收 `asuka_call` 的函数，它要在任意线程上对这个调用应答一次。Asuka 等待它的结果时不会占住主线程。task 被取消时（比如启动它的页面已经离开），平台端的任务也会被取消（Swift 的 task、Kotlin 的协程、`AbortSignal` 的 abort、C 的 `asuka_call_on_cancel`）。凡是耗时的操作都应该这样写：网络、文件、等待对话框的回答。
 - **回调。** `fn` 参数分为两种：
   - **通知**：不返回任何值的函数（`progress: fn(float)`）。平台端可以在任意线程上调用它任意多次，无论是在调用进行中还是返回之后（比如监听器）。它在 Asuka 中的主线程上运行，因此可以写入状态。
   - **询问**：有返回值的函数（`question: fn(string) -> bool`）。它会立即运行，结果返回给平台端。
@@ -154,11 +157,11 @@ pub native interface Oven {
 - **对象。** 方法可以返回另一个原生接口（`open` 返回一个 `Oven`）。每个返回的接口在平台端都是一个独立的对象。当 Asuka 不再持有它，或者它的 `close()`（一个名为 `close`、没有参数的方法）被调用时，它就会被释放。
 - **线程。** 方法在平台端同步运行，所在线程就是发起调用的主线程：中间没有线程切换，也没有队列。这让调用的开销很小，但耗时的调用会占住主线程，所以要把这样的方法声明为 `async`。
   - 在方法或接口的 `///` 文档里写上 `@mainThread`，就能确保它在平台的主线程上运行，UIKit、AppKit 和 Android 的视图都要求这样做。这时 Swift 中的协议会标注为 `@MainActor`。
-  - JavaScript 是单线程的，所以这些在 Web 上不适用。
+  - JavaScript 是单线程的，所以这些在 Web 上不适用；Windows 和 Linux 上的 C 代码所有调用都在主线程上运行。
 
 ### 调用的开销
 
-一次调用会把参数编码到一个缓冲区中，然后只跨越一次边界：iOS 上经过 C，Android 上经过 JNI，Mac 上通过函数指针进入 Swift 库，Web 上经过 JavaScript 宿主。返回结果也以同样的方式解码。整个过程中没有任何反射。
+一次调用会把参数编码到一个缓冲区中，然后只跨越一次边界：iOS 上经过 C，Android 上经过 JNI，Mac 上通过函数指针进入 Swift 库，Web 上经过 JavaScript 宿主，Windows 和 Linux 上是包的 provider 的函数指针。返回结果也以同样的方式解码。整个过程中没有任何反射。
 
 ## 声明视图
 
@@ -206,9 +209,9 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 - Swift 中用 `sizeThatFits`（iOS）或 `fittingSize`（macOS），如果视图遵循 `AsukaSizing`，则用它的 `sizeThatFits`；
 - Android 上用视图自己的测量逻辑；
 - JavaScript 中用 `measure(c)`；
-- Go 中用 `Measure`（见下文）。
+- C 中用 vtable 的 `measure`，没有时用控件自己的尺寸（见下文）。
 
-没有固有尺寸的视图，尺寸由它的样式决定。如果视图持有需要释放的资源，在 Swift 中让它遵循 `AsukaDestroying`，在 JavaScript 中给它一个 `destroy` 方法，在 Go 中让它实现 `native.Destroyer`。
+没有固有尺寸的视图，尺寸由它的样式决定。如果视图持有需要释放的资源，在 Swift 中让它遵循 `AsukaDestroying`，在 JavaScript 或 C 的 vtable 中给它一个 `destroy`。
 
 `examples/media/segmented` 是一个在所有平台上都完整实现的视图示例。
 
@@ -320,35 +323,105 @@ export function makeSegmented(events) {
 
 方法可以返回 promise，即使它在 Asuka 中不是 `async` 的。要抛出包中声明的错误，就使用生成的错误类（`import { KitchenError } from "./kitchen.asuka.js"`）。`web/` 中的每个文件都会随应用一起发布，所以模块可以导入自己的辅助脚本，也可以相对于 `import.meta.url` 获取自己的资源。其中任何文件变化时，`asuka dev --platform web` 都会重新加载页面。参见 [Web](web.md#原生代码)。
 
-## Windows 和 Linux：Go
+## Windows 和 Linux：C
 
-桌面宿主是用 Go 写的，所以原生包在那里的代码也是 Go，放在包的 `desktop/` 目录里：Windows 上通过 `syscall` 调用 Win32，Linux 上通过 purego 调用 GTK 4，都不需要 cgo。生成的 `<package>_native.go` 会列出你的代码要提供的函数，每个接口一个：
+包在 Windows 和 Linux 上的代码是 C，放在它的 `desktop/` 目录里，和 C 宿主、核心以及应用一起编译进应用的可执行文件（Zig 可以在任何系统上交叉编译）。文件名以 `_windows.c` 或 `_linux.c` 结尾的文件只在对应的平台上构建，其他文件两个平台都构建，有差别的地方用 `#ifdef _WIN32` 区分；某个平台上没有包自己的任何文件时，包在那里就没有代码，创建它的模块会抛出 `unsupported`。`asuka native generate` 会生成你的代码要包含的 `<package>.asuka.h`：包的类型、每个接口一个 vtable，以及你要写的函数，每个接口和每个视图各一个：
 
-```go
-// desktop/battery_windows.go
-package battery
+```c
+// desktop/battery.c
+#include "battery.asuka.h"
 
-func newBattery() (Battery, error) { return winBattery{}, nil }
+#include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <stdio.h>
+#include <time.h>
+#endif
 
-type winBattery struct{}
+// level_now 是电池的电量，从 0 到 1（负数表示没有电池）。
+static double level_now(void) {
+#ifdef _WIN32
+	SYSTEM_POWER_STATUS s;
+	return GetSystemPowerStatus(&s) && s.BatteryLifePercent <= 100 ? s.BatteryLifePercent / 100.0 : -1;
+#else
+	FILE *f = fopen("/sys/class/power_supply/BAT0/capacity", "r");
+	int n = -100;
+	if (f) {
+		if (fscanf(f, "%d", &n) != 1) n = -100;
+		fclose(f);
+	}
+	return n / 100.0;
+#endif
+}
 
-func (winBattery) Level() (float64, error) { ... }
-func (winBattery) Watch(ctx context.Context, changed func(float64)) error { ... }
+static double level(battery_Battery *self, asuka_error *err) {
+	double l = level_now();
+	if (l < 0) asuka_error_unsupported(err, "no battery");
+	return l;
+}
+
+typedef struct {
+	battery_fn_float changed;
+	asuka_call *call;
+} watching;
+
+// run 在自己的线程上每秒读一次电量，直到监听它的 task 被取消。
+static void run(void *p) {
+	watching *w = p;
+	double last = -2;
+	while (!asuka_call_cancelled(w->call)) {
+		double l = level_now();
+		if (l != last) battery_fn_float_call(w->changed, l);  // 会被投递到主线程
+		last = l;
+#ifdef _WIN32
+		Sleep(1000);
+#else
+		nanosleep(&(struct timespec){1, 0}, NULL);
+#endif
+	}
+	asuka_error e = {0};
+	asuka_error_cancelled(&e);
+	asuka_call_fail(w->call, &e);
+	free(w);
+}
+
+static void watch(battery_Battery *self, battery_fn_float changed, asuka_call *call) {
+	watching *w = malloc(sizeof *w);
+	*w = (watching){changed, call};
+	asuka_desktop_spawn(run, w);
+}
+
+static const battery_Battery_vtable vt = {.level = level, .watch = watch};
+
+battery_Battery *battery_make_Battery(asuka_error *err) {
+	battery_Battery *b = malloc(sizeof *b);
+	b->vt = &vt;
+	return b;  // Asuka 不再持有它时释放（vtable 里没有 release）
+}
 ```
 
-在 Asuka 中是 `async` 的方法会接收一个 `context.Context`，调用它的 task 被取消时，这个 context 也会被取消；它在自己的 goroutine 上运行。不是 `async` 的方法在主线程上运行，不能阻塞主线程。凡是操作平台界面的代码（窗口、GTK 控件、属于主线程套间的 COM 对象），以及所有回调，都在主线程上运行：`native.Post(f)` 把 f 放到主线程上运行，`native.OnMain(f)` 运行它并等待完成。用构建约束按平台拆分文件（`windows`，以及 `linux && !android`，因为 Android 构建也满足 `linux`）；某个平台没有实现时，返回 `errors.ErrUnsupported`，Asuka 会把它作为 `unsupported` 错误抛出。
+- **调用**在主线程上运行，平台的界面也在那里：同步方法直接返回结果，不能阻塞；失败的方法设置 `err` 并返回零值。`async` 方法接收一个 `asuka_call` 并立即返回：之后在任意线程上用生成的 `_done`（`battery_Battery_watch_done`）或 `asuka_call_fail` 应答一次。`asuka_call_cancelled` 和 `asuka_call_on_cancel` 告诉你发起调用的 task 什么时候离开了。会阻塞的工作用 `asuka_desktop_spawn` 放到单独的线程上。
+- **内存**：所有跨边界的值都用 `malloc` 分配。方法的参数归生成的代码所有，同步调用期间有效，异步调用在应答之前有效（要保留得更久就复制一份）；方法返回（或应答）的值交给生成的代码，由它释放（字面量要先 `asuka_strdup`）。回调的参数仍归你；问题型回调返回的值由你释放（`<pkg>_<Type>_free`）。vtable 的 `release` 为 `NULL` 时，Asuka 不再持有对象时会直接释放它。
+- **回调**：用 `<pkg>_fn_…_call` 调用。通知型回调可以在任意线程上调用（会被投递到主线程）；问题型回调在主线程上立即运行，在其他线程上调用时会等待它的结果。
+- **视图**：`<pkg>_make_<View>(events)` 创建视图的对象和它的 `widget`，即一个 `HWND`（`events.parent` 的子窗口）或一个 `GtkWidget *`，宿主负责显示它，并在视图离开时销毁它。每个属性在 vtable 里有一个 setter（`set_selected`）；控件自己给不出尺寸时，由 `measure` 决定尺寸；事件是生成的函数（`segmented_Segmented_selectedChange(events, i)`），可以在任意线程上调用。
+- **宿主**：`asuka_desktop.h`（platform/desktop）是包的 C 代码可以使用的 C 宿主的功能：投递到主线程、视图所在的窗口、应用的名称、ID、版本和目录、资源目录、按当前外观解析的颜色、HTTP（`asuka_fetch`），以及应用指定的文件（`asuka_desktop_local_file`）。`asuka_windows.h` 提供 COM 和 WinRT 的辅助函数（UTF-16、vtable 的槽位、HSTRING、激活工厂、委托、等待异步操作、WIC 的图片、系统窗口收到的广播）；`asuka_linux.h` 声明了包要用的 GLib、GIO、GTK 和 libadwaita 函数，像 Linux 宿主一样在运行时解析（调用方式是 `G(g_variant_new)(…)`），所以构建时不需要 GTK 的头文件。
+- **库**：包的 C 代码在各平台上要链接的库写在它的 `asuka.toml` 里：
 
-视图的生成方式相同：生成的文件列出创建视图的函数和各个属性的 setter，视图的事件对象负责发送事件。
+  ```toml
+  [windows]
+  libraries = ["ole32", "winhttp"]
+  [linux]
+  libraries = []
+  ```
 
-在 macOS 上，包有 Swift 代码（有 `Package.swift`）时运行 Swift；只有 Go 的包在 macOS 上也运行 Go。
-
-标准库的 Go 代码包含在每个应用的宿主里。如果应用自己的包有桌面端的 Go 代码，应用会得到一个带上这些代码构建的宿主：`asuka build` 和 `asuka dev` 会运行 `go build`（构建所在的电脑上需要 Go 1.26 或更高版本），只在这些 Go 代码变化时重新构建。
+在 macOS 上运行的是包的 Swift 代码（它的 `Package.swift`），不运行它的 C 代码。
 
 ## 开发原生代码
 
 - **iOS 和 Android**：`asuka dev` 会构建包含原生包的应用外壳并安装，原生代码变化时重新构建，Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist` 和清单文件的修改都包括在内；应用的 Asuka 代码在保存时直接重新加载，不需要重新构建。没有原生包的应用则以热重载模式运行在开发 App 里，开发 App 只包含 Asuka 自己的原生代码。参见 [开发](development.md#工作原理开发-app)。
 - **macOS**：原生包的 Swift 代码会构建进应用的 Swift 库，同样只在有变化时才重新构建，然后应用重新运行，状态会保留下来。
-- **Windows 和 Linux**：原生包的 Go 代码会构建进应用的宿主，同样只在有变化时才重新构建。
+- **Windows 和 Linux**：原生包的 C 代码会和核心、C 宿主一起构建进应用的可执行文件，同样只在有变化时才重新构建（在检出的代码里还没有对应平台的 C 宿主之前，即 RFC 0008 的 H2 和 H3 完成之前，应用由 Go 宿主运行，CLI 会说明它没有运行哪些包的 C 代码）。
 - **Web**：包的 JavaScript 变化时，页面会重新加载。
 
 一个包在 iOS 或 macOS 上第一次构建时会解析它的 Swift 依赖，之后的构建会复用它们。

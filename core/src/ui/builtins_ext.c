@@ -298,6 +298,15 @@ static ak_val b_platform_read_f64(ak_val *a, uint32_t n) {
 	return (ak_val){.f = f};
 }
 
+static ak_val b_platform_read_str(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_bytes *b = bytes_arg(a[0]);
+	int64_t at = a[1].i;
+	uint64_t len = le_read(a, 4);
+	if (!b || at < 0 || (uint64_t)at + 4 + len > b->len) return (ak_val){.p = ak_str_empty()};
+	return (ak_val){.p = ak_str_new((const char *)b->data + at + 4, (size_t)len)};
+}
+
 static ak_val b_view_id(ak_val *a, uint32_t n) { return (ak_val){.i = ak_ui_view_id(view_or_none(a, n, 0))}; }
 
 static ak_val b_locale(ak_val *a, uint32_t n) {
@@ -401,7 +410,8 @@ void ak_ui_ext_builtins_init(void) {
 		{"platform.u8", b_platform_u8}, {"platform.u32", b_platform_u32}, {"platform.u64", b_platform_u64},
 		{"platform.f64", b_platform_f64}, {"platform.str", b_platform_str},
 		{"platform.readU8", b_platform_read_u8}, {"platform.readU32", b_platform_read_u32},
-		{"platform.readU64", b_platform_read_u64}, {"platform.readF64", b_platform_read_f64}, {"ui.view_id", b_view_id},
+		{"platform.readU64", b_platform_read_u64}, {"platform.readF64", b_platform_read_f64},
+		{"platform.readStr", b_platform_read_str}, {"ui.view_id", b_view_id},
 		{"ui.on_open_url", b_on_open_url}, {"ui.on_open_files", b_on_open_files}, {"ui.on_share", b_on_share},
 		{"i18n.locale", b_locale}, {"i18n.set_locale", b_set_locale}, {"i18n.set_languages", b_set_languages},
 		{"i18n.languages", b_languages}, {"i18n.preferred_languages", b_preferred}, {"i18n.is_rtl", b_is_rtl},

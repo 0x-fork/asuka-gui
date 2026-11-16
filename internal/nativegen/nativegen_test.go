@@ -148,8 +148,8 @@ func TestPantry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 4 {
-		t.Errorf("%d files, want Swift's, Kotlin's, JavaScript's and the desktop's Go (no Go client: Asuka's compiler calls it)", len(files))
+	if len(files) != 5 {
+		t.Errorf("%d files, want Swift's, Kotlin's, JavaScript's and the desktop's C (a header and a source; no Go client: Asuka's compiler calls it)", len(files))
 	}
 	for rel, b := range files {
 		old, _ := os.ReadFile(filepath.Join(p.Dir, rel))
@@ -160,11 +160,25 @@ func TestPantry(t *testing.T) {
 	if _, err := LoadAsuka("testdata/kitchen"); err != nil {
 		t.Fatal(err)
 	}
-	for _, goos := range []string{"windows", "linux"} {
-		c := exec.Command("go", "vet", "./testdata/pantry/desktop")
-		c.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=0")
-		if out, err := c.CombinedOutput(); err != nil {
-			t.Errorf("%s: %v\n%s", goos, err, out)
+	// The desktop's C compiles for Windows and Linux (Zig cross-compiles;
+	// platform/desktop's test runs it).
+	if got := CSources("testdata/pantry/desktop", "linux"); strings.Join(got, " ") != "pantry.asuka.c pantry.c" {
+		t.Errorf("the C for Linux: %v", got)
+	}
+	zig, err := exec.LookPath("zig")
+	if err != nil {
+		t.Log("no zig: the C isn't cross-compiled")
+		return
+	}
+	out := t.TempDir()
+	for _, target := range []string{"x86_64-windows-gnu", "x86_64-linux-gnu", "aarch64-linux-gnu"} {
+		for _, f := range []string{"pantry.asuka.c", "pantry.c"} {
+			c := exec.Command(zig, "cc", "-target", target, "-std=c17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-c",
+				"-o", filepath.Join(out, target+"-"+f+".o"),
+				"-I", "../../platform/desktop/include", "-I", "../../core/include", "testdata/pantry/desktop/"+f)
+			if out, err := c.CombinedOutput(); err != nil {
+				t.Errorf("%s %s: %v\n%s", target, f, err, out)
+			}
 		}
 	}
 }
@@ -184,6 +198,55 @@ func TestAsukaLoadErrors(t *testing.T) {
 		_, err := LoadAsuka(dir)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v, want %q", c.src, err, c.want)
+		}
+	}
+}
+
+// docs/native.md's C example (and its translations') compiles for Windows
+// and Linux against its Battery's generated header.
+func TestDocsCExample(t *testing.T) {
+	zig, err := exec.LookPath("zig")
+	if err != nil {
+		t.Skip("no zig")
+	}
+	for _, page := range []string{"../../docs/native.md", "../../docs/zh/native.md", "../../docs/ja/native.md"} {
+		b, err := os.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		block := func(lang, contains string) string {
+			for _, part := range strings.Split(string(b), "```"+lang+"\n")[1:] {
+				code, _, _ := strings.Cut(part, "```")
+				if strings.Contains(code, contains) {
+					return code
+				}
+			}
+			t.Fatalf("%s: no %s block with %q", page, lang, contains)
+			return ""
+		}
+		dir := filepath.Join(t.TempDir(), "battery")
+		os.MkdirAll(filepath.Join(dir, "desktop"), 0o755)
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("name = \"battery\"\nversion = \"0.1.0\"\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "battery.asuka"), []byte(block("asuka", "native interface Battery")), 0o644)
+		os.WriteFile(filepath.Join(dir, "desktop", "battery.c"), []byte(block("c", "battery_make_Battery")), 0o644)
+		p, err := LoadAsuka(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Write(p); err != nil {
+			t.Fatal(err)
+		}
+		for _, target := range []string{"x86_64-windows-gnu", "x86_64-linux-gnu"} {
+			for _, f := range []string{"battery.c", "battery.asuka.c"} {
+				args := []string{"cc", "-target", target, "-std=c17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-c",
+					"-o", filepath.Join(dir, target+f+".o"), "-I", "../../platform/desktop/include", "-I", "../../core/include", filepath.Join(dir, "desktop", f)}
+				if strings.Contains(target, "linux") {
+					args = append(args, "-D_GNU_SOURCE")
+				}
+				if out, err := exec.Command(zig, args...).CombinedOutput(); err != nil {
+					t.Errorf("%s %s %s: %v\n%s", page, target, f, err, out)
+				}
+			}
 		}
 	}
 }

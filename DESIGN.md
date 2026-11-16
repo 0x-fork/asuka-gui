@@ -437,7 +437,8 @@ a project of that platform's own beside the Asuka:
 - `Package.swift` (sources in `swift/`) for iOS and macOS;
 - a Gradle library module in `android/`;
 - `web/<pkg>.js`;
-- Go for Windows and Linux (`desktop/`).
+- C for Windows and Linux (`desktop/*.c`; `_windows.c` and `_linux.c`
+  for one of them).
 
 The generator writes the typed glue on every side:
 
@@ -446,7 +447,12 @@ The generator writes the typed glue on every side:
 - Kotlin: interfaces, data classes, `object AsukaModule`, in the
   package `KotlinPackage(path)`.
 - JavaScript: frozen enums and a provider registered by import path.
-- Go: `<pkg>_native.go`, a server per interface for Go implementations.
+- C: `desktop/<pkg>.asuka.h` (the types as structs and enums, a vtable
+  per interface and per view, the `<pkg>_make_<T>` functions the package
+  writes, async methods' `_done`, callbacks' `_call`, views' events)
+  and `<pkg>.asuka.c` (the codec and a provider, registered by the
+  package's path as the program starts, with the registry,
+  platform/desktop/src/native.c).
 
 The platform side writes only `makeT` functions. The compiler lowers a
 `native interface`'s construction and methods to `native.new`,
@@ -458,7 +464,7 @@ parameters or results), and functions (notifications, run on the main
 thread; questions, run synchronously).
 
 Values cross as one buffer each way, in a fixed little-endian layout
-(core/src/native; `native.Writer`/`Reader` in Go), with no reflection
+(core/src/native; `asuka_writer`/`asuka_reader` in C), with no reflection
 or JSON:
 
 - the arguments in declaration order;
@@ -473,8 +479,9 @@ A call goes through the host's callbacks in `asuka_host_callbacks`
 - Android: JNI into `dev.asuka.AsukaModules`;
 - macOS: the Swift library's `@_cdecl` functions, reached by host/bridge
   through purego;
-- Windows and Linux: Go servers in the host's process (package
-  `native`);
+- Windows and Linux: the registry (platform/desktop: the C hosts fill
+  their callbacks with `asuka_native_callbacks`), which finds a call's
+  provider by its class and keeps the objects by handle;
 - the web: the JavaScript host.
 
 A method marked `async` is a task: `native_start` begins it (Swift
@@ -488,8 +495,16 @@ A `native component` is a `Native` view of the kind its package names
 (the module's Swift class or Kotlin class or import path, `#`, the
 view), each prop its encoded bytes (the wire's bytes value), each a
 binding like any prop. Each host finds a `#` kind through the module's
-provider, `makeView`, and, on the desktop, in package `native`'s
-registry, where a Go view registers.
+provider, `makeView`, and, on Windows and Linux, through the registry
+(`asuka_native_view`, `_prop`, `_measure`, `_destroy`; its events go
+back through `asuka_native_emit`).
+
+What a package's C may use of the C hosts is `asuka_desktop.h`
+(platform/desktop/include): posting to the main thread (one FIFO with
+the core's posts), a view's window, the app's name, ID, version and
+directories, colors, HTTP, local files; `asuka_windows.h` and
+`asuka_linux.h` hold what packages share on each (COM and WinRT; GLib,
+GIO and GTK declared and resolved at run time).
 
 `Native` is the mechanism under it: a node whose `Type` prop, sent right
 after `Create`, picks the factory, with props of bools, ints, floats,
@@ -1456,15 +1471,17 @@ asuka/
                      libadwaita); bridge (the core's ABI through purego);
                      apphost (cmd/asuka-host); hosttest (their tests on
                      the core); the Host interface
-  native/            native packages' Go runtime (the codec, the servers
-                     desktop code answers with)
+  native/            native packages' Go runtime (Go apps' packages)
   internal/nativegen/ asuka native's generator (Swift, Kotlin,
-                     JavaScript, Go)
+                     JavaScript, C; Go for Go apps' packages)
   platform/ios/      the Swift host and decoder
   platform/android/  the Kotlin host and decoder (Gradle)
   platform/web/      the JavaScript host and decoder; the core runs in the
                      page as WebAssembly
   platform/macos/    the Swift runtime packages' Swift builds against
+  platform/desktop/  what the C desktop hosts share: asuka_desktop.h, the
+                     native registry, packages' shared C (fetch, COM,
+                     GLib), its tests' test host
   cmd/asuka/         the CLI; cmd/asuka-host: every desktop app's executable
   internal/          the CLI's parts: cbuild (building the core),
                      appbuild, devserver, pkgs (packages), boot, ...

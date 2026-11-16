@@ -73,6 +73,6 @@ static void task_cancel(ak_future *f) {
 	if (!ak_future_unwait(w, ak_vm_task_resume, t)) return;
 	// Nobody else can see what it waited for (the task's register and
 	// t->awaiting hold the only references): stop that work too.
-	if (w->h.h.rc <= 2) ak_future_cancel(w);
+	if (w->h.h.rc <= 2u + w->held) ak_future_cancel(w);
 	ak_ready(ak_vm_task_resume, t);
 }
