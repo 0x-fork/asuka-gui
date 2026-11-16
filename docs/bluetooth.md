@@ -121,8 +121,9 @@ component HeartRate(device: bluetooth.Device) {
 ```
 
 - `connection.services()` is the device's services and their
-  characteristics (once connected: it waits); `connection.characteristic
-  (service, char)` finds one (`BluetoothError.notFound`).
+  characteristics (once connected: it waits);
+  `connection.characteristic(service, char)` finds one
+  (`BluetoothError.notFound`).
 - A `Characteristic` has its `uuid`, `service`, `properties` (`.read`,
   `.write`, `.writeWithoutResponse`, `.notify`, `.indicate`, ...) and
   `descriptors`. `read()` reads its value; `write(value)` writes it and

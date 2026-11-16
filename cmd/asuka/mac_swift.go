@@ -67,8 +67,16 @@ func (b *macBuild) executable(exe string, archs []string, m *bytecode.Module) er
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
+		// The core: a release's with the app compiled in, the player's
+		// without, both with the app's C (asuka.toml's [c], its externs').
 		lib := filepath.Join(dir, "libasuka.a")
-		if err := appbuild.Lib(cbuild.Target{OS: "darwin", Arch: arch}, cbuild.Static, m, lib); err != nil {
+		target := cbuild.Target{OS: "darwin", Arch: arch}
+		if m != nil {
+			err = appbuild.Lib(target, cbuild.Static, m, lib)
+		} else {
+			err = appbuild.PlayerLib(target, cbuild.Static, b.app.c, lib)
+		}
+		if err != nil {
 			return err
 		}
 		objs, pkgs, err := b.host(arch, natives)

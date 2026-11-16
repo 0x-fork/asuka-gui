@@ -67,7 +67,7 @@ github = "you/notes"
 | `splash` | 表 | 无 | 启动屏，仅限 iOS 和 Android。见 [splash](#splash)。 |
 | `widgets` | 表数组 | 无 | 主屏幕小组件，仅限 iOS 和 Android。见 [widgets](#widgets)。 |
 | `shortcuts` | 表数组 | 无 | 提供给 Siri、聚焦搜索和启动器的快捷操作，仅限 iOS 和 Android。见 [shortcuts](#shortcuts)。 |
-| `nfc` | 表 | 无 | `asuka/sdk/nfc` 读写标签所需的配置：iOS 的 AID 和 FeliCa 系统代码，以及在 Android 上能打开应用的标签。见 [nfc](#nfc)。 |
+| `nfc` | 表 | 无 | `asuka/nfc` 读写标签所需的配置：iOS 的 AID 和 FeliCa 系统代码，以及在 Android 上能打开应用的标签。见 [nfc](#nfc)。 |
 | `background` | 布尔值 | `false` | 在桌面端让应用常驻托盘：启动时不打开窗口，没有窗口时也继续运行；在 Mac 上从启动起就不显示程序坞（Dock）图标（`LSUIElement`）。见[后台应用](desktop.md#后台应用)。 |
 | `keepRunning` | 布尔值 | `false` | 在桌面端，最后一个窗口关闭后应用继续运行：主窗口只是被隐藏，直到应用再次显示它。`background` 应用本来就会继续运行。见[后台应用](desktop.md#后台应用)。 |
 | `singleInstance` | 布尔值 | `true` | 在 Windows 和 Linux 上，再次启动时，新进程会把文件交给正在运行的应用（由它的 `on openFiles(paths)` 接收），然后自行退出。设为 `false` 则每启动一次就运行一个新实例。Mac 上无论如何都只运行一个实例。见[单实例](desktop.md#单实例)。 |
@@ -75,12 +75,12 @@ github = "you/notes"
 | `updates` | 表 | 无 | 桌面应用的签名更新。见 [updates](#updates)。 |
 | `ios` | 表 | | iOS 构建的配置，部分也用于 Mac。见 [ios](#ios)。 |
 | `mac` | 表 | | Mac 构建的描述文件。见 [mac](#mac)。 |
-| `icloud` | 表 | `iCloud.<id>` | `asuka/sdk/icloud` 所用的 iCloud 容器和应用在 iCloud Drive 中的文件夹。见 [icloud](#icloud)。 |
-| `applePay` | 表 | 无 | `merchantIds = ["merchant.com.example"]`：Apple Pay 付款所用的商户 ID（`asuka/sdk/pay`），会写进导入了这个包的 iOS 或 Mac 应用的 in-app-payments entitlement。见[钱包支付](device.md#钱包支付asukasdkpay)。 |
+| `icloud` | 表 | `iCloud.<id>` | `asuka/icloud` 所用的 iCloud 容器和应用在 iCloud Drive 中的文件夹。见 [icloud](#icloud)。 |
+| `applePay` | 表 | 无 | `merchantIds = ["merchant.com.example"]`：Apple Pay 付款所用的商户 ID（`asuka/pay`），会写进导入了这个包的 iOS 或 Mac 应用的 in-app-payments entitlement。见[钱包支付](device.md#钱包支付asukapay)。 |
 | `android` | 表 | | Android 构建的配置。见 [android](#android)。 |
 | `linux` | 表 | | Linux 构建对应用的描述。见 [linux](#linux)。 |
 | `web` | 表 | | Web 构建的配置。见 [web](#web)。 |
-| `bluetooth` | 表 | | 使用 `asuka/sdk/bluetooth` 的应用在包本身所需之外的额外声明：后台运行、通过扫描定位。见 [bluetooth](#bluetooth)。 |
+| `bluetooth` | 表 | | 使用 `asuka/bluetooth` 的应用在包本身所需之外的额外声明：后台运行、通过扫描定位。见 [bluetooth](#bluetooth)。 |
 
 Windows 构建只需要上面这些键；它的签名证书通过环境变量提供（见[打包与发布](shipping.md#windows)）。
 
@@ -127,7 +127,7 @@ max = 10
 | `types` | 字符串数组 | `["text"]` | `"text"`（文本和网页链接），以及按 MIME 类型指定的文件：`"image/*"`、`"video/*"`、`"audio/*"`、`"application/pdf"`，`"*/*"` 表示任意文件。 |
 | `max` | 整数 | `1` | 一次最多接收几个文件，至少为 1。 |
 
-在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`），发布构建用 `ios.shareProfile` 为它签名。接收文件的分享扩展还需要 App Group `group.<id>`。见[打包与发布](shipping.md#ios)和[接收其他应用的分享](device.md#接收其他应用的分享uionshare)。
+在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`），发布构建用 `ios.shareProfile` 为它签名。接收文件的分享扩展还需要 App Group `group.<id>`。见[打包与发布](shipping.md#ios)和[接收其他应用的分享](device.md#接收其他应用的分享onshare)。
 
 ## splash
 
@@ -148,7 +148,7 @@ darkBackground = "#1B2440"
 | `background` | 颜色 | `"#ffffff"` | `"#rrggbb"`，浅色模式下的背景色。 |
 | `darkBackground` | 颜色 | 同 `background` | `"#rrggbb"`，深色模式下的背景色。 |
 
-见[启动屏](device.md#启动屏asukasdksplash)。
+见[启动屏](device.md#启动屏asukasplash)。
 
 ## widgets
 
@@ -169,7 +169,7 @@ sizes = ["small", "medium", "rectangular"]
 | `description` | 字符串 | 无 | 小组件库里显示的描述。 |
 | `sizes` | 字符串数组 | `["small", "medium"]` | `small`、`medium`、`large`，以及 iOS 的 `extraLarge`（iPad）和锁屏上的 `circular`、`rectangular`、`inline`。 |
 
-在 iOS 上，小组件是一个扩展，有自己的 bundle ID（应用的 ID 加上 `.widgets`），发布构建用 `ios.widgetProfile` 为它签名。见[主屏幕小组件](device.md#主屏幕小组件asukasdkwidget)。
+在 iOS 上，小组件是一个扩展，有自己的 bundle ID（应用的 ID 加上 `.widgets`），发布构建用 `ios.widgetProfile` 为它签名。见[主屏幕小组件](device.md#主屏幕小组件asukawidget)。
 
 ## shortcuts
 
@@ -196,7 +196,7 @@ phrases = ["New note in ${app}"]
 
 ## nfc
 
-除了权限之外，`asuka/sdk/nfc` 还需要平台提供的一些配置。只有导入了这个包的应用才会带上它们，没导入的应用一概没有：
+除了权限之外，`asuka/nfc` 还需要平台提供的一些配置。只有导入了这个包的应用才会带上它们，没导入的应用一概没有：
 
 ```toml
 [nfc]
@@ -222,7 +222,7 @@ tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
 
 ## icloud
 
-调用了 `asuka/sdk/icloud` 文档功能的应用所用的 iCloud 容器，以及它们在 iCloud Drive 中如何显示。没有调用的应用一概没有这些配置：
+调用了 `asuka/icloud` 文档功能的应用所用的 iCloud 容器，以及它们在 iCloud Drive 中如何显示。没有调用的应用一概没有这些配置：
 
 ```toml
 [icloud]
@@ -339,7 +339,7 @@ Android 构建的配置。
 | `keyAlias` | 字符串 | 无 | 上传密钥在 keystore 中的别名。 |
 | `dynamicColor` | 布尔值 | `false` | 像 Material 应用那样从用户的壁纸取色（Android 12 及以上）；在其他情况下以 `accent` 为种子色。 |
 | `permissions` | 字符串数组 | 各个包自带的权限 | 添加到 manifest 的权限：`"android.permission.CAMERA"`。写成 `"<name>:28"` 表示只在 Android 9（API 28）及以下申请。应用导入的包会自动添加它们需要的权限。 |
-| `googleServices` | 路径 | 无 | Firebase 项目的 `google-services.json`，供 `asuka/sdk/push` 使用。 |
+| `googleServices` | 路径 | 无 | Firebase 项目的 `google-services.json`，供 `asuka/push` 使用。 |
 | `mapsKey` | 字符串 | 无 | Google Maps Platform 的 API 密钥（Maps SDK for Android），供 `asuka/maps` 使用。 |
 | `serviceAccount` | 路径 | 无 | `asuka publish` 上传到 Google Play 时使用的 Google Cloud 服务账号的 JSON 密钥。不要把它放进仓库。 |
 
@@ -368,14 +368,14 @@ Web 构建的配置。
 
 | 键 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `vapidPublicKey` | 字符串 | 无 | 应用服务器的 VAPID 公钥（base64url），浏览器用它为 `asuka/sdk/push` 订阅 Web Push。 |
+| `vapidPublicKey` | 字符串 | 无 | 应用服务器的 VAPID 公钥（base64url），浏览器用它为 `asuka/push` 订阅 Web Push。 |
 | `base` | 字符串 | `"/"` | 网站所在的路径（`https://example.com/app/` 就写 `"/app/"`）：页面的 `<base href>`，路由器的 href 就是它下面的页面地址。`asuka build --base` 会覆盖它。见[地址与历史记录](web.md#地址与历史记录)。 |
 
-见 [Web Push](web.md#asukasdkpushweb-push)。
+见 [Web Push](web.md#asukapushweb-push)。
 
 ## bluetooth
 
-导入了 `asuka/sdk/bluetooth` 的应用，在这个包自动提供的权限和授权文案之外，还可以在这里声明额外的需求。没有导入这个包的应用，这些设置不起作用。
+导入了 `asuka/bluetooth` 的应用，在这个包自动提供的权限和授权文案之外，还可以在这里声明额外的需求。没有导入这个包的应用，这些设置不起作用。
 
 ```toml
 [bluetooth]
@@ -385,10 +385,37 @@ location = false
 
 | 键 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `background` | 字符串数组 | 无 | 应用在后台保持的角色。`"central"`：iOS 的 `bluetooth-central` 模式，并启用状态恢复（`bluetooth.OnRestore`），以及 Android 后台扫描（`ScanOptions.Background`）的接收器。`"peripheral"`：iOS 的 `bluetooth-peripheral` 模式。 |
-| `location` | 布尔值 | `false` | 应用会通过扫描确定用户的位置（比如信标）：Android 的 `BLUETOOTH_SCAN` 不再带 `neverForLocation`，`bluetooth.Request` 也会一并请求位置权限（iOS：`NSLocationWhenInUseUsageDescription`）。 |
+| `background` | 字符串数组 | 无 | 应用在后台保持的角色。`"central"`：iOS 的 `bluetooth-central` 模式，以及 Android 后台扫描的接收器；`asuka/bluetooth` 目前还没有状态恢复，也没有自己在后台进行的扫描。`"peripheral"`：iOS 的 `bluetooth-peripheral` 模式。 |
+| `location` | 布尔值 | `false` | 应用会通过扫描确定用户的位置（比如信标）：Android 的 `BLUETOOTH_SCAN` 不再带 `neverForLocation`，`bluetooth.request()` 也会一并请求位置权限（iOS：`NSLocationWhenInUseUsageDescription`）。 |
 
-见[蓝牙](bluetooth.md#在后台)。
+见[蓝牙](bluetooth.md#构建时添加的内容)。
+
+## c
+
+应用的 `extern` 声明所调用的 C 代码：为每个目标编进核心构建的内容，以及要链接的库。每个平台的表（`[c.ios]`、`[c.android]`、`[c.macos]`、`[c.windows]`、`[c.linux]`、`[c.web]`）会在顶层 `[c]` 的各个列表后面追加内容。包的 `asuka.toml` 也可以有自己的 `[c]`，导入这个包的应用会一并构建它。
+
+| 键 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `sources` | 字符串数组 | 无 | C 文件，相对于 `asuka.toml` 的 glob（`c/*.c`；`**` 匹配任意层目录）。如果某个 glob 一个文件也没匹配到，构建会停下来。 |
+| `include` | 字符串数组 | 无 | 源文件的头文件搜索目录（`-I`）。`asuka_ffi.h` 总是可以包含。 |
+| `defines` | 字符串数组 | 无 | 宏，`NAME` 或 `NAME=value`（`-D`）。 |
+| `flags` | 字符串数组 | 无 | 额外的编译器参数。 |
+| `libraries` | 字符串数组 | 无 | 要链接的库：一个名字（`sqlite3`：`-lsqlite3`），或者相对于 `asuka.toml` 的文件路径（`lib/libfoo.a`）。 |
+| `frameworks` | 字符串数组 | 无 | Apple 的框架，在 iOS 和 macOS 上链接（`Security`）。 |
+
+```toml
+[c]
+sources = ["c/*.c"]
+include = ["c/include"]
+
+[c.ios]
+libraries = ["z"]
+
+[c.web]
+defines = ["NO_ZLIB"]
+```
+
+见[在 Asuka 中调用 C](c.md#构建)。
 
 ## 环境变量
 

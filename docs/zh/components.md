@@ -370,7 +370,7 @@ return ui.Column(ui.Style{Gap: 12},
 | Linux | 先用 Go 的 PNG、JPEG 和 GIF 解码器，再用 GDK 的加载器：WebP、AVIF、HEIF、SVG、JPEG XL 等，视安装情况而定 | 由宿主逐帧播放；动态 WebP 的每一帧用 GDK 的 WebP 加载器解码 |
 | Web | 浏览器支持的格式 | 用 WebCodecs 的 `ImageDecoder` 在 canvas 上播放（也支持 AVIF 序列）；没有它的浏览器（Safari）由 `<img>` 自己播放，暂停时显示第一帧 |
 
-只有在 Mac、Linux 和 Web 上，SVG 才能作为图片显示。要在所有平台上显示 SVG 图标，请用 [`asuka/sdk/svg`](#svg-图标) 以矢量方式绘制。
+只有在 Mac、Linux 和 Web 上，SVG 才能作为图片显示。要在所有平台上显示 SVG 图标，请用 [`asuka/svg`](#svg-图标) 以矢量方式绘制。
 
 ## 符号与图标
 

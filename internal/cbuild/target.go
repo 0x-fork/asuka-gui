@@ -198,18 +198,43 @@ const (
 // flags, the extra sources' by theirs, so a new build of an app compiles
 // only the app.
 func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, out string) error {
+	return tc.LibWith(core, kind, LibOptions{Extra: extra, Debug: debug}, out)
+}
+
+// LibOptions say what Lib builds the core with.
+type LibOptions struct {
+	Extra   []string // more of the core's C: an app compiled to C
+	Foreign *Foreign // the C an app's externs call
+	Debug   bool     // a player's build: assertions on, optimized less
+}
+
+// LibWith is Lib as o says: with o.Foreign, its glue and units are
+// compiled in, and a shared library or a module links what it links.
+func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string) error {
+	extra, debug, ffi := o.Extra, o.Debug, o.Foreign
 	srcs, err := Sources(core, false)
 	if err != nil {
 		return err
 	}
 	flags := append(append(Includes(core), tc.Flags...), "-ffunction-sections", "-fdata-sections")
+	// What the app's own C gets of the core's flags: the target, the
+	// optimization, the visibility, the C core's include directory
+	// (asuka_ffi.h).
+	cflags := append(append([]string{"-I" + filepath.Join(core, "include")}, tc.Flags...), "-ffunction-sections", "-fdata-sections")
 	if debug {
 		flags = append(flags, "-g", "-O1", "-DAK_DEBUG=1")
+		cflags = append(cflags, "-g", "-O1")
 	} else {
 		flags = append(flags, "-O2", "-DNDEBUG")
+		cflags = append(cflags, "-O2", "-DNDEBUG")
 	}
 	if kind != Static {
 		flags = append(flags, "-fvisibility=hidden", "-DAK_EXPORTS=1")
+		cflags = append(cflags, "-fvisibility=hidden")
+	}
+	if ffi != nil {
+		// The glue is compiled in: the core registers it (vm/init.c).
+		flags = append(flags, "-DAK_FFI=1")
 	}
 	hdrs, _ := headers(core)
 	if len(extra) > 0 {
@@ -223,6 +248,18 @@ func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, 
 	}
 	if len(extra) > 0 {
 		more, err := tc.compileCached(core, "app", extra, hdrs, flags, kind)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, more...)
+	}
+	if ffi != nil {
+		more, err := tc.compileCached(core, "ffi", []string{ffi.Glue}, hdrs, flags, kind)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, more...)
+		more, err = tc.compileForeign(ffi, cflags, kind)
 		if err != nil {
 			return err
 		}
@@ -245,6 +282,9 @@ func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, 
 		link := append(append([]string{}, tc.Flags...), tc.Shared...)
 		if kind == Module {
 			link = append(link, exportFlags()...)
+		}
+		if ffi != nil {
+			link = append(link, ffi.Link...)
 		}
 		link = append(link, "-lm")
 		switch tc.Target.OS {
@@ -285,6 +325,18 @@ func (tc *Toolchain) compileCached(core, what string, srcs, hdrs, flags []string
 	return tc.CC.Compile(srcs, filepath.Join(dir, "obj"), flags)
 }
 
+// compileForeign compiles f's units with flags, into a cache directory
+// named by the target and the hash of the units' sources, headers and
+// flags.
+func (tc *Toolchain) compileForeign(f *Foreign, flags []string, kind LibKind) ([]string, error) {
+	h := sha256.New()
+	fmt.Fprintln(h, tc.CC.Path, tc.CC.Args, flags, kind)
+	if err := f.hash(h); err != nil {
+		return nil, err
+	}
+	return f.compileUnits(tc.CC, cacheDir("c-"+tc.Target.String()+"-"+hex.EncodeToString(h.Sum(nil))[:16]), flags)
+}
+
 // deadStrip drops what nothing calls, and symbols and debug information
 // a release doesn't need.
 func deadStrip(t Target) []string {
@@ -319,4 +371,63 @@ func exportFlags() []string {
 		f = append(f, "-Wl,--export="+name)
 	}
 	return f
+}
+
+// Exe builds an executable for the toolchain's target into out: the core
+// (core/src, without the fake host) and extra C sources (a C desktop
+// host, the native registry, packages' C, an app compiled to C),
+// optimized for release unless debug. extraFlags are the extra sources'
+// own (their include directories, the app's define); link, what the
+// executable links with besides the C library. Objects are cached as
+// Lib's are.
+func (tc *Toolchain) Exe(core string, extra, extraFlags, link []string, debug bool, out string) error {
+	srcs, err := Sources(core, false)
+	if err != nil {
+		return err
+	}
+	flags := append(append(Includes(core), tc.Flags...), "-ffunction-sections", "-fdata-sections")
+	if debug {
+		flags = append(flags, "-g", "-O1", "-DAK_DEBUG=1")
+	} else {
+		flags = append(flags, "-O2", "-DNDEBUG")
+	}
+	hdrs, _ := headers(core)
+	objs, err := tc.compileCached(core, "core", srcs, hdrs, flags, Static)
+	if err != nil {
+		return err
+	}
+	if len(extra) > 0 {
+		var more []string
+		for _, f := range extra {
+			if filepath.Ext(f) == ".h" {
+				more = append(more, f) // their headers count in the cache's key
+			}
+		}
+		var cs []string
+		for _, f := range extra {
+			if filepath.Ext(f) == ".c" {
+				cs = append(cs, f)
+			}
+		}
+		eobjs, err := tc.compileCached(core, "exe", cs, append(hdrs, more...), append(append([]string{}, flags...), extraFlags...), Static)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, eobjs...)
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return err
+	}
+	ld := append(append([]string{}, tc.Flags...), "-lm")
+	switch tc.Target.OS {
+	case "linux":
+		ld = append(ld, "-lpthread", "-ldl")
+	case "windows":
+		ld = append(ld, "-lws2_32")
+	}
+	ld = append(ld, link...)
+	if !debug {
+		ld = append(ld, deadStrip(tc.Target)...)
+	}
+	return tc.CC.Link(objs, out, ld)
 }

@@ -42,6 +42,7 @@ const (
 	KPath                      // an outline a Shape or a Graphics draws (the UI runtime's)
 	KRef                       // a view's handle (ref: r, X as r): a cell holding the view, or none
 	KNever                     // what never returns (throw, panic)
+	KPointer                   // C's void *, opaque (RFC 0008)
 )
 
 // Basic is a built-in type without parameters.
@@ -71,6 +72,7 @@ var (
 	Path     = &Basic{KPath, "Path"}
 	Ref      = &Basic{KRef, "Ref"}
 	Never    = &Basic{KNever, "never"}
+	Pointer  = &Basic{KPointer, "Pointer"}
 )
 
 // Array is [Elem].
@@ -452,6 +454,8 @@ func IsEquatable(t Type) bool {
 		return x.Constraint != ""
 	case *Named:
 		switch x.Obj.Kind {
+		case ExternType:
+			return true // the same pointer
 		case StructType:
 			s := x.Subst()
 			for _, f := range x.Obj.Fields {

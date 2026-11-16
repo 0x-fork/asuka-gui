@@ -55,6 +55,22 @@ func cacheDir() string {
 // (asuka_dev_connect). A player is built for debugging (assertions on,
 // optimized less); a release isn't.
 func Lib(t cbuild.Target, kind cbuild.LibKind, m *bytecode.Module, out string) error {
+	var c *bytecode.C
+	if m != nil {
+		c = m.C
+	}
+	return lib(t, kind, m, c, out)
+}
+
+// PlayerLib builds a dev player's core for t into out, as Lib with no
+// module does, with the C c calls (the app's externs', from its last
+// compile; nil for none) compiled in, which the module the player loads
+// calls through its ffi.* builtins.
+func PlayerLib(t cbuild.Target, kind cbuild.LibKind, c *bytecode.C, out string) error {
+	return lib(t, kind, nil, c, out)
+}
+
+func lib(t cbuild.Target, kind cbuild.LibKind, m *bytecode.Module, c *bytecode.C, out string) error {
 	core, err := cbuild.CoreDir()
 	if err != nil {
 		return err
@@ -65,13 +81,17 @@ func Lib(t cbuild.Target, kind cbuild.LibKind, m *bytecode.Module, out string) e
 	}
 	var extra []string
 	if m != nil {
-		c, err := AppC(m)
+		src, err := AppC(m)
 		if err != nil {
 			return err
 		}
-		extra = append(extra, c)
+		extra = append(extra, src)
 	}
-	return tc.Lib(core, kind, extra, m == nil, out)
+	ffi, err := Foreign(c, t)
+	if err != nil {
+		return err
+	}
+	return tc.LibWith(core, kind, cbuild.LibOptions{Extra: extra, Foreign: ffi, Debug: m == nil}, out)
 }
 
 // MacArchs are a Mac app's architectures: a universal binary's.
@@ -80,6 +100,11 @@ var MacArchs = []string{"arm64", "amd64"}
 // MacLib builds libasuka.dylib for every Mac (MacArchs) into out, one
 // universal binary (lipo), as Lib.
 func MacLib(m *bytecode.Module, out string) error {
+	return MacPlayerLib(m, nil, out)
+}
+
+// MacPlayerLib is MacLib for a player (m nil) with the C c calls.
+func MacPlayerLib(m *bytecode.Module, c *bytecode.C, out string) error {
 	work, err := os.MkdirTemp("", "asuka-mac-")
 	if err != nil {
 		return err
@@ -88,7 +113,11 @@ func MacLib(m *bytecode.Module, out string) error {
 	var parts []string
 	for _, arch := range MacArchs {
 		p := filepath.Join(work, arch, "libasuka.dylib")
-		if err := Lib(cbuild.Target{OS: "darwin", Arch: arch}, cbuild.Shared, m, p); err != nil {
+		cc := c
+		if m != nil {
+			cc = m.C
+		}
+		if err := lib(cbuild.Target{OS: "darwin", Arch: arch}, cbuild.Shared, m, cc, p); err != nil {
 			return err
 		}
 		parts = append(parts, p)

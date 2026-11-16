@@ -79,7 +79,7 @@ ui.Row(ui.Style{Gap: 12},
   remains editable or toggleable. On Android a text field's label is its
   accessibility hint, which TalkBack reads as the field's name.
 - An `Image`'s `Label` describes it; without one it's decorative. An
-  icon from [`asuka/sdk/svg`](../sdk/svg) takes a `Label` the same way.
+  icon from [`asuka/svg`](../sdk/svg) takes a `Label` the same way.
 - A `Symbol` has no label of its own: wrap it in a `View` with a
   `Label` and `ui.RoleImage` when it means something.
 - `Hint` is iOS's accessibility hint, read after a pause (users can turn
@@ -167,7 +167,7 @@ Screen reader users jump between headings (VoiceOver's rotor, TalkBack's
 navigation by headings, NVDA's and Orca's H key, a browser screen
 reader's headings list). Mark a section's title as one: a `RichText`
 with `Role: ui.RoleHeader`, or a `View` with a `Label` and the role.
-`Text` takes no role. [`asuka/sdk/markdown`](../sdk/markdown) marks its headings
+`Text` takes no role. [`asuka/markdown`](../sdk/markdown) marks its headings
 already.
 
 ```go

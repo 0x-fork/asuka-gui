@@ -17,7 +17,7 @@
 // badge are a push's too; Rewrite changes a push before it shows.
 //
 // The web: Web Push, through the app's service worker, with the app's
-// VAPID key (asuka.toml's web.vapidPublicKey); asuka/sdk/push/webpush is the
+// VAPID key (asuka.toml's web.vapidPublicKey); asuka/webpush is the
 // server's side (docs/web.md).
 package push
 
@@ -33,7 +33,7 @@ import (
 type Registration struct {
 	// Token is the device's token: APNs' (hex) on iOS, FCM's on Android;
 	// on the web, the browser's push subscription as its JSON (endpoint
-	// and keys: asuka/sdk/push/webpush sends to it). It can change (a restore,
+	// and keys: asuka/webpush sends to it). It can change (a restore,
 	// a reinstall): register at each launch, and send it to the server
 	// when it's not the one it has.
 	Token string `json:"token"`

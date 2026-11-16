@@ -12,8 +12,8 @@ import (
 // FileList names the file, in an installed app on Windows and Linux, that
 // lists what its version installed, one path a line, relative to the
 // install's root with slashes: `asuka build` writes it into the app, and
-// the updater rewrites it with the paths of each update it installs
-// (Swap). An update removes the paths that the list of the version it
+// the host's update module rewrites it with the paths of each update it
+// installs. An update removes the paths that the list of the version it
 // replaces names and its own version lacks, and leaves those that no list
 // names: a portable copy's data beside a Windows app, the other programs
 // of a Linux prefix such as ~/.local. A Mac's app bundle has none: an
@@ -63,19 +63,6 @@ func WriteFileList(file string, paths []string) error {
 		os.Remove(f.Name())
 	}
 	return err
-}
-
-// ParseFileList returns the paths that the content of a FileList names,
-// leaving out the lines ValidListPath refuses, which an update must never
-// remove.
-func ParseFileList(b []byte) []string {
-	var names []string
-	for line := range strings.Lines(string(b)) {
-		if n := strings.TrimRight(line, "\r\n"); ValidListPath(n) {
-			names = append(names, n)
-		}
-	}
-	return names
 }
 
 // ValidListPath reports whether p can be in a FileList: a path inside the

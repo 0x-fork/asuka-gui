@@ -531,7 +531,23 @@ static bool sync_lists(ak_uitest *a) {
 	return changed;
 }
 
+static void settle(ak_uitest *a);
+
+// ak_uitest_settle runs the app until nothing's left to do. A test drives
+// the app as a host does, so it doesn't stay in the batch of whatever
+// resumed it (a host call's answer, delivered in one): each of its writes
+// runs its effects before it settles.
 void ak_uitest_settle(ak_uitest *a) {
+	if (ak_signal_flushing()) {
+		ak_buf_printf(&a->fails, "the test drives the app from inside an effect\n");
+		return;
+	}
+	int depth = ak_batch_suspend();
+	settle(a);
+	ak_batch_resume(depth);
+}
+
+static void settle(ak_uitest *a) {
 	for (int round = 0; round < 1000; round++) {
 		ak_fake_run_posted(a->f);
 		bool changed = false;

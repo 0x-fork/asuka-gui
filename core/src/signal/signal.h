@@ -119,6 +119,12 @@ void ak_batch_begin(void);
 void ak_batch_end(void);
 bool ak_signal_batching(void);
 bool ak_signal_flushing(void);
+// ak_batch_suspend leaves the batches open now, running the effects their
+// writes dirtied, and returns their depth for ak_batch_resume, which opens
+// them again: for a driver that must see each write's effects at once
+// (a UI test, resumed inside a host's callback). Not while flushing.
+int ak_batch_suspend(void);
+void ak_batch_resume(int depth);
 // ak_signal_set_after_flush sets fn to run at the end of each flush, once
 // effects settled (the UI runtime's layout and frames pass). Writes in fn
 // run their effects, then fn again, in the same flush.

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/internal/toml"
 )
 
@@ -50,7 +51,10 @@ type appConfig struct {
 	Icon string `json:"icon"`
 	// Orientations: portrait, landscape (default both).
 	Orientations []string `json:"orientations"`
-	IOS          struct {
+	// C is the C the app's extern declarations call ([c], docs/c.md):
+	// internal/appbuild reads it (and each dependency's) as it builds.
+	C   pkgs.CConfig `json:"c"`
+	IOS struct {
 		Team string `json:"team"`
 		// Profile is a provisioning profile's path, name or UUID (default:
 		// the best match installed for the ID and distribution).
@@ -178,7 +182,7 @@ type appConfig struct {
 	Widgets []widgetConfig `json:"widgets"`
 	// I18n says where the app's catalogs are, when they aren't in locales.
 	I18n *i18nConfig `json:"i18n"`
-	// Updates are a desktop app's (asuka/sdk/update, updates.go): the public
+	// Updates are a desktop app's (asuka/update, updates.go): the public
 	// key updates are signed with, and where they're published.
 	Updates *updatesConfig `json:"updates"`
 	// dir is the app's directory.
@@ -297,7 +301,7 @@ type appConfig struct {
 		// VapidPublicKey is the app server's VAPID public key (base64url, an
 		// uncompressed P-256 point), for asuka/sdk/push's Web Push: the browser
 		// subscribes with it, and the server signs with its private key
-		// (asuka/sdk/push/webpush: GenerateKeys makes a pair).
+		// (asuka/webpush: GenerateKeys makes a pair).
 		VapidPublicKey string `json:"vapidPublicKey"`
 		// Base is the path the site is served at ("/app/" for
 		// https://example.com/app/; default "/"): the page's <base href>,
@@ -392,6 +396,9 @@ func loadConfig(dir string) (*appConfig, error) {
 		if r != "central" && r != "peripheral" {
 			return nil, fmt.Errorf("asuka.toml: bluetooth background %q (want central or peripheral)", r)
 		}
+	}
+	if err := c.C.Check(); err != nil {
+		return nil, fmt.Errorf("asuka.toml: %v", err)
 	}
 	if err := c.checkFileTypes(dir); err != nil {
 		return nil, fmt.Errorf("asuka.toml: %v", err)

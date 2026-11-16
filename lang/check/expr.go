@@ -242,6 +242,8 @@ func (c *Checker) useGlobal(g *Global, at syntax.Node) Type {
 		if g.Kind == StateGlobal || g.Kind == MemoGlobal || g.Ctx != nil && g.Ctx.readsState {
 			c.ctx.readsState = true
 			c.spawnState(at, g.name)
+		} else if !IsInvalid(t) && !sendable(t) {
+			c.spawnNotValue(at, g.name, t)
 		}
 		c.ctx.globals = append(c.ctx.globals, g)
 	}
@@ -253,6 +255,18 @@ func (c *Checker) spawnState(at syntax.Node, name string) {
 	for cc := c.ctx; cc != nil; cc = cc.Parent {
 		if cc.Kind == CtxSpawn {
 			c.errorf(at, "spawn can't use %s: it's state, and spawn runs on another thread (read it into a let first)", name)
+			return
+		}
+	}
+}
+
+// spawnNotValue reports a read inside spawn of a file's let that isn't a
+// value (a database, a native object, a C pointer): it's the main
+// thread's, and on the web a spawn's worker has none of it.
+func (c *Checker) spawnNotValue(at syntax.Node, name string, t Type) {
+	for cc := c.ctx; cc != nil; cc = cc.Parent {
+		if cc.Kind == CtxSpawn {
+			c.errorf(at, "spawn can't use %s (a %s): it isn't a value, and spawn runs on another thread; use it outside spawn, with what spawn returns", name, typeString(t))
 			return
 		}
 	}

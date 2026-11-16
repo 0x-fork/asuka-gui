@@ -516,6 +516,8 @@ func (p *parser) declAhead() bool {
 		return isIdentTok(next)
 	case NATIVE:
 		return next == INTERFACE || next == COMPONENT || next == FN || next == ASYNC
+	case EXTERN:
+		return next == FN || next == TYPE || next == STRUCT
 	case IMPORT:
 		return true
 	case APP:
@@ -777,6 +779,25 @@ func (p *parser) parseDecl() Decl {
 			p.sync()
 			return &BadDecl{Span: p.span(start)}
 		}
+	case EXTERN:
+		ext := p.pos
+		p.next()
+		switch p.tok {
+		case FN, ASYNC:
+			f := p.parseFunc(start)
+			f.Extern = ext
+			d = f
+		case STRUCT:
+			s := p.parseStruct(start)
+			s.Extern = ext
+			d = s
+		case TYPE:
+			d = p.parseExternType(start, ext)
+		default:
+			p.errorExpected("'fn', 'type' or 'struct' after 'extern'")
+			p.sync()
+			return &BadDecl{Span: p.span(start)}
+		}
 	case APP:
 		p.next()
 		d = &AppDecl{Body: p.parseBlock()}
@@ -830,6 +851,8 @@ func setPub(n Node, pub Pos) bool {
 		n.Pub = pub
 	case *TypeAliasDecl:
 		n.Pub = pub
+	case *ExternTypeDecl:
+		n.Pub = pub
 	case *StyleDecl:
 		n.Pub = pub
 	case *StateDecl:
@@ -869,6 +892,8 @@ func setSpan(n Node, s Span) {
 	case *FuncDecl:
 		n.Span = s
 	case *TypeAliasDecl:
+		n.Span = s
+	case *ExternTypeDecl:
 		n.Span = s
 	case *StyleDecl:
 		n.Span = s
@@ -1247,6 +1272,24 @@ func (p *parser) parseTypeAlias(start Pos) *TypeAliasDecl {
 	return d
 }
 
+// parseExternType parses extern type Name [with release fn], after the
+// extern keyword (at ext).
+func (p *parser) parseExternType(start, ext Pos) *ExternTypeDecl {
+	p.expect(TYPE)
+	d := &ExternTypeDecl{Extern: ext, Name: p.ident()}
+	if p.tok == IDENT && p.lit == "with" {
+		p.next()
+		if p.tok == IDENT && p.lit == "release" {
+			p.next()
+			d.Release = p.ident()
+		} else {
+			p.errorExpected("'release' and the function that frees it (with release close)")
+		}
+	}
+	d.Span = p.span(start)
+	return d
+}
+
 func (p *parser) parseStyleDecl(start Pos) *StyleDecl {
 	p.expect(STYLE)
 	d := &StyleDecl{Name: p.ident()}
@@ -1493,7 +1536,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		}
 		d.Span = p.span(start)
 		return d
-	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE, NATIVE, APP, TEST, IMPORT:
+	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE, NATIVE, EXTERN, APP, TEST, IMPORT:
 		// Only where a declaration follows: elsewhere these are names
 		// (decision 10), as in let app = mount(…); app.tap("Add").
 		switch {
@@ -1501,7 +1544,8 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		case p.tok == APP && next == LBRACE:
 		case p.tok == TEST && (next == STRING || next == STRING_HEAD):
 		case p.tok == NATIVE && (next == INTERFACE || next == COMPONENT):
-		case p.tok != APP && p.tok != TEST && p.tok != NATIVE && isIdentTok(next):
+		case p.tok == EXTERN && (next == FN || next == TYPE || next == STRUCT):
+		case p.tok != APP && p.tok != TEST && p.tok != NATIVE && p.tok != EXTERN && isIdentTok(next):
 		default:
 			goto expr
 		}
@@ -1511,6 +1555,8 @@ func (p *parser) itemAfterPub(start Pos) Item {
 			what = "an " + p.tok.String()
 		case NATIVE:
 			what = "a native " + p.peek(1).String()
+		case EXTERN:
+			what = "an extern " + p.peek(1).String()
 		}
 		p.error(p.pos, what+" is declared at the top level of a file, not in a block")
 		if p.tok == IMPORT {
@@ -2111,7 +2157,7 @@ func (p *parser) parseArgs() *ArgList {
 // expression starts (decision 10).
 func softKeyword(t Token) bool {
 	switch t {
-	case APP, BIND, COMPONENT, EFFECT, ENUM, EVENT, INTERFACE, KEY, NATIVE, ON,
+	case APP, BIND, COMPONENT, EFFECT, ENUM, EVENT, EXTERN, INTERFACE, KEY, NATIVE, ON,
 		PROP, PROVIDE, SCREEN, STATE, STORE, STRUCT, STYLE, TASK, TEST, TYPE, USE, THROWS:
 		return true
 	}
@@ -2465,7 +2511,7 @@ func (p *parser) parsePattern() Pattern {
 func (p *parser) parsePrimaryPattern() Pattern {
 	start := p.pos
 	switch p.tok {
-	case IDENT, APP, BIND, COMPONENT, EFFECT, ENUM, EVENT, INTERFACE, KEY, NATIVE, ON, PROP, PROVIDE, SCREEN, STATE, STORE, STRUCT, STYLE, TASK, TEST, TYPE, USE, THROWS:
+	case IDENT, APP, BIND, COMPONENT, EFFECT, ENUM, EVENT, EXTERN, INTERFACE, KEY, NATIVE, ON, PROP, PROVIDE, SCREEN, STATE, STORE, STRUCT, STYLE, TASK, TEST, TYPE, USE, THROWS:
 		if p.lit == "_" {
 			p.next()
 			return &WildcardPat{Span: p.span(start)}

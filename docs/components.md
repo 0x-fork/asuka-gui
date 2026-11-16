@@ -545,7 +545,7 @@ Each platform decodes what its own decoders read:
 | Web | the browser | WebCodecs' `ImageDecoder` on a canvas (AVIF sequences too); where there's none (Safari), the `<img>` itself, which shows its first frame while paused |
 
 An SVG is an image on the Mac, Linux and the web only. For an SVG icon
-on every platform, draw it with [`asuka/sdk/svg`](#svg-icons), as vectors.
+on every platform, draw it with [`asuka/svg`](#svg-icons), as vectors.
 
 ## Symbols and icons
 

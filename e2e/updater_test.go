@@ -49,7 +49,7 @@ func newUpdateFeed(t *testing.T) *updateFeed {
 // It returns the build's directory.
 func (f *updateFeed) build(t *testing.T, platform, version string) string {
 	out := filepath.Join(t.TempDir(), "dist")
-	c := exec.Command("go", "run", "./cmd/asuka", "build", "--platform", platform, "--no-vet", "--version", version, "-o", out, "e2e/testdata/updater")
+	c := exec.Command("go", "run", "./cmd/asuka", "build", "--platform", platform, "--version", version, "-o", out, "e2e/testdata/updater")
 	c.Dir, c.Env = root(t), f.env
 	b, err := c.CombinedOutput()
 	if err != nil {
@@ -78,11 +78,22 @@ func (f *updateFeed) downloaded() string {
 	return strings.Join(f.gets, " ")
 }
 
-// runUpdater runs the installed app's executable with --report, waits for
-// it to quit (it relaunches), then for the relaunched one's report, and
-// returns the reports.
+// runUpdater runs the installed app's executable in its self-update mode
+// (a "selfupdate" file in its directory, ASUKA_DATA), waits for it to
+// quit (it relaunches), then for the relaunched one's report, and
+// returns the reports. It runs where a desktop host has the update
+// module (DESIGN.md, "Updates"): the hosts being rewritten in Swift and
+// C (RFC 0008, G2) have it, the Go hosts don't; ASUKA_E2E_UPDATER=1 runs
+// it.
 func runUpdater(t *testing.T, exe string) string {
-	report := filepath.Join(t.TempDir(), "report")
+	if os.Getenv("ASUKA_E2E_UPDATER") == "" {
+		t.Skip("the desktop host's update module (RFC 0008, G2): ASUKA_E2E_UPDATER=1 runs it")
+	}
+	data := t.TempDir()
+	if err := os.WriteFile(filepath.Join(data, "selfupdate"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report := filepath.Join(data, "report")
 	// Its output to a file: the update's helper, which outlives it, would
 	// keep a pipe open.
 	outFile := filepath.Join(t.TempDir(), "out")
@@ -91,7 +102,8 @@ func runUpdater(t *testing.T, exe string) string {
 		t.Fatal(err)
 	}
 	defer logf.Close()
-	app := exec.Command(exe, "--report", report)
+	app := exec.Command(exe)
+	app.Env = append(os.Environ(), "ASUKA_DATA="+data)
 	app.Stdout, app.Stderr = logf, logf
 	if err := app.Start(); err != nil {
 		t.Fatal(err)

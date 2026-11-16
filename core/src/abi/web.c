@@ -244,7 +244,10 @@ static int worker_failed(const char *msg) {
 // asuka_worker_start makes this instance a worker's: the core without a
 // UI, and the app's module (bytecode, or with none the app compiled into
 // the build) with its init run. 0, or -1 with a message in io.
+extern bool ak_in_spawn_worker;
+
 EXPORT("asuka_worker_start") int asuka_worker_start(const uint8_t *module, size_t n) {
+	ak_in_spawn_worker = true;
 	ak_sched_set_timer(timer_schedule, timer_cancel);
 	ak_zone_offset_hook = zone_offset;
 	asuka_start(&worker_callbacks);

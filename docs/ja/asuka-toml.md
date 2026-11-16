@@ -69,7 +69,7 @@ github = "you/notes"
 | `splash` | テーブル | なし | iOS と Android の起動画面です。[splash](#splash) を参照してください。 |
 | `widgets` | テーブルの配列 | なし | iOS と Android のホーム画面ウィジェットです。[widgets](#widgets) を参照してください。 |
 | `shortcuts` | テーブルの配列 | なし | iOS と Android で、Siri、Spotlight、ランチャーに出すアクションです。[shortcuts](#shortcuts) を参照してください。 |
-| `nfc` | テーブル | なし | `asuka/sdk/nfc` のタグに必要なものです。iOS の AID と FeliCa のシステムコード、Android でアプリを開くタグを指定します。[nfc](#nfc) を参照してください。 |
+| `nfc` | テーブル | なし | `asuka/nfc` のタグに必要なものです。iOS の AID と FeliCa のシステムコード、Android でアプリを開くタグを指定します。[nfc](#nfc) を参照してください。 |
 | `background` | 真偽値 | `false` | デスクトップで、トレイに常駐するアプリにします。起動時にウィンドウを開かず、ウィンドウがなくても動き続け、Mac では起動時から Dock にアイコンを出しません（`LSUIElement`）。[バックグラウンドのアプリ](desktop.md#バックグラウンドで動くアプリ)を参照してください。 |
 | `keepRunning` | 真偽値 | `false` | デスクトップで、最後のウィンドウを閉じてもアプリを動かし続けます。メインウィンドウは、アプリがもう一度表示するまで隠れるだけです。`background` のアプリはもともと動き続けます。[バックグラウンドで動くアプリ](desktop.md#バックグラウンドで動くアプリ)を参照してください。 |
 | `singleInstance` | 真偽値 | `true` | Windows と Linux で、二回目の起動はファイルを実行中のアプリに渡して（その `on openFiles(paths)` に）終了します。`false` にすると、起動した回数だけアプリが実行されます。Mac ではどちらの場合もアプリは一つしか実行されません。[単一インスタンス](desktop.md#単一インスタンス)を参照してください。 |
@@ -77,12 +77,12 @@ github = "you/notes"
 | `updates` | テーブル | なし | デスクトップアプリの署名付きアップデートです。[updates](#updates) を参照してください。 |
 | `ios` | テーブル | | iOS のビルドの設定と、Mac のビルドの設定の一部です。[ios](#ios) を参照してください。 |
 | `mac` | テーブル | | Mac のビルドのプロファイルです。[mac](#mac) を参照してください。 |
-| `icloud` | テーブル | `iCloud.<id>` | `asuka/sdk/icloud` で使う、アプリの iCloud コンテナーと iCloud Drive のフォルダーです。[icloud](#icloud) を参照してください。 |
-| `applePay` | テーブル | なし | `merchantIds = ["merchant.com.example"]`：Apple Pay（`asuka/sdk/pay`）の支払いに使うマーチャント ID です。パッケージをインポートした iOS と Mac のアプリの、アプリ内決済のエンタイトルメントに入ります。[ウォレットでの支払い](../device.md#wallet-payments-asukasdkpay)を参照してください。 |
+| `icloud` | テーブル | `iCloud.<id>` | `asuka/icloud` で使う、アプリの iCloud コンテナーと iCloud Drive のフォルダーです。[icloud](#icloud) を参照してください。 |
+| `applePay` | テーブル | なし | `merchantIds = ["merchant.com.example"]`：Apple Pay（`asuka/pay`）の支払いに使うマーチャント ID です。パッケージをインポートした iOS と Mac のアプリの、アプリ内決済のエンタイトルメントに入ります。[ウォレットでの支払い](device.md#ウォレット決済asukapay)を参照してください。 |
 | `android` | テーブル | | Android のビルドの設定です。[android](#android) を参照してください。 |
 | `linux` | テーブル | | Linux のビルドがアプリについて書き出す情報です。[linux](#linux) を参照してください。 |
 | `web` | テーブル | | Web のビルドの設定です。[web](#web) を参照してください。 |
-| `bluetooth` | テーブル | | `asuka/sdk/bluetooth` を使うアプリが、パッケージに必要なもの以上に求めるものです。バックグラウンドと、スキャンによる位置情報を指定します。[bluetooth](#bluetooth) を参照してください。 |
+| `bluetooth` | テーブル | | `asuka/bluetooth` を使うアプリが、パッケージに必要なもの以上に求めるものです。バックグラウンドと、スキャンによる位置情報を指定します。[bluetooth](#bluetooth) を参照してください。 |
 
 Windows のビルドに必要なのはこれだけです。署名の証明書は環境変数で渡します（[配布](shipping.md#windows)を参照）。
 
@@ -129,7 +129,7 @@ max = 10
 | `types` | 文字列の配列 | `["text"]` | `"text"`（テキストと Web のリンク）と、MIME タイプで指定するファイル（`"image/*"`、`"video/*"`、`"audio/*"`、`"application/pdf"`、何でも受け取るなら `"*/*"`）。 |
 | `max` | 整数 | `1` | 一度に受け取るファイルの数で、1 以上です。 |
 
-iOS では、アプリの中の共有拡張機能（share extension）になります。独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ち、リリースでは `ios.shareProfile` で署名します。ファイルを受け取る場合は、App Group `group.<id>` も必要です。[配布](shipping.md#ios)と[ほかのアプリからの共有](device.md#ほかのアプリからの共有-uionshare)を参照してください。
+iOS では、アプリの中の共有拡張機能（share extension）になります。独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ち、リリースでは `ios.shareProfile` で署名します。ファイルを受け取る場合は、App Group `group.<id>` も必要です。[配布](shipping.md#ios)と[ほかのアプリからの共有](device.md#ほかのアプリからの共有onshare)を参照してください。
 
 ## splash
 
@@ -150,7 +150,7 @@ darkBackground = "#1B2440"
 | `background` | 色 | `"#ffffff"` | ライトモードでの背景色（`"#rrggbb"`）。 |
 | `darkBackground` | 色 | `background` | ダークモードでの背景色（`"#rrggbb"`）。 |
 
-[起動画面](device.md#起動画面-asukasdksplash)を参照してください。
+[起動画面](device.md#起動画面asukasplash)を参照してください。
 
 ## widgets
 
@@ -171,7 +171,7 @@ sizes = ["small", "medium", "rectangular"]
 | `description` | 文字列 | なし | ウィジェットギャラリーに表示される説明です。 |
 | `sizes` | 文字列の配列 | `["small", "medium"]` | `small`、`medium`、`large`、そして iOS の `extraLarge`（iPad）と、ロック画面の `circular`、`rectangular`、`inline`。 |
 
-iOS では、ウィジェットは独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持つ拡張機能になり、リリースでは `ios.widgetProfile` で署名します。[ホーム画面ウィジェット](device.md#ホーム画面ウィジェット-asukasdkwidget)を参照してください。
+iOS では、ウィジェットは独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持つ拡張機能になり、リリースでは `ios.widgetProfile` で署名します。[ホーム画面ウィジェット](device.md#ホーム画面ウィジェットasukawidget)を参照してください。
 
 ## shortcuts
 
@@ -194,11 +194,11 @@ phrases = ["New note in ${app}"]
 | `symbol` | 文字列 | なし | `Symbol` が受け取るのと同じ、SF Symbol の名前です。 |
 | `phrases` | 文字列の配列 | `"<title> in ${app}"` | Siri が聞き取るフレーズで、どれにもアプリの名前を表す `${app}` を含めます。iOS だけで使われます。 |
 
-[ショートカット](device.md#ショートカット-sirispotlightランチャー)を参照してください。
+[ショートカット](device.md#ショートカットsirispotlightランチャー)を参照してください。
 
 ## nfc
 
-`asuka/sdk/nfc` が、権限以外にプラットフォームに求めるものです。パッケージをインポートしたアプリにだけ適用されます（インポートしないアプリには何も加わりません）。
+`asuka/nfc` が、権限以外にプラットフォームに求めるものです。パッケージをインポートしたアプリにだけ適用されます（インポートしないアプリには何も加わりません）。
 
 ```toml
 [nfc]
@@ -220,11 +220,11 @@ tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
 | `tech` | 文字列の配列の配列 | なし | Android で、技術によってアプリを開くタグ（TECH_DISCOVERED）です。各リストには、タグがすべて備えている必要のある `android.nfc.tech` のクラス（`IsoDep`、`NfcA`、`MifareUltralight` など）を並べます。 |
 | `required` | 真偽値 | `false` | NFC のあるスマートフォン専用のアプリにします。Google Play は、NFC のない端末にはアプリを表示しません。 |
 
-[NFC タグ](../nfc.md#asukatoml-and-permissions)を参照してください。
+[NFC タグ](nfc.md#asukatoml-と権限)を参照してください。
 
 ## icloud
 
-`asuka/sdk/icloud` の書類の関数を呼ぶアプリの iCloud コンテナーと、それを iCloud Drive にどう表示するかの設定です（呼ばないアプリには何も加わりません）。
+`asuka/icloud` の書類の関数を呼ぶアプリの iCloud コンテナーと、それを iCloud Drive にどう表示するかの設定です（呼ばないアプリには何も加わりません）。
 
 ```toml
 [icloud]
@@ -296,7 +296,7 @@ iOS のビルドの設定です。`team` は Mac のビルドのチームにも�
 | `infoPlist` | テーブル | なし | Info.plist に追加する文字列のキーです。 |
 | `backgroundModes` | 文字列の配列 | なし | Info.plist の `UIBackgroundModes` に追加します。`"audio"` を指定すると、画面がロックされていても録音と再生ができます。 |
 | `iphoneOnly` | 真偽値 | `false` | iPad を対象から外します。iPad ではアプリは iPhone アプリとして、スマートフォンサイズのウィンドウで動きます。 |
-| `storekit` | 文字列 | なし | StoreKit の構成ファイル（Xcode の `.storekit`）です。Xcode のスキームと同じように、`asuka dev` のシミュレーター向けビルドはこのファイルの商品を販売します。[アプリ内課金](../purchases.md#testing-your-purchases)を参照してください。 |
+| `storekit` | 文字列 | なし | StoreKit の構成ファイル（Xcode の `.storekit`）です。Xcode のスキームと同じように、`asuka dev` のシミュレーター向けビルドはこのファイルの商品を販売します。[アプリ内課金](purchases.md#購入のテスト)を参照してください。 |
 | `nonExemptEncryption` | 文字列 | `"no"` | ビルドが暗号化について申告する内容（`ITSAppUsesNonExemptEncryption`）です。これは法的な申告で、内容は開発者が判断します。`"no"`、`"yes"`、または何も申告しない `"ask"` を指定します。`"ask"` の場合は、アップロードのたびに App Store Connect が尋ねます。 |
 | `collected` | テーブルの配列 | なし | アプリが収集するデータで、プライバシーマニフェストに使います（下記を参照）。 |
 | `appStoreConnect` | テーブル | | `asuka publish` がアップロードに使う App Store Connect API キーです。`keyId`、`issuerId`（個人キーでは不要）、`key`（`.p8` のパス。デフォルトは、`altool` と同じく `~/.appstoreconnect/private_keys` にある `AuthKey_<keyId>.p8`）を指定します。[公開](shipping.md#ストアへの公開)を参照してください。 |
@@ -341,7 +341,7 @@ Android のビルドの設定です。
 | `keyAlias` | 文字列 | なし | キーストアの中のアップロード鍵のエイリアスです。 |
 | `dynamicColor` | 真偽値 | `false` | Material のアプリと同じように、ユーザーの壁紙から色を取ります（Android 12 以降）。それ以外の環境では `accent` がシードになります。 |
 | `permissions` | 文字列の配列 | 各パッケージのもの | マニフェストに追加する権限です（`"android.permission.CAMERA"`）。`"<name>:28"` と書くと、Android 9（API 28）までだけ権限を要求します。アプリがインポートするパッケージは、必要な権限を自分で追加します。 |
-| `googleServices` | パス | なし | `asuka/sdk/push` で使う、Firebase プロジェクトの `google-services.json` です。 |
+| `googleServices` | パス | なし | `asuka/push` で使う、Firebase プロジェクトの `google-services.json` です。 |
 | `mapsKey` | 文字列 | なし | `asuka/maps` で使う、Google Maps Platform の API キー（Maps SDK for Android）です。 |
 | `serviceAccount` | パス | なし | `asuka publish` が Google Play へのアップロードに使う、Google Cloud のサービスアカウントの JSON キーです。リポジトリには入れないでください。 |
 
@@ -370,14 +370,14 @@ Web のビルドの設定です。
 
 | キー | 型 | デフォルト | 説明 |
 |---|---|---|---|
-| `vapidPublicKey` | 文字列 | なし | アプリのサーバーの VAPID 公開鍵（base64url）です。ブラウザーは、`asuka/sdk/push` の Web Push を購読するときにこれを使います。 |
+| `vapidPublicKey` | 文字列 | なし | アプリのサーバーの VAPID 公開鍵（base64url）です。ブラウザーは、`asuka/push` の Web Push を購読するときにこれを使います。 |
 | `base` | 文字列 | `"/"` | サイトを配信するパスです（`https://example.com/app/` なら `"/app/"`）。ページの `<base href>` になり、ルーターの href はその下のアドレスになります。`asuka build --base` で上書きできます。[アドレスと履歴](web.md#アドレスと履歴)を参照してください。 |
 
-[Web Push](web.md#asukasdkpushweb-push) を参照してください。
+[Web Push](web.md#asukapushweb-push) を参照してください。
 
 ## bluetooth
 
-`asuka/sdk/bluetooth` をインポートしたアプリが、パッケージが与えるもの（権限と利用目的の説明文）以上に求めるものです。パッケージをインポートしないアプリでは何もしません。
+`asuka/bluetooth` をインポートしたアプリが、パッケージが与えるもの（権限と利用目的の説明文）以上に求めるものです。パッケージをインポートしないアプリでは何もしません。
 
 ```toml
 [bluetooth]
@@ -387,10 +387,37 @@ location = false
 
 | キー | 型 | デフォルト | 説明 |
 |---|---|---|---|
-| `background` | 文字列の配列 | なし | アプリがバックグラウンドで続ける役割です。`"central"`：iOS の `bluetooth-central` モードと状態の復元（`bluetooth.OnRestore`）、Android のバックグラウンドスキャンの受け取り（`ScanOptions.Background`）。`"peripheral"`：iOS の `bluetooth-peripheral` モード。 |
-| `location` | 真偽値 | `false` | アプリがスキャン（ビーコン）からユーザーの居場所を割り出す場合に指定します。Android の `BLUETOOTH_SCAN` に `neverForLocation` を付けず、`bluetooth.Request` は位置情報の権限も求めるようになります（iOS：`NSLocationWhenInUseUsageDescription`）。 |
+| `background` | 文字列の配列 | なし | アプリがバックグラウンドで続ける役割です。`"central"`：iOS の `bluetooth-central` モードと、Android のバックグラウンドスキャンの受け取り。`asuka/bluetooth` には、状態の復元も、見えないところで続く独自のスキャンもまだありません。`"peripheral"`：iOS の `bluetooth-peripheral` モード。 |
+| `location` | 真偽値 | `false` | アプリがスキャン（ビーコン）からユーザーの居場所を割り出す場合に指定します。Android の `BLUETOOTH_SCAN` に `neverForLocation` を付けず、`bluetooth.request()` は位置情報の権限も求めるようになります（iOS：`NSLocationWhenInUseUsageDescription`）。 |
 
-[Bluetooth](../bluetooth.md#in-the-background)を参照してください。
+[Bluetooth](bluetooth.md#ビルドが加えるもの)を参照してください。
+
+## c
+
+アプリの `extern` 宣言が呼び出す C です。ターゲットごとにコアのビルドへ何をコンパイルし、何をリンクするかを書きます。各プラットフォームのテーブル（`[c.ios]`、`[c.android]`、`[c.macos]`、`[c.windows]`、`[c.linux]`、`[c.web]`）は、トップレベルのテーブルのリストに追加されます。パッケージの `asuka.toml` には独自の `[c]` があり、パッケージをインポートしたアプリはそれもビルドします。
+
+| キー | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `sources` | 文字列の配列 | なし | C のファイルです。`asuka.toml` からの相対パスの glob で指定します（`c/*.c`。`**` は任意の階層のディレクトリにマッチします）。どのファイルにもマッチしない glob があると、ビルドは止まります。 |
+| `include` | 文字列の配列 | なし | ソースがインクルードするディレクトリです（`-I`）。`asuka_ffi.h` は常にインクルードできます。 |
+| `defines` | 文字列の配列 | なし | マクロです。`NAME` または `NAME=value` と書きます（`-D`）。 |
+| `flags` | 文字列の配列 | なし | コンパイラーに渡す追加のフラグです。 |
+| `libraries` | 文字列の配列 | なし | リンクするライブラリです。名前（`sqlite3` なら `-lsqlite3`）か、`asuka.toml` からの相対パスで指定したファイル（`lib/libfoo.a`）を書きます。 |
+| `frameworks` | 文字列の配列 | なし | iOS と macOS でリンクする Apple のフレームワークです（`Security`）。 |
+
+```toml
+[c]
+sources = ["c/*.c"]
+include = ["c/include"]
+
+[c.ios]
+libraries = ["z"]
+
+[c.web]
+defines = ["NO_ZLIB"]
+```
+
+[Asuka から C を呼び出す](c.md#ビルド)を参照してください。
 
 ## 環境変数
 

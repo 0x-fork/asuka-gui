@@ -62,6 +62,22 @@ test "randomness" {
   print(id != crypto.uuid())
 }
 
+test "SHA-512 and Ed25519" {
+  print(encoding.hexEncode(crypto.sha512("abc".bytes())).slice(0, 32))
+  // RFC 8032's TEST 2.
+  let seed = try encoding.hexDecode("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
+  let message = try encoding.hexDecode("72")
+  let public = crypto.ed25519PublicKey(seed)
+  print(encoding.hexEncode(public))
+  let sig = crypto.ed25519Sign(seed, message)
+  print(encoding.hexEncode(sig).slice(0, 32))
+  print(crypto.ed25519Verify(public, message, sig))
+  print(crypto.ed25519Verify(public, "73".bytes(), sig))
+  let key = crypto.ed25519NewKey()
+  print(key.count())
+  print(crypto.ed25519Verify(key.slice(32, 64), message, crypto.ed25519Sign(key, message)))
+}
+
 test "html" {
   print(html.escape("<a href=\"x\">Tom & Jerry's</a>"))
   print(html.escape("plain"))
@@ -116,6 +132,14 @@ test "html" {
 // true
 // true
 // ok randomness
+// ddaf35a193617abacc417349ae204131
+// 3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c
+// 92a009a9f0d4cab8720e820b5f642540
+// true
+// false
+// 64
+// true
+// ok SHA-512 and Ed25519
 // &lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&#39;s&lt;/a&gt;
 // plain
 // <p>Fish & Chips © 2026 — © © é… &bogus; &amp � 😀

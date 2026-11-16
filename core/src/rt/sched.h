@@ -89,6 +89,10 @@ typedef struct ak_future {
 	void (*cancel)(struct ak_future *f);
 	void *ctx;
 	void (*drop_ctx)(void *ctx);
+	// held: references the work itself holds until it settles (a native
+	// call's table), not a waiter's: a task cancelled while it waits
+	// cancels the future when nobody else holds it.
+	uint8_t held;
 } ak_future;
 
 ak_future *ak_future_new(ak_kind k);

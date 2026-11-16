@@ -18,6 +18,7 @@ import (
 // sanitizers); what it prints must be what the comment block at its end,
 // after a line "// Output:", says (the runner's "ok name" lines
 // included). A file whose first line is "// skip: reason" is skipped.
+// A program's C (its externs') is the .c file of its name beside it.
 
 var dumpFlag = flag.Bool("dump", false, "print each module's disassembly")
 
@@ -31,9 +32,22 @@ var (
 // fails when the two backends don't print the same or don't agree on
 // failing: the conformance suite holds for both. It returns the VM's.
 func runBoth(t *testing.T, m *bc.Module) (string, error) {
+	return runBothWith(t, m, nil)
+}
+
+// runBothWith is runBoth with the C m's externs call (f) built into
+// both runners.
+func runBothWith(t *testing.T, m *bc.Module, f *cbuild.Foreign) (string, error) {
 	t.Helper()
-	out, err := Run(testRunner(t), m, true, "")
-	cout, cerr := RunC(m, true, true, "")
+	runner := testRunner(t)
+	if f != nil {
+		var err error
+		if runner, err = RunnerFor(f, true, t.TempDir()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := Run(runner, m, true, "")
+	cout, cerr := RunCWith(m, f, true, true, "")
 	if _, ok := cerr.(*exec.ExitError); cerr != nil && !ok {
 		t.Fatalf("the C backend: %v\n%s", cerr, cout)
 	}
@@ -102,7 +116,13 @@ func TestRun(t *testing.T) {
 					t.Log(bc.Disasm(res.Module, &res.Module.Funcs[i]))
 				}
 			}
-			out, err := runBoth(t, res.Module)
+			var f *cbuild.Foreign
+			if c, _ := filepath.Abs(strings.TrimSuffix(path, ".asuka") + ".c"); fileExists(c) {
+				if f, err = Foreign(res.Module, []cbuild.CUnit{{Name: name, Sources: []string{c}}}, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			out, err := runBothWith(t, res.Module, f)
 			got := strings.TrimSpace(out)
 			if got != want {
 				t.Fatalf("got:\n%s\nwant:\n%s", got, want)
@@ -119,4 +139,9 @@ func TestRun(t *testing.T) {
 			}
 		})
 	}
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }

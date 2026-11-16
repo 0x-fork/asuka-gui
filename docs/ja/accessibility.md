@@ -46,7 +46,7 @@ ui.Row(ui.Style{Gap: 12},
 
 - `Button` はタイトルを読み上げます。アイコンだけのボタンには `Label` を付けてください。プラットフォームが自分で名前を付けるシンボルはごく一部で、Android では英語の名前しかありません。
 - `TextField` と `Toggle`（チェックボックスも含む）にも、`Label: ui.Val("Email")` のように `Label` を指定できます。ラベルはコントロール自体に付けてください。名前は入力内容やチェック状態とは別に扱われ、編集や切り替えもそのまま行えます。Android では、テキストフィールドのラベルはアクセシビリティのヒント（hint）になり、TalkBack はそれをフィールドの名前として読み上げます。
-- `Image` の `Label` はその画像の説明です。`Label` がなければ装飾として扱われます。[`asuka/sdk/svg`](../../sdk/svg) のアイコンにも同じように `Label` を付けられます。
+- `Image` の `Label` はその画像の説明です。`Label` がなければ装飾として扱われます。[`asuka/svg`](../../sdk/svg) のアイコンにも同じように `Label` を付けられます。
 - `Symbol` は自分のラベルを持ちません。意味のあるシンボルは、`Label` と `ui.RoleImage` を指定した `View` で包んでください。
 - `Hint` は、iOS ではアクセシビリティのヒントとして少し間を置いてから読み上げられ（ユーザーはヒントをオフにできます）、Android では状態の説明（state description）としてラベルと一緒に読み上げられます。macOS ではビューのヘルプ（`accessibilityHelp`）、Windows ではヘルプテキスト、Linux ではアクセシブルな説明（accessible description）、Web では `aria-description` になります。「メッセージを開きます」のように短くしてください。
 
@@ -111,7 +111,7 @@ ui.View(ui.ViewProps{Decorative: true}, ui.Symbol(ui.IconCheck, ui.Style{Color: 
 
 ## 見出し
 
-スクリーンリーダーのユーザーは見出しから見出しへ移動します（VoiceOver のローター、TalkBack の見出し単位のナビゲーション、NVDA と Orca の H キー、ブラウザーのスクリーンリーダーの見出し一覧）。セクションのタイトルは見出しとしてマークしてください。`Role: ui.RoleHeader` を指定した `RichText` か、`Label` とこのロールを指定した `View` を使います。`Text` はロールを取りません。[`asuka/sdk/markdown`](../../sdk/markdown) は見出しを最初からマークします。
+スクリーンリーダーのユーザーは見出しから見出しへ移動します（VoiceOver のローター、TalkBack の見出し単位のナビゲーション、NVDA と Orca の H キー、ブラウザーのスクリーンリーダーの見出し一覧）。セクションのタイトルは見出しとしてマークしてください。`Role: ui.RoleHeader` を指定した `RichText` か、`Label` とこのロールを指定した `View` を使います。`Text` はロールを取りません。[`asuka/markdown`](../../sdk/markdown) は見出しを最初からマークします。
 
 ```go
 ui.RichText(ui.RichTextProps{Text: ui.Val(ui.Rich{ui.Plain("Recent")}), Role: ui.RoleHeader,

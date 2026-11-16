@@ -133,8 +133,8 @@ Platform by platform:
 - `linux.*` is what a Linux build's desktop file and AppStream metainfo
   say: see [Linux](#linux).
 - `web.vapidPublicKey` is the app server's VAPID public key, for
-  `asuka/sdk/push` on the web (Web Push; see
-  [the web](web.md#asukasdkpush-web-push)).
+  `asuka/push` on the web (Web Push; see
+  [the web](web.md#asukapush-web-push)).
 - A Windows build needs nothing beyond the keys above; its signing
   certificate is given in the environment ([Windows](#windows)).
 
@@ -151,20 +151,20 @@ These are for the phones and tablets:
   the device's.
 - `shareTarget` offers the app in other apps' share sheets: `true` for
   texts and links, or a table, `{types = ["text", "image/*"], max = 10}`,
-  for files too (see [Device](device.md#shares-from-other-apps-uionshare));
+  for files too (see [Device](device.md#shares-from-other-apps-onshare));
   `ui.OnShare` gets them. On iOS it's a share extension in the app, with
   a bundle ID of its own (the app's plus `.share`).
 - `splash` is the launch screen: `{image = "logo.png", size = 96,
   background = "#ffffff", darkBackground = "#000000"}` (see
-  [Device](device.md#the-launch-screen-asukasdksplash)).
+  [Device](device.md#the-launch-screen-asukasplash)).
 - `widgets` are the app's home screen widgets and `shortcuts` its
   actions for Siri, Spotlight and the launcher (see
-  [Device](device.md#home-screen-widgets-asukasdkwidget)). The widget
+  [Device](device.md#home-screen-widgets-asukawidget)). The widget
   extension has a bundle ID of its own (the app's plus `.widgets`): a
   release needs a profile for it too, and `ios.widgetProfile` names one.
 - `android.googleServices` is the Firebase project's
-  `google-services.json`, for `asuka/sdk/push`; `android.mapsKey`, a Google
-  Maps Platform API key, for `asuka/sdk/maps`.
+  `google-services.json`, for `asuka/push`; `android.mapsKey`, a Google
+  Maps Platform API key, for `asuka/maps`.
 - `ios.usage` gives the purpose strings of protected resources
   (`NSCameraUsageDescription`...; the Mac's too), and `ios.infoPlist` adds keys to
   Info.plist; `ios.backgroundModes` adds to `UIBackgroundModes` (`"audio"`,
@@ -172,12 +172,12 @@ These are for the phones and tablets:
   permissions.
 
 The packages an app imports give it the permissions and purpose strings
-they need: `asuka/sdk/camera` the camera's, `asuka/sdk/location` the location's.
+they need: `asuka/camera` the camera's, `asuka/location` the location's.
 Write your own in `ios.usage`: the default is generic. Some need a
-capability on the App ID too (Push Notifications for `asuka/sdk/push`, Sign
-in with Apple for `asuka/sdk/appleauth`, App Attest for `asuka/sdk/integrity`,
-Declared Age Range for `asuka/sdk/agerange`, iCloud with its containers for
-`asuka/sdk/icloud`): turn it on at
+capability on the App ID too (Push Notifications for `asuka/push`, Sign
+in with Apple for `asuka/appleauth`, App Attest for `asuka/integrity`,
+Declared Age Range for `asuka/agerange`, iCloud with its containers for
+`asuka/icloud`): turn it on at
 developer.apple.com, then make the profile again. `asuka build --platform ios` (and
 `--platform mac`) says which a profile lacks.
 
@@ -197,7 +197,7 @@ match installed. `--distribution ad-hoc` or `development` signs it for the
 devices of its profile instead, and `--simulator` makes an unsigned `.app`
 for the simulator.
 
-An app that uses `asuka/sdk/sqlite` has SQLite in its `Frameworks`, as
+An app that uses `asuka/sqlite` has SQLite in its `Frameworks`, as
 `asqlite.framework` (the device's or the simulator's), signed with the
 app, which loads it the first time it opens a database. Its extensions
 (the share sheet, the Notification Service Extension) load the app's.
@@ -378,7 +378,7 @@ entitlements for them (`com.apple.security.device.camera`,
 an app signed with a Developer ID is refused the camera, the microphone
 or the user's data. An app with Swift of its own (`macos/*.swift`) has it
 compiled for both architectures into `Contents/Frameworks`, signed with
-the app (see [Native code](native.md)). An app that uses `asuka/sdk/sqlite`
+the app (see [Native code](native.md)). An app that uses `asuka/sqlite`
 has SQLite's library there too (`libasqlite.dylib`, for both
 architectures), signed as the app is: with a Developer ID, the hardened
 runtime loads only libraries signed by the app's own team, and the
@@ -399,8 +399,8 @@ In CI, `--notarize env` takes `ASUKA_APPLE_ID`, `ASUKA_APPLE_PASSWORD` (an
 app-specific password) and `ASUKA_TEAM_ID` from the environment instead
 of a keychain profile.
 
-Push (`asuka/sdk/push`), Sign in with Apple (`asuka/sdk/appleauth`), App Attest
-(`asuka/sdk/integrity`) and iCloud (`asuka/sdk/icloud`) need entitlements
+Push (`asuka/push`), Sign in with Apple (`asuka/appleauth`), App Attest
+(`asuka/integrity`) and iCloud (`asuka/icloud`) need entitlements
 only a provisioning profile grants.
 Make a macOS Developer ID profile for the app's ID at developer.apple.com
 (Profiles), with those capabilities on for the ID, and download it:
@@ -473,7 +473,7 @@ the `.exe` isn't signed. A certificate on a hardware token or in a cloud
 service (Azure Trusted Signing) signs through its own tool: sign the
 `.exe` (and `asqlite.dll`) in the folder with it after the build.
 
-An app that shows notifications (`asuka/sdk/notify`) is given a shortcut in the
+An app that shows notifications (`asuka/notify`) is given a shortcut in the
 user's Start menu the first time, which Windows needs for an app's
 toasts: its AppUserModelID is asuka.toml's `id` (else one of its name).
 
@@ -496,7 +496,7 @@ elsewhere. In `dist/linux` it makes:
   - `share/my-notes/assets` and `share/my-notes/asuka-app.json`, its
     assets and settings, which it finds from `bin/` too;
   - `lib/my-notes/libasqlite.so`, SQLite's library, for an app that
-    uses `asuka/sdk/sqlite`, which it finds from `bin/` too (glibc 2.17 or
+    uses `asuka/sqlite`, which it finds from `bin/` too (glibc 2.17 or
     later; it shows none of SQLite's own symbols, so a system SQLite in
     the same process doesn't mind it);
   - `share/applications/<id>.desktop`, what launchers show and run;
@@ -567,7 +567,7 @@ store need it). See [the web](web.md) for what's in it and what a
 browser does differently.
 
 It also writes `version.json`, the version built and its release notes
-(`CHANGELOG.md`'s section), which `asuka/sdk/update` reads in the page: a
+(`CHANGELOG.md`'s section), which `asuka/update` reads in the page: a
 page older than the site offers to reload ([Updates](#updates)).
 
 ## Updates
@@ -617,69 +617,107 @@ The environment says the same for CI and tests: `ASUKA_UPDATE_PRIVATE_KEY`
 
 ### In the app
 
-`update.Window` is the update window, in the app's root; `update.AppMenu`
-puts "Check for Updates…" in the app's menu after About on the Mac (a
-Help menu on Windows, the header bar's main menu on Linux):
+`asuka/update`'s `UpdateWindow` is the update window: show it once, in
+the app's main window, where it takes no room. Its `AppMenu` puts "Check
+for Updates…" in the app's menu after About on the Mac (a Help menu on
+Windows and Linux); `CheckForUpdates` is that item alone, for a menu of
+your own or a tray icon's:
 
-```go
-func Root() ui.Node {
-	return ui.Column(ui.Style{},
-		update.Window(update.Options{Icon: "logo.png"}), // an image in assets/
-		ui.MenuBar(ui.Val([]ui.MenuBarMenu{update.AppMenu()})),
-		// ...
-	)
+```asuka
+import asuka/update
+
+app {
+  Window {
+    title: "Notes"
+    update.UpdateWindow { icon: "logo.png" }  // an image in assets/
+    MenuBar { update.AppMenu() }
+    Text("Notes")
+  }
 }
 ```
 
-It checks 10 seconds after launch, then once a day (`Options.Interval`),
-and when a version is out it shows its release notes with **Install
+It checks 10 seconds after launch, then once a day (its `interval`), and
+when a version is out it shows its release notes with **Install
 Update**, **Remind Me Later** and **Skip This Version** (checks in the
 background don't offer that version again, but offer the next), and
 "Automatically download and install updates in the future": then checks
 install what they find without asking, and it runs at the next launch.
 Installing shows the download's progress, then **Relaunch Now**.
-`update.CheckForUpdates()` checks as the user asked (the menu item, a
+`update.checkForUpdates()` checks as the user asked (the menu item, a
 button): the window also says when the app is up to date or can't
-update itself. `AutomaticChecks`, `SetAutomaticChecks`,
-`AutomaticDownloads`, `SetAutomaticDownloads` and `LastCheck` are the
-user's choices (in `update.json` in the app's data directory), for a
-settings page. The window's words are Asuka's, in the app's language; an
-app changes them with keys `asuka.updateInstall` and so on in its
-catalogs.
+update itself. `automaticChecks()`, `setAutomaticChecks(on)`,
+`automaticDownloads()`, `setAutomaticDownloads(on)`, `lastCheck()` and
+`skippedVersion()` are the user's choices, kept on the device
+(asuka/storage), for a settings page; `UpdateWindow { automaticChecks:
+false }` doesn't check in the background until the user turns it on.
+The window's words are Asuka's, in the app's language.
 
-An interface of the app's own uses the package's functions, off the main
-thread, or the updater's state (`update.Use()`: checking, available,
-downloading with its bytes, ready...):
+An interface of the app's own uses `check()`, `Release.install` and
+`relaunch()`, or follows the updater's state, `update.updater`, a store
+(its `phase`: checking, available, downloading with `downloaded` and
+`total`, ready...):
 
-```go
-go func() {
-	r, err := update.Check(ctx) // nil: up to date
-	if err != nil || r == nil {
-		return
-	}
-	// r.Version, r.Notes (Markdown), r.Date, r.Size
-	if err := r.Install(ctx, func(done, total int64) { /* ui.Post the progress */ }); err == nil {
-		update.Relaunch() // app.Relaunch: quits (OnQuit may cancel), then starts the new version
-	}
-}()
+```asuka
+import asuka/update
+
+component UpdateBanner {
+  state found: update.Release? = none
+  state done = 0.0
+
+  task {
+    do {
+      found = try await update.check()  // none: up to date
+    } catch e {
+      print(e.message)
+    }
+  }
+
+  if let r = found {
+    Row {
+      gap: 8
+      Text("Notes {r.version} is out")  // r.notes: Markdown; r.date, r.size
+      Button("Install") {
+        on press {
+          do {
+            try await r.install(progress: (got, total) => { done = float(got) / float(total) })
+            update.relaunch()  // quits (on quit may cancel), then starts the new version
+          } catch e {
+            print(e.message)
+          }
+        }
+      }
+      if done > 0 { Progress { value: done } }
+    }
+  }
+}
 ```
 
-`update.Supported()` says whether the app can update itself, and why not:
-a development build or one without `updates` (`ErrNotConfigured`), an app
-the system's packages, Flatpak, Snap, the Mac App Store or the Microsoft
-Store installed (`ErrManaged`: they update it), a Mac app run from where
-it was downloaded, which macOS translocates (`ErrTranslocated`: the user
-moves it to Applications), a folder the user can't write
-(`ErrNotWritable`), a phone (`ErrUnsupported`). The window never checks
-in the background then, and says why when the user checks.
+`await update.unsupported()` says why the app can't update itself, or
+none when it can: a development build or one without `updates`
+(`.notConfigured`), an app the system's packages, Flatpak, Snap, the Mac
+App Store or the Microsoft Store installed (`.managed`: they update it),
+a Mac app run from where it was downloaded, which macOS translocates
+(`.translocated`: the user moves it to Applications), a folder the user
+can't write (`.notWritable`), a phone (`.notAvailable`). The window
+never checks in the background then, and says why when the user checks.
 
-`update.SetChannel("beta")` offers a channel's prereleases too, for the
+`update.setChannel("beta")` offers a channel's prereleases too, for the
 users who chose your beta: a version's channel is its prerelease's
 letters (`1.4.0-beta.2` is `beta`'s), `"*"` takes every prerelease.
-Releases are offered on every channel. `update.SetSource` reads the
-manifests and downloads the files through code of the app's own (a
-service that wants the user's token); the signatures are checked all the
-same.
+Releases are offered on every channel. `update.setFeed(url)` reads
+another feed than `asuka.toml`'s (one chosen by the user's account): a
+manifest's URL, GitHub's releases, or a server's URL with `{target}`,
+`{version}` and `{channel}`; the signatures are checked all the same.
+`update.compareVersions(a, b)` orders versions as the updater does.
+
+On the web there's nothing to install: `check()` reads the site's
+`version.json` past the browser's caches, and a newer version's
+`relaunch()` reloads the page.
+
+In tests, the fake host has no update module, as a phone has none, until
+`update.fakeHost(update.FakeApp(…))` makes it answer as an installed
+app's host and serve the feed's files (`host.serve(update.Served(url:,
+file:))`); `host.log()` says what it downloaded and installed.
 
 ### Build and publish
 
@@ -807,16 +845,16 @@ present(AsukaViewController(), animated: true)
 // or push it, or make it a tab, or a window's root
 ```
 
-An app that uses `asuka/sdk/sqlite` comes with `dist/asqlite.xcframework`
+An app that uses `asuka/sqlite` comes with `dist/asqlite.xcframework`
 beside it, SQLite's library: embed it too (Embed & Sign). The app
 loads it from your app's `Frameworks`; it has its own privacy manifest.
 
 **Android.** `asuka build --platform android --aar` makes a Maven repository in
 `dist/maven`: the host library with the core and the app compiled in for each ABI, its
 assets, and `AsukaActivity` declared, with its dependencies (Material,
-AndroidX) in its POM, and the optional modules the app uses (`asuka/sdk/push`,
-`asuka/sdk/maps`) beside it, and SQLite's library for each ABI when the app
-uses `asuka/sdk/sqlite`. Add the repository and the dependency the
+AndroidX) in its POM, and the optional modules the app uses (`asuka/push`,
+`asuka/maps`) beside it, and SQLite's library for each ABI when the app
+uses `asuka/sqlite`. Add the repository and the dependency the
 command prints, then start the activity:
 
 ```kotlin
@@ -875,7 +913,7 @@ traces keep their function names and lines, so its panics read as they
 are, and there are no symbols to upload.
 
 Keep each release's symbols: a crash is symbolicated with those of the
-build it happened in. See [Device](device.md#crash-reports-asukasdkcrash)
+build it happened in. See [Device](device.md#crash-reports-asukacrash)
 for the reports themselves.
 
 ## Before you release
