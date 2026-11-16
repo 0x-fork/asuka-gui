@@ -89,14 +89,11 @@ import AsukaOps
         var lines: [String] = []
         for n in rt.nodes.values.sorted(by: { $0.id < $1.id }) {
             let v = n.view
-            guard v.window != nil, !v.isHidden, v.alpha > 0 else { continue }
-            var hidden = false
-            var p = v.superview
-            while let x = p { if x.isHidden { hidden = true; break }; p = x.superview }
-            if hidden { continue }
+            guard shown(v) else { continue }
             let text: String?
             switch v {
-            case let b as UIButton: text = b.configuration?.title ?? b.accessibilityLabel
+            // An icon's button (no title) by what VoiceOver says of it.
+            case let b as UIButton: text = (b.configuration?.title).flatMap { $0.isEmpty ? nil : $0 } ?? b.accessibilityLabel
             case let l as UILabel: text = l.text
             case let f as UITextField: text = f.text
             default: text = v.accessibilityLabel
@@ -143,14 +140,29 @@ import AsukaOps
         write(lines, to: "asuka-fits.txt")
     }
 
+    /// Whether v is on screen: in a window, and neither it nor a view
+    /// around it hidden.
+    static func shown(_ v: UIView) -> Bool {
+        guard v.window != nil, !v.isHidden, v.alpha > 0 else { return false }
+        var p = v.superview
+        while let x = p {
+            if x.isHidden { return false }
+            p = x.superview
+        }
+        return true
+    }
+
+    /// The view that reads text: one on screen first (an alert not shown
+    /// yet has buttons too), else any, in creation order.
     static func find(_ text: String) -> AsukaNode? {
-        rt.nodes.values.sorted(by: { $0.id < $1.id }).first { n in
+        let reads = rt.nodes.values.sorted(by: { $0.id < $1.id }).filter { n in
             switch n.view {
             case let b as UIButton: return b.configuration?.title == text || b.accessibilityLabel == text
             case let l as UILabel: return l.text == text
             default: return n.view.accessibilityLabel == text
             }
         }
+        return reads.first { shown($0.view) } ?? reads.first
     }
 
     static func tap(_ text: String) {
