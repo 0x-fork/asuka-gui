@@ -25,6 +25,7 @@ extern const ak_lib_entry ak_std_crash[];
 extern const ak_lib_entry ak_std_update[];
 extern const ak_lib_entry ak_std_markdown[];
 extern const ak_lib_entry ak_std_os[];
+extern const ak_lib_entry ak_std_flag[];
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];

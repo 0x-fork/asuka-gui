@@ -654,3 +654,14 @@ const ak_lib_entry ak_std_os[] = {
 	{"os.runMain", run_main_fn},
 	{NULL, NULL},
 };
+
+// ---- asuka/flag ----
+
+// flag.spec<T>() -> string: what the compiler wrote of T (lang/ir/flag.go),
+// passed as the call's last argument.
+static ak_val flag_spec_fn(ak_val *args, uint32_t n) { return (ak_val){.p = ak_retain(args[n - 1].p)}; }
+
+const ak_lib_entry ak_std_flag[] = {
+	{"flag.spec", flag_spec_fn},
+	{NULL, NULL},
+};

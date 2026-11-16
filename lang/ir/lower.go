@@ -49,6 +49,9 @@ type Options struct {
 	// shows for this run (asuka dev's --lang and --dir): the init says so
 	// first (i18n.force), so that every platform's player follows.
 	Lang, Direction string
+	// Version is the project's (asuka.toml's version): asuka/flag's
+	// --version.
+	Version string
 }
 
 // Lower lowers prog (checked without errors) to a program.

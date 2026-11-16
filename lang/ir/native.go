@@ -196,6 +196,11 @@ func (b *fb) nativeBody(f *check.Function, params []int) {
 	// A generic one gets each type argument's descriptor after its
 	// parameters (core/src/rt/json.h's; "-" for what JSON can't say).
 	for _, tp := range f.TypeParams {
+		if f.Pkg.Path == "asuka/flag" && f.Name() == "spec" {
+			// What flag.parse knows of T (flag.go).
+			args = append(args, b.flagSpecArg(b.typ(tp)))
+			continue
+		}
 		args = append(args, b.kstr(b.l.desc(b.typ(tp))))
 	}
 	k := b.f.Ret

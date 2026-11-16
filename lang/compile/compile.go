@@ -339,7 +339,11 @@ func (l *loader) compile(root *unit) *Result {
 		res.Diags = append(res.Diags, check.Diagnostic{Pos: pos, End: pos, Msg: err.Error()})
 		return res
 	}
-	p, diags := ir.Lower(prog, &ir.Options{Lang: l.opts.Lang, Direction: l.opts.Direction, Accent: accent, AccentFlags: accentFlags})
+	vdir := root.dir
+	if l.opts.Project != "" {
+		vdir = l.opts.Project
+	}
+	p, diags := ir.Lower(prog, &ir.Options{Version: projectVersion(vdir), Lang: l.opts.Lang, Direction: l.opts.Direction, Accent: accent, AccentFlags: accentFlags})
 	res.Diags = append(res.Diags, diags...)
 	if len(res.Diags) > 0 {
 		return res
@@ -397,6 +401,24 @@ func hasExterns(p *check.Package) bool {
 // colors where the system has them). The module's init gives them to the
 // core, which sends them to the host as the app mounts, so asuka dev's
 // player shows each app's.
+// projectVersion is asuka.toml's version in dir ("" for none).
+func projectVersion(dir string) string {
+	if dir == "" || strings.HasPrefix(dir, "pkg:") {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "asuka.toml"))
+	if err != nil {
+		return ""
+	}
+	var m struct {
+		Version string `json:"version"`
+	}
+	if toml.Unmarshal(b, &m) != nil {
+		return ""
+	}
+	return m.Version
+}
+
 func appAccent(dir string) (uint64, uint8, error) {
 	if dir == "" || strings.HasPrefix(dir, "pkg:") {
 		return 0, 0, nil
