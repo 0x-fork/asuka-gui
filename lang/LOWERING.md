@@ -592,7 +592,8 @@ taking the ref. The rest (core/src/ui/builtins.c has their arguments):
 | `quit()`, `relaunch()` | `ui.quit()`, `ui.relaunch()`: the `Quit` command to the root |
 | `onQuit(e => …)`, `onSecondInstance((args, dir) => …)` (a body's items), the app block's `on quit(e) { }`, `on secondInstance(args, dir) { }` | `ui.on_quit(closure)`, `ui.on_second_instance(closure)`: handlers that go with the current owner; `asuka_quit_request` runs the first with a `QuitEvent` (its `cancel` and `canceled` closures the runtime's), the `SecondInstance` event the second |
 | `navigate(href)`, `navigate(X(…))`, `replace(href)` | `ui.navigate(href, mode)` (0 navigate, 1 push, 2 replace); `X(…)` a routed screen (below): its href |
-| `router.back()`, `router.dismiss()`, `router.canGoBack`, `router.href`, `router.setQuery(q)` | `ui.router_back`, `ui.router_dismiss`, `ui.can_go_back`, `ui.router_href` (followed), `ui.set_query` |
+| `router.back()`, `router.dismiss()`, `router.canGoBack()`, `router.href()`, `router.setQuery(q)` (`router` a package of the universe: check.RouterFuncs) | `ui.router_back`, `ui.router_dismiss`, `ui.can_go_back` and `ui.router_href` (both followed: they read the router's address signal, written as its history changes), `ui.set_query` |
+| `mainWindow()` | `ui.main_window_ref()`: a Ref of the root's view, which window commands take as the main window's (`focus()` on it brings the window forward) |
 
 ## Routes
 

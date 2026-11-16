@@ -36,6 +36,16 @@ type RuntimeFunc struct {
 	Doc    string
 }
 
+// RouterFuncs are router's members (router.back(), router.href()): the
+// router the calling code is in, else the main window's.
+var RouterFuncs = []*RuntimeFunc{
+	{Name: "back", Sig: "() -> bool", Builtin: "ui.router_back", Doc: "goes back as the user's back would, without asking onBack: the newest sheet, else the innermost stack on screen; false with nowhere to go back to"},
+	{Name: "dismiss", Sig: "() -> bool", Builtin: "ui.router_dismiss", Doc: "dismisses the newest sheet; false with none"},
+	{Name: "canGoBack", Tracked: true, Sig: "() -> bool", Builtin: "ui.can_go_back", Doc: "whether back would go somewhere (tracked)"},
+	{Name: "href", Tracked: true, Sig: "() -> string", Builtin: "ui.router_href", Doc: "the address shown (tracked: a binding that reads it follows it)"},
+	{Name: "setQuery", Sig: "(query: string)", Builtin: "ui.set_query", Doc: "changes the shown screen's query, keeping the screen: encoded, a=1&b=2 (url.encodeQuery)"},
+}
+
 // RuntimeFuncs lists them (docs/language.md's "The system").
 var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "share", Sig: "(text: string)", Builtin: "ui.share", Doc: "shows the system's share sheet for a text or a link"},

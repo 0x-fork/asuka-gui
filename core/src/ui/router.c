@@ -1827,6 +1827,7 @@ static void router_finalize(ak_view *e) {
 	rt->started = true;
 	rt->last = snapshot(rt->root);
 	rt->last_href = desc_href(rt->last);
+	ak_signal_write(&rt->href_node);  // what its screens read as they were built
 	if (rt->addressed) ak_view_listen(r->el, AK_EVENT_LOCATION);
 	send(rt, AK_LOCATION_ACTION_REPLACE, 0);
 	ak_with_owner(rt->owner, guard_effect, rt);
@@ -1927,9 +1928,12 @@ bool ak_ui_router_dismiss(void) {
 	return rt && dismiss_sheet(rt);
 }
 
+// ak_ui_can_go_back is read as the address is: a binding that reads it
+// follows each change of the history.
 bool ak_ui_can_go_back(void) {
 	router_t *rt = need("canGoBack");
 	if (!rt) return false;
+	ak_signal_read(&rt->href_node);
 	ndesc *d = snapshot(rt->root);
 	bool ok = back_desc(d);
 	ndesc_free(d);

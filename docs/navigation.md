@@ -1483,6 +1483,14 @@ dismisses it; so does navigating to a screen of the navigator under it.
   sheet's place too), which is disposed; the history doesn't grow.
 - `pop()` goes back in the innermost stack, `dismiss()` dismisses the
   newest sheet.
+- `router.back()` goes back as the user's back would (without asking
+  `onBack`): the newest sheet, else the innermost stack on screen;
+  `router.canGoBack()` says whether it would. `router.dismiss()`
+  dismisses the router's newest sheet.
+- `router.href()` is the address shown, which a binding that reads it
+  follows (a sidebar's selection, a link's state);
+  `router.setQuery("q=go")` changes the shown screen's query, keeping
+  the screen.
 
 A `Button` or a pressable view with an `href` goes there when it's
 pressed (after its `on press`). In a router, a rich text's link to one

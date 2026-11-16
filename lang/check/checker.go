@@ -190,6 +190,13 @@ func (c *Checker) initUniverse() {
 	for _, f := range RuntimeFuncs {
 		c.universe.Insert(&Builtin{object: object{name: f.Name}, ID: BRuntime, Fn: f})
 	}
+	// router: the router's builtins, a package of the universe.
+	rp := &Package{Path: "router", Name: "router"}
+	rp.Scope = NewScope(nil)
+	for _, f := range RouterFuncs {
+		rp.Scope.Insert(&Builtin{object: object{name: f.Name}, ID: BRuntime, Fn: f})
+	}
+	c.universe.Insert(&PkgName{object: object{name: "router"}, Pkg: rp})
 }
 
 // ErrorType is the Error interface.
