@@ -272,7 +272,7 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 	if err := appbuild.MacLib(m, filepath.Join(bundle, "Contents", "Frameworks", coreLibName("darwin"))); err != nil {
 		return err
 	}
-	if err := appbuild.MacHost(filepath.Join(bundle, "Contents", "MacOS", exe), appbuild.HostOptions{Release: true, Verbose: o.verbose, Natives: desktopNatives(app)}); err != nil {
+	if err := appbuild.MacHost(filepath.Join(bundle, "Contents", "MacOS", exe), appbuild.HostOptions{Release: true, Verbose: o.verbose}); err != nil {
 		return err
 	}
 	// The Mac App Store updates its apps.

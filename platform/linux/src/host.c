@@ -206,41 +206,63 @@ void lx_after_core(later_fn fn, void *ctx) {
 	ak_vec_push(&H.later, ((later_t){fn, ctx}));
 }
 
+// ---- Posts: one FIFO ----
+//
+// What any thread posts (lx_post, asuka_desktop_post) and the core's own
+// posts (its post callback: asuka_run_posted) run on the main thread in
+// the order they were posted, from one queue drained by one idle source
+// at a time (asuka_desktop.h: a package's notification posted before its
+// async call answers runs before the answer).
+
 typedef struct {
-	later_fn fn;
+	later_fn fn;  // NULL: the core's (asuka_run_posted)
 	void *ctx;
 } posted;
 
-static gboolean run_one(gpointer data) {
-	posted *p = data;
-	H.depth++;
-	p->fn(p->ctx);
-	H.depth--;
-	drain();
-	free(p);
-	return 0;
+static pthread_mutex_t post_mu = PTHREAD_MUTEX_INITIALIZER;
+static AK_VEC(posted) post_queue;
+static size_t post_head;
+static bool post_scheduled;
+
+static gboolean run_posts(gpointer data) {
+	(void)data;
+	for (;;) {
+		pthread_mutex_lock(&post_mu);
+		if (post_head == post_queue.len) {
+			post_queue.len = 0;
+			post_head = 0;
+			post_scheduled = false;
+			pthread_mutex_unlock(&post_mu);
+			return 0;
+		}
+		posted p = post_queue.data[post_head++];
+		pthread_mutex_unlock(&post_mu);
+		H.depth++;
+		if (p.fn)
+			p.fn(p.ctx);
+		else
+			asuka_run_posted();
+		H.depth--;
+		drain();
+	}
 }
 
-void lx_post(later_fn fn, void *ctx) {
-	posted *p = malloc(sizeof *p);
-	if (!p) abort();
-	p->fn = fn;
-	p->ctx = ctx;
-	g_idle_add_full(0, run_one, p, NULL);  // G_PRIORITY_DEFAULT: thread-safe
+static void enqueue(later_fn fn, void *ctx) {
+	pthread_mutex_lock(&post_mu);
+	ak_vec_push(&post_queue, ((posted){fn, ctx}));
+	bool schedule = !post_scheduled;
+	post_scheduled = true;
+	pthread_mutex_unlock(&post_mu);
+	if (schedule) g_idle_add_full(G_PRIORITY_DEFAULT, run_posts, NULL, NULL);  // thread-safe
 }
+
+// lx_post runs fn(ctx) on the main thread soon, after what's posted
+// before it. Any thread.
+void lx_post(later_fn fn, void *ctx) { enqueue(fn, ctx); }
 
 // ---- The core's callbacks ----
 
-static gboolean run_posted(gpointer data) {
-	(void)data;
-	H.depth++;
-	asuka_run_posted();
-	H.depth--;
-	drain();
-	return 0;
-}
-
-static void cb_post(void) { g_idle_add_full(0, run_posted, NULL, NULL); }
+static void cb_post(void) { enqueue(NULL, NULL); }
 
 static void cb_apply(const uint8_t *buf, size_t len) { lx_apply_batch(buf, len); }
 
@@ -248,7 +270,6 @@ static void cb_measure(uint32_t id, float width, float height, float aw, float a
 	lx_measure_cb(id, width, height, aw, ah, ow, oh);
 }
 
-void lx_native_stub_callbacks(asuka_host_callbacks *cb);
 
 asuka_host_callbacks lx_callbacks(void);
 asuka_host_callbacks lx_callbacks(void) {

@@ -11,6 +11,7 @@ const ak_lib_entry *const ak_std_libs[] = {
 	ak_std_random,
 	ak_std_fs,
 	ak_std_crash,
+	ak_std_update,
 	NULL,
 };
 

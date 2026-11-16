@@ -8,7 +8,7 @@
 
 | | `asuka/storage`（と `asuka/store`） | `asuka/sqlite` で名前だけを指定して開いたデータベース |
 |---|---|---|
-| iOS | UserDefaults | アプリのコンテナ内の Application Support |
+| iOS | UserDefaults | アプリのコンテナー内の Application Support |
 | macOS | UserDefaults | `~/Library/Application Support/<bundle ID>` |
 | Android | SharedPreferences | アプリの files ディレクトリ |
 | Windows | `%LOCALAPPDATA%\<name>` 内の `store.json` | `%LOCALAPPDATA%\<name>` |
@@ -274,11 +274,11 @@ async fn latest() throws -> string {
 }
 ```
 
-ブラウザでは、別のオリジンへのリクエストにはそのオリジンの CORS ヘッダーが必要です。
+ブラウザーでは、別のオリジンへのリクエストにはそのオリジンの CORS ヘッダーが必要です。
 
 ## ファイルの監視：asuka/watch
 
-`watch.path(dir)` はフォルダ（またはファイル）の変更を追います。アプリが表示しているフォルダ、エディタで開いているプロジェクト、別のプログラムが書き込む設定ファイルなどです。その `events` は、変更のバッチが次々に届くストリームです。
+`watch.path(dir)` はフォルダー（またはファイル）の変更を追います。アプリが表示しているフォルダー、エディターで開いているプロジェクト、別のプログラムが書き込む設定ファイルなどです。その `events` は、変更のバッチが次々に届くストリームです。
 
 ```asuka
 import asuka/watch
@@ -305,9 +305,9 @@ component Folder(dir: string) {
 }
 ```
 
-監視は見たファイルの状態を覚えておき、システムが何か変わったと伝えるたびに見直して比較します。イベントはその差分であり、差分を生んだ一つひとつの操作ではありません。何度も続けて書き込まれたファイルは一回の `write`、作られてすぐ消されたファイルは何も起きなかったことになり、同じパスで置き換えられたファイル（エディタやアトミックな保存が行う方法）は `write`、フォルダの中で移動したファイルやフォルダは `oldPath` 付きの `rename` になります。イベントは「ファイルを読み直す合図」として扱ってください。システムが変更を取りこぼしたときは、監視がすべてを見直し、そのバッチは `overflow` から始まります。
+監視は見たファイルの状態を覚えておき、システムが何か変わったと伝えるたびに見直して比較します。イベントはその差分であり、差分を生んだ一つひとつの操作ではありません。何度も続けて書き込まれたファイルは一回の `write`、作られてすぐ消されたファイルは何も起きなかったことになり、同じパスで置き換えられたファイル（エディターやアトミックな保存が行う方法）は `write`、フォルダーの中で移動したファイルやフォルダーは `oldPath` 付きの `rename` になります。イベントは「ファイルを読み直す合図」として扱ってください。システムが変更を取りこぼしたときは、監視がすべてを見直し、そのバッチは `overflow` から始まります。
 
-`ignore` は `.gitignore` の簡単なパターン（`*.log`、`node_modules/`、`/dist`、`src/**/gen`）を受け取ります。`recursive: true` で中のフォルダも監視し、`attributes: true` で権限の変更も報告します。各デスクトップ OS 自身の方法を使います。macOS では FSEvents（一つのストリームでツリー全体を監視）、Linux では inotify（フォルダごとに一つの watch、上限は `fs.inotify.max_user_watches`）、Windows では `ReadDirectoryChangesW` です。スマートフォンと Web には監視の手段がなく、`watch.path` は unsupported エラーを投げます。ループを抜けると（またはコンポーネントがなくなると）監視は止まります。[`examples/files`](../../examples/files) は、リアルタイムに更新されるフォルダの例です。
+`ignore` は `.gitignore` の簡単なパターン（`*.log`、`node_modules/`、`/dist`、`src/**/gen`）を受け取ります。`recursive: true` で中のフォルダーも監視し、`attributes: true` で権限の変更も報告します。各デスクトップ OS 自身の方法を使います。macOS では FSEvents（一つのストリームでツリー全体を監視）、Linux では inotify（フォルダーごとに一つの watch、上限は `fs.inotify.max_user_watches`）、Windows では `ReadDirectoryChangesW` です。スマートフォンと Web には監視の手段がなく、`watch.path` は unsupported エラーを投げます。ループを抜けると（またはコンポーネントがなくなると）監視は止まります。[`examples/files`](../../examples/files) は、リアルタイムに更新されるフォルダーの例です。
 
 ## メインスレッド
 

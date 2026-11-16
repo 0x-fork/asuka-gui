@@ -1,13 +1,13 @@
 # プラグイン
 
-プラグインは、ライブラリを同梱した Go パッケージです。ライブラリは C、Zig、Rust で書かれ、プラットフォームごとにビルド済みで、プラグインの Go のコードから cgo を使わずに呼び出されます。プラグインを使うにはインポートするだけで、CLI がそのライブラリを、どのプラットフォームでもアプリと一緒に配布します。`asuka/sdk/sqlite` もプラグインの一つです（[データ](data.md#レコードsqlite-プラグイン)）。
+プラグインは、ライブラリを同梱した Go パッケージです。ライブラリは C、Zig、Rust で書かれ、プラットフォームごとにビルド済みで、プラグインの Go のコードから cgo を使わずに呼び出されます。プラグインを使うにはインポートするだけで、CLI がそのライブラリを、どのプラットフォームでもアプリと一緒に配布します。`asuka/sqlite` もプラグインの一つです（[データ](data.md#レコードasukasqlite)）。
 
 ## プラグインの使い方
 
 インポートします。
 
 ```go
-import "github.com/egoist/asuka/sdk/sqlite"
+import "github.com/egoist/asuka/sqlite"
 
 db, err := sqlite.Open("notes.db")
 ```

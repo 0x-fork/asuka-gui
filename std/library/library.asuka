@@ -5,10 +5,10 @@
 //
 //   let where = try await library.save(file, collection: .movies, folder: "Downloader", move: true)
 //
-// Through the host (asuka/host): iOS, Android, and the desktops'
+// Through the host (asuka/platform): iOS, Android, and the desktops'
 // Downloads, Pictures, Movies and Music folders.
 
-import asuka/host
+import asuka/platform
 import asuka/json
 
 /// Where a file goes.
@@ -78,6 +78,6 @@ pub async fn save(path: string, collection: Collection = .downloads, name: strin
   let n = if name.isEmpty() { base(path) } else { name }
   let m = if mime.isEmpty() { mimeOf(n) } else { mime }
   let a = Args(path: path, collection: index(collection), name: n, folder: folder, mime: m, move: move)
-  let b = try await host.call("library", "save", json.encode(a).bytes())
+  let b = try await platform.call("library", "save", json.encode(a).bytes())
   return b.string()
 }

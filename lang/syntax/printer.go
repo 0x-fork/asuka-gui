@@ -488,6 +488,9 @@ func (p *printer) funcDecl(d *FuncDecl) {
 	if d.Native.IsValid() {
 		p.write("native ")
 	}
+	if d.Extern.IsValid() {
+		p.write("extern ")
+	}
 	if d.Async.IsValid() {
 		p.write("async ")
 	}
@@ -572,6 +575,9 @@ func (p *printer) node(n Node) {
 		p.block(n.Body)
 	case *StructDecl:
 		p.pub(n.Pub)
+		if n.Extern.IsValid() {
+			p.write("extern ")
+		}
 		p.write("struct " + n.Name.Name)
 		p.typeParams(n.TypeParams)
 		p.conforms(n.Conforms)
@@ -622,6 +628,12 @@ func (p *printer) node(n Node) {
 		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, len(n.Members) == 1, "")
 	case *FuncDecl:
 		p.funcDecl(n)
+	case *ExternTypeDecl:
+		p.pub(n.Pub)
+		p.write("extern type " + n.Name.Name)
+		if n.Release != nil {
+			p.write(" with release " + n.Release.Name)
+		}
 	case *TypeAliasDecl:
 		p.pub(n.Pub)
 		p.write("type " + n.Name.Name)

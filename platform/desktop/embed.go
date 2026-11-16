@@ -6,9 +6,3 @@ package desktop
 
 //go:generate go run gen_words.go
 
-import "embed"
-
-// Sources holds include and src.
-//
-//go:embed include src
-var Sources embed.FS

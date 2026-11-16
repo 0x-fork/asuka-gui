@@ -161,6 +161,8 @@ type Function struct {
 	TypeParams []*TypeParam
 	Recv       *TypeName // a method's type (struct, enum, store, component); nil for a function
 	Ctx        *FuncCtx  // its body's
+	// Extern: an extern fn's C side (nil for the rest).
+	Extern *Extern
 
 	// What the reactive analysis and spawn's check need.
 	readsState bool
@@ -208,7 +210,8 @@ const (
 	StoreType
 	ComponentType
 	AliasType
-	ParamType // a type parameter
+	ParamType  // a type parameter
+	ExternType // extern type T: a pointer C gives (RFC 0008)
 )
 
 // A TypeName is a declared type: a struct, an enum, an interface, a
@@ -239,6 +242,10 @@ type TypeName struct {
 	// NativeIndex is their place among the package's.
 	Native      bool
 	NativeIndex int
+	// Extern: an extern struct (its fields' C types are Field.C).
+	Extern bool
+	// Release: an extern type's with release, nil for none.
+	Release *Function
 	// Stores and components.
 	Comp *Component
 
@@ -285,6 +292,7 @@ type Field struct {
 	Default syntax.Expr
 	Index   int
 	Pos     syntax.Pos
+	C       *CType // an extern struct's field: its C type
 }
 
 // A Case is an enum's case.

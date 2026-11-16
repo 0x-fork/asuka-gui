@@ -958,7 +958,7 @@ ui.OnOpenURL(func(raw string) {
 
 ## 接收其他应用的分享
 
-在 `asuka.toml` 里设置 `shareTarget = true` 后，应用就会出现在其他应用的分享面板里，可以接收文本和链接，比如浏览器或 YouTube 里的“分享”；改成 `[shareTarget]` 表并设置 `types = ["image/*", ...]` 还能接收文件（见[设备](device.md#接收其他应用的分享uionshare)）。`ui.OnShare` 会收到分享过来的内容。和 `OnOpenURL` 一样，启动应用的那次分享会交给第一个处理函数。
+在 `asuka.toml` 里设置 `shareTarget = true` 后，应用就会出现在其他应用的分享面板里，可以接收文本和链接，比如浏览器或 YouTube 里的“分享”；改成 `[shareTarget]` 表并设置 `types = ["image/*", ...]` 还能接收文件（见[设备](device.md#接收其他应用的分享onshare)）。`ui.OnShare` 会收到分享过来的内容。和 `OnOpenURL` 一样，启动应用的那次分享会交给第一个处理函数。
 
 ```go
 ui.OnShare(func(items []ui.SharedItem) {
@@ -970,4 +970,4 @@ ui.OnShare(func(items []ui.SharedItem) {
 
 在 iOS 上，应用会自带一个分享扩展（share extension），它会带着分享的内容打开应用，和 Android 的做法一样：扩展本身不显示任何界面。分享的内容常常是一个标题加一个链接（比如从 Safari 分享时，页面标题作为文本，URL 作为链接）。[`examples/downloader`](../../examples/downloader) 会从中找出那个链接。桌面端和 Web 不能作为分享目标，在这些平台上 `OnShare` 永远不会被调用。
 
-如果想在发起分享的应用上方显示你自己应用的面板，而不打开你的应用，请参阅[设备](device.md#应用自己的分享面板appsharesheet)里的 `app.ShareSheet`。反过来，要从你的应用往外分享，`ui.Share(text)` 会弹出系统的分享面板，`ui.ShareFiles` 则用来分享文件：在 Mac 上是分享菜单，在 Windows 上是系统的分享界面，在 Web 上是浏览器的分享界面。Linux 没有分享面板，这两个函数会把要分享的内容复制到剪贴板，并用一个 toast 告诉用户。
+如果想在发起分享的应用上方显示你自己应用的面板，而不打开你的应用，请参阅[设备](device.md#应用自己的分享面板)里的 `app.ShareSheet`。反过来，要从你的应用往外分享，`ui.Share(text)` 会弹出系统的分享面板，`ui.ShareFiles` 则用来分享文件：在 Mac 上是分享菜单，在 Windows 上是系统的分享界面，在 Web 上是浏览器的分享界面。Linux 没有分享面板，这两个函数会把要分享的内容复制到剪贴板，并用一个 toast 告诉用户。

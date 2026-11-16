@@ -193,29 +193,14 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 }
 
 // linuxRelease builds a release's executable at exe: the C host
-// (platform/linux) with the core and the app compiled in, one executable.
+// (platform/linux) with the core, the native packages' C and the app
+// compiled in, one executable.
 func linuxRelease(app *asukaApp, t cbuild.Target, exe string) error {
 	m, err := app.compile()
 	if err != nil {
 		return err
 	}
-	return appbuild.LinuxExe(t, m, linuxNatives(app), exe)
-}
-
-// linuxNatives are the C sources of the app's native packages' Linux code
-// (a package's linux/*.c, with the glue asuka native generate writes
-// beside them), compiled into its executable.
-func linuxNatives(app *asukaApp) []string {
-	ps, err := appNatives(app)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, p := range ps {
-		files, _ := filepath.Glob(filepath.Join(p.dir, "linux", "*.c"))
-		out = append(out, files...)
-	}
-	return out
+	return appbuild.LinuxExe(t, m, desktopNativeDirs(app), exe)
 }
 
 // linuxPluginLibs is where a Linux build puts its plugins' libraries in

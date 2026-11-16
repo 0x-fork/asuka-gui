@@ -76,16 +76,16 @@ const (
 
 // FuncDef is a function: its code and what the VM needs to run it.
 type FuncDef struct {
-	Name      string
-	File      string
-	NParams   uint16
-	Kinds     []Kind // per register: its kind (refs own their value)
-	CapKinds  []Kind // a closure's captures
-	Ret       Kind   // the result's kind
-	Flags     uint8
-	Code      []uint16
-	Handlers  []Handler
-	Lines     []Line
+	Name     string
+	File     string
+	NParams  uint16
+	Kinds    []Kind // per register: its kind (refs own their value)
+	CapKinds []Kind // a closure's captures
+	Ret      Kind   // the result's kind
+	Flags    uint8
+	Code     []uint16
+	Handlers []Handler
+	Lines    []Line
 }
 
 // Test is a test block.
@@ -106,6 +106,21 @@ type Module struct {
 	Init     uint32 // runs first: module-level state, stores
 	App      int32  // the app's root view function, -1 when none
 	Tests    []Test
+
+	// C is the C the module's extern declarations call (RFC 0008), nil
+	// when it has none. It isn't encoded: the CLI compiles it into the
+	// core's build, which the module's ffi.* builtins are then in.
+	C *C
+}
+
+// C is a module's C: the glue lang/cffi generated for its extern
+// declarations, and the projects whose asuka.toml [c] sections build
+// what it calls.
+type C struct {
+	Glue []byte
+	// Dirs are the directories of the projects (the app, the
+	// dependencies) whose packages declare externs, the app's first.
+	Dirs []string
 }
 
 // String interns s and returns its index.

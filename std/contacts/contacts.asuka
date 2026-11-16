@@ -4,7 +4,7 @@
 //
 //   if let c = try await contacts.pick() { Text("{c.name}, {c.phones.count()} phones") }
 
-import asuka/host
+import asuka/platform
 import asuka/json
 
 /// A phone number or an address, with what it is ("mobile", "work").
@@ -38,7 +38,7 @@ pub enum Access {
   allowed
 }
 
-fn accessOf(b: bytes) -> Access = match host.readU8(b, 0) {
+fn accessOf(b: bytes) -> Access = match platform.readU8(b, 0) {
   1 => .denied
   2 => .limited
   3 => .allowed
@@ -49,7 +49,7 @@ fn notAllowed(e: Error) -> Error = if e.message == "not allowed" { Error("contac
 
 /// Asks the user for access the first time, and answers what they allow.
 pub async fn request() throws -> Access {
-  let b = try await host.call("contacts", "request", bytes())
+  let b = try await platform.call("contacts", "request", bytes())
   if b.isEmpty() {
     return .notAsked
   }
@@ -65,7 +65,7 @@ struct Query {
 /// limit). Without access: "contacts: not allowed".
 pub async fn list(name: string = "", limit: int = 0) throws -> [Contact] {
   do {
-    let b = try await host.call("contacts", "list", json.encode(Query(name: name, limit: limit)).bytes())
+    let b = try await platform.call("contacts", "list", json.encode(Query(name: name, limit: limit)).bytes())
     return try json.decode(b.string())
   } catch e {
     throw notAllowed(e)
@@ -74,7 +74,7 @@ pub async fn list(name: string = "", limit: int = 0) throws -> [Contact] {
 
 /// Shows the system's contact picker: the contact picked, or none.
 pub async fn pick() throws -> Contact? {
-  let b = try await host.call("contacts", "pick", bytes())
+  let b = try await platform.call("contacts", "pick", bytes())
   if b.isEmpty() {
     return none
   }
@@ -85,6 +85,6 @@ pub async fn pick() throws -> Contact? {
 /// Shows the system's new contact form with c filled in: whether the
 /// user saved it.
 pub async fn add(c: Contact) throws -> bool {
-  let b = try await host.call("contacts", "add", json.encode(c).bytes())
-  return host.readU8(b, 0) == 1
+  let b = try await platform.call("contacts", "add", json.encode(c).bytes())
+  return platform.readU8(b, 0) == 1
 }

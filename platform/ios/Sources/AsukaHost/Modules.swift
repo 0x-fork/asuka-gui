@@ -17,18 +17,6 @@ import AuthenticationServices
 import AsukaOps
 #endif
 
-/// The host's own modules (notify, push, crash...), which the standard
-/// library's packages reach through asuka/host (std/host).
-public enum AsukaHostModules {
-    /// Runs module's method with args; reply gets its answer once, on the
-    /// main thread.
-    @MainActor public static func call(_ module: String, _ method: String, _ args: Data, _ reply: @escaping (Result<Data, Error>) -> Void) {
-        AsukaRuntime.shared.callModule(module, method, args) { res in
-            DispatchQueue.main.async { reply(res) }
-        }
-    }
-}
-
 /// A native module's method: the call's bytes, and a reply (once).
 public typealias AsukaModuleMethod = (_ args: Data, _ reply: @escaping (Result<Data, Error>) -> Void) -> Void
 
@@ -76,21 +64,6 @@ struct AsukaModuleError: LocalizedError {
             return
         }
         m(payload, reply)
-    }
-
-    /// Runs a method of one of the host's modules for the standard
-    /// library's packages (std/host's AsukaHostModules): reply gets its
-    /// answer once.
-    func callModule(_ module: String, _ method: String, _ args: Data, _ reply: @escaping (Result<Data, Error>) -> Void) {
-        if !builtinModules {
-            builtinModules = true
-            registerBuiltinModules()
-        }
-        guard let m = modules[module]?[method] else {
-            reply(.failure(AsukaModuleError("unsupported: \(module).\(method) isn't in this app's host")))
-            return
-        }
-        m(args, reply)
     }
 
     // The host's modules: secureStore, browser, photos, device, share.

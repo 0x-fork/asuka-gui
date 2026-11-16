@@ -2,11 +2,12 @@
 // Type prop names it ("<path>#<Name>"); the package registry
 // (asuka_desktop.h) makes its GtkWidget, which is the node's control: its
 // view holds it and keeps it filling it as the core places it. Its props
-// (the Prop op: string name, u8 type, u32 length, the encoded value) go to
-// the package's set; its events come back through asuka_native_emit; it's
-// measured as GTK measures the widget.
+// (the Prop op as it came) go to the package's set; its events come back
+// through the registry (asuka_native_emit); it's measured by its package
+// where the package measures it, else as GTK measures the widget.
 #include "host.h"
 
+#include <math.h>
 #include <stdlib.h>
 
 typedef struct {
@@ -52,27 +53,28 @@ static bool nv_prop(node *n, ak_prop p, const ak_value *val) {
 		}
 		return true;
 	}
-	case AK_PROP_NATIVE_PROP: {
-		if (!v->widget) return true;
-		ak_reader r = {(const uint8_t *)val->s.p, val->s.len, 0, false};
-		uint32_t nl;
-		const uint8_t *name = ak_read_bytes(&r, &nl);
-		ak_read_u8(&r);  // the value's type: its bytes, encoded
-		uint32_t vl;
-		const uint8_t *value = ak_read_bytes(&r, &vl);
-		if (r.err) return true;
-		char *prop = str_dup(ak_strn((const char *)name, nl));
-		asuka_native_view_set(v->kind, v->widget, prop, value, vl);
-		free(prop);
+	case AK_PROP_NATIVE_PROP:
+		if (v->widget) asuka_native_view_prop(v->widget, (const uint8_t *)val->s.p, val->s.len);
 		return true;
-	}
 	default:
 		return false;
 	}
+}
+
+// measure asks the package; one that doesn't measure its widget leaves it
+// to the host's measuring (GTK's).
+static bool nv_measure(node *n, float cw, float ch, float aw, float ah, float *ow, float *oh) {
+	native_view *v = nv_of(n);
+	if (!v || !v->widget) return false;
+	float w = cw == cw ? cw : aw < AK_BIG && aw > -AK_INF ? aw : NAN;
+	float h = ch == ch ? ch : NAN;
+	(void)ah;
+	return asuka_native_view_measure(v->widget, w, h, ow, oh);
 }
 
 const area lx_area_native = {
 	.name = "native",
 	.create = nv_create,
 	.prop = nv_prop,
+	.measure = nv_measure,
 };

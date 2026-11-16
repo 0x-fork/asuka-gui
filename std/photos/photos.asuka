@@ -8,7 +8,7 @@
 //     let thumb = try await photos.thumbnail(assets[0].id, size: 300)
 //   }
 
-import asuka/host
+import asuka/platform
 import asuka/json
 
 /// What the user has allowed.
@@ -45,15 +45,15 @@ pub struct File {
 }
 
 /// What the user has allowed, without asking.
-pub async fn current() throws -> Access = accessOf((try await host.call("photoLibrary", "current", bytes())).string())
+pub async fn current() throws -> Access = accessOf((try await platform.call("photoLibrary", "current", bytes())).string())
 
 /// Asks the user the first time, and answers what they've allowed.
-pub async fn request() throws -> Access = accessOf((try await host.call("photoLibrary", "request", bytes())).string())
+pub async fn request() throws -> Access = accessOf((try await platform.call("photoLibrary", "request", bytes())).string())
 
 /// Lets a user who allowed only some photos change which; it returns
 /// once that's closed: list again.
 pub async fn manageLimited() throws {
-  let _ = try await host.call("photoLibrary", "manage", bytes())
+  let _ = try await platform.call("photoLibrary", "manage", bytes())
 }
 
 struct Query {
@@ -66,7 +66,7 @@ struct Query {
 /// keeps only those.
 pub async fn list(screenshots: bool = false, offset: int = 0, limit: int = 100) throws -> [Asset] {
   let q = Query(screenshots: screenshots, offset: offset, limit: if limit <= 0 { 100 } else { limit })
-  let b = try await host.call("photoLibrary", "list", json.encode(q).bytes())
+  let b = try await platform.call("photoLibrary", "list", json.encode(q).bytes())
   return try json.decode(b.string())
 }
 
@@ -78,13 +78,13 @@ struct Thumb {
 /// A JPEG file of the photo, at least size pixels on its short side,
 /// kept in the app's caches.
 pub async fn thumbnail(id: string, size: int = 300) throws -> string {
-  let b = try await host.call("photoLibrary", "thumbnail", json.encode(Thumb(id: id, size: size)).bytes())
+  let b = try await platform.call("photoLibrary", "thumbnail", json.encode(Thumb(id: id, size: size)).bytes())
   return b.string()
 }
 
 /// Copies the photo's full image as it is in the library (HEIC, JPEG,
 /// PNG) to a file; an iCloud photo downloads first.
 pub async fn export(id: string) throws -> File {
-  let b = try await host.call("photoLibrary", "export", json.encode(["id": id]).bytes())
+  let b = try await platform.call("photoLibrary", "export", json.encode(["id": id]).bytes())
   return try json.decode(b.string())
 }

@@ -1,0 +1,318 @@
+// The feed: versions and channels (internal/update's Compare, Channel,
+// OnChannel), the manifest `asuka build` writes, and where it's read
+// from: a static HTTPS location, GitHub's releases (internal/update's
+// github.go), or the app's own server.
+
+import asuka/json
+import asuka/url
+
+/// A version's manifest, as `asuka build` writes it beside its archive
+/// (update-<target>.json, or update-<target>-<channel>.json for a
+/// prerelease), and as a server of the app's own answers.
+pub struct Manifest {
+  version: string = ""
+  /// The release notes, in Markdown.
+  notes: string = ""
+  /// When it was built, in RFC 3339.
+  date: string = ""
+  /// The archive: its URL, size, and the Ed25519 signature (base64) of
+  /// its SHA-256.
+  url: string = ""
+  size: int = 0
+  signature: string = ""
+  /// Smaller downloads, from earlier versions.
+  deltas: [ManifestDelta] = []
+  /// The archives of the versions before, newest first (what the next
+  /// build makes its deltas from).
+  previous: [ManifestArchive] = []
+
+  /// The delta from version from, if the manifest has one.
+  fn deltaFrom(from: string) -> ManifestDelta? = deltas.find(d => d.from == from)
+}
+
+/// A delta from version from, signed as the archive is.
+pub struct ManifestDelta {
+  from: string = ""
+  url: string = ""
+  size: int = 0
+  signature: string = ""
+}
+
+/// An earlier version's archive.
+pub struct ManifestArchive {
+  version: string = ""
+  url: string = ""
+  size: int = 0
+  signature: string = ""
+}
+
+// ---- Versions ----
+
+fn cut(s: string, sep: string) -> (string, string, bool) {
+  if let i = s.find(sep) {
+    return (s.byteSlice(0, i), s.byteSlice(i + sep.byteCount(), s.byteCount()), true)
+  }
+  return (s, "", false)
+}
+
+fn isDigits(s: string) -> bool {
+  if s.isEmpty() { return false }
+  for c in s.chars() {
+    if c < "0" || c > "9" { return false }
+  }
+  return true
+}
+
+fn isLetter(c: string) -> bool = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z")
+
+/// Compares versions as semantic versioning orders them: -1 when a is
+/// older than b, 0 when they're the same, 1 when a is newer. 1.10.0 is
+/// newer than 1.9.2, 1.4.0-beta.2 older than 1.4.0-beta.10, and a
+/// prerelease older than its release; a "v" before and build metadata
+/// (+42) don't count.
+pub fn compareVersions(a: string, b: string) -> int {
+  let (av, _, _) = cut(a.trimPrefix("v"), "+")
+  let (bv, _, _) = cut(b.trimPrefix("v"), "+")
+  let (ar, apre, _) = cut(av, "-")
+  let (br, bpre, _) = cut(bv, "-")
+  let c = compareFields(ar, br)
+  if c != 0 { return c }
+  if apre == bpre { return 0 }
+  if apre.isEmpty() { return 1 }
+  if bpre.isEmpty() { return -1 }
+  return compareFields(apre, bpre)
+}
+
+fn compareFields(a: string, b: string) -> int {
+  let af = a.split(".")
+  let bf = b.split(".")
+  var i = 0
+  while i < af.count() || i < bf.count() {
+    let x = af.get(i) ?? ""
+    let y = bf.get(i) ?? ""
+    i += 1
+    if x == y { continue }
+    if x.isEmpty() { return -1 }
+    if y.isEmpty() { return 1 }
+    let xn = if isDigits(x) { x.toInt() } else { none }
+    let yn = if isDigits(y) { y.toInt() } else { none }
+    if let p = xn {
+      if let q = yn {
+        if p < q { return -1 }
+        if p > q { return 1 }
+        continue
+      }
+      return -1 // numbers sort before words
+    }
+    if yn.isSome() { return 1 }
+    return if x < y { -1 } else { 1 }
+  }
+  return 0
+}
+
+/// Whether v is a version compareVersions orders: numbers separated by
+/// dots (1.2, 1.2.3), then a prerelease and build metadata if any
+/// (1.3.0-beta.1+42).
+pub fn validVersion(v: string) -> bool {
+  let (rest, build, hasBuild) = cut(v.trimPrefix("v"), "+")
+  if hasBuild && !validIdents(build) { return false }
+  let (core, pre, hasPre) = cut(rest, "-")
+  if hasPre && !validIdents(pre) { return false }
+  return core.split(".").all(f => isDigits(f))
+}
+
+fn validIdents(s: string) -> bool = s.split(".").all(f => !f.isEmpty() && f.chars().all(c => isLetter(c) || (c >= "0" && c <= "9") || c == "-"))
+
+/// A version's channel: "" for a release, else the letters its
+/// prerelease starts with, lower case ("beta" for 1.3.0-beta.2, "rc" for
+/// 2.0.0-rc.1; "pre" for a prerelease of digits, 1.3.0-1).
+pub fn channelOf(version: string) -> string {
+  let (v, _, _) = cut(version.trimPrefix("v"), "+")
+  let (_, pre, ok) = cut(v, "-")
+  if !ok { return "" }
+  var letters = ""
+  for c in pre.chars() {
+    if !isLetter(c) { break }
+    letters += c
+  }
+  if letters.isEmpty() { return "pre" }
+  return letters.lower()
+}
+
+/// Whether an app following channel takes version: a release always, a
+/// prerelease when it's of that channel; "*" takes every prerelease.
+pub fn onChannel(version: string, channel: string) -> bool {
+  let c = channelOf(version)
+  return c.isEmpty() || channel == "*" || c == channel
+}
+
+/// The manifest's name of target on channel: update-<target>.json for
+/// releases, update-<target>-<channel>.json for a channel's newest
+/// prerelease.
+pub fn manifestName(target: string, channel: string) -> string {
+  if channel.isEmpty() { return "update-{target}.json" }
+  return "update-{target}-{channel}.json"
+}
+
+// ---- GitHub's releases ----
+
+// The GitHub API, and how many pages of releases a check reads at most.
+let gitHubAPI = "https://api.github.com"
+let releasesPerPage = 100
+let maxReleasePages = 10
+let versionPlaceholder = "\{version}"
+
+struct GitHubRelease {
+  tag_name: string = ""
+  draft: bool = false
+  prerelease: bool = false
+}
+
+// A feed of GitHub releases: its repository, the tag prefix, and the
+// manifest's name; none for another feed.
+struct GitHubFeed {
+  repo: string
+  prefix: string
+  name: string
+  tagged: bool
+}
+
+fn gitHubFeed(feed: string) -> GitHubFeed? {
+  if !feed.hasPrefix("https://github.com/") { return none }
+  let parts = feed.trimPrefix("https://github.com/").split("/", count: 6)
+  if parts.count() != 6 || parts[2] != "releases" { return none }
+  let name = url.pathUnescape(parts[5]) ?? ""
+  if name.isEmpty() { return none }
+  let repo = "{parts[0]}/{parts[1]}"
+  if parts[3] == "latest" && parts[4] == "download" {
+    return GitHubFeed(repo: repo, prefix: "v", name: name, tagged: false)
+  }
+  if parts[3] == "download" && parts[4].hasSuffix(versionPlaceholder) {
+    if let prefix = url.pathUnescape(parts[4].trimSuffix(versionPlaceholder)) {
+      return GitHubFeed(repo: repo, prefix: prefix, name: name, tagged: true)
+    }
+  }
+  return none
+}
+
+fn releasesURL(repo: string, page: int) -> string = "{gitHubAPI}/repos/{repo}/releases?per_page={releasesPerPage}&page={page}"
+
+// gitHubManifestURL is the manifest's URL that a feed of GitHub releases
+// names for channel: the latest release's ("" channel, the latest
+// release's feed), the newest release tagged with the prefix that isn't
+// a draft or a prerelease (a tagged feed), or with a channel the release
+// of the highest version among those tagged that are releases or
+// prereleases on the channel, its channel's manifest for a prerelease.
+async fn gitHubManifestURL(g: GitHubFeed, feed: string, channel: string) throws -> string {
+  if channel.isEmpty() && !g.tagged { return feed }
+  var best = ""
+  var bestVersion = ""
+  var page = 1
+  while page <= maxReleasePages {
+    let text = try await fetchText(releasesURL(g.repo, page))
+    var releases: [GitHubRelease] = []
+    do {
+      releases = try json.decode<[GitHubRelease]>(text)
+    } catch e {
+      throw UpdateError.failed(reason: "reading the releases of {g.repo}: {e.message}")
+    }
+    page += 1
+    if channel.isEmpty() {
+      // The newest tagged release, as the API lists them, newest first.
+      if let r = releases.find(r => !r.draft && !r.prerelease && r.tag_name.hasPrefix(g.prefix)) {
+        best = r.tag_name
+        break
+      }
+    } else {
+      // Read up to the page with the newest release that isn't a
+      // prerelease: what's listed after it isn't newer.
+      var stable = false
+      for r in releases {
+        let v = r.tag_name.trimPrefix(g.prefix)
+        if r.draft || !r.tag_name.hasPrefix(g.prefix) || v.isEmpty() || !isDigits(v.slice(0, 1)) || (r.prerelease && !onChannel(v, channel)) {
+          continue
+        }
+        if !r.prerelease { stable = true }
+        if best.isEmpty() || compareVersions(v, bestVersion) > 0 {
+          best = r.tag_name
+          bestVersion = v
+        }
+      }
+      if stable { break }
+    }
+    if releases.count() < releasesPerPage { break }
+  }
+  if best.isEmpty() {
+    throw UpdateError.failed(reason: "no release is published in {g.repo} tagged {g.prefix}")
+  }
+  var name = g.name
+  let c = channelOf(best.trimPrefix(g.prefix))
+  if !c.isEmpty() && name.hasPrefix("update-") && name.hasSuffix(".json") {
+    name = manifestName(name.trimPrefix("update-").trimSuffix(".json"), c)
+  }
+  return "https://github.com/{g.repo}/releases/download/{url.pathEscape(best)}/{url.pathEscape(name)}"
+}
+
+// ---- Reading the feed ----
+
+/// The feed the app reads instead of the one `asuka build` built in
+/// (setFeed), and the channel it follows.
+state feedOverride = ""
+state followed = ""
+
+/// Reads updates from feed instead of asuka.toml's: a manifest's URL, a
+/// feed of GitHub releases, or a server of the app's own, its URL with
+/// {target}, {version} (the running one) and {channel}, which answers a
+/// manifest or 204 when there's nothing newer. The archives are checked
+/// as the feed's are: one that isn't signed with the app's key is never
+/// installed. "" goes back to asuka.toml's. It lasts while the app runs.
+pub fn setFeed(feed: string) { feedOverride = feed }
+
+/// Offers the prereleases of channel too, for users who chose an app's
+/// beta: "beta" takes 1.4.0-beta.2, "*" every prerelease, "" releases
+/// only (the default). Releases are offered on every channel, so an app
+/// on a beta takes the release that follows it, and leaving a channel
+/// installs no older version. It lasts while the app runs: keep the
+/// user's choice and set it at launch.
+pub fn setChannel(name: string) { followed = name }
+
+/// The channel setChannel set.
+pub fn channel() -> string = followed
+
+fn hasPlaceholders(feed: string) -> bool = feed.contains("\{target}") || feed.contains("\{version}") || feed.contains("\{channel}")
+
+// manifestText reads the manifest of the app's target on channel from
+// feed with get (none: nothing newer, a server's 204), and returns its
+// JSON.
+async fn manifestText(feed: string, target: string, version: string, channel: string) throws -> string? {
+  if let g = gitHubFeed(feed) {
+    return try await fetchText(try await gitHubManifestURL(g, feed, channel))
+  }
+  if hasPlaceholders(feed) {
+    let u = feed.replace("\{target}", url.escape(target)).replace("\{version}", url.escape(version)).replace("\{channel}", url.escape(channel))
+    return try await fetchTextOrNone(u)
+  }
+  if feed.contains(versionPlaceholder) {
+    throw UpdateError.failed(reason: "{feed} is not a feed of GitHub releases")
+  }
+  if channel.isEmpty() || channel == "*" {
+    return try await fetchText(feed)
+  }
+  // The release's manifest and the channel's: the newer.
+  let releaseText = try await fetchText(feed)
+  let release = try decodeManifest(releaseText, feed)
+  let channelURL = "{feed.trimSuffix(".json")}-{channel}.json"
+  if let text = try await fetchTextOrNone(channelURL) {
+    let pre = try decodeManifest(text, channelURL)
+    if compareVersions(pre.version, release.version) > 0 { return text }
+  }
+  return releaseText
+}
+
+fn decodeManifest(text: string, from: string) throws -> Manifest {
+  do {
+    return try json.decode<Manifest>(text)
+  } catch e {
+    throw UpdateError.failed(reason: "reading {from}: {e.message}")
+  }
+}

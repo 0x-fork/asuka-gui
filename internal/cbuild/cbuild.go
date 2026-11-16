@@ -139,6 +139,16 @@ func Includes(core string) []string {
 // each is written under a name of its own then renamed into place, so
 // builds running at once share the cache safely.
 func (c Compiler) Compile(srcs []string, out string, extra []string) ([]string, error) {
+	return c.compile(srcs, out, append(append([]string{}, Flags...), extra...))
+}
+
+// CompileWith is Compile with flags alone, not the core's: C that isn't
+// the core's (an app's [c] sources), whose warnings are its own.
+func (c Compiler) CompileWith(srcs []string, out string, flags []string) ([]string, error) {
+	return c.compile(srcs, out, flags)
+}
+
+func (c Compiler) compile(srcs []string, out string, flags []string) ([]string, error) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return nil, err
 	}
@@ -158,7 +168,7 @@ func (c Compiler) Compile(srcs []string, out string, extra []string) ([]string, 
 				return
 			}
 			tmp := tmpName(objs[i])
-			args := append(append(append([]string{}, c.Args...), Flags...), extra...)
+			args := append(append([]string{}, c.Args...), flags...)
 			args = append(args, "-c", src, "-o", tmp)
 			if errs[i] = c.run(args); errs[i] == nil {
 				errs[i] = os.Rename(tmp, objs[i])
@@ -209,6 +219,25 @@ func Runner(core string, sanitize bool) (string, error) { return RunnerWith(core
 // doesn't grow with each. With no extra sources (dir ""), the runner
 // itself is cached.
 func RunnerWith(core string, extra []string, sanitize bool, dir string) (string, error) {
+	return RunnerFor(core, RunnerOptions{Extra: extra, Sanitize: sanitize, Dir: dir})
+}
+
+// RunnerOptions say what asuka-run is built with.
+type RunnerOptions struct {
+	Extra    []string // more of the core's C: an app compiled to C
+	Foreign  *Foreign // the C an app's externs call
+	Sanitize bool     // ASan and UBSan (tests)
+	// Dir is the caller's directory (it removes it) the runner is linked
+	// into when it has Extra or Foreign sources, which differ from run to
+	// run; the glue and Extra are compiled there too. Foreign's units are
+	// cached by their sources: a library's C isn't compiled again for
+	// each run.
+	Dir string
+}
+
+// RunnerFor is Runner built as o says.
+func RunnerFor(core string, o RunnerOptions) (string, error) {
+	extra, sanitize, dir, f := o.Extra, o.Sanitize, o.Dir, o.Foreign
 	cc, err := Find()
 	if err != nil {
 		return "", err
@@ -224,11 +253,19 @@ func RunnerWith(core string, extra []string, sanitize bool, dir string) (string,
 	if runtime.GOOS == "linux" {
 		link = append(link, "-lpthread", "-ldl")
 	}
+	var opt []string // what the app's own C gets of the core's flags too
 	if sanitize && runtime.GOOS != "windows" {
-		flags = append(flags, "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer", "-DAK_TEST=1")
+		opt = []string{"-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer"}
+		flags = append(append(flags, opt...), "-DAK_TEST=1")
 		link = append(link, "-fsanitize=address,undefined")
 	} else {
+		opt = []string{"-O2"}
 		flags = append(flags, "-O2")
+	}
+	if f != nil {
+		// The glue is compiled in: the core registers it (vm/init.c).
+		flags = append(flags, "-DAK_FFI=1")
+		link = append(link, f.Link...)
 	}
 	h := sha256.New()
 	fmt.Fprintln(h, cc.Path, cc.Args, flags, link)
@@ -248,7 +285,8 @@ func RunnerWith(core string, extra []string, sanitize bool, dir string) (string,
 		name += ".exe"
 	}
 	exe := filepath.Join(cached, name)
-	if len(extra) == 0 {
+	own := len(extra) > 0 || f != nil
+	if !own {
 		if _, err := os.Stat(exe); err == nil {
 			return exe, nil
 		}
@@ -257,16 +295,28 @@ func RunnerWith(core string, extra []string, sanitize bool, dir string) (string,
 	if err != nil {
 		return "", err
 	}
-	if len(extra) > 0 {
+	if own {
 		if dir == "" {
 			return "", fmt.Errorf("cbuild: a runner with extra sources needs a directory of the caller's")
 		}
-		more, err := cc.Compile(extra, filepath.Join(dir, "obj"), flags)
+		mine := append([]string{}, extra...)
+		if f != nil {
+			mine = append(mine, f.Glue)
+		}
+		more, err := cc.Compile(mine, filepath.Join(dir, "obj"), flags)
 		if err != nil {
 			return "", err
 		}
+		objs = append(objs, more...)
+		if f != nil {
+			units, err := f.cachedUnits(cc, append(append([]string{"-g"}, opt...), "-I"+filepath.Join(core, "include")))
+			if err != nil {
+				return "", err
+			}
+			objs = append(objs, units...)
+		}
 		exe = filepath.Join(dir, name)
-		return exe, cc.Link(append(objs, more...), exe, link)
+		return exe, cc.Link(objs, exe, link)
 	}
 	tmp := tmpName(exe)
 	if err := cc.Link(objs, tmp, link); err != nil {
@@ -296,7 +346,8 @@ func cacheDir(name string) string {
 
 var pruneOnce sync.Once
 
-// prune removes root's build directories (core-, app-, runner-) last
+// prune removes root's build directories (core-, app-, runner-, exe-,
+// and an app's C: ffi-, c-) last
 // used before cutoff.
 func prune(root string, cutoff time.Time) {
 	entries, err := os.ReadDir(root)
@@ -305,7 +356,8 @@ func prune(root string, cutoff time.Time) {
 	}
 	for _, e := range entries {
 		n := e.Name()
-		if !e.IsDir() || !(strings.HasPrefix(n, "core-") || strings.HasPrefix(n, "app-") || strings.HasPrefix(n, "runner-")) {
+		if !e.IsDir() || !(strings.HasPrefix(n, "core-") || strings.HasPrefix(n, "app-") || strings.HasPrefix(n, "runner-") ||
+			strings.HasPrefix(n, "exe-") || strings.HasPrefix(n, "ffi-") || strings.HasPrefix(n, "c-")) {
 			continue
 		}
 		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
@@ -336,4 +388,55 @@ func headers(core string) ([]string, error) {
 	})
 	sort.Strings(out)
 	return out, err
+}
+
+// Exe builds an executable of the core (core/src, without the fake host)
+// and extra C sources (a host, the native registry, packages' C, an app
+// compiled to C) for this computer, into dir (the caller's), and returns
+// its path: the core's objects come from the cache, the extra ones are
+// compiled into dir with extraFlags (their include directories). link is
+// what the executable links with besides the C library. sanitize builds
+// it with ASan and UBSan (tests).
+func Exe(core string, extra, extraFlags, link []string, sanitize bool, dir, name string) (string, error) {
+	cc, err := Find()
+	if err != nil {
+		return "", err
+	}
+	srcs, err := Sources(core, false)
+	if err != nil {
+		return "", err
+	}
+	flags := append(Includes(core), "-g", "-O1")
+	ldflags := append([]string{"-lm"}, link...)
+	if runtime.GOOS == "linux" {
+		ldflags = append(ldflags, "-lpthread", "-ldl")
+	}
+	if sanitize && runtime.GOOS != "windows" {
+		flags = append(flags, "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer", "-DAK_TEST=1")
+		ldflags = append(ldflags, "-fsanitize=address,undefined")
+	}
+	h := sha256.New()
+	fmt.Fprintln(h, cc.Path, cc.Args, flags)
+	hdrs, _ := headers(core)
+	for _, f := range append(append([]string{}, srcs...), hdrs...) {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintln(h, f, len(b))
+		h.Write(b)
+	}
+	objs, err := cc.Compile(srcs, filepath.Join(cacheDir("exe-"+hex.EncodeToString(h.Sum(nil))[:16]), "obj"), flags)
+	if err != nil {
+		return "", err
+	}
+	more, err := cc.Compile(extra, filepath.Join(dir, "obj"), append(append([]string{}, flags...), extraFlags...))
+	if err != nil {
+		return "", err
+	}
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	exe := filepath.Join(dir, name)
+	return exe, cc.Link(append(objs, more...), exe, ldflags)
 }

@@ -81,6 +81,15 @@ func (s *Server) Players() int {
 
 // Send sends a build's bytecode to every player, and to every player
 // that connects from now on.
+// Keep makes module the one players that connect from now on get,
+// sending it to none connected (players built for another: asuka dev
+// builds new ones, which load it).
+func (s *Server) Keep(module []byte) {
+	s.mu.Lock()
+	s.module = module
+	s.mu.Unlock()
+}
+
 func (s *Server) Send(module []byte) {
 	s.mu.Lock()
 	s.module = module

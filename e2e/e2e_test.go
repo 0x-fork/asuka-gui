@@ -546,7 +546,7 @@ func webServer(t *testing.T, example string) string {
 	if b, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building the CLI: %v\n%s", err, b)
 	}
-	dev := exec.Command(cli, "dev", "--platform", "web", "--no-open", "--no-vet", "--port", fmt.Sprint(port), appDir(example))
+	dev := exec.Command(cli, "dev", "--platform", "web", "--no-open", "--port", fmt.Sprint(port), appDir(example))
 	dev.Dir = root(t)
 	out, _ := dev.StdoutPipe()
 	var logs strings.Builder
@@ -788,7 +788,7 @@ func (b *syncBuffer) String() string {
 }
 
 func (s *linuxScreen) start() {
-	c := exec.Command(s.cli, "dev", "--platform", "linux", "--once", "--no-vet", appDir(s.app))
+	c := exec.Command(s.cli, "dev", "--platform", "linux", "--once", appDir(s.app))
 	c.Dir = root(s.t)
 	c.Env = append(os.Environ(), "ASUKA_COMMANDS="+s.dir)
 	c.Stdout, c.Stderr = &s.logs, &s.logs

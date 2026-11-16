@@ -152,7 +152,7 @@ func devFlags(o *devOptions) *flagSet {
 	fs.Bool(&o.noOpen, "no-open", 0, "web: don't open the page in the browser")
 	fs.String(&o.device, "device", 'd', "", "iOS: a simulator's or a connected iPhone's or iPad's name or UDID, or iphone for the one connected (default: the booted simulator, else the newest iPhone simulator); Android: adb serial or AVD name")
 	fs.String(&o.team, "team", 0, "", "iOS, on a device: the Apple Developer `team` ID that signs the player and the app (default: ASUKA_TEAM_ID, asuka.toml's ios.team, else the keychain's one Apple Development team)")
-	fs.Bool(&o.once, "once", 0, "launch the app once, without watching for changes")
+	fs.Bool(&o.once, "once", 0, "build and launch the app, and return once it runs (it keeps running), without watching for changes")
 	fs.String(&o.lang, "lang", 0, "", "show this `language` for this run, as de or zh-Hans, or a pseudo locale: en-XA (accented, a third longer) or ar-XB (right to left)")
 	fs.String(&o.dir, "dir", 0, "", "lay the app out in this `direction` for this run, rtl or ltr, whatever its language")
 	fs.Bool(&o.verbose, "verbose", 'v', "print the commands asuka runs")

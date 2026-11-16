@@ -102,8 +102,10 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 	if err != nil {
 		return err
 	}
-	if _, err := signWindows(filepath.Join(out, coreLibName("windows")), name, o.verbose); err != nil {
-		return err
+	if lib := filepath.Join(out, coreLibName("windows")); exists(lib) { // none with the C host
+		if _, err := signWindows(lib, name, o.verbose); err != nil {
+			return err
+		}
 	}
 	// The plugins' libraries, beside the .exe (where package plugin finds
 	// them), signed as it is.

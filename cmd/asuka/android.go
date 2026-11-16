@@ -178,7 +178,7 @@ func (t *androidToolchain) buildPlayerLib(app *asukaApp, work, serial string) (l
 		return "", nil, err
 	}
 	lib = filepath.Join(work, "libasuka.so")
-	if err := appbuild.Lib(cbuild.Target{OS: "android", Arch: goarch}, cbuild.Shared, nil, lib); err != nil {
+	if err := appbuild.PlayerLib(cbuild.Target{OS: "android", Arch: goarch}, cbuild.Shared, app.c, lib); err != nil {
 		return "", nil, err
 	}
 	// An earlier build's plugins' libraries go.

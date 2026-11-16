@@ -212,8 +212,8 @@ static void load_lib(void) {
 		if (k > 0) {
 			exe[k] = 0;
 			const char *name = strrchr(exe, '/');
-			snprintf(p, sizeof p, "%s/../lib/%s/libasqlite.so", dir, name ? name + 1 : exe);
-			if (try_lib(p, &tried)) goto done;
+			// A path that doesn't fit isn't tried.
+			if (snprintf(p, sizeof p, "%s/../lib/%s/libasqlite.so", dir, name ? name + 1 : exe) < (int)sizeof p && try_lib(p, &tried)) goto done;
 		}
 #endif
 	}

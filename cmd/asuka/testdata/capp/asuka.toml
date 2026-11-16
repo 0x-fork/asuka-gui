@@ -1,0 +1,28 @@
+name = "capp"
+id = "dev.asuka.capp"
+
+# The C the app's extern declarations call: its own, and the system's
+# zlib where the platform has one (docs/c.md).
+[c]
+sources = ["c/*.c"]
+include = ["c/include"]
+defines = ["CHECKSUM_SEED=7"]
+
+[c.ios]
+libraries = ["z"]
+
+[c.android]
+libraries = ["z"]
+
+[c.macos]
+libraries = ["z"]
+
+[c.linux]
+libraries = ["z"]
+
+# No zlib: the app's own CRC.
+[c.windows]
+defines = ["CHECKSUM_OWN_CRC"]
+
+[c.web]
+defines = ["CHECKSUM_OWN_CRC"]
