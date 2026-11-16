@@ -123,6 +123,7 @@ go test -tags e2e ./e2e -run Web                  # GUI tests: the examples in h
 go run ./cmd/asuka update keygen                  # the key pair that signs desktop apps' updates (asuka.toml's updates)
 go run ./cmd/asuka publish --platform linux examples/counter  # a desktop build and its signed update, uploaded (GitHub, S3)
 go test -tags e2e ./e2e -run Updater               # a desktop app updates itself and relaunches (macOS; Linux under xvfb-run)
+go test ./platform/windows -run Updater           # likewise on Windows (a PC, or the VM; the feed served in Windows)
 ```
 
 ## Conventions
