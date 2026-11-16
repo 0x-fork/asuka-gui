@@ -10,43 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./power.decl.asuka.js";
 import * as impl from "./power.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * How hot the device runs: how much the system slows it to cool it
- * (Apple's thermal state, Android's thermal status).
- */
-export const Thermal = Object.freeze({
-  nominal: 0,
-  fair: 1,
-  serious: 2,
-  critical: 3,
-});
-
-/**
- * Something that happens to the device's power.
- */
-export const Event = Object.freeze({
-  suspend: 0,
-  resume: 1,
-  lock: 2,
-  unlock: 3,
-});
-
-const errorIndex = { idleUnknown: 0 };
-const errorMessage = ["power: the idle time isn't known here"];
-
-/** One of the errors the package declares (native.NewError): throw new PowerError("idleUnknown"). */
-export class PowerError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "PowerError";
-  }
-}
 
 const provider = {
   make(iface) {

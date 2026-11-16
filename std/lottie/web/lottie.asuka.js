@@ -10,28 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./lottie.decl.asuka.js";
 import * as impl from "./lottie.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * How the animation fills the view.
- */
-export const Fit = Object.freeze({
-  contain: 0,
-  cover: 1,
-  stretch: 2,
-  center: 3,
-});
-
-/**
- * What an override changes.
- */
-export const OverrideKind = Object.freeze({
-  color: 0,
-  opacity: 1,
-  strokeWidth: 2,
-});
 
 function viewView(ctx) {
   const events = {

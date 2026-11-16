@@ -10,33 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./biometric.decl.asuka.js";
 import * as impl from "./biometric.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * The biometry a device has.
- */
-export const Kind = Object.freeze({
-  none: 0,
-  fingerprint: 1,
-  face: 2,
-  iris: 3,
-  optic: 4,
-});
-
-const errorIndex = { canceled: 0, notAvailable: 1, failed: 2 };
-const errorMessage = ["biometric: canceled", "biometric: not available", "biometric: not recognized"];
-
-/** One of the errors the package declares (native.NewError): throw new BiometricError("canceled"). */
-export class BiometricError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "BiometricError";
-  }
-}
 
 const provider = {
   make(iface) {

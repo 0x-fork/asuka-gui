@@ -11,27 +11,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./svg.decl.asuka.js";
 import * as impl from "./svg.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * A stroke's ends.
- */
-export const Cap = Object.freeze({
-  butt: 0,
-  round: 1,
-  square: 2,
-});
-
-/**
- * A stroke's corners.
- */
-export const Join = Object.freeze({
-  miter: 0,
-  round: 1,
-  bevel: 2,
-});
 
 function viewView(ctx) {
   const events = {

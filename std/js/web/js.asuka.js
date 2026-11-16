@@ -10,22 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./js.decl.asuka.js";
 import * as impl from "./js.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-const errorIndex = { timeout: 0 };
-const errorMessage = ["js: the script ran out of time"];
-
-/** One of the errors the package declares (native.NewError): throw new JsError("timeout"). */
-export class JsError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "JsError";
-  }
-}
 
 const provider = {
   make(iface) {

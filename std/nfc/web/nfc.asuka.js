@@ -10,42 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./nfc.decl.asuka.js";
 import * as impl from "./nfc.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * What kinds of tags a session looks for.
- */
-export const Technology = Object.freeze({
-  a: 0,
-  b: 1,
-  f: 2,
-  v: 3,
-});
-
-/**
- * Whether a tag holds an NDEF message.
- */
-export const Format = Object.freeze({
-  notNDEF: 0,
-  formatable: 1,
-  readWrite: 2,
-  readOnly: 3,
-});
-
-const errorIndex = { notAvailable: 0, disabled: 1, denied: 2, canceled: 3, timeout: 4, tagLost: 5, readOnly: 6, tooLarge: 7, notSupported: 8, badMessage: 9 };
-const errorMessage = ["nfc: not available", "nfc: turned off", "nfc: not allowed", "nfc: canceled", "nfc: timed out", "nfc: the tag was lost", "nfc: the tag is read-only", "nfc: the message is too large for the tag", "nfc: not supported by the tag", "nfc: not an NDEF message"];
-
-/** One of the errors the package declares (native.NewError): throw new NfcError("notAvailable"). */
-export class NfcError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "NfcError";
-  }
-}
 
 const provider = {
   make(iface) {

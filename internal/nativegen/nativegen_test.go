@@ -39,8 +39,8 @@ func TestKitchen(t *testing.T) {
 	if len(stale) > 0 {
 		t.Fatalf("stale (go test ./internal/nativegen -update): %v", stale)
 	}
-	if len(files) != 4 {
-		t.Errorf("%d files, want Go's, Swift's, Kotlin's and JavaScript's", len(files))
+	if len(files) != 5 {
+		t.Errorf("%d files, want Go's, Swift's, Kotlin's and JavaScript's (its module and its declarations')", len(files))
 	}
 	for _, goos := range []string{"darwin", "windows", "linux", "js"} {
 		c := exec.Command("go", "vet", "./testdata/kitchen")
@@ -148,8 +148,8 @@ func TestPantry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 5 {
-		t.Errorf("%d files, want Swift's, Kotlin's, JavaScript's and the desktop's C (a header and a source; no Go client: Asuka's compiler calls it)", len(files))
+	if len(files) != 6 {
+		t.Errorf("%d files, want Swift's, Kotlin's, JavaScript's (its module and its declarations') and the desktop's C (a header and a source; no Go client: Asuka's compiler calls it)", len(files))
 	}
 	for rel, b := range files {
 		old, _ := os.ReadFile(filepath.Join(p.Dir, rel))
@@ -248,5 +248,67 @@ func TestDocsCExample(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// The generated module exports the declarations' module before it
+// imports the package's own JavaScript, so that JavaScript's imports of
+// an enum or an error are made before it runs; the declarations' module
+// imports nothing.
+func TestJSDeclarationsFirst(t *testing.T) {
+	p, err := LoadAsuka("testdata/pantry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(GenerateJS(p))
+	exp := strings.Index(js, `export * from "./pantry.decl.asuka.js";`)
+	imp := strings.Index(js, `import * as impl from "./pantry.js";`)
+	if exp < 0 || imp < 0 || exp > imp {
+		t.Fatalf("the declarations' export (at %d) isn't before the package's import (at %d):\n%s", exp, imp, js)
+	}
+	decl := string(GenerateJSDecl(p))
+	if strings.Contains(decl, "import ") {
+		t.Errorf("the declarations' module imports:\n%s", decl)
+	}
+	for _, n := range JSExports(p) {
+		if !strings.Contains(decl, "export const "+n+" ") && !strings.Contains(decl, "export class "+n+" ") {
+			t.Errorf("the declarations' module doesn't export %s", n)
+		}
+		if strings.Contains(js, "export const "+n+" ") || strings.Contains(js, "export class "+n+" ") {
+			t.Errorf("the module makes %s itself", n)
+		}
+	}
+}
+
+// A package's JavaScript that imports what the generated module doesn't
+// export (an error class of another spelling) fails generation, with
+// what it exports.
+func TestJSImportsChecked(t *testing.T) {
+	p, err := LoadAsuka("testdata/pantry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "web"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p.Dir = dir
+	have := JSExports(p)
+	if len(have) == 0 {
+		t.Fatal("pantry declares no enums or errors")
+	}
+	ok := "import { " + have[0] + " as First } from \"./pantry.asuka.js\";\nexport function makeShelf() {}\n"
+	os.WriteFile(filepath.Join(dir, "web", "pantry.js"), []byte(ok), 0o644)
+	if err := CheckJSImports(p); err != nil {
+		t.Fatalf("a good import: %v", err)
+	}
+	bad := "import {\n  " + have[0] + ",\n  PantrysError,\n} from './pantry.asuka.js';\n"
+	os.WriteFile(filepath.Join(dir, "web", "pantry.js"), []byte(bad), 0o644)
+	err = CheckJSImports(p)
+	if err == nil || !strings.Contains(err.Error(), "web/pantry.js imports PantrysError from pantry.asuka.js") || !strings.Contains(err.Error(), have[0]) {
+		t.Fatalf("a bad import: %v", err)
+	}
+	if _, err := Files(p); err == nil {
+		t.Fatal("Files took a bad import")
 	}
 }
