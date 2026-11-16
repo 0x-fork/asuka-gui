@@ -22,24 +22,28 @@ fn logLocation(line: string) {
 /// app's start, so the events the system starts the app for find them
 /// before any screen.
 async fn followLocation() {
-  let _ = await all(followUpdates(), followCrossings())
+  await all(followUpdates(), followCrossings())
 }
 
 async fn followUpdates() {
-  for await b in location.updates() {
-    let p = b.positions.last!
-    logLocation("{b.positions.count} positions, the last {p.latitude.fixed(5)}, {p.longitude.fixed(5)} (±{p.accuracy.fixed(0)} m)")
+  do {
+    for await b in location.updates() {
+      let p = b.positions.last()!
+      logLocation("{b.positions.count()} positions, the last {p.latitude.fixed(5)}, {p.longitude.fixed(5)} (±{p.accuracy.fixed(0)} m)")
+    }
+  } catch e {
+    logLocation(e.message)
   }
 }
 
 async fn followCrossings() {
-  for await c in location.crossings() {
-    logLocation("{c.kind} {c.region}")
-    // Showing waits on the system: the app is kept running for it, until
-    // done() says it's shown.
-    let done = c.defer()
-    defer { done() }
-    try? await notify.show(notify.Notification(id: "region", title: "Here", body: "{c.kind}: {c.region}"))
+  do {
+    for await c in location.crossings() {
+      logLocation("{c.kind} {c.region}")
+      try? await notify.show(notify.Notification(id: "region", title: "Here", body: "{c.kind}: {c.region}"))
+    }
+  } catch e {
+    logLocation(e.message)
   }
 }
 
@@ -75,7 +79,7 @@ screen LocationScreen {
         accuracy: .high,
         distance: 20,
         activity: .fitness,
-        defer: 30s,
+        delay: 30s,
         indicator: true,
         notification: location.Notification(title: "Tracking your route", text: "Services follows where you go"),
       )
@@ -143,7 +147,7 @@ screen LocationScreen {
         font: .headline
         margin: Edges(top: 8)
       }
-      Text(if locationLog.value.isEmpty { "Nothing yet." } else { locationLog.value.map(l => "{l}\n").join("") }) { font: .footnote }
+      Text(if locationLog.value.isEmpty() { "Nothing yet." } else { locationLog.value.map(l => "{l}\n").joined("") }) { font: .footnote }
     }
   }
 }
@@ -153,23 +157,20 @@ screen LocationScreen {
 // app out of sight, as the system would start it) lands in the log.
 test "the location screen" {
   locationLog.value = []
-  let app = mount(FollowingLocation { LocationScreen() }, setup: host => {
-    host.location.answer = .always
-    host.location.move(35.6812, 139.7671)
-  })
-  let loc = app.host.location
-  app.expect("Allowed: not asked; precise: false", "Nothing yet.")
+  let loc = location.fake()
+  loc.answer = location.Level.always
+  loc.move(35.6812, 139.7671)
+  let app = mount(FollowingLocation { LocationScreen() })
+  app.expect("Allowed: notAsked; precise: true", "Nothing yet.")
   app.tap("Allow always")
   await app.waitFor("Allowed: always; precise: true")
   app.tap("Watch a region here (150 m)")
   await app.waitFor("Watching 150 m around 35.68120, 139.76710 (system: true, at most 20, relaunch true)")
-  await app.until("the enter in the log", () => locationLog.value.count == 1)
+  await app.until("the enter in the log", () => locationLog.value.count() == 1)
   loc.move(35.70, 139.7671) // 2 km north
-  await app.until("the exit in the log", () => locationLog.value.count == 2)
+  await app.until("the exit in the log", () => locationLog.value.count() == 2)
   let l = locationLog.value
   expect(l[0].hasSuffix("exit here") && l[1].hasSuffix("enter here"), "log {l}")
-  // Done once the notification's shown (defer's work).
-  await app.until("the events done", () => loc.pending == 0)
   app.tap("Stop watching regions")
   await app.waitFor("No regions")
 }

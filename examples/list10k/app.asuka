@@ -15,7 +15,7 @@ let words = ["amber", "basil", "cedar", "delta", "ember", "fjord", "garnet", "ha
 fn makeItems(n: int) -> [Item] = (0..<n).map(i => Item(
   id: i,
   title: "Row {i + 1}",
-  detail: "{words[i % words.count]} {words[i / 10 % words.count]} · {i * 7 % 1000}",
+  detail: "{words[i % words.count()]} {words[i / 10 % words.count()]} · {i * 7 % 1000}",
 ))
 
 component Rows {

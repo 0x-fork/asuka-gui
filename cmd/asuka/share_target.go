@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -72,6 +73,14 @@ func (s *shareTarget) check() error {
 		return fmt.Errorf("max %d (want 1 or more)", s.Max)
 	}
 	return nil
+}
+
+// warnShareSheet says that an app with a share sheet (asuka/sharesheet)
+// needs asuka.toml's shareTarget, without which no app shares with it.
+func warnShareSheet(c *appConfig) {
+	if c.shareSheet && !c.ShareTarget.on {
+		fmt.Fprintln(os.Stderr, "asuka: the app has a share sheet (asuka/sharesheet), but asuka.toml has no shareTarget: no app offers to share with it (shareTarget = true takes texts and links)")
+	}
 }
 
 // textShares is shareTarget: true.

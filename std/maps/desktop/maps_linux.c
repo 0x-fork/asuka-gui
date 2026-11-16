@@ -6,12 +6,10 @@
 // (no libshumate, which the view then says instead of a map). It has no
 // size of its own: its style gives it one.
 //
-// libshumate (and the few GTK functions only the map uses) are resolved
-// here, with dlopen and dlsym, as asuka_linux.h resolves GTK's.
+// libshumate's functions are asuka_linux.def's, as GTK's are.
 #include "asuka_linux.h"
 #include "maps.asuka.h"
 
-#include <dlfcn.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,46 +20,10 @@ typedef struct _GParamSpec GParamSpec;
 static struct {
 	bool tried;
 	char *err;  // why there's no map
-	// libshumate
-	GtkWidget *(*simple_map_new)(void);
-	void (*simple_map_set_map_source)(GtkWidget *m, gpointer source);
-	GtkWidget *(*simple_map_get_map)(GtkWidget *m);
-	gpointer (*simple_map_get_viewport)(GtkWidget *m);
-	void (*simple_map_add_overlay_layer)(GtkWidget *m, GtkWidget *layer);
-	void (*simple_map_set_show_zoom_buttons)(GtkWidget *m, gboolean v);
-	void (*map_center_on)(GtkWidget *m, double lat, double lng);
-	void (*viewport_set_zoom_level)(gpointer vp, double z);
-	void (*viewport_widget_coords_to_location)(gpointer vp, GtkWidget *w, double x, double y, double *lat, double *lng);
-	double (*location_get_latitude)(gpointer loc);
-	double (*location_get_longitude)(gpointer loc);
-	void (*location_set_location)(gpointer loc, double lat, double lng);
-	gpointer (*registry_new_with_defaults)(void);
-	gpointer (*registry_get_by_id)(gpointer reg, const char *id);
-	GtkWidget *(*marker_layer_new)(gpointer vp);
-	void (*marker_layer_add_marker)(GtkWidget *layer, GtkWidget *marker);
-	void (*marker_layer_remove_all)(GtkWidget *layer);
-	GtkWidget *(*marker_new)(void);
-	void (*marker_set_child)(GtkWidget *marker, GtkWidget *child);
-	// GTK
-	GtkWidget *(*label_new)(const char *s);
-	void (*label_set_wrap)(GtkWidget *l, gboolean v);
-	gpointer (*gesture_click_new)(void);
-	void (*widget_add_controller)(GtkWidget *w, gpointer controller);
-	int (*widget_get_width)(GtkWidget *w);
-	int (*widget_get_height)(GtkWidget *w);
-	void (*widget_set_can_target)(GtkWidget *w, gboolean v);
-	void (*widget_set_tooltip_text)(GtkWidget *w, const char *s);
-	GtkWidget *(*image_new_from_icon_name)(const char *name);
-	void (*image_set_pixel_size)(GtkWidget *i, int size);
-	gpointer (*css_provider_new)(void);
-	void (*css_provider_load_from_string)(gpointer p, const char *css);       // GTK 4.12
-	void (*css_provider_load_from_data)(gpointer p, const char *css, gssize n);  // before
-	void (*style_context_add_provider_for_display)(GdkDisplay *d, gpointer p, guint priority);
 } S;
 
-#define BIND(lib, field, name) *(void **)&S.field = dlsym(lib, name)
-
-// shumate loads libshumate, once: false (S.err why) when it isn't there.
+// shumate loads libshumate (asuka_linux.def's SHUMATE functions), once:
+// false (S.err why) when it isn't there.
 static bool shumate(void) {
 	if (S.tried) return !S.err;
 	S.tried = true;
@@ -69,62 +31,22 @@ static bool shumate(void) {
 		S.err = asuka_strdup("maps need GTK 4");
 		return false;
 	}
-	void *gtk = RTLD_DEFAULT;  // libgtk-4, loaded global by asuka_linux()
-	BIND(gtk, label_new, "gtk_label_new");
-	BIND(gtk, label_set_wrap, "gtk_label_set_wrap");
-	BIND(gtk, gesture_click_new, "gtk_gesture_click_new");
-	BIND(gtk, widget_add_controller, "gtk_widget_add_controller");
-	BIND(gtk, widget_get_width, "gtk_widget_get_width");
-	BIND(gtk, widget_get_height, "gtk_widget_get_height");
-	BIND(gtk, widget_set_can_target, "gtk_widget_set_can_target");
-	BIND(gtk, widget_set_tooltip_text, "gtk_widget_set_tooltip_text");
-	BIND(gtk, image_new_from_icon_name, "gtk_image_new_from_icon_name");
-	BIND(gtk, image_set_pixel_size, "gtk_image_set_pixel_size");
-	BIND(gtk, css_provider_new, "gtk_css_provider_new");
-	BIND(gtk, css_provider_load_from_string, "gtk_css_provider_load_from_string");
-	BIND(gtk, css_provider_load_from_data, "gtk_css_provider_load_from_data");
-	BIND(gtk, style_context_add_provider_for_display, "gtk_style_context_add_provider_for_display");
-	void *lib = dlopen("libshumate-1.0.so.1", RTLD_NOW);
-	if (!lib) lib = dlopen("libshumate-1.0.so", RTLD_NOW);
-	if (!lib) {
-		const char *why = dlerror();
-		S.err = asuka_sprintf("maps need libshumate (libshumate-1.0-1): %s", why ? why : "not found");
+	if (!asuka_linux_load(ASUKA_LIB_SHUMATE)) {
+		S.err = asuka_sprintf("maps need libshumate (libshumate-1.0-1): %s isn't installed", asuka_linux_soname(ASUKA_LIB_SHUMATE));
 		return false;
 	}
-	BIND(lib, simple_map_new, "shumate_simple_map_new");
-	BIND(lib, simple_map_set_map_source, "shumate_simple_map_set_map_source");
-	BIND(lib, simple_map_get_map, "shumate_simple_map_get_map");
-	BIND(lib, simple_map_get_viewport, "shumate_simple_map_get_viewport");
-	BIND(lib, simple_map_add_overlay_layer, "shumate_simple_map_add_overlay_layer");
-	BIND(lib, simple_map_set_show_zoom_buttons, "shumate_simple_map_set_show_zoom_buttons");
-	BIND(lib, map_center_on, "shumate_map_center_on");
-	BIND(lib, viewport_set_zoom_level, "shumate_viewport_set_zoom_level");
-	BIND(lib, viewport_widget_coords_to_location, "shumate_viewport_widget_coords_to_location");
-	BIND(lib, location_get_latitude, "shumate_location_get_latitude");
-	BIND(lib, location_get_longitude, "shumate_location_get_longitude");
-	BIND(lib, location_set_location, "shumate_location_set_location");
-	BIND(lib, registry_new_with_defaults, "shumate_map_source_registry_new_with_defaults");
-	BIND(lib, registry_get_by_id, "shumate_map_source_registry_get_by_id");
-	BIND(lib, marker_layer_new, "shumate_marker_layer_new");
-	BIND(lib, marker_layer_add_marker, "shumate_marker_layer_add_marker");
-	BIND(lib, marker_layer_remove_all, "shumate_marker_layer_remove_all");
-	BIND(lib, marker_new, "shumate_marker_new");
-	BIND(lib, marker_set_child, "shumate_marker_set_child");
-	void **need[] = {(void **)&S.simple_map_new, (void **)&S.simple_map_set_map_source, (void **)&S.simple_map_get_map,
-	                 (void **)&S.simple_map_get_viewport, (void **)&S.simple_map_add_overlay_layer, (void **)&S.simple_map_set_show_zoom_buttons,
-	                 (void **)&S.map_center_on, (void **)&S.viewport_set_zoom_level, (void **)&S.viewport_widget_coords_to_location,
-	                 (void **)&S.location_get_latitude, (void **)&S.location_get_longitude, (void **)&S.location_set_location,
-	                 (void **)&S.registry_new_with_defaults, (void **)&S.registry_get_by_id, (void **)&S.marker_layer_new,
-	                 (void **)&S.marker_layer_add_marker, (void **)&S.marker_layer_remove_all, (void **)&S.marker_new,
-	                 (void **)&S.marker_set_child, (void **)&S.label_new, (void **)&S.gesture_click_new, (void **)&S.widget_add_controller,
-	                 (void **)&S.widget_get_width, (void **)&S.widget_get_height, (void **)&S.widget_set_can_target,
-	                 (void **)&S.widget_set_tooltip_text, (void **)&S.image_new_from_icon_name, (void **)&S.image_set_pixel_size,
-	                 (void **)&S.css_provider_new, (void **)&S.style_context_add_provider_for_display};
-	for (size_t i = 0; i < sizeof need / sizeof *need; i++)
-		if (!*need[i]) {
-			S.err = asuka_strdup("maps: this libshumate (or GTK) is too old");
-			return false;
-		}
+	if (!G(shumate_simple_map_new) || !G(shumate_simple_map_set_map_source) || !G(shumate_simple_map_get_map) || !G(shumate_simple_map_get_viewport) ||
+	    !G(shumate_simple_map_add_overlay_layer) || !G(shumate_simple_map_set_show_zoom_buttons) || !G(shumate_map_center_on) ||
+	    !G(shumate_viewport_set_zoom_level) || !G(shumate_viewport_widget_coords_to_location) || !G(shumate_location_get_latitude) ||
+	    !G(shumate_location_get_longitude) || !G(shumate_location_set_location) || !G(shumate_map_source_registry_new_with_defaults) ||
+	    !G(shumate_map_source_registry_get_by_id) || !G(shumate_marker_layer_new) || !G(shumate_marker_layer_add_marker) ||
+	    !G(shumate_marker_layer_remove_all) || !G(shumate_marker_new) || !G(shumate_marker_set_child) || !G(gtk_label_new) ||
+	    !G(gtk_gesture_click_new) || !G(gtk_widget_add_controller) || !G(gtk_widget_get_width) || !G(gtk_widget_get_height) ||
+	    !G(gtk_widget_set_can_target) || !G(gtk_widget_set_tooltip_text) || !G(gtk_image_new_from_icon_name) || !G(gtk_image_set_pixel_size) ||
+	    !G(gtk_css_provider_new) || !G(gtk_style_context_add_provider_for_display)) {
+		S.err = asuka_strdup("maps: this libshumate (or GTK) is too old");
+		return false;
+	}
 	return true;
 }
 
@@ -153,7 +75,7 @@ static void unref_notify(gpointer data) { unref(data); }
 
 // connect connects a handler that holds the view until it's let go.
 static void connect(gpointer obj, const char *signal, GCallback cb, view *v) {
-	G(g_signal_connect_data)(obj, signal, cb, ref(v), unref_closure, 0);
+	G(g_signal_connect_data)(obj, signal, cb, ref(v), (GClosureNotify)unref_closure, 0);
 }
 
 static void emit_error(void *p) {
@@ -172,7 +94,7 @@ static gboolean tick(GtkWidget *w, gpointer clock, gpointer data) {
 		v->ticking = false;
 		return 0;
 	}
-	if (S.widget_get_width(v->map) > 0) {
+	if (G(gtk_widget_get_width)(v->map) > 0) {
 		v->ticking = false;
 		apply(v);
 		return 0;
@@ -187,11 +109,11 @@ static double merc(double lat) {
 
 static void apply(view *v) {
 	if (!v->has_pending) return;
-	double w = S.widget_get_width(v->map), h = S.widget_get_height(v->map);
+	double w = G(gtk_widget_get_width)(v->map), h = G(gtk_widget_get_height)(v->map);
 	if (w <= 0 || h <= 0) {
 		if (!v->ticking) {
 			v->ticking = true;
-			G(gtk_widget_add_tick_callback)(v->sm, tick, ref(v), unref_notify);
+			G(gtk_widget_add_tick_callback)(v->sm, (GtkTickCallback)tick, ref(v), unref_notify);
 		}
 		return;
 	}
@@ -204,8 +126,8 @@ static void apply(view *v) {
 		if (span > 0) zoom = fmin(zoom, log2(h * 2 * M_PI / (256 * span)));
 	}
 	v->setting = true;
-	S.viewport_set_zoom_level(v->vp, fmax(zoom, 0));
-	S.map_center_on(v->map, r.center.lat, r.center.lng);
+	G(shumate_viewport_set_zoom_level)(v->vp, fmax(zoom, 0));
+	G(shumate_map_center_on)(v->map, r.center.lat, r.center.lng);
 	v->setting = false;
 }
 
@@ -215,13 +137,13 @@ static void report(void *p) {
 	view *v = p;
 	v->reporting = false;
 	if (!v->destroyed) {
-		double w = S.widget_get_width(v->map), h = S.widget_get_height(v->map);
+		double w = G(gtk_widget_get_width)(v->map), h = G(gtk_widget_get_height)(v->map);
 		double lat0, lng0, lat1, lng1;
-		S.viewport_widget_coords_to_location(v->vp, v->map, 0, 0, &lat0, &lng0);
-		S.viewport_widget_coords_to_location(v->vp, v->map, w, h, &lat1, &lng1);
+		G(shumate_viewport_widget_coords_to_location)(v->vp, v->map, 0, 0, &lat0, &lng0);
+		G(shumate_viewport_widget_coords_to_location)(v->vp, v->map, w, h, &lat1, &lng1);
 		double dl = lng1 - lng0;
 		if (dl < 0) dl += 360;
-		maps_Region r = {{S.location_get_latitude(v->vp), S.location_get_longitude(v->vp)}, fabs(lat0 - lat1), dl};
+		maps_Region r = {{G(shumate_location_get_latitude)(v->vp), G(shumate_location_get_longitude)(v->vp)}, fabs(lat0 - lat1), dl};
 		maps_View_regionChange(v->events, &r);
 	}
 	unref(v);
@@ -242,7 +164,7 @@ static void clicked(gpointer gesture, int n, double x, double y, gpointer data) 
 	}
 	if (n != 1 || !v->interactive || v->destroyed) return;
 	maps_Coordinate at;
-	S.viewport_widget_coords_to_location(v->vp, v->map, x, y, &at.lat, &at.lng);
+	G(shumate_viewport_widget_coords_to_location)(v->vp, v->map, x, y, &at.lat, &at.lng);
 	maps_View_press(v->events, &at);
 }
 
@@ -285,12 +207,12 @@ static void color_pin(GtkWidget *image, uint32_t rgba) {
 		int n = snprintf(rule, sizeof rule, ".%s { color: #%08x; }\n", class, rgba);
 		asuka_writer_put(&pins.css, rule, (size_t)n);
 		if (!pins.provider) {
-			pins.provider = S.css_provider_new();
-			S.style_context_add_provider_for_display(d, pins.provider, 700);
+			pins.provider = G(gtk_css_provider_new)();
+			G(gtk_style_context_add_provider_for_display)(d, pins.provider, 700);
 		}
 		char *css = asuka_strndup((const char *)pins.css.data, pins.css.len);
-		if (S.css_provider_load_from_string) S.css_provider_load_from_string(pins.provider, css);
-		else if (S.css_provider_load_from_data) S.css_provider_load_from_data(pins.provider, css, -1);
+		if (G(gtk_css_provider_load_from_string)) G(gtk_css_provider_load_from_string)(pins.provider, css);
+		else if (G(gtk_css_provider_load_from_data)) G(gtk_css_provider_load_from_data)(pins.provider, css, -1);
 		free(css);
 	}
 	G(gtk_widget_add_css_class)(image, class);
@@ -299,28 +221,28 @@ static void color_pin(GtkWidget *image, uint32_t rgba) {
 static void set_markers(maps_View *self, maps_list_Marker ms) {
 	view *v = (view *)self;
 	if (!v->sm) return;
-	S.marker_layer_remove_all(v->layer);
+	G(shumate_marker_layer_remove_all)(v->layer);
 	for (size_t i = 0; i < ms.len; i++) {
 		const maps_Marker *mk = &ms.data[i];
-		GtkWidget *marker = S.marker_new();
-		GtkWidget *image = S.image_new_from_icon_name("mark-location-symbolic");
-		S.image_set_pixel_size(image, 32);
+		GtkWidget *marker = G(shumate_marker_new)();
+		GtkWidget *image = G(gtk_image_new_from_icon_name)("mark-location-symbolic");
+		G(gtk_image_set_pixel_size)((GtkImage *)image, 32);
 		if (mk->color) color_pin(image, asuka_desktop_color((uint64_t)*mk->color));
 		else G(gtk_widget_add_css_class)(image, "accent");
 		const char *t = mk->title ? mk->title : "", *s = mk->subtitle ? mk->subtitle : "";
 		if (*t || *s) {
 			char *tip = *t && *s ? asuka_sprintf("%s\n%s", t, s) : asuka_strdup(*t ? t : s);
-			S.widget_set_tooltip_text(image, tip);
+			G(gtk_widget_set_tooltip_text)(image, tip);
 			free(tip);
 		}
 		pin *p = malloc(sizeof *p);
 		*p = (pin){ref(v), asuka_strdup(mk->id)};
-		gpointer g = S.gesture_click_new();
-		G(g_signal_connect_data)(g, "released", (GCallback)pin_clicked, p, pin_free, 0);
-		S.widget_add_controller(image, g);
-		S.marker_set_child(marker, image);
-		S.location_set_location(marker, mk->at.lat, mk->at.lng);
-		S.marker_layer_add_marker(v->layer, marker);
+		gpointer g = G(gtk_gesture_click_new)();
+		G(g_signal_connect_data)(g, "released", (GCallback)pin_clicked, p, (GClosureNotify)pin_free, 0);
+		G(gtk_widget_add_controller)(image, g);
+		G(shumate_marker_set_child)(marker, image);
+		G(shumate_location_set_location)(marker, mk->at.lat, mk->at.lng);
+		G(shumate_marker_layer_add_marker)(v->layer, marker);
 	}
 }
 
@@ -336,7 +258,7 @@ static void set_region(maps_View *self, const maps_Region *r) {
 static void set_interactive(maps_View *self, bool on) {
 	view *v = (view *)self;
 	v->interactive = on;
-	if (v->sm) S.widget_set_can_target(v->sm, on);
+	if (v->sm) G(gtk_widget_set_can_target)(v->sm, on);
 }
 
 static void set_map_type(maps_View *self, maps_MapType t) {}  // OpenStreetMap's streets only
@@ -372,31 +294,31 @@ maps_View *maps_make_View(maps_View_events events) {
 	v->refs = 1;
 	v->interactive = true;
 	if (!shumate()) {
-		if (S.label_new) {
-			GtkWidget *l = S.label_new("Maps need libshumate");
+		if (G(gtk_label_new)) {
+			GtkWidget *l = G(gtk_label_new)("Maps need libshumate");
 			G(gtk_widget_add_css_class)(l, "dim-label");
-			if (S.label_set_wrap) S.label_set_wrap(l, true);
+			if (G(gtk_label_set_wrap)) G(gtk_label_set_wrap)((GtkLabel *)l, true);
 			v->base.widget = l;
 		}
 		asuka_desktop_post(emit_error, ref(v));
 		return &v->base;
 	}
-	v->sm = S.simple_map_new();
+	v->sm = G(shumate_simple_map_new)();
 	v->base.widget = v->sm;
-	gpointer reg = S.registry_new_with_defaults();
-	gpointer src = S.registry_get_by_id(reg, "osm-mapnik");
-	if (src) S.simple_map_set_map_source(v->sm, src);
+	gpointer reg = G(shumate_map_source_registry_new_with_defaults)();
+	gpointer src = G(shumate_map_source_registry_get_by_id)(reg, "osm-mapnik");
+	if (src) G(shumate_simple_map_set_map_source)(v->sm, src);
 	G(g_object_unref)(reg);
-	S.simple_map_set_show_zoom_buttons(v->sm, false);
-	v->map = S.simple_map_get_map(v->sm);
-	v->vp = S.simple_map_get_viewport(v->sm);
-	v->layer = S.marker_layer_new(v->vp);
-	S.simple_map_add_overlay_layer(v->sm, v->layer);
+	G(shumate_simple_map_set_show_zoom_buttons)(v->sm, false);
+	v->map = G(shumate_simple_map_get_map)(v->sm);
+	v->vp = G(shumate_simple_map_get_viewport)(v->sm);
+	v->layer = G(shumate_marker_layer_new)(v->vp);
+	G(shumate_simple_map_add_overlay_layer)(v->sm, v->layer);
 	connect(v->vp, "notify::latitude", (GCallback)moved, v);
 	connect(v->vp, "notify::longitude", (GCallback)moved, v);
 	connect(v->vp, "notify::zoom-level", (GCallback)moved, v);
-	gpointer click = S.gesture_click_new();
+	gpointer click = G(gtk_gesture_click_new)();
 	connect(click, "released", (GCallback)clicked, v);
-	S.widget_add_controller(v->map, click);
+	G(gtk_widget_add_controller)(v->map, click);
 	return &v->base;
 }

@@ -20,10 +20,13 @@ type Info struct {
 	// FieldPats: a struct pattern's (P(x: 0, y)) fields, per argument
 	// (nil where one names none).
 	FieldPats map[*syntax.CasePat][]*Field
-	Catches   map[*syntax.CatchClause]*CatchInfo
-	Fors      map[*syntax.ForStmt]*ForInfo
-	Elements  map[*syntax.CallExpr]*ElementCall
-	Matches   map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
+	// ErrorCases are the case patterns that match an Error by an error
+	// enum's case (match e { MailError.offline => … }): that enum.
+	ErrorCases map[*syntax.CasePat]*TypeName
+	Catches    map[*syntax.CatchClause]*CatchInfo
+	Fors       map[*syntax.ForStmt]*ForInfo
+	Elements   map[*syntax.CallExpr]*ElementCall
+	Matches    map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
 	// ViewConds: a view's if whose condition is a chain (ViewCondChain).
 	ViewConds map[*syntax.IfStmt]*ViewCond
 	Lets      map[*syntax.LetDecl]Type // a local let's or var's type
@@ -39,6 +42,29 @@ type Info struct {
 	BodyCalls map[syntax.Item]bool
 	// AppHandlers: the app block's events (on openURL(url) { }).
 	AppHandlers []*HandlerArg
+	// ScreenRoots: a screen's root, its Screen element: the body's prop
+	// sets, handlers, bindings and slots in its block, its views its
+	// children (made by the checker; no source of its own).
+	ScreenRoots map[*TypeName]*syntax.CallExpr
+	// Routes: a Route's screen builder (p => View); the routed screens
+	// named in a Route's block (a Route of their pattern each); where
+	// the Routers route each routed screen; the hrefs made of routed
+	// screens' calls (navigate(Thread(id: 7))).
+	RouteBuilders map[*ElementCall]*RouteBuilder
+	// BuilderLambdas: the lambdas passed to an element's Builder key.
+	BuilderLambdas map[*syntax.LambdaExpr]*RouteBuilder
+	RoutedScreens  map[syntax.Item]*TypeName
+	ScreenRoutes   map[*TypeName][]*ScreenRoute
+	Hrefs          map[*syntax.CallExpr]*Href
+	// LengthScales: a Length times a number (x * 1%).
+	LengthScales map[*syntax.BinaryExpr]bool
+	// DurationFloats: a Duration scaled by a float (d * 0.5), or divided
+	// by another (a float).
+	DurationFloats map[*syntax.BinaryExpr]bool
+	// Operators: the binary operators a struct's method does (t + 1h).
+	Operators map[*syntax.BinaryExpr]*Operator
+	// Assets: the files assets.text(…) and assets.bytes(…) read.
+	Assets map[*syntax.CallExpr]string
 	// Shaders: shader("""…""")'s programs, compiled.
 	Shaders map[*syntax.CallExpr][]byte
 
@@ -54,30 +80,41 @@ type Info struct {
 
 func newInfo() *Info {
 	return &Info{
-		Types:      map[syntax.Expr]Type{},
-		Uses:       map[*syntax.Ident]Object{},
-		Defs:       map[*syntax.Ident]Object{},
-		Calls:      map[*syntax.CallExpr]*Call{},
-		Selections: map[syntax.Expr]*Selection{},
-		StoreSelf:  map[syntax.Expr]*TypeName{},
-		Convs:      map[syntax.Expr]Type{},
-		Ctxs:       map[syntax.Node]*FuncCtx{},
-		Cases:      map[*syntax.CasePat]*Case{},
-		FieldPats:  map[*syntax.CasePat][]*Field{},
-		Catches:    map[*syntax.CatchClause]*CatchInfo{},
-		Fors:       map[*syntax.ForStmt]*ForInfo{},
-		Elements:   map[*syntax.CallExpr]*ElementCall{},
-		Matches:    map[syntax.Node]*MatchInfo{},
-		ViewConds:  map[*syntax.IfStmt]*ViewCond{},
-		Lets:       map[*syntax.LetDecl]Type{},
-		Emits:      map[*syntax.EmitStmt]*Member{},
-		Binds:      map[*syntax.OnHandler][]*Var{},
-		Trailing:   map[*syntax.CallExpr]*syntax.LambdaExpr{},
-		Shaders:    map[*syntax.CallExpr][]byte{},
-		SlotCalls:  map[*syntax.SlotItem]*syntax.CallExpr{},
-		BodyCalls:  map[syntax.Item]bool{},
-		Imports:    map[*syntax.ImportDecl]*Package{},
-		Expected:   map[syntax.Expr]Type{},
+		Types:          map[syntax.Expr]Type{},
+		Uses:           map[*syntax.Ident]Object{},
+		Defs:           map[*syntax.Ident]Object{},
+		Calls:          map[*syntax.CallExpr]*Call{},
+		Selections:     map[syntax.Expr]*Selection{},
+		StoreSelf:      map[syntax.Expr]*TypeName{},
+		Convs:          map[syntax.Expr]Type{},
+		Ctxs:           map[syntax.Node]*FuncCtx{},
+		Cases:          map[*syntax.CasePat]*Case{},
+		FieldPats:      map[*syntax.CasePat][]*Field{},
+		ErrorCases:     map[*syntax.CasePat]*TypeName{},
+		Catches:        map[*syntax.CatchClause]*CatchInfo{},
+		Fors:           map[*syntax.ForStmt]*ForInfo{},
+		Elements:       map[*syntax.CallExpr]*ElementCall{},
+		Matches:        map[syntax.Node]*MatchInfo{},
+		ViewConds:      map[*syntax.IfStmt]*ViewCond{},
+		Lets:           map[*syntax.LetDecl]Type{},
+		Emits:          map[*syntax.EmitStmt]*Member{},
+		Binds:          map[*syntax.OnHandler][]*Var{},
+		Trailing:       map[*syntax.CallExpr]*syntax.LambdaExpr{},
+		Shaders:        map[*syntax.CallExpr][]byte{},
+		SlotCalls:      map[*syntax.SlotItem]*syntax.CallExpr{},
+		BodyCalls:      map[syntax.Item]bool{},
+		ScreenRoots:    map[*TypeName]*syntax.CallExpr{},
+		RouteBuilders:  map[*ElementCall]*RouteBuilder{},
+		BuilderLambdas: map[*syntax.LambdaExpr]*RouteBuilder{},
+		RoutedScreens:  map[syntax.Item]*TypeName{},
+		ScreenRoutes:   map[*TypeName][]*ScreenRoute{},
+		Hrefs:          map[*syntax.CallExpr]*Href{},
+		Assets:         map[*syntax.CallExpr]string{},
+		Operators:      map[*syntax.BinaryExpr]*Operator{},
+		LengthScales:   map[*syntax.BinaryExpr]bool{},
+		DurationFloats: map[*syntax.BinaryExpr]bool{},
+		Imports:        map[*syntax.ImportDecl]*Package{},
+		Expected:       map[syntax.Expr]Type{},
 	}
 }
 
@@ -153,17 +190,18 @@ const (
 
 // A Selection is what a member expression or an implicit member is.
 type Selection struct {
-	Kind     SelKind
-	Recv     Type // the receiver's type (for an implicit member: the expected one)
-	Field    *Field
-	Case     *Case
-	Global   *Global
-	Member   *Member
-	Obj      Object
-	Value    int64
-	Name     string
-	Optional bool    // x?.name
-	Method   *Method // SelBuiltinField's
+	Kind       SelKind
+	Recv       Type // the receiver's type (for an implicit member: the expected one)
+	Field      *Field
+	Case       *Case
+	Global     *Global
+	Member     *Member
+	Obj        Object
+	Value      int64
+	Name       string
+	Optional   bool    // x?.name
+	MemberType Type    // x?.name's: name's own type (an optional one isn't boxed again)
+	Method     *Method // SelBuiltinField's
 }
 
 // CatchInfo is what a catch clause catches.
@@ -282,6 +320,7 @@ const (
 	CtxGlobal                       // a package-level initializer
 	CtxSpawn                        // spawn { }
 	CtxApp                          // app { }
+	CtxLocalFn                      // a fn declared in a block (LocalFn)
 )
 
 // A FuncCtx is a function body being checked: a declared function, or a
@@ -346,6 +385,8 @@ type Program struct {
 	Root     *Package
 	Info     *Info
 	Diags    []Diagnostic
+	// Warnings are what's worth saying that doesn't stop the build.
+	Warnings []Diagnostic
 	// Catalog is the app's catalogs (tr), or nil.
 	Catalog *Catalog
 	checker *Checker

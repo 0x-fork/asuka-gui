@@ -94,12 +94,14 @@ func loadApp(dir string) (*asukaApp, error) {
 	app := &asukaApp{dir: proj.Dir, name: filepath.Base(proj.Dir), bundleID: cfg.ID, cfg: cfg, proj: proj}
 	app.refresh()
 	warnDevLang(cfg)
+	warnShareSheet(cfg)
 	return app, nil
 }
 
-// refresh reads again what the sources import and name, and what that
-// needs of asuka.toml's (permissions, entitlements), as the sources
-// change (asuka dev).
+// refresh takes again what the program uses, from its compile (the one
+// asuka dev just did for a save, or one it makes now, which a build's
+// compile then reuses: Project.Compile), and what that needs of
+// asuka.toml's (permissions, entitlements).
 func (a *asukaApp) refresh() {
 	if a.proj == nil {
 		a.proj = &appbuild.Project{Dir: a.dir}

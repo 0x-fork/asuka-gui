@@ -8,7 +8,7 @@
 //     push.OnOpen too (opened), a tap's URL to ui.OnOpenURL.
 //   - "received": a push, for push.OnReceive.
 //   - "push": a push for the page in front, which answers on the port it
-//     came with: its rewrite (push.Rewrite) and how it shows
+//     came with: its rewrite (push.rewrite) and how it shows
 //     (notify.Present).
 //   - "closed": a notification the user dismissed.
 
@@ -46,7 +46,7 @@ const sent = new Set(); // the apps that said hello
 
 /**
  * channel is a host's: its queues, and the hooks its modules set
- * (present: Present's answer for a Shown; rewrite: push.Rewrite's spec
+ * (present: Present's answer for a Shown; rewrite: push.rewrite's spec
  * for a push.Message, or null; closed: a dismissed one's ID).
  */
 export function channel(h) {

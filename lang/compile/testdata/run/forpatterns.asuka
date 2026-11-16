@@ -1,0 +1,24 @@
+// A for over pairs binds a tuple pattern of the item's too: an
+// enumerated array of tuples, a map of tuples.
+
+test "nested tuple patterns" {
+  let xs = [(1, "a"), (2, "b")]
+  for (i, (n, s)) in xs.enumerated() {
+    print("{i} {n} {s}")
+  }
+  let m: [string: (int, int)] = ["p": (1, 2)]
+  for (k, (a, b)) in m {
+    print("{k} {a + b}")
+  }
+  for (n, s) in xs {
+    print("{s}{n}")
+  }
+}
+
+// Output:
+// 0 1 a
+// 1 2 b
+// p 3
+// a1
+// b2
+// ok nested tuple patterns

@@ -156,9 +156,17 @@ void ak_ui_environment(ak_environment *env) {
 	else *env = (ak_environment){.scale = 1, .font_scale = 1};
 }
 
-ak_val ak_ui_environment_value(void) {
+static ak_val env_value(bool whole);
+
+ak_val ak_ui_environment_value(void) { return env_value(false); }
+
+// ak_ui_screen_environment_value is the root's environment, the whole
+// screen's (window's), wherever it's read (tracked).
+ak_val ak_ui_screen_environment_value(void) { return env_value(true); }
+
+static ak_val env_value(bool whole) {
 	ak_environment e;
-	ak_prov *p = ak_prov_current();  // a screen's, a sheet's, a window's
+	ak_prov *p = whole ? NULL : ak_prov_current();  // a screen's, a sheet's, a window's
 	if (p) {
 		ak_signal_read(&p->node);
 		e = p->env;
@@ -578,6 +586,9 @@ void ak_ui_dispatch(const uint8_t *buf, size_t len) {
 	case AK_EVENT_LIFECYCLE:
 		if (r && ev.i == AK_LIFECYCLE_MEMORY_WARNING) ak_mcache_clear(&r->measures);
 		ak_crash_lifecycle((int)ev.i);
+		ak_batch_begin();
+		ak_ui_lifecycle(ev.i);
+		flush_after();
 		return;
 	}
 	if (ak_ext_dispatch(&ev)) return;  // a frame, a call's result, a URL, a share (ui_ext.h)

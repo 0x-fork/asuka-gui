@@ -27,13 +27,30 @@ type RuntimeFunc struct {
 	// Once: what it's passed (a closure that reads state) doesn't make
 	// it reactive: let stop = onFrame(…) is made once, not a memo.
 	Once bool
-	Doc  string
+	// Tracked: it reads a signal (screenEnvironment), so a binding that
+	// calls it follows it.
+	Tracked bool
+	// Follow: the parameter (its index + 1) whose argument, when it reads
+	// state, is passed as a thunk the runtime follows (alert's actions).
+	Follow int
+	Doc    string
+}
+
+// RouterFuncs are router's members (router.back(), router.href()): the
+// router the calling code is in, else the main window's.
+var RouterFuncs = []*RuntimeFunc{
+	{Name: "back", Sig: "() -> bool", Builtin: "ui.router_back", Doc: "goes back as the user's back would, without asking onBack: the newest sheet, else the innermost stack on screen; false with nowhere to go back to"},
+	{Name: "dismiss", Sig: "() -> bool", Builtin: "ui.router_dismiss", Doc: "dismisses the newest sheet; false with none"},
+	{Name: "canGoBack", Tracked: true, Sig: "() -> bool", Builtin: "ui.can_go_back", Doc: "whether back would go somewhere (tracked)"},
+	{Name: "href", Tracked: true, Sig: "() -> string", Builtin: "ui.router_href", Doc: "the address shown (tracked: a binding that reads it follows it)"},
+	{Name: "setQuery", Sig: "(query: string)", Builtin: "ui.set_query", Doc: "changes the shown screen's query, keeping the screen: encoded, a=1&b=2 (url.encodeQuery)"},
 }
 
 // RuntimeFuncs lists them (docs/language.md's "The system").
 var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "share", Sig: "(text: string)", Builtin: "ui.share", Doc: "shows the system's share sheet for a text or a link"},
 	{Name: "shareFiles", Sig: "(paths: [string], mime: string = \"\", uti: string = \"\", title: string = \"\", from: Ref? = none)", Builtin: "ui.share_files", Async: true, Throws: true, Doc: "shares files (their paths) with the share sheet, anchored on from where a popover points (an iPad, a Mac): returns once it's closed"},
+	{Name: "setColorScheme", Sig: "(scheme: ColorScheme)", Builtin: "ui.color_scheme", Doc: "shows the app light or dark, whatever the system's setting (.system: follows it again)"},
 	{Name: "haptic", Sig: "(kind: Haptic)", Builtin: "ui.haptic", Doc: "plays the platform's haptic feedback"},
 	{Name: "copy", Sig: "(text: string)", Builtin: "ui.copy", Doc: "puts text on the clipboard"},
 	{Name: "openURL", Sig: "(url: string)", Builtin: "ui.open_url", Doc: "opens url in the app that handles it (the browser, Mail, Maps)"},
@@ -46,13 +63,21 @@ var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "useKeys", Body: true, Sig: "(keys: [Shortcut])", Builtin: "ui.use_keys", Doc: "the window's keys while the component lives (the last one's win)"},
 	{Name: "onOpenURL", Body: true, Sig: "(handler: fn(string))", Builtin: "ui.on_open_url", Doc: "hears the URLs the app is opened with while the component lives"},
 	{Name: "onOpenFiles", Body: true, Sig: "(handler: fn([string]))", Builtin: "ui.on_open_files", Doc: "hears the files the app is opened with (their paths) while the component lives"},
+	{Name: "onLifecycle", Body: true, Sig: "(handler: fn(Lifecycle))", Builtin: "ui.on_lifecycle", Doc: "hears the app come to the foreground, go to the background, or the system run low on memory, while the component lives"},
 	{Name: "onShare", Body: true, Sig: "(handler: fn([SharedItem]))", Builtin: "ui.on_share", Doc: "hears what other apps share with the app while the component lives"},
 	{Name: "quit", Sig: "()", Builtin: "ui.quit", Doc: "quits the app as the user's Quit does (⌘Q): on quit's handlers first, which may cancel it; then its windows close (desktop; phones and the web ignore it)"},
 	{Name: "relaunch", Sig: "()", Builtin: "ui.relaunch", Doc: "quits the app as quit() does, then starts it again with the same arguments once it has (a canceled quit cancels it)"},
+	{Name: "devPlayer", Sig: "() -> bool", Builtin: "ui.dev_player", Doc: "whether asuka dev runs the app (its player, its reloads): false in a build and in tests"},
+	{Name: "mainWindow", Sig: "() -> Ref", Builtin: "ui.main_window_ref", Doc: "the main window's handle (the app block's Window, or the window the app shows): show(), hide(), focus() and the rest act on it, wherever they're called from"},
 	{Name: "closeWindow", Sig: "()", Builtin: "ui.window_close", Doc: "closes the window the calling code is in (the main window outside every Window) now, without asking: what a closeRequest that kept it open calls once the user has chosen"},
 	{Name: "onCloseRequest", Body: true, Sig: "(handler: fn() -> bool)", Builtin: "ui.on_close_request", Doc: "asked when the user closes the window the component is in, while it lives: false keeps it open"},
 	{Name: "onQuit", Body: true, Sig: "(handler: fn(QuitEvent))", Builtin: "ui.on_quit", Doc: "hears the app about to quit, however that started, while the component lives: e.cancel() keeps it running"},
 	{Name: "onSecondInstance", Body: true, Sig: "(handler: fn([string], string))", Builtin: "ui.on_second_instance", Doc: "hears the app started again while it runs (its arguments, its working directory), while the component lives"},
+	{Name: "alert", Sig: "(title: string, message: string = \"\", actions: [Action]? = none, actionSheet: bool = false, fields: [AlertField] = [])", Builtin: "ui.alert", Follow: 3, Doc: "shows an alert now (an action sheet with actionSheet): its actions are its buttons (none: a single OK), followed while it shows when they read state (a button disabled while a field is empty); fields are text fields under the message. A button's run runs as it's chosen"},
+	{Name: "snackbar", Sig: "(message: string, action: Action? = none, duration: SnackbarDuration = .short, onDismiss: fn()? = none) -> fn()", Builtin: "ui.snackbar", Doc: "shows a brief message at the bottom of the window now, with an action (a .button's title and run), and returns a closure that dismisses it; a new one replaces the one showing, whose onDismiss runs"},
+	{Name: "screenEnvironment", Tracked: true, Sig: "() -> Environment", Builtin: "ui.screen_environment", Doc: "the whole screen's environment (the root's, its window's on a desktop), wherever it's read: environment() is a sheet's or a screen's own; tracked"},
+	{Name: "onBack", Body: true, Sig: "(handler: fn() -> bool)", Builtin: "ui.on_back", Doc: "asked when the user goes back from the nearest pushed screen, sheet or popover around the component (else the app's: Android's back), while it lives: true takes it (the screen stays), false lets it go back"},
+	{Name: "depth", Sig: "() -> int", Builtin: "ui.depth", Doc: "how many screens the nearest stack holds"},
 	{Name: "mountApp", Sig: "() -> TestApp", Builtin: "test.mount_app", Doc: "in a test: mounts the app block's view on the fake host (its main window, its menus, its handlers), as mount does a view"},
 	{Name: "colorUniform", Sig: "(name: string, color: Color) -> Uniform", Builtin: "canvas.color_uniform", Doc: "a Shader's vec4 uniform of a color: its red, green, blue and alpha from 0 to 1"},
 }
@@ -67,6 +92,8 @@ var AppEvents = []struct {
 	{"share", "(items: [SharedItem])", "ui.on_share"},
 	{"quit", "(e: QuitEvent)", "ui.on_quit"},
 	{"secondInstance", "(args: [string], dir: string)", "ui.on_second_instance"},
+	{"foreground", "()", "ui.on_foreground"},
+	{"background", "()", "ui.on_background"},
 }
 
 // runtimeSig is f's parameters and result in this checker's prelude.
@@ -85,9 +112,18 @@ func (c *Checker) runtimeCall(e *syntax.CallExpr, call *Call, f *RuntimeFunc) {
 	args := c.matchArgs(e, params, f.Name)
 	c.trailingClosure(e, params, args)
 	for i, a := range args {
-		if a != nil {
-			c.assign(a, params[i].Type, "argument "+params[i].Name+" of "+f.Name)
+		if a == nil {
+			continue
 		}
+		if f.Follow == i+1 {
+			// A binding: followed when it reads state.
+			saved := c.ctx
+			c.enter(CtxBinding, a, f.Name+"'s "+params[i].Name)
+			c.assign(a, params[i].Type, "argument "+params[i].Name+" of "+f.Name)
+			c.leave(saved)
+			continue
+		}
+		c.assign(a, params[i].Type, "argument "+params[i].Name+" of "+f.Name)
 	}
 	c.typeDefaults(args, params)
 	call.Args, call.Params, call.Result = args, params, res
@@ -172,12 +208,22 @@ func (c *Checker) shaderCall(e *syntax.CallExpr, call *Call) {
 // bodyCall reports an item of a component's body (or the app block)
 // that's a registration (useKeys(…), onOpenURL(…)), not a view.
 func (c *Checker) bodyCall(it syntax.Item) bool {
-	s, ok := it.(*syntax.ExprStmt)
-	if !ok {
-		return false
+	var e *syntax.CallExpr
+	switch s := it.(type) {
+	case *syntax.ExprStmt:
+		e, _ = s.X.(*syntax.CallExpr)
+	case *syntax.SlotItem:
+		// onBack { … }: the call with its trailing block.
+		if b, ok := c.lookup(s.Name.Name).(*Builtin); ok && b.ID == BRuntime && b.Fn.Body {
+			call := c.info.SlotCalls[s]
+			if call == nil {
+				call = &syntax.CallExpr{Span: s.Span, Fun: s.Name, Block: s.Body}
+				c.info.SlotCalls[s] = call
+			}
+			return true
+		}
 	}
-	e, ok := s.X.(*syntax.CallExpr)
-	if !ok {
+	if e == nil {
 		return false
 	}
 	id, ok := e.Fun.(*syntax.Ident)
@@ -197,7 +243,11 @@ func (c *Checker) bodyCalls(items []syntax.Item) []syntax.Item {
 			c.info.BodyCalls[it] = true
 			savedView := c.view
 			c.view = false
-			c.expr(it.(*syntax.ExprStmt).X, nil)
+			if s, ok := it.(*syntax.SlotItem); ok {
+				c.expr(c.info.SlotCalls[s], nil)
+			} else {
+				c.expr(it.(*syntax.ExprStmt).X, nil)
+			}
 			c.view = savedView
 			continue
 		}
@@ -223,7 +273,7 @@ func (c *Checker) appEvent(h *syntax.OnHandler) {
 	c.view, c.loops = false, 0
 	c.openScope()
 	if ev == nil {
-		c.errorf(h.Name, "the app has no event %s (its events: openURL, files, share, quit, secondInstance)", h.Name.Name)
+		c.errorf(h.Name, "the app has no event %s (its events: openURL, files, share, quit, secondInstance, foreground, background)", h.Name.Name)
 		for _, p := range h.Params {
 			c.declareVar(p, Invalid, false)
 		}

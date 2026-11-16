@@ -418,6 +418,7 @@ typedef struct {
 	void *popped_ctx;
 	void (*pushed)(void *ctx, ak_view *screen);  // and of those pushed
 	void *pushed_ctx;
+	uint32_t building;  // screens being built, not yet pushed: depth() counts them
 	bool disposed;
 } stack_t;
 
@@ -510,7 +511,9 @@ ak_view *ak_stack_push(ak_view *stack, ak_closure *build, ak_val *args, uint32_t
 	ak_owner_set_context(so, ak_nav_key, stack);
 	ak_owner_set_context(so, ak_env_key, pv);
 	if (bk) ak_owner_set_context(so, ak_back_key, bk);
+	st->building++;
 	ak_view *v = ak_build_under(r, so, build, args, nargs);
+	st->building--;
 	ak_view *screen = NULL;
 	if (v && v->el == AK_EL_SCREEN && v->prov == pv) {
 		screen = v;  // a screen declaration's: it adopted them
@@ -626,16 +629,20 @@ void ak_ui_pop(void) {
 	if (st->screens.len > 1) stack_remove(stack, st->screens.len - 1);
 }
 
+// ak_ui_depth is how many screens the nearest stack holds, with the one
+// being built (a screen's own reads it at its place).
 int64_t ak_ui_depth(void) {
 	ak_view *stack = current_stack();
-	return stack ? ((stack_t *)stack->impl)->screens.len : 0;
+	if (!stack) return 0;
+	stack_t *st = stack->impl;
+	return st->screens.len + st->building;
 }
 
 // ---- Screen ----
 
 enum { BAR_ACTIONS, BAR_TOOLBAR, BAR_PRIMARY, NBARS };
 
-static const uint16_t bar_keys[NBARS] = {AK_KEY_SCREEN_ACTIONS, AK_KEY_SCREEN_TOOLBAR, AK_KEY_SCREEN_PRIMARY};
+static const uint16_t bar_keys[NBARS] = {AK_KEY_SCREEN_TOOLBAR, AK_KEY_SCREEN_BOTTOM_TOOLBAR, AK_KEY_SCREEN_PRIMARY};
 static const ak_prop bar_props[NBARS] = {AK_PROP_SCREEN_ACTIONS, AK_PROP_SCREEN_TOOLBAR, AK_PROP_SCREEN_PRIMARY};
 
 typedef struct {
@@ -733,7 +740,7 @@ static void screen_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 	case AK_KEY_SCREEN_PRIMARY_EXTENDED:
 		if (prev || v.i) ak_batch_set_bool(b, e->id, AK_PROP_SCREEN_PRIMARY_EXTENDED, v.i != 0);
 		break;
-	case AK_KEY_SCREEN_ACTIONS:
+	case AK_KEY_SCREEN_BOTTOM_TOOLBAR:
 	case AK_KEY_SCREEN_TOOLBAR:
 	case AK_KEY_SCREEN_PRIMARY:
 		if (prev) unbar(prev->p);
@@ -785,7 +792,8 @@ static void encode_buttons(ak_buf *b, ak_view *const *bs, uint32_t n) {
 		const ak_val *d = key_of(x, AK_KEY_DISABLED);
 		if (d && d->i) flags |= AK_MENU_DISABLED;
 		if (m && m->len) flags |= AK_MENU_SUBMENU;
-		ak_buf_u8(b, 0);
+		const ak_val *role = key_of(x, AK_KEY_BUTTON_ROLE);
+		ak_buf_u8(b, role ? (uint8_t)role->i : 0);
 		put_str(b, str_key(x, AK_KEY_BUTTON_TITLE));
 		put_str(b, str_key(x, AK_KEY_BUTTON_ICON));
 		ak_buf_u8(b, flags);
@@ -1014,6 +1022,7 @@ static const ak_el_class cls_tabs = {.name = "Tabs", .kind = AK_KIND_TABS, .flag
 typedef struct {
 	ak_view *stack;  // the detail, its kid
 	AK_VEC(ak_view *) dests;  // its Destinations (retained)
+	AK_VEC(ak_view *) groups;  // its Sidebars (retained)
 	int64_t reported, shown;
 	bool known;
 	ak_buf sent;
@@ -1021,7 +1030,13 @@ typedef struct {
 
 typedef struct {
 	ak_closure *build;
+	ak_view *group;  // the Sidebar it's in, if any (its split keeps it)
 } dest_t;
+
+// A Sidebar: Destinations under a heading, which it hands its Split.
+typedef struct {
+	AK_VEC(ak_view *) dests;  // retained until it's in a Split
+} group_t;
 
 static void split_init(ak_view *e) {
 	split_t *s = ak_alloc(sizeof *s);
@@ -1038,9 +1053,16 @@ static void split_drop(ak_view *e) {
 	if (!s) return;
 	for (uint32_t i = 0; i < s->dests.len; i++) {
 		s->dests.data[i]->up = NULL;
+		dest_t *dt = s->dests.data[i]->impl;
+		if (dt) dt->group = NULL;
 		ak_release(s->dests.data[i]);
 	}
 	ak_vec_free(&s->dests);
+	for (uint32_t i = 0; i < s->groups.len; i++) {
+		s->groups.data[i]->up = NULL;
+		ak_release(s->groups.data[i]);
+	}
+	ak_vec_free(&s->groups);
 	ak_buf_free(&s->sent);
 	ak_free(s);
 }
@@ -1082,12 +1104,40 @@ static void split_finalize(ak_view *e) {
 	split_show(e, key_int(e, AK_KEY_SPLIT_SELECTED, 0));
 }
 
+// split_take adds a destination, of group (a Sidebar) or none.
+static void split_take(ak_view *e, ak_view *d, ak_view *group) {
+	split_t *s = e->impl;
+	ak_view_finalize(d);
+	d->up = e;
+	((dest_t *)d->impl)->group = group;
+	ak_vec_push(&s->dests, (ak_view *)ak_retain(d));
+}
+
 static void split_add(ak_view *e, ak_view *child) {
 	split_t *s = e->impl;
-	if (child->el != AK_EL_DESTINATION) ak_panic("ui: Split holds Destinations, not a %s", child->el ? ak_el_names[child->el] : child->cls->name);
-	ak_view_finalize(child);
-	child->up = e;
-	ak_vec_push(&s->dests, (ak_view *)ak_retain(child));
+	if (child->el == AK_EL_SIDEBAR) {
+		ak_view_finalize(child);
+		child->up = e;
+		ak_vec_push(&s->groups, (ak_view *)ak_retain(child));
+		group_t *g = child->impl;
+		for (uint32_t i = 0; i < g->dests.len; i++) {
+			split_take(e, g->dests.data[i], child);
+			ak_release(g->dests.data[i]);
+		}
+		g->dests.len = 0;
+	} else if (child->el == AK_EL_DESTINATION) {
+		split_take(e, child, NULL);
+	} else {
+		ak_panic("ui: Split holds Destinations and Sidebars, not a %s", child->el ? ak_el_names[child->el] : child->cls->name);
+	}
+	ak_view_sync(e);
+	if (e->finalized && s->shown < 0) split_show(e, key_int(e, AK_KEY_SPLIT_SELECTED, 0));
+}
+
+// split_add_dest adds a destination of group's once group is in the split.
+static void split_add_dest(ak_view *e, ak_view *d, ak_view *group) {
+	split_t *s = e->impl;
+	split_take(e, d, group);
 	ak_view_sync(e);
 	if (e->finalized && s->shown < 0) split_show(e, key_int(e, AK_KEY_SPLIT_SELECTED, 0));
 }
@@ -1105,6 +1155,8 @@ static void split_sync(ak_view *e) {
 		ak_view *d = s->dests.data[i];
 		const ak_str *t = str_key(d, AK_KEY_DESTINATION_TITLE), *ic = str_key(d, AK_KEY_DESTINATION_ICON),
 		             *bd = str_key(d, AK_KEY_DESTINATION_BADGE), *sec = str_key(d, AK_KEY_DESTINATION_SECTION);
+		ak_view *group = ((dest_t *)d->impl)->group;
+		if (!sec && group) sec = str_key(group, AK_KEY_SIDEBAR_TITLE);
 		items[i] = (ak_sidebar_item){t ? ak_strn(t->data, t->len) : ak_cstr(""), ic ? ak_strn(ic->data, ic->len) : ak_cstr(""),
 		                             bd ? ak_strn(bd->data, bd->len) : ak_cstr("")};
 		bool same = ns > 0 && ((!sec && !last) || (sec && last && ak_str_eq(sec, last)) || (!sec && last && !last->len) || (sec && !last && !sec->len));
@@ -1172,6 +1224,33 @@ static void dest_add(ak_view *e, ak_view *child) {
 static const ak_el_class cls_dest = {.name = "Destination", .kind = AK_KIND_VIEW, .flags = AK_ELF_FRAGMENT | AK_ELF_FLATTEN | AK_ELF_CHILDREN,
                                      .init = dest_init, .set = dest_set, .add = dest_add, .lazy = dest_lazy, .drop = dest_drop};
 
+static void group_init(ak_view *e) { e->impl = ak_alloc(sizeof(group_t)); }
+
+static void group_drop(ak_view *e) {
+	group_t *g = e->impl;
+	if (!g) return;
+	for (uint32_t i = 0; i < g->dests.len; i++) ak_release(g->dests.data[i]);
+	ak_vec_free(&g->dests);
+	ak_free(g);
+}
+
+static void group_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
+	AK_UNUSED(key), AK_UNUSED(v), AK_UNUSED(prev);
+	if (e->up && !e->up->dead) ak_view_sync(e->up);  // its split's sidebar
+}
+
+static void group_add(ak_view *e, ak_view *child) {
+	if (child->el != AK_EL_DESTINATION) ak_panic("ui: Sidebar holds Destinations, not a %s", child->el ? ak_el_names[child->el] : child->cls->name);
+	if (e->up && !e->up->dead) {
+		split_add_dest(e->up, child, e);
+		return;
+	}
+	ak_vec_push(&((group_t *)e->impl)->dests, (ak_view *)ak_retain(child));
+}
+
+static const ak_el_class cls_group = {.name = "Sidebar", .kind = AK_KIND_VIEW, .flags = AK_ELF_FRAGMENT | AK_ELF_FLATTEN | AK_ELF_CHILDREN,
+                                      .init = group_init, .set = group_set, .add = group_add, .drop = group_drop};
+
 // ---- PageControl ----
 
 typedef struct {
@@ -1217,7 +1296,7 @@ static const ak_el_class cls_pages = {.name = "PageControl", .kind = AK_KIND_PAG
 
 // ---- Classes, events ----
 
-extern const ak_el_class ak_class_sheet, ak_class_popover, ak_class_menu, ak_class_window, ak_class_router, ak_class_route, ak_class_boundary;
+extern const ak_el_class ak_class_sheet, ak_class_alert, ak_class_popover, ak_class_menu, ak_class_window, ak_class_router, ak_class_route, ak_class_boundary;
 
 const ak_el_class *ak_nav_class_of(uint16_t el) {
 	switch (el) {
@@ -1227,8 +1306,10 @@ const ak_el_class *ak_nav_class_of(uint16_t el) {
 	case AK_EL_TAB: return &cls_tab;
 	case AK_EL_SPLIT: return &cls_split;
 	case AK_EL_DESTINATION: return &cls_dest;
+	case AK_EL_SIDEBAR: return &cls_group;
 	case AK_EL_PAGE_CONTROL: return &cls_pages;
 	case AK_EL_SHEET: return &ak_class_sheet;
+	case AK_EL_ALERT: return &ak_class_alert;
 	case AK_EL_POPOVER: return &ak_class_popover;
 	case AK_EL_MENU: return &ak_class_menu;
 	case AK_EL_WINDOW: return &ak_class_window;

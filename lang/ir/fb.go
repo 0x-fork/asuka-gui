@@ -22,6 +22,9 @@ type fb struct {
 	// unboxed: boxed vars this function holds the values of (a spawn's
 	// copies), in their registers.
 	unboxed map[*check.Var]bool
+	// locals: the local fns in scope, their functions' indexes (shared
+	// with the closures and local fns made inside).
+	locals map[*check.LocalFn]int
 
 	// Registers: per kind, those free to reuse; temps die at the end of
 	// the statement that made them; locals at the end of their block.
@@ -525,6 +528,7 @@ func (b *fb) makeClosure(s closure) int {
 	c := l.newFunc(b.f.Name+"/"+s.name, b.f.File, len(s.params), s.ret)
 	c.subst = b.subst
 	c.comp = b.comp
+	c.locals = b.locals
 	c.line = b.line
 	if len(s.ctxs) > 0 {
 		c.ctx = s.ctxs[0]

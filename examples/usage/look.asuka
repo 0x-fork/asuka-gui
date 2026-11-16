@@ -16,7 +16,7 @@ let hairline = 1 / environment().scale
 async fn readIOSVersion() {
   if !ios { return }
   if let info = try? await device.info() {
-    if let major = info.systemVersion.split(".")[0].int() { iosMajor = major }
+    if let major = info.systemVersion.split(".")[0].toInt() { iosMajor = major }
   }
 }
 
@@ -104,10 +104,10 @@ component Cell {
 
   View {
     direction: if stacked { .column } else { .row }
-    gap: if stacked { if ios { 10 } else { 14 } } else { if ios { 12 } else { 16 } }
+    gap: if stacked && ios { 10 } else if stacked { 14 } else if ios { 12 } else { 16 }
     align: if stacked { .stretch } else { .center }
-    padding: if stacked { if ios { [12, 16] } else { [18, 20] } } else { if ios { [11, 16] } else { [10, 20] } }
-    minHeight: if stacked { .auto } else { if ios { 48 } else { 60 } }
+    padding: if stacked && ios { [12, 16] } else if stacked { [18, 20] } else if ios { [11, 16] } else { [10, 20] }
+    minHeight: if stacked { .auto } else if ios { 48 } else { 60 }
     background: if ios { .clear } else { .secondaryBackground }
     on press { emit press }
     children

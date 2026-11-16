@@ -24,7 +24,7 @@ the screen readers read them from there:
   `TextField`, `Segmented`, `Stepper`, `DatePicker` and the rest are
   UIKit's, Material's, AppKit's, Win32's, GTK's and the browser's own
   controls, read and operated as in any app.
-- **Pressable views are buttons.** A `View` with `OnPress` is one
+- **Pressable views are buttons.** A `View` with `on press` is one
   element:
   - iOS: a button read as the texts and labeled images in it, joined;
     a double tap presses it.
@@ -37,128 +37,168 @@ the screen readers read them from there:
 
   On Windows, Linux and the web the keyboard reaches it too (see
   [The keyboard](#the-keyboard)).
-- **Text scales.** Every font, the semantic ones (`fonts.Body`,
-  `fonts.Headline`...), a fixed size (`fonts.System(15)`) and your own fonts,
+- **Text scales.** Every font, the semantic ones (`.body`,
+  `.headline`...), a fixed size (`Font(size: 15)`) and your own fonts,
   follows the user's text size: Dynamic Type, Android's font scale,
   Windows' text size, GNOME's text scaling, the browser's text size.
   When the user changes it, Asuka measures the text again and lays out
   what it moves. A Mac has no text size setting.
-- **Colors adapt.** Semantic colors (`colors.Label`, `colors.SecondaryLabel`,
-  `colors.Background`, `colors.Accent`...) are the platform's (see
+- **Colors adapt.** Semantic colors (`.label`, `.secondaryLabel`,
+  `.background`, `.accent`...) are the platform's (see
   [Layout and style](layout.md)): they follow dark mode, on iOS and
   macOS Increase Contrast, and on Linux GNOME's High Contrast.
 - **Layout-only views stay out of the way.** A `View`, `Row` or `Column`
   with no events and no accessibility props makes no native view, so it
   never shows in the accessibility tree.
-- **Pictures are quiet until described.** An `Image` without a `Label`,
+- **Pictures are quiet until described.** An `Image` without a `label`,
   a `Symbol` and a `Shape` are hidden from screen readers. On Linux and
   the web, a common symbol is the exception: it's read by an English
   name (Back, Archive) unless it's labeled.
 
 ## Labels and hints
 
-`Label` is what a screen reader reads for a view. `Hint` says what
+`label` is what a screen reader reads for a view. `hint` says what
 using it does, when the label doesn't.
 
-```go
-ui.Row(ui.Style{Gap: 12},
-	ui.Button(ui.ButtonProps{Icon: ui.IconSend, Label: ui.Val("Send"), Variant: ui.ButtonFilled, OnPress: send}),
-	ui.Image(ui.ImageProps{Source: ui.Val("https://picsum.photos/id/1015/600/400"), Label: ui.Val("A river in a valley"),
-		Style: ui.Style{AspectRatio: 3.0 / 2}}),
-	ui.View(ui.ViewProps{Label: ui.Val("Favorite"), Role: ui.RoleImage},
-		ui.Symbol(ui.IconHeart.Filled(), ui.Style{Color: colors.Red})),
-)
+```asuka
+component Labeled {
+  Row {
+    gap: 12
+    Button("") {
+      icon: "paperplane"
+      label: "Send"
+      variant: .filled
+      on press { send() }
+    }
+    Image("https://picsum.photos/id/1015/600/400") {
+      label: "A river in a valley"
+      aspectRatio: 3.0 / 2
+    }
+    View {
+      label: "Favorite"
+      role: .image
+      Symbol("heart.fill") { color: .red }
+    }
+  }
+}
+
+fn send() {}
 ```
 
-- A `Button` reads its title. Give an icon-only button a `Label`: the
+- A `Button` reads its title. Give an icon-only button a `label`: the
   platforms name only a few symbols themselves, and Android only in
   English.
-- A `TextField` or `Toggle` (including a checkbox) takes a `Label` too,
-  for example `Label: ui.Val("Email")`. Put it on the control itself:
+- A `TextField` or `Toggle` (including a checkbox) takes a `label` too,
+  for example `label: "Email"`. Put it on the control itself:
   its name stays separate from its text or checked state, and the control
   remains editable or toggleable. On Android a text field's label is its
   accessibility hint, which TalkBack reads as the field's name.
-- An `Image`'s `Label` describes it; without one it's decorative. An
-  icon from [`asuka/svg`](../sdk/svg) takes a `Label` the same way.
+- An `Image`'s `label` describes it; without one it's decorative. An
+  icon from [`asuka/svg`](stdlib.md) takes a `label` the same way.
 - A `Symbol` has no label of its own: wrap it in a `View` with a
-  `Label` and `ui.RoleImage` when it means something.
-- `Hint` is iOS's accessibility hint, read after a pause (users can turn
+  `label` and `role: .image` when it means something.
+- `hint` is iOS's accessibility hint, read after a pause (users can turn
   hints off), and Android's state description, read with the label. On
   macOS it's the view's help (`accessibilityHelp`), on Windows its help
   text, on Linux its accessible description, and on the web its
   `aria-description`. Keep it short: "Opens the message".
 
-`Label` and `Hint` take accessors: use `ui.Val("...")` for fixed text,
-or a signal or `signal.Func` to follow changes, including the app's
-language. `Role` and `Decorative` are set once, when the view is made.
-Leave `Label` out of a pressable view to have its texts read instead.
+`label` and `hint` are bindings, as every prop is: a fixed text, or an
+expression of state that the view follows as it changes, the app's
+language included (`label: tr.favorite()`). Leave `label` out of a
+pressable view to have its texts read instead.
 
 ## Roles
 
-`Role` says what a view is:
+`role` says what a view is:
 
 | Role | iOS | Android | macOS | Windows | Linux | Web |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ui.RoleNone` | nothing (the default) | nothing | nothing | nothing | nothing | nothing |
-| `ui.RoleButton` | button trait | read as a button | `AXButton` | Button | `button` | `button` |
-| `ui.RoleLink` | link trait | read as a button | `AXLink` | Hyperlink | `link` | `link` |
-| `ui.RoleHeader` | header trait | heading | `AXHeading` | Text, heading level 1 | `heading` | `heading` |
-| `ui.RoleImage` | image trait | read as an image | `AXImage` | Image | `img` | `img` |
-| `ui.RoleText` | static text trait | nothing | `AXStaticText` | Text | `label` | nothing |
-| `ui.RoleSearch` | search field trait | nothing | `AXTextField` | Edit | `search` | `searchbox` |
+| `.off` | nothing (the default) | nothing | nothing | nothing | nothing | nothing |
+| `.button` | button trait | read as a button | `AXButton` | Button | `button` | `button` |
+| `.link` | link trait | read as a button | `AXLink` | Hyperlink | `link` | `link` |
+| `.header` | header trait | heading | `AXHeading` | Text, heading level 1 | `heading` | `heading` |
+| `.image` | image trait | read as an image | `AXImage` | Image | `img` | `img` |
+| `.text` | static text trait | nothing | `AXStaticText` | Text | `label` | nothing |
+| `.search` | search field trait | nothing | `AXTextField` | Edit | `search` | `searchbox` |
 
 Windows' are UI Automation's control types, Linux's GTK's accessible
 roles, the web's ARIA roles. A pressable `View` is a button already. A
-view with a `Role` is an element of its own on iOS and macOS, so give it
-a `Label` too, or it's read as nothing but its role.
+view with a `role` is an element of its own on iOS and macOS, so give it
+a `label` too, or it's read as nothing but its role.
 
 ## Grouping
 
 A screen reader moves through elements one by one. A row of three texts
 is three stops; often it should be one. Two ways:
 
-- **Make it pressable.** A `View` with `OnPress` is one element, read as
+- **Make it pressable.** A `View` with `on press` is one element, read as
   what's in it. This is the usual row:
 
-```go
-func Row(m message, open func()) ui.Node {
-	return ui.View(ui.ViewProps{
-		OnPress: open,
-		Hint:    ui.Val("Opens the message"),
-		Style:   ui.Style{Direction: ui.RowDir, Gap: 12, Padding: ui.Symmetric(12, 20)},
-	},
-		ui.View(ui.ViewProps{Decorative: true}, ui.Symbol(ui.IconPerson.Filled(), ui.Style{Color: colors.SecondaryLabel})),
-		ui.Column(ui.Style{Grow: 1, Gap: 2},
-			ui.StaticText(m.from, ui.Style{Font: fonts.Headline}),
-			ui.StaticText(m.subject, ui.Style{Color: colors.SecondaryLabel}),
-		),
-	)
+```asuka
+struct Message {
+  from: string
+  subject: string
+}
+
+component MessageRow(m: Message) {
+  event open
+
+  View {
+    direction: .row
+    gap: 12
+    padding: [12, 20]
+    hint: "Opens the message"
+    on press { emit open }
+    View {
+      a11yHidden: true
+      Symbol("person.fill") { color: .secondaryLabel }
+    }
+    Column {
+      grow: 1
+      gap: 2
+      Text(m.from) { font: .headline }
+      Text(m.subject) { color: .secondaryLabel }
+    }
+  }
 }
 ```
 
-- **Give it a `Label`.** A `View` with a `Label` is read as its label.
+- **Give it a `label`.** A `View` with a `label` is read as its label.
   On iOS and macOS what's in it isn't read separately; on Android the
   label is the view's content description; on Windows it's the view's
   name, on Linux its accessible label, on the web its `aria-label`. Say what the eye takes in at a
   glance, in words: "Night Drive by Ada, 4 minutes", not "4:00".
 
-```go
-ui.View(ui.ViewProps{Label: fmt.Sprintf("%s by %s, %d minutes", title, artist, minutes),
-	Style: ui.Style{Direction: ui.RowDir, Gap: 8}},
-	ui.StaticText(title, ui.Style{Font: fonts.Headline}),
-	ui.StaticText(artist, ui.Style{Color: colors.SecondaryLabel}),
-	ui.StaticText(fmt.Sprintf("%d:00", minutes), ui.Style{Color: colors.SecondaryLabel}),
-)
+```asuka
+component Track(title: string, artist: string, minutes: int) {
+  Row {
+    gap: 8
+    label: "{title} by {artist}, {minutes} minutes"
+    Text(title) { font: .headline }
+    Text(artist) { color: .secondaryLabel }
+    Text("{minutes}:00") { color: .secondaryLabel }
+  }
+}
 ```
 
 ## Decoration
 
-`Decorative` hides a view and everything in it from screen readers:
+`a11yHidden` hides a view and everything in it from screen readers:
 an ornament, an icon next to a text that says the same, a checkmark in a
 toast that reads "Saved".
 
-```go
-ui.View(ui.ViewProps{Decorative: true}, ui.Symbol(ui.IconCheck, ui.Style{Color: colors.Green}))
+```asuka
+component Saved {
+  Row {
+    gap: 6
+    View {
+      a11yHidden: true
+      Symbol("checkmark") { color: .green }
+    }
+    Text("Saved")
+  }
+}
 ```
 
 ## Headings
@@ -166,15 +206,24 @@ ui.View(ui.ViewProps{Decorative: true}, ui.Symbol(ui.IconCheck, ui.Style{Color: 
 Screen reader users jump between headings (VoiceOver's rotor, TalkBack's
 navigation by headings, NVDA's and Orca's H key, a browser screen
 reader's headings list). Mark a section's title as one: a `RichText`
-with `Role: ui.RoleHeader`, or a `View` with a `Label` and the role.
-`Text` takes no role. [`asuka/markdown`](../sdk/markdown) marks its headings
-already.
+with `role: .header`, or a `View` with a `label` and the role.
+[`asuka/markdown`](stdlib.md) marks its headings already.
 
-```go
-ui.RichText(ui.RichTextProps{Text: ui.Val(ui.Rich{ui.Plain("Recent")}), Role: ui.RoleHeader,
-	Style: ui.Style{Font: fonts.Title2.Weighted(fonts.Bold)}}),
-ui.View(ui.ViewProps{Label: ui.Val("Settings"), Role: ui.RoleHeader},
-	ui.StaticText("Settings", ui.Style{Font: fonts.Title2})),
+```asuka
+component Headings {
+  Column {
+    gap: 12
+    RichText([Span(text: "Recent")]) {
+      role: .header
+      font: .title2.bold()
+    }
+    View {
+      label: "Settings"
+      role: .header
+      Text("Settings") { font: .title2 }
+    }
+  }
+}
 ```
 
 A `RichText`'s links are elements of their own, which a screen reader
@@ -184,14 +233,23 @@ finds and activates.
 
 What a sighted user does with a swipe, a long press or a small button
 inside a row, a screen reader user reaches through actions: VoiceOver's
-Actions rotor, swiping up or down; TalkBack's actions menu. `Actions`
+Actions rotor, swiping up or down; TalkBack's actions menu. `actions`
 lists them on a view:
 
-```go
-ui.View(ui.ViewProps{
-	Actions: []ui.A11yAction{{Name: ui.Val("Reply"), Do: reply}, {Name: ui.Val("Archive"), Do: archive}},
-	Style:   ui.Style{Padding: ui.Symmetric(12, 20)},
-}, ui.Text(subject))
+```asuka
+component Thread(subject: string) {
+  event reply
+  event archive
+
+  View {
+    padding: [12, 20]
+    actions: [
+      A11yAction(name: "Reply", run: () => { emit reply }),
+      A11yAction(name: "Archive", run: () => { emit archive }),
+    ]
+    Text(subject)
+  }
+}
 ```
 
 A view with actions is one element, read as its texts. Where they go:
@@ -211,19 +269,27 @@ A view with actions is one element, read as its texts. Where they go:
   there. Give a view the same commands another way too (a button, a
   `Menu`) when the app runs in a browser.
 
-A `List`'s `SwipeActions` are offered to screen readers for you:
+A `List` row's `swipeActions` are offered to screen readers for you:
 UIKit's list offers its swipe actions to VoiceOver itself, and on
 Android Asuka adds them to the row as TalkBack actions. Don't list them
-again in `Actions`.
+again in `actions`.
 
-```go
-ui.List(ui.ListProps{
-	SwipeActions: func(i int) []ui.Action {
-		return []ui.Action{
-			{Title: ui.Val("Delete"), Icon: ui.IconTrash, Role: ui.ActionDestructive, OnPress: func() { remove(i) }},
-		}
-	},
-}, items, key, row)
+```asuka
+state items = ["Milk", "Bread", "Eggs"]
+
+component Groceries {
+  List {
+    for (i, item) in items.enumerated() key item {
+      Row {
+        padding: [12, 20]
+        swipeActions: [
+          .button(title: "Delete", icon: "trash", role: .destructive, run: () => { items.removeAt(i) }),
+        ]
+        Text(item)
+      }
+    }
+  }
+}
 ```
 
 A `Menu`'s actions, and buttons with a `Menu`, are the platform's menus,
@@ -231,7 +297,7 @@ accessible as they are.
 
 ## Adjustable views
 
-`OnAdjust` makes a view adjustable, as a slider is: VoiceOver's swipe up
+`on adjust(by)` makes a view adjustable, as a slider is: VoiceOver's swipe up
 and down, and TalkBack's (or the volume keys), step it by 1 or -1. Use
 it for a control of your own that picks a value; a `Slider` or
 `Stepper` already is one.
@@ -242,38 +308,46 @@ stop that the arrow keys step: up and right by 1, down and left by -1
 (on Windows and Linux, left and right swap in a right-to-left
 language). Linux and the web give it the slider role.
 
-```go
-func Rating() ui.Node {
-	stars := signal.New(3)
-	var icons []ui.Node
-	for i := range 5 {
-		icons = append(icons, ui.Symbol(ui.IconStar.Filled(), ui.StyleFunc(func() ui.Style {
-			if i < stars.Get() {
-				return ui.Style{Color: colors.Orange}
-			}
-			return ui.Style{Color: colors.TertiaryLabel}
-		})))
-	}
-	return ui.View(ui.ViewProps{
-		OnAdjust: func(by int) { stars.Set(min(max(stars.Peek()+by, 0), 5)) },
-		Style:    ui.Style{Direction: ui.RowDir, Gap: 4, Align: ui.AlignCenter},
-	}, append(icons, ui.Text(signal.Func(func() string { return fmt.Sprintf("Rating: %d of 5", stars.Get()) })))...)
+```asuka
+component Rating {
+  state stars = 3
+
+  Row {
+    gap: 4
+    align: .center
+    on adjust(by) { stars = min(max(stars + by, 0), 5) }
+    for i in 0..<5 key i {
+      Symbol("star.fill") { color: if i < stars { .orange } else { .tertiaryLabel } }
+    }
+    Text("Rating: {stars} of 5")
+  }
 }
 ```
 
 The view is read as its text, which says where it is and changes as it
-steps. It has no `Label`, which would be read instead and can't change.
+steps. It has no `label`, which would be read instead.
 Clamp the value yourself: the screen reader keeps asking.
 
 ## Announcements
 
-`ui.Announce` has the screen reader, if one is on, read a text: what
+`announce` has the screen reader, if one is on, read a text: what
 changed where focus isn't. A toast, a count of search results, a save
 that finished.
 
-```go
-ui.Animate(func() { shown.Set(true) })
-ui.Announce("Saved") // a screen reader wouldn't notice the toast
+```asuka
+component SaveButton {
+  state shown = false
+
+  Column {
+    Button("Save") {
+      on press {
+        animate(() => { shown = true })
+        announce("Saved") // a screen reader wouldn't notice the toast
+      }
+    }
+    if shown { Text("Saved") }
+  }
+}
 ```
 
 It's `UIAccessibility`'s announcement on iOS,
@@ -285,20 +359,37 @@ focused view says already.
 
 ## Moving focus
 
-`ui.AccessibilityFocus(node)` moves the screen reader's focus to a view,
+`a11yFocus(ref)` moves the screen reader's focus to a view (a `Ref` to it),
 for when the screen changed under the user and what matters is
 somewhere else: the error under a form that failed to submit, the first
 result of a search, the title of a panel that slid in.
 
-```go
-errText := ui.Text(message)
-// ...
-OnPress: func() {
-	if err := signIn(); err != nil {
-		message.Set(err.Error())
-		ui.AccessibilityFocus(errText)
-	}
-},
+```asuka
+component SignIn {
+  state message = ""
+
+  let error = Ref()
+
+  async fn submit() {
+    do {
+      try await signIn()
+    } catch e {
+      message = e.message
+      a11yFocus(error)
+    }
+  }
+
+  Column {
+    gap: 12
+    Button("Sign In") { on press { await submit() } }
+    Text(message) {
+      ref: error
+      color: .red
+    }
+  }
+}
+
+async fn signIn() throws { throw Error("The password is wrong") }
 ```
 
 It's sent with the next flush, once the view exists and has its frame:
@@ -306,8 +397,8 @@ It's sent with the next flush, once the view exists and has its frame:
 `ACTION_ACCESSIBILITY_FOCUS` on Android, a layout change naming the view
 on macOS and the focus event on Windows. A container with no view of
 its own focuses its first view. On those four, without a screen reader
-it does nothing, and it never moves the keyboard's focus (that's
-`ui.Focus`).
+it does nothing, and it never moves the keyboard's focus (that's a
+`Ref`'s `focus()`).
 
 On Linux and the web it moves the keyboard's focus to the view, and the
 screen reader follows it: GTK and the page have no other way to point a
@@ -315,8 +406,8 @@ screen reader at a view.
 
 ## Is a screen reader on
 
-`ui.UseEnvironment()`'s `ScreenReader` is true while a screen reader is
-on, and follows it being turned on or off:
+`environment().screenReader` is true while a screen reader is on, and
+what reads it follows it being turned on or off:
 
 - iOS and macOS: VoiceOver.
 - Android: TalkBack.
@@ -334,36 +425,35 @@ advances by itself into one that waits.
 Text scales with no code, so what's left is layout that still works at
 large sizes:
 
-- Don't fix the height of what holds text. Let it grow; use `MinHeight`
+- Don't fix the height of what holds text. Let it grow; use `minHeight`
   for a minimum.
-- Avoid `Lines: 1` on text that matters: at large sizes it's cut short.
+- Avoid `lines: 1` on text that matters: at large sizes it's cut short.
 - Put long rows in a `Scroll` or a `List`.
 
-`ui.UseEnvironment()`'s `FontScale` is the user's text size, 1 being the
+`environment().fontScale` is the user's text size, 1 being the
 default: Dynamic Type's Large, Android's default font scale, Windows'
 100% (Settings, Accessibility, Text size), GNOME's scaling of 1, the
 browser's default text size (16 CSS pixels). On a Mac it's always 1.
-Read it in a `StyleFunc` to change a layout at large sizes, as iOS's
-own apps stack a row's label and value:
+Read it in a style to change a layout at large sizes, as iOS's own apps
+stack a row's label and value:
 
-```go
-func Adaptive() ui.Node {
-	env := ui.UseEnvironment()
-	return ui.View(ui.ViewProps{Style: ui.StyleFunc(func() ui.Style {
-		if env.Get().FontScale > 1.5 {
-			return ui.Style{Direction: ui.ColumnDir, Gap: 4}
-		}
-		return ui.Style{Direction: ui.RowDir, Gap: 12, Align: ui.AlignCenter}
-	})},
-		ui.StaticText("Wi-Fi", ui.Style{Grow: 1}),
-		ui.StaticText("Home", ui.Style{Color: colors.SecondaryLabel}),
-	)
+```asuka
+component Adaptive {
+  let large = environment().fontScale > 1.5
+
+  View {
+    direction: if large { .column } else { .row }
+    gap: if large { 4 } else { 12 }
+    align: if large { .stretch } else { .center }
+    Text("Wi-Fi") { grow: 1 }
+    Text("Home") { color: .secondaryLabel }
+  }
 }
 ```
 
 ## Reduce Motion
 
-`ui.UseEnvironment()`'s `ReduceMotion` is iOS's and macOS's Reduce
+`environment().reduceMotion` is iOS's and macOS's Reduce
 Motion, Android's animations turned off, Windows' animation effects
 off, GNOME's animations off, or the browser's `prefers-reduced-motion`.
 On iOS Asuka makes transitions dissolve instead of moving; elsewhere its
@@ -379,12 +469,12 @@ platform's own controls do:
 - **Enter** and **Space** press a focused pressable view, as a button.
 - A focused view shows a focus ring: Fluent's on Windows, an outline in
   the accent on Linux, the browser's on the web.
-- A view with `Actions` or `OnAdjust` is a tab stop: its context menu
+- A view with `actions` or `on adjust` is a tab stop: its context menu
   opens with Shift+F10 or the Menu key (Windows, Linux), and the arrow
   keys step it.
 
-`ui.Focus` and `ui.Blur` move the keyboard's focus to a field and away
-(see [Components](components.md)).
+A `Ref`'s `focus()` and `blur()` move the keyboard's focus to a field
+and away (see [Components](components.md)).
 
 ## Testing with a screen reader
 

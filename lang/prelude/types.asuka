@@ -168,9 +168,10 @@ enum GridLine {
   between(int, int)
 }
 
-/// An item of a menu, a swipe or a context menu.
+/// An item of a menu, a swipe, a context menu or an alert. A field left
+/// out is its zero: .button(title: "Cancel", role: .cancel) runs nothing.
 enum Action {
-  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: fn())
+  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: fn()?)
   submenu(title: string, icon: string, items: [Action])
   section(title: string, items: [Action])
 }
@@ -194,7 +195,7 @@ enum Feedback {
 }
 
 /// An animation's timing. repeat runs it again, that many times more
-/// (-1: until its props change again), each run going back first with
+/// (Animation.forever, -1: until its props change again), each run going back first with
 /// autoreverses. A spring's damping is from 0 to 1 (1 settles without
 /// overshooting; 0: 0.85, a little) and its velocity, a fraction of the
 /// change per second at the start (to carry on a fling). done is called
@@ -212,6 +213,8 @@ struct Animation {
   let spring = Animation(curve: .spring)
   let linear = Animation(curve: .linear)
   let quick = Animation(duration: 200ms)
+  /// repeat's: until the props change again.
+  let forever = -1
 }
 
 /// A span of a text field's text, as byte offsets into it
@@ -296,6 +299,16 @@ struct Gesture {
   rotation: float = 0
 }
 
+/// A part of the screen a test looks in: app.in(.bottomToolbar).tap("Star")
+/// taps the bottom toolbar's Star, not the navigation bar's.
+enum TestScope {
+  content       // what screens, sheets, alerts and popovers show, not their bars
+  navigationBar // the screens' titles and their toolbar's buttons
+  bottomToolbar // the screens' bottom toolbars and primary actions
+  tabBar        // the tab bars' tabs
+  sidebar       // the split views' sidebars: their destinations
+}
+
 /// A swipe's direction.
 enum SwipeDirection {
   right
@@ -307,10 +320,12 @@ enum SwipeDirection {
 /// A key a view takes while the keyboard's focus is in it, and what it
 /// does. key is a character ("d", any case) or a named key (up, down,
 /// left, right, escape, enter, tab, space, delete, home, end, pageup,
-/// pagedown, f1...); with a modifier, a shortcut. primary is ⌘ on Apple
-/// platforms and Ctrl elsewhere.
+/// pagedown, f1...); with a modifier, a shortcut: its bools, or mods.
+/// primary is ⌘ on Apple platforms and Ctrl elsewhere.
 ///
 ///   keys: [Shortcut(key: "down", run: () => { sel += 1 }), Shortcut(key: "d", primary: true, run: duplicate)]
+///   keys: [Shortcut(key: "n", mods: [.control], run: next)]
+///   MenuItem("Save") { shortcut: .cmd("s") }
 struct Shortcut {
   key: string
   primary: bool = false
@@ -318,6 +333,19 @@ struct Shortcut {
   alt: bool = false
   control: bool = false
   run: fn() = () => {} // a MenuItem's shortcut runs the item
+  mods: [Modifier] = [] // modifiers besides the bools'
+
+  /// The key with primary (⌘ on Apple platforms, Ctrl elsewhere): a menu
+  /// item's shortcut, MenuItem("Save") { shortcut: .cmd("s") }.
+  let cmd = (key: string) => Shortcut(key: key, primary: true)
+}
+
+/// A modifier key of a Shortcut.
+enum Modifier {
+  primary // ⌘ on Apple platforms, Ctrl elsewhere
+  shift
+  alt     // a Mac's option
+  control
 }
 
 /// What a screen reader offers to do with a view (VoiceOver's rotor,
@@ -532,6 +560,44 @@ struct Params {
   query: [string: string] = [:]
 
   fn get(name: string) -> string = path[name] ?? query[name] ?? ""
+  /// A parameter as a whole number: none when it isn't one, or isn't there.
+  fn int(name: string) -> int? = get(name).toInt()
+}
+
+/// What a routed screen throws, to the nearest Boundary, when its
+/// address doesn't say a parameter it needs, or says one that doesn't
+/// convert to its type.
+struct RouteError: Error {
+  message: string
+}
+
+// A routed screen's parameters, read from its Params (lang/ir's
+// routedRoute calls these).
+fn routeParam(p: Params, name: string) -> string? = p.path[name] ?? p.query[name]
+
+fn routeMissing(name: string) throws {
+  throw RouteError(message: "the address has no {name}")
+}
+
+fn routeInt(s: string, name: string) throws -> int {
+  if let n = s.toInt() { return n }
+  throw RouteError(message: "the address's {name} isn't a whole number: \"{s}\"")
+}
+
+fn routeFloat(s: string, name: string) throws -> float {
+  if let x = s.toFloat() { return x }
+  throw RouteError(message: "the address's {name} isn't a number: \"{s}\"")
+}
+
+fn routeBool(s: string, name: string) throws -> bool {
+  if s == "true" || s == "1" { return true }
+  if s == "false" || s == "0" || s == "" { return false }
+  throw RouteError(message: "the address's {name} isn't true or false: \"{s}\"")
+}
+
+fn routeCase(s: string, name: string, cases: [string]) throws -> int {
+  if let i = cases.index(c => c == s) { return i }
+  throw RouteError(message: "the address's {name} isn't one of {cases.joined(separator: ", ")}: \"{s}\"")
 }
 
 /// A text field of an alert.

@@ -127,6 +127,44 @@ component Monitor {
 async fn serving(s: [bluetooth.LocalService]) { try? await bluetooth.serve(s) }
 async fn advertising() { try? await bluetooth.advertise(localName: "Asuka HR", services: [bluetooth.heartRate]) }
 
+// What the system brought back as it started the app, and what the
+// background scan hears, newest first.
+state restoredLog: [string] = []
+
+async fn followRestored() throws {
+  for await r in bluetooth.restored() {
+    let ids = r.devices.map(d => d.id).joined(separator: " ")
+    let heard = r.advertisements.map(a => a.device.id).joined(separator: " ")
+    restoredLog = ["devices [{ids}] scan [{r.scanServices.joined(separator: " ")}] heard [{heard}]"] + restoredLog
+  }
+}
+
+async fn scanningBehind() {
+  do {
+    for await a in bluetooth.backgroundScan([bluetooth.heartRate]) {
+      restoredLog = ["scanned {a.device.id}"] + restoredLog
+    }
+  } catch e {
+    restoredLog = ["scan: {e.message}"] + restoredLog
+  }
+}
+
+component Restoring {
+  state behind = false
+
+  task { try? await followRestored() }
+
+  task(behind) {
+    if behind { await scanningBehind() }
+  }
+
+  Column {
+    Text("log {restoredLog.joined(separator: "; ")}")
+    Button(if behind { "Stop" } else { "Behind" }) { on press { behind = !behind } }
+    Button("Forget") { on press { bluetooth.stopBackgroundScan() } }
+  }
+}
+
 app { Scanner() }
 
 fn strap() -> bluetooth.FakePeripheral = bluetooth.FakePeripheral(
@@ -153,6 +191,18 @@ test "with no platform code, no Bluetooth" {
   app.tap("Scan")
   await app.idle()
   app.expect("status bluetooth: not available")
+}
+
+test "with no platform code, nothing restored, no background scan" {
+  restoredLog = []
+  let app = mount(Restoring())
+  await app.idle()
+  app.expect("log ")
+  app.tap("Behind")
+  await app.idle()
+  app.expect("log scan: bluetooth: not available")
+  app.tap("Forget")
+  await app.idle()
 }
 
 test "scan" {
@@ -218,3 +268,46 @@ test "a peripheral" {
   app.tap("Beat")
   expect(bt.notified.count() == 1)
 }
+
+test "restored as the app starts, and while it runs" {
+  restoredLog = []
+  let bt = bluetooth.fake()
+  bt.add(strap())
+  // The system starts the app for Bluetooth: kept for the first reader.
+  bt.restore(bluetooth.Restored(devices: [bluetooth.Device(id: "AA:BB:CC:00:00:01")], scanServices: ["180d"]))
+  expect(bt.backgroundLeft)
+  let app = mount(Restoring())
+  await app.idle()
+  app.expect("log devices [AA:BB:CC:00:00:01] scan [180d] heard []")
+  bt.restore(bluetooth.Restored(advertisements: [bluetooth.Advertisement(device: bluetooth.Device(id: "AA:BB:CC:00:00:02"))]))
+  await app.idle()
+  app.expect("log devices [] scan [] heard [AA:BB:CC:00:00:02]; devices [AA:BB:CC:00:00:01] scan [180d] heard []")
+  // The app takes the scan over: the one left is replaced.
+  restoredLog = []
+  app.tap("Behind")
+  await app.idle()
+  expect(bt.backgroundScans == 1 && bt.scans == 1)
+  expect(!bt.backgroundLeft)
+  app.expect("log scanned AA:BB:CC:00:00:01")
+  app.tap("Stop")
+  await app.idle()
+  expect(bt.backgroundScans == 0 && bt.scans == 0)
+}
+
+test "a background scan left by a previous run, stopped" {
+  restoredLog = []
+  let bt = bluetooth.fake()
+  bt.restore(bluetooth.Restored(advertisements: [bluetooth.Advertisement(device: bluetooth.Device(id: "AA:BB:CC:00:00:03"))]))
+  let app = mount(Restoring())
+  await app.idle()
+  app.expect("log devices [] scan [] heard [AA:BB:CC:00:00:03]")
+  expect(bt.backgroundLeft)
+  app.tap("Forget")
+  await app.idle()
+  expect(!bt.backgroundLeft)
+  bt.setState(.off)
+  app.tap("Behind")
+  await app.idle()
+  app.expect("log scan: bluetooth: off; devices [] scan [] heard [AA:BB:CC:00:00:03]")
+}
+

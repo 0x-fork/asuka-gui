@@ -1,0 +1,65 @@
+app {
+  Tabs {
+    Tab("Inbox") { icon: "tray"; Stack { Inbox() } }
+    Tab("Settings") { icon: "gearshape"; Stack { Settings() } }
+  }
+}
+
+component Inbox {
+  state note = ""
+  Screen {
+    title: "Inbox"
+    Column {
+      Text(if note.isEmpty() { "No note yet." } else { "Note: {note}" })
+      Button("Add a note") { on press { present(NoteSheet(onSave: s => { note = s })) } }
+      List {
+        height: 300
+        for i in 0..30 key i {
+          Text("Message {30 - i}") { padding: 12 }
+        }
+      }
+    }
+  }
+}
+
+component Detail(n: int) {
+  state note = ""
+  Screen {
+    title: "Message {n}"
+    Column {
+      padding: 16; gap: 8
+      Text(if note.isEmpty() { "No note yet." } else { "Note: {note}" })
+      Button("Add a note") { on press { present(NoteSheet(onSave: s => { note = s })) } }
+    }
+  }
+}
+
+component NoteSheet(onSave: fn(string)) {
+  state text = ""
+  Screen {
+    title: "Note"
+    Column {
+      padding: 16; gap: 8
+      TextField { bind text: text; placeholder: "Note" }
+      Button("Save") { on press { onSave(text); dismiss() } }
+    }
+  }
+}
+
+component Settings {
+  Screen {
+    title: "Settings"
+    Column {
+      padding: 16; gap: 8
+      Text("Notifications")
+      Button("About") { on press { push(About()) } }
+    }
+  }
+}
+
+component About {
+  Screen {
+    title: "About"
+    Text("Native widgets, driven by Asuka and fine-grained signals.") { padding: 16 }
+  }
+}

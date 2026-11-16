@@ -8,6 +8,7 @@
 
 import asuka/platform
 import asuka/json
+import asuka/time
 
 /// What a widget shows.
 pub struct Entry {
@@ -22,14 +23,14 @@ pub struct Entry {
   /// From 0 to 1, shown with showProgress.
   progress: float = 0.0
   showProgress: bool = false
-  /// A count down to this time, in milliseconds since 1970.
-  until: int = 0
+  /// A count down to this time (none: no count down).
+  until: time.Time? = none
   /// "#rrggbb" or "#rrggbbaa".
   tint: string = ""
   /// What the app is opened with when the widget is tapped.
   url: string = ""
-  /// When it shows, in milliseconds since 1970 (0: now).
-  at: int = 0
+  /// When it shows (none: now).
+  at: time.Time? = none
 }
 
 struct Wire {
@@ -56,8 +57,8 @@ pub fn set(kind: string, e: Entry) = setAll(kind, [e])
 
 /// Sets the kind's entries, each from its time.
 pub fn setAll(kind: string, entries: [Entry]) {
-  let es = entries.sorted((a, b) => a.at < b.at).map(e => Wire(title: e.title, value: e.value, body: e.body, caption: e.caption,
-    symbol: e.symbol, progress: e.progress, showProgress: e.showProgress, untilMs: e.until, atMs: e.at, tint: e.tint, url: e.url))
+  let es = entries.sorted((a, b) => (a.at?.unixMilli() ?? 0) < (b.at?.unixMilli() ?? 0)).map(e => Wire(title: e.title, value: e.value, body: e.body, caption: e.caption,
+    symbol: e.symbol, progress: e.progress, showProgress: e.showProgress, untilMs: e.until?.unixMilli() ?? 0, atMs: e.at?.unixMilli() ?? 0, tint: e.tint, url: e.url))
   platform.send("widget", "set", json.encode(Set(kind: kind, entries: es)).bytes())
 }
 

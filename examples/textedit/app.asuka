@@ -1,8 +1,9 @@
 // TextEdit is a plain text editor with documents (asuka/document): on
-// the desktop a window per file, the File menu (New, Open…, Open Recent,
-// Save, Duplicate, Rename…, Revert…), autosave and recovery copies, and a
-// bar when another app changes the file being edited; on a phone or in a
-// browser, a list of its documents and one open at a time.
+// the desktop a window per file, the File menu's New and Open… (⌘N, ⌘O),
+// ⌘S and ⌘W in each window, autosave a moment after typing stops, and a
+// bar when another app changes the file being edited (keep yours, or
+// revert to theirs); on a phone or in a browser, a list of its documents
+// and one open at a time.
 //
 //   asuka dev examples/textedit
 //   asuka dev --platform ios examples/textedit
@@ -15,9 +16,7 @@ let types = [
 ]
 
 app {
-  // Undoing back to the file's text leaves the document unedited: a
-  // string's == says so.
-  document.Documents(types, read: data => data.string(), write: text => text.bytes()) {
+  document.Documents(types) {
     width: 640
     height: 480
     editor: doc => Editor(doc)
@@ -27,20 +26,20 @@ app {
 /// A document's window: the text, a bar while another app's change
 /// conflicts with the user's, and a status line.
 component Editor(doc: document.Document<string>) {
-  let words = doc.content.fields().count
-  let status = if doc.state.deleted {
-    "Deleted"
-  } else if doc.state.readOnly {
-    "Read-only"
-  } else if doc.state.edited {
-    "Edited"
-  } else {
-    "Saved"
+  let text = doc.content ?? ""
+  let words = text.fields().count()
+  let status = match doc.state {
+    .loading => "Opening…"
+    .edited => "Edited"
+    .saving => "Saving…"
+    .conflict => "Changed by another app"
+    .failed => "Failed: {doc.error}"
+    .saved => "Saved"
   }
 
   Column {
     grow: 1
-    if doc.state.conflict {
+    if doc.state == .conflict {
       Row {
         gap: 12
         padding: [8, 16]
@@ -57,7 +56,8 @@ component Editor(doc: document.Document<string>) {
       }
     }
     TextField {
-      bind text: doc.content
+      text: text
+      on change(t) { doc.edit(t) }
       multiline: true
       plain: true
       grow: 1
@@ -70,4 +70,15 @@ component Editor(doc: document.Document<string>) {
       padding: [6, 16]
     }
   }
+}
+
+test "a phone's documents" {
+  let app = mount(document.Documents(types) { editor: doc => Editor(doc) }, platform: .iOS)
+  app.expect("Documents", "New")
+}
+
+test "a desktop's File menu" {
+  let app = mount(document.Documents(types) { editor: doc => Editor(doc) }, platform: .macOS)
+  let menu = app.menuBar()
+  expect(menu.contains("File > New") && menu.contains("File > Open…"), menu)
 }

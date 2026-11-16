@@ -7,7 +7,6 @@
 #define strncasecmp _strnicmp
 #else
 #include "asuka_linux.h"
-#include <dlfcn.h>
 #include <errno.h>
 #include <pthread.h>
 #include <strings.h>
@@ -286,54 +285,10 @@ done:
 
 #else  // Linux: libsoup 3, resolved at run time.
 
-typedef struct _SoupSession SoupSession;
-typedef struct _SoupMessage SoupMessage;
-typedef struct _SoupMessageHeaders SoupMessageHeaders;
-typedef struct _GUri GUri;
-typedef struct _GInputStream GInputStream;
-
-static struct {
-	SoupSession *(*session_new)(void);
-	void (*session_set_timeout)(SoupSession *, guint);
-	void (*session_set_user_agent)(SoupSession *, const char *);
-	SoupMessage *(*message_new)(const char *, const char *);
-	SoupMessageHeaders *(*request_headers)(SoupMessage *);
-	SoupMessageHeaders *(*response_headers)(SoupMessage *);
-	void (*headers_append)(SoupMessageHeaders *, const char *, const char *);
-	void (*headers_foreach)(SoupMessageHeaders *, void (*)(const char *, const char *, gpointer), gpointer);
-	void (*set_request_body_from_bytes)(SoupMessage *, const char *, GBytes *);
-	GInputStream *(*send)(SoupSession *, SoupMessage *, GCancellable *, GError **);
-	guint (*get_status)(SoupMessage *);
-	GUri *(*get_uri)(SoupMessage *);
-	char *(*uri_to_string)(GUri *);
-	gssize (*read)(GInputStream *, void *, gsize, GCancellable *, GError **);
-	gboolean (*close)(GInputStream *, GCancellable *, GError **);
-	bool loaded;
-} soup;
-
-static void load_soup(void) {
-	static bool tried;
-	if (tried) return;
-	tried = true;
-	if (!asuka_linux()) return;
-	void *l = dlopen("libsoup-3.0.so.0", RTLD_NOW | RTLD_GLOBAL);
-	if (!l) return;
-	*(void **)&soup.session_new = dlsym(l, "soup_session_new");
-	*(void **)&soup.session_set_timeout = dlsym(l, "soup_session_set_timeout");
-	*(void **)&soup.session_set_user_agent = dlsym(l, "soup_session_set_user_agent");
-	*(void **)&soup.message_new = dlsym(l, "soup_message_new");
-	*(void **)&soup.request_headers = dlsym(l, "soup_message_get_request_headers");
-	*(void **)&soup.response_headers = dlsym(l, "soup_message_get_response_headers");
-	*(void **)&soup.headers_append = dlsym(l, "soup_message_headers_append");
-	*(void **)&soup.headers_foreach = dlsym(l, "soup_message_headers_foreach");
-	*(void **)&soup.set_request_body_from_bytes = dlsym(l, "soup_message_set_request_body_from_bytes");
-	*(void **)&soup.send = dlsym(l, "soup_session_send");
-	*(void **)&soup.get_status = dlsym(l, "soup_message_get_status");
-	*(void **)&soup.get_uri = dlsym(l, "soup_message_get_uri");
-	*(void **)&soup.uri_to_string = dlsym(l, "g_uri_to_string");
-	*(void **)&soup.read = dlsym(l, "g_input_stream_read");
-	*(void **)&soup.close = dlsym(l, "g_input_stream_close");
-	soup.loaded = soup.session_new && soup.message_new && soup.send && soup.get_status && soup.read && soup.close;
+// load_soup opens libsoup 3 (asuka_linux.def's SOUP functions), once.
+static bool load_soup(void) {
+	return asuka_linux() && asuka_linux_load(ASUKA_LIB_SOUP) && G(soup_session_new) && G(soup_message_new) && G(soup_session_send) &&
+	       G(soup_message_get_status) && G(g_input_stream_read) && G(g_input_stream_close);
 }
 
 static void each_header(const char *name, const char *value, gpointer r) { add_header(r, name, strlen(name), value, strlen(value)); }
@@ -341,35 +296,31 @@ static void each_header(const char *name, const char *value, gpointer r) { add_h
 static void cancel_soup(void *c) { G(g_cancellable_cancel)(c); }
 
 bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_error *err) {
-	static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
-	pthread_mutex_lock(&mu);
-	load_soup();
-	pthread_mutex_unlock(&mu);
 	if (out) *out = (asuka_response){0};
 	const char *url = rq->url;
-	if (!soup.loaded) {
+	if (!load_soup()) {
 		asuka_error_unsupported(err, "HTTP needs libsoup 3 (libsoup-3.0.so.0)");
 		return false;
 	}
 	SoupMessage *msg = strncmp(url, "http://", 7) == 0 || strncmp(url, "https://", 8) == 0
-	                       ? soup.message_new(rq->method && *rq->method ? rq->method : "GET", url)
+	                       ? G(soup_message_new)(rq->method && *rq->method ? rq->method : "GET", url)
 	                       : NULL;
 	if (!msg) {
 		asuka_error_failed(err, "http", 0, "%s isn't an http or https URL", url);
 		return false;
 	}
-	SoupSession *s = soup.session_new();
-	if (rq->timeout_ms > 0 && soup.session_set_timeout) soup.session_set_timeout(s, (guint)((rq->timeout_ms + 999) / 1000));
-	if (soup.session_set_user_agent) soup.session_set_user_agent(s, rq->agent && *rq->agent ? rq->agent : "Asuka");
-	SoupMessageHeaders *h = soup.request_headers(msg);
+	SoupSession *s = G(soup_session_new)();
+	if (rq->timeout_ms > 0 && G(soup_session_set_timeout)) G(soup_session_set_timeout)(s, (guint)((rq->timeout_ms + 999) / 1000));
+	if (G(soup_session_set_user_agent)) G(soup_session_set_user_agent)(s, rq->agent && *rq->agent ? rq->agent : "Asuka");
+	SoupMessageHeaders *h = G(soup_message_get_request_headers)(msg);
 	const char *type = NULL;
 	for (size_t i = 0; i < rq->nheaders; i++) {
 		if (strcasecmp(rq->headers[i].name, "content-type") == 0) type = rq->headers[i].value;
-		else soup.headers_append(h, rq->headers[i].name, rq->headers[i].value);
+		else G(soup_message_headers_append)(h, rq->headers[i].name, rq->headers[i].value);
 	}
 	if (rq->len > 0 || type) {
 		GBytes *b = G(g_bytes_new)(rq->body, rq->len);
-		soup.set_request_body_from_bytes(msg, type ? type : "application/octet-stream", b);
+		G(soup_message_set_request_body_from_bytes)(msg, type ? type : "application/octet-stream", b);
 		G(g_bytes_unref)(b);
 	}
 	asuka_response head = {0};
@@ -386,14 +337,14 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 		asuka_error_cancelled(err);
 		goto done;
 	}
-	in = soup.send(s, msg, c, &e);
+	in = G(soup_session_send)(s, msg, c, &e);
 	if (!in) goto fail;
-	head.status = (int)soup.get_status(msg);
-	GUri *u = soup.get_uri ? soup.get_uri(msg) : NULL;
-	char *us = u && soup.uri_to_string ? soup.uri_to_string(u) : NULL;
+	head.status = (int)G(soup_message_get_status)(msg);
+	GUri *u = G(soup_message_get_uri) ? G(soup_message_get_uri)(msg) : NULL;
+	char *us = u && G(g_uri_to_string) ? G(g_uri_to_string)(u) : NULL;
 	head.url = asuka_strdup(us ? us : url);
 	G(g_free)(us);
-	if (soup.headers_foreach) soup.headers_foreach(soup.response_headers(msg), each_header, &head);
+	if (G(soup_message_headers_foreach)) G(soup_message_headers_foreach)(G(soup_message_get_response_headers)(msg), each_header, &head);
 	if (rq->head && !rq->head(rq->ctx, &head, err)) {
 		ok = !err->status;
 		goto done;
@@ -401,7 +352,7 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 	enum { piece = 64 * 1024 };
 	buf = malloc(piece);
 	for (;;) {
-		gssize got = soup.read(in, buf, piece, c, &e);
+		gssize got = G(g_input_stream_read)(in, buf, piece, c, &e);
 		if (got < 0) goto fail;
 		if (got == 0) break;
 		if (rq->data && !rq->data(rq->ctx, buf, (size_t)got, err)) {
@@ -422,7 +373,7 @@ fail:
 done:
 	unhook(rq->abort);
 	if (in) {
-		soup.close(in, NULL, NULL);
+		G(g_input_stream_close)(in, NULL, NULL);
 		G(g_object_unref)(in);
 	}
 	free(buf);
@@ -437,6 +388,7 @@ done:
 #endif
 
 static bool keep_data(void *ctx, const void *p, size_t n, asuka_error *err) {
+	(void)err;
 	asuka_writer_put(ctx, p, n);
 	return true;
 }

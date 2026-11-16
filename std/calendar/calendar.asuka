@@ -6,6 +6,7 @@
 
 import asuka/platform
 import asuka/json
+import asuka/time
 
 /// The app's access to the calendars.
 pub enum Access {
@@ -27,7 +28,7 @@ pub struct Calendar {
   writable: bool = false
 }
 
-/// An event. start and end are milliseconds since 1970 (time.now()'s);
+/// An event, from start to end (asuka/time's Times);
 /// an all-day event's are days, in UTC.
 pub struct Event {
   id: string = ""
@@ -36,8 +37,8 @@ pub struct Event {
   location: string = ""
   notes: string = ""
   url: string = ""
-  start: int = 0
-  end: int = 0
+  start: time.Time = time.unix(0)
+  end: time.Time = time.unix(0)
   allDay: bool = false
 }
 
@@ -82,14 +83,14 @@ struct Range {
   calendars: [string]
 }
 
-/// The events between from and to (in milliseconds since 1970), of
+/// The events between from and to, of
 /// calendars ([]: all), by their start (full access).
-pub async fn events(from: int, to: int, calendars: [string] = []) throws -> [Event] {
+pub async fn events(from: time.Time, to: time.Time, calendars: [string] = []) throws -> [Event] {
   do {
-    let b = try await platform.call("calendar", "events", json.encode(Range(from: from, to: to, calendars: calendars)).bytes())
+    let b = try await platform.call("calendar", "events", json.encode(Range(from: from.unixMilli(), to: to.unixMilli(), calendars: calendars)).bytes())
     let ws: [WireEvent] = try json.decode(b.string())
     return ws.map(w => Event(id: w.id, calendarId: w.calendarId, title: w.title, location: w.location, notes: w.notes,
-      url: w.url, start: w.startMs, end: w.endMs, allDay: w.allDay))
+      url: w.url, start: time.unixMilli(w.startMs), end: time.unixMilli(w.endMs), allDay: w.allDay))
   } catch e {
     throw notAllowed(e)
   }
@@ -99,7 +100,7 @@ pub async fn events(from: int, to: int, calendars: [string] = []) throws -> [Eve
 /// saved it.
 pub async fn add(e: Event) throws -> bool {
   let w = WireEvent(title: e.title, location: e.location, notes: e.notes, url: e.url, calendarId: e.calendarId,
-    startMs: e.start, endMs: e.end, allDay: e.allDay)
+    startMs: e.start.unixMilli(), endMs: e.end.unixMilli(), allDay: e.allDay)
   do {
     let b = try await platform.call("calendar", "add", json.encode(w).bytes())
     return platform.readU8(b, 0) == 1

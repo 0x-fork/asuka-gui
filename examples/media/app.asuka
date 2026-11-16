@@ -50,7 +50,7 @@ screen Images {
         aspectRatio: 16.0 / 9
         radius: 12
         background: .secondaryBackground
-        on load(w, h) { status = "Loaded, {w.fixed(0)}×{h.fixed(0)}" }
+        on loaded(w, h) { status = "Loaded, {w.fixed(0)}×{h.fixed(0)}" }
         on error(m) { status = "Failed: {m}" }
       }
       Text(status) {
@@ -77,7 +77,7 @@ screen Gestures {
   SafeArea {
     padding: 20
     gap: 16
-    Text(if last.isEmpty { "Drag the card, pinch it, let go" } else { last }) { color: .secondaryLabel }
+    Text(if last.isEmpty() { "Drag the card, pinch it, let go" } else { last }) { color: .secondaryLabel }
     View {
       grow: 1
       background: .secondaryBackground

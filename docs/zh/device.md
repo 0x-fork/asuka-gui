@@ -42,7 +42,7 @@ Asuka 提供了一系列包，让应用用上视图之外的设备能力：相�
 | `asuka/calendar` | `READ_CALENDAR`、`WRITE_CALENDAR`（用于 `calendars`、`events`） | `NSCalendarsFullAccessUsageDescription`、`NSCalendarsWriteOnlyAccessUsageDescription`、`NSCalendarsUsageDescription` |
 | `asuka/compose` | 处理 `mailto:` 和 `smsto:` 的应用的可见性声明（`<queries>`） | `LSApplicationQueriesSchemes` 中的 `mailto` |
 | `asuka/nfc` | `NFC`；`uses-feature android.hardware.nfc`（非必需）；`asuka.toml` 中 `nfc` 的过滤器（见 [NFC 标签](nfc.md)） | `NFCReaderUsageDescription`；Core NFC 的 entitlement；`asuka.toml` 中 `nfc` 的 AID 和 FeliCa 系统代码 |
-| `asuka/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；声明了 `asuka.toml` 的 `bluetooth.background` 时还有扫描接收器（见[蓝牙](bluetooth.md#构建时添加的内容)） | `NSBluetoothAlwaysUsageDescription`；声明了 `bluetooth.background` 时还有 `bluetooth-central`、`bluetooth-peripheral` |
+| `asuka/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；调用了 `backgroundScan` 时还有后台扫描的接收器（见[蓝牙](bluetooth.md#构建时添加的内容)） | `NSBluetoothAlwaysUsageDescription`；声明了 `bluetooth.background` 时还有 `bluetooth-central`、`bluetooth-peripheral`（调用了 `backgroundScan` 时有 `bluetooth-central`），以及创建 iOS 要恢复的管理器的启动类 |
 
 `asuka/device`、`asuka/audio`、`asuka/splash`、`asuka/imageedit`、`asuka/widget`、`asuka/js`、`asuka/secure`、`asuka/preview` 和 `asuka/print` 不需要任何权限。
 
@@ -1155,9 +1155,110 @@ component Shared {
 
 链接指向的是什么（网页、图片还是视频），需要应用自己用 `asuka/http` 去弄清楚，相当于用 Asuka 实现 expo-sharing 的 “resolved” 负载。
 
-### 应用自己的分享面板
+### 应用自己的分享面板：asuka/sharesheet
 
-分享会打开应用。至于应用自己的分享面板，也就是像“保存到 Raindrop”或“添加到备忘录”那样，显示在发起分享的应用上方的一个页面（用户保存后，就回到原来所在的地方），Asuka 目前还不支持：宿主已经能运行这样的面板（在 iOS 上作为分享扩展的弹出面板，在 Android 上作为运行在 `:share` 进程中、以 Material 底部面板形式显示的 Activity），但 Asuka 语言还没有办法声明面板要显示的页面。在那之前，分享会打开应用，由 `onShare` 接收分享的内容。
+默认情况下，分享会打开应用。应用也可以有自己的分享面板：像“保存到 Raindrop”或“添加到备忘录”那样，在发起分享的应用上方显示一个页面，用户保存之后就回到原来所在的地方。借助 `asuka/sharesheet`，app 块可以在应用作为分享面板运行时显示这个面板：
+
+```asuka
+import asuka/sharesheet
+
+component SaveLink {
+  state link = ""
+  state note = ""
+
+  onShare(items => {
+    for it in items {
+      if it.kind == .link {
+        link = it.text
+      }
+    }
+  })
+
+  Column {
+    padding: 16; gap: 12; grow: 1
+    if link.isEmpty() {
+      ProgressRing()
+    } else {
+      Text(link)
+    }
+    TextField { bind text: note; placeholder: "Note" }
+    Row {
+      gap: 12
+      Button("Cancel") {
+        on press { sharesheet.cancel() }
+      }
+      Button("Save") {
+        variant: .filled
+        on press {
+          save(link, note)
+          sharesheet.done()
+        }
+      }
+    }
+  }
+}
+
+component Root {
+  Text("Links")
+}
+
+// 应用自己的函数。
+fn save(link: string, note: string) {}
+
+app {
+  if sharesheet.active() {
+    SaveLink()
+  } else {
+    Root()
+  }
+}
+```
+
+应用作为自己的分享面板运行时，`sharesheet.active()` 为 true：这时根视图就是面板，应用的其余部分不会创建。面板和应用一样，通过 `onShare` 接收分享的内容；内容还没到齐时（比如视频还在复制），可以先显示一个加载指示器。面板通过 `sharesheet.done()`、`sharesheet.cancel()` 或 `sharesheet.openApp()` 关闭；`openApp()` 会带着分享的内容打开应用，交给应用的 `onShare`，和没有面板时一样。面板会出现在哪些内容的分享菜单里，仍由 `asuka.toml` 的 `shareTarget` 决定（见上文）；如果应用用了 `active()` 却没有设置 `shareTarget`，就不会出现在任何分享菜单里（CLI 会给出提示）。
+
+面板是一个独立的根视图，运行在独立的进程中，这和 iOS 运行分享扩展的方式一致：在 **iOS** 上，它就是应用的分享扩展，由 iOS 以弹出面板的形式显示，运行的是它与应用共用的框架中的应用代码和宿主；在 **Android** 上，它是运行在 `:share` 进程中的一个 Activity，以 Material 底部面板的形式显示在另一个应用上方（向下拖动、点按面板外部或返回都会取消分享）。面板关闭时，进程也随之结束。文件的 `path` 只在面板关闭之前有效：应用要保留的内容，请先复制出来。
+
+应用保存的数据在面板里也一样能访问：它的文件（`asuka/fs` 的应用目录，以及其中的 SQLite 数据库）、`asuka/storage` 的值、`asuka/secure`。Android 上两个进程共享应用的文件。iOS 上，应用第一次带着面板运行时，它的文件和值会一次性移到 App Group（`group.<app ID>`）中，钥匙串访问组也会与扩展共享；真机构建所用的描述文件需要开启 App Groups 功能（见[发布](shipping.md#ios)）。应用运行期间，不会收到面板写入数据的通知：等它回到前台时再重新读取。
+
+CLI 发现应用用到了 `sharesheet.active`，就会构建这个面板，取代那个只负责打开应用的扩展。这时在 iOS 上，应用的代码、核心和宿主会打包成应用内的一个框架 `Frameworks/AsukaApp.framework`，应用和它的扩展都加载这个框架，就像 Xcode 让扩展共享代码那样：应用不会因为有了面板而变大。在桌面平台和浏览器中，应用不会出现在其他应用的分享菜单里：`active()` 在这些平台上为 false。
+
+在测试中，`sharesheet.fake()` 会让应用作为分享面板运行（`mountApp()` 显示的就是面板），并记下面板是怎样关闭的（`closed`）；挂载后的应用调用 `share(items)`，就相当于另一个应用分享了这些内容：
+
+```asuka
+import asuka/sharesheet
+
+component SaveLink {
+  state link = ""
+
+  onShare(items => {
+    link = items[0].text
+  })
+
+  Column {
+    Text(link)
+    Button("Save") {
+      on press { sharesheet.done() }
+    }
+  }
+}
+
+app {
+  if sharesheet.active() {
+    SaveLink()
+  } else {
+    Text("Links")
+  }
+}
+
+test "the sheet saves" {
+  let sheet = sharesheet.fake()
+  let app = mountApp()
+  app.share([SharedItem(kind: .link, text: "https://asuka.dev")])
+  app.expect("https://asuka.dev")
+  app.tap("Save")
+  expect(sheet.closed == .done)
+}
+```
 
 ## 运行 JavaScript：asuka/js
 
@@ -1235,7 +1336,57 @@ Asuka 会像 Google 的 Gradle 插件那样，把其中的配置写进应用。�
 
 ### 在推送显示之前改写它
 
-在每条推送显示之前修改它（解密端到端加密的负载，设置标题和正文，附上图片，把它变成一条带有发送者头像的会话消息），Asuka 目前还不支持。宿主已经具备这样的能力（iOS 上是 Notification Service Extension，它会为 `aps` 中带有 `"mutable-content": 1` 的每条推送运行一次；Android 上是在应用的进程中处理 FCM 的数据消息），但 `asuka/push` 还没有函数可以把应用的代码交给它们，所以推送会按收到时的样子显示：要显示的内容，请直接放在负载里。
+`push.rewrite(f)` 让应用在每条推送显示之前修改它：解密端到端加密的负载，设置标题和正文，附上图片，把它变成一条带有发送者头像的会话消息，设置它的分组和类别。在应用启动时调用：
+
+```asuka
+import asuka/push
+import asuka/notify
+
+async fn reveal(m: push.Message) throws -> push.Message? {
+  let box = m.data["box"] ?? ""
+  if box.isEmpty() {
+    return none   // 不是我们的：按原样显示
+  }
+  let msg = try await decrypt(box)   // 密钥保存在 asuka/secure 中
+  var out = m
+  out.body = msg.text
+  out.category = "message"
+  return out.from(notify.Person(id: msg.fromID, name: msg.fromName, image: msg.avatar),
+    notify.Conversation(id: m.data["chat"] ?? ""))
+}
+
+component Root {
+  task {
+    push.rewrite(reveal)
+  }
+
+  Text("Chats")
+}
+
+// 应用自己的类型和函数。
+struct Plain {
+  text: string
+  fromID: string
+  fromName: string
+  avatar: string
+}
+
+async fn decrypt(box: string) throws -> Plain {
+  return Plain(text: box, fromID: "ana", fromName: "Ana", avatar: "")
+}
+
+app { Root() }
+```
+
+`f` 返回要显示的推送；返回 `none` 或抛出错误时，推送会按收到时的样子显示。推送一条一条地改写，顺序与到达的顺序一致。`image` 会被下载并附在通知上；`from` 把它变成一条会话消息，和 `notify.Notification` 的 `from` 一样。调用 `push.stopRewriting()` 之后，推送又会按原样显示。
+
+**iOS** 在 Notification Service Extension 中改写推送，`asuka build` 会为用到 `push.rewrite` 的应用生成这个扩展：`aps` 中带有 `"mutable-content": 1`（以及 `alert`，改写失败时显示的就是它）的每条推送，iOS 都会启动它。它会像在后台启动那样，不带屏幕地运行应用；等应用调用了 `push.rewrite`，改写才会执行。所以要让根视图在启动时做的事情尽量轻量，或者让扩展里的根视图只负责调用它（在扩展中 `push.inExtension()` 为 true：`if push.inExtension() { Rewrites() } else { Root() }`）。iOS 给它大约 30 秒和 24 MB 内存，超时后推送会按原样显示。应用保存的数据在扩展里也一样：它的文件和 `asuka/storage` 的值都在两者共享的 App Group 中，钥匙串项（`asuka/secure`）在应用的访问组中。发布构建需要一个对应扩展 bundle ID 的描述文件，这个 ID 是应用的 ID 加上 `.notification`（可以用 `asuka.toml` 的 `ios.notificationProfile` 指定；默认选用已安装的最匹配的那个），并且要开启 App Groups 功能、包含应用的 App Group。在 iOS 上，改写无法隐藏一条推送。模拟器只会为来自 APNs 的推送运行这个扩展，`xcrun simctl push` 发出的推送不会经过它。
+
+**Android** 在应用的进程中改写 FCM 的数据消息：如果应用没有运行，会先不带屏幕地启动它，在大约十秒之内完成改写，然后显示通知。改写之后既没有标题也没有正文的数据消息不会显示。应用在后台时收到的通知消息由 Firebase 直接显示，不会经过改写：请改发数据消息。
+
+**Web** 上由前台的页面在 service worker 显示推送之前改写它；没有打开的页面时，推送按原样显示。
+
+在测试中，`push.fakeRewrite(m)` 返回一条到达的推送最终会显示的样子：改写后的推送，或者 `m` 本身。
 
 ## 通过 Apple 登录：asuka/appleauth
 
@@ -1722,14 +1873,14 @@ import asuka/calendar
 import asuka/time
 
 async fn addDemo() throws -> bool {
-  let start = time.date(2026, 12, 1, hour: 15).unixMilli()
-  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30 * 60_000))
+  let start = time.date(2026, 12, 1, hour: 15)
+  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30min))
 }
 ```
 
 - `calendar.add(event)` 显示系统的事件编辑器，并预先填好信息，由用户来保存事件，然后返回用户是否保存了；不需要请求权限（iOS 17 及以上）。iOS 会告诉你事件是否已保存，Android 的日历应用则不会。
 - `calendar.request()` 请求访问权限（结果是 `.notAsked`、`.denied`、`.writeOnly` 或 `.full`）；拿到 `.full` 后，`calendar.calendars()` 列出所有日历，`calendar.events(from:, to:, calendars:)` 列出两个时间点之间的事件，重复事件的每一次都会单独列出。没有 `.full` 时，它们会抛出“calendar: not allowed”。
-- 事件的 `start` 和 `end` 是自 1970 年起的毫秒数。全天事件的则以天为单位：分别是第一天的 UTC 零点，以及最后一天的次日 UTC 零点。
+- 事件的 `start` 和 `end` 是 `time.Time`。全天事件的则以天为单位：分别是第一天的 UTC 零点，以及最后一天的次日 UTC 零点。
 
 在 Mac 上用的是 EventKit：`add` 在窗口上方弹出一个警告框征求用户同意（macOS 没有供应用使用的事件编辑器），然后再保存。Linux 读写 Evolution Data Server 的日历。Windows 只向打包应用开放日历：`request` 返回 `.denied`，`add` 会在用户的日历应用中打开一个 iCalendar 文件（并返回 false，因为 Windows 不会告诉应用是否保存了）。浏览器无法读取日历；`add` 会下载一个 `.ics` 文件。
 
@@ -1746,9 +1897,10 @@ sizes = ["small", "medium", "rectangular"]
 ```
 
 ```asuka
+import asuka/time
 import asuka/widget
 
-fn showToday(meeting: int) {
+fn showToday(meeting: time.Time) {
   widget.set("today", widget.Entry(
     title: "Next", symbol: "calendar", value: "3 tasks", body: "Call Ana at 4",
     progress: 0.4, showProgress: true, until: meeting, url: "myapp://today",
@@ -1756,7 +1908,7 @@ fn showToday(meeting: int) {
 }
 ```
 
-小组件会用平台的模板显示它的 `Entry`，并按尺寸排版：`title`（带上 `symbol`，以 `tint` 着色）、大号的 `value`、`body`、`progress` 进度条、到 `until`（自 1970 年起的毫秒数）为止的实时倒计时，以及 `caption`。在应用设置新的内容之前，它会一直显示当前内容，不管应用是否在运行；点按小组件会用它的 `url` 打开应用（由应用的 `openURL` 事件接收）。`widget.setAll(kind, entries)` 中的条目各自带上 `at`，就构成了一条时间线：每个条目从各自的时间开始显示。`widget.clear(kind)` 用来清空小组件。
+小组件会用平台的模板显示它的 `Entry`，并按尺寸排版：`title`（带上 `symbol`，以 `tint` 着色）、大号的 `value`、`body`、`progress` 进度条、到 `until`（一个 `time.Time`）为止的实时倒计时，以及 `caption`。在应用设置新的内容之前，它会一直显示当前内容，不管应用是否在运行；点按小组件会用它的 `url` 打开应用（由应用的 `openURL` 事件接收）。`widget.setAll(kind, entries)` 中的条目各自带上 `at`，就构成了一条时间线：每个条目从各自的时间开始显示。`widget.clear(kind)` 用来清空小组件。
 
 尺寸有 `small`、`medium`、`large`，以及 iOS 的 `extraLarge`（iPad）和锁屏上的 `circular`、`rectangular`、`inline`。iOS：CLI 会把一个 WidgetKit 扩展构建进应用，并让它与应用共享一个 App Group（发布构建需要开启 App Groups 功能，还需要为扩展的 ID，即应用的 ID 加上 `.widgets`，准备一个描述文件）。Android：每种小组件对应一个 App Widget，使用 Material You 配色，尺寸按启动器的网格单元计算。桌面端和 Web 没有小组件：`widget.set` 在这些平台上什么也不做。
 
@@ -1766,8 +1918,9 @@ fn showToday(meeting: int) {
 
 ```asuka
 import asuka/liveactivity
+import asuka/time
 
-async fn followOrder(eta: int) throws {
+async fn followOrder(eta: time.Time) throws {
   let a = try await liveactivity.start(liveactivity.Content(
     title: "Order #1042", subtitle: "Ana is picking it up", value: "12 min",
     symbol: "bag.fill", until: eta, url: "myapp://orders/1042",
@@ -1780,9 +1933,9 @@ async fn followOrder(eta: int) throws {
 }
 ```
 
-实时活动用平台的模板显示它的 `Content`，空着的字段不显示：`title` 和 `subtitle`、`value`（大号显示在一侧；在灵动岛的紧凑视图里显示；在 Android 16 上是状态栏里的胶囊标签）、以 `tint` 着色的 `symbol`、`progress` 进度条，以及一个到 `until`（自 1970 年起的毫秒数）为止的倒计时，它不需要应用运行也会走。同时设置 `since`、`until` 和 `showProgress` 时，进度条会自己往前走。点按实时活动会用它的 `url` 打开应用（由应用的 `openURL` 事件接收）。
+实时活动用平台的模板显示它的 `Content`，空着的字段不显示：`title` 和 `subtitle`、`value`（大号显示在一侧；在灵动岛的紧凑视图里显示；在 Android 16 上是状态栏里的胶囊标签）、以 `tint` 着色的 `symbol`、`progress` 进度条，以及一个到 `until`（一个 `time.Time`）为止的倒计时，它不需要应用运行也会走。同时设置 `since`、`until` 和 `showProgress` 时，进度条会自己往前走。点按实时活动会用它的 `url` 打开应用（由应用的 `openURL` 事件接收）。
 
-`liveactivity.start(c, push:, relevance:)` 要在应用显示在屏幕上时调用（两个平台都不允许后台的应用启动实时活动）；`relevance` 决定应用的多个实时活动之间的先后顺序。带上 `Alert` 的更新会点亮屏幕：iOS 会展开灵动岛，并在 Apple Watch 上显示它；Android 会让通知再提醒一次。`end(c, dismiss:)` 之后，最后的内容会继续显示，直到系统把它移走（`.later`，这是默认值，最多 4 小时），或者显示到某个时间为止（`.at(ms)`），也可以立即移走（`.now`）。`liveactivity.enabled()` 返回用户是否允许实时活动（Android 会在第一次 `start` 时请求通知权限）。这个包不会列出仍在运行的实时活动。
+`liveactivity.start(c, push:, relevance:)` 要在应用显示在屏幕上时调用（两个平台都不允许后台的应用启动实时活动）；`relevance` 决定应用的多个实时活动之间的先后顺序。带上 `Alert` 的更新会点亮屏幕：iOS 会展开灵动岛，并在 Apple Watch 上显示它；Android 会让通知再提醒一次。`end(c, dismiss:)` 之后，最后的内容会继续显示，直到系统把它移走（`.later`，这是默认值，最多 4 小时），或者显示到某个时间为止（`.at(t)`），也可以立即移走（`.now`）。`liveactivity.enabled()` 返回用户是否允许实时活动（Android 会在第一次 `start` 时请求通知权限）。这个包不会列出仍在运行的实时活动。
 
 `liveactivity.events()` 告诉你实时活动发生了什么：某个活动 `.ended`（被用户、系统或服务器结束）、某个活动被服务器 `.started`，以及推送令牌（`.pushToken`、`.pushToStartToken`）；每一项都是一个 `Event`，带有对应的 `activity` 和 `token`。设置 `push: true` 后，服务器可以在应用不在前台时更新和结束实时活动：把它的推送令牌和 `id` 发给服务器即可。在 iOS 上，服务器发送一条 `liveactivity` 类型的 APNs 推送，其中的 `content-state` 就是 JSON 形式的内容（即 `Content` 的各个字段，其中 `since` 和 `until` 写作 `sinceMs` 和 `untilMs`）；在 Android 上，服务器发送一条 Firebase 数据消息，带上 `asuka.liveActivity`（`update` 或 `end`）、`asuka.id` 和 `asuka.content`。服务器也可以启动实时活动：在 iOS 17.2 上用 push-to-start 令牌（attributes 类型为 `AsukaActivityAttributes`，带上新活动的 `id`），在 Android 上把 `asuka.liveActivity` 设为 `start`。推送需要应用同时使用 `asuka/push`：iOS 上需要推送通知（Push Notifications）功能，Android 上需要 Firebase。
 

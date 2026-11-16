@@ -97,6 +97,14 @@ native component View() {
   prop dragItems: [DragItem]
   /// makes it take drops of these MIME types: exact ("text/plain"), a family ("image/*"), anything ("*/*"), or the app's own
   prop dropTypes: [string]
+  /// a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view
+  prop swipeActions: [Action]
+  /// a List's row's actions revealed from its leading edge (Mail's Unread)
+  prop leadingSwipeActions: [Action]
+  /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
+  prop selected: bool
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link
+  prop href: string
   /// a tap on it
   event press
   /// a press held on it
@@ -123,6 +131,10 @@ native component View() {
   event dropMove(x: float, y: float)
   /// what's dropped on it: the items it takes
   event drop(drop: Drop)
+  /// the user selected its List's row, or deselected it
+  event select(selected: bool)
+  /// the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)
+  event selectBegin
 }
 
 /// a container whose children stack on a row
@@ -134,6 +146,14 @@ native component Row() {
   prop dragItems: [DragItem]
   /// makes it take drops of these MIME types: exact ("text/plain"), a family ("image/*"), anything ("*/*"), or the app's own
   prop dropTypes: [string]
+  /// a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view
+  prop swipeActions: [Action]
+  /// a List's row's actions revealed from its leading edge (Mail's Unread)
+  prop leadingSwipeActions: [Action]
+  /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
+  prop selected: bool
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link
+  prop href: string
   /// a tap on it
   event press
   /// a press held on it
@@ -160,6 +180,10 @@ native component Row() {
   event dropMove(x: float, y: float)
   /// what's dropped on it: the items it takes
   event drop(drop: Drop)
+  /// the user selected its List's row, or deselected it
+  event select(selected: bool)
+  /// the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)
+  event selectBegin
 }
 
 /// a container whose children stack on a column
@@ -171,6 +195,14 @@ native component Column() {
   prop dragItems: [DragItem]
   /// makes it take drops of these MIME types: exact ("text/plain"), a family ("image/*"), anything ("*/*"), or the app's own
   prop dropTypes: [string]
+  /// a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view
+  prop swipeActions: [Action]
+  /// a List's row's actions revealed from its leading edge (Mail's Unread)
+  prop leadingSwipeActions: [Action]
+  /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
+  prop selected: bool
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link
+  prop href: string
   /// a tap on it
   event press
   /// a press held on it
@@ -197,6 +229,10 @@ native component Column() {
   event dropMove(x: float, y: float)
   /// what's dropped on it: the items it takes
   event drop(drop: Drop)
+  /// the user selected its List's row, or deselected it
+  event select(selected: bool)
+  /// the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)
+  event selectBegin
 }
 
 /// a column that keeps its children out of the system's bars, notches and the keyboard: padded by the safe area's insets, over its own padding
@@ -208,6 +244,14 @@ native component SafeArea() {
   prop dragItems: [DragItem]
   /// makes it take drops of these MIME types: exact ("text/plain"), a family ("image/*"), anything ("*/*"), or the app's own
   prop dropTypes: [string]
+  /// a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view
+  prop swipeActions: [Action]
+  /// a List's row's actions revealed from its leading edge (Mail's Unread)
+  prop leadingSwipeActions: [Action]
+  /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
+  prop selected: bool
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call; with role: .link, screen readers call it a link
+  prop href: string
   /// a tap on it
   event press
   /// a press held on it
@@ -234,6 +278,10 @@ native component SafeArea() {
   event dropMove(x: float, y: float)
   /// what's dropped on it: the items it takes
   event drop(drop: Drop)
+  /// the user selected its List's row, or deselected it
+  event select(selected: bool)
+  /// the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)
+  event selectBegin
 }
 
 /// a text: it wraps, unless lines limits it
@@ -250,8 +298,10 @@ native component Button(title: string) {
   prop icon: string
   /// actions shown when it's tapped, instead of press
   prop menu: [Action]
-  /// goes to this route when it's pressed, after press (the Router around it navigates there)
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call (href: Thread(id: 7))
   prop href: string
+  /// in an Alert or a Screen's bars, what it does, which the platform draws it by: .cancel, .destructive (red)
+  prop role: ActionRole
   event press
 }
 
@@ -278,6 +328,8 @@ native component TextField() {
   prop selection: TextRange
   /// makes it a text area of styled text: bold, italic, underline, strikethrough, monospaced, links. The user's typing and formatting write it; writing it replaces the text, and text follows its plain text. Inline components are left out. It makes the field multiline
   prop rich: [Span]
+  /// whether it has the keyboard: the user's tapping in and out writes it, and writing it takes the keyboard or gives it up
+  prop focused: bool
   /// the MIME types (patterns, as "image/*") of what on paste takes instead of the text: pasted, or put in by the keyboard (a GIF keyboard's images)
   prop pasteTypes: [string]
   event change(text: string)
@@ -286,6 +338,8 @@ native component TextField() {
   event focus
   event blur
   event select(selection: TextRange)
+  /// it took the keyboard, or gave it up
+  event focusChange(focused: bool)
   event richChange(rich: [Span])
   /// the styles where the cursor is, or that all the selection has, as they change: a toolbar's buttons show them
   event formats(formats: TextFormats)
@@ -335,6 +389,39 @@ native component Picker(items: [string]) {
   /// what it picks: shown while none is chosen (Android's floating label), and read by screen readers
   prop prompt: string
   event change(index: int)
+}
+
+/// one of many options on a spinning wheel (UIPickerView; Android's NumberPicker)
+native component Wheel(items: [string]) {
+  /// the item turned to
+  prop selected: int
+  event change(index: int)
+}
+
+/// a swatch of a color that opens the platform's picker (UIColorWell; a Material dialog of a palette on Android)
+native component ColorPicker() {
+  /// the color chosen
+  prop value: Color
+  /// the user can choose an opacity too
+  prop alpha: bool
+  /// the picker's title
+  prop title: string
+  event change(color: Color)
+}
+
+/// a date or a time, chosen the platform's way (UIDatePicker; Material's date and time pickers), in the device's time zone and format
+native component DatePicker() {
+  /// the instant chosen, in milliseconds since 1970 (asuka/time's time.Picker binds a Time)
+  prop value: int
+  /// a date, a time of day, or both
+  prop mode: DateMode
+  /// the earliest choice, in milliseconds since 1970 (0: none)
+  prop min: int
+  /// the latest choice (0: none)
+  prop max: int
+  /// iOS: the calendar and the time shown in place, not from a button
+  prop inline: bool
+  event change(value: int)
 }
 
 /// a progress bar; its color is its fill
@@ -485,9 +572,7 @@ native component Video(source: string) {
 }
 
 /// a web page, in the platform's web view; with no height and no grow, it grows
-native component WebView() {
-  /// the page: an http(s) URL, or an asset
-  prop url: string
+native component WebView(url: string = "") {
   /// markup to show instead
   prop html: string
   /// a script run before each page's own, in every frame (set when it's made)
@@ -538,10 +623,10 @@ native component Screen() {
   event searchChange(text: string)
   /// return pressed in the search field
   event searchSubmit
-  /// the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar
-  prop actions: View? = none
-  /// buttons in a bar at the bottom of the screen: Buttons, as actions'
+  /// the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar (iOS's navigation bar, Android's top app bar)
   prop toolbar: View? = none
+  /// buttons in a bar at the bottom of the screen: Buttons, as toolbar's
+  prop bottomToolbar: View? = none
   /// the screen's main action (compose, add): a Button; Android's floating action button, iOS's prominent toolbar item
   prop primary: View? = none
 }
@@ -578,6 +663,20 @@ native component Sheet() {
   event dismiss
 }
 
+/// an alert while open: its block's Buttons are its buttons (their title, icon, role and disabled; a cancel one's press runs as it's dismissed too), its TextFields its fields (placeholder, bind text, secure, keyboard, contentType). It takes no room where it's declared; with no Button, it has an OK
+native component Alert(title: string) {
+  prop children: View? = none
+  /// shows the alert while true; choosing a button, or the user dismissing it, writes false
+  prop open: bool
+  /// under the title
+  prop message: string
+  /// an action sheet: a list of choices from the bottom of the screen (a popover on an iPad), its fields left out
+  prop actionSheet: bool
+  event change(open: bool)
+  /// the user dismissed it without choosing a button (a tap outside, Android's back)
+  event dismiss
+}
+
 /// content in a bubble pointing at its children while open (UIPopoverPresentationController, a PopupWindow, NSPopover)
 native component Popover() {
   prop children: View? = none
@@ -601,11 +700,9 @@ native component Menu(title: string = "") {
   prop longPress: bool
 }
 
-/// destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations
-native component Split() {
+/// destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations, or Sidebars of them
+native component Split(title: string = "") {
   prop children: View? = none
-  /// the sidebar's
-  prop title: string
   /// the chosen destination's index: the user's choice writes it
   prop selected: int
   event change(index: int)
@@ -618,6 +715,11 @@ native component Destination(title: string) {
   prop badge: string
   /// the sidebar section it's in: destinations next to each other with the same section are one
   prop section: string
+}
+
+/// a section of a Split's sidebar: its children are Destinations, under its title (a Destination's own section, if it gives one, wins)
+native component Sidebar(title: string) {
+  prop children: View? = none
 }
 
 /// a desktop window of its own while open (a window in the page on the web; phones have none): its content is built as it opens, disposed as it closes. The app block's Window is the main window: its keys are the main window's
@@ -690,30 +792,14 @@ native component Window() {
   event closeRequest
 }
 
-/// shows its routes' screens from the address the app is at: its children are Routes
-native component Router() {
+/// shows its routes' screens from the address the app is at: its children are Routes. Router(initial: "/inbox") { … }
+native component Router(initial: string = "/") {
   prop children: View? = none
-  /// where it starts when nothing else says (a link the app was opened with, the address its window was left at)
-  prop initial: string = "/"
 }
 
-/// maps a path to a screen (its content, built with its parameters), or holds routes
-native component Route(path: string) {
+/// maps a path to a screen, or holds routes: Route("/inbox", layout: .stack, title: "Inbox") { Inbox; Thread; Route(":id/reply", sheet: true) { p => Reply(id: p.get("id")) } }. Its block holds its child Routes, its screen (p => View, built with its Params), or routed screens named alone (screen Thread(id: int) at ":id"), a Route of their pattern each
+native component Route(path: string = "", layout: RouteLayout = .group, title: string = "", icon: string = "", badge: string = "", initial: string = "", redirect: string = "", sheet: bool = false, detents: [Detent] = [], grabber: bool = false, fullScreen: bool = false, guard: (fn(string) -> string)? = none) {
   prop children: View? = none
-  /// a navigator of its child routes, or a group
-  prop layout: RouteLayout
-  prop title: string
-  prop icon: string
-  prop badge: string
-  /// the child a navigator starts with (a stack's first screen, under the one a link names)
-  prop initial: string
-  /// sends whoever comes here to this href, its parameters filled in
-  prop redirect: string
-  /// presented in a sheet over its navigator
-  prop sheet: bool
-  prop detents: [Detent]
-  /// asked before its screens show: "" lets the user in, an href sends them there
-  prop guard: fn(string) -> string
 }
 
 /// an error boundary: an error its content doesn't catch shows on error's views

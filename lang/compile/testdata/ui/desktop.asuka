@@ -115,6 +115,7 @@ component Stats(w: Ref) {
     Button("Close now") { on press { closeWindow() } }
     Button("Minimize") { on press { w.minimize() } }
     Button("Resize") { on press { w.setSize(300, 200) } }
+    Button("Main window") { on press { mainWindow().focus() } }
   }
 }
 
@@ -162,6 +163,10 @@ test "a Window opens, its handle acts on it and follows it" {
   app.setWindowState("Statistics", WindowState(width: 500, height: 400, visible: false))
   app.expect("hidden")
   app.expect("500x400")
+  let _ = app.windowActions()
+  app.tap("Main window")
+  expect(app.windowActions() == "focus")
+  expect(app.windowActions("Statistics") == "")
 }
 
 test "a guard keeps a window open, and its keys are the window's" {

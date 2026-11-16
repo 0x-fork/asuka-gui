@@ -8,7 +8,6 @@
 #include "asuka_linux.h"
 #include "location.h"
 
-#include <dlfcn.h>
 #include <errno.h>
 #include <math.h>
 #include <spawn.h>
@@ -521,36 +520,12 @@ void location_request_access(void (*done)(void *ctx), void *ctx) {
 
 // ---- A place's name: geocode-glib (Nominatim) ----
 
-static struct {
-	bool tried;
-	gpointer (*location_new)(gdouble lat, gdouble lon, gdouble accuracy);
-	gpointer (*reverse_new)(gpointer location);
-	void (*resolve_async)(gpointer reverse, GCancellable *c, GAsyncReadyCallback cb, gpointer data);
-	gpointer (*resolve_finish)(gpointer reverse, GAsyncResult *res, GError **e);
-	const char *(*name)(gpointer place);
-	const char *(*area)(gpointer place);
-	const char *(*town)(gpointer place);
-	const char *(*state)(gpointer place);
-	const char *(*country)(gpointer place);
-} geo;
-
+// geocoder opens geocode-glib (asuka_linux.def's GEOCODE functions):
+// false when it isn't installed.
 static bool geocoder(void) {
-	if (geo.tried) return geo.location_new != NULL;
-	geo.tried = true;
-	void *lib = dlopen("libgeocode-glib-2.so.0", RTLD_NOW);
-	if (!lib) lib = dlopen("libgeocode-glib.so.0", RTLD_NOW);
-	if (!lib || !asuka_linux()) return false;
-	*(void **)&geo.reverse_new = dlsym(lib, "geocode_reverse_new_for_location");
-	*(void **)&geo.resolve_async = dlsym(lib, "geocode_reverse_resolve_async");
-	*(void **)&geo.resolve_finish = dlsym(lib, "geocode_reverse_resolve_finish");
-	*(void **)&geo.name = dlsym(lib, "geocode_place_get_name");
-	*(void **)&geo.area = dlsym(lib, "geocode_place_get_area");
-	*(void **)&geo.town = dlsym(lib, "geocode_place_get_town");
-	*(void **)&geo.state = dlsym(lib, "geocode_place_get_state");
-	*(void **)&geo.country = dlsym(lib, "geocode_place_get_country");
-	if (geo.reverse_new && geo.resolve_async && geo.resolve_finish && geo.name && geo.area && geo.town && geo.state && geo.country)
-		*(void **)&geo.location_new = dlsym(lib, "geocode_location_new");
-	return geo.location_new != NULL;
+	return asuka_linux() && asuka_linux_load(ASUKA_LIB_GEOCODE) && G(geocode_location_new) && G(geocode_reverse_new_for_location) &&
+	       G(geocode_reverse_resolve_async) && G(geocode_reverse_resolve_finish) && G(geocode_place_get_name) && G(geocode_place_get_area) &&
+	       G(geocode_place_get_town) && G(geocode_place_get_state) && G(geocode_place_get_country);
 }
 
 typedef struct {
@@ -571,7 +546,7 @@ static void add(asuka_writer *w, const char **have, int *n, const char *v) {
 static void resolved(GObject *o, GAsyncResult *res, gpointer data) {
 	naming *n = data;
 	GError *ge = NULL;
-	gpointer place = geo.resolve_finish(n->reverse, res, &ge);
+	gpointer place = G(geocode_reverse_resolve_finish)(n->reverse, res, &ge);
 	G(g_object_unref)(n->reverse);
 	G(g_object_unref)(n->location);
 	if (!place) {
@@ -584,7 +559,7 @@ static void resolved(GObject *o, GAsyncResult *res, gpointer data) {
 	}
 	// The area (else the name), then the town (else the state, else the
 	// country): "Kreuzberg, Berlin".
-	const char *groups[2][3] = {{geo.area(place), geo.name(place), NULL}, {geo.town(place), geo.state(place), geo.country(place)}};
+	const char *groups[2][3] = {{G(geocode_place_get_area)(place), G(geocode_place_get_name)(place), NULL}, {G(geocode_place_get_town)(place), G(geocode_place_get_state)(place), G(geocode_place_get_country)(place)}};
 	asuka_writer w = {0};
 	const char *have[2];
 	int nhave = 0;
@@ -612,9 +587,9 @@ void location_geocode(double latitude, double longitude, void (*done)(void *ctx,
 	naming *n = calloc(1, sizeof *n);
 	n->done = done;
 	n->ctx = ctx;
-	n->location = geo.location_new(latitude, longitude, -1);  // GEOCODE_LOCATION_ACCURACY_UNKNOWN
-	n->reverse = geo.reverse_new(n->location);
-	geo.resolve_async(n->reverse, NULL, resolved, n);
+	n->location = G(geocode_location_new)(latitude, longitude, -1);  // GEOCODE_LOCATION_ACCURACY_UNKNOWN
+	n->reverse = G(geocode_reverse_new_for_location)(n->location);
+	G(geocode_reverse_resolve_async)(n->reverse, NULL, resolved, n);
 }
 
 // ---- The rest ----

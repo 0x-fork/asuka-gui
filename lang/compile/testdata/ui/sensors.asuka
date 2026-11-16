@@ -1,4 +1,5 @@
 import asuka/sensors
+import asuka/time
 
 component Tilt {
   state z = 0.0
@@ -45,7 +46,7 @@ test "with no platform code, there are no sensors" {
   app.expect("z 0")
   app.expect("status sensors: not available")
   do {
-    let _ = try await sensors.steps(from: 0, to: 1)
+    let _ = try await sensors.steps(from: time.unix(0), to: time.unix(1))
   } catch sensors.SensorError.notAvailable {
     print("no steps")
   }
@@ -92,7 +93,7 @@ test "attitude from gravity and the field" {
 test "steps, and a sensor the device lacks" {
   let f = sensors.fake(present: [.pedometer])
   f.history = sensors.Steps(steps: 1200, distance: 900)
-  expect((try await sensors.steps(from: 0, to: 1)).steps == 1200)
+  expect((try await sensors.steps(from: time.unix(0), to: time.unix(1))).steps == 1200)
   let app = mount(Walk())
   await app.idle()
   f.walk(12)

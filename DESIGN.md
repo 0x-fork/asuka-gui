@@ -62,8 +62,8 @@ ops/                    mount operations, binary encoding
 abi/                    asuka.h: what hosts call
 ─────────────────────────────────────────────────────────────  asuka.h
 platform/ios (Swift)   platform/android (Kotlin)   platform/web (JavaScript)
-platform/windows (C, the core linked in)   platform/desktop (C the Windows and Linux hosts share)
-host/darwin, host/linux (Go, through host/bridge)
+platform/windows, platform/linux (C, the core linked in)   platform/desktop (C they share)
+host/darwin (Go, through host/bridge)
 core/host/fake          tests: records ops, measures text at 8 points a character
 ```
 
@@ -528,8 +528,9 @@ hash). It builds:
 - Windows: a package's Windows code is C (`windows/*.c`), compiled with
   the host's headers into the app's one executable
   (`appbuild.WindowsOptions.Natives`);
-- Linux: a host executable of the app's own with its packages' Go
-  linked in (cmd/asuka-host, `HostOptions.Natives`).
+- Linux: a package's Linux code is C (`desktop/*.c`, asuka_linux.h's
+  GTK), compiled into the app's one executable with the host
+  (`appbuild.DesktopNatives`).
 
 A package's `asuka.toml` (usage strings, background modes, permissions),
 `Info.plist`, `iOS.entitlements` and `macOS.entitlements` merge into the
@@ -1075,22 +1076,35 @@ it is stored (`asuka/storage`'s `Value<T>(key, default)` over
 state across `asuka dev` reloads (below), which needs no code.
 
 The core can also start without a screen: when the system runs a
-background task (`asuka/sdk/periodic`: BGTaskScheduler, WorkManager) with the
-app closed, the host starts the core headless (`startHeadless`): `main`
-runs, the root component mounts into views no window holds yet, and the
-task's Go code runs. A screen that comes later (the user opens the app)
+background task (`asuka/periodic`: BGTaskScheduler, WorkManager) with the
+app closed, the host starts the core headless (`startHeadless`): the
+app's init runs, the root component mounts into views no window holds
+yet, and the task's code runs. A screen that comes later (the user opens the app)
 takes that root as a recreated Activity does (`asuka_attach` on Android;
 the root controller mounts the existing root view on iOS).
 `asuka/location`'s background updates and regions start it the same
 way on Android (its `PendingIntent`s reach the package's
 `LocationReceiver`, which starts the core headless); the package keeps
-each event until the app reads it. On iOS, the system relaunching the
-app for them (a region, a significant change) doesn't start the core
-yet: a native package has no hook at launch, where the old host module
-registered its delegate. Where
-the system has neither (macOS's and Windows's updates, Linux's and the
-web's regions), the Go package computes them from the positions while the
-app runs (`locationspec.Capabilities` says which). The last root's
+each event until the app reads it. On iOS the system relaunches the app
+for them (a region, a significant change) and hands the event to the
+manager made before launch ends: the package's launch class
+(`AsukaLocationLaunch`, its manifest's `ios.launch` for an app that
+calls `startUpdates` or `monitor`) makes it as the app launches, and,
+for such a launch, has the host start the core headless, so the app's
+code reads what woke it.
+
+A native package's code runs at launch this way, before the app's own
+(`AsukaLaunching`): its manifest names the class (`ios.launch`, an
+Objective-C name, listed in Info.plist's `AsukaLaunch`, which
+`AppDelegate` runs before launch ends; `android.launch`, which the
+host's `AsukaLauncher` runs as the process starts, a content provider
+the CLI declares only in the apps that have some), so only the apps that
+import the package, or use the member whose `[uses]` names it, run it:
+Core Location's managers, Core Bluetooth's with their restore
+identifiers, StoreKit's and Play Billing's transaction listeners. Where
+the system has no background updates or regions (macOS's and Windows's
+updates, Linux's and the web's regions), the package computes them from
+the positions while the app runs. The last root's
 `Dispose` fails the Calls still waiting, so a package's goroutine ends
 with it.
 
@@ -1123,15 +1137,16 @@ in its Swift (iOS; the Mac's Go host still builds platform/macos's
 `macos.hostFlags`), Play
 Billing in its Gradle module, the Microsoft Store (WinRT's StoreContext) in its desktop C, the
 Digital Goods API in its web module; none on Linux; `purchase.fake()` in
-tests. Each follows the store's transactions from the package's start
-(StoreKit's `Transaction.updates` and its unfinished ones, Play's
-listener and its unacknowledged purchases at each return to the front,
-the Store's license changes) and keeps them for the package's `events()`,
+tests. Each follows the store's transactions from the app's launch (the
+package's launch class: StoreKit's `Transaction.updates` and its
+unfinished ones, Play's listener and its unacknowledged purchases at
+each return to the front) or the package's start (the Store's license
+changes) and keeps them for the package's `events()`,
 so a purchase completed before the app observes isn't lost.
 
-iCloud (`asuka/sdk/icloud`) is one module, `icloud`, whose JSON
-(`internal/icloudspec`) the iOS host and the Mac speak, the same Swift
-in both (`ICloud.swift`, kept identical in platform/ios and
+iCloud (`asuka/icloud`) is a package over the hosts' module `icloud`,
+whose JSON (`internal/icloudspec`) the iOS host and the Mac speak, the
+same Swift in both (`ICloud.swift`, kept identical in platform/ios and
 platform/macos, as `Purchase.swift` is; `ASUKA_ICLOUD`, asuka/icloud's
 manifest's `hostFlags`): NSUbiquitousKeyValueStore, its values converted
 between JSON and property lists; the app's ubiquity containers through
@@ -1147,10 +1162,11 @@ profile's `*` and `TEAMID.*` as the app's values).
 What runs outside the app's process is built from `asuka.toml`. iOS's
 widget extension is WidgetKit's, so SwiftUI's (the one place the host
 uses it): one template (platform/ios/Widget) with the app's kinds,
-reading the entries the app's Go code sets (`asuka/sdk/widget`) from the App
-Group they share; it runs no Go. The same extension draws the Live
-Activities (`asuka/sdk/liveactivity`), for an app whose Go code calls the
-package (`ASUKA_LIVEACTIVITY`), with or without widgets: one template,
+reading the entries the app's code sets (`asuka/widget`) from the App
+Group they share; it runs none of the app's code. The same extension
+draws the Live Activities (`asuka/liveactivity`), for an app that imports
+the package (its manifest's `ios.hostFlags`: `ASUKA_LIVEACTIVITY`), with
+or without widgets: one template,
 its attributes (`AsukaActivityAttributes`) compiled into both the host
 and the extension, since ActivityKit matches them by name and shape. On
 Android an activity is an ongoing notification the host builds, which
@@ -1161,18 +1177,51 @@ opens the app with its URL. On Android, the CLI generates an App Widget
 provider for each kind (over the host's `AsukaWidgetProvider`, with
 RemoteViews) and the launcher's static shortcuts.
 
-Two extensions run the app's Go code, from the app's own symbols rather
-than `asuka.toml`: the share sheet (`app.ShareSheet`) and the
-Notification Service Extension (`push.Rewrite`). With either, the app's
-Go code and the host are one dynamic framework (AsukaApp.framework) that
-the app and the extension link, their data in the App Group they share.
-The extension starts the core headless with a root of its own
-(`ASUKA_SHARE_SHEET`, `ASUKA_NOTIFICATION_SERVICE`). Android runs both in
-the app's package: the share sheet's activity, and the push rewrite in
-Firebase's service, starting the core headless as a background task does.
+Two extensions run the app itself, from what its program uses rather
+than `asuka.toml`: its own share sheet and the Notification Service
+Extension. Both are the standard library's, not the language's: the
+process the app runs in is a fact the host sets before the core starts
+(`ASUKA_SHARE_SHEET`, `ASUKA_NOTIFICATION_SERVICE`), which
+`asuka/platform`'s `process()` reads, and the app decides what its root
+is there. `asuka/sharesheet`'s `active()` is true in the sheet's process,
+so the app block shows the sheet there (`if sharesheet.active() {
+SaveLink() } else { Root() }`); the sheet hears what's shared with
+`onShare` (the host sends the root the `Shared` event once the items are
+collected), and `done()`, `cancel()` and `openApp()` are the `ShareClose`
+command, which the sheet's host takes. `push.rewrite(f)` keeps `f` in a
+store whose task serves the host's rewrites (`nextRewrite`, answered by
+`rewritten` with the notification to show, `asuka/notify`'s spec), as
+`notify.present` serves its decisions: one at a time, in order, `f`'s
+none or a throw showing the push as it came. The app's root runs in
+either extension, as it does for a background launch (`push.inExtension()`
+lets the app make it one that only calls `rewrite`). An app block is
+the root everywhere, so nothing in the language knows a process: a
+prelude registration (a `shareSheet(…)` item of the app block, an `on
+rewrite`) was the other form, and would have needed the core to choose
+among the app block's items without running them.
+
+The CLI builds each extension from the program's uses (appbuild.Uses):
+the package's manifest says what its member needs. `sharesheet.active`
+derives `shareSheet` (`ios.derived`), which with `asuka.toml`'s
+`shareTarget` makes iOS's share extension the host's
+`AsukaShareSheetController` and gives Android's share filters to
+`AsukaShareActivity` (a `:share` process, shown as a Material bottom
+sheet); `push.rewrite` asks for the host's `ASUKA_NOTIFICATION_SERVICE`
+(so the CLI builds the extension, its principal class
+`AsukaNotificationService`) and for Android's
+`dev.asuka.push.rewrite` meta-data (the host's Firebase service has the
+app rewrite each data message, starting the core headless as a
+background task does, ten seconds at most). With either extension on
+iOS, the app's code, the core and the host are one dynamic framework
+(AsukaApp.framework) that the app and the extension link; their files
+(`asuka/fs`'s `appDir`) and `asuka/store`'s values are in the App Group
+they share, moved there from the app's own the first time it runs with
+one, and their keychain group is the app's. On the web the page in
+front rewrites a push before the service worker shows it.
 Notifications' responses work the same way: a background action starts
 the core headless (iOS's center delegate, Android's broadcast receiver)
-and hands Go the response, keeping the process until Go reports it done.
+and hands the app the response, keeping the process until it reports it
+done.
 
 ### Plugins
 
@@ -1211,9 +1260,10 @@ share one.
 
 ### SQLite
 
-`asuka/sdk/sqlite` is a plugin: SQLite's own C, one pinned release
-built with the same options for every platform by
-`sdk/sqlite/internal/build` (Xcode, the NDK, Zig). With it, one library of Asuka's
+`asuka/sqlite` (std/sqlite) is a plugin: SQLite's own C, one pinned
+release built with the same options for every platform by
+`sdk/sqlite/internal/build` (Xcode, the NDK, Zig), which the package's
+`asuka-plugin.toml` ships with the apps that import it. With it, one library of Asuka's
 (`sdk/sqlite/csrc/asq.c`) and one entry point: `asq_call(op, conn, arg, in,
 inLen, out, outCap)`, every argument pointer-sized. A call is a whole
 statement: its SQL and arguments in, its answer (a query's columns and
@@ -1482,10 +1532,9 @@ asuka/
                      layout's conformance)
   i18n/              languages, catalogs, ICU messages, CLDR's formats
                      (compiled into what the core says)
-  host/              the Go desktop hosts: darwin (AppKit through
-                     purego), linux (GTK 4 and libadwaita); bridge (the
-                     core's ABI through purego); apphost
-                     (cmd/asuka-host); hosttest (their tests on the
+  host/              the Go macOS host: darwin (AppKit through purego);
+                     bridge (the core's ABI through purego); apphost
+                     (cmd/asuka-host); hosttest (its tests on the
                      core); the Host interface
   native/            native packages' Go runtime (Go apps' packages)
   internal/nativegen/ asuka native's generator (Swift, Kotlin,
@@ -1497,13 +1546,16 @@ asuka/
   platform/macos/    the Swift runtime packages' Swift builds against
   platform/windows/  the Windows host, C17 on Win32 (src/), its tests
                      (Go, driving apps in Windows) and portable C tests
+  platform/linux/    the Linux host, C17 on GTK 4 and libadwaita opened
+                     with dlopen (src/), its tests (Go, driving apps
+                     under Xvfb) and fake D-Bus services
   platform/desktop/  what the C desktop hosts share: asuka_desktop.h, the
                      native registry, packages' shared C (fetch, COM,
                      GLib, WebView2), its tests' test host; and desktop.h,
                      the hosts' own (JSON, files, the app's settings and
                      directories, window and route state, flyouts'
                      places, Asuka's own words, animated images)
-  cmd/asuka/         the CLI; cmd/asuka-host: the Go desktop hosts' executable
+  cmd/asuka/         the CLI; cmd/asuka-host: the Go macOS host's executable
   internal/          the CLI's parts: cbuild (building the core),
                      appbuild, devserver, pkgs (packages), boot, ...
   plugin/            plugins' manifests, fetching and linking
@@ -1535,11 +1587,10 @@ asuka/
   drive them by what the screen shows (`tap`, `type`, `expect`), as a
   user would; the clock moves only when nothing else can run, so a
   `sleep(5s)` takes no time and nothing waits on wall-clock time.
-- The Go desktop hosts (`go test ./host/darwin`, `./host/linux` under
-  Xvfb): host/hosttest compiles an Asuka app, runs it on the core in the
-  test's process, and the test drives and checks the host's own views
-  (a click through the button's action, the text set again, frames, list
-  binding, disposal).
+- The macOS host (`go test ./host/darwin`): host/hosttest compiles an
+  Asuka app, runs it on the core in the test's process, and the test
+  drives and checks the host's own views (a click through the button's
+  action, the text set again, frames, list binding, disposal).
 - The Windows host (`go test ./platform/windows`): each test compiles an
   Asuka app to C, builds it into one executable with Zig, and runs it in
   Windows (on Windows, or in the swiftvm VM `ASUKA_WINDOWS_VM` names,
@@ -1550,6 +1601,11 @@ asuka/
   overlays, drawing by pixel, drops, UI Automation read by a client).
   `TestPortable` runs the host's C that needs no Windows (RTF) here,
   under ASan and UBSan; `go test ./platform/desktop` the shared C.
+- The Linux host (`go test ./platform/linux` under `xvfb-run -a
+  dbus-run-session`): likewise, its apps built into the executable an
+  app ships and driven in real GTK windows (`ASUKA_SCRIPT`), the views
+  read back (`ASUKA_DUMP`), with fake D-Bus services for notifications
+  and the tray.
 - `ops`: the C encoder and the generated Swift, Kotlin and JavaScript
   decoders round-trip the same golden batches (`swift test --package-path
   platform/ios`; `./gradlew :asuka:testDebugUnitTest` in `platform/android`;
@@ -1812,16 +1868,16 @@ On the same core, `ops` and app code as the phones:
 |---|---|---|
 | macOS | Go, AppKit through purego (`host/darwin`) | No cgo. `internal/darwin` is MyGo's Objective-C runtime layer (classes made at runtime, blocks, `WithPool`, a main run loop source for `Post`). |
 | Windows | C17, Win32 with common controls v6 (`platform/windows`) | The core and the app linked into one executable. GDI+ through its flat API, DWM, uxtheme, Direct3D 11, WebView2, UI Automation and WinRT through their COM vtables in C. Not WinUI 3: it needs the Windows App SDK beside the app, and XAML is a second reconciler. `List` is core-virtualized: no Win32 list hosts arbitrary rows. |
-| Linux | Go, GTK 4 and libadwaita through purego (`host/linux`) | No cgo; `internal/gtk` binds GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later). libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. |
+| Linux | C, GTK 4 and libadwaita opened with dlopen (`platform/linux`) | One executable: the host, the core and the app compiled to C; its own declarations of GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later), shared with packages' C (`asuka_linux.h`), so it builds from any system with Zig. libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. |
 
-Desktop hosts run in the app's process. On macOS and Linux one
-executable for every app (cmd/asuka-host, with the app's native
-packages' Go linked in when it has any) locks the main OS thread and
-runs the platform's event loop there, opens the core (`libasuka`, the
-app compiled in for a release) through purego (host/bridge), and decodes
-each batch with `ops`' Go decoder, in place. On Windows the host is C
-(RFC 0008): the host, the C core and the app compiled to C (lang/cgen)
-are one executable per app, the host decoding each batch in place with
+Desktop hosts run in the app's process. On macOS one executable for
+every app (cmd/asuka-host, with the app's native packages' Go linked in
+when it has any) locks the main OS thread and runs the platform's event
+loop there, opens the core (`libasuka`, the app compiled in for a
+release) through purego (host/bridge), and decodes each batch with
+`ops`' Go decoder, in place. On Windows and Linux the host is C (RFC
+0008): the host, the C core and the app compiled to C (lang/cgen) are
+one executable per app, the host decoding each batch in place with
 the core's own reader (`core/src/ops`); `asuka dev`'s player is the host
 and the core without an app, which loads the bytecode the CLI sends
 (`asuka_dev_connect`). Either way the core's callbacks are made once and
@@ -2413,18 +2469,26 @@ How the Windows host maps Asuka (`platform/windows`):
   test starts it);
   `ASUKA_COLOR_SCHEME` is light or dark whatever the system's.
 
-How the Linux host maps Asuka (`host/linux`):
+How the Linux host maps Asuka (`platform/linux`, C17):
 
-- GTK 4 and libadwaita in the app's process through purego, no cgo
-  (`internal/gtk`: typed functions purego builds once, and raw function
-  pointers called through `SyscallN` on the hot paths, allocating frames
-  and drawing, so they use no reflection). The host makes an
-  `AdwApplication` (its ID asuka.toml's `id`, `boot.ID`; unique, so a
-  second launch activates the first, but in tests and automation runs)
-  and runs GLib's main loop on the main thread. `Post` queues the
-  function and adds an idle source (`g_idle_add`, thread-safe). Signals
-  are connected through one C callback per signature, made once,
-  routed by the data pointer to the connection's Go function.
+- One executable: the host (platform/linux/src, with platform/desktop's
+  shared C), the core and the app compiled to C (lang/cgen), linked
+  statically; asuka dev's player is the same without an app, which loads
+  the bytecode asuka dev sends (`asuka_dev_connect`). GTK 4, libadwaita
+  and the GLib stack are opened with dlopen as it starts and their
+  functions resolved with dlsym (`syms.def`: the subset the host calls,
+  declared in `gtk.h` with GTK's own type names; optional libraries,
+  WebKitGTK, GStreamer, Xlib, libsoup, libepoxy, Evolution Data Server,
+  when something first needs them), so the host builds from any system
+  with Zig and no GTK sysroot, and an app that lacks GTK says which
+  library to install. The host makes an `AdwApplication` (its ID
+  asuka.toml's `id`; unique, so a second launch activates the first, but
+  in tests and automation runs) and runs GLib's main loop on the main
+  thread. `asuka_desktop_post` and the core's posts go through one FIFO
+  and an idle source (`g_idle_add`, thread-safe). Signals are connected
+  with the node as their data, so a node's going disconnects them all.
+  Its own symbols are `lx_`; it reads the core's batches with the core's
+  own decoders (core/src/ops).
 - Every node's view is a `AsukaView`, a `GtkWidget` subclass the host
   registers (`g_type_register_static_simple`, its class's vfuncs set from
   Go at GTK 4's stable offsets): `size_allocate` places its children at
@@ -2462,8 +2526,9 @@ How the Linux host maps Asuka (`host/linux`):
   `Segmented`, `GtkDropDown` for `Wheel` and `Picker`, linked minus and plus buttons
   for `Stepper`, `GtkColorDialogButton`, a date button opening
   `GtkCalendar` and hour and minute spin buttons, `GtkProgressBar`,
-  libadwaita's spinner. Images are decoded off the main thread by Go's
-  decoders (others by GDK's loaders) into textures the view draws at its
+  libadwaita's spinner. Images are decoded off the main thread by GDK's
+  loaders (animated GIF, APNG and WebP by platform/desktop's anim.c, their
+  frames' pictures GDK's) into textures the view draws at its
   mode, tinted through a mask. Symbols are the icon theme's symbolic
   icons where freedesktop or Adwaita has a match for the SF Symbol name,
   else the Material Symbol (as Android and the web draw them), written
@@ -2525,9 +2590,11 @@ How the Linux host maps Asuka (`host/linux`):
   shows (hidden, or its GdkToplevel minimized or suspended), and as it
   quits (its last window closing, GtkApplication's `query-end` as the
   session ends, `shutdown`, or SIGTERM, SIGINT and SIGHUP, which quit it
-  as closing it does), so `asuka/sdk/store` writes what's pending; GLib's
-  memory monitor's warnings are MemoryWarning. Crash reports: Go's crash
-  output (`crashrun`), which has a signal in native code too (Native).
+  as closing it does), so `asuka/store` writes what's pending; GLib's
+  memory monitor's warnings are MemoryWarning. Crash reports: the core's
+  record (`asuka_crash_start`), and a fatal signal in native code caught
+  on an alternate stack (crash.c), its frames written to the record's
+  inbox with write(2) before the signal's default action runs.
   Windows are placed by the desktop: GTK 4 has no way to place one.
 - Input is GTK's event controllers, added as the core listens: a click
   (Press, Pressed; Enter and Space press a focused pressable view, which
@@ -2586,7 +2653,7 @@ How the Linux host maps Asuka (`host/linux`):
   host sets to the XDG data directory's folder for the app (Flatpak's
   own). It's saved as the window closes and as the app shuts down.
 - Windows' options are GTK's, set before the window shows
-  (`winctl.go`): its content's size (the default size, the header bar's
+  (`winctl.c`): its content's size (the default size, the header bar's
   height on top) and least (the content's size request), not resizable,
   not deletable, the header bar's decoration layout without its minimize
   or maximize button (the window manager's shortcuts still do them),
@@ -2599,7 +2666,7 @@ How the Linux host maps Asuka (`host/linux`):
   way to place a window or center it (Wayland leaves it to the
   compositor, and GTK 4 dropped moving one on X11 too), and none to keep
   one on top or out of the taskbar: under X11 the host does those itself
-  through Xlib on the surface's window (`deskwin.go`: `XMoveWindow`,
+  through Xlib on the surface's window (`desk.c`: `XMoveWindow`,
   EWMH's `_NET_WM_STATE_ABOVE`, GDK's skip-taskbar hint); under Wayland
   they do nothing. The position reported is 0, 0. The actions are GTK's
   (`gtk_window_present`, `_minimize`, `_maximize`, `_fullscreen`, a new
@@ -2614,9 +2681,23 @@ How the Linux host maps Asuka (`host/linux`):
 - Debug automation, as on macOS and Windows: `ASUKA_SCRIPT` runs steps,
   then `ASUKA_SNAPSHOT=file.png` renders each window to a PNG
   (`ASUKA_DUMP=1`: the view tree beside it) and quits.
-- Tests (`go test ./host/linux`) drive real GTK windows; they need a
-  display and a session bus (`xvfb-run dbus-run-session`), and skip
-  without GTK.
+- The update module (Updates): `info` from where the executable started
+  (an install prefix: `bin/<exe>` with `share/<exe>/`; Flatpak, Snap,
+  AppImage and the system's prefixes managed), `download` and `next`
+  through libsoup (a long poll answered as the progress moves by 1%, 64
+  KB while the size is unknown), `cancel`, and `install`, which swaps the
+  prefix's files and links for the staged tree's (`.asuka-files` naming
+  them), puts back what it moved if a rename fails, and runs the
+  desktop's cache tools. `relaunch()` starts the executable at the path
+  it started from with `ASUKA_RELAUNCH_WAIT`, which the new process waits
+  on before it takes the single instance; at launch the host removes the
+  `.asuka-update-*` and `.*.old-*` an update left.
+- Tests (`go test ./platform/linux`) build apps (testdata/*.asuka) into
+  the executable an app ships and drive real GTK windows; they need a
+  display and a session bus (`xvfb-run -a dbus-run-session`), and skip
+  without them. test/fakes.c gives the session bus a notification server
+  and a StatusNotifierWatcher, so notifications and the tray are driven
+  too.
 
 Desktop needs what mobile doesn't: several windows, the app's menu bar
 and keyboard shortcuts, hover and right-click, resizable layouts. To
@@ -2834,7 +2915,7 @@ core/src/ui/lifecycle.c):
   the icons. Keeping running, `WM_CLOSE` hides the main window.
 - Linux: GTK 4 has no tray, and the GTK 3 appindicator libraries can't
   load in a GTK 4 process, so the host speaks their protocol itself
-  through GDBus (`internal/gtk/dbusobject.go`: objects exported with one
+  through GDBus (`platform/linux/src/dbus.c`: objects exported with one
   vtable of callbacks, made once, routed by user data). Each icon is a
   StatusNotifierItem on a session bus connection of its own
   (`/StatusNotifierItem`), its menu a `com.canonical.dbusmenu` object
@@ -3012,9 +3093,10 @@ core/src/ui/lifecycle.c):
   page's top right), closed on Escape and a press outside them;
   click-through is `pointer-events: none` on the panel, the page under
   it taking the clicks.
-- `asuka/sdk/apps` lists the apps installed (module "apps": "list" answers
-  JSON, "icon" draws a PNG in the caches and answers its path, "open"),
-  sorted and deduplicated in Go; `Search` ranks them in Go. macOS reads
+- `asuka/apps` lists the apps installed (the hosts' module "apps",
+  through `asuka/platform`: "list" answers JSON, "icon" draws a PNG in
+  the caches and answers its path, "open"), sorted, deduplicated and
+  ranked for a search in the package's Asuka. macOS reads
   the application folders (`displayNameAtPath:`, bundle identifiers,
   `iconForFile:`, `openApplicationAtURL:`), Windows the shell's
   Applications folder (`FOLDERID_AppsFolder`, `IShellItemImageFactory`,
@@ -3052,8 +3134,8 @@ core/src/ui/lifecycle.c):
   level and charging, Low Power Mode, the thermal state; `OnSuspend`,
   `OnResume`, `OnLock`, `OnUnlock`; `IdleTime`, since the user's last
   input in any app (`ErrIdleUnknown` where the system doesn't say).
-  Keeping the display on stays `device.KeepAwake`, working out of sight
-  `asuka/sdk/background`.
+  Keeping the display on stays asuka/device's `keepAwake`, working out
+  of sight `asuka/background`.
 - `dock.SetProgress` shows a task's progress on the app's icon (Normal,
   Indeterminate, Paused, Error); `dock.RequestAttention` asks the user
   to come to the app (Informational, Critical), and does nothing while
@@ -3221,7 +3303,8 @@ core/src/ui/lifecycle.c):
 - `app.DataDir`, `ConfigDir`, `CacheDir` and `LogDir` are
   internal/appdir's, each platform's place for the app (`store.Dir` is
   DataDir).
-- `asuka/sdk/recent` (module `recent`: `add`, `clear`, `list`):
+- `asuka/recent` (the hosts' module `recent`, through `asuka/platform`:
+  `add`, `clear`, `list`):
   NSDocumentController's recent documents on macOS, in an Open Recent
   menu the host fills as it opens (in the File menu once the app
   declares file types, has recent documents or adds one; choosing one
@@ -3231,7 +3314,8 @@ core/src/ui/lifecycle.c):
   user's `recently-used.xbel`, through GBookmarkFile, as the app's (its
   application name), clearing only the app's. Phones and the web answer
   nothing.
-- `asuka/sdk/login` (module `login`: `set`, `enabled`, `openedAtLogin`):
+- `asuka/login` (the hosts' module `login`, through `asuka/platform`:
+  `set`, `enabled`, `openedAtLogin`):
   SMAppService's `mainAppService` on macOS 13 (a bundle only;
   `requiresApproval` is `ErrNeedsApproval`), the opening Apple Event's
   `keyAELaunchedAsLogInItem` for `openedAtLogin`; Windows the HKCU `Run`
@@ -3568,7 +3652,7 @@ over files, as its `native fn`s; the host does what only it can.
   language (`i18n.locale()`).
 - **The host's `update` module**, JSON both ways through asuka/platform's
   `call`, each method answering once. A host without it (the phones, the
-  web, the Go desktop hosts) answers "no module": the package says
+  web, the Go macOS host) answers "no module": the package says
   updates aren't available (`.notAvailable`).
   - `info` → `{installable, reason, message, target, version, name,
     feed, key, kind, root, exe, work}`. `feed`, `key` and `target` are
@@ -3710,7 +3794,7 @@ their own.
   (`boot.KeepRunning`) and its Dock icon makes a document
   (`boot.Reopen`, which `applicationShouldHandleReopen:` asks); Windows'
   and Linux's quit with their last document.
-- Files other apps change: each open file is watched (asuka/sdk/watch's
+- Files other apps change: each open file is watched (asuka/watch's
   watch of it, through its folder, so a file an editor replaces stays
   watched; where there's none, or once its folder went, a poll of its
   stamp every two seconds) and looked at when its window

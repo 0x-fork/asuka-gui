@@ -18,6 +18,20 @@ void dsk_config_load(dsk_config *c) {
 		char *exe = dsk_exe_path();
 		char *dir = exe ? dsk_dir(exe) : NULL;
 		path = dir ? dsk_join(dir, "asuka-app.json") : NULL;
+		if (path && !dsk_exists(path) && exe) {
+			// An install prefix (Linux): bin/<exe>, share/<exe>/asuka-app.json.
+			char *share = dsk_join(dir, "../share");
+			char *app = dsk_join(share, dsk_base(exe));
+			char *p = dsk_join(app, "asuka-app.json");
+			if (dsk_exists(p)) {
+				free(path);
+				path = p;
+			} else {
+				free(p);
+			}
+			free(share);
+			free(app);
+		}
 		free(exe);
 		free(dir);
 	}

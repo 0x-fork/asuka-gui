@@ -292,6 +292,61 @@ func (b *fb) newStruct(shape int, types []check.Type, vals []int, dst int) int {
 	return r
 }
 
+// durationFloat is a Duration scaled by a float, or a Duration divided
+// by another: in floats, a Duration back to nanoseconds.
+func (b *fb) durationFloat(e *syntax.BinaryExpr, dst int) int {
+	f := func(x syntax.Expr) int {
+		v := b.value(x, -1)
+		if b.f.Kinds[v] == bc.KFloat {
+			return v
+		}
+		r := b.temp(bc.KFloat)
+		b.emit(op("I2F"), r, v)
+		return r
+	}
+	x, y := f(e.X), f(e.Y)
+	r := b.temp(bc.KFloat)
+	if e.Op == syntax.MUL {
+		b.emit(op("MULF"), r, x, y)
+	} else {
+		b.emit(op("DIVF"), r, x, y)
+	}
+	if b.typ(b.l.info.Types[e]) == check.Float {
+		return b.copyTo(r, dst)
+	}
+	out := b.out(dst, bc.KInt)
+	b.emit(op("F2I"), out, r)
+	return out
+}
+
+// operator is a binary operator a struct's method does: the method's
+// call, its compare's result against 0.
+func (b *fb) operator(e *syntax.BinaryExpr, o *check.Operator, dst int) int {
+	rt := b.typ(o.Recv)
+	x := b.value(e.X, -1)
+	y := b.value(e.Y, -1)
+	idx := b.l.funcIndex(o.Func, nil, rt)
+	s := b.calleeSubst(o.Func, nil, rt)
+	k := b.l.kind(s.Apply(o.Func.Sig.Result))
+	if !o.Compare {
+		return b.invoke(idx, []int{x, y}, k, dst, false)
+	}
+	c := b.invoke(idx, []int{x, y}, bc.KInt, -1, false)
+	zero := b.konst(0)
+	r := b.out(dst, bc.KBool)
+	switch e.Op {
+	case syntax.LSS:
+		b.emit(op("LTI"), r, c, zero)
+	case syntax.LEQ:
+		b.emit(op("LEI"), r, c, zero)
+	case syntax.GTR:
+		b.emit(op("LTI"), r, zero, c)
+	default:
+		b.emit(op("LEI"), r, zero, c)
+	}
+	return r
+}
+
 // unwrap is the value of the optional x (t is the value's type); none
 // throws.
 func (b *fb) unwrap(x int, t check.Type, dst int, n syntax.Node) int {
@@ -335,6 +390,9 @@ func (b *fb) throwMsg(msg string) {
 func (b *fb) ident(e *syntax.Ident, dst int) int {
 	switch o := b.l.info.Uses[e].(type) {
 	case *check.Var:
+		if o.Fn != nil {
+			return b.copyTo(b.localFnValue(o.Fn, e), dst)
+		}
 		return b.copyTo(b.readVar(o, e), dst)
 	case *check.Member:
 		return b.copyTo(b.readMember(o, e), dst)
@@ -522,7 +580,10 @@ func (b *fb) describe(v int, t check.Type) int {
 	switch t {
 	case check.String:
 		return v
-	case check.Int, check.Float, check.Bool, check.Color, check.Length:
+	case check.Color:
+		// As it's written: #rrggbb, .accent.
+		return b.callB("color.hex", bc.KRef, v)
+	case check.Int, check.Float, check.Bool, check.Length:
 		r := b.temp(bc.KRef)
 		b.emit(op("TOSTR"), r, v, int(b.l.kind(t)))
 		return r
@@ -655,7 +716,15 @@ func (b *fb) selection(e syntax.Expr, x syntax.Expr, dst int) int {
 		b.emitJump(op("JNONE"), xv, none)
 		in := b.unbox(xv, recv, -1)
 		v := b.member(e, sel, in, recv, -1)
-		b.toOptional(v, check.Unopt(resT), resT, r)
+		mt := sel.MemberType
+		if mt == nil {
+			mt = check.Unopt(resT)
+		}
+		if check.IsOptional(mt) {
+			b.move(r, v)
+		} else {
+			b.toOptional(v, mt, resT, r)
+		}
 		b.jmp(end)
 		b.f.Place(none)
 		b.emit(op("KNONE"), r)
@@ -799,6 +868,27 @@ func (b *fb) unary(e *syntax.UnaryExpr, dst int) int {
 }
 
 func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
+	if o := b.l.info.Operators[e]; o != nil {
+		return b.operator(e, o, dst)
+	}
+	if b.l.info.LengthScales[e] {
+		// The Length's value scaled, its unit kept.
+		l, n := e.X, e.Y
+		if b.typ(b.l.info.Types[e.X]) != check.Length {
+			l, n = e.Y, e.X
+		}
+		lv := b.value(l, -1)
+		nv := b.value(n, -1)
+		if b.f.Kinds[nv] != bc.KFloat {
+			f := b.temp(bc.KFloat)
+			b.emit(op("I2F"), f, nv)
+			nv = f
+		}
+		return b.copyTo(b.callB("len.scale", bc.KInt, lv, nv), dst)
+	}
+	if b.l.info.DurationFloats[e] {
+		return b.durationFloat(e, dst)
+	}
 	switch e.Op {
 	case syntax.LAND, syntax.LOR:
 		r := b.out(dst, bc.KBool)

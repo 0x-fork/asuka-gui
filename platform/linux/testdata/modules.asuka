@@ -1,0 +1,128 @@
+// The host's modules, called as the standard library's packages call
+// them (linux_test.go's TestModules): asuka/platform's call, a module the
+// host hasn't, a tray icon, asuka/apps' ranking, and the updater's
+// download and install into the app's own prefix (the test's job).
+import asuka/apps
+import asuka/json
+import asuka/platform
+import asuka/tray
+
+struct Info {
+  installable: bool = false
+  reason: string = ""
+  kind: string = ""
+  root: string = ""
+  target: string = ""
+  work: string = ""
+}
+
+struct Started {
+  id: int = 0
+}
+
+struct Progress {
+  downloaded: int = 0
+  total: int = 0
+  done: bool = false
+  error: string = ""
+  status: int = 0
+}
+
+struct DownloadArgs {
+  url: string
+  to: string
+}
+
+struct Staged {
+  staged: string
+}
+
+struct ID {
+  id: int
+}
+
+component Modules(url: string) {
+  state supported = "?"
+  state viaHost = "?"
+  state missing = "?"
+  state ranked = "?"
+  state info = "?"
+  state download = "?"
+  state install = "?"
+  Column {
+    gap: 4; padding: 8
+    Text("supported: {supported}")
+    Text("host: {viaHost}")
+    Text("missing: {missing}")
+    Text("ranked: {ranked}")
+    Text("info: {info}")
+    Text("download: {download}")
+    Text("install: {install}")
+    tray.Tray("test") {
+      symbol: "timer"
+      tooltip: "Modules"
+    }
+  }
+
+  task {
+    do {
+      let b = try await platform.call("tray", "supported", bytes())
+      supported = "{platform.readU8(b, 0)}"
+    } catch e {
+      supported = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let _ = try await platform.call("push", "register", bytes())
+      viaHost = "registered"
+    } catch e {
+      viaHost = e.message
+    }
+    do {
+      let _ = try await platform.call("nope", "x", bytes())
+      missing = "answered"
+    } catch e {
+      missing = e.message
+    }
+  }
+
+  task {
+    let all = [apps.App(name: "Calculator", id: "c", path: "c"), apps.App(name: "Visual Studio Code", id: "v", path: "v"), apps.App(name: "Xcode", id: "x", path: "x")]
+    do {
+      let a = try await apps.search(all, "vsc")
+      let b = try await apps.search(all, "code")
+      ranked = "{a.map(x => x.name).joined(",")}|{b.map(x => x.name).joined(",")}"
+    } catch e {
+      ranked = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let ib = try await platform.call("update", "info", bytes())
+      let i: Info = try json.decode(ib.string())
+      info = "{i.installable} {i.reason} {i.kind} {i.target}"
+      if !url.isEmpty() {
+        let to = "{i.work}/staged-test/share/app/new.txt"
+        let sb = try await platform.call("update", "download", json.encode(DownloadArgs(url: url, to: to)).bytes())
+        let s: Started = try json.decode(sb.string())
+        var p = Progress()
+        var polls = 0
+        while !p.done {
+          let pb = try await platform.call("update", "next", json.encode(ID(id: s.id)).bytes())
+          p = try json.decode(pb.string())
+          polls += 1
+        }
+        download = "{p.status} {p.downloaded}/{p.total} [{p.error}] polls>1:{polls > 1}"
+        let _ = try await platform.call("update", "install", json.encode(Staged(staged: "{i.work}/staged-test")).bytes())
+        install = "installed"
+      }
+    } catch e {
+      install = "error {e.message}"
+    }
+  }
+}
+
+app { Modules(url: "MODULES_URL") }

@@ -82,6 +82,7 @@ func TestStdManifests(t *testing.T) {
 		flags       []string // the iOS host's (usedFeatures)
 		derived     []string // what the CLI derives (ios.derived)
 		no          []string // in neither the app's manifest nor its purpose strings and modes
+		launch      []string // iOS's launch classes (Info.plist's AsukaLaunch), all of them
 	}
 	cases := map[string]want{
 		// asuka/location's background part, only for the apps that use it.
@@ -96,6 +97,7 @@ func TestStdManifests(t *testing.T) {
 			no:      []string{"FOREGROUND_SERVICE", "LocationService", "LocationReceiver"},
 		},
 		"location.startUpdates": {
+			launch: []string{"AsukaLocationLaunch"},
 			android: []string{"FOREGROUND_SERVICE_LOCATION", "RECEIVE_BOOT_COMPLETED", "POST_NOTIFICATIONS",
 				`<service android:name="asuka.location.LocationService" android:exported="false" android:foregroundServiceType="location" />`,
 				`<receiver android:name="asuka.location.LocationReceiver" android:exported="false">`},
@@ -103,6 +105,7 @@ func TestStdManifests(t *testing.T) {
 			no:    []string{"BACKGROUND_LOCATION", "NSLocationAlwaysAndWhenInUseUsageDescription"},
 		},
 		"location.monitor": {
+			launch:  []string{"AsukaLocationLaunch"},
 			android: []string{"RECEIVE_BOOT_COMPLETED", `<receiver android:name="asuka.location.LocationReceiver" android:exported="false">`},
 			no:      []string{"BACKGROUND_LOCATION", "LocationService", "FOREGROUND_SERVICE"},
 		},
@@ -110,6 +113,9 @@ func TestStdManifests(t *testing.T) {
 		"notify":                  {android: []string{"POST_NOTIFICATIONS"}, flags: []string{"ASUKA_NOTIFY"}, no: []string{"ASUKA_CONVERSATIONS"}},
 		"notify.Notification.from": {flags: []string{"ASUKA_NOTIFY", "ASUKA_CONVERSATIONS"}, plist: []string{"NSUserActivityTypes"},
 			ents: []string{"com.apple.developer.usernotifications.communication"}},
+		"notify.Notification.sender": {flags: []string{"ASUKA_NOTIFY", "ASUKA_CONVERSATIONS"}, plist: []string{"NSUserActivityTypes"},
+			ents: []string{"com.apple.developer.usernotifications.communication"}},
+		"notify.Notification.title": {flags: []string{"ASUKA_NOTIFY"}, no: []string{"ASUKA_CONVERSATIONS"}},
 		"push.Message.from": {hostModules: []string{"push"}, flags: []string{"ASUKA_PUSH", "ASUKA_CONVERSATIONS"}, plist: []string{"NSUserActivityTypes"},
 			ents: []string{"com.apple.developer.usernotifications.communication"}},
 		"crash":         {no: []string{"ASUKA_CRASH"}},
@@ -129,13 +135,25 @@ func TestStdManifests(t *testing.T) {
 		"integrity":     {ents: []string{"com.apple.developer.devicecheck.appattest-environment"}, macEnts: []string{"com.apple.developer.devicecheck.appattest-environment"}},
 		"agerange":      {ents: []string{"com.apple.developer.declared-age-range"}},
 		"appleauth":     {ents: []string{"com.apple.developer.applesignin"}, macEnts: []string{"com.apple.developer.applesignin"}},
-		"push":          {modes: []string{"remote-notification"}, ents: []string{"aps-environment"}, macEnts: []string{"aps-environment"}, hostModules: []string{"push"}, flags: []string{"ASUKA_PUSH"}, no: []string{"ASUKA_CONVERSATIONS"}},
-		"nowplaying":    {android: []string{"FOREGROUND_SERVICE_MEDIA_PLAYBACK"}, module: []string{`android:name="asuka.nowplaying.MediaService"`}, modes: []string{"audio"}},
-		"transcribe":    {android: []string{"RECORD_AUDIO"}, usage: []string{"NSSpeechRecognitionUsageDescription"}},
-		"periodic":      {modes: []string{"fetch", "processing"}, plist: []string{"BGTaskSchedulerPermittedIdentifiers"}, hostModules: []string{"periodic"}, flags: []string{"ASUKA_PERIODIC"}},
+		"push": {modes: []string{"remote-notification"}, ents: []string{"aps-environment"}, macEnts: []string{"aps-environment"}, hostModules: []string{"push"}, flags: []string{"ASUKA_PUSH"},
+			no: []string{"ASUKA_CONVERSATIONS", "ASUKA_NOTIFICATION_SERVICE", "dev.asuka.push.rewrite"}},
+		// A push's rewrite: iOS's Notification Service Extension (the host's
+		// part, which makes the CLI build it), Android's meta-data that has
+		// the host's Firebase service rewrite data messages.
+		"push.rewrite": {hostModules: []string{"push"}, flags: []string{"ASUKA_PUSH", "ASUKA_NOTIFICATION_SERVICE"},
+			android: []string{`<meta-data android:name="dev.asuka.push.rewrite" android:value="true" />`}},
+		"push.stopRewriting": {hostModules: []string{"push"}, no: []string{"ASUKA_NOTIFICATION_SERVICE", "dev.asuka.push.rewrite"}},
+		// The app's own share sheet: what the CLI derives of asuka.toml's
+		// shareTarget (TestExtensionsFromUses).
+		"sharesheet.active": {derived: []string{"shareSheet"}},
+		"sharesheet.done":   {no: []string{"AsukaShareActivity"}},
+		"nowplaying":        {android: []string{"FOREGROUND_SERVICE_MEDIA_PLAYBACK"}, module: []string{`android:name="asuka.nowplaying.MediaService"`}, modes: []string{"audio"}},
+		"transcribe":        {android: []string{"RECORD_AUDIO"}, usage: []string{"NSSpeechRecognitionUsageDescription"}},
+		"periodic":          {modes: []string{"fetch", "processing"}, plist: []string{"BGTaskSchedulerPermittedIdentifiers"}, hostModules: []string{"periodic"}, flags: []string{"ASUKA_PERIODIC"}},
 		"liveactivity": {android: []string{"POST_PROMOTED_NOTIFICATIONS", `<receiver android:name="dev.asuka.AsukaLiveActivityReceiver" android:exported="false" />`},
 			flags: []string{"ASUKA_LIVEACTIVITY"}, plist: []string{"NSSupportsLiveActivities"}},
-		"purchase": {android: []string{"com.android.vending.BILLING"}},
+		"purchase": {android: []string{"com.android.vending.BILLING", `<provider android:name="dev.asuka.AsukaLauncher" android:authorities="${applicationId}.asuka.launch" android:exported="false" />`,
+			`<meta-data android:name="dev.asuka.launch" android:value="asuka.purchase.PurchaseLaunch" />`}, launch: []string{"AsukaPurchaseLaunch"}},
 		"pay":      {module: []string{"com.google.android.gms.wallet.api.enabled", `android:name="asuka.pay.PayCallbacks"`}},
 		"nfc":      {android: []string{"android.permission.NFC", `android:name="android.hardware.nfc" android:required="false"`}, usage: []string{"NFCReaderUsageDescription"}, ents: []string{"com.apple.developer.nfc.readersession.formats"}},
 		"speech":   {module: []string{`<action android:name="android.intent.action.TTS_SERVICE" />`}},
@@ -146,7 +164,14 @@ func TestStdManifests(t *testing.T) {
 			plist: []string{"LSApplicationQueriesSchemes"}, flags: []string{"ASUKA_COMPOSE"}},
 		"bluetooth": {android: []string{`<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />`, "BLUETOOTH_CONNECT", "BLUETOOTH_ADVERTISE"},
 			module: []string{`android:name="android.hardware.bluetooth_le" android:required="false"`, "companion_device_setup"},
-			usage:  []string{"NSBluetoothAlwaysUsageDescription"}},
+			usage:  []string{"NSBluetoothAlwaysUsageDescription"},
+			no:     []string{"BluetoothScanReceiver", "bluetooth-central"}},
+		// A background scan: iOS's mode and the launch class that makes the
+		// restored central; Android's receiver for the system's scan.
+		"bluetooth.backgroundScan": {android: []string{"BLUETOOTH_SCAN", `<receiver android:name="asuka.bluetooth.BluetoothScanReceiver" android:exported="false" />`},
+			modes: []string{"bluetooth-central"}, launch: []string{"AsukaBluetoothLaunch"}},
+		"bluetooth.restored":           {no: []string{"BluetoothScanReceiver", "bluetooth-central"}},
+		"bluetooth.stopBackgroundScan": {no: []string{"BluetoothScanReceiver", "bluetooth-central"}},
 	}
 	for name, w := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -194,6 +219,12 @@ func TestStdManifests(t *testing.T) {
 			}
 			if len(w.hostModules) == 0 && len(c.androidModules) > 0 {
 				t.Errorf("host modules %v", c.androidModules)
+			}
+			if got := c.plistArrays["AsukaLaunch"]; !slices.Equal(got, w.launch) {
+				t.Errorf("launch classes %v, want %v", got, w.launch)
+			}
+			if len(w.launch) == 0 && strings.Contains(man, "AsukaLauncher") {
+				t.Errorf("the launcher, without launch classes:\n%s", man)
 			}
 			flags := usedFeatures(&asukaApp{cfg: c}, c)
 			for _, f := range w.flags {
@@ -297,4 +328,28 @@ func testUses(refs map[string]bool) *appbuild.Uses {
 		}
 	}
 	return u
+}
+
+// asuka.toml's bluetooth.background gives the managers their restore
+// identifiers, so the app gets asuka/bluetooth's launch class, which makes
+// them as iOS launches the app for them; once with backgroundScan's too.
+func TestBluetoothRestoreLaunch(t *testing.T) {
+	for _, tc := range []struct {
+		background []string
+		names      []string
+		launch     []string
+	}{
+		{nil, []string{"bluetooth"}, nil},
+		{[]string{"central"}, []string{"bluetooth"}, []string{"AsukaBluetoothLaunch"}},
+		{[]string{"peripheral"}, []string{"bluetooth"}, []string{"AsukaBluetoothLaunch"}},
+		{[]string{"central"}, []string{"bluetooth.backgroundScan"}, []string{"AsukaBluetoothLaunch"}},
+		{[]string{"central"}, nil, nil}, // without the package
+	} {
+		c := &appConfig{ID: "dev.asuka.test"}
+		c.Bluetooth.Background = tc.background
+		importStd(t, c, "ios", tc.names...)
+		if got := c.plistArrays["AsukaLaunch"]; !slices.Equal(got, tc.launch) {
+			t.Errorf("background %v, %v: launch classes %v, want %v", tc.background, tc.names, got, tc.launch)
+		}
+	}
 }

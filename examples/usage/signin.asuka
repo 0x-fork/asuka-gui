@@ -17,7 +17,7 @@ component AddSheet(id: string) {
   state pasted = ""
 
   let manual = Login(redirect: manualRedirect)
-  let title = if id.isEmpty { "Sign in with Claude" } else { "Sign in again" }
+  let title = if id.isEmpty() { "Sign in with Claude" } else { "Sign in again" }
 
   async fn finish(l: Login, code: string) {
     if working { return }
@@ -39,17 +39,13 @@ component AddSheet(id: string) {
     }
   }
 
-  /// The sign-in: the system's sheet on Claude's page, and the loopback
-  /// server it redirects to. The first to end ends the other: the code
-  /// closes the sheet; the sheet closed by the user (nothing to say) stops
-  /// the server.
+  /// The sign-in: the system's sheet on Claude's page, which ends at the
+  /// page that redirects back with the code.
   async fn start() {
     failed = ""
     do {
-      let server = try await listen()
-      defer { server.close() }
-      let l = Login(redirect: server.url)
-      let u = try await race(server.next(), webauth.open(l.url()))
+      let l = Login(redirect: manualRedirect)
+      let u = try await webauth.open(l.address())
       if let code = l.codeFrom(u) {
         await finish(l, code)
       } else {
@@ -107,7 +103,7 @@ component AddSheet(id: string) {
             }
             Button("Sign In") {
               variant: .gray
-              disabled: pasted.trim().isEmpty || working
+              disabled: pasted.trim().isEmpty() || working
               on press { await paste() }
             }
           }
@@ -116,12 +112,12 @@ component AddSheet(id: string) {
             on press {
               failed = ""
               pasting = true
-              try? await webauth.open(manual.url())
+              try? await webauth.open(manual.address())
             }
           }
         }
       }
-      if id.isEmpty && !pasting {
+      if id.isEmpty() && !pasting {
         Button("Try a Demo Account") {
           on press {
             save(demo(time.now()))
@@ -130,7 +126,7 @@ component AddSheet(id: string) {
         }
       }
       if working { Activity() }
-      if !failed.isEmpty {
+      if !failed.isEmpty() {
         Text(failed) {
           font: .footnote
           color: .red
@@ -145,14 +141,14 @@ component AddSheet(id: string) {
 /// with id, or the one signed in to the same email before.
 async fn keepSignIn(id: string, signedIn: SignedIn) throws {
   var key = id
-  if key.isEmpty {
-    if let same = accounts.value.first(a => !a.demo && !a.email.isEmpty && a.email == signedIn.email) { key = same.id }
+  if key.isEmpty() {
+    if let same = accounts.value.find(a => !a.demo && !a.email.isEmpty() && a.email == signedIn.email) { key = same.id }
   }
-  if key.isEmpty { key = time.now().format("yyyyMMddHHmmss.SSS") }
-  try await secure.save("token.{key}", signedIn.tokens.string())
+  if key.isEmpty() { key = time.now().format("yyyyMMddHHmmss.SSS") }
+  try await secure.write("token.{key}", signedIn.tokens.string())
   var a = find(key) ?? Account(id: key)
-  if !signedIn.email.isEmpty { a.email = signedIn.email }
-  if !signedIn.org.isEmpty { a.org = signedIn.org }
+  if !signedIn.email.isEmpty() { a.email = signedIn.email }
+  if !signedIn.org.isEmpty() { a.org = signedIn.org }
   a.error = ""
   save(a)
   await refresh(key)

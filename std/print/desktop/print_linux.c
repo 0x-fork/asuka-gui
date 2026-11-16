@@ -6,7 +6,6 @@
 #include "asuka_linux.h"
 #include "print.h"
 
-#include <dlfcn.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,38 +16,6 @@
 static struct {
 	bool tried;
 	const char *missing;
-	// WebKitGTK 6's.
-	GtkWidget *(*view_new)(void);
-	void (*load_html)(GtkWidget *, const char *, const char *);
-	const char *(*get_title)(GtkWidget *);
-	void (*evaluate)(GtkWidget *, const char *, gssize, const char *, const char *, GCancellable *, GAsyncReadyCallback, gpointer);
-	gpointer (*evaluate_finish)(GtkWidget *, GAsyncResult *, GError **);
-	char *(*to_string)(gpointer);
-	gpointer (*op_new)(GtkWidget *);
-	int (*op_run_dialog)(gpointer, GtkWindow *);
-	void (*op_print)(gpointer);
-	void (*op_set_settings)(gpointer, gpointer);
-	void (*op_set_setup)(gpointer, gpointer);
-	// GTK 4's.
-	gpointer (*settings_new)(void);
-	void (*settings_set)(gpointer, const char *, const char *);
-	void (*settings_set_printer)(gpointer, const char *);
-	gpointer (*setup_new)(void);
-	void (*set_orientation)(gpointer, int);
-	void (*set_paper_size)(gpointer, gpointer);
-	void (*set_top)(gpointer, double, int), (*set_bottom)(gpointer, double, int), (*set_left)(gpointer, double, int), (*set_right)(gpointer, double, int);
-	gpointer (*paper_new_custom)(const char *, const char *, double, double, int);
-	void (*paper_free)(gpointer);
-	GtkWidget *(*dialog_new)(const char *, GtkWindow *);
-	gpointer (*dialog_printer)(GtkWidget *);
-	gpointer (*dialog_settings)(GtkWidget *);
-	gpointer (*dialog_setup)(GtkWidget *);
-	void (*dialog_set_caps)(GtkWidget *, int);
-	gpointer (*job_new)(const char *, gpointer, gpointer, gpointer);
-	gboolean (*job_set_source_file)(gpointer, const char *, GError **);
-	void (*job_send)(gpointer, void (*)(gpointer, gpointer, const GError *), gpointer, GDestroyNotify);
-	void (*window_set_modal)(GtkWidget *, gboolean);
-	void (*window_destroy)(GtkWidget *);
 } pk;
 
 enum { load_finished = 3, unit_points = 1, response_ok = -5, caps_preview = 1 << 6, orientation_landscape = 1 };
@@ -56,53 +23,16 @@ enum { load_finished = 3, unit_points = 1, response_ok = -5, caps_preview = 1 <<
 static bool load(asuka_error *err) {
 	if (!pk.tried) {
 		pk.tried = true;
-		void *g = asuka_linux() ? dlopen("libgtk-4.so.1", RTLD_NOW | RTLD_GLOBAL) : NULL;
-		void *l = g ? dlopen("libwebkitgtk-6.0.so.4", RTLD_NOW | RTLD_GLOBAL) : NULL;
-		void *j = l ? dlopen("libjavascriptcoregtk-6.0.so.1", RTLD_NOW | RTLD_GLOBAL) : NULL;
+		bool g = asuka_linux() && G(gtk_window_new);
+		bool l = g && asuka_linux_load(ASUKA_LIB_WEBKIT);
+		if (l) asuka_linux_load(ASUKA_LIB_JSC);
 		if (!g) {
 			pk.missing = "GTK 4 isn't installed: printing needs it";
 		} else if (!l) {
 			pk.missing = "WebKitGTK 6.0 isn't installed: install it to print (Ubuntu, Debian: libwebkitgtk-6.0-4; Fedora: webkitgtk6.0; Arch: webkitgtk-6.0)";
 		} else {
-#define W(field, name) *(void **)&pk.field = dlsym(l, name)
-#define K(field, name) *(void **)&pk.field = dlsym(g, name)
-			W(view_new, "webkit_web_view_new");
-			W(load_html, "webkit_web_view_load_html");
-			W(get_title, "webkit_web_view_get_title");
-			W(evaluate, "webkit_web_view_evaluate_javascript");
-			W(evaluate_finish, "webkit_web_view_evaluate_javascript_finish");
-			if (j) *(void **)&pk.to_string = dlsym(j, "jsc_value_to_string");
-			W(op_new, "webkit_print_operation_new");
-			W(op_run_dialog, "webkit_print_operation_run_dialog");
-			W(op_print, "webkit_print_operation_print");
-			W(op_set_settings, "webkit_print_operation_set_print_settings");
-			W(op_set_setup, "webkit_print_operation_set_page_setup");
-			K(settings_new, "gtk_print_settings_new");
-			K(settings_set, "gtk_print_settings_set");
-			K(settings_set_printer, "gtk_print_settings_set_printer");
-			K(setup_new, "gtk_page_setup_new");
-			K(set_orientation, "gtk_page_setup_set_orientation");
-			K(set_paper_size, "gtk_page_setup_set_paper_size");
-			K(set_top, "gtk_page_setup_set_top_margin");
-			K(set_bottom, "gtk_page_setup_set_bottom_margin");
-			K(set_left, "gtk_page_setup_set_left_margin");
-			K(set_right, "gtk_page_setup_set_right_margin");
-			K(paper_new_custom, "gtk_paper_size_new_custom");
-			K(paper_free, "gtk_paper_size_free");
-			K(dialog_new, "gtk_print_unix_dialog_new");
-			K(dialog_printer, "gtk_print_unix_dialog_get_selected_printer");
-			K(dialog_settings, "gtk_print_unix_dialog_get_settings");
-			K(dialog_setup, "gtk_print_unix_dialog_get_page_setup");
-			K(dialog_set_caps, "gtk_print_unix_dialog_set_manual_capabilities");
-			K(job_new, "gtk_print_job_new");
-			K(job_set_source_file, "gtk_print_job_set_source_file");
-			K(job_send, "gtk_print_job_send");
-			K(window_set_modal, "gtk_window_set_modal");
-			K(window_destroy, "gtk_window_destroy");
-#undef W
-#undef K
-			if (!pk.view_new || !pk.load_html || !pk.op_new || !pk.op_run_dialog || !pk.op_print || !pk.settings_new || !pk.setup_new ||
-			    !pk.paper_new_custom || !pk.dialog_new || !pk.job_new || !pk.job_send)
+			if (!G(webkit_web_view_new) || !G(webkit_web_view_load_html) || !G(webkit_print_operation_new) || !G(webkit_print_operation_run_dialog) || !G(webkit_print_operation_print) || !G(gtk_print_settings_new) || !G(gtk_page_setup_new) ||
+			    !G(gtk_paper_size_new_custom) || !G(gtk_print_unix_dialog_new) || !G(gtk_print_job_new) || !G(gtk_print_job_send))
 				pk.missing = "WebKitGTK 6.0 or GTK 4 is too old to print";
 		}
 	}
@@ -162,10 +92,10 @@ static void load_page(print_task *t, const char *html, page_done done) {
 	page *pg = calloc(1, sizeof *pg);
 	pg->t = t;
 	pg->done = done;
-	pg->view = G(g_object_ref_sink)(pk.view_new());
+	pg->view = G(g_object_ref_sink)(G(webkit_web_view_new)());
 	pg->handlers[0] = g_signal_connect(pg->view, "load-changed", on_load_changed, pg);
 	pg->handlers[1] = g_signal_connect(pg->view, "load-failed", on_load_failed, pg);
-	pk.load_html(pg->view, html, NULL);
+	G(webkit_web_view_load_html)((WebKitWebView *)pg->view, html, NULL);
 }
 
 // ---- html ----
@@ -193,14 +123,14 @@ static void html_loaded(print_task *t, GtkWidget *view, asuka_error *err) {
 		print_release(t);
 		return;
 	}
-	gpointer op = pk.op_new(view);
+	gpointer op = G(webkit_print_operation_new)((WebKitWebView *)view);
 	if (t->job.landscape) {
-		gpointer setup = pk.setup_new();
-		pk.set_orientation(setup, orientation_landscape);
-		pk.op_set_setup(op, setup);
+		gpointer setup = G(gtk_page_setup_new)();
+		G(gtk_page_setup_set_orientation)(setup, orientation_landscape);
+		G(webkit_print_operation_set_page_setup)(op, setup);
 		G(g_object_unref)(setup);
 	}
-	bool printed = pk.op_run_dialog(op, window()) == 0;  // WEBKIT_PRINT_OPERATION_RESPONSE_PRINT
+	bool printed = G(webkit_print_operation_run_dialog)(op, window()) == 0;  // WEBKIT_PRINT_OPERATION_RESPONSE_PRINT
 	if (printed) {
 		// Printing goes on: the operation (and the page) until it's done.
 		printing *pr = calloc(1, sizeof *pr);
@@ -284,31 +214,31 @@ static void pdf_titled(print_task *t, GtkWidget *view, const char *title) {
 	m->t = t;
 	m->view = view;
 	m->path = path;
-	m->op = pk.op_new(view);
-	gpointer settings = pk.settings_new();
-	pk.settings_set_printer(settings, "Print to File");
-	pk.settings_set(settings, "output-file-format", "pdf");
+	m->op = G(webkit_print_operation_new)((WebKitWebView *)view);
+	gpointer settings = G(gtk_print_settings_new)();
+	G(gtk_print_settings_set_printer)(settings, "Print to File");
+	G(gtk_print_settings_set)(settings, "output-file-format", "pdf");
 	GFile *f = G(g_file_new_for_path)(path);
 	gchar *uri = G(g_file_get_uri)(f);
-	pk.settings_set(settings, "output-uri", uri);
+	G(gtk_print_settings_set)(settings, "output-uri", uri);
 	G(g_free)(uri);
 	G(g_object_unref)(f);
-	gpointer setup = pk.setup_new();
-	gpointer size = pk.paper_new_custom("asuka", "Page", l->width, l->height, unit_points);
-	pk.set_paper_size(setup, size);
-	pk.paper_free(size);
-	pk.set_orientation(setup, 0);  // the size says it
-	pk.set_top(setup, l->top, unit_points);
-	pk.set_bottom(setup, l->bottom, unit_points);
-	pk.set_left(setup, l->left, unit_points);
-	pk.set_right(setup, l->right, unit_points);
-	pk.op_set_settings(m->op, settings);
-	pk.op_set_setup(m->op, setup);
+	gpointer setup = G(gtk_page_setup_new)();
+	gpointer size = G(gtk_paper_size_new_custom)("asuka", "Page", l->width, l->height, unit_points);
+	G(gtk_page_setup_set_paper_size)(setup, size);
+	G(gtk_paper_size_free)(size);
+	G(gtk_page_setup_set_orientation)(setup, 0);  // the size says it
+	G(gtk_page_setup_set_top_margin)(setup, l->top, unit_points);
+	G(gtk_page_setup_set_bottom_margin)(setup, l->bottom, unit_points);
+	G(gtk_page_setup_set_left_margin)(setup, l->left, unit_points);
+	G(gtk_page_setup_set_right_margin)(setup, l->right, unit_points);
+	G(webkit_print_operation_set_print_settings)(m->op, settings);
+	G(webkit_print_operation_set_page_setup)(m->op, setup);
 	G(g_object_unref)(settings);
 	G(g_object_unref)(setup);
 	m->handlers[0] = g_signal_connect(m->op, "failed", on_pdf_failed, m);
 	m->handlers[1] = g_signal_connect(m->op, "finished", on_pdf_finished, m);
-	pk.op_print(m->op);
+	G(webkit_print_operation_print)(m->op);
 }
 
 typedef struct {
@@ -318,8 +248,8 @@ typedef struct {
 
 static void title_read(GObject *src, GAsyncResult *res, gpointer p) {
 	titling *ti = p;
-	gpointer v = pk.evaluate_finish(ti->view, res, NULL);
-	char *s = v && pk.to_string ? pk.to_string(v) : NULL;
+	gpointer v = G(webkit_web_view_evaluate_javascript_finish)((WebKitWebView *)ti->view, res, NULL);
+	char *s = v && G(jsc_value_to_string) ? G(jsc_value_to_string)(v) : NULL;
 	pdf_titled(ti->t, ti->view, s ? s : "");
 	G(g_free)(s);
 	if (v) G(g_object_unref)(v);
@@ -334,14 +264,14 @@ static void pdf_loaded(print_task *t, GtkWidget *view, asuka_error *err) {
 	}
 	// The page's title, as its script sees it (WebKit's title property
 	// comes after the load, from the web process).
-	const char *title = pk.get_title ? pk.get_title(view) : NULL;
-	if ((title && *title) || !pk.evaluate || !pk.evaluate_finish || !pk.to_string) {
+	const char *title = G(webkit_web_view_get_title) ? G(webkit_web_view_get_title)((WebKitWebView *)view) : NULL;
+	if ((title && *title) || !G(webkit_web_view_evaluate_javascript) || !G(webkit_web_view_evaluate_javascript_finish) || !G(jsc_value_to_string)) {
 		pdf_titled(t, view, title ? title : "");
 		return;
 	}
 	titling *ti = malloc(sizeof *ti);
 	*ti = (titling){t, view};
-	pk.evaluate(view, "document.title", -1, NULL, NULL, NULL, title_read, ti);
+	G(webkit_web_view_evaluate_javascript)((WebKitWebView *)view, "document.title", -1, NULL, NULL, NULL, title_read, ti);
 }
 
 void print_pdf(print_task *t) {
@@ -497,25 +427,25 @@ static void on_dialog_response(GtkWidget *d, int resp, gpointer p) {
 	if (f->answered) return;
 	f->answered = true;
 	if (resp != response_ok) {
-		pk.window_destroy(d);
+		G(gtk_window_destroy)((GtkWindow *)d);
 		filing_end(f, false, NULL);
 		return;
 	}
-	gpointer printer = pk.dialog_printer(d);
-	gpointer settings = pk.dialog_settings(d);
-	gpointer setup = pk.dialog_setup(d);
-	gpointer job = pk.job_new(f->title, printer, settings, setup);
+	gpointer printer = G(gtk_print_unix_dialog_get_selected_printer)(d);
+	gpointer settings = G(gtk_print_unix_dialog_get_settings)(d);
+	gpointer setup = G(gtk_print_unix_dialog_get_page_setup)(d);
+	gpointer job = G(gtk_print_job_new)(f->title, printer, settings, setup);
 	if (settings) G(g_object_unref)(settings);
-	pk.window_destroy(d);
+	G(gtk_window_destroy)((GtkWindow *)d);
 	GError *e = NULL;
-	if (!pk.job_set_source_file(job, f->path, &e)) {
+	if (!G(gtk_print_job_set_source_file)(job, f->path, &e)) {
 		G(g_object_unref)(job);
 		asuka_error err = {0};
 		asuka_linux_fail(&err, e, "print");
 		filing_end(f, false, &err);
 		return;
 	}
-	pk.job_send(job, job_sent, f, NULL);
+	G(gtk_print_job_send)(job, (void (*)(GtkPrintJob *, gpointer, const GError *))job_sent, f, NULL);
 }
 
 // file_dialog prints a file with GTK's print dialog and a print job (no
@@ -526,9 +456,9 @@ static void file_dialog(filing *f) {
 		filing_end(f, false, &e);
 		return;
 	}
-	GtkWidget *d = pk.dialog_new(f->title, window());
-	if (pk.dialog_set_caps) pk.dialog_set_caps(d, caps_preview);
-	if (pk.window_set_modal) pk.window_set_modal(d, true);
+	GtkWidget *d = G(gtk_print_unix_dialog_new)(f->title, window());
+	if (G(gtk_print_unix_dialog_set_manual_capabilities)) G(gtk_print_unix_dialog_set_manual_capabilities)(d, caps_preview);
+	if (G(gtk_window_set_modal)) G(gtk_window_set_modal)((GtkWindow *)d, true);
 	g_signal_connect(d, "response", on_dialog_response, f);
 	G(gtk_window_present)((GtkWindow *)d);
 }

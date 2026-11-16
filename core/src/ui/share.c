@@ -6,6 +6,8 @@
 // and what other apps share with it.
 #include "ui/ui_ext.h"
 
+#include <stdlib.h>
+
 static ak_ui_root *root_now(void) { return ak_ui.cur ? ak_ui.cur : ak_ui.root; }
 
 static void root_command(ak_cmd c, const void *args, size_t n) {
@@ -23,6 +25,12 @@ void ak_ui_haptic(int64_t kind) {
 	uint8_t k = (uint8_t)kind;
 	if (kind >= 0 && kind < AK_HAPTIC_COUNT) root_command(AK_CMD_HAPTIC, &k, 1);
 }
+// ak_ui_color_scheme shows the app light or dark whatever the system's
+// setting, or follows it again (AK_COLOR_SCHEME_*).
+void ak_ui_color_scheme(int64_t scheme) {
+	uint8_t k = (uint8_t)scheme;
+	if (scheme >= 0 && scheme < AK_COLOR_SCHEME_COUNT) root_command(AK_CMD_COLOR_SCHEME, &k, 1);
+}
 // ak_ui_copy puts text on the clipboard.
 void ak_ui_copy(ak_str *text) { str_command(AK_CMD_COPY, text); }
 // ak_ui_open_url asks the system to open url: a web address in the
@@ -30,6 +38,24 @@ void ak_ui_copy(ak_str *text) { str_command(AK_CMD_COPY, text); }
 void ak_ui_open_url(ak_str *url) { str_command(AK_CMD_OPEN_URL, url); }
 // ak_ui_announce has a screen reader, if one is on, read text out.
 void ak_ui_announce(ak_str *text) { str_command(AK_CMD_ANNOUNCE, text); }
+// ak_ui_share_close closes the share sheet the app's root is (an iOS
+// share extension's, Android's AsukaShareActivity): 0 done, 1 cancelled,
+// 2 open the app with what was shared.
+void ak_ui_share_close(int64_t how) {
+	uint8_t h = (uint8_t)how;
+	if (how >= 0 && how <= 2) root_command(AK_CMD_SHARE_CLOSE, &h, 1);
+}
+
+static bool env_on(const char *name) {
+	const char *v = getenv(name);
+	return v && strcmp(v, "1") == 0;
+}
+
+const char *ak_ui_process(void) {
+	if (env_on("ASUKA_SHARE_SHEET")) return "share";
+	if (env_on("ASUKA_NOTIFICATION_SERVICE")) return "notification";
+	return "app";
+}
 
 static void first_native(ak_view *d, void *ctx) {
 	ak_view **t = ctx;
@@ -156,7 +182,7 @@ typedef struct handler {
 
 typedef AK_VEC(handler *) handler_vec;
 
-static handler_vec url_handlers, file_handlers, share_handlers;
+static handler_vec url_handlers, file_handlers, share_handlers, life_handlers, fore_handlers, back_handlers;
 static ak_str *pending_url;
 static AK_VEC(ak_arr *) pending_files;
 // Shares that came before any handler: the share that launched the app.
@@ -169,7 +195,7 @@ bool (*ak_ui_route_url)(ak_span url);
 static void handler_gone(void *ctx) {
 	handler *h = ctx;
 	h->gone = true;
-	handler_vec *vs[] = {&url_handlers, &file_handlers, &share_handlers};
+	handler_vec *vs[] = {&url_handlers, &file_handlers, &share_handlers, &life_handlers, &fore_handlers, &back_handlers};
 	for (size_t k = 0; k < AK_LEN(vs); k++) {
 		for (uint32_t i = 0; i < vs[k]->len; i++) {
 			if (vs[k]->data[i] != h) continue;
@@ -297,6 +323,34 @@ void ak_ui_on_open_url(ak_closure *f) {
 		ak_call_closure(f, ak_current_owner(), &(ak_val){.p = u}, 1);
 		ak_release(u);
 	}
+}
+
+// ak_ui_on_lifecycle calls f (fn(Lifecycle)) as the app comes to the
+// foreground, goes to the background, or the system is low on memory,
+// while the current owner lives; on_foreground and on_background call
+// theirs (fn()) for the first two.
+void ak_ui_on_lifecycle(ak_closure *f) { add_handler(&life_handlers, f); }
+void ak_ui_on_foreground(ak_closure *f) { add_handler(&fore_handlers, f); }
+void ak_ui_on_background(ak_closure *f) { add_handler(&back_handlers, f); }
+
+static void call_handlers0(handler_vec *v) {
+	uint32_t n = v->len;
+	handler **hs = ak_alloc((n ? n : 1) * sizeof(handler *));
+	memcpy(hs, v->data, n * sizeof(handler *));
+	for (uint32_t i = 0; i < n; i++) {
+		bool live = false;
+		for (uint32_t j = 0; j < v->len; j++) live |= v->data[j] == hs[i];
+		if (live) ak_call_closure(hs[i]->f, hs[i]->owner, NULL, 0);
+	}
+	ak_free(hs);
+}
+
+// ak_ui_lifecycle tells the lifecycle handlers the app's state changed
+// (AK_LIFECYCLE_*).
+void ak_ui_lifecycle(int64_t state) {
+	call_handlers(&life_handlers, (ak_val){.i = state});
+	if (state == AK_LIFECYCLE_FOREGROUND) call_handlers0(&fore_handlers);
+	else if (state == AK_LIFECYCLE_BACKGROUND) call_handlers0(&back_handlers);
 }
 
 // ak_ui_on_open_files calls f (fn([string])) with the files the app is

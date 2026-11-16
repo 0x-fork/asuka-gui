@@ -1026,6 +1026,15 @@ func (p *parser) parseScreen(start Pos) *ScreenDecl {
 	d := &ScreenDecl{}
 	d.Name = p.ident()
 	d.Params = p.optParams()
+	if p.tok == IDENT && p.lit == "at" {
+		// at "pattern": a routed screen.
+		p.next()
+		if p.tok == STRING || p.tok == STRING_HEAD {
+			d.At = p.parseString()
+		} else {
+			p.errorExpected("the screen's route pattern, a string: at \":id\"")
+		}
+	}
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)
 	return d

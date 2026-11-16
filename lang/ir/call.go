@@ -18,6 +18,9 @@ func (b *fb) call(e *syntax.CallExpr, dst int) int {
 func (b *fb) callDiscard(e *syntax.CallExpr) { b.call1(e, -1, true) }
 
 func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
+	if h := b.l.info.Hrefs[e]; h != nil {
+		return b.href(h, dst)
+	}
 	call := b.l.info.Calls[e]
 	if call == nil {
 		b.l.errorf(e, "internal: no call info")
@@ -30,6 +33,11 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 	case check.CallFunc, check.CallMethod:
 		return b.funcCall(e, call, dst, discard)
 	case check.CallClosure:
+		if id, ok := unparen(call.Recv).(*syntax.Ident); ok {
+			if v, ok := b.l.info.Uses[id].(*check.Var); ok && v.Fn != nil {
+				return b.localCall(e, call, v.Fn, dst, discard)
+			}
+		}
 		return b.closureCall(e, call, dst)
 	case check.CallIface:
 		return b.ifaceCall(e, call, nil, dst)
@@ -338,10 +346,35 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		return r
 	case "enumerated":
 		return b.enumerated(call, recv, dst)
+	case "i2f", "f2i":
+		x := b.recvValue(call, recv)
+		if m.Special == "i2f" {
+			r := b.out(dst, bc.KFloat)
+			b.emit(op("I2F"), r, x)
+			return r
+		}
+		r := b.out(dst, bc.KInt)
+		b.emit(op("F2I"), r, x)
+		return r
 	}
 	// Arguments first (before the receiver is taken out, when it's
 	// changed in place), in the builtin's order.
 	vals := b.args(call, nil)
+	if m.Variadic {
+		// The variadic parameter's arguments, as one array.
+		k := len(m.Params) - 1
+		ek := b.l.kind(b.typ(call.Params[k].Type))
+		rest := vals[k:]
+		ks := repeatKind(ek, len(rest))
+		blk := b.regs(ks)
+		for i, v := range rest {
+			b.move(blk+i, v)
+		}
+		arr := b.temp(bc.KRef)
+		b.emit(op("NEWA"), arr, int(ek), bc.None, blk, len(rest))
+		b.releaseRegs(blk, ks)
+		vals = append(vals[:k:k], arr)
+	}
 	if m.Order != nil {
 		ord := make([]int, len(m.Order))
 		for i, j := range m.Order {
@@ -500,7 +533,7 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 	case check.BAll, check.BRace:
 		return b.allRace(e, call, dst)
 	case check.BWithTimeout:
-		return b.withTimeout(e, call)
+		return b.withTimeout(e, call, dst)
 	case check.BLive:
 		ft := b.typ(call.Result).(*check.FuncType)
 		init := b.valueReg(b.value(call.Args[0], -1), b.l.kind(ft.Result))
@@ -548,7 +581,23 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		} else {
 			bl = b.builder(call.Args[0])
 		}
-		return b.copyTo(b.callB(uiTestMount, bc.KRef, bl), dst)
+		platform := b.konst(-1)
+		if x := call.Args[2]; x != nil {
+			platform = b.value(x, -1)
+		}
+		at := b.kstr("")
+		if x := call.Args[3]; x != nil {
+			at = b.value(x, -1)
+		}
+		return b.copyTo(b.callB(uiTestMount, bc.KRef, bl, platform, at), dst)
+	case check.BAssetText:
+		return b.copyTo(b.kstr(b.l.info.Assets[e]), dst)
+	case check.BAssetBytes:
+		return b.copyTo(b.callB("str.to_bytes", bc.KRef, b.kstr(b.l.info.Assets[e])), dst)
+	case check.BNavigate:
+		return b.navigate(call, 0)
+	case check.BReplace:
+		return b.navigate(call, 2)
 	case check.BPush, check.BPresent:
 		bl := b.builder(call.Args[0])
 		name := uiPush
@@ -1005,6 +1054,10 @@ func (b *fb) caseCall(call *check.Call, dst int) int {
 // Closures
 
 func (b *fb) lambda(e *syntax.LambdaExpr) int {
+	if rb := b.l.info.BuilderLambdas[e]; rb != nil {
+		// Built with accessors: a List's header.
+		return b.routeBuilder(rb)
+	}
 	ctx := b.l.info.Ctxs[e]
 	ft, _ := b.typ(b.l.info.Types[e]).(*check.FuncType)
 	if ft == nil {
@@ -1054,7 +1107,7 @@ func (b *fb) spawn(e *syntax.SpawnExpr, dst int) int {
 }
 
 // withTimeout(d) { body } races the body against a timer that throws.
-func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call) int {
+func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call, dst int) int {
 	if len(call.Args) < 2 {
 		return -1
 	}
@@ -1082,6 +1135,12 @@ func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call) int {
 	b.emit(op("NEWA"), arr, int(bc.KRef), bc.None, blk, 2)
 	b.releaseRegs(blk, ks)
 	f := b.callB("async.race", bc.KRef, arr)
+	// Its value is the block's, which wins the race (the timer throws).
+	if k := b.l.kind(b.typ(call.Result)); k != bc.KVoid {
+		r := b.out(dst, k)
+		b.emit(op("AWAIT"), r, f)
+		return r
+	}
 	w := b.temp(bc.KRef)
 	b.emit(op("AWAIT"), w, f)
 	return -1

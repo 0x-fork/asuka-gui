@@ -74,13 +74,38 @@ func (fc *fileCtx) namesAt(path []syntax.Node, pos syntax.Pos) []scoped {
 	for i := len(path) - 1; i >= 0; i-- {
 		switch n := path[i].(type) {
 		case *syntax.Block:
+			// In a fn declared in the block, it and the fns declared
+			// after it, next to it, are in scope too (they may call
+			// each other).
+			in := -1
+			for j, it := range n.Items {
+				if r := it.Range(); r.Start <= pos && pos <= r.End {
+					if _, ok := it.(*syntax.FuncDecl); ok {
+						in = j
+					}
+				}
+			}
 			for j := len(n.Items) - 1; j >= 0; j-- {
 				it := n.Items[j]
+				if d, ok := it.(*syntax.FuncDecl); ok && in >= 0 && j >= in {
+					run := true
+					for k := in; k <= j; k++ {
+						if _, ok := n.Items[k].(*syntax.FuncDecl); !ok {
+							run = false
+						}
+					}
+					if run {
+						addIdent(d.Name, 0)
+					}
+				}
 				if it.Range().End > pos {
 					continue
 				}
-				if d, ok := it.(*syntax.LetDecl); ok {
+				switch d := it.(type) {
+				case *syntax.LetDecl:
 					addPattern(d.Pattern)
+				case *syntax.FuncDecl:
+					addIdent(d.Name, 0)
 				}
 			}
 		case *syntax.LambdaExpr:

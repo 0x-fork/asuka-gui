@@ -63,7 +63,7 @@ web need nothing declared (see each one's section below).
 | `asuka/calendar` | `READ_CALENDAR`, `WRITE_CALENDAR` (for `calendars`, `events`) | `NSCalendarsFullAccessUsageDescription`, `NSCalendarsWriteOnlyAccessUsageDescription`, `NSCalendarsUsageDescription` |
 | `asuka/compose` | the visibility of the apps for `mailto:` and `smsto:` (`<queries>`) | `mailto` in `LSApplicationQueriesSchemes` |
 | `asuka/nfc` | `NFC`; `uses-feature android.hardware.nfc` (not required); asuka.toml's `nfc` filters ([NFC tags](nfc.md)) | `NFCReaderUsageDescription`; Core NFC's entitlement; asuka.toml's `nfc` AIDs and FeliCa system codes |
-| `asuka/bluetooth` | `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; the scan's receiver for `asuka.toml`'s `bluetooth.background` (see [Bluetooth](bluetooth.md#what-the-build-adds)) | `NSBluetoothAlwaysUsageDescription`; `bluetooth-central`, `bluetooth-peripheral` for `bluetooth.background` |
+| `asuka/bluetooth` | `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; the background scan's receiver (for `backgroundScan`; see [Bluetooth](bluetooth.md#what-the-build-adds)) | `NSBluetoothAlwaysUsageDescription`; `bluetooth-central`, `bluetooth-peripheral` for `bluetooth.background` (`bluetooth-central` for `backgroundScan`), and the launch class that makes the managers iOS restores |
 
 `asuka/device`, `asuka/audio`, `asuka/splash`, `asuka/imageedit`,
 `asuka/widget`, `asuka/js`, `asuka/secure`, `asuka/preview` and
@@ -1682,15 +1682,144 @@ app's `shareTarget`.
 What a link leads to (a page, an image, a video) is the app's to find
 out, with `asuka/http`: expo-sharing's "resolved" payloads, in Asuka.
 
-### The app's own share sheet
+### The app's own share sheet: asuka/sharesheet
 
-A share opens the app. A share sheet of the app's own, a screen shown
-over the app that shares as "Save to Raindrop" or "Add to Notes" does
-(the user saves, and is back where they were), isn't in Asuka yet: the
-hosts can run one (on iOS as the share extension's sheet, on Android as
-an Activity in a `:share` process shown as a Material bottom sheet), but
-the language has no way yet to declare the screen it shows. Until it
-has, a share opens the app, and `onShare` gets what's shared.
+By default a share opens the app. A share sheet of the app's own is a
+screen shown over the app that shares instead, as "Save to Raindrop" or
+"Add to Notes" is: the user saves, and is back where they were. With
+`asuka/sharesheet`, the app block shows it when the app runs as its
+sheet:
+
+```asuka
+import asuka/sharesheet
+
+component SaveLink {
+  state link = ""
+  state note = ""
+
+  onShare(items => {
+    for it in items {
+      if it.kind == .link {
+        link = it.text
+      }
+    }
+  })
+
+  Column {
+    padding: 16; gap: 12; grow: 1
+    if link.isEmpty() {
+      ProgressRing()
+    } else {
+      Text(link)
+    }
+    TextField { bind text: note; placeholder: "Note" }
+    Row {
+      gap: 12
+      Button("Cancel") {
+        on press { sharesheet.cancel() }
+      }
+      Button("Save") {
+        variant: .filled
+        on press {
+          save(link, note)
+          sharesheet.done()
+        }
+      }
+    }
+  }
+}
+
+component Root {
+  Text("Links")
+}
+
+// The app's own.
+fn save(link: string, note: string) {}
+
+app {
+  if sharesheet.active() {
+    SaveLink()
+  } else {
+    Root()
+  }
+}
+```
+
+`sharesheet.active()` is true when the app runs as its sheet: its root
+is the sheet then, and the rest of the app isn't made. The sheet hears
+what's shared with `onShare`, as the app does; until the items have
+come (a video being copied), show a spinner. It ends with
+`sharesheet.done()`, `sharesheet.cancel()`, or `sharesheet.openApp()`,
+which opens the app with the items for its `onShare`, as without a
+sheet. `asuka.toml`'s `shareTarget` says what the sheet is offered for,
+as above; an app that uses `active()` without one is offered for
+nothing (the CLI says so).
+
+The sheet is a root of its own, in a process of its own, as iOS runs
+share extensions: on **iOS** the app's share extension, which iOS shows
+as a sheet, running the app and the host from the framework it shares
+with the app; on **Android** an Activity in a `:share` process, shown as
+a Material bottom sheet over the other app (dragging it down, tapping
+outside and back cancel it). The process ends with the sheet. A file's
+`path` is the sheet's until it closes: copy what the app keeps.
+
+What the app keeps is the same in its sheet: its files (`asuka/fs`'s
+app directory, SQLite databases there), `asuka/storage`'s values,
+`asuka/secure`. Android's two processes share the app's files. On iOS
+the app's files and values move to the App Group (`group.<app ID>`),
+once, the first time it runs with a sheet, and its keychain group is
+shared with the extension; a device build's profiles need the App
+Groups capability (see [Shipping](shipping.md#ios)). The app doesn't
+hear what its sheet wrote while it was running: look again when it
+comes back to the front.
+
+The CLI sees that the app uses `sharesheet.active` and builds the sheet
+instead of the extension that opens the app. On iOS the app's code, the
+core and the host are then a framework in the app,
+`Frameworks/AsukaApp.framework`, which the app and its extension both
+load, as Xcode shares code with an extension: the app isn't bigger for
+its sheet. On the desktops and in a browser the app isn't offered in
+other apps' share menus: `active()` is false there.
+
+In a test, `sharesheet.fake()` makes the app run as its sheet
+(`mountApp()` shows it), and keeps how it closed (`closed`); a mounted
+app's `share(items)` is another app sharing them:
+
+```asuka
+import asuka/sharesheet
+
+component SaveLink {
+  state link = ""
+
+  onShare(items => {
+    link = items[0].text
+  })
+
+  Column {
+    Text(link)
+    Button("Save") {
+      on press { sharesheet.done() }
+    }
+  }
+}
+
+app {
+  if sharesheet.active() {
+    SaveLink()
+  } else {
+    Text("Links")
+  }
+}
+
+test "the sheet saves" {
+  let sheet = sharesheet.fake()
+  let app = mountApp()
+  app.share([SharedItem(kind: .link, text: "https://asuka.dev")])
+  app.expect("https://asuka.dev")
+  app.tap("Save")
+  expect(sheet.closed == .done)
+}
+```
 
 ## JavaScript: asuka/js
 
@@ -1810,14 +1939,88 @@ A `push.Message` has these too: `subtitle`, `category`, `thread`,
 
 ### Rewriting a push before it shows
 
-Changing each push before it shows (decrypting an end-to-end encrypted
-payload, setting its title and body, attaching an image, making it a
-message in a conversation with the sender's picture) isn't in Asuka yet.
-The hosts have the means (on iOS a Notification Service Extension, run
-for each push with `"mutable-content": 1` in its `aps`; on Android, FCM's
-data messages in the app's process), but `asuka/push` has no function to
-give them the app's code, so a push shows as it came: put what it shows
-in the payload.
+`push.rewrite(f)` has the app change each push before it shows: decrypt
+an end-to-end encrypted payload, set its title and body, attach an
+image, make it a message in a conversation with the sender's picture,
+set its thread and category. Call it as the app starts:
+
+```asuka
+import asuka/push
+import asuka/notify
+
+async fn reveal(m: push.Message) throws -> push.Message? {
+  let box = m.data["box"] ?? ""
+  if box.isEmpty() {
+    return none   // not ours: as it came
+  }
+  let msg = try await decrypt(box)   // with a key in asuka/secure
+  var out = m
+  out.body = msg.text
+  out.category = "message"
+  return out.from(notify.Person(id: msg.fromID, name: msg.fromName, image: msg.avatar),
+    notify.Conversation(id: m.data["chat"] ?? ""))
+}
+
+component Root {
+  task {
+    push.rewrite(reveal)
+  }
+
+  Text("Chats")
+}
+
+// The app's own.
+struct Plain {
+  text: string
+  fromID: string
+  fromName: string
+  avatar: string
+}
+
+async fn decrypt(box: string) throws -> Plain {
+  return Plain(text: box, fromID: "ana", fromName: "Ana", avatar: "")
+}
+
+app { Root() }
+```
+
+`f` answers the push to show; `none`, or an error it throws, shows the
+push as it came. Pushes are rewritten one at a time, in the order they
+came. `image` is downloaded and attached; `from` makes it a message, as
+`notify.Notification`'s `from` does. `push.stopRewriting()` shows them as
+they come again.
+
+**iOS** rewrites in a Notification Service Extension, which `asuka build`
+makes for an app that uses `push.rewrite`: iOS starts it for each push
+with `"mutable-content": 1` in its `aps` (and an `alert`, which shows if
+the rewrite fails). It runs the app without a screen, as a launch in the
+background does, and the rewrite runs once the app has called
+`push.rewrite`: keep what its root does at launch light, or make the
+extension's root one that only calls it (`push.inExtension()` is true
+there: `if push.inExtension() { Rewrites() } else { Root() }`). iOS
+gives it about 30 seconds and 24 MB, and shows the push as it came when
+time runs out. What the app keeps is the same there: its files and
+`asuka/storage`'s values are in the App Group the two share, its
+keychain items (`asuka/secure`) in the app's group. A release build
+needs a provisioning profile for the extension's bundle ID, the app's
+plus `.notification` (`asuka.toml`'s `ios.notificationProfile` names
+one; by default, the best match installed), with the App Groups
+capability and the app's group. A rewrite can't hide a push on iOS. The
+simulator runs the extension only for pushes that come from APNs, not
+for `xcrun simctl push`.
+
+**Android** rewrites FCM's data messages in the app's process: the app
+starts without a screen if it isn't running, rewrites within about ten
+seconds, and the notification shows. A data message whose rewrite leaves
+no title or body doesn't show. A notification message that comes while
+the app is in the background is shown by Firebase, without a rewrite:
+send data messages.
+
+**The web** rewrites a push in the page in front, before the service
+worker shows it; with no page open, it shows as it came.
+
+In a test, `push.fakeRewrite(m)` is what shows of a push that comes:
+the rewrite's push, or `m` itself.
 
 ## Sign in with Apple: asuka/appleauth
 
@@ -2577,8 +2780,8 @@ import asuka/calendar
 import asuka/time
 
 async fn addDemo() throws -> bool {
-  let start = time.date(2026, 12, 1, hour: 15).unixMilli()
-  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30 * 60_000))
+  let start = time.date(2026, 12, 1, hour: 15)
+  return try await calendar.add(calendar.Event(title: "Demo", location: "Room 2", start: start, end: start + 30min))
 }
 ```
 
@@ -2591,9 +2794,8 @@ async fn addDemo() throws -> bool {
   calendars and `calendar.events(from:, to:, calendars:)` the events
   between two times, each occurrence of a repeating one. Without it,
   they throw "calendar: not allowed".
-- An event's `start` and `end` are milliseconds since 1970. An all-day
-  event's are days: midnight UTC of the first, and of the day after the
-  last.
+- An event's `start` and `end` are `time.Time`s. An all-day event's
+  are days: midnight UTC of the first, and of the day after the last.
 
 On a Mac it's EventKit: `add` asks in an alert over the window (macOS
 has no event editor for apps), then saves. Linux reads and writes
@@ -2617,9 +2819,10 @@ sizes = ["small", "medium", "rectangular"]
 ```
 
 ```asuka
+import asuka/time
 import asuka/widget
 
-fn showToday(meeting: int) {
+fn showToday(meeting: time.Time) {
   widget.set("today", widget.Entry(
     title: "Next", symbol: "calendar", value: "3 tasks", body: "Call Ana at 4",
     progress: 0.4, showProgress: true, until: meeting, url: "myapp://today",
@@ -2629,8 +2832,8 @@ fn showToday(meeting: int) {
 
 A widget shows its `Entry` with the platform's template, laid out for
 its size: the `title` (with its `symbol`, in the `tint`), a large `value`,
-the `body`, a `progress` bar, a live countdown to `until` (milliseconds
-since 1970), a `caption`. It keeps showing it until the app sets
+the `body`, a `progress` bar, a live countdown to `until` (a
+`time.Time`), a `caption`. It keeps showing it until the app sets
 another, whether or not the app runs; tapping it opens the app with its
 `url` (the app's `openURL`). `widget.setAll(kind, entries)`, each entry
 with its `at`, is a timeline: each shows from its time.
@@ -2655,8 +2858,9 @@ the shade and the lock screen, with a chip in the status bar.
 
 ```asuka
 import asuka/liveactivity
+import asuka/time
 
-async fn followOrder(eta: int) throws {
+async fn followOrder(eta: time.Time) throws {
   let a = try await liveactivity.start(liveactivity.Content(
     title: "Order #1042", subtitle: "Ana is picking it up", value: "12 min",
     symbol: "bag.fill", until: eta, url: "myapp://orders/1042",
@@ -2673,7 +2877,7 @@ An activity shows its `Content` with the platform's template, which
 leaves out what's empty: the `title` and `subtitle`, the `value` (large
 at the side; the Dynamic Island's compact view; Android 16's status bar
 chip), the `symbol` in the `tint`, a `progress` bar, and a countdown to
-`until` (milliseconds since 1970) that runs without the app. With
+`until` (a `time.Time`) that runs without the app. With
 `since`, `until` and `showProgress`, the bar fills by itself. Tapping it
 opens the app with its `url` (the app's `openURL`).
 
@@ -2683,7 +2887,7 @@ screen (neither platform lets an app in the background start one);
 with the update: iOS expands the Dynamic Island and shows it on an Apple
 Watch; Android alerts with the notification again. `end(c, dismiss:)`
 leaves the last content showing until the system takes it (`.later`,
-the default: 4 hours at most), until a time (`.at(ms)`), or takes it at
+the default: 4 hours at most), until a time (`.at(t)`), or takes it at
 once (`.now`). `liveactivity.enabled()` answers whether the user allows
 them (Android asks for notifications at the first `start`). The package
 doesn't list the activities still running.

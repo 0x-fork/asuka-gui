@@ -77,14 +77,14 @@ launches it.
 
 What each platform's player is:
 
-- **Windows**: one console program, the Windows host (C, on Win32)
-  linked with the core, in the app's directory in Asuka's cache. It's
-  launched with `ASUKA_DEV=host:port` in its environment.
-- **macOS, Linux**: the desktop host (`cmd/asuka-host`: AppKit or GTK,
-  driving the core through its C ABI) and the core beside it
-  (`libasuka.dylib`, `libasuka.so`), in the app's directory in Asuka's
-  cache; on a Mac it's an `.app` like a release's. It's launched with
+- **Windows, Linux**: one program, the C host (on Win32; on GTK 4 and
+  libadwaita) linked with the core and no app, in the app's directory
+  in Asuka's cache (on Windows a console program). It's launched with
   `ASUKA_DEV=host:port` in its environment.
+- **macOS**: the desktop host (`cmd/asuka-host`: AppKit, driving the
+  core through its C ABI) and the core beside it (`libasuka.dylib`), an
+  `.app` like a release's in the app's directory in Asuka's cache. It's
+  launched with `ASUKA_DEV=host:port` in its environment.
 - **iOS**: the Swift host linked with the core (`libasuka.a`) into the
   app's `.app`, with every part of the host that links a framework of
   its own (WebKit, AVKit...), so the app may use any of them as you edit
@@ -103,12 +103,12 @@ What each platform's player is:
 ## On the desktop
 
 On macOS, Windows and Linux, `asuka dev` runs the player in a window.
-On Windows the host is C, built with the core by this computer's C
-compiler (Zig, clang or MinGW's gcc; `ASUKA_CC` picks one). On the Mac
-and Linux the host is built from Asuka's source when the CLI runs from
-a checkout of it, else it's the CLI's release's, fetched once into
-Asuka's cache and checked by its hash; the core is built with this
-computer's C compiler.
+On Windows and Linux the host is C, built with the core by this
+computer's C compiler (Zig, clang, or MinGW's or Linux's gcc;
+`ASUKA_CC` picks one) from the source the CLI carries. On the Mac the
+host is built from Asuka's source when the CLI runs from a checkout of
+it, else it's the CLI's release's, fetched once into Asuka's cache and
+checked by its hash; the core is built with this computer's C compiler.
 
 The app reads its `assets/` where they are, so changing one needs no
 copy. Its data (SQLite databases, files) is in a `data` directory of its
@@ -382,7 +382,7 @@ go test ./core                                     # the core's C tests (ASan, U
 go test ./internal/appbuild ./cmd/asuka            # the builds and the dev loop, on every platform this computer has
 go test ./host/darwin                              # macOS: real AppKit views
 go test ./platform/windows                         # Windows: apps built with Zig, driven in real windows (on Windows, or a VM)
-xvfb-run -a dbus-run-session go test ./host/linux  # Linux: real GTK widgets
+xvfb-run -a dbus-run-session go test ./platform/linux  # Linux: apps driven in real GTK windows
 swift test --package-path platform/ios             # the Swift host's decoder
 node --test platform/web                           # the web host's decoder
 ```

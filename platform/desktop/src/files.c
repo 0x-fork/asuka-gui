@@ -148,6 +148,19 @@ bool dsk_mkdirs(const char *path) {
 	return ok;
 }
 
+bool dsk_exists(const char *path) {
+	if (!path || !*path) return false;
+#ifdef _WIN32
+	wchar_t *w = wide(path);
+	bool ok = w && GetFileAttributesW(w) != INVALID_FILE_ATTRIBUTES;
+	free(w);
+	return ok;
+#else
+	struct stat st;
+	return stat(path, &st) == 0;
+#endif
+}
+
 bool dsk_write_file(const char *path, const void *data, size_t len) {
 	char *dir = dsk_dir(path);
 	if (dir) dsk_mkdirs(dir);

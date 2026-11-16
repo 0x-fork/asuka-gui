@@ -179,6 +179,9 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 	switch o := o.(type) {
 	case *Var:
 		c.useVar(o, e)
+		if o.Kind == LocalFnVar {
+			c.localUses = append(c.localUses, localUse{ctx: c.ctx, fn: o.Fn})
+		}
 		return o.Type
 	case *Global:
 		return c.useGlobal(o, e)
@@ -914,6 +917,7 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 		t := c.valueMember(e, Unopt(xt), name)
 		if sel := c.info.Selections[e]; sel != nil {
 			sel.Optional = true
+			sel.MemberType = t
 		}
 		if IsInvalid(t) {
 			return t
@@ -950,6 +954,14 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 	if g := tn.Consts[name]; g != nil {
 		c.info.Selections[e] = &Selection{Kind: SelConst, Global: g, Recv: t}
 		return c.useGlobal(g, e)
+	}
+	if tn.Type == Color {
+		// Color.accent: the semantic color, as .accent where a Color is
+		// expected.
+		if v, ok := SemanticColor(name); ok {
+			c.info.Selections[e] = &Selection{Kind: SelColor, Value: v, Recv: Color}
+			return Color
+		}
 	}
 	if tn.Kind == EnumType || tn.Kind == StructType {
 		c.errorf(e, "%s has no case or constant %s", tn.name, name)
@@ -1257,7 +1269,7 @@ func (c *Checker) mayThrow(at syntax.Node) {
 		return
 	}
 	switch c.ctx.Kind {
-	case CtxFunc, CtxMethod:
+	case CtxFunc, CtxMethod, CtxLocalFn:
 		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (try … catch { }, do { } catch { }, try?)", c.ctx.Name)
 	case CtxLambda:
 		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)")
@@ -1275,7 +1287,7 @@ func (c *Checker) asyncHint() string {
 		return "in an async fn, a handler, a task or a test"
 	}
 	switch c.ctx.Kind {
-	case CtxFunc, CtxMethod:
+	case CtxFunc, CtxMethod, CtxLocalFn:
 		return "mark " + c.ctx.Name + " async (async fn …)"
 	case CtxBinding, CtxComponent, CtxStore, CtxBuilder:
 		return "a component's body is declarations; load data with let x = load f(), or in a task { }"
@@ -1346,6 +1358,9 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		}
 		return Invalid
 	}
+	if t, ok := c.operatorMethod(e, xt, yt); ok {
+		return t
+	}
 	switch e.Op {
 	case syntax.EQL, syntax.NEQ:
 		if xt == NoneType && IsOptional(yt) || yt == NoneType && IsOptional(xt) {
@@ -1389,6 +1404,21 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		if xt == Duration && yt == Int && (e.Op == syntax.MUL || e.Op == syntax.QUO) {
 			return Duration
 		}
+		// A Duration scaled by a float (0.5 * d), and a Duration's ratio to
+		// another (elapsed / total), a float.
+		if (xt == Duration && yt == Float && (e.Op == syntax.MUL || e.Op == syntax.QUO)) || (xt == Float && yt == Duration && e.Op == syntax.MUL) {
+			c.info.DurationFloats[e] = true
+			return Duration
+		}
+		// A Length scaled by a number: filled * 1% is a percent.
+		if e.Op == syntax.MUL && (xt == Length && IsNumeric(yt) || IsNumeric(xt) && yt == Length) {
+			c.info.LengthScales[e] = true
+			return Length
+		}
+		if xt == Duration && yt == Duration && e.Op == syntax.QUO {
+			c.info.DurationFloats[e] = true
+			return Float
+		}
 		if xt == Int && yt == Duration && e.Op == syntax.MUL {
 			return Duration
 		}
@@ -1404,6 +1434,60 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 	}
 	c.errorf(e, "unexpected operator %s", e.Op)
 	return Invalid
+}
+
+// An Operator is a binary operator a struct's method does: + its
+// add(y), - its sub(y) or minus(y) (the one whose parameter takes y), <,
+// <=, > and >= its compare(y) -> int against 0.
+type Operator struct {
+	Func    *Function
+	Recv    Type
+	Compare bool
+}
+
+// operatorMethod finds the method of x's struct an operator calls
+// (asuka/time's Time: t + 1h, b - a, a < b), and its result.
+func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool) {
+	n, ok := xt.(*Named)
+	if !ok || n.Obj.Kind != StructType {
+		return nil, false
+	}
+	var names []string
+	compare := false
+	switch e.Op {
+	case syntax.ADD:
+		names = []string{"add"}
+	case syntax.SUB:
+		names = []string{"sub", "minus"}
+	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
+		names, compare = []string{"compare"}, true
+	default:
+		return nil, false
+	}
+	for _, name := range names {
+		f := n.Obj.Methods[name]
+		if f == nil {
+			continue
+		}
+		c.funcSig(f)
+		if f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws {
+			continue
+		}
+		s := n.Subst()
+		pt, res := s.Apply(f.Sig.Params[0].Type), s.Apply(f.Sig.Result)
+		if !Identical(pt, yt) {
+			continue
+		}
+		if compare {
+			if res != Int {
+				continue
+			}
+			res = Bool
+		}
+		c.info.Operators[e] = &Operator{Func: f, Recv: xt, Compare: compare}
+		return res, true
+	}
+	return nil, false
 }
 
 // MakeOptionalOrNil is t? (nil stays nil).

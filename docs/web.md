@@ -169,7 +169,7 @@ The environment a web app sees (`ui.UseEnvironment`) is the browser's:
   leading edge on a touch screen. `ui.OnBack` takes them as on the other
   platforms. With a router, the address bar shows the screen and the
   history is its navigation's ([Addresses and history](#addresses-and-history)).
-- `Tabs` are a tab bar at the bottom; a `SplitView` a sidebar beside its
+- `Tabs` are a tab bar at the bottom; a `Split` a sidebar beside its
   detail, or a drawer the detail's header opens on a narrow window.
 - A `Sheet` is a modal `<dialog>`: a bottom sheet on a narrow window
   (medium is half the height; the grabber drags it up or away), a

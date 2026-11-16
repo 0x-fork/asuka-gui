@@ -28,7 +28,7 @@ let senders = ["Ada", "Grace", "Linus", "Margaret", "Ken", "Barbara"]
 
 fn newMessage(id: int, unread: bool = false) -> Message = Message(
   id: id,
-  from: senders[id % senders.count],
+  from: senders[id % senders.count()],
   subject: "Message {id}",
   body: "This is a message. Open it to see the detail screen, with bar buttons, a sheet, a menu and an alert.",
   unread: unread,
@@ -48,7 +48,7 @@ pub store Mail {
     n => "{n}"
   }
 
-  pub fn find(id: int) -> Message? = messages.first(m => m.id == id)
+  pub fn find(id: int) -> Message? = messages.find(m => m.id == id)
 
   pub fn read(id: int) {
     if let i = messages.index(m => m.id == id) { messages[i].unread = false }
@@ -83,46 +83,28 @@ app {
 component Routes {
   use mail: Mail
 
-  Router {
-    Route("/") { redirect: "/inbox" }
-    Tabs {
-      Tab("Inbox") {
-        path: "/inbox"
-        icon: "list.bullet"
-        badge: mail.badge
-        Stack {
-          Route("") { screen: _ => InboxScreen() }
-          Route(":id") { screen: p => Detail(p.int("id")) }
-          // A reply takes the screen until it's sent or given up.
-          Route(":id/reply") {
-            sheet: SheetRoute(fullScreen: true)
-            screen: p => Reply(p.int("id"))
-          }
-        }
+  Router(initial: "/inbox") {
+    Route("/", redirect: "/inbox")
+    Route(layout: .tabs) {
+      Route("/inbox", layout: .stack, title: "Inbox", icon: "list.bullet", badge: mail.badge) {
+        InboxScreen
+        Detail
+        // A reply takes the screen until it's sent or given up.
+        Route(":id/reply", sheet: true, fullScreen: true) { p => Reply(id: p.get("id").toInt() ?? 0) }
       }
-      Tab("Settings") {
-        path: "/settings"
-        icon: "gear"
-        Stack {
-          Route("") { screen: _ => Settings() }
-          Route("about") { screen: _ => About() }
-          // Only a signed-in user sees their account: the others sign in
-          // first, and come back here after.
-          Route("account") {
-            screen: _ => Account()
-            guard: to => if mail.account.isEmpty { "/settings/sign-in?next={url.escape(to)}" } else { "" }
-          }
-          Route("sign-in") {
-            sheet: SheetRoute(detents: [.medium, .large], grabber: true)
-            screen: p => SignIn(p.get("next") ?? "")
-          }
-        }
+      Route("/settings", layout: .stack, title: "Settings", icon: "gear") {
+        Settings
+        About
+        // Only a signed-in user sees their account: the others sign in
+        // first, and come back here after.
+        Route("account", guard: to => if mail.account.isEmpty() { "/settings/sign-in?next={url.escape(to)}" } else { "" }) { _ => Account() }
+        Route("sign-in", sheet: true, detents: [.medium, .large], grabber: true) { p => SignIn(next: p.get("next")) }
       }
     }
   }
 }
 
-screen InboxScreen {
+screen InboxScreen at "" {
   use mail: Mail
   state refreshing = false
 
@@ -171,7 +153,7 @@ screen InboxScreen {
 /// A message's screen. Its bar: its sender, Star; Mail's bottom toolbar
 /// (delete, star, reply's menu); compose at its trailing end (Android: a
 /// FAB docked in the bar).
-screen Detail(id: int) {
+screen Detail(id: int) at ":id" {
   use mail: Mail
   // A sheet of the screen's own, opened from code (not a route).
   state noting = false
@@ -231,7 +213,7 @@ screen Detail(id: int) {
       on press {
         mail.remove(id)
         haptic(.success)
-        back()
+        pop()
       }
     }
   }
@@ -244,7 +226,7 @@ screen Detail(id: int) {
         gap: 16
         Text(m.subject) { font: .title2.bold() }
         Text(m.body) { color: .secondaryLabel }
-        Text(if note.isEmpty { "No note yet." } else { "Note: {note}" }) {
+        Text(if note.isEmpty() { "No note yet." } else { "Note: {note}" }) {
           font: .footnote
           color: .tertiaryLabel
         }
@@ -271,20 +253,18 @@ screen Detail(id: int) {
             ]
           }
         }
-        View {
-          padding: 16
-          background: .secondaryBackground
-          radius: 12
-          contextMenu {
-            Button("Reply") {
-              on press { haptic(.light) }
-            }
-            Button("Delete…") {
-              role: .destructive
-              on press { confirming = true }
-            }
+        Menu {
+          longPress: true
+          actions: [
+            .button(title: "Reply", run: () => haptic(.light)),
+            .button(title: "Delete…", role: .destructive, run: () => { confirming = true }),
+          ]
+          View {
+            padding: 16
+            background: .secondaryBackground
+            radius: 12
+            Text("Long-press here for a context menu")
           }
-          Text("Long-press here for a context menu")
         }
         Sheet {
           bind open: noting
@@ -319,9 +299,7 @@ screen Detail(id: int) {
       padding: 20
       gap: 12
       Text("There's no message {id}.")
-      NavLink("/inbox") {
-        Text("Back to the inbox") { color: .blue }
-      }
+      Button("Back to the inbox") { href: "/inbox" }
     }
   }
 }
@@ -340,8 +318,12 @@ screen Reply(id: int) {
   let env = environment()
   let whole = screenEnvironment()
 
-  preventBack: !draft.isEmpty
-  on backRequest { discarding = true }
+  // Going back with a draft asks first.
+  onBack {
+    if draft.isEmpty() { return false }
+    discarding = true
+    return true
+  }
 
   Alert("Discard this reply?") {
     bind open: discarding
@@ -362,7 +344,7 @@ screen Reply(id: int) {
       Button("Cancel") {
         variant: .plain
         on press {
-          if draft.isEmpty { dismiss() } else { discarding = true }
+          if draft.isEmpty() { dismiss() } else { discarding = true }
         }
       }
       Text("Reply") {
@@ -372,7 +354,7 @@ screen Reply(id: int) {
       }
       Button("Send") {
         variant: .filled
-        disabled: draft.isEmpty
+        disabled: draft.isEmpty()
         on press {
           haptic(.success)
           dismiss()
@@ -406,7 +388,7 @@ fn describe(what: string, e: Environment) -> string = "{what}: {e.width.fixed(0)
 fn covers(e: Environment, s: Environment) -> bool = e.width == s.width && e.height == s.height &&
   e.safeTop == s.safeTop && e.safeRight == s.safeRight && e.safeBottom == s.safeBottom && e.safeLeft == s.safeLeft
 
-screen Settings {
+screen Settings at "" {
   use mail: Mail
   state notifications = true
   state haptics = true
@@ -421,7 +403,7 @@ screen Settings {
     Row {
       align: .center
       gap: 12
-      Text(if mail.account.isEmpty { "Not signed in" } else { "Signed in as {mail.account}" }) {
+      Text(if mail.account.isEmpty() { "Not signed in" } else { "Signed in as {mail.account}" }) {
         grow: 1
         color: .secondaryLabel
       }
@@ -439,7 +421,7 @@ screen Settings {
 
 component SettingRow(label: string) {
   prop on = false
-  event change(on: bool)
+  event onChange(on: bool)
 
   Row {
     align: .center
@@ -447,12 +429,12 @@ component SettingRow(label: string) {
     Toggle {
       on: on
       title: label
-      on change(v) { emit change(v) }
+      on change(v) { emit onChange(v) }
     }
   }
 }
 
-screen About {
+screen About at "about" {
   title: "About"
 
   SafeArea {
@@ -461,9 +443,7 @@ screen About {
     Text("asuka") { font: .largeTitle.bold() }
     Text("Native widgets, driven by Asuka and fine-grained signals.") { color: .secondaryLabel }
     // A link to another tab's screen: the inbox shows, the message on it.
-    NavLink("/inbox/20") {
-      Text("Read the newest message") { color: .blue }
-    }
+    Button("Read the newest message") { href: "/inbox/20" }
   }
 }
 
@@ -492,10 +472,10 @@ screen SignIn(next: string) {
     }
     Button("Cancel") { role: .cancel }
     Button("Sign In") {
-      disabled: user.isEmpty || pass.isEmpty
+      disabled: user.isEmpty() || pass.isEmpty()
       on press {
         mail.account = user
-        replace(if next.isEmpty { "/settings" } else { next })
+        replace(if next.isEmpty() { "/settings" } else { next })
       }
     }
   }
@@ -543,7 +523,7 @@ test "open, star and delete" {
   app.expect("Linus", "Message 20", "This is a message. Open it to see the detail screen, with bar buttons, a sheet, a menu and an alert.")
   app.expectNo("Message 19") // the inbox is under the detail screen
 
-  app.in(.toolbar).tap("Star") // a bar button says Star too
+  app.in(.navigationBar).tap("Star") // the bottom toolbar says Star too
   app.expect("Unstar")
 
   app.tap("More") // a button's menu

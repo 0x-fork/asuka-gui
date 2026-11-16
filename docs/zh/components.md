@@ -1,8 +1,8 @@
 # 组件
 
-组件就是一个返回 `ui.Node` 的 Go 函数。本页按用途分类介绍 `ui` 包提供的各种视图，以及与它配套、用于 Markdown 和 SVG 的几个包。只要平台自己有对应的控件，用的就是平台原生控件：iOS 上是 UIKit，Android 上是 Android Views 和 Material 3，macOS 上是 AppKit，Windows 上是绘制成 Windows 11（Fluent）风格的 Win32 控件，Linux 上是 GTK 4 和 libadwaita，浏览器里则是页面元素。视图如何确定尺寸和位置，请看[布局](layout.md)；页面、标签页和弹出面板（sheet）请看[导航](navigation.md)。
+组件是一个显示视图的声明（见[语言](language.md)）。本页按用途分类介绍 Asuka 提供的元素，以及标准库里用于 Markdown、SVG、Lottie、图表和着色器的几个包。只要平台自己有对应的控件，用的就是平台原生控件：iOS 上是 UIKit，Android 上是 Android Views 和 Material 3，macOS 上是 AppKit，Windows 上是绘制成 Windows 11（Fluent）风格的 Win32 控件，Linux 上是 GTK 4 和 libadwaita，浏览器里则是页面元素。视图如何确定尺寸和位置，请看[布局](layout.md)；页面、标签页和弹出面板（sheet）请看[导航](navigation.md)。
 
-大多数会变化的属性都接受 `signal.Accessor`：可以传入一个 signal、一个 `signal.Func`，如果值永远不变，就用 `ui.Val(v)`。由用户修改的控件（输入框、开关）则接受 `*signal.Signal`，并由控件写入它。详见[核心概念](concepts.md)。
+每个属性都是一个绑定：可以是一个值，也可以是读取状态的表达式，状态变化时视图随之更新。由用户修改的控件（输入框、开关）则用 `bind` 绑定它要写入的状态，比如 `bind text: query`。详见[核心概念](concepts.md)。
 
 ## 各平台的原生控件
 
@@ -19,7 +19,7 @@
 | `ColorPicker` | `UIColorWell` | 色块加 Material 对话框 | `NSColorWell` 和颜色面板 | 色块加颜色对话框（`ChooseColor`） | `GtkColorDialogButton` | `<input type="color">` |
 | `DatePicker` | `UIDatePicker` | 打开 Material 选择器的按钮 | `NSDatePicker` | 日期时间选择器（`SysDateTimePick32`） | 一个按钮，打开 `GtkCalendar` 和微调按钮 | `<input type="date">`、`time`、`datetime-local` |
 | `Progress` | `UIProgressView` | `LinearProgressIndicator` | `NSProgressIndicator` | 绘制成 Fluent 风格 | `GtkProgressBar` | `<progress>` |
-| `ProgressRing` | 仿照 SwiftUI 的圆形仪表绘制；没有值时是 `UIActivityIndicatorView` | `CircularProgressIndicator` | 16 和 32 点时是旋转样式的 `NSProgressIndicator`；其他尺寸或设置了 `Color` 时，按它的样式自行绘制 | 自行绘制的 Fluent `ProgressRing` | 按 GNOME 的样式绘制；没有值时是 `AdwSpinner` | SVG 圆环 |
+| `ProgressRing` | 仿照 SwiftUI 的圆形仪表绘制；没有值时是 `UIActivityIndicatorView` | `CircularProgressIndicator` | 16 和 32 点时是旋转样式的 `NSProgressIndicator`；其他尺寸或设置了 `color` 时，按它的样式自行绘制 | 自行绘制的 Fluent `ProgressRing` | 按 GNOME 的样式绘制；没有值时是 `AdwSpinner` | SVG 圆环 |
 | `Activity` | `UIActivityIndicatorView` | `CircularProgressIndicator` | 旋转样式的 `NSProgressIndicator` | 自行绘制的 Fluent 进度环 | `AdwSpinner`（libadwaita 1.6 之前为 `GtkSpinner`） | 自行绘制的加载指示器 |
 | `Image` | `UIImageView` | `ImageView` | `NSImageView` | 用 GDI+ 绘制 | 用 GDK 纹理绘制 | `<img>` |
 | `lottie.View` | lottie-ios | lottie-android | lottie-ios | 暂不支持（一个空的框） | 暂不支持（一个空的框） | lottie-web |
@@ -34,71 +34,82 @@
 
 ## 文本
 
-### Text 与 StaticText
+### Text
 
-`ui.Text` 显示一行或一段文本。它就是平台的标签控件，默认会自动换行；`Style.Lines` 可以限制最多显示几行，超出的部分以省略号截断。`ui.StaticText` 则是文本永远不变的 `Text`。
+`Text` 显示一行或一段文本。它就是平台的标签控件，默认会自动换行；`lines` 可以限制最多显示几行，超出的部分以省略号截断。
 
-```go
-count := signal.New(0)
-label := signal.Func(func() string { return fmt.Sprintf("%d unread", count.Get()) })
-return ui.Column(ui.Style{Gap: 8},
-	ui.StaticText("Inbox", ui.Style{Font: fonts.Title2.Weighted(fonts.Bold)}),
-	ui.Text(label, ui.Style{Color: colors.SecondaryLabel}),
-	ui.StaticText("A long description that stops after two lines.", ui.Style{Lines: 2}),
-)
-```
-
-样式中的 `Font`、`Color`、`TextAlign` 和 `Lines` 作用于文本本身。文本样式（`fonts.Body`、`fonts.Headline`、`fonts.Footnote` 等）会跟随用户设置的字号。
+样式中的 `font`、`color`、`textAlign` 和 `lines` 作用于文本本身。文本样式（`.body`、`.headline`、`.footnote` 等）会跟随用户设置的字号。
 
 ### RichText
 
-`ui.RichText` 显示带样式的文本，内容是一个 `ui.Rich`，也就是一组文本片段（span）。片段中的 `"\n"` 会另起一段。片段里没有设置（保持零值）的字段，会沿用 `RichText` 的样式。
+`RichText` 显示带样式的文本，内容是一组 `Span`（文本片段）。片段中的 `"\n"` 会另起一段。片段里保持默认值的字段，会沿用 `RichText` 的样式。
 
-```go
-ui.RichText(ui.RichTextProps{
-	Text: ui.Val(ui.Rich{
-		ui.Strong("asuka"), ui.Plain(" draws "), ui.Em("native"), ui.Plain(" views. Run "),
-		ui.Code("asuka dev"), ui.Plain(", or read "), ui.Link("the docs", "https://example.com/docs"),
-		ui.Plain(".\nA second paragraph, "), ui.Plain("in red").Colored(colors.Red), ui.Plain("."),
-	}),
-	OnLink: ui.OpenURL,
-})
+```asuka
+component About {
+  RichText([
+    Span(text: "asuka", font: .body.bold()),
+    Span(text: " draws "),
+    Span(text: "native", italic: true),
+    Span(text: " views. Run "),
+    Span(text: "asuka dev", mono: true),
+    Span(text: ", or read "),
+    Span(text: "the docs", link: "https://example.com/docs"),
+    Span(text: ".\nA second paragraph, "),
+    Span(text: "in red", color: .red),
+    Span(text: "."),
+  ]) {
+    on link(url) { openURL(url) }
+  }
+}
 ```
 
-- `Plain`、`Strong`、`Em`、`Code` 和 `Link` 用来创建片段。`Colored`、`Highlighted` 和 `Weighted` 返回加上了颜色、背景或字重的片段。
-- 其余设置都在 `ui.Span` 上：`Font`、`Italic`、`Mono`、`Underline`、`Strike`、`Background`（在片段覆盖的每一行上绘制，带圆角）。
-- 点击链接时，会以链接的 URL 调用 `OnLink`。没有设置 `OnLink` 时，点击链接不会有任何反应。
-- 设置 `Role: ui.RoleHeader` 后，屏幕阅读器会把它当作标题。
+- `Span` 包含它的 `text`、`font`、`italic`、`mono`、`underline`、`strike`、`color`、`background`（在片段覆盖的每一行上绘制，带圆角）和 `link`。
+- 点击链接时会运行 `on link(url)`。没有设置时，点击链接不会有任何反应（在路由器里，指向应用自己 href 的链接会前往那里）。
+- 设置 `role: .header` 后，屏幕阅读器会把它当作标题。
 
 在 iOS 和 Android 上，每个段落都由平台自己的排版引擎（CoreText、StaticLayout）排版，并按内容和宽度缓存。因此往长文本末尾追加内容时（比如一条流式输出的回复），只有发生变化的那个段落会重新排版。在 macOS 上它是只读的 `NSTextView`（TextKit），在 Windows 上是只读的 rich edit 控件（`RICHEDIT50W`），在 Linux 上是用 Pango 属性设置样式的 `GtkLabel`，在浏览器中则是段落里的一组 span。[`examples/richtext`](../../examples/richtext) 演示了流式显示的效果。
 
 如果只是纯文本，请用 `Text`：它就是平台的标签控件，行为完全是原生的。
 
-**内嵌视图。** `ui.Embed` 可以把一个组件放进文本中：组件坐落在基线上，随文字一起换行。`Rich` 更新时，只要 key 不变，它就还是同一个组件，状态也会保留下来。
+**内嵌视图。** 片段的 `inline` 可以把一个组件放进文本中：组件坐落在基线上，随文字一起换行。文本更新时，只要 key 不变，它就还是同一个组件，状态也会保留下来。
 
-```go
-ui.RichText(ui.RichTextProps{Text: ui.Val(ui.Rich{
-	ui.Plain("Status: "),
-	ui.Embed("badge", func() ui.Node {
-		return ui.View(ui.ViewProps{Style: ui.Style{Background: colors.Green, CornerRadius: 6, Padding: ui.Symmetric(2, 6)}},
-			ui.StaticText("live", ui.Style{Font: fonts.Caption, Color: colors.RGB(255, 255, 255)}))
-	}),
-	ui.Plain(" since this morning."),
-})})
+```asuka
+component Status {
+  RichText([
+    Span(text: "Status: "),
+    Span(inline: Inline(key: "badge", build: () => Live())),
+    Span(text: " since this morning."),
+  ])
+}
+
+component Live {
+  View {
+    background: .green
+    radius: 6
+    padding: [2, 6]
+    Text("live") {
+      font: .caption
+      color: #ffffff
+    }
+  }
+}
 ```
 
 ### 可选择的文本
 
-`ui.Selectable` 让其中的 `RichText` 视图都可以被选择，而且是把它们当作一整段文本来选：长按选中一个词，拖动平台的选择手柄扩大选区，再用平台的编辑菜单复制。用鼠标时，拖动即可选择，用平台的复制快捷键复制。Linux 和 Web 上同样可以跨多个文本整体选择；macOS 和 Windows 上则是每个文本各选各的。
+`Selectable` 让其中的 `RichText` 视图都可以被选择，而且是把它们当作一整段文本来选：长按选中一个词，拖动平台的选择手柄扩大选区，再用平台的编辑菜单复制。用鼠标时，拖动即可选择，用平台的复制快捷键复制。Linux 和 Web 上同样可以跨多个文本整体选择；macOS 和 Windows 上则是每个文本各选各的。
 
-```go
-ui.Selectable(ui.SelectableProps{Style: ui.Style{Gap: 12}},
-	ui.RichText(ui.RichTextProps{Text: ui.Val(question), Role: ui.RoleHeader}),
-	ui.RichText(ui.RichTextProps{Text: ui.Val(answer)}),
-)
+```asuka
+component Answer(question: [Span], answer: [Span]) {
+  Selectable {
+    gap: 12
+    RichText(question) { role: .header }
+    RichText(answer)
+  }
+}
 ```
 
-`Text` 不能被选择；需要可选择的文本时，请把 `RichText` 放进 `Selectable`。如果不经过选区直接复制内容，可以用 `ui.Copy(text)` 把它放到剪贴板。
+设置了 `selectable: true` 的 `Text` 本身就可以被选择；要跨多个文本选择时，请把 `RichText` 放进 `Selectable`。如果不经过选区直接复制内容，可以用 `copy(text)` 把它放到剪贴板。
 
 ### Markdown
 
@@ -116,166 +127,285 @@ component Reply(text: string, writing: bool) {
 
 ## 按钮
 
-`ui.Button` 就是平台的按钮：在 iOS 上是使用配置（configuration）的 `UIButton`，在 Android 上是 Material 按钮，在 macOS 上是 `NSButton`，在 Windows 上是绘制成 Fluent 风格的 `BUTTON`，在 Linux 上是 `GtkButton`，在浏览器中是 `<button>`。
+`Button` 就是平台的按钮：在 iOS 上是使用配置（configuration）的 `UIButton`，在 Android 上是 Material 按钮，在 macOS 上是 `NSButton`，在 Windows 上是绘制成 Fluent 风格的 `BUTTON`，在 Linux 上是 `GtkButton`，在浏览器中是 `<button>`。
 
-```go
-saving := signal.New(false)
-return ui.Row(ui.Style{Gap: 12, Wrap: true},
-	ui.Button(ui.ButtonProps{Title: ui.Val("Save"), Variant: ui.ButtonFilled, Disabled: saving,
-		OnPress: func() { saving.Set(true) }}),
-	ui.Button(ui.ButtonProps{Title: ui.Val("Compose"), Icon: ui.IconCompose, Variant: ui.ButtonTinted}),
-	ui.Button(ui.ButtonProps{Icon: ui.IconTrash, Label: ui.Val("Delete"), Variant: ui.ButtonGray}),
-)
+```asuka
+component Actions {
+  state saving = false
+
+  Row {
+    gap: 12
+    wrap: true
+    Button("Save") {
+      variant: .filled
+      disabled: saving
+      on press { saving = true }
+    }
+    Button("Compose") {
+      icon: "square.and.pencil"
+      variant: .tinted
+    }
+    Button("") {
+      icon: "trash"
+      label: "Delete"
+      variant: .gray
+    }
+  }
+}
 ```
 
-- `Title` 是按钮的文字；`Icon` 是显示在文字前面的符号（见[符号](#符号与图标)）。有图标而没有标题的按钮只显示图标。
-- `Label` 是 VoiceOver 和 TalkBack 朗读的内容，默认就是标题。只有图标的按钮记得设置它。
-- `Tooltip` 是指针停在按钮上时显示的简短提示，适用于 iPad 的指针（`UIToolTipInteraction`）、Android 上的鼠标（长按也会显示，即 `tooltipText`），以及 macOS、Windows、Linux 和 Web（元素的 `title`）。只有图标的按钮应当设置一个，内容就是按钮的名称。`ViewProps.Tooltip` 对任意视图起同样的作用。在 iOS 上，只用触摸屏时提示永远不会出现，所以不能把它作为传达某个信息的唯一途径。
-- `Disabled` 按平台的方式禁用按钮。
-- `Style.Font` 和 `Style.Color` 修改按钮的文字和色调。
+- 标题是按钮的文字；`icon` 是显示在文字前面的符号（见[符号](#符号与图标)）。有图标而标题为空的按钮只显示图标。
+- `label` 是 VoiceOver 和 TalkBack 朗读的内容，默认就是标题。只有图标的按钮记得设置它。
+- `tooltip` 是指针停在按钮上时显示的简短提示，适用于 iPad 的指针（`UIToolTipInteraction`）、Android 上的鼠标（长按也会显示，即 `tooltipText`），以及 macOS、Windows、Linux 和 Web（元素的 `title`）。只有图标的按钮应当设置一个，内容就是按钮的名称。任何视图上的 `tooltip` 对任意视图起同样的作用。在 iOS 上，只用触摸屏时提示永远不会出现，所以不能把它作为传达某个信息的唯一途径。
+- `disabled` 按平台的方式禁用按钮。
+- `font` 和 `color` 修改按钮的文字和色调。
+- `href` 让按钮按下时前往某个路由（见[路由](navigation.md#路由)）。
 
-`Variant` 决定按钮的外观：
+`variant` 决定按钮的外观：
 
 | Variant | iOS | Android | macOS | Windows | Linux | Web |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ButtonPlain`（默认） | 普通 | 文本按钮 | 无边框，使用强调色 | subtle 样式，使用强调色 | 扁平，使用强调色 | 普通 |
-| `ButtonFilled` | 填充 | 填充按钮 | 强调色的 push 按钮 | accent 按钮 | 建议操作（suggested action）样式 | 填充 |
-| `ButtonTinted` | 着色 | 色调按钮 | push 按钮，标题使用强调色 | 一层淡淡的强调色 | 一层淡淡的强调色 | 着色 |
-| `ButtonGray` | 灰色 | 色调按钮 | push 按钮 | 标准按钮 | 标准按钮 | 灰色 |
-| `ButtonBordered` | 带边框 | 描边按钮 | push 按钮 | 标准按钮 | 标准按钮 | 描边 |
-| `ButtonGlass` | Liquid Glass（`glass()`，iOS 26；之前为灰色） | 色调按钮 | 玻璃边框，胶囊形，仅有图标时为圆形（macOS 26；之前为普通按钮） | 同 `ButtonGray` | 标准按钮 | 同 `ButtonGray` |
-| `ButtonGlassProminent` | 着色的 Liquid Glass（`prominentGlass()`，iOS 26；之前为填充） | 填充按钮 | 以强调色着色的玻璃边框，作为主要操作（macOS 26；之前同 `ButtonFilled`） | 同 `ButtonFilled` | 建议操作样式 | 同 `ButtonFilled` |
+| `.plain`（默认） | 普通 | 文本按钮 | 无边框，使用强调色 | subtle 样式，使用强调色 | 扁平，使用强调色 | 普通 |
+| `.filled` | 填充 | 填充按钮 | 强调色的 push 按钮 | accent 按钮 | 建议操作（suggested action）样式 | 填充 |
+| `.tinted` | 着色 | 色调按钮 | push 按钮，标题使用强调色 | 一层淡淡的强调色 | 一层淡淡的强调色 | 着色 |
+| `.gray` | 灰色 | 色调按钮 | push 按钮 | 标准按钮 | 标准按钮 | 灰色 |
+| `.bordered` | 带边框 | 描边按钮 | push 按钮 | 标准按钮 | 标准按钮 | 描边 |
+| `.glass` | Liquid Glass（`glass()`，iOS 26；之前为灰色） | 色调按钮 | 玻璃边框，胶囊形，仅有图标时为圆形（macOS 26；之前为普通按钮） | 同 `.gray` | 标准按钮 | 同 `.gray` |
+| `.glassProminent` | 着色的 Liquid Glass（`prominentGlass()`，iOS 26；之前为填充） | 填充按钮 | 以强调色着色的玻璃边框，作为主要操作（macOS 26；之前同 `.filled`） | 同 `.filled` | 建议操作样式 | 同 `.filled` |
 
 玻璃按钮是胶囊形的；只有图标的玻璃按钮则是圆形，可以用作弹出面板的关闭按钮，和 iOS 26 系统自带的一样。
 
 ### 菜单
 
-设置了 `Menu` 的按钮被点击时会弹出其中的操作，而不是调用 `OnPress`（iOS 上是 `UIMenu`，Android 上是 `PopupMenu`，macOS 上是 `NSMenu`，Windows 上是弹出菜单，Linux 上是 `GtkPopoverMenu`，浏览器中是一个 popover）。每个 `ui.Action` 都有 `Title`、一个可选的 `Icon`（显示在标题旁边）、`Role` 和 `OnPress`。`ui.ActionDestructive` 会让它显示为红色。
+设置了 `menu` 的按钮被点击时会弹出其中的操作，而不是运行 `on press`（iOS 上是 `UIMenu`，Android 上是 `PopupMenu`，macOS 上是 `NSMenu`，Windows 上是弹出菜单，Linux 上是 `GtkPopoverMenu`，浏览器里是一个 popover）。每一项都是一个 `Action`：`.button(title:, icon:, role:, disabled:, checked:, run:)`，除标题外的字段都可省略。`role: .destructive` 会让它显示为红色。
 
-```go
-ui.Button(ui.ButtonProps{Icon: ui.IconMore, Label: ui.Val("More"), Menu: []ui.Action{
-	{Title: ui.Val("Copy"), Icon: ui.IconCopy, OnPress: func() { ui.Copy("https://go.dev") }},
-	{Title: ui.Val("Share"), Icon: ui.IconShare, OnPress: func() { ui.Share("https://go.dev") }},
-	{Title: ui.Val("Delete"), Icon: ui.IconTrash, Role: ui.ActionDestructive, OnPress: func() {}},
-}})
+```asuka
+component More {
+  Button("") {
+    icon: "ellipsis.circle"
+    label: "More"
+    menu: [
+      .button(title: "Copy", icon: "doc.on.doc", run: () => copy("https://example.com")),
+      .button(title: "Share", icon: "square.and.arrow.up", run: () => share("https://example.com")),
+      .button(title: "Delete", icon: "trash", role: .destructive, run: () => {}),
+    ]
+  }
+}
 ```
 
-操作可以设为 `Disabled`（变暗，不能选）或 `Checked`（旁边打一个对勾），菜单打开期间两者都会跟随各自的 signal 变化。带 `Children` 的操作是一个子菜单，可以用 `ui.Submenu` 创建。如果同时设置了 `Inline`，它的子项就不再是子菜单，而是菜单里的一个分区：上下用分隔线隔开，顶部显示它的标题（相当于 SwiftUI 在 `Menu` 里放一个 `Section`），可以用 `ui.MenuSection` 创建。分区里有选中项时，它就成了一组单选：
+操作可以设为 `disabled`（变暗，不能选）或 `checked`（旁边打一个对勾），菜单打开期间两者都会跟随它们读取的状态变化。`.submenu(title:, icon:, items:)` 是一个子菜单。`.section(title:, items:)` 则是菜单里的一个分区，上下用分隔线隔开，顶部显示标题（相当于 SwiftUI 在 `Menu` 里放 `Section`）。包含已勾选项的分区就是一组单选：
 
-```go
-sortBy := signal.New("Name")
-sorted := func(by string) ui.Action {
-	return ui.Action{Title: ui.Val(by), Checked: signal.Func(func() bool { return sortBy.Get() == by }),
-		OnPress: func() { sortBy.Set(by) }}
+```asuka
+component Sorting {
+  state sortBy = "Name"
+  state locked = false
+
+  fn sorted(by: string) -> Action = .button(title: by, checked: sortBy == by, run: () => { sortBy = by })
+
+  Button("") {
+    icon: "ellipsis.circle"
+    label: "More"
+    menu: [
+      .section(title: "Sort by", items: [sorted("Name"), sorted("Date")]),
+      .submenu(title: "Move to", icon: "folder", items: [
+        .button(title: "Inbox", run: () => {}),
+        .button(title: "Archive", run: () => {}),
+      ]),
+      .button(title: "Delete", role: .destructive, disabled: locked, run: () => {}),
+    ]
+  }
 }
-ui.Button(ui.ButtonProps{Icon: ui.IconMore, Label: ui.Val("More"), Menu: []ui.Action{
-	ui.MenuSection(ui.Val("Sort by"), sorted("Name"), sorted("Date")),
-	ui.Submenu(ui.Val("Move to"), ui.IconFolder,
-		ui.Action{Title: ui.Val("Inbox"), OnPress: moveToInbox},
-		ui.Action{Title: ui.Val("Archive"), OnPress: archive},
-	),
-	{Title: ui.Val("Delete"), Role: ui.ActionDestructive, Disabled: locked, OnPress: remove},
-}})
 ```
 
 | | iOS | Android | macOS | Windows | Linux | Web |
 |---|---|---|---|---|---|---|
-| `Disabled` | `.disabled` | 禁用的菜单项 | 禁用的菜单项 | 灰显的菜单项 | 禁用的 action | `disabled`、`aria-disabled` |
-| `Checked` | `state = .on` | 勾选的菜单项；分区里的单选显示为单选按钮 | `state = on` | `MF_CHECKED` | 带状态的 action（打勾） | `menuitemcheckbox` |
-| `Children` | 嵌套的 `UIMenu` | `SubMenu` | 子菜单 | 子菜单 | GMenu 子菜单 | 子菜单（按指向它的方向键即可展开） |
-| `Inline` | `displayInline` 的 `UIMenu` | 用分隔线隔开的分组，标题是一个禁用的菜单项 | 分隔线加分区标题（macOS 14） | 分隔线加自绘的标题 | 带标签的 GMenu 分区 | 夹在分隔线之间、带标题的 `group` |
+| `disabled` | `.disabled` | 禁用的菜单项 | 禁用的菜单项 | 灰显的菜单项 | 禁用的 action | `disabled`、`aria-disabled` |
+| `checked` | `state = .on` | 勾选的菜单项；分区里的单选显示为单选按钮 | `state = on` | `MF_CHECKED` | 带状态的 action（打勾） | `menuitemcheckbox` |
+| `.submenu` | 嵌套的 `UIMenu` | `SubMenu` | 子菜单 | 子菜单 | GMenu 子菜单 | 子菜单（按指向它的方向键即可展开） |
+| `.section` | `displayInline` 的 `UIMenu` | 用分隔线隔开的分组，标题是一个禁用的菜单项 | 分隔线加分区标题（macOS 14） | 分隔线加自绘的标题 | 带标签的 GMenu 分区 | 夹在分隔线之间、带标题的 `group` |
 
-页面导航栏上的按钮（`ScreenOptions.Actions`）也一样：禁用的按钮会变暗，带 `Children` 的按钮点击后会以菜单形式展开子项（相当于 SwiftUI 在工具栏里放一个 `Menu`）。警告框的按钮同样可以禁用，并在显示期间跟随 `Disabled` 变化（比如等用户填好名字才能点“好”）。滑动操作则两者都不显示。
+页面导航栏上的按钮（它的 `toolbar` 里的按钮）也一样：禁用的按钮会变暗，带 `menu` 的按钮点击后会展开菜单（相当于 SwiftUI 在工具栏里放一个 `Menu`）。警告框的按钮同样可以禁用，并在显示期间跟随 `disabled` 变化（比如一个要等用户填好名字才能点的 OK）。滑动操作两者都不显示。
 
-`ui.Menu` 可以给任意内容加上菜单。设置 `LongPress` 后，它就是长按弹出的上下文菜单；用鼠标时（macOS、Windows、Linux、Web），则在右键点击时弹出：
+`Menu` 可以给任意内容加上菜单。设置 `longPress: true` 后，它就是长按弹出的上下文菜单；用鼠标时（macOS、Windows、Linux、Web），则在右键点击时弹出：
 
-```go
-ui.Menu(ui.MenuProps{LongPress: true, Actions: []ui.Action{
-	{Title: ui.Val("Reply"), Icon: ui.IconMessage},
-	{Title: ui.Val("Delete"), Role: ui.ActionDestructive},
-}, Style: ui.Style{Padding: ui.All(16), Background: colors.SecondaryBackground, CornerRadius: 12}},
-	ui.StaticText("Long-press for a menu"),
-)
+```asuka
+component Message {
+  Menu {
+    longPress: true
+    actions: [
+      .button(title: "Reply", icon: "message"),
+      .button(title: "Delete", role: .destructive),
+    ]
+    View {
+      padding: 16
+      background: .secondaryBackground
+      radius: 12
+      Text("Long-press for a menu")
+    }
+  }
+}
 ```
 
 ## 文本输入框
 
-`ui.TextField` 是文本输入框。`Value` 是它的文本：用户输入时会写入这个 signal，而在代码里写入 signal，则会替换输入框中的文本。
+`TextField` 是文本输入框。`bind text` 是它的文本：用户输入时会写入这个状态，而在代码里写入状态，则会替换输入框中的文本。
 
-```go
-email := signal.New("")
-password := signal.New("")
-var pw ui.Node
-pw = ui.TextField(ui.TextFieldProps{Value: password, Placeholder: ui.Val("Password"),
-	Secure: true, ContentType: "password", ReturnKey: ui.ReturnGo,
-	OnSubmit: func() { ui.Blur(pw) }})
-em := ui.TextField(ui.TextFieldProps{Value: email, Placeholder: ui.Val("Email"),
-	Keyboard: ui.KeyboardEmail, ContentType: "email", Autocapitalize: ui.CapitalizeNone,
-	Autocorrect: ui.AutocorrectNo, ReturnKey: ui.ReturnNext, OnSubmit: func() { ui.Focus(pw) }})
-return ui.Column(ui.Style{Gap: 12}, em, pw)
+```asuka
+component SignIn {
+  state email = ""
+  state password = ""
+
+  let pw = Ref()
+
+  Column {
+    gap: 12
+    TextField {
+      bind text: email
+      placeholder: "Email"
+      keyboard: .email
+      contentType: "email"
+      autocapitalize: .off
+      autocorrect: .no
+      returnKey: .next
+      on submit { pw.focus() }
+    }
+    TextField {
+      ref: pw
+      bind text: password
+      placeholder: "Password"
+      secure: true
+      contentType: "password"
+      returnKey: .go
+      on submit { pw.blur() }
+    }
+  }
+}
 ```
 
-- `Secure` 隐藏输入的内容，用于密码。
-- `Keyboard`：`KeyboardDefault`、`KeyboardNumber`、`KeyboardDecimal`、`KeyboardEmail`、`KeyboardURL`、`KeyboardPhone`。
-- `ReturnKey` 是回车键上显示的文字：`ReturnDefault`、`ReturnDone`、`ReturnGo`、`ReturnNext`、`ReturnSearch`、`ReturnSend`。按下回车键会调用 `OnSubmit`。
-- `ContentType` 说明输入框里填的是什么内容，供系统的自动填充使用：`ui.ContentUsername`、`ContentPassword`、`ContentNewPassword`（平台会推荐一个强密码）、`ContentOneTimeCode`（刚收到的短信验证码会出现在键盘上方，即 UIKit 的 `oneTimeCode` 和 Android 的短信验证码提示）、`ContentEmail`、`ContentPhone`、`ContentName`、`ContentAddress`、`ContentPostalCode`、`ContentCardNumber` 等。各个宿主会按自己平台的叫法来设置。
-- `Autocapitalize`：`CapitalizeSentences`（默认）、`CapitalizeNone`、`CapitalizeWords`、`CapitalizeCharacters`。`Autocorrect`：`AutocorrectDefault`、`AutocorrectYes`、`AutocorrectNo`。
-- `OnFocus` 和 `OnBlur` 跟随键盘的弹出和收起。`ui.Focus(field)` 唤起键盘，`ui.Blur(field)` 收起键盘。
+- `secure` 隐藏输入的内容，用于密码。
+- `keyboard`：`.default`、`.number`、`.decimal`、`.email`、`.url`、`.phone`。
+- `returnKey` 是回车键上显示的文字：`.default`、`.done`、`.go`、`.next`、`.search`、`.send`。按下回车键会运行 `on submit`。
+- `contentType` 说明输入框里填的是什么内容，供系统的自动填充使用：`"username"`、`"password"`、`"newPassword"`（平台会推荐一个强密码）、`"oneTimeCode"`（刚收到的短信验证码会出现在键盘上方，即 UIKit 的 `oneTimeCode` 和 Android 的短信验证码提示）、`"email"`、`"phone"`、`"name"`、`"address"`、`"postalCode"`、`"cardNumber"` 等。各个宿主会按自己平台的叫法来设置。
+- `autocapitalize`：`.sentences`（默认）、`.off`、`.words`、`.characters`。`autocorrect`：`.default`、`.yes`、`.no`。
+- `on focus` 和 `on blur` 跟随键盘的弹出和收起，`bind focused` 既跟随键盘也能移动它。`Ref` 的 `focus()` 唤起键盘，`blur()` 收起键盘。
 
-桌面端没有可供切换的屏幕键盘，所以 `Keyboard` 和 `ReturnKey` 在那里基本看不出效果，不过按回车仍然会调用 `OnSubmit`。在 macOS 上，`ContentType` 对应输入框的自动填充内容类型。在 Windows 上，`KeyboardNumber` 只允许输入数字。在 Linux 上，`Keyboard`、`ContentType`、`Autocapitalize` 和 `Autocorrect` 会告诉输入法这个输入框接受什么内容（即 GTK 的 input purpose 和 input hints）。在浏览器中，它们分别对应输入元素的 `inputmode`、`enterkeyhint`、`autocomplete`、`autocapitalize` 和 `spellcheck`，手机键盘会据此调整。
+桌面端没有可供切换的屏幕键盘，所以 `keyboard` 和 `returnKey` 在那里基本看不出效果，不过按回车仍然会运行 `on submit`。在 macOS 上，`contentType` 对应输入框的自动填充内容类型。在 Windows 上，`.number` 只允许输入数字。在 Linux 上，`keyboard`、`contentType`、`autocapitalize` 和 `autocorrect` 会告诉输入法这个输入框接受什么内容（即 GTK 的 input purpose 和 input hints）。在浏览器中，它们分别对应输入元素的 `inputmode`、`enterkeyhint`、`autocomplete`、`autocapitalize` 和 `spellcheck`，手机键盘会据此调整。
 
-**多行文本。** `Multiline` 把输入框变成文本区域，适合输入消息或评论：回车会换行，而不是调用 `OnSubmit`。它会随文本增高，最多到 `Style.Lines` 行（0 表示不限），超出后开始滚动。
+**多行文本。** `multiline: true` 把输入框变成文本区域，适合输入消息或评论：回车会换行，而不是运行 `on submit`。它会随文本增高，最多到 `lines` 行（0 表示不限），超出后开始滚动。
 
-```go
-message := signal.New("")
-return ui.Row(ui.Style{Gap: 8, Align: ui.AlignEnd},
-	ui.TextField(ui.TextFieldProps{Value: message, Placeholder: ui.Val("Message"), Multiline: true,
-		Style: ui.Style{Grow: 1, Lines: 5}}),
-	ui.Button(ui.ButtonProps{Icon: ui.IconSend, Label: ui.Val("Send"), Variant: ui.ButtonFilled,
-		Disabled: signal.Func(func() bool { return message.Get() == "" }),
-		OnPress:  func() { message.Set("") }}),
-)
+```asuka
+component Composer {
+  state message = ""
+
+  Row {
+    gap: 8
+    align: .end
+    TextField {
+      bind text: message
+      placeholder: "Message"
+      multiline: true
+      grow: 1
+      lines: 5
+    }
+    Button("") {
+      icon: "paperplane"
+      label: "Send"
+      variant: .filled
+      disabled: message.isEmpty()
+      on press { message = "" }
+    }
+  }
+}
 ```
 
-**只保留文字。** `Plain` 去掉输入框的边框、背景和内边距，只留下文字和占位符，适合放进卡片或你自己设计的表单里，就像备忘录和提醒事项中的输入框那样。
+**只保留文字。** `plain: true` 去掉输入框的边框、背景和内边距，只留下文字和占位符，适合放进卡片或你自己设计的表单里，就像备忘录和提醒事项中的输入框那样。
 
-```go
-ui.TextField(ui.TextFieldProps{Value: note, Placeholder: ui.Val("Note"), Multiline: true, Plain: true})
+```asuka
+component NoteField {
+  state note = ""
+
+  TextField {
+    bind text: note
+    placeholder: "Note"
+    multiline: true
+    plain: true
+  }
+}
 ```
 
 `SafeArea` 会为键盘留出内边距，所以放在它底部的输入框始终位于键盘上方。
 
 ## 控件
 
-每个控件都接受它要修改的 signal，以及一个 `Disabled` 访问器。除了 `Picker`，它们都不带标签：需要的话，在旁边放一个 `Text`。
+每个控件都用 `bind` 绑定它要修改的状态，也都接受 `disabled`。除了 `Picker` 和 `Toggle` 的 `title`，它们都不带标签：需要的话，在旁边放一个 `Text`。
 
-```go
-return ui.Column(ui.Style{Gap: 16},
-	ui.Row(ui.Style{Align: ui.AlignCenter},
-		ui.StaticText("Wi-Fi", ui.Style{Grow: 1}),
-		ui.Toggle(ui.ToggleProps{Value: wifi})),
-	ui.Slider(ui.SliderProps{Value: volume}),
-	ui.Segmented(ui.SegmentedProps{Segments: ui.Val([]string{"Day", "Week", "Month"}), Selected: period}),
-	ui.Row(ui.Style{Gap: 12, Align: ui.AlignCenter},
-		ui.Text(signal.Func(func() string { return fmt.Sprintf("%.0f cups", cups.Get()) }), ui.Style{Grow: 1}),
-		ui.Stepper(ui.StepperProps{Value: cups, Min: 1, Max: 8})),
-	ui.Wheel(ui.WheelProps{Items: ui.Val(sizes), Selected: size}),
-	ui.Picker(ui.PickerProps{Items: ui.Val(milks), Selected: milk, Label: ui.Val("Milk")}),
-	ui.Row(ui.Style{Gap: 12, Align: ui.AlignCenter},
-		ui.StaticText("Tint", ui.Style{Grow: 1}),
-		ui.ColorPicker(ui.ColorPickerProps{Value: tint, Alpha: true, Title: ui.Val("Tint")})),
-	ui.Row(ui.Style{Gap: 12, Align: ui.AlignCenter},
-		ui.StaticText("Starts", ui.Style{Grow: 1}),
-		ui.DatePicker(ui.DatePickerProps{Value: when, Mode: ui.DateAndTime, Min: time.Now()})),
-)
+```asuka
+import asuka/time
+
+component Settings {
+  state wifi = true
+  state volume = 0.5
+  state period = 0
+  state cups = 2.0
+  state size = 1
+  state milk = -1
+  state tint: Color = .blue
+  state when = time.now()
+
+  Column {
+    gap: 16
+    Row {
+      align: .center
+      Text("Wi-Fi") { grow: 1 }
+      Toggle { bind on: wifi }
+    }
+    Slider { bind value: volume }
+    Segmented(["Day", "Week", "Month"]) { bind selected: period }
+    Row {
+      gap: 12
+      align: .center
+      Text("{cups.fixed(0)} cups") { grow: 1 }
+      Stepper {
+        bind value: cups
+        min: 1
+        max: 8
+      }
+    }
+    Wheel(["Small", "Medium", "Large"]) { bind selected: size }
+    Picker(["Whole", "Oat", "None"]) {
+      bind selected: milk
+      prompt: "Milk"
+    }
+    Row {
+      gap: 12
+      align: .center
+      Text("Tint") { grow: 1 }
+      ColorPicker {
+        bind value: tint
+        alpha: true
+        title: "Tint"
+      }
+    }
+    Row {
+      gap: 12
+      align: .center
+      Text("Starts") { grow: 1 }
+      time.Picker {
+        bind value: when
+        mode: .dateTime
+        min: time.now()
+      }
+    }
+  }
+}
 ```
 
-- **Toggle** 是开关，绑定一个 `*signal.Signal[bool]`。设置 `Checkbox` 后它会变成复选框：Android 上是 `MaterialCheckBox`，Mac 和 Windows 上是各自的复选框，Linux 上是 `GtkCheckButton`，浏览器中是复选框；iOS 没有复选框，于是用一个选中后填上对勾的圆圈，和提醒事项里的一样。
-- **Slider** 在 `Min` 到 `Max` 之间取一个 `float64`；两者都为 0 时，范围是 0 到 1。
-- **Segmented** 把几个选项并排摆出来，从中选一个，`Selected` 是选中项的索引。它对应 UIKit 的分段控件和 Material 的分段按钮。Windows 没有这种控件，由宿主自行绘制一个，仿照 Windows Community Toolkit 的 `Segmented`。
-- **Stepper** 用减号和加号按 `Step`（默认为 1）增减一个 `float64`，范围从 `Min` 到 `Max`（两者都为 0 时是 0 到 100）。它在 iOS 上是 `UIStepper`，在 macOS 上是 `NSStepper`；在其他平台上则是两个按钮（Android 上是 Material 图标按钮，Linux 上是相连的按钮，和 GNOME 的微调按钮外观一致）。
-- **Wheel** 在滚轮上从众多 `Items` 中选一个，对应 `UIPickerView` 和 Android 的 `NumberPicker`。桌面端和 Web 没有滚轮控件，所以在那里它是一个列出所有选项的弹出菜单（`NSPopUpButton`、绘制成 WinUI `ComboBox` 样式的下拉组合框、`GtkDropDown`、`<select>`）。
-- **Picker** 从菜单中的众多 `Items` 里选一个，并显示选中的那一项（相当于菜单样式的 SwiftUI `Picker`，以及 Material 的 exposed dropdown menu）。`Selected` 超出范围（-1）表示什么都没选，这时选择器显示它的 `Label`；屏幕阅读器也用这个标签来称呼它。在 Android 上，标签是输入框的标签，浮在选中项上方。`Selected` 这个 signal 可以是 nil，这时选择器自己记住用户的选择。
+- **Toggle** 是开关，`bind on`。设置 `checkbox: true` 后它会变成复选框：Android 上是 `MaterialCheckBox`，Mac 和 Windows 上是各自的复选框，Linux 上是 `GtkCheckButton`，浏览器中是复选框；iOS 没有复选框，于是用一个选中后填上对勾的圆圈，和提醒事项里的一样。
+- **Slider** 在 `min` 到 `max` 之间取一个 `float`（默认是 0 到 1）。
+- **Segmented** 把几个选项并排摆出来，从中选一个，`selected` 是选中项的索引。它对应 UIKit 的分段控件和 Material 的分段按钮。Windows 没有这种控件，由宿主自行绘制一个，仿照 Windows Community Toolkit 的 `Segmented`。
+- **Stepper** 用减号和加号按 `step`（默认为 1）增减一个 `float`，范围从 `min` 到 `max`（默认是 0 到 100）。它在 iOS 上是 `UIStepper`，在 macOS 上是 `NSStepper`；在其他平台上则是两个按钮（Android 上是 Material 图标按钮，Linux 上是相连的按钮，和 GNOME 的微调按钮外观一致）。
+- **Wheel** 在滚轮上从众多选项中选一个，对应 `UIPickerView` 和 Android 的 `NumberPicker`。桌面端和 Web 没有滚轮控件，所以在那里它是一个列出所有选项的弹出菜单（`NSPopUpButton`、绘制成 WinUI `ComboBox` 样式的下拉组合框、`GtkDropDown`、`<select>`）。
+- **Picker** 从菜单中的众多选项里选一个，并显示选中的那一项（相当于菜单样式的 SwiftUI `Picker`，以及 Material 的 exposed dropdown menu）。`selected` 超出范围（-1，默认值）表示什么都没选，这时选择器显示它的 `prompt`；屏幕阅读器也用它来称呼选择器。在 Android 上，`prompt` 是输入框的标签，浮在选中项上方。不绑定时，选择器自己记住用户的选择。
 
   | | Picker |
   |---|---|
@@ -285,31 +415,40 @@ return ui.Column(ui.Style{Gap: 16},
   | Windows | 绘制成 WinUI 3 `ComboBox` 样式的下拉列表组合框（控件的填充色和描边，末端的 V 形箭头；列表在浮出面板上自绘，选中项开头有一条强调色的小竖条，在 Windows 11 上由 DWM 圆角处理）；什么都没选时，用次要文字颜色绘制标签，标签也是它在 UI Automation 中的名称 |
   | Linux | 基于 `GtkStringList` 的 `GtkDropDown`，标签以暗色文字显示在选中项的位置 |
   | Web | `<select>`，第一个选项是隐藏的占位项，显示标签 |
-- **ColorPicker** 是一个色块，点击后打开平台的颜色选择器，选中的结果写入一个 `ui.Color`。`Alpha` 允许用户选择不透明度，`Title` 是选择器的标题。iOS 上是 `UIColorWell` 加系统的颜色选择器；Android 没有颜色选择器，所以是一个列出调色板的 Material 对话框，设置了 `Alpha` 时再附带一个不透明度滑块。macOS 上是打开颜色面板的 `NSColorWell`，Linux 上是 `GtkColorDialogButton`，浏览器中是 `<input type="color">`。Windows 的颜色对话框不支持不透明度，因此 `Alpha` 在那里不起作用。
-- **DatePicker** 选取一个 `time.Time`，按设备所在的时区显示。`Mode` 可以是 `ui.DateOnly`（默认）、`ui.TimeOnly` 或 `ui.DateAndTime`；`Min` 和 `Max` 限定可选范围。`Value` 为零值时显示当前时间。
+- **ColorPicker** 是一个色块，点击后打开平台的颜色选择器，选中的结果写入一个 `color`。`alpha` 允许用户选择不透明度，`title` 是选择器的标题。iOS 上是 `UIColorWell` 加系统的颜色选择器；Android 没有颜色选择器，所以是一个列出调色板的 Material 对话框，设置了 `alpha` 时再附带一个不透明度滑块。macOS 上是打开颜色面板的 `NSColorWell`，Linux 上是 `GtkColorDialogButton`，浏览器中是 `<input type="color">`。Windows 的颜色对话框不支持不透明度，因此 `alpha` 在那里不起作用。
+- **DatePicker** 选取一个时刻，按设备所在的时区显示：`asuka/time` 的 `time.Picker` 绑定一个 `time.Time`（prelude 里的 `DatePicker` 绑定的是自 1970 年起的毫秒数）。`mode` 可以是 `.date`（默认）、`.time` 或 `.dateTime`；`min` 和 `max` 限定可选范围。
 
-  | | 紧凑（默认） | `Inline` |
+  | | 紧凑（默认） | `.section` |
   |---|---|---|
   | iOS | UIKit 的紧凑型日期选择器 | 直接展开的日历和时间，适合单独放在一个弹出面板里 |
   | Android | 显示日期和时间的按钮，点击后打开 Material 的选择器 | 同样的按钮 |
   | macOS | `NSDatePicker` 的文本框和步进器 | 它的日历和时钟 |
-  | Windows | 日期时间选择器，日历以下拉方式展开 | 月历；`DateAndTime` 时下方再加一个时间选择器（`TimeOnly` 仍为紧凑样式） |
+  | Windows | 日期时间选择器，日历以下拉方式展开 | 月历；`.dateTime` 时下方再加一个时间选择器（`.time` 仍为紧凑样式） |
   | Linux | 一个按钮，打开包含 GTK 日历以及时、分微调按钮的 popover | 直接展开的日历和微调按钮 |
   | Web | `<input type="date">`、`"time"`、`"datetime-local"` | 同样的输入元素 |
 
 ## 进度与加载
 
-`ui.Progress` 是进度条：值从 0 到 1；不知道进度时传 `nil`。样式中的 `Color` 是它的填充色。`ui.ProgressRing` 是圆形的进度条：圆环从顶部开始顺时针填充，值变化时带有动画；传 `nil` 时显示平台自己的不确定进度圆环。`ui.Activity` 是一个加载指示器（spinner）。
+`Progress` 是进度条：它的 `value` 从 0 到 1；不知道进度时为 `none`。样式中的 `color` 是它的填充色。`ProgressRing` 是圆形的进度条：圆环从顶部开始顺时针填充，值变化时带有动画；为 `none` 时显示平台自己的不确定进度圆环。`Activity` 是一个加载指示器（spinner）。
 
-```go
-return ui.Column(ui.Style{Gap: 12},
-	ui.Progress(done),
-	ui.Progress(nil),
-	ui.ProgressRing(done),
-	ui.ProgressRing(done, ui.Style{Width: ui.Pt(24), Color: colors.Green}),
-	ui.ProgressRing(nil),
-	ui.Activity(),
-)
+```asuka
+component Upload {
+  state done = 0.4
+
+  Column {
+    gap: 12
+    Progress { value: done }
+    Progress()
+    ProgressRing { value: done }
+    ProgressRing {
+      value: done
+      width: 24
+      color: .green
+    }
+    ProgressRing()
+    Activity()
+  }
+}
 ```
 
 圆环有自己的尺寸，每个平台各不相同（iOS 58 点，Android 48dp，Mac 和 Windows 32，Linux 和 Web 32）。样式里只设了一边时，另一边也随之相同，所以圆环始终是正方形。屏幕阅读器会把它读作进度指示器，并读出百分比。
@@ -318,46 +457,55 @@ return ui.Column(ui.Style{Gap: 12},
 |---|---|---|
 | iOS | UIKit 没有确定进度的圆环，而 SwiftUI 的圆形 `ProgressView` 在 iOS 上会忽略它的值。所以圆环按 SwiftUI 圆形容量 `Gauge` 的样子绘制：强调色的圆头描边，压在 30% 强调色的轨道上，描边宽度是圆环尺寸的十分之一 | `UIActivityIndicatorView` |
 | Android | Material 的 `CircularProgressIndicator`，按它的尺寸取 Material 3 对应的规格（extra small、small 或 medium：各自的轨道、内边距和间隙） | 同一个控件，不确定进度模式 |
-| macOS | 没有 `Color` 时，是 AppKit 自己尺寸（16 和 32 点）的 `NSProgressIndicator` 确定进度圆环。AppKit 只在这两个尺寸、而且只用强调色绘制它的圆环，所以其他尺寸或设置了 `Color` 时，由宿主绘制填满整个区域的圆环：16 到 32 点之间是 5 点宽的圆头描边（大于 32 点按 32 点圆环的比例，小于 16 点按 16 点的比例），压在 AppKit 的轨道上，颜色用 `Color`，或者用从 AppKit 自己的指示器读出来的颜色（强调色、非活动窗口中的灰色，以及浅色和深色模式）。值的变化会像 AppKit 的 animator 那样用四分之一秒过渡过去，开启“减弱动态效果”时除外。两种情况下，VoiceOver 都会把它读作 AppKit 的指示器 | 16 和 32 点时是它的旋转指示器；其他尺寸则按该尺寸绘制它那 8 根辐条（缩放后带有 AppKit 的模糊效果，它本身不接受颜色），领头的那根用 `Color` |
+| macOS | 没有 `color` 时，是 AppKit 自己尺寸（16 和 32 点）的 `NSProgressIndicator` 确定进度圆环。AppKit 只在这两个尺寸、而且只用强调色绘制它的圆环，所以其他尺寸或设置了 `color` 时，由宿主绘制填满整个区域的圆环：16 到 32 点之间是 5 点宽的圆头描边（大于 32 点按 32 点圆环的比例，小于 16 点按 16 点的比例），压在 AppKit 的轨道上，颜色用 `color`，或者用从 AppKit 自己的指示器读出来的颜色（强调色、非活动窗口中的灰色，以及浅色和深色模式）。值的变化会像 AppKit 的 animator 那样用四分之一秒过渡过去，开启“减弱动态效果”时除外。两种情况下，VoiceOver 都会把它读作 AppKit 的指示器 | 16 和 32 点时是它的旋转指示器；其他尺寸则按该尺寸绘制它那 8 根辐条（缩放后带有 AppKit 的模糊效果，它本身不接受颜色），领头的那根用 `color` |
 | Windows | Fluent 的 `ProgressRing`（WinUI 的）：一段没有轨道的圆弧。讲述人会把它读作进度条 | 转动的圆弧，和 `Activity` 一样 |
 | Linux | 按 `AdwSpinner` 绘制圆环的方式绘制：15% 文字颜色的轨道，加上强调色的圆弧 | `AdwSpinner`（libadwaita 1.6 之前为 `GtkSpinner`） |
 | Web | 一个 SVG 圆环，`role="progressbar"` 并带 `aria-valuenow` | 转动的圆弧；设置了 `prefers-reduced-motion` 时转得更慢 |
 
 ## 图片
 
-`ui.Image` 显示一张图片。平台会在主线程之外加载和解码图片，并缓存在内存中。iOS 和 Android 还会把通过 http(s) 获取的图片存到磁盘上，应用重启后依然有效；桌面端宿主只缓存在内存里，浏览器则使用它自己的缓存。
+`Image` 显示一张图片。平台会在主线程之外加载和解码图片，并缓存在内存中。iOS 和 Android 还会把通过 http(s) 获取的图片存到磁盘上，应用重启后依然有效；桌面端宿主只缓存在内存里，浏览器则使用它自己的缓存。
 
-```go
-return ui.Column(ui.Style{Gap: 12},
-	ui.Image(ui.ImageProps{Source: ui.Val("logo.png"), Style: ui.Style{Width: ui.Pt(64)}}),
-	ui.Image(ui.ImageProps{
-		Source:      ui.Val("https://picsum.photos/id/1015/600/400"),
-		Placeholder: "placeholder.png",
-		Mode:        ui.ImageFill,
-		Label:       ui.Val("A river in a valley"),
-		Style:       ui.Style{AspectRatio: 3.0 / 2, CornerRadius: 12, Clip: true},
-	}),
-	ui.Image(ui.ImageProps{
-		Source:     signal.Func(func() string { return photo.Get().URL }),
-		BlurHash:   signal.Func(func() string { return photo.Get().BlurHash }),
-		Mode:       ui.ImageFill,
-		Transition: 0.4,
-		Style:      ui.Style{AspectRatio: 1, CornerRadius: 12},
-	}),
-)
+```asuka
+struct Photo {
+  url: string
+  blurHash: string
+}
+
+component Pictures(photo: Photo) {
+  Column {
+    gap: 12
+    Image("logo.png") { width: 64 }
+    Image("https://picsum.photos/id/1015/600/400") {
+      placeholder: "placeholder.png"
+      mode: .fill
+      label: "A river in a valley"
+      aspectRatio: 3.0 / 2
+      radius: 12
+      clip: true
+    }
+    Image(photo.url) {
+      blurHash: photo.blurHash
+      mode: .fill
+      transition: 0.4
+      aspectRatio: 1
+      radius: 12
+    }
+  }
+}
 ```
 
-- `Source` 可以是 http(s) URL、应用 `assets` 目录下的路径（`"logo.png"` 即 `assets/logo.png`），也可以是绝对路径，比如应用自己写入的文件，或者用户选取的照片。
-- `Mode` 决定图片如何填充它的框：`ImageFit`（默认，完整显示，必要时留出空边）、`ImageFill`（铺满整个框，超出部分裁掉）、`ImageStretch`（拉伸成框的宽高比）、`ImageCenter`（按原始尺寸居中）。
-- `Placeholder` 在 `Source` 加载完成之前显示，加载失败时也会显示。占位图请用资源文件（asset），这样能立即显示。记得给图片设定尺寸，让占位图有地方显示。
-- `BlurHash` 和 `ThumbHash` 是用应用随图片保存的哈希生成的占位图（[BlurHash](https://blurha.sh)、[ThumbHash](https://evanw.github.io/thumbhash/)，后者为 base64 编码），和 expo-image 的一样。核心会把哈希解码成一张小图，每个哈希只解码一次（最近用过的几百个会被保留），并立即显示在 `Placeholder` 的位置上。BlurHash 本身不带形状信息：它按样式的 `AspectRatio` 解码，没有设置时解码成正方形并拉伸到整个框。ThumbHash 会保留原图的宽高比和透明度。它们都是访问器，因为列表的行在复用时会换成别的图片。
-- `PlaceholderMode` 决定占位图如何填充框：`PlaceholderFit`、`PlaceholderFill`、`PlaceholderStretch`、`PlaceholderCenter`；默认和图片本身的方式一样。
-- `Transition` 是图片加载完成时淡入所用的秒数：在占位图上交叉淡入，没有占位图时从无到有地淡入。默认只在有占位图时淡入，时长取平台的短动画时长（0.25 秒；Android 上是 `config_shortAnimTime`）；设为 `ui.NoTransition` 则立即显示。
-- `Animated` 为 true 时播放动图，为 false 时让它停在当前帧。不设置时，动图会按文件规定的次数播放；但如果用户要求减少动态效果（“减弱动态效果”、Android 关闭动画、`prefers-reduced-motion`），它只显示第一帧。
-- `Label` 向屏幕阅读器描述这张图片；不设置时，图片被视为纯装饰。
-- `OnLoad` 在图片加载完成后收到它的原始尺寸；`OnError` 在加载失败时收到错误信息。
+- 图片的来源可以是 http(s) URL、应用 `assets` 目录下的路径（`"logo.png"` 即 `assets/logo.png`），也可以是绝对路径，比如应用自己写入的文件，或者用户选取的照片。
+- `mode` 决定图片如何填充它的框：`.fit`（默认，完整显示，必要时留出空边）、`.fill`（铺满整个框，超出部分裁掉）、`.stretch`（拉伸成框的宽高比）、`.center`（按原始尺寸居中）。
+- `placeholder` 在来源加载完成之前显示，加载失败时也会显示。占位图请用资源文件（asset），这样能立即显示。记得给图片设定尺寸，让占位图有地方显示。
+- `blurHash` 和 `thumbHash` 是用应用随图片保存的哈希生成的占位图（[BlurHash](https://blurha.sh)、[ThumbHash](https://evanw.github.io/thumbhash/)，后者为 base64 编码），和 expo-image 的一样。核心会把哈希解码成一张小图，每个哈希只解码一次（最近用过的几百个会被保留），并立即显示在 `placeholder` 的位置上。BlurHash 本身不带形状信息：它按样式的 `aspectRatio` 解码，没有设置时解码成正方形并拉伸到整个框。ThumbHash 会保留原图的宽高比和透明度。它们都是绑定，因为列表的行在复用时会换成别的图片。
+- `placeholderMode` 决定占位图如何填充框：`.fit`、`.fill`、`.stretch`、`.center`；默认和图片本身的方式一样。
+- `transition` 是图片加载完成时淡入所用的秒数：在占位图上交叉淡入，没有占位图时从无到有地淡入。默认只在有占位图时淡入，时长取平台的短动画时长（0.25 秒；Android 上是 `config_shortAnimTime`）；设为 `-1` 则立即显示。
+- `animated` 为 true 时播放动图，为 false 时让它停在当前帧。不设置时，动图会按文件规定的次数播放；但如果用户要求减少动态效果（“减弱动态效果”、Android 关闭动画、`prefers-reduced-motion`），它只显示第一帧。
+- `label` 向屏幕阅读器描述这张图片；不设置时，图片被视为纯装饰。
+- `on loaded(width, height)` 在图片加载完成后收到它的原始尺寸；`on error(message)` 在加载失败时收到错误信息。
 
-没有设置尺寸的图片在加载完成前是空的。加载后，它采用原始尺寸，一个像素对应一个点，但宽度不会超过可用空间。如果只确定了一边（设置了 `Width`，或在行中设置了 `Grow`），它会保持宽高比；用 `AspectRatio` 则可以在加载之前就确定宽高比。
+没有设置尺寸的图片在加载完成前是空的。加载后，它采用原始尺寸，一个像素对应一个点，但宽度不会超过可用空间。如果只确定了一边（设置了 `width`，或在行中设置了 `grow`），它会保持宽高比；用 `aspectRatio` 则可以在加载之前就确定宽高比。
 
 每个平台用它自己的解码器解码图片：
 
@@ -374,19 +522,26 @@ return ui.Column(ui.Style{Gap: 12},
 
 ## 符号与图标
 
-`ui.Symbol` 显示一个符号。在 iOS 和 macOS 上它是 SF Symbol，在 Android 和 Web 上是对应的 Material Symbol，在 Windows 上是对应的 Segoe Fluent Icons 字形（Windows 11 之前为 Segoe MDL2 Assets），在 Linux 上是图标主题（Adwaita）中对应的符号图标，没有的话就用 Material Symbol。它按样式中的 `Font` 像文字一样确定大小，因此会跟随字号变化；颜色取自样式中的 `Color`（默认为标签颜色）。
+`Symbol` 显示一个符号。在 iOS 和 macOS 上它是 SF Symbol，在 Android 和 Web 上是对应的 Material Symbol，在 Windows 上是对应的 Segoe Fluent Icons 字形（Windows 11 之前为 Segoe MDL2 Assets），在 Linux 上是图标主题（Adwaita）中对应的符号图标，没有的话就用 Material Symbol。它按样式中的 `font` 像文字一样确定大小，因此会跟随字号变化；颜色取自样式中的 `color`（默认为标签颜色）。
 
-```go
-return ui.Row(ui.Style{Gap: 14, Align: ui.AlignCenter},
-	ui.Symbol(ui.IconBell),
-	ui.Symbol(ui.IconStar.Filled(), ui.Style{Color: colors.Yellow, Font: fonts.Title}),
-	ui.Symbol(ui.Icon("archivebox"), ui.Style{Color: colors.SecondaryLabel}),
-)
+```asuka
+component Symbols {
+  Row {
+    gap: 14
+    align: .center
+    Symbol("bell")
+    Symbol("star.fill") {
+      color: .yellow
+      font: .title
+    }
+    Symbol("archivebox") { color: .secondaryLabel }
+  }
+}
 ```
 
-`ui.Icon` 就是一个 SF Symbol 名称。按钮、菜单项、栏按钮和标签页也都接受它。`Icon` 常量收录了常用的图标：`IconHome`、`IconSearch`、`IconSettings`、`IconPlus`、`IconClose`、`IconTrash`、`IconShare`、`IconMore`，以及另外五十个左右。`icon.Filled()` 返回它的填充版本（`"star.fill"`）。
+符号的名字就是 SF Symbol 的名称。按钮、菜单项、栏按钮和标签页也都接受它：`"house"`、`"magnifyingglass"`、`"gear"`、`"plus"`、`"xmark"`、`"trash"`、`"square.and.arrow.up"`、`"ellipsis.circle"` 等；名字后面加上 `".fill"` 就是它的填充样式（`"star.fill"`）。
 
-iOS 和 macOS 能绘制任意 SF Symbol。其他平台只能绘制一组精选的符号，包括这些常量以及更多：它们在 [`platform/android/gen_symbols.go`](../../platform/android/gen_symbols.go) 中映射到 Material Symbols（Web 和 Linux 的映射由它生成），在 Windows 上映射到 Segoe Fluent Icons 的字形。不在这组里的名称在这些平台上什么也不显示（宿主会记录一条警告），所以像 `"archivebox"` 这样直接用字符串写的名称，要在你发布的每个平台上都检查一遍。在 Linux 上，以 `-symbolic` 结尾的名称会被当作图标主题中的名称，原样使用。
+iOS 和 macOS 能绘制任意 SF Symbol。其他平台只能绘制一组精选的符号，包括常用的那些以及更多：它们在 [`platform/android/gen_symbols.go`](../../platform/android/gen_symbols.go) 中映射到 Material Symbols（Web 和 Linux 的映射由它生成），在 Windows 上映射到 Segoe Fluent Icons 的字形。不在这组里的名称在这些平台上什么也不显示（宿主会记录一条警告），所以像 `"archivebox"` 这样直接用字符串写的名称，要在你发布的每个平台上都检查一遍。在 Linux 上，以 `-symbolic` 结尾的名称会被当作图标主题中的名称，原样使用。
 
 ### SVG 图标
 
@@ -427,27 +582,38 @@ component Done {
 
 ## 视频
 
-`ui.Video` 用平台的播放器及其控件播放视频：iOS 上是 `AVPlayerViewController`，Android 上是 Media3 的 ExoPlayer，macOS 上是 `AVPlayerView`，Linux 上是 `GtkVideo`（GStreamer），浏览器中是 `<video>`。Win32 没有视频视图，所以在 Windows 上它是 WebView2 中的 `<video>`，使用 Edge 的播放控件。用 `ui.Play`、`ui.Pause` 和 `ui.Seek` 控制播放。
+`Video` 用平台的播放器及其控件播放视频：iOS 上是 `AVPlayerViewController`，Android 上是 Media3 的 ExoPlayer，macOS 上是 `AVPlayerView`，Linux 上是 `GtkVideo`（GStreamer），浏览器中是 `<video>`。Win32 没有视频视图，所以在 Windows 上它是 WebView2 中的 `<video>`，使用 Edge 的播放控件。用 `Ref` 的 `play()`、`pause()` 和 `seek(seconds)` 控制它。
 
-```go
-var v ui.Node
-v = ui.Video(ui.VideoProps{
-	Source:   ui.Val("https://example.com/clip.mp4"),
-	AutoPlay: true, Muted: true, Loop: true,
-	Style: ui.Style{CornerRadius: 12},
-})
-return ui.Column(ui.Style{Gap: 12}, v,
-	ui.Button(ui.ButtonProps{Title: ui.Val("Start over"), OnPress: func() { ui.Seek(v, 0); ui.Play(v) }}),
-	ui.Button(ui.ButtonProps{Title: ui.Val("Pause"), OnPress: func() { ui.Pause(v) }}),
-)
+```asuka
+component Clip {
+  let v = Ref()
+
+  Column {
+    gap: 12
+    Video("https://example.com/clip.mp4") {
+      ref: v
+      autoPlay: true
+      muted: true
+      loop: true
+      radius: 12
+    }
+    Button("Start over") {
+      on press {
+        v.seek(0)
+        v.play()
+      }
+    }
+    Button("Pause") { on press { v.pause() } }
+  }
+}
 ```
 
-- `Source` 是 http(s) URL（视频文件或 HLS 流），或者应用 assets 中的文件。
-- `Mode` 为 `ui.ImageFit`（默认，留出空边）或 `ui.ImageFill`。
-- `HideControls` 隐藏平台的播放控件：播放按钮、进度条、全屏，以及 iOS 上的 AirPlay 和画中画。
-- 每次播放到结尾都会调用 `OnEnd`；无法播放时调用 `OnError`。
+- 视频的来源是 http(s) URL（视频文件或 HLS 流），或者应用 assets 中的文件。
+- `mode` 为 `.fit`（默认，留出空边）或 `.fill`。
+- `hideControls: true` 隐藏平台的播放控件：播放按钮、进度条、全屏，以及 iOS 上的 AirPlay 和画中画。
+- 每次播放到结尾都会运行 `on end`；无法播放时运行 `on error(message)`。
 
-它的尺寸规则和 `Image` 一样：在得知视频尺寸之前是空的（除非样式给了它尺寸），之后保持视频的宽高比。`Seek` 的参数是从开头算起的秒数。
+它的尺寸规则和 `Image` 一样：在得知视频尺寸之前是空的（除非样式给了它尺寸），之后保持视频的宽高比。`seek` 的参数是从开头算起的秒数。
 
 ## Lottie 动画
 
@@ -485,129 +651,167 @@ component Success {
 
 ## 网页
 
-`ui.WebView` 用平台的 Web 视图显示网页，滚动、缩放和文本选择都是平台原生的：iOS 和 macOS 上是 `WKWebView`，Android 上是 `WebView`，Windows 上是 WebView2（Edge 的运行时），Linux 上是 WebKitGTK 6.0 的 `WebKitWebView`。Linux 上如果没有安装 WebKitGTK，它什么也不显示，并调用一次 `OnError`，告诉你需要安装什么。在浏览器中它是一个 `<iframe>`，下面介绍的功能只有对应用自己站点的页面才能全部使用；参见 [Web](web.md#web-视图)。没有设置高度也没有 `Grow` 时，它会扩展到填满可用空间。
+`WebView` 用平台的 Web 视图显示网页，滚动、缩放和文本选择都是平台原生的：iOS 和 macOS 上是 `WKWebView`，Android 上是 `WebView`，Windows 上是 WebView2（Edge 的运行时），Linux 上是 WebKitGTK 6.0 的 `WebKitWebView`。Linux 上如果没有安装 WebKitGTK，它什么也不显示，并调用一次 `on error`，告诉你需要安装什么。在浏览器中它是一个 `<iframe>`，下面介绍的功能只有对应用自己站点的页面才能全部使用；参见 [Web](web.md#web-视图)。没有设置高度也没有 `grow` 时，它会扩展到填满可用空间。
 
-```go
-state := signal.New(ui.WebState{})
-var web ui.Node
-web = ui.WebView(ui.WebViewProps{
-	URL:       ui.Val("https://go.dev"),
-	Block:     []string{"doubleclick.net", "/ads/"},
-	OnState:   func(s ui.WebState) { state.Set(s) },
-	OnMessage: func(m string) { fmt.Println("the page says", m) },
-	OnNewWindow: func(url string) {
-		ui.OpenURL(url)
-	},
-})
-return ui.Column(ui.Style{Grow: 1},
-	ui.Row(ui.Style{Gap: 8, Padding: ui.Symmetric(8, 12), Align: ui.AlignCenter},
-		ui.Button(ui.ButtonProps{Icon: ui.IconBack, Label: ui.Val("Back"),
-			Disabled: signal.Func(func() bool { return !state.Get().CanGoBack }),
-			OnPress:  func() { ui.WebBack(web) }}),
-		ui.Text(signal.Func(func() string { return state.Get().Title }), ui.Style{Grow: 1, Lines: 1}),
-		ui.Button(ui.ButtonProps{Icon: ui.IconRefresh, Label: ui.Val("Reload"), OnPress: func() { ui.WebReload(web) }}),
-	),
-	ui.Show(signal.Func(func() bool { return state.Get().Loading }), func() ui.Node {
-		return ui.Progress(signal.Func(func() float64 { return float64(state.Get().Progress) }))
-	}),
-	web,
-)
+```asuka
+component Browser {
+  state page = WebState()
+
+  let web = Ref()
+
+  Column {
+    grow: 1
+    Row {
+      gap: 8
+      padding: [8, 12]
+      align: .center
+      Button("") {
+        icon: "chevron.backward"
+        label: "Back"
+        disabled: !page.canGoBack
+        on press { web.goBack() }
+      }
+      Text(page.title) {
+        grow: 1
+        lines: 1
+      }
+      Button("") {
+        icon: "arrow.clockwise"
+        label: "Reload"
+        on press { web.reload() }
+      }
+    }
+    if page.loading { Progress { value: page.progress } }
+    WebView("https://example.com") {
+      ref: web
+      block: ["doubleclick.net", "/ads/"]
+      on state(s) { page = s }
+      on message(m) { print("the page says {m}") }
+      on newWindow(url) { openURL(url) }
+    }
+  }
+}
 ```
 
 显示什么：
 
-- `URL` 是 http(s) URL，或者应用 assets 中的文件（这时页面里的相对链接也指向 assets）。`HTML` 则是直接显示的标记，用来代替 URL。
-- `UserAgent` 是请求页面时使用的 User-Agent，也是 `navigator.userAgent` 的值；留空时使用平台默认值。
-- `Preload` 是在每个页面自身的脚本之前、在每个 frame 中运行的脚本，可以用来拦截 `fetch` 或设置全局变量。
-- `Block` 阻止请求加载，就像广告拦截器那样。每一项可以是一个主机名，同时匹配它的子域名（`"doubleclick.net"`）；也可以包含 `/`，这时匹配 URL 中的一部分（`"/ads/"`）。
+- 它的 URL 是 http(s) URL，或者应用 assets 中的文件（这时页面里的相对链接也指向 assets）。`html` 则是直接显示的标记，用来代替 URL。
+- `userAgent` 是请求页面时使用的 User-Agent，也是 `navigator.userAgent` 的值；留空时使用平台默认值。
+- `preload` 是在每个页面自身的脚本之前、在每个 frame 中运行的脚本，可以用来拦截 `fetch` 或设置全局变量。
+- `block` 阻止请求加载，就像广告拦截器那样。每一项可以是一个主机名，同时匹配它的子域名（`"doubleclick.net"`）；也可以包含 `/`，这时匹配 URL 中的一部分（`"/ads/"`）。
 
-`Preload`、`UserAgent` 和 `Block` 在视图创建时就确定了。
+`preload`、`userAgent` 和 `block` 在视图创建时就确定了。
 
 报告什么：
 
-- 每个页面加载完成时，`OnLoad` 会收到它的 URL；页面加载失败时，`OnError` 会收到错误信息。
-- `OnState` 像地址栏一样跟踪页面的状态：一个 `ui.WebState`，包含 `URL`、`Title`、`Loading`、`Progress`（0 到 1）、`CanGoBack` 和 `CanGoForward`。
-- `OnNewWindow` 收到页面想在新窗口中打开的 URL（`window.open`、`target="_blank"` 的链接）。没有设置它时，那个页面会直接在当前视图中加载。
-- `OnDownload` 收到页面无法显示、应当保存为文件的响应（比如指向 `.zip` 的链接、`Content-Disposition: attachment`），形式是一个 `ui.WebDownload`，包含 `URL`、`MIME`、`Filename` 和 `Size`（未知时为 -1）。它本身并不会下载文件。
-- `OnRequest` 收到页面发出的每个请求的 URL（脚本、图片、媒体、`fetch`）。**iOS 和 macOS 不支持**：`WKWebView` 不允许应用看到这些请求。
+- 每个页面加载完成时，`on loaded(url)` 会收到它的 URL；页面加载失败时，`on error(message)` 会收到错误信息。
+- `on state(s)` 像地址栏一样跟踪页面的状态：一个 `WebState`，包含 `url`、`title`、`loading`、`progress`（0 到 1）、`canGoBack` 和 `canGoForward`。
+- `on newWindow(url)` 收到页面想在新窗口中打开的 URL（`window.open`、`target="_blank"` 的链接）。没有设置它时，那个页面会直接在当前视图中加载。
+- `on download(d)` 收到页面无法显示、应当保存为文件的响应（比如指向 `.zip` 的链接、`Content-Disposition: attachment`），形式是一个 `WebDownload`，包含 `url`、`mime`、`filename` 和 `size`（未知时为 -1）。它本身并不会下载文件。
+- `on request(url)` 收到页面发出的每个请求的 URL（脚本、图片、媒体、`fetch`）。**iOS 和 macOS 不支持**：`WKWebView` 不允许应用看到这些请求。
 
-`ui.WebBack`、`ui.WebForward`、`ui.WebReload` 和 `ui.WebStop` 分别用于在历史记录中后退、前进，重新加载页面，以及停止加载。
+`Ref` 的 `goBack()`、`goForward()`、`reload()` 和 `stopLoading()` 分别用于在历史记录中后退、前进，重新加载页面，以及停止加载。
 
 ### 与页面通信
 
-页面通过 `window.asuka.postMessage(text)` 给 Go 发消息，这会调用 `OnMessage`。Go 这边可以用 `ui.EvalJS` 在页面中执行脚本，它不返回任何结果；也可以用 `ui.EvalJSResult`，它会以 JSON 的形式回调结果：最后一条语句的值、返回的 promise 解析出的值（`undefined` 会变成 `null`），或者抛出的错误。
+页面通过 `window.asuka.postMessage(text)` 给应用发消息，这会运行 `on message`。应用这边可以用 `Ref` 的 `run(script)` 在页面中执行脚本，它不返回任何结果；也可以用 `try await eval(script)`，它以 JSON 的形式返回值：最后一条语句的值，或者返回的 promise 解析出的值（`undefined` 时为 `null`），出错时则抛出脚本抛出的错误。
 
-```go
-var web ui.Node
-web = ui.WebView(ui.WebViewProps{
-	HTML: ui.Val(`<button onclick="asuka.postMessage('tapped')">Tap</button>`),
-	OnMessage: func(m string) {
-		ui.EvalJSResult(web, "document.title", func(v json.RawMessage, err error) {
-			fmt.Println(m, string(v), err)
-		})
-	},
-})
+```asuka
+component Page {
+  let web = Ref()
+
+  WebView {
+    ref: web
+    html: "<button onclick=\"asuka.postMessage('tapped')\">Tap</button>"
+    on message(m) {
+      let title = try? await web.eval("document.title")
+      print("{m} {title ?? ""}")
+    }
+  }
+}
 ```
 
-`ui.EvalJSResult` 借助页面的 `eval` 来等待 promise，而页面的内容安全策略（CSP）如果不允许 `'unsafe-eval'`，就会拦下 `eval`。在这样的页面上，iOS、Android、macOS 和 Linux 会改用 `ui.EvalJS` 的方式执行脚本，这种方式不受 CSP 限制：得到的仍是最后一条语句的值，出错时仍是脚本抛出的错误，只是不会等待 promise（Android 上得到 `{}`，其他平台报错），而且在 iOS 和 macOS 上，对象的键可能换了顺序。Windows 不需要 `eval`，照常等待 promise。在 Web 上，浏览器会对应用在页面里执行的脚本施加页面自己的策略，所以禁止 `eval` 的页面会同时拒绝 `ui.EvalJS` 和 `ui.EvalJSResult`。
+`eval` 借助页面的 `eval` 来等待 promise，而页面的内容安全策略（CSP）如果不允许 `'unsafe-eval'`，就会拦下 `eval`。在这样的页面上，iOS、Android、macOS 和 Linux 会改用 `run` 的方式执行脚本，这种方式不受 CSP 限制：得到的仍是最后一条语句的值，出错时仍是脚本抛出的错误，只是不会等待 promise（Android 上得到 `{}`，其他平台报错），而且在 iOS 和 macOS 上，对象的键可能换了顺序。Windows 不需要 `eval`，照常等待 promise。在 Web 上，浏览器会对应用在页面里执行的脚本施加页面自己的策略，所以禁止 `eval` 的页面会同时拒绝 `run` 和 `eval`。
 
-`ui.WebCookies(url, done)` 获取 Web 视图中某个 URL 的 cookie，形式是一个 `Cookie` 请求头。这样用户在页面里登录之后，你自己发出的请求也能带上这份登录状态。
+`try await webCookies(url)` 获取 Web 视图中某个 URL 的 cookie，形式是一个 `Cookie` 请求头。这样用户在页面里登录之后，你自己发出的请求也能带上这份登录状态。
 
 [`examples/downloader`](../../examples/downloader) 用到了以上全部功能：一个带地址栏、预加载脚本、请求拦截和下载功能的浏览器。
 
 ## 形状
 
-`ui.Shape` 绘制一个轮廓，可以填充、描边，或者两者兼有。`Path` 根据形状的尺寸生成轮廓；尺寸变化时，以及它读取的 signal 变化时，`Path` 都会重新运行。形状的尺寸由样式决定（宽高、宽高比、`Grow`）；都没有设置时，它是空的。
+`Shape` 绘制一个轮廓，可以填充、描边，或者两者兼有。它的路径函数根据形状的尺寸生成轮廓；尺寸变化时，以及它读取的状态变化时，都会重新运行。形状的尺寸由样式决定（宽高、宽高比、`grow`）；都没有设置时，它是空的。
 
-```go
-ui.Shape(ui.ShapeProps{
-	Path: func(w, h float32) *ui.Path {
-		return new(ui.Path).MoveTo(w/2, 0).LineTo(w, h).LineTo(0, h).Close()
-	},
-	Fill:  colors.Orange,
-	Style: ui.Style{Width: ui.Pt(48), Height: ui.Pt(48)},
-})
+```asuka
+component Triangle {
+  Shape((w, h) => Path().move(w / 2, 0).line(w, h).line(0, h).close()) {
+    fill: .orange
+    width: 48
+    height: 48
+  }
+}
 ```
 
-`ui.Path` 以点为单位，原点在形状的左上角。它的方法会往路径里添加内容并返回路径本身，方便链式调用：`MoveTo`、`LineTo`、`QuadTo`、`CubicTo`、`Arc`（角度用弧度，从 x 轴起顺时针计算）、`Close`，以及直接添加整个图形的 `Rect`、`RoundedRect` 和 `Ellipse`。
+`Path` 以点为单位，原点在形状的左上角。它的方法会往路径里添加内容并返回路径本身，方便链式调用：`move`、`line`、`quad`、`cubic`、`arc`（角度用弧度，从 x 轴起顺时针计算）、`close`，以及直接添加整个图形的 `rect`、`roundedRect` 和 `ellipse`。
 
-`Stroke` 和 `LineWidth`（默认为 1）用来描出轮廓，可以指定 `LineCap`（`CapButt`、`CapRound`、`CapSquare`）和 `LineJoin`（`JoinMiter`、`JoinRound`、`JoinBevel`）。`TrimStart` 和 `TrimEnd` 只绘制轮廓的一部分，取值 0 到 1，可以做成进度环，或是一条逐渐画出来的线。在 `ui.Animate` 中修改它们会产生动画（见[动效](motion.md)）。`Dash` 把描边变成虚线：一组以点为单位的长度，依次表示画多长、空多长（`[]float32{6, 4}`；个数为奇数时会重复一遍），和 SwiftUI 的 `StrokeStyle(dash:)` 一样。`DashPhase` 表示从图案的哪个位置开始画。[`examples/usage`](../../examples/usage) 就用虚线画了一段预测曲线。
+`stroke` 和 `lineWidth`（默认为 1）用来描出轮廓，可以指定 `lineCap`（`.butt`、`.round`、`.square`）和 `lineJoin`（`.miter`、`.round`、`.bevel`）。`trimStart` 和 `trimEnd` 只画出轮廓的一部分，取值从 0 到 1：比如进度环，或者一条自己画出来的线。在 `animate` 中修改它们会产生动画（见[动效](motion.md)）。`dash` 把描边画成虚线：以点为单位的长度，依次是画的和空的（`[6, 4]`；个数为奇数时会重复一遍），和 SwiftUI 的 `StrokeStyle(dash:)` 一样。`dashPhase` 是虚线图案从哪里开始。[`examples/usage`](../../examples/usage) 就用它画了一条预测线。
 
-```go
-func ring(w, h float32) *ui.Path {
-	r := min(w, h)/2 - 4
-	return new(ui.Path).Arc(w/2, h/2, r, -math.Pi/2, 3*math.Pi/2, true)
+```asuka
+import asuka/math
+
+fn ring(w: float, h: float) -> Path {
+  let r = min(w, h) / 2 - 4
+  return Path().arc(w / 2, h / 2, r, start: -math.pi / 2, end: 3 * math.pi / 2)
 }
 
-func progressRing(done signal.Accessor[float32]) ui.Node {
-	box := ui.Style{Absolute: true, Left: ui.Pt(0), Top: ui.Pt(0), Width: ui.Pct(100), Height: ui.Pct(100)}
-	return ui.View(ui.ViewProps{Label: ui.Val("Progress"), Style: ui.Style{Width: ui.Pt(72), Height: ui.Pt(72)}},
-		ui.Shape(ui.ShapeProps{Path: ring, Stroke: colors.SecondaryBackground, LineWidth: 8, Style: box}),
-		ui.Shape(ui.ShapeProps{Path: ring, Stroke: colors.Accent, LineWidth: 8, LineCap: ui.CapRound,
-			TrimEnd: done, Style: box}),
-	)
+component ProgressCircle(done: float) {
+  View {
+    label: "Progress"
+    width: 72
+    height: 72
+    Shape(ring) {
+      stroke: .secondaryBackground
+      lineWidth: 8
+      absolute: true
+      width: 100%
+      height: 100%
+    }
+    Shape(ring) {
+      stroke: .accent
+      lineWidth: 8
+      lineCap: .round
+      trimEnd: done
+      absolute: true
+      width: 100%
+      height: 100%
+    }
+  }
 }
 ```
 
 ### Canvas
 
-`ui.Canvas` 用来绘制应用自己画的内容：图表、仪表盘、签名、游戏棋盘，任何没有现成视图可用的东西。它的函数通过 `*ui.Graphics` 绘制，坐标以点为单位，原点在左上角：
+`Canvas` 用来绘制应用自己画的内容：图表、仪表盘、签名、游戏棋盘，任何没有现成视图可用的东西。它的函数通过一个 `Graphics` 绘制，坐标以点为单位，原点在左上角：
 
-```go
-ui.Canvas(func(g *ui.Graphics) {
-	w, h := g.Size()
-	g.Fill(g.Path().RoundedRect(0, 0, w, h, 12), colors.SecondaryBackground)
-	g.Fill(g.Path().RoundedRect(0, 0, w*level.Get(), h, 12), colors.Accent)
-	g.Text(fmt.Sprintf("%.0f%%", level.Get()*100), w/2, h/2+6, ui.TextStyle{Weight: fonts.Semibold, Align: ui.TextCenter})
-}, ui.Style{Height: ui.Pt(36)})
+```asuka
+component Level(level: float) {
+  Canvas(g => {
+    let w = g.width
+    let h = g.height
+    g.fill(g.path().roundedRect(0, 0, w, h, 12), .secondaryBackground)
+    g.fill(g.path().roundedRect(0, 0, w * level, h, 12), .accent)
+    g.text("{(level * 100).fixed(0)}%", w / 2, h / 2 + 6, CanvasText(weight: .semibold, align: .center))
+  }) {
+    height: 36
+  }
+}
 ```
 
-- `g.Path()` 返回一个待构建的路径（和 Shape 用的一样），在多次绘制之间复用。
-- `Fill`、`Stroke`（接受一个 `StrokeStyle`：线宽、线帽、连接方式、虚线）和 `FillGradient` 用来绘制路径；`FillRadialGradient` 用 `RadialGradient`（圆心、半径，以及渐变起始的焦点）填充路径，`StrokeGradient` 和 `StrokeRadialGradient` 用渐变描边；`Text` 绘制一行文字，基线位于 y，左边缘、中心或右边缘位于 x。
-- `Save` 和 `Restore` 成对使用，把 `Translate`、`Scale`、`Rotate`（角度制，顺时针）、`Transform`（任意仿射矩阵，包括倾斜）、`Clip`、`Opacity` 和 `EvenOdd` 包在中间；`EvenOdd` 让填充和裁剪按奇偶规则进行（默认是非零规则）。
-- 颜色可以使用语义颜色（`colors.Label`、`colors.Separator`、`colors.Accent`），它们会跟随深色模式变化。
+- `g.path()` 返回一个待构建的路径（和 Shape 用的一样），在多次绘制之间复用。
+- `fill` 和 `stroke`（带一个 `StrokeStyle`：线宽、线帽、连接方式、虚线）用颜色、`LinearGradient` 或 `RadialGradient`（圆心、半径，以及渐变起始的焦点）绘制路径；`text` 绘制一行文字，基线在 y，x 处是它的左边、中心或右边（`CanvasText` 的 `align`）。
+- `save` 和 `restore` 成对使用，把 `translate`、`scale`、`rotate`（角度制，顺时针）、`transform`（任意仿射矩阵，包括倾斜）、`clip`、`opacity` 和 `evenOdd`（按奇偶规则填充和裁剪；默认是非零规则）括在中间。
+- 颜色可以使用语义颜色（`.label`、`.separator`、`.accent`），它们会跟随深色模式变化。
 
-布局完成后，Canvas 会绘制一次；之后尺寸变化，或函数读取过的 signal 变化时，它会重新绘制，就像一个 effect。每次绘制都会记录一个显示列表（display list），只有和上一次不同时才会发送出去，再由平台回放：iOS 和 macOS 上用 Core Graphics，Android 上用 `Canvas`，Windows 上用 GDI+，Linux 上用 GTK 的 snapshot（GSK），浏览器中用 2D `<canvas>`。只要这个 canvas 之前已经画过同样多的内容，记录过程就不会分配内存。Canvas 本身不响应点击：请把它包在设置了 `OnPress` 或 `OnPan` 的 `ui.View` 里，回调给出的坐标就在它的坐标系中。屏幕阅读器不会读取 Canvas：请给外层视图设置 `Label`。
+布局完成后，Canvas 会绘制一次；之后尺寸变化，或函数读取过的状态变化时，它会重新绘制，就像一个 effect。每次绘制都会记录一个显示列表（display list），只有和上一次不同时才会发送出去，再由平台回放：iOS 和 macOS 上用 Core Graphics，Android 上用 `Canvas`，Windows 上用 GDI+，Linux 上用 GTK 的 snapshot（GSK），浏览器中用 2D `<canvas>`。只要这个 canvas 之前已经画过同样多的内容，记录过程就不会分配内存。Canvas 本身不响应点击：请把它包在设置了 `on press` 或 `on pan` 的 `View` 里，回调给出的坐标就在它的坐标系中。屏幕阅读器不会读取 Canvas：请给外层视图设置 `label`。
 
 ### 图表
 
@@ -675,69 +879,116 @@ component Glow(level: float) {
 
 ## 容器
 
-`ui.View` 用来容纳其他视图。`ui.Column` 和 `ui.Row` 也是视图，分别把子视图从上到下、从起始边到结束边依次排列。`ui.SafeArea` 是一个列，会为刘海、系统栏和键盘留出内边距。它们如何确定子视图的尺寸和位置，请看[布局](layout.md)。
+`View` 用来容纳其他视图。`Column` 和 `Row` 也是视图，分别把子视图从上到下、从起始边到结束边依次排列。`SafeArea` 是一个列，会为刘海、系统栏和键盘留出内边距。它们如何确定子视图的尺寸和位置，请看[布局](layout.md)。
 
 如果一个视图没有外观、事件和无障碍相关的属性，它就不会生成自己的原生视图，子视图会直接放进最近的、确实有原生视图的那个祖先里。所以多层嵌套行和列不会带来任何开销。
 
-```go
-open := signal.New(false)
-return ui.View(ui.ViewProps{
-	OnPress:     func() { open.Set(!open.Peek()) },
-	OnLongPress: func() { ui.Haptic(ui.HapticMedium) },
-	Label:       ui.Val("Ada, 2 unread"),
-	Style:       ui.Style{Direction: ui.RowDir, Gap: 12, Padding: ui.All(16), Background: colors.SecondaryBackground, CornerRadius: 12},
-},
-	ui.Symbol(ui.IconPerson.Filled()),
-	ui.Column(ui.Style{Grow: 1, Gap: 2},
-		ui.StaticText("Ada", ui.Style{Font: fonts.Headline}),
-		ui.StaticText("2 unread", ui.Style{Color: colors.SecondaryLabel}),
-	),
-)
+```asuka
+component Person {
+  state open = false
+
+  Row {
+    gap: 12
+    padding: 16
+    background: .secondaryBackground
+    radius: 12
+    label: "Ada, 2 unread"
+    on press { open = !open }
+    on longPress { haptic(.medium) }
+    Symbol("person.fill")
+    Column {
+      grow: 1
+      gap: 2
+      Text("Ada") { font: .headline }
+      Text("2 unread") { color: .secondaryLabel }
+    }
+  }
+}
 ```
 
-`ViewProps` 包括：
+`View`、`Row`、`Column` 和 `SafeArea` 接受：
 
-- `OnPress` 和 `OnLongPress`。
-- 手势，使用平台的手势识别器：`OnPan`、`OnPinch`、`OnRotate`（各自收到一个 `ui.Gesture`）和 `OnSwipe`（收到一个 `ui.SwipeDirection`）。参见[动效](motion.md)。
-- 交互状态。视图自己的样式通过样式变体（`Style.Pressed`、`Hovered`、`Dragging`、`DragOver`）响应这些状态；其他视图则通过 `Interaction`（一个 `ui.Interaction`，用 `Style.When` 或在 `StyleFunc` 中读取）来响应。副作用写在 `OnPressedChange` 和 `OnHoverChange` 里。拖放：`Drag`（一个 `ui.DragSource`）和 `Drop`（一个 `ui.DropTarget`）。参见[动效](motion.md#按下与悬停状态)。
-- `OnLayout`：视图布局完成后，以及之后每次位置或尺寸变化时，都会以视图的 `ui.Frame` 调用它。
-- 无障碍：`Label`、`Hint`、`Role`、`Decorative`、`Actions` 和 `OnAdjust`。参见[无障碍](accessibility.md)。
+- `on press` 和 `on longPress`。
+- 手势，使用平台的手势识别器：`on pan(g)`、`on pinch(g)`、`on rotate(g)`（各自收到一个 `Gesture`）和 `on swipe(direction)`。参见[动效](motion.md)。
+- 交互状态。视图自己的样式通过样式变体（`pressed { … }`、`hovered { … }`、`dragging { … }`、`dragOver { … }`）响应这些状态；其他视图则通过它的 `Ref`（`card.hovered`、`card.pressed`）跟随。副作用放在 `on pressedChange` 和 `on hoverChange` 里。拖放：`dragItems` 和 `dropTypes`，以及 `on drop(d)`。参见[动效](motion.md#按下与悬停状态)。
+- `on layout(frame)`：视图布局完成后，以及之后每次位置或尺寸变化时，都会以视图的 `Frame` 运行它。
+- `href`：按下时前往的路由（这样它就是一个链接：再加上 `role: .link`）。参见[路由](navigation.md#路由)。
+- 无障碍：`label`、`hint`、`role`、`a11yHidden`、`actions` 和 `on adjust(by)`。参见[无障碍](accessibility.md)。
 
 ### Scroll
 
-`ui.Scroll` 沿一个方向滚动它的子视图。你需要给它一个尺寸，或者设置 `Grow`，它才有可供滚动的范围。`Style` 是滚动视图本身的框；`ContentStyle` 是子视图在其中排列的那个框。
+`Scroll` 沿一个方向滚动它的子视图。你需要给它一个尺寸，或者设置 `grow`，它才有可供滚动的范围。它的样式是滚动视图本身的框；子视图在里面按列排列（在里面放一个 `SafeArea` 或 `Column` 来设置内边距和间距）。
 
-```go
-down := signal.New(false)
-var scroll ui.Node
-scroll = ui.Scroll(ui.ScrollProps{
-	Style:    ui.Style{Grow: 1},
-	OnScroll: func(_, y float32) { down.Set(y > 300) },
-}, ui.SafeArea(ui.Style{Padding: ui.All(20), Gap: 16}, content...))
-return ui.View(ui.ViewProps{Style: ui.Style{Grow: 1}}, scroll,
-	ui.Show(down, func() ui.Node {
-		return ui.View(ui.ViewProps{Style: ui.Style{Absolute: true, Right: ui.Pt(20), Bottom: ui.Pt(20)}},
-			ui.Button(ui.ButtonProps{Icon: ui.IconUp, Label: ui.Val("Back to top"), Variant: ui.ButtonFilled,
-				OnPress: func() { ui.ScrollTo(scroll, 0, 0, true) }}))
-	}))
+```asuka
+component Page {
+  state down = false
+
+  let scroll = Ref()
+
+  View {
+    grow: 1
+    Scroll {
+      ref: scroll
+      grow: 1
+      on scroll(_, y) { down = y > 300 }
+      SafeArea {
+        padding: 20
+        gap: 16
+        for i in 0..<50 key i { Text("Line {i + 1}") }
+      }
+    }
+    if down {
+      View {
+        absolute: true
+        right: 20
+        bottom: 20
+        Button("") {
+          icon: "arrow.up"
+          label: "Back to top"
+          variant: .filled
+          on press { scroll.scrollTo(0, 0) }
+        }
+      }
+    }
+  }
+}
 ```
 
-- 滚动过程中会调用 `OnScroll`，参数是内容的偏移量（以点为单位）。
-- `ui.ScrollTo(scroll, x, y, animated)` 滚动到指定偏移（超出末尾就停在末尾）；`ui.ScrollToEnd(scroll, animated)` 滚动到底部，横向滚动视图则滚到结束边。两者同样适用于 `List`。
-- `Horizontal` 改为横向滚动：
+- 滚动过程中会运行 `on scroll(x, y)`，参数是内容的偏移量（以点为单位）。
+- `Ref` 的 `scrollTo(x, y, animated:)` 滚动到指定偏移（超出末尾就停在末尾）；`scrollToEnd(animated:)` 滚动到底部，横向滚动视图则滚到结束边。两者同样适用于 `List`。
+- `horizontal: true` 改为横向滚动：
 
-```go
-ui.Scroll(ui.ScrollProps{Horizontal: true, ContentStyle: ui.Style{Gap: 8, Padding: ui.Symmetric(0, 16)}}, kids...)
+```asuka
+component Tags(tags: [string]) {
+  Scroll {
+    horizontal: true
+    Row {
+      gap: 8
+      padding: [0, 16]
+      for t in tags key t { Text(t) }
+    }
+  }
+}
 ```
 
-**分页。** `Paging` 让滚动只停在整页的位置，适合轮播图、新手引导的各个步骤、全屏视频流等。内容的每个子视图就是一页，在滚动方向上和滚动视图一样大。`Page` 是当前显示的页：滑动停稳时会写入它，反过来写入它也会滚动到对应的页。`ui.PageControl` 用每页一个圆点表示当前位置，点击圆点也能切换页面：
+**分页。** `paging: true` 让滚动只停在整页的位置，适合轮播图、新手引导的各个步骤、全屏视频流等。每个子视图就是一页，在滚动方向上和滚动视图一样大。`bind page` 是当前显示的页：滑动停稳时会写入它，反过来写入它也会滚动到对应的页。`PageControl` 显示当前在哪一页，每页一个圆点，点击圆点也会翻到那一页：
 
-```go
-page := signal.New(0)
-return ui.Column(ui.Style{Gap: 8},
-	ui.Scroll(ui.ScrollProps{Horizontal: true, Paging: true, Page: page, Style: ui.Style{Height: ui.Pt(200)}},
-		card(1), card(2), card(3)),
-	ui.PageControl(ui.PageControlProps{Count: ui.Val(3), Page: page}))
+```asuka
+component Carousel {
+  state page = 0
+
+  Column {
+    gap: 8
+    Scroll {
+      horizontal: true
+      paging: true
+      bind page: page
+      height: 200
+      for i in 0..<3 key i { Text("Card {i + 1}") }
+    }
+    PageControl(3) { bind page: page }
+  }
+}
 ```
 
 | | iOS | Android | macOS | Windows | Linux | Web |
@@ -747,46 +998,77 @@ return ui.Column(ui.Style{Gap: 8},
 
 页码从阅读的起始方向开始计算：在从右到左的布局中，第一页在最右边。滚动视图的尺寸变化时（比如旋转屏幕），它会停留在当前页。屏幕阅读器会在圆点上读出“第 2 页，共 3 页”，并且可以调节它们。
 
-**下拉刷新。** 设置 `OnRefresh` 即可开启（`UIRefreshControl`、`SwipeRefreshLayout`）。刷新期间把 `Refreshing` 设为 true；它变回 false 时，加载指示器随之隐藏。如果没有设置 `Refreshing`，`OnRefresh` 一返回，指示器就会隐藏。在 macOS 上，用触控板或妙控鼠标滚动可以把内容拉过顶部，和 iOS 上一样。Windows 和 Linux 采用桌面端的刷新方式：按 F5（Linux 上 Ctrl+R 也可以）会刷新焦点所在的滚动视图，没有的话就刷新屏幕上最内层的那个，刷新期间在它的顶部显示加载指示器。在浏览器中，用手指下拉即可刷新。
+**下拉刷新。** 设置 `on refresh` 即可开启（`UIRefreshControl`、`SwipeRefreshLayout`）。刷新期间把 `refreshing` 设为 true；它变回 false 时，加载指示器随之隐藏。如果没有设置 `refreshing`，处理函数一返回指示器就会隐藏。在 macOS 上，用触控板或妙控鼠标滚过顶部就会拉出它，和 iOS 一样。Windows 和 Linux 按桌面的方式刷新：按 F5（Linux 上也可以按 Ctrl+R）刷新焦点所在的滚动视图，没有的话就刷新屏幕上最内层的那个，刷新期间顶部显示一个加载指示器。在浏览器里，用手指往下拉即可。
 
-```go
-refreshing := signal.New(false)
-return ui.Scroll(ui.ScrollProps{
-	Style:      ui.Style{Grow: 1},
-	Refreshing: refreshing,
-	OnRefresh: func() {
-		refreshing.Set(true)
-		go func() {
-			time.Sleep(time.Second) // 拉取数据
-			ui.Post(func() { refreshing.Set(false) })
-		}()
-	},
-}, ui.StaticText("Pull down"))
+```asuka
+component Feed {
+  state refreshing = false
+
+  Scroll {
+    grow: 1
+    refreshing: refreshing
+    on refresh {
+      refreshing = true
+      await sleep(1s) // fetch
+      refreshing = false
+    }
+    Text("Pull down")
+  }
+}
 ```
 
-**键盘上方的工具栏。** `Accessory` 是输入框获得焦点时显示在键盘上方的一条栏，可以放字数统计和“完成”按钮、格式按钮、快捷回复等（类似 SwiftUI 的键盘工具栏）。它和窗口一样宽，高度由内容决定，随输入框一起创建，也随输入框一起销毁。
+**键盘上方的工具栏。** `TextField` 的 `accessory { … }` 是输入框获得焦点时显示在键盘上方的一条栏，可以放字数统计和“完成”按钮、格式按钮、快捷回复等（类似 SwiftUI 的键盘工具栏）。它和窗口一样宽，高度由内容决定，随输入框一起创建，也随输入框一起销毁。
 
-```go
-var field ui.Node
-field = ui.TextField(ui.TextFieldProps{Value: note, Multiline: true, Accessory: func() ui.Node {
-	return ui.Row(ui.Style{Padding: ui.Symmetric(6, 16), Align: ui.AlignCenter, Material: ui.MaterialBar},
-		ui.Text(signal.Func(func() string { return fmt.Sprint(len(note.Get()), " characters") }), ui.Style{Grow: 1}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Done"), OnPress: func() { ui.Blur(field) }}))
-}})
+```asuka
+component Note {
+  state note = ""
+  state focused = false
+
+  TextField {
+    bind text: note
+    bind focused: focused
+    multiline: true
+    accessory {
+      Row {
+        padding: [6, 16]
+        align: .center
+        material: .bar
+        Text("{note.count()} characters") { grow: 1 }
+        Button("Done") { on press { focused = false } }
+      }
+    }
+  }
+}
 ```
 
 在 iOS 上，它就是输入框的 `inputAccessoryView`：跟随键盘移动，交互式收起键盘时也一样。Android 没有对应的机制：这条栏会放在输入框所在的窗口里（输入框在弹出面板里时也是如此），贴在键盘顶部，逐帧跟随键盘。macOS、Windows 和 Linux 没有屏幕键盘，因此不会显示它；浏览器只在触摸屏上显示。
 
-**富文本。** `Rich` 把输入框变成编辑带样式文本的文本区域，适合邮件正文或带格式的消息：支持粗体、斜体、下划线、删除线、等宽代码和链接（片段原有的颜色和文本样式会原样保留）。它和 `RichText` 显示的是同一种 `ui.Rich`。用户的输入和格式操作会写入它；写入它则会替换文本。`ui.ToggleFormat(field, ui.FormatBold)` 的规则是：只要选区中还有文字没有这个样式，就给整个选区加上，否则就去掉（`FormatText` 则直接指定开或关）；没有选区时，它作用于接下来输入的文字。`ui.SetLink(field, url)` 给选区加上链接（传入 "" 则移除链接；没有选区时，作用于光标所在的链接）。`OnFormats` 报告光标处的样式，或者整个选区都具有的样式，供工具栏显示当前状态。
+**富文本。** `bind rich` 把输入框变成编辑带样式文本的文本区域，适合邮件正文或带格式的消息：支持粗体、斜体、下划线、删除线、等宽代码和链接（片段原有的颜色和文本样式会原样保留）。它和 `RichText` 显示的是同一种 `[Span]`。用户的输入和格式操作会写入它；写入它则会替换文本。`Ref` 的 `toggleFormat(.bold)` 在选区不全是这种样式时为选区加上它，否则去掉（`format(.bold, on:)` 则明确设置或清除）；没有选区时，它作用于接下来输入的文字。`setLink(url)` 为选区加上链接（`""` 去掉链接；在光标处，作用于光标所在的链接）。`on formats(f)` 报告光标处的样式，或整个选区共有的样式，供工具栏显示。
 
-```go
-body := signal.NewFunc(ui.Rich{ui.Plain("Hi,\n\nThe "), ui.Strong("1.0"), ui.Plain(" build is ready.")}, nil)
-formats := signal.New(ui.TextFormats{})
-var field ui.Node
-field = ui.TextField(ui.TextFieldProps{Rich: body, Plain: true, OnFormats: formats.Set, Style: ui.Style{Grow: 1}})
-bold := ui.Button(ui.ButtonProps{Icon: "bold", Label: ui.Val("Bold"),
-	Style:   ui.StyleFunc(func() ui.Style { if formats.Get().Has(ui.FormatBold) { return ui.Style{Background: colors.SecondaryBackground} }; return ui.Style{} }),
-	OnPress: func() { ui.ToggleFormat(field, ui.FormatBold) }})
+```asuka
+component Composer {
+  state body = [Span(text: "Hi,\n\nThe "), Span(text: "1.0", font: .body.bold()), Span(text: " build is ready.")]
+  state formats = TextFormats()
+
+  let field = Ref()
+
+  Column {
+    grow: 1
+    Button("") {
+      icon: "bold"
+      label: "Bold"
+      background: if formats.bold { .secondaryBackground } else { .clear }
+      on press { field.toggleFormat(.bold) }
+    }
+    TextField {
+      ref: field
+      bind rich: body
+      plain: true
+      grow: 1
+      on formats(f) { formats = f }
+    }
+  }
+}
 ```
 
 | | iOS | Android | macOS | Windows | Linux | Web |
@@ -797,77 +1079,114 @@ bold := ui.Button(ui.ButtonProps{Icon: "bold", Label: ui.Val("Bold"),
 
 [`examples/mail`](../../examples/mail) 中有一个带工具栏的邮件编辑器。
 
-**内边距。** 文本或输入框的 `Padding`（以及 `BorderWidth`）位于它的框之内、内容的四周，和 CSS 一样：背景会铺满这部分区域，文字绘制在它的内侧，输入框的编辑区域也在它的内侧。
+**内边距。** 文本或输入框的 `padding`（以及 `border`）位于它的框之内、内容的四周，和 CSS 一样：背景会铺满这部分区域，文字绘制在它的内侧，输入框的编辑区域也在它的内侧。
 
 ## 列表
 
-`ui.List` 使用平台的可复用列表（`UICollectionView`、`RecyclerView`），为每个数据项显示一行。桌面端和 Web 没有能把任意视图作为行的列表控件，所以在那里由宿主在平台的滚动视图中自行复用行。只有屏幕上的单元格才会创建行；滚出屏幕的单元格会被复用来显示另一个数据项，并且只更新有差异的属性。[`examples/list10k`](../../examples/list10k) 有一万行。
+`List` 使用平台的可复用列表（`UICollectionView`、`RecyclerView`），为每个数据项显示一行。桌面端和 Web 没有能把任意视图作为行的列表控件，所以在那里由宿主在平台的滚动视图中自行复用行。只有屏幕上的单元格才会创建行；滚出屏幕的单元格会被复用来显示另一个数据项，并且只更新有差异的属性。[`examples/list10k`](../../examples/list10k) 有一万行。
 
-```go
-messages := signal.NewFunc(fetch(0, 30), nil)
-return ui.List(ui.ListProps{}, messages, func(m message) int { return m.ID }, row)
-```
+```asuka
+struct Message {
+  id: int
+  from: string
+  subject: string
+}
 
-```go
-func row(m signal.Accessor[message], _ signal.Accessor[int]) ui.Node {
-	return ui.Column(ui.Style{Gap: 2, Padding: ui.Symmetric(12, 20)},
-		ui.Text(signal.Func(func() string { return m.Get().From }), ui.Style{Font: fonts.Headline}),
-		ui.Text(signal.Func(func() string { return m.Get().Subject }), ui.Style{Color: colors.SecondaryLabel}),
-	)
+state messages = [Message(id: 1, from: "Ada", subject: "Lunch?"), Message(id: 2, from: "Grace", subject: "The report")]
+
+component Inbox {
+  List {
+    for m in messages key m.id {
+      Column {
+        gap: 2
+        padding: [12, 20]
+        Text(m.from) { font: .headline }
+        Text(m.subject) { color: .secondaryLabel }
+      }
+    }
+  }
 }
 ```
 
-它接受数据项、为每项生成 key 的函数，以及一个根据数据项和索引构建行的函数（数据项和索引都是访问器）。key 用来在列表前后两次变化之间认出每一项：某一项变了，就更新它的行；某一项移动了，它的行也跟着移动；平台会用动画呈现这些差异。像上面那样在 `signal.Func` 中读取数据项，被复用的行才能跟上它新绑定的数据项。
+它的 `for` 接受数据项和每项的 key，并根据数据项（以及它的索引，`for (i, m) in messages.enumerated()`）构建一行。key 用来在列表前后两次变化之间认出每一项：某一项变了，就更新它的行；某一项移动了，它的行也跟着移动；平台会用动画呈现这些差异。行的绑定读取的是它的数据项，所以被复用的行会跟随它的新数据项。
 
-列表会填满分配给它的空间：没有设置高度也没有 `Grow` 时，它会自动扩展。行与行之间会绘制平台的分隔线。
+列表会填满分配给它的空间：没有设置高度也没有 `grow` 时，它会自动扩展。行与行之间会绘制平台的分隔线。
 
-`ListProps` 包括：
+`List` 接受：
 
-- `SwipeActions`：第 `i` 行的操作，滑动该行时显示。在 iOS 上，它们是行的尾部操作，破坏性操作显示为红色，完整滑到底会执行第一个操作。在 Android 上，完整滑动会执行第一个操作，滑动时露出它的颜色和图标，就像 Material 的滑动删除。在 macOS、Windows、Linux 和 Web 上，它们会出现在行的上下文菜单中（右键点击；Linux 和 Web 上长按也可以），先列出前部操作，再列出尾部操作。请把同样的操作也设为行的无障碍 `Actions`，供屏幕阅读器使用。
-- `OnEndReached`：最后几行即将显示时调用，对于列表的同一个长度只会触发一次。在这里加载更多数据。
-- `OnRefresh` 和 `Refreshing`：下拉刷新，用法与 `Scroll` 相同（Windows 和 Linux 上按 F5）。
-- `OnScroll`：与 `Scroll` 相同。
-- `Appearance`：列表的外观。`ui.ListPlain` 的行铺满整个宽度，彼此以分隔线隔开；`ui.ListInsetGrouped` 是平台的分组列表（Linux 上是 libadwaita 的 boxed list）；`ui.ListBare` 没有分隔线，行的后面也没有任何背景，列表背后的内容会透出来，适合那些自己绘制卡片的行。bare 列表的行间距由行自己负责，而且行依然可以滑动。
+- `swipeActions`：一行的操作，滑动该行时显示：写在行的顶层视图上（`swipeActions: [...]`），或者写在列表上，作为行索引的函数。在 iOS 上，它们是行的尾部操作，破坏性操作显示为红色，完整滑到底会执行第一个操作。在 Android 上，完整滑动会执行第一个操作，滑动时露出它的颜色和图标，就像 Material 的滑动删除。在 macOS、Windows、Linux 和 Web 上，它们会出现在行的上下文菜单中（右键点击；Linux 和 Web 上长按也可以），先列出前部操作，再列出尾部操作。请
+- `on endReached`：最后几行即将显示时运行，对于列表的同一个长度只会触发一次。在这里加载更多数据。
+- `on refresh` 和 `refreshing`：下拉刷新，用法与 `Scroll` 相同（Windows 和 Linux 上按 F5）。
+- `on scroll(x, y)`：与 `Scroll` 相同。
+- `appearance`：列表的外观。`.plain` 的行铺满整个宽度，彼此以分隔线隔开；`.insetGrouped` 是平台的分组列表（Linux 上是 libadwaita 的 boxed list）；`.bare` 没有分隔线，行的后面也没有任何背景，列表背后的内容会透出来，适合那些自己绘制卡片的行。bare 列表的行间距由行自己负责，而且行依然可以滑动。
 
-```go
-messages := signal.NewFunc(fetch(0, 30), nil)
-remove := func(i int) {
-	messages.Update(func(ms []message) []message { return slices.Delete(slices.Clone(ms), i, i+1) })
+```asuka
+struct Message {
+  id: int
+  subject: string
 }
-list := ui.List(ui.ListProps{
-	SwipeActions: func(i int) []ui.Action {
-		return []ui.Action{
-			{Title: ui.Val("Delete"), Icon: ui.IconTrash, Role: ui.ActionDestructive, OnPress: func() { remove(i) }},
-			{Title: ui.Val("Archive"), Icon: "archivebox", OnPress: func() { remove(i) }},
-		}
-	},
-	OnEndReached: func() {
-		ms := messages.Peek()
-		messages.Set(append(slices.Clone(ms), fetch(len(ms), 30)...))
-	},
-}, messages, func(m message) int { return m.ID }, row)
+
+fn fetch(from: int, n: int) -> [Message] = (from..<from + n).map(i => Message(id: i, subject: "Message {i + 1}"))
+
+component Inbox {
+  state messages = fetch(0, 30)
+
+  List {
+    on endReached {
+      messages += fetch(messages.count(), 30)
+    }
+    for m in messages key m.id {
+      Row {
+        padding: [12, 20]
+        swipeActions: [
+          .button(title: "Delete", icon: "trash", role: .destructive, run: () => messages.removeWhere(x => x.id == m.id)),
+          .button(title: "Archive", icon: "archivebox", run: () => messages.removeWhere(x => x.id == m.id)),
+        ]
+        Text(m.subject)
+      }
+    }
+  }
+}
 ```
 
-`LeadingSwipeActions` 通过反方向滑动显示，也就是从行的起始边滑出（比如邮件里的“未读”和“置顶”）：第一个操作紧贴那条边，也是完整滑动时执行的那个。iOS 会给它们着色；Android 把它们显示为 Material 的填充按钮。
+`leadingSwipeActions` 通过反方向滑动显示，也就是从行的起始边滑出（比如邮件里的“未读”和“置顶”）：第一个操作紧贴那条边，也是完整滑动时执行的那个。iOS 会给它们着色；Android 把它们显示为 Material 的填充按钮。
 
-`ui.ScrollToItem(list, index, animated)` 滚动列表，让某一项显示出来；`ScrollTo` 和 `ScrollToEnd` 也同样适用。
+`Ref` 的 `scrollToItem(index, animated:)` 滚动列表，让某一项显示出来；`scrollTo` 和 `scrollToEnd` 也同样适用。
 
 ### 聊天：锚定在底部的列表
 
-`Anchor: ui.AnchorBottom` 就是聊天界面用的列表：打开时显示最后一行；行数不够填满时，行贴着底部排列；只要停在末尾，就会一直保持在末尾，无论是末尾新增了行、行高发生了变化，还是列表变矮了（键盘弹出）。用户向上滚动就会离开末尾；滚回末尾，或调用 `ui.ScrollToEnd`，又会重新粘住。`OnStartReached` 在最前面几行即将显示时调用，对每个不同的首项只触发一次：在这里加载更早的消息。
+`anchor: .bottom` 就是聊天界面用的列表：打开时显示最后一行；行数不够填满时，行贴着底部排列；只要停在末尾，就会一直保持在末尾，无论是末尾新增了行、行高发生了变化，还是列表变矮了（键盘弹出）。用户向上滚动就会离开末尾；滚回末尾，或调用 `scrollToEnd()`，又会重新粘住。`on startReached` 在最前面几行即将显示时调用，对每个不同的首项只触发一次：在这里加载更早的消息。
 
 无论锚定在哪一端，在屏幕上可见的行之上添加或删除行，都不会让这些可见的行发生位移（即 React Native 的 `maintainVisibleContentPosition`）：无论是在顶部加载了更早的消息，还是删掉了上方的某一项，用户正在看的内容都不会跳走。只有在列表锚定的那一端，新增的行才会直接显示出来：从顶部开始阅读的列表是在顶部（比如来了一封新邮件），聊天列表则是在末尾。
 
-```go
-msgs := signal.NewFunc(latest(40), nil)
-var list ui.Node
-list = ui.List(ui.ListProps{
-	Anchor:         ui.AnchorBottom,
-	OnStartReached: func() { go loadOlder() }, // 加载完成后，再通过 ui.Post 把它们插到前面
-}, msgs, func(m message) int { return m.ID }, bubble)
-send := func(text string) {
-	msgs.Set(append(slices.Clone(msgs.Peek()), message{Text: text}))
-	ui.ScrollToEnd(list, true) // 不管列表当前滚到哪里，都让自己刚发的消息显示出来
+```asuka
+struct Message {
+  id: int
+  text: string
+}
+
+component Chat {
+  state msgs: [Message] = []
+  state next = 0
+
+  let list = Ref()
+
+  fn send(text: string) {
+    next += 1
+    msgs.push(Message(id: next, text: text))
+    list.scrollToEnd() // one's own message shows, wherever the list was
+  }
+
+  Column {
+    grow: 1
+    List {
+      ref: list
+      anchor: .bottom
+      on startReached { print("load older") }
+      for m in msgs key m.id { Text(m.text) }
+    }
+    Button("Send") { on press { send("Hello") } }
+  }
 }
 ```
 
@@ -875,78 +1194,109 @@ send := func(text string) {
 
 ### 分组
 
-`Section` 把行分成若干组：相邻且 key 相同的行属于同一组，组的最上方是 `Header` 返回的视图（比如聊天里的日期、通讯录里的首字母、邮箱里的“今天”和“昨天”）。`Header` 以访问器的形式拿到 key：组头本身也是一行，进入可视区域时才创建，之后可能会被复用给另一个分组。
+`section` 把行分成若干组：它是从行索引到所在分组 key 的函数。相邻且 key 相同的行属于同一组，组的最上方是 `header` 返回的视图（比如聊天里的日期、通讯录里的首字母、邮箱里的“今天”和“昨天”）。`header` 拿到 key，并跟随它变化：组头本身也是一行，进入可视区域时才创建，之后会被复用到别的分组。
 
-```go
-ui.List(ui.ListProps{
-	Section: func(i int) string { return day(msgs.Peek()[i].At) },
-	Header: func(day signal.Accessor[string]) ui.Node {
-		return ui.Text(day, ui.Style{Font: fonts.Footnote.Weighted(fonts.Semibold), Padding: ui.Symmetric(6, 20)})
-	},
-}, msgs, key, row)
+```asuka
+struct Message {
+  id: int
+  day: string
+  text: string
+}
+
+state msgs = [Message(id: 1, day: "Yesterday", text: "Hi"), Message(id: 2, day: "Today", text: "Hello")]
+
+component Chat {
+  List {
+    section: i => msgs[i].day
+    header: day => Text(day) {
+      font: .footnote.semibold()
+      padding: [6, 20]
+    }
+    for m in msgs key m.id { Text(m.text) }
+  }
+}
 ```
 
 在 plain 或 bare 列表中，组头会停留在顶部，让本组的行从它下面滚过，直到被下一个组头推上去（即 UITableView 的 plain 样式；Android 没有这种机制，所以用的是浮在列表上方的一个单元格，绑定到当前位于顶部的分组；桌面端和 Web 上则就是组头行本身）。plain 列表的组头使用列表的背景；bare 列表的组头自己绘制背景（比如聊天中浮在消息上方的胶囊标签）。inset grouped 列表的每个分组各自成为一组，位于自己的组头之下，组头随分组一起滚动。
 
 ### 选择行
 
-`Selecting` 让列表进入选择模式（就像邮件里的“编辑”）：每一行显示平台的选择控件，点击一行会选中或取消选中它，而不再触发它的点击事件，行也不能滑动。`Selected` 指明哪些行被选中（它在一个 effect 中被跟踪，所以保存在 signal 里的选择状态一变，界面就会跟着变），`OnSelect` 接收用户的选择操作；应用没有采纳的选择会恢复原状。行在布局时会变窄，为选择控件让出空间。
+`selecting` 让列表进入选择模式（就像邮件里的“编辑”）：每一行显示平台的选择控件，点击一行会选中或取消选中它，而不再触发它的点击，行也不能滑动。行的 `selected` 表示它是否被选中（它会被跟踪，所以保存在状态里的选择会随时显示出来），`on select(on)` 接收用户的选择；应用没有采纳的选择会被恢复原样。行会因为选择控件占了位置而变窄。
 
-```go
-selecting := signal.New(false)
-chosen := signal.NewFunc(map[int]bool{}, nil) // 以消息 ID 为键
-ui.List(ui.ListProps{
-	Selecting: selecting,
-	Selected:  func(i int) bool { return chosen.Get()[msgs.Peek()[i].ID] },
-	OnSelect: func(i int, v bool) {
-		m := maps.Clone(chosen.Peek())
-		if v {
-			m[msgs.Peek()[i].ID] = true
-		} else {
-			delete(m, msgs.Peek()[i].ID)
-		}
-		chosen.Set(m)
-	},
-	OnSelectBegin: func(i int) { selecting.Set(true) },
-}, msgs, key, row)
+```asuka
+struct Message {
+  id: int
+  text: string
+}
+
+state msgs = [Message(id: 1, text: "Hi"), Message(id: 2, text: "Hello")]
+
+component Mailbox {
+  state selecting = false
+  state chosen: [int] = []
+
+  List {
+    selecting: selecting
+    for m in msgs key m.id {
+      Row {
+        padding: [12, 20]
+        selected: chosen.contains(m.id)
+        on select(on) {
+          if on { chosen.push(m.id) } else { chosen.removeWhere(id => id == m.id) }
+        }
+        on selectBegin { selecting = true }
+        Text(m.text)
+      }
+    }
+  }
+}
 ```
 
 | | iOS | Android | macOS、Windows、Linux | Web |
 |---|---|---|---|---|
 | 选择控件 | UIKit 编辑模式下的圆圈 | 行末尾的 Material 复选框 | 高亮整行（使用强调色对应的选中颜色；Windows 上是 WinUI 列表的胶囊形指示条） | 行起始边的圆圈，选中时填上对勾，整行着色 |
-| `OnSelectBegin` | 双指在行上拖动，并继续选中拖过的行 | 长按（同 Gmail） | — | — |
+| `on selectBegin` | 双指在行上拖动，并继续选中拖过的行 | 长按（同 Gmail） | — | — |
 | 屏幕阅读器 | 每一行都可选择 | 每一行是一个复选框，以行的文字作为标签 | — | 每一行标明是否选中（`aria-selected`） |
 
 ### 网格
 
-`Columns` 把列表变成网格（类似 `LazyVGrid`、`GridLayoutManager`）：数据项按指定的列数逐行排列，每项宽度相同，横向和纵向都间隔 `Gap`。每一行的高度取其中最高的那一项。网格没有分隔线，也不支持滑动操作。
+`columns` 把列表变成网格（类似 `LazyVGrid`、`GridLayoutManager`）：数据项按指定的列数逐行排列，每项宽度相同，横向和纵向都间隔 `gap`。每一行的高度取其中最高的那一项。网格没有分隔线，也不支持滑动操作。
 
-```go
-ui.List(ui.ListProps{Columns: 3, Gap: 2}, ui.Val(ids), func(id int) int { return id },
-	func(id signal.Accessor[int], _ signal.Accessor[int]) ui.Node {
-		return ui.Image(ui.ImageProps{
-			Source: signal.Func(func() string { return fmt.Sprintf("https://picsum.photos/id/%d/300/300", id.Get()) }),
-			Mode:   ui.ImageFill,
-			Style:  ui.Style{AspectRatio: 1},
-		})
-	})
+```asuka
+component Photos(ids: [int]) {
+  List {
+    columns: 3
+    gap: 2
+    for id in ids key id {
+      Image("https://picsum.photos/id/{id}/300/300") {
+        mode: .fill
+        aspectRatio: 1
+      }
+    }
+  }
+}
 ```
 
-### 在 Scroll 中用 List 还是 For
+### 在 Scroll 中用 List 还是 for
 
-`ui.For` 同样为每一项生成一行，key 的用法也一样，但它会一次性生成所有行，作为普通视图和兄弟视图并列。如果 `Scroll` 中只是页面的一小部分需要列表，比如几个标签、表单里的几行、标题下的一个小节，就用 `For`。
+`List` 之外的 `for` 同样为每一项生成一个视图，key 的用法也一样，但它会一次性生成所有行，作为普通视图和兄弟视图并列。如果 `Scroll` 中只是页面的一小部分需要列表，比如几个标签、表单里的几行、标题下的一个小节，就用 `for`。
 
-```go
-ui.Scroll(ui.ScrollProps{Style: ui.Style{Grow: 1}, ContentStyle: ui.Style{Padding: ui.All(20), Gap: 8}},
-	ui.StaticText("Tags", ui.Style{Font: fonts.Headline}),
-	ui.For(tags, func(t string) string { return t }, func(t signal.Accessor[string], _ signal.Accessor[int]) ui.Node {
-		return ui.Text(t)
-	}),
-)
+```asuka
+component Tags(tags: [string]) {
+  Scroll {
+    grow: 1
+    Column {
+      padding: 20
+      gap: 8
+      Text("Tags") { font: .headline }
+      for t in tags key t { Text(t) }
+    }
+  }
+}
 ```
 
 如果数据项很多或者数量没有上限（信息流、收件箱、搜索结果、照片），或者你需要滑动操作、分隔线、滚到末尾加载更多、网格布局，就用 `List`。`List` 自己就能滚动，不要把它放进 `Scroll`。
 
 ## 自定义视图
 
-如果某个平台有 Asuka 没有提供的控件，你可以自己实现，再用 `ui.Native` 显示出来：iOS 上用 Swift，Android 上用 Kotlin，macOS、Windows 和 Linux 上用 Go（通过 `native` 包调用 AppKit、Win32 和 GTK），Web 上用 JavaScript。参见[原生代码](native.md)。
+如果某个平台有 Asuka 没有提供的控件，你可以自己实现一个 `native component`：iOS 和 macOS 上用 Swift，Android 上用 Kotlin，Web 上用 JavaScript，Windows 和 Linux 上用 Go。参见[原生代码](native.md)。

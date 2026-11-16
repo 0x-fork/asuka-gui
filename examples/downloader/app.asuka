@@ -136,8 +136,8 @@ screen Downloader {
 /// Fetches url in a background task, its progress in the task's
 /// notification, then saves it to the gallery's videos.
 async fn download(url: string, report: fn(string)) {
-  var name = url.split("?")[0].split("/").last ?? ""
-  if name.isEmpty || name == "." { name = "video.mp4" }
+  var name = url.split("?")[0].split("/").last() ?? ""
+  if name.isEmpty() || name == "." { name = "video.mp4" }
   var paused = false
   var cancelled = false
   let actions = () => if paused {
@@ -155,7 +155,7 @@ async fn download(url: string, report: fn(string)) {
   })
   defer { task.end() }
   report("Downloading {name}")
-  let file = fs.join(fs.appDir(), "downloads", name)
+  let file = fs.join([fs.appDir(), "downloads", name])
   do {
     try await fetch(url, file, paused: () => paused, cancelled: () => cancelled, progress: (done, total) => {
       var p = -1.0
@@ -193,8 +193,9 @@ async fn download(url: string, report: fn(string)) {
   }
 }
 
-/// Downloads url to file, reporting its progress about ten times a
-/// second; paused holds it, cancelled stops it.
+/// Downloads url to file, reporting its progress; paused holds it before
+/// it's written, cancelled stops it. (asuka/http answers with the whole
+/// body: its progress is the answer's, then the file's.)
 async fn fetch(
   url: string,
   file: string,
@@ -203,37 +204,29 @@ async fn fetch(
   progress: fn(int, int),
 ) throws {
   try fs.mkdirAll(fs.dir(file))
+  progress(0, 0)
   let res = try await http.get(url)
-  if res.status != 200 { throw http.HttpError.status(res.status, res.statusText) }
-  let out = try fs.create(file)
-  defer { out.close() }
-  var done = 0
-  var last = time.now()
-  for await chunk in res.body {
-    while paused() && !cancelled() { await sleep(200ms) }
-    if cancelled() {
-      try? fs.remove(file)
-      throw DownloadError.cancelled
-    }
-    try await out.write(chunk)
-    done += chunk.count
-    if time.now() - last > 100ms {
-      last = time.now()
-      progress(done, res.contentLength)
-    }
-  }
-  progress(done, res.contentLength)
+  if !res.ok() { throw DownloadError.status(res.status) }
+  while paused() && !cancelled() { await sleep(200ms) }
+  if cancelled() { throw DownloadError.cancelled }
+  let size = res.body.count()
+  try fs.write(file, res.body)
+  progress(size, size)
 }
 
 enum DownloadError: Error {
   cancelled
+  status(int)
 
-  fn message() -> string = "cancelled"
+  fn message() -> string = match self {
+    .cancelled => "cancelled"
+    .status(s) => "the server answered {s}"
+  }
 }
 
-let linkRE = regex.Regex(r"https?://\S+")
-let quotedLinkRE = regex.Regex("\"(https?://[^\"]+)\"")
-let videoRE = regex.Regex(r"\.(m3u8|mpd|mp4|webm)(\?|$)")
+let linkRE = regex.must(r"https?://\S+")
+let quotedLinkRE = regex.must("\"(https?://[^\"]+)\"")
+let videoRE = regex.must(r"\.(m3u8|mpd|mp4|webm)(\?|$)")
 
 /// Runs before each page's own scripts: it notes the media the page
 /// fetches or plays, for take().
@@ -284,7 +277,7 @@ screen Browser {
       }
       Text(if web.loading {
         "{(web.progress * 100).fixed(0)}% · {web.url}"
-      } else if !web.title.isEmpty {
+      } else if !web.title.isEmpty() {
         web.title
       } else {
         web.url
@@ -306,7 +299,7 @@ screen Browser {
       block: ["doubleclick.net", "googlesyndication.com", "google-analytics.com"]
       grow: 1
       on state(s) { web = s }
-      on load(_) {
+      on loaded(_) {
         let found = (try? await view.eval("window.__found ? window.__found.take() : []")) ?? ""
         for m in quotedLinkRE.findAllSubmatches(found) { addMedia(m[1]) }
       }
@@ -318,18 +311,29 @@ screen Browser {
     Column {
       padding: 12
       gap: 8
-      Text("Videos found: {media.count}") { font: .headline }
+      Text("Videos found: {media.count()}") { font: .headline }
       for u in media.suffix(3) key u {
-        Button(u.split("/").last ?? u) {
+        Button(u.split("/").last() ?? u) {
           variant: .bordered
           on press {
             link = u
             let cookies = (try? await webCookies(u)) ?? ""
-            status = "Picked from the browser ({cookies.count("=")} cookies)"
+            status = "Picked from the browser ({cookies.split("=").count() - 1} cookies)"
             pop()
           }
         }
       }
     }
   }
+}
+
+test "a shared link, and the browser" {
+  expect(linkRE.find("A video https://example.com/v.mp4 to see") == "https://example.com/v.mp4")
+  expect(videoRE.matches("https://cdn.example.com/a/b.m3u8?x=1") && !videoRE.matches("https://example.com/page"))
+  let app = mount(Stack { Downloader() })
+  app.expect("Downloader", "Download", "Wi-Fi only")
+  app.tap("Browse")
+  app.expect("Videos found: 0")
+  app.back()
+  app.expect("Download")
 }

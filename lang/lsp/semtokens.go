@@ -128,6 +128,9 @@ func classify(r *ref) (int, int) {
 		if o.Kind == check.SelfVar {
 			return tokenType("parameter"), modReadonly
 		}
+		if o.Kind == check.LocalFnVar {
+			return tokenType("function"), 0
+		}
 		return tokenType("variable"), mods
 	case *check.Member:
 		switch o.Kind {

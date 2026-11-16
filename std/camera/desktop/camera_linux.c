@@ -479,7 +479,7 @@ static void photo_saved(void *p) {
 static void save_photo(void *p) {
 	photo *ph = p;
 	ph->path = camera_file(".jpg");
-	if (ph->path && G(gdk_pixbuf_new_from_data) && G(gdk_pixbuf_save)) {
+	if (ph->path && asuka_linux_load(ASUKA_LIB_PIXBUF) && G(gdk_pixbuf_new_from_data) && G(gdk_pixbuf_save)) {
 		GdkPixbuf *pb = G(gdk_pixbuf_new_from_data)(ph->rgb, 0, false, 8, ph->w, ph->h, ph->w * 3, NULL, NULL);  // GDK_COLORSPACE_RGB
 		GError *e = NULL;
 		ph->ok = pb && G(gdk_pixbuf_save)(pb, ph->path, "jpeg", &e, "quality", "90", NULL);
@@ -495,7 +495,7 @@ static void save_photo(void *p) {
 // gives it to a waiting capture.
 static void pull_frame(view *v) {
 	if (!v->sink) return;
-	gpointer sample = G(gst_app_sink_try_pull_sample)(v->sink, 0);
+	gpointer sample = G(gst_app_sink_try_pull_sample)((GstAppSink *)v->sink, 0);
 	if (!sample) return;
 	gpointer buf = G(gst_sample_get_buffer)(sample);
 	GstCaps *caps = G(gst_sample_get_caps)(sample);
@@ -510,7 +510,7 @@ static void pull_frame(view *v) {
 			GBytes *bytes = G(g_bytes_new)(info.data, stride * (size_t)h);
 			GdkTexture *t = G(gdk_memory_texture_new)(w, h, 5, bytes, stride);  // GDK_MEMORY_R8G8B8A8
 			G(g_bytes_unref)(bytes);
-			G(gtk_picture_set_paintable)(v->picture, (GdkPaintable *)t);
+			G(gtk_picture_set_paintable)((GtkPicture *)v->picture, (GdkPaintable *)t);
 			G(g_object_unref)(t);
 			if (v->capturing || v->snap) {
 				// The preview's mirrored: the photo isn't.
@@ -561,7 +561,7 @@ static const char *zbar_kind(const char *t) {
 // on_element reports a code zbar read, newly in view.
 static void on_element(GstBus *bus, GstMessage *msg, gpointer p) {
 	view *v = p;
-	gpointer st = G(gst_message_get_structure)(msg);
+	const GstStructure *st = G(gst_message_get_structure)(msg);
 	const char *name = st ? G(gst_structure_get_name)(st) : NULL;
 	if (!name || strcmp(name, "barcode")) return;
 	const char *kind = zbar_kind(G(gst_structure_get_string)(st, "type"));
@@ -651,7 +651,7 @@ static void start(view *v) {
 		fail_all(v, "no camera");
 		return;
 	}
-	if (!v->tick) v->tick = G(gtk_widget_add_tick_callback)(v->picture, ticked, v, NULL);
+	if (!v->tick) v->tick = G(gtk_widget_add_tick_callback)(v->picture, (GtkTickCallback)ticked, v, NULL);
 }
 
 // stop_pipe stops and lets go of the pipeline.
@@ -774,8 +774,8 @@ static view *new_view(camera_View_events events, sheet *s) {
 	v->front = s != NULL;
 	v->picture = G(gtk_picture_new)();
 	G(g_object_ref_sink)(v->picture);
-	G(gtk_picture_set_content_fit)(v->picture, 2);  // GTK_CONTENT_FIT_COVER
-	G(gtk_picture_set_can_shrink)(v->picture, true);
+	G(gtk_picture_set_content_fit)((GtkPicture *)v->picture, 2);  // GTK_CONTENT_FIT_COVER
+	G(gtk_picture_set_can_shrink)((GtkPicture *)v->picture, true);
 	G(gtk_widget_add_css_class)(v->picture, "asuka-camera");
 	v->map_handlers[0] = g_signal_connect(v->picture, "map", on_map, v);
 	v->map_handlers[1] = g_signal_connect(v->picture, "unmap", on_unmap, v);
@@ -808,7 +808,7 @@ static void sheet_finish(sheet *s, const char *path, const char *err) {
 	taking = NULL;
 	G(g_signal_handler_disconnect)(s->dialog, s->closed);
 	destroy(&s->view->base);
-	G(adw_dialog_force_close)(s->dialog);
+	G(adw_dialog_force_close)((AdwDialog *)s->dialog);
 	G(g_object_unref)(s->dialog);
 	if (err) camera_fail(&s->reply, err);
 	else camera_answer(&s->reply, path ? path : "");
@@ -864,33 +864,33 @@ static void show_sheet(const char *src) {
 	s->serial = ++serials;
 	camera_move(&take_wait, &s->reply);
 	const camera_word *words_ = words();
-	s->dialog = G(adw_dialog_new)();
+	s->dialog = (GtkWidget *)G(adw_dialog_new)();
 	G(g_object_ref_sink)(s->dialog);
-	G(adw_dialog_set_title)(s->dialog, words_->take);
-	G(adw_dialog_set_content_width)(s->dialog, 640);
-	G(adw_dialog_set_content_height)(s->dialog, 532);
+	G(adw_dialog_set_title)((AdwDialog *)s->dialog, words_->take);
+	G(adw_dialog_set_content_width)((AdwDialog *)s->dialog, 640);
+	G(adw_dialog_set_content_height)((AdwDialog *)s->dialog, 532);
 	GtkWidget *tv = G(adw_toolbar_view_new)();
 	GtkWidget *bar = G(adw_header_bar_new)();
-	G(adw_header_bar_set_show_start_title_buttons)(bar, false);
-	G(adw_header_bar_set_show_end_title_buttons)(bar, false);
+	G(adw_header_bar_set_show_start_title_buttons)((AdwHeaderBar *)bar, false);
+	G(adw_header_bar_set_show_end_title_buttons)((AdwHeaderBar *)bar, false);
 	s->cancel = G(gtk_button_new)();
-	G(gtk_button_set_label)(s->cancel, words_->cancel);
-	G(adw_header_bar_pack_start)(bar, s->cancel);
+	G(gtk_button_set_label)((GtkButton *)s->cancel, words_->cancel);
+	G(adw_header_bar_pack_start)((AdwHeaderBar *)bar, s->cancel);
 	s->button = G(gtk_button_new)();
-	G(gtk_button_set_label)(s->button, words_->take);
+	G(gtk_button_set_label)((GtkButton *)s->button, words_->take);
 	G(gtk_widget_add_css_class)(s->button, "suggested-action");
-	G(adw_header_bar_pack_end)(bar, s->button);
-	G(adw_toolbar_view_add_top_bar)(tv, bar);
+	G(adw_header_bar_pack_end)((AdwHeaderBar *)bar, s->button);
+	G(adw_toolbar_view_add_top_bar)((AdwToolbarView *)tv, bar);
 	s->view = new_view((camera_View_events){0}, s);
 	s->view->src = asuka_strdup(src);
-	G(adw_toolbar_view_set_content)(tv, s->view->picture);
-	G(adw_dialog_set_child)(s->dialog, tv);
-	if (G(adw_dialog_set_default_widget)) G(adw_dialog_set_default_widget)(s->dialog, s->button);  // Return
+	G(adw_toolbar_view_set_content)((AdwToolbarView *)tv, s->view->picture);
+	G(adw_dialog_set_child)((AdwDialog *)s->dialog, tv);
+	if (G(adw_dialog_set_default_widget)) G(adw_dialog_set_default_widget)((AdwDialog *)s->dialog, s->button);  // Return
 	g_signal_connect(s->button, "clicked", sheet_take, s);
 	g_signal_connect(s->cancel, "clicked", sheet_cancel, s);
 	s->closed = g_signal_connect(s->dialog, "closed", sheet_closed, s);  // Escape, too
 	taking = s;
-	G(adw_dialog_present)(s->dialog, asuka_desktop_window(0));
+	G(adw_dialog_present)((AdwDialog *)s->dialog, asuka_desktop_window(0));
 }
 
 static void take_opened(void *ctx, const char *src, int code, const char *msg) {

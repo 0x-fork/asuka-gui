@@ -36,8 +36,8 @@ component Player {
   let track = tracks[index]
   let progress = if status.duration <= 0 { 0.0 } else { status.position / status.duration }
 
-  fn next() { index = (index + 1) % tracks.count }
-  fn previous() { index = (index + tracks.count - 1) % tracks.count }
+  fn next() { index = (index + 1) % tracks.count() }
+  fn previous() { index = (index + tracks.count() - 1) % tracks.count() }
 
   fn toggle() {
     if status.playing { music?.pause() } else { music?.play() }

@@ -43,7 +43,7 @@ async fn write<A>(query: string, args: A) {
 }
 
 async fn addNote(text: string) {
-  if !text.isEmpty { await write("insert into notes (text) values (?)", [text]) }
+  if !text.isEmpty() { await write("insert into notes (text) values (?)", [text]) }
 }
 
 /// Asks where to save the notes as a Markdown checklist, writes them
@@ -53,7 +53,7 @@ async fn export(notes: [Note]) {
   // optional the dialog returns)
   let filters = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
   if let path = try? await dialog.save(name: "Notes.md", button: "Export", filters: filters) {
-    let text = notes.map(n => "- [{if n.done { "x" } else { " " }}] {n.text}\n").join("")
+    let text = notes.map(n => "- [{if n.done { "x" } else { " " }}] {n.text}\n").joined("")
     do {
       try await spawn { try fs.write(path, text.bytes()) }
       try? await shell.reveal(path)
@@ -85,6 +85,15 @@ screen NotesScreen {
   state draft = ""
   state stats = false
   state clipError = ""
+  state deleting: int? = none
+
+  // A swipe's Delete.
+  task(deleting) {
+    if let id = deleting {
+      await write("delete from notes where id = ?", [id])
+      deleting = none
+    }
+  }
 
   // The search is the query's: SQLite filters, and the rows follow
   // what's typed (the live query runs again as its arguments change, and
@@ -105,18 +114,18 @@ screen NotesScreen {
   // On a desktop, closing the window with a note typed but not added asks
   // first (a phone has no window to close).
   WindowCloseGuard {
-    when: !draft.isEmpty
+    when: !draft.isEmpty()
     on closeRequest {
-      alert("Discard the new note?", message: "It hasn't been added.", buttons: [
-        AlertButton(title: "Cancel", role: .cancel),
-        AlertButton(title: "Discard", role: .destructive, run: () => closeWindow()),
+      alert("Discard the new note?", message: "It hasn't been added.", actions: [
+        .button(title: "Cancel", role: .cancel),
+        .button(title: "Discard", role: .destructive, run: () => closeWindow()),
       ])
     }
   }
 
   // A global shortcut: the clipboard's text as a note, whichever app has
   // the keyboard. Phones and the web have none (.notAvailable).
-  hotkey.Hotkey(Shortcut.cmd("n", mods: .alt)) {
+  hotkey.Hotkey(Shortcut(key: "n", primary: true, mods: [.alt])) {
     description: "Add the clipboard as a note"
     on press {
       if let t = try? await device.clipboardText() { await addNote(t) }
@@ -139,13 +148,13 @@ screen NotesScreen {
         on press { await add() }
       }
       MenuItem("Export…") {
-        shortcut: Shortcut.cmd("e", mods: .shift)
+        shortcut: Shortcut(key: "e", primary: true, mods: [.shift])
         on press { await export(notes.rows) }
       }
     }
     Menu("Edit") {
       MenuItem("Clear Completed") {
-        shortcut: Shortcut.cmd("k", mods: .shift)
+        shortcut: Shortcut(key: "k", primary: true, mods: [.shift])
         role: .destructive
         on press { await write("delete from notes where done", []) }
       }
@@ -169,14 +178,14 @@ screen NotesScreen {
     Column {
       padding: 20
       gap: 6
-      Text("{notes.rows.count} notes") { font: .title2 }
+      Text("{notes.rows.count()} notes") { font: .title2 }
       Text("{done} done") { color: .secondaryLabel }
     }
   }
 
   SafeArea {
     grow: 1
-    if !clipError.isEmpty {
+    if !clipError.isEmpty() {
       Text("The shortcut to add the clipboard: {clipError}") {
         padding: [4, 16]
         font: .footnote
@@ -198,11 +207,11 @@ screen NotesScreen {
         icon: "plus"
         label: "Add"
         variant: .filled
-        disabled: draft.isEmpty
+        disabled: draft.isEmpty()
         on press { await add() }
       }
     }
-    if !notes.loading && notes.rows.isEmpty {
+    if !notes.loading && notes.rows.isEmpty() {
       Column {
         grow: 1
         justify: .center
@@ -212,7 +221,7 @@ screen NotesScreen {
           font: .largeTitle
           color: .tertiaryLabel
         }
-        Text(if query.isEmpty { "No notes yet" } else { "No notes match" }) { color: .secondaryLabel }
+        Text(if query.isEmpty() { "No notes yet" } else { "No notes match" }) { color: .secondaryLabel }
       }
     }
     List {
@@ -221,9 +230,7 @@ screen NotesScreen {
           gap: 12
           padding: [14, 20]
           align: .center
-          swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => {
-            await write("delete from notes where id = ?", [n.id])
-          })]
+          swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => { deleting = n.id })]
           on press { await write("update notes set done = ?1 where id = ?2", (!n.done, n.id)) }
           if n.done {
             Symbol("checkmark.circle.fill") { color: .accent }
@@ -247,6 +254,6 @@ test "the search matches anywhere, any case; % and _ are text" {
   }
   for (q, want) in ["": 4, "MILK": 1, "a": 2, "%": 1, "_": 1, "zzz": 0] {
     let rows: [Note] = try await db.query(search, [q])
-    expect(rows.count == want, "{q}: {rows.count} rows, want {want}")
+    expect(rows.count() == want, "{q}: {rows.count()} rows, want {want}")
   }
 }

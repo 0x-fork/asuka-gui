@@ -438,7 +438,7 @@ location = false
 
 | Key | Type | Default | What it is |
 |---|---|---|---|
-| `background` | strings | none | The roles the app keeps in the background. `"central"`: iOS's `bluetooth-central` mode, and the receiver of Android's background scan; `asuka/bluetooth` has no state restoration nor a scan of its own out of sight yet. `"peripheral"`: iOS's `bluetooth-peripheral` mode. |
+| `background` | strings | none | The roles the app keeps in the background, with iOS's state restoration (`bluetooth.restored()`). `"central"`: iOS's `bluetooth-central` mode (an app that calls `backgroundScan` has it anyway). `"peripheral"`: iOS's `bluetooth-peripheral` mode. Android needs nothing for either: `backgroundScan` gives an app its scan's receiver. |
 | `location` | boolean | `false` | The app finds where the user is from its scans (beacons): Android's `BLUETOOTH_SCAN` without `neverForLocation`, and the location permission `bluetooth.request()` then asks for too (iOS: `NSLocationWhenInUseUsageDescription`). |
 
 See [Bluetooth](bluetooth.md#what-the-build-adds).

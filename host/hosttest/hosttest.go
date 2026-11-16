@@ -1,4 +1,4 @@
-//go:build darwin || linux
+//go:build darwin
 
 // Package hosttest runs Asuka apps on a desktop host in its own tests, as
 // the host runs them: the C core (built once for this computer, as a

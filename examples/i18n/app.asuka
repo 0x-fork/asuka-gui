@@ -81,7 +81,7 @@ screen Inbox {
               background: .secondaryBackground
               radius: 12
               padding: [6, 12]
-              Text(i18n.formatNumber(n))
+              Text(i18n.formatNumber(n.float()))
             }
           }
         }
@@ -129,7 +129,7 @@ screen Settings {
         justify: .spaceBetween
         padding: [12, 16]
         on press { i18n.setLocale(tag) }
-        Text(if tag.isEmpty { tr.systemLanguage() } else { i18n.autonym(tag) })
+        Text(if tag.isEmpty() { tr.systemLanguage() } else { i18n.autonym(tag) })
         if tag == i18n.locale() {
           Symbol("checkmark") { color: .accent }
         }

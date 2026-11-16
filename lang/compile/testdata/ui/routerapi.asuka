@@ -1,0 +1,75 @@
+// router: the router around the code, its address followed (router.href()),
+// its history (canGoBack, back) and the shown screen's query (setQuery).
+
+component Mail {
+  Router(initial: "/a") {
+    Route("/a", layout: .stack) {
+      Route("") { _ => A() }
+      Route("b") { _ => B() }
+    }
+  }
+}
+screen A {
+  title: "A"
+  Column {
+    Text("at {router.href()}")
+    Button("B") { href: "/a/b?x=1" }
+  }
+}
+screen B {
+  title: "B"
+  Column {
+    Text("b at {router.href()}")
+    Button("Query") { on press { router.setQuery("x=2") } }
+    Button("Back") { on press { let _ = router.back() } }
+    Text(if router.canGoBack() { "can" } else { "can't" })
+  }
+}
+test "router" {
+  let app = mount(Mail())
+  app.expect("at /a")
+  app.tap("B")
+  app.expect("b at /a/b?x=1", "can")
+  app.tap("Query")
+  app.expect("b at /a/b?x=2")
+  app.tap("Back")
+  app.expect("at /a")
+}
+
+app { Mail() }
+
+test "a route's parameters as numbers; not in asuka dev" {
+  let p = Params(path: ["id": "7"], query: ["n": "x"])
+  expect(p.int("id") == 7 && p.int("n") == none && p.int("z") == none)
+  expect(!devPlayer())
+}
+
+component Links {
+  Router(initial: "/a") {
+    Route("/a", layout: .stack) {
+      Route("") { _ => First() }
+      Route("b") { _ => Second() }
+    }
+  }
+}
+
+screen First {
+  title: "First"
+  Row {
+    href: "/a/b"
+    role: .link
+    Text("To the second")
+  }
+}
+
+screen Second {
+  title: "Second"
+  Text("the second")
+}
+
+test "a view with an href is a link" {
+  let app = mount(Links())
+  app.tap("To the second")
+  app.expect("the second")
+  expect(app.href == "/a/b")
+}

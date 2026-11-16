@@ -20,23 +20,23 @@ pub store Draft {
   pub async fn fromShare(items: [SharedItem]) {
     for it in items {
       match it.kind {
-        .link if link.isEmpty => link = it.text
+        .link if link.isEmpty() => link = it.text
         .text => {
           if let u = linkRE.find(it.text) {
-            if link.isEmpty {
+            if link.isEmpty() {
               link = u
               let t = it.text.replace(u, "", count: 1).trim()
-              if !t.isEmpty && title.isEmpty { title = t }
+              if !t.isEmpty() && title.isEmpty() { title = t }
             }
-          } else if title.isEmpty {
+          } else if title.isEmpty() {
             title = it.text
           }
         }
-        .image if cover.isEmpty => {
+        .image if cover.isEmpty() => {
           let path = it.path
           if let p = try? await spawn { try keepFile(path) } {
             cover = p
-            if title.isEmpty { title = it.name }
+            if title.isEmpty() { title = it.name }
           }
         }
         _ => {}
@@ -48,13 +48,13 @@ pub store Draft {
   /// description and image, as they come.
   pub async fn fetch() {
     let l = link
-    if l.isEmpty || l == fetched || !l.hasPrefix("http") { return }
+    if l.isEmpty() || l == fetched || !l.hasPrefix("http") { return }
     fetched = l
     if let p = try? await fetchPage(l) {
       if link != l { return }
-      if title.isEmpty || title == l { title = p.title }
-      if description.isEmpty { description = p.description }
-      if cover.isEmpty { cover = p.image }
+      if title.isEmpty() || title == l { title = p.title }
+      if description.isEmpty() { description = p.description }
+      if cover.isEmpty() { cover = p.image }
     }
   }
 
@@ -64,7 +64,7 @@ pub store Draft {
     let t = title.trim()
     try await db.exec(
       "insert into bookmarks (url, title, description, note, cover, collection, tags, created) values (?, ?, ?, ?, ?, ?, ?, ?)",
-      (link.trim(), if t.isEmpty { host(link) } else { t }, description.trim(), note.trim(), cover, collection, tags.join(","), time.now().unix()),
+      (link.trim(), if t.isEmpty() { host(link) } else { t }, description.trim(), note.trim(), cover, collection, tags.joined(","), time.now().unix()),
     )
   }
 }
@@ -80,7 +80,7 @@ pub component Editor(draft: Draft, heading: string) {
   state pickingTags = false
 
   let collections: sqlite.Live<Collection> = db.watch("select * from collections order by name", [])
-  let collectionName = collections.rows.first(c => c.id == draft.collection)?.name ?? "Unsorted"
+  let collectionName = collections.rows.find(c => c.id == draft.collection)?.name ?? "Unsorted"
 
   task { await draft.fetch() }
 
@@ -105,7 +105,7 @@ pub component Editor(draft: Draft, heading: string) {
       }
       Button("Save") {
         variant: .glassProminent
-        disabled: saving || draft.link.isEmpty && draft.cover.isEmpty
+        disabled: saving || draft.link.isEmpty() && draft.cover.isEmpty()
         on press {
           saving = true
           do {
@@ -178,8 +178,8 @@ pub component Editor(draft: Draft, heading: string) {
       }
       // The tags.
       Card {
-        PickerRow("tag", if draft.tags.isEmpty { "Tags" } else { "#{draft.tags.join("  #")}" }) {
-          placeholder: draft.tags.isEmpty
+        PickerRow("tag", if draft.tags.isEmpty() { "Tags" } else { "#{draft.tags.joined("  #")}" }) {
+          placeholder: draft.tags.isEmpty()
           on press { pickingTags = true }
         }
       }
@@ -276,7 +276,7 @@ component PickerRow(icon: string, text: string) {
 /// Picks the bookmark's collection, or makes one.
 component CollectionPicker(collections: [Collection]) {
   prop chosen = 0
-  event change(chosen: int)
+  event chosenChange(chosen: int)
   event done
   state name = ""
 
@@ -284,14 +284,14 @@ component CollectionPicker(collections: [Collection]) {
 
   async fn add() {
     let n = name.trim()
-    if n.isEmpty { return }
+    if n.isEmpty() { return }
     name = ""
     // Written, then read back for its id.
     do {
       try await db.exec("insert or ignore into collections (name) values (?)", [n])
       let found: [Collection] = try await db.query("select * from collections where name = ?", [n])
-      if let c = found.first {
-        emit change(c.id)
+      if let c = found.first() {
+        emit chosenChange(c.id)
         emit done
       }
     } catch {}
@@ -313,7 +313,7 @@ component CollectionPicker(collections: [Collection]) {
             align: .center
             role: .button
             on press {
-              emit change(c.id)
+              emit chosenChange(c.id)
               emit done
             }
             Symbol(if c.id == 0 { "tray" } else { "folder" }) {
@@ -354,14 +354,14 @@ component CollectionPicker(collections: [Collection]) {
 /// pick from, and new ones.
 component TagPicker {
   prop tags: [string] = []
-  event change(tags: [string])
+  event tagsChange(tags: [string])
   state typed = ""
 
   let used: sqlite.Live<TagsRow> = db.watch("select tags from bookmarks where tags != ''", [])
-  let known = splitTags((used.rows.map(r => r.tags) + tags).join(","))
+  let known = splitTags((used.rows.map(r => r.tags) + tags).joined(","))
 
   fn toggle(t: string) {
-    emit change(if tags.contains(t) { tags.filter(x => x != t) } else { tags + [t] })
+    emit tagsChange(if tags.contains(t) { tags.filter(x => x != t) } else { tags + [t] })
   }
 
   fn add() {
@@ -369,7 +369,7 @@ component TagPicker {
     for t in splitTags(typed.replace("#", "")) {
       if !next.contains(t) { next.push(t) }
     }
-    emit change(next)
+    emit tagsChange(next)
     typed = ""
   }
 

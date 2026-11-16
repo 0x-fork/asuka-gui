@@ -1,3 +1,4 @@
+import asuka/math
 import asuka/svg
 import asuka/time
 
@@ -49,11 +50,11 @@ fn cookie(w: float, h: float) -> Path {
   var p = Path()
   let r = min(w, h) / 2
   for i in 0..180 {
-    let a = 2 * pi * i.float() / 180
-    let d = r * (0.93 + 0.07 * cos(9 * a))
-    let x = r + d * cos(a)
-    let y = r + d * sin(a)
-    p = if i == 0 { p.moveTo(x, y) } else { p.lineTo(x, y) }
+    let a = 2 * math.pi * i.float() / 180
+    let d = r * (0.93 + 0.07 * math.cos(9 * a))
+    let x = r + d * math.cos(a)
+    let y = r + d * math.sin(a)
+    p = if i == 0 { p.move(x, y) } else { p.line(x, y) }
   }
   return p.close()
 }
@@ -151,7 +152,7 @@ let pad = 8.0
 /// Where a time and a percent used are drawn on a window's chart.
 fn at(w: Window, t: time.Time, used: float, width: float, height: float) -> (float, float) {
   let start = (w.resets ?? t) - w.period()
-  let x = (t - start).seconds / w.period().seconds
+  let x = (t - start).seconds() / w.period().seconds()
   return (pad + min(max(x, 0), 1) * (width - 2 * pad), height - pad - min(used, 100) / 100 * (height - 2 * pad))
 }
 
@@ -174,7 +175,7 @@ fn forecastEnd(w: Window, now: time.Time, width: float, height: float) -> (float
 fn polyline(pts: [(float, float)]) -> Path {
   var p = Path()
   for (i, (x, y)) in pts.enumerated() {
-    p = if i == 0 { p.moveTo(x, y) } else { p.lineTo(x, y) }
+    p = if i == 0 { p.move(x, y) } else { p.line(x, y) }
   }
   return p
 }
@@ -192,7 +193,7 @@ component UsageChart(w: Window) {
   let pace = w.forecast(clock).pace
   let label = (t: time.Time) => if w.period() < 24h { t.format("HH:mm") } else { t.format("MMM d") }
   let start = (w.resets ?? clock) - w.period()
-  let (nowX, nowY) = points(w, clock, max(size.width, 1), max(size.height, 1)).last!
+  let now = points(w, clock, max(size.width, 1), max(size.height, 1)).last()!
 
   Column {
     gap: 8
@@ -201,20 +202,20 @@ component UsageChart(w: Window) {
       height: 150
       on layout(f) { size = f }
       // The limit, and nothing used.
-      Shape((width, _) => Path().moveTo(pad, pad).lineTo(width - pad, pad)) {
+      Shape((width, _) => Path().move(pad, pad).line(width - pad, pad)) {
         style fill
         stroke: Color.secondaryLabel.opacity(0.5)
         dash: [2, 4]
       }
-      Shape((width, height) => Path().moveTo(pad, height - pad).lineTo(width - pad, height - pad)) {
+      Shape((width, height) => Path().move(pad, height - pad).line(width - pad, height - pad)) {
         style fill
         stroke: .separator
       }
       Shape((width, height) => {
         let pts = points(w, clock, width, height)
-        let (lastX, _) = pts.last!
+        let (lastX, _) = pts.last()!
         let (firstX, _) = pts[0]
-        return polyline(pts).lineTo(lastX, height - pad).lineTo(firstX, height - pad).close()
+        return polyline(pts).line(lastX, height - pad).line(firstX, height - pad).close()
       }) {
         style fill
         fill: Color.accent.opacity(0.15)
@@ -229,9 +230,9 @@ component UsageChart(w: Window) {
       // The forecast, in its pace's color.
       if pace != .unknown {
         Shape((width, height) => {
-          let (x0, y0) = points(w, clock, width, height).last!
+          let (x0, y0) = points(w, clock, width, height).last()!
           let (x1, y1) = forecastEnd(w, clock, width, height)
-          return Path().moveTo(x0, y0).lineTo(x1, y1)
+          return Path().move(x0, y0).line(x1, y1)
         }) {
           style fill
           stroke: paceColor(pace)
@@ -244,7 +245,7 @@ component UsageChart(w: Window) {
           fill: paceColor(pace)
         }
       }
-      Shape((width, height) => dot(points(w, clock, width, height).last!, 8)) {
+      Shape((width, height) => dot(points(w, clock, width, height).last()!, 8)) {
         style fill
         fill: .accent
         stroke: .secondaryGroupedBackground
@@ -253,8 +254,8 @@ component UsageChart(w: Window) {
       // Centered over the dot, inside the chart.
       Text("Now") {
         absolute: true
-        left: min(max(nowX - 30, 0), size.width - 60)
-        top: max(nowY - 36, 0)
+        left: min(max(xOf(now) - 30, 0), size.width - 60)
+        top: max(yOf(now) - 36, 0)
         width: 60
         textAlign: .center
         font: .footnote
@@ -303,3 +304,13 @@ fn ago(t: time.Time, now: time.Time) -> string {
 }
 
 fn plural(n: int, unit: string) -> string = if n == 1 { "1 {unit} ago" } else { "{n} {unit}s ago" }
+
+fn xOf(p: (float, float)) -> float {
+  let (x, _) = p
+  return x
+}
+
+fn yOf(p: (float, float)) -> float {
+  let (_, y) = p
+  return y
+}

@@ -20,31 +20,32 @@ app can offer it only where it works.
 
 ## How a desktop app is made
 
-On Windows an app is one executable: Asuka's Windows host (C, on Win32
-and its common controls), the core (`core/include/asuka.h`'s C) and the
-app compiled to C, linked together, with the app's icon, manifest and
-version built in. On the Mac and Linux the executable is Asuka's
-desktop host (`cmd/asuka-host`), the same for every app: AppKit on the
-Mac, GTK 4 and libadwaita on Linux, in Go, calling the platform without
-cgo; beside it is the core with the app compiled into it, which the
-host loads and drives through its C ABI. Every desktop app carries its
-settings from `asuka.toml` (`asuka-app.json`: its name, ID, version,
-accent, URL scheme, file types, updates):
+On Windows and Linux an app is one executable: Asuka's C host (on Win32
+and its common controls; on GTK 4 and libadwaita, which it opens as it
+starts), the core (`core/include/asuka.h`'s C) and the app compiled to
+C, linked together; on Windows with the app's icon, manifest and version
+built in. On the Mac the executable is Asuka's desktop host
+(`cmd/asuka-host`), the same for every app: AppKit, in Go, calling the
+platform without cgo; beside it is the core with the app compiled into
+it, which the host loads and drives through its C ABI. Every desktop app
+carries its settings from `asuka.toml` (`asuka-app.json`: its name, ID,
+version, accent, URL scheme, file types, updates):
 
 | | the core | the settings |
 |---|---|---|
 | macOS (`Name.app`) | `Contents/Frameworks/libasuka.dylib` | `Contents/Resources/asuka-app.json` |
 | Windows (a folder) | in `Name.exe` | `asuka-app.json`, beside it |
-| Linux (a prefix) | `lib/<exe>/libasuka.so` | `share/<exe>/asuka-app.json` |
+| Linux (a prefix) | in `bin/<exe>` | `share/<exe>/asuka-app.json` |
 
-`asuka build` compiles the core, and on Windows the host and the app,
-with the target's C compiler (Zig's to cross-compile: a Windows build
-comes from any system). On the Mac and Linux it takes the host from the
-CLI's release (fetched once, checked by its hash) or, run from a
-checkout of Asuka, builds it with `go build`. `asuka dev` runs the same
-host with a core that has no app in it (on Windows, one console
-program), which loads the app's bytecode from `asuka dev` and each
-save's after it (see [Development](development.md#on-the-desktop)).
+`asuka build` compiles the core, and on Windows and Linux the host and
+the app, with the target's C compiler (Zig's to cross-compile: a Windows
+or Linux build comes from any system, with no GTK installed to build
+against). On the Mac it takes the host from the CLI's release (fetched
+once, checked by its hash) or, run from a checkout of Asuka, builds it
+with `go build`. `asuka dev` runs the same host with a core that has no
+app in it (on Windows and Linux, one program), which loads the app's
+bytecode from `asuka dev` and each save's after it (see
+[Development](development.md#on-the-desktop)).
 
 ## Tray icons and the Dock menu
 
@@ -74,6 +75,12 @@ component Focus {
   }
   Timer()
 }
+
+fn start() {}
+
+component Timer {
+  Text("25:00")
+}
 ```
 
 Its id names it among the app's icons (a Mac brings it back where the
@@ -101,6 +108,8 @@ Mac's menu bar extras and of Windows' notification area do, or from a
 rectangle of a window. It's a `Window` with a `flyout`:
 
 ```asuka
+import asuka/tray
+
 component Power {
   state open = false
   tray.Tray("power") {
@@ -116,6 +125,10 @@ component Power {
     maxHeight: 480
     Panel()
   }
+}
+
+component Panel {
+  Text("Charging")
 }
 ```
 
@@ -182,35 +195,46 @@ its tray icon's menu, the Dock's Quit.
 
 ## Global shortcuts
 
-`hotkey.Register` registers keys that reach the app while another app
-is in front, for as long as the component that registers them lives:
+`hotkey.Hotkey` registers keys that reach the app while another app
+is in front, for as long as it's shown (it shows nothing itself):
 
-```go
-k := hotkey.Register(hotkey.Props{
-	Shortcut:    ui.Val(ui.Cmd("space").With(ui.Alt)),
-	Description: ui.Val("Show the launcher"),
-	OnPress:     func() { ui.MainWindow().Focus() },
-})
+```asuka
+import asuka/hotkey
+
+component Launcher {
+  state problem = ""
+
+  Column {
+    hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
+      description: "Show the launcher"
+      on press { mainWindow().focus() }
+      on error(e) { problem = e.message }
+    }
+    if !problem.isEmpty() { Text(problem) }
+  }
+}
 ```
 
-`OnPress` runs on the main thread at each press, and the shortcut
-follows its accessor (keys the user picks in settings). `k.Status()`
-and `k.Err()` say whether it's active, pending, or why it failed:
-`ErrTaken` (another app has the keys), `ErrNotAllowed` (the user
-declined, or the desktop doesn't know the app), `ErrNotAvailable`,
-`ErrKey`.
+`on press` runs on the main thread at each press, and the shortcut
+follows its binding (keys the user picks in settings): it's registered
+again as it changes. `on error(e)` says why it failed: `.taken`
+(another app has the keys), `.notAllowed` (the user declined, or the
+desktop doesn't know the app), `.notAvailable`, `.noKey`.
+`mainWindow()` is the main window's handle, wherever it's called from:
+`focus()` brings it to the front, `show()`, `hide()` and the rest act
+on it.
 
 - **macOS**: Carbon's hot keys, with no Accessibility permission. The
   system's own shortcuts count as taken. A press doesn't bring the app
-  forward: `Focus` a window to.
+  forward: `focus()` a window to.
 - **Windows**: `RegisterHotKey`; the press lets the app take the
   foreground.
 - **Linux**: under X11 the app grabs the keys itself. Under Wayland the
   desktop binds them through the GlobalShortcuts portal (GNOME 48, KDE
   Plasma 6): it may ask the user to confirm or pick other keys, and it
-  needs the app installed with its desktop entry. A window `OnPress`
+  needs the app installed with its desktop entry. A window `on press`
   shows takes the focus with the press's activation token.
-- Phones and the web have none (`ErrNotAvailable`).
+- Phones and the web have none (`.notAvailable`).
 
 ## Panels and launchers
 
@@ -243,11 +267,15 @@ app {
 }
 
 component Launcher {
-  hotkey.Hotkey(hotkey.Shortcut(key: "space", alt: true)) {
+  hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
     description: "Show the launcher"
     on press { shown = !shown }
   }
   Search()
+}
+
+component Search {
+  TextField { placeholder: "Search" }
 }
 ```
 
@@ -281,24 +309,43 @@ icons, and Enter opens the first.
 
 `asuka/apps` lists the apps installed, as a launcher searches them:
 
-```go
-apps.List(func(list []apps.App, err error) { installed.Set(list) })
-results := apps.Search(installed.Get(), query.Get())
-apps.Icon(results[0], 32, func(path string, err error) { icon.Set(path) }) // a PNG for ui.Image
-apps.Open(results[0], nil)
+```asuka
+import asuka/apps
+
+component Apps {
+  state installed: [apps.App] = []
+  state query = ""
+  state found: [apps.App] = []
+  state icon = ""
+
+  task { installed = (try? await apps.list()) ?? [] }
+  task(installed, query) {
+    found = (try? await apps.search(installed, query)) ?? []
+    // A PNG for Image.
+    if let first = found.first() { icon = (try? await apps.icon(first, 32)) ?? "" }
+  }
+
+  Column {
+    TextField { bind text: query }
+    for a in found key a.id {
+      Button(a.name) { on press { try? await apps.open(a) } }
+    }
+    if !icon.isEmpty() { Image(icon) }
+  }
+}
 ```
 
-- `List` gives each app's `Name` (as the system shows it, in the user's
-  language), `ID` and `Path`, sorted by name; it reads the disk off the
-  main thread and answers on it. List them again as the panel shows: an
-  app may have come or gone.
-- `Search` ranks them for what the user typed, ignoring case and
+- `list()` gives each app's `name` (as the system shows it, in the
+  user's language), `id` and `path`, sorted by name; it reads the disk
+  off the main thread. List them again as the panel shows: an app may
+  have come or gone.
+- `search` ranks them for what the user typed, ignoring case and
   accents: the name itself, then its start, then a word's start or the
   initials ("vsc" for Visual Studio Code), then anywhere, then its
   letters in order.
-- `Icon` draws an app's icon at a size in points as a PNG file in the
+- `icon` draws an app's icon at a size in points as a PNG file in the
   app's caches, kept for the next time, and gives its path.
-- `Open` starts the app, or brings it to the front. Hide the panel
+- `open` starts the app, or brings it to the front. Hide the panel
   first, so the app the user was in has the keyboard until the opened
   one takes it.
 
@@ -308,7 +355,7 @@ apps.Open(results[0], nil)
 | Windows | the Start menu's apps (the shell's Applications folder), packaged ones too | the AppUserModelID | the shell's image for it | the shell |
 | Linux | the desktop entries a menu shows (XDG, Flatpak's and Snap's too), by `OnlyShowIn`, `NoDisplay`, `TryExec` | the desktop file id | the entry's icon from the theme | GIO, with the display's launch context |
 
-Phones and the web answer `apps.ErrUnsupported`.
+Phones and the web throw `apps.AppsError.unsupported`.
 
 ## Click-through windows
 
@@ -320,14 +367,22 @@ takes no clicks, hover or wheel at all while it's on; switch it off to
 let the user use it.
 
 ```asuka
-Window {
-  bind open: hud
-  transparent: true
-  alwaysOnTop: true
-  clickThrough: true
-  width: 240
-  height: 80
-  Meters()
+state hud = true
+
+app {
+  Window {
+    bind open: hud
+    transparent: true
+    alwaysOnTop: true
+    clickThrough: true
+    width: 240
+    height: 80
+    Meters()
+  }
+}
+
+component Meters {
+  Text("CPU 12%")
 }
 ```
 
@@ -343,12 +398,13 @@ paths, not copies:
 
 ```asuka
 import asuka/dialog
+import asuka/fs
 import asuka/shell
 
 async fn export(notes: string) throws {
   let md = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
   if let path = try await dialog.save(name: "Notes.md", button: "Export", filters: md) {
-    try await write(path, notes)
+    try fs.writeText(path, notes)
     try? await shell.reveal(path)
   }
 }
@@ -384,14 +440,20 @@ new tab. To show a file's contents in the app, use `asuka/preview`.
 ## Opening files
 
 Declare the kinds of files the app opens in `asuka.toml`'s `fileTypes`
-([Shipping](shipping.md)), and handle them with `ui.OnOpenFiles`:
+([Shipping](shipping.md)), and handle them with the app block's `on
+files(paths)` (or `onOpenFiles` in a component's body, while it lives):
 
-```go
-ui.OnOpenFiles(func(paths []string) {
-	for _, p := range paths {
-		open(p)
-	}
-})
+```asuka
+state opened: [string] = []
+
+app {
+  on files(paths) {
+    for p in paths { opened.push(p) }
+  }
+  Column {
+    for p in opened key p { Text(p) }
+  }
+}
 ```
 
 Files opened together arrive in one call, as absolute paths: a double
@@ -411,11 +473,16 @@ directory, and the files and links among them go to `on files(paths)`
 and `on openURL(url)` too:
 
 ```asuka
+state newWindow = false
+
 app {
   on secondInstance(args, dir) {
     if args.contains("--new-window") { newWindow = true }
   }
   Window { Main() }
+}
+component Main {
+  Text(if newWindow { "A new window" } else { "Main" })
 }
 ```
 
@@ -434,6 +501,9 @@ says whether a handler did. When `e.sessionEnding` is set the quit
 can't be canceled: save at once, without a dialog.
 
 ```asuka
+state unsaved = false
+state confirmQuit = false
+
 app {
   on quit(e) {
     if unsaved && !e.sessionEnding {
@@ -442,6 +512,9 @@ app {
     }
   }
   Window { Editor() }
+}
+component Editor {
+  Text("Editor")
 }
 ```
 
@@ -494,125 +567,88 @@ On the web, a page older than the site offers to reload.
 
 ## Recent documents
 
-Call `recent.Add(path, nil)` for each document the user opens or saves.
+Call `recent.add(path)` (`asuka/recent`) for each document the user
+opens or saves.
 The Mac lists them in the File menu's Open Recent and the Dock menu,
 Windows in the jump list, Linux in the user's recent files. Choosing one
-opens it through `ui.OnOpenFiles`. `recent.List` returns them newest
-first, skipping files that are gone, and `recent.Clear` removes the
-app's own.
+opens it through `on files(paths)`. `await recent.list()` returns them
+newest first, skipping files that are gone, and `recent.clear()`
+removes the app's own.
 
 ## Documents
 
-`asuka/document` makes an app whose windows each show a file, as a text
-editor or a drawing app does: what NSDocument gives a Mac app, on every
-platform. Describe the kind of document, and run it:
+`asuka/document` makes an app whose windows each show a file, as a
+text editor does: a document's model, and the windows and screens
+around it. Describe the kind of document and its editor:
 
-```go
-func main() {
-	document.New(document.Options[string]{
-		Types: []document.Type{{Name: "Plain Text", Extensions: []string{"txt"}}},
-		Read: func(r io.Reader) (string, error) {
-			b, err := io.ReadAll(r)
-			return string(b), err
-		},
-		Write: func(w io.Writer, text string) error {
-			_, err := io.WriteString(w, text)
-			return err
-		},
-		Equal: func(a, b string) bool { return a == b },
-		View: func(doc *document.Document[string]) ui.Node {
-			return ui.TextField(ui.TextFieldProps{Value: doc.Content(), Multiline: true, Plain: true})
-		},
-	}).Run()
+```asuka
+import asuka/document
+
+let types = [document.Type(name: "Plain Text", extensions: ["txt"])]
+
+app {
+  document.Documents(types) { editor: doc => Editor(doc) }
+}
+
+component Editor(doc: document.Document<string>) {
+  if let text = doc.content {
+    TextField {
+      text: text
+      multiline: true
+      grow: 1
+      on change(t) { doc.edit(t) }
+    }
+  }
 }
 ```
 
 List the same types in `asuka.toml`'s `fileTypes`, so the system offers
-the app for them. `examples/textedit` is this editor with a status line
-and a bar for a file another app changed.
+the app for them. `examples/textedit` is an editor of this kind, with a
+status line and a bar for a file another app changed.
 
-A document's `Content()` is a signal: the view binds it, and changing
-it edits the document, unless `Equal` finds it equal to the file's
-(undoing back to it, typing a letter and deleting it). Reading the file
-again sets it too. A content the app changes in place (a pointer to a
-model) says so with `doc.Changed()`, and gives `Snapshot`, which copies
-it before it's written. `doc.State()` is a signal of the document's
-name, file and whether it's edited, read-only, in conflict or deleted.
+A `Document` is a store: its `content` (none until the file is read)
+and its `state` (`.loading`, `.saved`, `.edited`, `.saving`,
+`.conflict`, `.failed`, and `error` saying why). `doc.edit(c)` changes
+the content, and it's saved a moment after the last change; `save()`
+saves now, `saveSoon()` from code that can't wait (a key's, a menu
+item's). A file another program changed since it was read is a
+conflict: `saveAnyway()` keeps the app's content, `revert()` takes the
+file's. `document.open(path, read:, write:)` makes a document of any
+type of content, its own read and write functions turning bytes into
+it and back; `Documents` edits text.
 
-What the user gets on the desktop:
+What the user gets:
 
-- **A window per document**, named after its file ("Untitled",
-  "Untitled 2" before it has one), opening where the user left that
-  file's window. A Mac shows a dot in the close button while it has
-  unsaved changes and the file's icon in the title bar; Windows and
-  Linux a `*` before the title, which ends with the app's name, and
-  GNOME the file's folder under it.
-- **The File menu**: New, Open…, Open Recent, Close, Save, Save As…,
-  and on a Mac Duplicate, Rename…, Move To… and Revert to Saved
-  (Revert elsewhere), with their shortcuts, acting on the window in
-  use. `Options.Menus` adds the app's own menus beside it; one titled
-  File adds its items to it. Windows and Linux show the menus in each
-  document's window.
-- **Autosave**: a document with a file is saved a moment after the
-  user stops typing, when its window loses the focus and when it
-  closes, as Mac apps save; it never asks. `AutosaveOff` saves when the
-  user says, and asks when the window closes, as Windows apps
-  traditionally do.
-- **Questions only where saving can't happen by itself**: closing an
-  untitled document ("Do you want to keep this new document?"), one
-  whose file is read-only or another app changed ("Save Anyway",
-  "Revert"), or any edited one with `AutosaveOff`.
-- **Recovery copies**: unsaved changes are copied into the app's data a
-  second after the user stops typing. A crash, a forced quit or a quit
-  loses nothing: the next launch opens those documents again, edited.
-  Quitting keeps the documents that way, as VS Code does; with
-  `AskOnQuit` it asks instead (on a Mac, "You have 3 documents with
-  unsaved changes. Do you want to review these changes before
-  quitting?"; on Windows and Linux one question naming them). When the
-  session ends there's no time to ask: everything is saved or kept at
-  once.
-- **Files opened from outside**: Finder, Explorer, the Dock, the
-  command line, Open Recent, and Open… go to the document's window if
-  it's open already.
-- **Files other apps change**: an unedited document reads its file
-  again; an edited one asks at its next save. A file renamed is
-  followed (on a Mac, wherever the user moves it on its disk), and one
-  deleted is written again by the next save.
+- **On a desktop, a window per document**, named after its file, with
+  the file's icon in a Mac's title bar and its edited dot in the close
+  button while it has unsaved changes.
+- **The File menu**: New (⌘N) makes an Untitled document in
+  `document.documentsDir()`, Open… (⌘O) the system's dialog; each
+  window's ⌘S saves and ⌘W closes it.
+- **Autosave**: a document is saved a moment after the user stops
+  typing; nothing asks.
+- **On a phone and in a browser**, one document at a time: the app
+  opens on a list of its documents, with New, and a document's screen
+  is pushed over it, saved as the user edits.
 
-A Mac's document app stays open with no window, and clicking its Dock
-icon makes a new document; on Windows and Linux the app quits with its
-last document's window. `NoUntitled` opens nothing at launch instead of
-an untitled document.
-
-On a phone and in a browser there's one document at a time: the app
-opens on a list of its documents (on iOS, its folder in Files), with
-New and Open…, and a document's screen is pushed over it. Each document
-has a file from the moment it's made and is saved as the user edits,
-when the app goes to the background and when the user goes back, as
-UIDocument's apps save: nothing ever asks. Files from elsewhere are
-copied into the app's documents first.
-
-The questions and the menu speak the app's language (English, German,
-French, Spanish, Japanese and Chinese so far): give others, or change
-them, with keys `document.<key>` in the app's catalogs.
-
-Left out, of what only NSDocument does on a Mac: versions (Revert To a
-version), locking, renaming in the title bar's popover, and documents
-that are folders.
+Left out so far, of what the Go hosts' `sdk/document` does: Save As,
+Open Recent, Duplicate, Rename and Move To, recovery copies of unsaved
+changes, the questions on closing an untitled document, and the
+menus' translations.
 
 ## Starting at login
 
-Offer `login.Set(true, done)` as a setting, and read it back with
-`login.Enabled`. It's a login item on macOS 13 and later (a packaged
-app only; `login.ErrNeedsApproval` until the user allows it in System
+Offer `try await login.set(true)` (`asuka/login`) as a setting, and
+read it back with `await login.enabled()`. It's a login item on macOS 13 and later (a packaged
+app only; `LoginError.needsApproval` until the user allows it in System
 Settings), a Run entry on Windows, and an autostart entry on Linux (the
-Background portal in a Flatpak). `login.OpenedAtLogin` tells a launch at
+Background portal in a Flatpak). `await login.openedAtLogin()` tells a launch at
 login apart, so the app can start out of sight.
 
 ## Now Playing and the media keys
 
-`nowplaying.Show` puts what the app plays in the system's media
-controls, and their buttons and the keyboard's media keys (play/pause,
+`nowplaying.NowPlaying` puts what the app plays in the system's media
+controls, while it's shown, and their buttons and the keyboard's media keys (play/pause,
 next, previous) reach its handlers: Control Center's and the menu bar's
 Now Playing on the Mac, the media controls of the volume flyout and
 quick settings on Windows (the app window's
@@ -621,15 +657,23 @@ and KDE's controls and `playerctl` drive. It's the same package as on
 phones, where it's the lock screen's controls
 ([Device and services](device.md#now-playing-and-the-media-keys-asukanowplaying)):
 
-```go
-music := audio.Load("music/spring.mp3")
-signal.OnCleanup(music.Release)
-nowplaying.Show(nowplaying.Props{
-	Title:  ui.Val("Spring"),
-	Artist: ui.Val("Vivaldi"),
-	Player: music, // its state and position; play, pause, seek on it
-	OnNext: playNext,
-})
+```asuka
+import asuka/audio
+import asuka/nowplaying
+
+component Spring {
+  event next
+
+  let music = audio.Player("music/spring.mp3")
+
+  nowplaying.NowPlaying {
+    title: "Spring"
+    artist: "Vivaldi"
+    // Its state and position; play, pause, seek on it.
+    player: music
+    on next { emit next }
+  }
+}
 ```
 
 ## Displays, power and the app's icon

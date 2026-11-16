@@ -237,6 +237,19 @@ static ak_val str_byte_slice(ak_val *args, uint32_t n) {
 
 // str.pad(s, width, with, end): s with copies of with before it (after it
 // when end) up to width characters.
+// int.padded(width) is the int in decimal, zeros before it up to width
+// digits (a minus sign before them).
+static ak_val int_padded(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t v = A(0).i, w = A(1).i;
+	if (w < 0) w = 0;
+	if (w > 64) w = 64;
+	char buf[96];
+	int len = v < 0 ? snprintf(buf, sizeof buf, "-%0*llu", (int)(w > 0 ? w : 1), (unsigned long long)(0 - (uint64_t)v))
+	                : snprintf(buf, sizeof buf, "%0*lld", (int)(w > 0 ? w : 1), (long long)v);
+	RET_P(ak_str_new(buf, (size_t)len));
+}
+
 static ak_val str_pad(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0), *with = STR(2);
@@ -281,9 +294,9 @@ static int64_t char_to_byte(const ak_str *s, int64_t c) {
 }
 
 static ak_val str_slice(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
 	ak_str *s = STR(0);
-	RET_P(ak_str_slice(s, char_to_byte(s, A(1).i), char_to_byte(s, A(2).i)));
+	// slice(from): to its end.
+	RET_P(ak_str_slice(s, char_to_byte(s, A(1).i), n > 2 ? char_to_byte(s, A(2).i) : (int64_t)(s ? s->len : 0)));
 }
 
 static ak_val str_to_int(ak_val *args, uint32_t n) {
@@ -586,7 +599,13 @@ static ak_val arr_reversed(ak_val *args, uint32_t n) {
 	RET_P(out);
 }
 
-static ak_val arr_slice(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_slice(ARR(0), A(1).i, A(2).i)); }
+static ak_val arr_slice(ak_val *args, uint32_t n) { RET_P(ak_arr_slice(ARR(0), A(1).i, n > 2 ? A(2).i : (ARR(0) ? ARR(0)->len : 0))); }
+static ak_val arr_prefix(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_slice(ARR(0), 0, A(1).i < 0 ? 0 : A(1).i)); }
+static ak_val arr_suffix(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t len = ARR(0) ? ARR(0)->len : 0, k = A(1).i < 0 ? 0 : A(1).i;
+	RET_P(ak_arr_slice(ARR(0), k >= len ? 0 : len - k, len));
+}
 static ak_val arr_concat(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_concat(ARR(0), ARR(1))); }
 
 // Sorting: a stable merge sort, by a "less" closure or, without one, by
@@ -763,6 +782,20 @@ static ak_val length_points(ak_val *args, uint32_t n) {
 static ak_val m_sin(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(sin(A(0).f)); }
 static ak_val m_cos(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(cos(A(0).f)); }
 static ak_val m_atan2(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(atan2(A(0).f, A(1).f)); }
+// len.scale is a Length (its unit in bits 32-39, its float32 value in
+// bits 0-31) with its value times f.
+static ak_val len_scale(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	uint64_t l = (uint64_t)A(0).i;
+	float v;
+	uint32_t bits = (uint32_t)l;
+	memcpy(&v, &bits, 4);
+	v = (float)(v * A(1).f);
+	memcpy(&bits, &v, 4);
+	RET_I((int64_t)((l & ~(uint64_t)0xffffffff) | bits));
+}
+
+static ak_val m_hypot(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(hypot(A(0).f, A(1).f)); }
 static ak_val m_absf(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(fabs(A(0).f)); }
 static ak_val m_absi(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i < 0 ? -A(0).i : A(0).i); }
 static ak_val m_mini(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i < A(1).i ? A(0).i : A(1).i); }
@@ -989,6 +1022,36 @@ static ak_val color_opacity(ak_val *args, uint32_t n) {
 	RET_I(c);
 }
 
+// color.hex is a color as Asuka writes it: #rrggbb, #rrggbbaa when it
+// isn't opaque; a semantic color by its name (.accent), its opacity
+// after it (.accent.opacity(0.5)).
+static ak_val color_hex(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	static const char *const names[] = {"default", "label", "secondaryLabel", "tertiaryLabel", "background", "secondaryBackground",
+	                                    "groupedBackground", "separator", "accent", "red", "orange", "yellow", "green", "blue", "purple",
+	                                    "pink", "gray", "clear", "secondaryGroupedBackground", "onAccent"};
+	uint64_t c = (uint64_t)args[0].i;
+	char buf[64];
+	int len;
+	switch (c >> 32) {
+	case 1: {
+		uint32_t i = (uint32_t)(c & 0xffff), alpha = 255 - (uint32_t)((c >> 24) & 0xff);
+		const char *name = i < sizeof names / sizeof names[0] ? names[i] : "default";
+		if (alpha == 255) len = snprintf(buf, sizeof buf, ".%s", name);
+		else len = snprintf(buf, sizeof buf, ".%s.opacity(%.3g)", name, alpha / 255.0);
+		break;
+	}
+	case 2: {
+		uint32_t rgba = (uint32_t)c;
+		if ((rgba & 0xff) == 0xff) len = snprintf(buf, sizeof buf, "#%06x", rgba >> 8);
+		else len = snprintf(buf, sizeof buf, "#%08x", rgba);
+		break;
+	}
+	default: len = snprintf(buf, sizeof buf, ".default");
+	}
+	RET_P(ak_str_new(buf, (size_t)len));
+}
+
 // appearance.rgb(r, g, b) is an opaque RGB color, each channel 0 to 255:
 // asuka/appearance's accent, which the platform's side gives as numbers.
 static ak_val appearance_rgb(ak_val *args, uint32_t n) {
@@ -1161,6 +1224,9 @@ const ak_lib_entry ak_lib[] = {
 	{"str.find_any", str_find_any},
 	{"str.byte_slice", str_byte_slice},
 	{"str.pad", str_pad},
+	{"arr.prefix", arr_prefix},
+	{"arr.suffix", arr_suffix},
+	{"int.padded", int_padded},
 
 	{"dur.ns", dur_ns},
 	{"dur.ms", dur_ms},
@@ -1171,6 +1237,7 @@ const ak_lib_entry ak_lib[] = {
 	{"dur.rounded", dur_rounded},
 
 	{"color.opacity", color_opacity},
+	{"color.hex", color_hex},
 	{"async.never", async_never},
 	{"async.in_worker", async_in_worker},
 	{"appearance.rgb", appearance_rgb},
@@ -1240,6 +1307,8 @@ const ak_lib_entry ak_lib[] = {
 	{"math.sin", m_sin},
 	{"math.cos", m_cos},
 	{"math.atan2", m_atan2},
+	{"math.hypot", m_hypot},
+	{"len.scale", len_scale},
 	{"math.absf", m_absf},
 	{"math.absi", m_absi},
 	{"math.mini", m_mini},

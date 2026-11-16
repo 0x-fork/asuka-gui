@@ -129,10 +129,11 @@ func (s *Scope) Names() []string {
 type VarKind uint8
 
 const (
-	LocalVar VarKind = iota // let, var, a parameter, a pattern's binding
-	RowItem                 // a for's item or index in a view: an accessor
-	ViewMemo                // a match payload or if let in a view: a memo
-	SelfVar                 // a method's receiver
+	LocalVar   VarKind = iota // let, var, a parameter, a pattern's binding
+	RowItem                   // a for's item or index in a view: an accessor
+	ViewMemo                  // a match payload or if let in a view: a memo
+	SelfVar                   // a method's receiver
+	LocalFnVar                // a fn declared in a block (Var.Fn)
 )
 
 // A Var is a local: a parameter, let, var, or a pattern's binding.
@@ -146,6 +147,32 @@ type Var struct {
 	// Captured: a closure uses it. Assigned: it's written after its
 	// declaration; AssignedInClosure: by a closure that captured it.
 	Captured, Assigned, AssignedInClosure bool
+
+	// Fn is a local fn's (Kind LocalFnVar).
+	Fn *LocalFn
+}
+
+// A LocalFn is a fn declared in a block of statements. The fns declared
+// one after another in a block are a group: they see each other, so
+// they may call each other, and one lowering serves them all.
+type LocalFn struct {
+	Var   *Var
+	Decl  *syntax.FuncDecl
+	Sig   *Signature
+	Ctx   *FuncCtx // its body's
+	Group *LocalGroup
+}
+
+// A LocalGroup is the fns declared one after another in a block. They
+// share what they capture: each is lowered as a function taking its
+// parameters and then the group's captures (and the env, when one uses
+// it), so a call of one from another (or itself) passes them on, and no
+// closure holds another, nor itself (lang/LOWERING.md).
+type LocalGroup struct {
+	Fns      []*LocalFn
+	Encl     *FuncCtx // where they're declared
+	Captures []*Var   // the outer locals they use, in order
+	UsesEnv  bool     // they use the component's or store's members
 }
 
 // Boxed reports whether the var lives in a box (VBOX) so that the
@@ -453,6 +480,10 @@ const (
 	BRefNew      // Ref(): a view's handle
 	BPathNew     // Path(): an empty outline
 	BShader      // shader("""…"""): a Kage program, compiled with the app
+	BAssetText   // assets.text("reply.md"): a file of the package's assets/, read as it compiles
+	BAssetBytes  // assets.bytes(…): likewise, its bytes
+	BNavigate    // navigate(href), navigate(X(…)): the Router's
+	BReplace     // replace(href): the Router's, replacing where it is
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

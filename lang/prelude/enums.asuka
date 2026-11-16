@@ -92,6 +92,12 @@ enum Autocorrect {
   no
 }
 
+enum Lifecycle {
+  foreground
+  background
+  memoryWarning
+}
+
 enum AlertStyle {
   alert
   actionSheet

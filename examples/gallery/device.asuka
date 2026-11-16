@@ -51,14 +51,13 @@ let receipt = """
 component Documents {
   state status = ""
 
-  let pdfButton = Ref()
   let shareButton = Ref()
 
   /// Runs a document's work, and shows how it went.
   async fn report(what: string, work: async fn() throws -> string) {
     do {
       let said = try await work()
-      status = if said.isEmpty { "" } else { "{what}: {said}" }
+      status = if said.isEmpty() { "" } else { "{what}: {said}" }
     } catch e {
       status = "{what}: {e.message}"
     }
@@ -69,12 +68,11 @@ component Documents {
       gap: 12
       wrap: true
       Button("Preview a PDF") {
-        ref: pdfButton
         icon: "doc"
         variant: .gray
         on press {
           await report("Preview", () => {
-            try await preview.show(["docs/Gallery.pdf"], from: pdfButton)
+            try await preview.show(["docs/Gallery.pdf"])
             return ""
           })
         }
@@ -134,10 +132,10 @@ component PlatformSection {
 
   async fn readCode() {
     let paths = (try? await device.pickPhotos(max: 1)) ?? []
-    if paths.isEmpty { return }
+    if paths.isEmpty() { return }
     do {
       let codes = try await scan.file(paths[0])
-      where = if let c = codes.first { "{c.kind}: {c.value}" } else { "No code in it" }
+      where = if let c = codes.first() { "{c.kind}: {c.value}" } else { "No code in it" }
     } catch e {
       where = "Couldn't: {e.message}"
     }
@@ -166,8 +164,8 @@ component PlatformSection {
         variant: .gray
         on press {
           do {
-            try await secure.save("token", "s3cr3t-{time.now().format("HHmmss")}")
-            secret = "Kept: {(try await secure.load("token")) ?? ""}"
+            try await secure.write("token", "s3cr3t-{time.now().format("HHmmss")}")
+            secret = "Kept: {(try await secure.read("token")) ?? ""}"
           } catch e {
             secret = "Couldn't keep it: {e.message}"
           }
@@ -270,7 +268,8 @@ component Crashes {
           crash.breadcrumb("gallery: crashing on purpose")
           crash.set("screen", "gallery")
           let cart: [string: int] = [:]
-          print(cart["items"]!) // none: a crash
+          let items = cart["items"]! // none: a crash
+          crash.set("items", "{items}")
         }
       }
       Button("Crash on a worker") {
@@ -280,7 +279,8 @@ component Crashes {
           let at = time.now().format("HH:mm:ss")
           spawn {
             let synced: string? = none
-            print("sync failed at {at}: {synced!}")
+            let said = "sync failed at {at}: {synced!}" // none: a crash
+            return said
           }
         }
       }
@@ -289,7 +289,7 @@ component Crashes {
         on press { crash.record(CheckoutError.noNetwork) }
       }
     }
-    if reports.isEmpty {
+    if reports.isEmpty() {
       Text("No reports.") { color: .secondaryLabel }
     }
     Column {
@@ -328,8 +328,8 @@ component Crashes {
 
 fn describe(r: crash.Report) -> string {
   let c = r.context
-  let s = "{r.kind} · {r.time.format("MMM d HH:mm")} · {c.appVersion} {c.build}"
-  if let last = c.breadcrumbs.last { return "{s} · last: {last.message}" }
+  let s = "{r.kind} · {time.unixMilli(r.time).format("MMM d HH:mm")} · {c.appVersion} {c.build}"
+  if let last = c.breadcrumbs.last() { return "{s} · last: {last.message}" }
   return s
 }
 
@@ -375,7 +375,7 @@ component CameraScreen {
         padding: 16
         gap: 16
         align: .center
-        if !last.isEmpty {
+        if !last.isEmpty() {
           Image(last) {
             mode: .fill
             label: "The last photo"

@@ -19,6 +19,7 @@
 
 import asuka/json
 import asuka/math
+import asuka/time
 
 /// A kind of sensor.
 pub enum Sensor {
@@ -234,9 +235,9 @@ pub fn stepUpdates() -> Stream<Steps> = Stream(send => {
   }
 })
 
-/// The steps taken between two times (time.now()'s nanoseconds since
-/// 1970). iOS keeps a week's; elsewhere it throws notAvailable.
-pub async fn steps(from: int, to: int) throws -> Steps {
+/// The steps taken between two times. iOS keeps a week's; elsewhere it
+/// throws notAvailable.
+pub async fn steps(from: time.Time, to: time.Time) throws -> Steps {
   if let f = faked {
     if !f.present.contains(.pedometer) {
       throw SensorError.notAvailable
@@ -244,7 +245,7 @@ pub async fn steps(from: int, to: int) throws -> Steps {
     return f.history
   }
   if let p = platform {
-    return try await p.steps(from: from / 1_000_000, to: to / 1_000_000)
+    return try await p.steps(from: from.unixMilli(), to: to.unixMilli())
   }
   throw SensorError.notAvailable
 }

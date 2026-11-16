@@ -12,6 +12,7 @@
 import asuka/platform
 import asuka/json
 import asuka/math
+import asuka/time
 
 /// What an activity shows.
 pub struct Content {
@@ -24,10 +25,10 @@ pub struct Content {
   /// From 0 to 1, shown with showProgress.
   progress: float = 0.0
   showProgress: bool = false
-  /// A span, in milliseconds since 1970: a bar that fills by itself
-  /// from since to until, and the time left.
-  since: int = 0
-  until: int = 0
+  /// A span: a bar that fills by itself from since to until, and the
+  /// time left (none: no span).
+  since: time.Time? = none
+  until: time.Time? = none
   /// "#rrggbb" or "#rrggbbaa".
   tint: string = ""
   /// What the app is opened with when it's tapped.
@@ -45,8 +46,8 @@ pub enum Dismiss {
   /// When the system decides (a while, on the Lock Screen).
   later
   now
-  /// At a time, in milliseconds since 1970.
-  at(int)
+  /// At a time.
+  at(time.Time)
 }
 
 struct WireContent {
@@ -63,7 +64,7 @@ struct WireContent {
 }
 
 fn wire(c: Content) -> WireContent = WireContent(title: c.title, subtitle: c.subtitle, value: c.value, symbol: c.symbol,
-  progress: c.progress, showProgress: c.showProgress, sinceMs: c.since, untilMs: c.until, tint: c.tint, url: c.url)
+  progress: c.progress, showProgress: c.showProgress, sinceMs: c.since?.unixMilli() ?? 0, untilMs: c.until?.unixMilli() ?? 0, tint: c.tint, url: c.url)
 
 struct Start {
   id: string
@@ -99,7 +100,7 @@ pub struct Activity {
     let e = match dismiss {
       .later => End(id: id, content: wire(final), dismiss: "", atMs: 0)
       .now => End(id: id, content: wire(final), dismiss: "now", atMs: 0)
-      .at(t) => End(id: id, content: wire(final), dismiss: "at", atMs: t)
+      .at(t) => End(id: id, content: wire(final), dismiss: "at", atMs: t.unixMilli())
     }
     platform.send("liveActivity", "end", json.encode(e).bytes())
   }

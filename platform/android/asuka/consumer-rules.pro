@@ -7,3 +7,5 @@
 -keep class dev.asuka.AsukaModules { *; }
 # The optional modules' plugins (asuka-push, asuka-periodic), found by name.
 -keep class * implements dev.asuka.AsukaPlugin { <init>(); }
+# Packages' launch code (their manifests' android.launch), made by name.
+-keep class * implements dev.asuka.AsukaLaunching { <init>(); }

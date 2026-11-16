@@ -3,7 +3,10 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+int64_t ak_obj_live;
+
 void *ak_obj_new(ak_tag tag, size_t size) {
+	__atomic_add_fetch(&ak_obj_live, 1, __ATOMIC_RELAXED);
 	ak_obj *o = ak_alloc(size);
 	o->rc = 1;
 	o->tag = (uint8_t)tag;
@@ -13,8 +16,11 @@ void *ak_obj_new(ak_tag tag, size_t size) {
 void ak_make_immortal(void *p) {
 	if (!p) return;
 	ak_obj *o = p;
-	if (o->tag == AK_TAG_STR && o->rc != AK_RC_IMMORTAL) ak_str_hash((ak_str *)o);
+	if (o->rc == AK_RC_IMMORTAL) return;
+	if (o->tag == AK_TAG_STR) ak_str_hash((ak_str *)o);
 	o->rc = AK_RC_IMMORTAL;
+	// A constant, never destroyed: not one ak_obj_live counts.
+	__atomic_sub_fetch(&ak_obj_live, 1, __ATOMIC_RELAXED);
 }
 
 static void release_fields(ak_val *f, uint16_t n, const uint8_t *kinds) {
@@ -74,6 +80,7 @@ void ak_destroy(ak_obj *o) {
 		break;
 	}
 	}
+	__atomic_sub_fetch(&ak_obj_live, 1, __ATOMIC_RELAXED);
 	ak_free(o);
 }
 

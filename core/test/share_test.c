@@ -68,6 +68,32 @@ TEST(system_commands) {
 	done(a);
 }
 
+// The app's own share sheet (asuka/sharesheet): its closes are the
+// ShareClose command to the root, how a u8; what isn't one sends nothing.
+// The process the app runs in is the host's to say, in the environment.
+TEST(share_sheet) {
+	ak_uitest *a = mount(plain_app, NULL);
+	ak_fake *f = ak_uitest_host(a);
+	ak_fake_reset(f);
+	ak_ui_share_close(2);
+	ak_ui_share_close(7);
+	ak_ui_flush();
+	ak_id on = 0;
+	ak_span h = cmd_args(f, AK_CMD_SHARE_CLOSE, &on);
+	CHECK(h.len == 1 && h.p[0] == 2 && on == root(a)->id);
+	ak_release(target);
+	done(a);
+	CHECK_EQ_STR(ak_ui_process(), "app");
+#if !defined(_WIN32)
+	setenv("ASUKA_NOTIFICATION_SERVICE", "1", 1);
+	CHECK_EQ_STR(ak_ui_process(), "notification");
+	setenv("ASUKA_SHARE_SHEET", "1", 1);
+	CHECK_EQ_STR(ak_ui_process(), "share");
+	unsetenv("ASUKA_SHARE_SHEET");
+	unsetenv("ASUKA_NOTIFICATION_SERVICE");
+#endif
+}
+
 // The app's accent (ui.set_accent, from its init) goes to the host as a
 // root mounts, before its views; a reload that changes it tells the host
 // again, one that doesn't sends nothing.

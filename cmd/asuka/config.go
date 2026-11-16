@@ -66,7 +66,7 @@ type appConfig struct {
 		// the app's plus ".widgets" (default: the best match installed).
 		WidgetProfile string `json:"widgetProfile"`
 		// NotificationProfile is the Notification Service Extension's
-		// (push.Rewrite), whose ID is the app's plus ".notification"
+		// (asuka/push's rewrite), whose ID is the app's plus ".notification"
 		// (default: the best match installed).
 		NotificationProfile string `json:"notificationProfile"`
 		// Usage are the purpose strings for protected resources
@@ -212,12 +212,13 @@ type appConfig struct {
 	icloudKV, icloudDocs bool
 	displayName          string
 	// shareSheet: the share target shows the app's own sheet rather than
-	// opening the app (Asuka has no such root yet: a share opens the
-	// app, for its onShare).
+	// opening the app (asuka/sharesheet's active, whose manifest derives
+	// shareSheet): on iOS the share extension runs the app as its sheet,
+	// on Android AsukaShareActivity takes the shares.
 	shareSheet bool
 	// pushRewrite: a package asks for the ASUKA_NOTIFICATION_SERVICE
-	// host flag (a push's rewrite): on iOS the app has a Notification
-	// Service Extension, which runs it.
+	// host flag (asuka/push's rewrite): on iOS the app has a
+	// Notification Service Extension, which runs it.
 	pushRewrite bool
 	// locationPrecise: a package derives temporary full accuracy's
 	// purposes (asuka/location's requestPrecise): Info.plist has them.
@@ -232,6 +233,10 @@ type appConfig struct {
 	// androidModules are the host's optional Gradle modules the app's
 	// packages need (their asuka.toml's android.hostModules).
 	androidModules []string
+	// androidLaunch are the app's packages' launch classes (their
+	// manifests' android.launch), which the host's AsukaLauncher runs as
+	// the process starts.
+	androidLaunch []string
 	// hostFlags are the iOS host's parts the app's packages need (their
 	// manifests' ios.hostFlags); derived, what the CLI makes of the
 	// app's asuka.toml for them (ios.derived: derivedNeeds).
@@ -290,11 +295,11 @@ type appConfig struct {
 	// Bluetooth is what an app of asuka/bluetooth asks of the
 	// platforms beyond what importing the package gives (docs/bluetooth.md).
 	Bluetooth struct {
-		// Background are the roles the app keeps in the background:
-		// "central" (iOS's bluetooth-central mode, with state restoration;
-		// Android's background scan's receiver, and before Android 12 the
-		// background location permission it needs) and "peripheral" (iOS's
-		// bluetooth-peripheral mode).
+		// Background are the roles the app keeps in the background on
+		// iOS: "central" (the bluetooth-central mode, with state
+		// restoration) and "peripheral" (bluetooth-peripheral), and with
+		// them asuka/bluetooth's launch class. Android's background scan
+		// is the package's, for an app that calls backgroundScan.
 		Background []string `json:"background"`
 		// Location says the app finds where the user is from its scans
 		// (beacons): Android 12's BLUETOOTH_SCAN without neverForLocation,
@@ -543,12 +548,13 @@ func (c *appConfig) permissionsFor(deps []string) {
 
 // addDerived adds the needs the packages' manifests ask the CLI to make
 // of the app's own asuka.toml (ios.derived: iCloud's, temporary full
-// accuracy's), and notes the host's parts that have more of the app
-// (a Notification Service Extension for push's rewrites, the widget
-// extension's Live Activities).
+// accuracy's, the share sheet's), and notes the host's parts that have
+// more of the app (a Notification Service Extension for push's
+// rewrites, the widget extension's Live Activities).
 func (c *appConfig) addDerived() {
 	c.addICloud(c.derives("icloudKeyValue"), c.derives("icloudDocuments"))
 	c.locationPrecise = c.derives("locationPrecise")
+	c.shareSheet = c.derives("shareSheet")
 	c.pushRewrite = slices.Contains(c.hostFlags, "ASUKA_NOTIFICATION_SERVICE")
 	c.liveActivity = slices.Contains(c.hostFlags, "ASUKA_LIVEACTIVITY")
 }
@@ -626,7 +632,24 @@ func (c *appConfig) bluetoothExtras() {
 			addMode("bluetooth-peripheral")
 		}
 	}
+	// With a mode (these, the app's ios.backgroundModes', a package's), the
+	// managers have their restore identifiers: iOS starts the app again
+	// for what it kept, and the package's launch class makes them before
+	// launch ends (std/bluetooth's swift/Bluetooth.swift).
+	modes := append(slices.Clone(c.IOS.BackgroundModes), c.plistArrays["UIBackgroundModes"]...)
+	if slices.Contains(modes, "bluetooth-central") || slices.Contains(modes, "bluetooth-peripheral") {
+		if c.plistArrays == nil {
+			c.plistArrays = map[string][]string{}
+		}
+		if !slices.Contains(c.plistArrays["AsukaLaunch"], bluetoothLaunch) {
+			c.plistArrays["AsukaLaunch"] = append(c.plistArrays["AsukaLaunch"], bluetoothLaunch)
+		}
+	}
 }
+
+// bluetoothLaunch is asuka/bluetooth's launch class on iOS (its manifest's
+// launch, for an app that calls backgroundScan).
+const bluetoothLaunch = "AsukaBluetoothLaunch"
 
 // androidFeatures adds the host's optional modules the app's elements
 // need (asuka-video, for a Video, as iOS's ASUKA_VIDEO), or (player:
@@ -680,10 +703,6 @@ func (c *appConfig) androidManifest(debug bool) string {
 	if c.Android.MapsKey != "" && c.mapsKey {
 		fmt.Fprintf(&b, "        <meta-data android:name=\"com.google.android.geo.API_KEY\" android:value=\"%s\" />\n", html.EscapeString(c.Android.MapsKey))
 	}
-	// push.Rewrite: FCM's data messages start the app to rewrite them.
-	if c.pushRewrite {
-		b.WriteString("        <meta-data android:name=\"dev.asuka.push.rewrite\" android:value=\"true\" />\n")
-	}
 	// The splash's theme (androidRes), which AsukaActivity leaves as it starts.
 	theme := ""
 	if c.splashOn() {
@@ -722,7 +741,7 @@ func (c *appConfig) androidManifest(debug bool) string {
 	// asuka/nfc's tags that open the app (asuka.toml's nfc).
 	b.WriteString(c.nfcFilters())
 	b.WriteString("        </activity>\n")
-	// A share sheet (app.ShareSheet): the shares go to its Activity.
+	// A share sheet (asuka/sharesheet): the shares go to its Activity.
 	if c.ShareTarget.on && c.shareSheet {
 		b.WriteString("        <activity android:name=\"dev.asuka.AsukaShareActivity\" android:exported=\"true\">\n")
 		b.WriteString(c.ShareTarget.intentFilters())
@@ -730,6 +749,11 @@ func (c *appConfig) androidManifest(debug bool) string {
 	}
 	for _, x := range c.androidApp {
 		b.WriteString("        " + x + "\n")
+	}
+	// The packages' launch code: a provider, made as the process starts.
+	if len(c.androidLaunch) > 0 {
+		b.WriteString("        <provider android:name=\"dev.asuka.AsukaLauncher\" android:authorities=\"${applicationId}.asuka.launch\" android:exported=\"false\" />\n")
+		fmt.Fprintf(&b, "        <meta-data android:name=\"dev.asuka.launch\" android:value=\"%s\" />\n", html.EscapeString(strings.Join(c.androidLaunch, ",")))
 	}
 	b.WriteString(c.androidWidgetReceivers())
 	b.WriteString("    </application>\n</manifest>\n")

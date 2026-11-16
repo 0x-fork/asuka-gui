@@ -4,7 +4,6 @@
 #include "asuka_linux.h"
 #include "imageedit.h"
 
-#include <dlfcn.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -12,21 +11,9 @@
 #include <string.h>
 #include <sys/stat.h>
 
-typedef struct _GdkPixbuf GdkPixbuf;
 
 static struct {
 	const char *missing;
-	GdkPixbuf *(*new_from_file)(const char *, GError **);
-	GdkPixbuf *(*new_from_data)(const guchar *, int, gboolean, int, int, int, int, void (*)(guchar *, gpointer), gpointer);
-	GdkPixbuf *(*apply_orientation)(GdkPixbuf *);
-	int (*width)(const GdkPixbuf *), (*height)(const GdkPixbuf *), (*rowstride)(const GdkPixbuf *), (*channels)(const GdkPixbuf *);
-	const guint8 *(*pixels)(const GdkPixbuf *);
-	gpointer (*file_info)(const char *, gint *, gint *);
-	gboolean (*save)(GdkPixbuf *, gchar **, gsize *, const char *, char **, char **, GError **);
-	// GStreamer's, beyond asuka_linux.h's.
-	int (*get_state)(GstElement *, int *, int *, guint64);
-	gboolean (*seek_simple)(GstElement *, int, int, gint64);
-	gpointer (*try_pull_preroll)(GstElement *, guint64);
 } px;
 
 static void load(void) {
@@ -34,22 +21,12 @@ static void load(void) {
 		px.missing = "GLib isn't installed";
 		return;
 	}
-	void *l = dlopen("libgdk_pixbuf-2.0.so.0", RTLD_NOW | RTLD_GLOBAL);
-	if (!l) {
+	if (!asuka_linux_load(ASUKA_LIB_PIXBUF)) {
 		px.missing = "GdkPixbuf isn't installed (Ubuntu, Debian: libgdk-pixbuf-2.0-0; Fedora: gdk-pixbuf2)";
 		return;
 	}
-	*(void **)&px.new_from_file = dlsym(l, "gdk_pixbuf_new_from_file");
-	*(void **)&px.new_from_data = dlsym(l, "gdk_pixbuf_new_from_data");
-	*(void **)&px.apply_orientation = dlsym(l, "gdk_pixbuf_apply_embedded_orientation");
-	*(void **)&px.width = dlsym(l, "gdk_pixbuf_get_width");
-	*(void **)&px.height = dlsym(l, "gdk_pixbuf_get_height");
-	*(void **)&px.rowstride = dlsym(l, "gdk_pixbuf_get_rowstride");
-	*(void **)&px.channels = dlsym(l, "gdk_pixbuf_get_n_channels");
-	*(void **)&px.pixels = dlsym(l, "gdk_pixbuf_read_pixels");
-	*(void **)&px.file_info = dlsym(l, "gdk_pixbuf_get_file_info");
-	*(void **)&px.save = dlsym(l, "gdk_pixbuf_save_to_bufferv");
-	if (!px.new_from_file || !px.new_from_data || !px.apply_orientation || !px.pixels || !px.save)
+	if (!G(gdk_pixbuf_new_from_file) || !G(gdk_pixbuf_new_from_data) || !G(gdk_pixbuf_apply_embedded_orientation) || !G(gdk_pixbuf_read_pixels) ||
+	    !G(gdk_pixbuf_save_to_bufferv))
 		px.missing = "GdkPixbuf is too old (2.32 or later)";
 }
 
@@ -62,8 +39,8 @@ static bool loaded(asuka_error *err) {
 
 // premultiplied is GdkPixbuf's RGB or RGBA, premultiplied.
 static ie_image premultiplied(GdkPixbuf *pb) {
-	int w = px.width(pb), h = px.height(pb), stride = px.rowstride(pb), ch = px.channels(pb);
-	const guint8 *data = px.pixels(pb);
+	int w = G(gdk_pixbuf_get_width)(pb), h = G(gdk_pixbuf_get_height)(pb), stride = G(gdk_pixbuf_get_rowstride)(pb), ch = G(gdk_pixbuf_get_n_channels)(pb);
+	const guint8 *data = G(gdk_pixbuf_read_pixels)(pb);
 	ie_image img = {w, h, malloc((size_t)w * h * 4)};
 	for (int y = 0; y < h; y++) {
 		const guint8 *s = data + (size_t)y * stride;
@@ -84,13 +61,13 @@ static bool is_file(const char *path) {
 bool ie_decode(const char *path, ie_image *img, asuka_error *err) {
 	if (!loaded(err)) return false;
 	GError *e = NULL;
-	GdkPixbuf *pb = is_file(path) ? px.new_from_file(path, &e) : NULL;
+	GdkPixbuf *pb = is_file(path) ? G(gdk_pixbuf_new_from_file)(path, &e) : NULL;
 	if (e) G(g_error_free)(e);
 	if (!pb) {
 		ie_no_image(err);
 		return false;
 	}
-	GdkPixbuf *up = px.apply_orientation(pb);
+	GdkPixbuf *up = G(gdk_pixbuf_apply_embedded_orientation)(pb);
 	G(g_object_unref)(pb);
 	if (!up) {
 		ie_no_image(err);
@@ -143,7 +120,7 @@ bool ie_size(const char *path, int *w, int *h, asuka_error *err) {
 		return false;
 	}
 	gint iw = 0, ih = 0;
-	if (px.file_info && px.file_info(path, &iw, &ih) && iw > 0 && ih > 0) {
+	if (G(gdk_pixbuf_get_file_info) && G(gdk_pixbuf_get_file_info)(path, &iw, &ih) && iw > 0 && ih > 0) {
 		FILE *f = fopen(path, "rb");
 		int o = 0;
 		if (f) {
@@ -169,12 +146,7 @@ bool ie_video_frame(const char *source, bool local, double seconds, ie_image *im
 		asuka_error_unsupported(err, "video frames need GStreamer (Ubuntu, Debian: libgstreamer1.0-0, gstreamer1.0-plugins-base)");
 		return false;
 	}
-	if (!px.get_state) {
-		*(void **)&px.get_state = dlsym(RTLD_DEFAULT, "gst_element_get_state");
-		*(void **)&px.seek_simple = dlsym(RTLD_DEFAULT, "gst_element_seek_simple");
-		*(void **)&px.try_pull_preroll = dlsym(RTLD_DEFAULT, "gst_app_sink_try_pull_preroll");
-	}
-	if (!px.get_state || !px.seek_simple || !px.try_pull_preroll || !G(gst_parse_launch)) {
+	if (!G(gst_element_get_state) || !G(gst_element_seek_simple) || !G(gst_app_sink_try_pull_preroll) || !G(gst_parse_launch)) {
 		asuka_error_unsupported(err, "video frames need GStreamer's app library (Ubuntu, Debian: libgstreamer-plugins-base1.0-0)");
 		return false;
 	}
@@ -208,15 +180,14 @@ bool ie_video_frame(const char *source, bool local, double seconds, ie_image *im
 	GstElement *sink = G(gst_bin_get_by_name)(pipe, "frames");
 	bool ok = false;
 	const guint64 wait = 15000000000ull;  // ns
-	int state, pending;
-	enum { failure = 0 };  // GST_STATE_CHANGE_FAILURE
+	GstState state, pending;
 	if (sink) {
 		G(gst_element_set_state)(pipe, GST_STATE_PAUSED);
-		ok = px.get_state(pipe, &state, &pending, wait) != failure;
+		ok = G(gst_element_get_state)(pipe, &state, &pending, wait) != GST_STATE_CHANGE_FAILURE;
 		if (ok && seconds > 0)
-			ok = px.seek_simple(pipe, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE, (gint64)(seconds * 1e9)) &&
-			     px.get_state(pipe, &state, &pending, wait) != failure;
-		gpointer sample = ok ? px.try_pull_preroll(sink, wait) : NULL;
+			ok = G(gst_element_seek_simple)(pipe, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE, (gint64)(seconds * 1e9)) &&
+			     G(gst_element_get_state)(pipe, &state, &pending, wait) != GST_STATE_CHANGE_FAILURE;
+		gpointer sample = ok ? G(gst_app_sink_try_pull_preroll)((GstAppSink *)sink, wait) : NULL;
 		ok = false;
 		if (sample) {
 			gpointer buf = G(gst_sample_get_buffer)(sample);
@@ -267,7 +238,7 @@ bool ie_encode(const ie_image *img, bool png, double quality, asuka_bytes *out, 
 			d[3] = (guchar)a;
 		}
 	}
-	GdkPixbuf *pb = px.new_from_data(data, 0, png, 8, img->w, img->h, stride, NULL, NULL);  // GDK_COLORSPACE_RGB
+	GdkPixbuf *pb = G(gdk_pixbuf_new_from_data)(data, 0, png, 8, img->w, img->h, stride, NULL, NULL);  // GDK_COLORSPACE_RGB
 	gchar *buf = NULL;
 	gsize len = 0;
 	GError *e = NULL;
@@ -275,7 +246,7 @@ bool ie_encode(const ie_image *img, bool png, double quality, asuka_bytes *out, 
 	int qi = (int)lround(quality * 100);
 	snprintf(q, sizeof q, "%d", qi < 1 ? 1 : qi > 100 ? 100 : qi);
 	char *keys[] = {png ? NULL : "quality", NULL}, *values[] = {png ? NULL : q, NULL};
-	gboolean ok = pb && px.save(pb, &buf, &len, png ? "png" : "jpeg", keys, values, &e);
+	gboolean ok = pb && G(gdk_pixbuf_save_to_bufferv)(pb, &buf, &len, png ? "png" : "jpeg", keys, values, &e);
 	if (pb) G(g_object_unref)(pb);
 	free(data);
 	if (!ok) {

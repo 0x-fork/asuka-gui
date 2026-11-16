@@ -617,6 +617,276 @@ void ak_ui_alert(ak_str *title, ak_str *message, ak_obj *actions, bool action_sh
 	ak_release(e);  // the root holds it
 }
 
+// ---- The Alert element ----
+//
+// Alert(title) { bind open: asking; message: …; Button(…) { role: …; on
+// press { … } }; TextField { … } }: an alert shown while open is true. The
+// Buttons and TextFields in its block are its buttons and fields, not
+// views of the screen (as a Screen's bar's Buttons are its items): the
+// alert sends them, again as one of them changes while it shows, runs a
+// Button's press when it's chosen and a field's change as the user
+// types. Choosing a button, or the user dismissing it, writes open
+// false.
+
+typedef struct {
+	AK_VEC(ak_view *) kids;             // what's in its block (retained)
+	AK_VEC(ak_view *) buttons, fields;  // its Buttons and TextFields, as last gathered (retained)
+	ak_view *shown;                     // the alert showing (retained)
+	ak_id win;                          // the window it's declared in
+	ak_buf sent;                        // its buttons, as last sent
+} alert_el;
+
+typedef struct {
+	ak_view *el;  // the element (not retained; NULL once it's let go)
+} alert_shown;
+
+static void release_views(void *vec) {
+	AK_VEC(ak_view *) *v = vec;
+	for (uint32_t i = 0; i < v->len; i++) ak_release(v->data[i]);
+	v->len = 0;
+}
+
+// gather collects the Buttons and TextFields of what's in the block, in
+// order, marking them the alert's: a change to them syncs it.
+static void gather(ak_view *e, ak_view *v, alert_el *a) {
+	if (!v) return;
+	v->bar = e;
+	if (v->el == AK_EL_BUTTON) {
+		ak_vec_push(&a->buttons, (ak_view *)ak_retain(v));
+		return;
+	}
+	if (v->el == AK_EL_TEXT_FIELD) {
+		ak_vec_push(&a->fields, (ak_view *)ak_retain(v));
+		return;
+	}
+	for (uint32_t i = 0; i < v->kids.len; i++) gather(e, v->kids.data[i], a);
+}
+
+static void regather(ak_view *e) {
+	alert_el *a = e->impl;
+	release_views(&a->buttons);
+	release_views(&a->fields);
+	for (uint32_t i = 0; i < a->kids.len; i++) gather(e, a->kids.data[i], a);
+}
+
+static ak_str *el_str(const ak_view *v, uint16_t key) {
+	const ak_val *x = key_of(v, key);
+	return x ? x->p : NULL;
+}
+
+static void el_put(ak_buf *b, const ak_str *s) { ak_buf_str(b, s ? s->data : "", s ? s->len : 0); }
+
+// encode_alert_buttons encodes its Buttons as an alert's (flat: each its
+// role, title, icon and disabled); with none, a single OK.
+static void encode_alert_buttons(ak_buf *b, const alert_el *a) {
+	if (!a->buttons.len) {
+		ak_buf_u32(b, 1);
+		ak_buf_u8(b, AK_ALERT_BUTTON_ROLE_CANCEL);
+		ak_buf_str(b, "OK", 2);
+		ak_buf_str(b, "", 0);
+		ak_buf_u8(b, 0);
+		return;
+	}
+	ak_buf_u32(b, a->buttons.len);
+	for (uint32_t i = 0; i < a->buttons.len; i++) {
+		ak_view *x = a->buttons.data[i];
+		const ak_val *role = key_of(x, AK_KEY_BUTTON_ROLE), *d = key_of(x, AK_KEY_DISABLED);
+		ak_buf_u8(b, role ? (uint8_t)role->i : 0);
+		el_put(b, el_str(x, AK_KEY_BUTTON_TITLE));
+		el_put(b, el_str(x, AK_KEY_BUTTON_ICON));
+		ak_buf_u8(b, d && d->i ? AK_MENU_DISABLED : 0);
+	}
+}
+
+static void el_send_buttons(ak_view *e) {
+	alert_el *a = e->impl;
+	if (!a->shown) return;
+	ak_buf b = {0};
+	encode_alert_buttons(&b, a);
+	if (a->sent.len != b.len || memcmp(a->sent.data, b.data, b.len) != 0) {
+		ak_batch_set_bytes(e->r->batch, a->shown->id, AK_PROP_ALERT_BUTTONS, b.data, b.len);
+		ak_buf_free(&a->sent);
+		a->sent = b;
+	} else {
+		ak_buf_free(&b);
+	}
+}
+
+// el_close lets the alert showing go; the user's closing (a button, a
+// dismissal) writes open false.
+static void el_close(ak_view *e, bool user) {
+	alert_el *a = e->impl;
+	ak_view *v = a->shown;
+	if (!v) return;
+	a->shown = NULL;
+	ak_buf_free(&a->sent);
+	((alert_shown *)v->impl)->el = NULL;
+	ak_view_destroy(v);
+	unhold(v);
+	ak_release(v);
+	if (user) {
+		ak_val off = {.i = 0};
+		ak_view_call(e, AK_EV_ALERT_CHANGE, &off, 1);
+	}
+}
+
+static void shown_event(ak_view *v, const ak_event *ev) {
+	alert_shown *s = v->impl;
+	ak_view *e = s->el;
+	if (!e) return;
+	alert_el *a = e->impl;
+	ak_retain(e);
+	switch (ev->kind) {
+	case AK_EVENT_ACTION: {
+		ak_view *x = ev->i >= 0 && ev->i < a->buttons.len ? ak_retain(a->buttons.data[ev->i]) : NULL;
+		el_close(e, true);
+		const ak_val *d = x ? key_of(x, AK_KEY_DISABLED) : NULL;
+		if (x && !(d && d->i) && !x->dead) {  // a disabled one: the host's alert was out of date
+			ak_view_call(x, AK_EV_BUTTON_PRESS, NULL, 0);
+			const ak_val *href = key_of(x, AK_KEY_BUTTON_HREF);
+			if (href && href->p && ((ak_str *)href->p)->len) ak_router_href(e, href->p);
+		}
+		ak_release(x);
+		break;
+	}
+	case AK_EVENT_DISMISSED:
+		el_close(e, true);
+		ak_view_call(e, AK_EV_ALERT_DISMISS, NULL, 0);
+		break;
+	case AK_EVENT_FIELD_CHANGED: {
+		uint32_t i;
+		ak_span text;
+		if (!ak_decode_field_changed((const uint8_t *)ev->s.p, ev->s.len, &i, &text) || i >= a->fields.len) break;
+		ak_view *x = ak_retain(a->fields.data[i]);
+		ak_val arg = {.p = ak_str_new(text.p, text.len)};
+		ak_view_call(x, AK_EV_TEXT_FIELD_CHANGE, &arg, 1);
+		ak_release(arg.p);
+		ak_release(x);
+		break;
+	}
+	}
+	ak_release(e);
+}
+
+static void shown_drop(ak_view *v) { ak_free(v->impl); }
+
+static const ak_el_class cls_alert_shown = {.name = "Alert", .kind = AK_KIND_ALERT, .event = shown_event, .drop = shown_drop};
+
+static void el_open(ak_view *e) {
+	alert_el *a = e->impl;
+	if (a->shown || e->dead || !e->finalized) return;
+	ak_ui_root *r = e->r;
+	ak_view *v = ak_view_new(r, &cls_alert_shown, 0, true);
+	alert_shown *s = ak_alloc(sizeof *s);
+	s->el = e;
+	v->impl = s;
+	v->finalized = true;
+	a->shown = v;  // the element holds it
+	ak_batch *b = r->batch;
+	ak_batch_set_int(b, v->id, AK_PROP_ALERT_WINDOW, a->win ? a->win : r->el->id);
+	ak_str *title = el_str(e, AK_KEY_ALERT_TITLE), *msg = el_str(e, AK_KEY_ALERT_MESSAGE);
+	if (title && title->len) ak_batch_set_string(b, v->id, AK_PROP_ALERT_TITLE, title->data, title->len);
+	if (msg && msg->len) ak_batch_set_string(b, v->id, AK_PROP_ALERT_MESSAGE, msg->data, msg->len);
+	const ak_val *sheet = key_of(e, AK_KEY_ALERT_ACTION_SHEET);
+	bool action_sheet = sheet && sheet->i;
+	if (action_sheet) ak_batch_set_enum(b, v->id, AK_PROP_ALERT_STYLE, AK_ALERT_STYLE_ACTION_SHEET);
+	regather(e);
+	el_send_buttons(e);
+	if (a->fields.len && !action_sheet) {
+		ak_alert_field *fs = ak_alloc(a->fields.len * sizeof *fs);
+		for (uint32_t i = 0; i < a->fields.len; i++) {
+			ak_view *x = a->fields.data[i];
+			const ak_str *text = el_str(x, AK_KEY_TEXT_FIELD_TEXT), *ph = el_str(x, AK_KEY_TEXT_FIELD_PLACEHOLDER), *ct = el_str(x, AK_KEY_TEXT_FIELD_CONTENT_TYPE);
+			const ak_val *sec = key_of(x, AK_KEY_TEXT_FIELD_SECURE), *kb = key_of(x, AK_KEY_TEXT_FIELD_KEYBOARD);
+			fs[i] = (ak_alert_field){ph ? ak_strn(ph->data, ph->len) : ak_cstr(""), text ? ak_strn(text->data, text->len) : ak_cstr(""),
+			                         sec && sec->i ? AK_ALERT_FIELD_SECURE : 0, kb ? (uint8_t)kb->i : 0, ct ? ak_strn(ct->data, ct->len) : ak_cstr("")};
+		}
+		ak_buf *out = ak_batch_set_bytes_begin(b, v->id, AK_PROP_ALERT_FIELDS);
+		ak_append_alert_fields(out, fs, a->fields.len);
+		ak_batch_set_bytes_end(b);
+		ak_free(fs);
+		ak_view_listen(v, AK_EVENT_FIELD_CHANGED);
+	}
+	ak_view_listen(v, AK_EVENT_ACTION);
+	ak_view_listen(v, AK_EVENT_DISMISSED);
+	hold(v);
+	ak_batch_command(b, v->id, AK_CMD_PRESENT, NULL, 0);
+}
+
+static void el_cleanup(void *ctx) {
+	ak_view *e = ctx;
+	el_close(e, false);
+	ak_release(e);
+}
+
+static void alert_el_init(ak_view *e) {
+	alert_el *a = ak_alloc(sizeof *a);
+	e->impl = a;
+	a->win = ak_alert_window(e->r)->id;
+	ak_on_cleanup(el_cleanup, ak_retain(e));
+}
+
+static void alert_el_drop(ak_view *e) {
+	alert_el *a = e->impl;
+	if (!a) return;
+	release_views(&a->kids);
+	release_views(&a->buttons);
+	release_views(&a->fields);
+	ak_vec_free(&a->kids);
+	ak_vec_free(&a->buttons);
+	ak_vec_free(&a->fields);
+	ak_release(a->shown);
+	ak_buf_free(&a->sent);
+	ak_free(a);
+}
+
+static void alert_el_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
+	AK_UNUSED(prev);
+	alert_el *a = e->impl;
+	switch (key) {
+	case AK_KEY_ALERT_OPEN:
+		if (v.i) el_open(e);
+		else el_close(e, false);
+		break;
+	case AK_KEY_ALERT_TITLE:
+	case AK_KEY_ALERT_MESSAGE:
+		if (a->shown) {
+			const ak_str *t = v.p;
+			ak_batch_set_string(e->r->batch, a->shown->id, key == AK_KEY_ALERT_TITLE ? AK_PROP_ALERT_TITLE : AK_PROP_ALERT_MESSAGE, t ? t->data : "", t ? t->len : 0);
+		}
+		break;
+	}
+}
+
+static void alert_el_add(ak_view *e, ak_view *child) {
+	alert_el *a = e->impl;
+	ak_vec_push(&a->kids, (ak_view *)ak_retain(child));
+	child->bar = e;
+	ak_view_sync(e);
+}
+
+// alert_el_sync gathers its Buttons and TextFields again, and sends its
+// buttons while it shows.
+static void alert_el_sync(ak_view *e) {
+	regather(e);
+	el_send_buttons(e);
+}
+
+static void alert_el_destroy(ak_view *e) {
+	alert_el *a = e->impl;
+	el_close(e, false);
+	for (uint32_t i = 0; i < a->kids.len; i++) ak_view_destroy(a->kids.data[i]);
+}
+
+static void alert_el_finalize(ak_view *e) {
+	const ak_val *o = key_of(e, AK_KEY_ALERT_OPEN);
+	if (o && o->i) el_open(e);
+}
+
+const ak_el_class ak_class_alert = {.name = "Alert", .kind = AK_KIND_VIEW, .flags = AK_ELF_FRAGMENT | AK_ELF_FLATTEN | AK_ELF_CHILDREN,
+                                    .init = alert_el_init, .set = alert_el_set, .finalize = alert_el_finalize, .add = alert_el_add,
+                                    .sync = alert_el_sync, .drop = alert_el_drop, .destroy = alert_el_destroy};
+
 // ---- Snackbar ----
 
 typedef struct {

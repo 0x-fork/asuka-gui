@@ -149,7 +149,7 @@ static void stop(recording *r) {
 
 static void on_element(GstBus *bus, gpointer msg, gpointer d) {
 	recording *r = d;
-	gpointer s = G(gst_message_get_structure)(msg);
+	const GstStructure *s = G(gst_message_get_structure)(msg);
 	if (!s || strcmp(G(gst_structure_get_name)(s), "level") != 0) return;
 	gchar *text = G(gst_structure_to_string)(s);
 	r->level = level_of(text);

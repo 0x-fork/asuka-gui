@@ -214,11 +214,10 @@ asuka build --platform linux                # このマシンのアーキテク�
 asuka build --platform linux --arch arm64   # amd64 または arm64
 ```
 
-ホストは cgo を使わずに GTK 4 と libadwaita を呼び出し、コアは Linux ではそのマシンの C コンパイラーで、それ以外では Zig でビルドされるので、どのシステムからでもビルドできます。`dist/linux` には次のものが作られます。
+ホストは C で書かれていて GTK 4 と libadwaita を起動時に開くので（ビルドに GTK のインストールは要りません）、コアやアプリと一緒に Linux ではそのマシンの C コンパイラーで、それ以外では Zig でビルドされ、どのシステムからでもビルドできます。`dist/linux` には次のものが作られます。
 
 - `<name>/`：インストールプレフィックスの構成になっているフォルダーで、アプリの名前を小文字にした名前が付きます（`My Notes` なら `my-notes`）。
-  - `bin/my-notes`：アプリ本体（デスクトップホスト）
-  - `lib/my-notes/libasuka.so`：アプリをコンパイルして組み込んだコア。ホストは `bin/` からの相対位置でこれを見つけます。
+  - `bin/my-notes`：アプリ本体（デスクトップホスト、コア、C にコンパイルしたアプリをリンクした 1 つの実行ファイル）
   - `share/my-notes/assets` と `share/my-notes/asuka-app.json`：アセットと設定。これも `bin/` から見つけます。
   - `lib/my-notes/libasqlite.so`：SQLite のライブラリ。`asuka/sqlite` を使うアプリに入り、これも `bin/` から見つけます（glibc 2.17 以降。SQLite 自身のシンボルを公開しないので、同じプロセスにシステムの SQLite があっても衝突しません）。
   - `share/applications/<id>.desktop`：ランチャーが表示し、起動に使うもの

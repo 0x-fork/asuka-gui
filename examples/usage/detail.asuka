@@ -8,7 +8,7 @@ screen Detail(id: string) {
   state confirming = false
 
   let acc = find(id) ?? Account(id: id)
-  let first = acc.windows.first ?? Window(key: "")
+  let first = acc.windows.first() ?? Window(key: "")
   /// The forecasts worth showing: the weeks', once something's used.
   let long = acc.windows.filter(w => w.period() >= 24h && w.used > 0 && w.resets != none)
 
@@ -75,7 +75,7 @@ screen Detail(id: string) {
         }
       }
 
-      if !long.isEmpty {
+      if !long.isEmpty() {
         Column {
           gap: 12
           Heading("Forecast")
@@ -219,7 +219,7 @@ component ForecastCard(w: Window) {
 
 /// A name and its value, shown when it has one.
 component Field(name: string, value: string) {
-  if !value.isEmpty {
+  if !value.isEmpty() {
     Cell {
       Text(name) {
         grow: 1

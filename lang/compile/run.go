@@ -59,8 +59,8 @@ func Runner(sanitize bool) (string, error) {
 // Run runs a module on the VM with runner: its tests matching pattern
 // with test set (pattern "" for all), else its app. It returns what the
 // runner printed, and an error when it failed (a test failed, or the
-// module didn't load).
-func Run(runner string, m *bytecode.Module, test bool, pattern string) (string, error) {
+// module didn't load). flags go to the runner first (-leaks).
+func Run(runner string, m *bytecode.Module, test bool, pattern string, flags ...string) (string, error) {
 	dir, err := os.MkdirTemp("", "asuka-run")
 	if err != nil {
 		return "", err
@@ -70,7 +70,7 @@ func Run(runner string, m *bytecode.Module, test bool, pattern string) (string, 
 	if err := os.WriteFile(p, m.Encode(), 0o644); err != nil {
 		return "", err
 	}
-	var args []string
+	args := append([]string{}, flags...)
 	if test {
 		args = append(args, "-test")
 		if pattern != "" {
@@ -118,8 +118,8 @@ func RunC(m *bytecode.Module, sanitize, test bool, pattern string) (string, erro
 }
 
 // RunCWith is RunC with the C m's externs call (f, from Foreign) built
-// in.
-func RunCWith(m *bytecode.Module, f *cbuild.Foreign, sanitize, test bool, pattern string) (string, error) {
+// in; flags go to the runner first, as Run's.
+func RunCWith(m *bytecode.Module, f *cbuild.Foreign, sanitize, test bool, pattern string, flags ...string) (string, error) {
 	core, err := FindCore()
 	if err != nil {
 		return "", err
@@ -141,7 +141,7 @@ func RunCWith(m *bytecode.Module, f *cbuild.Foreign, sanitize, test bool, patter
 	if err != nil {
 		return "", errors.New("the C the module compiles to doesn't build: " + err.Error())
 	}
-	var args []string
+	args := append([]string{}, flags...)
 	if test {
 		args = append(args, "-test")
 		if pattern != "" {

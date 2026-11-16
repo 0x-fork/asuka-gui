@@ -1,46 +1,12 @@
-// linux.c (platform/desktop/src): asuka_linux.h's functions, resolved with
-// dlopen and dlsym the first time they're asked for. Built on Linux only.
+// linux.c (platform/desktop/src): asuka_linux.h's helpers for packages'
+// C (errors, the buses, types, the main thread); its functions are
+// resolved by linux_syms.c. Built on Linux only.
 #ifdef __linux__
 #include "asuka_linux.h"
 
-#include <dlfcn.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-
-asuka_linux_t asuka_linux_fns;
-
-static pthread_once_t once = PTHREAD_ONCE_INIT;
-static bool loaded;
-
-enum { L_GLIB, L_GOBJECT, L_GIO, L_GTK, L_ADW, L_GST, L_GSTAPP, L_PIXBUF, L_COUNT };
-
-static void *libs[L_COUNT];
-
-static void load(void) {
-	static const char *names[L_COUNT] = {"libglib-2.0.so.0", "libgobject-2.0.so.0", "libgio-2.0.so.0", "libgtk-4.so.1", "libadwaita-1.so.0",
-	                                     "libgstreamer-1.0.so.0", "libgstapp-1.0.so.0", "libgdk_pixbuf-2.0.so.0"};
-	for (int i = 0; i < L_COUNT; i++) libs[i] = dlopen(names[i], RTLD_NOW | RTLD_GLOBAL);
-	if (!libs[L_GLIB] || !libs[L_GOBJECT] || !libs[L_GIO]) return;
-#define lib_glib L_GLIB
-#define lib_gobject L_GOBJECT
-#define lib_gio L_GIO
-#define lib_gtk L_GTK
-#define lib_adw L_ADW
-#define lib_gst L_GST
-#define lib_gstapp L_GSTAPP
-#define lib_pixbuf L_PIXBUF
-#define X(lib, ret, name, params)                                                \
-	if (libs[lib_##lib]) *(void **)(&asuka_linux_fns.name) = dlsym(libs[lib_##lib], #name);
-	ASUKA_LINUX_FUNCS(X)
-#undef X
-	loaded = true;
-}
-
-const asuka_linux_t *asuka_linux(void) {
-	pthread_once(&once, load);
-	return loaded ? &asuka_linux_fns : NULL;
-}
 
 void asuka_linux_fail(asuka_error *err, GError *e, const char *what) {
 	if (!e) {
@@ -69,7 +35,10 @@ static void init_gst(void) { gst_ready = G(gst_init_check)(NULL, NULL, NULL); }
 
 bool asuka_linux_gst(void) {
 	static pthread_once_t gst_once = PTHREAD_ONCE_INIT;
-	if (!asuka_linux() || !G(gst_init_check)) return false;
+	if (!asuka_linux() || !asuka_linux_load(ASUKA_LIB_GST) || !G(gst_init_check)) return false;
+	asuka_linux_load(ASUKA_LIB_GSTAPP);
+	asuka_linux_load(ASUKA_LIB_GSTVIDEO);
+	asuka_linux_load(ASUKA_LIB_GSTAUDIO);
 	pthread_once(&gst_once, init_gst);
 	return gst_ready;
 }
