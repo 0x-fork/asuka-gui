@@ -454,7 +454,9 @@ A few standard library structs are made when the app compiles (lang/ir's
 argument a string literal without interpolation, has the rest of its
 fields filled by the hook from that string, as constants (`svg.Icon`'s
 `data`, `width` and `height` from its markup, parsed by sdk/svg and
-encoded as the drawing the platforms' views decode). Any other first
+encoded as the drawing the platforms' views decode; `shader.Program`'s
+`code` and `glsl` from its Kage source, internal/shadercode's Compile
+and GLSL). Any other first
 argument, or one the hook rejects, is a compile error at it.
 
 ## Streams
