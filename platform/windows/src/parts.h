@@ -249,6 +249,10 @@ void wh_load_msftedit(void);
 int wh_twips(float size, float k);
 void wh_open_link(node *n, const char *url, size_t len);
 
+// A module method's answer (wh_call_module's, web.c's): once, on the main
+// thread; err NULL, else a message ("unsupported: ..." for what isn't).
+typedef void (*wh_reply)(void *ctx, const uint8_t *b, size_t n, const char *err);
+
 // ---- web.c: WebView2, Video ----
 void wh_make_web(node *n);
 void wh_web_set_prop(node *n, uint16_t p, const ak_value *v);
@@ -256,6 +260,17 @@ void wh_web_close(node *n, HWND hwnd);
 void wh_web_resized(node *n);
 void wh_web_command(node *n, uint16_t cmd, const uint8_t *args, size_t len);
 void wh_web_color_scheme(node *n, bool dark);
+// wh_web_environment calls fn with the app's WebView2 environment (an
+// ICoreWebView2Environment *; NULL without the runtime), made once: what
+// web views and the modules' hidden pages share.
+void wh_web_environment(void (*fn)(void *ctx, void *env), void *ctx);
+// wh_web_evaluate runs script in view's page (an ICoreWebView2 *: a hidden
+// page's, the js module's) as a script of its own, answering its value as
+// JSON (a promise's awaited) or what it threw, on a later turn.
+void wh_web_evaluate(void *view, const char *script, size_t len, wh_reply reply, void *ctx);
+// wh_web_module runs the web module's method (eval, cookies): false if it
+// has no such method.
+bool wh_web_module(const char *method, size_t method_len, const uint8_t *args, size_t len, wh_reply reply, void *ctx);
 
 // ---- native.c: Native views ----
 void wh_set_native_prop(node *n, uint16_t p, const ak_value *v);
