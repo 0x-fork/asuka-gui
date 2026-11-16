@@ -192,3 +192,13 @@ func TestUnloadDestroysViews(t *testing.T) {
 		}
 	})
 }
+
+// button is the host's button titled title.
+func button(h *Host, title string) *node {
+	for _, n := range find(h, ops.KindButton) {
+		if GoString(Send(n.view, "title")) == title {
+			return n
+		}
+	}
+	return nil
+}

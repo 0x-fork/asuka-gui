@@ -16,21 +16,23 @@ import (
 // their own, so its layer keeps its shadow; without the shadow they go
 // back, and the view clips itself again.
 func TestClipShadow(t *testing.T) {
-	shadow, more := signal.New(true), signal.New(false)
-	h, _ := mount(t, func() ui.Node {
-		return ui.View(ui.ViewProps{Style: ui.StyleFunc(func() ui.Style {
-			s := ui.Style{Width: ui.Pt(60), Height: ui.Pt(60), Clip: true, CornerRadius: 12}
-			if shadow.Get() {
-				s.Shadow = ui.Shadow{Color: colors.RGB(0, 0, 0), Radius: 8}
-			}
-			return s
-		})},
-			ui.View(ui.ViewProps{Style: ui.Style{Width: ui.Pt(100), Height: ui.Pt(100), Background: colors.RGB(255, 0, 0)}}),
-			ui.Show(more, func() ui.Node {
-				return ui.View(ui.ViewProps{Style: ui.Style{Width: ui.Pt(10), Height: ui.Pt(10), Background: colors.RGB(0, 0, 255)}})
-			}),
-		)
-	})
+	h := mountApp(t, `
+		component Card {
+		  state shadow = true
+		  state more = false
+		  Column {
+		    View {
+		      width: 60; height: 60; clip: true; radius: 12
+		      shadow: if shadow { Shadow(color: #000000, radius: 8) } else { none }
+		      View { width: 100; height: 100; background: #ff0000 }
+		      if more { View { width: 10; height: 10; background: #0000ff } }
+		    }
+		    Button("More") { on press { more = true } }
+		    Button("Flat") { on press { shadow = false } }
+		  }
+		}
+		app { Card() }
+	`)
 	onMain(func() {
 		var p *node
 		for _, n := range find(h, ops.KindView) {
@@ -64,13 +66,11 @@ func TestClipShadow(t *testing.T) {
 			fatal(t, "no shadow path")
 		}
 		// A child added later goes in the clip view too.
-		h.enter(func() { ui.Post(func() { more.Set(true) }) })
-		h.runPosted()
+		h.enter(func() { Send(button(h, "More").view, "performClick:", 0) })
 		if len(p.children) != 2 || !inClip() {
 			fatalf(t, "%d children, in the clip view: %v", len(p.children), inClip())
 		}
-		h.enter(func() { ui.Post(func() { shadow.Set(false) }) })
-		h.runPosted()
+		h.enter(func() { Send(button(h, "Flat").view, "performClick:", 0) })
 		if p.clipView != 0 {
 			fatal(t, "the clip view stayed without a shadow")
 		}
@@ -86,12 +86,9 @@ func TestClipShadow(t *testing.T) {
 }
 
 // AppKit sets a layer-backed view's layer's shadow from the view's own
-// (none) as it moves into a window: Style.Shadow holds.
+// (none) as it moves into a window: the style's shadow holds.
 func TestShadowInWindow(t *testing.T) {
-	h, _ := mount(t, func() ui.Node {
-		return ui.View(ui.ViewProps{Style: ui.Style{Width: ui.Pt(60), Height: ui.Pt(30), Background: colors.RGB(255, 0, 0),
-			Shadow: ui.Shadow{Color: colors.RGB(0, 0, 0), Radius: 8, Y: 4}}})
-	})
+	h := mountApp(t, `app { View { width: 60; height: 30; background: #ff0000; shadow: Shadow(color: #000000, radius: 8, y: 4) } }`)
 	onMain(func() {
 		var n *node
 		for _, x := range find(h, ops.KindView) {
