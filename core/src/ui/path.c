@@ -86,7 +86,10 @@ void ak_ui_enter(ak_str *name) {
 			break;
 		}
 	}
-	if (!found) ak_vec_push(&p->counts, ((path_count){ak_retain(name), 1}));
+	// A copy, not name retained: a component's name is its module's
+	// constant, which a reload frees while the path (the dev loop's
+	// keep) outlives it.
+	if (!found) ak_vec_push(&p->counts, ((path_count){ak_str_new(name->data, name->len), 1}));
 	char buf[16];
 	int k = snprintf(buf, sizeof buf, "#%u", n);
 	char *seg = ak_alloc(name->len + (size_t)k);

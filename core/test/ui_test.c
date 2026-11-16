@@ -1613,6 +1613,27 @@ TEST(instance_paths) {
 	done(a);
 }
 
+// A component's name is its module's constant (immortal, freed with the
+// module); the path, which a reload keeps, must not hold it.
+static ak_str *const_name;
+
+static ak_val const_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_ui_enter(const_name);
+	ak_view *t = text("app");
+	ak_ui_leave();
+	return (ak_val){.p = t};
+}
+
+TEST(instance_paths_outlive_module) {
+	const_name = ak_str_c("App");
+	ak_make_immortal(const_name);
+	ak_uitest *a = mount(const_app, NULL);
+	done(a);
+	ak_free(const_name);  // the module released (ak_module_release)
+	ak_path_reset();      // the next mount's
+}
+
 static ak_val use_theme(ak_closure *c, ak_val *a, uint32_t n) {
 	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
 	ak_str *k = ak_str_c("Theme");
