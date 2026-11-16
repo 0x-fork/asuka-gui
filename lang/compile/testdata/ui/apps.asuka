@@ -1,0 +1,24 @@
+import asuka/apps
+
+component Launcher {
+  state message = "listing"
+
+  task {
+    do {
+      let all = try await apps.list()
+      message = "{all.count()} apps"
+    } catch apps.AppsError.unsupported {
+      message = "no apps here"
+    }
+  }
+
+  Text(message)
+}
+
+app { Launcher() }
+
+test "a host without apps says so" {
+  let app = mount(Launcher())
+  await app.idle()
+  app.expect("no apps here")
+}

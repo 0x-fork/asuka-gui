@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/egoist/asuka/internal/appsearch"
 	"math"
 	"os"
 	"path/filepath"
@@ -26,10 +27,14 @@ func init() {
 	moduleHooks = append(moduleHooks, func(h *Host, m map[string]map[string]method) {
 		m["apps"] = map[string]method{
 			"list": func(_ []byte, reply func([]byte, error)) {
-				h.offMain(func() ([]byte, error) { return json.Marshal(listApps(appDirs())) }, reply)
+				h.offMain(func() ([]byte, error) { return json.Marshal(tidyApps(listApps(appDirs()))) }, reply)
 			},
 			"icon": h.appIcon,
 			"open": h.openApp,
+			// asuka/apps' search: {"names", "query"}, the indices best first.
+			"search": func(args []byte, reply func([]byte, error)) {
+				h.offMain(func() ([]byte, error) { return appsearch.Method(args) }, reply)
+			},
 		}
 	})
 }
@@ -288,4 +293,19 @@ func writeAppIcon(path string, b []byte) error {
 		os.Remove(f.Name())
 	}
 	return err
+}
+
+// tidyApps is the list as apps get it (appsearch.Tidy): each once, by
+// name.
+func tidyApps(list []installedApp) []installedApp {
+	in := make([]appsearch.App, len(list))
+	for i, a := range list {
+		in[i] = appsearch.App(a)
+	}
+	out := appsearch.Tidy(in)
+	res := make([]installedApp, len(out))
+	for i, a := range out {
+		res[i] = installedApp(a)
+	}
+	return res
 }

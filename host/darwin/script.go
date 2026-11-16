@@ -33,6 +33,7 @@ import (
 //   - wait:<duration> waits (500ms), snap:<file.png> writes a snapshot
 //   - waitfor:<file> waits until the file exists (a minute at most): a
 //     test says when to go on
+//   - until:<text> waits until the window shows text (a minute at most)
 //
 // The script runs once the window has shown, each step after the last
 // settles; then ASUKA_SNAPSHOT is written, if it's set.
@@ -52,6 +53,19 @@ func (h *Host) runScript(script string) {
 		}
 		if p, ok := strings.CutPrefix(s, "waitfor:"); ok {
 			boot.WaitFor(p)
+			continue
+		}
+		if text, ok := strings.CutPrefix(s, "until:"); ok {
+			// Until the window shows text (a minute at most): what the app
+			// does on its own, a host's answer, comes in its time.
+			for i := 0; i < 1200; i++ {
+				shown := make(chan bool)
+				h.Post(func() { WithPool(func() { shown <- strings.Contains(h.dump(), text) }) })
+				if <-shown {
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
 			continue
 		}
 		done := make(chan struct{})

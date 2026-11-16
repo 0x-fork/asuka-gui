@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/egoist/asuka/internal/appsearch"
 	stdimage "image"
 	"image/png"
 	"math"
@@ -38,13 +39,17 @@ func init() {
 					withSTA(func() {
 						var list []installedApp
 						if list, err = listApps(); err == nil {
-							b, err = json.Marshal(list)
+							b, err = json.Marshal(tidyApps(list))
 						}
 					})
 					return b, err
 				}, reply)
 			},
 			"icon": h.appIcon,
+			// asuka/apps' search: {"names", "query"}, the indices best first.
+			"search": func(args []byte, reply func([]byte, error)) {
+				h.offMain(func() ([]byte, error) { return appsearch.Method(args) }, reply)
+			},
 			"open": func(args []byte, reply func([]byte, error)) {
 				path := string(args)
 				if !isShellItem(path) {
@@ -333,4 +338,19 @@ func writeAppIcon(path string, b []byte) error {
 	drawnIcons.files[path] = true
 	drawnIcons.Unlock()
 	return nil
+}
+
+// tidyApps is the list as apps get it (appsearch.Tidy): each once, by
+// name.
+func tidyApps(list []installedApp) []installedApp {
+	in := make([]appsearch.App, len(list))
+	for i, a := range list {
+		in[i] = appsearch.App(a)
+	}
+	out := appsearch.Tidy(in)
+	res := make([]installedApp, len(out))
+	for i, a := range out {
+		res[i] = installedApp(a)
+	}
+	return res
 }

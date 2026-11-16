@@ -157,21 +157,34 @@ func TestBuildMacStd(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "netapp")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("name = \"netapp\"\nid = \"dev.asuka.netapp\"\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "app.asuka"), []byte(`import asuka/network
+	os.WriteFile(filepath.Join(dir, "app.asuka"), []byte(`import asuka/apps
+import asuka/network
 import asuka/recent
 
 component Net {
   let net = network.status()
   state asked = "recent: asking"
 
+  state first = "first: asking"
+
   task {
     let n = (await recent.list()).count()
     asked = "recent: {n >= 0}"
   }
 
+  task {
+    do {
+      let found = try await apps.search(try await apps.list(), "finder")
+      first = "first: {found.first()?.name ?? "none"}"
+    } catch e {
+      first = "first: {e.message}"
+    }
+  }
+
   Column {
     Text(if net.connected { "online over {net.type}" } else { "offline" })
     Text(asked)
+    Text(first)
   }
 }
 
@@ -188,12 +201,15 @@ app { Net() }
 	}
 	snap := filepath.Join(t.TempDir(), "n.png")
 	c := exec.Command(filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName())))
-	c.Env = append(os.Environ(), "ASUKA_SCRIPT=wait:1s", "ASUKA_SNAPSHOT="+snap, "ASUKA_DUMP=1")
+	c.Env = append(os.Environ(), "ASUKA_SCRIPT=until:first: F;until:recent: t", "ASUKA_SNAPSHOT="+snap, "ASUKA_DUMP=1")
 	if b, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, b)
 	}
 	dump, err := os.ReadFile(snap + ".txt")
 	s := string(dump)
+	if !strings.Contains(s, `"first: Finder"`) {
+		t.Errorf("asuka/apps didn't find Finder through the host:\n%s", s)
+	}
 	if !strings.Contains(s, `"recent: true"`) {
 		t.Errorf("the host's recent module didn't answer (asuka/platform's call):\n%s", s)
 	}
