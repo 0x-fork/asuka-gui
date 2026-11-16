@@ -596,51 +596,55 @@ component Player {
 }
 ```
 
-## Signing in on the web: asuka/sdk/webauth
+## Signing in on the web: asuka/webauth
 
-`webauth.Start` shows a sign-in page in the system's own sign-in sheet:
-`ASWebAuthenticationSession` on iOS (SwiftUI's
-`webAuthenticationSession`), a Custom Tab on Android. It's the
-browser's, so the user's sessions, passkeys and password autofill work
-in it, and providers that refuse an app's own `WebView` (Google's
-sign-in) don't refuse it. Use it for OAuth rather than a `ui.WebView`.
+`webauth.open(url)` shows a sign-in page in the system's own sign-in
+sheet: `ASWebAuthenticationSession` on iOS, a Custom Tab on Android.
+It's the browser's, so the user's sessions, passkeys and password
+autofill work in it, and providers that refuse an app's own `WebView`
+(Google's sign-in) don't refuse it. Use it for OAuth rather than a
+`WebView`.
 
 The Mac has `ASWebAuthenticationSession` too. Windows and Linux have no
-system sheet: the host shows the page in a web view of its own over the
-window (WebView2, WebKitGTK), which has the app's web profile but not the
+system sheet: the page shows in a web view of the app's over its window
+(WebView2, WebKitGTK), which has the app's web profile but not the
 user's browser's sessions, and which a provider that refuses embedded
 web views refuses there. A browser opens the page in a popup, done when
 it comes back to a page of the app's own origin (a custom scheme can't
 open a page).
 
-```go
-s := webauth.Start(webauth.Options{URL: authorizeURL, CallbackScheme: "myapp"},
-	func(callback string, err error) {
-		if errors.Is(err, webauth.ErrCanceled) {
-			return // the user closed it
-		}
-		// callback is myapp://…?code=…: exchange the code.
-	})
+```asuka
+import asuka/webauth
+
+async fn signIn(authorizeURL: string) throws -> string? {
+  do {
+    // myapp://…?code=…: exchange the code.
+    return try await webauth.open(authorizeURL, callbackScheme: "myapp")
+  } catch webauth.WebAuthError.canceled {
+    return none // the user closed it
+  }
+}
 ```
 
 It ends in one of two ways:
 
 - **A callback scheme.** When the page goes to a URL of
-  `CallbackScheme` (the app's own), the sheet closes and `done` gets the
-  URL. On Android the scheme must be the app's, asuka.toml's `scheme`; it
-  goes to `done` rather than `ui.OnOpenURL`.
+  `callbackScheme` (the app's own), the sheet closes and `open` returns
+  the URL. On Android the scheme must be the app's, asuka.toml's
+  `scheme`; it goes to `open` rather than the app's `openURL` event.
 - **The app ends it.** Without a scheme, the page redirects somewhere
   the app hears from: an OAuth server that allows a redirect to the
   loopback interface (`http://localhost:port/callback`, RFC 8252) sends
-  the code to a server the app runs on that port, which calls
-  `s.Cancel()` to close the sheet. On Android, cancelling brings the app
-  back over the tab.
+  the code to a server the app runs on that port; racing the two
+  (`race(server.next(), webauth.open(url))`) cancels `open`, which
+  closes the sheet. On Android, cancelling brings the app back over the
+  tab.
 
-`done` gets `webauth.ErrCanceled` when the user closes the sheet, or
-`Cancel` does. `Ephemeral` asks for a private session, without the
+`open` throws `webauth.WebAuthError.canceled` when the user closes the
+sheet. `ephemeral: true` asks for a private session, without the
 browser's cookies (iOS's `prefersEphemeralWebBrowserSession`; Android's
-Custom Tabs keep them). [`examples/usage`](../examples/usage) signs in
-with Claude this way, with a loopback server.
+ephemeral Custom Tab where the browser has one; a throwaway profile on
+Windows and Linux).
 
 ## Copy, share and open: ui.Copy, ui.Share, ui.OpenURL
 
@@ -2170,31 +2174,45 @@ a.WaitFor("Thanks!")
 
 [examples/checkout](../examples/checkout) sells a tea set this way.
 
-## Face ID and fingerprints: asuka/sdk/biometric
+## Face ID and fingerprints: asuka/biometric
 
-`biometric.Authenticate(options)` shows the system's prompt (Face ID,
+`biometric.authenticate(reason:)` shows the system's prompt (Face ID,
 Touch ID, Android's BiometricPrompt; Touch ID on a Mac, Windows Hello on
-Windows, a passkey's WebAuthn prompt in a browser) and returns nil if it's the device's
-owner, or `ErrCanceled`, `ErrNotAvailable` (no biometry and no passcode,
-or locked out) or `ErrFailed`. Not on the main thread.
+Windows, a passkey's WebAuthn prompt in a browser) and returns if it's
+the device's owner, or throws `BiometricError.canceled`, `.notAvailable`
+(no biometry and no passcode, or locked out) or `.failed`. It waits
+without holding the main thread.
 
-```go
-go func() {
-	err := biometric.Authenticate(biometric.Options{Reason: "Unlock your notes"})
-	ui.Post(func() { unlocked.Set(err == nil) })
-}()
+```asuka
+import asuka/biometric
+
+component Lock {
+  state unlocked = false
+
+  Button(if unlocked { "Unlocked" } else { "Unlock" }) {
+    on press {
+      do {
+        try await biometric.authenticate(reason: "Unlock your notes")
+        unlocked = true
+      } catch biometric.BiometricError.canceled {
+      } catch e {
+        unlocked = false
+      }
+    }
+  }
+}
 ```
 
-- `Reason` says why (iOS's subtitle; Android's title); `Cancel` is the
+- `reason` says why (iOS's subtitle; Android's title); `cancel:` is the
   cancel button's title.
 - The user can use the device's passcode, PIN or pattern instead, unless
-  `NoPasscode`: biometry only (on Android, a strong one, Class 3).
-- `biometric.Check()` says what the device has: its `Kind` (`Face`,
-  `Fingerprint`, `Iris`, `Optic`), whether one is `Enrolled`, and whether
-  it has a `Passcode`.
+  `noPasscode: true`: biometry only (on Android, a strong one, Class 3).
+- `biometric.check()` says what the device has: its `kind` (`.face`,
+  `.fingerprint`, `.iris`, `.optic`), whether one is `enrolled`, and
+  whether it has a `passcode`.
 
-Linux has no system prompt for the owner: `Check` says there's nothing,
-and `Authenticate` fails with `ErrNotAvailable`.
+Linux has no system prompt for the owner: `check` says there's nothing,
+and `authenticate` throws `.notAvailable`.
 
 ## Recording sound: asuka/sdk/audio/record
 

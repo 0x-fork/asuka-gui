@@ -64,3 +64,36 @@ func ThreadWindows() []uintptr {
 	enumThreadTo = nil
 	return out
 }
+
+const classOwn = "AsukaPackageWindow"
+
+var own struct {
+	proc     uintptr
+	handlers map[uintptr]func(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool)
+}
+
+// NewWindow makes a window of native packages' own class, whose messages
+// go to handle first (true: handled, its answer); the rest to
+// DefWindowProc. Main thread.
+func NewWindow(ex uint32, title string, style uint32, x, y, w, h int32, owner uintptr, handle func(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool)) uintptr {
+	if own.proc == 0 {
+		own.handlers = map[uintptr]func(uintptr, uint32, uintptr, uintptr) (uintptr, bool){}
+		own.proc = syscall.NewCallback(func(hwnd, m, wp, lp uintptr) uintptr {
+			if f := own.handlers[hwnd]; f != nil {
+				if r, ok := f(hwnd, uint32(m), wp, lp); ok {
+					return r
+				}
+			}
+			if m == WM_NCDESTROY {
+				delete(own.handlers, hwnd)
+			}
+			return DefWindowProc(hwnd, uint32(m), wp, lp)
+		})
+		RegisterClass(classOwn, CS_HREDRAW|CS_VREDRAW, own.proc, AppIcon())
+	}
+	hwnd := CreateWindow(ex, classOwn, title, style, x, y, w, h, owner, 0)
+	if hwnd != 0 && handle != nil {
+		own.handlers[hwnd] = handle
+	}
+	return hwnd
+}
