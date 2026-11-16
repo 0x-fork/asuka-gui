@@ -123,12 +123,29 @@ class AsukaNode(val id: Int, val kind: Int, var view: View) {
         children.add(i, child)
         child.parent = this
         val c = container ?: return
-        // At the left whatever the direction: frames are physical.
-        val lp = if (c is AsukaContainer) AsukaParams() else FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.LEFT or Gravity.TOP)
         val v = child.outer
+        // At the left whatever the direction: frames are physical. A view
+        // moved from another container keeps its frame until the core
+        // sends one: it sends a frame only when it changed.
+        val lp = if (c is AsukaContainer) AsukaParams().apply { (v.layoutParams as? AsukaParams)?.let { copyFrame(it) } }
+            else FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.LEFT or Gravity.TOP)
         (v.parent as? ViewGroup)?.removeView(v)
-        // Among the views there: a Scroll takes rows out of sight out.
-        c.addView(v, if (c is AsukaContainer) children.subList(0, i).count { it.outer.parent === c } else -1, lp)
+        c.addView(v, if (c is AsukaContainer) indexIn(c, i) else -1, lp)
+    }
+
+    /**
+     * Where the view of children[i] goes among c's: after the view of the
+     * nearest child before it that's there (a Scroll takes rows out of
+     * sight out). Appending, the common case, is constant time.
+     */
+    private fun indexIn(c: ViewGroup, i: Int): Int {
+        var j = i - 1
+        while (j >= 0 && children[j].outer.parent !== c) j--
+        if (j < 0) return 0
+        val before = children[j].outer
+        val n = c.childCount
+        if (n > 0 && c.getChildAt(n - 1) === before) return n
+        return c.indexOfChild(before) + 1
     }
 
     fun remove(child: AsukaNode) {
@@ -148,6 +165,17 @@ class AsukaParams : ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT) {
     var y = 0
     var w = 0
     var h = 0
+    /**
+     * Whether the core has framed it. A view just inserted has no frame
+     * until the batch's frames come, and its container, framed before it,
+     * neither measures nor lays it out: a text measured at no width breaks
+     * after every character, only to be measured again at its own.
+     */
+    var framed = false
+
+    fun copyFrame(o: AsukaParams) {
+        x = o.x; y = o.y; w = o.w; h = o.h; framed = o.framed
+    }
 }
 
 /**
@@ -286,6 +314,7 @@ open class AsukaContainer(context: Context) : ViewGroup(context) {
         for (i in 0 until childCount) {
             val c = getChildAt(i)
             val lp = c.layoutParams as? AsukaParams ?: continue
+            if (!lp.framed) continue
             c.measure(MeasureSpec.makeMeasureSpec(lp.w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(lp.h, MeasureSpec.EXACTLY))
         }
     }
@@ -294,6 +323,7 @@ open class AsukaContainer(context: Context) : ViewGroup(context) {
         for (i in 0 until childCount) {
             val c = getChildAt(i)
             val lp = c.layoutParams as? AsukaParams ?: continue
+            if (!lp.framed) continue
             c.layout(lp.x, lp.y, lp.x + lp.w, lp.y + lp.h)
         }
     }

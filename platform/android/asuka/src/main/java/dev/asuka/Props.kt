@@ -134,14 +134,21 @@ private class AsukaAppearance(
 )
 
 private val appearances = HashMap<Int, AsukaAppearance>()
-private var appearancesFor = ""
+// What the appearances were resolved for: the theme, font scale, density
+// and UI mode. Compared field by field: every text made asks.
+private var appearancesTheme = -1
+private var appearancesScale = 0f
+private var appearancesDpi = 0
+private var appearancesMode = 0
 
 private fun AsukaRuntime.appearance(style: Int): AsukaAppearance {
     val cfg = themed.resources.configuration
-    val key = "$themeVersion|${cfg.fontScale}|${cfg.densityDpi}|${cfg.uiMode}"
-    if (key != appearancesFor) {
+    if (themeVersion != appearancesTheme || cfg.fontScale != appearancesScale || cfg.densityDpi != appearancesDpi || cfg.uiMode != appearancesMode) {
         appearances.clear()
-        appearancesFor = key
+        appearancesTheme = themeVersion
+        appearancesScale = cfg.fontScale
+        appearancesDpi = cfg.densityDpi
+        appearancesMode = cfg.uiMode
     }
     return appearances.getOrPut(style) {
         // Material's view, which reads lineHeight from an appearance too.
@@ -669,7 +676,10 @@ fun AsukaRuntime.measureNode(n: AsukaNode, w: Float, h: Float, aw: Float, ah: Fl
     // (TextView.checkForRelayout), and has none till it's added.
     if (v.layoutParams == null) v.layoutParams = android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
     var minW = -1
+    // Only a min-content width (avail -∞, no width) asks for it.
+    val minContent = w.isNaN() && aw == Float.NEGATIVE_INFINITY
     when {
+        !minContent -> {}
         v is EditText -> minW = Math.round(80 * d) // it scrolls its text: it can be narrow
         v is TextView && v !is MaterialButton -> {
             // Min-content: the widest word.

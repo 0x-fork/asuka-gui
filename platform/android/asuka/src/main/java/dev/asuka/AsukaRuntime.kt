@@ -1059,6 +1059,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             lp.y = t
             lp.w = r - l
             lp.h = b - t
+            lp.framed = true
         }
         v.measure(View.MeasureSpec.makeMeasureSpec(r - l, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(b - t, View.MeasureSpec.EXACTLY))
         v.layout(l, t, r, b)
