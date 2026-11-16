@@ -130,6 +130,22 @@ static void report(ak_fake *f, ak_fake_view *v) {
 	ak_buf_free(&b);
 }
 
+// take_focus makes w's window (v's) the one in use, as a desktop has
+// one: the window that had the keyboard loses it, reported where the
+// core listens.
+static void take_focus(ak_fake *f, ak_fake_view *v, fwin *w) {
+	ak_fake_desk *d = desk(f);
+	for (uint32_t i = 0; i < d->wins.len; i++) {
+		fwin *o = d->wins.data[i];
+		if (o == w || !(o->st.flags & AK_WINDOW_STATE_FOCUSED)) continue;
+		o->st.flags &= (uint8_t)~AK_WINDOW_STATE_FOCUSED;
+		ak_fake_view *ov = ak_fake_view_of(f, o->id);
+		if (ov) report(f, ov);
+	}
+	w->st.flags |= AK_WINDOW_STATE_FOCUSED;
+	ak_fake_set_key_window(f, v);
+}
+
 static const char *const action_names[] = {"show", "hide", "focus", "minimize", "maximize", "restore", "fullScreen", "exitFullScreen",
                                            "center", "size", "position", "alwaysOnTop", "notAlwaysOnTop", "close", "clickThrough",
                                            "notClickThrough", "fit"};
@@ -149,8 +165,9 @@ static void action(ak_fake *f, ak_fake_view *v, uint8_t a, float x, float y) {
 	case AK_WINDOW_ACTION_SHOW: s->flags |= vis; break;
 	case AK_WINDOW_ACTION_HIDE: s->flags &= (uint8_t)~(vis | foc); break;
 	case AK_WINDOW_ACTION_FOCUS:
-		s->flags |= vis | foc;
+		s->flags |= vis;
 		s->flags &= (uint8_t)~AK_WINDOW_STATE_MINIMIZED;
+		take_focus(f, v, w);
 		break;
 	case AK_WINDOW_ACTION_MINIMIZE:
 		s->flags |= AK_WINDOW_STATE_MINIMIZED;
@@ -197,8 +214,9 @@ void ak_fake_desk_command(ak_fake *f, ak_fake_view *v, ak_cmd c, ak_span args) {
 		fwin *w = win(f, v);
 		ak_span cfg = ak_fake_string(v, AK_PROP_WINDOW_CONFIG);
 		set_buf(&w->cfg, cfg.p, cfg.len);
-		w->st = (ak_window_state){.width = 800, .height = 600, .flags = AK_WINDOW_STATE_VISIBLE | AK_WINDOW_STATE_FOCUSED};
+		w->st = (ak_window_state){.width = 800, .height = 600, .flags = AK_WINDOW_STATE_VISIBLE};
 		configure(w);
+		if (w->st.flags & AK_WINDOW_STATE_VISIBLE) take_focus(f, v, w);  // a window opening takes the keyboard
 		report(f, v);
 		return;
 	}
@@ -254,8 +272,9 @@ ak_fake_view *ak_fake_window_titled(ak_fake *f, ak_span title) {
 ak_window_state ak_fake_window_state(ak_fake *f, ak_fake_view *v) { return win(f, v)->st; }
 
 void ak_fake_set_window_state(ak_fake *f, ak_fake_view *v, const ak_window_state *s) {
-	win(f, v)->st = *s;
-	if (s->flags & AK_WINDOW_STATE_FOCUSED) ak_fake_set_key_window(f, v);
+	fwin *w = win(f, v);
+	w->st = *s;
+	if (s->flags & AK_WINDOW_STATE_FOCUSED) take_focus(f, v, w);
 	if (ak_fake_listens(v, AK_EVENT_WINDOW_STATE)) {
 		ak_buf b = {0};
 		ak_append_window_state(&b, s);
@@ -268,6 +287,15 @@ void ak_fake_window_actions(ak_fake *f, ak_fake_view *v, ak_buf *out) {
 	fwin *w = win(f, v);
 	if (w->actions.len) ak_buf_put(out, w->actions.data + 1, w->actions.len - 1);
 	w->actions.len = 0;
+}
+
+// ak_fake_focus_window makes v's window the one in use, as the user's
+// click on it does.
+void ak_fake_focus_window(ak_fake *f, ak_fake_view *v) {
+	fwin *w = win(f, v);
+	bool had = w->st.flags & AK_WINDOW_STATE_FOCUSED;
+	take_focus(f, v, w);
+	if (!had) report(f, v);
 }
 
 // ak_fake_close_window closes v's window as the user does (its close

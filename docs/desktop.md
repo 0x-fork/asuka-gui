@@ -424,6 +424,11 @@ the file the user chose (Chrome, Edge) or downloaded. On iOS and Android,
 open is the document picker (copies, as `device.pickFiles` gives), and
 save and chooseFolder throw an `unsupported` error.
 
+A test answers the dialogs itself: `dialog.fake()` installs a
+`FakeDialogs` whose `opens`, `saveTo` and `folder` are what the user
+picks (none, or `[]`: a cancel), and whose `shown` lists the dialogs
+asked for (`"save Untitled.txt"`).
+
 ## The file manager
 
 `asuka/shell` does what the file manager does with a file:
@@ -612,28 +617,45 @@ the content, and it's saved a moment after the last change; `save()`
 saves now, `saveSoon()` from code that can't wait (a key's, a menu
 item's). A file another program changed since it was read is a
 conflict: `saveAnyway()` keeps the app's content, `revert()` takes the
-file's. `document.open(path, read:, write:)` makes a document of any
-type of content, its own read and write functions turning bytes into
-it and back; `Documents` edits text.
+file's. Its `file` is where it's kept ("" for an untitled one) and its
+`name` what it's called; `saveAs(path)`, `rename(name)` and
+`moveTo(dir)` move it, `unsaved()` says whether it has changes its file
+hasn't, and `discard()` lets them go. `document.open(path, read:,
+write:)` makes a document of any type of content, its own read and
+write functions turning bytes into it and back; `Documents` edits text.
 
 What the user gets:
 
 - **On a desktop, a window per document**, named after its file, with
   the file's icon in a Mac's title bar and its edited dot in the close
-  button while it has unsaved changes.
-- **The File menu**: New (⌘N) makes an Untitled document in
-  `document.documentsDir()`, Open… (⌘O) the system's dialog; each
-  window's ⌘S saves and ⌘W closes it.
+  button while it has unsaved changes. The app's main window, whose
+  content `Documents` is, is hidden as it starts. On Windows and Linux the app ends with its last window,
+  as Notepad does; a Mac's keeps running, its menu bar's New and Open…
+  there.
+- **The File menu**, a Mac's as TextEdit's: New (⌘N) opens an untitled
+  document, Open… (⌘O) the system's dialog, Open Recent the system's
+  recent documents, then Close (⌘W), Save (⌘S), Duplicate (⇧⌘S), Save
+  As… (⌥⇧⌘S), Rename…, Move To… and Revert to Saved. On Windows and
+  Linux, Notepad's and GNOME Text Editor's: New, Open…, Open Recent (its
+  documents and Clear Menu), Save, Save As… (Ctrl+Shift+S), Revert,
+  Close and Quit. Each acts on the document whose window is in use.
+  Its words follow the app's language (English, German, Spanish,
+  French, Japanese and Chinese; English otherwise).
 - **Autosave**: a document is saved a moment after the user stops
-  typing; nothing asks.
+  typing; nothing asks. One that can't be saved in place (untitled,
+  changed by another app, its file not writable) keeps its changes in a
+  recovery copy in `document.recoveryDir()`, and a quit keeps them there
+  too: the next launch opens those documents again, edited.
+- **Questions where changes would be lost**: closing an untitled
+  document with changes asks whether to keep it (Save…, Delete, Cancel);
+  closing one whose save failed or met another app's change asks
+  whether to save (Save, Don't Save, Cancel); Save over another app's
+  change asks to Save Anyway or Revert, and Revert to Saved asks first.
+  Move To… asks before replacing a file of its name.
 - **On a phone and in a browser**, one document at a time: the app
   opens on a list of its documents, with New, and a document's screen
-  is pushed over it, saved as the user edits.
-
-Left out so far, of what the Go hosts' `sdk/document` does: Save As,
-Open Recent, Duplicate, Rename and Move To, recovery copies of unsaved
-changes, the questions on closing an untitled document, and the
-menus' translations.
+  is pushed over it, saved as the user edits. A row's swipe Duplicates,
+  Renames (asking the name) or Deletes it (asking first).
 
 ## Starting at login
 
