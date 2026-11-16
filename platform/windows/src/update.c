@@ -113,9 +113,12 @@ static void m_info(wh_reply *r, const uint8_t *a, size_t n) {
 	char *exe8 = wh_utf8(exe, -1, NULL), *dir8 = wh_utf8(dir, -1, NULL);
 	const dsk_config *c = &H.config;
 	const char *reason = "", *message = "";
-	wchar_t *low = _wcsdup(dir);
+	// The folder, lower case, with a separator at its end (room for it).
+	size_t dl_ = wcslen(dir);
+	wchar_t *low = wh_alloc((dl_ + 2) * sizeof *low);
+	wcscpy(low, dir);
 	_wcslwr(low);
-	wcscat(low, L"\\");
+	low[dl_] = L'\\', low[dl_ + 1] = 0;
 	if (!c->update_feed || !*c->update_feed || !c->update_key || !*c->update_key) {
 		reason = "notConfigured", message = "updates aren't set up for this app (asuka.toml's updates: a feed and a key)";
 	} else if (wcsstr(low, L"\\windowsapps\\")) {
@@ -236,11 +239,15 @@ static void wake(void *ctx) {
 	maybe_free(d);
 }
 
-static void post_wake(dl *d) {
-	// Under lock: one at a time, but the end's always comes.
-	if (d->posts && !d->done) return;
+// want_wake says whether the thread posts the main thread a wake-up
+// (under lock: one at a time, but the end's always comes), counting it.
+// It's posted after the lock is released: once the end's is posted the
+// main thread may free d, its lock with it, so the thread touches d no
+// more.
+static bool want_wake(dl *d) {
+	if (d->posts && !d->done) return false;
 	d->posts++;
-	wh_post(wake, d);
+	return true;
 }
 
 // The download's file, as asuka_fetch_stream hands it over: a 200's body
@@ -254,8 +261,9 @@ typedef struct {
 static void progress(dl *d, int status, uint64_t total, uint64_t downloaded) {
 	AcquireSRWLockExclusive(&d->lock);
 	d->downloaded = downloaded, d->total = total, d->status = status;
-	post_wake(d);
+	bool post = want_wake(d);
 	ReleaseSRWLockExclusive(&d->lock);
+	if (post) wh_post(wake, d);  // not the end's: d stays
 }
 
 static bool dl_head(void *ctx, const asuka_response *r, asuka_error *err) {
@@ -310,8 +318,9 @@ static DWORD WINAPI download_thread(void *p) {
 	}
 	d->error = err;
 	d->done = true;
-	post_wake(d);
+	bool post = want_wake(d);
 	ReleaseSRWLockExclusive(&d->lock);
+	if (post) wh_post(wake, d);  // the last touch of d: its wake may free it
 	return 0;
 }
 

@@ -118,6 +118,21 @@ func (w *windows) job(t *testing.T) (local, guest string) {
 // output and whether it exited 0.
 func (w *windows) run(t *testing.T, dir, exe string, env map[string]string, args ...string) (string, error) {
 	t.Helper()
+	return w.runApp(t, dir, exe, env, false, args...)
+}
+
+// runRelaunching is run for an app that relaunches itself: the run ends
+// once no process of exe's name is left (90 seconds at most). In the VM
+// the app runs as a scheduled task, whose job Task Scheduler ends, with
+// every process in it, once the task's command has, and lets none break
+// away: the relaunched app lives only as long as the task.
+func (w *windows) runRelaunching(t *testing.T, dir, exe string, env map[string]string, args ...string) (string, error) {
+	t.Helper()
+	return w.runApp(t, dir, exe, env, true, args...)
+}
+
+func (w *windows) runApp(t *testing.T, dir, exe string, env map[string]string, relaunching bool, args ...string) (string, error) {
+	t.Helper()
 	if w.vm == "" {
 		cmd := exec.Command(exe, args...)
 		cmd.Dir = dir
@@ -146,7 +161,12 @@ func (w *windows) run(t *testing.T, dir, exe string, env map[string]string, args
 	for _, a := range args {
 		fmt.Fprintf(&cmd, " \"%s\"", a)
 	}
-	cmd.WriteString(" > out.txt 2>&1\r\necho %ERRORLEVEL% > code.txt\r\n")
+	cmd.WriteString(" > out.txt 2>&1\r\nset \"asuka_code=%ERRORLEVEL%\"\r\n")
+	if relaunching {
+		name := strings.TrimSuffix(exe[strings.LastIndex(exe, `\`)+1:], ".exe")
+		fmt.Fprintf(&cmd, "powershell -NoProfile -Command \"$end = (Get-Date).AddSeconds(90); while ((Get-Process -Name '%s' -ErrorAction SilentlyContinue) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 200 }\"\r\n", name)
+	}
+	cmd.WriteString("echo %asuka_code% > code.txt\r\n")
 	// A run before in the job left its output.
 	os.Remove(filepath.Join(local, "code.txt"))
 	os.Remove(filepath.Join(local, "out.txt"))

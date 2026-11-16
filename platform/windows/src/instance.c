@@ -534,7 +534,12 @@ void wh_finish_quit(void) {
 	wchar_t pid[16];
 	swprintf(pid, WH_LEN(pid), L"%lu", GetCurrentProcessId());
 	SetEnvironmentVariableW(L"ASUKA_RELAUNCH_WAIT", pid);
-	if (CreateProcessW(exe, line, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+	// Out of the job this one runs in, where the job lets it: a terminal's,
+	// a launcher's or Task Scheduler's ends its processes when it does, and
+	// the new one outlives this one.
+	BOOL ok = CreateProcessW(exe, line, NULL, NULL, FALSE, CREATE_BREAKAWAY_FROM_JOB, NULL, NULL, &si, &pi);
+	if (!ok && GetLastError() == ERROR_ACCESS_DENIED) ok = CreateProcessW(exe, line, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+	if (ok) {
 		CloseHandle(pi.hThread);
 		CloseHandle(pi.hProcess);
 	} else {
