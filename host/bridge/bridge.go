@@ -237,6 +237,9 @@ func (c *Core) Start(h host.Host) {
 	mu.Unlock()
 	c.cbs = cbs
 	native.SetPost(h.Post)
+	if w, ok := h.(interface{ WindowInUse() uintptr }); ok {
+		native.SetWindow(w.WindowInUse)
+	}
 	c.start(c.cbs)
 	if conn, ok := h.(host.Connector); ok {
 		conn.Connect(c)

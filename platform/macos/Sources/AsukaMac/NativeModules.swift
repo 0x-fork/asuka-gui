@@ -407,4 +407,33 @@ public enum AsukaNative {
     }
 }
 
+// What a package's Swift presents over, or attaches a sheet to.
+extension AsukaNative {
+    #if canImport(UIKit)
+    /// The app's window: its foreground scene's key window.
+    @MainActor public static var window: UIWindow? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let active = scenes.filter { $0.activationState == .foregroundActive } + scenes
+        for s in active {
+            if let w = s.windows.first(where: { $0.isKeyWindow }) ?? s.windows.first { return w }
+        }
+        return nil
+    }
+
+    /// The view controller to present over: the window's top one (what's
+    /// presented over its root, and over that).
+    @MainActor public static var presenter: UIViewController? {
+        var vc = window?.rootViewController
+        while let p = vc?.presentedViewController, !p.isBeingDismissed { vc = p }
+        return vc
+    }
+    #else
+    /// The app's window the user works in: the key one, else the main
+    /// one, else the first that's shown.
+    @MainActor public static var window: NSWindow? {
+        NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible })
+    }
+    #endif
+}
+
 #endif

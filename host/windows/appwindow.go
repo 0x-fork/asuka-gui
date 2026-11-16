@@ -206,6 +206,10 @@ func (h *Host) windowInUse() uintptr {
 	return h.topSheet(w)
 }
 
+// WindowInUse is windowInUse for native packages' Go (native.Window):
+// the bridge finds it on the host.
+func (h *Host) WindowInUse() uintptr { return h.windowInUse() }
+
 // topSheet is the top sheet shown over window w (a sheet's over another's
 // over it...), else w: what takes the user's input there.
 func (h *Host) topSheet(w uintptr) uintptr {

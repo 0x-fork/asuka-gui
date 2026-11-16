@@ -478,6 +478,8 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
 
     /** The app was opened with url (its scheme, an app link): ui.OnOpenURL gets it, once the core started. */
     fun openURL(url: String) {
+        // A native package's (asuka/webauth's redirect).
+        if (AsukaModules.openedURL(url)) return
         // A sign-in's callback (webAuth): its answer, not the app's link.
         val a = auth
         if (a != null && a.scheme.isNotEmpty() && Uri.parse(url).scheme.equals(a.scheme, ignoreCase = true)) {
@@ -504,10 +506,14 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
     var auth: AsukaAuth? = null
 
     /** The Activity was paused: a sign-in's tab may be over it. */
-    fun paused() { auth?.away = true }
+    fun paused() {
+        auth?.away = true
+        AsukaModules.lifecycle(false)
+    }
 
     /** The Activity is back: a sign-in's tab closed without a callback is canceled. */
     fun resumed() {
+        AsukaModules.lifecycle(true)
         val a = auth ?: return
         if (!a.away) return
         auth = null
