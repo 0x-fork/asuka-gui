@@ -158,10 +158,21 @@ func TestBuildMacStd(t *testing.T) {
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("name = \"netapp\"\nid = \"dev.asuka.netapp\"\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "app.asuka"), []byte(`import asuka/network
+import asuka/recent
 
 component Net {
   let net = network.status()
-  Text(if net.connected { "online over {net.type}" } else { "offline" })
+  state asked = "recent: asking"
+
+  task {
+    let n = (await recent.list()).count()
+    asked = "recent: {n >= 0}"
+  }
+
+  Column {
+    Text(if net.connected { "online over {net.type}" } else { "offline" })
+    Text(asked)
+  }
 }
 
 app { Net() }
@@ -183,6 +194,9 @@ app { Net() }
 	}
 	dump, err := os.ReadFile(snap + ".txt")
 	s := string(dump)
+	if !strings.Contains(s, `"recent: true"`) {
+		t.Errorf("the host's recent module didn't answer (asuka/platform's call):\n%s", s)
+	}
 	if err != nil || !(strings.Contains(s, `"online over wifi"`) || strings.Contains(s, `"online over ethernet"`) || strings.Contains(s, `"online over cellular"`) || strings.Contains(s, `"offline"`)) {
 		t.Fatalf("the window shows (%v):\n%s", err, dump)
 	}

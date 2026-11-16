@@ -1,0 +1,3 @@
+name = "asuka/recent"
+version = "0.1.0"
+description = "The documents the user opened lately, where the system offers them again"
