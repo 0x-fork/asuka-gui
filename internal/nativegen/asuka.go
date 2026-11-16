@@ -402,7 +402,6 @@ func (l *aloader) enumDecl(d *syntax.EnumDecl) (*EnumDecl, error) {
 	return e, nil
 }
 
-
 // LoadAny reads the native declarations of the package in dir, in Asuka
 // when it has .asuka files, else in Go.
 func LoadAny(dir string) (*Package, error) {
