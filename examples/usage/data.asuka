@@ -29,8 +29,8 @@ struct Window {
       let elapsed = now - (r - period())
       // Under a twentieth of the window in, a rate says little.
       if elapsed < period() / 20 || used <= 0 { return Forecast(atReset: used) }
-      let rate = used / elapsed.hours // percent an hour
-      let at = used + rate * (r - now).hours
+      let rate = used / elapsed.hours() // percent an hour
+      let at = used + rate * (r - now).hours()
       if at > 100 { return Forecast(pace: .over, atReset: at, out: now + ((100 - used) / rate) * 1h) }
       return Forecast(pace: if at > 80 { .tight } else { .ok }, atReset: at)
     }
@@ -181,7 +181,7 @@ struct ProfileOrganization {
 async fn getText(url: string, token: string) throws -> string {
   let res = try await http.request("GET", url, headers: ["Authorization": "Bearer {token}", "anthropic-beta": "oauth-2025-04-20"], timeout: 20s)
   let text = res.text()
-  if res.status != 200 { throw apiError(res.status, res.statusText, text) }
+  if res.status != 200 { throw apiError(res.status, text) }
   return text
 }
 
@@ -194,21 +194,30 @@ struct HttpError: Error {
 /// What a refused request's body may say: the API's message
 /// (\{"error": \{"type": "authentication_error", "message": "..."}}), or
 /// OAuth's (\{"error": "invalid_grant", "error_description": "..."}).
-struct ErrorReply {
-  error: json.Value = .null
+struct ApiErrorBody {
+  message: string = ""
+}
+
+struct ApiErrorReply {
+  error: ApiErrorBody = ApiErrorBody()
+}
+
+struct OAuthErrorReply {
+  error: string = ""
   error_description: string = ""
 }
 
 /// What a refused request says.
-fn apiError(status: int, statusText: string, body: string) -> HttpError {
-  let reply: ErrorReply = (try? json.decode(body)) ?? ErrorReply()
-  var message = reply.error_description
-  if let m = reply.error["message"]?.string() {
-    if !m.isEmpty { message = m }
-  } else if let code = reply.error.string() {
-    if message.isEmpty() { message = code }
+fn apiError(status: int, body: string) -> HttpError {
+  var message = ""
+  let oauth: OAuthErrorReply? = try? json.decode(body)
+  let api: ApiErrorReply? = try? json.decode(body)
+  if let r = oauth {
+    message = if r.error_description.isEmpty() { r.error } else { r.error_description }
+  } else if let r = api {
+    message = r.error.message
   }
-  if message.isEmpty() { message = statusText }
+  if message.isEmpty() { message = "HTTP {status}" }
   if message.contains("scope") {
     // A token for inference alone (claude setup-token's) can't read the
     // account's usage.
@@ -343,7 +352,7 @@ fn merge(old: [Window], fresh: [Window], now: time.Time) -> [Window] {
   for i in 0..<out.count() {
     let w = out[i]
     var h = old.find(o => o.key == w.key && o.resets == w.resets)?.history ?? []
-    if let last = h.last {
+    if let last = h.last() {
       if last.used != w.used || now - last.at > 15min { h.push(Sample(at: now, used: w.used)) }
     } else {
       h.push(Sample(at: now, used: w.used))
@@ -386,7 +395,7 @@ fn demo(now: time.Time) -> Account {
 /// A demo account moved along: some use since it was last refreshed, and
 /// windows that reset start again.
 fn refreshDemo(a: Account, now: time.Time) -> Account {
-  let hours = (now - (a.updated ?? now)).hours
+  let hours = (now - (a.updated ?? now)).hours()
   var fresh: [Window] = []
   for old in a.windows {
     var w = old
@@ -408,7 +417,7 @@ fn refreshDemo(a: Account, now: time.Time) -> Account {
 fn upper(s: string) -> string = if s.isEmpty() { s } else { s.slice(0, 1).upper() + s.slice(1) }
 
 test "the forecast" {
-  let now = time.date(2026, 10, 31, hour: 0, minute: 58, zone: "UTC")
+  let now = time.date(2026, 10, 31, hour: 0, minute: 58, zone: .utc)
   // 15% in 29 hours: 87% by the reset, 13% left.
   let f = Window(key: "seven_day", used: 15, resets: now - 29h + 7 * 24h).forecast(now)
   expect(f.pace == .tight && (100 - f.atReset).rounded() == 13, "the week: {f.pace} {f.atReset}")
@@ -474,8 +483,8 @@ test "a pasted token" {
 }
 
 test "what a refused request says" {
-  expect(apiError(401, "Unauthorized", "\{\"type\":\"error\",\"error\":\{\"type\":\"authentication_error\",\"message\":\"OAuth access token is invalid.\"}}").message == "OAuth access token is invalid. Sign in again.")
-  expect(apiError(403, "Forbidden", "\{\"error\":\{\"message\":\"OAuth token does not meet scope requirement user:profile\"}}").message.contains("can't read usage"))
-  expect(apiError(500, "Internal Server Error", "oops").message == "Internal Server Error")
-  expect(apiError(400, "Bad Request", "\{\"error\":\"invalid_grant\",\"error_description\":\"Invalid code\"}").message == "Invalid code")
+  expect(apiError(401, "\{\"type\":\"error\",\"error\":\{\"type\":\"authentication_error\",\"message\":\"OAuth access token is invalid.\"}}").message == "OAuth access token is invalid. Sign in again.")
+  expect(apiError(403, "\{\"error\":\{\"message\":\"OAuth token does not meet scope requirement user:profile\"}}").message.contains("can't read usage"))
+  expect(apiError(500, "oops").message == "HTTP 500")
+  expect(apiError(400, "\{\"error\":\"invalid_grant\",\"error_description\":\"Invalid code\"}").message == "Invalid code")
 }

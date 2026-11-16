@@ -48,6 +48,11 @@ type Info struct {
 	RoutedScreens  map[syntax.Item]*TypeName
 	ScreenRoutes   map[*TypeName][]*ScreenRoute
 	Hrefs          map[*syntax.CallExpr]*Href
+	// LengthScales: a Length times a number (x * 1%).
+	LengthScales map[*syntax.BinaryExpr]bool
+	// DurationFloats: a Duration scaled by a float (d * 0.5), or divided
+	// by another (a float).
+	DurationFloats map[*syntax.BinaryExpr]bool
 	// Operators: the binary operators a struct's method does (t + 1h).
 	Operators map[*syntax.BinaryExpr]*Operator
 	// Assets: the files assets.text(…) and assets.bytes(…) read.
@@ -95,6 +100,8 @@ func newInfo() *Info {
 		Hrefs:          map[*syntax.CallExpr]*Href{},
 		Assets:         map[*syntax.CallExpr]string{},
 		Operators:      map[*syntax.BinaryExpr]*Operator{},
+		LengthScales:   map[*syntax.BinaryExpr]bool{},
+		DurationFloats: map[*syntax.BinaryExpr]bool{},
 		Imports:        map[*syntax.ImportDecl]*Package{},
 		Expected:       map[syntax.Expr]Type{},
 	}
@@ -171,17 +178,18 @@ const (
 
 // A Selection is what a member expression or an implicit member is.
 type Selection struct {
-	Kind     SelKind
-	Recv     Type // the receiver's type (for an implicit member: the expected one)
-	Field    *Field
-	Case     *Case
-	Global   *Global
-	Member   *Member
-	Obj      Object
-	Value    int64
-	Name     string
-	Optional bool    // x?.name
-	Method   *Method // SelBuiltinField's
+	Kind       SelKind
+	Recv       Type // the receiver's type (for an implicit member: the expected one)
+	Field      *Field
+	Case       *Case
+	Global     *Global
+	Member     *Member
+	Obj        Object
+	Value      int64
+	Name       string
+	Optional   bool    // x?.name
+	MemberType Type    // x?.name's: name's own type (an optional one isn't boxed again)
+	Method     *Method // SelBuiltinField's
 }
 
 // CatchInfo is what a catch clause catches.

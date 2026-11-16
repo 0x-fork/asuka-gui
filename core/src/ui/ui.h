@@ -370,6 +370,7 @@ void ak_ui_on_open_url(ak_closure *f);    // fn(string)
 void ak_ui_on_open_files(ak_closure *f);  // fn([string])
 void ak_ui_on_share(ak_closure *f);       // fn([SharedItem])
 void ak_ui_on_lifecycle(ak_closure *f);   // fn(Lifecycle)
+void ak_ui_color_scheme(int64_t scheme);  // AK_COLOR_SCHEME_*
 void ak_ui_on_foreground(ak_closure *f);  // fn()
 void ak_ui_on_background(ak_closure *f);  // fn()
 void ak_ui_lifecycle(int64_t state);      // the handlers hear it (root.c)

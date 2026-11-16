@@ -1,4 +1,8 @@
-let schemes = ["System", "Light", "Dark"]
+fn schemeName(s: ColorScheme) -> string = match s {
+  .system => "System"
+  .light => "Light"
+  .dark => "Dark"
+}
 let intervals = [3, 5, 10]
 
 /// How quotas show, the app's appearance and how often it refreshes.
@@ -23,9 +27,9 @@ screen Settings {
         }
         Cell {
           Text("Appearance") { grow: 1 }
-          Button(schemes[scheme.value.index]) {
+          Button(schemeName(scheme.value)) {
             menu: [ColorScheme.system, ColorScheme.light, ColorScheme.dark].map(s => .button(
-              title: schemes[s.index],
+              title: schemeName(s),
               run: () => { scheme.value = s },
             ))
           }

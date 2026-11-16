@@ -40,6 +40,7 @@ type RuntimeFunc struct {
 var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "share", Sig: "(text: string)", Builtin: "ui.share", Doc: "shows the system's share sheet for a text or a link"},
 	{Name: "shareFiles", Sig: "(paths: [string], mime: string = \"\", uti: string = \"\", title: string = \"\", from: Ref? = none)", Builtin: "ui.share_files", Async: true, Throws: true, Doc: "shares files (their paths) with the share sheet, anchored on from where a popover points (an iPad, a Mac): returns once it's closed"},
+	{Name: "setColorScheme", Sig: "(scheme: ColorScheme)", Builtin: "ui.color_scheme", Doc: "shows the app light or dark, whatever the system's setting (.system: follows it again)"},
 	{Name: "haptic", Sig: "(kind: Haptic)", Builtin: "ui.haptic", Doc: "plays the platform's haptic feedback"},
 	{Name: "copy", Sig: "(text: string)", Builtin: "ui.copy", Doc: "puts text on the clipboard"},
 	{Name: "openURL", Sig: "(url: string)", Builtin: "ui.open_url", Doc: "opens url in the app that handles it (the browser, Mail, Maps)"},

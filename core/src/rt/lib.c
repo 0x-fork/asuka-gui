@@ -730,6 +730,19 @@ static ak_val length_points(ak_val *args, uint32_t n) {
 static ak_val m_sin(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(sin(A(0).f)); }
 static ak_val m_cos(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(cos(A(0).f)); }
 static ak_val m_atan2(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(atan2(A(0).f, A(1).f)); }
+// len.scale is a Length (its unit in bits 32-39, its float32 value in
+// bits 0-31) with its value times f.
+static ak_val len_scale(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	uint64_t l = (uint64_t)A(0).i;
+	float v;
+	uint32_t bits = (uint32_t)l;
+	memcpy(&v, &bits, 4);
+	v = (float)(v * A(1).f);
+	memcpy(&bits, &v, 4);
+	RET_I((int64_t)((l & ~(uint64_t)0xffffffff) | bits));
+}
+
 static ak_val m_hypot(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(hypot(A(0).f, A(1).f)); }
 static ak_val m_absf(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(fabs(A(0).f)); }
 static ak_val m_absi(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i < 0 ? -A(0).i : A(0).i); }
@@ -1205,6 +1218,7 @@ const ak_lib_entry ak_lib[] = {
 	{"math.cos", m_cos},
 	{"math.atan2", m_atan2},
 	{"math.hypot", m_hypot},
+	{"len.scale", len_scale},
 	{"math.absf", m_absf},
 	{"math.absi", m_absi},
 	{"math.mini", m_mini},

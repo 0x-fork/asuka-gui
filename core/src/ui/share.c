@@ -23,6 +23,12 @@ void ak_ui_haptic(int64_t kind) {
 	uint8_t k = (uint8_t)kind;
 	if (kind >= 0 && kind < AK_HAPTIC_COUNT) root_command(AK_CMD_HAPTIC, &k, 1);
 }
+// ak_ui_color_scheme shows the app light or dark whatever the system's
+// setting, or follows it again (AK_COLOR_SCHEME_*).
+void ak_ui_color_scheme(int64_t scheme) {
+	uint8_t k = (uint8_t)scheme;
+	if (scheme >= 0 && scheme < AK_COLOR_SCHEME_COUNT) root_command(AK_CMD_COLOR_SCHEME, &k, 1);
+}
 // ak_ui_copy puts text on the clipboard.
 void ak_ui_copy(ak_str *text) { str_command(AK_CMD_COPY, text); }
 // ak_ui_open_url asks the system to open url: a web address in the

@@ -39,17 +39,13 @@ component AddSheet(id: string) {
     }
   }
 
-  /// The sign-in: the system's sheet on Claude's page, and the loopback
-  /// server it redirects to. The first to end ends the other: the code
-  /// closes the sheet; the sheet closed by the user (nothing to say) stops
-  /// the server.
+  /// The sign-in: the system's sheet on Claude's page, which ends at the
+  /// page that redirects back with the code.
   async fn start() {
     failed = ""
     do {
-      let server = try await listen()
-      defer { server.close() }
-      let l = Login(redirect: server.url)
-      let u = try await race(server.next(), webauth.open(l.url()))
+      let l = Login(redirect: manualRedirect)
+      let u = try await webauth.open(l.address())
       if let code = l.codeFrom(u) {
         await finish(l, code)
       } else {
@@ -116,7 +112,7 @@ component AddSheet(id: string) {
             on press {
               failed = ""
               pasting = true
-              try? await webauth.open(manual.url())
+              try? await webauth.open(manual.address())
             }
           }
         }
@@ -146,10 +142,10 @@ component AddSheet(id: string) {
 async fn keepSignIn(id: string, signedIn: SignedIn) throws {
   var key = id
   if key.isEmpty() {
-    if let same = accounts.value.find(a => !a.demo && !a.email.isEmpty && a.email == signedIn.email) { key = same.id }
+    if let same = accounts.value.find(a => !a.demo && !a.email.isEmpty() && a.email == signedIn.email) { key = same.id }
   }
   if key.isEmpty() { key = time.now().format("yyyyMMddHHmmss.SSS") }
-  try await secure.save("token.{key}", signedIn.tokens.string())
+  try await secure.write("token.{key}", signedIn.tokens.string())
   var a = find(key) ?? Account(id: key)
   if !signedIn.email.isEmpty() { a.email = signedIn.email }
   if !signedIn.org.isEmpty() { a.org = signedIn.org }

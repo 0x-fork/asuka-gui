@@ -50,7 +50,7 @@ struct Login {
   redirect: string
 
   /// The page the user signs in on.
-  fn url() -> string = "{authorizeURL}?{url().encodeQuery([
+  fn address() -> string = "{authorizeURL}?{url.encodeQuery([
     "code": "true",
     "client_id": oauthClient,
     "response_type": "code",
@@ -70,7 +70,7 @@ struct Login {
     var code = ""
     var st = ""
     if text.hasPrefix(redirect) {
-      if let u = url().parse(text) {
+      if let u = url.parse(text) {
         code = u.query("code") ?? ""
         st = u.query("state") ?? ""
       }
@@ -139,22 +139,13 @@ struct TokenAccount {
 async fn postJSON<R>(url: string, body: [string: string]) throws -> R {
   let res = try await http.request("POST", url, headers: ["Content-Type": "application/json"], body: json.encode(body).bytes(), timeout: 20s)
   let text = res.text()
-  if res.status != 200 { throw apiError(res.status, res.statusText, text) }
+  if res.status != 200 { throw apiError(res.status, text) }
   return try json.decode(text)
 }
 
-/// The page the loopback server shows once it has the code.
-let signedInPage = "<!doctype html><meta name=\"viewport\" content=\"width=device-width\"><body style=\"font:17px -apple-system,system-ui,sans-serif;text-align:center;padding:64px 24px\">Signed in. You can go back to the app.</body>"
-
-/// A server on localhost that the sign-in redirects to: it takes the
-/// code, and tells the browser to go back to the app. It listens on a
-/// free port, on IPv4's and, where it can, IPv6's loopback (a browser may
-/// try either for localhost), until it's closed.
-async fn listen() throws -> http.Loopback = try await http.loopback(path: "/callback", page: signedInPage)
-
 test "the sign-in's address, and its code" {
   let l = Login(redirect: manualRedirect)
-  let u = url.parse(l.url())!
+  let u = url.parse(l.address())!
   expect(u.query("client_id") == oauthClient && u.query("redirect_uri") == manualRedirect && u.query("scope") == "user:profile")
   expect(u.query("code_challenge") == encoding.base64URLEncode(crypto.sha256(l.verifier.bytes())))
   expect(u.query("state") == l.state && u.query("code") == "true")
@@ -163,17 +154,6 @@ test "the sign-in's address, and its code" {
   expect(l.codeFrom(" abc#{l.state}\n") == "abc")
   expect(l.codeFrom("{manualRedirect}?code=abc&state=another") == none) // another sign-in's code
   expect(l.codeFrom("https://claude.ai/login") == none) // a page on the way
-}
-
-test "the loopback server takes the code" {
-  let lb = try await listen()
-  defer { lb.close() }
-  let l = Login(redirect: lb.url)
-  expect(l.url().contains(url.escape(lb.url)), "the redirect isn't the server: {l.url()}")
-  let _ = try await http.get("{lb.url}?code=abc&state={l.state}")
-  expect(l.codeFrom(try await lb.next()) == "abc")
-  lb.close()
-  lb.close() // twice is fine
 }
 
 test "tokens" {

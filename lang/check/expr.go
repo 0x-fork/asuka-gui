@@ -860,6 +860,7 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 		t := c.valueMember(e, Unopt(xt), name)
 		if sel := c.info.Selections[e]; sel != nil {
 			sel.Optional = true
+			sel.MemberType = t
 		}
 		if IsInvalid(t) {
 			return t
@@ -896,6 +897,14 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 	if g := tn.Consts[name]; g != nil {
 		c.info.Selections[e] = &Selection{Kind: SelConst, Global: g, Recv: t}
 		return c.useGlobal(g, e)
+	}
+	if tn.Type == Color {
+		// Color.accent: the semantic color, as .accent where a Color is
+		// expected.
+		if v, ok := SemanticColor(name); ok {
+			c.info.Selections[e] = &Selection{Kind: SelColor, Value: v, Recv: Color}
+			return Color
+		}
 	}
 	if tn.Kind == EnumType || tn.Kind == StructType {
 		c.errorf(e, "%s has no case or constant %s", tn.name, name)
@@ -1292,6 +1301,21 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 	case syntax.MUL, syntax.QUO, syntax.REM:
 		if xt == Duration && yt == Int && (e.Op == syntax.MUL || e.Op == syntax.QUO) {
 			return Duration
+		}
+		// A Duration scaled by a float (0.5 * d), and a Duration's ratio to
+		// another (elapsed / total), a float.
+		if (xt == Duration && yt == Float && (e.Op == syntax.MUL || e.Op == syntax.QUO)) || (xt == Float && yt == Duration && e.Op == syntax.MUL) {
+			c.info.DurationFloats[e] = true
+			return Duration
+		}
+		// A Length scaled by a number: filled * 1% is a percent.
+		if e.Op == syntax.MUL && (xt == Length && IsNumeric(yt) || IsNumeric(xt) && yt == Length) {
+			c.info.LengthScales[e] = true
+			return Length
+		}
+		if xt == Duration && yt == Duration && e.Op == syntax.QUO {
+			c.info.DurationFloats[e] = true
+			return Float
 		}
 		if xt == Int && yt == Duration && e.Op == syntax.MUL {
 			return Duration

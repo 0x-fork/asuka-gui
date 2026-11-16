@@ -30,7 +30,7 @@ state busy: [string] = []
 state foreground = true
 
 app {
-  colorScheme: scheme.value
+  effect { setColorScheme(scheme.value) }
   on foreground {
     foreground = true
     clock = time.now()
@@ -225,11 +225,11 @@ async fn refresh(id: string) {
       fresh = refreshDemo(a, time.now())
     } else {
       do {
-        let token = try await secure.load("token.{id}") ?? ""
-        if token.isEmpty { throw SignedOut(message: "signed out: sign in again") }
+        let token = try await secure.read("token.{id}") ?? ""
+        if token.isEmpty() { throw SignedOut(message: "signed out: sign in again") }
         let (read, kept) = try await refreshClaude(a, token)
         // Refreshed tokens: the old refresh token may be spent.
-        if kept != token { try? await secure.save("token.{id}", kept) }
+        if kept != token { try? await secure.write("token.{id}", kept) }
         fresh = read
       } catch e {
         failure = e.message
@@ -260,13 +260,13 @@ async fn refresh(id: string) {
 }
 
 async fn refreshAll() {
-  let _ = await all(accounts.value.map(a => refresh(a.id)))
+  for a in accounts.value { await refresh(a.id) }
 }
 
 /// Refreshes the accounts last updated longer ago than the setting says.
 async fn refreshStale() {
   let stale = accounts.value.filter(a => a.error.isEmpty() && time.now() - (a.updated ?? time.date(1970, 1, 1)) >= every.value * 1min)
-  let _ = await all(stale.map(a => refresh(a.id)))
+  for a in stale { await refresh(a.id) }
 }
 
 test "a demo account" {
