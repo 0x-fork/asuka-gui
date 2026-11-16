@@ -1,6 +1,8 @@
 package ir
 
 import (
+	"unicode"
+
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/prelude"
@@ -274,4 +276,107 @@ func (b *fb) appHandlers() {
 		b.callBTo(name, bc.None, clos)
 		b.release(mark)
 	}
+}
+
+// Native components (LOWERING.md's "Native components"): a package's
+// native component X is one native view, of the kind "<class>#X" (the
+// class its platforms' code registers the package under: check.Package.
+// NativeClass). Its handlers are set first, then its props (its header
+// parameters', then the rest: the caller's values, else their defaults),
+// each by its exported name (Selected, Changed: internal/nativegen's),
+// its value encoded by its type's descriptor; then the style.
+
+const (
+	uiNative     = "ui.native"      // (type string) -> view
+	uiNativeSet  = "ui.native_set"  // (view, name, value, desc) -> void
+	uiNativeBind = "ui.native_bind" // (view, name, thunk, desc) -> void
+	uiNativeOn   = "ui.native_on"   // (view, name, handler, desc) -> void: desc its parameters', in order
+)
+
+func (b *fb) nativeView(ec *check.ElementCall) int {
+	t := ec.Comp
+	comp := t.Comp
+	v := b.local(bc.KRef)
+	b.callBTo(uiNative, v, b.kstr(t.Pkg.NativeClass+"#"+t.Name()))
+	b.elementRef(ec, v)
+	for _, h := range ec.Handlers {
+		mark := b.mark()
+		desc := ""
+		for _, p := range h.Event.Params {
+			desc += b.l.nativeDesc(b.typ(p.Type))
+		}
+		clos := b.handler(h.Handler, h.Event)
+		b.callBTo(uiNativeOn, bc.None, v, b.kstr(nativeName(h.Event.Name())), clos, b.kstr(desc))
+		b.release(mark)
+	}
+	set := func(m *check.Member, x syntax.Expr) {
+		mark := b.mark()
+		defer b.release(mark)
+		name, desc := b.kstr(nativeName(m.Name())), b.kstr(b.l.nativeDesc(b.typ(m.Type)))
+		if b.l.prog.Reactive(x) {
+			clos := b.thunk(b.l.info.Ctxs[x], x, m.Type)
+			b.callBTo(uiNativeBind, bc.None, v, name, clos, desc)
+			return
+		}
+		b.callBTo(uiNativeSet, bc.None, v, name, b.value(x, -1), desc)
+	}
+	for i, m := range comp.Params {
+		if a := ec.Args[i]; a != nil {
+			set(m, a)
+		} else if m.Default != nil {
+			set(m, m.Default)
+		}
+	}
+	var style []*check.PropArg
+	for _, m := range comp.Props {
+		var val syntax.Expr
+		for _, p := range ec.Props {
+			if p.Member == m {
+				val = p.Value
+			}
+		}
+		if val == nil {
+			val = m.Default
+		}
+		if val != nil {
+			set(m, val)
+		}
+	}
+	for _, p := range ec.Props {
+		if p.Member.Owner != t {
+			style = append(style, p)
+		}
+	}
+	// The style, a later set of a key winning.
+	last := map[*check.Member]int{}
+	for i, p := range style {
+		last[p.Member] = i
+	}
+	for i, p := range style {
+		if last[p.Member] == i {
+			b.setProp(v, t.Name(), p.Member, p.Value)
+		}
+	}
+	return v
+}
+
+// nativeName is a member's name on the native wire: internal/nativegen's
+// exported name (selected → Selected, is_on → IsOn), which the
+// platforms' generated code decodes props and sends events by.
+func nativeName(s string) string {
+	var out []rune
+	up := true
+	for _, c := range s {
+		if !unicode.IsLetter(c) && !unicode.IsDigit(c) {
+			up = true
+			continue
+		}
+		if up {
+			out = append(out, unicode.ToUpper(c))
+			up = false
+		} else {
+			out = append(out, c)
+		}
+	}
+	return string(out)
 }

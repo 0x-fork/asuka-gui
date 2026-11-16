@@ -115,3 +115,75 @@ test "native fns" {
 		t.Errorf("a native fn outside the standard library: %v", got)
 	}
 }
+
+// A package's native component is one native view of the kind its
+// platforms register ("<class>#<Name>", the class asuka.toml's name):
+// its handlers first, then its props by their exported names (the
+// caller's, else their defaults), its style on the view; its events'
+// values come decoded.
+func TestNativeComponents(t *testing.T) {
+	root := t.TempDir()
+	write := func(p, s string) {
+		p = filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("app/gauge/asuka.toml", "name = \"@acme/gauge\"\nversion = \"1.0.0\"\n")
+	write("app/gauge/gauge.asuka", `/// A gauge, the platform's.
+pub native component Dial(items: [string]) {
+  prop value: float = 0.5
+  prop label: string = "Level"
+  event changed(text: string)
+}
+`)
+	write("app/app.asuka", `import ./gauge
+
+component Panel {
+  state level = 0.25
+  state said = ""
+  let dial = Ref()
+
+  Column {
+    gauge.Dial(["a", "b"]) {
+      ref: dial
+      value: level
+      height: 40
+      on changed(t) { said = t }
+    }
+    Text("Said: {said}")
+    Button("More") { on press { level = 0.75 } }
+  }
+}
+
+app { Panel() }
+
+test "a native component" {
+  let app = mount(Panel())
+  let first = app.ops()
+  expect(first.contains("Create 2 Native") && first.contains("SetProp 2 Type=\"@acme/gauge#Dial\""), first)
+  // Items, Value and Label (by their exported names, hex), Value's 0.25.
+  expect(first.contains("Listen 2 Native") && first.contains("Prop=050000004974656d73") && first.contains("Prop=0500000056616c75650508000000000000000000d03f") && first.contains("Prop=050000004c6162656c"), first)
+  expect(first.contains("SetFrame 2 0,0 390x40"), first)
+  app.emit("@acme/gauge#Dial", "Changed", "hi")
+  app.expect("Said: hi")
+  app.tap("More")
+  let next = app.ops()
+  expect(next.contains("SetProp 2 Prop=0500000056616c75650508000000000000000000e83f") && !next.contains("4c6162656c"), next)
+}
+`)
+	res, err := Dir(filepath.Join(root, "app"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := res.Err(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runBoth(t, res.Module)
+	if err != nil || !strings.Contains(out, "ok a native component") {
+		t.Fatalf("got (%v):\n%s", err, out)
+	}
+}
