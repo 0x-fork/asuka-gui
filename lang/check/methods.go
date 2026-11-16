@@ -610,6 +610,15 @@ func (p *sigParser) typ() Type {
 			t = Path
 		case "Ref":
 			t = Ref
+		case "Stream":
+			if !p.eat("<") {
+				p.err = true
+				return Invalid
+			}
+			t = &Stream{p.typ()}
+			if !p.eat(">") {
+				p.err = true
+			}
 		default:
 			t = Invalid
 			if n == "" {

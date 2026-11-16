@@ -42,6 +42,7 @@ var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "webCookies", Sig: "(url: string) -> string", Builtin: "ui.web_cookies", Async: true, Throws: true, Doc: "the cookies the web views keep for url, as a Cookie header"},
 	{Name: "animating", Sig: "() -> bool", Builtin: "ui.animating", Doc: "whether the changes made now animate (inside animate's block and what it causes)"},
 	{Name: "onFrame", Once: true, Sig: "(frame: fn(Duration)) -> fn()", Builtin: "ui.on_frame", Doc: "calls frame at each frame the display draws, with its time, until the closure it returns is called or what called it goes"},
+	{Name: "frames", Sig: "() -> Stream<Duration>", Builtin: "ui.frames", Doc: "the frames the display draws, as a stream of their times: drawn only while it's read (for await t in frames() { … })"},
 	{Name: "useKeys", Body: true, Sig: "(keys: [Shortcut])", Builtin: "ui.use_keys", Doc: "the window's keys while the component lives (the last one's win)"},
 	{Name: "onOpenURL", Body: true, Sig: "(handler: fn(string))", Builtin: "ui.on_open_url", Doc: "hears the URLs the app is opened with while the component lives"},
 	{Name: "onOpenFiles", Body: true, Sig: "(handler: fn([string]))", Builtin: "ui.on_open_files", Doc: "hears the files the app is opened with (their paths) while the component lives"},

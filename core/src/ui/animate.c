@@ -215,6 +215,45 @@ ak_closure *ak_ui_on_frame(ak_closure *f) {
 	return stop;
 }
 
+// ---- frames(): the frames as a stream ----
+//
+// frames() is a Stream<Duration> of the frames the display draws: its
+// producer registers an onFrame that sends each one's time, and waits
+// until the stream is closed (the loop ends, its reader goes), which
+// stops it. Frames come only while it's read.
+
+static void frames_stop(void *ctx) {
+	ak_closure *stop = ctx;
+	if (stop) {
+		ak_call(stop, NULL, 0);
+		ak_release(stop);
+	}
+}
+
+static void frames_cancel(ak_future *f) {
+	frames_stop(f->ctx);
+	f->ctx = NULL;
+	ak_throw_cancel();
+	ak_future_reject(f, ak_error_take());
+}
+
+static ak_val frames_produce(ak_closure *c, ak_val *args, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(n);
+	ak_future *f = ak_future_new(AK_K_VOID);
+	f->ctx = ak_ui_on_frame(args[0].p);  // send each frame's time
+	f->cancel = frames_cancel;
+	f->drop_ctx = frames_stop;
+	return (ak_val){.p = f};
+}
+
+ak_val ak_ui_frames(void) {
+	ak_closure *p = ak_closure_new(frames_produce, NULL, 0, NULL);
+	ak_val args[2] = {{.p = p}, {.i = AK_K_INT}};
+	ak_val s = ak_builtin_find("stream.new")(args, 2);
+	ak_release(p);
+	return s;
+}
+
 // ak_anim_frame runs the frame callbacks of the root whose view is id:
 // those added meanwhile run from the next frame; the stopped go.
 void ak_anim_frame(ak_id id, double seconds);

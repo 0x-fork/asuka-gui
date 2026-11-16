@@ -626,7 +626,10 @@ on press {
 closures. `animating()` says whether the changes made now animate.
 `onFrame(t => …)` calls its closure at each frame the display draws,
 with the frame's time, until the closure it returns is called or the
-component goes: `let stop = onFrame(t => tick(t))`.
+component goes: `let stop = onFrame(t => tick(t))`. `frames()` is the
+same as a `Stream<Duration>`, drawn only while it's read: `for await t
+in frames() { … }` in a task, which stops as the loop ends or the task
+goes.
 
 ## Drawing
 

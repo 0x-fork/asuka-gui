@@ -433,6 +433,7 @@ value:)]` set its variables by name; `colorUniform(name, color)` is
 | `await animate(…) { body }` | `ui.animate_wait(anim, closure{body})`, AWAIT on the future it returns: settled once the animation is complete (its delay and runs; at once when nothing is mounted, or it repeats forever) |
 | `animating()` | `ui.animating()` (whether the changes made now animate) |
 | `let stop = onFrame(t => …)` | `ui.on_frame(closure(t: Duration))`, which returns the stop closure; the frames stop with the current owner too |
+| `frames()` | `ui.frames()`: a `Stream<Duration>` whose producer is an `ui.on_frame` that sends each frame's time, waiting until the stream is closed (the loop ends, the task goes), which stops it |
 
 `body` runs synchronously, its writes batched; the props and frames the
 next flush changes are sent between AnimateBegin and AnimateEnd.
@@ -780,11 +781,7 @@ throw and don't await.
 
 ## What isn't lowered yet
 
-- `for await`, `withTimeout`, screens (the runtime has no `Screen`
-  element yet), styles of other packages, `List`'s lazy rows (no `List`
-  element yet; the lowering calls `ui.lazy_for` when an element says it
-  builds rows lazily), `frames()` (a stream of onFrame's), `ui.call` (a
-  host module's method Asuka doesn't wrap).
+- Styles of other packages (`style card` names the package's own).
 - A `Length` from a number computed at run time is `length.points` of
   it (a constant one is packed when compiling).
 - The runtime reports a user error's message only where the lowering
