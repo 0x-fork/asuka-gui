@@ -14,10 +14,12 @@ import (
 	"github.com/egoist/asuka/internal/nativegen"
 )
 
-// iosHost is what a package's Swift sees of the iOS host (platform/ios's
-// AsukaHost, Media.swift) besides NativeModules.swift: enough to
-// typecheck it for the iOS simulator without building the host.
-const iosHost = `import UIKit
+// hostShim is what a package's Swift sees of a host's beside
+// NativeModules.swift (the hosts' own, shared: the iOS host's Media.swift
+// and Launch.swift, the Mac's Native.swift), for kit (UIKit, AppKit) and
+// its view class.
+func hostShim(kit, view string) string {
+	s := "import " + kit + `
 
 public enum AsukaNativeValue {
     case bool(Bool), int(Int64), float(Double), string(String), bytes(Data)
@@ -29,8 +31,15 @@ public enum AsukaNativeValue {
 }
 
 @MainActor public protocol AsukaNativeView: AnyObject {
-    var view: UIView { get }
+    var view: ` + view + ` { get }
     func set(_ name: String, _ value: AsukaNativeValue)
+    func sizeThatFits(_ size: CGSize) -> CGSize
+    func destroy()
+}
+
+extension AsukaNativeView {
+    public func sizeThatFits(_ size: CGSize) -> CGSize { .zero }
+    public func destroy() {}
 }
 
 @MainActor public final class AsukaNativeContext {
@@ -39,6 +48,26 @@ public enum AsukaNativeValue {
     public func emit(_ name: String, _ values: [String: AsukaNativeValue] = [:]) {}
 }
 `
+	if kit == "UIKit" {
+		s += `
+@objc public protocol AsukaLaunching: NSObjectProtocol {
+    @MainActor static func launch(_ options: [UIApplication.LaunchOptionsKey: Any]) -> Bool
+}
+
+@MainActor public enum AsukaScreen {
+    public static func setLock(_ o: Int) {}
+    public static func setBars(style: Int, hideStatus: Bool) {}
+}
+
+@MainActor public final class AsukaSplash {
+    public static let shared = AsukaSplash()
+    public func hold() {}
+    public func release() {}
+}
+`
+	}
+	return s
+}
 
 // Every standard library package's Swift (std/<name>/swift) builds for
 // macOS, as an app's library has it (with module Asuka: platform/macos's
@@ -75,7 +104,8 @@ func TestStdSwift(t *testing.T) {
 				macos = m[1]
 			}
 			swiftc(t, append([]string{"-target", arch + "-apple-macos" + macos, "-module-name", mod, "-I", mac, "-wmo", "-c", "-o", filepath.Join(dir, name+".o")}, srcs...)...)
-			if simSDK != "" {
+			// The iOS simulator's, for a package that says it runs on iOS.
+			if simSDK != "" && strings.Contains(string(manifest), ".iOS(") {
 				swiftc(t, append([]string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", mod, "-I", ios, "-typecheck"}, srcs...)...)
 			}
 		})
@@ -83,24 +113,25 @@ func TestStdSwift(t *testing.T) {
 }
 
 // asukaModules builds module Asuka as a package's Swift sees it: for
-// macOS (platform/macos's runtime) in mac and, when there's the iOS
-// simulator's SDK (simSDK), for it in ios (iosHost's shim and the iOS
+// macOS (hostShim's and platform/macos's NativeModules.swift) in mac and, when there's the iOS
+// simulator's SDK (simSDK), for it in ios (hostShim's and the iOS
 // host's NativeModules.swift): each its Asuka.swiftmodule and Asuka.o.
 func asukaModules(t *testing.T, dir string) (mac, ios, simSDK, arch string) {
 	t.Helper()
 	arch = map[string]string{"arm64": "arm64", "amd64": "x86_64"}[runtime.GOARCH]
-	src := "../../platform/macos/Sources/AsukaMac/"
 	mac = filepath.Join(dir, "mac")
 	os.MkdirAll(mac, 0o755)
+	macShim := filepath.Join(mac, "Host.swift")
+	os.WriteFile(macShim, []byte(hostShim("AppKit", "NSView")), 0o644)
 	swiftc(t, "-target", arch+"-apple-macos11", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(mac, "Asuka.swiftmodule"), "-wmo", "-c",
-		src+"AsukaMacRuntime.swift", src+"NativeModules.swift", "-o", filepath.Join(mac, "Asuka.o"))
+		macShim, "../../platform/macos/Sources/AsukaHost/NativeModules.swift", "-o", filepath.Join(mac, "Asuka.o"))
 	sim, _ := exec.Command("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path").Output()
 	simSDK = strings.TrimSpace(string(sim))
 	if simSDK != "" {
 		ios = filepath.Join(dir, "ios")
 		os.MkdirAll(ios, 0o755)
 		shim := filepath.Join(ios, "Host.swift")
-		os.WriteFile(shim, []byte(iosHost), 0o644)
+		os.WriteFile(shim, []byte(hostShim("UIKit", "UIView")), 0o644)
 		swiftc(t, "-sdk", simSDK, "-target", arch+"-apple-ios16.0-simulator", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(ios, "Asuka.swiftmodule"),
 			"-wmo", "-c", shim, "../../platform/ios/Sources/AsukaHost/NativeModules.swift", "-o", filepath.Join(ios, "Asuka.o"))
 	}

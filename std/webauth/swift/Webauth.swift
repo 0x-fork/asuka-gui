@@ -41,9 +41,9 @@ final class AuthSheet: Sheet {
                 MainActor.assumeIsolated {
                     if let callback { self?.finish(.success(callback.absoluteString)); return }
                     if let e = error as? ASWebAuthenticationSessionError, e.code == .canceledLogin {
-                        self?.finish(.failure(WebauthError.canceled)); return
+                        self?.finish(.failure(WebAuthError.canceled)); return
                     }
-                    self?.finish(.failure(error ?? WebauthError.canceled))
+                    self?.finish(.failure(error ?? WebAuthError.canceled))
                 }
             }
         }

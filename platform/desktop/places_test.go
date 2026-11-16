@@ -46,7 +46,7 @@ component Probe {
       step = "asked {location.authorization().level == .notAsked}"
       await sleep(1ms)
       let p = try await location.current()
-      step = "current {p.latitude == 52.52} {p.longitude == 13.405} {p.accuracy == 10} {p.altitude == 34} {p.speed == 1.5} {p.course == 90} {p.time == 1700000000500000000}"
+      step = "current {p.latitude == 52.52} {p.longitude == 13.405} {p.accuracy == 10} {p.altitude == 34} {p.speed == 1.5} {p.course == 90} {p.time.unixNano() == 1700000000500000000}"
       await sleep(1ms)
       var n = 0
       var last = 0.0
