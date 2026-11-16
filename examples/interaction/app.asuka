@@ -152,12 +152,12 @@ component Keys {
   }
 
   fn move(by: int) {
-    let n = results.count
+    let n = results.count()
     if n > 0 { selected = (selected + by + n) % n }
   }
 
   fn pick() {
-    if selected < results.count { picked = results[selected] }
+    if selected < results.count() { picked = results[selected] }
   }
 
   WindowKeys { keys: [Shortcut.cmd("k"): () => { focused = true }] }
@@ -179,9 +179,9 @@ component Keys {
       bind focused: focused
       on submit { pick() }
     }
-    Text(if selected >= results.count {
+    Text(if selected >= results.count() {
       "No fruit"
-    } else if picked.isEmpty {
+    } else if picked.isEmpty() {
       "Highlighted: {results[selected]}"
     } else {
       "Highlighted: {results[selected]}, picked: {picked}"
@@ -298,7 +298,7 @@ component DropZone {
         "\"{it.text}\" ({it.mime})"
       })
       let from = if d.local { "this app" } else { "another app" }
-      dropped = "From {from}:\n{lines.join("\n")}"
+      dropped = "From {from}:\n{lines.joined("\n")}"
     }
     Text(dropped) {
       textAlign: .center

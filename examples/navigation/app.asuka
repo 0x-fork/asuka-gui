@@ -28,7 +28,7 @@ let senders = ["Ada", "Grace", "Linus", "Margaret", "Ken", "Barbara"]
 
 fn newMessage(id: int, unread: bool = false) -> Message = Message(
   id: id,
-  from: senders[id % senders.count],
+  from: senders[id % senders.count()],
   subject: "Message {id}",
   body: "This is a message. Open it to see the detail screen, with bar buttons, a sheet, a menu and an alert.",
   unread: unread,
@@ -110,7 +110,7 @@ component Routes {
           // first, and come back here after.
           Route("account") {
             screen: _ => Account()
-            guard: to => if mail.account.isEmpty { "/settings/sign-in?next={url.escape(to)}" } else { "" }
+            guard: to => if mail.account.isEmpty() { "/settings/sign-in?next={url.escape(to)}" } else { "" }
           }
           Route("sign-in") {
             sheet: SheetRoute(detents: [.medium, .large], grabber: true)
@@ -244,7 +244,7 @@ screen Detail(id: int) {
         gap: 16
         Text(m.subject) { font: .title2.bold() }
         Text(m.body) { color: .secondaryLabel }
-        Text(if note.isEmpty { "No note yet." } else { "Note: {note}" }) {
+        Text(if note.isEmpty() { "No note yet." } else { "Note: {note}" }) {
           font: .footnote
           color: .tertiaryLabel
         }
@@ -362,7 +362,7 @@ screen Reply(id: int) {
       Button("Cancel") {
         variant: .plain
         on press {
-          if draft.isEmpty { dismiss() } else { discarding = true }
+          if draft.isEmpty() { dismiss() } else { discarding = true }
         }
       }
       Text("Reply") {
@@ -372,7 +372,7 @@ screen Reply(id: int) {
       }
       Button("Send") {
         variant: .filled
-        disabled: draft.isEmpty
+        disabled: draft.isEmpty()
         on press {
           haptic(.success)
           dismiss()
@@ -421,7 +421,7 @@ screen Settings {
     Row {
       align: .center
       gap: 12
-      Text(if mail.account.isEmpty { "Not signed in" } else { "Signed in as {mail.account}" }) {
+      Text(if mail.account.isEmpty() { "Not signed in" } else { "Signed in as {mail.account}" }) {
         grow: 1
         color: .secondaryLabel
       }

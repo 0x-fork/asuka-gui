@@ -104,14 +104,14 @@ component TextInput {
         icon: "paperplane"
         label: "Send"
         variant: .filled
-        disabled: message.isEmpty
+        disabled: message.isEmpty()
         on press {
           sent = message
           message = ""
         }
       }
     }
-    Text(if sent.isEmpty { "Grows to five lines, then scrolls." } else { "Sent: {sent}" }) { style caption }
+    Text(if sent.isEmpty() { "Grows to five lines, then scrolls." } else { "Sent: {sent}" }) { style caption }
   }
 }
 

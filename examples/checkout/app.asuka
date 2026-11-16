@@ -80,7 +80,7 @@ fn request(quantity: int) -> pay.Request {
     // Google's example gateway: TEST tokens, for any app.
     google: pay.Google(gateway: "example", gatewayParams: ["gatewayMerchantId": "exampleGatewayMerchantId"]),
     onShippingContact: c => {
-      if !c.address.countryCode.isEmpty && c.address.countryCode != "US" {
+      if !c.address.countryCode.isEmpty() && c.address.countryCode != "US" {
         throw pay.Invalid(field: .unserviceable, message: "We ship in the United States only.")
       }
       order.state = c.address.state.upper()
@@ -92,7 +92,7 @@ fn request(quantity: int) -> pay.Request {
     },
     onCoupon: code => {
       let c = code.trim().upper()
-      if !c.isEmpty && c != "TEA10" {
+      if !c.isEmpty() && c != "TEA10" {
         order.coupon = ""
         throw pay.Invalid(field: .couponInvalid, message: "That coupon isn't ours.", update: order.update())
       }
@@ -100,7 +100,7 @@ fn request(quantity: int) -> pay.Request {
       return order.update()
     },
     onAuthorize: p => {
-      if p.shipping.address.postalCode.isEmpty {
+      if p.shipping.address.postalCode.isEmpty() {
         throw pay.Invalid(field: .shippingPostalCode, message: "Enter a ZIP code.")
       }
       try await charge(p, order.total())
@@ -109,8 +109,8 @@ fn request(quantity: int) -> pay.Request {
 }
 
 fn firstName(c: pay.Contact) -> string {
-  if !c.givenName.isEmpty { return c.givenName }
-  return c.name.fields().first ?? "friend"
+  if !c.givenName.isEmpty() { return c.givenName }
+  return c.name.fields().first() ?? "friend"
 }
 
 component Checkout {

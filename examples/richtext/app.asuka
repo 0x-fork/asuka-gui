@@ -75,7 +75,7 @@ let reply = """
 fn tokens(text: string) -> [Span] {
   var out: [Span] = []
   var s = text
-  while !s.isEmpty {
+  while !s.isEmpty() {
     if s.hasPrefix("**") {
       let end = s.slice(2).find("**")!
       out.push(strong(s.slice(2, 2 + end)))
@@ -95,8 +95,8 @@ fn tokens(text: string) -> [Span] {
       s = s.slice(end + 1)
     } else {
       // A word, with the spaces or newlines after it.
-      var j = (s.slice(1).findAny(" \n*_`[") ?? s.count - 1) + 1
-      while j < s.count && (s.slice(j, j + 1) == " " || s.slice(j, j + 1) == "\n") {
+      var j = (s.slice(1).findAny(" \n*_`[") ?? s.count() - 1) + 1
+      while j < s.count() && (s.slice(j, j + 1) == " " || s.slice(j, j + 1) == "\n") {
         j += 1
       }
       out.push(plain(s.slice(0, j)))

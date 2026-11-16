@@ -61,7 +61,7 @@ component Store {
 
   async fn buy(p: purchase.Product) {
     await run(() => {
-      let r = try await purchase.buy(p.item)
+      let r = try await purchase.buy(p.item())
       match r.status {
         .bought => await deliver(r.transaction!)
         .pendingApproval => status = "Waiting for approval…"
@@ -88,8 +88,8 @@ component Store {
       gap: 16
       padding: 20
       Text("{balance} coins") { font: .largeTitle.bold() }
-      if !has.isEmpty {
-        Text("You have {has.join(" and ")}") { color: .secondaryLabel }
+      if !has.isEmpty() {
+        Text("You have {has.joined(" and ")}") { color: .secondaryLabel }
       }
       for p in products key p.id {
         Row {
@@ -138,7 +138,7 @@ fn describe(p: purchase.Product) -> string {
       "{p.price} a {s.period.unit}"
     }
     for o in s.offers {
-      if s.introEligible && o.type == .introductory && !o.phases.isEmpty && o.phases[0].mode == .freeTrial {
+      if s.introEligible && o.type == .introductory && !o.phases.isEmpty() && o.phases[0].mode == .freeTrial {
         line += ", first {o.phases[0].period.count} {o.phases[0].period.unit} free"
       }
     }

@@ -198,7 +198,7 @@ component Spinner {
   task {
     var last: Duration? = none
     for await t in frames() {
-      if let l = last { angle = (angle + (t - l).seconds * speed * 360) % 360 }
+      if let l = last { angle = (angle + (t - l).seconds() * speed * 360) % 360 }
       last = t
     }
   }

@@ -31,8 +31,8 @@ fn inbox(n: int) -> [Mail] {
     at = at - (40 + i * 13 % 90) * 1min
     out.push(Mail(
       id: i + 1,
-      from: senders[i % senders.count],
-      subject: subjects[i % subjects.count],
+      from: senders[i % senders.count()],
+      subject: subjects[i % subjects.count()],
       preview: "Here's where things stand, and what's left before we ship.",
       at: at,
       unread: i % 3 == 0,
@@ -53,8 +53,8 @@ fn byDay(mails: [Mail]) -> [Day] {
   var days: [Day] = []
   for m in mails {
     let name = day(m.at)
-    if days.last?.name == name {
-      days[days.count - 1].mails.push(m)
+    if days.last()?.name == name {
+      days[days.count() - 1].mails.push(m)
     } else {
       days.push(Day(name: name, mails: [m]))
     }
@@ -135,9 +135,9 @@ screen Inbox {
         justify: .spaceBetween
         align: .center
         padding: [8, 16]
-        Text("{chosen.count} selected")
+        Text("{chosen.count()} selected")
         Button("Archive") {
-          disabled: chosen.isEmpty
+          disabled: chosen.isEmpty()
           on press {
             archive(chosen)
             selecting = false
@@ -221,7 +221,7 @@ component Compose {
       Text("New Message") { font: .headline }
       Button("Send") {
         variant: .filled
-        disabled: to.trim().isEmpty
+        disabled: to.trim().isEmpty()
         on press { emit close }
       }
     }
@@ -257,8 +257,8 @@ component Compose {
       Tool("chevron.left.forwardslash.chevron.right", "Code", lit: formats.mono) {
         on press { field.toggleFormat(.mono) }
       }
-      Tool("link", "Link", lit: !formats.link.isEmpty) {
-        on press { field.setLink(if formats.link.isEmpty { "https://example.com" } else { "" }) }
+      Tool("link", "Link", lit: !formats.link.isEmpty()) {
+        on press { field.setLink(if formats.link.isEmpty() { "https://example.com" } else { "" }) }
       }
     }
   }

@@ -21,7 +21,7 @@ pub store Timer {
   state left = 25min
   state running = false
 
-  let clock = "{(left.seconds.int() / 60).padded(2)}:{(left.seconds.int() % 60).padded(2)}"
+  let clock = "{(left.seconds().int() / 60).padded(2)}:{(left.seconds().int() % 60).padded(2)}"
   let startTitle = if running { "Pause" } else { "Start" }
 
   // A second at a time while it runs; starting it again cancels the run

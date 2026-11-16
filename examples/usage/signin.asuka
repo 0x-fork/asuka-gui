@@ -17,7 +17,7 @@ component AddSheet(id: string) {
   state pasted = ""
 
   let manual = Login(redirect: manualRedirect)
-  let title = if id.isEmpty { "Sign in with Claude" } else { "Sign in again" }
+  let title = if id.isEmpty() { "Sign in with Claude" } else { "Sign in again" }
 
   async fn finish(l: Login, code: string) {
     if working { return }
@@ -107,7 +107,7 @@ component AddSheet(id: string) {
             }
             Button("Sign In") {
               variant: .gray
-              disabled: pasted.trim().isEmpty || working
+              disabled: pasted.trim().isEmpty() || working
               on press { await paste() }
             }
           }
@@ -121,7 +121,7 @@ component AddSheet(id: string) {
           }
         }
       }
-      if id.isEmpty && !pasting {
+      if id.isEmpty() && !pasting {
         Button("Try a Demo Account") {
           on press {
             save(demo(time.now()))
@@ -130,7 +130,7 @@ component AddSheet(id: string) {
         }
       }
       if working { Activity() }
-      if !failed.isEmpty {
+      if !failed.isEmpty() {
         Text(failed) {
           font: .footnote
           color: .red
@@ -145,14 +145,14 @@ component AddSheet(id: string) {
 /// with id, or the one signed in to the same email before.
 async fn keepSignIn(id: string, signedIn: SignedIn) throws {
   var key = id
-  if key.isEmpty {
+  if key.isEmpty() {
     if let same = accounts.value.first(a => !a.demo && !a.email.isEmpty && a.email == signedIn.email) { key = same.id }
   }
-  if key.isEmpty { key = time.now().format("yyyyMMddHHmmss.SSS") }
+  if key.isEmpty() { key = time.now().format("yyyyMMddHHmmss.SSS") }
   try await secure.save("token.{key}", signedIn.tokens.string())
   var a = find(key) ?? Account(id: key)
-  if !signedIn.email.isEmpty { a.email = signedIn.email }
-  if !signedIn.org.isEmpty { a.org = signedIn.org }
+  if !signedIn.email.isEmpty() { a.email = signedIn.email }
+  if !signedIn.org.isEmpty() { a.org = signedIn.org }
   a.error = ""
   save(a)
   await refresh(key)

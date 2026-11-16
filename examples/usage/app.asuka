@@ -74,13 +74,13 @@ screen Home {
   Scroll {
     grow: 1
     background: page
-    refreshing: !busy.isEmpty
+    refreshing: !busy.isEmpty()
     on refresh { await refreshAll() }
     SafeArea {
       padding: [8, 16]
       gap: 12
       for a in accounts.value key a.id { AccountCard(a) }
-      if accounts.value.isEmpty {
+      if accounts.value.isEmpty() {
         Column {
           padding: [80, 24]
           gap: 16
@@ -145,7 +145,7 @@ component AccountCard(a: Account) {
       Chevron()
     }
     for w in shown key w.key { WindowRow(w) { forecast: true } }
-    if !a.error.isEmpty {
+    if !a.error.isEmpty() {
       Text("Couldn't refresh: {a.error}") {
         font: .footnote
         color: .red
@@ -265,7 +265,7 @@ async fn refreshAll() {
 
 /// Refreshes the accounts last updated longer ago than the setting says.
 async fn refreshStale() {
-  let stale = accounts.value.filter(a => a.error.isEmpty && time.now() - (a.updated ?? time.date(1970, 1, 1)) >= every.value * 1min)
+  let stale = accounts.value.filter(a => a.error.isEmpty() && time.now() - (a.updated ?? time.date(1970, 1, 1)) >= every.value * 1min)
   let _ = await all(stale.map(a => refresh(a.id)))
 }
 

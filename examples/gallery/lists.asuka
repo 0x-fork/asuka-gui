@@ -6,7 +6,7 @@ struct Message {
 
 fn messages(from: int, n: int) -> [Message] {
   let names = ["Ada", "Grace", "Linus", "Ken", "Rob", "Barbara"]
-  return (from..<from + n).map(i => Message(id: i, from: names[i % names.count], subject: "Message {i + 1}"))
+  return (from..<from + n).map(i => Message(id: i, from: names[i % names.count()], subject: "Message {i + 1}"))
 }
 
 /// The inbox's messages, kept as other destinations are chosen, and
@@ -32,7 +32,7 @@ component Inbox {
   List {
     ref: inboxList
     on endReached {
-      if inboxItems.count < 120 { inboxItems += messages(inboxItems.count, 30) }
+      if inboxItems.count() < 120 { inboxItems += messages(inboxItems.count(), 30) }
     }
     for m in inboxItems key m.id {
       Row {

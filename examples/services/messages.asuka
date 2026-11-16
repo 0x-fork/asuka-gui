@@ -38,7 +38,7 @@ async fn setUpMessages() {
     notify.Channel(id: "messages", name: "Messages", description: "What people send you", importance: .high, group: "chats"),
     notify.Channel(id: "reminders", name: "Reminders", importance: .default),
   ])
-  notify.present(n => if !n.thread.isEmpty && n.thread == chatOnScreen { .hide } else { .banner })
+  notify.present(n => if !n.thread.isEmpty() && n.thread == chatOnScreen { .hide } else { .banner })
   for await r in notify.responses() { await answer(r) }
 }
 
@@ -76,7 +76,7 @@ fn rewriteMessage(m: push.Message) throws -> push.Message {
   if let box = m.data["box"] { out.body = try encoding.base64Decode(box).string() }
   if let name = m.data["sender"] {
     let title = m.data["chatTitle"] ?? ""
-    let chat = notify.Conversation(id: m.data["chat"] ?? "", title: title, group: !title.isEmpty)
+    let chat = notify.Conversation(id: m.data["chat"] ?? "", title: title, group: !title.isEmpty())
     out = out.from(notify.Person(id: m.data["senderID"] ?? "", name: name, image: m.data["avatar"] ?? ""), chat)
     out.category = "message"
     out.channel = "messages"
@@ -155,7 +155,7 @@ screen Messages {
         on press {
           await run(() => {
             let ns = try await notify.showing()
-            return (["{ns.count} showing"] + ns.map(n => "{n.title} ({n.thread}): {n.body}")).join("\n")
+            return (["{ns.count()} showing"] + ns.map(n => "{n.title} ({n.thread}): {n.body}")).joined("\n")
           })
         }
       }

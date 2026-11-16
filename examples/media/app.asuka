@@ -77,7 +77,7 @@ screen Gestures {
   SafeArea {
     padding: 20
     gap: 16
-    Text(if last.isEmpty { "Drag the card, pinch it, let go" } else { last }) { color: .secondaryLabel }
+    Text(if last.isEmpty() { "Drag the card, pinch it, let go" } else { last }) { color: .secondaryLabel }
     View {
       grow: 1
       background: .secondaryBackground

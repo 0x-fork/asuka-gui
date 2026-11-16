@@ -22,7 +22,7 @@ component Todos {
 
   fn add() {
     let title = draft.trim()
-    if title.isEmpty { return }
+    if title.isEmpty() { return }
     todos.push(Todo(id: nextId, title: title))
     nextId += 1
     draft = ""
@@ -76,7 +76,7 @@ component Todos {
       }
       Button("Add") {
         variant: .filled
-        disabled: draft.trim().isEmpty
+        disabled: draft.trim().isEmpty()
         on press { add() }
       }
     }

@@ -47,7 +47,7 @@ screen Scanner {
   fn heard(a: bluetooth.Advertisement) {
     let f = Found(
       device: a.device,
-      name: if a.device.name.isEmpty { "Unnamed ({a.device.id})" } else { a.device.name },
+      name: if a.device.name.isEmpty() { "Unnamed ({a.device.id})" } else { a.device.name },
       rssi: a.rssi,
       heart: a.services.contains(bluetooth.heartRate),
     )
@@ -157,7 +157,7 @@ screen DeviceScreen(device: bluetooth.Device) {
     do {
       let services = try await connection.services()
       let mtu = try await connection.mtu()
-      info = "{services.count} services, MTU {mtu}"
+      info = "{services.count()} services, MTU {mtu}"
     } catch e {
       info = e.message
     }
@@ -166,11 +166,11 @@ screen DeviceScreen(device: bluetooth.Device) {
   task {
     if let ch = try? await connection.characteristic(bluetooth.battery, bluetooth.batteryLevel) {
       if let v = try? await ch.read() {
-        if !v.isEmpty { battery = "{v[0]}%" }
+        if !v.isEmpty() { battery = "{v[0]}%" }
       }
       if ch.properties.contains(.notify) {
         for await v in ch.notifications() {
-          if !v.isEmpty { battery = "{v[0]}%" }
+          if !v.isEmpty() { battery = "{v[0]}%" }
         }
       }
     }
@@ -203,7 +203,7 @@ screen DeviceScreen(device: bluetooth.Device) {
 }
 
 component Reading(label: string, value: string) {
-  if !value.isEmpty {
+  if !value.isEmpty() {
     Row {
       gap: 12
       Text(label) { grow: 1 }
@@ -216,8 +216,8 @@ component Reading(label: string, value: string) {
 /// service's 0x2a37): a flags byte, whose bit 0 says the value is 16
 /// bits, then the value.
 fn heartRate(v: bytes) -> int? {
-  if v.count >= 3 && v[0] % 2 == 1 { return v[1] + v[2] * 256 }
-  if v.count >= 2 && v[0] % 2 == 0 { return v[1] }
+  if v.count() >= 3 && v[0] % 2 == 1 { return v[1] + v[2] * 256 }
+  if v.count() >= 2 && v[0] % 2 == 0 { return v[1] }
   return none
 }
 
@@ -265,7 +265,7 @@ component Monitor {
     }
   }
 
-  Text("Advertising as Asuka HR: {measurement.subscribers.count} subscribed") { color: .secondaryLabel }
+  Text("Advertising as Asuka HR: {measurement.subscribers().count()} subscribed") { color: .secondaryLabel }
 }
 
 /// A heart rate strap with a battery.

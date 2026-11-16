@@ -195,7 +195,7 @@ screen Services {
         on press {
           await run(() => {
             let files = try await device.pickFiles(multiple: true)
-            if let f = files.first { return "{files.count} files: {f.name} ({f.size} bytes)…" }
+            if let f = files.first() { return "{files.count()} files: {f.name} ({f.size} bytes)…" }
             return "No files"
           })
         }
@@ -258,7 +258,7 @@ screen Services {
       }
       Item("Which sensors") {
         on press {
-          status = sensors.Sensor.all.map(s => "{s} {sensors.available(s)}").join(", ")
+          status = sensors.Sensor.all.map(s => "{s} {sensors.available(s)}").joined(", ")
         }
       }
       Item("Simulate motion (iOS simulator)") {
@@ -286,14 +286,14 @@ screen Services {
         on press { await pauseResumeStop() }
       }
       Item("Voices") {
-        on press { await run(() => "{(try await speech.voices()).count} voices") }
+        on press { await run(() => "{(try await speech.voices()).count()} voices") }
       }
 
       Heading("Images, people, events")
       Item("Shrink a photo") {
         on press {
           let paths = (try? await device.pickPhotos(max: 1)) ?? []
-          if paths.isEmpty { return }
+          if paths.isEmpty() { return }
           await run(() => {
             let r = try await imageedit.edit(paths[0], [.resize(320, 0), .rotate(90)], quality: 0.8)
             lastImage = r.path
@@ -313,7 +313,7 @@ screen Services {
       }
       Item("Copy that image, then paste it") {
         on press {
-          if lastImage.isEmpty {
+          if lastImage.isEmpty() {
             status = "Shrink a photo first"
             return
           }
@@ -326,7 +326,7 @@ screen Services {
       Item("Pick a contact") {
         on press {
           await run(() => {
-            if let c = try await contacts.pick() { return "{c.name}, {c.phones.count} phones" }
+            if let c = try await contacts.pick() { return "{c.name}, {c.phones.count()} phones" }
             return "No contact"
           })
         }
@@ -346,7 +346,7 @@ screen Services {
             let access = try await calendar.request()
             if access != .full { return "calendar access: {access}" }
             let cs = try await calendar.calendars()
-            return "{cs.count} calendars: {cs.map(c => "{c.title} {c.color} writable:{c.writable}").join(", ")}"
+            return "{cs.count()} calendars: {cs.map(c => "{c.title} {c.color} writable:{c.writable}").joined(", ")}"
           })
         }
       }
@@ -362,7 +362,7 @@ screen Services {
             } else {
               "{e.title} {e.start.format("HH:mm")}–{e.end.format("HH:mm")} {e.location}"
             })
-            return "{es.count} events around now: {lines.join("; ")}"
+            return "{es.count()} events around now: {lines.joined("; ")}"
           })
         }
       }
@@ -437,7 +437,7 @@ screen Services {
 
       Heading("Desktop")
       Text(battery) { font: .footnote }
-      Text(displays.map(d => "{d.name} {d.bounds.width}x{d.bounds.height}@{d.scale}x {d.refreshRate}Hz").join("\n")) {
+      Text(displays.map(d => "{d.name} {d.bounds.width}x{d.bounds.height}@{d.scale}x {d.refreshRate}Hz").joined("\n")) {
         font: .footnote
         color: .secondaryLabel
       }
@@ -499,7 +499,7 @@ fn describePower(p: power.Status, a: appearance.Appearance) -> string {
 async fn pauseResumeStop() {
   let began = time.now()
   let (spoken, steps) = await all(speakLong(began), pauseResumeAndStop())
-  status = (steps + [spoken]).join("; ")
+  status = (steps + [spoken]).joined("; ")
 }
 
 async fn speakLong(began: time.Time) -> string {
@@ -536,7 +536,7 @@ state motionLog: [string] = []
 async fn simulateMotion() {
   motionLog = []
   await race(watchMotion(), feedMotion())
-  status = motionLog.join("; ")
+  status = motionLog.joined("; ")
 }
 
 async fn watchMotion() {

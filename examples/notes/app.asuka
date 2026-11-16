@@ -43,7 +43,7 @@ async fn write<A>(query: string, args: A) {
 }
 
 async fn addNote(text: string) {
-  if !text.isEmpty { await write("insert into notes (text) values (?)", [text]) }
+  if !text.isEmpty() { await write("insert into notes (text) values (?)", [text]) }
 }
 
 /// Asks where to save the notes as a Markdown checklist, writes them
@@ -53,7 +53,7 @@ async fn export(notes: [Note]) {
   // optional the dialog returns)
   let filters = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
   if let path = try? await dialog.save(name: "Notes.md", button: "Export", filters: filters) {
-    let text = notes.map(n => "- [{if n.done { "x" } else { " " }}] {n.text}\n").join("")
+    let text = notes.map(n => "- [{if n.done { "x" } else { " " }}] {n.text}\n").joined("")
     do {
       try await spawn { try fs.write(path, text.bytes()) }
       try? await shell.reveal(path)
@@ -105,7 +105,7 @@ screen NotesScreen {
   // On a desktop, closing the window with a note typed but not added asks
   // first (a phone has no window to close).
   WindowCloseGuard {
-    when: !draft.isEmpty
+    when: !draft.isEmpty()
     on closeRequest {
       alert("Discard the new note?", message: "It hasn't been added.", buttons: [
         AlertButton(title: "Cancel", role: .cancel),
@@ -169,14 +169,14 @@ screen NotesScreen {
     Column {
       padding: 20
       gap: 6
-      Text("{notes.rows.count} notes") { font: .title2 }
+      Text("{notes.rows.count()} notes") { font: .title2 }
       Text("{done} done") { color: .secondaryLabel }
     }
   }
 
   SafeArea {
     grow: 1
-    if !clipError.isEmpty {
+    if !clipError.isEmpty() {
       Text("The shortcut to add the clipboard: {clipError}") {
         padding: [4, 16]
         font: .footnote
@@ -198,11 +198,11 @@ screen NotesScreen {
         icon: "plus"
         label: "Add"
         variant: .filled
-        disabled: draft.isEmpty
+        disabled: draft.isEmpty()
         on press { await add() }
       }
     }
-    if !notes.loading && notes.rows.isEmpty {
+    if !notes.loading && notes.rows.isEmpty() {
       Column {
         grow: 1
         justify: .center
@@ -212,7 +212,7 @@ screen NotesScreen {
           font: .largeTitle
           color: .tertiaryLabel
         }
-        Text(if query.isEmpty { "No notes yet" } else { "No notes match" }) { color: .secondaryLabel }
+        Text(if query.isEmpty() { "No notes yet" } else { "No notes match" }) { color: .secondaryLabel }
       }
     }
     List {
@@ -247,6 +247,6 @@ test "the search matches anywhere, any case; % and _ are text" {
   }
   for (q, want) in ["": 4, "MILK": 1, "a": 2, "%": 1, "_": 1, "zzz": 0] {
     let rows: [Note] = try await db.query(search, [q])
-    expect(rows.count == want, "{q}: {rows.count} rows, want {want}")
+    expect(rows.count() == want, "{q}: {rows.count()} rows, want {want}")
   }
 }

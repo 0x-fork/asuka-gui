@@ -43,7 +43,7 @@ component Launcher {
   // Up and Down move it.
   state selected = 0
 
-  let results = if query.isEmpty { [] } else { apps.search(installed, query).prefix(most) }
+  let results = if query.isEmpty() { [] } else { apps.search(installed, query).prefix(most) }
 
   effect {
     let _ = results

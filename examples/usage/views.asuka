@@ -151,7 +151,7 @@ let pad = 8.0
 /// Where a time and a percent used are drawn on a window's chart.
 fn at(w: Window, t: time.Time, used: float, width: float, height: float) -> (float, float) {
   let start = (w.resets ?? t) - w.period()
-  let x = (t - start).seconds / w.period().seconds
+  let x = (t - start).seconds / w.period().seconds()
   return (pad + min(max(x, 0), 1) * (width - 2 * pad), height - pad - min(used, 100) / 100 * (height - 2 * pad))
 }
 
@@ -212,7 +212,7 @@ component UsageChart(w: Window) {
       }
       Shape((width, height) => {
         let pts = points(w, clock, width, height)
-        let (lastX, _) = pts.last!
+        let (lastX, _) = pts.last()!
         let (firstX, _) = pts[0]
         return polyline(pts).lineTo(lastX, height - pad).lineTo(firstX, height - pad).close()
       }) {
@@ -229,7 +229,7 @@ component UsageChart(w: Window) {
       // The forecast, in its pace's color.
       if pace != .unknown {
         Shape((width, height) => {
-          let (x0, y0) = points(w, clock, width, height).last!
+          let (x0, y0) = points(w, clock, width, height).last()!
           let (x1, y1) = forecastEnd(w, clock, width, height)
           return Path().moveTo(x0, y0).lineTo(x1, y1)
         }) {
@@ -244,7 +244,7 @@ component UsageChart(w: Window) {
           fill: paceColor(pace)
         }
       }
-      Shape((width, height) => dot(points(w, clock, width, height).last!, 8)) {
+      Shape((width, height) => dot(points(w, clock, width, height).last()!, 8)) {
         style fill
         fill: .accent
         stroke: .secondaryGroupedBackground

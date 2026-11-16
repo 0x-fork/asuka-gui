@@ -58,7 +58,7 @@ component Documents {
   async fn report(what: string, work: async fn() throws -> string) {
     do {
       let said = try await work()
-      status = if said.isEmpty { "" } else { "{what}: {said}" }
+      status = if said.isEmpty() { "" } else { "{what}: {said}" }
     } catch e {
       status = "{what}: {e.message}"
     }
@@ -134,10 +134,10 @@ component PlatformSection {
 
   async fn readCode() {
     let paths = (try? await device.pickPhotos(max: 1)) ?? []
-    if paths.isEmpty { return }
+    if paths.isEmpty() { return }
     do {
       let codes = try await scan.file(paths[0])
-      where = if let c = codes.first { "{c.kind}: {c.value}" } else { "No code in it" }
+      where = if let c = codes.first() { "{c.kind}: {c.value}" } else { "No code in it" }
     } catch e {
       where = "Couldn't: {e.message}"
     }
@@ -289,7 +289,7 @@ component Crashes {
         on press { crash.record(CheckoutError.noNetwork) }
       }
     }
-    if reports.isEmpty {
+    if reports.isEmpty() {
       Text("No reports.") { color: .secondaryLabel }
     }
     Column {
@@ -329,7 +329,7 @@ component Crashes {
 fn describe(r: crash.Report) -> string {
   let c = r.context
   let s = "{r.kind} · {r.time.format("MMM d HH:mm")} · {c.appVersion} {c.build}"
-  if let last = c.breadcrumbs.last { return "{s} · last: {last.message}" }
+  if let last = c.breadcrumbs.last() { return "{s} · last: {last.message}" }
   return s
 }
 
@@ -375,7 +375,7 @@ component CameraScreen {
         padding: 16
         gap: 16
         align: .center
-        if !last.isEmpty {
+        if !last.isEmpty() {
           Image(last) {
             mode: .fill
             label: "The last photo"

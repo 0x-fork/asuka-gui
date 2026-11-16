@@ -57,7 +57,7 @@ component Journal {
 
   // The Documents directory, once there's an account.
   task(account.available) {
-    if account.available && dir.isEmpty {
+    if account.available && dir.isEmpty() {
       await run(() => { dir = try await icloud.documents() })
     }
   }
@@ -76,7 +76,7 @@ component Journal {
   }
 
   async fn newEntry() {
-    let path = fs.join(dir, "{today()}.txt")
+    let path = fs.join([dir, "{today()}.txt"])
     if entries.contains(f => f.path == path) {
       await read(path)
       return
@@ -105,7 +105,7 @@ component Journal {
       var version: icloud.Version? = none
       if theirs {
         let versions = try await icloud.conflicts(path)
-        if versions.isEmpty { return }
+        if versions.isEmpty() { return }
         version = versions[0]
       }
       try await icloud.resolve(path, keeping: version)
@@ -126,7 +126,7 @@ component Journal {
       Button("New Entry") {
         icon: "plus"
         variant: .filled
-        disabled: dir.isEmpty
+        disabled: dir.isEmpty()
         on press { await newEntry() }
       }
       Text("Text size {size.value}") {
@@ -154,7 +154,7 @@ component Journal {
         }
       }
     }
-    if !open.isEmpty {
+    if !open.isEmpty() {
       Column {
         gap: 8
         grow: 1

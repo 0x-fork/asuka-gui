@@ -15,7 +15,7 @@ struct Window {
   history: [Sample] = [] // what was used, as the window went
 
   /// The window's name.
-  fn title() -> string = if name.isEmpty { label(key) } else { name }
+  fn title() -> string = if name.isEmpty() { label(key) } else { name }
 
   /// How long the window runs.
   fn period() -> Duration = if span > 0s { span } else { periodOf(key) }
@@ -58,7 +58,7 @@ struct Account {
   updated: time.Time? = none
   error: string = "" // why the last refresh failed
 
-  fn title() -> string = if name.isEmpty { services[service]?.name ?? service } else { name }
+  fn title() -> string = if name.isEmpty() { services[service]?.name ?? service } else { name }
 
   /// Whether the window shows on the home screen's card.
   fn shown(key: string) -> bool = !hidden.contains(key)
@@ -126,7 +126,7 @@ async fn refreshClaude(a: Account, secret: string) throws -> (Account, string) {
   do {
     return (try await readClaude(a, t.access), t.string())
   } catch e: HttpError {
-    if e.status != 401 || t.refresh.isEmpty { throw e }
+    if e.status != 401 || t.refresh.isEmpty() { throw e }
   }
   t = try await refreshedOrSignedOut(t)
   return (try await readClaude(a, t.access), t.string())
@@ -150,7 +150,7 @@ async fn readClaude(a: Account, token: string) throws -> Account {
   let text = try await getText("https://api.anthropic.com/api/oauth/usage", token)
   // The last reply, as the server sent it: to see what it says when a
   // number looks wrong. It holds no secrets, only the percentages.
-  try? fs.write(fs.join(fs.appDir(), "usage-{a.id}.json"), text.bytes())
+  try? fs.write(fs.join([fs.appDir(), "usage-{a.id}.json"]), text.bytes())
   let usage: UsageReply = try json.decode(text)
   let (fresh, extra) = try parseUsage(usage)
   var out = a
@@ -208,9 +208,9 @@ fn apiError(status: int, statusText: string, body: string) -> HttpError {
   if let m = reply.error["message"]?.string() {
     if !m.isEmpty { message = m }
   } else if let code = reply.error.string() {
-    if message.isEmpty { message = code }
+    if message.isEmpty() { message = code }
   }
-  if message.isEmpty { message = statusText }
+  if message.isEmpty() { message = statusText }
   if message.contains("scope") {
     // A token for inference alone (claude setup-token's) can't read the
     // account's usage.
@@ -223,7 +223,7 @@ fn apiError(status: int, statusText: string, body: string) -> HttpError {
 
 /// A pasted token without the spaces and line breaks a terminal's
 /// wrapping puts in it.
-fn cleanToken(t: string) -> string = t.fields().join("")
+fn cleanToken(t: string) -> string = t.fields().joined("")
 
 /// The usage endpoint's reply: the server's list of meters, "limits", and
 /// the windows Claude Code knows by key. Other keys are the server's own,
@@ -273,7 +273,7 @@ struct DisplayName {
 fn parseUsage(usage: UsageReply) throws -> ([Window], bool?) {
   let extra = usage.extra_usage?.is_enabled
   var ws = parseLimits(usage.limits)
-  if ws.isEmpty {
+  if ws.isEmpty() {
     let known = [
       ("five_hour", usage.five_hour),
       ("seven_day", usage.seven_day),
@@ -286,7 +286,7 @@ fn parseUsage(usage: UsageReply) throws -> ([Window], bool?) {
       }
     }
   }
-  if ws.isEmpty { throw UsageError.empty }
+  if ws.isEmpty() { throw UsageError.empty }
   return (sortWindows(ws), extra)
 }
 
@@ -311,7 +311,7 @@ fn parseLimits(rows: [LimitRow]) -> [Window] {
         w.key = "five_hour"
       } else if r.kind == "weekly_all" {
         w.key = "seven_day"
-      } else if !scope.isEmpty {
+      } else if !scope.isEmpty() {
         // A model's week, or a surface's: named as the server names it.
         w.key = "seven_day_{slug(scope)}"
         w.name = "This week · {scope}"
@@ -326,7 +326,7 @@ fn parseLimits(rows: [LimitRow]) -> [Window] {
 }
 
 /// A name as a key: "Fable 5" is "fable_5".
-fn slug(s: string) -> string = s.lower().fields().join("_")
+fn slug(s: string) -> string = s.lower().fields().joined("_")
 
 /// The shortest first, then the week, then the models'.
 fn sortWindows(ws: [Window]) -> [Window] = ws.sorted((a, b) => if a.period() != b.period() {
@@ -342,7 +342,7 @@ fn sortWindows(ws: [Window]) -> [Window] = ws.sorted((a, b) => if a.period() != 
 /// when the use changed.
 fn merge(old: [Window], fresh: [Window], now: time.Time) -> [Window] {
   var out = fresh
-  for i in 0..<out.count {
+  for i in 0..<out.count() {
     let w = out[i]
     var h = old.first(o => o.key == w.key && o.resets == w.resets)?.history ?? []
     if let last = h.last {
@@ -397,7 +397,7 @@ fn refreshDemo(a: Account, now: time.Time) -> Account {
       w = Window(key: w.key, name: w.name, span: w.span, resets: r + w.period())
     }
     if w.key != "seven_day_opus" {
-      let step = min(hours, 2) * (0.5 + random.float()) * 100 / w.period().hours * 1.6
+      let step = min(hours, 2) * (0.5 + random.float()) * 100 / w.period().hours() * 1.6
       w.used = min(100, ((w.used + step + random.float()) * 10).rounded() / 10)
     }
     fresh.push(w)
@@ -407,7 +407,7 @@ fn refreshDemo(a: Account, now: time.Time) -> Account {
   return out
 }
 
-fn upper(s: string) -> string = if s.isEmpty { s } else { s.slice(0, 1).upper() + s.slice(1) }
+fn upper(s: string) -> string = if s.isEmpty() { s } else { s.slice(0, 1).upper() + s.slice(1) }
 
 test "the forecast" {
   let now = time.date(2026, 10, 31, hour: 0, minute: 58, zone: "UTC")
@@ -466,9 +466,9 @@ test "merge keeps a window's history" {
   let resets = now + 1h
   let old = [Window(key: "five_hour", used: 10, resets: resets, history: [Sample(at: now - 1h, used: 10)])]
   let ws = merge(old, [Window(key: "five_hour", used: 12, resets: resets)], now)
-  expect(ws[0].history.count == 2)
+  expect(ws[0].history.count() == 2)
   // A new window starts a new history.
-  expect(merge(ws, [Window(key: "five_hour", used: 1, resets: resets + 5h)], now)[0].history.count == 1)
+  expect(merge(ws, [Window(key: "five_hour", used: 1, resets: resets + 5h)], now)[0].history.count() == 1)
 }
 
 test "a pasted token" {

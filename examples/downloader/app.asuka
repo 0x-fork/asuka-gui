@@ -136,8 +136,8 @@ screen Downloader {
 /// Fetches url in a background task, its progress in the task's
 /// notification, then saves it to the gallery's videos.
 async fn download(url: string, report: fn(string)) {
-  var name = url.split("?")[0].split("/").last ?? ""
-  if name.isEmpty || name == "." { name = "video.mp4" }
+  var name = url.split("?")[0].split("/").last() ?? ""
+  if name.isEmpty() || name == "." { name = "video.mp4" }
   var paused = false
   var cancelled = false
   let actions = () => if paused {
@@ -155,7 +155,7 @@ async fn download(url: string, report: fn(string)) {
   })
   defer { task.end() }
   report("Downloading {name}")
-  let file = fs.join(fs.appDir(), "downloads", name)
+  let file = fs.join([fs.appDir(), "downloads", name])
   do {
     try await fetch(url, file, paused: () => paused, cancelled: () => cancelled, progress: (done, total) => {
       var p = -1.0
@@ -284,7 +284,7 @@ screen Browser {
       }
       Text(if web.loading {
         "{(web.progress * 100).fixed(0)}% · {web.url}"
-      } else if !web.title.isEmpty {
+      } else if !web.title.isEmpty() {
         web.title
       } else {
         web.url
@@ -318,7 +318,7 @@ screen Browser {
     Column {
       padding: 12
       gap: 8
-      Text("Videos found: {media.count}") { font: .headline }
+      Text("Videos found: {media.count()}") { font: .headline }
       for u in media.suffix(3) key u {
         Button(u.split("/").last ?? u) {
           variant: .bordered

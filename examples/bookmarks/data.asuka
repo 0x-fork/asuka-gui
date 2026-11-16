@@ -64,7 +64,7 @@ fn splitTags(s: string) -> [string] {
   var out: [string] = []
   for t in s.split(",") {
     let tag = t.trim()
-    if !tag.isEmpty && !out.contains(tag) { out.push(tag) }
+    if !tag.isEmpty() && !out.contains(tag) { out.push(tag) }
   }
   return out
 }
@@ -72,7 +72,7 @@ fn splitTags(s: string) -> [string] {
 /// A link's site, without "www.".
 fn host(raw: string) -> string {
   if let u = url.parse(raw) {
-    if !u.host.isEmpty { return u.host.trimPrefix("www.") }
+    if !u.host.isEmpty() { return u.host.trimPrefix("www.") }
   }
   return raw
 }
@@ -83,9 +83,9 @@ let linkRE = regex.Regex(r"https?://\S+")
 /// app's data directory, returning the copy's path. It blocks: call it in
 /// a spawn.
 fn keepFile(path: string) throws -> string {
-  let dir = fs.join(fs.appDir(), "covers")
+  let dir = fs.join([fs.appDir(), "covers"])
   try fs.mkdirAll(dir)
-  let dst = fs.join(dir, "{time.now().format("yyyyMMdd-HHmmss.SSS")}{fs.ext(path)}")
+  let dst = fs.join([dir, "{time.now().format("yyyyMMdd-HHmmss.SSS")}{fs.ext(path)}"])
   try fs.copy(path, dst)
   return dst
 }
@@ -120,17 +120,17 @@ async fn fetchPage(link: string) throws -> Page {
     }
     content = html.unescape(content).trim()
     match key {
-      "og:title" | "twitter:title" => if p.title.isEmpty { p.title = content }
-      "og:description" | "twitter:description" | "description" => if p.description.isEmpty { p.description = content }
-      "og:image" | "twitter:image" => if p.image.isEmpty { p.image = content }
+      "og:title" | "twitter:title" => if p.title.isEmpty() { p.title = content }
+      "og:description" | "twitter:description" | "description" => if p.description.isEmpty() { p.description = content }
+      "og:image" | "twitter:image" => if p.image.isEmpty() { p.image = content }
       _ => {}
     }
   }
-  if p.title.isEmpty {
+  if p.title.isEmpty() {
     if let m = titleRE.findSubmatch(doc) { p.title = html.unescape(m[1]).trim() }
   }
   // An image's link relative to the page: from the page's.
-  if !p.image.isEmpty {
+  if !p.image.isEmpty() {
     if let base = url.parse(res.url) { p.image = base.resolve(p.image) }
   }
   return p

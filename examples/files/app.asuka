@@ -29,7 +29,7 @@ fn read(dir: string) throws -> [Entry] {
 
 /// The app's folder of files, made if it isn't there.
 fn ownFolder() -> string {
-  let dir = fs.join(fs.appDir(), "Files")
+  let dir = fs.join([fs.appDir(), "Files"])
   try? fs.mkdirAll(dir)
   return dir
 }
@@ -54,16 +54,16 @@ screen Files {
   state watchError = ""
   state count = 0
 
-  let status = if !watchError.isEmpty {
+  let status = if !watchError.isEmpty() {
     "Not watched: {watchError}"
-  } else if !problem.isEmpty {
+  } else if !problem.isEmpty() {
     problem
   } else if !watching {
     "…"
-  } else if entries.count == 1 {
+  } else if entries.count() == 1 {
     "1 item"
   } else {
-    "{entries.count} items"
+    "{entries.count()} items"
   }
 
   title: "Files"
@@ -103,7 +103,7 @@ screen Files {
 
   async fn newFile() {
     count += 1
-    let path = fs.join(folder, "Note {count}.txt")
+    let path = fs.join([folder, "Note {count}.txt"])
     let text = "{time.now()}\n"
     do {
       try await spawn { try fs.write(path, text.bytes()) }
@@ -150,7 +150,7 @@ screen Files {
           padding: [12, 20]
           align: .center
           swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => {
-            let path = fs.join(folder, e.name)
+            let path = fs.join([folder, e.name])
             spawn { try? fs.removeAll(path) } // the watch shows it gone
           })]
           if e.dir {

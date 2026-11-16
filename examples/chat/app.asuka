@@ -47,7 +47,7 @@ fn history(firstId: int, before: time.Time, n: int) -> [Message] {
     at = at - (7 + (firstId + i) % 50) * 9min
     let id = firstId - n + i
     let from = if id % 4 == 0 { "" } else { people[(id % 3 + 3) % 3] }
-    out.insert(Message(id: id, from: from, text: lines[(id % lines.count + lines.count) % lines.count], at: at), at: 0)
+    out.insert(Message(id: id, from: from, text: lines[(id % lines.count() + lines.count()) % lines.count()], at: at), at: 0)
   }
   return out
 }
@@ -65,8 +65,8 @@ fn byDay(messages: [Message]) -> [Day] {
   var days: [Day] = []
   for m in messages {
     let name = day(m.at)
-    if days.last?.name == name {
-      days[days.count - 1].messages.push(m)
+    if days.last()?.name == name {
+      days[days.count() - 1].messages.push(m)
     } else {
       days.push(Day(name: name, messages: [m]))
     }
@@ -116,7 +116,7 @@ screen Chat {
 
   async fn send() {
     let text = draft.trim()
-    if text.isEmpty { return }
+    if text.isEmpty() { return }
     add(Message(text: text))
     draft = ""
     // One's own message shows, wherever the list was.
@@ -139,8 +139,8 @@ screen Chat {
   }
 
   fn reply(m: Message) {
-    draft = "@{if m.from.isEmpty { "me" } else { m.from }} "
-    selection = TextRange(start: draft.count, end: draft.count)
+    draft = "@{if m.from.isEmpty() { "me" } else { m.from }} "
+    selection = TextRange(start: draft.count(), end: draft.count())
     field.focus()
   }
 
@@ -191,10 +191,10 @@ screen Chat {
         justify: .spaceBetween
         align: .center
         padding: [8, 16]
-        Text("{chosen.count} selected")
+        Text("{chosen.count()} selected")
         Button("Delete") {
           color: .red
-          disabled: chosen.isEmpty
+          disabled: chosen.isEmpty()
           on press {
             remove(chosen)
             endSelecting()
@@ -228,7 +228,7 @@ screen Chat {
           icon: "paperplane"
           label: "Send"
           variant: .filled
-          disabled: draft.trim().isEmpty
+          disabled: draft.trim().isEmpty()
           on press { await send() }
         }
       }
@@ -237,7 +237,7 @@ screen Chat {
 }
 
 component Bubble(m: Message) {
-  let mine = m.from.isEmpty
+  let mine = m.from.isEmpty()
 
   Column {
     padding: [8, 12]
@@ -252,7 +252,7 @@ component Bubble(m: Message) {
         color: .secondaryLabel
       }
     }
-    if !m.image.isEmpty {
+    if !m.image.isEmpty() {
       Image(m.image) {
         mode: .fill
         width: 200
@@ -260,7 +260,7 @@ component Bubble(m: Message) {
         radius: 12
       }
     }
-    if !m.text.isEmpty {
+    if !m.text.isEmpty() {
       Text(m.text) { color: if mine { .onAccent } else { .label } }
     }
   }
@@ -281,6 +281,6 @@ test "a message sent is answered" {
 
 test "history ends before the first id" {
   let h = history(1000, time.now(), 40)
-  expect(h.count == 40 && h[0].id == 960 && h[39].id == 999)
+  expect(h.count() == 40 && h[0].id == 960 && h[39].id == 999)
   expect(h[0].at < h[39].at)
 }

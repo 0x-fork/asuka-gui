@@ -217,12 +217,12 @@ component Pages {
         label: "Previous page"
         on press { page = max(page - 1, 0) }
       }
-      PageControl(tints.count) { bind page: page }
+      PageControl(tints.count()) { bind page: page }
       Button("") {
         icon: "chevron.forward"
         tooltip: "Next page"
         label: "Next page"
-        on press { page = min(page + 1, tints.count - 1) }
+        on press { page = min(page + 1, tints.count() - 1) }
       }
     }
   }

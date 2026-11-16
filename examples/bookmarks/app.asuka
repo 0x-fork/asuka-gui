@@ -25,7 +25,7 @@ component ShareEditor(sheet: ShareSheet) {
 
   task { await draft.fromShare(sheet.items) }
 
-  Editor(draft, if draft.link.isEmpty && !draft.cover.isEmpty { "New image" } else { "New bookmark" }) {
+  Editor(draft, if draft.link.isEmpty() && !draft.cover.isEmpty() { "New image" } else { "New bookmark" }) {
     on close { sheet.cancel() }
     on saved { sheet.close() }
   }
@@ -87,7 +87,7 @@ screen Bookmarks {
         }
       }
     }
-    if !marks.loading && marks.rows.isEmpty {
+    if !marks.loading && marks.rows.isEmpty() {
       Column {
         grow: 1
         justify: .center
@@ -115,7 +115,7 @@ screen Bookmarks {
             await write("delete from bookmarks where id = ?", [b.id])
           })]
           on press {
-            if !b.url.isEmpty { try? await device.browse(b.url) }
+            if !b.url.isEmpty() { try? await device.browse(b.url) }
           }
           Image(b.cover) {
             mode: .fill
@@ -134,12 +134,12 @@ screen Bookmarks {
               font: .body.semibold()
               lines: 2
             }
-            Text(((if b.url.isEmpty { [] } else { [host(b.url)] }) + splitTags(b.tags).map(t => "#{t}")).join(" · ")) {
+            Text(((if b.url.isEmpty() { [] } else { [host(b.url)] }) + splitTags(b.tags).map(t => "#{t}")).joined(" · ")) {
               font: .footnote
               color: .secondaryLabel
               lines: 1
             }
-            if !b.note.isEmpty {
+            if !b.note.isEmpty() {
               Text(b.note) {
                 font: .footnote
                 lines: 2
