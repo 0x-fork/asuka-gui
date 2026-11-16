@@ -296,6 +296,15 @@ struct Gesture {
   rotation: float = 0
 }
 
+/// A part of the screen a test looks in: app.in(.bottomToolbar).tap("Star")
+/// taps the bottom toolbar's Star, not the navigation bar's.
+enum TestScope {
+  content       // what screens, sheets, alerts and popovers show, not their bars
+  navigationBar // the screens' titles and their toolbar's buttons
+  bottomToolbar // the screens' bottom toolbars and primary actions
+  tabBar        // the tab bars' tabs
+}
+
 /// A swipe's direction.
 enum SwipeDirection {
   right

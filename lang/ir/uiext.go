@@ -286,7 +286,11 @@ func (b *fb) bodyCalls(items []syntax.Item) []syntax.Item {
 		if b.l.info.BodyCalls[it] {
 			mark := b.mark()
 			b.at(it)
-			b.exprStmt(it.(*syntax.ExprStmt).X)
+			if s, ok := it.(*syntax.SlotItem); ok {
+				b.exprStmt(b.l.info.SlotCalls[s])
+			} else {
+				b.exprStmt(it.(*syntax.ExprStmt).X)
+			}
 			b.release(mark)
 			continue
 		}

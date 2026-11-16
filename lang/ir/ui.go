@@ -269,7 +269,12 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 		}
 	}
 	views = b.bodyCalls(views)
-	v := b.viewsOf(views)
+	var v int
+	if call := b.l.info.ScreenRoots[t]; call != nil {
+		v = b.element(call)
+	} else {
+		v = b.viewsOf(views)
+	}
 	r := b.newReg(bc.KRef)
 	b.move(r, v)
 	b.emit(op("RET"), r)

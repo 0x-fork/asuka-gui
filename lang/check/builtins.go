@@ -112,9 +112,20 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Result = c.allRace(e, b, call.Args)
 		c.callEffects(e, b.name, true, false)
 	case BMount:
-		// mount(view, provide: store): the store provided to the view.
-		ps := []*Param{{Name: "view", Type: View}, {Name: "provide", Type: nil, Default: zeroLit}}
+		// mount(view, provide: store, platform: .android, at: "/inbox"):
+		// the store provided to the view, the platform it runs on (asuka
+		// test's unless it says), where its Router starts.
+		ps := []*Param{{Name: "view", Type: View}, {Name: "provide", Type: nil, Default: zeroLit},
+			{Name: "platform", Type: nil, Default: zeroLit}, {Name: "at", Type: String, Default: zeroLit}}
 		args := c.matchArgs(e, ps, "mount")
+		if args[2] != nil {
+			pt := c.prelude.Scope.LookupLocal("Platform").(*TypeName)
+			c.resolveType(pt)
+			c.assign(args[2], pt.Type, "mount's platform")
+		}
+		if args[3] != nil {
+			c.assign(args[3], String, "where mount's Router starts")
+		}
 		if args[0] != nil {
 			c.builderExpr(args[0])
 		}

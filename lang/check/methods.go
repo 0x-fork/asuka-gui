@@ -45,6 +45,9 @@ type Method struct {
 	// Field: read as a property, without parentheses (g.width,
 	// card.hovered); its Sig is "() -> T".
 	Field bool
+	// Variadic: its last parameter takes any number of arguments, passed
+	// to the builtin as an array of them (app.expect("a", "b")).
+	Variadic bool
 	// Consts: constant ints the lowering appends to the builtin's
 	// arguments (the state ui.state reads, where web_navigate goes).
 	Consts []int64
@@ -166,8 +169,31 @@ var Methods = []*Method{
 	// What mount returns, in tests.
 	{Recv: "app", Name: "tap", Sig: "(text: string)", Builtin: "test.tap", Doc: "taps the control showing text, and waits for what it does"},
 	{Recv: "app", Name: "type", Sig: "(text: string, into: string)", Builtin: "test.type", Doc: "types text into the field labelled or showing into"},
-	{Recv: "app", Name: "expect", Sig: "(text: string)", Builtin: "test.expect", Doc: "fails the test unless text is shown"},
-	{Recv: "app", Name: "expectNo", Sig: "(text: string)", Builtin: "test.expect_no", Doc: "fails the test if text is shown"},
+	{Recv: "app", Name: "expect", Sig: "(text: string)", Builtin: "test.expect", Variadic: true, Doc: "fails the test unless each text is shown: a text, a title, a field's text or placeholder, an accessibility label, a tab, a bar button, an alert's button, an open menu's item"},
+	{Recv: "app", Name: "expectNo", Sig: "(text: string)", Builtin: "test.expect_no", Variadic: true, Doc: "fails the test if any of the texts is shown"},
+	{Recv: "app", Name: "has", Sig: "(text: string) -> bool", Builtin: "test.has", Doc: "whether the screen shows text, anywhere"},
+	{Recv: "app", Name: "texts", Sig: "() -> [string]", Builtin: "test.texts", Doc: "the texts the screen shows, in the order a screen reader reads them"},
+	{Recv: "app", Name: "snapshot", Sig: "() -> string", Builtin: "test.dump", Doc: "what the screen shows: each layer's views, a line each, with their kinds, frames, texts and states"},
+	{Recv: "app", Name: "disabled", Sig: "(text: string) -> bool", Builtin: "test.disabled", Doc: "whether what shows text is disabled: a control (or a view around it), a bar button, an alert's button, an open menu's item; it fails unless one thing shows text"},
+	{Recv: "app", Name: "longPress", Sig: "(text: string)", Builtin: "test.long_press", Doc: "long-presses what shows text: a view that takes a long press, or one with a context menu, which opens"},
+	{Recv: "app", Name: "submit", Sig: "(label: string = \"\")", Builtin: "test.submit", Doc: "presses return in the field label names (as type finds it; \"\": the field typed in last), or an alert's field"},
+	{Recv: "app", Name: "toggle", Sig: "(label: string)", Builtin: "test.toggle", Doc: "flips the switch or checkbox label names: one with that accessibility label, or the one next to a text"},
+	{Recv: "app", Name: "slide", Sig: "(label: string, value: float)", Builtin: "test.slide", Doc: "moves the slider label names (as toggle finds it) to value"},
+	{Recv: "app", Name: "select", Sig: "(option: string)", Builtin: "test.select", Doc: "chooses option in the picker, wheel or segmented control that has it"},
+	{Recv: "app", Name: "swipe", Sig: "(text: string, action: string)", Builtin: "test.swipe", Doc: "swipes the list row showing text and presses its swipe action titled action (a trailing one, or a leading one)"},
+	{Recv: "app", Name: "back", Sig: "()", Builtin: "test.back", Doc: "goes back as the user's back gesture or button does: an open menu closes; else the top screen of the deepest stack pops; else the top sheet, alert or popover is dismissed (onBack can keep it); else, on Android, the root takes it if it intercepts it"},
+	{Recv: "app", Name: "dismiss", Sig: "()", Builtin: "test.dismiss", Doc: "dismisses what's on top as the user does (a swipe down, a tap outside): an open menu, else the top alert, sheet or popover"},
+	{Recv: "app", Name: "refresh", Sig: "(text: string)", Builtin: "test.refresh", Doc: "pulls the scroll view or list showing text to refresh it"},
+	{Recv: "app", Name: "scrollTo", Sig: "(text: string)", Builtin: "test.scroll_to", Doc: "scrolls the lists on the screen until one shows text, as a user looking for it would"},
+	{Recv: "app", Name: "until", Sig: "(what: string, cond: fn() -> bool)", Builtin: "test.until", Async: true, Doc: "waits until cond holds, as idle does (time moves to each timer as it comes due); it fails, saying what it waited for, once nothing is left to run and cond still doesn't"},
+	{Recv: "app", Name: "waitFor", Sig: "(text: string)", Builtin: "test.wait_for", Async: true, Doc: "waits until the screen shows text (as until)"},
+	{Recv: "app", Name: "waitGone", Sig: "(text: string)", Builtin: "test.wait_gone", Async: true, Doc: "waits until the screen no longer shows text (as until)"},
+	{Recv: "app", Name: "href", Sig: "() -> string", Builtin: "test.href", Field: true, Doc: "the address the main window's Router shows (\"\" with no Router)"},
+	{Recv: "app", Name: "history", Sig: "() -> ([string], int)", Builtin: "test.history", Doc: "the main window's history, as a browser keeps it from its Router's addresses: their hrefs, oldest first, and the index of the one shown"},
+	{Recv: "app", Name: "goBack", Sig: "()", Builtin: "test.go_back", Doc: "goes back in the main window's history, as a browser's back button does"},
+	{Recv: "app", Name: "goForward", Sig: "()", Builtin: "test.go_forward", Doc: "goes forward in the main window's history, as a browser's forward button does"},
+	{Recv: "app", Name: "in", Sig: "(scope: TestScope) -> TestApp", Builtin: "test.in", Doc: "the app narrowed to a part of the screen: what it finds and taps is there (app.in(.bottomToolbar).tap(\"Star\"))"},
+	{Recv: "app", Name: "nextTo", Sig: "(label: string) -> TestApp", Builtin: "test.next_to", Doc: "the app narrowed to what's next to the view showing label, as a user reads a row or a form (app.nextTo(\"Ada\").tap(\"Remove\"))"},
 	{Recv: "app", Name: "frameOf", Sig: "(text: string) -> (float, float, float, float)", Builtin: "test.frame_of", Doc: "the frame (x, y, width, height) in the window of the view showing text"},
 	{Recv: "app", Name: "setLanguages", Sig: "(languages: string)", Builtin: "test.set_languages", Doc: "says the user's preferred languages changed (BCP 47 tags, most preferred first, joined by commas)"},
 	{Recv: "app", Name: "idle", Sig: "()", Builtin: "test.idle", Async: true, Doc: "waits until nothing is left to run"},
@@ -417,7 +443,7 @@ func methodsArity(t Type, name string, n int) []*Method {
 				req++
 			}
 		}
-		if n >= req && n <= len(m.Params) {
+		if n >= req && (n <= len(m.Params) || m.Variadic) {
 			out = append(out, m)
 		}
 	}

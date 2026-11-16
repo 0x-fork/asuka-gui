@@ -206,7 +206,11 @@ type ScreenDecl struct {
 	Pub    Pos
 	Name   *Ident
 	Params *ParamList // nil without parentheses
-	Body   *Block
+	// At is the route pattern of a routed screen (screen Thread(id: int)
+	// at ":id" { … }): relative to the Route it's named in, unless it
+	// starts with /. nil for none.
+	At   *StringLit
+	Body *Block
 }
 
 // A StoreDecl is store Name<T>(params) { members }.

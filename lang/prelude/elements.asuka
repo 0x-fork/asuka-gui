@@ -538,10 +538,10 @@ native component Screen() {
   event searchChange(text: string)
   /// return pressed in the search field
   event searchSubmit
-  /// the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar
-  prop actions: View? = none
-  /// buttons in a bar at the bottom of the screen: Buttons, as actions'
+  /// the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar (iOS's navigation bar, Android's top app bar)
   prop toolbar: View? = none
+  /// buttons in a bar at the bottom of the screen: Buttons, as toolbar's
+  prop bottomToolbar: View? = none
   /// the screen's main action (compose, add): a Button; Android's floating action button, iOS's prominent toolbar item
   prop primary: View? = none
 }

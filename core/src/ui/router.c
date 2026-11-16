@@ -1732,11 +1732,22 @@ static void router_add(ak_view *e, ak_view *child) {
 	ak_vec_push(&rt->routes, (ak_view *)ak_retain(child));
 }
 
+static ak_str *start_href;  // ak_router_set_start's
+
+void ak_router_set_start(ak_span href) {
+	ak_release(start_href);
+	start_href = href.len ? ak_str_new(href.p, href.len) : NULL;
+}
+
 static void start_fn(void *ctx) {
 	router_t *rt = ctx;
 	ak_view *e = rt->e;
 	const ak_val *iv = key_of(e, AK_KEY_ROUTER_INITIAL);
 	ak_str *h = iv && iv->p && ((ak_str *)iv->p)->len ? ak_retain(iv->p) : ak_str_c("/");
+	if (rt->addressed && start_href) {
+		ak_release(h);
+		h = ak_retain(start_href);
+	}
 	target t = {0};
 	if (!resolve(rt, h, &t)) {
 		ak_release(h);

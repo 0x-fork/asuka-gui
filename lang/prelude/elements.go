@@ -359,7 +359,7 @@ var Elements = []Element{
 		{Name: "newWindow", Params: []Param{{"url", "string"}}, Doc: "a page it would open in a new window; without a handler it loads here"},
 	}, Doc: "a web page, in the platform's web view; with no height and no grow, it grows"},
 	// Navigation (ui/nav.go, router.go, split.go, window.go).
-	{Name: "Stack", Children: true, Doc: "a navigation stack (UINavigationController; a view stack with a top app bar and predictive back on Android): its child is its first screen; push(…) and pop() in it add and remove more, and the user's back pops. It grows into its room unless it's sized"},
+	{Name: "Stack", Children: true, LazyChildren: true, Doc: "a navigation stack (UINavigationController; a view stack with a top app bar and predictive back on Android): its child is its first screen; push(…) and pop() in it add and remove more, and the user's back pops. It grows into its room unless it's sized"},
 	{Name: "Screen", Children: true, Keys: []Key{
 		{Name: "title", Type: "string", Doc: "the bar's title (a tab's, a page's in a browser)"},
 		{Name: "largeTitle", Type: "bool", Doc: "the title large at the top, collapsing into the bar as it scrolls (iOS)"},
@@ -374,8 +374,8 @@ var Elements = []Element{
 		{Name: "searchChange", Params: []Param{{"text", "string"}}, Doc: "the search field's text changed"},
 		{Name: "searchSubmit", Doc: "return pressed in the search field"},
 	}, Slots: []Slot{
-		{Name: "actions", Doc: "the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar"},
-		{Name: "toolbar", Doc: "buttons in a bar at the bottom of the screen: Buttons, as actions'"},
+		{Name: "toolbar", Doc: "the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar (iOS's navigation bar, Android's top app bar)"},
+		{Name: "bottomToolbar", Doc: "buttons in a bar at the bottom of the screen: Buttons, as toolbar's"},
 		{Name: "primary", Doc: "the screen's main action (compose, add): a Button; Android's floating action button, iOS's prominent toolbar item"},
 	}, Doc: "a screen of a Stack (a screen declaration's root), sized by the platform"},
 	{Name: "Tabs", Children: true, Keys: []Key{

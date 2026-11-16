@@ -327,6 +327,21 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 	// Arguments first (before the receiver is taken out, when it's
 	// changed in place), in the builtin's order.
 	vals := b.args(call, nil)
+	if m.Variadic {
+		// The variadic parameter's arguments, as one array.
+		k := len(m.Params) - 1
+		ek := b.l.kind(b.typ(call.Params[k].Type))
+		rest := vals[k:]
+		ks := repeatKind(ek, len(rest))
+		blk := b.regs(ks)
+		for i, v := range rest {
+			b.move(blk+i, v)
+		}
+		arr := b.temp(bc.KRef)
+		b.emit(op("NEWA"), arr, int(ek), bc.None, blk, len(rest))
+		b.releaseRegs(blk, ks)
+		vals = append(vals[:k:k], arr)
+	}
 	if m.Order != nil {
 		ord := make([]int, len(m.Order))
 		for i, j := range m.Order {
@@ -525,7 +540,15 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		} else {
 			bl = b.builder(call.Args[0])
 		}
-		return b.copyTo(b.callB(uiTestMount, bc.KRef, bl), dst)
+		platform := b.konst(-1)
+		if x := call.Args[2]; x != nil {
+			platform = b.value(x, -1)
+		}
+		at := b.kstr("")
+		if x := call.Args[3]; x != nil {
+			at = b.value(x, -1)
+		}
+		return b.copyTo(b.callB(uiTestMount, bc.KRef, bl, platform, at), dst)
 	case check.BPush, check.BPresent:
 		bl := b.builder(call.Args[0])
 		name := uiPush

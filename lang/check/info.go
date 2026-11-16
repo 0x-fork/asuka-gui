@@ -34,6 +34,10 @@ type Info struct {
 	BodyCalls map[syntax.Item]bool
 	// AppHandlers: the app block's events (on openURL(url) { }).
 	AppHandlers []*HandlerArg
+	// ScreenRoots: a screen's root, its Screen element: the body's prop
+	// sets, handlers, bindings and slots in its block, its views its
+	// children (made by the checker; no source of its own).
+	ScreenRoots map[*TypeName]*syntax.CallExpr
 	// Shaders: shader("""…""")'s programs, compiled.
 	Shaders map[*syntax.CallExpr][]byte
 
@@ -49,28 +53,29 @@ type Info struct {
 
 func newInfo() *Info {
 	return &Info{
-		Types:      map[syntax.Expr]Type{},
-		Uses:       map[*syntax.Ident]Object{},
-		Defs:       map[*syntax.Ident]Object{},
-		Calls:      map[*syntax.CallExpr]*Call{},
-		Selections: map[syntax.Expr]*Selection{},
-		StoreSelf:  map[syntax.Expr]*TypeName{},
-		Convs:      map[syntax.Expr]Type{},
-		Ctxs:       map[syntax.Node]*FuncCtx{},
-		Cases:      map[*syntax.CasePat]*Case{},
-		Catches:    map[*syntax.CatchClause]*CatchInfo{},
-		Fors:       map[*syntax.ForStmt]*ForInfo{},
-		Elements:   map[*syntax.CallExpr]*ElementCall{},
-		Matches:    map[syntax.Node]*MatchInfo{},
-		Lets:       map[*syntax.LetDecl]Type{},
-		Emits:      map[*syntax.EmitStmt]*Member{},
-		Binds:      map[*syntax.OnHandler][]*Var{},
-		Trailing:   map[*syntax.CallExpr]*syntax.LambdaExpr{},
-		Shaders:    map[*syntax.CallExpr][]byte{},
-		SlotCalls:  map[*syntax.SlotItem]*syntax.CallExpr{},
-		BodyCalls:  map[syntax.Item]bool{},
-		Imports:    map[*syntax.ImportDecl]*Package{},
-		Expected:   map[syntax.Expr]Type{},
+		Types:       map[syntax.Expr]Type{},
+		Uses:        map[*syntax.Ident]Object{},
+		Defs:        map[*syntax.Ident]Object{},
+		Calls:       map[*syntax.CallExpr]*Call{},
+		Selections:  map[syntax.Expr]*Selection{},
+		StoreSelf:   map[syntax.Expr]*TypeName{},
+		Convs:       map[syntax.Expr]Type{},
+		Ctxs:        map[syntax.Node]*FuncCtx{},
+		Cases:       map[*syntax.CasePat]*Case{},
+		Catches:     map[*syntax.CatchClause]*CatchInfo{},
+		Fors:        map[*syntax.ForStmt]*ForInfo{},
+		Elements:    map[*syntax.CallExpr]*ElementCall{},
+		Matches:     map[syntax.Node]*MatchInfo{},
+		Lets:        map[*syntax.LetDecl]Type{},
+		Emits:       map[*syntax.EmitStmt]*Member{},
+		Binds:       map[*syntax.OnHandler][]*Var{},
+		Trailing:    map[*syntax.CallExpr]*syntax.LambdaExpr{},
+		Shaders:     map[*syntax.CallExpr][]byte{},
+		SlotCalls:   map[*syntax.SlotItem]*syntax.CallExpr{},
+		BodyCalls:   map[syntax.Item]bool{},
+		ScreenRoots: map[*TypeName]*syntax.CallExpr{},
+		Imports:     map[*syntax.ImportDecl]*Package{},
+		Expected:    map[syntax.Expr]Type{},
 	}
 }
 

@@ -242,7 +242,30 @@ func (c *Checker) componentBody(t *TypeName) {
 		}
 	}
 	views = c.bodyCalls(views)
+	if comp.Screen {
+		c.screenRoot(t, views)
+		return
+	}
 	c.viewBlock(views, nil, t.name)
+}
+
+// screenRoot checks a screen's views as the block of its root, a Screen
+// element: title: "Inbox", toolbar { … }, bind search: q and on
+// searchSubmit { } are the element's, the rest its children.
+func (c *Checker) screenRoot(t *TypeName, items []syntax.Item) {
+	d := t.Decl.(*syntax.ScreenDecl)
+	id := &syntax.Ident{Span: d.Name.Span, Name: "Screen"}
+	call := &syntax.CallExpr{Span: d.Body.Span, Fun: id, Block: &syntax.Block{Span: d.Body.Span, Items: items}}
+	c.info.ScreenRoots[t] = call
+	tn, ok := c.prelude.Scope.LookupLocal("Screen").(*TypeName)
+	if !ok {
+		return
+	}
+	c.resolveType(tn)
+	savedView := c.view
+	c.view = true
+	c.record(call, c.componentCall(call, tn))
+	c.view = savedView
 }
 
 func (c *Checker) taskDecl(d *syntax.TaskDecl) {

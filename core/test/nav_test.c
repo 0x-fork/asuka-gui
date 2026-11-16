@@ -354,7 +354,7 @@ static ak_val bar_screen(ak_closure *c, ak_val *a, uint32_t n) {
 	ak_view *s = ak_ui_new(AK_EL_SCREEN);
 	set_str(s, AK_KEY_SCREEN_TITLE, "Edit");
 	add(s, text("x"));
-	slot(s, AK_KEY_SCREEN_ACTIONS, button("Save", count_up, &saved));
+	slot(s, AK_KEY_SCREEN_TOOLBAR, button("Save", count_up, &saved));
 	ak_view *tb = ak_ui_fragment();
 	ak_view *arch = ak_ui_new(AK_EL_BUTTON);
 	bind(arch, AK_KEY_BUTTON_TITLE, read_cell, archive_title);
@@ -364,7 +364,7 @@ static ak_val bar_screen(ak_closure *c, ak_val *a, uint32_t n) {
 	ak_enum *items[] = {action("Inbox", 0, false, count_up, &moved), action("Trash", 2, false, NULL, NULL)};
 	set(move, AK_KEY_BUTTON_MENU, (ak_val){.p = actions(items, 2)});
 	add(tb, move);
-	slot(s, AK_KEY_SCREEN_TOOLBAR, tb);
+	slot(s, AK_KEY_SCREEN_BOTTOM_TOOLBAR, tb);
 	ak_view *p = button("Compose", count_up, &composed);
 	set_str(p, AK_KEY_BUTTON_ICON, "square.and.pencil");
 	slot(s, AK_KEY_SCREEN_PRIMARY, p);

@@ -418,6 +418,7 @@ typedef struct {
 	void *popped_ctx;
 	void (*pushed)(void *ctx, ak_view *screen);  // and of those pushed
 	void *pushed_ctx;
+	uint32_t building;  // screens being built, not yet pushed: depth() counts them
 	bool disposed;
 } stack_t;
 
@@ -510,7 +511,9 @@ ak_view *ak_stack_push(ak_view *stack, ak_closure *build, ak_val *args, uint32_t
 	ak_owner_set_context(so, ak_nav_key, stack);
 	ak_owner_set_context(so, ak_env_key, pv);
 	if (bk) ak_owner_set_context(so, ak_back_key, bk);
+	st->building++;
 	ak_view *v = ak_build_under(r, so, build, args, nargs);
+	st->building--;
 	ak_view *screen = NULL;
 	if (v && v->el == AK_EL_SCREEN && v->prov == pv) {
 		screen = v;  // a screen declaration's: it adopted them
@@ -626,16 +629,20 @@ void ak_ui_pop(void) {
 	if (st->screens.len > 1) stack_remove(stack, st->screens.len - 1);
 }
 
+// ak_ui_depth is how many screens the nearest stack holds, with the one
+// being built (a screen's own reads it at its place).
 int64_t ak_ui_depth(void) {
 	ak_view *stack = current_stack();
-	return stack ? ((stack_t *)stack->impl)->screens.len : 0;
+	if (!stack) return 0;
+	stack_t *st = stack->impl;
+	return st->screens.len + st->building;
 }
 
 // ---- Screen ----
 
 enum { BAR_ACTIONS, BAR_TOOLBAR, BAR_PRIMARY, NBARS };
 
-static const uint16_t bar_keys[NBARS] = {AK_KEY_SCREEN_ACTIONS, AK_KEY_SCREEN_TOOLBAR, AK_KEY_SCREEN_PRIMARY};
+static const uint16_t bar_keys[NBARS] = {AK_KEY_SCREEN_TOOLBAR, AK_KEY_SCREEN_BOTTOM_TOOLBAR, AK_KEY_SCREEN_PRIMARY};
 static const ak_prop bar_props[NBARS] = {AK_PROP_SCREEN_ACTIONS, AK_PROP_SCREEN_TOOLBAR, AK_PROP_SCREEN_PRIMARY};
 
 typedef struct {
@@ -733,7 +740,7 @@ static void screen_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 	case AK_KEY_SCREEN_PRIMARY_EXTENDED:
 		if (prev || v.i) ak_batch_set_bool(b, e->id, AK_PROP_SCREEN_PRIMARY_EXTENDED, v.i != 0);
 		break;
-	case AK_KEY_SCREEN_ACTIONS:
+	case AK_KEY_SCREEN_BOTTOM_TOOLBAR:
 	case AK_KEY_SCREEN_TOOLBAR:
 	case AK_KEY_SCREEN_PRIMARY:
 		if (prev) unbar(prev->p);

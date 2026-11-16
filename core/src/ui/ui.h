@@ -368,6 +368,10 @@ void ak_ui_on_open_files(ak_closure *f);  // fn([string])
 void ak_ui_on_share(ak_closure *f);       // fn([SharedItem])
 // The router's: true when it takes a URL the app is opened with.
 extern bool (*ak_ui_route_url)(ak_span url);
+// ak_router_set_start makes the main window's first Router start at href
+// ("": its initial) when it's built next: where a browser opened at an
+// address, or a window left at one, starts (the fake host's mount at:).
+void ak_router_set_start(ak_span href);
 // The language the app shows (locale.c): reading it follows it.
 ak_str *ak_ui_locale(void);
 void ak_ui_set_locale(ak_str *tag);

@@ -735,6 +735,15 @@ func argCount(e *syntax.CallExpr) int {
 // builtinMethodCall is a built-in type's method: [T].map, string.trim.
 func (c *Checker) builtinMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type, m *Method, want Type) Type {
 	params, result := c.methodSig(m)
+	if m.Variadic && argCount(e) > len(params) {
+		// The last parameter, as many times as there are arguments.
+		last := params[len(params)-1]
+		ps := append([]*Param{}, params...)
+		for len(ps) < argCount(e) {
+			ps = append(ps, &Param{Name: last.Name, Type: last.Type})
+		}
+		params = ps
+	}
 	args := c.matchArgs(e, params, m.Name)
 	c.trailingClosure(e, params, args)
 	s := m.bind(xt)

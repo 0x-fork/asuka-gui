@@ -26,6 +26,10 @@ typedef struct ak_uitest ak_uitest;  // an rt object (AK_TAG_OPAQUE)
 // (NULL: an iPhone's) is the environment it reports. The UI runtime has
 // one root: mounting unmounts what was.
 ak_uitest *ak_uitest_mount(ak_closure *build, const ak_environment *env);
+// ak_uitest_mount_at is ak_uitest_mount on platform (AK_PLATFORM_*; -1:
+// env's, or the default), with the main window's Router starting at href
+// ("": its initial), as a browser opened at that address does.
+ak_uitest *ak_uitest_mount_at(ak_closure *build, const ak_environment *env, int platform, ak_span href);
 // ak_uitest_set_platform sets the platform a mount with no environment
 // reports (AK_PLATFORM_IOS by default): asuka test -platform.
 void ak_uitest_set_platform(uint8_t platform);
@@ -73,6 +77,36 @@ bool ak_uitest_link(ak_uitest *a, ak_span url, ak_buf *err);
 // tags, most preferred first, joined by commas), settled.
 void ak_uitest_set_languages(ak_uitest *a, ak_span languages);
 bool ak_uitest_expect_no(ak_uitest *a, ak_span text, ak_buf *err);
+// As uitest's (actions.go): long_press long-presses what shows text;
+// disabled reports whether the one thing showing text is disabled;
+// submit presses return in the field label names ("": the one typed in
+// last), or an alert's; toggle flips the switch label names, slide moves
+// a slider; select chooses an option of the picker, wheel or segmented
+// control that has it; swipe presses a list row's swipe action; back
+// goes back as the user does (a stack's top screen, else the top sheet,
+// alert or popover); dismiss dismisses the top sheet, alert or popover;
+// refresh pulls what shows text to refresh; scroll_to scrolls lists until
+// one shows text.
+bool ak_uitest_long_press(ak_uitest *a, ak_span text, ak_buf *err);
+bool ak_uitest_disabled(ak_uitest *a, ak_span text, bool *out, ak_buf *err);
+bool ak_uitest_submit(ak_uitest *a, ak_span label, ak_buf *err);
+bool ak_uitest_toggle(ak_uitest *a, ak_span label, ak_buf *err);
+bool ak_uitest_slide(ak_uitest *a, ak_span label, double value, ak_buf *err);
+bool ak_uitest_select(ak_uitest *a, ak_span option, ak_buf *err);
+bool ak_uitest_swipe(ak_uitest *a, ak_span text, ak_span action, ak_buf *err);
+bool ak_uitest_back(ak_uitest *a, ak_buf *err);
+bool ak_uitest_dismiss(ak_uitest *a, ak_buf *err);
+bool ak_uitest_refresh(ak_uitest *a, ak_span text, ak_buf *err);
+bool ak_uitest_scroll_to(ak_uitest *a, ak_span text, ak_buf *err);
+// ak_uitest_until settles, moving the clock to each timer as it comes
+// due, until cond holds; false (what's waited for, in err) once no timer
+// is left, or after ten minutes of the app's time. wait_for waits for
+// text to show (gone: to go).
+bool ak_uitest_until(ak_uitest *a, bool (*cond)(void *ctx), void *ctx, ak_span what, ak_buf *err);
+bool ak_uitest_wait_for(ak_uitest *a, ak_span text, bool gone, ak_buf *err);
+// ak_uitest_texts calls f with the texts the screen shows, in the order
+// a screen reader reads them.
+void ak_uitest_texts(ak_uitest *a, void (*f)(ak_span s, void *ctx), void *ctx);
 // ak_uitest_snapshot describes what the screen shows: each layer's
 // views, with their kinds, frames, texts and states, one a line,
 // indented by depth (uitest's Snapshot).

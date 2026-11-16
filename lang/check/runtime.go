@@ -53,6 +53,8 @@ var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "onCloseRequest", Body: true, Sig: "(handler: fn() -> bool)", Builtin: "ui.on_close_request", Doc: "asked when the user closes the window the component is in, while it lives: false keeps it open"},
 	{Name: "onQuit", Body: true, Sig: "(handler: fn(QuitEvent))", Builtin: "ui.on_quit", Doc: "hears the app about to quit, however that started, while the component lives: e.cancel() keeps it running"},
 	{Name: "onSecondInstance", Body: true, Sig: "(handler: fn([string], string))", Builtin: "ui.on_second_instance", Doc: "hears the app started again while it runs (its arguments, its working directory), while the component lives"},
+	{Name: "onBack", Body: true, Sig: "(handler: fn() -> bool)", Builtin: "ui.on_back", Doc: "asked when the user goes back from the nearest pushed screen, sheet or popover around the component (else the app's: Android's back), while it lives: true takes it (the screen stays), false lets it go back"},
+	{Name: "depth", Sig: "() -> int", Builtin: "ui.depth", Doc: "how many screens the nearest stack holds"},
 	{Name: "mountApp", Sig: "() -> TestApp", Builtin: "test.mount_app", Doc: "in a test: mounts the app block's view on the fake host (its main window, its menus, its handlers), as mount does a view"},
 	{Name: "colorUniform", Sig: "(name: string, color: Color) -> Uniform", Builtin: "canvas.color_uniform", Doc: "a Shader's vec4 uniform of a color: its red, green, blue and alpha from 0 to 1"},
 }
@@ -172,12 +174,22 @@ func (c *Checker) shaderCall(e *syntax.CallExpr, call *Call) {
 // bodyCall reports an item of a component's body (or the app block)
 // that's a registration (useKeys(…), onOpenURL(…)), not a view.
 func (c *Checker) bodyCall(it syntax.Item) bool {
-	s, ok := it.(*syntax.ExprStmt)
-	if !ok {
-		return false
+	var e *syntax.CallExpr
+	switch s := it.(type) {
+	case *syntax.ExprStmt:
+		e, _ = s.X.(*syntax.CallExpr)
+	case *syntax.SlotItem:
+		// onBack { … }: the call with its trailing block.
+		if b, ok := c.lookup(s.Name.Name).(*Builtin); ok && b.ID == BRuntime && b.Fn.Body {
+			call := c.info.SlotCalls[s]
+			if call == nil {
+				call = &syntax.CallExpr{Span: s.Span, Fun: s.Name, Block: s.Body}
+				c.info.SlotCalls[s] = call
+			}
+			return true
+		}
 	}
-	e, ok := s.X.(*syntax.CallExpr)
-	if !ok {
+	if e == nil {
 		return false
 	}
 	id, ok := e.Fun.(*syntax.Ident)
@@ -197,7 +209,11 @@ func (c *Checker) bodyCalls(items []syntax.Item) []syntax.Item {
 			c.info.BodyCalls[it] = true
 			savedView := c.view
 			c.view = false
-			c.expr(it.(*syntax.ExprStmt).X, nil)
+			if s, ok := it.(*syntax.SlotItem); ok {
+				c.expr(c.info.SlotCalls[s], nil)
+			} else {
+				c.expr(it.(*syntax.ExprStmt).X, nil)
+			}
 			c.view = savedView
 			continue
 		}
