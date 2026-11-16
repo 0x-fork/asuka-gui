@@ -326,8 +326,9 @@ package's purpose strings.
 What only part of the package needs goes in a `[uses.<member>]` table,
 with the same keys: the app gets it only if its code, or a dependency's,
 refers to that member (a function, a type, a store; `"Type.name"` for a
-type's member). A local function of the same name doesn't count, nor
-does a test block. asuka/location's background part is such:
+type's method or field: a field when the code makes the struct with it,
+assigns it or reads it, not when it's left at its default). A local
+function of the same name doesn't count, nor does a test block. asuka/location's background part is such:
 
 ```toml
 [uses.requestAlways.android]

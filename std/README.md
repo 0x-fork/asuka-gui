@@ -121,7 +121,8 @@ test "a region, crossed" {
   (`[uses.requestAlways.android] permissions = [...]`,
   `[uses.startUpdates.ios] backgroundModes = ["location"]`): an app gets
   them only if its program refers to that member (a function, a type, a
-  store; `"Type.name"` for a type's member), from its code or a
+  store; `"Type.name"` for a type's method or field, a field when the
+  code makes the struct with it, assigns it or reads it), from its code or a
   dependency's, as the checker resolved it (appbuild.Uses), not a local
   name that's the same nor a test block's. The files beside the code are
   for every app that imports the package: `iOS.entitlements`,

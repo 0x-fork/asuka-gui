@@ -225,8 +225,10 @@ type Uses struct {
 	// location.requestAlways counts as the app would): "<import
 	// path>.<name>" for a package's function, type, store, state or let
 	// (asuka/location.requestAlways), "<import path>.<Type>.<name>" for a
-	// member of its type (asuka/icloud.Value.set); the prelude's by name
-	// alone (Video). Test blocks' don't count: they aren't the app's.
+	// member of its type (asuka/icloud.Value.set: a method or a field,
+	// which the program names as it reads it, assigns it or makes the
+	// struct with it); the prelude's by name alone (Video). Test blocks'
+	// don't count: they aren't the app's.
 	Refs map[string]bool
 }
 
@@ -355,9 +357,21 @@ func usesOf(prog *check.Program, u *Uses) {
 					if e := info.Elements[n]; e != nil && e.Comp != nil {
 						object(pkg, e.Comp)
 					}
-					// A method's call (n.from(…)): the method.
-					if c := info.Calls[n]; c != nil && c.Func != nil {
-						object(pkg, c.Func)
+					// A method's call (n.from(…)): the method. A struct
+					// made with a field (Notification(sender: p)): that
+					// field, as a read or an assignment of it is; a field
+					// left at its default isn't.
+					if c := info.Calls[n]; c != nil {
+						if c.Func != nil {
+							object(pkg, c.Func)
+						}
+						if c.Kind == check.CallStruct && c.Type != nil {
+							for i, a := range c.Args {
+								if a != nil && i < len(c.Params) {
+									ref(pkg, nil, c.Type.Obj, c.Params[i].Name)
+								}
+							}
+						}
 					}
 				case *syntax.MemberExpr:
 					if sel := info.Selections[n]; sel != nil {

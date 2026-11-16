@@ -236,7 +236,7 @@ manifest = ['<queries><intent><action android:name="android.intent.action.TTS_SE
 
 权限写成 `"name:28"` 表示只到这个 API 级别；写成 `"name|neverForLocation"` 会带上它的 `usesPermissionFlags`。应用自己的 `asuka.toml` 里的用途说明优先于包的。
 
-只有包的一部分才需要的东西，写在 `[uses.<member>]` 表里，键和上面相同：只有当应用的代码（或某个依赖的代码）引用了这个成员（函数、类型、store；类型的成员写成 `"Type.name"`）时，应用才会得到它。同名的本地函数不算，测试块里的引用也不算。asuka/location 的后台部分就是这样声明的：
+只有包的一部分才需要的东西，写在 `[uses.<member>]` 表里，键和上面相同：只有当应用的代码（或某个依赖的代码）引用了这个成员（函数、类型、store；类型的方法或字段写成 `"Type.name"`。字段只有在代码构造结构体时给了它、给它赋值或读取它时才算，保持默认值不算）时，应用才会得到它。同名的本地函数不算，测试块里的引用也不算。asuka/location 的后台部分就是这样声明的：
 
 ```toml
 [uses.requestAlways.android]
