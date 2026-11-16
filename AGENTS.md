@@ -10,14 +10,24 @@ through purego, `internal/darwin`), the Windows host (`host/windows`,
 Win32 through syscall), the Linux host (`host/linux`, GTK 4 and
 libadwaita through purego, `internal/gtk`), all Go driving the C core
 through its ABI (`host/bridge`), and the web (`platform/web`, the DOM
-from JavaScript, the core as WebAssembly). **Read [DESIGN.md](DESIGN.md)
-and [RFC 0007](rfcs/0007-c-core-and-asuka-language.md) before changing
-code**; DESIGN.md is the source of truth for the architecture, RFC 0007
-for the rewrite's milestones, lang/LOWERING.md for how the language
-compiles. Work milestone by milestone, in order.
+from JavaScript, the core as WebAssembly). The Go desktop hosts are
+being replaced (RFC 0008): the macOS host in Swift on AppKit
+(`platform/macos`), the Windows and Linux hosts in C
+(`platform/windows`, `platform/linux`). **Read [DESIGN.md](DESIGN.md),
+[RFC 0007](rfcs/0007-c-core-and-asuka-language.md) and [RFC
+0008](rfcs/0008-no-go-at-run-time-and-c-ffi.md) before changing code**;
+DESIGN.md is the source of truth for the architecture, the RFCs for the
+rewrite's milestones, lang/LOWERING.md for how the language compiles.
+Work milestone by milestone, in order.
 
 ## Hard rules
 
+- **No Go at run time** (RFC 0008). Nothing an app ships is Go: Go is
+  the CLI's, the compiler's, the generators' and the tests' language.
+  New run-time code is C (the core, the Windows and Linux hosts, a
+  package's Windows and Linux code), Swift (Apple platforms), Kotlin
+  (Android) or JavaScript (the web). Don't add to the Go desktop hosts
+  or package `native`: they're being replaced.
 - **No cgo, anywhere.** Go code (the CLI, the compiler, the desktop
   hosts) builds with `CGO_ENABLED=0`; it reaches C through purego and
   `syscall`, and builds C by running a compiler (internal/cbuild).
