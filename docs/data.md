@@ -448,6 +448,100 @@ async fn signInBack(authorize: string) throws -> string {
 }
 ```
 
+### Bodies as they come
+
+A body that comes over time (the reply a language model writes, a log,
+a feed) is read as it's sent. `http.stream(url, method:, headers:,
+body:)` answers as soon as the response's head is in: its `status`,
+`url` and `headers`, and its `body`, a stream of the pieces as the
+network delivers them. `lines()` reads them as lines of text,
+`events()` as server-sent events (`text/event-stream`, as a browser's
+`EventSource` reads it: each an `Event` with its `event`, `data` and
+`id`), and `text()` the whole. `http.events(url, …)` does both: it asks
+for events (a `POST` too, as language models' APIs stream their
+replies), throws `HTTPError.status` for a status that isn't a success,
+and with `reconnect: true` connects again after the server's `retry`,
+sending the last event's ID, as `EventSource` does. Leaving the loop, or
+the task going, stops the request; `timeout` is the longest wait for
+the head and then for each piece.
+
+```asuka
+import std/http
+import std/json
+
+struct Prompt {
+  model: string
+  input: string
+  stream: bool = true
+}
+
+screen Ask {
+  state reply = ""
+  state done = false
+
+  title: "Ask"
+
+  task {
+    let prompt = json.encode(Prompt(model: "a-model", input: "Tell me a story"))
+    for await e in http.events("https://example.com/v1/responses", method: "POST", headers: ["content-type": "application/json"], body: prompt.bytes()) {
+      if e.data == "[DONE]" { break }
+      reply = reply + e.data
+    }
+    done = true
+  }
+
+  Text(reply)
+}
+```
+
+Each platform's own client streams it: URLSession, `HttpURLConnection`,
+`fetch`'s body stream, WinHTTP and libsoup. The lines and events are
+read the same everywhere. On iOS and macOS the head comes with the
+body's first bytes: URLSession gives it no sooner.
+
+## Live connections: std/websocket
+
+`std/websocket` keeps a connection open both ways (RFC 6455):
+`websocket.connect(url, headers:, protocols:)` answers once the server
+accepted it, with a `WebSocket`. `send(text)` and `sendBinary(data)`
+send, `messages` is a stream of what comes (`.text` or `.binary`),
+which ends when the server closes the connection normally and throws
+`WebSocketError.closed(code, reason)` when it closes it otherwise, and
+`close(code:, reason:)` closes it. Each platform's own client carries
+it: URLSession, OkHttp, the browser's `WebSocket`, WinHTTP and libsoup;
+a browser sends no headers of the app's.
+
+```asuka
+import std/websocket
+
+screen Chat {
+  state lines: [string] = []
+  state ws: websocket.WebSocket? = none
+
+  title: "Chat"
+
+  task {
+    let socket = try await websocket.connect("wss://example.com/chat", protocols: ["chat"])
+    ws = socket
+    for await m in socket.messages {
+      match m {
+        .text(t) => { lines.push(t) }
+        .binary(b) => { lines.push("{b.count()} bytes") }
+      }
+    }
+  }
+
+  Column {
+    for l in lines { Text(l) }
+    Button("Wave") {
+      on press {
+        if let s = ws { try? await s.send("👋") }
+      }
+    }
+  }
+}
+```
+
 ## Watching files: std/watch
 
 `watch.path(dir)` follows changes to a folder (or a file): a folder the

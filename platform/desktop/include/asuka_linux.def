@@ -1305,6 +1305,18 @@ SYM(SOUP, void, soup_message_set_request_body_from_bytes, (SoupMessage *msg, con
 SYM(SOUP, GInputStream *, soup_session_send, (SoupSession *session, SoupMessage *msg, GCancellable *cancellable, GError **error))
 SYM(SOUP, GUri *, soup_message_get_uri, (SoupMessage *msg))
 
+// ---- Native packages: libsoup's WebSockets (std/websocket) ----
+SYM(SOUP, void, soup_session_websocket_connect_async, (SoupSession *session, SoupMessage *msg, const char *origin, char **protocols, int io_priority, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data))
+SYM(SOUP, SoupWebsocketConnection *, soup_session_websocket_connect_finish, (SoupSession *session, GAsyncResult *result, GError **error))
+SYM(SOUP, void, soup_websocket_connection_send_text, (SoupWebsocketConnection *self, const char *text))
+SYM(SOUP, void, soup_websocket_connection_send_binary, (SoupWebsocketConnection *self, gconstpointer data, gsize length))
+SYM(SOUP, void, soup_websocket_connection_close, (SoupWebsocketConnection *self, gushort code, const char *data))
+SYM(SOUP, gushort, soup_websocket_connection_get_close_code, (SoupWebsocketConnection *self))
+SYM(SOUP, const char *, soup_websocket_connection_get_close_data, (SoupWebsocketConnection *self))
+SYM(SOUP, const char *, soup_websocket_connection_get_protocol, (SoupWebsocketConnection *self))
+SYM(SOUP, int, soup_websocket_connection_get_state, (SoupWebsocketConnection *self))
+SYM(SOUP, void, soup_websocket_connection_set_max_incoming_payload_size, (SoupWebsocketConnection *self, guint64 max_incoming_payload_size))
+
 // ---- Native packages: libsecret (secure) ----
 SYM(SECRET, SecretSchema *, secret_schema_newv, (const char *name, int flags, GHashTable *attribute_names_and_types))
 SYM(SECRET, SecretValue *, secret_value_new, (const char *secret, gssize length, const char *content_type))

@@ -1,8 +1,9 @@
-// std/http on Windows and Linux: the shared HTTP client (asuka_fetch:
-// WinHTTP, libsoup 3), with the system's proxy settings and
-// certificates, on a thread of the request's.
+// std/http on Windows and Linux: the shared HTTP client (asuka_fetch,
+// asuka_fetch_stream: WinHTTP, libsoup 3), with the system's proxy
+// settings and certificates, on a thread of the request's.
 #include "http.asuka.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -198,7 +199,311 @@ static void download_(http_Transport *self, const char *method, const char *url,
 	}
 }
 
-static const http_Transport_vtable vt = {.send = send_, .download = download_};
+// ---- Bodies read as they come (open, Body) ----
+//
+// A worker runs the request (asuka_fetch_stream): its head answers open,
+// each piece of the body goes to the read waiting for it, or into a
+// queue the reads take from. The worker waits while the queue holds more
+// than a megabyte, until reads take it. close() and letting the Body go
+// abort the request. A Body is freed on the main thread, where the
+// cancels that hold it (open's, a read's) run, once neither the worker
+// nor the core holds it.
+
+#ifdef _WIN32
+typedef SRWLOCK mutex_t;
+typedef CONDITION_VARIABLE cond_t;
+#define mu_init(m) InitializeSRWLock(m)
+#define mu_lock(m) AcquireSRWLockExclusive(m)
+#define mu_unlock(m) ReleaseSRWLockExclusive(m)
+#define mu_destroy(m) ((void)(m))
+#define cv_init(c) InitializeConditionVariable(c)
+#define cv_wait(c, m) SleepConditionVariableSRW(c, m, INFINITE, 0)
+#define cv_broadcast(c) WakeAllConditionVariable(c)
+#define cv_destroy(c) ((void)(c))
+#else
+typedef pthread_mutex_t mutex_t;
+typedef pthread_cond_t cond_t;
+#define mu_init(m) pthread_mutex_init(m, NULL)
+#define mu_lock(m) pthread_mutex_lock(m)
+#define mu_unlock(m) pthread_mutex_unlock(m)
+#define mu_destroy(m) pthread_mutex_destroy(m)
+#define cv_init(c) pthread_cond_init(c, NULL)
+#define cv_wait(c, m) pthread_cond_wait(c, m)
+#define cv_broadcast(c) pthread_cond_broadcast(c)
+#define cv_destroy(c) pthread_cond_destroy(c)
+#endif
+
+// The most the queue holds before the worker waits for reads.
+enum { queue_most = 1 << 20 };
+
+typedef struct piece {
+	struct piece *next;
+	asuka_bytes b;
+} piece;
+
+typedef struct {
+	http_Body base;
+	int refs;  // the worker's and the core's: the main thread's only
+	bool given;  // open answered with it (the worker's, then read on the main thread)
+	asuka_abort *abort;
+	// The request, copied: the call's arguments go as open answers.
+	char *method, *url;
+	asuka_header *headers;
+	size_t nheaders;
+	asuka_bytes body;
+	int timeout_ms;
+	asuka_call *open;     // until the head answers it (the worker's)
+	asuka_response head;  // written before open answers, read only after
+	mutex_t mu;
+	cond_t cv;
+	// Under mu:
+	piece *first, *last;
+	size_t queued;
+	asuka_call *reading;  // a read waiting for a piece
+	bool ended;           // the request is over (failure says how)
+	bool closed;          // close(), or let go
+	asuka_error failure;
+} body;
+
+static void copy_error(asuka_error *to, const asuka_error *from) {
+	*to = *from;
+	to->domain = from->domain ? asuka_strdup(from->domain) : NULL;
+	to->message = from->message ? asuka_strdup(from->message) : NULL;
+}
+
+static asuka_bytes no_bytes(void) { return (asuka_bytes){NULL, 0}; }
+
+static void free_body(body *b) {
+	free(b->method);
+	free(b->url);
+	for (size_t i = 0; i < b->nheaders; i++) {
+		free((char *)b->headers[i].name);
+		free((char *)b->headers[i].value);
+	}
+	free(b->headers);
+	free(b->body.data);
+	asuka_response_free(&b->head);
+	for (piece *p = b->first, *n; p; p = n) {
+		n = p->next;
+		free(p->b.data);
+		free(p);
+	}
+	asuka_error_free(&b->failure);
+	asuka_abort_free(b->abort);
+	mu_destroy(&b->mu);
+	cv_destroy(&b->cv);
+	free(b);
+}
+
+// worker_gone drops the worker's hold (and the core's, which it never
+// got when open failed), on the main thread.
+static void worker_gone(void *p) {
+	body *b = p;
+	b->refs -= b->given ? 1 : 2;
+	if (b->refs <= 0) free_body(b);
+}
+
+static bool body_head(void *ctx, const asuka_response *r, asuka_error *err) {
+	body *b = ctx;
+	if (asuka_call_cancelled(b->open)) {
+		asuka_error_cancelled(err);
+		return false;
+	}
+	asuka_response *h = &b->head;
+	h->status = r->status;
+	h->url = asuka_strdup(r->url);
+	h->nheaders = r->nheaders;
+	h->names = calloc(r->nheaders ? r->nheaders : 1, sizeof *h->names);
+	h->values = calloc(r->nheaders ? r->nheaders : 1, sizeof *h->values);
+	for (size_t i = 0; i < r->nheaders; i++) h->names[i] = asuka_strdup(r->names[i]), h->values[i] = asuka_strdup(r->values[i]);
+	asuka_call *c = b->open;
+	b->open = NULL;
+	b->given = true;
+	http_Transport_open_done(c, &b->base);
+	return true;
+}
+
+static bool body_data(void *ctx, const void *p, size_t n, asuka_error *err) {
+	(void)err;
+	body *b = ctx;
+	mu_lock(&b->mu);
+	if (b->closed) {
+		mu_unlock(&b->mu);
+		return false;  // ends the request: no one reads it
+	}
+	asuka_call *c = b->reading;
+	b->reading = NULL;
+	if (c) {
+		mu_unlock(&b->mu);
+		http_Body_read_done(c, asuka_bytes_copy(p, n));
+		return true;
+	}
+	piece *x = malloc(sizeof *x);
+	*x = (piece){NULL, asuka_bytes_copy(p, n)};
+	if (b->last) b->last->next = x;
+	else b->first = x;
+	b->last = x;
+	b->queued += n;
+	while (b->queued > queue_most && !b->closed) cv_wait(&b->cv, &b->mu);
+	bool go = !b->closed;
+	mu_unlock(&b->mu);
+	return go;
+}
+
+static void run_open(void *p) {
+	body *b = p;
+	asuka_request rq = {.method = b->method, .url = b->url, .headers = b->headers, .nheaders = b->nheaders, .body = b->body.data, .len = b->body.len,
+	                    .timeout_ms = b->timeout_ms, .abort = b->abort, .head = body_head, .data = body_data, .ctx = b};
+	asuka_error e = {0};
+	bool ok = asuka_fetch_stream(&rq, NULL, &e);
+	if (!b->given) {
+		// No head: open fails.
+		if (ok) asuka_error_failed(&e, "http", 0, "%s: no response", b->url);
+		asuka_call_fail(b->open, &e);
+		b->open = NULL;
+	} else {
+		mu_lock(&b->mu);
+		b->ended = true;
+		if (!ok) b->failure = e;
+		asuka_call *c = b->reading;
+		b->reading = NULL;
+		asuka_error f = {0};
+		if (c && !ok) copy_error(&f, &e);
+		mu_unlock(&b->mu);
+		if (c && !ok) asuka_call_fail(c, &f);
+		else if (c) http_Body_read_done(c, no_bytes());
+	}
+	asuka_desktop_post(worker_gone, b);
+}
+
+static void cancel_open(void *p) { asuka_abort_now(((body *)p)->abort); }
+
+static void cancel_read(void *p) {
+	body *b = p;
+	mu_lock(&b->mu);
+	asuka_call *c = b->reading;
+	b->reading = NULL;
+	mu_unlock(&b->mu);
+	if (c) {
+		asuka_error e = {0};
+		asuka_error_cancelled(&e);
+		asuka_call_fail(c, &e);
+	}
+}
+
+static http_Response body_head_(http_Body *self, asuka_error *err) {
+	(void)err;
+	body *b = (body *)self;
+	const asuka_response *h = &b->head;
+	http_Response r = {.status = h->status, .url = asuka_strdup(h->url)};
+	r.headers.len = h->nheaders;
+	r.headers.keys = calloc(h->nheaders ? h->nheaders : 1, sizeof *r.headers.keys);
+	r.headers.values = calloc(h->nheaders ? h->nheaders : 1, sizeof *r.headers.values);
+	for (size_t i = 0; i < h->nheaders; i++) r.headers.keys[i] = asuka_strdup(h->names[i]), r.headers.values[i] = asuka_strdup(h->values[i]);
+	return r;
+}
+
+static void body_read(http_Body *self, asuka_call *call) {
+	body *b = (body *)self;
+	asuka_call_on_cancel(call, cancel_read, b);  // before the worker can see the call
+	mu_lock(&b->mu);
+	if (b->closed) {
+		mu_unlock(&b->mu);
+		http_Body_read_done(call, no_bytes());
+		return;
+	}
+	if (b->first) {
+		piece *x = b->first;
+		b->first = x->next;
+		if (!b->first) b->last = NULL;
+		b->queued -= x->b.len;
+		cv_broadcast(&b->cv);
+		mu_unlock(&b->mu);
+		http_Body_read_done(call, x->b);
+		free(x);
+		return;
+	}
+	if (b->failure.status) {
+		asuka_error e = {0};
+		copy_error(&e, &b->failure);
+		mu_unlock(&b->mu);
+		asuka_call_fail(call, &e);
+		return;
+	}
+	if (b->ended) {
+		mu_unlock(&b->mu);
+		http_Body_read_done(call, no_bytes());
+		return;
+	}
+	if (b->reading) {
+		mu_unlock(&b->mu);
+		asuka_error e = {0};
+		asuka_error_failed(&e, "http", 0, "a read is already waiting for the body");
+		asuka_call_fail(call, &e);
+		return;
+	}
+	b->reading = call;
+	mu_unlock(&b->mu);
+}
+
+// stop ends the request: a read waiting gets the body's end.
+static void stop(body *b) {
+	mu_lock(&b->mu);
+	b->closed = true;
+	asuka_call *c = b->reading;
+	b->reading = NULL;
+	cv_broadcast(&b->cv);
+	mu_unlock(&b->mu);
+	asuka_abort_now(b->abort);
+	if (c) http_Body_read_done(c, no_bytes());
+}
+
+static void body_close(http_Body *self, asuka_error *err) {
+	(void)err;
+	stop((body *)self);
+}
+
+static void body_release(http_Body *self) {
+	body *b = (body *)self;
+	stop(b);
+	if (--b->refs <= 0) free_body(b);
+}
+
+static const http_Body_vtable body_vt = {.release = body_release, .head = body_head_, .read = body_read, .close = body_close};
+
+static void open_(http_Transport *self, const char *method, const char *url, http_map_string headers, asuka_bytes data, int64_t timeout,
+                  asuka_call *call) {
+	(void)self;
+	body *b = calloc(1, sizeof *b);
+	b->base.vt = &body_vt;
+	b->refs = 2;
+	b->abort = asuka_abort_new();
+	b->method = asuka_strdup(method);
+	b->url = asuka_strdup(url);
+	b->nheaders = headers.len;
+	b->headers = calloc(headers.len ? headers.len : 1, sizeof *b->headers);
+	for (size_t i = 0; i < headers.len; i++) b->headers[i] = (asuka_header){asuka_strdup(headers.keys[i]), asuka_strdup(headers.values[i])};
+	b->body = asuka_bytes_copy(data.data, data.len);
+	int64_t ms = timeout > 0 ? (timeout + 999999) / 1000000 : 0;
+	b->timeout_ms = ms > INT_MAX ? INT_MAX : (int)ms;
+	b->open = call;
+	mu_init(&b->mu);
+	cv_init(&b->cv);
+	asuka_call_on_cancel(call, cancel_open, b);
+	if (!asuka_desktop_spawn(run_open, b)) {
+		asuka_error e = {0};
+		asuka_error_failed(&e, "http", 0, "no thread for the request");
+		asuka_call_fail(call, &e);
+		free_body(b);
+	}
+}
+
+http_Body *http_make_Body(asuka_error *err) {
+	asuka_error_unsupported(err, "a Body comes from Transport.open");
+	return NULL;
+}
+
+static const http_Transport_vtable vt = {.send = send_, .download = download_, .open = open_};
 
 // ---- LocalServer: one-shot pages on the loopback, for a redirect ----
 

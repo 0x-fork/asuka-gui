@@ -419,7 +419,7 @@ func (g *cGen) header() {
 		}
 		g.hf("// The package's declared errors (asuka_error_declared).\nenum {\n")
 		for _, e := range p.Errors {
-			g.hf("\t%s%s_%s = %d, // %s\n", g.pre, en, lowerCamel(errorCase(e.Name)), e.Index, e.Message)
+			g.hf("\t%s%s_%s = %d, // %s\n", g.pre, en, lowerCamel(errorCase(e.Name)), e.Index, strings.Join(strings.Fields(e.Message), " "))
 		}
 		g.hf("};\n\n")
 	}

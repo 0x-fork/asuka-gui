@@ -1,0 +1,77 @@
+// std/http's streamed bodies: lines and server-sent events read from the
+// pieces as the network delivers them, however it splits them (a line,
+// a \r\n, a UTF-8 character across two pieces).
+
+import std/http
+
+fn response(pieces: [string]) -> http.StreamedResponse = http.StreamedResponse(status: 200, url: "https://example.com", headers: [:], body: Stream<bytes>(send => {
+  for p in pieces {
+    send(p.bytes())
+  }
+}))
+
+fn split(text: string, at: [int]) -> http.StreamedResponse {
+  let b = text.bytes()
+  var cuts = [0]
+  for c in at {
+    cuts.push(c)
+  }
+  cuts.push(b.count())
+  return http.StreamedResponse(status: 200, url: "", headers: [:], body: Stream<bytes>(send => {
+    var i = 0
+    while i + 1 < cuts.count() {
+      send(b.slice(cuts[i], cuts[i + 1]))
+      i = i + 1
+    }
+  }))
+}
+
+test "lines, however the pieces split them" {
+  for await l in response(["one\ntw", "o\r", "\nthree\rfour", "\n\nlast"]).lines() {
+    print("[{l}]")
+  }
+  // é is two bytes: a piece ends between them.
+  for await l in split("café\nnaïve", at: [4]).lines() {
+    print("<{l}>")
+  }
+}
+
+test "server-sent events" {
+  let stream = response([
+    "\u{FEFF}: a comment\n",
+    "data: first\n\n",
+    "event: price\ndata: 1\ndata: 2\nid: 7\n\n",
+    "data:no space\r\n",
+    "retry: 1500\r\n\r\n",
+    "event: empty\n\n",
+    "id\ndata\n\n",
+    "data: unended",
+  ])
+  for await e in stream.events() {
+    print("{e.event}|{e.data}|{e.id}|{e.retry}")
+  }
+}
+
+test "the whole body" {
+  print(try await response(["a", "b", "c"]).text())
+  print(response([]).ok())
+}
+// Output:
+// [one]
+// [two]
+// [three]
+// [four]
+// []
+// [last]
+// <café>
+// <naïve>
+// ok lines, however the pieces split them
+// message|first||0ms
+// price|1
+// 2|7|0ms
+// message|no space|7|1500ms
+// message|||1500ms
+// ok server-sent events
+// abc
+// true
+// ok the whole body

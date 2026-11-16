@@ -2,6 +2,7 @@
 // (proxies, trusted certificates, the shared cache and cookies).
 import Foundation
 import Network
+import Asuka
 
 final class URLSessionTransport: Transport {
     func send(method: String, url: String, headers: [String: String], body: Data, timeout: TimeInterval) async throws -> Response {
@@ -124,6 +125,294 @@ private final class Download: NSObject, URLSessionDownloadDelegate {
 }
 
 func makeTransport() throws -> any Transport { URLSessionTransport() }
+
+func makeBody() throws -> any Body {
+    throw AsukaNativeError.unsupported("a body comes from Transport.open")
+}
+
+// ---- Bodies as they come: a data task whose pieces are read in turn ----
+
+extension URLSessionTransport {
+    func `open`(method: String, url: String, headers: [String: String], body: Data, timeout: TimeInterval) async throws -> any Body {
+        guard let u = URL(string: url) else {
+            throw URLError(.badURL)
+        }
+        var req = URLRequest(url: u)
+        req.httpMethod = method
+        // URLSession's request timeout is its longest wait for more: for
+        // the head, then for each piece (a task suspended for its reader,
+        // below, isn't waiting).
+        req.timeoutInterval = timeout > 0 ? timeout : Streams.forever
+        for (k, v) in headers {
+            req.setValue(v, forHTTPHeaderField: k)
+        }
+        if !body.isEmpty {
+            req.httpBody = body
+        }
+        // URLSession holds a text/plain answer's head and body (or one
+        // without a Content-Type) until 512 bytes are in, to sniff what
+        // it is: a stream of text would come late, in one piece. The
+        // request's property WebKit sets turns that off (a protocol
+        // property, through the public URLProtocol).
+        let m = (req as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+        URLProtocol.setProperty(false, forKey: "_kCFURLConnectionPropertyShouldSniff", in: m)
+        let task = Streams.shared.session.dataTask(with: m as URLRequest)
+        let s = StreamState(task: task, url: url)
+        Streams.shared.add(task, s)
+        return try await withTaskCancellationHandler {
+            _ = try await withCheckedThrowingContinuation { (k: CheckedContinuation<Response, Error>) in
+                s.waitHead(k)
+                if Task.isCancelled { task.cancel() }  // before the handler was in
+            }
+            return StreamBody(s)
+        } onCancel: {
+            task.cancel()
+        }
+    }
+}
+
+/// The one session the streamed requests share (its connections reused
+/// from one to the next), with the default configuration's cookies and
+/// cache, and its delegate, which hands each task's events to its state.
+private final class Streams: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    static let shared = Streams()
+    /// No timeout: a stream may run as long as it's read.
+    static let forever: TimeInterval = 1_000_000_000
+
+    private let lock = NSLock()
+    private var states: [Int: StreamState] = [:]
+    private(set) var session: URLSession!
+
+    override init() {
+        super.init()
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForResource = Streams.forever
+        session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }
+
+    func add(_ task: URLSessionTask, _ s: StreamState) {
+        lock.lock()
+        states[task.taskIdentifier] = s
+        lock.unlock()
+    }
+
+    private func state(_ task: URLSessionTask, remove: Bool = false) -> StreamState? {
+        lock.lock()
+        defer { lock.unlock() }
+        return remove ? states.removeValue(forKey: task.taskIdentifier) : states[task.taskIdentifier]
+    }
+
+    func urlSession(_ s: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        state(dataTask)?.received(response)
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ s: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        state(dataTask)?.received(data)
+    }
+
+    func urlSession(_ s: URLSession, dataTask: URLSessionDataTask, willCacheResponse proposedResponse: CachedURLResponse, completionHandler: @escaping (CachedURLResponse?) -> Void) {
+        completionHandler(nil)  // read once, as it came
+    }
+
+    func urlSession(_ s: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        state(task, remove: true)?.completed(task, error)
+    }
+}
+
+/// A streamed request's state, under its lock: the head (and who waits
+/// for it), the pieces in that no one has read, the reader waiting, and
+/// how it ended.
+private final class StreamState: @unchecked Sendable {
+    /// Past this much unread, the task is suspended until its reader
+    /// catches up.
+    static let most = 1 << 20
+
+    let task: URLSessionDataTask
+    let url: String
+    private let lock = NSLock()
+    private var headWaiter: CheckedContinuation<Response, Error>?
+    private(set) var head: Response?
+    private var pieces: [Data] = []
+    private var buffered = 0
+    private var suspended = false
+    private var reader: (id: UInt64, k: CheckedContinuation<Data, Error>)?
+    private var readers: UInt64 = 0
+    private var ended = false
+    private var failure: Error?
+    private var closed = false
+
+    init(task: URLSessionDataTask, url: String) {
+        self.task = task
+        self.url = url
+    }
+
+    func waitHead(_ k: CheckedContinuation<Response, Error>) {
+        lock.lock()
+        headWaiter = k
+        lock.unlock()
+        task.resume()
+    }
+
+    func received(_ response: URLResponse) {
+        let http = response as? HTTPURLResponse
+        var out: [String: String] = [:]
+        for (k, v) in http?.allHeaderFields ?? [:] {
+            out["\(k)".lowercased()] = "\(v)"
+        }
+        let r = Response(status: http?.statusCode ?? 0, url: response.url?.absoluteString ?? url, headers: out, body: Data())
+        lock.lock()
+        head = r
+        let k = headWaiter
+        headWaiter = nil
+        lock.unlock()
+        k?.resume(returning: r)
+    }
+
+    func received(_ data: Data) {
+        guard !data.isEmpty else { return }
+        lock.lock()
+        if let r = reader {
+            reader = nil
+            lock.unlock()
+            r.k.resume(returning: data)
+            return
+        }
+        pieces.append(data)
+        buffered += data.count
+        if buffered > StreamState.most && !suspended && !closed {
+            suspended = true
+            task.suspend()
+        }
+        lock.unlock()
+    }
+
+    func completed(_ task: URLSessionTask, _ error: Error?) {
+        lock.lock()
+        ended = true
+        failure = error
+        let h = headWaiter
+        headWaiter = nil
+        let r = reader
+        reader = nil
+        let gone = closed
+        lock.unlock()
+        if let h {
+            if let error {
+                h.resume(throwing: error)
+            } else {
+                // No head before its end (not HTTP): what the task has.
+                h.resume(returning: Response(status: (task.response as? HTTPURLResponse)?.statusCode ?? 0, url: task.response?.url?.absoluteString ?? url, headers: [:], body: Data()))
+            }
+        }
+        if let r {
+            if let error, !gone {
+                r.k.resume(throwing: error)
+            } else {
+                r.k.resume(returning: Data())
+            }
+        }
+    }
+
+        private func nextReader() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        readers += 1
+        return readers
+    }
+
+    func read() async throws -> Data {
+        let id = nextReader()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (k: CheckedContinuation<Data, Error>) in
+                lock.lock()
+                if Task.isCancelled {
+                    lock.unlock()
+                    k.resume(throwing: CancellationError())
+                    return
+                }
+                if !pieces.isEmpty {
+                    // What's in, in one piece.
+                    let d = pieces.count == 1 ? pieces[0] : pieces.reduce(into: Data(capacity: buffered)) { $0.append($1) }
+                    pieces = []
+                    buffered = 0
+                    let wake = suspended && !closed
+                    suspended = false
+                    lock.unlock()
+                    if wake { task.resume() }
+                    k.resume(returning: d)
+                    return
+                }
+                if closed || (ended && failure == nil) {
+                    lock.unlock()
+                    k.resume(returning: Data())
+                    return
+                }
+                if let e = failure {
+                    lock.unlock()
+                    k.resume(throwing: e)
+                    return
+                }
+                if reader != nil {
+                    lock.unlock()
+                    k.resume(throwing: URLError(.unknown, userInfo: [NSLocalizedDescriptionKey: "the body is already being read"]))
+                    return
+                }
+                reader = (id, k)
+                lock.unlock()
+            }
+        } onCancel: {
+            // The read stops; the request goes on, for the next read.
+            lock.lock()
+            let r = reader?.id == id ? reader : nil
+            if r != nil { reader = nil }
+            lock.unlock()
+            r?.k.resume(throwing: CancellationError())
+        }
+    }
+
+    func close() {
+        lock.lock()
+        if closed {
+            lock.unlock()
+            return
+        }
+        closed = true
+        pieces = []
+        buffered = 0
+        let r = reader
+        reader = nil
+        lock.unlock()
+        task.cancel()
+        r?.k.resume(returning: Data())
+    }
+}
+
+/// What open gives Asuka: its state's reader. Let go, it stops the
+/// request (the session holds the state until its task ends).
+private final class StreamBody: Body {
+    let state: StreamState
+
+    init(_ state: StreamState) {
+        self.state = state
+    }
+
+    deinit {
+        state.close()
+    }
+
+    func head() throws -> Response {
+        state.head ?? Response(url: state.url)
+    }
+
+    func read() async throws -> Data {
+        try await state.read()
+    }
+
+    func close() throws {
+        state.close()
+    }
+}
 
 // ---- LocalServer: Network.framework's listener on the loopback ----
 

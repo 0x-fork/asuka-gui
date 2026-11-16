@@ -1,0 +1,6 @@
+name = "std/websocket"
+version = "0.1.0"
+description = "WebSocket connections, through each platform's own client"
+
+[windows]
+libraries = ["winhttp"]

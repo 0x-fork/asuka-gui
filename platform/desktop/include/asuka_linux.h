@@ -121,6 +121,7 @@ typedef struct _SoupSession SoupSession;
 typedef struct _SoupMessage SoupMessage;
 typedef struct _SoupMessageHeaders SoupMessageHeaders;
 typedef struct _SoupCookie SoupCookie;
+typedef struct _SoupWebsocketConnection SoupWebsocketConnection;
 
 // WebKitGTK 6.0 and JavaScriptCore.
 typedef struct _WebKitWebView WebKitWebView;

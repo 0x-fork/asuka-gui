@@ -92,6 +92,11 @@ subprojects {
             // Its instrumented tests (src/androidTest, run on a device by
             // connectedDebugAndroidTest) read its package's tests/ as assets.
             sourceSets.getByName("androidTest").assets.srcDir(projectDir.resolve("../tests"))
+            // Its unit tests (src/test, on this computer's JVM by
+            // testDebugUnitTest): Android's classes stubs that answer
+            // defaults, the test server's URL (asukaTestServer, when the
+            // CLI's tests started it) a system property.
+            testOptions.unitTests.isReturnDefaultValues = true
         }
         dependencies {
             // The host's AAR when the app's build depends on it.
@@ -99,6 +104,10 @@ subprojects {
             add("implementation", if (host != null) host else project(":asuka"))
             add("androidTestImplementation", "androidx.test:runner:1.6.2")
             add("androidTestImplementation", "androidx.test.ext:junit:1.2.1")
+            add("testImplementation", "junit:junit:4.13.2")
+        }
+        tasks.withType<Test>().configureEach {
+            providers.gradleProperty("asukaTestServer").orNull?.let { systemProperty("asuka.testserver", it) }
         }
     }
     plugins.withId("org.jetbrains.kotlin.android") {

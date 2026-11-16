@@ -1,0 +1,138 @@
+// Package std/websocket talks to a server over a WebSocket (RFC 6455):
+// messages both ways on one connection, through each platform's own
+// client: URLSession on iOS and macOS, OkHttp on Android, the browser's
+// WebSocket on the web, WinHTTP on Windows and libsoup on Linux. So
+// proxies and the certificates the user trusts work as they do for the
+// platform's own apps.
+//
+//   let ws = try await websocket.connect("wss://example.com/chat")
+//   try await ws.send("hello")
+//   for await m in ws.messages {
+//     match m {
+//       .text(t) => { lines.push(t) }
+//       .binary(b) => { got = got + b.count() }
+//     }
+//   }
+//
+// The messages end when the server closes the connection normally;
+// a close with another code throws WebSocketError.closed, and so does a
+// connection that drops without a close (1006); another network failure
+// throws its error. A browser's WebSocket sends no headers of the app's
+// (headers is ignored there) and says nothing of a failure but 1006.
+
+/// A message: text, or binary data.
+pub enum Message {
+  /// A text message (UTF-8).
+  text(string)
+  /// A binary message.
+  binary(bytes)
+}
+
+/// What can go wrong with a connection.
+pub enum WebSocketError: Error {
+  /// The connection was closed with a code that isn't a normal close
+  /// (1000, 1001, or none): the code and the reason it gave.
+  closed(code: int, reason: string)
+}
+
+/// A connection to a WebSocket server. Let go, it closes.
+pub struct WebSocket {
+  /// The URL connected to.
+  url: string
+  /// The subprotocol the server chose from those asked for, "" for none.
+  protocol: string
+  /// The messages from the server as they come, read once: for await m
+  /// in ws.messages { … }. They end when the connection closes normally,
+  /// and throw WebSocketError.closed when it closes otherwise, or the
+  /// network's error when it fails. Leaving the loop doesn't close the
+  /// connection: close() does.
+  messages: Stream<Message>
+  socket: Socket
+
+  /// Sends a text message.
+  async fn send(text: string) throws {
+    try await socket.sendText(text)
+  }
+
+  /// Sends a binary message.
+  async fn sendBinary(data: bytes) throws {
+    try await socket.sendBinary(data)
+  }
+
+  /// Closes the connection with code (1000, a normal close, unless said)
+  /// and reason: the server answers, and the messages end.
+  fn close(code: int = 1000, reason: string = "") {
+    try? socket.shutdown(code, reason)
+  }
+}
+
+/// What a socket received.
+enum FrameKind { text, binary, closed }
+
+/// A message, or the connection's end.
+struct Frame {
+  kind: FrameKind
+  /// A text message's text; a close's reason.
+  text: string
+  /// A binary message's data.
+  data: bytes
+  /// A close's code (1005 when the server gave none; 1006 when the
+  /// connection ended without a close).
+  code: int
+}
+
+/// The platform's WebSocket client.
+native interface Client {
+  /// Opens a connection to url (ws: or wss:) with headers, asking for
+  /// protocols (the Sec-WebSocket-Protocol header; none when empty), and
+  /// answers once the server accepted it. timeout is the longest wait
+  /// for that.
+  async fn connect(url: string, headers: [string: string], protocols: [string], timeout: Duration) -> Socket
+}
+
+/// A connection, as the platform holds it.
+native interface Socket {
+  /// The subprotocol the server chose, "" for none.
+  fn protocol() -> string
+  /// The next message, as soon as one is in; once the connection is
+  /// closed (by either side), a closed frame with its code and reason,
+  /// then always that. A network failure throws.
+  async fn receive() -> Frame
+  /// Sends a text message.
+  async fn sendText(text: string)
+  /// Sends a binary message.
+  async fn sendBinary(data: bytes)
+  /// Starts closing the connection with code and reason.
+  fn shutdown(code: int, reason: string)
+  /// Lets the connection go (closing it if it's open).
+  fn close()
+}
+
+// Made once; none where the platform has no client (making one again
+// says why).
+let client = try? Client()
+
+/// Connects to the WebSocket server at url (ws: or wss:), sending
+/// headers (not in a browser, which sends none of the app's) and asking
+/// for protocols, and answers once it accepted: a refused connection or
+/// a network failure throws. timeout is the longest wait for that.
+pub async fn connect(url: string, headers: [string: string] = [:], protocols: [string] = [], timeout: Duration = 30s) throws -> WebSocket {
+  let c = client ?? try Client()
+  let s = try await c.connect(url, headers, protocols, timeout)
+  let messages = Stream<Message>(send => {
+    while true {
+      let f = try await s.receive()
+      match f.kind {
+        .text => { send(.text(f.text)) }
+        .binary => { send(.binary(f.data)) }
+        .closed => {
+          if f.code == 1000 || f.code == 1001 || f.code == 1005 {
+            return
+          }
+          throw WebSocketError.closed(code: f.code, reason: f.text)
+        }
+      }
+    }
+  })
+  return WebSocket(url: url, protocol: try s.protocol(), messages: messages, socket: s)
+}

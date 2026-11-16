@@ -74,6 +74,8 @@ func TestStdLinux(t *testing.T) {
 	t.Setenv("ASUKA_RECORD_SOURCE", "audiotestsrc is-live=true")
 	ssip := fakeSSIP(t)
 	images := pngFixtures(t)
+	// std/http's streamed bodies and std/websocket, against internal/testserver.
+	streamed := newStreams(t)
 	for _, c := range []struct {
 		name, src string
 		want      []string
@@ -186,6 +188,8 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: redirect true 404 200 <p>Signed in</p>", "host: closed true", "host: done"}, nil},
+		{"stream", streamed.source(t, "http.asuka"), hostLines(streamsHTTP), streamed.stopped},
+		{"websocket", streamed.source(t, "websocket.asuka"), hostLines(streamsWebSocket), nil},
 		{"monitors", `import platform/network
 import platform/power
 import platform/appearance

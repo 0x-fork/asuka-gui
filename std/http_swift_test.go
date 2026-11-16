@@ -10,8 +10,11 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/egoist/asuka/internal/testserver"
 )
 
 // std/http's Swift (std/http/swift/Http.swift) on this Mac: its
@@ -79,24 +82,233 @@ do {
 	}
 }
 
+// goneServer serves testserver's paths, and /slowhead (a head that never
+// comes), /trickle (its head and "a", then nothing) and /big (32 MiB in
+// 64 KiB writes, the i-th all "a" + i%26), counting the requests whose
+// client went before their answer ended: /gone?path=/stall says how many
+// of that path's.
+func goneServer() *httptest.Server {
+	var mu sync.Mutex
+	gone := map[string]int{}
+	h := testserver.Handler()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gone":
+			mu.Lock()
+			fmt.Fprint(w, gone[r.URL.Query().Get("path")])
+			mu.Unlock()
+			return
+		case "/slowhead":
+			<-r.Context().Done()
+		case "/trickle":
+			w.Header().Set("Content-Type", "text/plain")
+			fmt.Fprint(w, "a")
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		case "/big":
+			for i := 0; i < 512 && r.Context().Err() == nil; i++ {
+				fmt.Fprint(w, strings.Repeat(string(rune('a'+i%26)), 64*1024))
+				w.(http.Flusher).Flush()
+			}
+		default:
+			h.ServeHTTP(w, r)
+		}
+		if r.Context().Err() != nil {
+			mu.Lock()
+			gone[r.URL.Path]++
+			mu.Unlock()
+		}
+	}))
+}
+
+// std/http's streamed bodies in Swift (Transport.open, Body) on this Mac:
+// the pieces as they come (the first well before the last), a 404 that
+// still opens, a request's body and headers, a stall's timeout (for the
+// head, then for a piece), a read
+// cancelled (the request going on until closed), an open cancelled, a
+// body let go, and a reader slower than the network (the task suspended
+// past 1 MiB unread, and resumed: nothing lost, in order).
+func TestHTTPSwiftStream(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("URLSession: macOS")
+	}
+	if _, err := exec.LookPath("swiftc"); err != nil {
+		t.Skip("no swiftc")
+	}
+	srv := goneServer()
+	defer srv.Close()
+	driver := `import Foundation
+let t = try makeTransport()
+let base = "` + srv.URL + `"
+func now() -> Double { Date().timeIntervalSince1970 }
+func readAll(_ b: any Body) async throws -> Data {
+    var all = Data()
+    while true {
+        let d = try await b.read()
+        if d.isEmpty { return all }
+        all.append(d)
+    }
+}
+// Waits for the server to see path's requests gone (the client hung up).
+func gone(_ path: String, _ want: Int, tries: Int = 200) async -> Bool {
+    for _ in 0..<tries {
+        if let (d, _) = try? await URLSession.shared.data(from: URL(string: base + "/gone?path=" + path)!), Int(String(decoding: d, as: UTF8.self)) ?? 0 >= want {
+            return true
+        }
+        try? await Task.sleep(nanoseconds: 25_000_000)
+    }
+    return false
+}
+
+let b = try await t.open(method: "GET", url: base + "/stream", headers: [:], body: Data(), timeout: 5)
+let h = try b.head()
+var text = ""
+var times: [Double] = []
+while true {
+    let d = try await b.read()
+    if d.isEmpty { break }
+    times.append(now())
+    text += String(decoding: d, as: UTF8.self)
+}
+let end = now()
+print("stream \(h.status) \(h.headers["content-type"] ?? "-") \(text.debugDescription) pieces \(times.count >= 2) spread \(times.last! - times.first! > 0.06) early \(end - times.first! > 0.08)")
+print("stream timings first→last \(Int((times.last! - times.first!) * 1000)) ms, first→end \(Int((end - times.first!) * 1000)) ms, \(times.count) pieces")
+print("after end: \(try await b.read().count)")
+
+let nf = try await t.open(method: "GET", url: base + "/status/404", headers: [:], body: Data(), timeout: 5)
+print("404: \(try nf.head().status) \(String(decoding: try await readAll(nf), as: UTF8.self))")
+
+let echo = try await t.open(method: "POST", url: base + "/echo", headers: ["X-A": "b"], body: Data("hi".utf8), timeout: 5)
+let j = try JSONSerialization.jsonObject(with: try await readAll(echo)) as! [String: Any]
+print("echo: \(j["method"]!) \(j["body"]!) \((j["headers"] as! [String: String])["x-a"]!)")
+
+// URLSession hands over a response's head with its body's first bytes
+// (CFNetwork holds it till then): a head and nothing more times out in
+// open there, a head and some in read.
+let s0 = now()
+do {
+    let stall = try await t.open(method: "GET", url: base + "/stall", headers: [:], body: Data(), timeout: 0.5)
+    _ = try await stall.read()
+    print("stall: read")
+} catch {
+    print("stall: timedOut \((error as? URLError)?.code == .timedOut) soon \(now() - s0 < 5)")
+}
+print("stall gone: \(await gone("/stall", 1))")
+let trickle = try await t.open(method: "GET", url: base + "/trickle", headers: [:], body: Data(), timeout: 0.5)
+let s1 = now()
+let first = try await trickle.read()
+do {
+    _ = try await trickle.read()
+    print("trickle: read")
+} catch {
+    print("trickle: \(try trickle.head().status) \(String(decoding: first, as: UTF8.self)) timedOut \((error as? URLError)?.code == .timedOut) waited \(now() - s1 >= 0.4) soon \(now() - s1 < 5)")
+}
+print("trickle gone: \(await gone("/trickle", 1))")
+
+let held = try await t.open(method: "GET", url: base + "/trickle", headers: [:], body: Data(), timeout: 0)
+_ = try await held.read()
+let reading = Task { try await held.read() }
+try await Task.sleep(nanoseconds: 200_000_000)
+reading.cancel()
+do {
+    _ = try await reading.value
+    print("read cancel: read")
+} catch {
+    print("read cancel: \(error is CancellationError) still open \(!(await gone("/trickle", 2, tries: 12)))")
+}
+try held.close()
+print("closed: gone \(await gone("/trickle", 2)) read \(try await held.read().count)")
+
+let opening = Task { try await t.open(method: "GET", url: base + "/slowhead", headers: [:], body: Data(), timeout: 0) }
+try await Task.sleep(nanoseconds: 200_000_000)
+opening.cancel()
+do {
+    _ = try await opening.value
+    print("open cancel: opened")
+} catch {
+    print("open cancel: \((error as? URLError)?.code == .cancelled) gone \(await gone("/slowhead", 1))")
+}
+
+do {
+    let dropped = try await t.open(method: "GET", url: base + "/trickle", headers: [:], body: Data(), timeout: 0)
+    _ = try dropped.head()
+}
+print("let go: gone \(await gone("/trickle", 3))")
+
+let big = try await t.open(method: "GET", url: base + "/big", headers: [:], body: Data(), timeout: 5)
+try await Task.sleep(nanoseconds: 500_000_000)
+var count = 0
+var inOrder = true
+while true {
+    let d = try await big.read()
+    if d.isEmpty { break }
+    for o in stride(from: 0, to: d.count, by: 4096) where d[d.startIndex + o] != UInt8(97 + ((count + o) >> 16) % 26) {
+        inOrder = false
+    }
+    count += d.count
+}
+print("big: \(count) in order \(inOrder)")
+`
+	got := runHTTPProbe(t, t.TempDir(), driver)
+	t.Logf("\n%s", got)
+	for _, want := range []string{
+		`stream 200 text/plain; charset=utf-8 "one\ntwo\nthree\n" pieces true spread true early true`,
+		"after end: 0",
+		"404: 404 missing",
+		"echo: POST hi b",
+		"stall: timedOut true soon true",
+		"stall gone: true",
+		"trickle: 200 a timedOut true waited true soon true",
+		"trickle gone: true",
+		"read cancel: true still open true",
+		"closed: gone true read 0",
+		"open cancel: true gone true",
+		"let go: gone true",
+		"big: 33554432 in order true",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q in:\n%s", want, got)
+		}
+	}
+}
+
 // runHTTPProbe compiles std/http's Swift with the generated glue's
 // types (not its codec, which needs the runtime) and driver as main,
 // runs it and gives what it printed.
 func runHTTPProbe(t *testing.T, dir, driver string) string {
-	glue, err := os.ReadFile("http/swift/Http.asuka.swift")
+	return runSwiftProbe(t, dir, "http/swift/Http.asuka.swift", "http/swift/Http.swift", []string{"Response", "Transport", "Body", "LocalServer"}, driver)
+}
+
+// runSwiftProbe compiles a std package's Swift (impl) with the types of
+// its generated glue named (structs and protocols, not its codec, which
+// needs the runtime), a stand-in for module Asuka (what the package's
+// Swift uses of it) and driver as main, runs it and gives what it
+// printed.
+func runSwiftProbe(t *testing.T, dir, gluePath, impl string, types []string, driver string) string {
+	t.Helper()
+	glue, err := os.ReadFile(gluePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var shim strings.Builder
 	shim.WriteString("import Foundation\n")
-	for _, re := range []string{`(?s)public struct Response: Sendable \{.*?\n\}\n`, `(?s)public protocol Transport: AnyObject \{.*?\n\}\n`, `(?s)public protocol LocalServer: AnyObject \{.*?\n\}\n`} {
+	for _, name := range types {
+		re := `(?s)public (?:struct|protocol) ` + name + `[:\s][^{]*\{.*?\n\}\n`
 		m := regexp.MustCompile(re).Find(glue)
 		if m == nil {
-			t.Fatalf("no %s in the glue", re)
+			t.Fatalf("no %s in the glue", name)
 		}
 		shim.Write(m)
 	}
-	var args []string
+	// Module Asuka as the package's Swift sees it: its errors.
+	stub := filepath.Join(dir, "stub")
+	os.MkdirAll(stub, 0o755)
+	asuka := filepath.Join(stub, "Asuka.swift")
+	os.WriteFile(asuka, []byte("public enum AsukaNativeError: Error { case unsupported(String) }\n"), 0o644)
+	if b, err := exec.Command("swiftc", "-parse-as-library", "-emit-module", "-module-name", "Asuka", "-emit-module-path", filepath.Join(stub, "Asuka.swiftmodule"), "-emit-object", "-o", filepath.Join(stub, "Asuka.o"), asuka).CombinedOutput(); err != nil {
+		t.Fatalf("swiftc (Asuka): %v\n%s", err, b)
+	}
+	args := []string{"-swift-version", "5", "-I", stub}
 	for name, src := range map[string]string{"shim.swift": shim.String(), "main.swift": driver} {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
@@ -104,9 +316,9 @@ func runHTTPProbe(t *testing.T, dir, driver string) string {
 		}
 		args = append(args, p)
 	}
-	abs, _ := filepath.Abs("http/swift/Http.swift")
+	abs, _ := filepath.Abs(impl)
 	exe := filepath.Join(dir, "probe")
-	args = append(args, abs, "-o", exe)
+	args = append(args, abs, filepath.Join(stub, "Asuka.o"), "-o", exe)
 	if b, err := exec.Command("swiftc", args...).CombinedOutput(); err != nil {
 		t.Fatalf("swiftc: %v\n%s", err, b)
 	}

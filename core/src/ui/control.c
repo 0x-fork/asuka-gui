@@ -308,7 +308,7 @@ static void lis(for_t *s) {
 	s->stay.len = 0;
 	ak_vec_reserve(&s->stay, n);
 	s->stay.len = n;
-	memset(s->stay.data, 0, n);
+	if (n) memset(s->stay.data, 0, n);  // an empty list has no data yet
 	s->prev.len = 0;
 	ak_vec_reserve(&s->prev, n);
 	s->prev.len = n;

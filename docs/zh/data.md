@@ -322,6 +322,76 @@ async fn signInBack(authorize: string) throws -> string {
 }
 ```
 
+### 边到边读的响应体
+
+随时间陆续到达的响应体（语言模型逐字写出的回复、日志、信息流）可以边发边读。`http.stream(url, method:, headers:, body:)` 在响应头一到就返回：带有 `status`、`url`、`headers`，以及 `body`——一个按网络送达顺序给出各个片段的流。`lines()` 把它读成一行行文本，`events()` 读成服务器发送事件（`text/event-stream`，读法和浏览器的 `EventSource` 一样：每个都是带 `event`、`data` 和 `id` 的 `Event`），`text()` 读出整个响应体。`http.events(url, …)` 把这两步合在一起：它请求事件（也可以用 `POST`，语言模型的 API 就是这样流式返回回复的），状态码不是成功时抛出 `HTTPError.status`；加上 `reconnect: true`，就会像 `EventSource` 那样按服务器给的 `retry` 重新连接，并带上最后一个事件的 ID。离开循环或任务结束都会停止请求；`timeout` 是等待响应头、之后等待每个片段的最长时间。
+
+```asuka
+import std/http
+import std/json
+
+struct Prompt {
+  model: string
+  input: string
+  stream: bool = true
+}
+
+screen Ask {
+  state reply = ""
+  state done = false
+
+  title: "Ask"
+
+  task {
+    let prompt = json.encode(Prompt(model: "a-model", input: "Tell me a story"))
+    for await e in http.events("https://example.com/v1/responses", method: "POST", headers: ["content-type": "application/json"], body: prompt.bytes()) {
+      if e.data == "[DONE]" { break }
+      reply = reply + e.data
+    }
+    done = true
+  }
+
+  Text(reply)
+}
+```
+
+每个平台都用自己的客户端来流式读取：URLSession、`HttpURLConnection`、`fetch` 的响应体流、WinHTTP 和 libsoup。行和事件的解析在各处都完全一样。在 iOS 和 macOS 上，响应头会和响应体的第一批字节一起到达：URLSession 不会更早给出它。
+
+## 双向连接：std/websocket
+
+`std/websocket` 保持一条双向的连接（RFC 6455）：`websocket.connect(url, headers:, protocols:)` 在服务器接受连接后返回一个 `WebSocket`。`send(text)` 和 `sendBinary(data)` 发送消息；`messages` 是收到的消息流（`.text` 或 `.binary`），服务器正常关闭连接时结束，以其他方式关闭时抛出 `WebSocketError.closed(code, reason)`；`close(code:, reason:)` 关闭连接。连接由各平台自己的客户端承载：URLSession、OkHttp、浏览器的 `WebSocket`、WinHTTP 和 libsoup；浏览器不会发送应用自己的请求头。
+
+```asuka
+import std/websocket
+
+screen Chat {
+  state lines: [string] = []
+  state ws: websocket.WebSocket? = none
+
+  title: "Chat"
+
+  task {
+    let socket = try await websocket.connect("wss://example.com/chat", protocols: ["chat"])
+    ws = socket
+    for await m in socket.messages {
+      match m {
+        .text(t) => { lines.push(t) }
+        .binary(b) => { lines.push("{b.count()} bytes") }
+      }
+    }
+  }
+
+  Column {
+    for l in lines { Text(l) }
+    Button("Wave") {
+      on press {
+        if let s = ws { try? await s.send("👋") }
+      }
+    }
+  }
+}
+```
+
 ## 监视文件：std/watch
 
 `watch.path(dir)` 跟踪一个文件夹（或文件）的变化：应用显示的文件夹、编辑器里打开的项目、另一个程序会写入的设置文件。它的 `events` 是一个按批到来的变化流：

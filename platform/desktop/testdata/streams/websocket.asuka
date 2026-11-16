@@ -1,0 +1,99 @@
+// std/websocket against internal/testserver's echo (WSBASE: its ws: URL),
+// on the desktops' C: text and binary echoed, a header and a protocol
+// sent, the server's closes (4000, then a normal one), the client's own
+// close after waiting longer than the connect's timeout, and a refused
+// connection. Each step is a Text of its own ("#..."); DONE_FILE, if it
+// isn't empty, is written at the end (what a Windows test waits for).
+import std/fs
+import std/websocket
+
+let base = "WSBASE"
+let doneFile = "DONE_FILE"
+
+async fn echo() throws -> string {
+  let ws = try await websocket.connect("{base}/ws", headers: ["X-Token": "t1"], protocols: ["x", "chat"])
+  var got = "{ws.protocol}:"
+  try await ws.send("hello")
+  try await ws.sendBinary("bin".bytes())
+  var n = 0
+  do {
+    for await m in ws.messages {
+      match m {
+        .text(t) => { got = got + " " + t }
+        .binary(b) => { got = got + " binary " + b.string() }
+      }
+      n += 1
+      if n == 3 {
+        try await ws.send("close please")
+      }
+    }
+    got = got + " ended"
+  } catch websocket.WebSocketError.closed(code, reason) {
+    got = got + " closed {code} {reason}"
+  }
+  return got
+}
+
+async fn normal() throws -> string {
+  let ws = try await websocket.connect("{base}/ws")
+  var got = "[{ws.protocol}]"
+  try await ws.send("close normally")
+  for await m in ws.messages {
+    got = got + " message"
+  }
+  return got + " ended"
+}
+
+async fn client() throws -> string {
+  let ws = try await websocket.connect("{base}/ws", timeout: 1s)
+  // Longer than the connect's timeout: the connection stays.
+  await sleep(1500ms)
+  try await ws.send("still")
+  var got = ""
+  for await m in ws.messages {
+    match m {
+      .text(t) => {
+        got = got + t
+        ws.close()
+      }
+      .binary(b) => { got = got + "?" }
+    }
+  }
+  var after = "sent"
+  do {
+    try await ws.send("late")
+  } catch e {
+    after = "refused"
+  }
+  return "{got} ended, then {after}"
+}
+
+component Probe {
+  state log: [string] = []
+  Column {
+    for s in log key s {
+      Text("#{s}")
+    }
+  }
+  task {
+    do {
+      log.push("echo {try await echo()}")
+      log.push("normal {try await normal()}")
+      log.push("client {try await client()}")
+      do {
+        let _ = try await websocket.connect("{base}/status/404")
+        log.push("refused no")
+      } catch e {
+        log.push("refused yes")
+      }
+      log.push("done")
+    } catch e {
+      log.push("fail {e.message}")
+    }
+    if !doneFile.isEmpty() {
+      try? fs.writeText(doneFile, "done")
+    }
+  }
+}
+
+app { Probe() }

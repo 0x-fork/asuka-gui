@@ -1,8 +1,12 @@
 // std/http on Android: HttpURLConnection, the platform's own client,
-// on the IO dispatcher; cancelling the call disconnects it.
+// on the IO dispatcher; cancelling the call disconnects it. open answers
+// with the head, its body read as it comes (ConnectionBody).
 package std.http
 
+import dev.asuka.AsukaReleasing
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -10,6 +14,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration
@@ -49,7 +54,116 @@ class ConnectionTransport : Transport {
                 }
             }
         }
+
+    // The head, from a blocking connect on the IO dispatcher's threads
+    // while the call waits: cancelled, it ends at once and disconnects
+    // (off the canceller's thread), or closes the body it got after all.
+    override suspend fun open(method: String, url: String, headers: Map<String, String>, body: ByteArray, timeout: Duration): Body =
+        suspendCancellableCoroutine { k ->
+            val c = URL(url).openConnection() as HttpURLConnection
+            k.invokeOnCancellation { io.execute { c.disconnect() } }
+            io.execute {
+                try {
+                    c.requestMethod = method
+                    c.instanceFollowRedirects = true
+                    // The longest wait for the head, then for each piece
+                    // (zero: none).
+                    val ms = if (timeout.isPositive()) timeout.inWholeMilliseconds.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt() else 0
+                    c.connectTimeout = ms
+                    c.readTimeout = ms
+                    for ((k2, v) in headers) c.setRequestProperty(k2, v)
+                    if (body.isNotEmpty()) {
+                        c.doOutput = true
+                        c.outputStream.use { it.write(body) }
+                    }
+                    val status = c.responseCode
+                    val stream = if (status >= 400) c.errorStream else c.inputStream
+                    val out = HashMap<String, String>()
+                    for ((k2, v) in c.headerFields) if (k2 != null) out[k2.lowercase()] = v.joinToString(", ")
+                    val head = Response(status = status.toLong(), url = c.url.toString(), headers = out, body = ByteArray(0))
+                    k.resume(ConnectionBody(c, head, stream)) { _, b, _ -> b.close() }
+                } catch (e: Throwable) {
+                    c.disconnect()
+                    k.resumeWithException(e)
+                }
+            }
+        }
 }
+
+// The IO dispatcher's threads, for blocking work a call waits for
+// without being on them (so cancelling it ends it at once).
+private val io = Dispatchers.IO.asExecutor()
+
+// A response's body as it comes: each read a blocking read into a
+// buffer on the IO dispatcher's threads, which answers with what's in (a
+// piece, not the buffer's fill), within the connection's read timeout.
+// Cancelling a read, closing the body or Asuka letting it go disconnects,
+// and answers a read waiting with the end at once (a JDK's connection
+// keeps its blocked read until it returns); a closed body reads as ended.
+class ConnectionBody(private val c: HttpURLConnection, private val head: Response, private val stream: java.io.InputStream?) : Body, AsukaReleasing {
+    private val buf = ByteArray(64 * 1024)
+    @Volatile private var closed = false
+    @Volatile private var ended = stream == null
+    private var waiting: Read? = null  // guarded by this
+
+    // A read's answer, given once: by the read, or by close.
+    private class Read(val k: CancellableContinuation<ByteArray>) {
+        private val answered = AtomicBoolean()
+        fun answer(r: Result<ByteArray>) {
+            if (answered.compareAndSet(false, true)) k.resumeWith(r)
+        }
+    }
+
+    override fun head(): Response = head
+
+    override suspend fun read(): ByteArray {
+        if (ended || closed) return ByteArray(0)
+        val input = stream!!
+        return suspendCancellableCoroutine { k ->
+            val r = Read(k)
+            synchronized(this) { waiting = r }
+            k.invokeOnCancellation { close() }
+            io.execute {
+                val got = try {
+                    val n = input.read(buf)
+                    if (n < 0) {
+                        ended = true
+                        input.close()  // the connection back to the pool
+                        ByteArray(0)
+                    } else {
+                        buf.copyOf(n)
+                    }
+                } catch (e: Throwable) {
+                    if (closed) ByteArray(0) else {
+                        r.answer(Result.failure(e))
+                        close()
+                        return@execute
+                    }
+                }
+                r.answer(Result.success(if (closed) ByteArray(0) else got))
+                synchronized(this) { if (waiting === r) waiting = null }
+            }
+        }
+    }
+
+    // Disconnecting may block (the JDK's waits for a read in progress;
+    // a TLS socket's says goodbye): not on the caller's thread, which
+    // may be the main one.
+    override fun close() {
+        val r = synchronized(this) {
+            if (closed) return
+            closed = true
+            waiting.also { waiting = null }
+        }
+        r?.answer(Result.success(ByteArray(0)))
+        io.execute { c.disconnect() }
+    }
+
+    override fun released() = close()
+}
+
+// A Body comes from Transport.open: Asuka doesn't make one.
+fun makeBody(): Body = throw dev.asuka.AsukaUnsupportedException("http: a Body comes from Transport.open")
 
 // download, on the IO dispatcher: the body read in chunks into a file
 // beside path, renamed once it's all in; cancelling disconnects it and

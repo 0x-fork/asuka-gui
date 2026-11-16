@@ -101,7 +101,7 @@ SwiftUI 也能在 Mac 上运行。Expo 支持 iOS、Android 和 Web；React Nati
 | 持久化的小数据 | `@AppStorage` | AsyncStorage | ✓ `std/storage` 的 `storage.Value`、`std/store`（UserDefaults、SharedPreferences、Windows 和 Linux 上的一个文件、`localStorage`） |
 | SQLite | SwiftData / GRDB | `expo-sqlite` | ✓ `std/sqlite`（`migrate`，把行直接解码成 `T` 的 `query<T>`，`exec`，事务，都在主线程之外执行；`watch<T>`：实时查询，读取的表被写入或参数变化时重新运行；每个平台都是同一个 SQLite，浏览器里运行在页面的一个 worker 中）（见[数据](data.md)） |
 | 安全存储 | 钥匙串 | `expo-secure-store` | ✓ `platform/secure`（钥匙串、Android Keystore、凭据管理器、libsecret；Web 上用浏览器不允许导出的密钥加密后存进 IndexedDB，并不是真正的钥匙串） |
-| 文件、网络 | Foundation | `expo-file-system`、fetch | ✓ `std/fs`；`std/http`（用平台自己的客户端：URLSession、`HttpURLConnection`、WinHTTP、libsoup、`fetch`）、`http.download` |
+| 文件、网络 | Foundation | `expo-file-system`、fetch | ✓ `std/fs`；`std/http`（用平台自己的客户端：URLSession、`HttpURLConnection`、WinHTTP、libsoup、`fetch`）、`http.download`、`http.stream` 和服务器发送事件（`http.events`）；`std/websocket` |
 | 照片 | `PhotosPicker` | `expo-image-picker` | ✓ `device.pickPhotos(max:)` |
 | 文档 | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.pickFiles(types:, multiple:)`；桌面端用 `platform/dialog` |
 | 相机 | AVFoundation | `expo-camera` | ✓ `platform/camera`：`camera.take()`（系统相机；在 Mac、Windows 和 Linux 上是一个带实时预览的对话框）、`camera.View`（实时预览，前置或后置）、`capture()`、`record()`（AVFoundation、CameraX、Media Foundation、GStreamer、`getUserMedia`）；`platform/record` 可以录制带声音的视频 |

@@ -244,8 +244,12 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 	enum { piece = 64 * 1024 };
 	buf = malloc(piece);
 	for (;;) {
-		DWORD got = 0;
-		if (!WinHttpReadData(req, buf, piece, &got)) goto fail;
+		// What's come (waiting for some): a body that comes over time is
+		// handed on as it comes, not once a whole buffer is in.
+		DWORD avail = 0, got = 0;
+		if (!WinHttpQueryDataAvailable(req, &avail)) goto fail;
+		if (avail == 0) break;
+		if (!WinHttpReadData(req, buf, avail < piece ? avail : piece, &got)) goto fail;
 		if (got == 0) break;
 		if (rq->data && !rq->data(rq->ctx, buf, got, err)) {
 			ok = !err->status;

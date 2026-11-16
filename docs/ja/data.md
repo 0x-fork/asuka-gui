@@ -322,6 +322,76 @@ async fn signInBack(authorize: string) throws -> string {
 }
 ```
 
+### 届くそばから読むボディ
+
+時間をかけて届くボディ（言語モデルが書き進める返答、ログ、フィード）は、送られてくるそばから読めます。`http.stream(url, method:, headers:, body:)` はレスポンスのヘッダーが届いた時点で返ります。`status`、`url`、`headers` と、ネットワークが届けた順に断片を流す `body` を持ちます。`lines()` はそれを行ごとのテキストとして、`events()` はサーバー送信イベント（`text/event-stream`。ブラウザーの `EventSource` と同じ読み方で、それぞれ `event`、`data`、`id` を持つ `Event`）として読み、`text()` は全体を読みます。`http.events(url, …)` はその両方をまとめたものです。イベントを要求し（言語モデルの API が返答をストリームするように `POST` でも構いません）、成功でないステータスには `HTTPError.status` を投げます。`reconnect: true` を付けると、`EventSource` と同じようにサーバーの `retry` の後で最後のイベントの ID を送って再接続します。ループを抜けるかタスクが終わるとリクエストは止まります。`timeout` はヘッダー、その後は各断片を待つ最長の時間です。
+
+```asuka
+import std/http
+import std/json
+
+struct Prompt {
+  model: string
+  input: string
+  stream: bool = true
+}
+
+screen Ask {
+  state reply = ""
+  state done = false
+
+  title: "Ask"
+
+  task {
+    let prompt = json.encode(Prompt(model: "a-model", input: "Tell me a story"))
+    for await e in http.events("https://example.com/v1/responses", method: "POST", headers: ["content-type": "application/json"], body: prompt.bytes()) {
+      if e.data == "[DONE]" { break }
+      reply = reply + e.data
+    }
+    done = true
+  }
+
+  Text(reply)
+}
+```
+
+ストリームはそれぞれのプラットフォーム自身のクライアントが読みます：URLSession、`HttpURLConnection`、`fetch` のボディのストリーム、WinHTTP、libsoup。行とイベントの解釈はどこでも同じです。iOS と macOS では、ヘッダーはボディの最初のバイトと一緒に届きます。URLSession はそれより早く渡しません。
+
+## 双方向の接続：std/websocket
+
+`std/websocket` は双方向の接続を開いたまま保ちます（RFC 6455）。`websocket.connect(url, headers:, protocols:)` はサーバーが接続を受け入れると `WebSocket` を返します。`send(text)` と `sendBinary(data)` で送り、`messages` は届いたもの（`.text` か `.binary`）のストリームです。サーバーが正常に接続を閉じると終わり、それ以外の閉じ方では `WebSocketError.closed(code, reason)` を投げます。`close(code:, reason:)` で閉じます。接続はそれぞれのプラットフォーム自身のクライアントが担います：URLSession、OkHttp、ブラウザーの `WebSocket`、WinHTTP、libsoup。ブラウザーはアプリ独自のヘッダーを送りません。
+
+```asuka
+import std/websocket
+
+screen Chat {
+  state lines: [string] = []
+  state ws: websocket.WebSocket? = none
+
+  title: "Chat"
+
+  task {
+    let socket = try await websocket.connect("wss://example.com/chat", protocols: ["chat"])
+    ws = socket
+    for await m in socket.messages {
+      match m {
+        .text(t) => { lines.push(t) }
+        .binary(b) => { lines.push("{b.count()} bytes") }
+      }
+    }
+  }
+
+  Column {
+    for l in lines { Text(l) }
+    Button("Wave") {
+      on press {
+        if let s = ws { try? await s.send("👋") }
+      }
+    }
+  }
+}
+```
+
 ## ファイルの監視：std/watch
 
 `watch.path(dir)` はフォルダー（またはファイル）の変更を追います。アプリが表示しているフォルダー、エディターで開いているプロジェクト、別のプログラムが書き込む設定ファイルなどです。その `events` は、変更のバッチが次々に届くストリームです。
