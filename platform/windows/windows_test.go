@@ -252,3 +252,107 @@ func TestCounter(t *testing.T) {
 	}
 	t.Logf("%s", dump)
 }
+
+// buildExample builds examples/<name> as asuka build does, into dir.
+func buildExample(t *testing.T, w *windows, name, dir string) string {
+	t.Helper()
+	zig(t)
+	p, err := appbuild.Load(filepath.Join("..", "..", "examples", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, diags, err := p.Compile()
+	if err != nil || m == nil {
+		t.Fatalf("%s doesn't compile: %v\n%s", name, err, strings.Join(diags, "\n"))
+	}
+	c, err := appbuild.AppC(appbuild.StripTests(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, name+".exe")
+	if err := appbuild.WindowsHost(target(w), appbuild.WindowsOptions{App: []string{c}, Console: true}, exe); err != nil {
+		t.Fatal(err)
+	}
+	return exe
+}
+
+// script runs exe (built into the job local, guest) with ASUKA_SCRIPT's
+// steps, a snap:<name> each dumped, and returns the dumps by name.
+func script(t *testing.T, w *windows, local, guest, exe string, steps ...string) map[string]string {
+	t.Helper()
+	var s []string
+	var snaps []string
+	for _, st := range steps {
+		if name, ok := strings.CutPrefix(st, "snap:"); ok {
+			snaps = append(snaps, name)
+			st = "snap:" + guest + `\` + name + ".png"
+		}
+		s = append(s, st)
+	}
+	out, err := w.run(t, guest, guest+`\`+exe, map[string]string{"ASUKA_SCRIPT": strings.Join(s, ";"), "ASUKA_DUMP": "1", "ASUKA_SNAPSHOT": guest + `\end.png`})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	dumps := map[string]string{}
+	for _, name := range append(snaps, "end") {
+		b, err := os.ReadFile(filepath.Join(local, name+".png.txt"))
+		if err != nil {
+			t.Fatalf("no dump %s: %v\n%s", name, err, out)
+		}
+		dumps[name] = string(b)
+	}
+	if strings.Contains(out, "automation: nothing") || strings.Contains(out, "automation: no ") {
+		t.Errorf("the script missed a step:\n%s", out)
+	}
+	return dumps
+}
+
+func shows(t *testing.T, dump, where string, want []string, not ...string) {
+	t.Helper()
+	for _, s := range want {
+		if !strings.Contains(dump, fmt.Sprintf("%q", s)) {
+			t.Errorf("%s: %q isn't shown:\n%s", where, s, dump)
+		}
+	}
+	for _, s := range not {
+		if strings.Contains(dump, fmt.Sprintf("%q", s)) && !strings.Contains(dump, fmt.Sprintf("%q hidden", s)) {
+			for _, l := range strings.Split(dump, "\n") {
+				if strings.Contains(l, fmt.Sprintf("%q", s)) && !strings.Contains(l, " hidden") && !strings.Contains(l, " parked") {
+					t.Errorf("%s: %q is shown:\n%s", where, s, dump)
+					break
+				}
+			}
+		}
+	}
+}
+
+// Navigation, as e2e's navigation scenario drives the other platforms
+// (testdata/nav.asuka): a list's row pushes a screen, a sheet's form,
+// back, the tabs.
+func TestNavigation(t *testing.T) {
+	w := onWindows(t)
+	local, guest := w.job(t)
+	src, err := os.ReadFile(filepath.Join("testdata", "nav.asuka"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildApp(t, w, string(src), local)
+	d := script(t, w, local, guest, "app.exe",
+		"snap:inbox",
+		"tap:Add a note", "snap:sheet",
+		"tap:Note", "type:hello", "tap:Save", "snap:saved",
+		"tap:Settings", "snap:settings",
+		"tap:Inbox", "snap:back")
+	shows(t, d["inbox"], "the inbox", []string{"Message 30", "Message 29", "No note yet."})
+	shows(t, d["sheet"], "the sheet", []string{"Save"})
+	t.Logf("sheet:\n%s", d["sheet"])
+	if !strings.Contains(d["sheet"], "sheet:") {
+		t.Errorf("no sheet shows:\n%s", d["sheet"])
+	}
+	shows(t, d["saved"], "saved", []string{"Note: hello"})
+	if strings.Contains(d["saved"], "sheet:") {
+		t.Errorf("the sheet stayed:\n%s", d["saved"])
+	}
+	shows(t, d["settings"], "settings", []string{"Notifications", "About"}, "Note: hello")
+	shows(t, d["back"], "the inbox again", []string{"Note: hello"}, "Notifications")
+}

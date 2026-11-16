@@ -116,6 +116,8 @@ void wh_set_refreshable(node *n, bool on);
 void wh_set_refreshing(node *n, bool on);
 bool wh_refresh_key(MSG *m);
 void wh_view_timer(node *n, HWND hwnd, WPARAM id);
+void wh_show_bars(node *n);
+void wh_mouse_over(HWND hwnd);
 
 // ---- list.c ----
 void wh_list_new(node *n);
@@ -126,6 +128,9 @@ void wh_list_set_direction(node *n, uint8_t d);
 void wh_list_rebind(node *n);
 void wh_list_update(node *n, const uint8_t *args, size_t len);
 void wh_list_scroll_to(node *n, uint32_t index);
+void wh_list_scroll(node *n, float y);
+float wh_list_offset(node *n);
+float wh_list_content(node *n);
 void wh_cell_set_height(node *n, float h);
 void wh_cell_set_prop(node *n, uint16_t p, const ak_value *v);
 void wh_paint_row(node *n, gfx g, float w, float h);
@@ -140,6 +145,7 @@ bool wh_insert_nav(node *p, node *c, uint32_t index);
 bool wh_remove_nav(node *p, node *c);
 void wh_set_nav_prop(node *n, uint16_t p, const ak_value *v);
 bool wh_nav_sized_by_host(node *n);
+void wh_fill_screens(node *p);
 HWND wh_nav_bar_window(node *p);
 void wh_nav_set_direction(node *n, uint8_t d);
 void wh_layout_screens(node *n);

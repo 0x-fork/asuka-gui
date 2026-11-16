@@ -206,7 +206,10 @@ bool wh_pre_translate(MSG *m) {
 static void loop(void) {
 	MSG m;
 	while (GetMessageW(&m, NULL, 0, 0) > 0) {
-		if (m.message == WM_MOUSEMOVE) wh_pointer_moved(m.hwnd, m.pt, true);
+		if (m.message == WM_MOUSEMOVE) {
+			wh_mouse_over(m.hwnd);
+			wh_pointer_moved(m.hwnd, m.pt, true);
+		}
 		else if (m.message == WM_MOUSELEAVE) wh_mouse_left(m.hwnd);
 		if (wh_pre_translate(&m)) continue;
 		TranslateMessage(&m);

@@ -297,6 +297,18 @@ static node *interactive_up(node *n) {
 	return n && n->hwnd ? n : NULL;
 }
 
+static HWND held_hwnd;
+static LPARAM held_at;
+// tapped is the field a tap focused: where typing goes when the focus
+// isn't the app's (a program the user didn't start isn't the foreground).
+static HWND tapped;
+
+static HWND typing_target(void) {
+	HWND f = GetFocus();
+	if (f) return f;
+	return tapped && IsWindow(tapped) ? tapped : NULL;
+}
+
 // tap clicks what shows text: the mouse's messages, at its center, to the
 // window under it that takes them.
 static bool tap(const wchar_t *t) {
@@ -305,6 +317,7 @@ static bool tap(const wchar_t *t) {
 	if (!found) return false;
 	if (found->kind == AK_KIND_TEXT_FIELD) {
 		SetFocus(found->ctl);
+		tapped = found->ctl;
 		return true;
 	}
 	if (found->kind == AK_KIND_BUTTON || found->kind == AK_KIND_TOGGLE) {
@@ -319,8 +332,6 @@ static bool tap(const wchar_t *t) {
 	return true;
 }
 
-static HWND held_hwnd;
-static LPARAM held_at;
 
 // press_keys presses a shortcut (ctrl+shift+k) in the window in use, as
 // the keyboard would: the modifiers held (the thread's key state) while
@@ -402,11 +413,11 @@ static void step(const char *verb, const char *arg) {
 	} else if (!strcmp(verb, "tap")) {
 		if (!tap(warg)) wh_log("automation: nothing shows \"%s\"", arg);
 	} else if (!strcmp(verb, "type")) {
-		HWND f = GetFocus();
+		HWND f = typing_target();
 		if (f)
 			for (wchar_t *p = warg; *p; p++) SendMessageW(f, WM_CHAR, *p, 0);
 	} else if (!strcmp(verb, "submit")) {
-		HWND f = GetFocus();
+		HWND f = typing_target();
 		if (f) SendMessageW(f, WM_KEYDOWN, VK_RETURN, 0);
 	} else if (!strcmp(verb, "back")) {
 		wh_back(H.nsheets ? H.sheets[H.nsheets - 1] : H.root);

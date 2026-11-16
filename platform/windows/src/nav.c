@@ -132,7 +132,36 @@ static void kids_remove(node *p, node *c) {
 		}
 }
 
+// wh_fill_screens sizes the Screens in a host-sized view (a screen
+// component's Screen, in the Screen its Stack made for it) to fill it,
+// and reports their environments.
+void wh_fill_screens(node *p) {
+	if (!p->hwnd) return;
+	RECT r;
+	GetClientRect(p->hwnd, &r);
+	for (uint32_t i = 0; i < p->nkids; i++) {
+		node *c = p->kids[i];
+		if (c->kind != AK_KIND_SCREEN || !c->hwnd || c->dying) continue;
+		SetWindowPos(c->hwnd, NULL, 0, 0, r.right, r.bottom, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+		wh_report_screen(c, wh_pt(p, r.right), wh_pt(p, r.bottom));
+	}
+}
+
 bool wh_insert_nav(node *p, node *c, uint32_t index) {
+	if (c->kind == AK_KIND_SCREEN && wh_nav_sized_by_host(p)) {
+		// A Screen in a screen (a sheet, a Window): the host sizes it to
+		// fill it, as it does the one around it.
+		uint32_t i = index < p->nkids ? index : p->nkids;
+		kids_insert(p, c, i);
+		c->parent = p;
+		if (c->hwnd && p->hwnd) {
+			SetParent(c->hwnd, p->hwnd);
+			wh_adopt(p, c);
+			ShowWindow(c->hwnd, SW_SHOWNA);
+			wh_fill_screens(p);
+		}
+		return true;
+	}
 	if (c->kind != AK_KIND_SCREEN || (p->kind != AK_KIND_STACK && p->kind != AK_KIND_TABS)) return false;
 	uint32_t i = index < p->nkids ? index : p->nkids;
 	node *top = wh_top_screen(p);

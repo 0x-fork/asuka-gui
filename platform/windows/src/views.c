@@ -1017,6 +1017,7 @@ LRESULT wh_view_message(node *n, HWND hwnd, UINT m, WPARAM wp, LPARAM lp, bool *
 		return 0;
 	}
 	case WM_SIZE:
+		if (n->nav && wh_nav_sized_by_host(n)) wh_fill_screens(n);
 		if (n->clip) wh_shape_clip(n);
 		if (n->kind == AK_KIND_STEPPER) wh_layout_stepper(n);
 		else if (n->ctl) wh_layout_field(n);

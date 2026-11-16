@@ -16,12 +16,9 @@ void wh_announce(const char *s, size_t len) { (void)s; (void)len;  }
 void wh_announce_choice(node *b) { (void)b;  }
 HICON wh_app_icon(void) { return NULL; }
 void wh_badge_message(UINT m) { (void)m;  }
-void wh_bars_reset(node *n) { (void)n;  }
 void wh_call(node *root, const uint8_t *args, size_t len) { (void)root; (void)args; (void)len;  }
 void wh_cancel_alert_dialog(node *n) { (void)n;  }
 void wh_cancel_popover(node *n) { (void)n;  }
-void wh_cell_set_height(node *n, float h) { (void)n; (void)h;  }
-void wh_cell_set_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 void wh_clear_accessible_name(HWND hwnd) { (void)hwnd;  }
 void wh_clip_tree(node *n, HDC dc) { (void)n; (void)dc;  }
 void wh_close_alert_dialog(node *n) { (void)n;  }
@@ -44,7 +41,6 @@ LRESULT wh_field_notify(node *n, NMHDR *hdr, LPARAM lp, bool *handled) { (void)n
 void wh_forget_interaction(node *n) { (void)n;  }
 void wh_format_rich(node *n, const uint8_t *args, size_t len) { (void)n; (void)args; (void)len;  }
 LRESULT wh_get_object(node *n, HWND hwnd, WPARAM wp, LPARAM lp, bool *handled) { (void)n; (void)hwnd; (void)wp; (void)lp; *handled = false; return 0; }
-void wh_hide_bars(node *n) { (void)n;  }
 void wh_hover_at(HWND top, POINT screen) { (void)top; (void)screen;  }
 void wh_hover_views(int delta) { (void)delta;  }
 void wh_image_close(node *n) { (void)n;  }
@@ -54,15 +50,6 @@ void wh_image_tint_changed(node *n) { (void)n;  }
 void wh_layout_combo(node *n, RECT r) { (void)n; (void)r;  }
 void wh_layout_date(node *n, RECT r) { (void)n; (void)r;  }
 void wh_layout_split(node *n) { (void)n;  }
-void wh_list_dump(node *n, ak_buf *b, int depth, void (*walk)(ak_buf *, node *, int)) { (void)n; (void)b; (void)depth; (void)walk;  }
-void wh_list_new(node *n) { (void)n;  }
-void wh_list_rebind(node *n) { (void)n;  }
-void wh_list_release(node *n) { (void)n;  }
-void wh_list_resized(node *n) { (void)n;  }
-void wh_list_scroll_to(node *n, uint32_t index) { (void)n; (void)index;  }
-void wh_list_set_direction(node *n, uint8_t d) { (void)n; (void)d;  }
-void wh_list_set_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
-void wh_list_update(node *n, const uint8_t *args, size_t len) { (void)n; (void)args; (void)len;  }
 void wh_make_combo(node *n) { (void)n;  }
 void wh_make_date_controls(node *n) { (void)n;  }
 void wh_make_rich(node *n) { (void)n;  }
@@ -72,7 +59,6 @@ void wh_materials_behind(HWND hwnd) { (void)hwnd;  }
 void wh_measure_combo(node *n, float *w, float *h) { (void)n; (void)w; (void)h;  }
 void wh_measure_date(node *n, float *w, float *h) { (void)n; (void)w; (void)h;  }
 void wh_measure_native(node *n, float w, float h, float *ow, float *oh) { (void)n; (void)w; (void)h; (void)ow; (void)oh;  }
-void wh_measure_pips(node *n, float *w, float *h) { (void)n; (void)w; (void)h;  }
 LRESULT wh_module_message(UINT m, WPARAM wp, LPARAM lp, bool *handled) { (void)m; (void)wp; (void)lp; *handled = false; return 0; }
 void wh_module_timer(WPARAM id) { (void)id;  }
 void wh_mouse_left(HWND hwnd) { (void)hwnd;  }
@@ -80,7 +66,6 @@ void wh_native_host_callbacks(asuka_host_callbacks *cb) { (void)cb;  }
 LRESULT wh_native_message(node *n, UINT m, WPARAM wp, LPARAM lp, bool *handled) { (void)n; (void)m; (void)wp; (void)lp; *handled = false; return 0; }
 void wh_open_alert_dialog(node *n) { (void)n;  }
 void wh_open_popover(node *n) { (void)n;  }
-bool wh_page_wheel(node *n, bool horizontal, int delta) { (void)n; (void)horizontal; (void)delta; return false; }
 void wh_paint_alert_dialog(node *n, gfx g, RECT r) { (void)n; (void)g; (void)r;  }
 void wh_paint_canvas(node *n, gfx g) { (void)n; (void)g;  }
 void wh_paint_clip_corners(node *n, HWND hwnd, HDC dc) { (void)n; (void)hwnd; (void)dc;  }
@@ -88,26 +73,21 @@ void wh_paint_image(node *n, gfx g, float w, float h, float radius) { (void)n; (
 void wh_paint_material(node *n, HDC dc, int w, int h) { (void)n; (void)dc; (void)w; (void)h;  }
 void wh_paint_pane(node *n, HDC dc, gfx g, RECT r) { (void)n; (void)dc; (void)g; (void)r;  }
 void wh_paint_picture(node *n, HDC dc, bool own) { (void)n; (void)dc; (void)own;  }
-void wh_paint_pips(node *n, gfx g, float w, float h) { (void)n; (void)g; (void)w; (void)h;  }
-void wh_paint_row(node *n, gfx g, float w, float h) { (void)n; (void)g; (void)w; (void)h;  }
 void wh_paint_shader(node *n, gfx g, float w, float h, float radius) { (void)n; (void)g; (void)w; (void)h; (void)radius;  }
 void wh_paint_shape(node *n, gfx g) { (void)n; (void)g;  }
 void wh_paint_snack(node *n, gfx g, float w, float h) { (void)n; (void)g; (void)w; (void)h;  }
 void wh_paint_snack_text(node *n, HDC dc) { (void)n; (void)dc;  }
 bool wh_paste_content(node *n) { (void)n; return false; }
 void wh_pictures_stale(HWND hwnd) { (void)hwnd;  }
-int wh_pip_at(node *n, int x) { (void)n; (void)x; return 0; }
 void wh_place_picture(node *n) { (void)n;  }
 void wh_place_snacks(void) {  }
 void wh_pointer_moved(HWND hwnd, POINT screen, bool track) { (void)hwnd; (void)screen; (void)track;  }
 LRESULT wh_popover_message(node *n, UINT m, WPARAM wp, LPARAM lp, bool *handled) { (void)n; (void)m; (void)wp; (void)lp; *handled = false; return 0; }
 void wh_present_snack(node *n) { (void)n;  }
 void wh_refresh_hover(void) {  }
-bool wh_refresh_key(MSG *m) { (void)m; return false; }
 void wh_remake_combo(node *n) { (void)n;  }
 void wh_remove_tray_icons(void) {  }
 void wh_render_shader(node *n) { (void)n;  }
-void wh_restart_scroll(node *n) { (void)n;  }
 void wh_retheme_rich(node *n) { (void)n;  }
 void wh_rich_edited(node *n) { (void)n;  }
 const wchar_t * wh_rich_field_class(node *n) { (void)n; return NULL; }
@@ -120,12 +100,6 @@ void wh_rich_release(node *n) { (void)n;  }
 void wh_rich_resized(node *n) { (void)n;  }
 void wh_rich_set_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 bool wh_route_key(MSG *m) { (void)m; return false; }
-bool wh_row_menu(node *n) { (void)n; return false; }
-void wh_scroll_bar_message(node *n, bool horizontal, int code) { (void)n; (void)horizontal; (void)code;  }
-void wh_scroll_by(node *n, float dx, float dy) { (void)n; (void)dx; (void)dy;  }
-void wh_scroll_to_offset(node *n, float x, float y) { (void)n; (void)x; (void)y;  }
-bool wh_select_click(node *n) { (void)n; return false; }
-void wh_select_pip(node *n, int i) { (void)n; (void)i;  }
 void wh_set_a11y(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 void wh_set_accessible_name(HWND hwnd, const wchar_t *name) { (void)hwnd; (void)name;  }
 void wh_set_combo_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
@@ -135,8 +109,6 @@ void wh_set_keys(node *n, const uint8_t *b, size_t len) { (void)n; (void)b; (voi
 void wh_set_material(node *n, int32_t m) { (void)n; (void)m;  }
 void wh_set_native_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 void wh_set_popover_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
-void wh_set_refreshable(node *n, bool on) { (void)n; (void)on;  }
-void wh_set_refreshing(node *n, bool on) { (void)n; (void)on;  }
 void wh_set_rich_link(node *n, const char *url, size_t len) { (void)n; (void)url; (void)len;  }
 void wh_set_rich_text(node *n, const uint8_t *b, size_t len) { (void)n; (void)b; (void)len;  }
 void wh_set_shader_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
@@ -161,9 +133,7 @@ bool wh_tray_icon_rect(uint32_t id, RECT *r) { (void)id; (void)r; return false; 
 bool wh_tree_in_picture(node *n) { (void)n; return false; }
 void wh_uia_range_changed(node *n, double old, double now) { (void)n; (void)old; (void)now;  }
 void wh_update_alert_dialog(node *n) { (void)n;  }
-void wh_update_bars(node *n) { (void)n;  }
 void wh_update_picture(node *n) { (void)n;  }
-void wh_update_scroll(node *n) { (void)n;  }
 void wh_view_timer(node *n, HWND hwnd, WPARAM id) { (void)n; (void)hwnd; (void)id;  }
 int wh_visible_text(node *n, wchar_t *out, int cap) { (void)n; (void)out; (void)cap; return 0; }
 void wh_wait_for_toast(void) {  }
@@ -173,6 +143,5 @@ void wh_web_color_scheme(node *n, bool dark) { (void)n; (void)dark;  }
 void wh_web_command(node *n, uint16_t cmd, const uint8_t *args, size_t len) { (void)n; (void)cmd; (void)args; (void)len;  }
 void wh_web_resized(node *n) { (void)n;  }
 void wh_web_set_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
-bool wh_wheel(node *n, bool horizontal, int delta) { (void)n; (void)horizontal; (void)delta; return false; }
 bool wh_wheel_pinch(node *n, HWND hwnd, int delta, LPARAM lp) { (void)n; (void)hwnd; (void)delta; (void)lp; return false; }
 void wh_window_destroyed(HWND hwnd) { (void)hwnd;  }
