@@ -1,18 +1,5 @@
 #if canImport(UIKit)
 import UIKit
-import Security
-// Each its own framework, loaded at launch if linked: only in an app that
-// calls them (see the CLI's iosFeatures).
-#if ASUKA_PHOTOS
-import PhotosUI
-import UniformTypeIdentifiers
-#endif
-#if ASUKA_BROWSER
-import SafariServices
-#endif
-#if ASUKA_WEBAUTH
-import AuthenticationServices
-#endif
 #if canImport(AsukaOps)
 import AsukaOps
 #endif
@@ -93,145 +80,24 @@ struct AsukaModuleError: LocalizedError {
         m(args, reply)
     }
 
-    // The host's modules: secureStore, browser, photos, device, share.
+    // The host's modules: what the standard library's packages over
+    // asuka/host and asuka/platform call by name (notify, push, iCloud, the
+    // photo library...), and the core's own (web, share). What a std
+    // package implements in its own Swift (asuka/secure, asuka/device,
+    // asuka/location...) isn't here: it comes with the package, in only
+    // the apps that import it.
 
     func registerBuiltinModules() {
         // An app's module of the same name stays the app's.
         let apps = modules
         defer { for (k, v) in apps { modules[k] = v } }
-        // The app's ID, also in its share sheet (the extension's Info.plist
-        // has it), whose keychain group is the app's.
-        let service = Bundle.main.object(forInfoDictionaryKey: "AsukaAppID") as? String ?? Bundle.main.bundleIdentifier ?? "asuka"
-        func query(_ key: String) -> [String: Any] {
-            [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: key]
-        }
-        // Strings are u32-length prefixed, as ops strings.
-        func split(_ d: Data) -> (String, Data) {
-            guard d.count >= 4 else { return ("", Data()) }
-            let n = Int(d.prefix(4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).littleEndian })
-            let key = String(decoding: d.dropFirst(4).prefix(n), as: UTF8.self)
-            return (key, Data(d.dropFirst(4 + n)))
-        }
-        modules["secureStore"] = [
-            // args: key; result: u8 found, then the value.
-            "get": { args, reply in
-                var q = query(String(decoding: args, as: UTF8.self))
-                q[kSecReturnData as String] = true
-                q[kSecMatchLimit as String] = kSecMatchLimitOne
-                var out: CFTypeRef?
-                let st = SecItemCopyMatching(q as CFDictionary, &out)
-                if st == errSecItemNotFound { reply(.success(Data([0]))); return }
-                guard st == errSecSuccess, let d = out as? Data else { reply(.failure(AsukaModuleError("keychain: \(st)"))); return }
-                reply(.success(Data([1]) + d))
-            },
-            // args: string key, then the value.
-            "set": { args, reply in
-                let (key, value) = split(args)
-                SecItemDelete(query(key) as CFDictionary)
-                var q = query(key)
-                q[kSecValueData as String] = value
-                q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-                let st = SecItemAdd(q as CFDictionary, nil)
-                reply(st == errSecSuccess ? .success(Data()) : .failure(AsukaModuleError("keychain: \(st)")))
-            },
-            "delete": { args, reply in
-                let st = SecItemDelete(query(String(decoding: args, as: UTF8.self)) as CFDictionary)
-                reply(st == errSecSuccess || st == errSecItemNotFound ? .success(Data()) : .failure(AsukaModuleError("keychain: \(st)")))
-            },
-        ]
-        #if ASUKA_BROWSER
-        modules["browser"] = [
-            // args: the URL: shown in the app (SFSafariViewController).
-            "open": { [weak self] args, reply in
-                guard let url = URL(string: String(decoding: args, as: UTF8.self)), url.scheme == "https" || url.scheme == "http" else {
-                    reply(.failure(AsukaModuleError("not a web URL"))); return
-                }
-                guard let top = self?.topController else { reply(.failure(AsukaModuleError("no screen"))); return }
-                top.present(SFSafariViewController(url: url), animated: true)
-                reply(.success(Data()))
-            },
-        ]
-        #endif
-        #if ASUKA_WEBAUTH
-        modules["webAuth"] = [
-            // args: u32 session, u8 flags (1 ephemeral), string URL, string
-            // callback scheme (empty: none); result: the callback URL, or
-            // the error "canceled".
-            "start": { [weak self] args, reply in
-                guard args.count >= 13 else { reply(.failure(AsukaModuleError("bad args"))); return }
-                let (id, flags, link, scheme) = args.withUnsafeBytes { b -> (UInt32, UInt8, String, String) in
-                    var r = AsukaReader(b)
-                    return (r.u32(), r.u8(), r.string(), r.string())
-                }
-                let url = URL(string: link)
-                guard let url, url.scheme == "https" || url.scheme == "http" else { reply(.failure(AsukaModuleError("not a web URL"))); return }
-                guard let self, let window = self.topController?.view.window else { reply(.failure(AsukaModuleError("no screen"))); return }
-                let s = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme.isEmpty ? nil : scheme) { [weak self] callback, error in
-                    DispatchQueue.main.async {
-                        self?.authSessions[id] = nil
-                        if let callback { reply(.success(Data(callback.absoluteString.utf8))); return }
-                        if let e = error as? ASWebAuthenticationSessionError, e.code == .canceledLogin {
-                            reply(.failure(AsukaModuleError("canceled"))); return
-                        }
-                        reply(.failure(error ?? AsukaModuleError("canceled")))
-                    }
-                }
-                let anchor = AsukaAuthAnchor(window)
-                s.presentationContextProvider = anchor
-                s.prefersEphemeralWebBrowserSession = flags & 1 != 0
-                self.authSessions[id] = (s, anchor, reply)
-                if !s.start() {
-                    self.authSessions[id] = nil
-                    reply(.failure(AsukaModuleError("couldn't start the sign-in")))
-                }
-            },
-            // args: u32 session: closes it; its start answers "canceled".
-            "cancel": { [weak self] args, reply in
-                guard args.count >= 4 else { reply(.success(Data())); return }
-                let id = args.withUnsafeBytes { b -> UInt32 in var r = AsukaReader(b); return r.u32() }
-                if let (s, _, start) = self?.authSessions.removeValue(forKey: id) {
-                    s.cancel()
-                    start(.failure(AsukaModuleError("canceled")))
-                }
-                reply(.success(Data()))
-            },
-        ]
-        #endif
-        #if ASUKA_PHOTOS
-        modules["photos"] = [
-            // args: u8 limit (0: one); result: the picked images' files, a
-            // line each (none: cancelled).
-            "pick": { [weak self] args, reply in
-                guard let self, let top = self.topController else { reply(.failure(AsukaModuleError("no screen"))); return }
-                var config = PHPickerConfiguration()
-                config.filter = .images
-                config.selectionLimit = max(Int(args.first ?? 1), 1)
-                let p = PHPickerViewController(configuration: config)
-                let d = AsukaPhotoPicker(reply)
-                p.delegate = d
-                objc_setAssociatedObject(p, &AsukaPhotoPicker.key, d, .OBJC_ASSOCIATION_RETAIN)
-                top.present(p, animated: true)
-            },
-        ]
-        #endif
-        #if ASUKA_LOCATION
-        modules["location"] = AsukaLocation.shared.methods()
-        modules["locationAccess"] = AsukaLocationAccess.shared.methods()
-        #endif
-        #if ASUKA_LOCATION_BACKGROUND
-        modules["locationBackground"] = AsukaLocationBackground.shared.methods()
-        #endif
-        #if ASUKA_NETWORK
-        modules["network"] = AsukaNetwork.shared.methods()
-        #endif
         #if ASUKA_LIBRARY
         modules["library"] = AsukaLibrary.methods()
         #endif
         modules["share"] = AsukaShare.methods(self)
-        modules["screen"] = AsukaScreen.shared.methods(self)
-        modules["splash"] = AsukaSplash.shared.methods()
-        // asuka/sdk/recent and asuka/sdk/login: a desktop's. iOS's Files keeps its
-        // own recent files, and an app doesn't start at login.
+        // asuka/recent, asuka/login and asuka/dock: a desktop's. iOS's
+        // Files keeps its own recent files, an app doesn't start at login,
+        // and a phone has no Dock or taskbar.
         modules["recent"] = [
             "add": { _, reply in reply(.success(Data())) },
             "clear": { _, reply in reply(.success(Data())) },
@@ -242,32 +108,16 @@ struct AsukaModuleError: LocalizedError {
             "enabled": { _, reply in reply(.success(Data([0]))) },
             "openedAtLogin": { _, reply in reply(.success(Data([0]))) },
         ]
-        modules["clipboard"] = AsukaClipboard.shared.methods()
-        modules["displays"] = AsukaDisplays.shared.methods()
-        modules["power"] = AsukaPower.shared.methods()
-        modules["appearance"] = AsukaAppearance.shared.methods()
-        modules["dock"] = AsukaDock.methods()
-        #if ASUKA_REVIEW
-        modules["review"] = AsukaReview.methods(self)
-        #endif
-        #if ASUKA_PURCHASE
-        // asuka/sdk/purchase: StoreKit 2, its sheets in the app's scene.
-        AsukaStore.shared.scene = { [weak self] in self?.controller?.view.window?.windowScene }
-        modules["purchase"] = Dictionary(uniqueKeysWithValues: AsukaStore.methods.map { name in
-            (name, { args, reply in AsukaStore.shared.call(name, args, reply) } as AsukaModuleMethod)
-        })
-        #endif
+        modules["dock"] = [
+            "progress": { _, reply in reply(.success(Data())) },
+            "attention": { _, reply in reply(.success(Data([0, 0, 0, 0]))) },
+            "cancelAttention": { _, reply in reply(.success(Data())) },
+        ]
         #if ASUKA_ICLOUD
-        // asuka/sdk/icloud: the key-value store and the app's containers.
+        // asuka/icloud: the key-value store and the app's containers.
         modules["icloud"] = Dictionary(uniqueKeysWithValues: AsukaICloud.methods.map { name in
             (name, { args, reply in AsukaICloud.shared.call(name, args, reply) } as AsukaModuleMethod)
         })
-        #endif
-        #if ASUKA_TRACKING
-        modules["tracking"] = AsukaTracking.methods()
-        #endif
-        #if ASUKA_BIOMETRIC
-        modules["biometric"] = AsukaBiometric.methods()
         #endif
         #if ASUKA_WIDGET
         modules["widget"] = AsukaWidgetData.methods()
@@ -281,35 +131,8 @@ struct AsukaModuleError: LocalizedError {
         #if ASUKA_CALENDAR
         modules["calendar"] = AsukaCalendar.shared.methods(self)
         #endif
-        #if ASUKA_SENSORS
-        modules["sensors"] = AsukaSensors.shared.methods()
-        #endif
-        #if ASUKA_NFC
-        modules["nfc"] = AsukaNFC.shared.methods()
-        #endif
-        #if ASUKA_BLUETOOTH
-        modules["bluetooth"] = AsukaBluetooth.shared.methods()
-        #endif
-        #if ASUKA_SPEECH
-        modules["speech"] = AsukaSpeech.shared.methods()
-        #endif
-        #if ASUKA_IMAGEEDIT
-        modules["imageEdit"] = AsukaImageEdit.methods()
-        #endif
         #if ASUKA_PERIODIC
         modules["periodic"] = AsukaPeriodic.shared.methods()
-        #endif
-        #if ASUKA_INTEGRITY
-        modules["integrity"] = AsukaIntegrity.methods()
-        #endif
-        #if ASUKA_AGERANGE
-        modules["ageRange"] = AsukaAgeRange.methods(self)
-        #endif
-        #if ASUKA_AUDIORECORD
-        modules["audioRecord"] = AsukaAudioRecord.shared.methods()
-        #endif
-        #if ASUKA_TRANSCRIBE
-        modules["transcribe"] = AsukaTranscribe.shared.methods()
         #endif
         #if ASUKA_PUSH
         modules["push"] = AsukaPush.shared.methods()
@@ -317,112 +140,20 @@ struct AsukaModuleError: LocalizedError {
         #if ASUKA_NOTIFICATION_SERVICE
         modules["push", default: [:]].merge(AsukaRewrites.shared.methods()) { _, new in new }
         #endif
-        #if ASUKA_APPLEAUTH
-        modules["appleAuth"] = AsukaAppleAuth.shared.methods(self)
-        #endif
-        #if ASUKA_PAY
-        modules["pay"] = AsukaPay.shared.methods(self)
-        #endif
-        #if ASUKA_FILES
-        modules["files"] = AsukaFiles.methods(self)
-        #endif
-        #if ASUKA_PREVIEW
-        modules["preview"] = AsukaPreview.methods(self)
-        #endif
-        #if ASUKA_PRINT
-        modules["print"] = AsukaPrint.methods(self)
-        #endif
         #if ASUKA_COMPOSE
         modules["compose"] = AsukaCompose.shared.methods(self)
         #endif
         #if ASUKA_WEBVIEW
-        modules["js"] = AsukaScript.methods()
         modules["web"] = AsukaWebView.methods()
         #endif
         #if ASUKA_NOTIFY || ASUKA_PUSH || ASUKA_NOTIFICATION_SERVICE
         modules["notify"] = AsukaNotifyCenter.shared.methods()
         #endif
-        #if ASUKA_AUDIO
-        modules["audio"] = AsukaAudio.shared.methods()
-        #endif
-        #if ASUKA_NOWPLAYING
-        modules["nowPlaying"] = AsukaNowPlaying.shared.methods()
-        #endif
-        modules["camera"] = AsukaCamera.shared.methods()
         modules["background"] = AsukaBackground.shared.methods()
-        #if ASUKA_SCAN
-        modules["scan"] = AsukaScan.methods()
-        #endif
-        #if ASUKA_VISION
-        modules["vision"] = AsukaVision.methods()
-        #endif
         #if ASUKA_PHOTOLIBRARY
         modules["photoLibrary"] = AsukaPhotos.methods()
         #endif
-        modules["device"] = [
-            // result: JSON: model, system, systemVersion, appVersion, build.
-            "info": { args, reply in
-                let info = Bundle.main.infoDictionary ?? [:]
-                let d: [String: String] = [
-                    "model": UIDevice.current.model,
-                    "system": UIDevice.current.systemName,
-                    "systemVersion": UIDevice.current.systemVersion,
-                    "appVersion": info["CFBundleShortVersionString"] as? String ?? "",
-                    "build": info["CFBundleVersion"] as? String ?? "",
-                ]
-                reply(.success((try? JSONSerialization.data(withJSONObject: d)) ?? Data("{}".utf8)))
-            },
-            // result: u8 has, then the clipboard's text (iOS asks the user
-            // the first time an app reads what another put there).
-            "clipboard": { _, reply in
-                guard let s = UIPasteboard.general.string else { reply(.success(Data([0]))); return }
-                reply(.success(Data([1]) + Data(s.utf8)))
-            },
-            // args: u8 on: the screen stays on (the idle timer off) while on.
-            "keepAwake": { args, reply in
-                UIApplication.shared.isIdleTimerDisabled = args.first == 1
-                reply(.success(Data()))
-            },
-        ]
     }
 }
 
-#if ASUKA_WEBAUTH
-/// Where a sign-in's sheet is shown: the app's window.
-final class AsukaAuthAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
-    let window: UIWindow
-    init(_ w: UIWindow) { window = w }
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { window }
-}
-#endif
-
-#if ASUKA_PHOTOS
-/// Copies the picked images to files (the picker's are temporary).
-final class AsukaPhotoPicker: NSObject, PHPickerViewControllerDelegate {
-    nonisolated(unsafe) static var key = 0
-    let reply: (Result<Data, Error>) -> Void
-    init(_ r: @escaping (Result<Data, Error>) -> Void) { reply = r }
-
-    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
-        let group = DispatchGroup()
-        var paths = [String](repeating: "", count: results.count)
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("asuka-photos", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        for (i, r) in results.enumerated() {
-            group.enter()
-            r.itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, _ in
-                defer { group.leave() }
-                guard let url else { return }
-                let to = dir.appendingPathComponent(UUID().uuidString + "." + (url.pathExtension.isEmpty ? "jpg" : url.pathExtension))
-                if (try? FileManager.default.copyItem(at: url, to: to)) != nil { paths[i] = to.path }
-            }
-        }
-        let reply = self.reply
-        group.notify(queue: .main) {
-            reply(.success(Data(paths.filter { !$0.isEmpty }.joined(separator: "\n").utf8)))
-        }
-    }
-}
-#endif
 #endif

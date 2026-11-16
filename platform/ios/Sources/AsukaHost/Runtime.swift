@@ -1,8 +1,5 @@
 #if canImport(UIKit)
 import UIKit
-#if ASUKA_WEBAUTH
-import AuthenticationServices
-#endif
 #if canImport(AsukaOps)
 import AsukaOps
 #endif
@@ -294,11 +291,6 @@ final class AsukaTextField: UITextField {
     var colorScheme = UIUserInterfaceStyle.unspecified
     /// The app's direction (the Locale command's).
     lazy var rtl = systemRTL
-    #if ASUKA_WEBAUTH
-    /// The webAuth module's sign-ins under way: each session, what presents
-    /// it, and its start's reply.
-    var authSessions: [UInt32: (ASWebAuthenticationSession, AsukaAuthAnchor, (Result<Data, Error>) -> Void)] = [:]
-    #endif
     /// Views coming in with a transition in the batch being applied.
     var entering: [(AsukaNode, (Double, Int32))] = []
     /// Views going out with a transition, still shown.
@@ -413,7 +405,6 @@ final class AsukaTextField: UITextField {
         #if DEBUG
         AsukaAutomation.start()
         #endif
-        registerNatives()
         // Typed native modules' way back to Go.
         AsukaNative.done = { call, b in b.withUnsafeBufferPointer { asuka_native_done(call, $0.baseAddress, $0.count) } }
         AsukaNative.invoke = { id, b in

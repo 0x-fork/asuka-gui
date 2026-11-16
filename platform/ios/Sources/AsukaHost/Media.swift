@@ -387,24 +387,9 @@ final class AsukaGestureDelegate: NSObject, UIGestureRecognizerDelegate {
 }
 
 @MainActor extension AsukaRuntime {
-    func registerNatives() {
-        #if ASUKA_CAMERAVIEW
-        registerNative("asuka.camera") { AsukaCameraView($0) }
-        #endif
-        #if ASUKA_MAPS
-        registerNative("asuka.map") { AsukaMapView($0) }
-        #endif
-        #if ASUKA_APPLEAUTH
-        registerNative("asuka.appleSignIn") { AsukaAppleSignInButton($0) }
-        #endif
-        #if ASUKA_PAY
-        registerNative("asuka.payButton") { AsukaPayButton($0) }
-        #endif
-        // Packages' typed views are found as they're shown
-        // (AsukaNative.makeView).
-    }
-
-    /// Registers one of the host's native view kinds for ui.Native.
+    /// Registers a native view kind for ui.Native. Packages' typed views
+    /// (asuka/camera's, asuka/maps', asuka/pay's buttons...) aren't
+    /// registered: they're found as they're shown (AsukaNative.makeView).
     func registerNative(_ type: String, _ make: @escaping (AsukaNativeContext) -> AsukaNativeView) {
         nativeFactories[type] = make
     }
