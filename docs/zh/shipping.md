@@ -61,20 +61,20 @@ keyAlias = "upload"
 - `android.*` 用于 Android 构建（见 [Android](#android)）。
 - `mac.profile` 是 Mac 构建的描述文件（provisioning profile），`mac.appStoreProfile` 是 Mac App Store 构建的描述文件，详见 [macOS](#macos)。
 - `linux.*` 决定 Linux 构建的 desktop 文件和 AppStream metainfo 的内容，详见 [Linux](#linux)。
-- `web.vapidPublicKey` 是应用服务器的 VAPID 公钥，供 Web 上的 `asuka/sdk/push` 使用（即 Web Push，见 [Web](web.md#asukasdkpushweb-push)）。
+- `web.vapidPublicKey` 是应用服务器的 VAPID 公钥，供 Web 上的 `asuka/push` 使用（即 Web Push，见 [Web](web.md#asukapushweb-push)）。
 - Windows 构建只需要上面那些通用的键；它的签名证书通过环境变量提供（见 [Windows](#windows)）。
 
 下面这些用于手机和平板：
 
 - `orientations`：`portrait`、`landscape`（默认两者都支持），只对手机生效。在 iPad 上，应用总是支持所有方向，因为分屏浏览（Split View）、侧拉（Slide Over）和台前调度（Stage Manager）都要求如此；同样，Android 16 在平板和折叠屏设备上也会忽略这项设置。
 - `ios.iphoneOnly` 让应用不支持 iPad。默认情况下，应用同时也是 iPad 应用，用户把窗口调成多大都能适应；在 Android 上，应用可以调整大小，以适应分屏和桌面窗口。因此布局时请依据 `ui.UseEnvironment()` 的 `Width` 和 `Height`，它们是窗口的尺寸，而不是设备的尺寸。
-- `shareTarget` 让应用出现在其他应用的分享面板里：设为 `true` 可以接收文本和链接，设为 `{types = ["text", "image/*"], max = 10}` 这样的表还能接收文件（见[设备](device.md#接收其他应用的分享uionshare)）；分享过来的内容由 `ui.OnShare` 接收。在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`）。
-- `splash` 是启动屏：`{image = "logo.png", size = 96, background = "#ffffff", darkBackground = "#000000"}`（见[设备](device.md#启动屏asukasdksplash)）。
-- `widgets` 是应用的主屏幕小组件，`shortcuts` 是应用提供给 Siri、Spotlight 和启动器的快捷操作（见[设备](device.md#主屏幕小组件asukasdkwidget)）。小组件扩展有自己的 bundle ID（应用的 ID 加上 `.widgets`）：发布时也要为它准备描述文件，可以用 `ios.widgetProfile` 指定。
-- `android.googleServices` 是 Firebase 项目的 `google-services.json`，供 `asuka/sdk/push` 使用；`android.mapsKey` 是 Google Maps Platform 的 API 密钥，供 `asuka/sdk/maps` 使用。
+- `shareTarget` 让应用出现在其他应用的分享面板里：设为 `true` 可以接收文本和链接，设为 `{types = ["text", "image/*"], max = 10}` 这样的表还能接收文件（见[设备](device.md#接收其他应用的分享onshare)）；分享过来的内容由 `ui.OnShare` 接收。在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`）。
+- `splash` 是启动屏：`{image = "logo.png", size = 96, background = "#ffffff", darkBackground = "#000000"}`（见[设备](device.md#启动屏asukasplash)）。
+- `widgets` 是应用的主屏幕小组件，`shortcuts` 是应用提供给 Siri、Spotlight 和启动器的快捷操作（见[设备](device.md#主屏幕小组件asukawidget)）。小组件扩展有自己的 bundle ID（应用的 ID 加上 `.widgets`）：发布时也要为它准备描述文件，可以用 `ios.widgetProfile` 指定。
+- `android.googleServices` 是 Firebase 项目的 `google-services.json`，供 `asuka/push` 使用；`android.mapsKey` 是 Google Maps Platform 的 API 密钥，供 `asuka/maps` 使用。
 - `ios.usage` 提供访问受保护资源时的用途说明（`NSCameraUsageDescription` 等，Mac 也会用到）；`ios.infoPlist` 向 Info.plist 添加任意键；`ios.backgroundModes` 向 `UIBackgroundModes` 追加条目（例如 `"audio"`，用于锁屏时录音和播放）；`android.permissions` 用来添加权限。
 
-应用导入的包会自动带上它们需要的权限和用途说明：`asuka/sdk/camera` 带上相机的，`asuka/sdk/location` 带上定位的。不过默认的说明比较笼统，最好在 `ios.usage` 里写上你自己的。有些包还要求在 App ID 上开启相应的能力（capability）：`asuka/sdk/push` 需要 Push Notifications，`asuka/sdk/appleauth` 需要 Sign in with Apple，`asuka/sdk/integrity` 需要 App Attest，`asuka/sdk/agerange` 需要 Declared Age Range，`asuka/sdk/icloud` 需要 iCloud 及其容器。在 developer.apple.com 上开启之后，重新生成描述文件即可。`asuka build --platform ios`（以及 `--platform mac`）会告诉你描述文件缺了哪些能力。
+应用导入的包会自动带上它们需要的权限和用途说明：`asuka/camera` 带上相机的，`asuka/location` 带上定位的。不过默认的说明比较笼统，最好在 `ios.usage` 里写上你自己的。有些包还要求在 App ID 上开启相应的能力（capability）：`asuka/push` 需要 Push Notifications，`asuka/appleauth` 需要 Sign in with Apple，`asuka/integrity` 需要 App Attest，`asuka/agerange` 需要 Declared Age Range，`asuka/icloud` 需要 iCloud 及其容器。在 developer.apple.com 上开启之后，重新生成描述文件即可。`asuka build --platform ios`（以及 `--platform mac`）会告诉你描述文件缺了哪些能力。
 
 ## iOS
 
@@ -84,7 +84,7 @@ asuka build --platform ios
 
 这条命令会生成一个为 App Store 签名的 `.ipa`：其中是与核心和编译进去的应用（`libasuka.a`，由 Xcode 的 clang 构建）链接在一起的 Swift 宿主，只包含应用用到的那部分宿主（WebKit、AVKit 等相关部分，取决于应用导入的包和显示的元素）。签名使用团队的分发证书（在你的钥匙串里，来自 Xcode 的 Accounts 设置）和对应应用 ID 的描述文件：优先用 `ios.profile` 或 `--profile` 指定的那个，否则从已安装的描述文件中挑选最匹配的。加上 `--distribution ad-hoc` 或 `development` 则改为针对描述文件中登记的设备签名；`--simulator` 会生成一个未签名的 `.app`，供 iOS 模拟器使用。
 
-使用了 `asuka/sdk/sqlite` 的应用会在 `Frameworks` 里带上 SQLite，即 `asqlite.framework`（真机版或模拟器版），和应用一起签名。应用第一次打开数据库时才会加载它。应用的扩展（分享面板、Notification Service Extension）加载的也是应用里的这一份。
+使用了 `asuka/sqlite` 的应用会在 `Frameworks` 里带上 SQLite，即 `asqlite.framework`（真机版或模拟器版），和应用一起签名。应用第一次打开数据库时才会加载它。应用的扩展（分享面板、Notification Service Extension）加载的也是应用里的这一份。
 
 设置了 `shareTarget` 时，分享扩展也要签名，用的是同一团队下、针对扩展自身 ID 的描述文件（应用是 `com.example.notes`，扩展就是 `com.example.notes.share`）：优先用 `ios.shareProfile`，否则从已安装的描述文件中挑选最匹配的。通配符描述文件（`com.example.*`）可以同时覆盖两者。你需要在 developer.apple.com 上注册扩展的 ID，并像为应用生成描述文件那样，为它也生成一个。
 
@@ -167,7 +167,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-这条命令在 Mac 上生成 `dist/<Name>.app`：一个通用应用（同时支持 Apple 芯片和 Intel），要求 macOS 11 及以上。可执行文件是桌面宿主，编译进了应用的核心是 `Contents/Frameworks/libasuka.dylib`（两者都是通用二进制），此外还有应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。如果应用有自己的 Swift 代码（`macos/*.swift`），这些代码会针对两种架构编译进 `Contents/Frameworks`，和应用一起签名（见[原生代码](native.md)）。使用了 `asuka/sdk/sqlite` 的应用，SQLite 的库（`libasqlite.dylib`，包含两种架构）也放在那里，签名方式与应用相同：用 Developer ID 签名时，强化运行时只加载由应用所属团队签名的库，公证服务也会逐个检查（见[库文件](data.md#库文件)）。
+这条命令在 Mac 上生成 `dist/<Name>.app`：一个通用应用（同时支持 Apple 芯片和 Intel），要求 macOS 11 及以上。可执行文件是桌面宿主，编译进了应用的核心是 `Contents/Frameworks/libasuka.dylib`（两者都是通用二进制），此外还有应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。如果应用有自己的 Swift 代码（`macos/*.swift`），这些代码会针对两种架构编译进 `Contents/Frameworks`，和应用一起签名（见[原生代码](native.md)）。使用了 `asuka/sqlite` 的应用，SQLite 的库（`libasqlite.dylib`，包含两种架构）也放在那里，签名方式与应用相同：用 Developer ID 签名时，强化运行时只加载由应用所属团队签名的库，公证服务也会逐个检查（见[库文件](data.md#库文件)）。
 
 要在 Mac App Store 之外分发给别人，需要用你的 Developer ID 签名，再交给 Apple 公证，这样 Gatekeeper 才会放行：
 
@@ -178,7 +178,7 @@ asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)"
 
 `--notarize` 会把签好名的应用发给 Apple 的公证服务并等待结果（通常几分钟）。如果被拒，它会打印公证服务返回的日志；通过后，它会把公证票据装订（staple）到应用上，这样离线时也能打开。在 CI 中，`--notarize env` 会从环境变量中读取 `ASUKA_APPLE_ID`、`ASUKA_APPLE_PASSWORD`（App 专用密码）和 `ASUKA_TEAM_ID`，而不是使用钥匙串中保存的配置。
 
-推送（`asuka/sdk/push`）、通过 Apple 登录（`asuka/sdk/appleauth`）、App Attest（`asuka/sdk/integrity`）和 iCloud（`asuka/sdk/icloud`）所需的 entitlement 只有描述文件才能授予。在 developer.apple.com 的 Profiles 中，为应用的 ID 创建一个 macOS Developer ID 描述文件（该 ID 需要开启上述能力），然后下载下来：
+推送（`asuka/push`）、通过 Apple 登录（`asuka/appleauth`）、App Attest（`asuka/integrity`）和 iCloud（`asuka/icloud`）所需的 entitlement 只有描述文件才能授予。在 developer.apple.com 的 Profiles 中，为应用的 ID 创建一个 macOS Developer ID 描述文件（该 ID 需要开启上述能力），然后下载下来：
 
 ```sh
 asuka build --platform mac --profile Notes.provisionprofile --notarize asuka
@@ -205,7 +205,7 @@ ASUKA_WINDOWS_CERT=cert.pfx ASUKA_WINDOWS_CERT_PASSWORD=... asuka build --platfo
 
 构建会用 SHA-256 签名，并为签名加盖时间戳，这样证书过期后签名依然有效。时间戳取自第一个响应的 RFC 3161 服务器：先尝试 `ASUKA_WINDOWS_TIMESTAMP` 中列出的服务器（逗号分隔），没有设置的话依次尝试 DigiCert、Sectigo 和 GlobalSign。如果都没有响应，构建会失败并说明原因；设置 `ASUKA_WINDOWS_TIMESTAMP=none` 则不加时间戳（这样签名会随证书一起失效）。在 Windows 上用 `signtool` 签名（来自 Windows SDK；优先用 `PATH` 中的，否则用已安装的最新版本），在其他系统上用 `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`），`asuka.dll` 和 `asqlite.dll` 也会一并签名。不设置 `ASUKA_WINDOWS_CERT` 时，`.exe` 不会被签名。如果证书存放在硬件令牌或云服务（Azure Trusted Signing）中，就要用它们自己的工具签名：构建完成后，用那个工具为文件夹中的 `.exe`（以及 `asqlite.dll`）签名。
 
-会显示通知的应用（`asuka/sdk/notify`）第一次运行时，会在用户的开始菜单里创建一个快捷方式，因为 Windows 要求应用有快捷方式才能发送 toast 通知。快捷方式的 AppUserModelID 取 `asuka.toml` 的 `id`（没有的话就根据应用名称生成一个）。
+会显示通知的应用（`asuka/notify`）第一次运行时，会在用户的开始菜单里创建一个快捷方式，因为 Windows 要求应用有快捷方式才能发送 toast 通知。快捷方式的 AppUserModelID 取 `asuka.toml` 的 `id`（没有的话就根据应用名称生成一个）。
 
 ## Linux
 
@@ -220,7 +220,7 @@ Linux 构建可以在任何系统上完成，因为宿主无需 cgo 就能调用
   - `bin/my-notes`：应用本身，即桌面宿主；
   - `lib/my-notes/libasuka.so`：编译进了应用的核心，宿主会以 `bin/` 为起点找到它；
   - `share/my-notes/assets` 和 `share/my-notes/asuka-app.json`：应用的资源和设置，同样以 `bin/` 为起点找到；
-  - `lib/my-notes/libasqlite.so`：SQLite 的库，仅限使用了 `asuka/sdk/sqlite` 的应用，同样以 `bin/` 为起点找到（要求 glibc 2.17 或更高版本；它不导出 SQLite 自身的任何符号，所以即使同一进程里还加载了系统的 SQLite，两者也不会冲突）；
+  - `lib/my-notes/libasqlite.so`：SQLite 的库，仅限使用了 `asuka/sqlite` 的应用，同样以 `bin/` 为起点找到（要求 glibc 2.17 或更高版本；它不导出 SQLite 自身的任何符号，所以即使同一进程里还加载了系统的 SQLite，两者也不会冲突）；
   - `share/applications/<id>.desktop`：启动器显示和运行的入口；
   - `share/icons/hicolor/<size>/apps/<id>.png`：`icon` 从 16 到 512 像素的各个尺寸；
   - `share/metainfo/<id>.metainfo.xml`：AppStream metainfo，软件中心展示的就是它。
@@ -269,7 +269,7 @@ asuka build --platform web
 
 这会在 `dist/web` 中生成一个静态网站，包括：`index.html`、编译进了应用的 WebAssembly 核心（由 Zig 构建）、Web 宿主的脚本、应用的 service worker、应用的资源、带图标的 Web 应用清单（manifest）、gzip 压缩副本，以及供 Cloudflare 和 Netlify 使用的 `_headers` 文件。文件名中带有内容摘要，所以除了 `index.html` 和清单之外，其他文件都可以永久缓存。你可以用任何 Web 服务器或 CDN 托管这个文件夹，但 `.wasm` 必须以 `application/wasm` 类型提供，并且要通过 HTTPS 访问（service worker、Web Push 和安全存储都依赖 HTTPS）。网站里具体有什么、在浏览器中有哪些不同的行为，请参阅 [Web](web.md)。
 
-它还会写出 `version.json`，记录本次构建的版本及其版本说明（取自 `CHANGELOG.md` 中的对应小节）。页面中的 `asuka/sdk/update` 会读取它：如果页面比网站上的版本旧，就会提示用户重新加载（见[自动更新](#自动更新)）。
+它还会写出 `version.json`，记录本次构建的版本及其版本说明（取自 `CHANGELOG.md` 中的对应小节）。页面中的 `asuka/update` 会读取它：如果页面比网站上的版本旧，就会提示用户重新加载（见[自动更新](#自动更新)）。
 
 ## 自动更新
 
@@ -410,9 +410,9 @@ present(AsukaViewController(), animated: true)
 // 也可以 push 它、把它作为一个标签页，或者作为窗口的根视图控制器
 ```
 
-使用了 `asuka/sdk/sqlite` 的应用，旁边还会生成 `dist/asqlite.xcframework`，也就是 SQLite 的库，同样需要嵌入（Embed & Sign）。应用会从你应用的 `Frameworks` 中加载它；它带有自己的隐私清单。
+使用了 `asuka/sqlite` 的应用，旁边还会生成 `dist/asqlite.xcframework`，也就是 SQLite 的库，同样需要嵌入（Embed & Sign）。应用会从你应用的 `Frameworks` 中加载它；它带有自己的隐私清单。
 
-**Android。** `asuka build --platform android --aar` 会在 `dist/maven` 中生成一个 Maven 仓库，其中包括：宿主库（含有每个 ABI 下编译进了应用的核心）、应用的资源，以及已声明好的 `AsukaActivity`，它的依赖（Material、AndroidX）都写在 POM 里；旁边还有应用用到的可选模块（`asuka/sdk/push`、`asuka/sdk/maps`），如果应用使用了 `asuka/sdk/sqlite`，还有每个 ABI 下的 SQLite 库。添加这个仓库和命令打印出的依赖，然后启动这个 activity：
+**Android。** `asuka build --platform android --aar` 会在 `dist/maven` 中生成一个 Maven 仓库，其中包括：宿主库（含有每个 ABI 下编译进了应用的核心）、应用的资源，以及已声明好的 `AsukaActivity`，它的依赖（Material、AndroidX）都写在 POM 里；旁边还有应用用到的可选模块（`asuka/push`、`asuka/maps`），如果应用使用了 `asuka/sqlite`，还有每个 ABI 下的 SQLite 库。添加这个仓库和命令打印出的依赖，然后启动这个 activity：
 
 ```kotlin
 // settings.gradle.kts
@@ -446,7 +446,7 @@ sentry-cli upload-proguard --org ORG --project PROJECT dist/Notes-mapping.txt
 
 **Mac、Windows、Linux 和 Web。** 宿主和核心构建时都去掉了符号表和调试信息；宿主的 Go 调用栈仍然保留函数名和行号，所以它的 panic 照样可读，也没有需要上传的符号。
 
-请保留每个发布版本的符号，因为崩溃只能用它所在构建的符号来符号化。崩溃报告本身的说明见[设备](device.md#崩溃报告asukasdkcrash)。
+请保留每个发布版本的符号，因为崩溃只能用它所在构建的符号来符号化。崩溃报告本身的说明见[设备](device.md#崩溃报告asukacrash)。
 
 ## 发布之前
 

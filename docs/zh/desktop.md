@@ -1,6 +1,6 @@
 # 桌面端
 
-除了窗口和菜单栏（见[导航](navigation.md#窗口)），桌面端还有许多手机上没有的东西：托盘图标和程序坞（Dock）菜单、浮出面板、在后台常驻的应用、全局快捷键、面板与启动器、查找已安装的应用、鼠标穿透窗口、文件对话框与文件管理器、应用打开的文件、单实例、退出、最近使用的文档、基于文档的应用、登录时启动、自动更新、“正在播放”与媒体键、显示器、电源、应用图标上的进度，以及系统外观。如果想跟踪文件和文件夹的变化（比如应用正在展示的文件夹，或其他应用保存的文档），请参阅[监视文件](data.md#监视文件asukasdkwatch)，这项功能在手机和 Web 上也有。
+除了窗口和菜单栏（见[导航](navigation.md#窗口)），桌面端还有许多手机上没有的东西：托盘图标和程序坞（Dock）菜单、浮出面板、在后台常驻的应用、全局快捷键、面板与启动器、查找已安装的应用、鼠标穿透窗口、文件对话框与文件管理器、应用打开的文件、单实例、退出、最近使用的文档、基于文档的应用、登录时启动、自动更新、“正在播放”与媒体键、显示器、电源、应用图标上的进度，以及系统外观。如果想跟踪文件和文件夹的变化（比如应用正在展示的文件夹，或其他应用保存的文档），请参阅[监视文件](data.md#监视文件asukawatch)，这项功能在手机和 Web 上也有。
 
 上面每一项都是标准库里的一个包，或是 prelude 里的一个元素或函数，在 Mac、Windows 和 Linux 上都能用。手机或浏览器上没有某项功能时，会明确告诉你不支持（抛出 `unsupported`、`notAvailable` 错误，或者 `supported()` 为 false），或者什么也不显示，这样应用就可以只在支持的平台上提供它。
 
@@ -161,7 +161,7 @@ component Launcher {
 
 ## 查找应用
 
-`asuka/sdk/apps` 会像启动器那样列出并搜索已安装的应用：
+`asuka/apps` 会像启动器那样列出并搜索已安装的应用：
 
 ```go
 apps.List(func(list []apps.App, err error) { installed.Set(list) })
@@ -203,7 +203,7 @@ Window {
 
 ## 文件对话框
 
-`asuka/sdk/dialog` 显示系统自带的文件对话框，给你的是用户文件的真实路径，而不是副本：
+`asuka/dialog` 显示系统自带的文件对话框，给你的是用户文件的真实路径，而不是副本：
 
 ```go
 dialog.Save(dialog.SaveOptions{
@@ -223,7 +223,7 @@ dialog.Save(dialog.SaveOptions{
 
 ## 文件管理器
 
-`asuka/sdk/shell` 能对文件做文件管理器会做的那些事：`shell.Reveal` 在文件所在的文件夹中选中并显示它（Finder、资源管理器，或桌面环境的文件管理器）；`shell.Open` 用用户为该类型设置的应用打开文件（没有这样的应用时返回 `shell.ErrNoApp`），对文件夹则用文件管理器打开；`shell.Trash` 把文件移到废纸篓或回收站，永远不会直接彻底删除（做不到时就返回失败）；`shell.Beep` 播放系统提示音。手机和 Web 上没有文件管理器：Reveal 和 Trash 返回 `shell.ErrUnsupported`，而在 Web 上 Open 会在新标签页中显示文件。如果要在应用内显示文件的内容，请使用 `asuka/sdk/preview`。
+`asuka/shell` 能对文件做文件管理器会做的那些事：`shell.Reveal` 在文件所在的文件夹中选中并显示它（Finder、资源管理器，或桌面环境的文件管理器）；`shell.Open` 用用户为该类型设置的应用打开文件（没有这样的应用时返回 `shell.ErrNoApp`），对文件夹则用文件管理器打开；`shell.Trash` 把文件移到废纸篓或回收站，永远不会直接彻底删除（做不到时就返回失败）；`shell.Beep` 播放系统提示音。手机和 Web 上没有文件管理器：Reveal 和 Trash 返回 `shell.ErrUnsupported`，而在 Web 上 Open 会在新标签页中显示文件。如果要在应用内显示文件的内容，请使用 `asuka/preview`。
 
 ## 打开文件
 
@@ -286,7 +286,7 @@ app {
 
 ## 基于文档的应用
 
-`asuka/sdk/document` 用来编写每个窗口各显示一个文件的应用，就像文本编辑器或绘图应用那样：NSDocument 给 Mac 应用提供的能力，在所有平台上都有了。描述好文档的类型，然后运行它：
+`asuka/document` 用来编写每个窗口各显示一个文件的应用，就像文本编辑器或绘图应用那样：NSDocument 给 Mac 应用提供的能力，在所有平台上都有了。描述好文档的类型，然后运行它：
 
 ```go
 func main() {
@@ -336,7 +336,7 @@ func main() {
 
 ## “正在播放”与媒体键
 
-`nowplaying.Show` 把应用正在播放的内容放进系统的媒体控件中，这些控件上的按钮以及键盘上的媒体键（播放/暂停、下一首、上一首）都会交给应用的处理函数：在 Mac 上是控制中心和菜单栏里的“正在播放”；在 Windows 上是音量浮出面板和快速设置中的媒体控件（通过应用窗口的 SystemMediaTransportControls）；在 Linux 上是一个 MPRIS 播放器，可以由 GNOME 和 KDE 的媒体控件以及 `playerctl` 控制。它和手机上用的是同一个包，在手机上对应锁屏界面的媒体控件（见[设备与服务](device.md#正在播放与媒体键asukasdknowplaying)）：
+`nowplaying.Show` 把应用正在播放的内容放进系统的媒体控件中，这些控件上的按钮以及键盘上的媒体键（播放/暂停、下一首、上一首）都会交给应用的处理函数：在 Mac 上是控制中心和菜单栏里的“正在播放”；在 Windows 上是音量浮出面板和快速设置中的媒体控件（通过应用窗口的 SystemMediaTransportControls）；在 Linux 上是一个 MPRIS 播放器，可以由 GNOME 和 KDE 的媒体控件以及 `playerctl` 控制。它和手机上用的是同一个包，在手机上对应锁屏界面的媒体控件（见[设备与服务](device.md#正在播放与媒体键asukanowplaying)）：
 
 ```go
 music := audio.Load("music/spring.mp3")

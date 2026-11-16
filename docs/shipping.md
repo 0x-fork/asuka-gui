@@ -133,8 +133,8 @@ Platform by platform:
 - `linux.*` is what a Linux build's desktop file and AppStream metainfo
   say: see [Linux](#linux).
 - `web.vapidPublicKey` is the app server's VAPID public key, for
-  `asuka/sdk/push` on the web (Web Push; see
-  [the web](web.md#asukasdkpush-web-push)).
+  `asuka/push` on the web (Web Push; see
+  [the web](web.md#asukapush-web-push)).
 - A Windows build needs nothing beyond the keys above; its signing
   certificate is given in the environment ([Windows](#windows)).
 
@@ -151,20 +151,20 @@ These are for the phones and tablets:
   the device's.
 - `shareTarget` offers the app in other apps' share sheets: `true` for
   texts and links, or a table, `{types = ["text", "image/*"], max = 10}`,
-  for files too (see [Device](device.md#shares-from-other-apps-uionshare));
+  for files too (see [Device](device.md#shares-from-other-apps-onshare));
   `ui.OnShare` gets them. On iOS it's a share extension in the app, with
   a bundle ID of its own (the app's plus `.share`).
 - `splash` is the launch screen: `{image = "logo.png", size = 96,
   background = "#ffffff", darkBackground = "#000000"}` (see
-  [Device](device.md#the-launch-screen-asukasdksplash)).
+  [Device](device.md#the-launch-screen-asukasplash)).
 - `widgets` are the app's home screen widgets and `shortcuts` its
   actions for Siri, Spotlight and the launcher (see
-  [Device](device.md#home-screen-widgets-asukasdkwidget)). The widget
+  [Device](device.md#home-screen-widgets-asukawidget)). The widget
   extension has a bundle ID of its own (the app's plus `.widgets`): a
   release needs a profile for it too, and `ios.widgetProfile` names one.
 - `android.googleServices` is the Firebase project's
-  `google-services.json`, for `asuka/sdk/push`; `android.mapsKey`, a Google
-  Maps Platform API key, for `asuka/sdk/maps`.
+  `google-services.json`, for `asuka/push`; `android.mapsKey`, a Google
+  Maps Platform API key, for `asuka/maps`.
 - `ios.usage` gives the purpose strings of protected resources
   (`NSCameraUsageDescription`...; the Mac's too), and `ios.infoPlist` adds keys to
   Info.plist; `ios.backgroundModes` adds to `UIBackgroundModes` (`"audio"`,
@@ -172,12 +172,12 @@ These are for the phones and tablets:
   permissions.
 
 The packages an app imports give it the permissions and purpose strings
-they need: `asuka/sdk/camera` the camera's, `asuka/sdk/location` the location's.
+they need: `asuka/camera` the camera's, `asuka/location` the location's.
 Write your own in `ios.usage`: the default is generic. Some need a
-capability on the App ID too (Push Notifications for `asuka/sdk/push`, Sign
-in with Apple for `asuka/sdk/appleauth`, App Attest for `asuka/sdk/integrity`,
-Declared Age Range for `asuka/sdk/agerange`, iCloud with its containers for
-`asuka/sdk/icloud`): turn it on at
+capability on the App ID too (Push Notifications for `asuka/push`, Sign
+in with Apple for `asuka/appleauth`, App Attest for `asuka/integrity`,
+Declared Age Range for `asuka/agerange`, iCloud with its containers for
+`asuka/icloud`): turn it on at
 developer.apple.com, then make the profile again. `asuka build --platform ios` (and
 `--platform mac`) says which a profile lacks.
 
@@ -197,7 +197,7 @@ match installed. `--distribution ad-hoc` or `development` signs it for the
 devices of its profile instead, and `--simulator` makes an unsigned `.app`
 for the simulator.
 
-An app that uses `asuka/sdk/sqlite` has SQLite in its `Frameworks`, as
+An app that uses `asuka/sqlite` has SQLite in its `Frameworks`, as
 `asqlite.framework` (the device's or the simulator's), signed with the
 app, which loads it the first time it opens a database. Its extensions
 (the share sheet, the Notification Service Extension) load the app's.
@@ -378,7 +378,7 @@ entitlements for them (`com.apple.security.device.camera`,
 an app signed with a Developer ID is refused the camera, the microphone
 or the user's data. An app with Swift of its own (`macos/*.swift`) has it
 compiled for both architectures into `Contents/Frameworks`, signed with
-the app (see [Native code](native.md)). An app that uses `asuka/sdk/sqlite`
+the app (see [Native code](native.md)). An app that uses `asuka/sqlite`
 has SQLite's library there too (`libasqlite.dylib`, for both
 architectures), signed as the app is: with a Developer ID, the hardened
 runtime loads only libraries signed by the app's own team, and the
@@ -399,8 +399,8 @@ In CI, `--notarize env` takes `ASUKA_APPLE_ID`, `ASUKA_APPLE_PASSWORD` (an
 app-specific password) and `ASUKA_TEAM_ID` from the environment instead
 of a keychain profile.
 
-Push (`asuka/sdk/push`), Sign in with Apple (`asuka/sdk/appleauth`), App Attest
-(`asuka/sdk/integrity`) and iCloud (`asuka/sdk/icloud`) need entitlements
+Push (`asuka/push`), Sign in with Apple (`asuka/appleauth`), App Attest
+(`asuka/integrity`) and iCloud (`asuka/icloud`) need entitlements
 only a provisioning profile grants.
 Make a macOS Developer ID profile for the app's ID at developer.apple.com
 (Profiles), with those capabilities on for the ID, and download it:
@@ -473,7 +473,7 @@ the `.exe` isn't signed. A certificate on a hardware token or in a cloud
 service (Azure Trusted Signing) signs through its own tool: sign the
 `.exe` (and `asqlite.dll`) in the folder with it after the build.
 
-An app that shows notifications (`asuka/sdk/notify`) is given a shortcut in the
+An app that shows notifications (`asuka/notify`) is given a shortcut in the
 user's Start menu the first time, which Windows needs for an app's
 toasts: its AppUserModelID is asuka.toml's `id` (else one of its name).
 
@@ -496,7 +496,7 @@ elsewhere. In `dist/linux` it makes:
   - `share/my-notes/assets` and `share/my-notes/asuka-app.json`, its
     assets and settings, which it finds from `bin/` too;
   - `lib/my-notes/libasqlite.so`, SQLite's library, for an app that
-    uses `asuka/sdk/sqlite`, which it finds from `bin/` too (glibc 2.17 or
+    uses `asuka/sqlite`, which it finds from `bin/` too (glibc 2.17 or
     later; it shows none of SQLite's own symbols, so a system SQLite in
     the same process doesn't mind it);
   - `share/applications/<id>.desktop`, what launchers show and run;
@@ -567,7 +567,7 @@ store need it). See [the web](web.md) for what's in it and what a
 browser does differently.
 
 It also writes `version.json`, the version built and its release notes
-(`CHANGELOG.md`'s section), which `asuka/sdk/update` reads in the page: a
+(`CHANGELOG.md`'s section), which `asuka/update` reads in the page: a
 page older than the site offers to reload ([Updates](#updates)).
 
 ## Updates
@@ -807,16 +807,16 @@ present(AsukaViewController(), animated: true)
 // or push it, or make it a tab, or a window's root
 ```
 
-An app that uses `asuka/sdk/sqlite` comes with `dist/asqlite.xcframework`
+An app that uses `asuka/sqlite` comes with `dist/asqlite.xcframework`
 beside it, SQLite's library: embed it too (Embed & Sign). The app
 loads it from your app's `Frameworks`; it has its own privacy manifest.
 
 **Android.** `asuka build --platform android --aar` makes a Maven repository in
 `dist/maven`: the host library with the core and the app compiled in for each ABI, its
 assets, and `AsukaActivity` declared, with its dependencies (Material,
-AndroidX) in its POM, and the optional modules the app uses (`asuka/sdk/push`,
-`asuka/sdk/maps`) beside it, and SQLite's library for each ABI when the app
-uses `asuka/sdk/sqlite`. Add the repository and the dependency the
+AndroidX) in its POM, and the optional modules the app uses (`asuka/push`,
+`asuka/maps`) beside it, and SQLite's library for each ABI when the app
+uses `asuka/sqlite`. Add the repository and the dependency the
 command prints, then start the activity:
 
 ```kotlin
@@ -875,7 +875,7 @@ traces keep their function names and lines, so its panics read as they
 are, and there are no symbols to upload.
 
 Keep each release's symbols: a crash is symbolicated with those of the
-build it happened in. See [Device](device.md#crash-reports-asukasdkcrash)
+build it happened in. See [Device](device.md#crash-reports-asukacrash)
 for the reports themselves.
 
 ## Before you release

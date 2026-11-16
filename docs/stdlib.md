@@ -15,7 +15,7 @@ the runtime's own C, so they work the same everywhere (`asuka/json` and
 `asuka/math` are part of the compiler). The others are
 [native packages](native.md) like any other: each platform runs them
 with its own APIs (URLSession on iOS and macOS, Android's own classes,
-the browser's on the web, Go on Windows and Linux), so they behave as
+the browser's on the web, C on Windows and Linux), so they behave as
 they do for the platform's own apps.
 
 | Package | What it has |

@@ -9,7 +9,7 @@ quitting, recent documents, document-based apps, starting at login,
 updates, Now Playing and the media keys, the displays, power, progress
 on the app's icon and the system's appearance. To follow changes to
 files and folders (a folder the app shows, a document another app
-saves), see [Watching files](data.md#watching-files-asukasdkwatch), which
+saves), see [Watching files](data.md#watching-files-asukawatch), which
 phones and the web have too.
 
 Each one is a package of the standard library, an element or a function
@@ -275,7 +275,7 @@ icons, and Enter opens the first.
 
 ## Finding apps
 
-`asuka/sdk/apps` lists the apps installed, as a launcher searches them:
+`asuka/apps` lists the apps installed, as a launcher searches them:
 
 ```go
 apps.List(func(list []apps.App, err error) { installed.Set(list) })
@@ -484,7 +484,7 @@ app's own.
 
 ## Documents
 
-`asuka/sdk/document` makes an app whose windows each show a file, as a text
+`asuka/document` makes an app whose windows each show a file, as a text
 editor or a drawing app does: what NSDocument gives a Mac app, on every
 platform. Describe the kind of document, and run it:
 
@@ -600,7 +600,7 @@ quick settings on Windows (the app window's
 SystemMediaTransportControls), an MPRIS player on Linux, which GNOME's
 and KDE's controls and `playerctl` drive. It's the same package as on
 phones, where it's the lock screen's controls
-([Device and services](device.md#now-playing-and-the-media-keys-asukasdknowplaying)):
+([Device and services](device.md#now-playing-and-the-media-keys-asukanowplaying)):
 
 ```go
 music := audio.Load("music/spring.mp3")

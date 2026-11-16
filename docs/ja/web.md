@@ -117,35 +117,35 @@ Web アプリから見える環境（`ui.UseEnvironment`）は、ブラウザー
 
 Asuka のパッケージは、ホストのネイティブモジュールを呼び出します（`ui.Call`）。ブラウザーでは次のようになります。
 
-- `asuka/sdk/secure`：値は、ブラウザーが保持して外に出さない鍵（エクスポートできない WebCrypto の鍵）で暗号化（AES-GCM）され、IndexedDB に保存されます。キーチェーンではありません。アプリのオリジンで動くスクリプトは鍵そのものを読めませんが、その鍵での復号を依頼することはできます。`https`（または `localhost`）が必要です。
+- `asuka/secure`：値は、ブラウザーが保持して外に出さない鍵（エクスポートできない WebCrypto の鍵）で暗号化（AES-GCM）され、IndexedDB に保存されます。キーチェーンではありません。アプリのオリジンで動くスクリプトは鍵そのものを読めませんが、その鍵での復号を依頼することはできます。`https`（または `localhost`）が必要です。
 - `device`：`GetInfo` はユーザーエージェントから取得します（Chromium のクライアントヒントからは、システムのバージョンと Android スマートフォンの機種がわかります）。`Clipboard`、クリップボードの画像（PNG。キャッシュに保存されます）、`OnClipboardChange`（アプリ自身のコピーと、ユーザーがページにクリップボードの読み取りを許可している場合はほかのアプリのコピー）に対応します。`KeepAwake`（Screen Wake Lock。ページが再び表示されると取得し直します）、`Browse`（新しいタブ）、`PickPhotos` と `PickFiles`（ブラウザーのファイル選択ダイアログ。選んだファイルはキャッシュにコピーされます）にも対応します。
-- `ShareFiles`：ファイルを渡して共有シートを開きます（`navigator.share`）。共有シートがなければ、各ファイルをダウンロードします。`asuka/sdk/preview`：ファイルを新しいタブで開きます（画像、動画、音声、テキスト、PDF、HTML）。それ以外の種類は `ErrNoViewer` になります。
-- `asuka/sdk/print`：HTML、ファイル（PDF はブラウザーのビューアーで）、アプリ自身の Web ビューを、ブラウザーの印刷ダイアログで印刷します。結果は常に `Unknown` です（ブラウザーが結果を知らせないためです）。`PDF` は Web では使えません。ブラウザーが PDF を作れるのは、印刷ダイアログ（「PDF として保存」）を通したときだけです。
-- `asuka/sdk/compose`：`mailto:` と `sms:` のリンクを使います。添付ファイルがあれば共有シートを使います。
-- `asuka/sdk/notify` と `asuka/sdk/push`：アプリの service worker を通じて、Notification API と Web Push を使います。[通知と Web Push](#通知と-web-push)を参照してください。
-- `asuka/sdk/network`：オンラインかどうかは `navigator.onLine` から取得します。Wi-Fi、モバイル回線、Ethernet の区別は、ブラウザーが教えてくれる場合（Android の Chrome）にわかります。モバイル回線は従量制（metered）、データセーバーは制限付き（constrained）として扱います。
-- `asuka/sdk/location`：Geolocation API を使います。`PlaceName` は Web では使えません（ブラウザーにはジオコーダーがないためです）。
-- `asuka/sdk/sensors`：Generic Sensor API（Chrome）か、デバイスの motion イベントと orientation イベント（Safari はタップ時に許可を求めます）を使い、Android と同じ軸と単位で値を返します。気圧計と歩数計はありません。
-- `asuka/sdk/speech`：`speechSynthesis` と、ブラウザーの音声を使います。
-- `asuka/sdk/audio`：プレイヤーごとに audio 要素を一つ使います（ブラウザーの自動再生のルールが適用されるので、タップから再生してください）。`asuka/sdk/audio/record`：`MediaRecorder` を使います。ブラウザーが対応していれば MPEG-4 の AAC で、そうでなければ WebM の Opus で録音します。
-- `asuka/sdk/camera`：`Take` は、スマートフォンならカメラを開き、それ以外ではライブのカメラ映像とシャッターボタンのあるダイアログを開きます。`camera.View` は `<video>` に映したカメラ映像です（`Capture`、`record` に対応し、ブラウザーに `BarcodeDetector` があればコードのスキャンにも対応します）。`asuka/sdk/scan` と `asuka/sdk/vision` のコード読み取りは `BarcodeDetector` を使います。顔とテキストの認識は、ブラウザーが対応している場合にだけ使えます。
-- `asuka/sdk/imageedit`：canvas を使います（JPEG か PNG。リモートの画像には CORS が必要です）。
-- `asuka/sdk/maps`：Windows と同じく、OpenStreetMap のタイルからホストが描画する地図です。ピンとそのコールアウト、ドラッグ、ホイール、ピンチ、ダブルクリック、キーボードによる移動、OpenStreetMap が求める帰属表示に対応します。Satellite と Hybrid は道路地図を表示します（無料の航空写真がないためです）。`ShowsUser` は、ページに位置情報の許可があればユーザーの現在地を表示します（許可を求めるのは `asuka/sdk/location` で、地図が求めることはありません）。タイルは、利用ポリシーが Web ページに求めるとおりに `tile.openstreetmap.org` から取得します（画面に表示する分だけを、ブラウザーのキャッシュを使い、Referer 付きで取得します）。大量に使う場合は、`start` に `mapTiles`（`{z}`、`{x}`、`{y}` を含む別のサーバーの URL）を渡してください（[埋め込み](#埋め込み)）。
-- `asuka/sdk/crash`：ブラウザーでは、Go のランタイムがクラッシュ時の出力をファイルに書けません。そこでホストがその出力を保持しておき、プログラムが panic や致命的なエラーで終了すると、アプリのファイルにあるその実行の記録に書き込みます。次回の起動時に、それが報告されます。キャッチされなかった JavaScript のエラー（ホストのものか、アプリの `web/*.js` のもの）は、その場で `Exception` のレポートになりますが、致命的なものとしては扱われません（ページは動き続けます）。ページは `localStorage` に自分の実行が生きていることを記録するので、アプリのほかの開いているページがその実行に手を出すことはありません。
-- `asuka/sdk/biometric`：WebAuthn を通じてプラットフォームの認証器（Touch ID、Face ID、Windows Hello、Android の画面ロック）を使い、ユーザー検証を必須にします。最初の `Authenticate` で、アプリの名前を付けたサイトのパスキーが作られます。プロンプトはブラウザーのものなので、理由やキャンセルのテキストは表示されません。
-- `asuka/sdk/webauth`：ポップアップを使い、アプリと同じオリジンのページに戻ってきた時点で完了します（カスタムスキームではページを開けないためです）。
-- `asuka/sdk/screen`：`Lock` に対応します（全画面表示のとき、またはインストールしたアプリでのみ）。バーを隠すと全画面表示になります。
-- `asuka/sdk/library`：`Save` はファイルをダウンロードします。`asuka/sdk/contacts`：`Pick` は、ブラウザーに Contact Picker がある場合（Android の Chrome）に使えます。`Add` は vCard を、`asuka/sdk/calendar` の `Add` は `.ics` ファイルをダウンロードします。
-- `asuka/sdk/nfc`：Web NFC の `NDEFReader` を使います。セキュアコンテキストの Android の Chrome で、NDEF メッセージの読み書き、タグの読み取り専用化、タグのシリアル番号が使えます。生のコマンドや容量は使えず、タグでページを開くこともできません。ほかのブラウザーには Web NFC がないので `ErrNotAvailable` になります（[NFC タグ](../nfc.md)）。
-- `asuka/sdk/tracking` は、ブラウザーが Global Privacy Control か Do Not Track を送っていれば Denied を、そうでなければ Allowed を、プロンプトを出さずに返します。
-- `asuka/sdk/pay`：ブラウザーに Apple Pay がある場合（Safari）は、Payment Request API を通じて Apple Pay を使います。マーチャントの検証は、Apple に登録したドメインについてアプリのサーバーが行います（`OnValidateMerchant`）。それ以外のブラウザーでは、Google の Web API（pay.google.com から読み込む `pay.js`）を通じて Google Pay を使います。ボタンはそれぞれ純正のものです。シートはタップからしか表示できません。
-- Web では使えず、その旨のエラー（またはパッケージ独自の「not available」）を返すもの：`asuka/sdk/review`、`asuka/sdk/integrity`、`asuka/sdk/agerange`、`asuka/sdk/appleauth`、`asuka/sdk/icloud`、`asuka/sdk/periodic`、`asuka/sdk/widget`、`asuka/sdk/liveactivity`、`asuka/sdk/photos`（Denied を返します。写真の選択は `device.PickPhotos` でできます）、連絡先とカレンダーの読み取り、`asuka/sdk/transcribe` のファイル、`asuka/sdk/screen` の `PreventCapture` と `OnScreenshot`。
+- `ShareFiles`：ファイルを渡して共有シートを開きます（`navigator.share`）。共有シートがなければ、各ファイルをダウンロードします。`asuka/preview`：ファイルを新しいタブで開きます（画像、動画、音声、テキスト、PDF、HTML）。それ以外の種類は `ErrNoViewer` になります。
+- `asuka/print`：HTML、ファイル（PDF はブラウザーのビューアーで）、アプリ自身の Web ビューを、ブラウザーの印刷ダイアログで印刷します。結果は常に `Unknown` です（ブラウザーが結果を知らせないためです）。`PDF` は Web では使えません。ブラウザーが PDF を作れるのは、印刷ダイアログ（「PDF として保存」）を通したときだけです。
+- `asuka/compose`：`mailto:` と `sms:` のリンクを使います。添付ファイルがあれば共有シートを使います。
+- `asuka/notify` と `asuka/push`：アプリの service worker を通じて、Notification API と Web Push を使います。[通知と Web Push](#通知と-web-push)を参照してください。
+- `asuka/network`：オンラインかどうかは `navigator.onLine` から取得します。Wi-Fi、モバイル回線、Ethernet の区別は、ブラウザーが教えてくれる場合（Android の Chrome）にわかります。モバイル回線は従量制（metered）、データセーバーは制限付き（constrained）として扱います。
+- `asuka/location`：Geolocation API を使います。`PlaceName` は Web では使えません（ブラウザーにはジオコーダーがないためです）。
+- `asuka/sensors`：Generic Sensor API（Chrome）か、デバイスの motion イベントと orientation イベント（Safari はタップ時に許可を求めます）を使い、Android と同じ軸と単位で値を返します。気圧計と歩数計はありません。
+- `asuka/speech`：`speechSynthesis` と、ブラウザーの音声を使います。
+- `asuka/audio`：プレイヤーごとに audio 要素を一つ使います（ブラウザーの自動再生のルールが適用されるので、タップから再生してください）。`asuka/record`：`MediaRecorder` を使います。ブラウザーが対応していれば MPEG-4 の AAC で、そうでなければ WebM の Opus で録音します。
+- `asuka/camera`：`Take` は、スマートフォンならカメラを開き、それ以外ではライブのカメラ映像とシャッターボタンのあるダイアログを開きます。`camera.View` は `<video>` に映したカメラ映像です（`Capture`、`record` に対応し、ブラウザーに `BarcodeDetector` があればコードのスキャンにも対応します）。`asuka/scan` と `asuka/vision` のコード読み取りは `BarcodeDetector` を使います。顔とテキストの認識は、ブラウザーが対応している場合にだけ使えます。
+- `asuka/imageedit`：canvas を使います（JPEG か PNG。リモートの画像には CORS が必要です）。
+- `asuka/maps`：Windows と同じく、OpenStreetMap のタイルからホストが描画する地図です。ピンとそのコールアウト、ドラッグ、ホイール、ピンチ、ダブルクリック、キーボードによる移動、OpenStreetMap が求める帰属表示に対応します。Satellite と Hybrid は道路地図を表示します（無料の航空写真がないためです）。`ShowsUser` は、ページに位置情報の許可があればユーザーの現在地を表示します（許可を求めるのは `asuka/location` で、地図が求めることはありません）。タイルは、利用ポリシーが Web ページに求めるとおりに `tile.openstreetmap.org` から取得します（画面に表示する分だけを、ブラウザーのキャッシュを使い、Referer 付きで取得します）。大量に使う場合は、`start` に `mapTiles`（`{z}`、`{x}`、`{y}` を含む別のサーバーの URL）を渡してください（[埋め込み](#埋め込み)）。
+- `asuka/crash`：ブラウザーでは、Go のランタイムがクラッシュ時の出力をファイルに書けません。そこでホストがその出力を保持しておき、プログラムが panic や致命的なエラーで終了すると、アプリのファイルにあるその実行の記録に書き込みます。次回の起動時に、それが報告されます。キャッチされなかった JavaScript のエラー（ホストのものか、アプリの `web/*.js` のもの）は、その場で `Exception` のレポートになりますが、致命的なものとしては扱われません（ページは動き続けます）。ページは `localStorage` に自分の実行が生きていることを記録するので、アプリのほかの開いているページがその実行に手を出すことはありません。
+- `asuka/biometric`：WebAuthn を通じてプラットフォームの認証器（Touch ID、Face ID、Windows Hello、Android の画面ロック）を使い、ユーザー検証を必須にします。最初の `Authenticate` で、アプリの名前を付けたサイトのパスキーが作られます。プロンプトはブラウザーのものなので、理由やキャンセルのテキストは表示されません。
+- `asuka/webauth`：ポップアップを使い、アプリと同じオリジンのページに戻ってきた時点で完了します（カスタムスキームではページを開けないためです）。
+- `asuka/screen`：`Lock` に対応します（全画面表示のとき、またはインストールしたアプリでのみ）。バーを隠すと全画面表示になります。
+- `asuka/library`：`Save` はファイルをダウンロードします。`asuka/contacts`：`Pick` は、ブラウザーに Contact Picker がある場合（Android の Chrome）に使えます。`Add` は vCard を、`asuka/calendar` の `Add` は `.ics` ファイルをダウンロードします。
+- `asuka/nfc`：Web NFC の `NDEFReader` を使います。セキュアコンテキストの Android の Chrome で、NDEF メッセージの読み書き、タグの読み取り専用化、タグのシリアル番号が使えます。生のコマンドや容量は使えず、タグでページを開くこともできません。ほかのブラウザーには Web NFC がないので `ErrNotAvailable` になります（[NFC タグ](../nfc.md)）。
+- `asuka/tracking` は、ブラウザーが Global Privacy Control か Do Not Track を送っていれば Denied を、そうでなければ Allowed を、プロンプトを出さずに返します。
+- `asuka/pay`：ブラウザーに Apple Pay がある場合（Safari）は、Payment Request API を通じて Apple Pay を使います。マーチャントの検証は、Apple に登録したドメインについてアプリのサーバーが行います（`OnValidateMerchant`）。それ以外のブラウザーでは、Google の Web API（pay.google.com から読み込む `pay.js`）を通じて Google Pay を使います。ボタンはそれぞれ純正のものです。シートはタップからしか表示できません。
+- Web では使えず、その旨のエラー（またはパッケージ独自の「not available」）を返すもの：`asuka/review`、`asuka/integrity`、`asuka/agerange`、`asuka/appleauth`、`asuka/icloud`、`asuka/periodic`、`asuka/widget`、`asuka/liveactivity`、`asuka/photos`（Denied を返します。写真の選択は `device.PickPhotos` でできます）、連絡先とカレンダーの読み取り、`asuka/transcribe` のファイル、`asuka/screen` の `PreventCapture` と `OnScreenshot`。
 
 ## 通知と Web Push
 
 Web アプリにはどれも service worker があります。service worker は CLI が書き出し（`asuka dev` では `sw.js`、ビルドでは `sw.<digest>.js`）、ページが起動時にアプリのフォルダーをスコープとして登録します。fetch ハンドラーは持たないので、ページは service worker がない場合と同じように読み込まれます。service worker は、アプリのページが開いているかどうかにかかわらず、アプリの通知とプッシュ通知を表示し、そのクリックに応答します。ブラウザーが service worker を動かすのは、HTTPS か `localhost` から配信されたページだけです（`asuka dev` のアドレスは対象ですが、`--lan` のアドレスは対象外です）。
 
-### asuka/sdk/notify
+### asuka/notify
 
 - `Request` は、ブラウザーのプロンプトで許可を求めます。ブラウザーはタップやクリックのときにしか許可を求めないので、その処理の中から呼び出してください。
 - `Show` は service worker を通じて通知を表示するので、ページを閉じた後もボタンは残り、クリックも機能します（service worker のないページ、つまり service worker を登録しない埋め込みページでは、ページ自身の通知がボタンなしで表示され、そのクリックはそのページにしか届きません）。
@@ -167,7 +167,7 @@ Web アプリにはどれも service worker があります。service worker は
 
 アプリを閉じていても必ず指定の時刻に表示したい通知は、その時刻にサーバーからプッシュ通知を送ってください。
 
-### asuka/sdk/push：Web Push
+### asuka/push：Web Push
 
 Web Push には VAPID の鍵ペアが必要です。アプリのサーバーは秘密鍵でプッシュに署名し、ブラウザーは公開鍵で購読します。公開鍵は `asuka.toml` に書きます。
 
@@ -283,7 +283,7 @@ app({ asuka: "ready", url: location.href, title: document.title });
 app({ text: "Hello from the page" }); // OnMessage
 ```
 
-`asuka/sdk/js` は、独自のオリジンを持つ非表示の sandbox フレームでスクリプトを実行します。そのため、スクリプトはアプリのページやストレージにアクセスできません。
+`asuka/js` は、独自のオリジンを持つ非表示の sandbox フレームでスクリプトを実行します。そのため、スクリプトはアプリのページやストレージにアクセスできません。
 
 ## ネイティブコード
 
@@ -321,9 +321,9 @@ export function makeSegmented(events) {
 </script>
 ```
 
-一つのページで、それぞれ別の要素に入れて、複数のアプリを動かせます。`serviceWorker` を渡すと、アプリの service worker（ビルドに含まれる `sw.<digest>.js`。対象とするページがあるフォルダーから配信します）が登録されます。渡さなければ、通知はページ自身のものになり、`asuka/sdk/push` は購読できません。`asuka/sdk/push` を使うなら、`index.html` と同じく `vapidPublicKey` も渡してください。`asuka/sdk/maps` のタイルを自前のサーバーから取得するなら、`mapTiles` を渡します（`"https://tiles.example.com/{z}/{x}/{y}.png"`。デフォルトは OpenStreetMap のタイルです）。
+一つのページで、それぞれ別の要素に入れて、複数のアプリを動かせます。`serviceWorker` を渡すと、アプリの service worker（ビルドに含まれる `sw.<digest>.js`。対象とするページがあるフォルダーから配信します）が登録されます。渡さなければ、通知はページ自身のものになり、`asuka/push` は購読できません。`asuka/push` を使うなら、`index.html` と同じく `vapidPublicKey` も渡してください。`asuka/maps` のタイルを自前のサーバーから取得するなら、`mapTiles` を渡します（`"https://tiles.example.com/{z}/{x}/{y}.png"`。デフォルトは OpenStreetMap のタイルです）。
 
 ## 未対応の機能
 
 - テキストフィールドのアクセサリーバーは、オンスクリーンキーボードがある場合（タッチスクリーン）にだけ表示されます。
-- `asuka/sdk/notify` でスケジュールした通知は、アプリのページが一つも開いていない間は、指定の時刻に表示できません。ブラウザーに通知をスケジュールする手段がないためです（[前述](#スケジュールした通知)）。
+- `asuka/notify` でスケジュールした通知は、アプリのページが一つも開いていない間は、指定の時刻に表示できません。ブラウザーに通知をスケジュールする手段がないためです（[前述](#スケジュールした通知)）。

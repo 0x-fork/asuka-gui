@@ -61,20 +61,20 @@ keyAlias = "upload"
 - `android.*` は Android ビルドの設定です（[Android](#android)）。
 - `mac.profile` は Mac ビルドのプロビジョニングプロファイル、`mac.appStoreProfile` は Mac App Store 向けのプロビジョニングプロファイルです。[macOS](#macos) を参照してください。
 - `linux.*` は、Linux ビルドのデスクトップファイルと AppStream metainfo に書かれる内容です。[Linux](#linux) を参照してください。
-- `web.vapidPublicKey` はアプリサーバーの VAPID 公開鍵で、Web で `asuka/sdk/push` を使うとき（Web Push）に必要です（[Web](web.md#asukasdkpushweb-push) を参照）。
+- `web.vapidPublicKey` はアプリサーバーの VAPID 公開鍵で、Web で `asuka/push` を使うとき（Web Push）に必要です（[Web](web.md#asukapushweb-push) を参照）。
 - Windows ビルドには、上のキー以外に必要なものはありません。署名用の証明書は環境変数で渡します（[Windows](#windows)）。
 
 次のキーはスマートフォンとタブレット向けです。
 
 - `orientations`：スマートフォンでの画面の向きで、`portrait`、`landscape` を指定します（デフォルトは両方）。iPad では、Split View、Slide Over、ステージマネージャに必要なため、アプリはすべての向きに対応します。Android 16 も同様に、タブレットと折りたたみ端末ではこの設定を無視します。
 - `ios.iphoneOnly` を指定すると、iPad を対象から外します。デフォルトではアプリは iPad アプリでもあり、ユーザーがウィンドウに与えたサイズで動きます。Android では、分割画面やデスクトップのウィンドウに合わせてサイズを変えられます。レイアウトは、デバイスのサイズではなく、ウィンドウのサイズである `ui.UseEnvironment()` の `Width` と `Height` をもとに組み立ててください。
-- `shareTarget` を指定すると、ほかのアプリの共有シートにアプリが表示されます。`shareTarget = true` ならテキストとリンクを、`[shareTarget]` のテーブルに `types = ["text", "image/*"]`、`max = 10` と書けばファイルも受け取ります（[デバイスとサービス](device.md#ほかのアプリからの共有-uionshare)を参照）。受け取ったものは `ui.OnShare` に届きます。iOS ではアプリに含まれる共有拡張機能（Share Extension）になり、独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ちます。
-- `splash` は起動画面です。`[splash]` のテーブルに `image = "logo.png"`、`size = 96`、`background = "#ffffff"`、`darkBackground = "#000000"` のように指定します（[デバイスとサービス](device.md#起動画面-asukasdksplash)を参照）。
-- `widgets` はアプリのホーム画面ウィジェット、`shortcuts` は Siri、Spotlight、ランチャー向けのアクションです（[デバイスとサービス](device.md#ホーム画面ウィジェット-asukasdkwidget)を参照）。ウィジェット拡張機能は独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持ちます。そのためリリースにはこの拡張機能用のプロファイルも必要で、`ios.widgetProfile` で指定できます。
-- `android.googleServices` は、`asuka/sdk/push` に使う Firebase プロジェクトの `google-services.json` です。`android.mapsKey` は、`asuka/sdk/maps` に使う Google Maps Platform の API キーです。
+- `shareTarget` を指定すると、ほかのアプリの共有シートにアプリが表示されます。`shareTarget = true` ならテキストとリンクを、`[shareTarget]` のテーブルに `types = ["text", "image/*"]`、`max = 10` と書けばファイルも受け取ります（[デバイスとサービス](device.md#ほかのアプリからの共有onshare)を参照）。受け取ったものは `ui.OnShare` に届きます。iOS ではアプリに含まれる共有拡張機能（Share Extension）になり、独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ちます。
+- `splash` は起動画面です。`[splash]` のテーブルに `image = "logo.png"`、`size = 96`、`background = "#ffffff"`、`darkBackground = "#000000"` のように指定します（[デバイスとサービス](device.md#起動画面asukasplash)を参照）。
+- `widgets` はアプリのホーム画面ウィジェット、`shortcuts` は Siri、Spotlight、ランチャー向けのアクションです（[デバイスとサービス](device.md#ホーム画面ウィジェットasukawidget)を参照）。ウィジェット拡張機能は独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持ちます。そのためリリースにはこの拡張機能用のプロファイルも必要で、`ios.widgetProfile` で指定できます。
+- `android.googleServices` は、`asuka/push` に使う Firebase プロジェクトの `google-services.json` です。`android.mapsKey` は、`asuka/maps` に使う Google Maps Platform の API キーです。
 - `ios.usage` は保護されたリソースの利用目的の説明文（`NSCameraUsageDescription` など。Mac のものも含みます）を指定し、`ios.infoPlist` は Info.plist にキーを追加します。`ios.backgroundModes` は `UIBackgroundModes` に値を追加します（`"audio"` なら、画面がロックされていても録音・再生できます）。`android.permissions` はパーミッションを追加します。
 
-アプリがインポートしたパッケージは、自分に必要なパーミッションと利用目的の説明文をアプリに追加します。`asuka/sdk/camera` ならカメラ、`asuka/sdk/location` なら位置情報のものです。ただしデフォルトの説明文は汎用的なので、`ios.usage` に自分の言葉で書いてください。パッケージによっては、App ID のケイパビリティも必要です（`asuka/sdk/push` には Push Notifications、`asuka/sdk/appleauth` には Sign in with Apple、`asuka/sdk/integrity` には App Attest、`asuka/sdk/agerange` には Declared Age Range、`asuka/sdk/icloud` には iCloud とそのコンテナー）。developer.apple.com でケイパビリティを有効にしてから、プロファイルを作り直してください。プロファイルに足りないケイパビリティは、`asuka build --platform ios`（と `--platform mac`）が教えてくれます。
+アプリがインポートしたパッケージは、自分に必要なパーミッションと利用目的の説明文をアプリに追加します。`asuka/camera` ならカメラ、`asuka/location` なら位置情報のものです。ただしデフォルトの説明文は汎用的なので、`ios.usage` に自分の言葉で書いてください。パッケージによっては、App ID のケイパビリティも必要です（`asuka/push` には Push Notifications、`asuka/appleauth` には Sign in with Apple、`asuka/integrity` には App Attest、`asuka/agerange` には Declared Age Range、`asuka/icloud` には iCloud とそのコンテナー）。developer.apple.com でケイパビリティを有効にしてから、プロファイルを作り直してください。プロファイルに足りないケイパビリティは、`asuka build --platform ios`（と `--platform mac`）が教えてくれます。
 
 ## iOS
 
@@ -84,7 +84,7 @@ asuka build --platform ios
 
 このコマンドは、App Store 向けに署名した `.ipa` を作ります。中身は、コアとコンパイルされたアプリ（`libasuka.a`。Xcode の clang でビルドされます）とリンクした Swift のホストで、ホストのうちアプリが使う部分（インポートしたパッケージと表示する要素に応じて、WebKit や AVKit などの部分）だけを含みます。署名には、チームの配布用証明書（Xcode の「Accounts」設定から取得し、キーチェーンに入っているもの）と、アプリの ID 用のプロビジョニングプロファイルを使います。プロファイルは `ios.profile` か `--profile` で指定したもの、指定がなければインストール済みのもののうち最も合うものです。`--distribution ad-hoc` または `development` を指定すると、代わりにプロファイルに登録されたデバイス向けに署名します。`--simulator` を指定すると、シミュレーター用の署名なしの `.app` を作ります。
 
-`asuka/sdk/sqlite` を使うアプリは、`Frameworks` に SQLite を `asqlite.framework`（実機用またはシミュレーター用）として含みます。このフレームワークはアプリと一緒に署名され、アプリが初めてデータベースを開くときに読み込まれます。アプリの拡張機能（共有シート、Notification Service Extension）は、アプリのものを読み込みます。
+`asuka/sqlite` を使うアプリは、`Frameworks` に SQLite を `asqlite.framework`（実機用またはシミュレーター用）として含みます。このフレームワークはアプリと一緒に署名され、アプリが初めてデータベースを開くときに読み込まれます。アプリの拡張機能（共有シート、Notification Service Extension）は、アプリのものを読み込みます。
 
 `shareTarget` を指定すると、共有拡張機能も署名されます。使うのは、アプリと同じチームの、拡張機能自身の ID（`com.example.notes` なら `com.example.notes.share`）用のプロファイルです。`ios.shareProfile` で指定したもの、指定がなければインストール済みのもののうち最も合うものが使われます。ワイルドカードのプロファイル（`com.example.*`）なら、アプリと拡張機能の両方に使えます。developer.apple.com で拡張機能の ID を登録し、アプリのときと同じようにプロファイルを作ってください。
 
@@ -167,7 +167,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-このコマンドは、Mac 上で `dist/<Name>.app` を作ります。Apple シリコンと Intel の両方で動くユニバーサルアプリで、macOS 11 以降に対応しています。実行ファイルはデスクトップホストで、アプリをコンパイルして組み込んだコアが `Contents/Frameworks/libasuka.dylib` に入ります（どちらもユニバーサル）。さらに、アプリの設定（`Contents/Resources/asuka-app.json`）、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。独自の Swift（`macos/*.swift`）を持つアプリでは、その Swift が両方のアーキテクチャ向けにコンパイルされて `Contents/Frameworks` に入り、アプリと一緒に署名されます（[ネイティブコード](native.md)を参照）。`asuka/sdk/sqlite` を使うアプリでは、SQLite のライブラリ（両方のアーキテクチャに対応した `libasqlite.dylib`）もそこに入り、アプリと同じように署名されます。Developer ID で署名した場合、hardened runtime はアプリと同じチームが署名したライブラリしか読み込まず、公証サービスも一つひとつ確認するからです（[ライブラリ](data.md#ライブラリ)）。
+このコマンドは、Mac 上で `dist/<Name>.app` を作ります。Apple シリコンと Intel の両方で動くユニバーサルアプリで、macOS 11 以降に対応しています。実行ファイルはデスクトップホストで、アプリをコンパイルして組み込んだコアが `Contents/Frameworks/libasuka.dylib` に入ります（どちらもユニバーサル）。さらに、アプリの設定（`Contents/Resources/asuka-app.json`）、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。独自の Swift（`macos/*.swift`）を持つアプリでは、その Swift が両方のアーキテクチャ向けにコンパイルされて `Contents/Frameworks` に入り、アプリと一緒に署名されます（[ネイティブコード](native.md)を参照）。`asuka/sqlite` を使うアプリでは、SQLite のライブラリ（両方のアーキテクチャに対応した `libasqlite.dylib`）もそこに入り、アプリと同じように署名されます。Developer ID で署名した場合、hardened runtime はアプリと同じチームが署名したライブラリしか読み込まず、公証サービスも一つひとつ確認するからです（[ライブラリ](data.md#ライブラリ)）。
 
 Mac App Store 以外でほかの人に配布するには、Developer ID で署名し、Apple に公証してもらいます。これで Gatekeeper がアプリを開けるようになります。
 
@@ -178,7 +178,7 @@ asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)"
 
 `--notarize` は、署名したアプリを Apple の公証サービスに送り、結果を待ちます（たいていは数分です）。却下された場合はサービスのログを表示します。最後にチケットをアプリにステープルするので、オフラインでも開けます。CI では `--notarize env` を指定すると、キーチェーンのプロファイルの代わりに、環境変数の `ASUKA_APPLE_ID`、`ASUKA_APPLE_PASSWORD`（App 用パスワード）、`ASUKA_TEAM_ID` を使います。
 
-プッシュ通知（`asuka/sdk/push`）、Sign in with Apple（`asuka/sdk/appleauth`）、App Attest（`asuka/sdk/integrity`）、iCloud（`asuka/sdk/icloud`）には、プロビジョニングプロファイルでしか付与されないエンタイトルメントが必要です。developer.apple.com（Profiles）で、それらのケイパビリティを有効にしたアプリの ID に対して macOS の Developer ID プロファイルを作成し、ダウンロードしてください。
+プッシュ通知（`asuka/push`）、Sign in with Apple（`asuka/appleauth`）、App Attest（`asuka/integrity`）、iCloud（`asuka/icloud`）には、プロビジョニングプロファイルでしか付与されないエンタイトルメントが必要です。developer.apple.com（Profiles）で、それらのケイパビリティを有効にしたアプリの ID に対して macOS の Developer ID プロファイルを作成し、ダウンロードしてください。
 
 ```sh
 asuka build --platform mac --profile Notes.provisionprofile --notarize asuka
@@ -205,7 +205,7 @@ ASUKA_WINDOWS_CERT=cert.pfx ASUKA_WINDOWS_CERT_PASSWORD=... asuka build --platfo
 
 ビルドは SHA-256 で署名し、証明書の期限が切れたあとも署名が有効であり続けるよう、署名にタイムスタンプを付けます。タイムスタンプには、最初に応答した RFC 3161 サーバーを使います。候補は `ASUKA_WINDOWS_TIMESTAMP` に指定したサーバー（カンマ区切りのリスト）で、指定がなければ DigiCert、Sectigo、GlobalSign のサーバーです。どれも応答しなければ、ビルドはその旨を表示して失敗します。`ASUKA_WINDOWS_TIMESTAMP=none` にすると、タイムスタンプなしで署名します（その場合、署名は証明書の期限とともに無効になります）。署名には、Windows では `signtool`（Windows SDK のもの。`PATH` にあればそれを、なければインストール済みの最新のものを使います）、それ以外のシステムでは `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`）を使い、`asuka.dll` と `asqlite.dll` にも同じように署名します。`ASUKA_WINDOWS_CERT` がなければ、`.exe` は署名されません。ハードウェアトークンやクラウドサービス（Azure Trusted Signing）にある証明書では、それぞれのツールで署名します。ビルドのあと、フォルダー内の `.exe`（と `asqlite.dll`）にそのツールで署名してください。
 
-通知を表示するアプリ（`asuka/sdk/notify`）では、初回にユーザーの「スタート」メニューにショートカットが作られます。Windows でアプリがトースト通知を出すには、これが必要です。ショートカットの AppUserModelID は asuka.toml の `id`（なければアプリの名前から作ったもの）です。
+通知を表示するアプリ（`asuka/notify`）では、初回にユーザーの「スタート」メニューにショートカットが作られます。Windows でアプリがトースト通知を出すには、これが必要です。ショートカットの AppUserModelID は asuka.toml の `id`（なければアプリの名前から作ったもの）です。
 
 ## Linux
 
@@ -220,7 +220,7 @@ asuka build --platform linux --arch arm64   # amd64 または arm64
   - `bin/my-notes`：アプリ本体（デスクトップホスト）
   - `lib/my-notes/libasuka.so`：アプリをコンパイルして組み込んだコア。ホストは `bin/` からの相対位置でこれを見つけます。
   - `share/my-notes/assets` と `share/my-notes/asuka-app.json`：アセットと設定。これも `bin/` から見つけます。
-  - `lib/my-notes/libasqlite.so`：SQLite のライブラリ。`asuka/sdk/sqlite` を使うアプリに入り、これも `bin/` から見つけます（glibc 2.17 以降。SQLite 自身のシンボルを公開しないので、同じプロセスにシステムの SQLite があっても衝突しません）。
+  - `lib/my-notes/libasqlite.so`：SQLite のライブラリ。`asuka/sqlite` を使うアプリに入り、これも `bin/` から見つけます（glibc 2.17 以降。SQLite 自身のシンボルを公開しないので、同じプロセスにシステムの SQLite があっても衝突しません）。
   - `share/applications/<id>.desktop`：ランチャーが表示し、起動に使うもの
   - `share/icons/hicolor/<size>/apps/<id>.png`：16〜512 ピクセルの各サイズの `icon`
   - `share/metainfo/<id>.metainfo.xml`：AppStream metainfo。ソフトウェアセンターに表示される内容です。
@@ -269,7 +269,7 @@ asuka build --platform web
 
 このコマンドは `dist/web` に静的サイトを作ります。中身は、`index.html`、アプリを組み込んで WebAssembly にしたコア（Zig でビルドされます）、Web ホストのスクリプト、アプリの Service Worker、アセット、アイコン付きの Web アプリマニフェスト、gzip で圧縮したコピー、そして Cloudflare と Netlify 向けの `_headers` ファイルです。ファイル名にはダイジェストが付くので、`index.html` とマニフェスト以外は無期限にキャッシュできます。このフォルダーを任意の Web サーバーや CDN から、`.wasm` を `application/wasm` として、HTTPS で配信してください（Service Worker、Web Push、セキュアストアには HTTPS が必要です）。中身の詳細と、ブラウザーでの動作の違いについては [Web](web.md) を参照してください。
 
-あわせて `version.json` も書き出します。ビルドしたバージョンとそのリリースノート（`CHANGELOG.md` の該当セクション）が入っていて、ページ内の `asuka/sdk/update` がこれを読みます。サイトより古いページは、再読み込みを提案します（[自動アップデート](#自動アップデート)）。
+あわせて `version.json` も書き出します。ビルドしたバージョンとそのリリースノート（`CHANGELOG.md` の該当セクション）が入っていて、ページ内の `asuka/update` がこれを読みます。サイトより古いページは、再読み込みを提案します（[自動アップデート](#自動アップデート)）。
 
 ## 自動アップデート
 
@@ -410,9 +410,9 @@ present(AsukaViewController(), animated: true)
 // push したり、タブにしたり、ウィンドウのルートにしたりもできます
 ```
 
-`asuka/sdk/sqlite` を使うアプリでは、その隣に SQLite のライブラリ `dist/asqlite.xcframework` もできます。これも埋め込んでください（Embed & Sign）。アプリは、これをあなたのアプリの `Frameworks` から読み込みます。このライブラリには独自のプライバシーマニフェストが含まれています。
+`asuka/sqlite` を使うアプリでは、その隣に SQLite のライブラリ `dist/asqlite.xcframework` もできます。これも埋め込んでください（Embed & Sign）。アプリは、これをあなたのアプリの `Frameworks` から読み込みます。このライブラリには独自のプライバシーマニフェストが含まれています。
 
-**Android。** `asuka build --platform android --aar` は `dist/maven` に Maven リポジトリを作ります。中身は、ABI ごとに、アプリをコンパイルして組み込んだコアを含むホストライブラリ、アセット、宣言済みの `AsukaActivity` で、依存関係（Material、AndroidX）は POM に記載されています。その隣には、アプリが使うオプションのモジュール（`asuka/sdk/push`、`asuka/sdk/maps`）も置かれ、`asuka/sdk/sqlite` を使うアプリでは ABI ごとの SQLite のライブラリも置かれます。リポジトリと、コマンドが表示する依存関係をプロジェクトに追加し、Activity を起動します。
+**Android。** `asuka build --platform android --aar` は `dist/maven` に Maven リポジトリを作ります。中身は、ABI ごとに、アプリをコンパイルして組み込んだコアを含むホストライブラリ、アセット、宣言済みの `AsukaActivity` で、依存関係（Material、AndroidX）は POM に記載されています。その隣には、アプリが使うオプションのモジュール（`asuka/push`、`asuka/maps`）も置かれ、`asuka/sqlite` を使うアプリでは ABI ごとの SQLite のライブラリも置かれます。リポジトリと、コマンドが表示する依存関係をプロジェクトに追加し、Activity を起動します。
 
 ```kotlin
 // settings.gradle.kts
@@ -446,7 +446,7 @@ sentry-cli upload-proguard --org ORG --project PROJECT dist/Notes-mapping.txt
 
 **Mac、Windows、Linux、Web。** ホストとコアは、シンボルテーブルとデバッグ情報なしでビルドされます。それでもホストの Go のスタックトレースには関数名と行番号が残るので、ホストの panic はそのまま読めます。アップロードするシンボルはありません。
 
-リリースごとのシンボルは保管しておいてください。クラッシュは、それが起きたビルドのシンボルでシンボル化されます。レポートそのものについては[デバイスとサービス](device.md#クラッシュレポート-asukasdkcrash)を参照してください。
+リリースごとのシンボルは保管しておいてください。クラッシュは、それが起きたビルドのシンボルでシンボル化されます。レポートそのものについては[デバイスとサービス](device.md#クラッシュレポートasukacrash)を参照してください。
 
 ## リリース前の確認
 

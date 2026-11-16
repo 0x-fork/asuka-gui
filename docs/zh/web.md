@@ -117,35 +117,35 @@ Web 应用看到的环境（`ui.UseEnvironment`）来自浏览器：
 
 Asuka 的包会调用宿主的原生模块（`ui.Call`）。在浏览器中：
 
-- `asuka/sdk/secure`：值用 AES-GCM 加密后存放在 IndexedDB 中，密钥由浏览器保管且无法导出（一个不可提取的 WebCrypto 密钥）。它并不是钥匙串：在应用源中运行的脚本读不到密钥，但可以请求用它解密。它需要 `https`（或 `localhost`）。
+- `asuka/secure`：值用 AES-GCM 加密后存放在 IndexedDB 中，密钥由浏览器保管且无法导出（一个不可提取的 WebCrypto 密钥）。它并不是钥匙串：在应用源中运行的脚本读不到密钥，但可以请求用它解密。它需要 `https`（或 `localhost`）。
 - `device`：`GetInfo` 的信息来自 user agent（Chromium 的 client hints 能提供系统版本和 Android 手机型号）；`Clipboard`、剪贴板里的图片（PNG，保存到缓存目录）以及 `OnClipboardChange`（应用自己的复制操作都能收到；其他应用的复制，只有在用户允许页面读取剪贴板时才能收到）；`KeepAwake`（使用 Screen Wake Lock，页面重新显示时会再次获取）；`Browse`（打开新标签页）；`PickPhotos` 和 `PickFiles`（浏览器的文件选择器；选中的文件复制到缓存目录）。
-- `ShareFiles`：通过分享面板分享文件（`navigator.share`），不支持时逐个下载。`asuka/sdk/preview`：在新标签页中打开文件（图片、视频、音频、文本、PDF、HTML）；其他类型返回 `ErrNoViewer`。
-- `asuka/sdk/print`：可以打印 HTML、文件（PDF 在浏览器的查看器中打开）和应用自己的 Web 视图，使用浏览器的打印对话框；结果总是 `Unknown`（浏览器不会告知结果）。Web 上没有 `PDF`：浏览器只能通过打印对话框生成 PDF（另存为 PDF）。
-- `asuka/sdk/compose`：使用 `mailto:` 和 `sms:` 链接；带附件时使用分享面板。
-- `asuka/sdk/notify` 和 `asuka/sdk/push`：通过应用的 service worker 使用 Notification API 和 Web Push，详见 [通知与 Web Push](#通知与-web-push)。
-- `asuka/sdk/network`：是否在线取自 `navigator.onLine`；在浏览器提供信息的地方（Android 上的 Chrome）能区分 Wi-Fi、蜂窝网络和以太网，蜂窝网络视为按流量计费，开启省流量模式时视为受限。
-- `asuka/sdk/location`：使用 Geolocation API；Web 上没有 `PlaceName`（浏览器没有地理编码器）。
-- `asuka/sdk/sensors`：使用 Generic Sensor API（Chrome）或设备运动和方向事件（Safari 需要在点按时请求权限），坐标轴和单位与 Android 一致；没有气压计和计步器。
-- `asuka/sdk/speech`：使用 `speechSynthesis` 和浏览器自带的语音。
-- `asuka/sdk/audio`：每个播放器对应一个 audio 元素（受浏览器自动播放规则限制：要在点按时开始播放）。`asuka/sdk/audio/record`：使用 `MediaRecorder`，浏览器支持时录制为 MPEG-4 封装的 AAC，否则录制为 WebM 封装的 Opus。
-- `asuka/sdk/camera`：`Take` 会打开手机的相机，或者弹出一个带实时画面和快门按钮的对话框；`camera.View` 是放在 `<video>` 里的相机画面（支持 `Capture`、`record`，浏览器有 `BarcodeDetector` 时还能扫码）。`asuka/sdk/scan` 和 `asuka/sdk/vision` 的扫码功能使用 `BarcodeDetector`，人脸和文字识别只在浏览器支持时可用。
-- `asuka/sdk/imageedit`：使用 canvas（JPEG 或 PNG；远程图片需要支持 CORS）。
-- `asuka/sdk/maps`：和 Windows 上一样，由宿主用 OpenStreetMap 的瓦片绘制地图：支持图钉及其标注气泡，可以拖动、滚轮、捏合、双击以及用键盘移动地图，并按 OpenStreetMap 的要求显示署名。Satellite 和 Hybrid 只显示街道图（没有免费的卫星影像）；`ShowsUser` 在页面获得定位权限后显示用户位置（权限由 `asuka/sdk/location` 申请，地图本身从不申请）。瓦片按 `tile.openstreetmap.org` 对网页的使用政策获取（只加载屏幕上可见的部分，使用浏览器缓存，带上 Referer）；如果用量很大，可以给 `start` 传入 `mapTiles`（另一个瓦片服务器的 URL，包含 `{z}`、`{x}` 和 `{y}`），见 [嵌入](#嵌入)。
-- `asuka/sdk/crash`：在浏览器中，Go 运行时无法把崩溃输出写进文件，所以宿主会保存它打印的内容，等程序因 panic 或致命错误结束时，把这些内容写入本次运行在应用文件中的记录，下次启动时再上报。未捕获的 JavaScript 错误（宿主的，或者你的 `web/*.js` 里的）会立即作为 `Exception` 报告上报，但不算致命错误（页面会继续运行）。每个页面会在 `localStorage` 里标记自己的运行仍然存活，这样应用的其他已打开页面就不会去动它。
-- `asuka/sdk/biometric`：通过 WebAuthn 使用平台认证器（Touch ID、Face ID、Windows Hello、Android 的屏幕锁定），并要求用户验证：第一次调用 `Authenticate` 时会为网站创建一个通行密钥（passkey），以应用名命名。提示框由浏览器提供，所以原因说明和取消按钮的文字不会显示。
-- `asuka/sdk/webauth`：使用弹出窗口，回到应用同源的某个页面时即视为完成（自定义 scheme 无法打开页面）。
-- `asuka/sdk/screen`：`Lock`（仅在全屏或已安装的应用中有效）；隐藏系统栏就是进入全屏。
-- `asuka/sdk/library`：`Save` 会下载文件。`asuka/sdk/contacts`：浏览器支持 Contact Picker 时（Android 上的 Chrome）可以用 `Pick`；`Add` 会下载一个 vCard 文件，`asuka/sdk/calendar` 的 `Add` 则下载一个 `.ics` 文件。
-- `asuka/sdk/nfc`：在 Chrome for Android 的安全上下文中使用 Web NFC 的 `NDEFReader`：读写 NDEF 消息、把标签设为只读、读取标签的序列号；不支持原始命令，也查不到容量，标签也不能打开页面。其他浏览器没有 Web NFC，返回 `ErrNotAvailable`（见 [NFC 标签](nfc.md)）。
-- `asuka/sdk/tracking`：浏览器发送了 Global Privacy Control 或 Do Not Track 时返回 Denied，否则返回 Allowed，不会弹出提示。
-- `asuka/sdk/pay`：浏览器支持 Apple Pay 时（Safari）通过 Payment Request API 使用它，商户验证由应用的服务器完成（`OnValidateMerchant`），网站的域名需要在 Apple 注册；其他浏览器通过 Google 的 Web API（从 pay.google.com 加载的 `pay.js`）使用 Google Pay；两者都使用各自的官方按钮。支付面板只在点击时显示。
-- 以下功能在 Web 上不可用，调用时会返回说明原因的错误（或包自己的“不可用”结果）：`asuka/sdk/review`、`asuka/sdk/integrity`、`asuka/sdk/agerange`、`asuka/sdk/appleauth`、`asuka/sdk/icloud`、`asuka/sdk/periodic`、`asuka/sdk/widget`、`asuka/sdk/liveactivity`、`asuka/sdk/photos`（返回 Denied，可以用 `device.PickPhotos` 选择照片）、读取通讯录和日历、`asuka/sdk/transcribe` 的文件转写，以及 `asuka/sdk/screen` 的 `PreventCapture` 和 `OnScreenshot`。
+- `ShareFiles`：通过分享面板分享文件（`navigator.share`），不支持时逐个下载。`asuka/preview`：在新标签页中打开文件（图片、视频、音频、文本、PDF、HTML）；其他类型返回 `ErrNoViewer`。
+- `asuka/print`：可以打印 HTML、文件（PDF 在浏览器的查看器中打开）和应用自己的 Web 视图，使用浏览器的打印对话框；结果总是 `Unknown`（浏览器不会告知结果）。Web 上没有 `PDF`：浏览器只能通过打印对话框生成 PDF（另存为 PDF）。
+- `asuka/compose`：使用 `mailto:` 和 `sms:` 链接；带附件时使用分享面板。
+- `asuka/notify` 和 `asuka/push`：通过应用的 service worker 使用 Notification API 和 Web Push，详见 [通知与 Web Push](#通知与-web-push)。
+- `asuka/network`：是否在线取自 `navigator.onLine`；在浏览器提供信息的地方（Android 上的 Chrome）能区分 Wi-Fi、蜂窝网络和以太网，蜂窝网络视为按流量计费，开启省流量模式时视为受限。
+- `asuka/location`：使用 Geolocation API；Web 上没有 `PlaceName`（浏览器没有地理编码器）。
+- `asuka/sensors`：使用 Generic Sensor API（Chrome）或设备运动和方向事件（Safari 需要在点按时请求权限），坐标轴和单位与 Android 一致；没有气压计和计步器。
+- `asuka/speech`：使用 `speechSynthesis` 和浏览器自带的语音。
+- `asuka/audio`：每个播放器对应一个 audio 元素（受浏览器自动播放规则限制：要在点按时开始播放）。`asuka/record`：使用 `MediaRecorder`，浏览器支持时录制为 MPEG-4 封装的 AAC，否则录制为 WebM 封装的 Opus。
+- `asuka/camera`：`Take` 会打开手机的相机，或者弹出一个带实时画面和快门按钮的对话框；`camera.View` 是放在 `<video>` 里的相机画面（支持 `Capture`、`record`，浏览器有 `BarcodeDetector` 时还能扫码）。`asuka/scan` 和 `asuka/vision` 的扫码功能使用 `BarcodeDetector`，人脸和文字识别只在浏览器支持时可用。
+- `asuka/imageedit`：使用 canvas（JPEG 或 PNG；远程图片需要支持 CORS）。
+- `asuka/maps`：和 Windows 上一样，由宿主用 OpenStreetMap 的瓦片绘制地图：支持图钉及其标注气泡，可以拖动、滚轮、捏合、双击以及用键盘移动地图，并按 OpenStreetMap 的要求显示署名。Satellite 和 Hybrid 只显示街道图（没有免费的卫星影像）；`ShowsUser` 在页面获得定位权限后显示用户位置（权限由 `asuka/location` 申请，地图本身从不申请）。瓦片按 `tile.openstreetmap.org` 对网页的使用政策获取（只加载屏幕上可见的部分，使用浏览器缓存，带上 Referer）；如果用量很大，可以给 `start` 传入 `mapTiles`（另一个瓦片服务器的 URL，包含 `{z}`、`{x}` 和 `{y}`），见 [嵌入](#嵌入)。
+- `asuka/crash`：在浏览器中，Go 运行时无法把崩溃输出写进文件，所以宿主会保存它打印的内容，等程序因 panic 或致命错误结束时，把这些内容写入本次运行在应用文件中的记录，下次启动时再上报。未捕获的 JavaScript 错误（宿主的，或者你的 `web/*.js` 里的）会立即作为 `Exception` 报告上报，但不算致命错误（页面会继续运行）。每个页面会在 `localStorage` 里标记自己的运行仍然存活，这样应用的其他已打开页面就不会去动它。
+- `asuka/biometric`：通过 WebAuthn 使用平台认证器（Touch ID、Face ID、Windows Hello、Android 的屏幕锁定），并要求用户验证：第一次调用 `Authenticate` 时会为网站创建一个通行密钥（passkey），以应用名命名。提示框由浏览器提供，所以原因说明和取消按钮的文字不会显示。
+- `asuka/webauth`：使用弹出窗口，回到应用同源的某个页面时即视为完成（自定义 scheme 无法打开页面）。
+- `asuka/screen`：`Lock`（仅在全屏或已安装的应用中有效）；隐藏系统栏就是进入全屏。
+- `asuka/library`：`Save` 会下载文件。`asuka/contacts`：浏览器支持 Contact Picker 时（Android 上的 Chrome）可以用 `Pick`；`Add` 会下载一个 vCard 文件，`asuka/calendar` 的 `Add` 则下载一个 `.ics` 文件。
+- `asuka/nfc`：在 Chrome for Android 的安全上下文中使用 Web NFC 的 `NDEFReader`：读写 NDEF 消息、把标签设为只读、读取标签的序列号；不支持原始命令，也查不到容量，标签也不能打开页面。其他浏览器没有 Web NFC，返回 `ErrNotAvailable`（见 [NFC 标签](nfc.md)）。
+- `asuka/tracking`：浏览器发送了 Global Privacy Control 或 Do Not Track 时返回 Denied，否则返回 Allowed，不会弹出提示。
+- `asuka/pay`：浏览器支持 Apple Pay 时（Safari）通过 Payment Request API 使用它，商户验证由应用的服务器完成（`OnValidateMerchant`），网站的域名需要在 Apple 注册；其他浏览器通过 Google 的 Web API（从 pay.google.com 加载的 `pay.js`）使用 Google Pay；两者都使用各自的官方按钮。支付面板只在点击时显示。
+- 以下功能在 Web 上不可用，调用时会返回说明原因的错误（或包自己的“不可用”结果）：`asuka/review`、`asuka/integrity`、`asuka/agerange`、`asuka/appleauth`、`asuka/icloud`、`asuka/periodic`、`asuka/widget`、`asuka/liveactivity`、`asuka/photos`（返回 Denied，可以用 `device.PickPhotos` 选择照片）、读取通讯录和日历、`asuka/transcribe` 的文件转写，以及 `asuka/screen` 的 `PreventCapture` 和 `OnScreenshot`。
 
 ## 通知与 Web Push
 
 每个 Web 应用都有一个 service worker，由 CLI 生成（`asuka dev` 下是 `sw.js`，构建产物中是 `sw.<digest>.js`），页面启动时注册，作用域是应用所在的文件夹。它没有 fetch 处理函数，所以页面的加载方式和没有它时完全一样；它负责显示应用的通知和推送，并响应对它们的点击，无论应用是否有页面处于打开状态。浏览器只会为通过 HTTPS 或 `localhost` 提供的页面运行 service worker（`asuka dev` 的地址可以，`--lan` 的地址不行）。
 
-### asuka/sdk/notify
+### asuka/notify
 
 - `Request` 会弹出浏览器的权限提示；浏览器只在用户点按或点击时才允许请求，所以要在这类事件里调用它。
 - `Show` 通过 worker 显示通知，因此页面关闭后通知仍保留按钮，点击也依然有效。（没有 worker 的页面，比如没有注册它的嵌入页面，会显示页面自己的通知，没有按钮，点击也只会传给那个页面。）
@@ -167,7 +167,7 @@ Asuka 的包会调用宿主的原生模块（`ui.Call`）。在浏览器中：
 
 如果通知必须在应用关闭时也准时显示，请在那个时间从你的服务器发送推送。
 
-### asuka/sdk/push：Web Push
+### asuka/push：Web Push
 
 Web Push 需要一对 VAPID 密钥：应用的服务器用私钥为推送签名，浏览器用公钥订阅。公钥写在 `asuka.toml` 里：
 
@@ -283,7 +283,7 @@ app({ asuka: "ready", url: location.href, title: document.title });
 app({ text: "Hello from the page" }); // OnMessage
 ```
 
-`asuka/sdk/js` 在一个隐藏的沙箱 frame 中运行脚本，这个 frame 有自己独立的源，因此脚本访问不到应用的页面和存储。
+`asuka/js` 在一个隐藏的沙箱 frame 中运行脚本，这个 frame 有自己独立的源，因此脚本访问不到应用的页面和存储。
 
 ## 原生代码
 
@@ -321,9 +321,9 @@ export function makeSegmented(events) {
 </script>
 ```
 
-一个页面上可以运行多个应用，各自放在自己的元素里。`serviceWorker` 用来注册应用的 worker（即构建产物中的 `sw.<digest>.js`，要从它所服务页面所在的文件夹提供）：不传的话，通知就是页面自己的通知，`asuka/sdk/push` 也无法订阅。使用 `asuka/sdk/push` 时还要像 `index.html` 那样传入 `vapidPublicKey`；如果想让 `asuka/sdk/maps` 从你自己的服务器获取瓦片，就传入 `mapTiles`（如 `"https://tiles.example.com/{z}/{x}/{y}.png"`；默认使用 OpenStreetMap 的瓦片）。
+一个页面上可以运行多个应用，各自放在自己的元素里。`serviceWorker` 用来注册应用的 worker（即构建产物中的 `sw.<digest>.js`，要从它所服务页面所在的文件夹提供）：不传的话，通知就是页面自己的通知，`asuka/push` 也无法订阅。使用 `asuka/push` 时还要像 `index.html` 那样传入 `vapidPublicKey`；如果想让 `asuka/maps` 从你自己的服务器获取瓦片，就传入 `mapTiles`（如 `"https://tiles.example.com/{z}/{x}/{y}.png"`；默认使用 OpenStreetMap 的瓦片）。
 
 ## 尚未支持的功能
 
 - 文本框的辅助工具栏只在有屏幕键盘的设备（触摸屏）上显示。
-- 用 `asuka/sdk/notify` 安排的通知，在应用没有任何页面打开时无法按时显示：浏览器没有提供定时显示通知的方法（见 [上文](#定时通知)）。
+- 用 `asuka/notify` 安排的通知，在应用没有任何页面打开时无法按时显示：浏览器没有提供定时显示通知的方法（见 [上文](#定时通知)）。

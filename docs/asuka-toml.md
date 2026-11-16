@@ -83,7 +83,7 @@ These apply on every platform the key means something on.
 | `splash` | table | none | The launch screen, on iOS and Android. See [splash](#splash). |
 | `widgets` | array of tables | none | Home screen widgets, on iOS and Android. See [widgets](#widgets). |
 | `shortcuts` | array of tables | none | Actions for Siri, Spotlight and the launcher, on iOS and Android. See [shortcuts](#shortcuts). |
-| `nfc` | table | none | What `asuka/sdk/nfc`'s tags need: iOS's AIDs and FeliCa system codes, the tags that open the app on Android. See [nfc](#nfc). |
+| `nfc` | table | none | What `asuka/nfc`'s tags need: iOS's AIDs and FeliCa system codes, the tags that open the app on Android. See [nfc](#nfc). |
 | `background` | boolean | `false` | On the desktop, an app that lives in the tray: no window at launch, kept running with none, and on the Mac no Dock icon from launch (`LSUIElement`). See [Apps in the background](desktop.md#apps-in-the-background). |
 | `keepRunning` | boolean | `false` | On the desktop, the app keeps running when its last window closes: the main window hides, until the app shows it again. A `background` app keeps running anyway. See [Apps in the background](desktop.md#apps-in-the-background). |
 | `singleInstance` | boolean | `true` | On Windows and Linux, a second launch hands its files to the running app (its `on openFiles(paths)`) and quits. `false` runs the app as often as it's started. The Mac runs an app once either way. See [One instance](desktop.md#one-instance). |
@@ -91,12 +91,12 @@ These apply on every platform the key means something on.
 | `updates` | table | none | A desktop app's signed updates. See [updates](#updates). |
 | `ios` | table | | The iOS build's, and some of the Mac's. See [ios](#ios). |
 | `mac` | table | | The Mac build's profiles. See [mac](#mac). |
-| `icloud` | table | `iCloud.<id>` | The app's iCloud containers and its iCloud Drive folder, for `asuka/sdk/icloud`. See [icloud](#icloud). |
-| `applePay` | table | none | `merchantIds = ["merchant.com.example"]`: the merchant IDs Apple Pay pays with (`asuka/sdk/pay`), in the in-app-payments entitlement of an iOS or Mac app that imports the package. See [Wallet payments](device.md#wallet-payments-asukapay). |
+| `icloud` | table | `iCloud.<id>` | The app's iCloud containers and its iCloud Drive folder, for `asuka/icloud`. See [icloud](#icloud). |
+| `applePay` | table | none | `merchantIds = ["merchant.com.example"]`: the merchant IDs Apple Pay pays with (`asuka/pay`), in the in-app-payments entitlement of an iOS or Mac app that imports the package. See [Wallet payments](device.md#wallet-payments-asukapay). |
 | `android` | table | | The Android build's. See [android](#android). |
 | `linux` | table | | What a Linux build says of the app. See [linux](#linux). |
 | `web` | table | | The web build's. See [web](#web). |
-| `bluetooth` | table | | What an app of `asuka/sdk/bluetooth` asks beyond the package's needs: the background, the location from scans. See [bluetooth](#bluetooth). |
+| `bluetooth` | table | | What an app of `asuka/bluetooth` asks beyond the package's needs: the background, the location from scans. See [bluetooth](#bluetooth). |
 
 A Windows build needs nothing beyond these: its signing certificate is
 given in the environment (see [Shipping](shipping.md#windows)).
@@ -234,7 +234,7 @@ See [Shortcuts](device.md#shortcuts-siri-spotlight-the-launcher).
 
 ## nfc
 
-What `asuka/sdk/nfc` needs of the platforms beyond its permissions, for
+What `asuka/nfc` needs of the platforms beyond its permissions, for
 an app that imports it (an app that doesn't gets none of it):
 
 ```toml
@@ -261,7 +261,7 @@ See [NFC tags](nfc.md#asukatoml-and-permissions).
 
 ## icloud
 
-The iCloud containers of an app that calls `asuka/sdk/icloud`'s
+The iCloud containers of an app that calls `asuka/icloud`'s
 documents, and how they show in iCloud Drive (an app that doesn't gets
 none of it):
 
@@ -388,7 +388,7 @@ The Android build's.
 | `keyAlias` | string | none | The upload key's alias in the keystore. |
 | `dynamicColor` | boolean | `false` | Takes the colors from the user's wallpaper (Android 12 and later), as Material apps do; `accent` is the seed elsewhere. |
 | `permissions` | strings | the packages' own | Permissions added to the manifest: `"android.permission.CAMERA"`. `"<name>:28"` asks for one up to Android 9 (API 28) only. The packages the app imports add those they need. |
-| `googleServices` | path | none | The Firebase project's `google-services.json`, for `asuka/sdk/push`. |
+| `googleServices` | path | none | The Firebase project's `google-services.json`, for `asuka/push`. |
 | `mapsKey` | string | none | A Google Maps Platform API key (Maps SDK for Android), for `asuka/maps`. |
 | `serviceAccount` | path | none | The Google Cloud service account's JSON key `asuka publish` uploads to Google Play with. Keep it out of the repository. |
 
@@ -419,14 +419,14 @@ The web build's.
 
 | Key | Type | Default | What it is |
 |---|---|---|---|
-| `vapidPublicKey` | string | none | The app server's VAPID public key (base64url), with which the browser subscribes to Web Push for `asuka/sdk/push`. |
+| `vapidPublicKey` | string | none | The app server's VAPID public key (base64url), with which the browser subscribes to Web Push for `asuka/push`. |
 | `base` | string | `"/"` | The path the site is served at (`"/app/"` for `https://example.com/app/`): the page's `<base href>`, under which a router's hrefs are its addresses. `asuka build --base` overrides it. See [Addresses and history](web.md#addresses-and-history). |
 
-See [Web Push](web.md#asukasdkpush-web-push).
+See [Web Push](web.md#asukapush-web-push).
 
 ## bluetooth
 
-What an app that imports `asuka/sdk/bluetooth` asks for beyond what the
+What an app that imports `asuka/bluetooth` asks for beyond what the
 package gives it (its permissions and purpose string). It does nothing
 for an app that doesn't import the package.
 

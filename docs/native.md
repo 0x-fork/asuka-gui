@@ -490,7 +490,7 @@ computer that builds), once per change of that Go.
   `Info.plist` and the manifests included; the app's Asuka reloads as
   you save, without a rebuild. An app with no native packages runs in the player, which
   holds only Asuka's own native code. See
-  [Development](development.md#on-a-phone-the-player-and-built-apps).
+  [Development](development.md#how-it-works-the-player).
 - **macOS**: the packages' Swift builds into the app's Swift library,
   again only when it changes, and the app runs again with its state
   kept.
