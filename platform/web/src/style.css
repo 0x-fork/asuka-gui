@@ -593,25 +593,3 @@ html:has(> body > .asuka-page), body:has(> .asuka-page) { margin: 0; height: 100
 .asuka-richfield a { color: var(--asuka-accent); text-decoration: none; }
 .asuka-richfield.asuka-empty::before { content: attr(data-placeholder); position: absolute; color: var(--asuka-tertiary-label); pointer-events: none; }
 .asuka-richfield[contenteditable="false"] { opacity: 0.5; cursor: default; }
-
-/* maps.View (modules/maps.js): OpenStreetMap's tiles, the pins, a callout, the user's location, the attribution. */
-.asuka-map { position: relative; overflow: hidden; background: #e8e4de; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; outline: none; contain: strict; }
-.asuka-map:focus-visible { box-shadow: inset 0 0 0 2px var(--asuka-accent); }
-.asuka-map.asuka-map-static { cursor: default; touch-action: auto; }
-.asuka-map-tiles, .asuka-map-pins { position: absolute; inset: 0; pointer-events: none; }
-.asuka-map-muted .asuka-map-tiles { filter: saturate(0.35) brightness(1.04); }
-.asuka-map-tile { position: absolute; overflow: hidden; }
-.asuka-map-img, .asuka-map-fallback { position: absolute; display: block; max-width: none; -webkit-user-drag: none; }
-.asuka-map-img { inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.15s; }
-.asuka-map-img.asuka-map-loaded { opacity: 1; }
-.asuka-map-pin { position: absolute; left: 0; top: 0; width: 26px; height: 36px; padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.3)); }
-.asuka-map-pin svg { display: block; }
-.asuka-map-pin:focus-visible { outline: 2px solid var(--asuka-accent); outline-offset: 2px; border-radius: 13px 13px 4px 4px; }
-.asuka-map-callout { position: absolute; left: 0; top: 0; max-width: 240px; padding: 8px 12px; border-radius: 10px; background: var(--asuka-card); color: var(--asuka-label); box-shadow: var(--asuka-shadow); font: 13px/1.35 system-ui, sans-serif; pointer-events: auto; cursor: default; white-space: normal; }
-.asuka-map-callout-title { font-weight: 600; }
-.asuka-map-callout-subtitle { color: var(--asuka-secondary-label); }
-.asuka-map-user { position: absolute; left: 0; top: 0; width: 0; height: 0; }
-.asuka-map-dot { position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%; background: var(--asuka-blue); border: 3px solid #fff; box-sizing: border-box; box-shadow: 0 1px 3px rgb(0 0 0 / 0.35); }
-.asuka-map-accuracy { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; background: rgb(0 122 255 / 0.14); border: 1px solid rgb(0 122 255 / 0.35); box-sizing: border-box; }
-.asuka-map-attribution { position: absolute; right: 0; bottom: 0; padding: 1px 6px; border-top-left-radius: 4px; background: rgb(255 255 255 / 0.8); color: #333; font: 11px/1.45 system-ui, sans-serif; text-decoration: none; cursor: pointer; }
-.asuka-map-attribution:hover { text-decoration: underline; }

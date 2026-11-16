@@ -9,8 +9,7 @@
 // milliseconds; a []byte is a Uint8Array; a map is an object.
 
 import * as appFS from "./fs.js";
-import { pickFiles, download } from "./modules/system.js";
-import { typeOf } from "./modules/system-clipboard.js";
+import { pickFiles, download, typeOf } from "./files.js";
 import { css } from "./color.js";
 
 /** fs is the app's files (the page's own file system): readFile, writeFile, blobURL... for a package's JavaScript. */
@@ -321,7 +320,7 @@ export function setHostModules(m) { hostModules = m; }
 
 /** callModule runs a method of one of the host's modules: a promise of its answer's bytes. */
 export async function callModule(module, method, args) {
-  const m = hostModules?.registered.get(module)?.[method] || hostModules?.builtin(module)?.[method];
+  const m = await hostModules?.method(module, method);
   if (!m) throw new UnsupportedError(`${module}.${method} isn't on the web`);
   const v = await m(args, { root: hostModules.h.root ?? null, h: hostModules.h });
   if (v == null) return new Uint8Array(0);
