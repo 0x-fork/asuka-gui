@@ -154,7 +154,8 @@ func Mounted() {
 // KeepRunning.
 var Background string
 
-// StagedRelaunch, set by asuka/sdk/update while a Mac app's update waits for
+// StagedRelaunch, set by the Go updater (sdk/update, removed: asuka/update
+// and the hosts' update module do it now) while a Mac app's update waits for
 // the app to quit (its helper puts the new bundle in place), relaunches
 // the app with args once that's done, reporting whether it will:
 // app.Relaunch asks it first. Main thread.
@@ -178,4 +179,3 @@ func InBackground() bool { return Background == "1" || Background == "true" }
 // KeepsRunning reports whether the app keeps running with no window
 // (KeepRunning, or InBackground).
 func KeepsRunning() bool { return KeepRunning || InBackground() }
-

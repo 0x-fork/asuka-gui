@@ -1,10 +1,6 @@
 package update
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"strings"
 	"testing"
 )
 
@@ -36,17 +32,6 @@ func TestChannel(t *testing.T) {
 			t.Errorf("Channel(%q) = %q, want %q", v, got, want)
 		}
 	}
-	for _, c := range []struct {
-		version, channel string
-		want             bool
-	}{
-		{"1.2.0", "", true}, {"1.2.0", "beta", true}, {"1.3.0-beta.1", "", false},
-		{"1.3.0-beta.1", "beta", true}, {"1.3.0-rc.1", "beta", false}, {"1.3.0-rc.1", "*", true},
-	} {
-		if got := OnChannel(c.version, c.channel); got != c.want {
-			t.Errorf("OnChannel(%q, %q) = %t", c.version, c.channel, got)
-		}
-	}
 	if got := ManifestName("darwin-universal", ""); got != "update-darwin-universal.json" {
 		t.Error(got)
 	}
@@ -68,26 +53,3 @@ func TestValidVersion(t *testing.T) {
 
 // An app on a channel takes releases and that channel's prereleases, and
 // reads a prerelease's channel manifest.
-func TestResolveChannelFeed(t *testing.T) {
-	rel := func(tag string, pre bool) string {
-		return fmt.Sprintf(`{"tag_name": %q, "draft": false, "prerelease": %t}`, tag, pre)
-	}
-	releases := "[" + strings.Join([]string{rel("v1.4.0-rc.1", true), rel("v1.4.0-beta.3", true), rel("v1.3.1", false)}, ",") + "]"
-	get := func(_ context.Context, u string) (io.ReadCloser, error) {
-		if strings.HasPrefix(u, "https://api.github.com/repos/me/app/releases?") {
-			return io.NopCloser(strings.NewReader(releases)), nil
-		}
-		return nil, fmt.Errorf("GET %s", u)
-	}
-	latest := "https://github.com/me/app/releases/latest/download/update-darwin-universal.json"
-	for channel, want := range map[string]string{
-		"beta":  "https://github.com/me/app/releases/download/v1.4.0-beta.3/update-darwin-universal-beta.json",
-		"rc":    "https://github.com/me/app/releases/download/v1.4.0-rc.1/update-darwin-universal-rc.json",
-		"alpha": "https://github.com/me/app/releases/download/v1.3.1/update-darwin-universal.json",
-		"":      latest, // releases only: the latest release, no API
-	} {
-		if got, err := ResolveChannelFeed(context.Background(), latest, channel, get); err != nil || got != want {
-			t.Errorf("channel %q: %s, %v; want %s", channel, got, err, want)
-		}
-	}
-}

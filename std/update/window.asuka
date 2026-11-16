@@ -1,4 +1,4 @@
-// The update window (sdk/update's window.go, Sparkle's), its menu item,
+// The update window (the Go sdk/update's window.go, Sparkle's), its menu item,
 // and its words in the app's language.
 
 import asuka/i18n
