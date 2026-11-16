@@ -68,6 +68,7 @@ typedef struct {
 	bool native;
 	char *kind;
 	void *widget;
+	void *window;  // Linux, on a display: the window the widget's shown in
 } node;
 
 static node nodes[4096];
@@ -99,6 +100,9 @@ static void apply(const uint8_t *buf, size_t len) {
 				asuka_native_view_destroy(n->kind, n->widget);
 				n->widget = NULL;
 			}
+#ifdef __linux__
+			if (n && n->window) G(gtk_window_destroy)(n->window);
+#endif
 			if (n) {
 				free(n->kind);
 				*n = nodes[--nnodes];
@@ -112,6 +116,17 @@ static void apply(const uint8_t *buf, size_t len) {
 				n->kind = strndup(op.value.s.p, op.value.s.len);
 				n->widget = asuka_native_view(n->kind, n->id, NULL);
 				printf("host: native view %s%s\n", n->kind, n->widget ? "" : " (none)");
+#ifdef __linux__
+				// With ASUKA_TEST_WINDOW on a display, in a window of its own,
+				// so it's mapped and drawn as a host's would be (a GtkWidget's:
+				// a test package's views may be anything).
+				if (n->widget && getenv("ASUKA_TEST_WINDOW") && asuka_linux() && G(gtk_window_new) && getenv("DISPLAY")) {
+					n->window = G(gtk_window_new)();
+					G(gtk_window_set_default_size)(n->window, 320, 240);
+					G(gtk_window_set_child)(n->window, n->widget);
+					G(gtk_window_present)(n->window);
+				}
+#endif
 			} else if (n->native && op.prop == AK_PROP_NATIVE_PROP) {
 				if (n->widget) asuka_native_view_prop(n->widget, (const uint8_t *)op.value.s.p, op.value.s.len);
 			} else if (op.value.type == AK_T_STRING && op.value.s.len > 0 && op.value.s.p[0] == '#') {

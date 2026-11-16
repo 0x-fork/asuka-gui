@@ -7,17 +7,9 @@ package apphost
 // unsupported there.
 import (
 	_ "github.com/egoist/asuka/std/bluetooth/desktop"
-	_ "github.com/egoist/asuka/std/camera/desktop"
-	_ "github.com/egoist/asuka/std/imageedit/desktop"
-	_ "github.com/egoist/asuka/std/location/desktop"
-	_ "github.com/egoist/asuka/std/maps/desktop"
 	_ "github.com/egoist/asuka/std/markdown/desktop"
-	_ "github.com/egoist/asuka/std/print/desktop"
-	_ "github.com/egoist/asuka/std/purchase/desktop"
-	_ "github.com/egoist/asuka/std/record/desktop"
 	_ "github.com/egoist/asuka/std/scan/desktop"
 	_ "github.com/egoist/asuka/std/shader/desktop"
-	_ "github.com/egoist/asuka/std/speech/desktop"
 	_ "github.com/egoist/asuka/std/svg/desktop"
 	_ "github.com/egoist/asuka/std/vision/desktop"
 )

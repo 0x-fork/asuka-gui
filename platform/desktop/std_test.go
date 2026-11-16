@@ -52,6 +52,15 @@ func TestStdLinux(t *testing.T) {
 	media := t.TempDir()
 	wav := filepath.Join(media, "tone.wav")
 	os.WriteFile(wav, silentWAV(22050, 22050/2), 0o644)
+	// Images and a video for imageedit: a PNG half clear, a JPEG that
+	// EXIF turns upright, a second of Motion JPEG.
+	pngFile, jpegFile, video := filepath.Join(media, "half.png"), filepath.Join(media, "turned.jpg"), filepath.Join(media, "clip.avi")
+	os.WriteFile(pngFile, testPNG(40, 20), 0o644)
+	os.WriteFile(jpegFile, orientedJPEG(40, 20, 6), 0o644)
+	os.WriteFile(video, mjpegAVI(32, 24, 10, 10), 0o644)
+	// A tone for the microphone; a Speech Dispatcher of the test's.
+	t.Setenv("ASUKA_RECORD_SOURCE", "audiotestsrc is-live=true")
+	ssip := fakeSSIP(t)
 	for _, c := range []struct {
 		name, src string
 		want      []string
@@ -302,6 +311,137 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: played true true", "host: done"}, nil},
+		{"record", `import asuka/record
+import asuka/audio
+
+async fn probe() throws -> string {
+  await sleep(500ms)
+  let s = record.audioStatus()
+  var busy = "free"
+  do {
+    let _ = try await record.audio()
+  } catch record.RecordError.busy {
+    busy = "busy"
+  }
+  record.pauseAudio()
+  let p = record.audioStatus()
+  await sleep(100ms)
+  record.resumeAudio()
+  let r = record.audioStatus()
+  return "{s.recording} {s.elapsed > 300ms} {s.level > 0} {busy} {p.recording} {p.level} {r.recording}"
+}
+
+async fn stopSoon() -> bool {
+  await sleep(300ms)
+  record.stopAudio()
+  return true
+}
+
+async fn duration(path: string) -> float {
+  let p = audio.Player(path)
+  var s = await p.status()
+  var turns = 0
+  while s.duration == 0 && turns < 300 {
+    await sleep(10ms)
+    s = await p.status()
+    turns += 1
+  }
+  p.release()
+  return s.duration
+}
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let (path, seen) = try await all(record.audio(maxDuration: 1500ms), probe())
+      step = "status {seen}"
+      await sleep(1ms)
+      let d = await duration(path)
+      step = "recorded {path.hasSuffix(".m4a")} {d > 1.2 && d < 1.8}"
+      await sleep(1ms)
+      let (short, _) = try await all(record.audio(quality: .music), stopSoon())
+      let ds = await duration(short)
+      step = "stopped {ds > 0.1 && ds < 0.6}"
+      await sleep(1ms)
+      do {
+        try await withTimeout(300ms) {
+          let _ = try await record.audio()
+        }
+      } catch e {
+        await sleep(300ms)
+        step = "cancelled {record.audioStatus().recording}"
+        await sleep(1ms)
+      }
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: status true true true busy false 0 true", "host: recorded true true", "host: stopped true", "host: cancelled false", "host: done"}, nil},
+		{"speech", `import asuka/speech
+
+async fn speakLong() throws -> string {
+  do {
+    try await speech.speak("long")
+    return "ended"
+  } catch speech.SpeechError.stopped {
+    return "stopped"
+  }
+}
+
+async fn stopSoon() -> bool {
+  await sleep(200ms)
+  let was = speech.speaking()
+  speech.stop()
+  return was
+}
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let vs = try await speech.voices()
+      step = "voices {vs.count()} {vs[0].id} {vs[0].language} {vs[1].language}"
+      await sleep(1ms)
+      try await speech.speak("Hello\n.dot", options: speech.Options(language: "en_US", rate: 2, volume: 0.5))
+      step = "spoke {speech.speaking()}"
+      await sleep(1ms)
+      let (a, b) = try await all(speakLong(), stopSoon())
+      step = "{a} {b} {speech.speaking()}"
+      await sleep(1ms)
+      do {
+        try await withTimeout(200ms) {
+          try await speech.speak("long")
+        }
+      } catch e {
+        step = "cancelled {speech.speaking()}"
+        await sleep(1ms)
+      }
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: voices 2 kal en-US de", "host: spoke false", "host: stopped true false", "host: cancelled false", "host: done"}, func(t *testing.T, pid int, line string) {
+			if line != "host: done" {
+				return
+			}
+			got := ssip.log()
+			for _, w := range []string{"SET self NOTIFICATION ALL on", "SET self RATE 100", "SET self VOLUME 0", "SET self PITCH 0", "SET self LANGUAGE en-us", "Hello", "..dot", "CANCEL self"} {
+				if !strings.Contains(got, "\n"+w+"\n") {
+					t.Errorf("Speech Dispatcher heard no %q:\n%s", w, got)
+				}
+			}
+		}},
 		{"nowplaying", `import asuka/nowplaying
 
 component Probe {
@@ -358,6 +498,111 @@ app { Probe() }
 				send("org.mpris.MediaPlayer2.Player.Pause")
 			}
 		}},
+		{"imageedit", `import asuka/imageedit
+import asuka/fs
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let s = try await imageedit.size("` + pngFile + `")
+      let j = try await imageedit.size("` + jpegFile + `")
+      step = "size {s.width}x{s.height} {j.width}x{j.height} {s.path.isEmpty()}"
+      await sleep(1ms)
+      let a = try await imageedit.edit("` + pngFile + `", actions: [.resize(width: 20, height: 0), .rotate(degrees: 90), .flipHorizontal, .flipVertical, .fill(x: 0, y: 0, width: 4, height: 4, red: 0, green: 255, blue: 0), .pixelate(x: 0, y: 0, width: 10, height: 10, block: 3)], format: .png)
+      let back = try await imageedit.size(a.path)
+      let ab = try fs.read(a.path)
+      step = "png {a.width}x{a.height} {back.width}x{back.height} {a.path.hasSuffix(".png")} {ab.slice(1, 4).string()}"
+      await sleep(1ms)
+      let b = try await imageedit.edit("` + jpegFile + `", actions: [.crop(x: 2, y: 4, width: 10, height: 30), .rotate(degrees: 45)], format: .jpeg, quality: 0.5)
+      let bb = try fs.read(b.path)
+      step = "jpeg {b.width}x{b.height} {b.path.hasSuffix(".jpg")} {bb.get(0) ?? 0} {bb.get(1) ?? 0}"
+      await sleep(1ms)
+      let u = try await imageedit.edit("` + jpegFile + `")
+      step = "upright {u.width}x{u.height}"
+      await sleep(1ms)
+      do {
+        let _ = try await imageedit.edit("/no/such.png")
+      } catch imageedit.EditError.noImage {
+        step = "no image"
+        await sleep(1ms)
+      }
+      do {
+        let _ = try await imageedit.edit("` + pngFile + `", actions: [.crop(x: 100, y: 100, width: 5, height: 5)])
+      } catch e {
+        step = "crop {e.message}"
+        await sleep(1ms)
+      }
+      let v = try await imageedit.videoFrame("` + video + `", at: 500ms, actions: [.resize(width: 16, height: 0)])
+      step = "video {v.width}x{v.height} {v.path.hasSuffix(".jpg")}"
+      await sleep(1ms)
+      do {
+        let _ = try await imageedit.videoFrame("` + pngFile + `.none")
+      } catch imageedit.EditError.noImage {
+        step = "no video"
+        await sleep(1ms)
+      }
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: size 40x20 20x40 true", "host: png 10x20 10x20 true PNG", "host: jpeg 29x29 true 255 216", "host: upright 20x40",
+			"host: no image", "host: crop the crop is outside the 40×20 image", "host: video 16x12 true", "host: no video", "host: done"}, nil},
+		{"print", `import asuka/print
+import asuka/fs
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let p = try await print.pdf("<!doctype html><title>Report: Q1</title><h1>Hello</h1><p>A page.</p>", page: print.Page.a4)
+      let data = try fs.read(p)
+      step = "pdf {fs.base(p)} {data.slice(0, 5).string()} {data.count() > 500}"
+      await sleep(1ms)
+      let q = try await print.pdf("<p>untitled</p>", landscape: true, margins: print.Margins(top: 0, right: 0, bottom: 0, left: 0))
+      step = "untitled {fs.base(q)} {fs.exists(q)}"
+      await sleep(1ms)
+      do {
+        let _ = try await print.file("/no/such/file.pdf")
+      } catch e {
+        step = "file {e.message}"
+        await sleep(1ms)
+      }
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: pdf Report- Q1.pdf %PDF- true", "host: untitled Document.pdf true", "host: file no file at /no/such/file.pdf", "host: done"}, nil},
+		{"purchase", `import asuka/purchase
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    step = "available {purchase.available()}"
+    await sleep(1ms)
+    do {
+      let _ = try await purchase.products([purchase.Item(id: "coins", kind: .consumable)])
+    } catch purchase.PurchaseError.notAvailable {
+      step = "not available"
+      await sleep(1ms)
+    }
+    step = "done"
+  }
+}
+
+app { Probe() }
+`, []string{"host: available false", "host: not available", "host: done"}, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -417,20 +662,24 @@ func stdHost(t *testing.T) string {
 			stdErr = err
 			return
 		}
+		// ASUKA_STD=audio,http (names, not the std directory std.Dir takes
+		// it for): only those packages' C (a case that imports another
+		// fails), for working on some while others don't build.
+		only := map[string]bool{}
+		if v := os.Getenv("ASUKA_STD"); v != "" && !strings.ContainsAny(v, `/\`) {
+			os.Unsetenv("ASUKA_STD") // before std.Dir reads it
+			for _, n := range strings.Split(v, ",") {
+				if n != "" {
+					only[n] = true
+				}
+			}
+		}
 		d, err := std.Dir()
 		if err != nil {
 			stdErr = err
 			return
 		}
 		dirs, _ := filepath.Glob(filepath.Join(d, "*", "desktop"))
-		// ASUKA_STD=audio,http: only those packages' C (a case that imports
-		// another fails), for working on some while others don't build.
-		only := map[string]bool{}
-		for _, n := range strings.Split(os.Getenv("ASUKA_STD"), ",") {
-			if n != "" {
-				only[n] = true
-			}
-		}
 		var pkgs []string
 		for _, x := range dirs {
 			if len(only) > 0 && !only[filepath.Base(filepath.Dir(x))] {

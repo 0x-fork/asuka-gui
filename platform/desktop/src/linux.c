@@ -13,13 +13,13 @@ asuka_linux_t asuka_linux_fns;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 static bool loaded;
 
-enum { L_GLIB, L_GOBJECT, L_GIO, L_GTK, L_ADW, L_GST, L_GSTAPP, L_COUNT };
+enum { L_GLIB, L_GOBJECT, L_GIO, L_GTK, L_ADW, L_GST, L_GSTAPP, L_PIXBUF, L_COUNT };
 
 static void *libs[L_COUNT];
 
 static void load(void) {
 	static const char *names[L_COUNT] = {"libglib-2.0.so.0", "libgobject-2.0.so.0", "libgio-2.0.so.0", "libgtk-4.so.1", "libadwaita-1.so.0",
-	                                     "libgstreamer-1.0.so.0", "libgstapp-1.0.so.0"};
+	                                     "libgstreamer-1.0.so.0", "libgstapp-1.0.so.0", "libgdk_pixbuf-2.0.so.0"};
 	for (int i = 0; i < L_COUNT; i++) libs[i] = dlopen(names[i], RTLD_NOW | RTLD_GLOBAL);
 	if (!libs[L_GLIB] || !libs[L_GOBJECT] || !libs[L_GIO]) return;
 #define lib_glib L_GLIB
@@ -29,6 +29,7 @@ static void load(void) {
 #define lib_adw L_ADW
 #define lib_gst L_GST
 #define lib_gstapp L_GSTAPP
+#define lib_pixbuf L_PIXBUF
 #define X(lib, ret, name, params)                                                \
 	if (libs[lib_##lib]) *(void **)(&asuka_linux_fns.name) = dlsym(libs[lib_##lib], #name);
 	ASUKA_LINUX_FUNCS(X)

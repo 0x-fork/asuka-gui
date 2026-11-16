@@ -91,6 +91,7 @@ typedef struct _GdkDisplay GdkDisplay;
 typedef struct _GdkMonitor GdkMonitor;
 typedef struct _GdkClipboard GdkClipboard;
 typedef struct _GdkTexture GdkTexture;
+typedef struct _GdkPixbuf GdkPixbuf;
 typedef struct _GdkPaintable GdkPaintable;
 typedef struct _GListModel GListModel;
 typedef struct _GstElement GstElement;
@@ -364,6 +365,9 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(gst, gboolean, gst_element_send_event, (GstElement * e, gpointer event))                                  \
 	X(gst, gpointer, gst_event_new_eos, (void))                                                                 \
 	X(gst, void, gst_message_parse_error, (gpointer msg, GError **e, gchar **debug))                           \
+	X(gst, gpointer, gst_message_get_structure, (gpointer msg))                                                 \
+	X(gst, const gchar *, gst_structure_get_name, (gpointer s))                                                 \
+	X(gst, gchar *, gst_structure_to_string, (gpointer s))                                                      \
 	X(gst, GstCaps *, gst_caps_from_string, (const char *s))                                                    \
 	X(gst, void, gst_caps_unref, (GstCaps * c))                                                                 \
 	X(gst, gboolean, gst_buffer_map, (gpointer buf, GstMapInfo *info, int flags))                              \
@@ -375,6 +379,28 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(gst, void, gst_mini_object_unref, (gpointer o))                                                           \
 	X(gstapp, gpointer, gst_app_sink_pull_sample, (GstElement * sink))                                          \
 	X(gstapp, gpointer, gst_app_sink_try_pull_sample, (GstElement * sink, guint64 timeout))                     \
+	X(gst, const gchar *, gst_structure_get_string, (gpointer s, const char *field))                            \
+	X(gtk, GtkWidget *, gtk_picture_new, (void))                                                                \
+	X(gtk, void, gtk_picture_set_content_fit, (GtkWidget * p, int fit))                                         \
+	X(gtk, void, gtk_picture_set_can_shrink, (GtkWidget * p, gboolean v))                                       \
+	X(gtk, void, gtk_picture_set_paintable, (GtkWidget * p, GdkPaintable *t))                                   \
+	X(gtk, void, gtk_widget_add_css_class, (GtkWidget * w, const char *c))                                      \
+	X(gtk, guint, gtk_widget_add_tick_callback, (GtkWidget * w, gboolean(*cb)(GtkWidget *, gpointer, gpointer), gpointer data, GDestroyNotify n)) \
+	X(gtk, void, gtk_widget_remove_tick_callback, (GtkWidget * w, guint id))                                    \
+	X(gtk, void, gtk_widget_set_sensitive, (GtkWidget * w, gboolean v))                                         \
+	X(gtk, GtkWidget *, gtk_button_new, (void))                                                                 \
+	X(gtk, void, gtk_button_set_label, (GtkWidget * b, const char *label))                                      \
+	X(gtk, GdkTexture *, gdk_memory_texture_new, (int w, int h, int format, GBytes *bytes, gsize stride))       \
+	X(gtk, GtkWidget *, gtk_window_new, (void))                                                                 \
+	X(gtk, void, gtk_window_set_child, (GtkWindow * w, GtkWidget *child))                                       \
+	X(gtk, void, gtk_window_set_default_size, (GtkWindow * w, int width, int height))                           \
+	X(gtk, void, gtk_window_destroy, (GtkWindow * w))                                                           \
+	X(adw, void, adw_dialog_set_title, (GtkWidget * d, const char *title))                                      \
+	X(adw, void, adw_dialog_set_default_widget, (GtkWidget * d, GtkWidget *w))                                  \
+	X(adw, void, adw_header_bar_pack_end, (GtkWidget * bar, GtkWidget *w))                                      \
+	X(gio, gint *, g_unix_fd_list_steal_fds, (GUnixFDList * l, gint *n))                                        \
+	X(pixbuf, GdkPixbuf *, gdk_pixbuf_new_from_data, (const guchar *data, int colorspace, gboolean alpha, int bits, int w, int h, int stride, GDestroyNotify fn, gpointer d)) \
+	X(pixbuf, gboolean, gdk_pixbuf_save, (GdkPixbuf * p, const char *file, const char *type, GError **e, ...))     \
 	X(gtk, void, gtk_window_present, (GtkWindow * w))                                                           \
 	X(gtk, void, gtk_init, (void))                                                                              \
 	X(gtk, GdkDisplay *, gdk_display_get_default, (void))                                                       \
