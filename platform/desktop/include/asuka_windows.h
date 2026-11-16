@@ -70,6 +70,16 @@ void asuka_win_system_message_stop(int id);
 HWND asuka_win_window(DWORD ex, const wchar_t *title, DWORD style, int x, int y, int w, int h, HWND parent,
                       bool (*handle)(void *ctx, HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT *result), void *ctx);
 
+// asuka_win_image_load decodes an image file with WIC (PNG, JPEG, GIF,
+// BMP, TIFF, HEIC and WebP where their codecs are), upright (its EXIF
+// orientation applied): *pixels its rows of BGRA, premultiplied, of
+// malloc's. false when it isn't an image WIC reads. Any thread (COM is
+// started on it).
+bool asuka_win_image_load(const char *path, UINT *width, UINT *height, uint8_t **pixels);
+// asuka_win_png encodes BGRA pixels (premultiplied, rows of width*4) as a
+// PNG, with WIC: false if it can't.
+bool asuka_win_png(UINT width, UINT height, const uint8_t *pixels, asuka_bytes *out);
+
 // ---- WinRT ----
 
 typedef struct HSTRING__ *HSTRING;

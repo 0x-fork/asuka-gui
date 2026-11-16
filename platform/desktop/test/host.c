@@ -49,6 +49,8 @@ uint32_t asuka_desktop_color(uint64_t color) { return 0x000000ff; }
 bool asuka_desktop_dark(void) { return false; }
 const char *asuka_desktop_app_name(void) { return "Test"; }
 const char *asuka_desktop_app_id(void) { return "dev.asuka.test"; }
+const char *asuka_desktop_app_version(void) { return "1.2.3"; }
+const char *asuka_desktop_app_build(void) { return "45"; }
 static const char *dir(const char *env) {
 	const char *d = getenv(env);
 	return d ? d : ".";

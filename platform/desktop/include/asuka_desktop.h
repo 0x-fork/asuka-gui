@@ -22,8 +22,15 @@
 //   - The codec (asuka_writer, asuka_reader), errors (asuka_error), started
 //     calls (asuka_call), callbacks and objects: what generated code uses,
 //     and a package's C may.
-//   - asuka_desktop_spawn: work on a thread of its own (the host's half
-//     doesn't change: the registry implements it).
+//   - asuka_desktop_spawn: work on a thread of its own (the registry
+//     implements it).
+//   - The host's half gains asuka_desktop_app_version and
+//     asuka_desktop_app_build (asuka.toml's version and build: asuka/device's
+//     info), and one rule: asuka_desktop_post is one FIFO with the core's
+//     posts.
+//   - Shared C for packages (src/fetch.c, linux.c, windows.c):
+//     asuka_fetch, asuka_desktop_local_file, and asuka_linux.h's and
+//     asuka_windows.h's helpers.
 #ifndef ASUKA_DESKTOP_H
 #define ASUKA_DESKTOP_H
 
@@ -63,6 +70,9 @@ bool asuka_desktop_dark(void);
 // valid for the process's life, UTF-8.
 const char *asuka_desktop_app_name(void);
 const char *asuka_desktop_app_id(void);
+// Its version and build (asuka.toml's version and build; "" if none).
+const char *asuka_desktop_app_version(void);
+const char *asuka_desktop_app_build(void);
 // Its directories (internal/appdir's rules), made if missing.
 const char *asuka_desktop_data_dir(void);
 const char *asuka_desktop_config_dir(void);

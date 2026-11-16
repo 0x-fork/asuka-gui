@@ -58,7 +58,7 @@ func Shared(dir string) []string {
 // Libs are the system libraries the shared C links with on goos.
 func Libs(goos string) []string {
 	if goos == "windows" {
-		return []string{"-lwinhttp", "-lole32", "-loleaut32", "-luuid", "-lshell32", "-luser32", "-lgdi32", "-ladvapi32"}
+		return []string{"-lwinhttp", "-lole32", "-loleaut32", "-luuid", "-lshell32", "-luser32", "-lgdi32", "-ladvapi32", "-lwindowscodecs"}
 	}
 	return nil
 }

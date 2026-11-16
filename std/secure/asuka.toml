@@ -1,3 +1,6 @@
 name = "asuka/secure"
 version = "0.1.0"
 description = "Small secrets (tokens, passwords), kept encrypted by the platform"
+
+[windows]
+libraries = ["advapi32"]

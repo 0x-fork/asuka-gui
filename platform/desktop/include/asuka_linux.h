@@ -173,6 +173,11 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(glib, gconstpointer, g_bytes_get_data, (GBytes * b, gsize * n))                                           \
 	X(glib, void, g_bytes_unref, (GBytes * b))                                                                  \
 	X(glib, void, g_list_free, (GList * l))                                                                     \
+	X(glib, GHashTable *, g_hash_table_new_full, (guint(*hash)(gconstpointer), gboolean(*eq)(gconstpointer, gconstpointer), GDestroyNotify kf, GDestroyNotify vf)) \
+	X(glib, gboolean, g_hash_table_insert, (GHashTable * t, gpointer k, gpointer v))                            \
+	X(glib, void, g_hash_table_unref, (GHashTable * t))                                                         \
+	X(glib, guint, g_str_hash, (gconstpointer s))                                                               \
+	X(glib, gboolean, g_str_equal, (gconstpointer a, gconstpointer b))                                                                     \
 	X(glib, const gchar *, g_get_user_name, (void))                                                             \
 	X(glib, const gchar *, g_get_real_name, (void))                                                             \
 	X(glib, const gchar *, g_get_host_name, (void))                                                             \
@@ -224,6 +229,55 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(adw, gpointer, adw_style_manager_get_default, (void))                                                     \
 	X(adw, gboolean, adw_style_manager_get_high_contrast, (gpointer m))                                         \
 	X(adw, gboolean, adw_style_manager_get_dark, (gpointer m))                                                  \
+	X(gio, void, g_file_trash_async, (GFile * f, int priority, GCancellable *c, GAsyncReadyCallback cb, gpointer data)) \
+	X(gio, gboolean, g_file_trash_finish, (GFile * f, GAsyncResult *res, GError **e))                          \
+	X(gtk, void, gdk_display_beep, (GdkDisplay * d))                                                            \
+	X(gtk, gpointer, gtk_file_dialog_new, (void))                                                               \
+	X(gtk, void, gtk_file_dialog_set_title, (gpointer d, const char *t))                                        \
+	X(gtk, void, gtk_file_dialog_set_modal, (gpointer d, gboolean m))                                           \
+	X(gtk, void, gtk_file_dialog_set_filters, (gpointer d, GListModel *f))                                      \
+	X(gtk, void, gtk_file_dialog_set_default_filter, (gpointer d, gpointer f))                                  \
+	X(gtk, void, gtk_file_dialog_set_initial_name, (gpointer d, const char *n))                                 \
+	X(gtk, void, gtk_file_dialog_set_initial_folder, (gpointer d, GFile *f))                                    \
+	X(gtk, void, gtk_file_dialog_open, (gpointer d, GtkWindow *p, GCancellable *c, GAsyncReadyCallback cb, gpointer data)) \
+	X(gtk, GFile *, gtk_file_dialog_open_finish, (gpointer d, GAsyncResult *r, GError **e))                     \
+	X(gtk, void, gtk_file_dialog_open_multiple, (gpointer d, GtkWindow *p, GCancellable *c, GAsyncReadyCallback cb, gpointer data)) \
+	X(gtk, GListModel *, gtk_file_dialog_open_multiple_finish, (gpointer d, GAsyncResult *r, GError **e))       \
+	X(gtk, void, gtk_file_dialog_save, (gpointer d, GtkWindow *p, GCancellable *c, GAsyncReadyCallback cb, gpointer data)) \
+	X(gtk, GFile *, gtk_file_dialog_save_finish, (gpointer d, GAsyncResult *r, GError **e))                     \
+	X(gtk, void, gtk_file_dialog_select_folder, (gpointer d, GtkWindow *p, GCancellable *c, GAsyncReadyCallback cb, gpointer data)) \
+	X(gtk, GFile *, gtk_file_dialog_select_folder_finish, (gpointer d, GAsyncResult *r, GError **e))            \
+	X(gtk, void, gtk_file_dialog_set_accept_label, (gpointer d, const char *l))                                 \
+	X(gtk, void, gtk_file_dialog_select_multiple_folders, (gpointer d, GtkWindow *p, GCancellable *c, GAsyncReadyCallback cb, gpointer data)) \
+	X(gtk, GListModel *, gtk_file_dialog_select_multiple_folders_finish, (gpointer d, GAsyncResult *r, GError **e)) \
+	X(gtk, void, gtk_file_filter_add_suffix, (gpointer f, const char *s))                                       \
+	X(gtk, gpointer, gtk_file_filter_new, (void))                                                               \
+	X(gtk, void, gtk_file_filter_set_name, (gpointer f, const char *n))                                         \
+	X(gtk, void, gtk_file_filter_add_mime_type, (gpointer f, const char *m))                                    \
+	X(gtk, void, gtk_file_filter_add_pattern, (gpointer f, const char *p))                                      \
+	X(gtk, GType, gtk_file_filter_get_type, (void))                                                             \
+	X(gio, gpointer, g_list_store_new, (GType t))                                                               \
+	X(gio, void, g_list_store_append, (gpointer s, gpointer item))                                              \
+	X(gtk, GdkClipboard *, gdk_display_get_clipboard, (GdkDisplay * d))                                         \
+	X(gtk, void, gdk_clipboard_read_text_async, (GdkClipboard * c, GCancellable *x, GAsyncReadyCallback cb, gpointer data)) \
+	X(gtk, char *, gdk_clipboard_read_text_finish, (GdkClipboard * c, GAsyncResult *r, GError **e))            \
+	X(gtk, void, gdk_clipboard_read_texture_async, (GdkClipboard * c, GCancellable *x, GAsyncReadyCallback cb, gpointer data)) \
+	X(gtk, GdkTexture *, gdk_clipboard_read_texture_finish, (GdkClipboard * c, GAsyncResult *r, GError **e))   \
+	X(gtk, void, gdk_clipboard_set_texture, (GdkClipboard * c, GdkTexture *t))                                  \
+	X(gtk, void, gdk_clipboard_set_text, (GdkClipboard * c, const char *t))                                     \
+	X(gtk, gpointer, gdk_clipboard_get_formats, (GdkClipboard * c))                                             \
+	X(gtk, gboolean, gdk_content_formats_contain_mime_type, (gpointer f, const char *m))                        \
+	X(gtk, gboolean, gdk_content_formats_contain_gtype, (gpointer f, GType t))                                  \
+	X(gtk, GType, gdk_texture_get_type, (void))                                                                 \
+	X(gtk, GType, gdk_file_list_get_type, (void))                                                               \
+	X(gio, GType, g_file_get_type, (void))                                                                      \
+	X(gtk, GdkTexture *, gdk_texture_new_from_filename, (const char *path, GError **e))                         \
+	X(gtk, GBytes *, gdk_texture_save_to_png_bytes, (GdkTexture * t))                                           \
+	X(gtk, int, gdk_texture_get_width, (GdkTexture * t))                                                        \
+	X(gtk, int, gdk_texture_get_height, (GdkTexture * t))                                                       \
+	X(gio, gpointer, g_application_get_default, (void))                                                         \
+	X(gtk, guint, gtk_application_inhibit, (gpointer app, GtkWindow *w, int flags, const char *reason))         \
+	X(gtk, void, gtk_application_uninhibit, (gpointer app, guint cookie))                                       \
 	X(gtk, void, gtk_init, (void))                                                                              \
 	X(gtk, GdkDisplay *, gdk_display_get_default, (void))                                                       \
 	X(gtk, void, gdk_monitor_get_geometry, (GdkMonitor * m, GdkRectangle *r))                                   \

@@ -2,6 +2,7 @@
 // packages' Windows C shares. Built on Windows only.
 #ifdef _WIN32
 #include "asuka_windows.h"
+#include <wincodec.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -203,6 +204,113 @@ HWND asuka_win_window(DWORD ex, const wchar_t *title, DWORD style, int x, int y,
 	HWND hwnd = CreateWindowExW(ex, L"AsukaPackageWindow", title ? title : L"", style, x, y, w, h, parent, NULL, inst, o);
 	if (!hwnd) free(o);
 	return hwnd;
+}
+
+// ---- Images (WIC) ----
+
+static IWICImagingFactory *wic(void) {
+	CoInitializeEx(NULL, asuka_desktop_on_main() ? COINIT_APARTMENTTHREADED : COINIT_MULTITHREADED);
+	IWICImagingFactory *f = NULL;
+	CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, (void **)&f);
+	return f;
+}
+
+bool asuka_win_image_load(const char *path, UINT *width, UINT *height, uint8_t **pixels) {
+	IWICImagingFactory *f = wic();
+	if (!f) return false;
+	wchar_t *w = asuka_wide(path);
+	IWICBitmapDecoder *dec = NULL;
+	IWICBitmapFrameDecode *frame = NULL;
+	IWICFormatConverter *conv = NULL;
+	IWICBitmapFlipRotator *rot = NULL;
+	bool ok = false;
+	HRESULT hr = IWICImagingFactory_CreateDecoderFromFilename(f, w, NULL, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &dec);
+	free(w);
+	if (SUCCEEDED(hr)) hr = IWICBitmapDecoder_GetFrame(dec, 0, &frame);
+	IWICBitmapSource *src = (IWICBitmapSource *)frame;
+	if (SUCCEEDED(hr)) {
+		// The EXIF orientation (1 upright), applied.
+		IWICMetadataQueryReader *q = NULL;
+		USHORT orient = 1;
+		if (SUCCEEDED(IWICBitmapFrameDecode_GetMetadataQueryReader(frame, &q))) {
+			PROPVARIANT v;
+			PropVariantInit(&v);
+			if (SUCCEEDED(IWICMetadataQueryReader_GetMetadataByName(q, L"/app1/ifd/{ushort=274}", &v)) && v.vt == VT_UI2) orient = v.uiVal;
+			PropVariantClear(&v);
+			IWICMetadataQueryReader_Release(q);
+		}
+		static const WICBitmapTransformOptions transforms[9] = {
+		    WICBitmapTransformRotate0, WICBitmapTransformRotate0, WICBitmapTransformFlipHorizontal, WICBitmapTransformRotate180,
+		    WICBitmapTransformFlipVertical, (WICBitmapTransformOptions)(WICBitmapTransformRotate90 | WICBitmapTransformFlipHorizontal),
+		    WICBitmapTransformRotate90, (WICBitmapTransformOptions)(WICBitmapTransformRotate270 | WICBitmapTransformFlipHorizontal), WICBitmapTransformRotate270};
+		if (orient > 1 && orient <= 8 && SUCCEEDED(IWICImagingFactory_CreateBitmapFlipRotator(f, &rot)) &&
+		    SUCCEEDED(IWICBitmapFlipRotator_Initialize(rot, src, transforms[orient])))
+			src = (IWICBitmapSource *)rot;
+		hr = IWICImagingFactory_CreateFormatConverter(f, &conv);
+	}
+	if (SUCCEEDED(hr)) hr = IWICFormatConverter_Initialize(conv, src, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, NULL, 0, WICBitmapPaletteTypeCustom);
+	if (SUCCEEDED(hr)) hr = IWICFormatConverter_GetSize(conv, width, height);
+	if (SUCCEEDED(hr) && *width && *height) {
+		size_t n = (size_t)*width * *height * 4;
+		*pixels = malloc(n);
+		hr = IWICFormatConverter_CopyPixels(conv, NULL, *width * 4, (UINT)n, *pixels);
+		ok = SUCCEEDED(hr);
+		if (!ok) free(*pixels), *pixels = NULL;
+	}
+	if (conv) IWICFormatConverter_Release(conv);
+	if (rot) IWICBitmapFlipRotator_Release(rot);
+	if (frame) IWICBitmapFrameDecode_Release(frame);
+	if (dec) IWICBitmapDecoder_Release(dec);
+	IWICImagingFactory_Release(f);
+	return ok;
+}
+
+bool asuka_win_png(UINT width, UINT height, const uint8_t *pixels, asuka_bytes *out) {
+	IWICImagingFactory *f = wic();
+	if (!f) return false;
+	IStream *st = NULL;
+	IWICBitmapEncoder *enc = NULL;
+	IWICBitmapFrameEncode *frame = NULL;
+	HRESULT hr = CreateStreamOnHGlobal(NULL, TRUE, &st);
+	if (SUCCEEDED(hr)) hr = IWICImagingFactory_CreateEncoder(f, &GUID_ContainerFormatPng, NULL, &enc);
+	if (SUCCEEDED(hr)) hr = IWICBitmapEncoder_Initialize(enc, st, WICBitmapEncoderNoCache);
+	if (SUCCEEDED(hr)) hr = IWICBitmapEncoder_CreateNewFrame(enc, &frame, NULL);
+	if (SUCCEEDED(hr)) hr = IWICBitmapFrameEncode_Initialize(frame, NULL);
+	if (SUCCEEDED(hr)) hr = IWICBitmapFrameEncode_SetSize(frame, width, height);
+	WICPixelFormatGUID fmt = GUID_WICPixelFormat32bppPBGRA;
+	if (SUCCEEDED(hr)) hr = IWICBitmapFrameEncode_SetPixelFormat(frame, &fmt);
+	// The encoder may want another format (straight alpha): convert.
+	IWICBitmap *bmp = NULL;
+	IWICFormatConverter *conv = NULL;
+	if (SUCCEEDED(hr) && !IsEqualGUID(&fmt, &GUID_WICPixelFormat32bppPBGRA)) {
+		hr = IWICImagingFactory_CreateBitmapFromMemory(f, width, height, &GUID_WICPixelFormat32bppPBGRA, width * 4, width * height * 4, (BYTE *)pixels, &bmp);
+		if (SUCCEEDED(hr)) hr = IWICImagingFactory_CreateFormatConverter(f, &conv);
+		if (SUCCEEDED(hr)) hr = IWICFormatConverter_Initialize(conv, (IWICBitmapSource *)bmp, &fmt, WICBitmapDitherTypeNone, NULL, 0, WICBitmapPaletteTypeCustom);
+		if (SUCCEEDED(hr)) hr = IWICBitmapFrameEncode_WriteSource(frame, (IWICBitmapSource *)conv, NULL);
+	} else if (SUCCEEDED(hr)) {
+		hr = IWICBitmapFrameEncode_WritePixels(frame, height, width * 4, width * height * 4, (BYTE *)pixels);
+	}
+	if (SUCCEEDED(hr)) hr = IWICBitmapFrameEncode_Commit(frame);
+	if (SUCCEEDED(hr)) hr = IWICBitmapEncoder_Commit(enc);
+	bool ok = false;
+	if (SUCCEEDED(hr)) {
+		HGLOBAL g = NULL;
+		if (SUCCEEDED(GetHGlobalFromStream(st, &g))) {
+			STATSTG stat;
+			IStream_Stat(st, &stat, STATFLAG_NONAME);
+			void *p = GlobalLock(g);
+			*out = asuka_bytes_copy(p, (size_t)stat.cbSize.QuadPart);
+			GlobalUnlock(g);
+			ok = true;
+		}
+	}
+	if (conv) IWICFormatConverter_Release(conv);
+	if (bmp) IWICBitmap_Release(bmp);
+	if (frame) IWICBitmapFrameEncode_Release(frame);
+	if (enc) IWICBitmapEncoder_Release(enc);
+	if (st) IStream_Release(st);
+	IWICImagingFactory_Release(f);
+	return ok;
 }
 
 // ---- WinRT ----

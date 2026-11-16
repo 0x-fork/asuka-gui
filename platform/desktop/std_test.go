@@ -130,6 +130,47 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: network true", "host: power -1 false", "host: appearance false", "host: screens true true true", "host: done"}},
+		{"device", `import asuka/device
+import asuka/sensors
+import asuka/secure
+import asuka/shell
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let i = try await device.info()
+      step = "info {i.model} {i.system} {i.appVersion} {i.build} {i.systemVersion.count() > 0}"
+      await sleep(1ms)
+      step = "sensors {sensors.available(.accelerometer)} {sensors.available(.gyroscope)}"
+      await sleep(1ms)
+      do {
+        try await secure.write("token", "s3cret")
+        let back = try await secure.read("token")
+        try await secure.remove("token")
+        let gone = try await secure.read("token")
+        step = "secure {back ?? "-"} {gone ?? "none"}"
+      } catch e {
+        step = "secure failed: {e.message.contains("keyring") || e.message.contains("libsecret")}"
+      }
+      await sleep(1ms)
+      shell.beep()
+      do {
+        try await shell.open("/no/such/file")
+      } catch e {
+        step = "shell {e.message}"
+      }
+      await sleep(1ms)
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: info PC Linux 1.2.3 45 true", "host: sensors false false", "host: secure", "host: shell no file at /no/such/file", "host: done"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
