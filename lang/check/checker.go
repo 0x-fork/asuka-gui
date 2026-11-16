@@ -51,6 +51,7 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
+	laterChecks  []func() // checks for when the package's declarations are whole
 	// The built-in methods' and functions' signatures that name the
 	// prelude's types, read with this checker's prelude.
 	sigs        map[*Method]parsedSig
@@ -168,7 +169,7 @@ func (c *Checker) initUniverse() {
 		{"print", BPrint}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
-		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream},
+		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet},
 		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {"shader", BShader},
 		{"never", BNever},
 	} {
@@ -235,6 +236,11 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	}
 	if p.App != nil {
 		c.appBody(p)
+	}
+	for len(c.laterChecks) > 0 {
+		f := c.laterChecks[0]
+		c.laterChecks = c.laterChecks[1:]
+		f()
 	}
 	c.pkg = saved
 }
@@ -594,6 +600,14 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 				}
 				return &Stream{c.typeExpr(t.Args[0])}
 			}
+		case "Set":
+			if o, _ := c.lookup(name).(*Builtin); o != nil && o.ID == BSet {
+				if len(t.Args) != 1 {
+					c.errorf(t, "Set takes one type: Set<T>")
+					return Invalid
+				}
+				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0])
+			}
 		case "Task":
 			if c.lookup(name) == nil {
 				if len(t.Args) != 1 {
@@ -679,6 +693,12 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 	for _, a := range t.Args {
 		n.Args = append(n.Args, c.typeExpr(a))
 	}
+	for i, tp := range tn.TypeParams {
+		// Once the package's types are whole: a declaration's types are
+		// read before the interfaces they name may be.
+		at, arg := t.Args[i], n.Args[i]
+		c.laterChecks = append(c.laterChecks, func() { c.checkConstraints(at, name, tp, arg) })
+	}
 	return n
 }
 
@@ -754,24 +774,48 @@ func (c *Checker) typeParams(list []*syntax.TypeParam) []*TypeParam {
 	for i, tp := range list {
 		p := &TypeParam{Name: tp.Name.Name, Index: i, id: c.nextTP}
 		c.nextTP++
-		if tp.Constraint != nil {
-			if nt, ok := tp.Constraint.(*syntax.NamedType); ok && len(nt.Path) == 1 {
-				switch n := nt.Path[0].Name; n {
-				case "Equatable", "Comparable", "Hashable":
-					p.Constraint = n
-				case "Error":
-					p.Constraint = "Equatable"
-				default:
-					c.errorf(tp.Constraint, "a type parameter's constraint is Equatable, Comparable or Hashable, not %s", n)
-				}
-			} else {
-				c.errorf(tp.Constraint, "a type parameter's constraint is Equatable, Comparable or Hashable")
-			}
-		}
 		tn := &TypeName{object: object{p.Name, tp.Name.Start}, Kind: ParamType, Type: p, resolved: true}
 		c.info.Defs[tp.Name] = tn
 		c.scope.Insert(tn)
 		out = append(out, p)
 	}
+	// The constraints once every parameter is declared: one may name
+	// another (T: Container<U>).
+	for i, tp := range list {
+		c.constraints(out[i], tp.Constraints)
+	}
 	return out
+}
+
+// constraints reads a type parameter's constraints: the built-in ones
+// (Equatable, Comparable, Hashable) and the program's interfaces.
+func (c *Checker) constraints(p *TypeParam, list []syntax.Type) {
+	var written []string
+	for _, ct := range list {
+		if nt, ok := ct.(*syntax.NamedType); ok && len(nt.Path) == 1 && len(nt.Args) == 0 {
+			switch n := nt.Path[0].Name; n {
+			case "Equatable", "Comparable", "Hashable":
+				if !p.Has(n) {
+					p.Builtins = append(p.Builtins, n)
+				}
+				written = append(written, n)
+				continue
+			}
+		}
+		t := c.typeExpr(ct)
+		n, ok := t.(*Named)
+		switch {
+		case IsInvalid(t):
+			continue
+		case !ok || n.Obj.Kind != InterfaceType:
+			c.errorf(ct, "a type parameter's constraint is an interface, Equatable, Comparable or Hashable, not %s", typeString(t))
+			continue
+		case n.Obj.Native:
+			c.errorf(ct, "%s is a native interface: its platforms' code implements it, and no type of the program has it", n.Obj.name)
+			continue
+		}
+		p.Ifaces = append(p.Ifaces, n)
+		written = append(written, typeString(n))
+	}
+	p.written = strings.Join(written, " & ")
 }

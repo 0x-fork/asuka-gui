@@ -190,6 +190,16 @@ func TestParseExpr(t *testing.T) {
 		{"-x.y", "(- (. x y))"},
 		{"!x!", "(! (! x))"},
 		{"(a + b) * c", "(* (paren (+ a b)) c)"},
+		// Bitwise operators, with Swift's precedence.
+		{"a + b << c", "(+ a (<< b c))"},
+		{"a * b >> c", "(* a (>> b c))"},
+		{"a & b + c", "(+ (& a b) c)"},
+		{"a | b & c", "(| a (& b c))"},
+		{"a ^ b | c", "(| (^ a b) c)"},
+		{"a & b == c", "(== (& a b) c)"},
+		{"~a & -b", "(& (~ a) (- b))"},
+		{"a >> b > c", "(> (>> a b) c)"},
+		{"a > >b", "(> a BAD)"},
 		// Unary keywords.
 		{"await f()", "(await (call f))"},
 		{"try await f()", "(try (await (call f)))"},
@@ -390,6 +400,7 @@ func TestParseDecls(t *testing.T) {
 		{"enum E: Error { a, b(int), c(code: int, String)\n fn f() { } }", "*syntax.EnumDecl"},
 		{"interface Named { name: string\n fn describe() -> string }", "*syntax.InterfaceDecl"},
 		{"fn id<T: Hashable>(x: T) -> T = x", "*syntax.FuncDecl"},
+		{"fn sort<T: Shape & Hashable, U>(x: T) -> T = x", "*syntax.FuncDecl"},
 		{"type Pair<A, B> = (A, B)", "*syntax.TypeAliasDecl"},
 		{"style card { padding: 16 }", "*syntax.StyleDecl"},
 		{"state theme: Theme = .system", "*syntax.StateDecl"},
@@ -488,6 +499,11 @@ func TestParsePatterns(t *testing.T) {
 		{"HttpError.notFound", "*syntax.CasePat"},
 		{"(a, (b, _))", "*syntax.TuplePat"},
 		{".a | .b | .c(x)", "*syntax.OrPat"},
+		{"Point(x: 0, y)", "*syntax.CasePat"},
+		{"Line(from: Point(x: 0), to: p, dashed: true)", "*syntax.CasePat"},
+		{"geo.Point(x: _)", "*syntax.CasePat"},
+		{".server(code: c, retry)", "*syntax.CasePat"},
+		{"Point()", "*syntax.CasePat"},
 	}
 	for _, tt := range tests {
 		f := parseOK(t, "fn f() {\nmatch v {\n"+tt.src+" => 1\n}\n}")

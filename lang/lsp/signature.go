@@ -96,7 +96,7 @@ func (fc *fileCtx) callSignature(call *syntax.CallExpr) (string, string) {
 				return "case " + c.Case.Owner.Name() + "." + caseString(c.Case), ""
 			}
 		case check.CallIface, check.CallNative:
-			if r := fc.imethRef(namedObj(c.RecvType), calleeName(call)); r != nil && r.imeth != nil {
+			if r := fc.imethRef(memberOwner(c.RecvType, calleeName(call)), calleeName(call)); r != nil && r.imeth != nil {
 				return imethSig(r.imeth), fc.declDoc(r.decl)
 			}
 		case check.CallClosure:

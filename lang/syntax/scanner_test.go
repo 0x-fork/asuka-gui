@@ -41,6 +41,7 @@ func TestScanTokens(t *testing.T) {
 	}{
 		// Numbers.
 		{"42 1_000 0xff 0XFF_FF 0", "int:42 int:1_000 int:0xff int:0XFF_FF int:0"},
+		{"0b1010 0B1_0 0o17 0O7_7", "int:0b1010 int:0B1_0 int:0o17 int:0O7_7"},
 		{"3.14 1e-3 2.5E+10 1e3 0.5", "float:3.14 float:1e-3 float:2.5E+10 float:1e3 float:0.5"},
 		{"1.foo", "int:1 . ident:foo"},
 		{"x.0", "ident:x . int:0"},
@@ -69,6 +70,9 @@ func TestScanTokens(t *testing.T) {
 		// Operators.
 		{"?. ?? ??= => -> .. ..< += -= *= /= %=", "?. ?? ??= => -> .. ..< += -= *= /= %="},
 		{"== != < <= > >= && || ! ? | : ; ,", "== != < <= > >= && || ! ? | : ; ,"},
+		{"& | ^ ~ << &= |= ^= <<=", "& | ^ ~ << &= |= ^= <<="},
+		{"a >> b >>= c", "ident:a > > ident:b > >= ident:c"},
+		{"a &\nb", "ident:a & ident:b"},
 		{"a..<b a..b", "ident:a ..< ident:b ident:a .. ident:b"},
 		{"import ./ui.{A, B}", "import . / ident:ui .{ ident:A , ident:B }"},
 		{"x! y?", "ident:x ! ident:y ?"},
@@ -223,7 +227,8 @@ func TestScanErrors(t *testing.T) {
 		{`"\q" x`, `1:2: unknown escape \q`, `string:"\q" ident:x`},
 		{`"\u{D800}" x`, `1:2: \u{D800} isn't a Unicode code point`, `string:"\u{D800}" ident:x`},
 		{`"\u{}" x`, `1:2: a \u escape is \u{1 to 6 hex digits}`, `string:"\u{}" ident:x`},
-		{"a & b", "1:3: unexpected '&' (did you mean '&&'?)", "ident:a ILLEGAL ident:b"},
+		{"0b12 x", "1:4: unexpected '2' in a binary number", "int:0b12 ident:x"},
+		{"0o8 x", "1:1: an octal number needs digits after 0o", "int:0o8 ident:x"},
 		{"a $ b", "1:3: unexpected character '$'", "ident:a ILLEGAL ident:b"},
 		{"a ... b", "1:3: unexpected '...'", "ident:a .. ident:b"},
 		{"x /* open", "1:3: comment not terminated", "ident:x"},

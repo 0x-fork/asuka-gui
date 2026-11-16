@@ -230,7 +230,7 @@ func HasZero(t Type) bool {
 	switch x := t.(type) {
 	case *Basic:
 		return x == Bool || x == Int || x == Float || x == String || x == Bytes || x == Duration || x == Color || x == Length
-	case *Array, *Map, *Optional:
+	case *Array, *Map, *Set, *Optional:
 		return true
 	case *Named:
 		return x.Obj.Kind == EnumType && !x.Obj.RefEnum() && len(x.Args) == 0
@@ -299,6 +299,9 @@ func (c *Checker) unify(p, a Type, s Subst, free map[*TypeParam]bool) bool {
 	case *Map:
 		y, ok := a.(*Map)
 		return ok && c.unify(x.Key, y.Key, s, free) && c.unify(x.Elem, y.Elem, s, free)
+	case *Set:
+		y, ok := a.(*Set)
+		return ok && c.unify(x.Elem, y.Elem, s, free)
 	case *Optional:
 		if a == NoneType {
 			return true
@@ -368,6 +371,8 @@ func mentionsFree(t Type, free map[*TypeParam]bool, s Subst) bool {
 			walk(x.Elem)
 		case *Map:
 			walk(x.Key)
+			walk(x.Elem)
+		case *Set:
 			walk(x.Elem)
 		case *Optional:
 			walk(x.Elem)
@@ -511,8 +516,8 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 		if t == nil {
 			c.errorf(e, "can't tell %s's type %s from its arguments: pass them, or say what's expected (let x: T = %s(…))", what, tp.Name, what)
 			t = Invalid
-		} else if !satisfies(t, tp) {
-			c.errorf(e, "%s's %s must be %s, and %s isn't", what, tp.Name, tp.Constraint, typeString(t))
+		} else {
+			c.checkConstraints(e, what, tp, t)
 		}
 		call.TypeArgs = append(call.TypeArgs, t)
 	}
@@ -525,17 +530,174 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 	return call
 }
 
-// satisfies reports whether t meets the parameter's constraint.
-func satisfies(t Type, p *TypeParam) bool {
-	switch p.Constraint {
-	case "Equatable":
-		return IsEquatable(t)
-	case "Comparable":
-		return IsComparable(t)
-	case "Hashable":
-		return IsHashable(t)
+// checkConstraints reports a type argument t of what's p that doesn't
+// meet p's constraints.
+func (c *Checker) checkConstraints(at syntax.Node, what string, p *TypeParam, t Type) {
+	if IsInvalid(t) {
+		return
 	}
-	return true
+	if failed, why := c.satisfies(t, p); failed != "" {
+		if why != "" {
+			why = ": " + why
+		}
+		c.errorf(at, "%s's %s must be %s, and %s isn't%s", what, p.Name, failed, typeString(t), why)
+	}
+}
+
+// satisfies reports the constraint of p that t doesn't meet, and why
+// ("", "" when it meets them all).
+func (c *Checker) satisfies(t Type, p *TypeParam) (failed, why string) {
+	for _, b := range p.Builtins {
+		ok := true
+		switch b {
+		case "Equatable":
+			ok = IsEquatable(t)
+		case "Comparable":
+			ok = IsComparable(t)
+		case "Hashable":
+			ok = IsHashable(t)
+		}
+		if !ok {
+			return b, ""
+		}
+	}
+	for _, i := range p.Ifaces {
+		if why := c.hasIface(t, i); why != "" {
+			return typeString(i), why
+		}
+	}
+	return "", ""
+}
+
+// hasIface reports why a type argument t doesn't have interface iface's
+// methods and fields, "" when it does: a struct's or an enum's own (as
+// implements says, without its storage: a generic function is compiled
+// per type, so it calls a payloadless enum's methods as they are), an
+// interface's that asks for them, or a type parameter's constraints'.
+func (c *Checker) hasIface(t Type, iface *Named) string {
+	c.resolveType(iface.Obj)
+	if iface.Obj.isErrorIface {
+		if IsErrorType(t) {
+			return ""
+		}
+		if p, ok := t.(*TypeParam); ok {
+			for _, i := range p.Ifaces {
+				if i.Obj.isErrorIface {
+					return ""
+				}
+			}
+		}
+		return "it isn't an error (declare it one: struct " + typeString(t) + ": Error)"
+	}
+	if iface.Obj.Iface == nil {
+		return "" // still being declared
+	}
+	switch x := t.(type) {
+	case *Named:
+		switch x.Obj.Kind {
+		case StructType, EnumType:
+			return c.implementsMembers(t, iface)
+		case InterfaceType:
+			if Identical(x, iface) {
+				return ""
+			}
+			c.resolveType(x.Obj)
+			return c.ifaceCovers(func(name string) *IfaceMethod { m, _ := ifaceMethod(x, name); return m },
+				func(name string) *Field { f, _ := ifaceField(x, name); return f }, iface)
+		}
+	case *TypeParam:
+		for _, i := range x.Ifaces {
+			if Identical(i, iface) {
+				return ""
+			}
+		}
+		return c.ifaceCovers(func(name string) *IfaceMethod { m, _ := paramMethod(x, name); return m },
+			func(name string) *Field { f, _ := paramField(x, name); return f }, iface)
+	}
+	return "only structs, enums and interfaces have interfaces"
+}
+
+// ifaceCovers reports why what method and field look up doesn't cover
+// iface's, "" when it does.
+func (c *Checker) ifaceCovers(method func(string) *IfaceMethod, field func(string) *Field, iface *Named) string {
+	s := iface.Subst()
+	for _, m := range iface.Obj.Iface.Methods {
+		got := method(m.Name)
+		if got == nil {
+			return "it has no method " + m.Name
+		}
+		if want := s.Apply(m.Sig.Type()); !Identical(got.Sig.Type(), want) {
+			return "its " + m.Name + " is " + typeString(got.Sig.Type()) + ", not " + typeString(want)
+		}
+	}
+	for _, fl := range iface.Obj.Iface.Fields {
+		got := field(fl.Name)
+		if got == nil {
+			return "it has no field " + fl.Name
+		}
+		if want := s.Apply(fl.Type); !Identical(got.Type, want) {
+			return "its field " + fl.Name + " is " + typeString(got.Type) + ", not " + typeString(want)
+		}
+	}
+	return ""
+}
+
+// ifaceMethod is an interface's method, its signature read with the
+// interface's type arguments, and its number (from 1).
+func ifaceMethod(n *Named, name string) (*IfaceMethod, int) {
+	if n.Obj.Iface == nil {
+		return nil, 0
+	}
+	for i, m := range n.Obj.Iface.Methods {
+		if m.Name == name {
+			if s := n.Subst(); s != nil {
+				return &IfaceMethod{Name: m.Name, Sig: s.applySig(m.Sig)}, i + 1
+			}
+			return m, i + 1
+		}
+	}
+	return nil, 0
+}
+
+// ifaceField is an interface's field, its type read with the
+// interface's type arguments.
+func ifaceField(n *Named, name string) (*Field, int) {
+	if n.Obj.Iface == nil {
+		return nil, 0
+	}
+	for i, f := range n.Obj.Iface.Fields {
+		if f.Name == name {
+			if s := n.Subst(); s != nil {
+				g := *f
+				g.Type = s.Apply(f.Type)
+				return &g, i
+			}
+			return f, i
+		}
+	}
+	return nil, 0
+}
+
+// paramMethod is a method a type parameter's interfaces ask for, and the
+// interface.
+func paramMethod(p *TypeParam, name string) (*IfaceMethod, *Named) {
+	for _, i := range p.Ifaces {
+		if m, _ := ifaceMethod(i, name); m != nil {
+			return m, i
+		}
+	}
+	return nil, nil
+}
+
+// paramField is a field a type parameter's interfaces ask for (an
+// error's message among them), and the interface.
+func paramField(p *TypeParam, name string) (*Field, *Named) {
+	for _, i := range p.Ifaces {
+		if f, _ := ifaceField(i, name); f != nil {
+			return f, i
+		}
+	}
+	return nil, nil
 }
 
 // trailingClosure makes a call's trailing block its last argument when
@@ -648,6 +810,33 @@ func (c *Checker) methodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, want Typ
 	return res
 }
 
+// ifaceMethodCall is x.name(…) of an interface's method m (index: its
+// number, from 1, for a native interface's).
+func (c *Checker) ifaceMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type, m *IfaceMethod, kind CallKind, index int) Type {
+	name := m.Name
+	args := c.matchArgs(e, m.Sig.Params, name)
+	for i, a := range args {
+		if a != nil {
+			c.assign(a, m.Sig.Params[i].Type, "argument "+m.Sig.Params[i].Name+" of "+name)
+		}
+	}
+	c.info.Calls[e] = &Call{Kind: kind, Recv: fn.X, RecvType: xt, Args: args, Params: m.Sig.Params, Result: m.Sig.Result, Bound: map[string]Type{"name": nil}, Index: index, Name: name}
+	c.info.Selections[fn] = &Selection{Kind: SelMethod, Name: name, Recv: xt}
+	c.callEffects(e, name, m.Sig.Async, m.Sig.Throws)
+	if c.ctx != nil {
+		c.ctx.readsState = true
+	}
+	return m.Sig.Result
+}
+
+// paramHint says what a type parameter without the member could name.
+func paramHint(p *TypeParam) string {
+	if len(p.Ifaces) == 0 {
+		return ": constrain it to an interface that has it (<" + p.Name + ": Shape>)"
+	}
+	return " (its constraints, " + p.Constraint() + ", don't ask for it)"
+}
+
 func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type, name string, want Type) Type {
 	if n, ok := xt.(*Named); ok {
 		switch n.Obj.Kind {
@@ -681,28 +870,35 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 				return c.closureCall(e, fn, t)
 			}
 		case InterfaceType:
-			for i, m := range n.Obj.Iface.Methods {
-				if m.Name == name {
-					args := c.matchArgs(e, m.Sig.Params, name)
-					for i, a := range args {
-						if a != nil {
-							c.assign(a, m.Sig.Params[i].Type, "argument "+m.Sig.Params[i].Name+" of "+name)
-						}
-					}
-					kind := CallIface
-					if n.Obj.Native {
-						kind = CallNative
-					}
-					c.info.Calls[e] = &Call{Kind: kind, Recv: fn.X, RecvType: xt, Args: args, Params: m.Sig.Params, Result: m.Sig.Result, Bound: map[string]Type{"name": nil}, Index: i + 1}
-					c.info.Selections[fn] = &Selection{Kind: SelMethod, Name: name, Recv: xt}
-					c.callEffects(e, name, m.Sig.Async, m.Sig.Throws)
-					if c.ctx != nil {
-						c.ctx.readsState = true
-					}
-					return m.Sig.Result
+			if m, i := ifaceMethod(n, name); m != nil {
+				kind := CallIface
+				if n.Obj.Native {
+					kind = CallNative
 				}
+				return c.ifaceMethodCall(e, fn, xt, m, kind, i)
 			}
 		}
+	}
+	if p, ok := xt.(*TypeParam); ok {
+		// A constrained type parameter's method: CallIface, which the
+		// lowering resolves per instantiation (a struct's or an enum's
+		// method called directly, an interface's through CALLI).
+		if m, _ := paramMethod(p, name); m != nil {
+			return c.ifaceMethodCall(e, fn, xt, m, CallIface, 0)
+		}
+		if f, _ := paramField(p, name); f != nil {
+			if ft, ok := f.Type.(*FuncType); ok {
+				c.info.Selections[fn] = &Selection{Kind: SelIfaceField, Field: f, Recv: xt, Name: name}
+				c.record(fn, ft)
+				return c.closureCall(e, fn, ft)
+			}
+			c.errorf(fn.Name, "%s is a field of %s, not a method: %s", name, p.Name, name)
+			c.checkArgsLoosely(e)
+			return Invalid
+		}
+		c.errorf(fn.Name, "%s has no method %s%s", p.Name, name, paramHint(p))
+		c.checkArgsLoosely(e)
+		return Invalid
 	}
 	if ms := methodsArity(xt, name, argCount(e)); len(ms) > 0 {
 		m := ms[0]
@@ -902,6 +1098,8 @@ func (c *Checker) structCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		if t == nil {
 			c.errorf(e, "can't tell %s's %s: pass its fields, or say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
 			t = Invalid
+		} else {
+			c.checkConstraints(e, tn.name, tp, t)
 		}
 		n.Args = append(n.Args, t)
 	}
@@ -944,6 +1142,8 @@ func (c *Checker) caseCall(e *syntax.CallExpr, tn *TypeName, k *Case, want Type)
 		if t == nil {
 			c.errorf(e, "can't tell %s's %s: say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
 			t = Invalid
+		} else {
+			c.checkConstraints(e, tn.name, tp, t)
 		}
 		n.Args = append(n.Args, t)
 	}
@@ -990,8 +1190,8 @@ func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		if t == nil {
 			c.errorf(e, "can't tell %s's %s: pass its parameters, or say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
 			t = Invalid
-		} else if !satisfies(t, tp) {
-			c.errorf(e, "%s's %s must be %s, and %s isn't", tn.name, tp.Name, tp.Constraint, typeString(t))
+		} else {
+			c.checkConstraints(e, tn.name, tp, t)
 		}
 		n.Args = append(n.Args, t)
 	}
@@ -1176,6 +1376,8 @@ func sendable1(t Type, seen map[*TypeName]bool) bool {
 	case *Array:
 		return sendable1(x.Elem, seen)
 	case *Map:
+		return sendable1(x.Elem, seen)
+	case *Set:
 		return sendable1(x.Elem, seen)
 	case *Optional:
 		return sendable1(x.Elem, seen)

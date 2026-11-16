@@ -168,8 +168,8 @@ func (d *ImportDecl) PathString() string {
 // A TypeParam is a generic parameter: T, or T: Hashable.
 type TypeParam struct {
 	Span
-	Name       *Ident
-	Constraint Type // nil for none
+	Name        *Ident
+	Constraints []Type // T: A & B; none for none
 }
 
 // A Param is a parameter of a function, a component's header, an event
@@ -1013,9 +1013,20 @@ type LitPat struct {
 type CasePat struct {
 	Span
 	Implicit bool     // .name: the case of the type that's expected
-	Path     []*Ident // the case's qualified name
+	Path     []*Ident // the case's qualified name, or a struct's (P(x: 0, y))
 	Args     []Pattern
-	Lparen   Pos // NoPos without parentheses
+	// Labels are the Args' labels (x: 0), nil where one has none; nil
+	// when none has one.
+	Labels []*Ident
+	Lparen Pos // NoPos without parentheses
+}
+
+// Label is the label of argument i, nil when it has none.
+func (c *CasePat) Label(i int) *Ident {
+	if i < len(c.Labels) {
+		return c.Labels[i]
+	}
+	return nil
 }
 
 // A TuplePat is (a, b).

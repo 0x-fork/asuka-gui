@@ -210,12 +210,22 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		}
 		c.assign(s.Value, lt, "the value")
 	default:
-		vt := c.expr(s.Value, numOnly(lt))
+		want := numOnly(lt)
+		if s.Op.AssignOp().IsBitwise() {
+			want = Int
+		}
+		vt := c.expr(s.Value, want)
 		if IsInvalid(lt) || IsInvalid(vt) {
 			return
 		}
 		op := strings.TrimSuffix(s.Op.String(), "=")
 		switch {
+		case s.Op.AssignOp().IsBitwise():
+			if lt != Int {
+				c.errorf(s.Target, "%s= takes ints, not a %s", op, typeString(lt))
+			} else if vt != Int {
+				c.errorf(s.Value, "%s= takes ints, not a %s", op, typeString(vt))
+			}
 		case IsNumeric(lt) && Identical(lt, vt):
 		case lt == String && vt == String && s.Op == syntax.ADD_ASSIGN:
 		case lt == Duration && vt == Duration && (s.Op == syntax.ADD_ASSIGN || s.Op == syntax.SUB_ASSIGN):
@@ -317,6 +327,10 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			c.errorf(x, "can't %s %s", what, exprName(x))
 		}
 	case *syntax.IndexExpr:
+		if c.info.Types[x.X] == Bytes {
+			c.errorf(x, "can't %s a byte: bytes don't change in place; make new ones (bytes([…]) of ints, b.slice, b.concat)", what)
+			return
+		}
 		c.checkLvalue(x.X, what)
 	case *syntax.SelfExpr:
 		c.errorf(x, "can't %s self: a struct's methods can't change it (it's a value); return a new one", what)
@@ -405,11 +419,13 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 			if view {
 				c.errorf(s.Seq, "a for in a view goes over an array: use the map's keys() or values()")
 			}
+		case *Set:
+			fi.Kind, fi.Elem = ForSet, u.Elem
 		default:
 			if t == String {
 				c.errorf(s.Seq, "a string isn't a list: go over its characters, s.chars()")
 			} else if !IsInvalid(t) {
-				c.errorf(s.Seq, "for goes over an array, a map or a range, not a %s", typeString(t))
+				c.errorf(s.Seq, "for goes over an array, a set, a map or a range, not a %s", typeString(t))
 			}
 			fi.Kind, fi.Elem = ForArray, Invalid
 		}
@@ -730,8 +746,14 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		v := c.declareVar(p.Name, t, false)
 		v.Kind = kind
 	case *syntax.LitPat:
-		lt := c.expr(p.Value, t)
-		if !IsInvalid(lt) && !IsInvalid(t) && !c.convert(p.Value, lt, t) && !(lt == NoneType && IsOptional(t)) {
+		// A literal is compared with an optional's value, once it isn't
+		// none: it's of the value's type (not converted to the optional).
+		et := t
+		if _, none := p.Value.(*syntax.NoneLit); !none {
+			et = Unopt(t)
+		}
+		lt := c.expr(p.Value, et)
+		if !IsInvalid(lt) && !IsInvalid(t) && !c.convert(p.Value, lt, et) && !(lt == NoneType && IsOptional(t)) {
 			c.errorf(p, "a %s can't be a %s", typeString(t), typeString(lt))
 		}
 	case *syntax.TuplePat:
@@ -757,6 +779,10 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			}
 		}
 	case *syntax.CasePat:
+		if st := c.patternStruct(p); st != nil {
+			c.structPattern(p, st, t)
+			return
+		}
 		et := Unopt(t)
 		var tn *TypeName
 		if p.Implicit {
@@ -807,6 +833,16 @@ func (c *Checker) caseArgs(p *syntax.CasePat, k *Case, t Type) {
 		c.errorf(p, "case %s has %s", k.Name, plural(len(k.Params), "payload value", "payload values"))
 		return
 	}
+	for i := range p.Args {
+		// A label names the payload's: positions still say which.
+		if l := p.Label(i); l != nil && l.Name != k.Labels[i] {
+			if k.Labels[i] == "" {
+				c.errorf(l, "case %s's payload %d has no label: leave it out", k.Name, i+1)
+			} else {
+				c.errorf(l, "case %s's payload %d is %s, not %s", k.Name, i+1, k.Labels[i], l.Name)
+			}
+		}
+	}
 	var s Subst
 	if n, ok := t.(*Named); ok {
 		s = n.Subst()
@@ -838,89 +874,6 @@ func irrefutable(p syntax.Pattern) bool {
 		return true
 	}
 	return false
-}
-
-// exhaustive reports whether arms cover every value of t, and what they
-// miss.
-func (c *Checker) exhaustive(t Type, arms []*syntax.MatchArm) (bool, []string) {
-	covered := map[string]bool{}
-	none := false
-	var add func(p syntax.Pattern) bool
-	add = func(p syntax.Pattern) bool {
-		switch p := p.(type) {
-		case *syntax.WildcardPat, *syntax.BindPat:
-			return true
-		case *syntax.TuplePat:
-			return irrefutable(p)
-		case *syntax.OrPat:
-			for _, a := range p.Alts {
-				if add(a) {
-					return true
-				}
-			}
-		case *syntax.CasePat:
-			all := true
-			for _, a := range p.Args {
-				if !irrefutable(a) {
-					all = false
-				}
-			}
-			if all {
-				covered[p.Path[len(p.Path)-1].Name] = true
-			}
-		case *syntax.LitPat:
-			switch v := p.Value.(type) {
-			case *syntax.BoolLit:
-				covered[strconvBool(v.Value)] = true
-			case *syntax.NoneLit:
-				none = true
-			}
-		}
-		return false
-	}
-	for _, a := range arms {
-		if a.Guard != nil {
-			continue
-		}
-		if add(a.Pattern) {
-			return true, nil
-		}
-	}
-	if IsInvalid(t) {
-		return true, nil
-	}
-	var missing []string
-	if IsOptional(t) && !none {
-		missing = append(missing, "none")
-	}
-	switch u := Unopt(t).(type) {
-	case *Named:
-		if u.Obj.Kind == EnumType {
-			for _, k := range u.Obj.Cases {
-				if !covered[k.Name] {
-					missing = append(missing, "."+k.Name)
-				}
-			}
-			return len(missing) == 0, missing
-		}
-	case *Basic:
-		if u == Bool {
-			for _, b := range []string{"true", "false"} {
-				if !covered[b] {
-					missing = append(missing, b)
-				}
-			}
-			return len(missing) == 0, missing
-		}
-	}
-	return false, append(missing, "the rest")
-}
-
-func strconvBool(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }
 
 func (c *Checker) matchStmt(s *syntax.MatchStmt) {

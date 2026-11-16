@@ -208,6 +208,8 @@ func (l *Lowerer) typeKey(t check.Type) string {
 		return "[" + l.typeKey(x.Elem) + "]"
 	case *check.Map:
 		return "[" + l.typeKey(x.Key) + ":" + l.typeKey(x.Elem) + "]"
+	case *check.Set:
+		return "Set<" + l.typeKey(x.Elem) + ">"
 	case *check.Optional:
 		return l.typeKey(x.Elem) + "?"
 	case *check.Tuple:
@@ -343,6 +345,8 @@ func (l *Lowerer) desc(t check.Type) string {
 		return "[" + l.desc(x.Elem)
 	case *check.Map:
 		return "{" + l.desc(x.Elem)
+	case *check.Set:
+		return "<" + l.desc(x.Elem)
 	case *check.Named:
 		switch x.Obj.Kind {
 		case check.StructType:

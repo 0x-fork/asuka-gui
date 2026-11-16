@@ -84,8 +84,9 @@ package syntax
 //      for and match are items, and an if's else is optional.
 //  13. Types. ( T ) groups: (fn() -> int)? is an optional function.
 //      Generic arguments follow a qualified name's last part:
-//      http.Response<T>. A type parameter may name a constraint: <T:
-//      Hashable>. T?? is an optional optional.
+//      http.Response<T>. A type parameter may name constraints, joined
+//      by &: <T: Hashable>, <T: Shape & Hashable>. T?? is an optional
+//      optional.
 //  14. Enums. Cases are separated by commas or newlines and come before
 //      the methods; a case's name may be a keyword (none).
 //  15. Imports come before declarations. pub may precede any
@@ -124,6 +125,13 @@ package syntax
 //      try parsePort(s) catch e { 80 } (a CatchExpr). Its clauses are
 //      do's, and the later ones may start the line after a }. Nothing
 //      continues the expression after its last clause.
+//  24. Shifts. << is a token; >> is two > tokens side by side (and >>=
+//      a > and a >= side by side), so a type's Kept<Box<int>> needs no
+//      space: a > b > c isn't a shift (and comparisons don't chain).
+//  25. Struct patterns. A pattern of a name and parentheses, P(…), is a
+//      case pattern whose path is P: the checker says it's a struct's
+//      when P names one. Its arguments may be labeled (P(x: 0, y)), as
+//      a case's payload's may (.server(code: c)).
 //
 // The scanner documents how newlines end items (Scanner) and how a %
 // after a number reads (50% is a length, 10%3 a remainder).
@@ -943,7 +951,10 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		start := p.pos
 		tp := &TypeParam{Name: p.ident()}
 		if p.got(COLON) {
-			tp.Constraint = p.parseType()
+			tp.Constraints = append(tp.Constraints, p.parseType())
+			for p.got(AMP) {
+				tp.Constraints = append(tp.Constraints, p.parseType())
+			}
 		}
 		tp.Span = p.span(start)
 		list = append(list, tp)
@@ -1605,8 +1616,11 @@ func (p *parser) itemAfterPub(start Pos) Item {
 
 expr:
 	x := p.parseExpr()
-	if p.tok.IsAssign() {
-		d := &AssignStmt{Target: x, Op: p.tok, OpPos: p.pos}
+	if op := p.assignOp(); op != ILLEGAL {
+		d := &AssignStmt{Target: x, Op: op, OpPos: p.pos}
+		if op == SHR_ASSIGN {
+			p.next() // the >
+		}
 		p.next()
 		d.Value = p.parseExpr()
 		d.Span = p.span(start)
@@ -1970,15 +1984,58 @@ func (p *parser) parseLambda() *LambdaExpr {
 	return l
 }
 
+// shiftRight reports >> (SHR) or >>= (SHR_ASSIGN) here: a > and, right
+// after it, another > or a >=. The scanner makes each > a token of its
+// own, so a type's Box<Box<int>> closes twice (decision 24).
+func (p *parser) shiftRight() Token {
+	if p.tok != GTR || p.i+1 >= len(p.toks) {
+		return ILLEGAL
+	}
+	n := p.toks[p.i+1]
+	if n.pos != p.pos+1 {
+		return ILLEGAL
+	}
+	switch n.tok {
+	case GTR:
+		return SHR
+	case GEQ:
+		return SHR_ASSIGN
+	}
+	return ILLEGAL
+}
+
+// binaryOp is the binary operator here: the token, or >> of two.
+func (p *parser) binaryOp() Token {
+	if t := p.shiftRight(); t != ILLEGAL {
+		return t
+	}
+	return p.tok
+}
+
+// assignOp is the assignment operator here (ILLEGAL when there's none):
+// the token, or >>= of a > and a >=.
+func (p *parser) assignOp() Token {
+	if t := p.shiftRight(); t == SHR_ASSIGN {
+		return t
+	}
+	if p.tok.IsAssign() {
+		return p.tok
+	}
+	return ILLEGAL
+}
+
 func (p *parser) parseBinary(minPrec int) Expr {
 	start := p.pos
 	x := p.parseUnary()
 	for {
-		prec := p.tok.Precedence()
+		op, opPos := p.binaryOp(), p.pos
+		prec := op.Precedence()
 		if prec == 0 || prec < minPrec {
 			return x
 		}
-		op, opPos := p.tok, p.pos
+		if op == SHR {
+			p.next() // the first >
+		}
 		p.next()
 		var y Expr
 		if op == COALESCE {
@@ -1987,7 +2044,7 @@ func (p *parser) parseBinary(minPrec int) Expr {
 			y = p.parseBinary(prec + 1)
 		}
 		x = &BinaryExpr{X: x, Op: op, OpPos: opPos, Y: y, Span: p.span(start)}
-		if (prec == 4 || prec == 5) && p.tok.Precedence() == prec {
+		if (prec == 4 || prec == 5) && p.binaryOp().Precedence() == prec {
 			if prec == 4 {
 				p.error(p.pos, "comparisons don't chain: write a < b && b < c")
 			} else {
@@ -2000,7 +2057,7 @@ func (p *parser) parseBinary(minPrec int) Expr {
 func (p *parser) parseUnary() Expr {
 	start := p.pos
 	switch p.tok {
-	case NOT, SUB, AWAIT:
+	case NOT, SUB, TILDE, AWAIT:
 		op := p.tok
 		p.next()
 		if !p.enter() {
@@ -2665,7 +2722,20 @@ func (p *parser) caseArgs(c *CasePat) {
 	p.next()
 	c.Args = []Pattern{}
 	for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
+		if p.isName() && p.peek(1) == COLON {
+			// A label: a struct's field (P(x: 0, y)), a case's payload's.
+			for len(c.Labels) < len(c.Args) {
+				c.Labels = append(c.Labels, nil)
+			}
+			c.Labels = append(c.Labels, p.name())
+			p.next()
+		}
 		c.Args = append(c.Args, p.parsePattern())
+		if len(c.Labels) > 0 {
+			for len(c.Labels) < len(c.Args) {
+				c.Labels = append(c.Labels, nil)
+			}
+		}
 		if !p.got(COMMA) {
 			break
 		}

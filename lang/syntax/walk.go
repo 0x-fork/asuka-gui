@@ -34,8 +34,8 @@ func Walk(v Visitor, n Node) {
 	// Declarations.
 	case *TypeParam:
 		walk(n.Name)
-		if n.Constraint != nil {
-			walk(n.Constraint)
+		for _, t := range n.Constraints {
+			walk(t)
 		}
 	case *Param:
 		walk(n.Name)
@@ -406,7 +406,10 @@ func Walk(v Visitor, n Node) {
 		walk(n.Value)
 	case *CasePat:
 		walkIdents(v, n.Path)
-		for _, a := range n.Args {
+		for i, a := range n.Args {
+			if l := n.Label(i); l != nil {
+				walk(l)
+			}
 			walk(a)
 		}
 	case *TuplePat:

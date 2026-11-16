@@ -205,6 +205,13 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.value(fi.Seq, i)
 		limit = b.local(bc.KInt)
 		b.value(fi.End, limit)
+	case check.ForSet:
+		// The set as it is now (a local holds it, so a change in the
+		// body copies it), entry by entry: set.next is the index of the
+		// first live entry from i, or -1.
+		seq = b.local(bc.KRef)
+		b.value(fi.Seq, seq)
+		b.loadInt(i, 0)
 	case check.ForMap:
 		m := b.value(fi.Seq, -1)
 		keys = b.local(bc.KRef)
@@ -222,9 +229,14 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.loadInt(i, 0)
 	}
 	b.f.Place(top)
-	if fi.Kind == check.ForRange && fi.Incl {
+	switch {
+	case fi.Kind == check.ForSet:
+		b.callBTo("set.next", i, seq, i)
+		zero := b.konst(0)
+		b.emit(op("LEI"), cond, zero, i)
+	case fi.Kind == check.ForRange && fi.Incl:
 		b.emit(op("LEI"), cond, i, limit)
-	} else {
+	default:
 		b.emit(op("LTI"), cond, i, limit)
 	}
 	b.emitJump(op("JF"), cond, end)
@@ -232,6 +244,10 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 	switch fi.Kind {
 	case check.ForRange:
 		b.declare(fi.Item, i)
+	case check.ForSet:
+		x := b.temp(b.kind(fi.Elem))
+		b.callBTo("set.elem", x, seq, i)
+		b.declare(fi.Item, x)
 	case check.ForMap:
 		kt := fi.Elem.(*check.Tuple)
 		k := b.temp(b.kind(kt.Elems[0]))
@@ -312,6 +328,24 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 		}
 		b.f.Place(ok)
 	case *syntax.CasePat:
+		if fields, ok := b.l.info.FieldPats[p]; ok {
+			// A struct's: each field it names.
+			x := v
+			et := check.Unopt(t)
+			if check.IsOptional(t) {
+				b.emitJump(op("JNONE"), v, fail)
+				x = b.unbox(v, et, -1)
+			}
+			n, _ := et.(*check.Named)
+			for i, a := range p.Args {
+				if fields[i] == nil || n == nil || isIrrefutable(a) {
+					continue
+				}
+				r := b.getField(x, n, fields[i], -1)
+				b.testPattern(a, r, n.Subst().Apply(fields[i].Type), fail)
+			}
+			return
+		}
 		k := b.l.info.Cases[p]
 		if k == nil {
 			return
@@ -410,16 +444,26 @@ func (b *fb) bindPattern(p syntax.Pattern, v int, t check.Type) {
 			b.bindPattern(e, r, tt.Elems[i])
 		}
 	case *syntax.CasePat:
-		k := b.l.info.Cases[p]
-		if k == nil {
-			return
-		}
 		x := v
 		et := check.Unopt(t)
 		if check.IsOptional(t) && hasBinding(p) {
 			x = b.unbox(v, et, -1)
 		}
 		n, _ := et.(*check.Named)
+		if fields, ok := b.l.info.FieldPats[p]; ok {
+			for i, a := range p.Args {
+				if fields[i] == nil || n == nil || !hasBinding(a) {
+					continue
+				}
+				r := b.getField(x, n, fields[i], -1)
+				b.bindPattern(a, r, n.Subst().Apply(fields[i].Type))
+			}
+			return
+		}
+		k := b.l.info.Cases[p]
+		if k == nil {
+			return
+		}
 		for i, a := range p.Args {
 			if !hasBinding(a) {
 				continue
@@ -607,7 +651,7 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 		b.f.Place(end)
 	default:
 		v := b.value(s.Value, -1)
-		o := map[syntax.Token]syntax.Token{syntax.ADD_ASSIGN: syntax.ADD, syntax.SUB_ASSIGN: syntax.SUB, syntax.MUL_ASSIGN: syntax.MUL, syntax.QUO_ASSIGN: syntax.QUO, syntax.REM_ASSIGN: syntax.REM}[s.Op]
+		o := s.Op.AssignOp()
 		lv := b.prepare(s.Target)
 		vt := b.typeOf(s.Value)
 		if lv.kind == lvField || lv.kind == lvIndex && !lv.isMap {

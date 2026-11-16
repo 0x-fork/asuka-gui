@@ -1,0 +1,47 @@
+// Sets: their elements are Hashable.
+
+struct Point {
+  x: int
+}
+
+enum Shape {
+  dot(Point)
+  none
+}
+
+fn points(s: Set<Point>) {} // ERROR "a Set's elements are ints, strings, bools or enums without payloads, not Point"
+
+fn shapes(s: Set<Shape>) {} // ERROR "a Set's elements are ints, strings, bools or enums without payloads, not Shape"
+
+fn arrays(s: Set<[int]>) {} // ERROR "a Set's elements are ints, strings, bools or enums without payloads, not \[int\]"
+
+fn twoTypes() -> Set<int, string> = [] // ERROR "Set takes one type: Set<T>"
+
+fn literal() -> Set<int> = [1, "a"] // ERROR "an element of Set<int> is a string, not a int"
+
+fn fromWhat() -> Set<int> = Set(3) // ERROR "Set\\(…\\)'s argument is a int, not a \\[int\\]"
+
+fn fromNothing() {
+  let s = Set() // ERROR "can't tell the set's elements: Set<T>\(\), or say what's expected"
+}
+
+fn wrongElement(s: Set<string>) -> bool = s.contains(1) // ERROR "is a int, not a string"
+
+fn noIndex(s: Set<int>) -> int = s[0] // ERROR "a Set<int> can't be indexed"
+
+fn ordered(s: Set<int>) -> bool = s < s // ERROR "Set<int>s can't be ordered"
+
+fn setOfSets(s: Set<Set<int>>) {} // ERROR "a Set's elements are ints, strings, bools or enums without payloads, not Set<int>"
+
+fn ok(s: Set<string>) -> Set<string> {
+  var t = s
+  t.insert("x")
+  for x in s {
+    t.remove(x)
+  }
+  return t.union(["a"]).intersection(s).subtracting([])
+}
+
+fn noUpdate(s: Set<int>) {
+  s.insert(1) // ERROR "s"
+}

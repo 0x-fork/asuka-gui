@@ -453,9 +453,13 @@ func (p *printer) typeParams(list []*TypeParam) {
 			p.write(", ")
 		}
 		p.write(tp.Name.Name)
-		if tp.Constraint != nil {
-			p.write(": ")
-			p.typ(tp.Constraint)
+		for j, t := range tp.Constraints {
+			if j == 0 {
+				p.write(": ")
+			} else {
+				p.write(" & ")
+			}
+			p.typ(t)
 		}
 	}
 	p.write(">")
@@ -933,8 +937,8 @@ func (p *printer) args(l *ArgList) {
 // Operands' precedences: what binds tighter than every binary operator.
 const (
 	precLambda  = 0
-	precUnary   = 8
-	precPostfix = 9
+	precUnary   = 9
+	precPostfix = 10
 )
 
 func exprPrec(x Expr) int {
@@ -1033,7 +1037,7 @@ func (p *printer) expr1(x Expr) {
 		p.write("!")
 	case *UnaryExpr:
 		switch x.Op {
-		case NOT, SUB:
+		case NOT, SUB, TILDE:
 			p.write(x.Op.String())
 		case TRY:
 			if x.Optional {
@@ -1302,6 +1306,9 @@ func (p *printer) pattern(pt Pattern) {
 			for i, a := range pt.Args {
 				if i > 0 {
 					p.write(", ")
+				}
+				if l := pt.Label(i); l != nil {
+					p.write(l.Name + ": ")
 				}
 				p.pattern(a)
 			}

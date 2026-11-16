@@ -18,7 +18,7 @@ import (
 
 // A Method is a built-in type's method.
 type Method struct {
-	Recv    string // array, map, string, bytes, float, int, duration, optional, task, app, loading
+	Recv    string // array, map, set, string, bytes, float, int, duration, optional, task, app, loading
 	Name    string
 	Sig     string // (name: Type, …) -> Result
 	Builtin string // the runtime's builtin; "" for one the lowering does itself (Special)
@@ -99,6 +99,18 @@ var Methods = []*Method{
 	{Recv: "map", Name: "remove", Sig: "(key: K) -> bool", Builtin: "map.delete", Inout: true, Doc: "removes the key; whether it was there"},
 	{Recv: "map", Name: "keys", Sig: "() -> [K]", Builtin: "map.keys", Doc: "in insertion order"},
 	{Recv: "map", Name: "values", Sig: "() -> [V]", Builtin: "map.values", Doc: "in insertion order"},
+
+	// Sets.
+	{Recv: "set", Name: "count", Sig: "() -> int", Special: "len", Doc: "the number of elements"},
+	{Recv: "set", Name: "isEmpty", Sig: "() -> bool", Builtin: "set.is_empty"},
+	{Recv: "set", Name: "contains", Sig: "(value: T) -> bool", Builtin: "set.has", Doc: "whether value is one of the elements"},
+	{Recv: "set", Name: "insert", Sig: "(value: T) -> bool", Builtin: "set.insert", Inout: true, Doc: "adds value, last, unless it's an element already; whether it was new"},
+	{Recv: "set", Name: "remove", Sig: "(value: T) -> bool", Builtin: "set.remove", Inout: true, Doc: "removes value; whether it was an element"},
+	{Recv: "set", Name: "union", Sig: "(other: Set<T>) -> Set<T>", Builtin: "set.union", Doc: "the elements of both: these, then other's new ones"},
+	{Recv: "set", Name: "intersection", Sig: "(other: Set<T>) -> Set<T>", Builtin: "set.intersection", Doc: "the elements other has too, in this set's order"},
+	{Recv: "set", Name: "subtracting", Sig: "(other: Set<T>) -> Set<T>", Builtin: "set.subtracting", Doc: "the elements other hasn't"},
+	{Recv: "set", Name: "isSubset", Sig: "(of: Set<T>) -> bool", Builtin: "set.is_subset", Doc: "whether every element is of's"},
+	{Recv: "set", Name: "isSuperset", Sig: "(of: Set<T>) -> bool", Builtin: "set.is_superset", Doc: "whether every element of of's is this set's"},
 
 	// Strings.
 	{Recv: "string", Name: "count", Sig: "() -> int", Builtin: "str.len", Doc: "the number of characters (code points)"},
@@ -349,6 +361,8 @@ func recvKind(t Type) string {
 		return "array"
 	case *Map:
 		return "map"
+	case *Set:
+		return "set"
 	case *Optional:
 		return "optional"
 	case *Task:
@@ -457,6 +471,8 @@ func (m *Method) bind(recv Type) Subst {
 		s[tvT] = x.Elem
 	case *Map:
 		s[tvK], s[tvV] = x.Key, x.Elem
+	case *Set:
+		s[tvT] = x.Elem
 	case *Optional:
 		s[tvT] = x.Elem
 	case *Task:
@@ -656,12 +672,17 @@ func (p *sigParser) typ() Type {
 			t = Path
 		case "Ref":
 			t = Ref
-		case "Stream":
+		case "Stream", "Set":
 			if !p.eat("<") {
 				p.err = true
 				return Invalid
 			}
-			t = &Stream{p.typ()}
+			e := p.typ()
+			if n == "Set" {
+				t = &Set{e}
+			} else {
+				t = &Stream{e}
+			}
 			if !p.eat(">") {
 				p.err = true
 			}

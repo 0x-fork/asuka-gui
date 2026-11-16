@@ -11,7 +11,8 @@ import (
 var operandKinds = map[string][]bc.Kind{
 	"ADDI": {bc.KInt, bc.KInt, bc.KInt}, "SUBI": {bc.KInt, bc.KInt, bc.KInt}, "MULI": {bc.KInt, bc.KInt, bc.KInt},
 	"DIVI": {bc.KInt, bc.KInt, bc.KInt}, "MODI": {bc.KInt, bc.KInt, bc.KInt}, "NEGI": {bc.KInt, bc.KInt},
-	"ADDIK": {bc.KInt, bc.KInt}, "LTI": {bc.KBool, bc.KInt, bc.KInt}, "LEI": {bc.KBool, bc.KInt, bc.KInt},
+	"ADDIK": {bc.KInt, bc.KInt}, "BXOR": {bc.KInt, bc.KInt, bc.KInt}, "BNOT": {bc.KInt, bc.KInt},
+	"SHL": {bc.KInt, bc.KInt, bc.KInt}, "SHR": {bc.KInt, bc.KInt, bc.KInt}, "LTI": {bc.KBool, bc.KInt, bc.KInt}, "LEI": {bc.KBool, bc.KInt, bc.KInt},
 	"ADDF": {bc.KFloat, bc.KFloat, bc.KFloat}, "SUBF": {bc.KFloat, bc.KFloat, bc.KFloat}, "MULF": {bc.KFloat, bc.KFloat, bc.KFloat},
 	"DIVF": {bc.KFloat, bc.KFloat, bc.KFloat}, "MODF": {bc.KFloat, bc.KFloat, bc.KFloat}, "NEGF": {bc.KFloat, bc.KFloat},
 	"EQF": {bc.KBool, bc.KFloat, bc.KFloat}, "NEF": {bc.KBool, bc.KFloat, bc.KFloat},

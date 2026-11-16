@@ -154,9 +154,10 @@ SourceFile 1:1-84:3
           Name: Ident "T" 30:13-30:14
         TypeParam 30:16-30:24
           Name: Ident "E" 30:16-30:17
-          Constraint: NamedType 30:19-30:24
-            Path: [1]
-              Ident "Error" 30:19-30:24
+          Constraints: [1]
+            NamedType 30:19-30:24
+              Path: [1]
+                Ident "Error" 30:19-30:24
       Cases: [2]
         EnumCase 31:3-31:8
           Name: Ident "ok" 31:3-31:5

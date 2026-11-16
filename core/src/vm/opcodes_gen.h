@@ -30,109 +30,113 @@ enum {
 	AK_OP_LEI = 21, // reg reg reg: a = b <= c
 	AK_OP_BAND = 22, // reg reg reg: a = b & c
 	AK_OP_BOR = 23, // reg reg reg: a = b | c
-	AK_OP_ADDF = 24, // reg reg reg: a = b + c
-	AK_OP_SUBF = 25, // reg reg reg: a = b - c
-	AK_OP_MULF = 26, // reg reg reg: a = b * c
-	AK_OP_DIVF = 27, // reg reg reg: a = b / c
-	AK_OP_MODF = 28, // reg reg reg: a = fmod(b, c)
-	AK_OP_NEGF = 29, // reg reg: a = -b
-	AK_OP_EQF = 30, // reg reg reg: a = b == c
-	AK_OP_NEF = 31, // reg reg reg: a = b != c
-	AK_OP_LTF = 32, // reg reg reg: a = b < c
-	AK_OP_LEF = 33, // reg reg reg: a = b <= c
-	AK_OP_I2F = 34, // reg reg: a = float(b)
-	AK_OP_F2I = 35, // reg reg: a = int(b), truncated toward zero; saturates
-	AK_OP_NOT = 36, // reg reg: a = !b
-	AK_OP_EQ = 37, // reg reg reg kind: a = b == c, compared as their kind (references deeply)
-	AK_OP_NE = 38, // reg reg reg kind: a = b != c
-	AK_OP_ISNONE = 39, // reg reg: a = b is none (a reference register)
-	AK_OP_CONCAT = 40, // reg reg reg: a = b + c
-	AK_OP_TOSTR = 41, // reg reg kind: a = the string of b, of kind k (int, float, bool; a string: retained)
-	AK_OP_INTERP = 42, // reg reg imm const: a = the concatenation of n registers from b; Strings[k] holds their kinds, one byte each (a string's kind is REF)
-	AK_OP_LTS = 43, // reg reg reg: a = b < c, strings in byte order
-	AK_OP_JMP = 44, // off: jumps
-	AK_OP_JT = 45, // reg off: jumps when a is true
-	AK_OP_JF = 46, // reg off: jumps when a is false
-	AK_OP_JNONE = 47, // reg off: jumps when a (a reference) is none
-	AK_OP_JSOME = 48, // reg off: jumps when a (a reference) isn't none
-	AK_OP_CALL = 49, // reg func reg imm: a = f(n arguments from register b); a throwing f unwinds to the nearest handler
-	AK_OP_CALLC = 50, // reg reg reg imm: a = the closure b called with n arguments from register c
-	AK_OP_CALLB = 51, // reg builtin reg imm: a = the builtin called with n arguments from register b
-	AK_OP_RET = 52, // reg: returns a (a reference is moved out, not retained)
-	AK_OP_RET0 = 53, // : returns nothing
-	AK_OP_THROW = 54, // reg: throws the error in a (moved)
-	AK_OP_CATCH = 55, // reg: a = the error being handled (at a handler's start)
-	AK_OP_RETHROW = 56, // reg: throws a again unless it's handled: the end of a catch that didn't match
-	AK_OP_CLOS = 57, // reg func reg imm: a = a closure of f capturing n registers from b (as f's capture kinds say)
-	AK_OP_CAP = 58, // reg imm: a = the running closure's capture i (retained when a reference)
-	AK_OP_VBOX = 59, // reg reg kind: a = a mutable box holding b: a var that closures capture and change
-	AK_OP_VGET = 60, // reg reg: a = the box b's value (retained when a reference)
-	AK_OP_VSET = 61, // reg reg: the box a = b (retained; the old one released)
-	AK_OP_CALLI = 62, // reg const reg imm: a = the method Strings[k] of the object in register c (an interface value), called with it and n-1 more arguments from c
-	AK_OP_NEWS = 63, // reg shape reg: a = a struct of shape s from its fields' registers from b
-	AK_OP_GETF = 64, // reg reg imm: a = b.fields[i] (retained when a reference)
-	AK_OP_SETF = 65, // reg imm reg: a.fields[i] = c, a copied first if shared
-	AK_OP_NEWE = 66, // reg shape imm reg: a = case c of enum s with its payload from registers from b
-	AK_OP_ECASE = 67, // reg reg: a = the case of enum value b
-	AK_OP_GETP = 68, // reg reg imm: a = b's payload field i
-	AK_OP_BOX = 69, // reg reg kind: a = b boxed (an optional scalar that isn't none)
-	AK_OP_UNBOX = 70, // reg reg: a = the scalar in box b
-	AK_OP_NEWA = 71, // reg kind shape reg imm: a = an array of kind k (elements of shape s, 0xFFFF none) from n registers from b
-	AK_OP_IDX = 72, // reg reg reg: a = b[c]; throws out of range
-	AK_OP_SETIDX = 73, // reg reg reg: a[b] = c, a copied first if shared; throws out of range
-	AK_OP_LEN = 74, // reg reg: a = the length of b (an array, a map, a string's bytes)
-	AK_OP_NEWM = 75, // reg kind kind reg imm: a = a map (key kind, value kind) from n key/value register pairs from b
-	AK_OP_MGET = 76, // reg reg reg: a = m[k] as an optional (none when missing; scalars boxed)
-	AK_OP_MSET = 77, // reg reg reg: a[b] = c, a copied first if shared
-	AK_OP_CELL = 78, // reg reg kind: a = a new state cell holding b, owned by the current owner
-	AK_OP_CELLK = 79, // reg reg kind const: a = the state cell kept under Strings[k] across reloads, or a new one holding b
-	AK_OP_CGET = 80, // reg reg: a = the cell b's value, tracked (retained when a reference)
-	AK_OP_CPEEK = 81, // reg reg: a = the cell b's value, untracked
-	AK_OP_CSET = 82, // reg reg: the cell a = b; notifies when it changed
-	AK_OP_CTAKE = 83, // reg reg: a = the cell b's value moved out (for a mutation in place); CPUT puts it back
-	AK_OP_CPUT = 84, // reg reg: the cell a = b (moved), notifying
-	AK_OP_MEMO = 85, // reg reg kind: a = a memo computing the closure b
-	AK_OP_MREAD = 86, // reg reg: a = the memo b's value, tracked
-	AK_OP_ACCV = 87, // reg reg kind: a = an accessor of a constant value b
-	AK_OP_ACCF = 88, // reg reg kind: a = an accessor computing the closure b
-	AK_OP_ACCC = 89, // reg reg: a = an accessor reading the cell or memo b
-	AK_OP_AGET = 90, // reg reg: a = what accessor b reads, tracked
-	AK_OP_UNTRACK = 91, // reg reg reg imm: a = the closure b called untracked with n arguments from c
-	AK_OP_EFFECT = 92, // reg: runs the closure a as an effect of the current owner
-	AK_OP_RENDER = 93, // reg: runs the closure a as a render effect
-	AK_OP_CLEANUP = 94, // reg: runs the closure a when the current owner is disposed or its effect re-runs
-	AK_OP_BATCH = 95, // imm: 1 begins a batch, 0 ends it (flushing)
-	AK_OP_TASK = 96, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
-	AK_OP_AWAIT = 97, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
-	AK_OP_YIELD = 98, // : suspends until the next turn of the main loop
-	AK_OP__COUNT = 99,
+	AK_OP_BXOR = 24, // reg reg reg: a = b ^ c
+	AK_OP_BNOT = 25, // reg reg: a = ~b
+	AK_OP_SHL = 26, // reg reg reg: a = b << c (0 when c >= 64); throws on c < 0
+	AK_OP_SHR = 27, // reg reg reg: a = b >> c, arithmetic (0 or -1 when c >= 64); throws on c < 0
+	AK_OP_ADDF = 28, // reg reg reg: a = b + c
+	AK_OP_SUBF = 29, // reg reg reg: a = b - c
+	AK_OP_MULF = 30, // reg reg reg: a = b * c
+	AK_OP_DIVF = 31, // reg reg reg: a = b / c
+	AK_OP_MODF = 32, // reg reg reg: a = fmod(b, c)
+	AK_OP_NEGF = 33, // reg reg: a = -b
+	AK_OP_EQF = 34, // reg reg reg: a = b == c
+	AK_OP_NEF = 35, // reg reg reg: a = b != c
+	AK_OP_LTF = 36, // reg reg reg: a = b < c
+	AK_OP_LEF = 37, // reg reg reg: a = b <= c
+	AK_OP_I2F = 38, // reg reg: a = float(b)
+	AK_OP_F2I = 39, // reg reg: a = int(b), truncated toward zero; saturates
+	AK_OP_NOT = 40, // reg reg: a = !b
+	AK_OP_EQ = 41, // reg reg reg kind: a = b == c, compared as their kind (references deeply)
+	AK_OP_NE = 42, // reg reg reg kind: a = b != c
+	AK_OP_ISNONE = 43, // reg reg: a = b is none (a reference register)
+	AK_OP_CONCAT = 44, // reg reg reg: a = b + c
+	AK_OP_TOSTR = 45, // reg reg kind: a = the string of b, of kind k (int, float, bool; a string: retained)
+	AK_OP_INTERP = 46, // reg reg imm const: a = the concatenation of n registers from b; Strings[k] holds their kinds, one byte each (a string's kind is REF)
+	AK_OP_LTS = 47, // reg reg reg: a = b < c, strings in byte order
+	AK_OP_JMP = 48, // off: jumps
+	AK_OP_JT = 49, // reg off: jumps when a is true
+	AK_OP_JF = 50, // reg off: jumps when a is false
+	AK_OP_JNONE = 51, // reg off: jumps when a (a reference) is none
+	AK_OP_JSOME = 52, // reg off: jumps when a (a reference) isn't none
+	AK_OP_CALL = 53, // reg func reg imm: a = f(n arguments from register b); a throwing f unwinds to the nearest handler
+	AK_OP_CALLC = 54, // reg reg reg imm: a = the closure b called with n arguments from register c
+	AK_OP_CALLB = 55, // reg builtin reg imm: a = the builtin called with n arguments from register b
+	AK_OP_RET = 56, // reg: returns a (a reference is moved out, not retained)
+	AK_OP_RET0 = 57, // : returns nothing
+	AK_OP_THROW = 58, // reg: throws the error in a (moved)
+	AK_OP_CATCH = 59, // reg: a = the error being handled (at a handler's start)
+	AK_OP_RETHROW = 60, // reg: throws a again unless it's handled: the end of a catch that didn't match
+	AK_OP_CLOS = 61, // reg func reg imm: a = a closure of f capturing n registers from b (as f's capture kinds say)
+	AK_OP_CAP = 62, // reg imm: a = the running closure's capture i (retained when a reference)
+	AK_OP_VBOX = 63, // reg reg kind: a = a mutable box holding b: a var that closures capture and change
+	AK_OP_VGET = 64, // reg reg: a = the box b's value (retained when a reference)
+	AK_OP_VSET = 65, // reg reg: the box a = b (retained; the old one released)
+	AK_OP_CALLI = 66, // reg const reg imm: a = the method Strings[k] of the object in register c (an interface value), called with it and n-1 more arguments from c
+	AK_OP_NEWS = 67, // reg shape reg: a = a struct of shape s from its fields' registers from b
+	AK_OP_GETF = 68, // reg reg imm: a = b.fields[i] (retained when a reference)
+	AK_OP_SETF = 69, // reg imm reg: a.fields[i] = c, a copied first if shared
+	AK_OP_NEWE = 70, // reg shape imm reg: a = case c of enum s with its payload from registers from b
+	AK_OP_ECASE = 71, // reg reg: a = the case of enum value b
+	AK_OP_GETP = 72, // reg reg imm: a = b's payload field i
+	AK_OP_BOX = 73, // reg reg kind: a = b boxed (an optional scalar that isn't none)
+	AK_OP_UNBOX = 74, // reg reg: a = the scalar in box b
+	AK_OP_NEWA = 75, // reg kind shape reg imm: a = an array of kind k (elements of shape s, 0xFFFF none) from n registers from b
+	AK_OP_IDX = 76, // reg reg reg: a = b[c]; throws out of range
+	AK_OP_SETIDX = 77, // reg reg reg: a[b] = c, a copied first if shared; throws out of range
+	AK_OP_LEN = 78, // reg reg: a = the length of b (an array, a map, a string's bytes)
+	AK_OP_NEWM = 79, // reg kind kind reg imm: a = a map (key kind, value kind) from n key/value register pairs from b
+	AK_OP_MGET = 80, // reg reg reg: a = m[k] as an optional (none when missing; scalars boxed)
+	AK_OP_MSET = 81, // reg reg reg: a[b] = c, a copied first if shared
+	AK_OP_CELL = 82, // reg reg kind: a = a new state cell holding b, owned by the current owner
+	AK_OP_CELLK = 83, // reg reg kind const: a = the state cell kept under Strings[k] across reloads, or a new one holding b
+	AK_OP_CGET = 84, // reg reg: a = the cell b's value, tracked (retained when a reference)
+	AK_OP_CPEEK = 85, // reg reg: a = the cell b's value, untracked
+	AK_OP_CSET = 86, // reg reg: the cell a = b; notifies when it changed
+	AK_OP_CTAKE = 87, // reg reg: a = the cell b's value moved out (for a mutation in place); CPUT puts it back
+	AK_OP_CPUT = 88, // reg reg: the cell a = b (moved), notifying
+	AK_OP_MEMO = 89, // reg reg kind: a = a memo computing the closure b
+	AK_OP_MREAD = 90, // reg reg: a = the memo b's value, tracked
+	AK_OP_ACCV = 91, // reg reg kind: a = an accessor of a constant value b
+	AK_OP_ACCF = 92, // reg reg kind: a = an accessor computing the closure b
+	AK_OP_ACCC = 93, // reg reg: a = an accessor reading the cell or memo b
+	AK_OP_AGET = 94, // reg reg: a = what accessor b reads, tracked
+	AK_OP_UNTRACK = 95, // reg reg reg imm: a = the closure b called untracked with n arguments from c
+	AK_OP_EFFECT = 96, // reg: runs the closure a as an effect of the current owner
+	AK_OP_RENDER = 97, // reg: runs the closure a as a render effect
+	AK_OP_CLEANUP = 98, // reg: runs the closure a when the current owner is disposed or its effect re-runs
+	AK_OP_BATCH = 99, // imm: 1 begins a batch, 0 ends it (flushing)
+	AK_OP_TASK = 100, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
+	AK_OP_AWAIT = 101, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
+	AK_OP_YIELD = 102, // : suspends until the next turn of the main loop
+	AK_OP__COUNT = 103,
 };
 
 // Instruction widths in words.
 static const uint8_t ak_op_width[] = {
 	1, 3, 3, 2, 3, 3, 3, 3, 2, 4, 4, 4, 4, 4, 4, 4,
-	3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 4, 4,
-	4, 4, 3, 3, 3, 5, 5, 3, 4, 4, 5, 4, 3, 4, 4, 4,
-	4, 5, 5, 5, 2, 1, 2, 2, 2, 5, 3, 4, 3, 3, 5, 4,
-	4, 4, 5, 3, 4, 4, 3, 6, 4, 4, 3, 6, 4, 4, 4, 5,
-	3, 3, 3, 3, 3, 4, 3, 4, 4, 3, 3, 5, 2, 2, 2, 2,
-	3, 3, 1,
+	3, 4, 4, 4, 4, 4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4,
+	4, 3, 4, 4, 4, 4, 3, 3, 3, 5, 5, 3, 4, 4, 5, 4,
+	3, 4, 4, 4, 4, 5, 5, 5, 2, 1, 2, 2, 2, 5, 3, 4,
+	3, 3, 5, 4, 4, 4, 5, 3, 4, 4, 3, 6, 4, 4, 3, 6,
+	4, 4, 4, 5, 3, 3, 3, 3, 3, 4, 3, 4, 4, 3, 3, 5,
+	2, 2, 2, 2, 3, 3, 1,
 };
 
 static const char *const ak_op_names[] = {
 	"NOP", "MOV", "MOVR", "CLR", "KINT", "KSMALL", "KFLOAT", "KSTR",
 	"KNONE", "GGET", "GSET", "ADDI", "SUBI", "MULI", "DIVI", "MODI",
 	"NEGI", "ADDIK", "EQI", "NEI", "LTI", "LEI", "BAND", "BOR",
-	"ADDF", "SUBF", "MULF", "DIVF", "MODF", "NEGF", "EQF", "NEF",
-	"LTF", "LEF", "I2F", "F2I", "NOT", "EQ", "NE", "ISNONE",
-	"CONCAT", "TOSTR", "INTERP", "LTS", "JMP", "JT", "JF", "JNONE",
-	"JSOME", "CALL", "CALLC", "CALLB", "RET", "RET0", "THROW", "CATCH",
-	"RETHROW", "CLOS", "CAP", "VBOX", "VGET", "VSET", "CALLI", "NEWS",
-	"GETF", "SETF", "NEWE", "ECASE", "GETP", "BOX", "UNBOX", "NEWA",
-	"IDX", "SETIDX", "LEN", "NEWM", "MGET", "MSET", "CELL", "CELLK",
-	"CGET", "CPEEK", "CSET", "CTAKE", "CPUT", "MEMO", "MREAD", "ACCV",
-	"ACCF", "ACCC", "AGET", "UNTRACK", "EFFECT", "RENDER", "CLEANUP", "BATCH",
-	"TASK", "AWAIT", "YIELD",
+	"BXOR", "BNOT", "SHL", "SHR", "ADDF", "SUBF", "MULF", "DIVF",
+	"MODF", "NEGF", "EQF", "NEF", "LTF", "LEF", "I2F", "F2I",
+	"NOT", "EQ", "NE", "ISNONE", "CONCAT", "TOSTR", "INTERP", "LTS",
+	"JMP", "JT", "JF", "JNONE", "JSOME", "CALL", "CALLC", "CALLB",
+	"RET", "RET0", "THROW", "CATCH", "RETHROW", "CLOS", "CAP", "VBOX",
+	"VGET", "VSET", "CALLI", "NEWS", "GETF", "SETF", "NEWE", "ECASE",
+	"GETP", "BOX", "UNBOX", "NEWA", "IDX", "SETIDX", "LEN", "NEWM",
+	"MGET", "MSET", "CELL", "CELLK", "CGET", "CPEEK", "CSET", "CTAKE",
+	"CPUT", "MEMO", "MREAD", "ACCV", "ACCF", "ACCC", "AGET", "UNTRACK",
+	"EFFECT", "RENDER", "CLEANUP", "BATCH", "TASK", "AWAIT", "YIELD",
 };
 
 #endif
