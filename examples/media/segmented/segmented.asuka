@@ -2,7 +2,7 @@
 // (asuka native): UISegmentedControl on iOS, NSSegmentedControl on macOS
 // (swift/), Material's segmented buttons on Android (android/), radio
 // buttons on the web (web/), a tab control on Windows and GNOME's linked
-// toggle buttons on Linux (Go, in desktop/).
+// toggle buttons on Linux (C, in desktop/).
 
 /// A segmented control: its items, which is selected, and what the user
 /// selects.
