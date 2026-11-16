@@ -9,6 +9,7 @@ package appbuild
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -31,12 +32,26 @@ import (
 // lang/compile; tests replace it.
 var Compile = compileDir
 
+// DevLang and DevDirection are asuka dev's --lang and --dir: the language
+// and the direction compiled into the module for this run, on whatever
+// platform runs it ("": the user's, the language's).
+var DevLang, DevDirection string
+
+// Warnings receives what's worth saying that doesn't stop a build (the
+// catalogs' missing translations), "file:line:col: warning: message".
+var Warnings io.Writer = os.Stderr
+
 func compileDir(dir string, deps map[string]string, main bool) (*bytecode.Module, []string, error) {
 	// Imports resolve through the project's asuka.lock (compile.Dir's
 	// own), which Load made ready.
-	res, err := compile.Dir(dir, &compile.Options{MainTest: main})
+	res, err := compile.Dir(dir, &compile.Options{MainTest: main, Lang: DevLang, Direction: DevDirection})
 	if err != nil {
 		return nil, nil, err
+	}
+	if Warnings != nil {
+		for _, w := range res.Warnings {
+			fmt.Fprintf(Warnings, "%s: warning: %s\n", w.Pos, w.Msg)
+		}
 	}
 	if len(res.Diags) > 0 {
 		diags := make([]string, len(res.Diags))
