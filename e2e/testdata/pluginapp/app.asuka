@@ -1,0 +1,59 @@
+// Plugin app is the GUI tests' app of native packages (e2e/plugin_test.go):
+// the greeter and the kitchen, beside it, each implemented on every
+// platform. It calls their modules as it starts, and shows the greeter's
+// view, which says what it shows.
+import ./greeter
+import ./kitchen
+
+/// The platform's greeting, or why there's none.
+fn greeting() -> string {
+  do {
+    let g = try greeter.Greeter()
+    return try g.hello("Asuka")
+  } catch e {
+    return "error: {e.message}"
+  }
+}
+
+/// What the kitchen has of salt: a struct with an enum and a list, made
+/// by the platform's code.
+fn cooked() -> string {
+  do {
+    let k = try kitchen.Kitchen()
+    let items = try k.items("salt")
+    let it = items[0]
+    let unit = match it.unit {
+      .gram => "g"
+      .ounce => "oz"
+    }
+    return "kitchen {try k.name()}: {it.name} {it.weight}{unit}, {it.tags.count()} tags"
+  } catch e {
+    return "error: {e.message}"
+  }
+}
+
+component Plugin {
+  state shown = "no badge"
+
+  SafeArea {
+    gap: 16
+    padding: 24
+
+    Text(greeting())
+    Text(cooked())
+    greeter.Badge {
+      name: "Asuka"
+      height: 32
+      on shown(s) { shown = s }
+    }
+    Text("shown: {shown}")
+  }
+}
+
+app { Plugin() }
+
+test "without the platforms' code, the modules are unsupported" {
+  let app = mount(Plugin())
+  await app.idle()
+  app.expect("shown: no badge")
+}

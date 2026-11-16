@@ -1,5 +1,5 @@
 // The greeter package's Kotlin: its module and its view, on Android.
-package com.github.egoist.asuka.e2e.testdata.greeter
+package _e2e.greeter
 
 import android.view.View
 import android.widget.TextView
