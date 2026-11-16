@@ -1,0 +1,44 @@
+// asuka/icloud without iCloud (asuka test, Android, the desktops but
+// macOS, the web): the account isn't there, the lists are empty, a Value
+// keeps what it's set to, and the calls say iCloud isn't available.
+import asuka/icloud
+
+component Journal {
+  state said = ""
+  let account = icloud.account()
+  let files = icloud.files(.documents)
+  let size = icloud.Value("textSize", 17.0)
+
+  Column {
+    Text(if account.available { "signed in" } else { "no account" })
+    Text("{files.count()} files")
+    Text("size {size.value}")
+    Button("Bigger") { on press { size.value += 1.0 } }
+    Button("Write") {
+      on press {
+        do {
+          try await icloud.writeFile("/x.txt", "hi".bytes())
+        } catch e {
+          said = e.message
+        }
+      }
+    }
+    Text(said)
+  }
+}
+
+app { Journal() }
+
+test "without iCloud" {
+  let app = mount(Journal())
+  await app.idle()
+  app.expect("no account")
+  app.expect("0 files")
+  app.expect("size 17")
+  app.tap("Bigger")
+  await app.idle()
+  app.expect("size 18")
+  app.tap("Write")
+  await app.idle()
+  app.expect("icloud: not available")
+}
