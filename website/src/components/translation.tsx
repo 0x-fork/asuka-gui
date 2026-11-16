@@ -48,9 +48,9 @@ const words: Record<Locale, Words> = {
   },
 }
 
-// What each host makes of four of the core's components: the classes are the
+// What each host makes of four of the core's elements: the classes are the
 // ones the hosts create (platform/ios, platform/android, platform/macos,
-// host/windows, host/linux, platform/web/src).
+// platform/windows, platform/linux, platform/web/src).
 const platforms = [
   { id: "ios", name: "iOS", toolkit: "UIKit" },
   { id: "android", name: "Android", toolkit: "Material 3" },
@@ -65,25 +65,25 @@ type Platform = (typeof platforms)[number]["id"]
 const rows: { call: string; args: Text; widget: "field" | "switch" | "slider" | "button"; native: Record<Platform, Text> }[] = [
   {
     call: "TextField",
-    args: "{Value: name}",
+    args: " { bind text: name }",
     widget: "field",
     native: { ios: "UITextField", android: "EditText", macos: "NSTextField", windows: "EDIT", linux: "GtkEntry", web: "<input>" },
   },
   {
     call: "Toggle",
-    args: "{Value: alerts}",
+    args: " { bind on: alerts }",
     widget: "switch",
     native: { ios: "UISwitch", android: "MaterialSwitch", macos: "NSSwitch", windows: (t) => t.toggle, linux: "GtkSwitch", web: '<input role="switch">' },
   },
   {
     call: "Slider",
-    args: "{Value: volume}",
+    args: " { bind value: volume }",
     widget: "slider",
     native: { ios: "UISlider", android: "Slider", macos: "NSSlider", windows: "msctls_trackbar32", linux: "GtkScale", web: '<input type="range">' },
   },
   {
     call: "Button",
-    args: (t) => `{Title: ui.Val(${JSON.stringify(t.save)})}`,
+    args: (t) => `(${JSON.stringify(t.save)}) { on press { save() } }`,
     widget: "button",
     native: { ios: "UIButton", android: "MaterialButton", macos: "NSButton", windows: "BUTTON", linux: "GtkButton", web: "<button>" },
   },
@@ -113,7 +113,7 @@ function Mock({ widget, locale }: { widget: (typeof rows)[number]["widget"]; loc
 }
 
 /**
- * Go in, native out: four lines of an app, each wired to the widget a host
+ * Asuka in, native out: four lines of an app, each wired to the widget a host
  * makes of it. The platforms take turns until the reader picks one (and
  * don't, for readers who prefer reduced motion); each widget changes into the
  * next platform's in place.
@@ -160,7 +160,7 @@ export function Translation() {
 
       <div className="hud mt-4 border bg-code [--hud:var(--signal)]">
         <div className="label hidden grid-cols-[minmax(0,1fr)_7rem_minmax(0,1.1fr)] border-b md:grid">
-          <span className="px-5 py-3">{t.source} · main.go</span>
+          <span className="px-5 py-3">{t.source} · app.asuka</span>
           <span className="py-3 text-center text-signal-ink">{t.core}</span>
           <span className="flex justify-between px-5 py-3">
             <span>
@@ -170,16 +170,13 @@ export function Translation() {
           </span>
         </div>
 
-        <div className="px-5 pt-4 font-code text-[13.5px] text-muted-foreground md:pb-1">ui.Column(ui.Style{"{"}Gap: 12{"}"},</div>
+        <div className="px-5 pt-4 font-code text-[13.5px] text-muted-foreground md:pb-1">Column {"{"} gap: 12</div>
         <ol>
           {rows.map((row, i) => (
             <li key={row.call} className="grid items-center gap-x-0 gap-y-3 border-b border-dashed px-5 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1.1fr)] md:px-0 md:py-3">
               <code className="min-w-0 truncate pl-0 font-code text-[13.5px] md:pl-10">
-                <span className="text-muted-foreground">ui.</span>
                 <span className="text-foreground">{row.call}</span>
-                <span className="text-muted-foreground">(ui.{row.call}Props</span>
                 <span className="text-signal-ink">{text(row.args, t)}</span>
-                <span className="text-muted-foreground">),</span>
               </code>
               <span aria-hidden className="wire relative hidden h-px bg-signal/40 md:block" style={{ ["--delay" as string]: `${i * 0.35}s` }} />
               <span className="flex min-w-0 items-center justify-between gap-4 md:px-5" data-platform={current}>
@@ -192,7 +189,7 @@ export function Translation() {
             </li>
           ))}
         </ol>
-        <div className="px-5 pt-1 pb-4 font-code text-[13.5px] text-muted-foreground">)</div>
+        <div className="px-5 pt-1 pb-4 font-code text-[13.5px] text-muted-foreground">{"}"}</div>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
         {t.note}

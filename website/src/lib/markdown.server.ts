@@ -2,6 +2,9 @@
 // heading anchors that match GitHub's, links rewritten for the site, and code
 // highlighted by Shiki for both color schemes.
 
+import fs from "node:fs/promises"
+import path from "node:path"
+
 import GithubSlugger from "github-slugger"
 import type { Element, ElementContent, Root, RootContent } from "hast"
 import { toString } from "hast-util-to-string"
@@ -9,7 +12,7 @@ import rehypeStringify from "rehype-stringify"
 import remarkGfm from "remark-gfm"
 import remarkParse from "remark-parse"
 import remarkRehype from "remark-rehype"
-import { createHighlighter, type Highlighter } from "shiki"
+import { createHighlighter, type Highlighter, type LanguageRegistration } from "shiki"
 import { unified } from "unified"
 import { visit } from "unist-util-visit"
 
@@ -43,11 +46,19 @@ const themes = { dark: "github-dark-default" } as const
 
 let highlighter: Promise<Highlighter> | undefined
 function getHighlighter() {
-  highlighter ??= createHighlighter({
-    themes: Object.values(themes),
-    langs: ["go", "ts", "tsx", "js", "json", "toml", "sh", "css", "html", "xml", "yaml", "swift", "kotlin"],
-  })
+  highlighter ??= (async () =>
+    createHighlighter({
+      themes: Object.values(themes),
+      langs: [await asukaGrammar(), "c", "go", "ts", "tsx", "js", "json", "toml", "sh", "css", "html", "xml", "yaml", "swift", "kotlin"],
+    }))()
   return highlighter
+}
+
+/** Asuka's grammar, the editors' (editors/vscode), for the docs' asuka blocks. */
+async function asukaGrammar(): Promise<LanguageRegistration> {
+  const file = path.resolve(process.cwd(), "../editors/vscode/syntaxes/asuka.tmLanguage.json")
+  const grammar = JSON.parse(await fs.readFile(file, "utf8")) as LanguageRegistration
+  return { ...grammar, name: "asuka" }
 }
 
 /** The words a page adds of its own: the label of code blocks' copy buttons. */
@@ -172,7 +183,7 @@ function codeBlock(pre: Element, shiki: Highlighter, labels: PageLabels): Elemen
 
 /** A code block's language, as its header names it. */
 function langName(lang: string) {
-  const names: Record<string, string> = { sh: "Shell", bash: "Shell", text: "Text", ts: "TypeScript", tsx: "TSX", js: "JavaScript", kotlin: "Kotlin", swift: "Swift", go: "Go", json: "JSON", toml: "TOML", yaml: "YAML", xml: "XML", html: "HTML", css: "CSS" }
+  const names: Record<string, string> = { sh: "Shell", bash: "Shell", text: "Text", ts: "TypeScript", tsx: "TSX", js: "JavaScript", kotlin: "Kotlin", swift: "Swift", go: "Go", asuka: "Asuka", c: "C", json: "JSON", toml: "TOML", yaml: "YAML", xml: "XML", html: "HTML", css: "CSS" }
   return names[lang] ?? lang
 }
 
@@ -235,14 +246,6 @@ function card(li: Element): Element | undefined {
     if (rest[0]?.type !== "text" || !/^[:：]/.test(rest[0].value)) return
     title = head.children
     description = rest
-  } else if (head?.type === "text" && head.value.includes(": ")) {
-    // "The Go API: `go doc -all <package>`, …" links to the package on pkg.go.dev.
-    const [name = "", after = ""] = head.value.split(": ", 2)
-    const pkg = /^go doc (?:-all )?(\S+)$/.exec(rest[0]?.type === "element" ? toString(rest[0]) : "")?.[1]
-    if (!pkg) return
-    href = `https://pkg.go.dev/${pkg}`
-    title = [{ type: "text", value: name }]
-    description = [{ type: "text", value: after }, ...rest]
   } else {
     return
   }
