@@ -22,9 +22,10 @@ import (
 var Files embed.FS
 
 var (
-	once sync.Once
-	dir  string
-	err  error
+	once     sync.Once
+	dir      string
+	embedded bool
+	err      error
 )
 
 // Dir is the platform SDK's directory: ASUKA_SDK if set; the
@@ -32,7 +33,7 @@ var (
 // embedded in the CLI, written once into the user's cache.
 func Dir() (string, error) {
 	once.Do(func() {
-		dir, err = srcdir.Tree{Env: "ASUKA_SDK", Sub: "sdk", Valid: isSDK, Files: Files, Cache: "sdk"}.Dir()
+		dir, embedded, err = srcdir.Tree{Env: "ASUKA_SDK", Sub: "sdk", Valid: isSDK, Files: Files, Cache: "sdk"}.Find()
 	})
 	return dir, err
 }
@@ -40,4 +41,11 @@ func Dir() (string, error) {
 func isSDK(d string) bool {
 	_, err := os.Stat(filepath.Join(d, "sdk.go"))
 	return err == nil
+}
+
+// Embedded reports whether Dir is the copy embedded in the CLI (an
+// installed CLI's), which its prebuilt libraries were built from.
+func Embedded() bool {
+	Dir()
+	return embedded
 }

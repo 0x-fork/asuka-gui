@@ -70,6 +70,15 @@ void ak_module_attach(ak_module *m, ak_val (*const *bodies)(ak_val *args, ak_clo
 // gets bytecode).
 extern ak_module *(*ak_app_loader)(void);
 
+// What the build links in beside the core (core/link/link.c, compiled for
+// each link: the core itself is the same for every app, a prebuilt
+// archive): the app compiled into it (lang/cgen's asuka_app_module; NULL
+// for a player, which loads bytecode) and its externs' glue (lang/cffi's
+// asuka_ffi_register; NULL without). Named here, so that a static
+// library's linker keeps their objects.
+extern ak_module *(*const ak_link_app)(void);
+extern void (*const ak_link_ffi)(void);
+
 // ak_vm_call calls f with its arguments (borrowed).
 ak_val ak_vm_call(const ak_func *f, ak_val *args, uint32_t nargs);
 

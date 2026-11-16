@@ -258,15 +258,10 @@ int asuka_load(const uint8_t *p, size_t n, char **err) {
 	return run_module(m, err);
 }
 
-#if defined(AK_APP_COMPILED)
-// The app compiled into this build (lang/cgen), named, so that a static
-// library's linker keeps its object (which an unreferenced constructor
-// wouldn't).
-ak_module *asuka_app_module(void);
-static ak_module *(*app_loader(void))(void) { return ak_app_loader ? ak_app_loader : asuka_app_module; }
-#else
-static ak_module *(*app_loader(void))(void) { return ak_app_loader; }
-#endif
+// The app compiled into this build (lang/cgen), named by core/link's
+// ak_link_app, so that a static library's linker keeps its object (which
+// an unreferenced constructor wouldn't).
+static ak_module *(*app_loader(void))(void) { return ak_app_loader ? ak_app_loader : ak_link_app; }
 
 int asuka_run(char **err) {
 	if (err) *err = NULL;

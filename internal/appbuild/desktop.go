@@ -11,6 +11,8 @@ import (
 	"github.com/egoist/asuka/internal/toml"
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/platform/desktop"
+	"github.com/egoist/asuka/sdk"
+	"github.com/egoist/asuka/std"
 )
 
 // DesktopC is the C a Windows or Linux app's executable is built from
@@ -19,10 +21,17 @@ import (
 // desktop/, nativegen.CSources), with their include directories and the
 // libraries they link.
 type DesktopC struct {
-	Sources []string // .c files (and the headers they include, for the cache)
-	Deps    []string // what the .c files include besides (a vendored library's sources), for the cache
-	Flags   []string // -I…
+	Sources []string // .c files (and their headers), all of them
+	Deps    []string // what the .c files include besides (a vendored library's sources)
+	Flags   []string // -I…, all of them
 	Libs    []string // -l…
+	// Units are those of Sources a build links as libraries (the host's,
+	// the registry's, the std and sdk packages': prebuilt, or built into
+	// the cache), each with its own flags; Rest are the others (an app's
+	// own packages'), compiled with Flags. Without Units (a test's own),
+	// a build compiles Sources.
+	Units []cbuild.Unit
+	Rest  []string
 }
 
 // DesktopNatives is the registry and the C for t of the native packages
@@ -39,14 +48,20 @@ func DesktopNatives(t cbuild.Target, dirs []string) (*DesktopC, error) {
 	if err != nil {
 		return nil, err
 	}
+	core, err := cbuild.CoreDir()
+	if err != nil {
+		return nil, err
+	}
+	shared := desktop.Shared(d)
 	c := &DesktopC{
-		Sources: append(desktop.Shared(d), filepath.Join(desktop.Include(d), "asuka_desktop.h")),
+		Sources: append(append([]string{}, shared...), filepath.Join(desktop.Include(d), "asuka_desktop.h")),
 		Flags:   []string{"-I" + desktop.Include(d)},
 		Libs:    desktop.Libs(t.OS),
 	}
-	if t.OS == "linux" {
-		c.Flags = append(c.Flags, "-D_GNU_SOURCE") // POSIX's and GNU's declarations, beside C17's
-	}
+	c.Flags = append(c.Flags, desktopDefines(t.OS)...)
+	c.Units = append(c.Units, desktopUnit(core, d, "desktop", shared, nil, t.OS, false, desktop.Embedded()))
+	stdDir, _ := std.Dir()
+	sdkDir, _ := sdk.Dir()
 	seen := map[string]bool{}
 	sorted := append([]string{}, dirs...)
 	sort.Strings(sorted)
@@ -57,13 +72,25 @@ func DesktopNatives(t cbuild.Target, dirs []string) (*DesktopC, error) {
 			continue
 		}
 		seen[dir] = true
+		var files []string
 		for _, s := range srcs {
-			c.Sources = append(c.Sources, filepath.Join(dir, s))
+			files = append(files, filepath.Join(dir, s))
 		}
 		hs, _ := filepath.Glob(filepath.Join(dir, "*.h"))
-		c.Sources = append(c.Sources, hs...)
+		c.Sources = append(append(c.Sources, files...), hs...)
 		c.Deps = append(c.Deps, vendored(dir)...)
 		c.Flags = append(c.Flags, "-I"+dir)
+		// The standard library's and the platform SDK's packages are
+		// libraries of their own (their objects register themselves:
+		// linked whole); an app's own packages' C is compiled with it.
+		switch parent := filepath.Dir(filepath.Clean(pkg)); {
+		case stdDir != "" && parent == filepath.Clean(stdDir):
+			c.Units = append(c.Units, desktopUnit(core, d, "std-"+filepath.Base(pkg), files, []string{"-I" + dir}, t.OS, true, std.Embedded() && desktop.Embedded()))
+		case sdkDir != "" && parent == filepath.Clean(sdkDir):
+			c.Units = append(c.Units, desktopUnit(core, d, "sdk-"+filepath.Base(pkg), files, []string{"-I" + dir}, t.OS, true, sdk.Embedded() && desktop.Embedded()))
+		default:
+			c.Rest = append(c.Rest, files...)
+		}
 		libs, err := packageLibs(pkg, t.OS)
 		if err != nil {
 			return nil, err
@@ -73,6 +100,28 @@ func DesktopNatives(t cbuild.Target, dirs []string) (*DesktopC, error) {
 		}
 	}
 	return c, nil
+}
+
+// desktopDefines are what the desktop's C is compiled with on goos:
+// POSIX's and GNU's declarations beside C17's on Linux, Win32's wide
+// functions on Windows.
+func desktopDefines(goos string) []string {
+	switch goos {
+	case "linux":
+		return []string{"-D_GNU_SOURCE"}
+	case "windows":
+		return []string{"-DUNICODE", "-D_UNICODE"}
+	}
+	return nil
+}
+
+// desktopUnit is desktop C as a unit (the registry's, a package's):
+// compiled with the core's warnings and include directories,
+// asuka_desktop.h's, the platform's defines and its own flags.
+func desktopUnit(core, desk, name string, srcs, own []string, goos string, whole, embedded bool) cbuild.Unit {
+	flags := append(append(append([]string{}, cbuild.Flags...), cbuild.Includes(core)...), "-I"+desktop.Include(desk))
+	flags = append(append(flags, desktopDefines(goos)...), own...)
+	return cbuild.Unit{Name: name, Sources: srcs, Flags: flags, Whole: whole, Embedded: embedded && cbuild.CoreEmbedded()}
 }
 
 // vendored are the files of the libraries a package's C vendors, in
@@ -125,23 +174,24 @@ func DesktopExe(t cbuild.Target, m *bytecode.Module, host, natives *DesktopC, ou
 	if err != nil {
 		return err
 	}
-	var srcs, deps, flags, libs []string
+	o := cbuild.ExeOptions{Debug: m == nil}
 	for _, c := range []*DesktopC{host, natives} {
 		if c == nil {
 			continue
 		}
-		srcs = append(srcs, c.Sources...)
-		deps = append(deps, c.Deps...)
-		flags = append(flags, c.Flags...)
-		libs = append(libs, c.Libs...)
+		o.Units = append(o.Units, c.Units...)
+		if c.Units != nil {
+			o.Sources = append(o.Sources, c.Rest...)
+		} else {
+			o.Sources = append(o.Sources, c.Sources...)
+		}
+		o.Flags = append(o.Flags, c.Flags...)
+		o.Link = append(o.Link, c.Libs...)
 	}
 	if m != nil {
-		app, err := AppC(m)
-		if err != nil {
+		if o.App, err = AppC(m); err != nil {
 			return err
 		}
-		srcs = append(srcs, app)
-		flags = append(flags, "-DAK_APP_COMPILED=1")
 	}
-	return tc.Exe(core, srcs, deps, flags, libs, m == nil, out)
+	return tc.ExeWith(core, o, out)
 }

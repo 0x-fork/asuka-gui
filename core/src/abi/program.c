@@ -264,16 +264,9 @@ int ak_program_loop(void) {
 
 // ---- The ABI ----
 
-#if defined(AK_APP_COMPILED)
-ak_module *asuka_app_module(void);
-#endif
-
 static ak_module *compiled(void) {
-#if defined(AK_APP_COMPILED)
-	return ak_app_loader ? ak_app_loader() : asuka_app_module();
-#else
-	return ak_app_loader ? ak_app_loader() : NULL;
-#endif
+	if (ak_app_loader) return ak_app_loader();
+	return ak_link_app ? ak_link_app() : NULL;
 }
 
 static void init_core(void) {

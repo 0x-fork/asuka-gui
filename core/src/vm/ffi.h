@@ -5,8 +5,8 @@
 //
 // The glue's wrappers are builtins (vm.h's calling convention); its
 // asuka_ffi_register registers them, and ak_vm_builtins_init calls it in
-// a core built with the glue (AK_FFI), naming it so that a static
-// library's linker keeps it.
+// a build with the glue (core/link's ak_link_ffi, AK_FFI), which names it
+// so that a static library's linker keeps it.
 #ifndef AK_FFI_H
 #define AK_FFI_H
 

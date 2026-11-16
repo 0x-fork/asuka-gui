@@ -1,14 +1,8 @@
 package appbuild
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
-
-	"github.com/egoist/asuka/internal/cachedir"
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
@@ -16,8 +10,8 @@ import (
 	"github.com/egoist/asuka/platform/desktop"
 )
 
-// AppC writes m compiled to C (lang/cgen) under the user's cache, at a
-// path of its content's (the core's build caches its object by it), and
+// AppC writes m compiled to C (lang/cgen) into the build cache, at a
+// path of its content's (the object cache compiles it from there), and
 // returns the path.
 func AppC(m *bytecode.Module) (string, error) {
 	if m == nil || m.App < 0 && m.Main < 0 {
@@ -27,23 +21,8 @@ func AppC(m *bytecode.Module) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(src)
-	dir := filepath.Join(cacheDir(), "app-"+hex.EncodeToString(sum[:])[:16])
-	p := filepath.Join(dir, "app.c")
-	if _, err := os.Stat(p); err == nil {
-		return p, nil
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	tmp := fmt.Sprintf("%s.%d.tmp", p, os.Getpid())
-	if err := os.WriteFile(tmp, src, 0o644); err != nil {
-		return "", err
-	}
-	return p, os.Rename(tmp, p)
+	return cbuild.CacheFile("app", "app.c", src)
 }
-
-func cacheDir() string { return cachedir.Root() }
 
 // Lib builds the core for t into out (kind: cbuild.Static for iOS,
 // Shared for Android and the desktops, Module for the web): with m
@@ -113,40 +92,50 @@ func LinuxExe(t cbuild.Target, m *bytecode.Module, dirs []string, out string) er
 }
 
 // linuxHost is the Linux host's C (cbuild.LinuxHost: the checkout's, or
-// the CLI's own copy).
+// the CLI's own copy), a unit.
 func linuxHost() (*DesktopC, error) {
-	srcs, flags, err := cbuild.LinuxHost()
+	core, err := cbuild.CoreDir()
 	if err != nil {
 		return nil, err
 	}
-	return &DesktopC{Sources: srcs, Flags: flags}, nil
+	u, err := cbuild.LinuxHost(core)
+	if err != nil {
+		return nil, err
+	}
+	return &DesktopC{Sources: u.Sources, Units: []cbuild.Unit{u}}, nil
 }
 
-// MacShared compiles the C the desktop hosts share that the Mac's host
-// links too (desktop.MacShared: the route state, flyouts' places, Asuka's
-// own words) for arch, into objects cached by their sources.
+// MacShared is the C the desktop hosts share that the Mac's host links
+// too (desktop.MacShared: the route state, flyouts' places, Asuka's own
+// words) for arch, a unit: its library (prebuilt, or built into the
+// cache), which the host's link searches for what it calls.
 func MacShared(arch string, debug bool) ([]string, error) {
-	d, err := desktop.Dir()
-	if err != nil {
-		return nil, err
-	}
 	tc, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: arch})
 	if err != nil {
 		return nil, err
 	}
-	var srcs, hdrs []string
+	u, err := MacSharedUnit()
+	if err != nil {
+		return nil, err
+	}
+	lib, err := tc.UnitArchive(u, debug)
+	if err != nil {
+		return nil, err
+	}
+	return []string{lib}, nil
+}
+
+// MacSharedUnit is desktop.MacShared's C as a unit.
+func MacSharedUnit() (cbuild.Unit, error) {
+	d, err := desktop.Dir()
+	if err != nil {
+		return cbuild.Unit{}, err
+	}
+	var srcs []string
 	for _, f := range desktop.MacShared(d) {
 		if strings.HasSuffix(f, ".c") {
 			srcs = append(srcs, f)
-		} else {
-			hdrs = append(hdrs, f)
 		}
 	}
-	flags := []string{"-I" + desktop.Include(d), "-ffunction-sections", "-fdata-sections"}
-	if debug {
-		flags = append(flags, "-g", "-O1")
-	} else {
-		flags = append(flags, "-O2", "-DNDEBUG")
-	}
-	return tc.Objects("mac-shared", srcs, hdrs, flags)
+	return cbuild.Unit{Name: "mac-shared", Sources: srcs, Flags: []string{"-I" + desktop.Include(d)}, Embedded: desktop.Embedded()}, nil
 }

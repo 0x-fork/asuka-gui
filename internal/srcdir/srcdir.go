@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/egoist/asuka/internal/cachedir"
 )
@@ -27,13 +28,23 @@ type Tree struct {
 
 // Dir finds t's directory.
 func (t Tree) Dir() (string, error) {
+	d, _, err := t.Find()
+	return d, err
+}
+
+// Find finds t's directory, and whether it's the copy embedded in the
+// CLI (what the CLI's prebuilt libraries were built from), not a
+// checkout's or the one t.Env names.
+func (t Tree) Find() (dir string, embedded bool, err error) {
 	if d := os.Getenv(t.Env); d != "" {
-		return filepath.Abs(d)
+		d, err := filepath.Abs(d)
+		return d, false, err
 	}
 	if d := t.repo(); d != "" {
-		return d, nil
+		return d, false, nil
 	}
-	return t.Extract()
+	d, err := t.Extract()
+	return d, true, err
 }
 
 // repo finds Sub above the working directory or the executable.
@@ -77,6 +88,8 @@ func (t Tree) Extract() (string, error) {
 	}
 	dir := filepath.Join(cachedir.Root(), t.Cache+"-"+hex.EncodeToString(h.Sum(nil))[:16])
 	if t.Valid(dir) {
+		now := time.Now()
+		os.Chtimes(dir, now, now) // used: the build cache evicts what was used least lately
 		return dir, nil
 	}
 	tmp := dir + ".tmp"
