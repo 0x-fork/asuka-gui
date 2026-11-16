@@ -3,7 +3,7 @@ import asuka/hotkey
 component Launcher {
   state problem = ""
   Column {
-    hotkey.Hotkey(hotkey.Shortcut(key: "space", alt: true)) {
+    hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
       description: "Show"
       on press { problem = "pressed" }
       on error(e) { problem = e.message }

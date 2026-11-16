@@ -97,6 +97,12 @@ native component View() {
   prop dragItems: [DragItem]
   /// makes it take drops of these MIME types: exact ("text/plain"), a family ("image/*"), anything ("*/*"), or the app's own
   prop dropTypes: [string]
+  /// a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view
+  prop swipeActions: [Action]
+  /// a List's row's actions revealed from its leading edge (Mail's Unread)
+  prop leadingSwipeActions: [Action]
+  /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
+  prop selected: bool
   /// a tap on it
   event press
   /// a press held on it
@@ -123,6 +129,10 @@ native component View() {
   event dropMove(x: float, y: float)
   /// what's dropped on it: the items it takes
   event drop(drop: Drop)
+  /// the user selected its List's row, or deselected it
+  event select(selected: bool)
+  /// the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)
+  event selectBegin
 }
 
 /// a container whose children stack on a row
@@ -134,6 +144,12 @@ native component Row() {
   prop dragItems: [DragItem]
   /// makes it take drops of these MIME types: exact ("text/plain"), a family ("image/*"), anything ("*/*"), or the app's own
   prop dropTypes: [string]
+  /// a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view
+  prop swipeActions: [Action]
+  /// a List's row's actions revealed from its leading edge (Mail's Unread)
+  prop leadingSwipeActions: [Action]
+  /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
+  prop selected: bool
   /// a tap on it
   event press
   /// a press held on it
@@ -160,6 +176,10 @@ native component Row() {
   event dropMove(x: float, y: float)
   /// what's dropped on it: the items it takes
   event drop(drop: Drop)
+  /// the user selected its List's row, or deselected it
+  event select(selected: bool)
+  /// the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)
+  event selectBegin
 }
 
 /// a container whose children stack on a column
@@ -171,6 +191,12 @@ native component Column() {
   prop dragItems: [DragItem]
   /// makes it take drops of these MIME types: exact ("text/plain"), a family ("image/*"), anything ("*/*"), or the app's own
   prop dropTypes: [string]
+  /// a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view
+  prop swipeActions: [Action]
+  /// a List's row's actions revealed from its leading edge (Mail's Unread)
+  prop leadingSwipeActions: [Action]
+  /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
+  prop selected: bool
   /// a tap on it
   event press
   /// a press held on it
@@ -197,6 +223,10 @@ native component Column() {
   event dropMove(x: float, y: float)
   /// what's dropped on it: the items it takes
   event drop(drop: Drop)
+  /// the user selected its List's row, or deselected it
+  event select(selected: bool)
+  /// the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)
+  event selectBegin
 }
 
 /// a column that keeps its children out of the system's bars, notches and the keyboard: padded by the safe area's insets, over its own padding
@@ -208,6 +238,12 @@ native component SafeArea() {
   prop dragItems: [DragItem]
   /// makes it take drops of these MIME types: exact ("text/plain"), a family ("image/*"), anything ("*/*"), or the app's own
   prop dropTypes: [string]
+  /// a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view
+  prop swipeActions: [Action]
+  /// a List's row's actions revealed from its leading edge (Mail's Unread)
+  prop leadingSwipeActions: [Action]
+  /// a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)
+  prop selected: bool
   /// a tap on it
   event press
   /// a press held on it
@@ -234,6 +270,10 @@ native component SafeArea() {
   event dropMove(x: float, y: float)
   /// what's dropped on it: the items it takes
   event drop(drop: Drop)
+  /// the user selected its List's row, or deselected it
+  event select(selected: bool)
+  /// the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)
+  event selectBegin
 }
 
 /// a text: it wraps, unless lines limits it
@@ -280,6 +320,8 @@ native component TextField() {
   prop selection: TextRange
   /// makes it a text area of styled text: bold, italic, underline, strikethrough, monospaced, links. The user's typing and formatting write it; writing it replaces the text, and text follows its plain text. Inline components are left out. It makes the field multiline
   prop rich: [Span]
+  /// whether it has the keyboard: the user's tapping in and out writes it, and writing it takes the keyboard or gives it up
+  prop focused: bool
   /// the MIME types (patterns, as "image/*") of what on paste takes instead of the text: pasted, or put in by the keyboard (a GIF keyboard's images)
   prop pasteTypes: [string]
   event change(text: string)
@@ -288,6 +330,8 @@ native component TextField() {
   event focus
   event blur
   event select(selection: TextRange)
+  /// it took the keyboard, or gave it up
+  event focusChange(focused: bool)
   event richChange(rich: [Span])
   /// the styles where the cursor is, or that all the selection has, as they change: a toolbar's buttons show them
   event formats(formats: TextFormats)

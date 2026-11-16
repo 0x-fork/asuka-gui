@@ -21,9 +21,8 @@ struct Entry {
 /// dir's entries, folders first, hidden files left out. It blocks: call
 /// it in a spawn.
 fn read(dir: string) throws -> [Entry] {
-  let list = try fs.readDir(dir)
-  .filter(e => !e.name.hasPrefix("."))
-  .map(e => Entry(name: e.name, dir: e.isDir, size: e.size))
+  let shown = (try fs.readDir(dir)).filter(e => !e.name.hasPrefix("."))
+  let list = shown.map(e => Entry(name: e.name, dir: e.isDir, size: e.size))
   return list.sorted((a, b) => if a.dir != b.dir { a.dir } else { a.name < b.name })
 }
 

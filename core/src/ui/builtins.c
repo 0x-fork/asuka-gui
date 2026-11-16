@@ -39,6 +39,8 @@
 //	ui.focus       v: View                                            -
 //	ui.blur        v: View                                            -
 //	ui.scroll_to   v: View, x: float, y: float, animated: bool        -
+//	ui.scroll_to_end  v: View, animated: bool                          -
+//	ui.scroll_to_item v: View (a List), index: int, animated: bool     -
 //	ui.environment -                                                  Environment
 //	ui.lazy        v: View, build: fn(params...) -> View? (its
 //	               LazyChildren: a Tab's page, a Route's screen)      -
@@ -223,6 +225,16 @@ static ak_val b_focus(ak_val *a, uint32_t n) {
 
 static ak_val b_blur(ak_val *a, uint32_t n) {
 	ak_ui_blur(view_arg(a, n, 0, "ui.blur"));
+	return none();
+}
+
+static ak_val b_scroll_to_end(ak_val *a, uint32_t n) {
+	ak_ui_scroll_to_end(view_arg(a, n, 0, "ui.scroll_to_end"), n > 1 && a[1].i != 0);
+	return none();
+}
+
+static ak_val b_scroll_to_item(ak_val *a, uint32_t n) {
+	ak_ui_scroll_to_item(view_arg(a, n, 0, "ui.scroll_to_item"), n > 1 ? a[1].i : 0, n > 2 && a[2].i != 0);
 	return none();
 }
 
@@ -433,6 +445,8 @@ void ak_ui_builtins_init(void) {
 		{"ui.focus", b_focus},
 		{"ui.blur", b_blur},
 		{"ui.scroll_to", b_scroll_to},
+		{"ui.scroll_to_end", b_scroll_to_end},
+		{"ui.scroll_to_item", b_scroll_to_item},
 		{"ui.environment", b_environment},
 		{"ui.push", b_push},
 		{"ui.pop", b_pop},

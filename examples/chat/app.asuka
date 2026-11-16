@@ -10,16 +10,11 @@
 import asuka/time
 
 struct Message {
-  id: int
+  id: int = 0
   from: string = "" // "" is me
   text: string = ""
   image: string = "" // a pasted image's file
   at: time.Time = time.now()
-}
-
-struct Day {
-  name: string
-  messages: [Message]
 }
 
 let people = ["Ada", "Grace", "Linus"]
@@ -60,20 +55,6 @@ fn day(t: time.Time) -> string {
   return t.format("MMMM d, yyyy")
 }
 
-/// The messages as runs of the same day.
-fn byDay(messages: [Message]) -> [Day] {
-  var days: [Day] = []
-  for m in messages {
-    let name = day(m.at)
-    if days.last()?.name == name {
-      days[days.count() - 1].messages.push(m)
-    } else {
-      days.push(Day(name: name, messages: [m]))
-    }
-  }
-  return days
-}
-
 screen Chat {
   state messages = history(1000, time.now(), 40)
   state loading = false
@@ -83,7 +64,6 @@ screen Chat {
   state selection = TextRange()
   state nextId = 1000
 
-  let days = byDay(messages)
   let list = Ref()
   let field = Ref()
 
@@ -150,39 +130,35 @@ screen Chat {
       ref: list
       appearance: .bare
       anchor: .bottom
-      bind selecting: selecting
+      selecting: selecting
       on startReached { await loadOlder() }
-      for d in days key d.name {
-        Section {
-          header {
-            Row {
-              justify: .center
-              padding: [6, 0]
-              View {
-                padding: [3, 10]
-                radius: 999
-                background: .secondaryBackground
-                Text(d.name) {
-                  font: .caption.semibold()
-                  color: .secondaryLabel
-                }
-              }
-            }
+      // A day per section, its header pinned at the top.
+      section: i => day(messages[i].at)
+      header: name => Row {
+        justify: .center
+        padding: [6, 0]
+        View {
+          padding: [3, 10]
+          radius: 999
+          background: .secondaryBackground
+          Text(name) {
+            font: .caption.semibold()
+            color: .secondaryLabel
           }
-          for m in d.messages key m.id {
-            View {
-              padding: [3, 12]
-              leadingSwipeActions: [.button(title: "Reply", icon: "arrowshape.turn.up.left", run: () => reply(m))]
-              swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => remove([m.id]))]
-              selected: chosen.contains(m.id)
-              on select(on) { choose(m.id, on) }
-              on selectBegin {
-                selecting = true
-                choose(m.id, true)
-              }
-              Bubble(m)
-            }
-          }
+        }
+      }
+      leadingSwipeActions: i => [.button(title: "Reply", icon: "arrowshape.turn.up.left", run: () => reply(messages[i]))]
+      swipeActions: i => [.button(title: "Delete", icon: "trash", role: .destructive, run: () => remove([messages[i].id]))]
+      selected: i => chosen.contains(messages[i].id)
+      on select(i, on) { choose(messages[i].id, on) }
+      on selectBegin(i) {
+        selecting = true
+        choose(messages[i].id, true)
+      }
+      for m in messages key m.id {
+        View {
+          padding: [3, 12]
+          Bubble(m)
         }
       }
     }
@@ -275,8 +251,7 @@ test "a message sent is answered" {
   app.type("Hello", into: "Message")
   app.tap("Send")
   app.expect("Hello")
-  await sleep(1200ms)
-  app.expect("Got it: “Hello”")
+  await app.waitFor("Got it: “Hello”")
 }
 
 test "history ends before the first id" {

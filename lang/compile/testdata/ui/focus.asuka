@@ -1,0 +1,40 @@
+// A TextField's bind focused, a Ref's scrollToEnd and scrollToItem, and
+// arrays' prefix and suffix.
+
+component Search {
+  state focused = false
+  state q = ""
+  let list = Ref()
+  let items = [1, 2, 3, 4, 5]
+
+  Column {
+    TextField { bind text: q; bind focused: focused; placeholder: "Search" }
+    Text(if focused { "Typing" } else { "Not typing" })
+    Button("Focus") { on press { focused = true } }
+    Button("Done") { on press { focused = false } }
+    Button("End") { on press { list.scrollToEnd(); list.scrollToItem(2, animated: false) } }
+    Text("{items.prefix(2)} {items.suffix(2)} {items.prefix(9).count()} {items.suffix(0)}")
+    List {
+      ref: list
+      height: 200
+      for i in items key i { Text("Item {i}") }
+    }
+  }
+}
+
+app { Search() }
+
+test "bind focused follows the keyboard, and takes it" {
+  let app = mount(Search())
+  app.expect("Not typing", "[1,2] [4,5] 5 []")
+  app.tap("Search")
+  app.expect("Typing")
+  app.tap("Done")
+  app.expect("Not typing")
+  app.tap("Focus")
+  let ops = app.ops()
+  expect(ops.contains("Focus"), ops)
+  app.tap("End")
+  let more = app.ops()
+  expect(more.contains("ScrollToOffset") && more.contains("ScrollTo"), more)
+}

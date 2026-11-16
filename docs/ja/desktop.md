@@ -137,7 +137,7 @@ app {
 }
 
 component Launcher {
-  hotkey.Hotkey(hotkey.Shortcut(key: "space", alt: true)) {
+  hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
     description: "Show the launcher"
     on press { shown = !shown }
   }

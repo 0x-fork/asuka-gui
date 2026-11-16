@@ -26,6 +26,7 @@ typedef struct {
 	ak_fake_view_vec free;
 	int64_t first;
 	bool end;
+	bool scrolled;  // a test scrolled it (scroll_to): it stays where that left it
 	bool seen;
 	AK_VEC(int64_t) items;  // the list's items as last bound
 	int64_t count;
@@ -904,6 +905,7 @@ static bool sync_list(ak_uitest *a, ak_fake_view *list) {
 		st->end = ak_fake_int(list, AK_PROP_LIST_ANCHOR) == AK_SCROLL_ANCHOR_BOTTOM;
 	}
 	st->seen = true;
+	if (!st->scrolled) st->end = ak_fake_int(list, AK_PROP_LIST_ANCHOR) == AK_SCROLL_ANCHOR_BOTTOM;  // its anchor may come after it
 	int64_t count = ak_fake_list_count(a->f, list);
 	bind_ctx b = {a, st, list, count != st->count || !items_equal(st, list), false};
 	st->count = count;
@@ -1206,6 +1208,16 @@ static bool one(ak_uitest *a, ak_span text, target_ok ok, target *out, ak_buf *e
 	return failure(a, err, "\"%.*s\": narrow it with app.in(.content), app.in(.navigationBar), app.in(.bottomToolbar) or app.nextTo(label), or give it a label", text);
 }
 
+// focus gives the field the keyboard, as a tap does: the field focused
+// before blurs, and each hears it if it listens.
+static void focus(ak_uitest *a, ak_fake_view *p) {
+	ak_fake_view *was = a->focused;
+	if (was == p) return;
+	if (was && ak_fake_view_of(a->f, a->focused_id) == was && ak_fake_listens(was, AK_EVENT_BLUR)) ak_fake_dispatch(a->f, &(ak_event){.id = was->id, .kind = AK_EVENT_BLUR});
+	a->focused = p, a->focused_id = p->id;
+	if (ak_fake_listens(p, AK_EVENT_FOCUS)) ak_fake_dispatch(a->f, &(ak_event){.id = p->id, .kind = AK_EVENT_FOCUS});
+}
+
 static void open_menu(ak_uitest *a, ak_fake_view *v, ak_prop p, int64_t base, int64_t sub) {
 	a->menu = v, a->menu_id = v->id, a->menu_prop = p, a->menu_base = base, a->menu_sub = sub;
 }
@@ -1220,7 +1232,7 @@ static bool press(ak_uitest *a, ak_fake_view *v, ak_span text, bool long_press, 
 		return true;
 	}
 	if (p->kind == AK_KIND_TEXT_FIELD) {
-		a->focused = p, a->focused_id = p->id;
+		focus(a, p);
 	} else if (p->kind == AK_KIND_TOGGLE) {
 		ak_fake_flip(a->f, p);
 	} else if (has_menu(p, AK_MENU_TRIGGER_TAP) && !ak_fake_listens(p, AK_EVENT_PRESS)) {
@@ -1469,7 +1481,7 @@ bool ak_uitest_type(ak_uitest *a, ak_span text, ak_span label, ak_buf *err) {
 		return failure(a, err, "type: no field to type in%.*s; tap one, or name it", sp(""));
 	}
 	if (disabled_view(f)) return failure(a, err, "the field \"%.*s\" is disabled", label);
-	a->focused = f, a->focused_id = f->id;
+	focus(a, f);
 	ak_fake_type(a->f, f, cstr(&s, text));
 	ak_buf_free(&s);
 	return settled(a, err);
@@ -1487,7 +1499,7 @@ bool ak_uitest_submit(ak_uitest *a, ak_span label, ak_buf *err) {
 	if (label.len) {
 		ak_fake_view *f = near(a, label, AK_KIND_TEXT_FIELD, err);
 		if (!f) return false;
-		a->focused = f, a->focused_id = f->id;
+		focus(a, f);
 	}
 	if (!a->focused) {
 		// The alert typed into last: return in its last field.
@@ -1674,6 +1686,7 @@ bool ak_uitest_scroll_to(ak_uitest *a, ak_span text, ak_buf *err) {
 		list_state *st = list_of(a, vs.data[i]->id);
 		if (!st) continue;
 		st->end = false;
+		st->scrolled = true;
 		for (int64_t first = 0; first < st->count && !ok;) {
 			st->first = first;
 			ak_uitest_settle(a);

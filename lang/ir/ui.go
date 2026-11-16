@@ -620,7 +620,12 @@ func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int, keyKind bc.Kind) 
 		v := c.value(fi.Seq, -1)
 		c.emit(op("RET"), v)
 	}})
-	if s.Key != nil {
+	if id, ok := s.Key.(*syntax.Ident); ok && fi.Kind == check.ForEnumerated && len(b.l.info.Ctxs[s.Key].Params) > 0 && b.l.info.Uses[id] == check.Object(b.l.info.Ctxs[s.Key].Params[0]) {
+		// for (i, x) in xs.enumerated() key i: keyed by the index, as a
+		// for without a key is.
+		key = b.temp(bc.KRef)
+		b.emit(op("KNONE"), key)
+	} else if s.Key != nil {
 		kctx := b.l.info.Ctxs[s.Key]
 		var item *check.Var
 		if len(kctx.Params) > 0 {

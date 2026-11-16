@@ -43,10 +43,11 @@ component Launcher {
   // Up and Down move it.
   state selected = 0
 
-  let results = if query.isEmpty() { [] } else { apps.search(installed, query).prefix(most) }
+  state results: [apps.App] = []
 
-  effect {
-    let _ = results
+  // The matches, best first, as the query changes.
+  task(query, installed) {
+    results = if query.isEmpty() { [] } else { ((try? await apps.search(installed, query)) ?? []).prefix(most) }
     selected = 0
   }
 
@@ -59,7 +60,7 @@ component Launcher {
   }
 
   fn move(by: int) {
-    let n = results.count
+    let n = results.count()
     if n > 0 { selected = (selected + by + n) % n }
   }
 
@@ -68,7 +69,7 @@ component Launcher {
     try? await apps.open(a)
   }
 
-  hotkey.Hotkey(Shortcut(key: "space", mods: .alt)) {
+  hotkey.Hotkey(Shortcut(key: "space", mods: [.alt])) {
     description: "Show the launcher"
     on press { shown = !shown }
   }
@@ -101,17 +102,17 @@ component Launcher {
         // The field keeps the keyboard; these keys move through the
         // results instead of its caret (Spotlight's, and Emacs' too).
         keys: [
-          Shortcut(key: "down"): () => move(1),
-          Shortcut(key: "up"): () => move(-1),
-          Shortcut(key: "n", mods: .control): () => move(1),
-          Shortcut(key: "p", mods: .control): () => move(-1),
+          Shortcut(key: "down", run: () => move(1)),
+          Shortcut(key: "up", run: () => move(-1)),
+          Shortcut(key: "n", mods: [.control], run: () => move(1)),
+          Shortcut(key: "p", mods: [.control], run: () => move(-1)),
         ]
         on submit {
-          if selected < results.count { await open(results[selected]) }
+          if selected < results.count() { await open(results[selected]) }
         }
       }
     }
-    if !results.isEmpty {
+    if !results.isEmpty() {
       Column {
         padding: Edges(bottom: 8, left: 8, right: 8)
         View {
@@ -153,4 +154,14 @@ component AppRow(app: apps.App) {
     }
     Text(app.name) { font: .body }
   }
+}
+
+test "the panel searches as the user types" {
+  let app = mount(Launcher(), platform: .macOS)
+  app.expect("Search apps")
+  app.type("sa", into: "Search apps")
+  await app.idle()
+  // No apps here to find: the fake host installs none.
+  app.expectNo("Safari")
+  expect(app.trays().contains("launcher"), app.trays())
 }

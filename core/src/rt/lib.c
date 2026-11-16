@@ -600,6 +600,12 @@ static ak_val arr_reversed(ak_val *args, uint32_t n) {
 }
 
 static ak_val arr_slice(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_slice(ARR(0), A(1).i, A(2).i)); }
+static ak_val arr_prefix(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_slice(ARR(0), 0, A(1).i < 0 ? 0 : A(1).i)); }
+static ak_val arr_suffix(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t len = ARR(0) ? ARR(0)->len : 0, k = A(1).i < 0 ? 0 : A(1).i;
+	RET_P(ak_arr_slice(ARR(0), k >= len ? 0 : len - k, len));
+}
 static ak_val arr_concat(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_concat(ARR(0), ARR(1))); }
 
 // Sorting: a stable merge sort, by a "less" closure or, without one, by
@@ -1130,6 +1136,8 @@ const ak_lib_entry ak_lib[] = {
 	{"str.find_any", str_find_any},
 	{"str.byte_slice", str_byte_slice},
 	{"str.pad", str_pad},
+	{"arr.prefix", arr_prefix},
+	{"arr.suffix", arr_suffix},
 	{"int.padded", int_padded},
 
 	{"dur.ns", dur_ns},

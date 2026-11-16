@@ -303,6 +303,7 @@ typedef struct {
 	uint32_t sel[2];   // the selection, as last sent or reported (UTF-16)
 	bool sel_known;
 	bool multiline;
+	bool focused;  // as last reported, or asked for
 } field_state;
 
 static int rune_len(uint8_t c) { return c < 0x80 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4; }
@@ -404,6 +405,18 @@ static void field_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 		break;
 	case AK_KEY_TEXT_FIELD_AUTOFOCUS: break;  // at finalize
 	case AK_KEY_TEXT_FIELD_SELECTION: field_send_selection(e, v.p); break;
+	case AK_KEY_TEXT_FIELD_FOCUSED:
+		// bind focused: true takes the keyboard, false gives it up.
+		if ((v.i != 0) == f->focused) break;
+		f->focused = v.i != 0;
+		if (!e->finalized) {
+			if (v.i) e->autofocus = true;  // with its first frame
+		} else if (v.i) {
+			ak_ui_focus(e);
+		} else {
+			ak_ui_blur(e);
+		}
+		break;
 	default: ak_field_set_ext(e, key, v, prev); break;  // rich.c
 	}
 }
@@ -422,6 +435,10 @@ static void field_finalize(ak_view *e) {
 	// bound text, its height (a multiline field's is its text's).
 	if (ak_view_handler(e, AK_EV_TEXT_FIELD_CHANGE) || key_set(e, AK_KEY_TEXT_FIELD_TEXT) || f->multiline) ak_view_listen(e, AK_EVENT_TEXT_CHANGED);
 	if (key_set(e, AK_KEY_TEXT_FIELD_SELECTION)) ak_view_listen(e, AK_EVENT_SELECTION_CHANGED);
+	if (key_set(e, AK_KEY_TEXT_FIELD_FOCUSED) || ak_view_handler(e, AK_EV_TEXT_FIELD_FOCUS_CHANGE)) {
+		ak_view_listen(e, AK_EVENT_FOCUS);
+		ak_view_listen(e, AK_EVENT_BLUR);
+	}
 	const ak_val *af = ak_style_get(e, AK_KEY_TEXT_FIELD_AUTOFOCUS);
 	if (af && af->i) e->autofocus = true;  // with its first frame
 	ak_field_finalize_ext(e);
@@ -444,8 +461,15 @@ static void field_event(ak_view *e, const ak_event *ev) {
 		break;
 	}
 	case AK_EVENT_SUBMIT: call0(e, AK_EV_TEXT_FIELD_SUBMIT); break;
-	case AK_EVENT_FOCUS: call0(e, AK_EV_TEXT_FIELD_FOCUS); break;
-	case AK_EVENT_BLUR: call0(e, AK_EV_TEXT_FIELD_BLUR); break;
+	case AK_EVENT_FOCUS:
+	case AK_EVENT_BLUR: {
+		bool on = ev->kind == AK_EVENT_FOCUS;
+		f->focused = on;
+		call0(e, on ? AK_EV_TEXT_FIELD_FOCUS : AK_EV_TEXT_FIELD_BLUR);
+		ak_val arg = {.i = on};
+		ak_view_call(e, AK_EV_TEXT_FIELD_FOCUS_CHANGE, &arg, 1);
+		break;
+	}
 	case AK_EVENT_SELECTION_CHANGED: {
 		if (ev->s.len < 8) break;
 		const uint8_t *p = (const uint8_t *)ev->s.p;
@@ -1175,6 +1199,26 @@ void ak_ui_focus(ak_view *v) {
 
 void ak_ui_blur(ak_view *v) {
 	if (v && v->real && !v->dead) ak_batch_command(v->r->batch, v->id, AK_CMD_BLUR, NULL, 0);
+}
+
+// ak_ui_scroll_to_end scrolls a Scroll or List to its end: its bottom, a
+// horizontal Scroll's trailing edge.
+void ak_ui_scroll_to_end(ak_view *v, bool animated) {
+	if (!v || v->dead) return;
+	const ak_val *h = v->kind == AK_KIND_SCROLL ? ak_style_get(v, AK_KEY_SCROLL_HORIZONTAL) : NULL;
+	bool across = h && h->i;
+	ak_ui_scroll_to(v, across ? 1e9f : 0, across ? 0 : 1e9f, animated);
+}
+
+// ak_ui_scroll_to_item scrolls a List's item i (its index among its
+// items) into view.
+void ak_ui_scroll_to_item(ak_view *v, int64_t i, bool animated) {
+	if (!v || v->dead || v->kind != AK_KIND_LIST || i < 0 || i > UINT32_MAX) return;
+	uint8_t args[5];
+	uint32_t u = (uint32_t)i;
+	memcpy(args, &u, 4);
+	args[4] = animated ? 1 : 0;
+	ak_batch_command(v->r->batch, v->id, AK_CMD_SCROLL_TO, args, sizeof args);
 }
 
 // ak_ui_scroll_to scrolls a Scroll or List to the content offset x, y

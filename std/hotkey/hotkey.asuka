@@ -5,7 +5,7 @@
 // description), else X11's grab. A phone and the web have none: a Hotkey
 // there says .notAvailable.
 //
-//   hotkey.Hotkey(hotkey.Shortcut(key: "space", alt: true)) {
+//   hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
 //     description: "Show the launcher"
 //     on press { showLauncher() }
 //     on error(e) { problem = e.message }
@@ -29,17 +29,6 @@ pub enum HotkeyError: Error {
     .notAvailable => "hotkey: not available here"
     .noKey => "hotkey: no such key"
   }
-}
-
-/// A key with modifiers: a character ("k", ",") or a name (space, enter,
-/// escape, tab, up, down, left, right, f1 to f12...). primary is ⌘ on a
-/// Mac, Ctrl elsewhere.
-pub struct Shortcut {
-  key: string
-  primary: bool = false
-  shift: bool = false
-  alt: bool = false
-  control: bool = false
 }
 
 // The presses the host reports, by hotkey: one poll for every hotkey
@@ -73,11 +62,12 @@ fn errorOf(message: string) -> HotkeyError {
 }
 
 fn encode(id: int, s: Shortcut, description: string) -> bytes {
+  // The prelude's Shortcut: its bools, and its mods.
   var mods = 0
-  if s.primary { mods += 1 }
-  if s.shift { mods += 2 }
-  if s.alt { mods += 4 }
-  if s.control { mods += 8 }
+  if s.primary || s.mods.contains(.primary) { mods += 1 }
+  if s.shift || s.mods.contains(.shift) { mods += 2 }
+  if s.alt || s.mods.contains(.alt) { mods += 4 }
+  if s.control || s.mods.contains(.control) { mods += 8 }
   return platform.u32(id).concat(platform.u8(mods)).concat(platform.str(s.key.lower())).concat(description.bytes())
 }
 

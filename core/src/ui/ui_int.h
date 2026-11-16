@@ -464,6 +464,9 @@ void ak_row_free(ak_row *rw, ak_kind key_kind);
 
 int64_t ak_list_count(ak_view *e);
 void ak_list_bind(ak_view *e, int64_t index, ak_id cell);
+// ak_list_row_keys hears of a container's swipeActions,
+// leadingSwipeActions or selected changing (a List's row's own).
+void ak_list_row_keys(ak_view *v);
 void ak_list_unbind(ak_view *e, ak_id cell);
 void ak_list_layout(ak_view *e, ak_lpass *p);
 void ak_list_each_cell(ak_view *e, void (*f)(ak_view *c, void *ctx), void *ctx);

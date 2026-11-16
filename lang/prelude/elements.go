@@ -167,6 +167,9 @@ var Variants = []string{"hovered", "pressed", "dragging", "dragOver"}
 var containerKeys = []Key{
 	{Name: "dragItems", Type: "[DragItem]", Doc: "makes it draggable, within the app and to other apps: a long press then a move lifts it on a touch screen, a move with the button down with a mouse. [] (the default): not draggable"},
 	{Name: "dropTypes", Type: "[string]", Doc: "makes it take drops of these MIME types: exact (\"text/plain\"), a family (\"image/*\"), anything (\"*/*\"), or the app's own"},
+	{Name: "swipeActions", Type: "[Action]", Doc: "a List's row's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's): on the row's top view"},
+	{Name: "leadingSwipeActions", Type: "[Action]", Doc: "a List's row's actions revealed from its leading edge (Mail's Unread)"},
+	{Name: "selected", Type: "bool", Doc: "a List's row is selected: in a selecting list, its selection control is checked (what on select doesn't take back goes back as it was)"},
 }
 
 // containerEvents are what View, Row, Column and SafeArea report: a
@@ -186,6 +189,8 @@ var containerEvents = []Event{
 	{Name: "dropOver", Params: []Param{{"over", "bool"}}, Doc: "a drag it takes coming over it, and leaving it (a drop zone's highlight)"},
 	{Name: "dropMove", Params: []Param{{"x", "float"}, {"y", "float"}}, Doc: "where a drag it takes is over it, in points from its top left"},
 	{Name: "drop", Params: []Param{{"drop", "Drop"}}, Doc: "what's dropped on it: the items it takes"},
+	{Name: "select", Params: []Param{{"selected", "bool"}}, Doc: "the user selected its List's row, or deselected it"},
+	{Name: "selectBegin", Doc: "the user started selecting at its List's row while the list isn't selecting (a two-finger pan on iOS, a long press on Android)"},
 }
 
 // Elements are the built-in elements. core/src/ui implements each.
@@ -220,6 +225,7 @@ var Elements = []Element{
 		{Name: "autofocus", Type: "bool", Doc: "takes the keyboard as it shows"},
 		{Name: "selection", Type: "TextRange", Bind: true, Event: "select", Doc: "the cursor or the selected text, as byte offsets into text: the user's moves write it, and writing it moves them"},
 		{Name: "rich", Type: "[Span]", Bind: true, Event: "richChange", Doc: "makes it a text area of styled text: bold, italic, underline, strikethrough, monospaced, links. The user's typing and formatting write it; writing it replaces the text, and text follows its plain text. Inline components are left out. It makes the field multiline"},
+		{Name: "focused", Type: "bool", Bind: true, Event: "focusChange", Doc: "whether it has the keyboard: the user's tapping in and out writes it, and writing it takes the keyboard or gives it up"},
 		{Name: "pasteTypes", Type: "[string]", Doc: "the MIME types (patterns, as \"image/*\") of what on paste takes instead of the text: pasted, or put in by the keyboard (a GIF keyboard's images)"},
 	}, Events: []Event{
 		{Name: "change", Params: []Param{{"text", "string"}}},
@@ -227,6 +233,7 @@ var Elements = []Element{
 		{Name: "focus"},
 		{Name: "blur"},
 		{Name: "select", Params: []Param{{"selection", "TextRange"}}},
+		{Name: "focusChange", Params: []Param{{"focused", "bool"}}, Doc: "it took the keyboard, or gave it up"},
 		{Name: "richChange", Params: []Param{{"rich", "[Span]"}}},
 		{Name: "formats", Params: []Param{{"formats", "TextFormats"}}, Doc: "the styles where the cursor is, or that all the selection has, as they change: a toolbar's buttons show them"},
 		{Name: "paste", Params: []Param{{"items", "[SharedItem]"}}, Doc: "what was pasted of pasteTypes: images and files are the app's own copies, in its caches"},
