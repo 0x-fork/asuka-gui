@@ -74,6 +74,10 @@ void ak_root_release(ak_ui_root *r) {
 	ak_vec_free(&r->init_q);
 	ak_vec_free(&r->layout_q);
 	ak_vec_free(&r->lists);
+	ak_vec_free(&r->provs);
+	ak_vec_free(&r->sync_q);
+	ak_vec_free(&r->shown);
+	ak_vec_free(&r->pagers);
 	ak_vec_free(&r->boxbuf);
 	ak_lpass_free(&r->pass);
 	ak_mcache_free(&r->measures);
@@ -153,8 +157,14 @@ void ak_ui_environment(ak_environment *env) {
 
 ak_val ak_ui_environment_value(void) {
 	ak_environment e;
-	if (ak_ui.root) ak_signal_read(&ak_ui.root->env_node);
-	ak_ui_environment(&e);
+	ak_prov *p = ak_prov_current();  // a screen's, a sheet's, a window's
+	if (p) {
+		ak_signal_read(&p->node);
+		e = p->env;
+	} else {
+		if (ak_ui.root) ak_signal_read(&ak_ui.root->env_node);
+		ak_ui_environment(&e);
+	}
 	ak_struct *s = ak_struct_new(&ak_ui_shape_environment);
 	float fs[9] = {e.width, e.height, e.safe_top, e.safe_right, e.safe_bottom, e.safe_left, e.keyboard, e.scale, e.font_scale};
 	for (int i = 0; i < 9; i++) s->f[i].f = fs[i];
@@ -196,7 +206,7 @@ static void root_adjust(ak_view *e, ak_lstyle *ls) {
 	ls->width = ak_lpct(100), ls->height = ak_lpct(100);
 }
 
-static const ak_el_class cls_root = {.name = "View", .kind = AK_KIND_VIEW, .flags = AK_ELF_CHILDREN, .adjust = root_adjust};
+static const ak_el_class cls_root = {.name = "View", .kind = AK_KIND_VIEW, .flags = AK_ELF_CHILDREN, .adjust = root_adjust, .event = ak_root_event, .drop = ak_window_root_drop};
 
 static void mount_fn(void *ctx, ak_owner *root) {
 	mount_ctx *m = ctx;
@@ -260,6 +270,14 @@ void ak_ui_unmount(void) {
 	release_all(&r->frame_q);
 	release_all(&r->layout_q);
 	release_all(&r->lists);
+	release_all(&r->provs);
+	release_all(&r->sync_q);
+	release_all(&r->shown);
+	release_all(&r->pagers);
+	if (r->back) {
+		ak_back_release(r->back);
+		r->back = NULL;
+	}
 	ak_view *el = r->el;
 	r->el = NULL;
 	ak_release(el);
@@ -371,6 +389,27 @@ static void root_layout(ak_ui_root *r) {
 	}
 	r->lists.len = live;
 	ak_ext_layout(r, p);
+	ak_root_layout_provs(r, p);
+	// Paging Scrolls, whose pages are as big as they are: laid out again
+	// when that changed.
+	live = 0;
+	bool again = false;
+	for (uint32_t i = 0; i < r->pagers.len; i++) {
+		ak_view *s = r->pagers.data[i];
+		if (s->dead) {
+			ak_release(s);
+			continue;
+		}
+		r->pagers.data[live++] = s;
+		again |= ak_scroll_laid(s);
+	}
+	r->pagers.len = live;
+	if (again) {
+		ak_lnode_layout(r->el->box, size, p);
+		ak_ext_layout(r, p);
+		ak_root_layout_provs(r, p);
+		for (uint32_t i = 0; i < r->pagers.len; i++) ak_scroll_laid(r->pagers.data[i]);
+	}
 	for (uint32_t i = 0; i < p->nchanged; i++) {
 		ak_view *e = ak_lnode_context(p->changed[i]);
 		if (e) ak_view_each_native(e, queue_frame_cb, NULL);
@@ -392,6 +431,7 @@ void ak_root_flush(ak_ui_root *r) {
 		ak_release(e);
 	}
 	r->init_q.len = 0;
+	ak_root_sync(r);
 	for (uint32_t i = 0; i < r->kids_q.len; i++) {
 		ak_view *e = r->kids_q.data[i];
 		e->kids_dirty = false;
@@ -470,6 +510,13 @@ void ak_ui_dispatch(const uint8_t *buf, size_t len) {
 	ak_ui_root *r = ak_ui.root;
 	switch (ev.kind) {
 	case AK_EVENT_ENVIRONMENT:
+		if (r && ev.id && ak_view_of(ev.id) && ak_view_of(ev.id)->host_sized && ak_view_of(ev.id)->prov) {
+			// A screen's, a sheet's, a window's.
+			ak_batch_begin();
+			ak_prov_report(ev.id, &ev.env);
+			flush_after();
+			return;
+		}
 		if (!r || ev.id == 0 || (r->el && ev.id == r->el->id)) {
 			ak_batch_begin();
 			ak_ui_set_environment(&ev.env);

@@ -40,10 +40,32 @@
 //	ui.blur        v: View                                            -
 //	ui.scroll_to   v: View, x: float, y: float, animated: bool        -
 //	ui.environment -                                                  Environment
-//	ui.push        build: fn() -> View   (throws: not available yet)  -
-//	ui.pop         -                     (likewise)                   -
-//	ui.present     build: fn() -> View   (likewise)                   -
-//	ui.dismiss     -                     (likewise)                   -
+//	ui.lazy        v: View, build: fn(params...) -> View? (its
+//	               LazyChildren: a Tab's page, a Route's screen)      -
+//	ui.push        build: fn() -> View (throws outside a Stack)       -
+//	ui.pop         - (likewise)                                       -
+//	ui.depth       -                                                  int
+//	ui.present     build: fn() -> View                                -
+//	ui.dismiss     - (throws outside a sheet)                         -
+//	ui.on_back     handler: fn() -> bool                              -
+//	ui.alert       title: string, message: string, actions: [Action]
+//	               or fn() -> [Action] (followed) or none (OK),
+//	               actionSheet: bool, fields: [AlertField]?            -
+//	ui.snackbar    message: string, action: Action?, duration: int
+//	               (SnackbarDuration), onDismiss: fn()?               fn() (dismisses it)
+//	ui.window_action  w: View? (a Window; none: the window it's in),
+//	               action: int (WindowAction), x: float, y: float     -
+//	ui.window_close   w: View?                                        -
+//	ui.window_state   w: View?                                        WindowState
+//	ui.on_close_request  handler: fn() -> bool                        -
+//	ui.navigate    href: string, mode: int (0 navigate, 1 push,
+//	               2 replace)                                         -
+//	ui.router_back    -                                               bool
+//	ui.router_dismiss -                                               bool
+//	ui.can_go_back    -                                               bool
+//	ui.set_query   query: string (encoded: a=1&b=2)                   -
+//	ui.router_href -                                                  string
+//	ui.href_of     pattern: string, values: [string]                  string
 //
 // A View is an ak_view (ui.h); Acc<T> an accessor the row reads with
 // AGET. Thunks and handlers are closures (rt.h), the VM's or compiled C's.
@@ -194,6 +216,90 @@ static ak_val b_environment(ak_val *a, uint32_t n) {
 	return ak_ui_environment_value();
 }
 
+static ak_val b_lazy(ak_val *a, uint32_t n) {
+	ak_ui_lazy(view_arg(a, n, 0, "ui.lazy"), a[1].p);
+	return none();
+}
+
+static ak_view *opt_view(ak_val *a, uint32_t n, uint32_t i, const char *name) {
+	if (i >= n || !a[i].p) return NULL;
+	return view_arg(a, n, i, name);
+}
+
+static ak_val b_depth(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = ak_ui_depth()};
+}
+
+static ak_val b_on_back(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_on_back(a[0].p);
+	return none();
+}
+
+static ak_val b_alert(ak_val *a, uint32_t n) {
+	ak_ui_alert(a[0].p, n > 1 ? a[1].p : NULL, n > 2 ? a[2].p : NULL, n > 3 && a[3].i, n > 4 ? a[4].p : NULL);
+	return none();
+}
+
+static ak_val b_snackbar(ak_val *a, uint32_t n) {
+	return (ak_val){.p = ak_ui_snackbar(a[0].p, n > 1 ? a[1].p : NULL, n > 2 ? a[2].i : 0, n > 3 ? a[3].p : NULL)};
+}
+
+static ak_val b_window_action(ak_val *a, uint32_t n) {
+	ak_ui_window_action(opt_view(a, n, 0, "ui.window_action"), a[1].i, n > 2 ? (float)a[2].f : 0, n > 3 ? (float)a[3].f : 0);
+	return none();
+}
+
+static ak_val b_window_close(ak_val *a, uint32_t n) {
+	ak_ui_window_close(opt_view(a, n, 0, "ui.window_close"));
+	return none();
+}
+
+static ak_val b_window_state(ak_val *a, uint32_t n) { return ak_ui_window_state(opt_view(a, n, 0, "ui.window_state")); }
+
+static ak_val b_on_close_request(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_on_close_request(a[0].p);
+	return none();
+}
+
+static ak_val b_navigate(ak_val *a, uint32_t n) {
+	ak_ui_navigate(a[0].p, n > 1 ? a[1].i : 0);
+	return none();
+}
+
+static ak_val b_router_back(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = ak_ui_router_back()};
+}
+
+static ak_val b_router_dismiss(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = ak_ui_router_dismiss()};
+}
+
+static ak_val b_can_go_back(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = ak_ui_can_go_back()};
+}
+
+static ak_val b_set_query(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_set_query(a[0].p);
+	return none();
+}
+
+static ak_val b_router_href(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_router_href()};
+}
+
+static ak_val b_href_of(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_href_of(a[0].p, a[1].p)};
+}
+
 static ak_val b_push(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	ak_ui_push(a[0].p);
@@ -257,6 +363,22 @@ void ak_ui_builtins_init(void) {
 		{"ui.pop", b_pop},
 		{"ui.present", b_present},
 		{"ui.dismiss", b_dismiss},
+		{"ui.lazy", b_lazy},
+		{"ui.depth", b_depth},
+		{"ui.on_back", b_on_back},
+		{"ui.alert", b_alert},
+		{"ui.snackbar", b_snackbar},
+		{"ui.window_action", b_window_action},
+		{"ui.window_close", b_window_close},
+		{"ui.window_state", b_window_state},
+		{"ui.on_close_request", b_on_close_request},
+		{"ui.navigate", b_navigate},
+		{"ui.router_back", b_router_back},
+		{"ui.router_dismiss", b_router_dismiss},
+		{"ui.can_go_back", b_can_go_back},
+		{"ui.set_query", b_set_query},
+		{"ui.router_href", b_router_href},
+		{"ui.href_of", b_href_of},
 	};
 	for (size_t i = 0; i < AK_LEN(t); i++) ak_builtin_register(t[i].name, t[i].fn);
 }
