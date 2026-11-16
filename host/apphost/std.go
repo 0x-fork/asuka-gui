@@ -7,6 +7,7 @@ package apphost
 // unsupported there.
 import (
 	_ "github.com/egoist/asuka/std/crash/desktop"
+	_ "github.com/egoist/asuka/std/document/desktop"
 	_ "github.com/egoist/asuka/std/host/desktop"
 	_ "github.com/egoist/asuka/std/http/desktop"
 	_ "github.com/egoist/asuka/std/network/desktop"
