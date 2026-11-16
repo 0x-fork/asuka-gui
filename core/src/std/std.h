@@ -41,9 +41,41 @@ ak_arr *ak_str_arr(uint32_t cap);
 // Pushes a new string of s[0:n] onto *a.
 void ak_str_arr_push(ak_arr **a, const char *s, size_t n);
 
-// ak_sha256 and ak_sha1 hash p into out (32 and 20 bytes).
+// ak_sha256, ak_sha512 and ak_sha1 hash p into out (32, 64 and 20
+// bytes).
 void ak_sha256(const void *p, size_t n, uint8_t out[32]);
+void ak_sha512(const void *p, size_t n, uint8_t out[64]);
 void ak_sha1(const void *p, size_t n, uint8_t out[20]);
+
+// The same over what comes in pieces (a file, streamed): init, update
+// with each piece, final.
+typedef struct {
+	uint32_t h[8];
+	uint8_t buf[64];
+	size_t n;
+	uint64_t len;
+} ak_sha256_ctx;
+void ak_sha256_init(ak_sha256_ctx *c);
+void ak_sha256_update(ak_sha256_ctx *c, const void *p, size_t n);
+void ak_sha256_final(ak_sha256_ctx *c, uint8_t out[32]);
+
+typedef struct {
+	uint64_t h[8];
+	uint8_t buf[128];
+	size_t n;
+	uint64_t len;
+} ak_sha512_ctx;
+void ak_sha512_init(ak_sha512_ctx *c);
+void ak_sha512_update(ak_sha512_ctx *c, const void *p, size_t n);
+void ak_sha512_final(ak_sha512_ctx *c, uint8_t out[64]);
+
+// Ed25519 (RFC 8032, ed25519.c): a key pair is a 32-byte seed (the
+// private key; Go's and the CLI's 64-byte private keys are the seed and
+// the public key) and its 32-byte public key. Verifying is strict as Go's
+// crypto/ed25519 is: S below the group's order, A a point on the curve.
+void ak_ed25519_public(const uint8_t seed[32], uint8_t pub[32]);
+void ak_ed25519_sign(const uint8_t seed[32], const uint8_t pub[32], const uint8_t *m, size_t n, uint8_t sig[64]);
+bool ak_ed25519_verify(const uint8_t pub[32], const uint8_t *m, size_t n, const uint8_t sig[64]);
 
 // The app's directory (fs.appDir): what the host set with
 // asuka_set_app_dir, else ASUKA_DATA, else the platform's default.
