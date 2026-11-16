@@ -9,6 +9,7 @@ import (
 	_ "github.com/egoist/asuka/std/http/desktop"
 	_ "github.com/egoist/asuka/std/location/desktop"
 	_ "github.com/egoist/asuka/std/network/desktop"
+	_ "github.com/egoist/asuka/std/purchase/desktop"
 	_ "github.com/egoist/asuka/std/sensors/desktop"
 	_ "github.com/egoist/asuka/std/store/desktop"
 )

@@ -1,0 +1,6 @@
+name = "asuka/purchase"
+version = "0.1.0"
+description = "Sells in the app: the App Store, Google Play, the Microsoft Store"
+
+[android]
+permissions = ["com.android.vending.BILLING"]
