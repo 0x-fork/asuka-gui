@@ -181,6 +181,59 @@ TEST(use_keys_owners) {
 	ak_release(showing);
 }
 
+// ---- A Window's own (use_keys in its content) ----
+
+static ak_val panel_content(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_arr *m = keymap();
+	push(&m, shortcut("escape", 0, log_run, "panel escape"));
+	push(&m, shortcut("down", 0, log_run, "panel down"));
+	ak_ui_use_keys(m);
+	ak_release(m);
+	ak_view *field = ak_ui_new(AK_EL_TEXT_FIELD);
+	set_str(field, AK_KEY_TEXT_FIELD_PLACEHOLDER, "in the panel");
+	return (ak_val){.p = field};
+}
+
+static ak_val panel_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_arr *m = keymap();
+	push(&m, shortcut("escape", 0, log_run, "main escape"));
+	push(&m, shortcut("space", 0, log_run, "main space"));
+	ak_ui_use_keys(m);
+	ak_release(m);
+	ak_view *col = ak_ui_new(AK_EL_COLUMN);
+	ak_view *field = ak_ui_new(AK_EL_TEXT_FIELD);
+	set_str(field, AK_KEY_TEXT_FIELD_PLACEHOLDER, "in the main window");
+	add(col, field);
+	ak_view *w = ak_ui_new(AK_EL_WINDOW);
+	set_i(w, AK_KEY_WINDOW_OPEN, 1);
+	set_i(w, AK_KEY_WINDOW_PANEL, 1);
+	ak_closure *content = fn(panel_content, NULL);
+	ak_ui_lazy(w, content);
+	ak_release(content);
+	add(col, w);
+	return (ak_val){.p = col};
+}
+
+// use_keys in a Window's content gives that window keys, not the main
+// window's: a key in the panel goes to the panel's, and no further; one in
+// the main window, to the main window's.
+TEST(use_keys_in_window) {
+	log_buf[0] = 0;
+	ak_uitest *a = mount(panel_app, NULL);
+	ak_fake *f = ak_uitest_host(a);
+	ak_fake_view *main_field = nth(a, AK_KIND_TEXT_FIELD, 0), *panel_field = nth(a, AK_KIND_TEXT_FIELD, 1);
+	REQUIRE(main_field && panel_field);
+	CHECK(ak_fake_key(f, panel_field, "escape", 0));
+	CHECK(ak_fake_key(f, panel_field, "down", 0));
+	CHECK(!ak_fake_key(f, panel_field, "space", 0));  // the main window's: not here
+	CHECK(ak_fake_key(f, main_field, "escape", 0));
+	CHECK(!ak_fake_key(f, main_field, "down", 0));  // the panel's: not here
+	CHECK_EQ_STR(log_buf, "panel escape|panel down|main escape");
+	done(a);
+}
+
 // ---- animate { } (TestAnimateWrapsWhatItChanges, TestAnimating) ----
 
 static void *wide;

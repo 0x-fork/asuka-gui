@@ -723,11 +723,18 @@ typedef struct {
 	struct ak_keyreg *reg;
 } wkeys_t;
 
-static void wkeys_init(ak_view *e) {
-	wkeys_t *k = e->impl = ak_alloc(sizeof(wkeys_t));
+// ak_keys_window is where keys registered now go (WindowKeys',
+// ui.use_keys'): the view of the Window the calling code is built in, or
+// the root for the main window.
+ak_view *ak_keys_window(void) {
 	ak_view *w = target(NULL);
 	ak_view *v = handle_view(w);
-	ak_keys_register(v ? v : w->r->el, NULL, &k->reg);
+	return v ? v : w->r->el;
+}
+
+static void wkeys_init(ak_view *e) {
+	wkeys_t *k = e->impl = ak_alloc(sizeof(wkeys_t));
+	ak_keys_register(ak_keys_window(), NULL, &k->reg);
 }
 
 static void wkeys_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
