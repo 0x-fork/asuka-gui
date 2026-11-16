@@ -378,3 +378,29 @@ func TestRichText(t *testing.T) {
 	}
 	shows(t, d["reset"], "reset", []string{"Plain", "Spans: 1"})
 }
+
+// Overlays and pickers (testdata/overlays.asuka): a SplitView's sidebar,
+// a Picker's choice, a Popover opened and closed from inside it.
+func TestOverlays(t *testing.T) {
+	w := onWindows(t)
+	local, guest := w.job(t)
+	src, err := os.ReadFile(filepath.Join("testdata", "overlays.asuka"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildApp(t, w, string(src), local)
+	d := script(t, w, local, guest, "app.exe",
+		"snap:start",
+		"tap:Banana", "snap:picked",
+		"tap:Info", "snap:popover",
+		"tap:Done", "snap:closed",
+		"tap:Drafts", "snap:drafts")
+	shows(t, d["start"], "the inbox", []string{"No fruit", "Closed", "Info"})
+	if !strings.Contains(d["start"], " Split [") || !strings.Contains(d["start"], " Picker [") {
+		t.Errorf("no split view or picker:\n%s", d["start"])
+	}
+	shows(t, d["picked"], "picked", []string{"Fruit 1"}, "No fruit")
+	shows(t, d["popover"], "the popover", []string{"Open"}, "Closed")
+	shows(t, d["closed"], "closed", []string{"Closed"}, "Open")
+	shows(t, d["drafts"], "drafts", []string{"Draft list"}, "Fruit 1")
+}

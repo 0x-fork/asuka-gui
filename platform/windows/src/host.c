@@ -334,6 +334,7 @@ void wh_release(node *n) {
 	if (n->image) wh_image_close(n);
 	if (n->shader) wh_shader_release(n);
 	if (n->rich) wh_rich_release(n);
+	if (n->pane_node) wh_split_release(n);
 	if (n->clip_rgn) {
 		DeleteObject(n->clip_rgn);
 		n->clip_rgn = NULL;

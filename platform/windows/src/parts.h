@@ -166,6 +166,7 @@ void wh_paint_search_icon(node *n, HDC dc, RECT r);
 void wh_make_split(node *n);
 void wh_set_split_prop(node *n, uint16_t p, const ak_value *v);
 void wh_layout_split(node *n);
+void wh_split_release(node *n);  // its pane, with it
 void wh_paint_pane(node *n, HDC dc, gfx g, RECT r);
 void wh_paint_snack(node *n, gfx g, float w, float h);
 void wh_paint_snack_text(node *n, HDC dc);
