@@ -729,4 +729,12 @@ void lx_dbus_call(GDBusConnection *conn, const char *dest, const char *path, con
 guint lx_dbus_export(GDBusConnection *conn, const char *path, const char *xml, const char *iface, const GDBusInterfaceVTable *vt, void *ctx, char **err);
 void lx_dbus_emit(GDBusConnection *conn, const char *path, const char *iface, const char *name, GVariant *params);
 
+// The desktop portal.
+#define LX_PORTAL "org.freedesktop.portal.Desktop"
+#define LX_PORTAL_PATH "/org/freedesktop/portal/desktop"
+typedef void (*lx_portal_done)(void *ctx, uint32_t code, GVariant *results, const char *err);
+void lx_portal_request(const char *iface, const char *method, GVariant *(*params)(const char *token, void *ctx), lx_portal_done done, void *ctx);
+bool lx_no_portal(const char *err);
+void lx_key_gdk_name(const char *key, char *out, size_t n);  // menus.c
+
 #endif

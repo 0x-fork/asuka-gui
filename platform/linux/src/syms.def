@@ -461,6 +461,11 @@ SYM(X11, int, XGetWindowProperty, (void *display, unsigned long w, unsigned long
 SYM(X11, int, XSendEvent, (void *display, unsigned long w, int propagate, long event_mask, void *event))
 SYM(X11, int, XFree, (void *data))
 SYM(X11, int, XFlush, (void *display))
+SYM(X11, unsigned long, XStringToKeysym, (const char *string))
+SYM(X11, unsigned char, XKeysymToKeycode, (void *display, unsigned long keysym))
+SYM(X11, unsigned long, XKeycodeToKeysym, (void *display, unsigned char keycode, int index))
+SYM(X11, int, XGrabKey, (void *display, int keycode, unsigned int modifiers, unsigned long grab_window, int owner_events, int pointer_mode, int keyboard_mode))
+SYM(X11, int, XUngrabKey, (void *display, int keycode, unsigned int modifiers, unsigned long grab_window))
 
 // ---- fontconfig (optional) ----
 SYM(FC, int, FcConfigAppFontAddFile, (void *config, const unsigned char *file))
@@ -956,3 +961,9 @@ SYM(GTK, GdkTextureDownloader *, gdk_texture_downloader_new, (GdkTexture *textur
 SYM(GTK, void, gdk_texture_downloader_set_format, (GdkTextureDownloader *self, GdkMemoryFormat format))
 SYM(GTK, void, gdk_texture_downloader_download_into, (const GdkTextureDownloader *self, guchar *data, gsize stride))
 SYM(GTK, void, gdk_texture_downloader_free, (GdkTextureDownloader *self))
+SYM(GIO, void, g_dbus_connection_signal_unsubscribe, (GDBusConnection *connection, guint subscription_id))
+SYM(GLIB, gunichar, g_utf8_get_char, (const gchar *p))
+SYM(GLIB, const gchar *, g_variant_get_string, (GVariant *value, gsize *length))
+SYM(GLIB, guint32, g_variant_get_uint32, (GVariant *value))
+SYM(GLIB, gboolean, g_variant_lookup, (GVariant *dictionary, const gchar *key, const gchar *format_string, ...))
+SYM(GTK, void, gdk_wayland_display_set_startup_notification_id, (GdkDisplay *display, const char *startup_id))

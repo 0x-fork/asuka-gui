@@ -156,8 +156,8 @@ typedef struct {
 
 static AK_VEC(app_item) app_items;  // the app menu's items, flattened
 
-// key_name is a key as GDK names it ("" none).
-static void key_name(const char *key, char *out, size_t n) {
+// lx_key_gdk_name is a key as GDK names it ("" none).
+void lx_key_gdk_name(const char *key, char *out, size_t n) {
 	static const char *const named[][2] = {{"enter", "Return"}, {"escape", "Escape"}, {"tab", "Tab"}, {"space", "space"},
 		{"delete", "Delete"}, {"backspace", "BackSpace"}, {"up", "Up"}, {"down", "Down"}, {"left", "Left"}, {"right", "Right"},
 		{"home", "Home"}, {"end", "End"}, {"pageup", "Page_Up"}, {"pagedown", "Page_Down"},
@@ -189,7 +189,7 @@ static void key_name(const char *key, char *out, size_t n) {
 char *lx_accelerator(const char *key, uint8_t mods) {
 	if (str_empty(key)) return NULL;
 	char name[32];
-	key_name(key, name, sizeof name);
+	lx_key_gdk_name(key, name, sizeof name);
 	if (!name[0]) return NULL;
 	char buf[96];
 	snprintf(buf, sizeof buf, "%s%s%s%s", (mods & 1) || (mods & 8) ? "<Control>" : "", mods & 2 ? "<Shift>" : "", mods & 4 ? "<Alt>" : "", name);
