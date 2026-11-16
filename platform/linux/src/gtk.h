@@ -568,6 +568,7 @@ typedef struct _GdkSeat GdkSeat;
 typedef struct _GdkFrameClock GdkFrameClock;
 typedef struct _GdkGLContext GdkGLContext;
 typedef struct _GdkGLTextureBuilder GdkGLTextureBuilder;
+typedef struct _GdkTextureDownloader GdkTextureDownloader;
 typedef struct _GdkFileList GdkFileList;
 typedef struct _GdkAppLaunchContext GdkAppLaunchContext;
 typedef struct _GdkCursor GdkCursor;
@@ -970,6 +971,8 @@ static inline const char *g_utf8_next_char(const char *p) {
 }
 // GLib's main loop priorities.
 enum { G_PRIORITY_HIGH = -100, G_PRIORITY_DEFAULT = 0, G_PRIORITY_HIGH_IDLE = 100, G_PRIORITY_DEFAULT_IDLE = 200 };
+// A GVariantType is its type string.
+#define G_VARIANT_TYPE(s) ((const GVariantType *)(s))
 #define GPOINTER_TO_INT(p) ((int)(intptr_t)(p))
 #define GINT_TO_POINTER(i) ((gpointer)(intptr_t)(i))
 #define g_signal_connect(o, s, f, d) g_signal_connect_data((o), (s), G_CALLBACK(f), (d), NULL, (GConnectFlags)0)

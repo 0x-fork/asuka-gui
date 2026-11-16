@@ -29,6 +29,8 @@ struct decoded {
 	AK_VEC(struct {
 		ak_id id;
 		bool placeholder;
+		lx_texture_fn cb;  // or a callback's
+		void *ctx;
 	}) waiting;
 	// The worker's: the file's bytes and the first frame's pixels.
 	GBytes *bytes;
@@ -238,6 +240,10 @@ static gboolean decoded_main(gpointer data) {
 	d->done = true;
 	lx_enter_begin();
 	for (uint32_t i = 0; i < d->waiting.len; i++) {
+		if (d->waiting.data[i].cb) {
+			d->waiting.data[i].cb(d->waiting.data[i].ctx, d->texture, d->err);
+			continue;
+		}
 		node *n = node_get(d->waiting.data[i].id);
 		if (n) loaded(n, d, d->waiting.data[i].placeholder);
 	}
@@ -246,12 +252,16 @@ static gboolean decoded_main(gpointer data) {
 	return 0;
 }
 
-// fetch decodes src (once: then from the cache) for n, on a thread.
-static void fetch(node *n, const char *src, bool placeholder) {
+// fetch decodes src (once: then from the cache) for n, or for cb, on a
+// thread.
+static void fetch_for(node *n, const char *src, bool placeholder, lx_texture_fn cb, void *ctx) {
 	if (!cache) cache = g_hash_table_new(g_str_hash, g_str_equal);
 	decoded *d = g_hash_table_lookup(cache, src);
 	if (d && d->done) {
-		loaded(n, d, placeholder);
+		if (cb)
+			cb(ctx, d->texture, d->err);
+		else
+			loaded(n, d, placeholder);
 		return;
 	}
 	bool start = !d;
@@ -262,14 +272,23 @@ static void fetch(node *n, const char *src, bool placeholder) {
 		g_hash_table_insert(cache, d->src, d);
 	}
 	ak_vec_reserve(&d->waiting, 1);
-	d->waiting.data[d->waiting.len].id = n->id;
+	d->waiting.data[d->waiting.len].id = n ? n->id : 0;
 	d->waiting.data[d->waiting.len].placeholder = placeholder;
+	d->waiting.data[d->waiting.len].cb = cb;
+	d->waiting.data[d->waiting.len].ctx = ctx;
 	d->waiting.len++;
 	if (start) {
 		if (!strncmp(src, "http", 4)) lx_lib_load(AK_LIB_SOUP);  // on the main thread: dlopen once
 		g_thread_unref(g_thread_new("asuka-image", decode_thread, d));
 	}
 }
+
+static void fetch(node *n, const char *src, bool placeholder) { fetch_for(n, src, placeholder, NULL, NULL); }
+
+// lx_load_texture decodes an image (a URL, a file, an asset) as Images
+// do, from the same cache: cb gets its texture (its first frame, if
+// animated) or the error, on the main thread.
+void lx_load_texture(const char *src, lx_texture_fn cb, void *ctx) { fetch_for(NULL, src, false, cb, ctx); }
 
 // ---- Showing ----
 

@@ -598,6 +598,8 @@ bool lx_measure_more(node *n, float cw, float ch, float aw, float ah, float *ow,
 void lx_set_image_prop(node *n, ak_prop p, const ak_value *v);
 void lx_draw_image(node *n, GtkSnapshot *snap, const graphene_rect_t *b);
 void lx_release_image(node *n);
+typedef void (*lx_texture_fn)(void *ctx, GdkTexture *t, const char *err);
+void lx_load_texture(const char *src, lx_texture_fn cb, void *ctx);
 void lx_draw_symbol(node *n, GtkSnapshot *snap, const graphene_rect_t *b);
 void lx_style_symbol(node *n);
 const char *lx_icon_name(const char *symbol);
@@ -657,6 +659,7 @@ void lx_open_url(const char *u);
 // lx_word is a word of Asuka's (internal/l10n's key) in the app's language.
 const char *lx_word(const char *key);
 const char *lx_badged(const char *title, const char *badge);
+const char *lx_word_app(const char *key, const char *app);
 void lx_toast(const char *text);
 void lx_modules_init(void);
 
@@ -716,5 +719,14 @@ bool lx_relaunch_asked(void);
 void lx_relaunch_if_asked(char **argv);
 extern const char *(*lx_relaunch_exe)(void);
 extern bool lx_opened_at_login;
+
+// dbus.c: the D-Bus services' helpers.
+typedef void (*lx_dbus_reply)(void *ctx, GVariant *reply, const char *err);
+GDBusConnection *lx_session_bus(void);
+GDBusConnection *lx_private_bus(char **err);
+void lx_close_bus(GDBusConnection *c);
+void lx_dbus_call(GDBusConnection *conn, const char *dest, const char *path, const char *iface, const char *method, GVariant *params, int timeout_ms, lx_dbus_reply cb, void *ctx);
+guint lx_dbus_export(GDBusConnection *conn, const char *path, const char *xml, const char *iface, const GDBusInterfaceVTable *vt, void *ctx, char **err);
+void lx_dbus_emit(GDBusConnection *conn, const char *path, const char *iface, const char *name, GVariant *params);
 
 #endif

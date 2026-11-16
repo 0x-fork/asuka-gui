@@ -269,3 +269,7 @@ void lx_draw_symbol(node *n, GtkSnapshot *snap, const graphene_rect_t *b) {
 	gtk_snapshot_restore(snap);
 	g_object_unref(p);
 }
+
+// lx_icon_dir is where the host writes the symbols' icons ("" until the
+// first): a tray's IconThemePath.
+const char *lx_icon_dir(void) { return S(icon_dir); }
