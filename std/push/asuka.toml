@@ -27,3 +27,14 @@ plist = { NSUserActivityTypes = ["INSendMessageIntent"] }
 hostFlags = ["ASUKA_CONVERSATIONS"]
 entitlements = { "com.apple.developer.usernotifications.communication" = true }
 plist = { NSUserActivityTypes = ["INSendMessageIntent"] }
+
+# A push's rewrite (rewrite): on iOS a Notification Service Extension,
+# which the CLI builds for the app (the host's AsukaNotificationService,
+# with the app's code in the framework the app and the extension share);
+# on Android the host's Firebase service has the app rewrite each data
+# message before it shows.
+[uses.rewrite.ios]
+hostFlags = ["ASUKA_NOTIFICATION_SERVICE"]
+
+[uses.rewrite.android]
+application = ['<meta-data android:name="dev.asuka.push.rewrite" android:value="true" />']

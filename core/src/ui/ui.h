@@ -366,6 +366,15 @@ uint32_t ak_ui_view_id(ak_view *v);
 void ak_ui_on_open_url(ak_closure *f);    // fn(string)
 void ak_ui_on_open_files(ak_closure *f);  // fn([string])
 void ak_ui_on_share(ak_closure *f);       // fn([SharedItem])
+// The app's own share sheet (asuka/sharesheet): closes it, how an
+// AK_SHARE_CLOSE_* (0 done, 1 cancelled, 2 open the app with what was
+// shared); outside a sheet the host ignores it.
+void ak_ui_share_close(int64_t how);
+// The process the app runs in (asuka/platform's process): "share" (its
+// share sheet), "notification" (iOS's Notification Service Extension,
+// for a push's rewrite) or "app"; the host says so in the environment
+// before the core starts (ASUKA_SHARE_SHEET, ASUKA_NOTIFICATION_SERVICE).
+const char *ak_ui_process(void);
 // The router's: true when it takes a URL the app is opened with.
 extern bool (*ak_ui_route_url)(ak_span url);
 // The language the app shows (locale.c): reading it follows it.

@@ -837,6 +837,8 @@ bool ak_uitest_expect_no(ak_uitest *a, ak_span text, ak_buf *err) {
 //	test.set_languages app: App, tags: string                      - (the user's languages changed)
 //	test.open_url    app: App, url: string                         - (the app opened with it)
 //	test.link        app: App, url: string                         - (the user taps a rich text's link)
+//	test.share       app: App, items: [SharedItem]                 - (another app shares them: the
+//	                                                               root's Shared event)
 //	test.emit        app: App, type: string, event: string,
 //	                 value: string                                 - (a native view's event, its
 //	                                                               one value a string)
@@ -1031,6 +1033,28 @@ static ak_val t_open_url(ak_val *a, uint32_t n) {
 	ak_buf_u8(&u, 0);
 	ak_fake_open_url(app->f, (const char *)u.data);
 	ak_buf_free(&u);
+	ak_uitest_settle(app);
+	return (ak_val){0};
+}
+
+// t_share: another app shares items with the app, as a host sends them
+// (the Shared event, to the root): onShare hears them, or the first
+// that comes does.
+static ak_val t_share(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.share");
+	const ak_arr *xs = n > 1 ? a[1].p : NULL;
+	uint32_t count = xs ? xs->len : 0;
+	ak_item *items = ak_alloc((count ? count : 1) * sizeof *items);
+	ak_str **made = ak_alloc((count ? count : 1) * sizeof *made);
+	for (uint32_t i = 0; i < count; i++) ak_item_wire(xs->data[i].p, false, &items[i], &made[i]);
+	ak_buf b = {0};
+	ak_append_items(&b, items, count);
+	for (uint32_t i = 0; i < count; i++) ak_release(made[i]);
+	ak_free(made);
+	ak_free(items);
+	ak_fake_view *root = ak_fake_root(app->f);
+	ak_fake_dispatch(app->f, &(ak_event){.id = root ? root->id : 0, .kind = AK_EVENT_SHARED, .s = ak_strn((const char *)b.data, b.len)});
+	ak_buf_free(&b);
 	ak_uitest_settle(app);
 	return (ak_val){0};
 }
@@ -1288,6 +1312,7 @@ void ak_uitest_builtins_init(void) {
 	ak_builtin_register("test.frame", t_frame);
 	ak_builtin_register("test.open_url", t_open_url);
 	ak_builtin_register("test.link", t_link);
+	ak_builtin_register("test.share", t_share);
 	ak_builtin_register("test.emit", t_emit);
 	ak_builtin_register("test.mount", t_mount);
 	ak_builtin_register("test.tap", t_tap);

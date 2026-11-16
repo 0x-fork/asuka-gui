@@ -47,6 +47,9 @@
 //	ui.on_open_url          f: fn(string)                                  -
 //	ui.on_open_files        f: fn([string])                                -
 //	ui.on_share             f: fn([SharedItem])                            -
+//	platform.process        -                                              string ("app", "share",
+//	                                                                       "notification")
+//	sharesheet.coreClose    how: int (0 done, 1 cancelled, 2 open the app) - (ShareClose)
 //	i18n.locale             -                                              string (tracked)
 //	i18n.set_locale         tag: string ("": the user's languages)         -
 //	i18n.set_languages      tags: [string]                                 -
@@ -221,6 +224,18 @@ STR_CMD(b_on_open_files, ak_ui_on_open_files)
 STR_CMD(b_on_share, ak_ui_on_share)
 
 static ak_val b_share_files(ak_val *a, uint32_t n) { return (ak_val){.p = ak_ui_share_files(a[0].p, a[1].p, a[2].p, a[3].p, view_or_none(a, n, 4))}; }
+
+static ak_val b_share_close(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_share_close(a[0].i);
+	return none();
+}
+
+static ak_val b_process(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	const char *p = ak_ui_process();
+	return (ak_val){.p = ak_str_new(p, strlen(p))};
+}
 
 static ak_val b_haptic(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
@@ -411,7 +426,8 @@ void ak_ui_ext_builtins_init(void) {
 		{"platform.f64", b_platform_f64}, {"platform.str", b_platform_str},
 		{"platform.readU8", b_platform_read_u8}, {"platform.readU32", b_platform_read_u32},
 		{"platform.readU64", b_platform_read_u64}, {"platform.readF64", b_platform_read_f64},
-		{"platform.readStr", b_platform_read_str}, {"ui.view_id", b_view_id},
+		{"platform.readStr", b_platform_read_str}, {"platform.process", b_process}, {"ui.view_id", b_view_id},
+		{"sharesheet.coreClose", b_share_close},
 		{"ui.on_open_url", b_on_open_url}, {"ui.on_open_files", b_on_open_files}, {"ui.on_share", b_on_share},
 		{"i18n.locale", b_locale}, {"i18n.set_locale", b_set_locale}, {"i18n.set_languages", b_set_languages},
 		{"i18n.languages", b_languages}, {"i18n.preferred_languages", b_preferred}, {"i18n.is_rtl", b_is_rtl},

@@ -1,0 +1,46 @@
+// asuka/push's rewrite with no platform code: rewrite and stopRewriting
+// don't throw (the host has no push module: nothing comes), and a push
+// that comes in a test shows as the app's rewrite makes it, or as it
+// came when the rewrite gives none or throws.
+import asuka/push
+import asuka/notify
+
+async fn decrypt(m: push.Message) throws -> push.Message? {
+  if m.data["box"] == none {
+    return none
+  }
+  if m.data["box"] == "bad" {
+    throw Error("can't decrypt")
+  }
+  var out = m
+  out.title = "Ana"
+  out.body = "Saturday?"
+  out.thread = "climbing"
+  return out.from(notify.Person(id: "ana", name: "Ana"), notify.Conversation(id: "climbing"))
+}
+
+component Root {
+  task {
+    push.rewrite(decrypt)
+  }
+
+  Text(if push.inExtension() { "Extension" } else { "Inbox" })
+}
+
+app { Root() }
+
+test "a push's rewrite" {
+  let app = mountApp()
+  app.expect("Inbox")
+  await app.idle()
+  let shown = await push.fakeRewrite(push.Message(id: "1", title: "New message", data: ["box": "x1"]))
+  expect(shown.title == "Ana" && shown.body == "Saturday?" && shown.thread == "climbing")
+  expect(shown.sender?.name == "Ana")
+  let plain = await push.fakeRewrite(push.Message(id: "2", title: "Plain"))
+  expect(plain.title == "Plain")
+  let bad = await push.fakeRewrite(push.Message(id: "3", title: "Locked", data: ["box": "bad"]))
+  expect(bad.title == "Locked")
+  push.stopRewriting()
+  let after = await push.fakeRewrite(push.Message(id: "4", title: "As it came", data: ["box": "x"]))
+  expect(after.title == "As it came")
+}

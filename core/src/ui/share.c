@@ -6,6 +6,8 @@
 // and what other apps share with it.
 #include "ui/ui_ext.h"
 
+#include <stdlib.h>
+
 static ak_ui_root *root_now(void) { return ak_ui.cur ? ak_ui.cur : ak_ui.root; }
 
 static void root_command(ak_cmd c, const void *args, size_t n) {
@@ -30,6 +32,24 @@ void ak_ui_copy(ak_str *text) { str_command(AK_CMD_COPY, text); }
 void ak_ui_open_url(ak_str *url) { str_command(AK_CMD_OPEN_URL, url); }
 // ak_ui_announce has a screen reader, if one is on, read text out.
 void ak_ui_announce(ak_str *text) { str_command(AK_CMD_ANNOUNCE, text); }
+// ak_ui_share_close closes the share sheet the app's root is (an iOS
+// share extension's, Android's AsukaShareActivity): 0 done, 1 cancelled,
+// 2 open the app with what was shared.
+void ak_ui_share_close(int64_t how) {
+	uint8_t h = (uint8_t)how;
+	if (how >= 0 && how <= 2) root_command(AK_CMD_SHARE_CLOSE, &h, 1);
+}
+
+static bool env_on(const char *name) {
+	const char *v = getenv(name);
+	return v && strcmp(v, "1") == 0;
+}
+
+const char *ak_ui_process(void) {
+	if (env_on("ASUKA_SHARE_SHEET")) return "share";
+	if (env_on("ASUKA_NOTIFICATION_SERVICE")) return "notification";
+	return "app";
+}
 
 static void first_native(ak_view *d, void *ctx) {
 	ak_view **t = ctx;

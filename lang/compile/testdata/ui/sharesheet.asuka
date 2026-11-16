@@ -1,0 +1,84 @@
+// asuka/sharesheet: the app block shows the sheet when the app runs as
+// it (a fake, in a test), the sheet hears what's shared with onShare, and
+// its closes are the ShareClose command (to the host), or kept by the
+// fake.
+import asuka/sharesheet
+
+component SaveLink {
+  state link = ""
+
+  onShare(items => {
+    for it in items {
+      if it.kind == .link {
+        link = it.text
+      }
+    }
+  })
+
+  Column {
+    if link.isEmpty() {
+      Text("Loading")
+    } else {
+      Text(link)
+    }
+    Button("Save") {
+      on press { sharesheet.done() }
+    }
+    Button("Cancel") {
+      on press { sharesheet.cancel() }
+    }
+    Button("Open the app") {
+      on press { sharesheet.openApp() }
+    }
+  }
+}
+
+component Inbox {
+  Text("Inbox")
+}
+
+app {
+  if sharesheet.active() {
+    SaveLink()
+  } else {
+    Inbox()
+  }
+}
+
+test "the app, not its sheet" {
+  expect(!sharesheet.active())
+  let app = mountApp()
+  app.expect("Inbox")
+  app.expectNo("Save")
+}
+
+test "what's shared, and the sheet's closes" {
+  let app = mount(SaveLink())
+  app.expect("Loading")
+  app.share([SharedItem(kind: .text, text: "Read this"), SharedItem(kind: .link, text: "https://asuka.dev")])
+  app.expect("https://asuka.dev")
+  let _ = app.ops()
+  app.tap("Save")
+  let done = app.ops()
+  expect(done.contains("ShareClose"))
+  app.tap("Cancel")
+  app.tap("Open the app")
+  expect(app.ops().contains("ShareClose"))
+}
+
+test "a fake sheet" {
+  let f = sharesheet.fake()
+  expect(sharesheet.active())
+  let app = mountApp()
+  app.expect("Loading")
+  app.expectNo("Inbox")
+  app.share([SharedItem(kind: .link, text: "https://example.com")])
+  app.expect("https://example.com")
+  expect(f.closed == none)
+  app.tap("Open the app")
+  expect(f.closed == .openApp)
+  let _ = app.ops()
+  app.tap("Cancel")
+  expect(f.closed == .cancel)
+  expect(!app.ops().contains("ShareClose"))
+}
