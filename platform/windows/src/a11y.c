@@ -82,7 +82,7 @@ static BSTR badge_words(const wchar_t *badge) {
 	char num[16], out[256];
 	snprintf(num, sizeof num, "%ld", count);
 	const char *vars[] = {"count", num};
-	dsk_word_format(out, sizeof out, H.locale, "badgeCount", vars, 2);
+	dsk_word_format(out, sizeof out, H.locale[0] ? H.locale : H.env.locale, "badgeCount", vars, 2);
 	wchar_t *w = wh_wide(out, (int)strlen(out));
 	BSTR b = SysAllocString(w);
 	free(w);

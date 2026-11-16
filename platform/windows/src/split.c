@@ -308,53 +308,17 @@ void wh_paint_pane(node *b, HDC dc, gfx g, RECT r) {
 	free(rects);
 }
 
-// chosen is the tab or item a tab bar or sidebar has chosen: its title and
-// badge.
-static bool chosen(node *b, const wstr **title, const wstr **badge) {
-	if (b->kind == KIND_TAB_BAR && b->nav && b->nav->tabs) {
-		node *tabs = b->nav->tabs;
-		if (tabs->selected >= 0 && (uint32_t)tabs->selected < tabs->nkids) {
-			node *s = tabs->kids[tabs->selected];
-			*title = &s->title, *badge = &s->badge;
+// wh_pane_chosen is a sidebar's chosen item's title and badge (a11y.c
+// says them).
+bool wh_pane_chosen(node *b, const wchar_t **title, const wchar_t **badge) {
+	if (b->kind != KIND_SIDEBAR || !b->split) return false;
+	wh_split *s = b->split;
+	for (uint32_t i = 0; i < s->nrows; i++)
+		if (!s->rows[i].header && s->rows[i].index == s->selected) {
+			*title = wstr_c(&s->rows[i].title), *badge = wstr_c(&s->rows[i].badge);
 			return true;
 		}
-	} else if (b->kind == KIND_SIDEBAR && b->split) {
-		wh_split *s = b->split;
-		for (uint32_t i = 0; i < s->nrows; i++)
-			if (!s->rows[i].header && s->rows[i].index == s->selected) {
-				*title = &s->rows[i].title, *badge = &s->rows[i].badge;
-				return true;
-			}
-	}
 	return false;
-}
-
-// wh_announce_choice says the tab or item the keyboard chose: its title,
-// and its badge ("Inbox, 3 items").
-void wh_announce_choice(node *b) {
-	const wstr *title, *badge;
-	if (!chosen(b, &title, &badge) || !title->n) return;
-	int tl;
-	char *t = wh_utf8(wstr_c(title), title->n, &tl);
-	char said[1024], words[256] = "";
-	if (badge->n) {
-		int bl;
-		char *bs = wh_utf8(wstr_c(badge), badge->n, &bl);
-		int32_t count;
-		if (ak_badge_number(ak_strn(bs, (size_t)bl), &count)) {
-			char num[16];
-			snprintf(num, sizeof num, "%d", (int)count);
-			const char *vars[] = {"count", num};
-			dsk_word_format(words, sizeof words, H.locale[0] ? H.locale : H.env.locale, "badgeCount", vars, 2);
-		} else {
-			snprintf(words, sizeof words, "%.*s", bl, bs);
-		}
-		free(bs);
-	}
-	if (words[0]) snprintf(said, sizeof said, "%.*s, %s", tl, t, words);
-	else snprintf(said, sizeof said, "%.*s", tl, t);
-	free(t);
-	wh_announce(said, strlen(said));
 }
 
 // wh_pane_tap is automation's tap on a sidebar's item showing.
