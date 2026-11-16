@@ -1123,3 +1123,5 @@ SYM(SOUP, goffset, soup_message_headers_get_content_length, (SoupMessageHeaders 
 SYM(SOUP, void, soup_session_send_async, (SoupSession *session, SoupMessage *msg, int io_priority, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data))
 SYM(SOUP, GInputStream *, soup_session_send_finish, (SoupSession *session, GAsyncResult *result, GError **error))
 SYM(SOUP, void, soup_session_set_user_agent, (SoupSession *session, const char *user_agent))
+SYM(GLIB, void, g_variant_get_child, (GVariant *value, gsize index_, const gchar *format_string, ...))
+SYM(GIO, GVariant *, g_dbus_connection_call_sync, (GDBusConnection *connection, const gchar *bus_name, const gchar *object_path, const gchar *interface_name, const gchar *method_name, GVariant *parameters, const GVariantType *reply_type, GDBusCallFlags flags, gint timeout_msec, GCancellable *cancellable, GError **error))

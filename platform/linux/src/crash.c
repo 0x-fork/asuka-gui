@@ -37,8 +37,8 @@ static void info(ak_buf *b);
 const char *lx_os_version(void);
 
 static void put(const char *s) {
-	size_t n = strlen(s);
-	if (out_len + n >= sizeof out) n = sizeof out - 1 - out_len;
+	size_t n = strlen(s), room = out_len < sizeof out - 1 ? sizeof out - 1 - out_len : 0;
+	if (n > room) n = room;
 	memcpy(out + out_len, s, n);
 	out_len += n;
 }

@@ -215,7 +215,7 @@ static char *shown_json(const spec_t *s, int64_t time) {
 	if (data && data->type == DSK_JOBJ)
 		dsk_jw_value(&w, data);
 	else
-		dsk_jw_raw(&w, "{}", 2);
+		dsk_jw_json(&w, "{}", 2);
 	dsk_jw_key(&w, "category");
 	dsk_jw_str(&w, s->category);
 	dsk_jw_key(&w, "thread");
@@ -308,7 +308,7 @@ static char *target_json(const char *id, const char *action, const char *shown) 
 	}
 	if (shown) {
 		dsk_jw_key(&w, "shown");
-		dsk_jw_raw(&w, shown, strlen(shown));
+		dsk_jw_json(&w, shown, strlen(shown));
 	}
 	dsk_jw_end(&w);
 	size_t n;
@@ -518,7 +518,7 @@ typedef struct {
 
 static void fdo_showed(void *ctx, bool ok) {
 	fdo_shown_ctx *c = ctx;
-	if (ok) remember_shown(c->spec);
+	if (!ok) forget_shown(c->spec->id);  // the server didn't take it
 	spec_free(c->spec);
 	free(c);
 }
@@ -528,6 +528,9 @@ static void show(spec_t *s, const char *image, uint8_t how) {
 	if (how == 2) return;
 	if (s->badge > 0) lx_set_badge(s->badge);
 	if (N.fdo) {
+		// Showing as it's sent (the server answers later): a list right
+		// after has it.
+		remember_shown(s);
 		fdo_shown_ctx *c = malloc(sizeof *c);
 		if (!c) abort();
 		c->spec = spec_parse(s->raw, strlen(s->raw));
@@ -613,7 +616,7 @@ static void deliver(spec_t *s, const char *image) {
 	dsk_jw_key(&w, "token");
 	dsk_jw_str(&w, p->token);
 	dsk_jw_key(&w, "notification");
-	dsk_jw_raw(&w, shown, strlen(shown));
+	dsk_jw_json(&w, shown, strlen(shown));
 	dsk_jw_end(&w);
 	free(shown);
 	size_t n;
@@ -671,7 +674,7 @@ static void activated(const char *id, const char *action, const char *shown_from
 		dsk_jw_key(&w, "id");
 		dsk_jw_str(&w, id);
 		dsk_jw_key(&w, "data");
-		dsk_jw_raw(&w, "{}", 2);
+		dsk_jw_json(&w, "{}", 2);
 		dsk_jw_end(&w);
 		size_t n;
 		shown = dsk_jw_take(&w, &n);
@@ -691,7 +694,7 @@ static void activated(const char *id, const char *action, const char *shown_from
 	dsk_jw_key(&w, "seconds");
 	dsk_jw_int(&w, ACTION_SECONDS);
 	dsk_jw_key(&w, "notification");
-	dsk_jw_raw(&w, shown, strlen(shown));
+	dsk_jw_json(&w, shown, strlen(shown));
 	dsk_jw_end(&w);
 	size_t n;
 	queue_deliver(&N.actions, dsk_jw_take(&w, &n));
@@ -965,7 +968,7 @@ static void schedule_system(spec_t *s, const char *image, reply *r) {
 	dsk_jw w = {0};
 	dsk_jw_obj(&w);
 	dsk_jw_key(&w, "spec");
-	dsk_jw_raw(&w, s->raw, strlen(s->raw));
+	dsk_jw_json(&w, s->raw, strlen(s->raw));
 	if (image && *image) {
 		dsk_jw_key(&w, "image");
 		dsk_jw_str(&w, image);

@@ -1,0 +1,25 @@
+// A WebView's page: shown from markup, posting to the app, its load
+// reported; a Video whose source is missing failing.
+component Web {
+  state said = "Nothing yet."
+  state loaded = "Not loaded."
+  state video = "The video plays."
+  Column {
+    padding: 16; gap: 8
+    Text(said)
+    Text(loaded)
+    WebView {
+      height: 240
+      html: "<html><body style='background:#2a6;color:#fff;font:24px sans-serif'><h1>Hello from the page</h1><script>window.asuka.postMessage('hi from the page')</script></body></html>"
+      on message(m) { said = "Got: {m}" }
+      on loaded(url) { loaded = "Loaded." }
+    }
+    Text(video)
+    Video("missing.mp4") {
+      height: 120
+      on error(m) { video = "The video failed." }
+    }
+  }
+}
+
+app { Web() }

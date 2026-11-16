@@ -106,10 +106,11 @@ static void x_client_message(GdkDisplay *d, unsigned long w, const char *msg, co
 	// XClientMessageEvent: type, serial, send_event, display, window,
 	// message_type, format, then data.l[5]; XEvent is 24 longs.
 	long ev[24] = {0};
-	*(int *)&ev[0] = 33;  // ClientMessage
+	const int type = 33, format = 32;  // ClientMessage; ints at the start of their longs
+	memcpy(&ev[0], &type, sizeof type);
 	ev[4] = (long)w;
 	ev[5] = (long)xatom(d, msg);
-	*(int *)&ev[6] = 32;
+	memcpy(&ev[6], &format, sizeof format);
 	for (int i = 0; i < 5; i++) ev[7 + i] = (long)data[i];
 	gdk_x11_display_error_trap_push(d);
 	XSendEvent(dpy, gdk_x11_display_get_xrootwindow(d), 0, (1L << 19) | (1L << 20), ev);

@@ -129,6 +129,19 @@ static const char *reason_words(const char *reason) {
 	return "the app isn't laid out as asuka build makes it (an install prefix)";
 }
 
+// default_target is this build's target, where asuka-app.json names none.
+static const char *default_target(void) {
+#if defined(__x86_64__)
+	return "linux-amd64";
+#elif defined(__aarch64__)
+	return "linux-arm64";
+#elif defined(__riscv) && __riscv_xlen == 64
+	return "linux-riscv64";
+#else
+	return "linux";
+#endif
+}
+
 static void put(dsk_jw *w, const char *k, const char *v) {
 	dsk_jw_key(w, k);
 	dsk_jw_str(w, S(v));
@@ -147,7 +160,7 @@ static void u_info(ak_span args, reply *r) {
 	dsk_jw_bool(&w, !in.reason);
 	put(&w, "reason", in.reason);
 	put(&w, "message", reason_words(in.reason));
-	put(&w, "target", H.cfg.update_target);
+	put(&w, "target", !str_empty(H.cfg.update_target) ? H.cfg.update_target : default_target());
 	put(&w, "version", H.cfg.version);
 	put(&w, "name", H.app_name);
 	put(&w, "feed", H.cfg.update_feed);
@@ -596,7 +609,8 @@ static void refresh_caches(const char *root) {
 }
 
 // install: {staged}: a directory in work, the new version's prefix tree,
-// which the package has verified.
+// which the package has verified; what's left of it goes once it's in
+// place.
 static void u_install(ak_span args, reply *r) {
 	dsk_json *j = dsk_json_parse(args.p, args.len);
 	const char *staged = dsk_json_str(j, "staged", "");
@@ -608,6 +622,7 @@ static void u_install(ak_span args, reply *r) {
 	} else if (!*staged || !realpath(staged, real) || !realpath(in.work, work) || strncmp(real, work, strlen(work)) || real[strlen(work)] != '/') {
 		err = g_strdup("update.install: the staged update isn't in the app's work directory");
 	} else if (swap(&in, real, &err)) {
+		rm_rf(real);  // what's left of it: its emptied directories
 		refresh_caches(in.root);
 	}
 	if (err)

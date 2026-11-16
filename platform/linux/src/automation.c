@@ -257,6 +257,27 @@ static bool key(const char *shortcut) {
 	return xdotool_key(shortcut);
 }
 
+typedef struct {
+	const char *title;
+	bool done;
+} pick_ctx;
+
+// pick_item chooses a Picker's item of the title, as the user does from
+// its open list.
+static void pick_item(node *n, void *data) {
+	pick_ctx *c = data;
+	if (c->done || n->kind != AK_KIND_PICKER || !n->inner || !gtk_widget_get_mapped(n->widget)) return;
+	for (uint32_t i = 0; i < n->items.len; i++)
+		if (!strcmp(n->items.data[i], c->title)) {
+			GtkWidget *drop = gtk_widget_get_first_child(n->inner);  // the overlay's child: the drop-down
+			if (drop) gtk_drop_down_set_selected((GtkDropDown *)drop, i);
+			c->done = true;
+			return;
+		}
+}
+
+static void write_dump(const char *path);
+
 static bool step(const char *s, char *err, size_t errn) {
 	const char *colon = strchr(s, ':');
 	char verb[32];
@@ -274,6 +295,10 @@ static bool step(const char *s, char *err, size_t errn) {
 		// A header bar's button, a sidebar's row, a dialog's button: GTK's
 		// own widgets, by their label or tooltip.
 		if (tap_widget(arg)) return true;
+		// A Picker's item, chosen as from its open list.
+		pick_ctx pc = {arg, false};
+		lx_each_node(pick_item, &pc);
+		if (pc.done) return true;
 		snprintf(err, errn, "nothing shows \"%s\"", arg);
 		return false;
 	}
@@ -327,7 +352,15 @@ static bool step(const char *s, char *err, size_t errn) {
 		return true;
 	}
 	if (!strcmp(verb, "snap")) {
+		// The window as a PNG, and with ASUKA_DUMP its views beside it
+		// (file.txt), as the end's snapshot.
 		lx_snapshot(arg);
+		const char *dump = getenv("ASUKA_DUMP");
+		if (dump && *dump) {
+			char p[4096];
+			snprintf(p, sizeof p, "%s.txt", arg);
+			write_dump(p);
+		}
 		return true;
 	}
 	if (!strcmp(verb, "tab")) {

@@ -371,14 +371,15 @@ static contact_t contact_of(const char *card) {
 		dsk_jw_key(&w, keys[i]);
 		dsk_jw_str(&w, vals[i]);
 	}
+	ak_buf list = {0};
+	ak_buf_printf(&list, "[%.*s]", (int)phones.len, phones.data ? (const char *)phones.data : "");
 	dsk_jw_key(&w, "phones");
-	dsk_jw_raw(&w, "[", 1);
-	if (phones.len) dsk_jw_raw(&w, (const char *)phones.data, phones.len);
-	dsk_jw_raw(&w, "]", 1);
+	dsk_jw_json(&w, (const char *)list.data, list.len);
+	ak_buf_reset(&list);
+	ak_buf_printf(&list, "[%.*s]", (int)emails.len, emails.data ? (const char *)emails.data : "");
 	dsk_jw_key(&w, "emails");
-	dsk_jw_raw(&w, "[", 1);
-	if (emails.len) dsk_jw_raw(&w, (const char *)emails.data, emails.len);
-	dsk_jw_raw(&w, "]", 1);
+	dsk_jw_json(&w, (const char *)list.data, list.len);
+	ak_buf_free(&list);
 	dsk_jw_end(&w);
 	size_t n;
 	contact_t c = {dsk_jw_take(&w, &n), name, g_utf8_strdown(name, -1), NULL, NULL};
