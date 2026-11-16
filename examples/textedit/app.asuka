@@ -1,8 +1,9 @@
 // TextEdit is a plain text editor with documents (asuka/document): on
-// the desktop a window per file, the File menu (New, Open…, Open Recent,
-// Save, Duplicate, Rename…, Revert…), autosave and recovery copies, and a
-// bar when another app changes the file being edited; on a phone or in a
-// browser, a list of its documents and one open at a time.
+// the desktop a window per file, the File menu's New and Open… (⌘N, ⌘O),
+// ⌘S and ⌘W in each window, autosave a moment after typing stops, and a
+// bar when another app changes the file being edited (keep yours, or
+// revert to theirs); on a phone or in a browser, a list of its documents
+// and one open at a time.
 //
 //   asuka dev examples/textedit
 //   asuka dev --platform ios examples/textedit
@@ -15,8 +16,6 @@ let types = [
 ]
 
 app {
-  // Undoing back to the file's text leaves the document unedited: a
-  // string's == says so.
   document.Documents(types) {
     width: 640
     height: 480
