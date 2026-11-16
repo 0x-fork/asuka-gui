@@ -51,11 +51,11 @@ interface Copy {
 const en: Copy = {
   toolkits: ["UIKit", "Android Views · Material 3", "AppKit", "Win32, drawn as Windows 11", "GTK 4 · libadwaita", "The DOM"],
   hero: {
-    status: "Language: Asuka / Core: C / Host: native / Sync 100.0%",
+    status: "Language: Asuka / Widgets: native / Sync 100.0%",
     framework: "Framework:",
     title: "Native widgets, in Asuka.",
     subtitle: "UIKit, Material, AppKit, Win32, GTK and the DOM. Not a canvas, not a web view.",
-    lead: "Write one app in Asuka, a language made for interfaces, for phones, desktops and the web. A small core in C runs it, each platform shows it with its own controls, its text input and its accessibility, and only what changed is updated.",
+    lead: "Write one app in Asuka, a language made for interfaces, for phones, desktops and the web. Each platform shows it with its own controls, its text input and its accessibility, and only what changed is updated.",
   },
   start: "Get started",
   spec: {
@@ -68,7 +68,7 @@ const en: Copy = {
   },
   translation: {
     label: "Translation",
-    aside: "Pick a host",
+    aside: "Pick a platform",
     heading: (
       <>
         Asuka in.
@@ -142,7 +142,7 @@ const en: Copy = {
       },
       {
         title: "Fine-grained updates",
-        text: "Components run once. A change to state updates only the props that read it, in one batch for each frame, without diffing a tree.",
+        text: "Components run once. A change to state updates only the props that read it, once a frame, without diffing a tree.",
         href: "/docs/concepts",
       },
       {
@@ -183,12 +183,12 @@ const en: Copy = {
 const zh: Copy = {
   toolkits: ["UIKit", "Android Views · Material 3", "AppKit", "Win32，Windows 11 外观", "GTK 4 · libadwaita", "DOM"],
   hero: {
-    status: "语言：Asuka / 核心：C / 宿主：原生 / 同步率 100.0%",
+    status: "语言：Asuka / 控件：原生 / 同步率 100.0%",
     framework: "框架：",
     title: "跨平台原生控件，用 Asuka 写。",
     // No breaks inside a phrase: Chinese breaks between any two characters.
     subtitle: "UIKit、Material、AppKit、Win32、GTK 和 DOM。不是 GPU 自绘，也不是 Web View。",
-    lead: "用 Asuka——一门专为界面设计的语言——写一个应用，就能跑在手机、桌面和 Web 上。一个用 C 写的小巧核心负责运行，每个平台都用自己的控件、输入法和无障碍功能来呈现它，只更新真正变化的部分。",
+    lead: "用 Asuka——一门专为界面设计的语言——写一个应用，就能跑在手机、桌面和 Web 上。每个平台都用自己的控件、输入法和无障碍功能来呈现它，只更新真正变化的部分。",
   },
   start: "快速上手",
   spec: {
@@ -201,7 +201,7 @@ const zh: Copy = {
   },
   translation: {
     label: "转译",
-    aside: "选一个宿主看看",
+    aside: "选一个平台看看",
     heading: (
       <>
         写的是 Asuka，
@@ -269,7 +269,7 @@ const zh: Copy = {
       },
       {
         title: "细粒度更新",
-        text: "组件只运行一次。状态变化时，只有读取它的属性才会更新，每帧合成一批提交，无需比对整棵树。",
+        text: "组件只运行一次。状态变化时，只有读取它的属性才会更新，每帧一次，无需比对整棵树。",
         href: "/zh/docs/concepts",
       },
       {
@@ -310,12 +310,12 @@ const zh: Copy = {
 const ja: Copy = {
   toolkits: ["UIKit", "Android Views · Material 3", "AppKit", "Win32（Windows 11 の外観）", "GTK 4 · libadwaita", "DOM"],
   hero: {
-    status: "言語：Asuka / コア：C / ホスト：ネイティブ / シンクロ率 100.0%",
+    status: "言語：Asuka / ウィジェット：ネイティブ / シンクロ率 100.0%",
     framework: "フレームワーク：",
     title: "全機種純正部品、Asuka で。",
     // Breaks only after punctuation (break-keep), as in Chinese.
     subtitle: "UIKit、Material、AppKit、Win32、GTK、そして DOM。キャンバス描画でも、Web View でもない。",
-    lead: "インターフェースのための言語 Asuka でアプリを一つ書けば、スマートフォンでも、デスクトップでも、Web でも動きます。動かすのは C で書かれた小さなコア。表示するのは各プラットフォーム純正のコントロールで、文字入力もアクセシビリティもそのまま。更新されるのは、変わった部分だけです。",
+    lead: "インターフェースのための言語 Asuka でアプリを一つ書けば、スマートフォンでも、デスクトップでも、Web でも動きます。表示するのは各プラットフォーム純正のコントロールで、文字入力もアクセシビリティもそのまま。更新されるのは、変わった部分だけです。",
   },
   start: "はじめる",
   spec: {
@@ -328,7 +328,7 @@ const ja: Copy = {
   },
   translation: {
     label: "変換",
-    aside: "ホストを選択",
+    aside: "プラットフォームを選択",
     heading: (
       <>
         書くのは Asuka。
@@ -402,7 +402,7 @@ const ja: Copy = {
       },
       {
         title: "きめ細かな更新",
-        text: "コンポーネントは一度しか実行されません。状態が変わると、それを読むプロパティだけがフレームごとに一つのバッチで更新されます。ツリーの差分は取りません。",
+        text: "コンポーネントは一度しか実行されません。状態が変わると、それを読むプロパティだけが、フレームごとに一度だけ更新されます。ツリーの差分は取りません。",
         href: "/ja/docs/concepts",
       },
       {

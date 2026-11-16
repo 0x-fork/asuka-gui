@@ -16,8 +16,8 @@ const words: Record<Locale, Words> = {
   en: {
     platform: "Platform",
     source: "Source",
-    core: "Core",
-    host: "Host",
+    core: "Asuka",
+    host: "Widgets",
     name: "Name",
     alerts: "Alerts",
     save: "Save",
@@ -28,8 +28,8 @@ const words: Record<Locale, Words> = {
   zh: {
     platform: "平台",
     source: "源码",
-    core: "核心",
-    host: "宿主",
+    core: "Asuka",
+    host: "控件",
     name: "名字",
     alerts: "通知",
     save: "保存",
@@ -40,8 +40,8 @@ const words: Record<Locale, Words> = {
   ja: {
     platform: "プラットフォーム",
     source: "ソース",
-    core: "コア",
-    host: "ホスト",
+    core: "Asuka",
+    host: "ウィジェット",
     name: "名前",
     alerts: "通知",
     save: "保存",
