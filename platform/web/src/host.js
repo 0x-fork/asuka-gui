@@ -95,6 +95,7 @@ export class Host {
     this.nav = new Navigation(this);
     this.windows = new Windows(this);
     this.modules = new Modules(this);
+    nativeModules.setHostModules(this.modules);
     // Keys before Menus: a view's keys come before the menu bar's shortcuts.
     this.keys = new Keys(this);
     this.menus = new Menus(this);

@@ -507,6 +507,13 @@ static ak_val map_is_empty(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(MAP(0
 
 static ak_val m_sqrt(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(sqrt(A(0).f)); }
 static ak_val m_pow(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(pow(A(0).f, A(1).f)); }
+// Durations are nanoseconds.
+static ak_val dur_seconds(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F((double)A(0).i / 1e9); }
+static ak_val dur_minutes(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F((double)A(0).i / 6e10); }
+static ak_val dur_hours(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F((double)A(0).i / 3.6e12); }
+static ak_val dur_ms(ak_val *args, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = A(0).i / 1000000}; }
+static ak_val dur_ns(ak_val *args, uint32_t n) { AK_UNUSED(n); return (ak_val){.i = A(0).i}; }
+
 static ak_val m_floor(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(floor(A(0).f)); }
 static ak_val m_ceil(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(ceil(A(0).f)); }
 static ak_val m_round(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(round(A(0).f)); }
@@ -894,6 +901,11 @@ const ak_lib_entry ak_lib[] = {
 	{"math.sqrt", m_sqrt},
 	{"math.pow", m_pow},
 	{"math.floor", m_floor},
+	{"dur.seconds", dur_seconds},
+	{"dur.minutes", dur_minutes},
+	{"dur.hours", dur_hours},
+	{"dur.milliseconds", dur_ms},
+	{"dur.nanoseconds", dur_ns},
 	{"math.ceil", m_ceil},
 	{"math.round", m_round},
 	{"math.sin", m_sin},

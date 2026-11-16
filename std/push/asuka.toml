@@ -1,0 +1,6 @@
+name = "asuka/push"
+version = "0.1.0"
+description = "Push notifications: the device's token, and the pushes that come and are opened"
+
+[ios]
+backgroundModes = ["remote-notification"]

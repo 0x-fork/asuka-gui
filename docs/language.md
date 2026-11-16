@@ -101,6 +101,7 @@ their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 | `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new)`, `split(sep)`, `find(s)` (a byte offset, or none), `slice(from, to)` (characters), `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `+` |
 | `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD); `bytes()` is none, `s.bytes()` a string's UTF-8 |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
+| `Duration` | `seconds()`, `minutes()`, `hours()` (floats), `milliseconds()`, `nanoseconds()` (ints) |
 | `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic) |
 | `T?` | `isNone()`, `isSome()` |
 

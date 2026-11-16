@@ -126,6 +126,13 @@ var Methods = []*Method{
 	{Recv: "float", Name: "floor", Sig: "() -> float", Builtin: "math.floor"},
 	{Recv: "float", Name: "ceil", Sig: "() -> float", Builtin: "math.ceil"},
 
+	// Durations.
+	{Recv: "duration", Name: "seconds", Sig: "() -> float", Builtin: "dur.seconds", Doc: "how many seconds: 1500ms.seconds() is 1.5"},
+	{Recv: "duration", Name: "minutes", Sig: "() -> float", Builtin: "dur.minutes"},
+	{Recv: "duration", Name: "hours", Sig: "() -> float", Builtin: "dur.hours"},
+	{Recv: "duration", Name: "milliseconds", Sig: "() -> int", Builtin: "dur.milliseconds", Doc: "whole milliseconds, toward zero"},
+	{Recv: "duration", Name: "nanoseconds", Sig: "() -> int", Builtin: "dur.nanoseconds"},
+
 	// Optionals.
 	{Recv: "optional", Name: "isNone", Sig: "() -> bool", Special: "isNone"},
 	{Recv: "optional", Name: "isSome", Sig: "() -> bool", Special: "isSome"},
@@ -188,6 +195,8 @@ func recvKind(t Type) string {
 			return "bytes"
 		case Color:
 			return "color"
+		case Duration:
+			return "duration"
 		}
 	}
 	return ""
