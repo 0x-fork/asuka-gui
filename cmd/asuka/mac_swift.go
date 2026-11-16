@@ -47,6 +47,9 @@ type macBuild struct {
 	work    string // the build's work directory
 	release bool   // optimized, dead code stripped
 	run     func(dir string, env []string, cmd string, args ...string) error
+	// program: the executable is a program's (docs/programs.md), its entry
+	// AsukaProgram's (no application, no window) in place of the app's.
+	program bool
 	// packages is what the app's Swift packages bring besides objects, as
 	// the first architecture's build made it (nil without any): their
 	// frameworks and resource bundles, which go in the bundle.
@@ -128,6 +131,9 @@ func (b *macBuild) host(arch string, natives []nativePackage) ([]string, *swiftP
 	if err != nil {
 		return nil, nil, err
 	}
+	if b.program {
+		sources["main.swift"] = []byte(macProgramMain)
+	}
 	if len(natives) > 0 {
 		cAsuka, err := filesUnder(macos.Files, "Sources/CAsuka")
 		if err != nil {
@@ -159,6 +165,15 @@ func (b *macBuild) host(arch string, natives []nativePackage) ([]string, *swiftP
 	}
 	return b.hostObject(arch, sources)
 }
+
+// macProgramMain is a program's entry, in place of the app's (App/
+// main.swift).
+const macProgramMain = `// A program's entry point: its main, run with no window.
+@main
+enum AsukaMain {
+    static func main() { AsukaProgram.main() }
+}
+`
 
 // hostObject compiles the host alone (no native packages) into one object
 // shared by every app, in the user's cache.

@@ -1,0 +1,160 @@
+// Package asuka/os is the process a program runs as (a command-line
+// tool: a package whose fn main is its entry): its arguments, its
+// environment, its standard streams and its exit. The same on macOS,
+// Windows and Linux; an app's on a phone or the web has no arguments and
+// no stdin, and can't exit.
+//
+//   fn main() {
+//     let name = os.args().first() ?? "world"
+//     print("Hello, {name}!")
+//     if os.env("DEBUG") != none {
+//       os.eprint("debugging")
+//     }
+//   }
+//
+// Tests drive a fake process: os.fake(args:, env:, stdin:) gives main
+// its arguments, environment and input, keeps what it writes, and runs
+// it as the program would (its exit code).
+
+/// One of the process's standard streams.
+pub enum Stdio { stdin, stdout, stderr }
+
+fn fd(s: Stdio) -> int {
+  match s {
+    .stdin => return 0
+    .stdout => return 1
+    .stderr => return 2
+  }
+}
+
+/// The arguments the program was started with, without the program
+/// itself (empty in an app on a phone or the web).
+pub native fn args() -> [string]
+
+/// The program as it was started (its path or its name: argv[0]).
+pub native fn program() -> string
+
+/// An environment variable's value, none when it isn't set.
+pub native fn env(name: string) -> string?
+
+native fn environList() -> [string]
+
+/// Every environment variable, by name.
+pub fn environ() -> [string: string] {
+  let l = environList()
+  var out: [string: string] = [:]
+  var i = 0
+  while i + 1 < l.count() {
+    out[l[i]] = l[i + 1]
+    i += 2
+  }
+  return out
+}
+
+/// The working directory.
+pub native fn cwd() -> string
+
+/// Ends the process at once with code (0 success, 1 to 255 failure):
+/// stdout and stderr are flushed; defers and other tasks don't run. In a
+/// test it ends the task that called it instead (FakeOS.run says the
+/// code).
+pub native fn exit(code: int) -> never
+
+/// A line of stdin, without its line ending; none at its end. It waits
+/// for the line, holding the main thread: lines() doesn't.
+pub native fn readLine() -> string?
+
+/// The rest of stdin, waiting for its end.
+pub native fn readAll() -> bytes
+
+native fn readLines() -> [string]?
+
+/// stdin's lines as they come, read on another thread, so the program
+/// goes on meanwhile:
+///
+///   for await line in os.lines() { count += 1 }
+pub fn lines() -> Stream<string> = Stream(send => {
+  while true {
+    let batch = await spawn { readLines() }
+    if let b = batch {
+      for l in b {
+        send(l)
+      }
+    } else {
+      return
+    }
+  }
+})
+
+native fn write(fd: int, text: string)
+native fn writeBytes(fd: int, data: bytes)
+
+/// Writes text to stdout or stderr as it is (no line ending).
+pub fn writeTo(stream: Stdio, text: string) {
+  write(fd(stream), text)
+}
+
+/// Writes bytes to stdout or stderr.
+pub fn writeBytesTo(stream: Stdio, data: bytes) {
+  writeBytes(fd(stream), data)
+}
+
+/// A line on stderr (print's is stdout): what goes wrong, progress.
+pub fn eprint(text: string) {
+  write(2, text + "\n")
+}
+
+native fn isTerminal(fd: int) -> bool
+
+/// Whether a stream is a terminal (a person), not a file or a pipe: color
+/// and prompts only for one.
+pub fn terminal(stream: Stdio) -> bool = isTerminal(fd(stream))
+
+// ---------------------------------------------------------------------
+// Testing
+
+native fn setFake(args: [string], env: [string], hasEnv: bool, stdin: bytes)
+native fn fakeOutput(fd: int) -> string
+native fn fakeExit() -> int
+native async fn runMain(main: async fn() throws) -> int
+
+/// A test's process, from os.fake: what the program wrote, and run, which
+/// runs its main as the process would.
+pub struct FakeOS {
+  /// What was printed (print, os.writeTo(.stdout, …)).
+  fn stdout() -> string = fakeOutput(1)
+  /// What was written to stderr (os.eprint, an uncaught error's report).
+  fn stderr() -> string = fakeOutput(2)
+  /// The code os.exit was called with, none if it wasn't.
+  fn exitCode() -> int? {
+    let c = fakeExit()
+    if c < 0 {
+      return none
+    }
+    return c
+  }
+  /// Runs main as the program would and returns its exit code: 0 when it
+  /// returns, os.exit's code, or 1 for an error it throws (written to
+  /// stderr as "error: …").
+  async fn run(main: async fn() throws) -> int = await runMain(main)
+}
+
+/// Makes the test's process: its arguments (without the program), its
+/// environment (none: the real one) and its stdin; from now on print and
+/// os's writes are kept (FakeOS.stdout), not shown. Each test starts
+/// with a process of its own.
+///
+///   let o = os.fake(args: ["Ann"])
+///   expect(await o.run(main) == 0)
+///   expect(o.stdout() == "Hello, Ann!\n")
+pub fn fake(args: [string] = [], env: [string: string]? = none, stdin: string = "") -> FakeOS {
+  var pairs: [string] = []
+  if let e = env {
+    for (k, v) in e {
+      pairs.push(k)
+      pairs.push(v)
+    }
+  }
+  setFake(args, pairs, env != none, stdin.bytes())
+  return FakeOS()
+}

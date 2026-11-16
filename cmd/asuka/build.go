@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/egoist/asuka/internal/appbuild"
 	iupdate "github.com/egoist/asuka/internal/update"
 )
 
@@ -29,6 +30,8 @@ type buildOptions struct {
 	version      string // asuka.toml's version, for this build
 	publishing   bool   // asuka publish: the update files are required
 	base         string // web: the path the site is served at (asuka.toml's web.base)
+	bin          string // a program of asuka.toml's [bin.<name>]
+	target       string // a program's os-arch
 
 	// dev, for iOS: asuka dev on a device (ios_device.go).
 	dev *iosDevBuild
@@ -36,7 +39,10 @@ type buildOptions struct {
 
 func buildFlags(o *buildOptions) *flagSet {
 	fs := newFlagSet("build", "[dir]")
-	fs.about = "Makes a release build of the app, in dist in its directory."
+	fs.about = "Makes a release build of the app, in dist in its directory; of a program (fn main, or --bin),\n" +
+		"an executable for this computer (or --target's)."
+	fs.String(&o.bin, "bin", 0, "", "build the `program` asuka.toml's [bin.<name>] names, instead of the app")
+	fs.String(&o.target, "target", 0, "", "a program's `os-arch`: darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, windows-amd64 or windows-arm64 (default: this computer's; another needs Zig)")
 	platformFlag(fs, &o.platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},
 		"the `platform` to build for: ios, an .ipa for the App Store (or --distribution); android, an .aab for Google Play; mac, a universal .app (arm64 and x86_64); windows, a folder with the .exe (its icon and version built in) and its assets; linux, a folder in dist/linux laid out to install (the executable, its desktop file, icons, metainfo and assets), a .tar.gz of it and a Flatpak manifest; web, a static site (the core and the app as WebAssembly, and the web host) in dist/web. Default on macOS, Windows and Linux: this computer's")
 	fs.String(&o.sign, "sign", 0, "", "macOS: a signing `identity`, e.g. \"Developer ID Application: ...\" (default: ad hoc)")
@@ -78,6 +84,18 @@ func cmdBuild(args []string) error {
 	dir := "."
 	if fs.Arg(0) != "" {
 		dir = fs.Arg(0)
+	}
+	if o.bin != "" || o.target != "" || (o.platform == "" && isProgramDir(dir)) {
+		proj, err := appbuild.Load(dir)
+		if err != nil {
+			return err
+		}
+		if o.bin != "" {
+			if proj, err = proj.Bin(o.bin); err != nil {
+				return err
+			}
+		}
+		return cmdBuildProgram(proj, &o)
 	}
 	if o.platform == "" {
 		if o.platform = thisComputer(); o.platform == "" {

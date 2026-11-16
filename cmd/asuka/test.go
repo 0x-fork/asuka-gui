@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/asuka/internal/appbuild"
@@ -100,30 +102,53 @@ func compileProject(p *appbuild.Project) (*bytecode.Module, error) {
 	return m, nil
 }
 
-// cmdRun is asuka run: one file (or a directory), compiled and run on
+// cmdRun is asuka run: a program's main on the VM, with the arguments
+// after --; or one file (or a directory) without one, compiled and run on
 // the fake host: its test blocks, and what its app shows.
 func cmdRun(args []string) error {
-	var pattern string
-	fs := newFlagSet("run", "file.asuka")
-	fs.about = "Compiles one .asuka file (or a package's directory) and runs it on the fake host: its test\n" +
-		"blocks, if it has any, and its app, whose screen it prints (each view: its kind, frame and text)."
+	var pattern, bin string
+	var progArgs []string
+	if i := slices.Index(args, "--"); i >= 0 {
+		args, progArgs = args[:i], args[i+1:]
+	}
+	fs := newFlagSet("run", "[dir | file.asuka] [-- args...]")
+	fs.about = "Runs a program (a package with fn main, or asuka.toml's [bin.<name>]) on the VM, with the\n" +
+		"arguments after --, and exits with its code. A file or a package that isn't a program runs on\n" +
+		"the fake host: its test blocks, if it has any, and its app, whose screen it prints."
+	fs.String(&bin, "bin", 0, "", "the `program` to run: one of asuka.toml's [bin.<name>] (needed when there are several)")
 	fs.String(&pattern, "run", 0, "", "run only the tests whose names contain `text`")
 	if err := fs.parse(args); err != nil {
 		return err
 	}
-	if fs.Arg(0) == "" {
-		return errors.New("usage: asuka run file.asuka")
+	path := fs.Arg(0)
+	if path == "" {
+		path = "."
 	}
-	p, err := appbuild.Load(fs.Arg(0))
+	p, err := appbuild.Load(path)
 	if err != nil {
 		return err
+	}
+	if p.File == "" {
+		if p, err = programOf(p, bin); err != nil {
+			return err
+		}
 	}
 	m, err := compileProject(p)
 	if err != nil {
 		return err
 	}
+	if m.Main >= 0 {
+		code, err := appbuild.RunProgram(m, appbuild.ProgramOptions{Name: p.ProgramName(), Args: progArgs, Trim: cwdOr(p.Dir), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr})
+		if err != nil {
+			return err
+		}
+		if code != 0 {
+			return exitCode(code)
+		}
+		return nil
+	}
 	if len(m.Tests) == 0 && m.App < 0 {
-		return errors.New("nothing to run: no test blocks, and no app block")
+		return errors.New("nothing to run: no fn main, no test blocks, and no app block")
 	}
 	var testErr error
 	if len(m.Tests) > 0 {
@@ -135,4 +160,51 @@ func cmdRun(args []string) error {
 		}
 	}
 	return testErr
+}
+
+// exitCode is an error that ends the CLI with a program's exit code,
+// saying nothing more: the program said what went wrong.
+type exitCode int
+
+func (c exitCode) Error() string { return fmt.Sprintf("exit status %d", int(c)) }
+
+// programOf is the project's program to run or build: --bin's, else the
+// project itself (an app's or a library's, or a program), unless it has
+// exactly one [bin] and isn't a program itself, which is then the one.
+func programOf(p *appbuild.Project, bin string) (*appbuild.Project, error) {
+	if bin != "" {
+		return p.Bin(bin)
+	}
+	if len(p.Bins) == 0 || isProgram(p) {
+		return p, nil
+	}
+	if len(p.Bins) == 1 {
+		return p.Bin(p.Bins[0].Name)
+	}
+	var names []string
+	for _, b := range p.Bins {
+		names = append(names, b.Name)
+	}
+	return nil, fmt.Errorf("which program? --bin %s", strings.Join(names, ", --bin "))
+}
+
+// isProgram reports whether the project's own package declares fn main
+// (a quick look: the compiler decides).
+func isProgram(p *appbuild.Project) bool {
+	files, _ := filepath.Glob(filepath.Join(p.Dir, "*.asuka"))
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		for _, l := range strings.Split(string(b), "\n") {
+			l = strings.TrimSpace(l)
+			l = strings.TrimPrefix(l, "pub ")
+			l = strings.TrimPrefix(l, "async ")
+			if strings.HasPrefix(l, "fn main(") {
+				return true
+			}
+		}
+	}
+	return false
 }

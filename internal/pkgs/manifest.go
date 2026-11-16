@@ -29,6 +29,15 @@ type Manifest struct {
 	License      string            `json:"license"`
 	Repository   string            `json:"repository"`
 	Dependencies map[string]string `json:"dependencies"`
+	// Bin are the project's programs ([bin.<name>]): command-line tools
+	// in directories of their own, the table's key the executable's name.
+	Bin map[string]BinTarget `json:"bin"`
+}
+
+// BinTarget is a program of a project's: [bin.<name>] path = "cli".
+type BinTarget struct {
+	// Path is its package's directory, relative to the project's.
+	Path string `json:"path"`
 }
 
 // ReadManifest reads dir's asuka.toml (an empty manifest when there's

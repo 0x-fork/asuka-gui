@@ -117,6 +117,10 @@ func main() {
 	if errors.Is(err, errReported) {
 		os.Exit(1)
 	}
+	var code exitCode
+	if errors.As(err, &code) {
+		os.Exit(int(code))
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "asuka:", err)
 		os.Exit(1)

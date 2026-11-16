@@ -325,6 +325,9 @@ void ak_throw_cancel(void);
 bool ak_error_pending(void);
 void *ak_error_take(void);  // the pending error, cleared; the caller owns it
 bool ak_is_cancel(const void *err);
+// ak_throw_hook, when set, sees each error as it's thrown (a program
+// notes where: abi/program.c). Any thread.
+extern void (*ak_throw_hook)(void *err);
 ak_str *ak_error_message(const void *err);  // borrowed
 
 extern const ak_shape ak_shape_error;  // the built-in Error(message: string)
