@@ -140,3 +140,50 @@ func TestBuildMac(t *testing.T) {
 		t.Fatalf("after tapping Add, the window shows (%v):\n%s", err, dump)
 	}
 }
+
+// A Mac app made of Asuka (the compiler's) that imports a standard
+// library package with native code: the package's Swift is built into
+// the app, and the host makes the package's objects there (not in Go):
+// the network it shows says what carries it, which only the Swift
+// (NWPathMonitor) knows; without it, the package says "other".
+func TestBuildMacStd(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("a Mac build signs on a Mac")
+	}
+	needDesktopBuild(t, cbuild.Target{OS: "darwin", Arch: "arm64"})
+	if _, err := exec.LookPath("xcrun"); err != nil {
+		t.Skip("no Xcode command line tools")
+	}
+	dir := filepath.Join(t.TempDir(), "netapp")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("name = \"netapp\"\nid = \"dev.asuka.netapp\"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "app.asuka"), []byte(`import asuka/network
+
+component Net {
+  let net = network.status()
+  Text(if net.connected { "online over {net.type}" } else { "offline" })
+}
+
+app { Net() }
+`), 0o644)
+	app := projectApp(t, dir, nil)
+	out := t.TempDir()
+	if err := buildMac(app, &buildOptions{out: out}); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(out, app.displayName()+".app")
+	if _, err := os.Stat(filepath.Join(bundle, "Contents", "Frameworks", "AsukaNatives.dylib")); err != nil {
+		t.Fatalf("the package's Swift isn't in the app: %v", err)
+	}
+	snap := filepath.Join(t.TempDir(), "n.png")
+	c := exec.Command(filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName())))
+	c.Env = append(os.Environ(), "ASUKA_SCRIPT=wait:1s", "ASUKA_SNAPSHOT="+snap, "ASUKA_DUMP=1")
+	if b, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, b)
+	}
+	dump, err := os.ReadFile(snap + ".txt")
+	s := string(dump)
+	if err != nil || !(strings.Contains(s, `"online over wifi"`) || strings.Contains(s, `"online over ethernet"`) || strings.Contains(s, `"online over cellular"`) || strings.Contains(s, `"offline"`)) {
+		t.Fatalf("the window shows (%v):\n%s", err, dump)
+	}
+}

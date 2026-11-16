@@ -61,7 +61,7 @@ func appNatives(app *asukaApp) ([]nativePackage, error) {
 	var deps map[string]string
 	var local []string
 	if app.proj != nil {
-		deps, local = app.proj.Deps, app.proj.Local
+		deps, local = app.packageDirs(), app.proj.Local
 	}
 	for id, d := range deps {
 		if _, ok := byDir[d]; ok || !hasDirectives(d) {

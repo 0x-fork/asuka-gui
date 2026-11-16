@@ -107,10 +107,6 @@ func main() {
 		return
 	case "check":
 		err = cmdCheck(os.Args[2:])
-	case "test":
-		err = cmdTest(os.Args[2:])
-	case "run":
-		err = cmdRun(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return

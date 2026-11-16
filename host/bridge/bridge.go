@@ -10,6 +10,7 @@
 package bridge
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
@@ -127,6 +128,10 @@ func Open(path string) (*Core, error) {
 	// Native packages implemented in Go (their desktop/ packages, built
 	// into the host) answer the core's native calls.
 	c.natives = native.NewSession(c.invokeCallback, c.done)
+	native.SetCoreRoutes(func(call uint64, b []byte) {
+		backendCalls.Delete(call)
+		c.done(call, b)
+	}, c.invokeCallback)
 	return c, nil
 }
 
@@ -197,20 +202,36 @@ var cbs = func() *callbacks {
 		}),
 		nativeNew: purego.NewCallback(func(cls unsafe.Pointer, clsLen, iface uintptr, out unsafe.Pointer, capacity uintptr, big unsafe.Pointer) uintptr {
 			name := string(unsafe.Slice((*byte)(cls), clsLen))
-			return answer(current.natives.New(name, uint32(iface)), out, capacity, big)
+			return answer(current.nativeNew(name, uint32(iface)), out, capacity, big)
 		}),
 		nativeCall: purego.NewCallback(func(handle, method uintptr, in unsafe.Pointer, n uintptr, out unsafe.Pointer, capacity uintptr, big unsafe.Pointer) uintptr {
+			if b, h, ok := backendOf(uint64(handle)); ok {
+				return answer(b.Call(h, uint32(method), bytesAt(in, n)), out, capacity, big)
+			}
 			return answer(current.natives.Call(uint64(handle), uint32(method), bytesAt(in, n)), out, capacity, big)
 		}),
 		nativeStart: purego.NewCallback(func(handle, method uintptr, in unsafe.Pointer, n, call uintptr) uintptr {
+			if b, h, ok := backendOf(uint64(handle)); ok {
+				backendCalls.Store(uint64(call), b)
+				b.Start(h, uint32(method), bytesAt(in, n), uint64(call))
+				return 0
+			}
 			current.natives.Start(uint64(handle), uint32(method), bytesAt(in, n), uint64(call))
 			return 0
 		}),
 		nativeCancel: purego.NewCallback(func(call uintptr) uintptr {
+			if b, ok := backendCalls.LoadAndDelete(uint64(call)); ok {
+				b.(NativeBackend).Cancel(uint64(call))
+				return 0
+			}
 			current.natives.Cancel(uint64(call))
 			return 0
 		}),
 		nativeRelease: purego.NewCallback(func(handle uintptr) uintptr {
+			if b, h, ok := backendOf(uint64(handle)); ok {
+				b.Release(h)
+				return 0
+			}
 			current.natives.Release(uint64(handle))
 			return 0
 		}),
@@ -362,4 +383,63 @@ func Mount(h host.Host) (*Core, error) {
 		return c, c.DevConnect(dev[:i], port, hello)
 	}
 	return c, c.Run()
+}
+
+// NativeBackend is native code a host has besides packages' Go: macOS's
+// app library of packages' Swift. The classes it has (Has) are made and
+// called there; the others, in Go (package native's servers). Its
+// answers to started calls and its callbacks' calls come back through
+// package native's Done and Invoke, which the bridge routes to the core.
+type NativeBackend interface {
+	Has(class string) bool
+	// New answers as native_new: u8 status, then u64 handle.
+	New(class string, iface uint32) []byte
+	Call(handle uint64, method uint32, args []byte) []byte
+	Start(handle uint64, method uint32, args []byte, call uint64)
+	Cancel(call uint64)
+	Release(handle uint64)
+}
+
+var (
+	backendMu    sync.Mutex
+	backend      NativeBackend
+	backendCalls sync.Map // a started call → the backend it runs on
+)
+
+// backendBit marks the core's handles of the backend's objects, apart
+// from Go's.
+const backendBit = 1 << 63
+
+// SetNativeBackend makes b answer the classes it has. Before Start.
+func SetNativeBackend(b NativeBackend) {
+	backendMu.Lock()
+	backend = b
+	backendMu.Unlock()
+}
+
+func backendOf(h uint64) (NativeBackend, uint64, bool) {
+	if h&backendBit == 0 {
+		return nil, 0, false
+	}
+	backendMu.Lock()
+	b := backend
+	backendMu.Unlock()
+	return b, h &^ backendBit, b != nil
+}
+
+// nativeNew makes an object of class: the backend's, when it has the
+// class (its handle marked), else Go's.
+func (c *Core) nativeNew(class string, iface uint32) []byte {
+	backendMu.Lock()
+	b := backend
+	backendMu.Unlock()
+	if b == nil || !b.Has(class) {
+		return c.natives.New(class, iface)
+	}
+	a := b.New(class, iface)
+	if len(a) == 9 && a[0] == 0 {
+		h := binary.LittleEndian.Uint64(a[1:]) | backendBit
+		binary.LittleEndian.PutUint64(a[1:], h)
+	}
+	return a
 }

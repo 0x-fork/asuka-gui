@@ -268,6 +268,10 @@ func (o *Object) CallContext(ctx context.Context, method uint32, w *Writer) (*Re
 // Done answers a started call (hosts, from any thread). The answer is
 // copied.
 func Done(call uint64, answer []byte) {
+	if r := coreRoutes(); r != nil {
+		r.done(call, answer)
+		return
+	}
 	pendingMu.Lock()
 	ch := pending[call]
 	delete(pending, call)
@@ -310,6 +314,9 @@ func (c *Callback) Release() { callbacks.Delete(c.id) }
 // a notification is posted to the main thread and answers nil; a
 // question answers with its result.
 func Invoke(id uint64, args []byte) []byte {
+	if r := coreRoutes(); r != nil {
+		return r.invoke(id, args)
+	}
 	v, ok := callbacks.Load(id)
 	if !ok {
 		return nil

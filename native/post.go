@@ -40,3 +40,25 @@ func OnMain(f func()) {
 	})
 	<-done
 }
+
+// Under the C core, a native backend's answers (Done) and callbacks'
+// calls (Invoke) are the core's: the host's bridge routes them there.
+type routes struct {
+	done   func(call uint64, answer []byte)
+	invoke func(id uint64, args []byte) []byte
+}
+
+var core *routes
+
+// SetCoreRoutes makes Done and Invoke the core's (the bridge's).
+func SetCoreRoutes(done func(call uint64, answer []byte), invoke func(id uint64, args []byte) []byte) {
+	postMu.Lock()
+	core = &routes{done, invoke}
+	postMu.Unlock()
+}
+
+func coreRoutes() *routes {
+	postMu.Lock()
+	defer postMu.Unlock()
+	return core
+}

@@ -28,7 +28,9 @@ import (
 func useModule(t *testing.T, m func() *bytecode.Module) {
 	t.Helper()
 	old := appbuild.Compile
-	appbuild.Compile = func(dir string, deps map[string]string) (*bytecode.Module, []string, error) { return m(), nil, nil }
+	appbuild.Compile = func(dir string, deps map[string]string, main bool) (*bytecode.Module, []string, error) {
+		return m(), nil, nil
+	}
 	t.Cleanup(func() { appbuild.Compile = old })
 }
 
@@ -55,7 +57,7 @@ func TestCmdTest(t *testing.T) {
 		t.Errorf("-run nothing: %v", err)
 	}
 	old := appbuild.Compile
-	appbuild.Compile = func(dir string, deps map[string]string) (*bytecode.Module, []string, error) {
+	appbuild.Compile = func(dir string, deps map[string]string, main bool) (*bytecode.Module, []string, error) {
 		return nil, []string{filepath.Join(dir, "app.asuka") + ":1:7: undefined: Txt"}, nil
 	}
 	defer func() { appbuild.Compile = old }()

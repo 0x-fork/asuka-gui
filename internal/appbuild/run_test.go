@@ -1,6 +1,8 @@
 package appbuild_test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -54,14 +56,35 @@ func TestShowApp(t *testing.T) {
 	}
 }
 
-// Without the compiler, Compile says so.
-func TestNoCompiler(t *testing.T) {
-	p, err := appbuild.Load(t.TempDir())
+// Compile is the compiler: a project's diagnostics as file:line:col
+// messages, its module once there are none; one file (asuka run) runs
+// its fn main() as a test named main.
+func TestCompile(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("app.asuka", "component C { Txt(\"hi\") }\napp { C() }\n")
+	p, err := appbuild.Load(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := p.Compile(); err != appbuild.ErrNoCompiler {
-		t.Fatalf("err %v", err)
+	m, diags, err := p.Compile()
+	if err != nil || m != nil || len(diags) != 1 || !strings.Contains(diags[0], "app.asuka:1:") {
+		t.Fatalf("a mistake: %v %v %v", m, diags, err)
+	}
+	write("app.asuka", "component C { Text(\"hi\") }\napp { C() }\nfn main() { print(\"main\") }\n")
+	if m, diags, err = p.Compile(); err != nil || m == nil || len(diags) != 0 || len(m.Tests) != 0 {
+		t.Fatalf("an app: %v %v %v", m, diags, err)
+	}
+	f, err := appbuild.Load(filepath.Join(dir, "app.asuka"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _, err = f.Compile(); err != nil || m == nil || len(m.Tests) != 1 {
+		t.Fatalf("one file, with main: %v %v", m, err)
 	}
 }
 

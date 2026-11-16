@@ -227,3 +227,21 @@ func Install(c *Client, dir string, update bool) (*Lock, error) {
 	}
 	return l, nil
 }
+
+// Dirs maps every package of the lock to its directory, fetching what
+// isn't in the cache; a file: package's is resolved from the project's
+// directory.
+func Dirs(c *Client, l *Lock, projectDir string) (map[string]string, error) {
+	out := map[string]string{}
+	for i := range l.Packages {
+		d, err := Fetch(c, &l.Packages[i])
+		if err != nil {
+			return nil, err
+		}
+		if !filepath.IsAbs(d) {
+			d = filepath.Join(projectDir, d)
+		}
+		out[l.Packages[i].ID] = d
+	}
+	return out, nil
+}

@@ -154,7 +154,7 @@ func (a *asukaApp) refresh() {
 	a.uses = a.proj.Uses()
 	deps := a.deps()
 	a.cfg.permissionsFor(deps)
-	if err := a.cfg.depManifests(a.proj.Deps, a.uses); err != nil {
+	if err := a.cfg.depManifests(a.packageDirs(), a.uses); err != nil {
 		fmt.Fprintln(os.Stderr, "asuka:", err)
 	}
 	a.cfg.displayName = a.displayName()
@@ -241,4 +241,22 @@ func workDir(app *asukaApp, platform string) (string, error) {
 	sum := sha256.Sum256([]byte(app.dir))
 	dir := filepath.Join(base, "asuka", app.name+"-"+hex.EncodeToString(sum[:])[:8], platform)
 	return dir, os.MkdirAll(dir, 0o755)
+}
+
+// packageDirs are the app's dependencies' directories and the standard
+// library's packages it imports (asuka/network), by package ID: what
+// brings native code and asks things of the app (asuka.toml's [ios] and
+// [android]).
+func (a *asukaApp) packageDirs() map[string]string {
+	out := map[string]string{}
+	if a.proj == nil {
+		return out
+	}
+	for id, d := range a.proj.Deps {
+		out[id] = d
+	}
+	for id, d := range a.proj.Std() {
+		out[id] = d
+	}
+	return out
 }

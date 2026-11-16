@@ -8,7 +8,6 @@
 package appbuild
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -19,20 +18,36 @@ import (
 
 	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/compile"
 	"github.com/egoist/asuka/lang/syntax"
+	"github.com/egoist/asuka/std"
 )
 
 // Compile compiles the app (or package) in dir, with its dependencies
 // (deps: package ID → directory, from internal/pkgs), to a module; its
 // diagnostics are "file:line:col: message". An error with no diagnostics
-// is one that isn't the source's (a file that can't be read). The
-// compiler (lang/check, lang/ir, lang/compile) sets it.
-var Compile = func(dir string, deps map[string]string) (*bytecode.Module, []string, error) {
-	return nil, nil, ErrNoCompiler
+// is one that isn't the source's (a file that can't be read). main adds
+// the package's fn main() as a test named main (asuka run). It's
+// lang/compile; tests replace it.
+var Compile = compileDir
+
+func compileDir(dir string, deps map[string]string, main bool) (*bytecode.Module, []string, error) {
+	// Imports resolve through the project's asuka.lock (compile.Dir's
+	// own), which Load made ready.
+	res, err := compile.Dir(dir, &compile.Options{MainTest: main})
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(res.Diags) > 0 {
+		diags := make([]string, len(res.Diags))
+		for i, d := range res.Diags {
+			diags[i] = d.String()
+		}
+		return nil, diags, nil
+	}
+	return res.Module, nil, nil
 }
 
-// ErrNoCompiler is Compile's error in a build without the compiler.
-var ErrNoCompiler = errors.New("the compiler isn't in this build yet (lang/check, lang/ir, lang/compile): asuka builds and runs compiled modules (.akb), but can't compile .asuka sources")
 
 // Project is an app or a package: its directory and its dependencies'.
 type Project struct {
@@ -79,7 +94,7 @@ func Load(dir string) (*Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	dirs, err := pkgs.Dirs(c, l)
+	dirs, err := pkgs.Dirs(c, l, abs)
 	if err != nil {
 		return nil, err
 	}
@@ -117,13 +132,13 @@ func (p *Project) Compile() (*bytecode.Module, []string, error) {
 		if err := os.WriteFile(filepath.Join(tmp, filepath.Base(p.File)), b, 0o644); err != nil {
 			return nil, nil, err
 		}
-		m, diags, err := Compile(tmp, p.Deps)
+		m, diags, err := Compile(tmp, p.Deps, true)
 		for i, d := range diags {
 			diags[i] = strings.ReplaceAll(d, filepath.Join(tmp, filepath.Base(p.File)), p.File)
 		}
 		return m, diags, err
 	}
-	return Compile(p.Dir, p.Deps)
+	return Compile(p.Dir, p.Deps, false)
 }
 
 // WatchRoots are the directories whose .asuka files make the app: its
@@ -217,5 +232,45 @@ func (u *Uses) ImportList() []string {
 		out = append(out, k)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// Std are the standard library's packages the project imports, with
+// those they import: import path (asuka/network) → directory (package
+// std's). The compiler's own (asuka/json, asuka/math) aren't directories,
+// and aren't here.
+func (p *Project) Std() map[string]string {
+	out := map[string]string{}
+	var queue []string
+	for imp := range p.Uses().Imports {
+		queue = append(queue, imp)
+	}
+	fset := syntax.NewFileSet()
+	for len(queue) > 0 {
+		imp := queue[0]
+		queue = queue[1:]
+		if _, done := out[imp]; done {
+			continue
+		}
+		dir, ok := std.Package(imp)
+		if !ok {
+			continue
+		}
+		out[imp] = dir
+		files, _ := filepath.Glob(filepath.Join(dir, "*.asuka"))
+		for _, f := range files {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				continue
+			}
+			if file, _ := syntax.ParseFile(fset, f, b); file != nil {
+				for _, im := range file.Imports {
+					if !im.Relative {
+						queue = append(queue, im.PathString())
+					}
+				}
+			}
+		}
+	}
 	return out
 }

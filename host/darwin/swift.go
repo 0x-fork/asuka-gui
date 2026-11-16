@@ -10,6 +10,9 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego"
+	"github.com/egoist/asuka/host/bridge"
+	"github.com/egoist/asuka/internal/darwin"
+	"github.com/egoist/asuka/internal/nativegen"
 	"github.com/egoist/asuka/native"
 )
 
@@ -112,6 +115,7 @@ func loadSwiftNatives(path string) error {
 	loadSwiftICloud(lib)
 	boot(purego.NewCallback(swiftEmit), purego.NewCallback(swiftDone), purego.NewCallback(swiftInvoke))
 	native.SetBackend(swiftBackend{})
+	bridge.SetNativeBackend(swiftCore{})
 	return nil
 }
 
@@ -235,3 +239,31 @@ func swiftEmit(id uint64, p *byte, n int) {
 	}
 	ctx.Emit(name, values)
 }
+
+// swiftCore is the app's Swift library as the C core's native backend
+// (host/bridge): the classes it has (a package's AsukaModule_ class) are
+// made and called there.
+type swiftCore struct{}
+
+func (swiftCore) Has(class string) bool { return darwin.HasClass(nativegen.SwiftClass(class)) }
+
+func (swiftCore) New(class string, iface uint32) []byte {
+	class = nativegen.SwiftClass(class) // what the library finds it by
+	out := make([]byte, 256)
+	var big unsafe.Pointer
+	n, _, _ := purego.SyscallN(swift.newObj, uintptr(unsafe.Pointer(unsafe.StringData(class))), uintptr(len(class)), uintptr(iface),
+		uintptr(unsafe.Pointer(unsafe.SliceData(out))), uintptr(len(out)), uintptr(unsafe.Pointer(&big)))
+	runtime.KeepAlive(class)
+	return swiftAnswer(out, int(n), big)
+}
+
+func (swiftCore) Call(h uint64, method uint32, in []byte) []byte {
+	return swiftBackend{}.Call(h, method, in, make([]byte, 512))
+}
+
+func (swiftCore) Start(h uint64, method uint32, in []byte, call uint64) {
+	swiftBackend{}.Start(h, method, in, call)
+}
+
+func (swiftCore) Cancel(call uint64) { swiftBackend{}.Cancel(call) }
+func (swiftCore) Release(h uint64)   { swiftBackend{}.Release(h) }
