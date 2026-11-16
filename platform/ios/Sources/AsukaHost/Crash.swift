@@ -12,9 +12,10 @@ import MetricKit
 @_implementationOnly import CAsuka
 #endif
 
-/// asuka/sdk/crash's native side. The Go code keeps its own crashes (its crash
-/// output) and the run's context; the host writes what only it sees, in
-/// the directory's inbox, for the Go code to read into reports:
+/// asuka/crash's native side. The core keeps the run's record
+/// (asuka_crash_start: core/src/std/crash.c) and its own fatal errors; the
+/// host writes what only it sees, in the directory's inbox, for the core
+/// to read into reports:
 ///
 /// - an uncaught Objective-C or Swift exception (NSException), as the
 ///   app ends: inbox/exception-<UUID>.json, with the stack's return
@@ -23,14 +24,14 @@ import MetricKit
 ///   exceptions, slow launches), which iOS delivers on a later launch:
 ///   inbox/metrickit-<UUID>.json, the payload's JSON as it is.
 ///
-/// Nothing's installed if the app doesn't import asuka/sdk/crash (the Go code
-/// says so).
+/// Nothing's installed if the app doesn't read its crash reports (the core
+/// says so: asuka_crash_start answers "").
 enum AsukaCrash {
     nonisolated(unsafe) private static var inbox: String?
     nonisolated(unsafe) private static var previous: (@convention(c) (NSException) -> Void)?
 
     /// Starts the run's record and the native handlers, as the host boots,
-    /// before the Go code's main.
+    /// before the app's init.
     static func start() {
         guard inbox == nil else { return }
         guard let p = infoJSON().withCString({ asuka_crash_start($0) }) else { return }
@@ -139,8 +140,8 @@ enum AsukaCrash {
 
 #if ASUKA_CRASH
 /// MetricKit's subscriber: each diagnostic payload iOS delivers (on a
-/// launch after what it's of) goes in the inbox, and the Go code hears of
-/// it (crash.OnReport).
+/// launch after what it's of) goes in the inbox, and the core hears of it
+/// (asuka_crash_notify: crash.reports() reads it).
 final class AsukaMetricSubscriber: NSObject, MXMetricManagerSubscriber {
     nonisolated(unsafe) static let shared = AsukaMetricSubscriber()
 

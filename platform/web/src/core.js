@@ -16,7 +16,7 @@ import { Pool } from "./spawn.js";
  * loads as its reloads do, and core.reload loads the next one keeping the app's state and
  * views), appDir (the app's data directory, asuka/fs's appDir), workers (false: spawn runs
  * in place, on the page's thread), sqlite (a function resolving to the page's SQLite
- * client, sqlite.js's), makeWorker (makes a worker of a URL: Node's tests'),
+ * client, sqlite.js's), crash (crash.js's Crash: the run's record), makeWorker (makes a worker of a URL: Node's tests'),
  * log (where the core's output goes).
  */
 export async function startCore(host, options = {}) {
@@ -54,6 +54,8 @@ export async function startCore(host, options = {}) {
       spawn_cancel: (id) => pool?.cancel(id),
       // asuka/sqlite's calls (core/src/sqlite/sqlite.c): to the page's
       // SQLite worker, answered into the core once it isn't running.
+      // asuka/crash's record: whether a run's page is open (crash.js's marks).
+      crash_alive: (p, n) => (options.crash?.alive(new TextDecoder().decode(new Uint8Array(memory().buffer, p, n))) ? 1 : 0),
       sqlite_available: () => (sqlite ? 1 : 0),
       sqlite_send: (id, op, conn, p, n) => {
         const input = new Uint8Array(memory().buffer, p, n).slice();
@@ -110,6 +112,11 @@ export async function startCore(host, options = {}) {
   host.connect(core, e.asuka_io());
   host.inGo = 1;
   if (options.appDir) withBytes(new TextEncoder().encode(options.appDir + "\0"), (p) => e.asuka_set_app_dir(p));
+  // The run's crash record, before the app's init (crash.js).
+  options.crash?.start(e, withBytes, (p) => {
+    const b = new Uint8Array(memory().buffer, p);
+    return new TextDecoder().decode(b.subarray(0, b.indexOf(0)));
+  });
   e.asuka_web_start();
   let bytes = null;
   if (options.module) {
@@ -124,6 +131,8 @@ export async function startCore(host, options = {}) {
       module: bytes,
       appDir: options.appDir,
       sqlite: !!sqlite,
+      // Where the page's crash record is, and which runs' pages are open.
+      crash: options.crash ? () => ({ where: options.crash.where(), alive: options.crash.aliveRuns() }) : null,
       log: (line) => log(2, line),
       ...(options.makeWorker ? { makeWorker: options.makeWorker } : {}),
       // A job's answer: into the core, once it isn't running.

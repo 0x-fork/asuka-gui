@@ -28,15 +28,17 @@ export class Pool {
    * wasm is the core (a WebAssembly.Module), module the app's bytecode
    * (null: compiled in), appDir its data directory, sqlite whether the
    * page has SQLite (a worker's init opens the app's databases as the
-   * page's does, which goes nowhere there), done(id, status,
+   * page's does, which goes nowhere there), crash() where the page's
+   * crash record is and which runs' pages are open (crash.js's), done(id, status,
    * bytes) what gets each job's answer. makeWorker(url) makes a worker
    * (Node's tests give their own).
    */
-  constructor({ wasm, module = null, appDir = "", sqlite = false, size = poolSize(), done, log = (line) => console.error(line), makeWorker = (url) => new Worker(url, { type: "module" }) }) {
+  constructor({ wasm, module = null, appDir = "", sqlite = false, crash = null, size = poolSize(), done, log = (line) => console.error(line), makeWorker = (url) => new Worker(url, { type: "module" }) }) {
     this.wasm = wasm;
     this.module = module;
     this.appDir = appDir;
     this.sqlite = sqlite;
+    this.crash = crash;
     this.size = size;
     this.done = done;
     this.log = log;
@@ -86,7 +88,7 @@ export class Pool {
       }
       w.job = job;
       const files = fs.changesFor(w);
-      w.w.postMessage({ job: { id: job.id, bytes: job.bytes, files } }, [job.bytes.buffer]);
+      w.w.postMessage({ job: { id: job.id, bytes: job.bytes, files, crash: this.crash?.() } }, [job.bytes.buffer]);
     }
   }
 
@@ -110,7 +112,7 @@ export class Pool {
   init(w, module, files = null) {
     w.ready = false;
     w.module = module;
-    w.w.postMessage({ init: { wasm: this.wasm, module, appDir: this.appDir, sqlite: this.sqlite, files } });
+    w.w.postMessage({ init: { wasm: this.wasm, module, appDir: this.appDir, sqlite: this.sqlite, crash: this.crash?.(), files } });
   }
 
   message(w, m) {

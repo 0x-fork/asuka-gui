@@ -312,6 +312,8 @@ func exportFlags() []string {
 		"asuka_web_workers", "asuka_spawn_done", "asuka_worker_start", "asuka_worker_call", "asuka_worker_answered",
 		// asuka/sqlite's answers from the page's SQLite worker (core/src/sqlite/sqlite.c)
 		"asuka_sqlite_done",
+		// asuka/crash's record (core/src/std/crash.c)
+		"asuka_crash_start", "asuka_crash_notify", "asuka_crash_where", "asuka_crash_read",
 	} {
 		f = append(f, "-Wl,--export="+name)
 	}

@@ -399,7 +399,13 @@ final class AsukaTextField: UITextField {
 
     private func boot() {
         started = true
-        AsukaCrash.start() // before the Go code's main: its crashes are kept
+        // The app's own files (asuka/fs's appDir): Application Support,
+        // which the app makes as it writes there. Before the crash record,
+        // which is kept there.
+        if let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            dir.path.withCString { asuka_set_app_dir($0) }
+        }
+        AsukaCrash.start() // before the app's init: its crashes are kept
         NotificationCenter.default.addObserver(self, selector: #selector(voiceOverChanged), name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
         #if ASUKA_NOTIFY || ASUKA_PUSH || ASUKA_NOTIFICATION_SERVICE
         AsukaNotifyCenter.shared.install() // asuka/sdk/push's too
@@ -451,11 +457,6 @@ final class AsukaTextField: UITextField {
             native_free: { free($0) },
             measure_v: nil
         )
-        // The app's own files (asuka/fs's appDir): Application Support,
-        // which the app makes as it writes there.
-        if let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-            dir.path.withCString { asuka_set_app_dir($0) }
-        }
         enter {
             asuka_start(&cb)
             startApp()

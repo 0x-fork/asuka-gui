@@ -83,4 +83,7 @@ if (asqlite) {
   const { Client } = await import(pathToFileURL(src + "/sqlite.js"));
   sqlite = async () => new Client(pathToFileURL(asqlite).href, makeWorker);
 }
-await startCore(host, { wasm: pathToFileURL(wasm), module: pathToFileURL(akb), appDir: dir, log, makeWorker, sqlite });
+// The run's crash record (crash.js), the page's side.
+const { Crash } = await import(pathToFileURL(src + "/crash.js"));
+const crash = new Crash({ afterCore: (f) => f() });
+await startCore(host, { wasm: pathToFileURL(wasm), module: pathToFileURL(akb), appDir: dir, log, makeWorker, sqlite, crash });

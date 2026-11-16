@@ -22,13 +22,16 @@ void *ak_realloc(void *p, size_t n) {
 
 void ak_free(void *p) { free(p); }
 
+void (*ak_panic_hook)(const char *msg);
+
 void ak_panic(const char *fmt, ...) {
+	static char msg[1024];
 	va_list ap;
 	va_start(ap, fmt);
-	fputs("asuka: panic: ", stderr);
-	vfprintf(stderr, fmt, ap);
-	fputc('\n', stderr);
+	vsnprintf(msg, sizeof msg, fmt, ap);
 	va_end(ap);
+	fprintf(stderr, "asuka: panic: %s\n", msg);
+	if (ak_panic_hook) ak_panic_hook(msg);
 	abort();
 }
 

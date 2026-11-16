@@ -28,6 +28,7 @@ import { natives as builtinNatives } from "./modules/hardware.js";
 import * as worker from "./worker.js";
 import { notifyFor } from "./modules/system-notify.js";
 import { startCore } from "./core.js";
+import { Crash } from "./crash.js";
 // What packages' generated JavaScript (asuka native) builds on: globalThis.asuka.native.
 export * as native from "./native.js";
 
@@ -76,6 +77,7 @@ export async function start(options = {}) {
       appDir: data,
       workers: options.workers,
       sqlite: sqlite ? () => sqlite : null,
+      crash: (host.crash = new Crash(host)),
     });
   } catch (e) {
     showError(container, "The app couldn't load: " + e.message);

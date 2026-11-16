@@ -17,10 +17,14 @@
 // breadcrumbs and its values, written as they change so a crash can't
 // lose them. Nothing is uploaded.
 //
-// Where: the desktops (macOS, Windows, Linux), whose hosts keep their
-// runs' records (sdk/crash). Phones and the web don't have the record
-// yet (the C core's asuka_crash_start): there, reports is empty and the
-// rest does nothing.
+// Where: everywhere a host keeps the runs' record. The desktops' Go hosts
+// keep theirs (sdk/crash: their Go panics too); on iOS, Android and the
+// web the core keeps it (core/src/std/crash.c: its own fatal errors, with
+// what the host saw: uncaught exceptions, iOS's MetricKit diagnostics,
+// how Android's runs ended, uncaught JavaScript errors). Where none
+// keeps it (asuka test), reports ends empty and the rest does nothing.
+
+import asuka/json
 
 /// A frame of a thread's stack, the innermost first.
 pub struct Frame {
@@ -96,10 +100,22 @@ native interface Reporter {
 
 let reporter = try? Reporter()
 
+// The core's record (phones, the web): its builtins.
+native fn coreStarted() -> bool
+native fn coreBreadcrumb(message: string)
+native fn coreSet(key: string, value: string)
+native fn coreRecord(message: string)
+native fn coreReports() throws -> string
+native fn coreDelete(id: string)
+native fn coreVersion() -> int
+native async fn coreChanged(version: int) -> int
+
 /// Adds message to what reports say the app last did, with the time.
 pub fn breadcrumb(message: string) {
   if let r = reporter {
     try? r.breadcrumb(message)
+  } else {
+    coreBreadcrumb(message)
   }
 }
 
@@ -107,6 +123,8 @@ pub fn breadcrumb(message: string) {
 pub fn set(key: string, value: string) {
   if let r = reporter {
     try? r.set(key, value)
+  } else {
+    coreSet(key, value)
   }
 }
 
@@ -115,6 +133,8 @@ pub fn set(key: string, value: string) {
 pub fn record(e: Error) {
   if let r = reporter {
     try? r.record(e.message)
+  } else {
+    coreRecord(e.message)
   }
 }
 
@@ -122,6 +142,8 @@ pub fn record(e: Error) {
 pub fn delete(id: string) {
   if let r = reporter {
     try? r.delete(id)
+  } else {
+    coreDelete(id)
   }
 }
 
@@ -130,5 +152,24 @@ pub fn delete(id: string) {
 pub fn reports() -> Stream<Report> = Stream(give => {
   if let r = reporter {
     try await r.follow(found: x => give(x))
+    return
+  }
+  if !coreStarted() {
+    return
+  }
+  // Read off the main thread (they're files), then again each time the
+  // record says more may have come.
+  var seen: [string: bool] = [:]
+  while true {
+    let version = coreVersion()
+    let text = try await spawn { try coreReports() }
+    let found: [Report] = try json.decode(text)
+    for x in found {
+      if !(seen[x.id] ?? false) {
+        seen[x.id] = true
+        give(x)
+      }
+    }
+    await coreChanged(version)
   }
 })

@@ -158,3 +158,17 @@ done
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// asuka/crash on the web: the core keeps the run's record in the app's
+// files, and reads the reports in a spawn worker, told where the page's
+// record is.
+func TestWebCrash(t *testing.T) {
+	got := runWebNode(t, "crash.asuka", nil)
+	want := `nonfatal false card declined u1 1 Web
+(1 jobs on workers)
+done
+`
+	if strings.TrimSpace(got) != strings.TrimSpace(want) {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}

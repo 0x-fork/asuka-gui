@@ -106,11 +106,13 @@ ASUKA_API void asuka_setenv(const char *key, const char *value);
 // directory on Android, its data directory on desktops). Before
 // asuka_start; without it the core reads ASUKA_DATA, else guesses.
 ASUKA_API void asuka_set_app_dir(const char *path);
-// Begins the run's crash record (asuka/sdk/crash; not available in the
-// C core yet: it returns ""), with info, JSON of the
-// device and the app: the directory native reports go in, "" if the app
-// doesn't report crashes. Any thread, before asuka_start; free the result.
-char *asuka_crash_start(const char *info);
+// Begins the run's crash record (asuka/crash: core/src/std/crash.c), with
+// info, JSON of the device and the app ("model", "system",
+// "systemVersion", "appVersion", "build"; "foreground" if the app starts
+// in front), after asuka_set_app_dir: the directory the host writes its
+// native reports in (its inbox), "" if the app doesn't read its reports.
+// Any thread, before asuka_start; free the result.
+ASUKA_API char *asuka_crash_start(const char *info);
 // Says the host wrote a report in the directory's inbox. Any thread.
 ASUKA_API void asuka_crash_notify(void);
 // Typed native modules' way back to the core (not available in the C

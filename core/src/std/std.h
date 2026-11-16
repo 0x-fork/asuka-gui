@@ -19,6 +19,7 @@ extern const ak_lib_entry ak_std_crypto[];
 extern const ak_lib_entry ak_std_html[];
 extern const ak_lib_entry ak_std_random[];
 extern const ak_lib_entry ak_std_fs[];
+extern const ak_lib_entry ak_std_crash[];
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];
@@ -47,6 +48,14 @@ void ak_sha1(const void *p, size_t n, uint8_t out[20]);
 // The app's directory (fs.appDir): what the host set with
 // asuka_set_app_dir, else ASUKA_DATA, else the platform's default.
 void ak_fs_set_app_dir(const char *path);
+// ak_fs_app_dir is that directory's path (ak_free it).
+char *ak_fs_app_dir(void);
+
+// asuka/crash's record (crash.c): the app's lifecycle (AK_LIFECYCLE_*),
+// for its reports' context; and whether the app compiled into the build
+// reads its reports (lang/cgen sets it).
+void ak_crash_lifecycle(int state);
+extern bool ak_app_crash;
 // For tests (core/runner): a new empty directory in the system's
 // temporary one (ak_free the path; NULL when it can't be made), and
 // removing a directory and what's in it.
