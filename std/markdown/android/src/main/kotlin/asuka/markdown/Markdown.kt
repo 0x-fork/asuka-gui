@@ -1,6 +1,7 @@
 // asuka/markdown on Android: the paragraphs the core read (md4c) as
 // spans in a TextView that isn't editable: one selection, links that
-// open, the user's text size, Material 3's type and colors.
+// open, the user's text size, Material 3's type and colors. A change
+// writes over the text from the first block that differs (MarkdownView).
 package asuka.markdown
 
 import android.content.Context
@@ -9,12 +10,15 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.SpannableStringBuilder
+import android.text.Selection
 import android.text.Spanned
 import android.text.method.LinkMovementMethod
 import android.text.style.BackgroundColorSpan
+import android.text.style.CharacterStyle
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.LineBackgroundSpan
+import android.text.style.ParagraphStyle
 import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
@@ -64,78 +68,124 @@ private class BlockSpan(private val color: Int, private val rule: Boolean) : Lin
     }
 }
 
-/** The paragraphs as styled text. */
-internal fun markdownText(context: Context, paras: List<Paragraph>, textSize: Float): CharSequence {
+/** The text's colors and its list step, from the theme. */
+internal class Look(context: Context, textSize: Float) {
     val label = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnSurface, 0xFF1D1B20.toInt())
     val secondary = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF49454F.toInt())
     val fill = MaterialColors.getColor(context, com.google.android.material.R.attr.colorSurfaceContainerHighest, 0xFFE6E0E9.toInt())
     val outline = MaterialColors.getColor(context, com.google.android.material.R.attr.colorOutlineVariant, 0xFFCAC4D0.toInt())
     val step = (textSize * 1.5f).toInt()
+}
+
+/**
+ * Paragraph i of paras as styled text: after i > 0, the paragraph end that
+ * parts it from the one before (and a half-height line when either isn't
+ * tight).
+ */
+internal fun markdownBlock(paras: List<Paragraph>, i: Int, look: Look): SpannableStringBuilder {
+    val p = paras[i]
     val out = SpannableStringBuilder()
     fun span(what: Any, from: Int) {
         out.setSpan(what, from, out.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
-    for ((i, p) in paras.withIndex()) {
-        if (i > 0) {
+    if (i > 0) {
+        out.append('\n')
+        if (!paras[i - 1].tight || !p.tight) {
+            val gap = out.length
             out.append('\n')
-            if (!paras[i - 1].tight || !p.tight) {
-                val gap = out.length
-                out.append('\n')
-                span(RelativeSizeSpan(0.5f), gap)
-            }
+            span(RelativeSizeSpan(0.5f), gap)
         }
-        val start = out.length
-        if (p.rule) {
-            out.append(' ')
-            span(BlockSpan(outline, rule = true), start)
-            continue
-        }
-        for (r in p.runs) {
-            val from = out.length
-            out.append(r.text)
-            if (out.length == from) continue
-            val bold = r.bold || p.heading > 0
-            when {
-                bold && r.italic -> span(StyleSpan(Typeface.BOLD_ITALIC), from)
-                bold -> span(StyleSpan(Typeface.BOLD), from)
-                r.italic -> span(StyleSpan(Typeface.ITALIC), from)
-            }
-            if (r.code || p.code) {
-                span(TypefaceSpan("monospace"), from)
-                span(RelativeSizeSpan(0.9f), from)
-                if (!p.code) span(BackgroundColorSpan(fill), from)
-            }
-            if (r.struck) span(StrikethroughSpan(), from)
-            span(ForegroundColorSpan(if (r.quoted) secondary else label), from)
-            if (r.link.isNotEmpty()) span(URLSpan(r.link), from)
-        }
-        if (out.length == start) out.append(' ') // an empty item: its marker still shown
-        if (p.heading > 0) span(RelativeSizeSpan(headingSizes[(p.heading.toInt().coerceIn(1, 6)) - 1]), start)
-        if (p.code) span(BlockSpan(fill, rule = false), start)
-        if (p.indent > 0 || p.marker.isNotEmpty()) {
-            span(MarkerSpan(p.marker, step * p.indent.toInt(), step, secondary), start)
-        }
-        if (p.row) for (k in 1..8) span(TabStopSpan.Standard(step * 2 * k), start)
     }
+    val start = out.length
+    if (p.rule) {
+        out.append('\u2003')
+        span(BlockSpan(look.outline, rule = true), start)
+        return out
+    }
+    for (r in p.runs) {
+        val from = out.length
+        out.append(r.text)
+        if (out.length == from) continue
+        val bold = r.bold || p.heading > 0
+        when {
+            bold && r.italic -> span(StyleSpan(Typeface.BOLD_ITALIC), from)
+            bold -> span(StyleSpan(Typeface.BOLD), from)
+            r.italic -> span(StyleSpan(Typeface.ITALIC), from)
+        }
+        if (r.code || p.code) {
+            span(TypefaceSpan("monospace"), from)
+            span(RelativeSizeSpan(0.9f), from)
+            if (!p.code) span(BackgroundColorSpan(look.fill), from)
+        }
+        if (r.struck) span(StrikethroughSpan(), from)
+        span(ForegroundColorSpan(if (r.quoted) look.secondary else look.label), from)
+        if (r.link.isNotEmpty()) span(URLSpan(r.link), from)
+    }
+    if (out.length == start) out.append(' ') // an empty item: its marker still shown
+    if (p.heading > 0) span(RelativeSizeSpan(headingSizes[(p.heading.toInt().coerceIn(1, 6)) - 1]), start)
+    if (p.code) span(BlockSpan(look.fill, rule = false), start)
+    if (p.indent > 0 || p.marker.isNotEmpty()) span(MarkerSpan(p.marker, look.step * p.indent.toInt(), look.step, look.secondary), start)
+    if (p.row) for (k in 1..8) span(TabStopSpan.Standard(look.step * 2 * k), start)
     return out
 }
 
-private class SpansDocument(events: DocumentEvents) : Document {
-    private val context: Context = events.context
-    private val text = TextView(context).apply {
+/**
+ * The paragraphs in a TextView that isn't editable, a block each, kept
+ * while its paragraph is the same: a change (a reply streaming in) writes
+ * over the text from the first block that differs to its end, in place
+ * (the TextView's Editable), so the text before it keeps its layout and
+ * its selection.
+ */
+internal class MarkdownView(private val context: Context) {
+    val text = TextView(context).apply {
         setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge)
         setTextIsSelectable(true)
         movementMethod = LinkMovementMethod.getInstance()
         includeFontPadding = false
+        setText("", TextView.BufferType.EDITABLE)
     }
-    private var shown: List<Paragraph>? = null
+    private var shown: List<Paragraph> = emptyList()
+    /** Each block's length, in the text's characters. */
+    var lengths: List<Int> = emptyList()
+        private set
 
-    override val view: AndroidView get() = text
+    /** Shows paras: where the text written over starts, or null when nothing changed. */
+    fun show(paras: List<Paragraph>): Int? {
+        var keep = 0
+        while (keep < shown.size && keep < paras.size && shown[keep] == paras[keep]) keep++
+        if (keep == shown.size && keep == paras.size) return null
+        val look = Look(context, text.textSize)
+        val start = lengths.take(keep).sum()
+        val tail = SpannableStringBuilder()
+        val next = lengths.take(keep).toMutableList()
+        for (i in keep until paras.size) {
+            val b = markdownBlock(paras, i, look)
+            tail.append(b)
+            next += b.length
+        }
+        val e = text.editableText
+        val from = Selection.getSelectionStart(e)
+        val to = Selection.getSelectionEnd(e)
+        // The styles of what goes, first: replace stretches a span that
+        // covers just the text it replaces over what replaces it.
+        for (sp in e.getSpans(start, e.length, Any::class.java)) {
+            if ((sp is CharacterStyle || sp is ParagraphStyle) && e.getSpanStart(sp) >= start) e.removeSpan(sp)
+        }
+        e.replace(start, e.length, tail)
+        if (from >= 0) Selection.setSelection(e, minOf(from, start), minOf(to, start)) // what of it was before start
+        shown = paras
+        lengths = next
+        return start
+    }
+}
+
+private class SpansDocument(events: DocumentEvents) : Document {
+    private val md = MarkdownView(events.context)
+
+    override val view: AndroidView get() = md.text
 
     override fun setParagraphs(value: List<Paragraph>) {
-        if (value == shown) return // as it is: its selection kept
-        shown = value
-        text.text = markdownText(context, value, text.textSize)
+        md.show(value)
     }
 }
 
