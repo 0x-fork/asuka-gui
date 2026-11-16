@@ -148,6 +148,9 @@ func ForTarget(t Target) (*Toolchain, error) {
 			tc.AR = []string{"ar", "rcs"}
 			tc.Shared = []string{"-shared"}
 		}
+		if tc.CC.IsGCC() {
+			tc.Flags = append(tc.Flags, GCCFlags...)
+		}
 		if t.Arch != runtime.GOARCH && t.OS != "darwin" {
 			return nil, fmt.Errorf("cbuild: %s from %s/%s needs Zig (ASUKA_CC=zig)", t, runtime.GOOS, runtime.GOARCH)
 		}
