@@ -360,6 +360,16 @@ func (c *Checker) allRace(e *syntax.CallExpr, b *Builtin, args []syntax.Expr) Ty
 	if len(types) == 1 {
 		return types[0]
 	}
+	// all of calls that return nothing returns nothing.
+	allVoid := true
+	for _, t := range types {
+		if t != Void {
+			allVoid = false
+		}
+	}
+	if allVoid {
+		return Void
+	}
 	return &Tuple{types}
 }
 

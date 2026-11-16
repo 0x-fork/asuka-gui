@@ -509,6 +509,9 @@ static ak_val m_sqrt(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(sqrt(A(0).f
 static ak_val m_pow(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(pow(A(0).f, A(1).f)); }
 static ak_val m_floor(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(floor(A(0).f)); }
 static ak_val m_ceil(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(ceil(A(0).f)); }
+static ak_val dur_ns(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i); }
+static ak_val dur_ms(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i / 1000000); }
+static ak_val dur_s(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F((double)A(0).i / 1e9); }
 static ak_val m_round(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(round(A(0).f)); }
 static ak_val m_sin(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(sin(A(0).f)); }
 static ak_val m_cos(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(cos(A(0).f)); }
@@ -898,6 +901,9 @@ const ak_lib_entry ak_lib[] = {
 	{"math.floor", m_floor},
 	{"math.ceil", m_ceil},
 	{"math.round", m_round},
+	{"dur.ns", dur_ns},
+	{"dur.ms", dur_ms},
+	{"dur.s", dur_s},
 	{"math.sin", m_sin},
 	{"math.cos", m_cos},
 	{"math.atan2", m_atan2},

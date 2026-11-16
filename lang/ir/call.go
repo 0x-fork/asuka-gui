@@ -697,6 +697,9 @@ func (b *fb) allRace(e *syntax.CallExpr, call *check.Call, dst int) int {
 	f := b.callB("async.all", bc.KRef, arr)
 	results := b.temp(bc.KRef)
 	b.emit(op("AWAIT"), results, f)
+	if res == check.Void {
+		return -1
+	}
 	types := []check.Type{res}
 	if tt, ok := res.(*check.Tuple); ok {
 		types = tt.Elems

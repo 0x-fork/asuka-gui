@@ -102,6 +102,7 @@ their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 | `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD); `bytes()` is none, `s.bytes()` a string's UTF-8 |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
 | `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic) |
+| `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()` (a float: `1500ms.seconds()` is 1.5) |
 | `T?` | `isNone()`, `isSome()` |
 
 `min`, `max`, `abs`, `float(n)` and `int(x)` are functions;

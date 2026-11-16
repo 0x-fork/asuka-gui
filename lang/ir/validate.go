@@ -82,7 +82,9 @@ func (f *Func) validate(p *Program) error {
 				ri++
 				continue
 			}
-			if r < 0 || r >= len(f.Kinds) {
+			// An empty block of arguments may start past the last register.
+			empty := def.Name == "CALL" && j == 2 && in.Args[3] == 0
+			if r < 0 || r >= len(f.Kinds) && !(empty && r == len(f.Kinds)) {
 				return fmt.Errorf("instruction %d (%s): register r%d out of %d", pc, def.Name, r, len(f.Kinds))
 			}
 			if ri < len(want) && want[ri] != 0 && f.Kinds[r] != want[ri] {
