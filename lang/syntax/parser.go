@@ -84,8 +84,9 @@ package syntax
 //      for and match are items, and an if's else is optional.
 //  13. Types. ( T ) groups: (fn() -> int)? is an optional function.
 //      Generic arguments follow a qualified name's last part:
-//      http.Response<T>. A type parameter may name a constraint: <T:
-//      Hashable>. T?? is an optional optional.
+//      http.Response<T>. A type parameter may name constraints, joined
+//      by &: <T: Hashable>, <T: Shape & Hashable>. T?? is an optional
+//      optional.
 //  14. Enums. Cases are separated by commas or newlines and come before
 //      the methods; a case's name may be a keyword (none).
 //  15. Imports come before declarations. pub may precede any
@@ -106,6 +107,31 @@ package syntax
 //      it on its last line, are its Trivia; /// ones are its Doc. A
 //      comment inside an expression (between arguments, in an array)
 //      stays in SourceFile.Comments only, and the printer places it.
+//  20. let … else. An else on the line of a let's value starts its else
+//      block: let user = cache[id] else { return }. Any let parses so;
+//      only a statement's may have one, which the checker says.
+//  21. Condition chains. An if's or a while's condition is clauses
+//      separated by commas, each an expression or a let: if let a = x,
+//      a > 0 { … } (a CondList; a single clause stays itself).
+//  22. Jumps as values. throw, return, break and continue where an
+//      operand goes (after an operator, as an argument, a lambda's or a
+//      match arm's body) are a JumpExpr: x ?? throw E.missing, x ??
+//      return. throw takes the rest of the expression; return a value
+//      only when one starts before the line's end or what closes the
+//      expression (x ?? return, f(x ?? return)). At the start of an
+//      item they stay statements.
+//  23. catch as a value. A catch after an expression, on its line,
+//      takes the whole expression before it, the loosest of all:
+//      try parsePort(s) catch e { 80 } (a CatchExpr). Its clauses are
+//      do's, and the later ones may start the line after a }. Nothing
+//      continues the expression after its last clause.
+//  24. Shifts. << is a token; >> is two > tokens side by side (and >>=
+//      a > and a >= side by side), so a type's Kept<Box<int>> needs no
+//      space: a > b > c isn't a shift (and comparisons don't chain).
+//  25. Struct patterns. A pattern of a name and parentheses, P(…), is a
+//      case pattern whose path is P: the checker says it's a struct's
+//      when P names one. Its arguments may be labeled (P(x: 0, y)), as
+//      a case's payload's may (.server(code: c)).
 //
 // The scanner documents how newlines end items (Scanner) and how a %
 // after a number reads (50% is a length, 10%3 a remainder).
@@ -925,7 +951,10 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		start := p.pos
 		tp := &TypeParam{Name: p.ident()}
 		if p.got(COLON) {
-			tp.Constraint = p.parseType()
+			tp.Constraints = append(tp.Constraints, p.parseType())
+			for p.got(AMP) {
+				tp.Constraints = append(tp.Constraints, p.parseType())
+			}
 		}
 		tp.Span = p.span(start)
 		list = append(list, tp)
@@ -1325,6 +1354,11 @@ func (p *parser) parseLet(start Pos) *LetDecl {
 	} else {
 		p.errorExpected("'=' and a value")
 	}
+	if p.tok == ELSE {
+		// let … else { … } (decision 20).
+		p.next()
+		d.Else = p.parseBlock()
+	}
 	d.Span = p.span(start)
 	return d
 }
@@ -1582,8 +1616,11 @@ func (p *parser) itemAfterPub(start Pos) Item {
 
 expr:
 	x := p.parseExpr()
-	if p.tok.IsAssign() {
-		d := &AssignStmt{Target: x, Op: p.tok, OpPos: p.pos}
+	if op := p.assignOp(); op != ILLEGAL {
+		d := &AssignStmt{Target: x, Op: op, OpPos: p.pos}
+		if op == SHR_ASSIGN {
+			p.next() // the >
+		}
 		p.next()
 		d.Value = p.parseExpr()
 		d.Span = p.span(start)
@@ -1662,12 +1699,29 @@ func (p *parser) parseOn() *OnHandler {
 	return d
 }
 
-// parseCond parses an if's or a while's condition: an expression, or
-// let pattern = value. A { in it starts the body (decision 4).
+// parseCond parses an if's or a while's condition: clauses separated by
+// commas, each an expression or let pattern = value (decision 21). A {
+// in it starts the body (decision 4).
 func (p *parser) parseCond() Expr {
 	lev := p.exprLev
 	p.exprLev = -1
 	defer func() { p.exprLev = lev }()
+	start := p.pos
+	x := p.condClause()
+	if p.tok != COMMA {
+		return x
+	}
+	l := &CondList{List: []Expr{x}}
+	for p.got(COMMA) {
+		l.List = append(l.List, p.condClause())
+	}
+	l.Span = p.span(start)
+	return l
+}
+
+// condClause parses a clause of a condition: an expression, or let
+// pattern = value.
+func (p *parser) condClause() Expr {
 	if p.tok == LET {
 		start := p.pos
 		p.next()
@@ -1736,31 +1790,49 @@ func (p *parser) parseDo() *DoStmt {
 	start := p.expect(DO)
 	d := &DoStmt{Body: p.parseBlock()}
 	for p.continues(CATCH) {
-		cs := p.pos
-		p.next()
-		c := &CatchClause{}
-		if p.tok != LBRACE {
-			if isIdentTok(p.tok) && p.peek(1) == COLON {
-				c.Pattern = &BindPat{Name: p.ident()}
-				setPatSpan(c.Pattern)
-				p.next()
-				c.Type = p.parseType()
-			} else {
-				lev := p.exprLev
-				p.exprLev = -1
-				c.Pattern = p.parsePattern()
-				p.exprLev = lev
-			}
-		}
-		c.Body = p.parseBlock()
-		c.Span = p.span(cs)
-		d.Catches = append(d.Catches, c)
+		d.Catches = append(d.Catches, p.parseCatch())
 	}
 	if len(d.Catches) == 0 {
 		p.errorExpected("'catch' after do { … }")
 	}
 	d.Span = p.span(start)
 	return d
+}
+
+// parseCatch parses a catch clause, at its catch: catch { … }, catch e
+// { … }, catch e: Type { … }, catch Type.case(…) { … }.
+func (p *parser) parseCatch() *CatchClause {
+	cs := p.expect(CATCH)
+	c := &CatchClause{}
+	if p.tok != LBRACE {
+		if isIdentTok(p.tok) && p.peek(1) == COLON {
+			c.Pattern = &BindPat{Name: p.ident()}
+			setPatSpan(c.Pattern)
+			p.next()
+			c.Type = p.parseType()
+		} else {
+			lev := p.exprLev
+			p.exprLev = -1
+			c.Pattern = p.parsePattern()
+			p.exprLev = lev
+		}
+	}
+	c.Body = p.parseBlock()
+	c.Span = p.span(cs)
+	return c
+}
+
+// parseCatchExpr parses x catch … { … }…, at the first catch (decision
+// 23): later catches may start the line after a }, as do's.
+func (p *parser) parseCatchExpr(x Expr) *CatchExpr {
+	start := x.Range().Start
+	c := &CatchExpr{X: x}
+	c.Catches = append(c.Catches, p.parseCatch())
+	for p.continues(CATCH) {
+		c.Catches = append(c.Catches, p.parseCatch())
+	}
+	c.Span = p.span(start)
+	return c
 }
 
 func setPatSpan(pt Pattern) {
@@ -1847,7 +1919,11 @@ func (p *parser) parseExpr() Expr {
 	if p.lambdaAhead() {
 		return p.parseLambda()
 	}
-	return p.parseBinary(1)
+	x := p.parseBinary(1)
+	if p.tok == CATCH {
+		return p.parseCatchExpr(x)
+	}
+	return x
 }
 
 // lambdaAhead reports whether a lambda starts here (decision 7).
@@ -1908,15 +1984,58 @@ func (p *parser) parseLambda() *LambdaExpr {
 	return l
 }
 
+// shiftRight reports >> (SHR) or >>= (SHR_ASSIGN) here: a > and, right
+// after it, another > or a >=. The scanner makes each > a token of its
+// own, so a type's Box<Box<int>> closes twice (decision 24).
+func (p *parser) shiftRight() Token {
+	if p.tok != GTR || p.i+1 >= len(p.toks) {
+		return ILLEGAL
+	}
+	n := p.toks[p.i+1]
+	if n.pos != p.pos+1 {
+		return ILLEGAL
+	}
+	switch n.tok {
+	case GTR:
+		return SHR
+	case GEQ:
+		return SHR_ASSIGN
+	}
+	return ILLEGAL
+}
+
+// binaryOp is the binary operator here: the token, or >> of two.
+func (p *parser) binaryOp() Token {
+	if t := p.shiftRight(); t != ILLEGAL {
+		return t
+	}
+	return p.tok
+}
+
+// assignOp is the assignment operator here (ILLEGAL when there's none):
+// the token, or >>= of a > and a >=.
+func (p *parser) assignOp() Token {
+	if t := p.shiftRight(); t == SHR_ASSIGN {
+		return t
+	}
+	if p.tok.IsAssign() {
+		return p.tok
+	}
+	return ILLEGAL
+}
+
 func (p *parser) parseBinary(minPrec int) Expr {
 	start := p.pos
 	x := p.parseUnary()
 	for {
-		prec := p.tok.Precedence()
+		op, opPos := p.binaryOp(), p.pos
+		prec := op.Precedence()
 		if prec == 0 || prec < minPrec {
 			return x
 		}
-		op, opPos := p.tok, p.pos
+		if op == SHR {
+			p.next() // the first >
+		}
 		p.next()
 		var y Expr
 		if op == COALESCE {
@@ -1925,7 +2044,7 @@ func (p *parser) parseBinary(minPrec int) Expr {
 			y = p.parseBinary(prec + 1)
 		}
 		x = &BinaryExpr{X: x, Op: op, OpPos: opPos, Y: y, Span: p.span(start)}
-		if (prec == 4 || prec == 5) && p.tok.Precedence() == prec {
+		if (prec == 4 || prec == 5) && p.binaryOp().Precedence() == prec {
 			if prec == 4 {
 				p.error(p.pos, "comparisons don't chain: write a < b && b < c")
 			} else {
@@ -1938,7 +2057,7 @@ func (p *parser) parseBinary(minPrec int) Expr {
 func (p *parser) parseUnary() Expr {
 	start := p.pos
 	switch p.tok {
-	case NOT, SUB, AWAIT:
+	case NOT, SUB, TILDE, AWAIT:
 		op := p.tok
 		p.next()
 		if !p.enter() {
@@ -1965,12 +2084,39 @@ func (p *parser) parseUnary() Expr {
 		p.next()
 		x := p.parsePostfix()
 		return &UnaryExpr{Op: LOAD, X: x, Span: p.span(start)}
+	case THROW, RETURN, BREAK, CONTINUE:
+		// A jump used as a value (decision 22): x ?? throw E.missing.
+		j := &JumpExpr{Tok: p.tok}
+		p.next()
+		if j.Tok == THROW || j.Tok == RETURN && p.valueFollows() {
+			if !p.enter() {
+				return &BadExpr{Span: p.span(start)}
+			}
+			j.Value = p.parseExpr()
+			p.leave()
+		}
+		j.Span = p.span(start)
+		return j
 	case SPAWN:
 		p.next()
 		b := p.parseBlock()
 		return &SpawnExpr{Body: b, Span: p.span(start)}
 	}
 	return p.parsePostfix()
+}
+
+// valueFollows reports whether an expression starts here, after a
+// return used as a value: not at the end of its line, nor at what closes
+// or separates the expression it's in.
+func (p *parser) valueFollows() bool {
+	if p.atTerminator() {
+		return false
+	}
+	switch p.tok {
+	case RPAREN, RBRACK, COMMA, COLON, LBRACE, CATCH, ELSE, FATARROW, STRING_MID, STRING_TAIL:
+		return false
+	}
+	return true
 }
 
 // isElement reports whether x names an element, which takes a trailing
@@ -2576,7 +2722,20 @@ func (p *parser) caseArgs(c *CasePat) {
 	p.next()
 	c.Args = []Pattern{}
 	for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
+		if p.isName() && p.peek(1) == COLON {
+			// A label: a struct's field (P(x: 0, y)), a case's payload's.
+			for len(c.Labels) < len(c.Args) {
+				c.Labels = append(c.Labels, nil)
+			}
+			c.Labels = append(c.Labels, p.name())
+			p.next()
+		}
 		c.Args = append(c.Args, p.parsePattern())
+		if len(c.Labels) > 0 {
+			for len(c.Labels) < len(c.Args) {
+				c.Labels = append(c.Labels, nil)
+			}
+		}
 		if !p.got(COMMA) {
 			break
 		}

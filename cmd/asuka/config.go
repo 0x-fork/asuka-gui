@@ -93,7 +93,7 @@ type appConfig struct {
 		// StoreKit is a StoreKit configuration file (Xcode's .storekit: the
 		// products, their prices, Ask to Buy, renewals sped up) that
 		// asuka dev's build for the simulator sells from, as Xcode's scheme
-		// does (asuka/sdk/purchase, which asuka dev builds into the app).
+		// does (asuka/purchase, which asuka dev builds into the app).
 		StoreKit string `json:"storekit"`
 		// IPhoneOnly leaves iPad out: the app runs there as an iPhone app,
 		// in a phone-sized window. By default it's an iPad app too, in
@@ -126,7 +126,7 @@ type appConfig struct {
 	// take it). Default: the platform's.
 	Accent string `json:"accent"`
 	// Background makes a desktop app one that runs in the background,
-	// living in the tray (asuka/sdk/tray), as app.RunInBackground does: no
+	// living in the tray (asuka/tray), as app.RunInBackground does: no
 	// window at launch, kept running with none, and on macOS no Dock
 	// icon from launch (Info.plist's LSUIElement).
 	Background bool `json:"background"`
@@ -157,7 +157,7 @@ type appConfig struct {
 	// shared. true: texts and links; or what it takes,
 	// {"types": ["text", "image/*", "video/*"], "max": 10}.
 	ShareTarget shareTarget `json:"shareTarget"`
-	// NFC is what asuka/sdk/nfc needs of the platforms (nfc.go): iOS's
+	// NFC is what asuka/nfc needs of the platforms (nfc.go): iOS's
 	// AIDs and FeliCa system codes, Android's tags that open the app.
 	NFC nfcConfig `json:"nfc"`
 	// Splash is the launch screen: an image (a square PNG, a logo) in the
@@ -178,7 +178,7 @@ type appConfig struct {
 		Background     string `json:"background"`
 		DarkBackground string `json:"darkBackground"`
 	} `json:"splash"`
-	// Widgets are the app's home screen widgets (asuka/sdk/widget fills them).
+	// Widgets are the app's home screen widgets (asuka/widget fills them).
 	Widgets []widgetConfig `json:"widgets"`
 	// I18n says where the app's catalogs are, when they aren't in locales.
 	I18n *i18nConfig `json:"i18n"`
@@ -191,13 +191,13 @@ type appConfig struct {
 	// Shortcuts (Siri, Spotlight, the Shortcuts app, the Action button);
 	// on Android, the launcher's shortcuts. Each opens the app with its URL.
 	Shortcuts []shortcutConfig `json:"shortcuts"`
-	// ApplePay is Apple Pay's (asuka/sdk/pay): MerchantIDs are the
+	// ApplePay is Apple Pay's (asuka/pay): MerchantIDs are the
 	// merchant identifiers the app pays with ("merchant.com.example"),
 	// its in-app-payments entitlement's (iOS, macOS).
 	ApplePay struct {
 		MerchantIDs []string `json:"merchantIds"`
 	} `json:"applePay"`
-	// ICloud is asuka/sdk/icloud's (icloud.go): Containers are the app's
+	// ICloud is asuka/icloud's (icloud.go): Containers are the app's
 	// iCloud containers, the first its default (default iCloud.<id>);
 	// DriveName is the first one's folder in iCloud Drive (default: the
 	// app's name), which DriveHidden leaves out of iCloud Drive.
@@ -211,16 +211,18 @@ type appConfig struct {
 	// app's name (loadApp), its iCloud Drive folder's.
 	icloudKV, icloudDocs bool
 	displayName          string
-	// shareSheet: the app uses ShareSheet (sheetSymbol): the share target
-	// shows the app's sheet.
+	// shareSheet: the share target shows the app's own sheet rather than
+	// opening the app (Asuka has no such root yet: a share opens the
+	// app, for its onShare).
 	shareSheet bool
-	// pushRewrite: the app uses push.rewrite (rewriteSymbol):
-	// on iOS it has a Notification Service Extension, which runs it.
+	// pushRewrite: a package asks for the ASUKA_NOTIFICATION_SERVICE
+	// host flag (a push's rewrite): on iOS the app has a Notification
+	// Service Extension, which runs it.
 	pushRewrite bool
-	// locationPrecise: the app uses location.requestPrecise
-	// (ASUKA_LOCATION_PRECISE): Info.plist has its purposes.
+	// locationPrecise: a package derives temporary full accuracy's
+	// purposes (asuka/location's requestPrecise): Info.plist has them.
 	locationPrecise bool
-	// nfcOn: the app imports asuka/sdk/nfc (addNFC): its filters and
+	// nfcOn: the app imports asuka/nfc (addNFC): its filters and
 	// uses-feature go in the manifest.
 	nfcOn bool
 	// liveActivity: the app uses asuka/liveactivity
@@ -228,17 +230,22 @@ type appConfig struct {
 	// Activities' template, with or without widgets.
 	liveActivity bool
 	// androidModules are the host's optional Gradle modules the app's
-	// packages need (featurePermissions).
+	// packages need (their asuka.toml's android.hostModules).
 	androidModules []string
+	// hostFlags are the iOS host's parts the app's packages need (their
+	// manifests' ios.hostFlags); derived, what the CLI makes of the
+	// app's asuka.toml for them (ios.derived: derivedNeeds).
+	hostFlags, derived []string
 	// mapsKey: the app imports asuka/maps, whose Google Maps reads the
 	// key (android.mapsKey) from the manifest.
 	mapsKey bool
 	// macSwift are the Mac's Swift's compilation conditions the app's
-	// packages need (featurePermissions): the Mac's library
+	// packages need (their manifests' macos.hostFlags): the Mac's library
 	// (AsukaNatives.dylib) is built with them, natives or not.
 	macSwift []string
-	// iosTrue and androidApp: featurePermissions' Info.plist keys set to
-	// true, and application elements of the Android manifest.
+	// iosTrue and androidApp: the packages' Info.plist keys set to true
+	// (their asuka.toml's ios.plist), and application elements of the
+	// Android manifest (android.application).
 	iosTrue    []string
 	androidApp []string
 	// entitlements are the iOS entitlements the packages need, with their
@@ -280,7 +287,7 @@ type appConfig struct {
 		// asks for (default: a recent one; 46 or later).
 		FlatpakRuntime string `json:"flatpakRuntime"`
 	} `json:"linux"`
-	// Bluetooth is what an app of asuka/sdk/bluetooth asks of the
+	// Bluetooth is what an app of asuka/bluetooth asks of the
 	// platforms beyond what importing the package gives (docs/bluetooth.md).
 	Bluetooth struct {
 		// Background are the roles the app keeps in the background:
@@ -299,7 +306,7 @@ type appConfig struct {
 	// Web is what a web build needs (cmd/asuka/web.go).
 	Web struct {
 		// VapidPublicKey is the app server's VAPID public key (base64url, an
-		// uncompressed P-256 point), for asuka/sdk/push's Web Push: the browser
+		// uncompressed P-256 point), for asuka/push's Web Push: the browser
 		// subscribes with it, and the server signs with its private key
 		// (asuka/webpush: GenerateKeys makes a pair).
 		VapidPublicKey string `json:"vapidPublicKey"`
@@ -320,10 +327,10 @@ type appConfig struct {
 		Keystore string `json:"keystore"`
 		KeyAlias string `json:"keyAlias"`
 		// GoogleServices is the Firebase project's google-services.json,
-		// for asuka/sdk/push (Firebase Cloud Messaging).
+		// for asuka/push (Firebase Cloud Messaging).
 		GoogleServices string `json:"googleServices"`
 		// MapsKey is a Google Maps Platform API key (Maps SDK for Android),
-		// for asuka/sdk/maps.
+		// for asuka/maps.
 		MapsKey string `json:"mapsKey"`
 		// ServiceAccount is the JSON key of the Google Cloud service
 		// account asuka publish uploads with (ASUKA_PLAY_SERVICE_ACCOUNT, the
@@ -501,205 +508,11 @@ type collectedData struct {
 	Purposes []string `json:"purposes"`
 }
 
-// featurePermissions are what Asuka's packages need of the platform: an
-// app that imports one is given them (and, on iOS, a purpose string,
-// which asuka.toml's ios.usage can say better), and the Android host's
-// optional Gradle modules (platform/android/asuka-<name>) it needs.
-var featurePermissions = []struct {
-	pkg     string
-	android []string // permissions; "name:28": up to Android 9 (API 28) only
-	usage   map[string]string
-	modules []string
-	// iosTrue are Info.plist keys set to true; androidApp, elements of the
-	// Android manifest's application (a service, a receiver).
-	iosTrue    []string
-	androidApp []string
-	// entitlements (with a simulator build's values) and Info.plist arrays.
-	entitlements map[string]any
-	plistArrays  map[string][]string
-	// androidTop are elements of the Android manifest itself (queries).
-	androidTop []string
-}{
-	{"github.com/egoist/asuka/sdk/location", []string{"android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"},
-		map[string]string{"NSLocationWhenInUseUsageDescription": "To show where you are."}, nil, nil, nil, nil, nil, nil},
-	{"github.com/egoist/asuka/sdk/notify", []string{"android.permission.POST_NOTIFICATIONS"}, nil, nil, nil, nil, nil, nil, nil},
-	// camera.View's preview is the app's own: the camera permission (and
-	// with it declared, the system's camera app needs it granted too).
-	{"github.com/egoist/asuka/sdk/camera", []string{"android.permission.CAMERA"}, map[string]string{"NSCameraUsageDescription": "To take a photo."}, nil, nil, nil, nil, nil, nil},
-	{"github.com/egoist/asuka/sdk/camera/record", []string{"android.permission.RECORD_AUDIO"}, map[string]string{"NSMicrophoneUsageDescription": "To record a video's sound."}, nil, nil, nil, nil, nil, nil},
-	{"github.com/egoist/asuka/sdk/network", []string{"android.permission.ACCESS_NETWORK_STATE"}, nil, nil, nil, nil, nil, nil, nil},
-	// MediaStore needs no permission from Android 10; before, writing to
-	// the shared folders does. Files in Documents show in iOS's Files.
-	{"github.com/egoist/asuka/sdk/library", []string{"android.permission.WRITE_EXTERNAL_STORAGE:28"},
-		map[string]string{"NSPhotoLibraryAddUsageDescription": "To save videos and photos to your library."}, nil,
-		[]string{"UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace"}, nil, nil, nil, nil},
-	// A foreground service of the data sync type, its notification, the
-	// CPU kept awake.
-	{"github.com/egoist/asuka/sdk/background", []string{"android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
-		"android.permission.POST_NOTIFICATIONS", "android.permission.WAKE_LOCK"}, nil, nil, nil,
-		[]string{`<service android:name="dev.asuka.AsukaWorkService" android:exported="false" android:foregroundServiceType="dataSync" />`}, nil, nil, nil},
-	// ML Kit's barcode model: about 2 MB, only in the apps that scan.
-	{"github.com/egoist/asuka/sdk/scan", nil, nil, []string{"scan"}, nil, nil, nil, nil, nil},
-	// ML Kit's text, face and barcode models: only in the apps that analyze.
-	{pkg: "github.com/egoist/asuka/sdk/vision", modules: []string{"vision"}},
-	// Reading the library: all of it, or what the user chose (Android 14).
-	{pkg: "github.com/egoist/asuka/sdk/photos",
-		android: []string{"android.permission.READ_EXTERNAL_STORAGE:32", "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"},
-		usage:   map[string]string{"NSPhotoLibraryUsageDescription": "To show your photos."}},
-	{pkg: "github.com/egoist/asuka/sdk/screen", android: []string{"android.permission.DETECT_SCREEN_CAPTURE"}},
-	{pkg: "github.com/egoist/asuka/sdk/biometric", android: []string{"android.permission.USE_BIOMETRIC"},
-		usage: map[string]string{"NSFaceIDUsageDescription": "To confirm it's you."}},
-	{pkg: "github.com/egoist/asuka/sdk/tracking", usage: map[string]string{"NSUserTrackingUsageDescription": "To show you ads that suit you."}},
-	// Play's in-app review, Play Integrity, Play Age Signals, Google Maps:
-	// Google's libraries, only in the apps that use them.
-	{pkg: "github.com/egoist/asuka/sdk/review", modules: []string{"review"}},
-	{pkg: "github.com/egoist/asuka/sdk/integrity", modules: []string{"integrity"},
-		entitlements: map[string]any{"com.apple.developer.devicecheck.appattest-environment": "development"}},
-	{pkg: "github.com/egoist/asuka/sdk/agerange", modules: []string{"agerange"},
-		entitlements: map[string]any{"com.apple.developer.declared-age-range": true}},
-	{pkg: "github.com/egoist/asuka/sdk/maps", modules: []string{"maps"}},
-	{pkg: "github.com/egoist/asuka/sdk/appleauth", entitlements: map[string]any{"com.apple.developer.applesignin": []string{"Default"}}},
-	// Firebase Cloud Messaging (its manifest has POST_NOTIFICATIONS); APNs.
-	{pkg: "github.com/egoist/asuka/sdk/push", modules: []string{"push"},
-		entitlements: map[string]any{"aps-environment": "development"},
-		plistArrays:  map[string][]string{"UIBackgroundModes": {"remote-notification"}}},
-	// The service keeps a recording with Options.Background going out of sight.
-	{pkg: "github.com/egoist/asuka/sdk/audio/record", android: []string{"android.permission.RECORD_AUDIO",
-		"android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MICROPHONE", "android.permission.POST_NOTIFICATIONS"},
-		usage:      map[string]string{"NSMicrophoneUsageDescription": "To record sound."},
-		androidApp: []string{`<service android:name="dev.asuka.AsukaRecordService" android:exported="false" android:foregroundServiceType="microphone" />`}},
-	// Now Playing: a MediaSession and its notification (which needs no
-	// POST_NOTIFICATIONS: a media session's is exempt); while playing, a
-	// foreground service of the media playback type keeps the app
-	// running out of sight (Android 14's rules).
-	{pkg: "github.com/egoist/asuka/sdk/nowplaying",
-		android:    []string{"android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"},
-		androidApp: []string{`<service android:name="dev.asuka.AsukaMediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" />`}},
-	// On-device speech recognition; Android's reads the file as the microphone's permission.
-	{pkg: "github.com/egoist/asuka/sdk/transcribe", android: []string{"android.permission.RECORD_AUDIO"},
-		usage: map[string]string{"NSSpeechRecognitionUsageDescription": "To turn your recordings into text, on this device."}},
-	// WorkManager; iOS's background tasks, by the identifiers the host
-	// schedules (AsukaPeriodic).
-	{pkg: "github.com/egoist/asuka/sdk/periodic", modules: []string{"periodic"},
-		plistArrays: map[string][]string{"UIBackgroundModes": {"fetch", "processing"},
-			"BGTaskSchedulerPermittedIdentifiers": {"dev.asuka.refresh", "dev.asuka.processing"}}},
-	// Live activities: an ongoing notification each, which Android 16
-	// promotes to a Live Update (POST_PROMOTED_NOTIFICATIONS); the
-	// receiver hears one dismissed, and refreshes a bar that fills by
-	// itself. iOS's Info.plist key and widget extension come with the
-	// feature (ASUKA_LIVEACTIVITY), as the app uses it.
-	{pkg: "github.com/egoist/asuka/sdk/liveactivity",
-		android:    []string{"android.permission.POST_NOTIFICATIONS", "android.permission.POST_PROMOTED_NOTIFICATIONS"},
-		androidApp: []string{`<receiver android:name="dev.asuka.AsukaLiveActivityReceiver" android:exported="false" />`}},
-	// In-app purchases: Play Billing (its library's manifest declares
-	// BILLING; said here too), only in the apps that sell; on the Mac,
-	// StoreKit 2's Swift in the app's library. iOS's comes with the
-	// feature (ASUKA_PURCHASE); the In-App Purchase capability needs no
-	// entitlement.
-	{pkg: "github.com/egoist/asuka/sdk/purchase", android: []string{"com.android.vending.BILLING"}, modules: []string{"purchase"}},
-	// Google Pay: play-services-wallet, in the asuka-pay module, whose
-	// manifest enables its API and has the service Google Pay's sheet
-	// calls back. Apple Pay's entitlement has asuka.toml's merchant IDs
-	// (payEntitlement).
-	{pkg: payPkg, modules: []string{"pay"}},
-	// NFC: Android's permission (uses-feature, filters: addNFC); iOS's
-	// purpose string and Core NFC's entitlement, for both of its sessions.
-	{pkg: nfcPkg, android: []string{"android.permission.NFC"},
-		usage:        map[string]string{"NFCReaderUsageDescription": "To read and write NFC tags."},
-		entitlements: map[string]any{"com.apple.developer.nfc.readersession.formats": []string{"NDEF", "TAG"}}},
-	// Binding the text-to-speech engine: Android 11's package visibility.
-	{pkg: "github.com/egoist/asuka/sdk/speech", androidTop: []string{`<queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>`}},
-	// The pedometer: iOS's Motion & Fitness; Android's physical activity.
-	{pkg: "github.com/egoist/asuka/sdk/sensors", android: []string{"android.permission.ACTIVITY_RECOGNITION"},
-		usage: map[string]string{"NSMotionUsageDescription": "To count your steps."}},
-	{pkg: "github.com/egoist/asuka/sdk/contacts", android: []string{"android.permission.READ_CONTACTS"},
-		usage: map[string]string{"NSContactsUsageDescription": "To find people you know."}},
-	// iOS 17's full access, and before it.
-	{pkg: "github.com/egoist/asuka/sdk/calendar", android: []string{"android.permission.READ_CALENDAR"},
-		usage: map[string]string{"NSCalendarsFullAccessUsageDescription": "To show your events.", "NSCalendarsUsageDescription": "To show your events."}},
-	// Whether an app takes mailto: and smsto: links: iOS's canOpenURL,
-	// Android 11's package visibility.
-	{pkg: "github.com/egoist/asuka/sdk/compose",
-		plistArrays: map[string][]string{"LSApplicationQueriesSchemes": {"mailto"}},
-		androidTop: []string{`<queries><intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="mailto" /></intent>` +
-			`<intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent></queries>`}},
-	// Bluetooth LE: Android 12's nearby devices permissions (the scan's
-	// "neverForLocation" unless asuka.toml's bluetooth.location; Asuka's
-	// Android is 13 and later, so not the older Bluetooth and location
-	// permissions); the companion device chooser. Core Bluetooth's
-	// purpose string. BlueZ on the system bus, from a Flatpak. asuka.toml's
-	// bluetooth.background adds the background modes (bluetoothExtras).
-	{pkg: bluetoothPackage,
-		android: []string{"android.permission.BLUETOOTH_SCAN|neverForLocation", "android.permission.BLUETOOTH_CONNECT",
-			"android.permission.BLUETOOTH_ADVERTISE"},
-		usage: map[string]string{"NSBluetoothAlwaysUsageDescription": "To connect to your Bluetooth devices."},
-		androidTop: []string{`<uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />`,
-			`<uses-feature android:name="android.software.companion_device_setup" android:required="false" />`}},
-}
+// payPkg is asuka/pay, whose Apple Pay merchant IDs are the app's
+// asuka.toml's.
+const payPkg = "asuka/pay"
 
-// featureMacSwift are the parts of platform/macos's Swift a package
-// needs, as compilation conditions (macSwift): the Mac's library is built
-// with them for an app that imports it.
-var featureMacSwift = map[string][]string{
-	// StoreKit 2 is Swift's alone.
-	"github.com/egoist/asuka/sdk/purchase": {"ASUKA_PURCHASE"},
-	// NSMetadataQuery's and NSFileCoordinator's blocks, the store's
-	// notifications: the iOS host's Swift.
-	icloudPkg: {"ASUKA_ICLOUD"},
-}
-
-// locationSymbols are asuka/sdk/location's functions that need more of
-// Android than the position in the foreground: by what each needs.
-var locationSymbols = struct{ always, updates, regions []string }{
-	always:  []string{"github.com/egoist/asuka/sdk/location.RequestAlways"},
-	updates: []string{"github.com/egoist/asuka/sdk/location.StartUpdates"},
-	regions: []string{"github.com/egoist/asuka/sdk/location.Monitor"},
-}
-
-// useLocation adds what the app's calls into asuka/sdk/location's
-// background part need on Android, has telling which it calls (its
-// library's symbols): ACCESS_BACKGROUND_LOCATION for RequestAlways (which
-// Google Play asks about, so only then); for StartUpdates, the foreground
-// service of the location type and its notification; for both
-// StartUpdates and Monitor, the receiver their PendingIntents and a
-// reboot (which clears them) go to, and the asuka-location module (Google
-// Play services' Fused Location Provider and geofences).
-func (c *appConfig) useLocation(has func(symbol string) bool) {
-	uses := func(syms []string) bool { return slices.ContainsFunc(syms, has) }
-	always, updates, regions := uses(locationSymbols.always), uses(locationSymbols.updates), uses(locationSymbols.regions)
-	var perms, app []string
-	if always {
-		perms = append(perms, "android.permission.ACCESS_BACKGROUND_LOCATION")
-	}
-	if updates {
-		perms = append(perms, "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.POST_NOTIFICATIONS")
-		app = append(app, `<service android:name="dev.asuka.AsukaLocationService" android:exported="false" android:foregroundServiceType="location" />`)
-	}
-	if updates || regions {
-		perms = append(perms, "android.permission.RECEIVE_BOOT_COMPLETED")
-		app = append(app, `<receiver android:name="dev.asuka.AsukaLocationReceiver" android:exported="false"><intent-filter>`+
-			`<action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" />`+
-			`</intent-filter></receiver>`)
-		if !slices.Contains(c.androidModules, "location") {
-			c.androidModules = append(c.androidModules, "location")
-		}
-	}
-	for _, p := range perms {
-		if !slices.Contains(c.Android.Permissions, p) {
-			c.Android.Permissions = append(c.Android.Permissions, p)
-		}
-	}
-	for _, x := range app {
-		if !slices.Contains(c.androidApp, x) {
-			c.androidApp = append(c.androidApp, x)
-		}
-	}
-}
-
-// payPkg is asuka/sdk/pay.
-const payPkg = "github.com/egoist/asuka/sdk/pay"
-
-// payEntitlement gives an app that imports asuka/sdk/pay (deps; nil:
+// payEntitlement gives an app that imports asuka/pay (deps; nil:
 // any app) Apple Pay's entitlement, with asuka.toml's merchant IDs.
 func (c *appConfig) payEntitlement(deps []string) {
 	if len(c.ApplePay.MerchantIDs) == 0 || deps != nil && !slices.Contains(deps, payPkg) {
@@ -711,87 +524,33 @@ func (c *appConfig) payEntitlement(deps []string) {
 	c.entitlements["com.apple.developer.in-app-payments"] = c.ApplePay.MerchantIDs
 }
 
-// featureFlatpak are the Flatpak's finish-args a package needs (Linux):
-// the system bus names it talks to.
-var featureFlatpak = map[string][]string{
-	bluetoothPackage: {"--system-talk-name=org.bluez"},
-}
-
-// bluetoothPackage is asuka/sdk/bluetooth, whose needs asuka.toml's
+// bluetoothPackage is asuka/bluetooth, whose needs asuka.toml's
 // "bluetooth" adds to (bluetoothExtras).
-const bluetoothPackage = "github.com/egoist/asuka/sdk/bluetooth"
+const bluetoothPackage = "asuka/bluetooth"
 
-// permissionsFor adds the permissions the packages deps (an app's
-// imports, all the way down) need. nil deps: every package's (the player
-// runs any app).
+// permissionsFor adds what the app's own asuka.toml asks of the
+// packages deps (the program's imports, by import path) beyond their
+// manifests (depManifests): Apple Pay's merchant IDs, the nfc and
+// bluetooth tables. nil deps: every package's (the player runs any app).
+// Run after depManifests, whose permissions these change.
 func (c *appConfig) permissionsFor(deps []string) {
 	c.payEntitlement(deps)
-	for _, f := range featurePermissions {
-		if deps != nil && !slices.Contains(deps, f.pkg) {
-			continue
-		}
-		for _, p := range f.android {
-			c.addPermission(p)
-		}
-		for _, x := range featureFlatpak[f.pkg] {
-			if !slices.Contains(c.flatpakArgs, x) {
-				c.flatpakArgs = append(c.flatpakArgs, x)
-			}
-		}
-		for _, m := range f.modules {
-			if !slices.Contains(c.androidModules, m) {
-				c.androidModules = append(c.androidModules, m)
-			}
-		}
-		for _, k := range f.iosTrue {
-			if !slices.Contains(c.iosTrue, k) {
-				c.iosTrue = append(c.iosTrue, k)
-			}
-		}
-		for _, x := range f.androidApp {
-			if !slices.Contains(c.androidApp, x) {
-				c.androidApp = append(c.androidApp, x)
-			}
-		}
-		for _, x := range featureMacSwift[f.pkg] {
-			if !slices.Contains(c.macSwift, x) {
-				c.macSwift = append(c.macSwift, x)
-			}
-		}
-		for _, x := range f.androidTop {
-			if !slices.Contains(c.androidTop, x) {
-				c.androidTop = append(c.androidTop, x)
-			}
-		}
-		for k, v := range f.entitlements {
-			if c.entitlements == nil {
-				c.entitlements = map[string]any{}
-			}
-			c.entitlements[k] = v
-		}
-		for k, vs := range f.plistArrays {
-			if c.plistArrays == nil {
-				c.plistArrays = map[string][]string{}
-			}
-			for _, v := range vs {
-				if !slices.Contains(c.plistArrays[k], v) {
-					c.plistArrays[k] = append(c.plistArrays[k], v)
-				}
-			}
-		}
-		for k, v := range f.usage {
-			if c.IOS.Usage == nil {
-				c.IOS.Usage = map[string]string{}
-			}
-			if c.IOS.Usage[k] == "" {
-				c.IOS.Usage[k] = v
-			}
-		}
-	}
 	c.addNFC(deps)
-	if deps != nil && slices.Contains(deps, bluetoothPackage) {
+	if deps == nil || slices.Contains(deps, bluetoothPackage) {
 		c.bluetoothExtras()
 	}
+}
+
+// addDerived adds the needs the packages' manifests ask the CLI to make
+// of the app's own asuka.toml (ios.derived: iCloud's, temporary full
+// accuracy's), and notes the host's parts that have more of the app
+// (a Notification Service Extension for push's rewrites, the widget
+// extension's Live Activities).
+func (c *appConfig) addDerived() {
+	c.addICloud(c.derives("icloudKeyValue"), c.derives("icloudDocuments"))
+	c.locationPrecise = c.derives("locationPrecise")
+	c.pushRewrite = slices.Contains(c.hostFlags, "ASUKA_NOTIFICATION_SERVICE")
+	c.liveActivity = slices.Contains(c.hostFlags, "ASUKA_LIVEACTIVITY")
 }
 
 // addPermission adds an Android permission ("name", "name:28" up to an
@@ -831,7 +590,7 @@ func (c *appConfig) addPermission(p string) {
 }
 
 // bluetoothExtras are what asuka.toml's bluetooth asks for, for an app
-// of asuka/sdk/bluetooth: the background modes, the location from scans.
+// of asuka/bluetooth: the background modes, the location from scans.
 func (c *appConfig) bluetoothExtras() {
 	if c.Bluetooth.Location {
 		// Scans that find where the user is: no neverForLocation, and the
@@ -863,14 +622,18 @@ func (c *appConfig) bluetoothExtras() {
 		switch r {
 		case "central":
 			addMode("bluetooth-central")
-			// The background scan's results, with the app's process gone.
-			x := `<receiver android:name="dev.asuka.AsukaBluetoothScanReceiver" android:exported="false" />`
-			if !slices.Contains(c.androidApp, x) {
-				c.androidApp = append(c.androidApp, x)
-			}
 		case "peripheral":
 			addMode("bluetooth-peripheral")
 		}
+	}
+}
+
+// androidFeatures adds the host's optional modules the app's elements
+// need (asuka-video, for a Video, as iOS's ASUKA_VIDEO), or (player:
+// asuka dev's, which runs whatever the next save shows) all of them.
+func (c *appConfig) androidFeatures(app *asukaApp, player bool) {
+	if (player || app.refs("", "Video")) && !slices.Contains(c.androidModules, "video") {
+		c.androidModules = append(c.androidModules, "video")
 	}
 }
 
@@ -913,8 +676,8 @@ func (c *appConfig) androidManifest(debug bool) string {
 		b.WriteString(" android:usesCleartextTraffic=\"true\"")
 	}
 	b.WriteString(">\n")
-	// The Maps SDK's key (asuka/maps, asuka/sdk/maps), which it reads from the manifest.
-	if c.Android.MapsKey != "" && (slices.Contains(c.androidModules, "maps") || c.mapsKey) {
+	// The Maps SDK's key (asuka/maps, asuka/maps), which it reads from the manifest.
+	if c.Android.MapsKey != "" && c.mapsKey {
 		fmt.Fprintf(&b, "        <meta-data android:name=\"com.google.android.geo.API_KEY\" android:value=\"%s\" />\n", html.EscapeString(c.Android.MapsKey))
 	}
 	// push.Rewrite: FCM's data messages start the app to rewrite them.
@@ -956,7 +719,7 @@ func (c *appConfig) androidManifest(debug bool) string {
 	// asuka.toml's fileTypes: opened from a file manager, or a mail's
 	// attachment (AsukaActivity copies a content:// URI's file).
 	b.WriteString(fileTypeFilters(c.fileTypes()))
-	// asuka/sdk/nfc's tags that open the app (asuka.toml's nfc).
+	// asuka/nfc's tags that open the app (asuka.toml's nfc).
 	b.WriteString(c.nfcFilters())
 	b.WriteString("        </activity>\n")
 	// A share sheet (app.ShareSheet): the shares go to its Activity.

@@ -105,7 +105,7 @@ fix what didn't match.
   and menu bars, clicks landing on the right views, a runtime switch with a sheet and a
   window open, Arabic font fallback and punctuation in `DT_RTLREADING`, `TPM_LAYOUTRTL`
   menus opening on the right side, RichEdit's paragraph direction. Then
-  `go test ./host/windows ./internal/windows`.
+  `go test ./platform/windows`.
 
 ## Previewing, printing, composing
 
@@ -131,7 +131,7 @@ In the gallery's Documents section.
       with the number and the text.
 - [ ] Windows: Preview opens the PDF in its
       app; Print shows the system's print dialog; the PDF is made
-      (`go test ./host/windows -run Documents`); Mail with Outlook classic
+      (`go test ./platform/windows`); Mail with Outlook classic
       or Thunderbird set as the mail app shows its composer with the PDF.
 
 ## On the desktop

@@ -170,6 +170,9 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 			b.emit(op("MGET"), r, x, i)
 			return r
 		}
+		if b.rawType(e.X) == check.Bytes {
+			return b.copyTo(b.callB("bytes.at", bc.KInt, x, i), dst)
+		}
 		r := b.out(dst, b.kind(b.l.info.Types[e]))
 		b.emit(op("IDX"), r, x, i)
 		return r
@@ -197,6 +200,14 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 	case *syntax.ArrayExpr:
 		if r, ok := b.hoist(e, dst); ok {
 			return r
+		}
+		if st, ok := b.rawType(e).(*check.Set); ok {
+			// A set literal: set.of(kind, its elements...).
+			args := []int{b.konst(int64(b.l.kind(st.Elem)))}
+			for _, x := range e.Elems {
+				args = append(args, b.value(x, -1))
+			}
+			return b.copyTo(b.callB("set.of", bc.KRef, args...), dst)
 		}
 		at, _ := b.rawType(e).(*check.Array)
 		if at == nil {
@@ -247,6 +258,10 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		return b.ifExpr(e, dst)
 	case *syntax.MatchExpr:
 		return b.matchExpr(e, dst)
+	case *syntax.JumpExpr:
+		return b.jumpExpr(e, dst)
+	case *syntax.CatchExpr:
+		return b.catchExpr(e, dst)
 	}
 	b.l.errorf(e, "can't lower this expression yet")
 	return b.valueReg(-1, b.kind(b.l.info.Types[e]))
@@ -679,6 +694,16 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 		}
 		return b.copyTo(ref, dst)
 	case check.SelIfaceField:
+		if n, ok := recv.(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
+			// A constrained type parameter's field, this instantiation's
+			// type's own: a struct's field, an enum's method.
+			if f := n.Obj.Field(sel.Name); f != nil && n.Obj.Kind == check.StructType {
+				return b.getField(x, n, f, dst)
+			}
+			if m := n.Obj.Methods[sel.Name]; m != nil {
+				return b.invoke(b.l.funcIndex(m, nil, n), []int{x}, b.kind(sel.Field.Type), dst, false)
+			}
+		}
 		r := b.out(dst, b.kind(sel.Field.Type))
 		blk := b.regs([]bc.Kind{bc.KRef})
 		b.move(blk, x)
@@ -720,6 +745,11 @@ func (b *fb) unary(e *syntax.UnaryExpr, dst int) int {
 		x := b.value(e.X, -1)
 		r := b.out(dst, bc.KBool)
 		b.emit(op("NOT"), r, x)
+		return r
+	case syntax.TILDE:
+		x := b.value(e.X, -1)
+		r := b.out(dst, bc.KInt)
+		b.emit(op("BNOT"), r, x)
 		return r
 	case syntax.SUB:
 		if lit, ok := e.X.(*syntax.BasicLit); ok && lit.Kind == syntax.INT && b.rawType(e) == check.Int {
@@ -821,6 +851,12 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 	return b.binop(e.Op, x, y, xt, yt, b.rawType(e), dst)
 }
 
+// intOps are the int operators' instructions.
+var intOps = map[syntax.Token]string{
+	syntax.ADD: "ADDI", syntax.SUB: "SUBI", syntax.MUL: "MULI", syntax.QUO: "DIVI", syntax.REM: "MODI",
+	syntax.AMP: "BAND", syntax.PIPE: "BOR", syntax.CARET: "BXOR", syntax.SHL: "SHL", syntax.SHR: "SHR",
+}
+
 // binop applies a binary operator to registers x and y.
 func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) int {
 	switch o {
@@ -890,7 +926,7 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 		return r
 	}
 	r := b.out(dst, bc.KInt)
-	b.emit(op(map[syntax.Token]string{syntax.ADD: "ADDI", syntax.SUB: "SUBI", syntax.MUL: "MULI", syntax.QUO: "DIVI", syntax.REM: "MODI"}[o]), r, x, y)
+	b.emit(op(intOps[o]), r, x, y)
 	return r
 }
 

@@ -125,7 +125,7 @@ func TestDocumentTypes(t *testing.T) {
 	if x["CFBundleDocumentTypes"] == nil || x["LSSupportsOpeningDocumentsInPlace"] != true {
 		t.Errorf("plistExtras: %v", x)
 	}
-	// asuka/sdk/library has the key already: once in the plist.
+	// asuka/library has the key already: once in the plist.
 	app.cfg.iosTrue = []string{"LSSupportsOpeningDocumentsInPlace"}
 	if _, ok := app.cfg.plistExtras()["LSSupportsOpeningDocumentsInPlace"]; ok {
 		t.Error("LSSupportsOpeningDocumentsInPlace twice")

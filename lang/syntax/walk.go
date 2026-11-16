@@ -34,8 +34,8 @@ func Walk(v Visitor, n Node) {
 	// Declarations.
 	case *TypeParam:
 		walk(n.Name)
-		if n.Constraint != nil {
-			walk(n.Constraint)
+		for _, t := range n.Constraints {
+			walk(t)
 		}
 	case *Param:
 		walk(n.Name)
@@ -156,6 +156,9 @@ func Walk(v Visitor, n Node) {
 		}
 		if n.Value != nil {
 			walk(n.Value)
+		}
+		if n.Else != nil {
+			walk(n.Else)
 		}
 	case *AppDecl:
 		walk(n.Body)
@@ -355,6 +358,19 @@ func Walk(v Visitor, n Node) {
 	case *LetCond:
 		walk(n.Pattern)
 		walk(n.Value)
+	case *CondList:
+		for _, x := range n.List {
+			walk(x)
+		}
+	case *JumpExpr:
+		if n.Value != nil {
+			walk(n.Value)
+		}
+	case *CatchExpr:
+		walk(n.X)
+		for _, c := range n.Catches {
+			walk(c)
+		}
 
 	// Types.
 	case *NamedType:
@@ -390,7 +406,10 @@ func Walk(v Visitor, n Node) {
 		walk(n.Value)
 	case *CasePat:
 		walkIdents(v, n.Path)
-		for _, a := range n.Args {
+		for i, a := range n.Args {
+			if l := n.Label(i); l != nil {
+				walk(l)
+			}
 			walk(a)
 		}
 	case *TuplePat:

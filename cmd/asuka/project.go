@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/boot"
@@ -55,86 +52,25 @@ func (a *asukaApp) displayName() string {
 	return a.name
 }
 
-// sdkPrefix is the Go import path the feature tables (featurePermissions,
-// iosFeatures, …) name the standard library's packages under, as they
-// were written for Go apps: asuka/location is sdkPrefix + "location".
-const sdkPrefix = "github.com/egoist/asuka/sdk/"
+// deps are the packages the program imports, all the way down, by
+// import path (asuka/location, @acme/charts).
+func (a *asukaApp) deps() []string { return a.used().ImportList() }
 
-// goPath is the feature tables' name of the package an Asuka import
-// names: asuka/location's is sdkPrefix + "location"; a dependency's
-// (@acme/charts) is itself.
-func goPath(imp string) string {
-	if rest, ok := strings.CutPrefix(imp, "asuka/"); ok {
-		return sdkPrefix + rest
-	}
-	return imp
-}
+// imports reports whether the program imports pkg (asuka/location).
+func (a *asukaApp) imports(pkg string) bool { return a.used().Import(pkg) }
 
-// deps are the packages the app imports, as the feature tables name
-// them, and the prelude's (app, ui), which every app has.
-func (a *asukaApp) deps() []string {
-	out := []string{"github.com/egoist/asuka/app", "github.com/egoist/asuka/ui"}
-	for _, imp := range a.used().ImportList() {
-		out = append(out, goPath(imp))
-	}
-	return out
-}
+// refs reports whether the program refers to pkg's member (pkg "": the
+// prelude's, as Video), from outside pkg: the app's code or a
+// dependency's.
+func (a *asukaApp) refs(pkg, member string) bool { return a.used().Ref(pkg, member) }
 
-// imports reports whether the app imports the package the feature
-// tables name pkg (sdkPrefix + "location").
-func (a *asukaApp) imports(pkg string) bool {
-	if pkg == "github.com/egoist/asuka/app" || pkg == "github.com/egoist/asuka/ui" {
-		return true
-	}
-	return slices.Contains(a.deps(), pkg)
-}
-
-// hasSymbol reports whether the app uses what a feature table names by
-// its Go symbol ("github.com/egoist/asuka/sdk/location.RequestAlways",
-// ".../sdk/push.(*Message).From"): it imports the package, and its
-// sources name the function (location.requestAlways, or RequestAlways).
-// The prelude's (ui.WebView, app.ShareSheet) are the names alone.
-func (a *asukaApp) hasSymbol(sym string) bool {
-	pkg, fn := splitSymbol(sym)
-	if !a.imports(pkg) {
-		return false
-	}
-	return a.names(fn)
-}
-
-// names reports whether the sources name fn, or fn with its first letter
-// lower-case (Asuka's functions).
-func (a *asukaApp) names(fn string) bool {
-	u := a.used()
-	if u.Names[fn] {
-		return true
-	}
-	r, n := utf8.DecodeRuneInString(fn)
-	return u.Names[string(unicode.ToLower(r))+fn[n:]]
-}
-
-// used is what the app's sources import and name (nothing, for an app
+// used is what the program imports and refers to (nothing, for an app
 // whose sources weren't read).
 func (a *asukaApp) used() *appbuild.Uses {
 	if a.uses == nil {
 		return &appbuild.Uses{}
 	}
 	return a.uses
-}
-
-// splitSymbol splits a Go symbol into its package's path and its
-// function's (or method's) name.
-func splitSymbol(sym string) (pkg, fn string) {
-	slash := strings.LastIndexByte(sym, '/')
-	dot := strings.IndexByte(sym[slash+1:], '.')
-	if dot < 0 {
-		return sym, ""
-	}
-	pkg, fn = sym[:slash+1+dot], sym[slash+1+dot+1:]
-	if i := strings.LastIndexByte(fn, '.'); i >= 0 {
-		fn = fn[i+1:] // (*T).M
-	}
-	return pkg, fn
 }
 
 // loadApp reads the app in dir: its asuka.toml, its dependencies
@@ -170,12 +106,12 @@ func (a *asukaApp) refresh() {
 	}
 	a.uses = a.proj.Uses()
 	deps := a.deps()
-	a.cfg.permissionsFor(deps)
 	if err := a.cfg.depManifests(a.packageDirs(), a.uses); err != nil {
 		fmt.Fprintln(os.Stderr, "asuka:", err)
 	}
+	a.cfg.permissionsFor(deps)
+	a.cfg.addDerived()
 	a.cfg.displayName = a.displayName()
-	a.cfg.useICloud(a)
 }
 
 // compile compiles the app to its module, printing its diagnostics; an

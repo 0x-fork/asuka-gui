@@ -274,6 +274,22 @@ func (c *completer) valueMembers(t check.Type, optional bool, dot int) {
 		}
 		c.add(it, prioMember)
 	}
+	if p, ok := inner.(*check.TypeParam); ok {
+		// A constrained type parameter: its interfaces' members.
+		for _, i := range p.Ifaces {
+			tn := i.Obj
+			if tn.Iface == nil {
+				continue
+			}
+			s := i.Subst()
+			for _, f := range tn.Iface.Fields {
+				addItem(CompletionItem{Label: f.Name, Kind: kindField, Detail: typeStr(s.Apply(f.Type))})
+			}
+			for _, m := range tn.Iface.Methods {
+				addItem(c.callItem(m.Name, kindMethod, imethSig(m), "", m.Sig != nil && len(m.Sig.Params) > 0))
+			}
+		}
+	}
 	if n, ok := inner.(*check.Named); ok {
 		s := n.Subst()
 		tn := n.Obj
@@ -574,7 +590,7 @@ var (
 	componentKeywords = []string{"prop", "event", "state", "let", "use", "provide", "fn", "async", "task", "effect", "pub"}
 	viewKeywords      = []string{"if", "for", "match"}
 	stmtKeywords      = []string{"let", "var", "if", "for", "while", "match", "return", "throw", "break", "continue", "defer", "do", "emit", "try", "await"}
-	exprKeywords      = []string{"true", "false", "none", "if", "match", "await", "try", "load", "spawn"}
+	exprKeywords      = []string{"true", "false", "none", "if", "match", "await", "try", "load", "spawn", "throw", "return"}
 )
 
 func (c *completer) keywords(ks []string) {

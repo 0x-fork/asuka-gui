@@ -6,6 +6,7 @@
 //   ?T       an optional T (null)
 //   [T       an array of T
 //   {T       a map from string to T (a JSON object)
+//   <T       a Set<T> (a JSON array; an element written twice is one)
 //   S<name>; a struct, by its shape's name: an object with its fields
 //   E<name>; an enum: a payloadless case is its name as a string; a case
 //            with a payload is {"case": [fields...]} or {"case": {...}} by

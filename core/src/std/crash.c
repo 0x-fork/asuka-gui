@@ -66,13 +66,106 @@
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
+#else
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <io.h>
+#include <process.h>
+#include <sys/stat.h>
 #endif
 
 // ak_app_crash: the app compiled into the build reads its crash reports
 // (lang/cgen sets it).
 bool ak_app_crash;
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+// Windows: the POSIX calls the record makes, on Win32's wide calls (paths
+// are UTF-8), and flock on LockFileEx. A lock there is mandatory: a live
+// run's .crash file can't be read, which nothing does but to try its
+// lock.
+#ifndef EWOULDBLOCK
+#define EWOULDBLOCK EAGAIN
+#endif
+#define LOCK_SH 1
+#define LOCK_EX 2
+#define LOCK_NB 4
+
+typedef long long w_ssize;
+#define ssize_t w_ssize
+
+static wchar_t *wpath(const char *p) {
+	int n = MultiByteToWideChar(CP_UTF8, 0, p, -1, NULL, 0);
+	if (n <= 0) n = 1;
+	wchar_t *w = ak_alloc((size_t)n * sizeof *w);
+	w[0] = 0;
+	MultiByteToWideChar(CP_UTF8, 0, p, -1, w, n);
+	return w;
+}
+
+static int w_open(const char *path, int flags, int mode) {
+	(void)mode;
+	wchar_t *w = wpath(path);
+	int fd = _wopen(w, flags | _O_BINARY | _O_NOINHERIT, _S_IREAD | _S_IWRITE);
+	ak_free(w);
+	return fd;
+}
+
+static int w_unlink(const char *path) {
+	wchar_t *w = wpath(path);
+	BOOL ok = DeleteFileW(w);
+	ak_free(w);
+	return ok ? 0 : -1;
+}
+
+static int w_rename(const char *from, const char *to) {
+	wchar_t *a = wpath(from), *b = wpath(to);
+	BOOL ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
+	ak_free(a);
+	ak_free(b);
+	return ok ? 0 : -1;
+}
+
+static int w_mkdir(const char *path, int mode) {
+	(void)mode;
+	size_t n = strlen(path);
+	if (n == 2 && path[1] == ':') {  // a drive
+		errno = EEXIST;
+		return -1;
+	}
+	wchar_t *w = wpath(path);
+	BOOL ok = CreateDirectoryW(w, NULL);
+	DWORD e = ok ? 0 : GetLastError();
+	// One there already: some shares say so as access denied.
+	DWORD a = ok ? 0 : GetFileAttributesW(w);
+	ak_free(w);
+	if (ok) return 0;
+	errno = e == ERROR_ALREADY_EXISTS || (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY)) ? EEXIST : ENOENT;
+	return -1;
+}
+
+static int flock(int fd, int op) {
+	HANDLE h = (HANDLE)_get_osfhandle(fd);
+	if (h == INVALID_HANDLE_VALUE) return -1;
+	OVERLAPPED o = {0};
+	DWORD f = (op & LOCK_EX ? LOCKFILE_EXCLUSIVE_LOCK : 0) | (op & LOCK_NB ? LOCKFILE_FAIL_IMMEDIATELY : 0);
+	if (LockFileEx(h, f, 0, MAXDWORD, MAXDWORD, &o)) return 0;
+	errno = EWOULDBLOCK;
+	return -1;
+}
+
+#define open(p, f, ...) w_open(p, f, 0)
+#define read(fd, b, n) _read(fd, b, (unsigned)(n))
+#define write(fd, b, n) _write(fd, b, (unsigned)(n))
+#define close _close
+#define fsync _commit
+#define getpid _getpid
+#define unlink w_unlink
+#define rename w_rename
+#define mkdir w_mkdir
+#endif
+
 
 #define MAX_BREADCRUMBS 100
 #define MAX_REPORTS 50
@@ -558,7 +651,7 @@ static bool mkdirs(const char *path) {
 	if (n >= sizeof buf) return false;
 	memcpy(buf, path, n + 1);
 	for (size_t i = 1; i <= n; i++) {
-		if (buf[i] != '/' && buf[i] != 0) continue;
+		if (buf[i] != '/' && buf[i] != '\\' && buf[i] != 0) continue;
 		char c = buf[i];
 		buf[i] = 0;
 		if (mkdir(buf, 0700) != 0 && errno != EEXIST) return false;
@@ -611,6 +704,25 @@ static bool write_file(const char *path, const void *p, size_t n) {
 	return ok;
 }
 
+#if defined(_WIN32)
+static bool exists(const char *path) {
+	wchar_t *w = wpath(path);
+	bool ok = GetFileAttributesW(w) != INVALID_FILE_ATTRIBUTES;
+	ak_free(w);
+	return ok;
+}
+
+static int64_t mtime_ms(const char *path) {
+	WIN32_FILE_ATTRIBUTE_DATA a;
+	wchar_t *w = wpath(path);
+	BOOL ok = GetFileAttributesExW(w, GetFileExInfoStandard, &a);
+	ak_free(w);
+	if (!ok) return 0;
+	// 100 ns since 1601 to milliseconds since 1970.
+	uint64_t t = (uint64_t)a.ftLastWriteTime.dwHighDateTime << 32 | a.ftLastWriteTime.dwLowDateTime;
+	return (int64_t)(t / 10000) - 11644473600000LL;
+}
+#else
 static bool exists(const char *path) {
 	struct stat st;
 	return stat(path, &st) == 0;
@@ -625,21 +737,41 @@ static int64_t mtime_ms(const char *path) {
 	return (int64_t)st.st_mtim.tv_sec * 1000 + st.st_mtim.tv_nsec / 1000000;
 #endif
 }
+#endif
 
 static int cmp_names(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
 
 // list_dir is a directory's names, sorted (free with free_names).
 static char **list_dir(const char *path, uint32_t *count) {
 	*count = 0;
+	AK_VEC(char *) v = {0};
+#if defined(_WIN32)
+	char *pat = path_join(path, "*");
+	wchar_t *w = wpath(pat);
+	ak_free(pat);
+	WIN32_FIND_DATAW fd;
+	HANDLE h = FindFirstFileW(w, &fd);
+	ak_free(w);
+	if (h == INVALID_HANDLE_VALUE) return NULL;
+	do {
+		if (fd.cFileName[0] == '.') continue;
+		int n = WideCharToMultiByte(CP_UTF8, 0, fd.cFileName, -1, NULL, 0, NULL, NULL);
+		if (n <= 0) continue;
+		char *name = ak_alloc((size_t)n);
+		WideCharToMultiByte(CP_UTF8, 0, fd.cFileName, -1, name, n, NULL, NULL);
+		ak_vec_push(&v, name);
+	} while (FindNextFileW(h, &fd));
+	FindClose(h);
+#else
 	DIR *d = opendir(path);
 	if (!d) return NULL;
-	AK_VEC(char *) v = {0};
 	struct dirent *e;
 	while ((e = readdir(d)) != NULL) {
 		if (e->d_name[0] == '.') continue;
 		ak_vec_push(&v, sdup(e->d_name));
 	}
 	closedir(d);
+#endif
 	if (v.len > 1) qsort(v.data, v.len, sizeof *v.data, cmp_names);
 	*count = v.len;
 	return v.data;
@@ -2595,42 +2727,6 @@ static ak_val b_changed(ak_val *args, uint32_t n) {
 	return (ak_val){.p = f};
 }
 
-#else  // _WIN32: the desktop's Go host keeps the record (sdk/crash)
-
-char *asuka_crash_start(const char *info_json) {
-	AK_UNUSED(info_json);
-	char *s = malloc(1);
-	if (s) *s = 0;
-	return s;
-}
-
-void asuka_crash_notify(void) {}
-void ak_crash_lifecycle(int state) { AK_UNUSED(state); }
-
-static ak_val b_none(ak_val *args, uint32_t n) {
-	AK_UNUSED(args), AK_UNUSED(n);
-	return (ak_val){0};
-}
-
-static ak_val b_reports(ak_val *args, uint32_t n) {
-	AK_UNUSED(args), AK_UNUSED(n);
-	ak_throw_msg("crash: the app's crash reports aren't kept here");
-	return (ak_val){0};
-}
-
-static ak_val b_changed(ak_val *args, uint32_t n) {
-	AK_UNUSED(args), AK_UNUSED(n);
-	return (ak_val){.p = ak_future_new(AK_K_INT)};  // never: nothing comes
-}
-
-#define b_started b_none
-#define b_breadcrumb b_none
-#define b_set b_none
-#define b_record b_none
-#define b_delete b_none
-#define b_version b_none
-
-#endif
 
 const ak_lib_entry ak_std_crash[] = {
 	{"crash.coreStarted", b_started},

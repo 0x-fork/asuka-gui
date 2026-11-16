@@ -1,0 +1,113 @@
+// The Windows host's interaction test app (interaction_test.go): hover,
+// a view's keys around a field, a wheel's pinch, drags within the app,
+// drops from another app, a field's paste.
+
+app {
+  Pad()
+}
+
+component Pad {
+  state log = ""
+  state hover = ""
+  state query = ""
+  state pinches = 0
+  state scale = 1.0
+  state dropped = ""
+  state over = ""
+  state pasted = ""
+  state phases = ""
+
+  Column {
+    padding: 16
+    gap: 8
+    Text("Log:{log}")
+    Text("Hover: {hover}")
+    Text("Pinch: {pinches} {(scale * 100).rounded()}")
+    Text("Dropped: {dropped}")
+    Text("Over: {over}")
+    Text("Pasted: {pasted}")
+    Text("Phases: {phases}")
+    View {
+      padding: 20
+      width: 300
+      background: .secondaryBackground
+      on hoverChange(on) { hover = "{hover} outer{if on { "+" } else { "-" }}" }
+      View {
+        width: 80
+        height: 40
+        background: .separator
+        on hoverChange(on) { hover = "{hover} inner{if on { "+" } else { "-" }}" }
+        Text("Inner")
+      }
+      Text("Outer")
+    }
+    Column {
+      keys: [
+        Shortcut(key: "up", run: () => { log = "{log} col-up" }),
+        Shortcut(key: "enter", run: () => { log = "{log} col-enter" }),
+        Shortcut(key: "d", primary: true, run: () => { log = "{log} col-ctrl-d" }),
+        Shortcut(key: "e", control: true, run: () => { log = "{log} col-control-e" }),
+        Shortcut(key: "g", alt: true, run: () => { log = "{log} col-alt-g" }),
+        Shortcut(key: "f5", shift: true, run: () => { log = "{log} col-shift-f5" }),
+      ]
+      TextField {
+        bind text: query
+        placeholder: "Search"
+        keys: [Shortcut(key: "up", run: () => { log = "{log} field-up" })]
+        on submit { log = "{log} submitted" }
+      }
+    }
+    View {
+      width: 120
+      height: 40
+      background: .separator
+      on pinch(g) {
+        pinches += 1
+        scale = g.scale
+      }
+      Text("Pinch here")
+    }
+    Row {
+      gap: 8
+      View {
+        width: 100
+        height: 40
+        background: .separator
+        dragItems: [DragItem(text: "Card", mime: "application/x-card", value: "c1")]
+        on dragPhase(p) { phases = "{phases} {p}" }
+        Text("Card")
+      }
+      View {
+        width: 160
+        height: 60
+        background: .secondaryBackground
+        dropTypes: ["application/x-card", "text/plain"]
+        on dropOver(on) { over = "{over} col{if on { "+" } else { "-" }}" }
+        on drop(d) {
+          dropped = "{dropped} col:{d.items.count()}:{d.local}"
+          for it in d.items { dropped = "{dropped}:{it.value}{it.text}" }
+        }
+        Text("Column")
+        View {
+          width: 60
+          height: 40
+          background: .separator
+          dropTypes: ["image/*"]
+          on drop(d) {
+            dropped = "{dropped} photo:{d.items.count()}:{d.copied}"
+            for it in d.items { dropped = "{dropped}:{it.name}:{it.mime}:{it.size}:{it.kind}" }
+          }
+          Text("Photo")
+        }
+      }
+    }
+    TextField {
+      bind text: query
+      placeholder: "Paste here"
+      pasteTypes: ["image/*"]
+      on paste(items) {
+        for it in items { pasted = "{pasted} {it.name}:{it.mime}:{it.size}" }
+      }
+    }
+  }
+}

@@ -98,8 +98,13 @@ What the Go runtime's packages did becomes the hosts':
   - it connects with `asuka_dev_connect`;
   - a change to the app's C or Swift rebuilds it.
 
-Shared C for Windows and Linux (Ed25519, SHA-512, the JSON the state
-files need, the updater's staging) lives in platform/desktop.
+Shared C for Windows and Linux (the JSON the state files need, files,
+the app's settings and directories, window and route state, flyouts'
+places, Asuka's own words, animated images) lives in platform/desktop.
+The updater's portable part (the feed, channels, versions, Ed25519,
+deltas) is the standard library's `asuka/update`, in Asuka with C
+builtins in the core; a host answers only its `update` module (whether
+it can install, the download, putting a staged update in place).
 
 ## Native packages on the desktop
 
@@ -306,7 +311,20 @@ Each ends with its tests green.
 - [ ] **H1** The macOS host in Swift: every view, navigation, windows, menus, the
       tray, the host's modules; `asuka dev` and `asuka build` for the Mac
       without Go.
-- [ ] **H2** The Windows host in C, likewise.
+- [x] **H2** The Windows host in C, likewise:
+  - platform/windows: C17 on Win32, the common controls v6, GDI+'s flat
+    API, DWM, Direct3D 11, WebView2, UI Automation and WinRT through COM
+    vtables; every view kind, navigation, core-virtualized lists, windows,
+    the menu bar and its accelerators, flyouts, drag and drop, rich text,
+    the host's modules (`update` among them), crash records, single
+    instance, the window and route state;
+  - platform/desktop: the C it shares with the Linux host;
+  - `asuka build --platform windows` links the host, the core and the
+    app compiled to C into one executable, with Zig from any system;
+    `asuka dev`'s player is the host and the core, connecting with
+    `asuka_dev_connect`;
+  - `go test ./platform/windows`: apps built and driven in Windows (on
+    Windows, or a VM); host/windows and internal/windows removed.
 - [ ] **H3** The Linux host in C, likewise.
 - [ ] **G2** The updater, crash records and the state files in the hosts;
       conformance and e2e on the new hosts.

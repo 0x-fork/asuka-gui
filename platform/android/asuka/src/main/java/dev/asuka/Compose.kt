@@ -7,10 +7,33 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Telephony
 import android.text.Html
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+
+private var launches = 0
+
+/**
+ * Starts intent and calls back once the user is back in the app; failed
+ * if it couldn't start (an ActivityNotFoundException: no app takes it).
+ */
+internal fun AsukaRuntime.launchAndWait(intent: Intent, back: () -> Unit, failed: (Exception) -> Unit) {
+    val act = activity ?: return failed(Exception("no screen"))
+    var launcher: ActivityResultLauncher<Intent>? = null
+    launcher = act.activityResultRegistry.register("asuka-launch-${launches++}", ActivityResultContracts.StartActivityForResult()) {
+        launcher?.unregister()
+        back()
+    }
+    try {
+        launcher.launch(intent)
+    } catch (e: Exception) {
+        launcher.unregister()
+        failed(e)
+    }
+}
 
 /*
  * asuka/sdk/compose's module. "mail" (JSON: to, cc, bcc, subject, body, html,

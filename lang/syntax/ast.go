@@ -168,8 +168,8 @@ func (d *ImportDecl) PathString() string {
 // A TypeParam is a generic parameter: T, or T: Hashable.
 type TypeParam struct {
 	Span
-	Name       *Ident
-	Constraint Type // nil for none
+	Name        *Ident
+	Constraints []Type // T: A & B; none for none
 }
 
 // A Param is a parameter of a function, a component's header, an event
@@ -366,15 +366,19 @@ type StateDecl struct {
 
 // A LetDecl is let pattern: Type = value, or var …. At the top level and
 // in a component's or a store's body a let is a memo; in statements, an
-// immutable local, and a var a mutable one.
+// immutable local, and a var a mutable one. In statements, let pattern
+// = value else { … } (Else set) binds what the pattern matches, an
+// optional's value for a name, and runs the else block, which must
+// leave, when it doesn't match.
 type LetDecl struct {
 	Span
 	Trivia
 	Pub     Pos
 	Keyword Token // LET or VAR
 	Pattern Pattern
-	Type    Type // nil: inferred
-	Value   Expr // nil only after an error
+	Type    Type   // nil: inferred
+	Value   Expr   // nil only after an error
+	Else    *Block // let … else { … }; nil for none
 }
 
 // An AppDecl is app { … }: the app's root.
@@ -527,7 +531,7 @@ type SlotItem struct {
 type IfStmt struct {
 	Span
 	Trivia
-	Cond Expr   // an Expr, or a *LetCond
+	Cond Expr   // an Expr, a *LetCond, or a *CondList of them
 	Then *Block // never nil
 	Else Node   // nil, an *IfStmt or a *Block
 }
@@ -548,7 +552,7 @@ type ForStmt struct {
 type WhileStmt struct {
 	Span
 	Trivia
-	Cond Expr // an Expr, or a *LetCond
+	Cond Expr // an Expr, a *LetCond, or a *CondList of them
 	Body *Block
 }
 
@@ -843,7 +847,7 @@ type MapEntry struct {
 // An IfExpr is if cond { a } else { b } as a value.
 type IfExpr struct {
 	Span
-	Cond Expr
+	Cond Expr // as IfStmt's
 	Then *Block
 	Else Node // an *IfExpr or a *Block; nil only after an error
 }
@@ -862,6 +866,38 @@ type LetCond struct {
 	Span
 	Pattern Pattern
 	Value   Expr
+}
+
+// A CondList is a condition of clauses separated by commas, as an if's
+// or a while's: if let a = x, let b = y, a > b { … }. Each clause is a
+// bool Expr or a *LetCond, in any order; a later one sees what an
+// earlier one binds, and the condition holds when every clause does
+// (they're tried in order, and stop at the first that doesn't). A
+// condition of one clause is that clause, not a CondList.
+type CondList struct {
+	Span
+	List []Expr
+}
+
+// A JumpExpr is throw err, return [value], break or continue used as a
+// value: x ?? throw E.missing, x ?? return, a match arm's or a lambda's
+// body. It never has a value: its type is never, which fits wherever a
+// value of any type is expected. On a line of its own, each is a
+// statement (ThrowStmt, ReturnStmt, BranchStmt), not a JumpExpr.
+type JumpExpr struct {
+	Span
+	Tok   Token // THROW, RETURN, BREAK or CONTINUE
+	Value Expr  // throw's error, return's value; nil for none
+}
+
+// A CatchExpr is x catch … { … }…: x's value, or when x throws, the
+// value of the first catch clause that takes the error (its block's
+// last expression, or the block leaves); an error no clause takes goes
+// on. The clauses are DoStmt's: try parsePort(s) catch e { 80 }.
+type CatchExpr struct {
+	Span
+	X       Expr
+	Catches []*CatchClause
 }
 
 // A BadExpr is an expression that didn't parse.
@@ -891,6 +927,9 @@ func (*MapExpr) exprNode()        {}
 func (*IfExpr) exprNode()         {}
 func (*MatchExpr) exprNode()      {}
 func (*LetCond) exprNode()        {}
+func (*CondList) exprNode()       {}
+func (*JumpExpr) exprNode()       {}
+func (*CatchExpr) exprNode()      {}
 func (*BadExpr) exprNode()        {}
 
 // ---------------------------------------------------------------------
@@ -974,9 +1013,20 @@ type LitPat struct {
 type CasePat struct {
 	Span
 	Implicit bool     // .name: the case of the type that's expected
-	Path     []*Ident // the case's qualified name
+	Path     []*Ident // the case's qualified name, or a struct's (P(x: 0, y))
 	Args     []Pattern
-	Lparen   Pos // NoPos without parentheses
+	// Labels are the Args' labels (x: 0), nil where one has none; nil
+	// when none has one.
+	Labels []*Ident
+	Lparen Pos // NoPos without parentheses
+}
+
+// Label is the label of argument i, nil when it has none.
+func (c *CasePat) Label(i int) *Ident {
+	if i < len(c.Labels) {
+		return c.Labels[i]
+	}
+	return nil
 }
 
 // A TuplePat is (a, b).

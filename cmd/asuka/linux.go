@@ -405,8 +405,8 @@ finish-args:
 `, app.displayName(), app.bundleID, rt, exe, dirs, flatpakExtraArgs(app.cfg))
 }
 
-// flatpakExtraArgs are the finish-args the app's packages need
-// (featureFlatpak), as the manifest's lines.
+// flatpakExtraArgs are the finish-args the app's packages need (their
+// manifests' linux.flatpak), as the manifest's lines.
 func flatpakExtraArgs(c *appConfig) string {
 	var b strings.Builder
 	for _, a := range c.flatpakArgs {

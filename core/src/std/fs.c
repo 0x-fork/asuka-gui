@@ -696,12 +696,16 @@ static bool make_dir(const ak_str *p) {
 	wchar_t *w = wide(p);
 	if (!w) return false;
 	bool ok = CreateDirectoryW(w, NULL) != 0;
-	if (!ok && GetLastError() == ERROR_ALREADY_EXISTS) {
+	DWORD e = ok ? 0 : GetLastError();
+	if (!ok) {
+		// One there already: some shares say so as access denied.
 		DWORD a = GetFileAttributesW(w);
-		ok = a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY);
-		if (!ok) failed(FAIL_EXISTS, "a file is there");
-	} else if (!ok) {
-		failed_os();
+		if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY)) ok = true;
+		else if (e == ERROR_ALREADY_EXISTS) failed(FAIL_EXISTS, "a file is there");
+		else {
+			SetLastError(e);
+			failed_os();
+		}
 	}
 	ak_free(w);
 	return ok;

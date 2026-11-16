@@ -14,16 +14,21 @@ type Info struct {
 	// Convs: an expression whose value converts implicitly where it's
 	// used (an int literal to a float aside, which is typed float): to
 	// an optional, an interface, a Length, Edges.
-	Convs    map[syntax.Expr]Type
-	Ctxs     map[syntax.Node]*FuncCtx // the functions closures make: lambdas, handlers, tasks, effects, spawn, bindings
-	Cases    map[*syntax.CasePat]*Case
-	Catches  map[*syntax.CatchClause]*CatchInfo
-	Fors     map[*syntax.ForStmt]*ForInfo
-	Elements map[*syntax.CallExpr]*ElementCall
-	Matches  map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
-	Lets     map[*syntax.LetDecl]Type   // a local let's or var's type
-	Emits    map[*syntax.EmitStmt]*Member
-	Binds    map[*syntax.OnHandler][]*Var // an on handler's parameters
+	Convs map[syntax.Expr]Type
+	Ctxs  map[syntax.Node]*FuncCtx // the functions closures make: lambdas, handlers, tasks, effects, spawn, bindings
+	Cases map[*syntax.CasePat]*Case
+	// FieldPats: a struct pattern's (P(x: 0, y)) fields, per argument
+	// (nil where one names none).
+	FieldPats map[*syntax.CasePat][]*Field
+	Catches   map[*syntax.CatchClause]*CatchInfo
+	Fors      map[*syntax.ForStmt]*ForInfo
+	Elements  map[*syntax.CallExpr]*ElementCall
+	Matches   map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
+	// ViewConds: a view's if whose condition is a chain (ViewCondChain).
+	ViewConds map[*syntax.IfStmt]*ViewCond
+	Lets      map[*syntax.LetDecl]Type // a local let's or var's type
+	Emits     map[*syntax.EmitStmt]*Member
+	Binds     map[*syntax.OnHandler][]*Var // an on handler's parameters
 	// Trailing: a call's trailing block, as the closure it passes.
 	Trailing map[*syntax.CallExpr]*syntax.LambdaExpr
 	// SlotCalls: a slot named after a function, in a statement, read as
@@ -58,10 +63,12 @@ func newInfo() *Info {
 		Convs:      map[syntax.Expr]Type{},
 		Ctxs:       map[syntax.Node]*FuncCtx{},
 		Cases:      map[*syntax.CasePat]*Case{},
+		FieldPats:  map[*syntax.CasePat][]*Field{},
 		Catches:    map[*syntax.CatchClause]*CatchInfo{},
 		Fors:       map[*syntax.ForStmt]*ForInfo{},
 		Elements:   map[*syntax.CallExpr]*ElementCall{},
 		Matches:    map[syntax.Node]*MatchInfo{},
+		ViewConds:  map[*syntax.IfStmt]*ViewCond{},
 		Lets:       map[*syntax.LetDecl]Type{},
 		Emits:      map[*syntax.EmitStmt]*Member{},
 		Binds:      map[*syntax.OnHandler][]*Var{},
@@ -115,8 +122,9 @@ type Call struct {
 	// SelfCall: a method of the enclosing type, called by name (self's,
 	// or the env's).
 	SelfCall bool
-	Optional bool // x?.f(): none when x is
-	Index    int  // CallNative: the method's number, from 1
+	Optional bool   // x?.f(): none when x is
+	Index    int    // CallNative: the method's number, from 1
+	Name     string // CallIface, CallNative: the method's name
 	// Awaited: animate(…) awaited, which returns once it's complete.
 	Awaited bool
 	// TrKey is CallTr's message; Args are its arguments, by its Params.
@@ -176,6 +184,7 @@ const (
 	ForMap                // (key, value) in a map
 	ForEnumerated         // (i, x) in xs.enumerated()
 	ForStream             // for await x in a stream
+	ForSet                // x in a set, in insertion order
 )
 
 // ForInfo is a for loop's iteration.

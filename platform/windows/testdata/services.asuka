@@ -1,0 +1,120 @@
+// More of the host's modules (modules_test.go's TestServices): a toast
+// shown and found in the notification center, a global hot key, recent
+// documents, start at login, the taskbar's progress and badge, and what
+// Windows hasn't (contacts' access, widgets).
+import asuka/json
+import asuka/platform
+
+struct Spec {
+  id: string
+  title: string
+  body: string
+  thread: string
+}
+
+struct Shown {
+  id: string = ""
+  title: string = ""
+  thread: string = ""
+}
+
+fn text(b: bytes) -> string = b.string()
+
+component Services(file: string) {
+  state toast = "?"
+  state hotkey = "?"
+  state recent = "?"
+  state login = "?"
+  state dock = "?"
+  state contacts = "?"
+  state widget = "?"
+  Column {
+    gap: 4; padding: 8
+    Text("toast: {toast}")
+    Text("hotkey: {hotkey}")
+    Text("recent: {recent}")
+    Text("login: {login}")
+    Text("dock: {dock}")
+    Text("contacts: {contacts}")
+    Text("widget: {widget}")
+  }
+
+  task {
+    do {
+      let ok = try await platform.call("notify", "request", bytes())
+      let _ = try await platform.call("notify", "schedule", json.encode(Spec(id: "t1", title: "Hello", body: "From the test", thread: "th")).bytes())
+      let s = try await platform.call("notify", "showing", bytes())
+      let list: [Shown] = try json.decode(s.string())
+      let mine = list.filter(x => x.id == "t1")
+      let _ = try await platform.call("notify", "removeThread", "th".bytes())
+      let after: [Shown] = try json.decode((try await platform.call("notify", "showing", bytes())).string())
+      toast = "enabled:{platform.readU8(ok, 0)} shown:{mine.count()} {mine.map(x => x.title).joined(",")} after:{after.filter(x => x.id == "t1").count()}"
+    } catch e {
+      toast = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let args = platform.u32(7).concat(platform.u8(3)).concat(platform.str("F9")).concat("test".bytes())
+      let _ = try await platform.call("hotkey", "register", args)
+      let _ = try await platform.call("hotkey", "unregister", platform.u32(7))
+      hotkey = "registered"
+    } catch e {
+      hotkey = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let _ = try await platform.call("recent", "add", file.bytes())
+      let l = try await platform.call("recent", "list", bytes())
+      let _ = try await platform.call("recent", "clear", bytes())
+      let l2 = try await platform.call("recent", "list", bytes())
+      recent = "{text(l).count() > 2} {text(l2)}"
+    } catch e {
+      recent = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let _ = try await platform.call("login", "set", platform.u8(1))
+      let on = try await platform.call("login", "enabled", bytes())
+      let _ = try await platform.call("login", "set", platform.u8(0))
+      let off = try await platform.call("login", "enabled", bytes())
+      let at = try await platform.call("login", "openedAtLogin", bytes())
+      login = "{platform.readU8(on, 0)}{platform.readU8(off, 0)}{platform.readU8(at, 0)}"
+    } catch e {
+      login = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      platform.send("dock", "progress", platform.u8(1).concat(platform.f64(0.5)))
+      let _ = try await platform.call("notify", "badge", platform.u32(3))
+      let a = try await platform.call("dock", "attention", platform.u8(0))
+      dock = "attention {a.count()}"
+    } catch e {
+      dock = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let b = try await platform.call("contacts", "request", bytes())
+      contacts = "{platform.readU8(b, 0)}"
+      let _ = try await platform.call("contacts", "list", bytes())
+    } catch e {
+      contacts = "{contacts} {e.message}"
+    }
+    do {
+      let _ = try await platform.call("widget", "set", bytes())
+    } catch e {
+      widget = e.message
+    }
+  }
+}
+
+app { Services(file: "SERVICES_FILE") }

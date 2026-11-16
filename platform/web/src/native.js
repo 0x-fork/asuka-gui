@@ -9,8 +9,7 @@
 // milliseconds; a []byte is a Uint8Array; a map is an object.
 
 import * as appFS from "./fs.js";
-import { pickFiles, download } from "./modules/system.js";
-import { typeOf } from "./modules/system-clipboard.js";
+import { pickFiles, download, typeOf } from "./files.js";
 import { css } from "./color.js";
 
 /** fs is the app's files (the page's own file system): readFile, writeFile, blobURL... for a package's JavaScript. */

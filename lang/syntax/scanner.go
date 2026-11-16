@@ -158,8 +158,9 @@ func (s *Scanner) newlineCounts() bool {
 	}
 	switch s.last {
 	case NEWLINE, SEMICOLON, LBRACE, LPAREN, LBRACK, DOTBRACE, COMMA, COLON,
-		ADD, SUB, MUL, QUO, REM,
+		ADD, SUB, MUL, QUO, REM, AMP, CARET, TILDE, SHL,
 		ASSIGN, ADD_ASSIGN, SUB_ASSIGN, MUL_ASSIGN, QUO_ASSIGN, REM_ASSIGN, COALESCE_ASSIGN,
+		AND_ASSIGN, OR_ASSIGN, XOR_ASSIGN, SHL_ASSIGN,
 		EQL, NEQ, LSS, LEQ, GEQ, LAND, LOR, COALESCE,
 		OPTDOT, FATARROW, ARROW, RANGE, RANGELT, PERIOD, PIPE, ELSE:
 		return false
@@ -329,18 +330,44 @@ redo:
 	case '!':
 		tok = s.alt('=', NEQ, NOT)
 	case '<':
-		tok = s.alt('=', LEQ, LSS)
+		switch s.ch {
+		case '=':
+			s.next()
+			tok = LEQ
+		case '<':
+			s.next()
+			tok = s.alt('=', SHL_ASSIGN, SHL)
+		default:
+			tok = LSS
+		}
 	case '>':
 		tok = s.alt('=', GEQ, GTR)
 	case '&':
-		if s.ch == '&' {
+		switch s.ch {
+		case '&':
 			s.next()
 			tok = LAND
-		} else {
-			s.error(start, "unexpected '&' (did you mean '&&'?)")
+		case '=':
+			s.next()
+			tok = AND_ASSIGN
+		default:
+			tok = AMP
 		}
 	case '|':
-		tok = s.alt('|', LOR, PIPE)
+		switch s.ch {
+		case '|':
+			s.next()
+			tok = LOR
+		case '=':
+			s.next()
+			tok = OR_ASSIGN
+		default:
+			tok = PIPE
+		}
+	case '^':
+		tok = s.alt('=', XOR_ASSIGN, CARET)
+	case '~':
+		tok = TILDE
 	case '@':
 		tok = AT
 	case '?':
@@ -435,6 +462,10 @@ func isHex(ch rune) bool {
 	return '0' <= ch && ch <= '9' || 'a' <= ch && ch <= 'f' || 'A' <= ch && ch <= 'F'
 }
 
+func isBinary(ch rune) bool { return ch == '0' || ch == '1' }
+
+func isOctal(ch rune) bool { return '0' <= ch && ch <= '7' }
+
 func (s *Scanner) ident() {
 	for isLetter(s.ch) || isDigit(s.ch) || s.ch >= utf8.RuneSelf && unicode.IsDigit(s.ch) {
 		s.next()
@@ -464,18 +495,30 @@ func (s *Scanner) digits(ok func(rune) bool) {
 func (s *Scanner) number() Token {
 	start := s.offset
 	tok := INT
-	if s.ch == '0' && (s.peek() == 'x' || s.peek() == 'X') {
-		s.next()
-		s.next()
-		if !isHex(s.ch) {
-			s.error(start, "a hexadecimal number needs digits after 0x")
+	if s.ch == '0' {
+		var ok func(rune) bool
+		var base, prefix string
+		switch s.peek() {
+		case 'x', 'X':
+			ok, base, prefix = isHex, "a hexadecimal", "0x"
+		case 'b', 'B':
+			ok, base, prefix = isBinary, "a binary", "0b"
+		case 'o', 'O':
+			ok, base, prefix = isOctal, "an octal", "0o"
 		}
-		s.digits(isHex)
-		if isLetter(s.ch) {
-			s.error(s.offset, "unexpected "+strconv.QuoteRune(s.ch)+" in a hexadecimal number")
-			s.ident()
+		if ok != nil {
+			s.next()
+			s.next()
+			if !ok(s.ch) {
+				s.error(start, base+" number needs digits after "+prefix)
+			}
+			s.digits(ok)
+			if isLetter(s.ch) || isDigit(s.ch) {
+				s.error(s.offset, "unexpected "+strconv.QuoteRune(s.ch)+" in "+base+" number")
+				s.ident()
+			}
+			return INT
 		}
-		return INT
 	}
 	s.digits(isDigit)
 	if s.ch == '.' && isDigit(rune(s.peek())) {

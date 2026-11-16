@@ -54,7 +54,8 @@ static void reindex(ak_map *m, uint32_t nslots) {
 ak_map *ak_map_mut(ak_map **mp) {
 	ak_map *m = *mp;
 	if (ak_unique(m)) return m;
-	ak_map *c = ak_map_new(key_kind(m), m->h.flags & 1, val_kind(m), m->vshape);
+	ak_map *c = ak_map_new(key_kind(m), m->h.flags & AK_MAP_STRKEYS, val_kind(m), m->vshape);
+	c->h.flags = m->h.flags;
 	for (uint32_t i = 0; i < m->len; i++) {
 		if (m->dead[i]) continue;
 		ak_retain_val(m->keys[i], key_kind(m));

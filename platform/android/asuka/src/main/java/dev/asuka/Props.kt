@@ -328,12 +328,12 @@ fun AsukaRuntime.propBool(id: Int, prop: Int, v: Boolean) {
         AsukaProp.A11Y_HIDDEN -> view.importantForAccessibility =
             if (v) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         else -> if (!setNavProp(n, prop, v)) when (n.kind) {
-            AsukaKind.VIDEO -> (view as AsukaVideo).let {
+            AsukaKind.VIDEO -> (view as AsukaVideo).player?.let {
                 when (prop) {
                     AsukaProp.Video.HIDE_CONTROLS -> it.setControls(!v)
                     AsukaProp.Video.AUTO_PLAY -> it.autoPlay = v
                     AsukaProp.Video.LOOP -> it.loop = v
-                    AsukaProp.Video.MUTED -> it.player.volume = if (v) 0f else 1f
+                    AsukaProp.Video.MUTED -> it.muted = v
                 }
             }
             AsukaKind.TEXT_FIELD -> when (prop) {
@@ -549,7 +549,7 @@ fun AsukaRuntime.propEnum(id: Int, prop: Int, v: Int) {
             }
         })
         else -> if (!setNavProp(n, prop, v)) when (n.kind) {
-            AsukaKind.VIDEO -> if (prop == AsukaProp.Video.MODE) (view as AsukaVideo).setFill(v == AsukaImageMode.FILL)
+            AsukaKind.VIDEO -> if (prop == AsukaProp.Video.MODE) (view as AsukaVideo).player?.setFill(v == AsukaImageMode.FILL)
             AsukaKind.BUTTON -> if (prop == AsukaProp.Button.VARIANT) replaceButton(n, v)
             AsukaKind.TEXT_FIELD -> {
                 val e = view as EditText

@@ -1,0 +1,141 @@
+// Struct patterns in match: fields matched by name, bound, nested,
+// left out.
+
+struct Point {
+  x: int
+  y: int
+}
+
+struct Line {
+  from: Point
+  to: Point
+  dashed: bool = false
+}
+
+enum Shape {
+  dot(Point)
+  segment(line: Line)
+  none
+}
+
+fn where(p: Point) -> string = match p {
+  Point(x: 0, y: 0) => "origin"
+  Point(x: 0, y) => "on the y axis at {y}"
+  Point(x, y: 0) => "on the x axis at {x}"
+  Point(x: px, y: py) => "at {px}, {py}"
+}
+
+fn kind(l: Line) -> string = match l {
+  Line(from: Point(x: 0, y: 0), dashed: true) => "dashed from the origin"
+  Line(from: Point(x: 0, y: 0)) => "from the origin"
+  Line(from, to: Point(x: tx, y: 0), dashed: false) => "to the x axis at {tx}, from {from.x}"
+  Line(dashed) => "a line, dashed: {dashed}"
+}
+
+fn describe(s: Shape) -> string = match s {
+  .dot(Point(x: 0, y: 0)) => "a dot at the origin"
+  .dot(Point(x, y)) => "a dot at {x}, {y}"
+  .segment(line: Line(dashed: true)) => "a dashed segment"
+  .segment(line: l) => "a segment of {where(l.to)}"
+  .none => "nothing"
+}
+
+fn flags(p: Point?) -> string = match p {
+  none => "no point"
+  Point(x: 1) => "x is one"
+  Point(y) => "y is {y}"
+}
+
+fn bothBools(t: (bool, Line)) -> int = match t {
+  (true, Line(dashed: true)) => 1
+  (true, Line(dashed: false)) => 2
+  (false, _) => 3
+}
+
+struct Box<T> {
+  item: T
+  label: string
+}
+
+fn unbox(b: Box<int?>) -> string = match b {
+  Box(item: none, label) => "empty {label}"
+  Box(item: 0) => "zero"
+  Box(item: n) => "{n!}"
+}
+
+test "matching" {
+  print(where(Point(x: 0, y: 0)))
+  print(where(Point(x: 0, y: 4)))
+  print(where(Point(x: 3, y: 0)))
+  print(where(Point(x: 1, y: 2)))
+  let o = Point(x: 0, y: 0)
+  print(kind(Line(from: o, to: Point(x: 5, y: 5), dashed: true)))
+  print(kind(Line(from: o, to: Point(x: 5, y: 5))))
+  print(kind(Line(from: Point(x: 7, y: 1), to: Point(x: 2, y: 0))))
+  print(kind(Line(from: Point(x: 7, y: 1), to: Point(x: 2, y: 3), dashed: true)))
+  print(describe(.dot(o)))
+  print(describe(.dot(Point(x: 1, y: 1))))
+  print(describe(.segment(line: Line(from: o, to: o, dashed: true))))
+  print(describe(.segment(line: Line(from: o, to: Point(x: 0, y: 9)))))
+  print(describe(.none))
+  print(flags(none))
+  print(flags(Point(x: 1, y: 5)))
+  print(flags(Point(x: 2, y: 5)))
+  print(bothBools((true, Line(from: o, to: o))))
+  print(unbox(Box(item: none, label: "a")))
+  print(unbox(Box(item: 0, label: "b")))
+  print(unbox(Box(item: 42, label: "c")))
+}
+
+test "if let and statements" {
+  let p = Point(x: 2, y: 3)
+  if let Point(x: 2, y) = p {
+    print("x is 2, y is {y}")
+  }
+  match Line(from: p, to: p) {
+    Line(from: Point(x), to: Point(y)) => print("{x} {y}")
+  }
+}
+
+// A literal matches an optional's value.
+fn named(s: string?) -> string = match s {
+  "a" => "the letter a"
+  none => "nothing"
+  _ => "something else"
+}
+
+test "literals of optionals" {
+  print(named("a"))
+  print(named(none))
+  print(named("b"))
+}
+
+// Output:
+// origin
+// on the y axis at 4
+// on the x axis at 3
+// at 1, 2
+// dashed from the origin
+// from the origin
+// to the x axis at 2, from 7
+// a line, dashed: true
+// a dot at the origin
+// a dot at 1, 1
+// a dashed segment
+// a segment of on the y axis at 9
+// nothing
+// no point
+// x is one
+// y is 5
+// 2
+// empty a
+// zero
+// 42
+// ok matching
+// x is 2, y is 3
+// 2 3
+// ok if let and statements
+// the letter a
+// nothing
+// something else
+// ok literals of optionals

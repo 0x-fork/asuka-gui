@@ -2,9 +2,42 @@ name = "asuka/location"
 version = "0.1.0"
 description = "Where the device is: now, as it moves, and with the app out of sight"
 
+# Where the device is, with the app in front.
 [ios]
-usage = { NSLocationWhenInUseUsageDescription = "To show where you are.", NSLocationAlwaysAndWhenInUseUsageDescription = "To follow where you go, with the app closed too." }
-backgroundModes = ["location"]
+usage = { NSLocationWhenInUseUsageDescription = "To show where you are." }
 
 [android]
-permissions = ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.POST_NOTIFICATIONS"]
+permissions = ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"]
+
+# The background part costs only the apps that use it (Google Play reviews
+# ACCESS_BACKGROUND_LOCATION; App Review, the location background mode).
+
+# Always: its purpose string, and Android's background permission.
+[uses.requestAlways.ios]
+usage = { NSLocationAlwaysAndWhenInUseUsageDescription = "To follow where you go, with the app closed too." }
+
+[uses.requestAlways.android]
+permissions = ["android.permission.ACCESS_BACKGROUND_LOCATION"]
+
+# Temporary full accuracy: its purposes, with asuka.toml's
+# ios.locationPurposes.
+[uses.requestPrecise.ios]
+derived = ["locationPrecise"]
+
+# Updates out of sight: the location background mode; Android's foreground
+# service of the location type and its notification, and the receiver
+# their PendingIntents (and a reboot, which clears them) go to.
+[uses.startUpdates.ios]
+backgroundModes = ["location"]
+
+[uses.startUpdates.android]
+permissions = ["android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.POST_NOTIFICATIONS", "android.permission.RECEIVE_BOOT_COMPLETED"]
+application = [
+  '<service android:name="asuka.location.LocationService" android:exported="false" android:foregroundServiceType="location" />',
+  '<receiver android:name="asuka.location.LocationReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter></receiver>',
+]
+
+# Regions: the receiver their PendingIntents (and a reboot) go to.
+[uses.monitor.android]
+permissions = ["android.permission.RECEIVE_BOOT_COMPLETED"]
+application = ['<receiver android:name="asuka.location.LocationReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter></receiver>']

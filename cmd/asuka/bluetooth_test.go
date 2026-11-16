@@ -8,23 +8,25 @@ import (
 	"testing"
 )
 
-// An app that imports asuka/sdk/bluetooth gets its permissions, its
-// purpose string and the Flatpak's bus name; asuka.toml's bluetooth
-// adds the background modes and the location from scans.
+// An app that imports asuka/bluetooth gets its permissions, its purpose
+// string, its module's uses-feature and the Flatpak's bus name;
+// asuka.toml's bluetooth adds the background modes and the location from
+// scans.
 func TestBluetoothConfig(t *testing.T) {
-	deps := []string{"github.com/egoist/asuka/ui", bluetoothPackage}
 	var c appConfig
-	c.permissionsFor(deps)
+	importStd(t, &c, "", "bluetooth")
 	m := c.androidManifest(false)
 	for _, want := range []string{
 		`<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />`,
 		`<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />`,
 		`<uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />`,
-		`<uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />`,
 	} {
 		if !strings.Contains(m, want) {
 			t.Errorf("the manifest has no %s:\n%s", want, m)
 		}
+	}
+	if mod := stdAndroidManifest(t, "bluetooth"); !strings.Contains(mod, `<uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />`) {
+		t.Errorf("asuka/bluetooth's module's manifest:\n%s", mod)
 	}
 	if strings.Contains(m, "AsukaBluetoothScanReceiver") || strings.Contains(m, "LOCATION") {
 		t.Errorf("background scanning without asking for it:\n%s", m)
@@ -48,16 +50,18 @@ func TestBluetoothConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bg.permissionsFor(append(deps, "github.com/egoist/asuka/sdk/location"))
+	importStd(t, bg, "", "bluetooth", "location")
 	m = bg.androidManifest(false)
 	for _, want := range []string{
 		`<uses-permission android:name="android.permission.BLUETOOTH_SCAN" />`,
 		`<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />`,
-		`<receiver android:name="dev.asuka.AsukaBluetoothScanReceiver" android:exported="false" />`,
 	} {
 		if !strings.Contains(m, want) {
 			t.Errorf("the manifest has no %s:\n%s", want, m)
 		}
+	}
+	if strings.Contains(m, "AsukaBluetoothScanReceiver") {
+		t.Errorf("the host's old scan receiver:\n%s", m)
 	}
 	if n := strings.Count(m, "ACCESS_FINE_LOCATION"); n != 1 {
 		t.Errorf("ACCESS_FINE_LOCATION %d times:\n%s", n, m)
@@ -69,7 +73,7 @@ func TestBluetoothConfig(t *testing.T) {
 	// A background mode asked for, without the package: nothing.
 	var none appConfig
 	none.Bluetooth.Background = []string{"central"}
-	none.permissionsFor([]string{"github.com/egoist/asuka/ui"})
+	importStd(t, &none, "")
 	if len(none.plistArrays["UIBackgroundModes"]) != 0 || len(none.androidApp) != 0 {
 		t.Errorf("without the package: %v %v", none.plistArrays, none.androidApp)
 	}

@@ -317,9 +317,13 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		w("R[%d].i = (int64_t)(0 - (uint64_t)R[%d].i);", a[0], a[1])
 	case "ADDIK":
 		w("R[%d].i = (int64_t)((uint64_t)R[%d].i + (uint64_t)(int64_t)%d);", a[0], a[1], int16(a[2]))
-	case "EQI", "NEI", "LTI", "LEI", "BAND", "BOR":
-		op := map[string]string{"EQI": "==", "NEI": "!=", "LTI": "<", "LEI": "<=", "BAND": "&", "BOR": "|"}[name]
+	case "EQI", "NEI", "LTI", "LEI", "BAND", "BOR", "BXOR":
+		op := map[string]string{"EQI": "==", "NEI": "!=", "LTI": "<", "LEI": "<=", "BAND": "&", "BOR": "|", "BXOR": "^"}[name]
 		w("R[%d].i = R[%d].i %s R[%d].i;", a[0], a[1], op, a[2])
+	case "BNOT":
+		w("R[%d].i = ~R[%d].i;", a[0], a[1])
+	case "SHL", "SHR":
+		w("if (!ak_op_shift(R, %d, %d, %d, %v)) goto %s;", a[0], a[1], a[2], name == "SHR", h)
 	case "ADDF", "SUBF", "MULF", "DIVF":
 		op := map[string]string{"ADDF": "+", "SUBF": "-", "MULF": "*", "DIVF": "/"}[name]
 		w("R[%d].f = R[%d].f %s R[%d].f;", a[0], a[1], op, a[2])

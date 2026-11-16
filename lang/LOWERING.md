@@ -45,6 +45,7 @@ the built-in functions and methods) into one module.
 | `bytes` | ref | ak_bytes |
 | `[T]` | ref | ak_arr, element kind T's, shape T's |
 | `[K: V]` | ref | ak_map |
+| `Set<T>` | ref | ak_map of T's keys to void values, flagged AK_MAP_SET (core/src/rt/set.c) |
 | struct, tuple | ref | ak_struct with its shape |
 | enum with payloads, or declared `: Error` or having an interface | ref | ak_enum (payloadless cases: shared immortals) |
 | `T?`, T a reference | ref | NULL for none |
@@ -63,6 +64,14 @@ Generic code is compiled once per instantiation (monomorphized). A
 generic store too: its function, its env's shape and its fns are made
 per instantiation (`Box<int>`, `Box<[string]>`), and a let of its type
 parameters is a memo, so its env holds references whatever T is.
+
+A type parameter constrained to interfaces (`<T: Shape & Hashable>`)
+has their methods and fields: the checker records `x.area()` on a T as
+CallIface (and `x.name` as SelIfaceField), and the lowering reads the
+receiver's type with the instantiation's types: a struct's or an enum's
+method is a CALL of it (an enum without payloads, an int, too), a
+struct's field GETF, an interface's value CALLI as ever. `e.message` of
+a `T: Error` is the error's message as for the concrete error type.
 
 Shapes are named so that JSON and hot reload find them: a type of the
 root package or the prelude by its name (`Todo`), of another package by
@@ -111,8 +120,11 @@ calls a closure) runs in a handler that moves the receiver back first.
 ## Functions
 
 - A function is a FuncDef; its parameters are its first registers.
-  Methods take `self` first. Closures capture by value; a `var` a
-  closure captures and changes is a box (VBOX, VGET, VSET).
+  Methods take `self` first. A closure captures a value as it is when
+  the closure is made; a `var` it captures that anything changes (the
+  closure, or the code around it) is a box (VBOX, VGET, VSET), so they
+  share one variable. A `spawn` copies a box's value instead (VGET as
+  it's made: values only).
 - Default arguments are filled in at the call site (a default may use
   only package-level names; a generic function's is lowered with the
   call's type arguments). An enum case's labeled payload left out takes
@@ -176,6 +188,17 @@ calls a closure) runs in a handler that moves the receiver back first.
   matching THROWs it on.
 - `try?` is a handler that turns any error but the cancellation into
   none.
+- `x catch … { … }` is a `do`'s handler range over x, lowered into the
+  expression's register; each clause's block puts its value there (its
+  last expression), or leaves. A void one (`try save() catch { … }`)
+  is a statement's. Clauses that don't take every error leave THROW
+  for the rest, as a `do`'s.
+- `throw`, `return`, `break` and `continue` as values (`x ?? throw E`)
+  lower as their statements; what they give is never read.
+- `let p = v else { … }` tests v as `if let` does (JNONE for a name, the
+  pattern's tests otherwise), jumping to the else block, which leaves;
+  the names are bound after it. A condition chain (`if let a = x, a >
+  0`) is its clauses' tests in order, each jumping to the else.
 - `defer { }` protects the rest of its block: its code is emitted at the
   block's end, before each return, break or continue that leaves it,
   and in a handler that runs it and THROWs the error on.
@@ -183,6 +206,44 @@ calls a closure) runs in a handler that moves the receiver back first.
 - A test's body is in a handler that rethrows a user error as a runtime
   error of its message, so the runner (which reads runtime errors'
   messages) reports it.
+
+## Operators
+
+The int operators are instructions: `+ - * / %` ADDI, SUBI, MULI, DIVI,
+MODI (the last two throw on a zero divisor), `& | ^` BAND, BOR, BXOR,
+`~x` BNOT, `<< >>` SHL and SHR (ops.h's `ak_op_shift`: a count of 64 or
+more shifts every bit out, `>>` keeping the sign; a negative count
+throws, as Go panics). A compound assignment (`x <<= 1`, `xs[i] |= m`)
+is its operator on the place's value, written back as `=` is. `b[i]` of
+bytes is CALLB `bytes.at` (an int; out of range throws, as IDX does).
+`>>` is two adjacent `>` tokens the parser joins, so types' `>>` close
+two generic argument lists.
+
+## Patterns
+
+A pattern is tested (testPattern: jumps to the arm's end unless the
+value matches), then bound (bindPattern: declares its names), so an
+`if let`, a match's arm and a `catch T.case(…)` share them:
+
+| Pattern | Tested | Bound |
+|---|---|---|
+| `x`, `_` | nothing | `x` is the value |
+| `0`, `"a"`, `true` | EQ with the literal (of an optional: JNONE first, then its value) | |
+| `none` | JSOME fails | |
+| `(a, b)` | each element (GETF) | each element's names |
+| `.case(p, q)`, `T.case(label: p)` | ECASE (an int enum: the value), each payload (GETP) | each payload's names |
+| `P(x: 0, y)` (a struct's, check.Info.FieldPats: each argument's field) | each named field's (GETF) | each named field's names |
+| `a \| b` | each in turn | (none) |
+
+In a view's match, each name an arm binds is a memo reading its part of
+the subject (extract), so the arm follows it.
+
+The checker says whether a match covers every value as Maranget's
+"Warnings for pattern matching" does (lang/check/patterns.go): the arms
+without guards as rows of normalized patterns (an enum's cases, a
+struct's or a tuple's one constructor, an optional's none and some, a
+bool's true and false; literals of other types never cover them), and
+what's missing back as patterns for the message.
 
 ## Strings and values as text
 
@@ -347,6 +408,7 @@ a bit per style key its caller set; the component's own sets of that key
 |---|---|
 | `if c { A } else { B }` | `ui.show(thunk{c}, builder{A}, builder{B})` |
 | `if let u = user { A }` | `ui.show(thunk{user != none}, builder{ let u = memo(user!); A })` |
+| `if let a = x, let b = f(a), b > 0 { A }`, `if let .ready(n) = s { A }` | `let m = memo{ the chain's tests; (a, b) or none }; ui.show(thunk{m != none}, builder{ let a = memo(m!.0); let b = memo(m!.1); A })`; a chain without names: `ui.show(thunk{its tests}, builder{A})` |
 | `for x in xs key k { R }` | `ui.for(thunk{xs}, closure(x){k}, closure(xAcc, iAcc){R})`; `x` in R is AGET xAcc |
 | the same, directly in a `List` | `ui.lazy_for(list, …)` with the same arguments |
 | `match s { .a => A; .b(p) => B }` | `ui.switch(thunk{the index of the arm s matches, -1 for none}, closure(arm){ switch on it: A, or { let p = memo(payload of s); B } })` |
@@ -355,7 +417,7 @@ Each builder and row runs under its own owner, which the runtime
 disposes when the branch or row goes.
 
 The selector of a match returns the arm (not the case), so literal,
-tuple and `|` patterns work as in statements; a match in a view takes
+tuple, struct and `|` patterns work as in statements; a match in a view takes
 no guards. A `for` without `key` passes none, and the runtime keys rows
 by their index. Several view items (a component's body, a branch, a
 row) make a fragment (`ui.fragment`, `ui.add` each); a `View?` (an
@@ -884,6 +946,23 @@ packages.
 | `all(a, b, …)`, `race(…)` | the calls as tasks (TASK), CALLB `async.all`/`async.race` over an array of them, AWAIT |
 | `spawn { … }` | CALLB `async.spawn(closure, kind)`, a Task |
 | `print(s)` | CALLB `print` |
+## Sets
+
+A set is the runtime's insertion-ordered map with void values, flagged
+AK_MAP_SET (rt.h's `ak_set_*`): copied on write, compared (EQ: the same
+elements, in any order), deep-copied for spawn, frozen and kept across
+reloads as a map is.
+
+| Source | Lowered |
+|---|---|
+| `["a", "b"]` where a `Set<string>` is expected, `Set<T>()`, a left-out payload's zero | CALLB `set.of(kind, elements…)` |
+| `Set(xs)` | CALLB `set.from(xs)` (the first of equal elements first) |
+| `s.contains(x)`, `insert`, `remove`, `isEmpty`, `union`, `intersection`, `subtracting`, `isSubset(of:)`, `isSuperset(of:)` | `set.has`, `set.insert` and `set.remove` (inout, as an array's `push`), `set.is_empty`, `set.union`, ... |
+| `s.count()` | LEN |
+| `for x in s { … }` | s into a local (a change in the body copies it), then i = 0 and, at the top, i = CALLB `set.next(s, i)` (the first live entry from i, -1 past the last), x = CALLB `set.elem(s, i)`: no allocation |
+| `for x in s key x { … }` in a view | `ui.for` of a thunk returning `map.keys(s)` |
+| JSON, `<T` | an array of the elements; decoding one, an element written twice is one |
+
 ## Built-in methods
 
 The built-in types' methods are a table (lang/check/methods.go's

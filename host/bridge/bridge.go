@@ -1,7 +1,8 @@
-//go:build darwin || linux || windows
+//go:build darwin || linux
 
 // Package bridge drives Asuka's C core from a host written in Go: the
-// desktop hosts (host/darwin, host/windows, host/linux). The core is a
+// Go desktop hosts (host/darwin, host/linux; Windows's is C, the core
+// linked in). The core is a
 // library (libasuka: the core, its VM, and an app compiled to C or
 // loaded as bytecode) that the host loads with purego, without cgo, and
 // talks to through core/include/asuka.h, as the Swift and Kotlin hosts
@@ -72,11 +73,8 @@ var (
 
 // LibName is the core library's file name on this system.
 func LibName() string {
-	switch runtime.GOOS {
-	case "darwin":
+	if runtime.GOOS == "darwin" {
 		return "libasuka.dylib"
-	case "windows":
-		return "asuka.dll"
 	}
 	return "libasuka.so"
 }
@@ -197,7 +195,7 @@ var cbs = func() *callbacks {
 			c.h.Post(func() { c.runPosted() })
 			return 0
 		}),
-		// Floats can't cross purego's callbacks everywhere (Windows), so
+		// Floats can't cross purego's callbacks everywhere, so
 		// the host takes measure_v: the four inputs and two outputs by
 		// pointer.
 		measureV: purego.NewCallback(func(id uintptr, in, out unsafe.Pointer) uintptr {

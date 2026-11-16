@@ -7,7 +7,7 @@
 | `ios` | `<Name>.ipa`，已为 App Store 签名 | 装有 Xcode 的 Mac | TestFlight、App Store（`asuka publish`） |
 | `android` | `<Name>.aab`，用你的上传密钥签名 | 装有 JDK、Android SDK 和 NDK 的任意系统 | Google Play（`asuka publish`） |
 | `mac` | `<Name>.app`，通用二进制；或 `.pkg`（`--appstore`） | 装有 Xcode 命令行工具的 Mac | 签名并公证后供用户下载；Mac App Store |
-| `windows` | `<Name>/`，内含 `.exe`、`asuka.dll` 及其资源 | 装有 clang 的 Windows，或装有 Zig 的任意系统 | zip 压缩包，或你自己制作的安装程序、MSIX |
+| `windows` | `<Name>/`，内含 `.exe` 及其资源 | 装有 clang 的 Windows，或装有 Zig 的任意系统 | zip 压缩包，或你自己制作的安装程序、MSIX |
 | `linux` | `linux/`：一个安装前缀目录、一个 `.tar.gz`、一份 Flatpak 清单 | 装有 C 编译器的 Linux，或装有 Zig 的任意系统 | `.tar.gz`、Flatpak |
 | `web` | `web/`，一个静态网站 | 装有 Zig 的任意系统 | 任意 Web 服务器或 CDN |
 
@@ -195,7 +195,7 @@ asuka build --platform windows               # x64，Windows on Arm 上以模拟
 asuka build --platform windows --arch arm64  # 在 Arm PC 上原生运行
 ```
 
-这会生成一个文件夹 `dist/<Name>`：`<Name>.exe` 是桌面宿主；旁边是 `asuka.dll`，即编译进了应用的核心，在 Windows 上由 clang、在其他系统上由 Zig 为对应架构构建；`asuka-app.json` 是应用的设置；然后是应用的资源；使用了 sqlite 插件的应用还会带上同一架构的 SQLite 库 `asqlite.dll`（它只依赖每台 Windows 10 和 11 都自带的通用 C 运行时 Universal C Runtime）。`.exe` 是一个 GUI 程序（不会弹出控制台窗口），链接进了各种资源：Windows 所需各尺寸的图标、版本信息（来自 `version` 和 `build`），以及一份面向 Windows 10 和 11 的清单（manifest），声明使用通用控件 6、支持每显示器 DPI 感知和 UTF-8。如果应用目录里有自己的 `.syso` 文件（`rsrc_windows_amd64.syso`），就改用其中的资源。最后，把文件夹打成 zip，或者打包成安装程序、MSIX。
+这会生成一个文件夹 `dist/<Name>`：`<Name>.exe` 就是应用本身，Windows 宿主、核心和编译成 C 的应用链接成一个程序，在 Windows 上由 clang、在任意系统上由 Zig 为对应架构构建；旁边的 `asuka-app.json` 是应用的设置；然后是应用的资源；使用了 sqlite 插件的应用还会带上同一架构的 SQLite 库 `asqlite.dll`（它只依赖每台 Windows 10 和 11 都自带的通用 C 运行时 Universal C Runtime）。`.exe` 是一个 GUI 程序（不会弹出控制台窗口），链接进了各种资源：Windows 所需各尺寸的图标、版本信息（来自 `version` 和 `build`），以及一份面向 Windows 10 和 11 的清单（manifest），声明使用通用控件 6、支持每显示器 DPI 感知和 UTF-8。如果应用目录里有自己的资源目标文件（COFF 格式的 `.syso`，如 `rsrc_windows_amd64.syso`），就改用其中的资源。最后，把文件夹打成 zip，或者打包成安装程序、MSIX。
 
 为了让 SmartScreen 知道这个 `.exe` 出自谁手，要用导出为 `.pfx` 的代码签名证书给它签名：
 
@@ -203,7 +203,7 @@ asuka build --platform windows --arch arm64  # 在 Arm PC 上原生运行
 ASUKA_WINDOWS_CERT=cert.pfx ASUKA_WINDOWS_CERT_PASSWORD=... asuka build --platform windows
 ```
 
-构建会用 SHA-256 签名，并为签名加盖时间戳，这样证书过期后签名依然有效。时间戳取自第一个响应的 RFC 3161 服务器：先尝试 `ASUKA_WINDOWS_TIMESTAMP` 中列出的服务器（逗号分隔），没有设置的话依次尝试 DigiCert、Sectigo 和 GlobalSign。如果都没有响应，构建会失败并说明原因；设置 `ASUKA_WINDOWS_TIMESTAMP=none` 则不加时间戳（这样签名会随证书一起失效）。在 Windows 上用 `signtool` 签名（来自 Windows SDK；优先用 `PATH` 中的，否则用已安装的最新版本），在其他系统上用 `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`），`asuka.dll` 和 `asqlite.dll` 也会一并签名。不设置 `ASUKA_WINDOWS_CERT` 时，`.exe` 不会被签名。如果证书存放在硬件令牌或云服务（Azure Trusted Signing）中，就要用它们自己的工具签名：构建完成后，用那个工具为文件夹中的 `.exe`（以及 `asqlite.dll`）签名。
+构建会用 SHA-256 签名，并为签名加盖时间戳，这样证书过期后签名依然有效。时间戳取自第一个响应的 RFC 3161 服务器：先尝试 `ASUKA_WINDOWS_TIMESTAMP` 中列出的服务器（逗号分隔），没有设置的话依次尝试 DigiCert、Sectigo 和 GlobalSign。如果都没有响应，构建会失败并说明原因；设置 `ASUKA_WINDOWS_TIMESTAMP=none` 则不加时间戳（这样签名会随证书一起失效）。在 Windows 上用 `signtool` 签名（来自 Windows SDK；优先用 `PATH` 中的，否则用已安装的最新版本），在其他系统上用 `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`），`asqlite.dll` 也会一并签名。不设置 `ASUKA_WINDOWS_CERT` 时，`.exe` 不会被签名。如果证书存放在硬件令牌或云服务（Azure Trusted Signing）中，就要用它们自己的工具签名：构建完成后，用那个工具为文件夹中的 `.exe`（以及 `asqlite.dll`）签名。
 
 会显示通知的应用（`asuka/notify`）第一次运行时，会在用户的开始菜单里创建一个快捷方式，因为 Windows 要求应用有快捷方式才能发送 toast 通知。快捷方式的 AppUserModelID 取 `asuka.toml` 的 `id`（没有的话就根据应用名称生成一个）。
 

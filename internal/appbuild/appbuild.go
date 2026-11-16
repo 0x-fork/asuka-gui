@@ -19,6 +19,7 @@ import (
 
 	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/compile"
 	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/std"
@@ -78,6 +79,8 @@ type Project struct {
 	Local []string
 	// File, for a project of one file (asuka run file.asuka), is that file.
 	File string
+	// uses is what Uses last found.
+	uses *Uses
 }
 
 // Load reads the project in dir (or the one file dir names): its
@@ -208,45 +211,172 @@ func (p *Project) Sources() []string {
 	return out
 }
 
-// Uses is what the project's sources import and name: the packages
-// (asuka/location, @acme/charts) and the identifiers (WebView, Video),
-// which decide what a platform's build needs (permissions, the parts of
-// a host that link frameworks of their own). Files that don't parse
-// count for what they declare before the error.
+// Uses is what the program (the project and every package it imports,
+// all the way down) imports and refers to, as the checker resolved it,
+// which decides what a platform's build needs: a package's manifest's
+// needs (asuka.toml), and those of its members (its [uses.<member>]
+// tables), the parts of a host that link frameworks of their own.
 type Uses struct {
+	// Imports are the packages imported anywhere in the program, by
+	// import path (asuka/location, @acme/charts).
 	Imports map[string]bool
-	Names   map[string]bool
+	// Refs are the members referred to from outside the package that
+	// declares them, anywhere in the program (a dependency that calls
+	// location.requestAlways counts as the app would): "<import
+	// path>.<name>" for a package's function, type, store, state or let
+	// (asuka/location.requestAlways), "<import path>.<Type>.<name>" for a
+	// member of its type (asuka/icloud.Value.set); the prelude's by name
+	// alone (Video). Test blocks' don't count: they aren't the app's.
+	Refs map[string]bool
 }
 
-// Imports reports whether the project imports pkg.
+// Import reports whether the program imports pkg.
 func (u *Uses) Import(pkg string) bool { return u.Imports[pkg] }
 
-// Uses reads the project's sources for what they import and name.
-func (p *Project) Uses() *Uses {
-	u := &Uses{Imports: map[string]bool{}, Names: map[string]bool{}}
-	fset := syntax.NewFileSet()
-	for _, f := range p.Sources() {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			continue
-		}
-		file, _ := syntax.ParseFile(fset, f, b)
-		if file == nil {
-			continue
-		}
-		for _, im := range file.Imports {
-			if !im.Relative {
-				u.Imports[im.PathString()] = true
-			}
-		}
-		syntax.Inspect(file, func(n syntax.Node) bool {
-			if id, ok := n.(*syntax.Ident); ok {
-				u.Names[id.Name] = true
-			}
-			return true
-		})
+// Ref reports whether the program refers to pkg's member (pkg "": the
+// prelude's), from outside pkg.
+func (u *Uses) Ref(pkg, member string) bool {
+	if pkg == "" {
+		return u.Refs[member]
 	}
+	return u.Refs[pkg+"."+member]
+}
+
+// Uses checks the project's program (nothing more than the checker: no
+// lowering) for what it imports and refers to. A program with errors
+// counts for what the checker resolved.
+func (p *Project) Uses() *Uses {
+	u := &Uses{Imports: map[string]bool{}, Refs: map[string]bool{}}
+	p.uses = u
+	dir := p.Dir
+	if p.File != "" {
+		// One file: a directory of its own, as Compile does.
+		tmp, err := os.MkdirTemp("", "asuka-uses-")
+		if err != nil {
+			return u
+		}
+		defer os.RemoveAll(tmp)
+		b, err := os.ReadFile(p.File)
+		if err != nil {
+			return u
+		}
+		if err := os.WriteFile(filepath.Join(tmp, filepath.Base(p.File)), b, 0o644); err != nil {
+			return u
+		}
+		dir = tmp
+	}
+	res, err := compile.Dir(dir, &compile.Options{CheckOnly: true, NoCatalogs: true})
+	if err != nil || res.Program == nil {
+		return u
+	}
+	usesOf(res.Program, u)
 	return u
+}
+
+// usesOf adds prog's imports and its packages' references to each
+// other's members to u.
+func usesOf(prog *check.Program, u *Uses) {
+	info := prog.Info
+	for _, pkg := range prog.Packages {
+		if pkg.Prelude || pkg == prog.Root {
+			continue
+		}
+		u.Imports[pkg.Path] = true
+	}
+	// ref notes that from refers to name, of decl (nil: the prelude) or
+	// of its type owner.
+	ref := func(from, decl *check.Package, owner *check.TypeName, name string) {
+		if decl == from || decl == nil && owner == nil {
+			return
+		}
+		if owner != nil {
+			if owner.Pkg == from {
+				return
+			}
+			decl, name = owner.Pkg, owner.Name()+"."+name
+		}
+		if decl == nil || decl.Prelude {
+			u.Refs[name] = true
+			return
+		}
+		if decl.Path == "" || strings.HasPrefix(decl.Path, ".") {
+			return // the app's own
+		}
+		u.Refs[decl.Path+"."+name] = true
+	}
+	named := func(t check.Type) *check.TypeName {
+		for {
+			switch x := t.(type) {
+			case *check.Named:
+				return x.Obj
+			case *check.Optional:
+				t = x.Elem
+			default:
+				return nil
+			}
+		}
+	}
+	object := func(from *check.Package, o check.Object) {
+		switch o := o.(type) {
+		case *check.Function:
+			if o.Recv != nil {
+				ref(from, nil, o.Recv, o.Name())
+			} else {
+				ref(from, o.Pkg, nil, o.Name())
+			}
+		case *check.TypeName:
+			ref(from, o.Pkg, nil, o.Name())
+		case *check.Global:
+			if o.Owner != nil {
+				ref(from, nil, o.Owner, o.Name())
+			} else {
+				ref(from, o.Pkg, nil, o.Name())
+			}
+		case *check.Member:
+			if o.Owner != nil {
+				ref(from, nil, o.Owner, o.Name())
+			}
+		}
+	}
+	for _, pkg := range prog.Packages {
+		if pkg.Prelude {
+			continue
+		}
+		for _, f := range pkg.Files {
+			syntax.Inspect(f, func(n syntax.Node) bool {
+				switch n := n.(type) {
+				case *syntax.TestDecl:
+					return false
+				case *syntax.Ident:
+					if o := info.Uses[n]; o != nil {
+						object(pkg, o)
+					}
+				case *syntax.CallExpr:
+					if e := info.Elements[n]; e != nil && e.Comp != nil {
+						object(pkg, e.Comp)
+					}
+					// A method's call (n.from(…)): the method.
+					if c := info.Calls[n]; c != nil && c.Func != nil {
+						object(pkg, c.Func)
+					}
+				case *syntax.MemberExpr:
+					if sel := info.Selections[n]; sel != nil {
+						switch sel.Kind {
+						case check.SelField, check.SelCase, check.SelIfaceField, check.SelMethod:
+							// A method's call has its receiver's type, no object.
+							ref(pkg, nil, named(sel.Recv), sel.Name)
+						case check.SelPkg:
+						default:
+							if sel.Obj != nil {
+								object(pkg, sel.Obj)
+							}
+						}
+					}
+				}
+				return true
+			})
+		}
+	}
 }
 
 // ImportList is u's imports, sorted.
@@ -264,36 +394,14 @@ func (u *Uses) ImportList() []string {
 // std's). The compiler's own (asuka/json, asuka/math) aren't directories,
 // and aren't here.
 func (p *Project) Std() map[string]string {
-	out := map[string]string{}
-	var queue []string
-	for imp := range p.Uses().Imports {
-		queue = append(queue, imp)
+	u := p.uses
+	if u == nil {
+		u = p.Uses()
 	}
-	fset := syntax.NewFileSet()
-	for len(queue) > 0 {
-		imp := queue[0]
-		queue = queue[1:]
-		if _, done := out[imp]; done {
-			continue
-		}
-		dir, ok := std.Package(imp)
-		if !ok {
-			continue
-		}
-		out[imp] = dir
-		files, _ := filepath.Glob(filepath.Join(dir, "*.asuka"))
-		for _, f := range files {
-			b, err := os.ReadFile(f)
-			if err != nil {
-				continue
-			}
-			if file, _ := syntax.ParseFile(fset, f, b); file != nil {
-				for _, im := range file.Imports {
-					if !im.Relative {
-						queue = append(queue, im.PathString())
-					}
-				}
-			}
+	out := map[string]string{}
+	for imp := range u.Imports {
+		if dir, ok := std.Package(imp); ok {
+			out[imp] = dir
 		}
 	}
 	return out

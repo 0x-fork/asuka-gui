@@ -280,8 +280,11 @@ ak_val ak_deep_copy(ak_val v, ak_kind k) {
 		return (ak_val){.p = ak_bytes_new(b->data, b->len)};
 	}
 	case AK_TAG_BOX: {
+		// Its value too: a box of a reference holds it.
 		ak_box *b = (ak_box *)o;
-		return (ak_val){.p = ak_box_new((ak_kind)b->h.aux, b->v)};
+		ak_box *c = ak_box_new((ak_kind)b->h.aux, ak_deep_copy(b->v, (ak_kind)b->h.aux));
+		c->h.flags = b->h.flags;
+		return (ak_val){.p = c};
 	}
 	case AK_TAG_ARR: {
 		ak_arr *a = (ak_arr *)o;
@@ -294,7 +297,8 @@ ak_val ak_deep_copy(ak_val v, ak_kind k) {
 	case AK_TAG_MAP: {
 		ak_map *m = (ak_map *)o;
 		ak_kind kk = (ak_kind)(m->h.aux & 0xf), vk = (ak_kind)(m->h.aux >> 4);
-		ak_map *c = ak_map_new(kk, m->h.flags & 1, vk, m->vshape);
+		ak_map *c = ak_map_new(kk, m->h.flags & AK_MAP_STRKEYS, vk, m->vshape);
+		c->h.flags = m->h.flags;
 		for (uint32_t i = 0; i < m->len; i++) {
 			if (m->dead[i]) continue;
 			ak_map_set(&c, ak_deep_copy(m->keys[i], kk), ak_deep_copy(m->vals[i], vk));

@@ -1,3 +1,64 @@
 name = "asuka/icloud"
 version = "0.1.0"
 description = "iCloud: the account, a key-value store, and files kept on all the user's devices"
+
+# The host's iCloud module (NSUbiquitousKeyValueStore, NSMetadataQuery,
+# NSFileCoordinator), and the Mac's.
+[ios]
+hostFlags = ["ASUKA_ICLOUD"]
+
+[macos]
+hostFlags = ["ASUKA_ICLOUD"]
+
+# The key-value store, and the account (which there's none of to see
+# without the store's entitlement): the store's entitlement, with the
+# app's ID.
+[uses.Value.ios]
+derived = ["icloudKeyValue"]
+
+[uses.remove.ios]
+derived = ["icloudKeyValue"]
+
+[uses.currentAccount.ios]
+derived = ["icloudKeyValue"]
+
+[uses.account.ios]
+derived = ["icloudKeyValue"]
+
+# Documents: the containers' entitlements (asuka.toml's icloud) and
+# Info.plist's NSUbiquitousContainers, for iCloud Drive.
+[uses.container.ios]
+derived = ["icloudDocuments"]
+
+[uses.documents.ios]
+derived = ["icloudDocuments"]
+
+[uses.list.ios]
+derived = ["icloudDocuments"]
+
+[uses.files.ios]
+derived = ["icloudDocuments"]
+
+[uses.download.ios]
+derived = ["icloudDocuments"]
+
+[uses.evict.ios]
+derived = ["icloudDocuments"]
+
+[uses.readFile.ios]
+derived = ["icloudDocuments"]
+
+[uses.writeFile.ios]
+derived = ["icloudDocuments"]
+
+[uses.delete.ios]
+derived = ["icloudDocuments"]
+
+[uses.rename.ios]
+derived = ["icloudDocuments"]
+
+[uses.conflicts.ios]
+derived = ["icloudDocuments"]
+
+[uses.resolve.ios]
+derived = ["icloudDocuments"]
