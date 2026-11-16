@@ -305,7 +305,7 @@ func (l *loader) compile(root *unit) *Result {
 		if u.path != "" {
 			name = u.path[strings.LastIndexByte(u.path, '/')+1:]
 		}
-		u.pkg = c.CheckPackage(u.path, name, u.files, imports)
+		u.pkg = c.CheckPackageIn(u.path, name, u.dir, u.files, imports)
 		u.pkg.Dir = u.dir
 		u.pkg.NativeClass = nativeClass(u)
 		u.state = 2

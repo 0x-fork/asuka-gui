@@ -19,11 +19,11 @@ screen Reply {
     streaming = true
     defer { streaming = false }
     text = ""
-    let reply = try await assets.text("reply.md")
+    let reply = assets.text("reply.md")
     var end = 0
-    while end < reply.count {
+    while end < reply.count() {
       await sleep(12ms)
-      end = min(end + 7, reply.count)
+      end = min(end + 7, reply.count())
       text = reply.slice(0, end)
     }
   }

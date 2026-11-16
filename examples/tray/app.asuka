@@ -177,8 +177,8 @@ test "starts, counts down and resets" {
   let app = mount(Panel(), provide: Timer())
   app.expect("25:00", "Start")
   app.tap("Start")
-  await sleep(3s)
-  app.expect("24:57", "Pause")
+  await app.waitFor("24:57")
+  app.expect("Pause")
   app.tap("Pause")
   app.expect("Start")
 }

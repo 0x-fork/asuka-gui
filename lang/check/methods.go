@@ -149,6 +149,11 @@ var Methods = []*Method{
 	{Recv: "bytes", Name: "hex", Sig: "(separator: string) -> string", Builtin: "bytes.hex", Doc: "the bytes in lowercase hexadecimal, separator between them: \"04 a1\""},
 
 	// Numbers.
+	{Recv: "int", Name: "float", Sig: "() -> float", Special: "i2f", Doc: "the int as a float, as float(n)"},
+	{Recv: "int", Name: "abs", Sig: "() -> int", Builtin: "math.absi"},
+	{Recv: "int", Name: "padded", Sig: "(width: int) -> string", Builtin: "int.padded", Doc: "in decimal, zeros before it up to width digits: 7.padded(2) is 07"},
+	{Recv: "float", Name: "int", Sig: "() -> int", Special: "f2i", Doc: "toward zero, as int(x): x.rounded().int() is the nearest"},
+	{Recv: "float", Name: "abs", Sig: "() -> float", Builtin: "math.absf"},
 	{Recv: "float", Name: "fixed", Sig: "(digits: int) -> string", Builtin: "str.fixed", Doc: "with that many digits after the point: 3.14159.fixed(2) is 3.14"},
 	{Recv: "float", Name: "rounded", Sig: "() -> float", Builtin: "math.round"},
 	{Recv: "float", Name: "floor", Sig: "() -> float", Builtin: "math.floor"},

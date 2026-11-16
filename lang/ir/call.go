@@ -326,6 +326,16 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		return r
 	case "enumerated":
 		return b.enumerated(call, recv, dst)
+	case "i2f", "f2i":
+		x := b.recvValue(call, recv)
+		if m.Special == "i2f" {
+			r := b.out(dst, bc.KFloat)
+			b.emit(op("I2F"), r, x)
+			return r
+		}
+		r := b.out(dst, bc.KInt)
+		b.emit(op("F2I"), r, x)
+		return r
 	}
 	// Arguments first (before the receiver is taken out, when it's
 	// changed in place), in the builtin's order.
@@ -552,6 +562,10 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 			at = b.value(x, -1)
 		}
 		return b.copyTo(b.callB(uiTestMount, bc.KRef, bl, platform, at), dst)
+	case check.BAssetText:
+		return b.copyTo(b.kstr(b.l.info.Assets[e]), dst)
+	case check.BAssetBytes:
+		return b.copyTo(b.callB("str.to_bytes", bc.KRef, b.kstr(b.l.info.Assets[e])), dst)
 	case check.BNavigate:
 		return b.navigate(call, 0)
 	case check.BReplace:

@@ -103,7 +103,13 @@ func (c *Checker) Std(path string) *Package {
 // CheckPackage checks a package's files. imports maps each import path
 // its files use to the package (checked already).
 func (c *Checker) CheckPackage(path, name string, files []*syntax.SourceFile, imports map[string]*Package) *Package {
-	p := &Package{Path: path, Name: name, qualify: path != ""}
+	return c.CheckPackageIn(path, name, "", files, imports)
+}
+
+// CheckPackageIn is CheckPackage of the package in dir, where its
+// assets/ are (assets.text).
+func (c *Checker) CheckPackageIn(path, name, dir string, files []*syntax.SourceFile, imports map[string]*Package) *Package {
+	p := &Package{Path: path, Name: name, Dir: dir, qualify: path != ""}
 	p.Scope = NewScope(c.prelude.Scope)
 	c.checkFiles(p, files, imports)
 	return p

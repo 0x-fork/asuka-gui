@@ -237,6 +237,19 @@ static ak_val str_byte_slice(ak_val *args, uint32_t n) {
 
 // str.pad(s, width, with, end): s with copies of with before it (after it
 // when end) up to width characters.
+// int.padded(width) is the int in decimal, zeros before it up to width
+// digits (a minus sign before them).
+static ak_val int_padded(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t v = A(0).i, w = A(1).i;
+	if (w < 0) w = 0;
+	if (w > 64) w = 64;
+	char buf[96];
+	int len = v < 0 ? snprintf(buf, sizeof buf, "-%0*llu", (int)(w > 0 ? w : 1), (unsigned long long)(0 - (uint64_t)v))
+	                : snprintf(buf, sizeof buf, "%0*lld", (int)(w > 0 ? w : 1), (long long)v);
+	RET_P(ak_str_new(buf, (size_t)len));
+}
+
 static ak_val str_pad(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0), *with = STR(2);
@@ -711,6 +724,7 @@ static ak_val length_points(ak_val *args, uint32_t n) {
 static ak_val m_sin(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(sin(A(0).f)); }
 static ak_val m_cos(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(cos(A(0).f)); }
 static ak_val m_atan2(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(atan2(A(0).f, A(1).f)); }
+static ak_val m_hypot(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(hypot(A(0).f, A(1).f)); }
 static ak_val m_absf(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(fabs(A(0).f)); }
 static ak_val m_absi(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i < 0 ? -A(0).i : A(0).i); }
 static ak_val m_mini(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i < A(1).i ? A(0).i : A(1).i); }
@@ -1116,6 +1130,7 @@ const ak_lib_entry ak_lib[] = {
 	{"str.find_any", str_find_any},
 	{"str.byte_slice", str_byte_slice},
 	{"str.pad", str_pad},
+	{"int.padded", int_padded},
 
 	{"dur.ns", dur_ns},
 	{"dur.ms", dur_ms},
@@ -1181,6 +1196,7 @@ const ak_lib_entry ak_lib[] = {
 	{"math.sin", m_sin},
 	{"math.cos", m_cos},
 	{"math.atan2", m_atan2},
+	{"math.hypot", m_hypot},
 	{"math.absf", m_absf},
 	{"math.absi", m_absi},
 	{"math.mini", m_mini},

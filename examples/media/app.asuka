@@ -50,7 +50,7 @@ screen Images {
         aspectRatio: 16.0 / 9
         radius: 12
         background: .secondaryBackground
-        on load(w, h) { status = "Loaded, {w.fixed(0)}×{h.fixed(0)}" }
+        on loaded(w, h) { status = "Loaded, {w.fixed(0)}×{h.fixed(0)}" }
         on error(m) { status = "Failed: {m}" }
       }
       Text(status) {

@@ -91,7 +91,9 @@ test "adds, completes and deletes a todo" {
   app.type("Walk the dog", into: "What needs doing?")
   app.tap("Add")
   app.expect("Walk the dog", "3 things left")
-  app.tap("Delete")
-  app.expectNo("Buy milk")
+  app.toggle("Walk the dog")
   app.expect("2 things left")
+  app.nextTo("Buy milk").tap("Delete")
+  app.expectNo("Buy milk")
+  app.expect("1 thing left")
 }

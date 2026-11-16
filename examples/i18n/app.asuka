@@ -81,7 +81,7 @@ screen Inbox {
               background: .secondaryBackground
               radius: 12
               padding: [6, 12]
-              Text(i18n.formatNumber(n))
+              Text(i18n.formatNumber(n.float()))
             }
           }
         }

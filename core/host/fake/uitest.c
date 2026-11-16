@@ -1148,7 +1148,7 @@ static bool one(ak_uitest *a, ak_span text, target_ok ok, target *out, ak_buf *e
 		return failure(a, err, "the screen doesn't show \"%.*s\"", text);
 	}
 	if (err) ak_buf_printf(err, "%u things show ", n);
-	return failure(a, err, "\"%.*s\": narrow it with app.in(.content), app.in(.navigationBar), app.in(.toolbar) or app.nextTo(label), or give it a label", text);
+	return failure(a, err, "\"%.*s\": narrow it with app.in(.content), app.in(.navigationBar), app.in(.bottomToolbar) or app.nextTo(label), or give it a label", text);
 }
 
 static void open_menu(ak_uitest *a, ak_fake_view *v, ak_prop p, int64_t base, int64_t sub) {

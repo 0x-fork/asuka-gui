@@ -46,6 +46,8 @@ type Info struct {
 	RoutedScreens map[syntax.Item]*TypeName
 	ScreenRoutes  map[*TypeName][]*ScreenRoute
 	Hrefs         map[*syntax.CallExpr]*Href
+	// Assets: the files assets.text(…) and assets.bytes(…) read.
+	Assets map[*syntax.CallExpr]string
 	// Shaders: shader("""…""")'s programs, compiled.
 	Shaders map[*syntax.CallExpr][]byte
 
@@ -86,6 +88,7 @@ func newInfo() *Info {
 		RoutedScreens: map[syntax.Item]*TypeName{},
 		ScreenRoutes:  map[*TypeName][]*ScreenRoute{},
 		Hrefs:         map[*syntax.CallExpr]*Href{},
+		Assets:        map[*syntax.CallExpr]string{},
 		Imports:       map[*syntax.ImportDecl]*Package{},
 		Expected:      map[syntax.Expr]Type{},
 	}

@@ -8,11 +8,19 @@
 //   if let text = doc.content { TextField { text: text; on change(t) { doc.edit(t) } } }
 //
 // The files are read and written off the main thread by each platform
-// (coordinated with iCloud and other apps on iOS and macOS). What
-// sdk/document also did, a window per document with the File menu on
-// the desktops and a document browser on the phones (Documents<T>,
-// with its editor), needs windows, menus and navigation the C UI
-// runtime doesn't have yet.
+// (coordinated with iCloud and other apps on iOS and macOS).
+//
+// Documents is a text editor's documents, the platform's way: on a
+// desktop a window per document open, with the File menu's New, Open…,
+// Save and Revert; on a phone or in a browser, a list of the app's
+// documents and the one open, each in its editor.
+//
+//   app {
+//     document.Documents(types) { editor: doc => Editor(doc) }
+//   }
+
+import asuka/dialog
+import asuka/fs
 
 /// A kind of file the documents are (list the same in asuka.toml's
 /// fileTypes).
@@ -75,9 +83,16 @@ pub store Document<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) ->
   // edits, counted (what autosave follows).
   state known = 0
   state edits = 0
+  state saves = 0
 
   task {
     await reload()
+  }
+
+  task(saves) {
+    if saves > 0 {
+      await save()
+    }
   }
 
   // A moment after the last edit: saved (cancelled by the next).
@@ -117,6 +132,12 @@ pub store Document<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) ->
   /// read (a conflict).
   pub async fn save() {
     await put(false)
+  }
+
+  /// Saves as soon as it can, as save does, from code that can't wait
+  /// (a key's, a menu item's).
+  pub fn saveSoon() {
+    saves += 1
   }
 
   /// Writes this document's content over the file, whatever changed it.
@@ -159,3 +180,158 @@ pub store Document<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) ->
 /// Opens path as a document: read makes its content of the file's
 /// bytes, write the bytes of its content.
 pub fn open<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) -> bytes) -> Document<T> = Document(path, read, write)
+
+/// Where Documents keeps the documents it makes: Documents in the app's
+/// directory.
+pub fn documentsDir() -> string = fs.join([fs.appDir(), "Documents"])
+
+/// Whether the app runs on a desktop: a window per document, there.
+fn onDesktop() -> bool {
+  let p = environment().platform
+  return p == .macOS || p == .windows || p == .linux
+}
+
+/// A new document's path: Untitled, then Untitled 2, ..., with types'
+/// first extension, in documentsDir.
+fn untitled(types: [Type], taken: [string]) -> string {
+  let ext = types.first()?.extensions.first() ?? "txt"
+  let dir = documentsDir()
+  var n = 1
+  while true {
+    let name = if n == 1 { "Untitled.{ext}" } else { "Untitled {n}.{ext}" }
+    let path = fs.join([dir, name])
+    if !fs.exists(path) && !taken.contains(path) { return path }
+    n += 1
+  }
+  return ""
+}
+
+/// A text editor's documents (UTF-8 text, of types): on a desktop a
+/// window per document open (width by height), the File menu's New
+/// (⌘N), Open… (⌘O), Save (⌘S) and Revert; on a phone or in a browser, a
+/// list of the documents in documentsDir() and the one open. editor
+/// makes a document's view.
+pub component Documents(types: [Type]) {
+  prop width: float = 640
+  prop height: float = 480
+  prop editor: fn(Document<string>) -> View
+  /// The documents open on a desktop (their paths).
+  state open: [string] = []
+
+  fn newDocument() {
+    try? fs.mkdirAll(documentsDir())
+    let path = untitled(types, open)
+    try? fs.writeText(path, "")
+    open.push(path)
+  }
+
+  async fn openDocuments() {
+    let filters = types.map(t => dialog.Filter(name: t.name, extensions: t.extensions))
+    if let paths = try? await dialog.open(filters: filters, multiple: true) {
+      for p in paths {
+        if !open.contains(p) { open.push(p) }
+      }
+    }
+  }
+
+  if onDesktop() {
+    MenuBar {
+      Menu("File") {
+        MenuItem("New") {
+          shortcut: .cmd("n")
+          on press { newDocument() }
+        }
+        MenuItem("Open…") {
+          shortcut: .cmd("o")
+          on press { await openDocuments() }
+        }
+      }
+    }
+    for path in open key path {
+      DocumentWindow(path) {
+        width: width
+        height: height
+        editor: editor
+        on close { open.removeWhere(p => p == path) }
+      }
+    }
+  } else {
+    Stack {
+      DocumentList(types) { editor: editor }
+    }
+  }
+}
+
+/// A document's window, its Save (⌘S) and Revert in its keys and menu.
+component DocumentWindow(path: string) {
+  prop width: float = 640
+  prop height: float = 480
+  prop editor: fn(Document<string>) -> View
+  event close
+  let doc = open(path, read: data => data.string(), write: text => text.bytes())
+
+  Window {
+    title: fs.base(path)
+    file: path
+    edited: doc.state == .edited || doc.state == .conflict
+    width: width
+    height: height
+    on close { emit close }
+    WindowKeys {
+      keys: [
+        Shortcut(key: "s", primary: true, run: () => { doc.saveSoon() }),
+        Shortcut(key: "w", primary: true, run: () => { closeWindow() }),
+      ]
+    }
+    editor(doc)
+  }
+}
+
+/// The documents in documentsDir(), each opening in its editor; New
+/// makes one.
+screen DocumentList(types: [Type]) {
+  prop editor: fn(Document<string>) -> View
+  state paths: [string] = []
+  state made = 0
+
+  title: "Documents"
+  toolbar {
+    Button("New") {
+      icon: "square.and.pencil"
+      on press {
+        try? fs.mkdirAll(documentsDir())
+        let path = untitled(types, paths)
+        try? fs.writeText(path, "")
+        made += 1
+        push(DocumentScreen(path) { editor: editor })
+      }
+    }
+  }
+
+  task(made) {
+    var exts: [string] = []
+    for t in types { exts = exts + t.extensions }
+    let entries = (try? fs.readDir(documentsDir())) ?? []
+    let files = entries.filter(e => !e.isDir && (exts.isEmpty() || exts.contains(fs.ext(e.name).trimPrefix("."))))
+    paths = files.map(e => fs.join([documentsDir(), e.name]))
+  }
+
+  List {
+    for p in paths key p {
+      Row {
+        padding: [12, 16]
+        on press { push(DocumentScreen(p) { editor: editor }) }
+        Text(fs.base(p))
+      }
+    }
+  }
+}
+
+/// A document open on a phone: its editor, saved as it changes.
+screen DocumentScreen(path: string) {
+  prop editor: fn(Document<string>) -> View
+  let doc = open(path, read: data => data.string(), write: text => text.bytes())
+
+  title: fs.base(path)
+  editor(doc)
+}
