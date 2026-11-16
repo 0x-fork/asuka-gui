@@ -281,11 +281,7 @@ func (tc *Toolchain) compileCached(core, what string, srcs, hdrs, flags []string
 		fmt.Fprintln(h, f, len(b))
 		h.Write(b)
 	}
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	dir := filepath.Join(cache, "asuka", what+"-"+tc.Target.String()+"-"+hex.EncodeToString(h.Sum(nil))[:16])
+	dir := cacheDir(what + "-" + tc.Target.String() + "-" + hex.EncodeToString(h.Sum(nil))[:16])
 	return tc.CC.Compile(srcs, filepath.Join(dir, "obj"), flags)
 }
 

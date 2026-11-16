@@ -55,7 +55,7 @@ func run(t *testing.T, m *bc.Module, args ...string) (string, error) {
 		t.Fatal(err)
 	}
 	root, _ := filepath.Abs(".")
-	exe, berr := cbuild.RunnerWith(root, []string{app}, true)
+	exe, berr := cbuild.RunnerWith(root, []string{app}, true, dir)
 	if berr != nil {
 		t.Fatalf("the C the module compiles to doesn't build: %v", berr)
 	}

@@ -106,7 +106,7 @@ func RunC(m *bytecode.Module, sanitize, test bool, pattern string) (string, erro
 	if err := os.WriteFile(app, src, 0o644); err != nil {
 		return "", err
 	}
-	exe, err := cbuild.RunnerWith(core, []string{app}, sanitize)
+	exe, err := cbuild.RunnerWith(core, []string{app}, sanitize, dir)
 	if err != nil {
 		return "", errors.New("the C the module compiles to doesn't build: " + err.Error())
 	}
