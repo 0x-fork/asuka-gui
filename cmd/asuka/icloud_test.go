@@ -196,3 +196,19 @@ func TestMacICloudEntitlements(t *testing.T) {
 		t.Errorf("no store: %v", err)
 	}
 }
+
+// Communication notifications are the apps' that make a message
+// (notify's Notification.from): not those that import asuka/push, whose
+// own Message has a notify.Person.
+func TestConversationsByUse(t *testing.T) {
+	const tail = "\napp { Text(sync.name()) }\n"
+	plain := usesApp(t, "import asuka/push\nimport @test/sync\n\nasync fn reg() {\n  let _ = try? await push.register()\n}\n"+tail, "")
+	if fl := usedFeatures(plain, plain.cfg); !slices.Contains(fl, "ASUKA_PUSH") || slices.Contains(fl, "ASUKA_CONVERSATIONS") ||
+		plain.cfg.entitlements["com.apple.developer.usernotifications.communication"] != nil {
+		t.Errorf("push alone: %v %v", fl, plain.cfg.entitlements)
+	}
+	msg := usesApp(t, "import asuka/notify\nimport @test/sync\n\nasync fn say() {\n  let n = notify.Notification(body: \"hi\").from(notify.Person(name: \"Ann\"), notify.Conversation())\n  try? await notify.show(n)\n}\n"+tail, "")
+	if fl := usedFeatures(msg, msg.cfg); !slices.Contains(fl, "ASUKA_CONVERSATIONS") || msg.cfg.entitlements["com.apple.developer.usernotifications.communication"] != true {
+		t.Errorf("a message: %v %v", fl, msg.cfg.entitlements)
+	}
+}

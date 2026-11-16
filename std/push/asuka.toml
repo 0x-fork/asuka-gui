@@ -14,3 +14,10 @@ entitlements = { aps-environment = "development" }
 # POST_NOTIFICATIONS and the messaging service).
 [android]
 hostModules = ["push"]
+
+# A push shown as a message in a conversation (Message.from):
+# communication notifications, as notify's Notification.from.
+[uses."Message.from".ios]
+hostFlags = ["ASUKA_CONVERSATIONS"]
+entitlements = { "com.apple.developer.usernotifications.communication" = true }
+plist = { NSUserActivityTypes = ["INSendMessageIntent"] }

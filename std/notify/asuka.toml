@@ -9,9 +9,10 @@ permissions = ["android.permission.POST_NOTIFICATIONS"]
 [ios]
 hostFlags = ["ASUKA_NOTIFY"]
 
-# Messages in conversations, from a Person: communication notifications
-# (their capability, the intent the app donates for each message).
-[uses.Person.ios]
+# Messages in conversations (a notification made a message by from):
+# communication notifications (their capability, the intent the app
+# donates for each message).
+[uses."Notification.from".ios]
 hostFlags = ["ASUKA_CONVERSATIONS"]
 entitlements = { "com.apple.developer.usernotifications.communication" = true }
 plist = { NSUserActivityTypes = ["INSendMessageIntent"] }

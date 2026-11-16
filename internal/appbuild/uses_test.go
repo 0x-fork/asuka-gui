@@ -23,11 +23,14 @@ func usesTestApp(t *testing.T) string {
 	}
 	write(filepath.Join(app, "app.asuka"), `import asuka/icloud
 import asuka/location
+import asuka/notify
 import @test/sync
 
 async fn clear() {
   let _ = try? await icloud.remove("k")
   let _ = try? await location.current()
+  let n = notify.Notification(body: "hi").from(notify.Person(name: "Ann"), notify.Conversation())
+  try? await notify.show(n)
 }
 
 fn delete(x: string) -> string = x
@@ -69,7 +72,8 @@ func TestUses(t *testing.T) {
 		}
 	}
 	for _, r := range [][2]string{{"asuka/icloud", "remove"}, {"asuka/location", "current"}, {"@test/sync", "name"},
-		{"asuka/location", "requestAlways"}, {"asuka/icloud", "readFile"}, {"", "Text"}} {
+		{"asuka/location", "requestAlways"}, {"asuka/icloud", "readFile"}, {"", "Text"},
+		{"asuka/notify", "Notification.from"}, {"asuka/notify", "Person"}} {
 		if !u.Ref(r[0], r[1]) {
 			t.Errorf("no %s.%s in %v", r[0], r[1], u.Refs)
 		}

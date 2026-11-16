@@ -355,10 +355,15 @@ func usesOf(prog *check.Program, u *Uses) {
 					if e := info.Elements[n]; e != nil && e.Comp != nil {
 						object(pkg, e.Comp)
 					}
+					// A method's call (n.from(…)): the method.
+					if c := info.Calls[n]; c != nil && c.Func != nil {
+						object(pkg, c.Func)
+					}
 				case *syntax.MemberExpr:
 					if sel := info.Selections[n]; sel != nil {
 						switch sel.Kind {
-						case check.SelField, check.SelCase, check.SelIfaceField:
+						case check.SelField, check.SelCase, check.SelIfaceField, check.SelMethod:
+							// A method's call has its receiver's type, no object.
 							ref(pkg, nil, named(sel.Recv), sel.Name)
 						case check.SelPkg:
 						default:
