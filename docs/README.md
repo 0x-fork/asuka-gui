@@ -137,7 +137,7 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
   callbacks.
 - [Native code](native.md): native packages, typed modules and views
   declared in Asuka and implemented in each platform's own project:
-  Swift on iOS and macOS, Kotlin on Android, JavaScript on the web, Go
+  Swift on iOS and macOS, Kotlin on Android, JavaScript on the web, C
   on Windows and Linux.
 - [Development](development.md): `asuka dev` in depth on each platform,
   devices, tests and common problems.

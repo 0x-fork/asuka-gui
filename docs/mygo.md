@@ -57,7 +57,7 @@ async and await, and the compiler's checks of what a binding reads and
 what runs on the main thread. In development the compiler sends the app
 as bytecode, which a save reloads in milliseconds with its state and
 views kept, on a phone too; a release is the app compiled to C with the
-core. Neither ships a garbage collector or a second runtime. What an app
+core, which ships no garbage collector or second runtime. What an app
 needs of the platform it reaches through its packages' Swift, Kotlin,
 JavaScript and C, or calls C directly ([C from Asuka](c.md)).
 

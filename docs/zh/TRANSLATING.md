@@ -4,14 +4,14 @@
 
 ## 原则
 
-**写给中文读者，而不是逐句转写英文。** 英文原文的句式很有特点：大量逗号串联、"the X of Y"、省略主语、名词化。照搬这种结构写出来的中文读起来像机翻。翻译时先读懂一整段在说什么，再用一位熟悉 Go 和移动开发的中文工程师会写的方式重新写出来。可以拆句、合句、调整语序、补上主语或连接词（“因此”“也就是说”“不过”），也可以删掉中文里显得多余的指代。不要增删事实，不要漏掉任何细节、限制条件或例外。
+**写给中文读者，而不是逐句转写英文。** 英文原文的句式很有特点：大量逗号串联、"the X of Y"、省略主语、名词化。照搬这种结构写出来的中文读起来像机翻。翻译时先读懂一整段在说什么，再用一位熟悉移动开发和桌面、Web 开发的中文工程师会写的方式重新写出来。可以拆句、合句、调整语序、补上主语或连接词（“因此”“也就是说”“不过”），也可以删掉中文里显得多余的指代。不要增删事实，不要漏掉任何细节、限制条件或例外。
 
-参考的语感：Vue、React（react.dev/zh-hans）、Go 语言中文文档这类社区维护得好的中文技术文档。语气平实、准确、口语化但不随意；称读者为“你”；不用“您”；不用网络流行语。
+参考的语感：Vue、React（react.dev/zh-hans）、MDN 中文版这类社区维护得好的中文技术文档。语气平实、准确、口语化但不随意；称读者为“你”；不用“您”；不用网络流行语。
 
 ## 格式
 
 - **结构一一对应**：标题的数量、层级、顺序必须与英文版完全一致（`#`、`##`、`###` ……一个不多一个不少）。网站和链接锚点依赖这一点。标题本身要译成自然的中文。
-- 代码块里的代码保持原样；代码里的**注释**译成中文（命令行注释 `# ...`、Go 的 `// ...` 都译），但字符串字面量、标识符、命令、路径、参数不动。
+- 代码块里的代码保持原样；代码里的**注释**译成中文（命令行注释 `# ...`，Asuka、C、Swift、Kotlin 的 `// ...` 都译），但字符串字面量、标识符、命令、路径、参数不动。
 - 行内代码（`` `ui.Button` ``）、API 名、类型名、文件名、命令、环境变量保持英文。
 - 链接：文档页之间的链接指向中文页面，锚点用中文标题生成的锚点（GitHub 的规则：小写，去掉标点，空格换成 `-`，如 `parity.md#数据与服务`）。指向仓库其他文件的链接相对于 `docs/zh/`，比英文版多一层 `../`（`../../examples/gallery`）；只有英文版的页面用 `../`（`../device-checklist.md`）。外部链接保持原样。
 - `<!-- repository-only:start -->` / `<!-- repository-only:end -->` 这类 HTML 注释原样保留，其中的内容照样翻译。
@@ -41,7 +41,7 @@
 | slot | 插槽 | |
 | owner | owner | 保留英文；首次出现可解释为“所有者” |
 | accessor | 访问器 | |
-| props | 属性 / props | 指 Go 结构体字段时用“属性”，指 `XxxProps` 类型时保留英文 |
+| props | 属性 / props | 元素的键（`width:`、`placeholder:`）译“属性”；与 React 等框架的 props 对照时保留英文 |
 | style | 样式 | |
 | layout | 布局 | |
 | flexbox, grid | flexbox、grid | 保留英文 |
@@ -88,14 +88,14 @@
 
 ## 示例
 
-> Asuka makes apps in Go with each platform's own widgets, on iOS, Android, macOS, Windows, Linux and the web.
+> Asuka makes apps in its own language with each platform's own widgets, on iOS, Android, macOS, Windows, Linux and the web.
 
-不好：Asuka 用 Go 制作带有每个平台自己的控件的应用，在 iOS、Android、macOS、Windows、Linux 和 web 上。
+不好：Asuka 用它自己的语言制作带有每个平台自己的控件的应用，在 iOS、Android、macOS、Windows、Linux 和 web 上。
 
-好：Asuka 让你用 Go 编写应用，并在 iOS、Android、macOS、Windows、Linux 和 Web 上以各平台的原生控件呈现。
+好：用 Asuka 自己的语言编写应用，就能在 iOS、Android、macOS、Windows、Linux 和 Web 上以各平台的原生控件呈现。
 
-> Save a Go file and the app reloads in a moment, the values of its signals kept.
+> Save an .asuka file and the app reloads in a moment, the values of its state kept.
 
-不好：保存一个 Go 文件，应用在一会儿内重新加载，它的信号的值被保留。
+不好：保存一个 .asuka 文件，应用在一会儿内重新加载，它的状态的值被保留。
 
-好：保存 Go 文件后，应用片刻间就会重新加载，signal 里的值都会保留下来。
+好：保存 .asuka 文件后，应用片刻间就会重新加载，状态里的值都会保留下来。

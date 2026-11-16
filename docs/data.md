@@ -247,8 +247,8 @@ async fn signUp(email: string) -> string {
 SQLite is release 3.54.1 on every platform, with FTS5, R*Tree, Geopoly,
 the math functions, `dbstat`, `STAT4` and `soundex` built in, loadable
 extensions left out, and temporary tables kept in memory. It's the
-plugin's library, `asqlite` (`sdk/sqlite`, which builds and publishes
-it), which `asuka build` ships where the core finds it: a Mac's
+sqlite plugin's library, `asqlite` ([Plugins](plugins.md)), which
+`asuka build` ships where the core finds it: a Mac's
 `Contents/Frameworks`, beside a Windows app's `.exe`, in `lib/<app>` of
 a Linux prefix, a framework in an iOS app's `Frameworks`, beside
 `libasuka.so` in each of an APK's ABIs. `asuka dev` on a desktop, `asuka

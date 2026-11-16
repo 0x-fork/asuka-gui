@@ -456,7 +456,7 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
 
 - **iOS 和 Android**：`asuka dev` 会构建包含原生包的应用外壳并安装，原生代码变化时重新构建，Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist` 和清单文件的修改都包括在内；应用的 Asuka 代码在保存时直接重新加载，不需要重新构建。没有原生包的应用则以热重载模式运行在开发 App 里，开发 App 只包含 Asuka 自己的原生代码。参见 [开发](development.md#工作原理开发-app)。
 - **macOS**：原生包的 Swift 代码会构建进应用的 Swift 库，同样只在有变化时才重新构建，然后应用重新运行，状态会保留下来。
-- **Windows 和 Linux**：原生包的 C 代码会和核心、C 宿主一起构建进应用的可执行文件，同样只在有变化时才重新构建（在检出的代码里还没有对应平台的 C 宿主之前，即 RFC 0008 的 H2 和 H3 完成之前，应用由 Go 宿主运行，CLI 会说明它没有运行哪些包的 C 代码）。
+- **Windows 和 Linux**：原生包的 C 代码会和核心、C 宿主一起构建进应用的可执行文件，同样只在有变化时才重新构建。
 - **Web**：包的 JavaScript 变化时，页面会重新加载。
 
 一个包在 iOS 或 macOS 上第一次构建时会解析它的 Swift 依赖，之后的构建会复用它们。

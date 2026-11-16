@@ -301,7 +301,8 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # steps firs
   bar's), `escape`, `close` (the window in use), `wait:<duration>`
   (`500ms`), `waitfor:<file>` (until the file exists: a test says when
   to go on) and `snap:<file>`. Each host has a few more: see its
-  `automation.go` (macOS: `script.go`).
+  automation (`platform/macos/Sources/AsukaHost/Automation.swift`,
+  `platform/windows/src/automation.c`, `platform/linux/src/automation.c`).
 
 ## Common problems
 

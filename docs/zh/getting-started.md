@@ -108,7 +108,7 @@ test "Add counts" {
 - `assets/`：图片和其他文件，例如 `Image("photo.jpg")`；字体放在 `assets/fonts` 中。
 - `locales/`：应用在各语言下的文案（见[多语言](i18n.md)）。
 - 应用自己的包：与应用的 `.asuka` 文件放在一起的一个 `.asuka` 文件目录，用 `import ./components` 导入。依赖写在 `asuka.toml` 的 `[dependencies]` 中（`asuka add @acme/charts`；见[包](packages.md)）。
-- 原生包：声明了 `native interface` 或 `native component` 的 Asuka 包，由各平台在自己的项目中实现（Swift package、Gradle 模块、JavaScript，桌面端则用 Go）。详见[原生代码](native.md)。
+- 原生包：声明了 `native interface` 或 `native component` 的 Asuka 包，由各平台在自己的项目中实现（Swift package、Gradle 模块、JavaScript，Windows 和 Linux 上则用 C）。详见[原生代码](native.md)。
 
 ## 下一步
 

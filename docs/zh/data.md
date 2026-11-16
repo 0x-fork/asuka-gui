@@ -176,7 +176,7 @@ async fn signUp(email: string) -> string {
 
 ### 库文件
 
-SQLite 在每个平台上都是 3.54.1 版，内置 FTS5、R*Tree、Geopoly、数学函数、`dbstat`、`STAT4` 和 `soundex`，不支持可加载扩展，临时表放在内存里。它是插件的库 `asqlite`（由 `sdk/sqlite` 构建和发布），`asuka build` 会把它放到核心找得到的地方：Mac 的 `Contents/Frameworks`、Windows 应用的 `.exe` 旁边、Linux 安装前缀的 `lib/<app>` 里、iOS 应用 `Frameworks` 里的一个 framework、APK 每个 ABI 里 `libasuka.so` 的旁边。桌面上的 `asuka dev`、`asuka test` 和 `asuka run` 会让核心使用插件的构建产物或它发布的文件（`ASUKA_LIB_ASQLITE`），后者只下载一次，存进用户的缓存。在 Web 上，它是同一个库编译成的 WebAssembly，运行在页面的一个 worker 里（见 [Web 上的 SQLite](web.md#sqlite)）。
+SQLite 在每个平台上都是 3.54.1 版，内置 FTS5、R*Tree、Geopoly、数学函数、`dbstat`、`STAT4` 和 `soundex`，不支持可加载扩展，临时表放在内存里。它是 sqlite 插件的库 `asqlite`（见[插件](plugins.md)），`asuka build` 会把它放到核心找得到的地方：Mac 的 `Contents/Frameworks`、Windows 应用的 `.exe` 旁边、Linux 安装前缀的 `lib/<app>` 里、iOS 应用 `Frameworks` 里的一个 framework、APK 每个 ABI 里 `libasuka.so` 的旁边。桌面上的 `asuka dev`、`asuka test` 和 `asuka run` 会让核心使用插件的构建产物或它发布的文件（`ASUKA_LIB_ASQLITE`），后者只下载一次，存进用户的缓存。在 Web 上，它是同一个库编译成的 WebAssembly，运行在页面的一个 worker 里（见 [Web 上的 SQLite](web.md#sqlite)）。
 
 ## 机密信息：asuka/secure
 

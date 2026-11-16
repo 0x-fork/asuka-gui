@@ -176,7 +176,7 @@ async fn signUp(email: string) -> string {
 
 ### ライブラリ
 
-SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。プラグインのライブラリ `asqlite`（`sdk/sqlite` がビルドして公開します）で、`asuka build` がコアの見つけられる場所に配置します。Mac の `Contents/Frameworks`、Windows アプリの `.exe` の隣、Linux のインストール先の `lib/<app>`、iOS アプリの `Frameworks` 内のフレームワーク、APK の各 ABI の `libasuka.so` の隣です。デスクトップでの `asuka dev`、`asuka test`、`asuka run` は、プラグインのビルド済みファイルか公開済みファイル（`ASUKA_LIB_ASQLITE`）をコアに使わせます。後者は一度だけダウンロードされ、ユーザーのキャッシュに保存されます。Web では同じライブラリを WebAssembly にビルドしたものが、ページのワーカーで動きます（[Web の SQLite](web.md#sqlite)）。
+SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。sqlite プラグインのライブラリ `asqlite`（[プラグイン](plugins.md)）で、`asuka build` がコアの見つけられる場所に配置します。Mac の `Contents/Frameworks`、Windows アプリの `.exe` の隣、Linux のインストール先の `lib/<app>`、iOS アプリの `Frameworks` 内のフレームワーク、APK の各 ABI の `libasuka.so` の隣です。デスクトップでの `asuka dev`、`asuka test`、`asuka run` は、プラグインのビルド済みファイルか公開済みファイル（`ASUKA_LIB_ASQLITE`）をコアに使わせます。後者は一度だけダウンロードされ、ユーザーのキャッシュに保存されます。Web では同じライブラリを WebAssembly にビルドしたものが、ページのワーカーで動きます（[Web の SQLite](web.md#sqlite)）。
 
 ## 秘密情報：asuka/secure
 
