@@ -143,6 +143,9 @@ func (d *devLoop) close() { d.srv.Close() }
 // players keep running what they have.
 func (d *devLoop) compile() bool {
 	start := time.Now()
+	if d.app.proj != nil {
+		d.app.proj.Forget() // a save: compiled, whatever the files' times say
+	}
 	m, err := d.app.compile()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "asuka:", err)

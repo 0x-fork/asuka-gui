@@ -164,6 +164,10 @@ func (p *Project) Compile() (*bytecode.Module, []string, error) {
 	return m, diags, err
 }
 
+// Forget drops the last compile: the next Compile compiles (asuka dev's,
+// for a save, which a file's time may not tell from the last).
+func (p *Project) Forget() { p.last = nil }
+
 // compiled is a project's last compile, and what its files were.
 type compiled struct {
 	stamp string
