@@ -89,6 +89,9 @@ bool ak_ed25519_verify(const uint8_t pub[32], const uint8_t *m, size_t n, const 
 void ak_fs_set_app_dir(const char *path);
 // ak_fs_app_dir is that directory's path (ak_free it).
 char *ak_fs_app_dir(void);
+// ak_fs_make_dirs makes path and the directories above it (a UTF-8
+// path); false if it can't.
+bool ak_fs_make_dirs(const char *path);
 
 // DEFLATE (RFC 1951) and gzip (RFC 1952) read as a stream (inflate.c):
 // a section of a file (offset, len bytes; len -1: to its end), or a gzip

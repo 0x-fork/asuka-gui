@@ -113,6 +113,17 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 			return err
 		}
 	}
+	// The project's programs beside the .exe (and their plugins'
+	// libraries, which they find there), signed as it is.
+	progs, err := bundlePrograms(app, t, nil, out, out, o.verbose)
+	if err != nil {
+		return err
+	}
+	for _, p := range progs {
+		if _, err := signWindows(p, name, o.verbose); err != nil {
+			return err
+		}
+	}
 	if err := copyDir(filepath.Join(app.dir, "assets"), filepath.Join(out, "assets")); err != nil {
 		return err
 	}

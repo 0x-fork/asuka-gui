@@ -1,0 +1,94 @@
+// notes: the Notes app's notes from a terminal. It reads and writes the
+// app's own database (an app's program shares its data).
+//
+//   notes                  the notes, open ones first
+//   notes add Buy milk     adds one
+//   notes done 3           checks note 3 off
+//   notes list --search milk --json
+
+import asuka/flag
+import asuka/json
+import asuka/os
+import ../model.{Note, openDB, search}
+
+struct ListOptions {
+  /// -s Only the notes with this in them.
+  search: string = ""
+  /// Leave out the notes checked off.
+  open: bool = false
+  /// The notes as JSON.
+  json: bool = false
+}
+
+struct AddOptions {
+  /// The note's words.
+  words: [string]
+}
+
+struct DoneOptions {
+  /// The note's number, as list shows it.
+  id: int
+}
+
+/// The Notes app's notes, from a terminal.
+enum Command {
+  /// Show the notes (what notes alone does).
+  list(ListOptions)
+  /// Add a note.
+  add(AddOptions)
+  /// Check a note off.
+  done(DoneOptions)
+}
+
+
+async fn main() throws {
+  let args = os.args()
+  // notes alone lists them.
+  let cmd = if args.isEmpty() { Command.list(ListOptions()) } else { flag.parse<Command>(args) }
+  let db = try openDB("notes.db")
+  match cmd {
+    .list(o) => {
+      let notes: [Note] = try await db.query(search, [o.search])
+      let shown = notes.filter(n => !o.open || !n.done)
+      if o.json {
+        print(json.encode(shown))
+      } else if shown.isEmpty() {
+        os.eprint("no notes")
+      } else {
+        for n in shown {
+          print("{n.id}\t[{if n.done { "x" } else { " " }}] {n.text}")
+        }
+      }
+    }
+    .add(o) => {
+      let text = o.words.joined(separator: " ").trim()
+      if text.isEmpty() {
+        os.eprint("error: a note has words: notes add Buy milk")
+        os.exit(2)
+      }
+      try await db.exec("insert into notes (text) values (?)", [text])
+    }
+    .done(o) => {
+      try await db.exec("update notes set done = 1 where id = ?", [o.id])
+    }
+  }
+}
+
+test "adds, lists and checks off" {
+  let o = os.fake(args: ["add", "Buy", "milk"])
+  expect(await o.run(main) == 0)
+  let l = os.fake(args: [])
+  expect(await l.run(main) == 0)
+  expect(l.stdout().contains("[ ] Buy milk"))
+  let d = os.fake(args: ["done", "1"])
+  expect(await d.run(main) == 0)
+  let j = os.fake(args: ["list", "--json"])
+  expect(await j.run(main) == 0)
+  expect(j.stdout().contains("\"done\":true"))
+}
+
+test "says what's wrong" {
+  let o = os.fake(args: ["ad", "x"])
+  expect(await o.run(main) == 2)
+  expect(o.stderr().contains("unknown command ad (did you mean add?)"))
+}

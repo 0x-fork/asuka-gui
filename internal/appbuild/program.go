@@ -143,6 +143,7 @@ type ProgramOptions struct {
 	Args           []string // os.args()
 	Dir            string   // its working directory ("": this one)
 	Trim           string   // what an error's trace names files relative to
+	Env            []string // more of its environment (KEY=value)
 	Stdin          io.Reader
 	Stdout, Stderr io.Writer
 }
@@ -178,7 +179,7 @@ func RunProgram(m *bytecode.Module, o ProgramOptions) (int, error) {
 	}
 	args = append(append(args, p, "--"), o.Args...)
 	cmd := exec.Command(exe, args...)
-	cmd.Env = append(os.Environ(), compile.PluginEnv(m)...)
+	cmd.Env = append(append(os.Environ(), compile.PluginEnv(m)...), o.Env...)
 	cmd.Dir = o.Dir
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = o.Stdin, o.Stdout, o.Stderr
 	err = cmd.Run()

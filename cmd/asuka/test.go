@@ -176,7 +176,17 @@ func cmdRun(args []string) error {
 		return err
 	}
 	if m.Main >= 0 {
-		code, err := appbuild.RunProgram(m, appbuild.ProgramOptions{Name: p.ProgramName(), Args: progArgs, Trim: cwdOr(p.Dir), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr})
+		var env []string
+		if p.Root != "" && hasAppBlock(p.Root) && os.Getenv("ASUKA_DATA") == "" {
+			// An app's program shares the app's data: under development,
+			// what asuka dev's run on this computer keeps.
+			if w, err := workDir(&asukaApp{dir: p.Root, name: filepath.Base(p.Root)}, thisComputer()); err == nil {
+				data := filepath.Join(w, "data")
+				os.MkdirAll(data, 0o755)
+				env = append(env, "ASUKA_DATA="+data)
+			}
+		}
+		code, err := appbuild.RunProgram(m, appbuild.ProgramOptions{Name: p.ProgramName(), Args: progArgs, Env: env, Trim: cwdOr(p.Dir), Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr})
 		if err != nil {
 			return err
 		}

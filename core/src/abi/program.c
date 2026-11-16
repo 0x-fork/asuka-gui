@@ -201,6 +201,13 @@ int ak_program_start(ak_module *m, int argc, char **argv, const asuka_host_callb
 	}
 	ak_throw_hook = on_throw;
 	data_dir();
+	// The program's own directory (asuka/fs's appDir) is there, as an
+	// app's host makes the app's.
+	char *dir = ak_fs_app_dir();
+	if (dir) {
+		ak_fs_make_dirs(dir);
+		ak_free(dir);
+	}
 	int32_t mi = ak_module_main(m);
 	if (mi < 0) {
 		fprintf(stderr, "asuka: the module has no fn main: it isn't a program\n");

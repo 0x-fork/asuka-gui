@@ -67,19 +67,30 @@ func programExeName(name string, t cbuild.Target) string {
 // buildProgram builds the program in p for t into dir: its executable,
 // and its plugins' libraries beside it. It returns the executable's path.
 func buildProgram(p *appbuild.Project, t cbuild.Target, dir, version string, verbose bool) (string, error) {
-	app, err := programApp(p)
+	exe, libs, err := programExe(p, t, dir, version, verbose)
 	if err != nil {
 		return "", err
+	}
+	return exe, writeLibs(libs, dir)
+}
+
+// programExe builds the program in p for t into dir, and says what
+// plugins' libraries it loads (which its caller puts where the core
+// finds them).
+func programExe(p *appbuild.Project, t cbuild.Target, dir, version string, verbose bool) (string, []pluginLib, error) {
+	app, err := programApp(p)
+	if err != nil {
+		return "", nil, err
 	}
 	if version != "" {
 		app.cfg.Version = strings.TrimPrefix(version, "v")
 	}
 	m, err := compileProject(p)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if m.Main < 0 {
-		return "", fmt.Errorf("%s isn't a program: it has no fn main (asuka build --platform builds an app)", cwdOr(p.Dir))
+		return "", nil, fmt.Errorf("%s isn't a program: it has no fn main (asuka build --platform builds an app)", cwdOr(p.Dir))
 	}
 	if p.Root != "" && hasAppBlock(p.Root) {
 		// An app's program: its data is the app's (a CLI over the app's
@@ -91,7 +102,7 @@ func buildProgram(p *appbuild.Project, t cbuild.Target, dir, version string, ver
 	ptarget := plugin.Target(t.OS, t.Arch)
 	libs, err := appLibs(app, ptarget)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	exe := filepath.Join(dir, programExeName(app.name, t))
 	if verbose {
@@ -100,25 +111,25 @@ func buildProgram(p *appbuild.Project, t cbuild.Target, dir, version string, ver
 	if t.OS == "darwin" {
 		natives, err := nativeFor(app, "macos")
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		if len(natives) > 0 {
 			if runtime.GOOS != "darwin" {
-				return "", errors.New("a program whose packages have Swift (asuka/http's URLSession) is built for macOS on a Mac")
+				return "", nil, errors.New("a program whose packages have Swift (asuka/http's URLSession) is built for macOS on a Mac")
 			}
 			if err := macProgram(app, m, natives, t.Arch, exe, verbose); err != nil {
-				return "", err
+				return "", nil, err
 			}
-			return exe, writeLibs(libs, dir)
+			return exe, libs, nil
 		}
 	}
 	err = appbuild.ProgramExe(t, m, appbuild.ProgramBuild{
 		Name: app.name, Version: app.cfg.Version, Natives: desktopNativeDirs(app), Plugins: len(libs) > 0, Root: projectRoot(p),
 	}, exe)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return exe, writeLibs(libs, dir)
+	return exe, libs, nil
 }
 
 // cmdBuildProgram is asuka build for a program: dist/<name> for this
@@ -237,4 +248,65 @@ func relativeFiles(m *bytecode.Module, root string) *bytecode.Module {
 		}
 	}
 	return &c
+}
+
+// bundlePrograms builds the project's [bin] programs into a desktop
+// app's build for t (docs/programs.md): each executable in dir (the
+// Mac's Contents/Helpers, Linux's bin, beside Windows' .exe), and their
+// plugins' libraries in libDir, where the core finds them from there.
+// macOS's are universal, as the app is. It returns the executables.
+func bundlePrograms(app *asukaApp, t cbuild.Target, archs []string, dir, libDir string, verbose bool) ([]string, error) {
+	if app.proj == nil || len(app.proj.Bins) == 0 {
+		return nil, nil
+	}
+	var out []string
+	for _, b := range app.proj.Bins {
+		p, err := app.proj.Bin(b.Name)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("asuka: building %s, the app's program\n", b.Name)
+		if len(archs) == 0 {
+			archs = []string{t.Arch}
+		}
+		var parts []string
+		var libs []pluginLib
+		work, err := os.MkdirTemp("", "asuka-bin-")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(work)
+		for _, arch := range archs {
+			at := cbuild.Target{OS: t.OS, Arch: arch}
+			d := filepath.Join(work, arch)
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				return nil, err
+			}
+			exe, l, err := programExe(p, at, d, app.cfg.Version, verbose)
+			if err != nil {
+				return nil, fmt.Errorf("[bin.%s]: %w", b.Name, err)
+			}
+			parts = append(parts, exe)
+			libs = l
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, err
+		}
+		dst := filepath.Join(dir, programExeName(b.Name, t))
+		if len(parts) == 1 {
+			if err := copyFile(parts[0], dst); err != nil {
+				return nil, err
+			}
+		} else {
+			os.Remove(dst)
+			if err := macRunner(verbose)(work, nil, "lipo", append([]string{"-create", "-output", dst}, parts...)...); err != nil {
+				return nil, err
+			}
+		}
+		if err := writeLibs(libs, libDir); err != nil {
+			return nil, err
+		}
+		out = append(out, dst)
+	}
+	return out, nil
 }
