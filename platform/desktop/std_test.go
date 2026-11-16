@@ -700,7 +700,7 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: native view std/markdown#Document", "host: measured std/markdown#Document 240x", "host: healed **bold and `code`**", "host: done"}, nil},
+`, []string{"host: healed **bold and `code`**", "host: done"}, nil},
 		{"svg", `import std/svg
 
 let tick = svg.Icon(r"""<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"/><rect x="2" y="2" width="20" height="20" rx="4"/></svg>""")

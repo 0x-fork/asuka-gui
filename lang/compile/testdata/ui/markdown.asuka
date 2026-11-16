@@ -35,11 +35,50 @@ test "heals the end of text being written" {
   expect(markdown.heal("```\ncode\n```\n\n_x") == "```\ncode\n```\n\n_x_")
 }
 
-test "shows the platform's view of the text" {
+test "streams in, then shows the whole reply" {
   let app = mount(Reply())
   app.tap("Write")
   await app.idle()
   app.tap("Done")
   await app.idle()
-  app.expect("Done")
+  app.expect("Plan")
+  app.expect("Three steps, in order:")
+  app.expect("Read the docs")
+  app.expect("fmt.Println(1)")
+}
+
+component Linked {
+  state opened = ""
+
+  Column {
+    markdown.View("Go to [settings](/settings) or [the docs](https://x.dev).\n\n| a | b |\n|:--|--:|\n| [one](app:1) | 2 |") {
+      on link(url) { opened = url }
+    }
+    Text("opened: {opened}")
+  }
+}
+
+test "a link tapped goes to the app's handler, as written" {
+  let app = mount(Linked())
+  app.tapLink("/settings")
+  app.expect("opened: /settings")
+  app.tapLink("https://x.dev")
+  app.expect("opened: https://x.dev")
+  app.tapLink("app:1")
+  app.expect("opened: app:1")
+}
+
+component Custom {
+  markdown.View("Intro\n\n```mermaid\ngraph TD\n```\n\n```go\nx := 1\n```\n\nEnd") {
+    theme: markdown.Theme(font: .callout, linkColor: .purple, spacing: 8)
+    render: b => if b.kind == .code && b.language == "mermaid" { Text("diagram of {b.text}") } else { none }
+  }
+}
+
+test "the app draws the blocks it says, Markdown the rest" {
+  let app = mount(Custom())
+  app.expect("Intro")
+  app.expect("diagram of graph TD")
+  app.expect("x := 1")
+  app.expect("End")
 }

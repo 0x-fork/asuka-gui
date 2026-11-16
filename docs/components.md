@@ -165,8 +165,8 @@ without a selection, `copy(text)` puts it on the clipboard.
 
 `std/markdown` shows Markdown (CommonMark, with GitHub's tables, task
 lists, strikethrough and autolinks) as the platform's own styled text:
-one selection, links that open, the user's text size. Raw HTML in the
-text shows as text.
+headings, emphasis, code, quotes, lists, tables, images and links, which
+the user's text size scales. Raw HTML in the text shows as text.
 
 ```asuka
 import std/markdown
@@ -180,15 +180,52 @@ component Reply(text: string, writing: bool) {
 reply streams in: its end shows what it will most likely become (a code
 fence closed, `**bold` as bold, a link being written as a link) rather
 than half-written syntax. `markdown.heal(text)` is that, on its own.
-Asuka parses it, the same on every platform, into paragraphs
-of styled text, which each platform shows as its own: an attributed
-string in a text view on iOS and macOS, spans in a TextView on Android,
-the page's elements on the web, a rich edit on Windows and a label a
-block on Linux (as GNOME apps show rich text: each block selects on its
-own). The text is read again as it changes, but a view replaces only
-what changed: the blocks from the first that differs, so as a reply
-streams in, what's above its last block keeps its layout and selection.
-See [`examples/markdown`](../examples/markdown).
+
+Its look and its links are the app's:
+
+- `theme` is a `markdown.Theme`: the text's font and color, the
+  headings', links', code's (and its background), quotes' and rules',
+  and the spacing between blocks and of an indent. What it doesn't say
+  is the platform's.
+- `render` draws a block the app's way: given a `markdown.Block` (its
+  `kind`, plain `text`, styled `spans`, a heading's `level`, a code
+  block's `language`, an image's `url`, a table's `rows`), it returns a
+  view, or `none` for Markdown's own. A code block highlighted, a
+  diagram drawn from its code, an image of the app's.
+- `on link(url)` hears a link tapped, its destination as written (a
+  relative one too): what it opens is the app's to say. Without it, a
+  web, mail or phone link opens in the app that takes it, and other
+  links do nothing.
+
+```asuka
+import std/markdown
+
+component Code(text: string, language: string) {
+  Column {
+    background: .secondaryBackground; radius: 8; padding: 12
+    Text(language) { font: .caption; color: .secondaryLabel }
+    Text(text) { font: Font.callout.family("Menlo") }
+  }
+}
+
+component Answer(text: string) {
+  state opened = ""
+
+  markdown.View(text) {
+    theme: markdown.Theme(font: .callout, linkColor: .purple, spacing: 8)
+    render: b => if b.kind == .code { Code(b.text, language: b.language) } else { none }
+    on link(url) { opened = url }
+  }
+}
+```
+
+Asuka reads the Markdown, the same on every platform, and draws each
+block as the language's own views: a [`RichText`](#richtext) per
+paragraph in a [`Selectable`](#selectable-text), a grid for a table,
+`Image` for an image. The text is read again as it changes, but its
+blocks are kept by their place: as a reply streams in, only its last
+block or two are drawn again, and what's above keeps its layout and
+selection. See [`examples/markdown`](../examples/markdown).
 
 ## Buttons
 

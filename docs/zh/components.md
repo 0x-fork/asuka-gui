@@ -125,7 +125,7 @@ component Answer(question: [Span], answer: [Span]) {
 
 ### Markdown
 
-`std/markdown` 把 Markdown（CommonMark，加上 GitHub 的表格、任务列表、删除线和自动链接）显示成平台原生的带样式文本：整段内容是一个选区，链接可以打开，字号跟随用户的文字大小设置。文本里的原始 HTML 会按文字显示。
+`std/markdown` 把 Markdown（CommonMark，加上 GitHub 的表格、任务列表、删除线和自动链接）显示成平台原生的带样式文本：标题、强调、代码、引用、列表、表格、图片和链接，字号跟随用户的文字大小设置。文本里的原始 HTML 会按文字显示。
 
 ```asuka
 import std/markdown
@@ -135,7 +135,37 @@ component Reply(text: string, writing: bool) {
 }
 ```
 
-`streaming` 表示文本还在写，比如语言模型的回复正一点点流进来：这时文本的末尾会显示成它最可能的样子（代码围栏补上结尾、`**bold` 显示为粗体、正在写的链接显示为链接），而不是写了一半的语法。单独用 `markdown.heal(text)` 也能得到同样的处理。解析由 Asuka 完成，所有平台都一样：它把文本读成一段段带样式的文字，再由各平台用自己的方式显示：iOS 和 macOS 上是文本视图里的富文本字符串（attributed string），Android 上是 TextView 里的 span，Web 上是页面元素，Windows 上是 rich edit 控件，Linux 上则是每个块一个标签（GNOME 应用显示富文本的方式：每个块各自选择）。文本每次变化都会重新解析，但视图只替换变化的部分，即从第一个不同的块开始往后的内容；所以回复流式写入时，最后一块之前的内容会保持原有的布局和选区。参见 [`examples/markdown`](../../examples/markdown)。
+`streaming` 表示文本还在写，比如语言模型的回复正一点点流进来：这时文本的末尾会显示成它最可能的样子（代码围栏补上结尾、`**bold` 显示为粗体、正在写的链接显示为链接），而不是写了一半的语法。单独用 `markdown.heal(text)` 也能得到同样的处理。
+
+它的外观和链接都由应用决定：
+
+- `theme` 是一个 `markdown.Theme`：正文的字体和颜色，标题、链接、代码（及其背景）、引用和分隔线的样式，以及块与块之间的间距和每级缩进。没有设置的部分沿用平台的样式。
+- `render` 用应用自己的方式绘制某个块：它接收一个 `markdown.Block`（包括 `kind`、纯文本 `text`、带样式的 `spans`、标题的 `level`、代码块的 `language`、图片的 `url`、表格的 `rows`），返回一个视图；返回 `none` 则使用 Markdown 自己的绘制。比如给代码块加上语法高亮、根据代码画出图表，或者用应用自己的图片视图。
+- `on link(url)` 接收被点击的链接，目标地址保持原样（相对地址也一样），由应用决定打开什么。没有它时，网页、邮件和电话链接会用对应的应用打开，其他链接不做任何事。
+
+```asuka
+import std/markdown
+
+component Code(text: string, language: string) {
+  Column {
+    background: .secondaryBackground; radius: 8; padding: 12
+    Text(language) { font: .caption; color: .secondaryLabel }
+    Text(text) { font: Font.callout.family("Menlo") }
+  }
+}
+
+component Answer(text: string) {
+  state opened = ""
+
+  markdown.View(text) {
+    theme: markdown.Theme(font: .callout, linkColor: .purple, spacing: 8)
+    render: b => if b.kind == .code { Code(b.text, language: b.language) } else { none }
+    on link(url) { opened = url }
+  }
+}
+```
+
+Markdown 由 Asuka 解析，所有平台都一样；每个块都用这门语言自己的视图绘制：每个段落是 [`Selectable`](#可选择的文本) 里的一个 [`RichText`](#richtext)，表格是网格，图片是 `Image`。文本每次变化都会重新解析，但块按位置保留：回复流式写入时，只有最后一两个块会重新绘制，前面的内容保持原有的布局和选区。参见 [`examples/markdown`](../../examples/markdown)。
 
 ## 按钮
 

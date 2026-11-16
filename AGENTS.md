@@ -126,7 +126,7 @@ $env:ASUKA_SNAPSHOT='c.png'; $env:ASUKA_DUMP='1'; $env:ASUKA_SCRIPT='tap:Add'; .
 go run ./cmd/asuka dev --platform web examples/counter       # the web: served to the browser, reloaded on save (--lan: to a phone)
 go run ./cmd/asuka build --platform web examples/counter     # a static site, in examples/counter/dist/web
 go test -tags e2e ./e2e -run Web                  # GUI tests: the examples in headless Chrome
-go test ./platform/macos -run StdSwift; go test ./cmd/asuka -run StdAndroidViews; go test -tags e2e ./e2e -run StdWebViews; go test ./platform/windows -run StdViews  # std and sdk packages' views driven on macOS and the iOS simulator, a device, Chrome, Windows (Linux: TestStdUnits); std/markdown's count what a streamed reply replaces
+go test ./platform/macos -run StdSwift; go test ./cmd/asuka -run StdAndroidViews; go test -tags e2e ./e2e -run StdWebViews; go test ./platform/windows -run StdViews  # std and sdk packages' views driven on macOS and the iOS simulator, a device, Chrome, Windows (Linux: TestStdUnits)
 go test ./cmd/asuka -run StdAndroidUnits    # std packages' Kotlin unit tests (android/src/test) on this computer's JVM, no device; internal/testserver serves std/http's and std/websocket's
 go run ./cmd/asuka update keygen                  # the key pair that signs desktop apps' updates (asuka.toml's updates)
 go run ./cmd/asuka publish --platform linux examples/counter  # a desktop build and its signed update, uploaded (GitHub, S3)

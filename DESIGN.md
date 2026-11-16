@@ -1878,22 +1878,24 @@ behavior.
   - Copying leaves out the inline components.
 - `std/markdown` (`markdown.View(text) { streaming: true }`) is read
   once, in the core, the same on every platform: md4c (core/third_party)
-  into paragraphs of styled runs (`markdown.read`; raw HTML as text, only
-  web, mail and phone links kept), which each platform shows as its own
-  text, so a document reads, selects and speaks as the platform's text
-  does: an attributed string in a text view on iOS and the Mac, spans in
-  a TextView on Android, the page's elements on the web, RTF in a rich
-  edit on Windows and a label a block on Linux. Only what's
-  shown differs; what the Markdown says doesn't. While a reply streams in, its text is healed once,
-  in the core, before it reaches any platform (`markdown.heal`: an unclosed
-  emphasis, a link being written), so a half-written document renders as
-  it will. Links open with the platform. The text is read again as it
-  changes (md4c over all of it: CommonMark has no incremental reading,
-  as a line can turn the paragraph above it into a heading), but each
-  view keeps a block per paragraph and replaces only those from the
-  first that differs: a streamed reply rewrites its last block or two a
-  frame, and what's above keeps its layout and selection. Each
-  platform's view test (std/markdown/tests' streamed reply) counts it.
+  into paragraphs of styled runs (`markdown.read`: raw HTML as text, a
+  link's destination as written, an image a run of its description and
+  address, a code block's language, a table row's cells and
+  alignments). The rest is Asuka: the package makes the paragraphs
+  blocks (a table's rows one table, an image alone an image) and draws
+  each as the language's own views, a `RichText` per paragraph in a
+  `Selectable`, a grid for a table, `Image` for an image, so a document
+  reads, selects and speaks as the platform's text does, and its look is
+  the app's: a `Theme` (each part's font, color, spacing), `render` (any
+  block drawn the app's way: a highlighted code block, a diagram), and
+  `on link` (what a link opens; without it, web, mail and phone links
+  open with the platform). While a reply streams in, its text is healed
+  once, in the core (`markdown.heal`: an unclosed emphasis, a link being
+  written), so a half-written document renders as it will. The text is
+  read again as it changes (md4c over all of it: CommonMark has no
+  incremental reading, as a line can turn the paragraph above it into a
+  heading), but the blocks are a keyed `for`: a streamed reply changes
+  its last block or two a frame, and only their RichTexts typeset again.
 
 **Not yet:** selection for screen reader users (VoiceOver and TalkBack
 read the texts and links but don't select across them).

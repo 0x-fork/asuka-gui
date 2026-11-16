@@ -14,16 +14,22 @@
 // md4c doesn't report a tight list item's paragraphs as blocks (their
 // text comes inside the item): such text opens a paragraph of its own,
 // closed as the item ends or another block starts. A table's row is a
-// paragraph, its cells' runs apart by tabs. Raw HTML is text; a link
-// opens only to a web, mail or phone address.
+// paragraph, its cells' runs apart by tabs, its cells' alignments in
+// aligns (l, c, r, - for none) and header set for the head's. A code
+// block has its language (its info string's first word), a paragraph in
+// quotes how deep (quote), and an image is a run of its description with
+// image its address. Raw HTML is text. A link keeps its destination,
+// whatever it is: what opens is the view's to decide.
 //
 // The paragraphs are JSON, as std/markdown's Paragraph and Run (a field
 // that's false, 0 or empty left out):
 //
 //	[{"runs": [{"text": "Hi ", "bold": true, "italic": true, "code": true,
-//	  "struck": true, "quoted": true, "link": "https://..."}, ...],
-//	  "heading": 1, "indent": 1, "marker": "1.", "code": true,
-//	  "rule": true, "row": true, "tight": true}, ...]
+//	  "struck": true, "quoted": true, "link": "https://...",
+//	  "image": "https://.../a.png"}, ...],
+//	  "heading": 1, "indent": 1, "quote": 1, "marker": "1.", "code": true,
+//	  "language": "go", "rule": true, "row": true, "header": true,
+//	  "aligns": "lc-", "tight": true}, ...]
 #include "std/std.h"
 
 #include <string.h>
@@ -49,19 +55,22 @@
 // ---- The paragraphs ----
 
 enum { R_BOLD = 1, R_ITALIC = 2, R_MONO = 4, R_STRIKE = 8, R_QUOTE = 16 };
-enum { P_CODE = 1, P_RULE = 2, P_CELLS = 4, P_TIGHT = 8 };
+enum { P_CODE = 1, P_RULE = 2, P_CELLS = 4, P_TIGHT = 8, P_HEAD = 16 };
 
 typedef struct {
 	ak_buf text;
 	uint8_t style;
-	char *link;  // NULL: not a link, or one that doesn't open
+	char *link;   // NULL: not a link
+	char *image;  // NULL: not an image (its text: its description)
 } run;
 
 typedef struct {
 	run *runs;
 	size_t nruns, cap;
-	uint8_t flags, heading, indent;
-	char *marker;  // NULL: none
+	uint8_t flags, heading, indent, quote;
+	char *marker;    // NULL: none
+	char *language;  // a code block's; NULL: none
+	ak_buf aligns;   // a row's cells': l, c, r, -
 } para;
 
 enum { F_DOC, F_QUOTE, F_LIST, F_ITEM, F_LEAF, F_TABLE, F_ROW, F_CELL, F_OTHER };
@@ -69,6 +78,7 @@ enum { F_DOC, F_QUOTE, F_LIST, F_ITEM, F_LEAF, F_TABLE, F_ROW, F_CELL, F_OTHER }
 typedef struct {
 	int kind;
 	int indent;
+	int quotes;  // how many quotes it's in
 	bool quote, tight;
 	char *marker;  // for the first child
 	bool ordered, list_tight;
@@ -82,8 +92,8 @@ typedef struct {
 
 typedef struct {
 	uint8_t style;
-	char *link;
-	bool owns;
+	char *link, *image;
+	bool owns;  // link and image are this span's
 } style;
 
 typedef struct {
@@ -102,6 +112,17 @@ static char *dup(const char *s, size_t n) {
 }
 
 static char *dupc(const char *s) { return dup(s, strlen(s)); }
+
+// attribute is an md4c attribute's text (entities and escapes as md4c
+// split them, joined), malloc'd.
+static char *attribute(const MD_ATTRIBUTE *a) {
+	ak_buf b = {0};
+	for (int i = 0; a->substr_offsets && a->substr_offsets[i] < a->size; i++)
+		ak_buf_put(&b, a->text + a->substr_offsets[i], a->substr_offsets[i + 1] - a->substr_offsets[i]);
+	char *s = dup(b.data ? (const char *)b.data : "", b.len);
+	ak_buf_free(&b);
+	return s;
+}
 
 static frame *top(reader *r) { return &r->frames[r->nframes - 1]; }
 
@@ -153,7 +174,7 @@ static void add_text(reader *r, size_t p, const char *text, size_t n, style s) {
 	if (pa->nruns > 0) {
 		run *last = &pa->runs[pa->nruns - 1];
 		bool last_tab = (pa->flags & P_CELLS) && last->text.len == 1 && last->text.data[0] == '\t';
-		if (last->style == s.style && same_link(last->link, s.link) && !tab && !last_tab) {
+		if (last->style == s.style && same_link(last->link, s.link) && same_link(last->image, s.image) && !tab && !last_tab) {
 			ak_buf_put(&last->text, text, n);
 			return;
 		}
@@ -163,7 +184,7 @@ static void add_text(reader *r, size_t p, const char *text, size_t n, style s) {
 		pa->runs = ak_realloc(pa->runs, pa->cap * sizeof *pa->runs);
 	}
 	run *x = &pa->runs[pa->nruns++];
-	*x = (run){.style = s.style, .link = s.link ? dupc(s.link) : NULL};
+	*x = (run){.style = s.style, .link = s.link ? dupc(s.link) : NULL, .image = s.image ? dupc(s.image) : NULL};
 	ak_buf_put(&x->text, text, n);
 }
 
@@ -176,11 +197,11 @@ static void close_implicit(reader *r) {
 static frame *leaf(reader *r, int heading, bool code, bool html, bool rule) {
 	frame *p = top(r);
 	char *m = take_marker(p);
-	para pa = {.heading = (uint8_t)heading, .indent = (uint8_t)(p->indent > 255 ? 255 : p->indent)};
+	para pa = {.heading = (uint8_t)heading, .indent = (uint8_t)(p->indent > 255 ? 255 : p->indent), .quote = (uint8_t)(p->quotes > 255 ? 255 : p->quotes)};
 	pa.flags = (uint8_t)((code ? P_CODE : 0) | (rule ? P_RULE : 0) | (p->tight ? P_TIGHT : 0));
 	if (!rule) pa.marker = m;
 	else ak_free(m);
-	frame f = {.kind = F_LEAF, .indent = p->indent, .quote = p->quote, .para = add_para(r, pa), .code = code || html, .html = html};
+	frame f = {.kind = F_LEAF, .indent = p->indent, .quote = p->quote, .quotes = p->quotes, .para = add_para(r, pa), .code = code || html, .html = html};
 	return push(r, f);
 }
 
@@ -203,12 +224,12 @@ static int enter_block(MD_BLOCKTYPE type, void *detail, void *ud) {
 	case MD_BLOCK_DOC:
 		break;
 	case MD_BLOCK_QUOTE:
-		push(r, (frame){.kind = F_QUOTE, .indent = p->indent + 1, .quote = true, .marker = take_marker(p)});
+		push(r, (frame){.kind = F_QUOTE, .indent = p->indent + 1, .quotes = p->quotes + 1, .quote = true, .marker = take_marker(p)});
 		break;
 	case MD_BLOCK_UL:
 	case MD_BLOCK_OL: {
 		ak_free(take_marker(p));  // a list makes its items' own
-		frame f = {.kind = F_LIST, .indent = p->indent, .quote = p->quote, .tight = p->tight};
+		frame f = {.kind = F_LIST, .indent = p->indent, .quote = p->quote, .quotes = p->quotes, .tight = p->tight};
 		if (type == MD_BLOCK_OL) {
 			const MD_BLOCK_OL_DETAIL *d = detail;
 			f.ordered = true, f.number = d->start, f.list_tight = d->is_tight;
@@ -219,7 +240,7 @@ static int enter_block(MD_BLOCKTYPE type, void *detail, void *ud) {
 		break;
 	}
 	case MD_BLOCK_LI: {
-		frame f = {.kind = F_ITEM, .indent = p->indent + 1, .quote = p->quote, .tight = p->list_tight};
+		frame f = {.kind = F_ITEM, .indent = p->indent + 1, .quote = p->quote, .quotes = p->quotes, .tight = p->list_tight};
 		f.marker = p->kind == F_LIST ? item_marker(p, detail) : take_marker(p);
 		push(r, f);
 		break;
@@ -230,9 +251,14 @@ static int enter_block(MD_BLOCKTYPE type, void *detail, void *ud) {
 	case MD_BLOCK_H:
 		leaf(r, (int)((const MD_BLOCK_H_DETAIL *)detail)->level, false, false, false);
 		break;
-	case MD_BLOCK_CODE:
-		leaf(r, 0, true, false, false);
+	case MD_BLOCK_CODE: {
+		frame *f = leaf(r, 0, true, false, false);
+		const MD_ATTRIBUTE *lang = &((const MD_BLOCK_CODE_DETAIL *)detail)->lang;
+		char *l = attribute(lang);
+		if (*l) r->paras[f->para].language = l;
+		else ak_free(l);
 		break;
+	}
 	case MD_BLOCK_HTML:
 		leaf(r, 0, false, true, false);
 		break;
@@ -241,21 +267,26 @@ static int enter_block(MD_BLOCKTYPE type, void *detail, void *ud) {
 		break;
 	case MD_BLOCK_TABLE:
 		ak_free(take_marker(p));
-		push(r, (frame){.kind = F_TABLE, .indent = p->indent, .quote = p->quote});
+		push(r, (frame){.kind = F_TABLE, .indent = p->indent, .quote = p->quote, .quotes = p->quotes});
 		break;
 	case MD_BLOCK_THEAD:
 	case MD_BLOCK_TBODY:
-		push(r, (frame){.kind = F_OTHER, .indent = p->indent, .quote = p->quote, .header = type == MD_BLOCK_THEAD});
+		push(r, (frame){.kind = F_OTHER, .indent = p->indent, .quote = p->quote, .quotes = p->quotes, .header = type == MD_BLOCK_THEAD});
 		break;
 	case MD_BLOCK_TR: {
-		para pa = {.flags = P_CELLS | P_TIGHT, .indent = (uint8_t)(p->indent > 255 ? 255 : p->indent)};
-		push(r, (frame){.kind = F_ROW, .indent = p->indent, .quote = p->quote, .header = p->header, .para = add_para(r, pa)});
+		para pa = {.flags = (uint8_t)(P_CELLS | P_TIGHT | (p->header ? P_HEAD : 0)), .indent = (uint8_t)(p->indent > 255 ? 255 : p->indent),
+		           .quote = (uint8_t)(p->quotes > 255 ? 255 : p->quotes)};
+		push(r, (frame){.kind = F_ROW, .indent = p->indent, .quote = p->quote, .quotes = p->quotes, .header = p->header, .para = add_para(r, pa)});
 		break;
 	}
 	case MD_BLOCK_TH:
 	case MD_BLOCK_TD:
+		if (p->kind == F_ROW) {
+			MD_ALIGN a = ((const MD_BLOCK_TD_DETAIL *)detail)->align;
+			ak_buf_u8(&r->paras[p->para].aligns, a == MD_ALIGN_LEFT ? 'l' : a == MD_ALIGN_CENTER ? 'c' : a == MD_ALIGN_RIGHT ? 'r' : '-');
+		}
 		if (p->kind == F_ROW && p->cells++ > 0) add_text(r, p->para, "\t", 1, (style){0});
-		push(r, (frame){.kind = F_CELL, .indent = p->indent, .quote = p->quote, .para = p->kind == F_ROW ? p->para : 0,
+		push(r, (frame){.kind = F_CELL, .indent = p->indent, .quote = p->quote, .quotes = p->quotes, .para = p->kind == F_ROW ? p->para : 0,
 		                .header = p->header || type == MD_BLOCK_TH});
 		break;
 	}
@@ -278,17 +309,6 @@ static int leave_block(MD_BLOCKTYPE type, void *detail, void *ud) {
 	return 0;
 }
 
-// safe reports whether a link opens: a web, mail or phone address.
-static bool safe(const char *dest) {
-	while (*dest == ' ' || *dest == '\t' || *dest == '\n') dest++;
-	static const char *ok[] = {"http://", "https://", "mailto:", "tel:"};
-	for (size_t i = 0; i < sizeof ok / sizeof *ok; i++) {
-		size_t j = 0;
-		while (ok[i][j] && (dest[j] | 0x20) == ok[i][j]) j++;  // the prefixes are lower case letters, ':' and '/'
-		if (!ok[i][j]) return true;
-	}
-	return false;
-}
 
 static int enter_span(MD_SPANTYPE type, void *detail, void *ud) {
 	reader *r = ud;
@@ -302,21 +322,17 @@ static int enter_span(MD_SPANTYPE type, void *detail, void *ud) {
 	case MD_SPAN_STRONG: s.style |= R_BOLD; break;
 	case MD_SPAN_DEL: s.style |= R_STRIKE; break;
 	case MD_SPAN_CODE: s.style |= R_MONO; break;
-	case MD_SPAN_A: {
-		const MD_ATTRIBUTE *h = &((const MD_SPAN_A_DETAIL *)detail)->href;
-		ak_buf b = {0};
-		for (int i = 0; h->substr_offsets && h->substr_offsets[i] < h->size; i++)
-			ak_buf_put(&b, h->text + h->substr_offsets[i], h->substr_offsets[i + 1] - h->substr_offsets[i]);
-		ak_buf_u8(&b, 0);
-		s.link = NULL;
-		if (safe((const char *)b.data)) {
-			s.link = dupc((const char *)b.data);
-			s.owns = true;
-		}
-		ak_buf_free(&b);
+	case MD_SPAN_A:
+		s.link = attribute(&((const MD_SPAN_A_DETAIL *)detail)->href);
+		s.image = s.image ? dupc(s.image) : NULL;
+		s.owns = true;
 		break;
-	}
-	default:  // an image's description, as text; the rest as it is
+	case MD_SPAN_IMG:  // its text is its description
+		s.image = attribute(&((const MD_SPAN_IMG_DETAIL *)detail)->src);
+		s.link = s.link ? dupc(s.link) : NULL;
+		s.owns = true;
+		break;
+	default:
 		break;
 	}
 	r->styles[r->nstyles++] = s;
@@ -327,7 +343,10 @@ static int leave_span(MD_SPANTYPE type, void *detail, void *ud) {
 	reader *r = ud;
 	if (r->nstyles == 0) return 0;
 	style *s = &r->styles[--r->nstyles];
-	if (s->owns) ak_free(s->link);
+	if (s->owns) {
+		ak_free(s->link);
+		ak_free(s->image);
+	}
 	return 0;
 }
 
@@ -446,27 +465,44 @@ static ak_val read_fn(ak_val *args, uint32_t n) {
 					ak_buf_put(&out, ",\"link\":", 8);
 					json_str(&out, x->link, strlen(x->link));
 				}
+				if (x->image) {
+					ak_buf_put(&out, ",\"image\":", 9);
+					json_str(&out, x->image, strlen(x->image));
+				}
 				ak_buf_u8(&out, '}');
 			}
 			ak_buf_u8(&out, ']');
 			if (pa->heading) ak_buf_printf(&out, ",\"heading\":%d", pa->heading);
 			if (pa->indent) ak_buf_printf(&out, ",\"indent\":%d", pa->indent);
+			if (pa->quote) ak_buf_printf(&out, ",\"quote\":%d", pa->quote);
 			if (pa->marker) {
 				ak_buf_put(&out, ",\"marker\":", 10);
 				json_str(&out, pa->marker, strlen(pa->marker));
 			}
 			json_flag(&out, "code", pa->flags & P_CODE);
+			if (pa->language) {
+				ak_buf_put(&out, ",\"language\":", 12);
+				json_str(&out, pa->language, strlen(pa->language));
+			}
 			json_flag(&out, "rule", pa->flags & P_RULE);
 			json_flag(&out, "row", pa->flags & P_CELLS);
+			json_flag(&out, "header", pa->flags & P_HEAD);
+			if (pa->aligns.len) {
+				ak_buf_put(&out, ",\"aligns\":", 10);
+				json_str(&out, (const char *)pa->aligns.data, pa->aligns.len);
+			}
 			json_flag(&out, "tight", pa->flags & P_TIGHT);
 			ak_buf_u8(&out, '}');
 		}
 		for (size_t j = 0; j < pa->nruns; j++) {
 			ak_buf_free(&pa->runs[j].text);
 			ak_free(pa->runs[j].link);
+			ak_free(pa->runs[j].image);
 		}
 		ak_free(pa->runs);
 		ak_free(pa->marker);
+		ak_free(pa->language);
+		ak_buf_free(&pa->aligns);
 	}
 	ak_buf_u8(&out, ']');
 	ak_free(r.paras);

@@ -125,7 +125,7 @@ component Answer(question: [Span], answer: [Span]) {
 
 ### Markdown
 
-`std/markdown` は Markdown（CommonMark に GitHub の表、タスクリスト、取り消し線、自動リンクを加えたもの）を、プラットフォーム純正のスタイル付きテキストとして表示します。全体が一つの選択範囲になり、リンクは開けて、文字サイズはユーザーの設定に従います。テキスト中の生の HTML は文字として表示されます。
+`std/markdown` は Markdown（CommonMark に GitHub の表、タスクリスト、取り消し線、自動リンクを加えたもの）を、プラットフォーム純正のスタイル付きテキストとして表示します。見出し、強調、コード、引用、リスト、表、画像、リンクを扱い、文字サイズはユーザーの設定に従います。テキスト中の生の HTML は文字として表示されます。
 
 ```asuka
 import std/markdown
@@ -135,7 +135,37 @@ component Reply(text: string, writing: bool) {
 }
 ```
 
-`streaming` は、言語モデルの返答が流れてくるときのように、テキストがまだ書かれている途中であることを表します。このときテキストの末尾は、書きかけの記法ではなく、最終的になりそうな姿で表示されます（コードフェンスは閉じ、`**bold` は太字に、書きかけのリンクはリンクに）。`markdown.heal(text)` で同じ処理だけを行うこともできます。解析はどのプラットフォームでも同じく、Asuka が行います。テキストはスタイル付きの段落として読まれ、各プラットフォームがそれを自分の方法で表示します。iOS と macOS ではテキストビューの属性付き文字列、Android では TextView の span、Web ではページの要素、Windows ではリッチエディット、Linux ではブロックごとのラベルです（GNOME アプリがリッチテキストを表示する方法で、選択はブロックごとになります）。テキストは変わるたびに読み直されますが、ビューが置き換えるのは変わった部分、つまり最初に違いが出たブロックから後だけです。そのため返答がストリーミングで届く間も、最後のブロックより前はレイアウトと選択範囲を保ちます。[`examples/markdown`](../../examples/markdown) を見てください。
+`streaming` は、言語モデルの返答が流れてくるときのように、テキストがまだ書かれている途中であることを表します。このときテキストの末尾は、書きかけの記法ではなく、最終的になりそうな姿で表示されます（コードフェンスは閉じ、`**bold` は太字に、書きかけのリンクはリンクに）。`markdown.heal(text)` で同じ処理だけを行うこともできます。
+
+見た目とリンクはアプリが決めます。
+
+- `theme` は `markdown.Theme` です。本文のフォントと色、見出し、リンク、コード（とその背景）、引用、区切り線のスタイル、ブロックの間隔とインデントの幅を指定します。指定しなかった部分はプラットフォームのものになります。
+- `render` はブロックをアプリのやり方で描きます。`markdown.Block`（`kind`、プレーンテキストの `text`、スタイル付きの `spans`、見出しの `level`、コードブロックの `language`、画像の `url`、表の `rows`）を受け取ってビューを返し、`none` を返せば Markdown 自身の描画になります。コードブロックのハイライト、コードから描く図、アプリ独自の画像などに使えます。
+- `on link(url)` はタップされたリンクを、書かれたままの宛先（相対パスも）で受け取ります。何を開くかはアプリが決めます。これがなければ、Web、メール、電話のリンクはそれを扱うアプリで開き、それ以外のリンクは何もしません。
+
+```asuka
+import std/markdown
+
+component Code(text: string, language: string) {
+  Column {
+    background: .secondaryBackground; radius: 8; padding: 12
+    Text(language) { font: .caption; color: .secondaryLabel }
+    Text(text) { font: Font.callout.family("Menlo") }
+  }
+}
+
+component Answer(text: string) {
+  state opened = ""
+
+  markdown.View(text) {
+    theme: markdown.Theme(font: .callout, linkColor: .purple, spacing: 8)
+    render: b => if b.kind == .code { Code(b.text, language: b.language) } else { none }
+    on link(url) { opened = url }
+  }
+}
+```
+
+Markdown はどのプラットフォームでも同じく Asuka が読み、各ブロックを言語自身のビューで描きます。段落はそれぞれ [`Selectable`](#選択できるテキスト) の中の [`RichText`](#richtext)、表はグリッド、画像は `Image` です。テキストは変わるたびに読み直されますが、ブロックは位置ごとに保たれるので、返答がストリーミングで届く間に描き直されるのは最後の 1、2 ブロックだけで、その前はレイアウトと選択範囲を保ちます。[`examples/markdown`](../../examples/markdown) を見てください。
 
 ## ボタン
 

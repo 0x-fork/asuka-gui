@@ -1,8 +1,8 @@
 // Package std/markdown shows Markdown (CommonMark, with GitHub's
 // tables, task lists, strikethrough and autolinks) as the platform's own
-// styled text: headings, emphasis, code, quotes, lists, tables and links
-// in one selection, which the user's text size scales. Raw HTML in the
-// text shows as text, and links open in the browser.
+// styled text: headings, emphasis, code, quotes, lists, tables, images
+// and links, selectable across its blocks, which the user's text size
+// scales. Raw HTML in the text shows as text.
 //
 //   markdown.View(reply) { streaming: writing }
 //
@@ -11,11 +11,20 @@
 // fence closed, emphasis closed, a link being written as a link) rather
 // than half-written syntax. Turn it off once the text is whole.
 //
+// Its look is a Theme (fonts, colors and spacing of each part); a link
+// tapped goes to on link when the app handles it (else a web, mail or
+// phone link opens); and render draws any block the app's way:
+//
+//   markdown.View(reply) {
+//     theme: markdown.Theme(font: .callout, linkColor: .purple)
+//     render: b => if b.kind == .code { CodeBlock(b.text, language: b.language) } else { none }
+//     on link(url) { navigate(url) }
+//   }
+//
 // The core reads the Markdown (md4c, the same on every platform) into
-// paragraphs of styled runs; each platform shows them as its own styled
-// text: an attributed string in a text view on iOS and macOS, spans in a
-// TextView on Android, the DOM's elements on the web, a rich edit on
-// Windows and a label's Pango markup on Linux.
+// blocks of styled runs; each block is the platform's own rich text
+// (RichText) in a Selectable, so a long reply streaming in redraws only
+// the block being written.
 
 import std/json
 
@@ -25,11 +34,225 @@ pub component View(text: string) {
   /// The text is still being written: its end shows what it will most
   /// likely become.
   prop streaming = false
+  /// How it looks: the fonts, colors and spacing of its parts.
+  prop theme = Theme()
+  /// Draws a block the app's way: the view to show for it, or none for
+  /// Markdown's own (a code block highlighted, a diagram drawn from its
+  /// code, an image of the app's).
+  prop render: (fn(Block) -> View?)? = none
+  /// A link tapped, its destination as written (a relative one too).
+  /// With a handler, the app decides what it opens; without, a web, mail
+  /// or phone link opens in the app that takes it, and others do
+  /// nothing.
+  event link(url: string)
 
-  Document(paragraphs(if streaming { heal(text) } else { text }))
+  let blocks = blocksOf(paragraphs(if streaming { heal(text) } else { text }), theme)
+
+  Selectable {
+    gap: theme.spacing
+    for b in blocks key b.index {
+      BlockView(b) {
+        theme: theme
+        render: render
+        on link(url) {
+          if link {
+            emit link(url)
+          } else if opens(url) {
+            openURL(url)
+          }
+        }
+      }
+    }
+  }
 }
 
-/// A paragraph's run of text in one style.
+/// How a View looks: each part's font and color, and its spacing. What
+/// isn't said is the platform's: its text styles and semantic colors,
+/// which follow the user's text size, light and dark.
+pub struct Theme {
+  /// The text's font.
+  font: Font = .body
+  /// The text's color.
+  color: Color = .label
+  /// The headings' fonts, level 1 to 6 (a level past the list takes its
+  /// last).
+  headings: [Font] = [Font.title.bold(), Font.title2.bold(), Font.title3.bold(), Font.headline, Font.subheadline.bold(), Font.subheadline]
+  /// The headings' color.
+  headingColor: Color = .label
+  /// A link's color.
+  linkColor: Color = .accent
+  /// A code block's font (its text monospaced).
+  codeFont: Font = .callout
+  /// A code block's text color.
+  codeColor: Color = .label
+  /// A code block's background, and code's in a line of text.
+  codeBackground: Color = .secondaryBackground
+  /// A quote's text color.
+  quoteColor: Color = .secondaryLabel
+  /// The bar beside a quote.
+  quoteBar: Color = .separator
+  /// A thematic break's line, and a table's lines.
+  ruleColor: Color = .separator
+  /// Between blocks, in points.
+  spacing: float = 12
+  /// A list's or a quote's indent per level, in points.
+  indent: float = 20
+}
+
+/// What a block of the Markdown is.
+pub enum BlockKind {
+  /// A paragraph of text (a list item's too: its marker says).
+  paragraph
+  /// A heading: its level says which.
+  heading
+  /// A code block (fenced or indented): its text is its code.
+  code
+  /// An image alone in its paragraph: url is its address, text its
+  /// description.
+  image
+  /// A table: its rows' cells.
+  table
+  /// A thematic break: a line across.
+  rule
+}
+
+/// A block of the Markdown, as render is given it.
+pub struct Block {
+  /// Its place in the text, from 0.
+  index: int
+  kind: BlockKind
+  /// Its text without the Markdown: a code block's code, an image's
+  /// description, a table's cells apart by tabs and its rows by lines.
+  text: string
+  /// Its text as styled spans, as Markdown draws it with the theme (a
+  /// paragraph's, a heading's): to show in a RichText of the app's.
+  spans: [Span] = []
+  /// A heading's level, 1 to 6.
+  level: int = 0
+  /// A code block's language (```swift: "swift"), "" for none.
+  language: string = ""
+  /// An image's address.
+  url: string = ""
+  /// A list item's marker ("•", "2.", "• ☑"), "" for none.
+  marker: string = ""
+  /// How deep in lists and quotes it is.
+  depth: int = 0
+  /// How many quotes it's in.
+  quote: int = 0
+  /// A table's rows, the first its head: each a row's cells, as styled
+  /// spans.
+  rows: [[[Span]]] = []
+  /// A table's columns' alignments.
+  aligns: [TextAlign] = []
+  /// A list item that's close to the next (a tight list's).
+  tight: bool = false
+}
+
+/// A block drawn: the app's (render), else Markdown's own.
+component BlockView(block: Block) {
+  prop theme = Theme()
+  prop render: (fn(Block) -> View?)? = none
+  event link(url: string)
+
+  let custom = if let r = render { r(block) } else { none }
+
+  if let v = custom {
+    v
+  } else {
+    match block.kind {
+      .rule => {
+        Column { height: 1; background: theme.ruleColor; margin: [4, 0] }
+      }
+      .image => {
+        Image(block.url) {
+          mode: .fit
+          label: block.text
+        }
+      }
+      .code => {
+        Column {
+          background: theme.codeBackground
+          radius: 8
+          padding: 12
+          margin: [0, 0, 0, theme.indent * block.depth.float()]
+          RichText([Span(text: block.text, mono: true, color: theme.codeColor)]) { font: theme.codeFont }
+        }
+      }
+      .table => {
+        Table(block) {
+          theme: theme
+          on link(url) { emit link(url) }
+        }
+      }
+      _ => {
+        Row {
+          gap: 6
+          padding: [0, 0, 0, theme.indent * (block.depth - block.quote).float()]
+          if block.quote > 0 {
+            Column { width: 3; radius: 1.5; background: theme.quoteBar; margin: [0, theme.indent * (block.quote - 1).float(), 0, 0] }
+          }
+          if !block.marker.isEmpty() {
+            Text(block.marker) { font: theme.font; color: theme.color }
+          }
+          RichText(block.spans) {
+            grow: 1
+            font: if block.kind == .heading { headingFont(theme, block.level) } else { theme.font }
+            color: if block.kind == .heading { theme.headingColor } else if block.quote > 0 { theme.quoteColor } else { theme.color }
+            role: if block.kind == .heading { .header } else { .text }
+            on link(url) { emit link(url) }
+          }
+        }
+      }
+    }
+  }
+}
+
+/// A table: a grid of its cells, the head's bold, a line under it.
+component Table(block: Block) {
+  prop theme = Theme()
+  event link(url: string)
+
+  let columns = block.rows.map(r => r.count()).sorted().last() ?? 1
+
+  Scroll {
+    horizontal: true
+    Column {
+      grid: Grid(columns: [.repeat(columns, [.auto])])
+      gap: 12
+      for (i, row) in block.rows.enumerated() key i {
+        for (j, cell) in row.enumerated() key j {
+          RichText(cell) {
+            font: theme.font
+            color: theme.color
+            textAlign: block.aligns.get(j) ?? .start
+            on link(url) { emit link(url) }
+          }
+        }
+        if i == 0 && block.rows.count() > 1 {
+          Column { gridColumn: .span(columns); height: 1; background: theme.ruleColor }
+        }
+      }
+    }
+  }
+}
+
+fn headingFont(theme: Theme, level: int) -> Font {
+  if theme.headings.isEmpty() {
+    return theme.font.bold()
+  }
+  return theme.headings.get(level - 1) ?? (theme.headings.last() ?? theme.font)
+}
+
+/// Whether a link opens without the app's say: a web, mail or phone
+/// address.
+fn opens(url: string) -> bool {
+  let u = url.trim().lower()
+  return u.hasPrefix("http://") || u.hasPrefix("https://") || u.hasPrefix("mailto:") || u.hasPrefix("tel:")
+}
+
+// ---- The core's paragraphs, made blocks ----
+
+/// A paragraph's run of text in one style, as the core reads it.
 struct Run {
   text: string
   bold: bool = false
@@ -37,37 +260,43 @@ struct Run {
   /// Code: monospaced.
   code: bool = false
   struck: bool = false
-  /// In a quote: secondary text.
+  /// In a quote.
   quoted: bool = false
-  /// Where it opens: a web, mail or phone address ("": not a link).
+  /// Its link's destination, as written ("": not a link).
   link: string = ""
+  /// An image's address ("": not an image; its text: its description).
+  image: string = ""
 }
 
-/// A block of the Markdown, as one paragraph of styled text.
+/// A block of the Markdown as the core reads it.
 struct Paragraph {
   runs: [Run]
   /// A heading's level, 1 to 6 (0: not a heading).
   heading: int = 0
   /// How deep in lists and quotes it is.
   indent: int = 0
-  /// Its list item's marker ("•", "2.", "• ☑"; "": none), before its
-  /// first line.
+  /// How many quotes it's in.
+  quote: int = 0
+  /// Its list item's marker ("•", "2.", "• ☑"; "": none).
   marker: string = ""
-  /// A code block: monospaced, on a background.
+  /// A code block.
   code: bool = false
-  /// A thematic break: a line across, no text.
+  /// A code block's language.
+  language: string = ""
+  /// A thematic break.
   rule: bool = false
   /// A table's row: its cells' runs apart by tab runs.
   row: bool = false
+  /// The table's head's row.
+  header: bool = false
+  /// A row's cells' alignments: l, c, r, or - for none.
+  aligns: string = ""
   /// Close to the next (a tight list's item, a table's row).
   tight: bool = false
 }
 
 /// The paragraphs Markdown reads as (the core's, md4c).
 fn paragraphs(text: string) -> [Paragraph] = (try? json.decode<[Paragraph]>(read(text))) ?? []
-
-/// The platform's view of the paragraphs.
-native component Document(paragraphs: [Paragraph]) {}
 
 native fn read(text: string) -> string
 
@@ -76,3 +305,94 @@ native fn read(text: string) -> string
 /// strikethrough it opened closed, and a link whose destination is being
 /// written ended.
 pub native fn heal(text: string) -> string
+
+/// A run as a span drawn with theme: its style, a link in the link color,
+/// code on the code background, an image in the line.
+fn spanOf(r: Run, theme: Theme) -> Span {
+  if !r.image.isEmpty() {
+    let src = r.image
+    let alt = r.text
+    return Span(link: r.link, inline: Inline(key: src, build: () => InlineImage(src) { description: alt }))
+  }
+  return Span(
+    text: r.text,
+    font: if r.bold { Font(weight: .bold) } else { Font() },
+    italic: r.italic,
+    mono: r.code,
+    strike: r.struck,
+    color: if !r.link.isEmpty() { theme.linkColor } else { .default },
+    background: if r.code { theme.codeBackground } else { .default },
+    link: r.link,
+  )
+}
+
+/// An image in a line of text: at most the text's line's height.
+component InlineImage(source: string) {
+  prop description = ""
+  Image(source) {
+    mode: .fit
+    height: 20
+    label: description
+  }
+}
+
+fn alignOf(c: string) -> TextAlign = if c == "c" { .center } else if c == "r" { .end } else { .start }
+
+/// The blocks paragraphs make: a table's rows one table, an image alone
+/// in its paragraph an image, the rest a block each.
+fn blocksOf(ps: [Paragraph], theme: Theme) -> [Block] {
+  var out: [Block] = []
+  var i = 0
+  while i < ps.count() {
+    let p = ps[i]
+    let index = out.count()
+    if p.row {
+      var rows: [[[Span]]] = []
+      var lines: [string] = []
+      var aligns: [TextAlign] = []
+      while i < ps.count() && ps[i].row {
+        var cells: [[Span]] = [[]]
+        var texts: [string] = [""]
+        for r in ps[i].runs {
+          if r.text == "\t" {
+            cells.push([])
+            texts.push("")
+          } else {
+            cells[cells.count() - 1].push(spanOf(r, theme: theme))
+            texts[texts.count() - 1] = texts[texts.count() - 1] + r.text
+          }
+        }
+        if aligns.isEmpty() {
+          aligns = ps[i].aligns.chars().map(c => alignOf(c))
+        }
+        rows.push(cells)
+        lines.push(texts.joined(separator: "\t"))
+        i += 1
+      }
+      out.push(Block(index: index, kind: .table, text: lines.joined(separator: "\n"), depth: p.indent, quote: p.quote, rows: rows, aligns: aligns))
+      continue
+    }
+    let text = p.runs.map(r => r.text).joined(separator: "")
+    if p.rule {
+      out.push(Block(index: index, kind: .rule, text: "", depth: p.indent, quote: p.quote))
+    } else if p.code {
+      out.push(Block(index: index, kind: .code, text: text, language: p.language, depth: p.indent, quote: p.quote))
+    } else if p.runs.count() == 1 && !p.runs[0].image.isEmpty() && p.marker.isEmpty() && p.heading == 0 {
+      out.push(Block(index: index, kind: .image, text: text, url: p.runs[0].image, depth: p.indent, quote: p.quote))
+    } else {
+      out.push(Block(
+        index: index,
+        kind: if p.heading > 0 { .heading } else { .paragraph },
+        text: text,
+        spans: p.runs.map(r => spanOf(r, theme: theme)),
+        level: p.heading,
+        marker: p.marker,
+        depth: p.indent,
+        quote: p.quote,
+        tight: p.tight,
+      ))
+    }
+    i += 1
+  }
+  return out
+}

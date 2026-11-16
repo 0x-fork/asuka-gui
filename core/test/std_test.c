@@ -300,7 +300,7 @@ TEST(random_seeded) {
 	CHECK_EQ_INT(a, b);
 }
 
-// std/markdown: the paragraphs every platform's view styles, as JSON.
+// std/markdown: the paragraphs std/markdown's view draws, as JSON.
 TEST(markdown_read) {
 	CHECK_STR(call("markdown.read", (ak_val[]){S("")}, 1, 1), "[]");
 	CHECK_STR(call("markdown.read",
@@ -311,56 +311,66 @@ TEST(markdown_read) {
 	          "[{\"runs\":[{\"text\":\"Plan\"}],\"heading\":1},"
 	          "{\"runs\":[{\"text\":\"Three \"},{\"text\":\"steps\",\"bold\":true},{\"text\":\", \"},{\"text\":\"in\",\"italic\":true},"
 	          "{\"text\":\" \"},{\"text\":\"order\",\"code\":true},{\"text\":\":\"}]},"
-	          "{\"runs\":[{\"text\":\"Read \"},{\"text\":\"docs\",\"link\":\"https://example.com\"},{\"text\":\" and no\"}],"
-	          "\"indent\":1,\"marker\":\"1.\",\"tight\":true},"
+	          "{\"runs\":[{\"text\":\"Read \"},{\"text\":\"docs\",\"link\":\"https://example.com\"},{\"text\":\" and \"},"
+	          "{\"text\":\"no\",\"link\":\"javascript:x\"}],\"indent\":1,\"marker\":\"1.\",\"tight\":true},"
 	          "{\"runs\":[{\"text\":\"Write\"}],\"indent\":1,\"marker\":\"2.\",\"tight\":true},"
 	          "{\"runs\":[{\"text\":\"nested\"}],\"indent\":2,\"marker\":\"• ☑\",\"tight\":true},"
-	          "{\"runs\":[{\"text\":\"quoted\",\"quoted\":true}],\"indent\":1},"
+	          "{\"runs\":[{\"text\":\"quoted\",\"quoted\":true}],\"indent\":1,\"quote\":1},"
 	          "{\"runs\":[],\"rule\":true},"
-	          "{\"runs\":[{\"text\":\"a\",\"bold\":true},{\"text\":\"\\t\"},{\"text\":\"b\",\"bold\":true}],\"row\":true,\"tight\":true},"
-	          "{\"runs\":[{\"text\":\"1\"},{\"text\":\"\\t\"},{\"text\":\"2\"}],\"row\":true,\"tight\":true},"
-	          "{\"runs\":[{\"text\":\"fmt.Println(\\\"1\\\")\",\"code\":true}],\"code\":true},"
+	          "{\"runs\":[{\"text\":\"a\",\"bold\":true},{\"text\":\"\\t\"},{\"text\":\"b\",\"bold\":true}],\"row\":true,\"header\":true,"
+	          "\"aligns\":\"--\",\"tight\":true},"
+	          "{\"runs\":[{\"text\":\"1\"},{\"text\":\"\\t\"},{\"text\":\"2\"}],\"row\":true,\"aligns\":\"--\",\"tight\":true},"
+	          "{\"runs\":[{\"text\":\"fmt.Println(\\\"1\\\")\",\"code\":true}],\"code\":true,\"language\":\"go\"},"
 	          "{\"runs\":[{\"text\":\"A&B ☺ \"},{\"text\":\"www.asuka.dev\",\"link\":\"http://www.asuka.dev\"},{\"text\":\" \"},"
 	          "{\"text\":\"gone\",\"struck\":true},{\"text\":\"<br>raw\"}]}]");
 	// A quote's list, a loose list, a hard break, a heading's emphasis.
 	CHECK_STR(call("markdown.read", (ak_val[]){S("> - a\n>\n> - b\n\n## *It*  \nx\\\ny")}, 1, 1),
-	          "[{\"runs\":[{\"text\":\"a\",\"quoted\":true}],\"indent\":2,\"marker\":\"•\"},"
-	          "{\"runs\":[{\"text\":\"b\",\"quoted\":true}],\"indent\":2,\"marker\":\"•\"},"
+	          "[{\"runs\":[{\"text\":\"a\",\"quoted\":true}],\"indent\":2,\"quote\":1,\"marker\":\"•\"},"
+	          "{\"runs\":[{\"text\":\"b\",\"quoted\":true}],\"indent\":2,\"quote\":1,\"marker\":\"•\"},"
 	          "{\"runs\":[{\"text\":\"It\",\"italic\":true}],\"heading\":2},"
 	          "{\"runs\":[{\"text\":\"x\\ny\"}]}]");
+	// An image (its text its description), one in a link; a table's
+	// alignments; a quote in a quote; a code block's language, the first
+	// word of its info string.
+	CHECK_STR(call("markdown.read",
+	               (ak_val[]){S("![a cat](cat.png) and [![b](b.png)](https://b.dev)\n\n| l | c | r |\n|:--|:-:|--:|\n| 1 | 2 | 3 |\n\n"
+	                            "> > deep\n\n```swift title=x\nlet a = 1\n```")},
+	               1, 1),
+	          "[{\"runs\":[{\"text\":\"a cat\",\"image\":\"cat.png\"},{\"text\":\" and \"},"
+	          "{\"text\":\"b\",\"link\":\"https://b.dev\",\"image\":\"b.png\"}]},"
+	          "{\"runs\":[{\"text\":\"l\",\"bold\":true},{\"text\":\"\\t\"},{\"text\":\"c\",\"bold\":true},{\"text\":\"\\t\"},"
+	          "{\"text\":\"r\",\"bold\":true}],\"row\":true,\"header\":true,\"aligns\":\"lcr\",\"tight\":true},"
+	          "{\"runs\":[{\"text\":\"1\"},{\"text\":\"\\t\"},{\"text\":\"2\"},{\"text\":\"\\t\"},{\"text\":\"3\"}],\"row\":true,"
+	          "\"aligns\":\"lcr\",\"tight\":true},"
+	          "{\"runs\":[{\"text\":\"deep\",\"quoted\":true}],\"indent\":2,\"quote\":2},"
+	          "{\"runs\":[{\"text\":\"let a = 1\",\"code\":true}],\"code\":true,\"language\":\"swift\"}]");
 	// An ordered list's start; a task not done.
 	CHECK_STR(call("markdown.read", (ak_val[]){S("7. a\n8. [ ] b")}, 1, 1),
 	          "[{\"runs\":[{\"text\":\"a\"}],\"indent\":1,\"marker\":\"7.\",\"tight\":true},"
 	          "{\"runs\":[{\"text\":\"b\"}],\"indent\":1,\"marker\":\"8. ☐\",\"tight\":true}]");
 }
 
-// A link opens only to a web, mail or phone address.
+// A link keeps its destination as written, whatever it is: what opens is
+// the view's to decide (std/markdown's opens web, mail and phone links
+// unless the app handles them).
 TEST(markdown_links) {
 	static const char *const cases[][2] = {
 	    {"[a](https://x.dev/p?q=1)", "https://x.dev/p?q=1"},
 	    {"[a](HTTP://X.DEV)", "HTTP://X.DEV"},
 	    {"[a](mailto:me@x.dev)", "mailto:me@x.dev"},
-	    {"[a](tel:+15550100)", "tel:+15550100"},
 	    {"<https://x.dev>", "https://x.dev"},
-	    {"[a](javascript:alert(1))", NULL},
-	    {"[a](JavaScript:alert(1))", NULL},
-	    {"[a](data:text/html,x)", NULL},
-	    {"[a](file:///etc/passwd)", NULL},
-	    {"[a](/relative)", NULL},
-	    {"[a](httpx://x)", NULL},
+	    {"[a](javascript:alert(1))", "javascript:alert(1)"},
+	    {"[a](/relative)", "/relative"},
+	    {"[a](notes/2.md#top)", "notes/2.md#top"},
+	    {"[a](<with space>)", "with space"},
 	};
 	for (size_t i = 0; i < AK_LEN(cases); i++) {
 		ak_val r = call("markdown.read", (ak_val[]){S(cases[i][0])}, 1, 1);
 		const char *got = strstr(((ak_str *)r.p)->data, "\"link\":\"");
-		if (cases[i][1]) {
-			char want[128];
-			snprintf(want, sizeof want, "\"link\":\"%s\"", cases[i][1]);
-			if (!got || strncmp(got, want, strlen(want)) != 0) {
-				fprintf(stderr, "std_test.c:%d: %s: %s read as %s\n", __LINE__, t_current, cases[i][0], ((ak_str *)r.p)->data);
-				t_failed++;
-			}
-		} else if (got) {
-			fprintf(stderr, "std_test.c:%d: %s: %s opens: %s\n", __LINE__, t_current, cases[i][0], ((ak_str *)r.p)->data);
+		char want[128];
+		snprintf(want, sizeof want, "\"link\":\"%s\"", cases[i][1]);
+		if (!got || strncmp(got, want, strlen(want)) != 0) {
+			fprintf(stderr, "std_test.c:%d: %s: %s read as %s\n", __LINE__, t_current, cases[i][0], ((ak_str *)r.p)->data);
 			t_failed++;
 		}
 		ak_release(r.p);
@@ -387,57 +397,6 @@ TEST(markdown_heal) {
 	    {"__a ~~b", "__a ~~b~~__"},
 	};
 	for (size_t i = 0; i < AK_LEN(cases); i++) CHECK_STR(call("markdown.heal", (ak_val[]){S(cases[i][0])}, 1, 1), cases[i][1]);
-}
-
-// A reply streamed in (std/markdown/tests/reply.md, a few tokens a
-// frame, as tokens come), healed and read after each piece: what the
-// platforms' views are given, frame by frame. std/markdown/tests/
-// stream.json keeps those frames, one a line, for each platform's view
-// test (they count what their view replaces); this checks it's what the
-// core reads. ASUKA_UPDATE=1 writes it again.
-TEST(markdown_stream) {
-	const char *root = getenv("ASUKA_ROOT");
-	REQUIRE(root);
-	char path[1024];
-	snprintf(path, sizeof path, "%s/std/markdown/tests/reply.md", root);
-	FILE *f = fopen(path, "rb");
-	REQUIRE(f);
-	char reply[8192];
-	size_t n = fread(reply, 1, sizeof reply, f);
-	fclose(f);
-	REQUIRE(n > 0 && n < sizeof reply);
-	enum { STEP = 12 };  // a frame's tokens
-	ak_buf want = {0};
-	ak_buf_printf(&want, "{\"step\": %d, \"frames\": [\n", STEP);
-	for (size_t end = 0; end < n;) {
-		end += STEP;
-		if (end > n) end = n;
-		while (end < n && ((unsigned char)reply[end] & 0xC0) == 0x80) end++;  // a character's end
-		ak_val healed = call("markdown.heal", (ak_val[]){{.p = ak_str_new(reply, end)}}, 1, 1);
-		ak_val frame = call("markdown.read", &healed, 1, 1);
-		ak_buf_put(&want, ((ak_str *)frame.p)->data, ((ak_str *)frame.p)->len);
-		ak_buf_put(&want, end < n ? ",\n" : "\n", end < n ? 2 : 1);
-		ak_release(frame.p);
-	}
-	ak_buf_put(&want, "]}\n", 3);
-	snprintf(path, sizeof path, "%s/std/markdown/tests/stream.json", root);
-	if (getenv("ASUKA_UPDATE")) {
-		f = fopen(path, "wb");
-		REQUIRE(f);
-		fwrite(want.data, 1, want.len, f);
-		fclose(f);
-	}
-	f = fopen(path, "rb");
-	REQUIRE(f);
-	char *got = ak_alloc(want.len + 2);
-	size_t m = fread(got, 1, want.len + 1, f);
-	fclose(f);
-	if (m != want.len || memcmp(got, want.data, m) != 0) {
-		fprintf(stderr, "std_test.c:%d: %s: std/markdown/tests/stream.json isn't what the core reads (ASUKA_UPDATE=1 writes it)\n", __LINE__, t_current);
-		t_failed++;
-	}
-	ak_free(got);
-	ak_buf_free(&want);
 }
 
 T_MAIN()
