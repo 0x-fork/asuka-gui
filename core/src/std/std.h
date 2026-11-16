@@ -11,6 +11,8 @@
 
 #include "rt/lib.h"
 
+#include <stdio.h>
+
 extern const ak_lib_entry ak_std_time[];
 extern const ak_lib_entry ak_std_url[];
 extern const ak_lib_entry ak_std_regex[];
@@ -20,6 +22,7 @@ extern const ak_lib_entry ak_std_html[];
 extern const ak_lib_entry ak_std_random[];
 extern const ak_lib_entry ak_std_fs[];
 extern const ak_lib_entry ak_std_crash[];
+extern const ak_lib_entry ak_std_update[];
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];
@@ -82,6 +85,26 @@ bool ak_ed25519_verify(const uint8_t pub[32], const uint8_t *m, size_t n, const 
 void ak_fs_set_app_dir(const char *path);
 // ak_fs_app_dir is that directory's path (ak_free it).
 char *ak_fs_app_dir(void);
+
+// DEFLATE (RFC 1951) and gzip (RFC 1952) read as a stream (inflate.c):
+// a section of a file (offset, len bytes; len -1: to its end), or a gzip
+// file. ak_inflate_read gives up to n bytes of what it decompresses to:
+// 0 at its end, or once it failed (ak_inflate_error says why, NULL when
+// it didn't); ak_inflate_done reports whether it ended whole (a gzip
+// file's checksum checked).
+typedef struct ak_inflate ak_inflate;
+ak_inflate *ak_inflate_open(const char *path, int64_t offset, int64_t len);
+ak_inflate *ak_gunzip_open(const char *path);
+size_t ak_inflate_read(ak_inflate *z, uint8_t *out, size_t n);
+const char *ak_inflate_error(const ak_inflate *z);
+bool ak_inflate_done(const ak_inflate *z);
+uint64_t ak_inflate_total(const ak_inflate *z);
+void ak_inflate_close(ak_inflate *z);
+// ak_update_fopen is fopen of a UTF-8 path (UTF-16 on Windows).
+FILE *ak_update_fopen(const char *path, const char *mode);
+// ak_update_valid_path reports whether p is a path inside a tree (Go's
+// fs.ValidPath, without "." and backslashes).
+bool ak_update_valid_path(const char *p, size_t n);
 
 // asuka/crash's record (crash.c): the app's lifecycle (AK_LIFECYCLE_*),
 // for its reports' context; and whether the app compiled into the build
