@@ -117,8 +117,7 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
   and the tags that open the app.
 - [Bluetooth](bluetooth.md): Bluetooth LE devices, scanned for or
   chosen, connected to, read, written and followed; the app as a
-  peripheral, advertising and serving; in the background; on each
-  platform.
+  peripheral, advertising and serving; on each platform.
 - [iCloud](icloud.md): the key-value store that follows the user to each
   of their devices, and the app's documents in iCloud Drive: listed,
   read and written, downloaded and evicted, their conflicts resolved, on
