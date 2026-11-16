@@ -99,7 +99,7 @@ their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 | `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `filter(p)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `reversed()`, `slice(from, to)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order) |
 | `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new)`, `split(sep)`, `find(s)` (a byte offset, or none), `slice(from, to)` (characters), `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `+` |
-| `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD); `bytes()` is none, `s.bytes()` a string's UTF-8 |
+| `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `s.bytes()` a string's UTF-8 |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
 | `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic) |
 | `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()` (a float: `1500ms.seconds()` is 1.5) |

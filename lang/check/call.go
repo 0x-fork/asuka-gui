@@ -750,7 +750,11 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		case Float, Int:
 			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: map[Type]BuiltinID{Float: BFloat, Int: BInt}[tn.Type]}, want)
 		case Bytes:
-			// bytes(): none; s.bytes() makes them from text.
+			// bytes(): none; bytes([0x04, 0xa1]): those (each 0 to 255,
+			// as a byte); s.bytes() makes them from text.
+			if e.Args != nil && len(e.Args.List) > 0 {
+				return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BMath, RT: "bytes.from", Sig: &FuncType{Params: []Type{&Array{Int}}, Result: Bytes}}, want)
+			}
 			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BMath, RT: "bytes.empty", Sig: &FuncType{Result: Bytes}}, want)
 		}
 		c.errorf(e.Fun, "%s is a type, not a function", tn.name)

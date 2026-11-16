@@ -75,7 +75,7 @@ import ./theme as t               // 短い別名
 | `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`+` |
 | `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順） |
 | `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new)`、`split(sep)`、`find(s)`（バイトオフセット。見つからなければ none）、`slice(from, to)`（文字単位）、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`+` |
-| `bytes` | `count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）。`bytes()` は空のバイト列、`s.bytes()` は文字列の UTF-8 |
+| `bytes` | `count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）、`hex()` と `hex(separator)`（`"04 a1"`）。`bytes()` は空のバイト列、`bytes([0x04, 0xa1])` はそのバイト列、`s.bytes()` は文字列の UTF-8 |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()` |
 | `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`（浮動小数点数：`1500ms.seconds()` は 1.5） |
 | `T?` | `isNone()`、`isSome()` |

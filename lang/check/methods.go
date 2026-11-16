@@ -119,6 +119,8 @@ var Methods = []*Method{
 	{Recv: "bytes", Name: "slice", Sig: "(from: int, to: int) -> bytes", Builtin: "bytes.slice", Doc: "the bytes from from up to to, clamped"},
 	{Recv: "bytes", Name: "concat", Sig: "(other: bytes) -> bytes", Builtin: "bytes.concat", Doc: "these bytes, then other's"},
 	{Recv: "bytes", Name: "string", Sig: "() -> string", Builtin: "bytes.str", Doc: "the bytes read as UTF-8 text; what isn't UTF-8 becomes U+FFFD"},
+	{Recv: "bytes", Name: "hex", Sig: "() -> string", Builtin: "bytes.hex", Doc: "the bytes in lowercase hexadecimal: \"04a1\""},
+	{Recv: "bytes", Name: "hex", Sig: "(separator: string) -> string", Builtin: "bytes.hex", Doc: "the bytes in lowercase hexadecimal, separator between them: \"04 a1\""},
 
 	// Numbers.
 	{Recv: "float", Name: "fixed", Sig: "(digits: int) -> string", Builtin: "str.fixed", Doc: "with that many digits after the point: 3.14159.fixed(2) is 3.14"},
