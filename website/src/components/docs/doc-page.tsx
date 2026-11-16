@@ -114,7 +114,7 @@ export function DocPage({ doc }: { doc: Doc }) {
                   <BookOpenIcon className="size-3.5" /> {t.apiReference}
                 </span>
                 {doc.references.map((p) => (
-                  <DocLink key={p} slug={p} className="border px-2 py-0.5 font-mono text-[12.5px] text-signal-ink transition-colors hover:border-foreground/30 hover:bg-code">
+                  <DocLink key={p} slug={p} className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border px-2.5 font-mono text-[0.8rem] text-signal-ink transition-colors hover:border-foreground/30 hover:bg-code">
                     {p}
                   </DocLink>
                 ))}
