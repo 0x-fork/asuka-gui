@@ -34,12 +34,12 @@ fn openNotes() throws -> sqlite.DB = try sqlite.open("notes.db")
 | Windows | `.exe` 旁边 | 与它一起签名（`ASUKA_WINDOWS_CERT`） |
 | Linux | 安装前缀的 `lib/<app>` | 包含在 tar 包和 Flatpak 里 |
 | iOS | `Frameworks/<library>.framework` | 带有自己的 Info.plist 和隐私清单，与应用一起签名 |
-| Android | 每个 ABI 里 `libasuka.so` 的旁边 | |
-| Web | 宿主文件的 `lib/` | 页面的 `libs` 选项给出每个文件的 URL |
+| Android | APK 的 `lib/<abi>` | |
+| Web | `asuka/<digest>/lib/` | 页面的 `libs` 选项给出每个文件的 URL |
 
 一个应用所有插件的库都放在同一个地方，所以对同一个平台，任意两个插件都不能有同名的文件；出现这种情况时，构建会指出是哪两个插件。
 
-开发时，`asuka dev` 会把它们放到开发用的应用找得到的地方：在桌面上，它让核心直接使用每个文件（`ASUKA_LIB_<NAME>`，即库名的大写形式，如 `ASUKA_LIB_ASQLITE`）；在 Android 上，它把这些库推送到开发用应用的核心旁边；在 iOS 上，它们是开发用应用里的 framework；在 Web 上，它们由页面的 `asuka/lib/` 提供。`asuka test` 和 `asuka run` 同样会设置 `ASUKA_LIB_<NAME>`。
+开发时，`asuka dev` 会把它们放到开发用的应用找得到的地方：在桌面上，它让应用直接使用每个文件（`ASUKA_LIB_<NAME>`，即库名的大写形式，如 `ASUKA_LIB_ASQLITE`）；在 Android 上，它把这些库推送到开发用应用里；在 iOS 上，它们是开发用应用里的 framework；在 Web 上，它们由页面的 `asuka/lib/` 提供。`asuka test` 和 `asuka run` 同样会设置 `ASUKA_LIB_<NAME>`。
 
 嵌入到另一个应用里的应用（`asuka build --platform ios --xcframework`）会为每个库附带一个 XCFramework，宿主应用也要一并嵌入。
 

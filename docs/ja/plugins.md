@@ -34,12 +34,12 @@ fn openNotes() throws -> sqlite.DB = try sqlite.open("notes.db")
 | Windows | `.exe` の隣 | `ASUKA_WINDOWS_CERT` で `.exe` と一緒に署名 |
 | Linux | インストール先の `lib/<app>` | tarball と Flatpak に含まれる |
 | iOS | `Frameworks/<library>.framework` | 専用の Info.plist とプライバシーマニフェストを持ち、アプリと一緒に署名 |
-| Android | 各 ABI の `libasuka.so` の隣 | |
-| Web | ホストのファイルの `lib/` | ページの `libs` オプションで各ファイルの URL を指定 |
+| Android | APK の `lib/<abi>` | |
+| Web | `asuka/<digest>/lib/` | ページの `libs` オプションで各ファイルの URL を指定 |
 
 アプリのプラグインのライブラリはすべて一か所に置かれるため、同じプラットフォームで同名のファイルを持つプラグインを二つ使うことはできません。その場合は、ビルドがどの二つかを教えてくれます。
 
-開発中は、`asuka dev` が開発用アプリから見つけられる場所にライブラリを置きます。デスクトップではコアに各ファイルを直接指定し（`ASUKA_LIB_<NAME>`。ライブラリ名を大文字にしたもので、`ASUKA_LIB_ASQLITE` など）、Android では開発用アプリのコアの隣へ転送し、iOS では開発用アプリ内のフレームワークになり、Web ではページの `asuka/lib/` から配信します。`asuka test` と `asuka run` も `ASUKA_LIB_<NAME>` を設定します。
+開発中は、`asuka dev` が開発用アプリから見つけられる場所にライブラリを置きます。デスクトップではアプリに各ファイルを直接指定し（`ASUKA_LIB_<NAME>`。ライブラリ名を大文字にしたもので、`ASUKA_LIB_ASQLITE` など）、Android では開発用アプリの中へ転送し、iOS では開発用アプリ内のフレームワークになり、Web ではページの `asuka/lib/` から配信します。`asuka test` と `asuka run` も `ASUKA_LIB_<NAME>` を設定します。
 
 別のアプリに組み込むアプリ（`asuka build --platform ios --xcframework`）には、ライブラリごとの XCFramework が付いてくるので、組み込む側のアプリもそれを埋め込みます。
 

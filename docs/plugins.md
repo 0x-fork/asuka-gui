@@ -54,16 +54,16 @@ manifest says where they are.
 | Windows | beside the `.exe` | signed with it, with `ASUKA_WINDOWS_CERT` |
 | Linux | `lib/<app>` of the install prefix | in the tarball and the Flatpak |
 | iOS | `Frameworks/<library>.framework` | its Info.plist and privacy manifest, signed with the app |
-| Android | beside `libasuka.so`, in each ABI | |
-| The web | `lib/` of the host's files | the page's `libs` option names each file's URL |
+| Android | the APK's `lib/<abi>` | |
+| The web | `asuka/<digest>/lib/` | the page's `libs` option names each file's URL |
 
 The libraries of an app's plugins all go in one place, so no two may
 have a file of the same name for a platform: the build says which two do.
 
 While developing, `asuka dev` puts them where the player finds them: on
-a desktop it points the core at each file (`ASUKA_LIB_<NAME>`, the
+a desktop it points the app at each file (`ASUKA_LIB_<NAME>`, the
 library's name in capitals: `ASUKA_LIB_ASQLITE`), on Android it pushes
-them beside the player's core, on iOS they're frameworks in the
+them into the player, on iOS they're frameworks in the
 player, and on the web it serves them under the page's `asuka/lib/`.
 `asuka test` and `asuka run` set `ASUKA_LIB_<NAME>` too.
 
