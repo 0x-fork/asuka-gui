@@ -18,6 +18,7 @@ import (
 	_ "github.com/egoist/asuka/std/scan/desktop"
 	_ "github.com/egoist/asuka/std/speech/desktop"
 	_ "github.com/egoist/asuka/std/store/desktop"
+	_ "github.com/egoist/asuka/std/svg/desktop"
 	_ "github.com/egoist/asuka/std/transcribe/desktop"
 	_ "github.com/egoist/asuka/std/vision/desktop"
 )

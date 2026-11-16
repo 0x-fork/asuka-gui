@@ -1,0 +1,24 @@
+import asuka/svg
+
+let check = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>""")
+let globe = svg.Icon("""
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
+  """)
+
+component Icons {
+  state on = true
+
+  Row {
+    svg.View(check) { color: if on { .green } else { .secondaryLabel } }
+    svg.View(globe) { width: 40; height: 40 }
+    Text("{check.width}×{check.height}, {check.data.count() > 0}, {globe.data.count() > 0}")
+  }
+}
+
+app { Icons() }
+
+test "icons are parsed when the app compiles" {
+  let app = mount(Icons())
+  await app.idle()
+  app.expect("24×24, true, true")
+}

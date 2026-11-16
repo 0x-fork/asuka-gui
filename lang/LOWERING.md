@@ -440,6 +440,14 @@ the future it returns when it's `async`), so it's called, passed and
 compiled as any function. Other packages reach platform code through
 native interfaces instead.
 
+A few standard library structs are made when the app compiles (lang/ir's
+`StructHooks`, registered by lang/compile): a literal of one, its first
+argument a string literal without interpolation, has the rest of its
+fields filled by the hook from that string, as constants (`svg.Icon`'s
+`data`, `width` and `height` from its markup, parsed by sdk/svg and
+encoded as the drawing the platforms' views decode). Any other first
+argument, or one the hook rejects, is a compile error at it.
+
 ## Streams
 
 `Stream(produce)` is CALLB `stream.new(produce, kind)` (kind: the
