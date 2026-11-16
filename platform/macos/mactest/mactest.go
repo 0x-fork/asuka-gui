@@ -26,6 +26,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -60,6 +61,9 @@ func Player(t testing.TB) string {
 	return playerExe
 }
 
+// buildPlayer builds the player (one build at a time, across processes:
+// a file lock) and copies it for this process, which runs its copy while
+// another build may replace the built one.
 func buildPlayer() (string, error) {
 	if p := os.Getenv("ASUKA_MAC_PLAYER"); p != "" {
 		return p, nil
@@ -69,6 +73,34 @@ func buildPlayer() (string, error) {
 		return "", err
 	}
 	dir := filepath.Join(base, "asuka", "mactest")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	lock, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return "", err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return "", err
+	}
+	exe, err := buildPlayerLocked(base, dir)
+	if err != nil {
+		return "", err
+	}
+	app := filepath.Dir(filepath.Dir(filepath.Dir(exe)))
+	own, err := os.MkdirTemp("", "asuka-mactest-")
+	if err != nil {
+		return "", err
+	}
+	cp := filepath.Join(own, filepath.Base(app))
+	if b, err := exec.Command("ditto", app, cp).CombinedOutput(); err != nil {
+		return "", fmt.Errorf("copying the player: %v\n%s", err, b)
+	}
+	return filepath.Join(cp, "Contents", "MacOS", filepath.Base(exe)), nil
+}
+
+func buildPlayerLocked(base, dir string) (string, error) {
 	app := filepath.Join(dir, "mactest") // its work directory: <cache>/asuka/mactest-<hash>/mac
 	if err := os.MkdirAll(app, 0o755); err != nil {
 		return "", err
@@ -83,6 +115,8 @@ func buildPlayer() (string, error) {
 	}
 	// The player builds, starts, shows the app once, and quits.
 	snap := filepath.Join(dir, "ready.png")
+	os.Remove(snap)
+	started := time.Now()
 	c := exec.Command(cli, "dev", "--platform", "mac", "--once", app)
 	c.Env = append(os.Environ(), "ASUKA_SNAPSHOT="+snap)
 	var out bytes.Buffer
@@ -98,7 +132,7 @@ func buildPlayer() (string, error) {
 		if exe == "" {
 			ms, _ := filepath.Glob(filepath.Join(base, "asuka", "mactest-*", "mac", "player", "Mac Test.app", "Contents", "MacOS", "Mac Test"))
 			for _, m := range ms {
-				if st, err := os.Stat(m); err == nil && time.Since(st.ModTime()) < 15*time.Minute {
+				if st, err := os.Stat(m); err == nil && !st.ModTime().Before(started) {
 					exe = m
 				}
 			}
@@ -391,20 +425,20 @@ func (t *Tree) Raw() string { return string(t.raw) }
 // Node is a node of the core's (or a list cell's): its kind, its view's
 // class and frame, what it shows, and its view's state.
 type Node struct {
-	ID       uint32         `json:"id"`
-	Kind     string         `json:"kind"`
-	Class    string         `json:"class"`
-	Frame    []float64      `json:"frame"`
-	InWindow []float64      `json:"inWindow"`
-	Hidden   bool           `json:"hidden"`
-	Shown    bool           `json:"shown"`
-	Text     string         `json:"text"`
-	Title    string         `json:"title"`
-	NodeTitle string        `json:"nodeTitle"`
-	Window   string         `json:"window"`
-	Children []*Node        `json:"children"`
-	Row      int            `json:"row"`
-	Props    map[string]any `json:"-"`
+	ID        uint32         `json:"id"`
+	Kind      string         `json:"kind"`
+	Class     string         `json:"class"`
+	Frame     []float64      `json:"frame"`
+	InWindow  []float64      `json:"inWindow"`
+	Hidden    bool           `json:"hidden"`
+	Shown     bool           `json:"shown"`
+	Text      string         `json:"text"`
+	Title     string         `json:"title"`
+	NodeTitle string         `json:"nodeTitle"`
+	Window    string         `json:"window"`
+	Children  []*Node        `json:"children"`
+	Row       int            `json:"row"`
+	Props     map[string]any `json:"-"`
 }
 
 // UnmarshalJSON keeps every field in Props too.
@@ -439,14 +473,14 @@ func (n *Node) Bool(key string) bool {
 
 // Window is one of the app's windows.
 type Window struct {
-	Title   string         `json:"title"`
-	Visible bool           `json:"visible"`
-	Key     bool           `json:"key"`
-	Main    bool           `json:"main"`
-	Frame   []float64      `json:"frame"`
-	Content []float64      `json:"content"`
+	Title   string           `json:"title"`
+	Visible bool             `json:"visible"`
+	Key     bool             `json:"key"`
+	Main    bool             `json:"main"`
+	Frame   []float64        `json:"frame"`
+	Content []float64        `json:"content"`
 	Toolbar []map[string]any `json:"toolbar"`
-	Props   map[string]any `json:"-"`
+	Props   map[string]any   `json:"-"`
 }
 
 func (w *Window) UnmarshalJSON(b []byte) error {

@@ -364,7 +364,7 @@ import AsukaOps
             if let u = nw.representedURL { b += " file=\"\(u.path)\"" }
             b += "\n"
         }
-        if let m = NSApp.mainMenu?.item(at: 1)?.submenu {
+        if let bar = NSApp.mainMenu, bar.numberOfItems > 1, let m = bar.item(at: 1)?.submenu {
             b += "File:"
             for it in m.items {
                 if it.isSeparatorItem { b += " |"; continue }
