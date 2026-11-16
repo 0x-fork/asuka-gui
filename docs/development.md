@@ -4,8 +4,8 @@
 or an iPhone, an Android emulator or phone, your Mac, PC or Linux
 machine, or your browser. This page covers how it does that on each,
 what a reload keeps, devices, assets and logs, what it can't reload,
-`asuka vet`, the problems you may meet, and Asuka's own tests and
-benchmarks.
+`asuka vet`, editors, the problems you may meet, and Asuka's own tests
+and benchmarks.
 
 ## asuka dev
 
@@ -376,6 +376,30 @@ vet`'s own checks don't run.
 save, and prints what's new as warnings; `asuka build` runs it before it
 builds. Neither stops for what it finds. It takes a second or two, beside
 a build; `--no-vet` turns it off for either.
+
+## Editors
+
+`asuka lsp` is Asuka's language server: diagnostics as you type,
+completion, hover with `///` docs, go to definition, references,
+rename, formatting (`asuka fmt`'s), symbols, signature help and
+semantic highlighting for `.asuka` files. It checks the package being
+edited with your unsaved changes, and the packages that import it.
+
+For VS Code, the extension is in `editors/vscode`: it adds the
+language's highlighting and runs `asuka lsp`, the `asuka` on your `PATH`
+or the one `asuka.server.path` names.
+
+```sh
+cd editors/vscode
+npm install
+npx @vscode/vsce package
+code --install-extension asuka-0.1.0.vsix
+```
+
+Any editor with an LSP client can use it too: run `asuka lsp`, which
+speaks LSP 3.17 over standard input and output, for `.asuka` files,
+with the directory of `asuka.toml` as the root. `editors/vscode`'s
+README has Neovim's and Helix's settings.
 
 ## Snapshots and scripts
 
