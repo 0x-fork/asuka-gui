@@ -4,18 +4,23 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"debug/elf"
+	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"image"
 	"image/color"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/asuka/internal/cbuild"
+	"github.com/egoist/asuka/internal/prebuilt"
 )
 
 func linuxTestApp(t *testing.T, config string) *asukaApp {
@@ -292,5 +297,112 @@ func TestBuildLinux(t *testing.T) {
 				t.Errorf("%s: the tarball has %v, not %s", arch, names, want)
 			}
 		}
+	}
+}
+
+// The Linux libraries a release carries, built with Zig as it builds
+// them (on a Mac, for glibc 2.28), are what an installed asuka (its
+// sources its own, not a checkout's) links with the system's gcc or
+// clang: it compiles none of the core or SQLite, and the app runs (with
+// a display: xvfb-run -a dbus-run-session).
+func TestLinuxPrebuiltFromZig(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("builds with this Linux's compilers")
+	}
+	if _, err := cbuild.Zig(); err != nil {
+		t.Skip(err)
+	}
+	needDesktopBuild(t, cbuild.Host())
+	name := map[string]string{"amd64": "linux-x64", "arm64": "linux-arm64"}[runtime.GOARCH]
+	var target *prebuiltTarget
+	for i := range prebuiltTargets {
+		if prebuiltTargets[i].name == name {
+			target = &prebuiltTargets[i]
+		}
+	}
+	if target == nil {
+		t.Fatalf("no prebuilt target %q", name)
+	}
+
+	// The package, as the release builds it, put where a fetch puts it.
+	pkg := prebuilt.Package{Name: prebuilt.Scope + "/asuka-prebuilt-" + name, Version: fmt.Sprintf("0.0.0-test.%d", time.Now().UnixNano()), Integrity: "sha512-test"}
+	dir := prebuilt.Dir(pkg)
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Setenv("ASUKA_CC", "zig")
+	c := prebuiltContents{Name: name, Files: map[string]prebuilt.File{}}
+	if err := target.buildC(dir, &c); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ASUKA_CC", "")
+	if c.Compiler != "zig" {
+		t.Fatalf("built with %q", c.Compiler)
+	}
+	os.WriteFile(filepath.Join(dir, ".complete"), nil, 0o644)
+	pkg.Compiler = c.Compiler
+	m := prebuilt.Manifest{Packages: map[string]prebuilt.Package{name: pkg}, Archives: map[string]prebuilt.File{}}
+	for k, f := range c.Files {
+		f.Package = name
+		m.Archives[k] = f
+	}
+	b, _ := json.Marshal(m)
+	manifest := filepath.Join(t.TempDir(), "manifest.json")
+	os.WriteFile(manifest, b, 0o644)
+
+	// asuka as installed: outside the checkout, its sources its own.
+	asuka := filepath.Join(t.TempDir(), "asuka")
+	gobuild := exec.Command("go", "build", "-o", asuka, ".")
+	gobuild.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := gobuild.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	src, _ := os.ReadFile(filepath.Join("testdata", "sqliteapp", "app.asuka"))
+
+	for _, cc := range []string{"gcc", "clang"} {
+		t.Run(cc, func(t *testing.T) {
+			real, err := exec.LookPath(cc)
+			if err != nil {
+				t.Skip(err)
+			}
+			// The compiler, logging what it's asked to do.
+			log := filepath.Join(t.TempDir(), "cc.log")
+			wrapper := filepath.Join(t.TempDir(), "cc")
+			os.WriteFile(wrapper, []byte("#!/bin/sh\necho \"$@\" >> '"+log+"'\nexec '"+real+"' \"$@\"\n"), 0o755)
+			app := filepath.Join(t.TempDir(), "sqliteapp")
+			os.MkdirAll(app, 0o755)
+			os.WriteFile(filepath.Join(app, "app.asuka"), src, 0o644)
+			build := exec.Command(asuka, "build", "--platform", "linux", ".")
+			build.Dir = app
+			build.Env = append(os.Environ(), "CC="+wrapper, "ASUKA_CC=", "ASUKA_PREBUILT_MANIFEST="+manifest)
+			if out, err := build.CombinedOutput(); err != nil {
+				t.Fatalf("asuka build: %v\n%s", err, out)
+			}
+			calls, _ := os.ReadFile(log)
+			linked := false
+			for _, line := range strings.Split(string(calls), "\n") {
+				if strings.Contains(line, "/core/src/") || strings.Contains(line, "sqlite3.c") {
+					t.Errorf("compiled what the package has: %s", line)
+				}
+				if strings.Contains(line, dir) {
+					linked = true
+				}
+			}
+			if !linked {
+				t.Fatalf("no link took the package's libraries:\n%s", calls)
+			}
+			bin := filepath.Join(app, "dist", "linux", "sqliteapp", "bin", "sqliteapp")
+			checkSQLiteLinked(t, bin)
+			if os.Getenv("DISPLAY") == "" {
+				return
+			}
+			snap := filepath.Join(t.TempDir(), "end.png")
+			run := exec.Command(bin)
+			run.Env = append(os.Environ(), "ASUKA_DUMP=1", "ASUKA_SNAPSHOT="+snap, "ASUKA_DATA="+t.TempDir())
+			if b, err := run.CombinedOutput(); err != nil {
+				t.Fatalf("%v\n%s", err, b)
+			}
+			if b, _ := os.ReadFile(snap + ".txt"); !strings.Contains(string(b), `"runs"`) {
+				t.Errorf("the app shows:\n%s", b)
+			}
+		})
 	}
 }

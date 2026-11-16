@@ -83,11 +83,27 @@ func (tc *Toolchain) variant() string {
 	if tc.Musl {
 		return ""
 	}
-	kind := tc.CC.kind()
-	if want := prebuilt.Compiler(tc.Target.String()); want == "" || want != kind {
+	if !tc.links(prebuilt.Compiler(tc.Target.String())) {
 		return ""
 	}
 	return tc.Target.String()
+}
+
+// links reports whether the toolchain links libraries the family built
+// ("": none): its own family's, and on Linux Zig's with any compiler
+// for glibc (gcc, clang), as Zig builds them for LinuxGlibc and they need
+// nothing of Zig's (TestLinuxPrebuiltFromZig links them with both).
+// Windows' are MinGW's, which a compiler for MSVC's runtime can't link.
+func (tc *Toolchain) links(family string) bool {
+	switch {
+	case family == "":
+		return false
+	case family == tc.CC.kind():
+		return true
+	case family == "zig" && tc.Target.OS == "linux":
+		return tc.CC.TargetsGlibc()
+	}
+	return false
 }
 
 // CompilerKind is the toolchain's compiler's family, as prebuilt

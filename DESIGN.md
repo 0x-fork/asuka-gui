@@ -1604,8 +1604,12 @@ or mirror can't give another), unpacks it into the cache (`prebuilt/`)
 and checks each library's hash as it's first used. A prebuilt library
 is used only when its sources are the CLI's own (not a checkout's, not
 `ASUKA_CORE`'s) and the build's compiler is the family that built it
-(Zig's, Xcode's, the NDK's); a CLI run from a checkout has an empty
-manifest and builds the same units into the cache.
+(Zig's, Xcode's, the NDK's), or, for Linux, any compiler for glibc
+(gcc, clang): Zig builds Linux's against an old glibc
+(`cbuild.LinuxGlibc`, 2.28), and they need nothing of Zig's runtime.
+(Windows' are MinGW's, which a compiler for MSVC's runtime can't link.)
+A CLI run from a checkout has an empty manifest and builds the same
+units into the cache.
 
 **Swift: modules with library evolution.** The host's Swift (the module
 `Asuka`, with its compilation conditions) and each native package's

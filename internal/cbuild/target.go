@@ -32,6 +32,11 @@ const (
 	IOSMin     = "16.0"
 	MacOSMin   = "11.0"
 	AndroidAPI = "33"
+	// LinuxGlibc is the glibc Zig builds Linux's C against: what it calls
+	// is in this one and every later one, so its libraries link with any
+	// glibc system's compiler and its executables run there (Debian 10,
+	// Ubuntu 18.10, RHEL 8 on; GTK 4.14 needs far newer).
+	LinuxGlibc = "2.28"
 )
 
 // clangArch is an architecture's name in target triples.
@@ -161,7 +166,7 @@ func ForTarget(t Target) (*Toolchain, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cbuild: cross-compiling for %s needs Zig: %v", t, err)
 	}
-	triple := map[string]string{"linux": "linux-gnu", "windows": "windows-gnu", "darwin": "macos"}[t.OS]
+	triple := map[string]string{"linux": "linux-gnu." + LinuxGlibc, "windows": "windows-gnu", "darwin": "macos"}[t.OS]
 	if triple == "" {
 		return nil, fmt.Errorf("cbuild: no toolchain for %s", t)
 	}

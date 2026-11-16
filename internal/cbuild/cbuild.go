@@ -92,6 +92,23 @@ var (
 	gccSeen = map[string]bool{}
 )
 
+// TargetsGlibc reports whether the compiler builds for Linux with glibc
+// (its target x86_64-linux-gnu, aarch64-unknown-linux-gnu; not musl's),
+// asking it once.
+func (c Compiler) TargetsGlibc() bool {
+	key := "glibc " + c.Path + " " + strings.Join(c.Args, " ")
+	gccMu.Lock()
+	defer gccMu.Unlock()
+	if v, ok := gccSeen[key]; ok {
+		return v
+	}
+	out, err := exec.Command(c.Path, append(append([]string{}, c.Args...), "-dumpmachine")...).Output()
+	m := strings.TrimSpace(string(out))
+	v := err == nil && strings.Contains(m, "-linux-gnu")
+	gccSeen[key] = v
+	return v
+}
+
 // GCCFlags are what GCC is given beyond Flags: its format-truncation
 // warning (-Wall's at -O2) guesses at the lengths of strings it can't
 // know, and -Werror would make a guess an error.
