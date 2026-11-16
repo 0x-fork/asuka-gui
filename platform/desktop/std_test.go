@@ -662,16 +662,13 @@ func stdHost(t *testing.T) string {
 			stdErr = err
 			return
 		}
-		// ASUKA_STD=audio,http (names, not the std directory std.Dir takes
-		// it for): only those packages' C (a case that imports another
-		// fails), for working on some while others don't build.
+		// ASUKA_STD_ONLY=audio,http: only those packages' C (a case that
+		// imports another fails), for working on some while others don't
+		// build.
 		only := map[string]bool{}
-		if v := os.Getenv("ASUKA_STD"); v != "" && !strings.ContainsAny(v, `/\`) {
-			os.Unsetenv("ASUKA_STD") // before std.Dir reads it
-			for _, n := range strings.Split(v, ",") {
-				if n != "" {
-					only[n] = true
-				}
+		for _, n := range strings.Split(os.Getenv("ASUKA_STD_ONLY"), ",") {
+			if n != "" {
+				only[n] = true
 			}
 		}
 		d, err := std.Dir()
