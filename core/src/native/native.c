@@ -410,6 +410,12 @@ void ak_native_done(uint64_t call, const uint8_t *p, size_t len) {
 	ak_post(deliver, a);
 }
 
+// after_invoke runs nothing: posted after a callback, it has the host run
+// what the callback made ready (a stream's reader, a task's await) and
+// flush what it wrote, as an event would, which a call from the host's
+// own code (a notification) doesn't.
+static void after_invoke(void *ctx) { AK_UNUSED(ctx); }
+
 // ak_native_invoke: the native side calls a callback, on the main thread.
 size_t ak_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out) {
 	*out = NULL;
@@ -449,5 +455,6 @@ size_t ak_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out
 		fprintf(stderr, "asuka: a native callback failed: %s\n", ak_error_message(e)->data);
 		ak_release(e);
 	}
+	ak_post(after_invoke, NULL);
 	return outlen;
 }
