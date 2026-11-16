@@ -10,7 +10,9 @@
 //     asuka-window.json) and where their routers were (internal/
 //     routestate's asuka-routes.json);
 //   - files by UTF-8 path (Windows' are UTF-16);
-//   - where a flyout window goes against its anchor (internal/flyout).
+//   - where a flyout window goes against its anchor (internal/flyout);
+//   - animated images, where the platform decodes stills only (anim.h:
+//     internal/animimage's GIF, APNG and WebP).
 //
 // Nothing here is thread-safe unless it says so: the hosts call it on
 // their main thread. It's portable C17 (POSIX on Linux, Win32 on
