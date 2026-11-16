@@ -1,6 +1,6 @@
 # 程序
 
-除了应用和库，Asuka 还能写**程序**：没有窗口、也没有视图的命令行工具。只要一个包的文件里声明了 `fn main()`，它就是程序，就像 Go 的 `package main`、Cargo 的 `src/main.rs`。程序和应用跑在同一个核心上：同一门语言、同一套标准库（文件、JSON、时间、SQLite、HTTP……），并编译成 macOS、Windows 和 Linux 上的原生可执行文件。
+除了应用和库，Asuka 还能写**程序**：没有窗口、也没有视图的命令行工具。只要一个包的文件里声明了 `fn main()`，它就是程序，就像 Go 的 `package main`、Cargo 的 `src/main.rs`。程序的构建方式和应用一样：同一门语言、同一套标准库（文件、JSON、时间、SQLite、HTTP……），并编译成 macOS、Windows 和 Linux 上的原生可执行文件。
 
 ```asuka
 import std/os
@@ -231,7 +231,7 @@ async fn main() throws {
 
 ## 运行
 
-`asuka run` 在 VM 上运行程序的 `main`，不需要编译等待：`--` 之后的参数都交给程序，退出时带上程序的退出码。
+`asuka run` 直接运行程序的 `main`，不需要等待构建：`--` 之后的参数都交给程序，退出时带上程序的退出码。
 
 ```sh
 asuka run -- --jobs 8 a.txt b.txt
@@ -242,7 +242,7 @@ asuka run --bin notes -- add "Buy milk"   # asuka.toml 里 [bin] 中的一个程
 
 ## 构建
 
-`asuka build` 把程序编译成 C，和核心一起构建出本机的可执行文件，放在 `dist/` 里：
+`asuka build` 把程序编译成本机的可执行文件，放在 `dist/` 里：
 
 ```sh
 asuka build                          # dist/greet
@@ -252,7 +252,7 @@ asuka build --target windows-arm64   # dist/windows-arm64/greet.exe
 
 `--target` 由 `darwin`、`linux` 或 `windows` 加上 `amd64` 或 `arm64` 组成；本机以外的系统和桌面应用一样，用 Zig 构建。可执行文件在系统允许的范围内是独立的：在 Linux 上它是静态链接的（musl，需要 Zig），除非它用到的东西要加载系统的库（std/http 的 libsoup、插件的库）；在 Windows 上只依赖系统自带的 DLL；在 macOS 上只依赖系统的库。
 
-带平台代码的包在每个桌面系统上的程序里都能用：`std/http` 在 macOS 上用 URLSession、在 Windows 上用 WinHTTP、在 Linux 上用 libsoup 发请求，和在应用里一样。这时程序运行在一个没有窗口的宿主上：在 Windows 和 Linux 上，是每个桌面应用都有的那部分 C 代码（`platform/desktop`）；在 macOS 上，是 Mac 宿主的 Swift，连同各个包的 Swift。插件的库（比如 std/sqlite 的）放在可执行文件旁边。
+带平台代码的包在每个桌面系统上的程序里都能用：`std/http` 在 macOS 上用 URLSession、在 Windows 上用 WinHTTP、在 Linux 上用 libsoup 发请求，和在应用里一样。只是没有窗口。插件的库（比如 std/sqlite 的）放在可执行文件旁边。
 
 ### 应用自带的程序
 

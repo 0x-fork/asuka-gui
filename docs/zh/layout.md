@@ -1,6 +1,6 @@
 # 布局与样式
 
-元素的样式属性决定它如何布局、长什么样。布局采用 CSS flexbox 和 grid，单位是点（point）；外观则包括颜色、圆角、边框、阴影和文字。本页会介绍这两部分，以及会变化的样式。布局在所有平台上都一样：Asuka 的核心算好布局，再把平台的视图摆到对应的位置上。
+元素的样式属性决定它如何布局、长什么样。布局采用 CSS flexbox 和 grid，单位是点（point）；外观则包括颜色、圆角、边框、阴影和文字。本页会介绍这两部分，以及会变化的样式。布局在所有平台上都一样：Asuka 算好布局，再把平台的视图摆到对应的位置上。
 
 ## 平台默认值
 
@@ -9,7 +9,7 @@
 - **iOS**：UIKit 的风格。
 - **Android**：Material 3 的风格。
 - **macOS**：AppKit 的风格。
-- **Windows**：Windows 11 的风格（WinUI 的 Fluent 外观，由宿主在 Win32 控件上绘制）。
+- **Windows**：Windows 11 的风格（WinUI 的 Fluent 外观，由 Asuka 在 Win32 控件上绘制）。
 - **Linux**：GNOME 的风格（GTK 4 和 libadwaita）。
 - **Web**：浏览器自带的控件，外围配上 Asuka 自己的一套浅色和深色配色（见 [Web](web.md)）。
 
@@ -271,7 +271,7 @@ View { padding: [4, 10]; radius: 12; background: tint.opacity(0.15); Text("New")
 - **`material`**：一种半透明、会模糊其后内容的背景，即 iOS 的材质（material）：`.ultraThin`、`.thin`、`.regular`、`.thick`、`.bar`。
   - iOS：`UIVisualEffectView` 的模糊效果。
   - macOS：在视图内容后面放一个 `NSVisualEffectView`，模糊窗口中位于其后的内容。
-  - Windows：由宿主绘制的 Fluent 亚克力效果：把视图背后的内容模糊，再叠上浅色或深色的色调。
+  - Windows：由 Asuka 绘制的 Fluent 亚克力效果：把视图背后的内容模糊，再叠上浅色或深色的色调。
   - Web：CSS 的 `backdrop-filter`，即模糊加饱和度。
   - Android 和 Linux 无法模糊视图背后的内容，因此显示半透明的表面色（Linux 上是 libadwaita 的卡片颜色）。
 - **`clip`**：把子视图裁剪到视图的边界和圆角之内。

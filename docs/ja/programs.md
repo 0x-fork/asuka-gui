@@ -1,6 +1,6 @@
 # プログラム
 
-Asuka ではアプリとライブラリのほかに、**プログラム**も作れます。ウィンドウもビューも持たないコマンドラインツールです。パッケージのファイルが `fn main()` を宣言していれば、そのパッケージはプログラムになります。Go の `package main` や Cargo の `src/main.rs` と同じ考え方です。プログラムはアプリと同じコアで動き、同じ言語と同じ標準ライブラリ（ファイル、JSON、時刻、SQLite、HTTP など）を使い、macOS、Windows、Linux のネイティブな実行ファイルにコンパイルされます。
+Asuka ではアプリとライブラリのほかに、**プログラム**も作れます。ウィンドウもビューも持たないコマンドラインツールです。パッケージのファイルが `fn main()` を宣言していれば、そのパッケージはプログラムになります。Go の `package main` や Cargo の `src/main.rs` と同じ考え方です。プログラムはアプリと同じようにビルドされ、同じ言語と同じ標準ライブラリ（ファイル、JSON、時刻、SQLite、HTTP など）を使い、macOS、Windows、Linux のネイティブな実行ファイルにコンパイルされます。
 
 ```asuka
 import std/os
@@ -231,7 +231,7 @@ async fn main() throws {
 
 ## 実行
 
-`asuka run` はプログラムの `main` を VM で実行するので、ビルドを待つ必要がありません。`--` の後ろの引数はプログラムに渡され、プログラムの終了コードでそのまま終了します。
+`asuka run` はプログラムの `main` をすぐに実行するので、ビルドを待つ必要がありません。`--` の後ろの引数はプログラムに渡され、プログラムの終了コードでそのまま終了します。
 
 ```sh
 asuka run -- --jobs 8 a.txt b.txt
@@ -242,7 +242,7 @@ asuka run --bin notes -- add "Buy milk"   # asuka.toml の [bin] にあるプロ
 
 ## ビルド
 
-`asuka build` はプログラムを C にコンパイルしてコアと一緒にビルドし、このコンピューター用の実行ファイルを `dist/` に作ります。
+`asuka build` はプログラムをコンパイルし、このコンピューター用の実行ファイルを `dist/` に作ります。
 
 ```sh
 asuka build                          # dist/greet
@@ -252,7 +252,7 @@ asuka build --target windows-arm64   # dist/windows-arm64/greet.exe
 
 `--target` は `darwin`、`linux`、`windows` のいずれかと、`amd64` か `arm64` の組み合わせです。このコンピューター以外のシステム向けには、デスクトップアプリと同じく Zig でビルドします。実行ファイルはシステムが許す範囲で単体で動きます。Linux では静的にリンクされます（musl、Zig を使う場合）。ただし、使っているものがシステムのライブラリを読み込む場合（std/http の libsoup、プラグインのライブラリ）は除きます。Windows ではシステムの DLL だけに、macOS ではシステムのライブラリだけに依存します。
 
-プラットフォームのコードを持つパッケージも、どのデスクトップでもプログラムから使えます。`std/http` はアプリと同じく、macOS では URLSession、Windows では WinHTTP、Linux では libsoup でリクエストを送ります。このときプログラムはウィンドウを持たないホストで動きます。Windows と Linux ではどのデスクトップアプリも持っている C のコード（`platform/desktop`）、macOS では Mac ホストの Swift とパッケージの Swift です。プラグインのライブラリ（std/sqlite のものなど）は実行ファイルの隣に置かれます。
+プラットフォームのコードを持つパッケージも、どのデスクトップでもプログラムから使えます。`std/http` はアプリと同じく、macOS では URLSession、Windows では WinHTTP、Linux では libsoup でリクエストを送ります。ただし、ウィンドウはありません。プラグインのライブラリ（std/sqlite のものなど）は実行ファイルの隣に置かれます。
 
 ### アプリに付属するプログラム
 

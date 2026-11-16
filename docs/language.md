@@ -2,8 +2,8 @@
 
 Asuka apps are written in Asuka, a small language made for interfaces
 that use each platform's own widgets. It's statically typed, compiles
-ahead of time to C for release builds, and runs on a VM during
-development so a save shows up in milliseconds, with every value and
+ahead of time for release builds, and reloads in place during
+development, so a save shows up in milliseconds, with every value and
 every native view kept.
 
 ```asuka
@@ -1224,10 +1224,9 @@ reference counted and copied on write. State, stores, effects and tasks
 belong to the component that made them, and go with it.
 
 - A change runs only the bindings that read what changed, and sends the
-  platform only the props that changed. The props go in one batch, then
-  layout runs, then the frames go in one more batch.
-- Release builds are compiled to C with the core, so there's no
-  interpreter in an app you ship.
+  platform only the props that changed, once a frame.
+- Release builds are compiled ahead of time, so there's no interpreter
+  in an app you ship.
 - Lists build only what's on screen and reuse cells.
 
 ## Keywords

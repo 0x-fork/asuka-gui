@@ -3,8 +3,8 @@
 Asuka animates with each platform's own machinery where it has one:
 UIView animations on iOS, animators on Android, AppKit's implicit
 animations and Core Animation on macOS, the Web Animations API in a
-browser. Windows and GTK have no animations of a view's frame, so the
-Windows and Linux hosts step them themselves, each frame, with the same
+browser. Windows and GTK have no animations of a view's frame, so on
+Windows and Linux Asuka steps them itself, each frame, with the same
 curves. You change state inside `animate`, and what that change moves
 on screen animates. This page covers animating changes, transitions in
 and out, shared elements, frame-driven animation, gestures with touch,
@@ -398,7 +398,7 @@ gauge following a value), `frames()` is the frames the display draws,
 60 or 120 times a second, as a stream of their times: a task reads it
 with `for await`. What the loop writes shows in that frame. It runs
 until the task is cancelled, as the component goes. While nothing
-reads it, the host asks for no frames. (`onFrame(fn)` calls a function
+reads it, no frames are asked for. (`onFrame(fn)` calls a function
 at each frame instead, until the closure it returns is called.)
 
 ```asuka

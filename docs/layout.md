@@ -3,7 +3,7 @@
 An element's style props say how it's laid out and how it looks. Layout
 is CSS flexbox and grid, in points; the look is colors, corners,
 borders, shadows and text. This page covers both, and styles that
-change. The layout is the same on every platform: Asuka's core computes
+change. The layout is the same on every platform: Asuka computes
 it and places the platform's views where it says.
 
 ## Platform defaults
@@ -15,7 +15,7 @@ dark mode and text sizes:
 - **iOS**: UIKit's.
 - **Android**: Material 3's.
 - **macOS**: AppKit's.
-- **Windows**: Windows 11's (WinUI's Fluent look, which the host draws
+- **Windows**: Windows 11's (WinUI's Fluent look, which Asuka draws
   on Win32's controls).
 - **Linux**: GNOME's (GTK 4 and libadwaita).
 - **The web**: the browser's controls, with a light and dark palette of
@@ -372,7 +372,7 @@ View { padding: [4, 10]; radius: 12; background: tint.opacity(0.15); Text("New")
   - iOS: `UIVisualEffectView`'s blurs.
   - macOS: an `NSVisualEffectView` behind the view's content, blurring
     what's behind it in the window.
-  - Windows: Fluent's acrylic, which the host draws: what's behind the
+  - Windows: Fluent's acrylic, which Asuka draws: what's behind the
     view, blurred and tinted light or dark.
   - The web: CSS's `backdrop-filter`, a blur and saturation.
   - Android and Linux, which can't blur behind a view, show the surface

@@ -6,7 +6,7 @@ page covers what you get for free, and the props for the rest: labels,
 roles, grouping, custom actions, adjustable views, announcements, the
 keyboard, text size and Reduce Motion, and how to test it.
 
-Each host gives the same props to its platform's accessibility API, and
+Asuka gives the same props to each platform's accessibility API, and
 the screen readers read them from there:
 
 | Platform | Accessibility API | Screen readers |

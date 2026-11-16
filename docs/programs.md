@@ -3,7 +3,7 @@
 Besides apps and libraries, Asuka makes **programs**: command-line
 tools, with no window and no views. A program is a package whose files
 declare `fn main()`, as Go's `package main` and Cargo's `src/main.rs`
-are. It runs on the same core as an app: the same language, the same
+are. It's built as an app is: the same language, the same
 standard library (files, JSON, time, SQLite, HTTP...), compiled to a
 native executable for macOS, Windows and Linux.
 
@@ -298,8 +298,7 @@ on a phone or the web can't run other programs
 
 ## Running
 
-`asuka run` runs a program's `main` on the VM, which takes no time to
-build: the arguments after `--` are its own, and it exits with the
+`asuka run` runs a program's `main` at once, with no build to wait for: the arguments after `--` are its own, and it exits with the
 program's code.
 
 ```sh
@@ -314,8 +313,8 @@ runs its test blocks and shows what its app shows, as before.
 
 ## Building
 
-`asuka build` compiles a program to C with the core and builds an
-executable for this computer, in `dist/`:
+`asuka build` compiles a program to an executable for this computer, in
+`dist/`:
 
 ```sh
 asuka build                          # dist/greet
@@ -333,10 +332,7 @@ libraries.
 
 A package with platform code works in a program on every desktop:
 `std/http` sends its requests with URLSession on macOS, WinHTTP on
-Windows and libsoup on Linux, as in an app. The program then runs on a
-host with no window: on Windows and Linux the C every desktop app has
-(`platform/desktop`), on macOS the Mac host's Swift, its packages' Swift
-with it. A plugin's library (std/sqlite's) goes beside the executable.
+Windows and libsoup on Linux, as in an app, with no window. A plugin's library (std/sqlite's) goes beside the executable.
 
 ### An app's programs
 

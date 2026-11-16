@@ -447,7 +447,7 @@ See [Bluetooth](bluetooth.md#what-the-build-adds).
 ## c
 
 The C the app's `extern` declarations call: what it compiles into the
-core's build for each target, and what it links. Each platform's table
+app for each target, and what it links. Each platform's table
 (`[c.ios]`, `[c.android]`, `[c.macos]`, `[c.windows]`, `[c.linux]`,
 `[c.web]`) adds to the top one's lists. A package's `asuka.toml` has a
 `[c]` of its own, which an app that imports the package builds too.
