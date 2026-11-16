@@ -236,22 +236,32 @@ int asuka_load(const uint8_t *p, size_t n, char **err) {
 	return run_module(m, err);
 }
 
+#if defined(AK_APP_COMPILED)
+// The app compiled into this build (lang/cgen), named, so that a static
+// library's linker keeps its object (which an unreferenced constructor
+// wouldn't).
+ak_module *asuka_app_module(void);
+static ak_module *(*app_loader(void))(void) { return ak_app_loader ? ak_app_loader : asuka_app_module; }
+#else
+static ak_module *(*app_loader(void))(void) { return ak_app_loader; }
+#endif
+
 int asuka_run(char **err) {
 	if (err) *err = NULL;
 	if (!started) {
 		fail(err, "asuka: asuka_run before asuka_start");
 		return -1;
 	}
-	if (!ak_app_loader) {
+	if (!app_loader()) {
 		fail(err, "asuka: no app is compiled into this build (a player loads one with asuka_dev_connect)");
 		return -1;
 	}
-	ak_module *m = ak_app_loader();
+	ak_module *m = app_loader()();
 	ak_module_retain(m);  // the build's own stays with it
 	return run_module(m, err);
 }
 
-int asuka_has_app(void) { return ak_app_loader != NULL; }
+int asuka_has_app(void) { return app_loader() != NULL; }
 
 // ---- asuka dev ----
 

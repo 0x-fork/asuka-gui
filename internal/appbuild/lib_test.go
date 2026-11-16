@@ -134,3 +134,33 @@ func exported(t *testing.T, target cbuild.Target, path string) map[string]bool {
 	_ = runtime.GOOS
 	return out
 }
+
+// A static core with the app compiled in (iOS's) keeps the app: a
+// program that links the library finds it (asuka_has_app). An archive's
+// linker takes only the objects something names, and the app's object
+// registered itself from a constructor nothing named.
+func TestStaticLibKeepsTheApp(t *testing.T) {
+	host := cbuild.Host()
+	tc, err := cbuild.ForTarget(host)
+	if err != nil {
+		t.Skip(err)
+	}
+	dir := t.TempDir()
+	lib := filepath.Join(dir, "libasuka.a")
+	if err := appbuild.Lib(host, cbuild.Static, appbuild.StripTests(apptest.Counter("Count: ")), lib); err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(dir, "main.c")
+	os.WriteFile(main, []byte("int asuka_has_app(void);\nint main(void) { return asuka_has_app() ? 0 : 3; }\n"), 0o644)
+	exe := filepath.Join(dir, "main")
+	args := append(append(append([]string{}, tc.CC.Args...), tc.Flags...), main, lib, "-lm", "-o", exe)
+	if runtime.GOOS == "linux" {
+		args = append(args, "-lpthread")
+	}
+	if out, err := exec.Command(tc.CC.Path, args...).CombinedOutput(); err != nil {
+		t.Fatalf("linking: %v\n%s", err, out)
+	}
+	if err := exec.Command(exe).Run(); err != nil {
+		t.Fatalf("the linked program has no app: %v", err)
+	}
+}

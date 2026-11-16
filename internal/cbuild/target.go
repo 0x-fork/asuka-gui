@@ -212,6 +212,11 @@ func (tc *Toolchain) Lib(core string, kind LibKind, extra []string, debug bool, 
 		flags = append(flags, "-fvisibility=hidden", "-DAK_EXPORTS=1")
 	}
 	hdrs, _ := headers(core)
+	if len(extra) > 0 {
+		// The app is compiled in: the core names it (abi.c), so a static
+		// library's linker keeps its object.
+		flags = append(flags, "-DAK_APP_COMPILED=1")
+	}
 	objs, err := tc.compileCached(core, "core", srcs, hdrs, flags, kind)
 	if err != nil {
 		return err

@@ -83,8 +83,11 @@ static ak_module *asuka_app_load(void) {
 }
 
 // The core finds the app through ak_app_loader, set as the program
-// starts.
+// starts; a core built with the app (AK_APP_COMPILED) also names
+// asuka_app_module, so that a static library's linker keeps this object.
 __attribute__((constructor)) static void register_app(void) { ak_app_loader = asuka_app_load; }
+ak_module *asuka_app_module(void);
+ak_module *asuka_app_module(void) { return asuka_app_load(); }
 `, len(m.Funcs))
 	return g.b.Bytes(), nil
 }
