@@ -1071,22 +1071,35 @@ it is stored (`asuka/storage`'s `Value<T>(key, default)` over
 state across `asuka dev` reloads (below), which needs no code.
 
 The core can also start without a screen: when the system runs a
-background task (`asuka/sdk/periodic`: BGTaskScheduler, WorkManager) with the
-app closed, the host starts the core headless (`startHeadless`): `main`
-runs, the root component mounts into views no window holds yet, and the
-task's Go code runs. A screen that comes later (the user opens the app)
+background task (`asuka/periodic`: BGTaskScheduler, WorkManager) with the
+app closed, the host starts the core headless (`startHeadless`): the
+app's init runs, the root component mounts into views no window holds
+yet, and the task's code runs. A screen that comes later (the user opens the app)
 takes that root as a recreated Activity does (`asuka_attach` on Android;
 the root controller mounts the existing root view on iOS).
 `asuka/location`'s background updates and regions start it the same
 way on Android (its `PendingIntent`s reach the package's
 `LocationReceiver`, which starts the core headless); the package keeps
-each event until the app reads it. On iOS, the system relaunching the
-app for them (a region, a significant change) doesn't start the core
-yet: a native package has no hook at launch, where the old host module
-registered its delegate. Where
-the system has neither (macOS's and Windows's updates, Linux's and the
-web's regions), the Go package computes them from the positions while the
-app runs (`locationspec.Capabilities` says which). The last root's
+each event until the app reads it. On iOS the system relaunches the app
+for them (a region, a significant change) and hands the event to the
+manager made before launch ends: the package's launch class
+(`AsukaLocationLaunch`, its manifest's `ios.launch` for an app that
+calls `startUpdates` or `monitor`) makes it as the app launches, and,
+for such a launch, has the host start the core headless, so the app's
+code reads what woke it.
+
+A native package's code runs at launch this way, before the app's own
+(`AsukaLaunching`): its manifest names the class (`ios.launch`, an
+Objective-C name, listed in Info.plist's `AsukaLaunch`, which
+`AppDelegate` runs before launch ends; `android.launch`, which the
+host's `AsukaLauncher` runs as the process starts, a content provider
+the CLI declares only in the apps that have some), so only the apps that
+import the package, or use the member whose `[uses]` names it, run it:
+Core Location's managers, Core Bluetooth's with their restore
+identifiers, StoreKit's and Play Billing's transaction listeners. Where
+the system has no background updates or regions (macOS's and Windows's
+updates, Linux's and the web's regions), the package computes them from
+the positions while the app runs. The last root's
 `Dispose` fails the Calls still waiting, so a package's goroutine ends
 with it.
 
@@ -1119,15 +1132,16 @@ in its Swift (iOS; the Mac's Go host still builds platform/macos's
 `macos.hostFlags`), Play
 Billing in its Gradle module, the Microsoft Store in its desktop Go, the
 Digital Goods API in its web module; none on Linux; `purchase.fake()` in
-tests. Each follows the store's transactions from the package's start
-(StoreKit's `Transaction.updates` and its unfinished ones, Play's
-listener and its unacknowledged purchases at each return to the front,
-the Store's license changes) and keeps them for the package's `events()`,
+tests. Each follows the store's transactions from the app's launch (the
+package's launch class: StoreKit's `Transaction.updates` and its
+unfinished ones, Play's listener and its unacknowledged purchases at
+each return to the front) or the package's start (the Store's license
+changes) and keeps them for the package's `events()`,
 so a purchase completed before the app observes isn't lost.
 
-iCloud (`asuka/sdk/icloud`) is one module, `icloud`, whose JSON
-(`internal/icloudspec`) the iOS host and the Mac speak, the same Swift
-in both (`ICloud.swift`, kept identical in platform/ios and
+iCloud (`asuka/icloud`) is a package over the hosts' module `icloud`,
+whose JSON (`internal/icloudspec`) the iOS host and the Mac speak, the
+same Swift in both (`ICloud.swift`, kept identical in platform/ios and
 platform/macos, as `Purchase.swift` is; `ASUKA_ICLOUD`, asuka/icloud's
 manifest's `hostFlags`): NSUbiquitousKeyValueStore, its values converted
 between JSON and property lists; the app's ubiquity containers through
@@ -1143,10 +1157,11 @@ profile's `*` and `TEAMID.*` as the app's values).
 What runs outside the app's process is built from `asuka.toml`. iOS's
 widget extension is WidgetKit's, so SwiftUI's (the one place the host
 uses it): one template (platform/ios/Widget) with the app's kinds,
-reading the entries the app's Go code sets (`asuka/sdk/widget`) from the App
-Group they share; it runs no Go. The same extension draws the Live
-Activities (`asuka/sdk/liveactivity`), for an app whose Go code calls the
-package (`ASUKA_LIVEACTIVITY`), with or without widgets: one template,
+reading the entries the app's code sets (`asuka/widget`) from the App
+Group they share; it runs none of the app's code. The same extension
+draws the Live Activities (`asuka/liveactivity`), for an app that imports
+the package (its manifest's `ios.hostFlags`: `ASUKA_LIVEACTIVITY`), with
+or without widgets: one template,
 its attributes (`AsukaActivityAttributes`) compiled into both the host
 and the extension, since ActivityKit matches them by name and shape. On
 Android an activity is an ongoing notification the host builds, which
@@ -1207,9 +1222,10 @@ share one.
 
 ### SQLite
 
-`asuka/sdk/sqlite` is a plugin: SQLite's own C, one pinned release
-built with the same options for every platform by
-`sdk/sqlite/internal/build` (Xcode, the NDK, Zig). With it, one library of Asuka's
+`asuka/sqlite` (std/sqlite) is a plugin: SQLite's own C, one pinned
+release built with the same options for every platform by
+`sdk/sqlite/internal/build` (Xcode, the NDK, Zig), which the package's
+`asuka-plugin.toml` ships with the apps that import it. With it, one library of Asuka's
 (`sdk/sqlite/csrc/asq.c`) and one entry point: `asq_call(op, conn, arg, in,
 inLen, out, outCap)`, every argument pointer-sized. A call is a whole
 statement: its SQL and arguments in, its answer (a query's columns and
@@ -2467,7 +2483,7 @@ How the Linux host maps Asuka (`host/linux`):
   shows (hidden, or its GdkToplevel minimized or suspended), and as it
   quits (its last window closing, GtkApplication's `query-end` as the
   session ends, `shutdown`, or SIGTERM, SIGINT and SIGHUP, which quit it
-  as closing it does), so `asuka/sdk/store` writes what's pending; GLib's
+  as closing it does), so `asuka/store` writes what's pending; GLib's
   memory monitor's warnings are MemoryWarning. Crash reports: Go's crash
   output (`crashrun`), which has a signal in native code too (Native).
   Windows are placed by the desktop: GTK 4 has no way to place one.
@@ -2954,9 +2970,10 @@ core/src/ui/lifecycle.c):
   page's top right), closed on Escape and a press outside them;
   click-through is `pointer-events: none` on the panel, the page under
   it taking the clicks.
-- `asuka/sdk/apps` lists the apps installed (module "apps": "list" answers
-  JSON, "icon" draws a PNG in the caches and answers its path, "open"),
-  sorted and deduplicated in Go; `Search` ranks them in Go. macOS reads
+- `asuka/apps` lists the apps installed (the hosts' module "apps",
+  through `asuka/platform`: "list" answers JSON, "icon" draws a PNG in
+  the caches and answers its path, "open"), sorted, deduplicated and
+  ranked for a search in the package's Asuka. macOS reads
   the application folders (`displayNameAtPath:`, bundle identifiers,
   `iconForFile:`, `openApplicationAtURL:`), Windows the shell's
   Applications folder (`FOLDERID_AppsFolder`, `IShellItemImageFactory`,
@@ -2994,8 +3011,8 @@ core/src/ui/lifecycle.c):
   level and charging, Low Power Mode, the thermal state; `OnSuspend`,
   `OnResume`, `OnLock`, `OnUnlock`; `IdleTime`, since the user's last
   input in any app (`ErrIdleUnknown` where the system doesn't say).
-  Keeping the display on stays `device.KeepAwake`, working out of sight
-  `asuka/sdk/background`.
+  Keeping the display on stays asuka/device's `keepAwake`, working out
+  of sight `asuka/background`.
 - `dock.SetProgress` shows a task's progress on the app's icon (Normal,
   Indeterminate, Paused, Error); `dock.RequestAttention` asks the user
   to come to the app (Informational, Critical), and does nothing while
@@ -3163,7 +3180,8 @@ core/src/ui/lifecycle.c):
 - `app.DataDir`, `ConfigDir`, `CacheDir` and `LogDir` are
   internal/appdir's, each platform's place for the app (`store.Dir` is
   DataDir).
-- `asuka/sdk/recent` (module `recent`: `add`, `clear`, `list`):
+- `asuka/recent` (the hosts' module `recent`, through `asuka/platform`:
+  `add`, `clear`, `list`):
   NSDocumentController's recent documents on macOS, in an Open Recent
   menu the host fills as it opens (in the File menu once the app
   declares file types, has recent documents or adds one; choosing one
@@ -3173,7 +3191,8 @@ core/src/ui/lifecycle.c):
   user's `recently-used.xbel`, through GBookmarkFile, as the app's (its
   application name), clearing only the app's. Phones and the web answer
   nothing.
-- `asuka/sdk/login` (module `login`: `set`, `enabled`, `openedAtLogin`):
+- `asuka/login` (the hosts' module `login`, through `asuka/platform`:
+  `set`, `enabled`, `openedAtLogin`):
   SMAppService's `mainAppService` on macOS 13 (a bundle only;
   `requiresApproval` is `ErrNeedsApproval`), the opening Apple Event's
   `keyAELaunchedAsLogInItem` for `openedAtLogin`; Windows the HKCU `Run`
@@ -3652,7 +3671,7 @@ their own.
   (`boot.KeepRunning`) and its Dock icon makes a document
   (`boot.Reopen`, which `applicationShouldHandleReopen:` asks); Windows'
   and Linux's quit with their last document.
-- Files other apps change: each open file is watched (asuka/sdk/watch's
+- Files other apps change: each open file is watched (asuka/watch's
   watch of it, through its folder, so a file an editor replaces stays
   watched; where there's none, or once its folder went, a poll of its
   stamp every two seconds) and looked at when its window
