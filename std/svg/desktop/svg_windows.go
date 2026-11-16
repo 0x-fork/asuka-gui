@@ -3,81 +3,122 @@
 package svg
 
 import (
-	. "github.com/egoist/asuka/internal/windows"
+	win "github.com/egoist/asuka/internal/windows"
+	"github.com/egoist/asuka/native"
 )
 
 // Windows: a child window of the package's whose WM_PAINT fills and
 // strokes the layers as GDI+ paths, antialiased, fitted to it (its
 // pixels: points times the window's DPI); currentColor is the view's
-// color, a semantic one the theme's text color.
+// color, a semantic one the theme's text color. A Shape's layers are
+// resolved in the window's size each time it paints.
 
 type gdiIcon struct {
-	hwnd  uintptr
-	d     drawing
-	color int
+	hwnd    uintptr
+	d       drawing
+	color   int
+	shape   []Layer
+	isShape bool
 }
 
-func newView(events ViewEvents) ViewNative {
+func newGDIView(ctx native.Context) *gdiIcon {
 	v := &gdiIcon{}
-	v.hwnd = NewProcWindow(0, "", WS_CHILD|WS_VISIBLE, 0, 0, 0, 0, events.Context.Parent(), func(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool) {
+	v.hwnd = win.NewProcWindow(0, "", win.WS_CHILD|win.WS_VISIBLE, 0, 0, 0, 0, ctx.Parent(), func(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool) {
 		switch m {
-		case WM_PAINT:
-			var ps PaintStruct
-			dc := BeginPaint(hwnd, &ps)
+		case win.WM_PAINT:
+			var ps win.PaintStruct
+			dc := win.BeginPaint(hwnd, &ps)
 			v.paint(dc)
-			EndPaint(hwnd, &ps)
+			win.EndPaint(hwnd, &ps)
 			return 0, true
-		case WM_ERASEBKGND:
+		case win.WM_ERASEBKGND:
 			return 1, true
+		case win.WM_SIZE:
+			if v.isShape {
+				win.Invalidate(hwnd)
+			}
 		}
 		return 0, false
 	})
 	return v
 }
 
+func newView(events ViewEvents) ViewNative { return newGDIView(events.Context) }
+
+func newShape(events ShapeEvents) ShapeNative {
+	v := newGDIView(events.Context)
+	v.isShape = true
+	return v
+}
+
 func (v *gdiIcon) Handle() uintptr { return v.hwnd }
 
-// Measure is the icon's size, in points, when its style gives none.
-func (v *gdiIcon) Measure(w, h float32) (float32, float32) { return v.d.width, v.d.height }
+// Measure is the icon's size, in points, when its style gives none; a
+// Shape has none.
+func (v *gdiIcon) Measure(w, h float32) (float32, float32) {
+	if v.isShape {
+		return 0, 0
+	}
+	return v.d.width, v.d.height
+}
 
 func (v *gdiIcon) SetIcon(ic Icon) {
 	v.d = decode(ic.Data)
-	Invalidate(v.hwnd)
+	win.Invalidate(v.hwnd)
 }
 
 func (v *gdiIcon) SetColor(c int) {
 	v.color = c
-	Invalidate(v.hwnd)
+	win.Invalidate(v.hwnd)
+}
+
+func (v *gdiIcon) SetLayers(ls []Layer) {
+	v.shape = ls
+	win.Invalidate(v.hwnd)
 }
 
 func (v *gdiIcon) paint(dc uintptr) {
-	r := ClientRect(v.hwnd)
-	DrawParentBackground(v.hwnd, dc, &r)
-	scale, dx, dy := v.d.fit(float32(r.W()), float32(r.H()))
+	r := win.ClientRect(v.hwnd)
+	win.DrawParentBackground(v.hwnd, dc, &r)
+	w, h := float32(r.W()), float32(r.H())
+	if v.isShape {
+		d := shape(v.shape, w, h, float32(win.DPI(v.hwnd))/96)
+		paintDrawing(dc, &d, 1, 0, 0, [4]float32{})
+		return
+	}
+	scale, dx, dy := v.d.fit(w, h)
 	if scale <= 0 {
 		return
 	}
 	label := [4]float32{0, 0, 0, 0.9} // Fluent's text, light and dark
-	if !AppsUseLightTheme() {
+	if !win.AppsUseLightTheme() {
 		label = [4]float32{1, 1, 1, 1}
 	}
-	cur := rgbaOf(v.color, label)
-	argb := func(p paint) (ARGB, bool) {
+	if c, ok := native.ResolveColor(v.color); ok {
+		label = c
+	}
+	paintDrawing(dc, &v.d, scale, dx, dy, label)
+}
+
+// paintDrawing fills and strokes d's layers into dc, scaled by scale and
+// moved by dx, dy; currentColor is cur.
+func paintDrawing(dc uintptr, d *drawing, scale, dx, dy float32, cur [4]float32) {
+	argb := func(p paint) (win.ARGB, bool) {
 		switch p.kind {
 		case 1:
-			return MakeARGB(p.a, p.r, p.g, p.b), p.a > 0
+			return win.MakeARGB(p.a, p.r, p.g, p.b), p.a > 0
 		case 2:
 			a := cur[3] * p.opacity
-			return MakeARGB(uint8(a*255), uint8(cur[0]*255), uint8(cur[1]*255), uint8(cur[2]*255)), a > 0
+			return win.MakeARGB(uint8(a*255), uint8(cur[0]*255), uint8(cur[1]*255), uint8(cur[2]*255)), a > 0
 		}
 		return 0, false
 	}
-	g := NewGraphics(dc)
+	g := win.NewGraphics(dc)
 	defer g.Close()
 	X := func(x float32) float32 { return x*scale + dx }
 	Y := func(y float32) float32 { return y*scale + dy }
-	for _, l := range v.d.layers {
-		p := NewPath()
+	for _, l := range d.layers {
+		p := win.NewPath()
 		var px, py, sx, sy float32 // the pen, and its figure's start
 		for _, s := range l.path {
 			a := s.args
@@ -107,16 +148,29 @@ func (v *gdiIcon) paint(dc uintptr) {
 			}
 		}
 		if c, ok := argb(l.fill); ok {
-			b := SolidBrush(c)
+			var b win.Brush
+			if l.fade.kind != 0 {
+				to, _ := argb(l.fade)
+				b = win.LinearBrush(0, dy, 0, dy+l.fadeTo*scale, []win.ARGB{c, to}, []float32{0, 1})
+			} else {
+				b = win.SolidBrush(c)
+			}
 			g.FillPath(b, p)
 			b.Close()
 		}
 		if c, ok := argb(l.stroke); ok && l.width > 0 {
-			pen := NewPen(c, l.width*scale)
-			pen.SetCaps(int(l.cap), int(l.join))
+			pen := win.NewPen(c, l.width*scale)
+			pen.SetCaps(gdiCap[min(l.cap, 2)], gdiJoin[min(l.join, 2)])
 			g.DrawPath(pen, p)
 			pen.Close()
 		}
 		p.Close()
 	}
 }
+
+// GDI+'s caps and joins, by ours (butt, round, square; miter, round,
+// bevel).
+var (
+	gdiCap  = [3]int{0, 2, 1}
+	gdiJoin = [3]int{0, 2, 1}
+)

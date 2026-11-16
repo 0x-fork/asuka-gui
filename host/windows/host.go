@@ -360,6 +360,10 @@ func newHost() *Host {
 	h.intl = readIntl()
 	h.assets = assetsDir()
 	native.SetAssets(h.assets)
+	native.SetColorResolver(func(c uint64) ([4]float32, bool) {
+		r, ok := h.resolve(ops.Color(c))
+		return [4]float32{float32(r.r) / 255, float32(r.g) / 255, float32(r.b) / 255, float32(r.a) / 255}, ok
+	})
 	h.measureDC = CreateCompatibleDC(0)
 	// HWND_MESSAGE (-3); titled, for a running-once app, so that a second
 	// launch finds it (deeplink_windows.go).

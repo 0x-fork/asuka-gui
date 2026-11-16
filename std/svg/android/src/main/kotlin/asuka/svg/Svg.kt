@@ -129,3 +129,96 @@ private class SvgView(events: ViewEvents) : View {
 }
 
 fun makeView(events: ViewEvents): View = SvgView(events)
+
+// Shape: the app's paths, resolved in the view's size each time it draws
+// (a point is a fraction of the box plus points, times the density).
+
+internal class ShapeCanvas(context: Context) : AndroidView(context) {
+    var layers: List<Layer> = emptyList()
+        set(v) { field = v; invalidate() }
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val path = Path()
+
+    private fun build(d: List<Double>, w: Float, h: Float, density: Float) {
+        path.reset()
+        var i = 0
+        val pt = FloatArray(2)
+        fun next(): FloatArray {
+            if (i + 4 > d.size) { i = d.size; pt[0] = 0f; pt[1] = 0f; return pt }
+            pt[0] = (d[i] * w + d[i + 1] * density).toFloat()
+            pt[1] = (d[i + 2] * h + d[i + 3] * density).toFloat()
+            i += 4
+            return pt
+        }
+        while (i < d.size) {
+            val op = d[i].toInt()
+            i++
+            when (op) {
+                1 -> next().let { path.moveTo(it[0], it[1]) }
+                2 -> next().let { path.lineTo(it[0], it[1]) }
+                3 -> {
+                    val (cx, cy) = next().let { it[0] to it[1] }
+                    next().let { path.quadTo(cx, cy, it[0], it[1]) }
+                }
+                4 -> {
+                    val (ax, ay) = next().let { it[0] to it[1] }
+                    val (bx, by) = next().let { it[0] to it[1] }
+                    next().let { path.cubicTo(ax, ay, bx, by, it[0], it[1]) }
+                }
+                5 -> path.close()
+                6, 7 -> {
+                    val (ax, ay) = next().let { it[0] to it[1] }
+                    val (bx, by) = next().let { it[0] to it[1] }
+                    val r = RectF(minOf(ax, bx), minOf(ay, by), maxOf(ax, bx), maxOf(ay, by))
+                    if (op == 6) {
+                        val rad = if (i < d.size) (d[i] * density).toFloat() else 0f
+                        i++
+                        val k = rad.coerceIn(0f, minOf(r.width(), r.height()) / 2)
+                        path.addRoundRect(r, k, k, Path.Direction.CW)
+                    } else {
+                        path.addOval(r, Path.Direction.CW)
+                    }
+                }
+                else -> return
+            }
+        }
+    }
+
+    override fun onDraw(c: Canvas) {
+        val density = resources.displayMetrics.density
+        val w = width.toFloat()
+        val h = height.toFloat()
+        for (l in layers) {
+            build(l.path.data, w, h, density)
+            l.fill?.let { f ->
+                paint.style = Paint.Style.FILL
+                val top = AsukaModules.color(f, 0)
+                val fade = l.fade
+                if (fade != null) {
+                    paint.shader = android.graphics.LinearGradient(0f, 0f, 0f, h, top, AsukaModules.color(fade, 0), android.graphics.Shader.TileMode.CLAMP)
+                } else {
+                    paint.color = top
+                }
+                c.drawPath(path, paint)
+                paint.shader = null
+            }
+            val s = l.stroke
+            if (s != null && l.width > 0) {
+                paint.style = Paint.Style.STROKE
+                paint.color = AsukaModules.color(s, 0)
+                paint.strokeWidth = (l.width * density).toFloat()
+                paint.strokeCap = when (l.cap.value) { 1L -> Paint.Cap.ROUND; 2L -> Paint.Cap.SQUARE; else -> Paint.Cap.BUTT }
+                paint.strokeJoin = when (l.join.value) { 1L -> Paint.Join.ROUND; 2L -> Paint.Join.BEVEL; else -> Paint.Join.MITER }
+                c.drawPath(path, paint)
+            }
+        }
+    }
+}
+
+private class SvgShape(events: ShapeEvents) : Shape {
+    private val canvas = ShapeCanvas(events.context)
+    override val view: AndroidView get() = canvas
+    override fun setLayers(value: List<Layer>) { canvas.layers = value }
+}
+
+fun makeShape(events: ShapeEvents): Shape = SvgShape(events)

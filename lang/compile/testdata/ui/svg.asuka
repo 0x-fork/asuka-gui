@@ -5,6 +5,8 @@ let globe = svg.Icon("""
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
   """)
 
+let tick = svg.Path().move(svg.Point(x: 4, fy: 0.5)).line(svg.Point(fx: 0.4, fy: 1, y: -4)).line(svg.Point(fx: 1, x: -4, y: 4))
+
 component Icons {
   state on = true
 
@@ -12,6 +14,12 @@ component Icons {
     svg.View(check) { color: if on { .green } else { .secondaryLabel } }
     svg.View(globe) { width: 40; height: 40 }
     Text("{check.width}×{check.height}, {check.data.count() > 0}, {globe.data.count() > 0}")
+    // A tick the app draws, following its box.
+    svg.Shape([
+      svg.Layer(path: tick, stroke: .accent, width: 2, cap: .round, join: .round),
+      svg.Layer(path: svg.Path().rect(svg.Point(), svg.Point(fx: 1, fy: 1), radius: 6), fill: .accent.opacity(0.2), fade: #00000000),
+    ]) { width: 40; height: 40 }
+    Text("{tick.data.count()} numbers")
   }
 }
 
@@ -21,4 +29,5 @@ test "icons are parsed when the app compiles" {
   let app = mount(Icons())
   await app.idle()
   app.expect("24×24, true, true")
+  app.expect("15 numbers")
 }

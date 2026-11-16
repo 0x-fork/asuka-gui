@@ -39,3 +39,93 @@ pub native component View(icon: Icon) {
   /// What currentColor paints (and a fill the SVG doesn't give).
   prop color: Color = .label
 }
+
+/// A point of a Shape: x and y in points from its box's top left, plus
+/// fractions of its width and height, so the shape follows its box's
+/// size. Point(fx: 1, x: -8) is 8 points in from the right edge;
+/// Point(fx: 0.5, fy: 0.5) the middle.
+pub struct Point {
+  x: float = 0
+  y: float = 0
+  fx: float = 0
+  fy: float = 0
+}
+
+/// A path of a Shape, built a segment at a time: each method gives the
+/// path with one more.
+///
+///   let start = svg.Path().move(svg.Point(x: 4, fy: 0.5))
+///   let tick = start.line(svg.Point(fx: 0.4, fy: 1, y: -4)).line(svg.Point(fx: 1, x: -4, y: 4))
+pub struct Path {
+  /// The segments: an op (1 move, 2 line, 3 quad, 4 cubic, 5 close, 6
+  /// rect, 7 ellipse), then its points, each as fx, x, fy, y; a rect's
+  /// corner radius after its two corners.
+  data: [float] = []
+
+  /// The path with one more segment: op, then points.
+  fn segment(op: float, points: [Point]) -> Path {
+    var d = data
+    d.push(op)
+    for p in points {
+      d.push(p.fx)
+      d.push(p.x)
+      d.push(p.fy)
+      d.push(p.y)
+    }
+    return Path(data: d)
+  }
+
+  /// Starts a subpath at p.
+  fn move(p: Point) -> Path = segment(1, [p])
+  /// A line to p.
+  fn line(p: Point) -> Path = segment(2, [p])
+  /// A quadratic curve to p.
+  fn quad(control: Point, p: Point) -> Path = segment(3, [control, p])
+  /// A cubic curve to p.
+  fn cubic(c1: Point, c2: Point, p: Point) -> Path = segment(4, [c1, c2, p])
+  /// Closes the subpath, back to its start.
+  fn close() -> Path = segment(5, [])
+  /// A rectangle from one corner to the other, its corners rounded by
+  /// radius (at most half its side).
+  fn rect(from: Point, to: Point, radius: float = 0) -> Path {
+    var d = segment(6, [from, to]).data
+    d.push(radius)
+    return Path(data: d)
+  }
+  /// An ellipse in the box from one corner to the other.
+  fn ellipse(from: Point, to: Point) -> Path = segment(7, [from, to])
+}
+
+/// A stroke's ends.
+pub enum Cap {
+  butt
+  round
+  square
+}
+
+/// A stroke's corners.
+pub enum Join {
+  miter
+  round
+  bevel
+}
+
+/// A path, filled and stroked (the fill first).
+pub struct Layer {
+  path: Path
+  fill: Color? = none
+  stroke: Color? = none
+  /// The stroke's width, in points.
+  width: float = 1
+  cap: Cap = .butt
+  join: Join = .miter
+  /// A fill that fades down the box: from fill at its top to this at
+  /// its bottom (none: one color).
+  fade: Color? = none
+}
+
+/// Paths the app draws, in its box: each layer over the one before.
+/// Points are in points from the box's top left plus fractions of its
+/// size, so it redraws itself when its box changes, without the app
+/// working it out again. It has no size of its own: give it one.
+pub native component Shape(layers: [Layer]) {}

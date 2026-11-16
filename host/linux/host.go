@@ -248,6 +248,10 @@ func newHost() *Host {
 	h.assets = assetsDir()
 	native.SetAssets(h.assets)
 	native.SetRaise(func() { h.afterCore(h.showMain) })
+	native.SetColorResolver(func(c uint64) ([4]float32, bool) {
+		r, ok := h.resolve(ops.Color(c))
+		return [4]float32{r.R, r.G, r.B, r.A}, ok
+	})
 	h.wake = Waker(h.runPosted)
 	return h
 }

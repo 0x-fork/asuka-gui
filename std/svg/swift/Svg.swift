@@ -177,3 +177,134 @@ final class IconView: NSView {
 }
 
 @MainActor func makeView(_ events: ViewEvents) -> any View { SvgView(events) }
+
+// Shape: the app's paths, resolved in the view's bounds each time it
+// draws (a point is a fraction of the box plus points).
+
+/// A Shape's path in a box of size w by h.
+func shapePath(_ d: [Double], _ w: CGFloat, _ h: CGFloat) -> CGMutablePath {
+    let p = CGMutablePath()
+    var i = 0
+    func pt() -> CGPoint {
+        guard i + 4 <= d.count else { i = d.count; return .zero }
+        defer { i += 4 }
+        return CGPoint(x: CGFloat(d[i]) * w + CGFloat(d[i + 1]), y: CGFloat(d[i + 2]) * h + CGFloat(d[i + 3]))
+    }
+    while i < d.count {
+        let op = Int(d[i])
+        i += 1
+        switch op {
+        case 1: p.move(to: pt())
+        case 2: p.addLine(to: pt())
+        case 3:
+            let c = pt()
+            p.addQuadCurve(to: pt(), control: c)
+        case 4:
+            let c1 = pt(), c2 = pt()
+            p.addCurve(to: pt(), control1: c1, control2: c2)
+        case 5: p.closeSubpath()
+        case 6:
+            let a = pt(), b = pt()
+            let r = i < d.count ? CGFloat(d[i]) : 0
+            i += 1
+            let rect = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+            let rad = max(0, min(r, rect.width / 2, rect.height / 2))
+            p.addRoundedRect(in: rect, cornerWidth: rad, cornerHeight: rad)
+        case 7:
+            let a = pt(), b = pt()
+            p.addEllipse(in: CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y)))
+        default: return p
+        }
+    }
+    return p
+}
+
+/// Draws a Shape's layers in bounds, color resolving a color's Int.
+func drawShape(_ c: CGContext, _ layers: [Layer], in bounds: CGRect, color: (Int) -> CGColor?) {
+    let caps: [CGLineCap] = [.butt, .round, .square], joins: [CGLineJoin] = [.miter, .round, .bevel]
+    for l in layers {
+        let path = shapePath(l.path.data, bounds.width, bounds.height)
+        if let f = l.fill.flatMap(color) {
+            c.saveGState()
+            c.addPath(path)
+            if let to = l.fade.flatMap(color),
+               let g = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [f, to] as CFArray, locations: [0, 1]) {
+                c.clip()
+                c.drawLinearGradient(g, start: CGPoint(x: 0, y: bounds.minY), end: CGPoint(x: 0, y: bounds.maxY), options: [])
+            } else {
+                c.setFillColor(f)
+                c.fillPath()
+            }
+            c.restoreGState()
+        }
+        if let s = l.stroke.flatMap(color), l.width > 0 {
+            c.addPath(path)
+            c.setStrokeColor(s)
+            c.setLineWidth(CGFloat(l.width))
+            c.setLineCap(caps[min(Int(l.cap.rawValue), 2)])
+            c.setLineJoin(joins[min(Int(l.join.rawValue), 2)])
+            c.strokePath()
+        }
+    }
+}
+
+#if canImport(UIKit)
+final class ShapeCanvas: UIView {
+    var layers: [Layer] = [] { didSet { setNeedsDisplay() } }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        backgroundColor = .clear
+        contentMode = .redraw
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) isn't used") }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize { .zero }
+
+    override func draw(_ rect: CGRect) {
+        guard let c = UIGraphicsGetCurrentContext() else { return }
+        let traits = traitCollection
+        drawShape(c, layers, in: bounds) { AsukaColors.color($0)?.resolvedColor(with: traits).cgColor }
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        setNeedsDisplay()
+    }
+}
+#else
+final class ShapeCanvas: NSView {
+    var layers: [Layer] = [] { didSet { needsDisplay = true } }
+
+    override var isFlipped: Bool { true }
+    override var fittingSize: NSSize { .zero }
+
+    override func draw(_ dirty: NSRect) {
+        guard let c = NSGraphicsContext.current?.cgContext else { return }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            drawShape(c, layers, in: bounds) { AsukaColors.color($0)?.cgColor }
+        }
+    }
+
+    override func setFrameSize(_ s: NSSize) {
+        super.setFrameSize(s)
+        needsDisplay = true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+}
+#endif
+
+@MainActor final class SvgShape: Shape {
+    let canvas = ShapeCanvas(frame: .zero)
+    var view: AsukaPlatformView { canvas }
+    init(_ events: ShapeEvents) {}
+    func setLayers(_ value: [Layer]) { canvas.layers = value }
+}
+
+@MainActor func makeShape(_ events: ShapeEvents) -> any Shape { SvgShape(events) }
