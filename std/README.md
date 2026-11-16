@@ -182,7 +182,7 @@ sdk/<name> Go package.
 What a host already does for its apps through a module of its own
 (notifications, pushes, iCloud, the photo library...: platform/ios's
 AsukaHost, platform/android's dev.asuka, platform/web's modules,
-host/darwin, host/windows, host/linux) a package reaches through
+platform/macos's AsukaHost, host/windows, host/linux) a package reaches through
 `asuka/platform`, as above, with no platform code of its own: it calls
 the module's methods by name (`platform.call`, `platform.send`,
 `platform.next` for a "next" method's stream), with the bytes
@@ -207,7 +207,7 @@ where no host keeps its own (iOS, Android, the web).
   under testdata/run) that imports the package and runs on the fake host,
   with no platform code: it must behave (fallbacks, errors).
 - Swift: compiles for macOS and the iOS simulator (xcrun swiftc against
-  platform/macos's runtime, as host/darwin's buildKitchenSwift does).
+  platform/macos's host, as cmd/asuka's TestMacSwift builds the kitchen).
 - C: compiled for Windows and Linux with Zig, and run on Linux by
   platform/desktop's std_test.go (an Asuka program on the test host, in
   the asuka-linux-test image) where it can be driven there.

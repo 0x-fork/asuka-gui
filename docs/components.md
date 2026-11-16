@@ -1779,6 +1779,6 @@ a `Scroll`.
 ## Your own views
 
 When a platform has a widget Asuka doesn't, write it yourself as a
-`native component`: in Swift on iOS and macOS, Kotlin on Android,
-JavaScript on the web, and Go on Windows and Linux. See [Native
+`native component`: in Swift on iOS and macOS, Kotlin on Android, C on
+Windows and Linux, and JavaScript on the web. See [Native
 code](native.md).

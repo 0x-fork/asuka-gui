@@ -43,8 +43,8 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 各平台的开发 App 分别是：
 
+- **macOS**：和核心（以及应用的原生包的 Swift）链接在一起的 Swift 宿主，是一个和发布版本一样的 `.app`，位于 Asuka 缓存中该应用的目录里。启动时，它的环境变量中带有 `ASUKA_DEV=host:port`。
 - **Windows、Linux**：一个程序，即链接了核心、不含应用的 C 宿主（Windows 上基于 Win32；Linux 上基于 GTK 4 和 libadwaita），位于 Asuka 缓存中该应用的目录里（在 Windows 上是控制台程序）。启动时，它的环境变量中带有 `ASUKA_DEV=host:port`。
-- **macOS**：桌面宿主（`cmd/asuka-host`：AppKit，通过 C ABI 驱动核心）和放在它旁边的核心（`libasuka.dylib`），是一个和发布版本一样的 `.app`，位于 Asuka 缓存中该应用的目录里。启动时，它的环境变量中带有 `ASUKA_DEV=host:port`。
 - **iOS**：Swift 宿主与核心（`libasuka.a`）链接进应用的 `.app`，宿主中每个需要链接独立框架（WebKit、AVKit 等）的部分都包含在内，因此你在编辑时，应用可以随时用上其中任何一个。在模拟器上，用 `xcrun simctl` 安装并启动它，环境变量中带有 `ASUKA_DEV`；在 iPhone 上，则用开发证书签名，并用 `xcrun devicectl` 安装。
 - **Android**：调试版的外壳应用（Gradle 构建一次，清单文件、Kotlin 代码或资源变化时再重新构建），核心被推送到它的私有文件目录（`files/asuka/libasuka.so`），调试版应用从那里加载核心；`files/asuka/dev` 记录了 `asuka dev` 的地址，`adb reverse` 让它成为设备自己的回环地址。
 - **Web**：页面从开发服务器加载 WebAssembly 形式的核心（`asuka.wasm`）和应用的模块，并在每个新模块构建好时加载它。
@@ -162,16 +162,17 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 ```sh
 go test ./core                                     # 核心的 C 测试（ASan、UBSan）和虚拟机的测试
 go test ./internal/appbuild ./cmd/asuka            # 构建和开发循环，覆盖这台电脑能跑的所有平台
-go test ./host/darwin                              # macOS：真实的 AppKit 视图
+go test ./platform/macos/mactest                   # macOS：在 Mac 播放器上运行应用，检查真实的 AppKit 视图
 go test ./platform/windows                         # Windows：用 Zig 构建应用，在真实的窗口中驱动（在 Windows 上，或在虚拟机里）
 xvfb-run -a dbus-run-session go test ./platform/linux  # Linux：在真实的 GTK 窗口里驱动应用
 swift test --package-path platform/ios             # Swift 宿主的解码器
+swift test --package-path platform/macos           # Mac 宿主的 Swift 和它的解码器
 node --test platform/web                           # Web 宿主的解码器
 ```
 
 `go test ./cmd/asuka` 会尽可能端到端地运行开发循环：在这台 Mac 上（开发 App、一个模块、一次点按、保留着计数的下一个模块）、在无头 Chrome 中、在已启动的 iOS 模拟器上，以及在正在运行的 Android 模拟器上；它还会为每个平台构建应用。这台电脑无法构建或运行的部分会被跳过。
 
-`go test ./host/darwin -run Conformance` 会在窗口截图中测量宿主为某个样式绘制的效果（边缘、圆角、边框、阴影、渐变），检查是否正确；e2e 测试在 iOS 模拟器、Android 模拟器和无头 Chrome 上做同样的检查（`go test -tags e2e ./e2e -run Conformance`）。在 Windows 上，`go test ./platform/windows -run Drawing` 会在窗口截图中逐像素检查图片、形状、画布、着色器、圆角裁剪和材质。
+`go test ./platform/macos/mactest -run Conformance` 会在窗口截图中测量宿主为某个样式绘制的效果（边缘、圆角、边框、阴影、渐变），检查是否正确；e2e 测试在 iOS 模拟器、Android 模拟器和无头 Chrome 上做同样的检查（`go test -tags e2e ./e2e -run Conformance`）。在 Windows 上，`go test ./platform/windows -run Drawing` 会在窗口截图中逐像素检查图片、形状、画布、着色器、圆角裁剪和材质。
 
 `go test ./platform/windows` 会在 Windows 中运行每个测试的应用：可以在 PC 上运行，也可以在 Mac 上借助 `ASUKA_WINDOWS_VM` 指定的 swiftvm 虚拟机（默认是 `Windows Fresh`）运行，虚拟机把 `~/Library/Caches/asuka/windows-vm` 看作 `Z:\windows-vm`；两者都没有时，这些测试会跳过。
 

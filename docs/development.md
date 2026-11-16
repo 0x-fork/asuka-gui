@@ -77,14 +77,14 @@ launches it.
 
 What each platform's player is:
 
+- **macOS**: the Swift host linked with the core (and the app's native
+  packages' Swift), in an `.app` like a release's, in the app's
+  directory in Asuka's cache; launched with `ASUKA_DEV=host:port` in its
+  environment.
 - **Windows, Linux**: one program, the C host (on Win32; on GTK 4 and
   libadwaita) linked with the core and no app, in the app's directory
   in Asuka's cache (on Windows a console program). It's launched with
   `ASUKA_DEV=host:port` in its environment.
-- **macOS**: the desktop host (`cmd/asuka-host`: AppKit, driving the
-  core through its C ABI) and the core beside it (`libasuka.dylib`), an
-  `.app` like a release's in the app's directory in Asuka's cache. It's
-  launched with `ASUKA_DEV=host:port` in its environment.
 - **iOS**: the Swift host linked with the core (`libasuka.a`) into the
   app's `.app`, with every part of the host that links a framework of
   its own (WebKit, AVKit...), so the app may use any of them as you edit
@@ -380,10 +380,11 @@ core, the CLI and each host through the platform's real views.
 ```sh
 go test ./core                                     # the core's C tests (ASan, UBSan) and the VM's
 go test ./internal/appbuild ./cmd/asuka            # the builds and the dev loop, on every platform this computer has
-go test ./host/darwin                              # macOS: real AppKit views
+go test ./platform/macos/mactest                   # macOS: apps on the Mac player, its real AppKit views
 go test ./platform/windows                         # Windows: apps built with Zig, driven in real windows (on Windows, or a VM)
 xvfb-run -a dbus-run-session go test ./platform/linux  # Linux: apps driven in real GTK windows
 swift test --package-path platform/ios             # the Swift host's decoder
+swift test --package-path platform/macos           # the Mac host's Swift and its decoder
 node --test platform/web                           # the web host's decoder
 ```
 
@@ -393,13 +394,13 @@ in headless Chrome, on the booted iOS simulator and on a running Android
 emulator, and builds the app for each platform; it skips what this
 computer can't build or run.
 
-`go test ./host/darwin -run Conformance` checks what the host draws for
-a style (edges, corners, borders, shadows, gradients), measured in a
-capture of the window; the e2e tests do the same on the simulator, the
-emulator and headless Chrome (`go test -tags e2e ./e2e -run
-Conformance`). On Windows, `go test ./platform/windows -run Drawing`
-checks images, shapes, canvases, shaders, rounded clips and materials by
-their pixels in the window's capture.
+`go test ./platform/macos/mactest -run Conformance` checks what the
+host draws for a style (edges, corners, borders, shadows, gradients),
+measured in a capture of the window; the e2e tests do the same on the
+simulator, the emulator and headless Chrome (`go test -tags e2e ./e2e
+-run Conformance`). On Windows, `go test ./platform/windows -run
+Drawing` checks images, shapes, canvases, shaders, rounded clips and
+materials by their pixels in the window's capture.
 
 `go test ./platform/windows` runs each test's app in Windows: on a PC,
 or from a Mac in the swiftvm VM that `ASUKA_WINDOWS_VM` names

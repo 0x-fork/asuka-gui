@@ -20,18 +20,14 @@ import (
 	"github.com/egoist/asuka/std"
 )
 
-// Desktop apps on macOS: the executable is the desktop host
-// (cmd/asuka-host: Go and AppKit, the same for every app), with the C
-// core beside it (libasuka.dylib in the app's Frameworks) and the app's
-// settings (internal/boot's ConfigFile). A release's core has the app
-// compiled into it; asuka dev's player's has none, and loads the bytecode
-// the CLI sends (ASUKA_DEV).
-//
-// On Windows and Linux the executable is one program: the C host
-// (platform/windows, platform/linux: RFC 0008), the core, the native
-// registry, the native packages' C (each one's desktop/) and, in a
-// release, the app compiled to C (windows.go; linux.go through
-// appbuild.DesktopExe).
+// Desktop apps: on a Mac the executable is the Swift host (platform/macos,
+// AppKit) with the core linked in (mac_swift.go). On Windows and Linux it
+// is one program: the C host (platform/windows, platform/linux: RFC 0008),
+// the core, the native registry, the native packages' C (each one's
+// desktop/) and, in a release, the app compiled to C (windows.go; linux.go
+// through appbuild.DesktopExe). Each has the app's settings beside it
+// (internal/boot's ConfigFile); asuka dev's player has no app compiled in,
+// and loads the bytecode the CLI sends (ASUKA_DEV).
 
 // coreLibName is the core library's file name on goos (host/bridge's
 // LibName): macOS's or Linux's.
@@ -239,16 +235,23 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 			return "", err
 		}
 		exe := filepath.Join(bundle, "Contents", "MacOS", name)
-		if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose}); err != nil {
+		// The Swift host and the core without an app, which loads the
+		// bytecode asuka dev sends.
+		mb := &macBuild{app: app, work: work, run: run}
+		if err := mb.executable(exe, []string{t.Arch}, nil); err != nil {
 			return "", err
 		}
-		if err := appbuild.PlayerLib(t, cbuild.Shared, app.c, filepath.Join(bundle, "Contents", "Frameworks", coreLibName("darwin"))); err != nil {
+		if err := mb.embed(bundle, exe); err != nil {
 			return "", err
 		}
 		if err := writeHostConfig(app, platform, "", false, filepath.Join(bundle, "Contents", "Resources", boot.ConfigFile)); err != nil {
 			return "", err
 		}
-		if err := macSwift(app, bundle, work, []string{t.Arch}, false, run); err != nil {
+		libs, err := appLibs(app, "darwin")
+		if err != nil {
+			return "", err
+		}
+		if err := writeLibs(libs, macPluginLibs(bundle)); err != nil {
 			return "", err
 		}
 		ents, err := writeMacEntitlements(app, work)

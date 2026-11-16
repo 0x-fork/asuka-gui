@@ -1285,4 +1285,4 @@ component Tags(tags: [string]) {
 
 ## 独自のビュー
 
-Asuka が対応していないウィジェットがプラットフォームにある場合は、自分で `native component` を書けます。iOS と macOS では Swift、Android では Kotlin、Web では JavaScript、Windows と Linux では Go で書きます。[ネイティブコード](native.md) を参照してください。
+Asuka が対応していないウィジェットがプラットフォームにある場合は、自分で `native component` を書けます。iOS と macOS では Swift、Android では Kotlin、Windows と Linux では C、Web では JavaScript で書きます。[ネイティブコード](native.md) を参照してください。

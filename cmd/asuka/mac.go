@@ -19,17 +19,18 @@ import (
 	iupdate "github.com/egoist/asuka/internal/update"
 )
 
-// macOS: the app's executable is the desktop host (cmd/asuka-host:
-// host/darwin, AppKit through purego), with the C core in its
-// Frameworks (libasuka.dylib) and its settings in its Resources.
+// macOS: the app's executable is the Swift host (platform/macos, AppKit)
+// linked with the C core and the app's native packages' Swift
+// (mac_swift.go), its settings in its Resources.
 //
 // asuka dev --platform mac runs the player here (desktop.go), from an
 // .app like a release's (its Info.plist, icon and languages, signed ad
 // hoc, answering for its own privacy prompts), with the core without an
 // app, which loads the app's bytecode and each save's. asuka build
-// --platform mac makes an .app: universal binaries (arm64 and x86_64) of
-// the host and the core with the app compiled in, its Info.plist, icon
-// and assets, and its plugins' libraries (Contents/Frameworks),
+// --platform mac makes an .app: a universal executable (arm64 and
+// x86_64) of the host and the core with the app compiled in, its
+// Info.plist, icon and assets, and its plugins' libraries
+// (Contents/Frameworks),
 // signed (ad hoc unless --sign names an
 // identity), with its provisioning profile
 // (Contents/embedded.provisionprofile) and the entitlements the app's
@@ -263,28 +264,25 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 		return err
 	}
 
-	// The host and the core with the app compiled in: universal binaries
-	// (lipo). Updates are the Mac App Store's for its builds.
+	// The host and the core with the app compiled in: a universal
+	// executable. Updates are the Mac App Store's for its builds.
 	m, err := app.compile()
 	if err != nil {
 		return err
 	}
-	if err := appbuild.MacLib(m, filepath.Join(bundle, "Contents", "Frameworks", coreLibName("darwin"))); err != nil {
+	exePath := filepath.Join(bundle, "Contents", "MacOS", exe)
+	mb := &macBuild{app: app, work: work, release: true, run: run}
+	if err := mb.executable(exePath, appbuild.MacArchs, m); err != nil {
 		return err
 	}
-	if err := appbuild.MacHost(filepath.Join(bundle, "Contents", "MacOS", exe), appbuild.HostOptions{Release: true, Verbose: o.verbose}); err != nil {
+	if err := mb.embed(bundle, exePath); err != nil {
 		return err
 	}
-	// The Mac App Store updates its apps.
 	if err := writeHostConfig(app, platformMac, macTarget, !o.appStore, filepath.Join(bundle, "Contents", "Resources", boot.ConfigFile)); err != nil {
 		return err
 	}
 	libs, err := appLibs(app, "darwin")
 	if err != nil {
-		return err
-	}
-
-	if err := macSwift(app, bundle, work, []string{"arm64", "amd64"}, true, run); err != nil {
 		return err
 	}
 	// The plugins' libraries, in Frameworks: signed with the app (signMac).

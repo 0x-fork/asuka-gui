@@ -38,7 +38,7 @@ test "counts taps" {
 | --- | --- | --- |
 | iOS | Swift。コアを組み込む | UIKit |
 | Android | Kotlin。コアを組み込む | Android Views と Material 3 |
-| macOS | Go。アプリと同じプロセスで動く（purego 経由で AppKit を呼び出す） | AppKit |
+| macOS | Swift。コアとアプリを組み込む | AppKit |
 | Windows | C。コアとアプリを組み込む | Win32 とコモンコントロール（Windows 11 の見た目で描画） |
 | Linux | C。コアとアプリを組み込む（GTK は起動時に開く） | GTK 4 と libadwaita |
 | Web | JavaScript。コアは WebAssembly として動く | ページの DOM とブラウザー標準のコントロール |
