@@ -630,7 +630,24 @@ func (c *appConfig) bluetoothExtras() {
 			addMode("bluetooth-peripheral")
 		}
 	}
+	// With a mode (these, the app's ios.backgroundModes', a package's), the
+	// managers have their restore identifiers: iOS starts the app again
+	// for what it kept, and the package's launch class makes them before
+	// launch ends (std/bluetooth's swift/Bluetooth.swift).
+	modes := append(slices.Clone(c.IOS.BackgroundModes), c.plistArrays["UIBackgroundModes"]...)
+	if slices.Contains(modes, "bluetooth-central") || slices.Contains(modes, "bluetooth-peripheral") {
+		if c.plistArrays == nil {
+			c.plistArrays = map[string][]string{}
+		}
+		if !slices.Contains(c.plistArrays["AsukaLaunch"], bluetoothLaunch) {
+			c.plistArrays["AsukaLaunch"] = append(c.plistArrays["AsukaLaunch"], bluetoothLaunch)
+		}
+	}
 }
+
+// bluetoothLaunch is asuka/bluetooth's launch class on iOS (its manifest's
+// launch, for an app that calls backgroundScan).
+const bluetoothLaunch = "AsukaBluetoothLaunch"
 
 // androidFeatures adds the host's optional modules the app's elements
 // need (asuka-video, for a Video, as iOS's ASUKA_VIDEO), or (player:

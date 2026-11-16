@@ -153,7 +153,14 @@ func TestStdManifests(t *testing.T) {
 			plist: []string{"LSApplicationQueriesSchemes"}, flags: []string{"ASUKA_COMPOSE"}},
 		"bluetooth": {android: []string{`<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />`, "BLUETOOTH_CONNECT", "BLUETOOTH_ADVERTISE"},
 			module: []string{`android:name="android.hardware.bluetooth_le" android:required="false"`, "companion_device_setup"},
-			usage:  []string{"NSBluetoothAlwaysUsageDescription"}},
+			usage:  []string{"NSBluetoothAlwaysUsageDescription"},
+			no:     []string{"BluetoothScanReceiver", "bluetooth-central"}},
+		// A background scan: iOS's mode and the launch class that makes the
+		// restored central; Android's receiver for the system's scan.
+		"bluetooth.backgroundScan": {android: []string{"BLUETOOTH_SCAN", `<receiver android:name="asuka.bluetooth.BluetoothScanReceiver" android:exported="false" />`},
+			modes: []string{"bluetooth-central"}, launch: []string{"AsukaBluetoothLaunch"}},
+		"bluetooth.restored":           {no: []string{"BluetoothScanReceiver", "bluetooth-central"}},
+		"bluetooth.stopBackgroundScan": {no: []string{"BluetoothScanReceiver", "bluetooth-central"}},
 	}
 	for name, w := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -310,4 +317,28 @@ func testUses(refs map[string]bool) *appbuild.Uses {
 		}
 	}
 	return u
+}
+
+// asuka.toml's bluetooth.background gives the managers their restore
+// identifiers, so the app gets asuka/bluetooth's launch class, which makes
+// them as iOS launches the app for them; once with backgroundScan's too.
+func TestBluetoothRestoreLaunch(t *testing.T) {
+	for _, tc := range []struct {
+		background []string
+		names      []string
+		launch     []string
+	}{
+		{nil, []string{"bluetooth"}, nil},
+		{[]string{"central"}, []string{"bluetooth"}, []string{"AsukaBluetoothLaunch"}},
+		{[]string{"peripheral"}, []string{"bluetooth"}, []string{"AsukaBluetoothLaunch"}},
+		{[]string{"central"}, []string{"bluetooth.backgroundScan"}, []string{"AsukaBluetoothLaunch"}},
+		{[]string{"central"}, nil, nil}, // without the package
+	} {
+		c := &appConfig{ID: "dev.asuka.test"}
+		c.Bluetooth.Background = tc.background
+		importStd(t, c, "ios", tc.names...)
+		if got := c.plistArrays["AsukaLaunch"]; !slices.Equal(got, tc.launch) {
+			t.Errorf("background %v, %v: launch classes %v, want %v", tc.background, tc.names, got, tc.launch)
+		}
+	}
 }
