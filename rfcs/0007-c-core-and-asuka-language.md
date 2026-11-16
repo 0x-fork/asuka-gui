@@ -495,17 +495,17 @@ Each ends with its tests green.
 - [x] **L1** the compiler front end: lexer, parser, printer, `asuka fmt`.
 - [x] **L2** the checker, the IR, bytecode; the VM; the UI runtime for
       the v0 elements; `asuka test`: counter and todo pass their tests.
-- [ ] **M1** iOS and Android: the core built for both, the hosts
+- [x] **M1** iOS and Android: the core built for both, the hosts
       unchanged, `asuka dev` with bytecode reloads, `asuka build`.
-- [ ] **W1** the web: the core as WebAssembly, `platform/web` unchanged.
+- [x] **W1** the web: the core as WebAssembly, `platform/web` unchanged.
 - [x] **L3** the C backend for release builds; both backends pass the
       same conformance suite.
 - [ ] **E1** every element of the schema in the UI runtime; the
       examples ported to Asuka.
 - [ ] **N1** native packages from `native` declarations; `sdk/` ported.
-- [ ] **P1** packages: `asuka add`, `asuka pkg publish`, the resolver,
+- [x] **P1** packages: `asuka add`, `asuka pkg publish`, the resolver,
       `asuka.lock`, the cache; the CLI on npm with prebuilt binaries.
-- [ ] **D1** the desktop hosts (Go) on the C core: `libasuka` loaded
+- [x] **D1** the desktop hosts (Go) on the C core: `libasuka` loaded
       with purego, batches decoded by `ops`, events and list calls into
       the ABI; `asuka dev` and `asuka build` for macOS, Windows, Linux.
 - [ ] **X** the Go core, `mobile/`, `host/web` and Go apps removed; DESIGN.md,
