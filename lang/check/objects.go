@@ -72,6 +72,18 @@ func (s *Scope) Lookup(name string) Object {
 	return nil
 }
 
+// LookupType finds the type named name in s or its parents: types and
+// values are named apart, so a function or a method named int (asuka/
+// random's) doesn't hide the type int.
+func (s *Scope) LookupType(name string) *TypeName {
+	for ; s != nil; s = s.parent {
+		if tn, ok := s.names[name].(*TypeName); ok {
+			return tn
+		}
+	}
+	return nil
+}
+
 // LookupLocal finds name in s only.
 func (s *Scope) LookupLocal(name string) Object { return s.names[name] }
 
@@ -395,9 +407,7 @@ const (
 	BPanic
 	BJSONDecode
 	BJSONEncode
-	BMath // math.<name>: the builtin of the same name
-	BTimeNow
-	BTimeMonotonic
+	BMath           // math.<name>: the builtin of the same name
 	BRange          // arr.range
 	BWithTimeout    // withTimeout(d) { … }
 	BStream         // Stream<T>(send => { … })

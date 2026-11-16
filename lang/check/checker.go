@@ -467,6 +467,15 @@ func (c *Checker) lookup(name string) Object {
 	return c.pkg.Scope.Lookup(name)
 }
 
+// lookupType finds the type named name in scope (a value of the name
+// doesn't hide it).
+func (c *Checker) lookupType(name string) *TypeName {
+	if c.scope != nil {
+		return c.scope.LookupType(name)
+	}
+	return c.pkg.Scope.LookupType(name)
+}
+
 // enter starts checking a function body.
 func (c *Checker) enter(kind CtxKind, node syntax.Node, name string) *FuncCtx {
 	ctx := &FuncCtx{Kind: kind, Parent: c.ctx, Node: node, Name: name}
@@ -566,7 +575,11 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 				return &Task{c.typeExpr(t.Args[0])}
 			}
 		}
-		o = c.lookup(name)
+		if tn := c.lookupType(name); tn != nil {
+			o = tn
+		} else {
+			o = c.lookup(name)
+		}
 		if o == nil {
 			c.errorf(t, "unknown type %s%s", name, c.suggest(name))
 			return Invalid

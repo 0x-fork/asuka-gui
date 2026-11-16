@@ -126,7 +126,7 @@ typedef struct ak_str {
 	char data[];    // len bytes, then a NUL
 } ak_str;
 
-ak_str *ak_str_new(const char *s, size_t n);
+ak_str *ak_str_new(const char *s, size_t n);  // s NULL: n bytes the caller fills
 static inline ak_str *ak_str_c(const char *s) { return ak_str_new(s, strlen(s)); }
 ak_str *ak_str_empty(void);  // immortal
 ak_str *ak_str_concat(ak_str *a, ak_str *b);

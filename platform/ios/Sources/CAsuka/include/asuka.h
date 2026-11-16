@@ -93,6 +93,11 @@ ASUKA_API void asuka_run_posted(void);
 // Sets an environment variable for the Go code (os.Setenv), which copied
 // the process's as it loaded.
 ASUKA_API void asuka_setenv(const char *key, const char *value);
+// Sets the app's own directory, where it keeps its files (asuka/fs's
+// appDir: Application Support on Apple platforms, the app's files
+// directory on Android, its data directory on desktops). Before
+// asuka_start; without it the core reads ASUKA_DATA, else guesses.
+ASUKA_API void asuka_set_app_dir(const char *path);
 // Begins the run's crash record (asuka/sdk/crash; not available in the
 // C core yet: it returns ""), with info, JSON of the
 // device and the app: the directory native reports go in, "" if the app

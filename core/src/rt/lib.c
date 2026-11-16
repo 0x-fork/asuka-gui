@@ -68,8 +68,195 @@ static ak_val str_trim(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_tr
 static ak_val str_contains(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_contains(STR(0), STR(1))); }
 static ak_val str_has_prefix(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_has_prefix(STR(0), STR(1))); }
 static ak_val str_has_suffix(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_has_suffix(STR(0), STR(1))); }
-static ak_val str_replace(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_replace(STR(0), STR(1), STR(2))); }
-static ak_val str_split(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_split(STR(0), STR(1))); }
+static bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'; }
+
+// str.replace(s, old, new, count): the first count olds (all when count
+// < 0) replaced with new.
+static ak_val str_replace(ak_val *args, uint32_t n) {
+	int64_t count = n > 3 ? A(3).i : -1;
+	if (count < 0) RET_P(ak_str_replace(STR(0), STR(1), STR(2)));
+	ak_str *s = STR(0), *old = STR(1);
+	if (old->len == 0 || count == 0) RET_P(ak_retain(s));
+	ak_strb b = {0};
+	uint32_t i = 0;
+	while (i < s->len) {
+		if (count > 0 && i + old->len <= s->len && memcmp(s->data + i, old->data, old->len) == 0) {
+			ak_strb_str(&b, STR(2));
+			i += old->len;
+			count--;
+		} else {
+			ak_strb_cstr(&b, s->data + i, 1);
+			i++;
+		}
+	}
+	RET_P(ak_strb_finish(&b));
+}
+
+// str.split(s, sep, count): at most count parts (all when count < 0), the
+// last holding the rest.
+static ak_val str_split(ak_val *args, uint32_t n) {
+	int64_t count = n > 2 ? A(2).i : -1;
+	ak_str *s = STR(0), *sep = STR(1);
+	if (count < 0 || sep->len == 0) {
+		ak_arr *a = ak_str_split(s, sep);
+		if (count >= 0 && a->len > count) {
+			// Characters: the first count-1, then the rest.
+			ak_arr *b = ak_arr_new(AK_K_REF, NULL, (uint32_t)count);
+			b->h.flags = 1;
+			uint32_t off = 0;
+			for (int64_t k = 0; k + 1 < count; k++) {
+				ak_str *c = a->data[k].p;
+				ak_arr_push(&b, (ak_val){.p = ak_retain(c)});
+				off += c->len;
+			}
+			if (count > 0) ak_arr_push(&b, (ak_val){.p = ak_str_new(s->data + off, s->len - off)});
+			ak_release(a);
+			a = b;
+		}
+		RET_P(a);
+	}
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 4);
+	a->h.flags = 1;
+	if (count == 0) RET_P(a);
+	uint32_t start = 0;
+	for (uint32_t i = 0; i + sep->len <= s->len && a->len + 1 < count;) {
+		if (memcmp(s->data + i, sep->data, sep->len) == 0) {
+			ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, i - start)});
+			i += sep->len;
+			start = i;
+		} else {
+			i++;
+		}
+	}
+	ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, s->len - start)});
+	RET_P(a);
+}
+
+static ak_val str_trim_prefix(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0), *p = STR(1);
+	if (!ak_str_has_prefix(s, p)) RET_P(ak_retain(s));
+	RET_P(ak_str_slice(s, p->len, s->len));
+}
+
+static ak_val str_trim_suffix(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0), *p = STR(1);
+	if (!ak_str_has_suffix(s, p)) RET_P(ak_retain(s));
+	RET_P(ak_str_slice(s, 0, s->len - p->len));
+}
+
+static ak_val str_trim_start(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0);
+	uint32_t a = 0;
+	while (a < s->len && space(s->data[a])) a++;
+	RET_P(ak_str_slice(s, a, s->len));
+}
+
+static ak_val str_trim_end(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0);
+	uint32_t b = s->len;
+	while (b > 0 && space(s->data[b - 1])) b--;
+	RET_P(ak_str_slice(s, 0, b));
+}
+
+// str.fields: the runs of text between white space.
+static ak_val str_fields(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0);
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0);
+	a->h.flags = 1;
+	for (uint32_t i = 0; i < s->len;) {
+		while (i < s->len && space(s->data[i])) i++;
+		uint32_t j = i;
+		while (j < s->len && !space(s->data[j])) j++;
+		if (j > i) ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + i, j - i)});
+		i = j;
+	}
+	RET_P(a);
+}
+
+// str.lines: the lines, without their \n or \r\n; none after a last
+// line break.
+static ak_val str_lines(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0);
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0);
+	a->h.flags = 1;
+	uint32_t start = 0;
+	for (uint32_t i = 0; i < s->len; i++) {
+		if (s->data[i] != '\n') continue;
+		uint32_t end = i > start && s->data[i - 1] == '\r' ? i - 1 : i;
+		ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, end - start)});
+		start = i + 1;
+	}
+	if (start < s->len) {
+		uint32_t end = s->len;
+		if (s->data[end - 1] == '\r') end--;
+		ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, end - start)});
+	}
+	RET_P(a);
+}
+
+static ak_val str_find_last(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0), *sub = STR(1);
+	if (sub->len > s->len) RET_P(NULL);
+	for (uint32_t i = s->len - sub->len + 1; i-- > 0;)
+		if (memcmp(s->data + i, sub->data, sub->len) == 0) RET_P(ak_box_new(AK_K_INT, (ak_val){.i = i}));
+	RET_P(NULL);
+}
+
+// str.find_any(s, chars): the byte offset of the first character of s
+// that's one of chars.
+static ak_val str_find_any(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0), *cs = STR(1);
+	for (uint32_t i = 0; i < s->len;) {
+		uint32_t j = i + 1;
+		while (j < s->len && ((uint8_t)s->data[j] & 0xc0) == 0x80) j++;
+		for (uint32_t k = 0; k < cs->len;) {
+			uint32_t l = k + 1;
+			while (l < cs->len && ((uint8_t)cs->data[l] & 0xc0) == 0x80) l++;
+			if (l - k == j - i && memcmp(s->data + i, cs->data + k, j - i) == 0) RET_P(ak_box_new(AK_K_INT, (ak_val){.i = i}));
+			k = l;
+		}
+		i = j;
+	}
+	RET_P(NULL);
+}
+
+static int64_t char_to_byte(const ak_str *s, int64_t c);
+
+static ak_val str_byte_slice(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	RET_P(ak_str_slice(STR(0), A(1).i, A(2).i));
+}
+
+// str.pad(s, width, with, end): s with copies of with before it (after it
+// when end) up to width characters.
+static ak_val str_pad(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0), *with = STR(2);
+	int64_t have = ak_str_count(s), wn = ak_str_count(with);
+	if (have >= A(1).i || wn == 0) RET_P(ak_retain(s));
+	ak_strb b = {0};
+	if (A(3).i) ak_strb_str(&b, s);
+	int64_t need = A(1).i - have;
+	while (need > 0) {
+		if (need >= wn) {
+			ak_strb_str(&b, with);
+			need -= wn;
+		} else {
+			ak_strb_cstr(&b, with->data, (size_t)char_to_byte(with, need));
+			need = 0;
+		}
+	}
+	if (!A(3).i) ak_strb_str(&b, s);
+	RET_P(ak_strb_finish(&b));
+}
 static ak_val str_is_empty(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(STR(0)->len == 0); }
 
 // str.find returns int? (a box, or none).
@@ -550,10 +737,43 @@ static ak_val m_seed(ak_val *args, uint32_t n) {
 	RET_VOID;
 }
 
+// ---- Durations ----
+
+static ak_val dur_ns(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i); }
+static ak_val dur_ms(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i / 1000000); }
+static ak_val dur_seconds(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F((double)A(0).i / 1e9); }
+static ak_val dur_minutes(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F((double)A(0).i / 60e9); }
+static ak_val dur_hours(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F((double)A(0).i / 3600e9); }
+
+// dur.truncated(d, m): d toward zero to a multiple of m (d when m <= 0).
+static ak_val dur_truncated(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t d = A(0).i, m = A(1).i;
+	if (m <= 0) RET_I(d);
+	RET_I(d - d % m);
+}
+
+// dur.rounded(d, m): d to the nearest multiple of m, halves away from
+// zero (d when m <= 0; the largest duration when it overflows).
+static ak_val dur_rounded(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t d = A(0).i, m = A(1).i;
+	if (m <= 0) RET_I(d);
+	int64_t r = d % m, out;
+	if (d < 0) {
+		r = -r;
+		if ((uint64_t)r + (uint64_t)r < (uint64_t)m) RET_I(d + r);
+		if (!__builtin_add_overflow(d, r - m, &out)) RET_I(out);
+		RET_I(INT64_MIN);
+	}
+	if ((uint64_t)r + (uint64_t)r < (uint64_t)m) RET_I(d - r);
+	if (!__builtin_add_overflow(d, m - r, &out)) RET_I(out);
+	RET_I(INT64_MAX);
+}
+
 // ---- Time ----
 
 static ak_val t_sleep(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_sleep(A(0).i)); }
-static ak_val t_now(ak_val *args, uint32_t n) { AK_UNUSED(args); AK_UNUSED(n); RET_I(ak_wall_ns()); }
 static ak_val t_monotonic(ak_val *args, uint32_t n) { AK_UNUSED(args); AK_UNUSED(n); RET_I(ak_sched_now()); }
 
 // ---- Futures ----
@@ -809,6 +1029,24 @@ const ak_lib_entry ak_lib[] = {
 	{"str.join", str_join},
 	{"str.chars", str_chars},
 	{"str.to_bytes", str_to_bytes},
+	{"str.trim_prefix", str_trim_prefix},
+	{"str.trim_suffix", str_trim_suffix},
+	{"str.trim_start", str_trim_start},
+	{"str.trim_end", str_trim_end},
+	{"str.fields", str_fields},
+	{"str.lines", str_lines},
+	{"str.find_last", str_find_last},
+	{"str.find_any", str_find_any},
+	{"str.byte_slice", str_byte_slice},
+	{"str.pad", str_pad},
+
+	{"dur.ns", dur_ns},
+	{"dur.ms", dur_ms},
+	{"dur.seconds", dur_seconds},
+	{"dur.minutes", dur_minutes},
+	{"dur.hours", dur_hours},
+	{"dur.truncated", dur_truncated},
+	{"dur.rounded", dur_rounded},
 
 	{"color.opacity", color_opacity},
 	{"async.never", async_never},
@@ -873,7 +1111,6 @@ const ak_lib_entry ak_lib[] = {
 	{"math.seed", m_seed},
 
 	{"time.sleep", t_sleep},
-	{"time.now", t_now},
 	{"time.monotonic", t_monotonic},
 
 	{"async.all", f_all},

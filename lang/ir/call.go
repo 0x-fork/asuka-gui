@@ -298,9 +298,14 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		}
 		vals = ord
 	}
-	if m.Extra == "kindU" {
+	switch m.Extra {
+	case "kindU":
 		u := b.typ(call.Bound["U"])
 		vals = append(vals, b.konst(int64(b.l.kind(u))))
+	case "false":
+		vals = append(vals, b.konst(0))
+	case "true":
+		vals = append(vals, b.konst(1))
 	}
 	r := bc.None
 	if m.Async {
@@ -545,7 +550,7 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 			ind = b.konst(0)
 		}
 		return b.copyTo(b.callB("json.encode", bc.KRef, v, d, ind), dst)
-	case check.BMath, check.BTimeNow, check.BTimeMonotonic:
+	case check.BMath:
 		var vals []int
 		for _, a := range call.Args {
 			vals = append(vals, b.value(a, -1))

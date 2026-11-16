@@ -49,6 +49,31 @@ test "concatenation and comparison" {
   expect("a" <= "a")
 }
 
+test "trimming, splitting, finding" {
+  print("v1.2".trimPrefix("v") + "|" + "v1.2".trimPrefix("x"))
+  print("a.md".trimSuffix(".md") + "|" + "a.md".trimSuffix(".txt"))
+  print("[" + "  x  ".trimStart() + "][" + "  x  ".trimEnd() + "]")
+  print("a-b-c-d".replace("-", "+", count: 2))
+  print("a-b-c-d".replace("-", "", count: 0))
+  print("a-b-c-d".replace("-", "/"))
+  print("k=v=w".split("=", count: 2))
+  print("a,b,c".split(",", count: 1))
+  print("a,b,c".split(",", count: 0))
+  print("héllo".split("", count: 3))
+  print("  the quick\tbrown\n fox ".fields())
+  print("one\r\ntwo\n\nthree\n".lines())
+  print("a/b/c".findLast("/") ?? -1)
+  print("a/b/c".findLast("x") ?? -1)
+  print("héllo, wörld".findAny("öw,") ?? -1)
+  print("abc".findAny("xyz") ?? -1)
+  let s = "héllo wörld"
+  if let at = s.find(" ") {
+    print(s.byteSlice(0, at) + "|" + s.byteSlice(at + 1, s.byteCount()))
+  }
+  print("7".padStart(3, with: "0") + " " + "7".padEnd(3) + "|")
+  print("héllo".padStart(8, with: "ab") + " " + "toolong".padStart(3))
+}
+
 // Output:
 // Hello, Asuka! 3 items, 6 doubled, 1.5, true
 // braces: { and }; tab:[	]
@@ -75,3 +100,23 @@ test "concatenation and comparison" {
 // ok methods
 // abc
 // ok concatenation and comparison
+// 1.2|v1.2
+// a|a.md
+// [x  ][  x]
+// a+b+c-d
+// a-b-c-d
+// a/b/c/d
+// ["k","v=w"]
+// ["a,b,c"]
+// []
+// ["h","é","llo"]
+// ["the","quick","brown","fox"]
+// ["one","two","","three"]
+// 3
+// -1
+// 6
+// -1
+// héllo|wörld
+// 007 7  |
+// abahéllo toolong
+// ok trimming, splitting, finding

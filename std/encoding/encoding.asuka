@@ -1,0 +1,23 @@
+// Package asuka/encoding turns bytes into text and back: Base64
+// (RFC 4648) and hexadecimal.
+//
+//   let token = encoding.base64URLEncode(crypto.randomBytes(32))
+//   let data = try encoding.base64Decode(text)
+
+/// Base64 with the standard alphabet (+ and /), padded with =.
+pub native fn base64Encode(data: bytes) -> string
+
+/// Base64 with the URL's alphabet (- and _) and no padding: safe in a
+/// URL or a file name.
+pub native fn base64URLEncode(data: bytes) -> string
+
+/// Reads Base64 in either alphabet, padded or not; line breaks and
+/// spaces in it are skipped. Anything else throws.
+pub native fn base64Decode(text: string) throws -> bytes
+
+/// Lower-case hexadecimal, two digits a byte.
+pub native fn hexEncode(data: bytes) -> string
+
+/// Reads hexadecimal in either case; an odd number of digits or
+/// anything else throws.
+pub native fn hexDecode(text: string) throws -> bytes

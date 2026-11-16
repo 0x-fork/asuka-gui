@@ -1,0 +1,197 @@
+// Package asuka/fs has paths, and the app's files: its own directory
+// (appDir) and the calls that read and write there. The calls block
+// while the system works, so call them in spawn { }, which runs them on
+// another thread:
+//
+//   let path = fs.join([fs.appDir(), "notes", "today.md"])
+//   let text = try await spawn { try fs.readText(path) }
+//   try await spawn { try fs.writeText(path, text: draft) }
+//
+// Paths use the system's separator (\ on Windows, which takes / too).
+// On the web the app has no directory yet: the calls throw.
+
+import asuka/time
+
+/// Why a call failed.
+pub enum FsError: Error {
+  /// Nothing is at the path.
+  notFound(path: string)
+  /// Something is at the path already.
+  exists(path: string)
+  /// The app may not do that there.
+  denied(path: string)
+  /// A name in the path isn't a directory.
+  notDirectory(path: string)
+  /// The path is a directory, where a file was expected.
+  isDirectory(path: string)
+  /// The directory has something in it.
+  notEmpty(path: string)
+  /// Another failure, as the system says it.
+  failed(path: string, reason: string)
+
+  fn message() -> string = match self {
+    .notFound(p) => "{p}: no such file or directory"
+    .exists(p) => "{p}: already exists"
+    .denied(p) => "{p}: permission denied"
+    .notDirectory(p) => "{p}: not a directory"
+    .isDirectory(p) => "{p}: is a directory"
+    .notEmpty(p) => "{p}: directory not empty"
+    .failed(p, r) => "{p}: {r}"
+  }
+}
+
+/// What's at a path.
+pub struct Entry {
+  /// Its last name: "today.md".
+  name: string
+  isDir: bool
+  /// In bytes (0 for a directory).
+  size: int
+  /// When its content last changed.
+  modified: time.Time
+}
+
+/// The app's own directory, kept across launches (and in backups) and
+/// not shown to the user: Application Support on iOS and macOS, the
+/// app's files on Android, the user's data directory on Windows and
+/// Linux. It may not exist yet: mkdirAll makes it.
+pub native fn appDir() -> string
+
+/// The parts joined by the separator, cleaned; empty parts are left
+/// out: join([dir, "notes", "a.md"]).
+pub native fn join(parts: [string]) -> string
+
+/// path's shortest form: one separator between names, no "." names,
+/// ".." folded into the name before it, "." for an empty path.
+pub native fn clean(path: string) -> string
+
+/// All but path's last name: dir("/a/b/c.md") is "/a/b".
+pub native fn dir(path: string) -> string
+
+/// path's last name: base("/a/b/c.md") is "c.md".
+pub native fn base(path: string) -> string
+
+/// The last name's extension, from its last ".": ext("c.tar.gz") is
+/// ".gz"; "" when it has none.
+pub native fn ext(path: string) -> string
+
+/// Whether something is at path.
+pub native fn exists(path: string) -> bool
+
+/// What's in the directory at path, sorted by name.
+pub fn readDir(path: string) throws -> [Entry] {
+  if let names = listNames(path) {
+    var out: [Entry] = []
+    for name in names {
+      // One that went since the listing is left out.
+      if let info = statInfo(join([path, name])) {
+        out.push(entry(name, info))
+      }
+    }
+    return out
+  }
+  throw failure(path)
+}
+
+/// What's at path (a link: what it links to).
+pub fn stat(path: string) throws -> Entry {
+  if let info = statInfo(path) {
+    return entry(base(path), info)
+  }
+  throw failure(path)
+}
+
+/// The file at path's bytes.
+pub fn read(path: string) throws -> bytes {
+  if let data = readFile(path) {
+    return data
+  }
+  throw failure(path)
+}
+
+/// The file at path's text (UTF-8; what isn't becomes U+FFFD).
+pub fn readText(path: string) throws -> string = (try read(path)).string()
+
+/// Makes the file at path (or empties it) with data.
+pub fn write(path: string, data: bytes) throws {
+  if !writeFile(path, data, false) {
+    throw failure(path)
+  }
+}
+
+/// Makes the file at path (or empties it) with text, as UTF-8.
+pub fn writeText(path: string, text: string) throws {
+  try write(path, data: text.bytes())
+}
+
+/// Adds data at the end of the file at path, making it if it isn't
+/// there.
+pub fn append(path: string, data: bytes) throws {
+  if !writeFile(path, data, true) {
+    throw failure(path)
+  }
+}
+
+pub fn appendText(path: string, text: string) throws {
+  try append(path, data: text.bytes())
+}
+
+/// Copies the file at from to to (replacing what's there).
+pub fn copy(from: string, to: string) throws {
+  if !copyFile(from, to) {
+    throw failure(from)
+  }
+}
+
+/// Moves what's at from to to (replacing a file there).
+pub fn rename(from: string, to: string) throws {
+  if !moveFile(from, to) {
+    throw failure(from)
+  }
+}
+
+/// Makes the directory at path and those it's in, as needed.
+pub fn mkdirAll(path: string) throws {
+  if !makeDirs(path) {
+    throw failure(path)
+  }
+}
+
+/// Removes the file or the empty directory at path.
+pub fn remove(path: string) throws {
+  if !removeOne(path) {
+    throw failure(path)
+  }
+}
+
+/// Removes what's at path and everything in it; nothing there is fine.
+pub fn removeAll(path: string) throws {
+  if !removeTree(path) {
+    throw failure(path)
+  }
+}
+
+fn entry(name: string, info: [int]) -> Entry = Entry(name: name, isDir: info[0] != 0, size: info[1], modified: time.unixNano(info[2]))
+
+// failure is the error of the last call that failed on this thread.
+fn failure(path: string) -> FsError = match failureKind() {
+  2 => .notFound(path)
+  3 => .exists(path)
+  4 => .denied(path)
+  5 => .notDirectory(path)
+  6 => .isDirectory(path)
+  7 => .notEmpty(path)
+  _ => .failed(path: path, reason: failureReason())
+}
+
+native fn listNames(path: string) -> [string]?
+native fn statInfo(path: string) -> [int]?
+native fn readFile(path: string) -> bytes?
+native fn writeFile(path: string, data: bytes, append: bool) -> bool
+native fn copyFile(from: string, to: string) -> bool
+native fn moveFile(from: string, to: string) -> bool
+native fn makeDirs(path: string) -> bool
+native fn removeOne(path: string) -> bool
+native fn removeTree(path: string) -> bool
+native fn failureKind() -> int
+native fn failureReason() -> string

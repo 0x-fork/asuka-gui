@@ -18,7 +18,7 @@ import (
 
 // A Method is a built-in type's method.
 type Method struct {
-	Recv    string // array, map, string, float, int, optional, task, app, loading
+	Recv    string // array, map, string, bytes, float, int, duration, optional, task, app, loading
 	Name    string
 	Sig     string // (name: Type, …) -> Result
 	Builtin string // the runtime's builtin; "" for one the lowering does itself (Special)
@@ -36,7 +36,8 @@ type Method struct {
 	// Order is the builtin's arguments after the receiver, by parameter
 	// index, when it isn't the parameters' order.
 	Order []int
-	// Extra: arguments the lowering appends: "kindU", U's ak_kind.
+	// Extra: arguments the lowering appends: "kindU", U's ak_kind;
+	// "true" or "false", that bool (one builtin for two methods).
 	Extra string
 	// Needs: what the receiver's type variable must be: "Equatable",
 	// "Comparable", "number", "string".
@@ -96,13 +97,24 @@ var Methods = []*Method{
 	{Recv: "string", Name: "upper", Sig: "() -> string", Builtin: "str.upper"},
 	{Recv: "string", Name: "lower", Sig: "() -> string", Builtin: "str.lower"},
 	{Recv: "string", Name: "trim", Sig: "() -> string", Builtin: "str.trim", Doc: "without the white space around it"},
+	{Recv: "string", Name: "trimStart", Sig: "() -> string", Builtin: "str.trim_start", Doc: "without the white space before it"},
+	{Recv: "string", Name: "trimEnd", Sig: "() -> string", Builtin: "str.trim_end", Doc: "without the white space after it"},
+	{Recv: "string", Name: "trimPrefix", Sig: "(prefix: string) -> string", Builtin: "str.trim_prefix", Doc: "without prefix when it starts with it"},
+	{Recv: "string", Name: "trimSuffix", Sig: "(suffix: string) -> string", Builtin: "str.trim_suffix", Doc: "without suffix when it ends with it"},
 	{Recv: "string", Name: "contains", Sig: "(text: string) -> bool", Builtin: "str.contains"},
 	{Recv: "string", Name: "hasPrefix", Sig: "(prefix: string) -> bool", Builtin: "str.has_prefix"},
 	{Recv: "string", Name: "hasSuffix", Sig: "(suffix: string) -> bool", Builtin: "str.has_suffix"},
-	{Recv: "string", Name: "replace", Sig: "(old: string, new: string) -> string", Builtin: "str.replace", Doc: "every old replaced with new"},
-	{Recv: "string", Name: "split", Sig: "(separator: string) -> [string]", Builtin: "str.split"},
+	{Recv: "string", Name: "replace", Sig: "(old: string, new: string, count: int = -1) -> string", Builtin: "str.replace", Doc: "old replaced with new: the first count of them, every one when count is negative"},
+	{Recv: "string", Name: "split", Sig: "(separator: string, count: int = -1) -> [string]", Builtin: "str.split", Doc: "the parts between separators: at most count, the last holding the rest, every one when count is negative"},
+	{Recv: "string", Name: "fields", Sig: "() -> [string]", Builtin: "str.fields", Doc: "the words: the runs of text between white space"},
+	{Recv: "string", Name: "lines", Sig: "() -> [string]", Builtin: "str.lines", Doc: "the lines, without their line breaks (\\n or \\r\\n)"},
 	{Recv: "string", Name: "find", Sig: "(text: string) -> int?", Builtin: "str.find", Doc: "the byte offset of the first text, or none"},
+	{Recv: "string", Name: "findLast", Sig: "(text: string) -> int?", Builtin: "str.find_last", Doc: "the byte offset of the last text, or none"},
+	{Recv: "string", Name: "findAny", Sig: "(chars: string) -> int?", Builtin: "str.find_any", Doc: "the byte offset of the first character that's one of chars, or none"},
 	{Recv: "string", Name: "slice", Sig: "(from: int, to: int) -> string", Builtin: "str.slice", Doc: "the characters from from up to to, clamped"},
+	{Recv: "string", Name: "byteSlice", Sig: "(from: int, to: int) -> string", Builtin: "str.byte_slice", Doc: "the bytes from from up to to (the offsets find gives), clamped"},
+	{Recv: "string", Name: "padStart", Sig: "(width: int, with: string = \" \") -> string", Builtin: "str.pad", Extra: "false", Doc: "with copies of with before it, up to width characters: \"7\".padStart(2, with: \"0\") is 07"},
+	{Recv: "string", Name: "padEnd", Sig: "(width: int, with: string = \" \") -> string", Builtin: "str.pad", Extra: "true", Doc: "with copies of with after it, up to width characters"},
 	{Recv: "string", Name: "toInt", Sig: "() -> int?", Builtin: "str.to_int"},
 	{Recv: "string", Name: "toFloat", Sig: "() -> float?", Builtin: "str.to_float"},
 	{Recv: "string", Name: "repeat", Sig: "(count: int) -> string", Builtin: "str.repeat"},
@@ -125,6 +137,15 @@ var Methods = []*Method{
 	{Recv: "float", Name: "rounded", Sig: "() -> float", Builtin: "math.round"},
 	{Recv: "float", Name: "floor", Sig: "() -> float", Builtin: "math.floor"},
 	{Recv: "float", Name: "ceil", Sig: "() -> float", Builtin: "math.ceil"},
+
+	// Durations.
+	{Recv: "duration", Name: "nanoseconds", Sig: "() -> int", Builtin: "dur.ns"},
+	{Recv: "duration", Name: "milliseconds", Sig: "() -> int", Builtin: "dur.ms", Doc: "whole milliseconds, toward zero"},
+	{Recv: "duration", Name: "seconds", Sig: "() -> float", Builtin: "dur.seconds"},
+	{Recv: "duration", Name: "minutes", Sig: "() -> float", Builtin: "dur.minutes"},
+	{Recv: "duration", Name: "hours", Sig: "() -> float", Builtin: "dur.hours"},
+	{Recv: "duration", Name: "rounded", Sig: "(to: Duration) -> Duration", Builtin: "dur.rounded", Doc: "to the nearest multiple of to, halves away from zero: (90s).rounded(to: 1min) is 2min"},
+	{Recv: "duration", Name: "truncated", Sig: "(to: Duration) -> Duration", Builtin: "dur.truncated", Doc: "to a multiple of to, toward zero"},
 
 	// Optionals.
 	{Recv: "optional", Name: "isNone", Sig: "() -> bool", Special: "isNone"},
@@ -182,6 +203,8 @@ func recvKind(t Type) string {
 			return "float"
 		case Int:
 			return "int"
+		case Duration:
+			return "duration"
 		case TestApp:
 			return "app"
 		case Bytes:
@@ -417,6 +440,8 @@ func (p *sigParser) typ() Type {
 			t = Bytes
 		case "Color":
 			t = Color
+		case "Duration":
+			t = Duration
 		case "T":
 			t = tvT
 		case "K":

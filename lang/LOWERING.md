@@ -638,6 +638,17 @@ the future it returns when it's `async`), so it's called, passed and
 compiled as any function. Other packages reach platform code through
 native interfaces instead.
 
+The builtins are C, in core/src/std (a file and a table per package,
+registered with the rest); the package's Asuka writes the rest of its
+API on them. A builtin makes only what C can without the module's
+shapes: scalars, strings, bytes, and arrays of those (or optionals of
+them); the Asuka side builds its structs (asuka/time's `Time` from an
+instant and an offset, asuka/fs's `Entry` from a name and `[isDir,
+size, modified]`). A failure is a runtime error, or for typed errors a
+status the Asuka side reads and throws as its own enum (asuka/fs's
+`FsError`, from the thread's last failure). Builtins may run on spawn's
+threads, so they keep no state that isn't per thread.
+
 ## Streams
 
 `Stream(produce)` is CALLB `stream.new(produce, kind)` (kind: the
@@ -660,8 +671,8 @@ starts nothing.
 ## Imports
 
 The compiler (lang/compile) finds each import: `./path` beside the
-importing file's package; `asuka/json`, `asuka/math` and `asuka/time`
-in the checker itself; any other `asuka/<name>` in std/ (the CLI's
+importing file's package; `asuka/json` and `asuka/math` in the checker
+itself; any other `asuka/<name>` in std/ (the CLI's
 copy: package std); anything else through the project's asuka.lock
 (internal/pkgs.Imports), by the importing package's dependencies, so
 two packages may import different majors under one name. A package's
@@ -683,16 +694,18 @@ packages.
 ## Built-in methods
 
 The built-in types' methods are a table (lang/check/methods.go's
-Methods): a receiver (an array, a map, a string, a float, an optional,
-mount's app, a Loading), a name, a signature over the receiver's type
+Methods): a receiver (an array, a map, a string, bytes, a float, a
+Duration, an optional, mount's app, a Loading), a name, a signature over the receiver's type
 variables, and the builtin (core/src/rt/lib.c) CALLB calls, the
 receiver first, then the arguments in the builtin's order. An inout
 method changes its receiver in place (see "Changing values in place").
+A method's Extra appends a constant: `map`'s result's element kind
+(last), or a bool (`padStart` and `padEnd` are one builtin, `str.pad`).
 A few the lowering does itself: `count()` of an array or a map is LEN,
 `isNone()` ISNONE, a map's `get(k)` MGET, `enumerated()` a loop making
 `(index, element)` tuples (and `for (i, x) in xs.enumerated()` makes
-none: it's a loop over the indexes). `map` passes its result's element
-kind last. Closures passed to them don't throw and don't await.
+none: it's a loop over the indexes). Closures passed to them don't
+throw and don't await.
 
 ## What isn't lowered yet
 

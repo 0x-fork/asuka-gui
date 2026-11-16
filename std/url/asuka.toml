@@ -1,0 +1,3 @@
+name = "asuka/url"
+version = "0.1.0"
+description = "URLs: parsing, resolving, escaping, queries"

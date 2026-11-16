@@ -507,12 +507,12 @@ func (s *Scanner) number() Token {
 		u := s.offset
 		s.ident()
 		switch unit := s.src[u:s.offset]; unit {
-		case "ms", "s", "min", "h":
+		case "ns", "us", "ms", "s", "min", "h":
 			return DURATION
 		case "fr":
 			return LENGTH
 		default:
-			s.error(u, "unknown unit "+strconv.Quote(unit)+" after a number (a duration takes ms, s, min or h; a length % or fr)")
+			s.error(u, "unknown unit "+strconv.Quote(unit)+" after a number (a duration takes ns, us, ms, s, min or h; a length % or fr)")
 		}
 	}
 	return tok

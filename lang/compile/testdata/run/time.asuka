@@ -1,0 +1,182 @@
+// asuka/time: the test's clock, calendars, formatting, parsing.
+
+import asuka/time
+
+test "the test's clock" {
+  let t = time.now()
+  print(t.rfc3339())
+  print(t.weekday)
+  let start = time.monotonic()
+  await sleep(90s)
+  print(time.now().format("HH:mm:ss"))
+  print(time.monotonic() - start)
+  print(time.since(t).seconds())
+}
+
+test "fields and arithmetic" {
+  let t = time.date(2024, 2, 29, hour: 13, minute: 5, second: 9, zone: .utc)
+  print("{t.year} {t.month} {t.day} {t.hour} {t.minute} {t.second} {t.weekday}")
+  print(t.unix())
+  print(t.add(36h).format("yyyy-MM-dd HH:mm"))
+  print(t.add(-1ns).format("HH:mm:ss.SSS"))
+  print(t.addDate(years: 1).format("yyyy-MM-dd"))
+  print(t.addDate(months: 11, days: 3).format("EEEE d MMMM yyyy"))
+  print(time.date(2026, 13, 0, zone: .utc).format("yyyy-MM-dd"))
+  print(t.sub(time.date(2024, 1, 1, zone: .utc)).hours())
+  print(t.startOfDay().rfc3339())
+  print(t.truncate(15min).format("HH:mm:ss"))
+  print(t.truncate(1h).format("HH:mm"))
+  print(t.daysInMonth())
+  print(time.daysIn(2, year: 1900))
+  let before = time.unix(-1, zone: .utc)
+  print(before.rfc3339())
+  print(before.weekday)
+  print(time.unixMilli(1500, zone: .utc).format("ss.SSS"))
+  print(t.isBefore(t.add(1s)))
+  print(t.compare(t))
+}
+
+test "zones" {
+  let t = time.date(2026, 3, 7, hour: 23, minute: 30, zone: .fixed(seconds: 3600))
+  print(t.rfc3339())
+  print(t.utc().rfc3339())
+  print(t.inZone(.fixed(seconds: -5 * 3600 - 1800)).format("yyyy-MM-dd HH:mm xxx"))
+  print(t.sameDay(t.utc()))
+  print(t.utc().sameDay(t))
+  print(t.format("Z ZZZZ ZZZZZ X XX XXX"))
+  print(t.utc().format("Z ZZZZ ZZZZZ X XX XXX"))
+  print(t.local().offset)
+}
+
+test "formats" {
+  let t = time.date(2026, 3, 7, hour: 15, minute: 4, second: 5, nanosecond: 123_456_789, zone: .utc)
+  print(t.format("EEE d MMM"))
+  print(t.format("h:mm a"))
+  print(t.format("yy/M/d K k H"))
+  print(t.format("EEEEE EEEEEE MMMMM D G"))
+  print(t.format("'at' HH 'o''clock' '' '[x]'"))
+  print(t.format("SSS S SSSSSSSSS"))
+  print(t.rfc3339())
+}
+
+test "parsing" {
+  let t = try time.parse("2026-03-07T15:04:05.5+05:30")
+  print(t.format("yyyy-MM-dd HH:mm:ss.SSS XXX"))
+  print(t.utc().rfc3339())
+  print(try time.parse("1999-12-31t23:59:59z").rfc3339())
+  for bad in ["2026-02-30T00:00:00Z", "2026-03-07 15:04:05", "2026-03-07T15:04:05+5:30", "nope"] {
+    do {
+      let x = try time.parse(bad)
+      print("parsed {x.rfc3339()}")
+    } catch e {
+      print(e.message)
+    }
+  }
+}
+
+test "durations" {
+  let d = 90s
+  print(d.minutes())
+  print(d.rounded(to: 1min))
+  print((89s).rounded(to: 1min))
+  print((-90s).rounded(to: 1min).seconds())
+  print(d.truncated(to: 1min))
+  print(1500us.nanoseconds())
+  print(d.milliseconds())
+  print(2h.hours())
+}
+
+test "values only, in spawn" {
+  let s = await spawn { time.unix(86400 * 365, zone: .utc).format("yyyy-MM-dd") }
+  print(s)
+}
+
+test "tickers" {
+  let start = time.now()
+  var seen: [Duration] = []
+  for await t in time.ticks(10s) {
+    seen.push(t.sub(start))
+    if seen.count() == 3 {
+      break
+    }
+  }
+  print(seen)
+  let ticker = time.ticker(1min)
+  var n = 0
+  for await t in ticker.ticks {
+    n += 1
+    if n == 2 {
+      ticker.stop()
+    }
+    print(t.sub(start))
+  }
+  print(n)
+}
+
+// Output:
+// 2026-01-01T00:00:00Z
+// thursday
+// 00:01:30
+// 90000ms
+// 90
+// ok the test's clock
+// 2024 2 29 13 5 9 thursday
+// 1709211909
+// 2024-03-02 01:05
+// 13:05:08.999
+// 2025-03-01
+// Saturday 1 February 2025
+// 2026-12-31
+// 1429.0858333333333
+// 2024-02-29T00:00:00Z
+// 13:00:00
+// 13:00
+// 29
+// 28
+// 1969-12-31T23:59:59Z
+// wednesday
+// 01.500
+// true
+// 0
+// ok fields and arithmetic
+// 2026-03-07T23:30:00+01:00
+// 2026-03-07T22:30:00Z
+// 2026-03-07 17:00 -05:30
+// true
+// true
+// +0100 GMT+01:00 +01:00 +01 +0100 +01:00
+// +0000 GMT Z Z Z Z
+// 0
+// ok zones
+// Sat 7 Mar
+// 3:04 PM
+// 26/3/7 3 15 15
+// S Sa M 66 AD
+// at 15 o'clock ' [x]
+// 123 1 123456789
+// 2026-03-07T15:04:05.123456789Z
+// ok formats
+// 2026-03-07 15:04:05.500 +05:30
+// 2026-03-07T09:34:05.500000000Z
+// 1999-12-31T23:59:59Z
+// time: 2026-02-30T00:00:00Z isn't an RFC 3339 time from 1678 to 2261 (2006-01-02T15:04:05Z)
+// time: 2026-03-07 15:04:05 isn't an RFC 3339 time from 1678 to 2261 (2006-01-02T15:04:05Z)
+// time: 2026-03-07T15:04:05+5:30 isn't an RFC 3339 time from 1678 to 2261 (2006-01-02T15:04:05Z)
+// time: nope isn't an RFC 3339 time from 1678 to 2261 (2006-01-02T15:04:05Z)
+// ok parsing
+// 1.5
+// 120000ms
+// 60000ms
+// -120
+// 60000ms
+// 1500000
+// 90000
+// 2
+// ok durations
+// 1971-01-01
+// ok values only, in spawn
+// [10000000000,20000000000,30000000000]
+// 90000ms
+// 150000ms
+// 2
+// ok tickers

@@ -7,7 +7,7 @@
 ak_str *ak_str_new(const char *s, size_t n) {
 	ak_str *o = ak_obj_new(AK_TAG_STR, sizeof(ak_str) + n + 1);
 	o->len = (uint32_t)n;
-	if (n) memcpy(o->data, s, n);
+	if (n && s) memcpy(o->data, s, n);  // s NULL: the caller fills them
 	o->data[n] = 0;
 	return o;
 }
