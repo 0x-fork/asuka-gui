@@ -215,6 +215,9 @@ func (t *androidToolchain) buildAPK(app *asukaApp, work string) (apk, hash strin
 	if err != nil {
 		return "", "", err
 	}
+	if err := t.androidPrebuilt(app, src); err != nil {
+		return "", "", err
+	}
 	man := app.cfg.androidManifest(true)
 	manifest := filepath.Join(work, "AndroidManifest.xml")
 	if err := os.WriteFile(manifest, []byte(man), 0o644); err != nil {

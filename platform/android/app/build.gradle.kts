@@ -78,9 +78,16 @@ android {
 kotlin { jvmToolchain(17) }
 
 dependencies {
-    implementation(project(":asuka"))
-    // The optional modules the app's packages need (the CLI's asukaModules).
-    prop("asukaModules")?.split(',')?.filter { it.isNotEmpty() }?.forEach { implementation(project(":asuka-$it")) }
+    val prebuilt = prop("asukaPrebuiltDeps")
+    if (prebuilt != null) {
+        // The host's, its optional modules' and the std and sdk packages'
+        // AARs (the CLI's asukaPrebuiltDeps: coordinates).
+        prebuilt.split(',').filter { it.isNotEmpty() }.forEach { implementation(it) }
+    } else {
+        implementation(project(":asuka"))
+        // The optional modules the app's packages need (the CLI's asukaModules).
+        prop("asukaModules")?.split(',')?.filter { it.isNotEmpty() }?.forEach { implementation(project(":asuka-$it")) }
+    }
     // The app's native packages' modules (the CLI's asukaNativeModules).
     prop("asukaNativeModules")?.split(';')?.filter { it.isNotEmpty() }?.forEach { implementation(project(":" + it.substringBefore('='))) }
 }

@@ -266,6 +266,10 @@ type appConfig struct {
 	// nativeModules are the app's native packages' Gradle modules: each
 	// one's name and directory.
 	nativeModules [][2]string
+	// aars are the AARs the build depends on instead of the host's
+	// modules and the std and sdk packages' (androidPrebuilt); nil: their
+	// modules are built with the app.
+	aars *androidAARs
 	// Linux is what a Linux build says of the app, in its desktop file
 	// and its AppStream metainfo (what software centers and Flathub show).
 	Linux struct {
@@ -660,12 +664,19 @@ func (c *appConfig) androidFeatures(app *asukaApp, player bool) {
 // modules, and its native packages' modules (name=directory, ;-separated).
 func (c *appConfig) gradleProps() []string {
 	props := []string{"-PasukaModules=" + strings.Join(c.androidModules, ",")}
-	if len(c.nativeModules) > 0 {
-		var ms []string
-		for _, m := range c.nativeModules {
+	var ms []string
+	for _, m := range c.nativeModules {
+		if c.aars == nil || !c.aars.pkgs[m[0]] {
 			ms = append(ms, m[0]+"="+m[1])
 		}
+	}
+	if len(ms) > 0 {
 		props = append(props, "-PasukaNativeModules="+strings.Join(ms, ";"))
+	}
+	if c.aars != nil {
+		// The host's and the packages' AARs, from a local repository.
+		props = append(props, "-PasukaPrebuiltRepo="+c.aars.repo, "-PasukaPrebuiltHost="+c.aars.host,
+			"-PasukaPrebuiltDeps="+strings.Join(c.aars.deps, ","))
 	}
 	return props
 }

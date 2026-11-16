@@ -19,11 +19,12 @@ var Recent = time.Hour
 var trimEvery = time.Hour
 
 // stores are the cache's content-addressed stores and the depth of their
-// entries: c/<o|m|a|x>/<xx>/<entry>, swift/<m>/<xx>/<entry>, and a
-// directory per package in prebuilt, pkg and plugins. Everything else at
+// entries: c/<o|m|a|x>/<xx>/<entry>, swift/<m>/<xx>/<entry>, a
+// directory per package in prebuilt, pkg and plugins, and per version of
+// an AAR in maven (dev/asuka/<artifact>/<version>). Everything else at
 // the cache's top (an app's work directory, a host's shared build, an
 // extracted source tree, an older CLI's build directories) is one entry.
-var stores = map[string]int{"c": 3, "swift": 3, "prebuilt": 1, "pkg": 1, "plugins": 1}
+var stores = map[string]int{"c": 3, "swift": 3, "prebuilt": 1, "pkg": 1, "plugins": 1, "maven": 4}
 
 // Entry is what eviction takes or keeps whole.
 type Entry struct {

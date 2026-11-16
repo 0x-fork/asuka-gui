@@ -31,6 +31,40 @@ providers.gradleProperty("asukaMavenRepo").orNull?.let { repo ->
     }
 }
 
+// The CLI's AARs of the host's modules and the std and sdk packages'
+// (asukaPublishRepo: a local Maven repository): each module named in
+// asukaPublishVersions (module=version) is published as dev.asuka:<its
+// name, or asukaPublishArtifacts' (module=artifact)>:<version>, a
+// package's depending on the host's at its version.
+providers.gradleProperty("asukaPublishRepo").orNull?.let { repo ->
+    fun map(p: String) = (providers.gradleProperty(p).orNull ?: "").split(';').filter { it.contains('=') }
+        .associate { it.substringBefore('=') to it.substringAfter('=') }
+    val versions = map("asukaPublishVersions")
+    val artifacts = map("asukaPublishArtifacts")
+    subprojects {
+        val v = versions[name] ?: return@subprojects
+        group = "dev.asuka"
+        version = v
+        apply(plugin = "maven-publish")
+        plugins.withId("com.android.library") {
+            extensions.configure<com.android.build.gradle.LibraryExtension> { publishing { singleVariant("release") } }
+            afterEvaluate {
+                extensions.configure<PublishingExtension> {
+                    publications {
+                        create<MavenPublication>("prebuilt") {
+                            from(components["release"])
+                            groupId = "dev.asuka"
+                            artifactId = artifacts[project.name] ?: project.name
+                            version = v
+                        }
+                    }
+                    repositories { maven { name = "prebuilt"; url = uri(repo) } }
+                }
+            }
+        }
+    }
+}
+
 // The app's native packages' modules (settings.gradle.kts): built where
 // the host is (not in the package, which may be read-only), with the
 // host's SDK levels and Java, and its Kotlin to call (dev.asuka): a
@@ -60,7 +94,9 @@ subprojects {
             sourceSets.getByName("androidTest").assets.srcDir(projectDir.resolve("../tests"))
         }
         dependencies {
-            add("implementation", project(":asuka"))
+            // The host's AAR when the app's build depends on it.
+            val host = providers.gradleProperty("asukaPrebuiltHost").orNull
+            add("implementation", if (host != null) host else project(":asuka"))
             add("androidTestImplementation", "androidx.test:runner:1.6.2")
             add("androidTestImplementation", "androidx.test.ext:junit:1.2.1")
         }

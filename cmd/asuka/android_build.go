@@ -84,6 +84,9 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 	if err != nil {
 		return err
 	}
+	if err := tc.androidPrebuilt(app, src); err != nil {
+		return err
+	}
 	task := ":app:bundleRelease"
 	if o.apk {
 		task = ":app:assembleRelease"
