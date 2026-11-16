@@ -75,7 +75,8 @@ and answers there as a platform without the package's code does.
 - What the platform keeps for the app until it's read (a purchase's
   transactions, a region's crossing) is read once by the package and fanned
   out to the streams that read it; what came with no reader is kept for
-  the first (std/purchase's `events()`, std/location's `crossings()`).
+  the first (std/purchase's `events()`, std/location's `crossings()`,
+  std/bluetooth's `restored()`).
 
 ### Test fakes
 
