@@ -43,14 +43,15 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 各プラットフォームの開発用アプリは次のとおりです。
 
-- **macOS、Windows、Linux**：デスクトップのホスト（`cmd/asuka-host`。AppKit、Win32、GTK を使い、C の ABI を通じてコアを動かします）と、その隣に置いたコア（`libasuka.dylib`、`asuka.dll`、`libasuka.so`）です。Asuka のキャッシュ内のアプリのディレクトリに置かれます。Mac ではリリースと同じ形の `.app` です。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **macOS、Windows**：デスクトップのホスト（`cmd/asuka-host`。AppKit か Win32 を使い、C の ABI を通じてコアを動かします）と、その隣に置いたコア（`libasuka.dylib`、`asuka.dll`）です。Asuka のキャッシュ内のアプリのディレクトリに置かれます。Mac ではリリースと同じ形の `.app` です。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **Linux**：ひとつの実行ファイルです。C で書かれたホスト（GTK 4 と libadwaita）を、アプリを含まないコアとリンクしたもので、Asuka のキャッシュ内のアプリのディレクトリに置かれ、環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
 - **iOS**：Swift のホストをコア（`libasuka.a`）とリンクして、アプリの `.app` にしたものです。独自のフレームワーク（WebKit、AVKit など）をリンクするホストの部分もすべて含むので、編集中のアプリはそのどれでも使えます。シミュレーターでは `xcrun simctl` で、環境変数に `ASUKA_DEV` を付けてインストール・起動します。iPhone では開発用に署名し、`xcrun devicectl` でインストールします。
 - **Android**：デバッグ版の外側のアプリ（Gradle が一度ビルドし、マニフェスト、Kotlin、リソースが変わったときにビルドし直します）です。コアはそのプライベートファイル（`files/asuka/libasuka.so`）にプッシュされ、デバッグ版のアプリはそこからコアを読み込みます。`files/asuka/dev` には `asuka dev` の場所が書かれ、`adb reverse` によってそれがデバイス自身のループバックになります。
 - **Web**：ページが開発サーバーから WebAssembly のコア（`asuka.wasm`）とアプリのモジュールを読み込み、新しいモジュールがビルドされるたびにそれを読み込みます。
 
 ## デスクトップでの実行
 
-macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。CLI を Asuka のリポジトリのチェックアウトから実行している場合、ホストはソースからビルドされます。そうでなければ CLI のリリースに含まれるホストを使います。これは Asuka のキャッシュに一度だけダウンロードされ、ハッシュで検証されます。コアは、このコンピューターの C コンパイラーでビルドされます。
+macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。CLI を Asuka のリポジトリのチェックアウトから実行している場合、Mac と Windows のホストはソースからビルドされます。そうでなければ CLI のリリースに含まれるホストを使います。これは Asuka のキャッシュに一度だけダウンロードされ、ハッシュで検証されます。コアは、このコンピューターの C コンパイラーでビルドされます。Linux のホストは C で書かれていて、CLI に含まれるソースからコアと一緒にビルドされます。
 
 アプリは `assets/` をその場所から直接読むので、アセットを変更してもコピーは必要ありません。アプリのデータ（SQLite データベース、ファイル）は、インストールしたアプリのデータとは別に、Asuka のキャッシュ内にあるアプリ専用の `data` ディレクトリに保存されます（[最初からやり直す](#よくある問題)を参照）。そのため、`asuka dev` とリリース版がデータを共有することはありません。アプリの出力とエラーはターミナルに表示されます。
 
@@ -163,7 +164,7 @@ go test ./core                                     # コアの C のテスト（
 go test ./internal/appbuild ./cmd/asuka            # ビルドと開発ループ。このコンピューターで使えるすべてのプラットフォームで
 go test ./host/darwin                              # macOS：実際の AppKit のビュー
 go test ./host/windows                             # Windows：実際のウィンドウ
-xvfb-run -a dbus-run-session go test ./host/linux  # Linux：実際の GTK ウィジェット
+xvfb-run -a dbus-run-session go test ./platform/linux  # Linux：実際の GTK ウィンドウでアプリを操作
 swift test --package-path platform/ios             # Swift ホストのデコーダー
 node --test platform/web                           # Web ホストのデコーダー
 ```

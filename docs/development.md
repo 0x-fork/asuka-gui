@@ -77,11 +77,14 @@ launches it.
 
 What each platform's player is:
 
-- **macOS, Windows, Linux**: the desktop host (`cmd/asuka-host`: AppKit,
-  Win32 or GTK, driving the core through its C ABI) and the core beside
-  it (`libasuka.dylib`, `asuka.dll`, `libasuka.so`), in the app's
-  directory in Asuka's cache; on a Mac it's an `.app` like a release's.
-  It's launched with `ASUKA_DEV=host:port` in its environment.
+- **macOS, Windows**: the desktop host (`cmd/asuka-host`: AppKit or
+  Win32, driving the core through its C ABI) and the core beside it
+  (`libasuka.dylib`, `asuka.dll`), in the app's directory in Asuka's
+  cache; on a Mac it's an `.app` like a release's. It's launched with
+  `ASUKA_DEV=host:port` in its environment.
+- **Linux**: one executable, the C host (GTK 4 and libadwaita) linked
+  with the core and no app, in the app's directory in Asuka's cache,
+  launched with `ASUKA_DEV=host:port` in its environment.
 - **iOS**: the Swift host linked with the core (`libasuka.a`) into the
   app's `.app`, with every part of the host that links a framework of
   its own (WebKit, AVKit...), so the app may use any of them as you edit
@@ -100,9 +103,11 @@ What each platform's player is:
 ## On the desktop
 
 On macOS, Windows and Linux, `asuka dev` runs the player in a window.
-The host is built from Asuka's source when the CLI runs from a checkout
-of it, else it's the CLI's release's, fetched once into Asuka's cache and
-checked by its hash; the core is built with this computer's C compiler.
+The Mac's and Windows' host is built from Asuka's source when the CLI
+runs from a checkout of it, else it's the CLI's release's, fetched once
+into Asuka's cache and checked by its hash; the core is built with this
+computer's C compiler. Linux's host is C, built with the core from the
+source the CLI carries.
 
 The app reads its `assets/` where they are, so changing one needs no
 copy. Its data (SQLite databases, files) is in a `data` directory of its
@@ -376,7 +381,7 @@ go test ./core                                     # the core's C tests (ASan, U
 go test ./internal/appbuild ./cmd/asuka            # the builds and the dev loop, on every platform this computer has
 go test ./host/darwin                              # macOS: real AppKit views
 go test ./host/windows                             # Windows: real windows
-xvfb-run -a dbus-run-session go test ./host/linux  # Linux: real GTK widgets
+xvfb-run -a dbus-run-session go test ./platform/linux  # Linux: apps driven in real GTK windows
 swift test --package-path platform/ios             # the Swift host's decoder
 node --test platform/web                           # the web host's decoder
 ```

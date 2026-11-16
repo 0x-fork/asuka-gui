@@ -6,14 +6,14 @@ language** (docs/language.md; its compiler is Go, in `lang/`, run by the
 CLI) and run on a **core in C** (`core/`: the VM, signals, the UI
 runtime, layout, ops). **Mobile first: iOS and Android.** Desktop and
 the web run on the same core: the macOS host (`host/darwin`, AppKit
-through purego, `internal/darwin`), the Windows host (`host/windows`,
-Win32 through syscall), the Linux host (`host/linux`, GTK 4 and
-libadwaita through purego, `internal/gtk`), all Go driving the C core
-through its ABI (`host/bridge`), and the web (`platform/web`, the DOM
-from JavaScript, the core as WebAssembly). The Go desktop hosts are
-being replaced (RFC 0008): the macOS host in Swift on AppKit
-(`platform/macos`), the Windows and Linux hosts in C
-(`platform/windows`, `platform/linux`). **Read [DESIGN.md](DESIGN.md),
+through purego, `internal/darwin`) and the Windows host (`host/windows`,
+Win32 through syscall), Go driving the C core through its ABI
+(`host/bridge`), the Linux host (`platform/linux`, C on GTK 4 and
+libadwaita, opened with dlopen, linked with the core into one
+executable), and the web (`platform/web`, the DOM from JavaScript, the
+core as WebAssembly). The Go desktop hosts are being replaced (RFC
+0008): the macOS host in Swift on AppKit (`platform/macos`), the Windows
+host in C (`platform/windows`). **Read [DESIGN.md](DESIGN.md),
 [RFC 0007](rfcs/0007-c-core-and-asuka-language.md) and [RFC
 0008](rfcs/0008-no-go-at-run-time-and-c-ffi.md) before changing code**;
 DESIGN.md is the source of truth for the architecture, the RFCs for the
@@ -109,10 +109,10 @@ go test ./host/darwin -run Swift               # an app's macos/*.swift, compile
 go run ./cmd/asuka dev examples/counter            # Windows (on a PC, no --platform: windows): the app and its Win32 host in one process, rerun on save
 go run ./cmd/asuka build --platform windows examples/counter  # a folder: the .exe (icon, manifest, version) and its assets; from any system
 go test ./host/windows                           # the Windows host, driving real Win32 windows (Windows)
-xvfb-run -a dbus-run-session go test ./host/linux  # the Linux host, driving real GTK windows (GTK 4.14, libadwaita 1.5)
+xvfb-run -a dbus-run-session go test ./platform/linux  # the Linux host: apps built and driven in real GTK windows (GTK 4.14, libadwaita 1.5)
 go run ./cmd/asuka dev examples/counter            # Linux (on Linux, no --platform: linux): the app and its GTK host in one process, rerun on save
 go run ./cmd/asuka build --platform linux examples/counter    # an install prefix, a .tar.gz and a Flatpak manifest; from any system
-go run host/linux/gen_symbols.go                 # the Linux host's fallback symbols, from the web host's
+go run platform/linux/gen_symbols.go             # the Linux host's fallback symbols, from the web host's
 go test -tags e2e ./e2e -run Linux               # GUI tests: the examples under Xvfb (Linux)
 (cd examples/counter && ASUKA_SNAPSHOT=c.png ASUKA_DUMP=1 ASUKA_SCRIPT="tap:Add" go run .)  # Windows: steps, then the window as a PNG and its view tree
 go run ./cmd/asuka dev --platform web examples/counter       # the web: served to the browser, reloaded on save (--lan: to a phone)
@@ -142,9 +142,10 @@ go test -tags e2e ./e2e -run Updater               # a desktop app updates itsel
   Win32 and the common controls, from Go through `internal/windows`
   (syscall), no cgo, no WinUI; the controls drawn as Fluent's in custom
   draw, so an app that sets no style looks like Windows 11. Linux host:
-  GTK 4 and libadwaita widgets from Go through `internal/gtk` (purego),
-  no cgo, no GtkBuilder or Blueprint; an app that sets no style looks
-  like a GNOME app. Web host:
+  GTK 4 and libadwaita widgets from C (platform/linux/src), their
+  functions declared in `syms.def` and resolved with dlsym, so it builds
+  from any system without GTK's headers; no GtkBuilder or Blueprint; an
+  app that sets no style looks like a GNOME app. Web host:
   the DOM from plain JavaScript modules in `platform/web/src` (no build
   step, no framework), the browser's own elements for controls and
   dialogs, driven by the core as WebAssembly (`src/core.js`): batches, measures and

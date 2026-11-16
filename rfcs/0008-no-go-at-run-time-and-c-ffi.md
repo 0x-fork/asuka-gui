@@ -225,7 +225,9 @@ Each ends with its tests green.
       tray, the host's modules; `asuka dev` and `asuka build` for the Mac
       without Go.
 - [ ] **H2** The Windows host in C, likewise.
-- [ ] **H3** The Linux host in C, likewise.
+- [x] **H3** The Linux host in C, likewise (platform/linux; host/linux
+      removed; internal/gtk and internal/bluez go with the standard
+      library's Go desktop code, G1).
 - [ ] **G2** The updater, crash records and the state files in the hosts;
       conformance and e2e on the new hosts.
 - [ ] **X2** The Go runtime removed:

@@ -62,7 +62,7 @@ ops/                    mount operations, binary encoding
 abi/                    asuka.h: what hosts call
 ─────────────────────────────────────────────────────────────  asuka.h
 platform/ios (Swift)   platform/android (Kotlin)   platform/web (JavaScript)
-host/darwin, host/windows, host/linux (Go, through host/bridge)
+host/darwin, host/windows (Go, through host/bridge)   platform/linux (C, linked with the core)
 core/host/fake          tests: records ops, measures text at 8 points a character
 ```
 
@@ -1482,11 +1482,14 @@ asuka/
   drive them by what the screen shows (`tap`, `type`, `expect`), as a
   user would; the clock moves only when nothing else can run, so a
   `sleep(5s)` takes no time and nothing waits on wall-clock time.
-- The desktop hosts (`go test ./host/darwin`, `./host/windows`,
-  `./host/linux` under Xvfb): host/hosttest compiles an Asuka app, runs
-  it on the core in the test's process, and the test drives and checks
-  the host's own views (a click through the button's action, the text
-  set again, frames, list binding, disposal).
+- The desktop hosts (`go test ./host/darwin`, `./host/windows`):
+  host/hosttest compiles an Asuka app, runs it on the core in the test's
+  process, and the test drives and checks the host's own views (a click
+  through the button's action, the text set again, frames, list binding,
+  disposal). The C hosts (`go test ./platform/windows`, and
+  `./platform/linux` under `xvfb-run -a dbus-run-session`) build apps
+  into the executable an app ships and drive them as a user does
+  (`ASUKA_SCRIPT`), reading back what they showed (`ASUKA_DUMP`).
 - `ops`: the C encoder and the generated Swift, Kotlin and JavaScript
   decoders round-trip the same golden batches (`swift test --package-path
   platform/ios`; `./gradlew :asuka:testDebugUnitTest` in `platform/android`;
@@ -1754,7 +1757,7 @@ On the same core, `ops` and app code as the phones:
 |---|---|---|
 | macOS | Go, AppKit through purego (`host/darwin`) | No cgo. `internal/darwin` is MyGo's Objective-C runtime layer (classes made at runtime, blocks, `WithPool`, a main run loop source for `Post`). |
 | Windows | Go, Win32 with common controls v6 through `syscall` (`host/windows`) | No cgo; `internal/windows` is the Win32, GDI, GDI+, uxtheme, DWM and WebView2 layer. Not WinUI 3: it needs the Windows App SDK beside the app, and XAML is a second reconciler. `List` is core-virtualized: no Win32 list hosts arbitrary rows. |
-| Linux | Go, GTK 4 and libadwaita through purego (`host/linux`) | No cgo; `internal/gtk` binds GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later). libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. |
+| Linux | C, GTK 4 and libadwaita opened with dlopen (`platform/linux`) | One executable: the host, the core and the app compiled to C; its own declarations of GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later), so it builds from any system with Zig. libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. |
 
 Desktop hosts run in the app's process: one executable for every app
 (cmd/asuka-host, with the app's native packages' Go linked in when it
@@ -2317,18 +2320,26 @@ How the Windows host maps Asuka (`host/windows`):
   own messages and the message loop's key handling;
   `ASUKA_COLOR_SCHEME` is light or dark whatever the system's.
 
-How the Linux host maps Asuka (`host/linux`):
+How the Linux host maps Asuka (`platform/linux`, C17):
 
-- GTK 4 and libadwaita in the app's process through purego, no cgo
-  (`internal/gtk`: typed functions purego builds once, and raw function
-  pointers called through `SyscallN` on the hot paths, allocating frames
-  and drawing, so they use no reflection). The host makes an
-  `AdwApplication` (its ID asuka.toml's `id`, `boot.ID`; unique, so a
-  second launch activates the first, but in tests and automation runs)
-  and runs GLib's main loop on the main thread. `Post` queues the
-  function and adds an idle source (`g_idle_add`, thread-safe). Signals
-  are connected through one C callback per signature, made once,
-  routed by the data pointer to the connection's Go function.
+- One executable: the host (platform/linux/src, with platform/desktop's
+  shared C), the core and the app compiled to C (lang/cgen), linked
+  statically; asuka dev's player is the same without an app, which loads
+  the bytecode asuka dev sends (`asuka_dev_connect`). GTK 4, libadwaita
+  and the GLib stack are opened with dlopen as it starts and their
+  functions resolved with dlsym (`syms.def`: the subset the host calls,
+  declared in `gtk.h` with GTK's own type names; optional libraries,
+  WebKitGTK, GStreamer, Xlib, libsoup, libepoxy, Evolution Data Server,
+  when something first needs them), so the host builds from any system
+  with Zig and no GTK sysroot, and an app that lacks GTK says which
+  library to install. The host makes an `AdwApplication` (its ID
+  asuka.toml's `id`; unique, so a second launch activates the first, but
+  in tests and automation runs) and runs GLib's main loop on the main
+  thread. `asuka_desktop_post` and the core's posts go through one FIFO
+  and an idle source (`g_idle_add`, thread-safe). Signals are connected
+  with the node as their data, so a node's going disconnects them all.
+  Its own symbols are `lx_`; it reads the core's batches with the core's
+  own decoders (core/src/ops).
 - Every node's view is a `AsukaView`, a `GtkWidget` subclass the host
   registers (`g_type_register_static_simple`, its class's vfuncs set from
   Go at GTK 4's stable offsets): `size_allocate` places its children at
@@ -2366,8 +2377,9 @@ How the Linux host maps Asuka (`host/linux`):
   `Segmented`, `GtkDropDown` for `Wheel` and `Picker`, linked minus and plus buttons
   for `Stepper`, `GtkColorDialogButton`, a date button opening
   `GtkCalendar` and hour and minute spin buttons, `GtkProgressBar`,
-  libadwaita's spinner. Images are decoded off the main thread by Go's
-  decoders (others by GDK's loaders) into textures the view draws at its
+  libadwaita's spinner. Images are decoded off the main thread by GDK's
+  loaders (animated GIF, APNG and WebP by platform/desktop's anim.c, their
+  frames' pictures GDK's) into textures the view draws at its
   mode, tinted through a mask. Symbols are the icon theme's symbolic
   icons where freedesktop or Adwaita has a match for the SF Symbol name,
   else the Material Symbol (as Android and the web draw them), written
@@ -2430,8 +2442,10 @@ How the Linux host maps Asuka (`host/linux`):
   quits (its last window closing, GtkApplication's `query-end` as the
   session ends, `shutdown`, or SIGTERM, SIGINT and SIGHUP, which quit it
   as closing it does), so `asuka/sdk/store` writes what's pending; GLib's
-  memory monitor's warnings are MemoryWarning. Crash reports: Go's crash
-  output (`crashrun`), which has a signal in native code too (Native).
+  memory monitor's warnings are MemoryWarning. Crash reports: the core's
+  record (`asuka_crash_start`), and a fatal signal in native code caught
+  on an alternate stack (crash.c), its frames written to the record's
+  inbox with write(2) before the signal's default action runs.
   Windows are placed by the desktop: GTK 4 has no way to place one.
 - Input is GTK's event controllers, added as the core listens: a click
   (Press, Pressed; Enter and Space press a focused pressable view, which
@@ -2490,7 +2504,7 @@ How the Linux host maps Asuka (`host/linux`):
   host sets to the XDG data directory's folder for the app (Flatpak's
   own). It's saved as the window closes and as the app shuts down.
 - Windows' options are GTK's, set before the window shows
-  (`winctl.go`): its content's size (the default size, the header bar's
+  (`winctl.c`): its content's size (the default size, the header bar's
   height on top) and least (the content's size request), not resizable,
   not deletable, the header bar's decoration layout without its minimize
   or maximize button (the window manager's shortcuts still do them),
@@ -2503,7 +2517,7 @@ How the Linux host maps Asuka (`host/linux`):
   way to place a window or center it (Wayland leaves it to the
   compositor, and GTK 4 dropped moving one on X11 too), and none to keep
   one on top or out of the taskbar: under X11 the host does those itself
-  through Xlib on the surface's window (`deskwin.go`: `XMoveWindow`,
+  through Xlib on the surface's window (`desk.c`: `XMoveWindow`,
   EWMH's `_NET_WM_STATE_ABOVE`, GDK's skip-taskbar hint); under Wayland
   they do nothing. The position reported is 0, 0. The actions are GTK's
   (`gtk_window_present`, `_minimize`, `_maximize`, `_fullscreen`, a new
@@ -2518,9 +2532,12 @@ How the Linux host maps Asuka (`host/linux`):
 - Debug automation, as on macOS and Windows: `ASUKA_SCRIPT` runs steps,
   then `ASUKA_SNAPSHOT=file.png` renders each window to a PNG
   (`ASUKA_DUMP=1`: the view tree beside it) and quits.
-- Tests (`go test ./host/linux`) drive real GTK windows; they need a
-  display and a session bus (`xvfb-run dbus-run-session`), and skip
-  without GTK.
+- Tests (`go test ./platform/linux`) build apps (testdata/*.asuka) into
+  the executable an app ships and drive real GTK windows; they need a
+  display and a session bus (`xvfb-run -a dbus-run-session`), and skip
+  without them. test/fakes.c gives the session bus a notification server
+  and a StatusNotifierWatcher, so notifications and the tray are driven
+  too.
 
 Desktop needs what mobile doesn't: several windows, the app's menu bar
 and keyboard shortcuts, hover and right-click, resizable layouts. To
