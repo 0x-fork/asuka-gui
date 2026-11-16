@@ -23,7 +23,6 @@
 | `Activity` | `UIActivityIndicatorView` | `CircularProgressIndicator` | 旋转样式的 `NSProgressIndicator` | 自行绘制的 Fluent 进度环 | `AdwSpinner`（libadwaita 1.6 之前为 `GtkSpinner`） | 自行绘制的加载指示器 |
 | `Image` | `UIImageView` | `ImageView` | `NSImageView` | 用 GDI+ 绘制 | 用 GDK 纹理绘制 | `<img>` |
 | `lottie.View` | lottie-ios | lottie-android | lottie-ios | 暂不支持（一个空的框） | 暂不支持（一个空的框） | lottie-web |
-
 | `Symbol` | SF Symbols | Material Symbols | SF Symbols | Segoe Fluent Icons | 图标主题中的图标，没有则用 Material Symbols | Material Symbols |
 | `Video` | `AVPlayerViewController` | Media3 的播放器 | `AVPlayerView` | WebView2 中的 `<video>` | `GtkVideo`（GStreamer） | `<video>` |
 | `WebView` | `WKWebView` | `WebView` | `WKWebView` | WebView2 | `WebKitWebView`（WebKitGTK 6.0） | `<iframe>` |
@@ -37,6 +36,19 @@
 ### Text
 
 `Text` 显示一行或一段文本。它就是平台的标签控件，默认会自动换行；`lines` 可以限制最多显示几行，超出的部分以省略号截断。
+
+```asuka
+component Inbox {
+  state count = 3
+
+  Column {
+    gap: 8
+    Text("Inbox") { font: .title2.bold() }
+    Text("{count} unread") { color: .secondaryLabel }
+    Text("A long description that stops after two lines.") { lines: 2 }
+  }
+}
+```
 
 样式中的 `font`、`color`、`textAlign` 和 `lines` 作用于文本本身。文本样式（`.body`、`.headline`、`.footnote` 等）会跟随用户设置的字号。
 
@@ -514,8 +526,8 @@ component Pictures(photo: Photo) {
 | iOS | ImageIO：PNG、JPEG、GIF、WebP、HEIC、AVIF | ImageIO 的 `CGAnimateImageDataWithBlock`，按文件规定的时长和循环次数播放（也支持 HEIF 序列） |
 | Android | 先用 `BitmapFactory`，再用 `ImageDecoder`：PNG、JPEG、GIF、WebP、HEIF、AVIF | `AnimatedImageDrawable`：GIF 和 WebP（系统支持时也包括 AVIF 序列）；APNG 只显示第一帧 |
 | macOS | `NSImage`：PNG、JPEG、GIF、WebP、HEIC、AVIF、SVG | 同 iOS |
-| Windows | WIC：PNG、JPEG、GIF、BMP、TIFF、ICO，以及安装了对应编解码器时的 WebP、HEIF 和 AVIF（WebP 的随 Windows 11 自带；HEIF 需要 HEIF 和 HEVC 视频扩展，AVIF 需要 AV1 视频扩展）；WIC 解不了时，用 Go 的 PNG、JPEG 和 GIF 解码器 | 由宿主逐帧播放；动态 WebP 的每一帧用 WIC 的 WebP 编解码器解码 |
-| Linux | 先用 Go 的 PNG、JPEG 和 GIF 解码器，再用 GDK 的加载器：WebP、AVIF、HEIF、SVG、JPEG XL 等，视安装情况而定 | 由宿主逐帧播放；动态 WebP 的每一帧用 GDK 的 WebP 加载器解码 |
+| Windows | WIC：PNG、JPEG、GIF、BMP、TIFF、ICO，以及安装了对应编解码器时的 WebP、HEIF 和 AVIF（WebP 的随 Windows 11 自带；HEIF 需要 HEIF 和 HEVC 视频扩展，AVIF 需要 AV1 视频扩展） | 由宿主逐帧播放；动态 WebP 的每一帧用 WIC 的 WebP 编解码器解码 |
+| Linux | GDK 的加载器：PNG、JPEG、GIF，以及视安装情况而定的 WebP、AVIF、HEIF、SVG 和 JPEG XL | 由宿主逐帧播放；动态 WebP 的每一帧用 GDK 的 WebP 加载器解码 |
 | Web | 浏览器支持的格式 | 用 WebCodecs 的 `ImageDecoder` 在 canvas 上播放（也支持 AVIF 序列）；没有它的浏览器（Safari）由 `<img>` 自己播放，暂停时显示第一帧 |
 
 只有在 Mac、Linux 和 Web 上，SVG 才能作为图片显示。要在所有平台上显示 SVG 图标，请用 [`asuka/svg`](#svg-图标) 以矢量方式绘制。

@@ -705,8 +705,8 @@ Each platform decodes what its own decoders read:
 | iOS | ImageIO: PNG, JPEG, GIF, WebP, HEIC, AVIF | ImageIO's `CGAnimateImageDataWithBlock`, which times and loops it as the file says (HEIF sequences too) |
 | Android | `BitmapFactory`, then `ImageDecoder`: PNG, JPEG, GIF, WebP, HEIF, AVIF | `AnimatedImageDrawable`: GIF and WebP (and AVIF sequences where the system plays them); an APNG shows its first frame |
 | macOS | `NSImage`: PNG, JPEG, GIF, WebP, HEIC, AVIF, SVG | as iOS |
-| Windows | WIC: PNG, JPEG, GIF, BMP, TIFF, ICO, and WebP, HEIF and AVIF where their codecs are installed (WebP's comes with Windows 11; HEIF needs the HEIF and HEVC Video Extensions, AVIF the AV1 Video Extension); Go's PNG, JPEG and GIF decoders where WIC can't | the host, frame after frame; an animated WebP's pictures by WIC's WebP codec |
-| Linux | Go's PNG, JPEG and GIF decoders, then GDK's loaders: WebP, AVIF, HEIF, SVG, JPEG XL, as installed | the host, frame after frame; an animated WebP's pictures by GDK's WebP loader |
+| Windows | WIC: PNG, JPEG, GIF, BMP, TIFF, ICO, and WebP, HEIF and AVIF where their codecs are installed (WebP's comes with Windows 11; HEIF needs the HEIF and HEVC Video Extensions, AVIF the AV1 Video Extension) | the host, frame after frame; an animated WebP's pictures by WIC's WebP codec |
+| Linux | GDK's loaders: PNG, JPEG, GIF, and WebP, AVIF, HEIF, SVG and JPEG XL as installed | the host, frame after frame; an animated WebP's pictures by GDK's WebP loader |
 | Web | the browser | WebCodecs' `ImageDecoder` on a canvas (AVIF sequences too); where there's none (Safari), the `<img>` itself, which shows its first frame while paused |
 
 An SVG is an image on the Mac, Linux and the web only. For an SVG icon

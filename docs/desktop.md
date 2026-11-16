@@ -732,11 +732,11 @@ component Status {
 }
 ```
 
-`dock.SetProgress` shows a task's progress on the Dock icon, the
+`dock.setProgress` shows a task's progress on the Dock icon, the
 taskbar button, or a Linux dock that has the Unity launcher API (GNOME's
-own dash shows none). `dock.RequestAttention` bounces or flashes the
+own dash shows none). `dock.requestAttention` bounces or flashes the
 icon while the app is in the background. The count on the icon is
-`notify.SetBadge`.
+`notify.setBadge`.
 
 `appearance.current()` gives the system's accent color (a `Color?`),
 Increase Contrast and Reduce Transparency, tracked, for what the app
