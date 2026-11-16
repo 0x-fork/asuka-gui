@@ -46,6 +46,18 @@ fun AsukaRuntime.callModule(module: String, method: String, args: ByteArray, rep
     }
 }
 
+/**
+ * The host's own modules (notify, push, crash...), for the standard
+ * library's packages (std/host), from any thread: reply gets the answer
+ * once, on the main thread.
+ */
+object AsukaHostModules {
+    fun call(module: String, method: String, args: ByteArray, reply: (Result<ByteArray>) -> Unit) {
+        val rt = AsukaRuntime.current ?: return reply(Result.failure(UnsupportedOperationException("unsupported: the host hasn't started")))
+        rt.onMain { rt.callModule(module, method, args, reply) }
+    }
+}
+
 /** Runs a Call command and answers with a Result event. */
 fun AsukaRuntime.call(root: Int, args: ByteBuffer) {
     if (args.remaining() < 12) return
