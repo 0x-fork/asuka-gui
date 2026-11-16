@@ -17,8 +17,8 @@ import (
 func useCounter(t *testing.T, label string) {
 	t.Helper()
 	old := appbuild.Compile
-	appbuild.Compile = func(dir string, deps map[string]string, main bool) (*bytecode.Module, []string, error) {
-		return apptest.Counter(label), nil, nil
+	appbuild.Compile = func(dir string, deps map[string]string, main bool) (*bytecode.Module, *appbuild.Uses, []string, error) {
+		return apptest.Counter(label), nil, nil, nil
 	}
 	t.Cleanup(func() { appbuild.Compile = old })
 }
