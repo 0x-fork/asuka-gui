@@ -115,6 +115,26 @@ typedef guint (*GHashFunc)(gconstpointer key);
 typedef gboolean (*GEqualFunc)(gconstpointer a, gconstpointer b);
 typedef struct _SoupSession SoupSession;
 typedef struct _SoupMessage SoupMessage;
+typedef struct _SoupMessageHeaders SoupMessageHeaders;
+typedef struct _SoupCookie SoupCookie;
+
+// WebKitGTK 6.0 and JavaScriptCore.
+typedef struct _WebKitWebView WebKitWebView;
+typedef struct _WebKitSettings WebKitSettings;
+typedef struct _WebKitUserContentManager WebKitUserContentManager;
+typedef struct _WebKitUserScript WebKitUserScript;
+typedef struct _WebKitUserContentFilter WebKitUserContentFilter;
+typedef struct _WebKitUserContentFilterStore WebKitUserContentFilterStore;
+typedef struct _WebKitBackForwardList WebKitBackForwardList;
+typedef struct _WebKitPolicyDecision WebKitPolicyDecision;
+typedef struct _WebKitResponsePolicyDecision WebKitResponsePolicyDecision;
+typedef struct _WebKitURIResponse WebKitURIResponse;
+typedef struct _WebKitURIRequest WebKitURIRequest;
+typedef struct _WebKitNavigationAction WebKitNavigationAction;
+typedef struct _WebKitWebResource WebKitWebResource;
+typedef struct _WebKitCookieManager WebKitCookieManager;
+typedef struct _WebKitNetworkSession WebKitNetworkSession;
+typedef struct _JSCValue JSCValue;
 
 // GVariantBuilder and GVariantIter are on the stack: opaque, as big as
 // GLib makes them.
