@@ -544,8 +544,9 @@ static void call_in_owner(void *ctx) {
 	if (!ak_error_pending()) ak_release(v.p);
 }
 
-void ak_view_call(ak_view *e, uint16_t ev, ak_val *args, uint32_t nargs) {
-	ak_closure *c = ak_view_handler(e, ev);
+void ak_view_call(ak_view *e, uint16_t ev, ak_val *args, uint32_t nargs) { ak_view_call_closure(e, ak_view_handler(e, ev), args, nargs); }
+
+void ak_view_call_closure(ak_view *e, ak_closure *c, ak_val *args, uint32_t nargs) {
 	if (!c) return;
 	ak_retain(c);
 	ak_retain(e);

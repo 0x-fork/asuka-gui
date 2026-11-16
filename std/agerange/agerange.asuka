@@ -1,0 +1,77 @@
+// Package asuka/agerange asks for the user's age range, as their
+// platform account knows it, without their birth date: Apple's Declared
+// Age Range (iOS 26) and Google Play's Age Signals. Laws (Texas, Utah,
+// Louisiana; Australia's) ask apps to know whether a user is a child,
+// and to have a parent approve; the platforms ask the user (or their
+// parent) whether to share.
+//
+//   let r = try await agerange.request(13, 18)
+//   if r.status == .shared && r.lower >= 18 { adult = true }
+//
+// iOS: an app that imports it is given the Declared Age Range
+// entitlement; its App ID needs the capability for a release build.
+// Android: Play's library, which answers where Play's age checks apply,
+// for an app installed from Play. The Mac, Windows, Linux and the web
+// can't answer: AgeRangeError.notAvailable.
+
+/// Whether the age range came.
+pub enum Status {
+  /// The user (or their parent) chose not to share it.
+  declined
+  /// lower and upper are the user's.
+  shared
+  /// Play needs the user to verify their age first (Android).
+  verificationRequired
+}
+
+/// How the platform knows the age.
+pub enum Source {
+  unknown
+  /// The user said.
+  selfDeclared
+  /// Their parent said, in Family Sharing.
+  guardianDeclared
+  /// Checked: an ID, a payment card, another way.
+  confirmed
+}
+
+/// The answer.
+pub struct Range {
+  status: Status = .declined
+  /// The range, in years, inclusive: 0 is open (a lower of 18 and an
+  /// upper of 0 is 18 or older). iOS answers with the age gates the app
+  /// gave.
+  lower: int = 0
+  upper: int = 0
+  source: Source = .unknown
+}
+
+/// What the platform couldn't do.
+pub enum AgeRangeError: Error {
+  /// agerange: not available
+  notAvailable
+}
+
+/// The platform's age signals.
+native interface Signals {
+  async fn request(gates: [int]) -> Range
+}
+
+// Made once; none where the platform can't answer.
+let signals = try? Signals()
+
+/// Asks for the user's age range; the platform may ask them (or their
+/// parent) first. The gates are the ages the app's rules change at (13,
+/// 16, 18; up to three, 0 for none): iOS answers which side of each the
+/// user is; Play answers its own ranges. AgeRangeError.notAvailable where
+/// the platform can't answer (iOS before 26, no Play Store, the user's
+/// region without age checks, the desktops, the web).
+pub async fn request(gate: int = 18, second: int = 0, third: int = 0) throws -> Range {
+  var gates = [gate]
+  if second > 0 { gates.push(second) }
+  if third > 0 { gates.push(third) }
+  if let s = signals {
+    return try await s.request(gates: gates)
+  }
+  throw AgeRangeError.notAvailable
+}

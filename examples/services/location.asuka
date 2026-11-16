@@ -1,0 +1,184 @@
+// What a run tracker or a reminder by place does with the location out of
+// sight: updates that go on in the background, a region around where the
+// device is now, each event noted in a log kept across launches (the
+// system starts the app for them without a screen: the log shows them
+// when the user opens it) and a crossing told in a notification.
+
+import asuka/location
+import asuka/notify
+import asuka/storage
+import asuka/time
+
+/// What the background updates and regions brought, newest first, kept on
+/// the device.
+let locationLog: storage.Value<[string]> = storage.Value("location.log", [])
+
+fn logLocation(line: string) {
+  print("services: location: {line}")
+  locationLog.value = (["{time.now().format("HH:mm:ss")} {line}"] + locationLog.value).prefix(50)
+}
+
+/// Follows the background updates and the regions' crossings: from the
+/// app's start, so the events the system starts the app for find them
+/// before any screen.
+async fn followLocation() {
+  let _ = await all(followUpdates(), followCrossings())
+}
+
+async fn followUpdates() {
+  for await b in location.updates() {
+    let p = b.positions.last!
+    logLocation("{b.positions.count} positions, the last {p.latitude.fixed(5)}, {p.longitude.fixed(5)} (±{p.accuracy.fixed(0)} m)")
+  }
+}
+
+async fn followCrossings() {
+  for await c in location.crossings() {
+    logLocation("{c.kind} {c.region}")
+    // Showing waits on the system: the app is kept running for it, until
+    // done() says it's shown.
+    let done = c.defer()
+    defer { done() }
+    try? await notify.show(notify.Notification(id: "region", title: "Here", body: "{c.kind}: {c.region}"))
+  }
+}
+
+fn describeAuth(a: location.Authorization) -> string = "{a.level}, precise {a.precise}"
+
+screen LocationScreen {
+  state status = ""
+  state tracking = false
+
+  let auth = location.authorization()
+
+  title: "Location"
+
+  task { tracking = (try? await location.updating()) ?? false }
+
+  async fn run(work: async fn() throws -> string) {
+    status = "…"
+    do {
+      status = try await work()
+    } catch e {
+      status = e.message
+    }
+  }
+
+  async fn toggleTracking() {
+    await run(() => {
+      if try await location.updating() {
+        location.stopUpdates()
+        tracking = false
+        return "Stopped"
+      }
+      try await location.startUpdates(
+        accuracy: .high,
+        distance: 20,
+        activity: .fitness,
+        defer: 30s,
+        indicator: true,
+        notification: location.Notification(title: "Tracking your route", text: "Services follows where you go"),
+      )
+      tracking = true
+      return "Tracking: leave the app, and come back"
+    })
+  }
+
+  async fn watchHere() {
+    await run(() => {
+      let p = try await location.current()
+      try await location.monitor(location.Region(
+        id: "here",
+        latitude: p.latitude,
+        longitude: p.longitude,
+        radius: 150,
+        events: [.enter, .exit, .dwell],
+        dwell: 2min,
+      ))
+      let s = location.supported()
+      return "Watching 150 m around {p.latitude.fixed(5)}, {p.longitude.fixed(5)} (system: {s.regions}, at most {s.maxRegions}, relaunch {s.relaunch})"
+    })
+  }
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      padding: 20
+      gap: 10
+      Text("Allowed: {auth.level}; precise: {auth.precise}{if auth.off { "; location services are off" } else { "" }}") { font: .headline }
+      Text(status) {
+        font: .footnote
+        color: .secondaryLabel
+      }
+      Item("Allow while in use") {
+        on press { await run(() => describeAuth(try await location.request())) }
+      }
+      Item("Allow always") {
+        on press { await run(() => describeAuth(try await location.requestAlways())) }
+      }
+      Item("Precise this time") {
+        on press { await run(() => describeAuth(try await location.requestPrecise("route"))) }
+      }
+      Item("Location settings") {
+        on press { try? await location.openSettings() }
+      }
+      Item(if tracking { "Stop tracking" } else { "Track in the background" }) {
+        on press { await toggleTracking() }
+      }
+      Item("Watch a region here (150 m)") {
+        on press { await watchHere() }
+      }
+      Item("Stop watching regions") {
+        on press {
+          await run(() => {
+            try await location.stopMonitoringAll()
+            return "No regions"
+          })
+        }
+      }
+      Item("Clear the log") {
+        on press { locationLog.value = [] }
+      }
+      Text("Log") {
+        font: .headline
+        margin: Edges(top: 8)
+      }
+      Text(if locationLog.value.isEmpty { "Nothing yet." } else { locationLog.value.map(l => "{l}\n").join("") }) { font: .footnote }
+    }
+  }
+}
+
+// The location screen on a simulated phone: the user allows Always, a
+// region is watched around where the device is, and leaving it (with the
+// app out of sight, as the system would start it) lands in the log.
+test "the location screen" {
+  locationLog.value = []
+  let app = mount(FollowingLocation { LocationScreen() }, setup: host => {
+    host.location.answer = .always
+    host.location.move(35.6812, 139.7671)
+  })
+  let loc = app.host.location
+  app.expect("Allowed: not asked; precise: false", "Nothing yet.")
+  app.tap("Allow always")
+  await app.waitFor("Allowed: always; precise: true")
+  app.tap("Watch a region here (150 m)")
+  await app.waitFor("Watching 150 m around 35.68120, 139.76710 (system: true, at most 20, relaunch true)")
+  await app.until("the enter in the log", () => locationLog.value.count == 1)
+  loc.move(35.70, 139.7671) // 2 km north
+  await app.until("the exit in the log", () => locationLog.value.count == 2)
+  let l = locationLog.value
+  expect(l[0].hasSuffix("exit here") && l[1].hasSuffix("enter here"), "log {l}")
+  // Done once the notification's shown (defer's work).
+  await app.until("the events done", () => loc.pending == 0)
+  app.tap("Stop watching regions")
+  await app.waitFor("No regions")
+}
+
+/// The app's location handlers around a view, as the app starts them.
+component FollowingLocation {
+  prop children: View
+
+  task { await followLocation() }
+
+  children
+}

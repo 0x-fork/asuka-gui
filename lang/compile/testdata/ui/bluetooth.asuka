@@ -1,0 +1,220 @@
+import asuka/bluetooth
+
+struct Found {
+  device: bluetooth.Device
+  name: string
+  rssi: int
+  heart: bool
+}
+
+state devices: [Found] = []
+state status = ""
+
+fn heard(a: bluetooth.Advertisement) {
+  let f = Found(device: a.device, name: if a.device.name.isEmpty() { a.device.id } else { a.device.name }, rssi: a.rssi,
+    heart: a.services.contains(bluetooth.heartRate))
+  if let i = devices.index(x => x.device.id == a.device.id) {
+    devices[i] = f
+  } else {
+    devices.push(f)
+  }
+}
+
+async fn scanning() {
+  do {
+    for await a in bluetooth.scan(duplicates: true) { heard(a) }
+  } catch e {
+    status = e.message
+  }
+}
+
+component Scanner {
+  state on = false
+  let adapter = bluetooth.state()
+
+  task(on) {
+    if on { await scanning() }
+  }
+
+  Column {
+    Text("Bluetooth: {adapter}")
+    Button(if on { "Stop" } else { "Scan" }) { on press { on = !on } }
+    for f in devices key f.device.id {
+      Text(if f.heart { "♥ {f.name} {f.rssi}" } else { "{f.name} {f.rssi}" })
+    }
+    Text("status {status}")
+  }
+}
+
+fn heartRate(v: bytes) -> int? {
+  let flags = v.get(0) ?? 0
+  if v.count() >= 3 && flags % 2 == 1 { return v.get(1)! + v.get(2)! * 256 }
+  if v.count() >= 2 && flags % 2 == 0 { return v.get(1)! }
+  return none
+}
+
+component DeviceView(device: bluetooth.Device) {
+  state battery = ""
+  state bpm = ""
+  state info = ""
+  let connection = bluetooth.connect(device, timeout: 20s)
+
+  task {
+    do {
+      let services = try await connection.services()
+      info = "{services.count()} services, MTU {try await connection.mtu()}"
+    } catch e {
+      info = e.message
+    }
+  }
+
+  task {
+    if let ch = try? await connection.characteristic(bluetooth.battery, bluetooth.batteryLevel) {
+      if let v = try? await ch.read() {
+        battery = "{v.get(0) ?? 0}%"
+      }
+    }
+  }
+
+  task {
+    if let ch = try? await connection.characteristic(bluetooth.heartRate, bluetooth.heartRateMeasurement) {
+      do {
+        for await v in ch.notifications() {
+          if let n = heartRate(v) { bpm = "{n} bpm" }
+        }
+      } catch e {
+        bpm = e.message
+      }
+    }
+  }
+
+  Column {
+    Text("state {connection.state}")
+    Text("error {connection.error?.message ?? ""}")
+    Text("battery {battery}")
+    Text("bpm {bpm}")
+    Text("info {info}")
+  }
+}
+
+component Monitor {
+  state beat = 72
+  let measurement = bluetooth.LocalCharacteristic(uuid: bluetooth.heartRateMeasurement, properties: [.notify])
+  let services = [
+    bluetooth.LocalService(uuid: bluetooth.heartRate, characteristics: [
+      measurement,
+      bluetooth.LocalCharacteristic(uuid: bluetooth.bodySensorLocation, properties: [.read], permissions: [.readable], value: bytes([1])),
+    ]),
+    bluetooth.LocalService(uuid: bluetooth.battery, characteristics: [
+      bluetooth.LocalCharacteristic(uuid: bluetooth.batteryLevel, properties: [.read], permissions: [.readable], onRead: _ => bytes([87])),
+    ]),
+  ]
+
+  task {
+    do {
+      await all(serving(services), advertising())
+    } catch e {
+      print(e.message)
+    }
+  }
+
+  Column {
+    Text("subscribed {measurement.subscribers().count()}")
+    Button("Beat") { on press { measurement.notify(bytes([0, beat])) } }
+  }
+}
+
+async fn serving(s: [bluetooth.LocalService]) { try? await bluetooth.serve(s) }
+async fn advertising() { try? await bluetooth.advertise(localName: "Asuka HR", services: [bluetooth.heartRate]) }
+
+app { Scanner() }
+
+fn strap() -> bluetooth.FakePeripheral = bluetooth.FakePeripheral(
+  id: "AA:BB:CC:00:00:01",
+  name: "Polar H10",
+  rssi: -58,
+  advertised: ["180d"],
+  services: [
+    bluetooth.FakeService(uuid: "180d", characteristics: [bluetooth.FakeCharacteristic(uuid: "2a37", properties: [.notify])]),
+    bluetooth.FakeService(uuid: "180f", characteristics: [bluetooth.FakeCharacteristic(uuid: "2a19", properties: [.read], value: bytes([64]))]),
+  ],
+)
+
+test "uuids" {
+  expect(bluetooth.uuid("0000180D-0000-1000-8000-00805F9B34FB") == "180d")
+  expect(bluetooth.fullUUID("2a37") == "00002a37-0000-1000-8000-00805f9b34fb")
+  expect(bluetooth.uuid("6E400001-B5A3-F393-E0A9-E50E24DCCA9E") == "6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+}
+
+test "with no platform code, no Bluetooth" {
+  let app = mount(Scanner())
+  await app.idle()
+  app.expect("Bluetooth: unsupported")
+  app.tap("Scan")
+  await app.idle()
+  app.expect("status bluetooth: not available")
+}
+
+test "scan" {
+  devices = []
+  status = ""
+  let bt = bluetooth.fake()
+  bt.add(strap())
+  let app = mount(Scanner())
+  await app.idle()
+  app.expect("Bluetooth: on")
+  app.tap("Scan")
+  await app.idle()
+  app.expect("♥ Polar H10 -58")
+  bt.add(bluetooth.FakePeripheral(id: "AA:BB:CC:00:00:02", name: "Lamp", rssi: -80))
+  await app.idle()
+  app.expect("Lamp -80")
+  expect(bt.scans == 1)
+  app.tap("Stop")
+  await app.idle()
+  expect(bt.scans == 0)
+  bt.setState(.off)
+  await app.idle()
+  app.expect("Bluetooth: off")
+  app.tap("Scan")
+  await app.idle()
+  app.expect("status bluetooth: off")
+}
+
+test "connect, read, follow" {
+  let bt = bluetooth.fake()
+  bt.add(strap())
+  let app = mount(DeviceView(bluetooth.Device(id: "AA:BB:CC:00:00:01", name: "Polar H10")))
+  await app.idle()
+  app.expect("state connected")
+  app.expect("battery 64%")
+  app.expect("info 2 services, MTU 185")
+  expect(bt.subscribed("AA:BB:CC:00:00:01", "180d", "2a37"))
+  bt.notify("AA:BB:CC:00:00:01", "180d", "2a37", bytes([0, 61]))
+  await app.idle()
+  app.expect("bpm 61 bpm")
+  bt.notify("AA:BB:CC:00:00:01", "180d", "2a37", bytes([1, 0x2c, 0x01]))
+  await app.idle()
+  app.expect("bpm 300 bpm")
+  bt.remove("AA:BB:CC:00:00:01")
+  await app.idle()
+  app.expect("state disconnected")
+  app.expect("error bluetooth: disconnected: the connection timed out (the peripheral went)")
+}
+
+test "a peripheral" {
+  let bt = bluetooth.fake()
+  let app = mount(Monitor())
+  await app.idle()
+  expect(bt.servers == 1 && bt.advertising.count() == 1)
+  expect(bt.advertising[0].localName == "Asuka HR" && bt.advertising[0].services == ["180d"])
+  app.expect("subscribed 0")
+  bt.centralRead("phone", "2a19")
+  await app.idle()
+  expect(bt.lastRead() == bytes([87]))
+  bt.centralSubscribe("phone", "2a37", true)
+  await app.idle()
+  app.expect("subscribed 1")
+  app.tap("Beat")
+  expect(bt.notified.count() == 1)
+}

@@ -1,0 +1,155 @@
+// I18n shows a translated app: messages with plurals and dates in their
+// catalogs (locales), a menu of its languages that changes them at once,
+// and a layout that mirrors in Arabic. Every text prop follows the app's
+// language: tr.inbox() reads the catalogs, checked as the app compiles.
+// Try it in a language with
+//
+//   asuka dev --platform ios --lang ar examples/i18n
+//   asuka dev --platform ios --lang en-XA examples/i18n   (a pseudo locale)
+
+import asuka/i18n
+import asuka/time
+
+app {
+  Tabs {
+    Tab(tr.inbox()) {
+      icon: "house"
+      Stack { Inbox() }
+    }
+    Tab(tr.settings()) {
+      icon: "gear"
+      Stack { Settings() }
+    }
+  }
+}
+
+screen Inbox {
+  state count = 3
+  state deleting = false
+
+  let seen = time.date(2026, 3, 14, hour: 15, minute: 9)
+
+  title: tr.inbox()
+
+  Alert(tr.alertTitle()) {
+    bind open: deleting
+    message: tr.alertBody()
+    Button(tr.deleteMessage()) { role: .destructive }
+    Button(tr.less()) { role: .cancel }
+  }
+
+  SafeArea {
+    grow: 1
+    Scroll {
+      Column {
+        padding: 16
+        gap: 12
+        Text(tr.greeting(name: "Ada")) { font: .title2 }
+        Text(tr.unread(count: count))
+        // start and end mirror; Row does by itself.
+        Row {
+          gap: 8
+          Button(tr.more()) {
+            on press { count += 1 }
+          }
+          Button(tr.less()) {
+            on press { count = max(count - 1, 0) }
+          }
+        }
+        Text(tr.lastSeen(when: seen)) { color: .secondaryLabel }
+        Text(tr.storage(used: 0.42)) { color: .secondaryLabel }
+        // In the language's way, and the user's regional formats.
+        Text(i18n.formatNumber(1234567.891)) { color: .secondaryLabel }
+        View {
+          background: .secondaryBackground
+          radius: 8
+          padding: Edges(top: 8, bottom: 8, start: 24, end: 8)
+          Text(tr.wide())
+        }
+        Row {
+          layoutDirection: .leftToRight
+          gap: 8
+          padding: [8, 0]
+          Symbol("chevron.forward")
+          Text(tr.alwaysLtr()) { shrink: 1 }
+        }
+        Scroll {
+          horizontal: true
+          gap: 8
+          for n in [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233] key n {
+            View {
+              background: .secondaryBackground
+              radius: 12
+              padding: [6, 12]
+              Text(i18n.formatNumber(n))
+            }
+          }
+        }
+        Button(tr.next()) {
+          on press { push(Detail()) }
+        }
+        Button(tr.deleteMessage()) {
+          icon: "trash"
+          on press { deleting = true }
+        }
+      }
+    }
+  }
+}
+
+screen Detail {
+  title: tr.next()
+  toolbar {
+    Button(tr.archive()) { icon: "square.and.arrow.down" }
+  }
+
+  SafeArea {
+    padding: 16
+    gap: 12
+    align: .start
+    Text(tr.wide())
+    Row {
+      gap: 8
+      align: .center
+      Text(tr.next())
+      Symbol("chevron.forward") // mirrors, as chevron.right wouldn't
+    }
+  }
+}
+
+screen Settings {
+  let choices = [""] + i18n.languages()
+
+  title: tr.settings()
+
+  List {
+    appearance: .insetGrouped
+    for tag in choices key tag {
+      Row {
+        justify: .spaceBetween
+        padding: [12, 16]
+        on press { i18n.setLocale(tag) }
+        Text(if tag.isEmpty { tr.systemLanguage() } else { i18n.autonym(tag) })
+        if tag == i18n.locale() {
+          Symbol("checkmark") { color: .accent }
+        }
+      }
+    }
+  }
+}
+
+test "plurals follow the count" {
+  let app = mount(Stack { Inbox() })
+  app.expect("Hello, Ada!", "3 unread messages")
+  app.tap("Fewer")
+  app.tap("Fewer")
+  app.expect("1 unread message")
+  app.tap("Fewer")
+  app.expect("No unread messages")
+}
+
+test "a language picked changes the app at once" {
+  let app = mount(Stack { Settings() })
+  app.tap("Deutsch")
+  app.expect("Einstellungen")
+}

@@ -78,7 +78,7 @@ func (f *Func) validate(p *Program) error {
 				continue
 			}
 			r := int(in.Args[j])
-			if r == bc.None {
+			if r == bc.None || emptyBlock(def.Name, j, in.Args) {
 				ri++
 				continue
 			}
@@ -141,4 +141,15 @@ func (f *Func) validate(p *Program) error {
 		}
 	}
 	return nil
+}
+
+// emptyBlock reports whether operand j is the base of a block of no
+// registers (a call with no arguments, a closure capturing nothing): no
+// register is read there, whatever it says.
+func emptyBlock(op string, j int, args [5]int32) bool {
+	switch op {
+	case "CALL", "CALLC", "CALLB", "CLOS", "CALLI":
+		return j == 2 && args[3] == 0
+	}
+	return false
 }

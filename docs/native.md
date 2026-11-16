@@ -156,6 +156,7 @@ platform's side can always fail), so calls are `try`.
 | `[T]` | `[T]` | `List<T>` | `Array` |
 | `[string: T]` | `[String: T]` | `Map<String, T>` | `object` |
 | `T?` | `T?` | `T?` | `T` or `null` |
+| `Color` | `Int`, the core's encoding: `AsukaColors.color(_:)` makes it a `UIColor` or `NSColor` (a semantic one follows light and dark) | `Long`: `AsukaModules.color(v, fallback)` makes it an ARGB `Int` | `bigint`: `native.color(v)` makes it a CSS color (a semantic one a variable) |
 | a struct of the package | a struct (a final class when it holds itself) | a data class | an object |
 | an enum of the package (cases without payloads) | a `RawRepresentable` struct with a static per case | a value class with a constant per case | a frozen object of the cases |
 | a `native interface` (a parameter or result) | `any T` | `T` | an object |
@@ -223,7 +224,7 @@ A `native component` is a view:
 ```asuka
 pub native component Segmented(items: [string]) {
   prop selected: int = 0
-  event changed(index: int)
+  event selectedChange(selected: int)
 }
 ```
 
@@ -234,13 +235,16 @@ state selected = 0
 
 segmented.Segmented(["Day", "Week", "Month"]) {
   bind selected: selected
-  on changed(i) { selected = i }
 }
 ```
 
 - Every prop follows what it reads: the platform's setter runs again
   when it changes, and only then.
 - An event runs on the main thread.
+- `bind name: target` binds a prop the view reports with an event
+  `nameChange(name: T)` of the prop's type: the view sends it when the
+  user changes the value (not when the app sets it), and it writes the
+  target.
 - It takes the style every element takes.
 
 Each platform implements the view as a protocol: the view itself, a
@@ -254,7 +258,7 @@ setter per prop, and an events object it gets as it's made:
     init(_ events: SegmentedEvents) { self.events = events; ... }
     func setItems(_ value: [String]) { ... }
     func setSelected(_ value: Int) { ... }
-    // on a change: events.changed(index: i)
+    // on a change: events.selectedChange(selected: i)
 }
 @MainActor func makeSegmented(_ events: SegmentedEvents) -> any Segmented { SwiftSegmented(events) }
 ```
@@ -274,6 +278,10 @@ holds something to free conforms to `AsukaDestroying`, or has a
 `destroy` in JavaScript, or is a `native.Destroyer` in Go.
 
 `examples/media/segmented` is a complete view on every platform.
+
+In an app's tests (on the fake host, with no platform code) a native
+view shows as its component's name, and `app.tap("Segmented")` sends it
+a `press` event, as a platform's button would.
 
 ## iOS and macOS: Swift
 

@@ -1,0 +1,437 @@
+import asuka/chart
+import asuka/lottie
+import asuka/shader
+
+component Symbols {
+  state liked = false
+  state sortBy = "Name"
+
+  let icons = ["house", "magnifyingglass", "bell", "envelope", "camera", "calendar", "location", "cart", "lock", "gear"]
+
+  fn sorted(by: string) -> Action = .button(title: by, checked: sortBy == by, run: () => { sortBy = by })
+
+  Section("Symbols") {
+    Row {
+      gap: 14
+      wrap: true
+      for name in icons key name { Symbol(name) }
+    }
+    Row {
+      gap: 14
+      align: .center
+      Symbol("star.fill") {
+        color: .yellow
+        font: .title
+      }
+      Symbol("heart.fill") {
+        color: .red
+        font: .title2
+      }
+      Symbol("checkmark") {
+        color: .green
+        font: .caption
+      }
+    }
+    Row {
+      gap: 12
+      wrap: true
+      Button("Compose") {
+        icon: "square.and.pencil"
+        variant: .filled
+      }
+      Button(if liked { "Liked" } else { "Like" }) {
+        icon: "heart"
+        variant: .tinted
+        on press { liked = !liked }
+      }
+      // A menu with a section whose choice is checked, a submenu and a
+      // disabled item (SwiftUI's Menu with a Section, a nested Menu and
+      // .disabled).
+      Button("") {
+        icon: "ellipsis.circle"
+        label: "More"
+        menu: [
+          .button(title: "Copy", icon: "doc.on.doc"),
+          .button(title: "Edit", icon: "pencil"),
+          .section(title: "Sort by", items: [sorted("Name"), sorted("Date"), sorted("Size")]),
+          .submenu(title: "Move to", icon: "folder", items: [.button(title: "Inbox"), .button(title: "Archive")]),
+          .button(title: "Delete", icon: "trash", role: .destructive, disabled: true),
+        ]
+      }
+    }
+    Text("Sorted by {sortBy}") { style caption }
+  }
+}
+
+/// A font file in the app's assets (assets/fonts/Pacifico-Regular.ttf,
+/// under the SIL Open Font License), and a system family. Both scale with
+/// the text size the user picked, as the text styles do.
+component Fonts {
+  Section("Fonts") {
+    Text("Hello from Pacifico") { font: .title.family("Pacifico-Regular") }
+    Text("The system's serif, in bold") { font: Font(weight: .bold, family: "serif") }
+    Text("And its monospace") { font: .callout.family("monospace") }
+    Button("A button in Pacifico") {
+      variant: .tinted
+      font: Font(family: "Pacifico-Regular")
+    }
+  }
+}
+
+component TextInput {
+  state name = ""
+  state message = ""
+  state sent = ""
+
+  Section("Text input") {
+    TextField {
+      bind text: name
+      placeholder: "Name"
+      contentType: "name"
+      autocapitalize: .words
+    }
+    Row {
+      gap: 8
+      align: .end
+      TextField {
+        bind text: message
+        placeholder: "Message"
+        multiline: true
+        grow: 1
+        lines: 5
+      }
+      Button("") {
+        icon: "paperplane"
+        label: "Send"
+        variant: .filled
+        disabled: message.isEmpty
+        on press {
+          sent = message
+          message = ""
+        }
+      }
+    }
+    Text(if sent.isEmpty { "Grows to five lines, then scrolls." } else { "Sent: {sent}" }) { style caption }
+  }
+}
+
+let flower = "https://upload.wikimedia.org/wikipedia/commons/3/3f/JPEG_example_flower.jpg"
+
+/// A photo over the network, kept on disk once fetched; until it arrives
+/// (or if it can't), a placeholder from the app's assets.
+component Images {
+  state playing = true
+
+  Column {
+    gap: 28
+    Section("Images") {
+      Image("https://picsum.photos/id/1015/600/400") {
+        placeholder: "placeholder.png"
+        mode: .fill
+        label: "A river in a valley"
+        aspectRatio: 3.0 / 2
+        radius: 12
+      }
+    }
+    // The same photo behind a BlurHash and a ThumbHash: shown at once,
+    // then the photo fades in over them.
+    Section("Hash placeholders") {
+      Row {
+        gap: 12
+        Image(flower) {
+          blurHash: "UtP$I1t7%$tkxatRS2RP?^WBoztRR%aKRPoz"
+          mode: .fill
+          transition: 0.6
+          label: "A flower"
+          grow: 1
+          aspectRatio: 1
+          radius: 12
+        }
+        Image(flower) {
+          thumbHash: "LGkOH4rImYSZZ3h/mWZniGZ6Z3MGJ2cA"
+          mode: .fill
+          transition: 0.6
+          label: "A flower"
+          grow: 1
+          aspectRatio: 1
+          radius: 12
+        }
+      }
+    }
+    // An animated GIF and WebP: they play, unless Reduce Motion is on, and
+    // the switch stops them where they are.
+    Section("Animated") {
+      Row {
+        gap: 16
+        align: .center
+        Image("dots.gif") {
+          animated: playing
+          label: "Bouncing dots (GIF)"
+        }
+        Image("dots.webp") {
+          animated: playing
+          label: "Bouncing dots (WebP)"
+        }
+        View { grow: 1 }
+        Toggle {
+          bind on: playing
+          title: "Play"
+        }
+      }
+    }
+  }
+}
+
+/// Plays a Lottie animation with the platform's player (asuka/lottie):
+/// play and pause it, loop it, change its speed, scrub it, play one of its
+/// markers, rewind it with animate, and color it for dark mode.
+component LottieSection {
+  state playing = true
+  state loop = true
+  state speed = 1.0
+  state progress = 0.0
+  state marker = 0
+  state tinted = false
+
+  let markers = ["", "draw", "check", "sparkle"]
+
+  Section("Lottie") {
+    lottie.View("success.json") {
+      bind playing: playing
+      loop: loop
+      speed: speed
+      bind progress: progress
+      marker: markers[marker]
+      // Blue in light mode, a lighter blue in dark mode.
+      overrides: if tinted {
+        [lottie.Override.colors("Ring", light: #0a84ff, dark: #64d2ff), lottie.Override.colors("Glow", light: #e5f1ff, dark: #0b2540)]
+      } else {
+        []
+      }
+      label: "A check mark drawn in a circle"
+      width: 200
+      alignSelf: .center
+      on complete { playing = false }
+    }
+    // The slider follows the animation as it plays, and moves it as it's
+    // dragged.
+    Slider { bind value: progress }
+    Segmented(["All", "Draw", "Check", "Sparkle"]) { bind selected: marker }
+    Row {
+      gap: 12
+      align: .center
+      Text("Playing")
+      Toggle {
+        bind on: playing
+        title: "Playing"
+      }
+      Text("Loop")
+      Toggle {
+        bind on: loop
+        title: "Loop"
+      }
+    }
+    Row {
+      gap: 12
+      align: .center
+      Text("Speed")
+      Slider {
+        bind value: speed
+        min: -2
+        max: 2
+        grow: 1
+      }
+      Text("{speed.fixed(1)}×")
+    }
+    Row {
+      gap: 12
+      wrap: true
+      Button("Rewind") {
+        icon: "backward.fill"
+        variant: .gray
+        on press {
+          playing = false
+          animate(Animation(duration: 600ms, curve: .spring, damping: 0.7), () => { progress = 0 })
+        }
+      }
+      Button(if tinted { "Green" } else { "Blue" }) {
+        icon: "paintpalette"
+        variant: .gray
+        on press { tinted = !tinted }
+      }
+    }
+  }
+}
+
+/// Plays a clip with the platform's player and its controls: muted,
+/// looping, from the start. It takes the video's size once known.
+component VideoSection {
+  state ends = 0
+
+  let player = Ref()
+
+  Section("Video") {
+    Video("https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4") {
+      ref: player
+      autoPlay: true
+      muted: true
+      loop: true
+      radius: 12
+      on end { ends += 1 }
+    }
+    Row {
+      gap: 12
+      align: .center
+      Button("Start over") {
+        variant: .gray
+        on press {
+          player.seek(0)
+          player.play()
+        }
+      }
+      Text("Played through {ends} times") { style caption }
+    }
+  }
+}
+
+/// Outlines (Shape): a ring whose trim animates, and a star made of
+/// lines.
+component Shapes {
+  state done = 0.3
+
+  Section("Shapes") {
+    Row {
+      gap: 24
+      align: .center
+      wrap: true // on a narrow phone, the button goes under
+      View {
+        label: "Progress"
+        width: 72
+        height: 72
+        Shape(ring) {
+          stroke: .secondaryBackground
+          lineWidth: 8
+          absolute: true
+          left: 0
+          top: 0
+          width: 72
+          height: 72
+        }
+        Shape(ring) {
+          stroke: .accent
+          lineWidth: 8
+          lineCap: .round
+          trimEnd: done
+          absolute: true
+          left: 0
+          top: 0
+          width: 72
+          height: 72
+        }
+      }
+      Shape(star) {
+        fill: .orange
+        width: 72
+        height: 72
+      }
+      Button("Fill the ring") {
+        variant: .gray
+        on press {
+          let next = if done < 1 { 1.0 } else { 0.3 }
+          animate(Animation(duration: 800ms, curve: .easeInOut), () => { done = next })
+        }
+      }
+    }
+  }
+}
+
+/// A circle inset by half the stroke, starting at the top.
+fn ring(w: float, h: float) -> Path {
+  let r = min(w, h) / 2 - 4
+  return Path().arc(w / 2, h / 2, radius: r, from: -pi / 2, to: 3 * pi / 2, clockwise: true)
+}
+
+/// A five-pointed star in the box.
+fn star(w: float, h: float) -> Path {
+  var p = Path()
+  for i in 0..<10 {
+    let r = if i % 2 == 1 { min(w, h) / 2 * 0.42 } else { min(w, h) / 2 }
+    let a = i.float() * pi / 5 - pi / 2
+    let x = w / 2 + r * cos(a)
+    let y = h / 2 + r * sin(a)
+    p = if i == 0 { p.moveTo(x, y) } else { p.lineTo(x, y) }
+  }
+  return p.close()
+}
+
+/// A Kage shader: a band of light that flows across a night sky.
+let aurora = shader.Program(r"""
+  package main
+
+  var Time float
+  var Tint vec4
+
+  func Fragment(dst vec4, pos vec2) vec4 {
+  	uv := pos / rectSize()
+  	t := Time * 0.4
+  	wave := sin(uv.x*6+t)*0.5 + sin(uv.x*11-t*1.3)*0.25
+  	band := smoothstep(0.35, 0, abs(uv.y-0.5-wave*0.18))
+  	sky := mix(vec3(0.02, 0.03, 0.10), vec3(0.05, 0.08, 0.22), uv.y)
+  	return vec4(sky+Tint.rgb*band*(0.7+0.3*sin(Time+uv.x*4)), 1)
+  }
+  """)
+
+/// A gauge drawn by the app, following a slider.
+component CanvasSection {
+  state level = 0.62
+
+  Section("Canvas") {
+    Canvas {
+      height: 170
+      draw: g => {
+        let cx = g.width / 2
+        let cy = g.height - 12
+        let r = min(g.width / 2, cy) - 10 // room for half the stroke
+        g.stroke(Path().arc(cx, cy, radius: r, from: pi, to: 2 * pi, clockwise: true), .secondaryBackground, width: 14, cap: .round)
+        g.stroke(Path().arc(cx, cy, radius: r, from: pi, to: pi * (1 + level), clockwise: true), .accent, width: 14, cap: .round)
+        for i in 0..10 {
+          let a = pi * (1 + i.float() / 10)
+          let tick = Path().moveTo(cx + cos(a) * (r - 22), cy + sin(a) * (r - 22)).lineTo(cx + cos(a) * (r - 30), cy + sin(a) * (r - 30))
+          g.stroke(tick, .tertiaryLabel, width: 2, cap: .round)
+        }
+        g.text("{(level * 100).fixed(0)}%", cx, cy - 8, font: Font(size: 34, weight: .semibold), align: .center)
+      }
+    }
+    Slider { bind value: level }
+    // A GPU program: an aurora that flows, in the slider's hue.
+    shader.Shader(aurora) {
+      uniforms: [shader.Uniform(name: "Tint", value: [0.2, 0.5 + level * 0.5, 0.6, 1])]
+      animated: true
+      height: 140
+      radius: 16
+      clip: true
+      background: #0b1030
+    }
+  }
+}
+
+/// A week's steps as bars, and a smooth line over an area.
+component Charts {
+  let days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+  Section("Charts") {
+    chart.View([chart.Series(name: "Steps", kind: .bar, values: [4200, 8100, 6400, 10200, 7300, 12800, 3900])]) {
+      labels: days
+      label: "Steps this week"
+      height: 180
+    }
+    chart.View([
+      chart.Series(name: "Heart rate", kind: .area, smooth: true, values: [62, 71, 68, 90, 84, 76, 70]),
+      chart.Series(name: "Resting", kind: .line, color: #ff9500, values: [58, 58, 59, 60, 59, 58, 57]),
+    ]) {
+      labels: days
+      label: "Heart rate this week"
+      height: 180
+    }
+  }
+}

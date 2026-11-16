@@ -31,7 +31,7 @@ fun AsukaRuntime.localFiles(sources: List<AsukaSource>, done: (Result<List<File>
 }
 
 /** source's file; off the main thread. */
-private fun AsukaRuntime.localFile(s: AsukaSource): File {
+internal fun AsukaRuntime.localFile(s: AsukaSource): File {
     val source = s.source
     val f = when {
         source.startsWith("http://") || source.startsWith("https://") -> download(source, s.type)

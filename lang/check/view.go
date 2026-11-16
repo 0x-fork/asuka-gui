@@ -421,7 +421,7 @@ func (c *Checker) componentCall(e *syntax.CallExpr, tn *TypeName) Type {
 	if e.Args != nil {
 		for _, a := range e.Args.List {
 			if a.Label != nil {
-				if m := comp.Members[a.Label.Name]; m != nil && m.Kind != ParamMember || comp.Native && c.styleMember(a.Label.Name) != nil {
+				if m := comp.Members[a.Label.Name]; m != nil && m.Kind != ParamMember || (comp.Native || c.TakesStyle(tn)) && c.styleMember(a.Label.Name) != nil {
 					c.errorf(a.Label, "%s is a prop of %s: set it in the block, %s(…) { %s: … }", a.Label.Name, tn.name, tn.name, a.Label.Name)
 					c.expr(a.Value, nil)
 					continue
@@ -649,7 +649,7 @@ func (c *Checker) refProp(name *syntax.Ident, value syntax.Expr, ec *ElementCall
 func (c *Checker) propSet(name *syntax.Ident, value syntax.Expr, ec *ElementCall, style bool) {
 	comp := ec.Comp.Comp
 	m := comp.Members[name.Name]
-	if m == nil && comp.Native && !(comp.Element != nil && comp.Element.NoStyle) {
+	if m == nil && (comp.Native && !(comp.Element != nil && comp.Element.NoStyle) || c.TakesStyle(ec.Comp)) {
 		m = c.styleMember(name.Name)
 	}
 	if m == nil && name.Name == "ref" && !style {
@@ -691,7 +691,7 @@ func (c *Checker) propSuggest(comp *Component, name string) string {
 	for n := range comp.Members {
 		try(n)
 	}
-	if comp.Native {
+	if comp.Native || comp.styled > 0 {
 		for _, k := range prelude.Style {
 			try(k.Name)
 		}
@@ -762,6 +762,16 @@ func (c *Checker) eventSuggest(comp *Component, name string) string {
 	return " (its events: " + s + ")"
 }
 
+// nativeBindEvent is the event a native component reports its prop m
+// with, <name>Change(value: m's type), or nil.
+func nativeBindEvent(comp *Component, m *Member) *Member {
+	ev := comp.Members[m.name+"Change"]
+	if ev == nil || ev.Kind != EventMember || len(ev.Params) != 1 || !Identical(ev.Params[0].Type, m.Type) {
+		return nil
+	}
+	return ev
+}
+
 // bindItem checks bind name: target: a control's two-way binding.
 func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 	comp := ec.Comp.Comp
@@ -774,12 +784,24 @@ func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 			}
 		}
 	}
-	if m == nil || key == nil || !key.Bind {
+	var ev *Member
+	switch {
+	case comp.Element == nil && comp.Native && m != nil && m.Kind == PropMember:
+		// A package's native component binds a prop it reports with an
+		// event <prop>Change(value) (docs/native.md).
+		ev = nativeBindEvent(comp, m)
+		if ev == nil {
+			c.errorf(b.Name, "%s can't bind %s: it binds a prop it reports with event %sChange(%s: %s)", ec.Comp.name, b.Name.Name, b.Name.Name, b.Name.Name, typeString(m.Type))
+			c.expr(b.Target, nil)
+			return
+		}
+	case m == nil || key == nil || !key.Bind:
 		c.errorf(b.Name, "%s can't bind %s: only a control's own value binds (TextField's text, Toggle's on)", ec.Comp.name, b.Name.Name)
 		c.expr(b.Target, nil)
 		return
+	default:
+		ev = comp.Members[key.Event]
 	}
-	ev := comp.Members[key.Event]
 	saved := c.ctx
 	c.enter(CtxBinding, b, "bind "+b.Name.Name)
 	t := c.expr(b.Target, nil)
@@ -876,4 +898,70 @@ func (c *Checker) slotItem(s *syntax.SlotItem, ec *ElementCall) {
 	c.view = savedView
 	c.leave(saved)
 	ec.Slots = append(ec.Slots, &SlotArg{Prop: m, Block: s.Body, Item: s})
+}
+
+// TakesStyle says whether a component takes the style props: when what
+// it shows is one element (a built-in one that takes them, a package's
+// native component, or a component that takes them), the style its
+// caller gives goes on that element, over the element's own.
+func (c *Checker) TakesStyle(t *TypeName) bool {
+	comp := t.Comp
+	if comp == nil {
+		return false
+	}
+	if comp.Native {
+		return !comp.Style && !(comp.Element != nil && comp.Element.NoStyle)
+	}
+	if comp.styled == 0 {
+		comp.styled = -1 // while it's worked out: a cycle doesn't
+		if r := c.rootComponent(t); r != nil && c.TakesStyle(r) {
+			comp.styled = 1
+		}
+	}
+	return comp.styled > 0
+}
+
+// rootComponent is the element or component a component's body shows,
+// when its views are that one call.
+func (c *Checker) rootComponent(t *TypeName) *TypeName {
+	comp := t.Comp
+	if comp.Store || comp.Screen || comp.Body == nil || comp.Ctx == nil {
+		return nil
+	}
+	var call *syntax.CallExpr
+	for _, it := range comp.Body.Items {
+		switch it := it.(type) {
+		case *syntax.PropDecl, *syntax.EventDecl, *syntax.StateDecl, *syntax.LetDecl, *syntax.UseDecl,
+			*syntax.FuncDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.BadItem:
+		case *syntax.ExprStmt:
+			if call != nil {
+				return nil
+			}
+			e, ok := unparen(it.X).(*syntax.CallExpr)
+			if !ok {
+				return nil
+			}
+			call = e
+		default:
+			return nil
+		}
+	}
+	if call == nil {
+		return nil
+	}
+	var o Object
+	switch f := call.Fun.(type) {
+	case *syntax.Ident:
+		o = comp.Ctx.scope.Lookup(f.Name)
+	case *syntax.MemberExpr:
+		if id, ok := f.X.(*syntax.Ident); ok {
+			if pn, ok := comp.Ctx.scope.Lookup(id.Name).(*PkgName); ok {
+				o = pn.Pkg.Scope.LookupLocal(f.Name.Name)
+			}
+		}
+	}
+	if tn, ok := o.(*TypeName); ok && tn.Comp != nil && !tn.Comp.Store {
+		return tn
+	}
+	return nil
 }

@@ -29,6 +29,7 @@ import * as worker from "./worker.js";
 import { notifyFor } from "./modules/system-notify.js";
 import { startCore } from "./core.js";
 import { Crash } from "./crash.js";
+import { app as nativeApp } from "./native.js";
 // What packages' generated JavaScript (asuka native) builds on: globalThis.asuka.native.
 export * as native from "./native.js";
 
@@ -47,6 +48,7 @@ export async function start(options = {}) {
   const container = options.container || document.body.appendChild(document.createElement("div"));
   if (fullPage) container.classList.add("asuka-page");
   const name = options.name || "app";
+  nativeApp.name = name;
   const dev = options.dev ? devClient(options.dev) : null;
   // The app's service worker, listened to before the app starts: a tap
   // on a notification may be what opened the page.
@@ -58,6 +60,9 @@ export async function start(options = {}) {
   const data = "/data/" + name.replace(/[^\w.-]/g, "_");
   await fs.mount({ name, dir: data, output: dev?.log });
   const host = new Host(container, { ...options, fullPage, name });
+  nativeApp.assets = host.assets;
+  nativeApp.version = options.version || "";
+  nativeApp.build = String(options.build || "");
   // The host's own native views (camera.View), then the app's, which may replace them.
   for (const [k, f] of Object.entries(builtinNatives)) host.natives.set(k, f);
   for (const [k, f] of natives) host.natives.set(k, f);

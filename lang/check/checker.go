@@ -169,7 +169,7 @@ func (c *Checker) initUniverse() {
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream},
 		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {"shader", BShader},
-		{"untilCancelled", BUntilCancelled},
+		{"never", BNever},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
 	}

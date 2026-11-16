@@ -8,6 +8,7 @@
 // little-endian.
 
 import Foundation
+import UniformTypeIdentifiers
 #if canImport(UIKit)
 import UIKit
 /// The platform's view: UIView on iOS, NSView on the Mac.
@@ -17,6 +18,101 @@ import AppKit
 /// The platform's view: UIView on iOS, NSView on the Mac.
 public typealias AsukaPlatformView = NSView
 #endif
+
+#if canImport(UIKit)
+/// The platform's color: UIColor on iOS, NSColor on the Mac.
+public typealias AsukaPlatformColor = UIColor
+#else
+/// The platform's color: UIColor on iOS, NSColor on the Mac.
+public typealias AsukaPlatformColor = NSColor
+#endif
+
+#if canImport(UIKit)
+/// Where a package's Swift presents a controller of its own (a picker,
+/// the system's camera): the frontmost controller of the app's key
+/// window.
+@MainActor public enum AsukaPresenting {
+    public static var top: UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.flatMap(\.windows).first { $0.isKeyWindow } ?? scenes.first?.windows.first
+        var c = window?.rootViewController
+        while let p = c?.presentedViewController, !p.isBeingDismissed { c = p }
+        return c
+    }
+}
+#else
+/// Where a package's Swift shows a sheet of its own: the app's key
+/// window, else its main one.
+@MainActor public enum AsukaPresenting {
+    public static var window: NSWindow? { NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible } }
+}
+#endif
+
+/// The app's assets, for a package's Swift: a source as the hosts take
+/// one (an http(s) or file URL, an absolute path, or a file in the app's
+/// assets/) as a URL.
+public enum AsukaAssets {
+    /// The app's assets/: in the app's bundle (or the framework holding an
+    /// embedded app's code), else ASUKA_ASSETS, else assets beside the
+    /// working directory (a Mac app run from its project).
+    public static let dir: URL? = {
+        for b in [Bundle.main] + Bundle.allFrameworks {
+            if let u = b.resourceURL?.appendingPathComponent("assets"), FileManager.default.fileExists(atPath: u.path) { return u }
+        }
+        if let d = ProcessInfo.processInfo.environment["ASUKA_ASSETS"], !d.isEmpty { return URL(fileURLWithPath: d) }
+        #if canImport(UIKit)
+        return Bundle.main.resourceURL?.appendingPathComponent("assets")
+        #else
+        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("assets")
+        #endif
+    }()
+
+    public static func url(_ source: String) -> URL? {
+        if source.isEmpty { return nil }
+        if source.hasPrefix("http://") || source.hasPrefix("https://") || source.hasPrefix("file://") || source.hasPrefix("data:") { return URL(string: source) }
+        if source.hasPrefix("/") { return URL(fileURLWithPath: source) }
+        let rel = source.hasPrefix("./") ? String(source.dropFirst(2)) : source
+        return dir?.appendingPathComponent(rel)
+    }
+}
+
+/// Asuka's colors in a package's Swift: a Color crosses as an Int (the
+/// core's encoding), which color makes the platform's, a semantic one
+/// following light and dark.
+public enum AsukaColors {
+    public static func color(_ v: Int) -> AsukaPlatformColor? {
+        let u = UInt64(bitPattern: Int64(v))
+        let lo = UInt32(truncatingIfNeeded: u)
+        switch u >> 32 {
+        case 2:
+            #if canImport(UIKit)
+            return UIColor(red: CGFloat((lo >> 24) & 0xff) / 255, green: CGFloat((lo >> 16) & 0xff) / 255, blue: CGFloat((lo >> 8) & 0xff) / 255, alpha: CGFloat(lo & 0xff) / 255)
+            #else
+            return NSColor(srgbRed: CGFloat((lo >> 24) & 0xff) / 255, green: CGFloat((lo >> 16) & 0xff) / 255, blue: CGFloat((lo >> 8) & 0xff) / 255, alpha: CGFloat(lo & 0xff) / 255)
+            #endif
+        case 1:
+            guard let c = semantic(Int(lo & 0xffff)) else { return nil }
+            // Its opacity is in bits 24-31, as transparency.
+            let a = 255 - CGFloat((lo >> 24) & 0xff)
+            return a == 255 ? c : c.withAlphaComponent(a / 255)
+        default:
+            return nil
+        }
+    }
+
+    static func semantic(_ i: Int) -> AsukaPlatformColor? {
+        #if canImport(UIKit)
+        let t: [AsukaPlatformColor?] = [nil, .label, .secondaryLabel, .tertiaryLabel, .systemBackground, .secondarySystemBackground,
+            .systemGroupedBackground, .separator, .tintColor, .systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue,
+            .systemPurple, .systemPink, .systemGray, .clear, .secondarySystemGroupedBackground, .white]
+        #else
+        let t: [AsukaPlatformColor?] = [nil, .labelColor, .secondaryLabelColor, .tertiaryLabelColor, .windowBackgroundColor, .controlBackgroundColor,
+            .windowBackgroundColor, .separatorColor, .controlAccentColor, .systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue,
+            .systemPurple, .systemPink, .systemGray, .clear, .controlBackgroundColor, .white]
+        #endif
+        return i >= 0 && i < t.count ? t[i] : nil
+    }
+}
 
 // Where the host has views: iOS (UIKit), and the Mac's runtime (which has
 // no AsukaOps); not the iOS host's package built for the Mac (swift test,
@@ -418,5 +514,109 @@ public enum AsukaNative {
         return a.count
     }
 }
+
+// What a package's Swift presents over, or attaches a sheet to.
+extension AsukaNative {
+    #if canImport(UIKit)
+    /// The app's window: its foreground scene's key window.
+    @MainActor public static var window: UIWindow? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let active = scenes.filter { $0.activationState == .foregroundActive } + scenes
+        for s in active {
+            if let w = s.windows.first(where: { $0.isKeyWindow }) ?? s.windows.first { return w }
+        }
+        return nil
+    }
+
+    /// The view controller to present over: the window's top one (what's
+    /// presented over its root, and over that).
+    @MainActor public static var presenter: UIViewController? {
+        var vc = window?.rootViewController
+        while let p = vc?.presentedViewController, !p.isBeingDismissed { vc = p }
+        return vc
+    }
+    #else
+    /// The app's window the user works in: the key one, else the main
+    /// one, else the first that's shown.
+    @MainActor public static var window: NSWindow? {
+        NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible })
+    }
+    #endif
+}
+
+// The files packages hand the system (asuka/preview, asuka/print).
+extension AsukaNative {
+    /// The app's assets: the bundle's Resources/assets (an embedded app's
+    /// framework's), else $ASUKA_ASSETS (asuka dev on the Mac), else
+    /// assets in the working directory.
+    public static var assets: URL {
+        for b in [Bundle(for: AsukaNativeBundle.self), Bundle.main] {
+            if let u = b.resourceURL?.appendingPathComponent("assets"), FileManager.default.fileExists(atPath: u.path) { return u }
+        }
+        if let d = ProcessInfo.processInfo.environment["ASUKA_ASSETS"], !d.isEmpty { return URL(fileURLWithPath: d, isDirectory: true) }
+        return URL(fileURLWithPath: "assets", isDirectory: true)
+    }
+
+    /// The local file a source names: a path, a file:// URL, an asset's
+    /// path, or an http(s) URL, downloaded to the caches first
+    /// (asuka-files/, under its name, with the extension of type, or the
+    /// server's, if it has none).
+    public static func localFile(_ source: String, type: String = "") async throws -> URL {
+        if source.hasPrefix("http://") || source.hasPrefix("https://"), let url = URL(string: source) {
+            return try await download(url, type)
+        }
+        var path = source
+        if path.hasPrefix("file://") { path = URL(string: path)?.path ?? path }
+        if !path.hasPrefix("/") { path = assets.appendingPathComponent(path).path }
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw NSError(domain: "asuka", code: 0, userInfo: [NSLocalizedDescriptionKey: "no file at \(source)"])
+        }
+        return URL(fileURLWithPath: path)
+    }
+
+    private static func download(_ url: URL, _ type: String) async throws -> URL {
+        // The file's moved out before the task's handler returns, which
+        // deletes it.
+        let (tmp, response): (URL, URLResponse) = try await withCheckedThrowingContinuation { c in
+            URLSession.shared.downloadTask(with: url) { tmp, response, error in
+                guard let tmp, let response else {
+                    c.resume(throwing: error ?? NSError(domain: "asuka", code: 0, userInfo: [NSLocalizedDescriptionKey: "couldn't download \(url)"]))
+                    return
+                }
+                let kept = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                do {
+                    try FileManager.default.moveItem(at: tmp, to: kept)
+                    c.resume(returning: (kept, response))
+                } catch {
+                    c.resume(throwing: error)
+                }
+            }.resume()
+        }
+        if let h = response as? HTTPURLResponse, !(200..<300).contains(h.statusCode) {
+            throw NSError(domain: "asuka", code: h.statusCode, userInfo: [NSLocalizedDescriptionKey: "couldn't download \(url): HTTP \(h.statusCode)"])
+        }
+        var name = response.suggestedFilename ?? url.lastPathComponent
+        if name.isEmpty || name == "/" { name = "file" }
+        let mime = type.isEmpty ? (response.mimeType ?? "") : type
+        if (name as NSString).pathExtension.isEmpty, let ext = UTType(mimeType: mime)?.preferredFilenameExtension {
+            name += "." + ext
+        }
+        let fm = FileManager.default
+        let dir = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("asuka-files/" + UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dst = dir.appendingPathComponent(name.replacingOccurrences(of: "/", with: "_"))
+        try fm.moveItem(at: tmp, to: dst)
+        return dst
+    }
+
+    /// The app's name, as the home screen or the Dock has it.
+    public static var appName: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? ProcessInfo.processInfo.processName
+    }
+}
+
+/// The bundle the runtime is in (an embedded app's framework).
+final class AsukaNativeBundle {}
 
 #endif

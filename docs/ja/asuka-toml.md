@@ -342,7 +342,7 @@ Android のビルドの設定です。
 | `dynamicColor` | 真偽値 | `false` | Material のアプリと同じように、ユーザーの壁紙から色を取ります（Android 12 以降）。それ以外の環境では `accent` がシードになります。 |
 | `permissions` | 文字列の配列 | 各パッケージのもの | マニフェストに追加する権限です（`"android.permission.CAMERA"`）。`"<name>:28"` と書くと、Android 9（API 28）までだけ権限を要求します。アプリがインポートするパッケージは、必要な権限を自分で追加します。 |
 | `googleServices` | パス | なし | `asuka/sdk/push` で使う、Firebase プロジェクトの `google-services.json` です。 |
-| `mapsKey` | 文字列 | なし | `asuka/sdk/maps` で使う、Google Maps Platform の API キー（Maps SDK for Android）です。 |
+| `mapsKey` | 文字列 | なし | `asuka/maps` で使う、Google Maps Platform の API キー（Maps SDK for Android）です。 |
 | `serviceAccount` | パス | なし | `asuka publish` が Google Play へのアップロードに使う、Google Cloud のサービスアカウントの JSON キーです。リポジトリには入れないでください。 |
 
 [配布](shipping.md#android)を参照してください。

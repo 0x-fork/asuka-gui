@@ -26,6 +26,7 @@ import (
 	. "github.com/egoist/asuka/internal/windows"
 	"github.com/egoist/asuka/internal/winstate"
 	"github.com/egoist/asuka/layout"
+	"github.com/egoist/asuka/native"
 	"github.com/egoist/asuka/ops"
 	"github.com/egoist/asuka/ui"
 )
@@ -358,6 +359,11 @@ func newHost() *Host {
 	h.savedLocale = readSavedLocale(h.localePath)
 	h.intl = readIntl()
 	h.assets = assetsDir()
+	native.SetAssets(h.assets)
+	native.SetColorResolver(func(c uint64) ([4]float32, bool) {
+		r, ok := h.resolve(ops.Color(c))
+		return [4]float32{float32(r.r) / 255, float32(r.g) / 255, float32(r.b) / 255, float32(r.a) / 255}, ok
+	})
 	h.measureDC = CreateCompatibleDC(0)
 	// HWND_MESSAGE (-3); titled, for a running-once app, so that a second
 	// launch finds it (deeplink_windows.go).

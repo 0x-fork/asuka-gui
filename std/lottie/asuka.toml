@@ -1,0 +1,3 @@
+name = "asuka/lottie"
+version = "0.1.0"
+description = "Lottie animations, played by each platform's Lottie player"

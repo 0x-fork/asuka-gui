@@ -33,7 +33,8 @@ instead, and writes it. See [Concepts](concepts.md).
 | `ProgressRing` | drawn as SwiftUI's circular gauge; `UIActivityIndicatorView` without a value | `CircularProgressIndicator` | `NSProgressIndicator`, spinning, at 16 and 32 points; drawn in its style at other sizes or in a `Color` | Fluent's `ProgressRing`, drawn | drawn in GNOME's style; `AdwSpinner` without a value | an SVG ring |
 | `Activity` | `UIActivityIndicatorView` | `CircularProgressIndicator` | `NSProgressIndicator`, spinning | Fluent's progress ring, drawn | `AdwSpinner` (`GtkSpinner` before libadwaita 1.6) | a spinner, drawn |
 | `Image` | `UIImageView` | `ImageView` | `NSImageView` | drawn with GDI+ | drawn from GDK textures | `<img>` |
-| `lottie.View` | lottie-ios | lottie-android | lottie-ios | drawn with `ui.Canvas` | drawn with `ui.Canvas` | lottie-web |
+| `lottie.View` | lottie-ios | lottie-android | lottie-ios | nothing yet (an empty box) | nothing yet (an empty box) | lottie-web |
+
 | `Symbol` | SF Symbols | Material Symbols | SF Symbols | Segoe Fluent Icons | the icon theme's, else Material Symbols | Material Symbols |
 | `Video` | `AVPlayerViewController` | Media3's player | `AVPlayerView` | a `<video>` in WebView2 | `GtkVideo` (GStreamer) | `<video>` |
 | `WebView` | `WKWebView` | `WebView` | `WKWebView` | WebView2 | `WebKitWebView` (WebKitGTK 6.0) | `<iframe>` |
@@ -139,20 +140,27 @@ something without a selection, `ui.Copy(text)` puts it on the clipboard.
 
 ### Markdown
 
-Package `asuka/sdk/markdown` shows Markdown as native views, built from
-`RichText`. It parses as text is appended: only the block being written
-parses again, and only its views update.
+`asuka/markdown` shows Markdown (CommonMark, with GitHub's tables, task
+lists, strikethrough and autolinks) as the platform's own styled text:
+one selection, links that open, the user's text size. Raw HTML in the
+text shows as text.
 
-```go
-markdown.View(markdown.Props{Text: reply, Streaming: writing})
+```asuka
+import asuka/markdown
+
+component Reply(text: string, writing: bool) {
+  markdown.View(text) { streaming: writing; padding: 16 }
+}
 ```
 
-`Streaming` says the text is still being written, so a half-written
-`**bold` shows as bold rather than as asterisks. The view is one
-selection by default (`NotSelectable` turns that off); links open with
-`ui.OpenURL` unless you give `OnLink`; `Theme` changes fonts, colors and
-spacing; `Code` shows code blocks your own way. It reads CommonMark and
-GitHub's extensions. See [`examples/markdown`](../examples/markdown).
+`streaming` says the text is still being written, as a language model's
+reply streams in: its end shows what it will most likely become (a code
+fence closed, `**bold` as bold, a link being written as a link) rather
+than half-written syntax. `markdown.heal(text)` is that, on its own.
+Each platform's Markdown reads it: Apple's (`AttributedString`, laid out
+in a text view) on iOS and macOS, Markwon on Android, marked on the web,
+and Asuka's parser on Windows (a rich edit) and Linux (a label's Pango
+markup). See [`examples/markdown`](../examples/markdown).
 
 ## Buttons
 
@@ -574,29 +582,54 @@ Icons' glyphs on Windows. A name outside the set shows nothing there
 
 ### SVG icons
 
-For icons of your own, package `asuka/sdk/svg` draws SVG with the platform's
-vector drawing; nothing is rasterized. `svg.MustParse` reads the markup
-(`svg.Parse` returns an error instead), and `svg.View` draws it.
+For icons of your own, `asuka/svg` draws SVG with the platform's vector
+drawing; nothing is rasterized. An `svg.Icon`'s markup is a string
+literal, which the compiler parses: a markup it can't read is a compile
+error, and nothing is parsed on the device.
 
-```go
-var download = svg.MustParse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`)
+```asuka
+import asuka/svg
 
-func downloadIcon() ui.Node {
-	return svg.View(svg.Props{Icon: download, Color: ui.Val(colors.Accent), Label: ui.Val("Download"),
-		Style: ui.Style{Width: ui.Pt(24), Height: ui.Pt(24)}})
+let download = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>""")
+
+component DownloadRow {
+  Row {
+    gap: 8
+    svg.View(download) { color: .accent; width: 24; height: 24 }
+    Text("Download")
+  }
 }
 ```
 
-`Color` paints what the SVG paints with `currentColor`, and fills it
-doesn't give; it's `colors.Label`, the text color, by default. Without a
-width or height in its `Style`, the view is the SVG's own size; with
-one, the other keeps the aspect ratio. Keep an icon in a file with
-`//go:embed` and parse it once, in a package variable.
+`color` paints what the SVG paints with `currentColor`, and fills it
+doesn't give; it's `.label`, the text color, by default. Without a width
+or height in its style, the view is the SVG's own size; with both, the
+icon is fitted in, its aspect kept. It reads what icon sets use (Lucide,
+Material, Heroicons, Feather): paths, basic shapes, groups, `use`,
+fills, strokes and transforms. It skips text, gradients (painted with
+the icon's color), clipping, masks, filters and `fill-rule="evenodd"`.
 
-It reads what icon sets use (Lucide, Material, Heroicons, Feather):
-paths, basic shapes, groups, `use`, fills, strokes and transforms. It
-skips text, gradients (painted with the icon's color), clipping, masks,
-filters and `fill-rule="evenodd"`.
+`svg.Shape` draws paths the app makes: each `svg.Layer` a `svg.Path`,
+filled (`fill`, fading to `fade` down the box) and stroked (`stroke`,
+`width`, `cap`, `join`). A `svg.Point` is in points from the box's top
+left plus fractions of its size, so a shape follows its box without the
+app working it out again:
+
+```asuka
+import asuka/svg
+
+let tick = svg.Path().move(svg.Point(x: 4, fy: 0.5)).line(svg.Point(fx: 0.4, fy: 1, y: -4)).line(svg.Point(fx: 1, x: -4, y: 4))
+
+component Done {
+  svg.Shape([svg.Layer(path: tick, stroke: .green, width: 3, cap: .round, join: .round)]) {
+    width: 32
+    height: 32
+  }
+}
+```
+
+It's Core Graphics on iOS and macOS, Android's `Canvas`, an `<svg>` in a
+browser, GDI+ on Windows and GSK's paths on Linux.
 
 ## Video
 
@@ -634,82 +667,61 @@ ratio. `Seek` takes seconds from the start.
 
 ## Lottie animations
 
-`asuka/sdk/lottie` plays Lottie animations (After Effects animations
-exported as Lottie JSON, `.json`, or as dotLottie, `.lottie`), as
-lottie-react-native does in Expo. Each platform draws them with its own
-Lottie player: lottie-ios on iOS and the Mac, lottie-android on Android,
-lottie-web on the web. Windows and Linux have no player to call, so the
-package draws the animation itself, with `ui.Canvas`.
+`asuka/lottie` plays Lottie animations (After Effects animations
+exported as Lottie JSON, `.json`, or as dotLottie, `.lottie`) with each
+platform's own player: lottie-ios on iOS and the Mac, lottie-android on
+Android, lottie-web on the web. Windows and Linux have no player to call
+yet: there the view is an empty box.
 
-```go
-progress := signal.New(0.0)
-return ui.Column(ui.Style{Gap: 12},
-	lottie.View(lottie.Props{
-		Source:   ui.Val("success.json"),
-		Loop:     true,
-		Progress: progress,
-		Overrides: ui.Val([]lottie.Override{
-			lottie.Colors("Ring", colors.Hex(0x0a84ff), colors.Hex(0x64d2ff)),
-		}),
-		Style: ui.Style{Width: ui.Pt(200)},
-	}),
-	ui.Slider(ui.SliderProps{Value: progress}),
-)
+```asuka
+import asuka/lottie
+
+component Success {
+  state playing = true
+  state progress = 0.0
+  state done = false
+
+  Column {
+    lottie.View("success.json") {
+      bind playing: playing
+      bind progress: progress
+      overrides: [lottie.colors("Ring", light: #0a84ff, dark: #64d2ff)]
+      width: 200
+      on complete { done = true }
+    }
+    Slider { bind value: progress }
+  }
+}
 ```
 
-- `Source` is the file: an http(s) URL, a path in the app's `assets`, or
-  an absolute path; `Data` is the file's bytes instead (`go:embed`).
-  `Animation` picks one of a dotLottie's animations by its ID.
-- `Playing` plays it while true and pauses it where it is while false;
-  without it, it plays as soon as it loads. `Loop` plays it again and
-  again; otherwise it stops at its end and `OnComplete` is called.
-  `Speed` scales its frame rate (negative: backwards).
-- `Progress` is where it is, from 0 to 1. The view writes it as it plays,
-  frame by frame, and a value the app writes moves it there: a slider
-  scrubs it, a gesture drives it. Written inside `ui.Animate`, it
-  animates there with the animation's duration and curve, and then
-  plays on if it's playing.
-- `Segment` (frames, `From` to `To`) or `Marker` (one of its markers, by
-  name) is the part it plays. `OnLoad` gets its `Info`: its size, frames,
-  frame rate and markers.
-- `Mode` is how it fills its box, as an image's. Without a size in its
-  style, it's the animation's size, no wider than its space; with one
-  side, the other keeps the animation's aspect ratio.
-- `Overrides` change its colors and values by keypath, for a theme or
-  dark mode: `lottie.Color` (the fills and strokes under a keypath),
-  `lottie.Colors` (one color in light mode, another in dark mode),
-  `lottie.Opacity`, `lottie.StrokeWidth`. A keypath is the names of
-  layers, groups and shapes from the root, separated by dots, with `*`
-  for any one name and `**` for any number of them, as lottie-ios' and
-  lottie-android's: `"Ring"`, `"Circle.Disc.Fill 1"`, `"**.Stroke 1"`.
-- `ReduceMotion` is what it does while the user asks for less motion:
-  by default (`ReduceToEnd`) it doesn't play and shows its last frame;
-  `ReduceToStart` shows its first; `ReduceIgnore` plays it anyway, for
-  an animation whose motion is what it says.
-- `Label` describes it to screen readers; without one it's decorative.
+- Its source is the file: an http(s) URL, a path in the app's assets, or
+  an absolute path; `data` is the file's bytes instead. `animation`
+  picks one of a dotLottie's animations by its ID.
+- `playing` plays it while true and pauses it where it is while false;
+  bound, it turns false once it played through. `loop` plays it again
+  and again; otherwise it stops at its end and `complete` is reported.
+  `speed` scales its frame rate (negative: backwards).
+- `progress` is where it is, from 0 to 1. Bound, the view writes it as
+  it plays, and a value the app writes moves it there: a slider scrubs
+  it, a gesture drives it.
+- `segment` (frames, `from` to `to`) or `marker` (one of its markers, by
+  name) is the part it plays. `loaded` gives its `Info`: its size,
+  frames, frame rate and markers.
+- `fit` is how it fills its box: `.contain` (the default), `.cover`, `.stretch` or `.center`. Without a size in its style, it takes the animation's.
+- `overrides` change its colors and values by keypath, for a theme or
+  dark mode: `lottie.color(keypath, c)` (the fills and strokes under a
+  keypath), `lottie.colors(keypath, light:, dark:)`,
+  `lottie.opacity(keypath, v)` and `lottie.strokeWidth(keypath, w)`. A
+  keypath is the names of layers, groups and shapes from the root,
+  separated by dots, with `*` for any one name and `**` for any number
+  of them: `"Ring"`, `"Circle.Disc.Fill 1"`, `"**.Stroke 1"`.
 
 An app that imports the package is built with these players: a Swift
-package (lottie-ios' binary, lottie-spm), a Gradle library
-(`com.airbnb.android:lottie`) and lottie-web's script, loaded once a view
-shows; apps that don't import it go without. It's a
-[native package](native.md), so under `asuka dev` on a phone, an app
-with it runs as a build of its own rather than in the player.
-
-On Windows and Linux the package's renderer draws shape, solid, null
-and precomposition layers: rectangles, ellipses, stars, polygons and
-paths; fills and strokes, solid or gradient (linear and radial, with a
-highlight), dashed; trim paths, round corners and repeaters; the
-transforms of layers and groups (anchor, position, separate or along a
-curve, scale, rotation, skew, opacity), parenting, time remapping and
-stretch; keyframes with eased, held and spatial interpolation. Masks
-(add, subtract, intersect, inverted) and track mattes (alpha and luma,
-inverted) clip by their outlines. It doesn't draw image and text layers,
-expressions, effects, layer styles, blend modes, 3D, merge paths (the
-paths are drawn as they are), offset paths, pucker and bloat, twist or
-zig zag; a mask's opacity, feather and expansion; or a matte's own
-transparency (a matte clips by its layer's filled outlines, a
-precomposition matte by its bounds). lottie-web's light build, which the
-web uses, doesn't run expressions either.
+package (lottie-spm), a Gradle library (`com.airbnb.android:lottie`) and
+lottie-web's script, loaded once a view shows; apps that don't import it
+go without. It's a [native package](native.md), so under `asuka dev` on
+a phone, an app with it runs as a build of its own rather than in the
+player.
 
 ## Web pages
 
@@ -912,57 +924,73 @@ read by screen readers: give the view around it a `Label`.
 
 ### Charts
 
-`asuka/sdk/chart` draws charts on a Canvas: bars, lines, areas and points
-over a value axis, with the platform's text for their labels (measured
-by it, scaled with the user's text size).
+`asuka/chart` draws charts: bars, lines, areas and points over a value
+axis, with the platform's text for their labels (scaled with the user's
+text size). It's written in Asuka: the scale and the marks are worked
+out once, drawn by `svg.Shape`, so it's the same on every platform.
 
-```go
-chart.View(chart.Props{
-	Series: ui.Val([]chart.Series{
-		{Name: "Steps", Kind: chart.Bar, Values: steps},
-		{Name: "Goal", Kind: chart.Line, Values: goal, Color: colors.Hex(0xff9500)},
-	}),
-	Labels: ui.Val([]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}),
-	Label:  ui.Val("Steps this week"),
-	Style:  ui.Style{Height: ui.Pt(200)},
-})
+```asuka
+import asuka/chart
+
+component Week(steps: [float], goal: [float]) {
+  chart.View([
+    chart.Series(name: "Steps", kind: .bar, values: steps),
+    chart.Series(name: "Goal", kind: .line, values: goal, color: #ff9500),
+  ]) {
+    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    label: "Steps this week"
+    height: 180
+  }
+}
 ```
 
-- A series has a value per label; `NaN` leaves a gap. Bar series stand
-  side by side; areas, lines and points go over them. `Smooth` draws a
-  monotone curve, which never overshoots its values.
+- A series has a value per label. Bar series stand side by side; areas,
+  lines and points go over them. `smooth` draws a monotone curve, which
+  never overshoots its values; `width` is a line's width or a dot's
+  size.
 - The value axis fits the values, rounded out to whole ticks (and down
-  to zero for bars and areas), unless `Min` and `Max` fix it; `Format`
-  writes its labels (`2.5k` by default).
-- Colors default to the app's accent, then the system's.
-- Screen readers read the chart as one image: its `Label`, then each
-  series' values, whole.
+  to zero for bars and areas), unless `low` and `high` set it; its
+  labels are as short as the ticks allow (`2.5k`). `grid: false` leaves
+  out the lines behind the marks.
+- Colors default to the app's accent, then the system's
+  (`chart.palette`).
+- Screen readers read the chart as one image: its `label`, then each
+  series' values. Its height is 200 when its style gives none.
 
 ### Shaders
 
-`ui.Shader` is a box a GPU program draws, under its children: flowing
-gradients, noise, glows, ripples. The program is a Kage shader
-(Ebitengine's language: Go's syntax), which package `shader` compiles
-once, as a package's variable:
+`asuka/shader` draws a box with a GPU program: flowing gradients, noise,
+glows, ripples. The program is a Kage shader (Ebitengine's language,
+Go's syntax), compiled when the app compiles, for every platform: a
+shader that doesn't compile is a compile error, and only the platform's
+own program is compiled on the device.
 
-```go
-var glow = shader.MustCompile(`package main
+```asuka
+import asuka/shader
 
-var Time float
-var Tint vec4
+let glow = shader.Program(r"""
+  package main
 
-func Fragment(dst vec4, pos vec2) vec4 {
-	d := distance(pos/rectSize(), vec2(0.5))
-	g := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
-	return vec4(Tint.rgb*g, 1) * Tint.a
-}`)
+  var Time float
+  var Tint vec4
 
-ui.Shader(ui.ShaderProps{
-	Program:  glow,
-	Uniforms: ui.Val([]ui.Uniform{ui.ColorUniform("Tint", colors.Hex(0x38bdf8))}),
-	Animated: true,
-	Style:    ui.Style{Height: ui.Pt(200), CornerRadius: 16, Clip: true, Background: colors.Hex(0x0b1030)},
-})
+  func Fragment(dst vec4, pos vec2) vec4 {
+  	d := distance(pos/rectSize(), vec2(0.5))
+  	g := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
+  	return vec4(Tint.rgb*g, 1) * Tint.a
+  }
+  """)
+
+component Glow(level: float) {
+  shader.Shader(glow) {
+    uniforms: [shader.Uniform(name: "Tint", value: [0.2, 0.5 + level * 0.5, 0.9, 1])]
+    animated: true
+    height: 200
+    radius: 16
+    clip: true
+    background: #0b1030
+  }
+}
 ```
 
 - `Fragment` returns the color of a pixel, premultiplied, red, green,
@@ -973,29 +1001,27 @@ ui.Shader(ui.ShaderProps{
   `ivec4`, `mat2` to `mat4` and arrays of them, GLSL's built-in functions
   (`sin`, `mix`, `smoothstep`, `dot`...), functions of its own, `if` and
   `for`. Exported variables are uniforms.
-- `Uniforms` sets them by name: a scalar's one number, a vector's
-  components, a matrix's columns in turn. A change draws the box again;
-  a uniform left out is 0.
-- `var Time float` is the seconds since the shader showed. `Animated`
-  runs it: the box draws at every frame the display draws, with nothing
-  running in Go.
-- `shader.Compile` reports a shader's errors with their lines, and what
-  of it Android can't run, on every platform alike: AGSL is GLSL ES
+- `uniforms` sets them by name: a scalar's one number, a vector's
+  components, a matrix's columns in turn (an int's or a bool's as a
+  number). A change draws the box again; a uniform left out is 0.
+- `var Time float` is the seconds since the shader showed. `animated`
+  runs it: the box draws at every frame the display draws.
+- The compiler reports a shader's errors with their lines, and what of
+  it Android can't run, for every platform alike: AGSL is GLSL ES
   1.00's language, so no unsigned integers, bitwise operations or
   integer remainders (`mod` of floats does), derivatives, or loops
   between values that aren't constants.
 
-It's Metal on iOS and macOS (a `CAMetalLayer`), AGSL on Android (a
-`RuntimeShader`), WebGL 2 in a browser (the program translated to
-GLSL ES 3.00), Direct3D 11 on Windows (translated to HLSL; WARP, the
-system's software rasterizer, where there's no GPU) and OpenGL on Linux
-(translated to GLSL, drawn in a context of GTK's into a texture GTK
-draws). On Windows a frame renders off the main thread and shows when
-it's ready. Linux without GL (no driver, `GDK_DISABLE=gl`) runs the
-program on the CPU instead, across the cores and off the main thread,
-and a large or animated box renders at a fraction of its resolution
-there, scaled up. Give the box a `Background` that stands in until the
-first frame.
+It's Metal on iOS and macOS (a `CAMetalLayer`), AGSL on Android 13 and
+later (a `RuntimeShader`; an empty box before), WebGL 2 in a browser
+(GLSL ES 3.00), Direct3D 11 on Windows (HLSL; WARP, the system's
+software rasterizer, where there's no GPU) and OpenGL on Linux (drawn
+in a context of GTK's into a texture GTK draws). On Windows a frame
+renders off the main thread and shows when it's ready. Linux without GL
+(no driver, `GDK_DISABLE=gl`) runs the program on the CPU instead,
+across the cores and off the main thread, a large or animated box at a
+fraction of its resolution, scaled up. Give the box a `background` that
+stands in until the first frame.
 
 ## Containers
 

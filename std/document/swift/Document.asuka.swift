@@ -36,14 +36,14 @@ public protocol Files: AnyObject {
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 1): // Files.Read
             let o = object as! any Files
             let path = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.read(path: path)
@@ -58,7 +58,7 @@ public protocol Files: AnyObject {
             let path = r.string()
             let data = r.data()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.write(path: path, data: data)
@@ -71,7 +71,7 @@ public protocol Files: AnyObject {
             let o = object as! any Files
             let path = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.modified(path: path)

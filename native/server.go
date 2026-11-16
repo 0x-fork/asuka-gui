@@ -184,9 +184,17 @@ func (s *Session) Cancel(call uint64) {
 	}
 }
 
+// Releaser is an object that hears the core let it go (Released, on the
+// main thread): to free what it holds, as a Swift object's deinit does.
+type Releaser interface{ Released() }
+
 // Release answers native_release: the core let the object go.
 func (s *Session) Release(handle uint64) {
 	s.mu.Lock()
+	o, ok := s.objects[handle]
 	delete(s.objects, handle)
 	s.mu.Unlock()
+	if r, is := o.v.(Releaser); ok && is {
+		Post(r.Released)
+	}
 }

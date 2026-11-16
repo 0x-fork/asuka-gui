@@ -1,0 +1,89 @@
+// Package asuka/appearance is how the user set the system to look,
+// beyond what environment() carries (dark mode, Reduce Motion, the text
+// size, a screen reader): the accent color the system's own controls
+// take, and the accessibility settings Increase Contrast and Reduce
+// Transparency.
+//
+//   let look = appearance.current()   // tracked: follows the settings while it's read
+//   Text("Hi") { color: look.accent ?? .accent }
+//
+// The platform's controls already follow them. An app reads them for
+// what it draws itself: a chart in the user's accent whatever the app's,
+// borders on its own cards with Increase Contrast, an opaque backdrop
+// instead of a blur with Reduce Transparency.
+
+/// The system's appearance settings.
+pub struct Appearance {
+  /// The accent the user picked: macOS's accent color, Windows's accent
+  /// color, GNOME's and KDE's through the settings portal, Android 12's
+  /// wallpaper color, the browser's AccentColor where it has one. none
+  /// where the system has none: iOS (an app's tint is its own), Linux
+  /// desktops whose portal has none, most browsers.
+  accent: Color? = none
+  /// The user asked for more contrast: Increase Contrast on iOS and the
+  /// Mac, Windows's contrast themes, GNOME's high contrast, Android's
+  /// contrast level above standard (Android 14) or high contrast text,
+  /// the browser's prefers-contrast: more.
+  increaseContrast: bool = false
+  /// The user asked for opaque surfaces, not blurs over what's behind:
+  /// Reduce Transparency on iOS and the Mac, Windows's transparency
+  /// effects off, the browser's prefers-reduced-transparency. Linux
+  /// desktops and Android have no such setting: false.
+  reduceTransparency: bool = false
+}
+
+/// The settings as the platform says them: the accent's channels, 0 to
+/// 255, when it has one.
+struct Settings {
+  hasAccent: bool = false
+  red: int = 0
+  green: int = 0
+  blue: int = 0
+  increaseContrast: bool = false
+  reduceTransparency: bool = false
+}
+
+/// The platform's settings.
+native interface System {
+  /// The settings now.
+  fn current() -> Settings
+  /// Calls changed with the settings now, then each time the user
+  /// changes one, until the task is cancelled.
+  async fn watch(changed: fn(Settings))
+}
+
+/// An opaque color of its channels, 0 to 255 (the runtime's).
+native fn rgb(r: int, g: int, b: int) -> Color
+
+// Made once; none where the platform has no code for it.
+let system = try? System()
+
+fn appearanceOf(s: Settings) -> Appearance {
+  let accent: Color? = if s.hasAccent { rgb(s.red, s.green, s.blue) } else { none }
+  return Appearance(accent: accent, increaseContrast: s.increaseContrast, reduceTransparency: s.reduceTransparency)
+}
+
+/// The settings now; with no code for the platform, the defaults.
+pub fn now() -> Appearance {
+  if let s = system {
+    if let settings = try? s.current() {
+      return appearanceOf(settings)
+    }
+  }
+  return Appearance()
+}
+
+/// The settings now, then each change.
+pub fn changes() -> Stream<Appearance> = Stream(send => {
+  if let s = system {
+    try await s.watch(changed: settings => send(appearanceOf(settings)))
+  } else {
+    send(now())
+  }
+})
+
+let followed = live(now(), changes)
+
+/// The settings, tracked: read in a binding, it follows the user's
+/// changes while it's read (and only then does anything watch them).
+pub fn current() -> Appearance = followed()

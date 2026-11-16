@@ -12,6 +12,10 @@ test "bytes" {
   print(empty.concat(b).count())
   // What isn't UTF-8 is read as U+FFFD.
   print(b.slice(from: 0, to: 2).string().count())
+  // From ints, and as hexadecimal.
+  let id = bytes([0x04, 0xa1, 0x1ff])
+  print(id.hex())
+  print(id.hex(" "))
 }
 
 // Output:
@@ -23,4 +27,6 @@ test "bytes" {
 // true
 // 6
 // 2
+// 04a1ff
+// 04 a1 ff
 // ok bytes

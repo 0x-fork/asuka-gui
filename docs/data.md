@@ -1,9 +1,10 @@
 # Data
 
 An app keeps its data in a few places: small values in
-`asuka/storage`, records in SQLite with `asuka/sqlite`, values the
-user's devices share in iCloud with `asuka/icloud`, and a document's
-file with `asuka/document`. This page covers each, the network through
+`asuka/storage`, records in SQLite with `asuka/sqlite`, secrets in the
+platform's keychain with `asuka/secure`, values the user's devices
+share in iCloud with `asuka/icloud`, and a document's file with
+`asuka/document`. This page covers each, the network through
 `asuka/http`, watching files with `asuka/watch`, and what runs off the
 main thread.
 
@@ -255,6 +256,72 @@ test` and `asuka run` point the core at the plugin's build or its
 published file (`ASUKA_LIB_ASQLITE`), downloaded once into the user's
 cache. On the web it's the same library built to WebAssembly, in a
 worker of the page's ([SQLite on the web](web.md#sqlite)).
+
+## Secrets: asuka/secure
+
+`asuka/secure` keeps small secrets, tokens and passwords, encrypted by the
+platform. It's for secrets, not data: keep everything else in the store
+or a database.
+
+- **iOS**: the Keychain, as generic passwords under the app's bundle ID,
+  readable after the device's first unlock, and on this device only.
+- **Android**: each value is encrypted (AES-GCM) with a key in the Android
+  Keystore, which never leaves it, and kept in the app's private
+  preferences.
+- **macOS**: the login keychain, as generic passwords under the app's
+  bundle ID (its name, without one), which Keychain Access shows. An app
+  signed ad hoc can use it, as `asuka dev`'s and a build without a
+  Developer ID are.
+- **Windows**: the Credential Manager, as the user's generic credentials
+  named `<name>/<key>`, kept on this computer (they don't roam), which
+  Control Panel's Credential Manager shows. A value is at most 2560 bytes.
+- **Linux**: the user's keyring, through libsecret and the Secret
+  Service (GNOME Keyring, KWallet, KeePassXC): an item of the app's own
+  schema (its ID) for each key, labeled `<name>: <key>`, in the default
+  collection, which the keyring's app (GNOME's Passwords and Keys) shows. Without
+  libsecret or a keyring running, the calls fail, saying so.
+- **The web**: a browser has no keychain. Each value is encrypted
+  (AES-GCM, 256 bits) under a key WebCrypto made non-extractable, and
+  kept with it in the app's IndexedDB database, so no script can read the
+  key's bytes, and the values aren't on the disk in the clear. Anything
+  running in the app's origin can still have the key decrypt them: it's
+  a web app's best, not a keychain. It needs https or localhost.
+
+`secure.read(key)` is a key's value (`none` if there's none),
+`secure.write(key, value)` keeps one, and `secure.remove(key)` forgets
+it. Each waits for the platform without holding the main thread, and
+throws what it says (a locked keyring, no keyring at all); where the
+platform has no code for it (`asuka test`), an `unsupported` error.
+
+```asuka
+import asuka/secure
+
+component SignedIn {
+  state status = ""
+
+  task {
+    do {
+      status = if (try await secure.read("token")) != none { "Signed in" } else { "Signed out" }
+    } catch e {
+      status = e.message
+    }
+  }
+
+  Column {
+    Text(status)
+    Button("Sign out") {
+      on press {
+        try? await secure.remove("token")
+        status = "Signed out"
+      }
+    }
+  }
+}
+
+async fn keepToken(token: string) throws {
+  try await secure.write("token", token)
+}
+```
 
 ## Values the user's devices share: asuka/icloud
 

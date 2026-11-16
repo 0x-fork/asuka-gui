@@ -1,0 +1,328 @@
+import asuka/svg
+
+/// An account: every window, the forecasts, which windows its card shows,
+/// the account, and what can be done with it.
+screen Detail(id: string) {
+  state renaming = false
+  state signing = false
+  state confirming = false
+
+  let acc = find(id) ?? Account(id: id)
+  let first = acc.windows.first ?? Window(key: "")
+  /// The forecasts worth showing: the weeks', once something's used.
+  let long = acc.windows.filter(w => w.period() >= 24h && w.used > 0 && w.resets != none)
+
+  title: acc.title()
+  toolbar {
+    Button("Refresh") {
+      icon: "arrow.clockwise"
+      on press { await refresh(id) }
+    }
+  }
+
+  fn setShown(key: string, on: bool) {
+    var a = acc
+    a.hidden.removeWhere(k => k == key)
+    if !on { a.hidden.push(key) }
+    save(a)
+  }
+
+  Alert("Remove this account?") {
+    bind open: confirming
+    message: "Its token is deleted from this device."
+    Button("Cancel") { role: .cancel }
+    Button("Remove") {
+      role: .destructive
+      on press {
+        pop()
+        await remove(id)
+      }
+    }
+  }
+
+  Scroll {
+    grow: 1
+    background: page
+    refreshing: busy.contains(id)
+    on refresh { await refresh(id) }
+    SafeArea {
+      padding: [8, 16]
+      gap: 12
+      Row {
+        gap: 20
+        align: .center
+        padding: [12, 8]
+        Badge("claude", size: 80)
+        Column {
+          grow: 1
+          shrink: 1
+          Text(first.title()) {
+            font: .subheadline
+            color: .secondaryLabel
+          }
+          Text(quota(first.used)) {
+            font: .largeTitle.bold().sized(44)
+            lines: 1
+          }
+        }
+      }
+
+      Heading("Usage")
+      Card {
+        Column {
+          gap: 24
+          for w in acc.windows key w.key { WindowRow(w) }
+        }
+      }
+
+      if !long.isEmpty {
+        Column {
+          gap: 12
+          Heading("Forecast")
+          for w in long key w.key { ForecastCard(w) }
+          Note("Projected from the average rate since each window started: busy and quiet hours both change it.")
+        }
+      }
+
+      Heading("On the home screen")
+      Group {
+        for w in acc.windows key w.key {
+          Cell {
+            Text(w.title()) {
+              grow: 1
+              shrink: 1
+            }
+            Toggle {
+              on: acc.shown(w.key)
+              title: w.title()
+              on change(on) { setShown(w.key, on) }
+            }
+          }
+        }
+      }
+      Note("The home screen's card shows up to three of these; this page shows them all.")
+
+      Heading("Account")
+      Group {
+        Field("Email", acc.email)
+        Field("Organization", acc.org)
+        Field("Extra usage", if acc.extra { "On" } else { "Off" })
+        Field("Last updated", if let t = acc.updated { ago(t, clock) } else { "Never" })
+      }
+
+      Heading("Actions")
+      Column {
+        gap: 20
+        Group {
+          ActionRow("arrow.clockwise", "Refresh Now", "Get the latest usage") {
+            on press { await refresh(id) }
+          }
+          ActionRow("pencil", "Rename", "Give this account a name") {
+            on press { renaming = true }
+          }
+          if !acc.demo {
+            ActionRow("key", "Sign In Again", "Sign in to this account with Claude again") {
+              on press { signing = true }
+            }
+          }
+          ActionRow("", "Open Claude", "Manage your plan and billing") {
+            external: true
+            on press { openURL(services["claude"]!.manage) }
+          }
+          if !ios {
+            ActionRow("trash", "Remove", "Forget this account and its token") {
+              on press { confirming = true }
+            }
+          }
+        }
+        if ios {
+          Group {
+            View {
+              label: "Remove Account"
+              role: .button
+              padding: [11, 16]
+              minHeight: 48
+              justify: .center
+              align: .center
+              on press { confirming = true }
+              Text("Remove Account") { color: .red }
+            }
+          }
+        }
+      }
+    }
+  }
+  Sheet {
+    bind open: renaming
+    detents: [.medium]
+    grabber: true
+    RenameSheet(id) { on done { renaming = false } }
+  }
+  Sheet {
+    bind open: signing
+    detents: [.large]
+    grabber: true
+    AddSheet(id) { on done { signing = false } }
+  }
+}
+
+/// A window's forecast: its pace, what the reset will leave, and the
+/// chart.
+component ForecastCard(w: Window) {
+  let f = w.forecast(clock)
+  let color = paceColor(f.pace)
+
+  Card {
+    Column {
+      gap: 4
+      Row {
+        gap: 12
+        align: .center
+        Text(w.title()) {
+          grow: 1
+          shrink: 1
+          color: .secondaryLabel
+        }
+        // The pace, a chip in its color.
+        Row {
+          gap: 6
+          align: .center
+          padding: [6, 14]
+          background: color.opacity(0.16)
+          radius: 999
+          svg.View(paceIcon(f.pace)) {
+            color: color
+            width: 18
+            height: 18
+          }
+          Text(f.pace.label()) {
+            font: .subheadline.semibold()
+            color: color
+          }
+        }
+      }
+      Text(upper(outlook(f, clock))) {
+        font: .title.bold()
+        color: color
+        margin: Edges(top: 8)
+      }
+      if let r = w.resets {
+        Text("Resets {when(r, clock)}") { color: .secondaryLabel }
+      }
+      View {
+        margin: Edges(top: 20)
+        UsageChart(w)
+      }
+    }
+  }
+}
+
+/// A name and its value, shown when it has one.
+component Field(name: string, value: string) {
+  if !value.isEmpty {
+    Cell {
+      Text(name) {
+        grow: 1
+        shrink: 0
+      }
+      Text(value) {
+        shrink: 1
+        color: .secondaryLabel
+        textAlign: .end
+        lines: 1
+      }
+    }
+  }
+}
+
+/// An action: on iOS its title in the tint, as a button in a grouped list
+/// is; on Android an icon in a disc, its title and what it does. An
+/// external one opens a page in the browser, and says so.
+component ActionRow(icon: string, title: string, detail: string) {
+  prop external = false
+  event press
+
+  Cell {
+    label: title
+    hint: detail
+    role: .button
+    on press { emit press }
+    if ios {
+      Text(title) {
+        grow: 1
+        shrink: 1
+        color: .accent
+      }
+    } else {
+      View {
+        width: 48
+        height: 48
+        radius: 24
+        background: Color.accent.opacity(0.14)
+        align: .center
+        justify: .center
+        if external {
+          svg.View(iconExternal) {
+            color: .accent
+            width: 20
+            height: 20
+          }
+        } else {
+          Symbol(icon) { color: .accent }
+        }
+      }
+      Column {
+        grow: 1
+        shrink: 1
+        gap: 2
+        Text(title) { font: .body.medium() }
+        Text(detail) {
+          font: .subheadline
+          color: .secondaryLabel
+        }
+      }
+    }
+    if external {
+      svg.View(iconExternal) {
+        color: .tertiaryLabel
+        width: if ios { 18 } else { 22 }
+        height: if ios { 18 } else { 22 }
+      }
+    }
+  }
+}
+
+/// Names an account.
+component RenameSheet(id: string) {
+  event done
+  state name = find(id)?.name ?? ""
+
+  let service = services[find(id)?.service ?? "claude"]?.name ?? "Claude"
+
+  fn finish() {
+    if let a = find(id) {
+      var renamed = a
+      renamed.name = name.trim()
+      save(renamed)
+    }
+    emit done
+  }
+
+  SafeArea {
+    padding: 24
+    gap: 16
+    Text("Rename") { font: .title2.bold() }
+    TextField {
+      bind text: name
+      placeholder: service
+      autocapitalize: .words
+      returnKey: .done
+      on submit { finish() }
+    }
+    Note("Empty, it's called {service}.")
+    Button("Save") {
+      variant: .filled
+      on press { finish() }
+    }
+  }
+}

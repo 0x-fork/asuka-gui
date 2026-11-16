@@ -44,9 +44,17 @@ func (h *Host) setNativeProp(n *node, p ops.PropID, v *ops.Value) {
 		if f == nil {
 			f = native.ViewFactory(v.Str)
 		}
-		if f == nil && swift.loaded && strings.Contains(v.Str, "#") {
-			kind := v.Str
-			f = func(ctx native.Context) native.View { return newSwiftView(kind, ctx) }
+		if swift.loaded && strings.Contains(v.Str, "#") {
+			// A package's in Go answers nil where its Swift has it.
+			kind, gof := v.Str, f
+			f = func(ctx native.Context) native.View {
+				if gof != nil {
+					if nv := gof(ctx); nv != nil {
+						return nv
+					}
+				}
+				return newSwiftView(kind, ctx)
+			}
 		}
 		if f == nil {
 			fmt.Fprintf(os.Stderr, "asuka: no native view %q: build the app with its packages' native code\n", v.Str)

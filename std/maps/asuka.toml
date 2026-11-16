@@ -1,0 +1,3 @@
+name = "asuka/maps"
+version = "0.1.0"
+description = "A map: Apple Maps, Google Maps, OpenStreetMap, with markers and the region the app moves it to"

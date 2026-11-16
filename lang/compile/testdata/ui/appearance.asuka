@@ -1,0 +1,24 @@
+// asuka/appearance with no platform code (the fake host): the defaults,
+// no accent, followed while they're read.
+
+import asuka/appearance
+
+component Look {
+  let look = appearance.current()
+
+  Column {
+    Text(if look.accent == none { "no accent" } else { "an accent" })
+    Text(if look.increaseContrast { "more contrast" } else { "standard contrast" })
+    Text(if look.reduceTransparency { "opaque" } else { "translucent" })
+  }
+}
+
+app { Look() }
+
+test "the system's defaults" {
+  let app = mount(Look())
+  await app.idle()
+  app.expect("no accent")
+  app.expect("standard contrast")
+  app.expect("translucent")
+}

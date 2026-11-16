@@ -187,6 +187,11 @@ func nativeDirs(moduleDir string) ([]string, error) {
 			exists(filepath.Join(p, "go.mod"))) {
 			return filepath.SkipDir
 		}
+		// The prelude declares the built-in elements as native components:
+		// the runtime's, not a native package's.
+		if rel, _ := filepath.Rel(moduleDir, p); filepath.ToSlash(rel) == "lang/prelude" {
+			return filepath.SkipDir
+		}
 		if hasDirectives(p) {
 			dirs = append(dirs, p)
 		}

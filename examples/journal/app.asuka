@@ -1,0 +1,290 @@
+// Journal keeps a journal in iCloud (asuka/icloud): each day's entry is
+// a text file in the app's Documents, which the user's other devices,
+// the Files app and Finder show (in iCloud Drive's Journal folder); the
+// text size is in iCloud's key-value store, the same on each device. An
+// entry another device wrote is listed before it's downloaded, and
+// downloaded as it opens; one two devices changed at once shows the
+// conflict, and keeps the version the user picks.
+//
+// iCloud keeps an app's files under its own ID, so asuka dev builds the
+// app rather than run it in the player. On the simulator, sign in to an
+// Apple Account, with iCloud Drive on, in its Settings:
+//
+//   asuka dev --platform ios examples/journal
+//
+// On a Mac, iCloud needs the app signed with a provisioning profile that
+// has iCloud (asuka build --profile; docs/icloud.md).
+
+import asuka/fs
+import asuka/icloud
+import asuka/time
+
+/// The day's entry's name.
+fn today() -> string = time.now().format("yyyy-MM-dd")
+
+/// Where an entry is, if not simply on the device.
+fn statusOf(f: icloud.File) -> string {
+  if f.conflicts { return "Conflict" }
+  if f.downloading { return "Downloading {(f.downloadProgress * 100).int()}%" }
+  if f.status == .notDownloaded { return "In iCloud" }
+  if f.uploading { return "Uploading" }
+  return ""
+}
+
+component Journal {
+  state dir = "" // the app's Documents in iCloud
+  state open = "" // the entry open, its path
+  state text = ""
+  state status = ""
+
+  let account = icloud.account()
+  let files = icloud.files(.documents)
+  /// The text size, in iCloud's key-value store.
+  let size = icloud.Value("textSize", 17.0)
+  /// The entries, the newest first.
+  let entries = files.filter(f => !f.dir && f.name.hasSuffix(".txt")).sorted((a, b) => a.name > b.name)
+  /// The open entry, as iCloud lists it.
+  let current = entries.first(f => f.path == open)
+
+  /// Does iCloud's work, and shows its error.
+  async fn run(work: async fn() throws) {
+    do {
+      try await work()
+    } catch e {
+      status = e.message
+    }
+  }
+
+  // The Documents directory, once there's an account.
+  task(account.available) {
+    if account.available && dir.isEmpty {
+      await run(() => { dir = try await icloud.documents() })
+    }
+  }
+
+  async fn read(path: string) {
+    open = path
+    text = ""
+    status = "Opening…"
+    await run(() => {
+      let data = try await icloud.readFile(path) // downloaded first, if it isn't here
+      if open == path {
+        text = data.string()
+        status = ""
+      }
+    })
+  }
+
+  async fn newEntry() {
+    let path = fs.join(dir, "{today()}.txt")
+    if entries.contains(f => f.path == path) {
+      await read(path)
+      return
+    }
+    await run(() => {
+      try await icloud.writeFile(path, bytes())
+      open = path
+      text = ""
+    })
+  }
+
+  async fn save() {
+    let path = open
+    let body = text
+    await run(() => {
+      try await icloud.writeFile(path, body.bytes())
+      status = "Saved"
+    })
+  }
+
+  /// Settles the open entry's conflict: this device's version, or the
+  /// other device's.
+  async fn keep(theirs: bool) {
+    let path = open
+    await run(() => {
+      var version: icloud.Version? = none
+      if theirs {
+        let versions = try await icloud.conflicts(path)
+        if versions.isEmpty { return }
+        version = versions[0]
+      }
+      try await icloud.resolve(path, keeping: version)
+      await read(path)
+    })
+  }
+
+  SafeArea {
+    padding: [8, 16]
+    gap: 12
+    Text("Journal") { font: .largeTitle.bold() }
+    if !account.available {
+      Text("Sign in to iCloud, with iCloud Drive on, to keep your journal on all your devices.") { style hint }
+    }
+    Row {
+      gap: 8
+      align: .center
+      Button("New Entry") {
+        icon: "plus"
+        variant: .filled
+        disabled: dir.isEmpty
+        on press { await newEntry() }
+      }
+      Text("Text size {size.value}") {
+        grow: 1
+        textAlign: .end
+      }
+      Button("A−") {
+        on press { size.value = max(11, size.value - 1) }
+      }
+      Button("A+") {
+        on press { size.value = min(34, size.value + 1) }
+      }
+    }
+    Scroll {
+      maxHeight: 220
+      for f in entries key f.path {
+        Row {
+          gap: 12
+          padding: [6, 0]
+          align: .center
+          Button(f.name.trimSuffix(".txt")) {
+            on press { await read(f.path) }
+          }
+          Text(statusOf(f)) { style hint }
+        }
+      }
+    }
+    if !open.isEmpty {
+      Column {
+        gap: 8
+        grow: 1
+        if current?.conflicts ?? false {
+          Row {
+            gap: 8
+            align: .center
+            padding: 8
+            background: .secondaryBackground
+            Text("Changed on another device too.") { grow: 1 }
+            Button("Keep Mine") {
+              on press { await keep(false) }
+            }
+            Button("Keep Theirs") {
+              on press { await keep(true) }
+            }
+          }
+        }
+        TextField {
+          bind text: text
+          multiline: true
+          placeholder: "What happened today?"
+          grow: 1
+          font: Font.body.sized(size.value)
+        }
+        Row {
+          gap: 8
+          align: .center
+          Text(status) {
+            grow: 1
+            style hint
+          }
+          Button("Save") {
+            variant: .filled
+            on press { await save() }
+          }
+        }
+      }
+    }
+  }
+}
+
+style hint {
+  font: .footnote
+  color: .secondaryLabel
+}
+
+app { Journal() }
+
+/// The journal with a fake iCloud, on a fixed day.
+fn mountJournal(setup: fn(icloud.FakeICloud) = _ => {}) -> TestApp = mount(Journal(), setup: host => {
+  host.now = time.date(2026, 11, 15)
+  setup(host.icloud)
+})
+
+fn contents(ic: icloud.FakeICloud, rel: string) -> string {
+  do {
+    return try fs.readText(ic.path(rel))
+  } catch e {
+    return "({e.message})"
+  }
+}
+
+// Today's entry is written to iCloud Drive and saved there; another
+// device's comes listed before it's downloaded, and downloads as it
+// opens.
+test "entries" {
+  let app = mountJournal()
+  let ic = app.host.icloud
+  await app.until("the documents", () => !app.disabled("New Entry"))
+  app.tap("New Entry")
+  await app.waitFor("2026-11-15")
+  app.type("Walked to the lake.", into: "What happened today?")
+  app.tap("Save")
+  await app.waitFor("Saved")
+  expect(contents(ic, "Documents/2026-11-15.txt") == "Walked to the lake.")
+
+  ic.arrive("Documents/2026-11-14.txt", "Rain all day.".bytes())
+  await app.waitFor("2026-11-14")
+  app.expect("In iCloud")
+  app.tap("2026-11-14")
+  await app.waitFor("Rain all day.")
+  expect(ic.downloaded("Documents/2026-11-14.txt"), "opened without downloading")
+  app.expectNo("In iCloud")
+}
+
+// The text size is in iCloud's key-value store: the app's change goes
+// there, another device's comes here.
+test "the text size" {
+  let app = mountJournal()
+  let ic = app.host.icloud
+  await app.waitFor("Text size 17")
+  app.tap("A+")
+  await app.waitFor("Text size 18")
+  await app.until("the value kept", () => ic.value("textSize") == "18")
+  ic.change("textSize", 22)
+  await app.waitFor("Text size 22")
+}
+
+// A size kept before, on any device, is the one the app starts with.
+test "the text size kept" {
+  let app = mountJournal(setup: ic => ic.change("textSize", 20))
+  await app.waitFor("Text size 20")
+}
+
+// An entry two devices changed shows the conflict; keeping theirs makes
+// it the entry.
+test "a conflict" {
+  let app = mountJournal(setup: ic => {
+    try? fs.mkdirAll(ic.path("Documents"))
+    try? fs.write(ic.path("Documents/2026-11-13.txt"), "Mine".bytes())
+  })
+  let ic = app.host.icloud
+  await app.waitFor("2026-11-13")
+  app.tap("2026-11-13")
+  await app.waitFor("Mine")
+  ic.conflict("Documents/2026-11-13.txt", "Theirs".bytes(), device: "Ann's iPad")
+  await app.waitFor("Changed on another device too.")
+  app.tap("Keep Theirs")
+  await app.waitFor("Theirs")
+  app.expectNo("Changed on another device too.", "Conflict")
+  expect(contents(ic, "Documents/2026-11-13.txt") == "Theirs")
+}
+
+// Signed out, the app says how to keep the journal, and can't write one.
+test "signed out" {
+  let app = mountJournal(setup: ic => ic.signOut())
+  await app.waitFor("Sign in to iCloud, with iCloud Drive on, to keep your journal on all your devices.")
+  expect(app.disabled("New Entry"), "New Entry without an account")
+  app.host.icloud.signIn("test")
+  await app.until("the documents", () => !app.disabled("New Entry"))
+  app.expectNo("Sign in to iCloud, with iCloud Drive on, to keep your journal on all your devices.")
+}

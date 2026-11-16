@@ -9,6 +9,8 @@
 // Shadow, Gradient, Transition and Grid are structs in types.asuka's
 // field order; Track and GridLine are enums with payloads.
 #include "ui/ui_ext.h"
+#include <stddef.h>
+#include "ui/ui_int.h"
 
 // ---- Lengths ----
 
@@ -183,10 +185,13 @@ static grid_mem *grid_convert(const ak_struct *g) {
 	const ak_arr *cols = g->f[0].p, *rows = g->f[1].p, *ac = g->f[2].p, *ar = g->f[3].p;
 	uint32_t nsizes = count_sizes(cols) + count_sizes(rows) + count_sizes(ac) + count_sizes(ar);
 	uint32_t ntracks = (cols ? cols->len : 0) + (rows ? rows->len : 0);
-	size_t size = sizeof(grid_mem) + nsizes * sizeof(ak_ltrack_size) + ntracks * sizeof(ak_lgrid_track);
-	grid_mem *m = ak_alloc(size);
+	// The tracks after the sizes, aligned as they need (an odd count of
+	// sizes would leave them misaligned).
+	size_t al = _Alignof(ak_lgrid_track);
+	size_t at = (offsetof(grid_mem, sizes) + nsizes * sizeof(ak_ltrack_size) + al - 1) / al * al;
+	grid_mem *m = ak_alloc(at + ntracks * sizeof(ak_lgrid_track));
 	ak_ltrack_size *s = m->sizes;
-	ak_lgrid_track *t = (ak_lgrid_track *)(m->sizes + nsizes);
+	ak_lgrid_track *t = (ak_lgrid_track *)((char *)m + at);
 	m->cols = tracks(cols, t, &s, &m->ncols);
 	m->rows = tracks(rows, t + m->ncols, &s, &m->nrows);
 	m->acols = s;

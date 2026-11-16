@@ -1,0 +1,12 @@
+// Segmented is a native view: a segmented control, each platform's own
+// (asuka native): UISegmentedControl on iOS, NSSegmentedControl on macOS
+// (swift/), Material's segmented buttons on Android (android/), radio
+// buttons on the web (web/), a tab control on Windows and GNOME's linked
+// toggle buttons on Linux (Go, in desktop/).
+
+/// A segmented control: its items, which is selected, and what the user
+/// selects.
+pub native component Segmented(items: [string]) {
+  prop selected: int = 0
+  event changed(index: int)
+}

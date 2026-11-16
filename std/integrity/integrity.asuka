@@ -1,0 +1,82 @@
+// Package asuka/integrity proves to the app's server that a request
+// comes from the app, unmodified, on a real device: Apple's App Attest
+// (iOS, and the Mac with a provisioning profile) and Google's Play
+// Integrity (its standard requests). The server checks what the device
+// returns with Apple or Google; the app can't fake it.
+//
+//   if integrity.supported() {
+//     let key = try await integrity.generateKey()        // keep it
+//     let attestation = try await integrity.attestKey(key, challenge)
+//   }
+//
+// iOS: an app that imports it is given the App Attest entitlement; its
+// App ID needs the capability for a release build. App Attest isn't on
+// the simulator (supported is false there). Android: the app's Google
+// Cloud project number, from the Play Console (App integrity), and an
+// app installed from Play. Windows, Linux and the web have neither.
+
+/// The platform's attestation.
+native interface Attest {
+  fn supported() -> bool
+  async fn generateKey() -> string
+  async fn attestKey(keyId: string, challenge: bytes) -> bytes
+  async fn assertion(keyId: string, data: bytes) -> bytes
+  async fn prepare(cloudProjectNumber: int)
+  async fn token(requestHash: string) -> string
+}
+
+// Made once; none where the platform has neither.
+let attest = try? Attest()
+
+fn made() throws -> Attest {
+  if let a = attest {
+    return a
+  }
+  throw Error("unsupported: no app attestation here")
+}
+
+/// Whether the device can attest the app: App Attest on this device
+/// (iOS, the Mac), Play's on Android (its answer comes with token).
+pub fn supported() -> bool {
+  if let a = attest {
+    return (try? a.supported()) ?? false
+  }
+  return false
+}
+
+/// Makes a key pair in the Secure Enclave for App Attest and returns its
+/// ID: keep it (asuka/secure), it's the app's on this device. iOS, the
+/// Mac.
+pub async fn generateKey() throws -> string {
+  return try await made().generateKey()
+}
+
+/// Has Apple attest the key, for the server's challenge (a one-time value
+/// it made; its SHA-256 is App Attest's client data hash), and returns
+/// the attestation (CBOR) for the server to check and keep the key's
+/// public part from. Once per key.
+pub async fn attestKey(keyId: string, challenge: bytes) throws -> bytes {
+  return try await made().attestKey(keyId: keyId, challenge: challenge)
+}
+
+/// Signs a request's data (its body, with a challenge of the server's in
+/// it) with the attested key: the server checks the assertion (CBOR) with
+/// the key's public part.
+pub async fn assertion(keyId: string, data: bytes) throws -> bytes {
+  return try await made().assertion(keyId: keyId, data: data)
+}
+
+/// Readies Play Integrity for token, with the app's Google Cloud project
+/// number: at launch, a while before the first token (it takes seconds).
+/// Android.
+pub async fn prepare(cloudProjectNumber: int) throws {
+  try await made().prepare(cloudProjectNumber: cloudProjectNumber)
+}
+
+/// Play Integrity's verdict on the app, the device and the request whose
+/// hash (a digest of the request's content, as the server computes it)
+/// is requestHash: an encrypted token for the server to decode with
+/// Google. After prepare. Android.
+pub async fn token(requestHash: string) throws -> string {
+  return try await made().token(requestHash: requestHash)
+}

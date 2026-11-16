@@ -1,0 +1,44 @@
+// Package asuka/webauth signs in on the web in the system's own sign-in
+// sheet: ASWebAuthenticationSession on iOS and the Mac, a Custom Tab on
+// Android, a window with WebView2 on Windows, a dialog with WebKitGTK on
+// Linux, a popup in a browser. It's the browser's (on the phones and the
+// Mac), so the user's sessions there, passkeys and password autofill
+// work in it, and providers that refuse an app's own web view (Google)
+// don't refuse it.
+//
+//   let back = try await webauth.open(authorizeURL, callbackScheme: "myapp")
+//   let code = url.parse(back)?.query("code")
+//
+// It ends in one of two ways. With a callbackScheme, when the page goes
+// to a URL of that scheme (the app's own, "myapp://signed-in?code=…"):
+// open returns that URL. On Android the scheme must be the app's
+// (asuka.toml's scheme). Without one, the app ends it: an OAuth sign-in
+// that redirects to a server of the app's on the loopback interface
+// (http://localhost:port/callback, RFC 8252) gets the code there, and
+// cancels open's task (race(server.next(), webauth.open(url))).
+
+/// How a sign-in ended without its callback.
+pub enum WebAuthError: Error {
+  /// webauth: canceled
+  canceled
+}
+
+/// The system's sign-in sheet.
+native interface Sheet {
+  async fn open(url: string, callbackScheme: string, ephemeral: bool) -> string
+}
+
+// Made once; none where the platform has no code for it.
+let sheet = try? Sheet()
+
+/// Shows the sign-in at url (http or https) and returns the URL of the
+/// callbackScheme the page went to; WebAuthError.canceled when the user
+/// closed it. ephemeral signs in without the browser's cookies, and keeps
+/// none (iOS's prefersEphemeralWebBrowserSession; a throwaway profile on
+/// Windows and Linux). Cancelling the task closes the sheet.
+pub async fn open(url: string, callbackScheme: string = "", ephemeral: bool = false) throws -> string {
+  if let s = sheet {
+    return try await s.open(url: url, callbackScheme: callbackScheme, ephemeral: ephemeral)
+  }
+  throw Error("unsupported: no sign-in sheet here")
+}

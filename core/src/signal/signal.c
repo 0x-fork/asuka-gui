@@ -38,9 +38,13 @@ void ak_signal_read(ak_node *n) {
 	if (g->active) ak_sig_track(n, g->active);
 }
 
+void ak_signal_born(ak_node *n) {
+	if (g->in_memo > 0) n->flags |= AK_F_FRESH;
+}
+
 void ak_signal_write(ak_node *n) {
 	if (!ak_sig_check_thread()) return;
-	if (AK_UNLIKELY(g->in_memo > 0)) {
+	if (AK_UNLIKELY(g->in_memo > 0) && !((n->flags & AK_F_FRESH) && !n->subs)) {
 		char d[256];
 		ak_sig_panic("signal: write inside a memo (%s)", g->active ? ak_sig_describe(g->active, d, sizeof d) : "?");
 		return;

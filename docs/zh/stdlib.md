@@ -56,6 +56,70 @@ state units = store.read("units", "metric")
 如果某个平台没有原生包的代码（比如由 `asuka test` 运行的应用，它没有任何平台代码），用到它的地方会抛出 `unsupported` 错误；这时 `asuka/store` 什么也不保存，读取时返回默认值。
 
 `asuka test` 让每次运行的结果都一样：`time.now()` 从 2026-01-01T00:00:00Z 开始，只随测试里的时间（`sleep`）前进；本地时区是 UTC；每个测试都有一个自己的空目录作为 `fs.appDir()`。在 Web 上，应用的目录属于页面，保存在浏览器的存储里（见[应用的文件](web.md#应用的文件)）。
+| `asuka/store` | `store.read(key, default)`、`store.write(key, value)`、`store.remove(key)`、`store.flush()`、`store.dir()`：跨启动保存的小数据，以 JSON 存在平台的偏好设置里（UserDefaults、SharedPreferences、`localStorage`，Windows 和 Linux 上是一个文件，在修改后稍过片刻写入） |
+| `asuka/notify` | 本地通知：`request()`、`show(n)`、`schedule(n)`（在 `n.after` 之后）、`cancel(id)`、`showing()`、`remove(ids)`、`removeThread(t)`、`removeAll()`、`setBadge(n)`；`setCategories`（操作、回复）、`setChannels`、`setChannelGroups`（Android）；`Notification(…).from(person, conversation)`（消息）；`present(decide)`（应用在前台时通知如何显示）；`responses()`（点按、操作和回复的流；`r.defer()` 让应用继续运行以完成工作）。每个平台上用的都是宿主自己的通知：UserNotifications、Android 的通知、Windows 的 toast、Linux 的通知、浏览器的通知 |
+| `asuka/push` | `push.register()`（令牌：APNs 的、FCM 的、Web 的订阅）、`push.opened()` 和 `push.received()`（`Message` 的流；`Message.from(person, conversation)`） |
+| `asuka/watch` | `watch.path(dir, ignore:, recursive:, attributes:)` 得到一个 `Watch`：它的 `root`，以及 `events`，即一批批 `Event` 组成的流（`op`：create、write、remove、rename、attrib、overflow；`path`、`oldPath`）。基于 FSEvents、inotify 和 ReadDirectoryChangesW（internal/fswatch）；手机和 Web 上不支持 |
+| `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` 得到一个 `Task`（`update(…)`、`end()`）：由系统显示的长时间工作（Android 前台服务的通知、iOS 的持续处理、桌面端的进度） |
+| `asuka/calendar` | `calendar.request()`（`Access`）、`calendars()`、`events(from:, to:, calendars:)`、`add(Event)`（系统的表单）：EventKit、Calendar Provider |
+| `asuka/compose` | `compose.mail(to:, cc:, bcc:, subject:, body:, html:, attachments:)` 和 `compose.message(to:, body:, …)` 打开系统的撰写界面，并返回一个 `Result`（cancelled、sent、saved、unknown）；`check()` |
+| `asuka/contacts` | `contacts.pick()`（系统的选择器：一个 `Contact` 或 none）、`request()`、`list(name:, limit:)`、`add(Contact)` |
+| `asuka/library` | `library.save(path, collection:, name:, folder:, mime:, move:)`：把文件存进照片、图库、下载或音乐；返回它存到了哪里 |
+| `asuka/liveactivity` | `liveactivity.start(Content)` 得到一个 `Activity`（`update(c, alert:)`、`end(c, dismiss:)`）、`events()`（开始、结束、推送令牌）、`enabled()`：iOS 的实时活动、Android 16 的实时更新 |
+| `asuka/periodic` | `periodic.schedule(name, every:, network:, charging:)`、`cancel(name)`、`runs(name)`（`Run` 的流，`run.finish(ok)`）：iOS 的后台任务、WorkManager |
+| `asuka/photos` | 经用户许可的照片库：`request()`、`current()`、`list(screenshots:, offset:, limit:)`、`thumbnail(id, size:)`、`export(id)`、`manageLimited()` |
+| `asuka/widget` | `widget.set(kind, Entry)`、`setAll(kind, entries)`、`clear(kind)`：应用的小组件显示的内容 |
+| `asuka/crash` | `crash.reports()`（一个流：先是已保存的报告，之后每来一份就给一份；`Report`：`id`、`kind`、`fatal`、`time`、`message`、`text`、`threads`，以及带面包屑和值的 `context`）、`breadcrumb(message)`、`set(key, value)`、`record(e)`、`delete(id)`。记录由桌面端的宿主保存（sdk/crash）；手机和 Web 上还没有（reports 为空） |
+| `asuka/icloud` | iOS 和 macOS 上的 iCloud：`account()` 和 `files(scope)`（会被追踪：随 iCloud 的变化而更新）、`Value(key, default)`（保存在 iCloud 键值存储里的 store）、`documents()`、`container(id)`、`readFile`、`writeFile`、`delete`、`rename`、`download`、`evict`、`conflicts(path)`、`resolve(path, keeping:)`。在其他平台上：没有账户，列表为空，报错 "icloud: not available" |
+| `asuka/document` | `document.open(path, read:, write:)` 得到一个 `Document<T>` store：`content`、`state`（loading、saved、edited、saving、conflict、failed）、`error`；`edit(c)`（稍后自动保存）、`save()`、`saveAnyway()`、`revert()`。在 iOS 和 macOS 上会协调文件访问。基于文档的应用所需的窗口、菜单和文档浏览器（`Documents<T>`）要等 UI 运行时的窗口和导航就绪 |
+| `asuka/host` | 上面这些包所依赖的：宿主自己的模块（`host.call(module, method, args)`、`host.next(module, method)`）；应用不需要直接用它 |
+| `asuka/sqlite` | `sqlite.open(name)`（应用数据目录里的文件、绝对路径，或 `":memory:"`）得到一个 `DB`：`migrate(steps)`、`exec(sql, args)` 和 `query<T>(sql, args)`（异步，不在主线程上执行；行直接解码成 `T`，按列名对应结构体的字段）、`watch<T>(sql, args)`（一个 `Live<T>` store：`rows`、`loading`、`error`；参数变化时、它读取的表被写入时会重新执行）、`changed()`、`close()`。SQLite 来自 sqlite 插件的库（sdk/sqlite），随应用一起发布；Web 上暂不支持 |
+| `asuka/storage` | `storage.Value(key, default)`：一个 store，它的 `value` 保存在设备上（用的是 asuka/store），会被追踪，变化时写入；`reset()`；`storage.flush()`、`storage.dirName()` |
+| `asuka/integrity` | `integrity.supported()`、`generateKey()`、`attestKey(id, challenge)`、`assertion(id, data)`（iOS 和 Mac 上的 App Attest）；`prepare(cloudProjectNumber:)`、`token(requestHash:)`（Play Integrity） |
+| `asuka/js` | `js.eval(script, timeout:)`：在平台自己的引擎里离屏运行 JavaScript（WKWebView、Android 的 WebView、WebView2、WebKitGTK、沙盒化的 frame），以 JSON 返回它的值；`js.JsError.timeout` |
+| `asuka/agerange` | `agerange.request(13, 18)`：不需要出生日期就能得到用户的年龄段（iOS 26 的 Declared Age Range、Play 的 Age Signals）：一个 `Range`（`status`、`lower`、`upper`、`source`）；其他平台上是 `AgeRangeError.notAvailable` |
+| `asuka/appearance` | `appearance.current()`（会被追踪：`accent` 为 `Color?`、`increaseContrast`、`reduceTransparency`；只有在有东西读取时才监视设置）、`appearance.now()`、`appearance.changes()`（一个流）。强调色来自 Mac、Windows、Linux 的设置门户、Android 的 Material You、CSS 的 AccentColor；iOS 没有 |
+| `asuka/biometric` | `biometric.check()`（`kind`、`enrolled`、`passcode`）、`biometric.authenticate(reason:, cancel:, noPasscode:)`：LocalAuthentication、BiometricPrompt、Windows Hello、WebAuthn 的平台认证器；`BiometricError.canceled`、`.notAvailable`、`.failed` |
+| `asuka/device` | `device.info()`（`model`、`system`、`systemVersion`、`appVersion`、`build`）、`device.browse(url)`（在应用内打开：SFSafariViewController、Custom Tab）、`device.pickPhotos(max:)`、`device.pickFiles(types:, multiple:)`（系统的选择器，无需权限；副本放在应用的缓存里）、`device.clipboardText()`、`clipboardHas()`、`clipboardImage()`、`copyImage(path)`、`clipboardChanges()`（一个流）、`device.keepAwake(on)` |
+| `asuka/dialog` | `dialog.open(...)`、`dialog.save(name:, ...)`、`dialog.chooseFolder(...)`、`chooseFolders`：系统的文件对话框（NSOpenPanel 和 NSSavePanel、通用项目对话框、GtkFileDialog、File System Access 选择器），返回用户自己的路径；`dialog.Filter(name:, types:, extensions:)`。手机上，open 是文档选择器 |
+| `asuka/power` | `power.status()`（会被追踪：`battery`、`onBattery`、`level`、`charging`、`lowPower`、`thermal`）、`power.events()`、`suspends()`、`resumes()`、`locks()`、`unlocks()`（流）、`power.idleTime()`：IOKit 和 ProcessInfo、UIDevice、BatteryManager 和 PowerManager、GetSystemPowerStatus 和会话通知、UPower 和 logind、Battery Status API |
+| `asuka/preview` | `preview.show(sources, start:, edit:)`：在系统的查看器里显示文件（路径、资源、URL）（iOS 和 Mac 上是快速查看；其他平台上是文件对应的应用；Web 上是新标签页）；`preview.PreviewError.noViewer` |
+| `asuka/print` | `print.file(source, job:, orientation:)`、`print.html(markup, ...)`：系统的打印对话框，返回 `print.Outcome`；`print.pdf(markup, page:, landscape:, margins:)`：把标记生成 PDF，返回它的路径；`print.Page.a4`、`letter`……、`print.regionPage(locale)`。它的名字和 prelude 的 `print` 相同：`import asuka/print as printing` |
+| `asuka/review` | `review.request()`：商店的评分提示（iOS 和 Mac 上的 StoreKit、Play 的应用内评价），是否显示由商店的配额决定；Windows、Linux 和 Web 上什么也不做。`review.appStoreURL(id)`、`review.playStoreURL(id)` 用于“给我们评分”按钮 |
+| `asuka/screen` | `screen.displays()`（会被追踪：`id`、`name`、`bounds`、`workArea`、`scale`、`refreshRate`、`primary`）、`screen.primary`、`nearest`、`matching`；`screen.lock(orientation)`、`screen.setBars(style:, hideStatus:, hideNavigation:)`、`screen.preventCapture(on)`、`screen.screenshots()`（一个流） |
+| `asuka/secure` | `secure.read(key)`、`secure.write(key, value)`、`secure.remove(key)`：由平台加密的少量机密（钥匙串、Android Keystore、凭据管理器、通过 libsecret 访问的用户密钥环、用不可导出的 WebCrypto 密钥加密的 IndexedDB） |
+| `asuka/shell` | `shell.reveal(path)`、`shell.open(path)`、`shell.trash(path)`、`shell.beep()`：文件管理器提供的功能（NSWorkspace、资源管理器和回收站、GIO 和 FileManager1）；`shell.ShellError.noApp` |
+| `asuka/splash` | `splash.hold()`、`splash.hide()`：在应用准备好之前保持 asuka.toml 的启动画面（iOS、Android；其他平台什么也不做） |
+| `asuka/tracking` | `tracking.request()`、`tracking.current()`：iOS 和 Mac 上 App Tracking Transparency 的提示（`.notAsked`、`.restricted`、`.denied`、`.allowed`）；Windows 的广告 ID 设置；浏览器的 Global Privacy Control 或 Do Not Track；Android 和 Linux 没有提示，返回 `.allowed` |
+| `asuka/webauth` | `webauth.open(url, callbackScheme:, ephemeral:)`：在系统的界面里登录（ASWebAuthenticationSession、Custom Tab；WebView2 和 WebKitGTK 窗口；弹出窗口），返回回调 URL；`WebAuthError.canceled`；取消任务会关闭它 |
+| `asuka/location` | `location.authorization()`（可追踪）、`request()`、`requestAlways()`、`requestPrecise(purpose)`、`current()`、`positions()`（流）、`placeName(lat, lon)`、`openSettings()`、`supported()`；后台位置更新（`startUpdates(…)`、`updates()`、`stopUpdates()`、`updating()`）和区域监控（`monitor(region)`、`crossings()`、`stopMonitoring(id)`、`monitored()`），这些事件会一直保留到被读取，应用处理期间还能保持运行（`hold()`）。基于 Core Location、Android 的 LocationManager、WinRT 的 Geolocator、位置门户或 GeoClue，以及 Geolocation API |
+| `asuka/sensors` | `sensors.available(sensor)`；`accelerometer(every:)`、`gyroscope`、`magnetometer`、`motion`（姿态、重力、用户加速度）、`pressure`、`light`、`stepUpdates()`（都是流）；`steps(from:, to:)`；`simulate(json)`。基于 Core Motion、SensorManager、Generic Sensor API 和 iio-sensor-proxy |
+| `asuka/purchase` | 应用内购买：`declare(items)`、`products(items)`、`buy(item, options)`、`Transaction.finish()`、`events()`（从应用启动起的流）、`owned()`（可追踪：`has(id)`）、`entitlements()`、`restore()`、`statuses(group)`、`manageSubscriptions(id)`、`redeemCode()`、`requestRefund(t)`、`storefront()`。基于 StoreKit 2、Play Billing、Microsoft Store 和 Digital Goods API |
+| `asuka/pay` | Apple Pay 与 Google Pay：`available(request)`、`pay(request)`（配送联系人、配送方式、卡片、优惠码和授权都有异步处理函数，返回 `Update`，或 `throw Invalid(field:, message:)`）、`setUp()`，以及钱包自己的 `PayButton` |
+| `asuka/appleauth` | 通过 Apple 登录：`signIn(scopes:, nonce:, state:)`、`credentialState(user)`、`available()`，以及 Apple 的 `SignInButton`。仅限 iOS 和 macOS |
+| `asuka/nfc` | NFC 标签：`state()`（可追踪）、`start(alert:, poll:)` 得到 `Session`（`next()`、`setAlert`、`fail`、`stop`）、`Tag`（`message`、`ndef`、`write`、`makeReadOnly`、`transceive`）、`opened()`，以及 NDEF 的 `Message` 和 `Record`（`encode()`、`decode(bytes)`）。基于 Core NFC、Android 的读卡器模式和 Web NFC |
+| `asuka/bluetooth` | 低功耗蓝牙：`state()`（可追踪）、`request()`、`scan()`（流）、`choose(filters)`、`connect(device)`（返回 `Connection` store：`state`、`services()`、`characteristic(s, c)`），特征值的 `read`、`write`、`notifications()`；`serve(services)`、`advertise(…)`；以及蓝牙 SIG 定义的 UUID。基于 Core Bluetooth、Android 的 BLE、WinRT、BlueZ 和 Web Bluetooth |
+| `asuka/audio` | `audio.play(source)`，以及 `audio.Player(source)`：一个 store，有 `play`、`pause`、`seek`、`setVolume`、`setRate`、`setLoop`、`status()` 和 `release()`。基于 AVPlayer、Media3 的 ExoPlayer、`<audio>`、MCI、GStreamer（[设备](device.md)） |
+| `asuka/nowplaying` | `nowplaying.NowPlaying`：应用正在播放的内容，显示在锁屏和系统的媒体控件上，以及它们发回的命令（媒体键、耳机的按键）；给它一个 `audio.Player` 时会跟随它（[设备](device.md)） |
+| `asuka/speech` | `speech.speak(text, options:)`、`stop`、`pause`、`resume`、`speaking`、`voices()`：用系统的语音朗读文本（[设备](device.md)） |
+| `asuka/record` | `record.audio(maxDuration:, quality:, background:)` 以及 `stopAudio`、`pauseAudio`、`resumeAudio`、`audioStatus()`：录制麦克风的声音；`record.start()` 和 `stop()`：录制屏幕上 `camera.View` 的视频（[设备](device.md)） |
+| `asuka/camera` | `camera.View`（`facing`、`mode`、`scan`、`codes`；`code`、`error`）：实时的相机画面；`camera.capture()`、`camera.take()`（系统的相机界面）、`camera.record()`（[设备](device.md)） |
+| `asuka/scan` | `scan.file(path, kinds:)`：识别图片里的条形码和二维码（[设备](device.md)） |
+| `asuka/vision` | `vision.analyze(path, text:, faces:, codes:, languages:)`：在设备上识别图片里的文字（逐行、逐词）、人脸和码，以及它们各自的位置（[设备](device.md)） |
+| `asuka/transcribe` | `transcribe.check(language)`、`transcribe.file(path, language:)`：把录音转成文字，只在设备上进行（做不到的地方返回 `notAvailable`：Web、Linux、较旧的 Android）（[设备](device.md)） |
+| `asuka/imageedit` | `imageedit.edit(source, actions, format:, quality:)`（缩放、裁剪、旋转、翻转、填充、像素化）、`imageedit.size`、`imageedit.videoFrame`：处理图片和视频帧，输出 JPEG 或 PNG（[设备](device.md)） |
+| `asuka/maps` | `maps.View`（`bind region`、`markers`、`mapType`、`showsUser`、`interactive`；`markerPress`、`press`、`regionChange`）：Apple 地图、Google 地图、OpenStreetMap（[设备](device.md)） |
+| `asuka/lottie` | `lottie.View(source)`（`bind playing`、`bind progress`、`loop`、`speed`、`segment`、`marker`、`fit`、`overrides`；`complete`、`loaded`）：用各平台的播放器播放 Lottie 和 dotLottie；Windows 和 Linux 上暂时没有（[组件](components.md)） |
+| `asuka/svg` | `svg.Icon(markup)` 在应用编译时解析，`svg.View(icon) { color }` 显示它；`svg.Shape(layers)`：应用自己画的路径，会跟随它的框（[组件](components.md)） |
+| `asuka/chart` | `chart.View(series) { labels, label, low, high, grid }`；`chart.Series(name:, kind: .bar \| .line \| .area \| .points, values:, smooth:, color:)`：用 Asuka 写成，通过 `svg.Shape` 绘制（[组件](components.md)） |
+| `asuka/shader` | `shader.Program(source)`：随应用一起为每个平台编译的 Kage 着色器；`shader.Shader(program) { uniforms, animated }`（[组件](components.md)） |
+| `asuka/markdown` | `markdown.View(text) { streaming }` 和 `markdown.heal(text)`：把 Markdown 显示为平台自己的富文本，流式输入时边接收边修补（[组件](components.md)） |
+
+如果某个平台没有原生包的代码（比如由 `asuka test` 运行的应用，它没有任何平台代码），用到它的地方会抛出 `unsupported` 错误；这时 `asuka/store` 什么也不保存，读取时返回默认值。
+
+`asuka test` 让每次运行都可重复：`time.now()` 从 2026-01-01T00:00:00Z 开始，只随测试的时间（`sleep`）前进，本地时区是 UTC，每个测试都有一个属于自己的空目录作为 `fs.appDir()`。Web 上应用还没有自己的目录，所以 `asuka/fs` 的调用在那里会抛出错误。
+
+设备相关的包（`location`、`sensors`、`purchase`、`pay`、`appleauth`、`nfc`、`bluetooth`）都为测试提供了替身：`location.fake()`、`purchase.fake(products)` 等会把一个由测试驱动的 Asuka 实现换给这个包，代替平台的实现（移动设备位置、批准一笔购买、轻触一个标签、添加一个外设），详见[标准库的 README](../../std/README.md#test-fakes)。
 
 ## 标准库之外的包
 

@@ -398,8 +398,14 @@ void ak_future_cancel(ak_future *f) {
 		c(f);
 		return;
 	}
+	// The cancellation is made through the pending error's slot: one
+	// already there (an error unwinding, whose frames' values are let go,
+	// a stream's waiting next among them) stays.
+	void *pending = ak_error_pending() ? ak_error_take() : NULL;
 	ak_throw_cancel();
-	ak_future_reject(f, ak_error_take());
+	void *err = ak_error_take();
+	if (pending) ak_throw(pending);
+	ak_future_reject(f, err);
 }
 
 ak_val ak_future_take(ak_future *f) {

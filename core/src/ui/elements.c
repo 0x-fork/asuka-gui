@@ -952,11 +952,22 @@ static void check_key(const ak_view *v, uint16_t key) {
 		ak_panic("ui: %s takes no key %s", v->el ? ak_el_names[v->el] : v->cls->name, ak_key_names[key]);
 }
 
-void ak_ui_set(ak_view *v, uint16_t key, ak_val value) {
+_Static_assert(AK_KEY__STYLE_END <= 64, "ak_view's outer has a bit per style key");
+
+static void set_key(ak_view *v, uint16_t key, ak_val value, bool outer);
+
+void ak_ui_set(ak_view *v, uint16_t key, ak_val value) { set_key(v, key, value, false); }
+
+void ak_ui_set_outer(ak_view *v, uint16_t key, ak_val value) { set_key(v, key, value, true); }
+
+static void set_key(ak_view *v, uint16_t key, ak_val value, bool outer) {
 	check_key(v, key);
 	if (v->dead) return;
 	if (v->bar) ak_bar_dirty(v);  // a Button in a Screen's bar: the bar is sent again
 	if (key < AK_KEY__STYLE_END) {
+		// The caller's style is over the component's own.
+		if (outer) v->outer |= 1ull << key;
+		else if (v->outer >> key & 1) return;
 		if (v->ix && ak_ix_set_base(v, key, value)) return;  // a key its variants set (interaction.c)
 		ak_view *t = v->cls->style_target ? v->cls->style_target(v, key) : v;
 		if (t) ak_style_set(t, key, value);
@@ -988,6 +999,7 @@ typedef struct {
 	ak_view *v;
 	ak_closure *thunk;
 	uint16_t key;
+	bool outer;
 	ak_comp_info info;
 } binding;
 
@@ -1000,7 +1012,7 @@ static void binding_run(void *ctx) {
 		else ak_raise(err);  // delivered to the owner's catcher once the run returns
 		return;
 	}
-	ak_ui_set(b->v, b->key, v);
+	set_key(b->v, b->key, v, b->outer);
 	ak_release_val(v, (ak_kind)ak_key_kinds[b->key]);
 }
 
@@ -1011,14 +1023,23 @@ static void binding_drop(void *ctx) {
 	ak_free(b);
 }
 
-void ak_ui_bind(ak_view *v, uint16_t key, ak_closure *thunk) {
+static void bind_key(ak_view *v, uint16_t key, ak_closure *thunk, bool outer) {
 	check_key(v, key);
+	if (outer && key >= AK_KEY__STYLE_END) ak_panic("ui: %s isn't a style key", ak_key_names[key]);
 	binding *b = ak_alloc(sizeof *b);
 	b->v = ak_retain(v);
 	b->thunk = ak_retain(thunk);
 	b->key = key;
+	b->outer = outer;
 	b->info = (ak_comp_info){.drop = binding_drop, .label = ak_key_names[key]};
 	ak_effect_new(binding_run, b, AK_EFFECT_RENDER, &b->info);
+}
+
+void ak_ui_bind(ak_view *v, uint16_t key, ak_closure *thunk) { bind_key(v, key, thunk, false); }
+
+void ak_ui_bind_outer(ak_view *v, uint16_t key, ak_closure *thunk) {
+	if (key < AK_KEY__STYLE_END) v->outer |= 1ull << key;  // before the component's own effects run again
+	bind_key(v, key, thunk, true);
 }
 
 void ak_ui_on(ak_view *v, uint16_t ev, ak_closure *handler) {

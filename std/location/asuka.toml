@@ -1,0 +1,10 @@
+name = "asuka/location"
+version = "0.1.0"
+description = "Where the device is: now, as it moves, and with the app out of sight"
+
+[ios]
+usage = { NSLocationWhenInUseUsageDescription = "To show where you are.", NSLocationAlwaysAndWhenInUseUsageDescription = "To follow where you go, with the app closed too." }
+backgroundModes = ["location"]
+
+[android]
+permissions = ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.POST_NOTIFICATIONS"]

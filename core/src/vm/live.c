@@ -35,12 +35,23 @@ typedef struct {
 
 static void stop(ak_live *l);
 static void ask(void *ctx);
+static void on_value(ak_live *l, ak_future *f);
 
+// on_next holds a reference to l (the wait's): a wait already queued as
+// l stops runs later, and finds l stopped, or waiting for another next.
 static void on_next(void *ctx) {
 	ak_live *l = ctx;
 	ak_future *f = l->waiting;
+	if (!f || f->state == AK_FUT_PENDING) {
+		ak_release(l);
+		return;
+	}
 	l->waiting = NULL;
-	if (!f) return;
+	on_value(l, f);
+	ak_release(l);
+}
+
+static void on_value(ak_live *l, ak_future *f) {
 	bool more = f->state == AK_FUT_DONE && f->result.i;
 	ak_release(f);
 	if (!more || !l->running) {
@@ -68,7 +79,7 @@ static void ask(void *ctx) {
 		return;
 	}
 	l->waiting = f;
-	ak_future_wait(f, on_next, l);
+	ak_future_wait(f, on_next, ak_retain(l));
 }
 
 static void start_in_owner(void *ctx) {
@@ -94,11 +105,15 @@ static void start(ak_live *l) {
 	}
 }
 
+// stop lets the wait's reference to l go last: it may be the last one
+// (the memo that made l ran again), and l is used until then.
 static void stop(ak_live *l) {
+	bool removed = false;
 	if (l->waiting) {
-		ak_future_unwait(l->waiting, on_next, l);
-		ak_release(l->waiting);
+		ak_future *w = l->waiting;
 		l->waiting = NULL;
+		removed = ak_future_unwait(w, on_next, l);
+		ak_release(w);
 	}
 	if (l->stream.p) {
 		ak_stream_close(l->stream);
@@ -110,6 +125,7 @@ static void stop(ak_live *l) {
 		l->owner = NULL;
 	}
 	l->running = false;
+	if (removed) ak_release(l);
 }
 
 // started starts the stream, from the ready queue: not in the memo's

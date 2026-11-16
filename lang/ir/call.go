@@ -486,10 +486,6 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return b.allRace(e, call, dst)
 	case check.BWithTimeout:
 		return b.withTimeout(e, call)
-	case check.BUntilCancelled:
-		f := b.callB("async.never", bc.KRef)
-		b.emit(op("AWAIT"), b.temp(bc.KRef), f)
-		return -1
 	case check.BLive:
 		ft := b.typ(call.Result).(*check.FuncType)
 		init := b.valueReg(b.value(call.Args[0], -1), b.l.kind(ft.Result))
@@ -502,6 +498,11 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		st := b.typ(call.Result).(*check.Stream)
 		p := b.value(call.Args[0], -1)
 		return b.copyTo(b.callB("stream.new", bc.KRef, p, b.konst(int64(b.l.kind(st.Elem)))), dst)
+	case check.BNever:
+		f := b.callB("async.never", bc.KRef)
+		w := b.temp(bc.KRef)
+		b.emit(op("AWAIT"), w, f)
+		return -1
 	case check.BIdle:
 		f := b.callB(uiTestIdle, bc.KRef)
 		w := b.temp(bc.KRef)
@@ -753,6 +754,9 @@ func (b *fb) allRace(e *syntax.CallExpr, call *check.Call, dst int) int {
 	f := b.callB("async.all", bc.KRef, arr)
 	results := b.temp(bc.KRef)
 	b.emit(op("AWAIT"), results, f)
+	if res == check.Void {
+		return -1
+	}
 	types := []check.Type{res}
 	if tt, ok := res.(*check.Tuple); ok {
 		types = tt.Elems
@@ -924,6 +928,11 @@ func (b *fb) structCall(call *check.Call, dst int) int {
 	for _, f := range t.Obj.Fields {
 		types = append(types, s.Apply(f.Type))
 	}
+	if t.Obj.Pkg != nil {
+		if hook := StructHooks[t.Obj.Pkg.Path+"."+t.Obj.Name()]; hook != nil {
+			b.structHook(hook, t, call, vals)
+		}
+	}
 	shape := b.l.shape(t)
 	if t.Obj.IsError {
 		ks := make([]bc.Kind, len(vals))
@@ -1048,4 +1057,63 @@ func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call) int {
 	w := b.temp(bc.KRef)
 	b.emit(op("AWAIT"), w, f)
 	return -1
+}
+
+// StructHooks make a standard library struct's fields when the app
+// compiles, from its first field, a constant string: svg.Icon's drawing
+// from its markup, shader.Program's code from its source. A hook gives
+// the fields it makes by name (a string, []byte, float64 or int64), or an
+// error, which is the compiler's (at the literal). lang/compile registers
+// them, by the struct's package path and name ("asuka/svg.Icon").
+var StructHooks = map[string]func(source string) (map[string]any, error){}
+
+// structHook fills the fields hook makes, for a literal whose first
+// field is a constant string.
+func (b *fb) structHook(hook func(string) (map[string]any, error), t *check.Named, call *check.Call, vals []int) {
+	var src *syntax.StringLit
+	if len(call.Args) > 0 {
+		src, _ = call.Args[0].(*syntax.StringLit)
+	}
+	if src == nil || len(src.Interps) > 0 {
+		at := syntax.Node(nil)
+		if len(call.Args) > 0 && call.Args[0] != nil {
+			at = call.Args[0]
+		}
+		if at != nil {
+			b.l.errorf(at, "%s's %s is made when the app compiles: give it a string literal", t.Obj.Name(), t.Obj.Fields[0].Name)
+		}
+		return
+	}
+	segs := src.Segments
+	text := ""
+	if src.Multiline {
+		text = literalText(check.Dedent(segs[0]), src.Raw, true)
+	} else {
+		text = literalText(segs[0], src.Raw, false)
+	}
+	fields, err := hook(text)
+	if err != nil {
+		b.l.errorf(src, "%s", err)
+		return
+	}
+	for i, f := range t.Obj.Fields {
+		v, ok := fields[f.Name]
+		if !ok || i >= len(vals) {
+			continue
+		}
+		switch v := v.(type) {
+		case string:
+			vals[i] = b.kstr(v)
+		case []byte:
+			vals[i] = b.callB("str.to_bytes", bc.KRef, b.kstr(string(v)))
+		case float64:
+			r := b.temp(bc.KFloat)
+			b.emit(op("KFLOAT"), r, b.l.floatConst(v))
+			vals[i] = r
+		case int64:
+			r := b.temp(bc.KInt)
+			b.loadInt(r, v)
+			vals[i] = r
+		}
+	}
 }

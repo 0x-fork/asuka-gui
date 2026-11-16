@@ -1,0 +1,25 @@
+// asuka/splash with no platform code (the fake host): there's no splash,
+// so holding and hiding it do nothing, and the app shows.
+
+import asuka/splash
+
+state ready = false
+
+component Root {
+  task {
+    splash.hold()
+    await sleep(10ms)
+    ready = true
+    splash.hide()
+  }
+
+  Text(if ready { "ready" } else { "loading" })
+}
+
+app { Root() }
+
+test "the app starts without a splash" {
+  let app = mount(Root())
+  await app.idle()
+  app.expect("ready")
+}

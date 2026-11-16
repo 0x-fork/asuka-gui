@@ -1,0 +1,421 @@
+import asuka/sqlite
+import asuka/time
+
+/// A bookmark being made: from what another app shared (the share
+/// sheet), or a link pasted in the app.
+pub store Draft {
+  state link = ""
+  state title = ""
+  state description = ""
+  state note = ""
+  state cover = ""
+  state collection = 0
+  state tags: [string] = []
+  /// The link whose page was read.
+  state fetched = ""
+
+  /// Fills the draft with what another app shared: its link (a text's,
+  /// if it has none of its own), its title (a text that isn't the link: a
+  /// page's title from a browser), or an image, kept as the cover.
+  pub async fn fromShare(items: [SharedItem]) {
+    for it in items {
+      match it.kind {
+        .link if link.isEmpty => link = it.text
+        .text => {
+          if let u = linkRE.find(it.text) {
+            if link.isEmpty {
+              link = u
+              let t = it.text.replace(u, "", count: 1).trim()
+              if !t.isEmpty && title.isEmpty { title = t }
+            }
+          } else if title.isEmpty {
+            title = it.text
+          }
+        }
+        .image if cover.isEmpty => {
+          let path = it.path
+          if let p = try? await spawn { try keepFile(path) } {
+            cover = p
+            if title.isEmpty { title = it.name }
+          }
+        }
+        _ => {}
+      }
+    }
+  }
+
+  /// Reads the link's page for what the user hasn't written: its title,
+  /// description and image, as they come.
+  pub async fn fetch() {
+    let l = link
+    if l.isEmpty || l == fetched || !l.hasPrefix("http") { return }
+    fetched = l
+    if let p = try? await fetchPage(l) {
+      if link != l { return }
+      if title.isEmpty || title == l { title = p.title }
+      if description.isEmpty { description = p.description }
+      if cover.isEmpty { cover = p.image }
+    }
+  }
+
+  /// Writes the bookmark. A share sheet closes once it's written, and its
+  /// process ends: waiting for the write keeps it.
+  pub async fn save() throws {
+    let t = title.trim()
+    try await db.exec(
+      "insert into bookmarks (url, title, description, note, cover, collection, tags, created) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      (link.trim(), if t.isEmpty { host(link) } else { t }, description.trim(), note.trim(), cover, collection, tags.join(","), time.now().unix()),
+    )
+  }
+}
+
+/// The bookmark's form, as Raindrop's share sheet: a header with Close
+/// and Save; a card with the title, description and cover, and a note;
+/// the collection, the tags; the link.
+pub component Editor(draft: Draft, heading: string) {
+  event close
+  event saved
+  state saving = false
+  state pickingCollection = false
+  state pickingTags = false
+
+  let collections: sqlite.Live<Collection> = db.watch("select * from collections order by name", [])
+  let collectionName = collections.rows.first(c => c.id == draft.collection)?.name ?? "Unsorted"
+
+  task { await draft.fetch() }
+
+  Column {
+    grow: 1
+    background: .groupedBackground
+    // The header.
+    Row {
+      padding: [12, 16]
+      gap: 12
+      align: .center
+      Button("") {
+        icon: "xmark"
+        label: "Close"
+        variant: .glass
+        on press { emit close }
+      }
+      Text(heading) {
+        grow: 1
+        font: .headline
+        textAlign: .center
+      }
+      Button("Save") {
+        variant: .glassProminent
+        disabled: saving || draft.link.isEmpty && draft.cover.isEmpty
+        on press {
+          saving = true
+          do {
+            try await draft.save()
+            emit saved
+          } catch e {
+            saving = false
+            alert("Couldn't save", message: e.message)
+          }
+        }
+      }
+    }
+    Scroll {
+      grow: 1
+      padding: Edges(top: 8, right: 16, bottom: 32, left: 16)
+      gap: 20
+      // Title, description and cover; the note.
+      Card {
+        Row {
+          padding: Edges(top: 14, right: 16, bottom: 10, left: 16)
+          gap: 12
+          Column {
+            grow: 1
+            shrink: 1
+            gap: 2
+            TextField {
+              bind text: draft.title
+              placeholder: "Title"
+              multiline: true
+              plain: true
+              font: .title3.semibold()
+              lines: 4
+            }
+            TextField {
+              bind text: draft.description
+              placeholder: "Add description"
+              multiline: true
+              plain: true
+              font: .subheadline
+              color: .secondaryLabel
+              lines: 4
+            }
+          }
+          Image(draft.cover) {
+            mode: .fill
+            label: "Cover"
+            width: 72
+            minWidth: 72
+            height: 72
+            radius: 10
+            clip: true
+            background: .groupedBackground
+          }
+        }
+        Divider()
+        TextField {
+          bind text: draft.note
+          placeholder: "Note"
+          multiline: true
+          plain: true
+          minHeight: 96
+          margin: [12, 16]
+        }
+      }
+      // The collection.
+      Card {
+        PickerRow("tray", collectionName) {
+          on press { pickingCollection = true }
+        }
+      }
+      // The tags.
+      Card {
+        PickerRow("tag", if draft.tags.isEmpty { "Tags" } else { "#{draft.tags.join("  #")}" }) {
+          placeholder: draft.tags.isEmpty
+          on press { pickingTags = true }
+        }
+      }
+      // The link.
+      Card {
+        Row {
+          padding: [14, 16]
+          gap: 14
+          align: .center
+          Symbol("link") {
+            color: .secondaryLabel
+            width: 24
+          }
+          TextField {
+            bind text: draft.link
+            placeholder: "https://"
+            keyboard: .url
+            autocapitalize: .off
+            autocorrect: .no
+            plain: true
+            grow: 1
+            color: .secondaryLabel
+            on blur { await draft.fetch() }
+            on submit { await draft.fetch() }
+          }
+        }
+      }
+    }
+    Sheet {
+      bind open: pickingCollection
+      detents: [.medium, .large]
+      grabber: true
+      CollectionPicker(collections.rows) {
+        bind chosen: draft.collection
+        on done { pickingCollection = false }
+      }
+    }
+    Sheet {
+      bind open: pickingTags
+      detents: [.medium, .large]
+      grabber: true
+      TagPicker { bind tags: draft.tags }
+    }
+  }
+}
+
+/// Groups rows on the grouped background.
+component Card {
+  prop children: View
+
+  Column {
+    background: .secondaryGroupedBackground
+    radius: 24
+    clip: true
+    children
+  }
+}
+
+component Divider {
+  View {
+    height: 0.5
+    background: .separator
+    margin: Edges(left: 16)
+  }
+}
+
+/// A card's row that opens a picker: an icon, a value (secondary while
+/// it's a placeholder) and a chevron.
+component PickerRow(icon: string, text: string) {
+  prop placeholder = false
+  event press
+
+  Row {
+    padding: 16
+    gap: 14
+    align: .center
+    role: .button
+    on press { emit press }
+    Symbol(icon) {
+      color: .secondaryLabel
+      width: 24
+    }
+    Text(text) {
+      grow: 1
+      shrink: 1
+      font: .body
+      lines: 1
+      color: if placeholder { .secondaryLabel } else { .label }
+    }
+    Symbol("chevron.forward") { color: .tertiaryLabel }
+  }
+}
+
+/// Picks the bookmark's collection, or makes one.
+component CollectionPicker(collections: [Collection]) {
+  prop chosen = 0
+  event change(chosen: int)
+  event done
+  state name = ""
+
+  let all = [Collection(id: 0, name: "Unsorted")] + collections
+
+  async fn add() {
+    let n = name.trim()
+    if n.isEmpty { return }
+    name = ""
+    // Written, then read back for its id.
+    do {
+      try await db.exec("insert or ignore into collections (name) values (?)", [n])
+      let found: [Collection] = try await db.query("select * from collections where name = ?", [n])
+      if let c = found.first {
+        emit change(c.id)
+        emit done
+      }
+    } catch {}
+  }
+
+  Column {
+    grow: 1
+    background: .groupedBackground
+    padding: Edges(top: 24, right: 16, left: 16)
+    gap: 16
+    Text("Collection") { font: .title3.bold() }
+    Card {
+      for (i, c) in all.enumerated() key c.id {
+        Column {
+          if i > 0 { Divider() }
+          Row {
+            padding: [14, 16]
+            gap: 14
+            align: .center
+            role: .button
+            on press {
+              emit change(c.id)
+              emit done
+            }
+            Symbol(if c.id == 0 { "tray" } else { "folder" }) {
+              color: .accent
+              width: 24
+            }
+            Text(c.name) { grow: 1 }
+            if chosen == c.id {
+              Symbol("checkmark") { color: .accent }
+            }
+          }
+        }
+      }
+    }
+    Card {
+      Row {
+        padding: [10, 16]
+        gap: 12
+        align: .center
+        Symbol("plus") {
+          color: .accent
+          width: 24
+        }
+        TextField {
+          bind text: name
+          placeholder: "New collection"
+          returnKey: .done
+          plain: true
+          grow: 1
+          on submit { await add() }
+        }
+      }
+    }
+  }
+}
+
+/// Adds and removes the bookmark's tags: those of other bookmarks to
+/// pick from, and new ones.
+component TagPicker {
+  prop tags: [string] = []
+  event change(tags: [string])
+  state typed = ""
+
+  let used: sqlite.Live<TagsRow> = db.watch("select tags from bookmarks where tags != ''", [])
+  let known = splitTags((used.rows.map(r => r.tags) + tags).join(","))
+
+  fn toggle(t: string) {
+    emit change(if tags.contains(t) { tags.filter(x => x != t) } else { tags + [t] })
+  }
+
+  fn add() {
+    var next = tags
+    for t in splitTags(typed.replace("#", "")) {
+      if !next.contains(t) { next.push(t) }
+    }
+    emit change(next)
+    typed = ""
+  }
+
+  Column {
+    grow: 1
+    background: .groupedBackground
+    padding: Edges(top: 24, right: 16, left: 16)
+    gap: 16
+    Text("Tags") { font: .title3.bold() }
+    Card {
+      Row {
+        padding: [10, 16]
+        gap: 12
+        align: .center
+        Symbol("tag") {
+          color: .secondaryLabel
+          width: 24
+        }
+        TextField {
+          bind text: typed
+          placeholder: "Add a tag"
+          returnKey: .done
+          plain: true
+          autocapitalize: .off
+          grow: 1
+          on submit { add() }
+        }
+      }
+    }
+    Row {
+      wrap: true
+      gap: 8
+      for t in known key t {
+        View {
+          padding: [8, 14]
+          radius: 16
+          role: .button
+          background: if tags.contains(t) { .accent } else { .secondaryGroupedBackground }
+          on press { toggle(t) }
+          Text("#{t}") { color: if tags.contains(t) { #ffffff } else { .label } }
+        }
+      }
+    }
+  }
+}
+
+struct TagsRow {
+  tags: string
+}

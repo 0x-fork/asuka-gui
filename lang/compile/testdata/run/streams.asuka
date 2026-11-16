@@ -51,6 +51,18 @@ test "break stops the producer" {
   print("after")
 }
 
+test "an error leaving the loop stops the producer" {
+  do {
+    for await n in forever(log: []) {
+      if n == 2 { throw CountError.tooFar }
+    }
+  } catch e {
+    print("left with {e.message}")
+  }
+  await sleep(5ms)
+  print("after the error")
+}
+
 // Output:
 // 10
 // ok reads what comes
@@ -60,3 +72,7 @@ test "break stops the producer" {
 // producer stopped
 // after
 // ok break stops the producer
+// left with CountError.tooFar
+// producer stopped
+// after the error
+// ok an error leaving the loop stops the producer

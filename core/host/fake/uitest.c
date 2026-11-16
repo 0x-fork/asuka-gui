@@ -210,6 +210,7 @@ static void shows(const ak_fake_view *v, void (*f)(ak_span s, void *ctx), void *
 	switch (v->kind) {
 	case AK_KIND_TEXT: ADD(ak_fake_string(v, AK_PROP_TEXT_TEXT)); break;
 	case AK_KIND_BUTTON: ADD(ak_fake_string(v, AK_PROP_BUTTON_TITLE)); break;
+	case AK_KIND_NATIVE: ADD(ak_fake_label(v)); break;
 	case AK_KIND_TEXT_FIELD:
 		ADD(ak_fake_string(v, AK_PROP_TEXT_FIELD_VALUE));
 		ADD(ak_fake_string(v, AK_PROP_TEXT_FIELD_PLACEHOLDER));
@@ -334,6 +335,26 @@ static void describe(ak_uitest *a, ak_buf *b, ak_fake_view *v, int depth) {
 	case AK_KIND_TEXT_FIELD:
 		if (ak_fake_bool(v, AK_PROP_TEXT_FIELD_SECURE)) ak_buf_printf(b, " secure");
 		break;
+	}
+	if (v->kind == AK_KIND_NATIVE) {
+		// Its kind, and its values: a typed view's encoded (in hex).
+		ak_span k = ak_fake_string(v, AK_PROP_NATIVE_TYPE);
+		ak_buf_printf(b, " %.*s", (int)k.len, k.p);
+		for (uint32_t i = 0; i < v->native.len; i++) {
+			const ak_fake_native *n = &v->native.data[i];
+			ak_buf_printf(b, " %.*s=", (int)n->name.len, n->name.p);
+			switch (n->type) {
+			case 1:
+			case 2: ak_buf_printf(b, "%lld", (long long)n->i); break;
+			case 3: ak_fmt_float(b, n->f, 64); break;
+			case 4: ak_fmt_quote(b, n->s); break;
+			default:
+				// The first bytes: a snapshot stays readable (and diffs) when a
+				// value is long (a shape's paths).
+				for (uint32_t j = 0; j < n->s.len && j < 24; j++) ak_buf_printf(b, "%02x", (uint8_t)n->s.p[j]);
+				if (n->s.len > 24) ak_buf_printf(b, "…(%u bytes)", (unsigned)n->s.len);
+			}
+		}
 	}
 	if (ak_fake_bool(v, AK_PROP_SELECTED)) ak_buf_printf(b, " selected");
 	if (ak_fake_bool(v, AK_PROP_DISABLED)) ak_buf_printf(b, " disabled");
@@ -584,6 +605,7 @@ static ak_fake_view *pressable(ak_fake_view *v) {
 	for (ak_fake_view *p = v; p; p = p->parent) {
 		if (ak_fake_listens(p, AK_EVENT_PRESS) || has_menu(p)) return p;
 		if (p->kind == AK_KIND_TOGGLE || p->kind == AK_KIND_TEXT_FIELD) return p;
+		if (p->kind == AK_KIND_NATIVE && ak_fake_listens(p, AK_EVENT_NATIVE)) return p;
 		if (p->kind == AK_KIND_BUTTON && !idle) idle = p;
 		if (p->kind == AK_FAKE_KIND_CELL && ak_fake_listens(p, AK_EVENT_ROW_SELECTED)) return p;
 	}
@@ -654,6 +676,8 @@ bool ak_uitest_tap(ak_uitest *a, ak_span text, ak_buf *err) {
 	else if (has_menu(p) && !ak_fake_listens(p, AK_EVENT_PRESS)) a->menu = p;
 	else if (p->kind == AK_FAKE_KIND_CELL) ak_fake_select_row(a->f, p, true);
 	else if (ak_fake_listens(p, AK_EVENT_PRESS)) ak_fake_tap(a->f, p);
+	// A native package's view (a pay button): its Press event.
+	else if (p->kind == AK_KIND_NATIVE) ak_fake_emit_native(a->f, p, "Press", NULL, 0);
 	ak_uitest_settle(a);
 	return check_fails(a, err);
 }

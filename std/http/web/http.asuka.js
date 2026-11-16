@@ -31,7 +31,7 @@ const provider = {
   start(o, iface, method, r, signal) {
     switch (iface * 65536 + method) {
       case 1: { // Transport.Send
-        const method = r.string();
+        const methodArg = r.string();
         const url = r.string();
         const headers = Wire.readMapString(r);
         const body = r.data();
@@ -39,7 +39,7 @@ const provider = {
         r.check();
         return (async () => {
           const w = NativeWriter.ok();
-          const v = await o.send(signal, method, url, headers, body, timeout);
+          const v = await o.send(signal, methodArg, url, headers, body, timeout);
           Wire.writeResponse(w, v);
           return w;
         })();

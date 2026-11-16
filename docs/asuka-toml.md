@@ -389,7 +389,7 @@ The Android build's.
 | `dynamicColor` | boolean | `false` | Takes the colors from the user's wallpaper (Android 12 and later), as Material apps do; `accent` is the seed elsewhere. |
 | `permissions` | strings | the packages' own | Permissions added to the manifest: `"android.permission.CAMERA"`. `"<name>:28"` asks for one up to Android 9 (API 28) only. The packages the app imports add those they need. |
 | `googleServices` | path | none | The Firebase project's `google-services.json`, for `asuka/sdk/push`. |
-| `mapsKey` | string | none | A Google Maps Platform API key (Maps SDK for Android), for `asuka/sdk/maps`. |
+| `mapsKey` | string | none | A Google Maps Platform API key (Maps SDK for Android), for `asuka/maps`. |
 | `serviceAccount` | path | none | The Google Cloud service account's JSON key `asuka publish` uploads to Google Play with. Keep it out of the repository. |
 
 See [Shipping](shipping.md#android).

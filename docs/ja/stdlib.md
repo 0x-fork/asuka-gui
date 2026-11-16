@@ -56,6 +56,70 @@ state units = store.read("units", "metric")
 ネイティブパッケージのコードがないプラットフォーム（`asuka test` で動かすアプリにはまったくありません）では、それを必要とする処理は `unsupported` エラーを投げます。そのとき `asuka/store` は何も保存せず、読み込むとデフォルト値が返ります。
 
 `asuka test` は実行結果を毎回同じにします。`time.now()` は 2026-01-01T00:00:00Z から始まり、テストの時間（`sleep`）が進んだときだけ進みます。ローカルのタイムゾーンは UTC で、各テストには `fs.appDir()` として専用の空のディレクトリが用意されます。Web では、アプリのディレクトリはページのもので、ブラウザーのストレージに保持されます（[アプリのファイル](web.md#アプリのファイル)）。
+| `asuka/store` | `store.read(key, default)`、`store.write(key, value)`、`store.remove(key)`、`store.flush()`、`store.dir()`：起動をまたいで保持する小さな値。JSON としてプラットフォームの設定に保存します（UserDefaults、SharedPreferences、`localStorage`、Windows と Linux ではファイル。変更の少し後に書き込みます） |
+| `asuka/notify` | ローカル通知：`request()`、`show(n)`、`schedule(n)`（`n.after` の後）、`cancel(id)`、`showing()`、`remove(ids)`、`removeThread(t)`、`removeAll()`、`setBadge(n)`。`setCategories`（アクション、返信）、`setChannels`、`setChannelGroups`（Android）。`Notification(…).from(person, conversation)`（メッセージ）。`present(decide)`（アプリが前面にあるときの表示方法）。`responses()`（タップ、アクション、返信のストリーム。`r.defer()` で作業の間アプリを動かし続けます）。各プラットフォームのホスト自身の通知を使います：UserNotifications、Android の通知、Windows のトースト、Linux の通知、ブラウザーの通知 |
+| `asuka/push` | `push.register()`（トークン：APNs、FCM、Web のサブスクリプション）、`push.opened()` と `push.received()`（`Message` のストリーム。`Message.from(person, conversation)`） |
+| `asuka/watch` | `watch.path(dir, ignore:, recursive:, attributes:)` は `Watch` を返します：その `root` と、`Event` のまとまりのストリームである `events`（`op`：create、write、remove、rename、attrib、overflow。`path`、`oldPath`）。FSEvents、inotify、ReadDirectoryChangesW（internal/fswatch）を使います。スマートフォンと Web では非対応 |
+| `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` は `Task`（`update(…)`、`end()`）を返します：システムが表示する長時間の作業（Android のフォアグラウンドサービスの通知、iOS の継続処理、デスクトップの進捗表示） |
+| `asuka/calendar` | `calendar.request()`（`Access`）、`calendars()`、`events(from:, to:, calendars:)`、`add(Event)`（システムのフォーム）：EventKit、Calendar Provider |
+| `asuka/compose` | `compose.mail(to:, cc:, bcc:, subject:, body:, html:, attachments:)` と `compose.message(to:, body:, …)` はシステムの作成画面を開き、`Result`（cancelled、sent、saved、unknown）を返します。`check()` |
+| `asuka/contacts` | `contacts.pick()`（システムのピッカー：`Contact` または none）、`request()`、`list(name:, limit:)`、`add(Contact)` |
+| `asuka/library` | `library.save(path, collection:, name:, folder:, mime:, move:)`：ファイルを写真、ギャラリー、ダウンロード、ミュージックに保存し、保存先を返します |
+| `asuka/liveactivity` | `liveactivity.start(Content)` は `Activity`（`update(c, alert:)`、`end(c, dismiss:)`）を返します。`events()`（開始、終了、プッシュトークン）、`enabled()`：iOS のライブアクティビティ、Android 16 のライブアップデート |
+| `asuka/periodic` | `periodic.schedule(name, every:, network:, charging:)`、`cancel(name)`、`runs(name)`（`Run` のストリーム。`run.finish(ok)`）：iOS のバックグラウンドタスク、WorkManager |
+| `asuka/photos` | 許可を得た写真ライブラリ：`request()`、`current()`、`list(screenshots:, offset:, limit:)`、`thumbnail(id, size:)`、`export(id)`、`manageLimited()` |
+| `asuka/widget` | `widget.set(kind, Entry)`、`setAll(kind, entries)`、`clear(kind)`：アプリのウィジェットに表示する内容 |
+| `asuka/crash` | `crash.reports()`（ストリーム：保存済みのレポート、その後は届くたびに。`Report`：`id`、`kind`、`fatal`、`time`、`message`、`text`、`threads`、ブレッドクラムと値を含む `context`）、`breadcrumb(message)`、`set(key, value)`、`record(e)`、`delete(id)`。記録はデスクトップのホストが保持します（sdk/crash）。スマートフォンと Web ではまだです（reports は空） |
+| `asuka/icloud` | iOS と macOS の iCloud：`account()` と `files(scope)`（追跡されます：iCloud の変化に追従）、`Value(key, default)`（iCloud のキー値ストアに保存されるストア）、`documents()`、`container(id)`、`readFile`、`writeFile`、`delete`、`rename`、`download`、`evict`、`conflicts(path)`、`resolve(path, keeping:)`。ほかのプラットフォームでは、アカウントなし、空のリスト、"icloud: not available" になります |
+| `asuka/document` | `document.open(path, read:, write:)` は `Document<T>` ストアを返します：`content`、`state`（loading、saved、edited、saving、conflict、failed）、`error`。`edit(c)`（少し後に自動保存）、`save()`、`saveAnyway()`、`revert()`。iOS と macOS ではファイルアクセスを協調させます。ドキュメントベースのアプリのウィンドウ、メニュー、ドキュメントブラウザー（`Documents<T>`）は、UI ランタイムのウィンドウとナビゲーションを待っています |
+| `asuka/host` | 上のパッケージが土台にしているもの：ホスト自身のモジュール（`host.call(module, method, args)`、`host.next(module, method)`）。アプリが直接使う必要はありません |
+| `asuka/sqlite` | `sqlite.open(name)`（アプリのデータディレクトリ内のファイル、絶対パス、または `":memory:"`）は `DB` を返します：`migrate(steps)`、`exec(sql, args)` と `query<T>(sql, args)`（非同期、メインスレッド外で実行。行は列名で構造体のフィールドに対応させて `T` に直接デコード）、`watch<T>(sql, args)`（`Live<T>` ストア：`rows`、`loading`、`error`。引数が変わったときと、読んでいるテーブルに書き込みがあったときに再実行）、`changed()`、`close()`。SQLite は sqlite プラグインのライブラリ（sdk/sqlite）で、アプリと一緒に配布されます。Web ではまだ使えません |
+| `asuka/storage` | `storage.Value(key, default)`：`value` がデバイスに保存されるストア（asuka/store を使います）。追跡され、変化すると書き込まれます。`reset()`、`storage.flush()`、`storage.dirName()` |
+| `asuka/integrity` | `integrity.supported()`、`generateKey()`、`attestKey(id, challenge)`、`assertion(id, data)`（iOS と Mac の App Attest）。`prepare(cloudProjectNumber:)`、`token(requestHash:)`（Play Integrity） |
+| `asuka/js` | `js.eval(script, timeout:)`：プラットフォーム自身のエンジン（WKWebView、Android の WebView、WebView2、WebKitGTK、サンドボックス化した frame）で JavaScript を画面外で実行し、その値を JSON で返します。`js.JsError.timeout` |
+| `asuka/agerange` | `agerange.request(13, 18)`：生年月日なしでユーザーの年齢層を得ます（iOS 26 の Declared Age Range、Play の Age Signals）。`Range`（`status`、`lower`、`upper`、`source`）を返し、ほかのプラットフォームでは `AgeRangeError.notAvailable` です |
+| `asuka/appearance` | `appearance.current()`（追跡されます：`Color?` としての `accent`、`increaseContrast`、`reduceTransparency`。読まれている間だけ設定を監視します）、`appearance.now()`、`appearance.changes()`（ストリーム）。アクセントカラーは Mac、Windows、Linux の設定ポータル、Android の Material You、CSS の AccentColor のものです。iOS にはありません |
+| `asuka/biometric` | `biometric.check()`（`kind`、`enrolled`、`passcode`）、`biometric.authenticate(reason:, cancel:, noPasscode:)`：LocalAuthentication、BiometricPrompt、Windows Hello、WebAuthn のプラットフォーム認証器。`BiometricError.canceled`、`.notAvailable`、`.failed` |
+| `asuka/device` | `device.info()`（`model`、`system`、`systemVersion`、`appVersion`、`build`）、`device.browse(url)`（アプリ内で：SFSafariViewController、Custom Tab）、`device.pickPhotos(max:)`、`device.pickFiles(types:, multiple:)`（システムのピッカー。許可は不要で、コピーはアプリのキャッシュに置かれます）、`device.clipboardText()`、`clipboardHas()`、`clipboardImage()`、`copyImage(path)`、`clipboardChanges()`（ストリーム）、`device.keepAwake(on)` |
+| `asuka/dialog` | `dialog.open(...)`、`dialog.save(name:, ...)`、`dialog.chooseFolder(...)`、`chooseFolders`：システムのファイルダイアログ（NSOpenPanel と NSSavePanel、コモンアイテムダイアログ、GtkFileDialog、File System Access のピッカー）で、ユーザー自身のパスを返します。`dialog.Filter(name:, types:, extensions:)`。スマートフォンでは open はドキュメントピッカーです |
+| `asuka/power` | `power.status()`（追跡されます：`battery`、`onBattery`、`level`、`charging`、`lowPower`、`thermal`）、`power.events()`、`suspends()`、`resumes()`、`locks()`、`unlocks()`（ストリーム）、`power.idleTime()`：IOKit と ProcessInfo、UIDevice、BatteryManager と PowerManager、GetSystemPowerStatus とセッションの通知、UPower と logind、Battery Status API |
+| `asuka/preview` | `preview.show(sources, start:, edit:)`：ファイル（パス、アセット、URL）をシステムのビューアーで表示します（iOS と Mac ではクイックルック、ほかではファイルに対応するアプリ、Web では新しいタブ）。`preview.PreviewError.noViewer` |
+| `asuka/print` | `print.file(source, job:, orientation:)`、`print.html(markup, ...)`：システムの印刷ダイアログで、`print.Outcome` を返します。`print.pdf(markup, page:, landscape:, margins:)`：マークアップの PDF を作り、そのパスを返します。`print.Page.a4`、`letter`…、`print.regionPage(locale)`。名前が prelude の `print` と同じなので、`import asuka/print as printing` と書きます |
+| `asuka/review` | `review.request()`：ストアの評価プロンプト（iOS と Mac の StoreKit、Play のアプリ内レビュー）。表示するかどうかはストアの割り当て次第です。Windows、Linux、Web では何もしません。「評価する」ボタンには `review.appStoreURL(id)`、`review.playStoreURL(id)` |
+| `asuka/screen` | `screen.displays()`（追跡されます：`id`、`name`、`bounds`、`workArea`、`scale`、`refreshRate`、`primary`）、`screen.primary`、`nearest`、`matching`。`screen.lock(orientation)`、`screen.setBars(style:, hideStatus:, hideNavigation:)`、`screen.preventCapture(on)`、`screen.screenshots()`（ストリーム） |
+| `asuka/secure` | `secure.read(key)`、`secure.write(key, value)`、`secure.remove(key)`：プラットフォームが暗号化する小さな秘密情報（キーチェーン、Android Keystore、資格情報マネージャー、libsecret を通したユーザーのキーリング、抽出不可の WebCrypto 鍵で暗号化した IndexedDB） |
+| `asuka/shell` | `shell.reveal(path)`、`shell.open(path)`、`shell.trash(path)`、`shell.beep()`：ファイルマネージャーの機能（NSWorkspace、エクスプローラーとごみ箱、GIO と FileManager1）。`shell.ShellError.noApp` |
+| `asuka/splash` | `splash.hold()`、`splash.hide()`：アプリの準備ができるまで asuka.toml の起動画面を表示し続けます（iOS、Android。ほかでは何もしません） |
+| `asuka/tracking` | `tracking.request()`、`tracking.current()`：iOS と Mac の App Tracking Transparency のプロンプト（`.notAsked`、`.restricted`、`.denied`、`.allowed`）、Windows の広告 ID の設定、ブラウザーの Global Privacy Control または Do Not Track。プロンプトのない Android と Linux では `.allowed` |
+| `asuka/webauth` | `webauth.open(url, callbackScheme:, ephemeral:)`：システムの画面でのサインイン（ASWebAuthenticationSession、Custom Tab、WebView2 と WebKitGTK のウィンドウ、ポップアップ）で、コールバック URL を返します。`WebAuthError.canceled`。タスクをキャンセルすると閉じます |
+| `asuka/location` | `location.authorization()`（追跡される）、`request()`、`requestAlways()`、`requestPrecise(purpose)`、`current()`、`positions()`（ストリーム）、`placeName(lat, lon)`、`openSettings()`、`supported()`。バックグラウンドの位置更新（`startUpdates(…)`、`updates()`、`stopUpdates()`、`updating()`）と領域の監視（`monitor(region)`、`crossings()`、`stopMonitoring(id)`、`monitored()`）。そのイベントは読まれるまで保持され、アプリが処理している間は動き続けられます（`hold()`）。Core Location、Android の LocationManager、WinRT の Geolocator、位置情報ポータルまたは GeoClue、Geolocation API |
+| `asuka/sensors` | `sensors.available(sensor)`、`accelerometer(every:)`、`gyroscope`、`magnetometer`、`motion`（姿勢、重力、ユーザーの加速度）、`pressure`、`light`、`stepUpdates()`（いずれもストリーム）、`steps(from:, to:)`、`simulate(json)`。Core Motion、SensorManager、Generic Sensor API、iio-sensor-proxy |
+| `asuka/purchase` | アプリ内課金：`declare(items)`、`products(items)`、`buy(item, options)`、`Transaction.finish()`、`events()`（アプリの起動からのストリーム）、`owned()`（追跡される：`has(id)`）、`entitlements()`、`restore()`、`statuses(group)`、`manageSubscriptions(id)`、`redeemCode()`、`requestRefund(t)`、`storefront()`。StoreKit 2、Play Billing、Microsoft Store、Digital Goods API |
+| `asuka/pay` | Apple Pay と Google Pay：`available(request)`、`pay(request)`（配送先、配送方法、カード、クーポン、承認それぞれに非同期のハンドラーがあり、`Update` を返すか `throw Invalid(field:, message:)` する）、`setUp()`、ウォレット自身の `PayButton` |
+| `asuka/appleauth` | Apple でサインイン：`signIn(scopes:, nonce:, state:)`、`credentialState(user)`、`available()`、Apple の `SignInButton`。iOS と macOS のみ |
+| `asuka/nfc` | NFC タグ：`state()`（追跡される）、`start(alert:, poll:)` で得る `Session`（`next()`、`setAlert`、`fail`、`stop`）、`Tag`（`message`、`ndef`、`write`、`makeReadOnly`、`transceive`）、`opened()`、NDEF の `Message` と `Record`（`encode()`、`decode(bytes)`）。Core NFC、Android のリーダーモード、Web NFC |
+| `asuka/bluetooth` | Bluetooth LE：`state()`（追跡される）、`request()`、`scan()`（ストリーム）、`choose(filters)`、`connect(device)`（`Connection` ストア：`state`、`services()`、`characteristic(s, c)`）、キャラクタリスティックの `read`、`write`、`notifications()`、`serve(services)`、`advertise(…)`、Bluetooth SIG の UUID。Core Bluetooth、Android の BLE、WinRT、BlueZ、Web Bluetooth |
+| `asuka/audio` | `audio.play(source)` と、`play`、`pause`、`seek`、`setVolume`、`setRate`、`setLoop`、`status()`、`release()` を持つストアの `audio.Player(source)`。AVPlayer、Media3 の ExoPlayer、`<audio>`、MCI、GStreamer を使います（[デバイス](device.md)） |
+| `asuka/nowplaying` | `nowplaying.NowPlaying`：アプリが再生しているものをロック画面やシステムのメディアコントロールに表示し、そこから送られるコマンド（メディアキー、ヘッドホンのボタン）を受け取ります。`audio.Player` を渡すとそれに追従します（[デバイス](device.md)） |
+| `asuka/speech` | `speech.speak(text, options:)`、`stop`、`pause`、`resume`、`speaking`、`voices()`：システムの音声によるテキストの読み上げ（[デバイス](device.md)） |
+| `asuka/record` | `record.audio(maxDuration:, quality:, background:)` と `stopAudio`、`pauseAudio`、`resumeAudio`、`audioStatus()`：マイクからの録音。`record.start()` と `stop()`：画面上の `camera.View` からの録画（[デバイス](device.md)） |
+| `asuka/camera` | `camera.View`（`facing`、`mode`、`scan`、`codes`。`code`、`error`）：ライブのカメラ映像。`camera.capture()`、`camera.take()`（システムのカメラ画面）、`camera.record()`（[デバイス](device.md)） |
+| `asuka/scan` | `scan.file(path, kinds:)`：画像の中のバーコードと QR コード（[デバイス](device.md)） |
+| `asuka/vision` | `vision.analyze(path, text:, faces:, codes:, languages:)`：画像の中の文字（行ごと、単語ごと）、顔、コードを、それぞれの位置とともにデバイス上で検出します（[デバイス](device.md)） |
+| `asuka/transcribe` | `transcribe.check(language)`、`transcribe.file(path, language:)`：録音をデバイス上だけで文字にします（できない場所では `notAvailable`：Web、Linux、古い Android）（[デバイス](device.md)） |
+| `asuka/imageedit` | `imageedit.edit(source, actions, format:, quality:)`（リサイズ、切り抜き、回転、反転、塗りつぶし、モザイク）、`imageedit.size`、`imageedit.videoFrame`：画像と動画のフレームを JPEG か PNG で書き出します（[デバイス](device.md)） |
+| `asuka/maps` | `maps.View`（`bind region`、`markers`、`mapType`、`showsUser`、`interactive`。`markerPress`、`press`、`regionChange`）：Apple マップ、Google マップ、OpenStreetMap（[デバイス](device.md)） |
+| `asuka/lottie` | `lottie.View(source)`（`bind playing`、`bind progress`、`loop`、`speed`、`segment`、`marker`、`fit`、`overrides`。`complete`、`loaded`）：各プラットフォームのプレーヤーによる Lottie と dotLottie。Windows と Linux ではまだありません（[コンポーネント](components.md)） |
+| `asuka/svg` | アプリのコンパイル時に解析される `svg.Icon(markup)` と、`svg.View(icon) { color }`。`svg.Shape(layers)`：アプリが描くパスで、自分の枠に追従します（[コンポーネント](components.md)） |
+| `asuka/chart` | `chart.View(series) { labels, label, low, high, grid }`。`chart.Series(name:, kind: .bar \| .line \| .area \| .points, values:, smooth:, color:)`：Asuka で書かれ、`svg.Shape` で描かれます（[コンポーネント](components.md)） |
+| `asuka/shader` | `shader.Program(source)`：アプリと一緒にすべてのプラットフォーム向けにコンパイルされる Kage シェーダー。`shader.Shader(program) { uniforms, animated }`（[コンポーネント](components.md)） |
+| `asuka/markdown` | `markdown.View(text) { streaming }` と `markdown.heal(text)`：Markdown をプラットフォームのスタイル付きテキストとして表示し、ストリーミング中は届くそばから補修します（[コンポーネント](components.md)） |
+
+ネイティブパッケージのコードがないプラットフォーム（`asuka test` で動かすアプリにはまったくありません）では、それを必要とする処理は `unsupported` エラーを投げます。そのとき `asuka/store` は何も保存せず、読み込むとデフォルト値が返ります。
+
+`asuka test` では実行のたびに同じ結果になります。`time.now()` は 2026-01-01T00:00:00Z から始まり、テストの時間（`sleep`）に合わせてだけ進みます。ローカルのタイムゾーンは UTC で、各テストには `fs.appDir()` として専用の空のディレクトリがあります。Web ではアプリにまだディレクトリがないので、`asuka/fs` の呼び出しはエラーを投げます。
+
+デバイスまわりのパッケージ（`location`、`sensors`、`purchase`、`pay`、`appleauth`、`nfc`、`bluetooth`）にはテスト用のフェイクがあります。`location.fake()` や `purchase.fake(products)` などは、プラットフォームの実装の代わりに、テストが操作する Asuka の実装（端末を動かす、購入を承認する、タグをかざす、ペリフェラルを加える）をパッケージに与えます。詳しくは[標準ライブラリの README](../../std/README.md#test-fakes) を参照してください。
 
 ## ここにないパッケージ
 

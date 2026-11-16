@@ -1,0 +1,49 @@
+import asuka/camera
+
+component CameraScreen {
+  state status = "ready"
+  state last = ""
+
+  Column {
+    camera.View {
+      mode: .video
+      scan: true
+      codes: ["qr", "ean13"]
+      height: 300
+      on code(c) { status = "{c.kind}: {c.value}" }
+      on error(m) { status = m }
+    }
+    Text(status)
+    Button("Shoot") {
+      on press {
+        do {
+          last = try await camera.capture()
+          status = "saved"
+        } catch e {
+          status = "no camera here"
+        }
+      }
+    }
+    Button("Take") {
+      on press {
+        let p = try? await camera.take()
+        status = if let path = p { "took {path}" } else { "took nothing" }
+      }
+    }
+  }
+}
+
+app { CameraScreen() }
+
+test "with no platform code, the camera view is empty and capturing says why" {
+  let app = mount(CameraScreen())
+  await app.idle()
+  app.expect("ready")
+  app.tap("Shoot")
+  await app.idle()
+  app.expect("no camera here")
+  app.tap("Take")
+  await app.idle()
+  app.expect("took nothing")
+  camera.stopRecording()
+}

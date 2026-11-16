@@ -132,6 +132,10 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = positional(0, "nothing")
 		call.Result = Void
 		c.callEffects(e, "idle", true, false)
+	case BNever:
+		call.Args = positional(0, "nothing")
+		call.Result = Void
+		c.callEffects(e, "never", true, false)
 	case BPush, BPresent:
 		args := positional(1, "a view: "+b.name+"(Screen())")
 		if len(args) > 0 {
@@ -246,10 +250,6 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		call.Result = Void
 		c.callEffects(e, "withTimeout", true, true)
-	case BUntilCancelled:
-		positional(0, "nothing: await untilCancelled()")
-		call.Result = Void
-		c.callEffects(e, "untilCancelled", true, false)
 	case BLive:
 		args := positional(2, "a value and a stream: live(initial, () => changes())")
 		var elem Type
@@ -376,6 +376,16 @@ func (c *Checker) allRace(e *syntax.CallExpr, b *Builtin, args []syntax.Expr) Ty
 	if len(types) == 1 {
 		return types[0]
 	}
+	// all of calls that return nothing returns nothing.
+	allVoid := true
+	for _, t := range types {
+		if t != Void {
+			allVoid = false
+		}
+	}
+	if allVoid {
+		return Void
+	}
 	return &Tuple{types}
 }
 
@@ -403,7 +413,7 @@ func (c *Checker) isAsyncCall(call *Call) bool {
 		return call.Method.Async
 	case CallBuiltin:
 		switch call.Builtin.ID {
-		case BSleep, BAll, BRace, BIdle, BWithTimeout:
+		case BSleep, BAll, BRace, BIdle, BWithTimeout, BNever:
 			return true
 		case BRuntime:
 			return call.Builtin.Fn.Async

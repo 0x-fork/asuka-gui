@@ -1,4 +1,4 @@
-// untilCancelled: a task that holds something until it's cancelled.
+// never(): a task that holds something until it's cancelled.
 
 state released = false
 
@@ -6,7 +6,7 @@ test "held until it's cancelled" {
   do {
     try await withTimeout(10ms) {
       defer { released = true }
-      await untilCancelled()
+      await never()
     }
   } catch e {
     print("timed out")

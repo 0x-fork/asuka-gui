@@ -1,0 +1,16 @@
+// asuka/tracking with no platform code (the fake host): no prompt, so
+// tracking is allowed, as on Android and Linux.
+
+import asuka/tracking
+
+test "no prompt here" {
+  print(tracking.current())
+  print(try await tracking.request())
+  print(tracking.current() == .allowed)
+}
+
+// Output:
+// allowed
+// allowed
+// true
+// ok no prompt here

@@ -1,0 +1,51 @@
+// asuka/device with no platform code (the fake host): its calls throw an
+// unsupported error, keepAwake does nothing, and the clipboard's changes
+// end at once.
+
+import asuka/device
+
+component Info {
+  let info = load device.info()
+  state changes = 0
+  state ended = false
+
+  task {
+    device.keepAwake(true)
+    for await _ in device.clipboardChanges() {
+      changes += 1
+    }
+    ended = true
+  }
+
+  Column {
+    match info {
+      .pending => Text("…")
+      .failed(e) => Text(e.message)
+      .ready(i) => Text("{i.model}, {i.system} {i.systemVersion}")
+    }
+    Text(if ended { "no changes: {changes}" } else { "watching" })
+  }
+}
+
+app { Info() }
+
+test "no device here" {
+  let app = mount(Info())
+  await app.idle()
+  app.expect("unsupported: no device here")
+  app.expect("no changes: 0")
+}
+
+test "the pickers and the clipboard" {
+  let photos = (try? await device.pickPhotos(max: 3)) ?? []
+  expect(photos.isEmpty())
+  let files = (try? await device.pickFiles(types: ["application/pdf"], multiple: true)) ?? []
+  expect(files.isEmpty())
+  expect((try? await device.clipboardText()) == none)
+  do {
+    try await device.browse("https://go.dev")
+    expect(false)
+  } catch e {
+    expect(e.message.hasPrefix("unsupported"))
+  }
+}

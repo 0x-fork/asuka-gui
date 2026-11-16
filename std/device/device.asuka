@@ -1,0 +1,157 @@
+// Package asuka/device is what the platform offers apps beyond views:
+// what device it is, its in-app browser, its photo and document pickers,
+// the clipboard (text and images), and keeping the screen on.
+//
+//   let info = try await device.info()          // "iPhone", "iOS", "26.0"
+//   try await device.browse("https://go.dev")   // in the app
+//   let photos = try await device.pickPhotos(max: 3)
+//   if let text = try await device.clipboardText() { paste(text) }
+//
+// The pickers need no permission: PHPicker and the document picker on
+// iOS, the Photo Picker and the storage picker on Android, the system's
+// open dialog on desktops, the browser's file picker. What they give are
+// copies in the app's caches, the app's to keep or move.
+
+/// The device and the app.
+pub struct Info {
+  /// "iPhone", "Pixel 9", "Mac", "PC".
+  model: string = ""
+  /// "iOS", "Android", "macOS", "Windows", "Linux".
+  system: string = ""
+  /// "26.0", "16".
+  systemVersion: string = ""
+  /// asuka.toml's version.
+  appVersion: string = ""
+  /// asuka.toml's build.
+  build: string = ""
+}
+
+/// A file the user picked.
+pub struct File {
+  /// A copy in the app's caches: the app's to keep or move.
+  path: string
+  /// Its name where it was ("Invoice.pdf").
+  name: string
+  /// Its MIME type, if known ("application/pdf").
+  type: string = ""
+  /// Its size, in bytes.
+  size: int = 0
+}
+
+/// What the clipboard holds, said without reading it (iOS doesn't ask
+/// the user for this): to show a Paste button only when there's
+/// something to paste.
+pub struct ClipboardKinds {
+  text: bool = false
+  image: bool = false
+  url: bool = false
+}
+
+/// The platform's side.
+native interface Platform {
+  /// The device and the app.
+  async fn info() -> Info
+  /// Shows a web page in the app (or the browser, on desktops).
+  async fn browse(url: string)
+  /// The photo picker, for up to max images; their copies' paths.
+  async fn pickPhotos(max: int) -> [string]
+  /// The document picker (types: MIME types, none: any file).
+  async fn pickFiles(types: [string], multiple: bool) -> [File]
+  /// The clipboard's text; none if it has none.
+  async fn clipboardText() -> string?
+  /// What the clipboard holds.
+  async fn clipboardHas() -> ClipboardKinds
+  /// The clipboard's image, as a file in the app's caches; none if it
+  /// has none.
+  async fn clipboardImage() -> string?
+  /// Puts the image file at path on the clipboard.
+  async fn copyImage(path: string)
+  /// Calls changed with what the clipboard holds at each change, until
+  /// the task is cancelled.
+  async fn watchClipboard(changed: fn(ClipboardKinds))
+  /// Keeps the screen on while on.
+  /// @mainThread
+  fn keepAwake(on: bool)
+}
+
+// Made once; none where the platform has no code for it.
+let platform = try? Platform()
+
+fn made() throws -> Platform {
+  if let p = platform {
+    return p
+  }
+  throw Error("unsupported: no device here")
+}
+
+/// The device and the app.
+pub async fn info() throws -> Info {
+  return try await made().info()
+}
+
+/// Shows a web page in the app, over it: SFSafariViewController on iOS,
+/// a Custom Tab on Android; desktops and the web open it in the user's
+/// browser. (openURL leaves the app for the browser on phones too.)
+pub async fn browse(url: string) throws {
+  try await made().browse(url: url)
+}
+
+/// Shows the system's photo picker for up to max images (no permission
+/// asked) and returns their files, which Image shows; none if the user
+/// cancelled.
+pub async fn pickPhotos(max: int = 1) throws -> [string] {
+  var n = max
+  if n < 1 { n = 1 }
+  if n > 255 { n = 255 }
+  return try await made().pickPhotos(max: n)
+}
+
+/// Shows the system's document picker (no permission asked) and returns
+/// copies of the files picked, none if the user cancelled. types are MIME
+/// types ("application/pdf", "image/*", "text/csv"); none: any file.
+pub async fn pickFiles(types: [string] = [], multiple: bool = false) throws -> [File] {
+  return try await made().pickFiles(types: types, multiple: multiple)
+}
+
+/// The clipboard's text, none if it has none (copy writes it). iOS asks
+/// the user the first time an app reads what another app put there.
+pub async fn clipboardText() throws -> string? {
+  return try await made().clipboardText()
+}
+
+/// What the clipboard holds, without reading it.
+pub async fn clipboardHas() throws -> ClipboardKinds {
+  return try await made().clipboardHas()
+}
+
+/// The clipboard's image, read into a file in the app's caches in the
+/// format the copying app gave it (PNG, JPEG, HEIC...: its extension
+/// says); none if it has none. iOS asks the user the first time the app
+/// reads what another app put there.
+pub async fn clipboardImage() throws -> string? {
+  return try await made().clipboardImage()
+}
+
+/// Puts the image file at path (PNG, JPEG, HEIC...) on the clipboard,
+/// for pasting in another app.
+pub async fn copyImage(path: string) throws {
+  try await made().copyImage(path: path)
+}
+
+/// What the clipboard holds at each change while the app is in front
+/// (another app's copy is seen as the app comes back, on iOS): read it
+/// then with clipboardText or clipboardImage. Nothing where the platform
+/// doesn't say.
+pub fn clipboardChanges() -> Stream<ClipboardKinds> = Stream(send => {
+  if let p = platform {
+    try await p.watchClipboard(changed: k => send(k))
+  }
+})
+
+/// Keeps the screen on (the system's idle timer off) while on is true: a
+/// video, a recipe, a navigation screen.
+pub fn keepAwake(on: bool) {
+  if let p = platform {
+    try? p.keepAwake(on: on)
+  }
+}

@@ -1,0 +1,161 @@
+import asuka/nfc
+
+state status = ""
+state link = ""
+state about = ""
+
+fn show(t: nfc.Tag) {
+  let id = if t.id.isEmpty() { "" } else { "ID {t.id.hex(" ").upper()} · " }
+  about = "{id}{t.techs.joined(separator: ", ")}"
+  if let m = t.message {
+    if let u = m.uri() {
+      link = u
+      status = "Read a link."
+    } else if let s = m.text() {
+      link = "“{s}”"
+      status = "Read a text, not a link."
+    } else {
+      link = "No link on this tag"
+      status = "{m.records.count()} records, none a link."
+    }
+  } else {
+    link = "No link on this tag"
+    status = "Not an NDEF tag ({t.ndef.format})."
+  }
+}
+
+fn ended(e: Error) {
+  status = e.message
+}
+
+async fn followOpened() throws {
+  for await t in nfc.opened() { show(t) }
+}
+
+async fn openedQuietly() { try? await followOpened() }
+
+component Tags {
+  let st = nfc.state()
+
+  task { await openedQuietly() }
+
+  async fn read() {
+    do {
+      let session = try await nfc.start(alert: "Hold your iPhone near a tag to read it.")
+      defer { session.stop() }
+      show(try await session.next())
+    } catch e {
+      ended(e)
+    }
+  }
+
+  async fn writeTag(u: string) {
+    do {
+      let session = try await nfc.start(alert: "Hold your iPhone near a tag to write it.")
+      defer { session.stop() }
+      let t = try await session.next()
+      if !t.ndef.writable() {
+        session.fail("This tag can't be written.")
+        status = "This tag is {t.ndef.format}: it can't be written."
+        return
+      }
+      try await t.write(nfc.Message(records: [nfc.Record.uri(u)]))
+      link = u
+      status = "Written to the tag."
+    } catch e {
+      ended(e)
+    }
+  }
+
+  Column {
+    Text(if !st.supported { "No NFC." } else if !st.enabled { "NFC is off." } else { "NFC is on." })
+    Button("Read") { on press { await read() } }
+    Button("Write") { on press { await writeTag("https://asuka.dev/nfc/42") } }
+    Text("link {link}")
+    Text("about {about}")
+    Text("status {status}")
+  }
+}
+
+app { Tags() }
+
+test "NDEF, both ways" {
+  let m = nfc.Message(records: [nfc.Record.uri("https://example.com/hello"), nfc.Record.text("hi", language: "en"),
+    nfc.Record.mime(type: "text/plain", data: "x".bytes()), nfc.Record.androidApp("dev.asuka.nfc")])
+  let b = m.encode()
+  let back = try nfc.decode(b)
+  expect(back.records.count() == 4)
+  expect(back.uri() == "https://example.com/hello" && back.text() == "hi")
+  expect(nfc.Message().encode().hex() == "d00000")
+  expect((try nfc.decode(nfc.Message().encode())).records.isEmpty())
+  // A URI's prefix is its code.
+  expect(nfc.Message(records: [nfc.Record.uri("https://a.b")]).encode().hex() == "d101045504612e62")
+  do {
+    let _ = try nfc.decode(bytes([0xd1, 0x01, 0x30]))
+  } catch nfc.NfcError.badMessage {
+    print("bad message")
+  }
+}
+
+test "with no platform code, no NFC" {
+  let app = mount(Tags())
+  await app.idle()
+  app.expect("No NFC.")
+  app.tap("Read")
+  app.expect("status nfc: not available")
+}
+
+test "read" {
+  link = ""
+  let n = nfc.fake()
+  let app = mount(Tags())
+  await app.idle()
+  app.expect("NFC is on.")
+  app.tap("Read")
+  await app.idle()
+  expect(n.session!.alert == "Hold your iPhone near a tag to read it.")
+  n.tap(nfc.FakeTag(id: bytes([0x04, 0xa1]), ndef: nfc.Message(records: [nfc.Record.uri("https://example.com/hello")]).encode()))
+  await app.idle()
+  app.expect("link https://example.com/hello")
+  app.expect("about ID 04 A1 · ndef, mifare, nfcA, mifareUltralight")
+  expect(n.session.isNone())
+  app.tap("Read")
+  await app.idle()
+  n.cancel()
+  await app.idle()
+  app.expect("status nfc: canceled")
+}
+
+test "write" {
+  let n = nfc.fake()
+  let app = mount(Tags())
+  await app.idle()
+  app.tap("Write")
+  await app.idle()
+  n.tap(nfc.FakeTag(ndef: nfc.Message().encode()))
+  await app.idle()
+  app.expect("status Written to the tag.")
+  let m = try nfc.decode(n.tags[0].ndef)
+  expect(m.uri() == "https://asuka.dev/nfc/42" && n.tags[0].writes == 1)
+  app.tap("Write")
+  await app.idle()
+  n.tap(nfc.FakeTag(ndef: nfc.Message().encode(), readOnly: true))
+  await app.idle()
+  app.expect("status This tag is readOnly: it can't be written.")
+  expect(n.session.isNone() && n.sessions == 2)
+}
+
+test "off, and opened" {
+  let n = nfc.fake()
+  let app = mount(Tags())
+  await app.idle()
+  n.setEnabled(false)
+  await app.idle()
+  app.expect("NFC is off.")
+  app.tap("Read")
+  app.expect("status nfc: turned off")
+  n.open(nfc.FakeTag(id: bytes([1]), techs: ["iso7816", "isoDep"]))
+  await app.idle()
+  app.expect("about ID 01 · iso7816, isoDep")
+  app.expect("status Not an NDEF tag (notNDEF).")
+}

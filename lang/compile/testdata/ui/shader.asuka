@@ -1,0 +1,41 @@
+import asuka/shader
+
+/// A band of light that flows across a night sky.
+let aurora = shader.Program(r"""
+  package main
+
+  var Time float
+  var Tint vec4
+
+  func Fragment(dst vec4, pos vec2) vec4 {
+  	uv := pos / rectSize()
+  	t := Time * 0.4
+  	wave := sin(uv.x*6+t)*0.5 + sin(uv.x*11-t*1.3)*0.25
+  	band := smoothstep(0.35, 0, abs(uv.y-0.5-wave*0.18))
+  	sky := mix(vec3(0.02, 0.03, 0.10), vec3(0.05, 0.08, 0.22), uv.y)
+  	return vec4(sky+Tint.rgb*band*(0.7+0.3*sin(Time+uv.x*4)), 1)
+  }
+  """)
+
+component Sky {
+  state level = 0.62
+
+  Column {
+    shader.Shader(aurora) {
+      uniforms: [shader.Uniform(name: "Tint", value: [0.2, 0.5 + level * 0.5, 0.6, 1])]
+      animated: true
+      height: 140
+      radius: 16
+      clip: true
+    }
+    Text("{aurora.code.count() > 0}, {aurora.glsl.contains("asuka_shade")}")
+    Slider { bind value: level }
+  }
+}
+
+app { Sky() }
+
+test "a shader is compiled with the app" {
+  let app = mount(Sky())
+  app.expect("true, true")
+}

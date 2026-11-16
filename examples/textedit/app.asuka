@@ -1,0 +1,73 @@
+// TextEdit is a plain text editor with documents (asuka/document): on
+// the desktop a window per file, the File menu (New, Open…, Open Recent,
+// Save, Duplicate, Rename…, Revert…), autosave and recovery copies, and a
+// bar when another app changes the file being edited; on a phone or in a
+// browser, a list of its documents and one open at a time.
+//
+//   asuka dev examples/textedit
+//   asuka dev --platform ios examples/textedit
+
+import asuka/document
+
+let types = [
+  document.Type(name: "Plain Text", extensions: ["txt", "text"], mimeTypes: ["text/plain"]),
+  document.Type(name: "Markdown Document", extensions: ["md", "markdown"], mimeTypes: ["text/markdown"]),
+]
+
+app {
+  // Undoing back to the file's text leaves the document unedited: a
+  // string's == says so.
+  document.Documents(types, read: data => data.string(), write: text => text.bytes()) {
+    width: 640
+    height: 480
+    editor: doc => Editor(doc)
+  }
+}
+
+/// A document's window: the text, a bar while another app's change
+/// conflicts with the user's, and a status line.
+component Editor(doc: document.Document<string>) {
+  let words = doc.content.fields().count
+  let status = if doc.state.deleted {
+    "Deleted"
+  } else if doc.state.readOnly {
+    "Read-only"
+  } else if doc.state.edited {
+    "Edited"
+  } else {
+    "Saved"
+  }
+
+  Column {
+    grow: 1
+    if doc.state.conflict {
+      Row {
+        gap: 12
+        padding: [8, 16]
+        align: .center
+        background: .secondaryBackground
+        Text("Another app changed this file.") { grow: 1 }
+        Button("Revert") {
+          on press { try await doc.revert() }
+        }
+        Button("Keep Mine") {
+          variant: .filled
+          on press { try await doc.saveAnyway() }
+        }
+      }
+    }
+    TextField {
+      bind text: doc.content
+      multiline: true
+      plain: true
+      grow: 1
+      padding: 16
+      font: .body.family("monospace")
+    }
+    Text("{words} words · {status}") {
+      font: .footnote
+      color: .secondaryLabel
+      padding: [6, 16]
+    }
+  }
+}

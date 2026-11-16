@@ -1,0 +1,163 @@
+// Gallery shows Asuka's components, a destination each in a split view's
+// sidebar (a drawer on Android, a list that pushes on an iPhone).
+//
+//   asuka dev --platform ios examples/gallery
+
+import asuka/print
+
+app {
+  SplitView("Gallery") {
+    Sidebar("Views") {
+      Destination("Text and fonts") {
+        icon: "textformat"
+        Page {
+          Fonts()
+          TextInput()
+        }
+      }
+      Destination("Symbols") {
+        icon: "house"
+        Page { Symbols() }
+      }
+      Destination("Images") {
+        icon: "photo"
+        Page { Images() }
+      }
+      Destination("Video") {
+        icon: "play.rectangle"
+        Page { VideoSection() }
+      }
+      Destination("Shapes and canvas") {
+        icon: "scribble"
+        Page {
+          Shapes()
+          CanvasSection()
+        }
+      }
+      Destination("Charts") {
+        icon: "chart.bar"
+        Page { Charts() }
+      }
+    }
+    Sidebar("Controls") {
+      Destination("Controls") {
+        icon: "slider.horizontal.3"
+        Page {
+          Controls()
+          Snackbars()
+        }
+      }
+      Destination("Pages") {
+        icon: "rectangle.split.3x1"
+        Page { Pages() }
+      }
+      Destination("Dates") {
+        icon: "calendar"
+        Page { Dates() }
+      }
+    }
+    Sidebar("Lists and navigation") {
+      Destination("Inbox") {
+        icon: "envelope"
+        // Its badge counts its messages: swiping one away counts down.
+        badge: "{inboxItems.count}"
+        toolbar {
+          Button("Top") {
+            icon: "arrow.up"
+            on press { inboxList.scrollToItem(0, animated: true) }
+          }
+        }
+        Inbox()
+      }
+      Destination("Settings") {
+        icon: "gear"
+        SettingsList()
+      }
+      Destination("Photos") {
+        icon: "photo"
+        Photos()
+      }
+      Destination("Editor") {
+        icon: "square.and.pencil"
+        Editor()
+      }
+      Destination("Web") {
+        icon: "globe"
+        toolbar {
+          Button("Run script") {
+            icon: "curlybraces"
+            on press { try? await webView.eval("document.getElementById(\"out\").textContent = \"Set from Asuka at \" + new Date().toLocaleTimeString()") }
+          }
+          Button("Print") {
+            icon: "printer"
+            on press { try? await print.webView(webView) }
+          }
+        }
+        WebPage()
+      }
+    }
+    Sidebar("Motion") {
+      Destination("Motion") {
+        icon: "wand.and.stars"
+        badge: "New"
+        MotionPage()
+      }
+      Destination("Lottie") {
+        icon: "sparkles"
+        Page { LottieSection() }
+      }
+    }
+    Sidebar("Device") {
+      Destination("Camera") {
+        icon: "camera"
+        CameraScreen()
+      }
+      Destination("Services") {
+        icon: "gearshape.2"
+        Page { Services() }
+      }
+      Destination("Documents") {
+        icon: "doc"
+        Page { Documents() }
+      }
+      Destination("Platform") {
+        icon: "iphone"
+        Page { PlatformSection() }
+      }
+      Destination("Crashes") {
+        icon: "exclamationmark.triangle"
+        Page { Crashes() }
+      }
+    }
+  }
+}
+
+/// A destination's first screen: its examples in a scroll.
+component Page {
+  prop children: View
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      padding: 20
+      gap: 28
+      children
+    }
+  }
+}
+
+/// A titled group of examples.
+component Section(title: string) {
+  prop children: View
+
+  Column {
+    gap: 12
+    Text(title) { font: .headline }
+    children
+  }
+}
+
+style caption {
+  font: .footnote
+  color: .secondaryLabel
+}

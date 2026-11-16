@@ -1,0 +1,252 @@
+// Notes keeps notes in SQLite: a live query feeds the list, so adding,
+// checking off and deleting (swipe a note) show as soon as they're
+// written. On a desktop, a global shortcut (⌥⌘N, Ctrl+Alt+N) adds
+// what's on the clipboard as a note, from whichever app is in front.
+//
+//   asuka dev --platform ios examples/notes
+
+import asuka/device
+import asuka/dialog
+import asuka/fs
+import asuka/hotkey
+import asuka/shell
+import asuka/sqlite
+import asuka/url
+
+struct Note {
+  id: int
+  text: string
+  done: bool
+}
+
+fn openDB(path: string) throws -> sqlite.DB {
+  let db = try sqlite.open(path)
+  try db.migrate([
+    "create table notes (id integer primary key, text text not null, done bool not null default 0)",
+  ])
+  return db
+}
+
+/// The notes' database, opened as the app starts.
+let db = (try? openDB("notes.db"))!
+
+/// The search's SQL: a match anywhere, any case; % and _ are text.
+let search = "select * from notes where ?1 = '' or instr(lower(text), lower(?1)) > 0 order by done, id desc"
+
+/// Runs a statement off the main thread; a failure shows.
+async fn write<A>(query: string, args: A) {
+  do {
+    try await db.exec(query, args)
+  } catch e {
+    alert("Couldn't save", message: e.message)
+  }
+}
+
+async fn addNote(text: string) {
+  if !text.isEmpty { await write("insert into notes (text) values (?)", [text]) }
+}
+
+/// Asks where to save the notes as a Markdown checklist, writes them
+/// there, and shows the file in the file manager.
+async fn export(notes: [Note]) {
+  // none: cancelled, or a platform without the dialog (try? flattens the
+  // optional the dialog returns)
+  let filters = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
+  if let path = try? await dialog.save(name: "Notes.md", button: "Export", filters: filters) {
+    let text = notes.map(n => "- [{if n.done { "x" } else { " " }}] {n.text}\n").join("")
+    do {
+      try await spawn { try fs.write(path, text.bytes()) }
+      try? await shell.reveal(path)
+    } catch e {
+      alert("Couldn't export", message: e.message)
+    }
+  }
+}
+
+app {
+  // asukanotes://add?text=... adds a note (asuka.toml's scheme).
+  on openURL(raw) {
+    if let u = url.parse(raw) {
+      if u.host == "add" { await addNote(u.query("text") ?? "") }
+    }
+  }
+  Window {
+    width: 420
+    height: 640
+    minWidth: 320
+    minHeight: 360
+    maxWidth: 720
+    Stack { NotesScreen() }
+  }
+}
+
+screen NotesScreen {
+  state query = ""
+  state draft = ""
+  state stats = false
+  state clipError = ""
+
+  // The search is the query's: SQLite filters, and the rows follow
+  // what's typed (the live query runs again as its arguments change, and
+  // as the table does).
+  let notes: sqlite.Live<Note> = db.watch(search, [query])
+  let done = notes.rows.count(n => n.done)
+
+  title: "Notes"
+  bind search: query
+  searchPlaceholder: "Search notes"
+
+  async fn add() {
+    let t = draft
+    draft = ""
+    await addNote(t)
+  }
+
+  // On a desktop, closing the window with a note typed but not added asks
+  // first (a phone has no window to close).
+  WindowCloseGuard {
+    when: !draft.isEmpty
+    on closeRequest {
+      alert("Discard the new note?", message: "It hasn't been added.", buttons: [
+        AlertButton(title: "Cancel", role: .cancel),
+        AlertButton(title: "Discard", role: .destructive, run: () => closeWindow()),
+      ])
+    }
+  }
+
+  // A global shortcut: the clipboard's text as a note, whichever app has
+  // the keyboard. Phones and the web have none (.notAvailable).
+  hotkey.Hotkey(Shortcut.cmd("n", mods: .alt)) {
+    description: "Add the clipboard as a note"
+    on press {
+      if let t = try? await device.clipboardText() { await addNote(t) }
+    }
+    on error(e) {
+      clipError = match e {
+        .notAvailable => ""
+        _ => e.message
+      }
+    }
+  }
+
+  // On a desktop: the menu bar's commands, with shortcuts, and a window
+  // of statistics, which floats over other apps' windows and opens where
+  // it was left. A phone has neither.
+  MenuBar {
+    Menu("File") {
+      MenuItem("Add Note") {
+        shortcut: Shortcut.cmd("enter")
+        on press { await add() }
+      }
+      MenuItem("Export…") {
+        shortcut: Shortcut.cmd("e", mods: .shift)
+        on press { await export(notes.rows) }
+      }
+    }
+    Menu("Edit") {
+      MenuItem("Clear Completed") {
+        shortcut: Shortcut.cmd("k", mods: .shift)
+        role: .destructive
+        on press { await write("delete from notes where done", []) }
+      }
+    }
+    // Opens the window, or brings it to the front if it's open already.
+    Menu("Window") {
+      MenuItem("Statistics") {
+        shortcut: Shortcut.cmd("i")
+        on press { stats = true }
+      }
+    }
+  }
+  Window {
+    bind open: stats
+    title: "Statistics"
+    width: 280
+    height: 140
+    stateKey: "statistics"
+    alwaysOnTop: true
+    maximizable: false
+    Column {
+      padding: 20
+      gap: 6
+      Text("{notes.rows.count} notes") { font: .title2 }
+      Text("{done} done") { color: .secondaryLabel }
+    }
+  }
+
+  SafeArea {
+    grow: 1
+    if !clipError.isEmpty {
+      Text("The shortcut to add the clipboard: {clipError}") {
+        padding: [4, 16]
+        font: .footnote
+        color: .secondaryLabel
+      }
+    }
+    Row {
+      gap: 8
+      padding: [8, 16]
+      align: .end
+      TextField {
+        bind text: draft
+        placeholder: "New note"
+        returnKey: .done
+        grow: 1
+        on submit { await add() }
+      }
+      Button("") {
+        icon: "plus"
+        label: "Add"
+        variant: .filled
+        disabled: draft.isEmpty
+        on press { await add() }
+      }
+    }
+    if !notes.loading && notes.rows.isEmpty {
+      Column {
+        grow: 1
+        justify: .center
+        align: .center
+        gap: 8
+        Symbol("doc") {
+          font: .largeTitle
+          color: .tertiaryLabel
+        }
+        Text(if query.isEmpty { "No notes yet" } else { "No notes match" }) { color: .secondaryLabel }
+      }
+    }
+    List {
+      for n in notes.rows key n.id {
+        Row {
+          gap: 12
+          padding: [14, 20]
+          align: .center
+          swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => {
+            await write("delete from notes where id = ?", [n.id])
+          })]
+          on press { await write("update notes set done = ?1 where id = ?2", (!n.done, n.id)) }
+          if n.done {
+            Symbol("checkmark.circle.fill") { color: .accent }
+          } else {
+            Symbol("circle") { color: .tertiaryLabel }
+          }
+          Text(n.text) {
+            grow: 1
+            color: if n.done { .secondaryLabel } else { .label }
+          }
+        }
+      }
+    }
+  }
+}
+
+test "the search matches anywhere, any case; % and _ are text" {
+  let db = try openDB(":memory:")
+  for s in ["Buy milk", "Call Ada", "100% done", "a_b"] {
+    try await db.exec("insert into notes (text) values (?)", [s])
+  }
+  for (q, want) in ["": 4, "MILK": 1, "a": 2, "%": 1, "_": 1, "zzz": 0] {
+    let rows: [Note] = try await db.query(search, [q])
+    expect(rows.count == want, "{q}: {rows.count} rows, want {want}")
+  }
+}

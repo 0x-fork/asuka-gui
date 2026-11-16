@@ -1,0 +1,3 @@
+name = "asuka/svg"
+version = "0.1.0"
+description = "SVG icons, drawn as vectors with each platform's own drawing"

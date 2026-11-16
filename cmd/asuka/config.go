@@ -226,6 +226,9 @@ type appConfig struct {
 	// androidModules are the host's optional Gradle modules the app's
 	// packages need (featurePermissions).
 	androidModules []string
+	// mapsKey: the app imports asuka/maps, whose Google Maps reads the
+	// key (android.mapsKey) from the manifest.
+	mapsKey bool
 	// macSwift are the Mac's Swift's compilation conditions the app's
 	// packages need (featurePermissions): the Mac's library
 	// (AsukaNatives.dylib) is built with them, natives or not.
@@ -903,8 +906,8 @@ func (c *appConfig) androidManifest(debug bool) string {
 		b.WriteString(" android:usesCleartextTraffic=\"true\"")
 	}
 	b.WriteString(">\n")
-	// The Maps SDK's key (asuka/sdk/maps), which it reads from the manifest.
-	if c.Android.MapsKey != "" && slices.Contains(c.androidModules, "maps") {
+	// The Maps SDK's key (asuka/maps, asuka/sdk/maps), which it reads from the manifest.
+	if c.Android.MapsKey != "" && (slices.Contains(c.androidModules, "maps") || c.mapsKey) {
 		fmt.Fprintf(&b, "        <meta-data android:name=\"com.google.android.geo.API_KEY\" android:value=\"%s\" />\n", html.EscapeString(c.Android.MapsKey))
 	}
 	// push.Rewrite: FCM's data messages start the app to rewrite them.

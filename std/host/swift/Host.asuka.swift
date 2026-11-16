@@ -32,27 +32,27 @@ public protocol Modules: AnyObject {
         case (0, 2): // Modules.Send
             let o = object as! any Modules
             let module = r.string()
-            let method = r.string()
+            let methodArg = r.string()
             let args = r.data()
             try r.check()
-            try AsukaNative.onMain { try o.send(module: module, method: method, args: args) }
+            try AsukaNative.onMain { try o.send(module: module, method: methodArg, args: args) }
         default: throw AsukaNativeError.unsupported("no method \(iface).\(method)")
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 1): // Modules.Call
             let o = object as! any Modules
             let module = r.string()
-            let method = r.string()
+            let methodArg = r.string()
             let args = r.data()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task { @MainActor in
+            return _Concurrency.Task { @MainActor in
                 do {
                     var w = AsukaNativeWriter.ok()
-                    let v = try await o.call(module: module, method: method, args: args)
+                    let v = try await o.call(module: module, method: methodArg, args: args)
                     w.data(v)
                     done(.success(w))
                 } catch {

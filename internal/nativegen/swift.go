@@ -13,7 +13,12 @@ import (
 func SwiftFile(p *Package) string { return upperCamel(p.Name) + ".asuka.swift" }
 
 // SwiftErrorType is the Swift enum of the package's declared errors.
-func SwiftErrorType(p *Package) string { return upperCamel(p.Name) + "Error" }
+func SwiftErrorType(p *Package) string {
+	if p.ErrorName != "" {
+		return p.ErrorName
+	}
+	return upperCamel(p.Name) + "Error"
+}
 
 type swiftGen struct {
 	p       *Package
@@ -456,7 +461,7 @@ func (g *swiftGen) provider() {
 	}
 	g.printf("        default: throw AsukaNativeError.unsupported(\"no method \\(iface).\\(method)\")\n        }\n    }\n\n")
 	// start
-	g.printf("    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {\n")
+	g.printf("    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {\n")
 	g.printf("        var r = input\n        switch (iface, method) {\n")
 	for _, it := range g.p.Interfaces {
 		for _, m := range it.Methods {
@@ -474,7 +479,7 @@ func (g *swiftGen) provider() {
 			if m.Error {
 				call = "try " + call
 			}
-			g.printf("            return Task {%s\n                do {\n                    var w = AsukaNativeWriter.ok()\n", actor)
+			g.printf("            return _Concurrency.Task {%s\n                do {\n                    var w = AsukaNativeWriter.ok()\n", actor)
 			if m.Result != nil {
 				g.printf("                    let v = %s\n                    %s\n", call, g.enc(m.Result, "w", "v"))
 			} else {
@@ -498,12 +503,13 @@ func (g *swiftGen) decodeArgs(m *Method, indent string) string {
 	var args []string
 	for _, p := range m.Params {
 		n := swiftName(p.Name)
+		l := argLocal(n)
 		if p.Type.Kind == Func {
-			g.closure(n, p.Type.Func, indent)
+			g.closure(l, p.Type.Func, indent)
 		} else {
-			g.printf("%slet %s = %s\n", indent, n, g.dec(p.Type, "r"))
+			g.printf("%slet %s = %s\n", indent, l, g.dec(p.Type, "r"))
 		}
-		args = append(args, n+": "+n)
+		args = append(args, n+": "+l)
 	}
 	return strings.Join(args, ", ")
 }

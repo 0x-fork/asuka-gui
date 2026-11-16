@@ -69,6 +69,7 @@
 #include "rt/json.h"
 #include "rt/sched.h"
 #include "ops/ops.h"
+#include "rt/json.h"
 #include "ui/elements_gen.h"
 
 typedef struct ak_view ak_view;  // an rt object (AK_TAG_VIEW)
@@ -140,6 +141,10 @@ void ak_ui_remeasure(void);
 ak_view *ak_ui_new(uint16_t el);
 void ak_ui_set(ak_view *v, uint16_t key, ak_val value);   // borrows value
 void ak_ui_bind(ak_view *v, uint16_t key, ak_closure *thunk);
+// A style key a component's caller sets on the component's root element:
+// once it has, what the component itself sets of that key doesn't apply.
+void ak_ui_set_outer(ak_view *v, uint16_t key, ak_val value);   // borrows value
+void ak_ui_bind_outer(ak_view *v, uint16_t key, ak_closure *thunk);
 void ak_ui_on(ak_view *v, uint16_t event, ak_closure *handler);
 void ak_ui_add(ak_view *v, ak_view *child);  // child NULL: nothing
 // ak_ui_slot fills a named slot with a view, or (a lazy slot: a
@@ -158,6 +163,7 @@ ak_view *ak_ui_ref(ak_view *v);
 // ak_ui_fragment is a view of no native view of its own: a component's
 // several views, each added with ak_ui_add.
 ak_view *ak_ui_fragment(void);
+
 
 // The native view's ID (0: none: a fragment, a flattened container).
 uint32_t ak_ui_id(const ak_view *v);

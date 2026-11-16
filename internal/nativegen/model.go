@@ -158,6 +158,35 @@ type Package struct {
 	// Asuka: declared in Asuka (LoadAsuka), whose compiler makes the
 	// calling side; there's no Go client to generate.
 	Asuka bool
+	// ErrorName is the name of the package's one enum of declared errors
+	// (an Asuka package's enum ... : Error), which the platforms' error
+	// types are named after; "": the package's name and Error.
+	ErrorName string
+}
+
+// declares reports whether the package declares a type of the name.
+func (p *Package) declares(name string) bool {
+	for _, s := range p.Structs {
+		if s.Name == name {
+			return true
+		}
+	}
+	for _, e := range p.Enums {
+		if e.Name == name {
+			return true
+		}
+	}
+	for _, it := range p.Interfaces {
+		if it.Name == name {
+			return true
+		}
+	}
+	for _, v := range p.Views {
+		if v.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Empty reports whether the package declares nothing native.

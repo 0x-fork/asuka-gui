@@ -1,0 +1,33 @@
+// Package asuka/scan reads barcodes and QR codes in an image file (a
+// photo taken or picked); asuka/camera's View reads them live. Vision on
+// iOS and macOS, ML Kit on Android (with its model, about 2 MB, so it
+// works without Google Play services), the browser's BarcodeDetector
+// where there is one, package barcode's Go on Windows, ZBar's GStreamer
+// element on Linux.
+//
+//   for c in try await scan.file(path) { print("{c.kind}: {c.value}") }
+
+/// A code read: its kind and what it says.
+pub struct Code {
+  /// "qr", "aztec", "datamatrix", "pdf417", "ean13", "ean8", "upca",
+  /// "upce", "code128", "code39", "code93", "codabar" or "itf".
+  kind: string
+  value: string
+}
+
+/// The platform's reader.
+native interface Reader {
+  /// The codes of the kinds given (none: every kind) in the image at path.
+  async fn file(path: string, kinds: [string]) -> [Code]
+}
+
+let reader = try? Reader()
+
+/// Reads the codes of the kinds given (every kind, if none) in the image
+/// at path: none, if there are none.
+pub async fn file(path: string, kinds: [string] = []) throws -> [Code] {
+  if let r = reader {
+    return try await r.file(path, kinds)
+  }
+  return try await Reader().file(path, kinds)
+}

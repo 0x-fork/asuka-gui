@@ -14,7 +14,12 @@ func JSFile(p *Package) string { return p.Name + ".asuka.js" }
 func JSImpl(p *Package) string { return p.Name + ".js" }
 
 // JSErrorType is the class of the package's declared errors.
-func JSErrorType(p *Package) string { return upperCamel(p.Name) + "Error" }
+func JSErrorType(p *Package) string {
+	if p.ErrorName != "" {
+		return p.ErrorName
+	}
+	return upperCamel(p.Name) + "Error"
+}
 
 var jsZero = map[Kind]string{
 	Bool: "false", Int8: "0", Int16: "0", Int32: "0", Int64: "0n", Int: "0",
@@ -232,7 +237,7 @@ func (g *jsGen) provider() {
 func (g *jsGen) decodeArgs(m *Method, indent string) string {
 	var args []string
 	for _, p := range m.Params {
-		n := jsName(p.Name)
+		n := argLocal(jsName(p.Name))
 		if p.Type.Kind == Func {
 			var ps []string
 			for i := range p.Type.Func.Params {

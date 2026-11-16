@@ -204,3 +204,33 @@ func EnumValue(t GType, nick string) (int32, bool) {
 	}
 	return *At[int32](v), true // GEnumValue.value
 }
+
+// InstanceType is an instance's GType (its GTypeInstance's class's).
+func InstanceType(o Ptr) GType { return *At[GType](*At[Ptr](o)) }
+
+// SetObjectProperty sets an object-valued property.
+func SetObjectProperty(o Ptr, name string, v Ptr) {
+	var val Value
+	ValueInit(&val, InstanceType(v))
+	Sys.ValueSetObject(&val, v)
+	ObjectSetProperty(o, name, &val)
+	ValueUnset(&val)
+}
+
+// SetDoubleProperty sets a double-valued property.
+func SetDoubleProperty(o Ptr, name string, d float64) {
+	var val Value
+	ValueInit(&val, TypeDouble)
+	Sys.ValueSetDouble(&val, d)
+	ObjectSetProperty(o, name, &val)
+	ValueUnset(&val)
+}
+
+// SetIntProperty sets an int-valued property.
+func SetIntProperty(o Ptr, name string, i int32) {
+	var val Value
+	ValueInit(&val, TypeInt)
+	Sys.ValueSetInt(&val, i)
+	ObjectSetProperty(o, name, &val)
+	ValueUnset(&val)
+}

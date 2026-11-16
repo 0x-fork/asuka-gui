@@ -39,6 +39,10 @@ typedef struct ak_node {
 // Signals.
 
 static inline void ak_signal_init(ak_node *n) { memset(n, 0, sizeof *n); }
+// ak_signal_born marks a signal made now: one made inside a memo may be
+// written there while nothing reads it yet (the memo makes a store and
+// sets it up), which isn't a side effect anything sees.
+void ak_signal_born(ak_node *n);
 // ak_signal_read subscribes the running computation, if any, to n.
 void ak_signal_read(ak_node *n);
 // ak_signal_write tells the graph the caller changed n's value (the

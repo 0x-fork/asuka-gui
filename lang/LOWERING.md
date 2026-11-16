@@ -145,7 +145,7 @@ calls a closure) runs in a handler that moves the receiver back first.
   all; the tuple is made of its elements (UNBOX for scalars).
   `race(…)`'s calls have one type, and its tasks return it as it is.
   `all(tasks)` and `race(tasks)` over a `[Task<T>]` pass it through.
-- `sleep(d)`, `all`, `race` and `idle` are futures awaited at once:
+- `sleep(d)`, `never()`, `all`, `race` and `idle` are futures awaited at once:
   AWAIT follows the CALLB. `await` of a call of an async function is
   that CALL; of a `Task<T>`, AWAIT. `await` of something that doesn't
   wait does nothing.
@@ -331,6 +331,15 @@ Values cross as their kinds (rt.h). Conversions the checker inserts:
 a number where an `Edges` is expected is `Edges(all)`; `[v, h]` and `[t,
 r, b, l]` are Edges; a number where a `Length` is expected is points;
 `.label` where a `Color` is expected is the semantic color.
+
+A component that shows one element (check's `TakesStyle`: its body's
+views are one call, of an element that takes the style, a package's
+native component, or a component that takes it) takes the style props
+from its caller. They're set on the view the component's function
+returns, after it returns: `ui.set_outer(v, key, x)`, or
+`ui.bind_outer(v, key, thunk)` when x reads what changes. The view keeps
+a bit per style key its caller set; the component's own sets of that key
+(its bindings running again) don't apply after.
 
 ## Control flow in views
 
@@ -719,12 +728,50 @@ object type (a reference: the runtime's ak_native_obj) and its methods:
 - Every method `throws` (the platform's side may fail); the checker
   requires `try` at calls.
 
+A package's `native component X(p: P) { prop q: Q = d; event e(a: A) }`
+(the prelude's are the runtime's elements) lowers to the Native kind of
+view:
+
+- `X(…) { … }` is CALLB `ui.native("<class>#X")`, then each prop by its
+  name as the platforms' generated code knows it (its first letter upper
+  case: `"Q"`) and its descriptor (as a method's parameter's):
+  `ui.native_set(v, name, desc, value)` when the value reads nothing
+  reactive, else `ui.native_bind(v, name, desc, thunk)`. A prop left
+  out goes at its default; one with none isn't sent. The style's keys
+  are any element's (`ui.set`, `ui.bind`).
+- `on e(a) { … }` is `ui.native_on(v, "E", desc, handler)`, desc the
+  parameters' descriptors in order: the host's Native event named `E`
+  calls it with its `v` value decoded by them.
+- The core (core/src/ui/native_view.c) sends the Type before the props,
+  a prop only as its bytes change, and listens for Native events once a
+  handler is set. The fake host shows the view by its component's name,
+  and a test's tap on it is its `Press` event.
+
 A native interface can't be generic, has methods only, and no struct
 declares it. The class is the package's name as internal/nativegen
 names it: asuka.toml's `name`, else its directory's. The errors array is
 a global init.strings makes: every enum declared `: Error` in the
 package, its cases in order (a case with values stands as an error of
 its name).
+
+A package's `native component V(p: P) { prop q: Q = d; event e(x: X) }`
+used as an element is a view the platform's generated code makes:
+
+- `ui.native(kind)`: a Native view (ops' kind) of kind `<class>#V`,
+  which every host finds in the package's code (the class's provider,
+  or package native's registry on the desktop).
+- Each parameter and prop, set or else its default, is
+  `ui.native_set(v, name, value, desc)` or, when it reads what changes,
+  `ui.native_bind(v, name, thunk, desc)`: name its exported name
+  (`q` → `Q`, as internal/nativegen names it), desc its descriptor. The
+  runtime encodes it as a native call's value and sends it as a
+  Native.Prop (type 5, bytes) only when the encoding changed.
+- `on e(x) { … }` is `ui.native_on(v, "E", handler, desc)`: the
+  Native event named E carries the values encoded under "v", decoded by
+  desc (the parameters' descriptors in order) for the handler.
+- `bind q: s` is `ui.native_bind` of s and a handler of the event
+  `qChange(value: Q)`, which the checker requires, writing s.
+- The style keys are `ui.set`/`ui.bind`, as any element's.
 
 `asuka native generate` writes each platform's side (Swift on iOS and macOS, Kotlin,
 JavaScript, Go on Windows and Linux, whose hosts are Go) from the same declarations, in
@@ -754,6 +801,16 @@ status the Asuka side reads and throws as its own enum (asuka/fs's
 `FsError`, from the thread's last failure). Builtins may run on spawn's
 threads, so they keep no state that isn't per thread.
 
+A few standard library structs are made when the app compiles (lang/ir's
+`StructHooks`, registered by lang/compile): a literal of one, its first
+argument a string literal without interpolation, has the rest of its
+fields filled by the hook from that string, as constants (`svg.Icon`'s
+`data`, `width` and `height` from its markup, parsed by sdk/svg and
+encoded as the drawing the platforms' views decode; `shader.Program`'s
+`code` and `glsl` from its Kage source, internal/shadercode's Compile
+and GLSL). Any other first
+argument, or one the hook rejects, is a compile error at it.
+
 ## Streams
 
 `Stream(produce)` is CALLB `stream.new(produce, kind)` (kind: the
@@ -761,7 +818,9 @@ values' ak_kind); `for await x in s { … }` is: s into a local; at the
 top, AWAIT CALLB `stream.next(s)` (a bool: whether a value came; it
 throws what the producer threw), JF to the end, CALLB `stream.value(s)`
 for x, the body, back to the top; at the end CALLB `stream.close(s)`,
-which cancels the producer (core/src/rt/stream.c).
+which cancels the producer (core/src/rt/stream.c). An error leaving the
+loop (the body's, the producer's) closes it too, in a handler around the
+loop that throws the error on.
 
 ## Live values
 
@@ -793,6 +852,7 @@ packages.
 | `push(v)`, `present(v)` | CALLB `ui.push(builder)`, `ui.present(builder)` (the argument as a builder) |
 | `pop()`, `dismiss()` | CALLB `ui.pop`, `ui.dismiss` |
 | `sleep(d)` | CALLB `time.sleep(ns)`, AWAIT |
+| `never()` | CALLB `async.never` (a future nothing resolves; cancelling its task rejects it), AWAIT |
 | `all(a, b, …)`, `race(…)` | the calls as tasks (TASK), CALLB `async.all`/`async.race` over an array of them, AWAIT |
 | `spawn { … }` | CALLB `async.spawn(closure, kind)`, a Task |
 | `print(s)` | CALLB `print` |

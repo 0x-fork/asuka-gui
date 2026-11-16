@@ -1,0 +1,137 @@
+// The app's controls are the platform's own; what it draws around them
+// (cards, grouped rows, headings, meters) follows each platform's design:
+// UIKit's inset grouped lists on iOS, Material 3's on Android.
+
+import asuka/device
+
+let ios = environment().platform == .iOS
+
+/// iOS's version: iOS 26 rounds its cells more.
+state iosMajor = 26
+
+/// A separator's width: a pixel.
+let hairline = 1 / environment().scale
+
+/// Notes iOS's version, as the app starts.
+async fn readIOSVersion() {
+  if !ios { return }
+  if let info = try? await device.info() {
+    if let major = info.systemVersion.split(".")[0].int() { iosMajor = major }
+  }
+}
+
+/// A card's or a group's corner radius.
+let radius = if !ios { 28.0 } else if iosMajor >= 26 { 26.0 } else { 10.0 }
+
+/// A screen's background: iOS's grouped one; Android's surface.
+let page: Color = if ios { .groupedBackground } else { .background }
+
+/// A card's padding: UIKit's cell margins on iOS.
+let cardPadding = if ios { 16.0 } else { 20.0 }
+
+/// A box of content on the page.
+component Card {
+  prop children: View
+
+  Column {
+    background: .secondaryGroupedBackground
+    radius: radius
+    padding: cardPadding
+    children
+  }
+}
+
+/// A group's heading: small capitals on iOS, the accent on Android.
+component Heading(title: string) {
+  if ios {
+    Text(title.upper()) {
+      font: .footnote
+      color: .secondaryLabel
+      margin: Edges(top: 18, left: 16, right: 16, bottom: -4)
+    }
+  } else {
+    Text(title) {
+      font: .subheadline.semibold()
+      color: .accent
+      margin: Edges(top: 16, left: 4)
+    }
+  }
+}
+
+/// A group's footnote.
+component Note(text: string) {
+  Text(text) {
+    font: .footnote
+    color: .secondaryLabel
+    margin: if ios { Edges(left: 16, right: 16, top: -4) } else { [0, 4] }
+  }
+}
+
+/// Rows together: on iOS one rounded box, its rows apart by separators;
+/// on Android Material 3's segmented list, rows apart by a gap, rounded at
+/// the ends.
+component Group {
+  prop children: View
+
+  if ios {
+    // Each row's separator is at its bottom: the last one's is pulled out
+    // of the box, which clips it.
+    Column {
+      background: .secondaryGroupedBackground
+      radius: radius
+      clip: true
+      Column {
+        margin: Edges(bottom: -1)
+        children
+      }
+    }
+  } else {
+    Column {
+      gap: 2
+      radius: 28
+      clip: true
+      children
+    }
+  }
+}
+
+/// A row of a group with its content side by side; with on press, one
+/// that does something.
+component Cell {
+  prop children: View
+  prop stacked = false // a control under its label
+  event press
+
+  View {
+    direction: if stacked { .column } else { .row }
+    gap: if stacked { if ios { 10 } else { 14 } } else { if ios { 12 } else { 16 } }
+    align: if stacked { .stretch } else { .center }
+    padding: if stacked { if ios { [12, 16] } else { [18, 20] } } else { if ios { [11, 16] } else { [10, 20] } }
+    minHeight: if stacked { .auto } else { if ios { 48 } else { 60 } }
+    background: if ios { .clear } else { .secondaryBackground }
+    on press { emit press }
+    children
+    if ios { Separator() }
+  }
+}
+
+/// A cell's bottom line, inset as UIKit's are.
+component Separator {
+  View {
+    a11yHidden: true
+    absolute: true
+    left: 16
+    right: 0
+    bottom: 0
+    height: hairline
+    background: .separator
+  }
+}
+
+/// Says a row opens another screen.
+component Chevron {
+  Symbol("chevron.forward") {
+    font: if ios { .footnote.semibold() } else { .body }
+    color: if ios { .tertiaryLabel } else { .secondaryLabel }
+  }
+}

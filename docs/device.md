@@ -31,44 +31,43 @@ web need nothing declared (see each one's section below).
 
 | Package | Android | iOS |
 | --- | --- | --- |
-| `asuka/sdk/camera` | `CAMERA` | `NSCameraUsageDescription` |
-| `asuka/sdk/camera/record` | `RECORD_AUDIO` | `NSMicrophoneUsageDescription` |
-| `asuka/sdk/location` | `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION`; for an app that calls `RequestAlways`, `ACCESS_BACKGROUND_LOCATION`; `StartUpdates`, `FOREGROUND_SERVICE_LOCATION` and a foreground service; `StartUpdates` or `Monitor`, `RECEIVE_BOOT_COMPLETED`, a receiver and Play services' location library | `NSLocationWhenInUseUsageDescription`; for an app that calls `RequestAlways`, `NSLocationAlwaysAndWhenInUseUsageDescription`; `StartUpdates`, the `location` background mode; `RequestPrecise`, `NSLocationTemporaryUsageDescriptionDictionary` |
-| `asuka/sdk/notify` | `POST_NOTIFICATIONS` | |
-| `asuka/sdk/network` | `ACCESS_NETWORK_STATE` | |
-| `asuka/sdk/library` | `WRITE_EXTERNAL_STORAGE` (Android 9 and earlier) | `NSPhotoLibraryAddUsageDescription`; the app's Documents shown in Files |
-| `asuka/sdk/background` | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `POST_NOTIFICATIONS`, `WAKE_LOCK`; a foreground service | |
-| `asuka/sdk/scan` | ML Kit's barcode model (about 2 MB) | |
-| `asuka/sdk/vision` | ML Kit's text, face and barcode models (about 30 MB) | |
-| `asuka/sdk/photos` | `READ_MEDIA_IMAGES`, `READ_MEDIA_VISUAL_USER_SELECTED`; `READ_EXTERNAL_STORAGE` (Android 12 and earlier) | `NSPhotoLibraryUsageDescription` |
-| `asuka/sdk/push` | Firebase Cloud Messaging, `POST_NOTIFICATIONS` | the `aps-environment` entitlement; `remote-notification` background mode |
-| `asuka/sdk/appleauth` | | the Sign in with Apple entitlement |
-| `asuka/sdk/pay` | Google Pay's library, its API enabled, its callbacks service | the Apple Pay entitlement, with `asuka.toml`'s `applePay.merchantIds` |
-| `asuka/sdk/biometric` | `USE_BIOMETRIC` | `NSFaceIDUsageDescription` |
-| `asuka/sdk/audio/record` | `RECORD_AUDIO`, `FOREGROUND_SERVICE_MICROPHONE`; a foreground service | `NSMicrophoneUsageDescription` |
-| `asuka/sdk/nowplaying` | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`; a foreground service | the `audio` background mode (for an app that calls `nowplaying.Show`) |
-| `asuka/sdk/liveactivity` | `POST_NOTIFICATIONS`, `POST_PROMOTED_NOTIFICATIONS` | `NSSupportsLiveActivities` and the widget extension (for an app that calls it) |
-| `asuka/sdk/transcribe` | `RECORD_AUDIO` | `NSSpeechRecognitionUsageDescription` |
-| `asuka/sdk/screen` | `DETECT_SCREEN_CAPTURE` | |
-| `asuka/sdk/tracking` | | `NSUserTrackingUsageDescription` |
-| `asuka/sdk/review` | Play's in-app review library | |
-| `asuka/sdk/integrity` | Play Integrity | the App Attest entitlement |
-| `asuka/sdk/agerange` | Play Age Signals | the Declared Age Range entitlement |
-| `asuka/sdk/purchase` | Play Billing, `com.android.vending.BILLING` | StoreKit 2 (for an app that calls it); no entitlement |
-| `asuka/sdk/icloud` | (none: no iCloud) | the key-value store's entitlement, iCloud Documents and the app's containers, `NSUbiquitousContainers`, as the app calls them ([iCloud](icloud.md)) |
-| `asuka/sdk/maps` | Google's Maps SDK | |
-| `asuka/sdk/periodic` | WorkManager | `fetch` and `processing` background modes; the task identifiers |
-| `asuka/sdk/sensors` | `ACTIVITY_RECOGNITION` (the pedometer) | `NSMotionUsageDescription` (the pedometer) |
-| `asuka/sdk/speech` | the text-to-speech engine's visibility (`<queries>`) | |
-| `asuka/sdk/contacts` | `READ_CONTACTS` (for `List`) | `NSContactsUsageDescription` |
-| `asuka/sdk/calendar` | `READ_CALENDAR` (for `Calendars`, `Events`) | `NSCalendarsFullAccessUsageDescription`, `NSCalendarsUsageDescription` |
-| `asuka/sdk/compose` | the visibility of the apps for `mailto:` and `smsto:` (`<queries>`) | `mailto` in `LSApplicationQueriesSchemes` |
-| `asuka/sdk/nfc` | `NFC`; `uses-feature android.hardware.nfc` (not required); asuka.toml's `nfc` filters ([NFC tags](nfc.md)) | `NFCReaderUsageDescription`; Core NFC's entitlement; asuka.toml's `nfc` AIDs and FeliCa system codes |
-| `asuka/sdk/bluetooth` | `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; the scan's receiver for `asuka.toml`'s `bluetooth.background` (see [Bluetooth](bluetooth.md#what-the-build-adds)) | `NSBluetoothAlwaysUsageDescription`; `bluetooth-central`, `bluetooth-peripheral` for `bluetooth.background` |
+| `asuka/camera` | `CAMERA`, `RECORD_AUDIO` | `NSCameraUsageDescription`, `NSMicrophoneUsageDescription` |
+| `asuka/location` | `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION`; for an app that calls `RequestAlways`, `ACCESS_BACKGROUND_LOCATION`; `StartUpdates`, `FOREGROUND_SERVICE_LOCATION` and a foreground service; `StartUpdates` or `Monitor`, `RECEIVE_BOOT_COMPLETED`, a receiver and Play services' location library | `NSLocationWhenInUseUsageDescription`; for an app that calls `RequestAlways`, `NSLocationAlwaysAndWhenInUseUsageDescription`; `StartUpdates`, the `location` background mode; `RequestPrecise`, `NSLocationTemporaryUsageDescriptionDictionary` |
+| `asuka/notify` | `POST_NOTIFICATIONS` | |
+| `asuka/network` | `ACCESS_NETWORK_STATE` | |
+| `asuka/library` | `WRITE_EXTERNAL_STORAGE` (Android 9 and earlier) | `NSPhotoLibraryAddUsageDescription`; the app's Documents shown in Files |
+| `asuka/background` | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `POST_NOTIFICATIONS`, `WAKE_LOCK`; a foreground service | |
+| `asuka/scan` | ML Kit's barcode model (about 2 MB) | |
+| `asuka/vision` | ML Kit's text, face and barcode models (about 30 MB) | |
+| `asuka/photos` | `READ_MEDIA_IMAGES`, `READ_MEDIA_VISUAL_USER_SELECTED`; `READ_EXTERNAL_STORAGE` (Android 12 and earlier) | `NSPhotoLibraryUsageDescription` |
+| `asuka/push` | Firebase Cloud Messaging, `POST_NOTIFICATIONS` | the `aps-environment` entitlement; `remote-notification` background mode |
+| `asuka/appleauth` | | the Sign in with Apple entitlement |
+| `asuka/pay` | Google Pay's library, its API enabled, its callbacks service | the Apple Pay entitlement, with `asuka.toml`'s `applePay.merchantIds` |
+| `asuka/biometric` | `USE_BIOMETRIC` | `NSFaceIDUsageDescription` |
+| `asuka/record` | `RECORD_AUDIO`, `FOREGROUND_SERVICE_MICROPHONE`; a foreground service | `NSMicrophoneUsageDescription` |
+| `asuka/nowplaying` | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`; a foreground service | the `audio` background mode (for an app that calls `nowplaying.Show`) |
+| `asuka/liveactivity` | `POST_NOTIFICATIONS`, `POST_PROMOTED_NOTIFICATIONS` | `NSSupportsLiveActivities` and the widget extension (for an app that calls it) |
+| `asuka/transcribe` | `RECORD_AUDIO` | `NSSpeechRecognitionUsageDescription` |
+| `asuka/screen` | `DETECT_SCREEN_CAPTURE` | |
+| `asuka/tracking` | | `NSUserTrackingUsageDescription` |
+| `asuka/review` | Play's in-app review library | |
+| `asuka/integrity` | Play Integrity | the App Attest entitlement |
+| `asuka/agerange` | Play Age Signals | the Declared Age Range entitlement |
+| `asuka/purchase` | Play Billing, `com.android.vending.BILLING` | StoreKit 2 (for an app that calls it); no entitlement |
+| `asuka/icloud` | (none: no iCloud) | the key-value store's entitlement, iCloud Documents and the app's containers, `NSUbiquitousContainers`, as the app calls them ([iCloud](icloud.md)) |
+| `asuka/maps` | Google's Maps SDK | |
+| `asuka/periodic` | WorkManager | `fetch` and `processing` background modes; the task identifiers |
+| `asuka/sensors` | `ACTIVITY_RECOGNITION` (the pedometer) | `NSMotionUsageDescription` (the pedometer) |
+| `asuka/speech` | the text-to-speech engine's visibility (`<queries>`) | |
+| `asuka/contacts` | `READ_CONTACTS` (for `List`) | `NSContactsUsageDescription` |
+| `asuka/calendar` | `READ_CALENDAR` (for `Calendars`, `Events`) | `NSCalendarsFullAccessUsageDescription`, `NSCalendarsUsageDescription` |
+| `asuka/compose` | the visibility of the apps for `mailto:` and `smsto:` (`<queries>`) | `mailto` in `LSApplicationQueriesSchemes` |
+| `asuka/nfc` | `NFC`; `uses-feature android.hardware.nfc` (not required); asuka.toml's `nfc` filters ([NFC tags](nfc.md)) | `NFCReaderUsageDescription`; Core NFC's entitlement; asuka.toml's `nfc` AIDs and FeliCa system codes |
+| `asuka/bluetooth` | `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE`; the scan's receiver for `asuka.toml`'s `bluetooth.background` (see [Bluetooth](bluetooth.md#what-the-build-adds)) | `NSBluetoothAlwaysUsageDescription`; `bluetooth-central`, `bluetooth-peripheral` for `bluetooth.background` |
 
-`asuka/sdk/device`, `asuka/sdk/audio`, `asuka/sdk/splash`, `asuka/sdk/imageedit`,
-`asuka/sdk/widget`, `asuka/sdk/js`, `asuka/sdk/secure`, `asuka/sdk/preview` and
-`asuka/sdk/print` need none.
+`asuka/device`, `asuka/audio`, `asuka/splash`, `asuka/imageedit`,
+`asuka/widget`, `asuka/js`, `asuka/secure`, `asuka/preview` and
+`asuka/print` need none.
 
 An entitlement needs its capability on the app's App ID
 (developer.apple.com, Identifiers) for a release build: the provisioning
@@ -114,28 +113,28 @@ UserNotifications, AuthenticationServices), except where a Mac differs:
 
 | Package | On a Mac |
 | --- | --- |
-| `asuka/sdk/device` | `PickPhotos` and `PickFiles`: an open panel, a sheet on the window (no permission), copies in the app's caches. `Browse` opens the page in the user's browser. `GetInfo`: `Model` `"Mac"`, `System` `"macOS"` |
-| `asuka/sdk/camera` | `Take`: a sheet over the window with a live preview, Take Photo and Cancel (AppKit has no camera screen). `View`'s "back" is the built-in camera (a Mac has no back one), or the one plugged in; scanning codes in it needs macOS 13 |
-| `asuka/sdk/audio/record` | No audio session: other apps' sound plays on; `Background` changes nothing, a Mac app records out of sight anyway |
-| `asuka/sdk/nowplaying` | `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`, as on iOS: Control Center's and the menu bar's Now Playing, the keyboard's media keys, AirPods. A Mac needs no audio session or background mode |
-| `asuka/sdk/contacts`, `asuka/sdk/calendar` | `Add` asks in an alert over the window (macOS has no new contact or event screen), then saves, asking for access first |
-| `asuka/sdk/photos` | PhotoKit, as on iOS; a Mac has no limited library: `ManageLimited` does nothing |
-| `asuka/sdk/library` | Photos and videos go to Photos; `Downloads` and `Music` to the user's `~/Downloads` and `~/Music`, in the folder asked |
-| `asuka/sdk/biometric` | Touch ID's prompt, or the user's password (not with `NoPasscode`) |
-| `asuka/sdk/push` | APNs, as on iOS; no `Rewrite` (it needs a notification service extension). Needs a provisioning profile (above) |
-| `asuka/sdk/appleauth` | Apple's button and sheet, as on iOS. Needs a provisioning profile (above) |
-| `asuka/sdk/pay` | Apple Pay's sheet and button, as on iOS: a Mac with Touch ID pays, or one near the user's iPhone or Apple Watch. Needs a provisioning profile (above) |
-| `asuka/sdk/integrity` | App Attest, as on iOS. Needs a provisioning profile (above): without one `Supported` is false |
-| `asuka/sdk/background` | The task keeps App Nap from slowing the app; there's no notification, so `Update` changes nothing |
-| `asuka/sdk/periodic` | `NSBackgroundActivityScheduler`: the tasks run while the app runs (it isn't launched for them); one that wants power waits while the Mac is on its battery |
-| `asuka/sdk/screen` | `Lock` and `SetBars` do nothing; `PreventCapture` leaves the app's windows out of screenshots and recordings; `OnScreenshot` hears of the screenshots Spotlight finds |
-| `asuka/sdk/transcribe` | On the device only; the app's bundle needs its purpose string, which `asuka build` writes |
-| `asuka/sdk/sensors` | A Mac has no motion sensors: `Available` is false, watching gets nothing, `StepsBetween` fails with `ErrNotAvailable` |
+| `asuka/device` | `pickPhotos` and `pickFiles`: an open panel, a sheet on the window (no permission), copies in the app's caches. `browse` opens the page in the user's browser. `info`: `model` `"Mac"`, `system` `"macOS"` |
+| `asuka/camera` | `Take`: a sheet over the window with a live preview, Take Photo and Cancel (AppKit has no camera screen). `View`'s "back" is the built-in camera (a Mac has no back one), or the one plugged in; scanning codes in it needs macOS 13 |
+| `asuka/record` | No audio session: other apps' sound plays on; `Background` changes nothing, a Mac app records out of sight anyway |
+| `asuka/nowplaying` | `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`, as on iOS: Control Center's and the menu bar's Now Playing, the keyboard's media keys, AirPods. A Mac needs no audio session or background mode |
+| `asuka/contacts`, `asuka/calendar` | `Add` asks in an alert over the window (macOS has no new contact or event screen), then saves, asking for access first |
+| `asuka/photos` | PhotoKit, as on iOS; a Mac has no limited library: `ManageLimited` does nothing |
+| `asuka/library` | Photos and videos go to Photos; `Downloads` and `Music` to the user's `~/Downloads` and `~/Music`, in the folder asked |
+| `asuka/biometric` | Touch ID's prompt, or the user's password (not with `noPasscode`) |
+| `asuka/push` | APNs, as on iOS; no `Rewrite` (it needs a notification service extension). Needs a provisioning profile (above) |
+| `asuka/appleauth` | Apple's button and sheet, as on iOS. Needs a provisioning profile (above) |
+| `asuka/pay` | Apple Pay's sheet and button, as on iOS: a Mac with Touch ID pays, or one near the user's iPhone or Apple Watch. Needs a provisioning profile (above) |
+| `asuka/integrity` | App Attest, as on iOS. Needs a provisioning profile (above): without one `supported()` is false |
+| `asuka/background` | The task keeps App Nap from slowing the app; there's no notification, so `Update` changes nothing |
+| `asuka/periodic` | `NSBackgroundActivityScheduler`: the tasks run while the app runs (it isn't launched for them); one that wants power waits while the Mac is on its battery |
+| `asuka/screen` | `lock` and `setBars` do nothing; `preventCapture` leaves the app's windows out of screenshots and recordings; `screenshots()` says nothing |
+| `asuka/transcribe` | On the device only; the app's bundle needs its purpose string, which `asuka build` writes |
+| `asuka/sensors` | A Mac has no motion sensors: `Available` is false, watching gets nothing, `StepsBetween` fails with `ErrNotAvailable` |
 | `ui.Haptic` | The trackpad's feedback (a Force Touch trackpad): an alignment for `HapticSelection`, a level change for the others |
-| `asuka/sdk/widget`, `asuka/sdk/liveactivity`, `asuka/sdk/agerange` | Not on a Mac: `widget.Set` does nothing, `liveactivity.Start` and `agerange.Request` fail with `ErrNotAvailable` |
-| `asuka/sdk/purchase` | StoreKit 2, in the app's Swift library, which the build makes for an app that imports the package ([In-app purchases](purchases.md)) |
-| `asuka/sdk/icloud` | As on iOS, in the app's Swift library. Needs a provisioning profile with iCloud (above): without one, `ErrNotAvailable` ([iCloud](icloud.md)) |
-| `asuka/sdk/splash` | A Mac app has no launch screen: `Hold` and `Hide` do nothing |
+| `asuka/widget`, `asuka/liveactivity`, `asuka/agerange` | Not on a Mac: `widget.Set` does nothing, `liveactivity.Start` fails with `ErrNotAvailable`, `agerange.request` with `AgeRangeError.notAvailable` |
+| `asuka/purchase` | StoreKit 2, in the app's Swift library, which the build makes for an app that imports the package ([In-app purchases](purchases.md)) |
+| `asuka/icloud` | As on iOS, in the app's Swift library. Needs a provisioning profile with iCloud (above): without one, `ErrNotAvailable` ([iCloud](icloud.md)) |
+| `asuka/splash` | A Mac app has no launch screen: `hold` and `hide` do nothing |
 | `ui.OnShare`, `app.ShareSheet`, shortcuts | iOS and Android only: a Mac app isn't offered in other apps' share menus, and `asuka.toml`'s `shortcuts` aren't added |
 
 ## On Windows
@@ -154,37 +153,37 @@ device without it:
 
 | Package | On Windows |
 | --- | --- |
-| `asuka/sdk/device` | `PickPhotos` and `PickFiles`: the open dialog over the window, copies in the app's caches. `Browse` opens the page in the user's browser. The clipboard's images are PNGs. `KeepAwake` keeps the display on. `GetInfo`: `Model` `"PC"`, `System` `"Windows"`, `SystemVersion` `"10.0.<build>"` |
-| `asuka/sdk/secure` | The user's generic credentials in the Credential Manager, named `<app>/<key>` (a value up to 2560 bytes) |
-| `asuka/sdk/camera` | Media Foundation's capture engine. `Take`: a dialog over the window with a live preview, Take Photo and Cancel (Enter and Escape). `View` picks the camera Windows names front or rear, else the first; with `Scan`, it reads codes in four frames a second with Asuka's own reader (as `asuka/sdk/scan`'s `File`). Settings' camera switch off: "not allowed" |
-| `asuka/sdk/camera/record` | H.264 and AAC in MPEG-4 (`.mp4`), the default microphone unless muted |
-| `asuka/sdk/audio` | MCI (DirectShow's playback); a URL is downloaded to the app's caches first |
-| `asuka/sdk/audio/record` | The default microphone, AAC at 44.1 kHz (voice mono, music stereo); `Background` changes nothing |
-| `asuka/sdk/nowplaying` | The app window's SystemMediaTransportControls (a hidden window of its own for an app without one): the volume flyout on Windows 10, quick settings' media controls on Windows 11, the lock screen, the keyboard's media keys. The skips are its fast-forward and rewind buttons; it has no toggle (the play/pause key sends play or pause) |
-| `asuka/sdk/speech` | SAPI's voices, those installed (Settings, Time & language, Speech) |
-| `asuka/sdk/network` | The Network List Manager: Wi-Fi, cellular or a cable; `Metered` for a connection with a cost, `Constrained` near or over its data limit |
-| `asuka/sdk/location` | WinRT's Geolocator. `PlaceName` asks OpenStreetMap's Nominatim (Windows's own geocoder needs a Bing Maps key): one request a second at most, answers kept in the app's caches. Regions: the `GeofenceMonitor`, while the app runs; background updates computed from the positions |
-| `asuka/sdk/biometric` | Windows Hello's prompt; `Check`'s kind is the sensor's; Hello always offers its PIN, and names its own cancel button |
-| `asuka/sdk/webauth` | A window over the app's with WebView2 in it (the app's web profile; `Ephemeral`: a throwaway one) |
-| `asuka/sdk/js` | A WebView2 that's never shown |
-| `asuka/sdk/contacts`, `asuka/sdk/calendar` | Windows gives the contacts and calendars to packaged apps only: `Request` says denied; `Add` opens a vCard or an event file in the user's contacts or calendar app (`saved` is false: it doesn't say) |
-| `asuka/sdk/photos` | The Pictures folder (no permission to ask); screenshots are its Screenshots folder's |
-| `asuka/sdk/library` | The user's Downloads, Videos, Music and Pictures folders, in the folder asked |
-| `asuka/sdk/vision` | Windows's OCR, in the languages whose OCR is installed (Settings, Time & language), and its face detector; codes as `asuka/sdk/scan` reads them |
-| `asuka/sdk/scan` | Windows has no reader of codes for apps: Asuka's own, in Go, reads QR codes, Data Matrix, EAN-13 and EAN-8, UPC-A and UPC-E, Code 128 and Code 39 (not Aztec, PDF417, Code 93, Codabar nor ITF) |
-| `asuka/sdk/imageedit` | Windows's codecs read (HEIC and WebP where their extensions are installed); a video's frame through Media Foundation |
-| `asuka/sdk/maps` | Windows has no map control for desktop apps (its own needs a Bing Maps key): the host draws OpenStreetMap's tiles, downloaded two at a time and kept a week in the app's caches, with "© OpenStreetMap contributors" on the map; drag, the wheel or a pinch, double-click, + and -. Satellite and Hybrid show the streets (no free imagery), and `ShowsUser` shows nothing, as on Linux |
-| `asuka/sdk/background` | The task keeps the PC from sleeping; there's no notification, so `Update` changes nothing |
-| `asuka/sdk/periodic` | Timers while the app runs (it isn't launched for them); one that wants power waits while the PC is on its battery |
-| `asuka/sdk/screen` | `Lock` and `SetBars` do nothing; `PreventCapture` leaves the app's windows out of screenshots and recordings; `OnScreenshot` hears of the screenshots saved in the Screenshots folder (Print Screen with Windows, the Snipping Tool) |
-| `asuka/sdk/tracking` | No prompt: allowed while the advertising ID is on in Settings, else denied |
-| `asuka/sdk/push`, `asuka/sdk/widget`, `asuka/sdk/review`, `asuka/sdk/integrity` | Packaged (Store) apps' or Apple's and Google's: `push.Register` fails, `widget.Set` does nothing, `review.Request` shows nothing, `integrity.Supported` is false |
-| `asuka/sdk/liveactivity` | A phone's: `Enabled` is false, `Start` fails with `ErrNotAvailable` |
-| `asuka/sdk/purchase` | The Microsoft Store, for an app installed from it; otherwise `Available` is false and the rest fail with `ErrNotAvailable` ([In-app purchases](purchases.md)) |
-| `asuka/sdk/pay` | No wallet pays for a Windows app: `Available` says none, `Pay` fails with `ErrNotAvailable`, `Button` shows nothing |
-| `asuka/sdk/appleauth`, `asuka/sdk/agerange`, `asuka/sdk/icloud`, `asuka/sdk/transcribe`, `asuka/sdk/sensors` | Not on Windows: unavailable, as on a device without them |
+| `asuka/device` | `pickPhotos` and `pickFiles`: the open dialog over the window, copies in the app's caches. `browse` opens the page in the user's browser. The clipboard's images are PNGs. `keepAwake` keeps the display on. `info`: `model` `"PC"`, `system` `"Windows"`, `systemVersion` `"10.0.<build>"` |
+| `asuka/secure` | The user's generic credentials in the Credential Manager, named `<app>/<key>` (a value up to 2560 bytes) |
+| `asuka/camera` | Media Foundation's capture engine. `Take`: a dialog over the window with a live preview, Take Photo and Cancel (Enter and Escape). `View` picks the camera Windows names front or rear, else the first; with `Scan`, it reads codes in four frames a second with Asuka's own reader (as `asuka/scan`'s `File`). Settings' camera switch off: "not allowed" |
+| `asuka/record` | H.264 and AAC in MPEG-4 (`.mp4`), the default microphone unless muted |
+| `asuka/audio` | MCI (DirectShow's playback); a URL is downloaded to the app's caches first |
+| `asuka/record` | The default microphone, AAC at 44.1 kHz (voice mono, music stereo); `Background` changes nothing |
+| `asuka/nowplaying` | The app window's SystemMediaTransportControls (a hidden window of its own for an app without one): the volume flyout on Windows 10, quick settings' media controls on Windows 11, the lock screen, the keyboard's media keys. The skips are its fast-forward and rewind buttons; it has no toggle (the play/pause key sends play or pause) |
+| `asuka/speech` | SAPI's voices, those installed (Settings, Time & language, Speech) |
+| `asuka/network` | The Network List Manager: Wi-Fi, cellular or a cable; `Metered` for a connection with a cost, `Constrained` near or over its data limit |
+| `asuka/location` | WinRT's Geolocator. `PlaceName` asks OpenStreetMap's Nominatim (Windows's own geocoder needs a Bing Maps key): one request a second at most, answers kept in the app's caches. Regions: the `GeofenceMonitor`, while the app runs; background updates computed from the positions |
+| `asuka/biometric` | Windows Hello's prompt; `check()`'s kind is the sensor's; Hello always offers its PIN, and names its own cancel button |
+| `asuka/webauth` | A window over the app's with WebView2 in it (the app's web profile; `ephemeral`: a throwaway one) |
+| `asuka/js` | A WebView2 that's never shown |
+| `asuka/contacts`, `asuka/calendar` | Windows gives the contacts and calendars to packaged apps only: `Request` says denied; `Add` opens a vCard or an event file in the user's contacts or calendar app (`saved` is false: it doesn't say) |
+| `asuka/photos` | The Pictures folder (no permission to ask); screenshots are its Screenshots folder's |
+| `asuka/library` | The user's Downloads, Videos, Music and Pictures folders, in the folder asked |
+| `asuka/vision` | Windows's OCR, in the languages whose OCR is installed (Settings, Time & language), and its face detector; codes as `asuka/scan` reads them |
+| `asuka/scan` | Windows has no reader of codes for apps: Asuka's own, in Go, reads QR codes, Data Matrix, EAN-13 and EAN-8, UPC-A and UPC-E, Code 128 and Code 39 (not Aztec, PDF417, Code 93, Codabar nor ITF) |
+| `asuka/imageedit` | Windows's codecs read (HEIC and WebP where their extensions are installed); a video's frame through Media Foundation |
+| `asuka/maps` | Windows has no map control for desktop apps (its own needs a Bing Maps key): the host draws OpenStreetMap's tiles, downloaded two at a time and kept a week in the app's caches, with "© OpenStreetMap contributors" on the map; drag, the wheel or a pinch, double-click, + and -. Satellite and Hybrid show the streets (no free imagery), and `showsUser` shows nothing, as on Linux |
+| `asuka/background` | The task keeps the PC from sleeping; there's no notification, so `Update` changes nothing |
+| `asuka/periodic` | Timers while the app runs (it isn't launched for them); one that wants power waits while the PC is on its battery |
+| `asuka/screen` | `lock` and `setBars` do nothing; `preventCapture` leaves the app's windows out of screenshots and recordings; `screenshots()` says nothing |
+| `asuka/tracking` | No prompt: allowed while the advertising ID is on in Settings, else denied |
+| `asuka/push`, `asuka/widget`, `asuka/review`, `asuka/integrity` | Packaged (Store) apps' or Apple's and Google's: `push.Register` fails, `widget.Set` does nothing, `review.request` shows nothing, `integrity.supported()` is false |
+| `asuka/liveactivity` | A phone's: `Enabled` is false, `Start` fails with `ErrNotAvailable` |
+| `asuka/purchase` | The Microsoft Store, for an app installed from it; otherwise `Available` is false and the rest fail with `ErrNotAvailable` ([In-app purchases](purchases.md)) |
+| `asuka/pay` | No wallet pays for a Windows app: `Available` says none, `Pay` fails with `ErrNotAvailable`, `Button` shows nothing |
+| `asuka/appleauth`, `asuka/agerange`, `asuka/icloud`, `asuka/transcribe`, `asuka/sensors` | Not on Windows: unavailable, as on a device without them |
 | `ui.Haptic` | A PC has no haptics: it does nothing |
-| `asuka/sdk/splash` | A Windows app has no launch screen: `Hold` and `Hide` do nothing |
+| `asuka/splash` | A Windows app has no launch screen: `hold` and `hide` do nothing |
 | `ui.OnShare`, `app.ShareSheet`, shortcuts | iOS and Android only |
 
 ## On Linux
@@ -210,32 +209,32 @@ names what's missing.
 
 | Package | On Linux |
 | --- | --- |
-| `asuka/sdk/device` | `PickPhotos` and `PickFiles`: GTK's file dialog (the portal's in a sandbox), copies in the app's caches. Clipboard images and changes through GDK's clipboard. `Browse` opens the page in the user's browser. `KeepAwake` keeps the session from idling. `GetInfo`: `Model` `"PC"`, `System` `"Linux"`, `SystemVersion` the distribution's (`/etc/os-release`) |
-| `asuka/sdk/secure` | The keyring (libsecret: GNOME Keyring, KWallet, KeePassXC), an item per key labeled with the app's name; without libsecret or a keyring, the calls fail saying so |
-| `asuka/sdk/network` | GNetworkMonitor (the portal's in a sandbox); Wi-Fi, ethernet or cellular from NetworkManager; never constrained |
-| `asuka/sdk/location` | The location portal (GeoClue's, which asks the user), else GeoClue itself; `PlaceName` with geocode-glib, when it's installed. GeoClue has no geofences: regions and background updates are computed from the positions while the app runs |
-| `asuka/sdk/speech` | Speech Dispatcher (started when it isn't running): its voices, rate, pitch, volume |
-| `asuka/sdk/audio`, `asuka/sdk/audio/record` | GStreamer: an AAC encoder (FDK, libav's...) records, the default source the microphone |
-| `asuka/sdk/nowplaying` | An MPRIS player on the session bus, named `org.mpris.MediaPlayer2.<app>.instance<pid>` while something shows: GNOME's and KDE's media controls and lock screens, the media keys, `playerctl`. MPRIS's `Seek` is a skip where the app skips, else a seek; the artwork is a `file://` or http(s) URL |
-| `asuka/sdk/library` | The user's folders (XDG's Pictures, Videos, Music, Downloads), in the folder asked |
+| `asuka/device` | `pickPhotos` and `pickFiles`: GTK's file dialog (the portal's in a sandbox), copies in the app's caches. Clipboard images and changes through GDK's clipboard. `browse` opens the page in the user's browser. `keepAwake` keeps the session from idling. `info`: `model` `"PC"`, `system` `"Linux"`, `systemVersion` the distribution's (`/etc/os-release`) |
+| `asuka/secure` | The keyring (libsecret: GNOME Keyring, KWallet, KeePassXC), an item per key labeled with the app's name; without libsecret or a keyring, the calls fail saying so |
+| `asuka/network` | GNetworkMonitor (the portal's in a sandbox); Wi-Fi, ethernet or cellular from NetworkManager; never constrained |
+| `asuka/location` | The location portal (GeoClue's, which asks the user), else GeoClue itself; `PlaceName` with geocode-glib, when it's installed. GeoClue has no geofences: regions and background updates are computed from the positions while the app runs |
+| `asuka/speech` | Speech Dispatcher (started when it isn't running): its voices, rate, pitch, volume |
+| `asuka/audio`, `asuka/record` | GStreamer: an AAC encoder (FDK, libav's...) records, the default source the microphone |
+| `asuka/nowplaying` | An MPRIS player on the session bus, named `org.mpris.MediaPlayer2.<app>.instance<pid>` while something shows: GNOME's and KDE's media controls and lock screens, the media keys, `playerctl`. MPRIS's `Seek` is a skip where the app skips, else a seek; the artwork is a `file://` or http(s) URL |
+| `asuka/library` | The user's folders (XDG's Pictures, Videos, Music, Downloads), in the folder asked |
 | `ui.ShareFiles` | No share sheet: the files are copied to the clipboard, with a toast |
-| `asuka/sdk/camera`, `asuka/sdk/camera/record` | The camera portal (it asks the user once; PipeWire's cameras, `gstreamer1.0-pipewire`), else the first Video4Linux camera, through GStreamer. `Take`: a dialog over the window with a live preview, Take Photo and Cancel. `View`: the preview, mirrored, filling its box; front and back are the same camera (a computer's face the user). Videos are MPEG-4 (H.264 from x264 or OpenH264, AAC), else WebM; scanning codes needs GStreamer's `zbar` element. No camera: `ErrNoCamera`; refused: "not allowed" |
-| `asuka/sdk/scan`, `asuka/sdk/vision` | ZBar (`libzbar0`) reads codes: no Aztec or Data Matrix. Tesseract (`libtesseract5` and a language's data) reads text; nothing finds faces: `Faces` is empty. Without ZBar, `scan.File` fails "not available"; `vision.Analyze` leaves out what isn't installed |
-| `asuka/sdk/imageedit` | GdkPixbuf's loaders decode (HEIF and WebP where their loaders are installed), upright; the actions are done in Go; video frames from GStreamer |
-| `asuka/sdk/webauth` | A dialog over the window with a WebKitGTK web view (`Ephemeral`: a session of its own); closing it cancels |
-| `asuka/sdk/js` | A WebKitGTK web view that's never shown |
-| `asuka/sdk/maps` | libshumate's map of OpenStreetMap's tiles (`libshumate-1.0-1`); Satellite and Hybrid show the streets; no user location layer. Without libshumate, the view says so and `OnError` is called |
-| `asuka/sdk/background` | The task keeps the system from suspending; no notification, `Update` changes nothing |
-| `asuka/sdk/periodic` | The tasks run on a timer while the app runs (it isn't launched for them); one that wants power waits while on the battery, one that wants the network while it's offline |
-| `asuka/sdk/screen` | `Lock`, `SetBars` and `PreventCapture` do nothing; `OnScreenshot` hears of new images in Pictures/Screenshots (GNOME's, KDE's) |
-| `asuka/sdk/sensors` | iio-sensor-proxy (convertibles, tablets): the light sensor, in lux, and the accelerometer's orientation as 1 g along the axis that's up, as it turns. No others: `Available` is false, `StepsBetween` fails with `ErrNotAvailable` |
-| `asuka/sdk/contacts`, `asuka/sdk/calendar` | Evolution Data Server's address books and calendars (GNOME Contacts', GNOME Calendar's, the online accounts'): access is `Full` when it has one; `Pick` is a dialog of the contacts with a search field; `Add` asks, then saves in the default address book or the event's calendar. Without it: contacts' access is `Denied`, calendars' `WriteOnly`; `Add` opens a vCard or an iCalendar file in the user's contacts or calendar app (`saved` is false); `contacts.Pick` fails |
-| `asuka/sdk/photos`' library, `asuka/sdk/appleauth`, `asuka/sdk/transcribe`, `asuka/sdk/widget`, `asuka/sdk/liveactivity` | None on Linux: the library's access is `Denied`; `appleauth.Available` is false and its button shows nothing; `transcribe` and `liveactivity.Start` fail with `ErrNotAvailable`; `widget.Set` does nothing. `asuka/sdk/splash` has nothing to hold |
-| `asuka/sdk/purchase` | No store: `Available` is false, the rest fail with `ErrNotAvailable` |
-| `asuka/sdk/icloud` | No iCloud: `ErrNotAvailable` |
-| `asuka/sdk/biometric`, `asuka/sdk/integrity`, `asuka/sdk/agerange`, `asuka/sdk/push` | None on Linux: not available, not supported. `asuka/sdk/review` does nothing; `asuka/sdk/tracking` answers allowed |
-| `asuka/sdk/pay` | No wallet pays for a Linux app: `Available` says none, `Pay` fails with `ErrNotAvailable`, `Button` shows nothing |
-| `asuka/sdk/crash` | Go's crash output, which has a crash in native code too (a signal in GTK's code, a GLib abort), reported as `Native`; the system's own record (systemd-coredump, apport) isn't read |
+| `asuka/camera`, `asuka/record` | The camera portal (it asks the user once; PipeWire's cameras, `gstreamer1.0-pipewire`), else the first Video4Linux camera, through GStreamer. `Take`: a dialog over the window with a live preview, Take Photo and Cancel. `View`: the preview, mirrored, filling its box; front and back are the same camera (a computer's face the user). Videos are MPEG-4 (H.264 from x264 or OpenH264, AAC), else WebM; scanning codes needs GStreamer's `zbar` element. No camera: `ErrNoCamera`; refused: "not allowed" |
+| `asuka/scan`, `asuka/vision` | ZBar (`libzbar0`) reads codes: no Aztec or Data Matrix. Tesseract (`libtesseract5` and a language's data) reads text; nothing finds faces: `Faces` is empty. Without ZBar, `scan.File` fails "not available"; `vision.Analyze` leaves out what isn't installed |
+| `asuka/imageedit` | GdkPixbuf's loaders decode (HEIF and WebP where their loaders are installed), upright; the actions are done in Go; video frames from GStreamer |
+| `asuka/webauth` | A dialog over the window with a WebKitGTK web view (`ephemeral`: a session of its own); closing it cancels |
+| `asuka/js` | A WebKitGTK web view that's never shown |
+| `asuka/maps` | libshumate's map of OpenStreetMap's tiles (`libshumate-1.0-1`); Satellite and Hybrid show the streets; no user location layer. Without libshumate, the view says so and `OnError` is called |
+| `asuka/background` | The task keeps the system from suspending; no notification, `Update` changes nothing |
+| `asuka/periodic` | The tasks run on a timer while the app runs (it isn't launched for them); one that wants power waits while on the battery, one that wants the network while it's offline |
+| `asuka/screen` | `lock`, `setBars` and `preventCapture` do nothing; `screenshots()` says nothing |
+| `asuka/sensors` | iio-sensor-proxy (convertibles, tablets): the light sensor, in lux, and the accelerometer's orientation as 1 g along the axis that's up, as it turns. No others: `Available` is false, `StepsBetween` fails with `ErrNotAvailable` |
+| `asuka/contacts`, `asuka/calendar` | Evolution Data Server's address books and calendars (GNOME Contacts', GNOME Calendar's, the online accounts'): access is `Full` when it has one; `Pick` is a dialog of the contacts with a search field; `Add` asks, then saves in the default address book or the event's calendar. Without it: contacts' access is `Denied`, calendars' `WriteOnly`; `Add` opens a vCard or an iCalendar file in the user's contacts or calendar app (`saved` is false); `contacts.Pick` fails |
+| `asuka/photos`' library, `asuka/appleauth`, `asuka/transcribe`, `asuka/widget`, `asuka/liveactivity` | None on Linux: the library's access is `Denied`; `appleauth.Available` is false and its button shows nothing; `transcribe` and `liveactivity.Start` fail with `ErrNotAvailable`; `widget.Set` does nothing. `asuka/splash` has nothing to hold |
+| `asuka/purchase` | No store: `Available` is false, the rest fail with `ErrNotAvailable` |
+| `asuka/icloud` | No iCloud: `ErrNotAvailable` |
+| `asuka/biometric`, `asuka/integrity`, `asuka/agerange`, `asuka/push` | None on Linux: not available, not supported. `asuka/review` does nothing; `asuka/tracking` answers allowed |
+| `asuka/pay` | No wallet pays for a Linux app: `Available` says none, `Pay` fails with `ErrNotAvailable`, `Button` shows nothing |
+| `asuka/crash` | Go's crash output, which has a crash in native code too (a signal in GTK's code, a GLib abort), reported as `Native`; the system's own record (systemd-coredump, apport) isn't read |
 | `ui.Haptic` | A desktop has no haptics: it does nothing |
 | `ui.OnShare`, `app.ShareSheet`, shortcuts | iOS and Android only |
 
@@ -250,246 +249,180 @@ and its service worker for notifications and Web Push.
 
 | Package | In a browser |
 | --- | --- |
-| `asuka/sdk/device` | `PickPhotos` and `PickFiles`: the browser's file picker, copies in the caches. `Browse`: a new tab. The clipboard: the app's own copies, and other apps' where the user lets the page read it. `KeepAwake`: the Screen Wake Lock. `GetInfo` from the user agent (Chromium's client hints give the system's version and an Android phone's model) |
-| `asuka/sdk/secure` | The values encrypted (AES-GCM) in IndexedDB, with a key the browser won't let out; not a keychain (see [the web](web.md)) |
-| `asuka/sdk/camera`, `asuka/sdk/camera/record` | `Take` opens a phone's camera, or a dialog with the live camera and a shutter; `View` is the camera in a `<video>`, with `Capture`, recording, and scanning codes where the browser has `BarcodeDetector` |
-| `asuka/sdk/scan`, `asuka/sdk/vision` | `BarcodeDetector` reads codes; faces and text only where the browser has them |
-| `asuka/sdk/imageedit` | A canvas: JPEG or PNG; a remote image needs CORS |
-| `asuka/sdk/photos` | A page can't read the library: access is `Denied` (`device.PickPhotos` picks photos) |
-| `asuka/sdk/library` | `Save` downloads the file |
-| `asuka/sdk/location` | The Geolocation API; `PlaceName` isn't on the web (a browser has no geocoder). Regions and background updates are computed from the positions, only while the page is open |
-| `asuka/sdk/network` | Online from `navigator.onLine`; Wi-Fi, cellular or Ethernet where the browser says (Chrome on Android), metered for cellular, constrained for Data Saver |
-| `asuka/sdk/notify`, `asuka/sdk/push` | The Notification API and Web Push, through the app's service worker (`push.Register`'s `Service` is `"webpush"`); a notification due later can't show while no page of the app is open |
-| `asuka/sdk/audio`, `asuka/sdk/audio/record` | An audio element per player (the browser's autoplay rules apply: play from a tap); `MediaRecorder`, AAC in MPEG-4 where the browser records it, else Opus in WebM |
-| `asuka/sdk/nowplaying` | The Media Session API (`navigator.mediaSession`): the browser's media controls, the media keys, a phone's lock screen, shown while the page plays sound. It has no toggle (the key sends play or pause), and a browser without an action (stop, in some) leaves it out |
-| `asuka/sdk/speech` | `speechSynthesis`, the browser's voices |
-| `asuka/sdk/sensors` | The Generic Sensor API (Chrome) or device motion and orientation events (Safari asks on a tap), in Android's axes and units; no barometer or pedometer |
-| `asuka/sdk/biometric` | The platform's authenticator through WebAuthn (Touch ID, Face ID, Windows Hello, Android's screen lock): the first `Authenticate` makes a passkey for the site. The prompt is the browser's: `Reason` and `Cancel` don't show |
-| `asuka/sdk/webauth` | A popup, done when it comes back to a page of the app's own origin (a custom scheme can't open a page) |
-| `asuka/sdk/js` | A hidden, sandboxed frame |
-| `asuka/sdk/contacts`, `asuka/sdk/calendar` | `contacts.Pick` where the browser has the Contact Picker (Chrome on Android); `Add` downloads a vCard or an `.ics` file; reading them isn't on the web |
-| `asuka/sdk/screen` | `Lock` only full screen or in an installed app; hiding the bars is full screen; no `PreventCapture` or `OnScreenshot` |
-| `asuka/sdk/background` | The page runs while it's open; a task adds nothing, and has no notification |
-| `asuka/sdk/tracking` | No prompt: `Denied` when the browser sends Global Privacy Control or Do Not Track, else `Allowed` |
+| `asuka/device` | `pickPhotos` and `pickFiles`: the browser's file picker, copies in the caches. `browse`: a new tab. The clipboard: the app's own copies, and other apps' where the user lets the page read it. `keepAwake`: the Screen Wake Lock. `info` from the user agent (Chromium's client hints give the system's version and an Android phone's model) |
+| `asuka/secure` | The values encrypted (AES-GCM) in IndexedDB, with a key the browser won't let out; not a keychain (see [the web](web.md)) |
+| `asuka/camera`, `asuka/record` | `Take` opens a phone's camera, or a dialog with the live camera and a shutter; `View` is the camera in a `<video>`, with `Capture`, recording, and scanning codes where the browser has `BarcodeDetector` |
+| `asuka/scan`, `asuka/vision` | `BarcodeDetector` reads codes; faces and text only where the browser has them |
+| `asuka/imageedit` | A canvas: JPEG or PNG; a remote image needs CORS |
+| `asuka/photos` | A page can't read the library: access is `Denied` (`device.PickPhotos` picks photos) |
+| `asuka/library` | `Save` downloads the file |
+| `asuka/location` | The Geolocation API; `PlaceName` isn't on the web (a browser has no geocoder). Regions and background updates are computed from the positions, only while the page is open |
+| `asuka/network` | Online from `navigator.onLine`; Wi-Fi, cellular or Ethernet where the browser says (Chrome on Android), metered for cellular, constrained for Data Saver |
+| `asuka/notify`, `asuka/push` | The Notification API and Web Push, through the app's service worker (`push.Register`'s `Service` is `"webpush"`); a notification due later can't show while no page of the app is open |
+| `asuka/audio`, `asuka/record` | An audio element per player (the browser's autoplay rules apply: play from a tap); `MediaRecorder`, AAC in MPEG-4 where the browser records it, else Opus in WebM |
+| `asuka/nowplaying` | The Media Session API (`navigator.mediaSession`): the browser's media controls, the media keys, a phone's lock screen, shown while the page plays sound. It has no toggle (the key sends play or pause), and a browser without an action (stop, in some) leaves it out |
+| `asuka/speech` | `speechSynthesis`, the browser's voices |
+| `asuka/sensors` | The Generic Sensor API (Chrome) or device motion and orientation events (Safari asks on a tap), in Android's axes and units; no barometer or pedometer |
+| `asuka/biometric` | The platform's authenticator through WebAuthn (Touch ID, Face ID, Windows Hello, Android's screen lock): the first `authenticate` makes a passkey for the site. The prompt is the browser's: `reason` and `cancel` don't show |
+| `asuka/webauth` | A popup, done when it comes back to a page of the app's own origin (a custom scheme can't open a page) |
+| `asuka/js` | A hidden, sandboxed frame |
+| `asuka/contacts`, `asuka/calendar` | `contacts.Pick` where the browser has the Contact Picker (Chrome on Android); `Add` downloads a vCard or an `.ics` file; reading them isn't on the web |
+| `asuka/screen` | `lock` only full screen or in an installed app; hiding the bars is full screen; no `preventCapture` or `screenshots()` |
+| `asuka/background` | The page runs while it's open; a task adds nothing, and has no notification |
+| `asuka/tracking` | No prompt: `.denied` when the browser sends Global Privacy Control or Do Not Track, else `.allowed` |
 | `ui.Haptic` | `navigator.vibrate`, where the browser has it (Chrome on Android) |
-| `asuka/sdk/review`, `asuka/sdk/integrity`, `asuka/sdk/agerange`, `asuka/sdk/appleauth`, `asuka/sdk/icloud`, `asuka/sdk/periodic`, `asuka/sdk/widget`, `asuka/sdk/liveactivity`, `asuka/sdk/transcribe` | Not on the web: an error that says so, or the package's `ErrNotAvailable` |
-| `asuka/sdk/purchase` | Google Play through the Digital Goods API, in a Trusted Web Activity; elsewhere no store (`ErrNotAvailable`) |
-| `asuka/sdk/maps` | OpenStreetMap's tiles, drawn by the host, as on Windows; `ShowsUser` once the page has the location permission |
-| `asuka/sdk/pay` | Apple Pay where the browser has it (Safari), through the Payment Request API, the merchant validated by the app's server (`OnValidateMerchant`); Google Pay elsewhere, through Google's web API (pay.js); each one's own button. A sheet shows only from a tap |
-| `asuka/sdk/crash` | Go's crashes (the host keeps the runtime's output) and uncaught JavaScript errors, as `Exception` reports that aren't fatal |
-| `asuka/sdk/splash` | `Hold` and `Hide` do nothing |
+| `asuka/review`, `asuka/integrity`, `asuka/agerange`, `asuka/appleauth`, `asuka/icloud`, `asuka/periodic`, `asuka/widget`, `asuka/liveactivity`, `asuka/transcribe` | Not on the web: an error that says so, or the package's `ErrNotAvailable` |
+| `asuka/purchase` | Google Play through the Digital Goods API, in a Trusted Web Activity; elsewhere no store (`ErrNotAvailable`) |
+| `asuka/maps` | OpenStreetMap's tiles, drawn by the host, as on Windows; `showsUser` once the page has the location permission |
+| `asuka/pay` | Apple Pay where the browser has it (Safari), through the Payment Request API, the merchant validated by the app's server (`OnValidateMerchant`); Google Pay elsewhere, through Google's web API (pay.js); each one's own button. A sheet shows only from a tap |
+| `asuka/crash` | Go's crashes (the host keeps the runtime's output) and uncaught JavaScript errors, as `Exception` reports that aren't fatal |
+| `asuka/splash` | `hold` and `hide` do nothing |
 | `ui.OnShare`, `app.ShareSheet`, shortcuts | iOS and Android only |
 
-## The camera: asuka/sdk/camera
+## The camera: asuka/camera
 
-`camera.Take` shows the system's camera (iOS's camera screen, Android's
-camera app) and calls `done` with the photo's file, a JPEG, or `""` if the
-user cancelled. On a device without a camera (the iOS simulator) the error
-is `camera.ErrNoCamera`. A desktop has no camera screen: there `Take`
-shows a dialog of Asuka's over the window, with a live preview, Take
-Photo and Cancel; a browser opens a phone's camera, or a dialog like it.
+`camera.View` shows what the camera sees, live: AVFoundation's preview
+on iOS and the Mac, CameraX on Android, `getUserMedia` in a browser,
+Media Foundation on Windows, GStreamer on Linux. `camera.capture()` takes
+a photo from the view on screen; `camera.take()` shows the system's
+camera screen instead (iOS's, Android's camera app; a sheet with a
+preview on the desktop, the file picker's camera in a browser) and gives
+the photo's file, or `none` if the user cancelled. Photos are JPEGs in
+the app's caches: move one to keep it.
 
-```go
-ui.Button(ui.ButtonProps{Title: ui.Val("Take a photo"), OnPress: func() {
-	camera.Take(func(path string, err error) {
-		switch {
-		case errors.Is(err, camera.ErrNoCamera):
-			status.Set("This device has no camera")
-		case err != nil:
-			status.Set(err.Error())
-		case path != "":
-			photo.Set(path) // ui.Image shows it
-		}
-	})
-}})
+```asuka
+import asuka/camera
+
+component Shutter {
+  state facing: camera.Facing = .back
+  state last = ""
+  state status = ""
+
+  Column {
+    camera.View {
+      facing: facing
+      grow: 1
+      on error(m) { status = m }
+    }
+    Row {
+      gap: 12
+      Button("Flip") { on press { facing = if facing == .back { .front } else { .back } } }
+      Button("Take") { on press { last = try await camera.capture() } }
+    }
+    Text(status)
+  }
+}
 ```
 
-For a capture screen of the app's own, `camera.View` shows what the camera
-sees, live, filling its box (AVFoundation's preview on iOS and the Mac,
-CameraX's `PreviewView` on Android, Media Foundation's on Windows,
-GStreamer's on Linux, a `<video>` in a browser), and `camera.Capture`
-takes a photo from it:
+The view asks for the camera the first time it shows; refused, or on a
+device without one (the iOS simulator), it reports `error`, and
+`capture` throws `CameraError.notAllowed` or `.noCamera` (`.noView` when
+no `camera.View` is on screen). An app that imports `asuka/camera` is
+given the camera's and the microphone's purpose strings on iOS (set your
+own in asuka.toml's `[ios.usage]`) and the `CAMERA` and `RECORD_AUDIO`
+permissions on Android.
 
-```go
-camera.View(camera.ViewProps{
-	Mode:    camera.Video,
-	Facing:  camera.Back,
-	Style:   ui.Style{Grow: 1},
-	OnError: func(message string) { status.Set(message) },
-}),
-ui.Button(ui.ButtonProps{Title: ui.Val("Photo"), OnPress: func() {
-	camera.Capture(func(path string, err error) {
-		if err != nil {
-			status.Set(err.Error())
-			return
-		}
-		status.Set("Saved " + path)
-	})
-}}),
+## Recording video: asuka/record
+
+A `camera.View` in video mode records: `record.start()` records what it
+shows, with the microphone unless `mute`, until `record.stop()` (or
+`maxDuration`), and gives the file, an MPEG-4 video in the app's caches.
+`camera.record` and `camera.stopRecording` are the same.
+
+```asuka
+import asuka/camera
+import asuka/record
+
+component Clip {
+  state recording = false
+  state file = ""
+
+  Column {
+    camera.View { mode: .video; grow: 1 }
+    Button(if recording { "Stop" } else { "Record" }) {
+      on press {
+        if recording {
+          record.stop()
+        } else {
+          recording = true
+          defer { recording = false }
+          file = try await record.start(maxDuration: 30s)
+        }
+      }
+    }
+  }
+}
 ```
 
-`ViewProps`:
+AVCaptureMovieFileOutput on iOS and the Mac, CameraX's `VideoCapture` on
+Android, `MediaRecorder` in a browser (WebM where it can't write MPEG-4),
+Media Foundation's sink writer on Windows, GStreamer on Linux.
 
-- `Facing`: `camera.Back` (the default) or `camera.Front`.
-- `Mode`: `camera.Photo` (the default), or `camera.Video` for recording
-  with `asuka/sdk/camera/record`, which takes photos too.
-- `Style`: its box.
-- `OnError`: called when the camera can't show: `"not allowed"` if the
-  user refused it, `"no camera"` if there's none.
-- `Scan`: reads codes in what it sees; see `asuka/sdk/scan`.
+## Barcodes and QR codes: asuka/scan
 
-The view asks for the camera the first time it shows, and the camera is
-on while the view is on screen. Show one at a time: `Capture` and
-recording use the one on screen, and fail with `"no camera view"` if
-there's none.
+A `camera.View` with `scan` on reads the codes it sees, live, and reports
+each with `code` (once while it stays in sight). `codes` limits the kinds
+it looks for; none: every kind. Kinds are named `"qr"`, `"aztec"`,
+`"datamatrix"`, `"pdf417"`, `"ean13"`, `"ean8"`, `"upca"`, `"upce"`,
+`"code128"`, `"code39"`, `"code93"`, `"codabar"` and `"itf"`.
 
-The files from `Take` and `Capture` are in the app's caches, which the
-system may clear: move one into `store.Dir()` to keep it, or save it to
-the photo library with [`asuka/sdk/library`](#saving-to-the-library-asukasdklibrary).
+`scan.file(path)` reads the codes in an image file instead (a photo
+taken or picked): Vision on iOS and the Mac, ML Kit on Android (its
+model in the app, about 2 MB, so it works without Google Play services),
+the browser's `BarcodeDetector` where it has one, a Go decoder on
+Windows, ZBar's GStreamer element on Linux.
 
-**Android**: as `asuka/sdk/camera` declares the camera permission (the view
-needs it), Android requires it of the camera app too: `Take` asks for it
-first, and fails with `"not allowed"` if the user refuses.
+```asuka
+import asuka/camera
+import asuka/scan
 
-## Recording video: asuka/sdk/camera/record
+component Scanner {
+  state found = ""
 
-`asuka/sdk/camera/record` records video from the `camera.View` on screen, whose
-`Mode` is `camera.Video`. `record.Start` records until `record.Stop`, or
-until `MaxDuration` if set, then calls `done` with the video's file (in
-the app's caches: `.mov` on iOS and the Mac, `.mp4` on Android and
-Windows, `.mp4` or else `.webm` on Linux, as its encoders allow).
+  Column {
+    camera.View {
+      scan: true
+      codes: ["qr", "ean13"]
+      grow: 1
+      on code(c) { found = "{c.kind}: {c.value}" }
+    }
+    Text(found)
+  }
+}
 
-```go
-ui.Button(ui.ButtonProps{
-	Title: signal.Func(func() string {
-		if recording.Get() {
-			return "Stop"
-		}
-		return "Record"
-	}),
-	OnPress: func() {
-		if recording.Peek() {
-			record.Stop()
-			return
-		}
-		recording.Set(true)
-		record.Start(record.Options{MaxDuration: time.Minute}, func(path string, err error) {
-			recording.Set(false)
-			if err != nil {
-				status.Set(err.Error())
-				return
-			}
-			status.Set("Recorded " + path) // ui.Video plays it
-		})
-	},
-})
+async fn read(photo: string) throws -> [string] {
+  var out: [string] = []
+  for c in try await scan.file(photo, kinds: ["qr"]) { out.push(c.value) }
+  return out
+}
 ```
 
-It records sound too, and asks for the microphone the first time; if the
-user refuses, the video has no sound. `record.Options{Mute: true}`
-records without sound and without asking. One recording at a time.
+## What's in an image: asuka/vision
 
-The microphone's permission and purpose string come with this package,
-not with `asuka/sdk/camera`: an app that only takes photos goes without them.
+`vision.analyze(path)` finds what's in an image, on the device: its text,
+line by line and word by word, faces, and barcodes, each with its `Box`
+(fractions of the image's width and height from its top left, the image
+upright: multiply by a view's size for points). Ask only for what you
+need (`text:`, `faces:`, `codes:`), and give the text's languages
+(`languages: ["ja"]`) when you know them. Nothing leaves the device.
 
-## Barcodes and QR codes: asuka/sdk/scan
+```asuka
+import asuka/vision
 
-`asuka/sdk/scan` reads barcodes and QR codes, live in what a `camera.View`
-sees, or in an image file. iOS and the Mac read them with AVFoundation
-and Vision; Android with ML Kit, which only the apps that import
-`asuka/sdk/scan` are built with; Windows with a reader of Asuka's own, in Go;
-Linux with ZBar; a browser with `BarcodeDetector`. Not every reader has
-every kind: see [On Windows](#on-windows) and [On Linux](#on-linux).
-
-`scan.Codes` makes the view's `Scan`. It reads the kinds given (every
-kind, if none), and calls its function on the main thread as a code comes
-into view: once while it stays, and again after it's been out of view for
-a second.
-
-```go
-camera.View(camera.ViewProps{
-	Style: ui.Style{Grow: 1},
-	Scan: scan.Codes(func(c scan.Code) {
-		found.Set(fmt.Sprintf("%s: %s", c.Kind, c.Value))
-		ui.Haptic(ui.HapticSuccess)
-	}, scan.QR, scan.EAN13),
-})
+async fn words(photo: string) throws -> [string] {
+  let r = try await vision.analyze(photo, faces: false, codes: false)
+  return r.lines.map(l => l.text)
+}
 ```
 
-`scan.File` reads the codes in an image, a photo taken or picked, and
-calls `done` with them (none, if there are none):
+The Vision framework on iOS and the Mac, ML Kit and its bundled models
+on Android (about 30 MB), the browser's Shape Detection API where it has
+one, Windows' OCR, and Tesseract (where it's installed) and ZBar on
+Linux. `asuka/scan` reads a code's value; this package says where it is.
 
-```go
-scan.File(path, func(codes []scan.Code, err error) {
-	switch {
-	case err != nil:
-		found.Set(err.Error())
-	case len(codes) == 0:
-		found.Set("No code in it")
-	default:
-		found.Set(codes[0].Value)
-	}
-}, scan.QR)
-```
+## The photo library: asuka/photos
 
-A `scan.Code` is its `Kind` and its `Value`, the text it holds. The
-kinds: `QR`, `Aztec`, `DataMatrix`, `PDF417`, `EAN13`, `EAN8`, `UPCA`,
-`UPCE`, `Code128`, `Code39`, `Code93`, `Codabar`, `ITF`.
-
-**iOS** reads a UPC-A as an EAN-13 with a leading 0; asked for `UPCA`,
-Asuka gives it as a UPC-A again.
-
-## What's in an image: asuka/sdk/vision
-
-`vision.Analyze(path, options)` finds text, faces and codes in an image,
-and where each is. It runs on the device: Apple's Vision on iOS and the
-Mac, ML Kit's bundled models on Android, which only the apps that import
-`asuka/sdk/vision` are built with, Windows's OCR and face detector, Tesseract
-on Linux (no faces), and in a browser what its Shape Detection API has.
-Not on the main thread.
-
-```go
-go func() {
-	r, err := vision.Analyze(photo, vision.Options{Languages: []string{"zh-Hans", "en-US"}})
-	if err != nil {
-		return
-	}
-	ui.Post(func() {
-		for _, l := range r.Lines {
-			fmt.Println(l.Text, l.Box)
-			for _, w := range l.Words {
-				fmt.Println(" ", w.Text, w.Box, w.Start, w.End)
-			}
-		}
-		fmt.Println(len(r.Faces), "faces,", len(r.Codes), "codes")
-	})
-}()
-```
-
-- A `Box` is in fractions of the image from its top left, with the image
-  upright: it's the same at any scale, for a view over the image or
-  `asuka/sdk/imageedit`'s pixels.
-- A `Line` has its `Text`, `Box` and `Words`. A `Word` is what the platform's
-  word breaking finds (dictionary-based for Chinese and Japanese), or a mark of
-  punctuation. `Start` and `End` are its place in the line's text, in runes.
-- A `Code` has its `Kind` (as `asuka/sdk/scan` names them), `Value` and `Box`.
-- `Options` turn off what you don't need (`NoText`, `NoFaces`, `NoCodes`).
-  `Languages` are the text's, most likely first, iOS only: Vision reads only
-  the script of the first's family well, so put Chinese first where it may
-  appear. Its Chinese model reads Latin letters too. Android reads Chinese and
-  Latin scripts always.
-
-**iOS** boxes what it read as one group: words of a Chinese line that share a
-box divide it by their width, so a word's box there is an estimate. A barcode's
-box from Vision can be the line it read along; Asuka grows it to the bars. On
-**Android** the words' boxes come from each symbol's.
-
-OCR scales what it's given to a size of its own, and loses small text in a very
-long screenshot: slice it with `imageedit.Crop` and analyze each slice.
-
-## The photo library: asuka/sdk/photos
-
-`asuka/sdk/photos` reads the user's library, with their permission: PhotoKit on iOS
+`asuka/photos` reads the user's library, with their permission: PhotoKit on iOS
 and the Mac, MediaStore on Android, the Pictures folder on Windows. Linux
 and the web have no library an app can read: access is `Denied`. It's for an app whose screen is the library. To let the
 user pick a few photos, `device.PickPhotos` asks for no permission: prefer it
@@ -521,116 +454,130 @@ go func() {
 - `photos.Export(id)` copies the full image as it is in the library (HEIC,
   JPEG, PNG), with its name. iCloud photos download first.
 
-## Photos, the browser, the clipboard: asuka/sdk/device
+## Photos, the browser, the clipboard: asuka/device
 
-`asuka/sdk/device` is what the platform offers beyond views.
+`asuka/device` is what the platform offers beyond views.
 
-```go
-ui.Button(ui.ButtonProps{Title: ui.Val("Pick photos"), OnPress: func() {
-	device.PickPhotos(3, func(paths []string, err error) {
-		if err == nil && len(paths) > 0 {
-			photos.Set(paths)
-		}
-	})
-}}),
-ui.Button(ui.ButtonProps{Title: ui.Val("Help"), OnPress: func() {
-	device.Browse("https://example.com/help")
-}}),
-```
+```asuka
+import asuka/device
 
-- `device.PickPhotos(limit, done)` shows the system's photo picker
-  (PHPicker on iOS, the Photo Picker on Android; the open dialog on the
-  desktops, the file picker in a browser) for up to `limit` images
-  (1 to 255). It asks for no permission: the user picks, and the app sees
-  only what was picked. `done` gets the images' files, which `ui.Image`
-  shows, or none if the user cancelled. The files are copies in the
-  app's temporary files or caches: move one to keep it.
-- `device.Browse(url)` shows a web page in the app (SFSafariViewController,
-  a Custom Tab), over the app's screens. The URL must be http or https.
-  `ui.OpenURL` leaves the app for the browser instead. A desktop opens
-  the page in the user's browser, and a browser in a new tab.
-- `device.Clipboard()` reads the clipboard's text; `ok` is false if it has
-  none. Not on the main thread. iOS asks the user the first time the app
-  reads what another app put there. `ui.Copy` writes it.
-- `device.KeepAwake(on)` keeps the screen on while `on` is true: a video,
-  a recipe, a map. Turn it off when the screen that wants it goes.
-- `device.PickFiles(options, done)` shows the system's document picker
-  (iOS's Files browser, Android's storage picker, the open dialog on the
-  desktops, the file picker in a browser; no permission). `Types`
-  are MIME types (`"application/pdf"`, `"image/*"`; none: any file) and
-  `Multiple` lets the user pick several. `done` gets a `device.File` for
-  each, its `Path` a copy in the app's caches, with its `Name`, `Type` and
-  `Size`, or none if the user cancelled.
-- `device.ClipboardHas()` says whether the clipboard holds `Text`, an
-  `Image` or a `URL`, without reading it (iOS doesn't ask the user for
-  this): show a Paste button only when there's something to paste.
-  `device.ClipboardImage()` reads its image into a file, in the format it
-  was copied in; `device.CopyImage(path, done)` puts an image file on it.
-  `device.OnClipboardChange(f)` calls `f` when it changes, until `stop`.
-- `device.GetInfo()` is the device and the app: `Model` ("iPhone", "Pixel
-  9", "Mac", "PC"), `System` ("iOS", "Android", "macOS", "Windows",
-  "Linux"), `SystemVersion`, and `AppVersion` and
-  `Build`, `asuka.toml`'s `version` and `build`. Not on the main thread.
+component Gallery {
+  state photos: [string] = []
 
-```go
-func Player() ui.Node {
-	info := signal.New("")
-	go func() {
-		if i, err := device.GetInfo(); err == nil {
-			ui.Post(func() { info.Set(i.Model + ", " + i.System + " " + i.SystemVersion) })
-		}
-	}()
-	device.KeepAwake(true)
-	signal.OnCleanup(func() { device.KeepAwake(false) })
-	return ui.Text(info)
+  Column {
+    Button("Pick photos") {
+      on press { photos = (try? await device.pickPhotos(max: 3)) ?? [] }
+    }
+    Button("Help") {
+      on press { try? await device.browse("https://example.com/help") }
+    }
+    for p in photos { Image(p) }
+  }
 }
 ```
 
-## Signing in on the web: asuka/sdk/webauth
+- `device.pickPhotos(max:)` shows the system's photo picker
+  (PHPicker on iOS, the Photo Picker on Android; the open dialog on the
+  desktops, the file picker in a browser) for up to `max` images
+  (1 to 255). It asks for no permission: the user picks, and the app sees
+  only what was picked. It returns the images' files, which `Image`
+  shows, or none if the user cancelled. The files are copies in the
+  app's temporary files or caches: move one to keep it.
+- `device.browse(url)` shows a web page in the app (SFSafariViewController,
+  a Custom Tab), over the app's screens. The URL must be http or https.
+  `openURL` leaves the app for the browser instead. A desktop opens
+  the page in the user's browser, and a browser in a new tab.
+- `device.clipboardText()` reads the clipboard's text, `none` if it has
+  none. iOS asks the user the first time the app reads what another app
+  put there. `copy(text)` writes it.
+- `device.keepAwake(on)` keeps the screen on while `on` is true: a video,
+  a recipe, a map. Turn it off when the screen that wants it goes.
+- `device.pickFiles(types:, multiple:)` shows the system's document
+  picker (iOS's Files browser, Android's storage picker, the open dialog
+  on the desktops, the file picker in a browser; no permission). `types`
+  are MIME types (`"application/pdf"`, `"image/*"`; none: any file) and
+  `multiple` lets the user pick several. It returns a `device.File` for
+  each, its `path` a copy in the app's caches, with its `name`, `type`
+  and `size`, or none if the user cancelled.
+- `device.clipboardHas()` says whether the clipboard holds `text`, an
+  `image` or a `url`, without reading it (iOS doesn't ask the user for
+  this): show a Paste button only when there's something to paste.
+  `device.clipboardImage()` reads its image into a file, in the format it
+  was copied in; `device.copyImage(path)` puts an image file on it.
+  `device.clipboardChanges()` is a stream of what it holds at each change
+  (iOS and Android say; the Mac and Windows are asked twice a second; a
+  browser sees copies in the page, and others' where the user lets it
+  read the clipboard).
+- `device.info()` is the device and the app: `model` ("iPhone", "Pixel
+  9", "Mac", "PC"), `system` ("iOS", "Android", "macOS", "Windows",
+  "Linux"), `systemVersion`, and `appVersion` and `build`,
+  `asuka.toml`'s `version` and `build`.
 
-`webauth.Start` shows a sign-in page in the system's own sign-in sheet:
-`ASWebAuthenticationSession` on iOS (SwiftUI's
-`webAuthenticationSession`), a Custom Tab on Android. It's the
-browser's, so the user's sessions, passkeys and password autofill work
-in it, and providers that refuse an app's own `WebView` (Google's
-sign-in) don't refuse it. Use it for OAuth rather than a `ui.WebView`.
+```asuka
+import asuka/device
+
+component Player {
+  let info = load device.info()
+
+  task {
+    device.keepAwake(true)
+    defer { device.keepAwake(false) }
+    await sleep(1h)
+  }
+
+  Text(if let i = info.value { "{i.model}, {i.system} {i.systemVersion}" } else { "" })
+}
+```
+
+## Signing in on the web: asuka/webauth
+
+`webauth.open(url)` shows a sign-in page in the system's own sign-in
+sheet: `ASWebAuthenticationSession` on iOS, a Custom Tab on Android.
+It's the browser's, so the user's sessions, passkeys and password
+autofill work in it, and providers that refuse an app's own `WebView`
+(Google's sign-in) don't refuse it. Use it for OAuth rather than a
+`WebView`.
 
 The Mac has `ASWebAuthenticationSession` too. Windows and Linux have no
-system sheet: the host shows the page in a web view of its own over the
-window (WebView2, WebKitGTK), which has the app's web profile but not the
+system sheet: the page shows in a web view of the app's over its window
+(WebView2, WebKitGTK), which has the app's web profile but not the
 user's browser's sessions, and which a provider that refuses embedded
 web views refuses there. A browser opens the page in a popup, done when
 it comes back to a page of the app's own origin (a custom scheme can't
 open a page).
 
-```go
-s := webauth.Start(webauth.Options{URL: authorizeURL, CallbackScheme: "myapp"},
-	func(callback string, err error) {
-		if errors.Is(err, webauth.ErrCanceled) {
-			return // the user closed it
-		}
-		// callback is myapp://…?code=…: exchange the code.
-	})
+```asuka
+import asuka/webauth
+
+async fn signIn(authorizeURL: string) throws -> string? {
+  do {
+    // myapp://…?code=…: exchange the code.
+    return try await webauth.open(authorizeURL, callbackScheme: "myapp")
+  } catch webauth.WebAuthError.canceled {
+    return none // the user closed it
+  }
+}
 ```
 
 It ends in one of two ways:
 
 - **A callback scheme.** When the page goes to a URL of
-  `CallbackScheme` (the app's own), the sheet closes and `done` gets the
-  URL. On Android the scheme must be the app's, asuka.toml's `scheme`; it
-  goes to `done` rather than `ui.OnOpenURL`.
+  `callbackScheme` (the app's own), the sheet closes and `open` returns
+  the URL. On Android the scheme must be the app's, asuka.toml's
+  `scheme`; it goes to `open` rather than the app's `openURL` event.
 - **The app ends it.** Without a scheme, the page redirects somewhere
   the app hears from: an OAuth server that allows a redirect to the
   loopback interface (`http://localhost:port/callback`, RFC 8252) sends
-  the code to a server the app runs on that port, which calls
-  `s.Cancel()` to close the sheet. On Android, cancelling brings the app
-  back over the tab.
+  the code to a server the app runs on that port; racing the two
+  (`race(server.next(), webauth.open(url))`) cancels `open`, which
+  closes the sheet. On Android, cancelling brings the app back over the
+  tab.
 
-`done` gets `webauth.ErrCanceled` when the user closes the sheet, or
-`Cancel` does. `Ephemeral` asks for a private session, without the
+`open` throws `webauth.WebAuthError.canceled` when the user closes the
+sheet. `ephemeral: true` asks for a private session, without the
 browser's cookies (iOS's `prefersEphemeralWebBrowserSession`; Android's
-Custom Tabs keep them). [`examples/usage`](../examples/usage) signs in
-with Claude this way, with a loopback server.
+ephemeral Custom Tab where the browser has one; a throwaway profile on
+Windows and Linux).
 
 ## Copy, share and open: ui.Copy, ui.Share, ui.OpenURL
 
@@ -693,133 +640,140 @@ downloads each.
 To be opened with URLs yourself, see `asuka.toml`'s `scheme` and `links` in
 [Shipping](shipping.md#asukatoml), and `ui.OnOpenURL`.
 
-## Previewing files: asuka/sdk/preview
+## Previewing files: asuka/preview
 
-`preview.Show(sources, options, done)` shows files with the system's
-viewer, as a mail app shows an attachment: PDFs, images, video, audio,
-Office and iWork documents, text. A source is a file's path, an asset's
-(as `ui.Image` takes it), or an http(s) URL, which the host downloads to
-the app's caches first, under its name (or with the extension of the type
-the server gives). Main thread.
+`preview.show(sources)` shows files with the system's viewer, as a mail
+app shows an attachment: PDFs, images, video, audio, Office and iWork
+documents, text. A source is a file's path, an asset's (as `Image`
+takes it), or an http(s) URL, which is downloaded to the app's caches
+first, under its name (or with the extension of the type the server
+gives).
 
-```go
-var open ui.Node
-open = ui.Button(ui.ButtonProps{Title: ui.Val("Open the invoice"), OnPress: func() {
-	preview.Show([]string{invoice, "docs/terms.pdf"}, preview.Options{From: open}, func(err error) {
-		if errors.Is(err, preview.ErrNoViewer) {
-			status.Set("Nothing on this device opens it")
-		}
-	})
-}})
+```asuka
+import asuka/preview
+
+component Invoice {
+  prop path: string
+  state status = ""
+
+  Column {
+    Button("Open the invoice") {
+      on press {
+        do {
+          try await preview.show([path, "docs/terms.pdf"])
+        } catch preview.PreviewError.noViewer {
+          status = "Nothing on this device opens it"
+        } catch e {
+          status = e.message
+        }
+      }
+    }
+    Text(status)
+  }
+}
 ```
 
-| Option | |
-| --- | --- |
-| `Start` | The index of the file shown first. |
-| `From` | The view the viewer grows from (iOS), usually what the user tapped. |
-| `Edit` | Lets the user mark up PDFs and images with Markup, which saves into the files (iOS). |
+`start:` is the index of the file shown first; `edit: true` lets the
+user mark up PDFs and images with Markup, which saves into the files
+(iOS). It returns once the viewer is gone, and throws
+`preview.PreviewError.noViewer` if nothing can show the files, or another
+error (no such file, a download that failed).
 
-`done` runs on the main thread once the viewer is gone, with
-`preview.ErrNoViewer` if nothing can show the files, or another error (no
-such file, a download that failed).
-
-| | Viewer | `done` |
+| | Viewer | Returns |
 | --- | --- | --- |
 | iOS | Quick Look (`QLPreviewController`) over the screen: swipe between the files; share, Markup, search | when it's dismissed |
-| Android | `ACTION_VIEW` of the `Start` file in the app the user picks for its type (Drive's PDF viewer, Photos), through the app's FileProvider with the right to read it alone | when the user is back |
+| Android | `ACTION_VIEW` of the `start` file in the app the user picks for its type (Drive's PDF viewer, Photos), through the app's FileProvider with the right to read it alone | when the user is back |
 | macOS | Quick Look's panel (`QLPreviewPanel`), its arrows between the files | when the panel closes |
 | Windows | the file's default app (`ShellExecuteEx`), or the "How do you want to open this?" dialog | once it's handed over |
 | Linux | the file's default app (`GtkFileLauncher`, the portal's in a sandbox) | once it's handed over |
-| Web | a new tab, for what a browser shows (images, video, audio, text, PDF, HTML); another type is `ErrNoViewer` | once it's opened |
+| Web | a new tab, for what a browser shows (images, video, audio, text, PDF, HTML); another type is `noViewer` | once it's opened |
 
 Android has no system viewer, nor one that pages through several files:
-it opens one, as Android's mail apps do with each attachment.
+it opens one, as Android's mail apps do with each attachment. The view
+the viewer grows from on iOS (a `from:`) waits for the prelude's `Ref`.
 
-## Printing and PDFs: asuka/sdk/print
+## Printing and PDFs: asuka/print
 
-`asuka/sdk/print` shows the system's print dialog, with its printers and
+`asuka/print` shows the system's print dialog, with its printers and
 options (copies, pages, paper, orientation; Save as PDF on Android and the
-Mac), for a file, HTML markup or a WebView's page; and lays HTML out on
-pages as a PDF. Each call but `PDF` runs on the main thread, and `done`
-gets a `print.Result` once the dialog is closed:
+Mac), for a file or HTML markup; and lays HTML out on pages as a PDF.
+Each returns a `print.Outcome` once the dialog is closed. The package's
+name is the prelude's `print` too: import it under another name to print
+text as well.
 
-```go
-var printButton ui.Node
-printButton = ui.Button(ui.ButtonProps{Title: ui.Val("Print"), OnPress: func() {
-	print.HTML(receipt, print.Options{Job: "Receipt", From: printButton}, func(r print.Result, err error) {
-		if err == nil && r == print.Printed {
-			status.Set("Sent to the printer")
-		}
-	})
-}})
+```asuka
+import asuka/print as printing
+
+async fn printReceipt(receipt: string) throws -> string {
+  let r = try await printing.html(receipt, job: "Receipt")
+  return if r == .printed { "Sent to the printer" } else { "" }
+}
 ```
 
-- `print.File(source, options, done)` prints a PDF or an image (a path, an
-  asset, an http(s) URL, as `preview.Show` takes them). Another type fails
-  with `print.ErrUnsupported`, but on Windows and Linux (where the
-  printer takes what CUPS can print).
-- `print.HTML(markup, options, done)` prints markup, paginated as a browser
-  prints a page: CSS's `@media print` and `break-before` apply. Images and
-  styles come from absolute URLs (`https:`, `data:`).
-- `print.WebView(web, options, done)` prints what a `ui.WebView` shows.
+- `print.file(source, job:, orientation:)` prints a PDF or an image (a
+  path, an asset, an http(s) URL, as `preview.show` takes them). Another
+  type throws `print.PrintError.unsupported`, but on Windows and Linux
+  (where the printer takes what CUPS can print).
+- `print.html(markup, job:, orientation:)` prints markup, paginated as a
+  browser prints a page: CSS's `@media print` and `break-before` apply.
+  Images and styles come from absolute URLs (`https:`, `data:`).
 
-`Options` has `Job`, the job's name in the queue (default: the file's
-name, the page's title, else the app's name), `Orientation`, which the
-dialog starts with (`print.Portrait`, `print.Landscape`), and `From`, the
-view the dialog points at where it's a popover (the iPad).
+`job` is the job's name in the queue (default: the file's name, the
+page's title, else the app's name), and `orientation` the one the dialog
+starts with (`.portrait`, `.landscape`).
 
-A `Result` is `print.Printed` (the job is in the printer's queue, or saved
-as a PDF from the dialog), `print.Cancelled`, or `print.Unknown` where
-the platform doesn't say. A job that fails is an error.
-`print.ErrUnavailable` says the device can't print.
+An `Outcome` is `.printed` (the job is in the printer's queue, or saved
+as a PDF from the dialog), `.cancelled`, or `.unknown` where the platform
+doesn't say. A job that fails is an error. `print.PrintError.unavailable`
+says the device can't print.
 
-| | Dialog | File | HTML, WebView | Result |
+| | Dialog | File | HTML | Outcome |
 | --- | --- | --- | --- | --- |
 | iOS | `UIPrintInteractionController`, a popover on the iPad | PDFs and images (`printingItem`) | WebKit's print formatter | printed or cancelled |
 | Android | `PrintManager`'s print screen | a PDF written through; an image fit to the page, upright (as `PrintHelper`) | the WebView's print adapter | printed, cancelled or failed (the job's state) |
 | macOS | `NSPrintOperation`'s panel, a sheet on the window, with a preview | PDFKit (a PDF; an image on a page) | WebKit's print operation | printed or cancelled |
-| Windows | WebView2's: the system's print dialog for HTML, the browser's preview for a WebView | the file's app prints it (the shell's `print` verb), whatever its type | WebView2 | unknown |
+| Windows | WebView2's: the system's print dialog | the file's app prints it (the shell's `print` verb), whatever its type | WebView2 | unknown |
 | Linux | GTK's print dialog (the print portal's for a file) | the printer takes it (CUPS: PDFs, images) | WebKitGTK's print operation | printed or cancelled |
-| Web | the browser's print dialog | PDFs in the browser's viewer, images | the page's own web views | unknown |
+| Web | the browser's print dialog | PDFs in the browser's viewer, images | a hidden frame | unknown |
 
 An image wider than tall starts in landscape on Android and iOS, as their
-photo printing does.
+photo printing does. Printing what a `WebView` shows, and the iPad
+popover's anchor, wait for the prelude's `Ref`.
 
 ### PDFs from HTML
 
-`print.PDF(markup, options)` lays markup out on pages, as `print.HTML`
-prints it but without a dialog, and writes a PDF in the app's caches,
-named after the page's `<title>` ("Receipt.pdf"; "Document.pdf" without
-one). It returns its path, to share, mail or move. Its text stays text:
-searchable, selectable. Not on the main thread.
+`print.pdf(markup, page:, landscape:, margins:)` lays markup out on
+pages, as `print.html` prints it but without a dialog, and writes a PDF
+in the app's caches, named after the page's `<title>` ("Receipt.pdf";
+"Document.pdf" without one). It returns its path, to share, mail or
+move. Its text stays text: searchable, selectable.
 
-```go
-go func() {
-	path, err := print.PDF(receipt, print.PDFOptions{Page: print.A4, Margins: print.Uniform(48)})
-	ui.Post(func() {
-		if err == nil {
-			ui.ShareFiles([]string{path}, ui.ShareOptions{Title: "Receipt"}, nil)
-		}
-	})
-}()
+```asuka
+import asuka/print as printing
+import asuka/preview
+
+async fn receiptPDF(receipt: string) throws {
+  let path = try await printing.pdf(receipt, page: printing.Page.a4, margins: printing.Margins(top: 48, right: 48, bottom: 48, left: 48))
+  try await preview.show([path])
+}
 ```
 
-| Option | |
+| Parameter | |
 | --- | --- |
-| `Page` | The paper, in points: `print.A3`, `A4`, `A5`, `Letter`, `Legal`, or a size of your own. Default: the user's region's, Letter in the Americas that use it (CLDR's paper sizes), A4 elsewhere. |
-| `Landscape` | Turns the page: its width the longer side. |
-| `Margins` | The space around each page's content, in points. Default: half an inch (36 points); `print.Uniform(0)` for none. |
+| `page` | The paper, in points: `Page.a3`, `a4`, `a5`, `letter`, `legal`, or a size of your own. Default: the user's region's (`print.regionPage(environment().locale)`), Letter in the Americas that use it (CLDR's paper sizes), A4 elsewhere. |
+| `landscape` | Turns the page: its width the longer side. |
+| `margins` | The space around each page's content, in points. Default: half an inch (36 points) on each side. |
 
 iOS lays it out with WebKit (`UIPrintPageRenderer` with the web view's
 print formatter), Android with its WebView's print adapter, the Mac with
 WebKit's print operation, Windows with WebView2 (Chromium's
 `Page.printToPDF`), Linux with WebKitGTK (printed to a file). A browser
-makes PDFs only through its print dialog: there `PDF` fails, and
-`print.HTML` lets the user Save as PDF.
+makes PDFs only through its print dialog: there `pdf` throws an
+`unsupported` error, and `print.html` lets the user Save as PDF.
 
-## Mail and messages: asuka/sdk/compose
+## Mail and messages: asuka/compose
 
-`asuka/sdk/compose` opens the system's mail and message composers, filled in
+`asuka/compose` opens the system's mail and message composers, filled in
 for the user to send. Main thread; `done` gets a `compose.Result`:
 `compose.Sent`, `Saved` (a draft), `Cancelled`, or `Unknown` where
 another app has the mail and doesn't say.
@@ -868,274 +822,227 @@ can't do fails with `compose.ErrUnavailable`.
 The iOS simulator has no Mail account and no Messages: try the composers
 on a device.
 
-## Location: asuka/sdk/location
+## Location: asuka/location
 
-`asuka/sdk/location` is where the device is, now and as it moves, with the
+`asuka/location` is where the device is, now and as it moves, with the
 user's permission, which it asks for the first time. It's Core Location
 on iOS and the Mac, and Android's location manager, which needs no Google
 Play services; WinRT's Geolocator on Windows, the location portal (or
-GeoClue) on Linux, and the Geolocation API in a browser. It asks for the location while the app is in use; with the
-app out of sight too, it follows the device in the background and
-watches regions for the app (expo-location's background updates and
-geofencing), below.
+GeoClue) on Linux, and the Geolocation API in a browser. With the app out
+of sight too, it follows the device in the background and watches regions
+for the app, below.
 
-`location.Current()` returns where the device is. Not on the main thread:
-it waits for the user to answer, then for a fix. If the user hasn't
-allowed it, the error is `location.ErrDenied`.
+`location.current()` asks for permission if it hasn't, then returns where
+the device is. If the user hasn't allowed it, it throws
+`LocationError.denied`.
 
-```go
-ui.Button(ui.ButtonProps{Title: ui.Val("Where am I?"), OnPress: func() {
-	go func() {
-		p, err := location.Current()
-		ui.Post(func() {
-			switch {
-			case errors.Is(err, location.ErrDenied):
-				where.Set("Allow location in Settings")
-			case err != nil:
-				where.Set(err.Error())
-			default:
-				where.Set(fmt.Sprintf("%.4f, %.4f (within %.0f m)", p.Latitude, p.Longitude, p.Accuracy))
-			}
-		})
-	}()
-}})
-```
+```asuka
+import asuka/location
 
-`location.Watch(f)` calls `f` on the main thread with each position as the
-device moves, the first being where it is now, until `stop` is called. It
-asks as `Current` does; if the user refuses, `f` isn't called. Stop it
-with the component:
+component Where {
+  state where = ""
 
-```go
-func Track() ui.Node {
-	here := signal.New(location.Position{})
-	stop := location.Watch(func(p location.Position) { here.Set(p) })
-	signal.OnCleanup(stop)
-	return ui.Text(signal.Func(func() string {
-		p := here.Get()
-		return fmt.Sprintf("%.5f, %.5f", p.Latitude, p.Longitude)
-	}))
+  Column {
+    Button("Where am I?") {
+      on press {
+        do {
+          let p = try await location.current()
+          where = "{p.latitude.fixed(4)}, {p.longitude.fixed(4)} (within {p.accuracy.fixed(0)} m)"
+        } catch location.LocationError.denied {
+          where = "Allow location in Settings"
+        } catch e {
+          where = e.message
+        }
+      }
+    }
+    Text(where)
+  }
 }
 ```
 
-`location.PlaceName(lat, lon)` is what a place is called ("Mission District, San
-Francisco"), from the platform's geocoder, which asks its servers: ask only when
-the user wants the name. Not on the main thread. Windows asks
-OpenStreetMap's Nominatim, Linux geocode-glib where it's installed; a
-browser has no geocoder, and it fails there.
+`location.positions()` is a stream: the position now, then each as the
+device moves. Read it in a task, and it stops with the component:
 
-A `location.Position` has `Latitude`, `Longitude`, `Accuracy` (meters:
-the radius the device is within), `Altitude` (meters above sea level; 0 if
-not known) and `Time`.
+```asuka
+import asuka/location
 
-**Android**: `Current` gives a fix from the last minute if there is one;
-otherwise it waits up to 10 seconds for a new one, then gives the last
-known, or fails with `"no location"`.
+component Track {
+  state here = location.Position()
+
+  task {
+    do {
+      for await p in location.positions() { here = p }
+    } catch e {
+      print(e.message)
+    }
+  }
+
+  Text("{here.latitude.fixed(5)}, {here.longitude.fixed(5)}")
+}
+```
+
+`location.placeName(latitude, longitude)` is what a place is called
+("Mission District, San Francisco"), from the platform's geocoder, which
+asks its servers: ask only when the user wants the name. Linux asks
+geocode-glib where it's installed; Windows and a browser have none, and
+it throws there.
+
+A `location.Position` has `latitude`, `longitude`, `accuracy` (meters:
+the radius the device is within), `altitude` (meters above sea level; 0 if
+not known), `speed` and `course` (negative when not known) and `time`
+(nanoseconds since 1970, as `time.now()`).
 
 ### Permission levels
 
-The user allows the location while the app is in use (`WhenInUse`), or
-always (`Always`), which the regions and the significant changes need,
-and the app's events with the app not running. They also choose precise
-positions or approximate ones (within a few kilometers: iOS's Precise
-Location off, Android's Approximate).
+The user allows the location while the app is in use (`.whenInUse`), or
+always (`.always`), which the regions need, and the app's events with the
+app not running. They also choose precise positions or approximate ones
+(within a few kilometers: iOS's Precise Location, Android's
+Approximate). `location.authorization()` is what they allowed, tracked:
+read in a binding, it follows the changes they make in Settings.
 
-- `location.Request()` asks for `WhenInUse` the first time (`Current`
-  and `Watch` ask the same) and returns the `location.Authorization` the
-  user left: its `Level` (`NotAsked`, `Denied`, `Restricted`,
-  `WhenInUse`, `Always`), `Precise`, and `Off` when location services are
-  off for the whole device.
-- `location.RequestAlways()` asks for `Always`, after `WhenInUse` if the
-  user hasn't allowed that yet. iOS shows its question once; Android 11
-  and later take the user to the app's location settings, to choose
-  "Allow all the time".
-- `location.RequestPrecise(purpose)` asks a user who allowed approximate
-  positions for precise ones: on iOS until the app leaves the foreground
-  (temporary full accuracy), `purpose` naming the reason shown, a key of
-  asuka.toml's `ios.locationPurposes` (`"default"` is there, "To show
-  exactly where you are."); on Android for good.
-- `location.Authorized()` is the authorization now, without asking;
-  `location.UseAuthorization()` is it as a signal, for a component, and
-  `location.WatchAuthorization(f)` calls `f` with each change (the user
-  in Settings too). `location.OpenSettings()` opens the system's location
-  settings for the app: once `Denied`, only the user there changes it.
+```asuka
+import asuka/location
 
-Each of these waits for the user: not on the main thread.
+component Allowed {
+  let auth = location.authorization()
 
-```go
-go func() {
-	a, err := location.RequestAlways()
-	if err == nil && a.Level != location.Always {
-		ui.Post(func() { status.Set("Choose Always in Settings to be told at the shop") })
-	}
-}()
-```
-
-An app that calls `RequestAlways` is given `Always`'s purpose string
-(`ios.usage.NSLocationAlwaysAndWhenInUseUsageDescription` says why
-better) and Android's `ACCESS_BACKGROUND_LOCATION`, which Google Play
-asks about in its console: only those apps.
-
-### Updates in the background
-
-`location.StartUpdates(o)` starts updates that go on with the app out of
-sight, and across launches, until `location.StopUpdates()`;
-`location.Updating()` returns their options and whether they run.
-`location.OnUpdates(f)` gets them, a `location.Batch` of positions at a
-time, on the main thread. Start them with the app on screen. Not on the
-main thread.
-
-```go
-err := location.StartUpdates(location.Updates{
-	Accuracy: location.AccuracyHigh, // Navigation, Balanced (100 m), Low (1 km), Passive
-	Distance: 20,                    // meters between two updates
-	Activity: location.ActivityFitness,
-	Defer:    time.Minute, // a batch at most a minute late: the app wakes less
-	Notification: location.Notification{Title: "Tracking your run"}, // Android's foreground service
-})
-```
-
-`Significant` gets only the significant changes (about 500 m), at
-almost no power: on iOS, with `Always`, they start the app even after
-the user ended it. `Interval` is Android's (default 10 seconds);
-`AutoPause` and `Indicator` are iOS's (pause while the device doesn't
-move; the blue status bar indicator).
-
-**iOS**: an app that calls `StartUpdates` is given the `location`
-background mode. iOS 17's `CLLocationUpdate.liveUpdates` with a
-`CLBackgroundActivitySession` for `AccuracyHigh` and
-`AccuracyNavigation` (which keeps `WhenInUse` enough, with the indicator
-showing), else a `CLLocationManager` with
-`allowsBackgroundLocationUpdates`, or its significant-change service.
-`Defer` is the host's: iOS has no batching of its own any more.
-
-**Android**: the Fused Location Provider (Google Play services; the
-location manager on a device without them), delivered to a
-`PendingIntent`, so updates come with the app not running; `Defer` is
-its batching. With a `Notification`, a foreground service of the
-location type runs while they do, and they come at their rate with the
-app out of sight, `WhenInUse` enough. Without one, Android gives a
-backgrounded app a few updates an hour, and only with `Always`. They're
-asked for again after a reboot or an update, which clear them.
-
-### Regions
-
-`location.Monitor(r)` watches a circle for the app: its `Enter`,
-`Exit` and (where there is) `Dwell` transitions go to
-`location.OnCrossing(f)`'s handlers, as a `location.Crossing` (the
-region's ID, its `Kind`, where and when), with the app in the
-background, or not running on iOS and Android. If the device is inside
-as monitoring starts, an `Enter` comes. Regions hold across launches;
-monitoring an ID again changes that region.
-`location.StopMonitoring(id)`, `location.StopMonitoringAll()` and
-`location.Monitored()` do what they say. They need `Always` on iOS and
-Android (`location.ErrNeedsAlways`), and precise positions on Android.
-Not on the main thread.
-
-```go
-err := location.Monitor(location.Region{
-	ID: "shop", Latitude: 35.6812, Longitude: 139.7671, Radius: 150,
-	Events: location.Enter | location.Dwell, Dwell: 5 * time.Minute,
-})
-```
-
-The systems limit how many regions an app has; past the limit, `Monitor`
-fails with `location.ErrTooManyRegions`. `location.Supported()` says what
-the system does here: whether it delivers updates and monitors regions
-itself (else they're computed from the positions while the app runs),
-its `MaxRegions` and `MaxRadius`, whether `Dwell` comes and whether an
-event starts the app. Regions are reliable from about 100 meters.
-
-| | Regions | At most | Dwell | With the app not running |
-| --- | --- | --- | --- | --- |
-| iOS | `CLMonitor` (iOS 17), `CLCircularRegion` before | 20 | no | the app starts |
-| Android | Play services' `GeofencingClient` (the location manager's proximity alerts without them) | 100 | yes | the app starts |
-| macOS | Core Location's region monitoring | 20 | no | no: while the app runs |
-| Windows | `Windows.Devices.Geolocation.Geofencing`'s `GeofenceMonitor` | none stated | no | no: while the app runs (a background task's trigger needs a packaged app) |
-| Linux | computed from the positions (GeoClue has no geofences) | none | yes | no: while the app runs |
-| Web | computed from the positions | none | yes | no: while the page is open |
-
-A region that's computed changes state only when a position's accuracy
-decides it: inside when it's within the radius and no less exact than
-it, outside when even its nearest point is out. GeoClue's positions from
-Wi-Fi or an IP address may be too coarse for a small region. On a
-desktop, and on the web, the background updates are computed the same
-way (the distance filter, `Defer`'s batches), from the positions while
-the app runs: a desktop app runs out of sight anyway; a page only while
-it's open.
-
-### Events with the app not running
-
-When an update or a crossing comes and the app isn't running, iOS and
-Android start it in the background, without a screen, as they do for
-`asuka/sdk/periodic`: `main` runs, and the root component, then the
-event goes to the handlers. Set `OnUpdates` and `OnCrossing` as the app
-starts, in `main` (before `app.Run`) or the root component; an event that
-comes before any handler waits for the first. Each event is kept until a
-handler has returned (on iOS in the app's Application Support, on Android
-in its files), so one that came as the app was ended is handed over at
-the next launch. A handler that panics is logged, and its event done all
-the same.
-
-The system gives the app little time in the background: about 30
-seconds on iOS, about 10 on Android (none while a foreground service
-runs). `Batch.Defer()` and `Crossing.Defer()` keep it running for work
-that goes on after the handler returns, such as sending the positions to
-a server, until `done`, or the context's deadline:
-
-```go
-func main() {
-	location.OnUpdates(func(b location.Batch) {
-		ctx, done := b.Defer()
-		go func() {
-			defer done()
-			upload(ctx, b.Positions)
-		}()
-	})
-	location.OnCrossing(func(c location.Crossing) {
-		_, done := c.Defer()
-		go func() { // Show waits: not on the main thread
-			defer done()
-			notify.Show(notify.Notification{Title: "Welcome back", Body: c.Region})
-		}()
-	})
-	app.Run(App)
+  Column {
+    Text("Allowed: {auth.level}; precise: {auth.precise}{if auth.off { "; location services are off" } else { "" }}")
+    Button("Allow always") { on press { let _ = try? await location.requestAlways() } }
+    Button("Location settings") { on press { try? await location.openSettings() } }
+  }
 }
 ```
 
-A `Position` has `Speed` (meters per second) and `Course` (degrees from
-north) too, negative when not known.
+- `location.request()` asks for `.whenInUse`, the first time; asking
+  again after `.denied` shows nothing: only Settings changes it
+  (`location.openSettings()`).
+- `location.requestAlways()` asks for `.always` (after `.whenInUse`).
+  iOS asks once; Android 11 and later take the user to the app's location
+  settings, to choose "Allow all the time".
+- `location.requestPrecise(purpose)` asks the user who allowed only
+  approximate positions for precise ones: on iOS for now (`purpose` is a
+  key of asuka.toml's `ios.locationPurposes`), on Android for good.
 
-Under `asuka dev`'s player, the player has every permission and the
-background mode; events reach the app's Go code while the player is
-connected to it. To see the app started for an event, run it on its own
-(`asuka dev --once`, or a build).
+A desktop app has `.always` once allowed: it runs out of sight anyway.
+Linux and a browser say nothing before the app asks for a position, so
+they're `.notAsked` until one comes.
 
-### Testing with uitest
+### Updates in the background
 
-`host/fake`'s `Location()` is a phone's location services for a test:
-what the user answers (`Answer`, `AnswerPrecise`), where the device is
-(`Move`), what they allow in Settings (`Allow`), regions crossed
-(`Move`, or `Cross` for a transition the system reports, `RegionDwell`
-too), and the events not done yet (`Pending`). Events queued before the
-app mounts are those the system started it for. `Computed` makes it a
-desktop's or a page's, whose background part the Go package computes.
+`location.startUpdates(…)` starts updates that go on with the app out of
+sight, and across launches (on iOS and Android the system starts the app
+for them), until `location.stopUpdates()`. `location.updates()` is their
+stream, of `Batch`es (`positions`, oldest first): read it as the app
+starts, so the batches the system started the app for find a reader.
 
-```go
-a := uitest.Mount(t, App, uitest.Setup(func(h *fake.Host) {
-	loc := h.Location()
-	loc.Answer = fake.LocationAlways
-	loc.Level = fake.LocationAlways
-	loc.Cross("shop", fake.RegionEnter) // the app was started for it
-}))
-a.WaitFor("At the shop")
+```asuka
+import asuka/location
+
+async fn track() throws {
+  try await location.startUpdates(
+    accuracy: .high,
+    distance: 20,
+    activity: .fitness,
+    delay: 30s,
+    indicator: true,
+    notification: location.Notification(title: "Tracking your route", text: "Your run is being recorded"),
+  )
+}
+
+async fn followUpdates() throws {
+  for await b in location.updates() {
+    let done = b.hold()   // keeps the app running while it's sent
+    defer { done() }
+    print("{b.positions.count()} positions")
+  }
+}
 ```
 
-## Notifications: asuka/sdk/notify
+`accuracy` trades exactness for power (`.high`, `.navigation`,
+`.balanced`, `.low`, `.passive`); `distance` is how far the device moves
+between two updates; `interval` how often they come (Android's);
+`activity` tunes iOS's updates (and its pausing, with `autoPause`);
+`delay` lets updates come together, so the app wakes less; `significant`
+gets only the significant changes (about 500 m), at almost no power, and
+on iOS they start the app even after the user ended it. `indicator` shows
+iOS's blue pill while the app gets updates out of sight. On Android,
+`notification` runs a foreground service of the location type, whose
+notification it is: with it, updates come at their rate with the app out
+of sight. `location.updating()` says whether they run (they may have been
+started at an earlier launch).
 
-`asuka/sdk/notify` shows local notifications, now or at a time the app sets,
+On a desktop and in a browser, the updates are the positions the app
+watches while it runs.
+
+### Regions
+
+`location.monitor(region)` watches a circle for the app, until
+`location.stopMonitoring(id)`: its transitions come through
+`location.crossings()`, with the app in the background or not running
+(iOS and Android start it). If the device is inside as monitoring starts,
+an `.enter` comes. It needs `.always` on iOS and Android
+(`LocationError.needsAlways`); past the system's limit it throws
+`tooManyRegions`.
+
+```asuka
+import asuka/location
+
+async fn watchHere() throws {
+  let p = try await location.current()
+  try await location.monitor(location.Region(id: "here", latitude: p.latitude, longitude: p.longitude, radius: 150, events: [.enter, .exit]))
+}
+
+async fn followCrossings() throws {
+  for await c in location.crossings() {
+    print("{c.kind} {c.region}")
+  }
+}
+```
+
+`location.supported()` says what the system does itself: `regions` (iOS,
+Android, macOS and Windows monitor them; on Linux and in a browser this
+package computes them from the positions while the app runs),
+`maxRegions` (iOS and macOS 20), `dwell` (whether `.dwell` comes) and
+`relaunch` (whether the system starts the app for an event).
+
+### Events with the app not running
+
+The system keeps a batch or a crossing until the app has read it: one
+that came as the app ended is given again at the next start. An event
+keeps the app running a few seconds; `b.hold()` and `c.hold()` keep it
+running until the function they return is called (or the system's time
+is up: about 30 seconds on iOS, 10 on Android), for work that goes on
+after the event is read (sending it to a server).
+
+### Testing
+
+`location.fake()` gives the package a `FakeLocation` instead of the
+platform: `answer` is what the user answers when asked, `move(latitude,
+longitude)` takes the device somewhere (the positions' readers see it, a
+batch comes while updates run, and the regions it enters or leaves cross),
+`allow(level)` is the user changing it in Settings, and `pending` counts
+the events whose `hold()` isn't done.
+
+```asuka
+import asuka/location
+
+test "a region, crossed" {
+  let loc = location.fake()
+  loc.answer = .always
+  loc.move(35.6812, 139.7671)
+  let _ = try await location.requestAlways()
+  try await location.monitor(location.Region(id: "here", latitude: 35.6812, longitude: 139.7671, radius: 150))
+  loc.move(35.70, 139.7671) // 2 km north: an exit
+}
+```
+
+## Notifications: asuka/notify
+
+`asuka/notify` shows local notifications, now or at a time the app sets,
 whether or not the app is running then. Tapping one opens the app with
-its URL. It also has what a messaging app needs, for `asuka/sdk/push`'s
+its URL. It also has what a messaging app needs, for `asuka/push`'s
 notifications too: actions and replies typed in the notification,
 threads, Android's channels, messages in conversations, the badge, the
 notifications showing, and which ones show while the app is open.
@@ -1228,7 +1135,7 @@ notify.OnAction(func(r notify.Response) {
   text field, with its send button's title and placeholder).
 - `notify.OnAction(f)` calls `f` on the main thread with each response,
   until `stop`: a tap (`Action` `""`) or an action, `Reply` the text
-  typed, `Notification` the one answered (`asuka/sdk/push`'s too). A response
+  typed, `Notification` the one answered (`asuka/push`'s too). A response
   that came before any `f` (the one that launched the app, or woke it)
   waits for the first, so set it as the app starts.
 - An action without `Open` runs in the background: the app's Go code
@@ -1377,129 +1284,90 @@ A notification due later is a systemd user timer (`systemd-run --user`),
 which runs the app's executable without a window to show it, hands it
 to the app if it runs, and launches the app for a tap; without systemd
 (a Flatpak, `asuka dev`) it shows while the app runs. **A browser** shows
-them through the app's service worker, with Web Push for `asuka/sdk/push`:
+them through the app's service worker, with Web Push for `asuka/push`:
 [the web](web.md) has the details.
 
-## Sound: asuka/sdk/audio
+## Sound: asuka/audio
 
-`asuka/sdk/audio` plays sounds and music with the platform's player (AVPlayer
-on iOS and the Mac; Media3's ExoPlayer on Android; MCI on Windows;
-GStreamer's playbin on Linux; an audio element in a browser, which plays
-only after the user has tapped or clicked in the page). A source is a file in the app's
-`assets/`, a file the app wrote, or an http(s) URL, a file or a stream.
+`audio.play(source)` plays a sound once: a file in the app's assets, a
+file's path, or an http(s) URL. `audio.Player(source)` is a store that
+holds one sound, ready to play as it's made: `play`, `pause`,
+`seek(seconds:)`, `setVolume`, `setRate` (the pitch kept, for speech),
+`setLoop`, and `status()`, where it is (`position`, `duration`,
+`playing`, `ended`). It stops and lets go of the sound when the
+component that made it goes, or at `release()`.
 
-`audio.Play(source)` plays a sound once, from the start, and lets it go
-when it ends: for a chime, a click. For more, `audio.Load` makes a
-`*audio.Player`:
+```asuka
+import asuka/audio
 
-```go
-func Sounds() ui.Node {
-	music := audio.Load("music/theme.m4a")
-	music.SetLoop(true)
-	music.SetVolume(0.5)
-	signal.OnCleanup(music.Release)
-	return ui.Column(nil,
-		ui.Button(ui.ButtonProps{Title: ui.Val("Ding"), OnPress: func() { audio.Play("sounds/ding.wav") }}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Play"), OnPress: music.Play}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Pause"), OnPress: music.Pause}),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Restart"), OnPress: func() { music.Seek(0); music.Play() }}),
-	)
+component Episode(url: string) {
+  state player = audio.Player(url)
+  state status = audio.Status()
+
+  task {
+    while true {
+      status = await player.status()
+      await sleep(250ms)
+    }
+  }
+
+  Column {
+    Text("{status.position.fixed(0)} / {status.duration.fixed(0)} s")
+    Button(if status.playing { "Pause" } else { "Play" }) {
+      on press { if status.playing { player.pause() } else { player.play() } }
+    }
+    Button("Ding") { on press { audio.play("ding.wav") } }
+  }
 }
 ```
 
-A `Player`'s methods, all on the main thread: `Play` (from where it is;
-after its end, from the start), `Pause`, `Seek(seconds)`, `SetVolume` (0 to
-1, the default), `SetRate` (0.25 to 4, keeping the pitch), `SetLoop`,
-`Status(done)` (its `Position`, `Duration`, `Playing` and `Ended`: read it
-a few times a second to follow it) and `Release`, which stops it and frees
-what it holds. Release a player when it's no longer needed.
+AVPlayer on iOS and the Mac, Media3's ExoPlayer on Android, an `<audio>`
+in a browser, MCI on Windows, GStreamer's `playbin` on Linux. A sound
+plays with the screen locked only when the app says it's playing media:
+see Now Playing below.
 
-The sound plays with iOS's silent switch on, as a music or game app's
-does, and doesn't mix with other apps' audio.
+### Now Playing and the media keys: asuka/nowplaying
 
-### Now Playing and the media keys: asuka/sdk/nowplaying
+`nowplaying.NowPlaying` tells the system what the app plays, while it's
+in the view: the lock screen's and Control Center's player on iOS, the
+media notification on Android (a foreground service, so it keeps
+playing), the Now Playing widget on the Mac, the media flyout on
+Windows (SMTC), MPRIS on Linux (GNOME's media controls), the Media
+Session API in a browser. Its events are the system's commands: the
+media keys, the headphones' buttons, the lock screen's. Given a
+`player`, it follows its position and plays and pauses it itself.
 
-`asuka/sdk/nowplaying` shows what the app plays where the system shows media,
-and sends the app the commands of its controls: the lock screen, Control
-Center, the Dynamic Island and CarPlay on iOS; the notification shade,
-the lock screen, Android Auto and Wear OS on Android; Control Center and
-the menu bar on a Mac; the media flyout on Windows; GNOME's and KDE's
-media controls on Linux; the browser's. The media keys of keyboards and
-headsets send the same commands. `Show` is called in a component, follows
-its accessors, and goes when the component's owner is disposed:
+```asuka
+import asuka/audio
+import asuka/nowplaying
 
-```go
-func Episode(ep *Episode) ui.Node {
-	state := signal.New(nowplaying.Paused)
-	position := signal.New(0.0) // seconds: set when playback jumps
-	nowplaying.Show(nowplaying.Props{
-		Title:          ui.Val(ep.Title),
-		Artist:         ui.Val(ep.Show),
-		Artwork:        ui.Val(ep.Cover), // an asset, a file or an http(s) URL
-		Duration:       ui.Val(ep.Seconds),
-		State:          state,
-		Position:       position,
-		OnPlay:         func() { player.Play(); state.Set(nowplaying.Playing) },
-		OnPause:        func() { player.Pause(); state.Set(nowplaying.Paused) },
-		OnSeek:         func(at float64) { player.Seek(at); position.Set(at) },
-		OnSkipForward:  func(s float64) { skip(s) },
-		OnSkipBackward: func(s float64) { skip(-s) },
-		SkipInterval:   30,
-	})
-	// ...
+component Playing(url: string) {
+  state player = audio.Player(url)
+
+  Column {
+    nowplaying.NowPlaying {
+      title: "Episode 12"
+      artist: "The Show"
+      artwork: "cover.jpg"
+      player: player
+      skipInterval: 15
+      on next { player.seek(0) }
+    }
+    Button("Play") { on press { player.play() } }
+  }
 }
 ```
 
-What shows: `Title`, `Artist`, `Album`, `Artwork` (a square image of 512
-pixels or more looks sharp everywhere), `Duration` (0 for a live stream,
-which can't be sought), `State` (`Playing`, `Paused` or `Stopped`),
-`Position` and `Rate`. The system advances the position by itself while
-playing, at the rate: the package sends `Position` again only when
-playback jumps (a seek, a stall) or the state or rate changes, so it may
-follow a player's status read a few times a second at no cost.
+Without a `player`, give `state` (`.playing`, `.paused`), `duration` and
+`position`, and handle `play`, `pause`, `seek(position)`,
+`skipForward(seconds)` and `skipBackward(seconds)`. When several are in
+the view, the last one shown is what the system shows. An app that
+imports it gets iOS's `audio` background mode and Android's
+foreground-service permissions.
 
-A command is enabled by its handler; the others are greyed out or left
-out. `OnPlay`, `OnPause` and `OnTogglePlayPause` stand in for each other
-(a headset's one button toggles; a lock screen shows play or pause), so
-any of them enables all three. `OnSeek` needs a known `Duration`.
-`OnSkipForward` and `OnSkipBackward` skip by `SkipInterval` (15 seconds
-by default); iOS and the Mac show them in place of next and previous,
-Android in their slots when there's no `OnNext` or `OnPrevious`.
+## Network state: asuka/network
 
-For a player of `asuka/sdk/audio`, `Player` does the rest: the state,
-position and duration come from it (its status, read once a second; a
-command run on it shows at once), and play, pause, stop, seek and (with
-a `SkipInterval`) the skips run on it unless their handlers are set:
-
-```go
-music := audio.Load("music/spring.mp3")
-signal.OnCleanup(music.Release)
-nowplaying.Show(nowplaying.Props{
-	Title:   ui.Val("Spring"),
-	Artist:  ui.Val("Vivaldi"),
-	Artwork: ui.Val("covers/spring.jpg"),
-	Player:  music,
-	OnNext:  playNext,
-})
-```
-
-Several may be mounted: the last shows, and when it goes, the one before.
-One replaced by another in the same update (a track's component giving
-way to the next one's) keeps the system's controls the app's in between.
-
-On iOS the app is given the `audio` background mode, so it plays on with
-the screen locked, and its audio session is the playback category: iOS
-shows the app whose audio session plays. On Android it's a MediaSession
-with its media-style notification (a media session's needs no
-notification permission); while it plays, a foreground service of the
-media playback type keeps the app running out of sight, as Android 14
-asks; paused, the notification stays and can be swiped away. Both are
-added by `asuka build` only for the apps that use the package.
-`examples/player` plays an album with it.
-
-## Network state: asuka/sdk/network
-
-`asuka/sdk/network` is the device's network: whether it's online, over Wi-Fi or
+`asuka/network` is the device's network: whether it's online, over Wi-Fi or
 cellular, and whether the connection costs. Use it to download large
 files on Wi-Fi only, or to say the app is offline. It's NWPathMonitor on
 iOS and the Mac, ConnectivityManager on Android, the Network List
@@ -1545,9 +1413,9 @@ Until the platform first answers, `Use`'s value is `Connected` with
 `network.Watch(f)` calls `f` on the main thread with the network now and
 each time it changes, until `stop` is called.
 
-## Saving to the library: asuka/sdk/library
+## Saving to the library: asuka/library
 
-`asuka/sdk/library` saves files where the user and other apps find them: a
+`asuka/library` saves files where the user and other apps find them: a
 video to the gallery, a song to the music, anything to Downloads.
 
 ```go
@@ -1601,9 +1469,9 @@ and answers with the asset's identifier; `Folder` doesn't apply there.
 Other collections go to the app's Documents, under `Folder`, answering
 with the file's path; Asuka makes Documents visible in the Files app.
 
-## Background work: asuka/sdk/background
+## Background work: asuka/background
 
-`asuka/sdk/background` keeps the app working while it's out of sight: a
+`asuka/background` keeps the app working while it's out of sight: a
 download, an upload, an export the user started, which takes minutes.
 
 `background.Start` starts a task: the app keeps running, with a
@@ -1795,12 +1663,12 @@ shares with the app; on
 **Android** an Activity in a `:share` process, shown as a Material
 bottom sheet over the other app (dragging it down, tapping outside and
 back cancel it). The process ends with the sheet: what's pending in
-`asuka/sdk/store` is written as it closes, and `app.OnLifecycle` hears
+`asuka/store` is written as it closes, and `app.OnLifecycle` hears
 `Background`. A file's `Path` is the sheet's until it closes: copy what
 the app keeps.
 
-What the app keeps is the same in its sheet: `asuka/sdk/store`, SQLite files
-in `store.Dir()` (`sqlite.Open("app.db")`), `asuka/sdk/secure`. Android's
+What the app keeps is the same in its sheet: `asuka/store`, SQLite files
+in `store.Dir()` (`sqlite.Open("app.db")`), `asuka/secure`. Android's
 two processes share the app's files. On iOS the app's data moves to the
 App Group (`group.<app ID>`), once, the first time it runs with a sheet,
 and its keychain group is shared with the extension. The app doesn't
@@ -1817,43 +1685,45 @@ the Mac too. [`examples/bookmarks`](../examples/bookmarks) is a
 sheet as Raindrop's: the page's title, description and image, a note, a
 collection and tags.
 
-## JavaScript: asuka/sdk/js
+## JavaScript: asuka/js
 
-`asuka/sdk/js` runs JavaScript off screen, in the platform's own engine: a web
+`asuka/js` runs JavaScript off screen, in the platform's own engine: a web
 view that's never shown (WKWebView on iOS and the Mac, Android's WebView,
 WebView2 on Windows, WebKitGTK on Linux), or in a browser a hidden,
 sandboxed frame. It's for code
 that only has a JavaScript form, as a site's player whose functions sign
 its video URLs.
 
-`js.Eval(ctx, script)` runs a script, statements as a `<script>`'s, in a
+`js.eval(script)` runs a script, statements as a `<script>`'s, in a
 fresh page of its own, and returns its value as JSON: the last
 statement's value, or what the promise it returns resolves to (`null` for
-`undefined`). A thrown error, or a rejected promise, is the error, a
-`*js.Error`. The page is gone after: what one script sets isn't there for
-the next. Not on the main thread.
+`undefined`). A thrown error, or a rejected promise, is the error, with
+the script's message. The page is gone after: what one script sets isn't
+there for the next. It waits without holding the main thread.
 
-```go
-go func() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	v, err := js.Eval(ctx, `const xs = [1, 2, 3].map(x => x * 2); xs`)
-	fmt.Println(string(v), err) // [2,4,6] <nil>
+```asuka
+import asuka/js
+import asuka/json
 
-	s, err := js.EvalString(ctx, `new Promise(done => setTimeout(() => done("later"), 100))`)
-	fmt.Println(s, err) // later <nil>
-}()
+async fn doubled() throws -> [int] {
+  let v = try await js.eval("const xs = [1, 2, 3].map(x => x * 2); xs")   // "[2,4,6]"
+  return try json.decode<[int]>(v)
+}
+
+async fn later() throws -> string {
+  let v = try await js.eval("new Promise(done => setTimeout(() => done('later'), 100))", timeout: 10s)
+  return try json.decode<string>(v)
+}
 ```
 
-`js.EvalString` is `Eval` for a script whose value is a string. A script
-may run until `ctx`'s deadline, or for `js.DefaultTimeout` (a minute) if
-it has none; one that runs out fails with `"timeout"`. On Android a
-thrown error's message has its stack.
+A script may run for its `timeout` (a minute by default); one that runs
+out throws `js.JsError.timeout`. Cancelling the task (the screen that
+started it going) lets its page go.
 
-For script in a page the user sees, use `ui.WebView`
+For script in a page the user sees, use `WebView`
 ([Web pages](components.md#web-pages)).
 
-## Push notifications: asuka/sdk/push
+## Push notifications: asuka/push
 
 `push.Register()` asks the user to allow notifications (the first time),
 registers the device with Apple's (APNs) or Google's (Firebase Cloud
@@ -1884,7 +1754,7 @@ func App() ui.Node {
 - `push.OnOpen(f)` gets each notification the user taps, including the
   one that launched the app, if `f` is set as the app starts. A
   message's data `"url"` also goes to `ui.OnOpenURL`, as
-  `asuka/sdk/notify`'s do.
+  `asuka/notify`'s do.
 - A `push.Message` has its `ID`, `Title`, `Body` and `Data` (iOS: the
   payload's keys beside `aps`; Android: the message's data).
 
@@ -1903,7 +1773,7 @@ Without it, `Register` fails with what to do.
 
 ### Categories, threads and channels in a push
 
-A push uses `asuka/sdk/notify`'s categories (its actions, `notify.OnAction`),
+A push uses `asuka/notify`'s categories (its actions, `notify.OnAction`),
 threads, channels, badge and `Present`, named in its payload:
 
 - **iOS**: `aps`'s `category`, `thread-id` and `badge`, as APNs has them.
@@ -1930,7 +1800,7 @@ picture, set its thread and category. Call it in `main`, before
 ```go
 func main() {
 	push.Rewrite(func(m *push.Message) error {
-		text, from, err := decrypt(m.Data["box"]) // with a key in asuka/sdk/secure
+		text, from, err := decrypt(m.Data["box"]) // with a key in asuka/secure
 		if err != nil {
 			return err // shows the push as it came
 		}
@@ -1954,9 +1824,9 @@ a process of its own for each push with `"mutable-content": 1` in its
 `aps` (and an `alert`, which shows if the rewrite fails). `main` runs,
 then `f`; the root component doesn't, so keep `main` light. iOS gives it
 about 30 seconds and 24 MB, and shows the push as it came when time runs
-out. What the app keeps is the same there: its data (`asuka/sdk/store`, files
+out. What the app keeps is the same there: its data (`asuka/store`, files
 in `store.Dir`) is in the App Group the two share, its keychain items
-(`asuka/sdk/secure`) in the app's group. A release build needs a provisioning
+(`asuka/secure`) in the app's group. A release build needs a provisioning
 profile for the extension's bundle ID, the app's plus `.notification`
 (`asuka.toml`'s `ios.notificationProfile` names one; by default, the best
 match installed), with the App Groups capability and the app's group.
@@ -1972,7 +1842,7 @@ the computer), so `asuka dev` builds an app that calls `push.Rewrite`
 instead of running it in the player, and the build has it. The simulator runs the extension only for pushes that
 come from APNs, not for `xcrun simctl push`.
 
-## Sign in with Apple: asuka/sdk/appleauth
+## Sign in with Apple: asuka/appleauth
 
 `appleauth.Button` is Apple's own button (its title, logo and colors, in
 the user's language), and `appleauth.SignIn` shows the system's sheet.
@@ -2003,12 +1873,12 @@ them then. `ErrCanceled` is the user closing the sheet.
 in with Apple for the app (`Revoked`: sign them out). On Android there's
 none: `Button` is nothing, `Available` is false and `SignIn` fails with
 `ErrNotAvailable`; so on Windows, Linux and the web. Sign in with Apple
-there on the web (`asuka/sdk/webauth`). The Mac has it as iOS does, with a
+there on the web (`asuka/webauth`). The Mac has it as iOS does, with a
 provisioning profile (see [On a Mac](#on-a-mac)).
 
-## Wallet payments: asuka/sdk/pay
+## Wallet payments: asuka/pay
 
-`asuka/sdk/pay` takes payments with the platform's wallet: Apple Pay on
+`asuka/pay` takes payments with the platform's wallet: Apple Pay on
 iOS, macOS and in Safari, Google Pay on Android and in the other
 browsers. It's for physical goods and services (an order, a ride, a
 ticket, a donation); digital content sold in the app is the stores'
@@ -2151,139 +2021,158 @@ a.WaitFor("Thanks!")
 
 [examples/checkout](../examples/checkout) sells a tea set this way.
 
-## Face ID and fingerprints: asuka/sdk/biometric
+## Face ID and fingerprints: asuka/biometric
 
-`biometric.Authenticate(options)` shows the system's prompt (Face ID,
+`biometric.authenticate(reason:)` shows the system's prompt (Face ID,
 Touch ID, Android's BiometricPrompt; Touch ID on a Mac, Windows Hello on
-Windows, a passkey's WebAuthn prompt in a browser) and returns nil if it's the device's
-owner, or `ErrCanceled`, `ErrNotAvailable` (no biometry and no passcode,
-or locked out) or `ErrFailed`. Not on the main thread.
+Windows, a passkey's WebAuthn prompt in a browser) and returns if it's
+the device's owner, or throws `BiometricError.canceled`, `.notAvailable`
+(no biometry and no passcode, or locked out) or `.failed`. It waits
+without holding the main thread.
 
-```go
-go func() {
-	err := biometric.Authenticate(biometric.Options{Reason: "Unlock your notes"})
-	ui.Post(func() { unlocked.Set(err == nil) })
-}()
+```asuka
+import asuka/biometric
+
+component Lock {
+  state unlocked = false
+
+  Button(if unlocked { "Unlocked" } else { "Unlock" }) {
+    on press {
+      do {
+        try await biometric.authenticate(reason: "Unlock your notes")
+        unlocked = true
+      } catch biometric.BiometricError.canceled {
+      } catch e {
+        unlocked = false
+      }
+    }
+  }
+}
 ```
 
-- `Reason` says why (iOS's subtitle; Android's title); `Cancel` is the
+- `reason` says why (iOS's subtitle; Android's title); `cancel:` is the
   cancel button's title.
 - The user can use the device's passcode, PIN or pattern instead, unless
-  `NoPasscode`: biometry only (on Android, a strong one, Class 3).
-- `biometric.Check()` says what the device has: its `Kind` (`Face`,
-  `Fingerprint`, `Iris`, `Optic`), whether one is `Enrolled`, and whether
-  it has a `Passcode`.
+  `noPasscode: true`: biometry only (on Android, a strong one, Class 3).
+- `biometric.check()` says what the device has: its `kind` (`.face`,
+  `.fingerprint`, `.iris`, `.optic`), whether one is `enrolled`, and
+  whether it has a `passcode`.
 
-Linux has no system prompt for the owner: `Check` says there's nothing,
-and `Authenticate` fails with `ErrNotAvailable`.
+Linux has no system prompt for the owner: `check` says there's nothing,
+and `authenticate` throws `.notAvailable`.
 
-## Recording sound: asuka/sdk/audio/record
+## Recording sound: asuka/record
 
-`record.Start(options, done)` records from the microphone until
-`record.Stop` (or `MaxDuration`), then calls `done` with the file: AAC in
-an MPEG-4 container (`.m4a`), in the app's caches, which `asuka/sdk/audio`
-plays. AVAudioRecorder records on iOS and the Mac, Media Foundation on
-Windows, GStreamer on Linux, and `MediaRecorder` in a browser (Opus in
-WebM where it can't record AAC). It asks for the microphone the first time; refused, `done` gets
-`"not allowed"`.
+`record.audio()` records the microphone until `record.stopAudio()` (or
+`maxDuration`) and gives the file: AAC in an MPEG-4 file (.m4a) in the
+app's caches (or at `path`), which `asuka/audio` plays. It asks for the
+microphone the first time. `pauseAudio` and `resumeAudio` pause and go
+on; `audioStatus()` is where it is (`level`, from 0 to 1, for a meter;
+`elapsed`). `quality: .music` keeps more than a voice needs.
 
-```go
-record.Start(record.Options{Quality: record.Voice, MaxDuration: time.Minute}, func(path string, err error) {
-	if err == nil {
-		memo.Set(path)
-	}
-})
-// later
-record.Stop()
+```asuka
+import asuka/record
+
+component Memo {
+  state recording = false
+  state file = ""
+
+  Button(if recording { "Stop" } else { "Record" }) {
+    on press {
+      if recording {
+        record.stopAudio()
+      } else {
+        recording = true
+        defer { recording = false }
+        file = try await record.audio(maxDuration: 60s)
+      }
+    }
+  }
+}
 ```
 
-`Voice` is mono at 64 kbit/s; `Music`, stereo at 128 kbit/s. `Pause` and
-`Resume` pause and continue the same file. `record.Level()`, from a
-goroutine a few times a second, is the sound's level from 0 to 1, for a
-meter. `record.CurrentStatus(done)`, from the main thread, is the level,
-whether sound is being kept and how much has been: what a timer should
-show, as the system can pause a recording (a call), and iOS goes on after
-when it says it may. On iOS the audio session plays and records while it
-records (other apps' sound stops), and goes back after.
+`background: true` keeps it recording out of sight: on iOS the app needs
+`"audio"` in asuka.toml's `ios.backgroundModes`; on Android it's a
+foreground service whose notification says `title`, with a button to
+stop. AVAudioRecorder on iOS and the Mac, `MediaRecorder` on Android and
+in a browser, Media Foundation on Windows, GStreamer on Linux.
 
-`Options.Stream` records an ADTS stream (`.aac`), whose frames are each whole,
-so what's recorded survives the app or phone dying, where an MPEG-4 file is
-unreadable until it's closed. Give it a `Path` to find the file again after a
-crash, and make it an `.m4a` for keeping with `record.Finalize(stream, dst)`,
-which seeks properly: after a stop or a crash alike.
+## Speech to text: asuka/transcribe
 
-`Options.Background` keeps it recording out of sight and with the screen
-locked. iOS needs `backgroundModes = ["audio"]` in `asuka.toml`'s `[ios]`;
-Android runs a foreground service of the microphone type, with an ongoing
-notification (`BackgroundTitle`) and a button to stop. Google Play asks
-what the service is for: declare it before you upload. A desktop app
-records out of sight anyway: there `Background` changes nothing.
+`transcribe.file(path)` turns a recording into text, on the device:
+nothing leaves it. Its `Result` has the `text`, its `segments` (each
+word's or phrase's start and duration, in seconds, where the platform
+gives them) and the `language` it heard. `transcribe.check(language)`
+says whether the device can, before you record.
 
-## Speech to text: asuka/sdk/transcribe
+```asuka
+import asuka/transcribe
 
-`transcribe.File(path, options)` turns a recording into text, on the
-device: the sound never leaves it. Where the device can't do that, it says
-`ErrNotAvailable`, rather than using a server. Not on the main thread.
-
-```go
-go func() {
-	r, err := transcribe.File(path, transcribe.Options{Language: "en-US"})
-	ui.Post(func() {
-		if err == nil {
-			text.Set(r.Text)
-		}
-	})
-}()
+async fn caption(recording: string) throws -> string {
+  let can = try await transcribe.check("en-US")
+  if !can.onDevice { return "" }
+  let r = try await transcribe.file(recording, language: "en-US")
+  return r.text
+}
 ```
 
-The `Result` has its `Text`, its `Language`, and `Segments`, words with
-their `Start` and `Duration` in seconds, on iOS and Android 14. A recording
-with no speech is an empty `Text`. `transcribe.Check(language)` says what
-the device can do, without asking anything of the user. iOS uses the Speech
-framework (its models are in iOS, not on the simulator's every runtime); it
-asks for speech recognition the first time. Android's on-device recognizer
-needs Android 13; it needs the language's model, which it fetches when it's
-missing (`ErrDownloading`: try again later). The Mac uses the Speech
-framework too, on the device only. Windows, Linux and the web have no
-on-device recognizer an app can use: `File` fails with `ErrNotAvailable`.
+The Speech framework on iOS and the Mac, asked to stay on the device;
+Android's on-device recognizer (Android 13 and later); Windows' speech
+recognition. Where the device can't (a browser, Linux, an older
+Android), it throws `TranscribeError.notAvailable` rather than send the
+sound to a server; `.downloading` while the language's model comes.
 
-## The screen: asuka/sdk/screen
+## The screen: asuka/screen
 
-```go
-screen.Lock(screen.Landscape) // a video player
-screen.SetBars(screen.Bars{Style: screen.Light, HideStatus: true})
-screen.PreventCapture(true) // a ticket's code
-stop := screen.OnScreenshot(func() { note.Set("That screenshot shows your balance") })
+```asuka
+import asuka/screen
+
+component Player {
+  state note = ""
+
+  task {
+    screen.lock(.landscape)               // a video player
+    screen.setBars(style: .light, hideStatus: true)
+    screen.preventCapture(true)           // a ticket's code
+    defer {
+      screen.lock(.any)
+      screen.setBars()
+      screen.preventCapture(false)
+    }
+    for await _ in screen.screenshots() { note = "That screenshot shows your balance" }
+  }
+
+  Text(note)
+}
 ```
 
-- `screen.Lock(o)` turns the app to `o` and keeps it there: `Portrait`,
-  `PortraitUp`, `Landscape`, `LandscapeLeft`, `LandscapeRight`; `Any`
-  unlocks it. Only the orientations `asuka.toml` allows. iPads in Split
-  View or Stage Manager, and Android 16's large screens, ignore it.
-- `screen.SetBars(bars)` sets the status bar's `Style` (`Auto` follows
-  dark mode; `Light` is light icons, for a dark picture under them;
-  `Dark`, dark ones), and hides the status bar (`HideStatus`) or
-  Android's navigation bar (`HideNavigation`; a swipe from the edge shows
-  them a moment). The safe area follows.
-- `screen.PreventCapture(on)` keeps the app out of screenshots and
+- `screen.lock(o)` turns the app to `o` and keeps it there: `.portrait`,
+  `.portraitUp`, `.landscape`, `.landscapeLeft`, `.landscapeRight`;
+  `.any` unlocks it. Only the orientations `asuka.toml` allows. iPads in
+  Split View or Stage Manager, and Android 16's large screens, ignore it.
+- `screen.setBars(style:, hideStatus:, hideNavigation:)` sets the status
+  bar's style (`.auto` follows dark mode; `.light` is light icons, for a
+  dark picture under them; `.dark`, dark ones), and hides the status bar
+  or Android's navigation bar (a swipe from the edge shows them a
+  moment). The safe area follows.
+- `screen.preventCapture(on)` keeps the app out of screenshots and
   recordings. Android makes the window secure: captures are black, and
   the recent apps show it blank. iOS can't stop a screenshot: it covers
   the app while the screen is recorded, mirrored or on AirPlay.
-- `screen.OnScreenshot(f)` calls `f` when the user takes a screenshot
-  (iOS; Android 14 and later), until `stop`.
+- `screen.screenshots()` is a stream of the screenshots the user takes
+  (iOS; Android 14 and later).
 
-A desktop window has no orientation or system bars: `Lock` and `SetBars`
-do nothing there. `PreventCapture` keeps the app's windows out of
-screenshots and recordings on the Mac and Windows (not on Linux), and
-`OnScreenshot` hears of screenshots as they're saved (Spotlight's on a
-Mac, the Screenshots folder on Windows and Linux). A browser locks the
+A desktop window has no orientation or system bars: `lock` and
+`setBars` do nothing there. `preventCapture` keeps the app's windows out
+of screenshots and recordings on the Mac and Windows (not on Linux); a
+desktop doesn't tell the app of its screenshots. A browser locks the
 orientation only full screen or in an installed app, hides the bars by
-going full screen, and has neither `PreventCapture` nor `OnScreenshot`.
+going full screen, and has neither.
 
 These are the app's, not a screen's: a screen that sets one sets it back
-as it goes (`signal.OnCleanup`).
+as it goes (a `defer` in its task).
 
-## The launch screen: asuka/sdk/splash
+## The launch screen: asuka/splash
 
 `asuka.toml`'s `splash` is the launch screen: an image (a square PNG, a
 logo), `size` points wide (default 120, at most 160), in the middle of a
@@ -2301,64 +2190,68 @@ It shows from the tap on the icon until the app's first frame: iOS's
 launch screen, then a copy of it over the app until the first frame is
 ready; Android 12's splash screen (the image in the middle of the icon's
 circle) and, before, the window's background. The desktops and the web
-have no launch screen: there `Hold` and `Hide` do nothing. To keep it up
-while the app loads, call `splash.Hold()` as it starts (in the root component) and
-`splash.Hide()` once it's ready:
+have no launch screen: there `hold` and `hide` do nothing. To keep it up
+while the app loads, call `splash.hold()` as it starts (in the root
+component) and `splash.hide()` once it's ready:
 
-```go
-func App() ui.Node {
-	splash.Hold()
-	go func() {
-		load()
-		ui.Post(splash.Hide)
-	}()
-	return home()
+```asuka
+import asuka/splash
+
+component Root {
+  state ready = false
+
+  task {
+    splash.hold()
+    await loadSession()
+    ready = true
+    splash.hide()
+  }
+
+  if ready { Home() }
+}
+
+async fn loadSession() { await sleep(300ms) } // the app's own: what its first screen needs
+component Home { Text("Signed in") }
+```
+
+## Maps: asuka/maps
+
+`maps.View` is a map: Apple Maps on iOS and the Mac, Google Maps on
+Android, OpenStreetMap's tiles on Windows and in a browser, and
+libshumate's on Linux. Bind its `region` (a center and how many degrees
+it spans) to move it and follow the user's moves; `markers` are its
+pins, and `markerPress`, `press` and `regionChange` what the user does.
+
+```asuka
+import asuka/maps
+
+component Places {
+  state region = maps.Region(center: maps.Coordinate(lat: 37.77, lng: -122.42), latDelta: 0.08, lngDelta: 0.08)
+  state picked = ""
+
+  Column {
+    maps.View {
+      bind region: region
+      markers: [maps.Marker(id: "hq", at: maps.Coordinate(lat: 37.79, lng: -122.39), title: "HQ", color: .blue)]
+      mapType: .muted
+      grow: 1
+      on markerPress(id) { picked = id }
+    }
+    Text(picked)
+  }
 }
 ```
 
-## Maps: asuka/sdk/maps
+`mapType` is `.standard`, `.satellite`, `.hybrid` or `.muted`, and
+`showsUser` shows the user's location (ask for it first, with
+`asuka/location`). OpenStreetMap's maps show streets (in a browser,
+`.muted` in quieter colors), and the user's location only in a browser. On Android, an app that imports the package is built with
+Google's Maps SDK and needs a Maps SDK for Android key in asuka.toml's
+`android.mapsKey`.
 
-`maps.View` is a map: Apple Maps on iOS and the Mac, Google Maps on
-Android, OpenStreetMap's tiles on Windows and in a browser (drawn by the
-host) and on Linux (libshumate).
+## Background refresh: asuka/periodic
 
-```go
-region := signal.New(maps.Region{Center: maps.Coordinate{Lat: 37.77, Lng: -122.42}, LatDelta: 0.05, LngDelta: 0.05})
-maps.View(maps.Props{
-	Region:         region,
-	Markers:        ui.Val([]maps.Marker{{ID: "hq", At: maps.Coordinate{Lat: 37.79, Lng: -122.39}, Title: "HQ"}}),
-	OnRegionChange: func(r maps.Region) { region.Set(r) },
-	OnMarkerPress:  func(id string) { show(id) },
-	Style:          ui.Style{Grow: 1},
-})
-```
-
-- `Region` is where it shows, its center and the degrees it spans;
-  setting it moves the map there. `OnRegionChange` gets the region once
-  the user has moved it.
-- `Markers` are pins, with a `Title`, `Subtitle` and `Color`;
-  `OnMarkerPress` gets a tapped one's `ID`, and `OnPress` where the user
-  taps the map.
-- `Type` is `Standard`, `Satellite`, `Hybrid` or `Muted` (iOS);
-  `ShowsUser` shows the user's location, with the location permission
-  (import `asuka/sdk/location` and ask for it first); `NoInteraction` makes
-  it a still preview.
-- A map has no size of its own: give it one, or `Grow`.
-
-Android needs a Google Maps Platform API key with the Maps SDK for
-Android, in `asuka.toml`: `mapsKey = "..."` under `[android]`. Without it,
-the map says so, and `OnError` gets why. On Windows, Linux and the web,
-Satellite and Hybrid show the streets (no free imagery); `ShowsUser`
-shows nothing on Windows and Linux, and the user's location in a browser
-once the page has the location permission. `Muted` is quieter streets
-on iOS and the web. Linux needs libshumate (`libshumate-1.0-1`). The
-tiles come from `tile.openstreetmap.org`, as its usage policy asks, with
-its attribution on the map; a web app can take them from a server of its
-own ([the web](web.md)).
-
-## Background refresh: asuka/sdk/periodic
-
-`asuka/sdk/periodic` runs the app's Go code now and then while it isn't on
+`asuka/periodic` runs the app's Go code now and then while it isn't on
 screen: a sync, a fetch of what's new. `Handle` sets a task's code, in
 the root component; `Schedule` asks the system to run it.
 
@@ -2390,139 +2283,185 @@ A desktop doesn't launch an app for its tasks: on macOS
 while the app runs, and one that wants power waits while on the battery.
 A browser runs no page's tasks while it's closed: `Schedule` fails there.
 
-## The stores: asuka/sdk/review, asuka/sdk/tracking, asuka/sdk/integrity, asuka/sdk/agerange
+## The stores: asuka/review, asuka/tracking, asuka/integrity, asuka/agerange
 
-`review.Request(done)` asks the store for its rating prompt (the App
+`review.request()` asks the store for its rating prompt (the App
 Store's, Google Play's in-app review). The stores decide whether it
 shows, on their own quotas, and don't say; ask after a success, never
-from a button. For a "Rate us" button, `ui.OpenURL(review.AppStoreURL(id))`
-or `review.PlayStoreURL(id)`.
+from a button. For a "Rate us" button, `openURL(review.appStoreURL(id))`
+or `review.playStoreURL(id)`.
 
-`tracking.Request()` shows iOS's App Tracking Transparency prompt, which
+`tracking.request()` shows iOS's App Tracking Transparency prompt, which
 an app must before it reads the advertising identifier or shares data
-with ad networks, and reports `Allowed`, `Denied`, `Restricted` or
-`NotAsked`; `tracking.Current()` reads it without asking. Android has no
-such prompt: it's `Allowed`. Not on the main thread.
+with ad networks, and returns `.allowed`, `.denied`, `.restricted` or
+`.notAsked`; `tracking.current()` reads it without asking. Android has
+no such prompt: it's `.allowed`.
 
-`asuka/sdk/integrity` proves to your server that a request comes from your
-app on a real device. iOS: App Attest. `GenerateKey` makes a key (keep
-its ID), `AttestKey(id, challenge)` has Apple attest it for your server's
-challenge, once, and `Assert(id, data)` signs each request after. Android:
-Play Integrity. `Prepare(cloudProjectNumber)` at launch, then
-`Token(requestHash)` for each request. The server checks what they
-return with Apple or Google. `Supported` is false on the iOS simulator.
+`asuka/integrity` proves to your server that a request comes from your
+app on a real device. iOS: App Attest. `integrity.generateKey()` makes a
+key (keep its ID), `integrity.attestKey(id, challenge)` has Apple attest
+it for your server's challenge, once, and `integrity.assertion(id,
+data)` signs each request after. Android: Play Integrity.
+`integrity.prepare(cloudProjectNumber:)` at launch, then
+`integrity.token(requestHash:)` for each request. The server checks what
+they return with Apple or Google. `integrity.supported()` is false on the
+iOS simulator.
 
-`agerange.Request(13, 18)` asks for the user's age range without their
+`agerange.request(13, 18)` asks for the user's age range without their
 birth date, for the laws that ask apps to know a child: Apple's Declared
 Age Range (iOS 26) and Play's Age Signals. The platform may ask the user
-or their parent to share. The `Result` is `Shared` with a `Lower` and
-`Upper` age (0: open), `Declined`, or `VerificationRequired` (Play); its
-`Source` says how it's known. `ErrNotAvailable` where the platform can't
-answer.
+or their parent to share. The `Range` has a `status`, `.shared` with a
+`lower` and `upper` age (0: open), `.declined`, or
+`.verificationRequired` (Play); its `source` says how it's known.
+`AgeRangeError.notAvailable` where the platform can't answer.
+
+```asuka
+import asuka/agerange
+import asuka/review
+import asuka/tracking
+
+async fn afterFirstOrder() throws {
+  try? await review.request()
+  if try await tracking.request() == .allowed { print("personalized ads") }
+  let r = try await agerange.request(13, 18)
+  if r.status == .shared && r.lower >= 18 { print("an adult") }
+}
+```
 
 Off the phones: the Mac has the App Store's rating prompt, the tracking
 prompt, and App Attest (with a provisioning profile: see
 [On a Mac](#on-a-mac)), but not Declared Age Range. Windows, Linux and
-the web have no store prompt (`review.Request` shows nothing; in a
-browser `done` gets an error), no attestation (`integrity.Supported` is
-false) and no age range (`ErrNotAvailable`). Tracking needs no prompt
-there: Windows answers `Allowed` while the advertising ID is on in
-Settings, Linux `Allowed`, a browser `Denied` when it sends Global
-Privacy Control or Do Not Track.
+the web have no store prompt (`review.request` does nothing), no
+attestation (`integrity.supported` is false) and no age range
+(`.notAvailable`). Tracking needs no prompt there: Windows answers
+`.allowed` while the advertising ID is on in Settings, Linux `.allowed`,
+a browser `.denied` when it sends Global Privacy Control or Do Not Track.
 
-Selling in the app, `asuka/sdk/purchase`, has a page of its own:
+Selling in the app, `asuka/purchase`, has a page of its own:
 [In-app purchases](purchases.md). So does iCloud's key-value store and
-documents, `asuka/sdk/icloud`: [iCloud](icloud.md).
+documents, `asuka/icloud`: [iCloud](icloud.md).
 
-## Motion and sensors: asuka/sdk/sensors
+## Motion and sensors: asuka/sensors
 
-```go
-stop := sensors.WatchMotion(50*time.Millisecond, func(m sensors.MotionReading) {
-	level.Set(m.Attitude.Roll) // a spirit level
-})
+`asuka/sensors` reads the device's motion and environment sensors, each
+a stream that runs while it's read:
+
+```asuka
+import asuka/sensors
+
+component Level {
+  state roll = 0.0
+
+  task {
+    for await m in sensors.motion(every: 50ms) { roll = m.attitude.roll }
+  }
+
+  Text("{(roll * 180 / 3.14159).fixed(0)}°")
+}
 ```
 
-- `WatchAccelerometer`, `WatchGyroscope` and `WatchMagnetometer` give a
-  `Vector` (x, y, z) about every interval: acceleration in g, rotation in
-  radians per second, the magnetic field in microteslas (calibrated).
-- `WatchMotion` is the fused device motion: `Gravity` and the user's
-  `Acceleration` (in g), `Rotation`, and the `Attitude`: a `Matrix` that
-  turns device axes into East-North-Up, the `Heading` (degrees from
-  magnetic north; -1 without a magnetometer), and `Pitch` and `Roll`.
-- `WatchPressure` is the barometer (hectopascals, and the change in
-  altitude), `WatchLight` the ambient light in lux (Android), and
-  `WatchSteps` the steps since watching began. `StepsBetween(from, to)`
-  is iOS's history (a week); Android keeps none.
-- `Available(sensor)` says whether the device has one; the simulator and
-  emulators have few. A Mac and a PC have none; Linux has the light
-  sensor and the accelerometer's orientation on convertibles and tablets
-  (iio-sensor-proxy); a browser has the Generic Sensor API or device
-  motion events, without a barometer or pedometer.
+- `sensors.accelerometer(every:)`, `gyroscope(every:)` and
+  `magnetometer(every:)` give a `Vector` (`x`, `y`, `z`, `time`) about
+  every interval: acceleration in g, rotation in radians per second, the
+  magnetic field in microteslas (calibrated).
+- `sensors.motion(every:)` is the fused device motion: `gravity` and the
+  user's `acceleration` (in g), `rotation`, and the `attitude`: a `matrix`
+  that turns device axes into East-North-Up, the `heading` (degrees from
+  magnetic north; -1 without a magnetometer), and `pitch` and `roll`.
+- `sensors.pressure(every:)` is the barometer (hectopascals, and the
+  change in altitude), `sensors.light(every:)` the ambient light in lux
+  (Android, Linux), and `sensors.stepUpdates()` the steps since watching
+  began. `sensors.steps(from:, to:)` (times as `time.now()` gives them) is
+  iOS's history (a week); elsewhere it throws `SensorError.notAvailable`.
+- `sensors.available(sensor)` says whether the device has one
+  (`Sensor.all` lists them); the simulator and emulators have few. A Mac
+  and a PC have none; Linux has the light sensor and the accelerometer's
+  orientation on convertibles and tablets (iio-sensor-proxy); a browser
+  has the Generic Sensor API or device motion events, without a barometer
+  or pedometer. A stream of a sensor the device lacks throws
+  `notAvailable`.
+- `sensors.simulate(json)` feeds the iOS simulator, which has no motion
+  sensors, a reading in Core Motion's terms (`kind` 0 the accelerometer,
+  3 motion; `acceleration`, `gravity`, `user`, `rotation`, `field`).
 
-The values are the same on both platforms: device axes as Android and the
-W3C define them (x to the right of the screen, y up it, z out of it),
+The values are the same everywhere: device axes as Android and the W3C
+define them (x to the right of the screen, y up it, z out of it),
 acceleration as the accelerometer measures it (a device lying face up
-reads z = +1 g; iOS's are turned to match), and the attitude computed
-the same way on both. Up to 200 readings a second; readings come on the
-main thread, in batches as the platform delivers them.
+reads z = +1 g; iOS's are turned to match), and the attitude computed the
+same way on every platform. Up to 200 readings a second; they come on the
+main thread.
 
-## Editing images and video frames: asuka/sdk/imageedit
+In a test, `sensors.fake()` gives the package a `FakeSensors`: the
+sensors `present`, and readings sent through it (`accelerate(x, y, z)`,
+`rotate`, `move(gravity, user:, rotation:, field:)`, `press(hPa)`,
+`shine(lux)`, `walk(steps)`), each to the streams that read the sensor,
+no more often than they asked.
 
-`imageedit.Edit(source, actions, options)` reads an image (HEIC, JPEG,
-PNG, WebP: what the camera and the photo picker give), turns it upright
-as its orientation says, does the actions in order and writes a JPEG or
-PNG to the app's caches. Not on the main thread.
+```asuka
+import asuka/sensors
 
-```go
-go func() {
-	r, err := imageedit.Edit(photo, []imageedit.Action{
-		imageedit.Resize(1080, 0), // 1080 wide; 0 keeps the aspect ratio
-		imageedit.Crop(0, 0, 1080, 1080),
-	}, imageedit.Options{Quality: 0.8})
-	if err == nil {
-		upload(r.Path, r.Width, r.Height)
-	}
-}()
+test "lying face up" {
+  let s = sensors.fake()
+  s.accelerate(0, 0, 1)
+}
 ```
 
-The actions are `Resize`, `Crop`, `Rotate` (clockwise, any angle),
-`FlipHorizontal`, `FlipVertical`, `Fill` and `Pixelate`. `Fill(x, y, w, h, r, g,
-b)` paints a rectangle a solid color, and what was there is gone from the file;
-`Pixelate(x, y, w, h, block)` turns one into squares, each the average of what's
-under it, aligned to the image, so rectangles that touch look as one. Text under
-small squares can sometimes be read back: for what must stay hidden, use `Fill`.
-The file written has none of the source's metadata: no location, no camera. A first `Resize` decodes the image
-near that size, which saves memory on large photos. `imageedit.Size`
-reads an image's size without decoding it. `imageedit.VideoFrame(source,
-at, actions, options)` takes a video's frame at a time (a thumbnail, a
-poster), upright, and edits it the same way; a remote video is read only
-as far as the frame needs. A source is what `ui.Image` takes: a path, a
-`file://` or `http(s)` URL, or an asset.
+## Editing images and video frames: asuka/imageedit
 
-Each platform decodes with its own codecs: ImageIO on iOS and the Mac,
-Android's, WIC on Windows, GdkPixbuf's loaders on Linux (HEIC and WebP
-where their codecs or loaders are installed), a canvas in a browser
-(JPEG or PNG; a remote image needs CORS).
+`imageedit.edit(source, actions)` edits an image with the platform's own
+codecs and writes it as JPEG or PNG: what the camera and the photo
+picker give (HEIC, JPEG, PNG, WebP...), turned upright as their
+orientation says, for an upload, a cache or an `Image`. The actions run
+in order: `.resize(width, height)` (a 0 keeps the aspect),
+`.crop(x, y, width, height)`, `.rotate(degrees)`, `.flipHorizontal`,
+`.flipVertical`, `.fill(...)` (a solid color: what was there is gone)
+and `.pixelate(...)`. `imageedit.size(source)` reads an image's size;
+`imageedit.videoFrame(source, at:)` takes a video's frame as an image.
 
-## Text to speech: asuka/sdk/speech
+```asuka
+import asuka/imageedit
 
-`speech.Speak(text, options, done)` queues text to be read aloud with the
-platform's voices; `done` gets nil once it's spoken, or `ErrStopped`.
+async fn thumbnail(photo: string) throws -> string {
+  let r = try await imageedit.edit(photo, [.resize(1080, 0), .crop(0, 0, 1080, 1080)], quality: 0.8)
+  return r.path
+}
 
-```go
-speech.Speak("Turn left in 200 meters", speech.Options{Rate: 1.1}, nil)
+async fn poster(video: string) throws -> string {
+  return (try await imageedit.videoFrame(video, at: 1s, actions: [.resize(640, 0)])).path
+}
 ```
 
-`Options` set the `Language` (a BCP 47 tag), a `Voice` (an ID from
-`speech.Voices()`, with its name, language and quality), `Pitch`, `Rate`
-and `Volume`. `Stop` drops the queue, `Pause` and `Resume` pause at a
-word (on Android too, which can't pause: Asuka speaks on from the word).
-On iOS other apps' sound ducks while it speaks, and it speaks with the
-silent switch on; Android ducks them likewise. The voices are
-AVSpeechSynthesizer's on iOS and the Mac, SAPI's on Windows, Speech
-Dispatcher's on Linux, and `speechSynthesis`'s in a browser.
+Core Graphics and Image I/O on iOS and the Mac, `Bitmap` and
+`MediaMetadataRetriever` on Android, a canvas in a browser, WIC and
+Media Foundation on Windows, GdkPixbuf and GStreamer on Linux. A source
+that isn't an image throws `EditError.noImage`.
 
-## Contacts: asuka/sdk/contacts
+## Text to speech: asuka/speech
+
+`speech.speak(text)` speaks, in the device's voice for the text's
+language (or `Options(language:, voice:, rate:, pitch:, volume:)`), and
+returns when it's done; what's spoken while it speaks waits its turn.
+`stop()` stops (the speaking calls throw `SpeechError.stopped`),
+`pause()` and `resume()` pause at a word and go on, `speaking()` says
+whether it is, and `voices()` lists the voices, with their `quality`.
+
+```asuka
+import asuka/speech
+
+component Reader(text: string) {
+  Row {
+    gap: 12
+    Button("Read") { on press { try await speech.speak(text, options: speech.Options(rate: 1.1)) } }
+    Button("Stop") { on press { speech.stop() } }
+  }
+}
+```
+
+AVSpeechSynthesizer on iOS and the Mac, Android's `TextToSpeech`, the
+browser's `speechSynthesis`, SAPI on Windows, Speech Dispatcher on
+Linux. Other apps' sound ducks while it speaks.
+
+## Contacts: asuka/contacts
 
 - `contacts.Pick(done)` shows the system's contact picker: the user picks
   one, and the app sees only that one, with no permission asked (on
@@ -2543,7 +2482,7 @@ denied, `Pick` fails, and `Add` opens a vCard in the user's contacts
 app. A browser picks one where it has the Contact Picker (Chrome on
 Android), and `Add` downloads a vCard.
 
-## Calendars: asuka/sdk/calendar
+## Calendars: asuka/calendar
 
 - `calendar.Add(event, done)` shows the system's event editor, filled in,
   where the user saves the event; no permission asked (iOS 17 and later).
@@ -2561,7 +2500,7 @@ packaged apps only: `Request` says denied, and `Add` opens an iCalendar
 file in the user's calendar app (`saved` is false: it doesn't say). A
 browser can't read calendars; `Add` downloads an `.ics` file.
 
-## Home screen widgets: asuka/sdk/widget
+## Home screen widgets: asuka/widget
 
 `asuka.toml`'s `widgets` declares the app's widgets; `widget.Set` fills
 them, from the app's Go code:
@@ -2597,7 +2536,7 @@ extension's ID, the app's plus `.widgets`). Android: an App Widget for
 each kind, Material You colors, sized to the launcher's cells. The
 desktops and the web have none: `widget.Set` does nothing there.
 
-## Live activities: asuka/sdk/liveactivity
+## Live activities: asuka/liveactivity
 
 A live activity shows what's happening now outside the app, as it
 changes: a delivery on its way, a ride, a game's score, a timer. On iOS
@@ -2648,7 +2587,7 @@ Firebase data message with `asuka.liveActivity` (`update`, `end`),
 `PushToStartToken` (the attributes type `AsukaActivityAttributes`, with
 the new activity's `id`), or on Android with `asuka.liveActivity` set to
 `start`. The package's doc has the payloads. Pushing needs
-`asuka/sdk/push` in the app: the Push Notifications capability on iOS,
+`asuka/push` in the app: the Push Notifications capability on iOS,
 Firebase on Android.
 
 The iOS build adds the widget extension for an app that calls the
@@ -2702,9 +2641,9 @@ ui.Haptic(ui.HapticSuccess)
 
 See [Motion](motion.md) for feedback that goes with animation.
 
-## Crash reports: asuka/sdk/crash
+## Crash reports: asuka/crash
 
-An app that imports `asuka/sdk/crash` keeps a report of each crash, and reads
+An app that imports `asuka/crash` keeps a report of each crash, and reads
 it on its next launch, to send where it likes: its own server, Sentry,
 Crashlytics. Asuka uploads nothing.
 

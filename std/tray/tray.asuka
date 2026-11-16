@@ -243,7 +243,7 @@ pub component Tray(id: string) {
       let _ = happened.remove(mine)
       platform.send("tray", "remove", platform.u32(mine))
     }
-    await untilCancelled()
+    await never()
   }
 
   // The icon whole, again whenever its encoding changes.
@@ -307,7 +307,7 @@ pub component DockMenu {
       let _ = docks.removeWhere(d => d == mine)
       if docks.isEmpty() { sendDock(encodeMenu([])) }
     }
-    await untilCancelled()
+    await never()
   }
 
   effect {

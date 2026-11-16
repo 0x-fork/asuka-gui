@@ -1,0 +1,116 @@
+// Package asuka/audio plays sounds and music: a file in the app's
+// assets, a file the app wrote, or an http(s) URL (a file or a stream),
+// with the platform's player: AVPlayer on iOS and macOS, Media3's
+// ExoPlayer on Android, an audio element on the web, MCI on Windows,
+// GStreamer on Linux. On iOS it plays with the silent switch on, as a
+// music or game app's sound does.
+//
+//   audio.play("sounds/chime.wav")       // once, and let go
+//
+//   let music = audio.Player("music/afternoon.mp3")
+//   music.play()
+//   let s = await music.status()       // where it is: for a progress bar
+
+/// Where a player is.
+pub struct Status {
+  /// Seconds from its start.
+  position: float = 0
+  /// Seconds; 0 until it's known.
+  duration: float = 0
+  /// Sound is coming out of it.
+  playing: bool = false
+  /// It played to its end (until it's played or sought again: play after
+  /// the end starts from the start).
+  ended: bool = false
+}
+
+/// A sound the platform plays.
+/// @mainThread
+native interface Sound {
+  /// Opens source (a URL, a file's path, an asset's), ready to play.
+  fn open(source: string)
+  /// Plays it from where it is.
+  fn play()
+  /// Plays it once from the start, and lets it go when it ends (as it
+  /// does if it's let go before).
+  fn playOnce()
+  fn pause()
+  fn seek(seconds: float)
+  /// From 0 to 1.
+  fn setVolume(volume: float)
+  /// From 0.25 to 4, the pitch kept.
+  fn setRate(rate: float)
+  /// Starts again when it ends.
+  fn setLoop(on: bool)
+  fn status() -> Status
+  /// Stops it and frees what it holds.
+  fn close()
+}
+
+fn opened(source: string) -> Sound? {
+  if let s = try? Sound() {
+    try? s.open(source)
+    return s
+  }
+  return none
+}
+
+/// A player of one sound, ready to play as it's made. It stops and lets
+/// go of the sound when what made it goes, or at release().
+pub store Player(source: string) {
+  state sound: Sound? = opened(source)
+
+  /// Plays it from where it is (from the start once it ended).
+  pub fn play() {
+    if let s = sound { try? s.play() }
+  }
+
+  /// Pauses it where it is.
+  pub fn pause() {
+    if let s = sound { try? s.pause() }
+  }
+
+  /// Moves it to seconds from its start.
+  pub fn seek(seconds: float) {
+    if let s = sound { try? s.seek(seconds) }
+  }
+
+  /// Sets its volume, from 0 to 1 (the default).
+  pub fn setVolume(volume: float) {
+    if let s = sound { try? s.setVolume(min(max(volume, 0), 1)) }
+  }
+
+  /// Sets how fast it plays, from 0.25 to 4 (1, the default); the pitch
+  /// stays as it is, tuned for speech.
+  pub fn setRate(rate: float) {
+    if let s = sound { try? s.setRate(min(max(rate, 0.25), 4)) }
+  }
+
+  /// Makes it start again when it ends, or not.
+  pub fn setLoop(on: bool) {
+    if let s = sound { try? s.setLoop(on) }
+  }
+
+  /// Where it is: read it a few times a second to follow playback.
+  pub async fn status() -> Status {
+    if let s = sound {
+      return (try? s.status()) ?? Status()
+    }
+    return Status()
+  }
+
+  /// Stops it and frees what it holds.
+  pub fn release() {
+    if let s = sound {
+      try? s.close()
+    }
+    sound = none
+  }
+}
+
+/// Plays a sound once, from the start, and lets it go when it ends.
+pub fn play(source: string) {
+  if let s = opened(source) {
+    try? s.playOnce()
+  }
+}

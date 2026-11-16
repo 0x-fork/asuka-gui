@@ -7,20 +7,24 @@ import (
 	"testing"
 )
 
-// Every std package with desktop code is in the host.
+// Every standard library package with desktop Go is in every host:
+// std.go imports each std/<name>/desktop.
 func TestStdDesktop(t *testing.T) {
-	b, err := os.ReadFile("std.go")
+	src, err := os.ReadFile("std.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	dirs, _ := filepath.Glob("../../std/*/desktop")
 	if len(dirs) == 0 {
-		t.Fatal("no std desktop packages")
+		t.Fatal("no std/*/desktop")
 	}
 	for _, d := range dirs {
+		if files, _ := filepath.Glob(filepath.Join(d, "*.go")); len(files) == 0 {
+			continue
+		}
 		name := filepath.Base(filepath.Dir(d))
-		if !strings.Contains(string(b), `"github.com/egoist/asuka/std/`+name+`/desktop"`) {
-			t.Errorf("host/apphost/std.go doesn't import std/%s/desktop", name)
+		if !strings.Contains(string(src), `"github.com/egoist/asuka/std/`+name+`/desktop"`) {
+			t.Errorf("std.go doesn't import std/%s/desktop", name)
 		}
 	}
 }

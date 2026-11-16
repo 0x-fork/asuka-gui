@@ -22,7 +22,8 @@
 | `ProgressRing` | 仿照 SwiftUI 的圆形仪表绘制；没有值时是 `UIActivityIndicatorView` | `CircularProgressIndicator` | 16 和 32 点时是旋转样式的 `NSProgressIndicator`；其他尺寸或设置了 `Color` 时，按它的样式自行绘制 | 自行绘制的 Fluent `ProgressRing` | 按 GNOME 的样式绘制；没有值时是 `AdwSpinner` | SVG 圆环 |
 | `Activity` | `UIActivityIndicatorView` | `CircularProgressIndicator` | 旋转样式的 `NSProgressIndicator` | 自行绘制的 Fluent 进度环 | `AdwSpinner`（libadwaita 1.6 之前为 `GtkSpinner`） | 自行绘制的加载指示器 |
 | `Image` | `UIImageView` | `ImageView` | `NSImageView` | 用 GDI+ 绘制 | 用 GDK 纹理绘制 | `<img>` |
-| `lottie.View` | lottie-ios | lottie-android | lottie-ios | 用 `ui.Canvas` 绘制 | 用 `ui.Canvas` 绘制 | lottie-web |
+| `lottie.View` | lottie-ios | lottie-android | lottie-ios | 暂不支持（一个空的框） | 暂不支持（一个空的框） | lottie-web |
+
 | `Symbol` | SF Symbols | Material Symbols | SF Symbols | Segoe Fluent Icons | 图标主题中的图标，没有则用 Material Symbols | Material Symbols |
 | `Video` | `AVPlayerViewController` | Media3 的播放器 | `AVPlayerView` | WebView2 中的 `<video>` | `GtkVideo`（GStreamer） | `<video>` |
 | `WebView` | `WKWebView` | `WebView` | `WKWebView` | WebView2 | `WebKitWebView`（WebKitGTK 6.0） | `<iframe>` |
@@ -101,13 +102,17 @@ ui.Selectable(ui.SelectableProps{Style: ui.Style{Gap: 12}},
 
 ### Markdown
 
-`asuka/sdk/markdown` 包把 Markdown 显示为原生视图，底层用的是 `RichText`。它会随着文本的追加增量解析：只重新解析正在写的那个块，也只更新这个块对应的视图。
+`asuka/markdown` 把 Markdown（CommonMark，加上 GitHub 的表格、任务列表、删除线和自动链接）显示成平台原生的带样式文本：整段内容是一个选区，链接可以打开，字号跟随用户的文字大小设置。文本里的原始 HTML 会按文字显示。
 
-```go
-markdown.View(markdown.Props{Text: reply, Streaming: writing})
+```asuka
+import asuka/markdown
+
+component Reply(text: string, writing: bool) {
+  markdown.View(text) { streaming: writing; padding: 16 }
+}
 ```
 
-`Streaming` 表示文本还在写入中，这样写了一半的 `**bold` 会显示为粗体，而不是露出星号。整个视图默认是一个整体选区（可以用 `NotSelectable` 关掉）；链接默认用 `ui.OpenURL` 打开，除非你提供了 `OnLink`；`Theme` 用来修改字体、颜色和间距；`Code` 让你按自己的方式显示代码块。它支持 CommonMark 和 GitHub 的扩展语法。参见 [`examples/markdown`](../../examples/markdown)。
+`streaming` 表示文本还在写，比如语言模型的回复正一点点流进来：这时文本的末尾会显示成它最可能的样子（代码围栏补上结尾、`**bold` 显示为粗体、正在写的链接显示为链接），而不是写了一半的语法。单独用 `markdown.heal(text)` 也能得到同样的处理。各平台用自己的 Markdown 实现来解析：iOS 和 macOS 上是 Apple 的（`AttributedString`，排在一个文本视图里），Android 上是 Markwon，Web 上是 marked，Windows（一个 rich edit 控件）和 Linux（标签的 Pango 标记）上是 Asuka 自己的解析器。参见 [`examples/markdown`](../../examples/markdown)。
 
 ## 按钮
 
@@ -385,20 +390,40 @@ iOS 和 macOS 能绘制任意 SF Symbol。其他平台只能绘制一组精选�
 
 ### SVG 图标
 
-如果要用自己的图标，`asuka/sdk/svg` 包可以借助平台的矢量绘图能力绘制 SVG，全程不做栅格化。`svg.MustParse` 解析 SVG 标记（`svg.Parse` 则在出错时返回 error），`svg.View` 负责绘制。
+要用自己的图标，`asuka/svg` 会用平台的矢量绘图来画 SVG，不会栅格化。`svg.Icon` 的标记是一个字符串字面量，由编译器解析：读不懂的标记是编译错误，设备上不做任何解析。
 
-```go
-var download = svg.MustParse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`)
+```asuka
+import asuka/svg
 
-func downloadIcon() ui.Node {
-	return svg.View(svg.Props{Icon: download, Color: ui.Val(colors.Accent), Label: ui.Val("Download"),
-		Style: ui.Style{Width: ui.Pt(24), Height: ui.Pt(24)}})
+let download = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>""")
+
+component DownloadRow {
+  Row {
+    gap: 8
+    svg.View(download) { color: .accent; width: 24; height: 24 }
+    Text("Download")
+  }
 }
 ```
 
-`Color` 用来绘制 SVG 中以 `currentColor` 绘制的部分，以及 SVG 没有指定填充的部分；默认是文本颜色 `colors.Label`。如果 `Style` 中没有宽度或高度，视图就采用 SVG 自身的尺寸；只设置了其中一个时，另一个按宽高比计算。建议用 `//go:embed` 把图标放在单独的文件里，并在包级变量中只解析一次。
+`color` 会画在 SVG 中使用 `currentColor` 的地方，以及 SVG 没有指定填充的地方；默认是文字颜色 `.label`。样式里没有宽高时，视图就是 SVG 自身的尺寸；宽高都给了时，图标会保持比例放进去。它能读懂常见图标集（Lucide、Material、Heroicons、Feather）用到的内容：路径、基本形状、分组、`use`、填充、描边和变换。它会跳过文字、渐变（用图标颜色绘制）、裁剪、蒙版、滤镜和 `fill-rule="evenodd"`。
 
-它支持各图标库（Lucide、Material、Heroicons、Feather）常用的特性：路径、基本形状、分组、`use`、填充、描边和变换。不支持文本、渐变（改用图标的颜色绘制）、裁剪、蒙版、滤镜和 `fill-rule="evenodd"`，遇到时会跳过。
+`svg.Shape` 画应用自己生成的路径：每个 `svg.Layer` 是一条 `svg.Path`，可以填充（`fill`，沿框往下渐变到 `fade`）和描边（`stroke`、`width`、`cap`、`join`）。`svg.Point` 由相对框左上角的点数加上框尺寸的比例组成，所以框变大变小时形状会跟着变，应用不用重新计算：
+
+```asuka
+import asuka/svg
+
+let tick = svg.Path().move(svg.Point(x: 4, fy: 0.5)).line(svg.Point(fx: 0.4, fy: 1, y: -4)).line(svg.Point(fx: 1, x: -4, y: 4))
+
+component Done {
+  svg.Shape([svg.Layer(path: tick, stroke: .green, width: 3, cap: .round, join: .round)]) {
+    width: 32
+    height: 32
+  }
+}
+```
+
+在 iOS 和 macOS 上用的是 Core Graphics，在 Android 上是 `Canvas`，在浏览器中是 `<svg>`，在 Windows 上是 GDI+，在 Linux 上是 GSK 的路径。
 
 ## 视频
 
@@ -426,36 +451,37 @@ return ui.Column(ui.Style{Gap: 12}, v,
 
 ## Lottie 动画
 
-`asuka/sdk/lottie` 播放 Lottie 动画（从 After Effects 导出的 Lottie JSON（`.json`）或 dotLottie（`.lottie`）文件），和 Expo 中的 lottie-react-native 一样。每个平台都用它自己的 Lottie 播放器来绘制：iOS 和 Mac 上是 lottie-ios，Android 上是 lottie-android，Web 上是 lottie-web。Windows 和 Linux 没有可调用的播放器，这个包会自己用 `ui.Canvas` 绘制动画。
+`asuka/lottie` 用各平台自己的播放器播放 Lottie 动画（从 After Effects 导出的 Lottie JSON `.json` 或 dotLottie `.lottie`）：iOS 和 Mac 上是 lottie-ios，Android 上是 lottie-android，Web 上是 lottie-web。Windows 和 Linux 目前还没有可调用的播放器，在那里这个视图是一个空的框。
 
-```go
-progress := signal.New(0.0)
-return ui.Column(ui.Style{Gap: 12},
-	lottie.View(lottie.Props{
-		Source:   ui.Val("success.json"),
-		Loop:     true,
-		Progress: progress,
-		Overrides: ui.Val([]lottie.Override{
-			lottie.Colors("Ring", colors.Hex(0x0a84ff), colors.Hex(0x64d2ff)),
-		}),
-		Style: ui.Style{Width: ui.Pt(200)},
-	}),
-	ui.Slider(ui.SliderProps{Value: progress}),
-)
+```asuka
+import asuka/lottie
+
+component Success {
+  state playing = true
+  state progress = 0.0
+  state done = false
+
+  Column {
+    lottie.View("success.json") {
+      bind playing: playing
+      bind progress: progress
+      overrides: [lottie.colors("Ring", light: #0a84ff, dark: #64d2ff)]
+      width: 200
+      on complete { done = true }
+    }
+    Slider { bind value: progress }
+  }
+}
 ```
 
-- `Source` 是动画文件：http(s) URL、应用 `assets` 中的路径或绝对路径；也可以用 `Data` 直接给出文件内容（`go:embed`）。`Animation` 按 ID 选出 dotLottie 中的某个动画。
-- `Playing` 为 true 时播放，为 false 时停在当前位置；不设置时，动画加载完就开始播放。`Loop` 让它循环播放；否则播到末尾停下，并调用 `OnComplete`。`Speed` 调整播放速度（负数表示倒放）。
-- `Progress` 是当前进度，从 0 到 1。播放时视图会逐帧写入它；应用写入的值会让动画跳到那里：用滑块拖动，或者用手势驱动。在 `ui.Animate` 中写入时，它会按那个动画的时长和曲线移动过去，之后如果正在播放就从那里继续。
-- `Segment`（帧，从 `From` 到 `To`）或 `Marker`（按名称指定的某个标记）决定播放哪一段。`OnLoad` 会收到动画的 `Info`：尺寸、帧范围、帧率和标记。
-- `Mode` 决定它如何填充自己的框，和图片一样。样式中没有尺寸时，它采用动画的尺寸，但不超过可用宽度；只给出一边时，另一边按动画的宽高比确定。
-- `Overrides` 按 keypath 修改动画的颜色和数值，用于主题或深色模式：`lottie.Color`（keypath 下所有填充和描边的颜色）、`lottie.Colors`（浅色模式一种颜色，深色模式另一种）、`lottie.Opacity`、`lottie.StrokeWidth`。keypath 是从根开始的图层、组和形状的名称，用点分隔，`*` 匹配任意一个名称，`**` 匹配任意多个，和 lottie-ios、lottie-android 的写法一样：`"Ring"`、`"Circle.Disc.Fill 1"`、`"**.Stroke 1"`。
-- `ReduceMotion` 决定用户要求减少动态效果时它怎么做：默认（`ReduceToEnd`）不播放，显示最后一帧；`ReduceToStart` 显示第一帧；`ReduceIgnore` 照常播放，适合动效本身就是含义的动画。
-- `Label` 向屏幕阅读器描述它；不设置时视为纯装饰。
+- 它的来源是文件：http(s) URL、应用 assets 里的路径或绝对路径；也可以用 `data` 直接传文件内容。`animation` 按 ID 选择 dotLottie 中的某一个动画。
+- `playing` 为 true 时播放，为 false 时停在当前位置；绑定后，播放完一遍它会变成 false。`loop` 会一遍又一遍地播放；否则播到结尾就停下，并报告 `complete`。`speed` 缩放帧率（负数表示倒放）。
+- `progress` 是当前位置，从 0 到 1。绑定后，视图在播放时会写入它，应用写入的值会让动画跳过去：滑块可以拖动进度，手势可以驱动它。
+- `segment`（帧，从 `from` 到 `to`）或 `marker`（按名字选的一个标记）是要播放的部分。`loaded` 会给出它的 `Info`：尺寸、帧数、帧率和标记。
+- `fit` 是它填充框的方式：`.contain`（默认）、`.cover`、`.stretch` 或 `.center`。样式里没有尺寸时，它就是动画自身的尺寸。
+- `overrides` 按 keypath 修改颜色和数值，用于主题或深色模式：`lottie.color(keypath, c)`（keypath 下的所有填充和描边）、`lottie.colors(keypath, light:, dark:)`、`lottie.opacity(keypath, v)` 和 `lottie.strokeWidth(keypath, w)`。keypath 是从根开始的图层、分组和形状的名字，用点分隔，`*` 表示任意一个名字，`**` 表示任意多个：`"Ring"`、`"Circle.Disc.Fill 1"`、`"**.Stroke 1"`。
 
-导入这个包的应用会带上这些播放器：一个 Swift 包（lottie-ios 的二进制发行版 lottie-spm）、一个 Gradle 库（`com.airbnb.android:lottie`），以及 lottie-web 的脚本（在第一个视图出现时才加载）；没有导入它的应用不会带上。它是一个[原生包](native.md)，所以在手机上用 `asuka dev` 开发时，带有它的应用会构建成应用本身运行，而不是在热重载模式下的开发 App 里运行。
-
-在 Windows 和 Linux 上，这个包的渲染器能绘制形状、纯色、空对象和预合成图层：矩形、椭圆、星形、多边形和路径；纯色或渐变（线性和径向，支持高光）的填充和描边，以及虚线；修剪路径、圆角和中继器；图层和组的变换（锚点、位置（可分离，可沿曲线运动）、缩放、旋转、倾斜、不透明度）、父子关系、时间重映射和时间伸缩；关键帧的缓动、定格和空间插值。蒙版（相加、相减、相交、反转）和轨道遮罩（Alpha 与亮度，以及反转）按轮廓裁剪。它不绘制图像图层和文本图层，不支持表达式、效果、图层样式、混合模式、3D、合并路径（路径按原样绘制）、偏移路径、收缩和膨胀、扭曲、锯齿；也不支持蒙版的不透明度、羽化和扩展，以及遮罩本身的透明度（遮罩按其图层中填充的轮廓裁剪，预合成遮罩按它的边界裁剪）。Web 上使用的 lottie-web 精简版同样不运行表达式。
+导入这个包的应用会带上这些播放器一起构建：一个 Swift 包（lottie-spm）、一个 Gradle 库（`com.airbnb.android:lottie`）和 lottie-web 的脚本（视图第一次显示时才加载）；没导入的应用则不会带上。它是一个[原生包](native.md)，所以在手机上用 `asuka dev` 时，带有它的应用会单独构建运行，而不是在热重载模式下运行。
 
 ## 网页
 
@@ -585,56 +611,67 @@ ui.Canvas(func(g *ui.Graphics) {
 
 ### 图表
 
-`asuka/sdk/chart` 在 Canvas 上绘制图表：基于数值轴的柱状图、折线图、面积图和散点图，标签使用平台的文字绘制（由平台测量，并随用户的字号缩放）。
+`asuka/chart` 绘制图表：在数值轴上画柱、线、面积和点，标签用平台的文字（随用户的文字大小缩放）。它是用 Asuka 写的：刻度和图形只计算一次，由 `svg.Shape` 绘制，所以在每个平台上都一样。
 
-```go
-chart.View(chart.Props{
-	Series: ui.Val([]chart.Series{
-		{Name: "Steps", Kind: chart.Bar, Values: steps},
-		{Name: "Goal", Kind: chart.Line, Values: goal, Color: colors.Hex(0xff9500)},
-	}),
-	Labels: ui.Val([]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}),
-	Label:  ui.Val("Steps this week"),
-	Style:  ui.Style{Height: ui.Pt(200)},
-})
+```asuka
+import asuka/chart
+
+component Week(steps: [float], goal: [float]) {
+  chart.View([
+    chart.Series(name: "Steps", kind: .bar, values: steps),
+    chart.Series(name: "Goal", kind: .line, values: goal, color: #ff9500),
+  ]) {
+    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    label: "Steps this week"
+    height: 180
+  }
+}
 ```
 
-- 每个系列为每个标签提供一个值；`NaN` 表示此处留空。柱状系列并排摆放，面积、折线和散点则画在它们上面。`Smooth` 绘制单调曲线，曲线不会越过数据点的值。
-- 数值轴会根据数据自动确定范围，并向外取整到完整的刻度（柱状图和面积图还会向下延伸到 0），除非用 `Min` 和 `Max` 固定范围；`Format` 决定刻度标签的格式（默认形如 `2.5k`）。
-- 系列的颜色默认先取应用的强调色，之后依次取系统颜色。
-- 屏幕阅读器会把整个图表当作一张图片来读：先读 `Label`，再完整读出每个系列的值。
+- 一个系列的每个标签对应一个值。柱状系列并排摆放；面积、线和点画在它们上面。`smooth` 画一条单调曲线，不会超出它的值；`width` 是线的粗细或点的大小。
+- 数值轴会根据数据自动调整，并向外取整到整刻度（柱状和面积图会一直延伸到零），除非用 `low` 和 `high` 指定范围；刻度标签会尽量简短（`2.5k`）。`grid: false` 会去掉图形后面的网格线。
+- 颜色默认依次是应用的强调色和系统颜色（`chart.palette`）。
+- 屏幕阅读器把整张图表当作一张图片来读：先读 `label`，再读每个系列的值。样式里没有高度时，它的高度是 200。
 
 ### 着色器
 
-`ui.Shader` 是一个由 GPU 程序绘制的框，绘制在子视图下层，可以用来做流动的渐变、噪声、光晕、波纹等效果。程序是一个 Kage 着色器（Ebitengine 的着色语言，语法和 Go 一样），由 `shader` 包编译，作为包级变量只编译一次：
+`asuka/shader` 用 GPU 程序来绘制一个框：流动的渐变、噪声、光晕、波纹。程序是一个 Kage 着色器（Ebitengine 的语言，Go 的语法），在应用编译时为每个平台编译好：编译不过的着色器就是编译错误，设备上只编译平台自己的程序。
 
-```go
-var glow = shader.MustCompile(`package main
+```asuka
+import asuka/shader
 
-var Time float
-var Tint vec4
+let glow = shader.Program(r"""
+  package main
 
-func Fragment(dst vec4, pos vec2) vec4 {
-	d := distance(pos/rectSize(), vec2(0.5))
-	g := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
-	return vec4(Tint.rgb*g, 1) * Tint.a
-}`)
+  var Time float
+  var Tint vec4
 
-ui.Shader(ui.ShaderProps{
-	Program:  glow,
-	Uniforms: ui.Val([]ui.Uniform{ui.ColorUniform("Tint", colors.Hex(0x38bdf8))}),
-	Animated: true,
-	Style:    ui.Style{Height: ui.Pt(200), CornerRadius: 16, Clip: true, Background: colors.Hex(0x0b1030)},
-})
+  func Fragment(dst vec4, pos vec2) vec4 {
+  	d := distance(pos/rectSize(), vec2(0.5))
+  	g := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
+  	return vec4(Tint.rgb*g, 1) * Tint.a
+  }
+  """)
+
+component Glow(level: float) {
+  shader.Shader(glow) {
+    uniforms: [shader.Uniform(name: "Tint", value: [0.2, 0.5 + level * 0.5, 0.9, 1])]
+    animated: true
+    height: 200
+    radius: 16
+    clip: true
+    background: #0b1030
+  }
+}
 ```
 
-- `Fragment` 返回一个像素的颜色（预乘 alpha），红、绿、蓝和 alpha 的取值都在 0 到 1 之间。`pos` 是像素中心相对于框左上角的位置，单位是点；`dst` 是同一位置，单位是像素。`rectSize()` 是框的尺寸（以点为单位），`pixelScale()` 是每个点对应的像素数。
-- 这门语言支持 `bool`、`int`、`float`、`vec2` 到 `vec4`、`ivec2` 到 `ivec4`、`mat2` 到 `mat4` 以及它们的数组，支持 GLSL 的内置函数（`sin`、`mix`、`smoothstep`、`dot` 等）、自定义函数，以及 `if` 和 `for`。导出的变量就是 uniform。
-- `Uniforms` 按名称设置 uniform：标量给一个数，向量依次给出各个分量，矩阵则按列依次给出。修改 uniform 会让框重新绘制；没有给出的 uniform 为 0。
-- `var Time float` 是着色器显示以来经过的秒数。`Animated` 让着色器持续运行：显示器每绘制一帧，这个框就绘制一次，而 Go 这边什么都不需要运行。
-- `shader.Compile` 会报告着色器中的错误及其所在行，并且在所有平台上都会同样指出 Android 无法运行的部分：AGSL 采用的是 GLSL ES 1.00 的语言，因此不支持无符号整数、位运算、整数取余（浮点数的 `mod` 可以用）、导数，以及上下界不是常量的循环。
+- `Fragment` 返回一个像素的颜色（预乘 alpha），红、绿、蓝和 alpha 都在 0 到 1 之间。`pos` 是像素中心相对框左上角的位置，单位是点，`dst` 是同样的位置，单位是像素；`rectSize()` 是框的尺寸（点），`pixelScale()` 是每个点的像素数。
+- 语言里有 `bool`、`int`、`float`、`vec2` 到 `vec4`、`ivec2` 到 `ivec4`、`mat2` 到 `mat4` 以及它们的数组，GLSL 的内置函数（`sin`、`mix`、`smoothstep`、`dot` ……），自定义函数，`if` 和 `for`。导出的变量就是 uniform。
+- `uniforms` 按名字给它们赋值：标量是一个数，向量是它的各个分量，矩阵依次是各列（int 或 bool 也写成数字）。值变化时框会重新绘制；没给的 uniform 是 0。
+- `var Time float` 是着色器显示以来的秒数。`animated` 让它动起来：显示器每画一帧，框就画一帧。
+- 编译器会报告着色器的错误和行号，也会报告 Android 运行不了的部分，在所有平台上一视同仁：AGSL 是 GLSL ES 1.00 的语言，所以不支持无符号整数、位运算、整数取余（浮点数的 `mod` 可以）、导数，以及上下界不是常量的循环。
 
-它在 iOS 和 macOS 上使用 Metal（一个 `CAMetalLayer`），在 Android 上使用 AGSL（一个 `RuntimeShader`），在浏览器中使用 WebGL 2（程序会被翻译成 GLSL ES 3.00），在 Windows 上使用 Direct3D 11（程序会被翻译成 HLSL；没有 GPU 时用系统自带的软件光栅化器 WARP），在 Linux 上使用 OpenGL（程序会被翻译成 GLSL，在 GTK 的上下文中绘制到纹理里，再由 GTK 显示）。在 Windows 上，每一帧都在主线程之外渲染，准备好之后才显示。Linux 上如果没有 GL（没有驱动，或者设置了 `GDK_DISABLE=gl`），同一个程序会改在 CPU 上运行，分摊到多个核心，并且在主线程之外执行；这时较大或带动画的框会以较低的分辨率渲染，再放大显示。请给框设置一个 `Background`，在第一帧出来之前先顶上。
+在 iOS 和 macOS 上用的是 Metal（一个 `CAMetalLayer`），在 Android 13 及以上用的是 AGSL（一个 `RuntimeShader`；更早的版本上是一个空的框），在浏览器中是 WebGL 2（GLSL ES 3.00），在 Windows 上是 Direct3D 11（HLSL；没有 GPU 时用系统的软件光栅化器 WARP），在 Linux 上是 OpenGL（在 GTK 的上下文里画到一张由 GTK 绘制的纹理上）。在 Windows 上，每一帧都在主线程之外渲染，好了才显示。Linux 上没有 GL 时（没有驱动、`GDK_DISABLE=gl`），程序改在 CPU 上运行，分摊到所有核心，并且不在主线程上；这时大的或动画的框会以较低的分辨率渲染再放大。给框设一个 `background`，在第一帧出来之前先顶上。
 
 ## 容器
 

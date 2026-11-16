@@ -1,0 +1,234 @@
+// NFC Tags reads the link on an NFC tag, and writes one to it
+// (asuka/nfc): iOS's sheet, Android's reader mode, Web NFC in Chrome on
+// Android. On Android, a tag with a link under https://asuka.dev/nfc/
+// opens the app (asuka.toml's nfc), which shows it.
+//
+//   asuka dev --platform android examples/nfc
+
+import asuka/nfc
+
+// What the last tag held, and what happened: the app's, as a tag that
+// opens the app shows here too.
+state status = "Hold a tag near the phone after tapping Read or Write."
+state link = "" // the link read
+state about = "" // the tag's ID and technologies
+
+app {
+  // A tag that opened the app: its link (Android's filter, iOS's
+  // universal links).
+  on openURL(u) {
+    link = u
+    status = "Opened with a tag's link."
+  }
+  Tags()
+}
+
+/// Shows what a tag holds: its link, or what else it has.
+fn show(t: nfc.Tag) {
+  let id = if t.id.isEmpty { "" } else { "ID {t.id.hex(" ").upper()} · " }
+  about = "{id}{t.techs.join(", ")}"
+  if let m = t.message {
+    if let u = m.uri() {
+      link = u
+      status = "Read a link."
+    } else if let s = m.text() {
+      link = "“{s}”"
+      status = "Read a text, not a link."
+    } else {
+      link = "No link on this tag"
+      status = "{m.records.count} records, none a link."
+    }
+  } else {
+    link = "No link on this tag"
+    status = "Not an NDEF tag ({t.ndef.format})."
+  }
+}
+
+/// Says how a session ended without a tag.
+fn ended(e: Error) {
+  status = match e {
+    nfc.NfcError.canceled => "Canceled."
+    nfc.NfcError.timeout => "No tag came near in time."
+    nfc.NfcError.notAvailable => "This device can't read NFC tags."
+    nfc.NfcError.disabled => "Turn NFC on to read tags."
+    _ => e.message
+  }
+}
+
+component Tags {
+  state write = "https://asuka.dev"
+
+  let nfcState = nfc.state()
+
+  // A tag of another kind the system opened the app with.
+  task {
+    for await t in nfc.opened() { show(t) }
+  }
+
+  async fn read() {
+    status = "Hold a tag near the phone…"
+    do {
+      let session = try await nfc.start(alert: "Hold your iPhone near a tag to read it.")
+      defer { session.stop() }
+      let t = try await session.next()
+      show(t)
+      session.setAlert("Read.")
+    } catch e {
+      ended(e)
+    }
+  }
+
+  async fn writeTag() {
+    let u = write.trim()
+    if u.isEmpty {
+      status = "Type a link to write."
+      return
+    }
+    status = "Hold a tag near the phone to write it…"
+    do {
+      let session = try await nfc.start(alert: "Hold your iPhone near a tag to write it.")
+      defer { session.stop() }
+      let t = try await session.next()
+      if !t.ndef.writable {
+        session.fail("This tag can't be written.")
+        status = "This tag is {t.ndef.format}: it can't be written."
+        return
+      }
+      session.setAlert("Writing…")
+      do {
+        try await t.write(nfc.Message(records: [nfc.Record.uri(u)]))
+      } catch e {
+        session.fail("Couldn't write the tag.")
+        status = "Couldn't write: {e.message}"
+        return
+      }
+      session.setAlert("Written.")
+      link = u
+      status = "Written to the tag."
+    } catch e {
+      ended(e)
+    }
+  }
+
+  SafeArea {
+    gap: 16
+    padding: 24
+    Text("NFC Tags") { font: .largeTitle.bold() }
+    Text(if !nfcState.supported {
+      "This device can't read NFC tags."
+    } else if !nfcState.enabled {
+      "NFC is off."
+    } else {
+      "NFC is on."
+    }) { style secondary }
+    if nfcState.supported && !nfcState.enabled {
+      Button("Turn NFC On") {
+        on press { try? await nfc.openSettings() }
+      }
+    }
+    Button("Read a Tag") {
+      variant: .filled
+      on press { await read() }
+    }
+    if !link.isEmpty {
+      Column {
+        gap: 4
+        Text(link) { font: .headline }
+        Text(about) { style secondary }
+      }
+    }
+    Text("Link to write") { font: .subheadline }
+    TextField {
+      bind text: write
+      label: "Link to write"
+      placeholder: "https://…"
+      keyboard: .url
+      autocapitalize: .off
+      contentType: "url"
+    }
+    Button("Write to a Tag") {
+      variant: .tinted
+      on press { await writeTag() }
+    }
+    Text(status) { style secondary }
+  }
+}
+
+style secondary {
+  color: .secondaryLabel
+}
+
+/// The app on a fake NFC reader, which is on.
+async fn mountTags() -> TestApp {
+  let app = mount(Tags())
+  await app.waitFor("NFC is on.")
+  return app
+}
+
+test "read" {
+  let app = await mountTags()
+  let n = app.host.nfc
+  app.tap("Read a Tag")
+  await app.until("a session", () => n.session != none)
+  expect(n.session!.alert == "Hold your iPhone near a tag to read it.")
+  n.tap(nfc.FakeTag(id: bytes([0x04, 0xa1]), ndef: nfc.Message(records: [nfc.Record.uri("https://example.com/hello")]).encode()))
+  await app.waitFor("https://example.com/hello")
+  app.expect("ID 04 A1 · ndef, mifare, nfcA, mifareUltralight", "Read a link.")
+  await app.until("the session's end", () => n.session == none)
+
+  // A tag without a link.
+  app.tap("Read a Tag")
+  await app.until("a session", () => n.session != none)
+  n.tap(nfc.FakeTag(ndef: nfc.Message(records: [nfc.Record.text("hi", language: "en")]).encode()))
+  await app.waitFor("“hi”")
+  app.expect("Read a text, not a link.")
+
+  // Canceled.
+  app.tap("Read a Tag")
+  await app.until("a session", () => n.session != none)
+  n.cancel()
+  await app.waitFor("Canceled.")
+}
+
+test "write" {
+  let app = await mountTags()
+  let n = app.host.nfc
+  app.type("https://asuka.dev/nfc/42", into: "Link to write")
+  app.tap("Write to a Tag")
+  await app.until("a session", () => n.session != none)
+  let tag = nfc.FakeTag(ndef: nfc.Message(records: []).encode())
+  n.tap(tag)
+  await app.waitFor("Written to the tag.")
+  let m = try nfc.decode(tag.ndef)
+  expect(m.uri() == "https://asuka.dev/nfc/42" && tag.writes == 1)
+  app.expect("https://asuka.dev/nfc/42")
+
+  // A locked tag isn't written.
+  app.tap("Write to a Tag")
+  await app.until("a session", () => n.session != none)
+  n.tap(nfc.FakeTag(ndef: nfc.Message(records: []).encode(), readOnly: true))
+  await app.waitFor("This tag is read-only: it can't be written.")
+  expect(n.session == none && n.sessions == 2)
+}
+
+test "off" {
+  let app = await mountTags()
+  let n = app.host.nfc
+  n.setEnabled(false)
+  await app.waitFor("NFC is off.")
+  app.tap("Turn NFC On")
+  await app.until("the settings", () => n.settings == 1)
+  app.tap("Read a Tag")
+  await app.waitFor("Turn NFC on to read tags.")
+}
+
+// A tag the system opens the app with: its link through the app's
+// openURL, the others through nfc.opened().
+test "opened" {
+  let app = await mountTags()
+  app.openURL("https://asuka.dev/nfc/7")
+  await app.waitFor("https://asuka.dev/nfc/7")
+  app.host.nfc.open(nfc.FakeTag(id: bytes([1]), techs: ["iso7816", "isoDep"]))
+  await app.waitFor("No link on this tag")
+  app.expect("ID 01 · iso7816, isoDep", "Not an NDEF tag (not NDEF).")
+}

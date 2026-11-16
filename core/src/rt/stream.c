@@ -45,11 +45,14 @@ static void link_drop(ak_opaque *o) { AK_UNUSED(o); }
 
 static void producer_done(void *ctx);
 
+// The producer's task is waited for through the link (retained by the
+// wait): a wait already queued as the stream stops, or goes, runs later,
+// and finds the stream gone, or the task not its own any more.
 static void stop(ak_stream *s) {
 	if (s->task) {
 		ak_future *t = s->task;
 		s->task = NULL;
-		ak_future_unwait(t, producer_done, s);
+		if (ak_future_unwait(t, producer_done, s->link)) ak_release(s->link);
 		ak_future_cancel(t);
 		ak_release(t);
 	}
@@ -101,7 +104,10 @@ static void wake(ak_stream *s) {
 }
 
 static void producer_done(void *ctx) {
-	ak_stream *s = ctx;
+	stream_link *l = ctx;
+	ak_stream *s = l->s;
+	ak_release(l);
+	if (!s || !s->task) return;  // gone, or closed: stop let the task go
 	ak_future *t = s->task;
 	s->task = NULL;
 	if (t->state == AK_FUT_FAILED && !ak_is_cancel(t->error)) {
@@ -158,7 +164,7 @@ static void start(ak_stream *s) {
 	ak_obj *o = r.p;
 	if (o && o->tag == AK_TAG_TASK) {
 		s->task = r.p;
-		ak_future_wait(s->task, producer_done, s);
+		ak_future_wait(s->task, producer_done, ak_retain(s->link));
 	} else {
 		// A producer that didn't wait has sent all it sends.
 		if (o) ak_release(o);
