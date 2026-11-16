@@ -336,7 +336,10 @@ static void describe(ak_uitest *a, ak_buf *b, ak_fake_view *v, int depth) {
 			case 3: ak_fmt_float(b, n->f, 64); break;
 			case 4: ak_fmt_quote(b, n->s); break;
 			default:
-				for (uint32_t j = 0; j < n->s.len; j++) ak_buf_printf(b, "%02x", (uint8_t)n->s.p[j]);
+				// The first bytes: a snapshot stays readable (and diffs) when a
+				// value is long (a shape's paths).
+				for (uint32_t j = 0; j < n->s.len && j < 24; j++) ak_buf_printf(b, "%02x", (uint8_t)n->s.p[j]);
+				if (n->s.len > 24) ak_buf_printf(b, "…(%u bytes)", (unsigned)n->s.len);
 			}
 		}
 	}
