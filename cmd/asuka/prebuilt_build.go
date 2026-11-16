@@ -370,9 +370,15 @@ func writeXCFramework(out, config, name, platform string, slices []swiftSlice, l
 	var ins []string
 	for _, l := range libs {
 		ins = append(ins, l.lib)
-		// The module's directory (each architecture's interfaces), and
-		// the host's C module.
-		if err := copyFiltered(l.dir, slice, func(rel string) bool { return !strings.HasSuffix(rel, ".a") }); err != nil {
+		// Each architecture's public interface, the stable form (not the
+		// compiler's own binary module, docs or source info), and the
+		// host's C module.
+		keep := func(rel string) bool {
+			rel = filepath.ToSlash(rel)
+			return strings.HasPrefix(rel, "CAsuka/") ||
+				strings.HasSuffix(rel, ".swiftinterface") && !strings.HasSuffix(rel, ".private.swiftinterface")
+		}
+		if err := copyFiltered(l.dir, slice, keep); err != nil {
 			return "", err
 		}
 	}
