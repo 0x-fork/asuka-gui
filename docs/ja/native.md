@@ -41,13 +41,15 @@ C の API を持つライブラリや、どのみち C で書くコードなら�
 
 ## パッケージの作成
 
+ネイティブパッケージは、ネイティブモジュールを宣言したライブラリ（[パッケージ](packages.md#パッケージの作成)を参照）です。そのため `asuka new` で作ります。
+
 ```sh
-asuka native new ./battery                # Asuka、Swift、Kotlin、JavaScript、デスクトップ向けの C
-asuka native new --projects swift,android ./battery
-asuka native add web ./battery            # あとからプラットフォームのプロジェクトを追加
+asuka new --lib --native ./battery          # Asuka、Swift、Kotlin、JavaScript、デスクトップ向けの C
+asuka new --lib --native --projects swift,android ./battery
+asuka native add web ./battery              # あとからプラットフォームのプロジェクトを追加
 ```
 
-`asuka native new` は、すべてのプラットフォームでコンパイルでき、動作するパッケージを生成します。中には、各側で実装済みの `hello` メソッドが入っています。名前を変えて、中身を書いていってください。ネイティブパッケージの構成は次のとおりです。
+`asuka new --lib --native` は、すべてのプラットフォームでコンパイルでき、動作するライブラリを生成します。中には、各側で実装済みの `hello` メソッドが入っています。名前を変えて、中身を書いていってください。ネイティブパッケージの構成は次のとおりです。
 
 ```
 battery/

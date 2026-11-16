@@ -73,7 +73,9 @@ contains runs when it's installed: there are no install scripts.
 
 ## Making a package
 
-A package is a directory with an `asuka.toml` and its `.asuka` files:
+A package is a library: a directory with an `asuka.toml` and its
+`.asuka` files. `asuka new --lib ./charts` makes one, with a function and
+its test block (`asuka new` alone makes an app):
 
 ```toml
 name = "@acme/charts"

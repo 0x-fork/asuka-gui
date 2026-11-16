@@ -50,7 +50,7 @@ charts.LineChart(points) { height: 200 }
 
 ## 编写包
 
-包就是一个包含 `asuka.toml` 和 `.asuka` 文件的目录：
+包就是一个库：一个包含 `asuka.toml` 和 `.asuka` 文件的目录。`asuka new --lib ./charts` 会创建一个，里面有一个函数和它的测试块（只用 `asuka new` 创建的是应用）：
 
 ```toml
 name = "@acme/charts"

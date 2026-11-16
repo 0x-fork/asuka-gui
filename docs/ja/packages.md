@@ -50,7 +50,7 @@ tarball はどれも、使う前に `asuka.lock` に記録されたハッシュ�
 
 ## パッケージの作成
 
-パッケージは、`asuka.toml` と `.asuka` ファイルを入れたディレクトリです。
+パッケージはライブラリです。`asuka.toml` と `.asuka` ファイルを入れたディレクトリで、`asuka new --lib ./charts` で作れます。中には関数とそのテストブロックが入っています（`asuka new` だけならアプリを作ります）。
 
 ```toml
 name = "@acme/charts"

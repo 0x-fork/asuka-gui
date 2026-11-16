@@ -1,6 +1,6 @@
 // Command Asuka makes, runs and builds Asuka apps.
 //
-//	asuka new <dir>                          a project from the template
+//	asuka new [--lib [--native]] <dir>       an app, or a library (with a native module)
 //	asuka dev --platform ios <dir>           build, run on the iOS simulator or an iPhone, rebuild on save
 //	asuka dev --platform android <dir>       build, run on an Android emulator or device, rebuild on save
 //	asuka dev --platform mac <dir>           build, run on this Mac, rebuild on save
@@ -29,7 +29,7 @@ var version = "dev"
 
 func usage() {
 	fmt.Fprint(os.Stderr, `usage:
-  asuka new <dir>                           make a project from the template
+  asuka new [--lib [--native]] <dir>        make an app, or a library (with --native, its platforms' code)
   asuka dev [-p platform] [flags] [dir]     run, rebuilding on save, on platform: ios (the
                                             simulator), android (an emulator or device), mac,
                                             windows, linux or web (the browser); default on

@@ -41,13 +41,15 @@ Asuka 的组件和标准库（`asuka/...`）已经覆盖了大多数应用需要
 
 ## 创建原生包
 
+原生包就是一个声明了原生模块的库（见[包](packages.md#编写包)），所以用 `asuka new` 创建：
+
 ```sh
-asuka native new ./battery                # Asuka、Swift、Kotlin、JavaScript，以及桌面端的 C
-asuka native new --projects swift,android ./battery
-asuka native add web ./battery            # 之后再添加某个平台的项目
+asuka new --lib --native ./battery          # Asuka、Swift、Kotlin、JavaScript，以及桌面端的 C
+asuka new --lib --native --projects swift,android ./battery
+asuka native add web ./battery              # 之后再添加某个平台的项目
 ```
 
-`asuka native new` 会生成一个在所有平台上都能编译和运行的包，其中有一个 `hello` 方法，每一端都实现了它。你只需要重命名并补充内容。一个原生包的结构如下：
+`asuka new --lib --native` 会生成一个在所有平台上都能编译和运行的库，其中有一个 `hello` 方法，每一端都实现了它。你只需要重命名并补充内容。一个原生包的结构如下：
 
 ```
 battery/

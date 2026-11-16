@@ -1374,7 +1374,8 @@ asuka generate <dir>                        the typed functions of the app's cat
 asuka i18n init|add|check                   start, add languages to, and check the catalogs
 asuka check|fmt|test|run [paths]            the compiler's errors; formatting; test blocks on the fake host; one file
 asuka add|remove|install                     packages from the npm registry (asuka.lock)
-asuka native new|add|generate|check          native packages and their glue
+asuka new [--lib [--native]]                 an app, or a library (with a native module)
+asuka native add|generate|check              native packages' projects and their glue
 asuka lsp                                    the language server, on stdio
 asuka publish --platform mac|windows|linux   the desktop build, its signed update (dist/updates), uploaded: a GitHub release, S3
 asuka update keygen                         the Ed25519 key pair that signs desktop updates

@@ -64,15 +64,18 @@ from Asuka](c.md).
 
 ## Making one
 
+A native package is a library ([Packages](packages.md#making-a-package))
+that declares a native module, so `asuka new` makes one:
+
 ```sh
-asuka native new ./battery                # Asuka, Swift, Kotlin, JavaScript and C for the desktop
-asuka native new --projects swift,android ./battery
-asuka native add web ./battery            # add a platform's project later
+asuka new --lib --native ./battery          # Asuka, Swift, Kotlin, JavaScript and C for the desktop
+asuka new --lib --native --projects swift,android ./battery
+asuka native add web ./battery              # add a platform's project later
 ```
 
-`asuka native new` writes a package that compiles and runs on every
-platform, with a `hello` method that each side implements. Rename and
-fill it in. A native package looks like this:
+`asuka new --lib --native` writes a library that compiles and runs on
+every platform, with a `hello` method that each side implements. Rename
+and fill it in. A native package looks like this:
 
 ```
 battery/

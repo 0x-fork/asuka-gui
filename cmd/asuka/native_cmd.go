@@ -12,13 +12,14 @@ import (
 	"github.com/egoist/asuka/internal/nativegen"
 )
 
-// cmdNative is asuka native: generate, check, new, add.
+// cmdNative is asuka native: generate, check, add. A library with native
+// code is made by asuka new --lib --native.
 func cmdNative(args []string) error {
 	const use = `usage:
   asuka native generate [dir]          write the generated code of the module's native packages
   asuka native check [dir]             fail if a native package's generated code is stale (CI)
-  asuka native new [flags] <dir>       make a native package: its declarations, and its native code
-  asuka native add <project> [dir]     add a project to a native package: swift, android, web, desktop`
+  asuka native add <project> [dir]     add a platform's project to a library: swift, android, web, desktop
+A library with native code is made by asuka new --lib --native <dir>.`
 	if len(args) == 0 {
 		return errors.New(use)
 	}
@@ -28,7 +29,7 @@ func cmdNative(args []string) error {
 	case "check":
 		return nativeGenerateCmd(args[1:], true)
 	case "new":
-		return nativeNewCmd(args[1:])
+		return errors.New("asuka native new is asuka new --lib --native <dir> now: a native package is a library")
 	case "add":
 		return nativeAddCmd(args[1:])
 	case "-h", "--help", "help":
@@ -113,48 +114,49 @@ func nativeGenerateCmd(args []string, check bool) error {
 	return nil
 }
 
-// nativeProjects are what asuka native new and add make.
+// nativeProjects are the platforms' projects asuka new --lib --native and
+// asuka native add make.
 var nativeProjects = []string{"swift", "android", "web", "desktop"}
 
-func nativeNewCmd(args []string) error {
-	fs := newFlagSet("native new", "<dir>")
-	fs.about = `Makes a native package in dir: Asuka that declares a native module (a native
-interface), and its native code, a project of each platform's own: a Swift
-package for iOS and macOS (Package.swift, swift/), a Gradle module for Android
-(android/), JavaScript for the web (web/), and C for Windows and Linux
-(desktop/). Each implements the module; asuka native generate connects them
-(asuka dev and build do it too).`
-	only := ""
-	fs.String(&only, "projects", 0, strings.Join(nativeProjects, ","), "the projects to make")
-	if err := fs.parse(args); err != nil {
-		return err
-	}
-	dir := fs.Arg(0)
-	if dir == "" {
-		return errors.New("usage: asuka native new [--projects swift,android,web,desktop] <dir>")
-	}
-	if exists(dir) {
-		if es, _ := os.ReadDir(dir); len(es) > 0 {
-			return fmt.Errorf("%s isn't empty", dir)
+// newLib makes a library in dir: its asuka.toml and its Asuka, a function
+// and its test block; with native, a native module instead, and the
+// platforms' projects (projects) that implement it.
+func newLib(dir string, native bool, projects []string) error {
+	if native {
+		for _, p := range projects {
+			if !slices.Contains(nativeProjects, p) {
+				return fmt.Errorf("--projects: no project %q (%s)", p, strings.Join(nativeProjects, ", "))
+			}
 		}
 	}
-	projects := strings.Split(only, ",")
-	for _, p := range projects {
-		if !slices.Contains(nativeProjects, p) {
-			return fmt.Errorf("--projects: no project %q (%s)", p, strings.Join(nativeProjects, ", "))
-		}
-	}
-	name := goIdent(filepath.Base(dir))
+	name := goIdent(filepath.Base(mustAbs(dir)))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	t := upperCamelName(name)
 	toml := fmt.Sprintf("name = %q\nversion = \"0.1.0\"\n", name)
 	if err := os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(toml), 0o644); err != nil {
 		return err
 	}
-	src := fmt.Sprintf(`// The %[1]s package: a native module, %[2]s, which each platform's native
-// code implements (asuka native).
+	if !native {
+		src := fmt.Sprintf(`// The %[1]s library: what its apps import (import "%[1]s" once it's a
+// dependency: asuka add).
+
+/// Greets name.
+pub fn hello(name: string) -> string = "Hello, {name}"
+
+test "greets" {
+  expect(hello("Ada") == "Hello, Ada")
+}
+`, name)
+		if err := os.WriteFile(filepath.Join(dir, name+".asuka"), []byte(src), 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("asuka: made %s\n\n  cd %s\n  asuka test    # its test blocks\n", dir, dir)
+		return nil
+	}
+	t := upperCamelName(name)
+	src := fmt.Sprintf(`// The %[1]s library: a native module, %[2]s, which each platform's own
+// code implements (docs/native.md).
 
 /// Greets in each platform's own code.
 pub native interface %[2]s {
@@ -193,7 +195,8 @@ func nativeAddCmd(args []string) error {
 }
 
 // addNativeProject writes a project's files for the native package in
-// dir, implementing its first interface's hello (asuka native new's).
+// dir, implementing its first interface's hello (asuka new --lib
+// --native's).
 func addNativeProject(dir, project string) error {
 	abs := mustAbs(dir)
 	p, err := nativegen.LoadAsuka(abs)
