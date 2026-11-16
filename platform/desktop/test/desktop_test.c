@@ -38,6 +38,16 @@ static void test_json(void) {
 	dsk_json_free(j);
 }
 
+static void test_exists(const char *dir) {
+	CHECK(dsk_exists(dir));
+	char *p = dsk_join(dir, "nothing-here");
+	CHECK(!dsk_exists(p));
+	dsk_write_file(p, "x", 1);
+	CHECK(dsk_exists(p));
+	free(p);
+	CHECK(!dsk_exists(NULL) && !dsk_exists(""));
+}
+
 static void test_state(const char *dir) {
 	char *path = dsk_join(dir, "asuka-window.json");
 	dsk_write_file(path, "{\"x\":10,\"y\":20}", 15);  // an older file: the main window's
@@ -97,7 +107,10 @@ static void test_flyout(void) {
 int main(int argc, char **argv) {
 	test_flyout();
 	test_json();
-	if (argc > 1) test_state(argv[1]);
+	if (argc > 1) {
+		test_state(argv[1]);
+		test_exists(argv[1]);
+	}
 	fprintf(stderr, "%d failures\n", failed);
 	return failed ? 1 : 0;
 }

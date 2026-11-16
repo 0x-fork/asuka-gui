@@ -93,6 +93,8 @@ char *dsk_read_file(const char *path, size_t *len);
 // dsk_write_file writes a file whole, through a temporary file renamed
 // into place, making its directory first.
 bool dsk_write_file(const char *path, const void *data, size_t len);
+// dsk_exists reports whether a file or directory is at path.
+bool dsk_exists(const char *path);
 // dsk_mkdirs makes a directory and its parents.
 bool dsk_mkdirs(const char *path);
 // dsk_join is a, the platform's separator and b (free it).
@@ -116,7 +118,8 @@ typedef struct {
 } dsk_config;
 
 // dsk_config_load reads the settings: from ASUKA_APP_CONFIG, else
-// asuka-app.json beside the executable. Missing, it's all empty.
+// asuka-app.json beside the executable, else in an install prefix's
+// share/<exe>/ (Linux: bin/<exe>). Missing, it's all empty.
 void dsk_config_load(dsk_config *c);
 void dsk_config_free(dsk_config *c);
 
