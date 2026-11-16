@@ -191,6 +191,9 @@ func (c *Checker) componentBody(t *TypeName) {
 	if comp.Screen && prelude.FindElement("Screen") == nil {
 		c.errorf(t.Decl, "screen %s needs the Screen element, which the runtime doesn't have yet: make it a component", t.name)
 	}
+	if comp.Screen {
+		c.screenAt(t)
+	}
 	for _, m := range comp.Order {
 		switch m.Kind {
 		case StateMember, LetMember, PropMember, ParamMember:
@@ -513,7 +516,13 @@ func (c *Checker) propValue(x syntax.Expr, m *Member, what string) {
 		return
 	}
 	c.enter(CtxBinding, x, "binding")
-	c.assign(x, t, what)
+	if m.name == "href" && m.Owner != nil && m.Owner.Comp != nil && m.Owner.Comp.Native && t == String {
+		// A Button's (a NavLink's) href: a string, or a routed screen's
+		// address.
+		c.hrefArg(x, what)
+	} else {
+		c.assign(x, t, what)
+	}
 	c.leave(saved)
 }
 
@@ -550,6 +559,11 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 	cm := comp.Members["children"]
 	if cm == nil || cm.Kind != PropMember {
 		c.errorf(children[0], "%s takes no children%s", ec.Comp.name, childHint(ec.Comp))
+		return
+	}
+	if comp.Native && isRouteElement(ec) {
+		// Routes, a Route's screen, routed screens.
+		c.routeChildren(children, ec)
 		return
 	}
 	if comp.Native && !LazyChildren(ec) {
@@ -729,8 +743,13 @@ func (c *Checker) onHandler(h *syntax.OnHandler, ec *ElementCall) {
 	comp := ec.Comp.Comp
 	m := comp.Members[h.Name.Name]
 	saved := c.ctx
-	ctx := c.enter(CtxHandler, h, ec.Comp.name+".on "+h.Name.Name)
-	ctx.Async, ctx.Throws = true, true
+	builds := EventBuilds(ec, h.Name.Name)
+	kind := CtxHandler
+	if builds {
+		kind = CtxBuilder
+	}
+	ctx := c.enter(kind, h, ec.Comp.name+".on "+h.Name.Name)
+	ctx.Async, ctx.Throws = !builds, true
 	savedView, savedLoops, savedTry, savedAwait, savedHandled := c.view, c.loops, c.inTry, c.inAwait, c.handled
 	c.view, c.loops, c.inTry, c.inAwait, c.handled = false, 0, 0, 0, 0
 	if m == nil || m.Kind != EventMember {
@@ -755,9 +774,30 @@ func (c *Checker) onHandler(h *syntax.OnHandler, ec *ElementCall) {
 		c.info.Binds[h] = vars
 		ec.Handlers = append(ec.Handlers, &HandlerArg{Event: m, Handler: h})
 	}
-	c.stmts(h.Body.Items)
+	if builds {
+		// What shows instead: views, as a builder's.
+		c.view = true
+		c.viewItems(h.Body.Items, nil)
+	} else {
+		c.stmts(h.Body.Items)
+	}
 	c.view, c.loops, c.inTry, c.inAwait, c.handled = savedView, savedLoops, savedTry, savedAwait, savedHandled
 	c.leave(saved)
+}
+
+// EventBuilds reports an element's event whose handler's block is views
+// and returns the View it builds (a Boundary's error).
+func EventBuilds(ec *ElementCall, name string) bool {
+	el := ec.Comp.Comp.Element
+	if el == nil {
+		return false
+	}
+	for _, e := range el.Events {
+		if e.Name == name {
+			return e.Builds
+		}
+	}
+	return false
 }
 
 func (c *Checker) eventSuggest(comp *Component, name string) string {

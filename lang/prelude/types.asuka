@@ -543,6 +543,42 @@ struct Params {
   fn get(name: string) -> string = path[name] ?? query[name] ?? ""
 }
 
+/// What a routed screen throws, to the nearest Boundary, when its
+/// address doesn't say a parameter it needs, or says one that doesn't
+/// convert to its type.
+struct RouteError: Error {
+  message: string
+}
+
+// A routed screen's parameters, read from its Params (lang/ir's
+// routedRoute calls these).
+fn routeParam(p: Params, name: string) -> string? = p.path[name] ?? p.query[name]
+
+fn routeMissing(name: string) throws {
+  throw RouteError(message: "the address has no {name}")
+}
+
+fn routeInt(s: string, name: string) throws -> int {
+  if let n = s.toInt() { return n }
+  throw RouteError(message: "the address's {name} isn't a whole number: \"{s}\"")
+}
+
+fn routeFloat(s: string, name: string) throws -> float {
+  if let x = s.toFloat() { return x }
+  throw RouteError(message: "the address's {name} isn't a number: \"{s}\"")
+}
+
+fn routeBool(s: string, name: string) throws -> bool {
+  if s == "true" || s == "1" { return true }
+  if s == "false" || s == "0" || s == "" { return false }
+  throw RouteError(message: "the address's {name} isn't true or false: \"{s}\"")
+}
+
+fn routeCase(s: string, name: string, cases: [string]) throws -> int {
+  if let i = cases.index(c => c == s) { return i }
+  throw RouteError(message: "the address's {name} isn't one of {cases.joined(separator: ", ")}: \"{s}\"")
+}
+
 /// A text field of an alert.
 struct AlertField {
   text: string = ""        // what it starts with

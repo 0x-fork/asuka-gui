@@ -822,7 +822,12 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 	b.variants(v, ec)
 	for _, h := range ec.Handlers {
 		ev := prelude.EventID(name, h.Event.Name())
-		clos := b.handler(h.Handler, h.Event)
+		var clos int
+		if check.EventBuilds(ec, h.Event.Name()) {
+			clos = b.buildingHandler(h.Handler, h.Event)
+		} else {
+			clos = b.handler(h.Handler, h.Event)
+		}
 		b.callBTo(uiOn, bc.None, v, b.konst(int64(ev)), clos)
 	}
 	for _, bd := range ec.Binds {
@@ -841,8 +846,19 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 		b.release(mark)
 		return v
 	}
+	rb := b.l.info.RouteBuilders[ec]
 	for _, ch := range ec.Children {
 		mark := b.mark()
+		if rb != nil && ch == rb.Item {
+			b.release(mark)
+			continue
+		}
+		if tn := b.l.info.RoutedScreens[ch]; tn != nil {
+			// A routed screen: a Route of its pattern.
+			b.callBTo(uiAdd, bc.None, v, b.routedRoute(tn))
+			b.release(mark)
+			continue
+		}
 		if f, ok := ch.(*syntax.ForStmt); ok && b.l.info.Fors[f] != nil && b.l.info.Fors[f].Lazy {
 			// Rows the element builds only while they're on screen.
 			items, key, row, kk := b.forParts(f)
@@ -859,6 +875,12 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 			b.callBTo(uiAdd, bc.None, v, cv)
 			b.f.Place(skip)
 		}
+		b.release(mark)
+	}
+	if rb != nil {
+		// Its screen: built for each of its screens, with their Params.
+		mark := b.mark()
+		b.callBTo(uiLazy, bc.None, v, b.routeBuilder(rb))
 		b.release(mark)
 	}
 	return v
@@ -915,6 +937,27 @@ func (b *fb) handler(h *syntax.OnHandler, ev *check.Member) int {
 		if ctx.Awaits {
 			c.f.Flags |= bc.FAsync
 		}
+	}})
+}
+
+// buildingHandler makes the handler of an event that Builds (a
+// Boundary's error): it takes the event's values and returns the View
+// its block's views make.
+func (b *fb) buildingHandler(h *syntax.OnHandler, ev *check.Member) int {
+	ctx := b.l.info.Ctxs[h]
+	vars := b.l.info.Binds[h]
+	params := make([]*check.Var, len(ev.Params))
+	pkinds := make([]bc.Kind, len(ev.Params))
+	for i, p := range ev.Params {
+		pkinds[i] = b.kind(p.Type)
+		if i < len(vars) {
+			params[i] = vars[i]
+		}
+	}
+	return b.makeClosure(closure{name: "on " + h.Name.Name, ctxs: []*check.FuncCtx{ctx}, params: params, pkinds: pkinds, ret: bc.KRef, throws: true, body: func(c *fb) {
+		c.ctx = ctx
+		v := c.viewsOf(h.Body.Items)
+		c.emit(op("RET"), v)
 	}})
 }
 

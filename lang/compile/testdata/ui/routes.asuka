@@ -1,0 +1,135 @@
+// Routes: a Router's Routes, a Route's screen (p => View), routed
+// screens (screen X at "pattern", their parameters read from the
+// address), navigate and hrefs of routed screens' calls, guards,
+// redirects and sheets; the history a browser keeps of them.
+
+enum Sort { newest, oldest }
+
+store Session {
+  state user = ""
+}
+
+app {
+  provide Session()
+  Mail()
+}
+
+component Mail {
+  use session: Session
+
+  Router(initial: "/inbox") {
+    Route("/", redirect: "/inbox")
+    Route(layout: .tabs) {
+      Route("/inbox", layout: .stack, title: "Inbox", icon: "tray") {
+        Inbox
+        Thread
+        Route(":id/reply", sheet: true) { p => Reply(id: p.get("id")) }
+      }
+      Route("/settings", layout: .stack, title: "Settings", icon: "gear") {
+        Route("") { _ => Settings() }
+        Route("account", guard: to => if session.user.isEmpty() { "/settings/sign-in" } else { "" }) { _ => Account() }
+        Route("sign-in") { _ => SignIn() }
+      }
+    }
+  }
+}
+
+screen Inbox at "" {
+  title: "Inbox"
+  Column {
+    Button("Open 7") { on press { navigate(Thread(id: 7)) } }
+    Button("Oldest 8") { href: Thread(id: 8, sort: .oldest) }
+    Button("Bad") { on press { navigate("/inbox/x") } }
+  }
+}
+
+screen Thread(id: int, sort: Sort = .newest) at ":id" {
+  title: "Thread {id}"
+  Column {
+    Text("Thread {id}, {sort}")
+    Button("Reply") { href: "/inbox/{id}/reply" }
+    Button("Next") { on press { replace("/inbox/{id + 1}") } }
+  }
+}
+
+screen Reply(id: string) {
+  title: "Reply to {id}"
+  Text("Replying to {id}")
+}
+
+screen Settings {
+  title: "Settings"
+  Button("Account") { href: "/settings/account" }
+}
+
+screen SignIn {
+  use session: Session
+  title: "Sign In"
+  Button("Sign in as Ada") {
+    on press {
+      session.user = "Ada"
+      navigate("/settings/account")
+    }
+  }
+}
+
+screen Account {
+  use session: Session
+  title: "Account"
+  Text("Signed in as {session.user}")
+}
+
+test "redirects, routed screens and their parameters" {
+  let app = mount(Mail(), provide: Session(), at: "/")
+  expect(app.href == "/inbox", "at {app.href}")
+  app.tap("Open 7")
+  expect(app.href == "/inbox/7", "at {app.href}")
+  app.expect("Thread 7, newest")
+  app.back()
+  app.tap("Oldest 8")
+  expect(app.href == "/inbox/8?sort=oldest", "at {app.href}")
+  app.expect("Thread 8, oldest")
+  app.tap("Next")
+  expect(app.href == "/inbox/9", "at {app.href}")
+  app.expect("Thread 9, newest")
+  app.tap("Reply")
+  expect(app.href == "/inbox/9/reply", "at {app.href}")
+  app.expect("Replying to 9")
+  app.dismiss()
+  expect(app.href == "/inbox/9", "at {app.href}")
+}
+
+test "a link opens its screen, with the stack under it" {
+  let app = mount(Mail(), provide: Session(), at: "/inbox/18")
+  app.expect("Thread 18, newest")
+  app.back()
+  app.expect("Open 7")
+}
+
+test "guards and the history" {
+  let app = mount(Mail(), provide: Session())
+  app.tap("Settings")
+  app.tap("Account")
+  expect(app.href == "/settings/sign-in", "at {app.href}")
+  app.tap("Sign in as Ada")
+  expect(app.href == "/settings/account", "at {app.href}")
+  app.expect("Signed in as Ada")
+  let (hrefs, at) = app.history()
+  expect(hrefs.count() >= 2 && at == hrefs.count() - 1, "history {hrefs} at {at}")
+  app.goBack()
+  app.goForward()
+  expect(app.href == "/settings/account", "at {app.href}")
+}
+
+component Guarded {
+  Boundary {
+    Mail()
+    on error(e, reset) { Text("Error: {e.message}") }
+  }
+}
+
+test "a parameter that doesn't convert throws a RouteError to the Boundary" {
+  let app = mount(Guarded(), provide: Session())
+  app.tap("Bad")
+  app.expect("Error: the address's id isn't a whole number: \"x\"")
+}

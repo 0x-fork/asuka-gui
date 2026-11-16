@@ -41,12 +41,19 @@ type Checker struct {
 	view      bool // checking view items
 
 	chained map[syntax.Expr]bool // the members and calls of a ?. chain
-	nextTP  int
-	loadOK  bool
-	inDefer int
-	free    map[*TypeParam]bool
-	spawns  []*FuncCtx
-	errT    *TypeName // Error
+	// The Routes around the views checked: the Router, the path the
+	// Routes' paths make (routeKnown: they're constants); and the hrefs
+	// made of routed screens' calls, resolved once every Router is.
+	router     *ElementCall
+	routePath  string
+	routeKnown bool
+	hrefs      []*Href
+	nextTP     int
+	loadOK     bool
+	inDefer    int
+	free       map[*TypeParam]bool
+	spawns     []*FuncCtx
+	errT       *TypeName // Error
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
@@ -106,6 +113,7 @@ func (c *Checker) CheckPackage(path, name string, files []*syntax.SourceFile, im
 func (c *Checker) Program(root *Package) *Program {
 	c.finalize()
 	c.jsonGenerics()
+	c.routeHrefs()
 	pkgs := append([]*Package{c.prelude}, c.pkgs...)
 	diags := append([]Diagnostic{}, c.diags...)
 	sort.SliceStable(diags, func(i, j int) bool {
@@ -169,7 +177,7 @@ func (c *Checker) initUniverse() {
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream},
 		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {"shader", BShader},
-		{"never", BNever},
+		{"never", BNever}, {"navigate", BNavigate}, {"replace", BReplace},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
 	}

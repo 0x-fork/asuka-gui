@@ -147,6 +147,13 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = positional(0, "nothing")
 		call.Result = Void
 		c.callEffects(e, "never", true, false)
+	case BNavigate, BReplace:
+		args := positional(1, "an address: "+b.name+"(\"/inbox\"), or a routed screen's: "+b.name+"(Thread(id: 7))")
+		if len(args) > 0 {
+			c.hrefArg(args[0], "the address "+b.name+" goes to")
+		}
+		call.Args = args
+		call.Result = Void
 	case BPush, BPresent:
 		args := positional(1, "a view: "+b.name+"(Screen())")
 		if len(args) > 0 {

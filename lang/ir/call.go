@@ -18,6 +18,9 @@ func (b *fb) call(e *syntax.CallExpr, dst int) int {
 func (b *fb) callDiscard(e *syntax.CallExpr) { b.call1(e, -1, true) }
 
 func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
+	if h := b.l.info.Hrefs[e]; h != nil {
+		return b.href(h, dst)
+	}
 	call := b.l.info.Calls[e]
 	if call == nil {
 		b.l.errorf(e, "internal: no call info")
@@ -549,6 +552,10 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 			at = b.value(x, -1)
 		}
 		return b.copyTo(b.callB(uiTestMount, bc.KRef, bl, platform, at), dst)
+	case check.BNavigate:
+		return b.navigate(call, 0)
+	case check.BReplace:
+		return b.navigate(call, 2)
 	case check.BPush, check.BPresent:
 		bl := b.builder(call.Args[0])
 		name := uiPush

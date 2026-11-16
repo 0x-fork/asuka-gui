@@ -690,30 +690,14 @@ native component Window() {
   event closeRequest
 }
 
-/// shows its routes' screens from the address the app is at: its children are Routes
-native component Router() {
+/// shows its routes' screens from the address the app is at: its children are Routes. Router(initial: "/inbox") { … }
+native component Router(initial: string = "/") {
   prop children: View? = none
-  /// where it starts when nothing else says (a link the app was opened with, the address its window was left at)
-  prop initial: string = "/"
 }
 
-/// maps a path to a screen (its content, built with its parameters), or holds routes
-native component Route(path: string) {
+/// maps a path to a screen, or holds routes: Route("/inbox", layout: .stack, title: "Inbox") { Inbox; Thread; Route(":id/reply", sheet: true) { p => Reply(id: p.get("id")) } }. Its block holds its child Routes, its screen (p => View, built with its Params), or routed screens named alone (screen Thread(id: int) at ":id"), a Route of their pattern each
+native component Route(path: string = "", layout: RouteLayout = .group, title: string = "", icon: string = "", badge: string = "", initial: string = "", redirect: string = "", sheet: bool = false, detents: [Detent] = [], grabber: bool = false, fullScreen: bool = false, guard: (fn(string) -> string)? = none) {
   prop children: View? = none
-  /// a navigator of its child routes, or a group
-  prop layout: RouteLayout
-  prop title: string
-  prop icon: string
-  prop badge: string
-  /// the child a navigator starts with (a stack's first screen, under the one a link names)
-  prop initial: string
-  /// sends whoever comes here to this href, its parameters filled in
-  prop redirect: string
-  /// presented in a sheet over its navigator
-  prop sheet: bool
-  prop detents: [Detent]
-  /// asked before its screens show: "" lets the user in, an href sends them there
-  prop guard: fn(string) -> string
 }
 
 /// an error boundary: an error its content doesn't catch shows on error's views

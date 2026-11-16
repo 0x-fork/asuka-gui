@@ -38,6 +38,14 @@ type Info struct {
 	// sets, handlers, bindings and slots in its block, its views its
 	// children (made by the checker; no source of its own).
 	ScreenRoots map[*TypeName]*syntax.CallExpr
+	// Routes: a Route's screen builder (p => View); the routed screens
+	// named in a Route's block (a Route of their pattern each); where
+	// the Routers route each routed screen; the hrefs made of routed
+	// screens' calls (navigate(Thread(id: 7))).
+	RouteBuilders map[*ElementCall]*RouteBuilder
+	RoutedScreens map[syntax.Item]*TypeName
+	ScreenRoutes  map[*TypeName][]*ScreenRoute
+	Hrefs         map[*syntax.CallExpr]*Href
 	// Shaders: shader("""…""")'s programs, compiled.
 	Shaders map[*syntax.CallExpr][]byte
 
@@ -53,29 +61,33 @@ type Info struct {
 
 func newInfo() *Info {
 	return &Info{
-		Types:       map[syntax.Expr]Type{},
-		Uses:        map[*syntax.Ident]Object{},
-		Defs:        map[*syntax.Ident]Object{},
-		Calls:       map[*syntax.CallExpr]*Call{},
-		Selections:  map[syntax.Expr]*Selection{},
-		StoreSelf:   map[syntax.Expr]*TypeName{},
-		Convs:       map[syntax.Expr]Type{},
-		Ctxs:        map[syntax.Node]*FuncCtx{},
-		Cases:       map[*syntax.CasePat]*Case{},
-		Catches:     map[*syntax.CatchClause]*CatchInfo{},
-		Fors:        map[*syntax.ForStmt]*ForInfo{},
-		Elements:    map[*syntax.CallExpr]*ElementCall{},
-		Matches:     map[syntax.Node]*MatchInfo{},
-		Lets:        map[*syntax.LetDecl]Type{},
-		Emits:       map[*syntax.EmitStmt]*Member{},
-		Binds:       map[*syntax.OnHandler][]*Var{},
-		Trailing:    map[*syntax.CallExpr]*syntax.LambdaExpr{},
-		Shaders:     map[*syntax.CallExpr][]byte{},
-		SlotCalls:   map[*syntax.SlotItem]*syntax.CallExpr{},
-		BodyCalls:   map[syntax.Item]bool{},
-		ScreenRoots: map[*TypeName]*syntax.CallExpr{},
-		Imports:     map[*syntax.ImportDecl]*Package{},
-		Expected:    map[syntax.Expr]Type{},
+		Types:         map[syntax.Expr]Type{},
+		Uses:          map[*syntax.Ident]Object{},
+		Defs:          map[*syntax.Ident]Object{},
+		Calls:         map[*syntax.CallExpr]*Call{},
+		Selections:    map[syntax.Expr]*Selection{},
+		StoreSelf:     map[syntax.Expr]*TypeName{},
+		Convs:         map[syntax.Expr]Type{},
+		Ctxs:          map[syntax.Node]*FuncCtx{},
+		Cases:         map[*syntax.CasePat]*Case{},
+		Catches:       map[*syntax.CatchClause]*CatchInfo{},
+		Fors:          map[*syntax.ForStmt]*ForInfo{},
+		Elements:      map[*syntax.CallExpr]*ElementCall{},
+		Matches:       map[syntax.Node]*MatchInfo{},
+		Lets:          map[*syntax.LetDecl]Type{},
+		Emits:         map[*syntax.EmitStmt]*Member{},
+		Binds:         map[*syntax.OnHandler][]*Var{},
+		Trailing:      map[*syntax.CallExpr]*syntax.LambdaExpr{},
+		Shaders:       map[*syntax.CallExpr][]byte{},
+		SlotCalls:     map[*syntax.SlotItem]*syntax.CallExpr{},
+		BodyCalls:     map[syntax.Item]bool{},
+		ScreenRoots:   map[*TypeName]*syntax.CallExpr{},
+		RouteBuilders: map[*ElementCall]*RouteBuilder{},
+		RoutedScreens: map[syntax.Item]*TypeName{},
+		ScreenRoutes:  map[*TypeName][]*ScreenRoute{},
+		Hrefs:         map[*syntax.CallExpr]*Href{},
+		Imports:       map[*syntax.ImportDecl]*Package{},
+		Expected:      map[syntax.Expr]Type{},
 	}
 }
 
