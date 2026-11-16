@@ -1014,13 +1014,13 @@ component Glow(level: float) {
 It's Metal on iOS and macOS (a `CAMetalLayer`), AGSL on Android 13 and
 later (a `RuntimeShader`; an empty box before), WebGL 2 in a browser
 (GLSL ES 3.00), Direct3D 11 on Windows (HLSL; WARP, the system's
-software rasterizer, where there's no GPU) and OpenGL on Linux (drawn
-in a context of GTK's into a texture GTK draws). On Windows a frame
-renders off the main thread and shows when it's ready. Linux without GL
-(no driver, `GDK_DISABLE=gl`) runs the program on the CPU instead,
-across the cores and off the main thread, a large or animated box at a
-fraction of its resolution, scaled up. Give the box a `background` that
-stands in until the first frame.
+software rasterizer, where there's no GPU) and OpenGL on Linux (a
+`GtkGLArea`; Mesa's software rasterizer where there's no GPU). Each
+platform's program is compiled with the app; the device compiles only
+its own shading language's. On Windows a frame renders off the main
+thread and shows when it's ready. Linux without GL (`GDK_DISABLE=gl`)
+shows an empty box. Give the box a `background` that stands in until
+the first frame.
 
 ## Containers
 

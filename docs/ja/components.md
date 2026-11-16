@@ -646,7 +646,7 @@ component Glow(level: float) {
 - `var Time float` はシェーダーが表示されてからの秒数です。`animated` で動かすと、ディスプレイが描くフレームごとにボックスを描きます。
 - コンパイラーはシェーダーのエラーを行番号付きで報告し、Android で実行できない部分もすべてのプラットフォームで同じように報告します。AGSL は GLSL ES 1.00 の言語なので、符号なし整数、ビット演算、整数の剰余（float の `mod` は使えます）、導関数、上下限が定数でないループは使えません。
 
-iOS と macOS では Metal（`CAMetalLayer`）、Android 13 以降では AGSL（`RuntimeShader`。それより前は空のボックス）、ブラウザーでは WebGL 2（GLSL ES 3.00）、Windows では Direct3D 11（HLSL。GPU がないときはシステムのソフトウェアラスタライザー WARP）、Linux では OpenGL（GTK のコンテキストで、GTK が描くテクスチャーに描画）です。Windows ではフレームをメインスレッドの外で描き、できあがったものから表示します。GL のない Linux（ドライバーがない、`GDK_DISABLE=gl`）では、プログラムを代わりに CPU で、すべてのコアに分けてメインスレッドの外で実行し、大きいボックスやアニメーションするボックスは解像度を下げて描いてから拡大します。最初のフレームが出るまでの代わりに、ボックスに `background` を付けておいてください。
+iOS と macOS では Metal（`CAMetalLayer`）、Android 13 以降では AGSL（`RuntimeShader`。それより前は空のボックス）、ブラウザーでは WebGL 2（GLSL ES 3.00）、Windows では Direct3D 11（HLSL。GPU がないときはシステムのソフトウェアラスタライザー WARP）、Linux では OpenGL（`GtkGLArea`。GPU がないときは Mesa のソフトウェアラスタライザー）です。各プラットフォームのプログラムはアプリと一緒にコンパイルされ、デバイスでコンパイルされるのはそのプラットフォームのシェーディング言語だけです。Windows ではフレームをメインスレッドの外で描き、できあがったものから表示します。GL のない Linux（`GDK_DISABLE=gl`）では、空のボックスになります。最初のフレームが出るまでの代わりに、ボックスに `background` を付けておいてください。
 
 ## コンテナー
 

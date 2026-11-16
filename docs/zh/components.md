@@ -671,7 +671,7 @@ component Glow(level: float) {
 - `var Time float` 是着色器显示以来的秒数。`animated` 让它动起来：显示器每画一帧，框就画一帧。
 - 编译器会报告着色器的错误和行号，也会报告 Android 运行不了的部分，在所有平台上一视同仁：AGSL 是 GLSL ES 1.00 的语言，所以不支持无符号整数、位运算、整数取余（浮点数的 `mod` 可以）、导数，以及上下界不是常量的循环。
 
-在 iOS 和 macOS 上用的是 Metal（一个 `CAMetalLayer`），在 Android 13 及以上用的是 AGSL（一个 `RuntimeShader`；更早的版本上是一个空的框），在浏览器中是 WebGL 2（GLSL ES 3.00），在 Windows 上是 Direct3D 11（HLSL；没有 GPU 时用系统的软件光栅化器 WARP），在 Linux 上是 OpenGL（在 GTK 的上下文里画到一张由 GTK 绘制的纹理上）。在 Windows 上，每一帧都在主线程之外渲染，好了才显示。Linux 上没有 GL 时（没有驱动、`GDK_DISABLE=gl`），程序改在 CPU 上运行，分摊到所有核心，并且不在主线程上；这时大的或动画的框会以较低的分辨率渲染再放大。给框设一个 `background`，在第一帧出来之前先顶上。
+在 iOS 和 macOS 上用的是 Metal（一个 `CAMetalLayer`），在 Android 13 及以上用的是 AGSL（一个 `RuntimeShader`；更早的版本上是一个空的框），在浏览器中是 WebGL 2（GLSL ES 3.00），在 Windows 上是 Direct3D 11（HLSL；没有 GPU 时用系统的软件光栅化器 WARP），在 Linux 上是 OpenGL（一个 `GtkGLArea`；没有 GPU 时用 Mesa 的软件光栅化器）。每个平台的程序都随应用一起编译，设备上只编译它自己的着色语言。在 Windows 上，每一帧都在主线程之外渲染，好了才显示。Linux 上没有 GL 时（`GDK_DISABLE=gl`），显示的是一个空的框。给框设一个 `background`，在第一帧出来之前先顶上。
 
 ## 容器
 
