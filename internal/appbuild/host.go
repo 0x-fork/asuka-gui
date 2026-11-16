@@ -250,25 +250,3 @@ func copyExe(src, dst string) error {
 	os.Remove(dst)
 	return os.WriteFile(dst, b, 0o755)
 }
-
-// MacHost writes the host for every Mac (MacArchs) at out, one universal
-// binary.
-func MacHost(out string, o HostOptions) error {
-	work, err := os.MkdirTemp("", "asuka-mac-host-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(work)
-	var parts []string
-	for _, arch := range MacArchs {
-		p := filepath.Join(work, arch, "asuka-host")
-		if err := Host(cbuild.Target{OS: "darwin", Arch: arch}, p, o); err != nil {
-			return err
-		}
-		parts = append(parts, p)
-	}
-	if err := lipo(parts, out); err != nil {
-		return err
-	}
-	return os.Chmod(out, 0o755)
-}

@@ -1,4 +1,4 @@
-//go:build !darwin && !windows && !linux
+//go:build !windows && !linux
 
 package apphost
 
@@ -9,6 +9,7 @@ import (
 )
 
 func run() {
+	// The Mac's host is Swift (platform/macos), an app's own executable.
 	fmt.Fprintf(os.Stderr, "asuka-host: no desktop host for %s\n", runtime.GOOS)
 	os.Exit(1)
 }

@@ -1,3 +1,5 @@
+//go:build linux || windows
+
 // Package hosttest runs Asuka apps on a desktop host in its own tests, as
 // the host runs them: the C core (built once for this computer, as a
 // library, and loaded through host/bridge), an app compiled from Asuka

@@ -20,11 +20,12 @@ import (
 	"github.com/egoist/asuka/std"
 )
 
-// Desktop apps: the executable is the desktop host (cmd/asuka-host: Go,
-// AppKit, Win32 or GTK, the same for every app), with the C core beside
-// it (libasuka: libasuka.dylib in a Mac app's Frameworks, asuka.dll
-// beside the .exe, libasuka.so in a Linux prefix's lib/<exe>) and the
-// app's settings (internal/boot's ConfigFile). A release's core has the
+// Desktop apps: on a Mac the executable is the Swift host with the core
+// linked in (mac_swift.go); on Windows and Linux the desktop host
+// (cmd/asuka-host: Go, Win32 or GTK, the same for every app), with the C
+// core beside it (asuka.dll beside the .exe, libasuka.so in a Linux
+// prefix's lib/<exe>); each with the app's settings (internal/boot's
+// ConfigFile). A release's core has the
 // app compiled into it; asuka dev's player's has none, and loads the
 // bytecode the CLI sends (ASUKA_DEV).
 //

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/egoist/asuka/internal/cbuild"
@@ -96,42 +95,3 @@ func lib(t cbuild.Target, kind cbuild.LibKind, m *bytecode.Module, c *bytecode.C
 
 // MacArchs are a Mac app's architectures: a universal binary's.
 var MacArchs = []string{"arm64", "amd64"}
-
-// MacLib builds libasuka.dylib for every Mac (MacArchs) into out, one
-// universal binary (lipo), as Lib.
-func MacLib(m *bytecode.Module, out string) error {
-	return MacPlayerLib(m, nil, out)
-}
-
-// MacPlayerLib is MacLib for a player (m nil) with the C c calls.
-func MacPlayerLib(m *bytecode.Module, c *bytecode.C, out string) error {
-	work, err := os.MkdirTemp("", "asuka-mac-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(work)
-	var parts []string
-	for _, arch := range MacArchs {
-		p := filepath.Join(work, arch, "libasuka.dylib")
-		cc := c
-		if m != nil {
-			cc = m.C
-		}
-		if err := lib(cbuild.Target{OS: "darwin", Arch: arch}, cbuild.Shared, m, cc, p); err != nil {
-			return err
-		}
-		parts = append(parts, p)
-	}
-	return lipo(parts, out)
-}
-
-func lipo(parts []string, out string) error {
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-		return err
-	}
-	args := append([]string{"lipo", "-create", "-output", out}, parts...)
-	if b, err := exec.Command("xcrun", args...).CombinedOutput(); err != nil {
-		return fmt.Errorf("lipo: %v\n%s", err, b)
-	}
-	return nil
-}
