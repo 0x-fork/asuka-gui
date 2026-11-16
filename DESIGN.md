@@ -2532,6 +2532,17 @@ How the Linux host maps Asuka (`platform/linux`, C17):
 - Debug automation, as on macOS and Windows: `ASUKA_SCRIPT` runs steps,
   then `ASUKA_SNAPSHOT=file.png` renders each window to a PNG
   (`ASUKA_DUMP=1`: the view tree beside it) and quits.
+- The update module (Updates): `info` from where the executable started
+  (an install prefix: `bin/<exe>` with `share/<exe>/`; Flatpak, Snap,
+  AppImage and the system's prefixes managed), `download` and `next`
+  through libsoup (a long poll answered as the progress moves by 1%, 64
+  KB while the size is unknown), `cancel`, and `install`, which swaps the
+  prefix's files and links for the staged tree's (`.asuka-files` naming
+  them), puts back what it moved if a rename fails, and runs the
+  desktop's cache tools. `relaunch()` starts the executable at the path
+  it started from with `ASUKA_RELAUNCH_WAIT`, which the new process waits
+  on before it takes the single instance; at launch the host removes the
+  `.asuka-update-*` and `.*.old-*` an update left.
 - Tests (`go test ./platform/linux`) build apps (testdata/*.asuka) into
   the executable an app ships and drive real GTK windows; they need a
   display and a session bus (`xvfb-run -a dbus-run-session`), and skip
