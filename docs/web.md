@@ -1,13 +1,11 @@
 # The web
 
-The same app runs in a browser: Asuka's core compiled to WebAssembly
-(the app compiled into it, or its bytecode loaded by it), its views the
-page's DOM. The web is one of Asuka's platforms beside iOS, Android, the
-Mac, Windows and Linux, from the same code. Each view the core makes is
-an element placed at the frame the core laid out, as each native host
-places its widgets, so the layout is Asuka's own (flexbox and grid, in
-the core), the same on every platform; leaves are measured by the real
-elements, as the native hosts measure theirs. Controls are the
+The same app runs in a browser, as WebAssembly, its views the page's
+DOM. The web is one of Asuka's platforms beside iOS, Android, the Mac,
+Windows and Linux, from the same code. Each view is an element placed
+where Asuka's layout (flexbox and grid) puts it, the same on every
+platform; text and controls are measured by the real elements, as on
+the other platforms. Controls are the
 browser's own (`<button>`, `<input>`, `<select>`, `<progress>`,
 `<dialog>`), so keyboard handling, focus, autofill, spelling and screen
 readers come with them.
@@ -17,20 +15,18 @@ asuka dev --platform web examples/counter       # serves it and opens it in your
 asuka build --platform web examples/counter     # a static site, in examples/counter/dist/web
 ```
 
-Both build the core as WebAssembly with [Zig](https://ziglang.org/download)
-(`zig cc`), which has to be installed.
+Both need [Zig](https://ziglang.org/download) installed, to build for
+WebAssembly.
 
 What follows says what the web does, and, where a browser can't do what
 a phone does, what happens instead.
 
 ## asuka dev --platform web
 
-`asuka dev --platform web` builds the player once (the core as
-WebAssembly, `asuka.wasm`, with no app in it), serves the page at
-`http://localhost:8790/` (or a free port) and opens it. The page loads
-the core, then the app's bytecode from the dev server. Each save
+`asuka dev --platform web` builds the player once, serves the page at
+`http://localhost:8790/` (or a free port) and opens it. Each save
 compiles the app again, in milliseconds, and the page loads the new
-module in place, keeping the app's state, as the other platforms'
+version in place, keeping the app's state, as the other platforms'
 players do; the terminal reports each reload (`asuka: reloaded in 1.1
 ms, 3 states kept`). The app's output and the page's errors print in the
 terminal; a save that doesn't compile shows its errors over the page
@@ -45,20 +41,16 @@ The flags, beside `asuka dev`'s own (`--lang`, `--dir`, `-v`):
 - `--no-open`: don't open the browser.
 - `--once`: serve, without watching.
 
-The dev server also takes the GUI tests' commands (`POST
-/__asuka/automation`, a command a line: `tap Add`, `dump`), which the
-page runs (`platform/web/src/automation.js`).
-
 ## asuka build --platform web
 
-`asuka build --platform web` compiles the app to C, builds it with the
-core as WebAssembly, and makes a static site in `dist/web`:
+`asuka build --platform web` builds the app as WebAssembly and makes a
+static site in `dist/web`:
 
 - `index.html` and `manifest.webmanifest` (a web app manifest, so a
   browser offers to install the app; its icons from `asuka.toml`'s
   `icon`, with a favicon and iOS's home screen icon);
-- the core with the app, `asuka.<digest>.wasm`, optimized and stripped;
-- the web host's files in `asuka/<digest>/` (with its plugins' files,
+- the app, `asuka.<digest>.wasm`, optimized and stripped;
+- Asuka's own files in `asuka/<digest>/` (with its plugins' files,
   as SQLite's WebAssembly build, for an app that uses them), and its
   native packages' scripts;
 - the app's service worker, `sw.<digest>.js`, beside `index.html` (its
@@ -82,9 +74,9 @@ under it, and a router's hrefs are the page's addresses under it
 Serve the folder from any web server or CDN: the files named by their
 content's digest change name when they change, so they can be cached for
 good, and only `index.html` must be fetched again. Serve `.wasm` as
-`application/wasm`. The core with a counter is about 300 KB of
-WebAssembly, 115 KB gzipped; the app's own code adds to that, the
-web host's JavaScript beside it.
+`application/wasm`. A counter is about 300 KB of WebAssembly, 115 KB
+gzipped, with Asuka's JavaScript beside it; an app's own code adds to
+that.
 
 ## Addresses and history
 
@@ -177,8 +169,8 @@ The environment a web app sees (`environment()`) is the browser's:
   buttons a list. A `Popover` and a menu are popovers next to what they
   point at. A `Window` is a panel in the page the user can move and
   resize.
-- A `List` is virtualized by the host, as on the Mac, Windows and
-  Linux: only the rows
+- A `List` is virtualized, as on the Mac, Windows and Linux: only the
+  rows
   in view (and half a screen around them) are bound; sections' headers
   stick; a chat's list stays at its end. Its rows' swipe actions are
   their context menu (a right-click, or a long press).
@@ -186,8 +178,8 @@ The environment a web app sees (`environment()`) is the browser's:
   browser), `Video` a `<video>`, `WebView` an `<iframe>` (see
   [Web views](#web-views)), `Canvas` a 2D
   canvas, `Shape` an SVG path, `Shader` WebGL 2 (the Kage program
-  translated to GLSL ES 3.00), `Symbol` the Material Symbol the Android
-  host draws for the SF Symbol name.
+  translated to GLSL ES 3.00), `Symbol` the Material Symbol Android
+  shows for the SF Symbol name.
 - `animate` animates frames and visual props with the Web Animations
   API (springs as CSS `linear()` curves); enter and exit transitions and
   shared elements (`shared`) work as on iOS.
@@ -203,12 +195,9 @@ The environment a web app sees (`environment()`) is the browser's:
 ## The app's files
 
 The app's directory (`fs.appDir()`), with what `std/fs` writes there
-and the crash record, is kept: the page has a file system in memory,
-which the core's file calls reach (as WASI's), the directory's files
-loaded from the browser's storage (IndexedDB) before the app starts and
-written back a moment after they change (a large file in chunks of
-64 KiB: only the chunks that changed), and as the page is hidden or
-closed. Tabs of the app share them: a tab's writes reach the others,
+and the crash record, is kept: its files are loaded from the browser's
+storage (IndexedDB) before the app starts and written back a moment
+after they change, and as the page is hidden or closed. Tabs of the app share them: a tab's writes reach the others,
 which read the files again (a file a tab changed and hasn't written yet
 stays its own, until it's written: the last tab to write a file keeps
 it). What the user drops, pastes or picks is copied
@@ -238,8 +227,6 @@ build --platform web` ship with the apps that import `std/sqlite`). It
 runs in a worker of the page's, which keeps the databases of the app's
 data directory in the browser's origin private file system: a database
 isn't loaded into memory whole, and a commit is on disk when it returns.
-Each statement is a message to the worker and its answer, its rows
-decoded by the core as on every platform.
 
 What differs:
 
@@ -274,13 +261,12 @@ What differs:
 A page of your own that embeds an app (below) passes `libs`, the URLs of
 the app's plugins' files by their names, to `start`: for SQLite,
 `{"asqlite.wasm": "asuka/<digest>/lib/asqlite.wasm"}`, the build's file. The
-worker's script is the host's (`sqlite-worker.js`, beside `asuka.js`).
+worker's script is Asuka's (`sqlite-worker.js`, beside `asuka.js`).
 
 ## Native modules
 
-The standard library's and the platform SDK's packages reach the
-browser through the web host: each package's `web/` JavaScript, or the host's own modules
-(`platform/web/src/modules`) for what every app has. In a browser:
+What the standard library's and the platform SDK's packages do in a
+browser:
 
 - `platform/secure`: the values are encrypted (AES-GCM) with a key the
   browser keeps and won't let out (a non-extractable WebCrypto key), in
@@ -329,7 +315,7 @@ browser through the web host: each package's `web/` JavaScript, or the host's ow
   `BarcodeDetector`). `platform/scan` and `platform/vision`'s codes use
   `BarcodeDetector`, faces and text only where the browser has them.
 - `platform/imageedit`: a canvas (JPEG or PNG; a remote image needs CORS).
-- `platform/maps`: a map the host draws of OpenStreetMap's tiles, as on
+- `platform/maps`: a map Asuka draws of OpenStreetMap's tiles, as on
   Windows: markers, their callouts, a drag, the wheel, a pinch, a double
   click and the keyboard to move it, and the attribution OpenStreetMap
   asks for. The satellite and hybrid types show the streets (no free
@@ -339,10 +325,10 @@ browser through the web host: each package's `web/` JavaScript, or the host's ow
   web page (only what's on screen, the browser's cache, its Referer);
   for heavy use, pass `mapTiles` (another server's URL, with `{z}`,
   `{x}` and `{y}`) to `start` ([Embedding](#embedding)).
-- `platform/crash`: the core's record of the run is kept in the app's
-  files, as on a phone. The core's own fatal error writes it and stops
-  the page's app; the next launch reports it. An uncaught JavaScript
-  error (the host's, or a package's `web/` script) is an `"exception"`
+- `platform/crash`: the record of the run is kept in the app's files,
+  as on a phone. Asuka's own fatal error writes it and stops the page's
+  app; the next launch reports it. An uncaught JavaScript error
+  (Asuka's, or a package's `web/` script) is an `"exception"`
   report at once, not fatal (the page goes on). A page marks its run
   alive in `localStorage`, so other open pages of the app leave it
   alone.
@@ -381,7 +367,7 @@ browser through the web host: each package's `web/` JavaScript, or the host's ow
 
 ## Notifications and Web Push
 
-Every web app has a service worker, which the CLI writes (`sw.js` under
+Every web app has a service worker, which Asuka writes (`sw.js` under
 `asuka dev`, `sw.<digest>.js` in a build) and the page registers as it
 starts, scoped to the app's folder. It has no fetch handler, so the page
 loads as it would without it; it shows the app's notifications and
@@ -591,7 +577,7 @@ A `WebView` is an `<iframe>`, made anew for each page it loads, so it
 keeps its own history and adds nothing to the tab's.
 
 A page of the app's own site (its assets, `html`, a file it wrote, any
-URL of the page's origin) gets everything: the host loads it into the
+URL of the page's origin) gets everything: the view loads it into the
 frame with its real URL, `window.asuka.postMessage` and `preload` there
 before the page's scripts; a `Ref`'s `run(script)` and `eval(script)`
 (a promise awaited); `on loaded`, `on error` and `on state` (URL,
@@ -664,7 +650,7 @@ export function makeSegmented(events) {
   let items = [], selected = 0;
   const render = () => { /* a button per item; a click calls events.changed(i) */ };
   return {
-    el, // the view, sized to the frame the core gives it
+    el, // the view, sized to the frame Asuka gives it
     setItems(v) { items = v; render(); },
     setSelected(v) { selected = v; render(); },
     measure: (c) => [items.length * 72, 32], // its size within c ({width, height, availW, availH}, NaN when free)
@@ -681,7 +667,7 @@ reloads the page when one changes.
 ## Embedding
 
 The page `asuka build --platform web` makes runs the app full page. To run it in an
-element of a page of your own, load the host's loader and start the app
+element of a page of your own, load Asuka's loader and start the app
 in it; it then follows the element's size:
 
 ```html

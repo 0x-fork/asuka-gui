@@ -1,19 +1,19 @@
 # Web
 
-同一个应用也能在浏览器里运行：Asuka 的核心编译成 WebAssembly（应用编译进核心，或者由核心加载应用的字节码），视图就是页面的 DOM。Web 和 iOS、Android、Mac、Windows、Linux 一样，是 Asuka 支持的平台之一，用的是同一份代码。核心创建的每个视图都对应一个元素，摆放在核心布局算出的位置上，原生宿主摆放自己的控件也是这样做的。因此布局用的是 Asuka 自己的实现（在核心里实现的 flexbox 和 grid），在每个平台上都一致；叶子节点则由真实的元素来测量，和原生宿主测量自己的控件一样。控件直接用浏览器自带的（`<button>`、`<input>`、`<select>`、`<progress>`、`<dialog>`），所以键盘操作、焦点、自动填充、拼写检查和屏幕阅读器支持都是现成的。
+同一个应用也能以 WebAssembly 的形式在浏览器里运行，视图就是页面的 DOM。Web 和 iOS、Android、Mac、Windows、Linux 一样，是 Asuka 支持的平台之一，用的是同一份代码。每个视图都对应一个元素，摆放在 Asuka 的布局（flexbox 和 grid）算出的位置上，在每个平台上都一致；文本和控件则由真实的元素来测量，和其他平台一样。控件直接用浏览器自带的（`<button>`、`<input>`、`<select>`、`<progress>`、`<dialog>`），所以键盘操作、焦点、自动填充、拼写检查和屏幕阅读器支持都是现成的。
 
 ```sh
 asuka dev --platform web examples/counter       # 启动服务并在浏览器中打开；保存即重载
 asuka build --platform web examples/counter     # 生成静态网站，位于 examples/counter/dist/web
 ```
 
-两者都用 [Zig](https://ziglang.org/download)（`zig cc`）把核心构建成 WebAssembly，所以需要先安装 Zig。
+两者都需要先安装 [Zig](https://ziglang.org/download)，用来构建 WebAssembly。
 
 下面介绍 Web 上的各项行为；遇到浏览器做不到、而手机能做到的事情时，也会说明实际会怎样处理。
 
 ## asuka dev --platform web
 
-`asuka dev --platform web` 会构建一次开发 App（WebAssembly 形式的核心 `asuka.wasm`，里面没有应用），在 `http://localhost:8790/`（端口被占用时换一个空闲端口）上提供页面并自动打开。页面先加载核心，再从开发服务器加载应用的字节码。每次保存都会在几毫秒内重新编译应用，页面原地加载新模块并保留应用的状态，和其他平台的开发 App 一样；终端会报告每次重载（`asuka: reloaded in 1.1 ms, 3 states kept`）。应用的输出以及页面上的错误都会打印到终端；如果保存的代码无法编译，错误信息会覆盖在页面上，直到下一次编译成功为止。修改 `asuka.toml`、资源或原生包的 JavaScript 会让页面重新加载（应用从头开始）。
+`asuka dev --platform web` 会构建一次开发 App，在 `http://localhost:8790/`（端口被占用时换一个空闲端口）上提供页面并自动打开。每次保存都会在几毫秒内重新编译应用，页面原地加载新版本并保留应用的状态，和其他平台的开发 App 一样；终端会报告每次重载（`asuka: reloaded in 1.1 ms, 3 states kept`）。应用的输出以及页面上的错误都会打印到终端；如果保存的代码无法编译，错误信息会覆盖在页面上，直到下一次编译成功为止。修改 `asuka.toml`、资源或原生包的 JavaScript 会让页面重新加载（应用从头开始）。
 
 除了 `asuka dev` 本身的参数（`--lang`、`--dir`、`-v`），还有这些参数：
 
@@ -22,15 +22,13 @@ asuka build --platform web examples/counter     # 生成静态网站，位于 ex
 - `--no-open`：不自动打开浏览器。
 - `--once`：只提供服务，不监听文件变化。
 
-开发服务器还接受 GUI 测试的命令（`POST /__asuka/automation`，每行一条命令，如 `tap Add`、`dump`），由页面执行（`platform/web/src/automation.js`）。
-
 ## asuka build --platform web
 
-`asuka build --platform web` 会把应用编译成 C，与核心一起构建成 WebAssembly，然后在 `dist/web` 中生成一个静态网站，包含：
+`asuka build --platform web` 会把应用构建成 WebAssembly，然后在 `dist/web` 中生成一个静态网站，包含：
 
 - `index.html` 和 `manifest.webmanifest`（Web 应用清单，有了它浏览器才会提示安装应用；图标取自 `asuka.toml` 的 `icon`，同时生成 favicon 和 iOS 主屏幕图标）；
-- 包含应用的核心 `asuka.<digest>.wasm`，经过优化并去掉了符号表；
-- Web 宿主的文件，放在 `asuka/<digest>/` 中（如果应用用到了插件，还包括插件的文件，比如 SQLite 的 WebAssembly 构建），以及原生包的脚本；
+- 应用本身 `asuka.<digest>.wasm`，经过优化并去掉了符号表；
+- Asuka 自己的文件，放在 `asuka/<digest>/` 中（如果应用用到了插件，还包括插件的文件，比如 SQLite 的 WebAssembly 构建），以及原生包的脚本；
 - 应用的 service worker `sw.<digest>.js`，与 `index.html` 放在一起（作用域是网站所在的文件夹）：即使没有打开应用的任何页面，它也能显示应用的通知和推送（见 [通知与 Web Push](#通知与-web-push)）；
 - 应用的 `assets/`；
 - 每个脚本和 wasm 文件的 gzip 压缩副本（`.gz`），供支持预压缩文件的服务器使用；
@@ -39,7 +37,7 @@ asuka build --platform web examples/counter     # 生成静态网站，位于 ex
 
 `index.html` 的 `<base href>` 是网站所在的路径：默认是 `/`，也可以用 `asuka.toml` 的 `web.base` 或 `--base` 指定（`https://example.com/app/` 就写 `"/app/"`）。这样页面无论在它下面的哪个地址打开，都能找到自己的文件，路由器的 href 也就是它下面的页面地址（`/chat/7` 对应 `https://example.com/app/chat/7`）。
 
-这个文件夹可以放在任何 Web 服务器或 CDN 上。以内容摘要命名的文件一旦内容变化，文件名也会跟着变，所以可以放心地永久缓存，只有 `index.html` 需要重新获取。`.wasm` 文件要以 `application/wasm` 类型提供。包含一个计数器应用的核心约 300 KB WebAssembly，gzip 后 115 KB；应用自己的代码会在此基础上增加体积，另外还有 Web 宿主的 JavaScript。
+这个文件夹可以放在任何 Web 服务器或 CDN 上。以内容摘要命名的文件一旦内容变化，文件名也会跟着变，所以可以放心地永久缓存，只有 `index.html` 需要重新获取。`.wasm` 文件要以 `application/wasm` 类型提供。一个计数器应用约 300 KB WebAssembly，gzip 后 115 KB，另外还有 Asuka 的 JavaScript；应用自己的代码会在此基础上增加体积。
 
 ## 地址与历史记录
 
@@ -84,15 +82,15 @@ Web 应用看到的环境（`environment()`）来自浏览器：
 - `Stack` 在自己的标题栏下面显示栈顶的页面：标题栏里有返回按钮、页面标题、栏按钮和搜索框。push 和 pop 都带滑动动画。浏览器的返回也能用：只要应用里还有可以返回的页面，浏览器的返回按钮（以及手机上的返回手势）就会在应用内返回；Escape、Alt+Left（Mac 上是 ⌘[）以及在触摸屏上从起始边缘滑动也一样。和其他平台一样，这些操作都由 `onBack` 处理。用了路由器之后，地址栏会显示当前页面，历史记录就是它的导航记录（见[地址与历史记录](#地址与历史记录)）。
 - `Tabs` 是底部的标签栏；`Split` 是侧边栏加详情区，窗口较窄时侧边栏变成抽屉，由详情区的标题栏打开。
 - `Sheet` 是一个模态 `<dialog>`：窄窗口下是底部弹出面板（medium 占一半高度，可以拖动顶部的把手把它拉高或拖走），宽窗口下是居中的卡片。按 Escape、点击外部或向下滑动都能关闭它。`Alert` 也是模态 `<dialog>`，操作表的按钮显示为列表。`Popover` 和菜单是显示在目标旁边的弹出层。`Window` 是页面里的一个面板，用户可以移动它、调整它的大小。
-- `List` 由宿主做虚拟化，和 Mac、Windows、Linux 上一样：只有可见范围内（以及上下各半屏）的行会被绑定；分组标题会吸顶；聊天列表会停在末尾。行的滑动操作变成它们的上下文菜单（右键或长按触发）。
-- `Image` 是 `<img>`（在主线程之外解码，由浏览器缓存），`Video` 是 `<video>`，`WebView` 是 `<iframe>`（见 [Web 视图](#web-视图)），`Canvas` 是 2D 画布，`Shape` 是 SVG 路径，`Shader` 用 WebGL 2（Kage 程序会被转换成 GLSL ES 3.00），`Symbol` 显示的是 Android 宿主为该 SF Symbol 名称绘制的 Material Symbol。
+- `List` 会做虚拟化，和 Mac、Windows、Linux 上一样：只有可见范围内（以及上下各半屏）的行会被绑定；分组标题会吸顶；聊天列表会停在末尾。行的滑动操作变成它们的上下文菜单（右键或长按触发）。
+- `Image` 是 `<img>`（在主线程之外解码，由浏览器缓存），`Video` 是 `<video>`，`WebView` 是 `<iframe>`（见 [Web 视图](#web-视图)），`Canvas` 是 2D 画布，`Shape` 是 SVG 路径，`Shader` 用 WebGL 2（Kage 程序会被转换成 GLSL ES 3.00），`Symbol` 显示的是 Android 上该 SF Symbol 名称对应的 Material Symbol。
 - `animate` 用 Web Animations API 为视图的位置、尺寸和视觉属性做动画（弹簧动画用 CSS 的 `linear()` 曲线实现）；进入和退出过渡、共享元素（`shared`）的效果和 iOS 上一样。
 - 点按、长按（以及右键）、悬停、按下状态、拖移、轻扫、捏合（双指，或触控板的捏合）和旋转，用鼠标、触控笔或手指都能操作；拖放用的是浏览器自己的机制，也支持从其他应用拖入文件。
 - `MenuBar` 中菜单项的快捷键在页面里同样有效（Mac 上用 ⌘，其他系统用 Ctrl）。不过页面本身不显示菜单栏，而桌面端应用会显示：Mac 上是系统菜单栏，Windows 上是窗口的菜单栏，Linux 上是标题栏里的主菜单。
 
 ## 应用的文件
 
-应用自己的目录（`fs.appDir()`）会持久保存，包括 `std/fs` 写在里面的文件和崩溃记录。具体做法是：页面提供一个内存中的文件系统，核心的文件调用（以 WASI 的形式）都落在这里；应用启动前先从浏览器存储（IndexedDB）里把这个目录的文件加载进来；文件变化后稍等片刻再写回去（大文件按 64 KiB 分块，只写变化过的块），页面被隐藏或关闭时也会写回。同一应用的多个标签页共享这些文件：一个标签页写入后，其他标签页会重新读取（如果某个标签页改了一个文件但还没写回，在写回之前它保留自己的版本；最后写入的标签页胜出）。用户拖入、粘贴或选择的文件会被复制到应用的缓存目录（`/tmp`），和 iOS、Android 上一样，然后以路径的形式交给应用。
+应用自己的目录（`fs.appDir()`）会持久保存，包括 `std/fs` 写在里面的文件和崩溃记录。应用启动前，这个目录的文件会从浏览器存储（IndexedDB）里加载进来；文件变化后稍等片刻再写回去，页面被隐藏或关闭时也会写回。同一应用的多个标签页共享这些文件：一个标签页写入后，其他标签页会重新读取（如果某个标签页改了一个文件但还没写回，在写回之前它保留自己的版本；最后写入的标签页胜出）。用户拖入、粘贴或选择的文件会被复制到应用的缓存目录（`/tmp`），和 iOS、Android 上一样，然后以路径的形式交给应用。
 
 `spawn { … }` 在页面的一个 Web Worker 里运行（最多四个，`spawn` 第一次需要时才启动）。每个 worker 都会把应用的代码再运行一遍，在没有界面的情况下创建顶层的 `let`：它们创建的值（比如在顶层打开的数据库）属于这个 worker 自己。worker 持有应用文件的一份副本：页面改过的文件会随下一个代码块一起发过去，代码块改过的文件会随结果一起带回来，相当于多了一个写入者（最后写入一个文件的一方胜出）。`std/sqlite` 的数据库属于页面，代码块里用不了。
 
@@ -100,7 +98,7 @@ Web 应用看到的环境（`environment()`）来自浏览器：
 
 ## SQLite
 
-`std/sqlite` 的用法和其他平台一样，实时查询也支持。它就是同一个 SQLite 和同一个 Asuka 库，只是编译成了 WebAssembly（`asqlite.wasm`；凡是导入了 `std/sqlite` 的应用，`asuka dev --platform web` 和 `asuka build --platform web` 都会带上它）。它运行在页面的一个 worker 里，worker 把应用数据目录中的数据库保存在浏览器的源私有文件系统（origin private file system）中：数据库不会被整个加载到内存，提交返回时数据就已经落盘。每条语句都是发给 worker 的一条消息和它的回复，查询到的行由核心解码，和所有平台上一样。
+`std/sqlite` 的用法和其他平台一样，实时查询也支持。它就是同一个 SQLite 和同一个 Asuka 库，只是编译成了 WebAssembly（`asqlite.wasm`；凡是导入了 `std/sqlite` 的应用，`asuka dev --platform web` 和 `asuka build --platform web` 都会带上它）。它运行在页面的一个 worker 里，worker 把应用数据目录中的数据库保存在浏览器的源私有文件系统（origin private file system）中：数据库不会被整个加载到内存，提交返回时数据就已经落盘。
 
 与其他平台的区别：
 
@@ -111,11 +109,11 @@ Web 应用看到的环境（`environment()`）来自浏览器：
 - 没有源私有文件系统时（页面不是通过 `https` 或 `localhost` 提供的，比如 `asuka dev --lan` 的地址；某些浏览器的隐私窗口），worker 会把数据库存放在 IndexedDB 中，使用期间放在内存里：提交返回后要稍等片刻才会持久保存。不是安全上下文的页面也没有 Web Locks：两个标签页同时写一个数据库时，可能会丢失对方的写入（控制台会给出提示）。
 - 旧版本的 Asuka 把数据库和应用的其他文件一起存放（在 IndexedDB 中），应用第一次打开它时，它会被迁移到 worker 中。
 
-如果你用自己的页面嵌入应用（见下文），需要向 `start` 传入 `libs`，也就是应用所用插件文件的 URL，以文件名为键。对 SQLite 来说就是 `{"asqlite.wasm": "asuka/<digest>/lib/asqlite.wasm"}`，即构建产物中的那个文件。worker 的脚本由宿主提供（`sqlite-worker.js`，与 `asuka.js` 放在一起）。
+如果你用自己的页面嵌入应用（见下文），需要向 `start` 传入 `libs`，也就是应用所用插件文件的 URL，以文件名为键。对 SQLite 来说就是 `{"asqlite.wasm": "asuka/<digest>/lib/asqlite.wasm"}`，即构建产物中的那个文件。worker 的脚本由 Asuka 提供（`sqlite-worker.js`，与 `asuka.js` 放在一起）。
 
 ## 原生模块
 
-标准库和平台 SDK 的包通过 Web 宿主使用浏览器的能力：每个包有自己 `web/` 目录里的 JavaScript，所有应用都用得到的功能则由宿主自己的模块（`platform/web/src/modules`）提供。在浏览器中：
+标准库和平台 SDK 的包在浏览器中的表现：
 
 - `platform/secure`：值用 AES-GCM 加密后存放在 IndexedDB 中，密钥由浏览器保管且无法导出（一个不可提取的 WebCrypto 密钥）。它并不是钥匙串：在应用源中运行的脚本读不到密钥，但可以请求用它解密。它需要 `https`（或 `localhost`）。
 - `platform/device`：`info()` 的信息来自 user agent（Chromium 的 client hints 能提供系统版本和 Android 手机型号）；剪贴板、剪贴板里的图片（PNG，保存到缓存目录）以及 `clipboardChanges()`（应用自己的复制操作都能收到；其他应用的复制，只有在用户允许页面读取剪贴板时才能收到）；`keepAwake`（使用 Screen Wake Lock，页面重新显示时会再次获取）；`browse`（打开新标签页）；`pickPhotos` 和 `pickFiles`（浏览器的文件选择器；选中的文件复制到缓存目录）。
@@ -130,8 +128,8 @@ Web 应用看到的环境（`environment()`）来自浏览器：
 - `platform/audio`：每个播放器对应一个 audio 元素（受浏览器自动播放规则限制：要在点按时开始播放）。`platform/record`：使用 `MediaRecorder`，浏览器支持时录制为 MPEG-4 封装的 AAC，否则录制为 WebM 封装的 Opus。`platform/nowplaying`：使用 Media Session API。
 - `platform/camera`：`take()` 会打开手机的相机，或者弹出一个带实时画面和快门按钮的对话框；`camera.View` 是放在 `<video>` 里的相机画面（支持 `capture()`、`record`，浏览器有 `BarcodeDetector` 时还能扫码）。`platform/scan` 和 `platform/vision` 的扫码功能使用 `BarcodeDetector`，人脸和文字识别只在浏览器支持时可用。
 - `platform/imageedit`：使用 canvas（JPEG 或 PNG；远程图片需要支持 CORS）。
-- `platform/maps`：和 Windows 上一样，由宿主用 OpenStreetMap 的瓦片绘制地图：支持标记及其标注气泡，可以拖动、滚轮、捏合、双击以及用键盘移动地图，并按 OpenStreetMap 的要求显示署名。卫星图和混合图只显示街道图（没有免费的卫星影像）；`showsUser` 在页面获得定位权限后显示用户位置（权限由 `platform/location` 申请，地图本身从不申请）。瓦片按 `tile.openstreetmap.org` 对网页的使用政策获取（只加载屏幕上可见的部分，使用浏览器缓存，带上 Referer）；如果用量很大，可以给 `start` 传入 `mapTiles`（另一个瓦片服务器的 URL，包含 `{z}`、`{x}` 和 `{y}`），见 [嵌入](#嵌入)。
-- `platform/crash`：核心对本次运行的记录保存在应用的文件里，和手机上一样。核心自己的致命错误会写下这份记录并停止页面里的应用，下次启动时上报。未捕获的 JavaScript 错误（宿主的，或者某个包的 `web/` 脚本里的）会立即作为 `"exception"` 报告上报，但不算致命错误（页面会继续运行）。每个页面会在 `localStorage` 里标记自己的运行仍然存活，这样应用的其他已打开页面就不会去动它。
+- `platform/maps`：和 Windows 上一样，由 Asuka 用 OpenStreetMap 的瓦片绘制地图：支持标记及其标注气泡，可以拖动、滚轮、捏合、双击以及用键盘移动地图，并按 OpenStreetMap 的要求显示署名。卫星图和混合图只显示街道图（没有免费的卫星影像）；`showsUser` 在页面获得定位权限后显示用户位置（权限由 `platform/location` 申请，地图本身从不申请）。瓦片按 `tile.openstreetmap.org` 对网页的使用政策获取（只加载屏幕上可见的部分，使用浏览器缓存，带上 Referer）；如果用量很大，可以给 `start` 传入 `mapTiles`（另一个瓦片服务器的 URL，包含 `{z}`、`{x}` 和 `{y}`），见 [嵌入](#嵌入)。
+- `platform/crash`：本次运行的记录保存在应用的文件里，和手机上一样。Asuka 自己的致命错误会写下这份记录并停止页面里的应用，下次启动时上报。未捕获的 JavaScript 错误（Asuka 的，或者某个包的 `web/` 脚本里的）会立即作为 `"exception"` 报告上报，但不算致命错误（页面会继续运行）。每个页面会在 `localStorage` 里标记自己的运行仍然存活，这样应用的其他已打开页面就不会去动它。
 - `platform/biometric`：通过 WebAuthn 使用平台认证器（Touch ID、Face ID、Windows Hello、Android 的屏幕锁定），并要求用户验证：第一次调用 `authenticate` 时会为网站创建一个通行密钥（passkey），以应用名命名。提示框由浏览器提供，所以 `reason` 和 `cancel` 的文字不会显示。
 - `platform/webauth`：使用弹出窗口，回到应用同源的某个页面时即视为完成（自定义 scheme 无法打开页面）。
 - `platform/screen`：`lock`（仅在全屏或已安装的应用中有效）；隐藏系统栏就是进入全屏。
@@ -144,7 +142,7 @@ Web 应用看到的环境（`environment()`）来自浏览器：
 
 ## 通知与 Web Push
 
-每个 Web 应用都有一个 service worker，由 CLI 生成（`asuka dev` 下是 `sw.js`，构建产物中是 `sw.<digest>.js`），页面启动时注册，作用域是应用所在的文件夹。它没有 fetch 处理函数，所以页面的加载方式和没有它时完全一样；它负责显示应用的通知和推送，并响应对它们的点击，无论应用是否有页面处于打开状态。浏览器只会为通过 HTTPS 或 `localhost` 提供的页面运行 service worker（`asuka dev` 的地址可以，`--lan` 的地址不行）。
+每个 Web 应用都有一个 service worker，由 Asuka 生成（`asuka dev` 下是 `sw.js`，构建产物中是 `sw.<digest>.js`），页面启动时注册，作用域是应用所在的文件夹。它没有 fetch 处理函数，所以页面的加载方式和没有它时完全一样；它负责显示应用的通知和推送，并响应对它们的点击，无论应用是否有页面处于打开状态。浏览器只会为通过 HTTPS 或 `localhost` 提供的页面运行 service worker（`asuka dev` 的地址可以，`--lan` 的地址不行）。
 
 ### platform/notify
 
@@ -263,7 +261,7 @@ func notifyChat(ctx context.Context, token string) error {
 
 `WebView` 是一个 `<iframe>`，每加载一个页面都会新建一个，所以它有自己独立的历史记录，不会往标签页的历史里添加记录。
 
-应用自己站点的页面（应用的资源、`html`、应用写入的文件，以及与页面同源的任何 URL）可以使用全部功能：宿主用真实的 URL 把它加载到 frame 中，并在页面脚本运行之前注入 `window.asuka.postMessage` 和 `preload`；支持 `Ref` 的 `run(script)` 和 `eval(script)`（会等待 promise 完成）；`on loaded`、`on error` 和 `on state`（URL、标题、`pushState`、进度、前进和后退）；`Ref` 的 `goBack()`、`goForward()`、`reload()` 和 `stopLoading()`；页面中的链接、表单和 `location` 变化都通过这个视图加载；`block`（拦截页面的标记、`fetch`、XHR、`sendBeacon`、WebSocket、EventSource 以及元素的 `src` 和 `href`；拦截时已经发出的请求仍可能发送出去）；`on request`（基于 Resource Timing）；`on newWindow`（`window.open`、`target=_blank`）；`on download`（附件、frame 无法显示的类型、`<a download>`）；`webCookies(url)`（`document.cookie`，不包括 `HttpOnly` 的 cookie）。`html` 中的相对链接相对于应用的资源解析。
+应用自己站点的页面（应用的资源、`html`、应用写入的文件，以及与页面同源的任何 URL）可以使用全部功能：视图用真实的 URL 把它加载到 frame 中，并在页面脚本运行之前注入 `window.asuka.postMessage` 和 `preload`；支持 `Ref` 的 `run(script)` 和 `eval(script)`（会等待 promise 完成）；`on loaded`、`on error` 和 `on state`（URL、标题、`pushState`、进度、前进和后退）；`Ref` 的 `goBack()`、`goForward()`、`reload()` 和 `stopLoading()`；页面中的链接、表单和 `location` 变化都通过这个视图加载；`block`（拦截页面的标记、`fetch`、XHR、`sendBeacon`、WebSocket、EventSource 以及元素的 `src` 和 `href`；拦截时已经发出的请求仍可能发送出去）；`on request`（基于 Resource Timing）；`on newWindow`（`window.open`、`target=_blank`）；`on download`（附件、frame 无法显示的类型、`<a download>`）；`webCookies(url)`（`document.cookie`，不包括 `HttpOnly` 的 cookie）。`html` 中的相对链接相对于应用的资源解析。
 
 其他站点的页面只能加载，因为浏览器会把不同站点隔离开：加载完成后触发 `on loaded`，站点无法访问时触发 `on error`。如果站点拒绝被嵌入（`X-Frame-Options`、`frame-ancestors`），视图无法感知，浏览器会显示它自己的错误页。视图无法追踪页面里的链接跳转到哪里，也读不到页面标题；无法在页面里运行脚本、对它使用 `block` 或 `preload`、报告它的请求、读取它的 cookie 或设置 `userAgent`（脚本和 cookie 相关的调用会返回错误，其他的会警告一次）。frame 处于沙箱中，不允许顶层导航，所以页面无法把应用导航走。
 
@@ -306,7 +304,7 @@ export function makeSegmented(events) {
   let items = [], selected = 0;
   const render = () => { /* 每一项一个按钮；点击时调用 events.changed(i) */ };
   return {
-    el, // 视图本身，尺寸由核心分配的位置决定
+    el, // 视图本身，尺寸由 Asuka 分配的位置决定
     setItems(v) { items = v; render(); },
     setSelected(v) { selected = v; render(); },
     measure: (c) => [items.length * 72, 32], // 在约束 c 内的尺寸（{width, height, availW, availH}，不受约束时为 NaN）
@@ -318,7 +316,7 @@ export function makeSegmented(events) {
 
 ## 嵌入
 
-`asuka build --platform web` 生成的页面会让应用占满整个页面。如果要把应用放到你自己页面的某个元素里，加载宿主的加载器，然后在这个元素中启动应用；之后应用会跟随元素的尺寸变化：
+`asuka build --platform web` 生成的页面会让应用占满整个页面。如果要把应用放到你自己页面的某个元素里，加载 Asuka 的加载器，然后在这个元素中启动应用；之后应用会跟随元素的尺寸变化：
 
 ```html
 <link rel="stylesheet" href="asuka/<digest>/style.css">
