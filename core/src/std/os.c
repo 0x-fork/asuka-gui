@@ -466,6 +466,7 @@ static bool fill(void) {
 
 // a line from inbuf[inoff:]: its end (the '\n', or inbuf.len), or -1.
 static int64_t line_end(bool eof) {
+	if (inbuf.len <= inoff) return -1;
 	const uint8_t *p = memchr(inbuf.data + inoff, '\n', inbuf.len - inoff);
 	if (p) return p - inbuf.data;
 	return eof && inbuf.len > inoff ? (int64_t)inbuf.len : -1;
@@ -525,7 +526,7 @@ static ak_val read_all_fn(ak_val *args, uint32_t n) {
 	ak_mutex_lock(&in_mu);
 	while (fill()) {
 	}
-	ak_bytes *b = ak_bytes_new(inbuf.data + inoff, inbuf.len - inoff);
+	ak_bytes *b = inbuf.len > inoff ? ak_bytes_new(inbuf.data + inoff, inbuf.len - inoff) : ak_bytes_new(NULL, 0);
 	inoff = inbuf.len = 0;
 	ak_mutex_unlock(&in_mu);
 	return (ak_val){.p = b};
