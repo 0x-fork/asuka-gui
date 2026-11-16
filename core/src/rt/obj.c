@@ -280,8 +280,11 @@ ak_val ak_deep_copy(ak_val v, ak_kind k) {
 		return (ak_val){.p = ak_bytes_new(b->data, b->len)};
 	}
 	case AK_TAG_BOX: {
+		// Its value too: a box of a reference holds it.
 		ak_box *b = (ak_box *)o;
-		return (ak_val){.p = ak_box_new((ak_kind)b->h.aux, b->v)};
+		ak_box *c = ak_box_new((ak_kind)b->h.aux, ak_deep_copy(b->v, (ak_kind)b->h.aux));
+		c->h.flags = b->h.flags;
+		return (ak_val){.p = c};
 	}
 	case AK_TAG_ARR: {
 		ak_arr *a = (ak_arr *)o;

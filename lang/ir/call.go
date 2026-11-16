@@ -1007,7 +1007,7 @@ func (b *fb) spawn(e *syntax.SpawnExpr, dst int) int {
 	ctx := b.l.info.Ctxs[e]
 	t := b.typ(ctx.Result)
 	ret := b.l.kind(t)
-	clos := b.makeClosure(closure{name: "spawn", ctxs: []*check.FuncCtx{ctx}, ret: ret, throws: true, body: func(c *fb) {
+	clos := b.makeClosure(closure{name: "spawn", ctxs: []*check.FuncCtx{ctx}, ret: ret, throws: true, byValue: true, body: func(c *fb) {
 		c.ctx = ctx
 		items := e.Body.Items
 		n := len(items)
