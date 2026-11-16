@@ -84,6 +84,57 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 
 // compFunc is the function of a component (or a store): its arguments
 // are its header parameters, then its props, then its events' handlers.
+// publishEnv makes t's env of the members made so far (the others zero)
+// and puts it in the env's box, for the closures that read through it;
+// whole, it's in a local, the env from then on.
+func (b *fb) publishEnv(t *check.TypeName, whole bool) int {
+	shape := b.l.envShapeOf(t)
+	var ks []bc.Kind
+	var regs []int
+	for _, m := range t.Comp.Order {
+		if m.Kind == check.FnMember {
+			continue
+		}
+		k := b.l.memberKind(m)
+		ks = append(ks, k)
+		if r, ok := b.memberRegs[m]; ok {
+			regs = append(regs, r)
+		} else {
+			regs = append(regs, b.zero(k))
+		}
+	}
+	blk := b.regs(ks)
+	for i, r := range regs {
+		b.move(blk+i, r)
+	}
+	env := b.temp(bc.KRef)
+	if whole {
+		env = b.local(bc.KRef)
+	}
+	b.emit(op("NEWS"), env, shape, blk)
+	b.releaseRegs(blk, ks)
+	b.emit(op("VSET"), b.envBox, env)
+	return env
+}
+
+// readsMemo reports whether x reads a memo of t's (a let that follows
+// what it reads), which runs its thunk at once.
+func (b *fb) readsMemo(x syntax.Expr, t *check.TypeName) bool {
+	if x == nil {
+		return false
+	}
+	found := false
+	syntax.Inspect(x, func(n syntax.Node) bool {
+		if id, ok := n.(*syntax.Ident); ok {
+			if m, ok := b.l.info.Uses[id].(*check.Member); ok && m.Owner == t && m.Kind == check.LetMember && m.Memo {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
 func (l *Lowerer) compFunc(t *check.TypeName) int {
 	key := fmt.Sprintf("comp|%p", t)
 	if i, ok := l.funcs[key]; ok {
@@ -117,6 +168,11 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 	for _, m := range comp.Order {
 		mark := b.mark()
 		b.at(m.Decl)
+		if b.readsMemo(m.Default, t) {
+			// A memo it reads is computed now, and its thunk reads what it
+			// reads through the env's box: give it the env so far.
+			b.publishEnv(t, false)
+		}
 		switch m.Kind {
 		case check.ParamMember, check.PropMember:
 			if m.Default == nil {
@@ -165,26 +221,7 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 		}
 		b.release(mark)
 	}
-	// The env, whole.
-	shape := b.l.envShapeOf(t)
-	var ks []bc.Kind
-	var regs []int
-	for _, m := range comp.Order {
-		if m.Kind == check.FnMember {
-			continue
-		}
-		ks = append(ks, b.l.memberKind(m))
-		regs = append(regs, b.memberRegs[m])
-	}
-	blk := b.regs(ks)
-	for i, r := range regs {
-		b.move(blk+i, r)
-	}
-	env := b.local(bc.KRef)
-	b.emit(op("NEWS"), env, shape, blk)
-	b.releaseRegs(blk, ks)
-	b.emit(op("VSET"), b.envBox, env)
-	b.envReg = env
+	b.envReg = b.publishEnv(t, true)
 	// What it provides, its effects and tasks.
 	for _, it := range comp.Body.Items {
 		mark := b.mark()
@@ -208,7 +245,7 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 		b.release(mark)
 	}
 	if comp.Store {
-		b.emit(op("RET"), env)
+		b.emit(op("RET"), b.envReg)
 		b.closeScopeNoClear()
 		return
 	}

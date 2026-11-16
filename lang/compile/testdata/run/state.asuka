@@ -49,6 +49,21 @@ test "a store" {
   print(cart.left)
 }
 
+// A store's state that starts from its memo: the memo runs as the store
+// is made, before the store is whole.
+store Doubler(start: int) {
+  let doubled = start * 2
+  state count = doubled + 1
+  fn bump() { count += 1 }
+}
+
+test "a store's state from its memo" {
+  let d = Doubler(start: 3)
+  print("{d.count} {d.doubled}")
+  d.bump()
+  print(d.count)
+}
+
 // Output:
 // 0
 // 10
@@ -66,3 +81,6 @@ test "a store" {
 // cart has 3
 // 2
 // ok a store
+// 7 6
+// 8
+// ok a store's state from its memo
