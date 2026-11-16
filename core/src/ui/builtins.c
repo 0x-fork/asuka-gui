@@ -74,6 +74,16 @@ static ak_val b_bind(ak_val *a, uint32_t n) {
 	return none();
 }
 
+static ak_val b_set_outer(ak_val *a, uint32_t n) {
+	ak_ui_set_outer(view_arg(a, n, 0, "ui.set_outer"), (uint16_t)a[1].i, a[2]);
+	return none();
+}
+
+static ak_val b_bind_outer(ak_val *a, uint32_t n) {
+	ak_ui_bind_outer(view_arg(a, n, 0, "ui.bind_outer"), (uint16_t)a[1].i, a[2].p);
+	return none();
+}
+
 static ak_val b_on(ak_val *a, uint32_t n) {
 	ak_ui_on(view_arg(a, n, 0, "ui.on"), (uint16_t)a[1].i, a[2].p);
 	return none();
@@ -226,6 +236,8 @@ void ak_ui_builtins_init(void) {
 		{"ui.new", b_new},
 		{"ui.set", b_set},
 		{"ui.bind", b_bind},
+		{"ui.set_outer", b_set_outer},
+		{"ui.bind_outer", b_bind_outer},
 		{"ui.on", b_on},
 		{"ui.add", b_add},
 		{"ui.slot", b_slot},

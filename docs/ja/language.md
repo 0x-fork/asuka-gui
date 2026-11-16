@@ -213,6 +213,19 @@ MessageRow(m) {
 
 `emit name(args)` はイベントを発生させ、呼び出し側の `on name(args) { }` がそれを処理します。
 
+ひとつの要素だけを表示するコンポーネント（本体のビューがその要素ひとつ、またはそうなっている別のコンポーネント）は、スタイルのプロパティも受け取ります。呼び出し側が渡したスタイルはその要素に付き、コンポーネント自身がそこに設定した値より優先されます。
+
+```asuka
+component Card(title: string) {
+  Column {
+    padding: 16; radius: 12; background: .secondaryBackground
+    Text(title)
+  }
+}
+
+Card("Plan") { padding: 8; width: 240 }   // padding は 8、radius は 12
+```
+
 ### コンポーネントの本体は宣言
 
 コンポーネントの本体は、一度実行したら忘れられるコードでは**ありません**。一行一行が、ずっと成り立ち続けることを宣言しています。

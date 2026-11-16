@@ -213,6 +213,19 @@ MessageRow(m) {
 
 `emit name(args)` 触发一个事件，由调用方的 `on name(args) { }` 来处理。
 
+只显示一个元素的组件（主体里的视图就是那一个元素，或另一个同样如此的组件）也接受样式属性：调用方给的样式落在那个元素上，并覆盖组件自己在那里设置的值。
+
+```asuka
+component Card(title: string) {
+  Column {
+    padding: 16; radius: 12; background: .secondaryBackground
+    Text(title)
+  }
+}
+
+Card("Plan") { padding: 8; width: 240 }   // padding 为 8，radius 为 12
+```
+
 ### 组件的主体是声明
 
 组件的主体**不是**运行一次就被抛到脑后的代码。主体里的每一行都声明了一件始终成立的事：

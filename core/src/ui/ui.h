@@ -151,6 +151,10 @@ void ak_ui_remeasure(void);
 ak_view *ak_ui_new(uint16_t el);
 void ak_ui_set(ak_view *v, uint16_t key, ak_val value);   // borrows value
 void ak_ui_bind(ak_view *v, uint16_t key, ak_closure *thunk);
+// A style key a component's caller sets on the component's root element:
+// once it has, what the component itself sets of that key doesn't apply.
+void ak_ui_set_outer(ak_view *v, uint16_t key, ak_val value);   // borrows value
+void ak_ui_bind_outer(ak_view *v, uint16_t key, ak_closure *thunk);
 void ak_ui_on(ak_view *v, uint16_t event, ak_closure *handler);
 void ak_ui_add(ak_view *v, ak_view *child);  // child NULL: nothing
 void ak_ui_slot(ak_view *v, uint16_t slot, ak_view *child);

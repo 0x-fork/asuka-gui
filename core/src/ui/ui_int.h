@@ -102,6 +102,7 @@ struct ak_view {
 	AK_VEC(ak_style_ent) style;
 	AK_VEC(ak_handler_ent) handlers;
 	uint64_t listens;  // the ops events it listens for, a bit each
+	uint64_t outer;    // the style keys its component's caller set, a bit each (ak_ui_set_outer)
 	ak_owner *owner;   // retained: the owner it was made under
 	ak_str *text, *text2;  // what the measure cache keys it by (Text's text; Button's title and icon)
 	int32_t variant;

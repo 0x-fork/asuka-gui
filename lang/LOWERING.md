@@ -311,6 +311,15 @@ a number where an `Edges` is expected is `Edges(all)`; `[v, h]` and `[t,
 r, b, l]` are Edges; a number where a `Length` is expected is points;
 `.label` where a `Color` is expected is the semantic color.
 
+A component that shows one element (check's `TakesStyle`: its body's
+views are one call, of an element that takes the style, a package's
+native component, or a component that takes it) takes the style props
+from its caller. They're set on the view the component's function
+returns, after it returns: `ui.set_outer(v, key, x)`, or
+`ui.bind_outer(v, key, thunk)` when x reads what changes. The view keeps
+a bit per style key its caller set; the component's own sets of that key
+(its bindings running again) don't apply after.
+
 ## Control flow in views
 
 | Source | Lowered |

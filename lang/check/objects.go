@@ -301,6 +301,7 @@ type Component struct {
 	Body                  *syntax.Block
 	Ctx                   *FuncCtx // the body's
 	Provides              []*syntax.ProvideDecl
+	styled                int8 // TakesStyle: 0 not known yet, 1 it does, -1 it doesn't
 }
 
 // MemberKind is what a component's or store's member is.

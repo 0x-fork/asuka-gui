@@ -1700,6 +1700,53 @@ TEST(unset_keys_send_nothing) {
 	done(a);
 }
 
+// ---- A component's caller's style, over the component's own ----
+
+static void *os_inner, *os_outer;
+
+static ak_val os_inner_w(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = ak_length_pt((float)ak_vm_cell_get(os_inner, true).i)};
+}
+
+static ak_val os_outer_h(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	return (ak_val){.i = ak_length_pt((float)ak_vm_cell_get(os_outer, true).i)};
+}
+
+// The component's element binds its width and height; its caller sets
+// the width and binds the height (ui.set_outer, ui.bind_outer).
+static ak_val outer_style(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *t = text("card");
+	bind(t, AK_KEY_WIDTH, os_inner_w, NULL);
+	bind(t, AK_KEY_HEIGHT, os_inner_w, NULL);
+	ak_ui_set_outer(t, AK_KEY_WIDTH, (ak_val){.i = ak_length_pt(120)});
+	ak_closure *h = fn(os_outer_h, NULL);
+	ak_ui_bind_outer(t, AK_KEY_HEIGHT, h);
+	ak_release(h);
+	return (ak_val){.p = t};
+}
+
+TEST(outer_style) {
+	os_inner = cell_int(50);
+	os_outer = cell_int(30);
+	ak_uitest *a = mount(outer_style, NULL);
+	ak_fake_view *v = nth(a, AK_KIND_TEXT, 0);
+	REQUIRE(v);
+	check_frame(v, 0, 0, 120, 30);
+	// The component's own binding runs again: the caller's stay.
+	write_i(os_inner, 70);
+	ak_uitest_settle(a);
+	check_frame(v, 0, 0, 120, 30);
+	// The caller's binding follows its own.
+	write_i(os_outer, 44);
+	ak_uitest_settle(a);
+	check_frame(v, 0, 0, 120, 44);
+	done(a);
+	ak_release(os_inner), ak_release(os_outer);
+}
+
 // ---- A package's native component ----
 
 static void *nv_label;
@@ -1795,7 +1842,7 @@ TEST(native_component) {
 
 TEST(builtins_are_registered) {
 	setup();
-	static const char *const names[] = {"ui.new", "ui.set", "ui.bind", "ui.on", "ui.add", "ui.slot", "ui.ref", "ui.show", "ui.for", "ui.switch",
+	static const char *const names[] = {"ui.new", "ui.set", "ui.bind", "ui.set_outer", "ui.bind_outer", "ui.on", "ui.add", "ui.slot", "ui.ref", "ui.show", "ui.for", "ui.switch",
 	                                    "ui.dynamic", "ui.lazy_for", "ui.fragment", "ui.use", "ui.provide", "ui.task", "ui.focus", "ui.blur",
 	                                    "ui.scroll_to", "ui.environment", "ui.enter", "ui.leave", "ui.native", "ui.native_set",
 	                                    "ui.native_bind", "ui.native_on"};
