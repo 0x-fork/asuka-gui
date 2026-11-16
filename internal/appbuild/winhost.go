@@ -69,12 +69,8 @@ func WindowsHost(t cbuild.Target, o WindowsOptions, out string) error {
 	if err != nil {
 		return err
 	}
-	var host []string
-	for _, d := range []string{filepath.Join(win, "src"), filepath.Join(dsk, "src")} {
-		m, _ := filepath.Glob(filepath.Join(d, "*.c"))
-		host = append(host, m...)
-	}
-	sort.Strings(host)
+	unit := windowsHostUnit(core, win, dsk, embedded)
+	host := unit.Sources
 	hostFlags := []string{"-I" + filepath.Join(win, "src"), "-I" + filepath.Join(dsk, "include"), "-DUNICODE", "-D_UNICODE"}
 	eo := cbuild.ExeOptions{Debug: o.Debug}
 	if len(o.Tests) > 0 {
@@ -89,9 +85,7 @@ func WindowsHost(t cbuild.Target, o WindowsOptions, out string) error {
 		eo.Sources = append(kept, o.Tests...)
 		eo.Flags = append(append([]string{}, hostFlags...), "-I"+filepath.Join(win, "test"), "-DWH_TEST=1")
 	} else {
-		flags := append(append(append([]string{}, cbuild.Flags...), cbuild.Includes(core)...), hostFlags...)
-		eo.Units = []cbuild.Unit{{Name: "windows-host", Sources: host, Flags: flags,
-			Embedded: embedded && desktop.Embedded() && cbuild.CoreEmbedded()}}
+		eo.Units = []cbuild.Unit{unit}
 		eo.Flags = append(eo.Flags, hostFlags...)
 	}
 	if o.Native != nil {
@@ -158,4 +152,18 @@ func mingw(tc *cbuild.Toolchain) bool {
 func cbuildOutput(name string, args ...string) (string, error) {
 	out, err := exec.Command(name, args...).Output()
 	return strings.TrimSpace(string(out)), err
+}
+
+// windowsHostUnit is the Windows host's C (platform/windows's, with all
+// of platform/desktop's) as a unit.
+func windowsHostUnit(core, win, dsk string, embedded bool) cbuild.Unit {
+	var host []string
+	for _, d := range []string{filepath.Join(win, "src"), filepath.Join(dsk, "src")} {
+		m, _ := filepath.Glob(filepath.Join(d, "*.c"))
+		host = append(host, m...)
+	}
+	sort.Strings(host)
+	flags := append(append(append([]string{}, cbuild.Flags...), cbuild.Includes(core)...),
+		"-I"+filepath.Join(win, "src"), "-I"+filepath.Join(dsk, "include"), "-DUNICODE", "-D_UNICODE")
+	return cbuild.Unit{Name: "windows-host", Sources: host, Flags: flags, Embedded: embedded && desktop.Embedded() && cbuild.CoreEmbedded()}
 }

@@ -113,6 +113,9 @@ func main() {
 		err = cmdCheck(os.Args[2:])
 	case "cache":
 		err = cmdCache(os.Args[2:])
+	case "prebuilt":
+		// A release's: what it carries prebuilt (scripts/npm).
+		err = cmdPrebuilt(os.Args[2:])
 	case "lsp":
 		err = cmdLSP(os.Args[2:])
 	case "-h", "--help", "help":

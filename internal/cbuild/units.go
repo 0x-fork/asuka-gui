@@ -86,6 +86,10 @@ func (tc *Toolchain) variant() string {
 	return tc.Target.String()
 }
 
+// CompilerKind is the toolchain's compiler's family, as prebuilt
+// libraries record what built them: zig, apple, ndk, or other.
+func (tc *Toolchain) CompilerKind() string { return tc.CC.kind() }
+
 // kind is the compiler's family, as prebuilt libraries name what they
 // were built with: zig, apple (Xcode's clang), ndk, or another's.
 func (c Compiler) kind() string {

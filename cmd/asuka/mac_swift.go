@@ -122,33 +122,13 @@ func (b *macBuild) executable(exe string, archs []string, m *bytecode.Module) er
 // (swiftBuild: cached modules, or prebuilt ones): their objects, and
 // what else the build made.
 func (b *macBuild) host(arch string, natives []nativePackage) ([]string, *swiftPackageOutput, error) {
-	sources, err := swiftSources(macos.Files, "Sources/AsukaHost", "Sources/AsukaOps", "App")
+	sources, cAsuka, err := macHostSwift(b.program)
 	if err != nil {
 		return nil, nil, err
 	}
 	variant := "app"
 	if b.program {
-		sources["main.swift"] = []byte(macProgramMain)
 		variant = "program"
-	}
-	cAsuka, err := filesUnder(macos.Files, "Sources/CAsuka")
-	if err != nil {
-		return nil, nil, err
-	}
-	// The core's stand-ins are the host's package's tests', never an
-	// app's: weak, they'd keep the core's archive from being linked.
-	// The shared C's wrappers (shared_*.c) are the tests' too: an app
-	// links that C as a library (MacShared).
-	for name := range cAsuka {
-		if name == "stubs.c" || strings.HasPrefix(name, "shared_") {
-			delete(cAsuka, name)
-		}
-	}
-	// A library (a module, a SwiftPM target) can't have a main.swift:
-	// the entry point (@main) goes in the host's under another name.
-	if m, ok := sources["main.swift"]; ok {
-		delete(sources, "main.swift")
-		sources["AsukaMain.swift"] = m
 	}
 	sb := &swiftBuild{dir: filepath.Join(b.work, "swift-"+arch), platform: "macos", sdkName: "macosx",
 		arch: macSwiftArch(arch), release: b.release, defines: macHostDefines, variant: variant, host: sources, cAsuka: cAsuka, natives: natives, run: b.run}
