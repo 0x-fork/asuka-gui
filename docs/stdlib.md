@@ -29,6 +29,7 @@ they do for the platform's own apps.
 | `asuka/crypto` | `sha256`, `sha1`, `hmacSHA256(key:, data:)`, `randomBytes(n)` (the system's randomness), `uuid()` (version 4), `equal(a, b)` (in constant time) |
 | `asuka/html` | `escape(text)` and `unescape(text)` (numeric references and the named ones text uses) |
 | `asuka/random` | `random.int(1, 6)` (both ends included), `float()`, `chance(p)`, `pick(items)`, `shuffled(items)`, `seed(n)` |
+| `asuka/fs` | `fs.appDir()` (the app's own directory), `join([…])`, `clean`, `dir`, `base`, `ext`; and calls that block, for `spawn { }`: `readDir` (an `Entry`: `name`, `isDir`, `size`, `modified`), `stat`, `read`, `readText`, `write`, `writeText`, `append`, `appendText`, `copy`, `rename`, `mkdirAll`, `remove`, `removeAll`, `exists`. A failure throws an `FsError` (`.notFound(path)`, `.exists`, `.denied`, `.notDirectory`, `.isDirectory`, `.notEmpty`, `.failed(path, reason)`) |
 | `asuka/http` | `http.get`, `http.post`, `http.postJSON`, `http.request`: requests through the platform's own client, so proxies, trusted certificates, caches and cookies work as the system's do. A `Response` has `status`, `url`, `headers`, `body`, `text()`, `json<T>()` and `ok()` |
 | `asuka/store` | `store.read(key, default)`, `store.write(key, value)`, `store.remove(key)`: small values kept across launches as JSON, in the platform's preferences (UserDefaults, SharedPreferences, `localStorage`, a file on Windows and Linux) |
 
@@ -38,7 +39,9 @@ error; `asuka/store` keeps nothing then, and reads give their defaults.
 
 `asuka test` makes runs repeat: `time.now()` starts at
 2026-01-01T00:00:00Z and moves only as the test's time does (`sleep`),
-and the local zone is UTC.
+the local zone is UTC, and each test has an empty directory of its own
+as `fs.appDir()`. On the web the app has no directory yet, so `asuka/fs`'s
+calls throw there.
 
 ## Packages that aren't here
 

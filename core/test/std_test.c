@@ -247,6 +247,33 @@ TEST(regex_alloc_bounded) {
 	ak_release(prog.p);
 }
 
+TEST(paths) {
+#if !defined(_WIN32)
+	const char *clean[][2] = {
+		{"", "."}, {".", "."}, {"/", "/"}, {"//a//b//", "/a/b"}, {"a/../..", ".."}, {"a/../../b", "../b"},
+		{"/a/../../b", "/b"}, {"./a/./b/.", "a/b"}, {"../a/..", ".."}, {"a/b/../c/./d", "a/c/d"},
+	};
+	for (size_t i = 0; i < AK_LEN(clean); i++) CHECK_STR(call("fs.clean", (ak_val[]){S(clean[i][0])}, 1, 1), clean[i][1]);
+	const char *dir[][2] = {{"/a/b", "/a"}, {"a", "."}, {"/", "/"}, {"a/b/", "a/b"}, {"", "."}};
+	for (size_t i = 0; i < AK_LEN(dir); i++) CHECK_STR(call("fs.dir", (ak_val[]){S(dir[i][0])}, 1, 1), dir[i][1]);
+#endif
+}
+
+TEST(app_dir) {
+	ak_fs_set_app_dir("/x/y");
+	CHECK_STR(call("fs.appDir", NULL, 0, 0), "/x/y");
+	ak_fs_set_app_dir(NULL);
+	char *d = ak_fs_temp_dir();
+	REQUIRE(d);
+	ak_fs_set_app_dir(d);
+	CHECK_STR(call("fs.appDir", NULL, 0, 0), d);
+	CHECK(call("fs.exists", (ak_val[]){S(d)}, 1, 1).i);
+	CHECK(ak_fs_remove_tree(d));
+	CHECK(!call("fs.exists", (ak_val[]){S(d)}, 1, 1).i);
+	ak_fs_set_app_dir(NULL);
+	ak_free(d);
+}
+
 TEST(url_parts) {
 	ak_val r = call("url.parts", (ak_val[]){S("http://u@[::1]:/p")}, 1, 1);
 	ak_arr *a = r.p;

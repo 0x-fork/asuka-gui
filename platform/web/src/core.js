@@ -5,7 +5,11 @@
 //
 //	const core = await startCore(host, { wasm: "asuka.wasm", module: "app.akb" });
 
-/** wasi is the little of WASI the core's C library calls: the clock, randomness, writing to the console. */
+/**
+ * wasi is the little of WASI the core's C library calls: the clock, randomness, writing to
+ * the console. The page has no directory for the core (asuka/fs's calls fail, as they would
+ * with nothing preopened), so the file system's calls answer EBADF.
+ */
 function wasi(memory, log) {
   const mem = () => new DataView(memory().buffer);
   const text = new TextDecoder();
@@ -36,6 +40,15 @@ function wasi(memory, log) {
     },
     fd_prestat_get() { return 8; }, // EBADF: no preopened directories
     fd_prestat_dir_name() { return 8; },
+    fd_read() { return 8; },
+    fd_readdir() { return 8; },
+    fd_filestat_get() { return 8; },
+    path_open() { return 8; },
+    path_filestat_get() { return 8; },
+    path_create_directory() { return 8; },
+    path_remove_directory() { return 8; },
+    path_rename() { return 8; },
+    path_unlink_file() { return 8; },
     environ_sizes_get(count, size) { const m = mem(); m.setUint32(count, 0, true); m.setUint32(size, 0, true); return 0; },
     environ_get() { return 0; },
     args_sizes_get(count, size) { const m = mem(); m.setUint32(count, 0, true); m.setUint32(size, 0, true); return 0; },

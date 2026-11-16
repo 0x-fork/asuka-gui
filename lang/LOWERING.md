@@ -426,7 +426,10 @@ registered with the rest); the package's Asuka writes the rest of its
 API on them. A builtin makes only what C can without the module's
 shapes: scalars, strings, bytes, and arrays of those (or optionals of
 them); the Asuka side builds its structs (asuka/time's `Time` from an
-instant and an offset). A failure is a runtime error. Builtins may run on spawn's
+instant and an offset, asuka/fs's `Entry` from a name and `[isDir,
+size, modified]`). A failure is a runtime error, or for typed errors a
+status the Asuka side reads and throws as its own enum (asuka/fs's
+`FsError`, from the thread's last failure). Builtins may run on spawn's
 threads, so they keep no state that isn't per thread.
 
 ## Streams
