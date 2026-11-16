@@ -98,6 +98,45 @@ fn outer(n: int) -> int {
   return total
 }
 
+store Tally {
+  state items: [int] = []
+  state scale = 1
+
+  fn add(xs: [int]) {
+    fn put(i: int) {
+      if i == xs.count() { return }
+      items.push(xs[i] * scale)
+      put(i + 1)
+    }
+    put(0)
+  }
+
+  fn total() -> int {
+    fn sum(i: int) -> int = if i == items.count() { 0 } else { items[i] + sum(i + 1) }
+    return sum(0)
+  }
+}
+
+fn largest<T: Comparable>(xs: [T], first: T) -> T {
+  fn pick(i: int, best: T) -> T {
+    if i == xs.count() { return best }
+    return pick(i + 1, if xs[i] > best { xs[i] } else { best })
+  }
+  return pick(0, first)
+}
+
+async fn inSpawn(n: int) -> int {
+  var base = 1
+  let f = () => base
+  base = 2
+  return await spawn {
+    fn steps(k: int) -> int = if k <= base { 0 } else { 1 + steps(k / 2) }
+    steps(n) + f2(base)
+  }
+}
+
+fn f2(x: int) -> int = x * 100
+
 test "local fns" {
   let tree = Node(name: "a", children: [Node(name: "b", children: [Node(name: "c")]), Node(name: "d")])
   print(count(tree))
@@ -111,6 +150,14 @@ test "local fns" {
   print(Counter(base: 5).tally([1, 2, 3]))
   print(await later(42))
   print(outer(3))
+  let t = Tally()
+  t.add([1, 2])
+  t.scale = 10
+  t.add([3])
+  print(t.total())
+  print(largest([3, 9, 4], 0))
+  print(largest(["b", "a"], ""))
+  print(await inSpawn(64))
 }
 
 test "deep recursion frees what it made" {
@@ -144,6 +191,10 @@ test "deep recursion frees what it made" {
 // 11
 // 42
 // 12
+// 33
+// 9
+// b
+// 205
 // ok local fns
 // 10220
 // ok deep recursion frees what it made
