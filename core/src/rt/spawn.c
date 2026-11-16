@@ -2,6 +2,10 @@
 // (values only: the checker keeps state, stores and views out), its
 // result or error is copied back, and the main thread resolves the
 // future. A cancelled spawn runs to its end; its result is dropped.
+//
+// Where the core has no threads (the web), a host may run the work
+// elsewhere (ak_spawn_elsewhere: the page's Web Workers, abi/web.c);
+// without one it runs in place.
 #include "rt/sched.h"
 #include "rt/lib.h"
 #include "base/thread.h"
@@ -68,11 +72,14 @@ static ak_closure *copy_closure(ak_closure *c) {
 	return n;
 }
 
+bool (*ak_spawn_elsewhere)(ak_closure *c, ak_kind k, ak_future *f);
+
 // async.spawn(closure, kind): a future of the closure's result, of kind.
 static ak_val spawn_fn(ak_val *args, uint32_t nargs) {
 	ak_closure *c = args[0].p;
 	ak_kind k = nargs > 1 ? (ak_kind)args[1].i : AK_K_VOID;
 	ak_future *f = ak_future_new(k);
+	if (ak_spawn_elsewhere && ak_spawn_elsewhere(c, k, f)) return (ak_val){.p = f};
 	job *j = ak_alloc(sizeof *j);
 	j->c = copy_closure(c);
 	j->fut = ak_retain(f);

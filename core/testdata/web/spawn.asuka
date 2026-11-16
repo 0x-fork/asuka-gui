@@ -1,0 +1,131 @@
+// spawn on the web's workers, run by web_test.go under Node: values
+// there and back, errors, the app's files on both sides, many at once,
+// a cancelled one, and the app's init (its accent, its language) run
+// again in each worker without a UI.
+import asuka/fs
+
+struct Point {
+  x: int
+  y: int
+}
+
+enum Shape {
+  circle(r: float)
+  path(points: [Point])
+  empty
+}
+
+struct Drawing {
+  name: string
+  shapes: [Shape]
+  tags: [string: int]
+  scale: float?
+  hidden: bool
+  none: [Point]
+}
+
+// Made by the init, in each worker as on the page.
+let origin = Point(x: 0, y: 0)
+let names = ["a", "b", "c"]
+
+fn heavy(n: int) -> int {
+  var sum = 0
+  for i in 1..n { sum += i }
+  return sum
+}
+
+fn draw(p: Point, n: int) -> Drawing {
+  var shapes: [Shape] = [Shape.circle(r: 1.5)]
+  var pts: [Point] = []
+  for i in 0..<n { pts.push(Point(x: p.x + i, y: p.y - i)) }
+  shapes.push(Shape.path(points: pts))
+  shapes.push(Shape.empty)
+  return Drawing(name: "d{n}", shapes: shapes, tags: ["one": 1, "two": 2], scale: none, hidden: true, none: [])
+}
+
+fn refuse(n: int) throws -> int {
+  if n > 0 {
+    throw Error("no to {n}")
+  }
+  return n
+}
+
+async fn slowly() -> int {
+  let t = spawn { heavy(30000000) }
+  return await t
+}
+
+async fn run() throws {
+  // Values, there and back.
+  let n = 1000
+  print(try await spawn { heavy(n) })
+  let p = Point(x: 3, y: 4)
+  let d = try await spawn { draw(p, 3) }
+  print("{d.name} {d.shapes.count()} {d.tags["two"] ?? 0} {d.scale ?? -1.0} {d.hidden} {d.none.count()}")
+  match d.shapes[1] {
+    .path(pts) => print("path {pts.count()} {pts[2].x} {pts[2].y}")
+    _ => print("not a path")
+  }
+  print(try await spawn { "{origin.x} {names.count()}" })
+
+  // Errors.
+  do {
+    let v = try await spawn { try refuse(2) }
+    print("got {v}")
+  } catch e {
+    print("caught {e.message}")
+  }
+  let missing = fs.join([fs.appDir(), "nowhere.txt"])
+  do {
+    let s = try await spawn { try fs.readText(missing) }
+    print(s)
+  } catch fs.FsError.notFound(path) {
+    print("not found {fs.base(path)}")
+  }
+
+  // Files: the page's in a worker, a worker's on the page.
+  let dir = fs.join([fs.appDir(), "spawn"])
+  try fs.mkdirAll(dir)
+  let page = fs.join([dir, "page.txt"])
+  try fs.writeText(page, text: "from the page")
+  print(try await spawn { try fs.readText(page) })
+  let worker = fs.join([dir, "worker.txt"])
+  try await spawn { try fs.writeText(worker, text: "from a worker") }
+  print(try fs.readText(worker))
+  try fs.writeText(page, text: "changed")
+  print(try await spawn { try fs.readText(page) })
+  try await spawn { try fs.remove(page) }
+  print(fs.exists(page))
+  for e in try fs.readDir(dir) {
+    print("{e.name} {e.size}")
+  }
+
+  // Many at once, on the pool.
+  let (a, b, c, e) = try await all(spawn { heavy(10) }, spawn { heavy(20) }, spawn { heavy(30) }, spawn { heavy(40) })
+  print("{a} {b} {c} {e}")
+
+  // A cancelled one: the race's loser; what's after it still runs.
+  let first = await race(slowly(), quick())
+  print("first {first}")
+  print(try await spawn { heavy(5) })
+  print("done")
+}
+
+async fn quick() -> int {
+  await sleep(1ms)
+  return -1
+}
+
+component Main {
+  task {
+    do {
+      try await run()
+    } catch e {
+      print("failed: {e.message}")
+      print("done")
+    }
+  }
+  Text("spawn")
+}
+
+app { Main() }

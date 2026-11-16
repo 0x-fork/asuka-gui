@@ -314,7 +314,7 @@ function library() {
       const bytes = fs.readFile(o.path);
       if (!bytes) throw new Error(`no file ${o.path}`);
       download(bytes, o.name, o.mime || "application/octet-stream");
-      if (o.move) fs.memfs.unlink(o.path, () => {});
+      if (o.move) fs.removeFile(o.path);
       return o.name; // in the browser's downloads
     },
   };

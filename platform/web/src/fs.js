@@ -1,11 +1,12 @@
-// The app's files: a file system in memory with the API of Node's fs that
-// Go's syscall package calls on js/wasm, answered at once (Go waits for
-// each call's callback, so its os package works unchanged: asuka/sdk/store,
-// crash records, the app's own files). What's under the app's data
-// directory (ASUKA_DATA, /data/<the app's name>) is kept in IndexedDB: loaded before Go
-// starts, written back shortly after each change and as the page hides.
-// /tmp is the app's caches, kept for the page's life: what's dropped or
-// pasted into it, files it makes to share.
+// The app's files: a file system in memory, answered at once. The core
+// reaches it through WASI (wasi.js: asuka/fs, crash records, what the C
+// library opens), the host's modules directly (a camera's photo, a
+// dropped file, a Save's file). What's under the app's data directory
+// (/data/<the app's name>, the core's app directory) is kept in
+// IndexedDB: loaded before the core starts, written back shortly after
+// each change and as the page hides. /tmp is the app's caches, kept for
+// the page's life: what's dropped or pasted into it, files it makes to
+// share.
 //
 // IndexedDB keeps a small file whole, and a large one in chunks of 64
 // KiB: a write stores only the chunks it changed.
@@ -16,38 +17,32 @@
 // file a tab changed and hasn't written yet stays its own: written whole
 // once it's written, the last tab's to write it).
 //
-// memfs.watch is Node's fs.watch, which asuka/sdk/watch calls: it tells what
-// changes in a directory, a moment after the app's Go changed it.
+// spawn's workers (spawn.js) each have a copy (replica): the page sends
+// a worker what changed since its last job with the next one, and takes
+// back what the job changed, as one more writer (the last to write a
+// file wins). Every change is numbered for it (the journal).
 
 const S_IFDIR = 0o040000, S_IFREG = 0o100000;
 
-const files = new Map(); // path -> { dir, data, size, mode, mtime }
-const fds = new Map(); // fd -> { path, pos, append, write }
-let nextFD = 100;
+const files = new Map(); // path -> { dir, data, size, mode, mtime, ino, chunked }
 // The data directories kept in IndexedDB: an app's each (several apps
 // may run on one page, each with its own), and its database.
 const stores = []; // { dir, name, db, channel, dirty: Map<path, Set<chunk> | true (all of it)>, writing: Set<path> }
 const CHUNK = 64 * 1024;
 let flushTimer = 0;
-let out = { 1: "", 2: "" };
 let onOutput = null;
 
 const now = () => Date.now();
-const pageID = 1 + Math.floor(Math.random() * 0x7ffffffe);
-const put = (path, entry) => {
-  const existed = files.has(path);
-  files.set(path, entry);
-  markDirty(path);
-  changed(path, existed ? "change" : "rename");
-};
 
-function err(code) {
+/** fsError is an Error with a POSIX code ("ENOENT"), as the file system's calls throw. */
+export function fsError(code) {
   const e = new Error(code);
   e.code = code;
   return e;
 }
 
-function clean(p) {
+/** clean is path made absolute, without . and .. and doubled slashes. */
+export function clean(p) {
   if (!p.startsWith("/")) p = "/" + p;
   const parts = [];
   for (const s of p.split("/")) {
@@ -60,24 +55,41 @@ function clean(p) {
 
 const parent = (p) => p.slice(0, p.lastIndexOf("/")) || "/";
 
+// lastInode numbers the entries, each its own inode kept as it's
+// renamed, as a disk's is.
+let lastInode = 0;
+const newEntry = (dir, mode, data = null) => ({ dir, mode, mtime: now(), size: data ? data.length : 0, data: dir ? null : data ?? new Uint8Array(0), ino: ++lastInode });
+
+// --- The journal: what changed, for the workers' copies ---
+
+let version = 0;
+const journal = new Map(); // path -> { v, origin }, in the order they changed
+let origin = 0; // who's changing files now: 0 the page (or a worker itself)
+
+function note(path) {
+  version++;
+  journal.delete(path);
+  journal.set(path, { v: version, origin });
+}
+
+// --- Changing ---
+
+function put(path, e) {
+  files.set(path, e);
+  changed(path);
+}
+
+// changed notes that path changed (its bytes from..to, or all of it): for
+// IndexedDB, shortly, and for the workers.
+function changed(path, from, to) {
+  note(path);
+  markDirty(path, from, to);
+}
+
 function mkdirs(p) {
   if (files.has(p)) return;
   if (p !== "/") mkdirs(parent(p));
-  put(p, { dir: true, mode: S_IFDIR | 0o755, mtime: now(), size: 0, data: null });
-}
-
-// lastInode numbers the entries, each its own inode kept as it's renamed,
-// as a disk's is: asuka/sdk/watch tells a file renamed from one replaced.
-let lastInode = 0;
-
-function stat(e, path) {
-  const mtime = e.mtime;
-  return {
-    dev: 1, ino: (e.ino ??= ++lastInode), mode: e.mode, nlink: 1, uid: 0, gid: 0, rdev: 0,
-    size: e.dir ? 0 : e.size, blksize: 4096, blocks: Math.ceil((e.size || 0) / 512),
-    atimeMs: mtime, mtimeMs: mtime, ctimeMs: mtime,
-    isDirectory: () => !!e.dir,
-  };
+  put(p, newEntry(true, S_IFDIR | 0o755));
 }
 
 function grow(e, need) {
@@ -87,261 +99,114 @@ function grow(e, need) {
   e.data = b;
 }
 
-const constants = { O_RDONLY: 0, O_WRONLY: 1, O_RDWR: 2, O_CREAT: 64, O_EXCL: 128, O_TRUNC: 512, O_APPEND: 1024, O_DIRECTORY: 65536 };
+function remove(path) {
+  files.delete(path);
+  changed(path);
+}
 
-const decoder = new TextDecoder();
-
-/** fs is what Go calls (globalThis.fs). Each call answers through its callback before it returns. */
-export const memfs = {
-  constants,
-  writeSync(fd, buf) {
-    if (fd === 1 || fd === 2) {
-      out[fd] += decoder.decode(buf);
-      const nl = out[fd].lastIndexOf("\n");
-      if (nl >= 0) {
-        const lines = out[fd].slice(0, nl);
-        out[fd] = out[fd].slice(nl + 1);
-        (fd === 2 ? console.error : console.log)(lines);
-        onOutput?.(fd, lines + "\n");
-      }
-      return buf.length;
-    }
-    return writeAt(fd, buf, 0, buf.length, null);
-  },
-  write(fd, buf, offset, length, position, cb) {
-    try {
-      if (fd === 1 || fd === 2) return cb(null, this.writeSync(fd, buf.subarray(offset, offset + length)));
-      cb(null, writeAt(fd, buf, offset, length, position));
-    } catch (e) { cb(e); }
-  },
-  read(fd, buf, offset, length, position, cb) {
-    const f = fds.get(fd);
-    if (!f) return cb(err("EBADF"));
-    const e = files.get(f.path);
-    if (!e || e.dir) return cb(err("EISDIR"));
-    const at = position ?? f.pos;
-    const n = Math.max(0, Math.min(length, e.size - at));
-    buf.set(e.data.subarray(at, at + n), offset);
-    if (position == null) f.pos += n;
-    cb(null, n);
-  },
-  open(path, flags, mode, cb) {
-    path = clean(path);
-    let e = files.get(path);
-    if (flags & constants.O_CREAT) {
-      if (e && flags & constants.O_EXCL) return cb(err("EEXIST"));
-      if (!e) {
-        const p = files.get(parent(path));
-        if (!p) return cb(err("ENOENT"));
-        if (!p.dir) return cb(err("ENOTDIR"));
-        e = { dir: false, mode: S_IFREG | (mode & 0o777), mtime: now(), size: 0, data: new Uint8Array(0) };
-        put(path, e);
-      }
-    }
-    if (!e) return cb(err("ENOENT"));
-    if (flags & constants.O_DIRECTORY && !e.dir) return cb(err("ENOTDIR"));
-    const write = (flags & 3) !== 0;
-    if (e.dir && write) return cb(err("EISDIR"));
-    if (flags & constants.O_TRUNC && !e.dir && e.size) resize(path, e, 0);
-    const fd = nextFD++;
-    fds.set(fd, { path, pos: 0, append: !!(flags & constants.O_APPEND), write });
-    cb(null, fd);
-  },
-  close(fd, cb) {
-    const f = fds.get(fd);
-    fds.delete(fd);
-    if (f?.write) written(f.path);
-    cb(null);
-  },
-  fsync(fd, cb) { cb(null); },
-  fstat(fd, cb) {
-    const f = fds.get(fd);
-    const e = f && files.get(f.path);
-    if (!e) return cb(err("EBADF"));
-    cb(null, stat(e, f.path));
-  },
-  stat(path, cb) {
-    path = clean(path);
-    const e = files.get(path);
-    if (!e) return cb(err("ENOENT"));
-    cb(null, stat(e, path));
-  },
-  lstat(path, cb) { this.stat(path, cb); },
-  mkdir(path, perm, cb) {
-    path = clean(path);
-    if (files.has(path)) return cb(err("EEXIST"));
+/**
+ * fsys is what the core's WASI calls (wasi.js) do with files: paths are
+ * absolute and clean; a failure throws an fsError.
+ */
+export const fsys = {
+  /** entry is what's at path, or undefined. */
+  entry: (path) => files.get(path),
+  /** create makes an empty file at path (its directory must be there). */
+  create(path, mode = 0o644) {
     const p = files.get(parent(path));
-    if (!p) return cb(err("ENOENT"));
-    if (!p.dir) return cb(err("ENOTDIR"));
-    put(path, { dir: true, mode: S_IFDIR | (perm & 0o777), mtime: now(), size: 0, data: null });
-    cb(null);
+    if (!p) throw fsError("ENOENT");
+    if (!p.dir) throw fsError("ENOTDIR");
+    const e = newEntry(false, S_IFREG | (mode & 0o777));
+    put(path, e);
+    return e;
   },
-  readdir(path, cb) {
-    path = clean(path);
+  mkdir(path, mode = 0o755) {
+    if (files.has(path)) throw fsError("EEXIST");
+    const p = files.get(parent(path));
+    if (!p) throw fsError("ENOENT");
+    if (!p.dir) throw fsError("ENOTDIR");
+    put(path, newEntry(true, S_IFDIR | (mode & 0o777)));
+  },
+  /** names are a directory's entries' names, sorted. */
+  names(path) {
     const e = files.get(path);
-    if (!e) return cb(err("ENOENT"));
-    if (!e.dir) return cb(err("ENOTDIR"));
+    if (!e) throw fsError("ENOENT");
+    if (!e.dir) throw fsError("ENOTDIR");
     const prefix = path === "/" ? "/" : path + "/";
-    const names = [];
+    const out = [];
     for (const k of files.keys()) {
-      if (k !== path && k.startsWith(prefix) && !k.slice(prefix.length).includes("/")) names.push(k.slice(prefix.length));
+      if (k !== path && k.startsWith(prefix) && !k.slice(prefix.length).includes("/")) out.push(k.slice(prefix.length));
     }
-    cb(null, names.sort());
+    return out.sort();
   },
-  unlink(path, cb) {
-    path = clean(path);
+  unlink(path) {
     const e = files.get(path);
-    if (!e) return cb(err("ENOENT"));
-    if (e.dir) return cb(err("EISDIR"));
+    if (!e) throw fsError("ENOENT");
+    if (e.dir) throw fsError("EISDIR");
     remove(path);
-    cb(null);
   },
-  rmdir(path, cb) {
-    path = clean(path);
+  rmdir(path) {
     const e = files.get(path);
-    if (!e) return cb(err("ENOENT"));
-    if (!e.dir) return cb(err("ENOTDIR"));
+    if (!e) throw fsError("ENOENT");
+    if (!e.dir) throw fsError("ENOTDIR");
+    if (path === "/") throw fsError("EBUSY");
     const prefix = path + "/";
-    for (const k of files.keys()) if (k.startsWith(prefix)) return cb(err("ENOTEMPTY"));
+    for (const k of files.keys()) if (k.startsWith(prefix)) throw fsError("ENOTEMPTY");
     remove(path);
-    cb(null);
   },
-  rename(from, to, cb) {
-    from = clean(from);
-    to = clean(to);
+  /** rename moves from to to, replacing a file there (or an empty directory, for a directory), as POSIX's does. */
+  rename(from, to) {
     const e = files.get(from);
-    if (!e) return cb(err("ENOENT"));
-    if (!files.get(parent(to))) return cb(err("ENOENT"));
+    if (!e) throw fsError("ENOENT");
+    if (from === to) return;
+    const dst = files.get(to);
+    const tp = files.get(parent(to));
+    if (!tp) throw fsError("ENOENT");
+    if (!tp.dir) throw fsError("ENOTDIR");
+    if (e.dir && (to + "/").startsWith(from + "/")) throw fsError("EINVAL");
+    if (dst) {
+      if (e.dir && !dst.dir) throw fsError("ENOTDIR");
+      if (!e.dir && dst.dir) throw fsError("EISDIR");
+      if (dst.dir) for (const k of files.keys()) if (k.startsWith(to + "/")) throw fsError("ENOTEMPTY");
+    }
     const moved = [[from, e]];
     if (e.dir) for (const [k, v] of files) if (k.startsWith(from + "/")) moved.push([k, v]);
     for (const [k] of moved) remove(k);
     for (const [k, v] of moved) put(to + k.slice(from.length), v);
     if (!e.dir) written(to);
-    cb(null);
   },
-  truncate(path, length, cb) {
-    path = clean(path);
-    const e = files.get(path);
-    if (!e) return cb(err("ENOENT"));
-    resize(path, e, length);
-    cb(null);
+  /** write writes src into e (at path) at at, growing it: its length. */
+  write(path, e, src, at) {
+    grow(e, at + src.length);
+    if (at > e.size) e.data.fill(0, e.size, at);
+    e.data.set(src, at);
+    e.size = Math.max(e.size, at + src.length);
+    e.mtime = now();
+    if (files.get(path) === e) changed(path, at, at + src.length);
+    return src.length;
   },
-  ftruncate(fd, length, cb) {
-    const f = fds.get(fd);
-    const e = f && files.get(f.path);
-    if (!e) return cb(err("EBADF"));
-    resize(f.path, e, length);
-    cb(null);
+  /** read reads e's bytes at at into dst: how many. */
+  read(e, dst, at) {
+    const n = Math.max(0, Math.min(dst.length, e.size - at));
+    dst.set(e.data.subarray(at, at + n));
+    return n;
   },
-  utimes(path, atime, mtime, cb) {
-    path = clean(path);
-    const e = files.get(path);
-    if (!e) return cb(err("ENOENT"));
-    e.mtime = mtime * 1000;
-    put(path, e);
-    cb(null);
+  resize(path, e, length) {
+    grow(e, length);
+    if (length > e.size) e.data.fill(0, e.size, length);
+    const old = e.size;
+    e.size = length;
+    e.mtime = now();
+    if (files.get(path) === e) changed(path, Math.min(old, length), Math.max(old, length));
   },
-  chmod(path, mode, cb) {
-    path = clean(path);
-    const e = files.get(path);
-    if (!e) return cb(err("ENOENT"));
-    e.mode = (e.mode & ~0o777) | (mode & 0o777);
-    changed(path, "rename"); // not a write: the watch looks
-    cb(null);
+  /** touch sets e's modification time (milliseconds since 1970). */
+  touch(path, e, mtime) {
+    e.mtime = mtime;
+    if (files.get(path) === e) changed(path);
   },
-  fchmod(fd, mode, cb) { const f = fds.get(fd); f ? this.chmod(f.path, mode, cb) : cb(err("EBADF")); },
-  chown(path, uid, gid, cb) { cb(null); },
-  fchown(fd, uid, gid, cb) { cb(null); },
-  lchown(path, uid, gid, cb) { cb(null); },
-  link(path, link, cb) { cb(err("ENOSYS")); },
-  symlink(path, link, cb) { cb(err("ENOSYS")); },
-  readlink(path, cb) { cb(err("EINVAL")); },
-  /**
-   * watch is Node's fs.watch: listener(eventType, filename) hears of what
-   * changes in the directory (and in its directories, recursive), or of
-   * the directory itself (filename null): "change" for an entry written,
-   * "rename" for one that appeared or went away, or whose mode changed.
-   * It's told a moment later, once the call that changed it is done, of
-   * every change.
-   */
-  watch(path, options, listener) {
-    if (typeof options === "function") [options, listener] = [{}, options];
-    path = clean(path);
-    if (!files.has(path)) throw err("ENOENT");
-    const w = { path, recursive: !!options?.recursive, listener, closed: false };
-    watchers.add(w);
-    const watcher = {
-      close() { w.closed = true; watchers.delete(w); },
-      on() { return watcher; },
-      ref() { return watcher; },
-      unref() { return watcher; },
-    };
-    return watcher;
-  },
+  /** closed says a file opened to write was closed: what's done with it once written runs (onWritten). */
+  closed(path) { written(path); },
 };
-
-// --- Watching ---
-
-const watchers = new Set(); // { path, recursive, listener, closed }
-let told = []; // [watcher, eventType, filename], to tell
-let telling = 0;
-
-// changed tells the watchers of path, and of the directories above it,
-// that it changed, once the call that changed it is done.
-function changed(path, type) {
-  if (!watchers.size) return;
-  for (const w of watchers) {
-    const prefix = w.path === "/" ? "/" : w.path + "/";
-    let name = null;
-    if (path !== w.path) {
-      if (!path.startsWith(prefix)) continue;
-      name = path.slice(prefix.length);
-      if (!w.recursive && name.includes("/")) continue;
-    }
-    told.push([w, type, name]);
-  }
-  if (told.length && !telling) telling = setTimeout(tell, 0);
-}
-
-function tell() {
-  const now = told;
-  told = [];
-  telling = 0;
-  for (const [w, type, name] of now) if (!w.closed) w.listener(type, name);
-}
-
-function resize(path, e, length) {
-  grow(e, length);
-  if (length > e.size) e.data.fill(0, e.size, length);
-  const old = e.size;
-  e.size = length;
-  e.mtime = now();
-  markDirty(path, Math.min(old, length), Math.max(old, length));
-  changed(path, "change");
-}
-
-function writeAt(fd, buf, offset, length, position) {
-  const f = fds.get(fd);
-  if (!f) throw err("EBADF");
-  const e = files.get(f.path);
-  if (!e || e.dir) throw err("EISDIR");
-  let at = position ?? (f.append ? e.size : f.pos);
-  grow(e, at + length);
-  if (at > e.size) e.data.fill(0, e.size, at);
-  e.data.set(buf.subarray(offset, offset + length), at);
-  e.size = Math.max(e.size, at + length);
-  e.mtime = now();
-  if (position == null) f.pos = at + length;
-  markDirty(f.path, at, at + length);
-  changed(f.path, "change");
-  return length;
-}
-
-function remove(path) {
-  files.delete(path);
-  markDirty(path);
-  changed(path, "rename");
-}
 
 // --- Keeping the data directory ---
 
@@ -426,9 +291,9 @@ function writeFiles(st, dirty) {
 }
 
 /**
- * reload reads files another tab wrote (paths) again from IndexedDB, and
- * tells the watches. One this tab changed and hasn't written stays as it
- * is, to be written whole (the other tab's chunks of it aren't its).
+ * reload reads files another tab wrote (paths) again from IndexedDB. One
+ * this tab changed and hasn't written stays as it is, to be written
+ * whole (the other tab's chunks of it aren't its).
  */
 async function reload(st, paths) {
   const want = [];
@@ -457,7 +322,7 @@ async function reload(st, paths) {
     if (!v) {
       if (old) {
         files.delete(p);
-        changed(p, "rename");
+        note(p);
       }
       continue;
     }
@@ -469,37 +334,28 @@ async function reload(st, paths) {
       e = { dir: false, mode: v.mode, mtime: v.mtime, size: v.size, data: new Uint8Array(v.size), chunked: true };
       parts[0].forEach(([, i], j) => { if (i * CHUNK < v.size) e.data.set(parts[1][j].subarray(0, v.size - i * CHUNK), i * CHUNK); });
     } else e = { dir: false, mode: v.mode, mtime: v.mtime, size: v.data.length, data: v.data };
-    if (old) e.ino = old.ino;
-    for (let d = parent(p); !files.has(d); d = parent(d)) files.set(d, { dir: true, mode: S_IFDIR | 0o755, mtime: v.mtime, size: 0, data: null });
+    e.ino = old?.ino ?? ++lastInode;
+    for (let d = parent(p); !files.has(d); d = parent(d)) {
+      files.set(d, { dir: true, mode: S_IFDIR | 0o755, mtime: v.mtime, size: 0, data: null, ino: ++lastInode });
+      note(d);
+    }
     files.set(p, e);
-    changed(p, old ? "change" : "rename");
+    note(p);
   }
 }
 
 /**
- * mount sets the file system up before Go starts: its directories, and
- * the data directory (dir) as the app last left it, from the IndexedDB
- * database name. output, if given, gets what Go prints.
+ * mount sets the file system up before the core starts: its
+ * directories, and the data directory (dir) as the app last left it,
+ * from the IndexedDB database name. output, if given, gets what the host
+ * logs (log).
  */
 export async function mount({ name, dir = "/data", output } = {}) {
   if (output) onOutput = output;
-  name ||= location.pathname;
+  name ||= globalThis.location?.pathname ?? "app";
   const st = { dir, name, db: null, channel: null, dirty: new Map(), writing: new Set() };
   stores.push(st);
   for (const d of ["/", "/tmp", "/home", dir]) mkdirs(d);
-  globalThis.fs = memfs;
-  globalThis.process ??= {};
-  Object.assign(globalThis.process, {
-    getuid: () => -1, getgid: () => -1, geteuid: () => -1, getegid: () => -1,
-    getgroups: () => { throw err("ENOSYS"); },
-    // The page is the app's process: an ID of its own (os.Getpid), which
-    // names its run in crash reports.
-    pid: pageID, ppid: -1,
-    umask: () => 0o22,
-    cwd: () => "/",
-    chdir: () => { throw err("ENOSYS"); },
-  });
-  globalThis.path ??= { resolve: (...p) => clean(p.join("/")) };
   if (!globalThis.indexedDB) return;
   try {
     const db = await new Promise((resolve, reject) => {
@@ -517,9 +373,11 @@ export async function mount({ name, dir = "/data", output } = {}) {
     const [keys, values, ckeys, cvalues] = await Promise.all([req(meta.getAllKeys()), req(meta.getAll()), req(chunks.getAllKeys()), req(chunks.getAll())]);
     keys.forEach((k, i) => {
       const v = values[i];
-      if (v.dir) files.set(k, { dir: true, mode: v.mode, mtime: v.mtime, size: 0, data: null });
-      else if (v.chunked) files.set(k, { dir: false, mode: v.mode, mtime: v.mtime, size: v.size, data: new Uint8Array(v.size), chunked: true });
-      else files.set(k, { dir: false, mode: v.mode, mtime: v.mtime, size: v.data.length, data: v.data });
+      const ino = ++lastInode;
+      if (v.dir) files.set(k, { dir: true, mode: v.mode, mtime: v.mtime, size: 0, data: null, ino });
+      else if (v.chunked) files.set(k, { dir: false, mode: v.mode, mtime: v.mtime, size: v.size, data: new Uint8Array(v.size), chunked: true, ino });
+      else files.set(k, { dir: false, mode: v.mode, mtime: v.mtime, size: v.data.length, data: v.data, ino });
+      note(k);
     });
     ckeys.forEach(([p, i], j) => {
       const e = files.get(p);
@@ -534,7 +392,7 @@ export async function mount({ name, dir = "/data", output } = {}) {
   } catch (e) {
     console.warn("asuka: the app's files won't be kept:", e);
   }
-  if (stores.length === 1) {
+  if (stores.length === 1 && globalThis.document) {
     // Written at once as the page goes (or may go: hidden).
     addEventListener("pagehide", () => flush(true));
     document.addEventListener("visibilitychange", () => { if (document.hidden) flush(true); });
@@ -543,11 +401,77 @@ export async function mount({ name, dir = "/data", output } = {}) {
 
 const req = (r) => new Promise((resolve, reject) => { r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
 
+// --- spawn's workers' copies ---
+
+// What a worker's copy is sent: [path, entry or null (gone)], each
+// entry's bytes its own.
+const copyOf = (e) => (e ? { dir: e.dir, mode: e.mode, mtime: e.mtime, size: e.size, data: e.dir ? null : e.data.slice(0, e.size), ino: e.ino } : null);
+
+/**
+ * changesFor is what a worker's copy (w: { id, synced }, synced the
+ * journal's number it has) lacks: the files changed since, but those it
+ * changed itself (null: none); w.synced moves on. A new copy (synced 0)
+ * gets every file.
+ */
+export function changesFor(w) {
+  if (w.synced === version) return null;
+  const out = [];
+  for (const [p, j] of journal) {
+    if (j.v <= w.synced || j.origin === w.id) continue;
+    out.push([p, copyOf(files.get(p))]);
+  }
+  w.synced = version;
+  return out.length ? out : null;
+}
+
+/** take applies the changes a worker (id) made: its files are kept and written, as the page's own. */
+export function take(id, changes) {
+  if (!changes?.length) return;
+  const was = origin;
+  origin = id;
+  try {
+    for (const [p, e] of changes) {
+      if (e) {
+        for (let d = parent(p); !files.has(d); d = parent(d)) put(d, newEntry(true, S_IFDIR | 0o755));
+        e.ino = files.get(p)?.ino ?? ++lastInode;
+        if (!e.dir) e.data ??= new Uint8Array(0);
+        put(p, e);
+        if (!e.dir) written(p);
+      } else if (files.has(p)) {
+        remove(p);
+      }
+    }
+  } finally {
+    origin = was;
+  }
+}
+
+/** replica makes this file system a worker's copy: applying changes (the page's) as they come, keeping nothing. */
+export function replica(changes) {
+  for (const [p, e] of changes ?? []) {
+    if (e) {
+      e.ino ??= ++lastInode;
+      files.set(p, e);
+    } else files.delete(p);
+  }
+}
+
+/** mark is the journal's number now: the worker's changes after it are its job's (since). */
+export const mark = () => version;
+
+/** since is what changed after mark m, for the page: [path, entry or null], each entry's bytes a copy of their own. */
+export function since(m) {
+  const out = [];
+  for (const [p, j] of journal) if (j.v > m) out.push([p, copyOf(files.get(p))]);
+  return out;
+}
+
 // --- For the host ---
 
-/** log prints a line of the host's to standard error, as Go's are: the console, and asuka dev's terminal. */
+/** log prints a line of the host's to the console, and asuka dev's terminal. */
 export function log(line) {
-  memfs.writeSync(2, new TextEncoder().encode(line + "\n"));
+  console.error(line);
+  onOutput?.(2, line + "\n");
 }
 
 /** readFile is a file's bytes (null if there's none). */
@@ -560,11 +484,10 @@ export function readFile(path) {
 export function writeFile(path, bytes) {
   path = clean(path);
   mkdirs(parent(path));
-  put(path, { dir: false, mode: S_IFREG | 0o644, mtime: now(), size: bytes.length, data: bytes });
+  const e = newEntry(false, S_IFREG | 0o644, bytes);
+  e.ino = files.get(path)?.ino ?? e.ino;
+  put(path, e);
 }
-
-/** clean is path made absolute, without . and .. and doubled slashes. */
-export { clean };
 
 /** removeFile removes a file, if there's one. */
 export function removeFile(path) {
@@ -592,17 +515,17 @@ export function blobURL(path) {
   const e = files.get(path);
   if (!e || e.dir) return "";
   const old = urls.get(path);
-  if (old && old.mtime === e.mtime) return old.url;
+  if (old && old.mtime === e.mtime && old.size === e.size) return old.url;
   if (old) URL.revokeObjectURL(old.url);
   const url = URL.createObjectURL(new Blob([e.data.subarray(0, e.size)]));
-  urls.set(path, { url, mtime: e.mtime });
+  urls.set(path, { url, mtime: e.mtime, size: e.size });
   return url;
 }
 
 // --- Files that go somewhere once written ---
 
 // sinks are what's done with a file once the app has written it (closed
-// a file it opened to write, or renamed one over it): asuka/sdk/dialog's Save
+// a file it opened to write, or renamed one over it): asuka/dialog's Save
 // writes it to the file the user chose, or downloads it.
 const sinks = new Map(); // path -> function(bytes)
 const pending = new Set();

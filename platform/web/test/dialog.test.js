@@ -26,15 +26,15 @@ function dirHandle(name, entries) {
   return { kind: "directory", name, async *entries() { for (const e of entries) yield [e.name, e]; } };
 }
 
-// writeGo writes a file as Go's os.WriteFile does: open, write, close.
-function writeGo(path, text) {
-  const { O_WRONLY, O_CREAT, O_TRUNC } = fs.memfs.constants;
-  const fd = new Promise((res, rej) => fs.memfs.open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644, (e, fd) => (e ? rej(e) : res(fd))));
-  return fd.then((fd) => {
-    const b = enc.encode(text);
-    fs.memfs.writeSync(fd, b);
-    return new Promise((res) => fs.memfs.close(fd, res));
-  });
+// writeCore writes a file as the core's asuka/fs does through WASI
+// (src/wasi.js): open it (made, or emptied), write, close.
+function writeCore(path, text) {
+  path = fs.clean(path);
+  let e = fs.fsys.entry(path);
+  if (!e) e = fs.fsys.create(path);
+  else fs.fsys.resize(path, e, 0);
+  fs.fsys.write(path, e, enc.encode(text), 0);
+  fs.fsys.closed(path);
 }
 const tick = () => new Promise((r) => setTimeout(r, 5));
 
@@ -90,7 +90,7 @@ test("folder copies the folder in, with all it holds", async () => {
   assert.equal(asked.types, undefined);
   assert.equal(dec.decode(fs.readFile(root + "/a.md")), "# A");
   assert.equal(dec.decode(fs.readFile(root + "/Old/b.md")), "# B");
-  const names = await new Promise((res) => fs.memfs.readdir(root, (e, n) => res(n)));
+  const names = fs.fsys.names(fs.clean(root));
   assert.deepEqual(names, ["Empty", "Old", "a.md"]);
 });
 
@@ -109,16 +109,16 @@ test("save's file goes to the file chosen each time the app writes it", async ()
   assert.deepEqual(asked.types, [{ description: "Markdown", accept: { "text/markdown": [".md"] } }]);
   assert.match(path, /^\/tmp\/saved\/\d+\/Notes\.md$/);
 
-  await writeGo(path, "first");
+  writeCore(path, "first");
   await tick();
   assert.deepEqual(written, ["first"]);
   // Written to a temporary file and renamed over it, as a careful save does.
-  await writeGo(path + ".tmp", "second");
-  await new Promise((res) => fs.memfs.rename(path + ".tmp", path, res));
+  writeCore(path + ".tmp", "second");
+  fs.fsys.rename(fs.clean(path + ".tmp"), fs.clean(path));
   await tick();
   assert.deepEqual(written, ["first", "second"]);
   // Read, not written: nothing goes.
-  await new Promise((res) => fs.memfs.open(path, 0, 0, (e, fd) => fs.memfs.close(fd, res)));
+  fs.fsys.entry(fs.clean(path));
   await tick();
   assert.equal(written.length, 2);
 

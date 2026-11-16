@@ -177,12 +177,12 @@ static bool keeping;  // the dev loop keeps state across loads
 static const ak_shape *shape_named(void *ctx, const char *name) { return ak_module_shape_named(ctx, name); }
 
 // run_module makes m (owned) the running app: the old one goes (its
-// state saved first when the dev loop keeps it), m's init runs and its
-// app mounts.
-static int run_module(ak_module *m, char **err) {
+// state saved first when the dev loop keeps it), m's init runs and, when
+// mount, its app mounts.
+static int start_module(ak_module *m, bool mount, char **err) {
 	char msg[512];
 	int32_t app = ak_module_app(m);
-	if (app < 0) {
+	if (mount && app < 0) {
 		ak_module_release(m);
 		fail(err, "asuka: the module has no app");
 		return -1;
@@ -206,11 +206,33 @@ static int run_module(ak_module *m, char **err) {
 			return -1;
 		}
 	}
+	if (!mount) return 0;
 	ak_closure *build = ak_vm_closure(ak_module_func(m, (uint32_t)app));
 	ak_ui_mount(build);
 	ak_release(build);
 	return 0;
 }
+
+static int run_module(ak_module *m, char **err) { return start_module(m, true, err); }
+
+// ak_abi_init_only makes m (owned; NULL: the app compiled into the
+// build) the module that runs, without its app: its init runs and nothing
+// mounts. For the web's workers, which run spawn's closures (abi/web.c).
+int ak_abi_init_only(ak_module *m, char **err) {
+	if (err) *err = NULL;
+	if (!m) {
+		if (!ak_app_loader) {
+			fail(err, "asuka: no app is compiled into this build");
+			return -1;
+		}
+		m = ak_app_loader();
+		ak_module_retain(m);
+	}
+	return start_module(m, false, err);
+}
+
+// ak_abi_module is the module that runs (NULL: none).
+ak_module *ak_abi_module(void) { return module; }
 
 void asuka_unload(void) {
 	if (!started) return;

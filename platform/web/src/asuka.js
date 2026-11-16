@@ -8,26 +8,25 @@
 // default, the app then filling the page), core (the URL of the C core,
 // asuka.wasm, with the app compiled in) and module (an app's bytecode to
 // load into it: asuka dev's, which with dev loads each save's in place,
-// keeping the app's state), wasm (a Go app's URL), exec (the URL
-// of the Go release's wasm_exec.js; "wasm_exec.js" beside this file by
-// default), assets (where its assets are served: "assets"), name (the
-// app's: its stored data is kept under it), fonts (the app's font files,
-// assets/fonts), env (more environment variables for the Go code), libs (the
-// URLs of the app's plugins' files, by their names: an app that imports
-// asuka/sdk/sqlite has asqlite.wasm, and SQLite's worker starts with it),
-// serviceWorker (the URL of the app's service worker, sw.js with the
-// app's settings, which the page registers: its notifications and
-// pushes), vapidPublicKey (the app's VAPID key, for asuka/sdk/push), icon (a
-// notification's icon), mapTiles (the URL of maps.View's tiles, with
-// {z}, {x} and {y}: OpenStreetMap's by default), dev (asuka dev's: the page reloads with each
-// build, keeping the app's state, and the app's logs go to the terminal).
+// keeping the app's state), assets (where its assets are served:
+// "assets"), name (the app's: its stored data is kept under it), fonts
+// (the app's font files, assets/fonts), libs (the URLs of the app's
+// plugins' files, by their names: an app that imports asuka/sqlite has
+// asqlite.wasm, and SQLite's worker starts with it), serviceWorker (the
+// URL of the app's service worker, sw.js with the app's settings, which
+// the page registers: its notifications and pushes), vapidPublicKey (the
+// app's VAPID key, for asuka/push), icon (a notification's icon),
+// mapTiles (the URL of maps.View's tiles, with {z}, {x} and {y}:
+// OpenStreetMap's by default), workers (false: spawn runs on the page's
+// thread, not its workers), dev (asuka dev's: the page reloads with each
+// build, keeping the app's state, and the app's logs go to the
+// terminal).
 
 import { Host } from "./host.js";
 import * as fs from "./fs.js";
 import { natives as builtinNatives } from "./modules/hardware.js";
 import * as worker from "./worker.js";
 import { notifyFor } from "./modules/system-notify.js";
-import { Crash } from "./crash.js";
 import { startCore } from "./core.js";
 // What packages' generated JavaScript (asuka native) builds on: globalThis.asuka.native.
 export * as native from "./native.js";
@@ -67,70 +66,24 @@ export async function start(options = {}) {
   worker.openLaunchFiles(host, fs.saveUpload);
   const hostName = "asukaHost" + (hosts++ || "");
   globalThis[hostName] = host;
-  if (options.core) {
-    // The C core (asuka.wasm), with the app compiled in or its bytecode
-    // (options.module) loaded into it.
-    let core;
-    try {
-      core = await startCore(host, { wasm: options.core, module: options.module, dev: !!dev, log: dev?.log });
-    } catch (e) {
-      showError(container, "The app couldn't load: " + e.message);
-      throw e;
-    }
-    if (dev) dev.attach(host, core);
-    try { notifyFor(host); } catch (e) { console.warn("asuka/sdk/notify:", e); }
-    return host;
-  }
-  const execURL = options.exec || new URL("wasm_exec.js", import.meta.url).href;
-  if (!globalThis.Go) await loadScript(execURL);
-  const go = new globalThis.Go();
-  // asuka/sdk/crash's record of the run: what Go's runtime prints of a crash, uncaught errors.
-  host.crash = new Crash(go, host);
-  // The program's exit status (wasm_exec.js only logs it).
-  go.exitCode = 0;
-  go.exit = (code) => { go.exitCode = code; };
-  go.argv = [name];
-  go.env = { ASUKA_WEB_HOST: hostName, ASUKA_DATA: data, HOME: "/home", TMPDIR: "/tmp", TZ: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", ...(options.env || {}) };
-  const res = fetch(options.wasm || "app.wasm");
-  let instance;
+  let core;
   try {
-    const r = await WebAssembly.instantiateStreaming(res, go.importObject).catch(async (e) => {
-      // A server that doesn't send application/wasm.
-      const bytes = await (await fetch(options.wasm || "app.wasm")).arrayBuffer();
-      return WebAssembly.instantiate(bytes, go.importObject);
+    core = await startCore(host, {
+      wasm: options.core || "asuka.wasm",
+      module: options.module,
+      dev: !!dev,
+      log: dev?.log,
+      appDir: data,
+      workers: options.workers,
+      sqlite: sqlite ? () => sqlite : null,
     });
-    instance = r.instance;
   } catch (e) {
     showError(container, "The app couldn't load: " + e.message);
     throw e;
   }
-  host.attach(instance.exports.mem);
-  if (sqlite) {
-    try {
-      host.sqlite = (await sqlite).api(() => host.mem, data);
-    } catch (e) {
-      console.error("asuka: SQLite didn't load:", e);
-    }
-  }
-  if (dev) dev.attach(host);
-  const run = go.run(instance);
-  // What's scheduled and came due while no page was open shows now.
-  try { notifyFor(host); } catch (e) { console.warn("asuka/sdk/notify:", e); }
-  run.then(() => {
-    host.crash.exited(go.exitCode);
-    if (go.exitCode) showError(container, dev?.lastError() || `The app stopped (exit status ${go.exitCode}).`);
-  });
+  if (dev) dev.attach(host, core);
+  try { notifyFor(host); } catch (e) { console.warn("asuka/notify:", e); }
   return host;
-}
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = () => reject(new Error("can't load " + src));
-    document.head.appendChild(s);
-  });
 }
 
 function showError(container, msg) {
