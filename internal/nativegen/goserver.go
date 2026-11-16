@@ -192,6 +192,9 @@ func (g *gsGen) mangled(t *Type) string {
 	case Func:
 		return fmt.Sprintf("Func%x", len(g.goType(t))+strings.Count(g.goType(t), "string")*7)
 	}
+	if n, ok := methodOf[t.Kind]; ok {
+		return n // a name, where the Go type isn't one ([]byte, time.Duration)
+	}
 	return strings.Title(g.goType(t))
 }
 
