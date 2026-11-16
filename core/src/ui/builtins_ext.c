@@ -38,6 +38,7 @@
 //	ui.open_url             url: string                                    -
 //	ui.announce             text: string                                   -
 //	ui.a11y_focus           v: View                                        -
+//	ui.set_accent           color: int (the wire's Color), flags: int      -
 //	ui.call                 module: string, method: string, args: bytes    Task<bytes>
 //	ui.view_id              v: View                                        int
 //	ui.on_open_url          f: fn(string)                                  -
@@ -329,6 +330,7 @@ static ak_val b_say(ak_val *a, uint32_t n) {
 }
 
 void ak_canvas_builtins_init(void);
+void ak_accent_builtins_init(void);
 
 void ak_ui_ext_builtins_init(void);
 
@@ -357,4 +359,5 @@ void ak_ui_ext_builtins_init(void) {
 	};
 	for (size_t i = 0; i < AK_LEN(t); i++) ak_builtin_register(t[i].name, t[i].fn);
 	ak_canvas_builtins_init();
+	ak_accent_builtins_init();
 }

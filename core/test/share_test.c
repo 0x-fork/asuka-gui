@@ -68,6 +68,53 @@ TEST(system_commands) {
 	done(a);
 }
 
+// The app's accent (ui.set_accent, from its init) goes to the host as a
+// root mounts, before its views; a reload that changes it tells the host
+// again, one that doesn't sends nothing.
+static void set_accent(uint64_t color, uint8_t flags) {
+	ak_val a[2] = {{.i = (int64_t)color}, {.i = flags}};
+	ak_builtin_find("ui.set_accent")(a, 2);
+}
+
+static uint64_t accent_of(ak_span s) {
+	uint64_t v = 0;
+	for (int i = 7; i >= 0; i--) v = v << 8 | (uint8_t)s.p[i];
+	return v;
+}
+
+TEST(accent) {
+	uint64_t purple = 2ull << 32 | 0x7c3aedffu;
+	set_accent(purple, 1);
+	ak_uitest *a = mount(plain_app, NULL);
+	ak_fake *f = ak_uitest_host(a);
+	ak_span s = cmd_args(f, AK_CMD_ACCENT, NULL);
+	CHECK(s.len == 9 && accent_of(s) == purple && s.p[8] == 1);
+	// Before any view: the first op that isn't the root's.
+	ak_fake_index_vec cmds = {0};
+	ak_fake_commands(f, AK_CMD_ACCENT, &cmds);
+	for (uint32_t i = 0; i < cmds.data[0]; i++) CHECK(ak_fake_op_at(f, i).code != AK_OP_CREATE || ak_fake_op_at(f, i).id == root(a)->id);
+	ak_vec_free(&cmds);
+	ak_release(target);
+	ak_fake_reset(f);
+	set_accent(purple, 1);  // a reload with the same one
+	ak_ui_flush();
+	ak_fake_commands(f, AK_CMD_ACCENT, &cmds);
+	CHECK_EQ_INT(cmds.len, 0);
+	ak_vec_free(&cmds);
+	set_accent(0, 0);  // a reload of an app with none: the platform's again
+	ak_ui_flush();
+	s = cmd_args(f, AK_CMD_ACCENT, NULL);
+	CHECK(s.len == 9 && accent_of(s) == 0 && s.p[8] == 0);
+	done(a);
+	// With none, a root sends nothing.
+	a = mount(plain_app, NULL);
+	ak_fake_commands(ak_uitest_host(a), AK_CMD_ACCENT, &cmds);
+	CHECK_EQ_INT(cmds.len, 0);
+	ak_vec_free(&cmds);
+	ak_release(target);
+	done(a);
+}
+
 // ---- Calls ----
 
 static bool answer(void *ctx, ak_span module, ak_span method, ak_span args, ak_buf *out) {

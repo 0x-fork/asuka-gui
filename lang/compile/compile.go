@@ -11,6 +11,7 @@ import (
 	pathpkg "path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/asuka/internal/pkgs"
@@ -261,7 +262,13 @@ func (l *loader) compile(root *unit) *Result {
 	if len(res.Diags) > 0 {
 		return res
 	}
-	p, diags := ir.Lower(prog, &ir.Options{MainTest: l.opts.MainTest})
+	accent, accentFlags, err := appAccent(root.dir)
+	if err != nil {
+		pos := syntax.Position{Filename: filepath.Join(root.dir, "asuka.toml"), Line: 1, Column: 1}
+		res.Diags = append(res.Diags, check.Diagnostic{Pos: pos, End: pos, Msg: err.Error()})
+		return res
+	}
+	p, diags := ir.Lower(prog, &ir.Options{MainTest: l.opts.MainTest, Accent: accent, AccentFlags: accentFlags})
 	res.Diags = append(res.Diags, diags...)
 	if len(res.Diags) > 0 {
 		return res
@@ -269,6 +276,47 @@ func (l *loader) compile(root *unit) *Result {
 	res.IR = p
 	res.Module = p.Encode()
 	return res
+}
+
+// appAccent is the app's accent color from its asuka.toml (accent =
+// "#rrggbb" or "#rrggbbaa"), as the wire's Color (0: none, the
+// platform's), and its flags (1: android.dynamicColor, the wallpaper's
+// colors where the system has them). The module's init gives them to the
+// core, which sends them to the host as the app mounts, so asuka dev's
+// player shows each app's.
+func appAccent(dir string) (uint64, uint8, error) {
+	if dir == "" || strings.HasPrefix(dir, "pkg:") {
+		return 0, 0, nil
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "asuka.toml"))
+	if err != nil {
+		return 0, 0, nil
+	}
+	var m struct {
+		Accent  string `json:"accent"`
+		Android struct {
+			DynamicColor bool `json:"dynamicColor"`
+		} `json:"android"`
+	}
+	if toml.Unmarshal(b, &m) != nil {
+		return 0, 0, nil // the CLI reports the manifest's own errors
+	}
+	var flags uint8
+	if m.Android.DynamicColor {
+		flags = 1
+	}
+	if m.Accent == "" {
+		return 0, flags, nil
+	}
+	h := strings.TrimPrefix(m.Accent, "#")
+	if len(h) == 6 {
+		h += "ff"
+	}
+	v, err := strconv.ParseUint(h, 16, 32)
+	if len(h) != 8 || err != nil {
+		return 0, 0, fmt.Errorf("asuka.toml: accent %q (want #rrggbb or #rrggbbaa)", m.Accent)
+	}
+	return 2<<32 | v, flags, nil // ops.Color's RGBA
 }
 
 // nativeClass is what a package's platforms' code registers its native

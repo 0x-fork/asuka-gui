@@ -174,8 +174,11 @@ static void after_flush(void *ctx) {
 	if (ak_ui.root && !mounting) ak_root_flush(ak_ui.root);
 }
 
+void ak_accent_host(void);
+
 void ak_ui_init(const ak_host *host) {
 	ak_ui.host = *host;
+	ak_accent_host();
 	if (ak_ui.inited) return;
 	ak_ui.inited = true;
 	ak_signal_set_after_flush(after_flush, NULL);

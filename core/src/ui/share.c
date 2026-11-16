@@ -435,7 +435,12 @@ void ak_locale_mounted(ak_ui_root *r);
 void ak_locale_environment(ak_ui_root *r);
 void ak_media_cache_free(void);
 
-void ak_ext_mounted(ak_ui_root *r) { ak_locale_mounted(r); }
+void ak_accent_mounted(ak_ui_root *r);
+
+void ak_ext_mounted(ak_ui_root *r) {
+	ak_accent_mounted(r);  // Accent comes before Locale
+	ak_locale_mounted(r);
+}
 
 void ak_ext_environment(ak_ui_root *r) { ak_locale_environment(r); }
 
