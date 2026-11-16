@@ -240,6 +240,13 @@ int wh_visible_text(node *n, wchar_t *out, int cap);
 LRESULT wh_field_notify(node *n, NMHDR *hdr, LPARAM lp, bool *handled);
 void wh_format_rich(node *n, const uint8_t *args, size_t len);
 void wh_set_rich_link(node *n, const char *url, size_t len);
+void wh_field_free(node *n);
+void wh_load_msftedit(void);
+// wh_twips is a size in points as a rich edit's font size: twips at its
+// window's scale k (0: the main window's), as the control converts them
+// at the system's DPI.
+int wh_twips(float size, float k);
+void wh_open_link(node *n, const char *url, size_t len);
 
 // ---- web.c: WebView2, Video ----
 void wh_make_web(node *n);

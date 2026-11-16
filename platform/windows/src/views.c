@@ -594,10 +594,15 @@ void wh_apply_font(node *n) {
 
 bool wh_reads_rtl(const node *n) {
 	if (n->dir != AK_LAYOUT_DIRECTION_INHERIT) return n->dir == AK_LAYOUT_DIRECTION_RIGHT_TO_LEFT;
-	// Its first strong character (Unicode's bidi rule P2).
-	for (int i = 0; i < n->text.n; i++) {
-		uint32_t r = n->text.p[i];
-		if (r >= 0xD800 && r < 0xDC00 && i + 1 < n->text.n) r = 0x10000 + ((r - 0xD800) << 10) + (n->text.p[++i] - 0xDC00);
+	return wh_first_strong_rtl(n->text.p, n->text.n, H.rtl);
+}
+
+// wh_first_strong_rtl reports whether text's first strong character reads
+// right to left (Unicode's bidi rule P2), or none for text without one.
+bool wh_first_strong_rtl(const wchar_t *s, int len, bool none) {
+	for (int i = 0; i < len; i++) {
+		uint32_t r = s[i];
+		if (r >= 0xD800 && r < 0xDC00 && i + 1 < len) r = 0x10000 + ((r - 0xD800) << 10) + (s[++i] - 0xDC00);
 		bool rtl_block = (r >= 0x0590 && r <= 0x08FF) || (r >= 0xFB1D && r <= 0xFDFF) || (r >= 0xFE70 && r <= 0xFEFF) ||
 			(r >= 0x10800 && r <= 0x10FFF) || (r >= 0x1E800 && r <= 0x1EFFF);
 		WORD type = 0;
@@ -606,7 +611,7 @@ bool wh_reads_rtl(const node *n) {
 		if (rtl_block && letter) return true;
 		if (!rtl_block && letter) return false;
 	}
-	return H.rtl;
+	return none;
 }
 
 void wh_set_direction(node *n, uint8_t d) {
@@ -1017,7 +1022,7 @@ LRESULT wh_view_message(node *n, HWND hwnd, UINT m, WPARAM wp, LPARAM lp, bool *
 		return 0;
 	}
 	case WM_SIZE:
-		if (n->nav && wh_nav_sized_by_host(n)) wh_fill_screens(n);
+		if ((n->nav && wh_nav_sized_by_host(n)) || n == H.root) wh_fill_screens(n);
 		if (n->clip) wh_shape_clip(n);
 		if (n->kind == AK_KIND_STEPPER) wh_layout_stepper(n);
 		else if (n->ctl) wh_layout_field(n);

@@ -467,6 +467,7 @@ HWND wh_top_of_children(node *p);
 void wh_adopt(node *p, node *c);
 bool wh_is_rtl(const node *n);
 bool wh_reads_rtl(const node *n);
+bool wh_first_strong_rtl(const wchar_t *s, int len, bool none);
 void wh_fail(const char *fmt, ...);
 void wh_log(const char *fmt, ...);
 
@@ -576,6 +577,8 @@ typedef struct {
 
 font_spec wh_spec(int32_t style, int32_t weight, float size, const char *family);
 font_spec wh_node_spec(const node *n);
+// wh_face is the family a spec is drawn in (buf: room for a named one).
+const wchar_t *wh_face(const font_spec *s, wchar_t *buf, size_t cap);
 HFONT wh_font(font_spec s);
 HFONT wh_node_font(const node *n);
 HFONT wh_body_font(const node *n);

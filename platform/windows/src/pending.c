@@ -37,9 +37,7 @@ void wh_dock_message(UINT m) { (void)m;  }
 void wh_drop_picture(node *n) { (void)n;  }
 void wh_drop_provider(node *n, HWND hwnd) { (void)n; (void)hwnd;  }
 void wh_end_wheel_pinch(node *n, HWND hwnd) { (void)n; (void)hwnd;  }
-LRESULT wh_field_notify(node *n, NMHDR *hdr, LPARAM lp, bool *handled) { (void)n; (void)hdr; (void)lp; *handled = false; return 0; }
 void wh_forget_interaction(node *n) { (void)n;  }
-void wh_format_rich(node *n, const uint8_t *args, size_t len) { (void)n; (void)args; (void)len;  }
 LRESULT wh_get_object(node *n, HWND hwnd, WPARAM wp, LPARAM lp, bool *handled) { (void)n; (void)hwnd; (void)wp; (void)lp; *handled = false; return 0; }
 void wh_hover_at(HWND top, POINT screen) { (void)top; (void)screen;  }
 void wh_hover_views(int delta) { (void)delta;  }
@@ -52,7 +50,6 @@ void wh_layout_date(node *n, RECT r) { (void)n; (void)r;  }
 void wh_layout_split(node *n) { (void)n;  }
 void wh_make_combo(node *n) { (void)n;  }
 void wh_make_date_controls(node *n) { (void)n;  }
-void wh_make_rich(node *n) { (void)n;  }
 void wh_make_split(node *n) { (void)n;  }
 void wh_make_web(node *n) { (void)n;  }
 void wh_materials_behind(HWND hwnd) { (void)hwnd;  }
@@ -88,17 +85,6 @@ void wh_refresh_hover(void) {  }
 void wh_remake_combo(node *n) { (void)n;  }
 void wh_remove_tray_icons(void) {  }
 void wh_render_shader(node *n) { (void)n;  }
-void wh_retheme_rich(node *n) { (void)n;  }
-void wh_rich_edited(node *n) { (void)n;  }
-const wchar_t * wh_rich_field_class(node *n) { (void)n; return NULL; }
-void wh_rich_invalidate(node *n) { (void)n;  }
-void wh_rich_measure(node *n, float cw, float ch, float aw, float ah, float *w, float *h) { (void)n; (void)cw; (void)ch; (void)aw; (void)ah; (void)w; (void)h;  }
-LRESULT wh_rich_notify(node *n, NMHDR *hdr, LPARAM lp, bool *handled) { (void)n; (void)hdr; (void)lp; *handled = false; return 0; }
-void wh_rich_place(node *n) { (void)n;  }
-void wh_rich_place_inlines(node *n) { (void)n;  }
-void wh_rich_release(node *n) { (void)n;  }
-void wh_rich_resized(node *n) { (void)n;  }
-void wh_rich_set_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 bool wh_route_key(MSG *m) { (void)m; return false; }
 void wh_set_a11y(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 void wh_set_accessible_name(HWND hwnd, const wchar_t *name) { (void)hwnd; (void)name;  }
@@ -109,13 +95,10 @@ void wh_set_keys(node *n, const uint8_t *b, size_t len) { (void)n; (void)b; (voi
 void wh_set_material(node *n, int32_t m) { (void)n; (void)m;  }
 void wh_set_native_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 void wh_set_popover_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
-void wh_set_rich_link(node *n, const char *url, size_t len) { (void)n; (void)url; (void)len;  }
-void wh_set_rich_text(node *n, const uint8_t *b, size_t len) { (void)n; (void)b; (void)len;  }
 void wh_set_shader_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 void wh_set_snack_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 void wh_set_split_prop(node *n, uint16_t p, const ak_value *v) { (void)n; (void)p; (void)v;  }
 void wh_set_tooltip(node *n, const wchar_t *tip) { (void)n; (void)tip;  }
-void wh_setup_rich_edit(node *n) { (void)n;  }
 void wh_shader_new(node *n) { (void)n;  }
 void wh_shader_release(node *n) { (void)n;  }
 void wh_shape_clip(node *n) { (void)n;  }
@@ -135,7 +118,6 @@ void wh_uia_range_changed(node *n, double old, double now) { (void)n; (void)old;
 void wh_update_alert_dialog(node *n) { (void)n;  }
 void wh_update_picture(node *n) { (void)n;  }
 void wh_view_timer(node *n, HWND hwnd, WPARAM id) { (void)n; (void)hwnd; (void)id;  }
-int wh_visible_text(node *n, wchar_t *out, int cap) { (void)n; (void)out; (void)cap; return 0; }
 void wh_wait_for_toast(void) {  }
 void wh_web_close(node *n, HWND hwnd) { (void)n; (void)hwnd;  }
 void wh_web_close_all(void) {  }

@@ -312,6 +312,8 @@ static const wchar_t *face(const font_spec *s, wchar_t *buf, size_t cap) {
 	return L"Segoe UI Variable Display";
 }
 
+const wchar_t *wh_face(const font_spec *s, wchar_t *buf, size_t cap) { return face(s, buf, cap); }
+
 typedef struct {
 	wchar_t family[LF_FACESIZE];
 	int px, weight;

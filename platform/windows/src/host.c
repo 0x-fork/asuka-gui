@@ -66,6 +66,7 @@ static void node_free(node *n) {
 	wstr_free(&n->a11y_hint);
 	wh_free_strings(n->a11y_actions, n->na11y_actions);
 	if (n->clip_rgn) DeleteObject(n->clip_rgn);
+	wh_field_free(n);
 	free(n);
 }
 

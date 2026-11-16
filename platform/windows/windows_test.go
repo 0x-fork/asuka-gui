@@ -356,3 +356,25 @@ func TestNavigation(t *testing.T) {
 	shows(t, d["settings"], "settings", []string{"Notifications", "About"}, "Note: hello")
 	shows(t, d["back"], "the inbox again", []string{"Note: hello"}, "Notifications")
 }
+
+// Rich text (testdata/rich.asuka): a RichText's spans and paragraphs, a
+// Rich TextField's styled text in and the user's typing out, and the
+// core's text replacing it.
+func TestRichText(t *testing.T) {
+	w := onWindows(t)
+	local, guest := w.job(t)
+	src, err := os.ReadFile(filepath.Join("testdata", "rich.asuka"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildApp(t, w, string(src), local)
+	d := script(t, w, local, guest, "app.exe",
+		"snap:start",
+		"tap:Notes", "type:X", "snap:typed",
+		"tap:Reset", "snap:reset")
+	shows(t, d["start"], "the start", []string{"Read the docs first.\nSecond line.", "Hello world", "Spans: 2"})
+	if !strings.Contains(d["typed"], `XHello world"`) && !strings.Contains(d["typed"], `"Hello worldX"`) {
+		t.Errorf("the typing isn't in the field:\n%s", d["typed"])
+	}
+	shows(t, d["reset"], "reset", []string{"Plain", "Spans: 1"})
+}

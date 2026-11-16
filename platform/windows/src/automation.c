@@ -165,6 +165,25 @@ static void walk(ak_buf *b, node *n, int depth) {
 		ak_buf_u8(b, ' ');
 		quote_w(b, &n->text);
 	}
+	if (n->kind == AK_KIND_RICH_TEXT && n->ctl) {
+		// Its text as the control has it, its paragraphs ended by \n.
+		int len = GetWindowTextLengthW(n->ctl);
+		wstr t = {0};
+		if (len > 0) {
+			wchar_t *s = wh_alloc(((size_t)len + 1) * sizeof *s);
+			len = GetWindowTextW(n->ctl, s, len + 1);
+			int k = 0;
+			for (int i = 0; i < len; i++) {
+				if (s[i] == '\r' && i + 1 < len && s[i + 1] == '\n') continue;
+				s[k++] = s[i] == '\r' ? '\n' : s[i];
+			}
+			wstr_setw(&t, s, k);
+			free(s);
+			ak_buf_u8(b, ' ');
+			quote_w(b, &t);
+			wstr_free(&t);
+		}
+	}
 	if (n->title.n) {
 		ak_buf_put(b, " title=", 7);
 		quote_w(b, &n->title);

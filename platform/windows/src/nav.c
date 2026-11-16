@@ -133,7 +133,7 @@ static void kids_remove(node *p, node *c) {
 }
 
 // wh_fill_screens sizes the Screens in a host-sized view (a screen
-// component's Screen, in the Screen its Stack made for it) to fill it,
+// component's Screen, in the Screen its Stack made for it; the root's) to fill it,
 // and reports their environments.
 void wh_fill_screens(node *p) {
 	if (!p->hwnd) return;
@@ -148,9 +148,9 @@ void wh_fill_screens(node *p) {
 }
 
 bool wh_insert_nav(node *p, node *c, uint32_t index) {
-	if (c->kind == AK_KIND_SCREEN && wh_nav_sized_by_host(p)) {
-		// A Screen in a screen (a sheet, a Window): the host sizes it to
-		// fill it, as it does the one around it.
+	if (c->kind == AK_KIND_SCREEN && (wh_nav_sized_by_host(p) || p == H.root)) {
+		// A Screen in a screen (a sheet, a Window) or at the root: the
+		// host sizes it to fill it, as it does the one around it.
 		uint32_t i = index < p->nkids ? index : p->nkids;
 		kids_insert(p, c, i);
 		c->parent = p;
