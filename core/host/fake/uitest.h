@@ -93,6 +93,8 @@ bool ak_uitest_submit(ak_uitest *a, ak_span label, ak_buf *err);
 bool ak_uitest_toggle(ak_uitest *a, ak_span label, ak_buf *err);
 bool ak_uitest_slide(ak_uitest *a, ak_span label, double value, ak_buf *err);
 bool ak_uitest_select(ak_uitest *a, ak_span option, ak_buf *err);
+bool ak_uitest_pick_color(ak_uitest *a, ak_span label, ak_color color, ak_buf *err);
+bool ak_uitest_pick_date(ak_uitest *a, ak_span label, int64_t ms, ak_buf *err);
 bool ak_uitest_swipe(ak_uitest *a, ak_span text, ak_span action, ak_buf *err);
 bool ak_uitest_back(ak_uitest *a, ak_buf *err);
 bool ak_uitest_dismiss(ak_uitest *a, ak_buf *err);

@@ -792,7 +792,8 @@ static void encode_buttons(ak_buf *b, ak_view *const *bs, uint32_t n) {
 		const ak_val *d = key_of(x, AK_KEY_DISABLED);
 		if (d && d->i) flags |= AK_MENU_DISABLED;
 		if (m && m->len) flags |= AK_MENU_SUBMENU;
-		ak_buf_u8(b, 0);
+		const ak_val *role = key_of(x, AK_KEY_BUTTON_ROLE);
+		ak_buf_u8(b, role ? (uint8_t)role->i : 0);
 		put_str(b, str_key(x, AK_KEY_BUTTON_TITLE));
 		put_str(b, str_key(x, AK_KEY_BUTTON_ICON));
 		ak_buf_u8(b, flags);
@@ -1224,7 +1225,7 @@ static const ak_el_class cls_pages = {.name = "PageControl", .kind = AK_KIND_PAG
 
 // ---- Classes, events ----
 
-extern const ak_el_class ak_class_sheet, ak_class_popover, ak_class_menu, ak_class_window, ak_class_router, ak_class_route, ak_class_boundary;
+extern const ak_el_class ak_class_sheet, ak_class_alert, ak_class_popover, ak_class_menu, ak_class_window, ak_class_router, ak_class_route, ak_class_boundary;
 
 const ak_el_class *ak_nav_class_of(uint16_t el) {
 	switch (el) {
@@ -1236,6 +1237,7 @@ const ak_el_class *ak_nav_class_of(uint16_t el) {
 	case AK_EL_DESTINATION: return &cls_dest;
 	case AK_EL_PAGE_CONTROL: return &cls_pages;
 	case AK_EL_SHEET: return &ak_class_sheet;
+	case AK_EL_ALERT: return &ak_class_alert;
 	case AK_EL_POPOVER: return &ak_class_popover;
 	case AK_EL_MENU: return &ak_class_menu;
 	case AK_EL_WINDOW: return &ak_class_window;

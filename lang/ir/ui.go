@@ -994,6 +994,42 @@ func (b *fb) bind(v int, el string, bd *check.BindArg) {
 	b.callBTo(uiOn, bc.None, v, b.konst(int64(ev)), h)
 }
 
+// bindAccessor is the accessor of a component's bound prop: of its
+// target, read as a binding (its cell when it's one read alone).
+func (b *fb) bindAccessor(bd *check.BindArg) int {
+	t := bd.Prop.Type
+	r := b.temp(bc.KRef)
+	if ref := b.readsAlone(bd.Target); ref >= 0 {
+		b.emit(op("ACCC"), r, ref)
+		return r
+	}
+	clos := b.thunk(b.l.info.Ctxs[bd.Item], bd.Target, t)
+	b.emit(op("ACCF"), r, clos, int(b.kind(t)))
+	return r
+}
+
+// bindWriter is the handler of a component's bound prop's change event:
+// it writes the target.
+func (b *fb) bindWriter(bd *check.BindArg) int {
+	wctx := b.l.info.Ctxs[bd.Target]
+	params := make([]*check.Var, len(bd.Event.Params))
+	pkinds := make([]bc.Kind, len(bd.Event.Params))
+	for i, p := range bd.Event.Params {
+		pkinds[i] = b.kind(p.Type)
+	}
+	if len(params) > 0 && len(wctx.Params) > 0 {
+		params[0] = wctx.Params[0]
+	}
+	return b.makeClosure(closure{name: "bind " + bd.Prop.Name(), ctxs: []*check.FuncCtx{wctx}, params: params, pkinds: pkinds, ret: bc.KVoid, throws: true, body: func(c *fb) {
+		c.ctx = wctx
+		if params[0] != nil {
+			lv := c.prepare(bd.Target)
+			c.set(lv, c.vars[params[0]])
+		}
+		c.emit(op("RET0"))
+	}})
+}
+
 // componentCall calls a component's function: accessors of its
 // parameters and props, builders of its slots, its events' handlers.
 func (b *fb) componentCall(ec *check.ElementCall) int {
@@ -1029,7 +1065,16 @@ func (b *fb) componentCall(ec *check.ElementCall) int {
 				slot = s
 			}
 		}
+		var bd *check.BindArg
+		for _, x := range ec.Binds {
+			if x.Prop == m {
+				bd = x
+			}
+		}
 		switch {
+		case bd != nil:
+			// bind p: target: the prop reads the target.
+			vals = append(vals, b.bindAccessor(bd))
 		case val != nil && m.IsSlot():
 			vals = append(vals, b.builder(val))
 		case val != nil:
@@ -1049,9 +1094,19 @@ func (b *fb) componentCall(ec *check.ElementCall) int {
 				h = x
 			}
 		}
-		if h != nil {
+		var bd *check.BindArg
+		for _, x := range ec.Binds {
+			if x.Event == m {
+				bd = x
+			}
+		}
+		switch {
+		case h != nil:
 			vals = append(vals, b.handler(h.Handler, m))
-		} else {
+		case bd != nil:
+			// bind p: target: its pChange writes the target.
+			vals = append(vals, b.bindWriter(bd))
+		default:
 			vals = append(vals, none())
 		}
 	}

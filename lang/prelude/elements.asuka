@@ -250,8 +250,10 @@ native component Button(title: string) {
   prop icon: string
   /// actions shown when it's tapped, instead of press
   prop menu: [Action]
-  /// goes to this route when it's pressed, after press (the Router around it navigates there)
+  /// goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call (href: Thread(id: 7))
   prop href: string
+  /// in an Alert or a Screen's bars, what it does, which the platform draws it by: .cancel, .destructive (red)
+  prop role: ActionRole
   event press
 }
 
@@ -335,6 +337,39 @@ native component Picker(items: [string]) {
   /// what it picks: shown while none is chosen (Android's floating label), and read by screen readers
   prop prompt: string
   event change(index: int)
+}
+
+/// one of many options on a spinning wheel (UIPickerView; Android's NumberPicker)
+native component Wheel(items: [string]) {
+  /// the item turned to
+  prop selected: int
+  event change(index: int)
+}
+
+/// a swatch of a color that opens the platform's picker (UIColorWell; a Material dialog of a palette on Android)
+native component ColorPicker() {
+  /// the color chosen
+  prop value: Color
+  /// the user can choose an opacity too
+  prop alpha: bool
+  /// the picker's title
+  prop title: string
+  event change(color: Color)
+}
+
+/// a date or a time, chosen the platform's way (UIDatePicker; Material's date and time pickers), in the device's time zone and format
+native component DatePicker() {
+  /// the instant chosen, in milliseconds since 1970 (asuka/time's time.Picker binds a Time)
+  prop value: int
+  /// a date, a time of day, or both
+  prop mode: DateMode
+  /// the earliest choice, in milliseconds since 1970 (0: none)
+  prop min: int
+  /// the latest choice (0: none)
+  prop max: int
+  /// iOS: the calendar and the time shown in place, not from a button
+  prop inline: bool
+  event change(value: int)
 }
 
 /// a progress bar; its color is its fill
@@ -575,6 +610,20 @@ native component Sheet() {
   prop fullScreen: bool
   event change(open: bool)
   /// the user dismissed it
+  event dismiss
+}
+
+/// an alert while open: its block's Buttons are its buttons (their title, icon, role and disabled; a cancel one's press runs as it's dismissed too), its TextFields its fields (placeholder, bind text, secure, keyboard, contentType). It takes no room where it's declared; with no Button, it has an OK
+native component Alert(title: string) {
+  prop children: View? = none
+  /// shows the alert while true; choosing a button, or the user dismissing it, writes false
+  prop open: bool
+  /// under the title
+  prop message: string
+  /// an action sheet: a list of choices from the bottom of the screen (a popover on an iPad), its fields left out
+  prop actionSheet: bool
+  event change(open: bool)
+  /// the user dismissed it without choosing a button (a tap outside, Android's back)
   event dismiss
 }
 

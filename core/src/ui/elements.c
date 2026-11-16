@@ -494,6 +494,7 @@ static void controlled(ak_view *e, ak_prop p, uint8_t type, ak_val v) {
 	case AK_T_BOOL: ak_batch_set_bool(b, e->id, p, v.i != 0); break;
 	case AK_T_INT: ak_batch_set_int(b, e->id, p, v.i); break;
 	case AK_T_FLOAT: ak_batch_set_float(b, e->id, p, v.f); break;
+	case AK_T_COLOR: ak_batch_set_color(b, e->id, p, (ak_color)v.i); break;
 	}
 }
 
@@ -637,6 +638,79 @@ static const ak_el_class cls_segmented = {.name = "Segmented", .kind = AK_KIND_S
                                           .set = choice_set, .finalize = segmented_finalize, .event = choice_event, .drop = value_drop};
 static const ak_el_class cls_picker = {.name = "Picker", .kind = AK_KIND_PICKER, .flags = AK_ELF_MEASURED, .init = value_init,
                                        .set = choice_set, .finalize = picker_finalize, .event = choice_event, .drop = value_drop};
+
+// ---- Wheel, ColorPicker, DatePicker ----
+
+static void wheel_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
+	AK_UNUSED(prev);
+	if (key == AK_KEY_WHEEL_ITEMS) send_strings(e, AK_PROP_WHEEL_ITEMS, v.p);
+	else if (key == AK_KEY_WHEEL_SELECTED) controlled(e, AK_PROP_WHEEL_SELECTED, AK_T_INT, v);
+}
+
+static void wheel_finalize(ak_view *e) {
+	if (!key_set(e, AK_KEY_WHEEL_ITEMS)) send_strings(e, AK_PROP_WHEEL_ITEMS, NULL);
+	ak_view_listen(e, AK_EVENT_SELECTED);
+}
+
+static void wheel_event(ak_view *e, const ak_event *ev) {
+	if (ev->kind != AK_EVENT_SELECTED) return;
+	ak_val v = {.i = ev->i};
+	reported(e, v);
+	ak_view_call(e, AK_EV_WHEEL_CHANGE, &v, 1);
+}
+
+static const ak_el_class cls_wheel = {.name = "Wheel", .kind = AK_KIND_WHEEL, .flags = AK_ELF_MEASURED, .init = value_init,
+                                      .set = wheel_set, .finalize = wheel_finalize, .event = wheel_event, .drop = value_drop};
+
+static void color_picker_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
+	AK_UNUSED(prev);
+	switch (key) {
+	case AK_KEY_COLOR_PICKER_VALUE: controlled(e, AK_PROP_COLOR_PICKER_VALUE, AK_T_COLOR, v); break;
+	case AK_KEY_COLOR_PICKER_ALPHA: ak_batch_set_bool(e->r->batch, e->id, AK_PROP_COLOR_PICKER_ALPHA, v.i != 0); break;
+	case AK_KEY_COLOR_PICKER_TITLE: send_str(e, AK_PROP_COLOR_PICKER_TITLE, v); break;
+	}
+}
+
+static void color_picker_finalize(ak_view *e) { ak_view_listen(e, AK_EVENT_COLOR_CHANGED); }
+
+static void color_picker_event(ak_view *e, const ak_event *ev) {
+	if (ev->kind != AK_EVENT_COLOR_CHANGED) return;
+	ak_val v = {.i = ev->i};
+	reported(e, v);
+	ak_view_call(e, AK_EV_COLOR_PICKER_CHANGE, &v, 1);
+}
+
+static const ak_el_class cls_color_picker = {.name = "ColorPicker", .kind = AK_KIND_COLOR_PICKER, .flags = AK_ELF_MEASURED | AK_ELF_CACHE,
+                                             .init = value_init, .set = color_picker_set, .finalize = color_picker_finalize,
+                                             .event = color_picker_event, .drop = value_drop};
+
+static void date_picker_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
+	AK_UNUSED(prev);
+	ak_batch *b = e->r->batch;
+	switch (key) {
+	case AK_KEY_DATE_PICKER_VALUE: controlled(e, AK_PROP_DATE_PICKER_VALUE, AK_T_INT, v); break;
+	case AK_KEY_DATE_PICKER_MODE:
+		ak_batch_set_enum(b, e->id, AK_PROP_DATE_PICKER_MODE, (int32_t)v.i);
+		ak_view_remeasure(e);  // a date and a time are wider
+		break;
+	case AK_KEY_DATE_PICKER_MIN: ak_batch_set_int(b, e->id, AK_PROP_DATE_PICKER_MIN, v.i); break;
+	case AK_KEY_DATE_PICKER_MAX: ak_batch_set_int(b, e->id, AK_PROP_DATE_PICKER_MAX, v.i); break;
+	case AK_KEY_DATE_PICKER_INLINE: ak_batch_set_bool(b, e->id, AK_PROP_DATE_PICKER_INLINE, v.i != 0); break;
+	}
+}
+
+static void date_picker_finalize(ak_view *e) { ak_view_listen(e, AK_EVENT_VALUE_CHANGED); }
+
+static void date_picker_event(ak_view *e, const ak_event *ev) {
+	if (ev->kind != AK_EVENT_VALUE_CHANGED) return;
+	ak_val v = {.i = (int64_t)ev->f};  // Unix milliseconds
+	reported(e, v);
+	ak_view_call(e, AK_EV_DATE_PICKER_CHANGE, &v, 1);
+}
+
+static const ak_el_class cls_date_picker = {.name = "DatePicker", .kind = AK_KIND_DATE_PICKER, .flags = AK_ELF_MEASURED, .init = value_init,
+                                            .set = date_picker_set, .finalize = date_picker_finalize, .event = date_picker_event,
+                                            .drop = value_drop};
 
 // ---- Progress, ProgressRing, Activity ----
 
@@ -917,6 +991,9 @@ const ak_el_class *ak_el_class_of(uint16_t el) {
 	case AK_EL_STEPPER: return &cls_stepper;
 	case AK_EL_SEGMENTED: return &cls_segmented;
 	case AK_EL_PICKER: return &cls_picker;
+	case AK_EL_WHEEL: return &cls_wheel;
+	case AK_EL_COLOR_PICKER: return &cls_color_picker;
+	case AK_EL_DATE_PICKER: return &cls_date_picker;
 	case AK_EL_PROGRESS: return &cls_progress;
 	case AK_EL_PROGRESS_RING: return &cls_ring;
 	case AK_EL_ACTIVITY: return &cls_activity;

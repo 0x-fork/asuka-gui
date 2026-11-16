@@ -1218,6 +1218,11 @@ void ak_fake_pick_color(ak_fake *f, ak_fake_view *v, ak_color c) {
 	emit_int(f, v, AK_EVENT_COLOR_CHANGED, (int64_t)c);
 }
 
+void ak_fake_pick_date(ak_fake *f, ak_fake_view *v, int64_t ms) {
+	set_int(v, AK_PROP_DATE_PICKER_VALUE, AK_T_INT, ms);
+	if (listening(f, v, AK_EVENT_VALUE_CHANGED)) ak_fake_dispatch(f, &(ak_event){.id = v->id, .kind = AK_EVENT_VALUE_CHANGED, .f = (double)ms});
+}
+
 void ak_fake_slide(ak_fake *f, ak_fake_view *v, double value) {
 	set_prop(v, AK_PROP_SLIDER_VALUE, &(ak_value){.type = AK_T_FLOAT, .f = value});
 	if (listening(f, v, AK_EVENT_VALUE_CHANGED)) ak_fake_dispatch(f, &(ak_event){.id = v->id, .kind = AK_EVENT_VALUE_CHANGED, .f = value});

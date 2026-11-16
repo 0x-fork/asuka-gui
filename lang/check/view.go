@@ -494,6 +494,11 @@ func (c *Checker) componentCall(e *syntax.CallExpr, tn *TypeName) Type {
 		if m.name == "children" && len(ec.Children) > 0 {
 			set = true
 		}
+		for _, bd := range ec.Binds {
+			if bd.Prop == m {
+				set = true
+			}
+		}
 		if !set {
 			c.errorf(e, "%s needs %s: set it in the block, %s { %s: … }", tn.name, m.name, tn.name, m.name)
 		}
@@ -572,6 +577,9 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 		c.view = true
 		c.viewItems(children, ec)
 		c.view = savedView
+		if comp.Element != nil && comp.Element.Name == "Alert" {
+			c.alertChildren(children)
+		}
 		return
 	}
 	// A component's: one builder of them all, its children prop.
@@ -582,6 +590,35 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 	c.viewItems(children, ec)
 	c.view = savedView
 	c.leave(saved)
+}
+
+// alertChildren checks that an Alert's block holds Buttons and
+// TextFields (its buttons and fields), through ifs and fors.
+func (c *Checker) alertChildren(items []syntax.Item) {
+	for _, it := range items {
+		switch s := it.(type) {
+		case *syntax.ExprStmt:
+			call, _ := s.X.(*syntax.CallExpr)
+			ec := c.info.Elements[call]
+			if ec == nil {
+				c.errorf(s, "an Alert's block holds Buttons and TextFields: its buttons and its fields")
+				continue
+			}
+			if el := ec.Comp.Comp.Element; el == nil || el.Name != "Button" && el.Name != "TextField" {
+				c.errorf(s, "an Alert's block holds Buttons and TextFields (its buttons and its fields), not a %s", ec.Comp.name)
+			}
+		case *syntax.IfStmt:
+			c.alertChildren(s.Then.Items)
+			switch e := s.Else.(type) {
+			case *syntax.Block:
+				c.alertChildren(e.Items)
+			case *syntax.IfStmt:
+				c.alertChildren([]syntax.Item{e})
+			}
+		case *syntax.ForStmt:
+			c.alertChildren(s.Body.Items)
+		}
+	}
 }
 
 // LazyChildren reports whether an element's children are one builder
@@ -848,7 +885,19 @@ func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 		}
 	}
 	var ev *Member
+	if m != nil && !comp.Native && !comp.Store {
+		c.memberType(m)
+	}
 	switch {
+	case comp.Element == nil && !comp.Native && m != nil && m.Kind == PropMember:
+		// A component binds a prop it reports with an event
+		// <prop>Change(value), as a native component does.
+		ev = nativeBindEvent(comp, m)
+		if ev == nil {
+			c.errorf(b.Name, "%s can't bind %s: a component binds a prop it reports with event %sChange(%s: %s)", ec.Comp.name, b.Name.Name, b.Name.Name, b.Name.Name, typeString(m.Type))
+			c.expr(b.Target, nil)
+			return
+		}
 	case comp.Element == nil && comp.Native && m != nil && m.Kind == PropMember:
 		// A package's native component binds a prop it reports with an
 		// event <prop>Change(value) (docs/native.md).

@@ -91,7 +91,14 @@ struct ak_el_class {
 	// sized hears the size it's laid out at (AK_ELF_SIZED), after the
 	// frames are applied, as layout handlers do: a Canvas draws for it.
 	void (*sized)(ak_view *e, float w, float h);
+	// destroy destroys the views it holds outside its kids and slots (an
+	// Alert's Buttons), as its own are.
+	void (*destroy)(ak_view *e);
 };
+
+// ak_shortcut_mods is a Shortcut's modifiers, as the Keys prop has them
+// (keys.c).
+uint8_t ak_shortcut_mods(const ak_struct *s);
 
 struct ak_view {
 	ak_opaque h;  // tag AK_TAG_VIEW

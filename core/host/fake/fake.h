@@ -261,6 +261,7 @@ void ak_fake_submit(ak_fake *f, ak_fake_view *v);
 void ak_fake_flip(ak_fake *f, ak_fake_view *v);  // a Toggle
 void ak_fake_pick_color(ak_fake *f, ak_fake_view *v, ak_color c);
 void ak_fake_slide(ak_fake *f, ak_fake_view *v, double value);
+void ak_fake_pick_date(ak_fake *f, ak_fake_view *v, int64_t ms);  // a DatePicker's, in Unix milliseconds
 // ak_fake_select selects a tab, a segment, a split's destination, a
 // page, a wheel's or a picker's item.
 void ak_fake_select(ak_fake *f, ak_fake_view *v, int64_t index);

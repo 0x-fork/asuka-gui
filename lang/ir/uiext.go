@@ -212,6 +212,11 @@ func (b *fb) builtinField(sel *check.Selection, x int, res check.Type, dst int) 
 func (b *fb) runtimeCall(call *check.Call, dst int) int {
 	f := call.Builtin.Fn
 	vals := b.args(call, nil)
+	if i := f.Follow - 1; i >= 0 && i < len(call.Args) && call.Args[i] != nil && b.l.prog.Reactive(call.Args[i]) {
+		// Followed: a thunk of it.
+		x := call.Args[i]
+		vals[i] = b.thunk(b.l.info.Ctxs[x], x, b.l.thunkType(x, call.Params[i].Type))
+	}
 	skip := b.f.NewLabel()
 	for i, p := range call.Params {
 		if check.Unopt(p.Type) != check.Ref {

@@ -27,7 +27,10 @@ type RuntimeFunc struct {
 	// Once: what it's passed (a closure that reads state) doesn't make
 	// it reactive: let stop = onFrame(…) is made once, not a memo.
 	Once bool
-	Doc  string
+	// Follow: the parameter (its index + 1) whose argument, when it reads
+	// state, is passed as a thunk the runtime follows (alert's actions).
+	Follow int
+	Doc    string
 }
 
 // RuntimeFuncs lists them (docs/language.md's "The system").
@@ -53,6 +56,8 @@ var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "onCloseRequest", Body: true, Sig: "(handler: fn() -> bool)", Builtin: "ui.on_close_request", Doc: "asked when the user closes the window the component is in, while it lives: false keeps it open"},
 	{Name: "onQuit", Body: true, Sig: "(handler: fn(QuitEvent))", Builtin: "ui.on_quit", Doc: "hears the app about to quit, however that started, while the component lives: e.cancel() keeps it running"},
 	{Name: "onSecondInstance", Body: true, Sig: "(handler: fn([string], string))", Builtin: "ui.on_second_instance", Doc: "hears the app started again while it runs (its arguments, its working directory), while the component lives"},
+	{Name: "alert", Sig: "(title: string, message: string = \"\", actions: [Action]? = none, actionSheet: bool = false, fields: [AlertField] = [])", Builtin: "ui.alert", Follow: 3, Doc: "shows an alert now (an action sheet with actionSheet): its actions are its buttons (none: a single OK), followed while it shows when they read state (a button disabled while a field is empty); fields are text fields under the message. A button's run runs as it's chosen"},
+	{Name: "snackbar", Sig: "(message: string, action: Action? = none, duration: SnackbarDuration = .short, onDismiss: fn()? = none) -> fn()", Builtin: "ui.snackbar", Doc: "shows a brief message at the bottom of the window now, with an action (a .button's title and run), and returns a closure that dismisses it; a new one replaces the one showing, whose onDismiss runs"},
 	{Name: "onBack", Body: true, Sig: "(handler: fn() -> bool)", Builtin: "ui.on_back", Doc: "asked when the user goes back from the nearest pushed screen, sheet or popover around the component (else the app's: Android's back), while it lives: true takes it (the screen stays), false lets it go back"},
 	{Name: "depth", Sig: "() -> int", Builtin: "ui.depth", Doc: "how many screens the nearest stack holds"},
 	{Name: "mountApp", Sig: "() -> TestApp", Builtin: "test.mount_app", Doc: "in a test: mounts the app block's view on the fake host (its main window, its menus, its handlers), as mount does a view"},
@@ -87,9 +92,18 @@ func (c *Checker) runtimeCall(e *syntax.CallExpr, call *Call, f *RuntimeFunc) {
 	args := c.matchArgs(e, params, f.Name)
 	c.trailingClosure(e, params, args)
 	for i, a := range args {
-		if a != nil {
-			c.assign(a, params[i].Type, "argument "+params[i].Name+" of "+f.Name)
+		if a == nil {
+			continue
 		}
+		if f.Follow == i+1 {
+			// A binding: followed when it reads state.
+			saved := c.ctx
+			c.enter(CtxBinding, a, f.Name+"'s "+params[i].Name)
+			c.assign(a, params[i].Type, "argument "+params[i].Name+" of "+f.Name)
+			c.leave(saved)
+			continue
+		}
+		c.assign(a, params[i].Type, "argument "+params[i].Name+" of "+f.Name)
 	}
 	c.typeDefaults(args, params)
 	call.Args, call.Params, call.Result = args, params, res

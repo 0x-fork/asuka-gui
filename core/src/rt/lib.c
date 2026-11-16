@@ -927,6 +927,36 @@ static ak_val color_opacity(ak_val *args, uint32_t n) {
 	RET_I(c);
 }
 
+// color.hex is a color as Asuka writes it: #rrggbb, #rrggbbaa when it
+// isn't opaque; a semantic color by its name (.accent), its opacity
+// after it (.accent.opacity(0.5)).
+static ak_val color_hex(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	static const char *const names[] = {"default", "label", "secondaryLabel", "tertiaryLabel", "background", "secondaryBackground",
+	                                    "groupedBackground", "separator", "accent", "red", "orange", "yellow", "green", "blue", "purple",
+	                                    "pink", "gray", "clear", "secondaryGroupedBackground", "onAccent"};
+	uint64_t c = (uint64_t)args[0].i;
+	char buf[64];
+	int len;
+	switch (c >> 32) {
+	case 1: {
+		uint32_t i = (uint32_t)(c & 0xffff), alpha = 255 - (uint32_t)((c >> 24) & 0xff);
+		const char *name = i < sizeof names / sizeof names[0] ? names[i] : "default";
+		if (alpha == 255) len = snprintf(buf, sizeof buf, ".%s", name);
+		else len = snprintf(buf, sizeof buf, ".%s.opacity(%.3g)", name, alpha / 255.0);
+		break;
+	}
+	case 2: {
+		uint32_t rgba = (uint32_t)c;
+		if ((rgba & 0xff) == 0xff) len = snprintf(buf, sizeof buf, "#%06x", rgba >> 8);
+		else len = snprintf(buf, sizeof buf, "#%08x", rgba);
+		break;
+	}
+	default: len = snprintf(buf, sizeof buf, ".default");
+	}
+	RET_P(ak_str_new(buf, (size_t)len));
+}
+
 // appearance.rgb(r, g, b) is an opaque RGB color, each channel 0 to 255:
 // asuka/appearance's accent, which the platform's side gives as numbers.
 static ak_val appearance_rgb(ak_val *args, uint32_t n) {
@@ -1096,6 +1126,7 @@ const ak_lib_entry ak_lib[] = {
 	{"dur.rounded", dur_rounded},
 
 	{"color.opacity", color_opacity},
+	{"color.hex", color_hex},
 	{"async.never", async_never},
 	{"appearance.rgb", appearance_rgb},
 	{"bytes.empty", bytes_empty},

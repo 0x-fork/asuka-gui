@@ -168,9 +168,10 @@ enum GridLine {
   between(int, int)
 }
 
-/// An item of a menu, a swipe or a context menu.
+/// An item of a menu, a swipe, a context menu or an alert. A field left
+/// out is its zero: .button(title: "Cancel", role: .cancel) runs nothing.
 enum Action {
-  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: fn())
+  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: fn()?)
   submenu(title: string, icon: string, items: [Action])
   section(title: string, items: [Action])
 }
@@ -316,10 +317,12 @@ enum SwipeDirection {
 /// A key a view takes while the keyboard's focus is in it, and what it
 /// does. key is a character ("d", any case) or a named key (up, down,
 /// left, right, escape, enter, tab, space, delete, home, end, pageup,
-/// pagedown, f1...); with a modifier, a shortcut. primary is ⌘ on Apple
-/// platforms and Ctrl elsewhere.
+/// pagedown, f1...); with a modifier, a shortcut: its bools, or mods.
+/// primary is ⌘ on Apple platforms and Ctrl elsewhere.
 ///
 ///   keys: [Shortcut(key: "down", run: () => { sel += 1 }), Shortcut(key: "d", primary: true, run: duplicate)]
+///   keys: [Shortcut(key: "n", mods: [.control], run: next)]
+///   MenuItem("Save") { shortcut: .cmd("s") }
 struct Shortcut {
   key: string
   primary: bool = false
@@ -327,6 +330,19 @@ struct Shortcut {
   alt: bool = false
   control: bool = false
   run: fn() = () => {} // a MenuItem's shortcut runs the item
+  mods: [Modifier] = [] // modifiers besides the bools'
+
+  /// The key with primary (⌘ on Apple platforms, Ctrl elsewhere): a menu
+  /// item's shortcut, MenuItem("Save") { shortcut: .cmd("s") }.
+  let cmd = (key: string) => Shortcut(key: key, primary: true)
+}
+
+/// A modifier key of a Shortcut.
+enum Modifier {
+  primary // ⌘ on Apple platforms, Ctrl elsewhere
+  shift
+  alt     // a Mac's option
+  control
 }
 
 /// What a screen reader offers to do with a view (VoiceOver's rotor,

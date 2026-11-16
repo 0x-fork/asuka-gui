@@ -201,7 +201,9 @@ fn press(a: Action?) {
   if let x = a {
     match x {
       .button(_, _, _, disabled, _, run) => {
-        if !disabled { run() }
+        if !disabled {
+          if let r = run { r() }
+        }
       }
       _ => {}
     }

@@ -135,6 +135,7 @@ var Methods = []*Method{
 	{Recv: "string", Name: "bytes", Sig: "() -> bytes", Builtin: "str.to_bytes", Doc: "its UTF-8 bytes"},
 
 	// Colors.
+	{Recv: "color", Name: "hex", Sig: "() -> string", Builtin: "color.hex", Doc: "the color as it's written: #rrggbb (#rrggbbaa when it isn't opaque), a semantic color by its name (.accent); a color in a string, \"{c}\", is the same"},
 	{Recv: "color", Name: "opacity", Sig: "(alpha: float) -> Color", Builtin: "color.opacity", Doc: "the color drawn at alpha (0 to 1) times its own opacity; a semantic color stays one, so it still follows dark mode"},
 
 	// Bytes.
@@ -180,6 +181,8 @@ var Methods = []*Method{
 	{Recv: "app", Name: "toggle", Sig: "(label: string)", Builtin: "test.toggle", Doc: "flips the switch or checkbox label names: one with that accessibility label, or the one next to a text"},
 	{Recv: "app", Name: "slide", Sig: "(label: string, value: float)", Builtin: "test.slide", Doc: "moves the slider label names (as toggle finds it) to value"},
 	{Recv: "app", Name: "select", Sig: "(option: string)", Builtin: "test.select", Doc: "chooses option in the picker, wheel or segmented control that has it"},
+	{Recv: "app", Name: "pickColor", Sig: "(label: string, color: Color)", Builtin: "test.pick_color", Doc: "chooses color in the ColorPicker label names (as toggle finds it)"},
+	{Recv: "app", Name: "pickDate", Sig: "(label: string, value: int)", Builtin: "test.pick_date", Doc: "chooses the instant value (milliseconds since 1970) in the DatePicker label names (as toggle finds it)"},
 	{Recv: "app", Name: "swipe", Sig: "(text: string, action: string)", Builtin: "test.swipe", Doc: "swipes the list row showing text and presses its swipe action titled action (a trailing one, or a leading one)"},
 	{Recv: "app", Name: "back", Sig: "()", Builtin: "test.back", Doc: "goes back as the user's back gesture or button does: an open menu closes; else the top screen of the deepest stack pops; else the top sheet, alert or popover is dismissed (onBack can keep it); else, on Android, the root takes it if it intercepts it"},
 	{Recv: "app", Name: "dismiss", Sig: "()", Builtin: "test.dismiss", Doc: "dismisses what's on top as the user does (a swipe down, a tap outside): an open menu, else the top alert, sheet or popover"},

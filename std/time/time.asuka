@@ -261,3 +261,26 @@ native fn wallNanos() -> int
 native fn localOffset(unix: int) -> int
 native fn formatFields(pattern: string, year: int, month: int, day: int, hour: int, minute: int, second: int, nanosecond: int, weekday: Weekday, offset: int) -> string
 native fn parseRFC3339(s: string) throws -> [int]
+
+/// A date or a time, chosen the platform's way: the prelude's
+/// DatePicker, of a Time (bind value: when). Its choices are in zone.
+///
+///   time.Picker { bind value: when; mode: .dateTime; min: time.now() }
+pub component Picker {
+  prop value: Time = now()
+  prop mode: DateMode = .date
+  prop min: Time? = none
+  prop max: Time? = none
+  prop inline = false
+  prop zone: Zone = .local
+  event valueChange(value: Time)
+
+  DatePicker {
+    value: value.unixMilli()
+    mode: mode
+    min: min?.unixMilli() ?? 0
+    max: max?.unixMilli() ?? 0
+    inline: inline
+    on change(ms) { emit valueChange(unixMilli(ms, zone: zone)) }
+  }
+}

@@ -1469,6 +1469,25 @@ bool ak_uitest_slide(ak_uitest *a, ak_span label, double value, ak_buf *err) {
 	return settled(a, err);
 }
 
+// ak_uitest_pick_color chooses color in the ColorPicker label names (as
+// toggle finds it); pick_date an instant (Unix milliseconds) in the
+// DatePicker.
+bool ak_uitest_pick_color(ak_uitest *a, ak_span label, ak_color color, ak_buf *err) {
+	ak_fake_view *v = near(a, label, AK_KIND_COLOR_PICKER, err);
+	if (!v) return false;
+	if (disabled_view(v)) return failure(a, err, "the color picker \"%.*s\" is disabled", label);
+	ak_fake_pick_color(a->f, v, color);
+	return settled(a, err);
+}
+
+bool ak_uitest_pick_date(ak_uitest *a, ak_span label, int64_t ms, ak_buf *err) {
+	ak_fake_view *v = near(a, label, AK_KIND_DATE_PICKER, err);
+	if (!v) return false;
+	if (disabled_view(v)) return failure(a, err, "the date picker \"%.*s\" is disabled", label);
+	ak_fake_pick_date(a->f, v, ms);
+	return settled(a, err);
+}
+
 // ak_uitest_select chooses option in the picker, wheel or segmented
 // control that has it.
 bool ak_uitest_select(ak_uitest *a, ak_span option, ak_buf *err) {
@@ -2041,6 +2060,18 @@ static ak_val t_slide(ak_val *a, uint32_t n) {
 	return done(ak_uitest_slide(app, span_of(a[1]), n > 2 ? a[2].f : 0, &err), &err);
 }
 
+static ak_val t_pick_color(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.pick_color");
+	ak_buf err = {0};
+	return done(ak_uitest_pick_color(app, span_of(a[1]), n > 2 ? (ak_color)a[2].i : 0, &err), &err);
+}
+
+static ak_val t_pick_date(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.pick_date");
+	ak_buf err = {0};
+	return done(ak_uitest_pick_date(app, span_of(a[1]), n > 2 ? a[2].i : 0, &err), &err);
+}
+
 static ak_val t_select(ak_val *a, uint32_t n) {
 	ak_uitest *app = app_arg(a, n, "test.select");
 	ak_buf err = {0};
@@ -2384,6 +2415,8 @@ void ak_uitest_builtins_init(void) {
 	ak_builtin_register("test.toggle", t_toggle);
 	ak_builtin_register("test.slide", t_slide);
 	ak_builtin_register("test.select", t_select);
+	ak_builtin_register("test.pick_color", t_pick_color);
+	ak_builtin_register("test.pick_date", t_pick_date);
 	ak_builtin_register("test.swipe", t_swipe);
 	ak_builtin_register("test.back", t_back);
 	ak_builtin_register("test.dismiss", t_dismiss);

@@ -199,7 +199,8 @@ var Elements = []Element{
 		{Name: "variant", Type: "ButtonVariant", Doc: "how the platform draws it"},
 		{Name: "icon", Type: "string", Doc: "a symbol before the title (see Symbol); with no title, the icon alone"},
 		{Name: "menu", Type: "[Action]", Doc: "actions shown when it's tapped, instead of press"},
-		{Name: "href", Type: "string", Doc: "goes to this route when it's pressed, after press (the Router around it navigates there)"},
+		{Name: "href", Type: "string", Doc: "goes to this route when it's pressed, after press (the Router around it navigates there): an href, or a routed screen's call (href: Thread(id: 7))"},
+		{Name: "role", Type: "ActionRole", Doc: "in an Alert or a Screen's bars, what it does, which the platform draws it by: .cancel, .destructive (red)"},
 	}, Events: []Event{{Name: "press"}}, Doc: "the platform's button"},
 	{Name: "TextField", Keys: []Key{
 		{Name: "text", Type: "string", Bind: true, Event: "change", Doc: "its text: typing writes it, and writing it replaces what the field shows"},
@@ -253,6 +254,22 @@ var Elements = []Element{
 		{Name: "selected", Type: "int", Default: "-1", Bind: true, Event: "change", Doc: "the chosen item's index; out of range: none, and it shows its prompt"},
 		{Name: "prompt", Type: "string", Doc: "what it picks: shown while none is chosen (Android's floating label), and read by screen readers"},
 	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "picks one of many options from a menu, showing the chosen one"},
+	{Name: "Wheel", Keys: []Key{
+		{Name: "items", Type: "[string]", Positional: true},
+		{Name: "selected", Type: "int", Bind: true, Event: "change", Doc: "the item turned to"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "one of many options on a spinning wheel (UIPickerView; Android's NumberPicker)"},
+	{Name: "ColorPicker", Keys: []Key{
+		{Name: "value", Type: "Color", Bind: true, Event: "change", Doc: "the color chosen"},
+		{Name: "alpha", Type: "bool", Doc: "the user can choose an opacity too"},
+		{Name: "title", Type: "string", Doc: "the picker's title"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"color", "Color"}}}}, Doc: "a swatch of a color that opens the platform's picker (UIColorWell; a Material dialog of a palette on Android)"},
+	{Name: "DatePicker", Keys: []Key{
+		{Name: "value", Type: "int", Bind: true, Event: "change", Doc: "the instant chosen, in milliseconds since 1970 (asuka/time's time.Picker binds a Time)"},
+		{Name: "mode", Type: "DateMode", Doc: "a date, a time of day, or both"},
+		{Name: "min", Type: "int", Doc: "the earliest choice, in milliseconds since 1970 (0: none)"},
+		{Name: "max", Type: "int", Doc: "the latest choice (0: none)"},
+		{Name: "inline", Type: "bool", Doc: "iOS: the calendar and the time shown in place, not from a button"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"value", "int"}}}}, Doc: "a date or a time, chosen the platform's way (UIDatePicker; Material's date and time pickers), in the device's time zone and format"},
 	{Name: "Progress", Keys: []Key{
 		{Name: "value", Type: "float?", Doc: "done, from 0 to 1; none: under way, how far unknown"},
 	}, Doc: "a progress bar; its color is its fill"},
@@ -395,6 +412,15 @@ var Elements = []Element{
 		{Name: "change", Params: []Param{{"open", "bool"}}},
 		{Name: "dismiss", Doc: "the user dismissed it"},
 	}, Doc: "content in a modal sheet while open: built as it opens, disposed as it closes. It takes no room where it's declared"},
+	{Name: "Alert", Children: true, Keys: []Key{
+		{Name: "title", Type: "string", Positional: true},
+		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "shows the alert while true; choosing a button, or the user dismissing it, writes false"},
+		{Name: "message", Type: "string", Doc: "under the title"},
+		{Name: "actionSheet", Type: "bool", Doc: "an action sheet: a list of choices from the bottom of the screen (a popover on an iPad), its fields left out"},
+	}, Events: []Event{
+		{Name: "change", Params: []Param{{"open", "bool"}}},
+		{Name: "dismiss", Doc: "the user dismissed it without choosing a button (a tap outside, Android's back)"},
+	}, Doc: "an alert while open: its block's Buttons are its buttons (their title, icon, role and disabled; a cancel one's press runs as it's dismissed too), its TextFields its fields (placeholder, bind text, secure, keyboard, contentType). It takes no room where it's declared; with no Button, it has an OK"},
 	{Name: "Popover", Children: true, Keys: []Key{
 		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "shows the popover while true; a tap outside writes false"},
 		{Name: "maxWidth", Type: "float", Doc: "how wide it may be (0: 320); it's as big as its content"},

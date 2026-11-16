@@ -507,7 +507,10 @@ func (b *fb) describe(v int, t check.Type) int {
 	switch t {
 	case check.String:
 		return v
-	case check.Int, check.Float, check.Bool, check.Color, check.Length:
+	case check.Color:
+		// As it's written: #rrggbb, .accent.
+		return b.callB("color.hex", bc.KRef, v)
+	case check.Int, check.Float, check.Bool, check.Length:
 		r := b.temp(bc.KRef)
 		b.emit(op("TOSTR"), r, v, int(b.l.kind(t)))
 		return r

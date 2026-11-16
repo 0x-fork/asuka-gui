@@ -10,7 +10,6 @@ todo.asuka:35:25: isEmpty is a method of string: call it, isEmpty()
 todo.asuka:36:12: Button has no event tap (its events: press)
 todo.asuka:44:18: Toggle can't bind isOn: only a control's own value binds (TextField's text, Toggle's on)
 todo.asuka:44:36: [Todo] has no method firstIndex
-todo.asuka:51:19: Role has no case or constant destructive
 todo.asuka:52:16: Button has no event tap (its events: press)
 todo.asuka:52:28: [Todo] has no method removeAll (did you mean removeAt?)
 == styles
@@ -42,7 +41,7 @@ concurrency.asuka:40:5: a view here does nothing: views go in a component's body
 == app
 == inbox
 inbox.asuka:17:10: Button has no event tap (its events: press)
-inbox.asuka:22:10: SearchField can't bind text: only a control's own value binds (TextField's text, Toggle's on)
+inbox.asuka:22:10: SearchField can't bind text: a component binds a prop it reports with event textChange(text: string)
 inbox.asuka:28:21: a match in a view takes no guards: put an if in the arm
 inbox.asuka:32:26: isEmpty is a method of string: call it, isEmpty()
 == native
