@@ -1717,18 +1717,21 @@ right-to-left mark (CLDR's Arabic percent begins with a left-to-right one).
 
 ## Desktop, later
 
-After M6, on the same core, `ops` and app code:
+On the same core, `ops` and app code as the phones:
 
 | Platform | Host | Notes |
 |---|---|---|
-| macOS | Go, AppKit through purego (`host/darwin`) | No cgo. `internal/darwin` is MyGo's Objective-C runtime layer (classes made at runtime, blocks, `WithPool`, a main run loop source for `Post`). In progress (see Milestones). |
-| Windows | Go, Win32 with common controls v6 through `syscall` (`host/windows`) | No cgo; `internal/windows` is the Win32, GDI, GDI+, uxtheme, DWM and WebView2 layer. Not WinUI 3: it needs the Windows App SDK beside the app, and XAML is a second reconciler. `List` is core-virtualized: no Win32 list hosts arbitrary rows. In progress (see Milestones). |
-| Linux | Go, GTK 4 and libadwaita through purego (`host/linux`) | No cgo; `internal/gtk` binds GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later). libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. In progress (see Milestones). |
+| macOS | Go, AppKit through purego (`host/darwin`) | No cgo. `internal/darwin` is MyGo's Objective-C runtime layer (classes made at runtime, blocks, `WithPool`, a main run loop source for `Post`). |
+| Windows | Go, Win32 with common controls v6 through `syscall` (`host/windows`) | No cgo; `internal/windows` is the Win32, GDI, GDI+, uxtheme, DWM and WebView2 layer. Not WinUI 3: it needs the Windows App SDK beside the app, and XAML is a second reconciler. `List` is core-virtualized: no Win32 list hosts arbitrary rows. |
+| Linux | Go, GTK 4 and libadwaita through purego (`host/linux`) | No cgo; `internal/gtk` binds GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later). libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. |
 
-Desktop hosts run in process: `app.Run` locks the main OS thread and
-runs the platform's event loop there, and reads the batch's Go structs
-without encoding. purego callbacks are made once per signature and
-routed by user data, never per view.
+Desktop hosts run in the app's process: one executable for every app
+(cmd/asuka-host, with the app's native packages' Go linked in when it
+has any) locks the main OS thread and runs the platform's event loop
+there, opens the core (`libasuka`, the app compiled in for a release)
+through purego (host/bridge), and decodes each batch with `ops`' Go
+decoder, in place. The core's callbacks are made once and routed by
+user data, never per view.
 
 How the macOS host maps Asuka (`host/darwin`):
 
@@ -1772,7 +1775,7 @@ How the macOS host maps Asuka (`host/darwin`):
   too), a response it can't show a `Download`, its state observed (KVO)
   and reported once a turn; the `web` module runs script for its value
   (`callAsyncJavaScript`) and reads the cookies, the `js` module runs
-  asuka/sdk/js's scripts in a web view that's never shown.
+  `asuka/js`'s scripts in a web view that's never shown.
 - `RichText` is a non-editable `NSTextView` (TextKit lays it out and
   draws it, links, selection and accessibility come with it); outside
   a `Selectable` it takes clicks only on links. Inline components are
@@ -1796,8 +1799,8 @@ How the macOS host maps Asuka (`host/darwin`):
   flipped content view have y down: gradients' points, shadows' offsets
   and transforms are given so. AppKit owns a layer-backed view's
   layer's transform and shadow: it sets the transform to the identity
-  as the window displays, so `Style.Transform` is held by an animation
-  that never ends (from what's drawn, so `ui.Animate` animates it), and
+  as the window displays, so a view's `transform` is held by an animation
+  that never ends (from what's drawn, so `animate { }` animates it), and
   it sets the shadow from the view's own (none) as the view moves into
   a window, so the host sets it again then. A shadow is cast by the
   view's shape (`shadowPath`), as on iOS; a view that clips and casts
@@ -1911,8 +1914,8 @@ How the Windows host maps Asuka (`host/windows`):
   in it (`k`, as a window's DPI does: fonts, frames, controls and
   drawing at the scaled size, still windows that take clicks); a scale
   that differs between the axes sizes the window by each and what's in
-  it by their geometric mean. They step with `ui.Animate`'s frames.
-- `Style.Material` is drawn as Fluent's acrylic in the view (DWM's
+  it by their geometric mean. They step with `animate { }`'s frames.
+- A view's `material` is drawn as Fluent's acrylic in the view (DWM's
   backdrops are top-level windows' only): what's behind it, blurred
   (three box blurs, a Gaussian's likeness) and tinted light or dark. A
   view under it painting draws it again.
@@ -2141,7 +2144,8 @@ How the Windows host maps Asuka (`host/windows`):
   listens), and a precision touchpad's pinch, which Windows sends as the
   wheel with Ctrl (so is a mouse's Ctrl and wheel, 10% a notch: began
   with the first, ended once the wheel rests for 250 ms).
-- The native modules (`ui.Call`): `secureStore` in the Credential
+- The host's modules (which the standard library's packages call):
+  `secureStore` in the Credential
   Manager (the user's generic credentials, `<app>/<key>`, up to 2560
   bytes a value), `device` (info, the clipboard's text, keeping the
   display on), `browser`, `photos` and `files` (the open file dialog,
@@ -2150,7 +2154,7 @@ How the Windows host maps Asuka (`host/windows`):
   and `js` (a blank page in a WebView2 that's never shown); `share`
   (Windows's share UI, `IDataTransferManagerInterop` and the
   `DataTransferManager` of the window in use: text, a link, files as
-  `StorageFile`s through an `IIterable` of Go's; `ui.Share` too),
+  `StorageFile`s through an `IIterable` of Go's; `share()` too),
   `network` (the Network List Manager: connectivity and its changes
   through a connection point, the connection's adapter's type, the cost
   as metered and constrained), `speech` (SAPI's `ISpVoice`, its events
@@ -2255,7 +2259,7 @@ How the Windows host maps Asuka (`host/windows`):
   dark mode. `Video` is a WebView2 page of a `<video>`, with Edge's
   controls: Win32 has no video view with controls.
 - Frames are set with `SetWindowPos`, without copying the old pixels
-  (a view's pixels depend on what's behind it). `ui.Animate` steps the
+  (a view's pixels depend on what's behind it). `animate { }` steps the
   frames on a timer, and transforms with them.
 - The host builds for amd64 and arm64. GDI+ takes floats: Go's Windows
   calls pass them in the registers on amd64 (each in its position's), but
@@ -2287,7 +2291,7 @@ How the Linux host maps Asuka (`host/linux`):
 - GTK 4 and libadwaita in the app's process through purego, no cgo
   (`internal/gtk`: typed functions purego builds once, and raw function
   pointers called through `SyscallN` on the hot paths, allocating frames
-  and drawing, so they use no reflection). `app.Run` makes an
+  and drawing, so they use no reflection). The host makes an
   `AdwApplication` (its ID asuka.toml's `id`, `boot.ID`; unique, so a
   second launch activates the first, but in tests and automation runs)
   and runs GLib's main loop on the main thread. `Post` queues the
