@@ -51,17 +51,23 @@ func referencePage(path string) (string, bool) {
 // pages in each language have the same headings, in the same order and
 // at the same levels, as the English ones.
 
+// docSubdirs are the docs' directories of pages, in each language: the
+// guides, and the language reference.
+var docSubdirs = []string{"", "language"}
+
 // docPages are the pages checked: the docs in every language and the
 // README.
 func docPages(t *testing.T) []string {
 	t.Helper()
 	pages := []string{filepath.Join("..", "..", "README.md")}
 	for _, dir := range []string{"", "zh", "ja"} {
-		ms, err := filepath.Glob(filepath.Join("..", "..", "docs", dir, "*.md"))
-		if err != nil {
-			t.Fatal(err)
+		for _, sub := range docSubdirs {
+			ms, err := filepath.Glob(filepath.Join("..", "..", "docs", dir, sub, "*.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pages = append(pages, ms...)
 		}
-		pages = append(pages, ms...)
 	}
 	return pages
 }
@@ -210,9 +216,13 @@ func TestDocLinks(t *testing.T) {
 // The translations have the English pages' headings: as many, at the
 // same levels, in the same order.
 func TestDocHeadings(t *testing.T) {
-	en, err := filepath.Glob(filepath.Join("..", "..", "docs", "*.md"))
-	if err != nil {
-		t.Fatal(err)
+	var en []string
+	for _, sub := range docSubdirs {
+		ms, err := filepath.Glob(filepath.Join("..", "..", "docs", sub, "*.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		en = append(en, ms...)
 	}
 	for _, page := range en {
 		b, err := os.ReadFile(page)
@@ -221,7 +231,8 @@ func TestDocHeadings(t *testing.T) {
 		}
 		levels, texts := mdHeadings(string(b))
 		for _, lang := range []string{"zh", "ja"} {
-			tr := filepath.Join(filepath.Dir(page), lang, filepath.Base(page))
+			rel, _ := filepath.Rel(filepath.Join("..", "..", "docs"), page)
+			tr := filepath.Join("..", "..", "docs", lang, rel)
 			tb, err := os.ReadFile(tr)
 			if os.IsNotExist(err) {
 				continue // a page only in English (device-checklist.md)

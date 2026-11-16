@@ -46,7 +46,7 @@ var RouterFuncs = []*RuntimeFunc{
 	{Name: "setQuery", Sig: "(query: string)", Builtin: "ui.set_query", Doc: "changes the shown screen's query, keeping the screen: encoded, a=1&b=2 (url.encodeQuery)"},
 }
 
-// RuntimeFuncs lists them (docs/language.md's "The system").
+// RuntimeFuncs lists them (docs/language/system.md).
 var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "share", Sig: "(text: string)", Builtin: "ui.share", Doc: "shows the system's share sheet for a text or a link"},
 	{Name: "shareFiles", Sig: "(paths: [string], mime: string = \"\", uti: string = \"\", title: string = \"\", from: Ref? = none)", Builtin: "ui.share_files", Async: true, Throws: true, Doc: "shares files (their paths) with the share sheet, anchored on from where a popover points (an iPad, a Mac): returns once it's closed"},

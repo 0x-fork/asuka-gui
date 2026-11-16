@@ -1,0 +1,91 @@
+# 値と型
+
+| 型 | 値 |
+|---|---|
+| `int` | 64 ビット整数：`42`、`1_000`、`0xff`、`0b1010`、`0o17` |
+| `float` | 64 ビット浮動小数点数：`3.14`、`1e-3` |
+| `bool` | `true`、`false` |
+| `string` | UTF-8 のテキスト：`"Hello, {name}"` |
+| `bytes` | 生のバイト列 |
+| `[T]` | 配列：`[1, 2, 3]`、`[]` |
+| `[K: V]` | マップ（挿入した順に保持）：`["a": 1]`、`[:]` |
+| `Set<T>` | セット（重複しない値の集まり、挿入した順に保持）：セットが求められる場所では `["a", "b"]` |
+| `(A, B)` | タプル：`(1, "one")` |
+| `T?` | オプショナル：`T` か `none` |
+| `Duration` | `300ms`、`5s`、`2min`、`1h`（ほかに `us`、`ns`） |
+| `Color` | `#7c3aed`、`#7c3aed80`、セマンティックカラー（`.label`、`.accent` など） |
+| `Length` | `100`（ポイント）、`50%`、`.auto` |
+| `fn(A) -> B` | 関数とクロージャ |
+
+文字列の波括弧の中には、任意の式を書けます（`"{count} items"`、`"Total: {price * qty}"`）。`\{` は波括弧そのものを表します。`r"…"` はエスケープも埋め込みもない raw 文字列で、`"""…"""` は複数行にまたがる文字列です（1 行目が空ならその行は含まれず、閉じ引用符の行のインデントも取り除かれます）。数値、ブール値、文字列以外の値は、テキストとして表示すると次のようになります。列挙型のケースはその名前、オプショナルは `none` か中の値、エラーはそのメッセージ、それ以外は JSON です。
+
+マップのキーとセットの要素には、整数、文字列、ブール値、値を持たないケースだけの列挙型が使えます（つまり `Hashable` な型です）。
+
+## 演算子
+
+結合の強いものから順に並べています。同じ行の演算子は優先順位が同じで、左から順に結合します（`??` だけは右から）。
+
+| 演算子 | 意味 |
+|---|---|
+| `!x`、`-x`、`~x` | 否定、符号反転、整数のビット反転 |
+| `<<`、`>>` | 整数のビットを左へ、右へシフト（右シフトは符号を保つ） |
+| `*`、`/`、`%`、`&` | 乗算、除算、剰余、ビット AND |
+| `+`、`-`、<code>&#124;</code>、`^` | 加算（文字列や配列の連結にも使う）、減算、ビット OR、ビット XOR |
+| `..`、`..<` | 範囲：`1..3`、`0..<n` |
+| `==`、`!=`、`<`、`<=`、`>`、`>=` | 比較（連ねて書くことはできません） |
+| `&&` | かつ |
+| <code>&#124;&#124;</code> | または |
+| `??` | オプショナルの中の値。`none` ならデフォルト値 |
+
+ビット演算子が取るのは整数だけです。64 ビット以上シフトするとすべてのビットが押し出されます（負の数の `>>` は -1 になります）。負の数でシフトするとエラーになります。これらの演算子と `b[i]`（バイトを整数として読む）を使えば、Bluetooth のキャラクタリスティックや NFC のレコードといったバイナリデータを読み書きできます。
+
+```asuka
+let raw = b[1] | b[2] << 8                         // リトルエンディアンの uint16
+let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
+let out = bytes([flags, value & 0xff, value >> 8])
+```
+
+`int` の演算はラップアラウンドします。`+`、`-`、`*` の結果が最大の `int`（2⁶³ − 1）を超えると、64 ビットの 2 の補数どおりに最小値の側から続きます（`9223372036854775807 + 1` は `-9223372036854775808`）。ハッシュ、チェックサム、バイナリプロトコルが求めるのはまさにこの動作で、しかも演算のたびにオーバーフローを検査するコストがかかりません。ゼロ除算（`/`、`%`）はエラーを投げます。範囲外の浮動小数点数に `int(x)` を使うと、いちばん近い `int` になります（NaN は `0`）。
+
+## 組み込みメソッド
+
+文字列、バイト列、配列、セット、マップ、オプショナルにはメソッドがあります。値そのものを変更するメソッド（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）は、`var` か状態に対してだけ呼べます。
+
+| 型 | メソッド |
+|---|---|
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`（`to` を省くと末尾まで）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`+` |
+| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（新しく加わったかを返す）、`remove(x)`（あったかを返す）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`。`Set(xs)` は配列の重複しない要素、`Set<T>()` は空のセット |
+| `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順） |
+| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`bytes()`、`+` |
+| `bytes` | `b[i]`（0 から 255 の `int`。範囲外はエラー）、`count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）、`hex()` と `hex(separator)`（`"04 a1"`）。`bytes()` は空のバイト列、`bytes([0x04, 0xa1])` はそのバイト列、`s.bytes()` は文字列の UTF-8 |
+| `int` | `float()`、`abs()`、`padded(width)`（`7.padded(2)` は `"07"`） |
+| `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（0 の方向へ切り捨て）、`abs()` |
+| `Color` | `opacity(a)`：元の不透明度の a 倍で描く（セマンティックカラーはセマンティックカラーのまま）。`hex()`（`"#0a84ff"`。セマンティックカラーはその名前：`".accent"`） |
+| `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮動小数点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`（整数でも浮動小数点数でも：`1.5 * 1h`）、`/ n`、`/ d`（別の Duration：何個分か。浮動小数点数） |
+| `Length` | `* n`（`width: 50% * 2`：長さを拡大縮小） |
+| `T?` | `isNone()`、`isSome()` |
+
+`min`、`max`、`abs`、`float(n)`、`int(x)` は関数です。それ以外（`math.sqrt`、`math.pow`、`math.pi` など）は `std/math` にあります。
+
+## 値のセマンティクス
+
+文字列、配列、セット、マップ、構造体、列挙型は**値**です。代入したり引数に渡したりすると、見かけ上はコピーが渡されます。コピーのコストはわずかです。コピーどうしは、どれかが変更されるまで同じメモリを共有します。また、一か所からしか持たれていない値は、その場で変更されます。
+
+```asuka
+var a = [1, 2, 3]
+var b = a
+b.push(4)        // a は [1, 2, 3] のまま
+```
+
+ストア、クロージャ、タスク、ビューは**参照**です。コピーしても同じものを指します。
+
+null はありません。ないかもしれない値はオプショナルで表します。
+
+```asuka
+let user: User? = none
+if let u = user { Text(u.name) }
+let name = user?.name ?? "Guest"
+let first = items.first()!        // none ならクラッシュする。none になりえないときだけ書く
+```
+
+`?.` のあとは、チェーンの残りの部分も none で止まります。`user?.boss.name` は `string?` です。

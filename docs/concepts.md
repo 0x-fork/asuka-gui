@@ -4,7 +4,7 @@ An Asuka app is components that declare what they show, and state that
 says what changes. This page covers how they fit: the app, components
 and their state, what updates when state changes, effects and tasks,
 showing and repeating views, owners and cleanup, the main thread, and
-the environment. [The Asuka language](language.md) is the reference for
+the environment. [The Asuka language](language-tour.md) is the reference for
 the syntax.
 
 ## An app
@@ -162,7 +162,7 @@ task(query) {
 ```
 
 `load` keeps an async result as state, with its loading and its error
-(see [The Asuka language](language.md#data-that-loads)).
+(see [The Asuka language](language/async.md#data-that-loads)).
 
 ## Showing and repeating
 

@@ -1,0 +1,109 @@
+# 宣言
+
+```asuka
+let pi = 3.14159             // 定数
+var total = 0                // 変数（関数とハンドラーの中で）
+state count = 0              // 状態：UI が追従する値
+```
+
+型は推論されます。書いたほうがわかりやすいところでは明示します（`let ids: [int] = []`）。
+
+`type` は、ファイルのトップレベルで型に名前を付けます（`type Pair<A, B> = (A, B)`、`type Check = fn(string) -> bool`）。これは同じ型の別名（エイリアス）なので、`Pair<int, string>` は `(int, string)` そのものです。
+
+## 構造体
+
+```asuka
+struct Message {
+  id: string
+  subject: string
+  read: bool = false
+
+  fn preview() -> string = subject.slice(0, 40)
+}
+
+let m = Message(id: "1", subject: "Hello")
+let n = Message(id: m.id, subject: m.subject, read: true)
+```
+
+構造体は、フィールドを名前付きか順番どおりに渡して呼び出すことで作ります。デフォルト値のあるフィールドは省略できます。メソッドからはフィールドを名前でそのまま参照できます。ただし構造体は値なので、メソッドで変更することはできません。変更するメソッドは、新しい構造体を返します。構造体の本体に書いた `let` はその型の定数（`Font.title`）になり、`Font` が求められる場所ならどこでも `.title` と書けます。
+
+構造体や列挙型の本体に書いた `static fn` は、`self` を持たない、その型の関数です。ほかの関数と同じく名前付き引数とデフォルト値を使って型に対して呼び出せ（`Money.of(dollars: 2)`）、その型が求められる場所では `.of(…)` とも書けます。
+
+```asuka
+struct Money {
+  cents: int
+
+  static fn of(dollars: int, cents: int = 0) -> Money = Money(cents: dollars * 100 + cents)
+}
+
+let price: Money = .of(dollars: 4, cents: 50)
+```
+
+構造体は型パラメーターを取れます。型引数は、作るときに推論されます。
+
+```asuka
+struct Page<T> {
+  items: [T]
+  next: string? = none
+}
+
+let page = Page(items: [1, 2, 3])     // Page<int>
+```
+
+`match` と `if let` では、構造体パターンで構造体のフィールドを名前でマッチさせられます。`y` とだけ書くとフィールド `y` を束縛し、`y: py` なら `py` という名前で束縛し、`x: 0` は値にマッチします。書かなかったフィールドは何にでもマッチします。パターンは入れ子にできます。
+
+```asuka
+match line {
+  Line(from: Point(x: 0, y: 0), dashed: true) => "dashed, from the origin"
+  Line(from: Point(x: 0, y), to) => "from {y} on the y axis to {to.x}"
+  Line(dashed) => "a line"
+}
+```
+
+構造体は、メソッドから演算子を得ます。`fn add(o: T) -> R` は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になります。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
+
+```asuka
+struct Money {
+  cents: int
+
+  fn add(o: Money) -> Money = Money(cents: cents + o.cents)
+  fn compare(o: Money) -> int = cents - o.cents
+}
+
+let total = Money(cents: 250) + Money(cents: 99)
+let over = total > Money(cents: 300)
+```
+
+## 列挙型
+
+```asuka
+enum Filter {
+  all
+  unread
+  from(Person)
+
+  fn matches(m: Message) -> bool = match self {
+    .all => true
+    .unread => !m.read
+    .from(p) => m.from == p
+  }
+}
+
+let f: Filter = .unread
+```
+
+型がわかっている場所では、ケースを `.name` と書きます。`match` はすべてのケースを網羅しなければなりません（または `_ =>` で終えます）。パターンでは、ケースの値を束縛したり（`.from(p)`。ラベルでも書けます：`.server(code: c)`）、リテラルにマッチさせたり（`0`、`"x"`）、複数のケースをまとめたり（`.a | .b`）、入れ子にしたり（`.from(Person(vip: true))`）、ガードを付けたり（`.from(p) if p.vip =>`）できます。`match` がすべての値を網羅しているかを調べるとき、コンパイラーは入れ子のパターンの中までたどり、足りないものをパターンの形で示します（`match doesn't cover .key(_, false)`）。ケースのラベル付きの値のうち、ゼロ値（`false`、`0`、`""`、空の配列やマップ、`none`、列挙型の最初のケース）があるものは、作るときに省略できます。`.button(title: "Copy", run: copy)` は `Action.button` の `icon`、`role`、`disabled`、`checked` を省略しています。
+
+ケースの値には、その列挙型自身も持たせられます。そのため、列挙型で木構造を表せます。
+
+```asuka
+enum Expr {
+  num(int)
+  add(Expr, Expr)
+
+  fn eval() -> int = match self {
+    .num(n) => n
+    .add(a, b) => a.eval() + b.eval()
+  }
+}
+```

@@ -3,7 +3,7 @@
 Asuka is a UI framework that renders with each platform's own widgets,
 driven by fine-grained signals. **Mobile comes first: iOS and
 Android**; macOS, Windows, Linux and the web run on the same core. Apps
-are written in **Asuka**, a language of its own (docs/language.md), and
+are written in **Asuka**, a language of its own (docs/language/), and
 run on a **core written in C** (core/). RFC 0007 has the reasoning for
 both. The goals, in order:
 
@@ -24,7 +24,7 @@ large audience before 1.0.
 | Question | Decision | Why |
 |---|---|---|
 | Platforms, in order | iOS, Android; then macOS, Windows, Linux, the web | The core and `ops` are platform-neutral. |
-| App language | Asuka: statically typed, component bodies declarative, async/await, value semantics (docs/language.md) | Reactivity the compiler checks (a read that should follow can't be read once), main-thread rules as type errors, and code a VM can reload without restarting. |
+| App language | Asuka: statically typed, component bodies declarative, async/await, value semantics (docs/language/) | Reactivity the compiler checks (a read that should follow can't be read once), main-thread rules as type errors, and code a VM can reload without restarting. |
 | Core language | C17 (core/) | Every platform's toolchain and FFI calls C; no runtime or GC of its own on the phone; a small WebAssembly build. |
 | Compiler | Go (lang/), part of the CLI | The device never compiles; the CLI and the language server share it. |
 | Running the app | Bytecode on the core's VM in development; C compiled with the core for release (lang/cgen) | Reloads keep state and views on every platform, physical phones included; releases run at native speed. |
@@ -95,7 +95,7 @@ void asuka_run_posted(void);
 
 ## The language and its compiler
 
-docs/language.md is the language; lang/LOWERING.md how each construct
+docs/language/ is the language (docs/language-tour.md, a tour of it); lang/LOWERING.md how each construct
 becomes bytecode and calls into the core. The compiler (lang/syntax,
 lang/types, lang/ir, lang/bytecode, lang/cgen, lang/compile) runs in
 the CLI. In development `asuka dev` sends the player the app's

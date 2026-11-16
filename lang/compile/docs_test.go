@@ -61,7 +61,7 @@ func TestI18nDocExamples(t *testing.T) {
 // each on its own; a page of onePage builds one program as it goes, its
 // blocks compiled together (their imports first).
 func TestDocExamples(t *testing.T) {
-	eachBlock := []string{"device.md", "components.md", "accessibility.md", "motion.md", "desktop.md", "navigation.md", "web.md", "programs.md"}
+	eachBlock := []string{"language-tour.md", "device.md", "components.md", "accessibility.md", "motion.md", "desktop.md", "navigation.md", "web.md", "programs.md"}
 	onePage := []string{"data.md", "purchases.md", "nfc.md", "bluetooth.md", "icloud.md"}
 	for _, lang := range []string{"", "zh", "ja"} {
 		for _, page := range eachBlock {

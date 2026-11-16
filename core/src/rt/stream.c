@@ -1,5 +1,5 @@
-// stream.c: Stream<T>, values that come over time (docs/language.md,
-// "Async"). A stream is made from a producer, an async closure given a
+// stream.c: Stream<T>, values that come over time
+// (docs/language/async.md). A stream is made from a producer, an async closure given a
 // send function; it starts when the stream is first read, under the
 // owner reading it, and sends values into the stream's queue. A reader
 // (for await) asks for the next value, waiting when none is queued.

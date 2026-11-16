@@ -87,7 +87,7 @@ NSLocationWhenInUseUsageDescription = "To find stores near you."
 Each package asks the user the first time it needs to, not at launch.
 Calls that wait (for the user, a location fix, the platform) are
 `async`: `await` them in a handler, a task or another async function,
-and the app goes on meanwhile ([Async](language.md#async)). What the
+and the app goes on meanwhile ([Async](language/async.md#async)). What the
 platform changes over time (the network, a permission, the account) is
 tracked, a function a binding reads, or a `Stream` a task reads.
 

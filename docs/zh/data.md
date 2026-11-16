@@ -21,7 +21,7 @@
 
 ## 小数据：std/storage
 
-`std/storage` 用来在多次启动之间保存小数据：设置、已登录用户的名字、上次打开的标签页。`storage.Value` 是一个 [store](language.md#store)，它的 `value` 会被保存下来：一开始是上次保存的值，第一次则是默认值；之后每次给它赋值都会被保存。和任何状态一样，读取它会被跟踪，写入它会立刻显示出来：
+`std/storage` 用来在多次启动之间保存小数据：设置、已登录用户的名字、上次打开的标签页。`storage.Value` 是一个 [store](language/stores.md#store)，它的 `value` 会被保存下来：一开始是上次保存的值，第一次则是默认值；之后每次给它赋值都会被保存。和任何状态一样，读取它会被跟踪，写入它会立刻显示出来：
 
 ```asuka
 import std/storage
@@ -432,4 +432,4 @@ component Folder(dir: string) {
 - **在主线程之外，用 await 等待**：`db.exec`、`db.query` 和实时查询的每次查询；`icloud` 的调用；`document` 的读写；`http` 的请求。它们的 `await` 让界面可以继续运行。
 - **在主线程上，很快完成**：`sqlite.open` 和 `db.migrate`（在应用启动时）；`storage.Value` 和 `std/store`，它们读写的是平台的偏好设置（在 Windows 和 Linux 上是内存：文件稍后才写）。
 
-你自己的、会拖住主线程的工作（解析大文件、缩放图片）放进 `spawn { … }`，它会在另一个线程上运行（[异步](language.md#异步)）。
+你自己的、会拖住主线程的工作（解析大文件、缩放图片）放进 `spawn { … }`，它会在另一个线程上运行（[异步](language/async.md#异步)）。

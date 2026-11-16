@@ -15,14 +15,14 @@ const navLink = "font-mono text-[12px] tracking-[0.14em] uppercase text-muted-fo
 const mobileNavLink = "min-h-11 px-3 aria-[current=page]:bg-accent"
 
 /** The API reference's two sets of packages, each a page listing them. */
-const referenceGroups = ["std", "platform"] as const
+const referenceGroups = ["language", "std", "platform"] as const
 
 export function SiteHeader() {
   const locale = useLocale()
   const t = messages[locale].nav
   const words = messages[locale].reference
   // On a page of the reference, References is where the reader is, not the docs.
-  const inReference = useRouterState({ select: (s) => /\/docs\/(std|platform)(\/|$)/.test(s.location.pathname) })
+  const inReference = useRouterState({ select: (s) => /\/docs\/(language|std|platform)(\/|$)/.test(s.location.pathname) })
   const to = routes[locale]
   return (
     <header className="frame sticky top-0 z-40 flex h-14 items-center gap-6 border-b bg-background/80 px-4 backdrop-blur-xl sm:px-6">

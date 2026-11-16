@@ -1,6 +1,6 @@
 # Getting started
 
-Apps are written in the Asuka language ([the language](language.md))
+Apps are written in the Asuka language ([the language](language-tour.md))
 and show each platform's own widgets. The `asuka` CLI builds them for
 each platform with that platform's own tools; one command makes an app,
 and another runs it, reloading as you save.
@@ -152,7 +152,7 @@ test "Add counts" {
 - **Tests** are `test` blocks: `asuka test` runs them with no device,
   laying the views out as a phone would (see [Testing](testing.md)).
 
-The same code is the app on every platform. [The language](language.md)
+The same code is the app on every platform. [The language](language-tour.md)
 has the rest of it.
 
 ## An app's files

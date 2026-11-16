@@ -35,8 +35,8 @@ app { Counter() }
 
 - **A language for UI**: statically typed, declarative components whose
   state is bound where it's read, async tasks owned by the component
-  that started them, and errors the compiler sees ([the
-  language](docs/language.md)).
+  that started them, and errors the compiler sees ([a tour of
+  the language](docs/language-tour.md)).
 - **A small core in C**: signals, layout (flexbox and grid), the view
   tree and its batches to the platform, and a VM, built for each
   platform with its own compiler; no garbage collector, no runtime of

@@ -119,7 +119,8 @@ OS が日本語で表示する名前は、それぞれの表記に従います�
 | ページ | タイトル |
 | --- | --- |
 | getting-started.md | はじめに |
-| language.md | Asuka 言語 |
+| language-tour.md | Asuka のツアー |
+| language/README.md | 言語リファレンス |
 | stdlib.md | 標準ライブラリとプラットフォーム SDK |
 | concepts.md | 基本概念 |
 | layout.md | レイアウトとスタイル |

@@ -1,6 +1,6 @@
 # Lowering Asuka
 
-How the compiler turns Asuka (docs/language.md, RFC 0007's grammar) into
+How the compiler turns Asuka (docs/language/, RFC 0007's grammar) into
 bytecode (lang/bytecode) that the VM (core/src/vm) runs. Release builds
 compile that bytecode to C (lang/cgen): each synchronous function
 becomes a C function that calls the same instruction bodies the

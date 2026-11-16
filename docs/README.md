@@ -80,9 +80,9 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
 
 - [Getting started](getting-started.md): install the CLI, make an app
   and run it on a phone, the simulator, your computer or a browser.
-- [The Asuka language](language.md): files and packages, values and
-  types, components and state, async, errors, styles, navigation, native
-  code and tests: the language apps are written in.
+- [A tour of Asuka](language-tour.md): the language apps are written in,
+  on one page: values, functions, structs and enums, components and
+  state, async, errors and tests.
 - [Concepts](concepts.md): components and state, what updates, effects
   and tasks, owners, the main thread, and the environment.
 - [Layout and style](layout.md): flexbox, sizes, the safe area, colors,
@@ -160,5 +160,6 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
 - [Asuka and MyGo](mygo.md): the platform's widgets or UI drawn by the
   framework, where each runs (MyGo's phones: coming soon), and when to
   use each.
-- [The Asuka language](language.md): the reference for the syntax, the
-  types and their built-in methods.
+- [Language reference](language/README.md): the whole language, a topic
+  a page: types and their built-in methods, declarations, components,
+  stores, async, errors, styles, navigation, native code and tests.

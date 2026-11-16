@@ -37,7 +37,7 @@ What follows from it:
   the platform. MyGo's are MyGo's, made over what it draws.
 - **What no widget shows.** MyGo draws anything as it draws the rest.
   Asuka draws with the platform what has no widget: `Canvas` and `Shape`
-  (docs/language.md, "Drawing"), `std/chart`, `std/svg`, and
+  ([Drawing](language/drawing.md)), `std/chart`, `std/svg`, and
   shaders, compiled with the app for each platform's GPU.
 - **Images without a screen.** MyGo has a software renderer: it draws
   on the CPU, in memory, with no window, display or GPU, so a test or a
@@ -50,7 +50,7 @@ What follows from it:
 ## What an app is
 
 A MyGo app is a Go program. An Asuka app is written in Asuka
-([The language](language.md)), a typed language made for interfaces:
+([The language](language-tour.md)), a typed language made for interfaces:
 components whose bodies declare their views, state a binding follows,
 async and await, and the compiler's checks of what a binding reads and
 what runs on the main thread. In development a save reloads the app in

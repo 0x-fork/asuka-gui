@@ -1,0 +1,42 @@
+# システムの機能
+
+| 関数 | 動作 |
+|---|---|
+| `share(text)` | テキストやリンクの共有シートを表示する |
+| `try await shareFiles(paths, title:, from: ref)` | ファイルの共有シートを、あるビューから（ポップオーバーが指す位置に）表示する。シートが閉じると戻る |
+| `haptic(.success)` | プラットフォームの触覚フィードバック（`Haptic`） |
+| `copy(text)` | テキストをクリップボードに入れる |
+| `openURL(url)` | url を扱えるアプリで開く |
+| `announce(text)` | スクリーンリーダーにテキストを読み上げさせる |
+| `a11yFocus(ref)` | スクリーンリーダーのフォーカスをそのビューに移す |
+| `try await webCookies(url)` | Web ビューが url について保持している Cookie |
+| `useKeys([Shortcut(…)])` | コンポーネントがある間の、ウィンドウのキー操作 |
+| `onOpenURL(u => …)`、`onOpenFiles(paths => …)`、`onShare(items => …)` | コンポーネントがある間に、アプリが開かれたときに渡されたもの、またはほかのアプリから共有されたもの |
+| `quit()`、`relaunch()` | ユーザーが「終了」を選んだときと同じようにアプリを終了し（再び起動し）ます。先にアプリに確認します。デスクトップのみ |
+| `closeWindow()` | コードがあるウィンドウを確認せずに閉じます |
+| `onCloseRequest(fn() -> bool)`、`onQuit(e => …)`、`onSecondInstance((args, dir) => …)` | コンポーネントがあるあいだ：そのウィンドウが閉じる前の確認、アプリの終了の直前（`e.cancel()`）、アプリの再起動を受け取ります |
+| `onBack { … }` | コンポーネントがある画面、シート、ポップオーバーからユーザーが戻ろうとしたときに問い合わせられます。`true` なら引き受け（画面は残る）、`false` なら戻らせます |
+| `onLifecycle(l => …)` | コンポーネントがある間、アプリがフォアグラウンドやバックグラウンドに移ったこと、メモリ警告（`Lifecycle`）を受け取ります |
+| `alert(title, message:, actions:)` | その場でアラートを表示します。`actions` は `.button` の配列です（なければ OK だけ）。`Alert` 要素は、`open` が true の間アラートを表示します |
+| `snackbar(message, action:, duration:, onDismiss:)` | ウィンドウの下部に短いメッセージを、アクション（元に戻す）付きで表示します。閉じるためのクロージャーを返します |
+| `setColorScheme(.dark)` | アプリの外観：`.light`、`.dark`、`.system`（プラットフォームのもの） |
+| `environment()`、`screenEnvironment()` | サイズ、セーフエリア、文字サイズ、プラットフォームなど（追跡されます）。画面やシート自身のものと、画面全体のもの |
+| `mainWindow()` | メインウィンドウの `Ref`。どこからでも `show()`、`hide()`、`focus()` などができます |
+
+`useKeys` とこれらの `on…` による登録は、コンポーネントの本体（またはアプリのブロック）に書きます。アプリのブロックでは、これらをイベントとしても扱えます：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`、`on foreground { … }`、`on background { … }`。ブロックの最初の `Window` がメインウィンドウです（[ナビゲーション](../navigation.md#ウィンドウ)）。
+
+`std/embed` は、アプリのコンパイル時にパッケージのファイルを読んでアプリに組み込みます。どのプラットフォームでも、実行時に読み込むことなくそのファイルを使えます。
+
+```asuka
+import std/embed
+
+struct Config { api: string; retries: int }
+
+let welcome = embed.text("welcome.md")         // string
+let logo = embed.bytes("art/logo.png")         // bytes
+let config: Config = embed.json("config.json") // コンパイル時に検査される
+let posts = embed.texts("posts/*.md")          // [パス: テキスト]
+let icons = embed.files("icons/**/*.svg")      // [パス: バイト列]
+```
+
+パスは文字列リテラルで、パッケージのディレクトリ（`asuka.toml` のある場所）からの相対パスです。その外は指せません。グロブには `*`、`?`、`[abc]`、`**`（任意の階層のディレクトリ）が使え、名前がドットで始まるファイルには一致しません。`embed.json` は `json.decode` と同じようにファイルを読みますが、それをコンパイル時に行います。型に合わないファイルは、行と列を示すコンパイルエラーになり、実行時のエラーにはなりません。ファイルがない場合や、グロブに一致するファイルがない場合もコンパイルエラーです。`asuka dev` では、組み込んだファイルを変更するとコードを変更したときと同じようにアプリがその場で再読み込みされます。実行時にプラットフォームが読むファイル（画像、フォント）は `assets/` に置きます（[std/embed](../std/embed.md)）。

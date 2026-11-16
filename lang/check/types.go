@@ -1,7 +1,7 @@
 // Package check is the Asuka compiler's middle: it resolves names over
 // packages (a directory of .asuka files is one; the prelude is visible
 // everywhere), gives every expression a type, checks the rules of
-// docs/language.md (declarative component bodies, await only where
+// docs/language/ (declarative component bodies, await only where
 // something may wait, try for what throws, spawn's captures, exhaustive
 // matches) and records what the lowering (lang/ir) needs: what each name
 // and member is, what each call calls with which arguments, the implicit

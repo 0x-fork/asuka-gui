@@ -1,6 +1,6 @@
 # 组件
 
-组件是一个显示视图的声明（见[语言](language.md)）。本页按用途分类介绍 Asuka 提供的元素，以及标准库里用于 Markdown、SVG、Lottie、图表和着色器的几个包。只要平台自己有对应的控件，用的就是平台原生控件：iOS 上是 UIKit，Android 上是 Android Views 和 Material 3，macOS 上是 AppKit，Windows 上是绘制成 Windows 11（Fluent）风格的 Win32 控件，Linux 上是 GTK 4 和 libadwaita，浏览器里则是页面元素。视图如何确定尺寸和位置，请看[布局](layout.md)；页面、标签页和弹出面板（sheet）请看[导航](navigation.md)。
+组件是一个显示视图的声明（见[语言](language-tour.md)）。本页按用途分类介绍 Asuka 提供的元素，以及标准库里用于 Markdown、SVG、Lottie、图表和着色器的几个包。只要平台自己有对应的控件，用的就是平台原生控件：iOS 上是 UIKit，Android 上是 Android Views 和 Material 3，macOS 上是 AppKit，Windows 上是绘制成 Windows 11（Fluent）风格的 Win32 控件，Linux 上是 GTK 4 和 libadwaita，浏览器里则是页面元素。视图如何确定尺寸和位置，请看[布局](layout.md)；页面、标签页和弹出面板（sheet）请看[导航](navigation.md)。
 
 每个属性都是一个绑定：可以是一个值，也可以是读取状态的表达式，状态变化时视图随之更新。由用户修改的控件（输入框、开关）则用 `bind` 绑定它要写入的状态，比如 `bind text: query`。详见[核心概念](concepts.md)。
 

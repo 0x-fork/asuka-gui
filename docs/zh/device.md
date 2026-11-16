@@ -56,7 +56,7 @@ NSCameraUsageDescription = "To photograph your receipts."
 NSLocationWhenInUseUsageDescription = "To find stores near you."
 ```
 
-每个包都是在第一次真正需要时才询问用户，而不是在应用启动时。需要等待的调用（等用户回应、等定位结果、等平台处理）都是 `async` 的：在事件处理函数、task 或另一个 async 函数里 `await` 它们，等待期间应用照常运行（见[异步](language.md#异步)）。平台上随时间变化的东西（网络、某项权限、账户）则会被追踪：它要么是一个供绑定读取的函数，要么是一个供 task 读取的 `Stream`。
+每个包都是在第一次真正需要时才询问用户，而不是在应用启动时。需要等待的调用（等用户回应、等定位结果、等平台处理）都是 `async` 的：在事件处理函数、task 或另一个 async 函数里 `await` 它们，等待期间应用照常运行（见[异步](language/async.md#异步)）。平台上随时间变化的东西（网络、某项权限、账户）则会被追踪：它要么是一个供绑定读取的函数，要么是一个供 task 读取的 `Stream`。
 
 ## 在 Mac 上
 

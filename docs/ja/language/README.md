@@ -1,0 +1,62 @@
+# 言語リファレンス
+
+Asuka のアプリは、Asuka という言語で書きます。各プラットフォーム純正のウィジェットを使う UI のために作られた、小さな言語です。静的型付けで、リリースビルドでは事前にコンパイルされます。開発中はその場でリロードされるので、保存した変更は数ミリ秒で画面に反映され、値もネイティブのビューもすべてそのまま残ります。
+
+```asuka
+component Counter {
+  state count = 0
+
+  SafeArea {
+    justify: .center; align: .center; gap: 16; padding: 24
+
+    Text("Count: {count}") { font: .largeTitle.bold() }
+    Row {
+      gap: 12
+      Button("Reset") { variant: .gray; on press { count = 0 } }
+      Button("Add") { variant: .filled; on press { count += 1 } }
+    }
+    if count >= 10 {
+      Text("That's a lot") { color: .secondaryLabel }
+    }
+  }
+}
+
+app { Counter() }
+```
+
+これらのページでは、言語のすべてをトピックごとに説明します。まず全体を見るなら[Asuka のツアー](../language-tour.md)を読んでください。要素そのもの（`Text`、`Button`、`List`、`Stack` など）については、専用のページ[コンポーネント](../components.md)を参照してください。
+
+## ページ一覧
+
+- [ファイル、パッケージ、インポート](packages.md)：ファイル、パッケージとインポート。アプリ、プログラム、ライブラリ
+- [値と型](types.md)：値と型、演算子、組み込みメソッド、値のセマンティクス
+- [宣言](declarations.md)：let、var、state などの宣言。構造体と列挙型
+- [関数とクロージャ](functions.md)：関数とクロージャ。インターフェースとジェネリクス
+- [制御フロー](control-flow.md)：if、match、ループとパターン
+- [コンポーネント](components.md)：コンポーネント：本体、ハンドラー、双方向バインディング、ビューのリスト、effect と task
+- [ストア](stores.md)：使うコンポーネントの間で共有する状態
+- [非同期処理](async.md)：非同期関数、task、ストリーム、spawn。読み込むデータ
+- [エラー](errors.md)：投げる、捕まえる、値としてのエラー
+- [スタイル](styles.md)：スタイルと、ビューに名前を付けて参照すること
+- [アニメーション](animation.md)：animate { }、アニメーション中の値、フレームごとの処理（onFrame）
+- [描画](drawing.md)：Canvas、Shape、パス、シェーダー
+- [システムの機能](system.md)：アプリがシステムに頼むこと（アラート、共有シート、触覚フィードバック、ウィンドウ）と、受け取るイベント（URL、ファイル、終了）
+- [ナビゲーション](navigation.md)：画面、タブ、スタック。push、present、pop、dismiss
+- [ほかの言語のテキスト](languages.md)：ほかの言語のテキスト
+- [ネイティブコード](native.md)：ネイティブインターフェースとネイティブコンポーネント
+- [テスト](tests.md)：test ブロック、mount、アプリの操作と確認
+
+## メモリとパフォーマンス
+
+ガベージコレクターがないので、停止もありません。値は参照カウントで管理され、書き込むときにコピーされます。状態、ストア、エフェクト、タスクは、それを作ったコンポーネントに属し、コンポーネントと一緒になくなります。
+
+- 変更があっても、実行されるのは変わったものを読んでいるバインディングだけで、プラットフォームに送られるのも変わったプロパティだけで、送るのはフレームごとに一回です。
+- リリースビルドは事前にコンパイルされるので、配布するアプリにインタープリターは含まれません。
+- リストは画面に見えている分だけを組み立て、セルを再利用します。
+
+## キーワード
+
+`app as async await bind break catch component continue defer do effect
+else emit enum event extern false fn for if import in interface key let load
+match native none on prop provide pub return screen self spawn state
+store struct style task test throw throws true try type use var while`

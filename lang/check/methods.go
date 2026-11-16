@@ -62,7 +62,7 @@ type Method struct {
 }
 
 // Methods lists every built-in method, the language's reference for
-// them (docs/language.md lists them too).
+// them (docs/language/types.md lists them too).
 var Methods = []*Method{
 	// Arrays.
 	{Recv: "array", Name: "count", Sig: "() -> int", Special: "len", Doc: "the number of elements"},

@@ -1,7 +1,7 @@
 # Components
 
 A component is a declaration that shows views (see [the
-language](language.md)). This page covers the elements Asuka gives you,
+language](language-tour.md)). This page covers the elements Asuka gives you,
 grouped by what they do, and the standard library's packages for
 Markdown, SVG, Lottie, charts and shaders. Each one is the platform's own
 widget where the platform has one: UIKit on iOS, Android Views and

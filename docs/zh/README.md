@@ -54,7 +54,7 @@ Asuka 负责运行应用的组件和状态、布局（flexbox 和 grid，遵循 
 ## 指南
 
 - [快速上手](getting-started.md)：安装命令行工具，创建一个应用，并在手机、模拟器、电脑或浏览器上运行它。
-- [Asuka 语言](language.md)：编写应用所用的语言，包括文件与包、值与类型、组件与状态、异步、错误、样式、导航、原生代码和测试。
+- [Asuka 速览](language-tour.md)：用一页介绍编写应用所用的语言：值、函数、结构体与枚举、组件与状态、异步、错误和测试。
 - [核心概念](concepts.md)：组件与状态、哪些部分会更新、effect 与 task、owner、主线程和环境。
 - [布局与样式](layout.md)：flexbox、尺寸、安全区域、颜色、文字、阴影和渐变。
 - [组件](components.md)：文本、按钮、输入框、图片、列表、视频、网页视图和绘图。
@@ -84,4 +84,4 @@ Asuka 负责运行应用的组件和状态、布局（flexbox 和 grid，遵循 
 - [asuka.toml](asuka-toml.md)：应用 `asuka.toml` 里的每一个键，它的类型、默认值，以及在各个平台上的作用。
 - [与 SwiftUI 和 Expo 对比](parity.md)：Asuka 已经有什么，还缺什么。
 - [Asuka 与 MyGo](mygo.md)：平台原生控件与框架自绘界面、各自能运行在哪里（MyGo 的手机支持即将推出），以及什么时候该选哪个。
-- [Asuka 语言](language.md)：语法、类型及其内置方法的参考。
+- [语言参考](language/README.md)：按主题分页介绍整个语言：类型及其内置方法、声明、组件、store、异步、错误、样式、导航、原生代码和测试。

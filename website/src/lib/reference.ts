@@ -12,10 +12,16 @@ import path from "node:path"
 import { localized, type Locale } from "./locales.ts"
 import { messages } from "./messages.ts"
 
-/** A set of packages: std/ or platform/. */
-export type ReferenceGroup = "std" | "platform"
+/**
+ * A part of the reference: the language (docs/language, written), the
+ * standard library's packages or the platform SDK's (asuka doc's).
+ */
+export type ReferenceGroup = "language" | "std" | "platform"
 
-export const referenceGroups: ReferenceGroup[] = ["std", "platform"]
+export const referenceGroups: ReferenceGroup[] = ["language", "std", "platform"]
+
+/** The parts asuka doc writes, from the packages' source. */
+export const generatedGroups: ReferenceGroup[] = ["std", "platform"]
 
 /** A package, as `asuka doc --all`'s index.json lists it. */
 export interface ReferencePackage {
@@ -28,7 +34,7 @@ export interface ReferencePackage {
 
 /** The reference's set of a page, or undefined for a page of the docs. */
 export function referenceGroupOf(slug: string): ReferenceGroup | undefined {
-  const m = /^(std|platform)(?:\/[a-z0-9-]+)?$/.exec(slug)
+  const m = /^(language|std|platform)(?:\/[a-z0-9-]+)?$/.exec(slug)
   return m ? (m[1] as ReferenceGroup) : undefined
 }
 
@@ -56,9 +62,9 @@ export function referencePackages(repoDir: string): ReferencePackage[] {
   return JSON.parse(fs.readFileSync(path.join(referenceDir(repoDir), "index.json"), "utf8")) as ReferencePackage[]
 }
 
-/** Every page of the reference: the two lists, then each package's. */
+/** Every page asuka doc's part of the reference has: the two lists, then each package's. */
 export function referenceSlugs(repoDir: string): string[] {
-  return [...referenceGroups, ...referencePackages(repoDir).map((p) => p.slug)]
+  return [...generatedGroups, ...referencePackages(repoDir).map((p) => p.slug)]
 }
 
 /**
@@ -66,8 +72,9 @@ export function referenceSlugs(repoDir: string): string[] {
  * package's, as asuka doc wrote it; a list's, in the language of locale.
  */
 export function referenceSource(repoDir: string, locale: Locale, slug: string): string | undefined {
-  const group = referenceGroupOf(slug)
-  if (!group) return undefined
+  const found = referenceGroupOf(slug)
+  if (!found || !generatedGroups.includes(found)) return undefined
+  const group = found as "std" | "platform"
   const words = messages[locale].reference
   const packages = referencePackages(repoDir)
   if (slug === group) {

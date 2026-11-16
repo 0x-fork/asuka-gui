@@ -33,7 +33,7 @@ you try while developing never mixes with an installed build's data.
 
 `std/storage` keeps small values across launches: settings, a
 signed-in user's name, the tab last open. A `storage.Value` is a
-[store](language.md#stores) whose `value` is kept: it starts with what
+[store](language/stores.md#stores) whose `value` is kept: it starts with what
 was kept, or the default the first time, and each value it's set to is
 kept. Reading it is tracked, as any state's is, and writing it shows:
 
@@ -608,4 +608,4 @@ freeze it. For data:
 
 Work of your own that would hold the main thread up (parsing a large
 file, resizing an image) goes in `spawn { … }`, which runs it on
-another thread ([Async](language.md#async)).
+another thread ([Async](language/async.md#async)).
