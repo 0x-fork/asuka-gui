@@ -574,7 +574,7 @@ var (
 	componentKeywords = []string{"prop", "event", "state", "let", "use", "provide", "fn", "async", "task", "effect", "pub"}
 	viewKeywords      = []string{"if", "for", "match"}
 	stmtKeywords      = []string{"let", "var", "if", "for", "while", "match", "return", "throw", "break", "continue", "defer", "do", "emit", "try", "await"}
-	exprKeywords      = []string{"true", "false", "none", "if", "match", "await", "try", "load", "spawn"}
+	exprKeywords      = []string{"true", "false", "none", "if", "match", "await", "try", "load", "spawn", "throw", "return"}
 )
 
 func (c *completer) keywords(ks []string) {
