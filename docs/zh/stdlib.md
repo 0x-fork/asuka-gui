@@ -51,6 +51,23 @@ state units = store.read("units", "metric")
 | `asuka/host` | 上面这些包所依赖的：宿主自己的模块（`host.call(module, method, args)`、`host.next(module, method)`）；应用不需要直接用它 |
 | `asuka/sqlite` | `sqlite.open(name)`（应用数据目录里的文件、绝对路径，或 `":memory:"`）得到一个 `DB`：`migrate(steps)`、`exec(sql, args)` 和 `query<T>(sql, args)`（异步，不在主线程上执行；行直接解码成 `T`，按列名对应结构体的字段）、`watch<T>(sql, args)`（一个 `Live<T>` store：`rows`、`loading`、`error`；参数变化时、它读取的表被写入时会重新执行）、`changed()`、`close()`。SQLite 来自 sqlite 插件的库（sdk/sqlite），随应用一起发布；Web 上暂不支持 |
 | `asuka/storage` | `storage.Value(key, default)`：一个 store，它的 `value` 保存在设备上（用的是 asuka/store），会被追踪，变化时写入；`reset()`；`storage.flush()`、`storage.dirName()` |
+| `asuka/integrity` | `integrity.supported()`、`generateKey()`、`attestKey(id, challenge)`、`assertion(id, data)`（iOS 和 Mac 上的 App Attest）；`prepare(cloudProjectNumber:)`、`token(requestHash:)`（Play Integrity） |
+| `asuka/js` | `js.eval(script, timeout:)`：在平台自己的引擎里离屏运行 JavaScript（WKWebView、Android 的 WebView、WebView2、WebKitGTK、沙盒化的 frame），以 JSON 返回它的值；`js.JsError.timeout` |
+| `asuka/agerange` | `agerange.request(13, 18)`：不需要出生日期就能得到用户的年龄段（iOS 26 的 Declared Age Range、Play 的 Age Signals）：一个 `Range`（`status`、`lower`、`upper`、`source`）；其他平台上是 `AgeRangeError.notAvailable` |
+| `asuka/appearance` | `appearance.current()`（会被追踪：`accent` 为 `Color?`、`increaseContrast`、`reduceTransparency`；只有在有东西读取时才监视设置）、`appearance.now()`、`appearance.changes()`（一个流）。强调色来自 Mac、Windows、Linux 的设置门户、Android 的 Material You、CSS 的 AccentColor；iOS 没有 |
+| `asuka/biometric` | `biometric.check()`（`kind`、`enrolled`、`passcode`）、`biometric.authenticate(reason:, cancel:, noPasscode:)`：LocalAuthentication、BiometricPrompt、Windows Hello、WebAuthn 的平台认证器；`BiometricError.canceled`、`.notAvailable`、`.failed` |
+| `asuka/device` | `device.info()`（`model`、`system`、`systemVersion`、`appVersion`、`build`）、`device.browse(url)`（在应用内打开：SFSafariViewController、Custom Tab）、`device.pickPhotos(max:)`、`device.pickFiles(types:, multiple:)`（系统的选择器，无需权限；副本放在应用的缓存里）、`device.clipboardText()`、`clipboardHas()`、`clipboardImage()`、`copyImage(path)`、`clipboardChanges()`（一个流）、`device.keepAwake(on)` |
+| `asuka/dialog` | `dialog.open(...)`、`dialog.save(name:, ...)`、`dialog.chooseFolder(...)`、`chooseFolders`：系统的文件对话框（NSOpenPanel 和 NSSavePanel、通用项目对话框、GtkFileDialog、File System Access 选择器），返回用户自己的路径；`dialog.Filter(name:, types:, extensions:)`。手机上，open 是文档选择器 |
+| `asuka/power` | `power.status()`（会被追踪：`battery`、`onBattery`、`level`、`charging`、`lowPower`、`thermal`）、`power.events()`、`suspends()`、`resumes()`、`locks()`、`unlocks()`（流）、`power.idleTime()`：IOKit 和 ProcessInfo、UIDevice、BatteryManager 和 PowerManager、GetSystemPowerStatus 和会话通知、UPower 和 logind、Battery Status API |
+| `asuka/preview` | `preview.show(sources, start:, edit:)`：在系统的查看器里显示文件（路径、资源、URL）（iOS 和 Mac 上是快速查看；其他平台上是文件对应的应用；Web 上是新标签页）；`preview.PreviewError.noViewer` |
+| `asuka/print` | `print.file(source, job:, orientation:)`、`print.html(markup, ...)`：系统的打印对话框，返回 `print.Outcome`；`print.pdf(markup, page:, landscape:, margins:)`：把标记生成 PDF，返回它的路径；`print.Page.a4`、`letter`……、`print.regionPage(locale)`。它的名字和 prelude 的 `print` 相同：`import asuka/print as printing` |
+| `asuka/review` | `review.request()`：商店的评分提示（iOS 和 Mac 上的 StoreKit、Play 的应用内评价），是否显示由商店的配额决定；Windows、Linux 和 Web 上什么也不做。`review.appStoreURL(id)`、`review.playStoreURL(id)` 用于“给我们评分”按钮 |
+| `asuka/screen` | `screen.displays()`（会被追踪：`id`、`name`、`bounds`、`workArea`、`scale`、`refreshRate`、`primary`）、`screen.primary`、`nearest`、`matching`；`screen.lock(orientation)`、`screen.setBars(style:, hideStatus:, hideNavigation:)`、`screen.preventCapture(on)`、`screen.screenshots()`（一个流） |
+| `asuka/secure` | `secure.read(key)`、`secure.write(key, value)`、`secure.remove(key)`：由平台加密的少量机密（钥匙串、Android Keystore、凭据管理器、通过 libsecret 访问的用户密钥环、用不可导出的 WebCrypto 密钥加密的 IndexedDB） |
+| `asuka/shell` | `shell.reveal(path)`、`shell.open(path)`、`shell.trash(path)`、`shell.beep()`：文件管理器提供的功能（NSWorkspace、资源管理器和回收站、GIO 和 FileManager1）；`shell.ShellError.noApp` |
+| `asuka/splash` | `splash.hold()`、`splash.hide()`：在应用准备好之前保持 asuka.toml 的启动画面（iOS、Android；其他平台什么也不做） |
+| `asuka/tracking` | `tracking.request()`、`tracking.current()`：iOS 和 Mac 上 App Tracking Transparency 的提示（`.notAsked`、`.restricted`、`.denied`、`.allowed`）；Windows 的广告 ID 设置；浏览器的 Global Privacy Control 或 Do Not Track；Android 和 Linux 没有提示，返回 `.allowed` |
+| `asuka/webauth` | `webauth.open(url, callbackScheme:, ephemeral:)`：在系统的界面里登录（ASWebAuthenticationSession、Custom Tab；WebView2 和 WebKitGTK 窗口；弹出窗口），返回回调 URL；`WebAuthError.canceled`；取消任务会关闭它 |
 
 如果某个平台没有原生包的代码（比如由 `asuka test` 运行的应用，它没有任何平台代码），用到它的地方会抛出 `unsupported` 错误；这时 `asuka/store` 什么也不保存，读取时返回默认值。
 

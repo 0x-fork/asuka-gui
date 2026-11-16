@@ -332,6 +332,81 @@ object AsukaModules {
         return result!!.getOrThrow()
     }
 
+    private val results = AtomicLong()
+
+    /**
+     * Starts an activity for its result through the showing activity's
+     * registry (a picker, a system screen) and waits for it: the
+     * contract's answer. Any thread; it fails with an unsupported error
+     * when no activity shows the app. Cancelling the coroutine leaves the
+     * activity, whose answer is then dropped.
+     */
+    suspend fun <I, O> launch(contract: androidx.activity.result.contract.ActivityResultContract<I, O>, input: I): O =
+        kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+            main.post {
+                val act = activity as? androidx.activity.ComponentActivity
+                if (act == null) {
+                    cont.resumeWith(Result.failure(AsukaUnsupportedException("no activity shows the app")))
+                    return@post
+                }
+                var launcher: androidx.activity.result.ActivityResultLauncher<I>? = null
+                launcher = act.activityResultRegistry.register("asuka.native.${results.incrementAndGet()}", contract) { out ->
+                    launcher?.unregister()
+                    if (cont.isActive) cont.resumeWith(Result.success(out))
+                }
+                try {
+                    launcher.launch(input)
+                } catch (t: Throwable) {
+                    launcher.unregister()
+                    cont.resumeWith(Result.failure(t))
+                }
+            }
+        }
+
+    /**
+     * The local file a source names, for a package that hands files to
+     * the system (asuka/preview, asuka/print): a path, a file:// URL, an
+     * asset's path (pushed by asuka dev, else copied out of the APK), or an
+     * http(s) URL, downloaded to the caches first (under its name, with the
+     * extension of type, or the server's, if it has none). Any thread.
+     */
+    suspend fun localFile(source: String, type: String = ""): java.io.File =
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            (AsukaRuntime.current ?: throw IllegalStateException("asuka: the host hasn't started")).localFile(AsukaSource(source, type))
+        }
+
+    private val urlWatchers = java.util.concurrent.CopyOnWriteArrayList<(String) -> Boolean>()
+    private val lifecycleWatchers = java.util.concurrent.CopyOnWriteArrayList<(Boolean) -> kotlin.Unit>()
+
+    /**
+     * Sees each URL the app is opened with (its scheme, an app link)
+     * before the app does, on the main thread: a handler that answers
+     * true takes it (a sign-in's redirect), and the app never gets it.
+     * Returns what stops it.
+     */
+    fun watchURLs(handler: (String) -> Boolean): () -> kotlin.Unit {
+        urlWatchers.add(handler)
+        return { urlWatchers.remove(handler) }
+    }
+
+    /**
+     * Calls f on the main thread as the activity showing the app pauses
+     * (false: another app's, a Custom Tab, came over it) and resumes
+     * (true). Returns what stops it.
+     */
+    fun watchLifecycle(f: (resumed: Boolean) -> kotlin.Unit): () -> kotlin.Unit {
+        lifecycleWatchers.add(f)
+        return { lifecycleWatchers.remove(f) }
+    }
+
+    /** The host's: a URL opened the app; whether a package took it. */
+    internal fun openedURL(url: String): Boolean = urlWatchers.any { it(url) }
+
+    /** The host's: the activity paused or resumed. */
+    internal fun lifecycle(resumed: Boolean) {
+        for (f in lifecycleWatchers) f(resumed)
+    }
+
     /** An error's answer: declared (its index), unsupported, canceled, or its class, 0 and message. */
     fun answer(e: Throwable): ByteArray {
         val w = AsukaNativeWriter()

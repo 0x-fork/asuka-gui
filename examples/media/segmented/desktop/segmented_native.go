@@ -4,6 +4,7 @@
 // What the package declares (@asuka/segmented), as its Go implements it for the
 // desktop hosts. The Go writes the functions that make each:
 //
+//	func init() { implementSegmented(func(events SegmentedEvents) SegmentedNative { … }) }
 
 package segmented
 
@@ -40,9 +41,10 @@ func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *na
 	return native.ErrClosed
 }
 
-// SegmentedNative is a Segmented implemented in Go (Windows, Linux; macOS, over
-// the package's Swift): the platform's view (native.View's Handle) and
-// its props.
+// SegmentedNative is a Segmented implemented in Go (Windows, Linux; the Mac too, over
+// the package's Swift, when a file built for it calls implementSegmented): the
+// platform's view (native.View's Handle) and a setter per prop. It may
+// also be a native.Measurer, and have Destroy.
 type SegmentedNative interface {
 	Handle() uintptr
 	SetItems(items []string)
@@ -65,8 +67,7 @@ func (e SegmentedEvents) Changed(index int) {
 // implementSegmented makes Go's implementation the Segmented on this platform: call
 // it from an init function of a file built for it.
 func implementSegmented(make func(events SegmentedEvents) SegmentedNative) {
-	m := &native.Module{ID: "@asuka/segmented", Swift: "AsukaModule__asuka_segmented", Kotlin: "_asuka.segmented.AsukaModule"}
-	native.RegisterView(native.ViewKind(m, "Segmented"), func(ctx native.Context) native.View {
+	native.RegisterView("@asuka/segmented#Segmented", func(ctx native.Context) native.View {
 		v := make(SegmentedEvents{ctx})
 		return native.GoView(v, func(name string, value []byte) {
 			var s *native.Session // a view's values hold no objects

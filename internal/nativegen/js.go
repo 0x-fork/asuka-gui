@@ -232,7 +232,7 @@ func (g *jsGen) provider() {
 func (g *jsGen) decodeArgs(m *Method, indent string) string {
 	var args []string
 	for _, p := range m.Params {
-		n := jsName(p.Name)
+		n := argLocal(jsName(p.Name))
 		if p.Type.Kind == Func {
 			var ps []string
 			for i := range p.Type.Func.Params {

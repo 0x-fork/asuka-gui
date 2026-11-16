@@ -269,6 +269,9 @@ func (c *Core) Start(h host.Host) {
 	if d := os.Getenv("ASUKA_DATA"); d != "" {
 		c.setAppDir(d)
 	}
+	if w, ok := h.(interface{ WindowInUse() uintptr }); ok {
+		native.SetWindow(w.WindowInUse)
+	}
 	c.start(c.cbs)
 	if conn, ok := h.(host.Connector); ok {
 		conn.Connect(c)

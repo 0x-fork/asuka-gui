@@ -1,0 +1,159 @@
+// Package asuka/power is the device's power: whether it runs on its
+// battery and how full that is, Low Power Mode and how hot it runs, the
+// computer going to sleep and waking, the screen locking and unlocking,
+// and how long the user has been away from the keyboard and the mouse.
+//
+//   let p = power.status()   // tracked: follows the power while it's read
+//   Text(if p.battery { "{(p.level * 100).fixed(0)}%" } else { "No battery" })
+//
+//   task {
+//     for await _ in power.suspends() { await sync.pause() }
+//   }
+//
+// An app pauses its sync before the computer sleeps and catches up as it
+// wakes, hides what's private as the screen locks, does less on a low
+// battery or in Low Power Mode, and finds the user away (a chat's
+// status) from idleTime. Keeping the display on is device.keepAwake.
+
+/// How hot the device runs: how much the system slows it to cool it
+/// (Apple's thermal state, Android's thermal status).
+pub enum Thermal {
+  /// No slowing, or the system doesn't say (Windows, Linux, the web).
+  nominal
+  /// Warm; the system does some background work later.
+  fair
+  /// Hot; the system slows the device. An app does less: a lower frame
+  /// rate, a smaller video.
+  serious
+  /// The system slows it all it can. An app does only what the user is
+  /// waiting for.
+  critical
+}
+
+/// The device's power now.
+pub struct Status {
+  /// The device has a battery (a laptop, a phone, a UPS a desktop
+  /// reports as one); false for a desktop on the mains.
+  battery: bool = false
+  /// It runs on its battery, unplugged.
+  onBattery: bool = false
+  /// How full the battery is, 0 to 1; -1 without one, or where the
+  /// system doesn't say.
+  level: float = -1
+  /// Plugged in and charging (false once full).
+  charging: bool = false
+  /// The user (or the system, on a low battery) asked apps to use less
+  /// power: Low Power Mode on a Mac and an iPhone, Battery Saver on
+  /// Android, Energy Saver on Windows, the power saver profile on Linux.
+  lowPower: bool = false
+  /// How hot it runs.
+  thermal: Thermal = .nominal
+}
+
+/// Something that happens to the device's power.
+pub enum Event {
+  /// The computer is going to sleep (the lid closed, the user's Sleep,
+  /// idle): the app has a moment to save and pause what goes over the
+  /// network. macOS, Windows, Linux (logind); phones suspend apps as
+  /// they go to the background instead.
+  suspend
+  /// It woke.
+  resume
+  /// The screen locked (or the screen saver started, on Linux desktops
+  /// that lock with it), or a phone's screen locked with a passcode.
+  lock
+  /// The user unlocked it.
+  unlock
+}
+
+/// What the platform doesn't know.
+pub enum PowerError: Error {
+  /// power: the idle time isn't known here
+  idleUnknown
+}
+
+/// The platform's power.
+native interface Monitor {
+  /// The power now.
+  fn current() -> Status
+  /// Calls changed with the power now, then each time it changes, until
+  /// the task is cancelled.
+  async fn watch(changed: fn(Status))
+  /// Calls happened with each event as it happens, until the task is
+  /// cancelled.
+  async fn events(happened: fn(Event))
+  /// How long since the user's last input; PowerError.idleUnknown where
+  /// the system doesn't say.
+  async fn idle() -> Duration
+}
+
+// Made once; none where the platform has no code for it.
+let monitor = try? Monitor()
+
+/// The power now; a platform that says nothing of it answers no battery.
+pub fn now() -> Status {
+  if let m = monitor {
+    if let s = try? m.current() {
+      return s
+    }
+  }
+  return Status()
+}
+
+/// The power now, then each change.
+pub fn changes() -> Stream<Status> = Stream(send => {
+  if let m = monitor {
+    try await m.watch(changed: s => send(s))
+  } else {
+    send(now())
+  }
+})
+
+let followed = live(now(), changes)
+
+/// The power, tracked: read in a binding, it follows the battery, Low
+/// Power Mode and the heat while it's read (and only then does anything
+/// watch them).
+pub fn status() -> Status = followed()
+
+/// Each Event as it happens; none where the platform doesn't say.
+pub fn events() -> Stream<Event> = Stream(send => {
+  if let m = monitor {
+    try await m.events(happened: e => send(e))
+  }
+})
+
+/// events, only those of a kind.
+fn only(kind: Event) -> Stream<Event> = Stream(send => {
+  if let m = monitor {
+    try await m.events(happened: e => {
+      if e == kind { send(e) }
+    })
+  }
+})
+
+/// The computer going to sleep, each time: macOS, Windows, Linux.
+pub fn suspends() -> Stream<Event> = only(.suspend)
+
+/// The computer waking, each time.
+pub fn resumes() -> Stream<Event> = only(.resume)
+
+/// The screen locking, each time: macOS, Windows, Linux (logind's lock,
+/// or the screen saver), iOS (with a passcode: as protected data goes),
+/// Android (the screen off on a secure lock screen).
+pub fn locks() -> Stream<Event> = only(.lock)
+
+/// The user unlocking the screen, each time.
+pub fn unlocks() -> Stream<Event> = only(.unlock)
+
+/// How long since the user last used the keyboard, the mouse or the
+/// touchpad, in any app: to show them away, to pause what they'd watch.
+/// PowerError.idleUnknown where the system doesn't say (a phone, a
+/// browser, a Linux desktop with neither GNOME's idle monitor nor a
+/// screen saver that says).
+pub async fn idleTime() throws -> Duration {
+  if let m = monitor {
+    return try await m.idle()
+  }
+  throw PowerError.idleUnknown
+}

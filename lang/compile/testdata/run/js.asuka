@@ -1,0 +1,19 @@
+// asuka/js with no platform code (the fake host): no engine, so eval
+// throws an unsupported error.
+
+import asuka/js
+
+test "no engine here" {
+  do {
+    let v = try await js.eval("1 + 2")
+    print(v)
+  } catch js.JsError.timeout {
+    print("timeout")
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// unsupported: no JavaScript engine here
+// ok no engine here

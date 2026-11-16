@@ -1,0 +1,36 @@
+// asuka/power with no platform code (the fake host): no battery, no
+// events, no idle time.
+
+import asuka/power
+
+component Battery {
+  let p = power.status()
+  state locked = 0
+
+  task {
+    for await _ in power.locks() { locked += 1 }
+  }
+
+  Column {
+    Text(if p.battery { "{(p.level * 100).fixed(0)}%" } else { "No battery" })
+    Text("{p.thermal}")
+  }
+}
+
+app { Battery() }
+
+test "no battery here" {
+  let app = mount(Battery())
+  await app.idle()
+  app.expect("No battery")
+  app.expect("nominal")
+}
+
+test "no idle time here" {
+  do {
+    let d = try await power.idleTime()
+    expect(d < 0s)
+  } catch power.PowerError.idleUnknown {
+    expect(true)
+  }
+}

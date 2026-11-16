@@ -81,6 +81,10 @@ func (h *Host) dialogParent() Ptr {
 	return 0
 }
 
+// WindowInUse is dialogParent for native packages' Go (native.Window):
+// the bridge finds it on the host.
+func (h *Host) WindowInUse() uintptr { return uintptr(h.dialogParent()) }
+
 // modCacheDir is the app's folder in the user's caches.
 func (h *Host) modCacheDir() string { return localfile.CacheDir(h.appID) }
 

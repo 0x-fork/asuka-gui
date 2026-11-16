@@ -1,0 +1,39 @@
+// Package asuka/js runs JavaScript off screen, in the platform's own
+// engine: a web view that's never shown (WKWebView on iOS and the Mac,
+// Android's WebView, WebView2 on Windows, WebKitGTK on Linux, a
+// sandboxed frame in a browser), for code that only has a JavaScript
+// form, as a site's player whose functions sign its video URLs.
+//
+//   let json = try await js.eval("[1, 2, 3].map(x => x * 2)")   // "[2,4,6]"
+//
+// Each script runs in a fresh page of its own, which is gone after: what
+// one sets isn't there for the next.
+
+/// What a script ran into.
+pub enum JsError: Error {
+  /// js: the script ran out of time
+  timeout
+}
+
+/// The platform's engine.
+native interface Engine {
+  /// Runs script in a fresh page; its value as JSON. A thrown error, or
+  /// a rejected promise, is the error; timeout is JsError.timeout.
+  async fn run(script: string, timeout: Duration) -> string
+}
+
+// Made once; none where the platform has no engine for it.
+let engine = try? Engine()
+
+/// Runs script, a page's worth of JavaScript (statements, as a
+/// <script>'s), in a fresh page of its own, and returns its value as
+/// JSON: the last statement's value, or what the promise it returns
+/// resolves to (null for undefined). A thrown error, or a rejected
+/// promise, is the error (its message); a script still running after
+/// timeout is JsError.timeout.
+pub async fn eval(script: string, timeout: Duration = 1min) throws -> string {
+  if let e = engine {
+    return try await e.run(script: script, timeout: timeout)
+  }
+  throw Error("unsupported: no JavaScript engine here")
+}

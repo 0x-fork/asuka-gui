@@ -53,10 +53,10 @@ public object AsukaModule : AsukaModuleProvider {
                 when (method) {
                     2 -> { // Send
                         val module = r.string()
-                        val method = r.string()
+                        val methodArg = r.string()
                         val args = r.data()
                         r.check()
-                        AsukaModules.onMain { o.send(module, method, args) }
+                        AsukaModules.onMain { o.send(module, methodArg, args) }
                     }
                     else -> throw AsukaUnsupportedException("no method $iface.$method")
                 }
@@ -72,13 +72,13 @@ public object AsukaModule : AsukaModuleProvider {
                 when (method) {
                     1 -> { // Call
                         val module = r.string()
-                        val method = r.string()
+                        val methodArg = r.string()
                         val args = r.data()
                         r.check()
                         return AsukaModules.scope.launch(Dispatchers.Main) {
                             try {
                                 val w = AsukaNativeWriter.ok()
-                                val v = o.call(module, method, args)
+                                val v = o.call(module, methodArg, args)
                                 w.data(v)
                                 done(Result.success(w))
                             } catch (e: Throwable) {

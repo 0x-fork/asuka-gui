@@ -55,7 +55,7 @@ public protocol Transport: AnyObject {
         switch (iface, method) {
         case (0, 1): // Transport.Send
             let o = object as! any Transport
-            let method = r.string()
+            let methodArg = r.string()
             let url = r.string()
             let headers = Wire.readMapString(&r)
             let body = r.data()
@@ -64,7 +64,7 @@ public protocol Transport: AnyObject {
             return Task {
                 do {
                     var w = AsukaNativeWriter.ok()
-                    let v = try await o.send(method: method, url: url, headers: headers, body: body, timeout: timeout)
+                    let v = try await o.send(method: methodArg, url: url, headers: headers, body: body, timeout: timeout)
                     Wire.writeResponse(&w, v)
                     done(.success(w))
                 } catch {

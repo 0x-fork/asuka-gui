@@ -8,6 +8,10 @@
 // smaller integers, are numbers; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array; a map is an object.
 
+import * as appFS from "./fs.js";
+import { pickFiles, download } from "./modules/system.js";
+import { typeOf } from "./modules/system-clipboard.js";
+
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -146,6 +150,54 @@ export class DeclaredError extends Error {
     this.asukaIndex = index;
   }
 }
+
+/**
+ * The app the page runs: its name (asuka.toml's, the host's options), for
+ * a package to keep its data under, as the host keeps the app's; and
+ * where its assets are served from. Set as the host starts.
+ */
+export const app = { name: "app", assets: "assets", version: "", build: "" };
+
+/**
+ * The app's files, for a package that hands it some: a browser gives a
+ * page files, never their paths, so what the user picks is copied into
+ * the app's own file system (fs.js), whose paths the app opens.
+ */
+export const files = {
+  /** The app's file system: readFile, writeFile, makeDir, removeFile, saveUpload, onWritten, blobURL, fileOf, clean. */
+  fs: appFS,
+  /** Asks for files with the browser's picker (limit 0: any number): their copies, { path, name, type, size }. */
+  pick: pickFiles,
+  /** Saves a File with the browser's download. */
+  download,
+  /** A file name's MIME type, from its extension ("" if not known). */
+  typeOf,
+  /**
+   * Where a source loads from: an http(s), blob: or data: URL as it is,
+   * an asset's path under the app's assets; null for a file of the app's
+   * (a path: readFile has it).
+   */
+  sourceURL(src) {
+    if (/^(https?|blob|data):/.test(src)) return src;
+    if (src.startsWith("file://")) src = decodeURIComponent(src.slice(7));
+    if (src.startsWith("/")) return null;
+    return new URL(app.assets + "/" + src.replace(/^\.?\//, ""), location.href).href;
+  },
+  /** A source's bytes as a Blob of type: a file of the app's, an asset, a URL. */
+  async blob(src, type) {
+    const url = files.sourceURL(src);
+    if (url == null) {
+      const path = src.startsWith("file://") ? decodeURIComponent(src.slice(7)) : src;
+      const b = appFS.readFile(path);
+      if (!b) throw new Error("no file at " + path);
+      return new Blob([b.slice()], { type });
+    }
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${url}: ${r.status} ${r.statusText}`);
+    const blob = await r.blob();
+    return type && blob.type !== type ? new Blob([blob], { type }) : blob;
+  },
+};
 
 /** What the platform doesn't have: Go gets errors.ErrUnsupported. */
 export class UnsupportedError extends Error {}

@@ -26,10 +26,10 @@ const provider = {
     switch (iface * 65536 + method) {
       case 2: { // Modules.Send
         const module = r.string();
-        const method = r.string();
+        const methodArg = r.string();
         const args = r.data();
         r.check();
-        o.send(module, method, args);
+        o.send(module, methodArg, args);
         return;
       }
     }
@@ -40,12 +40,12 @@ const provider = {
     switch (iface * 65536 + method) {
       case 1: { // Modules.Call
         const module = r.string();
-        const method = r.string();
+        const methodArg = r.string();
         const args = r.data();
         r.check();
         return (async () => {
           const w = NativeWriter.ok();
-          const v = await o.call(signal, module, method, args);
+          const v = await o.call(signal, module, methodArg, args);
           w.data(v);
           return w;
         })();

@@ -41,6 +41,7 @@ type kotlinGen struct {
 	enums   map[string]*EnumDecl
 	structs map[string]*StructDecl
 	ifaces  map[string]*Interface
+	job     string // how the generated code names kotlinx.coroutines.Job
 }
 
 func (g *kotlinGen) printf(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -196,7 +197,15 @@ func GenerateKotlin(p *Package) []byte {
 		g.printf("//\tfun make%s(events: %sEvents): %s\n", v.Name, v.Name, v.Name)
 	}
 	g.printf("@file:Suppress(\"unused\", \"RedundantVisibilityModifier\")\n\npackage %s\n\n", KotlinPackage(p.Path))
-	g.printf("import dev.asuka.AsukaModuleProvider\nimport dev.asuka.AsukaModules\nimport dev.asuka.AsukaNativeContext\nimport dev.asuka.AsukaNativeReader\nimport dev.asuka.AsukaNativeView\nimport dev.asuka.AsukaNativeWriter\nimport dev.asuka.AsukaDeclaredError\nimport dev.asuka.AsukaUnsupportedException\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.Job\nimport kotlinx.coroutines.launch\n\n")
+	// A package's own type of a name the generated code imports is its
+	// own: the import is left out and the generated code says the
+	// coroutines' in full.
+	g.job = "Job"
+	jobImport := "import kotlinx.coroutines.Job\n"
+	if p.declares("Job") {
+		g.job, jobImport = "kotlinx.coroutines.Job", ""
+	}
+	g.printf("import dev.asuka.AsukaModuleProvider\nimport dev.asuka.AsukaModules\nimport dev.asuka.AsukaNativeContext\nimport dev.asuka.AsukaNativeReader\nimport dev.asuka.AsukaNativeView\nimport dev.asuka.AsukaNativeWriter\nimport dev.asuka.AsukaDeclaredError\nimport dev.asuka.AsukaUnsupportedException\nimport kotlinx.coroutines.Dispatchers\n%simport kotlinx.coroutines.launch\n\n", jobImport)
 	for _, e := range p.Enums {
 		g.enum(e)
 	}
@@ -364,7 +373,7 @@ func (g *kotlinGen) provider() {
 		g.printf("                    else -> throw AsukaUnsupportedException(\"no method $iface.$method\")\n                }\n            }\n")
 	}
 	g.printf("            else -> throw AsukaUnsupportedException(\"no interface $iface\")\n        }\n    }\n\n")
-	g.printf("    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {\n        when (iface) {\n")
+	g.printf("    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (Result<AsukaNativeWriter>) -> kotlin.Unit): %s? {\n        when (iface) {\n", g.job)
 	for _, it := range g.p.Interfaces {
 		var async []*Method
 		for _, m := range it.Methods {
@@ -406,9 +415,9 @@ func (g *kotlinGen) provider() {
 func (g *kotlinGen) decodeArgs(m *Method, indent string) string {
 	var args []string
 	for _, p := range m.Params {
-		n := kotlinName(p.Name)
+		n := argLocal(kotlinName(p.Name))
 		if p.Type.Kind == Func {
-			g.closure(p.Name, p.Type.Func, indent)
+			g.closure(argLocal(p.Name), p.Type.Func, indent)
 		} else {
 			g.printf("%sval %s = %s\n", indent, n, g.dec(p.Type, "r"))
 		}

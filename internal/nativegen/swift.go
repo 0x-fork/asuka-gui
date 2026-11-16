@@ -498,12 +498,13 @@ func (g *swiftGen) decodeArgs(m *Method, indent string) string {
 	var args []string
 	for _, p := range m.Params {
 		n := swiftName(p.Name)
+		l := argLocal(n)
 		if p.Type.Kind == Func {
-			g.closure(n, p.Type.Func, indent)
+			g.closure(l, p.Type.Func, indent)
 		} else {
-			g.printf("%slet %s = %s\n", indent, n, g.dec(p.Type, "r"))
+			g.printf("%slet %s = %s\n", indent, l, g.dec(p.Type, "r"))
 		}
-		args = append(args, n+": "+n)
+		args = append(args, n+": "+l)
 	}
 	return strings.Join(args, ", ")
 }

@@ -1,6 +1,6 @@
 # 数据
 
-应用的数据放在几个地方：小数据用 `asuka/storage`，记录用 `asuka/sqlite` 存进 SQLite，用户各台设备共享的值用 `asuka/icloud` 存进 iCloud，文档的文件用 `asuka/document`。本页逐一介绍它们，也介绍如何用 `asuka/http` 访问网络、用 `asuka/watch` 监视文件，以及哪些工作会在主线程之外进行。
+应用的数据放在几个地方：小数据用 `asuka/storage`，记录用 `asuka/sqlite` 存进 SQLite，机密信息用 `asuka/secure` 存进平台的钥匙串，用户各台设备共享的值用 `asuka/icloud` 存进 iCloud，文档的文件用 `asuka/document`。本页逐一介绍它们，也介绍如何用 `asuka/http` 访问网络、用 `asuka/watch` 监视文件，以及哪些工作会在主线程之外进行。
 
 ## 数据存在哪里
 
@@ -177,6 +177,49 @@ async fn signUp(email: string) -> string {
 ### 库文件
 
 SQLite 在每个平台上都是 3.54.1 版，内置 FTS5、R*Tree、Geopoly、数学函数、`dbstat`、`STAT4` 和 `soundex`，不支持可加载扩展，临时表放在内存里。它是插件的库 `asqlite`（由 `sdk/sqlite` 构建和发布），`asuka build` 会把它放到核心找得到的地方：Mac 的 `Contents/Frameworks`、Windows 应用的 `.exe` 旁边、Linux 安装前缀的 `lib/<app>` 里、iOS 应用 `Frameworks` 里的一个 framework、APK 每个 ABI 里 `libasuka.so` 的旁边。桌面上的 `asuka dev`、`asuka test` 和 `asuka run` 会让核心使用插件的构建产物或它发布的文件（`ASUKA_LIB_ASQLITE`），后者只下载一次，存进用户的缓存。Web 上暂时还没有 `asuka/sqlite`：`open` 会抛出错误。
+
+## 密钥：asuka/secure
+
+`asuka/secure` 保存少量机密信息，比如令牌和密码，由平台负责加密。它是用来放机密的，不是用来放数据的：其他东西请放在 store 或数据库里。
+
+- **iOS**：钥匙串，以应用的 bundle ID 存为通用密码，设备首次解锁后可读，并且只留在本机。
+- **Android**：每个值都用 Android Keystore 里的密钥加密（AES-GCM），密钥从不离开 Keystore，加密后的值存在应用私有的偏好设置里。
+- **macOS**：登录钥匙串，以应用的 bundle ID（没有的话用应用名）存为通用密码，可以在“钥匙串访问”里看到。用临时签名（ad hoc）签的应用也能用它，`asuka dev` 的应用和没有 Developer ID 的构建都是这样签的。
+- **Windows**：凭据管理器，存为当前用户的通用凭据，名为 `<name>/<key>`，只保存在这台电脑上（不会漫游），可以在控制面板的凭据管理器里看到。一个值最多 2560 字节。
+- **Linux**：用户的密钥环，通过 libsecret 和 Secret Service（GNOME Keyring、KWallet、KeePassXC）：每个键一个条目，属于应用自己的 schema（它的 ID），标签为 `<name>: <key>`，放在默认集合里，可以在密钥环的应用（GNOME 的“密码和密钥”）里看到。没有 libsecret 或没有运行中的密钥环时，调用会失败，并说明原因。
+- **Web**：浏览器没有钥匙串。每个值都用 WebCrypto 生成的不可导出密钥加密（AES-GCM，256 位），和密钥一起存在应用的 IndexedDB 数据库里，所以任何脚本都读不到密钥的字节，值也不会以明文落在磁盘上。不过在应用的源里运行的任何代码仍然可以让这个密钥替它解密：这是 Web 应用能做到的最好程度，并不是钥匙串。它需要 https 或 localhost。
+
+`secure.read(key)` 返回某个键的值（没有时为 `none`），`secure.write(key, value)` 保存一个值，`secure.remove(key)` 删除它。它们都会等待平台完成，但不占住主线程，平台报的错（密钥环已锁定、根本没有密钥环）会原样抛出；平台没有对应代码时（`asuka test`）抛出 `unsupported` 错误。
+
+```asuka
+import asuka/secure
+
+component SignedIn {
+  state status = ""
+
+  task {
+    do {
+      status = if (try await secure.read("token")) != none { "Signed in" } else { "Signed out" }
+    } catch e {
+      status = e.message
+    }
+  }
+
+  Column {
+    Text(status)
+    Button("Sign out") {
+      on press {
+        try? await secure.remove("token")
+        status = "Signed out"
+      }
+    }
+  }
+}
+
+async fn keepToken(token: string) throws {
+  try await secure.write("token", token)
+}
+```
 
 ## 用户各设备共享的值：asuka/icloud
 

@@ -1,0 +1,19 @@
+// asuka/webauth with no platform code (the fake host): no sign-in sheet,
+// so open throws an unsupported error.
+
+import asuka/webauth
+
+test "no sign-in sheet here" {
+  do {
+    let back = try await webauth.open("https://example.com/authorize", callbackScheme: "myapp")
+    print(back)
+  } catch webauth.WebAuthError.canceled {
+    print("canceled")
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// unsupported: no sign-in sheet here
+// ok no sign-in sheet here

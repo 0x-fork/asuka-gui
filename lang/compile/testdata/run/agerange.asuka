@@ -1,0 +1,17 @@
+// asuka/agerange with no platform code (the fake host): the platform
+// can't answer.
+
+import asuka/agerange
+
+test "no age signals here" {
+  do {
+    let r = try await agerange.request(13, 18)
+    print("{r.status} {r.lower} {r.upper}")
+  } catch agerange.AgeRangeError.notAvailable {
+    print("not available")
+  }
+}
+
+// Output:
+// not available
+// ok no age signals here

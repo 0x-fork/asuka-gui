@@ -1,6 +1,6 @@
 # データ
 
-アプリはデータをいくつかの場所に保存します。小さな値は `asuka/storage` に、レコードは `asuka/sqlite` で SQLite に、ユーザーのデバイス間で共有する値は `asuka/icloud` で iCloud に、ドキュメントのファイルは `asuka/document` に置きます。このページではそれぞれを説明し、`asuka/http` によるネットワーク、`asuka/watch` によるファイルの監視、そしてどの処理がメインスレッドの外で行われるかも扱います。
+アプリはデータをいくつかの場所に保存します。小さな値は `asuka/storage` に、レコードは `asuka/sqlite` で SQLite に、秘密情報は `asuka/secure` でプラットフォームのキーチェーンに、ユーザーのデバイス間で共有する値は `asuka/icloud` で iCloud に、ドキュメントのファイルは `asuka/document` に置きます。このページではそれぞれを説明し、`asuka/http` によるネットワーク、`asuka/watch` によるファイルの監視、そしてどの処理がメインスレッドの外で行われるかも扱います。
 
 ## データの保存場所
 
@@ -177,6 +177,49 @@ async fn signUp(email: string) -> string {
 ### ライブラリ
 
 SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。プラグインのライブラリ `asqlite`（`sdk/sqlite` がビルドして公開します）で、`asuka build` がコアの見つけられる場所に配置します。Mac の `Contents/Frameworks`、Windows アプリの `.exe` の隣、Linux のインストール先の `lib/<app>`、iOS アプリの `Frameworks` 内のフレームワーク、APK の各 ABI の `libasuka.so` の隣です。デスクトップでの `asuka dev`、`asuka test`、`asuka run` は、プラグインのビルド済みファイルか公開済みファイル（`ASUKA_LIB_ASQLITE`）をコアに使わせます。後者は一度だけダウンロードされ、ユーザーのキャッシュに保存されます。Web ではまだ `asuka/sqlite` は使えず、`open` はエラーを投げます。
+
+## 秘密情報：asuka/secure
+
+`asuka/secure` は、トークンやパスワードのような小さな秘密情報を、プラットフォームに暗号化させて保存します。秘密情報のためのもので、データのためのものではありません。それ以外はストアかデータベースに置いてください。
+
+- **iOS**：キーチェーン。アプリの bundle ID で汎用パスワードとして保存し、デバイスの最初のロック解除の後に読めるようになり、このデバイスだけに残ります。
+- **Android**：各値を Android Keystore 内の鍵で暗号化し（AES-GCM）、アプリ専用の設定に保存します。鍵が Keystore の外に出ることはありません。
+- **macOS**：ログインキーチェーン。アプリの bundle ID（なければアプリ名）で汎用パスワードとして保存し、キーチェーンアクセスで確認できます。アドホック署名のアプリでも使えます。`asuka dev` のアプリや Developer ID のないビルドがそうです。
+- **Windows**：資格情報マネージャー。ユーザーの汎用資格情報として `<name>/<key>` という名前で、このコンピューターだけに保存します（ローミングしません）。コントロールパネルの資格情報マネージャーで確認できます。値は 2560 バイトまでです。
+- **Linux**：ユーザーのキーリング。libsecret と Secret Service（GNOME Keyring、KWallet、KeePassXC）を通じて、キーごとにアプリ独自のスキーマ（その ID）の項目を、`<name>: <key>` というラベルでデフォルトのコレクションに保存します。キーリングのアプリ（GNOME の「パスワードと鍵」）で確認できます。libsecret がないか、キーリングが動いていなければ、呼び出しはその旨を伝えて失敗します。
+- **Web**：ブラウザーにはキーチェーンがありません。各値を WebCrypto が抽出不可として作った鍵で暗号化し（AES-GCM、256 ビット）、鍵と一緒にアプリの IndexedDB データベースに保存します。そのため、どのスクリプトも鍵のバイト列を読めず、値が平文でディスクに置かれることもありません。ただし、アプリのオリジンで動くコードなら鍵に復号させることはできます。Web アプリとしての最善策であって、キーチェーンではありません。https か localhost が必要です。
+
+`secure.read(key)` はキーの値を返し（なければ `none`）、`secure.write(key, value)` は値を保存し、`secure.remove(key)` は削除します。どれもメインスレッドを止めずにプラットフォームを待ち、プラットフォームが返したエラー（ロックされたキーリング、キーリングがない）をそのまま投げます。プラットフォームにそのためのコードがない場合（`asuka test`）は `unsupported` エラーを投げます。
+
+```asuka
+import asuka/secure
+
+component SignedIn {
+  state status = ""
+
+  task {
+    do {
+      status = if (try await secure.read("token")) != none { "Signed in" } else { "Signed out" }
+    } catch e {
+      status = e.message
+    }
+  }
+
+  Column {
+    Text(status)
+    Button("Sign out") {
+      on press {
+        try? await secure.remove("token")
+        status = "Signed out"
+      }
+    }
+  }
+}
+
+async fn keepToken(token: string) throws {
+  try await secure.write("token", token)
+}
+```
 
 ## ユーザーのデバイス間で共有する値：asuka/icloud
 

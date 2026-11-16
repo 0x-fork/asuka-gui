@@ -76,7 +76,7 @@ public object AsukaModule : AsukaModuleProvider {
                 val o = obj as Transport
                 when (method) {
                     1 -> { // Send
-                        val method = r.string()
+                        val methodArg = r.string()
                         val url = r.string()
                         val headers = Wire.readMapString(r)
                         val body = r.data()
@@ -85,7 +85,7 @@ public object AsukaModule : AsukaModuleProvider {
                         return AsukaModules.scope.launch() {
                             try {
                                 val w = AsukaNativeWriter.ok()
-                                val v = o.send(method, url, headers, body, timeout)
+                                val v = o.send(methodArg, url, headers, body, timeout)
                                 Wire.writeResponse(w, v)
                                 done(Result.success(w))
                             } catch (e: Throwable) {

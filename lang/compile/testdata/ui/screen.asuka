@@ -1,0 +1,36 @@
+// asuka/screen with no platform code (the fake host): no displays, the
+// settings do nothing; the displays' helpers.
+
+import asuka/screen
+
+component Displays {
+  let ds = screen.displays()
+
+  task {
+    screen.lock(.landscape)
+    screen.setBars(style: .light, hideStatus: true)
+    screen.preventCapture(true)
+  }
+
+  Text("{ds.count()} displays")
+}
+
+app { Displays() }
+
+test "no displays here" {
+  let app = mount(Displays())
+  await app.idle()
+  app.expect("0 displays")
+}
+
+test "the primary and the nearest" {
+  let left = screen.Display(id: "a", bounds: screen.Rect(x: 0, y: 0, width: 100, height: 100))
+  let right = screen.Display(id: "b", bounds: screen.Rect(x: 100, y: 0, width: 100, height: 100), primary: true)
+  let ds = [left, right]
+  expect(screen.primary(ds)?.id == "b")
+  expect(screen.primary([left])?.id == "a")
+  expect(screen.primary([]) == none)
+  expect(screen.nearest(ds, x: 150, y: 50)?.id == "b")
+  expect(screen.nearest(ds, x: -40, y: 50)?.id == "a")
+  expect(screen.matching(ds, r: screen.Rect(x: 60, y: 10, width: 100, height: 20))?.id == "b")
+}
