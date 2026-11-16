@@ -25,10 +25,10 @@ builds for that computer. The core is built by the platform's compiler
 system's on Windows and Linux); [Zig](https://ziglang.org/download)'s
 `zig cc` builds it as WebAssembly, and for Windows and Linux from
 another system (`ASUKA_CC=zig` uses it everywhere). A desktop app's
-executable is Asuka's desktop host, the same for every app: the CLI's
-release has it for each system, and fetches the one a build needs once,
-checked by its hash; run from a checkout of Asuka, the CLI builds it
-with Go instead (see [the desktop](desktop.md#how-a-desktop-app-is-made)).
+executable is Asuka's desktop host linked with the core and the app:
+on a Mac the host's Swift, compiled with Xcode's `swiftc`; on Windows
+and Linux the host's C, compiled with the core and the app (see
+[the desktop](desktop.md#how-a-desktop-app-is-made)).
 
 ## asuka.toml
 
@@ -82,9 +82,9 @@ them all, with their types and defaults. These apply on every platform:
   `x-scheme-handler`) and Windows (the app registers it for the user as
   it starts, in `HKEY_CURRENT_USER\Software\Classes`). `links`
   opens it for https links to your domains (universal links, App Links;
-  iOS and Android). `ui.OnOpenURL` gets them.
+  iOS and Android). `onOpenURL` gets them.
 - `fileTypes` are the kinds of files the app opens, which
-  `ui.OnOpenFiles` gets:
+  `onOpenFiles` gets:
 
   ```toml
   [[fileTypes]]
@@ -118,7 +118,7 @@ them all, with their types and defaults. These apply on every platform:
   `file_handlers` (an installed app, in Chromium).
 - `singleInstance`, `true` by default: on Windows and Linux an app with
   an `id` runs once, a second launch handing its arguments to the
-  running one (`app.OnSecondInstance`, its files to `ui.OnOpenFiles`)
+  running one (`onSecondInstance`, its files to `onOpenFiles`)
   and quitting. `false` runs it as often as it's started. The Mac runs
   an app once either way.
 
@@ -147,12 +147,12 @@ These are for the phones and tablets:
 - `ios.iphoneOnly` leaves iPad out. By default the app is an iPad app
   too, at whatever size the user gives its window; on Android it's
   resizable for split screen and desktop windows. Lay out from
-  `ui.UseEnvironment()`'s `Width` and `Height`, the window's size, not
+  `environment()`'s `width` and `height`, the window's size, not
   the device's.
 - `shareTarget` offers the app in other apps' share sheets: `true` for
   texts and links, or a table, `{types = ["text", "image/*"], max = 10}`,
   for files too (see [Device](device.md#shares-from-other-apps-onshare));
-  `ui.OnShare` gets them. On iOS it's a share extension in the app, with
+  `onShare` gets them. On iOS it's a share extension in the app, with
   a bundle ID of its own (the app's plus `.share`).
 - `splash` is the launch screen: `{image = "logo.png", size = 96,
   background = "#ffffff", darkBackground = "#000000"}` (see
@@ -214,7 +214,7 @@ app. At developer.apple.com, register the group, give both IDs (the
 app's and the extension's) the App Groups capability with it, then make
 their profiles again. A wildcard ID can't have App Groups. The build
 stops, saying so, if a profile lacks the group. The simulator needs
-none of this. An app with its own share sheet (`app.ShareSheet`) needs
+none of this. An app with its own share sheet (`asuka/sharesheet`) needs
 the group too, for its data, whatever it takes.
 
 `asuka publish --platform ios` makes it and uploads it to App Store Connect (see
@@ -907,9 +907,10 @@ sentry-cli upload-proguard --org ORG --project PROJECT dist/Notes-mapping.txt
 ```
 
 **The Mac, Windows, Linux and the web.** The host and the core are built
-without their symbol tables and debug information; the host's Go stack
-traces keep their function names and lines, so its panics read as they
-are, and there are no symbols to upload.
+without debug information, and on Windows and Linux without their
+symbol tables (a Mac's binary keeps its global symbols): a crash
+report's frames are each a binary and an offset, named where the binary
+has the name. There are no symbols to upload.
 
 Keep each release's symbols: a crash is symbolicated with those of the
 build it happened in. See [Device](device.md#crash-reports-asukacrash)
@@ -954,6 +955,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: write # to attach the builds to the tag's release
+env:
+  ASUKA_VERSION: 0.1.0 # the Asuka the app is made with
 
 jobs:
   release:
@@ -971,10 +974,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the distribution certificate and the profile
         env:
           CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
@@ -1015,16 +1018,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@v3
         with: { packages: platform-tools }
       - name: an NDK
         run: sdkmanager "ndk;27.1.12297006"
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the upload key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -1065,8 +1068,9 @@ base64 (`base64 -i file | pbcopy`):
   invited in the Play Console's Users and permissions with the right to
   release to testing tracks.
 
-The CLI carries the iOS and Android hosts, so it's installed at the
-version of Asuka in the app's `go.mod`. Each build is numbered after the
+The CLI carries the hosts and the core, so it's installed at the
+version of Asuka the app is made with: `ASUKA_VERSION`, which you
+raise as you move the app to a newer Asuka. Each build is numbered after the
 store's highest, so nothing is bumped before you tag; `--no-wait` ends
 the iOS job once Apple has the upload, not once it's processed. The App Store takes builds
 made with a recent Xcode only; if the runner's default is older, pick
@@ -1087,10 +1091,10 @@ are named after `asuka.toml`'s `name`.)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the Developer ID certificate
         env:
           CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
@@ -1124,10 +1128,11 @@ are named after `asuka.toml`'s `name`.)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: mlugg/setup-zig@v2 # cross-compiles the core, the host and the app
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: osslsigncode, and the code signing certificate
         env:
           CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}

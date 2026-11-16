@@ -11,7 +11,7 @@
 | `linux` | `linux/`：インストールプレフィックス、`.tar.gz`、Flatpak マニフェスト | C コンパイラーのある Linux、または Zig のあるどのシステムでも | `.tar.gz`、Flatpak |
 | `web` | `web/`（静的サイト） | Zig のあるどのシステムでも | 任意の Web サーバーや CDN |
 
-`--platform` を省略すると、Mac、Windows PC、Linux マシンでは、そのコンピューター向けにビルドします。コアはプラットフォームのコンパイラーでビルドされます（Apple のプラットフォームでは Xcode の clang、Android では NDK のもの、Windows と Linux ではシステムのもの）。[Zig](https://ziglang.org/download) の `zig cc` は、コアを WebAssembly としてビルドするときと、ほかのシステムから Windows と Linux 向けにビルドするときに使います（`ASUKA_CC=zig` を指定すると、どこでも Zig を使います）。デスクトップアプリの実行ファイルは Asuka のデスクトップホストで、どのアプリでも同じものです。CLI のリリースにはシステムごとのホストが含まれ、ビルドに必要なものを一度だけダウンロードし、ハッシュで検証します。Asuka のチェックアウトから実行している場合、CLI は代わりに Go でホストをビルドします（[デスクトップ](desktop.md#デスクトップアプリの構成)を参照）。
+`--platform` を省略すると、Mac、Windows PC、Linux マシンでは、そのコンピューター向けにビルドします。コアはプラットフォームのコンパイラーでビルドされます（Apple のプラットフォームでは Xcode の clang、Android では NDK のもの、Windows と Linux ではシステムのもの）。[Zig](https://ziglang.org/download) の `zig cc` は、コアを WebAssembly としてビルドするときと、ほかのシステムから Windows と Linux 向けにビルドするときに使います（`ASUKA_CC=zig` を指定すると、どこでも Zig を使います）。デスクトップアプリの実行ファイルは、Asuka のデスクトップホストにコアとアプリをリンクしたものです。Mac ではホストの Swift を Xcode の `swiftc` でコンパイルし、Windows と Linux ではホストの C をコアやアプリと一緒にコンパイルします（[デスクトップ](desktop.md#デスクトップアプリの構成)を参照）。
 
 ## asuka.toml
 
@@ -37,8 +37,8 @@ keyAlias = "upload"
 - `version` はユーザーに見えるバージョンです（デフォルトは `1.0`）。`build` はアップロードしたビルドの通し番号で、ビルドのたびに増やす必要があります（デフォルトは 1）。ただし `asuka publish` は、各ビルドにストア上の最大の番号に続く番号を自動で付けるので、`build` は番号の始まりを決めるだけです。Windows では二つを合わせて `.exe` のファイルバージョンになり（バージョン 1.2、ビルド 7 なら `1.2.0.7`）、Linux では metainfo の release になります。
 - `icon` は 1024×1024 の正方形の PNG で、iOS 向けには透過のないものにします。各ビルドは、プラットフォームが必要とするサイズを作ります。iOS ではアセットカタログ、Android ではランチャーアイコン、Mac では `.icns`、Windows では `.exe` に埋め込む `.ico`、Linux では hicolor テーマの 16〜512 ピクセルのアイコン、Web では Web マニフェストのアイコン、favicon、iOS のホーム画面アイコンです。
 - `accent` はアプリのアクセントカラーで、`"#rrggbb"` の形式で指定します。iOS では tint、Android では Material 3 のカラースキームのシード、Mac では `Accent`、塗りつぶしボタン、リンクの色（AppKit 自身のコントロールはユーザーが選んだアクセントカラーのままです）、Windows ではシステムのアクセントカラーに代わるコントロールのアクセント、Linux では libadwaita のアクセント、Web ではページのアクセントとマニフェストの `theme_color` になります。指定しなければ、各プラットフォーム自身のアクセントカラーになります。
-- `scheme` を指定すると、`myapp://` の URL でアプリが開くようになります。対象は iOS、Android、Mac（`CFBundleURLTypes`）、Linux（デスクトップファイルの `x-scheme-handler`）、Windows（アプリが起動時に `HKEY_CURRENT_USER\Software\Classes` にユーザー単位で登録します）です。`links` を指定すると、自分のドメインへの https リンクでアプリが開きます（ユニバーサルリンク、App Links。iOS と Android）。どちらも `ui.OnOpenURL` で受け取ります。
-- `fileTypes` はアプリが開くファイルの種類で、そのファイルは `ui.OnOpenFiles` で受け取ります。
+- `scheme` を指定すると、`myapp://` の URL でアプリが開くようになります。対象は iOS、Android、Mac（`CFBundleURLTypes`）、Linux（デスクトップファイルの `x-scheme-handler`）、Windows（アプリが起動時に `HKEY_CURRENT_USER\Software\Classes` にユーザー単位で登録します）です。`links` を指定すると、自分のドメインへの https リンクでアプリが開きます（ユニバーサルリンク、App Links。iOS と Android）。どちらも `onOpenURL` で受け取ります。
+- `fileTypes` はアプリが開くファイルの種類で、そのファイルは `onOpenFiles` で受け取ります。
 
   ```toml
   [[fileTypes]]
@@ -53,7 +53,7 @@ keyAlias = "upload"
   ```
 
   `extensions` は必須です。`name` のデフォルトは、最初の拡張子を大文字にして「Document」を付けたものです。`mimeTypes` と `uti` のデフォルトは、Asuka が知っている拡張子（md、txt、json、csv、pdf、png、jpg など）であれば、各システムでの呼び名になります。それ以外の拡張子では、アプリ独自の型 `application/x-<app>-<ext>` と `<id>.<ext>` になります。この型は Mac と iOS ではエクスポートされ、Linux では shared-mime-info に定義され、アプリがそのファイルのデフォルトアプリになります。`conformsTo` は、エクスポートまたはインポートする型が準拠する UTI です（デフォルトは `public.data`、`public.content`）。`role` は `editor`（デフォルト）または `viewer` です。`icon` は正方形の PNG で、Mac、Windows、Linux でそのファイルのアイコンになります。宣言のしかたはプラットフォームごとに異なります。Mac と iOS では Info.plist（`CFBundleDocumentTypes`。iOS ではドキュメントをその場で開きます）に、Android ではインテントフィルターとして宣言します。Windows ではアプリが起動時にユーザー単位で登録します（型ごとの ProgID、拡張子の `OpenWithProgids`、`.exe` に埋め込んだアイコン）。Linux ではデスクトップファイルの `MimeType` と `share/mime/packages/<id>.xml` に書かれます（`.tar.gz` を展開したあとは `update-mime-database` と `update-desktop-database` を実行してください。パッケージマネージャーや Flatpak なら自動で実行されます）。Web ではマニフェストの `file_handlers` に書かれます（Chromium でインストールしたアプリが対象です）。
-- `singleInstance` はデフォルトで `true` です。Windows と Linux では、`id` のあるアプリは一つしか起動しません。二回目に起動したアプリは、引数を実行中のアプリに渡して（`app.OnSecondInstance`、ファイルは `ui.OnOpenFiles` に届きます）終了します。`false` にすると、起動した回数だけアプリが立ち上がります。Mac では、どちらの場合もアプリは一つしか起動しません。
+- `singleInstance` はデフォルトで `true` です。Windows と Linux では、`id` のあるアプリは一つしか起動しません。二回目に起動したアプリは、引数を実行中のアプリに渡して（`onSecondInstance`、ファイルは `onOpenFiles` に届きます）終了します。`false` にすると、起動した回数だけアプリが立ち上がります。Mac では、どちらの場合もアプリは一つしか起動しません。
 
 プラットフォームごとのキーは次のとおりです。
 
@@ -67,8 +67,8 @@ keyAlias = "upload"
 次のキーはスマートフォンとタブレット向けです。
 
 - `orientations`：スマートフォンでの画面の向きで、`portrait`、`landscape` を指定します（デフォルトは両方）。iPad では、Split View、Slide Over、ステージマネージャに必要なため、アプリはすべての向きに対応します。Android 16 も同様に、タブレットと折りたたみ端末ではこの設定を無視します。
-- `ios.iphoneOnly` を指定すると、iPad を対象から外します。デフォルトではアプリは iPad アプリでもあり、ユーザーがウィンドウに与えたサイズで動きます。Android では、分割画面やデスクトップのウィンドウに合わせてサイズを変えられます。レイアウトは、デバイスのサイズではなく、ウィンドウのサイズである `ui.UseEnvironment()` の `Width` と `Height` をもとに組み立ててください。
-- `shareTarget` を指定すると、ほかのアプリの共有シートにアプリが表示されます。`shareTarget = true` ならテキストとリンクを、`[shareTarget]` のテーブルに `types = ["text", "image/*"]`、`max = 10` と書けばファイルも受け取ります（[デバイスとサービス](device.md#ほかのアプリからの共有onshare)を参照）。受け取ったものは `ui.OnShare` に届きます。iOS ではアプリに含まれる共有拡張機能（Share Extension）になり、独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ちます。
+- `ios.iphoneOnly` を指定すると、iPad を対象から外します。デフォルトではアプリは iPad アプリでもあり、ユーザーがウィンドウに与えたサイズで動きます。Android では、分割画面やデスクトップのウィンドウに合わせてサイズを変えられます。レイアウトは、デバイスのサイズではなく、ウィンドウのサイズである `environment()` の `width` と `height` をもとに組み立ててください。
+- `shareTarget` を指定すると、ほかのアプリの共有シートにアプリが表示されます。`shareTarget = true` ならテキストとリンクを、`[shareTarget]` のテーブルに `types = ["text", "image/*"]`、`max = 10` と書けばファイルも受け取ります（[デバイスとサービス](device.md#ほかのアプリからの共有onshare)を参照）。受け取ったものは `onShare` に届きます。iOS ではアプリに含まれる共有拡張機能（Share Extension）になり、独自の bundle ID（アプリの ID に `.share` を付けたもの）を持ちます。
 - `splash` は起動画面です。`[splash]` のテーブルに `image = "logo.png"`、`size = 96`、`background = "#ffffff"`、`darkBackground = "#000000"` のように指定します（[デバイスとサービス](device.md#起動画面asukasplash)を参照）。
 - `widgets` はアプリのホーム画面ウィジェット、`shortcuts` は Siri、Spotlight、ランチャー向けのアクションです（[デバイスとサービス](device.md#ホーム画面ウィジェットasukawidget)を参照）。ウィジェット拡張機能は独自の bundle ID（アプリの ID に `.widgets` を付けたもの）を持ちます。そのためリリースにはこの拡張機能用のプロファイルも必要で、`ios.widgetProfile` で指定できます。
 - `android.googleServices` は、`asuka/push` に使う Firebase プロジェクトの `google-services.json` です。`android.mapsKey` は、`asuka/maps` に使う Google Maps Platform の API キーです。
@@ -88,7 +88,7 @@ asuka build --platform ios
 
 `shareTarget` を指定すると、共有拡張機能も署名されます。使うのは、アプリと同じチームの、拡張機能自身の ID（`com.example.notes` なら `com.example.notes.share`）用のプロファイルです。`ios.shareProfile` で指定したもの、指定がなければインストール済みのもののうち最も合うものが使われます。ワイルドカードのプロファイル（`com.example.*`）なら、アプリと拡張機能の両方に使えます。developer.apple.com で拡張機能の ID を登録し、アプリのときと同じようにプロファイルを作ってください。
 
-ファイルを受け取る `shareTarget` には、App Group `group.<app ID>` も必要です。拡張機能は、このグループを通してファイルをアプリに渡します。developer.apple.com でグループを登録し、両方の ID（アプリと拡張機能）にそのグループを指定した App Groups ケイパビリティを付けてから、それぞれのプロファイルを作り直してください。ワイルドカードの ID には App Groups を付けられません。プロファイルにグループが含まれていなければ、ビルドはその旨を表示して止まります。シミュレーターでは、こうした準備はどれも必要ありません。独自の共有シート（`app.ShareSheet`）を持つアプリも、受け取るものが何であれ、データを渡すためにこのグループが必要です。
+ファイルを受け取る `shareTarget` には、App Group `group.<app ID>` も必要です。拡張機能は、このグループを通してファイルをアプリに渡します。developer.apple.com でグループを登録し、両方の ID（アプリと拡張機能）にそのグループを指定した App Groups ケイパビリティを付けてから、それぞれのプロファイルを作り直してください。ワイルドカードの ID には App Groups を付けられません。プロファイルにグループが含まれていなければ、ビルドはその旨を表示して止まります。シミュレーターでは、こうした準備はどれも必要ありません。独自の共有シート（`asuka/sharesheet`）を持つアプリも、受け取るものが何であれ、データを渡すためにこのグループが必要です。
 
 `asuka publish --platform ios` は、ビルドしてから App Store Connect にアップロードします（[ストアへの公開](#ストアへの公開)を参照）。Apple の Transporter でもアップロードできます。
 
@@ -472,7 +472,7 @@ sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes-native-debu
 sentry-cli upload-proguard --org ORG --project PROJECT dist/Notes-mapping.txt
 ```
 
-**Mac、Windows、Linux、Web。** ホストとコアは、シンボルテーブルとデバッグ情報なしでビルドされます。それでもホストの Go のスタックトレースには関数名と行番号が残るので、ホストの panic はそのまま読めます。アップロードするシンボルはありません。
+**Mac、Windows、Linux、Web。** ホストとコアはデバッグ情報なしでビルドされ、Windows と Linux ではシンボルテーブルも除かれます（Mac のバイナリはグローバルなシンボルを残します）。クラッシュレポートの各フレームはバイナリとオフセットで、バイナリに名前があれば名前も付きます。アップロードするシンボルはありません。
 
 リリースごとのシンボルは保管しておいてください。クラッシュは、それが起きたビルドのシンボルでシンボル化されます。レポートそのものについては[デバイスとサービス](device.md#クラッシュレポートasukacrash)を参照してください。
 
@@ -498,6 +498,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: write # タグのリリースにビルドを添付するため
+env:
+  ASUKA_VERSION: 0.1.0 # アプリが使う Asuka のバージョン
 
 jobs:
   release:
@@ -515,10 +517,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the distribution certificate and the profile
         env:
           CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
@@ -559,16 +561,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@v3
         with: { packages: platform-tools }
       - name: an NDK
         run: sdkmanager "ndk;27.1.12297006"
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the upload key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -599,7 +601,7 @@ jobs:
 - `ANDROID_KEYSTORE`：アップロード鍵の `.jks`。`ANDROID_KEYSTORE_PASSWORD` はそのパスワードです（鍵のパスワードが異なる場合は `ASUKA_KEY_PASSWORD` も追加します）。
 - `PLAY_SERVICE_ACCOUNT`：Google Cloud のサービス アカウントの JSON キー。このアカウントは、Play Console の「ユーザーと権限」で、テストトラックにリリースする権限を付けて招待しておきます。
 
-CLI には iOS と Android のホストが含まれているため、アプリの `go.mod` にある Asuka のバージョンに合わせてインストールします。各ビルドの番号はストア上の最大の番号の次になるので、タグを付ける前に番号を上げる必要はありません。`--no-wait` を付けているので、iOS のジョブは Apple の処理が終わるのを待たず、Apple がアップロードを受け取った時点で終わります。App Store は最近の Xcode で作ったビルドしか受け付けません。ランナーのデフォルトの Xcode が古い場合は、`sudo xcode-select -s /Applications/Xcode_<version>.app` で選んでください。
+CLI にはホストとコアが含まれているため、アプリが使う Asuka のバージョン（`ASUKA_VERSION`）に合わせてインストールします。アプリを新しい Asuka に移すときは、この値も上げてください。各ビルドの番号はストア上の最大の番号の次になるので、タグを付ける前に番号を上げる必要はありません。`--no-wait` を付けているので、iOS のジョブは Apple の処理が終わるのを待たず、Apple がアップロードを受け取った時点で終わります。App Store は最近の Xcode で作ったビルドしか受け付けません。ランナーのデフォルトの Xcode が古い場合は、`sudo xcode-select -s /Applications/Xcode_<version>.app` で選んでください。
 
 ### デスクトップ
 
@@ -611,10 +613,10 @@ CLI には iOS と Android のホストが含まれているため、アプリ�
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the Developer ID certificate
         env:
           CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
@@ -648,10 +650,11 @@ CLI には iOS と Android のホストが含まれているため、アプリ�
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: mlugg/setup-zig@v2 # コア、ホスト、アプリをクロスコンパイル
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: osslsigncode, and the code signing certificate
         env:
           CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
