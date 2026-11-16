@@ -31,6 +31,12 @@ type devLoop struct {
 	failed  []func(msg string)    // told what didn't compile
 	fixed   []func()              // told when it compiles again
 	broken  bool
+	// The C the players were built with (cKey), once launched: a module
+	// that calls other C (its extern declarations changed) waits for
+	// players built with it (stale).
+	launched bool
+	playerC  string
+	stale    bool
 	// reloads receives each reload a player reports (tests).
 	reloads chan devReload
 }
@@ -140,7 +146,15 @@ func (d *devLoop) compile() bool {
 	wasBroken := d.broken
 	d.broken = false
 	fs, fixed := d.modules, d.fixed
+	stale := d.launched && cKey(m.C) != d.playerC
+	d.stale = stale
 	d.mu.Unlock()
+	if stale {
+		// Its ffi.* builtins aren't the players': new ones load it.
+		d.srv.Keep(b)
+		fmt.Fprintf(d.out, "asuka: compiled in %s; the app's extern declarations changed: building the player again\n", msText(float64(time.Since(start).Microseconds())/1000))
+		return true
+	}
 	if wasBroken {
 		for _, f := range fixed {
 			f()
@@ -152,6 +166,31 @@ func (d *devLoop) compile() bool {
 	}
 	fmt.Fprintf(d.out, "asuka: compiled in %s\n", msText(float64(time.Since(start).Microseconds())/1000))
 	return true
+}
+
+// launch builds and launches the player with the app's C as of the last
+// compile, and notes which.
+func (d *devLoop) launch(p devPlayer) error {
+	d.mu.Lock()
+	c := cKey(d.app.c)
+	d.mu.Unlock()
+	if err := p.launch(); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	d.launched, d.playerC, d.stale = true, c, false
+	m := d.module
+	d.mu.Unlock()
+	if m != nil {
+		d.srv.Keep(m)
+	}
+	return nil
+}
+
+func (d *devLoop) isStale() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.stale
 }
 
 // current is the last module that compiled (nil if none has).
@@ -176,7 +215,7 @@ type devPlayer struct {
 // again, built again. once launches it without watching.
 func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 	defer d.close()
-	if err := p.launch(); err != nil {
+	if err := d.launch(p); err != nil {
 		return err
 	}
 	var done <-chan struct{}
@@ -219,7 +258,7 @@ func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 				if src {
 					d.compile()
 				}
-				if err := p.launch(); err != nil {
+				if err := d.launch(p); err != nil {
 					fmt.Fprintln(os.Stderr, "asuka:", err)
 				}
 				if p.done != nil {
@@ -230,6 +269,14 @@ func (d *devLoop) run(p devPlayer, stop <-chan os.Signal, once bool) error {
 			if src {
 				d.app.refresh()
 				d.compile()
+				if d.isStale() {
+					if err := d.launch(p); err != nil {
+						fmt.Fprintln(os.Stderr, "asuka:", err)
+					}
+					if p.done != nil {
+						done = p.done()
+					}
+				}
 			}
 		}
 	}

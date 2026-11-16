@@ -94,7 +94,7 @@ func buildIOS(app *asukaApp, o *buildOptions) error {
 			cfg.IOS.Usage["NSLocalNetworkUsageDescription"] = "To reach asuka dev on your computer, which runs the app you're working on."
 		}
 	}
-	lib, err := tc.buildCore(work, m)
+	lib, err := tc.buildCore(work, m, app.c)
 	if err != nil {
 		return err
 	}

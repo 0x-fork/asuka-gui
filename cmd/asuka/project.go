@@ -27,6 +27,24 @@ type asukaApp struct {
 	cfg      *appConfig // asuka.toml
 	proj     *appbuild.Project
 	uses     *appbuild.Uses
+	// c is the C the app's extern declarations call, as of the last
+	// compile (nil: none), which a player is built with.
+	c *bytecode.C
+}
+
+// cKey names the C c a player is built with: its glue (the extern
+// declarations) and its projects. A change to their C files is the
+// watcher's.
+func cKey(c *bytecode.C) string {
+	if c == nil {
+		return ""
+	}
+	h := sha256.New()
+	h.Write(c.Glue)
+	for _, d := range c.Dirs {
+		h.Write([]byte("\x00" + d))
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // displayName is the name under the app's icon.
@@ -178,6 +196,7 @@ func (a *asukaApp) compile() (*bytecode.Module, error) {
 	if m.App < 0 {
 		return nil, fmt.Errorf("%s has no app block (app { Root() }) to run", a.dir)
 	}
+	a.c = m.C
 	return appbuild.StripTests(m), nil
 }
 

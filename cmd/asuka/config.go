@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/internal/toml"
 )
 
@@ -50,7 +51,10 @@ type appConfig struct {
 	Icon string `json:"icon"`
 	// Orientations: portrait, landscape (default both).
 	Orientations []string `json:"orientations"`
-	IOS          struct {
+	// C is the C the app's extern declarations call ([c], docs/c.md):
+	// internal/appbuild reads it (and each dependency's) as it builds.
+	C   pkgs.CConfig `json:"c"`
+	IOS struct {
 		Team string `json:"team"`
 		// Profile is a provisioning profile's path, name or UUID (default:
 		// the best match installed for the ID and distribution).
@@ -384,6 +388,9 @@ func loadConfig(dir string) (*appConfig, error) {
 		if r != "central" && r != "peripheral" {
 			return nil, fmt.Errorf("asuka.toml: bluetooth background %q (want central or peripheral)", r)
 		}
+	}
+	if err := c.C.Check(); err != nil {
+		return nil, fmt.Errorf("asuka.toml: %v", err)
 	}
 	if err := c.checkFileTypes(dir); err != nil {
 		return nil, fmt.Errorf("asuka.toml: %v", err)
