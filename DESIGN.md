@@ -1077,11 +1077,13 @@ runs, the root component mounts into views no window holds yet, and the
 task's Go code runs. A screen that comes later (the user opens the app)
 takes that root as a recreated Activity does (`asuka_attach` on Android;
 the root controller mounts the existing root view on iOS).
-`asuka/sdk/location`'s background updates and regions start it the same
-way (iOS relaunches the app for them: `AsukaLocationBackground` registers
-at launch; Android's `PendingIntent`s reach `AsukaLocationReceiver`); the
-host keeps each event in a file until Go reports it handled, and holds
-the app (a background task, the broadcast's `goAsync`) meanwhile. Where
+`asuka/location`'s background updates and regions start it the same
+way on Android (its `PendingIntent`s reach the package's
+`LocationReceiver`, which starts the core headless); the package keeps
+each event until the app reads it. On iOS, the system relaunching the
+app for them (a region, a significant change) doesn't start the core
+yet: a native package has no hook at launch, where the old host module
+registered its delegate. Where
 the system has neither (macOS's and Windows's updates, Linux's and the
 web's regions), the Go package computes them from the positions while the
 app runs (`locationspec.Capabilities` says which). The last root's
@@ -1089,35 +1091,45 @@ app runs (`locationspec.Capabilities` says which). The last root's
 with it.
 
 Packages that need a framework or library of their own cost only the
-apps that use them. On iOS, the host's Swift for them is compiled under a
-flag (`ASUKA_MAPS`...) set when the app's Go archive has the package's
-symbol (`iosFeatures`). On Android, each is an optional Gradle module
-(`asuka-maps`, `asuka-push`...) built in for the apps that import its
-package (`featurePermissions`), whose `AsukaPlugin` registers its methods
-and views by name at start.
+apps that import them: a std native package's code is its own (its
+Swift package, its Gradle module with its libraries, its web module),
+and what it needs of the app (permissions, purpose strings,
+entitlements, services) is in its asuka.toml and beside its code, merged
+into the apps that import it (std/README.md). The hosts keep only what
+the core's elements need and the modules std packages call by name
+(`asuka/host`, `asuka/platform`), and what of those links a framework or
+library is built only into the apps that use it: on iOS, under a flag
+(`ASUKA_VIDEO`, `ASUKA_NOTIFY`...) for an element the app shows
+(`elementFlags`) or a package's manifest's `ios.hostFlags`; on Android,
+an optional Gradle module (`asuka-video` for a Video's Media3,
+`asuka-push`'s Firebase, `asuka-periodic`'s WorkManager), for an app
+that shows a Video or whose packages ask for it (`android.hostModules`);
+asuka dev's player has them all. What an app uses is what the checker
+resolved across its program, its dependencies' code too
+(appbuild.Uses: the packages imported, and the members referred to from
+outside their own package), not the identifiers its sources spell: a
+package's needs apply to the apps that import it, a `[uses.<member>]`
+table's to those that refer to the member (asuka/location's background
+part, iCloud's store or documents). The host makes their views and hooks by name
+when first used (`AsukaVideo`, `AsukaPlugin`).
 
-In-app purchases (`asuka/sdk/purchase`) are one module, `purchase`,
-whose JSON (`internal/purchasespec`) every host speaks: StoreKit 2 on
-iOS (`ASUKA_PURCHASE`) and on the Mac, where it's Swift the Objective-C
-runtime can't reach, so the same file (`Purchase.swift`, kept identical
-in platform/ios and platform/macos) is built into the app's Swift
-library for an app that imports the package (`featureMacSwift`), and
-`host/darwin` calls it through purego; Play Billing in the optional
-`asuka-purchase` module; the Microsoft Store from Go (`internal/windows`'
-StoreContext); the Digital Goods API on the web; none on Linux;
-`fake.Store` in tests. Each host follows the store's transactions from
-the app's start (StoreKit's `Transaction.updates` from launch, Play's
+In-app purchases (`asuka/purchase`) are a std native package: StoreKit 2
+in its Swift (iOS; the Mac's Go host still builds platform/macos's
+`Purchase.swift` into the app's Swift library: its manifest's
+`macos.hostFlags`), Play
+Billing in its Gradle module, the Microsoft Store in its desktop Go, the
+Digital Goods API in its web module; none on Linux; `purchase.fake()` in
+tests. Each follows the store's transactions from the package's start
+(StoreKit's `Transaction.updates` and its unfinished ones, Play's
 listener and its unacknowledged purchases at each return to the front,
-the Store's license changes) and keeps them for `next`, so a purchase
-completed before the Go code observes isn't lost. A root's disposal
-answers the calls still waiting on its host (`ui: the root went`), so a
-package's poll of `next` ends with it.
+the Store's license changes) and keeps them for the package's `events()`,
+so a purchase completed before the app observes isn't lost.
 
 iCloud (`asuka/sdk/icloud`) is one module, `icloud`, whose JSON
 (`internal/icloudspec`) the iOS host and the Mac speak, the same Swift
 in both (`ICloud.swift`, kept identical in platform/ios and
-platform/macos, as `Purchase.swift` is; `ASUKA_ICLOUD`,
-`featureMacSwift`): NSUbiquitousKeyValueStore, its values converted
+platform/macos, as `Purchase.swift` is; `ASUKA_ICLOUD`, asuka/icloud's
+manifest's `hostFlags`): NSUbiquitousKeyValueStore, its values converted
 between JSON and property lists; the app's ubiquity containers through
 NSMetadataQuery, NSFileCoordinator and NSFileVersion, the file system's
 work off the main thread. The other hosts answer not available
@@ -3378,8 +3390,8 @@ their commands back.
   `MPMediaItemArtwork` of the image loaded off the main thread (on the
   Mac its handler decodes the bytes it holds, so the image goes with the
   artwork). iOS puts the audio session in the playback category; the CLI
-  adds the `audio` background mode for an app whose archive has
-  `nowplaying.Show` (iosFeatures, `ASUKA_NOWPLAYING`). The Mac's through
+  adds the `audio` background mode for an app that imports
+  asuka/nowplaying (its manifest's `backgroundModes`). The Mac's through
   purego (host/darwin), which also routes the keyboard's media keys.
 - Android: a platform `MediaSession` (its `PlaybackState` actions the
   commands; the skips also custom actions, which fill the previous and

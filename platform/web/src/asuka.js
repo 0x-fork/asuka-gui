@@ -16,7 +16,7 @@
 // URL of the app's service worker, sw.js with the app's settings, which
 // the page registers: its notifications and pushes), vapidPublicKey (the
 // app's VAPID key, for asuka/push), icon (a notification's icon),
-// mapTiles (the URL of maps.View's tiles, with {z}, {x} and {y}:
+// mapTiles (the URL of asuka/maps' map tiles, with {z}, {x} and {y}:
 // OpenStreetMap's by default), workers (false: spawn runs on the page's
 // thread, not its workers), dev (asuka dev's: the page reloads with each
 // build, keeping the app's state, and the app's logs go to the
@@ -24,7 +24,6 @@
 
 import { Host } from "./host.js";
 import * as fs from "./fs.js";
-import { natives as builtinNatives } from "./modules/hardware.js";
 import * as worker from "./worker.js";
 import { notifyFor } from "./modules/system-notify.js";
 import { startCore } from "./core.js";
@@ -43,12 +42,16 @@ export function registerNative(kind, factory) { natives.set(kind, factory); }
 /** registerModule gives the page a native module (ui.Call): methods by name, each taking the call's bytes and returning (or resolving to) the result's. */
 export function registerModule(name, methods) { modules.set(name, methods); }
 
+/** mapTiles is the start option asuka/maps' view (std/maps/web) reads its tiles' URL from. */
+export let mapTiles = "";
+
 export async function start(options = {}) {
   const fullPage = !options.container;
   const container = options.container || document.body.appendChild(document.createElement("div"));
   if (fullPage) container.classList.add("asuka-page");
   const name = options.name || "app";
   nativeApp.name = name;
+  mapTiles = options.mapTiles || "";
   const dev = options.dev ? devClient(options.dev) : null;
   // The app's service worker, listened to before the app starts: a tap
   // on a notification may be what opened the page.
@@ -64,8 +67,7 @@ export async function start(options = {}) {
   nativeApp.version = options.version || "";
   nativeApp.build = String(options.build || "");
   nativeApp.dev = !!options.dev;
-  // The host's own native views (camera.View), then the app's, which may replace them.
-  for (const [k, f] of Object.entries(builtinNatives)) host.natives.set(k, f);
+  // The app's own native views and modules (registerNative, registerModule).
   for (const [k, f] of natives) host.natives.set(k, f);
   for (const [k, m] of modules) host.modules.registered.set(k, m);
   worker.attach(host);

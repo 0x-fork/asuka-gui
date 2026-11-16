@@ -125,7 +125,7 @@ func TestLiveActivityExtension(t *testing.T) {
 	if c.widgetExtension() {
 		t.Fatal("an extension for an app with neither widgets nor Live Activities")
 	}
-	c.addFeatureExtras([]string{"ASUKA_LIVEACTIVITY"})
+	importStd(t, &c, "ios", "liveactivity")
 	if !c.widgetExtension() || !slices.Contains(c.iosTrue, "NSSupportsLiveActivities") {
 		t.Fatalf("Live Activities: extension %v, Info.plist's %v", c.widgetExtension(), c.iosTrue)
 	}

@@ -5,7 +5,5 @@
 # host finds by name, and the runtime JNI calls.
 -keep class * implements dev.asuka.AsukaModuleProvider { *; }
 -keep class dev.asuka.AsukaModules { *; }
-# The optional modules' plugins, found by name.
+# The optional modules' plugins (asuka-push, asuka-periodic), found by name.
 -keep class * implements dev.asuka.AsukaPlugin { <init>(); }
-# asuka/sdk/print's PDF writer subclasses the print callbacks in their package.
--keep class android.print.AsukaPdfWriter** { *; }

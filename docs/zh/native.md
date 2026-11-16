@@ -217,6 +217,37 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 
 在应用的测试里（运行在假宿主上，没有平台代码），原生视图显示为它的组件名，`app.tap("Segmented")` 会给它发送一个 `press` 事件，就像平台上的按钮被按下一样。
 
+## 应用需要什么
+
+包对应用的需求（权限、用途说明、后台模式、entitlement）由包自己声明，而且只有用到它的应用才会得到。这些写在包的 `asuka.toml` 里；下面这些表对每个导入这个包的应用都生效：
+
+```toml
+[ios]
+usage = { NSLocationWhenInUseUsageDescription = "To show where you are." }
+backgroundModes = ["audio"]
+entitlements = { aps-environment = "development" }   # 模拟器构建用的值
+plist = { LSApplicationQueriesSchemes = ["mailto"] } # true、字符串，或与应用的合并的数组
+
+[android]
+permissions = ["android.permission.ACCESS_FINE_LOCATION", "android.permission.WRITE_EXTERNAL_STORAGE:28"]
+application = ['<service android:name="com.example.battery.Watcher" android:exported="false" />']
+manifest = ['<queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>']
+```
+
+权限写成 `"name:28"` 表示只到这个 API 级别；写成 `"name|neverForLocation"` 会带上它的 `usesPermissionFlags`。应用自己的 `asuka.toml` 里的用途说明优先于包的。
+
+只有包的一部分才需要的东西，写在 `[uses.<member>]` 表里，键和上面相同：只有当应用的代码（或某个依赖的代码）引用了这个成员（函数、类型、store；类型的成员写成 `"Type.name"`）时，应用才会得到它。同名的本地函数不算，测试块里的引用也不算。asuka/location 的后台部分就是这样声明的：
+
+```toml
+[uses.requestAlways.android]
+permissions = ["android.permission.ACCESS_BACKGROUND_LOCATION"]
+
+[uses.startUpdates.ios]
+backgroundModes = ["location"]
+```
+
+包代码旁边的文件对每个导入它的应用都生效：Gradle 模块的 `AndroidManifest.xml`，Swift 包的 `Info.plist` 和 entitlements（见下文）。每个用到这个包的应用都需要的东西放在那里，某一个成员才需要的放在 `[uses]` 里。
+
 ## iOS 和 macOS：Swift
 
 包中的 Swift 代码是一个 Swift 包：`Package.swift` 位于包的根目录，源码放在 `swift/` 中。同一个包同时服务 iOS 和 macOS，两者有差异的地方用 `#if canImport(UIKit)` 区分：

@@ -7,6 +7,8 @@ plugins {
 
 android {
     namespace = "asuka.print"
+    // AsukaPdfWriter subclasses the print callbacks in their package.
+    defaultConfig { consumerProguardFiles("consumer-rules.pro") }
 }
 
 dependencies {

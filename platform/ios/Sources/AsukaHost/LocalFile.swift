@@ -1,8 +1,8 @@
-#if canImport(UIKit) && (ASUKA_PREVIEW || ASUKA_PRINT || ASUKA_COMPOSE)
+#if canImport(UIKit) && ASUKA_COMPOSE
 import UIKit
 import UniformTypeIdentifiers
 
-/// The files asuka/sdk/preview, asuka/sdk/print and asuka/sdk/compose take: a path, an
+/// The files asuka/compose takes: a path, an
 /// asset's path (in the app's assets), or an http(s) URL, downloaded to
 /// the caches (asuka-files/) first, under its name, with the extension of
 /// the type the server gives if it has none.

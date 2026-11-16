@@ -93,8 +93,8 @@ func macSwift(app *asukaApp, bundle, work string, archs []string, release bool, 
 	if err != nil {
 		return err
 	}
-	// What the app's packages build in (featurePermissions' macSwift:
-	// asuka/sdk/purchase's StoreKit), with or without natives.
+	// What the app's packages build in (their manifests' macos.hostFlags:
+	// asuka/purchase's StoreKit), with or without natives.
 	var defines []string
 	if app.cfg != nil {
 		defines = app.cfg.macSwift

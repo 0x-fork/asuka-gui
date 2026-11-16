@@ -11,11 +11,11 @@ import (
 	"strings"
 )
 
-// nfcPkg is asuka/sdk/nfc's import path: an app that imports it gets what
-// its sessions and tags need (featurePermissions, addNFC).
-const nfcPkg = "github.com/egoist/asuka/sdk/nfc"
+// nfcPkg is asuka/nfc's import path: an app that imports it gets what its
+// sessions and tags need (its manifest's, and asuka.toml's nfc: addNFC).
+const nfcPkg = "asuka/nfc"
 
-// nfcConfig is asuka.toml's nfc: what asuka/sdk/nfc needs of the
+// nfcConfig is asuka.toml's nfc: what asuka/nfc needs of the
 // platforms beyond the permissions every app that imports it has.
 //
 //	[nfc]
@@ -119,7 +119,7 @@ func (n *nfcConfig) check() error {
 	return nil
 }
 
-// addNFC adds, for an app that imports asuka/sdk/nfc (deps; nil: the
+// addNFC adds, for an app that imports asuka/nfc (deps; nil: the
 // player, which runs any app), what its config asks of the platforms:
 // Info.plist's AIDs and system codes, Android's uses-feature and filters.
 func (c *appConfig) addNFC(deps []string) {
@@ -150,7 +150,7 @@ func (c *appConfig) addNFC(deps []string) {
 }
 
 // nfcFilters are the Activity's NDEF_DISCOVERED and TECH_DISCOVERED
-// intent filters ("" without asuka/sdk/nfc or filters).
+// intent filters ("" without asuka/nfc or filters).
 func (c *appConfig) nfcFilters() string {
 	if !c.nfcOn {
 		return ""

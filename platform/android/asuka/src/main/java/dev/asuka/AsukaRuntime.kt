@@ -42,9 +42,10 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         internal val current: AsukaRuntime? get() = instance
 
         fun get(context: Context): AsukaRuntime =
-            instance ?: AsukaRuntime(context.applicationContext as Application).also {
-                instance = it
+            instance ?: run {
+                // The core's library loads as the runtime is made.
                 AsukaNative.preload(context)
+                AsukaRuntime(context.applicationContext as Application).also { instance = it }
             }
     }
 
@@ -69,9 +70,22 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
     /** Whether the app is laid out right to left: the Locale command's flag, which may disagree with its tag (asuka dev --dir). */
     var rtl = false
         private set
-    /** The user's languages and formats, as the environment reports them. */
-    var region = readRegion()
-        private set
+    /**
+     * The user's languages and formats, as the environment reports them:
+     * read on a thread of its own as the app starts (ICU's calendar and
+     * patterns, the settings), while the Activity makes its window.
+     */
+    private var regionRead: java.util.concurrent.FutureTask<AsukaRegion>? =
+        java.util.concurrent.FutureTask { readRegion() }.also { Thread(it, "asuka-region").start() }
+    var region = AsukaRegion("", "", 1, 24)
+        get() {
+            regionRead?.let { regionRead = null; field = it.get() }
+            return field
+        }
+        private set(v) {
+            regionRead = null
+            field = v
+        }
 
     /** config with the language and direction the app shows: what its views' strings and resources come from. */
     fun localized(config: android.content.res.Configuration): android.content.res.Configuration {
@@ -425,7 +439,6 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             AsukaNative.load(app)
             // A share sheet's process: the Go code's root is the app's sheet.
             if (activity is AsukaShareActivity) runCatching { AsukaNative.setenv("ASUKA_SHARE_SHEET", "1") }
-            registerNatives()
             activity.sendEnvironment(force = true)
             enter {
                 AsukaNative.start(this)
@@ -454,7 +467,6 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         started = true
         watchRegion()
         AsukaNative.load(app)
-        registerNatives()
         enter {
             AsukaNative.start(this)
             AsukaNative.startApp(app)
@@ -480,13 +492,6 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
     fun openURL(url: String) {
         // A native package's (asuka/webauth's redirect).
         if (AsukaModules.openedURL(url)) return
-        // A sign-in's callback (webAuth): its answer, not the app's link.
-        val a = auth
-        if (a != null && a.scheme.isNotEmpty() && Uri.parse(url).scheme.equals(a.scheme, ignoreCase = true)) {
-            auth = null
-            a.reply(Result.success(url.toByteArray()))
-            return
-        }
         if (!started) { pendingURLs.add(url); return }
         send(AsukaEvents.incomingURL(rootID, url))
     }
@@ -502,23 +507,11 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         if (started) send(AsukaEvents.lifecycle(rootID, state.toLong()))
     }
 
-    /** The webAuth module's sign-in under way. */
-    var auth: AsukaAuth? = null
+    /** The Activity was paused (a native package's tab may be over it). */
+    fun paused() = AsukaModules.lifecycle(false)
 
-    /** The Activity was paused: a sign-in's tab may be over it. */
-    fun paused() {
-        auth?.away = true
-        AsukaModules.lifecycle(false)
-    }
-
-    /** The Activity is back: a sign-in's tab closed without a callback is canceled. */
-    fun resumed() {
-        AsukaModules.lifecycle(true)
-        val a = auth ?: return
-        if (!a.away) return
-        auth = null
-        a.reply(Result.failure(Exception("canceled")))
-    }
+    /** The Activity is back. */
+    fun resumed() = AsukaModules.lifecycle(true)
 
     /** The configuration changed (dark mode, font scale): restyle what the theme decided. */
     fun configurationChanged(system: android.content.res.Configuration) {
@@ -1131,7 +1124,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             AsukaCommand.FRAMES -> setFrames(args.remaining() > 0 && args.get().toInt() == 1)
             AsukaCommand.PLAY -> (n.view as? AsukaVideo)?.player?.play()
             AsukaCommand.PAUSE -> (n.view as? AsukaVideo)?.player?.pause()
-            AsukaCommand.SEEK -> if (args.remaining() >= 8) (n.view as? AsukaVideo)?.player?.seekTo((args.double * 1000).toLong())
+            AsukaCommand.SEEK -> if (args.remaining() >= 8) (n.view as? AsukaVideo)?.player?.seek(args.double)
             AsukaCommand.WEB_NAVIGATE -> if (args.remaining() > 0) (n.view as? AsukaWebView)?.navigate(args.get().toInt())
             AsukaCommand.EVAL -> {
                 val b = ByteArray(args.remaining())

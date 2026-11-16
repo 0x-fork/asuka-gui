@@ -1,29 +1,46 @@
-// Native modules (ui.Call): the ones a browser has. A method answers once,
-// with Result on the root: u32 call id, u8 ok, then the result's bytes (an
-// error's message when not ok). A module the web host doesn't have, or a
-// method a browser can't do, answers with an error that says so.
+// Native modules (ui.Call), by name: the app's own (asuka.registerModule),
+// and the few of the host's that the core and the standard library's
+// packages over asuka/host and asuka/platform still call by name. Every
+// other platform API is a package's own JavaScript (std/<name>/web),
+// loaded only by the apps that import it.
 //
-// The built-in modules are in modules/: each file exports modules(h), the
-// modules it has by name, each a map of methods. A method takes the call's
-// bytes and the call ({ root, h }) and returns (or resolves to) the
-// result's bytes (a Uint8Array, or a string, sent as UTF-8), or throws.
+// A method answers once, with Result on the root: u32 call id, u8 ok, then
+// the result's bytes (an error's message when not ok). A module the web
+// host doesn't have, or a method a browser can't do, answers with an error
+// that says so.
+//
+// The host's modules are in modules/: each file exports modules(h), its
+// modules by name, each a map of methods. A file is imported, and its
+// modules made, on its first call (files names which has each). A method
+// takes the call's bytes and the call ({ root, h }) and returns (or
+// resolves to) the result's bytes (a Uint8Array, or a string, sent as
+// UTF-8), or throws.
 
 import { Events, Reader, Writer } from "./ops.js";
-import { modules as system } from "./modules/system.js";
-import { modules as hardware } from "./modules/hardware.js";
-import { modules as web } from "./modules/web.js";
-import { modules as desktop } from "./modules/desktop.js";
-import { modules as dialog } from "./modules/dialog.js";
-import { modules as purchase } from "./modules/purchase.js";
-import { modules as bluetooth } from "./modules/bluetooth.js";
 
 const enc = new TextEncoder();
+
+/** files is which of modules/ has each of the host's modules. */
+export const files = {
+  share: "system", compose: "system", notify: "system", push: "system", // the share sheet; asuka/compose, notify, push
+  web: "web", // WebView's eval and cookies
+  dock: "desktop", recent: "desktop", login: "desktop", // asuka/platform's
+  icloud: "services", periodic: "services", background: "services", widget: "services", liveActivity: "services",
+  photoLibrary: "services", library: "services", contacts: "services", calendar: "services", // asuka/host's
+};
+
+const load = {
+  system: () => import("./modules/system.js"),
+  web: () => import("./modules/web.js"),
+  desktop: () => import("./modules/desktop.js"),
+  services: () => import("./modules/services.js"),
+};
 
 export class Modules {
   constructor(h) {
     this.h = h;
     this.registered = new Map(); // asuka.registerModule's
-    this.builtins = null; // made on the first call
+    this.made = new Map(); // a file of modules/ → a promise of its modules
   }
 
   call(root, args) {
@@ -37,21 +54,32 @@ export class Modules {
       else if (result != null) w.raw(result instanceof Uint8Array ? result : enc.encode(String(result)));
       this.h.dispatch(Events.result(root.id, w.done()));
     };
-    const m = this.registered.get(module)?.[method] || this.builtin(module)?.[method];
-    if (!m) {
-      reply(null, new Error(`asuka: ${module}.${method} isn't on the web`));
-      return;
-    }
     // Answered once the core has returned: never inside the batch.
     this.h.afterCore(() => {
-      Promise.resolve()
-        .then(() => m(body, { root, h: this.h }))
+      this.method(module, method)
+        .then((m) => {
+          if (!m) throw new Error(`asuka: ${module}.${method} isn't on the web`);
+          return m(body, { root, h: this.h });
+        })
         .then((v) => reply(v, null), (e) => reply(null, e));
     });
   }
 
-  builtin(name) {
-    this.builtins ??= { ...system(this.h), ...hardware(this.h), ...web(this.h), ...desktop(this.h), ...dialog(this.h), ...purchase(this.h), ...bluetooth(this.h) };
-    return Object.hasOwn(this.builtins, name) ? this.builtins[name] : null;
+  /** method is module's method: the app's, else the host's (null: none). */
+  async method(module, method) {
+    return this.registered.get(module)?.[method] || (await this.builtin(module))?.[method] || null;
+  }
+
+  /** builtin is a promise of the host's module name's methods (null: the host has none). */
+  async builtin(name) {
+    const file = Object.hasOwn(files, name) ? files[name] : null;
+    if (!file) return null;
+    let p = this.made.get(file);
+    if (!p) {
+      p = load[file]().then((f) => f.modules(this.h));
+      this.made.set(file, p);
+    }
+    const all = await p;
+    return Object.hasOwn(all, name) ? all[name] : null;
   }
 }

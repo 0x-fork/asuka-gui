@@ -6,11 +6,8 @@
 //     webview.js); "cookies" (args: a URL) with the app's own site's
 //     cookies (document.cookie) as a Cookie header: a browser keeps
 //     another site's from it.
-//   - js (asuka/sdk/js): "eval" (args: u32 timeout ms, then the script) runs
-//     the script in a hidden, sandboxed frame made for it, and answers
-//     with its value as JSON, or what it threw (or "timeout").
 
-import { evalIn, cookies, runScript } from "../webview.js";
+import { evalIn, cookies } from "../webview.js";
 
 const dec = new TextDecoder();
 
@@ -27,13 +24,6 @@ export function modules(h) {
         return evalIn(n, dec.decode(b.subarray(4)));
       },
       cookies: (b) => cookies(dec.decode(b)),
-    },
-    js: {
-      eval: (b) => {
-        const ms = u32(b);
-        if (ms < 0) throw new Error("bad arguments");
-        return runScript(ms, dec.decode(b.subarray(4)));
-      },
     },
   };
 }

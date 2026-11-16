@@ -95,39 +95,3 @@ object AsukaDisplay {
         }
     }
 }
-
-/** asuka/sdk/screen's module: "lock", "bars", "preventCapture", "screenshot", "stopScreenshots" (see screen.go). */
-fun AsukaRuntime.screenMethods(): Map<String, AsukaModuleMethod> {
-    fun applied(reply: (Result<ByteArray>) -> Unit) {
-        activity?.let { AsukaDisplay.apply(it, isNight(it.resources.configuration)) }
-        reply(Result.success(ByteArray(0)))
-    }
-    return mapOf(
-        "lock" to { args, reply ->
-            AsukaDisplay.lock = args.firstOrNull()?.toInt() ?: 0
-            applied(reply)
-        },
-        "bars" to { args, reply ->
-            AsukaDisplay.style = args.firstOrNull()?.toInt() ?: 0
-            val flags = args.getOrNull(1)?.toInt() ?: 0
-            AsukaDisplay.hideStatus = flags and 1 != 0
-            AsukaDisplay.hideNavigation = flags and 2 != 0
-            applied(reply)
-        },
-        "preventCapture" to { args, reply ->
-            AsukaDisplay.secure = args.firstOrNull()?.toInt() == 1
-            applied(reply)
-        },
-        "screenshot" to { _, reply ->
-            AsukaDisplay.screenshots.add(reply)
-            activity?.let { AsukaDisplay.watch(it, true) }
-        },
-        "stopScreenshots" to { _, reply ->
-            val ws = ArrayList(AsukaDisplay.screenshots)
-            AsukaDisplay.screenshots.clear()
-            for (w in ws) w(Result.failure(Exception("stopped")))
-            activity?.let { AsukaDisplay.watch(it, false) }
-            reply(Result.success(ByteArray(0)))
-        },
-    )
-}

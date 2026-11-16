@@ -48,19 +48,6 @@ import UIKit
         if ready { hide() }
     }
 
-    func methods() -> [String: AsukaModuleMethod] {
-        [
-            "hold": { [unowned self] _, reply in
-                self.hold()
-                reply(.success(Data()))
-            },
-            "hide": { [unowned self] _, reply in
-                self.release()
-                reply(.success(Data()))
-            },
-        ]
-    }
-
     private func hide() {
         guard let c = cover else { return }
         cover = nil

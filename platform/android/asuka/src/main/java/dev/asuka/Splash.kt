@@ -52,15 +52,4 @@ object AsukaSplash {
         held = false
         waiting?.invalidate()
     }
-
-    fun methods(): Map<String, AsukaModuleMethod> = mapOf(
-        "hold" to { _, reply ->
-            hold()
-            reply(Result.success(ByteArray(0)))
-        },
-        "hide" to { _, reply ->
-            release()
-            reply(Result.success(ByteArray(0)))
-        },
-    )
 }
