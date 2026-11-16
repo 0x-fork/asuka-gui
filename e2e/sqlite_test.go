@@ -35,7 +35,7 @@ func TestSQLiteReleaseIOS(t *testing.T) {
 	if fws, _ := filepath.Glob(filepath.Join(app, "Frameworks", "*sqlite*")); len(fws) > 0 {
 		t.Errorf("SQLite beside the app: %v", fws)
 	}
-	if b, err := os.ReadFile(filepath.Join(app, "Notes")); err != nil || !strings.Contains(string(b), "SQLite format 3\x00") {
+	if b, err := os.ReadFile(filepath.Join(app, "AsukaApp")); err != nil || !strings.Contains(string(b), "SQLite format 3\x00") {
 		t.Errorf("no SQLite in the app's executable (%v)", err)
 	}
 	run(t, "codesign", "--verify", "--deep", "--strict", app)
