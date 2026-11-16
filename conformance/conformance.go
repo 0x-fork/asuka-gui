@@ -13,8 +13,7 @@
 //
 // The runners:
 //
-//	go test ./host/darwin -run Conformance              # macOS, in process
-//	go test ./host/windows -run Conformance             # Windows, in process
+//	go test ./platform/macos/mactest -run Conformance   # macOS, on the Mac player
 //	go test -tags e2e ./e2e -run Conformance            # iOS, Android and the web (headless Chrome, at 1×, 1.5× and 2×)
 //	ASUKA_CONFORMANCE_OUT=/tmp/c go test ...             # also write each capture, as <host>.png
 //

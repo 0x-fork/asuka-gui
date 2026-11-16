@@ -1,8 +1,8 @@
 // Package appbuild makes what each platform runs an Asuka app with, from
 // its compiled module (lang/bytecode): the C core built for a target with
 // the app compiled to C (a release, lang/cgen) or without it (a dev
-// player, which loads the bytecode asuka dev sends), the desktop hosts'
-// executable (cmd/asuka-host) and its settings, the web's page, and the
+// player, which loads the bytecode asuka dev sends), the C desktop hosts'
+// executables (Windows, Linux) and their settings, the web's page, and the
 // runs of a module's tests on the fake host (asuka-run). The CLI
 // (cmd/asuka) packages them for each platform.
 package appbuild

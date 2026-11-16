@@ -313,10 +313,6 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # steps firs
   `building for the web needs Zig` and `cross-compiling for ... needs
   Zig`: install [Zig](https://ziglang.org/download), which builds the
   core as WebAssembly and for other systems.
-- **`this asuka has no prebuilt desktop host`**: a CLI built from source
-  outside a checkout of Asuka has no release to fetch the host from: run
-  it from the checkout (`go run ./cmd/asuka`), or set `ASUKA_HOST` to a
-  host built with `go build ./cmd/asuka-host`.
 - **`no iOS simulator SDK (install Xcode)`**: install Xcode, open it
   once, and add an iOS simulator runtime in its Components settings.
   `no iPhone simulator; add one in Xcode` and `no simulator "..."`

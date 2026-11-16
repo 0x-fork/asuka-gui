@@ -7,10 +7,11 @@ import (
 	"sync"
 )
 
-// Native packages implemented in Go, behind the C core (the desktop
-// hosts: Windows, Linux). A package's generated code (asuka native
-// generate, desktop/<name>_native.go) registers a Server; the host's
-// bridge (host/bridge) answers the core's native calls with Serve.
+// Native packages implemented in Go, behind the C core. A package's
+// generated code (asuka native generate, desktop/<name>_native.go)
+// registers a Server, and Serve answers the core's native calls with it.
+// No host runs Go any more (RFC 0008): what's left here goes as the
+// standard library's desktop Go is ported to C (G1).
 
 // Server is a package's Go implementation.
 type Server struct {

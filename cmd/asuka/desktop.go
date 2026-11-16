@@ -29,15 +29,6 @@ import (
 // (internal/boot's ConfigFile); asuka dev's player has no app compiled in,
 // and loads the bytecode the CLI sends (ASUKA_DEV).
 
-// coreLibName is the core library's file name on goos (host/bridge's
-// LibName): macOS's or Linux's.
-func coreLibName(goos string) string {
-	if goos == "darwin" {
-		return "libasuka.dylib"
-	}
-	return "libasuka.so"
-}
-
 // writeHostConfig writes the app's settings for the desktop host at path:
 // a release's for target, asuka dev's player's for "" (hostConfig).
 func writeHostConfig(app *asukaApp, platform, target string, updates bool, path string) error {
