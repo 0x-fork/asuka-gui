@@ -404,3 +404,16 @@ func TestOverlays(t *testing.T) {
 	shows(t, d["closed"], "closed", []string{"Closed"}, "Open")
 	shows(t, d["drafts"], "drafts", []string{"Draft list"}, "Fruit 1")
 }
+
+func TestWebView(t *testing.T) {
+	w := onWindows(t)
+	local, guest := w.job(t)
+	src, err := os.ReadFile(filepath.Join("testdata", "web.asuka"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildApp(t, w, string(src), local)
+	d := script(t, w, local, guest, "app.exe", "wait:5s", "snap:web")
+	shows(t, d["web"], "the page's", []string{"Got: hi from the page", "Loaded.", "The video failed."}, "Nothing yet.")
+	t.Logf("%s", d["web"])
+}
