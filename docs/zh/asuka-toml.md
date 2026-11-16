@@ -339,7 +339,7 @@ Android 构建的配置。
 | `dynamicColor` | 布尔值 | `false` | 像 Material 应用那样从用户的壁纸取色（Android 12 及以上）；在其他情况下以 `accent` 为种子色。 |
 | `permissions` | 字符串数组 | 各个包自带的权限 | 添加到 manifest 的权限：`"android.permission.CAMERA"`。写成 `"<name>:28"` 表示只在 Android 9（API 28）及以下申请。应用导入的包会自动添加它们需要的权限。 |
 | `googleServices` | 路径 | 无 | Firebase 项目的 `google-services.json`，供 `asuka/sdk/push` 使用。 |
-| `mapsKey` | 字符串 | 无 | Google Maps Platform 的 API 密钥（Maps SDK for Android），供 `asuka/sdk/maps` 使用。 |
+| `mapsKey` | 字符串 | 无 | Google Maps Platform 的 API 密钥（Maps SDK for Android），供 `asuka/maps` 使用。 |
 | `serviceAccount` | 路径 | 无 | `asuka publish` 上传到 Google Play 时使用的 Google Cloud 服务账号的 JSON 密钥。不要把它放进仓库。 |
 
 见[打包与发布](shipping.md#android)。

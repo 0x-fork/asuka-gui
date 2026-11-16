@@ -78,7 +78,7 @@ public struct Credential: Sendable {
 
 /// The errors the package declares , which its callers get
 /// as those values.
-public enum AppleauthError: Error, AsukaDeclaredError, LocalizedError {
+public enum AppleAuthError: Error, AsukaDeclaredError, LocalizedError {
     case canceled
     case notAvailable
 

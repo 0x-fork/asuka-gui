@@ -229,6 +229,9 @@ func (e DialEvents) Picked(item Item, index int) {
 func implementDial(make func(events DialEvents) DialNative) {
 	native.RegisterView("@asuka/pantry#Dial", func(ctx native.Context) native.View {
 		v := make(DialEvents{ctx})
+		if v == nil {
+			return nil // none here: the host shows nothing (the Mac: the package's Swift)
+		}
 		return native.GoView(v, func(name string, value []byte) {
 			var s *native.Session // a view's values hold no objects
 			_ = s

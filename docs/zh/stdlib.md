@@ -75,6 +75,21 @@ state units = store.read("units", "metric")
 | `asuka/appleauth` | 通过 Apple 登录：`signIn(scopes:, nonce:, state:)`、`credentialState(user)`、`available()`，以及 Apple 的 `SignInButton`。仅限 iOS 和 macOS |
 | `asuka/nfc` | NFC 标签：`state()`（可追踪）、`start(alert:, poll:)` 得到 `Session`（`next()`、`setAlert`、`fail`、`stop`）、`Tag`（`message`、`ndef`、`write`、`makeReadOnly`、`transceive`）、`opened()`，以及 NDEF 的 `Message` 和 `Record`（`encode()`、`decode(bytes)`）。基于 Core NFC、Android 的读卡器模式和 Web NFC |
 | `asuka/bluetooth` | 低功耗蓝牙：`state()`（可追踪）、`request()`、`scan()`（流）、`choose(filters)`、`connect(device)`（返回 `Connection` store：`state`、`services()`、`characteristic(s, c)`），特征值的 `read`、`write`、`notifications()`；`serve(services)`、`advertise(…)`；以及蓝牙 SIG 定义的 UUID。基于 Core Bluetooth、Android 的 BLE、WinRT、BlueZ 和 Web Bluetooth |
+| `asuka/audio` | `audio.play(source)`，以及 `audio.Player(source)`：一个 store，有 `play`、`pause`、`seek`、`setVolume`、`setRate`、`setLoop`、`status()` 和 `release()`。基于 AVPlayer、Media3 的 ExoPlayer、`<audio>`、MCI、GStreamer（[设备](device.md)） |
+| `asuka/nowplaying` | `nowplaying.NowPlaying`：应用正在播放的内容，显示在锁屏和系统的媒体控件上，以及它们发回的命令（媒体键、耳机的按键）；给它一个 `audio.Player` 时会跟随它（[设备](device.md)） |
+| `asuka/speech` | `speech.speak(text, options:)`、`stop`、`pause`、`resume`、`speaking`、`voices()`：用系统的语音朗读文本（[设备](device.md)） |
+| `asuka/record` | `record.audio(maxDuration:, quality:, background:)` 以及 `stopAudio`、`pauseAudio`、`resumeAudio`、`audioStatus()`：录制麦克风的声音；`record.start()` 和 `stop()`：录制屏幕上 `camera.View` 的视频（[设备](device.md)） |
+| `asuka/camera` | `camera.View`（`facing`、`mode`、`scan`、`codes`；`code`、`error`）：实时的相机画面；`camera.capture()`、`camera.take()`（系统的相机界面）、`camera.record()`（[设备](device.md)） |
+| `asuka/scan` | `scan.file(path, kinds:)`：识别图片里的条形码和二维码（[设备](device.md)） |
+| `asuka/vision` | `vision.analyze(path, text:, faces:, codes:, languages:)`：在设备上识别图片里的文字（逐行、逐词）、人脸和码，以及它们各自的位置（[设备](device.md)） |
+| `asuka/transcribe` | `transcribe.check(language)`、`transcribe.file(path, language:)`：把录音转成文字，只在设备上进行（做不到的地方返回 `notAvailable`：Web、Linux、较旧的 Android）（[设备](device.md)） |
+| `asuka/imageedit` | `imageedit.edit(source, actions, format:, quality:)`（缩放、裁剪、旋转、翻转、填充、像素化）、`imageedit.size`、`imageedit.videoFrame`：处理图片和视频帧，输出 JPEG 或 PNG（[设备](device.md)） |
+| `asuka/maps` | `maps.View`（`bind region`、`markers`、`mapType`、`showsUser`、`interactive`；`markerPress`、`press`、`regionChange`）：Apple 地图、Google 地图、OpenStreetMap（[设备](device.md)） |
+| `asuka/lottie` | `lottie.View(source)`（`bind playing`、`bind progress`、`loop`、`speed`、`segment`、`marker`、`fit`、`overrides`；`complete`、`loaded`）：用各平台的播放器播放 Lottie 和 dotLottie；Windows 和 Linux 上暂时没有（[组件](components.md)） |
+| `asuka/svg` | `svg.Icon(markup)` 在应用编译时解析，`svg.View(icon) { color }` 显示它；`svg.Shape(layers)`：应用自己画的路径，会跟随它的框（[组件](components.md)） |
+| `asuka/chart` | `chart.View(series) { labels, label, low, high, grid }`；`chart.Series(name:, kind: .bar \| .line \| .area \| .points, values:, smooth:, color:)`：用 Asuka 写成，通过 `svg.Shape` 绘制（[组件](components.md)） |
+| `asuka/shader` | `shader.Program(source)`：随应用一起为每个平台编译的 Kage 着色器；`shader.Shader(program) { uniforms, animated }`（[组件](components.md)） |
+| `asuka/markdown` | `markdown.View(text) { streaming }` 和 `markdown.heal(text)`：把 Markdown 显示为平台自己的富文本，流式输入时边接收边修补（[组件](components.md)） |
 
 如果某个平台没有原生包的代码（比如由 `asuka test` 运行的应用，它没有任何平台代码），用到它的地方会抛出 `unsupported` 错误；这时 `asuka/store` 什么也不保存，读取时返回默认值。
 

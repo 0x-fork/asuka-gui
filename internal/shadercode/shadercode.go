@@ -1,7 +1,8 @@
 // Package shadercode is a compiled ui.Shader as it crosses to the hosts
 // (Shader's Code prop): its Kage source (for hosts that run it on the CPU
 // with package interp), its Metal program (iOS, macOS), its AGSL program
-// (Android), and where each uniform's lanes go in each.
+// (Android), its GLSL ES 3.00 one (the web: no compiler runs in the
+// page), and where each uniform's lanes go in each.
 //
 // The uniforms' values cross as lanes (Shader's Uniforms prop): a u32 each,
 // in package interp's order (each uniform's lanes in turn, a matrix's by
@@ -46,6 +47,7 @@ type Code struct {
 	Source string // the Kage source
 	Metal  string // a whole library: vertex asuka_vertex, fragment asuka_fragment (buffer 0: Uniforms; textures 0 to 3)
 	AGSL   string // a whole RuntimeShader program
+	GLSL   string // a whole GLSL ES 3.00 fragment shader (glslProgram)
 	// MetalOffsets is where each lane goes in the Metal buffer, in bytes,
 	// and MetalBool which lanes are a bool's (a byte); MetalSize its size.
 	MetalOffsets []uint32
@@ -97,6 +99,9 @@ func Compile(src string) (*Code, error) {
 		return nil, fmt.Errorf("shader: Android can't run it: %s", strings.TrimPrefix(err.Error(), "agsl: "))
 	}
 	c.Metal = msl.Fragment(p, "asuka_shade") + fmt.Sprintf(metalEntry, scale)
+	if c.GLSL, err = glslProgram(p, c.Uniforms); err != nil {
+		return nil, err
+	}
 	offsets, size := msl.UniformLanes(p)
 	c.MetalSize = size
 	for _, u := range c.Uniforms {
@@ -146,7 +151,7 @@ var le = binary.LittleEndian
 // Encode is c on the wire: strings u32-length; then u32 lanes, size,
 // scale, time+1; u32 Metal size, then per lane u32 offset (bit 31 a
 // bool's); u32 uniform count, per uniform a string name, u32 lane, u32
-// lanes, u8 Kind.
+// lanes, u8 Kind; then the GLSL program, a string.
 func (c *Code) Encode() []byte {
 	var b []byte
 	str := func(s string) {
@@ -174,6 +179,7 @@ func (c *Code) Encode() []byte {
 		b = le.AppendUint32(b, uint32(u.Lanes))
 		b = append(b, byte(u.Kind))
 	}
+	str(c.GLSL)
 	return b
 }
 
@@ -217,28 +223,23 @@ func Decode(b []byte) (*Code, error) {
 		}
 		c.Uniforms = append(c.Uniforms, u)
 	}
+	if i < len(b) {
+		c.GLSL = str()
+	}
 	if bad || c.Lanes > 1<<16 {
 		return nil, errors.New("shadercode: bad code")
 	}
 	return c, nil
 }
 
-// GLSL is a compiled shader as a whole GLSL ES 3.00 fragment shader, which
-// the web host draws with WebGL 2: its Kage source compiled again, the
-// uniforms U0, U1... in the order of Code.Uniforms, its entry point given
-// the pixel's position from the top of the box (GL's counts from the
-// bottom) and the position in points.
-func GLSL(code []byte) (string, error) {
-	c, err := Decode(code)
-	if err != nil {
-		return "", err
-	}
-	p, err := shader.CompileFragment([]byte(c.Source))
-	if err != nil {
-		return "", err
-	}
+// glslProgram is the shader as a whole GLSL ES 3.00 fragment shader,
+// which the web host draws with WebGL 2: the uniforms U0, U1... in the
+// order of uniforms, its entry point given the pixel's position from the
+// top of the box (GL's counts from the bottom) and the position in
+// points.
+func glslProgram(p *shaderir.Program, uniforms []Uniform) (string, error) {
 	size, scale := -1, -1
-	for i, u := range c.Uniforms {
+	for i, u := range uniforms {
 		switch u.Name {
 		case shader.RectSizeUniform:
 			size = i

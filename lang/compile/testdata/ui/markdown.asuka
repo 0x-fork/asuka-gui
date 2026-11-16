@@ -1,0 +1,45 @@
+import asuka/markdown
+
+let reply = "# Plan\n\nThree **steps**, in `order`:\n\n1. Read [the docs](https://example.com)\n2. Write\n\n```go\nfmt.Println(1)\n```\n"
+
+component Reply {
+  state text = ""
+  state streaming = true
+
+  Column {
+    markdown.View(text) {
+      streaming: streaming
+      padding: 16
+    }
+    Button("Write") { on press { text = reply.slice(0, 30) } }
+    Button("Done") {
+      on press {
+        text = reply
+        streaming = false
+      }
+    }
+  }
+}
+
+app { Reply() }
+
+test "heals the end of text being written" {
+  expect(markdown.heal("Some **bold") == "Some **bold**")
+  expect(markdown.heal("Some *it and **both") == "Some *it and **both***")
+  expect(markdown.heal("a `code") == "a `code`")
+  expect(markdown.heal("```go\nfmt.") == "```go\nfmt.\n```")
+  expect(markdown.heal("see [docs](https://ex") == "see [docs](https://ex)")
+  expect(markdown.heal("* item and snake_case") == "* item and snake_case")
+  expect(markdown.heal("~~gone") == "~~gone~~")
+  expect(markdown.heal("done **here**\n\nnext") == "done **here**\n\nnext")
+  expect(markdown.heal("```\ncode\n```\n\n_x") == "```\ncode\n```\n\n_x_")
+}
+
+test "shows the platform's view of the text" {
+  let app = mount(Reply())
+  app.tap("Write")
+  await app.idle()
+  app.tap("Done")
+  await app.idle()
+  app.expect("Done")
+}

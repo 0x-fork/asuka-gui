@@ -11,7 +11,7 @@ import Asuka
 
 /// The errors the package declares , which its callers get
 /// as those values.
-public enum WebauthError: Error, AsukaDeclaredError, LocalizedError {
+public enum WebAuthError: Error, AsukaDeclaredError, LocalizedError {
     case canceled
 
     public var asukaIndex: UInt32 {

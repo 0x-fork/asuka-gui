@@ -327,6 +327,15 @@ a number where an `Edges` is expected is `Edges(all)`; `[v, h]` and `[t,
 r, b, l]` are Edges; a number where a `Length` is expected is points;
 `.label` where a `Color` is expected is the semantic color.
 
+A component that shows one element (check's `TakesStyle`: its body's
+views are one call, of an element that takes the style, a package's
+native component, or a component that takes it) takes the style props
+from its caller. They're set on the view the component's function
+returns, after it returns: `ui.set_outer(v, key, x)`, or
+`ui.bind_outer(v, key, thunk)` when x reads what changes. The view keeps
+a bit per style key its caller set; the component's own sets of that key
+(its bindings running again) don't apply after.
+
 ## Control flow in views
 
 | Source | Lowered |
@@ -710,6 +719,25 @@ a global init.strings makes: every enum declared `: Error` in the
 package, its cases in order (a case with values stands as an error of
 its name).
 
+A package's `native component V(p: P) { prop q: Q = d; event e(x: X) }`
+used as an element is a view the platform's generated code makes:
+
+- `ui.native(kind)`: a Native view (ops' kind) of kind `<class>#V`,
+  which every host finds in the package's code (the class's provider,
+  or package native's registry on the desktop).
+- Each parameter and prop, set or else its default, is
+  `ui.native_set(v, name, value, desc)` or, when it reads what changes,
+  `ui.native_bind(v, name, thunk, desc)`: name its exported name
+  (`q` → `Q`, as internal/nativegen names it), desc its descriptor. The
+  runtime encodes it as a native call's value and sends it as a
+  Native.Prop (type 5, bytes) only when the encoding changed.
+- `on e(x) { … }` is `ui.native_on(v, "E", handler, desc)`: the
+  Native event named E carries the values encoded under "v", decoded by
+  desc (the parameters' descriptors in order) for the handler.
+- `bind q: s` is `ui.native_bind` of s and a handler of the event
+  `qChange(value: Q)`, which the checker requires, writing s.
+- The style keys are `ui.set`/`ui.bind`, as any element's.
+
 `asuka native generate` writes each platform's side (Swift on iOS and macOS, Kotlin,
 JavaScript, Go on Windows and Linux, whose hosts are Go) from the same declarations, in
 native/codec.go's wire format.
@@ -737,6 +765,16 @@ size, modified]`). A failure is a runtime error, or for typed errors a
 status the Asuka side reads and throws as its own enum (asuka/fs's
 `FsError`, from the thread's last failure). Builtins may run on spawn's
 threads, so they keep no state that isn't per thread.
+
+A few standard library structs are made when the app compiles (lang/ir's
+`StructHooks`, registered by lang/compile): a literal of one, its first
+argument a string literal without interpolation, has the rest of its
+fields filled by the hook from that string, as constants (`svg.Icon`'s
+`data`, `width` and `height` from its markup, parsed by sdk/svg and
+encoded as the drawing the platforms' views decode; `shader.Program`'s
+`code` and `glsl` from its Kage source, internal/shadercode's Compile
+and GLSL). Any other first
+argument, or one the hook rejects, is a compile error at it.
 
 ## Streams
 

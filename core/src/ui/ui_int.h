@@ -123,6 +123,7 @@ struct ak_view {
 	AK_VEC(ak_style_ent) style;
 	AK_VEC(ak_handler_ent) handlers;
 	uint64_t listens;  // the ops events it listens for, a bit each
+	uint64_t outer;    // the style keys its component's caller set, a bit each (ak_ui_set_outer)
 	ak_owner *owner;   // retained: the owner it was made under
 	ak_str *text, *text2;  // what the measure cache keys it by (Text's text; Button's title and icon)
 	int32_t variant;
@@ -252,6 +253,9 @@ ak_closure *ak_view_handler(const ak_view *e, uint16_t ev);
 // ak_view_call calls e's handler for ev, if any, with args, under e's
 // owner: an error it throws goes to the owner's catcher.
 void ak_view_call(ak_view *e, uint16_t ev, ak_val *args, uint32_t nargs);
+// ak_view_call_closure is the same for a handler of its own (c may be
+// NULL: nothing).
+void ak_view_call_closure(ak_view *e, ak_closure *c, ak_val *args, uint32_t nargs);
 void ak_view_put_id(ak_view *e);
 void ak_view_drop_id(ak_id id);
 ak_view *ak_view_of(ak_id id);

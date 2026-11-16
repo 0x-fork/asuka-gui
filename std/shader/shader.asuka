@@ -1,0 +1,69 @@
+// Package asuka/shader draws fragment shaders: a GPU program that colors
+// each pixel of a view. They're written in Kage, Ebitengine's shading
+// language (Go's syntax), and compiled when the app compiles, for each
+// platform: Metal on iOS and macOS, AGSL on Android (13 and later), GLSL
+// for WebGL 2 on the web, HLSL for Direct3D 11 on Windows, and OpenGL
+// (or the CPU) on Linux. Nothing is compiled on the device but the
+// platform's own program.
+//
+//   let glow = shader.Program(r"""
+//     package main
+//
+//     var Time float // seconds since it showed, when it's animated
+//     var Tint vec4  // set with uniforms
+//
+//     func Fragment(dst vec4, pos vec2) vec4 {
+//       d := distance(pos/rectSize(), vec2(0.5))
+//       glow := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
+//       return vec4(Tint.rgb*glow, 1) * Tint.a
+//     }
+//     """)
+//
+//   shader.Shader(glow) {
+//     uniforms: [shader.Uniform(name: "Tint", value: [0.3, 0.6, 1, 1])]
+//     animated: true
+//     height: 160
+//   }
+//
+// Fragment returns the pixel's color, premultiplied, from its position:
+// pos is the pixel's center in points from the box's top left, dst the
+// same in pixels, rectSize() the box's size in points and pixelScale()
+// the pixels a point. The language has bool, int, float, vec2 to vec4,
+// ivec2 to ivec4, mat2 to mat4 and arrays of them, GLSL's functions (sin,
+// mix, smoothstep, dot...), functions of its own, if, and for loops;
+// exported variables at the package level are uniforms. Android's AGSL is
+// GLSL ES 1.00's: the compiler reports what of a shader it can't run
+// there (unsigned integers, bitwise operations, derivatives, loops
+// between values that aren't constants), for every platform alike.
+
+/// A compiled shader. Its source is a string literal: the compiler
+/// compiles it (a shader that doesn't compile is the compiler's error).
+pub struct Program {
+  /// The Kage source.
+  source: string
+  /// Its code for each platform, and where its uniforms go
+  /// (internal/shadercode's encoding).
+  code: bytes = bytes()
+  /// Its GLSL ES 3.00, the web's.
+  glsl: string = ""
+}
+
+/// A uniform's value: the program's variable name, its lanes (a float
+/// for a float, four for a vec4, a matrix's by columns, an array's
+/// elements in turn; an int's or a bool's as a number).
+pub struct Uniform {
+  name: string
+  value: [float]
+}
+
+/// A view the program draws, over its whole box. The host sets
+/// rectSize, pixelScale and, animated, Time; its box has no size of its
+/// own: give it one. Where the platform can't run it (Android before
+/// 13), it's empty.
+pub native component Shader(program: Program) {
+  prop uniforms: [Uniform] = []
+  /// Draws a frame each time the screen refreshes, Time counting the
+  /// seconds since it showed; else only when its size or uniforms
+  /// change.
+  prop animated: bool = false
+}

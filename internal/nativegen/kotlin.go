@@ -17,8 +17,13 @@ func KotlinFile(p *Package) string {
 
 // KotlinErrorType is the Kotlin enum of the package's declared errors;
 // KotlinException, the exception that throws one.
-func KotlinErrorType(p *Package) string { return upperCamel(p.Name) + "Error" }
-func KotlinException(p *Package) string { return upperCamel(p.Name) + "Exception" }
+func KotlinErrorType(p *Package) string {
+	if p.ErrorName != "" {
+		return p.ErrorName
+	}
+	return upperCamel(p.Name) + "Error"
+}
+func KotlinException(p *Package) string { return strings.TrimSuffix(KotlinErrorType(p), "Error") + "Exception" }
 
 var kotlinOf = map[Kind]string{
 	Bool: "Boolean", Int8: "Byte", Int16: "Short", Int32: "Int", Int64: "Long", Int: "Long",

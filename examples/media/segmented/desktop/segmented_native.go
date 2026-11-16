@@ -69,6 +69,9 @@ func (e SegmentedEvents) Changed(index int) {
 func implementSegmented(make func(events SegmentedEvents) SegmentedNative) {
 	native.RegisterView("@asuka/segmented#Segmented", func(ctx native.Context) native.View {
 		v := make(SegmentedEvents{ctx})
+		if v == nil {
+			return nil // none here: the host shows nothing (the Mac: the package's Swift)
+		}
 		return native.GoView(v, func(name string, value []byte) {
 			var s *native.Session // a view's values hold no objects
 			_ = s

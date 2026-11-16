@@ -22,6 +22,8 @@ var (
 // ISpVoice's methods.
 const (
 	spSetNotifyWindowMessage = 4
+	spSetNotifyWin32Event    = 7
+	spGetNotifyEventHandle   = 9
 	spSetInterest            = 10
 	spGetEvents              = 11
 	spPause                  = 16
@@ -47,6 +49,29 @@ func NewVoice(hwnd uintptr, msg uint32) (*Voice, error) {
 	const interest = 1<<2 | 1<<30 | 1<<33
 	ComCall(v, spSetInterest, interest, interest)
 	return &Voice{v: v}, nil
+}
+
+// NewVoiceEvent makes a voice that signals the event it returns (an
+// auto-reset event SAPI owns) as it has events: wait for it on another
+// goroutine (WaitEvent), and read them (Ended) on the thread that made
+// the voice.
+func NewVoiceEvent() (*Voice, uintptr, error) {
+	v := CoCreate(&clsidSpVoice, &iidSpVoice)
+	if v == 0 {
+		return nil, 0, errors.New("SAPI's voice isn't there")
+	}
+	ComCall(v, spSetNotifyWin32Event)
+	const interest = 1<<2 | 1<<30 | 1<<33
+	ComCall(v, spSetInterest, interest, interest)
+	ev := ComCall(v, spGetNotifyEventHandle)
+	return &Voice{v: v}, ev, nil
+}
+
+// WaitEvent waits for an event handle to be signaled, up to ms
+// milliseconds (0xFFFFFFFF: no limit); it reports whether it was.
+func WaitEvent(ev uintptr, ms uint32) bool {
+	r, _, _ := procWaitForSingleObject.Call(ev, uintptr(ms))
+	return r == 0
 }
 
 // Speak speaks text (SAPI's XML, if xml) after what's queued, or instead

@@ -19,6 +19,101 @@ import AppKit
 public typealias AsukaPlatformView = NSView
 #endif
 
+#if canImport(UIKit)
+/// The platform's color: UIColor on iOS, NSColor on the Mac.
+public typealias AsukaPlatformColor = UIColor
+#else
+/// The platform's color: UIColor on iOS, NSColor on the Mac.
+public typealias AsukaPlatformColor = NSColor
+#endif
+
+#if canImport(UIKit)
+/// Where a package's Swift presents a controller of its own (a picker,
+/// the system's camera): the frontmost controller of the app's key
+/// window.
+@MainActor public enum AsukaPresenting {
+    public static var top: UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.flatMap(\.windows).first { $0.isKeyWindow } ?? scenes.first?.windows.first
+        var c = window?.rootViewController
+        while let p = c?.presentedViewController, !p.isBeingDismissed { c = p }
+        return c
+    }
+}
+#else
+/// Where a package's Swift shows a sheet of its own: the app's key
+/// window, else its main one.
+@MainActor public enum AsukaPresenting {
+    public static var window: NSWindow? { NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible } }
+}
+#endif
+
+/// The app's assets, for a package's Swift: a source as the hosts take
+/// one (an http(s) or file URL, an absolute path, or a file in the app's
+/// assets/) as a URL.
+public enum AsukaAssets {
+    /// The app's assets/: in the app's bundle (or the framework holding an
+    /// embedded app's code), else ASUKA_ASSETS, else assets beside the
+    /// working directory (a Mac app run from its project).
+    public static let dir: URL? = {
+        for b in [Bundle.main] + Bundle.allFrameworks {
+            if let u = b.resourceURL?.appendingPathComponent("assets"), FileManager.default.fileExists(atPath: u.path) { return u }
+        }
+        if let d = ProcessInfo.processInfo.environment["ASUKA_ASSETS"], !d.isEmpty { return URL(fileURLWithPath: d) }
+        #if canImport(UIKit)
+        return Bundle.main.resourceURL?.appendingPathComponent("assets")
+        #else
+        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("assets")
+        #endif
+    }()
+
+    public static func url(_ source: String) -> URL? {
+        if source.isEmpty { return nil }
+        if source.hasPrefix("http://") || source.hasPrefix("https://") || source.hasPrefix("file://") || source.hasPrefix("data:") { return URL(string: source) }
+        if source.hasPrefix("/") { return URL(fileURLWithPath: source) }
+        let rel = source.hasPrefix("./") ? String(source.dropFirst(2)) : source
+        return dir?.appendingPathComponent(rel)
+    }
+}
+
+/// Asuka's colors in a package's Swift: a Color crosses as an Int (the
+/// core's encoding), which color makes the platform's, a semantic one
+/// following light and dark.
+public enum AsukaColors {
+    public static func color(_ v: Int) -> AsukaPlatformColor? {
+        let u = UInt64(bitPattern: Int64(v))
+        let lo = UInt32(truncatingIfNeeded: u)
+        switch u >> 32 {
+        case 2:
+            #if canImport(UIKit)
+            return UIColor(red: CGFloat((lo >> 24) & 0xff) / 255, green: CGFloat((lo >> 16) & 0xff) / 255, blue: CGFloat((lo >> 8) & 0xff) / 255, alpha: CGFloat(lo & 0xff) / 255)
+            #else
+            return NSColor(srgbRed: CGFloat((lo >> 24) & 0xff) / 255, green: CGFloat((lo >> 16) & 0xff) / 255, blue: CGFloat((lo >> 8) & 0xff) / 255, alpha: CGFloat(lo & 0xff) / 255)
+            #endif
+        case 1:
+            guard let c = semantic(Int(lo & 0xffff)) else { return nil }
+            // Its opacity is in bits 24-31, as transparency.
+            let a = 255 - CGFloat((lo >> 24) & 0xff)
+            return a == 255 ? c : c.withAlphaComponent(a / 255)
+        default:
+            return nil
+        }
+    }
+
+    static func semantic(_ i: Int) -> AsukaPlatformColor? {
+        #if canImport(UIKit)
+        let t: [AsukaPlatformColor?] = [nil, .label, .secondaryLabel, .tertiaryLabel, .systemBackground, .secondarySystemBackground,
+            .systemGroupedBackground, .separator, .tintColor, .systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue,
+            .systemPurple, .systemPink, .systemGray, .clear, .secondarySystemGroupedBackground, .white]
+        #else
+        let t: [AsukaPlatformColor?] = [nil, .labelColor, .secondaryLabelColor, .tertiaryLabelColor, .windowBackgroundColor, .controlBackgroundColor,
+            .windowBackgroundColor, .separatorColor, .controlAccentColor, .systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue,
+            .systemPurple, .systemPink, .systemGray, .clear, .controlBackgroundColor, .white]
+        #endif
+        return i >= 0 && i < t.count ? t[i] : nil
+    }
+}
+
 // Where the host has views: iOS (UIKit), and the Mac's runtime (which has
 // no AsukaOps); not the iOS host's package built for the Mac (swift test,
 // for its decoder's tests: AsukaOps is a module of its own there).

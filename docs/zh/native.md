@@ -129,6 +129,7 @@ pub native interface Oven {
 | `[T]` | `[T]` | `List<T>` | `Array` |
 | `[string: T]` | `[String: T]` | `Map<String, T>` | `object` |
 | `T?` | `T?` | `T?` | `T` 或 `null` |
+| `Color` | `Int`，即核心的编码：`AsukaColors.color(_:)` 把它变成 `UIColor` 或 `NSColor`（语义色会跟随浅色和深色模式） | `Long`：`AsukaModules.color(v, fallback)` 把它变成 ARGB 的 `Int` | `bigint`：`native.color(v)` 把它变成 CSS 颜色（语义色是一个 CSS 变量） |
 | 包中定义的结构体 | 结构体（包含自身时为 final class） | data class | 对象 |
 | 包中定义的枚举（成员不带值） | `RawRepresentable` 结构体，每个成员对应一个静态成员 | value class，每个成员对应一个常量 | 由这些成员组成的冻结对象 |
 | `native interface`（作为参数或返回值） | `any T` | `T` | 对象 |
@@ -164,7 +165,7 @@ pub native interface Oven {
 ```asuka
 pub native component Segmented(items: [string]) {
   prop selected: int = 0
-  event changed(index: int)
+  event selectedChange(selected: int)
 }
 ```
 
@@ -175,12 +176,12 @@ state selected = 0
 
 segmented.Segmented(["Day", "Week", "Month"]) {
   bind selected: selected
-  on changed(i) { selected = i }
 }
 ```
 
 - 每个属性都会跟随它读取的值：值变化时，平台端的 setter 会再次运行，而且只在变化时运行。
 - 事件在主线程上运行。
+- `bind name: target` 绑定一个属性，前提是视图用与属性同类型的事件 `nameChange(name: T)` 报告它：用户改变值时（而不是应用设置值时）视图发送这个事件，由它写入 target。
 - 它接受所有元素都接受的样式。
 
 每个平台都以协议的形式实现视图：包括视图本身、每个属性对应的 setter，以及创建时传入的事件对象：
@@ -193,7 +194,7 @@ segmented.Segmented(["Day", "Week", "Month"]) {
     init(_ events: SegmentedEvents) { self.events = events; ... }
     func setItems(_ value: [String]) { ... }
     func setSelected(_ value: Int) { ... }
-    // 值变化时：events.changed(index: i)
+    // 值变化时：events.selectedChange(selected: i)
 }
 @MainActor func makeSegmented(_ events: SegmentedEvents) -> any Segmented { SwiftSegmented(events) }
 ```

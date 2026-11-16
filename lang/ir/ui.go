@@ -947,5 +947,41 @@ func (b *fb) componentCall(ec *check.ElementCall) int {
 			vals = append(vals, none())
 		}
 	}
-	return b.invoke(idx, vals, bc.KRef, -1, false)
+	v := b.invoke(idx, vals, bc.KRef, -1, false)
+	b.outerStyle(v, ec)
+	return v
+}
+
+// outerStyle sets the style props a component's caller gives on the
+// element the component shows (check's TakesStyle), over what the
+// component sets of them: ui.set_outer, or ui.bind_outer when the value
+// reads what changes. The last of a prop set twice wins.
+func (b *fb) outerStyle(v int, ec *check.ElementCall) {
+	last := map[*check.Member]int{}
+	for i, p := range ec.Props {
+		if p.Member.Owner != ec.Comp {
+			last[p.Member] = i
+		}
+	}
+	for i, p := range ec.Props {
+		if j, ok := last[p.Member]; !ok || j != i {
+			continue
+		}
+		mark := b.mark()
+		key := prelude.KeyID("", p.Member.Name())
+		if key == 0 {
+			b.l.errorf(p.Value, "%s isn't a style key the runtime has", p.Member.Name())
+			b.release(mark)
+			continue
+		}
+		k := b.konst(int64(key))
+		if b.l.prog.Reactive(p.Value) {
+			t := b.l.thunkType(p.Value, p.Member.Type)
+			clos := b.thunk(b.l.info.Ctxs[p.Value], p.Value, t)
+			b.callBTo(uiBindOuter, bc.None, v, k, clos)
+		} else {
+			b.callBTo(uiSetOuter, bc.None, v, k, b.value(p.Value, -1))
+		}
+		b.release(mark)
+	}
 }

@@ -75,6 +75,21 @@ state units = store.read("units", "metric")
 | `asuka/appleauth` | Apple でサインイン：`signIn(scopes:, nonce:, state:)`、`credentialState(user)`、`available()`、Apple の `SignInButton`。iOS と macOS のみ |
 | `asuka/nfc` | NFC タグ：`state()`（追跡される）、`start(alert:, poll:)` で得る `Session`（`next()`、`setAlert`、`fail`、`stop`）、`Tag`（`message`、`ndef`、`write`、`makeReadOnly`、`transceive`）、`opened()`、NDEF の `Message` と `Record`（`encode()`、`decode(bytes)`）。Core NFC、Android のリーダーモード、Web NFC |
 | `asuka/bluetooth` | Bluetooth LE：`state()`（追跡される）、`request()`、`scan()`（ストリーム）、`choose(filters)`、`connect(device)`（`Connection` ストア：`state`、`services()`、`characteristic(s, c)`）、キャラクタリスティックの `read`、`write`、`notifications()`、`serve(services)`、`advertise(…)`、Bluetooth SIG の UUID。Core Bluetooth、Android の BLE、WinRT、BlueZ、Web Bluetooth |
+| `asuka/audio` | `audio.play(source)` と、`play`、`pause`、`seek`、`setVolume`、`setRate`、`setLoop`、`status()`、`release()` を持つストアの `audio.Player(source)`。AVPlayer、Media3 の ExoPlayer、`<audio>`、MCI、GStreamer を使います（[デバイス](device.md)） |
+| `asuka/nowplaying` | `nowplaying.NowPlaying`：アプリが再生しているものをロック画面やシステムのメディアコントロールに表示し、そこから送られるコマンド（メディアキー、ヘッドホンのボタン）を受け取ります。`audio.Player` を渡すとそれに追従します（[デバイス](device.md)） |
+| `asuka/speech` | `speech.speak(text, options:)`、`stop`、`pause`、`resume`、`speaking`、`voices()`：システムの音声によるテキストの読み上げ（[デバイス](device.md)） |
+| `asuka/record` | `record.audio(maxDuration:, quality:, background:)` と `stopAudio`、`pauseAudio`、`resumeAudio`、`audioStatus()`：マイクからの録音。`record.start()` と `stop()`：画面上の `camera.View` からの録画（[デバイス](device.md)） |
+| `asuka/camera` | `camera.View`（`facing`、`mode`、`scan`、`codes`。`code`、`error`）：ライブのカメラ映像。`camera.capture()`、`camera.take()`（システムのカメラ画面）、`camera.record()`（[デバイス](device.md)） |
+| `asuka/scan` | `scan.file(path, kinds:)`：画像の中のバーコードと QR コード（[デバイス](device.md)） |
+| `asuka/vision` | `vision.analyze(path, text:, faces:, codes:, languages:)`：画像の中の文字（行ごと、単語ごと）、顔、コードを、それぞれの位置とともにデバイス上で検出します（[デバイス](device.md)） |
+| `asuka/transcribe` | `transcribe.check(language)`、`transcribe.file(path, language:)`：録音をデバイス上だけで文字にします（できない場所では `notAvailable`：Web、Linux、古い Android）（[デバイス](device.md)） |
+| `asuka/imageedit` | `imageedit.edit(source, actions, format:, quality:)`（リサイズ、切り抜き、回転、反転、塗りつぶし、モザイク）、`imageedit.size`、`imageedit.videoFrame`：画像と動画のフレームを JPEG か PNG で書き出します（[デバイス](device.md)） |
+| `asuka/maps` | `maps.View`（`bind region`、`markers`、`mapType`、`showsUser`、`interactive`。`markerPress`、`press`、`regionChange`）：Apple マップ、Google マップ、OpenStreetMap（[デバイス](device.md)） |
+| `asuka/lottie` | `lottie.View(source)`（`bind playing`、`bind progress`、`loop`、`speed`、`segment`、`marker`、`fit`、`overrides`。`complete`、`loaded`）：各プラットフォームのプレーヤーによる Lottie と dotLottie。Windows と Linux ではまだありません（[コンポーネント](components.md)） |
+| `asuka/svg` | アプリのコンパイル時に解析される `svg.Icon(markup)` と、`svg.View(icon) { color }`。`svg.Shape(layers)`：アプリが描くパスで、自分の枠に追従します（[コンポーネント](components.md)） |
+| `asuka/chart` | `chart.View(series) { labels, label, low, high, grid }`。`chart.Series(name:, kind: .bar \| .line \| .area \| .points, values:, smooth:, color:)`：Asuka で書かれ、`svg.Shape` で描かれます（[コンポーネント](components.md)） |
+| `asuka/shader` | `shader.Program(source)`：アプリと一緒にすべてのプラットフォーム向けにコンパイルされる Kage シェーダー。`shader.Shader(program) { uniforms, animated }`（[コンポーネント](components.md)） |
+| `asuka/markdown` | `markdown.View(text) { streaming }` と `markdown.heal(text)`：Markdown をプラットフォームのスタイル付きテキストとして表示し、ストリーミング中は届くそばから補修します（[コンポーネント](components.md)） |
 
 ネイティブパッケージのコードがないプラットフォーム（`asuka test` で動かすアプリにはまったくありません）では、それを必要とする処理は `unsupported` エラーを投げます。そのとき `asuka/store` は何も保存せず、読み込むとデフォルト値が返ります。
 

@@ -1,0 +1,46 @@
+// A package's native component: with no platform code (the fake host),
+// it's an empty view sized by its style, and what's around it works.
+
+struct Pin {
+  id: string
+  lat: float
+}
+
+/// A dial the platform draws.
+native component Dial(value: float) {
+  prop label: string = "none"
+  prop pins: [Pin] = []
+  prop on: bool = false
+  event changed(value: float)
+  event onChange(on: bool)
+}
+
+component Panel {
+  state v = 0.5
+  state on = true
+  state picked = "nothing"
+
+  Column {
+    Dial(v) {
+      label: "Level {v}"
+      pins: [Pin(id: "a", lat: 1)]
+      bind on: on
+      width: 200
+      height: 40
+      on changed(x) { picked = "{x}" }
+    }
+    Text("picked {picked}")
+    Button("More") { on press { v += 0.25 } }
+  }
+}
+
+app { Panel() }
+
+test "a native component mounts, and its props follow state" {
+  let app = mount(Panel())
+  await app.idle()
+  app.expect("picked nothing")
+  app.tap("More")
+  await app.idle()
+  app.expect("picked nothing")
+}

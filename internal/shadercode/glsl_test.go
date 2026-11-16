@@ -19,9 +19,13 @@ func Fragment(dst vec4, pos vec2) vec4 {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src, err := GLSL(c.Encode())
+	d, err := Decode(c.Encode())
 	if err != nil {
 		t.Fatal(err)
+	}
+	src := d.GLSL
+	if src != c.GLSL {
+		t.Fatal("the GLSL didn't cross")
 	}
 	for _, want := range []string{"#version 300 es", "vec4 asuka_shade(", "out vec4 asuka_color;", "void main()"} {
 		if !strings.Contains(src, want) {

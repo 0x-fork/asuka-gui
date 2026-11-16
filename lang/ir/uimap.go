@@ -8,14 +8,16 @@ package ir
 // core/src/ui/elements_gen.h). Keeping them here, in one place, is what
 // lets the two sides be aligned.
 const (
-	uiNew      = "ui.new"      // (el int) -> view
-	uiSet      = "ui.set"      // (view, key int, value: the key's kind) -> void; value borrowed
-	uiBind     = "ui.bind"     // (view, key int, thunk closure) -> void; a render effect
-	uiOn       = "ui.on"       // (view, event int, handler closure) -> void; the handler takes the event's values
-	uiAdd      = "ui.add"      // (view, child view) -> void
-	uiSlot     = "ui.slot"     // (view, slot key int, child view) -> void
-	uiRef      = "ui.ref"      // (view) -> view
-	uiFragment = "ui.fragment" // () -> view: views without a native view, spliced into their parent
+	uiNew       = "ui.new"        // (el int) -> view
+	uiSet       = "ui.set"        // (view, key int, value: the key's kind) -> void; value borrowed
+	uiBind      = "ui.bind"       // (view, key int, thunk closure) -> void; a render effect
+	uiSetOuter  = "ui.set_outer"  // (view, style key int, value) -> void: a component's caller's, over the component's own
+	uiBindOuter = "ui.bind_outer" // (view, style key int, thunk closure) -> void
+	uiOn        = "ui.on"         // (view, event int, handler closure) -> void; the handler takes the event's values
+	uiAdd       = "ui.add"        // (view, child view) -> void
+	uiSlot      = "ui.slot"       // (view, slot key int, child view) -> void
+	uiRef       = "ui.ref"        // (view) -> view
+	uiFragment  = "ui.fragment"   // () -> view: views without a native view, spliced into their parent
 
 	uiShow    = "ui.show"     // (cond thunk -> bool, then builder, else builder or none) -> view
 	uiFor     = "ui.for"      // (items thunk -> [T], key closure (T) -> K or none, row closure (itemAcc, indexAcc) -> view, keyKind int) -> view

@@ -232,7 +232,20 @@ MessageRow(m) {
 
 子を受け取るコンポーネントは `prop children: View` を宣言します。呼び出し側のブロックの中身がそこに入ります。名前付きのスロットは、ブロックの中に `name { … }` と書きます（`toolbar { … }`）。
 
-`emit name(args)` はイベントを発生させ、呼び出し側の `on name(args) { }` がそれを処理します。
+`emit name(args)` はイベントを発生させ、呼び出し側の `on name(args) { }` がそれを処理します。コンポーネントの中でイベントを名前で読むと、その処理関数になり、呼び出し側が渡していなければ `none` です。`if next.isSome() { … }` と書けば、next を処理する呼び出し側にだけ「次へ」ボタンを表示できます。
+
+ひとつの要素だけを表示するコンポーネント（本体のビューがその要素ひとつ、またはそうなっている別のコンポーネント）は、スタイルのプロパティも受け取ります。呼び出し側が渡したスタイルはその要素に付き、コンポーネント自身がそこに設定した値より優先されます。
+
+```asuka
+component Card(title: string) {
+  Column {
+    padding: 16; radius: 12; background: .secondaryBackground
+    Text(title)
+  }
+}
+
+Card("Plan") { padding: 8; width: 240 }   // padding は 8、radius は 12
+```
 
 ### コンポーネントの本体は宣言
 

@@ -1,0 +1,89 @@
+// Package asuka/vision finds what's in an image, on the device: its
+// text, line by line and word by word, faces, and barcodes and QR codes,
+// each with where it is. The Vision framework on iOS and macOS, ML Kit
+// and its bundled models on Android (about 30 MB), the browser's Shape
+// Detection API where it has one, Windows' OCR and package barcode, and
+// on Linux Tesseract (where it's installed) and ZBar. Nothing leaves the
+// device. asuka/scan reads the value of a code; use this package for
+// where a code is.
+//
+//   let r = try await vision.analyze(path)
+//   for l in r.lines { print("{l.text} at {l.box.x}, {l.box.y}") }
+
+/// A rectangle in an image, as fractions of its width and height from its
+/// top left, the image upright: multiply by the image's size for pixels,
+/// or a view's for points.
+pub struct Box {
+  x: float = 0
+  y: float = 0
+  w: float = 0
+  h: float = 0
+
+  /// The smallest box holding both; an empty box adds nothing.
+  fn union(o: Box) -> Box {
+    if w <= 0 || h <= 0 {
+      return o
+    }
+    if o.w <= 0 || o.h <= 0 {
+      return self
+    }
+    let x0 = min(x, o.x)
+    let y0 = min(y, o.y)
+    let x1 = max(x + w, o.x + o.w)
+    let y1 = max(y + h, o.y + o.h)
+    return Box(x: x0, y: y0, w: x1 - x0, h: y1 - y0)
+  }
+}
+
+/// A word of a line, or a mark of punctuation, as the platform's word
+/// breaking finds them (dictionary-based for Chinese and Japanese): start
+/// and end are where it is in the line's text, in characters.
+pub struct Word {
+  text: string
+  box: Box
+  start: int
+  end: int
+}
+
+/// A line of text.
+pub struct Line {
+  text: string
+  box: Box
+  words: [Word] = []
+}
+
+/// A barcode or QR code: its kind, as asuka/scan names them ("qr",
+/// "ean13"...), and what it says.
+pub struct Code {
+  kind: string
+  value: string
+  box: Box
+}
+
+/// What's in an image of width×height pixels, upright.
+pub struct Result {
+  width: int = 0
+  height: int = 0
+  lines: [Line] = []
+  faces: [Box] = []
+  codes: [Code] = []
+}
+
+/// The platform's analyzer. Its work is off the main thread.
+native interface Analyzer {
+  async fn analyze(path: string, text: bool, faces: bool, codes: bool, languages: [string]) -> Result
+}
+
+let analyzer = try? Analyzer()
+
+/// Looks in the image at path (a photo taken or picked) for what's asked:
+/// text, faces, codes. languages are the text's, BCP 47 tags, most likely
+/// first ("zh-Hans", "en-US"); none: the device's languages and English
+/// (iOS and macOS; Android's model reads Chinese and Latin scripts
+/// whatever it's told).
+pub async fn analyze(path: string, text: bool = true, faces: bool = true, codes: bool = true, languages: [string] = []) throws -> Result {
+  if let a = analyzer {
+    return try await a.analyze(path, text, faces, codes, languages)
+  }
+  return try await Analyzer().analyze(path, text, faces, codes, languages)
+}

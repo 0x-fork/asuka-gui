@@ -161,6 +161,14 @@ class AsukaNativeReader(private val b: ByteArray) {
 }
 
 /** An error a package declares (native.NewError): its Go gets that value. */
+/**
+ * An object of a package's that hears Asuka let it go (on the main
+ * thread): to free what it holds, as a Swift object's deinit does.
+ */
+interface AsukaReleasing {
+    fun released()
+}
+
 interface AsukaDeclaredError {
     val asukaIndex: Int
 }
@@ -206,6 +214,54 @@ object AsukaModules {
      * dialog, a permission request, a result). Read it on the main thread.
      */
     val activity: android.app.Activity? get() = AsukaRuntime.current?.activity
+
+    /**
+     * A Color that crossed to a package's Kotlin (a Long, the core's
+     * encoding) as an Android color: a semantic one from the app's theme.
+     * Read it on the main thread.
+     */
+    fun color(v: Long, fallback: Int = android.graphics.Color.TRANSPARENT): Int =
+        AsukaRuntime.current?.color(v, fallback) ?: when ((v ushr 32).toInt()) {
+            2 -> (v and 0xffffffffL).toInt().let { (it ushr 8) or (it shl 24) }
+            else -> fallback
+        }
+
+    /**
+     * A source as the hosts take one (an http(s) or file URL, an absolute
+     * path, or a file in the app's assets: under asuka dev the ones it
+     * pushed, else the APK's) as a Uri, for a package's player or loader.
+     */
+    fun uri(source: String): android.net.Uri = when {
+        source.startsWith("http://") || source.startsWith("https://") || source.startsWith("file://") ||
+            source.startsWith("content://") || source.startsWith("data:") -> android.net.Uri.parse(source)
+        source.startsWith("/") -> android.net.Uri.fromFile(java.io.File(source))
+        else -> {
+            val rel = source.removePrefix("./")
+            val pushed = java.io.File(context.filesDir, "asuka/assets/$rel")
+            if (pushed.exists()) android.net.Uri.fromFile(pushed) else android.net.Uri.parse("asset:///$rel")
+        }
+    }
+
+    /**
+     * Asks for permissions (once any is granted, done gets true at once),
+     * on the main thread: the system's dialog over the activity showing
+     * the app; false without one.
+     */
+    fun requestPermissions(permissions: Array<String>, done: (Boolean) -> kotlin.Unit) {
+        val rt = AsukaRuntime.current ?: run { done(false); return }
+        onMain { rt.withPermission(permissions, done) }
+    }
+
+    /** Whether the app's manifest asks for permission (its own, or a package's). */
+    fun declares(permission: String): Boolean = AsukaRuntime.current?.declares(permission) ?: false
+
+    /**
+     * A content: Uri of a file of the app's (its cache or files), through
+     * the app's FileProvider: what another app (the camera's, a share
+     * target) is handed.
+     */
+    fun fileUri(file: java.io.File): android.net.Uri =
+        androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".asuka.files", file)
 
     /** Where the generated Kotlin's suspend funs run. */
     @JvmField val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -305,7 +361,8 @@ object AsukaModules {
     }
 
     @JvmStatic fun release(h: Long) {
-        objects.remove(h)
+        val o = objects.remove(h)?.obj as? AsukaReleasing ?: return
+        onMain { o.released() }
     }
 
     // What the generated Kotlin calls.

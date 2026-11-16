@@ -1,0 +1,37 @@
+// A component that shows one element takes the style props: its
+// caller's go on that element, over the component's own.
+
+component Card(title: string) {
+  prop compact = false
+  Column {
+    padding: if compact { 4 } else { 16 }
+    background: .secondaryBackground
+    Text(title)
+  }
+}
+
+/// Shows a Card: it takes the style too.
+component Framed(title: string) {
+  Card(title) { radius: 12 }
+}
+
+component Page {
+  state wide = false
+  Column {
+    Card("Plain")
+    Card("Styled") { padding: 2; width: if wide { 300 } else { 100 }; label: "styled card" }
+    Framed("Framed") { padding: 8 }
+    Button("Widen") { on press { wide = true } }
+  }
+}
+
+app { Page() }
+
+test "the caller's style is over the component's" {
+  let app = mount(Page())
+  app.expect("Plain")
+  app.expect("Framed")
+  app.tap("Widen")
+  await app.idle()
+  app.expect("Styled")
+}

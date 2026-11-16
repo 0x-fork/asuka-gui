@@ -22,12 +22,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** The errors the package declares , which its callers get as those values. */
-public enum class WebauthError(val message: String) {
+public enum class WebAuthError(val message: String) {
     CANCELED("webauth: canceled");
 }
 
 /** Throws one of the package's declared errors. */
-public class WebauthException(val error: WebauthError) : Exception(error.message), AsukaDeclaredError {
+public class WebAuthException(val error: WebAuthError) : Exception(error.message), AsukaDeclaredError {
     override val asukaIndex: Int get() = error.ordinal
 }
 

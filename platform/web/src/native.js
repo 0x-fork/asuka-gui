@@ -11,6 +11,27 @@
 import * as appFS from "./fs.js";
 import { pickFiles, download } from "./modules/system.js";
 import { typeOf } from "./modules/system-clipboard.js";
+import { css } from "./color.js";
+
+/** fs is the app's files (the page's own file system): readFile, writeFile, blobURL... for a package's JavaScript. */
+export const fs = appFS;
+
+/** color is a Color that crossed to a package's JavaScript (a bigint, the core's encoding) as CSS: a semantic one a variable that follows light and dark; "" for none. */
+export function color(v) { return css(null, Number(v)); }
+
+let assets = "assets";
+
+/** setAssets is for the host: the URL the app's assets are served from. */
+export function setAssets(url) { assets = (url || "assets").replace(/\/$/, ""); }
+
+/** assetURL is a source as the hosts take one (a URL, or a file in the app's assets) as a URL a package can load. */
+export function assetURL(src) {
+  if (!src) return "";
+  if (/^(https?|blob|data):/.test(src)) return src;
+  if (src.startsWith("file://")) src = decodeURIComponent(src.slice(7));
+  if (src.startsWith("/")) return appFS.blobURL(src);
+  return assets + "/" + src.replace(/^\.?\//, "");
+}
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -277,7 +298,12 @@ export function start(h, method, input, id, back) {
 }
 
 export function cancel(id) { calls.get(id)?.abort(); }
-export function release(h) { objects.delete(h); }
+export function release(h) {
+  const o = objects.get(h)?.obj;
+  objects.delete(h);
+  // An object that frees what it holds as it's let go (Swift's deinit).
+  o?.released?.();
+}
 
 /** A typed view of a kind (its module's id # its name). */
 export function makeView(kind, ctx) {

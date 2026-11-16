@@ -22,6 +22,7 @@
 | `ProgressRing` | SwiftUI の円形ゲージに倣って描画。値がなければ `UIActivityIndicatorView` | `CircularProgressIndicator` | 16 ポイントと 32 ポイントでは spinning スタイルの `NSProgressIndicator`。それ以外のサイズや `Color` の指定時は、そのスタイルに倣って描画 | Fluent の `ProgressRing` に倣って描画 | GNOME のスタイルで描画。値がなければ `AdwSpinner` | SVG のリング |
 | `Activity` | `UIActivityIndicatorView` | `CircularProgressIndicator` | spinning スタイルの `NSProgressIndicator` | Fluent のプログレスリングに倣って描画 | `AdwSpinner`（libadwaita 1.6 より前は `GtkSpinner`） | 描画したスピナー |
 | `Image` | `UIImageView` | `ImageView` | `NSImageView` | GDI+ で描画 | GDK のテクスチャから描画 | `<img>` |
+| `lottie.View` | lottie-ios | lottie-android | lottie-ios | まだなし（空のボックス） | まだなし（空のボックス） | lottie-web |
 | `Symbol` | SF Symbols | Material Symbols | SF Symbols | Segoe Fluent Icons | アイコンテーマのもの。なければ Material Symbols | Material Symbols |
 | `Video` | `AVPlayerViewController` | Media3 のプレイヤー | `AVPlayerView` | WebView2 内の `<video>` | `GtkVideo`（GStreamer） | `<video>` |
 | `WebView` | `WKWebView` | `WebView` | `WKWebView` | WebView2 | `WebKitWebView`（WebKitGTK 6.0） | `<iframe>` |
@@ -100,13 +101,17 @@ ui.Selectable(ui.SelectableProps{Style: ui.Style{Gap: 12}},
 
 ### Markdown
 
-パッケージ `asuka/sdk/markdown` は、Markdown を `RichText` で組み立てたネイティブのビューとして表示します。テキストが追記されるたびに解析しますが、解析し直すのは書きかけのブロックだけで、更新されるのもそのブロックのビューだけです。
+`asuka/markdown` は Markdown（CommonMark に GitHub の表、タスクリスト、取り消し線、自動リンクを加えたもの）を、プラットフォーム純正のスタイル付きテキストとして表示します。全体が一つの選択範囲になり、リンクは開けて、文字サイズはユーザーの設定に従います。テキスト中の生の HTML は文字として表示されます。
 
-```go
-markdown.View(markdown.Props{Text: reply, Streaming: writing})
+```asuka
+import asuka/markdown
+
+component Reply(text: string, writing: bool) {
+  markdown.View(text) { streaming: writing; padding: 16 }
+}
 ```
 
-`Streaming` は、テキストがまだ書かれている途中であることを示します。これにより、書きかけの `**bold` はアスタリスクのままではなく太字として表示されます。ビューはデフォルトで全体がひとつの選択範囲になります（`NotSelectable` で無効にできます）。リンクは、`OnLink` を指定しない限り `ui.OpenURL` で開きます。`Theme` でフォント、色、余白を変えられ、`Code` でコードブロックを独自の方法で表示できます。CommonMark と GitHub の拡張に対応しています。[`examples/markdown`](../../examples/markdown) を参照してください。
+`streaming` は、言語モデルの返答が流れてくるときのように、テキストがまだ書かれている途中であることを表します。このときテキストの末尾は、書きかけの記法ではなく、最終的になりそうな姿で表示されます（コードフェンスは閉じ、`**bold` は太字に、書きかけのリンクはリンクに）。`markdown.heal(text)` で同じ処理だけを行うこともできます。解析は各プラットフォームの Markdown が行います。iOS と macOS では Apple のもの（`AttributedString` をテキストビューにレイアウト）、Android では Markwon、Web では marked、Windows（リッチエディット）と Linux（ラベルの Pango マークアップ）では Asuka のパーサーです。[`examples/markdown`](../../examples/markdown) を見てください。
 
 ## ボタン
 
@@ -360,20 +365,40 @@ iOS と macOS は、どの SF Symbol でも描画できます。それ以外の�
 
 ### SVG アイコン
 
-独自のアイコンには、パッケージ `asuka/sdk/svg` を使います。SVG をプラットフォームのベクター描画で描くので、ラスター化は一切行いません。`svg.MustParse` がマークアップを読み込み（`svg.Parse` は代わりにエラーを返します）、`svg.View` がそれを描画します。
+独自のアイコンには、`asuka/svg` がプラットフォームのベクター描画で SVG を描きます。ラスター化はしません。`svg.Icon` のマークアップは文字列リテラルで、コンパイラーが解析します。読めないマークアップはコンパイルエラーになり、デバイス上では何も解析しません。
 
-```go
-var download = svg.MustParse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`)
+```asuka
+import asuka/svg
 
-func downloadIcon() ui.Node {
-	return svg.View(svg.Props{Icon: download, Color: ui.Val(colors.Accent), Label: ui.Val("Download"),
-		Style: ui.Style{Width: ui.Pt(24), Height: ui.Pt(24)}})
+let download = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>""")
+
+component DownloadRow {
+  Row {
+    gap: 8
+    svg.View(download) { color: .accent; width: 24; height: 24 }
+    Text("Download")
+  }
 }
 ```
 
-`Color` は、SVG が `currentColor` で塗る部分と、SVG が塗りを指定していない部分の色になります。デフォルトは、テキストの色である `colors.Label` です。`Style` で幅も高さも指定しなければ、ビューは SVG 本来のサイズになります。一方だけを指定すると、もう一方は縦横比を保って決まります。アイコンは `//go:embed` でファイルとして埋め込み、パッケージ変数で一度だけ解析してください。
+`color` は、SVG が `currentColor` で塗る部分と、SVG が塗りを指定していない部分を塗ります。既定はテキストの色 `.label` です。スタイルに幅も高さもなければ、ビューは SVG 自身のサイズになります。両方あれば、縦横比を保ってアイコンがその中に収まります。アイコンセット（Lucide、Material、Heroicons、Feather）が使うもの、つまりパス、基本図形、グループ、`use`、塗り、線、変形を読みます。テキスト、グラデーション（アイコンの色で塗ります）、クリッピング、マスク、フィルター、`fill-rule="evenodd"` は読み飛ばします。
 
-アイコンセット（Lucide、Material、Heroicons、Feather）が使う要素に対応しています。パス、基本図形、グループ、`use`、塗り、線、変形です。テキスト、グラデーション（アイコンの色で塗られます）、クリッピング、マスク、フィルター、`fill-rule="evenodd"` は無視されます。
+`svg.Shape` はアプリが作ったパスを描きます。それぞれの `svg.Layer` は一つの `svg.Path` で、塗り（`fill`。ボックスの下に向かって `fade` へフェード）と線（`stroke`、`width`、`cap`、`join`）を持ちます。`svg.Point` はボックスの左上からのポイント数にボックスのサイズに対する割合を足したものなので、ボックスの大きさが変わっても、アプリが計算し直さなくても形が追従します。
+
+```asuka
+import asuka/svg
+
+let tick = svg.Path().move(svg.Point(x: 4, fy: 0.5)).line(svg.Point(fx: 0.4, fy: 1, y: -4)).line(svg.Point(fx: 1, x: -4, y: 4))
+
+component Done {
+  svg.Shape([svg.Layer(path: tick, stroke: .green, width: 3, cap: .round, join: .round)]) {
+    width: 32
+    height: 32
+  }
+}
+```
+
+iOS と macOS では Core Graphics、Android では `Canvas`、ブラウザーでは `<svg>`、Windows では GDI+、Linux では GSK のパスで描きます。
 
 ## 動画
 
@@ -398,6 +423,40 @@ return ui.Column(ui.Style{Gap: 12}, v,
 - `OnEnd` は最後まで再生するたびに呼ばれ、`OnError` は再生できないときに呼ばれます。
 
 サイズの決まり方は `Image` と同じです。スタイルでサイズを指定しない限り、動画のサイズがわかるまでは空で、その後は動画の縦横比を保ちます。`Seek` には先頭からの秒数を渡します。
+
+## Lottie アニメーション
+
+`asuka/lottie` は Lottie アニメーション（After Effects から Lottie JSON `.json` または dotLottie `.lottie` として書き出したもの）を、各プラットフォーム自身のプレーヤーで再生します。iOS と Mac では lottie-ios、Android では lottie-android、Web では lottie-web です。Windows と Linux には呼び出せるプレーヤーがまだないので、そこではビューは空のボックスになります。
+
+```asuka
+import asuka/lottie
+
+component Success {
+  state playing = true
+  state progress = 0.0
+  state done = false
+
+  Column {
+    lottie.View("success.json") {
+      bind playing: playing
+      bind progress: progress
+      overrides: [lottie.colors("Ring", light: #0a84ff, dark: #64d2ff)]
+      width: 200
+      on complete { done = true }
+    }
+    Slider { bind value: progress }
+  }
+}
+```
+
+- ソースはファイルで、http(s) の URL、アプリの assets 内のパス、絶対パスのどれかです。`data` でファイルの中身を直接渡すこともできます。`animation` は dotLottie の中のアニメーションを ID で選びます。
+- `playing` が true の間は再生し、false の間はその位置で止まります。バインドすると、最後まで再生したところで false になります。`loop` は繰り返し再生し、そうでなければ最後で止まって `complete` を報告します。`speed` はフレームレートの倍率です（負の値で逆再生）。
+- `progress` は 0 から 1 の再生位置です。バインドすると、再生中にビューが書き込み、アプリが書き込んだ値の位置へ移動します。スライダーで動かしたり、ジェスチャーで操作したりできます。
+- `segment`（フレームの `from` から `to`）か `marker`（名前で選んだマーカー）が再生する部分です。`loaded` で `Info`（サイズ、フレーム、フレームレート、マーカー）が得られます。
+- `fit` はボックスの埋め方で、`.contain`（既定）、`.cover`、`.stretch`、`.center` のどれかです。スタイルにサイズがなければ、アニメーション自身のサイズになります。
+- `overrides` はキーパスで色や値を変えます。テーマやダークモードに使えます。`lottie.color(keypath, c)`（キーパスの下の塗りと線）、`lottie.colors(keypath, light:, dark:)`、`lottie.opacity(keypath, v)`、`lottie.strokeWidth(keypath, w)` です。キーパスはルートからのレイヤー、グループ、シェイプの名前をドットでつないだもので、`*` は任意の一つの名前、`**` は任意の数の名前を表します（`"Ring"`、`"Circle.Disc.Fill 1"`、`"**.Stroke 1"`）。
+
+このパッケージを import したアプリは、これらのプレーヤーと一緒にビルドされます。Swift パッケージ（lottie-spm）、Gradle ライブラリ（`com.airbnb.android:lottie`）、そしてビューが最初に表示されたときに読み込まれる lottie-web のスクリプトです。import していないアプリには含まれません。[ネイティブパッケージ](native.md)なので、スマートフォンで `asuka dev` を使うと、このパッケージを使うアプリはホットリロードモードではなく、それ専用のビルドとして動きます。
 
 ## Web ページ
 
@@ -527,56 +586,67 @@ ui.Canvas(func(g *ui.Graphics) {
 
 ### グラフ
 
-`asuka/sdk/chart` は、Canvas の上にグラフを描きます。値の軸に沿った棒、折れ線、面、点を描き、ラベルにはプラットフォームのテキストを使います（プラットフォームが測定し、ユーザーの文字サイズに合わせて拡大縮小されます）。
+`asuka/chart` はグラフを描きます。値の軸の上に棒、線、面、点を描き、ラベルにはプラットフォームのテキストを使います（ユーザーの文字サイズに合わせて拡大縮小されます）。Asuka で書かれていて、目盛りと図形は一度だけ計算され、`svg.Shape` が描くので、どのプラットフォームでも同じになります。
 
-```go
-chart.View(chart.Props{
-	Series: ui.Val([]chart.Series{
-		{Name: "Steps", Kind: chart.Bar, Values: steps},
-		{Name: "Goal", Kind: chart.Line, Values: goal, Color: colors.Hex(0xff9500)},
-	}),
-	Labels: ui.Val([]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}),
-	Label:  ui.Val("Steps this week"),
-	Style:  ui.Style{Height: ui.Pt(200)},
-})
+```asuka
+import asuka/chart
+
+component Week(steps: [float], goal: [float]) {
+  chart.View([
+    chart.Series(name: "Steps", kind: .bar, values: steps),
+    chart.Series(name: "Goal", kind: .line, values: goal, color: #ff9500),
+  ]) {
+    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    label: "Steps this week"
+    height: 180
+  }
+}
 ```
 
-- 系列はラベルごとに値を一つ持ち、`NaN` のところは途切れます。棒の系列は横に並び、面、折れ線、点はその上に重なります。`Smooth` は単調な曲線を描くので、曲線が値を行き過ぎることはありません。
-- 値の軸は、`Min` と `Max` で固定しない限り値に合わせて決まり、切りのよい目盛りまで外側に広げられます（棒と面では 0 まで下げます）。軸のラベルは `Format` で書式を指定します（デフォルトは `2.5k` の形式）。
-- 色はデフォルトで、まずアプリのアクセントカラー、続いてシステムの色が使われます。
-- スクリーンリーダーは、グラフを 1 枚の画像として読み上げます。まず `Label` を、続いて各系列の値をすべて読み上げます。
+- 系列はラベルごとに一つの値を持ちます。棒の系列は横に並び、面、線、点はその上に重なります。`smooth` は値を飛び越えない単調な曲線を描き、`width` は線の太さか点の大きさです。
+- 値の軸はデータに合わせ、目盛りの切りのよいところまで外側に広げます（棒と面は 0 まで）。`low` と `high` で範囲を固定できます。目盛りのラベルは目盛りを区別できる範囲で短くなります（`2.5k`）。`grid: false` で図形の後ろの線をなくせます。
+- 色の既定は、アプリのアクセントカラー、次にシステムの色です（`chart.palette`）。
+- スクリーンリーダーはグラフを一枚の画像として読みます。まず `label`、続いて各系列の値です。スタイルに高さがなければ高さは 200 です。
 
 ### シェーダー
 
-`ui.Shader` は、GPU のプログラムが子ビューの下に描くボックスです。流れるグラデーション、ノイズ、光、波紋などを描けます。プログラムは Kage シェーダー（Ebitengine の言語で、文法は Go と同じ）で書き、パッケージ `shader` が、パッケージ変数として一度だけコンパイルします。
+`asuka/shader` は GPU のプログラムでボックスを描きます。流れるグラデーション、ノイズ、光、波紋などです。プログラムは Kage シェーダー（Ebitengine の言語で、Go の構文）で、アプリのコンパイル時にすべてのプラットフォーム向けにコンパイルされます。コンパイルできないシェーダーはコンパイルエラーになり、デバイス上ではプラットフォーム自身のプログラムだけをコンパイルします。
 
-```go
-var glow = shader.MustCompile(`package main
+```asuka
+import asuka/shader
 
-var Time float
-var Tint vec4
+let glow = shader.Program(r"""
+  package main
 
-func Fragment(dst vec4, pos vec2) vec4 {
-	d := distance(pos/rectSize(), vec2(0.5))
-	g := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
-	return vec4(Tint.rgb*g, 1) * Tint.a
-}`)
+  var Time float
+  var Tint vec4
 
-ui.Shader(ui.ShaderProps{
-	Program:  glow,
-	Uniforms: ui.Val([]ui.Uniform{ui.ColorUniform("Tint", colors.Hex(0x38bdf8))}),
-	Animated: true,
-	Style:    ui.Style{Height: ui.Pt(200), CornerRadius: 16, Clip: true, Background: colors.Hex(0x0b1030)},
-})
+  func Fragment(dst vec4, pos vec2) vec4 {
+  	d := distance(pos/rectSize(), vec2(0.5))
+  	g := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
+  	return vec4(Tint.rgb*g, 1) * Tint.a
+  }
+  """)
+
+component Glow(level: float) {
+  shader.Shader(glow) {
+    uniforms: [shader.Uniform(name: "Tint", value: [0.2, 0.5 + level * 0.5, 0.9, 1])]
+    animated: true
+    height: 200
+    radius: 16
+    clip: true
+    background: #0b1030
+  }
+}
 ```
 
-- `Fragment` は、1 ピクセルの色を、乗算済みの赤、緑、青、アルファ（それぞれ 0 から 1）で返します。`pos` はピクセルの中心を、ボックスの左上を原点とするポイント単位で表したもので、`dst` は同じものをピクセル単位で表したものです。`rectSize()` はボックスのサイズ（ポイント単位）、`pixelScale()` は 1 ポイントあたりのピクセル数です。
-- 言語には、`bool`、`int`、`float`、`vec2`〜`vec4`、`ivec2`〜`ivec4`、`mat2`〜`mat4` とそれらの配列、GLSL の組み込み関数（`sin`、`mix`、`smoothstep`、`dot` など）、独自の関数、`if` と `for` があります。エクスポートした変数が uniform になります。
-- `Uniforms` は、名前を指定して uniform を設定します。スカラーなら数値を 1 つ、ベクトルなら成分を、行列なら列を順に並べます。値を変えるとボックスが再描画されます。指定しなかった uniform は 0 です。
-- `var Time float` は、シェーダーが表示されてからの秒数です。`Animated` を指定するとシェーダーが動き続け、ディスプレイが描画するフレームごとにボックスが描画されます。そのあいだ、Go の側では何も実行されません。
-- `shader.Compile` は、シェーダーのエラーを行番号付きで報告します。Android で実行できない部分も、どのプラットフォームでも同じように報告します。AGSL は GLSL ES 1.00 の言語なので、符号なし整数、ビット演算、整数の剰余（浮動小数点数の `mod` は使えます）、導関数、定数でない値のあいだのループは使えません。
+- `Fragment` はピクセルの色を、乗算済みアルファで、赤・緑・青・アルファをそれぞれ 0 から 1 で返します。`pos` はボックスの左上からのピクセル中心の位置（ポイント）、`dst` は同じ位置のピクセル単位です。`rectSize()` はボックスのサイズ（ポイント）、`pixelScale()` は 1 ポイントあたりのピクセル数です。
+- 言語には `bool`、`int`、`float`、`vec2` から `vec4`、`ivec2` から `ivec4`、`mat2` から `mat4` とその配列、GLSL の組み込み関数（`sin`、`mix`、`smoothstep`、`dot` など）、独自の関数、`if`、`for` があります。エクスポートした変数が uniform です。
+- `uniforms` は名前で値を設定します。スカラーは一つの数、ベクトルはその成分、行列は列を順に並べたものです（int や bool も数で書きます）。値が変わるとボックスを描き直し、指定しなかった uniform は 0 になります。
+- `var Time float` はシェーダーが表示されてからの秒数です。`animated` で動かすと、ディスプレイが描くフレームごとにボックスを描きます。
+- コンパイラーはシェーダーのエラーを行番号付きで報告し、Android で実行できない部分もすべてのプラットフォームで同じように報告します。AGSL は GLSL ES 1.00 の言語なので、符号なし整数、ビット演算、整数の剰余（float の `mod` は使えます）、導関数、上下限が定数でないループは使えません。
 
-シェーダーは、iOS と macOS では Metal（`CAMetalLayer`）、Android では AGSL（`RuntimeShader`）、ブラウザーでは WebGL 2（プログラムを GLSL ES 3.00 に変換）、Windows では Direct3D 11（HLSL に変換。GPU がない環境では、システムのソフトウェアラスタライザーである WARP を使用）、Linux では OpenGL（GLSL に変換し、GTK のコンテキストでテクスチャに描いたものを GTK が描画）で動きます。Windows では、フレームをメインスレッドの外でレンダリングし、準備ができたところで表示します。GL を使えない Linux（ドライバーがない、`GDK_DISABLE=gl` を指定しているなど）では、代わりに CPU でプログラムを実行します。複数のコアを使い、メインスレッドの外で実行しますが、大きなボックスやアニメーションするボックスは、解像度を落としてレンダリングしてから拡大します。最初のフレームが出るまでの代わりとして、ボックスには `Background` を指定してください。
+iOS と macOS では Metal（`CAMetalLayer`）、Android 13 以降では AGSL（`RuntimeShader`。それより前は空のボックス）、ブラウザーでは WebGL 2（GLSL ES 3.00）、Windows では Direct3D 11（HLSL。GPU がないときはシステムのソフトウェアラスタライザー WARP）、Linux では OpenGL（GTK のコンテキストで、GTK が描くテクスチャーに描画）です。Windows ではフレームをメインスレッドの外で描き、できあがったものから表示します。GL のない Linux（ドライバーがない、`GDK_DISABLE=gl`）では、プログラムを代わりに CPU で、すべてのコアに分けてメインスレッドの外で実行し、大きいボックスやアニメーションするボックスは解像度を下げて描いてから拡大します。最初のフレームが出るまでの代わりに、ボックスに `background` を付けておいてください。
 
 ## コンテナー
 

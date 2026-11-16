@@ -1,0 +1,3 @@
+name = "asuka/chart"
+version = "0.1.0"
+description = "Charts: lines, areas, bars and points over a value axis"

@@ -1,0 +1,39 @@
+import asuka/lottie
+
+component Check {
+  state playing = true
+  state progress = 0.0
+  state tinted = false
+  state done = "playing"
+
+  Column {
+    lottie.View("success.json") {
+      bind playing: playing
+      bind progress: progress
+      loop: false
+      speed: 1.5
+      marker: "draw"
+      overrides: if tinted { [lottie.colors("Ring", light: #0a84ff, dark: #64d2ff), lottie.opacity("Glow", 0.5)] } else { [] }
+      fit: .cover
+      label: "A check mark drawn in a circle"
+      width: 200
+      height: 200
+      on complete { done = "done" }
+      on error(m) { done = m }
+    }
+    Text(done)
+    Text("at {progress}")
+    Button("Tint") { on press { tinted = !tinted } }
+  }
+}
+
+app { Check() }
+
+test "an animation is an empty box on the fake host" {
+  let app = mount(Check())
+  await app.idle()
+  app.expect("playing")
+  app.tap("Tint")
+  await app.idle()
+  app.expect("at 0")
+}

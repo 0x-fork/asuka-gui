@@ -17,13 +17,13 @@ const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerMod
 const errorIndex = { canceled: 0 };
 const errorMessage = ["webauth: canceled"];
 
-/** One of the errors the package declares (native.NewError): throw new WebauthError("canceled"). */
-export class WebauthError extends DeclaredError {
+/** One of the errors the package declares (native.NewError): throw new WebAuthError("canceled"). */
+export class WebAuthError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
     if (i === undefined) throw new Error(`no error ${name}`);
     super(i, errorMessage[i]);
-    this.name = "WebauthError";
+    this.name = "WebAuthError";
   }
 }
 

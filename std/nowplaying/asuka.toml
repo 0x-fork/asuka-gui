@@ -1,0 +1,10 @@
+name = "asuka/nowplaying"
+version = "0.1.0"
+description = "What the app plays, where the system shows media, and the commands it sends back"
+
+[ios]
+# It plays on with the screen locked, as the lock screen's controls drive it.
+backgroundModes = ["audio"]
+
+[android]
+permissions = ["android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK", "android.permission.POST_NOTIFICATIONS"]

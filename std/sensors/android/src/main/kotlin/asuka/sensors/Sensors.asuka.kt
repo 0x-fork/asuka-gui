@@ -63,13 +63,13 @@ public data class Steps(
 )
 
 /** The errors the package declares , which its callers get as those values. */
-public enum class SensorsError(val message: String) {
+public enum class SensorError(val message: String) {
     NOT_AVAILABLE("sensors: not available"),
     NOT_ALLOWED("sensors: not allowed");
 }
 
 /** Throws one of the package's declared errors. */
-public class SensorsException(val error: SensorsError) : Exception(error.message), AsukaDeclaredError {
+public class SensorException(val error: SensorError) : Exception(error.message), AsukaDeclaredError {
     override val asukaIndex: Int get() = error.ordinal
 }
 

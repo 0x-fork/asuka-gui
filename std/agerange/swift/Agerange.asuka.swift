@@ -48,7 +48,7 @@ public struct Range: Sendable {
 
 /// The errors the package declares , which its callers get
 /// as those values.
-public enum AgerangeError: Error, AsukaDeclaredError, LocalizedError {
+public enum AgeRangeError: Error, AsukaDeclaredError, LocalizedError {
     case notAvailable
 
     public var asukaIndex: UInt32 {

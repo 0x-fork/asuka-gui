@@ -161,7 +161,7 @@ func (g *gsGen) view(v *View) {
 	g.printf("// implement%s makes Go's implementation the %s on this platform: call\n// it from an init function of a file built for it.\n", n, n)
 	g.printf("func implement%s(make func(events %sEvents) %sNative) {\n", n, n, n)
 	g.printf("\tnative.RegisterView(%q, func(ctx native.Context) native.View {\n", g.p.Path+"#"+n)
-	g.printf("\t\tv := make(%sEvents{ctx})\n\t\treturn native.GoView(v, func(name string, value []byte) {\n\t\t\tvar s *native.Session // a view's values hold no objects\n\t\t\t_ = s\n\t\t\tr := native.NewReader(value)\n\t\t\tswitch name {\n", n)
+	g.printf("\t\tv := make(%sEvents{ctx})\n\t\tif v == nil {\n\t\t\treturn nil // none here: the host shows nothing (the Mac: the package's Swift)\n\t\t}\n\t\treturn native.GoView(v, func(name string, value []byte) {\n\t\t\tvar s *native.Session // a view's values hold no objects\n\t\t\t_ = s\n\t\t\tr := native.NewReader(value)\n\t\t\tswitch name {\n", n)
 	for _, f := range v.Props {
 		g.printf("\t\t\tcase %q:\n\t\t\t\tif a := %s; r.Err() == nil {\n\t\t\t\t\tv.Set%s(a)\n\t\t\t\t}\n", f.Name, g.dec(f.Type, "r"), f.Name)
 	}

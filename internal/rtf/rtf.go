@@ -29,12 +29,14 @@ type Run struct {
 	Color      *Color
 	Background *Color
 	Link       string
+	// Size is its size in points (0: the document's).
+	Size float32
 }
 
 // sameStyle reports whether a and b look the same.
 func sameStyle(a, b Run) bool {
 	return a.Bold == b.Bold && a.Italic == b.Italic && a.Underline == b.Underline && a.Strike == b.Strike &&
-		a.Mono == b.Mono && a.Link == b.Link && eqColor(a.Color, b.Color) && eqColor(a.Background, b.Background)
+		a.Mono == b.Mono && a.Link == b.Link && a.Size == b.Size && eqColor(a.Color, b.Color) && eqColor(a.Background, b.Background)
 }
 
 func eqColor(a, b *Color) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
@@ -73,7 +75,11 @@ func Write(runs []Run, d Doc) []byte {
 				continue
 			}
 			body.WriteByte('{')
-			fmt.Fprintf(&body, `\f%d\fs%d`, map[bool]int{false: 0, true: 1}[r.Mono], half)
+			size := half
+			if r.Size > 0 {
+				size = int(r.Size*2 + 0.5)
+			}
+			fmt.Fprintf(&body, `\f%d\fs%d`, map[bool]int{false: 0, true: 1}[r.Mono], size)
 			if r.Bold {
 				body.WriteString(`\b`)
 			}

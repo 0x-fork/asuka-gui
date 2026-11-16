@@ -28,6 +28,7 @@ import (
 	. "github.com/egoist/asuka/internal/gtk"
 	"github.com/egoist/asuka/internal/winstate"
 	"github.com/egoist/asuka/layout"
+	"github.com/egoist/asuka/native"
 	"github.com/egoist/asuka/ops"
 	"github.com/egoist/asuka/ui"
 )
@@ -245,6 +246,12 @@ func newHost() *Host {
 	h.appName = appName()
 	h.appID = appID(h.appName)
 	h.assets = assetsDir()
+	native.SetAssets(h.assets)
+	native.SetRaise(func() { h.afterCore(h.showMain) })
+	native.SetColorResolver(func(c uint64) ([4]float32, bool) {
+		r, ok := h.resolve(ops.Color(c))
+		return [4]float32{r.R, r.G, r.B, r.A}, ok
+	})
 	h.wake = Waker(h.runPosted)
 	return h
 }

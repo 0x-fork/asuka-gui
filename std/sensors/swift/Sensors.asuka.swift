@@ -53,7 +53,7 @@ public struct Steps: Sendable {
 
 /// The errors the package declares , which its callers get
 /// as those values.
-public enum SensorsError: Error, AsukaDeclaredError, LocalizedError {
+public enum SensorError: Error, AsukaDeclaredError, LocalizedError {
     case notAvailable
     case notAllowed
 

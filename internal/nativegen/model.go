@@ -158,6 +158,10 @@ type Package struct {
 	// Asuka: declared in Asuka (LoadAsuka), whose compiler makes the
 	// calling side; there's no Go client to generate.
 	Asuka bool
+	// ErrorName is the name of the package's one enum of declared errors
+	// (an Asuka package's enum ... : Error), which the platforms' error
+	// types are named after; "": the package's name and Error.
+	ErrorName string
 }
 
 // declares reports whether the package declares a type of the name.

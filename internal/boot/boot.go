@@ -179,7 +179,3 @@ func InBackground() bool { return Background == "1" || Background == "true" }
 // (KeepRunning, or InBackground).
 func KeepsRunning() bool { return KeepRunning || InBackground() }
 
-// ShaderGLSL, set where the app links the shader compiler (package
-// shader, on js/wasm), turns a ui.Shader's code into the GLSL ES 3.00
-// fragment shader the web host draws it with.
-var ShaderGLSL func(code []byte) (string, error)

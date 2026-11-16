@@ -62,12 +62,12 @@ public data class Range(
 )
 
 /** The errors the package declares , which its callers get as those values. */
-public enum class AgerangeError(val message: String) {
+public enum class AgeRangeError(val message: String) {
     NOT_AVAILABLE("agerange: not available");
 }
 
 /** Throws one of the package's declared errors. */
-public class AgerangeException(val error: AgerangeError) : Exception(error.message), AsukaDeclaredError {
+public class AgeRangeException(val error: AgeRangeError) : Exception(error.message), AsukaDeclaredError {
     override val asukaIndex: Int get() = error.ordinal
 }
 

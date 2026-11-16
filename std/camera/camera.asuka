@@ -1,0 +1,117 @@
+// Package asuka/camera shows what the camera sees, live (camera.View),
+// takes photos and records videos from it, reads the codes it sees, and
+// shows the system's camera screen (take). AVFoundation on iOS and
+// macOS, CameraX on Android, getUserMedia on the web, Media Foundation on
+// Windows, GStreamer on Linux. An app that imports it is given the
+// camera's and the microphone's purpose strings (asuka.toml's
+// ios.usage.NSCameraUsageDescription says better).
+//
+//   camera.View {
+//     scan: true
+//     grow: 1
+//     on code(c) { status = "{c.kind}: {c.value}" }
+//     on error(m) { status = m }
+//   }
+//   Button("Take") { on press { last = try await camera.capture() } }
+
+/// Which camera a View shows.
+pub enum Facing {
+  back
+  front
+}
+
+/// What a View is set up for.
+pub enum Mode {
+  /// Photos (capture).
+  photo
+  /// Videos (record, asuka/record), and photos.
+  video
+}
+
+/// A code the camera read: its kind (asuka/scan's: "qr", "ean13",
+/// "upca", "code128"...) and what it says.
+pub struct Code {
+  kind: string
+  value: string
+}
+
+/// What the camera fails with.
+pub enum CameraError: Error {
+  /// camera: there's no camera
+  noCamera
+  /// camera: no camera view is showing
+  noView
+  /// camera: not allowed
+  notAllowed
+}
+
+/// What the camera sees, live, filling its box: for a capture screen of
+/// the app's own. It asks for the camera the first time, and runs while
+/// it's on screen; capture and record take from it.
+pub native component View {
+  prop facing: Facing = .back
+  prop mode: Mode = .photo
+  /// Reads codes in what it sees: code is called as one comes into view,
+  /// once while it stays (again after it's been out of view a second).
+  prop scan: bool = false
+  /// The kinds of code to read ("qr", "ean13"...); empty: every kind.
+  prop codes: [string] = []
+  event code(code: Code)
+  /// It can't show: not allowed, no camera.
+  event error(message: string)
+}
+
+/// The platform's camera, and the View on screen.
+native interface Camera {
+  /// Shows the system's camera screen: the photo's file, "" if the user
+  /// cancelled.
+  /// @mainThread
+  async fn take() -> string
+  /// A photo from the View on screen: its file.
+  async fn capture() -> string
+  /// Records a video from the View on screen (in video mode) until stop
+  /// (or maxDuration, if not 0): its file.
+  async fn record(mute: bool, maxDuration: Duration) -> string
+  fn stopRecording()
+}
+
+let cam = try? Camera()
+
+fn camera() throws -> Camera {
+  if let c = cam {
+    return c
+  }
+  return try Camera()
+}
+
+/// Shows the system's camera screen (iOS's, Android's camera app; a
+/// sheet on the desktop, the file picker's camera on the web) and gives
+/// the photo's file (a JPEG in the app's caches: move it to keep it), or
+/// none if the user cancelled.
+pub async fn take() throws -> string? {
+  let path = try await camera().take()
+  if path.isEmpty() {
+    return none
+  }
+  return path
+}
+
+/// Takes a photo from the camera.View on screen: its file (a JPEG in the
+/// app's caches).
+pub async fn capture() throws -> string {
+  return try await camera().capture()
+}
+
+/// Records a video from the camera.View on screen, in video mode, until
+/// stopRecording (or maxDuration, if not 0): its file (in the app's
+/// caches). With the microphone, unless mute (or not allowed).
+pub async fn record(mute: bool = false, maxDuration: Duration = 0s) throws -> string {
+  return try await camera().record(mute, maxDuration)
+}
+
+/// Ends the recording: record gives its file.
+pub fn stopRecording() {
+  if let c = cam {
+    try? c.stopRecording()
+  }
+}

@@ -1,0 +1,36 @@
+import asuka/speech
+
+component Talk {
+  state said = "nothing"
+
+  Column {
+    Button("Speak") {
+      on press {
+        do {
+          try await speech.speak("Hello", options: speech.Options(rate: 1.5))
+          said = "spoke"
+        } catch e {
+          said = "no speech"
+        }
+      }
+    }
+    Text(said)
+    Text(if speech.speaking() { "speaking" } else { "quiet" })
+  }
+}
+
+app { Talk() }
+
+test "with no platform code, speaking says why, and nothing speaks" {
+  let app = mount(Talk())
+  await app.idle()
+  app.expect("quiet")
+  app.tap("Speak")
+  await app.idle()
+  app.expect("no speech")
+  speech.stop()
+  speech.pause()
+  speech.resume()
+  let vs = (try? await speech.voices()) ?? []
+  expect(vs.isEmpty())
+}

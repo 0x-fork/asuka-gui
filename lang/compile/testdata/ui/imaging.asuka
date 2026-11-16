@@ -1,0 +1,75 @@
+import asuka/imageedit
+import asuka/scan
+import asuka/transcribe
+import asuka/vision
+
+component Lab {
+  state status = "idle"
+
+  Column {
+    Text(status)
+    Button("Edit") {
+      on press {
+        do {
+          let r = try await imageedit.edit("photo.jpg", [.resize(320, 0), .rotate(90), .fill(0, 0, 10, 10, red: 255, green: 0, blue: 0), .pixelate(0, 0, 20, 20, block: 4)], quality: 0.8)
+          status = "{r.width}×{r.height}"
+        } catch e {
+          status = "no codecs"
+        }
+      }
+    }
+    Button("Frame") {
+      on press {
+        let r = try? await imageedit.videoFrame("clip.mp4", at: 1500ms, format: .png)
+        status = if r.isNone() { "no frame" } else { "frame" }
+      }
+    }
+    Button("Scan") {
+      on press {
+        let codes = (try? await scan.file("photo.jpg", kinds: ["qr"])) ?? []
+        status = "{codes.count()} codes"
+      }
+    }
+    Button("Look") {
+      on press {
+        let r = (try? await vision.analyze("photo.jpg", faces: false)) ?? vision.Result()
+        let b = vision.Box(x: 0, y: 0, w: 0.5, h: 0.5).union(vision.Box(x: 0.25, y: 0.25, w: 0.5, h: 0.5))
+        status = "{r.lines.count()} lines, {b.w}"
+      }
+    }
+    Button("Listen") {
+      on press {
+        do {
+          let r = try await transcribe.file("note.m4a")
+          status = r.text
+        } catch transcribe.TranscribeError.notAvailable {
+          status = "not here"
+        } catch e {
+          status = "can't transcribe"
+        }
+      }
+    }
+  }
+}
+
+app { Lab() }
+
+test "with no platform code, each says why" {
+  let app = mount(Lab())
+  await app.idle()
+  app.tap("Edit")
+  await app.idle()
+  app.expect("no codecs")
+  app.tap("Frame")
+  await app.idle()
+  app.expect("no frame")
+  app.tap("Scan")
+  await app.idle()
+  app.expect("0 codes")
+  app.tap("Look")
+  await app.idle()
+  app.expect("0 lines, 0.75")
+  app.tap("Listen")
+  await app.idle()
+  app.expect("can't transcribe")
+}

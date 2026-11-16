@@ -13,7 +13,12 @@ import (
 func SwiftFile(p *Package) string { return upperCamel(p.Name) + ".asuka.swift" }
 
 // SwiftErrorType is the Swift enum of the package's declared errors.
-func SwiftErrorType(p *Package) string { return upperCamel(p.Name) + "Error" }
+func SwiftErrorType(p *Package) string {
+	if p.ErrorName != "" {
+		return p.ErrorName
+	}
+	return upperCamel(p.Name) + "Error"
+}
 
 type swiftGen struct {
 	p       *Package

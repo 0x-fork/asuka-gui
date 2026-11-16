@@ -81,7 +81,11 @@ public protocol Greeter: AnyObject {
         }
     }
 
+<<<<<<< HEAD
     public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
+=======
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+>>>>>>> t3/port-std-stdlib-modules
         var r = input
         switch (iface, method) {
         default:
