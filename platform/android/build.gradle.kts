@@ -35,10 +35,15 @@ providers.gradleProperty("asukaMavenRepo").orNull?.let { repo ->
 // the host is (not in the package, which may be read-only), with the
 // host's SDK levels and Java, and its Kotlin to call (dev.asuka): a
 // package's build.gradle.kts says only its namespace and its own
-// dependencies.
+// dependencies. Each package's directory builds in a directory of its own:
+// the host's build is shared by every checkout of a package (another
+// clone's, a worktree's std/), and Kotlin's incremental caches keep its
+// sources' paths, so another's would compile against what they recorded.
 subprojects {
     if (!name.startsWith("native-")) return@subprojects
-    layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("native/$name"))
+    val source = java.security.MessageDigest.getInstance("SHA-256").digest(projectDir.absolutePath.toByteArray())
+        .take(4).joinToString("") { "%02x".format(it) }
+    layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("native/$name-$source"))
     plugins.withId("com.android.library") {
         extensions.configure<com.android.build.gradle.LibraryExtension> {
             compileSdk = 36
