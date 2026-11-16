@@ -145,6 +145,9 @@ func (w *windows) run(t *testing.T, dir, exe string, env map[string]string, args
 		fmt.Fprintf(&cmd, " \"%s\"", a)
 	}
 	cmd.WriteString(" > out.txt 2>&1\r\necho %ERRORLEVEL% > code.txt\r\n")
+	// A run before in the job left its output.
+	os.Remove(filepath.Join(local, "code.txt"))
+	os.Remove(filepath.Join(local, "out.txt"))
 	if err := os.WriteFile(filepath.Join(local, "run.cmd"), []byte(cmd.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}

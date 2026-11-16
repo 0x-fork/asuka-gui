@@ -225,8 +225,9 @@ void wh_crash_start(void) {
 	char *dir = asuka_crash_start(info);
 	free(info);
 	if (dir && *dir) {
+		// The record's directory: its inbox takes what hosts write.
 		wchar_t *wd = wh_wide(dir, -1);
-		wcsncpy(inbox, wd, WH_LEN(inbox) - 1);
+		swprintf(inbox, WH_LEN(inbox), L"%ls\\inbox", wd);
 		free(wd);
 		CreateDirectoryW(inbox, NULL);
 		SetUnhandledExceptionFilter(unhandled);

@@ -446,6 +446,10 @@ static void step(const char *verb, const char *arg) {
 		if (!wh_open_bar_menu(warg)) wh_log("automation: no menu \"%s\"", arg);
 	} else if (!strcmp(verb, "menu")) {
 		if (!wh_choose_menu_item(warg)) wh_log("automation: no menu item \"%s\"", arg);
+	} else if (!strcmp(verb, "fault")) {
+		// An access violation nothing handles: what the crash record's
+		// exception filter (crash.c) reports.
+		*(volatile int *)(uintptr_t)8 = 1;
 	} else if (!strcmp(verb, "close")) {
 		SendMessageW(last_window(), WM_CLOSE, 0, 0);
 	} else if (!strcmp(verb, "dpi")) {
