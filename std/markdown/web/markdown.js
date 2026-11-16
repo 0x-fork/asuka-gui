@@ -2,12 +2,18 @@
 // page's own elements (headings, paragraphs, code blocks, rules, tables'
 // rows), styled after the platform's text: one selection, links that open
 // in a new tab. Text is only ever text (textContent), never HTML.
+//
+// An element a paragraph, kept while its paragraph is the same: a change
+// (a reply streaming in) replaces the elements from the first paragraph
+// that differs, so the ones before keep their layout and the selection in
+// them. The space between two depends on both, in CSS (siblings).
 
 const css = `
 .asuka-markdown { display: block; color: var(--asuka-label); line-height: 1.45; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
-.asuka-markdown > * { margin: 0 0 0.75em; }
-.asuka-markdown > .tight { margin-bottom: 0.25em; }
-.asuka-markdown > :last-child { margin-bottom: 0; }
+.asuka-markdown > * { margin: 0; }
+.asuka-markdown > * + * { margin-top: 0.75em; }
+.asuka-markdown > .tight + .tight { margin-top: 0.25em; }
+.asuka-markdown > .row + .row { margin-top: 0; }
 .asuka-markdown h1, .asuka-markdown h2, .asuka-markdown h3, .asuka-markdown h4, .asuka-markdown h5, .asuka-markdown h6 { line-height: 1.25; font-weight: 650; }
 .asuka-markdown h1 { font-size: 1.6em; } .asuka-markdown h2 { font-size: 1.35em; } .asuka-markdown h3 { font-size: 1.15em; }
 .asuka-markdown h4, .asuka-markdown h5, .asuka-markdown h6 { font-size: 1em; }
@@ -17,7 +23,7 @@ const css = `
 .asuka-markdown code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; background: var(--asuka-fill); border-radius: 4px; padding: 0.1em 0.3em; }
 .asuka-markdown pre { background: var(--asuka-secondary-background); border-radius: 8px; padding: 10px 12px; overflow-x: auto; white-space: pre; }
 .asuka-markdown pre code { background: none; padding: 0; font-size: 0.875em; }
-.asuka-markdown hr { border: none; border-top: 1px solid var(--asuka-separator); margin: 1em 0; }
+.asuka-markdown > hr { border: none; border-top: 1px solid var(--asuka-separator); padding-bottom: 0.25em; }
 .asuka-markdown .row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 1em; border-bottom: 1px solid var(--asuka-separator); padding: 2px 0; }
 `;
 
@@ -91,6 +97,9 @@ export function block(p) {
   return el;
 }
 
+/** key is what a paragraph says, as a string: two that say the same have the same. */
+const key = (p) => JSON.stringify(p, (_, x) => (typeof x === "bigint" ? Number(x) : x));
+
 export function makeDocument(events) {
   if (!styled) {
     styled = true;
@@ -100,10 +109,16 @@ export function makeDocument(events) {
   }
   const el = document.createElement("div");
   el.className = "asuka-markdown";
+  let shown = []; // the paragraphs' keys, an element each in el
   return {
     el,
     setParagraphs(v) {
-      el.replaceChildren(...v.map(block));
+      const keys = v.map(key);
+      let keep = 0;
+      while (keep < shown.length && keep < keys.length && shown[keep] === keys[keep]) keep++;
+      while (el.childNodes.length > keep) el.lastChild.remove();
+      for (let i = keep; i < v.length; i++) el.appendChild(block(v[i]));
+      shown = keys;
     },
     measure(c) {
       // As wide as it's given, as tall as its text at that width.

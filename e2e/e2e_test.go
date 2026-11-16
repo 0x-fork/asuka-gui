@@ -13,6 +13,7 @@
 //	go test -tags e2e ./e2e -run IOS      # a booted simulator, else the newest iPhone
 //	go test -tags e2e ./e2e -run Android  # a running emulator or a device
 //	go test -tags e2e ./e2e -run Web      # headless Chrome (ASUKA_CHROME: its path)
+//	go test -tags e2e ./e2e -run StdWebViews  # std packages' web views (std/*/tests/*_view_test.js)
 //	xvfb-run -a dbus-run-session go test -tags e2e ./e2e -run Linux  # GTK 4, on Linux
 //	ASUKA_DEVICE=emulator-5556 go test -tags e2e ./e2e -run Android  # one of several
 //

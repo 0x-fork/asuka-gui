@@ -162,7 +162,10 @@ of styled text, which each platform shows as its own: an attributed
 string in a text view on iOS and macOS, spans in a TextView on Android,
 the page's elements on the web, a rich edit on Windows and a label a
 block on Linux (as GNOME apps show rich text: each block selects on its
-own). See [`examples/markdown`](../examples/markdown).
+own). The text is read again as it changes, but a view replaces only
+what changed: the blocks from the first that differs, so as a reply
+streams in, what's above its last block keeps its layout and selection.
+See [`examples/markdown`](../examples/markdown).
 
 ## Buttons
 

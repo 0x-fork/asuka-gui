@@ -1691,7 +1691,13 @@ behavior.
   shown differs; what the Markdown says doesn't. While a reply streams in, its text is healed once,
   in the core, before it reaches any platform (`markdown.heal`: an unclosed
   emphasis, a link being written), so a half-written document renders as
-  it will. Links open with the platform.
+  it will. Links open with the platform. The text is read again as it
+  changes (md4c over all of it: CommonMark has no incremental reading,
+  as a line can turn the paragraph above it into a heading), but each
+  view keeps a block per paragraph and replaces only those from the
+  first that differs: a streamed reply rewrites its last block or two a
+  frame, and what's above keeps its layout and selection. Each
+  platform's view test (std/markdown/tests' streamed reply) counts it.
 
 **Not yet:** selection for screen reader users (VoiceOver and TalkBack
 read the texts and links but don't select across them).
