@@ -276,6 +276,7 @@ const (
 	CtxGlobal                       // a package-level initializer
 	CtxSpawn                        // spawn { }
 	CtxApp                          // app { }
+	CtxLocalFn                      // a fn declared in a block (LocalFn)
 )
 
 // A FuncCtx is a function body being checked: a declared function, or a
@@ -340,6 +341,8 @@ type Program struct {
 	Root     *Package
 	Info     *Info
 	Diags    []Diagnostic
+	// Warnings are what's worth saying that doesn't stop the build.
+	Warnings []Diagnostic
 	// Catalog is the app's catalogs (tr), or nil.
 	Catalog *Catalog
 	checker *Checker

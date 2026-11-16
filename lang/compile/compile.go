@@ -322,6 +322,7 @@ func (l *loader) compile(root *unit) *Result {
 	prog := c.Program(root.pkg)
 	res.Program = prog
 	res.Diags = append(append([]check.Diagnostic{}, l.diags...), prog.Diags...)
+	res.Warnings = append(res.Warnings, prog.Warnings...)
 	if len(res.Diags) > 0 || l.opts.CheckOnly {
 		return res
 	}

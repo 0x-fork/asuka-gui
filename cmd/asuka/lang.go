@@ -88,6 +88,12 @@ func countTests(res *compile.Result, pattern string) int {
 // working directory; it reports whether there were any.
 func printDiags(w io.Writer, res *compile.Result) bool {
 	wd, _ := os.Getwd()
+	for _, d := range res.Warnings {
+		if rel, err := filepath.Rel(wd, d.Pos.Filename); err == nil && !strings.HasPrefix(rel, "..") {
+			d.Pos.Filename = rel
+		}
+		fmt.Fprintf(w, "%s: warning: %s\n", d.Pos, d.Msg)
+	}
 	for _, d := range res.Diags {
 		if rel, err := filepath.Rel(wd, d.Pos.Filename); err == nil && !strings.HasPrefix(rel, "..") {
 			d.Pos.Filename = rel

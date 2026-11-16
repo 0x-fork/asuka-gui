@@ -324,6 +324,9 @@ func (b *fb) throwMsg(msg string) {
 func (b *fb) ident(e *syntax.Ident, dst int) int {
 	switch o := b.l.info.Uses[e].(type) {
 	case *check.Var:
+		if o.Fn != nil {
+			return b.copyTo(b.localFnValue(o.Fn, e), dst)
+		}
 		return b.copyTo(b.readVar(o, e), dst)
 	case *check.Member:
 		return b.copyTo(b.readMember(o, e), dst)

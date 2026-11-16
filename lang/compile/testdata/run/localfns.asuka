@@ -1,0 +1,149 @@
+// Local fns: declared in a block, recursive, mutually recursive with
+// their neighbors, sharing what they capture, and values.
+
+struct Node {
+  name: string
+  children: [Node] = []
+}
+
+fn count(root: Node) -> int {
+  var seen = 0
+  fn walk(n: Node) {
+    seen += 1
+    for c in n.children { walk(c) }
+  }
+  walk(root)
+  return seen
+}
+
+fn parity(n: int) -> string {
+  fn isEven(k: int) -> bool = if k == 0 { true } else { isOdd(k - 1) }
+  fn isOdd(k: int) -> bool = if k == 0 { false } else { isEven(k - 1) }
+  return if isEven(n) { "even" } else { "odd" }
+}
+
+fn fib(n: int) -> int {
+  var calls = 0
+  fn go(k: int) -> int {
+    calls += 1
+    if k < 2 { return k }
+    return go(k - 1) + go(k - 2)
+  }
+  let r = go(n)
+  return r * 1000 + calls
+}
+
+fn names(root: Node) -> [string] {
+  var out: [string] = []
+  let prefix = "> "
+  fn visit(n: Node, depth: int) {
+    out.push("{prefix.repeat(depth)}{n.name}")
+    n.children.map(c => {
+      visit(c, depth + 1)
+      return 0
+    })
+  }
+  visit(root, 0)
+  return out
+}
+
+fn checked(n: int) throws -> int {
+  fn down(k: int) throws -> int {
+    if k < 0 { throw Error("negative: {k}") }
+    if k == 0 { return 0 }
+    return 1 + try down(k - 1)
+  }
+  return try down(n)
+}
+
+fn asValue(xs: [int]) -> [int] {
+  var offset = 10
+  fn shift(x: int) -> int = x + offset
+  offset = 100
+  return xs.map(shift)
+}
+
+struct Counter {
+  base: int
+
+  fn tally(xs: [int]) -> int {
+    fn sum(i: int) -> int = if i == xs.count() { base } else { xs[i] + sum(i + 1) }
+    return sum(0)
+  }
+}
+
+async fn later(n: int) -> int {
+  async fn wait(k: int) -> int {
+    if k == 0 { return n }
+    await sleep(1ms)
+    return await wait(k - 1)
+  }
+  return await wait(3)
+}
+
+fn outer(n: int) -> int {
+  var total = 0
+  fn add(k: int) {
+    total += k
+    fn deeper(j: int) {
+      if j > 0 {
+        total += 1
+        deeper(j - 1)
+      }
+      if j == 0 && k > 1 { add(k - 1) }
+    }
+    deeper(k)
+  }
+  add(n)
+  return total
+}
+
+test "local fns" {
+  let tree = Node(name: "a", children: [Node(name: "b", children: [Node(name: "c")]), Node(name: "d")])
+  print(count(tree))
+  print(parity(10))
+  print(parity(7))
+  print(fib(10))
+  print(names(tree))
+  print(try checked(4))
+  print(try? checked(-1) ?? -1)
+  print(asValue([1, 2]))
+  print(Counter(base: 5).tally([1, 2, 3]))
+  print(await later(42))
+  print(outer(3))
+}
+
+test "deep recursion frees what it made" {
+  var made = 0
+  fn build(depth: int) -> Node {
+    made += 1
+    if depth == 0 { return Node(name: "leaf") }
+    return Node(name: "n{depth}", children: [build(depth - 1), build(depth - 1)])
+  }
+  fn size(n: Node) -> int {
+    var s = 1
+    for c in n.children { s += size(c) }
+    return s
+  }
+  for _ in 0..<20 {
+    let t = build(8)
+    expect(size(t) == 511)
+  }
+  print(made)
+}
+
+// Output:
+// 4
+// even
+// odd
+// 55177
+// ["a","> b","> > c","> d"]
+// 4
+// -1
+// [101,102]
+// 11
+// 42
+// 12
+// ok local fns
+// 10220
+// ok deep recursion frees what it made

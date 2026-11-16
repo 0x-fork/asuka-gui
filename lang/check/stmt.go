@@ -7,8 +7,21 @@ import (
 )
 
 func (c *Checker) stmts(items []syntax.Item) {
-	for _, it := range items {
-		c.stmt(it)
+	for i := 0; i < len(items); i++ {
+		if _, ok := items[i].(*syntax.FuncDecl); ok {
+			// The fns declared one after another: a group.
+			j := i + 1
+			for j < len(items) {
+				if _, ok := items[j].(*syntax.FuncDecl); !ok {
+					break
+				}
+				j++
+			}
+			c.localFns(items[i:j])
+			i = j - 1
+			continue
+		}
+		c.stmt(items[i])
 	}
 }
 
@@ -92,7 +105,7 @@ func (c *Checker) stmt(it syntax.Item) {
 		c.errorf(it, "%s isn't a statement: %s", itemName(it), notStatementHint(it))
 	case *syntax.BadItem:
 	case *syntax.FuncDecl:
-		c.errorf(s, "a fn is declared at the top of a file, or in a component's or a store's body; here, use a closure: let %s = (…) => …", s.Name.Name)
+		c.errorf(s, "a fn here goes in a block of statements: put it in braces, or use a closure, let %s = (…) => …", s.Name.Name)
 	default:
 		c.errorf(it, "%s isn't a statement: %s", itemName(it), notStatementHint(it))
 	}
@@ -204,6 +217,7 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 	switch s.Op {
 	case syntax.ASSIGN:
 		c.assign(s.Value, lt, "the value")
+		c.selfThroughVar(s)
 	case syntax.COALESCE_ASSIGN:
 		if !IsOptional(lt) && !IsInvalid(lt) {
 			c.errorf(s.Target, "%s isn't optional: ??= has nothing to do", typeString(lt))
@@ -257,6 +271,8 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 					hint = "it's a row's item: change the state it comes from"
 				} else if o.Kind == SelfVar {
 					hint = "self is a value"
+				} else if o.Kind == LocalFnVar {
+					hint = "it's a fn: a var holds a closure that changes"
 				} else if o.Ctx != nil && o.Ctx.Kind == CtxLambda && contains(o.Ctx.Params, o) || isParam(o) {
 					hint = "parameters are values: copy it into a var"
 				}
@@ -566,7 +582,7 @@ func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 
 func ctxLabel(ctx *FuncCtx) string {
 	switch ctx.Kind {
-	case CtxFunc, CtxMethod:
+	case CtxFunc, CtxMethod, CtxLocalFn:
 		return "fn " + ctx.Name
 	case CtxHandler:
 		return "a handler"
@@ -1250,7 +1266,7 @@ func (c *Checker) catching(clauses []*syntax.CatchClause, body func()) {
 // cantThrow says that the function around doesn't throw.
 func (c *Checker) cantThrow() string {
 	switch c.ctx.Kind {
-	case CtxFunc, CtxMethod:
+	case CtxFunc, CtxMethod, CtxLocalFn:
 		return c.ctx.Name + " doesn't throw"
 	case CtxLambda:
 		return "this closure doesn't throw where it's passed"
@@ -1260,7 +1276,7 @@ func (c *Checker) cantThrow() string {
 
 func (c *Checker) throwsHint() string {
 	switch c.ctx.Kind {
-	case CtxFunc, CtxMethod:
+	case CtxFunc, CtxMethod, CtxLocalFn:
 		return ", or mark " + c.ctx.Name + " throws"
 	}
 	return ""
@@ -1381,4 +1397,167 @@ func throwsIn(x syntax.Expr) bool {
 		return !found
 	})
 	return found
+}
+
+// ---------------------------------------------------------------------
+// Local fns
+
+type localUse struct {
+	ctx *FuncCtx // where it's used
+	fn  *LocalFn
+}
+
+// localFns checks a group of fns declared one after another in a block:
+// their names first (so they see each other), then their bodies.
+func (c *Checker) localFns(items []syntax.Item) {
+	g := &LocalGroup{Encl: c.ctx}
+	c.localGroups = append(c.localGroups, g)
+	for _, it := range items {
+		d := it.(*syntax.FuncDecl)
+		switch {
+		case d.Pub.IsValid():
+			c.errorf(d, "a fn in a block is its own: pub goes on a file's declarations")
+		case d.Native.IsValid() || d.Extern.IsValid():
+			c.errorf(d, "native and extern fns are declared at the top of a file")
+		case len(d.TypeParams) > 0:
+			c.errorf(d.Name, "a fn in a block isn't generic: declare %s at the top of the file", d.Name.Name)
+		case d.Body == nil && d.Value == nil:
+			c.errorf(d.Name, "fn %s has no body", d.Name.Name)
+		}
+		sig := c.signature(d, nil)
+		for i, p := range sig.Params {
+			if p.Default != nil {
+				c.errorf(d.Params.List[i].Default, "a fn in a block takes its arguments in order, without defaults: declare %s at the top of the file for a default", d.Name.Name)
+			}
+		}
+		ft := &FuncType{Async: sig.Async, Throws: sig.Throws, Result: sig.Result}
+		for _, p := range sig.Params {
+			ft.Params = append(ft.Params, p.Type)
+		}
+		v := c.declareVar(d.Name, ft, false)
+		v.Kind = LocalFnVar
+		lf := &LocalFn{Var: v, Decl: d, Sig: sig, Group: g}
+		v.Fn = lf
+		g.Fns = append(g.Fns, lf)
+	}
+	for _, lf := range g.Fns {
+		c.localFnBody(lf)
+	}
+}
+
+// localFnBody checks a local fn's body: a function of its own, inside
+// the one it's declared in, whose locals it captures as a closure does.
+func (c *Checker) localFnBody(lf *LocalFn) {
+	d := lf.Decl
+	saved := c.ctx
+	savedTry, savedAwait, savedHandled, savedLoops, savedView, savedInDefer := c.inTry, c.inAwait, c.handled, c.loops, c.view, c.inDefer
+	c.inTry, c.inAwait, c.handled, c.loops, c.view, c.inDefer = 0, 0, 0, 0, false, 0
+	savedPartial := c.partial
+	c.partial = nil
+	ctx := c.enter(CtxLocalFn, d, d.Name.Name)
+	lf.Ctx = ctx
+	ctx.Async, ctx.Throws, ctx.Result = lf.Sig.Async, lf.Sig.Throws, lf.Sig.Result
+	for i, p := range lf.Sig.Params {
+		v := c.declareVar(d.Params.List[i].Name, p.Type, false)
+		p.Var = v
+		ctx.Params = append(ctx.Params, v)
+	}
+	switch {
+	case d.Value != nil:
+		if ctx.Result == Void {
+			c.expr(d.Value, nil)
+		} else {
+			c.assign(d.Value, ctx.Result, "the result of "+d.Name.Name)
+		}
+	case d.Body != nil:
+		c.stmts(d.Body.Items)
+		if ctx.Result != Void && !c.terminates(d.Body.Items) {
+			c.errorPos(d.Body.Rbrace, "fn %s must return a %s: it can reach its end without a return", d.Name.Name, typeString(ctx.Result))
+		}
+	}
+	c.leave(saved)
+	c.inTry, c.inAwait, c.handled, c.loops, c.view, c.inDefer = savedTry, savedAwait, savedHandled, savedLoops, savedView, savedInDefer
+	c.partial = savedPartial
+}
+
+// finishLocalFns works out what each group of local fns captures: what
+// their bodies use of the code around them, and what the local fns they
+// use capture (each use of a local fn, a call or a value, needs its
+// group's captures where it is). It goes on until nothing changes, as
+// fns use each other.
+func (c *Checker) finishLocalFns() {
+	for changed := true; changed; {
+		changed = false
+		for _, g := range c.localGroups {
+			seen := map[*Var]bool{}
+			for _, v := range g.Captures {
+				seen[v] = true
+			}
+			for _, lf := range g.Fns {
+				if lf.Ctx == nil {
+					continue
+				}
+				for _, v := range lf.Ctx.Captures {
+					if v.Kind == LocalFnVar || seen[v] {
+						continue
+					}
+					seen[v] = true
+					g.Captures = append(g.Captures, v)
+					changed = true
+				}
+				if lf.Ctx.UsesEnv && !g.UsesEnv {
+					g.UsesEnv = true
+					changed = true
+				}
+			}
+		}
+		for _, u := range c.localUses {
+			g := u.fn.Group
+			for _, v := range g.Captures {
+				v.Captured = true
+				for cc := u.ctx; cc != nil && cc != v.Ctx; cc = cc.Parent {
+					if cc.capIndex == nil || !cc.capIndex[v] {
+						cc.capture(v)
+						changed = true
+					}
+				}
+			}
+			if g.UsesEnv {
+				// As envUse: up to the component's or the store's
+				// function, or its method.
+				owner := g.Encl.Comp
+				for cc := u.ctx; cc != nil; cc = cc.Parent {
+					if (cc.Kind == CtxComponent || cc.Kind == CtxStore || cc.Kind == CtxMethod) && cc.Comp == owner {
+						break
+					}
+					if !cc.UsesEnv {
+						cc.UsesEnv = true
+						changed = true
+					}
+				}
+			}
+		}
+	}
+}
+
+// selfThroughVar warns of walk = n => { … walk(…) … }: a closure kept in
+// a var it captures, so the var's box holds the closure and the closure
+// the box, and neither is ever freed. A local fn calls itself without
+// either holding the other.
+func (c *Checker) selfThroughVar(s *syntax.AssignStmt) {
+	id, ok := unparen(s.Target).(*syntax.Ident)
+	if !ok {
+		return
+	}
+	v, ok := c.info.Uses[id].(*Var)
+	if !ok || !v.Mutable {
+		return
+	}
+	lam, ok := unparen(s.Value).(*syntax.LambdaExpr)
+	if !ok {
+		return
+	}
+	if ctx := c.info.Ctxs[lam]; ctx != nil && ctx.capIndex[v] {
+		c.warnf(lam, "%s calls itself through the variable it's stored in, which keeps it alive forever: declare it fn %s(…)", v.name, v.name)
+	}
 }

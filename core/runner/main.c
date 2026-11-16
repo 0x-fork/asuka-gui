@@ -4,9 +4,11 @@
 // time), and reports each as "ok name" or "FAIL name: message". A test
 // mounts views on the fake host (test.mount: core/host/fake/uitest.h),
 // and has an empty directory of its own as the app's (asuka/fs's
-// appDir), removed after it.
+// appDir), removed after it. With -leaks, a test also fails when objects
+// it made outlive it (its owner disposed, everything it started
+// settled): what it made and didn't free, such as a reference cycle.
 //
-//	asuka-run [-test [pattern]] module.akb
+//	asuka-run [-leaks] [-test [pattern]] module.akb
 #include "vm/vm.h"
 #include "rt/sched.h"
 #include "signal/signal.h"
@@ -69,13 +71,15 @@ static void settle(ak_future *fut) {
 }
 
 int main(int argc, char **argv) {
-	bool test = false, aot = false, app = false;
+	bool test = false, aot = false, app = false, leaks = false;
 	const char *pattern = NULL, *path = NULL;
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "-aot") == 0) {
 			aot = true;
 		} else if (strcmp(argv[i], "-app") == 0) {
 			app = true;
+		} else if (strcmp(argv[i], "-leaks") == 0) {
+			leaks = true;
 		} else if (strcmp(argv[i], "-platform") == 0 && i + 1 < argc) {
 			static const char *names[] = {"", "ios", "android", "macos", "windows", "web", "linux"};
 			const char *want = argv[++i];
@@ -95,7 +99,7 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (!path && !aot) {
-		fprintf(stderr, "usage: asuka-run [-test [pattern]] [-app] [-platform name] (module.akb | -aot)\n");
+		fprintf(stderr, "usage: asuka-run [-leaks] [-test [pattern]] [-app] [-platform name] (module.akb | -aot)\n");
 		return 2;
 	}
 	size_t n = 0;
@@ -153,6 +157,7 @@ int main(int argc, char **argv) {
 			char *dir = ak_fs_temp_dir();
 			ak_fs_set_app_dir(dir);
 			const ak_func *f = ak_module_func(m, fi);
+			int64_t live = ak_obj_live;
 			ak_owner *o = ak_owner_new();
 			run_t r = {f, NULL};
 			ak_with_owner(o, run_test, &r);
@@ -168,6 +173,8 @@ int main(int argc, char **argv) {
 				ak_free(dir);
 			}
 			ak_fs_set_app_dir(NULL);
+			if (leaks && !failure[0] && ak_obj_live > live)
+				snprintf(failure, sizeof failure, "%lld objects it made outlive it", (long long)(ak_obj_live - live));
 			if (failure[0]) {
 				failures++;
 				printf("FAIL %s: %s\n", name, failure);

@@ -116,6 +116,7 @@ func (s *server) resolver(dir string) func(from, path string) (string, string, e
 // clears them for files that have none any more.
 func (s *server) publish(st *pkgState) {
 	byFile := map[string][]check.Diagnostic{}
+	warnings := map[string][]check.Diagnostic{}
 	var files []string
 	if root := st.root(); root != nil {
 		for _, f := range root.Files {
@@ -125,6 +126,11 @@ func (s *server) publish(st *pkgState) {
 		for _, d := range st.res.Diags {
 			if _, ok := byFile[d.Pos.Filename]; ok {
 				byFile[d.Pos.Filename] = append(byFile[d.Pos.Filename], d)
+			}
+		}
+		for _, d := range st.res.Warnings {
+			if _, ok := byFile[d.Pos.Filename]; ok {
+				warnings[d.Pos.Filename] = append(warnings[d.Pos.Filename], d)
 			}
 		}
 	} else {
@@ -154,6 +160,9 @@ func (s *server) publish(st *pkgState) {
 		diags := []Diagnostic{}
 		for _, d := range byFile[name] {
 			diags = append(diags, Diagnostic{Range: diagRange(m, d), Severity: 1, Source: "asuka", Message: d.Msg})
+		}
+		for _, d := range warnings[name] {
+			diags = append(diags, Diagnostic{Range: diagRange(m, d), Severity: 2, Source: "asuka", Message: d.Msg})
 		}
 		params := &PublishDiagnosticsParams{URI: s.uri(name), Diagnostics: diags}
 		if doc := s.docs[name]; doc != nil {
