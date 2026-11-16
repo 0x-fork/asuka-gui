@@ -1126,3 +1126,68 @@ void wh_pop_up_actions(node *target, HWND anchor, node *at, const actions *a, in
 	copy_actions(&j->a, a);
 	wh_after_core(pop_now, j);
 }
+
+// ---- Menus of ops/menu.go's items: a tray icon's ----
+
+// entry_level is a menu's items, from its decoded entries (depth first),
+// as items to build; their titles go in *titles, to free after.
+static mitem *entry_level(const ak_menu_entry_vec *e, uint32_t at, uint32_t count, uint32_t *next, wchar_t ***titles, uint32_t *ntitles) {
+	mitem *v = wh_alloc((count ? count : 1) * sizeof *v);
+	uint32_t i = at;
+	for (uint32_t k = 0; k < count && i < e->len; k++) {
+		const ak_menu_entry *it = &e->data[i];
+		wchar_t *t = wh_wspan(it->title);
+		*titles = wh_realloc(*titles, (*ntitles + 1) * sizeof **titles);
+		(*titles)[(*ntitles)++] = t;
+		v[k].title = t;
+		size_t kl = it->key.len < sizeof v[k].key - 1 ? it->key.len : sizeof v[k].key - 1;
+		memcpy(v[k].key, it->key.p, kl);
+		v[k].key[kl] = 0;
+		v[k].mods = it->mods, v[k].role = it->role, v[k].flags = it->flags, v[k].index = it->index;
+		i++;
+		if (it->flags & AK_MENU_SUBMENU) {
+			v[k].count = it->count;
+			v[k].items = entry_level(e, i, it->count, &i, titles, ntitles);
+		}
+	}
+	*next = i;
+	return v;
+}
+
+// wh_track_menu runs a popup menu of a menu's items (ops/menu.go's, as
+// the tray's icons have them) at p, owned by owner, as the system's tray
+// menus open: above and from the point (leftward, right to left). It
+// reports the item chosen (its number), or -1.
+int64_t wh_track_menu(const uint8_t *menu, size_t len, POINT p, HWND owner) {
+	ak_menu_entry_vec e = {0};
+	if (!ak_decode_menu(menu, len, &e) || !e.len) {
+		ak_vec_free(&e);
+		return -1;
+	}
+	uint32_t count = 0;
+	for (uint32_t i = 0; i < e.len; i++)
+		if (e.data[i].depth == 0) count++;
+	wchar_t **titles = NULL;
+	uint32_t ntitles = 0, next;
+	mitem *items = entry_level(&e, 0, count, &next, &titles, &ntitles);
+	builder b = {.base = 1, .order = H.rtl ? MFT_RIGHTORDER : 0};
+	HMENU m = popup(&b, items, count);
+	free_level(items, count);
+	wh_free_strings(titles, ntitles);
+	ak_vec_free(&e);
+	UINT flags = TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_RETURNCMD;
+	if (H.rtl) flags |= TPM_RIGHTALIGN | TPM_LAYOUTRTL;
+	// The menu closes when the user clicks away only if its owner is the
+	// foreground window.
+	SetForegroundWindow(owner);
+	H.modal++;
+	if (b.nowned) menu_loop(true);
+	int got = TrackPopupMenu(m, flags, p.x, p.y, 0, owner, NULL);
+	menu_loop(false);
+	H.modal--;
+	PostMessageW(owner, WM_NULL, 0, 0);
+	DestroyMenu(m);
+	for (uint32_t i = 0; i < b.nowned; i++) forget(b.owned[i]);
+	free(b.owned);
+	return got > 0 ? got - 1 : -1;
+}

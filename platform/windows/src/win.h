@@ -198,6 +198,11 @@ void wh_to_front(void);
 void wh_quit(bool relaunch);
 bool wh_dock_item_launch(int argc, wchar_t **argv);
 void wh_start_toasts(void);
+void wh_take_toast_launch(int *argc, wchar_t **argv);  // notify.c
+
+// update.c: at launch
+void wh_relaunch_wait(void);
+void wh_update_clean(void);
 
 // crash.c
 void wh_crash_start(void);
@@ -216,6 +221,7 @@ void wh_open_url(const char *s, size_t n);
 void wh_module_timer(WPARAM id);
 void wh_share_text(const char *s, size_t n);
 // menu.c
+int64_t wh_track_menu(const uint8_t *menu, size_t len, POINT p, HWND owner);
 int64_t wh_track_actions(const actions *a, bool rtl, POINT p, HWND owner);
 void wh_set_menu_bar(const uint8_t *b, size_t len);
 void wh_set_window_menu(wh_wctl *c);

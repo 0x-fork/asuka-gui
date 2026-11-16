@@ -529,7 +529,11 @@ void wh_finish_quit(void) {
 	PROCESS_INFORMATION pi;
 	// The new process waits for this one's mutex, as a second launch
 	// would wait for it to go: it hands itself over to no one, as this
-	// one's message window is gone.
+	// one's message window is gone; it waits for this one to exit first
+	// (update.c's wh_relaunch_wait).
+	wchar_t pid[16];
+	swprintf(pid, WH_LEN(pid), L"%lu", GetCurrentProcessId());
+	SetEnvironmentVariableW(L"ASUKA_RELAUNCH_WAIT", pid);
 	if (CreateProcessW(exe, line, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
 		CloseHandle(pi.hThread);
 		CloseHandle(pi.hProcess);

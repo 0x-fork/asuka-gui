@@ -31,6 +31,7 @@ char *wh_strndup(const char *s, size_t n) {
 
 wchar_t *wh_wide(const char *utf8, int n) {
 	if (!utf8) n = 0;
+	if (n < 0) n = (int)strlen(utf8);  // NUL-terminated
 	int len = n > 0 ? MultiByteToWideChar(CP_UTF8, 0, utf8, n, NULL, 0) : 0;
 	wchar_t *w = wh_alloc(((size_t)len + 1) * sizeof *w);
 	if (len > 0) MultiByteToWideChar(CP_UTF8, 0, utf8, n, w, len);

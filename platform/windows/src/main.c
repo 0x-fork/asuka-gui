@@ -236,9 +236,12 @@ int wh_main(int argc, wchar_t **argv) {
 	H.scripted = getenv("ASUKA_SCRIPT") != NULL;
 	H.assets = assets_dir();
 	wh_take_login_arg(&argc, argv);
+	wh_take_toast_launch(&argc, argv);  // COM started it for a toast's click
+	wh_relaunch_wait();  // a relaunch waits for the process it came from
 	// One instance: a second launch hands the first its arguments, and
 	// quits.
 	if (!wh_take_instance(argc, argv)) return 0;
+	wh_update_clean();  // what an update left
 	wh_crash_start();
 	if (!automated()) {
 		char *p = dsk_join(H.dirs.data, "asuka-window.json");
