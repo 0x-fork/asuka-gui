@@ -106,7 +106,6 @@ go test -tags e2e ./e2e -run Linux               # GUI tests: the examples under
 (cd examples/counter && ASUKA_SNAPSHOT=c.png ASUKA_DUMP=1 ASUKA_SCRIPT="tap:Add" go run .)  # Windows: steps, then the window as a PNG and its view tree
 go run ./cmd/asuka dev --platform web examples/counter       # the web: served to the browser, reloaded on save (--lan: to a phone)
 go run ./cmd/asuka build --platform web examples/counter     # a static site, in examples/counter/dist/web
-GOOS=js GOARCH=wasm go vet ./host/web ./app       # the web host's Go side
 go test -tags e2e ./e2e -run Web                  # GUI tests: the examples in headless Chrome
 go run ./cmd/asuka update keygen                  # the key pair that signs desktop apps' updates (asuka.toml's updates)
 go run ./cmd/asuka publish --platform linux examples/counter  # a desktop build and its signed update, uploaded (GitHub, S3)
@@ -137,7 +136,7 @@ go test -tags e2e ./e2e -run Updater               # a desktop app updates itsel
   like a GNOME app. Web host:
   the DOM from plain JavaScript modules in `platform/web/src` (no build
   step, no framework), the browser's own elements for controls and
-  dialogs; its Go side (`host/web`) only carries batches, measures and
+  dialogs, driven by the core as WebAssembly (`src/core.js`): batches, measures and
   events.
 - Every prop that shows text is an accessor, so it can follow the app's
   language (`locales.Live.Title()`); only what's shown once (an alert) takes a
