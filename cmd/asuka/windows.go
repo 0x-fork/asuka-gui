@@ -18,26 +18,26 @@ import (
 	iupdate "github.com/egoist/asuka/internal/update"
 )
 
-// Windows: the app's executable is the desktop host (cmd/asuka-host:
-// host/windows, Win32 through syscall, built with CGO_ENABLED=0), with
-// the C core beside it (asuka.dll), for amd64 or arm64: asuka dev builds
-// for this PC's, asuka build for amd64 unless --arch arm64 (an amd64
-// build runs on Windows on Arm too, emulated).
+// Windows: the app is one executable, the Windows host in C
+// (platform/windows: Win32, the common controls, GDI+, DWM) with the C
+// core and the app compiled to C (lang/cgen) linked in, for amd64 or
+// arm64: asuka dev builds for this PC's, asuka build for amd64 unless
+// --arch arm64 (an amd64 build runs on Windows on Arm too, emulated).
+// Zig builds it from any system; on Windows, clang or MinGW's gcc too
+// (ASUKA_CC).
 //
 // asuka dev --platform windows runs the player here (the host and the
-// core without an app), which loads the app's bytecode from asuka dev
-// and again on each save, keeping its state (Windows can't send a
-// process SIGINT, so Asuka closes its standard input to stop it,
-// ASUKA_STOP=stdin). asuka build --platform windows makes a folder with
-// the .exe, its icon, manifest and version information built in (a
-// .syso linked into the host), asuka.dll (the core with the app compiled
-// in), the app's settings (asuka-app.json) and its assets beside it,
-// with its plugins' libraries (asqlite.dll for asuka's sqlite plugin);
-// it builds from any system (Zig compiles the core elsewhere than
-// Windows). With ASUKA_WINDOWS_CERT
-// (a .pfx) and ASUKA_WINDOWS_CERT_PASSWORD set, it signs the .exe,
-// timestamped (and its plugins' libraries with it): with signtool on Windows,
-// osslsigncode elsewhere.
+// core without an app, a console program), which loads the app's
+// bytecode from asuka dev and again on each save, keeping its state
+// (Windows can't send a process SIGINT, so Asuka closes its standard
+// input to stop it, ASUKA_STOP=stdin). asuka build --platform windows
+// makes a folder with the .exe, its icon, manifest and version
+// information built in (a COFF object of resources linked into it), the
+// app's settings (asuka-app.json) and its assets beside it, with its
+// plugins' libraries (asqlite.dll for asuka's sqlite plugin). With
+// ASUKA_WINDOWS_CERT (a .pfx) and ASUKA_WINDOWS_CERT_PASSWORD set, it
+// signs the .exe, timestamped (and its plugins' libraries with it): with
+// signtool on Windows, osslsigncode elsewhere.
 
 // windowsArch is a Windows build's GOARCH: arch (amd64 or arm64), else
 // amd64, which runs on every Windows PC.
@@ -88,7 +88,7 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 	}
 	target := "windows-" + goarch
 	t := cbuild.Target{OS: "windows", Arch: goarch}
-	if err := desktopRelease(app, t, filepath.Join(out, exe), filepath.Join(out, coreLibName("windows")), o, appbuild.HostOptions{Syso: res}); err != nil {
+	if err := windowsRelease(app, t, res, filepath.Join(out, exe), o.verbose); err != nil {
 		return err
 	}
 	if err := writeHostConfig(app, platformWindows, target, true, filepath.Join(out, boot.ConfigFile)); err != nil {
@@ -100,9 +100,6 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 	}
 	signed, err := signWindows(filepath.Join(out, exe), name, o.verbose)
 	if err != nil {
-		return err
-	}
-	if _, err := signWindows(filepath.Join(out, coreLibName("windows")), name, o.verbose); err != nil {
 		return err
 	}
 	// The plugins' libraries, beside the .exe (where package plugin finds
@@ -146,6 +143,56 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 		fmt.Println("asuka: the folder is the app: zip it, or package it (an installer, MSIX); set ASUKA_WINDOWS_CERT and ASUKA_WINDOWS_CERT_PASSWORD to sign the .exe and keep SmartScreen quiet")
 	}
 	return nil
+}
+
+// windowsRelease builds a release's executable for t at exe: the host,
+// the core and the app compiled to C, with the resources (a COFF object)
+// linked in.
+func windowsRelease(app *asukaApp, t cbuild.Target, res []byte, exe string, verbose bool) error {
+	m, err := app.compile()
+	if err != nil {
+		return err
+	}
+	c, err := appbuild.AppC(m)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.MkdirTemp("", "asuka-res")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	obj := filepath.Join(tmp, "resources.o")
+	if err := os.WriteFile(obj, res, 0o644); err != nil {
+		return err
+	}
+	natives, err := windowsNatives(app)
+	if err != nil {
+		return err
+	}
+	if verbose {
+		fmt.Printf("asuka: building the Windows host for %s/%s\n", t.OS, t.Arch)
+	}
+	return appbuild.WindowsHost(t, appbuild.WindowsOptions{App: []string{c}, Natives: natives, Resources: obj}, exe)
+}
+
+// windowsNatives are the C files of the app's own native packages for
+// Windows (a package's windows/*.c), built into its host; the standard
+// library's are in every host.
+func windowsNatives(app *asukaApp) ([]string, error) {
+	ps, err := appNatives(app)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range ps {
+		if strings.HasPrefix(p.path, "asuka/") {
+			continue
+		}
+		files, _ := filepath.Glob(filepath.Join(p.dir, "windows", "*.c"))
+		out = append(out, files...)
+	}
+	return out, nil
 }
 
 // defaultTimestamps are the RFC 3161 timestamp servers a signature is

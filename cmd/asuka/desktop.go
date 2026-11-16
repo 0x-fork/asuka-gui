@@ -253,10 +253,19 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 		}
 		return exe, signMac(bundle, "-", ents, run)
 	}
-	exe := filepath.Join(dir, "asuka-host")
 	if t.OS == "windows" {
-		exe += ".exe"
+		// One console program: the host and the core, no app.
+		exe := filepath.Join(dir, "asuka-player.exe")
+		natives, err := windowsNatives(app)
+		if err != nil {
+			return "", err
+		}
+		if err := appbuild.WindowsHost(t, appbuild.WindowsOptions{Natives: natives, Console: true}, exe); err != nil {
+			return "", err
+		}
+		return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, boot.ConfigFile))
 	}
+	exe := filepath.Join(dir, "asuka-host")
 	if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose, Natives: desktopNatives(app)}); err != nil {
 		return "", err
 	}
