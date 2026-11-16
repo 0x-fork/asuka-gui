@@ -366,6 +366,6 @@ func noCHost(app *asukaApp, t cbuild.Target) {
 		}
 	}
 	if len(names) > 0 {
-		fmt.Printf("asuka: %s have C for %s, which the Go host doesn't run (RFC 0008: the C host, platform/%s, does)\n", strings.Join(names, ", "), t.OS, t.OS)
+		fmt.Printf("asuka: the Go host doesn't run the C for %s of %s (RFC 0008: the C host, platform/%s, does)\n", t.OS, strings.Join(names, ", "), t.OS)
 	}
 }

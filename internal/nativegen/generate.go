@@ -38,8 +38,14 @@ func HasPlatform(dir, platform string) bool {
 		return exists(filepath.Join(dir, "Package.swift"))
 	case "android":
 		return exists(filepath.Join(dir, platform, "build.gradle.kts"))
-	case "web", "desktop":
+	case "web":
 		return exists(filepath.Join(dir, platform))
+	case "desktop":
+		// A desktop/ of Go is a package's old desktop code (the Go hosts'),
+		// not C: Go refuses C files beside it.
+		d := filepath.Join(dir, platform)
+		gos, _ := filepath.Glob(filepath.Join(d, "*.go"))
+		return exists(d) && len(gos) == 0
 	}
 	return false
 }

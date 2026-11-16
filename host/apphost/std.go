@@ -9,7 +9,6 @@ import (
 	_ "github.com/egoist/asuka/std/audio/desktop"
 	_ "github.com/egoist/asuka/std/bluetooth/desktop"
 	_ "github.com/egoist/asuka/std/camera/desktop"
-	_ "github.com/egoist/asuka/std/host/desktop"
 	_ "github.com/egoist/asuka/std/imageedit/desktop"
 	_ "github.com/egoist/asuka/std/js/desktop"
 	_ "github.com/egoist/asuka/std/location/desktop"
@@ -24,6 +23,5 @@ import (
 	_ "github.com/egoist/asuka/std/speech/desktop"
 	_ "github.com/egoist/asuka/std/svg/desktop"
 	_ "github.com/egoist/asuka/std/vision/desktop"
-	_ "github.com/egoist/asuka/std/watch/desktop"
 	_ "github.com/egoist/asuka/std/webauth/desktop"
 )

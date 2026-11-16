@@ -171,6 +171,52 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: info PC Linux 1.2.3 45 true", "host: sensors false false", "host: secure", "host: shell no file at /no/such/file", "host: done"}},
+		{"watch", `import asuka/watch
+import asuka/fs
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let dir = fs.join([fs.appDir(), "watched"])
+      try fs.mkdirAll(dir)
+      let w = try await watch.path(dir, ignore: [".*"])
+      step = "watching {w.root.hasSuffix("/watched")}"
+      await sleep(1ms)
+      try fs.writeText(fs.join([dir, ".hidden"]), "h")
+      try fs.writeText(fs.join([dir, "a.txt"]), "a")
+      for await events in w.events {
+        for e in events {
+          if e.op == .create && e.path == "a.txt" {
+            step = "created {e.path}"
+            await sleep(1ms)
+            try fs.rename(fs.join([dir, "a.txt"]), fs.join([dir, "b.txt"]))
+          } else if e.op == .rename {
+            step = "renamed {e.oldPath} {e.path}"
+            await sleep(1ms)
+            try fs.writeText(fs.join([dir, "b.txt"]), "more")
+          } else if e.op == .write {
+            step = "wrote {e.path}"
+            await sleep(1ms)
+            try fs.removeAll(dir)
+          } else if e.op == .remove && e.path == "." {
+            step = "gone"
+            await sleep(1ms)
+          } else if e.op == .create {
+            step = "fail: created {e.path}"
+          }
+        }
+      }
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: watching true", "host: created a.txt", "host: renamed a.txt b.txt", "host: wrote b.txt", "host: gone", "host: done"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
