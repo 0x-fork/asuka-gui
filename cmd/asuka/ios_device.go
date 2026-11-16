@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/egoist/asuka/internal/usbmux"
 )
 
 // asuka dev on an iPhone or iPad: devicectl (Xcode's CoreDevice) finds,
@@ -20,7 +22,7 @@ import (
 // app's .app with the core without an app) is built for iphoneos and
 // signed for development with the team's profiles, which Xcode makes as
 // needed (xcodebuild's automatic provisioning). It reaches asuka dev on
-// this Mac over the local network.
+// this Mac through the cable (cableToPlayer) or over the local network.
 
 // deviceKeyword is what --device takes for the one iPhone or iPad
 // connected, whatever its name.
@@ -730,8 +732,10 @@ func installedOnDevice(d *iosDevice, id string) bool {
 
 // devIOSDevice runs the app on a physical device: the player (the app's
 // .app with the core without an app, signed for the device by the team),
-// installed when it changed, which connects to asuka dev over the local
-// network and loads the app's bytecode, again on each save.
+// installed when it changed, which reaches asuka dev through the cable
+// (the Mac connects to its tunnel port, usbmuxd) or over the local
+// network (it dials the Mac's addresses), and loads the app's bytecode,
+// again on each save.
 func devIOSDevice(app *asukaApp, o *devOptions, d *iosDevice, stop <-chan os.Signal) error {
 	team, err := devTeam(o.team, app.cfg)
 	if err != nil {
@@ -760,13 +764,16 @@ func devIOSDevice(app *asukaApp, o *devOptions, d *iosDevice, stop <-chan os.Sig
 		return err
 	}
 	hosts := lanHosts()
-	if len(hosts) == 0 {
-		return errors.New("this Mac isn't on a network: the phone reaches asuka dev over Wi-Fi or Ethernet")
+	if h := os.Getenv("ASUKA_DEV_HOST"); h != "" {
+		hosts = []string{h}
 	}
-	addr := os.Getenv("ASUKA_DEV_HOST")
-	if addr == "" {
-		addr = hosts[0]
+	if len(hosts) == 0 && d.Transport != "wired" {
+		return errors.New("this Mac isn't on a network, and the phone isn't plugged in: the phone reaches asuka dev through the cable, or over Wi-Fi or Ethernet")
 	}
+	addr := strings.Join(hosts, ",")
+	done := make(chan struct{})
+	defer close(done)
+	go cableToPlayer(loop, d.UDID, done)
 	signer := newDevSigner(team, d.UDID, app.cfg, work, false, o.verbose)
 	marker := filepath.Join(work, "installed-"+d.UDID)
 	var pid int
@@ -786,14 +793,17 @@ func devIOSDevice(app *asukaApp, o *devOptions, d *iosDevice, stop <-chan os.Sig
 		if pid != 0 {
 			terminateOnDevice(d, pid)
 		}
-		pid, err = launchOnDevice(d, app.bundleID, map[string]string{"ASUKA_DEV": net.JoinHostPort(addr, strconv.Itoa(port))})
+		pid, err = launchOnDevice(d, app.bundleID, map[string]string{
+			"ASUKA_DEV":        addr + ":" + strconv.Itoa(port),
+			"ASUKA_DEV_TUNNEL": strconv.Itoa(devTunnelPort),
+		})
 		if err != nil {
 			return err
 		}
 		go func() {
 			time.Sleep(15 * time.Second)
 			if loop.srv.Players() == 0 {
-				fmt.Printf("asuka: the player hasn't connected yet: %s must be on this Mac's network (%s), allowed to find devices on it (tap Allow when it asks, or its Settings › Apps › %s › Local Network), and this Mac's firewall must let asuka take connections\n", d.Name, addr, app.displayName())
+				fmt.Printf("asuka: the player hasn't connected yet: plug %s in, or put it on this Mac's network (%s), allowed to find devices on it (tap Allow when it asks, or its Settings › Apps › %s › Local Network), and let asuka take connections through this Mac's firewall\n", d.Name, addr, app.displayName())
 			}
 		}()
 		return nil
@@ -811,6 +821,45 @@ func devIOSDevice(app *asukaApp, o *devOptions, d *iosDevice, stop <-chan os.Sig
 // deviceDevPort is the port a phone's player reaches asuka dev on, when
 // it's free.
 const deviceDevPort = 8791
+
+// devTunnelPort is the port the player listens on, on the phone's
+// loopback, for the connection the Mac makes through the cable.
+const devTunnelPort = 8792
+
+// cableToPlayer connects to the player through the cable while the
+// phone is plugged in (usbmuxd reaches a port on it, as Xcode and iproxy
+// do; the phone can't reach the Mac that way), and serves it there: a
+// connection the Mac makes takes over from the player's own, so the
+// phone needn't be on the Mac's network. It tries again as the player
+// starts, and after the connection ends, until done.
+func cableToPlayer(loop *devLoop, udid string, done <-chan struct{}) {
+	c := &usbmux.Client{Timeout: 2 * time.Second}
+	for {
+		select {
+		case <-done:
+			return
+		case <-time.After(300 * time.Millisecond):
+		}
+		dev, ok, err := c.Find(udid)
+		if err != nil || !ok || dev.Connection != "USB" {
+			continue // not plugged in (or no usbmuxd): the network's
+		}
+		conn, err := c.Dial(dev.ID, devTunnelPort)
+		if err != nil {
+			continue // the player isn't listening yet
+		}
+		served := make(chan struct{})
+		go func() {
+			select {
+			case <-done:
+				conn.Close()
+			case <-served:
+			}
+		}()
+		loop.srv.Serve(conn)
+		close(served)
+	}
+}
 
 // listenAll listens on every address, on port if it's free.
 func listenAll(port int) (net.Listener, error) {

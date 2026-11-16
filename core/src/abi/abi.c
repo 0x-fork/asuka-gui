@@ -166,6 +166,8 @@ int asuka_run(char **err) {
 	return run_module(m, err);
 }
 
+int asuka_has_app(void) { return ak_app_loader != NULL; }
+
 // ---- asuka dev ----
 
 static void reload(const uint8_t *p, size_t n) {
@@ -208,6 +210,22 @@ int asuka_dev_connect(const char *host_name, int port, const char *hello, char *
 	ak_dev_set_reload(reload);
 	char msg[256];
 	if (!ak_dev_connect(host_name, port, hello, true, msg, sizeof msg)) {
+		fail(err, msg);
+		return -1;
+	}
+	return 0;
+}
+
+int asuka_dev_listen(int port, const char *hello, char **err) {
+	if (err) *err = NULL;
+	if (!started) {
+		fail(err, "asuka: asuka_dev_listen before asuka_start");
+		return -1;
+	}
+	keep_states();
+	ak_dev_set_reload(reload);
+	char msg[256];
+	if (!ak_dev_listen(port, hello, true, msg, sizeof msg)) {
 		fail(err, msg);
 		return -1;
 	}

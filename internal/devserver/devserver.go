@@ -100,16 +100,24 @@ func (s *Server) accept() {
 		if err != nil {
 			return
 		}
-		if tc, ok := c.(*net.TCPConn); ok {
-			tc.SetNoDelay(true)
-		}
-		p := &Player{conn: c}
-		s.mu.Lock()
-		s.ps[p] = true
-		m := s.module
-		s.mu.Unlock()
-		go s.serve(p, m)
+		go s.Serve(c)
 	}
+}
+
+// Serve serves a player on c, a connection made either way: one it
+// made to the server, or one made to it (an iPhone's, through the cable:
+// usbmuxd reaches a port on the phone, the phone can't reach the Mac).
+// It returns when the player goes.
+func (s *Server) Serve(c net.Conn) {
+	if tc, ok := c.(*net.TCPConn); ok {
+		tc.SetNoDelay(true)
+	}
+	p := &Player{conn: c}
+	s.mu.Lock()
+	s.ps[p] = true
+	m := s.module
+	s.mu.Unlock()
+	s.serve(p, m)
 }
 
 func (s *Server) serve(p *Player, module []byte) {

@@ -214,13 +214,15 @@ devicectl list devices` lists them).
   an [App Store Connect API key](shipping.md) if `ASUKA_ASC_KEY_ID` (or
   `ios.appStoreConnect`) sets one. A team's profiles that already fit,
   wildcard ones too, are used as they are.
-- **Reaching your Mac**: the player connects to `asuka dev` over the
-  network, at the Mac's first address (or `ASUKA_DEV_HOST`'s), on port
-  8791 when it's free, so a player launched again from the home screen
-  finds it. The phone must be on the Mac's network, and iOS asks once
-  whether the app may find devices on it (allow it; its Settings › Apps
-  › Local Network turns it on later). If the player doesn't connect,
-  Asuka says what to check.
+- **Reaching your Mac**: plugged in, the Mac connects to the player
+  through the cable (usbmuxd, as Xcode does), and the phone needn't be
+  on any network. Unplugged, the player connects to `asuka dev` over the
+  network, trying each of the Mac's addresses (or `ASUKA_DEV_HOST`), on
+  port 8791 when it's free; iOS asks once whether the app may find
+  devices on it (allow it; its Settings › Apps › Local Network turns it
+  on later). Either way it reconnects by itself when `asuka dev` comes
+  back, and a player opened again from the home screen finds it. If the
+  player doesn't connect, Asuka says what to check.
 
 **A phone's browser**: `asuka dev --platform web --lan` serves the app to
 your network, and prints the addresses to open.
@@ -301,10 +303,10 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # steps firs
   Store Connect API key; a bundle ID another team has needs another
   `id` in `asuka.toml`. `the keychain has Apple Development certificates
   of N teams`: pick one with `--team`.
-- **`the player hasn't connected yet`**: put the phone on the Mac's
-  network, allow its Local Network access, and let `asuka` take
-  connections in the Mac's firewall (System Settings › Network ›
-  Firewall).
+- **`the player hasn't connected yet`**: plug the phone in and unlock
+  it, or put it on the Mac's network, allow its Local Network access,
+  and let `asuka` take connections in the Mac's firewall (System
+  Settings › Network › Firewall).
 - **`no Android SDK: install Android Studio or set ANDROID_HOME`**: Asuka
   looks in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, then
   `~/Library/Android/sdk` on a Mac, `%LOCALAPPDATA%\Android\Sdk` on

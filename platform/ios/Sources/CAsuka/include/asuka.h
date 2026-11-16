@@ -66,12 +66,20 @@ ASUKA_API int asuka_load(const uint8_t *module, size_t len, char **err);
 // Runs the app compiled to C into this build (lang/cgen): as asuka_load,
 // with the app's own module. 0, or -1 with a message in *err.
 ASUKA_API int asuka_run(char **err);
+// Whether an app is compiled into this build: 0 in asuka dev's players.
+ASUKA_API int asuka_has_app(void);
 // Connects to asuka dev at host:port (a player: the simulator's, an
 // emulator's, a phone's, a desktop's): the CLI sends the app's bytecode
 // and loads it again on every save, keeping its state and views; the
-// player's logs go to the CLI. hello is the player's JSON (platform,
-// device). 0, or -1 with a message in *err.
+// player's logs go to the CLI. host may name several, comma-separated,
+// tried in turn (a Mac's addresses on the network, its Bonjour name);
+// the player connects again whenever the connection ends. hello is the
+// player's JSON (platform, device). 0, or -1 with a message in *err.
 ASUKA_API int asuka_dev_connect(const char *host, int port, const char *hello, char **err);
+// Takes asuka dev's connections on the loopback's port as well, for an
+// iPhone the Mac reaches through the cable (usbmuxd); a connection taken
+// there replaces the player's own. 0, or -1 with a message in *err.
+ASUKA_API int asuka_dev_listen(int port, const char *hello, char **err);
 // Loads a module as asuka dev's reloads do, keeping the state cells and
 // views of the app it replaces: for a player that gets the modules
 // itself (the web's page, which has no socket to connect with). The state

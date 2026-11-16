@@ -461,21 +461,36 @@ final class AsukaTextField: UITextField {
         openURLs(urls)
     }
 
-    /// startApp runs the app: under asuka dev (ASUKA_DEV=host:port in the
-    /// environment, which the CLI launches the player with), the bytecode
-    /// the CLI sends; otherwise the app compiled into this build.
+    /// startApp runs the app: under asuka dev (ASUKA_DEV=host,...:port in
+    /// the environment, which the CLI launches the player with, and on a
+    /// phone ASUKA_DEV_TUNNEL, the port the Mac reaches it on through the
+    /// cable), the bytecode the CLI sends; otherwise the app compiled into
+    /// this build. A player keeps where asuka dev was, so opened again
+    /// from the home screen it finds it.
     private func startApp() {
         var err: UnsafeMutablePointer<CChar>?
-        let rc: Int32
-        if let dev = ProcessInfo.processInfo.environment["ASUKA_DEV"], let colon = dev.lastIndex(of: ":"), let port = Int32(dev[dev.index(after: colon)...]) {
-            let host = String(dev[..<colon])
+        var rc: Int32
+        let env = ProcessInfo.processInfo.environment
+        let saved = UserDefaults.standard
+        let player = asuka_has_app() == 0
+        let dev = env["ASUKA_DEV"] ?? (player ? saved.string(forKey: "AsukaDev") : nil)
+        let tunnel = env["ASUKA_DEV_TUNNEL"].flatMap { Int32($0) } ?? (player ? Int32(saved.integer(forKey: "AsukaDevTunnel")) : 0)
+        if let dev, let colon = dev.lastIndex(of: ":"), let port = Int32(dev[dev.index(after: colon)...]) {
+            if env["ASUKA_DEV"] != nil, player {
+                saved.set(dev, forKey: "AsukaDev")
+                saved.set(Int(tunnel), forKey: "AsukaDevTunnel")
+            }
+            let hosts = String(dev[..<colon])
             #if targetEnvironment(simulator)
             let kind = "simulator"
             #else
             let kind = "device"
             #endif
             let hello = "{\"platform\":\"ios\",\"device\":\"\(kind)\",\"os\":\"\(UIDevice.current.systemVersion)\"}"
-            rc = asuka_dev_connect(host, port, hello, &err)
+            rc = asuka_dev_connect(hosts, port, hello, &err)
+            if rc == 0, tunnel > 0 {
+                rc = asuka_dev_listen(tunnel, hello, &err)
+            }
         } else {
             rc = asuka_run(&err)
         }
