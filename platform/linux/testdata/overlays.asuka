@@ -1,6 +1,5 @@
 app {
-  Split {
-    title: "Mail"
+  Split("Mail") {
     Destination("Inbox") { icon: "tray"; badge: "3"; section: "Boxes"; Stack { Inbox() } }
     Destination("Drafts") { icon: "doc"; section: "Boxes"; Stack { Drafts() } }
   }
