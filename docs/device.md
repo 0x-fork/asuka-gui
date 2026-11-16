@@ -703,129 +703,136 @@ downloads each.
 To be opened with URLs yourself, see `asuka.toml`'s `scheme` and `links` in
 [Shipping](shipping.md#asukatoml), and `ui.OnOpenURL`.
 
-## Previewing files: asuka/sdk/preview
+## Previewing files: asuka/preview
 
-`preview.Show(sources, options, done)` shows files with the system's
-viewer, as a mail app shows an attachment: PDFs, images, video, audio,
-Office and iWork documents, text. A source is a file's path, an asset's
-(as `ui.Image` takes it), or an http(s) URL, which the host downloads to
-the app's caches first, under its name (or with the extension of the type
-the server gives). Main thread.
+`preview.show(sources)` shows files with the system's viewer, as a mail
+app shows an attachment: PDFs, images, video, audio, Office and iWork
+documents, text. A source is a file's path, an asset's (as `Image`
+takes it), or an http(s) URL, which is downloaded to the app's caches
+first, under its name (or with the extension of the type the server
+gives).
 
-```go
-var open ui.Node
-open = ui.Button(ui.ButtonProps{Title: ui.Val("Open the invoice"), OnPress: func() {
-	preview.Show([]string{invoice, "docs/terms.pdf"}, preview.Options{From: open}, func(err error) {
-		if errors.Is(err, preview.ErrNoViewer) {
-			status.Set("Nothing on this device opens it")
-		}
-	})
-}})
+```asuka
+import asuka/preview
+
+component Invoice {
+  prop path: string
+  state status = ""
+
+  Column {
+    Button("Open the invoice") {
+      on press {
+        do {
+          try await preview.show([path, "docs/terms.pdf"])
+        } catch preview.PreviewError.noViewer {
+          status = "Nothing on this device opens it"
+        } catch e {
+          status = e.message
+        }
+      }
+    }
+    Text(status)
+  }
+}
 ```
 
-| Option | |
-| --- | --- |
-| `Start` | The index of the file shown first. |
-| `From` | The view the viewer grows from (iOS), usually what the user tapped. |
-| `Edit` | Lets the user mark up PDFs and images with Markup, which saves into the files (iOS). |
+`start:` is the index of the file shown first; `edit: true` lets the
+user mark up PDFs and images with Markup, which saves into the files
+(iOS). It returns once the viewer is gone, and throws
+`preview.PreviewError.noViewer` if nothing can show the files, or another
+error (no such file, a download that failed).
 
-`done` runs on the main thread once the viewer is gone, with
-`preview.ErrNoViewer` if nothing can show the files, or another error (no
-such file, a download that failed).
-
-| | Viewer | `done` |
+| | Viewer | Returns |
 | --- | --- | --- |
 | iOS | Quick Look (`QLPreviewController`) over the screen: swipe between the files; share, Markup, search | when it's dismissed |
-| Android | `ACTION_VIEW` of the `Start` file in the app the user picks for its type (Drive's PDF viewer, Photos), through the app's FileProvider with the right to read it alone | when the user is back |
+| Android | `ACTION_VIEW` of the `start` file in the app the user picks for its type (Drive's PDF viewer, Photos), through the app's FileProvider with the right to read it alone | when the user is back |
 | macOS | Quick Look's panel (`QLPreviewPanel`), its arrows between the files | when the panel closes |
 | Windows | the file's default app (`ShellExecuteEx`), or the "How do you want to open this?" dialog | once it's handed over |
 | Linux | the file's default app (`GtkFileLauncher`, the portal's in a sandbox) | once it's handed over |
-| Web | a new tab, for what a browser shows (images, video, audio, text, PDF, HTML); another type is `ErrNoViewer` | once it's opened |
+| Web | a new tab, for what a browser shows (images, video, audio, text, PDF, HTML); another type is `noViewer` | once it's opened |
 
 Android has no system viewer, nor one that pages through several files:
-it opens one, as Android's mail apps do with each attachment.
+it opens one, as Android's mail apps do with each attachment. The view
+the viewer grows from on iOS (a `from:`) waits for the prelude's `Ref`.
 
-## Printing and PDFs: asuka/sdk/print
+## Printing and PDFs: asuka/print
 
-`asuka/sdk/print` shows the system's print dialog, with its printers and
+`asuka/print` shows the system's print dialog, with its printers and
 options (copies, pages, paper, orientation; Save as PDF on Android and the
-Mac), for a file, HTML markup or a WebView's page; and lays HTML out on
-pages as a PDF. Each call but `PDF` runs on the main thread, and `done`
-gets a `print.Result` once the dialog is closed:
+Mac), for a file or HTML markup; and lays HTML out on pages as a PDF.
+Each returns a `print.Outcome` once the dialog is closed. The package's
+name is the prelude's `print` too: import it under another name to print
+text as well.
 
-```go
-var printButton ui.Node
-printButton = ui.Button(ui.ButtonProps{Title: ui.Val("Print"), OnPress: func() {
-	print.HTML(receipt, print.Options{Job: "Receipt", From: printButton}, func(r print.Result, err error) {
-		if err == nil && r == print.Printed {
-			status.Set("Sent to the printer")
-		}
-	})
-}})
+```asuka
+import asuka/print as printing
+
+async fn printReceipt(receipt: string) throws -> string {
+  let r = try await printing.html(receipt, job: "Receipt")
+  return if r == .printed { "Sent to the printer" } else { "" }
+}
 ```
 
-- `print.File(source, options, done)` prints a PDF or an image (a path, an
-  asset, an http(s) URL, as `preview.Show` takes them). Another type fails
-  with `print.ErrUnsupported`, but on Windows and Linux (where the
-  printer takes what CUPS can print).
-- `print.HTML(markup, options, done)` prints markup, paginated as a browser
-  prints a page: CSS's `@media print` and `break-before` apply. Images and
-  styles come from absolute URLs (`https:`, `data:`).
-- `print.WebView(web, options, done)` prints what a `ui.WebView` shows.
+- `print.file(source, job:, orientation:)` prints a PDF or an image (a
+  path, an asset, an http(s) URL, as `preview.show` takes them). Another
+  type throws `print.PrintError.unsupported`, but on Windows and Linux
+  (where the printer takes what CUPS can print).
+- `print.html(markup, job:, orientation:)` prints markup, paginated as a
+  browser prints a page: CSS's `@media print` and `break-before` apply.
+  Images and styles come from absolute URLs (`https:`, `data:`).
 
-`Options` has `Job`, the job's name in the queue (default: the file's
-name, the page's title, else the app's name), `Orientation`, which the
-dialog starts with (`print.Portrait`, `print.Landscape`), and `From`, the
-view the dialog points at where it's a popover (the iPad).
+`job` is the job's name in the queue (default: the file's name, the
+page's title, else the app's name), and `orientation` the one the dialog
+starts with (`.portrait`, `.landscape`).
 
-A `Result` is `print.Printed` (the job is in the printer's queue, or saved
-as a PDF from the dialog), `print.Cancelled`, or `print.Unknown` where
-the platform doesn't say. A job that fails is an error.
-`print.ErrUnavailable` says the device can't print.
+An `Outcome` is `.printed` (the job is in the printer's queue, or saved
+as a PDF from the dialog), `.cancelled`, or `.unknown` where the platform
+doesn't say. A job that fails is an error. `print.PrintError.unavailable`
+says the device can't print.
 
-| | Dialog | File | HTML, WebView | Result |
+| | Dialog | File | HTML | Outcome |
 | --- | --- | --- | --- | --- |
 | iOS | `UIPrintInteractionController`, a popover on the iPad | PDFs and images (`printingItem`) | WebKit's print formatter | printed or cancelled |
 | Android | `PrintManager`'s print screen | a PDF written through; an image fit to the page, upright (as `PrintHelper`) | the WebView's print adapter | printed, cancelled or failed (the job's state) |
 | macOS | `NSPrintOperation`'s panel, a sheet on the window, with a preview | PDFKit (a PDF; an image on a page) | WebKit's print operation | printed or cancelled |
-| Windows | WebView2's: the system's print dialog for HTML, the browser's preview for a WebView | the file's app prints it (the shell's `print` verb), whatever its type | WebView2 | unknown |
+| Windows | WebView2's: the system's print dialog | the file's app prints it (the shell's `print` verb), whatever its type | WebView2 | unknown |
 | Linux | GTK's print dialog (the print portal's for a file) | the printer takes it (CUPS: PDFs, images) | WebKitGTK's print operation | printed or cancelled |
-| Web | the browser's print dialog | PDFs in the browser's viewer, images | the page's own web views | unknown |
+| Web | the browser's print dialog | PDFs in the browser's viewer, images | a hidden frame | unknown |
 
 An image wider than tall starts in landscape on Android and iOS, as their
-photo printing does.
+photo printing does. Printing what a `WebView` shows, and the iPad
+popover's anchor, wait for the prelude's `Ref`.
 
 ### PDFs from HTML
 
-`print.PDF(markup, options)` lays markup out on pages, as `print.HTML`
-prints it but without a dialog, and writes a PDF in the app's caches,
-named after the page's `<title>` ("Receipt.pdf"; "Document.pdf" without
-one). It returns its path, to share, mail or move. Its text stays text:
-searchable, selectable. Not on the main thread.
+`print.pdf(markup, page:, landscape:, margins:)` lays markup out on
+pages, as `print.html` prints it but without a dialog, and writes a PDF
+in the app's caches, named after the page's `<title>` ("Receipt.pdf";
+"Document.pdf" without one). It returns its path, to share, mail or
+move. Its text stays text: searchable, selectable.
 
-```go
-go func() {
-	path, err := print.PDF(receipt, print.PDFOptions{Page: print.A4, Margins: print.Uniform(48)})
-	ui.Post(func() {
-		if err == nil {
-			ui.ShareFiles([]string{path}, ui.ShareOptions{Title: "Receipt"}, nil)
-		}
-	})
-}()
+```asuka
+import asuka/print as printing
+import asuka/preview
+
+async fn receiptPDF(receipt: string) throws {
+  let path = try await printing.pdf(receipt, page: printing.Page.a4, margins: printing.Margins(top: 48, right: 48, bottom: 48, left: 48))
+  try await preview.show([path])
+}
 ```
 
-| Option | |
+| Parameter | |
 | --- | --- |
-| `Page` | The paper, in points: `print.A3`, `A4`, `A5`, `Letter`, `Legal`, or a size of your own. Default: the user's region's, Letter in the Americas that use it (CLDR's paper sizes), A4 elsewhere. |
-| `Landscape` | Turns the page: its width the longer side. |
-| `Margins` | The space around each page's content, in points. Default: half an inch (36 points); `print.Uniform(0)` for none. |
+| `page` | The paper, in points: `Page.a3`, `a4`, `a5`, `letter`, `legal`, or a size of your own. Default: the user's region's (`print.regionPage(environment().locale)`), Letter in the Americas that use it (CLDR's paper sizes), A4 elsewhere. |
+| `landscape` | Turns the page: its width the longer side. |
+| `margins` | The space around each page's content, in points. Default: half an inch (36 points) on each side. |
 
 iOS lays it out with WebKit (`UIPrintPageRenderer` with the web view's
 print formatter), Android with its WebView's print adapter, the Mac with
 WebKit's print operation, Windows with WebView2 (Chromium's
 `Page.printToPDF`), Linux with WebKitGTK (printed to a file). A browser
-makes PDFs only through its print dialog: there `PDF` fails, and
-`print.HTML` lets the user Save as PDF.
+makes PDFs only through its print dialog: there `pdf` throws an
+`unsupported` error, and `print.html` lets the user Save as PDF.
 
 ## Mail and messages: asuka/sdk/compose
 

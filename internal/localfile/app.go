@@ -73,3 +73,28 @@ func AppCacheDir() string {
 	}
 	return CacheDir(AppName())
 }
+
+// AssetsDir is where the app's assets are, as its desktop host finds
+// them: $ASUKA_ASSETS (asuka dev), else assets beside the executable,
+// else assets in the working directory.
+func AssetsDir() string {
+	if d := os.Getenv("ASUKA_ASSETS"); d != "" {
+		return d
+	}
+	if exe, err := os.Executable(); err == nil {
+		d := filepath.Join(filepath.Dir(exe), "assets")
+		if st, err := os.Stat(d); err == nil && st.IsDir() {
+			return d
+		}
+	}
+	if a, err := filepath.Abs("assets"); err == nil {
+		return a
+	}
+	return "assets"
+}
+
+// App is Resolve for the running app: its assets and its caches. Not on
+// the main thread: a download waits.
+func App(source, typ string) (string, error) {
+	return Resolve(source, typ, AssetsDir(), AppCacheDir())
+}

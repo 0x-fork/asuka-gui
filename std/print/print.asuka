@@ -1,0 +1,164 @@
+// Package asuka/print prints with the system's print dialog, and makes
+// PDFs from HTML: a file (a PDF, an image) or HTML markup. The dialog has
+// the platform's printers and options (copies, pages, orientation,
+// paper, a PDF); the app gives what to print.
+//
+//   let done = try await print.html(receipt, job: "Receipt")
+//   let path = try await print.pdf(receipt)   // for share, preview, mail
+//
+// iOS shows its print sheet (UIPrintInteractionController); Android its
+// print screen (PrintManager), whose "Save as PDF" is a printer too; the
+// Mac its print panel (NSPrintOperation), a sheet on the window; Windows
+// its print dialog, WebView2 printing HTML and a file's app printing a
+// file; Linux GTK's print dialog (the print portal in a sandbox), WebKit
+// printing HTML; a browser its print dialog.
+
+/// What the user did in the print dialog.
+pub enum Outcome {
+  /// They closed it without printing.
+  cancelled
+  /// The job went to the printer's queue (or was saved as a PDF from the
+  /// dialog). Whether the printer printed it, the platforms don't say.
+  printed
+  /// The job went to another app, or a dialog, that doesn't say
+  /// (Windows, the web).
+  unknown
+}
+
+/// The orientation a dialog starts with; the user can change it.
+pub enum Orientation {
+  /// Upright, unless the platform picks: Android and iOS turn an image
+  /// wider than tall.
+  portrait
+  landscape
+}
+
+/// What printing ran into.
+pub enum PrintError: Error {
+  /// print: printing isn't available
+  unavailable
+  /// print: can't print this file
+  unsupported
+}
+
+/// A sheet of paper's size, in points (1/72 inch).
+pub struct Page {
+  width: float
+  height: float
+
+  let a3 = Page(width: 841.89, height: 1190.55)
+  let a4 = Page(width: 595.28, height: 841.89)
+  let a5 = Page(width: 419.53, height: 595.28)
+  let letter = Page(width: 612, height: 792)
+  let legal = Page(width: 612, height: 1008)
+}
+
+/// The space around a page's content, in points: half an inch on each
+/// side by default.
+pub struct Margins {
+  top: float = 36
+  right: float = 36
+  bottom: float = 36
+  left: float = 36
+}
+
+/// How a print dialog starts.
+struct Job {
+  /// The job's name in the print queue and the dialog; "": the file's
+  /// name, the page's title, else the app's name.
+  name: string = ""
+  landscape: bool = false
+  /// The region's paper is Letter (a dialog that starts with a size:
+  /// Android's, to start in landscape).
+  letter: bool = false
+}
+
+/// How pdf lays out the pages, in points.
+struct Layout {
+  html: string
+  width: float
+  height: float
+  top: float
+  right: float
+  bottom: float
+  left: float
+}
+
+/// The platform's printing.
+native interface Printer {
+  /// Prints the file a source names (a path, an asset's, an http(s) URL).
+  async fn file(source: string, job: Job) -> Outcome
+  /// Prints markup, laid out for the paper the user picks.
+  async fn html(markup: string, job: Job) -> Outcome
+  /// Lays markup out on pages and writes them as a PDF in the app's
+  /// caches, named after its title: its path.
+  async fn pdf(layout: Layout) -> string
+}
+
+// Made once; none where the platform has no code for it.
+let printer = try? Printer()
+
+fn made() throws -> Printer {
+  if let p = printer {
+    return p
+  }
+  throw Error("unsupported: no printing here")
+}
+
+/// The regions that use US Letter (CLDR's supplemental measurementData,
+/// paperSize); the rest of the world, A4.
+let letterRegions = ["BZ", "CA", "CL", "CO", "CR", "GT", "MX", "NI", "PA", "PH", "PR", "SV", "US", "VE"]
+
+/// The paper of a locale's region (a BCP 47 tag, as environment().locale
+/// has it): Letter or A4.
+pub fn regionPage(locale: string) -> Page {
+  let parts = locale.replace("_", "-").split("-")
+  for (i, sub) in parts.enumerated() {
+    if i == 0 { continue }
+    if sub.count() == 1 { break } // an extension: the region comes before
+    if sub.count() == 2 && letterRegions.contains(sub.upper()) {
+      return Page.letter
+    }
+  }
+  return Page.a4
+}
+
+fn jobOf(name: string, orientation: Orientation) -> Job =
+  Job(name: name, landscape: orientation == .landscape, letter: regionPage(environment().locale) == Page.letter)
+
+/// Prints the file at source: a path, an asset's (as Image takes it), or
+/// an http(s) URL, which is downloaded first. PDFs and images print
+/// everywhere; on Windows the file's app prints it (the shell's print
+/// verb), whatever its type, and the outcome is unknown. Throws
+/// PrintError.unsupported for a file the platform doesn't print, and
+/// PrintError.unavailable where the device can't print.
+pub async fn file(source: string, job: string = "", orientation: Orientation = .portrait) throws -> Outcome {
+  return try await made().file(source: source, job: jobOf(name: job, orientation: orientation))
+}
+
+/// Prints markup, laid out for the paper the user picks, page after
+/// page, as a browser prints a page (CSS's @media print and break-before
+/// apply). Its images and styles come from absolute URLs (https:, data:).
+pub async fn html(markup: string, job: string = "", orientation: Orientation = .portrait) throws -> Outcome {
+  return try await made().html(markup: markup, job: jobOf(name: job, orientation: orientation))
+}
+
+/// Lays markup out on pages, as html prints it (without a dialog), and
+/// writes them as a PDF file in the app's caches, named after its
+/// <title>, whose path it returns: for share, preview.show, mail's
+/// attachments, or the app to move. page is the paper's size (default:
+/// the user's region's, Letter in the Americas that use it, A4 elsewhere);
+/// landscape turns it. The text is text in the PDF, searchable and
+/// selectable. The web has none (its print dialog's Save as PDF is the
+/// user's): an unsupported error.
+pub async fn pdf(markup: string, page: Page? = none, landscape: bool = false, margins: Margins = Margins()) throws -> string {
+  var p = page ?? regionPage(environment().locale)
+  if landscape && p.width < p.height {
+    p = Page(width: p.height, height: p.width)
+  }
+  let m = Margins(top: max(margins.top, 0.0), right: max(margins.right, 0.0), bottom: max(margins.bottom, 0.0), left: max(margins.left, 0.0))
+  if p.width <= 0 || p.height <= 0 || m.left + m.right >= p.width || m.top + m.bottom >= p.height {
+    throw Error("print: the margins leave no room on the page")
+  }
+  return try await made().pdf(layout: Layout(html: markup, width: p.width, height: p.height, top: m.top, right: m.right, bottom: m.bottom, left: m.left))
+}

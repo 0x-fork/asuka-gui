@@ -8,6 +8,7 @@
 // little-endian.
 
 import Foundation
+import UniformTypeIdentifiers
 #if canImport(UIKit)
 import UIKit
 /// The platform's view: UIView on iOS, NSView on the Mac.
@@ -435,5 +436,80 @@ extension AsukaNative {
     }
     #endif
 }
+
+// The files packages hand the system (asuka/preview, asuka/print).
+extension AsukaNative {
+    /// The app's assets: the bundle's Resources/assets (an embedded app's
+    /// framework's), else $ASUKA_ASSETS (asuka dev on the Mac), else
+    /// assets in the working directory.
+    public static var assets: URL {
+        for b in [Bundle(for: AsukaNativeBundle.self), Bundle.main] {
+            if let u = b.resourceURL?.appendingPathComponent("assets"), FileManager.default.fileExists(atPath: u.path) { return u }
+        }
+        if let d = ProcessInfo.processInfo.environment["ASUKA_ASSETS"], !d.isEmpty { return URL(fileURLWithPath: d, isDirectory: true) }
+        return URL(fileURLWithPath: "assets", isDirectory: true)
+    }
+
+    /// The local file a source names: a path, a file:// URL, an asset's
+    /// path, or an http(s) URL, downloaded to the caches first
+    /// (asuka-files/, under its name, with the extension of type, or the
+    /// server's, if it has none).
+    public static func localFile(_ source: String, type: String = "") async throws -> URL {
+        if source.hasPrefix("http://") || source.hasPrefix("https://"), let url = URL(string: source) {
+            return try await download(url, type)
+        }
+        var path = source
+        if path.hasPrefix("file://") { path = URL(string: path)?.path ?? path }
+        if !path.hasPrefix("/") { path = assets.appendingPathComponent(path).path }
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw NSError(domain: "asuka", code: 0, userInfo: [NSLocalizedDescriptionKey: "no file at \(source)"])
+        }
+        return URL(fileURLWithPath: path)
+    }
+
+    private static func download(_ url: URL, _ type: String) async throws -> URL {
+        // The file's moved out before the task's handler returns, which
+        // deletes it.
+        let fm = FileManager.default
+        let (tmp, response): (URL, URLResponse) = try await withCheckedThrowingContinuation { c in
+            URLSession.shared.downloadTask(with: url) { tmp, response, error in
+                guard let tmp, let response else {
+                    c.resume(throwing: error ?? NSError(domain: "asuka", code: 0, userInfo: [NSLocalizedDescriptionKey: "couldn't download \(url)"]))
+                    return
+                }
+                let kept = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                do {
+                    try fm.moveItem(at: tmp, to: kept)
+                    c.resume(returning: (kept, response))
+                } catch {
+                    c.resume(throwing: error)
+                }
+            }.resume()
+        }
+        if let h = response as? HTTPURLResponse, !(200..<300).contains(h.statusCode) {
+            throw NSError(domain: "asuka", code: h.statusCode, userInfo: [NSLocalizedDescriptionKey: "couldn't download \(url): HTTP \(h.statusCode)"])
+        }
+        var name = response.suggestedFilename ?? url.lastPathComponent
+        if name.isEmpty || name == "/" { name = "file" }
+        let mime = type.isEmpty ? (response.mimeType ?? "") : type
+        if (name as NSString).pathExtension.isEmpty, let ext = UTType(mimeType: mime)?.preferredFilenameExtension {
+            name += "." + ext
+        }
+        let dir = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("asuka-files/" + UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dst = dir.appendingPathComponent(name.replacingOccurrences(of: "/", with: "_"))
+        try fm.moveItem(at: tmp, to: dst)
+        return dst
+    }
+
+    /// The app's name, as the home screen or the Dock has it.
+    public static var appName: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? ProcessInfo.processInfo.processName
+    }
+}
+
+/// The bundle the runtime is in (an embedded app's framework).
+final class AsukaNativeBundle {}
 
 #endif

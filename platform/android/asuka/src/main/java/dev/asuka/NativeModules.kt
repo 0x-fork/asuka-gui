@@ -337,6 +337,18 @@ object AsukaModules {
             }
         }
 
+    /**
+     * The local file a source names, for a package that hands files to
+     * the system (asuka/preview, asuka/print): a path, a file:// URL, an
+     * asset's path (pushed by asuka dev, else copied out of the APK), or an
+     * http(s) URL, downloaded to the caches first (under its name, with the
+     * extension of type, or the server's, if it has none). Any thread.
+     */
+    suspend fun localFile(source: String, type: String = ""): java.io.File =
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            (AsukaRuntime.current ?: throw IllegalStateException("asuka: the host hasn't started")).localFile(AsukaSource(source, type))
+        }
+
     private val urlWatchers = java.util.concurrent.CopyOnWriteArrayList<(String) -> Boolean>()
     private val lifecycleWatchers = java.util.concurrent.CopyOnWriteArrayList<(Boolean) -> kotlin.Unit>()
 
