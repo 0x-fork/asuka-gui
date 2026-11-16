@@ -55,7 +55,7 @@ public struct Uniform: Sendable {
     func setAnimated(_ value: Bool)
 }
 
-/// Sends a Shader's events to its Go.
+/// Sends a Shader's events to the app.
 @MainActor public struct ShaderEvents {
     let ctx: AsukaNativeContext
 
@@ -123,7 +123,7 @@ public struct Uniform: Sendable {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeProgram(_ w: inout AsukaNativeWriter, _ v: Program) {
         w.string(v.source)

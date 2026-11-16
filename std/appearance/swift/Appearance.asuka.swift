@@ -93,7 +93,7 @@ public protocol System: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeSettings(_ w: inout AsukaNativeWriter, _ v: Settings) {
         w.bool(v.hasAccent)

@@ -6,9 +6,8 @@
 //
 //	export function makePage() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./update.js";
 
@@ -17,7 +16,7 @@ const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerMod
 const errorIndex = { notAvailable: 0, notConfigured: 1, managed: 2, translocated: 3, notWritable: 4, notInstalled: 5, notSigned: 6, failed: 7 };
 const errorMessage = ["update: this platform updates apps itself (its app store)", "update: this build has no updates (asuka.toml's [updates]; asuka dev's builds have none)", "update: a package manager or an app store installed the app, and updates it", "update: macOS runs the app from a read-only copy: move it to the Applications folder, then open it again", "update: the app can't write where it's installed", "update: the app isn't laid out as asuka build makes it (a bundle, a folder, an install prefix)", "update: the update is not signed with the app's key", "update: checking or installing failed"];
 
-/** One of the errors the package declares (native.NewError): throw new UpdateError("notAvailable"). */
+/** One of the errors the package declares: throw new UpdateError("notAvailable"). */
 export class UpdateError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -76,7 +75,7 @@ const provider = {
 
 registerModule("asuka/update", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writePageRelease(w, v) {
     w.string((v?.version ?? ""));

@@ -99,7 +99,7 @@ public struct Layer: Sendable {
     func setColor(_ value: Int)
 }
 
-/// Sends a View's events to its Go.
+/// Sends a View's events to the app.
 @MainActor public struct ViewEvents {
     let ctx: AsukaNativeContext
 
@@ -142,7 +142,7 @@ public struct Layer: Sendable {
     func setLayers(_ value: [Layer])
 }
 
-/// Sends a Shape's events to its Go.
+/// Sends a Shape's events to the app.
 @MainActor public struct ShapeEvents {
     let ctx: AsukaNativeContext
 
@@ -205,7 +205,7 @@ public struct Layer: Sendable {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeIcon(_ w: inout AsukaNativeWriter, _ v: Icon) {
         w.string(v.source)

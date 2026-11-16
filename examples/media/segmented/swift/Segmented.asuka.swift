@@ -18,7 +18,7 @@ import Asuka
     func setSelected(_ value: Int)
 }
 
-/// Sends a Segmented's events to its Go.
+/// Sends a Segmented's events to the app.
 @MainActor public struct SegmentedEvents {
     let ctx: AsukaNativeContext
 
@@ -89,7 +89,7 @@ import Asuka
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeSliceString(_ w: inout AsukaNativeWriter, _ v: [String]) {
         w.len(v.count)

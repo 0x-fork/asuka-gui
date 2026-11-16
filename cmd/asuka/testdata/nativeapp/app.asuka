@@ -1,5 +1,5 @@
-// An app with a native package (internal/nativegen's kitchen): the Mac
+// An app with a native package (internal/nativegen's pantry): the Mac
 // build's tests build its Swift.
-import kitchen
+import @asuka/pantry
 
-app { Text("kitchen") }
+app { Text("pantry") }

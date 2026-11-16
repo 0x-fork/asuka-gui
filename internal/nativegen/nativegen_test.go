@@ -9,84 +9,7 @@ import (
 	"testing"
 )
 
-var update = flag.Bool("update", false, "write the kitchen package's generated files")
-
-// The kitchen package (testdata/kitchen) declares every kind of value,
-// a view, errors, an async method and objects: its generated files, for
-// Go and each project it has (Swift, Android, web), are what's
-// committed (-update writes them), and its Go compiles on each platform.
-func TestKitchen(t *testing.T) {
-	p, err := Load("testdata/kitchen")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if *update {
-		if _, err := Write(p); err != nil {
-			t.Fatal(err)
-		}
-	}
-	stale, err := Stale(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	files, _ := Files(p)
-	for rel, b := range files {
-		old, _ := os.ReadFile(filepath.Join(p.Dir, rel))
-		if string(old) != string(b) {
-			stale = append(stale, rel)
-		}
-	}
-	if len(stale) > 0 {
-		t.Fatalf("stale (go test ./internal/nativegen -update): %v", stale)
-	}
-	if len(files) != 4 {
-		t.Errorf("%d files, want Go's, Swift's, Kotlin's and JavaScript's", len(files))
-	}
-	for _, goos := range []string{"darwin", "windows", "linux", "js"} {
-		c := exec.Command("go", "vet", "./testdata/kitchen")
-		c.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=0")
-		if goos == "js" {
-			c.Env = append(c.Env, "GOARCH=wasm")
-		}
-		if out, err := c.CombinedOutput(); err != nil {
-			t.Errorf("%s: %v\n%s", goos, err, out)
-		}
-	}
-}
-
-// What can't cross says where it is and why.
-func TestLoadErrors(t *testing.T) {
-	for _, c := range []struct{ src, want string }{
-		{"//asuka:native\ntype X struct{}", "is for an interface"},
-		{"//asuka:native\ntype x interface{ M() }", "is exported"},
-		{"//asuka:native\ntype X interface{ M(c chan int) }", "can't cross"},
-		{"//asuka:native\ntype X interface{ M(m map[int]string) }", "a map's keys are strings"},
-		{"//asuka:native\ntype X interface{ M() (int, int) }", "second result is an error"},
-		{"//asuka:native\ntype X interface{ M(s string, ctx context.Context) }", "is the first parameter"},
-		{"//asuka:native\ntype X interface{ M() func() }", "a parameter only"},
-		{"//asuka:native\ntype X interface{ M(s ...string) }", "isn't variadic"},
-		{"//asuka:native\ntype X interface{ M(o []X) }", "not in a slice"},
-		{"type S struct{ a int }\n//asuka:native\ntype X interface{ M(s S) }", "exported fields only"},
-		{"//asuka:native\ntype X interface{ M(t time.Month) }", "a type of another package"},
-		{"type F float64\n//asuka:native\ntype X interface{ M(f F) }", "over a string or an integer"},
-		{"//asuka:view\ntype Dial struct{ A int }", "named <View>Props"},
-		{"//asuka:view\ntype DialProps struct{ On func() int }", "an event returns nothing"},
-		{"var ErrX = native.NewError(fmt.Sprint(1))\n//asuka:native\ntype X interface{ M() }", "a constant string"},
-	} {
-		// A package of this module's (go list resolves its imports).
-		dir, err := os.MkdirTemp("testdata", "bad")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.RemoveAll(dir)
-		src := "package x\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"time\"\n\n\t\"github.com/egoist/asuka/native\"\n)\n\nvar _ = context.Background\nvar _ = fmt.Sprint\nvar _ time.Time\nvar _ = native.NewError\n\n" + c.src + "\n"
-		os.WriteFile(filepath.Join(dir, "x.go"), []byte(src), 0o644)
-		_, err = Load(dir)
-		if err == nil || !strings.Contains(err.Error(), c.want) || !strings.Contains(err.Error(), "x.go:") {
-			t.Errorf("%s:\n  %v, want %q at its line", c.src, err, c.want)
-		}
-	}
-}
+var update = flag.Bool("update", false, "write the pantry package's generated files")
 
 // Names as each language writes them.
 func TestNames(t *testing.T) {
@@ -118,9 +41,11 @@ func TestSameText(t *testing.T) {
 	}
 }
 
-// The pantry package (testdata/pantry) declares in Asuka what the kitchen
-// declares in Go: its generated Swift, Kotlin and JavaScript are what's
-// committed (-update writes them).
+// The pantry package (testdata/pantry) declares every kind of value, a
+// view, errors, an async method and objects: its generated Swift, Kotlin,
+// JavaScript and C are what's committed (-update writes them), beside
+// its implementations (cmd/asuka's Mac build and the GUI tests' plugin
+// app use them).
 func TestPantry(t *testing.T) {
 	p, err := LoadAsuka("testdata/pantry")
 	if err != nil {
@@ -149,16 +74,13 @@ func TestPantry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(files) != 5 {
-		t.Errorf("%d files, want Swift's, Kotlin's, JavaScript's and the desktop's C (a header and a source; no Go client: Asuka's compiler calls it)", len(files))
+		t.Errorf("%d files, want Swift's, Kotlin's, JavaScript's and the desktop's C (a header and a source)", len(files))
 	}
 	for rel, b := range files {
 		old, _ := os.ReadFile(filepath.Join(p.Dir, rel))
 		if string(old) != string(b) {
 			t.Errorf("stale (go test ./internal/nativegen -update): %s", rel)
 		}
-	}
-	if _, err := LoadAsuka("testdata/kitchen"); err != nil {
-		t.Fatal(err)
 	}
 	// The desktop's C compiles for Windows and Linux (Zig cross-compiles;
 	// platform/desktop's test runs it).

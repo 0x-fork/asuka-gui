@@ -137,7 +137,7 @@ public object AsukaModule : AsukaModuleProvider {
     }
 }
 
-/** The package's values on the wire (package native's format). */
+/** The package's values on the wire (core/src/native's format). */
 private object Wire {
     fun writeStatus(w: AsukaNativeWriter, v: Status) {
         w.int(v.kind.value)

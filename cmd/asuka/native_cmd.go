@@ -82,7 +82,7 @@ func nativeGenerateCmd(args []string, check bool) error {
 	}
 	var stale []string
 	for _, d := range dirs {
-		p, err := nativegen.LoadAny(d)
+		p, err := nativegen.LoadAsuka(d)
 		if err != nil {
 			return err
 		}

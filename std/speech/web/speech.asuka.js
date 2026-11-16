@@ -6,9 +6,8 @@
 //
 //	export function makeSynthesizer() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./speech.js";
 
@@ -26,7 +25,7 @@ export const Quality = Object.freeze({
 const errorIndex = { stopped: 0 };
 const errorMessage = ["speech: stopped"];
 
-/** One of the errors the package declares (native.NewError): throw new SpeechError("stopped"). */
+/** One of the errors the package declares: throw new SpeechError("stopped"). */
 export class SpeechError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -105,7 +104,7 @@ const provider = {
 
 registerModule("asuka/speech", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writeOptions(w, v) {
     w.string((v?.language ?? ""));

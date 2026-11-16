@@ -6,9 +6,8 @@
 //
 //	export function makeStore() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./purchase.js";
 
@@ -108,7 +107,7 @@ export const EventType = Object.freeze({
 const errorIndex = { notAvailable: 0, notAllowed: 1, unknownProduct: 2, alreadyOwned: 3 };
 const errorMessage = ["purchase: no store", "purchase: payments not allowed", "purchase: unknown product", "purchase: already owned"];
 
-/** One of the errors the package declares (native.NewError): throw new PurchaseError("notAvailable"). */
+/** One of the errors the package declares: throw new PurchaseError("notAvailable"). */
 export class PurchaseError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -267,7 +266,7 @@ const provider = {
 
 registerModule("asuka/purchase", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writeEvent(w, v) {
     w.int((v?.type ?? 0));

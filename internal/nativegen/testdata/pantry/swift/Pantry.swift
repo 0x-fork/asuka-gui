@@ -1,6 +1,6 @@
-// The kitchen package's Swift: what its Go declares, implemented, on iOS
-// and macOS (built into a Mac app by cmd/asuka's TestMacSwift; the GUI
-// tests' plugin app calls each).
+// The pantry package's Swift: what pantry.asuka declares, implemented on
+// iOS and macOS (built into a Mac app by cmd/asuka's TestMacSwift; the
+// GUI tests' plugin app calls it).
 import Asuka
 import Foundation
 #if canImport(UIKit)
@@ -9,14 +9,13 @@ import UIKit
 import AppKit
 #endif
 
-final class SwiftKitchen: Kitchen {
-    func name() -> String { "home" }
+final class SwiftPantry: Pantry {
+    func name() throws -> String { "home" }
     func items(filter: String) throws -> [Item] {
-        [Item(name: filter, weight: 1.5, unit: .gram, tags: ["a", "b"], notes: ["k": "v"],
-              best: Date(timeIntervalSince1970: 1_700_000_000.25), next: Item(name: "inner"),
-              data: Data([1, 2, 3]), took: 2.5, id: UInt64.max, count: -3, ratio: 0.5, fresh: true)]
+        [Item(name: filter, weight: 1.5, level: .high, tags: ["a", "b"], notes: ["k": "v"], next: Item(name: "inner"),
+              data: Data([1, 2, 3]), took: 2.5, count: -3, fresh: true)]
     }
-    func add(item: Item) throws { if item.name.isEmpty { throw KitchenError.busy } }
+    func add(item: Item) throws { if item.name.isEmpty { throw PantryError.busy } }
     func cook(recipe: String, progress: @escaping (Double) -> Void) async throws -> Item {
         if recipe == "slow" {
             try await Task.sleep(nanoseconds: 10_000_000_000)
@@ -26,25 +25,23 @@ final class SwiftKitchen: Kitchen {
         return Item(name: recipe + " done")
     }
     func ask(question: @escaping (String) -> Bool) throws -> Bool { question("ok?") }
-    func open(name: String) throws -> any Oven {
-        if name == "none" { throw NSError(domain: "Oven", code: 7, userInfo: [NSLocalizedDescriptionKey: "no oven"]) }
-        return try AsukaNative.onMain { SwiftOven() }
+    func `open`(name: String) throws -> any Shelf {
+        if name == "none" { throw NSError(domain: "Shelf", code: 7, userInfo: [NSLocalizedDescriptionKey: "no shelf"]) }
+        return try AsukaNative.onMain { SwiftShelf() }
     }
     func show() throws {}
-    func level() -> Level { .high }
-    func counts() -> [String: Int64] { ["a": 1, "b": -2] }
-    func when(at: Date, every: TimeInterval) throws -> Date? { every == 0 ? nil : at.addingTimeInterval(every) }
+    func counts() throws -> [String: Int] { ["a": 1, "b": -2] }
 }
 
-@MainActor final class SwiftOven: Oven {
-    func close() throws {}
-    func heat(to: Float, unit: Unit) throws {
-        if unit == .ounce { throw AsukaNativeError.unsupported("no ounces") }
+@MainActor final class SwiftShelf: Shelf {
+    func stack(count: Int, level: Level) throws {
+        if level == .high && count > 10 { throw PantryError.empty }
     }
+    func close() throws {}
 }
 
-func makeKitchen() throws -> any Kitchen { SwiftKitchen() }
-@MainActor func makeOven() throws -> any Oven { SwiftOven() }
+func makePantry() throws -> any Pantry { SwiftPantry() }
+@MainActor func makeShelf() throws -> any Shelf { SwiftShelf() }
 
 #if canImport(UIKit)
 @MainActor final class SwiftDial: Dial, AsukaDestroying {

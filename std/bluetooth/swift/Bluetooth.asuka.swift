@@ -651,7 +651,7 @@ public protocol Adapter: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeAdvertisement(_ w: inout AsukaNativeWriter, _ v: Advertisement) {
         Wire.writeDevice(&w, v.device)

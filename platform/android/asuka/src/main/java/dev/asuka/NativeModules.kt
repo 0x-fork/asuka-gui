@@ -2,7 +2,7 @@
 // the Kotlin that asuka native generates for a Go package calls, and what
 // Go's calls reach through JNI (mobile/jni_android.c), from any thread.
 //
-// The wire format is package native's: values in declaration order,
+// The wire format is core/src/native's: values in declaration order,
 // little-endian.
 package dev.asuka
 
@@ -19,7 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 
-/** Encodes values (package native's Writer). */
+/** Encodes values (core/src/native's writer). */
 class AsukaNativeWriter {
     private var b = ByteArray(64)
     private var n = 0
@@ -76,7 +76,7 @@ class AsukaNativeWriter {
     }
 }
 
-/** Decodes values (package native's Reader); past what's there, every read is its zero value and failed is true. */
+/** Decodes values (core/src/native's reader); past what's there, every read is its zero value and failed is true. */
 class AsukaNativeReader(private val b: ByteArray) {
     private var p = 0
     var failed = false
@@ -160,7 +160,7 @@ class AsukaNativeReader(private val b: ByteArray) {
     }
 }
 
-/** An error a package declares (native.NewError): its Go gets that value. */
+/** An error a package declares (its enum ...: Error): the app gets that value. */
 /**
  * An object of a package's that hears Asuka let it go (on the main
  * thread): to free what it holds, as a Swift object's deinit does.

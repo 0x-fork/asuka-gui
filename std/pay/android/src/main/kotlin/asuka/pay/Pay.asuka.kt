@@ -608,7 +608,7 @@ public interface PayButton {
     fun setNetworks(value: List<Network>)
 }
 
-/** Sends a PayButton's events to its Go, and has the app's themed context to make views with. */
+/** Sends a PayButton's events to the app, and has the app's themed context to make views with. */
 public class PayButtonEvents internal constructor(private val ctx: AsukaNativeContext) {
     val context: android.content.Context get() = ctx.context
 
@@ -734,7 +734,7 @@ public object AsukaModule : AsukaModuleProvider {
     }
 }
 
-/** The package's values on the wire (package native's format). */
+/** The package's values on the wire (core/src/native's format). */
 private object Wire {
     fun writeAnswer(w: AsukaNativeWriter, v: Answer) {
         Wire.writeUpdate(w, v.update)

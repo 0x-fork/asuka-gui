@@ -7,7 +7,7 @@ import (
 	"sort"
 )
 
-// A package's native code lives beside its Go, a project of the
+// A package's native code lives beside its Asuka, a project of the
 // platform's own for each:
 //
 //	Package.swift  a Swift package, for iOS and macOS (the platforms it
@@ -20,7 +20,7 @@ import (
 //
 // Generate writes what connects each to the package's declarations. The Swift
 // package is at the package's root because SwiftPM knows a package by
-// its folder's name: the Go package's, not one every package shares.
+// its folder's name: the package's, not one every package shares.
 
 // Platforms are the projects a package can have native code in.
 var Platforms = []string{"swift", "android", "web", "desktop"}
@@ -41,27 +41,16 @@ func HasPlatform(dir, platform string) bool {
 	case "web":
 		return exists(filepath.Join(dir, platform))
 	case "desktop":
-		// A desktop/ of Go is a package's old desktop code (the Go hosts'),
-		// not C: Go refuses C files beside it.
-		d := filepath.Join(dir, platform)
-		gos, _ := filepath.Glob(filepath.Join(d, "*.go"))
-		return exists(d) && len(gos) == 0
+		return exists(filepath.Join(dir, platform))
 	}
 	return false
 }
 
 // Files are what the package generates, by their paths relative to its
-// directory: its Go, and each platform's it has native code for.
+// directory: each platform's it has native code for.
 func Files(p *Package) (map[string][]byte, error) {
 	files := map[string][]byte{}
-	if !p.Asuka {
-		goSrc, err := GenerateGo(p)
-		if err != nil {
-			return nil, err
-		}
-		files[GoFile(p.Name)] = goSrc
-	}
-	if p.Asuka && HasPlatform(p.Dir, "desktop") {
+	if HasPlatform(p.Dir, "desktop") {
 		h, c := GenerateC(p)
 		files[filepath.Join(DesktopDir, CHeader(p))] = h
 		files[filepath.Join(DesktopDir, CSource(p))] = c

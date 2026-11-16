@@ -1,17 +1,16 @@
-// The kitchen package's JavaScript on the web: what its Go declares,
+// The pantry package's JavaScript on the web: what pantry.asuka declares,
 // implemented (platform/web's test and the GUI tests' plugin app call it).
-import { KitchenError, Unit, Level } from "./kitchen.asuka.js";
+import { PantryError, Level } from "./pantry.asuka.js";
 
-export function makeKitchen() {
+export function makePantry() {
   return {
     name: () => "home",
     items: (filter) => [{
-      name: filter, weight: 1.5, unit: Unit.gram, tags: ["a", "b"], notes: { k: "v" },
-      best: new Date(1_700_000_000_250), next: { name: "inner" }, data: new Uint8Array([1, 2, 3]),
-      took: 2500, id: 18446744073709551615n, count: -3, ratio: 0.5, fresh: true,
+      name: filter, weight: 1.5, level: Level.high, tags: ["a", "b"], notes: { k: "v" },
+      next: { name: "inner" }, data: new Uint8Array([1, 2, 3]), took: 2500, count: -3, fresh: true,
     }],
     add(item) {
-      if (!item.name) throw new KitchenError("busy");
+      if (!item.name) throw new PantryError("busy");
     },
     async cook(signal, recipe, progress) {
       if (recipe === "slow") {
@@ -27,22 +26,20 @@ export function makeKitchen() {
     },
     ask: (question) => question("ok?"),
     open(name) {
-      if (name === "none") throw new RangeError("no oven");
-      return makeOven();
+      if (name === "none") throw new RangeError("no shelf");
+      return makeShelf();
     },
     show() {},
-    level: () => Level.high,
-    counts: () => ({ a: 1n, b: -2n }),
-    when: (at, every) => (every === 0 ? null : new Date(at.getTime() + every)),
+    counts: () => ({ a: 1, b: -2 }),
   };
 }
 
-export function makeOven() {
+export function makeShelf() {
   return {
-    close() {},
-    heat(to, unit) {
-      if (unit === Unit.ounce) throw new (globalThis.asuka.native.UnsupportedError)("no ounces");
+    stack(count, level) {
+      if (level === Level.high && count > 10) throw new PantryError("empty");
     },
+    close() {},
   };
 }
 

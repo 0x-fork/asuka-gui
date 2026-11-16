@@ -6,9 +6,8 @@
 //
 //	export function makeReader() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./nfc.js";
 
@@ -37,7 +36,7 @@ export const Format = Object.freeze({
 const errorIndex = { notAvailable: 0, disabled: 1, denied: 2, canceled: 3, timeout: 4, tagLost: 5, readOnly: 6, tooLarge: 7, notSupported: 8, badMessage: 9 };
 const errorMessage = ["nfc: not available", "nfc: turned off", "nfc: not allowed", "nfc: canceled", "nfc: timed out", "nfc: the tag was lost", "nfc: the tag is read-only", "nfc: the message is too large for the tag", "nfc: not supported by the tag", "nfc: not an NDEF message"];
 
-/** One of the errors the package declares (native.NewError): throw new NfcError("notAvailable"). */
+/** One of the errors the package declares: throw new NfcError("notAvailable"). */
 export class NfcError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -192,7 +191,7 @@ const provider = {
 
 registerModule("asuka/nfc", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writeFound(w, v) {
     w.int((v?.handle ?? 0));

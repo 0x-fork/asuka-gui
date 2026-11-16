@@ -117,7 +117,7 @@ public protocol Provider: AnyObject {
     func setCornerRadius(_ value: Double)
 }
 
-/// Sends a SignInButton's events to its Go.
+/// Sends a SignInButton's events to the app.
 @MainActor public struct SignInButtonEvents {
     let ctx: AsukaNativeContext
 
@@ -226,7 +226,7 @@ public protocol Provider: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeCredential(_ w: inout AsukaNativeWriter, _ v: Credential) {
         w.string(v.user)

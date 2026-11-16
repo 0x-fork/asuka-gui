@@ -3,7 +3,7 @@
 // calls (through globalThis.asuka.native), and what Go's calls reach,
 // through its host (Host's nativeNew, nativeCall...).
 //
-// The wire format is package native's: values in declaration order,
+// The wire format is core/src/native's: values in declaration order,
 // little-endian. int64 and uint64 are BigInts; Go's int and uint, and the
 // smaller integers, are numbers; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array; a map is an object.
@@ -35,7 +35,7 @@ export function assetURL(src) {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-/** Encodes values (package native's Writer). */
+/** Encodes values (core/src/native's writer). */
 export class NativeWriter {
   constructor() {
     this.b = new Uint8Array(64);
@@ -91,7 +91,7 @@ export class NativeWriter {
   bytes() { return this.b.slice(0, this.n); }
 }
 
-/** Decodes values (package native's Reader); past what's there, every read is its zero value and failed is true. */
+/** Decodes values (core/src/native's reader); past what's there, every read is its zero value and failed is true. */
 export class NativeReader {
   constructor(b, back) {
     this.b = b instanceof Uint8Array ? b : new Uint8Array(b);
@@ -163,7 +163,7 @@ export class NativeReader {
   check() { if (this.failed) throw new Error("asuka: a malformed call"); }
 }
 
-/** An error a package declares (native.NewError): its Go gets that value. Generated code subclasses it. */
+/** An error a package declares (its enum ...: Error): the app gets that value. Generated code subclasses it. */
 export class DeclaredError extends Error {
   constructor(index, message) {
     super(message);

@@ -6,9 +6,8 @@
 //
 //	export function makeViewer() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./preview.js";
 
@@ -17,7 +16,7 @@ const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerMod
 const errorIndex = { noViewer: 0 };
 const errorMessage = ["preview: nothing can show this file"];
 
-/** One of the errors the package declares (native.NewError): throw new PreviewError("noViewer"). */
+/** One of the errors the package declares: throw new PreviewError("noViewer"). */
 export class PreviewError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -67,7 +66,7 @@ const provider = {
 
 registerModule("asuka/preview", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writeSliceString(w, v) {
     w.len(v.length);

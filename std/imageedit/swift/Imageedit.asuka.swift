@@ -174,7 +174,7 @@ public protocol Editor: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeResult(_ w: inout AsukaNativeWriter, _ v: Result) {
         w.string(v.path)

@@ -206,8 +206,8 @@ where no host keeps its own (iOS, Android, the web).
 - Asuka: a UI program under lang/compile/testdata/ui (or a run program
   under testdata/run) that imports the package and runs on the fake host,
   with no platform code: it must behave (fallbacks, errors).
-- Swift: compiles for macOS and the iOS simulator (xcrun swiftc against
-  platform/macos's host, as cmd/asuka's TestMacSwift builds the kitchen).
+- Swift: compiles for macOS against the Mac's host and typechecks for the
+  iOS simulator against the iOS host (platform/macos's TestStdSwift).
 - C: compiled for Windows and Linux with Zig, and run on Linux by
   platform/desktop's std_test.go (an Asuka program on the test host, in
   the asuka-linux-test image) where it can be driven there.

@@ -6,9 +6,8 @@
 //
 //	export function makeDesktop() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./shell.js";
 
@@ -17,7 +16,7 @@ const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerMod
 const errorIndex = { noApp: 0 };
 const errorMessage = ["shell: no app opens this file"];
 
-/** One of the errors the package declares (native.NewError): throw new ShellError("noApp"). */
+/** One of the errors the package declares: throw new ShellError("noApp"). */
 export class ShellError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -88,6 +87,6 @@ const provider = {
 
 registerModule("asuka/shell", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
 };

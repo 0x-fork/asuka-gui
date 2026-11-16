@@ -528,7 +528,7 @@ public protocol Locator: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeAuthorization(_ w: inout AsukaNativeWriter, _ v: Authorization) {
         w.int(v.level.rawValue)

@@ -8,9 +8,8 @@
 //	export function makeShelf() // returns its methods (lowerCamelCase)
 //	export function makeDial(events) // returns { el, set<Prop>(value)..., measure?, destroy? }
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./pantry.js";
 
@@ -27,7 +26,7 @@ export const Level = Object.freeze({
 const errorIndex = { busy: 0, empty: 1 };
 const errorMessage = ["pantry: busy", "pantry: empty"];
 
-/** One of the errors the package declares (native.NewError): throw new PantryError("busy"). */
+/** One of the errors the package declares: throw new PantryError("busy"). */
 export class PantryError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -188,7 +187,7 @@ const provider = {
 
 registerModule("@asuka/pantry", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writeItem(w, v) {
     w.string((v?.name ?? ""));

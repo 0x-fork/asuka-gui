@@ -6,9 +6,8 @@
 //
 //	export function makeSensors() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./sensors.js";
 
@@ -30,7 +29,7 @@ export const Sensor = Object.freeze({
 const errorIndex = { notAvailable: 0, notAllowed: 1 };
 const errorMessage = ["sensors: not available", "sensors: not allowed"];
 
-/** One of the errors the package declares (native.NewError): throw new SensorError("notAvailable"). */
+/** One of the errors the package declares: throw new SensorError("notAvailable"). */
 export class SensorError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -112,7 +111,7 @@ const provider = {
 
 registerModule("asuka/sensors", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writeSample(w, v) {
     Wire.writeSliceFloat64(w, (v?.values ?? []));

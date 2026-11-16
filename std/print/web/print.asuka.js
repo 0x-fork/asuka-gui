@@ -6,9 +6,8 @@
 //
 //	export function makePrinter() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./print.js";
 
@@ -26,7 +25,7 @@ export const Outcome = Object.freeze({
 const errorIndex = { unavailable: 0, unsupported: 1 };
 const errorMessage = ["print: printing isn't available", "print: can't print this file"];
 
-/** One of the errors the package declares (native.NewError): throw new PrintError("unavailable"). */
+/** One of the errors the package declares: throw new PrintError("unavailable"). */
 export class PrintError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -97,7 +96,7 @@ const provider = {
 
 registerModule("asuka/print", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writeJob(w, v) {
     w.string((v?.name ?? ""));

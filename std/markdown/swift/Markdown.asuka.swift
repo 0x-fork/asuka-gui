@@ -71,7 +71,7 @@ public struct Paragraph: Sendable {
     func setParagraphs(_ value: [Paragraph])
 }
 
-/// Sends a Document's events to its Go.
+/// Sends a Document's events to the app.
 @MainActor public struct DocumentEvents {
     let ctx: AsukaNativeContext
 
@@ -133,7 +133,7 @@ public struct Paragraph: Sendable {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeParagraph(_ w: inout AsukaNativeWriter, _ v: Paragraph) {
         Wire.writeSliceRun(&w, v.runs)

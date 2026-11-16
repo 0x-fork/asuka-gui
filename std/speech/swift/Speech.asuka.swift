@@ -171,7 +171,7 @@ public protocol Synthesizer: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeOptions(_ w: inout AsukaNativeWriter, _ v: Options) {
         w.string(v.language)

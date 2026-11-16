@@ -6,9 +6,8 @@
 //
 //	export function makeMonitor() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./power.js";
 
@@ -38,7 +37,7 @@ export const Event = Object.freeze({
 const errorIndex = { idleUnknown: 0 };
 const errorMessage = ["power: the idle time isn't known here"];
 
-/** One of the errors the package declares (native.NewError): throw new PowerError("idleUnknown"). */
+/** One of the errors the package declares: throw new PowerError("idleUnknown"). */
 export class PowerError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -120,7 +119,7 @@ const provider = {
 
 registerModule("asuka/power", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writeStatus(w, v) {
     w.bool((v?.battery ?? false));

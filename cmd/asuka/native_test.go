@@ -10,11 +10,11 @@ import (
 )
 
 // testNativeApp is testdata/nativeapp, an app with a native package (the
-// kitchen, internal/nativegen's testdata) among its dependencies.
+// pantry, internal/nativegen's testdata) among its dependencies.
 func testNativeApp(t *testing.T) *asukaApp {
 	t.Helper()
-	kitchen, _ := filepath.Abs(filepath.Join("..", "..", "internal", "nativegen", "testdata", "kitchen"))
-	return projectApp(t, filepath.Join("testdata", "nativeapp"), map[string]string{"kitchen": kitchen})
+	pantry, _ := filepath.Abs(filepath.Join("..", "..", "internal", "nativegen", "testdata", "pantry"))
+	return projectApp(t, filepath.Join("testdata", "nativeapp"), map[string]string{"@asuka/pantry": pantry})
 }
 
 // An app's native packages are its dependencies with generated native
@@ -22,7 +22,7 @@ func testNativeApp(t *testing.T) *asukaApp {
 func TestNativePackages(t *testing.T) {
 	app := testNativeApp(t)
 	all, err := appNatives(app)
-	if err != nil || len(all) != 1 || all[0].name != "kitchen" || all[0].main {
+	if err != nil || len(all) != 1 || all[0].name != "pantry" || all[0].main {
 		t.Fatalf("%+v %v", all, err)
 	}
 	for _, pl := range []string{"android", "web", "macos"} {
@@ -39,7 +39,7 @@ func TestNativePackages(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.Join(app.cfg.gradleProps(), " ")
-	want := "-PasukaModules= -PasukaNativeModules=native-github_com_egoist_asuka_internal_nativegen_testdata_kitchen=" + filepath.Join(all[0].dir, "android")
+	want := "-PasukaModules= -PasukaNativeModules=native-_asuka_pantry=" + filepath.Join(all[0].dir, "android")
 	if got != want {
 		t.Errorf("gradle:\n  %s\nwant\n  %s", got, want)
 	}
@@ -53,7 +53,7 @@ func TestNativePackages(t *testing.T) {
 			entries = append(entries, sc.path)
 		}
 	}
-	if len(scripts) != 2 || !slices.Equal(entries, []string{"packages/github_com_egoist_asuka_internal_nativegen_testdata_kitchen/kitchen.asuka.js"}) {
+	if len(scripts) != 2 || !slices.Equal(entries, []string{"packages/_asuka_pantry/pantry.asuka.js"}) {
 		t.Errorf("scripts %+v", scripts)
 	}
 }
@@ -103,7 +103,7 @@ func TestSwiftRootManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`.package(path: "../asuka")`, `.package(path: "` + natives[0].dir + `")`, `.product(name: "KitchenNative", package: "kitchen")`, `platforms: [.iOS("` + iosMin + `")]`} {
+	for _, want := range []string{`.package(path: "../asuka")`, `.package(path: "` + natives[0].dir + `")`, `.product(name: "PantryNative", package: "pantry")`, `platforms: [.iOS("` + iosMin + `")]`} {
 		if !strings.Contains(root, want) {
 			t.Errorf("no %s in\n%s", want, root)
 		}
@@ -113,10 +113,10 @@ func TestSwiftRootManifest(t *testing.T) {
 		t.Errorf("host:\n%s", host)
 	}
 	twin := natives[0]
-	twin.path = "example.com/other/kitchen"
+	twin.path = "example.com/other/pantry"
 	b.natives = append(b.natives, twin)
-	if _, err := b.rootManifest(); err == nil || !strings.Contains(err.Error(), "folder's name (kitchen)") {
-		t.Errorf("two named kitchen: %v", err)
+	if _, err := b.rootManifest(); err == nil || !strings.Contains(err.Error(), "folder's name (pantry)") {
+		t.Errorf("two named pantry: %v", err)
 	}
 }
 

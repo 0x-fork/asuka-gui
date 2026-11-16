@@ -7,9 +7,8 @@
 //	export function makeWallets() // returns its methods (lowerCamelCase)
 //	export function makePayButton(events) // returns { el, set<Prop>(value)..., measure?, destroy? }
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 import * as impl from "./pay.js";
 
@@ -179,7 +178,7 @@ export const ButtonStyle = Object.freeze({
 const errorIndex = { notAvailable: 0, canceled: 1, busy: 2 };
 const errorMessage = ["pay: not available", "pay: canceled", "pay: a payment sheet shows already"];
 
-/** One of the errors the package declares (native.NewError): throw new PayError("notAvailable"). */
+/** One of the errors the package declares: throw new PayError("notAvailable"). */
 export class PayError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -300,7 +299,7 @@ const provider = {
 
 registerModule("asuka/pay", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
   writeAnswer(w, v) {
     Wire.writeUpdate(w, (v?.update ?? {}));
