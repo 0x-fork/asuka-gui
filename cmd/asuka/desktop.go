@@ -18,13 +18,14 @@ import (
 	"github.com/egoist/asuka/plugin"
 )
 
-// Desktop apps: the executable is the desktop host (cmd/asuka-host: Go,
-// AppKit, Win32 or GTK, the same for every app), with the C core beside
-// it (libasuka: libasuka.dylib in a Mac app's Frameworks, asuka.dll
-// beside the .exe, libasuka.so in a Linux prefix's lib/<exe>) and the
-// app's settings (internal/boot's ConfigFile). A release's core has the
-// app compiled into it; asuka dev's player's has none, and loads the
-// bytecode the CLI sends (ASUKA_DEV).
+// Desktop apps: on the Mac and Windows the executable is the desktop host
+// (cmd/asuka-host: Go, AppKit or Win32, the same for every app), with the
+// C core beside it (libasuka: libasuka.dylib in a Mac app's Frameworks,
+// asuka.dll beside the .exe); on Linux it's the C host linked with the
+// core into one executable (platform/linux, appbuild.LinuxExe). With the
+// app's settings (internal/boot's ConfigFile). A release has the app
+// compiled in; asuka dev's player has none, and loads the bytecode the
+// CLI sends (ASUKA_DEV).
 
 // coreLibName is the core library's file name on goos (host/bridge's
 // LibName).

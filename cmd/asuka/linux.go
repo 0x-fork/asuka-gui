@@ -19,12 +19,13 @@ import (
 	iupdate "github.com/egoist/asuka/internal/update"
 )
 
-// Linux: the app's executable is the desktop host (cmd/asuka-host:
-// host/linux, GTK 4 and libadwaita through purego, built with
-// CGO_ENABLED=0), with the C core (libasuka.so), for amd64 or arm64, from
-// any system (Zig compiles the core elsewhere than Linux).
+// Linux: the app's executable is the C host (platform/linux: GTK 4 and
+// libadwaita, opened with dlopen as it starts) linked with the core and
+// the app compiled to C (lang/cgen), and the Linux C of the app's native
+// packages, for amd64 or arm64, from any system (Zig compiles it
+// elsewhere than Linux, no GTK sysroot needed).
 //
-// asuka dev --platform linux runs the player here (the host and the core
+// asuka dev --platform linux runs the player here (the same executable
 // without an app), which loads the app's bytecode from asuka dev and
 // again on each save, keeping its state. On another system it runs it
 // only where ASUKA_LINUX_RUN says how: a command that runs a program on
@@ -35,8 +36,8 @@ import (
 // asuka build --platform linux makes a folder laid out as an install
 // prefix: bin/<exe>; share/<exe>/assets and share/<exe>/asuka-app.json
 // (the app's settings), where the host finds them from the executable;
-// the core with the app compiled in and its plugins' libraries in
-// lib/<exe>, where the host finds them likewise; the desktop file, icons and AppStream metainfo named
+// its plugins' libraries in lib/<exe>, where the core finds them
+// likewise; the desktop file, icons and AppStream metainfo named
 // for the app's ID, as desktops and software centers look them up; a
 // .tar.gz of it, to unpack into ~/.local or /usr/local; and a Flatpak
 // manifest that packages it, for flatpak-builder.
@@ -304,7 +305,7 @@ func desktopEntry(app *asukaApp, exe string, icon bool) string {
 	types := app.cfg.fileTypes()
 	if app.cfg.Scheme != "" || len(types) > 0 {
 		// Its links and files open it: their URIs are the arguments
-		// (host/linux's command line).
+		// (platform/linux's command line, files.c).
 		fmt.Fprintf(&b, "Exec=%s %%U\n", exe)
 	} else {
 		fmt.Fprintf(&b, "Exec=%s\n", exe)
