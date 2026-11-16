@@ -38,7 +38,7 @@ class CustomTabSheet : Sheet {
                     else if (away) {
                         // Back without the callback: the tab was closed.
                         end()
-                        if (cont.isActive) cont.resumeWithException(WebauthException(WebauthError.CANCELED))
+                        if (cont.isActive) cont.resumeWithException(WebAuthException(WebAuthError.CANCELED))
                     }
                 },
             )

@@ -50,9 +50,9 @@ class AndroidSensors(private val context: Context) : Sensors {
     }
 
     override suspend fun watch(sensor: Sensor, every: kotlin.time.Duration, reading: (Sample) -> Unit) {
-        if (!available(sensor)) throw SensorsException(SensorsError.NOT_AVAILABLE)
+        if (!available(sensor)) throw SensorException(SensorError.NOT_AVAILABLE)
         if (sensor == Sensor.PEDOMETER && !permitted(Manifest.permission.ACTIVITY_RECOGNITION)) {
-            throw SensorsException(SensorsError.NOT_ALLOWED)
+            throw SensorException(SensorError.NOT_ALLOWED)
         }
         val micros = maxOf(every.inWholeMicroseconds, 5000L).toInt()
         val main = Handler(Looper.getMainLooper())
@@ -118,7 +118,7 @@ class AndroidSensors(private val context: Context) : Sensors {
         }
     }
 
-    override suspend fun steps(from: Long, to: Long): Steps = throw SensorsException(SensorsError.NOT_AVAILABLE)
+    override suspend fun steps(from: Long, to: Long): Steps = throw SensorException(SensorError.NOT_AVAILABLE)
 
     override suspend fun simulate(json: String) = throw dev.asuka.AsukaUnsupportedException("only on the iOS simulator")
 
