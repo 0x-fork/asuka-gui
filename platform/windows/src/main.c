@@ -135,6 +135,11 @@ static bool start_core(void) {
 	asuka_set_app_dir(H.dirs.data);
 	asuka_start(&callbacks);
 	wh_report_environment(&(node){.id = 0}, &H.env);
+	// The main window's router starts where the window was left
+	// (asuka-routes.json; none under asuka dev or automation).
+	const char *href, *state;
+	size_t sl;
+	if (H.routes && dsk_routes_location(H.routes, "main", &href, &state, &sl)) asuka_set_start(href);
 	char *err = NULL;
 	char *dev = dsk_getenv("ASUKA_DEV");
 	int r;

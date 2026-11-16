@@ -160,13 +160,21 @@ struct dsk_routes {
 };
 
 char *dsk_routes_path(void) {
+	char *keep = dsk_getenv("ASUKA_ROUTES");
+	bool kept = keep && !strcmp(keep, "1");
+	free(keep);
 	const char *skip[] = {"ASUKA_SNAPSHOT", "ASUKA_SCRIPT", "ASUKA_TEST", "ASUKA_STATE"};
-	for (size_t i = 0; i < sizeof skip / sizeof *skip; i++) {
+	for (size_t i = 0; i < sizeof skip / sizeof *skip && !kept; i++) {
 		char *v = dsk_getenv(skip[i]);
 		if (v) {
 			free(v);
 			return strdup("");
 		}
+	}
+	char *dev = dsk_getenv("ASUKA_DEV");
+	if (dev) {
+		free(dev);
+		return strdup("");
 	}
 	char *d = dsk_getenv("ASUKA_DATA");
 	if (!d) return strdup("");
