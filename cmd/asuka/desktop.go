@@ -235,16 +235,23 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 			return "", err
 		}
 		exe := filepath.Join(bundle, "Contents", "MacOS", name)
-		if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose, Natives: desktopNatives(app)}); err != nil {
+		// The Swift host and the core without an app, which loads the
+		// bytecode asuka dev sends.
+		mb := &macBuild{app: app, work: work, run: run}
+		if err := mb.executable(exe, []string{t.Arch}, nil); err != nil {
 			return "", err
 		}
-		if err := appbuild.Lib(t, cbuild.Shared, nil, filepath.Join(bundle, "Contents", "Frameworks", coreLibName("darwin"))); err != nil {
+		if err := mb.embed(bundle, exe); err != nil {
 			return "", err
 		}
 		if err := writeHostConfig(app, platform, "", false, filepath.Join(bundle, "Contents", "Resources", boot.ConfigFile)); err != nil {
 			return "", err
 		}
-		if err := macSwift(app, bundle, work, []string{t.Arch}, false, run); err != nil {
+		libs, err := appLibs(app, "darwin")
+		if err != nil {
+			return "", err
+		}
+		if err := writeLibs(libs, macPluginLibs(bundle)); err != nil {
 			return "", err
 		}
 		ents, err := writeMacEntitlements(app, work)
