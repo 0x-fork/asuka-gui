@@ -157,6 +157,111 @@ func buildPlayerLocked(base, dir string) (string, error) {
 	return "", fmt.Errorf("asuka dev didn't start the player:\n%s", out.String())
 }
 
+var (
+	nativeMu      sync.Mutex
+	nativePlayers = map[string]string{}
+)
+
+// NativePlayer builds, once per process, a player of its own from an app
+// (src, its app.asuka) that imports packages with native code: their
+// Swift is built into it, which Player's (an app that imports nothing
+// native) hasn't. Its bundle ID is dev.asuka.mactest.<key>, its name "Mac
+// Test <Key>". It returns this process's copy of its executable, for
+// Options.Player.
+func NativePlayer(t testing.TB, key, src string) string {
+	t.Helper()
+	Player(t) // its CLI
+	nativeMu.Lock()
+	defer nativeMu.Unlock()
+	if exe, ok := nativePlayers[key]; ok {
+		return exe
+	}
+	exe, err := buildNativePlayer(key, src)
+	if err != nil {
+		t.Fatalf("building the %s player: %v", key, err)
+	}
+	nativePlayers[key] = exe
+	return exe
+}
+
+func buildNativePlayer(key, src string) (string, error) {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, "asuka", "mactest")
+	lock, err := os.OpenFile(filepath.Join(dir, ".lock-"+key), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return "", err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return "", err
+	}
+	name := "Mac Test " + strings.ToUpper(key[:1]) + key[1:]
+	app := filepath.Join(dir, "mactest-"+key) // its work directory: <cache>/asuka/mactest-<key>-<hash>/mac
+	if err := os.MkdirAll(app, 0o755); err != nil {
+		return "", err
+	}
+	os.WriteFile(filepath.Join(app, "asuka.toml"), []byte(fmt.Sprintf("name = %q\nid = \"dev.asuka.mactest.%s\"\nversion = \"1.0.0\"\n", name, key)), 0o644)
+	os.WriteFile(filepath.Join(app, "app.asuka"), []byte(src), 0o644)
+	snap := filepath.Join(dir, key+"-ready.png")
+	os.Remove(snap)
+	started := time.Now()
+	c := exec.Command(filepath.Join(dir, "asuka"), "dev", "--platform", "mac", "--once", app)
+	c.Env = append(os.Environ(), "ASUKA_SNAPSHOT="+snap)
+	var out bytes.Buffer
+	c.Stdout, c.Stderr = &out, &out
+	if err := c.Start(); err != nil {
+		return "", err
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.Wait() }()
+	exe := ""
+	for deadline := time.Now().Add(15 * time.Minute); time.Now().Before(deadline); {
+		if exe == "" {
+			ms, _ := filepath.Glob(filepath.Join(base, "asuka", "mactest-"+key+"-*", "mac", "player", name+".app", "Contents", "MacOS", name))
+			for _, m := range ms {
+				if st, err := os.Stat(m); err == nil && !st.ModTime().Before(started) {
+					exe = m
+				}
+			}
+		}
+		select {
+		case err := <-done:
+			if exe == "" {
+				return "", fmt.Errorf("asuka dev: %v\n%s", err, out.String())
+			}
+			return ownCopy(exe)
+		case <-time.After(200 * time.Millisecond):
+		}
+		if exe != "" {
+			if _, err := os.Stat(snap); err == nil {
+				c.Process.Signal(os.Interrupt)
+				<-done
+				return ownCopy(exe)
+			}
+		}
+	}
+	c.Process.Kill()
+	return "", fmt.Errorf("asuka dev didn't start the %s player:\n%s", key, out.String())
+}
+
+// ownCopy copies exe's app bundle for this process, which runs its copy
+// while another process's build may replace the built one.
+func ownCopy(exe string) (string, error) {
+	app := filepath.Dir(filepath.Dir(filepath.Dir(exe)))
+	own, err := os.MkdirTemp("", "asuka-mactest-")
+	if err != nil {
+		return "", err
+	}
+	cp := filepath.Join(own, filepath.Base(app))
+	if b, err := exec.Command("ditto", app, cp).CombinedOutput(); err != nil {
+		return "", fmt.Errorf("copying the player: %v\n%s", err, b)
+	}
+	return filepath.Join(cp, "Contents", "MacOS", filepath.Base(exe)), nil
+}
+
 // App is a test's app, running on the player.
 type App struct {
 	t    testing.TB

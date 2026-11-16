@@ -86,7 +86,9 @@ func (f *updateFeed) downloaded() string {
 // C (RFC 0008, G2) have it, the Go hosts don't; ASUKA_E2E_UPDATER=1 runs
 // it.
 func runUpdater(t *testing.T, exe string) string {
-	if os.Getenv("ASUKA_E2E_UPDATER") == "" {
+	// The Mac's Swift host has the update module; the Windows and Linux
+	// hosts get theirs with their C rewrites (RFC 0008, H2, H3, G2).
+	if runtime.GOOS != "darwin" && os.Getenv("ASUKA_E2E_UPDATER") == "" {
 		t.Skip("the desktop host's update module (RFC 0008, G2): ASUKA_E2E_UPDATER=1 runs it")
 	}
 	data := t.TempDir()

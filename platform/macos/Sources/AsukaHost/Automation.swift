@@ -325,6 +325,16 @@ import AsukaOps
             guard let part = img.cropping(to: CGRect(x: r.minX * k, y: r.minY * k, width: r.width * k, height: r.height * k)) else { return false }
             img = part
         }
+        // In sRGB: the window server's image is in the display's color
+        // space (a P3 display's red isn't sRGB's), and what's measured
+        // (conformance) and compared is the app's colors as it gave them.
+        if let srgb = CGColorSpace(name: CGColorSpace.sRGB), img.colorSpace?.name != CGColorSpace.sRGB,
+           let ctx = CGContext(data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: 0, space: srgb,
+                               bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+            ctx.interpolationQuality = .none
+            ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+            if let converted = ctx.makeImage() { img = converted }
+        }
         let rep = NSBitmapImageRep(cgImage: img)
         guard let data = rep.representation(using: .png, properties: [:]) else { return false }
         return (try? data.write(to: URL(fileURLWithPath: path))) != nil
