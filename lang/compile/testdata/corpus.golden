@@ -35,7 +35,7 @@ model.asuka:83:27: count is a method of [int]: call it, count()
 concurrency.asuka:9:40: Accelerometer has no case updates
 concurrency.asuka:10:16: [float] has no method append
 concurrency.asuka:21:13: post can throw: call it with try (try post(…)), or try? for none on an error
-concurrency.asuka:21:13: this closure doesn't throw where it's passed: catch the error (do { } catch { }, try?)
+concurrency.asuka:21:13: this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)
 concurrency.asuka:25:3: title: … goes in an element's block, not here
 concurrency.asuka:31:10: Button has no event tap (its events: press)
 concurrency.asuka:35:39: Text has no prop fontSize

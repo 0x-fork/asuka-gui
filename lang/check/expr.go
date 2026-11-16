@@ -1191,15 +1191,15 @@ func (c *Checker) mayThrow(at syntax.Node) {
 	}
 	switch c.ctx.Kind {
 	case CtxFunc, CtxMethod:
-		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (do { } catch { }, try?)", c.ctx.Name)
+		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (try … catch { }, do { } catch { }, try?)", c.ctx.Name)
 	case CtxLambda:
-		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (do { } catch { }, try?)")
+		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)")
 	case CtxGlobal:
-		c.errorf(at, "a value here can't throw: catch the error (try?)")
+		c.errorf(at, "a value here can't throw: catch the error (try … catch { fallback }, try?)")
 	case CtxSpawn:
 		// spawn's error is its task's.
 	default:
-		c.errorf(at, "this can't throw here: catch the error (do { } catch { }, try?)")
+		c.errorf(at, "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)")
 	}
 }
 
