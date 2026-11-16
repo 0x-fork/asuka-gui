@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,7 +18,6 @@ import (
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
-	"github.com/egoist/asuka/internal/ccache"
 	"github.com/egoist/asuka/lang/bytecode"
 	iosHost "github.com/egoist/asuka/platform/ios"
 )
@@ -100,95 +97,37 @@ func filterLinker(out []byte) string {
 	return strings.TrimSpace(strings.Join(keep, "\n"))
 }
 
-// buildHost compiles the embedded Swift host, with the app's own Swift
-// (its ios/*.swift: native views for ui.Native), into one object file,
-// cached by the hash of its sources and the SDK.
+// buildHost builds the host's Swift with the app's native packages'
+// (swiftBuild: cached modules, or prebuilt ones) into one object.
 func (t *iosToolchain) buildHost(work string, app *asukaApp, features []string) (string, error) {
-	opt := []string{"-Onone", "-D", "DEBUG"}
-	if t.release {
-		// With debug information, for the app's dSYM (iosSymbols).
-		opt = []string{"-O", "-g"}
-	}
-	h := sha256.New()
-	fmt.Fprintln(h, t.sdk, t.target, t.release, features, opt)
-	var files []string
-	err := fs.WalkDir(iosHost.Files, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		if strings.HasPrefix(path, "Share/") || strings.HasPrefix(path, "Widget/") {
-			return nil // the extensions, built on their own (buildShare, buildWidgets)
-		}
-		files = append(files, path)
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	sort.Strings(files)
-	shared := filepath.Join(filepath.Dir(filepath.Dir(work)), "ios-host") // shared by all apps
-	// Its sources are written again for each build: one at a time.
-	unlock, err := lockShared(shared)
-	if err != nil {
-		return "", err
-	}
-	defer unlock()
-	src := filepath.Join(shared, "src")
-	os.RemoveAll(src)
-	var swift []string
-	for _, f := range files {
-		data, _ := iosHost.Files.ReadFile(f)
-		h.Write([]byte(f))
-		h.Write(data)
-		dst := filepath.Join(src, f)
-		os.MkdirAll(filepath.Dir(dst), 0o755)
-		if err := os.WriteFile(dst, data, 0o644); err != nil {
-			return "", err
-		}
-		if strings.HasSuffix(f, ".swift") {
-			swift = append(swift, dst)
-		}
-	}
+	var natives []nativePackage
 	if app != nil {
-		// The app's native packages' Swift: then the host's is a Swift
-		// package, built with theirs; what they need goes in its Info.plist.
-		natives, err := nativeFor(app, "ios")
+		// The app's native packages' Swift; what they need goes in its
+		// Info.plist.
+		ns, err := nativeFor(app, "ios")
 		if err != nil {
 			return "", err
 		}
-		if len(natives) > 0 {
-			if err := app.cfg.nativeNeeds(natives, "ios"); err != nil {
+		if len(ns) > 0 {
+			if err := app.cfg.nativeNeeds(ns, "ios"); err != nil {
 				return "", err
 			}
-			return t.buildHostPackage(work, natives, features)
 		}
+		natives = ns
 	}
-	t.packages = nil
-	// The build cache's Swift store keeps it (evicted when used least
-	// lately, as everything there is).
-	obj := ccache.Sharded("swift", "h", hex.EncodeToString(h.Sum(nil)), ".o")
-	if _, err := os.Stat(obj); err == nil {
-		ccache.Touch(obj)
-		ccache.Hit("swift")
-		return obj, nil
+	return t.buildHostPackage(work, natives, features)
+}
+
+// iosHostVariant names the host's variant a release prebuilds for
+// features: base (none), all (a player's), or "" for another.
+func iosHostVariant(features []string) string {
+	if len(features) == 0 {
+		return "base"
 	}
-	ccache.Miss("swift")
-	if err := os.MkdirAll(filepath.Dir(obj), 0o755); err != nil {
-		return "", err
+	if f := slices.Compact(sortedCopy(features)); slices.Equal(f, allFeatures()) {
+		return "all"
 	}
-	fmt.Println("asuka: compiling the iOS host (once)")
-	args := append([]string{"swiftc", "-target", t.target, "-sdk", t.sdk, "-swift-version", "5",
-		"-module-name", "AsukaApp", "-parse-as-library", "-wmo"}, opt...)
-	for _, f := range features {
-		args = append(args, "-D", f)
-	}
-	tmp := ccache.TmpName(obj)
-	args = append(args, "-I", filepath.Join(src, "Sources", "CAsuka", "include"), "-c", "-o", tmp)
-	if err := t.run(shared, nil, "xcrun", append(args, swift...)...); err != nil {
-		os.Remove(tmp)
-		return "", err
-	}
-	return obj, ccache.Commit(tmp, obj)
+	return ""
 }
 
 // buildHostPackage builds the host's Swift with the app's native
@@ -206,7 +145,8 @@ func (t *iosToolchain) buildHostPackage(work string, natives []nativePackage, fe
 		return "", err
 	}
 	b := &swiftBuild{dir: filepath.Join(work, "swift-"+t.sdkName), platform: "ios", sdkName: t.sdkName,
-		arch: macSwiftArch(t.goarch), release: t.release, defines: features, host: host, cAsuka: cAsuka, natives: natives, run: t.run}
+		arch: macSwiftArch(t.goarch), release: t.release, defines: features, variant: iosHostVariant(features),
+		host: host, cAsuka: cAsuka, natives: natives, run: t.run}
 	out, err := b.build()
 	if err != nil {
 		return "", err
@@ -216,9 +156,13 @@ func (t *iosToolchain) buildHostPackage(work string, natives []nativePackage, fe
 		return "", err
 	}
 	args := append([]string{"--sdk", t.sdkName, "clang", "-target", t.target, "-r", "-o", obj}, out.objects...)
+	for _, a := range out.forceLoad {
+		args = append(args, "-Wl,-force_load,"+a)
+	}
 	if err := t.run(work, nil, "xcrun", args...); err != nil {
 		return "", err
 	}
+	out.forceLoad = nil // in obj now
 	t.packages = out
 	return obj, nil
 }

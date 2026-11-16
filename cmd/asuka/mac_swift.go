@@ -2,20 +2,13 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"debug/macho"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
-
-	"github.com/egoist/asuka/internal/cachedir"
-	"github.com/egoist/asuka/internal/ccache"
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
@@ -125,47 +118,45 @@ func (b *macBuild) executable(exe string, archs []string, m *bytecode.Module) er
 	return b.run(b.work, nil, "lipo", append([]string{"-create", "-output", exe}, parts...)...)
 }
 
-// host compiles the host's Swift for arch: one object, cached by its
-// sources, or with native packages the objects of their packages' build,
-// and what else that build made.
+// host builds the host's Swift for arch with the app's native packages'
+// (swiftBuild: cached modules, or prebuilt ones): their objects, and
+// what else the build made.
 func (b *macBuild) host(arch string, natives []nativePackage) ([]string, *swiftPackageOutput, error) {
 	sources, err := swiftSources(macos.Files, "Sources/AsukaHost", "Sources/AsukaOps", "App")
 	if err != nil {
 		return nil, nil, err
 	}
+	variant := "app"
 	if b.program {
 		sources["main.swift"] = []byte(macProgramMain)
+		variant = "program"
 	}
-	if len(natives) > 0 {
-		cAsuka, err := filesUnder(macos.Files, "Sources/CAsuka")
-		if err != nil {
-			return nil, nil, err
-		}
-		// The core's stand-ins are the host's package's tests', never an
-		// app's: weak, they'd keep the core's archive from being linked.
-		// The shared C's wrappers (shared_*.c) are the tests' too: an
-		// app links that C as objects (MacShared).
-		for name := range cAsuka {
-			if name == "stubs.c" || strings.HasPrefix(name, "shared_") {
-				delete(cAsuka, name)
-			}
-		}
-		// SwiftPM makes a target with a main.swift an executable, which a
-		// library product can't have: the entry point (@main) goes in
-		// the host's library under another name.
-		if m, ok := sources["main.swift"]; ok {
-			delete(sources, "main.swift")
-			sources["AsukaMain.swift"] = m
-		}
-		sb := &swiftBuild{dir: filepath.Join(b.work, "swift-"+arch), platform: "macos", sdkName: "macosx",
-			arch: macSwiftArch(arch), release: b.release, defines: macHostDefines, host: sources, cAsuka: cAsuka, natives: natives, run: b.run}
-		out, err := sb.build()
-		if err != nil {
-			return nil, nil, err
-		}
-		return out.objects, out, nil
+	cAsuka, err := filesUnder(macos.Files, "Sources/CAsuka")
+	if err != nil {
+		return nil, nil, err
 	}
-	return b.hostObject(arch, sources)
+	// The core's stand-ins are the host's package's tests', never an
+	// app's: weak, they'd keep the core's archive from being linked.
+	// The shared C's wrappers (shared_*.c) are the tests' too: an app
+	// links that C as a library (MacShared).
+	for name := range cAsuka {
+		if name == "stubs.c" || strings.HasPrefix(name, "shared_") {
+			delete(cAsuka, name)
+		}
+	}
+	// A library (a module, a SwiftPM target) can't have a main.swift:
+	// the entry point (@main) goes in the host's under another name.
+	if m, ok := sources["main.swift"]; ok {
+		delete(sources, "main.swift")
+		sources["AsukaMain.swift"] = m
+	}
+	sb := &swiftBuild{dir: filepath.Join(b.work, "swift-"+arch), platform: "macos", sdkName: "macosx",
+		arch: macSwiftArch(arch), release: b.release, defines: macHostDefines, variant: variant, host: sources, cAsuka: cAsuka, natives: natives, run: b.run}
+	out, err := sb.build()
+	if err != nil {
+		return nil, nil, err
+	}
+	return out.objects, out, nil
 }
 
 // macProgramMain is a program's entry, in place of the app's (App/
@@ -176,91 +167,6 @@ enum AsukaMain {
     static func main() { AsukaProgram.main() }
 }
 `
-
-// hostObject compiles the host alone (no native packages) into one object
-// shared by every app, in the user's cache.
-func (b *macBuild) hostObject(arch string, sources map[string][]byte) ([]string, *swiftPackageOutput, error) {
-	opt := []string{"-Onone", "-g"}
-	if b.release {
-		opt = []string{"-O"}
-	}
-	target := macSwiftArch(arch) + "-apple-macos" + macMin
-	sdk := macSDK()
-	h := sha256.New()
-	fmt.Fprintln(h, sdk, target, opt, macHostDefines, swiftcVersion())
-	names := slices.Sorted(maps.Keys(sources))
-	for _, n := range names {
-		fmt.Fprintln(h, n, len(sources[n]))
-		h.Write(sources[n])
-	}
-	for _, f := range []string{"asuka.h", "desktop.h", "module.modulemap"} {
-		header, err := macos.Files.ReadFile("Sources/CAsuka/include/" + f)
-		if err != nil {
-			return nil, nil, err
-		}
-		h.Write(header)
-	}
-	shared := cachedir.Path("mac-host") // shared by all apps
-	unlock, err := lockShared(shared)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer unlock()
-	kind := "debug"
-	if b.release {
-		kind = "release"
-	}
-	// The build cache's Swift store keeps it (evicted when used least
-	// lately, as everything there is).
-	fmt.Fprintln(h, arch, kind)
-	obj := ccache.Sharded("swift", "h", hex.EncodeToString(h.Sum(nil)), ".o")
-	if _, err := os.Stat(obj); err == nil {
-		ccache.Touch(obj)
-		ccache.Hit("swift")
-		return []string{obj}, nil, nil
-	}
-	ccache.Miss("swift")
-	if err := os.MkdirAll(filepath.Dir(obj), 0o755); err != nil {
-		return nil, nil, err
-	}
-	src := filepath.Join(shared, "src")
-	os.RemoveAll(src)
-	inc := filepath.Join(src, "CAsuka")
-	if err := os.MkdirAll(inc, 0o755); err != nil {
-		return nil, nil, err
-	}
-	for _, f := range []string{"asuka.h", "desktop.h", "module.modulemap"} {
-		data, err := macos.Files.ReadFile("Sources/CAsuka/include/" + f)
-		if err != nil {
-			return nil, nil, err
-		}
-		if err := os.WriteFile(filepath.Join(inc, f), data, 0o644); err != nil {
-			return nil, nil, err
-		}
-	}
-	var files []string
-	for _, n := range names {
-		p := filepath.Join(src, n)
-		if err := os.WriteFile(p, sources[n], 0o644); err != nil {
-			return nil, nil, err
-		}
-		files = append(files, p)
-	}
-	fmt.Printf("asuka: compiling the Mac host for %s (once)\n", arch)
-	args := append([]string{"swiftc", "-target", target, "-sdk", sdk, "-swift-version", "5",
-		"-module-name", "AsukaApp", "-parse-as-library", "-wmo"}, opt...)
-	for _, d := range macHostDefines {
-		args = append(args, "-D", d)
-	}
-	tmp := ccache.TmpName(obj)
-	args = append(args, "-I", inc, "-c", "-o", tmp)
-	if err := b.run(shared, nil, "xcrun", append(args, files...)...); err != nil {
-		os.Remove(tmp)
-		return nil, nil, err
-	}
-	os.RemoveAll(src)
-	return []string{obj}, nil, ccache.Commit(tmp, obj)
-}
 
 // embed puts what the app's Swift packages bring in the bundle (their
 // frameworks in Frameworks, their resource bundles in Resources), and

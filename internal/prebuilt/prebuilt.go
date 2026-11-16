@@ -46,6 +46,9 @@ type Package struct {
 	// Compiler is what built its C (zig, apple, ndk): a build links a
 	// prebuilt library only with the same family's.
 	Compiler string `json:"compiler,omitempty"`
+	// Swift is the version of the swiftc that built its Swift modules
+	// (6.1.2): a build uses them with that one or newer.
+	Swift string `json:"swift,omitempty"`
 }
 
 // File is a file (or a directory) in a package.
@@ -121,6 +124,33 @@ func Archive(target, config, unit string) (path string, ok bool, err error) {
 	}
 	p, err := m.file(f)
 	return p, err == nil, err
+}
+
+// SwiftKey is a Swift module's key in the manifest's archives: a
+// package's (DeviceNative) or the host's variant (Asuka@base).
+func SwiftKey(target, config, module string) string {
+	return target + "/" + config + "/swift/" + module
+}
+
+// SwiftModule is the directory of a prebuilt Swift module (a static
+// library, lib<module>.a, and its interfaces, <module>.swiftmodule/
+// <triple>.swiftinterface: an XCFramework's slice) for target and
+// config, fetched first if it isn't there, and the version of the swiftc
+// that built it; ok is false when the CLI has none.
+func SwiftModule(target, config, module string) (dir, swift string, ok bool, err error) {
+	m, err := Current()
+	if err != nil {
+		return "", "", false, err
+	}
+	f, ok := m.Archives[SwiftKey(target, config, module)]
+	if !ok {
+		return "", "", false, nil
+	}
+	p, err := m.file(f)
+	if err != nil {
+		return "", "", false, err
+	}
+	return p, m.Packages[f.Package].Swift, true, nil
 }
 
 // MavenRepo is the local Maven repository of the Android host's and the

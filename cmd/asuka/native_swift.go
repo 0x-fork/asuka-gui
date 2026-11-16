@@ -11,6 +11,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/egoist/asuka/sdk"
+	"github.com/egoist/asuka/std"
 )
 
 // The Swift of an app's native packages (their Package.swift), built with
@@ -34,11 +37,15 @@ type swiftBuild struct {
 	sdkName  string // iphoneos, iphonesimulator, macosx
 	arch     string // swiftc's: arm64, x86_64
 	release  bool
-	defines  []string          // the host's compilation conditions
-	host     map[string][]byte // the host package's sources, by their names
-	cAsuka   map[string][]byte // iOS: the host's C headers (include/...)
-	natives  []nativePackage
-	run      func(dir string, env []string, name string, args ...string) error
+	defines  []string // the host's compilation conditions
+	// variant names the host's when it's one a release prebuilds (iOS:
+	// base, none of the optional parts, or all, a player's; the Mac: app,
+	// program), else "".
+	variant string
+	host    map[string][]byte // the host package's sources, by their names
+	cAsuka  map[string][]byte // iOS: the host's C headers (include/...)
+	natives []nativePackage
+	run     func(dir string, env []string, name string, args ...string) error
 }
 
 // swiftPackageOutput is what the build makes: the objects of its targets
@@ -48,6 +55,7 @@ type swiftBuild struct {
 type swiftPackageOutput struct {
 	products   string
 	objects    []string
+	forceLoad  []string // modules' static libraries, linked whole
 	archives   []string
 	frameworks []string
 	bundles    []string
@@ -221,6 +229,9 @@ func (o *swiftPackageOutput) linkFlags() []string {
 		return nil
 	}
 	flags := slices.Clone(o.archives)
+	for _, a := range o.forceLoad {
+		flags = append(flags, "-Xlinker", "-force_load", "-Xlinker", a)
+	}
 	if len(o.frameworks) > 0 {
 		flags = append(flags, "-F", o.products, "-F", filepath.Join(o.products, "PackageFrameworks"))
 	}
@@ -371,3 +382,6 @@ func filesUnder(fsys fs.FS, dir string) (map[string][]byte, error) {
 // bundled reports whether the packages bring what goes in an app's
 // bundle beside its executable (frameworks, resource bundles).
 func (o *swiftPackageOutput) bundled() bool { return len(o.frameworks) > 0 || len(o.bundles) > 0 }
+
+func stdEmbedded() bool { return std.Embedded() }
+func sdkEmbedded() bool { return sdk.Embedded() }
