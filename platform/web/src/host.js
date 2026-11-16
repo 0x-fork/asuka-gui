@@ -73,6 +73,7 @@ export class Host {
     this.container = container;
     this.options = options;
     this.assets = (options.assets || "assets").replace(/\/$/, "");
+    nativeModules.setAssets(this.assets);
     this.nodes = new Map();
     this.root = null;
     this.core = null;

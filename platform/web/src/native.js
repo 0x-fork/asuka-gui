@@ -8,6 +8,23 @@
 // smaller integers, are numbers; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array; a map is an object.
 
+import { css } from "./color.js";
+
+/** color is a Color that crossed to a package's JavaScript (a bigint, the core's encoding) as CSS: a semantic one a variable that follows light and dark; "" for none. */
+export function color(v) { return css(null, Number(v)); }
+
+let assets = "assets";
+
+/** setAssets is for the host: the URL the app's assets are served from. */
+export function setAssets(url) { assets = (url || "assets").replace(/\/$/, ""); }
+
+/** assetURL is a source as the hosts take one (a URL, or a file in the app's assets) as a URL a package can load. */
+export function assetURL(src) {
+  if (!src) return "";
+  if (/^(https?|blob|data|file):/.test(src)) return src;
+  return assets + "/" + src.replace(/^\.?\//, "");
+}
+
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 

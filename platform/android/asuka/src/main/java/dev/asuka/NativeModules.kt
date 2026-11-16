@@ -207,6 +207,33 @@ object AsukaModules {
      */
     val activity: android.app.Activity? get() = AsukaRuntime.current?.activity
 
+    /**
+     * A Color that crossed to a package's Kotlin (a Long, the core's
+     * encoding) as an Android color: a semantic one from the app's theme.
+     * Read it on the main thread.
+     */
+    fun color(v: Long, fallback: Int = android.graphics.Color.TRANSPARENT): Int =
+        AsukaRuntime.current?.color(v, fallback) ?: when ((v ushr 32).toInt()) {
+            2 -> (v and 0xffffffffL).toInt().let { (it ushr 8) or (it shl 24) }
+            else -> fallback
+        }
+
+    /**
+     * A source as the hosts take one (an http(s) or file URL, an absolute
+     * path, or a file in the app's assets: under asuka dev the ones it
+     * pushed, else the APK's) as a Uri, for a package's player or loader.
+     */
+    fun uri(source: String): android.net.Uri = when {
+        source.startsWith("http://") || source.startsWith("https://") || source.startsWith("file://") ||
+            source.startsWith("content://") || source.startsWith("data:") -> android.net.Uri.parse(source)
+        source.startsWith("/") -> android.net.Uri.fromFile(java.io.File(source))
+        else -> {
+            val rel = source.removePrefix("./")
+            val pushed = java.io.File(context.filesDir, "asuka/assets/$rel")
+            if (pushed.exists()) android.net.Uri.fromFile(pushed) else android.net.Uri.parse("asset:///$rel")
+        }
+    }
+
     /** Where the generated Kotlin's suspend funs run. */
     @JvmField val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

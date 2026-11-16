@@ -331,6 +331,11 @@ func (l *aloader) typ(t syntax.Type, param bool) (*Type, error) {
 			return &Type{Kind: Bytes, Go: "[]byte"}, nil
 		case "Duration":
 			return &Type{Kind: Duration, Go: "time.Duration"}, nil
+		case "Color":
+			// The core's encoding: AsukaColors.color(v) in Swift,
+			// AsukaModules.color(v) in Kotlin, asuka.native.color(v) in
+			// JavaScript.
+			return &Type{Kind: Int, Go: "int"}, nil
 		}
 		if l.ifaces[n] {
 			return &Type{Kind: Object, Name: n, Go: n}, nil

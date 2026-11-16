@@ -28,6 +28,7 @@ import (
 	. "github.com/egoist/asuka/internal/gtk"
 	"github.com/egoist/asuka/internal/winstate"
 	"github.com/egoist/asuka/layout"
+	"github.com/egoist/asuka/native"
 	"github.com/egoist/asuka/ops"
 	"github.com/egoist/asuka/ui"
 )
@@ -245,6 +246,7 @@ func newHost() *Host {
 	h.appName = appName()
 	h.appID = appID(h.appName)
 	h.assets = assetsDir()
+	native.SetAssets(h.assets)
 	h.wake = Waker(h.runPosted)
 	return h
 }
