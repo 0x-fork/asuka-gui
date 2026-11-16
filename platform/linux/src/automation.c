@@ -543,7 +543,10 @@ static gboolean next_step(gpointer data) {
 		write_dump(p);
 	}
 	const char *stay = getenv("ASUKA_SNAPSHOT_STAY");
-	if (!stay || !*stay) exit(0);
+	if (!stay || !*stay) {
+		lx_routes_flush();  // as a quit writes them
+		exit(0);
+	}
 	return 0;
 }
 

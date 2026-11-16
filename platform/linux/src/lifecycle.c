@@ -23,9 +23,13 @@
 //
 // A window's Router address comes back as the window does: the last
 // Location command each window was sent is kept by the window's key in
-// asuka-routes.json, and given back as the core starts following the
-// window's address (the Location event). Written a moment after it
-// changes, and as the app goes to the background or quits.
+// asuka-routes.json (the main window's under "main"): the main window's
+// is given to the core before the app runs (asuka_set_start), where its
+// Router starts; a Window's, by its StateKey, as its Router starts
+// following the window's address (the Location event). None is kept under
+// asuka dev or automation unless ASUKA_ROUTES=1 (dsk_routes_path). Written
+// a moment after it changes, and as the app goes to the background or
+// quits (an automation run's end too).
 //
 // Languages: the environment's Languages are the app's own language
 // (SaveLocale's, kept in its data directory) and then the user's
@@ -50,7 +54,7 @@ static uint32_t toplevel_state(win *w) {
 	return s ? (uint32_t)gdk_toplevel_get_state((GdkToplevel *)s) : 0;
 }
 
-static void routes_flush(void);
+void lx_routes_flush(void);
 
 // lifecycle sends s to the core: Foreground and Background as the app's
 // state changes (not again when it's already in it), MemoryWarning each
@@ -58,7 +62,7 @@ static void routes_flush(void);
 static void lifecycle(int s) {
 	switch (s) {
 	case AK_LIFECYCLE_BACKGROUND:
-		routes_flush();
+		lx_routes_flush();
 		if (H.in_background) return;
 		H.in_background = true;
 		break;
@@ -309,7 +313,8 @@ static dsk_routes *route_store(void) {
 	return routes;
 }
 
-static void routes_flush(void) {
+// lx_routes_flush writes what changed now (the app quits).
+void lx_routes_flush(void) {
 	if (routes_timer) {
 		g_source_remove(routes_timer);
 		routes_timer = 0;
@@ -324,36 +329,50 @@ static gboolean routes_due(gpointer d) {
 	return 0;
 }
 
-// window_key is the key a window's router's address is kept by: its
-// state key (the main window's "main").
-static const char *window_key(node *n) {
-	win *w = lx_win_for(n);
-	if (!w) w = lx_win_of(n);
-	if (w && !str_empty(w->state_key)) return w->state_key;
-	return w == H.main ? "main" : NULL;
+// route_key is the key the router address of n's window is kept by: the
+// main window's "main" (the core sends its Location without a key), a
+// Window's its StateKey (NULL: none).
+static const char *route_key(node *n) {
+	win *w = n ? lx_win_for(n) : NULL;
+	if (!w && n) w = lx_win_of(n);
+	if (!w || w == H.main) return "main";
+	return str_empty(w->state_key) ? NULL : w->state_key;
 }
 
-// lx_route_location keeps a Location command's address for its window.
-void lx_route_location(ak_span args) {
+// lx_route_location keeps a Location command's address, by the key it
+// names, else by the window it's sent to (n).
+void lx_route_location(node *n, ak_span args) {
 	ak_location l;
 	if (!ak_decode_location((const uint8_t *)args.p, args.len, &l)) return;
-	const char *key = l.window.len ? NULL : "main";
 	char kb[256];
-	if (l.window.len) {
+	const char *key = kb;
+	if (l.window.len)
 		snprintf(kb, sizeof kb, "%.*s", (int)l.window.len, l.window.p);
-		key = kb;
-	}
+	else if (!(key = route_key(n)))
+		return;
 	if (dsk_routes_set(route_store(), key, l.href.p, l.href.len, l.state.p, l.state.len) && !routes_timer)
 		routes_timer = g_timeout_add(300, routes_due, NULL);
 }
 
-// lx_listen_location: the core follows a window's address (its first
-// Router): it's given the one the window last had, if it had one.
-void lx_listen_location(node *n) {
-	const char *key = window_key(n);
+// lx_route_start tells the core where the main window was left, before
+// the app runs, so its Router starts there (asuka_set_start): the first
+// screen shown is the one the user left, with the screens under it.
+void lx_route_start(void) {
 	const char *href, *state;
 	size_t state_len;
-	if (!key || !dsk_routes_location(route_store(), key, &href, &state, &state_len) || !*href) return;
+	if (dsk_routes_location(route_store(), "main", &href, &state, &state_len) && *href) asuka_set_start(href);
+}
+
+// lx_listen_location: a Window's Router follows its address: it's given
+// the one the window last had (by its StateKey), if it had one. The main
+// window's started there (lx_route_start).
+void lx_listen_location(node *n) {
+	win *w = lx_win_for(n);
+	if (!w) w = lx_win_of(n);
+	if (!w || w == H.main || str_empty(w->state_key)) return;
+	const char *href, *state;
+	size_t state_len;
+	if (!dsk_routes_location(route_store(), w->state_key, &href, &state, &state_len) || !*href) return;
 	ak_buf b = {0};
 	ak_append_location_event(&b, ak_cstr(href), ak_strn(state, state_len));
 	lx_dispatch(&(ak_event){.id = n->id, .kind = AK_EVENT_LOCATION, .s = ak_strn(b.data, b.len)});

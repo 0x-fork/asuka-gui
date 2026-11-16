@@ -54,7 +54,6 @@ void lx_release_events(node *n) {
 
 bool lx_listen_more(node *n, ak_event_kind e);
 void lx_listen_window_state(node *n);
-void lx_listen_location(node *n);
 
 static void end_press(node *n) {
 	events *e = ev_of(n);
