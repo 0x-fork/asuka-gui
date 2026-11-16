@@ -793,8 +793,8 @@ Canvas(g => {
 ```asuka
 app {
   Tabs {
-    Tab("Inbox", icon: "tray") { Stack { Inbox() } }
-    Tab("Settings", icon: "gear") { Stack { Settings() } }
+    Tab("Inbox") { icon: "tray"; Stack { Inbox() } }
+    Tab("Settings") { icon: "gear"; Stack { Settings() } }
   }
 }
 
