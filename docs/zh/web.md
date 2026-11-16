@@ -82,7 +82,7 @@ Web 应用看到的环境（`ui.UseEnvironment`）来自浏览器：
 
 - 文本就是浏览器渲染的文本，使用系统字体（`system-ui`：Apple 系统上是 San Francisco，Windows 上是 Segoe UI，Android 上是 Roboto），字号层级采用 Web 的惯例（正文 16）。应用放在 `assets/fonts` 里的字体会按应用给的名字加载（`Font.Family`）。
 - `Stack` 在自己的标题栏下面显示栈顶的页面：标题栏里有返回按钮、页面标题、栏按钮和搜索框。push 和 pop 都带滑动动画。浏览器的返回也能用：只要应用里还有可以返回的页面，浏览器的返回按钮（以及手机上的返回手势）就会在应用内返回；Escape、Alt+Left（Mac 上是 ⌘[）以及在触摸屏上从起始边缘滑动也一样。和其他平台一样，这些操作都由 `ui.OnBack` 处理。用了路由器之后，地址栏会显示当前页面，历史记录就是它的导航记录（见[地址与历史记录](#地址与历史记录)）。
-- `Tabs` 是底部的标签栏；`SplitView` 是侧边栏加详情区，窗口较窄时侧边栏变成抽屉，由详情区的标题栏打开。
+- `Tabs` 是底部的标签栏；`Split` 是侧边栏加详情区，窗口较窄时侧边栏变成抽屉，由详情区的标题栏打开。
 - `Sheet` 是一个模态 `<dialog>`：窄窗口下是底部弹出面板（medium 占一半高度，可以拖动顶部的把手把它拉高或拖走），宽窗口下是居中的卡片。按 Escape、点击外部或向下滑动都能关闭它。`Alert` 也是模态 `<dialog>`，操作表的按钮显示为列表。`Popover` 和菜单是显示在目标旁边的弹出层。`ui.Window` 是页面里的一个面板，用户可以移动它、调整它的大小。
 - `List` 由宿主做虚拟化，和 Mac、Windows、Linux 上一样：只有可见范围内（以及上下各半屏）的行会被绑定；分组标题会吸顶；聊天列表会停在末尾。行的滑动操作变成它们的上下文菜单（右键或长按触发）。
 - `Image` 是 `<img>`（在主线程之外解码，由浏览器缓存），`Video` 是 `<video>`，`WebView` 是 `<iframe>`（见 [Web 视图](#web-视图)），`Canvas` 是 2D 画布，`Shape` 是 SVG 路径，`Shader` 用 WebGL 2（Kage 程序会被转换成 GLSL ES 3.00），`Symbol` 显示的是 Android 宿主为该 SF Symbol 名称绘制的 Material Symbol。
