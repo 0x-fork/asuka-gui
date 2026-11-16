@@ -454,6 +454,7 @@ const GUID asuka_IID_AsyncActionCompletedHandler = {0xa4ed5c81, 0x76c9, 0x40bd, 
 typedef struct {
 	const void *const *vtbl;
 	LONG refs;
+	bool any;  // any interface asked for is it
 	GUID iid;
 	void (*fn)(void *, void *, void *);
 	void *ctx;
@@ -461,7 +462,7 @@ typedef struct {
 } delegate;
 
 static HRESULT STDMETHODCALLTYPE d_query(delegate *d, const GUID *riid, void **out) {
-	if (IsEqualGUID(riid, &d->iid) || IsEqualGUID(riid, &iid_unknown) || IsEqualGUID(riid, &iid_agile)) {
+	if (d->any || IsEqualGUID(riid, &d->iid) || IsEqualGUID(riid, &iid_unknown) || IsEqualGUID(riid, &iid_agile)) {
 		InterlockedIncrement(&d->refs);
 		*out = d;
 		return S_OK;
@@ -496,6 +497,12 @@ void *asuka_winrt_delegate(const GUID *iid, void (*fn)(void *ctx, void *a, void 
 	d->fn = fn;
 	d->ctx = ctx;
 	d->free_ctx = free_ctx;
+	return d;
+}
+
+void *asuka_win_handler(void (*fn)(void *ctx, void *a, void *b), void *ctx, void (*free_ctx)(void *ctx)) {
+	delegate *d = asuka_winrt_delegate(&iid_unknown, fn, ctx, free_ctx);
+	d->any = true;
 	return d;
 }
 

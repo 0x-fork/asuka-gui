@@ -37,6 +37,7 @@ typedef int16_t gint16;
 typedef uint16_t guint16;
 typedef double gdouble;
 typedef size_t gsize;
+typedef long gssize;
 typedef unsigned long GType;
 typedef guint32 GQuark;
 
@@ -182,6 +183,7 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(glib, const gchar *, g_get_real_name, (void))                                                             \
 	X(glib, const gchar *, g_get_host_name, (void))                                                             \
 	X(gobject, gpointer, g_object_ref, (gpointer o))                                                            \
+	X(gobject, gpointer, g_object_ref_sink, (gpointer o))                                                            \
 	X(gobject, void, g_object_unref, (gpointer o))                                                              \
 	X(gobject, void, g_object_get, (gpointer o, const gchar *first, ...))                                       \
 	X(gobject, void, g_object_set, (gpointer o, const gchar *first, ...))                                       \

@@ -80,6 +80,44 @@ bool asuka_win_image_load(const char *path, UINT *width, UINT *height, uint8_t *
 // PNG, with WIC: false if it can't.
 bool asuka_win_png(UINT width, UINT height, const uint8_t *pixels, asuka_bytes *out);
 
+// asuka_win_handler makes a COM handler: IUnknown (any interface asked
+// for is it) and Invoke(a, b), which calls fn(ctx, a, b); one
+// reference, the caller's. WebView2's completed and event handlers are
+// such.
+void *asuka_win_handler(void (*fn)(void *ctx, void *a, void *b), void *ctx, void (*free_ctx)(void *ctx));
+
+// ---- WebView2 (src/webview2.c) ----
+
+// asuka_win_webview2 calls done(ctx, env, hr) on the main thread with the
+// process's WebView2 environment (ICoreWebView2Environment, the
+// process's: don't release it) once it's made, at once if it is, or why
+// there's none. One for the process, its data in
+// %LOCALAPPDATA%\<app>\WebView2: the Windows host's WebViews should
+// make theirs here too, so that they share its browser process. Main
+// thread.
+void asuka_win_webview2(void (*done)(void *ctx, void *env, HRESULT hr), void *ctx);
+
+// A web page that's never shown: markup in a WebView2, in a hidden window
+// of its own, a Letter page wide.
+typedef struct asuka_web_page asuka_web_page;
+
+// asuka_win_web_page loads html, then calls done on the main thread with
+// the page (NULL with err set). Main thread.
+void asuka_win_web_page(const char *html, void (*done)(void *ctx, asuka_web_page *page, asuka_error *err), void *ctx);
+// asuka_win_web_page_evaluate runs script in the page as a script of its
+// own (its last statement's value; a promise's, awaited) and calls done
+// on a later turn of the main thread with the value as JSON (null for
+// undefined), or what it threw in err. Main thread.
+void asuka_win_web_page_evaluate(asuka_web_page *p, const char *script, void (*done)(void *ctx, char *json, asuka_error *err), void *ctx);
+// asuka_win_web_page_view is its ICoreWebView2.
+void *asuka_win_web_page_view(asuka_web_page *p);
+// asuka_win_web_page_print shows a print dialog for the page: the
+// browser's print preview (0) or the system's (1); window.print() where
+// WebView2 is too old for it.
+void asuka_win_web_page_print(asuka_web_page *p, int kind);
+// asuka_win_web_page_close lets the page go.
+void asuka_win_web_page_close(asuka_web_page *p);
+
 // ---- WinRT ----
 
 typedef struct HSTRING__ *HSTRING;

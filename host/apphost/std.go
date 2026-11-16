@@ -10,7 +10,6 @@ import (
 	_ "github.com/egoist/asuka/std/bluetooth/desktop"
 	_ "github.com/egoist/asuka/std/camera/desktop"
 	_ "github.com/egoist/asuka/std/imageedit/desktop"
-	_ "github.com/egoist/asuka/std/js/desktop"
 	_ "github.com/egoist/asuka/std/location/desktop"
 	_ "github.com/egoist/asuka/std/maps/desktop"
 	_ "github.com/egoist/asuka/std/markdown/desktop"

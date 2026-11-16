@@ -217,6 +217,38 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: watching true", "host: created a.txt", "host: renamed a.txt b.txt", "host: wrote b.txt", "host: gone", "host: done"}},
+		{"js", `import asuka/js
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let a = try await js.eval("1 + 2")
+      let b = try await js.eval(r"new Promise(res => setTimeout(() => res({x: [1, 'two']}), 10))")
+      step = "js {a} {b}"
+      await sleep(1ms)
+      do {
+        let _ = try await js.eval("throw new Error('nope')")
+      } catch e {
+        step = "threw {e.message}"
+        await sleep(1ms)
+      }
+      do {
+        let _ = try await js.eval(r"new Promise(() => {})", timeout: 300ms)
+      } catch e {
+        step = "late {e.message}"
+        await sleep(1ms)
+      }
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{`host: js 3 {"x":[1,"two"]}`, "host: threw Error: nope", "host: late", "host: done"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -231,7 +263,7 @@ app { Probe() }
 			mod := filepath.Join(dir, "app.akb")
 			os.WriteFile(mod, res.Module.Encode(), 0o644)
 			cmd := exec.Command(exe, mod)
-			cmd.Env = append(os.Environ(), "ASUKA_DATA="+dir, noLeaks)
+			cmd.Env = append(os.Environ(), "ASUKA_DATA="+dir, noLeaks, "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1") // WebKit's sandbox doesn't start in a container
 			out, err := cmd.CombinedOutput()
 			got := string(out)
 			if err != nil {

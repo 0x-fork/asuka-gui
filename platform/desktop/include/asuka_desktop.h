@@ -304,6 +304,14 @@ void asuka_response_free(asuka_response *r);
 // err set when there's no such file. It blocks: never on the main thread.
 char *asuka_desktop_local_file(const char *source, const char *type, asuka_error *err);
 
+// JSON, as platform APIs speak it (src/json.c): asuka_json_get is the
+// raw text of a key's value in an object (NULL: no such key, or not an
+// object), asuka_json_string a JSON string's text (NULL: not a string),
+// asuka_json_quote writes s as a JSON string. Strings are malloc's.
+char *asuka_json_get(const char *json, const char *key);
+char *asuka_json_string(const char *raw);
+void asuka_json_quote(asuka_writer *w, const char *s);
+
 // ---- The providers' half: native packages' C ----
 //
 // nativegen's C target writes each package's desktop/<pkg>.asuka.h and

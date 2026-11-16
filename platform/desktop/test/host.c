@@ -187,6 +187,10 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "usage: asuka-test-host module.akb\n");
 		return 2;
 	}
+#ifdef __linux__
+	// GTK on a display (xvfb-run), as the Linux host has it before the app.
+	if (asuka_linux() && G(gtk_init) && getenv("DISPLAY")) G(gtk_init)();
+#endif
 	static asuka_host_callbacks cb = {.apply = apply, .measure = measure, .post = core_post};
 	asuka_native_callbacks(&cb);
 	asuka_start(&cb);
@@ -217,8 +221,6 @@ int main(int argc, char **argv) {
 	// their signals).
 #ifdef __linux__
 	bool glib = asuka_linux() != NULL;
-	// GTK on a display (xvfb-run), as the Linux host has it.
-	if (glib && G(gtk_init) && getenv("DISPLAY")) G(gtk_init)();
 #else
 	bool glib = false;
 #endif

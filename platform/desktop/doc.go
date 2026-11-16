@@ -51,7 +51,7 @@ func Registry(dir string) string { return filepath.Join(dir, "src", "native.c") 
 // (asuka_windows.h: windows.c), each built for its platform only.
 func Shared(dir string) []string {
 	src := filepath.Join(dir, "src")
-	return []string{filepath.Join(src, "native.c"), filepath.Join(src, "linux.c"), filepath.Join(src, "windows.c"), filepath.Join(src, "fetch.c"),
+	return []string{filepath.Join(src, "native.c"), filepath.Join(src, "linux.c"), filepath.Join(src, "windows.c"), filepath.Join(src, "fetch.c"), filepath.Join(src, "json.c"), filepath.Join(src, "webview2.c"),
 		filepath.Join(dir, "include", "asuka_linux.h"), filepath.Join(dir, "include", "asuka_windows.h")}
 }
 
