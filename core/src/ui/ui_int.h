@@ -438,6 +438,7 @@ void ak_menubar_action(ak_ui_root *r, int64_t index);
 void ak_menus_free(ak_ui_root *r);
 void ak_window_root_drop(ak_view *e);
 ak_view *ak_window_of(ak_view *e);  // the window e is in: the root's view or a Window's
+ak_view *ak_window_under(ak_owner *o);  // the window code under o runs in, by its context
 ak_view *ak_alert_window(ak_ui_root *r);
 void ak_router_href(ak_view *from, ak_str *href);  // a Button's href, pressed
 bool ak_router_incoming(ak_span url);

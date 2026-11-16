@@ -1640,6 +1640,81 @@ TEST(router_navigate_push_back_replace) {
 	ak_buf_free(&gone);
 }
 
+// Each window's first Router has its address: a keyed Window's Router
+// tells the host its route (which the host keeps under the window's key),
+// apart from the main window's; the host's start is the main window's.
+static ak_val two_windows_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *col = ak_ui_new(AK_EL_COLUMN);
+	ak_view *r = ak_ui_new(AK_EL_ROUTER);
+	add(r, chats_routes());
+	add(col, r);
+	ak_view *w = ak_ui_new(AK_EL_WINDOW);
+	set_i(w, AK_KEY_WINDOW_OPEN, 1);
+	set_str(w, AK_KEY_WINDOW_TITLE, "Chats");
+	set_str(w, AK_KEY_WINDOW_STATE_KEY, "chats");
+	lazy(w, chats_app, "/chat/5");
+	add(col, w);
+	return (ak_val){.p = col};
+}
+
+static void expect_window_history(ak_fake *f, const ak_fake_view *win, int32_t at, const char *want) {
+	ak_fake_history *h = ak_fake_history_of(f, win);
+	if (!h) {
+		T_FAIL("no history: the window's router sent no Location");
+		return;
+	}
+	ak_buf b = {0};
+	ak_fake_hrefs(h, &b);
+	CHECK_EQ_STR(cstr(&b), want);
+	CHECK_EQ_INT(h->index, at);
+	ak_buf_free(&b);
+}
+
+TEST(router_per_window) {
+	gone.len = 0;
+	ak_router_set_start(ak_cstr("/chat/9"));
+	ak_uitest *a = mount(two_windows_app, NULL);
+	ak_router_set_start(ak_cstr(""));
+	ak_fake *f = ak_uitest_host(a);
+	ak_fake_view *win = nth(a, AK_KIND_WINDOW, 0);
+	REQUIRE(win && win->presented);
+	// The main window starts where the host said; the Window at its own.
+	expect_history(f, 0, "/chat/9");
+	expect_window_history(f, win, 0, "/chat/5");
+	// The Window's link goes in its Router, and only its history moves.
+	ak_fake_view *wstack = NULL;
+	ak_fake_view_vec stacks = {0};
+	ak_fake_of_kind(f, AK_KIND_STACK, &stacks);
+	for (uint32_t i = 0; i < stacks.len; i++)
+		for (const ak_fake_view *p = stacks.data[i]; p; p = p->parent)
+			if (p == win) wstack = stacks.data[i];
+	ak_vec_free(&stacks);
+	REQUIRE(wstack);
+	titles(wstack, "Chats|Chat 5");
+	ak_fake_back(f, wstack);
+	titles(wstack, "Chats");
+	// The link built its stack as one entry: back replaces it.
+	expect_window_history(f, win, 0, "/");
+	expect_history(f, 0, "/chat/9");
+	// The host restores the Window's route (kept under its key): a
+	// Location event to the Window's view goes to its Router alone.
+	ak_buf ev = {0};
+	ak_append_location_event(&ev, ak_cstr("/chat/3"), ak_cstr(""));
+	ak_fake_dispatch(f, &(ak_event){.id = win->id, .kind = AK_EVENT_LOCATION, .s = ak_strn(ev.data, ev.len)});
+	ak_buf_free(&ev);
+	ak_ui_flush();
+	titles(wstack, "Chats|Chat 3");
+	expect_history(f, 0, "/chat/9");
+	// Code outside any Router navigates the main window's.
+	go("/chat/7", 0);
+	expect_history(f, 1, "/chat/9 /chat/7");
+	expect_window_history(f, win, 1, "/ /chat/3");
+	gone.len = 0;
+	done(a);
+	ak_buf_free(&gone);
+}
+
 // A link builds the stack: the screens up its path under it.
 TEST(router_deep_link_builds_the_stack) {
 	gone.len = 0;

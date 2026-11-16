@@ -430,6 +430,7 @@ typedef struct {
 	uint64_t next_key;
 	int applying;
 	bool dead, started, addressed;
+	ak_view *win;  // the window it's in (ak_window_of): the root's view, or a Window's
 	struct ndesc *last;
 	ak_str *last_href;
 	ak_node href_node;
@@ -1530,7 +1531,7 @@ static void navigate(router_t *rt, ak_str *h, int mode) {
 
 static void send(router_t *rt, int action, int32_t delta) {
 	if (!rt->addressed) return;
-	ak_view *w = rt->e->r->el;
+	ak_view *w = rt->win;
 	if (!w || w->dead) return;
 	ak_location l = {(uint8_t)action, delta, ak_strn(rt->last_href->data, rt->last_href->len), ak_cstr(""), ak_cstr("")};
 	ak_buf *b = ak_batch_command_begin(w->r->batch, w->id, AK_CMD_LOCATION);
@@ -1777,7 +1778,7 @@ static void start_fn(void *ctx) {
 	ak_view *e = rt->e;
 	const ak_val *iv = key_of(e, AK_KEY_ROUTER_INITIAL);
 	ak_str *h = iv && iv->p && ((ak_str *)iv->p)->len ? ak_retain(iv->p) : ak_str_c("/");
-	if (rt->addressed && start_href) {
+	if (rt->addressed && rt->win == e->r->el && start_href) {  // the host's start is the main window's
 		ak_release(h);
 		h = ak_retain(start_href);
 	}
@@ -1845,10 +1846,14 @@ static void router_finalize(ak_view *e) {
 	router_t *rt = e->impl;
 	compile(rt);
 	ak_ui_root *r = e->r;
-	// The main window's first Router has its address.
-	rt->addressed = true;
-	for (uint32_t i = 0; i < routers.len; i++)
-		if (routers.data[i]->r == r && ((router_t *)routers.data[i]->impl)->addressed) rt->addressed = false;
+	// Each window's first Router has its address (the main window's: the
+	// root's view; a Window's: its own, which the host keeps by its key).
+	rt->win = ak_window_under(e->owner);  // by its context: it isn't in its window's views yet
+	rt->addressed = rt->win != NULL;
+	for (uint32_t i = 0; i < routers.len; i++) {
+		router_t *o = routers.data[i]->impl;
+		if (!o->dead && o->addressed && o->win == rt->win) rt->addressed = false;
+	}
 	ak_vec_push(&routers, e);
 	ak_ui_route_url = ak_router_incoming;  // the URLs the app is opened with (share.c)
 	rt->owner = ak_root_under(e->owner);
@@ -1861,7 +1866,7 @@ static void router_finalize(ak_view *e) {
 	rt->last = snapshot(rt->root);
 	rt->last_href = desc_href(rt->last);
 	ak_signal_write(&rt->href_node);  // what its screens read as they were built
-	if (rt->addressed) ak_view_listen(r->el, AK_EVENT_LOCATION);
+	if (rt->addressed) ak_view_listen(rt->win, AK_EVENT_LOCATION);
 	send(rt, AK_LOCATION_ACTION_REPLACE, 0);
 	ak_with_owner(rt->owner, guard_effect, rt);
 }
@@ -1884,8 +1889,10 @@ static router_t *router_for(ak_owner *o) {
 	if (o && !ak_owner_disposed(o)) ak_with_owner(o, lookup_fn, &v);
 	else if (!ak_context_lookup(ak_router_key, &v)) v = NULL;
 	if (!v) {
-		for (uint32_t i = 0; i < routers.len && !v; i++)
-			if (((router_t *)routers.data[i]->impl)->addressed) v = routers.data[i];
+		for (uint32_t i = 0; i < routers.len && !v; i++) {
+			router_t *o = routers.data[i]->impl;
+			if (o->addressed && o->win == routers.data[i]->r->el) v = routers.data[i];  // the main window's
+		}
 		if (!v && routers.len) v = routers.data[0];
 	}
 	if (!v) return NULL;
@@ -1925,13 +1932,14 @@ bool ak_router_incoming(ak_span url) {
 }
 
 // ak_router_location is the user going back or forward in a browser's
-// history, to an entry a Router made.
+// history, to an entry a Router made, or a host restoring a window's
+// route: win is the window's view (the root's, or a Window's).
 void ak_router_location(ak_view *win, const ak_event *ev) {
 	ak_span href, state;
 	if (!ak_decode_location_event((const uint8_t *)ev->s.p, ev->s.len, &href, &state)) return;
 	for (uint32_t i = 0; i < routers.len; i++) {
 		router_t *rt = routers.data[i]->impl;
-		if (rt->dead || !rt->addressed || rt->e->r != win->r) continue;
+		if (rt->dead || !rt->addressed || rt->win != win) continue;
 		ak_str *h = ak_str_new(href.p, href.len);
 		navigate(rt, h, MODE_NAVIGATE);
 		ak_release(h);

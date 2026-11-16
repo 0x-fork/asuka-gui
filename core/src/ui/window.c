@@ -117,6 +117,17 @@ ak_view *ak_window_of(ak_view *e) {
 	return handle_view(target(e));
 }
 
+static void window_here(void *ctx) { *(ak_view **)ctx = handle_view(target(NULL)); }
+
+// ak_window_under is the window code under owner o runs in, by its
+// context (a Window's content finds its Window), before its views are
+// in that window: the root's view or the Window's.
+ak_view *ak_window_under(ak_owner *o) {
+	ak_view *v = NULL;
+	if (o && !ak_owner_disposed(o)) ak_with_owner(o, window_here, &v);
+	return v;
+}
+
 // The Window element whose handlers a handle runs: a Window, or the
 // main window's (NULL when the app has none).
 static ak_view *handlers_of(ak_view *w) { return w->el == AK_EL_WINDOW ? w : main_handle(w->r)->main; }
@@ -461,6 +472,7 @@ static void win_view_event(ak_view *e, const ak_event *ev) {
 	case AK_EVENT_DISMISSED: destroy(w); break;  // the user closed it
 	case AK_EVENT_CLOSE_REQUEST: close_requested(w); break;
 	case AK_EVENT_WINDOW_STATE: set_state(w, ev); break;
+	case AK_EVENT_LOCATION: ak_router_location(e, ev); break;  // its route, restored by the host
 	}
 }
 
