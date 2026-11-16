@@ -469,7 +469,7 @@ component Upload {
 |---|---|---|
 | iOS | UIKit 没有确定进度的圆环，而 SwiftUI 的圆形 `ProgressView` 在 iOS 上会忽略它的值。所以圆环按 SwiftUI 圆形容量 `Gauge` 的样子绘制：强调色的圆头描边，压在 30% 强调色的轨道上，描边宽度是圆环尺寸的十分之一 | `UIActivityIndicatorView` |
 | Android | Material 的 `CircularProgressIndicator`，按它的尺寸取 Material 3 对应的规格（extra small、small 或 medium：各自的轨道、内边距和间隙） | 同一个控件，不确定进度模式 |
-| macOS | 没有 `color` 时，是 AppKit 自己尺寸（16 和 32 点）的 `NSProgressIndicator` 确定进度圆环。AppKit 只在这两个尺寸、而且只用强调色绘制它的圆环，所以其他尺寸或设置了 `color` 时，由宿主绘制填满整个区域的圆环：16 到 32 点之间是 5 点宽的圆头描边（大于 32 点按 32 点圆环的比例，小于 16 点按 16 点的比例），压在 AppKit 的轨道上，颜色用 `color`，或者用从 AppKit 自己的指示器读出来的颜色（强调色、非活动窗口中的灰色，以及浅色和深色模式）。值的变化会像 AppKit 的 animator 那样用四分之一秒过渡过去，开启“减弱动态效果”时除外。两种情况下，VoiceOver 都会把它读作 AppKit 的指示器 | 16 和 32 点时是它的旋转指示器；其他尺寸则按该尺寸绘制它那 8 根辐条（缩放后带有 AppKit 的模糊效果，它本身不接受颜色），领头的那根用 `color` |
+| macOS | 没有 `color` 时，是 AppKit 自己尺寸（16 和 32 点）的 `NSProgressIndicator` 确定进度圆环。AppKit 只在这两个尺寸、而且只用强调色绘制它的圆环，所以其他尺寸或设置了 `color` 时，由 Asuka 绘制填满整个区域的圆环：16 到 32 点之间是 5 点宽的圆头描边（大于 32 点按 32 点圆环的比例，小于 16 点按 16 点的比例），压在 AppKit 的轨道上，颜色用 `color`，或者用从 AppKit 自己的指示器读出来的颜色（强调色、非活动窗口中的灰色，以及浅色和深色模式）。值的变化会像 AppKit 的 animator 那样用四分之一秒过渡过去，开启“减弱动态效果”时除外。两种情况下，VoiceOver 都会把它读作 AppKit 的指示器 | 16 和 32 点时是它的旋转指示器；其他尺寸则按该尺寸绘制它那 8 根辐条（缩放后带有 AppKit 的模糊效果，它本身不接受颜色），领头的那根用 `color` |
 | Windows | Fluent 的 `ProgressRing`（WinUI 的）：一段没有轨道的圆弧。讲述人会把它读作进度条 | 转动的圆弧，和 `Activity` 一样 |
 | Linux | 按 `AdwSpinner` 绘制圆环的方式绘制：15% 文字颜色的轨道，加上强调色的圆弧 | `AdwSpinner`（libadwaita 1.6 之前为 `GtkSpinner`） |
 | Web | 一个 SVG 圆环，`role="progressbar"` 并带 `aria-valuenow` | 转动的圆弧；设置了 `prefers-reduced-motion` 时转得更慢 |
