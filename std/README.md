@@ -78,6 +78,26 @@ Once a module is a std package, remove the host's old byte-protocol
 module for it (`modules["<name>"]` in each host and its code) and the
 sdk/<name> Go package.
 
+### Over a host's module
+
+What a host already does for its apps through a module of its own
+(notifications, pushes, iCloud, the photo library...: platform/ios's
+AsukaHost, platform/android's dev.asuka, platform/web's modules,
+host/darwin, host/windows, host/linux) a package can reach through
+`asuka/host` (std/host), with no platform code of its own: it calls the
+module's methods by name (`host.call`, `host.send`, `host.next` for a
+"next" method's stream), with the bytes sdk/<name> sent (mostly JSON,
+`host.u32` and the like for the rest), and types the answers in Asuka.
+std/notify, push, icloud, library, photos, contacts, calendar, compose,
+periodic, background, liveactivity and widget are such. Moving a
+module's code into its package (as above) can come after, one platform
+at a time, without changing the package's API.
+
+A package whose work the runtime does is plain Asuka with `native fn`s
+in C: std/sqlite (core/src/sqlite) calls the sqlite plugin's library,
+which std/sqlite's asuka-plugin.toml (sdk/sqlite's, copied) ships with
+the apps that import it.
+
 ### Tests
 
 - Asuka: a UI program under lang/compile/testdata/ui (or a run program
