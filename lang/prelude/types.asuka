@@ -317,7 +317,7 @@ struct Shortcut {
   shift: bool = false
   alt: bool = false
   control: bool = false
-  run: fn()
+  run: fn() = () => {} // a MenuItem's shortcut runs the item
 }
 
 /// What a screen reader offers to do with a view (VoiceOver's rotor,
@@ -544,38 +544,48 @@ struct AlertField {
   change: fn(string)? = none // the user's typing
 }
 
-/// How a Window opens. Sizes are its content's, in points (0: the
-/// platform's).
-struct WindowOptions {
+/// What a flyout Window hangs from: a tray icon (asuka/tray's
+/// anchor(id)), or a rectangle of the window it's declared in, in points
+/// from its content's top left (a rectangle of no size is a point).
+struct Anchor {
+  tray: int = 0 // a tray icon's (0: the rectangle)
+  x: float = 0
+  y: float = 0
   width: float = 0
   height: float = 0
-  minWidth: float = 0
-  minHeight: float = 0
-  maxWidth: float = 0
-  maxHeight: float = 0
-  x: float = 0 // its frame's top left on the screen, with positioned
-  y: float = 0
-  positioned: bool = false
-  center: bool = false
-  fixedSize: bool = false
-  noMinimize: bool = false
-  noMaximize: bool = false
-  noClose: bool = false
-  alwaysOnTop: bool = false
-  hidden: bool = false
-  skipTaskbar: bool = false
-  transparent: bool = false
-  maximized: bool = false
-  fullscreen: bool = false
-  child: bool = false  // belongs to the window it's declared in
-  modal: bool = false  // and blocks it
-  panel: bool = false  // floating, non-activating
-  fitContent: bool = false
-  clickThrough: bool = false
-  menuBar: bool = false
-  titleBar: TitleBar = .default
-  background: Color = #00000000
-  stateKey: string = "" // where the platform remembers its place
+}
+
+/// A flyout Window's anchor and the side of it the window goes to: where
+/// the display has no room there, it flips to the other side, slides into
+/// the display, then shrinks to fit it.
+struct Flyout {
+  anchor: Anchor = Anchor()
+  placement: PopoverPlacement = .bottom
+  gap: float = 0 // between the anchor and the window, in points
+}
+
+/// What a MenuBar's item is: the app's own (drawn red when destructive),
+/// or one the platform does itself, with its own title (unless the item
+/// has one) and shortcut: quit quits the app ("Quit Notes", ⌘Q), close
+/// closes the window in use as its close button does (⌘W, Ctrl+W),
+/// openRecent is the recent documents' submenu (a Mac's own).
+enum MenuRole {
+  normal
+  destructive
+  quit
+  close
+  openRecent
+}
+
+/// A quit about to happen (the app block's on quit(e), onQuit): cancel()
+/// keeps the app running (to ask about unsaved changes first; quit()
+/// again once they're dealt with), unless the session is ending (logout,
+/// shutdown), when it can't be refused and the process may end as soon
+/// as the handlers return. canceled() says whether a handler canceled it.
+struct QuitEvent {
+  sessionEnding: bool = false
+  cancel: fn()
+  canceled: fn() -> bool
 }
 
 /// A window's state, as the platform reports it (windowState(w)).

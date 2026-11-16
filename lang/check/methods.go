@@ -177,6 +177,24 @@ var Methods = []*Method{
 	{Recv: "app", Name: "openURL", Sig: "(url: string)", Builtin: "test.open_url", Doc: "opens the app with url, as another app does"},
 	{Recv: "app", Name: "emit", Sig: "(view: string, event: string, value: string = \"\")", Builtin: "test.emit", Doc: "sends a native component's event: from the view of that kind (\"<package>#Name\"), its value v an encoded string"},
 
+	// The desktop, as the fake host keeps it: windows, the menu bar, the
+	// tray and the Dock menu, quitting.
+	{Recv: "app", Name: "windows", Sig: "() -> string", Builtin: "test.windows", Doc: "the windows open, a line each: the main one first, then each Window by its title, with its options and state"},
+	{Recv: "app", Name: "closeWindow", Sig: "(title: string = \"\")", Builtin: "test.close_window", Doc: "the user closes the window titled title (\"\": the main window): its close button"},
+	{Recv: "app", Name: "windowActions", Sig: "(title: string = \"\") -> string", Builtin: "test.window_actions", Doc: "the WindowAction commands the window titled title (\"\": the main one) got since the last call, separated by spaces"},
+	{Recv: "app", Name: "setWindowState", Sig: "(title: string, state: WindowState)", Builtin: "test.set_window_state", Doc: "the user moves, resizes, minimizes or focuses the window titled title (\"\": the main one)"},
+	{Recv: "app", Name: "focusWindow", Sig: "(title: string = \"\")", Builtin: "test.focus_window", Doc: "the user makes the window titled title the one in use (\"\": the main one): where keys go"},
+	{Recv: "app", Name: "pressKey", Sig: "(key: string, primary: bool = false, shift: bool = false, alt: bool = false, control: bool = false) -> bool", Builtin: "test.press_key", Doc: "presses a key with nothing focused, in the window in use: whether a view's or the window's keys took it"},
+	{Recv: "app", Name: "menuBar", Sig: "() -> string", Builtin: "test.menu_bar", Doc: "the menu bar's items, a line each: Menu > Item, with its shortcut and state"},
+	{Recv: "app", Name: "chooseMenuItem", Sig: "(path: string)", Builtin: "test.choose_menu_item", Doc: "chooses the menu bar's item at path (\"File > Export > PDF\"), as a click or its shortcut does"},
+	{Recv: "app", Name: "trays", Sig: "() -> string", Builtin: "test.trays", Doc: "the tray icons shown, a line each with its menu's items under it"},
+	{Recv: "app", Name: "clickTray", Sig: "(id: string)", Builtin: "test.click_tray", Doc: "clicks the tray icon id"},
+	{Recv: "app", Name: "chooseTrayItem", Sig: "(id: string, path: string)", Builtin: "test.choose_tray_item", Doc: "chooses the item at path (\"Length > 50 minutes\") of tray icon id's menu (\"\": the Dock menu's)"},
+	{Recv: "app", Name: "dockMenu", Sig: "() -> string", Builtin: "test.dock_menu", Doc: "the Dock menu's items, a line each"},
+	{Recv: "app", Name: "requestQuit", Sig: "(sessionEnding: bool = false) -> bool", Builtin: "test.request_quit", Doc: "the user quits the app (⌘Q): whether the app let it"},
+	{Recv: "app", Name: "quits", Sig: "() -> string", Builtin: "test.quits", Doc: "the quits the app asked the host for (quit, relaunch), separated by spaces"},
+	{Recv: "app", Name: "secondInstance", Sig: "(args: [string], dir: string)", Builtin: "test.second_instance", Doc: "the app is started again while it runs"},
+
 	// Loading<T>.
 	{Recv: "loading", Name: "reload", Sig: "()", Builtin: "load.reload"},
 
@@ -234,6 +252,31 @@ var Methods = []*Method{
 	{Recv: "ref", Name: "format", Sig: "(format: TextFormat, on: bool)", Builtin: "ui.format", Doc: "a rich TextField's selection (or what's typed next) in a style, or not"},
 	{Recv: "ref", Name: "toggleFormat", Sig: "(format: TextFormat)", Builtin: "ui.toggle_format"},
 	{Recv: "ref", Name: "setLink", Sig: "(url: string)", Builtin: "ui.set_link", Doc: "links a rich TextField's selection to url (\"\": unlinks it)"},
+
+	// A Window's handle (Window(…) as w; any other view: the window it's
+	// in). Its state is followed only once it's read.
+	{Recv: "ref", Name: "show", Sig: "()", Builtin: "ui.window_do", Consts: []int64{0}, Doc: "shows the window (a closed Window opens)"},
+	{Recv: "ref", Name: "hide", Sig: "()", Builtin: "ui.window_do", Consts: []int64{1}, Doc: "hides the window, keeping it and what it shows"},
+	{Recv: "ref", Name: "minimize", Sig: "()", Builtin: "ui.window_do", Consts: []int64{3}},
+	{Recv: "ref", Name: "maximize", Sig: "()", Builtin: "ui.window_do", Consts: []int64{4}},
+	{Recv: "ref", Name: "restore", Sig: "()", Builtin: "ui.window_do", Consts: []int64{5}, Doc: "out of minimized or maximized"},
+	{Recv: "ref", Name: "center", Sig: "()", Builtin: "ui.window_do", Consts: []int64{8}, Doc: "centers the window on its display"},
+	{Recv: "ref", Name: "close", Sig: "()", Builtin: "ui.window_do", Consts: []int64{13}, Doc: "closes the window as the user does, asking first (closeWindow() doesn't)"},
+	{Recv: "ref", Name: "setFullScreen", Sig: "(on: bool)", Builtin: "ui.window_toggle", Consts: []int64{6, 7}},
+	{Recv: "ref", Name: "setAlwaysOnTop", Sig: "(on: bool)", Builtin: "ui.window_toggle", Consts: []int64{11, 12}},
+	{Recv: "ref", Name: "setClickThrough", Sig: "(on: bool)", Builtin: "ui.window_toggle", Consts: []int64{14, 15}, Doc: "the mouse goes through the window to what's behind it, or doesn't"},
+	{Recv: "ref", Name: "setSize", Sig: "(width: float, height: float)", Builtin: "ui.window_set", Consts: []int64{9}, Doc: "its content's size, in points"},
+	{Recv: "ref", Name: "setPosition", Sig: "(x: float, y: float)", Builtin: "ui.window_set", Consts: []int64{10}, Doc: "its frame's top left on the screen, in points from the main display's"},
+	{Recv: "ref", Name: "visible", Sig: "() -> bool", Builtin: "ui.window_flag", Field: true, Consts: []int64{1}, Doc: "the window shows, or is minimized (tracked)"},
+	{Recv: "ref", Name: "focused", Sig: "() -> bool", Builtin: "ui.window_flag", Field: true, Consts: []int64{2}, Doc: "the window has the keyboard (tracked)"},
+	{Recv: "ref", Name: "minimized", Sig: "() -> bool", Builtin: "ui.window_flag", Field: true, Consts: []int64{4}},
+	{Recv: "ref", Name: "maximized", Sig: "() -> bool", Builtin: "ui.window_flag", Field: true, Consts: []int64{8}},
+	{Recv: "ref", Name: "fullScreen", Sig: "() -> bool", Builtin: "ui.window_flag", Field: true, Consts: []int64{16}},
+	{Recv: "ref", Name: "alwaysOnTop", Sig: "() -> bool", Builtin: "ui.window_flag", Field: true, Consts: []int64{32}},
+	{Recv: "ref", Name: "clickThrough", Sig: "() -> bool", Builtin: "ui.window_flag", Field: true, Consts: []int64{64}},
+	{Recv: "ref", Name: "position", Sig: "() -> (float, float)", Builtin: "ui.window_pair", Field: true, Consts: []int64{0}, Doc: "its frame's top left on the screen, in points (tracked)"},
+	{Recv: "ref", Name: "size", Sig: "() -> (float, float)", Builtin: "ui.window_pair", Field: true, Consts: []int64{1}, Doc: "its content's size, in points (tracked)"},
+	{Recv: "ref", Name: "windowState", Sig: "() -> WindowState", Builtin: "ui.window_state", Field: true, Doc: "all of its state at once (tracked)"},
 }
 
 // The receivers' type variables.
@@ -610,6 +653,8 @@ func (p *sigParser) typ() Type {
 			t = Path
 		case "Ref":
 			t = Ref
+		case "TestApp":
+			t = TestApp
 		default:
 			t = Invalid
 			if n == "" {

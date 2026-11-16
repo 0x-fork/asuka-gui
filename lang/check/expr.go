@@ -256,8 +256,8 @@ func (c *Checker) useMember(m *Member, at syntax.Node) Type {
 	c.envUse(m.Owner, at, m.name)
 	switch m.Kind {
 	case EventMember:
-		c.errorf(at, "%s is an event: raise it with emit %s", m.name, m.name)
-		return Invalid
+		// Read as a value, an event is whether the caller handles it.
+		return Bool
 	case FnMember:
 		c.errorf(at, "%s is a fn: call it, %s()", m.name, m.name)
 		return Invalid

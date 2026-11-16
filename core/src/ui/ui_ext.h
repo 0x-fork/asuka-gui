@@ -48,6 +48,8 @@ typedef struct ak_ix {
 	// The a11y actions' names as last sent, encoded.
 	ak_buf actions_sent;
 	bool actions_known;
+	// A Window's view's keys (WindowKeys'), as the root's (keys.c).
+	struct ak_rootkeys *wkeys;
 } ak_ix;
 
 // ak_ix_of is e's interaction state, made the first time.
@@ -72,6 +74,17 @@ void ak_ix_container_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev)
 // applies one, which changed (prev NULL: unset before).
 bool ak_ix_style_key(uint16_t key);
 void ak_ix_style_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev);
+
+// A window's keys (keys.c): ak_keys_register gives target (the root, or
+// a Window's view) keys while the current owner lives; *slot holds the
+// registration until it goes.
+struct ak_keyreg;
+struct ak_keyreg *ak_keys_register(ak_view *target, ak_arr *keys, struct ak_keyreg **slot);
+void ak_keys_update(struct ak_keyreg *g, ak_arr *keys);
+void ak_keys_forget(struct ak_keyreg *g);
+void ak_rootkeys_free(struct ak_rootkeys *k);
+// ak_window_view reports whether e is a Window's view (window.c).
+bool ak_window_view(const ak_view *e);
 
 // ---- The root's (ak_ui_root's ext) ----
 

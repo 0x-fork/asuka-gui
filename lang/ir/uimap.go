@@ -20,8 +20,11 @@ const (
 	uiShow    = "ui.show"     // (cond thunk -> bool, then builder, else builder or none) -> view
 	uiFor     = "ui.for"      // (items thunk -> [T], key closure (T) -> K or none, row closure (itemAcc, indexAcc) -> view, keyKind int) -> view
 	uiLazyFor = "ui.lazy_for" // (view, items, key, row, keyKind int) -> void: directly in an element that builds rows lazily (List)
-	uiSwitch  = "ui.switch"   // (selector thunk -> int, build closure (int) -> view) -> view: a match in a view, by arm
-	uiDynamic = "ui.dynamic"  // (build closure -> view) -> view
+	uiLazy    = "ui.lazy"     // (view, builder closure) -> void: a LazyChildren element's children, built when they show
+
+	uiMainWindow = "ui.main_window" // (view) -> void: the app block's Window is the main window, before its keys
+	uiSwitch     = "ui.switch"      // (selector thunk -> int, build closure (int) -> view) -> view: a match in a view, by arm
+	uiDynamic    = "ui.dynamic"     // (build closure -> view) -> view
 
 	uiTask    = "ui.task"    // (closure) -> void: starts it as a task when the component mounts; cancelled when it goes
 	uiUse     = "ui.use"     // (key string) -> the value provided under key (a store), or an error

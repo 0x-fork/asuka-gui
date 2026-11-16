@@ -15,7 +15,10 @@
 //	            Tabs, Split, PageControl
 //	overlay.c   Sheet, present and dismiss, Popover, Alert, Menu,
 //	            Snackbar
-//	window.c    Window, window handles, the main window
+//	window.c    Window, window handles, the main window, close guards,
+//	            a window's keys
+//	menubar.c   MenuBar, its Menus and MenuItems
+//	lifecycle.c quit, relaunch, on quit, on secondInstance
 //	router.c    Router and Route, hrefs
 //	boundary.c  Boundary: error boundaries
 #ifndef AK_UI_INT_H
@@ -197,6 +200,13 @@ struct ak_ui_root {
 	uint64_t flushes;
 	bool flushing;
 	struct ak_rext *ext;  // animation, frames, its own layout roots (ui_ext.h)
+	// The main window sized to its content (its Window's fitContent):
+	// laid out at its content's size, within its least and most, which
+	// WindowAction Fit sends.
+	bool fit, fit_sent;
+	float fit_min[2], fit_max[2];
+	ak_lsize fit_laid;
+	struct ak_menus *menus;  // MenuBars (menubar.c)
 };
 
 // The runtime's state, one per process.
@@ -394,6 +404,16 @@ bool ak_scroll_laid(ak_view *e);
 // ---- overlay.c, window.c, router.c ----
 
 void ak_window_event(ak_view *e, const ak_event *ev);  // the main window's, to the root view
+// ak_ui_root_fit sizes the main window to its content, within its least
+// and most size (0: none), or not.
+void ak_ui_root_fit(ak_ui_root *r, bool on, float min_w, float min_h, float max_w, float max_h);
+const ak_el_class *ak_window_class_of(uint16_t el);  // WindowCloseGuard, WindowKeys
+// Menu bars (menubar.c): the classes of MenuBar, a MenuBar's Menu,
+// MenuItem and MenuSeparator; the root's Action events; a root's going.
+const ak_el_class *ak_menu_class_of(uint16_t el);
+const ak_el_class *ak_menu_class_here(void);  // Menu's: a MenuBar's menu inside one, else the context menu
+void ak_menubar_action(ak_ui_root *r, int64_t index);
+void ak_menus_free(ak_ui_root *r);
 void ak_window_root_drop(ak_view *e);
 ak_view *ak_window_of(ak_view *e);  // the window e is in: the root's view or a Window's
 ak_view *ak_alert_window(ak_ui_root *r);

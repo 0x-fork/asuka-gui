@@ -272,7 +272,24 @@ void ak_ui_window_action(ak_view *w, int64_t action, float x, float y);  // AK_W
 void ak_ui_window_close(ak_view *w);  // now, without asking
 ak_val ak_ui_window_state(ak_view *w);  // a WindowState, read (followed)
 void ak_ui_on_close_request(ak_closure *handler);  // fn() -> bool: false keeps it open
+bool ak_ui_window_flag(ak_view *w, int64_t bit);  // AK_WINDOW_STATE_*, read (followed)
+ak_val ak_ui_window_pair(ak_view *w, int64_t which);  // (x, y) for 0, (width, height) for 1, read (followed)
+// ak_ui_main_window makes the app block's Window the main window (its
+// keys the root's options), before its keys are set.
+void ak_ui_main_window(ak_view *w);
 extern const ak_shape ak_ui_shape_window_state;
+
+// The app (desktop): ak_ui_quit quits it as the user's Quit does
+// (relaunch: then starts it again), asking first; on_quit's handlers
+// (fn(QuitEvent)) hear a quit coming, and ak_ui_quit_request (the host's
+// asking, through asuka_quit_request) runs them, reporting whether one
+// canceled it; on_second_instance's (fn([string], string)) hear another
+// launch's arguments and directory. Handlers go with the current owner.
+void ak_ui_quit(bool relaunch);
+void ak_ui_on_quit(ak_closure *handler);
+bool ak_ui_quit_request(bool ending);
+void ak_ui_on_second_instance(ak_closure *handler);
+extern const ak_shape ak_ui_shape_quit_event;
 
 // The Router the calling code is in (else the main window's first):
 // navigate goes to href (mode 0 navigate, 1 push, 2 replace); back and

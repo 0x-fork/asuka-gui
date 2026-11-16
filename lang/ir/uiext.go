@@ -136,11 +136,44 @@ func (b *fb) refMethod(m *check.Method, cell int, vals []int, res check.Type, ds
 		return -1
 	}
 	r := b.out(dst, k)
-	b.move(r, b.zero(k))
+	b.move(r, b.zeroOf(res))
 	b.emitJump(op("JNONE"), view, end)
 	b.callBTo(m.Builtin, r, args...)
 	b.f.Place(end)
 	return r
+}
+
+// zeroOf is a register holding t's zero value: a tuple's or a struct's
+// of its fields' zeros (a Ref's property of a view that isn't there),
+// else its kind's.
+func (b *fb) zeroOf(t check.Type) int {
+	var elems []check.Type
+	switch x := t.(type) {
+	case *check.Tuple:
+		elems = x.Elems
+	case *check.Named:
+		if x.Obj.Kind != check.StructType || x.Obj.IsError {
+			return b.zero(b.kind(t))
+		}
+		s := x.Subst()
+		for _, f := range x.Obj.Fields {
+			elems = append(elems, s.Apply(f.Type))
+		}
+	default:
+		return b.zero(b.kind(t))
+	}
+	ks := make([]bc.Kind, len(elems))
+	for i, e := range elems {
+		ks[i] = b.kind(e)
+	}
+	blk := b.regs(ks)
+	for i, e := range elems {
+		b.move(blk+i, b.zeroOf(e))
+	}
+	o := b.temp(bc.KRef)
+	b.emit(op("NEWS"), o, b.l.shape(t), blk)
+	b.releaseRegs(blk, ks)
+	return o
 }
 
 // zero is a register holding kind k's zero value.

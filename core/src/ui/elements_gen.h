@@ -47,7 +47,12 @@ enum {
 	AK_EL_ROUTE = 38,
 	AK_EL_BOUNDARY = 39,
 	AK_EL_PAGE_CONTROL = 40,
-	AK_EL__COUNT = 41,
+	AK_EL_MENU_BAR = 41,
+	AK_EL_MENU_ITEM = 42,
+	AK_EL_MENU_SEPARATOR = 43,
+	AK_EL_WINDOW_CLOSE_GUARD = 44,
+	AK_EL_WINDOW_KEYS = 45,
+	AK_EL__COUNT = 46,
 };
 
 // Keys: the style's (every element's) first, then each element's.
@@ -226,34 +231,69 @@ enum {
 	AK_KEY_POPOVER_OPEN = 171, // open: bool
 	AK_KEY_POPOVER_MAX_WIDTH = 172, // maxWidth: float
 	AK_KEY_POPOVER_CONTENT = 173, // content: View?
-	AK_KEY_MENU_ACTIONS = 174, // actions: [Action]
-	AK_KEY_MENU_LONG_PRESS = 175, // longPress: bool
-	AK_KEY_SPLIT_TITLE = 176, // title: string
-	AK_KEY_SPLIT_SELECTED = 177, // selected: int
-	AK_KEY_DESTINATION_TITLE = 178, // title: string
-	AK_KEY_DESTINATION_ICON = 179, // icon: string
-	AK_KEY_DESTINATION_BADGE = 180, // badge: string
-	AK_KEY_DESTINATION_SECTION = 181, // section: string
-	AK_KEY_WINDOW_OPEN = 182, // open: bool
-	AK_KEY_WINDOW_TITLE = 183, // title: string
-	AK_KEY_WINDOW_OPTIONS = 184, // options: WindowOptions
-	AK_KEY_WINDOW_EDITED = 185, // edited: bool
-	AK_KEY_WINDOW_FILE = 186, // file: string
-	AK_KEY_WINDOW_WATCH_STATE = 187, // watchState: bool
-	AK_KEY_ROUTER_INITIAL = 188, // initial: string
-	AK_KEY_ROUTE_PATH = 189, // path: string
-	AK_KEY_ROUTE_LAYOUT = 190, // layout: RouteLayout
-	AK_KEY_ROUTE_TITLE = 191, // title: string
-	AK_KEY_ROUTE_ICON = 192, // icon: string
-	AK_KEY_ROUTE_BADGE = 193, // badge: string
-	AK_KEY_ROUTE_INITIAL = 194, // initial: string
-	AK_KEY_ROUTE_REDIRECT = 195, // redirect: string
-	AK_KEY_ROUTE_SHEET = 196, // sheet: bool
-	AK_KEY_ROUTE_DETENTS = 197, // detents: [Detent]
-	AK_KEY_ROUTE_GUARD = 198, // guard: fn(string) -> string
-	AK_KEY_PAGE_CONTROL_COUNT = 199, // count: int
-	AK_KEY_PAGE_CONTROL_PAGE = 200, // page: int
-	AK_KEY__COUNT = 201,
+	AK_KEY_MENU_TITLE = 174, // title: string
+	AK_KEY_MENU_ACTIONS = 175, // actions: [Action]
+	AK_KEY_MENU_LONG_PRESS = 176, // longPress: bool
+	AK_KEY_SPLIT_TITLE = 177, // title: string
+	AK_KEY_SPLIT_SELECTED = 178, // selected: int
+	AK_KEY_DESTINATION_TITLE = 179, // title: string
+	AK_KEY_DESTINATION_ICON = 180, // icon: string
+	AK_KEY_DESTINATION_BADGE = 181, // badge: string
+	AK_KEY_DESTINATION_SECTION = 182, // section: string
+	AK_KEY_WINDOW_OPEN = 183, // open: bool
+	AK_KEY_WINDOW_TITLE = 184, // title: string
+	AK_KEY_WINDOW_WIDTH = 185, // width: float
+	AK_KEY_WINDOW_HEIGHT = 186, // height: float
+	AK_KEY_WINDOW_MIN_WIDTH = 187, // minWidth: float
+	AK_KEY_WINDOW_MIN_HEIGHT = 188, // minHeight: float
+	AK_KEY_WINDOW_MAX_WIDTH = 189, // maxWidth: float
+	AK_KEY_WINDOW_MAX_HEIGHT = 190, // maxHeight: float
+	AK_KEY_WINDOW_X = 191, // x: float
+	AK_KEY_WINDOW_Y = 192, // y: float
+	AK_KEY_WINDOW_CENTER = 193, // center: bool
+	AK_KEY_WINDOW_RESIZABLE = 194, // resizable: bool
+	AK_KEY_WINDOW_MINIMIZABLE = 195, // minimizable: bool
+	AK_KEY_WINDOW_MAXIMIZABLE = 196, // maximizable: bool
+	AK_KEY_WINDOW_CLOSABLE = 197, // closable: bool
+	AK_KEY_WINDOW_ALWAYS_ON_TOP = 198, // alwaysOnTop: bool
+	AK_KEY_WINDOW_HIDDEN = 199, // hidden: bool
+	AK_KEY_WINDOW_SKIP_TASKBAR = 200, // skipTaskbar: bool
+	AK_KEY_WINDOW_TRANSPARENT = 201, // transparent: bool
+	AK_KEY_WINDOW_MAXIMIZED = 202, // maximized: bool
+	AK_KEY_WINDOW_FULL_SCREEN = 203, // fullScreen: bool
+	AK_KEY_WINDOW_TITLE_BAR = 204, // titleBar: TitleBar
+	AK_KEY_WINDOW_BACKGROUND = 205, // background: Color
+	AK_KEY_WINDOW_CHILD = 206, // child: bool
+	AK_KEY_WINDOW_MODAL = 207, // modal: bool
+	AK_KEY_WINDOW_PANEL = 208, // panel: bool
+	AK_KEY_WINDOW_FLYOUT = 209, // flyout: Flyout?
+	AK_KEY_WINDOW_FIT_CONTENT = 210, // fitContent: bool
+	AK_KEY_WINDOW_CLICK_THROUGH = 211, // clickThrough: bool
+	AK_KEY_WINDOW_MENU_BAR = 212, // menuBar: bool
+	AK_KEY_WINDOW_STATE_KEY = 213, // stateKey: string
+	AK_KEY_WINDOW_EDITED = 214, // edited: bool
+	AK_KEY_WINDOW_FILE = 215, // file: string
+	AK_KEY_ROUTER_INITIAL = 216, // initial: string
+	AK_KEY_ROUTE_PATH = 217, // path: string
+	AK_KEY_ROUTE_LAYOUT = 218, // layout: RouteLayout
+	AK_KEY_ROUTE_TITLE = 219, // title: string
+	AK_KEY_ROUTE_ICON = 220, // icon: string
+	AK_KEY_ROUTE_BADGE = 221, // badge: string
+	AK_KEY_ROUTE_INITIAL = 222, // initial: string
+	AK_KEY_ROUTE_REDIRECT = 223, // redirect: string
+	AK_KEY_ROUTE_SHEET = 224, // sheet: bool
+	AK_KEY_ROUTE_DETENTS = 225, // detents: [Detent]
+	AK_KEY_ROUTE_GUARD = 226, // guard: fn(string) -> string
+	AK_KEY_PAGE_CONTROL_COUNT = 227, // count: int
+	AK_KEY_PAGE_CONTROL_PAGE = 228, // page: int
+	AK_KEY_MENU_ITEM_TITLE = 229, // title: string
+	AK_KEY_MENU_ITEM_SHORTCUT = 230, // shortcut: Shortcut?
+	AK_KEY_MENU_ITEM_ROLE = 231, // role: MenuRole
+	AK_KEY_MENU_ITEM_DISABLED = 232, // disabled: bool
+	AK_KEY_MENU_ITEM_CHECKED = 233, // checked: bool
+	AK_KEY_WINDOW_CLOSE_GUARD_WHEN = 234, // when: bool
+	AK_KEY_WINDOW_KEYS_KEYS = 235, // keys: [Shortcut]
+	AK_KEY__COUNT = 236,
 };
 
 // Events.
@@ -363,7 +403,9 @@ enum {
 	AK_EV_WINDOW_CLOSE_REQUEST = 103,
 	AK_EV_BOUNDARY_ERROR = 104,
 	AK_EV_PAGE_CONTROL_CHANGE = 105,
-	AK_EV__COUNT = 106,
+	AK_EV_MENU_ITEM_PRESS = 106,
+	AK_EV_WINDOW_CLOSE_GUARD_CLOSE_REQUEST = 107,
+	AK_EV__COUNT = 108,
 };
 
 // Interaction states, which style variants follow (a bit each), in
@@ -377,21 +419,21 @@ enum {
 };
 
 // The elements that take variants.
-static const bool ak_el_variants[] = {false, true, true, true, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,};
+static const bool ak_el_variants[] = {false, true, true, true, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,};
 
-static const char *const ak_el_names[] = {"", "View", "Row", "Column", "SafeArea", "Text", "Button", "TextField", "Toggle", "Slider", "Stepper", "Segmented", "Picker", "Progress", "ProgressRing", "Activity", "Symbol", "Image", "Scroll", "List", "RichText", "Selectable", "Canvas", "Shape", "Shader", "Video", "WebView", "Stack", "Screen", "Tabs", "Tab", "Sheet", "Popover", "Menu", "Split", "Destination", "Window", "Router", "Route", "Boundary", "PageControl",};
+static const char *const ak_el_names[] = {"", "View", "Row", "Column", "SafeArea", "Text", "Button", "TextField", "Toggle", "Slider", "Stepper", "Segmented", "Picker", "Progress", "ProgressRing", "Activity", "Symbol", "Image", "Scroll", "List", "RichText", "Selectable", "Canvas", "Shape", "Shader", "Video", "WebView", "Stack", "Screen", "Tabs", "Tab", "Sheet", "Popover", "Menu", "Split", "Destination", "Window", "Router", "Route", "Boundary", "PageControl", "MenuBar", "MenuItem", "MenuSeparator", "WindowCloseGuard", "WindowKeys",};
 
-static const char *const ak_key_names[] = {"", "direction", "wrap", "justify", "align", "alignSelf", "gap", "padding", "margin", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "aspectRatio", "grow", "shrink", "basis", "absolute", "top", "right", "bottom", "left", "start", "end", "grid", "gridColumn", "gridRow", "background", "radius", "border", "borderColor", "opacity", "hidden", "clip", "transform", "shadow", "gradient", "material", "transition", "shared", "font", "color", "textAlign", "lines", "label", "hint", "role", "a11yHidden", "tooltip", "disabled", "layoutDirection", "keys", "actions", "dragItems", "dropTypes", "dragItems", "dropTypes", "dragItems", "dropTypes", "dragItems", "dropTypes", "text", "selectable", "title", "variant", "icon", "menu", "href", "text", "placeholder", "keyboard", "returnKey", "secure", "autocapitalize", "autocorrect", "contentType", "multiline", "plain", "autofocus", "selection", "rich", "pasteTypes", "accessory", "on", "title", "checkbox", "value", "min", "max", "value", "min", "max", "step", "segments", "selected", "items", "selected", "prompt", "value", "value", "name", "source", "mode", "placeholder", "transition", "blurHash", "thumbHash", "placeholderMode", "animated", "horizontal", "refreshing", "paging", "page", "refreshing", "columns", "appearance", "anchor", "swipeActions", "leadingSwipeActions", "section", "header", "selecting", "selected", "text", "draw", "path", "fill", "stroke", "lineWidth", "lineCap", "lineJoin", "trimStart", "trimEnd", "dash", "dashPhase", "program", "uniforms", "animated", "source", "mode", "hideControls", "autoPlay", "loop", "muted", "url", "html", "preload", "userAgent", "block", "title", "largeTitle", "backGesture", "zoomFrom", "barColor", "search", "searchPlaceholder", "searchButton", "primaryExtended", "actions", "toolbar", "primary", "selected", "title", "icon", "badge", "open", "detents", "grabber", "fullScreen", "open", "maxWidth", "content", "actions", "longPress", "title", "selected", "title", "icon", "badge", "section", "open", "title", "options", "edited", "file", "watchState", "initial", "path", "layout", "title", "icon", "badge", "initial", "redirect", "sheet", "detents", "guard", "count", "page",};
+static const char *const ak_key_names[] = {"", "direction", "wrap", "justify", "align", "alignSelf", "gap", "padding", "margin", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "aspectRatio", "grow", "shrink", "basis", "absolute", "top", "right", "bottom", "left", "start", "end", "grid", "gridColumn", "gridRow", "background", "radius", "border", "borderColor", "opacity", "hidden", "clip", "transform", "shadow", "gradient", "material", "transition", "shared", "font", "color", "textAlign", "lines", "label", "hint", "role", "a11yHidden", "tooltip", "disabled", "layoutDirection", "keys", "actions", "dragItems", "dropTypes", "dragItems", "dropTypes", "dragItems", "dropTypes", "dragItems", "dropTypes", "text", "selectable", "title", "variant", "icon", "menu", "href", "text", "placeholder", "keyboard", "returnKey", "secure", "autocapitalize", "autocorrect", "contentType", "multiline", "plain", "autofocus", "selection", "rich", "pasteTypes", "accessory", "on", "title", "checkbox", "value", "min", "max", "value", "min", "max", "step", "segments", "selected", "items", "selected", "prompt", "value", "value", "name", "source", "mode", "placeholder", "transition", "blurHash", "thumbHash", "placeholderMode", "animated", "horizontal", "refreshing", "paging", "page", "refreshing", "columns", "appearance", "anchor", "swipeActions", "leadingSwipeActions", "section", "header", "selecting", "selected", "text", "draw", "path", "fill", "stroke", "lineWidth", "lineCap", "lineJoin", "trimStart", "trimEnd", "dash", "dashPhase", "program", "uniforms", "animated", "source", "mode", "hideControls", "autoPlay", "loop", "muted", "url", "html", "preload", "userAgent", "block", "title", "largeTitle", "backGesture", "zoomFrom", "barColor", "search", "searchPlaceholder", "searchButton", "primaryExtended", "actions", "toolbar", "primary", "selected", "title", "icon", "badge", "open", "detents", "grabber", "fullScreen", "open", "maxWidth", "content", "title", "actions", "longPress", "title", "selected", "title", "icon", "badge", "section", "open", "title", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "x", "y", "center", "resizable", "minimizable", "maximizable", "closable", "alwaysOnTop", "hidden", "skipTaskbar", "transparent", "maximized", "fullScreen", "titleBar", "background", "child", "modal", "panel", "flyout", "fitContent", "clickThrough", "menuBar", "stateKey", "edited", "file", "initial", "path", "layout", "title", "icon", "badge", "initial", "redirect", "sheet", "detents", "guard", "count", "page", "title", "shortcut", "role", "disabled", "checked", "when", "keys",};
 
 // How each key's value is stored.
-static const uint8_t ak_key_kinds[] = {0, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_INT, AK_K_FLOAT, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_REF, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT,};
+static const uint8_t ak_key_kinds[] = {0, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_INT, AK_K_FLOAT, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_INT, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_INT, AK_K_INT, AK_K_FLOAT, AK_K_FLOAT, AK_K_REF, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_FLOAT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_FLOAT, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_INT, AK_K_INT, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_INT, AK_K_REF, AK_K_REF, AK_K_INT, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF,};
 
 // The element each key is of (AK_EL_*); 0: the style's, every element's.
-static const uint8_t ak_key_els[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10, 10, 11, 11, 12, 12, 12, 13, 14, 16, 17, 17, 17, 17, 17, 17, 17, 17, 18, 18, 18, 18, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 20, 22, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 24, 24, 24, 25, 25, 25, 25, 25, 25, 26, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 29, 30, 30, 30, 31, 31, 31, 31, 32, 32, 32, 33, 33, 34, 34, 35, 35, 35, 35, 36, 36, 36, 36, 36, 36, 37, 38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 40, 40,};
+static const uint8_t ak_key_els[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10, 10, 11, 11, 12, 12, 12, 13, 14, 16, 17, 17, 17, 17, 17, 17, 17, 17, 18, 18, 18, 18, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 20, 22, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 24, 24, 24, 25, 25, 25, 25, 25, 25, 26, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 29, 30, 30, 30, 31, 31, 31, 31, 32, 32, 32, 33, 33, 33, 34, 34, 35, 35, 35, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 37, 38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 40, 40, 42, 42, 42, 42, 42, 44, 45,};
 
-static const char *const ak_ev_names[] = {"", "View.press", "View.longPress", "View.layout", "View.pressedChange", "View.hoverChange", "View.pan", "View.pinch", "View.rotate", "View.swipe", "View.adjust", "View.dragPhase", "View.dropOver", "View.dropMove", "View.drop", "Row.press", "Row.longPress", "Row.layout", "Row.pressedChange", "Row.hoverChange", "Row.pan", "Row.pinch", "Row.rotate", "Row.swipe", "Row.adjust", "Row.dragPhase", "Row.dropOver", "Row.dropMove", "Row.drop", "Column.press", "Column.longPress", "Column.layout", "Column.pressedChange", "Column.hoverChange", "Column.pan", "Column.pinch", "Column.rotate", "Column.swipe", "Column.adjust", "Column.dragPhase", "Column.dropOver", "Column.dropMove", "Column.drop", "SafeArea.press", "SafeArea.longPress", "SafeArea.layout", "SafeArea.pressedChange", "SafeArea.hoverChange", "SafeArea.pan", "SafeArea.pinch", "SafeArea.rotate", "SafeArea.swipe", "SafeArea.adjust", "SafeArea.dragPhase", "SafeArea.dropOver", "SafeArea.dropMove", "SafeArea.drop", "Button.press", "TextField.change", "TextField.submit", "TextField.focus", "TextField.blur", "TextField.select", "TextField.richChange", "TextField.formats", "TextField.paste", "Toggle.change", "Slider.change", "Stepper.change", "Segmented.change", "Picker.change", "Image.loaded", "Image.error", "Scroll.scroll", "Scroll.refresh", "Scroll.pageChange", "List.scroll", "List.refresh", "List.endReached", "List.startReached", "List.select", "List.selectBegin", "List.action", "RichText.link", "Video.end", "Video.error", "WebView.loaded", "WebView.error", "WebView.message", "WebView.state", "WebView.request", "WebView.download", "WebView.newWindow", "Screen.searchChange", "Screen.searchSubmit", "Tabs.change", "Sheet.change", "Sheet.dismiss", "Popover.change", "Popover.dismiss", "Split.change", "Window.change", "Window.close", "Window.closeRequest", "Boundary.error", "PageControl.change",};
+static const char *const ak_ev_names[] = {"", "View.press", "View.longPress", "View.layout", "View.pressedChange", "View.hoverChange", "View.pan", "View.pinch", "View.rotate", "View.swipe", "View.adjust", "View.dragPhase", "View.dropOver", "View.dropMove", "View.drop", "Row.press", "Row.longPress", "Row.layout", "Row.pressedChange", "Row.hoverChange", "Row.pan", "Row.pinch", "Row.rotate", "Row.swipe", "Row.adjust", "Row.dragPhase", "Row.dropOver", "Row.dropMove", "Row.drop", "Column.press", "Column.longPress", "Column.layout", "Column.pressedChange", "Column.hoverChange", "Column.pan", "Column.pinch", "Column.rotate", "Column.swipe", "Column.adjust", "Column.dragPhase", "Column.dropOver", "Column.dropMove", "Column.drop", "SafeArea.press", "SafeArea.longPress", "SafeArea.layout", "SafeArea.pressedChange", "SafeArea.hoverChange", "SafeArea.pan", "SafeArea.pinch", "SafeArea.rotate", "SafeArea.swipe", "SafeArea.adjust", "SafeArea.dragPhase", "SafeArea.dropOver", "SafeArea.dropMove", "SafeArea.drop", "Button.press", "TextField.change", "TextField.submit", "TextField.focus", "TextField.blur", "TextField.select", "TextField.richChange", "TextField.formats", "TextField.paste", "Toggle.change", "Slider.change", "Stepper.change", "Segmented.change", "Picker.change", "Image.loaded", "Image.error", "Scroll.scroll", "Scroll.refresh", "Scroll.pageChange", "List.scroll", "List.refresh", "List.endReached", "List.startReached", "List.select", "List.selectBegin", "List.action", "RichText.link", "Video.end", "Video.error", "WebView.loaded", "WebView.error", "WebView.message", "WebView.state", "WebView.request", "WebView.download", "WebView.newWindow", "Screen.searchChange", "Screen.searchSubmit", "Tabs.change", "Sheet.change", "Sheet.dismiss", "Popover.change", "Popover.dismiss", "Split.change", "Window.change", "Window.close", "Window.closeRequest", "Boundary.error", "PageControl.change", "MenuItem.press", "WindowCloseGuard.closeRequest",};
 
 // The element each event is of (AK_EL_*).
-static const uint8_t ak_ev_els[] = {0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 7, 7, 7, 7, 7, 7, 7, 7, 8, 9, 10, 11, 12, 17, 17, 18, 18, 18, 19, 19, 19, 19, 19, 19, 19, 20, 25, 25, 26, 26, 26, 26, 26, 26, 26, 28, 28, 29, 31, 31, 32, 32, 34, 36, 36, 36, 39, 40,};
+static const uint8_t ak_ev_els[] = {0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 7, 7, 7, 7, 7, 7, 7, 7, 8, 9, 10, 11, 12, 17, 17, 18, 18, 18, 19, 19, 19, 19, 19, 19, 19, 20, 25, 25, 26, 26, 26, 26, 26, 26, 26, 28, 28, 29, 31, 31, 32, 32, 34, 36, 36, 36, 39, 40, 42, 44,};
 
 #endif

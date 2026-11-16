@@ -106,12 +106,39 @@ func (b *fb) args(call *check.Call, subst check.Subst) []int {
 				b.subst = saved
 				continue
 			}
-			vals = append(vals, b.valueReg(-1, b.kind(call.Params[i].Type)))
+			vals = append(vals, b.zeroValue(subst.Apply(call.Params[i].Type)))
 			continue
 		}
 		vals = append(vals, b.value(a, -1))
 	}
 	return vals
+}
+
+// zeroValue is a register holding t's zero value (check.HasZero's), or
+// its kind's empty register.
+func (b *fb) zeroValue(t check.Type) int {
+	switch x := t.(type) {
+	case *check.Basic:
+		switch x {
+		case check.String:
+			return b.kstr("")
+		case check.Bytes:
+			return b.callB("str.to_bytes", bc.KRef, b.kstr(""))
+		}
+	case *check.Array:
+		r := b.temp(bc.KRef)
+		sh := b.l.shape(check.Unopt(x.Elem))
+		if sh < 0 {
+			sh = bc.None
+		}
+		b.emit(op("NEWA"), r, int(b.l.kind(x.Elem)), sh, b.null(), 0)
+		return r
+	case *check.Map:
+		r := b.temp(bc.KRef)
+		b.emit(op("NEWM"), r, int(b.l.kind(x.Key)), int(b.l.kind(x.Elem)), b.null(), 0)
+		return r
+	}
+	return b.zero(b.kind(t))
 }
 
 // invoke calls function idx with vals (registers) and returns its
