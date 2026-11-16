@@ -222,9 +222,21 @@ Each ends with its tests green.
   - `asuka test`;
   - the docs (language.md, a new c.md) and their translations.
 - [ ] **G1** Desktop native packages in C:
-  - `asuka_desktop.h`;
-  - nativegen's C target;
-  - the standard library's Windows and Linux code ported from Go to C.
+  - [x] `asuka_desktop.h`, the registry (platform/desktop), its tests on a
+        test host (no Go at run time);
+  - [x] nativegen's C target, its golden files; the Go server target
+        removed; the CLI builds packages' C into a C host's executable;
+  - [x] asuka/host folded into asuka/platform;
+  - [ ] the standard library's Windows and Linux code ported from Go to
+        C: done for appearance, biometric, device, dialog, document, http,
+        js, network, power, preview, screen, secure, sensors, shell,
+        sqlite, store, tracking, transcribe, watch, webauth (lottie and
+        crash need none); left: audio, bluetooth (and
+        internal/bluetoothspec, internal/bluez), camera, imageedit,
+        location, maps, markdown (a parser in C), nowplaying, print,
+        purchase, record, scan and vision (a barcode decoder in C),
+        shader, speech, svg; then package `native`'s servers, which only
+        those packages' Go still uses.
 - [ ] **H1** The macOS host in Swift: every view, navigation, windows, menus, the
       tray, the host's modules; `asuka dev` and `asuka build` for the Mac
       without Go.
