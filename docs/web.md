@@ -177,8 +177,8 @@ The environment a web app sees (`environment()`) is the browser's:
 - `Image` is an `<img>` (decoded off the main thread, cached by the
   browser), `Video` a `<video>`, `WebView` an `<iframe>` (see
   [Web views](#web-views)), `Canvas` a 2D
-  canvas, `Shape` an SVG path, `Shader` WebGL 2 (the Kage program
-  translated to GLSL ES 3.00), `Symbol` the Material Symbol Android
+  canvas, `Shape` an SVG path, `Shader` WebGL 2 (a shader
+  declaration compiled to GLSL ES 3.00), `Symbol` the Material Symbol Android
   shows for the SF Symbol name.
 - `animate` animates frames and visual props with the Web Animations
   API (springs as CSS `linear()` curves); enter and exit transitions and

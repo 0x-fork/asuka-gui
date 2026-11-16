@@ -117,33 +117,21 @@ func TestVisualShapeAndCanvas(t *testing.T) {
 // that stops once none is.
 func TestVisualShader(t *testing.T) {
 	a := Run(t, `
-		let solid = shader(r"""
-		  package main
+		shader Solid(blue: float) {
+		  fn fragment(pos: vec2) -> vec4 = vec4(0, 0, blue, 1)
+		}
 
-		  var Tint vec4
-
-		  func Fragment(dst vec4, pos vec2) vec4 {
-		  	return Tint
-		  }
-		  """)
-
-		let flow = shader(r"""
-		  package main
-
-		  var Time float
-
-		  func Fragment(dst vec4, pos vec2) vec4 {
-		  	return vec4(0.5+0.5*sin(Time), 0, 0, 1)
-		  }
-		  """)
+		shader Flow {
+		  fn fragment(pos: vec2) -> vec4 = vec4(0.5 + 0.5 * sin(time), 0, 0, 1)
+		}
 
 		component S {
 		  state shown = true
 		  state blue = 0.0
 		  Column {
 		    padding: 20; gap: 10; align: .start
-		    Shader(solid) { uniforms: [Uniform(name: "Tint", value: [0, 0, blue, 1])]; width: 50; height: 30 }
-		    if shown { Shader(flow) { animated: true; width: 51; height: 30 } }
+		    Solid(blue: blue) { width: 50; height: 30 }
+		    if shown { Flow { animated: true; width: 51; height: 30 } }
 		    Button("Blue") { on press { blue = 1 } }
 		    Button("Stop") { on press { shown = false } }
 		  }

@@ -1,7 +1,6 @@
 import std/math
 import std/chart
 import std/lottie
-import std/shader
 
 component Symbols {
   state liked = false
@@ -365,22 +364,19 @@ fn star(w: float, h: float) -> Path {
   return p.close()
 }
 
-/// A Kage shader: a band of light that flows across a night sky.
-let aurora = shader.Program(r"""
-  package main
-
-  var Time float
-  var Tint vec4
-
-  func Fragment(dst vec4, pos vec2) vec4 {
-  	uv := pos / rectSize()
-  	t := Time * 0.4
-  	wave := sin(uv.x*6+t)*0.5 + sin(uv.x*11-t*1.3)*0.25
-  	band := smoothstep(0.35, 0, abs(uv.y-0.5-wave*0.18))
-  	sky := mix(vec3(0.02, 0.03, 0.10), vec3(0.05, 0.08, 0.22), uv.y)
-  	return vec4(sky+Tint.rgb*band*(0.7+0.3*sin(Time+uv.x*4)), 1)
+/// A shader: a band of light that flows across a night sky, greener as
+/// level rises.
+shader Aurora(level: float) {
+  fn fragment(pos: vec2) -> vec4 {
+    let uv = pos / size
+    let t = time * 0.4
+    let wave = sin(uv.x * 6 + t) * 0.5 + sin(uv.x * 11 - t * 1.3) * 0.25
+    let band = smoothstep(0.35, 0, abs(uv.y - 0.5 - wave * 0.18))
+    let sky = mix(vec3(0.02, 0.03, 0.10), vec3(0.05, 0.08, 0.22), uv.y)
+    let tint = vec3(0.2, 0.5 + level * 0.5, 0.6)
+    return vec4(sky + tint * band * (0.7 + 0.3 * sin(time + uv.x * 4)), 1)
   }
-  """)
+}
 
 /// A gauge drawn by the app, following a slider.
 component CanvasSection {
@@ -405,8 +401,7 @@ component CanvasSection {
     }
     Slider { bind value: level }
     // A GPU program: an aurora that flows, in the slider's hue.
-    shader.Shader(aurora) {
-      uniforms: [shader.Uniform(name: "Tint", value: [0.2, 0.5 + level * 0.5, 0.6, 1])]
+    Aurora(level: level) {
       animated: true
       height: 140
       radius: 16

@@ -44,7 +44,6 @@ state units = store.read("units", "metric")
 | [`std/lottie`](std/lottie.md) | `lottie.View(source)`（`bind playing`、`bind progress`、`loop`、`speed`、`segment`、`marker`、`fit`、`overrides`。`complete`、`loaded`）：各プラットフォームのプレーヤーによる Lottie と dotLottie。Windows と Linux ではまだありません（[コンポーネント](components.md)） |
 | [`std/svg`](std/svg.md) | アプリのコンパイル時に解析される `svg.Icon(markup)` と、`svg.View(icon) { color }`。`svg.Shape(layers)`：アプリが描くパスで、自分の枠に追従します（[コンポーネント](components.md)） |
 | [`std/chart`](std/chart.md) | `chart.View(series) { labels, label, low, high, grid }`。`chart.Series(name:, kind: .bar \| .line \| .area \| .points, values:, smooth:, color:)`：Asuka で書かれ、`svg.Shape` で描かれます（[コンポーネント](components.md)） |
-| [`std/shader`](std/shader.md) | `shader.Program(source)`：アプリと一緒にすべてのプラットフォーム向けにコンパイルされる Kage シェーダー。`shader.Shader(program) { uniforms, animated }`（[コンポーネント](components.md)） |
 | [`std/markdown`](std/markdown.md) | `markdown.View(text) { streaming }` と `markdown.heal(text)`：Markdown をプラットフォームのスタイル付きテキストとして表示し、ストリーミング中は届くそばから補修します（[コンポーネント](components.md)） |
 
 ## プラットフォーム SDK：`platform/`

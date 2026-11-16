@@ -37,6 +37,7 @@ const (
 	Enum       Kind = "enum"
 	Interface  Kind = "interface"
 	Component  Kind = "component"
+	Shader     Kind = "shader"
 	Screen     Kind = "screen"
 	Store      Kind = "store"
 	TypeAlias  Kind = "type"
@@ -293,6 +294,13 @@ func decl(d syntax.Decl) *Decl {
 		c := *x
 		c.Pub, c.Trivia, c.Body = syntax.NoPos, syntax.Trivia{}, nil
 		return &Decl{Kind: Component, Name: x.Name.Name, Code: trimBody(print(&c)), Doc: x.Doc()}
+	case *syntax.ShaderDecl:
+		if !x.Pub.IsValid() {
+			return nil
+		}
+		c := *x
+		c.Pub, c.Trivia, c.Members, c.Dangling = syntax.NoPos, syntax.Trivia{}, nil, nil
+		return &Decl{Kind: Shader, Name: x.Name.Name, Code: trimBody(print(&c)), Doc: x.Doc()}
 	case *syntax.ScreenDecl:
 		if !x.Pub.IsValid() {
 			return nil

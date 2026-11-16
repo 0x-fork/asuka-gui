@@ -103,6 +103,14 @@ func (s *Scope) Parent() *Scope { return s.parent }
 // LookupLocal finds name in s only.
 func (s *Scope) LookupLocal(name string) Object { return s.names[name] }
 
+// InsertAs adds o under another name than its own (an alias).
+func (s *Scope) InsertAs(name string, o Object) {
+	if s.names == nil {
+		s.names = map[string]Object{}
+	}
+	s.names[name] = o
+}
+
 // Insert adds o; it returns what was there already under its name.
 func (s *Scope) Insert(o Object) Object {
 	if s.names == nil {
@@ -486,7 +494,7 @@ const (
 	BAnimate     // animate(anim) { … }
 	BRefNew      // Ref(): a view's handle
 	BPathNew     // Path(): an empty outline
-	BShader      // shader("""…"""): a Kage program, compiled with the app
+	BShader      // a shader declaration's program (shaderlang.go), compiled with the app
 	BEmbedText   // embed.text("reply.md"): a file of the package, read as it compiles
 	BEmbedBytes  // embed.bytes(…): likewise, its bytes
 	BEmbedJSON   // embed.json<T>(…): likewise, read as a T, checked as it compiles

@@ -276,7 +276,7 @@ func (b *fb) animateCall(call *check.Call) int {
 	return -1
 }
 
-// shaderProgram is shader("""…"""): the program compiled with the app,
+// shaderProgram is a shader declaration's program: compiled with the app,
 // as bytes.
 func (b *fb) shaderProgram(e *syntax.CallExpr, dst int) int {
 	code := b.l.info.Shaders[e]

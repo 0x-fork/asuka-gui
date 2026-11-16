@@ -301,6 +301,21 @@
           }
         },
         {
+          "comment": "shader is a keyword only at a declaration's start, before its name",
+          "match": "^\\s*(?:(pub)\\s+)?(shader)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.asuka"
+            },
+            "2": {
+              "name": "storage.type.asuka"
+            },
+            "3": {
+              "name": "entity.name.type.asuka"
+            }
+          }
+        },
+        {
           "match": "\\b(component|screen|store|struct|enum|interface|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": {

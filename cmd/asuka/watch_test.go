@@ -77,7 +77,7 @@ func TestWatcherEmbeddedFiles(t *testing.T) {
 	}{
 		{"notes.txt", true, false},
 		{"data/a.json", true, false},
-		{"data/b.json", true, false}, // a new file the glob names
+		{"data/b.json", true, false},    // a new file the glob names
 		{"assets/logo.svg", true, true}, // the platform's file too
 		{"other.json", false, true},
 		{"unwatched.txt", false, false},

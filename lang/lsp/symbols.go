@@ -105,6 +105,8 @@ func (sb *symbolBuilder) decl(d syntax.Node) (DocumentSymbol, bool) {
 		s := sb.sym(d.Name.Name, symClass, kw, d, d.Name)
 		s.Children = sb.block(d.Body)
 		return s, true
+	case *syntax.ShaderDecl:
+		return sb.sym(d.Name.Name, symClass, "shader", d, d.Name), true
 	case *syntax.ScreenDecl:
 		s := sb.sym(d.Name.Name, symClass, "screen", d, d.Name)
 		s.Children = sb.block(d.Body)

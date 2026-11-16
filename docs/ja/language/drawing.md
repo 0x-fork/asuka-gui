@@ -12,4 +12,19 @@ Canvas(g => {
 
 `Path` はメソッドで組み立てます。どのメソッドもパス自身を返します：`Path().move(x, y)`、`line`、`quad`、`cubic`、`rect`、`roundedRect`、`ellipse`、`arc(cx, cy, radius, start, end, clockwise: true)`（ラジアン、x 軸の正の向きから）、`close()`。`g.path()` はキャンバス自身が持つ空のパスで、描画のたびに使い回されます。`Graphics` が有効なのは描画関数の実行中だけです：`width`、`height`、`fill(path, color)`（`LinearGradient` や `RadialGradient` も渡せます）、`stroke(path, color またはグラデーション, style)`、`save()`、`restore()`、`translate`、`scale`、`rotate(degrees)`、`opacity`、`clip(path)`、`transform(a, b, c, d, tx, ty)`、`evenOdd(on)`、`text(s, x, y, style)`。
 
-`Shader(shader("""…"""))` は GPU のプログラムが描く箱です。プログラムは Kage で書き、アプリと一緒にコンパイルされます（プログラムの誤りはコンパイラーのエラーになります）。uniform は名前で設定します（`uniforms: [Uniform(name: "Level", value: [0.5]), colorUniform("Tint", .accent)]`）。
+`shader` 宣言は、GPU のプログラムが描く箱です。Asuka の構文で書き、アプリと一緒にコンパイルされ（間違いはその行を示すコンパイルエラーになります）、ビューとして使います。引数がそのまま uniform になります。
+
+```asuka
+shader Ring(tint: Color, thickness: float = 0.05) {
+  fn fragment(pos: vec2) -> vec4 {
+    let d = abs(distance(pos / size, vec2(0.5)) - 0.4)
+    return tint * smoothstep(thickness, 0, d)
+  }
+}
+
+component Badge {
+  Ring(tint: .accent) { width: 120; height: 120 }
+}
+```
+
+`fn fragment(pos: vec2) -> vec4` はピクセルの色（プリマルチプライド）を返します。`size`、`scale`、`time` はそれぞれ枠のサイズ（ポイント）、1 ポイントあたりのピクセル数、表示されてからの秒数です（`animated: true` で進みます）。引数は `float`、`int`、`bool`、`Color` のいずれかです。シェーダーを書く言語とプラットフォームごとの動き方は[シェーダー](../components.md#シェーダー)を参照してください。

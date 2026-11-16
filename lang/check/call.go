@@ -17,6 +17,11 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 	switch fn := e.Fun.(type) {
 	case *syntax.Ident:
 		o := c.lookup(fn.Name)
+		if o == nil && fn.Name == "shader" {
+			c.errorf(fn, shaderMoved)
+			c.checkArgsLoosely(e)
+			return Invalid
+		}
 		if o == nil {
 			c.errorf(fn, "unknown name %s%s", fn.Name, c.suggest(fn.Name))
 			c.checkArgsLoosely(e)

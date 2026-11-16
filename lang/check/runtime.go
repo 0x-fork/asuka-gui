@@ -1,7 +1,6 @@
 package check
 
 import (
-	"github.com/egoist/asuka/internal/shadercode"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -174,36 +173,6 @@ func (c *Checker) animateCall(e *syntax.CallExpr, call *Call) {
 	}
 	call.Args = []syntax.Expr{anim, body}
 	call.Result = Void
-}
-
-// shaderCall checks shader("""…"""): a Kage program, compiled now into
-// the bytes a Shader's program takes.
-func (c *Checker) shaderCall(e *syntax.CallExpr, call *Call) {
-	call.Result = Bytes
-	if e.Args == nil || len(e.Args.List) != 1 || e.Args.List[0].Label != nil {
-		c.errorf(e, "shader takes a Kage program, as a string: shader(\"\"\"…\"\"\")")
-		c.checkArgsLoosely(e)
-		return
-	}
-	a := e.Args.List[0].Value
-	lit, ok := unparen(a).(*syntax.StringLit)
-	c.assign(a, String, "the shader's program")
-	if !ok || len(lit.Interps) > 0 {
-		c.errorf(a, "shader's program is compiled with the app: write it as a string literal, without {…}")
-		return
-	}
-	text := lit.Segments[0]
-	if lit.Multiline {
-		text = Dedent(text)
-	}
-	text, _ = Unescape(text, lit.Raw)
-	code, err := shadercode.Compile(text)
-	if err != nil {
-		c.errorf(a, "the shader doesn't compile: %v", err)
-		return
-	}
-	c.info.Shaders[e] = code.Encode()
-	call.Args = []syntax.Expr{a}
 }
 
 // bodyCall reports an item of a component's body (or the app block)

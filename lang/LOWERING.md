@@ -559,14 +559,19 @@ methods are builtins taking the object first:
 | `g.save()`, `.restore()`, `.translate(x, y)`, `.scale(x, y)`, `.rotate(deg)`, `.opacity(a)`, `.clip(p)`, `.transform(a, b, c, d, tx, ty)`, `.evenOdd(on)` | `canvas.save(g)`, ..., `canvas.even_odd(g, on)` |
 | `g.text(s, x, y, CanvasText(...))` | `canvas.text(g, s, x, y, style?)` |
 
-`Shader(program)` takes the compiled program as `bytes`: the checker
-compiles `shader("""…""")`, a Kage program written as a literal without
-interpolations (a raw `r"""…"""` keeps Go's braces), with
+A `shader Name(params) { … }` declaration is a component
+(lang/check/shaderlang.go): its parameters, its props `animated` and
+`children`, and a body of the prelude's `Shader(program)` with
+`uniforms` made from the parameters (`colorUniform` a Color's,
+`canvas.color_uniform`; `Uniform(name:, value:)` a number's; a bool an
+int's 0 or 1, AGSL having no bool uniforms). Its program is the
+`bytes` the checker compiles from the declaration's functions: written
+as Kage, a statement a line and every name of the shader's renamed (x_
+a local, f_ a function, c_ a constant, U_ a uniform), then
 internal/shadercode's Compile and Encode (which carry the uniforms'
-lane table), reporting its errors; the lowering makes the bytes of a
-string constant (KSTR, CALLB `str.to_bytes`). `uniforms: [Uniform(name:,
-value:)]` set its variables by name; `colorUniform(name, color)` is
-`canvas.color_uniform`.
+lane table), a Kage error reported at the line's statement; the
+lowering makes the bytes of a string constant (KSTR, CALLB
+`str.to_bytes`).
 
 ## Animation and frames
 
@@ -988,9 +993,7 @@ A few standard library structs are made when the app compiles (lang/ir's
 argument a string literal without interpolation, has the rest of its
 fields filled by the hook from that string, as constants (`svg.Icon`'s
 `data`, `width` and `height` from its markup, parsed by internal/svgparse and
-encoded as the drawing the platforms' views decode; `shader.Program`'s
-`code` and `glsl` from its Kage source, internal/shadercode's Compile
-and GLSL). Any other first
+encoded as the drawing the platforms' views decode). Any other first
 argument, or one the hook rejects, is a compile error at it.
 
 ## Streams

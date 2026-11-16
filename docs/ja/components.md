@@ -881,27 +881,22 @@ component Week(steps: [float], goal: [float]) {
 
 ### シェーダー
 
-`std/shader` は GPU のプログラムでボックスを描きます。流れるグラデーション、ノイズ、光、波紋などです。プログラムは Kage シェーダー（Ebitengine の言語で、Go の構文）で、アプリのコンパイル時にすべてのプラットフォーム向けにコンパイルされます。コンパイルできないシェーダーはコンパイルエラーになり、デバイス上ではプラットフォーム自身のプログラムだけをコンパイルします。
+シェーダーは、GPU のプログラムで枠の各ピクセルに色を付けます。流れるグラデーション、ノイズ、光、波紋などです。`shader Name(params) { … }` で Asuka 自身の構文のまま宣言し、ビューとして使います。引数がそのまま uniform になり、コンポーネントの引数と同じように設定でき、コンポーネントと同じようにスタイルも受け取ります。シェーダーはアプリのコンパイル時にすべてのプラットフォーム向けにコンパイルされます。間違いはその行を示すコンパイルエラーになり、デバイスではプラットフォーム自身のプログラムだけがコンパイルされます。
 
 ```asuka
-import std/shader
+/// 枠の中央で明滅する光。
+shader Glow(tint: Color, level: float = 1) {
+  let speed = 2
 
-let glow = shader.Program(r"""
-  package main
-
-  var Time float
-  var Tint vec4
-
-  func Fragment(dst vec4, pos vec2) vec4 {
-  	d := distance(pos/rectSize(), vec2(0.5))
-  	g := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
-  	return vec4(Tint.rgb*g, 1) * Tint.a
+  fn fragment(pos: vec2) -> vec4 {
+    let d = distance(pos / size, vec2(0.5))
+    let g = smoothstep(0.5, 0, d) * (0.8 + 0.2 * sin(time * speed)) * level
+    return vec4(tint.rgb * g, 1) * tint.a
   }
-  """)
+}
 
-component Glow(level: float) {
-  shader.Shader(glow) {
-    uniforms: [shader.Uniform(name: "Tint", value: [0.2, 0.5 + level * 0.5, 0.9, 1])]
+component Card(level: float) {
+  Glow(tint: .accent, level: level) {
     animated: true
     height: 200
     radius: 16
@@ -911,13 +906,12 @@ component Glow(level: float) {
 }
 ```
 
-- `Fragment` はピクセルの色を、乗算済みアルファで、赤・緑・青・アルファをそれぞれ 0 から 1 で返します。`pos` はボックスの左上からのピクセル中心の位置（ポイント）、`dst` は同じ位置のピクセル単位です。`rectSize()` はボックスのサイズ（ポイント）、`pixelScale()` は 1 ポイントあたりのピクセル数です。
-- 言語には `bool`、`int`、`float`、`vec2` から `vec4`、`ivec2` から `ivec4`、`mat2` から `mat4` とその配列、GLSL の組み込み関数（`sin`、`mix`、`smoothstep`、`dot` など）、独自の関数、`if`、`for` があります。エクスポートした変数が uniform です。
-- `uniforms` は名前で値を設定します。スカラーは一つの数、ベクトルはその成分、行列は列を順に並べたものです（int や bool も数で書きます）。値が変わるとボックスを描き直し、指定しなかった uniform は 0 になります。
-- `var Time float` はシェーダーが表示されてからの秒数です。`animated` で動かすと、ディスプレイが描くフレームごとにボックスを描きます。
-- コンパイラーはシェーダーのエラーを行番号付きで報告し、Android で実行できない部分もすべてのプラットフォームで同じように報告します。AGSL は GLSL ES 1.00 の言語なので、符号なし整数、ビット演算、整数の剰余（float の `mod` は使えます）、導関数、上下限が定数でないループは使えません。
+- `fn fragment(pos: vec2) -> vec4` は、`pos`（枠の左上からのピクセルの中心、ポイント単位）から、そのピクセルの色を返します。色はプリマルチプライドで、赤、緑、青、アルファが 0 から 1 です。シェーダーの中では、`size` が枠のサイズ（ポイント）、`scale` が 1 ポイントあたりのピクセル数、`time` が表示されてからの秒数です。
+- 引数は `float`、`int`、`bool`、`Color`（シェーダーの中では各チャンネルが 0 から 1 の `vec4`）のいずれかです。引数が変わると枠が描き直されます。`animated: true` で `time` が進み、ディスプレイが描くフレームごとに枠も描かれます。
+- 値は `bool`、`int`、`float`、`vec2` から `vec4`、`ivec2` から `ivec4`、`mat2` から `mat4` で、スウィズル（`v.rgb`、`p.yx`）が使えます。色のリテラルは `vec4` です。GLSL の関数（`sin`、`mix`、`smoothstep`、`dot`、`normalize` など）と自分の関数（`fn wave(x: float) -> float = …`）を呼べ、定数（`let`）、`let` と `var`、代入、`if`、`while`、`for i in 0..<n`、`return`、`break`、`continue` があります。GPU で実行できないもの（クロージャ、文字列、オプショナル、値としての `if`）は、その旨を伝えるコンパイルエラーになります。
+- コンパイラーは、Android で実行できない部分もすべてのプラットフォームで同じように報告します。AGSL は GLSL ES 1.00 の言語なので、符号なし整数、ビット演算、整数の剰余（浮動小数点数の `mod` は使えます）、微分、定数でない範囲のループは使えません。
 
-iOS と macOS では Metal（`CAMetalLayer`）、Android 13 以降では AGSL（`RuntimeShader`。それより前は空のボックス）、ブラウザーでは WebGL 2（GLSL ES 3.00）、Windows では Direct3D 11（HLSL。GPU がないときはシステムのソフトウェアラスタライザー WARP）、Linux では OpenGL（`GtkGLArea`。GPU がないときは Mesa のソフトウェアラスタライザー）です。各プラットフォームのプログラムはアプリと一緒にコンパイルされ、デバイスでコンパイルされるのはそのプラットフォームのシェーディング言語だけです。Windows ではフレームをメインスレッドの外で描き、できあがったものから表示します。GL のない Linux（`GDK_DISABLE=gl`）では、空のボックスになります。最初のフレームが出るまでの代わりに、ボックスに `background` を付けておいてください。
+iOS と macOS では Metal（`CAMetalLayer`）、Android 13 以降では AGSL（`RuntimeShader`。それより前は空の枠）、ブラウザーでは WebGL 2（GLSL ES 3.00）、Windows では Direct3D 11（HLSL。GPU がなければシステムのソフトウェアラスタライザー WARP）、Linux では OpenGL（`GtkGLArea`。GPU がなければ Mesa のソフトウェアラスタライザー）です。各プラットフォームのプログラムはアプリと一緒にコンパイルされ、デバイスでは自分のシェーディング言語のものだけがコンパイルされます。Windows ではフレームをメインスレッドの外で描画し、できたところで表示します。GL のない Linux（`GDK_DISABLE=gl`）では空の枠が表示されます。最初のフレームまでの代わりとして、枠に `background` を指定してください。
 
 ## コンテナー
 

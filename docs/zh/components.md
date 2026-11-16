@@ -881,27 +881,22 @@ component Week(steps: [float], goal: [float]) {
 
 ### 着色器
 
-`std/shader` 用 GPU 程序来绘制一个框：流动的渐变、噪声、光晕、波纹。程序是一个 Kage 着色器（Ebitengine 的语言，Go 的语法），在应用编译时为每个平台编译好：编译不过的着色器就是编译错误，设备上只编译平台自己的程序。
+着色器用一段 GPU 程序给框里的每个像素上色：流动的渐变、噪声、光晕、波纹。用 `shader Name(params) { … }` 声明一个着色器，写法就是 Asuka 自己的语法，用的时候把它当成视图：参数就是它的 uniform，像组件的参数一样设置，它也像组件一样接受样式。着色器在应用编译时为所有平台编译好：写错了就是编译错误，并指出所在的行；设备上只编译平台自己的程序。
 
 ```asuka
-import std/shader
+/// 框中央的一团光晕，忽明忽暗。
+shader Glow(tint: Color, level: float = 1) {
+  let speed = 2
 
-let glow = shader.Program(r"""
-  package main
-
-  var Time float
-  var Tint vec4
-
-  func Fragment(dst vec4, pos vec2) vec4 {
-  	d := distance(pos/rectSize(), vec2(0.5))
-  	g := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
-  	return vec4(Tint.rgb*g, 1) * Tint.a
+  fn fragment(pos: vec2) -> vec4 {
+    let d = distance(pos / size, vec2(0.5))
+    let g = smoothstep(0.5, 0, d) * (0.8 + 0.2 * sin(time * speed)) * level
+    return vec4(tint.rgb * g, 1) * tint.a
   }
-  """)
+}
 
-component Glow(level: float) {
-  shader.Shader(glow) {
-    uniforms: [shader.Uniform(name: "Tint", value: [0.2, 0.5 + level * 0.5, 0.9, 1])]
+component Card(level: float) {
+  Glow(tint: .accent, level: level) {
     animated: true
     height: 200
     radius: 16
@@ -911,11 +906,10 @@ component Glow(level: float) {
 }
 ```
 
-- `Fragment` 返回一个像素的颜色（预乘 alpha），红、绿、蓝和 alpha 都在 0 到 1 之间。`pos` 是像素中心相对框左上角的位置，单位是点，`dst` 是同样的位置，单位是像素；`rectSize()` 是框的尺寸（点），`pixelScale()` 是每个点的像素数。
-- 语言里有 `bool`、`int`、`float`、`vec2` 到 `vec4`、`ivec2` 到 `ivec4`、`mat2` 到 `mat4` 以及它们的数组，GLSL 的内置函数（`sin`、`mix`、`smoothstep`、`dot` ……），自定义函数，`if` 和 `for`。导出的变量就是 uniform。
-- `uniforms` 按名字给它们赋值：标量是一个数，向量是它的各个分量，矩阵依次是各列（int 或 bool 也写成数字）。值变化时框会重新绘制；没给的 uniform 是 0。
-- `var Time float` 是着色器显示以来的秒数。`animated` 让它动起来：显示器每画一帧，框就画一帧。
-- 编译器会报告着色器的错误和行号，也会报告 Android 运行不了的部分，在所有平台上一视同仁：AGSL 是 GLSL ES 1.00 的语言，所以不支持无符号整数、位运算、整数取余（浮点数的 `mod` 可以）、导数，以及上下界不是常量的循环。
+- `fn fragment(pos: vec2) -> vec4` 根据 `pos`（像素中心相对框左上角的位置，单位是点）给出这个像素的颜色（预乘 alpha），红、绿、蓝和 alpha 都在 0 到 1 之间。在着色器里，`size` 是框的尺寸（点），`scale` 是每个点的像素数，`time` 是着色器显示以来的秒数。
+- 参数可以是 `float`、`int`、`bool` 或 `Color`（在着色器里是一个 `vec4`，各通道在 0 到 1 之间）。参数变化时框会重新绘制。`animated: true` 让 `time` 走起来：显示器每画一帧，框就画一帧。
+- 着色器里的值有 `bool`、`int`、`float`、`vec2` 到 `vec4`、`ivec2` 到 `ivec4` 以及 `mat2` 到 `mat4`，支持分量重组（`v.rgb`、`p.yx`）；颜色字面量是一个 `vec4`。它可以调用 GLSL 的函数（`sin`、`mix`、`smoothstep`、`dot`、`normalize` ……）和自己的函数（`fn wave(x: float) -> float = …`），可以有常量（`let`）、`let` 和 `var`、赋值、`if`、`while`、`for i in 0..<n`、`return`、`break` 和 `continue`。GPU 运行不了的东西（闭包、字符串、可选值、作为值的 `if`）都会报编译错误，并说明原因。
+- 编译器还会报告着色器里 Android 运行不了的部分，在所有平台上一视同仁：AGSL 是 GLSL ES 1.00 的语言，所以不支持无符号整数、位运算、整数取余（浮点数的 `mod` 可以）、导数，以及上下界不是常量的循环。
 
 在 iOS 和 macOS 上用的是 Metal（一个 `CAMetalLayer`），在 Android 13 及以上用的是 AGSL（一个 `RuntimeShader`；更早的版本上是一个空的框），在浏览器中是 WebGL 2（GLSL ES 3.00），在 Windows 上是 Direct3D 11（HLSL；没有 GPU 时用系统的软件光栅化器 WARP），在 Linux 上是 OpenGL（一个 `GtkGLArea`；没有 GPU 时用 Mesa 的软件光栅化器）。每个平台的程序都随应用一起编译，设备上只编译它自己的着色语言。在 Windows 上，每一帧都在主线程之外渲染，好了才显示。Linux 上没有 GL 时（`GDK_DISABLE=gl`），显示的是一个空的框。给框设一个 `background`，在第一帧出来之前先顶上。
 

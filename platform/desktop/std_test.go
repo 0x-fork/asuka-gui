@@ -726,42 +726,6 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: native view std/svg#View", "host: native view std/svg#Shape", "host: measured std/svg#View 22x22", "host: done"}, nil},
-		{"shader", `import std/shader
-
-let glow = shader.Program(r"""
-package main
-
-var Time float
-var Tint vec4
-
-func Fragment(dst vec4, pos vec2) vec4 {
-	d := distance(pos/rectSize(), vec2(0.5))
-	return vec4(Tint.rgb*smoothstep(0.5, 0, d)*(0.8+0.2*sin(Time*2)), 1) * Tint.a
-}
-""")
-
-component Probe {
-  state step = "start"
-  state tint: [float] = [0.3, 0.6, 1, 1]
-  Column {
-    Text("#{step}")
-    shader.Shader(glow) {
-      uniforms: [shader.Uniform(name: "Tint", value: tint)]
-      animated: true
-      width: 160
-      height: 80
-    }
-  }
-  task {
-    await sleep(100ms)
-    tint = [1, 0, 0, 1]
-    await sleep(100ms)
-    step = "done"
-  }
-}
-
-app { Probe() }
-`, []string{"host: native view std/shader#Shader", "host: done"}, nil},
 		{"scan", `import platform/scan
 
 component Probe {
@@ -837,7 +801,7 @@ app { Probe() }
 			os.WriteFile(mod, res.Module.Encode(), 0o644)
 			cmd := exec.Command(exe, mod)
 			cmd.Env = append(os.Environ(), "ASUKA_DATA="+dir, noLeaks, "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1") // WebKit's sandbox doesn't start in a container
-			if c.name == "markdown" || c.name == "svg" || c.name == "shader" {
+			if c.name == "markdown" || c.name == "svg" {
 				cmd.Env = append(cmd.Env, "ASUKA_TEST_WINDOW=1") // shown, so they draw
 			}
 			var out strings.Builder

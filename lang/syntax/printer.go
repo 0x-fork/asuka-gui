@@ -610,6 +610,12 @@ func (p *printer) node(n Node) {
 		p.params(n.Params)
 		p.write(" ")
 		p.block(n.Body)
+	case *ShaderDecl:
+		p.pub(n.Pub)
+		p.write("shader " + n.Name.Name)
+		p.params(n.Params)
+		p.write(" ")
+		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, false, "")
 	case *ScreenDecl:
 		p.pub(n.Pub)
 		p.write("screen " + n.Name.Name)

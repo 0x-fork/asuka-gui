@@ -775,6 +775,13 @@ func (p *parser) parseDecl() Decl {
 		p.next()
 	}
 	var d Decl
+	if p.tok == IDENT && p.lit == "shader" && p.peek(1) == IDENT {
+		// shader Name { … }: "shader" is a keyword only here.
+		d = p.parseShader(start)
+		setPub(d, pub)
+		setSpan(d, p.span(start))
+		return d
+	}
 	switch p.tok {
 	case COMPONENT:
 		d = p.parseComponent(start, NoPos)
@@ -874,6 +881,8 @@ func setPub(n Node, pub Pos) bool {
 		return true
 	}
 	switch n := n.(type) {
+	case *ShaderDecl:
+		n.Pub = pub
 	case *ComponentDecl:
 		n.Pub = pub
 	case *ScreenDecl:
@@ -916,6 +925,8 @@ func setPub(n Node, pub Pos) bool {
 // its pub or native keyword.
 func setSpan(n Node, s Span) {
 	switch n := n.(type) {
+	case *ShaderDecl:
+		n.Span = s
 	case *ComponentDecl:
 		n.Span = s
 	case *ScreenDecl:
@@ -1030,6 +1041,31 @@ func (p *parser) parseComponent(start, native Pos) *ComponentDecl {
 	d.TypeParams = p.parseTypeParams()
 	d.Params = p.optParams()
 	d.Body = p.parseBlock()
+	d.Span = p.span(start)
+	return d
+}
+
+func (p *parser) parseShader(start Pos) *ShaderDecl {
+	p.next() // shader
+	d := &ShaderDecl{}
+	d.Name = p.ident()
+	d.Params = p.optParams()
+	d.Lbrace, d.Members, d.Dangling, d.Rbrace = p.parseBody("shader", func() Node {
+		s := p.pos
+		var n Node
+		switch p.tok {
+		case FN:
+			n = p.parseFunc(s)
+		case LET:
+			n = p.parseLet(s)
+		default:
+			p.errorExpected("a function (fn fragment(pos: vec2) -> vec4 { … }) or a constant (let)")
+			p.sync()
+			return nil
+		}
+		setSpan(n, p.span(s))
+		return n
+	})
 	d.Span = p.span(start)
 	return d
 }

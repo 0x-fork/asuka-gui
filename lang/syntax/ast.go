@@ -229,6 +229,25 @@ type StoreDecl struct {
 	Body       *Block
 }
 
+// A ShaderDecl is shader Name(params) { fn fragment(pos: vec2) -> vec4
+// { … } … }: a GPU program that colors each pixel of a view, its
+// parameters its uniforms, used as a view (Glow(tint: .accent) { … }).
+// Its members are functions (fragment, and helpers) and constants
+// (let), in a subset of the language a GPU runs (lang/check's
+// shaderlang.go). "shader" is a keyword only here: before a name at a
+// declaration's start.
+type ShaderDecl struct {
+	Span
+	Trivia
+	Pub      Pos
+	Name     *Ident
+	Params   *ParamList // nil without parentheses
+	Lbrace   Pos
+	Members  []Node // *FuncDecl and *LetDecl, in source order
+	Dangling []*CommentGroup
+	Rbrace   Pos
+}
+
 // A StructDecl is struct Name<T>: Error { fields and methods }, or with
 // Extern set, extern struct Name { fields }: a C struct, passed by value.
 type StructDecl struct {
@@ -419,6 +438,7 @@ func (*ComponentDecl) declNode()  {}
 func (*ScreenDecl) declNode()     {}
 func (*StoreDecl) declNode()      {}
 func (*StructDecl) declNode()     {}
+func (*ShaderDecl) declNode()     {}
 func (*EnumDecl) declNode()       {}
 func (*InterfaceDecl) declNode()  {}
 func (*FuncDecl) declNode()       {}

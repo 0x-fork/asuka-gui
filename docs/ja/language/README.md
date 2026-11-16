@@ -60,3 +60,5 @@ app { Counter() }
 else emit enum event extern false fn for if import in interface key let load
 match native none on prop provide pub return screen self spawn state
 store struct style task test throw throws true try type use var while`
+
+`shader`（[シェーダー](../components.md#シェーダー)の宣言）と `at`（ルート付きの画面のパターン）は、その位置でだけキーワードで、ほかの場所では普通の名前です。

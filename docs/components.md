@@ -1214,31 +1214,28 @@ component Week(steps: [float], goal: [float]) {
 
 ### Shaders
 
-`std/shader` draws a box with a GPU program: flowing gradients, noise,
-glows, ripples. The program is a Kage shader (Ebitengine's language,
-Go's syntax), compiled when the app compiles, for every platform: a
-shader that doesn't compile is a compile error, and only the platform's
-own program is compiled on the device.
+A shader colors each pixel of a box with a GPU program: flowing
+gradients, noise, glows, ripples. `shader Name(params) { … }` declares
+one, in Asuka's own syntax, and it's used as a view: its parameters are
+its uniforms, set as a component's are, and it takes the style as a
+component does. It's compiled when the app compiles, for every
+platform: a mistake in it is a compile error at its line, and only the
+platform's own program is compiled on the device.
 
 ```asuka
-import std/shader
+/// A glow at the box's center, breathing.
+shader Glow(tint: Color, level: float = 1) {
+  let speed = 2
 
-let glow = shader.Program(r"""
-  package main
-
-  var Time float
-  var Tint vec4
-
-  func Fragment(dst vec4, pos vec2) vec4 {
-  	d := distance(pos/rectSize(), vec2(0.5))
-  	g := smoothstep(0.5, 0, d) * (0.8 + 0.2*sin(Time*2))
-  	return vec4(Tint.rgb*g, 1) * Tint.a
+  fn fragment(pos: vec2) -> vec4 {
+    let d = distance(pos / size, vec2(0.5))
+    let g = smoothstep(0.5, 0, d) * (0.8 + 0.2 * sin(time * speed)) * level
+    return vec4(tint.rgb * g, 1) * tint.a
   }
-  """)
+}
 
-component Glow(level: float) {
-  shader.Shader(glow) {
-    uniforms: [shader.Uniform(name: "Tint", value: [0.2, 0.5 + level * 0.5, 0.9, 1])]
+component Card(level: float) {
+  Glow(tint: .accent, level: level) {
     animated: true
     height: 200
     radius: 16
@@ -1248,24 +1245,27 @@ component Glow(level: float) {
 }
 ```
 
-- `Fragment` returns the color of a pixel, premultiplied, red, green,
-  blue and alpha from 0 to 1. `pos` is the pixel's center in points
-  from the box's top left, `dst` the same in pixels; `rectSize()` is
-  the box's size in points and `pixelScale()` the pixels a point.
-- The language has `bool`, `int`, `float`, `vec2` to `vec4`, `ivec2` to
-  `ivec4`, `mat2` to `mat4` and arrays of them, GLSL's built-in functions
-  (`sin`, `mix`, `smoothstep`, `dot`...), functions of its own, `if` and
-  `for`. Exported variables are uniforms.
-- `uniforms` sets them by name: a scalar's one number, a vector's
-  components, a matrix's columns in turn (an int's or a bool's as a
-  number). A change draws the box again; a uniform left out is 0.
-- `var Time float` is the seconds since the shader showed. `animated`
-  runs it: the box draws at every frame the display draws.
-- The compiler reports a shader's errors with their lines, and what of
-  it Android can't run, for every platform alike: AGSL is GLSL ES
-  1.00's language, so no unsigned integers, bitwise operations or
-  integer remainders (`mod` of floats does), derivatives, or loops
-  between values that aren't constants.
+- `fn fragment(pos: vec2) -> vec4` gives the color of a pixel,
+  premultiplied, red, green, blue and alpha from 0 to 1, from `pos`, the
+  pixel's center in points from the box's top left. Inside a shader,
+  `size` is the box's size in points, `scale` the pixels a point, and
+  `time` the seconds since it showed.
+- A parameter is a `float`, an `int`, a `bool` or a `Color` (a `vec4`
+  inside, its channels from 0 to 1). A change to one draws the box
+  again. `animated: true` runs `time`: the box draws at every frame the
+  display draws.
+- Its values are `bool`, `int`, `float`, `vec2` to `vec4`, `ivec2` to
+  `ivec4` and `mat2` to `mat4`, with swizzles (`v.rgb`, `p.yx`); a color
+  literal is a `vec4`. It calls GLSL's functions (`sin`, `mix`,
+  `smoothstep`, `dot`, `normalize`...) and functions of its own (`fn
+  wave(x: float) -> float = …`), and has constants (`let`), `let` and
+  `var`, assignments, `if`, `while`, `for i in 0..<n`, `return`, `break`
+  and `continue`. What a GPU can't run (closures, strings, optionals,
+  an `if` as a value) is a compile error that says so.
+- The compiler also reports what of a shader Android can't run, for
+  every platform alike: AGSL is GLSL ES 1.00's language, so no unsigned
+  integers, bitwise operations or integer remainders (`mod` of floats
+  does), derivatives, or loops between values that aren't constants.
 
 It's Metal on iOS and macOS (a `CAMetalLayer`), AGSL on Android 13 and
 later (a `RuntimeShader`; an empty box before), WebGL 2 in a browser

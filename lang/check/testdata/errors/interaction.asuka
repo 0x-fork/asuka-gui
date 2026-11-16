@@ -51,8 +51,18 @@ fn system() {
   animate(Animation(duration: 1s), () => print("now"))
   await animate { print("now") } // ERROR "await only where code may wait"
   animate(1, 2, 3) // ERROR "animate takes its changes"
-  let p = shader("not kage") // ERROR "the shader doesn't compile"
-  let q = shader("{p}") // ERROR "shader's program is compiled with the app"
+  let p = shader("not kage") // ERROR "is a declaration now"
+}
+
+shader NoEntry { // ERROR "a shader needs its fragment function"
+  fn other() -> float = 1
+}
+
+shader Wrong(label: string) { // ERROR "a shader's parameter is a uniform"
+  fn fragment(pos: vec2) -> vec4 {
+    let f = x => x // ERROR "a shader's expressions are numbers"
+    return vec4(nope) // ERROR "unknown name nope in a shader"
+  }
 }
 
 async fn files() throws {

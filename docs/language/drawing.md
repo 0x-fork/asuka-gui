@@ -24,7 +24,26 @@ reused from draw to draw. A Graphics is valid while its draw runs:
 `clip(path)`, `transform(a, b, c, d, tx, ty)`, `evenOdd(on)`,
 `text(s, x, y, style)`.
 
-`Shader(shader("""…"""))` is a box a GPU program draws: the program is
-Kage, compiled with the app (a mistake in it is the compiler's error),
-its uniforms set by name (`uniforms: [Uniform(name: "Level", value:
-[0.5]), colorUniform("Tint", .accent)]`).
+A `shader` declaration is a box a GPU program draws, written in
+Asuka's syntax and compiled with the app (a mistake in it is a compile
+error at its line), used as a view, its parameters its uniforms:
+
+```asuka
+shader Ring(tint: Color, thickness: float = 0.05) {
+  fn fragment(pos: vec2) -> vec4 {
+    let d = abs(distance(pos / size, vec2(0.5)) - 0.4)
+    return tint * smoothstep(thickness, 0, d)
+  }
+}
+
+component Badge {
+  Ring(tint: .accent) { width: 120; height: 120 }
+}
+```
+
+`fn fragment(pos: vec2) -> vec4` gives a pixel's color, premultiplied;
+`size`, `scale` and `time` are the box's size in points, the pixels a
+point and the seconds since it showed (`animated: true` runs it). A
+parameter is a `float`, an `int`, a `bool` or a `Color`. See
+[Shaders](../components.md#shaders) for the language a shader is
+written in and where it runs.

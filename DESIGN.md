@@ -4043,7 +4043,7 @@ core/src/abi/web.c is the core's side:
   `ListBind` as they come into view, recycled as they leave; a row's
   height from its cells' frames, estimated until bound; a chat's list
   kept at its end; swipe actions as the row's context menu.
-- `Shader`: the compiler translates the Kage program to GLSL ES 3.00 as
+- `Shader`: the compiler translates a shader declaration to GLSL ES 3.00 as
   it compiles the app (internal/shadercode, beside its Metal and AGSL),
   last in the shader's code, since no compiler runs in the page; the
   host compiles it with WebGL 2 and sets the uniforms' lanes by their

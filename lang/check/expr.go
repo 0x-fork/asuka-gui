@@ -171,6 +171,10 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		return Invalid
 	}
 	o := c.lookup(e.Name)
+	if o == nil && e.Name == "shader" {
+		c.errorf(e, shaderMoved)
+		return Invalid
+	}
 	if o == nil {
 		c.errorf(e, "unknown name %s%s", e.Name, c.suggest(e.Name))
 		return Invalid

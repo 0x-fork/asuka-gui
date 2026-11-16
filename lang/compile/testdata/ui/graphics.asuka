@@ -10,16 +10,9 @@ fn star(w: float, h: float) -> Path {
   return p.close()
 }
 
-let glow = shader(r"""
-  package main
-
-  var Time float
-  var Tint vec4
-
-  func Fragment(dst vec4, pos vec2) vec4 {
-  	return Tint * (0.5 + 0.5*sin(Time))
-  }
-  """)
+shader Glow(tint: Color, phase: float) {
+  fn fragment(pos: vec2) -> vec4 = tint * (0.5 + 0.5 * sin(phase))
+}
 
 component Gauge {
   state level = 0.25
@@ -46,10 +39,7 @@ component Gauge {
     }) { height: 100 }
     Shape(star) { fill: .yellow; stroke: .orange; lineWidth: 2; width: 40; height: 40 }
     Shape((w, h) => Path().rect(0, 0, w, h)) { fill: .blue; trimEnd: level; width: 20; height: 20 }
-    Shader(glow) {
-      uniforms: [Uniform(name: "Time", value: [level]), colorUniform("Tint", .accent)]
-      height: 60
-    }
+    Glow(tint: .accent, phase: level) { height: 60 }
     Button("More") { on press { level = 0.5 } }
   }
 }

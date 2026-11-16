@@ -72,6 +72,14 @@ func Walk(v Visitor, n Node) {
 			walk(n.Params)
 		}
 		walk(n.Body)
+	case *ShaderDecl:
+		walk(n.Name)
+		if n.Params != nil {
+			walk(n.Params)
+		}
+		for _, m := range n.Members {
+			walk(m)
+		}
 	case *StructDecl:
 		walk(n.Name)
 		walkTypeParams(v, n.TypeParams)

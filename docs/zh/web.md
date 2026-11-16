@@ -83,7 +83,7 @@ Web 应用看到的环境（`environment()`）来自浏览器：
 - `Tabs` 是底部的标签栏；`Split` 是侧边栏加详情区，窗口较窄时侧边栏变成抽屉，由详情区的标题栏打开。
 - `Sheet` 是一个模态 `<dialog>`：窄窗口下是底部弹出面板（medium 占一半高度，可以拖动顶部的把手把它拉高或拖走），宽窗口下是居中的卡片。按 Escape、点击外部或向下滑动都能关闭它。`Alert` 也是模态 `<dialog>`，操作表的按钮显示为列表。`Popover` 和菜单是显示在目标旁边的弹出层。`Window` 是页面里的一个面板，用户可以移动它、调整它的大小。
 - `List` 会做虚拟化，和 Mac、Windows、Linux 上一样：只有可见范围内（以及上下各半屏）的行会被绑定；分组标题会吸顶；聊天列表会停在末尾。行的滑动操作变成它们的上下文菜单（右键或长按触发）。
-- `Image` 是 `<img>`（在主线程之外解码，由浏览器缓存），`Video` 是 `<video>`，`WebView` 是 `<iframe>`（见 [Web 视图](#web-视图)），`Canvas` 是 2D 画布，`Shape` 是 SVG 路径，`Shader` 用 WebGL 2（Kage 程序会被转换成 GLSL ES 3.00），`Symbol` 显示的是 Android 上该 SF Symbol 名称对应的 Material Symbol。
+- `Image` 是 `<img>`（在主线程之外解码，由浏览器缓存），`Video` 是 `<video>`，`WebView` 是 `<iframe>`（见 [Web 视图](#web-视图)），`Canvas` 是 2D 画布，`Shape` 是 SVG 路径，`Shader` 用 WebGL 2（`shader` 声明会被编译成 GLSL ES 3.00），`Symbol` 显示的是 Android 上该 SF Symbol 名称对应的 Material Symbol。
 - `animate` 用 Web Animations API 为视图的位置、尺寸和视觉属性做动画（弹簧动画用 CSS 的 `linear()` 曲线实现）；进入和退出过渡、共享元素（`shared`）的效果和 iOS 上一样。
 - 点按、长按（以及右键）、悬停、按下状态、拖移、轻扫、捏合（双指，或触控板的捏合）和旋转，用鼠标、触控笔或手指都能操作；拖放用的是浏览器自己的机制，也支持从其他应用拖入文件。
 - `MenuBar` 中菜单项的快捷键在页面里同样有效（Mac 上用 ⌘，其他系统用 Ctrl）。不过页面本身不显示菜单栏，而桌面端应用会显示：Mac 上是系统菜单栏，Windows 上是窗口的菜单栏，Linux 上是标题栏里的主菜单。

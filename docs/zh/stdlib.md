@@ -44,7 +44,6 @@ state units = store.read("units", "metric")
 | [`std/lottie`](std/lottie.md) | `lottie.View(source)`（`bind playing`、`bind progress`、`loop`、`speed`、`segment`、`marker`、`fit`、`overrides`；`complete`、`loaded`）：用各平台的播放器播放 Lottie 和 dotLottie；Windows 和 Linux 上暂时没有（[组件](components.md)） |
 | [`std/svg`](std/svg.md) | `svg.Icon(markup)` 在应用编译时解析，`svg.View(icon) { color }` 显示它；`svg.Shape(layers)`：应用自己画的路径，会跟随它的框（[组件](components.md)） |
 | [`std/chart`](std/chart.md) | `chart.View(series) { labels, label, low, high, grid }`；`chart.Series(name:, kind: .bar \| .line \| .area \| .points, values:, smooth:, color:)`：用 Asuka 写成，通过 `svg.Shape` 绘制（[组件](components.md)） |
-| [`std/shader`](std/shader.md) | `shader.Program(source)`：随应用一起为每个平台编译的 Kage 着色器；`shader.Shader(program) { uniforms, animated }`（[组件](components.md)） |
 | [`std/markdown`](std/markdown.md) | `markdown.View(text) { streaming }` 和 `markdown.heal(text)`：把 Markdown 显示为平台自己的富文本，流式输入时边接收边修补（[组件](components.md)） |
 
 ## 平台 SDK：`platform/`

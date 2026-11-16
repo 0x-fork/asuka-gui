@@ -372,7 +372,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 	case BAnimate:
 		c.animateCall(e, call)
 	case BShader:
-		c.shaderCall(e, call)
+		c.shaderProgramCall(e, call)
 	case BRefNew:
 		positional(0, "nothing: Ref(), then ref: it on an element")
 		call.Result = Ref

@@ -72,7 +72,7 @@ type Info struct {
 	// new file matching it would change; asuka dev compiles again when one
 	// changes.
 	EmbedPaths map[EmbedPath]bool
-	// Shaders: shader("""…""")'s programs, compiled.
+	// Shaders: shader declarations' programs, compiled (shaderlang.go).
 	Shaders map[*syntax.CallExpr][]byte
 
 	// For editors (lang/lsp).

@@ -60,3 +60,5 @@ app { Counter() }
 else emit enum event extern false fn for if import in interface key let load
 match native none on prop provide pub return screen self spawn state
 store struct style task test throw throws true try type use var while`
+
+`shader`（[着色器](../components.md#着色器)的声明）和 `at`（带路由的屏幕的模式）只在那个位置是关键字，在别处都是普通的名字。

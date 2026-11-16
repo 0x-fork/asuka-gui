@@ -13,10 +13,13 @@ import (
 // order: the prelude when it's made, then each package with the
 // packages it imports already checked.
 type Checker struct {
-	fset     *syntax.FileSet
-	info     *Info
-	diags    []Diagnostic
-	errLines map[string]bool
+	// shaderDecls are the shader declarations by their components'
+	// program calls (shaderlang.go).
+	shaderDecls map[*syntax.CallExpr]*syntax.ShaderDecl
+	fset        *syntax.FileSet
+	info        *Info
+	diags       []Diagnostic
+	errLines    map[string]bool
 
 	universe *Scope
 	catalog  *Catalog // the app's catalogs (tr), or nil
@@ -91,6 +94,13 @@ func NewChecker(fset *syntax.FileSet) *Checker {
 	c.prelude = &Package{Path: "prelude", Name: "prelude", Prelude: true}
 	c.prelude.Scope = NewScope(c.universe)
 	c.checkFiles(c.prelude, files, nil)
+	// What a shader's component is made of, under names no app writes
+	// (shaderlang.go).
+	for alias, name := range map[string]string{shaderElement: "Shader", shaderUniform: "Uniform", shaderColor: "colorUniform"} {
+		if o := c.prelude.Scope.Lookup(name); o != nil {
+			c.prelude.Scope.InsertAs(alias, o)
+		}
+	}
 	return c
 }
 
@@ -250,7 +260,7 @@ func (c *Checker) initUniverse() {
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet},
-		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {"shader", BShader},
+		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {shaderProgram, BShader},
 		{"never", BNever}, {"navigate", BNavigate}, {"replace", BReplace},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
@@ -295,6 +305,11 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 			c.importDecl(fs, imp, imports)
 		}
 		for _, d := range f.Decls {
+			if sd, ok := d.(*syntax.ShaderDecl); ok {
+				// A shader is a component (shaderlang.go).
+				d = c.shaderComponent(sd)
+				c.fileScopes[sd] = fs
+			}
 			c.fileScopes[d] = fs
 			c.collect(p, d)
 		}

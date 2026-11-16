@@ -10,7 +10,7 @@ var sections = []struct {
 	kinds []Kind
 }{
 	{"Functions", []Kind{Func}},
-	{"Components", []Kind{Component, Screen}},
+	{"Components", []Kind{Component, Screen, Shader}},
 	{"Stores", []Kind{Store}},
 	{"Types", []Kind{Struct, Enum, Interface, TypeAlias, ExternType}},
 	{"Constants", []Kind{Const}},

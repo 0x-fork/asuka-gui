@@ -2,17 +2,12 @@
 // one that isn't there), a Shape, a Canvas, a Shader, a rounded clip, a
 // turned view, a faded one and a material (TestDrawing).
 
-let glow = shader(r"""
-  package main
-
-  var Time float
-  var Tint vec4
-
-  func Fragment(dst vec4, pos vec2) vec4 {
-  	uv := pos / rectSize()
-  	return vec4(Tint.rgb*uv.x, 1)
+shader Glow(tint: Color) {
+  fn fragment(pos: vec2) -> vec4 {
+    let uv = pos / size
+    return vec4(tint.rgb * uv.x, 1)
   }
-  """)
+}
 
 component Draw {
   state size = "none"
@@ -40,10 +35,7 @@ component Draw {
         g.text("Hi", g.width / 2, 25, CanvasText(size: 16, align: .center))
       }) { width: 80; height: 40 }
     }
-    Shader(glow) {
-      uniforms: [Uniform(name: "Tint", value: [0, 1, 0, 1])]
-      height: 40; radius: 12; clip: true
-    }
+    Glow(tint: #00ff00) { height: 40; radius: 12; clip: true }
     Row {
       gap: 16
       View {
