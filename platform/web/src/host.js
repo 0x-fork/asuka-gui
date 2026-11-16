@@ -74,6 +74,7 @@ export class Host {
     this.options = options;
     this.assets = (options.assets || "assets").replace(/\/$/, "");
     nativeModules.setAssets(this.assets);
+    nativeModules.setViews((id) => this.nodes.get(id)?.el ?? null);
     this.nodes = new Map();
     this.root = null;
     this.core = null;

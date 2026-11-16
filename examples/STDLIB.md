@@ -10,9 +10,6 @@ without them, as each entry says.
 
 | What | Needs | The examples meanwhile |
 |---|---|---|
-| `asuka/http`: a response's body as a stream (`body: Stream<bytes>`, `contentLength`), for a download's progress | a streaming `Transport` on each platform: URLSession's data delegate, `HttpURLConnection`'s input stream, `fetch`'s `ReadableStream`, the desktop hosts' client | downloader reads the whole body, then writes it |
-| `asuka/http`: `loopback(path:, page:)`, a server on localhost that takes an OAuth redirect | a listening socket of each platform's (Network.framework, `ServerSocket`, the desktop hosts'); a browser can't listen | usage signs in with the system's web authentication sheet (`asuka/webauth`) and a manual code |
-| `asuka/print`: `webView(ref)`, printing what a live `WebView` shows | a view's handle passed to a native interface (`Ref` across nativegen, NativeModules.swift, NativeModules.kt, native.js), then the platform's print of a web view (`viewPrintFormatter`, `createPrintDocumentAdapter`, WebView2's print) | gallery prints the page's markup with `print.html` |
 | `asuka/update`: the desktop's updater (checks, release notes, a signed download, relaunch) | the Go hosts' `sdk/update`, ported to the Swift and C hosts | none uses it |
 | `asuka/document`: Save As, Open Recent, Duplicate, Rename and Move To, recovery copies of unsaved changes, the questions on closing an untitled document, the menus' translations | NSDocument's and the desktop hosts' file coordination, as `sdk/document` had | textedit uses `document.Documents`: windows, New, Open, Save, autosave, conflicts |
 | The app block's `shareSheet: fn(ShareSheet) -> View` (a sheet of the app's over another app's share) and `pushRewrite` (a notification rewritten before it shows) | an iOS share extension and notification service extension built with the app, and Android's share target activity | downloader takes shares with `on share(items)`, which opens the app |

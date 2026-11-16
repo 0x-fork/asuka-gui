@@ -43,6 +43,8 @@ pub native interface Pantry {
   /// @mainThread
   fn show()
   fn counts() -> [string: int]
+  /// Whether the host shows a view of the app's.
+  fn shows(view: Ref) -> bool
 }
 
 /// One of the pantry's shelves.

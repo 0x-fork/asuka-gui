@@ -528,6 +528,29 @@ async fn printReceipt(receipt: string) throws -> string {
 
 - `print.file(source, job:, orientation:)` は PDF か画像を印刷します（ソースは `preview.show` と同じく、パス、アセット、http(s) の URL）。それ以外のタイプは `print.PrintError.unsupported` を投げます。ただし Windows と Linux は例外です。Windows ではファイルに対応するアプリが印刷し、Linux ではプリンターが CUPS で印刷できるものを受け付けます。
 - `print.html(markup, job:, orientation:)` はマークアップを、ブラウザーがページを印刷するのと同じようにページ分けして印刷します。CSS の `@media print` と `break-before` が効きます。画像とスタイルは絶対 URL（`https:`、`data:`）から読み込みます。
+- `print.webView(view, job:, orientation:)` は、`WebView` が今表示しているページ（ユーザーやページのスクリプトが加えた変更も含めて）を、そのブラウザーがページを印刷するようにページ分けして印刷します。`view` は WebView を入れた `Ref`（`ref:`）です。アプリが表示している WebView を Ref が持っていなければ、`print.PrintError.unsupported` を投げます。
+
+```asuka
+import asuka/print as printing
+
+let page = Ref()
+
+component Article(url: string) {
+  Screen {
+    title: "Article"
+    toolbar {
+      Button("Print") {
+        icon: "printer"
+        on press { try? await printing.webView(page, job: "Article") }
+      }
+    }
+    WebView(url: url) {
+      ref: page
+      grow: 1
+    }
+  }
+}
+```
 
 `job` はキューに表示されるジョブ名です（既定はファイル名、ページのタイトル、どちらもなければアプリ名）。`orientation` はダイアログを開いたときの向きです（`.portrait`、`.landscape`）。
 
@@ -542,7 +565,7 @@ async fn printReceipt(receipt: string) throws -> string {
 | Linux | GTK の印刷ダイアログ（ファイルの場合は印刷ポータルのもの） | プリンターが受け付けます（CUPS：PDF、画像） | WebKitGTK の print operation | 印刷またはキャンセル |
 | Web | ブラウザーの印刷ダイアログ | ブラウザーのビューアーで表示した PDF、画像 | 非表示の frame | 不明 |
 
-Android と iOS では、写真の印刷と同じく、横長の画像は横向きで始まります。`asuka/print` はまだ、`WebView` に表示されているものを印刷することも、iPad のポップオーバーが指し示すビューを受け取ることもできません。
+Android と iOS では、写真の印刷と同じく、横長の画像は横向きで始まります。WebView のページは WebView 自身の印刷機能で印刷します。iOS ではその print formatter、Android ではその print adapter、Mac と Linux では WebKit の print operation、Windows では WebView2 の印刷ダイアログです。ブラウザーでは、アプリと同じオリジンのページ（`html:` の文字列から作ったページなど）は、その frame からページ全体を印刷します。ほかのサイトのページにはアプリのページから手が届かないので、その WebView だけを残したアプリのページを、表示されているとおりに印刷します。`asuka/print` はまだ、iPad のポップオーバーが指し示すビューを受け取れません。
 
 ### HTML から PDF を作る
 

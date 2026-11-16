@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/asuka/internal/darwin"
 	"github.com/egoist/asuka/internal/nativegen"
 	"github.com/egoist/asuka/native"
+	"github.com/egoist/asuka/ops"
 )
 
 // Packages' native code in Swift (//asuka:native, //asuka:view): the CLI
@@ -114,6 +115,10 @@ func loadSwiftNatives(path string) error {
 	loadSwiftPurchase(lib)
 	loadSwiftICloud(lib)
 	boot(purego.NewCallback(swiftEmit), purego.NewCallback(swiftDone), purego.NewCallback(swiftInvoke))
+	if views, err := purego.Dlsym(lib, "asuka_natives_views"); err == nil {
+		// A Ref a package's method is passed: the NSView of its id.
+		purego.SyscallN(views, purego.NewCallback(swiftViewOf))
+	}
 	native.SetBackend(swiftBackend{})
 	bridge.SetNativeBackend(swiftCore{})
 	return nil
@@ -267,3 +272,16 @@ func (swiftCore) Start(h uint64, method uint32, in []byte, call uint64) {
 
 func (swiftCore) Cancel(call uint64) { swiftBackend{}.Cancel(call) }
 func (swiftCore) Release(h uint64)   { swiftBackend{}.Release(h) }
+
+// swiftViewOf is the NSView the host shows for a view's id (a WebView's
+// WKWebView), 0 for none: what a Ref passed to a package's Swift is.
+// Main thread.
+func swiftViewOf(id uint64) uintptr {
+	if theHost == nil || id > 0xffffffff {
+		return 0
+	}
+	if n := theHost.nodes[ops.NodeID(id)]; n != nil {
+		return uintptr(n.view)
+	}
+	return 0
+}

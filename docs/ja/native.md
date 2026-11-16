@@ -139,8 +139,9 @@ pub native interface Oven {
 | パッケージの列挙型（ケースが値を持たないもの） | ケースごとに static を持つ `RawRepresentable` の構造体 | ケースごとに定数を持つ value class | ケースを収めた凍結（frozen）オブジェクト | ケースごとに定数を持つ `int64_t`（`<pkg>_Level_low`） |
 | `native interface`（引数または戻り値） | `any T` | `T` | オブジェクト | `<pkg>_T *` |
 | `fn(...)`（引数） | クロージャ | 関数 | 関数 | `<pkg>_fn_…`。その `_call` で呼び出します |
+| `Ref`（引数） | `AsukaViewRef`。その `view`（メインアクターで読みます）がホストの表示している `UIView` か `NSView`（WebView なら `WKWebView`）で、なければ `nil` | `AsukaViewRef`。その `view`（メインスレッドで読みます）が `View`（WebView なら `WebView`）で、なければ `null` | その要素、または `null` | `uint32_t`（ビューの id）。`asuka_desktop_view(v)` がその `HWND` か `GtkWidget *`、`asuka_desktop_webview(v)` が WebView の `ICoreWebView2 *` か `WebKitWebView *` です |
 
-構造体のフィールドは宣言順に渡されます。構造体の定数とメソッドは Asuka 側に残ります。オブジェクト（ネイティブのインターフェース）を渡せるのは引数か戻り値としてだけで、配列、マップ、構造体の中には入れられません。それ以外の型を使うと、`asuka native generate` がその位置とともに報告し、代わりに使うべきものを示します。
+構造体のフィールドは宣言順に渡されます。構造体の定数とメソッドは Asuka 側に残ります。オブジェクト（ネイティブのインターフェース）を渡せるのは引数か戻り値としてだけで、配列、マップ、構造体の中には入れられません。`Ref` を渡せるのも引数としてだけです。渡るのは呼び出した時点で Ref が持っているビューで（asuka/print の `webView(view: Ref, …)` は、`ref:` で入れた WebView のページを印刷します）、プラットフォームのコードはそれをメインスレッドで引きます。Ref がビューを持っていないときや、ホストがまだそのビューを表示していないときは `nil` になります。それ以外の型を使うと、`asuka native generate` がその位置とともに報告し、代わりに使うべきものを示します。
 
 ### メソッド
 

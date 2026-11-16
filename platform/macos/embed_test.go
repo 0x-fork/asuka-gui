@@ -6,10 +6,11 @@ import (
 	"testing"
 )
 
-// Typed native modules' runtime, and the Swift the Mac's packages build
-// in (StoreKit's, iCloud's), are one file each in the iOS host and here.
+// Typed native modules' runtime, and the Swift the Mac's iCloud builds
+// in, are one file each in the iOS host and here. (Purchase.swift is the
+// Mac's own: on iOS, std/purchase's Swift does StoreKit.)
 func TestSwiftShared(t *testing.T) {
-	for _, name := range []string{"NativeModules.swift", "Purchase.swift", "ICloud.swift"} {
+	for _, name := range []string{"NativeModules.swift", "ICloud.swift"} {
 		ios, err := os.ReadFile("../ios/Sources/AsukaHost/" + name)
 		if err != nil {
 			t.Fatal(err)

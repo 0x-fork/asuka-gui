@@ -139,8 +139,9 @@ pub native interface Oven {
 | 包中定义的枚举（成员不带值） | `RawRepresentable` 结构体，每个成员对应一个静态成员 | value class，每个成员对应一个常量 | 由这些成员组成的冻结对象 | `int64_t`，每个成员对应一个常量（`<pkg>_Level_low`） |
 | `native interface`（作为参数或返回值） | `any T` | `T` | 对象 | `<pkg>_T *` |
 | `fn(...)`（作为参数） | 闭包 | 函数 | 函数 | `<pkg>_fn_…`，用它的 `_call` 调用 |
+| `Ref`（作为参数） | `AsukaViewRef`：它的 `view`（在主 actor 上读取）是宿主显示的 `UIView` 或 `NSView`（WebView 的是 `WKWebView`），没有时为 `nil` | `AsukaViewRef`：它的 `view`（在主线程上读取）是对应的 `View`（WebView 的是 `WebView`），没有时为 `null` | 对应的元素，或 `null` | `uint32_t`，即视图的 id：`asuka_desktop_view(v)` 是它的 `HWND` 或 `GtkWidget *`，`asuka_desktop_webview(v)` 是 WebView 的 `ICoreWebView2 *` 或 `WebKitWebView *` |
 
-结构体的字段按声明顺序传递；它的常量和方法只留在 Asuka 这一端。对象（原生接口）只能作为参数或返回值传递，不能放在数组、map 或结构体里。其他不支持的用法，`asuka native generate` 都会在对应位置报错，并告诉你应该改用什么。
+结构体的字段按声明顺序传递；它的常量和方法只留在 Asuka 这一端。对象（原生接口）只能作为参数或返回值传递，不能放在数组、map 或结构体里。`Ref` 只能作为参数传递：传过去的是调用时它所持有的视图（asuka/print 的 `webView(view: Ref, …)` 打印的就是用 `ref:` 放进去的那个 WebView 的页面），平台代码在主线程上查找这个视图；如果 Ref 里没有视图，或者宿主（还）没有显示它，得到的就是 `nil`。其他不支持的用法，`asuka native generate` 都会在对应位置报错，并告诉你应该改用什么。
 
 ### 方法
 

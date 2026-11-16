@@ -28,6 +28,9 @@
 //     asuka_desktop_app_build (asuka.toml's version and build: asuka/device's
 //     info), and one rule: asuka_desktop_post is one FIFO with the core's
 //     posts.
+//   - The host's half gains asuka_desktop_view and asuka_desktop_webview:
+//     a view a method is passed (an Asuka Ref, its id in C), as the
+//     platform's widget and a WebView's page.
 //   - Shared C for packages (src/fetch.c, linux.c, windows.c):
 //     asuka_fetch, asuka_desktop_local_file, and asuka_linux.h's and
 //     asuka_windows.h's helpers.
@@ -58,6 +61,16 @@ bool asuka_desktop_on_main(void);
 // HWND; Linux: a GtkWindow *), or the main window's for view 0; NULL when
 // there is none (the view isn't in a window, or the app has none).
 void *asuka_desktop_window(uint32_t view);
+
+// A view a method is passed (an Asuka Ref: its id, 0 for none):
+// asuka_desktop_view is the platform's widget the host shows it in
+// (Windows: an HWND; Linux: a GtkWidget *), NULL when it shows none (the
+// view is gone, or drawn in its parent's widget); asuka_desktop_webview is
+// a WebView's page (Windows: its ICoreWebView2 *; Linux: its
+// WebKitWebView *), NULL when the view isn't a WebView or its page isn't
+// made yet. Both the host's: the caller doesn't release them.
+void *asuka_desktop_view(uint32_t view);
+void *asuka_desktop_webview(uint32_t view);
 
 // asuka_desktop_color resolves a Color as the wire has it (ops/ops.go: 0
 // the platform's default, a semantic color, RGBA) for the appearance

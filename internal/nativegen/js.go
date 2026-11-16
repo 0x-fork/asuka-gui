@@ -25,6 +25,7 @@ var jsZero = map[Kind]string{
 	Bool: "false", Int8: "0", Int16: "0", Int32: "0", Int64: "0n", Int: "0",
 	Uint8: "0", Uint16: "0", Uint32: "0", Uint64: "0n", Uint: "0",
 	Float32: "0", Float64: "0", String: `""`, Bytes: "new Uint8Array(0)", Time: "new Date(0)", Duration: "0",
+	ViewRef: "null",
 }
 
 type jsGen struct {

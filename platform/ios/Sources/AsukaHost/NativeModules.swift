@@ -187,6 +187,17 @@ public struct AsukaNativeWriter {
 
 /// Decodes values (package native's Reader). After a short read every
 /// read returns its zero value, and failed is true.
+/// One of the app's views a method was passed (an Asuka Ref): the id its
+/// host knows it by.
+public struct AsukaViewRef: Sendable, Hashable {
+    public let id: UInt64
+    public init(id: UInt64) { self.id = id }
+
+    /// The view while the app shows it (UIView on iOS, NSView on the Mac),
+    /// else nil: a WebView's is its WKWebView.
+    @MainActor public var view: AsukaPlatformView? { id == 0 ? nil : AsukaNative.views(id) }
+}
+
 public struct AsukaNativeReader {
     let bytes: [UInt8]
     var p = 0
@@ -222,6 +233,7 @@ public struct AsukaNativeReader {
     public mutating func uint32() -> UInt32 { get(UInt32.self) }
     public mutating func uint64() -> UInt64 { get(UInt64.self) }
     public mutating func uint() -> UInt { UInt(get(UInt64.self)) }
+    public mutating func viewRef() -> AsukaViewRef { AsukaViewRef(id: get(UInt64.self)) }
     public mutating func float32() -> Float { Float(bitPattern: get(UInt32.self)) }
     public mutating func float64() -> Double { Double(bitPattern: get(UInt64.self)) }
 
@@ -328,6 +340,8 @@ public enum AsukaNative {
     /// Calls a Go callback: its answer, nil for a notification (the
     /// host's: to Go).
     public static var invoke: (UInt64, [UInt8]) -> [UInt8]? = { _, _ in nil }
+    /// The view a host shows by an id (the host's: its views' table).
+    @MainActor public static var views: (UInt64) -> AsukaPlatformView? = { _ in nil }
 
     /// The provider of a class's name, looked up once: its Objective-C
     /// name (AsukaModule_…), or the package's path (asuka/network, as the

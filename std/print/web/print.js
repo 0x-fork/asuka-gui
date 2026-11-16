@@ -1,6 +1,7 @@
 // asuka/print on the web: the browser's print dialog, for markup (a
-// hidden frame) or a file it can show (a PDF in its viewer, an image on a
-// page); it doesn't say what the user did: unknown. A browser makes a PDF
+// hidden frame), a file it can show (a PDF in its viewer, an image on a
+// page) or a WebView's page (its frame); it doesn't say what the user
+// did: unknown. A browser makes a PDF
 // only through its print dialog (Save as PDF there): pdf is unsupported.
 import { Outcome, PrintError } from "./print.asuka.js";
 
@@ -109,10 +110,45 @@ async function printFile(source, job) {
   return printFrame((f) => { f.srcdoc = doc; });
 }
 
+/**
+ * printView prints what a WebView shows (el: its element). Its page, when
+ * it's the app's (an HTML string's, a same-origin URL's), prints whole,
+ * paginated; another site's can't be reached from the app's page, so the
+ * app's page prints with only the WebView on it, as it shows.
+ */
+async function printView(el, job) {
+  const f = el?.tagName === "IFRAME" ? el : el?.querySelector?.("iframe");
+  if (!f) throw new PrintError("unsupported");
+  let w = null;
+  try {
+    w = f.contentWindow?.document ? f.contentWindow : null;
+  } catch {}
+  const doc = w ? w.document : document;
+  const style = doc.createElement("style");
+  style.textContent = pageStyle(job) + (w ? "" :
+    " @media print { body * { visibility: hidden !important; } .asuka-printing, .asuka-printing * { visibility: visible !important; }" +
+    " .asuka-printing { position: fixed !important; inset: 0 !important; width: 100% !important; height: 100% !important; transform: none !important; } }");
+  const title = doc.title;
+  if (job.name) doc.title = job.name;
+  (doc.head || doc.documentElement).appendChild(style);
+  if (!w) el.classList.add("asuka-printing");
+  try {
+    await printDialog(w || window);
+  } catch {
+    throw new PrintError("unavailable");
+  } finally {
+    style.remove();
+    el.classList.remove("asuka-printing");
+    if (job.name) doc.title = title;
+  }
+  return Outcome.unknown;
+}
+
 export function makePrinter() {
   return {
     file: (_signal, source, job) => printFile(source, job),
     html: (_signal, markup, job) => printHTML(markup, job),
+    webView: (_signal, view, job) => printView(view, job),
     async pdf(_signal, _layout) {
       throw new (native().UnsupportedError)("print: a browser makes a PDF only through its print dialog (print.html, then Save as PDF there)");
     },

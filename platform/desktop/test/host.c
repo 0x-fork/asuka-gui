@@ -45,6 +45,9 @@ void asuka_desktop_post(void (*fn)(void *ctx), void *ctx) {
 
 bool asuka_desktop_on_main(void) { return pthread_equal(pthread_self(), main_thread); }
 void *asuka_desktop_window(uint32_t view) { return NULL; }
+static void *node_widget(uint32_t id);
+void *asuka_desktop_view(uint32_t view) { return node_widget(view); }
+void *asuka_desktop_webview(uint32_t view) { return NULL; }  // no WebViews here
 uint32_t asuka_desktop_color(uint64_t color) { return 0x000000ff; }
 bool asuka_desktop_dark(void) { return false; }
 const char *asuka_desktop_app_name(void) { return "Test"; }
@@ -80,6 +83,13 @@ static node *node_of(uint32_t id, bool make) {
 	if (!make || nnodes == (int)(sizeof nodes / sizeof *nodes)) return NULL;
 	nodes[nnodes] = (node){.id = id};
 	return &nodes[nnodes++];
+}
+
+// node_widget stands for a view's widget: its native widget, else its
+// node (the test host makes none of its own).
+static void *node_widget(uint32_t id) {
+	node *n = id ? node_of(id, false) : NULL;
+	return n && n->widget ? n->widget : n;
 }
 
 static void apply(const uint8_t *buf, size_t len) {

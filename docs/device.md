@@ -752,6 +752,33 @@ async fn printReceipt(receipt: string) throws -> string {
 - `print.html(markup, job:, orientation:)` prints markup, paginated as a
   browser prints a page: CSS's `@media print` and `break-before` apply.
   Images and styles come from absolute URLs (`https:`, `data:`).
+- `print.webView(view, job:, orientation:)` prints the page a `WebView`
+  shows, as it is now (what the user and its scripts did on it),
+  paginated as its browser prints a page: `view` is the `Ref` the
+  WebView is in (`ref:`). A Ref that holds no WebView the app shows
+  throws `print.PrintError.unsupported`.
+
+```asuka
+import asuka/print as printing
+
+let page = Ref()
+
+component Article(url: string) {
+  Screen {
+    title: "Article"
+    toolbar {
+      Button("Print") {
+        icon: "printer"
+        on press { try? await printing.webView(page, job: "Article") }
+      }
+    }
+    WebView(url: url) {
+      ref: page
+      grow: 1
+    }
+  }
+}
+```
 
 `job` is the job's name in the queue (default: the file's name, the
 page's title, else the app's name), and `orientation` the one the dialog
@@ -772,8 +799,14 @@ says the device can't print.
 | Web | the browser's print dialog | PDFs in the browser's viewer, images | a hidden frame | unknown |
 
 An image wider than tall starts in landscape on Android and iOS, as their
-photo printing does. `asuka/print` doesn't print what a `WebView`
-shows, nor take a view for the iPad's popover to point at, yet.
+photo printing does. A WebView's page prints with the WebView's own
+printing: its print formatter on iOS, its print adapter on Android,
+WebKit's print operation on the Mac and on Linux, WebView2's print
+dialog on Windows. On the web, a page of the app's own origin (an
+`html:` string's) prints whole from its frame; another site's page
+can't be reached from the app's, so the app's page prints with only the
+WebView on it, as it shows. `asuka/print` doesn't yet take a view for
+the iPad's popover to point at.
 
 ### PDFs from HTML
 

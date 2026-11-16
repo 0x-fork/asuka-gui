@@ -528,6 +528,29 @@ async fn printReceipt(receipt: string) throws -> string {
 
 - `print.file(source, job:, orientation:)` 打印 PDF 或图片（可以是路径、资源或 http(s) URL，与 `preview.show` 接受的一样）。其他类型会抛出 `print.PrintError.unsupported`，但 Windows 和 Linux 例外：Windows 上由文件所属的应用来打印，Linux 上由打印机决定接受什么（即 CUPS 能打印的内容）。
 - `print.html(markup, job:, orientation:)` 打印 HTML 标记，分页方式与浏览器打印网页相同：CSS 的 `@media print` 和 `break-before` 都会生效。图片和样式要用绝对 URL（`https:`、`data:`）。
+- `print.webView(view, job:, orientation:)` 打印 `WebView` 当前显示的页面（包括用户和页面脚本对它做过的改动），按它的浏览器打印网页的方式分页：`view` 是装着这个 WebView 的 `Ref`（用 `ref:` 放进去）。如果 Ref 里没有应用正在显示的 WebView，会抛出 `print.PrintError.unsupported`。
+
+```asuka
+import asuka/print as printing
+
+let page = Ref()
+
+component Article(url: string) {
+  Screen {
+    title: "Article"
+    toolbar {
+      Button("Print") {
+        icon: "printer"
+        on press { try? await printing.webView(page, job: "Article") }
+      }
+    }
+    WebView(url: url) {
+      ref: page
+      grow: 1
+    }
+  }
+}
+```
 
 `job` 是打印队列中的任务名（默认依次取文件名、页面标题、应用名），`orientation` 是对话框初始的纸张方向（`.portrait`、`.landscape`）。
 
@@ -542,7 +565,7 @@ async fn printReceipt(receipt: string) throws -> string {
 | Linux | GTK 的打印对话框（打印文件时用打印门户的对话框） | 直接交给打印机（CUPS：PDF、图片） | WebKitGTK 的打印操作 | 已打印或已取消 |
 | Web | 浏览器的打印对话框 | 在浏览器的查看器中打印 PDF，以及图片 | 一个隐藏的 iframe | 未知 |
 
-在 Android 和 iOS 上，宽大于高的图片默认以横向开始，这与它们打印照片时的行为一致。`asuka/print` 目前还不能打印 `WebView` 中显示的内容，也不能指定 iPad 上的弹出框指向哪个视图。
+在 Android 和 iOS 上，宽大于高的图片默认以横向开始，这与它们打印照片时的行为一致。WebView 的页面用 WebView 自己的打印功能来打印：iOS 上是它的打印格式化器，Android 上是它的打印适配器，Mac 和 Linux 上是 WebKit 的打印操作，Windows 上是 WebView2 的打印对话框。在浏览器中，与应用同源的页面（比如 `html:` 字符串生成的页面）会从它的 iframe 完整地打印出来；其他网站的页面，应用的页面无法访问其内容，因此打印的是只留下这个 WebView 的应用页面，内容就是它当前显示的样子。`asuka/print` 目前还不能指定 iPad 上的弹出框指向哪个视图。
 
 ### 用 HTML 生成 PDF
 

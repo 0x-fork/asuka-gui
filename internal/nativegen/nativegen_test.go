@@ -192,6 +192,9 @@ func TestAsukaLoadErrors(t *testing.T) {
 		{"native interface X { fn m(t: http.Request) }", "own types"},
 		{"enum E { a(int) }\nnative interface X { fn m(e: E) }", "without payloads"},
 		{"native interface X { fn m(u: Unknown) }", "Unknown can't cross"},
+		{"native interface X { fn m(f: fn(Ref)) }", "a Ref crosses as a parameter only"},
+		{"native interface X { fn m() -> Ref }", "a Ref crosses as a parameter only"},
+		{"struct S { v: Ref }\nnative interface X { fn m(s: S) }", "a Ref crosses as a parameter only"},
 	} {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "x.asuka"), []byte(c.src), 0o644)

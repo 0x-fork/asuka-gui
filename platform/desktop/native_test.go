@@ -138,6 +138,9 @@ func checkProbe(t *testing.T, cmd *exec.Cmd) string {
 		"host: locked: PantryError.busy",
 		"pantry: show on the main thread: 1",
 		"host: counts jars=12 tins=4",
+		"pantry: shows a view 1",
+		"pantry: shows none 0",
+		"host: shows true false",
 		"host: dial 0.75 picked knob@1",
 		"host: done",
 		"host: finished",
@@ -154,6 +157,8 @@ func checkProbe(t *testing.T, cmd *exec.Cmd) string {
 
 const probe = `import ./pantry
 
+let stepView = Ref()
+
 component Probe {
   state step = "start"
   state dial = 0.5
@@ -161,7 +166,9 @@ component Probe {
   state progress: [float] = []
 
   Column {
-    Text("#{step}")
+    Text("#{step}") {
+      ref: stepView
+    }
     pantry.Dial(dial) {
       label: "Heat"
       items: [pantry.Item(name: "knob", weight: 1.5, level: .low, tags: ["a", "b"], notes: ["k": "v"], next: none, data: "xyz".bytes(), took: 250ms, count: 4, fresh: true)]
@@ -221,6 +228,8 @@ component Probe {
       try p.show()
       let counts = try p.counts()
       step = "counts jars={counts["jars"] ?? 0} tins={counts["tins"] ?? 0}"
+      await sleep(1ms)
+      step = "shows {try p.shows(stepView)} {try p.shows(Ref())}"
       await sleep(1ms)
       while dial != 0.75 || picked == "" { await sleep(1ms) }
       step = "dial {dial} picked {picked}"

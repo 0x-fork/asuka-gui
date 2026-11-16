@@ -85,6 +85,7 @@ extension AsukaNativeView {
 public typealias AsukaMacEmit = @convention(c) (UInt64, UnsafePointer<UInt8>?, Int) -> Void
 public typealias AsukaMacDone = @convention(c) (UInt64, UnsafePointer<UInt8>?, Int) -> Void
 public typealias AsukaMacInvoke = @convention(c) (UInt64, UnsafePointer<UInt8>?, Int, UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?) -> Int
+public typealias AsukaMacViewOf = @convention(c) (UInt64) -> UnsafeMutableRawPointer?
 
 struct AsukaMacHost {
     let emit: AsukaMacEmit
@@ -141,6 +142,15 @@ public func asukaNativesBoot(_ emit: AsukaMacEmit, _ done: AsukaMacDone, _ invok
         guard let out else { return nil }
         defer { free(out) }
         return Array(UnsafeBufferPointer(start: out, count: n))
+    }
+}
+
+/// Keeps the host's lookup of its views by id (an NSView, unretained:
+/// nil for none), for a Ref a package's method is passed.
+@_cdecl("asuka_natives_views")
+public func asukaNativesViews(_ viewOf: AsukaMacViewOf) {
+    MainActor.assumeIsolated {
+        AsukaNative.views = { id in viewOf(id).map { Unmanaged<NSView>.fromOpaque($0).takeUnretainedValue() } }
     }
 }
 

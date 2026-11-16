@@ -334,6 +334,11 @@ func (l *aloader) typ(t syntax.Type, param bool) (*Type, error) {
 			return &Type{Kind: Bytes, Go: "[]byte"}, nil
 		case "Duration":
 			return &Type{Kind: Duration, Go: "time.Duration"}, nil
+		case "Ref":
+			if !param {
+				return nil, l.errorf(t, "a Ref crosses as a parameter only")
+			}
+			return &Type{Kind: ViewRef, Go: "uint64"}, nil
 		case "Color":
 			// The core's encoding: AsukaColors.color(v) in Swift,
 			// AsukaModules.color(v) in Kotlin, asuka.native.color(v) in

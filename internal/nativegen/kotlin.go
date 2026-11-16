@@ -30,6 +30,7 @@ var kotlinOf = map[Kind]string{
 	Uint8: "UByte", Uint16: "UShort", Uint32: "UInt", Uint64: "ULong", Uint: "ULong",
 	Float32: "Float", Float64: "Double", String: "String", Bytes: "ByteArray",
 	Time: "java.time.Instant", Duration: "kotlin.time.Duration",
+	ViewRef: "dev.asuka.AsukaViewRef",
 }
 
 var kotlinZero = map[Kind]string{

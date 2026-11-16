@@ -1092,6 +1092,8 @@ void wh_web_command(node *n, uint16_t cmd, const uint8_t *args, size_t len) {
 	}
 }
 
+void *wh_web_view(node *n) { return n && n->web && !n->web->closed && !n->web->video ? n->web->view : NULL; }
+
 void wh_web_resized(node *n) {
 	if (n->web) web_resized(n->web);
 }

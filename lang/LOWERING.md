@@ -806,7 +806,10 @@ object type (a reference: the runtime's ak_native_obj) and its methods:
 - A call `x.m(a)` is CALLB `native.call(x, method, args, argsDesc,
   retDesc, errors)`: method the method's index from 1, args a tuple of
   the arguments, the descriptors (core/src/native/native.h: rt/json.h's
-  plus `o` objects, `F<n>…` callbacks, `v` nothing) string constants. An
+  plus `o` objects, `F<n>…` callbacks, `V` views, `v` nothing) string
+  constants. A `Ref` argument crosses as the view it holds at the call
+  (CGET), which the codec writes as the id its host knows it by (0: none);
+  each platform's generated code turns the id into its view. An
   `async` method is `native.start` with the same arguments, then AWAIT;
   cancelling the task cancels the call on the platform's side.
 - Every method `throws` (the platform's side may fail); the checker

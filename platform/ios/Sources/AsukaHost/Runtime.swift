@@ -414,6 +414,8 @@ final class AsukaTextField: UITextField {
             defer { free(out) }
             return Array(UnsafeBufferPointer(start: out, count: n))
         }
+        // A Ref a package's method was passed: the view of its id.
+        AsukaNative.views = { [weak self] id in id <= UInt64(UInt32.max) ? self?.nodes[UInt32(id)]?.view : nil }
         if let c = controller { AsukaSplash.shared.show(over: c) }
         var cb = asuka_host_callbacks(
             apply: { buf, len in
