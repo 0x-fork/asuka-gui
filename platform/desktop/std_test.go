@@ -95,6 +95,41 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: got 200 hello GET probe yes true", "host: posted 200 ping", "host: missing 404", "host: done"}},
+		{"monitors", `import asuka/network
+import asuka/power
+import asuka/appearance
+import asuka/screen
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    for await s in network.changes() {
+      step = "network {s.type != .none || !s.connected}"
+      break
+    }
+    await sleep(1ms)
+    for await s in power.changes() {
+      step = "power {s.level} {s.battery}"
+      break
+    }
+    await sleep(1ms)
+    for await a in appearance.changes() {
+      step = "appearance {a.increaseContrast}"
+      break
+    }
+    await sleep(1ms)
+    for await ds in screen.changes() {
+      step = "screens {ds.count() > 0} {ds.count() == 0 || ds[0].primary} {ds.count() == 0 || ds[0].bounds.width > 0}"
+      break
+    }
+    await sleep(1ms)
+    step = "done"
+  }
+}
+
+app { Probe() }
+`, []string{"host: network true", "host: power -1 false", "host: appearance false", "host: screens true true true", "host: done"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()

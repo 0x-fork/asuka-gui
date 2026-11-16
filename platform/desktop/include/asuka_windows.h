@@ -42,10 +42,33 @@ void asuka_com_release(void *obj);
 // asuka_com_query is obj's interface iid (a reference), or NULL.
 void *asuka_com_query(void *obj, const GUID *iid);
 
+// asuka_win_reg reads a value under HKEY_CURRENT_USER into buf (its
+// size in *n, in and out): false when it isn't there or isn't of type.
+bool asuka_win_reg(const wchar_t *path, const wchar_t *name, DWORD type, void *buf, DWORD *n);
+
 // asuka_guid parses "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" (braces allowed).
 GUID asuka_guid(const char *s);
 // asuka_guid_string is g as "XXXXXXXX-XXXX-…", lower case, into buf (37).
 void asuka_guid_string(const GUID *g, char buf[37]);
+
+// asuka_win_system_message calls fn(ctx, msg, wp, lp) with each message
+// the system window gets, making it the first time: a top-level window
+// that's never shown, which hears what Windows broadcasts
+// (WM_DISPLAYCHANGE, WM_SETTINGCHANGE, WM_SYSCOLORCHANGE,
+// WM_POWERBROADCAST: a message-only window hears none), registered for
+// the power source's, the battery's and battery saver's changes, sleep
+// and waking (modern standby's too), and the session's WM_WTSSESSION_CHANGE.
+// It returns the handler's id, for asuka_win_system_message_stop. Main
+// thread.
+int asuka_win_system_message(void (*fn)(void *ctx, UINT msg, WPARAM wp, LPARAM lp), void *ctx);
+void asuka_win_system_message_stop(int id);
+
+// asuka_win_window makes a window of native packages' own class, whose
+// messages go to handle first (true: handled, *result its answer), the
+// rest to DefWindowProc; handle gets WM_NCDESTROY last, and ctx is free
+// then. Main thread.
+HWND asuka_win_window(DWORD ex, const wchar_t *title, DWORD style, int x, int y, int w, int h, HWND parent,
+                      bool (*handle)(void *ctx, HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT *result), void *ctx);
 
 // ---- WinRT ----
 

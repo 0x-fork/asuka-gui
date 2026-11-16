@@ -91,6 +91,9 @@ typedef struct _GdkClipboard GdkClipboard;
 typedef struct _GdkTexture GdkTexture;
 typedef struct _GdkPaintable GdkPaintable;
 typedef struct _GListModel GListModel;
+typedef struct {
+	int x, y, width, height;
+} GdkRectangle;
 
 typedef void (*GCallback)(void);
 typedef void (*GDestroyNotify)(gpointer data);
@@ -110,6 +113,10 @@ enum { G_FILE_MONITOR_NONE = 0, G_FILE_MONITOR_WATCH_MOVES = 8 };
 enum { G_FILE_QUERY_INFO_NONE = 0 };
 
 #define G_VARIANT_TYPE(s) ((const GVariantType *)(s))
+
+// The desktop portal's bus name and object.
+#define ASUKA_PORTAL "org.freedesktop.portal.Desktop"
+#define ASUKA_PORTAL_PATH "/org/freedesktop/portal/desktop"
 
 // The functions: lib (glib, gobject, gio, gtk, adw), result, name, params.
 #define ASUKA_LINUX_FUNCS(X)                                                                                   \
@@ -214,7 +221,23 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(gtk, gpointer, gtk_uri_launcher_new, (const gchar *uri))                                                  \
 	X(gtk, void, gtk_uri_launcher_launch, (gpointer l, GtkWindow *parent, GCancellable *c, GAsyncReadyCallback cb, gpointer data)) \
 	X(gtk, gboolean, gtk_uri_launcher_launch_finish, (gpointer l, GAsyncResult *res, GError **e))               \
+	X(adw, gpointer, adw_style_manager_get_default, (void))                                                     \
+	X(adw, gboolean, adw_style_manager_get_high_contrast, (gpointer m))                                         \
+	X(adw, gboolean, adw_style_manager_get_dark, (gpointer m))                                                  \
+	X(gtk, void, gtk_init, (void))                                                                              \
 	X(gtk, GdkDisplay *, gdk_display_get_default, (void))                                                       \
+	X(gtk, void, gdk_monitor_get_geometry, (GdkMonitor * m, GdkRectangle *r))                                   \
+	X(gtk, const char *, gdk_monitor_get_connector, (GdkMonitor * m))                                           \
+	X(gtk, const char *, gdk_monitor_get_description, (GdkMonitor * m))                                         \
+	X(gtk, const char *, gdk_monitor_get_manufacturer, (GdkMonitor * m))                                        \
+	X(gtk, const char *, gdk_monitor_get_model, (GdkMonitor * m))                                               \
+	X(gtk, double, gdk_monitor_get_scale, (GdkMonitor * m))                                                     \
+	X(gtk, int, gdk_monitor_get_scale_factor, (GdkMonitor * m))                                                 \
+	X(gtk, int, gdk_monitor_get_refresh_rate, (GdkMonitor * m))                                                 \
+	X(gtk, GdkMonitor *, gdk_x11_display_get_primary_monitor, (GdkDisplay * d))                                 \
+	X(gtk, void, gdk_x11_monitor_get_workarea, (GdkMonitor * m, GdkRectangle *r))                               \
+	X(gobject, GType, g_type_from_name, (const gchar *name))                                                    \
+	X(gobject, gboolean, g_type_check_instance_is_a, (gpointer instance, GType t))                                                       \
 	X(gtk, GListModel *, gdk_display_get_monitors, (GdkDisplay * d))                                            \
 	X(gtk, gpointer, g_list_model_get_item, (GListModel * m, guint i))                                          \
 	X(gtk, guint, g_list_model_get_n_items, (GListModel * m))
@@ -242,6 +265,14 @@ void asuka_linux_fail(asuka_error *err, GError *e, const char *what);
 // context (the GTK host's main loop): for what must run where GLib's
 // signals come.
 void asuka_linux_main(void (*fn)(void *ctx), void *ctx);
+
+// asuka_linux_bus is the session's or the system's bus (G_BUS_TYPE_*),
+// connected once and kept; NULL with *e set when there's none.
+GDBusConnection *asuka_linux_bus(int kind, GError **e);
+
+// asuka_linux_is_a reports whether obj is of the type named (a GType a
+// library registers: GdkX11Display), false when there's no such type.
+bool asuka_linux_is_a(gpointer obj, const char *type);
 
 // asuka_linux_cancelled reports whether a GError says the user cancelled
 // (G_IO_ERROR_CANCELLED, a GTK dialog cancelled or dismissed); it

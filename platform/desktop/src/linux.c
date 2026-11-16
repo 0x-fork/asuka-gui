@@ -48,6 +48,23 @@ void asuka_linux_fail(asuka_error *err, GError *e, const char *what) {
 	G(g_error_free)(e);
 }
 
+GDBusConnection *asuka_linux_bus(int kind, GError **e) {
+	static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
+	static GDBusConnection *buses[3];
+	if (kind < 1 || kind > 2 || !asuka_linux()) return NULL;
+	pthread_mutex_lock(&mu);
+	if (!buses[kind]) buses[kind] = G(g_bus_get_sync)(kind, NULL, e);
+	GDBusConnection *c = buses[kind];
+	pthread_mutex_unlock(&mu);
+	return c;
+}
+
+bool asuka_linux_is_a(gpointer obj, const char *type) {
+	if (!obj || !asuka_linux()) return false;
+	GType t = G(g_type_from_name)(type);
+	return t && G(g_type_check_instance_is_a)(obj, t);
+}
+
 bool asuka_linux_cancelled(const GError *e) {
 	if (!e) return false;
 	if (G(g_io_error_quark) && e->domain == G(g_io_error_quark)() && e->code == 19) return true;  // G_IO_ERROR_CANCELLED

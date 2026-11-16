@@ -52,6 +52,12 @@ void *asuka_com_query(void *obj, const GUID *iid) {
 	return SUCCEEDED(hr) ? out : NULL;
 }
 
+bool asuka_win_reg(const wchar_t *path, const wchar_t *name, DWORD type, void *buf, DWORD *n) {
+	DWORD t = 0;
+	LSTATUS r = RegGetValueW(HKEY_CURRENT_USER, path, name, RRF_RT_ANY, &t, buf, n);
+	return r == ERROR_SUCCESS && t == type;
+}
+
 static int hexv(char c) {
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
@@ -79,6 +85,124 @@ GUID asuka_guid(const char *s) {
 void asuka_guid_string(const GUID *g, char buf[37]) {
 	snprintf(buf, 37, "%08lx-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x", (unsigned long)g->Data1, g->Data2, g->Data3, g->Data4[0],
 	         g->Data4[1], g->Data4[2], g->Data4[3], g->Data4[4], g->Data4[5], g->Data4[6], g->Data4[7]);
+}
+
+// ---- The system window, and packages' windows ----
+
+typedef struct {
+	int id;
+	void (*fn)(void *, UINT, WPARAM, LPARAM);
+	void *ctx;
+} sys_handler;
+
+static HWND sys_hwnd;
+static sys_handler *sys_handlers;
+static int nsys, capsys, sys_next;
+
+static LRESULT CALLBACK sys_proc(HWND hwnd, UINT m, WPARAM wp, LPARAM lp) {
+	for (int i = 0; i < nsys; i++) {
+		sys_handler h = sys_handlers[i];
+		h.fn(h.ctx, m, wp, lp);
+	}
+	return DefWindowProcW(hwnd, m, wp, lp);
+}
+
+int asuka_win_system_message(void (*fn)(void *ctx, UINT msg, WPARAM wp, LPARAM lp), void *ctx) {
+	if (!sys_hwnd) {
+		WNDCLASSEXW wc;
+		memset(&wc, 0, sizeof wc);
+		wc.cbSize = sizeof wc;
+		wc.lpfnWndProc = sys_proc;
+		wc.hInstance = GetModuleHandleW(NULL);
+		wc.lpszClassName = L"AsukaSystemWindow";
+		RegisterClassExW(&wc);
+		sys_hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, L"AsukaSystemWindow", L"", WS_POPUP, 0, 0, 0, 0, NULL, NULL, wc.hInstance, NULL);
+		// GUID_ACDC_POWER_SOURCE, GUID_BATTERY_PERCENTAGE_REMAINING,
+		// GUID_POWER_SAVING_STATUS (battery saver) and
+		// GUID_ENERGY_SAVER_STATUS (Windows 11's energy saver).
+		static const char *settings[] = {"5D3E9A59-E9D5-4B00-A6BD-FF34FF516548", "A7AD8041-B45A-4CAE-87A3-EECBB468A9E1",
+		                                 "E00958C0-C213-4ACE-AC77-FECCED2EEEA5", "550E8400-E29B-41D4-A716-446655440000"};
+		HMODULE user = GetModuleHandleW(L"user32.dll");
+		HPOWERNOTIFY(WINAPI * reg_setting)(HANDLE, LPCGUID, DWORD) = NULL;
+		HPOWERNOTIFY(WINAPI * reg_suspend)(HANDLE, DWORD) = NULL;
+		if (user) {
+			*(FARPROC *)&reg_setting = GetProcAddress(user, "RegisterPowerSettingNotification");
+			*(FARPROC *)&reg_suspend = GetProcAddress(user, "RegisterSuspendResumeNotification");
+		}
+		for (size_t i = 0; reg_setting && i < sizeof settings / sizeof *settings; i++) {
+			GUID g = asuka_guid(settings[i]);
+			reg_setting(sys_hwnd, &g, 0);  // DEVICE_NOTIFY_WINDOW_HANDLE
+		}
+		if (reg_suspend) reg_suspend(sys_hwnd, 0);
+		HMODULE wts = LoadLibraryExW(L"wtsapi32.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+		BOOL(WINAPI * reg_session)(HWND, DWORD) = NULL;
+		if (wts) *(FARPROC *)&reg_session = GetProcAddress(wts, "WTSRegisterSessionNotification");
+		if (reg_session) reg_session(sys_hwnd, 0);  // NOTIFY_FOR_THIS_SESSION
+	}
+	if (nsys == capsys) {
+		capsys = capsys ? capsys * 2 : 8;
+		sys_handlers = realloc(sys_handlers, (size_t)capsys * sizeof *sys_handlers);
+	}
+	sys_handlers[nsys++] = (sys_handler){++sys_next, fn, ctx};
+	return sys_next;
+}
+
+void asuka_win_system_message_stop(int id) {
+	for (int i = 0; i < nsys; i++) {
+		if (sys_handlers[i].id == id) {
+			sys_handlers[i] = sys_handlers[--nsys];
+			return;
+		}
+	}
+}
+
+typedef struct {
+	bool (*handle)(void *, HWND, UINT, WPARAM, LPARAM, LRESULT *);
+	void *ctx;
+} own_window;
+
+static LRESULT CALLBACK own_proc(HWND hwnd, UINT m, WPARAM wp, LPARAM lp) {
+	own_window *o = (own_window *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+	if (m == WM_NCCREATE) {
+		CREATESTRUCTW *cs = (CREATESTRUCTW *)lp;
+		o = cs->lpCreateParams;
+		SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)o);
+	}
+	LRESULT r = 0;
+	if (o && o->handle && o->handle(o->ctx, hwnd, m, wp, lp, &r)) {
+		if (m == WM_NCDESTROY) free(o);
+		return r;
+	}
+	if (m == WM_NCDESTROY) {
+		SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+		free(o);
+	}
+	return DefWindowProcW(hwnd, m, wp, lp);
+}
+
+HWND asuka_win_window(DWORD ex, const wchar_t *title, DWORD style, int x, int y, int w, int h, HWND parent,
+                      bool (*handle)(void *ctx, HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT *result), void *ctx) {
+	static bool registered;
+	HINSTANCE inst = GetModuleHandleW(NULL);
+	if (!registered) {
+		WNDCLASSEXW wc;
+		memset(&wc, 0, sizeof wc);
+		wc.cbSize = sizeof wc;
+		wc.style = CS_HREDRAW | CS_VREDRAW;
+		wc.lpfnWndProc = own_proc;
+		wc.hInstance = inst;
+		wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
+		wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(1));
+		wc.lpszClassName = L"AsukaPackageWindow";
+		RegisterClassExW(&wc);
+		registered = true;
+	}
+	own_window *o = malloc(sizeof *o);
+	o->handle = handle;
+	o->ctx = ctx;
+	HWND hwnd = CreateWindowExW(ex, L"AsukaPackageWindow", title ? title : L"", style, x, y, w, h, parent, NULL, inst, o);
+	if (!hwnd) free(o);
+	return hwnd;
 }
 
 // ---- WinRT ----

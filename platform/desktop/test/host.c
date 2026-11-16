@@ -215,6 +215,8 @@ int main(int argc, char **argv) {
 	// their signals).
 #ifdef __linux__
 	bool glib = asuka_linux() != NULL;
+	// GTK on a display (xvfb-run), as the Linux host has it.
+	if (glib && G(gtk_init) && getenv("DISPLAY")) G(gtk_init)();
 #else
 	bool glib = false;
 #endif
