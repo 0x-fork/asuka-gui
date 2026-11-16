@@ -88,7 +88,7 @@ let db = (try? openDB())!
 
 `sqlite.open(name)` 打开数据库（不存在就创建）：普通名字是应用数据目录里的一个文件（见[数据存在哪里](#数据存在哪里)），绝对路径就是那个文件，`":memory:"` 是内存中的数据库。文件数据库使用预写式日志（WAL），并打开外键约束。
 
-`db.migrate(steps)` 把表结构更新到最新。steps 是数据库按顺序排列的各个版本：每一步的 SQL（用分号分隔多条语句）只运行一次，在一个事务里执行，版本号记在 `PRAGMA user_version` 里。处于版本 1 的数据库会从第 2 步开始执行；新数据库会全部执行。新步骤加在末尾，已经发布的步骤不要再改。它在主线程上运行，所以在应用启动时调用。在 Web 上，页面的主线程不能等待 SQLite 的 worker，所以 `open` 和 `migrate` 会发给 worker 而不等回复，并在之后的语句之前运行：没能打开的数据库，之后的每条语句都会失败并说明原因；迁移失败时，下一条语句会以这个错误失败。
+`db.migrate(steps)` 把表结构更新到最新。steps 是数据库按顺序排列的各个版本：每一步的 SQL（用分号分隔多条语句）只运行一次，在一个事务里执行，版本号记在 `PRAGMA user_version` 里。处于版本 1 的数据库会从第 2 步开始执行；新数据库会全部执行。新步骤加在末尾，已经发布的步骤不要再改。它在主线程上运行，所以在应用启动时调用。在 Web 上，页面的主线程不能等待 SQLite 的 worker，所以 `open` 和 `migrate` 会发给 worker 而不等回复，并在之后的语句之前运行：没能打开的数据库，之后的每条语句都会失败并说明原因；迁移失败时，下一条语句会失败。
 
 ### 查询
 
@@ -178,7 +178,7 @@ async fn signUp(email: string) -> string {
 
 SQLite 在每个平台上都是 3.54.1 版，内置 FTS5、R*Tree、Geopoly、数学函数、`dbstat`、`STAT4` 和 `soundex`，不支持可加载扩展，临时表放在内存里。它是插件的库 `asqlite`（由 `sdk/sqlite` 构建和发布），`asuka build` 会把它放到核心找得到的地方：Mac 的 `Contents/Frameworks`、Windows 应用的 `.exe` 旁边、Linux 安装前缀的 `lib/<app>` 里、iOS 应用 `Frameworks` 里的一个 framework、APK 每个 ABI 里 `libasuka.so` 的旁边。桌面上的 `asuka dev`、`asuka test` 和 `asuka run` 会让核心使用插件的构建产物或它发布的文件（`ASUKA_LIB_ASQLITE`），后者只下载一次，存进用户的缓存。在 Web 上，它是同一个库编译成的 WebAssembly，运行在页面的一个 worker 里（见 [Web 上的 SQLite](web.md#sqlite)）。
 
-## 密钥：asuka/secure
+## 机密信息：asuka/secure
 
 `asuka/secure` 保存少量机密信息，比如令牌和密码，由平台负责加密。它是用来放机密的，不是用来放数据的：其他东西请放在 store 或数据库里。
 
