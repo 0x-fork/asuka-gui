@@ -178,6 +178,10 @@ bool wh_accelerator(const char *key, uint8_t mods, ACCEL *out);
 bool wh_open_bar_menu(const wchar_t *title);
 bool wh_choose_menu_item(const wchar_t *title);
 bool wh_tap_nav(const wchar_t *text);
+// wh_tap_overlay is automation's tap on what the host makes outside the
+// views: a snackbar's buttons, an alert dialog's, a sidebar's items, a
+// Wheel's or Picker's items (snackbar.c; nav.h has each part's).
+bool wh_tap_overlay(const wchar_t *text);
 void wh_list_dump(node *n, ak_buf *b, int depth, void (*walk)(ak_buf *, node *, int));
 HWND wh_nav_window(node *n);
 void wh_web_close_all(void);

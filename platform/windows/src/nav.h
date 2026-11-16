@@ -108,5 +108,9 @@ void wh_open_alert_dialog(node *n);
 void wh_close_alert_dialog(node *n);
 void wh_update_alert_dialog(node *n);
 HWND wh_alert_dialog_window(node *n);
+bool wh_snack_tap(const wchar_t *text);
+bool wh_alert_dialog_tap(const wchar_t *text);
+bool wh_pane_tap(const wchar_t *text);
+bool wh_combo_tap(const wchar_t *text);
 
 #endif

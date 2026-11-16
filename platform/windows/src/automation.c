@@ -332,7 +332,7 @@ static HWND typing_target(void) {
 // window under it that takes them.
 static bool tap(const wchar_t *t) {
 	node *found = showing(t);
-	if (!found && wh_tap_nav(t)) return true;  // a tab, a header's or command bar's button
+	if (!found && (wh_tap_nav(t) || wh_tap_overlay(t))) return true;  // a tab, a header's or command bar's button; a snackbar's, a dialog's...
 	if (!found) return false;
 	if (found->kind == AK_KIND_TEXT_FIELD) {
 		SetFocus(found->ctl);
