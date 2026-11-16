@@ -63,7 +63,7 @@ go test ./...                       # signal, layout, ui with host/fake, ops, CL
 go test ./uitest ./examples/...     # apps' UI tests: uitest drives them on host/fake (-uitest.update: their snapshots)
 go test ./layout -run CSS -update-known  # after fixing layout: refresh known_failures.txt
 go test ./ops -update               # after changing the wire format: refresh golden files
-go test ./host/darwin -run Conformance   # what the macOS host draws for a Style, measured (package conformance)
+go test ./host/darwin -run Conformance   # what the macOS host draws for the style props, measured (package conformance; go generate ./conformance writes its app)
 go test -tags e2e ./e2e -run Conformance # likewise on the simulator, the emulator and headless Chrome (ASUKA_CONFORMANCE_OUT=dir: the captures)
 swift test --package-path platform/ios # the Swift decoder against the golden files (macOS)
 node --test platform/web                # the JavaScript decoder, likewise

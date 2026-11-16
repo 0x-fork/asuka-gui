@@ -1,9 +1,12 @@
 package conformance
 
 import (
+	"github.com/egoist/asuka/lang/compile"
 	"image"
 	"image/color"
 	"math"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -114,5 +117,21 @@ func TestCasesFit(t *testing.T) {
 	// default window.
 	if w, h := SheetSize(); w > 360 || h > 580 {
 		t.Errorf("the sheet is %gx%g points", w, h)
+	}
+}
+
+// The app's source is what App says (go generate ./conformance), and it
+// compiles.
+func TestApp(t *testing.T) {
+	b, err := os.ReadFile("app/app.asuka")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(b), App()) {
+		t.Fatal("conformance/app/app.asuka is stale: go generate ./conformance")
+	}
+	res := compile.Files(map[string][]byte{"app.asuka": b}, nil)
+	if err := res.Err(); err != nil {
+		t.Fatalf("the sheet's app doesn't compile:\n%v", err)
 	}
 }

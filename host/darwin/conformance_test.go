@@ -10,13 +10,12 @@ import (
 	"github.com/ebitengine/purego"
 	"github.com/egoist/asuka/conformance"
 	. "github.com/egoist/asuka/internal/darwin"
-	"github.com/egoist/asuka/ui"
 )
 
 // TestConformance draws the conformance sheet in a real window and
 // measures it (package conformance).
 func TestConformance(t *testing.T) {
-	h, _ := mount(t, func() ui.Node { return conformance.Sheet() })
+	h := mountApp(t, conformance.Sheet()+"app { ConformanceSheet() }")
 	var img image.Image
 	onMain(func() {
 		Send(h.window, "orderFront:", 0)

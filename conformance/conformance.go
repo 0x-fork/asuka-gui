@@ -18,7 +18,8 @@
 //	go test -tags e2e ./e2e -run Conformance            # iOS, Android and the web (headless Chrome, at 1×, 1.5× and 2×)
 //	ASUKA_CONFORMANCE_OUT=/tmp/c go test ...             # also write each capture, as <host>.png
 //
-// Sheet's app (conformance/app) shows it on any platform:
+// Its app (conformance/app, App's source, which go generate writes)
+// shows it on any platform:
 //
 //	go run ./cmd/asuka dev --platform ios conformance/app
 package conformance
@@ -31,10 +32,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/egoist/asuka/colors"
-	"github.com/egoist/asuka/ui"
 )
+
+//go:generate go run ./gen
 
 // Feature is something a case relies on that a host may document it
 // lacks; its cases are skipped there, with the reason, rather than fail.
@@ -78,7 +78,7 @@ const (
 )
 
 // Magenta is the registration markers' color, which no case uses.
-var Magenta = colors.RGB(255, 0, 255)
+const Magenta = "#ff00ff"
 
 // SheetSize is the sheet's size in points.
 func SheetSize() (w, h float32) {
@@ -91,30 +91,39 @@ func cellOrigin(i int) (x, y float32) {
 	return marker + float32(i%Columns)*Cell, marker + float32(i/Columns)*Cell
 }
 
-// Sheet is every case in its cell, on white, between a magenta square
-// at the top left and one at the bottom right. Show it anywhere on
-// screen, at its own size: Check finds it in the capture.
-func Sheet() ui.Node {
+// Sheet is the sheet as Asuka's ConformanceSheet component: every case
+// in its cell, on white, between a magenta square at the top left and
+// one at the bottom right. Show it anywhere on screen, at its own size:
+// Check finds it in the capture.
+func Sheet() string {
 	w, h := SheetSize()
-	at := func(x, y, w, h float32, s ui.Style) ui.Style {
-		s.Absolute = true
-		s.Left, s.Top, s.Width, s.Height = ui.Pt(x), ui.Pt(y), ui.Pt(w), ui.Pt(h)
-		return s
-	}
-	kids := []ui.Node{
-		ui.View(ui.ViewProps{Style: at(0, 0, marker, marker, ui.Style{Background: Magenta})}),
-		ui.View(ui.ViewProps{Style: at(w-marker, h-marker, marker, marker, ui.Style{Background: Magenta})}),
-	}
+	var b strings.Builder
+	b.WriteString("// The conformance sheet (package conformance's cases).\n")
+	b.WriteString("component ConformanceSheet {\n")
+	fmt.Fprintf(&b, "  View {\n    width: %g; height: %g; background: #ffffff; alignSelf: .center\n", w, h)
+	fmt.Fprintf(&b, "    %s\n", box(0, 0, marker, marker, "background: "+Magenta))
+	fmt.Fprintf(&b, "    %s\n", box(w-marker, h-marker, marker, marker, "background: "+Magenta))
 	for i, c := range Cases {
 		x, y := cellOrigin(i)
 		// A View with only layout props makes no native view: the case's
 		// views go straight into the sheet, which its white shows under.
-		kids = append(kids, ui.View(ui.ViewProps{Style: at(x, y, Cell, Cell, ui.Style{})}, c.Scene()))
+		fmt.Fprintf(&b, "    // %s\n    %s\n", c.Name, box(x, y, Cell, Cell, "", c.Scene))
 	}
-	return ui.View(ui.ViewProps{Style: ui.Style{
-		Width: ui.Pt(w), Height: ui.Pt(h), Background: colors.RGB(255, 255, 255),
-		AlignSelf: ui.AlignCenter,
-	}}, kids...)
+	b.WriteString("  }\n}\n")
+	return b.String()
+}
+
+// App is an Asuka app that shows the sheet: conformance/app's app.asuka.
+func App() string {
+	return Sheet() + `
+app {
+  SafeArea {
+    justify: .center; align: .center
+    Text("Conformance")
+    ConformanceSheet()
+  }
+}
+`
 }
 
 // Result is one case's outcome on a capture.

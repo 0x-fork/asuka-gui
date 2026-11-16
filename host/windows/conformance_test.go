@@ -8,13 +8,12 @@ import (
 	"testing"
 
 	"github.com/egoist/asuka/conformance"
-	"github.com/egoist/asuka/ui"
 )
 
 // TestConformance draws the conformance sheet in a real window and
 // measures what it shows (package conformance).
 func TestConformance(t *testing.T) {
-	h, _ := mount(t, func() ui.Node { return conformance.Sheet() })
+	h := mountApp(t, conformance.Sheet()+"app { ConformanceSheet() }")
 	var img *stdimage.NRGBA
 	onMain(t, func() {
 		showHost(h)
