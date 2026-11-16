@@ -1,0 +1,111 @@
+// The Asuka side of the benchmarks (bench/README.md): the same scenarios,
+// frame by frame, as bench/swiftui and bench/compose, written as an Asuka
+// app would be. The meter is a native package's module (meter/).
+//
+//   go run ./bench/run -ios        # builds this and the others, runs them, compares
+
+import ./meter
+
+let rows = 1000 // the mount and update scenarios' rows
+let listRows = 10_000 // the scroll scenario's
+
+enum Phase { ready, mounted, list }
+
+/// A row's number: state of its own, as a signal per row.
+store Cell {
+  state value = 0
+}
+
+/// The meter, where the package has one (the phones); elsewhere the
+/// scenarios run, unmeasured.
+let m = try? meter.Meter()
+
+fn mark(scenario: string) { try? m?.begin(scenario) }
+fn end() { try? m?.end() }
+fn memory(scenario: string) { try? m?.memory(scenario) }
+
+component Bench {
+  state phase = Phase.ready
+  state tick = 0 // every row shows it: update-all changes them all
+  state frame = 0
+  let cells = (0..<rows).map(_ => Cell())
+  let items = (0..<listRows).map(i => i)
+  let list = Ref()
+
+  // The schedule, in frames; the same in each app.
+  let stop = onFrame(_ => {
+    frame += 1
+    let f = frame
+    if f == 2 {
+      try? m?.startup()
+      memory("memory-idle")
+    } else if f == 29 { // a frame ahead: what's measured starts with the next
+      mark("mount")
+    } else if f == 30 {
+      phase = .mounted
+    } else if f == 36 {
+      end()
+      memory("memory-mount")
+    } else if f == 60 {
+      mark("update-one")
+    } else if f > 60 && f <= 300 {
+      cells[(f - 61) % rows].value += 1
+    } else if f == 301 {
+      end()
+    } else if f == 330 {
+      mark("update-all")
+    } else if f > 330 && f <= 450 {
+      tick += 1
+    } else if f == 451 {
+      end()
+    } else if f == 480 {
+      phase = .list
+    } else if f == 500 {
+      mark("scroll")
+    } else if f > 500 && f <= 800 {
+      list.scrollTo(0, float(f - 500) * 8, animated: false)
+    } else if f == 801 {
+      end()
+      memory("memory-list")
+    } else if f == 830 {
+      try? m?.done()
+    }
+  })
+
+  SafeArea {
+    grow: 1
+    match phase {
+      .mounted => Scroll {
+        grow: 1
+        for i in 0..<rows key i {
+          Row {
+            padding: [8, 16]
+            Text("Row {i}") { grow: 1 }
+            Text("{cells[i].value + tick}")
+          }
+        }
+      }
+      .list => List {
+        ref: list
+        for i in items key i {
+          Column {
+            padding: [8, 16]
+            gap: 2
+            Text("Row {i}") { font: .headline }
+            Text("Detail {i * 7 % 1000}") { color: .secondaryLabel }
+          }
+        }
+      }
+      .ready => Text("Ready") { font: .largeTitle }
+    }
+  }
+}
+
+app { Bench() }
+
+test "the schedule runs, unmeasured, on the fake host" {
+  let app = mount(Bench())
+  app.expect("Ready")
+  for f in 1..40 { app.frame(f * 16ms) }
+  app.expect("Row 999")
+}

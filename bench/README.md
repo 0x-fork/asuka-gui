@@ -24,15 +24,15 @@ At set frames after launch (the same frame numbers in every app):
 |---|---|---|
 | startup | the app launches and shows its first screen | ms from the process's start to the second frame |
 | memory-idle | the first screen | memory, and its peak since launch |
-| mount | 1,000 rows (a label and a number) appear in a scroll view (not lazy: `ScrollView`/`VStack`, `Column`/`verticalScroll`, `ui.Scroll`) | the main thread's time over the frames it takes |
+| mount | 1,000 rows (a label and a number) appear in a scroll view (not lazy: `ScrollView`/`VStack`, `Column`/`verticalScroll`, `Scroll`) | the main thread's time over the frames it takes |
 | memory-mount | with the 1,000 rows | memory, and its peak |
 | update-one | one row's number changes, a different row each frame, for 240 frames | the main thread's time a frame: mean, 95th percentile; dropped frames |
 | update-all | every row's number changes each frame, for 120 frames (they all show one counter) | the same |
-| scroll | a lazy list of 10,000 two-line rows (`List`, `LazyColumn`, `ui.List`) scrolls 8 points a frame, for 300 frames | the same |
+| scroll | a lazy list of 10,000 two-line rows (`List`, `LazyColumn`, `List`) scrolls 8 points a frame, for 300 frames | the same |
 | memory-list | after the scroll | memory, and its peak |
 
-State is each framework's idiomatic fine-grained kind: a signal per row
-(Asuka), an `@Observable` per row (SwiftUI's Observation), a
+State is each framework's idiomatic fine-grained kind: a store's state
+per row (Asuka), an `@Observable` per row (SwiftUI's Observation), a
 `mutableIntStateOf` per row (Compose); the shared counter is read by
 each row, so a change to it updates the rows, not the screen.
 
@@ -41,7 +41,7 @@ each row, so a change to it updates the rows, not the screen.
 The same file in every app on a platform (`asuka/meter/swift/Meter.swift`,
 `asuka/meter/android/src/main/kotlin/dev/asuka/app/Meter.kt`, which the
 Compose app links to; the Asuka app calls them through its native
-package, `asuka/meter`):
+package, `meter/`, a `native interface` in Asuka):
 
 - **iOS**: a frame's cost is the main thread's busy time between two
   vsyncs: the run loop's time awake, from a `CFRunLoopObserver`'s
@@ -60,13 +60,14 @@ package, `asuka/meter`):
   deadline. Memory is the proportional set size, and the resident set's
   high-water mark (`VmHWM`) for the peak.
 
-Asuka and SwiftUI are driven by a display link (Asuka's `ui.OnFrame`),
+Asuka and SwiftUI are driven by a display link (Asuka's `onFrame`),
 Compose by `withFrameNanos`; each changes its state at the start of the
 frame, as an animation would.
 
 ## Fairness
 
-- Release builds: Swift `-O`; Go optimized; R8 on Android, not
+- Release builds: Swift `-O`; the Asuka app compiled to C with the core
+  (`-O2`); R8 on Android, not
   debuggable. Both Android apps are compiled ahead of time in full
   (`cmd package compile -m speed`) after installing, so neither runs on
   the interpreter or depends on a profile (Compose ships baseline

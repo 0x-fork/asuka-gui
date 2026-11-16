@@ -287,7 +287,10 @@ func simulator() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		udid = strings.TrimSpace(out)
+		// The UDID is the last line: simctl may say which runtime it
+		// picked before it ("No runtime specified, using ...").
+		lines := strings.Split(strings.TrimSpace(out), "\n")
+		udid = strings.TrimSpace(lines[len(lines)-1])
 	}
 	if state != "Booted" {
 		fmt.Println("bench: booting the asuka-bench simulator")

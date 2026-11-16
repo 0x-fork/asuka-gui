@@ -1,6 +1,6 @@
-// The meter for Go: BenchMeter (dev/asuka/app/Meter.kt, shared with
+// The meter for the app: BenchMeter (dev/asuka/app/Meter.kt, shared with
 // bench/compose).
-package com.github.egoist.asuka.bench.asuka.meter
+package _asuka.bench_meter
 
 import dev.asuka.AsukaModules
 import dev.asuka.app.BenchMeter

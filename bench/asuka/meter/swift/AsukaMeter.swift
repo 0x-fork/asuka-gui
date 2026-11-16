@@ -1,4 +1,4 @@
-// The meter for Go: BenchMeter (Meter.swift, shared with bench/swiftui).
+// The meter for the app: BenchMeter (Meter.swift, shared with bench/swiftui).
 import Asuka
 
 @MainActor final class AsukaMeter: Meter {
