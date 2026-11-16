@@ -38,6 +38,16 @@ const asuka_linux_t *asuka_linux(void) {
 	return loaded ? &asuka_linux_fns : NULL;
 }
 
+void *asuka_linux_sym(const char *name) {
+	if (!asuka_linux()) return NULL;
+	for (int i = L_COUNT - 1; i >= 0; i--) {
+		if (!libs[i]) continue;
+		void *f = dlsym(libs[i], name);
+		if (f) return f;
+	}
+	return dlsym(RTLD_DEFAULT, name);
+}
+
 void asuka_linux_fail(asuka_error *err, GError *e, const char *what) {
 	if (!e) {
 		asuka_error_failed(err, "gio", 0, "%s failed", what ? what : "a call");

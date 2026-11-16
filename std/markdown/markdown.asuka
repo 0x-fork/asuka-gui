@@ -12,9 +12,9 @@
 // than half-written syntax. Turn it off once the text is whole.
 //
 // Each platform's own Markdown reads it: Apple's (AttributedString) on
-// iOS and macOS, Markwon on Android, marked on the web, and Asuka's
-// parser (sdk/markdown/parser) on Windows (a rich edit) and Linux (a
-// label's Pango markup).
+// iOS and macOS, Markwon on Android, marked on the web, and md4c (in
+// the package's C) on Windows (a rich edit) and Linux (a label's Pango
+// markup).
 
 /// Markdown, shown as styled text: as wide as its box, as tall as its
 /// text.

@@ -111,7 +111,7 @@ component Reply(text: string, writing: bool) {
 }
 ```
 
-`streaming` は、言語モデルの返答が流れてくるときのように、テキストがまだ書かれている途中であることを表します。このときテキストの末尾は、書きかけの記法ではなく、最終的になりそうな姿で表示されます（コードフェンスは閉じ、`**bold` は太字に、書きかけのリンクはリンクに）。`markdown.heal(text)` で同じ処理だけを行うこともできます。解析は各プラットフォームの Markdown が行います。iOS と macOS では Apple のもの（`AttributedString` をテキストビューにレイアウト）、Android では Markwon、Web では marked、Windows（リッチエディット）と Linux（ラベルの Pango マークアップ）では Asuka のパーサーです。[`examples/markdown`](../../examples/markdown) を見てください。
+`streaming` は、言語モデルの返答が流れてくるときのように、テキストがまだ書かれている途中であることを表します。このときテキストの末尾は、書きかけの記法ではなく、最終的になりそうな姿で表示されます（コードフェンスは閉じ、`**bold` は太字に、書きかけのリンクはリンクに）。`markdown.heal(text)` で同じ処理だけを行うこともできます。解析は各プラットフォームの Markdown が行います。iOS と macOS では Apple のもの（`AttributedString` をテキストビューにレイアウト）、Android では Markwon、Web では marked、Windows（リッチエディット）と Linux（ラベルの Pango マークアップ）では md4c です。[`examples/markdown`](../../examples/markdown) を見てください。
 
 ## ボタン
 

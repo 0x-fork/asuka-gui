@@ -334,6 +334,13 @@ const asuka_linux_t *asuka_linux(void);
 #define G(name) (asuka_linux_fns.name)
 extern asuka_linux_t asuka_linux_fns;
 
+// asuka_linux_sym is a function of GLib's, GTK's or libadwaita's (or of
+// a library a package dlopened with RTLD_GLOBAL) that asuka_linux_t
+// doesn't declare, by name: NULL where there's none. For what one
+// package calls (its widget's own functions), declared and resolved in
+// the package; what two share belongs in asuka_linux_t.
+void *asuka_linux_sym(const char *name);
+
 // asuka_linux_fail fails err with a GError's message, and frees it:
 // asuka_error_failed with the domain "gio" and its code (what for none).
 void asuka_linux_fail(asuka_error *err, GError *e, const char *what);

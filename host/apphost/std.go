@@ -12,7 +12,6 @@ import (
 	_ "github.com/egoist/asuka/std/imageedit/desktop"
 	_ "github.com/egoist/asuka/std/location/desktop"
 	_ "github.com/egoist/asuka/std/maps/desktop"
-	_ "github.com/egoist/asuka/std/markdown/desktop"
 	_ "github.com/egoist/asuka/std/nowplaying/desktop"
 	_ "github.com/egoist/asuka/std/print/desktop"
 	_ "github.com/egoist/asuka/std/purchase/desktop"

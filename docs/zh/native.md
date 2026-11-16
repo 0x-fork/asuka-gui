@@ -414,6 +414,8 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   [linux]
   libraries = []
   ```
+- **自带的库**：包构建时用到的 C 库（解析器、解码器）放在 `desktop/third_party/<名字>/` 里，不做修改，附上它的许可证和版本；由包自己的某个文件引入它的源码（`#include "third_party/md4c/md4c.c"`），这样它和包的 C 代码一起编译，改动它也会让应用重新构建。
+- **测试**：`desktop/*_test.c` 是一个独立的程序（有自己的 `main`），和包里两个平台共用的 C 代码一起构建（不含生成的胶水代码），由 platform/desktop 的测试在任何系统上运行，用来测试 C 代码中不依赖平台的部分：解析、解码、编码。
 
 在 macOS 上运行的是包的 Swift 代码（它的 `Package.swift`），不运行它的 C 代码。
 

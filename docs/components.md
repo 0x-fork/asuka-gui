@@ -159,8 +159,7 @@ fence closed, `**bold` as bold, a link being written as a link) rather
 than half-written syntax. `markdown.heal(text)` is that, on its own.
 Each platform's Markdown reads it: Apple's (`AttributedString`, laid out
 in a text view) on iOS and macOS, Markwon on Android, marked on the web,
-and Asuka's parser on Windows (a rich edit) and Linux (a label's Pango
-markup). See [`examples/markdown`](../examples/markdown).
+and md4c on Windows (a rich edit) and Linux (a label's Pango markup). See [`examples/markdown`](../examples/markdown).
 
 ## Buttons
 

@@ -270,6 +270,26 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: signed in myapp://done?code=42", "host: done"}},
+		{"markdown", `import asuka/markdown
+
+component Probe {
+  state step = "start"
+  Column {
+    Text("#{step}")
+    markdown.View("# Plan\n\nThree **steps**, *in* ` + "`order`" + `:\n\n1. Read [docs](https://asuka.dev)\n2. Write\n\n| a | b |\n|---|---|\n| 1 | 2 |\n") {
+      width: 240
+    }
+  }
+  task {
+    await sleep(20ms)
+    step = "healed {markdown.heal("**bold and ` + "`code" + `")}"
+    await sleep(1ms)
+    step = "done"
+  }
+}
+
+app { Probe() }
+`, []string{"host: native view asuka/markdown#Document", "host: measured asuka/markdown#Document 240x", "host: healed **bold and `code`**", "host: done"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
