@@ -2,7 +2,7 @@
 // view of the host's own class (host/windows' views.go, props.go,
 // interaction.go's presses).
 #include "host.h"
-#include "parts.h"
+#include "win.h"
 
 #define SLIDER_STEPS 10000
 
@@ -739,6 +739,10 @@ HBRUSH wh_control_colors(node *n, HDC dc, UINT m) {
 
 // wh_listen adds what an event needs on the native side.
 void wh_listen(node *n, int e) {
+	if (e == AK_EVENT_LOCATION) {
+		wh_listen_location(n);  // where its window's router was left (commands.c)
+		return;
+	}
 	if (!n->hwnd) return;
 	if (e == AK_EVENT_WINDOW_STATE) {
 		wh_listen_window(n);

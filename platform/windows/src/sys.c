@@ -240,3 +240,31 @@ int64_t wh_now_ns(void) {
 }
 
 double wh_seconds(void) { return (double)wh_now_ns() / 1e9; }
+
+// wh_open_theme opens a window's visual style class at a DPI (Windows 10
+// 1703 and later), or at the system's.
+HTHEME wh_open_theme(HWND hwnd, const wchar_t *cls, int dpi) {
+	typedef HTHEME(WINAPI * open_for_dpi)(HWND, LPCWSTR, UINT);
+	static open_for_dpi f;
+	static bool tried;
+	if (!tried) {
+		tried = true;
+		HMODULE ux = GetModuleHandleW(L"uxtheme.dll");
+		if (ux) f = (open_for_dpi)(void *)GetProcAddress(ux, "OpenThemeDataForDpi");
+	}
+	return f ? f(hwnd, cls, (UINT)dpi) : OpenThemeData(hwnd, cls);
+}
+
+// wh_task_dialog runs TaskDialogIndirect, which only the common controls
+// v6 have: found in the comctl32 the activation context loads, not linked
+// (a program without a manifest binds the system's v5).
+HRESULT wh_task_dialog(const TASKDIALOGCONFIG *c, int *button) {
+	typedef HRESULT(WINAPI * task_dialog)(const TASKDIALOGCONFIG *, int *, int *, BOOL *);
+	static task_dialog f;
+	if (!f) {
+		HMODULE cc = LoadLibraryW(L"comctl32.dll");
+		if (cc) f = (task_dialog)(void *)GetProcAddress(cc, "TaskDialogIndirect");
+	}
+	if (!f) return E_NOTIMPL;
+	return f(c, button, NULL, NULL);
+}

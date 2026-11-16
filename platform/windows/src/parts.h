@@ -31,6 +31,8 @@ bool wh_set_thread_language(const char *tag);
 bool wh_key_down(int vk);
 int64_t wh_now_ns(void);
 double wh_seconds(void);
+HTHEME wh_open_theme(HWND hwnd, const wchar_t *cls, int dpi);
+HRESULT wh_task_dialog(const TASKDIALOGCONFIG *c, int *button);
 
 // ---- host.c ----
 uint32_t wh_children(HWND hwnd, HWND **out);

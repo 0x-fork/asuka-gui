@@ -199,6 +199,22 @@ void wh_start_toasts(void);
 void wh_crash_start(void);
 
 // locale.c
+void wh_word_app(wchar_t *buf, size_t cap, const char *key);
+void wh_say_words(void);
+void wh_mirror_window(HWND win, node *content);
+DWORD wh_top_level_style(void);
+void wh_nav_say_words(node *n);
+// anim.c, commands.c
+void wh_begin_animation(const uint8_t *args, size_t len);
+void wh_end_animation(void);
+void wh_listen_location(node *n);
+void wh_open_url(const char *s, size_t n);
+void wh_module_timer(WPARAM id);
+void wh_share_text(const char *s, size_t n);
+// menu.c
+int64_t wh_track_actions(const actions *a, bool rtl, POINT p, HWND owner);
+void wh_set_menu_bar(const uint8_t *b, size_t len);
+void wh_set_window_menu(wh_wctl *c);
 void wh_read_saved_locale(void);
 void wh_set_locale(const uint8_t *args, size_t len);
 void wh_save_locale(const char *tag, size_t len);
