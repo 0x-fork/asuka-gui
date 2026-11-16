@@ -113,7 +113,7 @@ public protocol Monitor: AnyObject {
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 2): // Monitor.Watch
@@ -125,7 +125,7 @@ public protocol Monitor: AnyObject {
                 AsukaNative.notify(changedID, w)
             }
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.watch(changed: changed)
@@ -143,7 +143,7 @@ public protocol Monitor: AnyObject {
                 AsukaNative.notify(happenedID, w)
             }
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.events(happened: happened)
@@ -155,7 +155,7 @@ public protocol Monitor: AnyObject {
         case (0, 4): // Monitor.Idle
             let o = object as! any Monitor
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.idle()

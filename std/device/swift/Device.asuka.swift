@@ -112,13 +112,13 @@ public protocol Platform: AnyObject {
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 1): // Platform.Info
             let o = object as! any Platform
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.info()
@@ -132,7 +132,7 @@ public protocol Platform: AnyObject {
             let o = object as! any Platform
             let url = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.browse(url: url)
@@ -145,7 +145,7 @@ public protocol Platform: AnyObject {
             let o = object as! any Platform
             let max = r.int()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.pickPhotos(max: max)
@@ -160,7 +160,7 @@ public protocol Platform: AnyObject {
             let types = Wire.readSliceString(&r)
             let multiple = r.bool()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.pickFiles(types: types, multiple: multiple)
@@ -173,7 +173,7 @@ public protocol Platform: AnyObject {
         case (0, 5): // Platform.ClipboardText
             let o = object as! any Platform
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.clipboardText()
@@ -186,7 +186,7 @@ public protocol Platform: AnyObject {
         case (0, 6): // Platform.ClipboardHas
             let o = object as! any Platform
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.clipboardHas()
@@ -199,7 +199,7 @@ public protocol Platform: AnyObject {
         case (0, 7): // Platform.ClipboardImage
             let o = object as! any Platform
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.clipboardImage()
@@ -213,7 +213,7 @@ public protocol Platform: AnyObject {
             let o = object as! any Platform
             let path = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.copyImage(path: path)
@@ -231,7 +231,7 @@ public protocol Platform: AnyObject {
                 AsukaNative.notify(changedID, w)
             }
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.watchClipboard(changed: changed)

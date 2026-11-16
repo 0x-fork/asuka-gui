@@ -456,7 +456,7 @@ func (g *swiftGen) provider() {
 	}
 	g.printf("        default: throw AsukaNativeError.unsupported(\"no method \\(iface).\\(method)\")\n        }\n    }\n\n")
 	// start
-	g.printf("    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {\n")
+	g.printf("    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {\n")
 	g.printf("        var r = input\n        switch (iface, method) {\n")
 	for _, it := range g.p.Interfaces {
 		for _, m := range it.Methods {
@@ -474,7 +474,7 @@ func (g *swiftGen) provider() {
 			if m.Error {
 				call = "try " + call
 			}
-			g.printf("            return Task {%s\n                do {\n                    var w = AsukaNativeWriter.ok()\n", actor)
+			g.printf("            return _Concurrency.Task {%s\n                do {\n                    var w = AsukaNativeWriter.ok()\n", actor)
 			if m.Result != nil {
 				g.printf("                    let v = %s\n                    %s\n", call, g.enc(m.Result, "w", "v"))
 			} else {

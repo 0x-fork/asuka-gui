@@ -1,0 +1,9 @@
+name = "asuka/nfc"
+version = "0.1.0"
+description = "Reads and writes NFC tags: Core NFC, Android's reader mode, Web NFC"
+
+[ios]
+usage = { NFCReaderUsageDescription = "To read and write NFC tags." }
+
+[android]
+permissions = ["android.permission.NFC"]

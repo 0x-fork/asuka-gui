@@ -104,7 +104,7 @@ pub component Hotkey(shortcut: Shortcut) {
     defer { platform.send("hotkey", "unregister", platform.u32(mine)) }
     seen = presses[mine] ?? 0
     id = mine
-    await untilCancelled()
+    await never()
   }
 
   effect {

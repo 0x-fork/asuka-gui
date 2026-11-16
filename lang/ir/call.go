@@ -459,10 +459,6 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return b.allRace(e, call, dst)
 	case check.BWithTimeout:
 		return b.withTimeout(e, call)
-	case check.BUntilCancelled:
-		f := b.callB("async.never", bc.KRef)
-		b.emit(op("AWAIT"), b.temp(bc.KRef), f)
-		return -1
 	case check.BLive:
 		ft := b.typ(call.Result).(*check.FuncType)
 		init := b.valueReg(b.value(call.Args[0], -1), b.l.kind(ft.Result))
@@ -475,6 +471,11 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		st := b.typ(call.Result).(*check.Stream)
 		p := b.value(call.Args[0], -1)
 		return b.copyTo(b.callB("stream.new", bc.KRef, p, b.konst(int64(b.l.kind(st.Elem)))), dst)
+	case check.BNever:
+		f := b.callB("async.never", bc.KRef)
+		w := b.temp(bc.KRef)
+		b.emit(op("AWAIT"), w, f)
+		return -1
 	case check.BIdle:
 		f := b.callB(uiTestIdle, bc.KRef)
 		w := b.temp(bc.KRef)
@@ -726,6 +727,9 @@ func (b *fb) allRace(e *syntax.CallExpr, call *check.Call, dst int) int {
 	f := b.callB("async.all", bc.KRef, arr)
 	results := b.temp(bc.KRef)
 	b.emit(op("AWAIT"), results, f)
+	if res == check.Void {
+		return -1
+	}
 	types := []check.Type{res}
 	if tt, ok := res.(*check.Tuple); ok {
 		types = tt.Elems

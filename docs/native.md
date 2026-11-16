@@ -275,6 +275,10 @@ holds something to free conforms to `AsukaDestroying`, or has a
 
 `examples/media/segmented` is a complete view on every platform.
 
+In an app's tests (on the fake host, with no platform code) a native
+view shows as its component's name, and `app.tap("Segmented")` sends it
+a `press` event, as a platform's button would.
+
 ## iOS and macOS: Swift
 
 The package's Swift is a Swift package, `Package.swift` at the

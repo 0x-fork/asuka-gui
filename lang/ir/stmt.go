@@ -846,23 +846,29 @@ func (b *fb) forAwait(s *syntax.ForStmt, fi *check.ForInfo) {
 	st := b.local(bc.KRef)
 	b.value(fi.Seq, st)
 	more := b.local(bc.KBool)
-	b.f.Place(top)
-	f := b.callB("stream.next", bc.KRef, st)
-	b.emit(op("AWAIT"), more, f)
-	b.emitJump(op("JF"), more, end)
-	b.openScope()
-	x := b.temp(b.kind(fi.Elem))
-	b.callBTo("stream.value", x, st)
-	if _, ok := fi.Pat.(*syntax.TuplePat); ok {
-		b.bindLet(fi.Pat, x, b.typ(fi.Elem))
-	} else {
-		b.declare(fi.Item, x)
-	}
-	b.loops = append(b.loops, loop{brk: end, cont: top, defers: len(b.defers)})
-	b.block(s.Body)
-	b.loops = b.loops[:len(b.loops)-1]
-	b.closeScope()
-	b.jmp(top)
+	// An error leaving the loop (the body's, the producer's) closes the
+	// stream too, then goes on.
+	b.protect(func() {
+		b.f.Place(top)
+		f := b.callB("stream.next", bc.KRef, st)
+		b.emit(op("AWAIT"), more, f)
+		b.emitJump(op("JF"), more, end)
+		b.openScope()
+		x := b.temp(b.kind(fi.Elem))
+		b.callBTo("stream.value", x, st)
+		if _, ok := fi.Pat.(*syntax.TuplePat); ok {
+			b.bindLet(fi.Pat, x, b.typ(fi.Elem))
+		} else {
+			b.declare(fi.Item, x)
+		}
+		b.loops = append(b.loops, loop{brk: end, cont: top, defers: len(b.defers)})
+		b.block(s.Body)
+		b.loops = b.loops[:len(b.loops)-1]
+		b.closeScope()
+		b.jmp(top)
+	}, func(int) {
+		b.callBTo("stream.close", bc.None, st)
+	})
 	b.f.Place(end)
 	b.callBTo("stream.close", bc.None, st)
 }

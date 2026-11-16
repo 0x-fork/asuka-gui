@@ -40,7 +40,7 @@ public protocol Modules: AnyObject {
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 1): // Modules.Call
@@ -49,7 +49,7 @@ public protocol Modules: AnyObject {
             let methodArg = r.string()
             let args = r.data()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task { @MainActor in
+            return _Concurrency.Task { @MainActor in
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.call(module: module, method: methodArg, args: args)

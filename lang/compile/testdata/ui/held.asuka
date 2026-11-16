@@ -4,7 +4,7 @@ component Holder {
   task {
     holding += 1
     defer { holding -= 1 }
-    await untilCancelled()
+    await never()
   }
   Text("holding")
 }

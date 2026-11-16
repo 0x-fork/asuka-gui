@@ -141,7 +141,7 @@ public object AsukaModule : AsukaModuleProvider {
         }
     }
 
-    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {
+    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (kotlin.Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {
         when (iface) {
             0 -> {
                 val o = obj as Monitor
@@ -158,9 +158,9 @@ public object AsukaModule : AsukaModuleProvider {
                             try {
                                 val w = AsukaNativeWriter.ok()
                                 o.watch(changed)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -176,9 +176,9 @@ public object AsukaModule : AsukaModuleProvider {
                             try {
                                 val w = AsukaNativeWriter.ok()
                                 o.events(happened)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -189,9 +189,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.idle()
                                 w.duration(v)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }

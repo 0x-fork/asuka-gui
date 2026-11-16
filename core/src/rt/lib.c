@@ -894,7 +894,7 @@ static ak_val f_race(ak_val *args, uint32_t n) {
 	return group(ARR(0), true);
 }
 
-// async.never is a future nothing resolves: what untilCancelled() awaits,
+// async.never is a future nothing resolves: what never() awaits,
 // which ends when its task is cancelled (no timer: idle isn't held).
 static ak_val async_never(ak_val *args, uint32_t n) {
 	AK_UNUSED(args), AK_UNUSED(n);
@@ -950,6 +950,30 @@ static uint32_t blen(const ak_bytes *b) { return b ? b->len : 0; }
 static ak_val str_to_bytes(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	RET_P(ak_bytes_new(STR(0)->data, STR(0)->len));
+}
+
+// bytes.hex: the bytes in lowercase hexadecimal, a separator (if one is
+// given) between them.
+static ak_val bytes_hex(ak_val *args, uint32_t n) {
+	ak_bytes *b = BYTES(0);
+	ak_str *sep = n > 1 ? STR(1) : NULL;
+	ak_strb s = {0};
+	static const char digits[] = "0123456789abcdef";
+	for (size_t i = 0; b && i < b->len; i++) {
+		if (i && sep) ak_strb_str(&s, sep);
+		char h[2] = {digits[b->data[i] >> 4], digits[b->data[i] & 15]};
+		ak_strb_cstr(&s, h, 2);
+	}
+	RET_P(ak_strb_finish(&s));
+}
+
+// bytes.from: an array of ints as bytes, each taken modulo 256.
+static ak_val bytes_from(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *a = ARR(0);
+	ak_bytes *r = ak_bytes_new(NULL, a->len);
+	for (uint32_t i = 0; i < a->len; i++) r->data[i] = (uint8_t)(a->data[i].i & 0xff);
+	RET_P(r);
 }
 
 static ak_val bytes_empty(ak_val *args, uint32_t n) {
@@ -1075,6 +1099,8 @@ const ak_lib_entry ak_lib[] = {
 	{"async.never", async_never},
 	{"appearance.rgb", appearance_rgb},
 	{"bytes.empty", bytes_empty},
+	{"bytes.from", bytes_from},
+	{"bytes.hex", bytes_hex},
 	{"bytes.len", bytes_len},
 	{"bytes.is_empty", bytes_is_empty},
 	{"bytes.get", bytes_get},

@@ -142,7 +142,7 @@ calls a closure) runs in a handler that moves the receiver back first.
   all; the tuple is made of its elements (UNBOX for scalars).
   `race(…)`'s calls have one type, and its tasks return it as it is.
   `all(tasks)` and `race(tasks)` over a `[Task<T>]` pass it through.
-- `sleep(d)`, `all`, `race` and `idle` are futures awaited at once:
+- `sleep(d)`, `never()`, `all`, `race` and `idle` are futures awaited at once:
   AWAIT follows the CALLB. `await` of a call of an async function is
   that CALL; of a `Task<T>`, AWAIT. `await` of something that doesn't
   wait does nothing.
@@ -684,6 +684,25 @@ object type (a reference: the runtime's ak_native_obj) and its methods:
 - Every method `throws` (the platform's side may fail); the checker
   requires `try` at calls.
 
+A package's `native component X(p: P) { prop q: Q = d; event e(a: A) }`
+(the prelude's are the runtime's elements) lowers to the Native kind of
+view:
+
+- `X(…) { … }` is CALLB `ui.native("<class>#X")`, then each prop by its
+  name as the platforms' generated code knows it (its first letter upper
+  case: `"Q"`) and its descriptor (as a method's parameter's):
+  `ui.native_set(v, name, desc, value)` when the value reads nothing
+  reactive, else `ui.native_bind(v, name, desc, thunk)`. A prop left
+  out goes at its default; one with none isn't sent. The style's keys
+  are any element's (`ui.set`, `ui.bind`).
+- `on e(a) { … }` is `ui.native_on(v, "E", desc, handler)`, desc the
+  parameters' descriptors in order: the host's Native event named `E`
+  calls it with its `v` value decoded by them.
+- The core (core/src/ui/native_view.c) sends the Type before the props,
+  a prop only as its bytes change, and listens for Native events once a
+  handler is set. The fake host shows the view by its component's name,
+  and a test's tap on it is its `Press` event.
+
 A native interface can't be generic, has methods only, and no struct
 declares it. The class is the package's name as internal/nativegen
 names it: asuka.toml's `name`, else its directory's. The errors array is
@@ -726,7 +745,9 @@ values' ak_kind); `for await x in s { … }` is: s into a local; at the
 top, AWAIT CALLB `stream.next(s)` (a bool: whether a value came; it
 throws what the producer threw), JF to the end, CALLB `stream.value(s)`
 for x, the body, back to the top; at the end CALLB `stream.close(s)`,
-which cancels the producer (core/src/rt/stream.c).
+which cancels the producer (core/src/rt/stream.c). An error leaving the
+loop (the body's, the producer's) closes it too, in a handler around the
+loop that throws the error on.
 
 ## Live values
 
@@ -758,6 +779,7 @@ packages.
 | `push(v)`, `present(v)` | CALLB `ui.push(builder)`, `ui.present(builder)` (the argument as a builder) |
 | `pop()`, `dismiss()` | CALLB `ui.pop`, `ui.dismiss` |
 | `sleep(d)` | CALLB `time.sleep(ns)`, AWAIT |
+| `never()` | CALLB `async.never` (a future nothing resolves; cancelling its task rejects it), AWAIT |
 | `all(a, b, …)`, `race(…)` | the calls as tasks (TASK), CALLB `async.all`/`async.race` over an array of them, AWAIT |
 | `spawn { … }` | CALLB `async.spawn(closure, kind)`, a Task |
 | `print(s)` | CALLB `print` |

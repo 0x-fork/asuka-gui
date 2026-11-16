@@ -154,7 +154,7 @@ public object AsukaModule : AsukaModuleProvider {
         }
     }
 
-    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {
+    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (kotlin.Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {
         when (iface) {
             0 -> {
                 val o = obj as Platform
@@ -166,9 +166,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.info()
                                 Wire.writeInfo(w, v)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -179,9 +179,9 @@ public object AsukaModule : AsukaModuleProvider {
                             try {
                                 val w = AsukaNativeWriter.ok()
                                 o.browse(url)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -193,9 +193,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.pickPhotos(max)
                                 Wire.writeSliceString(w, v)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -208,9 +208,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.pickFiles(types, multiple)
                                 Wire.writeSliceFile(w, v)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -221,9 +221,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.clipboardText()
                                 Wire.writeOptString(w, v)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -234,9 +234,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.clipboardHas()
                                 Wire.writeClipboardKinds(w, v)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -247,9 +247,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.clipboardImage()
                                 Wire.writeOptString(w, v)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -260,9 +260,9 @@ public object AsukaModule : AsukaModuleProvider {
                             try {
                                 val w = AsukaNativeWriter.ok()
                                 o.copyImage(path)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -278,9 +278,9 @@ public object AsukaModule : AsukaModuleProvider {
                             try {
                                 val w = AsukaNativeWriter.ok()
                                 o.watchClipboard(changed)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }

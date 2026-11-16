@@ -889,267 +889,210 @@ can't do fails with `compose.ErrUnavailable`.
 The iOS simulator has no Mail account and no Messages: try the composers
 on a device.
 
-## Location: asuka/sdk/location
+## Location: asuka/location
 
-`asuka/sdk/location` is where the device is, now and as it moves, with the
+`asuka/location` is where the device is, now and as it moves, with the
 user's permission, which it asks for the first time. It's Core Location
 on iOS and the Mac, and Android's location manager, which needs no Google
 Play services; WinRT's Geolocator on Windows, the location portal (or
-GeoClue) on Linux, and the Geolocation API in a browser. It asks for the location while the app is in use; with the
-app out of sight too, it follows the device in the background and
-watches regions for the app (expo-location's background updates and
-geofencing), below.
+GeoClue) on Linux, and the Geolocation API in a browser. With the app out
+of sight too, it follows the device in the background and watches regions
+for the app, below.
 
-`location.Current()` returns where the device is. Not on the main thread:
-it waits for the user to answer, then for a fix. If the user hasn't
-allowed it, the error is `location.ErrDenied`.
+`location.current()` asks for permission if it hasn't, then returns where
+the device is. If the user hasn't allowed it, it throws
+`LocationError.denied`.
 
-```go
-ui.Button(ui.ButtonProps{Title: ui.Val("Where am I?"), OnPress: func() {
-	go func() {
-		p, err := location.Current()
-		ui.Post(func() {
-			switch {
-			case errors.Is(err, location.ErrDenied):
-				where.Set("Allow location in Settings")
-			case err != nil:
-				where.Set(err.Error())
-			default:
-				where.Set(fmt.Sprintf("%.4f, %.4f (within %.0f m)", p.Latitude, p.Longitude, p.Accuracy))
-			}
-		})
-	}()
-}})
-```
+```asuka
+import asuka/location
 
-`location.Watch(f)` calls `f` on the main thread with each position as the
-device moves, the first being where it is now, until `stop` is called. It
-asks as `Current` does; if the user refuses, `f` isn't called. Stop it
-with the component:
+component Where {
+  state where = ""
 
-```go
-func Track() ui.Node {
-	here := signal.New(location.Position{})
-	stop := location.Watch(func(p location.Position) { here.Set(p) })
-	signal.OnCleanup(stop)
-	return ui.Text(signal.Func(func() string {
-		p := here.Get()
-		return fmt.Sprintf("%.5f, %.5f", p.Latitude, p.Longitude)
-	}))
+  Column {
+    Button("Where am I?") {
+      on press {
+        do {
+          let p = try await location.current()
+          where = "{p.latitude.fixed(4)}, {p.longitude.fixed(4)} (within {p.accuracy.fixed(0)} m)"
+        } catch location.LocationError.denied {
+          where = "Allow location in Settings"
+        } catch e {
+          where = e.message
+        }
+      }
+    }
+    Text(where)
+  }
 }
 ```
 
-`location.PlaceName(lat, lon)` is what a place is called ("Mission District, San
-Francisco"), from the platform's geocoder, which asks its servers: ask only when
-the user wants the name. Not on the main thread. Windows asks
-OpenStreetMap's Nominatim, Linux geocode-glib where it's installed; a
-browser has no geocoder, and it fails there.
+`location.positions()` is a stream: the position now, then each as the
+device moves. Read it in a task, and it stops with the component:
 
-A `location.Position` has `Latitude`, `Longitude`, `Accuracy` (meters:
-the radius the device is within), `Altitude` (meters above sea level; 0 if
-not known) and `Time`.
+```asuka
+component Track {
+  state here = location.Position()
 
-**Android**: `Current` gives a fix from the last minute if there is one;
-otherwise it waits up to 10 seconds for a new one, then gives the last
-known, or fails with `"no location"`.
+  task {
+    do {
+      for await p in location.positions() { here = p }
+    } catch e {
+      print(e.message)
+    }
+  }
+
+  Text("{here.latitude.fixed(5)}, {here.longitude.fixed(5)}")
+}
+```
+
+`location.placeName(latitude, longitude)` is what a place is called
+("Mission District, San Francisco"), from the platform's geocoder, which
+asks its servers: ask only when the user wants the name. Linux asks
+geocode-glib where it's installed; Windows and a browser have none, and
+it throws there.
+
+A `location.Position` has `latitude`, `longitude`, `accuracy` (meters:
+the radius the device is within), `altitude` (meters above sea level; 0 if
+not known), `speed` and `course` (negative when not known) and `time`
+(nanoseconds since 1970, as `time.now()`).
 
 ### Permission levels
 
-The user allows the location while the app is in use (`WhenInUse`), or
-always (`Always`), which the regions and the significant changes need,
-and the app's events with the app not running. They also choose precise
-positions or approximate ones (within a few kilometers: iOS's Precise
-Location off, Android's Approximate).
+The user allows the location while the app is in use (`.whenInUse`), or
+always (`.always`), which the regions need, and the app's events with the
+app not running. They also choose precise positions or approximate ones
+(within a few kilometers: iOS's Precise Location, Android's
+Approximate). `location.authorization()` is what they allowed, tracked:
+read in a binding, it follows the changes they make in Settings.
 
-- `location.Request()` asks for `WhenInUse` the first time (`Current`
-  and `Watch` ask the same) and returns the `location.Authorization` the
-  user left: its `Level` (`NotAsked`, `Denied`, `Restricted`,
-  `WhenInUse`, `Always`), `Precise`, and `Off` when location services are
-  off for the whole device.
-- `location.RequestAlways()` asks for `Always`, after `WhenInUse` if the
-  user hasn't allowed that yet. iOS shows its question once; Android 11
-  and later take the user to the app's location settings, to choose
-  "Allow all the time".
-- `location.RequestPrecise(purpose)` asks a user who allowed approximate
-  positions for precise ones: on iOS until the app leaves the foreground
-  (temporary full accuracy), `purpose` naming the reason shown, a key of
-  asuka.toml's `ios.locationPurposes` (`"default"` is there, "To show
-  exactly where you are."); on Android for good.
-- `location.Authorized()` is the authorization now, without asking;
-  `location.UseAuthorization()` is it as a signal, for a component, and
-  `location.WatchAuthorization(f)` calls `f` with each change (the user
-  in Settings too). `location.OpenSettings()` opens the system's location
-  settings for the app: once `Denied`, only the user there changes it.
+```asuka
+component Allowed {
+  let auth = location.authorization()
 
-Each of these waits for the user: not on the main thread.
-
-```go
-go func() {
-	a, err := location.RequestAlways()
-	if err == nil && a.Level != location.Always {
-		ui.Post(func() { status.Set("Choose Always in Settings to be told at the shop") })
-	}
-}()
-```
-
-An app that calls `RequestAlways` is given `Always`'s purpose string
-(`ios.usage.NSLocationAlwaysAndWhenInUseUsageDescription` says why
-better) and Android's `ACCESS_BACKGROUND_LOCATION`, which Google Play
-asks about in its console: only those apps.
-
-### Updates in the background
-
-`location.StartUpdates(o)` starts updates that go on with the app out of
-sight, and across launches, until `location.StopUpdates()`;
-`location.Updating()` returns their options and whether they run.
-`location.OnUpdates(f)` gets them, a `location.Batch` of positions at a
-time, on the main thread. Start them with the app on screen. Not on the
-main thread.
-
-```go
-err := location.StartUpdates(location.Updates{
-	Accuracy: location.AccuracyHigh, // Navigation, Balanced (100 m), Low (1 km), Passive
-	Distance: 20,                    // meters between two updates
-	Activity: location.ActivityFitness,
-	Defer:    time.Minute, // a batch at most a minute late: the app wakes less
-	Notification: location.Notification{Title: "Tracking your run"}, // Android's foreground service
-})
-```
-
-`Significant` gets only the significant changes (about 500 m), at
-almost no power: on iOS, with `Always`, they start the app even after
-the user ended it. `Interval` is Android's (default 10 seconds);
-`AutoPause` and `Indicator` are iOS's (pause while the device doesn't
-move; the blue status bar indicator).
-
-**iOS**: an app that calls `StartUpdates` is given the `location`
-background mode. iOS 17's `CLLocationUpdate.liveUpdates` with a
-`CLBackgroundActivitySession` for `AccuracyHigh` and
-`AccuracyNavigation` (which keeps `WhenInUse` enough, with the indicator
-showing), else a `CLLocationManager` with
-`allowsBackgroundLocationUpdates`, or its significant-change service.
-`Defer` is the host's: iOS has no batching of its own any more.
-
-**Android**: the Fused Location Provider (Google Play services; the
-location manager on a device without them), delivered to a
-`PendingIntent`, so updates come with the app not running; `Defer` is
-its batching. With a `Notification`, a foreground service of the
-location type runs while they do, and they come at their rate with the
-app out of sight, `WhenInUse` enough. Without one, Android gives a
-backgrounded app a few updates an hour, and only with `Always`. They're
-asked for again after a reboot or an update, which clear them.
-
-### Regions
-
-`location.Monitor(r)` watches a circle for the app: its `Enter`,
-`Exit` and (where there is) `Dwell` transitions go to
-`location.OnCrossing(f)`'s handlers, as a `location.Crossing` (the
-region's ID, its `Kind`, where and when), with the app in the
-background, or not running on iOS and Android. If the device is inside
-as monitoring starts, an `Enter` comes. Regions hold across launches;
-monitoring an ID again changes that region.
-`location.StopMonitoring(id)`, `location.StopMonitoringAll()` and
-`location.Monitored()` do what they say. They need `Always` on iOS and
-Android (`location.ErrNeedsAlways`), and precise positions on Android.
-Not on the main thread.
-
-```go
-err := location.Monitor(location.Region{
-	ID: "shop", Latitude: 35.6812, Longitude: 139.7671, Radius: 150,
-	Events: location.Enter | location.Dwell, Dwell: 5 * time.Minute,
-})
-```
-
-The systems limit how many regions an app has; past the limit, `Monitor`
-fails with `location.ErrTooManyRegions`. `location.Supported()` says what
-the system does here: whether it delivers updates and monitors regions
-itself (else they're computed from the positions while the app runs),
-its `MaxRegions` and `MaxRadius`, whether `Dwell` comes and whether an
-event starts the app. Regions are reliable from about 100 meters.
-
-| | Regions | At most | Dwell | With the app not running |
-| --- | --- | --- | --- | --- |
-| iOS | `CLMonitor` (iOS 17), `CLCircularRegion` before | 20 | no | the app starts |
-| Android | Play services' `GeofencingClient` (the location manager's proximity alerts without them) | 100 | yes | the app starts |
-| macOS | Core Location's region monitoring | 20 | no | no: while the app runs |
-| Windows | `Windows.Devices.Geolocation.Geofencing`'s `GeofenceMonitor` | none stated | no | no: while the app runs (a background task's trigger needs a packaged app) |
-| Linux | computed from the positions (GeoClue has no geofences) | none | yes | no: while the app runs |
-| Web | computed from the positions | none | yes | no: while the page is open |
-
-A region that's computed changes state only when a position's accuracy
-decides it: inside when it's within the radius and no less exact than
-it, outside when even its nearest point is out. GeoClue's positions from
-Wi-Fi or an IP address may be too coarse for a small region. On a
-desktop, and on the web, the background updates are computed the same
-way (the distance filter, `Defer`'s batches), from the positions while
-the app runs: a desktop app runs out of sight anyway; a page only while
-it's open.
-
-### Events with the app not running
-
-When an update or a crossing comes and the app isn't running, iOS and
-Android start it in the background, without a screen, as they do for
-`asuka/sdk/periodic`: `main` runs, and the root component, then the
-event goes to the handlers. Set `OnUpdates` and `OnCrossing` as the app
-starts, in `main` (before `app.Run`) or the root component; an event that
-comes before any handler waits for the first. Each event is kept until a
-handler has returned (on iOS in the app's Application Support, on Android
-in its files), so one that came as the app was ended is handed over at
-the next launch. A handler that panics is logged, and its event done all
-the same.
-
-The system gives the app little time in the background: about 30
-seconds on iOS, about 10 on Android (none while a foreground service
-runs). `Batch.Defer()` and `Crossing.Defer()` keep it running for work
-that goes on after the handler returns, such as sending the positions to
-a server, until `done`, or the context's deadline:
-
-```go
-func main() {
-	location.OnUpdates(func(b location.Batch) {
-		ctx, done := b.Defer()
-		go func() {
-			defer done()
-			upload(ctx, b.Positions)
-		}()
-	})
-	location.OnCrossing(func(c location.Crossing) {
-		_, done := c.Defer()
-		go func() { // Show waits: not on the main thread
-			defer done()
-			notify.Show(notify.Notification{Title: "Welcome back", Body: c.Region})
-		}()
-	})
-	app.Run(App)
+  Column {
+    Text("Allowed: {auth.level}; precise: {auth.precise}{if auth.off { "; location services are off" } else { "" }}")
+    Button("Allow always") { on press { let _ = try? await location.requestAlways() } }
+    Button("Location settings") { on press { try? await location.openSettings() } }
+  }
 }
 ```
 
-A `Position` has `Speed` (meters per second) and `Course` (degrees from
-north) too, negative when not known.
+- `location.request()` asks for `.whenInUse`, the first time; asking
+  again after `.denied` shows nothing: only Settings changes it
+  (`location.openSettings()`).
+- `location.requestAlways()` asks for `.always` (after `.whenInUse`).
+  iOS asks once; Android 11 and later take the user to the app's location
+  settings, to choose "Allow all the time".
+- `location.requestPrecise(purpose)` asks the user who allowed only
+  approximate positions for precise ones: on iOS for now (`purpose` is a
+  key of asuka.toml's `ios.locationPurposes`), on Android for good.
 
-Under `asuka dev`'s player, the player has every permission and the
-background mode; events reach the app's Go code while the player is
-connected to it. To see the app started for an event, run it on its own
-(`asuka dev --once`, or a build).
+A desktop app has `.always` once allowed: it runs out of sight anyway.
+Linux and a browser say nothing before the app asks for a position, so
+they're `.notAsked` until one comes.
 
-### Testing with uitest
+### Updates in the background
 
-`host/fake`'s `Location()` is a phone's location services for a test:
-what the user answers (`Answer`, `AnswerPrecise`), where the device is
-(`Move`), what they allow in Settings (`Allow`), regions crossed
-(`Move`, or `Cross` for a transition the system reports, `RegionDwell`
-too), and the events not done yet (`Pending`). Events queued before the
-app mounts are those the system started it for. `Computed` makes it a
-desktop's or a page's, whose background part the Go package computes.
+`location.startUpdates(…)` starts updates that go on with the app out of
+sight, and across launches (on iOS and Android the system starts the app
+for them), until `location.stopUpdates()`. `location.updates()` is their
+stream, of `Batch`es (`positions`, oldest first): read it as the app
+starts, so the batches the system started the app for find a reader.
 
-```go
-a := uitest.Mount(t, App, uitest.Setup(func(h *fake.Host) {
-	loc := h.Location()
-	loc.Answer = fake.LocationAlways
-	loc.Level = fake.LocationAlways
-	loc.Cross("shop", fake.RegionEnter) // the app was started for it
-}))
-a.WaitFor("At the shop")
+```asuka
+async fn track() throws {
+  try await location.startUpdates(
+    accuracy: .high,
+    distance: 20,
+    activity: .fitness,
+    delay: 30s,
+    indicator: true,
+    notification: location.Notification(title: "Tracking your route", text: "Your run is being recorded"),
+  )
+}
+
+async fn followUpdates() throws {
+  for await b in location.updates() {
+    let done = b.hold()   // keeps the app running while it's sent
+    defer { done() }
+    print("{b.positions.count()} positions")
+  }
+}
+```
+
+`accuracy` trades exactness for power (`.high`, `.navigation`,
+`.balanced`, `.low`, `.passive`); `distance` is how far the device moves
+between two updates; `interval` how often they come (Android's);
+`activity` tunes iOS's updates (and its pausing, with `autoPause`);
+`delay` lets updates come together, so the app wakes less; `significant`
+gets only the significant changes (about 500 m), at almost no power, and
+on iOS they start the app even after the user ended it. `indicator` shows
+iOS's blue pill while the app gets updates out of sight. On Android,
+`notification` runs a foreground service of the location type, whose
+notification it is: with it, updates come at their rate with the app out
+of sight. `location.updating()` says whether they run (they may have been
+started at an earlier launch).
+
+On a desktop and in a browser, the updates are the positions the app
+watches while it runs.
+
+### Regions
+
+`location.monitor(region)` watches a circle for the app, until
+`location.stopMonitoring(id)`: its transitions come through
+`location.crossings()`, with the app in the background or not running
+(iOS and Android start it). If the device is inside as monitoring starts,
+an `.enter` comes. It needs `.always` on iOS and Android
+(`LocationError.needsAlways`); past the system's limit it throws
+`tooManyRegions`.
+
+```asuka
+async fn watchHere() throws {
+  let p = try await location.current()
+  try await location.monitor(location.Region(id: "here", latitude: p.latitude, longitude: p.longitude, radius: 150, events: [.enter, .exit]))
+}
+
+async fn followCrossings() throws {
+  for await c in location.crossings() {
+    print("{c.kind} {c.region}")
+  }
+}
+```
+
+`location.supported()` says what the system does itself: `regions` (iOS,
+Android, macOS and Windows monitor them; on Linux and in a browser this
+package computes them from the positions while the app runs),
+`maxRegions` (iOS and macOS 20), `dwell` (whether `.dwell` comes) and
+`relaunch` (whether the system starts the app for an event).
+
+### Events with the app not running
+
+The system keeps a batch or a crossing until the app has read it: one
+that came as the app ended is given again at the next start. An event
+keeps the app running a few seconds; `b.hold()` and `c.hold()` keep it
+running until the function they return is called (or the system's time
+is up: about 30 seconds on iOS, 10 on Android), for work that goes on
+after the event is read (sending it to a server).
+
+### Testing
+
+`location.fake()` gives the package a `FakeLocation` instead of the
+platform: `answer` is what the user answers when asked, `move(latitude,
+longitude)` takes the device somewhere (the positions' readers see it, a
+batch comes while updates run, and the regions it enters or leaves cross),
+`allow(level)` is the user changing it in Settings, and `pending` counts
+the events whose `hold()` isn't done.
+
+```asuka
+test "a region, crossed" {
+  let loc = location.fake()
+  loc.answer = .always
+  loc.move(35.6812, 139.7671)
+  let _ = try await location.requestAlways()
+  try await location.monitor(location.Region(id: "here", latitude: 35.6812, longitude: 139.7671, radius: 150))
+  loc.move(35.70, 139.7671) // 2 km north: an exit
+}
 ```
 
 ## Notifications: asuka/sdk/notify
@@ -2505,37 +2448,68 @@ Selling in the app, `asuka/sdk/purchase`, has a page of its own:
 [In-app purchases](purchases.md). So does iCloud's key-value store and
 documents, `asuka/sdk/icloud`: [iCloud](icloud.md).
 
-## Motion and sensors: asuka/sdk/sensors
+## Motion and sensors: asuka/sensors
 
-```go
-stop := sensors.WatchMotion(50*time.Millisecond, func(m sensors.MotionReading) {
-	level.Set(m.Attitude.Roll) // a spirit level
-})
+`asuka/sensors` reads the device's motion and environment sensors, each
+a stream that runs while it's read:
+
+```asuka
+import asuka/sensors
+
+component Level {
+  state roll = 0.0
+
+  task {
+    for await m in sensors.motion(every: 50ms) { roll = m.attitude.roll }
+  }
+
+  Text("{(roll * 180 / 3.14159).fixed(0)}°")
+}
 ```
 
-- `WatchAccelerometer`, `WatchGyroscope` and `WatchMagnetometer` give a
-  `Vector` (x, y, z) about every interval: acceleration in g, rotation in
-  radians per second, the magnetic field in microteslas (calibrated).
-- `WatchMotion` is the fused device motion: `Gravity` and the user's
-  `Acceleration` (in g), `Rotation`, and the `Attitude`: a `Matrix` that
-  turns device axes into East-North-Up, the `Heading` (degrees from
-  magnetic north; -1 without a magnetometer), and `Pitch` and `Roll`.
-- `WatchPressure` is the barometer (hectopascals, and the change in
-  altitude), `WatchLight` the ambient light in lux (Android), and
-  `WatchSteps` the steps since watching began. `StepsBetween(from, to)`
-  is iOS's history (a week); Android keeps none.
-- `Available(sensor)` says whether the device has one; the simulator and
-  emulators have few. A Mac and a PC have none; Linux has the light
-  sensor and the accelerometer's orientation on convertibles and tablets
-  (iio-sensor-proxy); a browser has the Generic Sensor API or device
-  motion events, without a barometer or pedometer.
+- `sensors.accelerometer(every:)`, `gyroscope(every:)` and
+  `magnetometer(every:)` give a `Vector` (`x`, `y`, `z`, `time`) about
+  every interval: acceleration in g, rotation in radians per second, the
+  magnetic field in microteslas (calibrated).
+- `sensors.motion(every:)` is the fused device motion: `gravity` and the
+  user's `acceleration` (in g), `rotation`, and the `attitude`: a `matrix`
+  that turns device axes into East-North-Up, the `heading` (degrees from
+  magnetic north; -1 without a magnetometer), and `pitch` and `roll`.
+- `sensors.pressure(every:)` is the barometer (hectopascals, and the
+  change in altitude), `sensors.light(every:)` the ambient light in lux
+  (Android, Linux), and `sensors.stepUpdates()` the steps since watching
+  began. `sensors.steps(from:, to:)` (times as `time.now()` gives them) is
+  iOS's history (a week); elsewhere it throws `SensorError.notAvailable`.
+- `sensors.available(sensor)` says whether the device has one
+  (`Sensor.all` lists them); the simulator and emulators have few. A Mac
+  and a PC have none; Linux has the light sensor and the accelerometer's
+  orientation on convertibles and tablets (iio-sensor-proxy); a browser
+  has the Generic Sensor API or device motion events, without a barometer
+  or pedometer. A stream of a sensor the device lacks throws
+  `notAvailable`.
+- `sensors.simulate(json)` feeds the iOS simulator, which has no motion
+  sensors, a reading in Core Motion's terms (`kind` 0 the accelerometer,
+  3 motion; `acceleration`, `gravity`, `user`, `rotation`, `field`).
 
-The values are the same on both platforms: device axes as Android and the
-W3C define them (x to the right of the screen, y up it, z out of it),
+The values are the same everywhere: device axes as Android and the W3C
+define them (x to the right of the screen, y up it, z out of it),
 acceleration as the accelerometer measures it (a device lying face up
-reads z = +1 g; iOS's are turned to match), and the attitude computed
-the same way on both. Up to 200 readings a second; readings come on the
-main thread, in batches as the platform delivers them.
+reads z = +1 g; iOS's are turned to match), and the attitude computed the
+same way on every platform. Up to 200 readings a second; they come on the
+main thread.
+
+In a test, `sensors.fake()` gives the package a `FakeSensors`: the
+sensors `present`, and readings sent through it (`accelerate(x, y, z)`,
+`rotate`, `move(gravity, user:, rotation:, field:)`, `press(hPa)`,
+`shine(lux)`, `walk(steps)`), each to the streams that read the sensor,
+no more often than they asked.
+
+```asuka
+test "lying face up" {
+  let s = sensors.fake()
+  s.accelerate(0, 0, 1)
+}
+```
 
 ## Editing images and video frames: asuka/sdk/imageedit
 

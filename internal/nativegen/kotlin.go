@@ -373,7 +373,7 @@ func (g *kotlinGen) provider() {
 		g.printf("                    else -> throw AsukaUnsupportedException(\"no method $iface.$method\")\n                }\n            }\n")
 	}
 	g.printf("            else -> throw AsukaUnsupportedException(\"no interface $iface\")\n        }\n    }\n\n")
-	g.printf("    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (Result<AsukaNativeWriter>) -> kotlin.Unit): %s? {\n        when (iface) {\n", g.job)
+	g.printf("    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (kotlin.Result<AsukaNativeWriter>) -> kotlin.Unit): %s? {\n        when (iface) {\n", g.job)
 	for _, it := range g.p.Interfaces {
 		var async []*Method
 		for _, m := range it.Methods {
@@ -400,7 +400,7 @@ func (g *kotlinGen) provider() {
 			} else {
 				g.printf("                                %s\n", call)
 			}
-			g.printf("                                done(Result.success(w))\n                            } catch (e: Throwable) {\n                                done(Result.failure(e))\n                            }\n                        }\n                    }\n")
+			g.printf("                                done(kotlin.Result.success(w))\n                            } catch (e: Throwable) {\n                                done(kotlin.Result.failure(e))\n                            }\n                        }\n                    }\n")
 		}
 		g.printf("                }\n            }\n")
 	}

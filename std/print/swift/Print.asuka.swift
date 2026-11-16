@@ -104,7 +104,7 @@ public protocol Printer: AnyObject {
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 1): // Printer.File
@@ -112,7 +112,7 @@ public protocol Printer: AnyObject {
             let source = r.string()
             let job = Wire.readJob(&r)
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.file(source: source, job: job)
@@ -127,7 +127,7 @@ public protocol Printer: AnyObject {
             let markup = r.string()
             let job = Wire.readJob(&r)
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.html(markup: markup, job: job)
@@ -141,7 +141,7 @@ public protocol Printer: AnyObject {
             let o = object as! any Printer
             let layout = Wire.readLayout(&r)
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.pdf(layout: layout)

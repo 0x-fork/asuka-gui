@@ -104,18 +104,24 @@ func (l *Lowerer) lower() {
 			}
 		}
 	}
+	// What the constants and the native errors' table use (an error's
+	// message method) is lowered in turn.
 	for {
 		for len(l.work) > 0 {
 			w := l.work[0]
 			l.work = l.work[1:]
 			w()
 		}
-		if len(l.pendingConsts) == 0 {
-			break
+		if len(l.pendingConsts) > 0 {
+			l.finishConsts()
+			continue
 		}
-		l.finishConsts()
+		if len(l.pendingNative) > 0 {
+			l.finishNativeErrors()
+			continue
+		}
+		break
 	}
-	l.finishNativeErrors()
 	l.finishStrings()
 }
 

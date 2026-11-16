@@ -111,7 +111,7 @@ public object AsukaModule : AsukaModuleProvider {
         }
     }
 
-    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (Result<AsukaNativeWriter>) -> kotlin.Unit): kotlinx.coroutines.Job? {
+    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (kotlin.Result<AsukaNativeWriter>) -> kotlin.Unit): kotlinx.coroutines.Job? {
         when (iface) {
             0 -> {
                 val o = obj as Printer
@@ -125,9 +125,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.file(source, job)
                                 w.int(v.value)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -140,9 +140,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.html(markup, job)
                                 w.int(v.value)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }
@@ -154,9 +154,9 @@ public object AsukaModule : AsukaModuleProvider {
                                 val w = AsukaNativeWriter.ok()
                                 val v = o.pdf(layout)
                                 w.string(v)
-                                done(Result.success(w))
+                                done(kotlin.Result.success(w))
                             } catch (e: Throwable) {
-                                done(Result.failure(e))
+                                done(kotlin.Result.failure(e))
                             }
                         }
                     }

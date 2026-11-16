@@ -68,8 +68,19 @@ state units = store.read("units", "metric")
 | `asuka/splash` | `splash.hold()`、`splash.hide()`：アプリの準備ができるまで asuka.toml の起動画面を表示し続けます（iOS、Android。ほかでは何もしません） |
 | `asuka/tracking` | `tracking.request()`、`tracking.current()`：iOS と Mac の App Tracking Transparency のプロンプト（`.notAsked`、`.restricted`、`.denied`、`.allowed`）、Windows の広告 ID の設定、ブラウザーの Global Privacy Control または Do Not Track。プロンプトのない Android と Linux では `.allowed` |
 | `asuka/webauth` | `webauth.open(url, callbackScheme:, ephemeral:)`：システムの画面でのサインイン（ASWebAuthenticationSession、Custom Tab、WebView2 と WebKitGTK のウィンドウ、ポップアップ）で、コールバック URL を返します。`WebAuthError.canceled`。タスクをキャンセルすると閉じます |
+| `asuka/location` | `location.authorization()`（追跡される）、`request()`、`requestAlways()`、`requestPrecise(purpose)`、`current()`、`positions()`（ストリーム）、`placeName(lat, lon)`、`openSettings()`、`supported()`。バックグラウンドの位置更新（`startUpdates(…)`、`updates()`、`stopUpdates()`、`updating()`）と領域の監視（`monitor(region)`、`crossings()`、`stopMonitoring(id)`、`monitored()`）。そのイベントは読まれるまで保持され、アプリが処理している間は動き続けられます（`hold()`）。Core Location、Android の LocationManager、WinRT の Geolocator、位置情報ポータルまたは GeoClue、Geolocation API |
+| `asuka/sensors` | `sensors.available(sensor)`、`accelerometer(every:)`、`gyroscope`、`magnetometer`、`motion`（姿勢、重力、ユーザーの加速度）、`pressure`、`light`、`stepUpdates()`（いずれもストリーム）、`steps(from:, to:)`、`simulate(json)`。Core Motion、SensorManager、Generic Sensor API、iio-sensor-proxy |
+| `asuka/purchase` | アプリ内課金：`declare(items)`、`products(items)`、`buy(item, options)`、`Transaction.finish()`、`events()`（アプリの起動からのストリーム）、`owned()`（追跡される：`has(id)`）、`entitlements()`、`restore()`、`statuses(group)`、`manageSubscriptions(id)`、`redeemCode()`、`requestRefund(t)`、`storefront()`。StoreKit 2、Play Billing、Microsoft Store、Digital Goods API |
+| `asuka/pay` | Apple Pay と Google Pay：`available(request)`、`pay(request)`（配送先、配送方法、カード、クーポン、承認それぞれに非同期のハンドラーがあり、`Update` を返すか `throw Invalid(field:, message:)` する）、`setUp()`、ウォレット自身の `PayButton` |
+| `asuka/appleauth` | Apple でサインイン：`signIn(scopes:, nonce:, state:)`、`credentialState(user)`、`available()`、Apple の `SignInButton`。iOS と macOS のみ |
+| `asuka/nfc` | NFC タグ：`state()`（追跡される）、`start(alert:, poll:)` で得る `Session`（`next()`、`setAlert`、`fail`、`stop`）、`Tag`（`message`、`ndef`、`write`、`makeReadOnly`、`transceive`）、`opened()`、NDEF の `Message` と `Record`（`encode()`、`decode(bytes)`）。Core NFC、Android のリーダーモード、Web NFC |
+| `asuka/bluetooth` | Bluetooth LE：`state()`（追跡される）、`request()`、`scan()`（ストリーム）、`choose(filters)`、`connect(device)`（`Connection` ストア：`state`、`services()`、`characteristic(s, c)`）、キャラクタリスティックの `read`、`write`、`notifications()`、`serve(services)`、`advertise(…)`、Bluetooth SIG の UUID。Core Bluetooth、Android の BLE、WinRT、BlueZ、Web Bluetooth |
 
 ネイティブパッケージのコードがないプラットフォーム（`asuka test` で動かすアプリにはまったくありません）では、それを必要とする処理は `unsupported` エラーを投げます。そのとき `asuka/store` は何も保存せず、読み込むとデフォルト値が返ります。
+
+`asuka test` では実行のたびに同じ結果になります。`time.now()` は 2026-01-01T00:00:00Z から始まり、テストの時間（`sleep`）に合わせてだけ進みます。ローカルのタイムゾーンは UTC で、各テストには `fs.appDir()` として専用の空のディレクトリがあります。Web ではアプリにまだディレクトリがないので、`asuka/fs` の呼び出しはエラーを投げます。
+
+デバイスまわりのパッケージ（`location`、`sensors`、`purchase`、`pay`、`appleauth`、`nfc`、`bluetooth`）にはテスト用のフェイクがあります。`location.fake()` や `purchase.fake(products)` などは、プラットフォームの実装の代わりに、テストが操作する Asuka の実装（端末を動かす、購入を承認する、タグをかざす、ペリフェラルを加える）をパッケージに与えます。詳しくは[標準ライブラリの README](../../std/README.md#test-fakes) を参照してください。
 
 ## ここにないパッケージ
 

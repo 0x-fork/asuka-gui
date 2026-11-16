@@ -99,7 +99,7 @@ their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 | `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `filter(p)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `reversed()`, `slice(from, to)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order) |
 | `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `bytes()`, `+` |
-| `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD); `bytes()` is none, `s.bytes()` a string's UTF-8 |
+| `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `s.bytes()` a string's UTF-8 |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
 | `Duration` | `seconds()`, `minutes()`, `hours()` (floats), `milliseconds()`, `nanoseconds()` (ints) |
 | `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic) |
@@ -440,9 +440,9 @@ async fn loadThread(id: string) throws -> Thread {
   takes the first and cancels the rest; `sleep(300ms)`;
   `withTimeout(5s) { … }`. They're structured: what they cancel has
   stopped, its `defer`s run, before they return or throw.
-  `await untilCancelled()` waits for nothing but the task's end: a task
-  that holds something while its component is shown (`defer { release() };
-  await untilCancelled()`).
+  `await never()` waits for nothing but the task's end: a task that
+  holds something while its component is shown (`defer { release() };
+  await never()`), or a stream that ends only when its reader goes.
 - `spawn { … }` runs a block on another thread, for work that would hold
   the main thread up (parsing, image processing). It may use values only,
   not state, stores or views: the compiler says so if it does.

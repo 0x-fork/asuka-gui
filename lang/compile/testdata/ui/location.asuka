@@ -1,0 +1,140 @@
+import asuka/location
+
+/// What the background updates and regions brought, newest first.
+state log: [string] = []
+
+async fn followCrossings() throws {
+  for await c in location.crossings() {
+    let done = c.hold()
+    log = ["{c.kind} {c.region}"] + log
+    await sleep(10ms)
+    done()
+  }
+}
+
+async fn followUpdates() throws {
+  for await b in location.updates() {
+    let p = b.positions.last()!
+    log = ["{b.positions.count()} at {p.latitude.fixed(2)}"] + log
+  }
+}
+
+async fn crossingsQuietly() { try? await followCrossings() }
+async fn updatesQuietly() { try? await followUpdates() }
+
+component Following {
+  prop children: View
+  task { await all(crossingsQuietly(), updatesQuietly()) }
+  children
+}
+
+component Where {
+  state status = ""
+  let auth = location.authorization()
+
+  async fn run(work: async fn() throws -> string) {
+    do {
+      status = try await work()
+    } catch e {
+      status = e.message
+    }
+  }
+
+  Column {
+    Text("Allowed: {auth.level}; precise: {auth.precise}")
+    Text("status {status}")
+    Text("log {log.joined(separator: ", ")}")
+    Button("Allow always") { on press { await run(() => "{(try await location.requestAlways()).level}") } }
+    Button("Here") {
+      on press {
+        await run(() => {
+          let p = try await location.current()
+          return "at {p.latitude.fixed(4)}, {p.longitude.fixed(4)}"
+        })
+      }
+    }
+    Button("Watch") {
+      on press {
+        await run(() => {
+          let p = try await location.current()
+          try await location.monitor(location.Region(id: "here", latitude: p.latitude, longitude: p.longitude, radius: 150))
+          let s = location.supported()
+          return "watching (system: {s.regions}, at most {s.maxRegions})"
+        })
+      }
+    }
+    Button("Track") {
+      on press {
+        await run(() => {
+          try await location.startUpdates(accuracy: .high, distance: 20, notification: location.Notification(title: "Tracking"))
+          return "tracking {try await location.updating()}"
+        })
+      }
+    }
+  }
+}
+
+app { Following { Where() } }
+
+test "with no platform code, location is unavailable" {
+  let app = mount(Where())
+  await app.idle()
+  app.expect("Allowed: notAsked; precise: false")
+  app.tap("Here")
+  app.expect("status location: not available")
+}
+
+test "denied" {
+  let loc = location.fake()
+  loc.answer = .denied
+  let app = mount(Where())
+  app.tap("Here")
+  await app.idle()
+  app.expect("status location: not allowed")
+  app.expect("Allowed: denied; precise: true")
+}
+
+test "a region, crossed" {
+  log = []
+  let loc = location.fake()
+  loc.answer = .always
+  loc.move(35.6812, 139.7671)
+  let app = mount(Following { Where() })
+  await app.idle()
+  app.tap("Watch")
+  await app.idle()
+  app.expect("status location: needs the Always authorization (requestAlways)")
+  app.tap("Allow always")
+  await app.idle()
+  app.expect("Allowed: always; precise: true")
+  app.tap("Watch")
+  await app.idle()
+  app.expect("status watching (system: true, at most 20)")
+  app.expect("log enter here")
+  expect(loc.pending == 0)
+  loc.move(35.70, 139.7671) // 2 km north
+  await app.idle()
+  app.expect("log exit here, enter here")
+}
+
+test "background updates" {
+  log = []
+  let loc = location.fake()
+  let app = mount(Following { Where() })
+  app.tap("Track")
+  await app.idle()
+  app.expect("status tracking true")
+  expect(loc.updates.notification.title == "Tracking")
+  loc.move(1, 2)
+  await app.idle()
+  app.expect("log 1 at 1.00")
+  location.stopUpdates()
+  loc.move(3, 4)
+  await app.idle()
+  app.expect("log 1 at 1.00")
+}
+
+test "the distance" {
+  let d = location.distance(35.6812, 139.7671, 35.70, 139.7671)
+  expect(d > 2080 && d < 2100)
+}

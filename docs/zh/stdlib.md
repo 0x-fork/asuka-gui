@@ -68,8 +68,19 @@ state units = store.read("units", "metric")
 | `asuka/splash` | `splash.hold()`、`splash.hide()`：在应用准备好之前保持 asuka.toml 的启动画面（iOS、Android；其他平台什么也不做） |
 | `asuka/tracking` | `tracking.request()`、`tracking.current()`：iOS 和 Mac 上 App Tracking Transparency 的提示（`.notAsked`、`.restricted`、`.denied`、`.allowed`）；Windows 的广告 ID 设置；浏览器的 Global Privacy Control 或 Do Not Track；Android 和 Linux 没有提示，返回 `.allowed` |
 | `asuka/webauth` | `webauth.open(url, callbackScheme:, ephemeral:)`：在系统的界面里登录（ASWebAuthenticationSession、Custom Tab；WebView2 和 WebKitGTK 窗口；弹出窗口），返回回调 URL；`WebAuthError.canceled`；取消任务会关闭它 |
+| `asuka/location` | `location.authorization()`（可追踪）、`request()`、`requestAlways()`、`requestPrecise(purpose)`、`current()`、`positions()`（流）、`placeName(lat, lon)`、`openSettings()`、`supported()`；后台位置更新（`startUpdates(…)`、`updates()`、`stopUpdates()`、`updating()`）和区域监控（`monitor(region)`、`crossings()`、`stopMonitoring(id)`、`monitored()`），这些事件会一直保留到被读取，应用处理期间还能保持运行（`hold()`）。基于 Core Location、Android 的 LocationManager、WinRT 的 Geolocator、位置门户或 GeoClue，以及 Geolocation API |
+| `asuka/sensors` | `sensors.available(sensor)`；`accelerometer(every:)`、`gyroscope`、`magnetometer`、`motion`（姿态、重力、用户加速度）、`pressure`、`light`、`stepUpdates()`（都是流）；`steps(from:, to:)`；`simulate(json)`。基于 Core Motion、SensorManager、Generic Sensor API 和 iio-sensor-proxy |
+| `asuka/purchase` | 应用内购买：`declare(items)`、`products(items)`、`buy(item, options)`、`Transaction.finish()`、`events()`（从应用启动起的流）、`owned()`（可追踪：`has(id)`）、`entitlements()`、`restore()`、`statuses(group)`、`manageSubscriptions(id)`、`redeemCode()`、`requestRefund(t)`、`storefront()`。基于 StoreKit 2、Play Billing、Microsoft Store 和 Digital Goods API |
+| `asuka/pay` | Apple Pay 与 Google Pay：`available(request)`、`pay(request)`（配送联系人、配送方式、卡片、优惠码和授权都有异步处理函数，返回 `Update`，或 `throw Invalid(field:, message:)`）、`setUp()`，以及钱包自己的 `PayButton` |
+| `asuka/appleauth` | 通过 Apple 登录：`signIn(scopes:, nonce:, state:)`、`credentialState(user)`、`available()`，以及 Apple 的 `SignInButton`。仅限 iOS 和 macOS |
+| `asuka/nfc` | NFC 标签：`state()`（可追踪）、`start(alert:, poll:)` 得到 `Session`（`next()`、`setAlert`、`fail`、`stop`）、`Tag`（`message`、`ndef`、`write`、`makeReadOnly`、`transceive`）、`opened()`，以及 NDEF 的 `Message` 和 `Record`（`encode()`、`decode(bytes)`）。基于 Core NFC、Android 的读卡器模式和 Web NFC |
+| `asuka/bluetooth` | 低功耗蓝牙：`state()`（可追踪）、`request()`、`scan()`（流）、`choose(filters)`、`connect(device)`（返回 `Connection` store：`state`、`services()`、`characteristic(s, c)`），特征值的 `read`、`write`、`notifications()`；`serve(services)`、`advertise(…)`；以及蓝牙 SIG 定义的 UUID。基于 Core Bluetooth、Android 的 BLE、WinRT、BlueZ 和 Web Bluetooth |
 
 如果某个平台没有原生包的代码（比如由 `asuka test` 运行的应用，它没有任何平台代码），用到它的地方会抛出 `unsupported` 错误；这时 `asuka/store` 什么也不保存，读取时返回默认值。
+
+`asuka test` 让每次运行都可重复：`time.now()` 从 2026-01-01T00:00:00Z 开始，只随测试的时间（`sleep`）前进，本地时区是 UTC，每个测试都有一个属于自己的空目录作为 `fs.appDir()`。Web 上应用还没有自己的目录，所以 `asuka/fs` 的调用在那里会抛出错误。
+
+设备相关的包（`location`、`sensors`、`purchase`、`pay`、`appleauth`、`nfc`、`bluetooth`）都为测试提供了替身：`location.fake()`、`purchase.fake(products)` 等会把一个由测试驱动的 Asuka 实现换给这个包，代替平台的实现（移动设备位置、批准一笔购买、轻触一个标签、添加一个外设），详见[标准库的 README](../../std/README.md#test-fakes)。
 
 ## 标准库之外的包
 

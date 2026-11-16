@@ -75,6 +75,13 @@ they do for the platform's own apps.
 | `asuka/splash` | `splash.hold()`, `splash.hide()`: keeps asuka.toml's launch screen up while the app gets ready (iOS, Android; nothing elsewhere) |
 | `asuka/tracking` | `tracking.request()`, `tracking.current()`: App Tracking Transparency's prompt on iOS and the Mac (`.notAsked`, `.restricted`, `.denied`, `.allowed`); Windows' advertising ID setting; the browser's Global Privacy Control or Do Not Track; `.allowed` on Android and Linux, which have no prompt |
 | `asuka/webauth` | `webauth.open(url, callbackScheme:, ephemeral:)`: a sign-in in the system's sheet (ASWebAuthenticationSession, a Custom Tab; WebView2 and WebKitGTK windows; a popup), the callback URL; `WebAuthError.canceled`; cancelling the task closes it |
+| `asuka/location` | `location.authorization()` (tracked), `request()`, `requestAlways()`, `requestPrecise(purpose)`, `current()`, `positions()` (a stream), `placeName(lat, lon)`, `openSettings()`, `supported()`; background updates (`startUpdates(…)`, `updates()`, `stopUpdates()`, `updating()`) and regions (`monitor(region)`, `crossings()`, `stopMonitoring(id)`, `monitored()`), their events kept until read and held while the app works (`hold()`). Core Location, Android's location manager, WinRT's Geolocator, the location portal or GeoClue, the Geolocation API. [Device and services](device.md#location-asukalocation) |
+| `asuka/sensors` | `sensors.available(sensor)`; `accelerometer(every:)`, `gyroscope`, `magnetometer`, `motion` (attitude, gravity, user acceleration), `pressure`, `light`, `stepUpdates()` (streams); `steps(from:, to:)`; `simulate(json)`. Core Motion, SensorManager, the Generic Sensor API, iio-sensor-proxy. [Device and services](device.md#motion-and-sensors-asukasensors) |
+| `asuka/purchase` | In-app purchases: `declare(items)`, `products(items)`, `buy(item, options)`, `Transaction.finish()`, `events()` (a stream from the app's start), `owned()` (tracked: `has(id)`), `entitlements()`, `restore()`, `statuses(group)`, `manageSubscriptions(id)`, `redeemCode()`, `requestRefund(t)`, `storefront()`. StoreKit 2, Play Billing, the Microsoft Store, the Digital Goods API. [In-app purchases](purchases.md) |
+| `asuka/pay` | Apple Pay and Google Pay: `available(request)`, `pay(request)` with async handlers for the shipping contact, method, card, coupon and authorization (an `Update`, or `throw Invalid(field:, message:)`), `setUp()`, the wallet's `PayButton`. PassKit, play-services-wallet, the Payment Request API and Google's pay.js |
+| `asuka/appleauth` | Sign in with Apple: `signIn(scopes:, nonce:, state:)`, `credentialState(user)`, `available()`, Apple's `SignInButton`. iOS and macOS |
+| `asuka/nfc` | NFC tags: `state()` (tracked), `start(alert:, poll:)` for a `Session` (`next()`, `setAlert`, `fail`, `stop`), `Tag`s (`message`, `ndef`, `write`, `makeReadOnly`, `transceive`), `opened()`, NDEF `Message`s and `Record`s (`encode()`, `decode(bytes)`). Core NFC, Android's reader mode, Web NFC. [NFC tags](nfc.md) |
+| `asuka/bluetooth` | Bluetooth LE: `state()` (tracked), `request()`, `scan()` (a stream), `choose(filters)`, `connect(device)` (a `Connection` store: `state`, `services()`, `characteristic(s, c)`), characteristics' `read`, `write`, `notifications()`; `serve(services)`, `advertise(…)`; the SIG's UUIDs. Core Bluetooth, Android's BLE, WinRT's, BlueZ, Web Bluetooth. [Bluetooth](bluetooth.md) |
 
 Where a platform has no code for a native package (an app run by
 `asuka test`, which has none), what needs it throws an `unsupported`
@@ -85,6 +92,13 @@ error; `asuka/store` keeps nothing then, and reads give their defaults.
 the local zone is UTC, and each test has an empty directory of its own
 as `fs.appDir()`. On the web the app has no directory yet, so `asuka/fs`'s
 calls throw there.
+
+The device's packages (`location`, `sensors`, `purchase`, `pay`,
+`appleauth`, `nfc`, `bluetooth`) have fakes for tests: `location.fake()`,
+`purchase.fake(products)` and the others give the package an Asuka
+implementation a test drives (it moves the device, approves a purchase,
+taps a tag, adds a peripheral) in place of the platform's, as the
+[standard library's README](../std/README.md#test-fakes) says.
 
 ## Packages that aren't here
 

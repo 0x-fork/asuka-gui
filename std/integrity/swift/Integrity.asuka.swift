@@ -40,13 +40,13 @@ public protocol Attest: AnyObject {
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 2): // Attest.GenerateKey
             let o = object as! any Attest
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.generateKey()
@@ -61,7 +61,7 @@ public protocol Attest: AnyObject {
             let keyId = r.string()
             let challenge = r.data()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.attestKey(keyId: keyId, challenge: challenge)
@@ -76,7 +76,7 @@ public protocol Attest: AnyObject {
             let keyId = r.string()
             let data = r.data()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.assertion(keyId: keyId, data: data)
@@ -90,7 +90,7 @@ public protocol Attest: AnyObject {
             let o = object as! any Attest
             let cloudProjectNumber = r.int()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.prepare(cloudProjectNumber: cloudProjectNumber)
@@ -103,7 +103,7 @@ public protocol Attest: AnyObject {
             let o = object as! any Attest
             let requestHash = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.token(requestHash: requestHash)

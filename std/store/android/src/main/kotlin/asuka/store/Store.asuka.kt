@@ -83,7 +83,7 @@ public object AsukaModule : AsukaModuleProvider {
         }
     }
 
-    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {
+    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (kotlin.Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {
         when (iface) {
         }
         throw AsukaUnsupportedException("no method $iface.$method")
