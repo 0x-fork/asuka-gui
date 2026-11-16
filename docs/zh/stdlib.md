@@ -43,7 +43,7 @@ state units = store.read("units", "metric")
 | `asuka/recent` | `recent.add(path)`、`recent.clear()`、`recent.list()`：用户最近打开的文档，出现在“最近使用”菜单和程序坞菜单、跳转列表、最近使用的文件中 |
 | `asuka/store` | `store.read(key, default)`、`store.write(key, value)`、`store.remove(key)`、`store.flush()`、`store.dir()`：以 JSON 形式跨启动保存的小数据，存放在平台的偏好设置里（UserDefaults、SharedPreferences、`localStorage`，在 Windows 和 Linux 上是一个文件，改动后稍等片刻才写入） |
 | `asuka/notify` | 本地通知：`request()`、`show(n)`、`schedule(n)`（在 `n.after` 之后显示）、`cancel(id)`、`showing()`、`remove(ids)`、`removeThread(t)`、`removeAll()`、`setBadge(n)`；`setCategories`（操作、回复）、`setChannels`、`setChannelGroups`（Android）；`Notification(…).from(person, conversation)`（消息）；`present(decide)`（应用在前台时通知怎么显示）；`responses()`（点按、操作和回复组成的流；`r.defer()` 让应用继续运行，直到这项工作完成）。各平台用的都是宿主自己的通知：UserNotifications、Android 的通知、Windows 的 toast、Linux 的通知、浏览器的通知 |
-| `asuka/push` | `push.register()`（令牌：APNs 的、FCM 的、Web 的订阅）、`push.opened()` 和 `push.received()`（`Message` 组成的流；`Message.from(person, conversation)`） |
+| `asuka/push` | `push.register()`（令牌：APNs 的、FCM 的、Web 的订阅）、`push.opened()` 和 `push.received()`（`Message` 组成的流；`Message.from(person, conversation)`）；`push.rewrite(f)`：在每条推送显示之前修改它（iOS 的 Notification Service Extension、Android 的数据消息） |
 | `asuka/watch` | `watch.path(dir, ignore:, recursive:, attributes:)` 返回一个 `Watch`：它的 `root`，以及 `events`，一个由一批批 `Event` 组成的流（`op`：create、write、remove、rename、attrib、overflow；`path`、`oldPath`）。基于 FSEvents、inotify 和 ReadDirectoryChangesW（internal/fswatch）；手机和 Web 上不支持 |
 | `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` 返回一个 `Task`（`update(…)`、`end()`）：在后台继续进行的长时间工作（Android 的前台服务及其通知；iOS 上多给约 30 秒；桌面端不让系统休眠） |
 | `asuka/calendar` | `calendar.request()`（`Access`）、`calendars()`、`events(from:, to:, calendars:)`、`add(Event)`（系统的表单）：EventKit、Calendar Provider |
@@ -65,6 +65,7 @@ state units = store.read("units", "metric")
 | `asuka/review` | `review.request()`：商店的评分提示（iOS 和 Mac 上的 StoreKit、Play 的应用内评价），是否显示由商店的配额决定；Windows、Linux 和 Web 上什么也不做。`review.appStoreURL(id)`、`review.playStoreURL(id)` 用于“给我们评分”按钮 |
 | `asuka/screen` | `screen.displays()`（会被追踪：`id`、`name`、`bounds`、`workArea`、`scale`、`refreshRate`、`primary`）、`screen.primary`、`nearest`、`matching`；`screen.lock(orientation)`、`screen.setBars(style:, hideStatus:, hideNavigation:)`、`screen.preventCapture(on)`、`screen.screenshots()`（一个流） |
 | `asuka/secure` | `secure.read(key)`、`secure.write(key, value)`、`secure.remove(key)`：由平台加密的少量机密（钥匙串、Android Keystore、凭据管理器、通过 libsecret 访问的用户密钥环、用不可导出的 WebCrypto 密钥加密的 IndexedDB） |
+| `asuka/sharesheet` | 应用自己的分享面板，显示在发起分享的应用上方（iOS 的分享扩展、Android 的一个 Activity）：`sharesheet.active()`（应用作为面板运行：由 app 块显示它）、`done()`、`cancel()`、`openApp()`；分享的内容交给 `onShare` |
 | `asuka/shell` | `shell.reveal(path)`、`shell.open(path)`、`shell.trash(path)`、`shell.beep()`：文件管理器提供的功能（NSWorkspace、资源管理器和回收站、GIO 和 FileManager1）；`shell.ShellError.noApp` |
 | `asuka/splash` | `splash.hold()`、`splash.hide()`：在应用准备好之前保持 asuka.toml 的启动画面（iOS、Android；其他平台什么也不做） |
 | `asuka/tracking` | `tracking.request()`、`tracking.current()`：iOS 和 Mac 上 App Tracking Transparency 的提示（`.notAsked`、`.restricted`、`.denied`、`.allowed`）；Windows 的广告 ID 设置；浏览器的 Global Privacy Control 或 Do Not Track；Android 和 Linux 没有提示，返回 `.allowed` |

@@ -1172,18 +1172,51 @@ opens the app with its URL. On Android, the CLI generates an App Widget
 provider for each kind (over the host's `AsukaWidgetProvider`, with
 RemoteViews) and the launcher's static shortcuts.
 
-Two extensions run the app's Go code, from the app's own symbols rather
-than `asuka.toml`: the share sheet (`app.ShareSheet`) and the
-Notification Service Extension (`push.Rewrite`). With either, the app's
-Go code and the host are one dynamic framework (AsukaApp.framework) that
-the app and the extension link, their data in the App Group they share.
-The extension starts the core headless with a root of its own
-(`ASUKA_SHARE_SHEET`, `ASUKA_NOTIFICATION_SERVICE`). Android runs both in
-the app's package: the share sheet's activity, and the push rewrite in
-Firebase's service, starting the core headless as a background task does.
+Two extensions run the app itself, from what its program uses rather
+than `asuka.toml`: its own share sheet and the Notification Service
+Extension. Both are the standard library's, not the language's: the
+process the app runs in is a fact the host sets before the core starts
+(`ASUKA_SHARE_SHEET`, `ASUKA_NOTIFICATION_SERVICE`), which
+`asuka/platform`'s `process()` reads, and the app decides what its root
+is there. `asuka/sharesheet`'s `active()` is true in the sheet's process,
+so the app block shows the sheet there (`if sharesheet.active() {
+SaveLink() } else { Root() }`); the sheet hears what's shared with
+`onShare` (the host sends the root the `Shared` event once the items are
+collected), and `done()`, `cancel()` and `openApp()` are the `ShareClose`
+command, which the sheet's host takes. `push.rewrite(f)` keeps `f` in a
+store whose task serves the host's rewrites (`nextRewrite`, answered by
+`rewritten` with the notification to show, `asuka/notify`'s spec), as
+`notify.present` serves its decisions: one at a time, in order, `f`'s
+none or a throw showing the push as it came. The app's root runs in
+either extension, as it does for a background launch (`push.inExtension()`
+lets the app make it one that only calls `rewrite`). An app block is
+the root everywhere, so nothing in the language knows a process: a
+prelude registration (a `shareSheet(…)` item of the app block, an `on
+rewrite`) was the other form, and would have needed the core to choose
+among the app block's items without running them.
+
+The CLI builds each extension from the program's uses (appbuild.Uses):
+the package's manifest says what its member needs. `sharesheet.active`
+derives `shareSheet` (`ios.derived`), which with `asuka.toml`'s
+`shareTarget` makes iOS's share extension the host's
+`AsukaShareSheetController` and gives Android's share filters to
+`AsukaShareActivity` (a `:share` process, shown as a Material bottom
+sheet); `push.rewrite` asks for the host's `ASUKA_NOTIFICATION_SERVICE`
+(so the CLI builds the extension, its principal class
+`AsukaNotificationService`) and for Android's
+`dev.asuka.push.rewrite` meta-data (the host's Firebase service has the
+app rewrite each data message, starting the core headless as a
+background task does, ten seconds at most). With either extension on
+iOS, the app's code, the core and the host are one dynamic framework
+(AsukaApp.framework) that the app and the extension link; their files
+(`asuka/fs`'s `appDir`) and `asuka/store`'s values are in the App Group
+they share, moved there from the app's own the first time it runs with
+one, and their keychain group is the app's. On the web the page in
+front rewrites a push before the service worker shows it.
 Notifications' responses work the same way: a background action starts
 the core headless (iOS's center delegate, Android's broadcast receiver)
-and hands Go the response, keeping the process until Go reports it done.
+and hands the app the response, keeping the process until it reports it
+done.
 
 ### Plugins
 

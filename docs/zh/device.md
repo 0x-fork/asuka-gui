@@ -1155,9 +1155,110 @@ component Shared {
 
 链接指向的是什么（网页、图片还是视频），需要应用自己用 `asuka/http` 去弄清楚，相当于用 Asuka 实现 expo-sharing 的 “resolved” 负载。
 
-### 应用自己的分享面板
+### 应用自己的分享面板：asuka/sharesheet
 
-分享会打开应用。至于应用自己的分享面板，也就是像“保存到 Raindrop”或“添加到备忘录”那样，显示在发起分享的应用上方的一个页面（用户保存后，就回到原来所在的地方），Asuka 目前还不支持：宿主已经能运行这样的面板（在 iOS 上作为分享扩展的弹出面板，在 Android 上作为运行在 `:share` 进程中、以 Material 底部面板形式显示的 Activity），但 Asuka 语言还没有办法声明面板要显示的页面。在那之前，分享会打开应用，由 `onShare` 接收分享的内容。
+默认情况下，分享会打开应用。应用也可以有自己的分享面板：像“保存到 Raindrop”或“添加到备忘录”那样，在发起分享的应用上方显示一个页面，用户保存之后就回到原来所在的地方。借助 `asuka/sharesheet`，app 块可以在应用作为分享面板运行时显示这个面板：
+
+```asuka
+import asuka/sharesheet
+
+component SaveLink {
+  state link = ""
+  state note = ""
+
+  onShare(items => {
+    for it in items {
+      if it.kind == .link {
+        link = it.text
+      }
+    }
+  })
+
+  Column {
+    padding: 16; gap: 12; grow: 1
+    if link.isEmpty() {
+      ProgressRing()
+    } else {
+      Text(link)
+    }
+    TextField { bind text: note; placeholder: "Note" }
+    Row {
+      gap: 12
+      Button("Cancel") {
+        on press { sharesheet.cancel() }
+      }
+      Button("Save") {
+        variant: .filled
+        on press {
+          save(link, note)
+          sharesheet.done()
+        }
+      }
+    }
+  }
+}
+
+component Root {
+  Text("Links")
+}
+
+// 应用自己的函数。
+fn save(link: string, note: string) {}
+
+app {
+  if sharesheet.active() {
+    SaveLink()
+  } else {
+    Root()
+  }
+}
+```
+
+应用作为自己的分享面板运行时，`sharesheet.active()` 为 true：这时根视图就是面板，应用的其余部分不会创建。面板和应用一样，通过 `onShare` 接收分享的内容；内容还没到齐时（比如视频还在复制），可以先显示一个加载指示器。面板通过 `sharesheet.done()`、`sharesheet.cancel()` 或 `sharesheet.openApp()` 关闭；`openApp()` 会带着分享的内容打开应用，交给应用的 `onShare`，和没有面板时一样。面板会出现在哪些内容的分享菜单里，仍由 `asuka.toml` 的 `shareTarget` 决定（见上文）；如果应用用了 `active()` 却没有设置 `shareTarget`，就不会出现在任何分享菜单里（CLI 会给出提示）。
+
+面板是一个独立的根视图，运行在独立的进程中，这和 iOS 运行分享扩展的方式一致：在 **iOS** 上，它就是应用的分享扩展，由 iOS 以弹出面板的形式显示，运行的是它与应用共用的框架中的应用代码和宿主；在 **Android** 上，它是运行在 `:share` 进程中的一个 Activity，以 Material 底部面板的形式显示在另一个应用上方（向下拖动、点按面板外部或返回都会取消分享）。面板关闭时，进程也随之结束。文件的 `path` 只在面板关闭之前有效：应用要保留的内容，请先复制出来。
+
+应用保存的数据在面板里也一样能访问：它的文件（`asuka/fs` 的应用目录，以及其中的 SQLite 数据库）、`asuka/storage` 的值、`asuka/secure`。Android 上两个进程共享应用的文件。iOS 上，应用第一次带着面板运行时，它的文件和值会一次性移到 App Group（`group.<app ID>`）中，钥匙串访问组也会与扩展共享；真机构建所用的描述文件需要开启 App Groups 功能（见[发布](shipping.md#ios)）。应用运行期间，不会收到面板写入数据的通知：等它回到前台时再重新读取。
+
+CLI 发现应用用到了 `sharesheet.active`，就会构建这个面板，取代那个只负责打开应用的扩展。这时在 iOS 上，应用的代码、核心和宿主会打包成应用内的一个框架 `Frameworks/AsukaApp.framework`，应用和它的扩展都加载这个框架，就像 Xcode 让扩展共享代码那样：应用不会因为有了面板而变大。在桌面平台和浏览器中，应用不会出现在其他应用的分享菜单里：`active()` 在这些平台上为 false。
+
+在测试中，`sharesheet.fake()` 会让应用作为分享面板运行（`mountApp()` 显示的就是面板），并记下面板是怎样关闭的（`closed`）；挂载后的应用调用 `share(items)`，就相当于另一个应用分享了这些内容：
+
+```asuka
+import asuka/sharesheet
+
+component SaveLink {
+  state link = ""
+
+  onShare(items => {
+    link = items[0].text
+  })
+
+  Column {
+    Text(link)
+    Button("Save") {
+      on press { sharesheet.done() }
+    }
+  }
+}
+
+app {
+  if sharesheet.active() {
+    SaveLink()
+  } else {
+    Text("Links")
+  }
+}
+
+test "the sheet saves" {
+  let sheet = sharesheet.fake()
+  let app = mountApp()
+  app.share([SharedItem(kind: .link, text: "https://asuka.dev")])
+  app.expect("https://asuka.dev")
+  app.tap("Save")
+  expect(sheet.closed == .done)
+}
+```
 
 ## 运行 JavaScript：asuka/js
 
@@ -1235,7 +1336,57 @@ Asuka 会像 Google 的 Gradle 插件那样，把其中的配置写进应用。�
 
 ### 在推送显示之前改写它
 
-在每条推送显示之前修改它（解密端到端加密的负载，设置标题和正文，附上图片，把它变成一条带有发送者头像的会话消息），Asuka 目前还不支持。宿主已经具备这样的能力（iOS 上是 Notification Service Extension，它会为 `aps` 中带有 `"mutable-content": 1` 的每条推送运行一次；Android 上是在应用的进程中处理 FCM 的数据消息），但 `asuka/push` 还没有函数可以把应用的代码交给它们，所以推送会按收到时的样子显示：要显示的内容，请直接放在负载里。
+`push.rewrite(f)` 让应用在每条推送显示之前修改它：解密端到端加密的负载，设置标题和正文，附上图片，把它变成一条带有发送者头像的会话消息，设置它的分组和类别。在应用启动时调用：
+
+```asuka
+import asuka/push
+import asuka/notify
+
+async fn reveal(m: push.Message) throws -> push.Message? {
+  let box = m.data["box"] ?? ""
+  if box.isEmpty() {
+    return none   // 不是我们的：按原样显示
+  }
+  let msg = try await decrypt(box)   // 密钥保存在 asuka/secure 中
+  var out = m
+  out.body = msg.text
+  out.category = "message"
+  return out.from(notify.Person(id: msg.fromID, name: msg.fromName, image: msg.avatar),
+    notify.Conversation(id: m.data["chat"] ?? ""))
+}
+
+component Root {
+  task {
+    push.rewrite(reveal)
+  }
+
+  Text("Chats")
+}
+
+// 应用自己的类型和函数。
+struct Plain {
+  text: string
+  fromID: string
+  fromName: string
+  avatar: string
+}
+
+async fn decrypt(box: string) throws -> Plain {
+  return Plain(text: box, fromID: "ana", fromName: "Ana", avatar: "")
+}
+
+app { Root() }
+```
+
+`f` 返回要显示的推送；返回 `none` 或抛出错误时，推送会按收到时的样子显示。推送一条一条地改写，顺序与到达的顺序一致。`image` 会被下载并附在通知上；`from` 把它变成一条会话消息，和 `notify.Notification` 的 `from` 一样。调用 `push.stopRewriting()` 之后，推送又会按原样显示。
+
+**iOS** 在 Notification Service Extension 中改写推送，`asuka build` 会为用到 `push.rewrite` 的应用生成这个扩展：`aps` 中带有 `"mutable-content": 1`（以及 `alert`，改写失败时显示的就是它）的每条推送，iOS 都会启动它。它会像在后台启动那样，不带屏幕地运行应用；等应用调用了 `push.rewrite`，改写才会执行。所以要让根视图在启动时做的事情尽量轻量，或者让扩展里的根视图只负责调用它（在扩展中 `push.inExtension()` 为 true：`if push.inExtension() { Rewrites() } else { Root() }`）。iOS 给它大约 30 秒和 24 MB 内存，超时后推送会按原样显示。应用保存的数据在扩展里也一样：它的文件和 `asuka/storage` 的值都在两者共享的 App Group 中，钥匙串项（`asuka/secure`）在应用的访问组中。发布构建需要一个对应扩展 bundle ID 的描述文件，这个 ID 是应用的 ID 加上 `.notification`（可以用 `asuka.toml` 的 `ios.notificationProfile` 指定；默认选用已安装的最匹配的那个），并且要开启 App Groups 功能、包含应用的 App Group。在 iOS 上，改写无法隐藏一条推送。模拟器只会为来自 APNs 的推送运行这个扩展，`xcrun simctl push` 发出的推送不会经过它。
+
+**Android** 在应用的进程中改写 FCM 的数据消息：如果应用没有运行，会先不带屏幕地启动它，在大约十秒之内完成改写，然后显示通知。改写之后既没有标题也没有正文的数据消息不会显示。应用在后台时收到的通知消息由 Firebase 直接显示，不会经过改写：请改发数据消息。
+
+**Web** 上由前台的页面在 service worker 显示推送之前改写它；没有打开的页面时，推送按原样显示。
+
+在测试中，`push.fakeRewrite(m)` 返回一条到达的推送最终会显示的样子：改写后的推送，或者 `m` 本身。
 
 ## 通过 Apple 登录：asuka/appleauth
 
