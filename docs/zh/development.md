@@ -93,7 +93,7 @@ Asuka 会监听应用所在的目录及其本地依赖（`asuka.toml` 中的 `fi
 **iPhone**（或 iPad），需要 Xcode 15 或更新版本：把它连上 Mac，解锁后点“信任”；再在它的“设置 › 隐私与安全性”中打开“开发者模式”（手机连接过 Xcode 之后才会出现这个选项，打开后手机会重启）。之后运行 `asuka dev --platform ios --device iphone` 就会在它上面运行；连着多台设备时，用 `--device` 加上设备名称或 UDID 指定（`xcrun devicectl list devices` 可以列出它们）。
 
 - **签名**：开发 App 由你的团队用开发证书签名。团队依次取自 `--team`、`ASUKA_TEAM_ID`、`asuka.toml` 的 `ios.team`，都没有的话就用钥匙串里 Apple Development 证书所属的团队。第一次运行时，Asuka 会让 Xcode 生成所需的开发描述文件（`xcodebuild -allowProvisioningUpdates`），顺带把这台手机注册到团队，并打开应用用到的功能（推送、App Groups 等）。这一步使用 Xcode “设置 › 账户”中登录的 Apple ID；如果设置了 `ASUKA_ASC_KEY_ID`（或 `ios.appStoreConnect`），则改用 [App Store Connect API 密钥](shipping.md)。团队已有的描述文件如果合适（包括通配符描述文件），就直接使用。
-- **连接到 Mac**：开发 App 通过网络连接 `asuka dev`，地址是 Mac 的第一个地址（或 `ASUKA_DEV_HOST` 指定的地址），端口在空闲时为 8791，这样从主屏幕重新打开的开发 App 也能找到它。手机必须和 Mac 在同一个网络里，而且 iOS 会询问一次是否允许这个应用查找本地网络中的设备，请选择允许；之后也可以在手机的“设置 › App › 本地网络”中打开。如果开发 App 一直没有连上，Asuka 会告诉你该检查什么。
+- **连接到 Mac**：插着数据线时，Mac 会经数据线主动连接开发 App（和 Xcode 一样通过 usbmuxd），手机不需要连接任何网络。没有数据线时，开发 App 通过网络连接 `asuka dev`，依次尝试 Mac 的各个地址（或 `ASUKA_DEV_HOST` 指定的地址），端口在空闲时为 8791；iOS 会询问一次是否允许这个应用查找本地网络中的设备，请选择允许，之后也可以在手机的“设置 › App › 本地网络”中打开。无论哪种方式，`asuka dev` 重新启动后开发 App 都会自己重新连上，从主屏幕再次打开的开发 App 也能找到它。如果开发 App 一直没有连上，Asuka 会告诉你该检查什么。
 
 **手机浏览器**：`asuka dev --platform web --lan` 会向局域网提供应用，并打印可以打开的地址。
 
@@ -127,7 +127,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 - **`no iOS simulator SDK (install Xcode)`**：安装 Xcode，打开一次，然后在它的 Components 设置中添加 iOS 模拟器运行时。`no iPhone simulator; add one in Xcode` 和 `no simulator "..."` 表示没有该名称的模拟器：可以用 `xcrun simctl list devices` 列出所有模拟器。
 - **iPhone 没有准备好**：`... isn't paired with this Mac`（连上数据线，解锁后点“信任”）、`... isn't reachable`（连上数据线，或在 Mac 所在的 Wi-Fi 下唤醒它）、`... has Developer Mode off`（“设置 › 隐私与安全性 › 开发者模式”）、`... is locked`（解锁手机）。明明连着手机却提示 `no iPhone or iPad is connected` 时，检查 `xcrun devicectl list devices` 能否列出它。
 - **`Xcode couldn't make the development profiles`**：在 Xcode 中登录团队的 Apple ID（Xcode › 设置 › 账户），或者设置 App Store Connect API 密钥；如果 bundle ID 已经属于另一个团队，就需要在 `asuka.toml` 里换一个 `id`。`the keychain has Apple Development certificates of N teams`：用 `--team` 选一个团队。
-- **`the player hasn't connected yet`**：让手机连上 Mac 所在的网络，允许它访问本地网络，并在 Mac 的防火墙中允许 `asuka` 接受连接（“系统设置 › 网络 › 防火墙”）。
+- **`the player hasn't connected yet`**：插上数据线并解锁手机；或者让手机连上 Mac 所在的网络，允许它访问本地网络，并在 Mac 的防火墙中允许 `asuka` 接受连接（“系统设置 › 网络 › 防火墙”）。
 - **`no Android SDK: install Android Studio or set ANDROID_HOME`**：Asuka 会依次在 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 中查找，然后是 Mac 上的 `~/Library/Android/sdk`、Windows 上的 `%LOCALAPPDATA%\Android\Sdk` 和 Linux 上的 `~/Android/Sdk`。
 - **`no Android NDK`**：在 Android Studio 的 SDK Manager 中安装一个（SDK Tools 下的 NDK）。Asuka 会选用最新的、带有你这台电脑可用版本的 NDK（任何 Windows 电脑上都是 `windows-x86_64`，Arm 电脑也一样）。
 - **`no Android device or emulator`**：在 Android Studio 的 Device Manager 中创建一个 AVD，或者连接一部手机。对于 Asuka 自己启动的模拟器，它最多会等四分钟让模拟器完成启动（超时会报 `the emulator didn't boot`）。

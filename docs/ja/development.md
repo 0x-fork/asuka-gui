@@ -93,7 +93,7 @@ Asuka は、アプリのディレクトリとそのローカルの依存関係�
 **iPhone**（または iPad）では Xcode 15 以降が必要です。iPhone をケーブルで接続してロックを解除し、「信頼」をタップします。次に「設定」›「プライバシーとセキュリティ」で「デベロッパモード」をオンにします（iPhone が一度 Xcode に接続されると表示されます。オンにすると iPhone が再起動します）。あとは `asuka dev --platform ios --device iphone` で実行できます。複数台つないでいる場合は、`--device` に名前か UDID を指定します（一覧は `xcrun devicectl list devices` で確認できます）。
 
 - **署名**：開発用アプリは、あなたのチームの開発用証明書で署名されます。チームは `--team`、`ASUKA_TEAM_ID`、`asuka.toml` の `ios.team` の順に探し、どれもなければキーチェーンにある Apple Development 証明書のチームを使います。初回の実行では、必要な開発用プロビジョニングプロファイルを Xcode に作らせます（`xcodebuild -allowProvisioningUpdates`）。このとき iPhone がチームに登録され、アプリが使うケイパビリティ（プッシュ通知、App Groups など）が有効になります。使われるのは Xcode の「設定」›「アカウント」の Apple ID か、`ASUKA_ASC_KEY_ID`（または `ios.appStoreConnect`）で指定した [App Store Connect API キー](shipping.md)です。チームの既存のプロファイルが合うなら（ワイルドカードのものも含め）、そのまま使います。
-- **Mac への接続**：開発用アプリはネットワーク経由で `asuka dev` に接続します。接続先は Mac の最初のアドレス（または `ASUKA_DEV_HOST` のアドレス）で、ポートは空いていれば 8791 です。そのため、ホーム画面から起動し直した開発用アプリも `asuka dev` を見つけられます。iPhone は Mac と同じネットワークにいる必要があります。iOS は一度だけ、このアプリがネットワーク上のデバイスを探してよいかを尋ねるので、許可してください（あとから「設定」›「アプリ」›「ローカルネットワーク」でもオンにできます）。開発用アプリが接続できない場合は、何を確かめればよいかを Asuka が表示します。
+- **Mac への接続**：ケーブルでつないでいれば、Mac がケーブル経由で開発用アプリに接続します（Xcode と同じく usbmuxd を使います）。iPhone はどのネットワークにもつながっている必要がありません。ケーブルがないときは、開発用アプリがネットワーク経由で `asuka dev` に接続します。Mac のアドレス（または `ASUKA_DEV_HOST` のアドレス）を順に試し、ポートは空いていれば 8791 です。iOS は一度だけ、このアプリがネットワーク上のデバイスを探してよいかを尋ねるので、許可してください（あとから「設定」›「アプリ」›「ローカルネットワーク」でもオンにできます）。どちらの場合も、`asuka dev` が起動し直せば開発用アプリは自動でつなぎ直し、ホーム画面から開き直しても `asuka dev` を見つけられます。開発用アプリが接続できない場合は、何を確かめればよいかを Asuka が表示します。
 
 **スマートフォンのブラウザー**：`asuka dev --platform web --lan` でアプリをネットワーク上に配信すると、開くべきアドレスが表示されます。
 
@@ -127,7 +127,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 - **`no iOS simulator SDK (install Xcode)`**：Xcode をインストールして一度起動し、Xcode の設定の「Components」で iOS シミュレーターのランタイムを追加します。`no iPhone simulator; add one in Xcode` や `no simulator "..."` は、その名前のシミュレーターがないという意味です。シミュレーターの一覧は `xcrun simctl list devices` で確認できます。
 - **iPhone の準備ができていない**：`... isn't paired with this Mac`（ケーブルで接続し、ロックを解除して「信頼」をタップ）、`... isn't reachable`（ケーブルで接続するか、Mac と同じ Wi-Fi でスリープを解除）、`... has Developer Mode off`（「設定」›「プライバシーとセキュリティ」›「デベロッパモード」）、`... is locked`（ロックを解除）。接続しているのに `no iPhone or iPad is connected` と表示される場合は、`xcrun devicectl list devices` に表示されるか確かめてください。
 - **`Xcode couldn't make the development profiles`**：チームの Apple ID で Xcode にサインインするか（Xcode ›「設定」›「アカウント」）、App Store Connect API キーを設定してください。ほかのチームが持っている bundle ID なら、`asuka.toml` で別の `id` にする必要があります。`the keychain has Apple Development certificates of N teams` の場合は、`--team` でチームを選んでください。
-- **`the player hasn't connected yet`**：iPhone を Mac と同じネットワークにつなぎ、ローカルネットワークへのアクセスを許可し、Mac のファイアウォールで `asuka` が接続を受け付けられるようにしてください（「システム設定」›「ネットワーク」›「ファイアウォール」）。
+- **`the player hasn't connected yet`**：iPhone をケーブルでつないでロックを解除するか、Mac と同じネットワークにつなぎ、ローカルネットワークへのアクセスを許可し、Mac のファイアウォールで `asuka` が接続を受け付けられるようにしてください（「システム設定」›「ネットワーク」›「ファイアウォール」）。
 - **`no Android SDK: install Android Studio or set ANDROID_HOME`**：Asuka は `ANDROID_HOME`、`ANDROID_SDK_ROOT` の順に探し、次に Mac なら `~/Library/Android/sdk`、Windows なら `%LOCALAPPDATA%\Android\Sdk`、Linux なら `~/Android/Sdk` を探します。
 - **`no Android NDK`**：Android Studio の SDK Manager（SDK Tools、NDK）から NDK をインストールします。Asuka は、このコンピューター向けのビルドがあるもののうち最新のものを使います（Windows の PC では、Arm でも `windows-x86_64`）。
 - **`no Android device or emulator`**：Android Studio の Device Manager で AVD を作るか、実機を接続します。Asuka が起動したエミュレーターについては、起動が完了するまで最大 4 分待ちます（`the emulator didn't boot`）。
