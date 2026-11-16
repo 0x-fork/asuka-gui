@@ -25,6 +25,7 @@
 // keeps it (asuka test), reports ends empty and the rest does nothing.
 
 import asuka/json
+import asuka/time
 
 /// A frame of a thread's stack, the innermost first.
 pub struct Frame {
@@ -47,8 +48,7 @@ pub struct Thread {
 
 /// Something the app said it did.
 pub struct Crumb {
-  /// In milliseconds since 1970.
-  time: int = 0
+  time: time.Time = time.unix(0)
   message: string = ""
 }
 
@@ -62,8 +62,8 @@ pub struct Context {
   arch: string = ""
   process: string = ""
   pid: int = 0
-  /// When the run started, in milliseconds since 1970.
-  started: int = 0
+  /// When the run started.
+  started: time.Time = time.unix(0)
   uptime: Duration = 0s
   foreground: bool = false
   breadcrumbs: [Crumb] = []
@@ -77,14 +77,53 @@ pub struct Report {
   /// "nonfatal" (record's)...
   kind: string = ""
   fatal: bool = false
-  /// In milliseconds since 1970.
-  time: int = 0
+  /// When it crashed, or was recorded.
+  time: time.Time = time.unix(0)
   /// A line: what crashed, and why.
   message: string = ""
   /// The whole report, as the platform wrote it.
   text: string = ""
   threads: [Thread] = []
   context: Context = Context()
+}
+
+// A report as the platforms write it: its times in milliseconds since
+// 1970.
+struct WireCrumb {
+  time: int = 0
+  message: string = ""
+}
+
+struct WireContext {
+  appVersion: string = ""
+  build: string = ""
+  model: string = ""
+  system: string = ""
+  systemVersion: string = ""
+  arch: string = ""
+  process: string = ""
+  pid: int = 0
+  started: int = 0
+  uptime: Duration = 0s
+  foreground: bool = false
+  breadcrumbs: [WireCrumb] = []
+  values: [string: string] = [:]
+}
+
+struct WireReport {
+  id: string = ""
+  kind: string = ""
+  fatal: bool = false
+  time: int = 0
+  message: string = ""
+  text: string = ""
+  threads: [Thread] = []
+  context: WireContext = WireContext()
+}
+
+fn reportOf(w: WireReport) -> Report {
+  let c = w.context
+  return Report(id: w.id, kind: w.kind, fatal: w.fatal, time: time.unixMilli(w.time), message: w.message, text: w.text, threads: w.threads, context: Context(appVersion: c.appVersion, build: c.build, model: c.model, system: c.system, systemVersion: c.systemVersion, arch: c.arch, process: c.process, pid: c.pid, started: time.unixMilli(c.started), uptime: c.uptime, foreground: c.foreground, breadcrumbs: c.breadcrumbs.map(b => Crumb(time: time.unixMilli(b.time), message: b.message)), values: c.values))
 }
 
 /// The platform's record.
@@ -94,7 +133,7 @@ native interface Reporter {
   fn record(message: string)
   /// Calls found with each report kept, now and as more come, each once,
   /// until the task is cancelled.
-  async fn follow(found: fn(Report))
+  async fn follow(found: fn(WireReport))
   fn delete(id: string)
 }
 
@@ -151,7 +190,7 @@ pub fn delete(id: string) {
 /// recorded error, what the platform hands over late), each once.
 pub fn reports() -> Stream<Report> = Stream(give => {
   if let r = reporter {
-    try await r.follow(found: x => give(x))
+    try await r.follow(found: x => give(reportOf(x)))
     return
   }
   if !coreStarted() {
@@ -163,11 +202,11 @@ pub fn reports() -> Stream<Report> = Stream(give => {
   while true {
     let version = coreVersion()
     let text = try await spawn { try coreReports() }
-    let found: [Report] = try json.decode(text)
+    let found: [WireReport] = try json.decode(text)
     for x in found {
       if !(seen[x.id] ?? false) {
         seen[x.id] = true
-        give(x)
+        give(reportOf(x))
       }
     }
     await coreChanged(version)

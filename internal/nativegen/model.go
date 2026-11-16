@@ -43,6 +43,10 @@ const (
 	Enum
 	Object // a native interface of the package
 	Func
+	// ViewRef is one of the app's views (an Asuka Ref), as a parameter:
+	// the u64 id its host knows it by (0: none), which each platform's
+	// generated code turns into its view.
+	ViewRef
 )
 
 // Type is a parameter's, a result's or a field's type.

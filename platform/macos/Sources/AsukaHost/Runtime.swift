@@ -122,6 +122,9 @@ import AsukaOps
             defer { free(out) }
             return Array(UnsafeBufferPointer(start: out, count: n))
         }
+        // A Ref a package's method was passed: the NSView of its id (a
+        // WebView's WKWebView).
+        AsukaNative.views = { [weak self] id in id <= UInt64(UInt32.max) ? self?.nodes[UInt32(id)]?.view : nil }
         var cb = asuka_host_callbacks(
             apply: { buf, len in
                 MainActor.assumeIsolated {

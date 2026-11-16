@@ -1,0 +1,39 @@
+// A Route's title and badge, bound, follow their state on the tab the
+// Router makes of it: an unread count goes down as a message is read.
+
+component Inbox {
+  Column {
+    Text("inbox")
+    Button("Read one") { on press { unread -= 1 } }
+    Button("Rename") { on press { name = "Mail" } }
+  }
+}
+
+state unread = 3
+state name = "Inbox"
+
+app {
+  Router(initial: "/inbox") {
+    Route(layout: .tabs) {
+      Route("/inbox", title: name, icon: "tray", badge: if unread > 0 { "{unread}" } else { "" }) { _ => Inbox() }
+      Route("/settings", title: "Settings", icon: "gear") { _ => Text("settings") }
+    }
+  }
+}
+
+test "a route's badge and title follow their state on its tab" {
+  let app = mountApp()
+  await app.idle()
+  app.expect("Inbox")
+  app.expect("3")
+  app.tap("Read one")
+  app.expect("2")
+  app.expectNo("3")
+  app.tap("Rename")
+  app.expect("Mail")
+  app.expectNo("Inbox")
+  app.tap("Read one")
+  app.tap("Read one")
+  app.expectNo("1")
+  app.expect("Mail")
+}

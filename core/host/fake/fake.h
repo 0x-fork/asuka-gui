@@ -342,6 +342,9 @@ void ak_fake_window_actions(ak_fake *f, ak_fake_view *v, ak_buf *out);
 // (CloseRequest) when the core listens, else a Window is dismissed and
 // the main window closed.
 void ak_fake_close_window(ak_fake *f, ak_fake_view *v);
+// ak_fake_focus_window makes v's window the one in use (the keyboard's):
+// the one that had it loses it.
+void ak_fake_focus_window(ak_fake *f, ak_fake_view *v);
 void ak_fake_windows(ak_fake *f, ak_buf *out);  // a line per window
 void ak_fake_menu_bar(ak_fake *f, ak_buf *out);  // a line per item: Menu > Item [shortcut] (state)
 // ak_fake_choose_menu_item chooses the menu bar's item at path ("File >

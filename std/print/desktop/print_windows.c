@@ -1,7 +1,7 @@
 // asuka/print on Windows: a file's app prints it (the shell's print
-// verb); markup prints from a WebView2 page that's never shown, through
-// its print dialog (the system's), which doesn't say what the user did:
-// unknown. A PDF is Chromium's printing to PDF (DevTools'
+// verb); markup prints from a WebView2 page that's never shown, and a
+// WebView's page from itself, through WebView2's print dialog (the
+// system's), which doesn't say what the user did: unknown. A PDF is Chromium's printing to PDF (DevTools'
 // Page.printToPDF).
 #include "asuka_windows.h"
 #include "print.h"
@@ -58,6 +58,21 @@ static void html_loaded(void *ctx, asuka_web_page *p, asuka_error *err) {
 }
 
 void print_html(print_task *t) { asuka_win_web_page(t->source, html_loaded, t); }
+
+// print_view shows the system's print dialog for a WebView the app shows
+// (ICoreWebView2_16's ShowPrintUI; window.print() on an older runtime).
+void print_view(print_task *t, uint32_t view) {
+	void *wv = asuka_desktop_webview(view);
+	if (!wv) {
+		asuka_error e = {0};
+		asuka_error_declared(&e, print_PrintError_unsupported);
+		print_fail(t, &e);
+	} else {
+		asuka_win_webview_print(wv, 1);
+		print_outcome(t, print_Outcome_unknown);
+	}
+	print_release(t);
+}
 
 typedef struct {
 	print_task *t;

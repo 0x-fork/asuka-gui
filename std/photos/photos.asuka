@@ -10,6 +10,7 @@
 
 import asuka/platform
 import asuka/json
+import asuka/time
 
 /// What the user has allowed.
 pub enum Access {
@@ -32,7 +33,16 @@ pub struct Asset {
   id: string = ""
   width: int = 0
   height: int = 0
-  /// When it was taken, in milliseconds since 1970.
+  /// When it was taken.
+  created: time.Time = time.unix(0)
+  screenshot: bool = false
+}
+
+// An asset as the hosts say it: created in milliseconds since 1970.
+struct WireAsset {
+  id: string = ""
+  width: int = 0
+  height: int = 0
   created: int = 0
   screenshot: bool = false
 }
@@ -67,7 +77,8 @@ struct Query {
 pub async fn list(screenshots: bool = false, offset: int = 0, limit: int = 100) throws -> [Asset] {
   let q = Query(screenshots: screenshots, offset: offset, limit: if limit <= 0 { 100 } else { limit })
   let b = try await platform.call("photoLibrary", "list", json.encode(q).bytes())
-  return try json.decode(b.string())
+  let ws: [WireAsset] = try json.decode(b.string())
+  return ws.map(w => Asset(id: w.id, width: w.width, height: w.height, created: time.unixMilli(w.created), screenshot: w.screenshot))
 }
 
 struct Thumb {

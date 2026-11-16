@@ -9,20 +9,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./network.decl.asuka.js";
 import * as impl from "./network.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * What carries the connection.
- */
-export const ConnectionType = Object.freeze({
-  none: 0,
-  wifi: 1,
-  cellular: 2,
-  ethernet: 3,
-  other: 4,
-});
 
 const provider = {
   make(iface) {

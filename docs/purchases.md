@@ -121,8 +121,9 @@ async fn followStore() throws {
 ```
 
 A `Transaction` has its `id`, `originalId` (a subscription's renewals
-share it), `productId`, `kind`, `state`, `quantity`, `date` and
-`expires` (nanoseconds since 1970), `revoked` and `revocationReason`,
+share it), `productId`, `kind`, `state`, `quantity`, `date`, `expires`
+and `revoked` (`time.Time?`s: none when the store doesn't say), its
+`revocationReason`,
 `autoRenews`, `familyShared`, the buy's `accountToken`, Apple's
 `environment`, the `storefront` it was bought in, its `offerId` and
 `offerType`, and its `verification`.
@@ -160,7 +161,7 @@ asking.
 (Apple's subscription group; on Play, the subscription's product): its
 `state` (`.subscribed`, `.expired`, `.billingRetry`, `.gracePeriod`,
 `.revoked`), whether it `willRenew` and as what (`renewsTo`), its
-`renewal`, `graceExpires`, `expirationReason` and Apple's signed
+`renewal` and `graceExpires` (`time.Time?`s), `expirationReason` and Apple's signed
 `renewalJWS`. `purchase.manageSubscriptions(productId)` shows the store's
 page of the user's subscriptions (iOS's sheet, Play's subscriptions
 center, the App Store's or the Microsoft Store's account page).

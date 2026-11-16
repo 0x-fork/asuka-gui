@@ -120,7 +120,9 @@ calls a closure) runs in a handler that moves the receiver back first.
 ## Functions
 
 - A function is a FuncDef; its parameters are its first registers.
-  Methods take `self` first. A closure captures a value as it is when
+  Methods take `self` first. A `static fn` of a struct or an enum is a
+  function of the package's (check.Function.Static its type), called as
+  any (`Money.of(…)`, `.of(…)` where the type is expected): no `self`. A closure captures a value as it is when
   the closure is made; a `var` it captures that anything changes (the
   closure, or the code around it) is a box (VBOX, VGET, VSET), so they
   share one variable. A `spawn` copies a box's value instead (VGET as
@@ -667,6 +669,7 @@ taking the ref. The rest (core/src/ui/builtins.c has their arguments):
 | `onQuit(e => …)`, `onSecondInstance((args, dir) => …)` (a body's items), the app block's `on quit(e) { }`, `on secondInstance(args, dir) { }` | `ui.on_quit(closure)`, `ui.on_second_instance(closure)`: handlers that go with the current owner; `asuka_quit_request` runs the first with a `QuitEvent` (its `cancel` and `canceled` closures the runtime's), the `SecondInstance` event the second |
 | `navigate(href)`, `navigate(X(…))`, `replace(href)` | `ui.navigate(href, mode)` (0 navigate, 1 push, 2 replace); `X(…)` a routed screen (below): its href |
 | `router.back()`, `router.dismiss()`, `router.canGoBack()`, `router.href()`, `router.setQuery(q)` (`router` a package of the universe: check.RouterFuncs) | `ui.router_back`, `ui.router_dismiss`, `ui.can_go_back` and `ui.router_href` (both followed: they read the router's address signal, written as its history changes), `ui.set_query` |
+| `runAction(.button(…))` | `ui.run_action(action)`: the action's run (its `run` an `async fn()?`), unless it's disabled, under the calling code's owner; an async one's future is left to run, as a handler's is. Actions the runtime runs (menus, alerts, swipes, snackbars) run under the owner of the view or the code that made them (`ak_ui_call_under`) |
 | `mainWindow()` | `ui.main_window_ref()`: a Ref of the root's view, which window commands take as the main window's (`focus()` on it brings the window forward) |
 
 ## Routes
@@ -803,7 +806,10 @@ object type (a reference: the runtime's ak_native_obj) and its methods:
 - A call `x.m(a)` is CALLB `native.call(x, method, args, argsDesc,
   retDesc, errors)`: method the method's index from 1, args a tuple of
   the arguments, the descriptors (core/src/native/native.h: rt/json.h's
-  plus `o` objects, `F<n>…` callbacks, `v` nothing) string constants. An
+  plus `o` objects, `F<n>…` callbacks, `V` views, `v` nothing) string
+  constants. A `Ref` argument crosses as the view it holds at the call
+  (CGET), which the codec writes as the id its host knows it by (0: none);
+  each platform's generated code turns the id into its view. An
   `async` method is `native.start` with the same arguments, then AWAIT;
   cancelling the task cancels the call on the platform's side.
 - Every method `throws` (the platform's side may fail); the checker

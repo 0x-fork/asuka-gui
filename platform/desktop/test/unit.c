@@ -9,6 +9,8 @@
 void asuka_desktop_post(void (*fn)(void *ctx), void *ctx) { fn(ctx); }
 bool asuka_desktop_on_main(void) { return true; }
 void *asuka_desktop_window(uint32_t view) { return NULL; }
+void *asuka_desktop_view(uint32_t view) { return NULL; }
+void *asuka_desktop_webview(uint32_t view) { return NULL; }
 uint32_t asuka_desktop_color(uint64_t color) { return (uint32_t)color; }
 bool asuka_desktop_dark(void) { return false; }
 const char *asuka_desktop_app_name(void) { return "Test"; }

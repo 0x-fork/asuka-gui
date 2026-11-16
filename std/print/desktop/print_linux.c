@@ -1,7 +1,8 @@
 // asuka/print on Linux: a file goes to the print portal (its dialog, then
 // the printer: what CUPS takes, PDFs and images among them), or, without
 // the portal, to GTK's print dialog and a print job; markup prints with
-// WebKit (its print operation, GTK's dialog), and a PDF is the markup
+// WebKit (its print operation, GTK's dialog), as a WebView's page does
+// (its own), and a PDF is the markup
 // laid out by WebKit and printed to a file (GTK's "Print to File").
 #include "asuka_linux.h"
 #include "print.h"
@@ -117,12 +118,9 @@ static gboolean printed_end(gpointer p) {
 
 static void on_printed(gpointer op, gpointer p) { G(g_idle_add_full)(G_PRIORITY_DEFAULT, printed_end, p, NULL); }
 
-static void html_loaded(print_task *t, GtkWidget *view, asuka_error *err) {
-	if (err) {
-		print_fail(t, err);
-		print_release(t);
-		return;
-	}
+// run_dialog prints view (a reference it takes) with GTK's print dialog
+// on parent: what the user did, as the outcome.
+static void run_dialog(print_task *t, GtkWidget *view, GtkWindow *parent) {
 	gpointer op = G(webkit_print_operation_new)((WebKitWebView *)view);
 	if (t->job.landscape) {
 		gpointer setup = G(gtk_page_setup_new)();
@@ -130,7 +128,7 @@ static void html_loaded(print_task *t, GtkWidget *view, asuka_error *err) {
 		G(webkit_print_operation_set_page_setup)(op, setup);
 		G(g_object_unref)(setup);
 	}
-	bool printed = G(webkit_print_operation_run_dialog)(op, window()) == 0;  // WEBKIT_PRINT_OPERATION_RESPONSE_PRINT
+	bool printed = G(webkit_print_operation_run_dialog)(op, parent) == 0;  // WEBKIT_PRINT_OPERATION_RESPONSE_PRINT
 	if (printed) {
 		// Printing goes on: the operation (and the page) until it's done.
 		printing *pr = calloc(1, sizeof *pr);
@@ -143,6 +141,30 @@ static void html_loaded(print_task *t, GtkWidget *view, asuka_error *err) {
 	}
 	print_outcome(t, printed ? print_Outcome_printed : print_Outcome_cancelled);
 	print_release(t);
+}
+
+static void html_loaded(print_task *t, GtkWidget *view, asuka_error *err) {
+	if (err) {
+		print_fail(t, err);
+		print_release(t);
+		return;
+	}
+	run_dialog(t, view, window());
+}
+
+// print_view prints a WebView the app shows (its WebKitWebView), from the
+// window it's in: WebKit's print operation, as Epiphany prints a page.
+void print_view(print_task *t, uint32_t view) {
+	asuka_error e = {0};
+	GtkWidget *wv = load(&e) ? asuka_desktop_webview(view) : NULL;
+	if (!wv) {
+		if (!e.status) asuka_error_declared(&e, print_PrintError_unsupported);
+		print_fail(t, &e);
+		print_release(t);
+		return;
+	}
+	GtkWindow *parent = (GtkWindow *)asuka_desktop_window(view);
+	run_dialog(t, G(g_object_ref)(wv), parent ? parent : window());
 }
 
 void print_html(print_task *t) {

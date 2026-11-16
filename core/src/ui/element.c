@@ -545,6 +545,25 @@ static void call_in_owner(void *ctx) {
 	if (!ak_error_pending()) ak_release(v.p);
 }
 
+typedef struct {
+	ak_closure *c;
+	ak_val *args;
+	uint32_t nargs;
+	ak_val out;
+} under_ctx;
+
+static void call_under(void *ctx) {
+	under_ctx *u = ctx;
+	u->out = ak_call(u->c, u->args, u->nargs);
+}
+
+ak_val ak_ui_call_under(ak_owner *o, ak_closure *c, ak_val *args, uint32_t nargs) {
+	under_ctx u = {c, args, nargs, {0}};
+	if (o && !ak_owner_disposed(o)) ak_with_owner(o, call_under, &u);
+	else call_under(&u);
+	return u.out;
+}
+
 void ak_view_call(ak_view *e, uint16_t ev, ak_val *args, uint32_t nargs) { ak_view_call_closure(e, ak_view_handler(e, ev), args, nargs); }
 
 void ak_view_call_closure(ak_view *e, ak_closure *c, ak_val *args, uint32_t nargs) {

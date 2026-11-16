@@ -171,6 +171,14 @@ static void p_release(pantry_Pantry *self) {
 	free(self);
 }
 
+// shows gets a view as its id, which the host knows.
+static bool p_shows(pantry_Pantry *self, uint32_t view, asuka_error *err) {
+	bool shown = asuka_desktop_view(view) != NULL;
+	printf("pantry: shows %s %d\n", view ? "a view" : "none", shown);
+	fflush(stdout);
+	return shown;
+}
+
 static const pantry_Pantry_vtable pantry_vt = {
 	.release = p_release,
 	.name = p_name,
@@ -181,6 +189,7 @@ static const pantry_Pantry_vtable pantry_vt = {
 	.open = p_open,
 	.show = p_show,
 	.counts = p_counts,
+	.shows = p_shows,
 };
 
 pantry_Pantry *pantry_make_Pantry(asuka_error *err) {

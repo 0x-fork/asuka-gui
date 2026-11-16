@@ -76,6 +76,19 @@ class AsukaNativeWriter {
     }
 }
 
+/**
+ * One of the app's views a method was passed (an Asuka Ref): the id its
+ * host knows it by.
+ */
+data class AsukaViewRef(val id: Long) {
+    /**
+     * The view while the app shows it, else null: a WebView's is its
+     * android.webkit.WebView. Read it on the main thread.
+     */
+    val view: android.view.View?
+        get() = if (id <= 0 || id > Int.MAX_VALUE) null else AsukaRuntime.current?.nodes?.get(id.toInt())?.view
+}
+
 /** Decodes values (core/src/native's reader); past what's there, every read is its zero value and failed is true. */
 class AsukaNativeReader(private val b: ByteArray) {
     private var p = 0
@@ -121,6 +134,7 @@ class AsukaNativeReader(private val b: ByteArray) {
     fun uint16(): UShort = int16().toUShort()
     fun uint32(): UInt = get32().toUInt()
     fun uint64(): ULong = get64().toULong()
+    fun viewRef(): AsukaViewRef = AsukaViewRef(get64())
     fun uint(): ULong = get64().toULong()
     fun float32(): Float = java.lang.Float.intBitsToFloat(get32())
     fun float64(): Double = java.lang.Double.longBitsToDouble(get64())

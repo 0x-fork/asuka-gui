@@ -380,8 +380,12 @@ sheets as its owner goes.
   window was (platform/desktop's state.c on Windows and Linux, the Mac's
   Routes.swift over it; `asuka-routes.json` in the app's
   data directory, written a moment after it changes, off the main
-  thread): a window comes back at its screens. Phones don't keep it
-  across launches, as their native apps don't.
+  thread): a window comes back at its screens. The main window's router
+  starts there (`asuka_set_start`, as the web's starts at the page's
+  address); a keyed `Window`'s is given its Location. None is kept under
+  `asuka dev` (its reloads keep the routers) or automation, unless
+  `ASUKA_ROUTES=1` (the hosts' tests). Phones don't keep it across
+  launches, as their native apps don't.
 - **Typed links**: the compiler knows each routed screen's full pattern
   from the one Router that routes it, so `navigate(Thread(id: 7))` and
   `href: Thread(id: 7)` are checked as the app compiles (a screen two

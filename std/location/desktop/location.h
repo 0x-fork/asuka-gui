@@ -17,7 +17,7 @@ void location_request_access(void (*done)(void *ctx), void *ctx);
 // A position's taker: moved with each, failed (taking e's strings) when
 // the positions can't come; neither after the source stops.
 typedef struct {
-	void (*moved)(void *ctx, const location_Position *p);
+	void (*moved)(void *ctx, const location_Fix *p);
 	void (*failed)(void *ctx, asuka_error *e);
 	void *ctx;
 } location_sink;
@@ -28,7 +28,7 @@ void *location_start(location_sink s);
 void location_stop(void *source);
 // location_fix calls done once with one position, or why there's none
 // (done takes e's strings).
-void location_fix(void (*done)(void *ctx, const location_Position *p, asuka_error *e), void *ctx);
+void location_fix(void (*done)(void *ctx, const location_Fix *p, asuka_error *e), void *ctx);
 // location_geocode calls done once with a place's name (of malloc's,
 // done's), or why there's none.
 void location_geocode(double latitude, double longitude, void (*done)(void *ctx, char *name, asuka_error *e), void *ctx);
@@ -41,7 +41,7 @@ void location_remove_fence(const char *id);
 location_list_Region location_fences(void);
 // location_watch_fences has crossed called with each crossing reported
 // (at: where the device was, or NULL).
-void location_watch_fences(void (*crossed)(const char *region, location_Transition kind, const location_Position *at));
+void location_watch_fences(void (*crossed)(const char *region, location_Transition kind, const location_Fix *at));
 
 // ---- location.c's, for the platform ----
 

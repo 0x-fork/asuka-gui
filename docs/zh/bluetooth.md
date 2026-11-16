@@ -23,7 +23,7 @@ component Adapter {
 
 ## 发现设备
 
-`bluetooth.scan(services:, duplicates:)` 是一个流，听到设备的广播就送出来：每个 `Advertisement` 包含 `device`（它的 `id` 和 `name`）、`rssi`、`localName`、`services`、`serviceData`、`manufacturerData`（按厂商 ID 区分，四位十六进制数字）、`txPower` 和 `connectable`。设置 `duplicates` 会送出每一条广播，而不只是每个设备的第一条（用来跟踪 RSSI）；设置 `services` 则只送出广播了其中某个服务的设备。有人读取这个流时它才会扫描；它可能抛出 `BluetoothError.off`、`denied` 或 `notAvailable`。
+`bluetooth.scan(services:, duplicates:)` 是一个流，听到设备的广播就送出来：每个 `Advertisement` 包含 `device`（它的 `id` 和 `name`）、`rssi`、`localName`、`services`、`serviceData`、`manufacturerData`（按厂商 ID 区分，四位十六进制数字）、`txPower`、`connectable`，以及听到它的时间 `time`（一个 `time.Time`）。设置 `duplicates` 会送出每一条广播，而不只是每个设备的第一条（用来跟踪 RSSI）；设置 `services` 则只送出广播了其中某个服务的设备。有人读取这个流时它才会扫描；它可能抛出 `BluetoothError.off`、`denied` 或 `notAvailable`。
 
 ```asuka
 component Scanner {

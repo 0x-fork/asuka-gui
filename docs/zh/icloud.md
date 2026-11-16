@@ -84,7 +84,7 @@ component Reader {
 
 `icloud.files(scope)` 会被追踪：它列出应用的文件，`.documents` 是各容器 `Documents` 中的文件，`.data` 是其余的文件。列表中也包括其他设备创建、但还没有下载到本机的文件。在绑定里读取时，列表会随文件的变化而变化：有文件从其他设备同步过来，有文件被添加、删除、重命名、下载或上传，或者下载有了进展。它用的是 iCloud 的元数据查询（NSMetadataQuery）：有了第一个读取者时启动，最后一个读取者离开时停止。`icloud.list(scope)` 只列出一次，不会被追踪。
 
-`File` 包含它的 `path`、`name`、`dir`、`size`、`created` 和 `modified`（自 1970 年起的毫秒数），以及它的位置和状态：
+`File` 包含它的 `path`、`name`、`dir`、`size`、`created` 和 `modified`（都是 `time.Time`），以及它的位置和状态：
 
 | 字段 | 含义 |
 | --- | --- |

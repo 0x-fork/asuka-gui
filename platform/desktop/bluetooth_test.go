@@ -195,7 +195,7 @@ component Probe {
       step = "state {s}"
       await sleep(1ms)
       for await a in bluetooth.scan(services: ["180d"]) {
-        step = "heard {a.device.id} {a.device.name} {a.rssi} {a.localName} {a.services.joined(separator: ",")} {a.connectable} {a.time > 0}"
+        step = "heard {a.device.id} {a.device.name} {a.rssi} {a.localName} {a.services.joined(separator: ",")} {a.connectable} {a.time.unixNano() > 0}"
         break
       }
       await sleep(1ms)

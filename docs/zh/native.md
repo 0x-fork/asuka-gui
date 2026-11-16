@@ -66,6 +66,7 @@ battery/
   web/
     battery.js             你写的：export function makeBattery
     battery.asuka.js       生成的
+    battery.decl.asuka.js  生成的：包中的枚举和错误（有的话）
   desktop/                 Windows 和 Linux 的 C 实现
     battery.c              你写的：battery_make_Battery（_windows.c、_linux.c 只用于一个平台）
     battery.asuka.h        生成的：类型、vtable、你要写的函数
@@ -139,8 +140,9 @@ pub native interface Oven {
 | 包中定义的枚举（成员不带值） | `RawRepresentable` 结构体，每个成员对应一个静态成员 | value class，每个成员对应一个常量 | 由这些成员组成的冻结对象 | `int64_t`，每个成员对应一个常量（`<pkg>_Level_low`） |
 | `native interface`（作为参数或返回值） | `any T` | `T` | 对象 | `<pkg>_T *` |
 | `fn(...)`（作为参数） | 闭包 | 函数 | 函数 | `<pkg>_fn_…`，用它的 `_call` 调用 |
+| `Ref`（作为参数） | `AsukaViewRef`：它的 `view`（在主 actor 上读取）是宿主显示的 `UIView` 或 `NSView`（WebView 的是 `WKWebView`），没有时为 `nil` | `AsukaViewRef`：它的 `view`（在主线程上读取）是对应的 `View`（WebView 的是 `WebView`），没有时为 `null` | 对应的元素，或 `null` | `uint32_t`，即视图的 id：`asuka_desktop_view(v)` 是它的 `HWND` 或 `GtkWidget *`，`asuka_desktop_webview(v)` 是 WebView 的 `ICoreWebView2 *` 或 `WebKitWebView *` |
 
-结构体的字段按声明顺序传递；它的常量和方法只留在 Asuka 这一端。对象（原生接口）只能作为参数或返回值传递，不能放在数组、map 或结构体里。其他不支持的用法，`asuka native generate` 都会在对应位置报错，并告诉你应该改用什么。
+结构体的字段按声明顺序传递；它的常量和方法只留在 Asuka 这一端。对象（原生接口）只能作为参数或返回值传递，不能放在数组、map 或结构体里。`Ref` 只能作为参数传递：传过去的是调用时它所持有的视图（asuka/print 的 `webView(view: Ref, …)` 打印的就是用 `ref:` 放进去的那个 WebView 的页面），平台代码在主线程上查找这个视图；如果 Ref 里没有视图，或者宿主（还）没有显示它，得到的就是 `nil`。其他不支持的用法，`asuka native generate` 都会在对应位置报错，并告诉你应该改用什么。
 
 ### 方法
 
@@ -352,7 +354,7 @@ export function makeSegmented(events) {
 }
 ```
 
-方法可以返回 promise，即使它在 Asuka 中不是 `async` 的。要抛出包中声明的错误，就使用生成的错误类（`import { KitchenError } from "./kitchen.asuka.js"`）。`web/` 中的每个文件都会随应用一起发布，所以模块可以导入自己的辅助脚本，也可以相对于 `import.meta.url` 获取自己的资源。其中任何文件变化时，`asuka dev --platform web` 都会重新加载页面。参见 [Web](web.md#原生代码)。
+方法可以返回 promise，即使它在 Asuka 中不是 `async` 的。要抛出包中声明的错误，就使用生成的错误类（`import { KitchenError } from "./kitchen.asuka.js"`）。包中的枚举和错误会在包自己的模块运行之前创建好，所以模块加载时就可以读取它们（比如按枚举的取值建一张表）；如果导入了包中没有声明的名字，`asuka native generate` 会报错。`web/` 中的每个文件都会随应用一起发布，所以模块可以导入自己的辅助脚本，也可以相对于 `import.meta.url` 获取自己的资源。其中任何文件变化时，`asuka dev --platform web` 都会重新加载页面。参见 [Web](web.md#原生代码)。
 
 ## Windows 和 Linux：C
 

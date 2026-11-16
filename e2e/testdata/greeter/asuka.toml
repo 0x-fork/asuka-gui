@@ -1,5 +1,0 @@
-name = "@asuka/greeter"
-version = "0.1.0"
-
-[windows]
-libraries = ["user32"]

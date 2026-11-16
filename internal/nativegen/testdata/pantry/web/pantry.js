@@ -31,6 +31,7 @@ export function makePantry() {
     },
     show() {},
     counts: () => ({ a: 1, b: -2 }),
+    shows: (view) => view != null,
   };
 }
 

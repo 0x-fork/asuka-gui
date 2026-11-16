@@ -5,6 +5,7 @@
 //
 //   let done = try await print.html(receipt, job: "Receipt")
 //   let path = try await print.pdf(receipt)   // for share, preview, mail
+//   try await print.webView(page)             // what a WebView shows
 //
 // iOS shows its print sheet (UIPrintInteractionController); Android its
 // print screen (PrintManager), whose "Save as PDF" is a printer too; the
@@ -93,6 +94,8 @@ native interface Printer {
   /// Lays markup out on pages and writes them as a PDF in the app's
   /// caches, named after its title: its path.
   async fn pdf(layout: Layout) -> string
+  /// Prints the page a WebView shows: its view, the Ref it's in.
+  async fn webView(view: Ref, job: Job) -> Outcome
 }
 
 // Made once; none where the platform has no code for it.
@@ -123,8 +126,7 @@ pub fn regionPage(locale: string) -> Page {
   return Page.a4
 }
 
-fn jobOf(name: string, orientation: Orientation) -> Job =
-  Job(name: name, landscape: orientation == .landscape, letter: regionPage(environment().locale) == Page.letter)
+fn jobOf(name: string, orientation: Orientation) -> Job = Job(name: name, landscape: orientation == .landscape, letter: regionPage(environment().locale) == Page.letter)
 
 /// Prints the file at source: a path, an asset's (as Image takes it), or
 /// an http(s) URL, which is downloaded first. PDFs and images print
@@ -141,6 +143,16 @@ pub async fn file(source: string, job: string = "", orientation: Orientation = .
 /// apply). Its images and styles come from absolute URLs (https:, data:).
 pub async fn html(markup: string, job: string = "", orientation: Orientation = .portrait) throws -> Outcome {
   return try await made().html(markup: markup, job: jobOf(name: job, orientation: orientation))
+}
+
+/// Prints the page a WebView shows, as it is now (what the user has done
+/// on it, what its scripts changed), laid out for the paper the user
+/// picks as its browser prints a page: view is the Ref the WebView is in.
+/// A page of another site prints as the WebView shows it on the web,
+/// where a page of the app can't reach into it. Throws
+/// PrintError.unsupported when view holds no WebView that's shown.
+pub async fn webView(view: Ref, job: string = "", orientation: Orientation = .portrait) throws -> Outcome {
+  return try await made().webView(view: view, job: jobOf(name: job, orientation: orientation))
 }
 
 /// Lays markup out on pages, as html prints it (without a dialog), and

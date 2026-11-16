@@ -9,22 +9,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./shell.decl.asuka.js";
 import * as impl from "./shell.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-const errorIndex = { noApp: 0 };
-const errorMessage = ["shell: no app opens this file"];
-
-/** One of the errors the package declares: throw new ShellError("noApp"). */
-export class ShellError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "ShellError";
-  }
-}
 
 const provider = {
   make(iface) {

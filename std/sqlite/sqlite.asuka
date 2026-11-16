@@ -19,6 +19,8 @@
 //   let notes: sqlite.Live<Note> = db.watch("select * from notes where text like ?", ["%{query}%"])
 //   for n in notes.rows key n.id { Text(n.text) }
 
+import asuka/fs
+
 // The runtime's side (core/src/sqlite): the plugin's library, called a
 // statement at a time.
 native fn available() -> bool
@@ -57,6 +59,12 @@ fn resolve(name: string) -> string {
         return "{dir}/{name}"
       }
     }
+  }
+  // Where the platform has no Place (the web: the page's app directory,
+  // which its SQLite worker keeps), the runtime's app directory.
+  let dir = fs.appDir()
+  if !dir.isEmpty() {
+    return "{dir}/{name}"
   }
   return name
 }

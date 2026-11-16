@@ -5,7 +5,7 @@
 // purchase completed while the app doesn't read (Ask to Buy approved, a
 // renewal, a refund, an offer code redeemed in the App Store) isn't lost.
 // StoreKit's Product and Transaction are StoreKit.Product and
-// StoreKit.Transaction here: Product and Transaction are the package's.
+// StoreKit.Transaction here: Product and StoreTransaction are the package's.
 // StoreKit 2 needs macOS 12: before, a Mac has no store.
 import Foundation
 import StoreKit
@@ -30,17 +30,17 @@ final class AppStoreStore: Store {
         try await Hub.shared.products(items.map(\.id))
     }
 
-    func buy(item: Item, options: Options) async throws -> Result {
+    func buy(item: Item, options: StoreOptions) async throws -> StoreResult {
         try await Hub.shared.buy(item.id, options)
     }
 
-    func finish(transaction: Transaction) async throws {
+    func finish(transaction: StoreTransaction) async throws {
         try await Hub.shared.finish(transaction.id)
     }
 
-    func entitlements() async throws -> [Transaction] { await Hub.shared.entitlements() }
+    func entitlements() async throws -> [StoreTransaction] { await Hub.shared.entitlements() }
 
-    func restore() async throws -> [Transaction] {
+    func restore() async throws -> [StoreTransaction] {
         do {
             try await AppStore.sync()
         } catch {
@@ -49,7 +49,7 @@ final class AppStoreStore: Store {
         return await Hub.shared.entitlements()
     }
 
-    func statuses(group: String) async throws -> [SubscriptionStatus] { try await Hub.shared.statuses(group) }
+    func statuses(group: String) async throws -> [StoreStatus] { try await Hub.shared.statuses(group) }
 
     func manageSubscriptions(productId: String) async throws { try await Hub.shared.manage(productId) }
 
@@ -65,7 +65,7 @@ final class AppStoreStore: Store {
         return Storefront(country: s.countryCode, id: s.id)
     }
 
-    func events(event: @escaping (Event) -> Void) async throws {
+    func events(event: @escaping (StoreEvent) -> Void) async throws {
         let send = Send(event)
         let id = await MainActor.run { Hub.shared.listen(send) }
         defer { Task { @MainActor in Hub.shared.unlisten(id) } }
@@ -77,8 +77,8 @@ final class AppStoreStore: Store {
 
 /// An events() reader, called on the main thread.
 final class Send: @unchecked Sendable {
-    let f: (Event) -> Void
-    init(_ f: @escaping (Event) -> Void) { self.f = f }
+    let f: (StoreEvent) -> Void
+    init(_ f: @escaping (StoreEvent) -> Void) { self.f = f }
 }
 
 @available(macOS 12.0, *)
@@ -92,7 +92,7 @@ final class Send: @unchecked Sendable {
     /// Transactions given, by ID and revocation: StoreKit gives an
     /// unfinished one both in Transaction.unfinished and updates.
     private var given = Set<String>()
-    private var kept: [Event] = []
+    private var kept: [StoreEvent] = []
     private var readers: [Int: Send] = [:]
     private var next = 0
     private var started = false
@@ -124,7 +124,7 @@ final class Send: @unchecked Sendable {
         }
         Task { @MainActor in
             for await s in StoreKit.Storefront.updates {
-                self.send(Event(type: .storefrontChanged, storefront: Storefront(country: s.countryCode, id: s.id)))
+                self.send(StoreEvent(type: .storefrontChanged, storefront: Storefront(country: s.countryCode, id: s.id)))
             }
         }
     }
@@ -141,7 +141,7 @@ final class Send: @unchecked Sendable {
 
     func unlisten(_ id: Int) { readers[id] = nil }
 
-    private func send(_ e: Event) {
+    private func send(_ e: StoreEvent) {
         if readers.isEmpty {
             kept.append(e)
         } else {
@@ -156,7 +156,7 @@ final class Send: @unchecked Sendable {
         let t = v.unsafePayloadValue
         guard given.insert(key(t)).inserted else { return }
         if t.revocationDate == nil { unfinished[t.id] = t }
-        send(Event(type: .transactionUpdated, transaction: Self.wire(v)))
+        send(StoreEvent(type: .transactionUpdated, transaction: Self.wire(v)))
     }
 
     // MARK: Calls
@@ -198,7 +198,7 @@ final class Send: @unchecked Sendable {
         return p
     }
 
-    func buy(_ id: String, _ o: Options) async throws -> Result {
+    func buy(_ id: String, _ o: StoreOptions) async throws -> StoreResult {
         start()
         let p = try await product(id)
         guard AppStore.canMakePayments else { throw PurchaseError.notAllowed }
@@ -248,11 +248,11 @@ final class Send: @unchecked Sendable {
             let t = v.unsafePayloadValue
             given.insert(key(t))
             unfinished[t.id] = t
-            return Result(status: .bought, transaction: Self.wire(v))
+            return StoreResult(status: .bought, transaction: Self.wire(v))
         case .pending:
-            return Result(status: .pendingApproval)
+            return StoreResult(status: .pendingApproval)
         default:
-            return Result(status: .cancelled)
+            return StoreResult(status: .cancelled)
         }
     }
 
@@ -268,13 +268,13 @@ final class Send: @unchecked Sendable {
         }
     }
 
-    func entitlements() async -> [Transaction] {
-        var out: [Transaction] = []
+    func entitlements() async -> [StoreTransaction] {
+        var out: [StoreTransaction] = []
         for await v in StoreKit.Transaction.currentEntitlements { out.append(Self.wire(v)) }
         return out
     }
 
-    func statuses(_ group: String) async throws -> [SubscriptionStatus] {
+    func statuses(_ group: String) async throws -> [StoreStatus] {
         var statuses: [StoreKit.Product.SubscriptionInfo.Status] = []
         if #available(iOS 17.0, macOS 14.0, *) {
             statuses = try await StoreKit.Product.SubscriptionInfo.status(for: group)
@@ -285,7 +285,7 @@ final class Send: @unchecked Sendable {
             let r = s.renewalInfo.unsafePayloadValue
             var renewal = 0
             if #available(iOS 17.0, macOS 14.0, *), let at = r.renewalDate { renewal = Self.ns(at) }
-            return SubscriptionStatus(
+            return StoreStatus(
                 productId: s.transaction.unsafePayloadValue.productID, state: Self.state(s.state), willRenew: r.willAutoRenew,
                 renewsTo: r.autoRenewPreference ?? "", renewal: renewal, graceExpires: r.gracePeriodExpirationDate.map(Self.ns) ?? 0,
                 expirationReason: r.expirationReason.map(Self.reason) ?? "", renewalJWS: s.renewalInfo.jwsRepresentation,
@@ -418,7 +418,7 @@ final class Send: @unchecked Sendable {
                        priceMicros: Self.micros(p.price), currency: currency, subscription: sub, familyShareable: p.isFamilyShareable)
     }
 
-    nonisolated static func wire(_ v: VerificationResult<StoreKit.Transaction>) -> Transaction {
+    nonisolated static func wire(_ v: VerificationResult<StoreKit.Transaction>) -> StoreTransaction {
         let t = v.unsafePayloadValue
         var verified = false
         if case .verified = v { verified = true }
@@ -434,7 +434,7 @@ final class Send: @unchecked Sendable {
             offerID = t.offerID ?? ""
             offerType = Self.offerType(ty)
         }
-        return Transaction(
+        return StoreTransaction(
             id: String(t.id), originalId: String(t.originalID), productId: t.productID, kind: kind(t.productType),
             state: t.revocationDate == nil ? .purchased : .revoked, quantity: t.purchasedQuantity, date: ns(t.purchaseDate),
             expires: t.expirationDate.map(ns) ?? 0, revoked: t.revocationDate.map(ns) ?? 0,

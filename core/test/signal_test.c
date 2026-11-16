@@ -497,6 +497,56 @@ TEST(write_inside_memo_panics) {
 	mfree(&m);
 }
 
+// ---- A memo's own signal: made in its run, read and written there
+
+static isig fresh_old;
+static isig fresh_made[4];  // each run's own, kept until the memo goes
+static int fresh_runs;
+static int fresh_fn(void *ctx) {
+	AK_UNUSED(ctx);
+	isig *s = &fresh_made[fresh_runs++];
+	ak_signal_init(&s->n);
+	ak_signal_born(&s->n);
+	set(s, 1);           // nothing reads it
+	set(s, get(s) + 1);  // the memo reads it, then writes it: its own
+	return get(s) + get(&fresh_old);
+}
+
+TEST(memo_writes_its_own_signal) {
+	catch_panics();
+	imemo m;
+	imemo_init(&m, fresh_fn, NULL);
+	CHECK_EQ_INT(mget(&m), 2);
+	CHECK_EQ_INT(panics.n, 0);
+	// What it read of others still makes it run again.
+	set(&fresh_old, 10);
+	CHECK_EQ_INT(mget(&m), 12);
+	CHECK_EQ_INT(panics.n, 0);
+	CHECK_EQ_INT(fresh_runs, 2);
+	stop_catching_panics();
+	mfree(&m);
+	for (int i = 0; i < fresh_runs; i++) ak_signal_drop(&fresh_made[i].n);
+}
+
+// A signal made before the memo, which it reads, is still not its to write.
+static isig older;
+static int older_fn(void *ctx) {
+	AK_UNUSED(ctx);
+	set(&older, get(&older) + 1);
+	return 0;
+}
+
+TEST(memo_writes_an_older_signal_panics) {
+	catch_panics();
+	imemo m;
+	imemo_init(&m, older_fn, NULL);
+	mget(&m);
+	CHECK_EQ_INT(panics.n, 1);
+	CHECK(strstr(panics.msg, "inside a memo") != NULL);
+	stop_catching_panics();
+	mfree(&m);
+}
+
 // ---- TestUntrack
 
 static struct {

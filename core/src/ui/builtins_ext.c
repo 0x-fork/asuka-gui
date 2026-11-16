@@ -225,6 +225,13 @@ STR_CMD(b_on_open_files, ak_ui_on_open_files)
 STR_CMD(b_on_share, ak_ui_on_share)
 STR_CMD(b_on_lifecycle, ak_ui_on_lifecycle)
 
+// ui.run_action: an Action's run, as a menu's choice runs it (its task,
+// when it's async, under the caller's owner).
+static ak_val b_run_action(ak_val *a, uint32_t n) {
+	if (n > 0) ak_run_action(NULL, a[0].p);
+	return (ak_val){0};
+}
+
 // ui.dev_player: whether asuka dev runs the app here (its player).
 static ak_val b_dev_player(ak_val *a, uint32_t n) {
 	AK_UNUSED(a), AK_UNUSED(n);
@@ -446,6 +453,7 @@ void ak_ui_ext_builtins_init(void) {
 		{"sharesheet.coreClose", b_share_close},
 		{"ui.on_open_url", b_on_open_url}, {"ui.on_open_files", b_on_open_files}, {"ui.on_share", b_on_share}, {"ui.color_scheme", b_color_scheme},
 		{"ui.dev_player", b_dev_player},
+		{"ui.run_action", b_run_action},
 		{"ui.on_lifecycle", b_on_lifecycle}, {"ui.on_foreground", b_on_foreground}, {"ui.on_background", b_on_background},
 		{"i18n.locale", b_locale}, {"i18n.set_locale", b_set_locale}, {"i18n.set_languages", b_set_languages},
 		{"i18n.languages", b_languages}, {"i18n.preferred_languages", b_preferred}, {"i18n.is_rtl", b_is_rtl},

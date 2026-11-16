@@ -9,19 +9,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./maps.decl.asuka.js";
 import * as impl from "./maps.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * The map's look.
- */
-export const MapType = Object.freeze({
-  standard: 0,
-  satellite: 1,
-  hybrid: 2,
-  muted: 3,
-});
 
 function viewView(ctx) {
   const events = {

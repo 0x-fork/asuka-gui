@@ -17,6 +17,7 @@
 // (what the user answers, where the device is, the regions it crosses).
 
 import asuka/math
+import asuka/time
 
 /// How much the user lets the app know where the device is.
 pub enum Level {
@@ -39,7 +40,6 @@ pub enum Level {
     .whenInUse | .always => true
     _ => false
   }
-
 }
 
 /// What the user allowed.
@@ -65,9 +65,24 @@ pub struct Position {
   /// when not known.
   speed: float = -1
   course: float = -1
-  /// When, in nanoseconds since 1970 (as time.now()).
+  time: time.Time = time.unix(0)
+}
+
+// A position as the platforms give it: its time in nanoseconds since
+// 1970.
+struct Fix {
+  latitude: float = 0
+  longitude: float = 0
+  accuracy: float = 0
+  altitude: float = 0
+  speed: float = -1
+  course: float = -1
   time: int = 0
 }
+
+fn positionOf(f: Fix) -> Position = Position(latitude: f.latitude, longitude: f.longitude, accuracy: f.accuracy, altitude: f.altitude, speed: f.speed, course: f.course, time: time.unixNano(f.time))
+
+fn fixOf(p: Position) -> Fix = Fix(latitude: p.latitude, longitude: p.longitude, accuracy: p.accuracy, altitude: p.altitude, speed: p.speed, course: p.course, time: p.time.unixNano())
 
 /// How exact the background updates are, against the power they use.
 pub enum Accuracy {
@@ -168,10 +183,10 @@ pub struct Crossing {
   /// The region's ID.
   region: string = ""
   kind: Transition = .enter
-  /// Where the device was, when the system says (time 0 otherwise).
+  /// Where the device was, when the system says (its time 1970's
+  /// first instant otherwise).
   at: Position = Position()
-  /// When, in nanoseconds since 1970.
-  time: int = 0
+  time: time.Time = time.unix(0)
   id: int = 0
 
   /// Keeps the app running for work after the crossing is read, until
@@ -220,11 +235,11 @@ pub enum LocationError: Error {
 /// of updates or a crossing (positions empty), with its id.
 struct Event {
   id: int = 0
-  positions: [Position] = []
+  positions: [Fix] = []
   crossing: bool = false
   region: string = ""
   kind: Transition = .enter
-  at: Position = Position()
+  at: Fix = Fix()
   time: int = 0
 }
 
@@ -241,9 +256,9 @@ native interface Locator {
   /// app's NSLocationTemporaryUsageDescriptionDictionary).
   async fn requestPrecise(purpose: string) -> Authorization
   /// Where the device is now (asking first). Throws denied.
-  async fn current() -> Position
+  async fn current() -> Fix
   /// Calls moved with the position now, then as the device moves.
-  async fn watch(moved: fn(Position))
+  async fn watch(moved: fn(Fix))
   /// What a place is called, from the platform's geocoder.
   async fn placeName(latitude: float, longitude: float) -> string
   /// @mainThread
@@ -365,7 +380,7 @@ pub async fn current() throws -> Position {
     return f.position
   }
   if let p = platform {
-    return try await p.current()
+    return positionOf(try await p.current())
   }
   throw LocationError.unavailable
 }
@@ -381,7 +396,7 @@ pub fn positions() -> Stream<Position> = Stream(send => {
     await never()
   }
   if let p = platform {
-    try await p.watch(moved: x => send(x))
+    try await p.watch(moved: x => send(positionOf(x)))
   } else {
     throw LocationError.unavailable
   }
@@ -441,8 +456,7 @@ pub async fn startUpdates(
   indicator: bool = false,
   notification: Notification = Notification(),
 ) throws {
-  let o = Updates(accuracy: accuracy, distance: distance, interval: interval, activity: activity, delay: delay,
-    significant: significant, autoPause: autoPause, indicator: indicator, notification: notification)
+  let o = Updates(accuracy: accuracy, distance: distance, interval: interval, activity: activity, delay: delay, significant: significant, autoPause: autoPause, indicator: indicator, notification: notification)
   if let f = faked {
     if !f.level.allowed() {
       let _ = f.ask(.whenInUse)
@@ -567,14 +581,14 @@ state unreadCrossings: [Crossing] = []
 
 fn deliver(e: Event) {
   if e.crossing {
-    let c = Crossing(region: e.region, kind: e.kind, at: e.at, time: e.time, id: e.id)
+    let c = Crossing(region: e.region, kind: e.kind, at: positionOf(e.at), time: time.unixNano(e.time), id: e.id)
     if crossingReaders.isEmpty() {
       unreadCrossings.push(c)
     } else {
       for r in crossingReaders.values() { r(c) }
     }
   } else {
-    let b = Batch(positions: e.positions, id: e.id)
+    let b = Batch(positions: e.positions.map(positionOf), id: e.id)
     if batchReaders.isEmpty() {
       unreadBatches.push(b)
     } else {
@@ -630,23 +644,23 @@ async fn followComputed() throws {
       let isIn = distance(pos.latitude, pos.longitude, r.latitude, r.longitude) <= r.radius
       let was = inside.has(r.id)
       if isIn && !was {
-        inside[r.id] = pos.time
+        inside[r.id] = pos.time.unixNano()
         if r.events.contains(.enter) {
           nextID -= 1
-          deliver(Event(id: nextID, crossing: true, region: r.id, kind: .enter, at: pos, time: pos.time))
+          deliver(Event(id: nextID, crossing: true, region: r.id, kind: .enter, at: fixOf(pos), time: pos.time.unixNano()))
         }
       } else if !isIn && was {
         inside.remove(r.id)
         if r.events.contains(.exit) {
           nextID -= 1
-          deliver(Event(id: nextID, crossing: true, region: r.id, kind: .exit, at: pos, time: pos.time))
+          deliver(Event(id: nextID, crossing: true, region: r.id, kind: .exit, at: fixOf(pos), time: pos.time.unixNano()))
         }
       } else if isIn {
         let since = inside[r.id]!
-        if since > 0 && r.events.contains(.dwell) && pos.time - since >= r.dwell.nanoseconds() {
+        if since > 0 && r.events.contains(.dwell) && pos.time.unixNano() - since >= r.dwell.nanoseconds() {
           inside[r.id] = 0
           nextID -= 1
-          deliver(Event(id: nextID, crossing: true, region: r.id, kind: .dwell, at: pos, time: pos.time))
+          deliver(Event(id: nextID, crossing: true, region: r.id, kind: .dwell, at: fixOf(pos), time: pos.time.unixNano()))
         }
       }
     }
@@ -742,9 +756,8 @@ pub store FakeLocation {
   /// Events read whose hold() isn't done yet.
   pub state pending = 0
   pub state settingsOpened = 0
-  /// The clock the positions carry, in nanoseconds; move() moves it on
-  /// by step.
-  pub state clock = 1_700_000_000_000_000_000
+  /// The clock the positions carry; move() moves it on by step.
+  pub state clock: time.Time = time.unixNano(1_700_000_000_000_000_000)
   pub state step: Duration = 1s
   state inside: [string] = []
   state moveReaders: [int: fn(Position)] = [:]
@@ -781,18 +794,18 @@ pub store FakeLocation {
   /// regions monitored that it enters or leaves report it; with updates
   /// on, it's a batch too.
   pub fn move(latitude: float, longitude: float, accuracy: float = 5) {
-    clock += step.nanoseconds()
+    clock = clock.add(step)
     position = Position(latitude: latitude, longitude: longitude, accuracy: accuracy, time: clock)
     for r in moveReaders.values() { r(position) }
     if updatesOn && level.allowed() {
-      send(Event(id: next(), positions: [position]))
+      send(Event(id: next(), positions: [fixOf(position)]))
     }
     cross()
   }
 
   /// Gives the app a crossing, as the system would.
   pub fn crossing(region: string, kind: Transition) {
-    send(Event(id: next(), crossing: true, region: region, kind: kind, at: position, time: clock))
+    send(Event(id: next(), crossing: true, region: region, kind: kind, at: fixOf(position), time: clock.unixNano()))
   }
 
   fn cross() {

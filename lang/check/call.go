@@ -91,6 +91,12 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			if k := tn.Case(fn.Name.Name); k != nil {
 				return c.caseCall(e, tn, k, want)
 			}
+			if f := tn.Statics[fn.Name.Name]; f != nil {
+				// A static fn: Money.of(dollars: 2).
+				c.info.Uses[fn.Name] = f
+				c.info.Selections[fn] = &Selection{Kind: SelPkg, Obj: f}
+				return c.funcCall(e, f, nil, nil, want)
+			}
 			if g := tn.Consts[fn.Name.Name]; g != nil {
 				// A constant that's a function: Shortcut.cmd("k").
 				return c.closureCall(e, fn, c.expr(fn, nil))
@@ -107,6 +113,13 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 	case *syntax.ImplicitMember:
 		c.info.Expected[fn] = want
 		w := Unopt(want)
+		if n, ok := w.(*Named); ok && n.Obj.Statics[fn.Name.Name] != nil {
+			// A static fn making one: .of(dollars: 2) where a Money is
+			// expected.
+			f := n.Obj.Statics[fn.Name.Name]
+			c.info.Uses[fn.Name] = f
+			return c.funcCall(e, f, nil, nil, want)
+		}
 		if n, ok := w.(*Named); ok && n.Obj.Consts[fn.Name.Name] != nil {
 			// A constant that's a function making one: .cmd("k") where a
 			// Shortcut is expected.

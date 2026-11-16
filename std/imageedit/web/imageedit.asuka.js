@@ -9,43 +9,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./imageedit.decl.asuka.js";
 import * as impl from "./imageedit.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * An action as it crosses to the platform's side.
- */
-export const Op = Object.freeze({
-  resize: 0,
-  crop: 1,
-  rotate: 2,
-  flipHorizontal: 3,
-  flipVertical: 4,
-  fill: 5,
-  pixelate: 6,
-});
-
-/**
- * The file written.
- */
-export const Format = Object.freeze({
-  jpeg: 0,
-  png: 1,
-});
-
-const errorIndex = { noImage: 0 };
-const errorMessage = ["imageedit: no image"];
-
-/** One of the errors the package declares: throw new EditError("noImage"). */
-export class EditError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "EditError";
-  }
-}
 
 const provider = {
   make(iface) {

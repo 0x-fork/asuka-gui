@@ -30,6 +30,7 @@ private class KotlinPantry : Pantry {
     }
     override fun show() {}
     override fun counts() = mapOf("a" to 1L, "b" to -2L)
+    override fun shows(view: dev.asuka.AsukaViewRef) = AsukaModules.onMain { view.view != null }
 }
 
 private class KotlinShelf : Shelf {

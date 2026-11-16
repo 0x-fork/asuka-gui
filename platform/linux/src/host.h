@@ -452,6 +452,8 @@ void lx_window_action(win *w, ak_span args);
 void lx_queue_window_state(win *w);
 win *lx_win_for(node *n);
 win *lx_win_of(node *n);
+// lx_web_view is a WebView node's WebKitWebView (web.c), NULL for any other.
+void *lx_web_view(node *n);
 node *lx_window_node(win *w);
 int lx_header_room(win *w);
 void lx_window_css(win *w);

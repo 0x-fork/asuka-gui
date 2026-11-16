@@ -23,7 +23,7 @@ component Adapter {
 
 ## デバイスの検出
 
-`bluetooth.scan(services:, duplicates:)` は、デバイスのアドバタイズを受信するたびに届けるストリームです。各 `Advertisement` には、`device`（その `id` と `name`）、`rssi`、`localName`、`services`、`serviceData`、`manufacturerData`（会社 ID（16 進数 4 桁）ごと）、`txPower`、`connectable` があります。`duplicates` を指定すると、デバイスごとの最初のアドバタイズだけでなく、すべてのアドバタイズを届けます（RSSI を追うときに使います）。`services` を指定すると、そのいずれかをアドバタイズしているデバイスのものだけを届けます。スキャンはストリームが読まれているあいだ続き、`BluetoothError.off`、`denied`、`notAvailable` を投げます。
+`bluetooth.scan(services:, duplicates:)` は、デバイスのアドバタイズを受信するたびに届けるストリームです。各 `Advertisement` には、`device`（その `id` と `name`）、`rssi`、`localName`、`services`、`serviceData`、`manufacturerData`（会社 ID（16 進数 4 桁）ごと）、`txPower`、`connectable`、受信した時刻 `time`（`time.Time`）があります。`duplicates` を指定すると、デバイスごとの最初のアドバタイズだけでなく、すべてのアドバタイズを届けます（RSSI を追うときに使います）。`services` を指定すると、そのいずれかをアドバタイズしているデバイスのものだけを届けます。スキャンはストリームが読まれているあいだ続き、`BluetoothError.off`、`denied`、`notAvailable` を投げます。
 
 ```asuka
 component Scanner {

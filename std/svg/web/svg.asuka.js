@@ -10,27 +10,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./svg.decl.asuka.js";
 import * as impl from "./svg.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * A stroke's ends.
- */
-export const Cap = Object.freeze({
-  butt: 0,
-  round: 1,
-  square: 2,
-});
-
-/**
- * A stroke's corners.
- */
-export const Join = Object.freeze({
-  miter: 0,
-  round: 1,
-  bevel: 2,
-});
 
 function viewView(ctx) {
   const events = {

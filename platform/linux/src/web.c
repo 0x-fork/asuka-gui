@@ -272,6 +272,13 @@ static bool web_create(node *n) {
 	return true;
 }
 
+// lx_web_view is a WebView node's WebKitWebView (NULL: another node,
+// or WebKitGTK missing): what asuka_desktop_webview gives a package.
+void *lx_web_view(node *n) {
+	web *w = web_of(n);
+	return w && !w->missing ? w->view : NULL;
+}
+
 static void load(web *w, const char *s) {
 	if (!*s) return;
 	const char *colon = strchr(s, ':');

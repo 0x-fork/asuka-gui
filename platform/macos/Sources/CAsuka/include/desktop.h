@@ -23,7 +23,9 @@
 //   - dsk_flyout_place, dsk_flyout_center: flyouts' and panels' places;
 //   - dsk_word, dsk_word_format: Asuka's own words;
 //   - dsk_anim_*: animated images (GIF, APNG, WebP) and their player;
-//   - dsk_exists; dsk_jw_json: a value of JSON written elsewhere.
+//   - dsk_exists; dsk_jw_json: a value of JSON written elsewhere;
+//   - dsk_routes_path keeps none under asuka dev (ASUKA_DEV), and keeps
+//     them under automation when ASUKA_ROUTES=1 (the hosts' tests).
 #ifndef ASUKA_DESKTOP_SHARED_H
 #define ASUKA_DESKTOP_SHARED_H
 
@@ -169,7 +171,9 @@ void dsk_winstate_forget(dsk_winstate *s, const char *key);
 typedef struct dsk_routes dsk_routes;
 
 // dsk_routes_path is the file's path ("" keeps none: tests, automation,
-// asuka dev, no data directory; free it).
+// asuka dev, whose reloads keep the routers where they are, no data
+// directory; free it). ASUKA_ROUTES=1 keeps them under automation too,
+// for the hosts' tests of reopening.
 char *dsk_routes_path(void);
 dsk_routes *dsk_routes_open(const char *path);
 void dsk_routes_close(dsk_routes *s);

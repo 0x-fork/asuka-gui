@@ -26,6 +26,7 @@ var methodOf = map[Kind]string{
 	Bool: "Bool", Int8: "Int8", Int16: "Int16", Int32: "Int32", Int64: "Int64", Int: "Int",
 	Uint8: "Uint8", Uint16: "Uint16", Uint32: "Uint32", Uint64: "Uint64", Uint: "Uint",
 	Float32: "Float32", Float64: "Float64", String: "String", Bytes: "Data", Time: "Time", Duration: "Duration",
+	ViewRef: "Uint64",
 }
 
 // mangle names a type in helper functions' names.

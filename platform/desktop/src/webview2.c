@@ -257,15 +257,17 @@ void asuka_win_web_page(const char *html, void (*done)(void *ctx, asuka_web_page
 
 void *asuka_win_web_page_view(asuka_web_page *p) { return p ? p->view : NULL; }
 
-void asuka_win_web_page_print(asuka_web_page *p, int kind) {
-	void *v16 = asuka_com_query(p->view, &iid_webview2_16);
+void asuka_win_webview_print(void *view, int kind) {
+	void *v16 = asuka_com_query(view, &iid_webview2_16);
 	if (v16) {
 		ASUKA_SLOT(v16, wv16_show_print_ui, HRESULT(STDMETHODCALLTYPE *)(void *, int))(v16, kind);
 		asuka_com_release(v16);
 		return;
 	}
-	ASUKA_SLOT(p->view, wv_execute_script, HRESULT(STDMETHODCALLTYPE *)(void *, const wchar_t *, void *))(p->view, L"window.print()", NULL);
+	ASUKA_SLOT(view, wv_execute_script, HRESULT(STDMETHODCALLTYPE *)(void *, const wchar_t *, void *))(view, L"window.print()", NULL);
 }
+
+void asuka_win_web_page_print(asuka_web_page *p, int kind) { asuka_win_webview_print(p->view, kind); }
 
 typedef struct {
 	void (*done)(void *, char *, asuka_error *);

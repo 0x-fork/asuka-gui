@@ -182,7 +182,7 @@ typedef struct watcher {
 
 typedef struct scan {
 	uint32_t id;
-	bluetooth_fn_Advertisement found;
+	bluetooth_fn_Heard found;
 	asuka_call *call;
 	bool done;  // answered
 	struct scan *next;
@@ -353,7 +353,7 @@ static bt_strings normalized(bluetooth_list_string l) {
 	return out;
 }
 
-static void scan_(bluetooth_Adapter *self, const bluetooth_ScanOptions *o, bluetooth_fn_Advertisement found, asuka_call *call) {
+static void scan_(bluetooth_Adapter *self, const bluetooth_ScanOptions *o, bluetooth_fn_Heard found, asuka_call *call) {
 	scan *s = calloc(1, sizeof *s);
 	*s = (scan){.id = next_id(), .found = found, .call = call, .next = br.scans};
 	br.scans = s;
@@ -388,7 +388,7 @@ void bt_on_advertisement(uint32_t id, const bt_advertisement *a) {
 	scan *s;
 	FIND(br.scans, id, id, s);
 	if (!s) return;
-	bluetooth_Advertisement ad = {
+	bluetooth_Heard ad = {
 	    .device = {asuka_strdup(a->id), asuka_strdup(a->name)},
 	    .rssi = a->rssi,
 	    .localName = asuka_strdup(a->local_name),
@@ -401,8 +401,8 @@ void bt_on_advertisement(uint32_t id, const bt_advertisement *a) {
 	    .connectable = a->connectable,
 	    .time = a->time_ms * 1000000,
 	};
-	bluetooth_fn_Advertisement_call(s->found, &ad);
-	bluetooth_Advertisement_free(&ad);
+	bluetooth_fn_Heard_call(s->found, &ad);
+	bluetooth_Heard_free(&ad);
 }
 
 // ---- Choosing ----
@@ -1018,7 +1018,7 @@ void bt_on_advertise_stopped(uint32_t id, const char *err) {
 // The desktops restore nothing (the app keeps running while out of sight,
 // and its scans with it): restored() has nothing to give, so the watch
 // returns at once, as the package says.
-static void watchRestored(bluetooth_Adapter *self, bluetooth_fn_Restored restored, asuka_call *call) {
+static void watchRestored(bluetooth_Adapter *self, bluetooth_fn_Brought restored, asuka_call *call) {
 	(void)self, (void)restored;
 	bluetooth_Adapter_watchRestored_done(call);
 }

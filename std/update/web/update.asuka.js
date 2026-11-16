@@ -9,22 +9,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./update.decl.asuka.js";
 import * as impl from "./update.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-const errorIndex = { notAvailable: 0, notConfigured: 1, managed: 2, translocated: 3, notWritable: 4, notInstalled: 5, notSigned: 6, failed: 7 };
-const errorMessage = ["update: this platform updates apps itself (its app store)", "update: this build has no updates (asuka.toml's [updates]; asuka dev's builds have none)", "update: a package manager or an app store installed the app, and updates it", "update: macOS runs the app from a read-only copy: move it to the Applications folder, then open it again", "update: the app can't write where it's installed", "update: the app isn't laid out as asuka build makes it (a bundle, a folder, an install prefix)", "update: the update is not signed with the app's key", "update: checking or installing failed"];
-
-/** One of the errors the package declares: throw new UpdateError("notAvailable"). */
-export class UpdateError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "UpdateError";
-  }
-}
 
 const provider = {
   make(iface) {

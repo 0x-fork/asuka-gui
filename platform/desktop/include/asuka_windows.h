@@ -125,6 +125,9 @@ void *asuka_win_web_page_view(asuka_web_page *p);
 // browser's print preview (0) or the system's (1); window.print() where
 // WebView2 is too old for it.
 void asuka_win_web_page_print(asuka_web_page *p, int kind);
+// asuka_win_webview_print is the same for any WebView2's page (an
+// ICoreWebView2 *: asuka_desktop_webview's, a WebView the app shows).
+void asuka_win_webview_print(void *view, int kind);
 // asuka_win_web_page_close lets the page go.
 void asuka_win_web_page_close(asuka_web_page *p);
 

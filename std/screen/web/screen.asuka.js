@@ -9,30 +9,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./screen.decl.asuka.js";
 import * as impl from "./screen.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * What the app may turn to.
- */
-export const Orientation = Object.freeze({
-  any: 0,
-  portrait: 1,
-  portraitUp: 2,
-  landscape: 3,
-  landscapeLeft: 4,
-  landscapeRight: 5,
-});
-
-/**
- * The color of the status bar's text and icons.
- */
-export const BarStyle = Object.freeze({
-  auto: 0,
-  light: 1,
-  dark: 2,
-});
 
 const provider = {
   make(iface) {

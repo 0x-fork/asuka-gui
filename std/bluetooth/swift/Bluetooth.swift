@@ -33,7 +33,7 @@ final class CoreBluetoothAdapter: Adapter {
         }
     }
 
-    func scan(options: ScanOptions, found: @escaping (Advertisement) -> Void) async throws {
+    func scan(options: ScanOptions, found: @escaping (Heard) -> Void) async throws {
         let f = Box(found)
         let id = try await MainActor.run { try Hub.shared.startScan(options, f) }
         defer { Task { @MainActor in Hub.shared.stopScan(id) } }
@@ -115,7 +115,7 @@ final class CoreBluetoothAdapter: Adapter {
         await untilCancelled()
     }
 
-    func watchRestored(restored: @escaping (Restored) -> Void) async throws {
+    func watchRestored(restored: @escaping (Brought) -> Void) async throws {
         #if os(iOS)
         let f = Box(restored)
         let id = await MainActor.run { Hub.shared.listenRestored(f) }
@@ -196,8 +196,8 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
     }
 
     // What iOS restored, until watchRestored reads it, and who does.
-    private var restoredNow: Restored?
-    private var restoreReaders: [Int: Box<Restored>] = [:]
+    private var restoredNow: Brought?
+    private var restoreReaders: [Int: Box<Brought>] = [:]
     // The scan iOS restored, which goes on (what it hears restored too)
     // until the app scans again or stops it (stopBackgroundScan).
     private var restoredScan: (services: [CBUUID], duplicates: Bool)?
@@ -206,7 +206,7 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
 
     private var stateReaders: [Int: Box<State>] = [:]
     private var stateWaiters: [(State) -> Void] = []
-    private var scanners: [Int: (ScanOptions, Box<Advertisement>)] = [:]
+    private var scanners: [Int: (ScanOptions, Box<Heard>)] = [:]
     private var known: [UUID: CBPeripheral] = [:]
     private var seen = Set<UUID>()
 
@@ -302,7 +302,7 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
 
     // MARK: Scanning
 
-    func startScan(_ o: ScanOptions, _ f: Box<Advertisement>) throws -> Int {
+    func startScan(_ o: ScanOptions, _ f: Box<Heard>) throws -> Int {
         _ = central
         try check()
         next += 1
@@ -338,7 +338,7 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
         MainActor.assumeIsolated {
             known[p.identifier] = p
             let first = seen.insert(p.identifier).inserted
-            var a = Advertisement(device: Device(id: p.identifier.uuidString, name: p.name ?? (d[CBAdvertisementDataLocalNameKey] as? String ?? "")),
+            var a = Heard(device: Device(id: p.identifier.uuidString, name: p.name ?? (d[CBAdvertisementDataLocalNameKey] as? String ?? "")),
                                   rssi: rssi.intValue, localName: d[CBAdvertisementDataLocalNameKey] as? String ?? "",
                                   services: (d[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []).map(uuidString),
                                   solicited: (d[CBAdvertisementDataSolicitedServiceUUIDsKey] as? [CBUUID] ?? []).map(uuidString),
@@ -360,7 +360,7 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
             }
             // The restored scan's, before the app scans again.
             if scanners.isEmpty, let r = restoredScan, r.duplicates || first {
-                deliverRestored(Restored(advertisements: [a]))
+                deliverRestored(Brought(advertisements: [a]))
             }
         }
     }
@@ -373,7 +373,7 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
 
     // MARK: Restoration
 
-    func listenRestored(_ f: Box<Restored>) -> Int {
+    func listenRestored(_ f: Box<Brought>) -> Int {
         next += 1
         restoreReaders[next] = f
         if let r = restoredNow {
@@ -386,12 +386,12 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
     func unlistenRestored(_ id: Int) { restoreReaders[id] = nil }
 
     /// To the readers, or kept (merged) for the first.
-    private func deliverRestored(_ r: Restored) {
+    private func deliverRestored(_ r: Brought) {
         guard restoreReaders.isEmpty else {
             for f in restoreReaders.values { f.f(r) }
             return
         }
-        var k = restoredNow ?? Restored()
+        var k = restoredNow ?? Brought()
         for d in r.devices where !k.devices.contains(where: { $0.id == d.id }) { k.devices.append(d) }
         if !r.scanServices.isEmpty { k.scanServices = r.scanServices }
         for a in r.advertisements {
@@ -408,7 +408,7 @@ func uuidString(_ u: CBUUID) -> String { u.uuidString.lowercased() }
     /// package's again, its scan goes on.
     nonisolated func centralManager(_ c: CBCentralManager, willRestoreState dict: [String: Any]) {
         MainActor.assumeIsolated {
-            var r = Restored()
+            var r = Brought()
             for p in dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] ?? [] {
                 known[p.identifier] = p
                 p.delegate = self

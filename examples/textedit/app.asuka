@@ -1,14 +1,20 @@
 // TextEdit is a plain text editor with documents (asuka/document): on
-// the desktop a window per file, the File menu's New and Open… (⌘N, ⌘O),
-// ⌘S and ⌘W in each window, autosave a moment after typing stops, and a
-// bar when another app changes the file being edited (keep yours, or
-// revert to theirs); on a phone or in a browser, a list of its documents
-// and one open at a time.
+// the desktop a window per file, the File menu (New, Open…, Open Recent,
+// Save, Save As…, Duplicate, Rename…, Move To…, Revert), autosave a
+// moment after typing stops, recovery copies of what can't be saved in
+// place (opened again at the next launch), questions before changes are
+// lost, and a bar when another app changes the file being edited (keep
+// yours, or revert to theirs); on a phone or in a browser, a list of its
+// documents (swipe to duplicate, rename or delete) and one open at a
+// time.
 //
 //   asuka dev examples/textedit
 //   asuka dev --platform ios examples/textedit
 
+import asuka/dialog
 import asuka/document
+import asuka/fs
+import asuka/i18n
 
 let types = [
   document.Type(name: "Plain Text", extensions: ["txt", "text"], mimeTypes: ["text/plain"]),
@@ -57,6 +63,7 @@ component Editor(doc: document.Document<string>) {
     }
     TextField {
       text: text
+      placeholder: "Start typing"
       on change(t) { doc.edit(t) }
       multiline: true
       plain: true
@@ -81,4 +88,138 @@ test "a desktop's File menu" {
   let app = mount(document.Documents(types) { editor: doc => Editor(doc) }, platform: .macOS)
   let menu = app.menuBar()
   expect(menu.contains("File > New") && menu.contains("File > Open…"), menu)
+}
+
+test "a desktop's untitled document: its recovery copy, and the question as it closes" {
+  let app = mount(document.Documents(types) { editor: doc => Editor(doc) }, platform: .macOS)
+  await app.idle()
+  expect(app.windows().contains("Untitled"), app.windows())
+  app.type("Draft", into: "Start typing")
+  await app.idle()
+  let copies = (try fs.readDir(document.recoveryDir())).filter(e => fs.ext(e.name) == ".data")
+  expect(copies.count() == 1, "{copies.count()} copies")
+  app.closeWindow("Untitled")
+  app.expect("Do you want to keep this new document “Untitled”?", "Save…", "Delete", "Cancel")
+  app.tap("Delete")
+  await app.idle()
+  expect(!app.windows().contains("Untitled"), app.windows())
+  expect((try fs.readDir(document.recoveryDir())).isEmpty(), "the copy stays")
+}
+
+test "Save As, Duplicate, Rename and Move To" {
+  let dialogs = dialog.fake()
+  let dir = fs.join([fs.appDir(), "saved"])
+  try fs.mkdirAll(fs.join([dir, "moved"]))
+  let app = mount(document.Documents(types) { editor: doc => Editor(doc) }, platform: .macOS)
+  await app.idle()
+  app.type("Hello", into: "Start typing")
+  dialogs.saveTo = fs.join([dir, "Hello.txt"])
+  app.chooseMenuItem("File > Save As…")
+  await app.idle()
+  expect(dialogs.shown == ["save Untitled.txt"], "{dialogs.shown}")
+  expect(try fs.readText(fs.join([dir, "Hello.txt"])) == "Hello")
+  expect(app.windows().contains("Hello.txt"), app.windows())
+
+  app.chooseMenuItem("File > Duplicate")
+  await app.idle()
+  expect(app.windows().contains("Hello copy"), app.windows())
+  app.focusWindow("Hello.txt")
+  await app.idle()
+
+  app.chooseMenuItem("File > Rename…")
+  app.expect("Rename")
+  app.type("Greeting", into: "Hello.txt")
+  app.submit("Hello.txt")
+  await app.idle()
+  expect(fs.exists(fs.join([dir, "Greeting.txt"])) && !fs.exists(fs.join([dir, "Hello.txt"])))
+  expect(app.windows().contains("Greeting.txt"), app.windows())
+
+  dialogs.folder = fs.join([dir, "moved"])
+  app.chooseMenuItem("File > Move To…")
+  await app.idle()
+  expect(try fs.readText(fs.join([dir, "moved", "Greeting.txt"])) == "Hello")
+  expect(!fs.exists(fs.join([dir, "Greeting.txt"])))
+}
+
+test "the last run's unsaved documents open again" {
+  let dir = document.recoveryDir()
+  try fs.mkdirAll(dir)
+  try fs.writeText(fs.join([dir, "7.data"]), "Kept from the crash")
+  try fs.writeText(fs.join([dir, "7.json"]), "\{\"file\": \"\", \"name\": \"Untitled 3\", \"known\": 0\}")
+  let app = mount(document.Documents(types) { editor: doc => Editor(doc) }, platform: .linux)
+  await app.idle()
+  expect(app.windows().contains("Untitled 3"), app.windows())
+  app.expect("Kept from the crash")
+  // A quit keeps it for the next launch.
+  expect(app.requestQuit() == false)
+  await app.idle()
+  expect(app.quits() == "quit", app.quits())
+  expect(try fs.readText(fs.join([dir, "7.data"])) == "Kept from the crash")
+  try fs.removeAll(dir)
+}
+
+test "Windows' and Linux's File menu, in the app's language" {
+  let app = mount(document.Documents(types) { editor: doc => Editor(doc) }, platform: .windows)
+  await app.idle()
+  let menu = app.menuBar()
+  expect(menu.contains("File > Save As…") && menu.contains("File > Open Recent") && menu.contains("File > Revert") && !menu.contains("Duplicate"), menu)
+  i18n.setLanguages(["en", "ja"])
+  app.setLanguages("ja")
+  await app.idle()
+  let ja = app.menuBar()
+  expect(ja.contains("ファイル > 別名で保存…"), ja)
+}
+
+test "a phone's documents: duplicate, rename, delete" {
+  let app = mount(document.Documents(types) { editor: doc => Editor(doc) }, platform: .iOS)
+  app.tap("New")
+  await app.idle()
+  app.back()
+  await app.idle()
+  app.swipe("Untitled.txt", action: "Duplicate")
+  await app.idle()
+  app.expect("Untitled copy.txt")
+  app.swipe("Untitled copy.txt", action: "Rename")
+  await app.idle()
+  app.type("Notes", into: "Untitled copy.txt")
+  app.submit("Untitled copy.txt")
+  await app.idle()
+  app.expect("Notes.txt")
+  app.swipe("Notes.txt", action: "Delete")
+  await app.idle()
+  app.tap("Delete")
+  await app.idle()
+  app.expectNo("Notes.txt")
+}
+
+test "a file another app changed: the question as it closes, and Revert" {
+  let dialogs = dialog.fake()
+  let dir = fs.join([fs.appDir(), "changed"])
+  try fs.mkdirAll(dir)
+  let path = fs.join([dir, "Notes.txt"])
+  try fs.writeText(path, "Theirs")
+  dialogs.opens = [path]
+  let app = mount(document.Documents(types) { editor: doc => Editor(doc) }, platform: .macOS)
+  await app.idle()
+  app.chooseMenuItem("File > Open…")
+  await app.idle()
+  app.expect("Theirs")
+  await app.until("the file's time to move on", () => true)
+  app.type("Mine", into: "Theirs")
+  await sleep(10ms)
+  try fs.writeText(path, "Changed meanwhile")
+  await app.idle()
+  app.expect("Another app changed this file.")
+  app.closeWindow("Notes.txt")
+  app.expect("Do you want to save the changes made to the document “Notes.txt”?", "Don’t Save")
+  app.tap("Cancel")
+  await app.idle()
+  app.chooseMenuItem("File > Revert to Saved")
+  app.expect("Do you want to revert “Notes.txt” to the last saved version?")
+  app.tap("Revert")
+  await app.idle()
+  app.expect("Changed meanwhile")
+  app.closeWindow("Notes.txt")
+  await app.idle()
+  expect(!app.windows().contains("Notes.txt"), app.windows())
 }

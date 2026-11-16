@@ -76,6 +76,31 @@ static void test_state(const char *dir) {
 	CHECK(dsk_routes_location(r, "main", &href, &state, &sl) && strcmp(href, "/inbox/3") == 0 && sl == 2);
 	dsk_routes_close(r);
 	free(path);
+
+	// Where the file is: none under automation unless ASUKA_ROUTES=1,
+	// none under asuka dev.
+	setenv("ASUKA_DATA", dir, 1);
+	unsetenv("ASUKA_SCRIPT"), unsetenv("ASUKA_ROUTES"), unsetenv("ASUKA_DEV");
+	unsetenv("ASUKA_SNAPSHOT"), unsetenv("ASUKA_TEST"), unsetenv("ASUKA_STATE");
+	path = dsk_routes_path();
+	char *want = dsk_join(dir, "asuka-routes.json");
+	CHECK(path && strcmp(path, want) == 0);
+	free(path);
+	setenv("ASUKA_SCRIPT", "tap:x", 1);
+	path = dsk_routes_path();
+	CHECK(path && !*path);
+	free(path);
+	setenv("ASUKA_ROUTES", "1", 1);
+	path = dsk_routes_path();
+	CHECK(path && strcmp(path, want) == 0);
+	free(path);
+	unsetenv("ASUKA_SCRIPT"), unsetenv("ASUKA_ROUTES");
+	setenv("ASUKA_DEV", "127.0.0.1:1", 1);
+	path = dsk_routes_path();
+	CHECK(path && !*path);
+	free(path);
+	unsetenv("ASUKA_DEV");
+	free(want);
 }
 
 static bool same(dsk_rect a, dsk_rect b) { return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h; }

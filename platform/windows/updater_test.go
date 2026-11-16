@@ -101,7 +101,7 @@ func TestUpdater(t *testing.T) {
 	data := filepath.Join(local, "data")
 	os.MkdirAll(data, 0o755)
 	os.WriteFile(filepath.Join(data, "selfupdate"), nil, 0o644)
-	out, err := w.run(t, guest+`\app`, guest+`\app\Updater.exe`, map[string]string{"ASUKA_DATA": guest + `\data`})
+	out, err := w.runRelaunching(t, guest+`\app`, guest+`\app\Updater.exe`, map[string]string{"ASUKA_DATA": guest + `\data`})
 	if err != nil {
 		b, _ := os.ReadFile(filepath.Join(data, "report"))
 		t.Fatalf("1.0.0: %v\n%s\nit reported:\n%s", err, out, b)

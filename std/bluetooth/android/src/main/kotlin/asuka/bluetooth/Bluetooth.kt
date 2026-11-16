@@ -132,7 +132,7 @@ class AndroidAdapter(private val ctx: Context) : Adapter {
         if (adapter?.isEnabled != true) throw BluetoothException(BluetoothError.OFF)
     }
 
-    override suspend fun scan(options: ScanOptions, found: (Advertisement) -> Unit) {
+    override suspend fun scan(options: ScanOptions, found: (Heard) -> Unit) {
         ready(central)
         val scanner = adapter?.bluetoothLeScanner ?: throw BluetoothException(BluetoothError.OFF)
         if (options.background) return backgroundScan(scanner, options, found)
@@ -157,7 +157,7 @@ class AndroidAdapter(private val ctx: Context) : Adapter {
     }
 
     /** A background scan: BackgroundScan's, read until the task is cancelled. */
-    private suspend fun backgroundScan(scanner: BluetoothLeScanner, options: ScanOptions, found: (Advertisement) -> Unit) {
+    private suspend fun backgroundScan(scanner: BluetoothLeScanner, options: ScanOptions, found: (Heard) -> Unit) {
         // Its receiver is only in the apps that call backgroundScan.
         if (!BackgroundScan.declared(ctx)) throw BluetoothException(BluetoothError.NOT_AVAILABLE)
         val r = BackgroundScan.Reader(options.services, options.duplicates, found)
@@ -175,13 +175,13 @@ class AndroidAdapter(private val ctx: Context) : Adapter {
         }
     }
 
-    override suspend fun watchRestored(restored: (Restored) -> Unit) {
+    override suspend fun watchRestored(restored: (Brought) -> Unit) {
         // What comes now goes to restored; what the receiver kept before,
         // then.
         val id = withContext(Dispatchers.Main) { BackgroundScan.listenRestored(restored) }
         try {
             val kept = withContext(Dispatchers.IO) { BackgroundScan.takeKept(ctx) }
-            if (kept.isNotEmpty()) withContext(Dispatchers.Main) { restored(Restored(advertisements = kept)) }
+            if (kept.isNotEmpty()) withContext(Dispatchers.Main) { restored(Brought(advertisements = kept)) }
             awaitCancellation()
         } finally {
             main.post { BackgroundScan.unlistenRestored(id) }
@@ -552,7 +552,7 @@ fun makeAdapter(): Adapter = AndroidAdapter(AsukaModules.context)
 
 /** The advertisement a scan result is (its time: when it was heard, which a background scan's batch reports later). */
 @SuppressLint("MissingPermission") // the name only with BLUETOOTH_CONNECT granted: else none
-internal fun advertisement(ctx: Context, r: ScanResult): Advertisement {
+internal fun advertisement(ctx: Context, r: ScanResult): Heard {
     val rec = r.scanRecord
     val sd = HashMap<String, ByteArray>()
     rec?.serviceData?.forEach { (k, v) -> sd[short(k.uuid)] = v }
@@ -561,7 +561,7 @@ internal fun advertisement(ctx: Context, r: ScanResult): Advertisement {
     val named = ctx.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
     val name = (if (named) runCatching { r.device.name }.getOrNull() else null) ?: rec?.deviceName ?: ""
     val ago = SystemClock.elapsedRealtimeNanos() - r.timestampNanos
-    return Advertisement(
+    return Heard(
         device = Device(id = r.device.address, name = name), rssi = r.rssi.toLong(), localName = rec?.deviceName ?: "",
         services = rec?.serviceUuids?.map { short(it.uuid) } ?: emptyList(),
         solicited = rec?.serviceSolicitationUuids?.map { short(it.uuid) } ?: emptyList(),
@@ -590,14 +590,14 @@ internal object BackgroundScan {
     private const val KEEP = 1000
 
     /** A background scan of this process's. */
-    class Reader(val services: List<String>, val duplicates: Boolean, val found: (Advertisement) -> Unit) {
+    class Reader(val services: List<String>, val duplicates: Boolean, val found: (Heard) -> Unit) {
         val seen = HashSet<String>()
         /** Completed (exceptionally) when the system stops the scan. */
         val failed = CompletableDeferred<Unit>()
     }
 
     private val readers = LinkedHashMap<Long, Reader>()
-    private val restorers = LinkedHashMap<Long, (Restored) -> Unit>()
+    private val restorers = LinkedHashMap<Long, (Brought) -> Unit>()
     private var ids = 0L
     /** Whether this process started the scan, and for which services (null: every device). */
     private var running = false
@@ -663,7 +663,7 @@ internal object BackgroundScan {
         if (readers.isEmpty()) stop(c)
     }
 
-    fun listenRestored(f: (Restored) -> Unit): Long {
+    fun listenRestored(f: (Brought) -> Unit): Long {
         val id = ++ids
         restorers[id] = f
         return id
@@ -697,7 +697,7 @@ internal object BackgroundScan {
             return done()
         }
         if (restorers.isNotEmpty()) {
-            val r = Restored(advertisements = ads)
+            val r = Brought(advertisements = ads)
             for (f in restorers.values.toList()) f(r)
             return done()
         }
@@ -712,7 +712,7 @@ internal object BackgroundScan {
     }
 
     /** Adds to the file: one per device (its latest) unless duplicates, the latest KEEP. */
-    private fun keep(c: Context, ads: List<Advertisement>, duplicates: Boolean): Unit = synchronized(file) {
+    private fun keep(c: Context, ads: List<Heard>, duplicates: Boolean): Unit = synchronized(file) {
         val f = kept(c)
         val all = ArrayList<JSONObject>()
         if (f.exists()) runCatching { JSONArray(f.readText()) }.getOrNull()?.let { a -> for (i in 0 until a.length()) a.optJSONObject(i)?.let { all.add(it) } }
@@ -729,7 +729,7 @@ internal object BackgroundScan {
     }
 
     /** What the file kept, which it forgets. Not on the main thread. */
-    fun takeKept(c: Context): List<Advertisement> = synchronized(file) {
+    fun takeKept(c: Context): List<Heard> = synchronized(file) {
         val f = kept(c)
         if (!f.exists()) return emptyList()
         val a = runCatching { JSONArray(f.readText()) }.getOrNull()
@@ -740,17 +740,17 @@ internal object BackgroundScan {
 
     private fun b64(b: ByteArray) = Base64.encodeToString(b, Base64.NO_WRAP)
 
-    private fun encode(a: Advertisement): JSONObject = JSONObject()
+    private fun encode(a: Heard): JSONObject = JSONObject()
         .put("id", a.device.id).put("name", a.device.name).put("rssi", a.rssi).put("localName", a.localName)
         .put("services", JSONArray(a.services)).put("solicited", JSONArray(a.solicited))
         .put("serviceData", JSONObject().apply { for ((k, v) in a.serviceData) put(k, b64(v)) })
         .put("manufacturerData", JSONObject().apply { for ((k, v) in a.manufacturerData) put(k, b64(v)) })
         .put("txPower", a.txPower).put("hasTxPower", a.hasTxPower).put("connectable", a.connectable).put("time", a.time)
 
-    private fun decode(o: JSONObject): Advertisement {
+    private fun decode(o: JSONObject): Heard {
         fun strings(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
         fun bytes(k: String) = o.optJSONObject(k)?.let { m -> m.keys().asSequence().associateWith { Base64.decode(m.optString(it), Base64.NO_WRAP) } } ?: emptyMap()
-        return Advertisement(
+        return Heard(
             device = Device(id = o.optString("id"), name = o.optString("name")), rssi = o.optLong("rssi"), localName = o.optString("localName"),
             services = strings("services"), solicited = strings("solicited"), serviceData = bytes("serviceData"), manufacturerData = bytes("manufacturerData"),
             txPower = o.optLong("txPower"), hasTxPower = o.optBoolean("hasTxPower"), connectable = o.optBoolean("connectable", true), time = o.optLong("time"),

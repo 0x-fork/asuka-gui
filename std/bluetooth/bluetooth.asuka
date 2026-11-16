@@ -23,6 +23,8 @@
 // Tests drive a fake: bluetooth.fake() is a FakeBluetooth with fake
 // peripherals a test adds, and centrals that read the app's services.
 
+import asuka/time
+
 /// The adapter's state.
 pub enum State {
   unknown
@@ -58,9 +60,29 @@ pub struct Advertisement {
   txPower: int = 0
   hasTxPower: bool = false
   connectable: bool = true
-  /// When, in nanoseconds since 1970.
+  /// When it was heard.
+  time: time.Time = time.unix(0)
+}
+
+// An advertisement as the platforms give it: its time in nanoseconds
+// since 1970.
+struct Heard {
+  device: Device = Device()
+  rssi: int = 0
+  localName: string = ""
+  services: [string] = []
+  solicited: [string] = []
+  serviceData: [string: bytes] = [:]
+  manufacturerData: [string: bytes] = [:]
+  txPower: int = 0
+  hasTxPower: bool = false
+  connectable: bool = true
   time: int = 0
 }
+
+fn advertisementOf(h: Heard) -> Advertisement = Advertisement(device: h.device, rssi: h.rssi, localName: h.localName,
+  services: h.services, solicited: h.solicited, serviceData: h.serviceData, manufacturerData: h.manufacturerData,
+  txPower: h.txPower, hasTxPower: h.hasTxPower, connectable: h.connectable, time: time.unixNano(h.time))
 
 /// What the system brought back for the app (restored()).
 pub struct Restored {
@@ -78,6 +100,15 @@ pub struct Restored {
   /// the scan wanted duplicates.
   advertisements: [Advertisement] = []
 }
+
+// What the platforms bring back: its advertisements as they give them.
+struct Brought {
+  devices: [Device] = []
+  scanServices: [string] = []
+  advertisements: [Heard] = []
+}
+
+fn restoredOf(b: Brought) -> Restored = Restored(devices: b.devices, scanServices: b.scanServices, advertisements: b.advertisements.map(advertisementOf))
 
 /// What choose() offers: devices advertising all of services, named
 /// name or with namePrefix.
@@ -315,7 +346,7 @@ native interface Adapter {
   /// Asks for the app's Bluetooth permission (the first time).
   async fn request() -> State
   /// Calls found with what's heard, until the task is cancelled.
-  async fn scan(options: ScanOptions, found: fn(Advertisement))
+  async fn scan(options: ScanOptions, found: fn(Heard))
   /// The browser's device chooser (Web Bluetooth), Windows' device
   /// picker; elsewhere notAvailable.
   async fn choose(filters: [Filter], optionalServices: [string]) -> Device
@@ -341,7 +372,7 @@ native interface Adapter {
   /// Calls restored with what the system brought back for the app (those
   /// kept from before first), until the task is cancelled; where nothing
   /// is (the desktops, the web), it returns.
-  async fn watchRestored(restored: fn(Restored))
+  async fn watchRestored(restored: fn(Brought))
   /// Stops the background scan a previous run of the app left running;
   /// this run's go on.
   fn stopBackgroundScan()
@@ -433,7 +464,7 @@ fn scanning(o: ScanOptions) -> Stream<Advertisement> = Stream(send => {
     await never()
   }
   if let p = platform {
-    try await p.scan(options: o, found: a => send(a))
+    try await p.scan(options: o, found: a => send(advertisementOf(a)))
   } else {
     throw BluetoothError.notAvailable
   }
@@ -498,7 +529,7 @@ async fn followRestores() {
     await never()
   }
   if let p = platform {
-    try? await p.watchRestored(restored: r => deliverRestored(r))
+    try? await p.watchRestored(restored: r => deliverRestored(restoredOf(r)))
   }
 }
 
@@ -627,8 +658,7 @@ pub store Connection {
   pub async fn services() throws -> [Service] {
     let h = try await connected()
     let found = try await servicesOf(h, device.id)
-    return found.map(s => Service(uuid: s.uuid, characteristics: s.characteristics.map(c => Characteristic(uuid: c.uuid, service: s.uuid,
-      properties: c.properties, descriptors: c.descriptors, connection: h, device: device.id))))
+    return found.map(s => Service(uuid: s.uuid, characteristics: s.characteristics.map(c => Characteristic(uuid: c.uuid, service: s.uuid, properties: c.properties, descriptors: c.descriptors, connection: h, device: device.id))))
   }
 
   /// The characteristic char of the device's service; throws notFound.
@@ -901,10 +931,8 @@ pub async fn serve(services: [LocalService]) throws {
 }
 
 /// Advertises the app as a peripheral, until the task is cancelled.
-pub async fn advertise(localName: string = "", services: [string] = [], serviceData: [string: bytes] = [:],
-    manufacturerData: [string: bytes] = [:], connectable: bool = true, includeTxPower: bool = false) throws {
-  let o = Advertising(localName: localName, services: services.map(u => uuid(u)), serviceData: serviceData,
-    manufacturerData: manufacturerData, connectable: connectable, includeTxPower: includeTxPower)
+pub async fn advertise(localName: string = "", services: [string] = [], serviceData: [string: bytes] = [:], manufacturerData: [string: bytes] = [:], connectable: bool = true, includeTxPower: bool = false) throws {
+  let o = Advertising(localName: localName, services: services.map(u => uuid(u)), serviceData: serviceData, manufacturerData: manufacturerData, connectable: connectable, includeTxPower: includeTxPower)
   if let f = faked {
     try check(f.adapter)
     let id = f.startAdvertising(o)
@@ -1025,8 +1053,7 @@ pub store FakeBluetooth {
 
   fn peripheral(device: string) -> FakePeripheral? = peripherals.find(p => p.id == device)
 
-  fn advertisement(p: FakePeripheral) -> Advertisement = Advertisement(device: Device(id: p.id, name: p.name), rssi: p.rssi,
-    localName: p.name, services: p.advertised.map(u => uuid(u)), connectable: p.connectable)
+  fn advertisement(p: FakePeripheral) -> Advertisement = Advertisement(device: Device(id: p.id, name: p.name), rssi: p.rssi, localName: p.name, services: p.advertised.map(u => uuid(u)), connectable: p.connectable, time: time.now())
 
   /// The adapter turned on or off, allowed or not.
   pub fn setState(s: State) {
@@ -1109,7 +1136,6 @@ pub store FakeBluetooth {
     return none
   }
 
-
   /// The last value a central read, once the app answered.
   pub fn lastRead() -> bytes? {
     var last = 0
@@ -1189,8 +1215,7 @@ pub store FakeBluetooth {
       if !connected.contains(device) {
         throw BluetoothError.disconnected
       }
-      return p.services.map(s => FoundService(uuid: uuid(s.uuid), characteristics: s.characteristics.map(c =>
-        FoundCharacteristic(uuid: uuid(c.uuid), properties: c.properties))))
+      return p.services.map(s => FoundService(uuid: uuid(s.uuid), characteristics: s.characteristics.map(c => FoundCharacteristic(uuid: uuid(c.uuid), properties: c.properties))))
     }
     throw BluetoothError.disconnected
   }

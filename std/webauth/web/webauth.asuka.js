@@ -9,22 +9,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./webauth.decl.asuka.js";
 import * as impl from "./webauth.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-const errorIndex = { canceled: 0 };
-const errorMessage = ["webauth: canceled"];
-
-/** One of the errors the package declares: throw new WebAuthError("canceled"). */
-export class WebAuthError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "WebAuthError";
-  }
-}
 
 const provider = {
   make(iface) {

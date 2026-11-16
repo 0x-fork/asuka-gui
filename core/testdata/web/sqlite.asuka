@@ -95,6 +95,9 @@ component Main {
       await sleep(1ms)
     }
     print("live {notes.rows.count()} {notes.rows[1].text}")
+    // A name is a file in the app's directory, which the page's worker
+    // keeps (not a temporary file, gone with the page).
+    print(db.path)
 
     // spawn beside it: the worker's init opens the database too.
     print(try await spawn { double(21) })

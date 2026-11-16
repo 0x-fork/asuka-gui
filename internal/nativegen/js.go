@@ -3,6 +3,10 @@ package nativegen
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +16,28 @@ import (
 // JSImpl, the JavaScript it imports, which implements the package.
 func JSFile(p *Package) string { return p.Name + ".asuka.js" }
 func JSImpl(p *Package) string { return p.Name + ".js" }
+
+// JSDeclFile is the generated module of the package's enums and declared
+// errors, which JSFile re-exports. It imports nothing, and JSFile names
+// it before the package's own JavaScript, so that JavaScript's imports
+// of them are made whichever module a page loads first: the package's
+// code may read an enum as it loads. A package with neither has none.
+func JSDeclFile(p *Package) string { return p.Name + ".decl.asuka.js" }
+
+// jsHasDecl reports whether the package has a JSDeclFile.
+func jsHasDecl(p *Package) bool { return len(p.Enums) > 0 || len(p.Errors) > 0 }
+
+// JSExports are the names JSFile exports: its enums and its error class.
+func JSExports(p *Package) []string {
+	var out []string
+	for _, e := range p.Enums {
+		out = append(out, e.Name)
+	}
+	if len(p.Errors) > 0 {
+		out = append(out, JSErrorType(p))
+	}
+	return out
+}
 
 // JSErrorType is the class of the package's declared errors.
 func JSErrorType(p *Package) string {
@@ -25,6 +51,7 @@ var jsZero = map[Kind]string{
 	Bool: "false", Int8: "0", Int16: "0", Int32: "0", Int64: "0n", Int: "0",
 	Uint8: "0", Uint16: "0", Uint32: "0", Uint64: "0n", Uint: "0",
 	Float32: "0", Float64: "0", String: `""`, Bytes: "new Uint8Array(0)", Time: "new Date(0)", Duration: "0",
+	ViewRef: "null",
 }
 
 type jsGen struct {
@@ -124,8 +151,37 @@ func GenerateJS(p *Package) []byte {
 		g.printf("//\texport function make%s(events) // returns { el, set<Prop>(value)..., measure?, destroy? }\n", v.Name)
 	}
 	g.printf("//\n// An async method gets an AbortSignal first. An int is a number; a\n// Duration is milliseconds; bytes are a Uint8Array.\n\n")
+	if jsHasDecl(p) {
+		// Before the package's own module: what it imports of these is
+		// made first (an import's module runs before the next import's).
+		g.printf("export * from \"./%s\";\n", JSDeclFile(p))
+	}
 	g.printf("import * as impl from \"./%s\";\n\n", JSImpl(p))
 	g.printf("const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;\n\n")
+	for _, v := range p.Views {
+		g.viewDecl(v)
+	}
+	g.provider()
+	main := g.b.String()
+	g.b.Reset()
+	g.wire()
+	return []byte(main + g.b.String())
+}
+
+// GenerateJSDecl writes the package's enums and declared errors, for its
+// web/ (JSDeclFile); nil when it has neither.
+func GenerateJSDecl(p *Package) []byte {
+	if !jsHasDecl(p) {
+		return nil
+	}
+	g := &jsGen{p: p}
+	g.printf("%s\n", header("//", p.Hash))
+	g.printf("// The enums and errors the package declares (%s), which %s\n", p.Name, JSFile(p))
+	g.printf("// exports: a module of its own that imports nothing, so they're made\n")
+	g.printf("// before %s, which imports them, runs.\n\n", JSImpl(p))
+	if len(p.Errors) > 0 {
+		g.printf("const { DeclaredError } = globalThis.asuka.native;\n\n")
+	}
 	for _, e := range p.Enums {
 		g.printf("%sexport const %s = Object.freeze({\n", jsDoc(e.Doc, ""), e.Name)
 		for _, v := range e.Values {
@@ -149,14 +205,7 @@ func GenerateJS(p *Package) []byte {
 		g.printf("/** One of the errors the package declares: throw new %s(\"%s\"). */\n", t, lowerCamel(errorCase(p.Errors[0].Name)))
 		g.printf("export class %s extends DeclaredError {\n  constructor(name) {\n    const i = errorIndex[name];\n    if (i === undefined) throw new Error(`no error ${name}`);\n    super(i, errorMessage[i]);\n    this.name = %q;\n  }\n}\n\n", t, t)
 	}
-	for _, v := range p.Views {
-		g.viewDecl(v)
-	}
-	g.provider()
-	main := g.b.String()
-	g.b.Reset()
-	g.wire()
-	return []byte(main + g.b.String())
+	return g.b.Bytes()
 }
 
 func (g *jsGen) viewDecl(v *View) {
@@ -311,4 +360,57 @@ func (g *jsGen) helper(t *Type) {
 		g.printf("  write%s(w, v) {\n    w.uint64(v == null ? 0 : retain(v, provider, %d));\n  },\n", n, it.Index)
 		g.printf("  read%s(r) {\n    return object(r.uint64());\n  },\n", n)
 	}
+}
+
+// jsImport is an import of named bindings: import { A, B as C } from "x".
+var jsImport = regexp.MustCompile(`(?s)\bimport\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']`)
+
+// CheckJSImports checks the package's own JavaScript (web/'s modules
+// but the generated ones): what each imports from the generated module
+// (JSFile, or JSDeclFile) must be one of its exports, an enum or the
+// error class the declarations make. A name that isn't one (an error
+// class of another spelling) leaves the module unable to load, and the
+// page with it.
+func CheckJSImports(p *Package) error {
+	dir := filepath.Join(p.Dir, "web")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	have := JSExports(p)
+	var bad []string
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || !(strings.HasSuffix(n, ".js") || strings.HasSuffix(n, ".mjs")) || n == JSFile(p) || n == JSDeclFile(p) {
+			continue
+		}
+		src, err := os.ReadFile(filepath.Join(dir, n))
+		if err != nil {
+			return err
+		}
+		for _, m := range jsImport.FindAllStringSubmatch(string(src), -1) {
+			from := strings.TrimPrefix(m[2], "./")
+			if from != JSFile(p) && from != JSDeclFile(p) {
+				continue
+			}
+			for _, part := range strings.Split(m[1], ",") {
+				name := strings.TrimSpace(part)
+				if i := strings.Index(name, " as "); i >= 0 {
+					name = strings.TrimSpace(name[:i])
+				}
+				if name == "" || slices.Contains(have, name) {
+					continue
+				}
+				bad = append(bad, fmt.Sprintf("web/%s imports %s from %s, which doesn't export it", n, name, from))
+			}
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	exports := "nothing"
+	if len(have) > 0 {
+		exports = strings.Join(have, ", ")
+	}
+	return fmt.Errorf("%s: %s (it exports %s)", p.Path, strings.Join(bad, "; "), exports)
 }

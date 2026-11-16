@@ -133,7 +133,7 @@ first reader and stopped with the last. `icloud.list(scope)` lists them
 once, untracked.
 
 A `File` has its `path`, `name`, `dir`, `size`, `created` and `modified`
-(milliseconds since 1970), and where it is:
+(`time.Time`s), and where it is:
 
 | Field | What it says |
 | --- | --- |

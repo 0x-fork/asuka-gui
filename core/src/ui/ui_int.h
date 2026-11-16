@@ -273,6 +273,10 @@ void ak_view_call(ak_view *e, uint16_t ev, ak_val *args, uint32_t nargs);
 // ak_view_call_closure is the same for a handler of its own (c may be
 // NULL: nothing).
 void ak_view_call_closure(ak_view *e, ak_closure *c, ak_val *args, uint32_t nargs);
+// ak_ui_call_under calls c under owner o (when o is alive): the contexts
+// it reads (its stack, its sheet, its router) are o's, as a handler's are
+// its view's. What it returns is the caller's; an error stays pending.
+ak_val ak_ui_call_under(ak_owner *o, ak_closure *c, ak_val *args, uint32_t nargs);
 void ak_view_put_id(ak_view *e);
 void ak_view_drop_id(ak_id id);
 ak_view *ak_view_of(ak_id id);
@@ -352,12 +356,19 @@ typedef struct ak_prov {
 	bool fit_wait;   // a fit sheet waits for its room (its first Environment)
 	bool fit_win;    // a window sized to its content
 	bool fit_sent;
+	// An enclosing provider whose environment it takes, as that changes,
+	// until the host reports its own (retained): a sheet's screen, which
+	// the hosts size as the sheet.
+	struct ak_prov *follows;
 } ak_prov;
 
 extern const char ak_env_key[], ak_back_key[], ak_nav_key[], ak_sheet_key[], ak_window_key[], ak_router_key[];
 
 ak_prov *ak_prov_new(ak_ui_root *r);  // starting from the root's environment
 ak_prov *ak_prov_current(void);       // the nearest one, borrowed (NULL: the root's)
+// ak_prov_follow makes p take of's environment, now and as it changes,
+// until the host reports p's own.
+void ak_prov_follow(ak_prov *p, ak_prov *of);
 // ak_prov_attach makes v a provider: host-sized, laid out at its
 // environment's size (ak_root_layout_provs), its environment p's.
 void ak_prov_attach(ak_view *v, ak_prov *p);

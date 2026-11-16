@@ -328,7 +328,7 @@ component Crashes {
 
 fn describe(r: crash.Report) -> string {
   let c = r.context
-  let s = "{r.kind} · {time.unixMilli(r.time).format("MMM d HH:mm")} · {c.appVersion} {c.build}"
+  let s = "{r.kind} · {r.time.format("MMM d HH:mm")} · {c.appVersion} {c.build}"
   if let last = c.breadcrumbs.last() { return "{s} · last: {last.message}" }
   return s
 }

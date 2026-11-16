@@ -31,6 +31,7 @@ final class SwiftPantry: Pantry {
     }
     func show() throws {}
     func counts() throws -> [String: Int] { ["a": 1, "b": -2] }
+    func shows(view: AsukaViewRef) throws -> Bool { try AsukaNative.onMain { view.view != nil } }
 }
 
 @MainActor final class SwiftShelf: Shelf {

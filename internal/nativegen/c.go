@@ -111,6 +111,8 @@ func (g *cGen) mangle(t *Type) string {
 		return "bytes"
 	case Duration:
 		return "Duration"
+	case ViewRef:
+		return "view"
 	case Struct, Enum, Object:
 		return t.Name
 	case Slice:
@@ -143,6 +145,8 @@ func (g *cGen) ctype(t *Type) string {
 		return "bool"
 	case Int, Duration:
 		return "int64_t"
+	case ViewRef:
+		return "uint32_t"
 	case Float64:
 		return "double"
 	case String:
@@ -269,6 +273,8 @@ func (g *cGen) enc(t *Type, w, v string) string {
 		return fmt.Sprintf("asuka_writer_string(%s, %s);", w, v)
 	case Bytes:
 		return fmt.Sprintf("asuka_writer_bytes(%s, (%s).data, (%s).len);", w, v, v)
+	case ViewRef:
+		return fmt.Sprintf("asuka_writer_u64(%s, %s);", w, v)
 	case Object:
 		return fmt.Sprintf("asuka_writer_u64(%s, asuka_native_handle(&provider, %d, %s));", w, g.ifaces[t.Name].Index, v)
 	case Func:
@@ -296,6 +302,8 @@ func (g *cGen) dec(t *Type, r string) string {
 		return fmt.Sprintf("asuka_reader_string(%s)", r)
 	case Bytes:
 		return fmt.Sprintf("asuka_reader_bytes(%s)", r)
+	case ViewRef:
+		return fmt.Sprintf("(uint32_t)asuka_reader_u64(%s)", r)
 	case Object:
 		return fmt.Sprintf("(%s)asuka_native_object(&provider, %d, asuka_reader_u64(%s))", g.ctype(t), g.ifaces[t.Name].Index, r)
 	case Func:

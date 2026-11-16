@@ -84,7 +84,7 @@ async fn followStore() throws {
 }
 ```
 
-`Transaction` には、`id`、`originalId`（サブスクリプションの更新はこれを共有します）、`productId`、`kind`、`state`、`quantity`、`date` と `expires`（1970 年からのナノ秒）、`revoked` と `revocationReason`、`autoRenews`、`familyShared`、購入時の `accountToken`、Apple の `environment`、購入したストアフロント（`storefront`）、`offerId` と `offerType`、そして `verification` があります。
+`Transaction` には、`id`、`originalId`（サブスクリプションの更新はこれを共有します）、`productId`、`kind`、`state`、`quantity`、`date`、`expires`、`revoked`（どれも `time.Time?` で、ストアが知らせなければ none）、`revocationReason`、`autoRenews`、`familyShared`、購入時の `accountToken`、Apple の `environment`、購入したストアフロント（`storefront`）、`offerId` と `offerType`、そして `verification` があります。
 
 ## 所有しているものと購入の復元
 
@@ -108,7 +108,7 @@ component Unlock {
 
 ## サブスクリプション
 
-`purchase.statuses(group)` は、グループに属するサブスクリプションの状態です（グループは Apple ではサブスクリプショングループ、Play ではサブスクリプションの商品）。`state`（`.subscribed`、`.expired`、`.billingRetry`、`.gracePeriod`、`.revoked`）、更新されるかどうか（`willRenew`）と何として更新されるか（`renewsTo`）、`renewal`、`graceExpires`、`expirationReason`、Apple が署名した `renewalJWS` があります。`purchase.manageSubscriptions(productId)` は、ユーザーのサブスクリプションを管理するストアのページを表示します（iOS ではシート、Play では定期購入センター、App Store や Microsoft Store ではアカウントのページ）。`purchase.redeemCode()` は、オファーコードのシート（Apple）か Play の引き換えページを表示します。それで購入したものは `events()` で届きます。`purchase.requestRefund(t)` は Apple の返金リクエストのシートを表示します（Apple だけ）。`purchase.storefront()` はストアの国です。
+`purchase.statuses(group)` は、グループに属するサブスクリプションの状態です（グループは Apple ではサブスクリプショングループ、Play ではサブスクリプションの商品）。`state`（`.subscribed`、`.expired`、`.billingRetry`、`.gracePeriod`、`.revoked`）、更新されるかどうか（`willRenew`）と何として更新されるか（`renewsTo`）、`renewal` と `graceExpires`（どちらも `time.Time?`）、`expirationReason`、Apple が署名した `renewalJWS` があります。`purchase.manageSubscriptions(productId)` は、ユーザーのサブスクリプションを管理するストアのページを表示します（iOS ではシート、Play では定期購入センター、App Store や Microsoft Store ではアカウントのページ）。`purchase.redeemCode()` は、オファーコードのシート（Apple）か Play の引き換えページを表示します。それで購入したものは `events()` で届きます。`purchase.requestRefund(t)` は Apple の返金リクエストのシートを表示します（Apple だけ）。`purchase.storefront()` はストアの国です。
 
 ## サーバーでの検証
 

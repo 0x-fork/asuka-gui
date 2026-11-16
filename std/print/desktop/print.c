@@ -30,6 +30,7 @@ static void answered(print_task *t) {
 void print_outcome(print_task *t, print_Outcome o) {
 	if (!t->call) return;
 	if (t->file) print_Printer_file_done(t->call, o);
+	else if (t->view) print_Printer_webView_done(t->call, o);
 	else print_Printer_html_done(t->call, o);
 	answered(t);
 }
@@ -192,9 +193,16 @@ static void p_pdf(print_Printer *self, const print_Layout *layout, asuka_call *c
 	print_pdf(t);
 }
 
+static void p_webView(print_Printer *self, uint32_t view, const print_Job *job, asuka_call *call) {
+	print_task *t = task(call, job);
+	t->view = true;
+	asuka_call_on_cancel(call, cancelled, t);
+	print_view(t, view);
+}
+
 static void p_release(print_Printer *self) {}
 
-static const print_Printer_vtable vt = {.release = p_release, .file = p_file, .html = p_html, .pdf = p_pdf};
+static const print_Printer_vtable vt = {.release = p_release, .file = p_file, .html = p_html, .pdf = p_pdf, .webView = p_webView};
 
 print_Printer *print_make_Printer(asuka_error *err) {
 	static print_Printer printer = {&vt};

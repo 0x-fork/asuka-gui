@@ -1121,6 +1121,13 @@ func (p *parser) parseFieldOrMethod(what string, constants bool) Node {
 	switch {
 	case p.tok == FN || p.tok == ASYNC:
 		n = p.parseFunc(start)
+	case constants && p.tok == IDENT && p.lit == "static" && (p.peek(1) == FN || p.peek(1) == ASYNC):
+		// A function of the type's (Money.of(dollars: 2)).
+		static := p.pos
+		p.next()
+		f := p.parseFunc(start)
+		f.Static = static
+		n = f
 	case p.tok == NATIVE && (p.peek(1) == FN || p.peek(1) == ASYNC):
 		native := p.pos
 		p.next()
@@ -1168,7 +1175,8 @@ func (p *parser) parseEnum(start Pos) *EnumDecl {
 		}
 		i := p.i
 		t := p.leading(p.pos)
-		if p.tok == FN || p.tok == ASYNC || p.tok == PUB || p.tok == LET {
+		static := p.tok == IDENT && p.lit == "static" && (p.peek(1) == FN || p.peek(1) == ASYNC)
+		if p.tok == FN || p.tok == ASYNC || p.tok == PUB || p.tok == LET || static {
 			m := p.parseFieldOrMethod("a method or a constant", true)
 			switch f := m.(type) {
 			case *FuncDecl:

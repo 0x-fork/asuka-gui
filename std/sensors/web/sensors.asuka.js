@@ -9,35 +9,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./sensors.decl.asuka.js";
 import * as impl from "./sensors.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * A kind of sensor.
- */
-export const Sensor = Object.freeze({
-  accelerometer: 0,
-  gyroscope: 1,
-  magnetometer: 2,
-  motion: 3,
-  barometer: 4,
-  light: 5,
-  pedometer: 6,
-});
-
-const errorIndex = { notAvailable: 0, notAllowed: 1 };
-const errorMessage = ["sensors: not available", "sensors: not allowed"];
-
-/** One of the errors the package declares: throw new SensorError("notAvailable"). */
-export class SensorError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "SensorError";
-  }
-}
 
 const provider = {
   make(iface) {

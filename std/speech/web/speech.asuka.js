@@ -9,31 +9,10 @@
 // An async method gets an AbortSignal first. An int is a number; a
 // Duration is milliseconds; bytes are a Uint8Array.
 
+export * from "./speech.decl.asuka.js";
 import * as impl from "./speech.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * How good a voice sounds.
- */
-export const Quality = Object.freeze({
-  standard: 0,
-  enhanced: 1,
-  premium: 2,
-});
-
-const errorIndex = { stopped: 0 };
-const errorMessage = ["speech: stopped"];
-
-/** One of the errors the package declares: throw new SpeechError("stopped"). */
-export class SpeechError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "SpeechError";
-  }
-}
 
 const provider = {
   make(iface) {
