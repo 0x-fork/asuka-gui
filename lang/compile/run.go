@@ -99,14 +99,14 @@ func Foreign(m *bytecode.Module, units []cbuild.CUnit, link []string) (*cbuild.F
 	return &cbuild.Foreign{Glue: glue, Units: units, Link: link}, nil
 }
 
-// RunnerFor builds (once, cached) asuka-run with the C m's externs call
-// (f, from Foreign) in it.
-func RunnerFor(f *cbuild.Foreign, sanitize bool) (string, error) {
+// RunnerFor builds asuka-run with the C m's externs call (f, from
+// Foreign) in it, linked in dir (the caller's, which it removes).
+func RunnerFor(f *cbuild.Foreign, sanitize bool, dir string) (string, error) {
 	core, err := FindCore()
 	if err != nil {
 		return "", err
 	}
-	return cbuild.RunnerFor(core, cbuild.RunnerOptions{Foreign: f, Sanitize: sanitize})
+	return cbuild.RunnerFor(core, cbuild.RunnerOptions{Foreign: f, Sanitize: sanitize, Dir: dir})
 }
 
 // RunC runs a module compiled to C (lang/cgen), as a release build runs
@@ -136,7 +136,7 @@ func RunCWith(m *bytecode.Module, f *cbuild.Foreign, sanitize, test bool, patter
 	if err := os.WriteFile(app, src, 0o644); err != nil {
 		return "", err
 	}
-	exe, err := cbuild.RunnerFor(core, cbuild.RunnerOptions{Extra: []string{app}, Foreign: f, Sanitize: sanitize})
+	exe, err := cbuild.RunnerFor(core, cbuild.RunnerOptions{Extra: []string{app}, Foreign: f, Sanitize: sanitize, Dir: dir})
 	if err != nil {
 		return "", errors.New("the C the module compiles to doesn't build: " + err.Error())
 	}

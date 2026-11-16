@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // Compiler is a C compiler: its program and the arguments that come
@@ -139,7 +141,7 @@ func (c Compiler) compile(srcs []string, out string, flags []string) ([]string, 
 			if _, err := os.Stat(objs[i]); err == nil {
 				return
 			}
-			tmp := fmt.Sprintf("%s.%d.tmp", objs[i], os.Getpid())
+			tmp := tmpName(objs[i])
 			args := append(append([]string{}, c.Args...), flags...)
 			args = append(args, "-c", src, "-o", tmp)
 			if errs[i] = c.run(args); errs[i] == nil {
@@ -181,12 +183,17 @@ func (c Compiler) run(args []string) error {
 // Runner builds asuka-run (core/runner: the VM, the core and the fake
 // host) into a cache directory, once per version of the sources, and
 // returns its path. sanitize builds it with ASan and UBSan (tests).
-func Runner(core string, sanitize bool) (string, error) { return RunnerWith(core, nil, sanitize) }
+func Runner(core string, sanitize bool) (string, error) { return RunnerWith(core, nil, sanitize, "") }
 
-// RunnerWith is Runner with more C sources built in: an app compiled to
-// C (lang/cgen), which asuka-run -aot runs.
-func RunnerWith(core string, extra []string, sanitize bool) (string, error) {
-	return RunnerFor(core, RunnerOptions{Extra: extra, Sanitize: sanitize})
+// RunnerWith is Runner with more C sources built in (an app compiled to
+// C, lang/cgen, which asuka-run -aot runs), linked into dir, a directory
+// of the caller's that it removes: the core's objects come from the
+// cache, compiled once per version of its sources, and the extra ones,
+// which differ from run to run, are compiled into dir, so the cache
+// doesn't grow with each. With no extra sources (dir ""), the runner
+// itself is cached.
+func RunnerWith(core string, extra []string, sanitize bool, dir string) (string, error) {
+	return RunnerFor(core, RunnerOptions{Extra: extra, Sanitize: sanitize, Dir: dir})
 }
 
 // RunnerOptions say what asuka-run is built with.
@@ -194,10 +201,17 @@ type RunnerOptions struct {
 	Extra    []string // more of the core's C: an app compiled to C
 	Foreign  *Foreign // the C an app's externs call
 	Sanitize bool     // ASan and UBSan (tests)
+	// Dir is the caller's directory (it removes it) the runner is linked
+	// into when it has Extra or Foreign sources, which differ from run to
+	// run; the glue and Extra are compiled there too. Foreign's units are
+	// cached by their sources: a library's C isn't compiled again for
+	// each run.
+	Dir string
 }
 
 // RunnerFor is Runner built as o says.
 func RunnerFor(core string, o RunnerOptions) (string, error) {
+	extra, sanitize, dir, f := o.Extra, o.Sanitize, o.Dir, o.Foreign
 	cc, err := Find()
 	if err != nil {
 		return "", err
@@ -208,11 +222,10 @@ func RunnerFor(core string, o RunnerOptions) (string, error) {
 	}
 	runner, _ := filepath.Glob(filepath.Join(core, "runner", "*.c"))
 	srcs = append(srcs, runner...)
-	srcs = append(srcs, o.Extra...)
 	flags := append(Includes(core), "-g", "-O1")
 	link := []string{"-lm"}
-	var opt []string // what C of the app's gets of the core's flags too
-	if o.Sanitize && runtime.GOOS != "windows" {
+	var opt []string // what the app's own C gets of the core's flags too
+	if sanitize && runtime.GOOS != "windows" {
 		opt = []string{"-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer"}
 		flags = append(append(flags, opt...), "-DAK_TEST=1")
 		link = append(link, "-fsanitize=address,undefined")
@@ -220,16 +233,15 @@ func RunnerFor(core string, o RunnerOptions) (string, error) {
 		opt = []string{"-O2"}
 		flags = append(flags, "-O2")
 	}
-	f := o.Foreign
 	if f != nil {
-		srcs = append(srcs, f.Glue)
+		// The glue is compiled in: the core registers it (vm/init.c).
 		flags = append(flags, "-DAK_FFI=1")
 		link = append(link, f.Link...)
 	}
 	h := sha256.New()
 	fmt.Fprintln(h, cc.Path, cc.Args, flags, link)
 	hdrs, _ := headers(core)
-	for _, f := range append(srcs, hdrs...) {
+	for _, f := range append(append([]string{}, srcs...), hdrs...) {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			return "", err
@@ -237,40 +249,101 @@ func RunnerFor(core string, o RunnerOptions) (string, error) {
 		fmt.Fprintln(h, f, len(b))
 		h.Write(b)
 	}
-	if f != nil {
-		if err := f.hash(h); err != nil {
-			return "", err
+	sum := hex.EncodeToString(h.Sum(nil))[:16]
+	cached := cacheDir("runner-" + sum)
+	name := "asuka-run"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	exe := filepath.Join(cached, name)
+	own := len(extra) > 0 || f != nil
+	if !own {
+		if _, err := os.Stat(exe); err == nil {
+			return exe, nil
 		}
 	}
-	sum := hex.EncodeToString(h.Sum(nil))[:16]
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	dir := filepath.Join(cache, "asuka", "runner-"+sum)
-	exe := filepath.Join(dir, "asuka-run")
-	if runtime.GOOS == "windows" {
-		exe += ".exe"
-	}
-	if _, err := os.Stat(exe); err == nil {
-		return exe, nil
-	}
-	objs, err := cc.Compile(srcs, filepath.Join(dir, "obj"), flags)
+	objs, err := cc.Compile(srcs, filepath.Join(cached, "obj"), flags)
 	if err != nil {
 		return "", err
 	}
-	if f != nil {
-		more, err := f.compileUnits(cc, filepath.Join(dir, "c"), append(append([]string{"-g"}, opt...), "-I"+filepath.Join(core, "include")))
+	if own {
+		if dir == "" {
+			return "", fmt.Errorf("cbuild: a runner with extra sources needs a directory of the caller's")
+		}
+		mine := append([]string{}, extra...)
+		if f != nil {
+			mine = append(mine, f.Glue)
+		}
+		more, err := cc.Compile(mine, filepath.Join(dir, "obj"), flags)
 		if err != nil {
 			return "", err
 		}
 		objs = append(objs, more...)
+		if f != nil {
+			units, err := f.cachedUnits(cc, append(append([]string{"-g"}, opt...), "-I"+filepath.Join(core, "include")))
+			if err != nil {
+				return "", err
+			}
+			objs = append(objs, units...)
+		}
+		exe = filepath.Join(dir, name)
+		return exe, cc.Link(objs, exe, link)
 	}
-	tmp := fmt.Sprintf("%s.%d.tmp", exe, os.Getpid())
+	tmp := tmpName(exe)
 	if err := cc.Link(objs, tmp, link); err != nil {
 		return "", err
 	}
 	return exe, os.Rename(tmp, exe)
+}
+
+// cacheDir is the build cache's directory name (one per version of what
+// it builds: its sources and flags), marked as used now. A cache keeps a
+// directory per version, so once per process the directories nothing has
+// used for a week go (an old checkout's, a branch's).
+func cacheDir(name string) string {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		cache = os.TempDir()
+	}
+	root := filepath.Join(cache, "asuka")
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(dir, 0o755); err == nil {
+		now := time.Now()
+		os.Chtimes(dir, now, now)
+	}
+	pruneOnce.Do(func() { go prune(root, time.Now().Add(-7*24*time.Hour)) })
+	return dir
+}
+
+var pruneOnce sync.Once
+
+// prune removes root's build directories (core-, app-, runner-, and an
+// app's C: ffi-, c-) last
+// used before cutoff.
+func prune(root string, cutoff time.Time) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		n := e.Name()
+		if !e.IsDir() || !(strings.HasPrefix(n, "core-") || strings.HasPrefix(n, "app-") || strings.HasPrefix(n, "runner-") ||
+			strings.HasPrefix(n, "ffi-") || strings.HasPrefix(n, "c-")) {
+			continue
+		}
+		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
+			os.RemoveAll(filepath.Join(root, n))
+		}
+	}
+}
+
+var tmpSeq atomic.Uint64
+
+// tmpName is a name of its own beside path, to write then rename into
+// place: builds running at once, in this process or others, share the
+// cache safely.
+func tmpName(path string) string {
+	return fmt.Sprintf("%s.%d.%d.tmp", path, os.Getpid(), tmpSeq.Add(1))
 }
 
 func headers(core string) ([]string, error) {

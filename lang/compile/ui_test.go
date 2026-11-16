@@ -22,6 +22,7 @@ func TestUIPrograms(t *testing.T) {
 			continue
 		}
 		t.Run(strings.TrimSuffix(filepath.Base(path), ".asuka"), func(t *testing.T) {
+			t.Parallel() // each runs in processes of its own
 			var res *Result
 			if info.IsDir() {
 				var err error

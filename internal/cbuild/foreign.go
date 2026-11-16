@@ -90,6 +90,17 @@ func unitHeaders(u CUnit) []string {
 	return out
 }
 
+// cachedUnits compiles f's units with flags into the cache (by their
+// sources, headers and flags), for a runner.
+func (f *Foreign) cachedUnits(cc Compiler, flags []string) ([]string, error) {
+	h := sha256.New()
+	fmt.Fprintln(h, cc.Path, cc.Args, flags, "runner")
+	if err := f.hash(h); err != nil {
+		return nil, err
+	}
+	return f.compileUnits(cc, cacheDir("c-runner-"+hex.EncodeToString(h.Sum(nil))[:16]), flags)
+}
+
 // compileUnits compiles the units' sources into dir (a cache: an
 // object already there is kept), each with base, then its own flags.
 func (f *Foreign) compileUnits(cc Compiler, dir string, base []string) ([]string, error) {
@@ -113,11 +124,7 @@ func (f *Foreign) compileUnits(cc Compiler, dir string, base []string) ([]string
 // whose objects the build caches by path and content.
 func CacheFile(what, name string, src []byte) (string, error) {
 	sum := sha256.Sum256(src)
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	dir := filepath.Join(cache, "asuka", what+"-"+hex.EncodeToString(sum[:])[:16])
+	dir := cacheDir(what + "-" + hex.EncodeToString(sum[:])[:16])
 	p := filepath.Join(dir, name)
 	if _, err := os.Stat(p); err == nil {
 		return p, nil
@@ -125,7 +132,7 @@ func CacheFile(what, name string, src []byte) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	tmp := fmt.Sprintf("%s.%d.tmp", p, os.Getpid())
+	tmp := tmpName(p)
 	if err := os.WriteFile(tmp, src, 0o644); err != nil {
 		return "", err
 	}

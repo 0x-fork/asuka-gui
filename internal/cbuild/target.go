@@ -321,11 +321,7 @@ func (tc *Toolchain) compileCached(core, what string, srcs, hdrs, flags []string
 		fmt.Fprintln(h, f, len(b))
 		h.Write(b)
 	}
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	dir := filepath.Join(cache, "asuka", what+"-"+tc.Target.String()+"-"+hex.EncodeToString(h.Sum(nil))[:16])
+	dir := cacheDir(what + "-" + tc.Target.String() + "-" + hex.EncodeToString(h.Sum(nil))[:16])
 	return tc.CC.Compile(srcs, filepath.Join(dir, "obj"), flags)
 }
 
@@ -338,12 +334,7 @@ func (tc *Toolchain) compileForeign(f *Foreign, flags []string, kind LibKind) ([
 	if err := f.hash(h); err != nil {
 		return nil, err
 	}
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		cache = os.TempDir()
-	}
-	dir := filepath.Join(cache, "asuka", "c-"+tc.Target.String()+"-"+hex.EncodeToString(h.Sum(nil))[:16])
-	return f.compileUnits(tc.CC, dir, flags)
+	return f.compileUnits(tc.CC, cacheDir("c-"+tc.Target.String()+"-"+hex.EncodeToString(h.Sum(nil))[:16]), flags)
 }
 
 // deadStrip drops what nothing calls, and symbols and debug information
