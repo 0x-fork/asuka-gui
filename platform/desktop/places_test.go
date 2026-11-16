@@ -33,7 +33,8 @@ func TestStdLinuxPlaces(t *testing.T) {
 		named = "host: named"
 	}
 	t.Run("location", func(t *testing.T) {
-		defer placesServe(t, portal, "allow")()
+		bus := placesBus(t)
+		defer placesServe(t, portal, "allow", bus)()
 		got := runPlaces(t, exe, `import asuka/location
 
 component Probe {
@@ -98,13 +99,14 @@ component Probe {
 }
 
 app { Probe() }
-`)
+`, "DBUS_SESSION_BUS_ADDRESS="+bus)
 		placesWant(t, got, "host: asked true", "host: current true true true true true true true", "host: auth true true false",
 			"host: watched 3 true", "host: support false true false", "host: monitored 1", "host: crossed office true false",
 			"host: crossed office false true", "host: updating true", "host: batch 1 true", "host: stopped false", named, "host: done")
 	})
 	t.Run("location-denied", func(t *testing.T) {
-		defer placesServe(t, portal, "deny")()
+		bus := placesBus(t)
+		defer placesServe(t, portal, "deny", bus)()
 		got := runPlaces(t, exe, `import asuka/location
 
 component Probe {
@@ -131,7 +133,7 @@ component Probe {
 }
 
 app { Probe() }
-`)
+`, "DBUS_SESSION_BUS_ADDRESS="+bus)
 		placesWant(t, got, "host: current location: not allowed", "host: level true", "host: updates location: not allowed", "host: done")
 	})
 	none := `import asuka/location
@@ -275,9 +277,12 @@ func placesPortal(t *testing.T) string {
 	return exe
 }
 
-// placesServe runs the fake portal (mode: allow, deny) until the returned stop.
-func placesServe(t *testing.T, exe, mode string) func() {
+// placesServe runs the fake portal (mode: allow, deny) on bus (a
+// session bus of the test's own, so that no portal a test before
+// started holds its name) until the returned stop.
+func placesServe(t *testing.T, exe, mode, bus string) func() {
 	cmd := exec.Command(exe, mode)
+	cmd.Env = append(os.Environ(), "DBUS_SESSION_BUS_ADDRESS="+bus)
 	cmd.Stderr = os.Stderr
 	out, _ := cmd.StdoutPipe()
 	if err := cmd.Start(); err != nil {
