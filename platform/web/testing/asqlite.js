@@ -21,8 +21,9 @@ export async function loadWasm() {
   return await readFile(wasmPath());
 }
 
-/** sqliteVersion is the version of the vendored SQLite, as asq_version says it (3054001). */
+/** sqliteVersion is the version of std/sqlite's SQLite, as asq_version says it (3054001): its sqlite3.h's. */
 export async function sqliteVersion() {
-  const h = await readFile(new URL("../../../std/sqlite/third_party/sqlite/sqlite3.h", import.meta.url), "utf8");
+  const header = execFileSync("go", ["run", "./platform/web/testing/asqlite.go", "-header"], { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
+  const h = await readFile(header, "utf8");
   return Number(/#define SQLITE_VERSION_NUMBER (\d+)/.exec(h)[1]);
 }

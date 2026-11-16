@@ -207,8 +207,8 @@ at a time, without changing the package's API.
 
 A package whose work the runtime does is plain Asuka with `native fn`s
 in C: std/sqlite (core/src/sqlite) calls SQLite, std/sqlite's own C
-(its asuka.toml's `[c]`: the amalgamation in third_party/sqlite and
-csrc/asq.c), which the apps that import it link statically (on the web,
+(its asuka.toml's `[c]`: SQLite's amalgamation, `[c.download.sqlite]`,
+and csrc/asq.c), which the apps that import it link statically (on the web,
 the page's SQLite worker runs it, built to a module of its own);
 sdk/crash reads the core's record of the runs (core/src/std/crash.c)
 where no host keeps its own (iOS, Android, the web).

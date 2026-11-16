@@ -20,6 +20,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -124,7 +125,9 @@ static void on_fatal(int sig, siginfo_t *si, void *uc) {
 	put(",\"pid\":");
 	put_num((unsigned long long)getpid());
 	put(",\"thread\":");
-	put_quoted(gettid() == getpid() ? "main" : "Thread");
+	// The kernel's thread ID, asked directly: glibc's gettid() is 2.30's,
+	// newer than the 2.28 the host is built against (cbuild.LinuxGlibc).
+	put_quoted(syscall(SYS_gettid) == getpid() ? "main" : "Thread");
 	put(",\"name\":");
 	put_quoted(signal_name(sig));
 	put(",\"reason\":\"");

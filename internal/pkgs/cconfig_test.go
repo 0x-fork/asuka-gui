@@ -37,7 +37,7 @@ frameworks = ["Security"]
 		t.Fatal(err)
 	}
 	web := c.For("web")
-	srcs, err := web.CSources(dir)
+	srcs, err := c.CSources(dir, web)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ frameworks = ["Security"]
 	}
 	write(ManifestFile, "[c]\nsources = [\"nothere/*.c\"]\n")
 	c, _ = ReadC(dir)
-	if _, err := c.For("ios").CSources(dir); err == nil || !strings.Contains(err.Error(), "no file") {
+	if _, err := c.CSources(dir, c.For("ios")); err == nil || !strings.Contains(err.Error(), "no file") {
 		t.Errorf("a glob that names nothing: %v", err)
 	}
 

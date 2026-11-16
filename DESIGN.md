@@ -1271,7 +1271,9 @@ module (`jniLibs`, an AAR).
 ### SQLite
 
 `std/sqlite` is plain std C: SQLite's amalgamation, one pinned release
-vendored in `std/sqlite/third_party/sqlite`, and one file of Asuka's
+(`[c.download.sqlite]`: sqlite.org's archive, its SHA-256 pinned,
+fetched into the build cache by a build that compiles it, never kept in
+the repository or the CLI), and one file of Asuka's
 (`std/sqlite/csrc/asq.c`), its `[c]` built with the same options for
 every target (multi-thread natively, `SQLITE_OS_OTHER` with one thread
 on the web), and linked into the apps that import it. One entry point:

@@ -487,7 +487,27 @@ ios-simulator = "vendor/acme/ios-simulator/libacme.a"
 android-arm64 = "vendor/acme/android-arm64/libacme.a"
 ```
 
-See [C from Asuka](c.md#building) and [Prebuilt
+`[c.download.<name>]` is an archive the build downloads instead of
+keeping it in the project (a library's sources, a vendor's libraries):
+`url` (`https://`, a `.zip`, `.tar.gz` or `.tgz`), `sha256` (the
+archive's; another is refused) and `strip` (leading directories its
+paths lose; default 0). A path in `[c]` that starts with `$<name>` is
+in it (`$sqlite/sqlite3.c`; `$sqlite` alone, its top directory). It's
+downloaded once, by the first build that needs it, into Asuka's cache.
+
+```toml
+[c]
+sources = ["$sqlite/sqlite3.c"]
+include = ["$sqlite"]
+
+[c.download.sqlite]
+url = "https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip"
+sha256 = "0a9c8e34352dad46006aa82836d5383bff9dc6bc9ce5a60553c05aa30e6ad1f9"
+strip = 1
+```
+
+See [C from Asuka](c.md#building), [Downloaded
+sources](c.md#downloaded-sources) and [Prebuilt
 libraries](c.md#prebuilt-libraries).
 
 ## bin

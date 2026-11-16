@@ -355,6 +355,38 @@ A package's C is its own `asuka.toml`'s `[c]`, paths relative to the
 package: an app that imports it builds it too. Its own packages
 (`./util`) share the app's `[c]`.
 
+## Downloaded sources
+
+A library you don't want in your repository, such as SQLite's
+amalgamation, can be downloaded by the build instead.
+`[c.download.<name>]` names an archive and pins its SHA-256, and a path
+in `[c]` that starts with `$<name>` is in it:
+
+```toml
+[c]
+sources = ["c/*.c", "$sqlite/sqlite3.c"]
+include = ["$sqlite"]
+
+[c.download.sqlite]
+url = "https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip"
+sha256 = "0a9c8e34352dad46006aa82836d5383bff9dc6bc9ce5a60553c05aa30e6ad1f9"
+strip = 1
+```
+
+| Key | What it is |
+|---|---|
+| `url` | The archive: `https://`, a `.zip`, `.tar.gz` or `.tgz`. |
+| `sha256` | Its SHA-256 (`shasum -a 256 file.zip` prints it). An archive with another is refused. |
+| `strip` | How many leading directories its paths lose: `1` for an archive whose files are all in one top directory, as most are. |
+
+The first build that needs it downloads it once, checks it and unpacks
+it into Asuka's cache, where every project shares it. Later builds, and
+other projects with the same archive, use it without the network.
+`$sqlite` alone is the archive's top directory, and `$sqlite/...` a
+file or a glob in it. Downloads work in `sources`, `include`, the paths
+in `libraries` and `[c.prebuilt]`, so a vendor's built libraries can
+come this way too.
+
 ## Prebuilt libraries
 
 A vendor that ships its library built rather than as sources is named

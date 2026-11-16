@@ -55,13 +55,20 @@ func Foreign(c *bytecode.C, t cbuild.Target) (*cbuild.Foreign, error) {
 			return nil, err
 		}
 		s := cfg.For(platform)
-		srcs, err := s.CSources(dir)
+		manifest := filepath.Join(dir, pkgs.ManifestFile)
+		if err := cfg.FetchFor(s); err != nil {
+			return nil, fmt.Errorf("%s: %v", manifest, err)
+		}
+		srcs, err := cfg.CSources(dir, s)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %v", filepath.Join(dir, pkgs.ManifestFile), err)
+			return nil, fmt.Errorf("%s: %v", manifest, err)
 		}
 		u := cbuild.CUnit{Name: dir, Sources: srcs}
 		for _, inc := range s.Include {
-			abs := filepath.Join(dir, filepath.FromSlash(inc))
+			abs, _, err := cfg.Path(dir, inc)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %v", manifest, err)
+			}
 			u.Flags = append(u.Flags, "-I"+abs)
 			u.Headers = append(u.Headers, abs)
 		}
@@ -72,7 +79,11 @@ func Foreign(c *bytecode.C, t cbuild.Target) (*cbuild.Foreign, error) {
 		f.Units = append(f.Units, u)
 		for _, l := range s.Libraries {
 			if strings.ContainsAny(l, `/\`) {
-				link(filepath.Join(dir, filepath.FromSlash(l)))
+				p, _, err := cfg.Path(dir, l)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %v", manifest, err)
+				}
+				link(p)
 			} else {
 				link("-l" + l)
 			}

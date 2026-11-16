@@ -344,6 +344,11 @@ func RunnerFor(core string, o RunnerOptions) (string, error) {
 		// runner's compiler, optimized and without the sanitizers: it's
 		// not the code under test.
 		for _, u := range f.Libs {
+			if u.Fetch != nil {
+				if err := u.Fetch(); err != nil {
+					return "", fmt.Errorf("cbuild: %s: %v", u.Name, err)
+				}
+			}
 			objs, err := cc.CompileCached(u.Sources, append(append([]string{"-I" + filepath.Join(core, "include")}, u.Flags...), "-O2"))
 			if err != nil {
 				return "", fmt.Errorf("cbuild: %s: %v", u.Name, err)

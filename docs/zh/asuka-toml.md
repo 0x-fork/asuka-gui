@@ -423,7 +423,20 @@ ios-simulator = "vendor/acme/ios-simulator/libacme.a"
 android-arm64 = "vendor/acme/android-arm64/libacme.a"
 ```
 
-见[在 Asuka 中调用 C](c.md#构建)和[预编译的库](c.md#预编译的库)。
+`[c.download.<name>]` 指定一个由构建下载、而不放在项目里的压缩包（库的源码，或厂商编译好的库）：`url`（`https://`，格式为 `.zip`、`.tar.gz` 或 `.tgz`）、`sha256`（压缩包的哈希，不一致会被拒绝）和 `strip`（去掉路径开头的几层目录，默认 0）。`[c]` 里以 `$<name>` 开头的路径指向包里的内容（`$sqlite/sqlite3.c`；单独的 `$sqlite` 是顶层目录）。第一次需要它的构建会把它下载到 Asuka 的缓存里，只下载一次。
+
+```toml
+[c]
+sources = ["$sqlite/sqlite3.c"]
+include = ["$sqlite"]
+
+[c.download.sqlite]
+url = "https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip"
+sha256 = "0a9c8e34352dad46006aa82836d5383bff9dc6bc9ce5a60553c05aa30e6ad1f9"
+strip = 1
+```
+
+见[在 Asuka 中调用 C](c.md#构建)、[下载的源码](c.md#下载的源码)和[预编译的库](c.md#预编译的库)。
 
 ## bin
 

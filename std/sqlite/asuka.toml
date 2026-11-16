@@ -2,14 +2,14 @@ name = "std/sqlite"
 version = "0.1.0"
 description = "The app's SQLite database: SQL off the main thread, typed rows, live queries"
 
-# SQLite (third_party/sqlite: the amalgamation, vendored) and asq, the one
-# entry point the core calls a whole statement at a time (csrc/asq.h):
-# compiled with the same options for every target, and linked into the
-# apps that import std/sqlite. On the web it's a module of its own, which
-# the page's SQLite worker runs.
+# SQLite (its amalgamation, $sqlite) and asq, the one entry point the
+# core calls a whole statement at a time (csrc/asq.h): compiled with the
+# same options for every target, and linked into the apps that import
+# std/sqlite. On the web it's a module of its own, which the page's SQLite
+# worker runs.
 [c]
-sources = ["third_party/sqlite/sqlite3.c", "csrc/asq.c"]
-include = ["third_party/sqlite", "csrc"]
+sources = ["$sqlite/sqlite3.c", "csrc/asq.c"]
+include = ["$sqlite", "csrc"]
 defines = [
   "NDEBUG",
   "SQLITE_DEFAULT_MEMSTATUS=0",
@@ -62,3 +62,13 @@ defines = ["SQLITE_THREADSAFE=2"]
 sources = ["csrc/asq_wasm.c"]
 defines = ["SQLITE_OS_OTHER=1", "SQLITE_THREADSAFE=0", "HAVE_LOCALTIME_R=1"]
 flags = ["-Os"]
+
+# SQLite 3.54.1's amalgamation (sqlite3.c and sqlite3.h), as sqlite.org
+# publishes it: in the public domain (https://www.sqlite.org/copyright.html),
+# no license to ship it. Fetched by a build that compiles it (a release's
+# prebuilt libraries have it compiled). To update: a newer release's URL
+# and its SHA-256 (shasum -a 256).
+[c.download.sqlite]
+url = "https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip"
+sha256 = "0a9c8e34352dad46006aa82836d5383bff9dc6bc9ce5a60553c05aa30e6ad1f9"
+strip = 1

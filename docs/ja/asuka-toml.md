@@ -425,7 +425,20 @@ ios-simulator = "vendor/acme/ios-simulator/libacme.a"
 android-arm64 = "vendor/acme/android-arm64/libacme.a"
 ```
 
-[Asuka から C を呼び出す](c.md#ビルド)と[ビルド済みのライブラリ](c.md#ビルド済みのライブラリ)を参照してください。
+`[c.download.<name>]` は、プロジェクトに置く代わりにビルドがダウンロードするアーカイブ（ライブラリのソースや、ベンダーのビルド済みライブラリ）です。`url`（`https://` で、`.zip`、`.tar.gz`、`.tgz` のいずれか）、`sha256`（アーカイブのもの。違うものは拒否されます）、`strip`（パスの先頭から取り除くディレクトリの数。既定は 0）を書きます。`[c]` の中で `$<name>` から始まるパスはその中を指します（`$sqlite/sqlite3.c`。`$sqlite` だけなら最上位ディレクトリ）。それを必要とする最初のビルドが、一度だけ Asuka のキャッシュにダウンロードします。
+
+```toml
+[c]
+sources = ["$sqlite/sqlite3.c"]
+include = ["$sqlite"]
+
+[c.download.sqlite]
+url = "https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip"
+sha256 = "0a9c8e34352dad46006aa82836d5383bff9dc6bc9ce5a60553c05aa30e6ad1f9"
+strip = 1
+```
+
+[Asuka から C を呼び出す](c.md#ビルド)、[ダウンロードするソース](c.md#ダウンロードするソース)、[ビルド済みのライブラリ](c.md#ビルド済みのライブラリ)を参照してください。
 
 ## bin
 

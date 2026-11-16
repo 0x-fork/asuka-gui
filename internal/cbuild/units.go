@@ -32,6 +32,10 @@ type Unit struct {
 	// links it (AK_STD_SQLITE: std/sqlite's C, which the core calls), or
 	// "".
 	Link string
+	// Fetch, when set, gets what its sources are in before they're
+	// compiled (a [c.download] of its package's): a build that links the
+	// prebuilt library never needs it.
+	Fetch func() error
 }
 
 // Config is a build's configuration's name: dev (a player's: assertions
@@ -151,6 +155,11 @@ func (tc *Toolchain) BuildUnit(u Unit, debug bool) (string, error) {
 	// they can change them (std/sqlite's -Os on the web), as an app's
 	// [c] flags do.
 	flags := append(tc.base(debug), u.Flags...)
+	if u.Fetch != nil {
+		if err := u.Fetch(); err != nil {
+			return "", fmt.Errorf("cbuild: %s: %v", u.Name, err)
+		}
+	}
 	objs, err := tc.CC.CompileCached(u.Sources, flags)
 	if err != nil {
 		return "", fmt.Errorf("cbuild: %s for %s: %v", u.Name, tc.Target, err)

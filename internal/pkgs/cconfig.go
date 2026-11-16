@@ -31,6 +31,9 @@ type CConfig struct {
 	// target (CTargets): each a static library's path, or several,
 	// relative to the project, linked for that target only.
 	Prebuilt map[string]Paths `json:"prebuilt"`
+	// Download are archives its paths name as $<name>/… ([c.download.
+	// <name>]): fetched when a build needs them, into the cache.
+	Download map[string]CDownload `json:"download"`
 }
 
 // Paths is a path, or a list of them.
@@ -91,7 +94,15 @@ func (c *CConfig) PrebuiltFor(dir, target string) ([]string, error) {
 	}
 	var out []string
 	for _, p := range ps {
-		abs := filepath.Join(dir, filepath.FromSlash(p))
+		abs, d, err := c.Path(dir, p)
+		if err != nil {
+			return nil, fmt.Errorf("[c.prebuilt] %s: %v", target, err)
+		}
+		if d != nil {
+			if err := d.Fetch(); err != nil {
+				return nil, err
+			}
+		}
 		if _, err := os.Stat(abs); err != nil {
 			return nil, fmt.Errorf("[c.prebuilt] %s: %v", target, err)
 		}
@@ -197,9 +208,26 @@ func (c *CConfig) Check() error {
 			}
 		}
 		for _, p := range append(append([]string{}, s.Sources...), s.Include...) {
-			if filepath.IsAbs(p) || strings.HasPrefix(filepath.ToSlash(filepath.Clean(p)), "../") {
-				return fmt.Errorf("[%s]: %q is outside the project (paths are relative to asuka.toml's directory, inside it)", n, p)
+			if err := c.checkPath(p); err != nil {
+				return fmt.Errorf("[%s]: %v", n, err)
 			}
+		}
+		for _, l := range s.Libraries {
+			if strings.HasPrefix(l, "$") {
+				if err := c.checkPath(l); err != nil {
+					return fmt.Errorf("[%s] libraries: %v", n, err)
+				}
+			}
+		}
+	}
+	dnames := make([]string, 0, len(c.Download))
+	for k := range c.Download {
+		dnames = append(dnames, k)
+	}
+	sort.Strings(dnames)
+	for _, k := range dnames {
+		if err := c.Download[k].check(k); err != nil {
+			return err
 		}
 	}
 	keys := make([]string, 0, len(c.Prebuilt))
@@ -215,13 +243,36 @@ func (c *CConfig) Check() error {
 			return fmt.Errorf("[c.prebuilt] %s: no library", k)
 		}
 		for _, p := range c.Prebuilt[k] {
-			if filepath.IsAbs(p) || strings.HasPrefix(filepath.ToSlash(filepath.Clean(p)), "../") {
-				return fmt.Errorf("[c.prebuilt] %s: %q is outside the project (paths are relative to asuka.toml's directory, inside it)", k, p)
+			if err := c.checkPath(p); err != nil {
+				return fmt.Errorf("[c.prebuilt] %s: %v", k, err)
 			}
 			if !staticLib(p) {
 				return fmt.Errorf("[c.prebuilt] %s: %q isn't a static library (.a, or .lib on Windows): a dynamic one ships in a native package's Swift package or Gradle module (docs/c.md, Prebuilt libraries)", k, p)
 			}
 		}
+	}
+	return nil
+}
+
+// checkPath reports what's wrong with p, a path in [c]: one outside the
+// project, or in a download there's none of ($<name>/…).
+func (c *CConfig) checkPath(p string) error {
+	rest := p
+	if strings.HasPrefix(p, "$") {
+		name, r, _ := strings.Cut(p[1:], "/")
+		if _, ok := c.Download[name]; !ok {
+			return fmt.Errorf("%q: there's no [c.download.%s]", p, name)
+		}
+		if r == "" {
+			return nil
+		}
+		rest = r
+	}
+	if filepath.IsAbs(rest) || strings.HasPrefix(filepath.ToSlash(filepath.Clean(rest)), "../") || filepath.Clean(rest) == ".." {
+		if rest != p {
+			return fmt.Errorf("%q is outside its download", p)
+		}
+		return fmt.Errorf("%q is outside the project (paths are relative to asuka.toml's directory, inside it)", p)
 	}
 	return nil
 }
@@ -247,18 +298,39 @@ func ReadC(dir string) (*CConfig, error) {
 	return &m.C, nil
 }
 
-// CSources are the files s's source globs name in dir, sorted, each
-// once. A glob that names none is an error: a typo, or a file missing.
-func (s CSettings) CSources(dir string) ([]string, error) {
+// CSources are the files s's source globs (c's s: CConfig.For) name in
+// dir, sorted, each once. A glob that names none is an error: a typo, or
+// a file missing. A file named in a download that isn't fetched yet is
+// its path there, without fetching it (a build fetches it before it
+// compiles: CConfig.FetchFor); a glob in one fetches it.
+func (c *CConfig) CSources(dir string, s CSettings) ([]string, error) {
 	seen := map[string]bool{}
 	var out []string
 	for _, g := range s.Sources {
-		ms, err := globAll(dir, filepath.FromSlash(g))
+		base, pattern := dir, filepath.FromSlash(g)
+		if strings.HasPrefix(g, "$") {
+			p, d, err := c.Path(dir, g)
+			if err != nil {
+				return nil, fmt.Errorf("[c] sources: %v", err)
+			}
+			if !strings.ContainsAny(g, "*?[") && !d.Fetched() {
+				if !seen[p] {
+					seen[p] = true
+					out = append(out, p)
+				}
+				continue
+			}
+			if err := d.Fetch(); err != nil {
+				return nil, err
+			}
+			base, pattern = d.Dir(), strings.TrimPrefix(p, d.Dir()+string(filepath.Separator))
+		}
+		ms, err := globAll(base, pattern)
 		if err != nil {
 			return nil, fmt.Errorf("[c] sources %q: %v", g, err)
 		}
 		if len(ms) == 0 {
-			return nil, fmt.Errorf("[c] sources %q: no file in %s matches it", g, dir)
+			return nil, fmt.Errorf("[c] sources %q: no file in %s matches it", g, base)
 		}
 		for _, m := range ms {
 			if !seen[m] {

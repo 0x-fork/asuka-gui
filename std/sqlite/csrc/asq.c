@@ -1,6 +1,6 @@
-// asq: see asq.h. Compiled with SQLite's amalgamation
-// (std/sqlite/third_party/sqlite) as std/sqlite's C (its asuka.toml's
-// [c]); nothing here is called but asq_call and asq_version.
+// asq: see asq.h. Compiled with SQLite's amalgamation (its asuka.toml's
+// [c.download.sqlite]) as std/sqlite's C (its [c]); nothing here is
+// called but asq_call and asq_version.
 //
 // A connection is used by one thread at a time (the core's statement thread),
 // but may move between threads from call to call: SQLite is built

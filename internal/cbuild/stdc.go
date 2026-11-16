@@ -62,9 +62,10 @@ func StdC(dir string, t Target, embedded bool) (Unit, []string, error) {
 		return Unit{}, nil, err
 	}
 	s := cfg.For(t.CPlatform())
-	srcs, err := s.CSources(dir)
+	manifest := filepath.Join(dir, pkgs.ManifestFile)
+	srcs, err := cfg.CSources(dir, s)
 	if err != nil {
-		return Unit{}, nil, fmt.Errorf("%s: %v", filepath.Join(dir, pkgs.ManifestFile), err)
+		return Unit{}, nil, fmt.Errorf("%s: %v", manifest, err)
 	}
 	kind, name := "std", filepath.Base(dir)
 	if filepath.Base(filepath.Dir(dir)) == "sdk" {
@@ -72,8 +73,15 @@ func StdC(dir string, t Target, embedded bool) (Unit, []string, error) {
 	}
 	u := Unit{Name: kind + "-" + name + "-c", Sources: srcs, Embedded: embedded,
 		Link: "AK_" + strings.ToUpper(kind+"_"+strings.ReplaceAll(name, "-", "_"))}
+	if len(cfg.Download) > 0 {
+		u.Fetch = func() error { return cfg.FetchFor(s) }
+	}
 	for _, inc := range s.Include {
-		u.Flags = append(u.Flags, "-I"+filepath.Join(dir, filepath.FromSlash(inc)))
+		p, _, err := cfg.Path(dir, inc)
+		if err != nil {
+			return Unit{}, nil, fmt.Errorf("%s: %v", manifest, err)
+		}
+		u.Flags = append(u.Flags, "-I"+p)
 	}
 	for _, d := range s.Defines {
 		u.Flags = append(u.Flags, "-D"+d)
@@ -82,7 +90,16 @@ func StdC(dir string, t Target, embedded bool) (Unit, []string, error) {
 	var link []string
 	for _, l := range s.Libraries {
 		if strings.ContainsAny(l, `/\`) {
-			link = append(link, filepath.Join(dir, filepath.FromSlash(l)))
+			p, d, err := cfg.Path(dir, l)
+			if err != nil {
+				return Unit{}, nil, fmt.Errorf("%s: %v", manifest, err)
+			}
+			if d != nil {
+				if err := d.Fetch(); err != nil {
+					return Unit{}, nil, err
+				}
+			}
+			link = append(link, p)
 		} else {
 			link = append(link, "-l"+l)
 		}

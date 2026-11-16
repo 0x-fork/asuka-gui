@@ -271,6 +271,29 @@ defines = ["SQLITE_OS_OTHER=1"]
 
 包的 C 代码由它自己 `asuka.toml` 里的 `[c]` 描述，路径相对于包目录：导入它的应用也会构建这些代码。应用自己的子包（`./util`）共用应用的 `[c]`。
 
+## 下载的源码
+
+不想放进仓库的库（比如 SQLite 的 amalgamation），可以让构建去下载。`[c.download.<name>]` 指定一个压缩包并固定它的 SHA-256，`[c]` 里以 `$<name>` 开头的路径就指向这个包里的内容：
+
+```toml
+[c]
+sources = ["c/*.c", "$sqlite/sqlite3.c"]
+include = ["$sqlite"]
+
+[c.download.sqlite]
+url = "https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip"
+sha256 = "0a9c8e34352dad46006aa82836d5383bff9dc6bc9ce5a60553c05aa30e6ad1f9"
+strip = 1
+```
+
+| 键 | 含义 |
+|---|---|
+| `url` | 压缩包的地址：`https://`，格式为 `.zip`、`.tar.gz` 或 `.tgz`。 |
+| `sha256` | 它的 SHA-256（用 `shasum -a 256 file.zip` 可以算出来）。哈希不一致的压缩包会被拒绝。 |
+| `strip` | 去掉路径开头的几层目录：大多数压缩包的文件都放在同一个顶层目录里，这时写 `1`。 |
+
+第一次需要它的构建会下载一次，校验后解压到 Asuka 的缓存里，所有项目共用。之后的构建，以及用到同一个压缩包的其他项目，都不再需要联网。单独的 `$sqlite` 指压缩包的顶层目录，`$sqlite/...` 指其中的文件或通配符。`sources`、`include`、`libraries` 里的路径以及 `[c.prebuilt]` 都能这样引用下载的内容，所以厂商编译好的库也可以用这种方式获取。
+
 ## 预编译的库
 
 如果厂商提供的是编译好的库而不是源码，就在 `[c.prebuilt]` 里列出来：每个目标一个静态库，头文件目录写在 `include` 里。构建时会链接对应目标的那一个，extern 声明调用它的方式和调用你自己的 C 代码一样。
