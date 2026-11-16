@@ -50,7 +50,11 @@ func compileDir(dir string, deps map[string]string, main bool) (*bytecode.Module
 	}
 	if Warnings != nil {
 		for _, w := range res.Warnings {
-			fmt.Fprintf(Warnings, "%s: warning: %s\n", w.Pos, w.Msg)
+			pos := w.Pos
+			if r, err := filepath.Rel(dir, pos.Filename); err == nil && !strings.HasPrefix(r, "..") {
+				pos.Filename = r
+			}
+			fmt.Fprintf(Warnings, "%s: warning: %s\n", pos, w.Msg)
 		}
 	}
 	if len(res.Diags) > 0 {
