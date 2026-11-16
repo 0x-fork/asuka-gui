@@ -3513,10 +3513,11 @@ core/src/abi/web.c is the core's side:
   `ListBind` as they come into view, recycled as they leave; a row's
   height from its cells' frames, estimated until bound; a chat's list
   kept at its end; swipe actions as the row's context menu.
-- `Shader`: the core's code carries no GLSL, so the host asks Go for it
-  (`internal/shadercode`'s `GLSL`, linked only in apps with a shader,
-  through `boot.ShaderGLSL`), compiles it with WebGL 2, and sets the
-  uniforms' lanes by their GLSL types.
+- `Shader`: the compiler translates the Kage program to GLSL ES 3.00 as
+  it compiles the app (internal/shadercode, beside its Metal and AGSL),
+  last in the shader's code, since no compiler runs in the page; the
+  host compiles it with WebGL 2 and sets the uniforms' lanes by their
+  GLSL types.
 - Files: Go's `os` on `js/wasm` calls Node's `fs` API; the page gives
   it a file system in memory that answers at once (Go waits for each
   callback), the app's data directory (`/data/<name>`, `ASUKA_DATA`)
