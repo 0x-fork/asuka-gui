@@ -27,6 +27,9 @@ type RuntimeFunc struct {
 	// Once: what it's passed (a closure that reads state) doesn't make
 	// it reactive: let stop = onFrame(…) is made once, not a memo.
 	Once bool
+	// Tracked: it reads a signal (screenEnvironment), so a binding that
+	// calls it follows it.
+	Tracked bool
 	// Follow: the parameter (its index + 1) whose argument, when it reads
 	// state, is passed as a thunk the runtime follows (alert's actions).
 	Follow int
@@ -59,6 +62,7 @@ var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "onSecondInstance", Body: true, Sig: "(handler: fn([string], string))", Builtin: "ui.on_second_instance", Doc: "hears the app started again while it runs (its arguments, its working directory), while the component lives"},
 	{Name: "alert", Sig: "(title: string, message: string = \"\", actions: [Action]? = none, actionSheet: bool = false, fields: [AlertField] = [])", Builtin: "ui.alert", Follow: 3, Doc: "shows an alert now (an action sheet with actionSheet): its actions are its buttons (none: a single OK), followed while it shows when they read state (a button disabled while a field is empty); fields are text fields under the message. A button's run runs as it's chosen"},
 	{Name: "snackbar", Sig: "(message: string, action: Action? = none, duration: SnackbarDuration = .short, onDismiss: fn()? = none) -> fn()", Builtin: "ui.snackbar", Doc: "shows a brief message at the bottom of the window now, with an action (a .button's title and run), and returns a closure that dismisses it; a new one replaces the one showing, whose onDismiss runs"},
+	{Name: "screenEnvironment", Tracked: true, Sig: "() -> Environment", Builtin: "ui.screen_environment", Doc: "the whole screen's environment (the root's, its window's on a desktop), wherever it's read: environment() is a sheet's or a screen's own; tracked"},
 	{Name: "onBack", Body: true, Sig: "(handler: fn() -> bool)", Builtin: "ui.on_back", Doc: "asked when the user goes back from the nearest pushed screen, sheet or popover around the component (else the app's: Android's back), while it lives: true takes it (the screen stays), false lets it go back"},
 	{Name: "depth", Sig: "() -> int", Builtin: "ui.depth", Doc: "how many screens the nearest stack holds"},
 	{Name: "mountApp", Sig: "() -> TestApp", Builtin: "test.mount_app", Doc: "in a test: mounts the app block's view on the fake host (its main window, its menus, its handlers), as mount does a view"},

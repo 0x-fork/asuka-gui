@@ -233,6 +233,7 @@ ak_str *ak_ui_path(void);             // owned: the current path
 // struct (types.asuka; ak_ui_shape_environment): reading it in a
 // binding follows it.
 ak_val ak_ui_environment_value(void);
+ak_val ak_ui_screen_environment_value(void);  // the root's, the whole screen's
 extern const ak_shape ak_ui_shape_environment;
 extern const ak_shape ak_ui_shape_text_range;
 extern const ak_shape ak_ui_shape_frame;

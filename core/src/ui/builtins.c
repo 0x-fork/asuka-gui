@@ -248,6 +248,11 @@ static ak_val b_environment(ak_val *a, uint32_t n) {
 	return ak_ui_environment_value();
 }
 
+static ak_val b_screen_environment(ak_val *a, uint32_t n) {
+	AK_UNUSED(a), AK_UNUSED(n);
+	return ak_ui_screen_environment_value();
+}
+
 static ak_val b_lazy(ak_val *a, uint32_t n) {
 	ak_ui_lazy(view_arg(a, n, 0, "ui.lazy"), a[1].p);
 	return none();
@@ -448,6 +453,7 @@ void ak_ui_builtins_init(void) {
 		{"ui.scroll_to_end", b_scroll_to_end},
 		{"ui.scroll_to_item", b_scroll_to_item},
 		{"ui.environment", b_environment},
+		{"ui.screen_environment", b_screen_environment},
 		{"ui.push", b_push},
 		{"ui.pop", b_pop},
 		{"ui.present", b_present},
