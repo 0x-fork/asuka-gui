@@ -682,7 +682,9 @@ enum {
 	AK_EVENT_LOCATION = 58,
 	// an Image that loaded (after its Loaded) has frames to play: an animated GIF, APNG, WebP, AVIF or HEIF sequence
 	AK_EVENT_ANIMATED = 59,
-	AK_EVENT_COUNT = 60,
+	// the app was started again while it runs (desktop: an app runs once), to the root: u32 count, then that launch's arguments (u32-length strings), then its working directory (a u32-length string). The host has brought the app to the front, and reports the files and URLs among the arguments as it does a launch's too
+	AK_EVENT_SECOND_INSTANCE = 60,
+	AK_EVENT_COUNT = 61,
 };
 
 // Commands.
@@ -756,7 +758,9 @@ enum {
 	AK_CMD_WINDOW_ACTION = 35,
 	// args (ops.AppendLocation): u8 LocationAction, i32 delta (Back: how many entries back, negative), u32-length href (the app's path and query, /chat/7?tab=info), u32-length state (the router's navigation state, which it reads back), u32-length window key (its StateKey, main for the main window unless it names another; empty: none); sent to the root (the main window) or a Window node as a Router's screens change: the web shows the href in the address bar and keeps the state in the history entry (Push a new entry, Replace this one's, Back to an earlier one, Forward to the one the user left: a back the app refused); a desktop host keeps the last one with where the window was, and gives it back as the window opens again (host.Locator); a phone ignores it
 	AK_CMD_LOCATION = 36,
-	AK_CMD_COUNT = 37,
+	// args: u8 flags (1 relaunch: the app starts again, with the same arguments, once this process has ended); sent to the root: the desktop host quits the app as the user's Quit does, asking the app first (asuka_quit_request, which may cancel it, and the relaunch with it), then closing its windows; phones and the web, whose apps don't quit themselves, ignore it
+	AK_CMD_QUIT = 37,
+	AK_CMD_COUNT = 38,
 };
 
 // Enums, by their index in ak_enums.

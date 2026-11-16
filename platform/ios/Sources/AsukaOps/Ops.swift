@@ -443,6 +443,7 @@ public enum AsukaEventKind: UInt16 {
     case fieldChanged = 57
     case location = 58
     case animated = 59
+    case secondInstance = 60
 }
 
 public enum AsukaCommand: UInt16 {
@@ -482,6 +483,7 @@ public enum AsukaCommand: UInt16 {
     case replace = 34
     case windowAction = 35
     case location = 36
+    case quit = 37
 }
 
 public enum AsukaRole: Int32 {
@@ -1134,5 +1136,8 @@ public enum AsukaEvents {
     }
     public static func animated(_ id: UInt32) -> [UInt8] {
         var w = AsukaWriter(); w.header(id, 59); return w.bytes
+    }
+    public static func secondInstance(_ id: UInt32, _ v: [UInt8]) -> [UInt8] {
+        var w = AsukaWriter(); w.header(id, 60); w.u32(UInt32(v.count)); w.bytes.append(contentsOf: v); return w.bytes
     }
 }
