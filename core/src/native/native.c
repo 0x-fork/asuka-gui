@@ -54,6 +54,9 @@ static size_t name_len(const char *d) {
 	return q ? (size_t)(q - d - 1) : strlen(d + 1);
 }
 
+const char *ak_native_desc_skip(const char *d) { return desc_skip(d); }
+ak_kind ak_native_desc_kind(const char *d) { return kind_of(d); }
+
 // ---- Callbacks: functions the native side calls ----
 
 typedef struct {

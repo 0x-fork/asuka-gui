@@ -713,6 +713,9 @@ func (b *fb) element(e *syntax.CallExpr) int {
 		return b.valueReg(-1, bc.KRef)
 	}
 	if ec.Comp.Comp.Native {
+		if ec.Comp.Comp.Element == nil && !ec.Comp.Comp.Style {
+			return b.nativeElement(ec) // a package's
+		}
 		return b.builtinElement(ec)
 	}
 	return b.componentCall(ec)

@@ -1700,13 +1700,105 @@ TEST(unset_keys_send_nothing) {
 	done(a);
 }
 
+// ---- A package's native component ----
+
+static void *nv_label;
+static int64_t nv_got = -1;
+static double nv_got_f;
+
+static ak_val nv_label_text(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	return ak_vm_cell_get(nv_label, true);
+}
+
+static ak_val nv_changed(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c);
+	if (n == 2) nv_got = a[0].i, nv_got_f = a[1].f;
+	return (ak_val){0};
+}
+
+static ak_val native_comp(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_str *kind = ak_str_c("pantry#Dial"), *value = ak_str_c("Value"), *label = ak_str_c("Label"), *changed = ak_str_c("Changed");
+	ak_str *f = ak_str_c("f"), *s = ak_str_c("s"), *iff = ak_str_c("if");
+	ak_view *v = ak_ui_native(kind);
+	ak_ui_native_set(v, value, (ak_val){.f = 0.5}, f, NULL);
+	ak_closure *t = fn(nv_label_text, NULL);
+	ak_ui_native_bind(v, label, t, s, NULL);
+	ak_closure *h = fn(nv_changed, NULL);
+	ak_ui_native_on(v, changed, h, iff, NULL);
+	ak_ui_set(v, AK_KEY_WIDTH, (ak_val){.i = ak_length_pt(120)});
+	ak_ui_set(v, AK_KEY_HEIGHT, (ak_val){.i = ak_length_pt(40)});
+	ak_release(t), ak_release(h);
+	ak_release(kind), ak_release(value), ak_release(label), ak_release(changed), ak_release(f), ak_release(s), ak_release(iff);
+	return (ak_val){.p = v};
+}
+
+static uint32_t native_props(ak_fake *f) {
+	uint32_t n = 0;
+	for (uint32_t i = 0; i < f->ops.len; i++) {
+		ak_op o = ak_fake_op_at(f, i);
+		if (o.code == AK_OP_SET_PROP && o.prop == AK_PROP_NATIVE_PROP) n++;
+	}
+	return n;
+}
+
+TEST(native_component) {
+	nv_label = ak_vm_cell_new((ak_val){.p = ak_str_c("hi")}, AK_K_REF, NULL).p;
+	ak_uitest *a = mount(native_comp, NULL);
+	ak_fake *fk = ak_uitest_host(a);
+	ak_fake_view *v = nth(a, AK_KIND_NATIVE, 0);
+	REQUIRE(v);
+	ak_span kind = ak_fake_string(v, AK_PROP_NATIVE_TYPE);
+	CHECK(kind.len == 11 && memcmp(kind.p, "pantry#Dial", 11) == 0);
+	check_frame(v, 0, 0, 120, 40);
+	// Each prop, encoded as a native call's value.
+	const ak_fake_native *val = ak_fake_native_value(v, "Value");
+	REQUIRE(val && val->type == 5 && val->s.len == 8);
+	double d;
+	memcpy(&d, val->s.p, 8);
+	CHECK(d == 0.5);
+	const ak_fake_native *lab = ak_fake_native_value(v, "Label");
+	REQUIRE(lab && lab->type == 5 && lab->s.len == 6 && memcmp(lab->s.p + 4, "hi", 2) == 0);
+	// The same value again sends nothing; another, its prop.
+	ak_fake_reset(fk);
+	write_p(nv_label, ak_str_c("hi"));
+	ak_uitest_settle(a);
+	CHECK(native_props(fk) == 0);
+	write_p(nv_label, ak_str_c("yo"));
+	ak_uitest_settle(a);
+	CHECK(native_props(fk) == 1);
+	lab = ak_fake_native_value(v, "Label");
+	CHECK(lab && memcmp(lab->s.p + 4, "yo", 2) == 0);
+	// An event's values come decoded to its handler.
+	CHECK(ak_fake_listens(v, AK_EVENT_NATIVE));
+	ak_buf ev = {0};
+	ak_buf_u64(&ev, 7);
+	ak_buf_f64(&ev, 2.5);
+	ak_fake_native vals[] = {{.name = {"v", 1}, .type = 5, .s = {(const char *)ev.data, (uint32_t)ev.len}}};
+	ak_fake_emit_native(fk, v, "Changed", vals, 1);
+	ak_uitest_settle(a);
+	CHECK(nv_got == 7 && nv_got_f == 2.5);
+	// One it has no handler of, and a malformed one, do nothing.
+	nv_got = -1;
+	ak_fake_emit_native(fk, v, "Picked", vals, 1);
+	vals[0].s.len = 3;
+	ak_fake_emit_native(fk, v, "Changed", vals, 1);
+	ak_uitest_settle(a);
+	CHECK(nv_got == -1);
+	ak_buf_free(&ev);
+	done(a);
+	ak_release(nv_label);
+}
+
 // ---- The VM's builtins ----
 
 TEST(builtins_are_registered) {
 	setup();
 	static const char *const names[] = {"ui.new", "ui.set", "ui.bind", "ui.on", "ui.add", "ui.slot", "ui.ref", "ui.show", "ui.for", "ui.switch",
 	                                    "ui.dynamic", "ui.lazy_for", "ui.fragment", "ui.use", "ui.provide", "ui.task", "ui.focus", "ui.blur",
-	                                    "ui.scroll_to", "ui.environment", "ui.enter", "ui.leave"};
+	                                    "ui.scroll_to", "ui.environment", "ui.enter", "ui.leave", "ui.native", "ui.native_set",
+	                                    "ui.native_bind", "ui.native_on"};
 	for (size_t i = 0; i < AK_LEN(names); i++)
 		if (!ak_builtin_find(names[i])) T_FAIL("no builtin %s", names[i]);
 }

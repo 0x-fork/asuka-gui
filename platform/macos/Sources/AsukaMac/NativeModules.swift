@@ -238,9 +238,17 @@ public enum AsukaNative {
         lock.lock()
         defer { lock.unlock() }
         if let p = providers[name] { return p }
-        guard let p = NSClassFromString(name) as? AsukaModuleProvider.Type else { return nil }
+        // A Go package's module names its class; an Asuka package's, its
+        // package (asuka/network: AsukaModule_asuka_network).
+        guard let p = (NSClassFromString(name) ?? NSClassFromString(swiftClass(name))) as? AsukaModuleProvider.Type else { return nil }
         providers[name] = p
         return p
+    }
+
+    /// The Objective-C name of an Asuka package's Swift (internal/nativegen's
+    /// SwiftClass): AsukaModule_ and its name's letters and digits, the rest _.
+    static func swiftClass(_ pkg: String) -> String {
+        "AsukaModule_" + String(pkg.unicodeScalars.map { $0.isASCII && CharacterSet.alphanumerics.contains($0) ? Character($0) : "_" })
     }
 
     /// Keeps an object for Go: its handle.

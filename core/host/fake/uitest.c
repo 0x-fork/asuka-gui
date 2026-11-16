@@ -323,6 +323,23 @@ static void describe(ak_uitest *a, ak_buf *b, ak_fake_view *v, int depth) {
 		if (ak_fake_bool(v, AK_PROP_TEXT_FIELD_SECURE)) ak_buf_printf(b, " secure");
 		break;
 	}
+	if (v->kind == AK_KIND_NATIVE) {
+		// Its kind, and its values: a typed view's encoded (in hex).
+		ak_span k = ak_fake_string(v, AK_PROP_NATIVE_TYPE);
+		ak_buf_printf(b, " %.*s", (int)k.len, k.p);
+		for (uint32_t i = 0; i < v->native.len; i++) {
+			const ak_fake_native *n = &v->native.data[i];
+			ak_buf_printf(b, " %.*s=", (int)n->name.len, n->name.p);
+			switch (n->type) {
+			case 1:
+			case 2: ak_buf_printf(b, "%lld", (long long)n->i); break;
+			case 3: ak_fmt_float(b, n->f, 64); break;
+			case 4: ak_fmt_quote(b, n->s); break;
+			default:
+				for (uint32_t j = 0; j < n->s.len; j++) ak_buf_printf(b, "%02x", (uint8_t)n->s.p[j]);
+			}
+		}
+	}
 	if (ak_fake_bool(v, AK_PROP_SELECTED)) ak_buf_printf(b, " selected");
 	if (ak_fake_bool(v, AK_PROP_DISABLED)) ak_buf_printf(b, " disabled");
 	ak_buf_u8(b, '\n');

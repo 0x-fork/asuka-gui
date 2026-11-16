@@ -655,6 +655,16 @@ func (c *Checker) eventSuggest(comp *Component, name string) string {
 	return " (its events: " + s + ")"
 }
 
+// nativeBindEvent is the event a native component reports its prop m
+// with, <name>Change(value: m's type), or nil.
+func nativeBindEvent(comp *Component, m *Member) *Member {
+	ev := comp.Members[m.name+"Change"]
+	if ev == nil || ev.Kind != EventMember || len(ev.Params) != 1 || !Identical(ev.Params[0].Type, m.Type) {
+		return nil
+	}
+	return ev
+}
+
 // bindItem checks bind name: target: a control's two-way binding.
 func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 	comp := ec.Comp.Comp
@@ -667,12 +677,24 @@ func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 			}
 		}
 	}
-	if m == nil || key == nil || !key.Bind {
+	var ev *Member
+	switch {
+	case comp.Element == nil && comp.Native && m != nil && m.Kind == PropMember:
+		// A package's native component binds a prop it reports with an
+		// event <prop>Change(value) (docs/native.md).
+		ev = nativeBindEvent(comp, m)
+		if ev == nil {
+			c.errorf(b.Name, "%s can't bind %s: it binds a prop it reports with event %sChange(%s: %s)", ec.Comp.name, b.Name.Name, b.Name.Name, b.Name.Name, typeString(m.Type))
+			c.expr(b.Target, nil)
+			return
+		}
+	case m == nil || key == nil || !key.Bind:
 		c.errorf(b.Name, "%s can't bind %s: only a control's own value binds (TextField's text, Toggle's on)", ec.Comp.name, b.Name.Name)
 		c.expr(b.Target, nil)
 		return
+	default:
+		ev = comp.Members[key.Event]
 	}
-	ev := comp.Members[key.Event]
 	saved := c.ctx
 	c.enter(CtxBinding, b, "bind "+b.Name.Name)
 	t := c.expr(b.Target, nil)

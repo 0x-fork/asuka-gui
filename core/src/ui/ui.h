@@ -79,6 +79,7 @@
 
 #include "rt/rt.h"
 #include "ops/ops.h"
+#include "rt/json.h"
 #include "ui/elements_gen.h"
 
 typedef struct ak_view ak_view;  // an rt object (AK_TAG_VIEW)
@@ -159,6 +160,15 @@ ak_view *ak_ui_ref(ak_view *v);
 // ak_ui_fragment is a view of no native view of its own: a component's
 // several views, each added with ak_ui_add.
 ak_view *ak_ui_fragment(void);
+
+// A package's native component (native_view.c): a Native view of kind
+// ("<class>#<Name>"), its props set or bound by name, encoded by their
+// descriptors (native/native.h), and its events handled by name, their
+// values decoded by desc. t: the module's types (its structs' shapes).
+ak_view *ak_ui_native(const ak_str *kind);
+void ak_ui_native_set(ak_view *v, const ak_str *name, ak_val value, const ak_str *desc, const ak_json_types *t);
+void ak_ui_native_bind(ak_view *v, const ak_str *name, ak_closure *thunk, const ak_str *desc, const ak_json_types *t);
+void ak_ui_native_on(ak_view *v, const ak_str *name, ak_closure *handler, const ak_str *desc, const ak_json_types *t);
 
 // The native view's ID (0: none: a fragment, a flattened container).
 uint32_t ak_ui_id(const ak_view *v);

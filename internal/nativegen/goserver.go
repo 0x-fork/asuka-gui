@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	"go/token"
 	"strings"
+	"unicode"
 )
 
 // DesktopDir is the folder of an Asuka native package's Go, for the
@@ -26,6 +28,9 @@ func GenerateGoServer(p *Package) ([]byte, error) {
 	g.printf("// What the package declares (%s), as its Go implements it for the\n// desktop hosts. The Go writes the functions that make each:\n//\n", p.Path)
 	for _, it := range p.Interfaces {
 		g.printf("//\tfunc new%s() (%s, error)\n", it.Name, it.Name)
+	}
+	for _, v := range p.Views {
+		g.printf("//\tfunc new%s(events %sEvents) %sNative // nil: none here (macOS runs the Swift)\n", v.Name, v.Name, v.Name)
 	}
 	g.printf("\npackage %s\n\nimport (\n\t\"context\"\n\t\"time\"\n\n\t\"github.com/egoist/asuka/native\"\n)\n\n", p.Name)
 	g.printf("var (\n\t_ = context.Background\n\t_ time.Duration\n)\n\n")
@@ -61,6 +66,9 @@ func GenerateGoServer(p *Package) ([]byte, error) {
 		}
 		g.printf("}\n\n")
 	}
+	for _, v := range p.Views {
+		g.viewTypes(v)
+	}
 	// Registration.
 	g.printf("var server *native.Server\n\nfunc init() {\n\tserver = &native.Server{\n\tClass: %q,\n", p.Path)
 	if len(p.Errors) > 0 {
@@ -74,7 +82,20 @@ func GenerateGoServer(p *Package) ([]byte, error) {
 	for _, it := range p.Interfaces {
 		g.printf("\t\tcase %d:\n\t\t\treturn new%s()\n", it.Index, it.Name)
 	}
-	g.printf("\t\t}\n\t\treturn nil, native.ErrClosed\n\t},\n\tCall: serve,\n}\n\tnative.RegisterServer(server)\n}\n\n")
+	g.printf("\t\t}\n\t\treturn nil, native.ErrClosed\n\t},\n\tCall: serve,\n}\n\tnative.RegisterServer(server)\n")
+	for _, v := range p.Views {
+		g.viewRegister(v)
+	}
+	g.printf("}\n\n")
+	if len(p.Interfaces) == 0 {
+		g.printf("func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *native.Reader, w *native.Writer) error {\n\treturn native.ErrClosed\n}\n\n")
+		g.helpers()
+		src, err := format.Source(g.b.Bytes())
+		if err != nil {
+			return nil, fmt.Errorf("nativegen: the desktop Go doesn't format: %v\n%s", err, g.b.Bytes())
+		}
+		return src, nil
+	}
 	g.printf("func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *native.Reader, w *native.Writer) error {\n\tswitch o := obj.(type) {\n")
 	for _, it := range p.Interfaces {
 		g.printf("\tcase %s:\n\t\tswitch method {\n", it.Name)
@@ -107,6 +128,63 @@ func GenerateGoServer(p *Package) ([]byte, error) {
 		return nil, fmt.Errorf("nativegen: the desktop Go doesn't format: %v\n%s", err, g.b.Bytes())
 	}
 	return src, nil
+}
+
+// viewTypes writes a view's Go: what the package implements it with
+// (<View>Native) and what sends its events (<View>Events).
+func (g *gsGen) viewTypes(v *View) {
+	n := v.Name
+	g.doc(v.Doc, "")
+	g.printf("//\n// %sNative is the platform's %s, in Go (Windows, Linux): its view\n// (an HWND, a GtkWidget) and a setter per prop.\n", n, n)
+	g.printf("type %sNative interface {\n\tHandle() uintptr\n", n)
+	for _, f := range v.Props {
+		g.printf("\tSet%s(%s %s)\n", f.Name, goParam(f.Name), g.goType(f.Type))
+	}
+	g.printf("}\n\n")
+	g.printf("// %sEvents sends a %s's events (on the main thread), and has its\n// context: the host's view it goes in.\n", n, n)
+	g.printf("type %sEvents struct{ Context native.Context }\n\n", n)
+	for _, e := range v.Events {
+		var params []string
+		for _, a := range e.Type.Func.Params {
+			params = append(params, goParam(a.Name)+" "+g.goType(a.Type))
+		}
+		g.doc(e.Doc, "")
+		if e.Doc == "" {
+			g.printf("// %s sends the %s event.\n", e.Name, e.Name)
+		}
+		g.printf("func (e %sEvents) %s(%s) {\n\tvar s *native.Session\n\t_ = s\n\tw := native.NewWriter()\n", n, e.Name, strings.Join(params, ", "))
+		for _, a := range e.Type.Func.Params {
+			g.printf("\t%s\n", g.enc(a.Type, "w", goParam(a.Name)))
+		}
+		g.printf("\te.Context.Emit(%q, map[string]any{\"v\": w.Take()})\n}\n\n", e.Name)
+	}
+}
+
+// viewRegister registers a view's kind (the class # its name) with
+// package native, made by the package's new<View>.
+func (g *gsGen) viewRegister(v *View) {
+	n := v.Name
+	g.printf("\tnative.RegisterView(%q, func(ctx native.Context) native.View {\n", g.p.Path+"#"+n)
+	g.printf("\t\tv := new%s(%sEvents{ctx})\n\t\tif v == nil {\n\t\t\treturn nil\n\t\t}\n", n, n)
+	g.printf("\t\treturn native.GoView(v, func(name string, value []byte) {\n\t\t\tvar s *native.Session\n\t\t\t_ = s\n\t\t\tr := native.NewReader(value)\n\t\t\tswitch name {\n")
+	for _, f := range v.Props {
+		g.printf("\t\t\tcase %q:\n\t\t\t\tif a := %s; r.Err() == nil {\n\t\t\t\t\tv.Set%s(a)\n\t\t\t\t}\n", f.Name, g.dec(f.Type, "r"), f.Name)
+	}
+	g.printf("\t\t\t}\n\t\t})\n\t})\n")
+}
+
+// goParam is a name as a Go parameter: Value → value.
+func goParam(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToLower(r[0])
+	p := string(r)
+	if token.IsKeyword(p) {
+		return p + "_"
+	}
+	return p
 }
 
 type gsGen struct {

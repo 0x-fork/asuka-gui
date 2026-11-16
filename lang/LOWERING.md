@@ -407,6 +407,25 @@ a global init.strings makes: every enum declared `: Error` in the
 package, its cases in order (a case with values stands as an error of
 its name).
 
+A package's `native component V(p: P) { prop q: Q = d; event e(x: X) }`
+used as an element is a view the platform's generated code makes:
+
+- `ui.native(kind)`: a Native view (ops' kind) of kind `<class>#V`,
+  which every host finds in the package's code (the class's provider,
+  or package native's registry on the desktop).
+- Each parameter and prop, set or else its default, is
+  `ui.native_set(v, name, value, desc)` or, when it reads what changes,
+  `ui.native_bind(v, name, thunk, desc)`: name its exported name
+  (`q` → `Q`, as internal/nativegen names it), desc its descriptor. The
+  runtime encodes it as a native call's value and sends it as a
+  Native.Prop (type 5, bytes) only when the encoding changed.
+- `on e(x) { … }` is `ui.native_on(v, "E", handler, desc)`: the
+  Native event named E carries the values encoded under "v", decoded by
+  desc (the parameters' descriptors in order) for the handler.
+- `bind q: s` is `ui.native_bind` of s and a handler of the event
+  `qChange(value: Q)`, which the checker requires, writing s.
+- The style keys are `ui.set`/`ui.bind`, as any element's.
+
 `asuka native generate` writes each platform's side (Swift on iOS and macOS, Kotlin,
 JavaScript, Go on Windows and Linux, whose hosts are Go) from the same declarations, in
 native/codec.go's wire format.
@@ -480,8 +499,7 @@ kind last. Closures passed to them don't throw and don't await.
 ## What isn't lowered yet
 
 - A `Length` from a number computed at run time (constants are packed
-  when compiling), `for await`, `withTimeout`, native interfaces and
-  components, screens (the runtime has no `Screen` element yet), styles
+  when compiling), `for await`, `withTimeout`, screens (the runtime has no `Screen` element yet), styles
   of other packages, `List`'s lazy rows (no `List` element yet; the
   lowering calls `ui.lazy_for` when an element says it builds rows
   lazily).

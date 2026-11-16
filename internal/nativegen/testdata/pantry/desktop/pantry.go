@@ -41,3 +41,6 @@ type goShelf struct{}
 
 func (goShelf) Stack(count int, level Level) error { return nil }
 func (goShelf) Close() error                       { return nil }
+
+// No Go Dial: the platform shows none.
+func newDial(events DialEvents) DialNative { return nil }

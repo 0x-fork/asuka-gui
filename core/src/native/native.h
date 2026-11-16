@@ -53,4 +53,8 @@ size_t ak_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out
 
 void ak_native_vm_init(void);
 
+// A descriptor's end (the next one's start), and the kind its value is.
+const char *ak_native_desc_skip(const char *d);
+ak_kind ak_native_desc_kind(const char *d);
+
 #endif

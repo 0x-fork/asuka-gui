@@ -8,6 +8,7 @@
 // the code that uses them.
 #include "vm/vm_int.h"
 #include "native/native.h"
+#include "ui/ui.h"
 
 static ak_module *running(void) { return ak_vm_running_module(); }
 
@@ -47,7 +48,40 @@ static ak_val start(ak_val *a, uint32_t n) {
 	return (ak_val){.p = ak_native_start(a[0].p, (uint32_t)a[1].i, a[2], ad->data, rd->data, a[5].p, types_of(running()))};
 }
 
+// A package's native component (ui/native_view.c):
+//
+//	ui.native(kind string) -> view
+//	ui.native_set(view, name string, value, desc string)
+//	ui.native_bind(view, name string, thunk, desc string)
+//	ui.native_on(view, name string, handler, desc string)
+static ak_val view_new(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_native(a[0].p)};
+}
+
+static ak_val view_set(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_native_set(a[0].p, a[1].p, a[2], a[3].p, types_of(running()));
+	return (ak_val){0};
+}
+
+static ak_val view_bind(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_native_bind(a[0].p, a[1].p, a[2].p, a[3].p, types_of(running()));
+	return (ak_val){0};
+}
+
+static ak_val view_on(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_native_on(a[0].p, a[1].p, a[2].p, a[3].p, types_of(running()));
+	return (ak_val){0};
+}
+
 void ak_native_vm_init(void) {
+	ak_builtin_register("ui.native", view_new);
+	ak_builtin_register("ui.native_set", view_set);
+	ak_builtin_register("ui.native_bind", view_bind);
+	ak_builtin_register("ui.native_on", view_on);
 	ak_builtin_register("native.new", new_);
 	ak_builtin_register("native.call", call);
 	ak_builtin_register("native.start", start);

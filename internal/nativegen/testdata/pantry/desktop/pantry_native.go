@@ -6,6 +6,7 @@
 //
 //	func newPantry() (Pantry, error)
 //	func newShelf() (Shelf, error)
+//	func newDial(events DialEvents) DialNative // nil: none here (macOS runs the Swift)
 
 package pantry
 
@@ -69,6 +70,40 @@ type Shelf interface {
 	Close() error
 }
 
+// A dial: a value to pick, and what it says.
+//
+// DialNative is the platform's Dial, in Go (Windows, Linux): its view
+// (an HWND, a GtkWidget) and a setter per prop.
+type DialNative interface {
+	Handle() uintptr
+	SetValue(value float64)
+	SetLabel(label string)
+	SetItems(items []Item)
+}
+
+// DialEvents sends a Dial's events (on the main thread), and has its
+// context: the host's view it goes in.
+type DialEvents struct{ Context native.Context }
+
+// Changed sends the Changed event.
+func (e DialEvents) Changed(value float64) {
+	var s *native.Session
+	_ = s
+	w := native.NewWriter()
+	w.Float64(value)
+	e.Context.Emit("Changed", map[string]any{"v": w.Take()})
+}
+
+// Picked sends the Picked event.
+func (e DialEvents) Picked(item Item, index int) {
+	var s *native.Session
+	_ = s
+	w := native.NewWriter()
+	writeItem(s, w, item)
+	w.Int(index)
+	e.Context.Emit("Picked", map[string]any{"v": w.Take()})
+}
+
 var server *native.Server
 
 func init() {
@@ -87,6 +122,31 @@ func init() {
 		Call: serve,
 	}
 	native.RegisterServer(server)
+	native.RegisterView("@asuka/pantry#Dial", func(ctx native.Context) native.View {
+		v := newDial(DialEvents{ctx})
+		if v == nil {
+			return nil
+		}
+		return native.GoView(v, func(name string, value []byte) {
+			var s *native.Session
+			_ = s
+			r := native.NewReader(value)
+			switch name {
+			case "Value":
+				if a := r.Float64(); r.Err() == nil {
+					v.SetValue(a)
+				}
+			case "Label":
+				if a := r.String(); r.Err() == nil {
+					v.SetLabel(a)
+				}
+			case "Items":
+				if a := readSliceItem(s, r); r.Err() == nil {
+					v.SetItems(a)
+				}
+			}
+		})
+	})
 }
 
 func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *native.Reader, w *native.Writer) error {
@@ -189,22 +249,6 @@ func serve(ctx context.Context, s *native.Session, obj any, method uint32, r *na
 	return native.ErrClosed
 }
 
-func readSliceItem(s *native.Session, r *native.Reader) []Item {
-	n := r.Len()
-	v := make([]Item, 0, n)
-	for i := 0; i < n && r.Err() == nil; i++ {
-		v = append(v, readItem(s, r))
-	}
-	return v
-}
-
-func writeSliceItem(s *native.Session, w *native.Writer, v []Item) {
-	w.Len(len(v))
-	for _, e := range v {
-		writeItem(s, w, e)
-	}
-}
-
 func readItem(s *native.Session, r *native.Reader) Item {
 	var v Item
 	v.Name = r.String()
@@ -231,6 +275,22 @@ func writeItem(s *native.Session, w *native.Writer, v Item) {
 	w.Duration(v.Took)
 	w.Int(v.Count)
 	w.Bool(v.Fresh)
+}
+
+func readSliceItem(s *native.Session, r *native.Reader) []Item {
+	n := r.Len()
+	v := make([]Item, 0, n)
+	for i := 0; i < n && r.Err() == nil; i++ {
+		v = append(v, readItem(s, r))
+	}
+	return v
+}
+
+func writeSliceItem(s *native.Session, w *native.Writer, v []Item) {
+	w.Len(len(v))
+	for _, e := range v {
+		writeItem(s, w, e)
+	}
 }
 
 func callbackFuncd(s *native.Session, id uint64) func(float64) {

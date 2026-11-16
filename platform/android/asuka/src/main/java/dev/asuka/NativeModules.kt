@@ -214,10 +214,40 @@ object AsukaModules {
     @JvmStatic external fun invoke(id: Long, args: ByteArray): ByteArray?
 
     /** The provider of a class's name, looked up once. */
-    fun provider(name: String): AsukaModuleProvider? = providers[name] ?: try {
-        (Class.forName(name).getField("INSTANCE").get(null) as AsukaModuleProvider).also { providers[name] = it }
+    fun provider(name: String): AsukaModuleProvider? = providers[name] ?: find(name) ?: find(kotlinClass(name))?.also { providers[name] = it }
+
+    private fun find(cls: String): AsukaModuleProvider? = providers[cls] ?: try {
+        (Class.forName(cls).getField("INSTANCE").get(null) as AsukaModuleProvider).also { providers[cls] = it }
     } catch (_: ReflectiveOperationException) {
         null
+    }
+
+    private val keywords = setOf(
+        "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in", "interface", "is", "null", "object",
+        "package", "return", "super", "this", "throw", "true", "try", "typealias", "typeof", "val", "var", "when", "while",
+        "abstract", "assert", "boolean", "byte", "case", "catch", "char", "const", "default", "double", "enum", "extends", "final",
+        "finally", "float", "goto", "implements", "import", "instanceof", "int", "long", "native", "new", "private", "protected",
+        "public", "short", "static", "strictfp", "switch", "synchronized", "throws", "transient", "void", "volatile",
+    )
+
+    /**
+     * The class of an Asuka package's Kotlin (internal/nativegen's
+     * KotlinClass): asuka/network is asuka.network.AsukaModule.
+     */
+    internal fun kotlinClass(pkg: String): String {
+        var parts = pkg.split('/')
+        val segs = mutableListOf<String>()
+        if (parts[0].contains('.')) {
+            segs.addAll(parts[0].split('.').reversed())
+            parts = parts.drop(1)
+        }
+        segs.addAll(parts)
+        return segs.joinToString(".") { seg ->
+            var s = seg.map { if (it.code < 128 && it.isLetterOrDigit()) it else '_' }.joinToString("").lowercase()
+            if (s.isEmpty() || s[0].isDigit()) s = "_$s"
+            if (s in keywords) s += "_"
+            s
+        } + ".AsukaModule"
     }
 
     /** Keeps an object for Go: its handle. */
