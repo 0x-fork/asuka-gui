@@ -1,6 +1,6 @@
 # 開発
 
-`asuka dev` はアプリを実行し、ファイルを保存するたびにリロードします。実行先は、iOS シミュレーターか iPhone、Android のエミュレーターか実機、手元の Mac・PC・Linux マシン、ブラウザーのいずれかです。このページでは、それぞれの実行先でリロードがどう行われるか、リロードで何が保たれるか、デバイス、アセット、ログ、エディター、よくある問題、そして Asuka 自体のテストとベンチマークについて説明します。
+`asuka dev` はアプリを実行し、ファイルを保存するたびにリロードします。実行先は、iOS シミュレーターか iPhone、Android のエミュレーターか実機、手元の Mac・PC・Linux マシン、ブラウザーのいずれかです。このページでは、`asuka dev` が動かす開発用アプリ、リロードで何が保たれるか、デバイス、アセット、ログ、エディター、よくある問題について説明します。デバイスやディスプレイなしでアプリの UI をテストするには、[テスト](testing.md)を参照してください。
 
 ## asuka dev
 
@@ -28,26 +28,16 @@ asuka dev --platform web [flags] [dir]       # ブラウザー
 
 ブラウザーでは `--port`、`--lan`（スマートフォンのブラウザーから使えるよう、ネットワーク上に配信します）、`--no-open` が使えます。[Web](web.md#asuka-dev---platform-web) を参照してください。
 
-## 仕組み：開発用アプリ
+## 開発用アプリ
 
-アプリは、C のライブラリである Asuka のコアの上で動きます。リリースではアプリが C にコンパイルされ、コアと一緒にビルドされます。開発中は、コアがアプリの**バイトコード**を自身の VM で実行します。アプリが動いている最中に、次のビルドのバイトコードへ差し替えることもできます。
-
-`asuka dev` は、プラットフォームごとに**開発用アプリ**を一度だけビルドします。これはアプリの外側（名前、ID、アイコン、`Info.plist` またはマニフェスト、ネイティブパッケージのコード）とコアから成り、アプリ本体は入っていません。Asuka はこれをインストールして起動し、開発用アプリは `asuka dev` に接続し返します。`asuka dev` はアプリをコンパイルして、そのモジュールを送ります。保存するたびに `asuka dev` はコンパイルし直し（数ミリ秒です）、新しいモジュールを送ります。開発用アプリはそれをその場で読み込み、アプリの状態を保ったまま、結果を報告します。
+開発中、アプリは**開発用アプリ**の中で動きます。これはアプリの外側（名前、ID、アイコン、`Info.plist` またはマニフェスト、ネイティブパッケージのコード）で、`asuka dev` がプラットフォームごとに一度だけビルドし、インストールして起動します。そこへ `asuka dev` があなたのアプリを送ります。保存するたびにコンパイルし直し（数ミリ秒です）、新しいバージョンを送ります。開発用アプリはそれをその場で読み込み、アプリの状態を保ったまま、結果を報告します。
 
 ```
 asuka: compiled in 3.1 ms
 asuka: reloaded in 2.2 ms, 4 states kept
 ```
 
-保存した内容がコンパイルできない場合は、エラーが `file:line:col: message` の形で表示され、開発用アプリはそれまでのモジュールを実行し続けます。次にコンパイルできたときに、そこから続きます。アプリのそれ以外の部分（`asuka.toml`、アセット、ネイティブパッケージの Swift・Kotlin・JavaScript）が変わると、開発用アプリをビルドし直し、変わっていれば再インストールしてから起動します。
-
-各プラットフォームの開発用アプリは次のとおりです。
-
-- **macOS**：コア（とアプリのネイティブパッケージの Swift）をリンクした Swift のホストで、リリースと同じ形の `.app` です。Asuka のキャッシュ内のアプリのディレクトリに置かれ、環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
-- **Windows、Linux**：コアをリンクした、アプリを含まない C のホスト（Windows では Win32、Linux では GTK 4 と libadwaita を使います）で、1 つのプログラムです（Windows ではコンソールプログラム）。Asuka のキャッシュ内のアプリのディレクトリに置かれます。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
-- **iOS**：Swift のホストをコア（`libasuka.a`）とリンクして、アプリの `.app` にしたものです。独自のフレームワーク（WebKit、AVKit など）をリンクするホストの部分もすべて含むので、編集中のアプリはそのどれでも使えます。シミュレーターでは `xcrun simctl` で、環境変数に `ASUKA_DEV` を付けてインストール・起動します。iPhone では開発用に署名し、`xcrun devicectl` でインストールします。
-- **Android**：デバッグ版の外側のアプリ（Gradle が一度ビルドし、マニフェスト、Kotlin、リソースが変わったときにビルドし直します）です。コアはそのプライベートファイル（`files/asuka/libasuka.so`）にプッシュされ、デバッグ版のアプリはそこからコアを読み込みます。`files/asuka/dev` には `asuka dev` の場所が書かれ、`adb reverse` によってそれがデバイス自身のループバックになります。
-- **Web**：ページが開発サーバーから WebAssembly のコア（`asuka.wasm`）とアプリのモジュールを読み込み、新しいモジュールがビルドされるたびにそれを読み込みます。
+保存した内容がコンパイルできない場合は、エラーが `file:line:col: message` の形で表示され、開発用アプリはそれまでのバージョンを実行し続けます。次にコンパイルできたときに、そこから続きます。アプリのそれ以外の部分（`asuka.toml`、アセット、ネイティブパッケージの Swift・Kotlin・JavaScript）が変わると、開発用アプリをビルドし直し、変わっていれば再インストールしてから起動します。
 
 ## デスクトップでの実行
 
@@ -57,9 +47,9 @@ macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィン�
 
 **macOS。** 開発用アプリは、リリース版と同じ形の `.app` として Asuka のキャッシュ内に置かれます。この `.app` には、`Info.plist`（`asuka.toml` の名前、bundle ID、URL スキーム、利用目的の説明文、言語）とアイコンが含まれ、アドホック署名されます。そのため、Finder から開いたときと同じく、システムからはそのアプリ自身として扱われます。Dock にはアプリの名前とアイコンが表示され、通知もアプリ自身のものになり、プライバシーに関する許可の確認（カメラ、位置情報、連絡先）もターミナルではなくアプリに対して、アプリの利用目的の説明文とともに表示されます。プロビジョニングプロファイルのエンタイトルメントが必要なパッケージ（プッシュ通知、Sign in with Apple、App Attest）は、そのプロファイルで署名したリリースビルドでしか動きません。[配布](shipping.md#macos)を参照してください。
 
-**Windows。** `asuka dev` は Windows 上でしか動きません。一方、`asuka build --platform windows` はどのシステムからでも（Zig で）ビルドでき、アプリを含む 1 つの `.exe` ができます。開発用アプリはコンソールプログラムなので、出力はターミナルに表示されます。リリース版にはコンソールがありません。Windows ではプロセスに Ctrl-C を送れないため、停止するときは Asuka が開発用アプリの標準入力を閉じます。
+**Windows。** `asuka dev` は Windows 上でしか動きません。一方、`asuka build --platform windows` はどのシステムからでも（Zig で）ビルドでき、アプリを含む 1 つの `.exe` ができます。開発用アプリはコンソールプログラムなので、出力はターミナルに表示されます。リリース版にはコンソールがありません。
 
-**Linux。** Linux では、`asuka dev` は GTK 4 と libadwaita の上で開発用アプリを実行します。これらがインストールされている必要があります（[はじめに](getting-started.md#必要なもの)を参照）。アプリは、セッションのディスプレイ（Wayland または X11）で動きます。Mac や PC で `asuka dev --platform linux` を実行できるのは、`ASUKA_LINUX_RUN` に、ディスプレイのある Linux マシンでプログラムを実行するコマンドを指定した場合だけです。そのマシンからは、このコンピューターのファイルが同じパスで見える必要があります。たとえば VM で、`ASUKA_LINUX_RUN="orb -m ubuntu"`（OrbStack）や `ASUKA_LINUX_RUN="limactl shell default"`（Lima）のように指定します。Asuka はそのマシンのアーキテクチャー向けに開発用アプリをビルドし（コアは Zig でビルドします）、開発用アプリはネットワーク経由で `asuka dev` に接続します。接続先は、このコンピューターの最初のアドレスか、`ASUKA_DEV_HOST` に指定したアドレスです。
+**Linux。** Linux では、`asuka dev` は GTK 4 と libadwaita の上で開発用アプリを実行します。これらがインストールされている必要があります（[はじめに](getting-started.md#必要なもの)を参照）。アプリは、セッションのディスプレイ（Wayland または X11）で動きます。Mac や PC で `asuka dev --platform linux` を実行できるのは、`ASUKA_LINUX_RUN` に、ディスプレイのある Linux マシンでプログラムを実行するコマンドを指定した場合だけです。そのマシンからは、このコンピューターのファイルが同じパスで見える必要があります。たとえば VM で、`ASUKA_LINUX_RUN="orb -m ubuntu"`（OrbStack）や `ASUKA_LINUX_RUN="limactl shell default"`（Lima）のように指定します。Asuka はそのマシンのアーキテクチャー向けに開発用アプリをビルドし（Zig が必要です）、開発用アプリはネットワーク経由で `asuka dev` に接続します。接続先は、このコンピューターの最初のアドレスか、`ASUKA_DEV_HOST` に指定したアドレスです。
 
 ## リロードで保たれるもの
 
@@ -75,9 +65,9 @@ macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィン�
 
 ## リロード
 
-Asuka は、アプリのディレクトリとそのローカルの依存関係（`asuka.toml` の `file:`）のディレクトリを監視し、システムからの変更通知（FSEvents、inotify、ReadDirectoryChangesW。使えない場合はポーリング）で次の変更を検知します。
+Asuka は、アプリのディレクトリとそのローカルの依存関係（`asuka.toml` の `file:`）のディレクトリを監視し、次の変更を検知します。
 
-- `.asuka` ファイル：コンパイルして開発用アプリに送ります。
+- `.asuka` ファイル：コンパイルして、その場でリロードします。
 - `asuka.toml` と `asuka.lock`、`assets/` 以下のファイル、言語のカタログ、ネイティブパッケージの Swift・Kotlin・JavaScript、`Info.plist` とエンタイトルメント：開発用アプリをビルドし直して起動します（アプリは何もない状態から始まります）。
 
 `.` で始まるディレクトリと、`testdata`、`build`、`dist`、`node_modules` は監視の対象外です。
@@ -86,24 +76,24 @@ Asuka は、アプリのディレクトリとそのローカルの依存関係�
 
 **手元のコンピューター**：Mac、PC、Linux で、`asuka dev` を何も指定せずに実行します。
 
-**iOS シミュレーター**は Mac とネットワークを共有するので、開発用アプリはループバックで `asuka dev` に接続できます。
+**iOS シミュレーター**は Mac とネットワークを共有するので、特に設定はいりません。
 
-**Android のエミュレーターや実機**：`adb reverse` によって、`asuka dev` が待ち受けるポートがデバイス自身のループバックに転送されます。エミュレーターでも USB で接続した実機でも同じです。実機の場合は、開発者向けオプションで USB デバッグを有効にし、ケーブルで接続して確認ダイアログで許可したら、`adb devices` に表示されることを確かめます。`asuka dev --platform android` は、実機かエミュレーターかを問わず、adb が最初に挙げるデバイスを使います。複数ある場合は、`--device` にシリアル番号を指定して選んでください。
+**Android のエミュレーターや実機**：`asuka dev` は、エミュレーターにも USB で接続した実機にも adb 経由で接続します。実機の場合は、開発者向けオプションで USB デバッグを有効にし、ケーブルで接続して確認ダイアログで許可したら、`adb devices` に表示されることを確かめます。`asuka dev --platform android` は、実機かエミュレーターかを問わず、adb が最初に挙げるデバイスを使います。複数ある場合は、`--device` にシリアル番号を指定して選んでください。
 
 **iPhone**（または iPad）では Xcode 15 以降が必要です。iPhone をケーブルで接続してロックを解除し、「信頼」をタップします。次に「設定」›「プライバシーとセキュリティ」で「デベロッパモード」をオンにします（iPhone が一度 Xcode に接続されると表示されます。オンにすると iPhone が再起動します）。あとは `asuka dev --platform ios --device iphone` で実行できます。複数台つないでいる場合は、`--device` に名前か UDID を指定します（一覧は `xcrun devicectl list devices` で確認できます）。
 
-- **署名**：開発用アプリは、あなたのチームの開発用証明書で署名されます。チームは `--team`、`ASUKA_TEAM_ID`、`asuka.toml` の `ios.team` の順に探し、どれもなければキーチェーンにある Apple Development 証明書のチームを使います。初回の実行では、必要な開発用プロビジョニングプロファイルを Xcode に作らせます（`xcodebuild -allowProvisioningUpdates`）。このとき iPhone がチームに登録され、アプリが使うケイパビリティ（プッシュ通知、App Groups など）が有効になります。使われるのは Xcode の「設定」›「アカウント」の Apple ID か、`ASUKA_ASC_KEY_ID`（または `ios.appStoreConnect`）で指定した [App Store Connect API キー](shipping.md)です。チームの既存のプロファイルが合うなら（ワイルドカードのものも含め）、そのまま使います。
-- **Mac への接続**：ケーブルでつないでいれば、Mac がケーブル経由で開発用アプリに接続します（Xcode と同じく usbmuxd を使います）。iPhone はどのネットワークにもつながっている必要がありません。ケーブルがないときは、開発用アプリがネットワーク経由で `asuka dev` に接続します。Mac のアドレス（または `ASUKA_DEV_HOST` のアドレス）を順に試し、ポートは空いていれば 8791 です。iOS は一度だけ、このアプリがネットワーク上のデバイスを探してよいかを尋ねるので、許可してください（あとから「設定」›「アプリ」›「ローカルネットワーク」でもオンにできます）。どちらの場合も、`asuka dev` が起動し直せば開発用アプリは自動でつなぎ直し、ホーム画面から開き直しても `asuka dev` を見つけられます。開発用アプリが接続できない場合は、何を確かめればよいかを Asuka が表示します。
+- **署名**：開発用アプリは、あなたのチームの開発用証明書で署名されます。チームは `--team`、`ASUKA_TEAM_ID`、`asuka.toml` の `ios.team` の順に探し、どれもなければキーチェーンにある Apple Development 証明書のチームを使います。初回の実行では、必要な開発用プロビジョニングプロファイルを Xcode に作らせます。このとき iPhone がチームに登録され、アプリが使うケイパビリティ（プッシュ通知、App Groups など）が有効になります。使われるのは Xcode の「設定」›「アカウント」の Apple ID か、`ASUKA_ASC_KEY_ID`（または `ios.appStoreConnect`）で指定した [App Store Connect API キー](shipping.md)です。チームの既存のプロファイルが合うなら（ワイルドカードのものも含め）、そのまま使います。
+- **Mac への接続**：ケーブルでつないでいれば、Xcode と同じように、Mac がケーブル経由で開発用アプリに接続します。iPhone はどのネットワークにもつながっている必要がありません。ケーブルがないときは、開発用アプリがネットワーク経由で `asuka dev` に接続します。Mac のアドレス（または `ASUKA_DEV_HOST` のアドレス）を順に試し、ポートは空いていれば 8791 です。iOS は一度だけ、このアプリがネットワーク上のデバイスを探してよいかを尋ねるので、許可してください（あとから「設定」›「アプリ」›「ローカルネットワーク」でもオンにできます）。どちらの場合も、`asuka dev` が起動し直せば開発用アプリは自動でつなぎ直し、ホーム画面から開き直しても `asuka dev` を見つけられます。開発用アプリが接続できない場合は、何を確かめればよいかを Asuka が表示します。
 
 **スマートフォンのブラウザー**：`asuka dev --platform web --lan` でアプリをネットワーク上に配信すると、開くべきアドレスが表示されます。
 
 ## アセット
 
-デスクトップでは、開発用アプリは `assets/` をその場で読みます。スマートフォンでは、アセットは開発用アプリの中に置かれます。iOS では `.app` にコピーされ、Android ではアプリのプライベートファイルにプッシュされます。どちらも変更があったときだけです。ブラウザーでは、開発サーバーがアセットを配信します。アセットを変更すると、開発用アプリがビルドし直されて起動します。
+デスクトップでは、開発用アプリは `assets/` をその場で読みます。スマートフォンでは、アセットは変更があったときに開発用アプリへコピーされます。ブラウザーでは、開発サーバーがアセットを配信します。アセットを変更すると、開発用アプリがビルドし直されて起動します。
 
 ## ログ
 
-開発用アプリは自身の出力とエラーを `asuka dev` に送り、`asuka dev` がそれをターミナルに表示します。どのプラットフォームでも、`print`、捕捉されなかったエラー、コアとホストが書き出す内容が表示されます。開発用アプリがモジュールを読み込めなかった場合は、その理由が表示されます（`asuka: the player: ...`）。ブラウザーでは、ページのエラーもターミナルに表示されます。
+開発用アプリは自身の出力とエラーを `asuka dev` に送り、`asuka dev` がそれをターミナルに表示します。どのプラットフォームでも、`print`、捕捉されなかったエラー、Asuka 自身の警告とエラーが表示されます。開発用アプリがモジュールを読み込めなかった場合は、その理由が表示されます（`asuka: the player: ...`）。ブラウザーでは、ページのエラーもターミナルに表示されます。
 
 ## エディター
 
@@ -122,7 +112,7 @@ LSP クライアントを備えたエディターなら、どれでも使えま�
 
 ## スナップショットとスクリプト
 
-デスクトップのホストは、いくつかの環境変数を受け付けます。これらを使うと、アプリに特定の状態を表示させてキャプチャーできるので、変更を目で確かめたり、CI で確認したりするのに便利です。リリースビルドの実行ファイルか、`asuka dev`（自身の環境変数を開発用アプリに渡します）に付けて実行します。
+デスクトップのアプリは、いくつかの環境変数を受け付けます。これらを使うと、アプリに特定の状態を表示させてキャプチャーできるので、変更を目で確かめたり、CI で確認したりするのに便利です。リリースビルドの実行ファイルか、`asuka dev`（自身の環境変数を開発用アプリに渡します）に付けて実行します。
 
 ```sh
 ASUKA_SNAPSHOT=shot.png ./MyApp.app/Contents/MacOS/MyApp            # ウィンドウが表示されたら PNG に保存して終了
@@ -132,11 +122,11 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 
 - `ASUKA_SNAPSHOT`：ウィンドウが表示されたら（スクリプトがあればその実行後に）、ウィンドウを PNG に書き出して終了します。`ASUKA_SNAPSHOT_STAY=1` を指定すると、終了せずにアプリを実行し続けます。macOS ではウィンドウサーバーが合成したウィンドウの画像（シートも含む）なので、マテリアルや Liquid Glass も画面どおりに写ります。ファイル名が `*.content.png` なら、タイトルバーを除いたコンテンツだけを書き出します。
 - `ASUKA_DUMP`：その PNG の隣にビューツリーを書き出します。各ビューの種類、フレーム、表示内容が含まれます。
-- `ASUKA_SCRIPT`：スナップショットの前に、`;` で区切った操作を順に実行します。使える操作は、`tap:<text>`（そのテキストを表示しているビュー。ボタンのタイトル、テキスト、タブ、サイドバーの行、セグメントなど）、`type:<text>`（フォーカスのある入力欄に入力）、`back`、`key:<shortcut>`（`ctrl+shift+k`）、`menu:<item>`（メニューバーの項目）、`escape`、`close`（使用中のウィンドウを閉じる）、`wait:<duration>`（`500ms`）、`waitfor:<file>`（そのファイルができるまで待つ。続けるタイミングをテストが知らせる）、`snap:<file>` です。ホストごとに追加の操作もいくつかあります。それぞれの自動化のコード（`platform/macos/Sources/AsukaHost/Automation.swift`、`platform/windows/src/automation.c`、`platform/linux/src/automation.c`）を参照してください。
+- `ASUKA_SCRIPT`：スナップショットの前に、`;` で区切った操作を順に実行します。使える操作は、`tap:<text>`（そのテキストを表示しているビュー。ボタンのタイトル、テキスト、タブ、サイドバーの行、セグメントなど）、`type:<text>`（フォーカスのある入力欄に入力）、`back`、`key:<shortcut>`（`ctrl+shift+k`）、`menu:<item>`（メニューバーの項目）、`escape`、`close`（使用中のウィンドウを閉じる）、`wait:<duration>`（`500ms`）、`waitfor:<file>`（そのファイルができるまで待つ。続けるタイミングをテストが知らせる）、`snap:<file>` です。
 
 ## よくある問題
 
-- **`cbuild: no C compiler`**：システムの C コンパイラー（Xcode のコマンドラインツール、`build-essential`、LLVM）をインストールするか、Zig をインストールして `ASUKA_CC=zig` を指定します。`building for the web needs Zig` と `cross-compiling for ... needs Zig` の場合は、[Zig](https://ziglang.org/download) をインストールしてください。Zig はコアを WebAssembly 向けや、ほかのシステム向けにビルドします。
+- **`cbuild: no C compiler`**：システムの C コンパイラー（Xcode のコマンドラインツール、`build-essential`、LLVM）をインストールするか、Zig をインストールして `ASUKA_CC=zig` を指定します。`building for the web needs Zig` と `cross-compiling for ... needs Zig` の場合は、[Zig](https://ziglang.org/download) をインストールしてください。Zig は Web 向けや、ほかのシステム向けにビルドします。
 - **`no iOS simulator SDK (install Xcode)`**：Xcode をインストールして一度起動し、Xcode の設定の「Components」で iOS シミュレーターのランタイムを追加します。`no iPhone simulator; add one in Xcode` や `no simulator "..."` は、その名前のシミュレーターがないという意味です。シミュレーターの一覧は `xcrun simctl list devices` で確認できます。
 - **iPhone の準備ができていない**：`... isn't paired with this Mac`（ケーブルで接続し、ロックを解除して「信頼」をタップ）、`... isn't reachable`（ケーブルで接続するか、Mac と同じ Wi-Fi でスリープを解除）、`... has Developer Mode off`（「設定」›「プライバシーとセキュリティ」›「デベロッパモード」）、`... is locked`（ロックを解除）。接続しているのに `no iPhone or iPad is connected` と表示される場合は、`xcrun devicectl list devices` に表示されるか確かめてください。
 - **`Xcode couldn't make the development profiles`**：チームの Apple ID で Xcode にサインインするか（Xcode ›「設定」›「アカウント」）、App Store Connect API キーを設定してください。ほかのチームが持っている bundle ID なら、`asuka.toml` で別の `id` にする必要があります。`the keychain has Apple Development certificates of N teams` の場合は、`--team` でチームを選んでください。
@@ -151,38 +141,6 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 - **Linux での `... isn't installed`**：ホストには GTK 4.14 以降と libadwaita 1.5 以降が必要です。また、パッケージによっては独自のライブラリが必要です。`WebView` には WebKitGTK 6.0、動画とオーディオには GStreamer、セキュアストレージには libsecret が必要です。足りないライブラリはエラーメッセージに示されるので、ディストリビューションのパッケージマネージャーでインストールしてください。
 - **Linux のアプリが開かない**：アプリにはディスプレイが必要です。SSH 経由や CI では Xvfb（`xvfb-run -a`）の下で実行し、D-Bus を使う機能のためにセッションバス（`dbus-run-session`）も用意してください。
 - **最初からやり直す**：Asuka のビルド、キャッシュ、アプリの開発用データは、Asuka のキャッシュディレクトリにあります。場所は Mac では `~/Library/Caches/asuka`、Linux では `~/.cache/asuka`、Windows では `%LocalAppData%\asuka` です。このディレクトリを削除すると、データのない状態から、すべてをビルドし直せます。
-
-## テスト
-
-デバイスやディスプレイを使わずに、`asuka test` でアプリの UI をテストする方法は[テスト](testing.md)を参照してください。Asuka 自体のリポジトリでは、コアと CLI をテストし、各ホストをプラットフォームの実際のビューを使ってテストしています。
-
-```sh
-go test ./core                                     # コアの C のテスト（ASan、UBSan）と VM のテスト
-go test ./internal/appbuild ./cmd/asuka            # ビルドと開発ループ。このコンピューターで使えるすべてのプラットフォームで
-go test ./platform/macos/mactest                   # macOS：Mac のプレイヤーでアプリを動かし、実際の AppKit のビューを確かめる
-go test ./platform/windows                         # Windows：Zig でビルドしたアプリを実際のウィンドウで動かす（Windows 上か VM で）
-xvfb-run -a dbus-run-session go test ./platform/linux  # Linux：実際の GTK ウィンドウでアプリを操作
-swift test --package-path platform/ios             # Swift ホストのデコーダー
-swift test --package-path platform/macos           # Mac のホストの Swift とそのデコーダー
-node --test platform/web                           # Web ホストのデコーダー
-```
-
-`go test ./cmd/asuka` は、できる範囲で開発ループをエンドツーエンドで実行します。この Mac 上（開発用アプリ、モジュール、タップ、カウントを保った次のモジュール）、ヘッドレス Chrome、起動中の iOS シミュレーター、実行中の Android エミュレーターで動かし、さらに各プラットフォーム向けにアプリをビルドします。このコンピューターでビルドや実行ができないものはスキップします。
-
-`go test ./platform/macos/mactest -run Conformance` は、あるスタイルに対してホストが描画するもの（辺、角、枠線、影、グラデーション）を、ウィンドウのキャプチャー上で計測して確かめます。e2e テストは、シミュレーター、エミュレーター、ヘッドレス Chrome で同じことを行います（`go test -tags e2e ./e2e -run Conformance`）。Windows では、`go test ./platform/windows -run Drawing` が、画像、図形、キャンバス、シェーダー、角丸のクリップ、マテリアルを、ウィンドウのキャプチャーのピクセルで確かめます。
-
-`go test ./platform/windows` は、各テストのアプリを Windows で実行します。PC 上で実行するか、Mac からは `ASUKA_WINDOWS_VM` で指定した swiftvm の VM（既定は `Windows Fresh`）で実行します。この VM からは `~/Library/Caches/asuka/windows-vm` が `Z:\windows-vm` として見えます。どちらもない場合、これらのテストはスキップされます。
-
-## ベンチマーク
-
-`bench/` では、Asuka を SwiftUI や Jetpack Compose と比較します。同じアプリをそれぞれで書き、リリースビルドでフレームごとに時間を計測します。
-
-```sh
-go run ./bench/run -ios        # シミュレーターで asuka と SwiftUI を比較
-go run ./bench/run -android    # 起動中のエミュレーターまたはデバイスで asuka と Compose を比較
-```
-
-`-runs` で、それぞれの実行回数を指定します（デフォルトは 5 回）。中央値は `bench/results` に保存されます。シナリオ、計測方法、最新の結果は [`bench/README.md`](../../bench/README.md) にまとめています。
 
 ## asuka.toml
 

@@ -1,6 +1,6 @@
 # 开发
 
-`asuka dev` 会运行你的应用，并在你保存时重新加载。它可以运行在 iOS 模拟器或 iPhone、Android 模拟器或手机、你的 Mac、PC 或 Linux 电脑上，也可以运行在浏览器里。本页介绍它在各个平台上是怎么做到的、重载时会保留什么，以及设备、资源和日志、编辑器、你可能遇到的问题，还有 Asuka 自己的测试和基准测试。
+`asuka dev` 会运行你的应用，并在你保存时重新加载。它可以运行在 iOS 模拟器或 iPhone、Android 模拟器或手机、你的 Mac、PC 或 Linux 电脑上，也可以运行在浏览器里。本页介绍它运行的开发 App、重载时会保留什么，以及设备、资源和日志、编辑器和你可能遇到的问题。如果想在没有设备或显示器的情况下测试应用界面，请看[测试](testing.md)。
 
 ## asuka dev
 
@@ -28,26 +28,16 @@ asuka dev --platform web [flags] [dir]       # 浏览器
 
 在浏览器中还有 `--port`、`--lan`（向局域网提供服务，供手机浏览器访问）和 `--no-open`，详见 [Web](web.md#asuka-dev---platform-web)。
 
-## 工作原理：开发 App
+## 开发 App
 
-应用运行在 Asuka 的核心上，核心是一个 C 库。发布构建会把应用编译成 C，和核心构建在一起；开发时，核心则在它的虚拟机上运行应用的**字节码**，并且可以在应用运行期间换成下一次构建的字节码。
-
-`asuka dev` 会为平台构建一次**开发 App**：它是应用的外壳（名称、ID、图标、`Info.plist` 或清单文件、原生包的代码），里面有核心，但没有应用本身。Asuka 安装并启动它，开发 App 再回连 `asuka dev`，由后者编译应用并把模块发送给它。每次保存，`asuka dev` 都会重新编译（只需几毫秒）并发送新模块；开发 App 原地加载它，保留应用的状态，并报告重载的结果：
+开发时，应用运行在一个**开发 App** 里。它是应用的外壳（名称、ID、图标、`Info.plist` 或清单文件、原生包的代码），`asuka dev` 会为平台构建一次，然后安装并启动它。之后 `asuka dev` 把你的应用发送给它；每次保存都会重新编译（只需几毫秒）并发送新版本，开发 App 原地加载它，保留应用的状态，并报告重载的结果：
 
 ```
 asuka: compiled in 3.1 ms
 asuka: reloaded in 2.2 ms, 4 states kept
 ```
 
-如果保存的代码无法编译，会以 `file:line:col: message` 的形式打印错误，开发 App 继续运行原来的模块；下一次能够编译的保存会从那里接着来。应用其余部分的改动（`asuka.toml`、资源、原生包的 Swift、Kotlin 或 JavaScript 代码）会让开发 App 重新构建，有变化时重新安装，然后再次启动。
-
-各平台的开发 App 分别是：
-
-- **macOS**：和核心（以及应用的原生包的 Swift）链接在一起的 Swift 宿主，是一个和发布版本一样的 `.app`，位于 Asuka 缓存中该应用的目录里。启动时，它的环境变量中带有 `ASUKA_DEV=host:port`。
-- **Windows、Linux**：一个程序，即链接了核心、不含应用的 C 宿主（Windows 上基于 Win32；Linux 上基于 GTK 4 和 libadwaita），位于 Asuka 缓存中该应用的目录里（在 Windows 上是控制台程序）。启动时，它的环境变量中带有 `ASUKA_DEV=host:port`。
-- **iOS**：Swift 宿主与核心（`libasuka.a`）链接进应用的 `.app`，宿主中每个需要链接独立框架（WebKit、AVKit 等）的部分都包含在内，因此你在编辑时，应用可以随时用上其中任何一个。在模拟器上，用 `xcrun simctl` 安装并启动它，环境变量中带有 `ASUKA_DEV`；在 iPhone 上，则用开发证书签名，并用 `xcrun devicectl` 安装。
-- **Android**：调试版的外壳应用（Gradle 构建一次，清单文件、Kotlin 代码或资源变化时再重新构建），核心被推送到它的私有文件目录（`files/asuka/libasuka.so`），调试版应用从那里加载核心；`files/asuka/dev` 记录了 `asuka dev` 的地址，`adb reverse` 让它成为设备自己的回环地址。
-- **Web**：页面从开发服务器加载 WebAssembly 形式的核心（`asuka.wasm`）和应用的模块，并在每个新模块构建好时加载它。
+如果保存的代码无法编译，会以 `file:line:col: message` 的形式打印错误，开发 App 继续运行原来的版本；下一次能够编译的保存会从那里接着来。应用其余部分的改动（`asuka.toml`、资源、原生包的 Swift、Kotlin 或 JavaScript 代码）会让开发 App 重新构建，有变化时重新安装，然后再次启动。
 
 ## 在桌面端
 
@@ -57,9 +47,9 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 **macOS。** 开发 App 是 Asuka 缓存中的一个 `.app`，和发布版本的一样：有 `Info.plist`（其中的名称、bundle ID、URL scheme、权限用途说明和语言都来自 `asuka.toml`）和图标，并使用临时签名（ad hoc）。因此在系统看来，它就是这个应用本身，和从访达打开时一样：程序坞（Dock）显示的是它的名称和图标，通知归它自己所有，隐私权限提示（相机、定位、通讯录）也是以它的名义、带着它的用途说明弹出的，而不是以终端的名义。需要描述文件（provisioning profile）授权的包（推送、通过 Apple 登录、App Attest）只能在用描述文件签名的发布构建中使用，参见 [发布](shipping.md#macos)。
 
-**Windows。** `asuka dev` 只能在 Windows 本机上运行；`asuka build --platform windows` 则可以在任何系统上构建（借助 Zig），生成一个包含应用的 `.exe`。开发 App 是一个控制台程序，所以输出会打印到终端；发布版本没有控制台。要停止它，Asuka 会关闭它的标准输入（Windows 无法向进程发送 Ctrl-C）。
+**Windows。** `asuka dev` 只能在 Windows 本机上运行；`asuka build --platform windows` 则可以在任何系统上构建（借助 Zig），生成一个包含应用的 `.exe`。开发 App 是一个控制台程序，所以输出会打印到终端；发布版本没有控制台。
 
-**Linux。** 在 Linux 上，`asuka dev` 基于 GTK 4 和 libadwaita 运行开发 App，因此需要先安装它们（参见 [快速上手](getting-started.md#准备工作)），它运行在你会话的显示服务器上，Wayland 或 X11 都可以。在 Mac 或 PC 上，`asuka dev --platform linux` 只有在 `ASUKA_LINUX_RUN` 指定了一条命令时才能运行：这条命令要能在一台带显示器、并且能以相同路径访问本机文件的 Linux 机器上运行程序。这通常是一台虚拟机，例如 `ASUKA_LINUX_RUN="orb -m ubuntu"`（OrbStack）或 `ASUKA_LINUX_RUN="limactl shell default"`（Lima）。Asuka 会针对那台机器的架构构建开发 App（核心用 Zig 构建），开发 App 通过网络连接 `asuka dev`：地址是这台电脑的第一个地址，或者 `ASUKA_DEV_HOST` 指定的地址。
+**Linux。** 在 Linux 上，`asuka dev` 基于 GTK 4 和 libadwaita 运行开发 App，因此需要先安装它们（参见 [快速上手](getting-started.md#准备工作)），它运行在你会话的显示服务器上，Wayland 或 X11 都可以。在 Mac 或 PC 上，`asuka dev --platform linux` 只有在 `ASUKA_LINUX_RUN` 指定了一条命令时才能运行：这条命令要能在一台带显示器、并且能以相同路径访问本机文件的 Linux 机器上运行程序。这通常是一台虚拟机，例如 `ASUKA_LINUX_RUN="orb -m ubuntu"`（OrbStack）或 `ASUKA_LINUX_RUN="limactl shell default"`（Lima）。Asuka 会针对那台机器的架构构建开发 App，这需要 Zig；开发 App 通过网络连接 `asuka dev`：地址是这台电脑的第一个地址，或者 `ASUKA_DEV_HOST` 指定的地址。
 
 ## 重载时会保留什么
 
@@ -75,9 +65,9 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 ## 重载
 
-Asuka 会监听应用所在的目录及其本地依赖（`asuka.toml` 中的 `file:`）的目录，依靠系统的文件变化通知（FSEvents、inotify、ReadDirectoryChangesW；不支持时改用轮询）：
+Asuka 会监听应用所在的目录及其本地依赖（`asuka.toml` 中的 `file:`）的目录：
 
-- `.asuka` 文件：编译后发送给开发 App；
+- `.asuka` 文件：编译后原地重载；
 - `asuka.toml` 和 `asuka.lock`、`assets/` 下的文件、语言目录（catalog）、原生包的 Swift、Kotlin 和 JavaScript 代码、`Info.plist` 和授权文件（entitlements）：重新构建并启动开发 App（应用从零开始）。
 
 以 `.` 开头的目录以及 `testdata`、`build`、`dist` 和 `node_modules` 会被跳过。
@@ -86,24 +76,24 @@ Asuka 会监听应用所在的目录及其本地依赖（`asuka.toml` 中的 `fi
 
 **你的电脑**：在 Mac、PC 或 Linux 上直接运行 `asuka dev` 即可。
 
-**iOS 模拟器**与 Mac 共享网络，所以开发 App 可以通过回环地址连接到 `asuka dev`。
+**iOS 模拟器**不需要额外设置：它和 Mac 共享网络。
 
-**Android 模拟器或手机**：`adb reverse` 会把 `asuka dev` 监听的端口转发到设备自己的回环地址上，模拟器和通过 USB 连接的手机都是如此。对于手机，在开发者选项中打开 USB 调试，连上电脑并同意弹出的授权提示，然后确认 `adb devices` 能列出它。`asuka dev --platform android` 使用 adb 列出的第一台设备，不论是手机还是模拟器；连接了多台设备时，用 `--device` 加序列号指定。
+**Android 模拟器或手机**：`asuka dev` 通过 adb 连接模拟器或通过 USB 连接的手机。对于手机，在开发者选项中打开 USB 调试，连上电脑并同意弹出的授权提示，然后确认 `adb devices` 能列出它。`asuka dev --platform android` 使用 adb 列出的第一台设备，不论是手机还是模拟器；连接了多台设备时，用 `--device` 加序列号指定。
 
 **iPhone**（或 iPad），需要 Xcode 15 或更新版本：把它连上 Mac，解锁后点“信任”；再在它的“设置 › 隐私与安全性”中打开“开发者模式”（手机连接过 Xcode 之后才会出现这个选项，打开后手机会重启）。之后运行 `asuka dev --platform ios --device iphone` 就会在它上面运行；连着多台设备时，用 `--device` 加上设备名称或 UDID 指定（`xcrun devicectl list devices` 可以列出它们）。
 
-- **签名**：开发 App 由你的团队用开发证书签名。团队依次取自 `--team`、`ASUKA_TEAM_ID`、`asuka.toml` 的 `ios.team`，都没有的话就用钥匙串里 Apple Development 证书所属的团队。第一次运行时，Asuka 会让 Xcode 生成所需的开发描述文件（`xcodebuild -allowProvisioningUpdates`），顺带把这台手机注册到团队，并打开应用用到的功能（推送、App Groups 等）。这一步使用 Xcode “设置 › 账户”中登录的 Apple ID；如果设置了 `ASUKA_ASC_KEY_ID`（或 `ios.appStoreConnect`），则改用 [App Store Connect API 密钥](shipping.md)。团队已有的描述文件如果合适（包括通配符描述文件），就直接使用。
-- **连接到 Mac**：插着数据线时，Mac 会经数据线主动连接开发 App（和 Xcode 一样通过 usbmuxd），手机不需要连接任何网络。没有数据线时，开发 App 通过网络连接 `asuka dev`，依次尝试 Mac 的各个地址（或 `ASUKA_DEV_HOST` 指定的地址），端口在空闲时为 8791；iOS 会询问一次是否允许这个应用查找本地网络中的设备，请选择允许，之后也可以在手机的“设置 › App › 本地网络”中打开。无论哪种方式，`asuka dev` 重新启动后开发 App 都会自己重新连上，从主屏幕再次打开的开发 App 也能找到它。如果开发 App 一直没有连上，Asuka 会告诉你该检查什么。
+- **签名**：开发 App 由你的团队用开发证书签名。团队依次取自 `--team`、`ASUKA_TEAM_ID`、`asuka.toml` 的 `ios.team`，都没有的话就用钥匙串里 Apple Development 证书所属的团队。第一次运行时，Asuka 会让 Xcode 生成所需的开发描述文件，顺带把这台手机注册到团队，并打开应用用到的功能（推送、App Groups 等）。这一步使用 Xcode “设置 › 账户”中登录的 Apple ID；如果设置了 `ASUKA_ASC_KEY_ID`（或 `ios.appStoreConnect`），则改用 [App Store Connect API 密钥](shipping.md)。团队已有的描述文件如果合适（包括通配符描述文件），就直接使用。
+- **连接到 Mac**：插着数据线时，Mac 会像 Xcode 一样经数据线连接开发 App，手机不需要连接任何网络。没有数据线时，开发 App 通过网络连接 `asuka dev`，依次尝试 Mac 的各个地址（或 `ASUKA_DEV_HOST` 指定的地址），端口在空闲时为 8791；iOS 会询问一次是否允许这个应用查找本地网络中的设备，请选择允许，之后也可以在手机的“设置 › App › 本地网络”中打开。无论哪种方式，`asuka dev` 重新启动后开发 App 都会自己重新连上，从主屏幕再次打开的开发 App 也能找到它。如果开发 App 一直没有连上，Asuka 会告诉你该检查什么。
 
 **手机浏览器**：`asuka dev --platform web --lan` 会向局域网提供应用，并打印可以打开的地址。
 
 ## 资源
 
-在桌面端，开发 App 直接从原位置读取 `assets/`。在手机上，资源放在开发 App 里：iOS 上复制进 `.app`，Android 上推送到应用的私有文件目录，都只在资源有变化时进行。在浏览器中，则由开发服务器提供这些资源。修改资源会让开发 App 重新构建并启动。
+在桌面端，开发 App 直接从原位置读取 `assets/`。在手机上，资源有变化时会被复制进开发 App。在浏览器中，则由开发服务器提供这些资源。修改资源会让开发 App 重新构建并启动。
 
 ## 日志
 
-开发 App 会把它的输出和错误发送给 `asuka dev`，由后者打印到终端：在每个平台上都包括 `print`、未捕获的错误，以及核心和宿主写出的内容。开发 App 无法加载某个模块时，会说明原因（`asuka: the player: ...`）。在浏览器中，页面的错误也会打印到终端。
+开发 App 会把它的输出和错误发送给 `asuka dev`，由后者打印到终端：在每个平台上都包括 `print`、未捕获的错误，以及 Asuka 自己的警告和错误。开发 App 无法加载某个模块时，会说明原因（`asuka: the player: ...`）。在浏览器中，页面的错误也会打印到终端。
 
 ## 编辑器
 
@@ -122,7 +112,7 @@ code --install-extension asuka-0.1.0.vsix
 
 ## 快照与脚本
 
-桌面宿主支持几个环境变量，可以让应用显示某个状态并截取下来，方便你肉眼检查改动或在 CI 中使用。用这些变量运行发布构建的可执行文件，或者运行 `asuka dev`（它会把自己的环境变量传给开发 App）：
+桌面应用支持几个环境变量，可以让应用显示某个状态并截取下来，方便你肉眼检查改动或在 CI 中使用。用这些变量运行发布构建的可执行文件，或者运行 `asuka dev`（它会把自己的环境变量传给开发 App）：
 
 ```sh
 ASUKA_SNAPSHOT=shot.png ./MyApp.app/Contents/MacOS/MyApp            # 窗口显示后把它保存为 PNG，然后退出
@@ -132,11 +122,11 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 
 - `ASUKA_SNAPSHOT` 会在窗口显示后（以及脚本执行完后）把窗口保存为 PNG，然后退出；设置 `ASUKA_SNAPSHOT_STAY=1` 可以让应用继续运行。在 macOS 上，截图取自窗口服务器合成的窗口图像（连同其上的弹出面板），材质和 Liquid Glass 都和屏幕上一样；文件名为 `*.content.png` 时只保存内容，不含标题栏。
 - `ASUKA_DUMP` 会在截图旁边写出视图树：每个视图的类型、frame（位置和尺寸）以及显示的内容。
-- `ASUKA_SCRIPT` 会在截图前执行一系列以 `;` 分隔的步骤：`tap:<text>`（点按显示该文字的视图：按钮标题、文本、标签页、侧边栏的行、分段控件的段）、`type:<text>`（在获得焦点的输入框中输入）、`back`、`key:<shortcut>`（如 `ctrl+shift+k`）、`menu:<item>`（菜单栏中的菜单项）、`escape`、`close`（关闭当前窗口）、`wait:<duration>`（如 `500ms`）、`waitfor:<file>`（等到该文件出现：由测试决定何时继续）和 `snap:<file>`。每个宿主还支持另外几个步骤，参见各自的自动化代码（`platform/macos/Sources/AsukaHost/Automation.swift`、`platform/windows/src/automation.c`、`platform/linux/src/automation.c`）。
+- `ASUKA_SCRIPT` 会在截图前执行一系列以 `;` 分隔的步骤：`tap:<text>`（点按显示该文字的视图：按钮标题、文本、标签页、侧边栏的行、分段控件的段）、`type:<text>`（在获得焦点的输入框中输入）、`back`、`key:<shortcut>`（如 `ctrl+shift+k`）、`menu:<item>`（菜单栏中的菜单项）、`escape`、`close`（关闭当前窗口）、`wait:<duration>`（如 `500ms`）、`waitfor:<file>`（等到该文件出现：由测试决定何时继续）和 `snap:<file>`。
 
 ## 常见问题
 
-- **`cbuild: no C compiler`**：安装系统的 C 编译器（Xcode 命令行工具、`build-essential`、LLVM），或者安装 Zig 并设置 `ASUKA_CC=zig`。`building for the web needs Zig` 和 `cross-compiling for ... needs Zig`：安装 [Zig](https://ziglang.org/download)，它可以把核心构建成 WebAssembly，或者为其他系统构建。
+- **`cbuild: no C compiler`**：安装系统的 C 编译器（Xcode 命令行工具、`build-essential`、LLVM），或者安装 Zig 并设置 `ASUKA_CC=zig`。`building for the web needs Zig` 和 `cross-compiling for ... needs Zig`：安装 [Zig](https://ziglang.org/download)，它可以为 Web 和其他系统构建。
 - **`no iOS simulator SDK (install Xcode)`**：安装 Xcode，打开一次，然后在它的 Components 设置中添加 iOS 模拟器运行时。`no iPhone simulator; add one in Xcode` 和 `no simulator "..."` 表示没有该名称的模拟器：可以用 `xcrun simctl list devices` 列出所有模拟器。
 - **iPhone 没有准备好**：`... isn't paired with this Mac`（连上数据线，解锁后点“信任”）、`... isn't reachable`（连上数据线，或在 Mac 所在的 Wi-Fi 下唤醒它）、`... has Developer Mode off`（“设置 › 隐私与安全性 › 开发者模式”）、`... is locked`（解锁手机）。明明连着手机却提示 `no iPhone or iPad is connected` 时，检查 `xcrun devicectl list devices` 能否列出它。
 - **`Xcode couldn't make the development profiles`**：在 Xcode 中登录团队的 Apple ID（Xcode › 设置 › 账户），或者设置 App Store Connect API 密钥；如果 bundle ID 已经属于另一个团队，就需要在 `asuka.toml` 里换一个 `id`。`the keychain has Apple Development certificates of N teams`：用 `--team` 选一个团队。
@@ -151,38 +141,6 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 - **Linux 上提示 `... isn't installed`**：宿主需要 GTK 4.14 和 libadwaita 1.5 或更高版本，某些包还需要各自的库：`WebView` 需要 WebKitGTK 6.0，视频和音频需要 GStreamer，安全存储需要 libsecret。错误信息会指出缺少的是哪个，用发行版的包管理器安装即可。
 - **Linux 应用打不开**：它需要一个显示服务器。通过 SSH 或在 CI 中运行时，请在 Xvfb 下运行（`xvfb-run -a`），对于需要 D-Bus 的功能，还要加上会话总线（`dbus-run-session`）。
 - **从头开始**：Asuka 的构建产物、缓存以及各应用的开发数据都存放在 Asuka 的缓存目录中：Mac 上是 `~/Library/Caches/asuka`，Linux 上是 `~/.cache/asuka`，Windows 上是 `%LocalAppData%\asuka`。删除它就能在没有任何数据的情况下全部重新构建。
-
-## 测试
-
-如果要用 `asuka test` 测试你的应用界面，不需要设备或显示器，请看[测试](testing.md)。Asuka 自己的仓库会测试核心、CLI，并通过各平台的真实视图测试每个宿主。
-
-```sh
-go test ./core                                     # 核心的 C 测试（ASan、UBSan）和虚拟机的测试
-go test ./internal/appbuild ./cmd/asuka            # 构建和开发循环，覆盖这台电脑能跑的所有平台
-go test ./platform/macos/mactest                   # macOS：在 Mac 播放器上运行应用，检查真实的 AppKit 视图
-go test ./platform/windows                         # Windows：用 Zig 构建应用，在真实的窗口中驱动（在 Windows 上，或在虚拟机里）
-xvfb-run -a dbus-run-session go test ./platform/linux  # Linux：在真实的 GTK 窗口里驱动应用
-swift test --package-path platform/ios             # Swift 宿主的解码器
-swift test --package-path platform/macos           # Mac 宿主的 Swift 和它的解码器
-node --test platform/web                           # Web 宿主的解码器
-```
-
-`go test ./cmd/asuka` 会尽可能端到端地运行开发循环：在这台 Mac 上（开发 App、一个模块、一次点按、保留着计数的下一个模块）、在无头 Chrome 中、在已启动的 iOS 模拟器上，以及在正在运行的 Android 模拟器上；它还会为每个平台构建应用。这台电脑无法构建或运行的部分会被跳过。
-
-`go test ./platform/macos/mactest -run Conformance` 会在窗口截图中测量宿主为某个样式绘制的效果（边缘、圆角、边框、阴影、渐变），检查是否正确；e2e 测试在 iOS 模拟器、Android 模拟器和无头 Chrome 上做同样的检查（`go test -tags e2e ./e2e -run Conformance`）。在 Windows 上，`go test ./platform/windows -run Drawing` 会在窗口截图中逐像素检查图片、形状、画布、着色器、圆角裁剪和材质。
-
-`go test ./platform/windows` 会在 Windows 中运行每个测试的应用：可以在 PC 上运行，也可以在 Mac 上借助 `ASUKA_WINDOWS_VM` 指定的 swiftvm 虚拟机（默认是 `Windows Fresh`）运行，虚拟机把 `~/Library/Caches/asuka/windows-vm` 看作 `Z:\windows-vm`；两者都没有时，这些测试会跳过。
-
-## 基准测试
-
-`bench/` 把 Asuka 与 SwiftUI 和 Jetpack Compose 进行对比：用每种框架编写同一个应用，在发布构建中逐帧计时。
-
-```sh
-go run ./bench/run -ios        # 在 iOS 模拟器上运行 asuka 和 SwiftUI
-go run ./bench/run -android    # 在正在运行的 Android 模拟器或设备上运行 asuka 和 Compose
-```
-
-`-runs` 设置每种实现运行的次数（默认 5 次），中位数结果写入 `bench/results`。[`bench/README.md`](../../bench/README.md) 介绍了测试场景、测量方法和最新结果。
 
 ## asuka.toml
 

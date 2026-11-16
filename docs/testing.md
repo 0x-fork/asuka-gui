@@ -130,10 +130,8 @@ test "archiving removes the row" {
 ## Testing on the platforms
 
 `asuka test` tests your app's behavior: what shows, and what happens
-when the user acts. How each platform draws it is the platform's, and
-Asuka's own tests check that each host draws what the core sends (see
-[Development](development.md#tests)). To see your app on the
-platforms:
+when the user acts. How each platform draws it is the platform's. To
+see your app on the platforms:
 
 - `asuka dev --platform ios|android|web` runs it on the simulator, an
   emulator or a phone, or in a browser, and reloads it as you save.

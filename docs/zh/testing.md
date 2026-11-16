@@ -97,7 +97,7 @@ test "archiving removes the row" {
 
 ## 在各平台上测试
 
-`asuka test` 测试的是应用的行为：显示什么，以及用户操作时会发生什么。每个平台如何绘制它，是平台自己的事；Asuka 自己的测试会检查每个宿主是否绘制出了核心发送的内容（参见[开发](development.md#测试)）。要在各平台上查看你的应用：
+`asuka test` 测试的是应用的行为：显示什么，以及用户操作时会发生什么。每个平台如何绘制它，是平台自己的事。要在各平台上查看你的应用：
 
 - `asuka dev --platform ios|android|web` 会在 iOS 模拟器、Android 模拟器、手机或浏览器中运行应用，并在保存时重新加载。
 - 在桌面端，`ASUKA_SNAPSHOT=out.png` 会在窗口显示后把它保存为 PNG，不抢占焦点，然后退出（`ASUKA_DUMP=1` 还会在旁边写出视图树）。`ASUKA_SCRIPT` 会先执行一些步骤（`tap:Add`、`type:hello`）：参见[开发](development.md#快照与脚本)。
