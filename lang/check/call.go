@@ -1060,6 +1060,16 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 			if ft.Result == NoneType {
 				ft.Result = Invalid
 			}
+			// A return in the body (x => x ?? return 0) gives a value
+			// too.
+			for _, r := range ctx.retTypes {
+				if j := c.join(ft.Result, r); j != nil {
+					ft.Result = j
+				} else {
+					c.errorf(body, "this closure's value is a %s, and it returns a %s: make them the same type", typeString(ft.Result), typeString(r))
+					break
+				}
+			}
 		} else if ctx.Result == Void {
 			c.expr(body, nil)
 		} else {

@@ -32,9 +32,10 @@ type Checker struct {
 	// While checking a body.
 	ctx       *FuncCtx
 	scope     *Scope
-	inTry     int // inside try's operand
-	inAwait   int // inside await's operand
-	handled   int // inside a do block with a catch-all
+	inTry     int           // inside try's operand
+	inAwait   int           // inside await's operand
+	handled   int           // inside a do block with a catch-all
+	partial   *partialCatch // inside a do or a catch that doesn't take every error
 	loops     int
 	curGlobal *Global
 	resolving map[any]bool
@@ -408,6 +409,7 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 		p.Globals = append(p.Globals, g)
 		declare(d.Name, g)
 	case *syntax.LetDecl:
+		c.noLetElse(d)
 		bp, ok := d.Pattern.(*syntax.BindPat)
 		if !ok {
 			c.errorf(d.Pattern, "a let at the top of a file names one value: let name = …")

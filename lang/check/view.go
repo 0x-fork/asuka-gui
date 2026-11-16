@@ -85,6 +85,7 @@ func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *
 			}
 			add(d.Name, m)
 		case *syntax.LetDecl:
+			c.noLetElse(d)
 			bp, ok := d.Pattern.(*syntax.BindPat)
 			if !ok {
 				c.errorf(d.Pattern, "a component's let names one value: let name = …")
@@ -282,7 +283,9 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 	case *syntax.IfStmt:
 		saved := c.ctx
 		c.openScope()
-		if l, ok := s.Cond.(*syntax.LetCond); ok {
+		if ViewCondChain(s.Cond) {
+			c.viewCondChain(s)
+		} else if l, ok := s.Cond.(*syntax.LetCond); ok {
 			c.enter(CtxBinding, s.Cond, "condition")
 			lt := c.expr(l.Value, nil)
 			c.leave(saved)
@@ -964,4 +967,74 @@ func (c *Checker) rootComponent(t *TypeName) *TypeName {
 		return tn
 	}
 	return nil
+}
+
+// ViewCondChain reports a view's if condition that's checked as a
+// chain: clauses (if let a = x, a > 0), or one let with a pattern other
+// than a name (if let .ready(v) = state).
+func ViewCondChain(cond syntax.Expr) bool {
+	switch x := cond.(type) {
+	case *syntax.CondList:
+		return true
+	case *syntax.LetCond:
+		_, name := x.Pattern.(*syntax.BindPat)
+		return !name
+	}
+	return false
+}
+
+// A ViewCond is a view's if with a chain for its condition: the chain
+// runs as one binding (a memo of what it binds, none when a clause
+// fails), with its names as locals (Chain); the then block's names are
+// memos of the chain's values (Then, in the same order).
+type ViewCond struct {
+	Chain, Then []*Var
+}
+
+// viewCondChain checks a view's if whose condition is a chain, entering
+// the then block's builder.
+func (c *Checker) viewCondChain(s *syntax.IfStmt) {
+	saved := c.ctx
+	c.enter(CtxBinding, s.Cond, "condition")
+	c.openScope()
+	vc := &ViewCond{}
+	// The chain's names are its closure's locals.
+	savedView := c.view
+	c.view = false
+	c.cond(s.Cond)
+	c.view = savedView
+	vc.Chain = CondVars(c.info, s.Cond)
+	c.closeScope()
+	c.leave(saved)
+	c.enter(CtxBuilder, s.Then, "then")
+	for _, v := range vc.Chain {
+		m := &Var{object: v.object, Type: v.Type, Kind: ViewMemo, Ctx: c.ctx}
+		c.scope.Insert(m)
+		vc.Then = append(vc.Then, m)
+	}
+	c.info.ViewConds[s] = vc
+}
+
+// CondVars are the names a condition's lets bind, in order.
+func CondVars(info *Info, cond syntax.Expr) []*Var {
+	var vs []*Var
+	clauses := []syntax.Expr{cond}
+	if l, ok := cond.(*syntax.CondList); ok {
+		clauses = l.List
+	}
+	for _, x := range clauses {
+		lc, ok := x.(*syntax.LetCond)
+		if !ok {
+			continue
+		}
+		syntax.Inspect(lc.Pattern, func(n syntax.Node) bool {
+			if bp, ok := n.(*syntax.BindPat); ok {
+				if v, ok := info.Defs[bp.Name].(*Var); ok && v.Name() != "_" {
+					vs = append(vs, v)
+				}
+			}
+			return true
+		})
+	}
+	return vs
 }
