@@ -20,31 +20,32 @@ app can offer it only where it works.
 
 ## How a desktop app is made
 
-On Windows an app is one executable: Asuka's Windows host (C, on Win32
-and its common controls), the core (`core/include/asuka.h`'s C) and the
-app compiled to C, linked together, with the app's icon, manifest and
-version built in. On the Mac and Linux the executable is Asuka's
-desktop host (`cmd/asuka-host`), the same for every app: AppKit on the
-Mac, GTK 4 and libadwaita on Linux, in Go, calling the platform without
-cgo; beside it is the core with the app compiled into it, which the
-host loads and drives through its C ABI. Every desktop app carries its
-settings from `asuka.toml` (`asuka-app.json`: its name, ID, version,
-accent, URL scheme, file types, updates):
+On Windows and Linux an app is one executable: Asuka's C host (on Win32
+and its common controls; on GTK 4 and libadwaita, which it opens as it
+starts), the core (`core/include/asuka.h`'s C) and the app compiled to
+C, linked together; on Windows with the app's icon, manifest and version
+built in. On the Mac the executable is Asuka's desktop host
+(`cmd/asuka-host`), the same for every app: AppKit, in Go, calling the
+platform without cgo; beside it is the core with the app compiled into
+it, which the host loads and drives through its C ABI. Every desktop app
+carries its settings from `asuka.toml` (`asuka-app.json`: its name, ID,
+version, accent, URL scheme, file types, updates):
 
 | | the core | the settings |
 |---|---|---|
 | macOS (`Name.app`) | `Contents/Frameworks/libasuka.dylib` | `Contents/Resources/asuka-app.json` |
 | Windows (a folder) | in `Name.exe` | `asuka-app.json`, beside it |
-| Linux (a prefix) | `lib/<exe>/libasuka.so` | `share/<exe>/asuka-app.json` |
+| Linux (a prefix) | in `bin/<exe>` | `share/<exe>/asuka-app.json` |
 
-`asuka build` compiles the core, and on Windows the host and the app,
-with the target's C compiler (Zig's to cross-compile: a Windows build
-comes from any system). On the Mac and Linux it takes the host from the
-CLI's release (fetched once, checked by its hash) or, run from a
-checkout of Asuka, builds it with `go build`. `asuka dev` runs the same
-host with a core that has no app in it (on Windows, one console
-program), which loads the app's bytecode from `asuka dev` and each
-save's after it (see [Development](development.md#on-the-desktop)).
+`asuka build` compiles the core, and on Windows and Linux the host and
+the app, with the target's C compiler (Zig's to cross-compile: a Windows
+or Linux build comes from any system, with no GTK installed to build
+against). On the Mac it takes the host from the CLI's release (fetched
+once, checked by its hash) or, run from a checkout of Asuka, builds it
+with `go build`. `asuka dev` runs the same host with a core that has no
+app in it (on Windows and Linux, one program), which loads the app's
+bytecode from `asuka dev` and each save's after it (see
+[Development](development.md#on-the-desktop)).
 
 ## Tray icons and the Dock menu
 

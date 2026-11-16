@@ -6,15 +6,14 @@ language** (docs/language.md; its compiler is Go, in `lang/`, run by the
 CLI) and run on a **core in C** (`core/`: the VM, signals, the UI
 runtime, layout, ops). **Mobile first: iOS and Android.** Desktop and
 the web run on the same core: the Windows host (`platform/windows`, C on
-Win32, the core and the app linked into one .exe), the macOS host
-(`host/darwin`, AppKit through purego, `internal/darwin`) and the Linux
-host (`host/linux`, GTK 4 and libadwaita through purego,
-`internal/gtk`), Go driving the C core through its ABI (`host/bridge`),
-and the web (`platform/web`, the DOM from JavaScript, the core as
-WebAssembly). The Windows and Linux hosts share C in
-`platform/desktop`. The Go desktop hosts are being replaced (RFC 0008):
-the macOS host in Swift on AppKit (`platform/macos`), the Linux host in
-C (`platform/linux`). **Read [DESIGN.md](DESIGN.md),
+Win32) and the Linux host (`platform/linux`, C on GTK 4 and libadwaita,
+opened with dlopen), each linked with the core and the app into one
+executable and sharing C in `platform/desktop`, the macOS host
+(`host/darwin`, AppKit through purego, `internal/darwin`, Go driving the
+C core through its ABI, `host/bridge`), and the web (`platform/web`, the
+DOM from JavaScript, the core as WebAssembly). The Go macOS host is
+being replaced (RFC 0008) by one in Swift on AppKit (`platform/macos`).
+**Read [DESIGN.md](DESIGN.md),
 [RFC 0007](rfcs/0007-c-core-and-asuka-language.md) and [RFC
 0008](rfcs/0008-no-go-at-run-time-and-c-ffi.md) before changing code**;
 DESIGN.md is the source of truth for the architecture, the RFCs for the
@@ -27,7 +26,7 @@ Work milestone by milestone, in order.
   the CLI's, the compiler's, the generators' and the tests' language.
   New run-time code is C (the core, the Windows and Linux hosts, a
   package's Windows and Linux code), Swift (Apple platforms), Kotlin
-  (Android) or JavaScript (the web). Don't add to the Go desktop hosts
+  (Android) or JavaScript (the web). Don't add to the Go macOS host
   or package `native`: they're being replaced.
 - **No cgo, anywhere.** Go code (the CLI, the compiler, the desktop
   hosts) builds with `CGO_ENABLED=0`; it reaches C through purego and
@@ -111,10 +110,10 @@ go run ./cmd/asuka dev examples/counter            # Windows (on a PC, no --plat
 go run ./cmd/asuka build --platform windows examples/counter  # a folder: the .exe (icon, manifest, version) and its assets; from any system
 go test ./platform/windows                       # the Windows host (C), its apps built with Zig and driven in Windows (on Windows, or the swiftvm VM ASUKA_WINDOWS_VM names: "Windows Fresh")
 go test ./platform/desktop                       # the C the Windows and Linux hosts share, on this computer (ASan, UBSan)
-xvfb-run -a dbus-run-session go test ./host/linux  # the Linux host, driving real GTK windows (GTK 4.14, libadwaita 1.5)
+xvfb-run -a dbus-run-session go test ./platform/linux  # the Linux host: apps built and driven in real GTK windows (GTK 4.14, libadwaita 1.5)
 go run ./cmd/asuka dev examples/counter            # Linux (on Linux, no --platform: linux): the app and its GTK host in one process, rerun on save
 go run ./cmd/asuka build --platform linux examples/counter    # an install prefix, a .tar.gz and a Flatpak manifest; from any system
-go run host/linux/gen_symbols.go                 # the Linux host's fallback symbols, from the web host's
+go run platform/linux/gen_symbols.go             # the Linux host's fallback symbols, from the web host's
 go test -tags e2e ./e2e -run Linux               # GUI tests: the examples under Xvfb (Linux)
 $env:ASUKA_SNAPSHOT='c.png'; $env:ASUKA_DUMP='1'; $env:ASUKA_SCRIPT='tap:Add'; .\examples\counter\dist\Counter\Counter.exe  # Windows (PowerShell): steps, then the window as a PNG and its view tree
 go run ./cmd/asuka dev --platform web examples/counter       # the web: served to the browser, reloaded on save (--lan: to a phone)
@@ -146,9 +145,11 @@ go test ./platform/windows -run Updater           # likewise on Windows (a PC, o
   WebView2 and WinRT through COM vtables in C (`platform/windows/src`),
   no WinUI; the controls drawn as Fluent's in custom draw, so an app
   that sets no style looks like Windows 11. Linux host:
-  GTK 4 and libadwaita widgets from Go through `internal/gtk` (purego),
-  no cgo, no GtkBuilder or Blueprint; an app that sets no style looks
-  like a GNOME app. Web host:
+  GTK 4 and libadwaita widgets from C (platform/linux/src), their
+  functions declared once for the host and packages
+  (`platform/desktop/include/asuka_linux.def`) and resolved with dlsym,
+  so it builds from any system without GTK's headers; no GtkBuilder or
+  Blueprint; an app that sets no style looks like a GNOME app. Web host:
   the DOM from plain JavaScript modules in `platform/web/src` (no build
   step, no framework), the browser's own elements for controls and
   dialogs, driven by the core as WebAssembly (`src/core.js`): batches, measures and

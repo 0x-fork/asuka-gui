@@ -484,15 +484,15 @@ asuka build --platform linux                # this machine's architecture, else 
 asuka build --platform linux --arch arm64   # amd64 or arm64
 ```
 
-It builds from any system: the host calls GTK 4 and libadwaita without
-cgo, and the core is built by this machine's C compiler on Linux, by Zig
+It builds from any system: the host, in C, opens GTK 4 and libadwaita
+as it starts (no GTK installed to build against), and it's built with
+the core and the app by this machine's C compiler on Linux, by Zig
 elsewhere. In `dist/linux` it makes:
 
 - `<name>/`, a folder laid out as an install prefix, named after the
   app in lower case (`My Notes`: `my-notes`):
-  - `bin/my-notes`, the app: the desktop host;
-  - `lib/my-notes/libasuka.so`, the core with the app compiled in,
-    which the host finds from `bin/`;
+  - `bin/my-notes`, the app: the desktop host, the core and the app
+    compiled to C, one executable;
   - `share/my-notes/assets` and `share/my-notes/asuka-app.json`, its
     assets and settings, which it finds from `bin/` too;
   - `lib/my-notes/libasqlite.so`, SQLite's library, for an app that

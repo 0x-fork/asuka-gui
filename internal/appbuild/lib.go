@@ -135,3 +135,31 @@ func lipo(parts []string, out string) error {
 	}
 	return nil
 }
+
+// LinuxExe builds a Linux app's executable for t at out: the C host
+// (platform/linux, with platform/desktop's shared C), the native registry
+// and the C of the native packages in dirs (DesktopNatives), and the core,
+// linked into one executable, with m compiled to C (lang/cgen) for a
+// release, or with m nil asuka dev's player, which loads the bytecode
+// asuka dev sends (built for debugging, as Lib's player is).
+func LinuxExe(t cbuild.Target, m *bytecode.Module, dirs []string, out string) error {
+	host, err := linuxHost()
+	if err != nil {
+		return err
+	}
+	natives, err := DesktopNatives(t, dirs)
+	if err != nil {
+		return err
+	}
+	return DesktopExe(t, m, host, natives, out)
+}
+
+// linuxHost is the Linux host's C (cbuild.LinuxHost: the checkout's, or
+// the CLI's own copy).
+func linuxHost() (*DesktopC, error) {
+	srcs, flags, err := cbuild.LinuxHost()
+	if err != nil {
+		return nil, err
+	}
+	return &DesktopC{Sources: srcs, Flags: flags}, nil
+}

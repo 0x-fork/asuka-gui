@@ -214,11 +214,10 @@ asuka build --platform linux                # 当前机器的架构，否则为 
 asuka build --platform linux --arch arm64   # amd64 或 arm64
 ```
 
-Linux 构建可以在任何系统上完成，因为宿主无需 cgo 就能调用 GTK 4 和 libadwaita，而核心在 Linux 上由本机的 C 编译器构建，在其他系统上由 Zig 构建。它会在 `dist/linux` 中生成：
+Linux 构建可以在任何系统上完成：宿主用 C 编写，启动时才打开 GTK 4 和 libadwaita（构建时不需要安装 GTK），它和核心、应用一起在 Linux 上由本机的 C 编译器构建，在其他系统上由 Zig 构建。它会在 `dist/linux` 中生成：
 
 - `<name>/`：一个按安装前缀（install prefix）结构组织的文件夹，以应用名的小写形式命名（`My Notes` 会变成 `my-notes`），其中包括：
-  - `bin/my-notes`：应用本身，即桌面宿主；
-  - `lib/my-notes/libasuka.so`：编译进了应用的核心，宿主会以 `bin/` 为起点找到它；
+  - `bin/my-notes`：应用本身，即桌面宿主、核心和编译成 C 的应用链接成的一个可执行文件；
   - `share/my-notes/assets` 和 `share/my-notes/asuka-app.json`：应用的资源和设置，同样以 `bin/` 为起点找到；
   - `lib/my-notes/libasqlite.so`：SQLite 的库，仅限使用了 `asuka/sqlite` 的应用，同样以 `bin/` 为起点找到（要求 glibc 2.17 或更高版本；它不导出 SQLite 自身的任何符号，所以即使同一进程里还加载了系统的 SQLite，两者也不会冲突）；
   - `share/applications/<id>.desktop`：启动器显示和运行的入口；

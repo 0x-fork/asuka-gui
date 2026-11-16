@@ -38,7 +38,7 @@ static void answer(asuka_call *call, GError *e, bool no_app) {
 
 static void launched(GObject *src, GAsyncResult *res, gpointer call) {
 	GError *e = NULL;
-	bool ok = G(gtk_file_launcher_launch_finish)(src, res, &e);
+	bool ok = G(gtk_file_launcher_launch_finish)((GtkFileLauncher *)src, res, &e);
 	G(g_object_unref)(src);
 	if (ok || asuka_linux_cancelled(e)) {  // cancelled: the portal's app chooser closed
 		if (e) G(g_error_free)(e);

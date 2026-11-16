@@ -47,8 +47,8 @@ updates the platform's own views:
 | iOS | Swift, with the core built in | UIKit |
 | Android | Kotlin, with the core built in | Android Views and Material 3 |
 | macOS | Go, in the app's process (AppKit through purego) | AppKit |
-| Windows | Go, in the app's process (Win32 through `syscall`) | Win32 and the common controls, drawn as Windows 11's |
-| Linux | Go, in the app's process (GTK through purego) | GTK 4 and libadwaita |
+| Windows | C, with the core and the app built in | Win32 and the common controls, drawn as Windows 11's |
+| Linux | C, with the core and the app built in (GTK opened as it starts) | GTK 4 and libadwaita |
 | The web | JavaScript, with the core as WebAssembly | The page's DOM and the browser's own controls |
 
 A text field is a `UITextField`, an `EditText`, an `NSTextField`, an

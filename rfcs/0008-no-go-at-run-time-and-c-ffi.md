@@ -325,7 +325,22 @@ Each ends with its tests green.
     `asuka_dev_connect`;
   - `go test ./platform/windows`: apps built and driven in Windows (on
     Windows, or a VM); host/windows and internal/windows removed.
-- [ ] **H3** The Linux host in C, likewise.
+- [x] **H3** The Linux host in C, likewise:
+  - platform/linux: C17 on GTK 4.14 and libadwaita 1.5, opened with
+    dlopen (one set of declarations with packages' C, asuka_linux.h and
+    asuka_linux.def); every view kind, navigation, lists, windows, menus,
+    the tray (StatusNotifierItem, dbusmenu), flyouts, keys, drag and
+    drop, AT-SPI, rich text, WebKitGTK, GStreamer video, GL shaders,
+    portals, the host's modules (`update` among them), crash records,
+    single instance, the window and route state;
+  - platform/desktop: the C it shares with the Windows host;
+  - `asuka build --platform linux` links the host, the core and the app
+    compiled to C into one executable, in an install prefix, a .tar.gz
+    and a Flatpak manifest, with Zig from any system; `asuka dev`'s
+    player likewise without the app;
+  - `go test ./platform/linux` under Xvfb: apps built and driven in real
+    GTK windows; host/linux removed (internal/gtk and internal/bluez go
+    with the standard library's Go desktop code, G1).
 - [ ] **G2** The updater, crash records and the state files in the hosts;
       conformance and e2e on the new hosts.
 - [ ] **X2** The Go runtime removed:

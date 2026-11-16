@@ -43,15 +43,15 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 各プラットフォームの開発用アプリは次のとおりです。
 
-- **Windows**：コアをリンクした Windows ホスト（C で書かれ、Win32 を使います）で、1 つのコンソールプログラムです。Asuka のキャッシュ内のアプリのディレクトリに置かれます。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
-- **macOS、Linux**：デスクトップのホスト（`cmd/asuka-host`。AppKit か GTK を使い、C の ABI を通じてコアを動かします）と、その隣に置いたコア（`libasuka.dylib`、`libasuka.so`）です。Asuka のキャッシュ内のアプリのディレクトリに置かれます。Mac ではリリースと同じ形の `.app` です。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **Windows、Linux**：コアをリンクした、アプリを含まない C のホスト（Windows では Win32、Linux では GTK 4 と libadwaita を使います）で、1 つのプログラムです（Windows ではコンソールプログラム）。Asuka のキャッシュ内のアプリのディレクトリに置かれます。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **macOS**：デスクトップのホスト（`cmd/asuka-host`。AppKit を使い、C の ABI を通じてコアを動かします）と、その隣に置いたコア（`libasuka.dylib`）で、リリースと同じ形の `.app` です。Asuka のキャッシュ内のアプリのディレクトリに置かれます。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
 - **iOS**：Swift のホストをコア（`libasuka.a`）とリンクして、アプリの `.app` にしたものです。独自のフレームワーク（WebKit、AVKit など）をリンクするホストの部分もすべて含むので、編集中のアプリはそのどれでも使えます。シミュレーターでは `xcrun simctl` で、環境変数に `ASUKA_DEV` を付けてインストール・起動します。iPhone では開発用に署名し、`xcrun devicectl` でインストールします。
 - **Android**：デバッグ版の外側のアプリ（Gradle が一度ビルドし、マニフェスト、Kotlin、リソースが変わったときにビルドし直します）です。コアはそのプライベートファイル（`files/asuka/libasuka.so`）にプッシュされ、デバッグ版のアプリはそこからコアを読み込みます。`files/asuka/dev` には `asuka dev` の場所が書かれ、`adb reverse` によってそれがデバイス自身のループバックになります。
 - **Web**：ページが開発サーバーから WebAssembly のコア（`asuka.wasm`）とアプリのモジュールを読み込み、新しいモジュールがビルドされるたびにそれを読み込みます。
 
 ## デスクトップでの実行
 
-macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。Windows のホストは C で書かれていて、コアと一緒にこのコンピューターの C コンパイラー（Zig、clang、MinGW の gcc。`ASUKA_CC` で選べます）でビルドされます。Mac と Linux では、CLI を Asuka のリポジトリのチェックアウトから実行している場合、ホストはソースからビルドされます。そうでなければ CLI のリリースに含まれるホストを使います。これは Asuka のキャッシュに一度だけダウンロードされ、ハッシュで検証されます。コアは、このコンピューターの C コンパイラーでビルドされます。
+macOS、Windows、Linux では、`asuka dev` は開発用アプリをウィンドウで実行します。Windows と Linux のホストは C で書かれていて、CLI に含まれるソースから、コアと一緒にこのコンピューターの C コンパイラー（Zig、clang、MinGW や Linux の gcc。`ASUKA_CC` で選べます）でビルドされます。Mac では、CLI を Asuka のリポジトリのチェックアウトから実行している場合、ホストはソースからビルドされます。そうでなければ CLI のリリースに含まれるホストを使います。これは Asuka のキャッシュに一度だけダウンロードされ、ハッシュで検証されます。コアは、このコンピューターの C コンパイラーでビルドされます。
 
 アプリは `assets/` をその場所から直接読むので、アセットを変更してもコピーは必要ありません。アプリのデータ（SQLite データベース、ファイル）は、インストールしたアプリのデータとは別に、Asuka のキャッシュ内にあるアプリ専用の `data` ディレクトリに保存されます（[最初からやり直す](#よくある問題)を参照）。そのため、`asuka dev` とリリース版がデータを共有することはありません。アプリの出力とエラーはターミナルに表示されます。
 
@@ -164,7 +164,7 @@ go test ./core                                     # コアの C のテスト（
 go test ./internal/appbuild ./cmd/asuka            # ビルドと開発ループ。このコンピューターで使えるすべてのプラットフォームで
 go test ./host/darwin                              # macOS：実際の AppKit のビュー
 go test ./platform/windows                         # Windows：Zig でビルドしたアプリを実際のウィンドウで動かす（Windows 上か VM で）
-xvfb-run -a dbus-run-session go test ./host/linux  # Linux：実際の GTK ウィジェット
+xvfb-run -a dbus-run-session go test ./platform/linux  # Linux：実際の GTK ウィンドウでアプリを操作
 swift test --package-path platform/ios             # Swift ホストのデコーダー
 node --test platform/web                           # Web ホストのデコーダー
 ```

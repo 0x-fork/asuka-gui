@@ -38,7 +38,7 @@ func TestPantry(t *testing.T) {
 
 	desk, _ := filepath.Abs(".")
 	pdesk, _ := filepath.Abs(filepath.Join(pantry, "desktop"))
-	srcs := []string{filepath.Join(desk, "src", "native.c"), filepath.Join(desk, "src", "linux.c"), filepath.Join(desk, "test", "host.c")}
+	srcs := []string{filepath.Join(desk, "src", "native.c"), filepath.Join(desk, "src", "linux.c"), filepath.Join(desk, "src", "linux_syms.c"), filepath.Join(desk, "test", "host.c")}
 	for _, f := range nativegen.CSources(pdesk, "linux") {
 		srcs = append(srcs, filepath.Join(pdesk, f))
 	}

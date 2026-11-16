@@ -1,0 +1,42 @@
+// The Windows host's keys test app (TestKeysOut): keys going out from
+// the focus past views the core leaves without a parent: a list's row on
+// to its list, a sheet's field to the window the sheet is declared in.
+
+app {
+  Keys()
+}
+
+component Keys {
+  state log = ""
+
+  WindowKeys { keys: [Shortcut(key: "k", primary: true, run: () => { log = "{log} window-k" })] }
+
+  Column {
+    padding: 16
+    gap: 8
+    Text("Log:{log}")
+    Button("Open") { on press { present(Note(onKey: s => { log = "{log} {s}" })) } }
+    List {
+      height: 200
+      keys: [Shortcut(key: "j", primary: true, run: () => { log = "{log} list-j" })]
+      for i in 0..3 key i {
+        Row {
+          keys: [Shortcut(key: "r", primary: true, run: () => { log = "{log} row{i}-r" })]
+          TextField { placeholder: "Row {i}" }
+        }
+      }
+    }
+  }
+}
+
+component Note(onKey: fn(string)) {
+  state text = ""
+  Screen {
+    title: "Note"
+    Column {
+      padding: 16
+      keys: [Shortcut(key: "s", primary: true, run: () => { onKey("sheet-s") })]
+      TextField { bind text: text; placeholder: "Note" }
+    }
+  }
+}
