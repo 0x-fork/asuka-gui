@@ -86,37 +86,23 @@ frame, as an animation would.
 
 ## Results
 
-The latest are in `results/` (iPhone 17 Pro simulator; Pixel emulator,
-Android 17; an Apple M5). Main thread ms; memory MB, its peak in
-parentheses.
+The latest are in `results/`. iOS, on the C core (an iPhone 17 Pro
+simulator, iOS 27, an Apple M5, 2026-11-16; the median of 3 runs). Main
+thread ms; memory MB, its peak in parentheses.
 
-| | Asuka, iOS | SwiftUI | Asuka, Android | Compose |
-|---|---:|---:|---:|---:|
-| startup | 307 | 356 | 319 | 327 |
-| mount, 1,000 rows | 88 | 163 | 539 | 444 |
-| update-one, a frame | 2.15 | 4.91 | 2.74 | 26.8 |
-| update-all, a frame | 6.39 | 62.4 | 14.6 | 125 |
-| scroll, a frame | 1.02 | 1.14 | 4.03 | 4.19 |
-| memory, idle | 14.8 | 15.1 | 43.3 | 32.3 |
-| memory, the rows | 36.1 (36.7) | 93.2 (99.1) | 72.8 (162) | 66.7 (156) |
-| memory, after the list | 35.0 (45.2) | 21.4 (125) | 74.9 (169) | 74.5 (182) |
+| | Asuka | SwiftUI |
+|---|---:|---:|
+| mount, 1,000 rows | 171 | 361 |
+| update-one, a frame | 1.48 | 6.60 |
+| update-all, a frame | 13.9 | 126 |
+| scroll, a frame | 1.36 | 1.20 |
+| memory, idle | 17.1 | 18.7 |
+| memory, the rows | 36.0 (36.6) | 99.1 (104) |
+| memory, after the list | 33.0 (49.6) | 34.6 (151) |
 
-What changed Asuka, from the first runs:
+Startup isn't comparable on this machine yet: both apps take over 3 s
+from the process's start on this simulator runtime, most of it the
+runtime's, not the apps'.
 
-| | first | now |
-|---|---|---|
-| iOS startup | 1,269 ms: every host linked WebKit, AVKit, PhotosUI... | 307 ms: the CLI links what the app's Go code calls |
-| iOS update-all, a frame | 33.7 ms | 6.39 ms: a Scroll takes rows out of sight out of the view tree (Core Animation drew every label, on screen or not) |
-| iOS memory with the rows (peak) | 113 (242) MB | 36.1 (36.7) MB: the same |
-| Android mount | 595 ms | about 270 ms on the first meter (539 on this one, which counts every message): texts without AppCompat's font loading, appearances resolved once |
-| Android update-all, a frame | 32 ms | 14.6 ms: a Scroll takes rows out of sight out of the tree |
-| Android startup | 367 ms | 319 ms: the Go library loads on a thread of its own as the app starts |
-
-Where Asuka still trails: Android's mount (making Views costs more than
-Compose's layout nodes) and idle memory there (the Go runtime and its
-library, about 11 MB), and iOS's memory after the list (the Go heap's
-pages, which the runtime gives back slowly; Asuka frees them when the app
-goes to the background or gets a memory warning).
-
-`go test ./ui -bench .` runs the same mount and update scenarios against
-the fake host: the core's share alone (signals, effects, ops, layout).
+`results/android.md` is from the Go core (before RFC 0007) and hasn't
+been run on the C core yet.
