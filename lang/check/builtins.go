@@ -246,6 +246,10 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		call.Result = Void
 		c.callEffects(e, "withTimeout", true, true)
+	case BUntilCancelled:
+		positional(0, "nothing: await untilCancelled()")
+		call.Result = Void
+		c.callEffects(e, "untilCancelled", true, false)
 	case BLive:
 		args := positional(2, "a value and a stream: live(initial, () => changes())")
 		var elem Type

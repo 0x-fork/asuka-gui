@@ -558,65 +558,43 @@ static ak_val t_monotonic(ak_val *args, uint32_t n) { AK_UNUSED(args); AK_UNUSED
 
 // ---- Futures ----
 
-// all(futures): a future of their results, in order, failing with the
-// first error (and cancelling the rest).
+// all(futures) and race(futures) are structured: once the outcome is
+// known (every result, the first error; the first to settle), the rest
+// are cancelled, and the out future settles when every one has, so what
+// they started has stopped, their defers run, before the caller goes on.
+
 typedef struct {
 	ak_future *out;
 	ak_arr *fs;
-	uint32_t left;
-} all_ctx;
+	uint32_t left;    // not settled yet
+	int32_t outcome;  // all: the first failed; race: the first settled; -1 none yet
+	bool race;
+} group_ctx;
 
-static void all_drop(void *p) {
-	all_ctx *c = p;
+static void group_drop(void *p) {
+	group_ctx *c = p;
 	ak_release(c->fs);
 	ak_free(c);
 }
 
-static void all_step(void *p);
-
-typedef struct {
-	all_ctx *c;
-	uint32_t i;
-} all_item;
-
-static void all_cancel(ak_future *f) {
-	all_ctx *c = f->ctx;
+static void group_cancel(ak_future *f) {
+	group_ctx *c = f->ctx;
 	for (uint32_t i = 0; i < c->fs->len; i++) ak_future_cancel(c->fs->data[i].p);
 }
 
-static void all_one(void *p) {
-	all_item *it = p;
-	all_ctx *c = it->c;
-	ak_free(it);
-	if (c->out->state != AK_FUT_PENDING) {
-		ak_release(c->out);
+static void group_settle(group_ctx *c) {
+	ak_future *out = c->out;
+	if (c->outcome >= 0) {
+		ak_future *f = c->fs->data[c->outcome].p;
+		if (f->state == AK_FUT_FAILED) {
+			ak_future_reject(out, ak_retain(f->error));
+		} else {
+			ak_retain_val(f->result, (ak_kind)f->kind);
+			ak_future_resolve(out, f->result);
+		}
 		return;
 	}
-	if (--c->left == 0) all_step(c);
-	else {
-		// Fail fast on an error.
-		for (uint32_t i = 0; i < c->fs->len; i++) {
-			ak_future *f = c->fs->data[i].p;
-			if (f->state == AK_FUT_FAILED) {
-				all_step(c);
-				break;
-			}
-		}
-	}
-	ak_release(c->out);
-}
-
-static void all_step(void *p) {
-	all_ctx *c = p;
-	for (uint32_t i = 0; i < c->fs->len; i++) {
-		ak_future *f = c->fs->data[i].p;
-		if (f->state == AK_FUT_FAILED) {
-			ak_future_reject(c->out, ak_retain(f->error));
-			for (uint32_t j = 0; j < c->fs->len; j++) ak_future_cancel(c->fs->data[j].p);
-			return;
-		}
-	}
-	if (c->left) return;
+	// all: every result, in order.
 	ak_kind k = c->fs->len ? (ak_kind)((ak_future *)c->fs->data[0].p)->kind : AK_K_VOID;
 	ak_arr *res = ak_arr_new(k == AK_K_VOID ? AK_K_INT : k, NULL, c->fs->len);
 	for (uint32_t i = 0; i < c->fs->len; i++) {
@@ -624,89 +602,72 @@ static void all_step(void *p) {
 		ak_retain_val(f->result, k);
 		res->data[res->len++] = f->result;
 	}
-	ak_future_resolve(c->out, (ak_val){.p = res});
+	ak_future_resolve(out, (ak_val){.p = res});
+}
+
+typedef struct {
+	group_ctx *c;
+	uint32_t i;
+} group_item;
+
+static void group_one(void *p) {
+	group_item *it = p;
+	group_ctx *c = it->c;
+	ak_future *out = c->out;
+	ak_future *f = c->fs->data[it->i].p;
+	c->left--;
+	if (out->state == AK_FUT_PENDING && c->outcome < 0 && (c->race || f->state == AK_FUT_FAILED)) {
+		c->outcome = (int32_t)it->i;
+		for (uint32_t j = 0; j < c->fs->len; j++)
+			if (j != it->i) ak_future_cancel(c->fs->data[j].p);
+	}
+	ak_free(it);
+	if (c->left == 0 && out->state == AK_FUT_PENDING) group_settle(c);
+	ak_release(out);
+}
+
+static ak_val group(ak_arr *fs, bool race) {
+	ak_kind k = AK_K_REF;
+	if (race) k = fs->len ? (ak_kind)((ak_future *)fs->data[0].p)->kind : AK_K_VOID;
+	ak_future *out = ak_future_new(k);
+	group_ctx *c = ak_alloc(sizeof *c);
+	c->out = out;
+	c->fs = ak_retain(fs);
+	c->left = fs->len;
+	c->outcome = -1;
+	c->race = race;
+	out->ctx = c;
+	out->drop_ctx = group_drop;
+	out->cancel = group_cancel;
+	if (fs->len == 0) {
+		group_settle(c);
+		return (ak_val){.p = out};
+	}
+	for (uint32_t i = 0; i < fs->len; i++) {
+		group_item *it = ak_alloc(sizeof *it);
+		it->c = c;
+		it->i = i;
+		ak_retain(out);
+		ak_future_wait(fs->data[i].p, group_one, it);
+	}
+	return (ak_val){.p = out};
 }
 
 static ak_val f_all(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	ak_arr *fs = ARR(0);
-	ak_future *out = ak_future_new(AK_K_REF);
-	all_ctx *c = ak_alloc(sizeof *c);
-	c->out = out;
-	c->fs = ak_retain(fs);
-	c->left = fs->len;
-	out->ctx = c;
-	out->drop_ctx = all_drop;
-	out->cancel = all_cancel;
-	if (fs->len == 0) {
-		all_step(c);
-		RET_P(out);
-	}
-	for (uint32_t i = 0; i < fs->len; i++) {
-		all_item *it = ak_alloc(sizeof *it);
-		it->c = c;
-		it->i = i;
-		ak_retain(out);
-		ak_future_wait(fs->data[i].p, all_one, it);
-	}
-	RET_P(out);
-}
-
-// race(futures): the first to settle; the rest are cancelled.
-typedef struct {
-	ak_future *out;
-	ak_arr *fs;
-} race_ctx;
-
-static void race_drop(void *p) {
-	race_ctx *c = p;
-	ak_release(c->fs);
-	ak_free(c);
-}
-
-static void race_cancel(ak_future *f) {
-	race_ctx *c = f->ctx;
-	for (uint32_t i = 0; i < c->fs->len; i++) ak_future_cancel(c->fs->data[i].p);
-}
-
-static void race_one(void *p) {
-	ak_future *out = p;
-	race_ctx *c = out->ctx;
-	if (out->state == AK_FUT_PENDING && c) {
-		for (uint32_t i = 0; i < c->fs->len; i++) {
-			ak_future *f = c->fs->data[i].p;
-			if (f->state == AK_FUT_DONE) {
-				ak_retain_val(f->result, (ak_kind)f->kind);
-				ak_future_resolve(out, f->result);
-				break;
-			}
-			if (f->state == AK_FUT_FAILED) {
-				ak_future_reject(out, ak_retain(f->error));
-				break;
-			}
-		}
-		if (out->state != AK_FUT_PENDING)
-			for (uint32_t i = 0; i < c->fs->len; i++) ak_future_cancel(c->fs->data[i].p);
-	}
-	ak_release(out);
+	return group(ARR(0), false);
 }
 
 static ak_val f_race(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	ak_arr *fs = ARR(0);
-	ak_kind k = fs->len ? (ak_kind)((ak_future *)fs->data[0].p)->kind : AK_K_VOID;
-	ak_future *out = ak_future_new(k);
-	race_ctx *c = ak_alloc(sizeof *c);
-	c->out = out;
-	c->fs = ak_retain(fs);
-	out->ctx = c;
-	out->drop_ctx = race_drop;
-	out->cancel = race_cancel;
-	for (uint32_t i = 0; i < fs->len; i++) {
-		ak_retain(out);
-		ak_future_wait(fs->data[i].p, race_one, out);
-	}
-	RET_P(out);
+	return group(ARR(0), true);
+}
+
+// async.never is a future nothing resolves: what untilCancelled() awaits,
+// which ends when its task is cancelled (no timer: idle isn't held).
+static ak_val async_never(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+	RET_P(ak_future_new(AK_K_VOID));
 }
 
 // ---- Colors ----
@@ -850,6 +811,7 @@ const ak_lib_entry ak_lib[] = {
 	{"str.to_bytes", str_to_bytes},
 
 	{"color.opacity", color_opacity},
+	{"async.never", async_never},
 	{"bytes.empty", bytes_empty},
 	{"bytes.len", bytes_len},
 	{"bytes.is_empty", bytes_is_empty},

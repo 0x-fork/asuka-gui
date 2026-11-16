@@ -398,11 +398,12 @@ const (
 	BMath // math.<name>: the builtin of the same name
 	BTimeNow
 	BTimeMonotonic
-	BRange       // arr.range
-	BWithTimeout // withTimeout(d) { … }
-	BStream      // Stream<T>(send => { … })
-	BEnvironment // environment(): what the platform says about where the app shows (tracked)
-	BLive        // live(initial, source): a tracked value a stream keeps current while it's read
+	BRange          // arr.range
+	BWithTimeout    // withTimeout(d) { … }
+	BStream         // Stream<T>(send => { … })
+	BEnvironment    // environment(): what the platform says about where the app shows (tracked)
+	BLive           // live(initial, source): a tracked value a stream keeps current while it's read
+	BUntilCancelled // untilCancelled(): waits until the task is cancelled
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

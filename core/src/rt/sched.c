@@ -387,14 +387,16 @@ void ak_future_unwait(ak_future *f, ak_cb cb, void *ctx) {
 void ak_future_cancel(ak_future *f) {
 	if (f->state != AK_FUT_PENDING) return;
 	if (f->cancel) {
+		// The work's to stop, and it settles f once it has: a task once
+		// it's unwound through its defers, a native call once the
+		// platform answers. So whoever waits for f waits for that.
 		void (*c)(ak_future *) = f->cancel;
 		f->cancel = NULL;
 		c(f);
+		return;
 	}
-	if (f->state == AK_FUT_PENDING) {
-		ak_throw_cancel();
-		ak_future_reject(f, ak_error_take());
-	}
+	ak_throw_cancel();
+	ak_future_reject(f, ak_error_take());
 }
 
 ak_val ak_future_take(ak_future *f) {
@@ -427,6 +429,8 @@ static void sleep_stop(void *ctx) {
 static void sleep_cancel(ak_future *f) {
 	sleep_stop(f->ctx);
 	f->ctx = NULL;
+	ak_throw_cancel();
+	ak_future_reject(f, ak_error_take());
 }
 
 ak_future *ak_sleep(int64_t ns) {

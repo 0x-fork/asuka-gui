@@ -1,0 +1,20 @@
+// untilCancelled: a task that holds something until it's cancelled.
+
+state released = false
+
+test "held until it's cancelled" {
+  do {
+    try await withTimeout(10ms) {
+      defer { released = true }
+      await untilCancelled()
+    }
+  } catch e {
+    print("timed out")
+  }
+  print(released)
+}
+
+// Output:
+// timed out
+// true
+// ok held until it's cancelled

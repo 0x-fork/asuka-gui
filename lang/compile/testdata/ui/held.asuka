@@ -1,0 +1,29 @@
+state holding = 0
+
+component Holder {
+  task {
+    holding += 1
+    defer { holding -= 1 }
+    await untilCancelled()
+  }
+  Text("holding")
+}
+
+component Root {
+  state on = true
+  Column {
+    if on { Holder() }
+    Button("Hide") { on press { on = false } }
+  }
+}
+
+app { Root() }
+
+test "a task waiting to be cancelled doesn't keep the app from idling" {
+  let app = mount(Root())
+  await app.idle()
+  expect(holding == 1)
+  app.tap("Hide")
+  await app.idle()
+  expect(holding == 0)
+}

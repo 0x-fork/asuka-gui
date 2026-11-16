@@ -72,7 +72,9 @@ typedef struct ak_future {
 	ak_waiter *waiters;
 	// cancel is called once when the future is cancelled while pending
 	// (its owner went away, a race was won): it stops the work (a timer, a
-	// native call, a task) and rejects the future.
+	// native call, a task), and the future is settled once the work has
+	// stopped (a task, once it's unwound through its defers). Without
+	// one, cancelling rejects the future at once.
 	void (*cancel)(struct ak_future *f);
 	void *ctx;
 	void (*drop_ctx)(void *ctx);

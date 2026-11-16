@@ -74,6 +74,6 @@ test "with a timeout" {
 // 21
 // ok stores with parameters
 // in time
-// timed out (tasks.asuka:57)
 // cancelled, cleaned up
+// timed out (tasks.asuka:57)
 // ok with a timeout

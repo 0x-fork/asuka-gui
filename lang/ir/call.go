@@ -439,6 +439,10 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return b.allRace(e, call, dst)
 	case check.BWithTimeout:
 		return b.withTimeout(e, call)
+	case check.BUntilCancelled:
+		f := b.callB("async.never", bc.KRef)
+		b.emit(op("AWAIT"), b.temp(bc.KRef), f)
+		return -1
 	case check.BLive:
 		ft := b.typ(call.Result).(*check.FuncType)
 		init := b.valueReg(b.value(call.Args[0], -1), b.l.kind(ft.Result))
