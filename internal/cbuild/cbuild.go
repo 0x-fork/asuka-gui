@@ -111,6 +111,16 @@ func Includes(core string) []string {
 // each is written under a name of its own then renamed into place, so
 // builds running at once share the cache safely.
 func (c Compiler) Compile(srcs []string, out string, extra []string) ([]string, error) {
+	return c.compile(srcs, out, append(append([]string{}, Flags...), extra...))
+}
+
+// CompileWith is Compile with flags alone, not the core's: C that isn't
+// the core's (an app's [c] sources), whose warnings are its own.
+func (c Compiler) CompileWith(srcs []string, out string, flags []string) ([]string, error) {
+	return c.compile(srcs, out, flags)
+}
+
+func (c Compiler) compile(srcs []string, out string, flags []string) ([]string, error) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return nil, err
 	}
@@ -130,7 +140,7 @@ func (c Compiler) Compile(srcs []string, out string, extra []string) ([]string, 
 				return
 			}
 			tmp := fmt.Sprintf("%s.%d.tmp", objs[i], os.Getpid())
-			args := append(append(append([]string{}, c.Args...), Flags...), extra...)
+			args := append(append([]string{}, c.Args...), flags...)
 			args = append(args, "-c", src, "-o", tmp)
 			if errs[i] = c.run(args); errs[i] == nil {
 				errs[i] = os.Rename(tmp, objs[i])
@@ -176,6 +186,18 @@ func Runner(core string, sanitize bool) (string, error) { return RunnerWith(core
 // RunnerWith is Runner with more C sources built in: an app compiled to
 // C (lang/cgen), which asuka-run -aot runs.
 func RunnerWith(core string, extra []string, sanitize bool) (string, error) {
+	return RunnerFor(core, RunnerOptions{Extra: extra, Sanitize: sanitize})
+}
+
+// RunnerOptions say what asuka-run is built with.
+type RunnerOptions struct {
+	Extra    []string // more of the core's C: an app compiled to C
+	Foreign  *Foreign // the C an app's externs call
+	Sanitize bool     // ASan and UBSan (tests)
+}
+
+// RunnerFor is Runner built as o says.
+func RunnerFor(core string, o RunnerOptions) (string, error) {
 	cc, err := Find()
 	if err != nil {
 		return "", err
@@ -186,14 +208,23 @@ func RunnerWith(core string, extra []string, sanitize bool) (string, error) {
 	}
 	runner, _ := filepath.Glob(filepath.Join(core, "runner", "*.c"))
 	srcs = append(srcs, runner...)
-	srcs = append(srcs, extra...)
+	srcs = append(srcs, o.Extra...)
 	flags := append(Includes(core), "-g", "-O1")
 	link := []string{"-lm"}
-	if sanitize && runtime.GOOS != "windows" {
-		flags = append(flags, "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer", "-DAK_TEST=1")
+	var opt []string // what C of the app's gets of the core's flags too
+	if o.Sanitize && runtime.GOOS != "windows" {
+		opt = []string{"-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer"}
+		flags = append(append(flags, opt...), "-DAK_TEST=1")
 		link = append(link, "-fsanitize=address,undefined")
 	} else {
+		opt = []string{"-O2"}
 		flags = append(flags, "-O2")
+	}
+	f := o.Foreign
+	if f != nil {
+		srcs = append(srcs, f.Glue)
+		flags = append(flags, "-DAK_FFI=1")
+		link = append(link, f.Link...)
 	}
 	h := sha256.New()
 	fmt.Fprintln(h, cc.Path, cc.Args, flags, link)
@@ -205,6 +236,11 @@ func RunnerWith(core string, extra []string, sanitize bool) (string, error) {
 		}
 		fmt.Fprintln(h, f, len(b))
 		h.Write(b)
+	}
+	if f != nil {
+		if err := f.hash(h); err != nil {
+			return "", err
+		}
 	}
 	sum := hex.EncodeToString(h.Sum(nil))[:16]
 	cache, err := os.UserCacheDir()
@@ -222,6 +258,13 @@ func RunnerWith(core string, extra []string, sanitize bool) (string, error) {
 	objs, err := cc.Compile(srcs, filepath.Join(dir, "obj"), flags)
 	if err != nil {
 		return "", err
+	}
+	if f != nil {
+		more, err := f.compileUnits(cc, filepath.Join(dir, "c"), append(append([]string{"-g"}, opt...), "-I"+filepath.Join(core, "include")))
+		if err != nil {
+			return "", err
+		}
+		objs = append(objs, more...)
 	}
 	tmp := fmt.Sprintf("%s.%d.tmp", exe, os.Getpid())
 	if err := cc.Link(objs, tmp, link); err != nil {
