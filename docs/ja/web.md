@@ -28,7 +28,7 @@ asuka build --platform web examples/counter     # 静的サイトを examples/co
 
 - `index.html` と `manifest.webmanifest`（Web アプリマニフェスト。これがあると、ブラウザーがアプリのインストールを提案します。アイコンは `asuka.toml` の `icon` から作られ、ファビコンと iOS のホーム画面アイコンも含まれます）。
 - アプリ本体の `asuka.<digest>.wasm`。最適化され、シンボルが取り除かれて（stripped）います。
-- `asuka/<digest>/` 内の Asuka 自身のファイル（プラグインを使うアプリでは、SQLite の WebAssembly ビルドのようなプラグインのファイルも含まれます）と、ネイティブパッケージのスクリプト。
+- `asuka/<digest>/` 内の Asuka 自身のファイル（`std/sqlite` をインポートするアプリでは、SQLite の WebAssembly モジュールも含まれます）と、ネイティブパッケージのスクリプト。
 - アプリの service worker である `sw.<digest>.js`。`index.html` と同じ場所に置かれ（スコープはサイトのフォルダー）、アプリのページが一つも開いていない間も、アプリの通知とプッシュ通知を表示します（[通知と Web Push](#通知と-web-push)）。
 - アプリの `assets/`。
 - 各スクリプトと wasm の gzip 圧縮版（`.gz`）。圧縮済みのファイルを配信できるサーバー向けです。
@@ -98,7 +98,7 @@ Web アプリから見える環境（`environment()`）は、ブラウザーの�
 
 ## SQLite
 
-`std/sqlite` は、ライブクエリも含めて、ほかのプラットフォームと同じように動作します。同じ SQLite と同じ Asuka のライブラリを、WebAssembly にビルドしたものです（`asqlite.wasm`。`asuka dev --platform web` と `asuka build --platform web` が、`std/sqlite` をインポートするアプリに同梱します）。SQLite はページのワーカーで動き、アプリのデータディレクトリにあるデータベースを、ブラウザーの Origin Private File System に保存します。データベース全体がメモリに読み込まれることはなく、コミットが戻った時点でディスクに書き込まれています。
+`std/sqlite` は、ライブクエリも含めて、ほかのプラットフォームと同じように動作します。同じ SQLite と同じ Asuka のライブラリを、WebAssembly にビルドしたものです（`asqlite.wasm`。`asuka dev --platform web` と `asuka build --platform web` が、`std/sqlite` をインポートするアプリのためにビルドします）。SQLite はページのワーカーで動き、アプリのデータディレクトリにあるデータベースを、ブラウザーの Origin Private File System に保存します。データベース全体がメモリに読み込まれることはなく、コミットが戻った時点でディスクに書き込まれています。
 
 ほかのプラットフォームとの違いは次のとおりです。
 
@@ -109,7 +109,7 @@ Web アプリから見える環境（`environment()`）は、ブラウザーの�
 - Origin Private File System がない場合（`https` や `localhost` から配信されていないページ。たとえば `asuka dev --lan` のページや、一部のブラウザーのプライベートウィンドウ）、ワーカーはデータベースを IndexedDB に保存し、使っている間はメモリ上に置きます。この場合、コミットが永続化されるのは、コミットが戻った少し後です。セキュアコンテキストでないページでは Web Locks も使えないため、二つのタブが一つのデータベースに書き込むと、互いの書き込みが失われることがあります（コンソールにその旨が表示されます）。
 - 以前のバージョンの Asuka がアプリのファイルの中（IndexedDB）に保存していたデータベースは、アプリが初めて開いたときにワーカーへ移されます。
 
-アプリを埋め込む独自のページ（後述）では、`start` に `libs` を渡します。`libs` は、アプリのプラグインのファイルの URL を、ファイル名をキーにして並べたものです。SQLite の場合は、ビルドに含まれるファイルを指す `{"asqlite.wasm": "asuka/<digest>/lib/asqlite.wasm"}` になります。ワーカーのスクリプトは Asuka のもの（`asuka.js` と同じ場所にある `sqlite-worker.js`）です。
+アプリを埋め込む独自のページ（後述）では、`start` に `sqlite` として SQLite のモジュールの URL を渡します。ビルドに含まれるファイル `"asuka/<digest>/lib/asqlite.wasm"` です。ワーカーのスクリプトは Asuka のもの（`asuka.js` と同じ場所にある `sqlite-worker.js`）です。
 
 ## ネイティブモジュール
 

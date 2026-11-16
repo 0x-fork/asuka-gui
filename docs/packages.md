@@ -1,8 +1,8 @@
 # Packages
 
 Packages share Asuka code between apps: components, stores, native
-packages (with their Swift, Kotlin and JavaScript), and plugins (with
-their prebuilt libraries). They're published on the **npm registry**,
+packages (with their Swift, Kotlin and JavaScript), and C (its
+sources, or a vendor's prebuilt libraries). They're published on the **npm registry**,
 but npm doesn't install them. The `asuka` CLI does, and it needs no
 Node.
 
@@ -89,8 +89,9 @@ repository = "github:acme/charts"
 ```
 
 Its `pub` declarations are what apps import. A package can hold native
-code too ([Native code](native.md)) and prebuilt libraries
-([Plugins](plugins.md)); they're published with it.
+code too ([Native code](native.md)) and C, its own sources or a
+vendor's prebuilt libraries ([C from Asuka](c.md)); they're published
+with it.
 
 ### Publishing
 

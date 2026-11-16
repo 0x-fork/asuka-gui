@@ -404,19 +404,26 @@ location = false
 | `libraries` | 字符串数组 | 无 | 要链接的库：一个名字（`sqlite3`：`-lsqlite3`），或者相对于 `asuka.toml` 的文件路径（`lib/libfoo.a`）。 |
 | `frameworks` | 字符串数组 | 无 | Apple 的框架，在 iOS 和 macOS 上链接（`Security`）。 |
 
+`[c.prebuilt]` 列出厂商为每个目标预编译好的库：每个键是一个目标（`ios-arm64`、`ios-simulator-arm64`、`ios-simulator-x64`、`macos-arm64`、`macos-x64`、`android-arm64`、`android-arm`、`android-x64`、`linux-x64`、`linux-arm64`、`windows-x64`、`windows-arm64`、`web`；通用库用 `ios-simulator` 和 `macos`），每个值是静态库相对于 `asuka.toml` 的路径（`.a`；Windows 上也可以是 `.lib`），或者由多个路径组成的列表。构建某个目标时，如果这里没有它的库，构建会停下来并说明原因。
+
 ```toml
 [c]
 sources = ["c/*.c"]
-include = ["c/include"]
+include = ["c/include", "vendor/acme/include"]
 
 [c.ios]
 libraries = ["z"]
 
 [c.web]
 defines = ["NO_ZLIB"]
+
+[c.prebuilt]
+ios-arm64 = "vendor/acme/ios-arm64/libacme.a"
+ios-simulator = "vendor/acme/ios-simulator/libacme.a"
+android-arm64 = "vendor/acme/android-arm64/libacme.a"
 ```
 
-见[在 Asuka 中调用 C](c.md#构建)。
+见[在 Asuka 中调用 C](c.md#构建)和[预编译的库](c.md#预编译的库)。
 
 ## bin
 

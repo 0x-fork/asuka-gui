@@ -461,19 +461,34 @@ app for each target, and what it links. Each platform's table
 | `libraries` | strings | none | Libraries to link: a name (`sqlite3`: `-lsqlite3`) or a file's path relative to `asuka.toml` (`lib/libfoo.a`). |
 | `frameworks` | strings | none | Apple's frameworks, linked on iOS and macOS (`Security`). |
 
+`[c.prebuilt]` names a vendor's libraries, built for each target: each
+key a target (`ios-arm64`, `ios-simulator-arm64`, `ios-simulator-x64`,
+`macos-arm64`, `macos-x64`, `android-arm64`, `android-arm`,
+`android-x64`, `linux-x64`, `linux-arm64`, `windows-x64`,
+`windows-arm64`, `web`; `ios-simulator` and `macos` for a universal
+library), each value a static library's path relative to `asuka.toml`
+(`.a`; on Windows `.a` or `.lib`), or a list of them. A build for a
+target it names no library for stops, saying so.
+
 ```toml
 [c]
 sources = ["c/*.c"]
-include = ["c/include"]
+include = ["c/include", "vendor/acme/include"]
 
 [c.ios]
 libraries = ["z"]
 
 [c.web]
 defines = ["NO_ZLIB"]
+
+[c.prebuilt]
+ios-arm64 = "vendor/acme/ios-arm64/libacme.a"
+ios-simulator = "vendor/acme/ios-simulator/libacme.a"
+android-arm64 = "vendor/acme/android-arm64/libacme.a"
 ```
 
-See [C from Asuka](c.md#building).
+See [C from Asuka](c.md#building) and [Prebuilt
+libraries](c.md#prebuilt-libraries).
 
 ## bin
 

@@ -59,7 +59,7 @@ fn signIn(a: Account) {
 
 ## レコード：std/sqlite
 
-`std/sqlite` はアプリの SQLite データベースです。SQLite そのものであり、同じリリースをすべてのプラットフォームで同じ方法でビルドしたもので、sqlite [プラグイン](plugins.md)から提供されます。パッケージをインポートするだけで、CLI がプラグインのライブラリをアプリと一緒に配布します。Asuka はステートメントを一つずつ丸ごとメインスレッドの外で実行し、返ってきた行を求められた型に直接デコードします。[`examples/notes`](../../examples/notes) がこれを使っています。
+`std/sqlite` はアプリの SQLite データベースです。SQLite そのものであり、同じリリースをすべてのプラットフォームで同じ方法でビルドし、アプリに組み込んだものです。パッケージをインポートするだけで、ほかに何もインストールする必要はありません。Asuka はステートメントを一つずつ丸ごとメインスレッドの外で実行し、返ってきた行を求められた型に直接デコードします。[`examples/notes`](../../examples/notes) がこれを使っています。
 
 ### データベースを開いてマイグレーションする
 
@@ -176,7 +176,7 @@ async fn signUp(email: string) -> string {
 
 ### ライブラリ
 
-SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。sqlite プラグインのライブラリ `asqlite`（[プラグイン](plugins.md)）で、`asuka build` がアプリと一緒に配置します。Mac の `Contents/Frameworks`、Windows アプリの `.exe` の隣、Linux のインストール先の `lib/<app>`、iOS アプリの `Frameworks` 内のフレームワーク、APK の各 ABI です。デスクトップでの `asuka dev`、`asuka test`、`asuka run` は、プラグインのビルド済みファイルか公開済みファイル（`ASUKA_LIB_ASQLITE`）を使います。後者は一度だけダウンロードされ、ユーザーのキャッシュに保存されます。Web では同じライブラリを WebAssembly にビルドしたものが、ページのワーカーで動きます（[Web の SQLite](web.md#sqlite)）。
+SQLite はすべてのプラットフォームでリリース 3.54.1 で、FTS5、R*Tree、Geopoly、数学関数、`dbstat`、`STAT4`、`soundex` を組み込み、読み込み可能な拡張は含めず、一時テーブルはメモリに置きます。どのプラットフォームでも、アプリのほかの部分と同じように、`std/sqlite` をインポートするアプリにコンパイルして組み込まれます。アプリの隣にライブラリをインストールしたり、ダウンロードしたり、同梱したりする必要はなく、`std/sqlite` をインポートしないアプリには含まれません。`asuka dev`、`asuka test`、`asuka run` でも使えます。SQLite 自身のシンボルはアプリの中に閉じているので、別のライブラリがシステムの SQLite を同じプロセスに読み込んでも（Linux の GTK など）、互いに干渉しません。Web では同じ SQLite を WebAssembly にビルドしたものが、ページのワーカーで動きます（[Web の SQLite](web.md#sqlite)）。
 
 ## 秘密情報：platform/secure
 

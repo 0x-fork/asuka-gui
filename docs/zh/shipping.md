@@ -84,7 +84,7 @@ asuka build --platform ios
 
 这条命令会生成一个为 App Store 签名的 `.ipa`：其中是应用本身，只链接它用到的系统框架（WebKit、AVKit 等，取决于应用导入的包和显示的元素）。签名使用团队的分发证书（在你的钥匙串里，来自 Xcode 的 Accounts 设置）和对应应用 ID 的描述文件：优先用 `ios.profile` 或 `--profile` 指定的那个，否则从已安装的描述文件中挑选最匹配的。加上 `--distribution ad-hoc` 或 `development` 则改为针对描述文件中登记的设备签名；`--simulator` 会生成一个未签名的 `.app`，供 iOS 模拟器使用。
 
-使用了 `std/sqlite` 的应用会在 `Frameworks` 里带上 SQLite，即 `asqlite.framework`（真机版或模拟器版），和应用一起签名。应用第一次打开数据库时才会加载它。应用的扩展（分享面板、Notification Service Extension）加载的也是应用里的这一份。
+使用了 `std/sqlite` 的应用，SQLite 会和应用的其余部分一样编译进应用：应用旁边没有需要单独嵌入或签名的库。
 
 设置了 `shareTarget` 时，分享扩展也要签名，用的是同一团队下、针对扩展自身 ID 的描述文件（应用是 `com.example.notes`，扩展就是 `com.example.notes.share`）：优先用 `ios.shareProfile`，否则从已安装的描述文件中挑选最匹配的。通配符描述文件（`com.example.*`）可以同时覆盖两者。你需要在 developer.apple.com 上注册扩展的 ID，并像为应用生成描述文件那样，为它也生成一个。
 
@@ -101,7 +101,7 @@ linked = true
 purposes = ["AppFunctionality"]
 ```
 
-`type` 和 `purposes` 使用 Apple 的名称并去掉前缀（`NSPrivacyCollectedDataType`、`NSPrivacyCollectedDataTypePurpose`）；`linked` 表示数据与用户身份关联，`tracking` 表示数据用于追踪用户（见 [asuka.toml 参考](asuka-toml.md#ios)）。如果你的应用会进行追踪，或者清单需要的内容不止这些，就自己写一份 `ios/PrivacyInfo.xcprivacy`，同时把上面那些理由也写进去。Asuka 会改用你的版本，`ios.collected` 也随之被忽略。无论应用用的是哪一份，`asqlite.framework` 都带有自己的隐私清单，说明 SQLite 用到的 API（文件时间、磁盘剩余空间）。
+`type` 和 `purposes` 使用 Apple 的名称并去掉前缀（`NSPrivacyCollectedDataType`、`NSPrivacyCollectedDataTypePurpose`）；`linked` 表示数据与用户身份关联，`tracking` 表示数据用于追踪用户（见 [asuka.toml 参考](asuka-toml.md#ios)）。如果你的应用会进行追踪，或者清单需要的内容不止这些，就自己写一份 `ios/PrivacyInfo.xcprivacy`，同时把上面那些理由也写进去。Asuka 会改用你的版本，`ios.collected` 也随之被忽略。SQLite 是应用可执行文件的一部分：Asuka 写入的理由已经涵盖了它用到的 API（文件时间、磁盘剩余空间），你自己写的清单也要包含这些理由。
 
 ## Android
 
@@ -117,7 +117,7 @@ keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2
 ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
 ```
 
-（如果密钥的密码与 keystore 的不同，还要设置 `ASUKA_KEY_PASSWORD`；在 CI 中，可以用 `ASUKA_KEYSTORE` 和 `ASUKA_KEY_ALIAS` 指定 keystore 和别名。）这会生成一个用于 Google Play 的 `.aab`，支持 64 位和 32 位 ARM 手机以及 x86_64（Android 模拟器、Chromebook），要求 Android 13 及以上。其中是为每个架构编译好的应用。Play 会根据它为每台手机生成只包含该机架构的 APK。使用了 sqlite 插件的应用，会在每个架构下带上 SQLite 的库 `libasqlite.so`，Android 会像加载应用自身的库那样直接从 APK 中加载它（不压缩，按 16 KB 页对齐）。`asuka publish --platform android` 会构建并上传到 Google Play（见[发布到应用商店](#发布到应用商店)）。
+（如果密钥的密码与 keystore 的不同，还要设置 `ASUKA_KEY_PASSWORD`；在 CI 中，可以用 `ASUKA_KEYSTORE` 和 `ASUKA_KEY_ALIAS` 指定 keystore 和别名。）这会生成一个用于 Google Play 的 `.aab`，支持 64 位和 32 位 ARM 手机以及 x86_64（Android 模拟器、Chromebook），要求 Android 13 及以上。其中是为每个架构编译好的应用。Play 会根据它为每台手机生成只包含该机架构的 APK。使用了 `std/sqlite` 的应用，每个架构下的应用里都编译进了 SQLite。`asuka publish --platform android` 会构建并上传到 Google Play（见[发布到应用商店](#发布到应用商店)）。
 
 加上 `--apk` 则会生成一个已签名、包含所有架构的发布版 `.apk`，可以直接安装（`adb install dist/<Name>.apk`）：适合测试发布构建，或者不经应用商店分发应用。
 
@@ -167,7 +167,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-这条命令在 Mac 上生成 `dist/<Name>.app`：一个通用应用（同时支持 Apple 芯片和 Intel），要求 macOS 11 及以上。可执行文件是通用二进制，此外还有应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。应用的原生包的 Swift 会针对两种架构编译进可执行文件（见[原生代码](native.md)）。使用了 `std/sqlite` 的应用，SQLite 的库（`libasqlite.dylib`，包含两种架构）放在 `Contents/Frameworks` 里，签名方式与应用相同：用 Developer ID 签名时，强化运行时只加载由应用所属团队签名的库，公证服务也会逐个检查（见[库文件](data.md#库文件)）。
+这条命令在 Mac 上生成 `dist/<Name>.app`：一个通用应用（同时支持 Apple 芯片和 Intel），要求 macOS 11 及以上。可执行文件是通用二进制，此外还有应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。应用的原生包的 Swift 会针对两种架构编译进可执行文件（见[原生代码](native.md)）。使用了 `std/sqlite` 的应用，SQLite 也会针对两种架构编译进可执行文件（见[库文件](data.md#库文件)）。
 
 要在 Mac App Store 之外分发给别人，需要用你的 Developer ID 签名，再交给 Apple 公证，这样 Gatekeeper 才会放行：
 
@@ -195,7 +195,7 @@ asuka build --platform windows               # x64，Windows on Arm 上以模拟
 asuka build --platform windows --arch arm64  # 在 Arm PC 上原生运行
 ```
 
-这会生成一个文件夹 `dist/<Name>`：`<Name>.exe` 就是应用本身，在 Windows 上由 clang、在任意系统上由 Zig 为对应架构构建；旁边的 `asuka-app.json` 是应用的设置；然后是应用的资源；使用了 sqlite 插件的应用还会带上同一架构的 SQLite 库 `asqlite.dll`（它只依赖每台 Windows 10 和 11 都自带的通用 C 运行时 Universal C Runtime）。`.exe` 是一个 GUI 程序（不会弹出控制台窗口），链接进了各种资源：Windows 所需各尺寸的图标、版本信息（来自 `version` 和 `build`），以及一份面向 Windows 10 和 11 的清单（manifest），声明使用通用控件 6、支持每显示器 DPI 感知和 UTF-8。如果应用目录里有自己的资源目标文件（COFF 格式的 `.syso`，如 `rsrc_windows_amd64.syso`），就改用其中的资源。最后，把文件夹打成 zip，或者打包成安装程序、MSIX。
+这会生成一个文件夹 `dist/<Name>`：`<Name>.exe` 就是应用本身，在 Windows 上由 clang、在任意系统上由 Zig 为对应架构构建；旁边的 `asuka-app.json` 是应用的设置；然后是应用的资源。使用了 `std/sqlite` 的应用，SQLite 编译在 `.exe` 里。`.exe` 是一个 GUI 程序（不会弹出控制台窗口），链接进了各种资源：Windows 所需各尺寸的图标、版本信息（来自 `version` 和 `build`），以及一份面向 Windows 10 和 11 的清单（manifest），声明使用通用控件 6、支持每显示器 DPI 感知和 UTF-8。如果应用目录里有自己的资源目标文件（COFF 格式的 `.syso`，如 `rsrc_windows_amd64.syso`），就改用其中的资源。最后，把文件夹打成 zip，或者打包成安装程序、MSIX。
 
 为了让 SmartScreen 知道这个 `.exe` 出自谁手，要用导出为 `.pfx` 的代码签名证书给它签名：
 
@@ -203,7 +203,7 @@ asuka build --platform windows --arch arm64  # 在 Arm PC 上原生运行
 ASUKA_WINDOWS_CERT=cert.pfx ASUKA_WINDOWS_CERT_PASSWORD=... asuka build --platform windows
 ```
 
-构建会用 SHA-256 签名，并为签名加盖时间戳，这样证书过期后签名依然有效。时间戳取自第一个响应的 RFC 3161 服务器：先尝试 `ASUKA_WINDOWS_TIMESTAMP` 中列出的服务器（逗号分隔），没有设置的话依次尝试 DigiCert、Sectigo 和 GlobalSign。如果都没有响应，构建会失败并说明原因；设置 `ASUKA_WINDOWS_TIMESTAMP=none` 则不加时间戳（这样签名会随证书一起失效）。在 Windows 上用 `signtool` 签名（来自 Windows SDK；优先用 `PATH` 中的，否则用已安装的最新版本），在其他系统上用 `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`），`asqlite.dll` 也会一并签名。不设置 `ASUKA_WINDOWS_CERT` 时，`.exe` 不会被签名。如果证书存放在硬件令牌或云服务（Azure Trusted Signing）中，就要用它们自己的工具签名：构建完成后，用那个工具为文件夹中的 `.exe`（以及 `asqlite.dll`）签名。
+构建会用 SHA-256 签名，并为签名加盖时间戳，这样证书过期后签名依然有效。时间戳取自第一个响应的 RFC 3161 服务器：先尝试 `ASUKA_WINDOWS_TIMESTAMP` 中列出的服务器（逗号分隔），没有设置的话依次尝试 DigiCert、Sectigo 和 GlobalSign。如果都没有响应，构建会失败并说明原因；设置 `ASUKA_WINDOWS_TIMESTAMP=none` 则不加时间戳（这样签名会随证书一起失效）。在 Windows 上用 `signtool` 签名（来自 Windows SDK；优先用 `PATH` 中的，否则用已安装的最新版本），在其他系统上用 `osslsigncode`（`brew install osslsigncode`、`apt install osslsigncode`）。不设置 `ASUKA_WINDOWS_CERT` 时，`.exe` 不会被签名。如果证书存放在硬件令牌或云服务（Azure Trusted Signing）中，就要用它们自己的工具签名：构建完成后，用那个工具为文件夹中的 `.exe` 签名。
 
 会显示通知的应用（`platform/notify`）第一次运行时，会在用户的开始菜单里创建一个快捷方式，因为 Windows 要求应用有快捷方式才能发送 toast 通知。快捷方式的 AppUserModelID 取 `asuka.toml` 的 `id`（没有的话就根据应用名称生成一个）。
 
@@ -219,7 +219,6 @@ Linux 构建可以在任何系统上完成，构建时不需要安装 GTK（应�
 - `<name>/`：一个按安装前缀（install prefix）结构组织的文件夹，以应用名的小写形式命名（`My Notes` 会变成 `my-notes`），其中包括：
   - `bin/my-notes`：应用本身，一个可执行文件；
   - `share/my-notes/assets` 和 `share/my-notes/asuka-app.json`：应用的资源和设置，同样以 `bin/` 为起点找到；
-  - `lib/my-notes/libasqlite.so`：SQLite 的库，仅限使用了 `std/sqlite` 的应用，同样以 `bin/` 为起点找到（要求 glibc 2.17 或更高版本；它不导出 SQLite 自身的任何符号，所以即使同一进程里还加载了系统的 SQLite，两者也不会冲突）；
   - `share/applications/<id>.desktop`：启动器显示和运行的入口；
   - `share/icons/hicolor/<size>/apps/<id>.png`：`icon` 从 16 到 512 像素的各个尺寸；
   - `share/metainfo/<id>.metainfo.xml`：AppStream metainfo，软件中心展示的就是它。
@@ -231,7 +230,7 @@ Linux 构建可以在任何系统上完成，构建时不需要安装 GTK（应�
   ```
 
 - `my-notes-<version>-linux-<arch>.tar.gz`：上面那个文件夹的压缩包，用于分发。
-- `<id>.yml`：一份 [Flatpak](https://flatpak.org) 清单，基于 GNOME 运行时打包上面那个文件夹（其中的 `bin`、`lib` 和 `share`）：
+- `<id>.yml`：一份 [Flatpak](https://flatpak.org) 清单，基于 GNOME 运行时打包上面那个文件夹（其中的 `bin` 和 `share`）：
 
   ```sh
   flatpak install flathub org.gnome.Platform//50 org.gnome.Sdk//50   # 只需一次
@@ -438,9 +437,9 @@ present(AsukaViewController(), animated: true)
 // 也可以 push 它、把它作为一个标签页，或者作为窗口的根视图控制器
 ```
 
-使用了 `std/sqlite` 的应用，旁边还会生成 `dist/asqlite.xcframework`，也就是 SQLite 的库，同样需要嵌入（Embed & Sign）。应用会从你应用的 `Frameworks` 中加载它；它带有自己的隐私清单。
+使用了 `std/sqlite` 的应用，SQLite 就在这个 framework 里，符号只属于它自己：即使你的应用也有一份 SQLite，两者也互不干扰。
 
-**Android。** `asuka build --platform android --aar` 会在 `dist/maven` 中生成一个 Maven 仓库，其中包括：每个 ABI 下的应用库、应用的资源，以及已声明好的 `AsukaActivity`，它的依赖（Material、AndroidX）都写在 POM 里；旁边还有应用用到的可选模块（`platform/push`、`platform/maps`），如果应用使用了 `std/sqlite`，还有每个 ABI 下的 SQLite 库。添加这个仓库和命令打印出的依赖，然后启动这个 activity：
+**Android。** `asuka build --platform android --aar` 会在 `dist/maven` 中生成一个 Maven 仓库，其中包括：每个 ABI 下的应用库、应用的资源，以及已声明好的 `AsukaActivity`，它的依赖（Material、AndroidX）都写在 POM 里；旁边还有应用用到的可选模块（`platform/push`、`platform/maps`）；如果应用使用了 `std/sqlite`，SQLite 就在应用的库里。添加这个仓库和命令打印出的依赖，然后启动这个 activity：
 
 ```kotlin
 // settings.gradle.kts
@@ -457,7 +456,7 @@ startActivity(Intent(this, dev.asuka.AsukaActivity::class.java))
 
 原生崩溃的调用栈帧只是应用二进制中的地址；崩溃收集服务（或 App Store Connect、Google Play）要借助构建时的符号，才能把它们还原成函数名和行号。应用没有捕获的错误由 Asuka 报告，并附带错误消息，与有没有符号无关。
 
-**iOS。** `asuka build --platform ios` 构建应用时会带上调试信息，并像 Xcode 归档那样，为每个二进制（应用本身、带分享面板时的 framework、各个扩展）生成 dSYM，然后剥离二进制中的符号。dSYM 放在 `.ipa`（或模拟器的 `.app`）旁边的 `dist/<Name>.dSYMs` 中，符号也打包进了 `.ipa`（`Symbols/`），因此 App Store Connect 和 Xcode 的 Organizer 显示崩溃时会自动完成符号化。SQLite 的库（`asqlite.framework`）发布时已剥离符号，也没有 dSYM，它的栈帧会显示为 `asq_call`。把 dSYM 上传到你使用的崩溃收集服务：
+**iOS。** `asuka build --platform ios` 构建应用时会带上调试信息，并像 Xcode 归档那样，为每个二进制（应用本身、带分享面板时的 framework、各个扩展）生成 dSYM，然后剥离二进制中的符号。dSYM 放在 `.ipa`（或模拟器的 `.app`）旁边的 `dist/<Name>.dSYMs` 中，符号也打包进了 `.ipa`（`Symbols/`），因此 App Store Connect 和 Xcode 的 Organizer 显示崩溃时会自动完成符号化。把 dSYM 上传到你使用的崩溃收集服务：
 
 ```sh
 sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes.dSYMs

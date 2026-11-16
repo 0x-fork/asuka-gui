@@ -265,11 +265,50 @@ defines = ["SQLITE_OS_OTHER=1"]
 平台的表有 `[c.ios]`、`[c.android]`、`[c.macos]`、`[c.windows]`、`[c.linux]` 和 `[c.web]`。源文件会针对每个目标，用该平台的编译器来编译（Xcode 的、NDK 的；Web 和交叉编译用 Zig 的），发布构建会开启优化，你的警告设置保持原样。
 
 - **iOS**：C 代码以及库和框架都链接进应用的可执行文件。SDK 自带 `libz`、`libsqlite3`、`libxml2`、`libc++` 以及 Apple 的各个框架。
-- **Android**：为每个 ABI 编进应用的库。NDK 自带 `libz`、`libm`、`liblog`、`libandroid` 以及其他稳定的 NDK 库；其他库需要以源码形式提供，或者为每个 ABI 提供预编译的 `.a`。
+- **Android**：为每个 ABI 编进应用的库。NDK 自带 `libz`、`libm`、`liblog`、`libandroid` 以及其他稳定的 NDK 库；其他库需要以源码形式提供，或者为每个 ABI 提供预编译的 `.a`（见[预编译的库](#预编译的库)）。
 - **macOS、Windows 和 Linux**：编进应用的可执行文件。
-- **Web**：编进 WebAssembly 模块，目标是 WASI。那里没有系统库，也没有线程，所以库都要以源码形式提供，再用 `[c.web]` 写明要改什么（`defines`、换一组 `sources`）。
+- **Web**：编进 WebAssembly 模块，目标是 WASI。那里没有系统库，也没有线程，所以库要么以源码形式提供，再用 `[c.web]` 写明要改什么（`defines`、换一组 `sources`），要么是为 WASI 预编译好的。
 
 包的 C 代码由它自己 `asuka.toml` 里的 `[c]` 描述，路径相对于包目录：导入它的应用也会构建这些代码。应用自己的子包（`./util`）共用应用的 `[c]`。
+
+## 预编译的库
+
+如果厂商提供的是编译好的库而不是源码，就在 `[c.prebuilt]` 里列出来：每个目标一个静态库，头文件目录写在 `include` 里。构建时会链接对应目标的那一个，extern 声明调用它的方式和调用你自己的 C 代码一样。
+
+```toml
+[c]
+include = ["vendor/acme/include"]
+
+[c.prebuilt]
+ios-arm64 = "vendor/acme/ios-arm64/libacme.a"
+ios-simulator = "vendor/acme/ios-simulator/libacme.a"  # arm64 和 x86_64 合在一个文件里
+macos = "vendor/acme/macos/libacme.a"                  # arm64 和 x86_64 合在一个文件里
+android-arm64 = "vendor/acme/android-arm64/libacme.a"
+android-arm = "vendor/acme/android-arm/libacme.a"
+android-x64 = "vendor/acme/android-x64/libacme.a"
+linux-x64 = "vendor/acme/linux-x64/libacme.a"
+linux-arm64 = "vendor/acme/linux-arm64/libacme.a"
+windows-x64 = "vendor/acme/windows-x64/acme.lib"
+windows-arm64 = "vendor/acme/windows-arm64/acme.lib"
+web = "vendor/acme/wasm32/libacme.a"
+
+[c.android]
+libraries = ["log"]
+```
+
+```asuka
+extern fn acme_version() -> CString
+```
+
+- **键**是目标：`ios-arm64`、`ios-simulator-arm64`、`ios-simulator-x64`、`macos-arm64`、`macos-x64`、`android-arm64`、`android-arm`、`android-x64`、`linux-x64`、`linux-arm64`、`windows-x64`、`windows-arm64` 和 `web`。`ios-simulator` 和 `macos` 指的是一个通用库（用 `lipo` 合成），同时包含该平台的两种架构；如果某个目标有自己的键，优先用它。
+- **值**是库相对于 `asuka.toml` 的路径，也可以是多个路径组成的列表。每个都必须是静态库：`.a`，在 Windows 上也可以是 `.lib`。
+- **没有对应库的目标**无法构建，并会说明原因（`[c.prebuilt] has no library for android-x64`）。`asuka test` 和 `asuka run` 链接的是本机对应的那一个（`macos-arm64`、`linux-x64` 等），所以想测试这些调用，也要把本机的目标写上。
+- **库对系统的依赖**和源码一样写在各平台的表里：`libraries`（Android 上的 `log`、`z`）和 `frameworks`（`Security`）。
+- **构建这些库时**，要面向 Asuka 支持的最低系统版本（iOS 16、macOS 11、Android 13）；Web 版要基于 WASI 的 C 库（`wasm32-wasi`）构建，并且不使用线程。
+
+这些库和你自己的 C 代码一样链接进应用：运行时不需要在应用旁边查找、嵌入或签名任何东西，应用没用到的部分也会被去掉。包的 `[c.prebuilt]` 会随包一起发布，库文件就在包的 tarball 里。
+
+厂商的动态库不能通过 `[c]` 链接。iOS 或 macOS 的动态库（一个 framework 的 XCFramework）和 Android 的动态库（每个 ABI 一个 `.so`，或者一个 AAR）要放在[原生包](native.md)里：作为它的 Swift 包的 binary target，或者放进它 Gradle 模块的 `jniLibs` 或依赖中。各平台自己的构建会负责嵌入、签名和加载它们，再由包里的 Swift 和 Kotlin 代码调用。
 
 ## 开发
 

@@ -250,9 +250,9 @@ asuka build --target linux-amd64     # dist/linux-amd64/greet
 asuka build --target windows-arm64   # dist/windows-arm64/greet.exe
 ```
 
-`--target` 由 `darwin`、`linux` 或 `windows` 加上 `amd64` 或 `arm64` 组成；本机以外的系统和桌面应用一样，用 Zig 构建。可执行文件在系统允许的范围内是独立的：在 Linux 上它是静态链接的（musl，需要 Zig），除非它用到的东西要加载系统的库（std/http 的 libsoup、插件的库）；在 Windows 上只依赖系统自带的 DLL；在 macOS 上只依赖系统的库。
+`--target` 由 `darwin`、`linux` 或 `windows` 加上 `amd64` 或 `arm64` 组成；本机以外的系统和桌面应用一样，用 Zig 构建。可执行文件在系统允许的范围内是独立的：在 Linux 上它是静态链接的（musl，需要 Zig），除非它用到的东西要加载系统的库（std/http 的 libsoup）；在 Windows 上只依赖系统自带的 DLL；在 macOS 上只依赖系统的库。
 
-带平台代码的包在每个桌面系统上的程序里都能用：`std/http` 在 macOS 上用 URLSession、在 Windows 上用 WinHTTP、在 Linux 上用 libsoup 发请求，和在应用里一样。只是没有窗口。插件的库（比如 std/sqlite 的）放在可执行文件旁边。
+带平台代码的包在每个桌面系统上的程序里都能用：`std/http` 在 macOS 上用 URLSession、在 Windows 上用 WinHTTP、在 Linux 上用 libsoup 发请求，和在应用里一样。只是没有窗口。SQLite（`std/sqlite`）和在应用里一样编译进可执行文件。
 
 ### 应用自带的程序
 

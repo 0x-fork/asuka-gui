@@ -1,6 +1,6 @@
 # 包
 
-包用来在应用之间共享 Asuka 代码：组件、store、原生包（连同它们的 Swift、Kotlin 和 JavaScript 代码）以及插件（连同它们预先构建好的库）。包发布在 **npm registry** 上，但安装它们的不是 npm，而是 `asuka` 命令行工具，不需要 Node。
+包用来在应用之间共享 Asuka 代码：组件、store、原生包（连同它们的 Swift、Kotlin 和 JavaScript 代码）以及 C 代码（源码，或者厂商预编译好的库）。包发布在 **npm registry** 上，但安装它们的不是 npm，而是 `asuka` 命令行工具，不需要 Node。
 
 ## 使用包
 
@@ -63,7 +63,7 @@ repository = "github:acme/charts"
 "@acme/colors" = "^0.3.0"
 ```
 
-包里的 `pub` 声明就是应用可以导入的内容。包还可以包含原生代码（[原生代码](native.md)）和预先构建好的库（[插件](plugins.md)），它们会随包一起发布。
+包里的 `pub` 声明就是应用可以导入的内容。包还可以包含原生代码（[原生代码](native.md)）和 C 代码，可以是自己的源码，也可以是厂商预编译好的库（[在 Asuka 中调用 C](c.md)），它们会随包一起发布。
 
 ### 发布
 

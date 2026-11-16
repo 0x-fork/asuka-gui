@@ -83,11 +83,10 @@ It's not a database: for many or large records, use SQLite.
 ## Records: std/sqlite
 
 `std/sqlite` is the app's SQLite database. It's SQLite itself, one
-release built the same way for every platform, from the sqlite
-[plugin](plugins.md): import the package, and the CLI ships the
-plugin's library with the app. Asuka runs each statement whole, off the
-main thread, and decodes the rows it answers straight
-into the type asked for. [`examples/notes`](../examples/notes) uses it.
+release built the same way for every platform and compiled into the
+app: import the package, and there's nothing to install. Asuka runs
+each statement whole, off the main thread, and decodes the rows it
+answers straight into the type asked for. [`examples/notes`](../examples/notes) uses it.
 
 ### Open and migrate
 
@@ -246,16 +245,15 @@ async fn signUp(email: string) -> string {
 
 SQLite is release 3.54.1 on every platform, with FTS5, R*Tree, Geopoly,
 the math functions, `dbstat`, `STAT4` and `soundex` built in, loadable
-extensions left out, and temporary tables kept in memory. It's the
-sqlite plugin's library, `asqlite` ([Plugins](plugins.md)), which
-`asuka build` ships with the app: in a Mac's
-`Contents/Frameworks`, beside a Windows app's `.exe`, in `lib/<app>` of
-a Linux prefix, a framework in an iOS app's `Frameworks`, in each of an
-APK's ABIs. `asuka dev` on a desktop, `asuka test` and `asuka run` use
-the plugin's build or its
-published file (`ASUKA_LIB_ASQLITE`), downloaded once into the user's
-cache. On the web it's the same library built to WebAssembly, in a
-worker of the page's ([SQLite on the web](web.md#sqlite)).
+extensions left out, and temporary tables kept in memory. It's compiled
+into each app that imports `std/sqlite`, on every platform, as the rest
+of the app is: there's no library to install, download or ship beside
+it, and an app that doesn't import `std/sqlite` doesn't carry it.
+`asuka dev`, `asuka test` and `asuka run` have it too. Its own names
+stay inside the app, so a system SQLite that another library loads into
+the same process (GTK's, on Linux) doesn't mind it. On the web it's the
+same SQLite built to WebAssembly, in a worker of the page's
+([SQLite on the web](web.md#sqlite)).
 
 ## Secrets: platform/secure
 

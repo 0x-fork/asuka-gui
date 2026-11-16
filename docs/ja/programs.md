@@ -250,9 +250,9 @@ asuka build --target linux-amd64     # dist/linux-amd64/greet
 asuka build --target windows-arm64   # dist/windows-arm64/greet.exe
 ```
 
-`--target` は `darwin`、`linux`、`windows` のいずれかと、`amd64` か `arm64` の組み合わせです。このコンピューター以外のシステム向けには、デスクトップアプリと同じく Zig でビルドします。実行ファイルはシステムが許す範囲で単体で動きます。Linux では静的にリンクされます（musl、Zig を使う場合）。ただし、使っているものがシステムのライブラリを読み込む場合（std/http の libsoup、プラグインのライブラリ）は除きます。Windows ではシステムの DLL だけに、macOS ではシステムのライブラリだけに依存します。
+`--target` は `darwin`、`linux`、`windows` のいずれかと、`amd64` か `arm64` の組み合わせです。このコンピューター以外のシステム向けには、デスクトップアプリと同じく Zig でビルドします。実行ファイルはシステムが許す範囲で単体で動きます。Linux では静的にリンクされます（musl、Zig を使う場合）。ただし、使っているものがシステムのライブラリを読み込む場合（std/http の libsoup）は除きます。Windows ではシステムの DLL だけに、macOS ではシステムのライブラリだけに依存します。
 
-プラットフォームのコードを持つパッケージも、どのデスクトップでもプログラムから使えます。`std/http` はアプリと同じく、macOS では URLSession、Windows では WinHTTP、Linux では libsoup でリクエストを送ります。ただし、ウィンドウはありません。プラグインのライブラリ（std/sqlite のものなど）は実行ファイルの隣に置かれます。
+プラットフォームのコードを持つパッケージも、どのデスクトップでもプログラムから使えます。`std/http` はアプリと同じく、macOS では URLSession、Windows では WinHTTP、Linux では libsoup でリクエストを送ります。ただし、ウィンドウはありません。SQLite（`std/sqlite`）は、アプリと同じく実行ファイルに組み込まれます。
 
 ### アプリに付属するプログラム
 

@@ -326,13 +326,14 @@ asuka build --target windows-arm64   # dist/windows-arm64/greet.exe
 another system than this computer's is built with Zig, as the desktop
 apps are. The executable stands alone, as far as the system allows: on
 Linux it's linked statically (musl, with Zig) unless what it uses loads the
-system's libraries (std/http's libsoup, a plugin's library); on
+system's libraries (std/http's libsoup); on
 Windows it needs only the system's DLLs; on macOS, the system's
 libraries.
 
 A package with platform code works in a program on every desktop:
 `std/http` sends its requests with URLSession on macOS, WinHTTP on
-Windows and libsoup on Linux, as in an app, with no window. A plugin's library (std/sqlite's) goes beside the executable.
+Windows and libsoup on Linux, as in an app, with no window. SQLite
+(`std/sqlite`) is compiled into the executable, as into an app.
 
 ### An app's programs
 

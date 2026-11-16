@@ -265,11 +265,50 @@ defines = ["SQLITE_OS_OTHER=1"]
 テーブルは `[c.ios]`、`[c.android]`、`[c.macos]`、`[c.windows]`、`[c.linux]`、`[c.web]` です。ソースはターゲットごとに、そのプラットフォームのコンパイラー（Xcode のもの、NDK のもの、Web とクロスビルドでは Zig）でコンパイルされます。リリースでは最適化され、警告はアプリの設定のまま扱われます。
 
 - **iOS**：C も、ライブラリとフレームワークも、アプリの実行ファイルにリンクされます。SDK には `libz`、`libsqlite3`、`libxml2`、`libc++` と Apple のフレームワークがあります。
-- **Android**：ABI ごとにアプリのライブラリに入ります。NDK には `libz`、`libm`、`liblog`、`libandroid` など、NDK の安定したライブラリがあります。それ以外のものは、ソースとして、または ABI ごとのビルド済みの `.a` として持ち込みます。
+- **Android**：ABI ごとにアプリのライブラリに入ります。NDK には `libz`、`libm`、`liblog`、`libandroid` など、NDK の安定したライブラリがあります。それ以外のものは、ソースとして、または ABI ごとのビルド済みの `.a` として持ち込みます（[ビルド済みのライブラリ](#ビルド済みのライブラリ)）。
 - **macOS、Windows、Linux**：アプリの実行ファイルに入ります。
-- **Web**：WASI 向けにビルドされる WebAssembly モジュールに入ります。Web にはシステムのライブラリもスレッドもないので、ライブラリはソースとして持ち込み、変更点（`defines`、別の `sources`）を `[c.web]` に書きます。
+- **Web**：WASI 向けにビルドされる WebAssembly モジュールに入ります。Web にはシステムのライブラリもスレッドもないので、ライブラリはソースとして持ち込んで変更点（`defines`、別の `sources`）を `[c.web]` に書くか、WASI 向けにビルド済みのものを使います。
 
 パッケージの C は、そのパッケージ自身の `asuka.toml` の `[c]` に、パッケージからの相対パスで書きます。パッケージをインポートしたアプリは、その C もビルドします。アプリ自身のパッケージ（`./util`）は、アプリの `[c]` を共有します。
+
+## ビルド済みのライブラリ
+
+ベンダーがライブラリをソースではなくビルド済みの形で提供している場合は、`[c.prebuilt]` に書きます。ターゲットごとに静的ライブラリを一つずつ指定し、ヘッダーのディレクトリは `include` に書きます。ビルドはそのターゲット向けのものをリンクし、extern 宣言からは自分の C と同じように呼び出せます。
+
+```toml
+[c]
+include = ["vendor/acme/include"]
+
+[c.prebuilt]
+ios-arm64 = "vendor/acme/ios-arm64/libacme.a"
+ios-simulator = "vendor/acme/ios-simulator/libacme.a"  # arm64 と x86_64 を一つにまとめたもの
+macos = "vendor/acme/macos/libacme.a"                  # arm64 と x86_64 を一つにまとめたもの
+android-arm64 = "vendor/acme/android-arm64/libacme.a"
+android-arm = "vendor/acme/android-arm/libacme.a"
+android-x64 = "vendor/acme/android-x64/libacme.a"
+linux-x64 = "vendor/acme/linux-x64/libacme.a"
+linux-arm64 = "vendor/acme/linux-arm64/libacme.a"
+windows-x64 = "vendor/acme/windows-x64/acme.lib"
+windows-arm64 = "vendor/acme/windows-arm64/acme.lib"
+web = "vendor/acme/wasm32/libacme.a"
+
+[c.android]
+libraries = ["log"]
+```
+
+```asuka
+extern fn acme_version() -> CString
+```
+
+- **キー**はターゲットです。`ios-arm64`、`ios-simulator-arm64`、`ios-simulator-x64`、`macos-arm64`、`macos-x64`、`android-arm64`、`android-arm`、`android-x64`、`linux-x64`、`linux-arm64`、`windows-x64`、`windows-arm64`、`web` があります。`ios-simulator` と `macos` は、そのプラットフォームの両方のアーキテクチャを含むユニバーサルライブラリ（`lipo` で作ったもの）を指します。ターゲット自身のキーがあれば、そちらが優先されます。
+- **値**は `asuka.toml` からの相対パスで、パスのリストでもかまいません。どれも静的ライブラリ（`.a`、Windows では `.a` か `.lib`）です。
+- **ライブラリのないターゲット**はビルドできず、その旨が表示されます（`[c.prebuilt] has no library for android-x64`）。`asuka test` と `asuka run` はこのコンピューター向けのもの（`macos-arm64`、`linux-x64` など）をリンクするので、呼び出しをテストするにはそれも書いておきます。
+- **ライブラリがシステムに求めるもの**は、ソースの場合と同じくプラットフォームのテーブルに書きます。`libraries`（Android の `log`、`z`）と `frameworks`（`Security`）です。
+- **ライブラリのビルド**は、Asuka が動く最も古いバージョン（iOS 16、macOS 11、Android 13）向けに行います。Web 向けは WASI の C ライブラリ（`wasm32-wasi`）を使い、スレッドなしでビルドします。
+
+これらのライブラリは、自分の C と同じようにアプリにリンクされます。実行時にアプリの隣で探したり、埋め込んだり、署名したりするものはなく、アプリが呼ばない部分は取り除かれます。パッケージの `[c.prebuilt]` はパッケージと一緒に公開され、ライブラリはその tarball に入ります。
+
+ベンダーの動的ライブラリは `[c]` からはリンクしません。iOS や macOS のもの（フレームワークの XCFramework）と Android のもの（ABI ごとの `.so`、または AAR）は、[ネイティブパッケージ](native.md)に入れて配布します。Swift パッケージの binary target として、あるいは Gradle モジュールの `jniLibs` や依存関係として追加します。各プラットフォーム自身のビルドがそれらを埋め込み、署名し、読み込み、パッケージの Swift と Kotlin が呼び出します。
 
 ## 開発
 

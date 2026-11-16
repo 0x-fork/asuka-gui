@@ -343,15 +343,80 @@ cross builds), optimized for a release, with your warnings as they are.
   `libz`, `libsqlite3`, `libxml2`, `libc++` and Apple's frameworks.
 - **Android**: into the app's library, for each ABI. The NDK has `libz`,
   `libm`, `liblog`, `libandroid` and the other stable NDK libraries;
-  anything else comes as sources or as a prebuilt `.a` per ABI.
+  anything else comes as sources or as a prebuilt `.a` per ABI
+  ([Prebuilt libraries](#prebuilt-libraries)).
 - **macOS, Windows and Linux**: into the app's executable.
 - **The web**: into the WebAssembly module, built for WASI. There are no
   system libraries there and no threads, so a library comes as sources,
-  and `[c.web]` says what changes (`defines`, other `sources`).
+  and `[c.web]` says what changes (`defines`, other `sources`), or
+  prebuilt for WASI.
 
 A package's C is its own `asuka.toml`'s `[c]`, paths relative to the
 package: an app that imports it builds it too. Its own packages
 (`./util`) share the app's `[c]`.
+
+## Prebuilt libraries
+
+A vendor that ships its library built rather than as sources is named
+in `[c.prebuilt]`: a static library for each target, and its headers in
+`include`. A build links the one for its target, and the externs call it
+as they call your own C.
+
+```toml
+[c]
+include = ["vendor/acme/include"]
+
+[c.prebuilt]
+ios-arm64 = "vendor/acme/ios-arm64/libacme.a"
+ios-simulator = "vendor/acme/ios-simulator/libacme.a"  # arm64 and x86_64 in one
+macos = "vendor/acme/macos/libacme.a"                  # arm64 and x86_64 in one
+android-arm64 = "vendor/acme/android-arm64/libacme.a"
+android-arm = "vendor/acme/android-arm/libacme.a"
+android-x64 = "vendor/acme/android-x64/libacme.a"
+linux-x64 = "vendor/acme/linux-x64/libacme.a"
+linux-arm64 = "vendor/acme/linux-arm64/libacme.a"
+windows-x64 = "vendor/acme/windows-x64/acme.lib"
+windows-arm64 = "vendor/acme/windows-arm64/acme.lib"
+web = "vendor/acme/wasm32/libacme.a"
+
+[c.android]
+libraries = ["log"]
+```
+
+```asuka
+extern fn acme_version() -> CString
+```
+
+- **The keys** are the targets: `ios-arm64`, `ios-simulator-arm64`,
+  `ios-simulator-x64`, `macos-arm64`, `macos-x64`, `android-arm64`,
+  `android-arm`, `android-x64`, `linux-x64`, `linux-arm64`,
+  `windows-x64`, `windows-arm64` and `web`. `ios-simulator` and `macos`
+  name a universal library (one `lipo` made) for both of the platform's
+  architectures; a target's own key comes first.
+- **A value** is a library's path relative to `asuka.toml`, or a list of
+  them. Each is a static library: `.a`, or on Windows `.a` or `.lib`.
+- **A target it has no library for** doesn't build, and says so
+  (`[c.prebuilt] has no library for android-x64`). `asuka test` and
+  `asuka run` link this computer's (`macos-arm64`, `linux-x64`...), so
+  name it too to test the calls.
+- **What the library needs of the system** goes in the platform's
+  tables, as for sources: `libraries` (`log` on Android, `z`) and
+  `frameworks` (`Security`).
+- **Build it** for the platforms' oldest versions Asuka runs on (iOS 16,
+  macOS 11, Android 13), and for the web against WASI's C library
+  (`wasm32-wasi`), with no threads.
+
+The libraries are linked into the app, as your own C is: there's nothing
+to find, embed or sign beside it as it runs, and what it doesn't call is
+left out. A package's `[c.prebuilt]` is published with it, the
+libraries in its tarball.
+
+A vendor's dynamic library isn't linked from `[c]`. One for iOS or
+macOS (an XCFramework of a framework) and one for Android (an `.so` per
+ABI, or an AAR) ship in a [native package](native.md): a binary target
+of its Swift package, the `jniLibs` or dependencies of its Gradle
+module. Each platform's own build embeds, signs and loads them, and the
+package's Swift and Kotlin call them.
 
 ## Developing
 

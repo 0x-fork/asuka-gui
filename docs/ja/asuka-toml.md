@@ -406,19 +406,26 @@ location = false
 | `libraries` | 文字列の配列 | なし | リンクするライブラリです。名前（`sqlite3` なら `-lsqlite3`）か、`asuka.toml` からの相対パスで指定したファイル（`lib/libfoo.a`）を書きます。 |
 | `frameworks` | 文字列の配列 | なし | iOS と macOS でリンクする Apple のフレームワークです（`Security`）。 |
 
+`[c.prebuilt]` には、ベンダーがターゲットごとにビルドしたライブラリを書きます。キーはターゲット（`ios-arm64`、`ios-simulator-arm64`、`ios-simulator-x64`、`macos-arm64`、`macos-x64`、`android-arm64`、`android-arm`、`android-x64`、`linux-x64`、`linux-arm64`、`windows-x64`、`windows-arm64`、`web`。ユニバーサルライブラリには `ios-simulator` と `macos`）、値は `asuka.toml` からの相対パスで書いた静的ライブラリ（`.a`。Windows では `.a` か `.lib`）か、そのリストです。ここにライブラリのないターゲットをビルドすると、その旨を表示して止まります。
+
 ```toml
 [c]
 sources = ["c/*.c"]
-include = ["c/include"]
+include = ["c/include", "vendor/acme/include"]
 
 [c.ios]
 libraries = ["z"]
 
 [c.web]
 defines = ["NO_ZLIB"]
+
+[c.prebuilt]
+ios-arm64 = "vendor/acme/ios-arm64/libacme.a"
+ios-simulator = "vendor/acme/ios-simulator/libacme.a"
+android-arm64 = "vendor/acme/android-arm64/libacme.a"
 ```
 
-[Asuka から C を呼び出す](c.md#ビルド)を参照してください。
+[Asuka から C を呼び出す](c.md#ビルド)と[ビルド済みのライブラリ](c.md#ビルド済みのライブラリ)を参照してください。
 
 ## bin
 

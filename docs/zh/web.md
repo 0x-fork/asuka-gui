@@ -28,7 +28,7 @@ asuka build --platform web examples/counter     # 生成静态网站，位于 ex
 
 - `index.html` 和 `manifest.webmanifest`（Web 应用清单，有了它浏览器才会提示安装应用；图标取自 `asuka.toml` 的 `icon`，同时生成 favicon 和 iOS 主屏幕图标）；
 - 应用本身 `asuka.<digest>.wasm`，经过优化并去掉了符号表；
-- Asuka 自己的文件，放在 `asuka/<digest>/` 中（如果应用用到了插件，还包括插件的文件，比如 SQLite 的 WebAssembly 构建），以及原生包的脚本；
+- Asuka 自己的文件，放在 `asuka/<digest>/` 中（应用导入了 `std/sqlite` 时，还包括 SQLite 的 WebAssembly 模块），以及原生包的脚本；
 - 应用的 service worker `sw.<digest>.js`，与 `index.html` 放在一起（作用域是网站所在的文件夹）：即使没有打开应用的任何页面，它也能显示应用的通知和推送（见 [通知与 Web Push](#通知与-web-push)）；
 - 应用的 `assets/`；
 - 每个脚本和 wasm 文件的 gzip 压缩副本（`.gz`），供支持预压缩文件的服务器使用；
@@ -98,7 +98,7 @@ Web 应用看到的环境（`environment()`）来自浏览器：
 
 ## SQLite
 
-`std/sqlite` 的用法和其他平台一样，实时查询也支持。它就是同一个 SQLite 和同一个 Asuka 库，只是编译成了 WebAssembly（`asqlite.wasm`；凡是导入了 `std/sqlite` 的应用，`asuka dev --platform web` 和 `asuka build --platform web` 都会带上它）。它运行在页面的一个 worker 里，worker 把应用数据目录中的数据库保存在浏览器的源私有文件系统（origin private file system）中：数据库不会被整个加载到内存，提交返回时数据就已经落盘。
+`std/sqlite` 的用法和其他平台一样，实时查询也支持。它就是同一个 SQLite 和同一个 Asuka 库，只是编译成了 WebAssembly（`asqlite.wasm`；凡是导入了 `std/sqlite` 的应用，`asuka dev --platform web` 和 `asuka build --platform web` 都会为它构建这个模块）。它运行在页面的一个 worker 里，worker 把应用数据目录中的数据库保存在浏览器的源私有文件系统（origin private file system）中：数据库不会被整个加载到内存，提交返回时数据就已经落盘。
 
 与其他平台的区别：
 
@@ -109,7 +109,7 @@ Web 应用看到的环境（`environment()`）来自浏览器：
 - 没有源私有文件系统时（页面不是通过 `https` 或 `localhost` 提供的，比如 `asuka dev --lan` 的地址；某些浏览器的隐私窗口），worker 会把数据库存放在 IndexedDB 中，使用期间放在内存里：提交返回后要稍等片刻才会持久保存。不是安全上下文的页面也没有 Web Locks：两个标签页同时写一个数据库时，可能会丢失对方的写入（控制台会给出提示）。
 - 旧版本的 Asuka 把数据库和应用的其他文件一起存放（在 IndexedDB 中），应用第一次打开它时，它会被迁移到 worker 中。
 
-如果你用自己的页面嵌入应用（见下文），需要向 `start` 传入 `libs`，也就是应用所用插件文件的 URL，以文件名为键。对 SQLite 来说就是 `{"asqlite.wasm": "asuka/<digest>/lib/asqlite.wasm"}`，即构建产物中的那个文件。worker 的脚本由 Asuka 提供（`sqlite-worker.js`，与 `asuka.js` 放在一起）。
+如果你用自己的页面嵌入应用（见下文），需要向 `start` 传入 `sqlite`，也就是 SQLite 模块的 URL：构建产物中的 `"asuka/<digest>/lib/asqlite.wasm"`。worker 的脚本由 Asuka 提供（`sqlite-worker.js`，与 `asuka.js` 放在一起）。
 
 ## 原生模块
 
