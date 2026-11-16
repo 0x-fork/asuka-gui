@@ -628,7 +628,7 @@ component Done {
 ```
 
 It's Core Graphics on iOS and macOS, Android's `Canvas`, an `<svg>` in a
-browser, GDI+ on Windows and GSK's paths on Linux.
+browser, GDI+ on Windows and Cairo on Linux.
 
 ## Video
 

@@ -398,7 +398,7 @@ component Done {
 }
 ```
 
-iOS と macOS では Core Graphics、Android では `Canvas`、ブラウザーでは `<svg>`、Windows では GDI+、Linux では GSK のパスで描きます。
+iOS と macOS では Core Graphics、Android では `Canvas`、ブラウザーでは `<svg>`、Windows では GDI+、Linux では Cairo で描きます。
 
 ## 動画
 

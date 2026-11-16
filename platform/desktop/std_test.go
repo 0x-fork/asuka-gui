@@ -290,6 +290,31 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: native view asuka/markdown#Document", "host: measured asuka/markdown#Document 240x", "host: healed **bold and `code`**", "host: done"}},
+		{"svg", `import asuka/svg
+
+let tick = svg.Icon(r"""<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"/><rect x="2" y="2" width="20" height="20" rx="4"/></svg>""")
+
+component Probe {
+  state step = "start"
+  state color: Color = .accent
+  Column {
+    Text("#{step}")
+    svg.View(tick) { color: color }
+    svg.Shape([svg.Layer(path: svg.Path().rect(svg.Point(), svg.Point(fx: 1, fy: 1), radius: 6), fill: .red, fade: .blue)]) {
+      width: 100
+      height: 40
+    }
+  }
+  task {
+    await sleep(20ms)
+    color = .label
+    await sleep(20ms)
+    step = "done"
+  }
+}
+
+app { Probe() }
+`, []string{"host: native view asuka/svg#View", "host: native view asuka/svg#Shape", "host: measured asuka/svg#View 22x22", "host: done"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()

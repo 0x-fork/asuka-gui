@@ -61,6 +61,52 @@ const char *asuka_desktop_cache_dir(void) { return dir("ASUKA_DATA"); }
 const char *asuka_desktop_logs_dir(void) { return dir("ASUKA_DATA"); }
 const char *asuka_desktop_assets_dir(void) { return dir("ASUKA_ASSETS"); }
 
+// ---- A window for the views (Linux, on a display) ----
+//
+// The native views' widgets, shown in a window of the host's, a box of
+// them each 160x80, so that they draw: what a package draws runs (under
+// the sanitizers) as GTK paints the window.
+
+#ifdef __linux__
+static struct {
+	GtkWidget *window, *box;
+	GtkWidget *(*window_new)(void);
+	GtkWidget *(*box_new)(int orientation, int spacing);
+	void (*set_child)(GtkWidget *, GtkWidget *);
+	void (*present)(GtkWidget *);
+	void (*append)(GtkWidget *, GtkWidget *);
+	void (*remove)(GtkWidget *, GtkWidget *);
+	void (*size_request)(GtkWidget *, int, int);
+} win;
+
+static void show_widget(void *w) {
+	if (!w || !getenv("DISPLAY") || !asuka_linux() || !G(gtk_init)) return;
+	if (!win.window) {
+		*(void **)&win.window_new = asuka_linux_sym("gtk_window_new");
+		*(void **)&win.box_new = asuka_linux_sym("gtk_box_new");
+		*(void **)&win.set_child = asuka_linux_sym("gtk_window_set_child");
+		*(void **)&win.present = asuka_linux_sym("gtk_window_present");
+		*(void **)&win.append = asuka_linux_sym("gtk_box_append");
+		*(void **)&win.remove = asuka_linux_sym("gtk_box_remove");
+		*(void **)&win.size_request = asuka_linux_sym("gtk_widget_set_size_request");
+		if (!win.window_new || !win.box_new || !win.set_child || !win.present || !win.append || !win.remove || !win.size_request) return;
+		win.window = win.window_new();
+		win.box = win.box_new(1, 4);  // vertical
+		win.set_child(win.window, win.box);
+		win.present(win.window);
+	}
+	win.size_request(w, 160, 80);
+	win.append(win.box, w);
+}
+
+static void hide_widget(void *w) {
+	if (w && win.box) win.remove(win.box, w);
+}
+#else
+static void show_widget(void *w) {}
+static void hide_widget(void *w) {}
+#endif
+
 // ---- The core's callbacks ----
 
 typedef struct {
@@ -96,6 +142,7 @@ static void apply(const uint8_t *buf, size_t len) {
 		case AK_OP_DESTROY: {
 			node *n = node_of(op.id, false);
 			if (n && n->widget) {
+				hide_widget(n->widget);
 				asuka_native_view_destroy(n->kind, n->widget);
 				n->widget = NULL;
 			}
@@ -112,6 +159,7 @@ static void apply(const uint8_t *buf, size_t len) {
 				n->kind = strndup(op.value.s.p, op.value.s.len);
 				n->widget = asuka_native_view(n->kind, n->id, NULL);
 				printf("host: native view %s%s\n", n->kind, n->widget ? "" : " (none)");
+				if (n->widget && strncmp(n->kind, "asuka/", 6) == 0) show_widget(n->widget);  // the standard library's: GTK's widgets
 			} else if (n->native && op.prop == AK_PROP_NATIVE_PROP) {
 				if (n->widget) asuka_native_view_prop(n->widget, (const uint8_t *)op.value.s.p, op.value.s.len);
 			} else if (op.value.type == AK_T_STRING && op.value.s.len > 0 && op.value.s.p[0] == '#') {
