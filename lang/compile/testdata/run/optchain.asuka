@@ -24,6 +24,27 @@ test "optional members" {
   }
 }
 
+// x?.f() where f itself returns an optional: the chain's result is f's,
+// flattened, not boxed again (a boxed int? read as an int was its
+// pointer).
+struct Box {
+  text: string
+  fn number() -> int? = text.toInt()
+}
+
+test "optional method results" {
+  let words = ["7"]
+  print(words.first()?.toInt() ?? -1)
+  let none_: [string] = []
+  print(none_.first()?.toInt() == none)
+  let s: string? = "8"
+  print((s?.toInt() ?? 0) + 1)
+  let b: Box? = Box(text: "41")
+  print((b?.number() ?? 0) + 1)
+  let bad: Box? = Box(text: "x")
+  print(bad?.number() == none)
+}
+
 // Output:
 // 15.5
 // true
@@ -33,3 +54,9 @@ test "optional members" {
 // a 15.5
 // b none
 // ok optional members
+// 7
+// true
+// 9
+// 42
+// true
+// ok optional method results

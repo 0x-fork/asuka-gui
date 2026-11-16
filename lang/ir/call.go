@@ -91,7 +91,14 @@ func (b *fb) optionalCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		v = b.funcCallRecv(e, call, in, -1, false)
 	}
 	if r >= 0 {
-		b.toOptional(v, check.Unopt(res), res, r)
+		// The method's own result: an optional one (x?.f() where f
+		// returns T?) is the chain's as it is, flattened, not wrapped
+		// again.
+		from := check.Unopt(res)
+		if call.Result != nil {
+			from = b.subst.Apply(call.Result)
+		}
+		b.toOptional(v, from, res, r)
 	}
 	b.jmp(end)
 	b.f.Place(none)
