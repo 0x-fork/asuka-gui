@@ -1,0 +1,483 @@
+import asuka/fs
+import asuka/http
+import asuka/json
+import asuka/random
+import asuka/time
+
+/// A quota that resets: Claude's 5-hour window, its week, its week for
+/// one model.
+struct Window {
+  key: string // which: five_hour, seven_day, seven_day_fable
+  name: string = "" // the server's name for it; empty: label(key)
+  span: Duration = 0s // how long it runs; 0: periodOf(key)
+  used: float = 0 // percent of the quota used, 0 to 100
+  resets: time.Time? = none // none: not started (nothing used yet)
+  history: [Sample] = [] // what was used, as the window went
+
+  /// The window's name.
+  fn title() -> string = if name.isEmpty { label(key) } else { name }
+
+  /// How long the window runs.
+  fn period() -> Duration = if span > 0s { span } else { periodOf(key) }
+
+  /// Projects the use to the reset from its average rate since it
+  /// started: busy and quiet hours both change it.
+  fn forecast(now: time.Time) -> Forecast {
+    if used >= 100 { return Forecast(pace: .usedUp, atReset: used) }
+    if let r = resets {
+      if now >= r { return Forecast(atReset: used) }
+      let elapsed = now - (r - period())
+      // Under a twentieth of the window in, a rate says little.
+      if elapsed < period() / 20 || used <= 0 { return Forecast(atReset: used) }
+      let rate = used / elapsed.hours // percent an hour
+      let at = used + rate * (r - now).hours
+      if at > 100 { return Forecast(pace: .over, atReset: at, out: now + ((100 - used) / rate) * 1h) }
+      return Forecast(pace: if at > 80 { .tight } else { .ok }, atReset: at)
+    }
+    return Forecast(atReset: used)
+  }
+}
+
+/// How much of a window was used at a time.
+struct Sample {
+  at: time.Time
+  used: float
+}
+
+/// A subscription whose quotas the app follows.
+struct Account {
+  id: string
+  service: string = "claude"
+  name: string = "" // the user's name for it; empty: the service's
+  demo: bool = false // made-up numbers, for trying the app
+  email: string = ""
+  org: string = ""
+  extra: bool = false // extra usage (pay as you go past the quota) is on
+  windows: [Window] = []
+  hidden: [string] = [] // windows not shown on the home screen
+  updated: time.Time? = none
+  error: string = "" // why the last refresh failed
+
+  fn title() -> string = if name.isEmpty { services[service]?.name ?? service } else { name }
+
+  /// Whether the window shows on the home screen's card.
+  fn shown(key: string) -> bool = !hidden.contains(key)
+}
+
+/// How long a window runs, from its key.
+fn periodOf(key: string) -> Duration = if key.hasPrefix("five_hour") { 5h } else { 7 * 24h }
+
+/// Names a window: "Current 5 hours", "This week", "This week · Opus".
+fn label(key: string) -> string {
+  if key == "five_hour" { return "Current 5 hours" }
+  if key == "seven_day" { return "This week" }
+  if key.hasPrefix("seven_day_") {
+    var m = key.trimPrefix("seven_day_").replace("_", " ")
+    if m == "oauth apps" { m = "apps" }
+    return "This week · {upper(m)}"
+  }
+  return key
+}
+
+/// How a window's use is going, at the rate it has gone so far.
+enum Pace {
+  unknown // too early to tell
+  ok // ends with a fifth or more left
+  tight // ends with little left
+  over // runs out before it resets
+  usedUp // all used, until it resets
+
+  fn label() -> string = match self {
+    .unknown => "Too early"
+    .ok => "On track"
+    .tight => "Tight"
+    .over => "Runs out"
+    .usedUp => "Used up"
+  }
+}
+
+/// Where a window will be when it resets.
+struct Forecast {
+  pace: Pace = .unknown
+  /// The percent used when it resets, at the average rate since it
+  /// started; over 100 when it runs out first.
+  atReset: float = 0
+  /// When it runs out, for .over.
+  out: time.Time? = none
+}
+
+/// A provider the app knows how to read.
+struct Service {
+  name: string
+  manage: string // where the user manages the plan
+}
+
+let services = ["claude": Service(name: "Claude", manage: "https://claude.ai/settings/usage")]
+
+/// Reads the usage Claude Code shows in /usage, with the account's OAuth
+/// tokens: refreshed first when they're about to expire, or when the API
+/// refuses them. It returns the account, and the secret to keep: the
+/// same, or refreshed tokens.
+async fn refreshClaude(a: Account, secret: string) throws -> (Account, string) {
+  var t = parseTokens(secret)
+  if t.stale(time.now()) {
+    t = try await refreshedOrSignedOut(t)
+  }
+  do {
+    return (try await readClaude(a, t.access), t.string())
+  } catch e: HttpError {
+    if e.status != 401 || t.refresh.isEmpty { throw e }
+  }
+  t = try await refreshedOrSignedOut(t)
+  return (try await readClaude(a, t.access), t.string())
+}
+
+/// A refresh that failed: the user signs in again.
+struct SignedOut: Error {
+  message: string
+}
+
+async fn refreshedOrSignedOut(t: Tokens) throws -> Tokens {
+  do {
+    return try await refreshed(t)
+  } catch e {
+    throw SignedOut(message: "signed out ({e.message}): sign in again")
+  }
+}
+
+/// The account with its usage and profile read.
+async fn readClaude(a: Account, token: string) throws -> Account {
+  let text = try await getText("https://api.anthropic.com/api/oauth/usage", token)
+  // The last reply, as the server sent it: to see what it says when a
+  // number looks wrong. It holds no secrets, only the percentages.
+  try? fs.write(fs.join(fs.appDir(), "usage-{a.id}.json"), text.bytes())
+  let usage: UsageReply = try json.decode(text)
+  let (fresh, extra) = try parseUsage(usage)
+  var out = a
+  out.windows = merge(a.windows, fresh, time.now())
+  if let x = extra { out.extra = x }
+  // The profile is extra: without it the numbers still show.
+  let profile: ProfileReply? = try? json.decode(try await getText("https://api.anthropic.com/api/oauth/profile", token))
+  if let p = profile {
+    out.email = p.account.email
+    out.org = p.organization.name
+  }
+  return out
+}
+
+struct ProfileReply {
+  account: ProfileAccount
+  organization: ProfileOrganization
+}
+
+struct ProfileAccount {
+  email: string = ""
+}
+
+struct ProfileOrganization {
+  name: string = ""
+}
+
+async fn getText(url: string, token: string) throws -> string {
+  let res = try await withTimeout(20s) {
+    try await http.get(url, headers: ["Authorization": "Bearer {token}", "anthropic-beta": "oauth-2025-04-20"])
+  }
+  let text = try await res.text()
+  if res.status != 200 { throw apiError(res.status, res.statusText, text) }
+  return text
+}
+
+/// A refused request: its status, and what the server said.
+struct HttpError: Error {
+  status: int
+  message: string
+}
+
+/// What a refused request's body may say: the API's message
+/// (\{"error": \{"type": "authentication_error", "message": "..."}}), or
+/// OAuth's (\{"error": "invalid_grant", "error_description": "..."}).
+struct ErrorReply {
+  error: json.Value = .null
+  error_description: string = ""
+}
+
+/// What a refused request says.
+fn apiError(status: int, statusText: string, body: string) -> HttpError {
+  let reply: ErrorReply = (try? json.decode(body)) ?? ErrorReply()
+  var message = reply.error_description
+  if let m = reply.error["message"]?.string() {
+    if !m.isEmpty { message = m }
+  } else if let code = reply.error.string() {
+    if message.isEmpty { message = code }
+  }
+  if message.isEmpty { message = statusText }
+  if message.contains("scope") {
+    // A token for inference alone (claude setup-token's) can't read the
+    // account's usage.
+    message += " (this token can't read usage: sign in with Claude)"
+  } else if status == 401 {
+    message = "{message.trimSuffix(".")}. Sign in again."
+  }
+  return HttpError(status: status, message: message)
+}
+
+/// A pasted token without the spaces and line breaks a terminal's
+/// wrapping puts in it.
+fn cleanToken(t: string) -> string = t.fields().join("")
+
+/// The usage endpoint's reply: the server's list of meters, "limits", and
+/// the windows Claude Code knows by key. Other keys are the server's own,
+/// under codenames ("iguana_necktie", a dollar budget): Claude Code
+/// doesn't show them, nor does this.
+struct UsageReply {
+  limits: [LimitRow] = []
+  five_hour: Utilization? = none
+  seven_day: Utilization? = none
+  seven_day_opus: Utilization? = none
+  seven_day_sonnet: Utilization? = none
+  extra_usage: ExtraUsage? = none
+}
+
+struct Utilization {
+  utilization: float? = none
+  resets_at: string? = none
+}
+
+struct ExtraUsage {
+  is_enabled: bool? = none
+}
+
+/// A meter of the server's: \{"kind": "weekly_scoped", "group": "weekly",
+/// "percent": 0, "resets_at": "...", "scope": \{"model": \{"display_name":
+/// "Fable"}}}.
+struct LimitRow {
+  kind: string = ""
+  group: string = ""
+  percent: float? = none
+  resets_at: string? = none
+  scope: LimitScope? = none
+}
+
+struct LimitScope {
+  model: DisplayName? = none
+  surface: DisplayName? = none
+}
+
+struct DisplayName {
+  display_name: string = ""
+}
+
+/// The usage endpoint's windows, and whether extra usage is on (none: it
+/// doesn't say). A meter's kind says what it is ("session", "weekly_all",
+/// "weekly_scoped"), its scope which model a scoped one is for.
+fn parseUsage(usage: UsageReply) throws -> ([Window], bool?) {
+  let extra = usage.extra_usage?.is_enabled
+  var ws = parseLimits(usage.limits)
+  if ws.isEmpty {
+    let known = [
+      ("five_hour", usage.five_hour),
+      ("seven_day", usage.seven_day),
+      ("seven_day_opus", usage.seven_day_opus),
+      ("seven_day_sonnet", usage.seven_day_sonnet),
+    ]
+    for (key, u) in known {
+      if let used = u?.utilization {
+        ws.push(Window(key: key, used: used, resets: parseTime(u?.resets_at)))
+      }
+    }
+  }
+  if ws.isEmpty { throw UsageError.empty }
+  return (sortWindows(ws), extra)
+}
+
+enum UsageError: Error {
+  empty
+
+  fn message() -> string = "no usage in the reply"
+}
+
+fn parseTime(s: string?) -> time.Time? {
+  if let text = s { return try? time.parse(text) }
+  return none
+}
+
+fn parseLimits(rows: [LimitRow]) -> [Window] {
+  var ws: [Window] = []
+  for r in rows {
+    if let percent = r.percent {
+      let scope = r.scope?.model?.display_name ?? r.scope?.surface?.display_name ?? ""
+      var w = Window(key: r.kind, used: percent, resets: parseTime(r.resets_at))
+      if r.kind == "session" {
+        w.key = "five_hour"
+      } else if r.kind == "weekly_all" {
+        w.key = "seven_day"
+      } else if !scope.isEmpty {
+        // A model's week, or a surface's: named as the server names it.
+        w.key = "seven_day_{slug(scope)}"
+        w.name = "This week · {scope}"
+      } else {
+        w.name = upper(r.kind.replace("_", " "))
+      }
+      w.span = if r.group == "session" || r.kind == "session" { 5h } else { 7 * 24h }
+      ws.push(w)
+    }
+  }
+  return ws
+}
+
+/// A name as a key: "Fable 5" is "fable_5".
+fn slug(s: string) -> string = s.lower().fields().join("_")
+
+/// The shortest first, then the week, then the models'.
+fn sortWindows(ws: [Window]) -> [Window] = ws.sorted((a, b) => if a.period() != b.period() {
+  a.period() < b.period()
+} else if (a.key == "seven_day") != (b.key == "seven_day") {
+  a.key == "seven_day"
+} else {
+  a.key < b.key
+})
+
+/// Fresh windows, each with its history kept while it's the same window
+/// (the same reset); a sample is kept a quarter hour apart at most, and
+/// when the use changed.
+fn merge(old: [Window], fresh: [Window], now: time.Time) -> [Window] {
+  var out = fresh
+  for i in 0..<out.count {
+    let w = out[i]
+    var h = old.first(o => o.key == w.key && o.resets == w.resets)?.history ?? []
+    if let last = h.last {
+      if last.used != w.used || now - last.at > 15min { h.push(Sample(at: now, used: w.used)) }
+    } else {
+      h.push(Sample(at: now, used: w.used))
+    }
+    out[i].history = h.suffix(300)
+  }
+  return out
+}
+
+/// An account with numbers like a week's real ones.
+fn demo(now: time.Time) -> Account {
+  let week = (now - 29h).truncate(1h)
+  let five = (now - 2h - 20min).truncate(1min)
+  var ws = [
+    Window(key: "five_hour", used: 21, resets: five + 5h),
+    Window(key: "seven_day", used: 15, resets: week + 7 * 24h),
+    Window(key: "seven_day_opus", used: 0, resets: week + 7 * 24h),
+  ]
+  // A week's start: busy afternoons, quiet nights.
+  var used = 0.0
+  var t = week
+  while t < now {
+    if t.hour >= 9 && t.hour <= 22 { used += 0.6 + random.float() * 0.5 }
+    ws[1].history.push(Sample(at: t, used: min(used, 15)))
+    t = t + 1h
+  }
+  ws[1].history.push(Sample(at: now, used: 15))
+  ws[0].history = [Sample(at: five, used: 0), Sample(at: five + 1h, used: 9), Sample(at: now, used: 21)]
+  return Account(
+    id: "demo-{now.unixNano()}",
+    demo: true,
+    email: "you@example.com",
+    org: "Personal",
+    windows: ws,
+    hidden: ["five_hour", "seven_day_opus"],
+    updated: now,
+  )
+}
+
+/// A demo account moved along: some use since it was last refreshed, and
+/// windows that reset start again.
+fn refreshDemo(a: Account, now: time.Time) -> Account {
+  let hours = (now - (a.updated ?? now)).hours
+  var fresh: [Window] = []
+  for old in a.windows {
+    var w = old
+    while let r = w.resets {
+      if now < r { break }
+      w = Window(key: w.key, name: w.name, span: w.span, resets: r + w.period())
+    }
+    if w.key != "seven_day_opus" {
+      let step = min(hours, 2) * (0.5 + random.float()) * 100 / w.period().hours * 1.6
+      w.used = min(100, ((w.used + step + random.float()) * 10).rounded() / 10)
+    }
+    fresh.push(w)
+  }
+  var out = a
+  out.windows = merge(a.windows, fresh, now)
+  return out
+}
+
+fn upper(s: string) -> string = if s.isEmpty { s } else { s.slice(0, 1).upper() + s.slice(1) }
+
+test "the forecast" {
+  let now = time.date(2026, 10, 31, hour: 0, minute: 58, zone: "UTC")
+  // 15% in 29 hours: 87% by the reset, 13% left.
+  let f = Window(key: "seven_day", used: 15, resets: now - 29h + 7 * 24h).forecast(now)
+  expect(f.pace == .tight && (100 - f.atReset).rounded() == 13, "the week: {f.pace} {f.atReset}")
+  // 15% in 10 hours runs out before the reset, about 57 hours from now.
+  let fast = Window(key: "seven_day", used: 15, resets: now - 10h + 7 * 24h).forecast(now)
+  expect(fast.pace == .over && (fast.out! - now).rounded(1h) == 57h)
+  // Five minutes into a week says nothing yet.
+  expect(Window(key: "seven_day", used: 2, resets: now - 5min + 7 * 24h).forecast(now).pace == .unknown)
+  let slow = Window(key: "five_hour", used: 10, resets: now + 3h).forecast(now)
+  expect(slow.pace == .ok && slow.atReset.rounded() == 25)
+  expect(Window(key: "seven_day", used: 100).forecast(now).pace == .usedUp)
+}
+
+fn parse(body: string) throws -> ([Window], bool?) = try parseUsage(try json.decode(body))
+
+test "the usage reply" {
+  // Without the server's list: the windows Claude Code knows; a codename
+  // isn't one.
+  let (ws, extra) = try parse("""
+    \{
+      "five_hour": \{"utilization": 21.0, "resets_at": "2026-10-31T05:00:00.000+00:00"},
+      "seven_day": \{"utilization": 15.0, "resets_at": "2026-11-05T12:00:00+00:00"},
+      "seven_day_oauth_apps": null,
+      "seven_day_opus": \{"utilization": 0.0, "resets_at": null},
+      "iguana_necktie": \{"utilization": 100.0, "resets_at": "2026-11-05T07:59:00+00:00"},
+      "extra_usage": \{"is_enabled": false}
+    }
+    """)
+  expect(ws.map(w => w.title()) == ["Current 5 hours", "This week", "This week · Opus"])
+  expect(ws[1].used == 15 && ws[1].resets!.day == 5 && ws[2].resets == none && extra == false)
+  // With it: its rows, named by kind and scope. A codename's window (here
+  // a dollar budget, all used) isn't Fable's, which is unused.
+  let (limits, _) = try parse("""
+    \{
+      "five_hour": \{"utilization": 7.0, "resets_at": "2026-10-31T05:50:00Z"},
+      "iguana_necktie": \{"utilization": 100.0, "resets_at": "2026-11-05T07:59:00Z", "limit_dollars": 250, "used_dollars": 250.14},
+      "limits": [
+        \{"kind": "session", "group": "session", "percent": 7, "resets_at": "2026-10-31T05:50:00Z", "severity": "normal", "is_active": true},
+        \{"kind": "weekly_all", "group": "weekly", "percent": 19, "resets_at": "2026-11-05T12:00:00Z", "severity": "normal", "is_active": false},
+        \{"kind": "weekly_scoped", "group": "weekly", "percent": 0, "resets_at": "2026-11-05T12:00:00Z", "severity": "normal", "is_active": false,
+         "scope": \{"model": \{"id": null, "display_name": "Fable"}, "surface": null}}
+      ]
+    }
+    """)
+  expect(limits.map(w => w.title()) == ["Current 5 hours", "This week", "This week · Fable"])
+  expect(limits[2].key == "seven_day_fable" && limits[2].used == 0 && limits[2].period() == 7 * 24h)
+  expect(limits[0].period() == 5h && limits[1].used == 19)
+  expect(label("seven_day_opus") == "This week · Opus")
+}
+
+test "merge keeps a window's history" {
+  let now = time.now()
+  let resets = now + 1h
+  let old = [Window(key: "five_hour", used: 10, resets: resets, history: [Sample(at: now - 1h, used: 10)])]
+  let ws = merge(old, [Window(key: "five_hour", used: 12, resets: resets)], now)
+  expect(ws[0].history.count == 2)
+  // A new window starts a new history.
+  expect(merge(ws, [Window(key: "five_hour", used: 1, resets: resets + 5h)], now)[0].history.count == 1)
+}
+
+test "a pasted token" {
+  expect(cleanToken(" sk-ant-oat01-abc\n  def \r\nghi ") == "sk-ant-oat01-abcdefghi")
+}
+
+test "what a refused request says" {
+  expect(apiError(401, "Unauthorized", "\{\"type\":\"error\",\"error\":\{\"type\":\"authentication_error\",\"message\":\"OAuth access token is invalid.\"}}").message == "OAuth access token is invalid. Sign in again.")
+  expect(apiError(403, "Forbidden", "\{\"error\":\{\"message\":\"OAuth token does not meet scope requirement user:profile\"}}").message.contains("can't read usage"))
+  expect(apiError(500, "Internal Server Error", "oops").message == "Internal Server Error")
+  expect(apiError(400, "Bad Request", "\{\"error\":\"invalid_grant\",\"error_description\":\"Invalid code\"}").message == "Invalid code")
+}

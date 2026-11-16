@@ -1,0 +1,144 @@
+// Player plays an album and shows what plays where the system shows
+// media (asuka/nowplaying): the lock screen, Control Center and the
+// notification shade, the menu bar's Now Playing, the volume flyout, the
+// desktops' media controls, the browser's; their buttons and the media
+// keys of keyboards and headsets play, pause, skip, seek and change track.
+//
+//   asuka dev --platform ios examples/player
+//   asuka dev examples/player   # macOS, Windows, Linux
+
+import asuka/audio
+import asuka/nowplaying
+
+struct Track {
+  title: string
+  file: string
+  cover: string
+}
+
+let artist = "Asuka Ensemble"
+let album = "A Day in Sines"
+let cover = 280.0 // the artwork's side, in points
+
+let tracks = [
+  Track(title: "Morning", file: "music/morning.mp3", cover: "covers/morning.jpg"),
+  Track(title: "Afternoon", file: "music/afternoon.mp3", cover: "covers/afternoon.jpg"),
+  Track(title: "Evening", file: "music/evening.mp3", cover: "covers/evening.jpg"),
+]
+
+component Player {
+  state index = 0
+  // playing carries playback from a track to the next.
+  state playing = false
+  state music: audio.Player? = none
+  state status = audio.Status()
+
+  let track = tracks[index]
+  let progress = if status.duration <= 0 { 0.0 } else { status.position / status.duration }
+
+  fn next() { index = (index + 1) % tracks.count }
+  fn previous() { index = (index + tracks.count - 1) % tracks.count }
+
+  fn toggle() {
+    if status.playing { music?.pause() } else { music?.play() }
+    status.playing = !status.playing
+    playing = status.playing
+  }
+
+  // The track's player, made again when the track changes: it reads its
+  // status a few times a second, for the progress bar, and at the end
+  // plays the next track.
+  task(index) {
+    let m = audio.Player(track.file)
+    music = m
+    status = audio.Status()
+    defer {
+      m.release()
+      music = none
+    }
+    if playing { m.play() }
+    while true {
+      let s = await m.status()
+      if s.ended {
+        next()
+        return
+      }
+      status = s
+      playing = s.playing
+      await sleep(250ms)
+    }
+  }
+
+  // The system's controls follow the player, and drive it.
+  nowplaying.NowPlaying {
+    title: track.title
+    artist: artist
+    album: album
+    artwork: track.cover
+    player: music // its state, position and duration; play, pause, stop, seek, skip
+    skipInterval: 10
+    on next { next() }
+    on previous { previous() }
+  }
+
+  SafeArea {
+    justify: .center
+    align: .center
+    padding: 24
+    Column {
+      align: .center
+      gap: 16
+      Image(track.cover) {
+        width: cover
+        height: cover
+        radius: 16
+      }
+      Column {
+        align: .center
+        gap: 4
+        Text(track.title) { font: .title2.bold() }
+        Text("{artist} — {album}") { color: .secondaryLabel }
+      }
+      Progress {
+        value: progress
+        width: cover
+      }
+      Text("{clock(status.position)} / {clock(status.duration)}") {
+        color: .secondaryLabel
+        font: .footnote
+      }
+      Row {
+        gap: 12
+        Button("Previous") {
+          variant: .gray
+          on press { previous() }
+        }
+        Button(if status.playing { "Pause" } else { "Play" }) {
+          variant: .filled
+          on press { toggle() }
+        }
+        Button("Next") {
+          variant: .gray
+          on press { next() }
+        }
+      }
+    }
+  }
+}
+
+fn clock(seconds: float) -> string {
+  let s = seconds.int()
+  return "{s / 60}:{(s % 60).padded(2)}"
+}
+
+app { Player() }
+
+test "steps through the album" {
+  let app = mount(Player())
+  app.expect("Morning", "Asuka Ensemble — A Day in Sines", "Play")
+  app.tap("Next")
+  app.expect("Afternoon")
+  app.tap("Previous")
+  app.tap("Previous")
+  app.expect("Evening")
+}

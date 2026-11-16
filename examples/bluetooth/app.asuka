@@ -1,0 +1,362 @@
+// Bluetooth finds Bluetooth LE devices nearby (asuka/bluetooth): it
+// scans for them (on the web, the browser's chooser finds one), connects
+// to the one tapped, and reads its battery and its heart rate, which it
+// follows as the device notifies it. As a peripheral, it's a heart rate
+// monitor itself: it serves the Heart Rate and Battery services and
+// advertises them, for another phone running it to find.
+//
+//   asuka dev --platform ios examples/bluetooth
+
+import asuka/bluetooth
+
+/// A device a scan heard, as the list shows it.
+struct Found {
+  device: bluetooth.Device
+  name: string
+  rssi: int
+  heart: bool // it advertises the Heart Rate service
+}
+
+app {
+  Stack { Scanner() }
+}
+
+/// The first screen: the adapter's state, the scan and what it finds,
+/// and the monitor.
+screen Scanner {
+  state devices: [Found] = []
+  state scanning = false
+  state monitoring = false
+  state status = ""
+
+  let adapter = bluetooth.state()
+
+  title: "Bluetooth"
+
+  // Each device again as it advertises: its RSSI as it moves.
+  task(scanning) {
+    if !scanning { return }
+    do {
+      for await a in bluetooth.scan(duplicates: true) { heard(a) }
+    } catch e {
+      scanning = false
+      status = scanError(e)
+    }
+  }
+
+  fn heard(a: bluetooth.Advertisement) {
+    let f = Found(
+      device: a.device,
+      name: if a.device.name.isEmpty { "Unnamed ({a.device.id})" } else { a.device.name },
+      rssi: a.rssi,
+      heart: a.services.contains(bluetooth.heartRate),
+    )
+    if let i = devices.index(x => x.device.id == a.device.id) {
+      devices[i] = f
+    } else {
+      devices.push(f)
+    }
+    // The nearest first.
+    devices.sortStable((x, y) => x.rssi > y.rssi)
+  }
+
+  async fn toggleScan() {
+    if scanning {
+      scanning = false
+      return
+    }
+    status = ""
+    let s = (try? await bluetooth.request()) ?? .unknown
+    if s != .on {
+      status = "Bluetooth is {s}"
+      return
+    }
+    devices = []
+    scanning = true
+  }
+
+  async fn choose() {
+    do {
+      let d = try await bluetooth.choose(
+        filters: [bluetooth.Filter(services: [bluetooth.heartRate]), bluetooth.Filter(services: [bluetooth.battery])],
+        optionalServices: [bluetooth.battery, bluetooth.deviceInformation],
+      )
+      push(DeviceScreen(d))
+    } catch bluetooth.BluetoothError.canceled {} catch e {
+      status = e.message
+    }
+  }
+
+  SafeArea {
+    grow: 1
+    padding: 16
+    gap: 12
+    Text("Bluetooth: {adapter}") { color: .secondaryLabel }
+    Row {
+      gap: 12
+      Button(if scanning { "Stop" } else { "Scan" }) {
+        variant: .filled
+        on press { await toggleScan() }
+      }
+      Button("Choose") {
+        variant: .gray
+        on press { await choose() }
+      }
+      Button(if monitoring { "Stop monitor" } else { "Be a monitor" }) {
+        variant: .gray
+        on press { monitoring = !monitoring }
+      }
+    }
+    Text(status) {
+      color: .secondaryLabel
+      font: .footnote
+    }
+    if monitoring {
+      Monitor { on error(message) { status = "Monitor: {message}" } }
+    }
+    List {
+      for f in devices key f.device.id {
+        Row {
+          gap: 12
+          padding: [12, 16]
+          align: .center
+          on press { push(DeviceScreen(f.device)) }
+          Text(if f.heart { "♥ {f.name}" } else { f.name }) { grow: 1 }
+          Text("{f.rssi} dBm") { color: .secondaryLabel }
+        }
+      }
+    }
+  }
+}
+
+fn scanError(e: Error) -> string = match e {
+  bluetooth.BluetoothError.notAvailable => "This platform doesn't scan: Choose a device"
+  bluetooth.BluetoothError.off => "Bluetooth is off"
+  bluetooth.BluetoothError.denied => "The app isn't allowed Bluetooth: allow it in Settings"
+  _ => e.message
+}
+
+/// Connects to the device while it's on screen (the connection belongs
+/// to the screen: going back disconnects), and shows its battery and its
+/// heart rate.
+screen DeviceScreen(device: bluetooth.Device) {
+  state battery = ""
+  state bpm = ""
+  state info = ""
+
+  let connection = bluetooth.connect(device, timeout: 20s)
+  let status = if connection.state == .disconnected && connection.error != none {
+    "Disconnected: {connection.error!.message}"
+  } else {
+    "{connection.state}"
+  }
+
+  title: device.name
+
+  task {
+    do {
+      let services = try await connection.services()
+      let mtu = try await connection.mtu()
+      info = "{services.count} services, MTU {mtu}"
+    } catch e {
+      info = e.message
+    }
+  }
+
+  task {
+    if let ch = try? await connection.characteristic(bluetooth.battery, bluetooth.batteryLevel) {
+      if let v = try? await ch.read() {
+        if !v.isEmpty { battery = "{v[0]}%" }
+      }
+      if ch.properties.contains(.notify) {
+        for await v in ch.notifications() {
+          if !v.isEmpty { battery = "{v[0]}%" }
+        }
+      }
+    }
+  }
+
+  task {
+    if let ch = try? await connection.characteristic(bluetooth.heartRate, bluetooth.heartRateMeasurement) {
+      do {
+        for await v in ch.notifications() {
+          if let n = heartRate(v) { bpm = "{n} bpm" }
+        }
+      } catch e {
+        bpm = e.message
+      }
+    }
+  }
+
+  SafeArea {
+    grow: 1
+    padding: 16
+    gap: 12
+    Text(status) { font: .headline }
+    Reading("Battery", battery)
+    Reading("Heart rate", bpm)
+    Text(info) {
+      color: .secondaryLabel
+      font: .footnote
+    }
+  }
+}
+
+component Reading(label: string, value: string) {
+  if !value.isEmpty {
+    Row {
+      gap: 12
+      Text(label) { grow: 1 }
+      Text(value) { color: .secondaryLabel }
+    }
+  }
+}
+
+/// The beats per minute of a Heart Rate Measurement (the Heart Rate
+/// service's 0x2a37): a flags byte, whose bit 0 says the value is 16
+/// bits, then the value.
+fn heartRate(v: bytes) -> int? {
+  if v.count >= 3 && v[0] % 2 == 1 { return v[1] + v[2] * 256 }
+  if v.count >= 2 && v[0] % 2 == 0 { return v[1] }
+  return none
+}
+
+/// The app as a heart rate monitor, while it's on screen: the Heart Rate
+/// and Battery services served and advertised, a beat a second notified
+/// to the centrals that subscribe.
+component Monitor {
+  event error(message: string)
+  state beat = 72
+
+  let measurement = bluetooth.LocalCharacteristic(uuid: bluetooth.heartRateMeasurement, properties: [.notify])
+  let services = [
+    bluetooth.LocalService(uuid: bluetooth.heartRate, characteristics: [
+      measurement,
+      // On the chest.
+      bluetooth.LocalCharacteristic(uuid: bluetooth.bodySensorLocation, properties: [.read], permissions: [.readable], value: bytes([1])),
+    ]),
+    bluetooth.LocalService(uuid: bluetooth.battery, characteristics: [
+      bluetooth.LocalCharacteristic(
+        uuid: bluetooth.batteryLevel,
+        properties: [.read],
+        permissions: [.readable],
+        onRead: _ => bytes([87]),
+      ),
+    ]),
+  ]
+
+  // Served and advertised while it's shown.
+  task {
+    do {
+      let _ = try await all(
+        bluetooth.serve(services),
+        bluetooth.advertise(localName: "Asuka HR", services: [bluetooth.heartRate]),
+      )
+    } catch e {
+      emit error(e.message)
+    }
+  }
+
+  task {
+    while true {
+      await sleep(1s)
+      beat = 60 + (beat - 60 + 7) % 40
+      measurement.notify(bytes([0, beat]))
+    }
+  }
+
+  Text("Advertising as Asuka HR: {measurement.subscribers.count} subscribed") { color: .secondaryLabel }
+}
+
+/// A heart rate strap with a battery.
+fn strap() -> bluetooth.FakePeripheral = bluetooth.FakePeripheral(
+  id: "AA:BB:CC:00:00:01",
+  name: "Polar H10",
+  rssi: -58,
+  advertised: ["180d"],
+  services: [
+    bluetooth.FakeService(uuid: "180d", characteristics: [bluetooth.FakeCharacteristic(uuid: "2a37", properties: [.notify])]),
+    bluetooth.FakeService(uuid: "180f", characteristics: [bluetooth.FakeCharacteristic(uuid: "2a19", properties: [.read], value: bytes([64]))]),
+  ],
+)
+
+// The scan lists what it hears, the nearest first; a device tapped
+// connects, reads its battery and follows its heart rate; going back
+// disconnects.
+test "scan, connect, read" {
+  let h10 = strap()
+  let app = mount(Stack { Scanner() }, setup: host => {
+    host.bluetooth.add(h10)
+    host.bluetooth.add(bluetooth.FakePeripheral(id: "AA:BB:CC:00:00:02", name: "Lamp", rssi: -80))
+  })
+  let bt = app.host.bluetooth
+  app.expect("Bluetooth: on")
+  app.tap("Scan")
+  await app.waitFor("♥ Polar H10")
+  app.expect("Lamp", "-58 dBm", "-80 dBm", "Stop")
+  let texts = app.texts()
+  expect(texts.index(t => t == "♥ Polar H10")! < texts.index(t => t == "Lamp")!, "not the nearest first: {texts}")
+
+  app.tap("♥ Polar H10")
+  await app.waitFor("Battery")
+  app.expect("connected", "64%")
+  await app.until("subscribed to the heart rate", () => h10.characteristic("180d", "2a37").subscribed)
+  h10.notify("180d", "2a37", bytes([0, 61]))
+  await app.waitFor("61 bpm")
+  h10.notify("180d", "2a37", bytes([1, 0x2c, 0x01])) // 16-bit: 300
+  await app.waitFor("300 bpm")
+
+  app.back()
+  await app.until("disconnected", () => !h10.connected)
+  app.tap("Stop")
+  await app.until("the scan stopped", () => bt.scans.isEmpty)
+}
+
+// A device that goes shows why, and the scan says when Bluetooth is off.
+test "disconnected, and off" {
+  let h10 = strap()
+  let app = mount(Stack { Scanner() }, setup: host => host.bluetooth.add(h10))
+  let bt = app.host.bluetooth
+  app.tap("Scan")
+  await app.waitFor("♥ Polar H10")
+  app.tap("♥ Polar H10")
+  await app.waitFor("64%")
+  bt.remove(h10)
+  await app.waitFor("Disconnected: bluetooth: disconnected: the connection timed out (the peripheral went)")
+  app.back()
+  bt.setState("off")
+  await app.waitFor("Bluetooth is off")
+  app.expect("Bluetooth: off", "Scan")
+}
+
+// The chooser gives a device, or nothing where the platform has none.
+test "choose" {
+  let app = mount(Stack { Scanner() }, setup: host => host.bluetooth.add(strap()))
+  app.tap("Choose")
+  await app.waitFor("Battery") // the device's screen, connected
+  app.back()
+  app.host.bluetooth.chooserAvailable = false
+  app.tap("Choose")
+  await app.waitFor("bluetooth: not available: this platform has no device chooser")
+}
+
+// As a monitor, it serves and advertises the Heart Rate service, and
+// notifies its subscribers.
+test "monitor" {
+  let app = mount(Stack { Scanner() })
+  let bt = app.host.bluetooth
+  app.tap("Be a monitor")
+  await app.waitFor("Advertising as Asuka HR: 0 subscribed")
+  expect(bt.servers.count == 1 && bt.advertising.count == 1)
+  for ad in bt.advertising {
+    expect(ad.localName == "Asuka HR" && ad.services == ["180d"], "advertising {ad.localName}")
+  }
+  var level = bytes()
+  bt.centralRead("phone", "2a19", (v, _) => { level = v })
+  await app.until("the battery read", () => level == bytes([87]))
+  bt.centralSubscribe("phone", "2a37", true)
+  await app.waitFor("Advertising as Asuka HR: 1 subscribed")
+  await app.until("a beat notified", () => !bt.notified.isEmpty)
+  app.tap("Stop monitor")
+  await app.until("serving stopped", () => bt.servers.isEmpty && bt.advertising.isEmpty)
+}

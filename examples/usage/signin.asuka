@@ -1,0 +1,159 @@
+import asuka/secure
+import asuka/time
+import asuka/webauth
+
+/// Signs in with Claude: to add an account, or, with id, that account
+/// again. Or it adds a demo account.
+///
+/// The sign-in is the system's sheet (asuka/webauth): Claude's page, with
+/// the browser's sessions, Google's and Apple's sign-in. It redirects to a
+/// server of the app's on localhost, which gets the code. Signing in with
+/// a code instead redirects to a page that shows it, to paste.
+component AddSheet(id: string) {
+  event done
+  state working = false
+  state failed = ""
+  state pasting = false
+  state pasted = ""
+
+  let manual = Login(redirect: manualRedirect)
+  let title = if id.isEmpty { "Sign in with Claude" } else { "Sign in again" }
+
+  async fn finish(l: Login, code: string) {
+    if working { return }
+    working = true
+    defer { working = false }
+    failed = ""
+    var signedIn: SignedIn? = none
+    do {
+      signedIn = try await l.exchange(code)
+    } catch e {
+      failed = "Couldn't sign in: {e.message}"
+      return
+    }
+    do {
+      try await keepSignIn(id, signedIn!)
+      emit done
+    } catch e {
+      failed = "Couldn't keep the sign-in: {e.message}"
+    }
+  }
+
+  /// The sign-in: the system's sheet on Claude's page, and the loopback
+  /// server it redirects to. The first to end ends the other: the code
+  /// closes the sheet; the sheet closed by the user (nothing to say) stops
+  /// the server.
+  async fn start() {
+    failed = ""
+    do {
+      let server = try await listen()
+      defer { server.close() }
+      let l = Login(redirect: server.url)
+      let u = try await race(server.next(), webauth.open(l.url()))
+      if let code = l.codeFrom(u) {
+        await finish(l, code)
+      } else {
+        failed = "Couldn't sign in: the page didn't give a code."
+      }
+    } catch webauth.WebAuthError.canceled {} catch e {
+      failed = "Couldn't sign in: {e.message}"
+    }
+  }
+
+  async fn paste() {
+    if let code = manual.codeFrom(pasted) {
+      await finish(manual, code)
+    } else {
+      failed = "That isn't this sign-in's code: copy the whole code the page shows."
+    }
+  }
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      padding: Edges(top: 40, left: 24, right: 24, bottom: 24)
+      gap: 16
+      align: .center
+      Badge("claude", size: 72)
+      Text(title) {
+        font: .title2.bold()
+        textAlign: .center
+      }
+      Text("Sign in with your Claude account to follow its plan's limits. This app only reads your usage and your profile: it can't send messages or see your chats.") {
+        color: .secondaryLabel
+        textAlign: .center
+      }
+      Column {
+        gap: 12
+        alignSelf: .stretch
+        margin: Edges(top: 8)
+        Button("Continue with Claude") {
+          variant: .filled
+          disabled: working
+          on press { await start() }
+        }
+        if pasting {
+          Column {
+            gap: 12
+            margin: Edges(top: 8)
+            Note("Sign in on the page that opened. At the end it shows a code: copy it, close the page, and paste it here.")
+            TextField {
+              bind text: pasted
+              placeholder: "Code"
+              autocapitalize: .off
+              autocorrect: .no
+              returnKey: .go
+              on submit { await paste() }
+            }
+            Button("Sign In") {
+              variant: .gray
+              disabled: pasted.trim().isEmpty || working
+              on press { await paste() }
+            }
+          }
+        } else {
+          Button("Sign In with a Code") {
+            on press {
+              failed = ""
+              pasting = true
+              try? await webauth.open(manual.url())
+            }
+          }
+        }
+      }
+      if id.isEmpty && !pasting {
+        Button("Try a Demo Account") {
+          on press {
+            save(demo(time.now()))
+            emit done
+          }
+        }
+      }
+      if working { Activity() }
+      if !failed.isEmpty {
+        Text(failed) {
+          font: .footnote
+          color: .red
+          textAlign: .center
+        }
+      }
+    }
+  }
+}
+
+/// Keeps a sign-in's tokens and adds its account, or updates it: the one
+/// with id, or the one signed in to the same email before.
+async fn keepSignIn(id: string, signedIn: SignedIn) throws {
+  var key = id
+  if key.isEmpty {
+    if let same = accounts.value.first(a => !a.demo && !a.email.isEmpty && a.email == signedIn.email) { key = same.id }
+  }
+  if key.isEmpty { key = time.now().format("yyyyMMddHHmmss.SSS") }
+  try await secure.save("token.{key}", signedIn.tokens.string())
+  var a = find(key) ?? Account(id: key)
+  if !signedIn.email.isEmpty { a.email = signedIn.email }
+  if !signedIn.org.isEmpty { a.org = signedIn.org }
+  a.error = ""
+  save(a)
+  await refresh(key)
+}
