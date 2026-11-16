@@ -521,68 +521,78 @@ go func() {
 - `photos.Export(id)` copies the full image as it is in the library (HEIC,
   JPEG, PNG), with its name. iCloud photos download first.
 
-## Photos, the browser, the clipboard: asuka/sdk/device
+## Photos, the browser, the clipboard: asuka/device
 
-`asuka/sdk/device` is what the platform offers beyond views.
+`asuka/device` is what the platform offers beyond views.
 
-```go
-ui.Button(ui.ButtonProps{Title: ui.Val("Pick photos"), OnPress: func() {
-	device.PickPhotos(3, func(paths []string, err error) {
-		if err == nil && len(paths) > 0 {
-			photos.Set(paths)
-		}
-	})
-}}),
-ui.Button(ui.ButtonProps{Title: ui.Val("Help"), OnPress: func() {
-	device.Browse("https://example.com/help")
-}}),
+```asuka
+import asuka/device
+
+component Gallery {
+  state photos: [string] = []
+
+  Column {
+    Button("Pick photos") {
+      on press { photos = (try? await device.pickPhotos(max: 3)) ?? [] }
+    }
+    Button("Help") {
+      on press { try? await device.browse("https://example.com/help") }
+    }
+    for p in photos { Image(p) }
+  }
+}
 ```
 
-- `device.PickPhotos(limit, done)` shows the system's photo picker
+- `device.pickPhotos(max:)` shows the system's photo picker
   (PHPicker on iOS, the Photo Picker on Android; the open dialog on the
-  desktops, the file picker in a browser) for up to `limit` images
+  desktops, the file picker in a browser) for up to `max` images
   (1 to 255). It asks for no permission: the user picks, and the app sees
-  only what was picked. `done` gets the images' files, which `ui.Image`
+  only what was picked. It returns the images' files, which `Image`
   shows, or none if the user cancelled. The files are copies in the
   app's temporary files or caches: move one to keep it.
-- `device.Browse(url)` shows a web page in the app (SFSafariViewController,
+- `device.browse(url)` shows a web page in the app (SFSafariViewController,
   a Custom Tab), over the app's screens. The URL must be http or https.
-  `ui.OpenURL` leaves the app for the browser instead. A desktop opens
+  `openURL` leaves the app for the browser instead. A desktop opens
   the page in the user's browser, and a browser in a new tab.
-- `device.Clipboard()` reads the clipboard's text; `ok` is false if it has
-  none. Not on the main thread. iOS asks the user the first time the app
-  reads what another app put there. `ui.Copy` writes it.
-- `device.KeepAwake(on)` keeps the screen on while `on` is true: a video,
+- `device.clipboardText()` reads the clipboard's text, `none` if it has
+  none. iOS asks the user the first time the app reads what another app
+  put there. `copy(text)` writes it.
+- `device.keepAwake(on)` keeps the screen on while `on` is true: a video,
   a recipe, a map. Turn it off when the screen that wants it goes.
-- `device.PickFiles(options, done)` shows the system's document picker
-  (iOS's Files browser, Android's storage picker, the open dialog on the
-  desktops, the file picker in a browser; no permission). `Types`
+- `device.pickFiles(types:, multiple:)` shows the system's document
+  picker (iOS's Files browser, Android's storage picker, the open dialog
+  on the desktops, the file picker in a browser; no permission). `types`
   are MIME types (`"application/pdf"`, `"image/*"`; none: any file) and
-  `Multiple` lets the user pick several. `done` gets a `device.File` for
-  each, its `Path` a copy in the app's caches, with its `Name`, `Type` and
-  `Size`, or none if the user cancelled.
-- `device.ClipboardHas()` says whether the clipboard holds `Text`, an
-  `Image` or a `URL`, without reading it (iOS doesn't ask the user for
+  `multiple` lets the user pick several. It returns a `device.File` for
+  each, its `path` a copy in the app's caches, with its `name`, `type`
+  and `size`, or none if the user cancelled.
+- `device.clipboardHas()` says whether the clipboard holds `text`, an
+  `image` or a `url`, without reading it (iOS doesn't ask the user for
   this): show a Paste button only when there's something to paste.
-  `device.ClipboardImage()` reads its image into a file, in the format it
-  was copied in; `device.CopyImage(path, done)` puts an image file on it.
-  `device.OnClipboardChange(f)` calls `f` when it changes, until `stop`.
-- `device.GetInfo()` is the device and the app: `Model` ("iPhone", "Pixel
-  9", "Mac", "PC"), `System` ("iOS", "Android", "macOS", "Windows",
-  "Linux"), `SystemVersion`, and `AppVersion` and
-  `Build`, `asuka.toml`'s `version` and `build`. Not on the main thread.
+  `device.clipboardImage()` reads its image into a file, in the format it
+  was copied in; `device.copyImage(path)` puts an image file on it.
+  `device.clipboardChanges()` is a stream of what it holds at each change
+  (iOS and Android say; the Mac and Windows are asked twice a second; a
+  browser sees copies in the page, and others' where the user lets it
+  read the clipboard).
+- `device.info()` is the device and the app: `model` ("iPhone", "Pixel
+  9", "Mac", "PC"), `system` ("iOS", "Android", "macOS", "Windows",
+  "Linux"), `systemVersion`, and `appVersion` and `build`,
+  `asuka.toml`'s `version` and `build`.
 
-```go
-func Player() ui.Node {
-	info := signal.New("")
-	go func() {
-		if i, err := device.GetInfo(); err == nil {
-			ui.Post(func() { info.Set(i.Model + ", " + i.System + " " + i.SystemVersion) })
-		}
-	}()
-	device.KeepAwake(true)
-	signal.OnCleanup(func() { device.KeepAwake(false) })
-	return ui.Text(info)
+```asuka
+import asuka/device
+
+component Player {
+  let info = load device.info()
+
+  task {
+    device.keepAwake(true)
+    defer { device.keepAwake(false) }
+    await sleep(1h)
+  }
+
+  Text(if let i = info.value { "{i.model}, {i.system} {i.systemVersion}" } else { "" })
 }
 ```
 

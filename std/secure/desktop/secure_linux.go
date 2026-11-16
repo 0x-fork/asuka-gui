@@ -4,10 +4,9 @@ package secure
 
 import (
 	"context"
-	"strings"
 
-	"github.com/egoist/asuka/internal/boot"
 	. "github.com/egoist/asuka/internal/gtk"
+	"github.com/egoist/asuka/internal/localfile"
 	"github.com/egoist/asuka/native"
 )
 
@@ -21,25 +20,7 @@ import (
 func supported() error { return nil }
 
 // schema is the app's ID, as the Linux host names its application.
-func schema() string {
-	if boot.ID != "" && ApplicationIDIsValid(boot.ID) {
-		return boot.ID
-	}
-	var b strings.Builder
-	for _, r := range appName() {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '-' || r == '_':
-			b.WriteRune('_')
-		}
-	}
-	id := "dev.asuka.app." + b.String()
-	if b.Len() == 0 || !ApplicationIDIsValid(id) {
-		return "dev.asuka.App"
-	}
-	return id
-}
+func schema() string { return localfile.AppID() }
 
 func attrs(key string) map[string]string { return map[string]string{"key": key} }
 

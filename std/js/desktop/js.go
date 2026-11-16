@@ -6,12 +6,9 @@ package js
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/egoist/asuka/internal/boot"
+	"github.com/egoist/asuka/internal/localfile"
 	"github.com/egoist/asuka/native"
 )
 
@@ -50,13 +47,4 @@ func (engine) Run(ctx context.Context, script string, timeout time.Duration) (st
 }
 
 // appName is the app's name (asuka.toml's), else its executable's.
-func appName() string {
-	if boot.Name != "" {
-		return boot.Name
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return "asuka"
-	}
-	return strings.TrimSuffix(strings.TrimSuffix(filepath.Base(exe), ".exe"), ".EXE")
-}
+func appName() string { return localfile.AppName() }

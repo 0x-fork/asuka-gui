@@ -59,6 +59,9 @@ export async function start(options = {}) {
   const data = "/data/" + name.replace(/[^\w.-]/g, "_");
   await fs.mount({ name, dir: data, output: dev?.log });
   const host = new Host(container, { ...options, fullPage, name });
+  nativeApp.assets = host.assets;
+  nativeApp.version = options.version || "";
+  nativeApp.build = String(options.build || "");
   // The host's own native views (camera.View), then the app's, which may replace them.
   for (const [k, f] of Object.entries(builtinNatives)) host.natives.set(k, f);
   for (const [k, f] of natives) host.natives.set(k, f);
