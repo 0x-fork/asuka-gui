@@ -87,22 +87,22 @@ frame, as an animation would.
 ## Results
 
 The latest are in `results/`. iOS, on the C core (an iPhone 17 Pro
-simulator, iOS 27, an Apple M5, 2026-11-16; the median of 3 runs). Main
+simulator, iOS 27, an Apple M5, 2026-11-17; the median of 3 runs). Main
 thread ms; memory MB, its peak in parentheses.
 
 | | Asuka | SwiftUI |
 |---|---:|---:|
-| mount, 1,000 rows | 171 | 361 |
-| update-one, a frame | 1.48 | 6.60 |
-| update-all, a frame | 13.9 | 126 |
-| scroll, a frame | 1.36 | 1.20 |
-| memory, idle | 17.1 | 18.7 |
-| memory, the rows | 36.0 (36.6) | 99.1 (104) |
-| memory, after the list | 33.0 (49.6) | 34.6 (151) |
+| mount, 1,000 rows | 88.8 | 174 |
+| update-one, a frame | 1.84 | 4.61 |
+| update-all, a frame | 6.21 | 58.0 |
+| scroll, a frame | 1.73 | 1.72 |
+| memory, idle | 16.6 | 18.5 |
+| memory, the rows | 37.1 (38.0) | 101 (107) |
+| memory, after the list | 28.4 (45.5) | 33.7 (160) |
 
-Startup isn't comparable on this machine yet: both apps take over 3 s
-from the process's start on this simulator runtime, most of it the
-runtime's, not the apps'.
+Startup isn't comparable on this machine yet: both apps take over a
+second from the process's start on this simulator runtime, most of it
+the runtime's, not the apps'.
 
 Android, on the C core (a Pixel emulator, Android 17, the same Mac,
 2026-11-16; the median of 3 runs, with other builds running on the

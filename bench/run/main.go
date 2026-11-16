@@ -64,7 +64,11 @@ func main() {
 	for !exists(filepath.Join(root, "go.mod")) {
 		root = filepath.Dir(root)
 	}
-	os.MkdirAll(filepath.Join(root, *outDir), 0o755)
+	// -out: relative to the repository, or absolute.
+	if !filepath.IsAbs(*outDir) {
+		*outDir = filepath.Join(root, *outDir)
+	}
+	os.MkdirAll(*outDir, 0o755)
 	var failed bool
 	if *ios {
 		if err := runIOS(); err != nil {
@@ -241,7 +245,7 @@ func report(platform, device string, apps []app, all map[string][][]result) erro
 	}
 	fmt.Print("\n" + b.String())
 	raw, _ := json.MarshalIndent(all, "", "  ")
-	base := filepath.Join(root, *outDir, strings.ToLower(platform))
+	base := filepath.Join(*outDir, strings.ToLower(platform))
 	if err := os.WriteFile(base+".json", raw, 0o644); err != nil {
 		return err
 	}
