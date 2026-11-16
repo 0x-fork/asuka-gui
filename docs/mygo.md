@@ -1,10 +1,10 @@
 # Asuka and MyGo
 
 [MyGo](https://mygo.run) makes desktop apps in Go, with phones coming
-soon. Both are Go alone, and both call the desktop without cgo. They
-differ in where an app runs and, above all, in what shows its
-interface: MyGo draws it, or shows a web page; Asuka shows the
-platform's own widgets.
+soon. Asuka makes apps for phones, desktops and the web in a language of
+its own, Asuka, on a core in C. They differ in what an app is written in
+and where it runs, and above all in what shows its interface: MyGo draws
+it, or shows a web page; Asuka shows the platform's own widgets.
 
 ## What shows the interface
 
@@ -18,14 +18,14 @@ A MyGo window shows one of two things:
   WebKitGTK), which calls the app's Go through a TypeScript client MyGo
   generates.
 
-An Asuka app shows the platform's own widgets. A `ui.Button` is a
+An Asuka app shows the platform's own widgets. A `Button` is a
 `UIButton` on iOS, a `MaterialButton` on Android, an `NSButton` on the
 Mac, a Win32 `BUTTON` drawn as Windows 11's on Windows, a `GtkButton` on
 Linux and a `<button>` in a browser; [Components](components.md) has
-them all. Asuka lays them out, with one layout engine in Go for every
-platform, and sets their properties; the platform draws them, and they
-work as its own: its text input and autocorrection, its input methods,
-its screen readers, its menus, scrolling and focus.
+them all. Asuka lays them out, with one layout engine in its C core for
+every platform, and sets their properties; the platform draws them, and
+they work as its own: its text input and autocorrection, its input
+methods, its screen readers, its menus, scrolling and focus.
 
 What follows from it:
 
@@ -36,16 +36,30 @@ What follows from it:
 - **Text, input and accessibility.** Asuka's are the platform's, done by
   the platform. MyGo's are MyGo's, made over what it draws.
 - **What no widget shows.** MyGo draws anything as it draws the rest.
-  Asuka has packages for what has no widget, drawing with the platform:
-  `asuka/sdk/chart`, `asuka/sdk/svg`, and `ui.Shader` for shaders.
+  Asuka draws with the platform what has no widget: `Canvas` and `Shape`
+  (docs/language.md, "Drawing"), `asuka/chart`, `asuka/svg`, and
+  shaders, compiled with the app for each platform's GPU.
 - **Images without a screen.** MyGo has a software renderer: it draws
   on the CPU, in memory, with no window, display or GPU, so a test or a
-  server renders a view to an image on any machine (`ui.NewTester`,
-  `ui.Render`). Asuka's widgets are drawn by the platform, so an image
-  of them needs the platform running: a window on the desktop
-  (`ASUKA_SNAPSHOT`; Xvfb on a Linux server), the simulator, an emulator
-  or a browser. Without one, `uitest` describes the screen as text: each
-  view's kind, frame and what it shows ([Testing](testing.md)).
+  server renders a view to an image on any machine. Asuka's widgets are
+  drawn by the platform, so an image of them needs the platform running:
+  a window on the desktop (`ASUKA_SNAPSHOT`; Xvfb on a Linux server), the
+  simulator, an emulator or a browser. Without one, `asuka test` runs
+  the app's test blocks on a fake host that describes the screen as
+  text: each view's kind, frame and what it shows ([Testing](testing.md)).
+
+## What an app is
+
+A MyGo app is a Go program. An Asuka app is written in Asuka
+([The language](language.md)), a typed language made for interfaces:
+components whose bodies declare their views, state a binding follows,
+async and await, and the compiler's checks of what a binding reads and
+what runs on the main thread. In development the compiler sends the app
+as bytecode, which a save reloads in milliseconds with its state and
+views kept, on a phone too; a release is the app compiled to C with the
+core. Neither ships a garbage collector or a second runtime. What an app
+needs of the platform it reaches through its packages' Swift, Kotlin,
+JavaScript and C, or calls C directly ([C from Asuka](c.md)).
 
 ## Where it runs
 
@@ -53,14 +67,14 @@ What follows from it:
 |---|---|---|
 | Phones | coming soon | iOS and Android |
 | Desktops | Mac, Windows, Linux | Mac, Windows, Linux |
-| Browsers | its drawn UI, on a canvas with WebGL 2 | the page's DOM, from WebAssembly ([The web](web.md)) |
+| Browsers | its drawn UI, on a canvas with WebGL 2 | the page's DOM, the core as WebAssembly ([The web](web.md)) |
 
 ## How a view updates
 
 A MyGo view is a function of the app's state, built again from it for
-every frame. An Asuka component runs once: it makes its views and wires
-them to signals, and a signal's change updates only the views that read
-it, in one batch for the frame ([Concepts](concepts.md)).
+every frame. An Asuka component runs once: it makes its views and binds
+them to its state, and a change updates only the bindings that read it,
+in one batch for the frame ([Concepts](concepts.md)).
 
 ## When to use each
 
@@ -73,7 +87,7 @@ Use Asuka when:
 
 Use MyGo when:
 
-- the app is for the desktop and its interface is a web frontend:
+- the app is written in Go, or for the desktop with a web frontend:
   existing web code, HTML and CSS, rich documents, what only a browser
   has;
 - it should have one look of its own, drawn the same on every desktop,
