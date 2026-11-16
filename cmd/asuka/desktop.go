@@ -15,7 +15,9 @@ import (
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/boot"
 	"github.com/egoist/asuka/internal/cbuild"
+	"github.com/egoist/asuka/internal/nativegen"
 	"github.com/egoist/asuka/plugin"
+	"github.com/egoist/asuka/std"
 )
 
 // Desktop apps: the executable is the desktop host (cmd/asuka-host: Go,
@@ -25,6 +27,12 @@ import (
 // app's settings (internal/boot's ConfigFile). A release's core has the
 // app compiled into it; asuka dev's player's has none, and loads the
 // bytecode the CLI sends (ASUKA_DEV).
+//
+// On Windows and Linux, once the checkout has the C host for the
+// platform (platform/windows, platform/linux: RFC 0008), the executable
+// is one program instead: the C host, the core, the native registry, the
+// native packages' C (each one's desktop/) and, in a release, the app
+// compiled to C (appbuild.DesktopExe).
 
 // coreLibName is the core library's file name on goos (host/bridge's
 // LibName).
@@ -235,7 +243,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 			return "", err
 		}
 		exe := filepath.Join(bundle, "Contents", "MacOS", name)
-		if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose, Natives: desktopNatives(app)}); err != nil {
+		if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose}); err != nil {
 			return "", err
 		}
 		if err := appbuild.Lib(t, cbuild.Shared, nil, filepath.Join(bundle, "Contents", "Frameworks", coreLibName("darwin"))); err != nil {
@@ -257,7 +265,19 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 	if t.OS == "windows" {
 		exe += ".exe"
 	}
-	if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose, Natives: desktopNatives(app)}); err != nil {
+	if host, ok := appbuild.CHost(t); ok {
+		// The player has every standard package's C, and the app's own.
+		natives, err := appbuild.DesktopNatives(t, append(stdNativeDirs(), desktopNativeDirs(app)...))
+		if err != nil {
+			return "", err
+		}
+		if err := appbuild.DesktopExe(t, nil, host, natives, exe); err != nil {
+			return "", err
+		}
+		return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, boot.ConfigFile))
+	}
+	noCHost(app, t)
+	if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose}); err != nil {
 		return "", err
 	}
 	if err := appbuild.Lib(t, cbuild.Shared, nil, filepath.Join(dir, coreLibName(t.OS))); err != nil {
@@ -267,37 +287,85 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 }
 
 // desktopRelease writes a release's core (the app compiled in) and host
-// for t: the library at lib, the executable at exe.
+// for t: the library at lib, the executable at exe; with the platform's
+// C host, the one executable at exe (and no lib).
 func desktopRelease(app *asukaApp, t cbuild.Target, exe, lib string, o *buildOptions, ho appbuild.HostOptions) error {
 	m, err := app.compile()
 	if err != nil {
 		return err
 	}
+	if host, ok := appbuild.CHost(t); ok && t.OS != "darwin" {
+		natives, err := appbuild.DesktopNatives(t, desktopNativeDirs(app))
+		if err != nil {
+			return err
+		}
+		if len(ho.Syso) > 0 {
+			// The executable's resources (icon, manifest, version): a COFF
+			// object, linked as one.
+			res := filepath.Join(filepath.Dir(exe), ".asuka-resources.o")
+			if err := os.WriteFile(res, ho.Syso, 0o644); err != nil {
+				return err
+			}
+			defer os.Remove(res)
+			natives.Libs = append(natives.Libs, res)
+		}
+		return appbuild.DesktopExe(t, m, host, natives, exe)
+	}
+	if t.OS != "darwin" {
+		noCHost(app, t)
+	}
 	if err := appbuild.Lib(t, cbuild.Shared, m, lib); err != nil {
 		return err
 	}
 	ho.Release, ho.Verbose = true, o.verbose
-	ho.Natives = desktopNatives(app)
 	return appbuild.Host(t, exe, ho)
 }
 
-// desktopNatives are the directories of the app's own native packages'
-// Go for the desktop (a package's desktop/ with Go files), which its
-// host is built with; the standard library's are in every host.
-func desktopNatives(app *asukaApp) []string {
+// desktopNativeDirs are the directories of the app's native packages
+// (its own, its dependencies', the standard library's it imports) with C
+// for the desktop (a desktop/), which a C host's executable is built
+// with.
+func desktopNativeDirs(app *asukaApp) []string {
 	ps, err := appNatives(app)
 	if err != nil {
 		return nil
 	}
 	var out []string
 	for _, p := range ps {
-		if strings.HasPrefix(p.path, "asuka/") {
-			continue
-		}
-		d := filepath.Join(p.dir, "desktop")
-		if files, _ := filepath.Glob(filepath.Join(d, "*.go")); len(files) > 0 {
-			out = append(out, d)
+		if nativegen.HasPlatform(p.dir, "desktop") {
+			out = append(out, p.dir)
 		}
 	}
 	return out
+}
+
+// stdNativeDirs are the standard library's packages with C for the
+// desktop: a dev player has them all, as the phones' players have their
+// native code.
+func stdNativeDirs() []string {
+	d, err := std.Dir()
+	if err != nil {
+		return nil
+	}
+	ds, _ := filepath.Glob(filepath.Join(d, "*", nativegen.DesktopDir))
+	var out []string
+	for _, x := range ds {
+		out = append(out, filepath.Dir(x))
+	}
+	return out
+}
+
+// noCHost says, for an app whose packages have C for t's desktop, that
+// the Go host it runs in doesn't run it (until the checkout has the C
+// host).
+func noCHost(app *asukaApp, t cbuild.Target) {
+	var names []string
+	for _, d := range desktopNativeDirs(app) {
+		if len(nativegen.CSources(filepath.Join(d, nativegen.DesktopDir), t.OS)) > 0 {
+			names = append(names, filepath.Base(d))
+		}
+	}
+	if len(names) > 0 {
+		fmt.Printf("asuka: %s have C for %s, which the Go host doesn't run (RFC 0008: the C host, platform/%s, does)\n", strings.Join(names, ", "), t.OS, t.OS)
+	}
 }
