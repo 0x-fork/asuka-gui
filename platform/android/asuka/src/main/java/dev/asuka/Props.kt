@@ -663,6 +663,11 @@ fun AsukaRuntime.measureNode(n: AsukaNode, w: Float, h: Float, aw: Float, ah: Fl
         val s = v.sizePx() / d
         return (if (!w.isNaN()) w else s) to (if (!h.isNaN()) h else s)
     }
+    // A view measured out of the tree (not added yet, or taken out: a
+    // toolbar's, a row out of sight) needs layout params all the same: a
+    // TextView measured once checks them as its text changes
+    // (TextView.checkForRelayout), and has none till it's added.
+    if (v.layoutParams == null) v.layoutParams = android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
     var minW = -1
     when {
         v is EditText -> minW = Math.round(80 * d) // it scrolls its text: it can be narrow
