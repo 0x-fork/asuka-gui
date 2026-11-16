@@ -4,7 +4,6 @@
 #ifdef __linux__
 #include "asuka_linux.h"
 
-#include <dlfcn.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +27,20 @@ GDBusConnection *asuka_linux_bus(int kind, GError **e) {
 	GDBusConnection *c = buses[kind];
 	pthread_mutex_unlock(&mu);
 	return c;
+}
+
+static bool gst_ready;
+
+static void init_gst(void) { gst_ready = G(gst_init_check)(NULL, NULL, NULL); }
+
+bool asuka_linux_gst(void) {
+	static pthread_once_t gst_once = PTHREAD_ONCE_INIT;
+	if (!asuka_linux() || !asuka_linux_load(ASUKA_LIB_GST) || !G(gst_init_check)) return false;
+	asuka_linux_load(ASUKA_LIB_GSTAPP);
+	asuka_linux_load(ASUKA_LIB_GSTVIDEO);
+	asuka_linux_load(ASUKA_LIB_GSTAUDIO);
+	pthread_once(&gst_once, init_gst);
+	return gst_ready;
 }
 
 bool asuka_linux_is_a(gpointer obj, const char *type) {

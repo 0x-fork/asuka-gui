@@ -417,109 +417,25 @@ const char *wh_app_user_model_id(void) {
 	return id;
 }
 
-// ---- WinRT ----
-
-typedef HRESULT(WINAPI *create_string_fn)(const wchar_t *, UINT32, wh_hs *);
-typedef HRESULT(WINAPI *delete_string_fn)(wh_hs);
-typedef const wchar_t *(WINAPI *raw_string_fn)(wh_hs, UINT32 *);
-typedef HRESULT(WINAPI *factory_fn)(wh_hs, const GUID *, void **);
-typedef HRESULT(WINAPI *activate_fn)(wh_hs, void **);
-
-static struct {
-	bool loaded;
-	create_string_fn create;
-	delete_string_fn del;
-	raw_string_fn raw;
-	factory_fn factory;
-	activate_fn activate;
-} rt;
-
-static bool load_rt(void) {
-	if (rt.loaded) return rt.factory != NULL;
-	rt.loaded = true;
-	HMODULE m = LoadLibraryExW(L"combase.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
-	if (!m) return false;
-	rt.create = (create_string_fn)(void *)GetProcAddress(m, "WindowsCreateString");
-	rt.del = (delete_string_fn)(void *)GetProcAddress(m, "WindowsDeleteString");
-	rt.raw = (raw_string_fn)(void *)GetProcAddress(m, "WindowsGetStringRawBuffer");
-	rt.factory = (factory_fn)(void *)GetProcAddress(m, "RoGetActivationFactory");
-	rt.activate = (activate_fn)(void *)GetProcAddress(m, "RoActivateInstance");
-	if (!rt.create || !rt.del || !rt.raw || !rt.activate) rt.factory = NULL;
-	return rt.factory != NULL;
-}
-
-wh_hs wh_hstrw(const wchar_t *s) {
-	wh_hs h = NULL;
-	if (load_rt() && s && *s) rt.create(s, (UINT32)wcslen(s), &h);
-	return h;
-}
-
-wh_hs wh_hstr(const char *utf8) {
-	wchar_t *w = wh_wide(utf8 ? utf8 : "", -1);
-	wh_hs h = wh_hstrw(w);
-	free(w);
-	return h;
-}
-
-void wh_hstr_free(wh_hs h) {
-	if (h && load_rt()) rt.del(h);
-}
-
-char *wh_hstr_utf8(wh_hs h) {
-	if (!h || !load_rt()) return wh_strdup("");
-	UINT32 n = 0;
-	const wchar_t *p = rt.raw(h, &n);
-	return p && n ? wh_utf8(p, (int)n, NULL) : wh_strdup("");
-}
-
-void *wh_factory(const wchar_t *cls, const GUID *iid) {
-	if (!load_rt()) return NULL;
-	wh_hs h = wh_hstrw(cls);
-	void *f = NULL;
-	HRESULT hr = rt.factory(h, iid, &f);
-	wh_hstr_free(h);
-	return SUCCEEDED(hr) ? f : NULL;
-}
-
-void *wh_activate(const wchar_t *cls) {
-	if (!load_rt()) return NULL;
-	wh_hs h = wh_hstrw(cls);
-	void *o = NULL;
-	HRESULT hr = rt.activate(h, &o);
-	wh_hstr_free(h);
-	return SUCCEEDED(hr) ? o : NULL;
-}
-
-void *wh_qi(void *o, const GUID *iid) {
-	if (!o) return NULL;
-	void *out = NULL;
-	typedef HRESULT(STDMETHODCALLTYPE * qi_fn)(void *, const GUID *, void **);
-	if (FAILED(WH_VT(o, 0, qi_fn)(o, iid, &out))) return NULL;
-	return out;
-}
-
-void wh_release_com(void *o) {
-	typedef ULONG(STDMETHODCALLTYPE * release_fn)(void *);
-	if (o) WH_VT(o, 2, release_fn)(o);
-}
+// ---- WinRT (asuka_windows.h's: platform/desktop/src/windows.c) ----
 
 static const GUID IID_XmlDocument = {0xF7F3A506, 0x1E87, 0x42D6, {0xBC, 0xFB, 0xB8, 0xC8, 0x09, 0xFA, 0x54, 0x94}};
 static const GUID IID_XmlDocumentIO = {0x6CD0E74E, 0xEE65, 0x4489, {0x9E, 0xBF, 0xCA, 0x43, 0xE8, 0x7B, 0xA6, 0x37}};
 
 void *wh_xml_document(const char *xml) {
-	void *doc = wh_activate(L"Windows.Data.Xml.Dom.XmlDocument");
-	if (!doc) return NULL;
-	void *io = wh_qi(doc, &IID_XmlDocumentIO);
+	void *doc;
+	if (FAILED(asuka_winrt_activate("Windows.Data.Xml.Dom.XmlDocument", &doc))) return NULL;
+	void *io = asuka_com_query(doc, &IID_XmlDocumentIO);
 	void *out = NULL;
 	if (io) {
-		wh_hs s = wh_hstr(xml);
-		typedef HRESULT(STDMETHODCALLTYPE * load_fn)(void *, wh_hs);
-		HRESULT hr = WH_VT(io, 6, load_fn)(io, s);  // LoadXml
-		wh_hstr_free(s);
-		wh_release_com(io);
-		if (SUCCEEDED(hr)) out = wh_qi(doc, &IID_XmlDocument);
+		HSTRING s = asuka_hstring(xml);
+		typedef HRESULT(STDMETHODCALLTYPE * load_fn)(void *, HSTRING);
+		HRESULT hr = ASUKA_SLOT(io, 6, load_fn)(io, s);  // LoadXml
+		asuka_hstring_free(s);
+		asuka_com_release(io);
+		if (SUCCEEDED(hr)) out = asuka_com_query(doc, &IID_XmlDocument);
 	}
-	wh_release_com(doc);
+	asuka_com_release(doc);
 	return out;
 }
 
@@ -548,8 +464,8 @@ bool wh_online(void) {
 	// GetNetworkConnection, get_IsConnectedToInternet, get_IsConnected.
 	typedef HRESULT(STDMETHODCALLTYPE * bool_fn)(void *, VARIANT_BOOL *);
 	VARIANT_BOOL on = VARIANT_TRUE;
-	HRESULT hr = WH_VT(nlm, 12, bool_fn)(nlm, &on);  // get_IsConnected
-	wh_release_com(nlm);
+	HRESULT hr = ASUKA_SLOT(nlm, 12, bool_fn)(nlm, &on);  // get_IsConnected
+	asuka_com_release(nlm);
 	return FAILED(hr) || on != VARIANT_FALSE;
 }
 

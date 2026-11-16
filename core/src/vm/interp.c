@@ -34,7 +34,7 @@ bool ak_vm_push(ak_co *co, const ak_func *f, ak_closure *clos, ak_val *args, uin
 		if (off >= 0) args = co->regs + off;
 	}
 	ak_val *R = co->regs + base;
-	memset(R, 0, sizeof(ak_val) * f->nregs);
+	if (f->nregs) memset(R, 0, sizeof(ak_val) * f->nregs);  // a coroutine's first call may have no registers yet
 	for (uint32_t i = 0; i < nargs; i++) {
 		R[i] = args[i];
 		ak_retain_val(R[i], (ak_kind)f->kinds[i]);

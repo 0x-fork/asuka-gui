@@ -951,6 +951,74 @@ typedef enum { ADW_DIALOG_AUTO, ADW_DIALOG_FLOATING, ADW_DIALOG_BOTTOM_SHEET } A
 // GLib's main loop priorities.
 enum { G_PRIORITY_HIGH = -100, G_PRIORITY_DEFAULT = 0, G_PRIORITY_HIGH_IDLE = 100, G_PRIORITY_DEFAULT_IDLE = 200 };
 
+// ---- GStreamer (optional) ----
+
+typedef struct _GstObject GstObject;
+typedef struct _GstElement GstElement;
+typedef struct _GstElementFactory GstElementFactory;
+typedef struct _GstBus GstBus;
+typedef struct _GstMessage GstMessage;
+typedef struct _GstEvent GstEvent;
+typedef struct _GstCaps GstCaps;
+typedef struct _GstStructure GstStructure;
+typedef struct _GstSample GstSample;
+typedef struct _GstBuffer GstBuffer;
+typedef struct _GstAppSink GstAppSink;
+typedef guint64 GstClockTime;
+#define GST_CLOCK_TIME_NONE ((GstClockTime)-1)
+#define GST_SECOND ((gint64)1000000000)
+
+// GstMapInfo, as GStreamer 1.x lays it out.
+typedef struct {
+	gpointer memory;
+	int flags;
+	guint8 *data;
+	gsize size;
+	gsize maxsize;
+	gpointer user_data[4];
+	gpointer _gst_reserved[4];
+} GstMapInfo;
+
+typedef enum {
+	GST_STATE_VOID_PENDING = 0,
+	GST_STATE_NULL = 1,
+	GST_STATE_READY = 2,
+	GST_STATE_PAUSED = 3,
+	GST_STATE_PLAYING = 4,
+} GstState;
+typedef enum {
+	GST_STATE_CHANGE_FAILURE = 0,
+	GST_STATE_CHANGE_SUCCESS = 1,
+	GST_STATE_CHANGE_ASYNC = 2,
+	GST_STATE_CHANGE_NO_PREROLL = 3,
+} GstStateChangeReturn;
+typedef enum { GST_FORMAT_TIME = 3 } GstFormat;
+typedef enum {
+	GST_SEEK_FLAG_NONE = 0,
+	GST_SEEK_FLAG_FLUSH = 1,
+	GST_SEEK_FLAG_ACCURATE = 2,
+	GST_SEEK_FLAG_KEY_UNIT = 4,
+} GstSeekFlags;
+typedef enum { GST_SEEK_TYPE_NONE = 0, GST_SEEK_TYPE_SET = 1 } GstSeekType;
+typedef enum { GST_MAP_READ = 1, GST_MAP_WRITE = 2 } GstMapFlags;
+
+// ---- gdk-pixbuf, libshumate, geocode-glib (optional) ----
+
+typedef enum { GDK_COLORSPACE_RGB = 0 } GdkColorspace;
+
+// ---- GTK's printing, libsecret (optional) ----
+
+typedef struct _GtkPrintSettings GtkPrintSettings;
+typedef struct _GtkPageSetup GtkPageSetup;
+typedef struct _GtkPaperSize GtkPaperSize;
+typedef struct _GtkPrintJob GtkPrintJob;
+typedef struct _GtkPrinter GtkPrinter;
+typedef struct _SecretSchema SecretSchema;
+typedef struct _SecretValue SecretValue;
+typedef struct _GeocodeLocation GeocodeLocation;
+typedef struct _GeocodeReverse GeocodeReverse;
+typedef struct _GeocodePlace GeocodePlace;
+
 // The desktop portal's bus name and object.
 #define ASUKA_PORTAL "org.freedesktop.portal.Desktop"
 #define ASUKA_PORTAL_PATH "/org/freedesktop/portal/desktop"
@@ -986,6 +1054,9 @@ enum {
 	ASUKA_LIB_EBOOKC,
 	ASUKA_LIB_ECAL,
 	ASUKA_LIB_ICAL,
+	ASUKA_LIB_PIXBUF,   // gdk-pixbuf
+	ASUKA_LIB_SHUMATE,  // libshumate: maps
+	ASUKA_LIB_GEOCODE,  // geocode-glib: place names
 	ASUKA_LIB_COUNT,
 };
 
@@ -1025,6 +1096,10 @@ void asuka_linux_main(void (*fn)(void *ctx), void *ctx);
 // asuka_linux_bus is the session's or the system's bus (G_BUS_TYPE_*),
 // connected once and kept; NULL with *e set when there's none.
 GDBusConnection *asuka_linux_bus(int kind, GError **e);
+
+// asuka_linux_gst loads and initializes GStreamer (libgstreamer-1.0,
+// libgstapp-1.0), once: false when it isn't there.
+bool asuka_linux_gst(void);
 
 // asuka_linux_is_a reports whether obj is of the type named (a GType a
 // library registers: GdkX11Display), false when there's no such type.

@@ -109,15 +109,6 @@ typedef HRESULT(STDMETHODCALLTYPE *f_response)(com, void *, int, const wchar_t *
 #define CALL_PPP(o, i, a, b, c) ((f_ppp)slot(o, i))(o, (void *)(a), (void *)(b), (void *)(c))
 #define CALL_I(o, i, a) ((f_i)slot(o, i))(o, a)
 
-static void release(com o) {
-	if (o) ((IUnknown *)o)->lpVtbl->Release((IUnknown *)o);
-}
-
-static com query(com o, const GUID *iid) {
-	void *out = NULL;
-	if (o && FAILED(((IUnknown *)o)->lpVtbl->QueryInterface((IUnknown *)o, iid, &out))) out = NULL;
-	return out;
-}
 
 // take is a string WebView2 gave (CoTaskMem's) as UTF-8, freed (free the
 // result).
@@ -133,54 +124,14 @@ static char *take(wchar_t *w, size_t *len) {
 
 typedef struct wh_web wh_web;
 
-// A handler is a completed handler's or an event's: Invoke(this, a, b),
-// a an HRESULT or the sender, b the result or the event's arguments. It
-// holds a reference to its view's state while WebView2 holds it.
-typedef struct handler {
-	const struct handler_vtbl *vt;
-	LONG refs;
-	void (*fn)(wh_web *w, uintptr_t a, void *b);
-	wh_web *w;
-	void (*cfn)(void *ctx, uintptr_t a, void *b);  // or this, with ctx
-	void *ctx;
-} handler;
-
-typedef struct handler_vtbl {
-	HRESULT(STDMETHODCALLTYPE *query)(handler *h, REFIID riid, void **out);
-	ULONG(STDMETHODCALLTYPE *add_ref)(handler *h);
-	ULONG(STDMETHODCALLTYPE *release)(handler *h);
-	HRESULT(STDMETHODCALLTYPE *invoke)(handler *h, uintptr_t a, void *b);
-} handler_vtbl;
+// A handler is a completed handler's or an event's (asuka_win_handler's):
+// Invoke(this, a, b), a an HRESULT or the sender, b the result or the
+// event's arguments. It holds a reference to its view's state while
+// WebView2 holds it.
+typedef void (*view_fn)(wh_web *w, uintptr_t a, void *b);
 
 static void web_unref(wh_web *w);
-
-static ULONG STDMETHODCALLTYPE h_add_ref(handler *h) { return (ULONG)InterlockedIncrement(&h->refs); }
-
-static ULONG STDMETHODCALLTYPE h_release(handler *h) {
-	LONG r = InterlockedDecrement(&h->refs);
-	if (r == 0) {
-		if (h->w) web_unref(h->w);
-		free(h);
-	}
-	return (ULONG)r;
-}
-
-static HRESULT STDMETHODCALLTYPE h_query(handler *h, REFIID riid, void **out) {
-	(void)riid;
-	*out = h;
-	h_add_ref(h);
-	return S_OK;
-}
-
-static HRESULT STDMETHODCALLTYPE h_invoke(handler *h, uintptr_t a, void *b) {
-	if (h->cfn) h->cfn(h->ctx, a, b);
-	else h->fn(h->w, a, b);
-	return S_OK;
-}
-
-static const handler_vtbl handler_vt = {h_query, h_add_ref, h_release, h_invoke};
-
-static handler *new_handler(wh_web *w, void (*fn)(wh_web *w, uintptr_t a, void *b));
+static void *new_handler(wh_web *w, view_fn fn);
 
 // hr is a completed handler's HRESULT (32 bits, its register's rest not
 // ours).
@@ -284,14 +235,28 @@ static void web_unref(wh_web *w) {
 	free(w);
 }
 
-static handler *new_handler(wh_web *w, void (*fn)(wh_web *w, uintptr_t a, void *b)) {
-	handler *h = wh_alloc(sizeof *h);
-	h->vt = &handler_vt;
-	h->refs = 1;
-	h->fn = fn;
-	h->w = w;
-	if (w) InterlockedIncrement(&w->refs);
-	return h;
+typedef struct {
+	view_fn fn;
+	wh_web *w;
+} view_handler;
+
+static void view_invoke(void *ctx, void *a, void *b) {
+	view_handler *v = ctx;
+	v->fn(v->w, (uintptr_t)a, b);
+}
+
+static void view_free(void *ctx) {
+	view_handler *v = ctx;
+	web_unref(v->w);
+	free(v);
+}
+
+static void *new_handler(wh_web *w, view_fn fn) {
+	view_handler *v = wh_alloc(sizeof *v);
+	v->fn = fn;
+	v->w = w;
+	InterlockedIncrement(&w->refs);
+	return asuka_win_handler(view_invoke, v, view_free);
 }
 
 static void run_op(wh_web *w, const web_op *o);
@@ -460,7 +425,7 @@ static void on_request(wh_web *w, uintptr_t a, void *args) {
 	if (!req) return;
 	wchar_t *p = NULL;
 	CALL_P(req, REQ_GET_URI, &p);
-	release(req);
+	asuka_com_release(req);
 	size_t len;
 	char *u = take(p, &len);
 	if (w->requests) wh_emit_str(w->n, AK_EVENT_REQUEST, u, len);
@@ -469,7 +434,7 @@ static void on_request(wh_web *w, uintptr_t a, void *args) {
 		((f_response)slot(shared_env, ENV_CREATE_WEB_RESOURCE_RESPONSE))(shared_env, NULL, 403, L"Blocked", L"", &resp);
 		if (resp) {
 			CALL_P(args, RES_REQ_PUT_RESPONSE, resp);
-			release(resp);
+			asuka_com_release(resp);
 		}
 	}
 	free(u);
@@ -516,7 +481,7 @@ static void on_download(wh_web *w, uintptr_t a, void *args) {
 	char *disp = take(p, &dl);
 	INT64 size = -1;
 	CALL_P(op, DL_OP_GET_TOTAL_BYTES, &size);
-	release(op);
+	asuka_com_release(op);
 	const char *name;
 	file_name(disp, u, &name, &nl);
 	ak_buf b = {0};
@@ -536,30 +501,30 @@ static void on_script_added(wh_web *w, uintptr_t a, void *id) {
 }
 
 static void add_script(wh_web *w, const wchar_t *js) {
-	handler *h = new_handler(w, on_script_added);
+	void *h = new_handler(w, on_script_added);
 	CALL_PP(w->view, WV_ADD_SCRIPT_ON_DOCUMENT_CREATED, js, h);
-	h_release(h);
+	asuka_com_release(h);
 }
 
 // add_event adds an event's handler (its token kept by nobody: the
 // controller's Close removes them all).
 static void add_event(wh_web *w, com o, int index, void (*fn)(wh_web *w, uintptr_t a, void *b)) {
 	int64_t tok;  // EventRegistrationToken
-	handler *h = new_handler(w, fn);
+	void *h = new_handler(w, fn);
 	CALL_PP(o, index, h, &tok);
-	h_release(h);
+	asuka_com_release(h);
 }
 
 static void color_scheme(wh_web *w, bool dark) {
 	if (!w->view) return;
-	com wv13 = query(w->view, &IID_WEBVIEW2_13);
+	com wv13 = asuka_com_query(w->view, &IID_WEBVIEW2_13);
 	if (!wv13) return;
 	com profile = NULL;
 	CALL_P(wv13, WV13_GET_PROFILE, &profile);
-	release(wv13);
+	asuka_com_release(wv13);
 	if (!profile) return;
 	CALL_I(profile, PROFILE_PUT_PREFERRED_COLOR_SCHEME, dark ? 2 : 1);  // DARK, LIGHT
-	release(profile);
+	asuka_com_release(profile);
 }
 
 static void web_resized(wh_web *w) {
@@ -584,18 +549,18 @@ static void set_up(wh_web *w, com controller) {
 	if (!w->view) return;
 	CALL_P(w->view, WV_GET_SETTINGS, &w->settings);
 	if (w->settings) CALL_I(w->settings, SET_PUT_ARE_DEV_TOOLS_ENABLED, TRUE);
-	com c2 = query(controller, &IID_CONTROLLER2);
+	com c2 = asuka_com_query(controller, &IID_CONTROLLER2);
 	if (c2) {
 		// Transparent until the page draws: the view's background shows.
 		((f_color)slot(c2, CTL2_PUT_DEFAULT_BACKGROUND_COLOR))(c2, (wv_color){0, 0, 0, 0});
-		release(c2);
+		asuka_com_release(c2);
 	}
-	com wv3 = query(w->view, &IID_WEBVIEW2_3);
+	com wv3 = asuka_com_query(w->view, &IID_WEBVIEW2_3);
 	if (wv3) {
 		wchar_t *dir = assets_dir();
 		((f_ppi)slot(wv3, WV3_SET_VIRTUAL_HOST_MAPPING))(wv3, ASSETS_HOST, dir, 1);  // ALLOW
 		free(dir);
-		release(wv3);
+		asuka_com_release(wv3);
 	}
 	add_event(w, w->view, WV_ADD_NAVIGATION_STARTING, on_navigation_starting);
 	add_event(w, w->view, WV_ADD_NAVIGATION_COMPLETED, on_navigation_completed);
@@ -605,10 +570,10 @@ static void set_up(wh_web *w, com controller) {
 	add_event(w, w->view, WV_ADD_WEB_MESSAGE_RECEIVED, on_message);
 	add_event(w, w->view, WV_ADD_NEW_WINDOW_REQUESTED, on_new_window);
 	add_event(w, w->view, WV_ADD_WEB_RESOURCE_REQUESTED, on_request);
-	com wv4 = query(w->view, &IID_WEBVIEW2_4);
+	com wv4 = asuka_com_query(w->view, &IID_WEBVIEW2_4);
 	if (wv4) {
 		add_event(w, wv4, WV4_ADD_DOWNLOAD_STARTING, on_download);
-		release(wv4);
+		asuka_com_release(wv4);
 	}
 	add_script(w, BRIDGE_JS);
 	color_scheme(w, H.dark);
@@ -638,9 +603,9 @@ static void controller_made(wh_web *w, uintptr_t a, void *controller) {
 static void with_environment(void *ctx, void *env) {
 	wh_web *w = ctx;
 	if (env && !w->closed && w->n && w->n->hwnd) {
-		handler *h = new_handler(w, controller_made);
+		void *h = new_handler(w, controller_made);
 		CALL_PP(env, ENV_CREATE_CONTROLLER, w->n->hwnd, h);
-		h_release(h);
+		asuka_com_release(h);
 	}
 	web_unref(w);  // the wait's
 }
@@ -761,9 +726,9 @@ static void dev_answer(void *ctx) {
 	free(c);
 }
 
-static void dev_done(void *ctx, uintptr_t a, void *json) {
+static void dev_done(void *ctx, void *a, void *json) {
 	dev_call *c = ctx;
-	c->hr = hr_of(a);
+	c->hr = hr_of((uintptr_t)a);
 	if (SUCCEEDED(c->hr)) {
 		int n = 0;
 		c->result = wh_utf8(json, -1, &n);
@@ -780,13 +745,11 @@ static void dev_tools(com view, const char *method, const char *params, int then
 	c->then = then;
 	c->reply = reply;
 	c->ctx = ctx;
-	handler *h = new_handler(NULL, NULL);
-	h->cfn = dev_done;
-	h->ctx = c;
+	void *h = asuka_win_handler(dev_done, c, NULL);
 	wchar_t *m = wh_wide(method, (int)strlen(method)), *p = wh_wide(params, (int)strlen(params));
 	HRESULT hr = CALL_PPP(view, WV_CALL_DEV_TOOLS_PROTOCOL_METHOD, m, p, h);
 	free(m), free(p);
-	h_release(h);
+	asuka_com_release(h);
 	if (FAILED(hr)) {
 		c->hr = hr;
 		dev_answer(c);  // the handler wasn't kept: it won't be called
@@ -877,10 +840,10 @@ static void run_op(wh_web *w, const web_op *o) {
 		if (o->s && *o->s) add_script(w, o->s);
 		break;
 	case OP_USER_AGENT: {
-		com s2 = query(w->settings, &IID_SETTINGS2);
+		com s2 = asuka_com_query(w->settings, &IID_SETTINGS2);
 		if (s2) {
 			CALL_P(s2, SET2_PUT_USER_AGENT, o->s ? o->s : L"");
-			release(s2);
+			asuka_com_release(s2);
 		}
 		break;
 	}
@@ -1110,9 +1073,9 @@ typedef struct {
 static void close_controller(wh_web *w) {
 	if (!w->controller) return;
 	CALL_V(w->controller, CTL_CLOSE);
-	release(w->settings);
-	release(w->view);
-	release(w->controller);
+	asuka_com_release(w->settings);
+	asuka_com_release(w->view);
+	asuka_com_release(w->controller);
 	w->controller = w->view = w->settings = NULL;
 }
 

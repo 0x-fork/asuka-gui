@@ -22,7 +22,6 @@
 //   - push: WNS gives channels to packaged apps only. widget,
 //     liveActivity: a phone's. icloud: Apple's.
 #include "modules.h"
-#include "http.h"
 
 #include <time.h>
 #include <wincodec.h>
@@ -131,8 +130,8 @@ static void m_recent_clear(wh_reply *r, const uint8_t *a, size_t n) {
 	HRESULT hr = CoCreateInstance(&CLSID_ApplicationDestinations_, NULL, CLSCTX_INPROC_SERVER, &IID_IApplicationDestinations_, &d);
 	if (SUCCEEDED(hr) && d) {
 		typedef HRESULT(STDMETHODCALLTYPE * remove_all_fn)(void *);
-		hr = WH_VT(d, 5, remove_all_fn)(d);
-		wh_release_com(d);
+		hr = ASUKA_SLOT(d, 5, remove_all_fn)(d);
+		asuka_com_release(d);
 	}
 	if (FAILED(hr)) wh_reply_fail(r, "clearing the jump list: %#lx", (unsigned long)hr);
 	else wh_reply_nil(r);

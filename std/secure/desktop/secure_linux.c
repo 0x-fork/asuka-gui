@@ -7,26 +7,13 @@
 #include "asuka_linux.h"
 #include "secure.asuka.h"
 
-#include <dlfcn.h>
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct _SecretSchema SecretSchema;
-typedef struct _SecretValue SecretValue;
 
 static struct {
 	bool tried;
 	const char *missing;
-	SecretSchema *(*schema_newv)(const char *, int, GHashTable *);
-	SecretValue *(*value_new)(const char *, gsize, const char *);
-	const char *(*value_get)(SecretValue *, gsize *);
-	void (*value_unref)(gpointer);
-	void (*storev)(SecretSchema *, GHashTable *, const char *, const char *, SecretValue *, GCancellable *, GAsyncReadyCallback, gpointer);
-	gboolean (*store_finish)(GAsyncResult *, GError **);
-	void (*lookupv)(SecretSchema *, GHashTable *, GCancellable *, GAsyncReadyCallback, gpointer);
-	SecretValue *(*lookup_finish)(GAsyncResult *, GError **);
-	void (*clearv)(SecretSchema *, GHashTable *, GCancellable *, GAsyncReadyCallback, gpointer);
-	gboolean (*clear_finish)(GAsyncResult *, GError **);
 	SecretSchema *schema;
 } ls;
 
@@ -34,31 +21,15 @@ static struct {
 static bool load(void) {
 	if (ls.tried) return !ls.missing;
 	ls.tried = true;
-	void *l = dlopen("libsecret-1.so.0", RTLD_NOW | RTLD_GLOBAL);
-	if (!l) {
+	if (!asuka_linux() || !asuka_linux_load(ASUKA_LIB_SECRET)) {
 		ls.missing = "asuka/secure: libsecret isn't installed";
 		return false;
 	}
-	struct {
-		void **p;
-		const char *name;
-	} fs[] = {
-	    {(void **)&ls.schema_newv, "secret_schema_newv"},
-	    {(void **)&ls.value_new, "secret_value_new"},
-	    {(void **)&ls.value_get, "secret_value_get"},
-	    {(void **)&ls.value_unref, "secret_value_unref"},
-	    {(void **)&ls.storev, "secret_password_storev_binary"},
-	    {(void **)&ls.store_finish, "secret_password_store_finish"},
-	    {(void **)&ls.lookupv, "secret_password_lookupv"},
-	    {(void **)&ls.lookup_finish, "secret_password_lookup_binary_finish"},
-	    {(void **)&ls.clearv, "secret_password_clearv"},
-	    {(void **)&ls.clear_finish, "secret_password_clear_finish"},
-	};
-	for (size_t i = 0; i < sizeof fs / sizeof *fs; i++) {
-		if (!(*fs[i].p = dlsym(l, fs[i].name))) {
-			ls.missing = "asuka/secure: libsecret is too old: 0.19 or later is needed";
-			return false;
-		}
+	if (!G(secret_schema_newv) || !G(secret_value_new) || !G(secret_value_get) || !G(secret_value_unref) || !G(secret_password_storev_binary) ||
+	    !G(secret_password_store_finish) || !G(secret_password_lookupv) || !G(secret_password_lookup_binary_finish) || !G(secret_password_clearv) ||
+	    !G(secret_password_clear_finish)) {
+		ls.missing = "asuka/secure: libsecret is too old: 0.19 or later is needed";
+		return false;
 	}
 	return true;
 }
@@ -75,7 +46,7 @@ static GHashTable *table(const char *key) {
 static SecretSchema *schema(void) {
 	if (!ls.schema) {
 		GHashTable *t = table(NULL);
-		ls.schema = ls.schema_newv(asuka_desktop_app_id(), 0, t);
+		ls.schema = G(secret_schema_newv)(asuka_desktop_app_id(), 0, t);
 		G(g_hash_table_unref)(t);
 	}
 	return ls.schema;
@@ -97,43 +68,43 @@ static bool ready(asuka_call *call) {
 
 static void looked_up(GObject *src, GAsyncResult *res, gpointer call) {
 	GError *e = NULL;
-	SecretValue *v = ls.lookup_finish(res, &e);
+	SecretValue *v = G(secret_password_lookup_binary_finish)(res, &e);
 	if (e) return keyring_error(call, e);
 	if (!v) return secure_Keychain_get_done(call, NULL);
 	gsize n = 0;
-	const char *p = ls.value_get(v, &n);
+	const char *p = G(secret_value_get)(v, &n);
 	char *s = asuka_strndup(p ? p : "", p ? n : 0);
-	ls.value_unref(v);
+	G(secret_value_unref)(v);
 	secure_Keychain_get_done(call, s);
 }
 
 static void k_get(secure_Keychain *self, const char *key, asuka_call *call) {
 	if (!ready(call)) return;
 	GHashTable *t = table(key);
-	ls.lookupv(schema(), t, NULL, looked_up, call);
+	G(secret_password_lookupv)(schema(), t, NULL, looked_up, call);
 	G(g_hash_table_unref)(t);
 }
 
 static void stored(GObject *src, GAsyncResult *res, gpointer call) {
 	GError *e = NULL;
-	if (!ls.store_finish(res, &e)) return keyring_error(call, e);
+	if (!G(secret_password_store_finish)(res, &e)) return keyring_error(call, e);
 	secure_Keychain_set_done(call);
 }
 
 static void k_set(secure_Keychain *self, const char *key, const char *value, asuka_call *call) {
 	if (!ready(call)) return;
 	GHashTable *t = table(key);
-	SecretValue *v = ls.value_new(value, strlen(value), "application/octet-stream");
+	SecretValue *v = G(secret_value_new)(value, strlen(value), "application/octet-stream");
 	char *label = asuka_sprintf("%s: %s", asuka_desktop_app_name(), key);
-	ls.storev(schema(), t, NULL, label, v, NULL, stored, call);  // the default collection
+	G(secret_password_storev_binary)(schema(), t, NULL, label, v, NULL, stored, call);  // the default collection
 	free(label);
-	ls.value_unref(v);
+	G(secret_value_unref)(v);
 	G(g_hash_table_unref)(t);
 }
 
 static void cleared(GObject *src, GAsyncResult *res, gpointer call) {
 	GError *e = NULL;
-	ls.clear_finish(res, &e);
+	G(secret_password_clear_finish)(res, &e);
 	if (e) return keyring_error(call, e);
 	secure_Keychain_remove_done(call);  // none there is no error
 }
@@ -141,7 +112,7 @@ static void cleared(GObject *src, GAsyncResult *res, gpointer call) {
 static void k_remove(secure_Keychain *self, const char *key, asuka_call *call) {
 	if (!ready(call)) return;
 	GHashTable *t = table(key);
-	ls.clearv(schema(), t, NULL, cleared, call);
+	G(secret_password_clearv)(schema(), t, NULL, cleared, call);
 	G(g_hash_table_unref)(t);
 }
 

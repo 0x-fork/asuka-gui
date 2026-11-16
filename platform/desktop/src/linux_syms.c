@@ -44,6 +44,9 @@ static const lib_names sonames[ASUKA_LIB_COUNT] = {
 	[ASUKA_LIB_EBOOKC] = {{"libebook-contacts-1.2.so.4", "libebook-contacts-1.2.so.3", "libebook-contacts-1.2.so"}},
 	[ASUKA_LIB_ECAL] = {{"libecal-2.0.so.3", "libecal-2.0.so.2", "libecal-2.0.so.1", "libecal-2.0.so"}},
 	[ASUKA_LIB_ICAL] = {{"libical-glib.so.3", "libical-glib.so"}},
+	[ASUKA_LIB_PIXBUF] = {{"libgdk_pixbuf-2.0.so.0", "libgdk_pixbuf-2.0.so"}},
+	[ASUKA_LIB_SHUMATE] = {{"libshumate-1.0.so.1", "libshumate-1.0.so"}},
+	[ASUKA_LIB_GEOCODE] = {{"libgeocode-glib-2.so.0", "libgeocode-glib.so.0", "libgeocode-glib-2.so"}},
 };
 
 static void *handles[ASUKA_LIB_COUNT];
