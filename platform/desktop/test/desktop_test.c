@@ -68,7 +68,34 @@ static void test_state(const char *dir) {
 	free(path);
 }
 
+static bool same(dsk_rect a, dsk_rect b) { return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h; }
+
+// internal/flyout's cases.
+static void test_flyout(void) {
+	dsk_rect work = {0, 25, 1440, 875}, icon = {1200, 0, 24, 25};
+	struct {
+		dsk_rect anchor;
+		double w, h;
+		int p;
+		double gap;
+		dsk_rect want;
+	} cs[] = {
+		{icon, 280, 300, 0, 0, {1072, 25, 280, 300}},
+		{{1420, 0, 20, 25}, 280, 300, 0, 0, {1160, 25, 280, 300}},
+		{{1300, 100, 100, 20}, 200, 100, 1, 4, {1200, 124, 200, 100}},
+		{{100, 100, 100, 20}, 60, 50, 2, 0, {140, 120, 60, 50}},
+		{{1300, 870, 24, 30}, 280, 300, 0, 8, {1160, 562, 280, 300}},
+		{{600, 500, 40, 20}, 100, 100, 3, 4, {570, 396, 100, 100}},
+		{{100, 300, 50, 20}, 100, 60, 7, 0, {150, 300, 100, 60}},
+		{{1400, 300, 20, 20}, 100, 60, 6, 0, {1300, 280, 100, 60}},
+		{icon, 200, 2000, 0, 0, {1112, 25, 200, 875}},
+	};
+	for (size_t i = 0; i < sizeof cs / sizeof *cs; i++) CHECK(same(dsk_flyout_place(cs[i].anchor, cs[i].w, cs[i].h, cs[i].p, cs[i].gap, work), cs[i].want));
+	CHECK(same(dsk_flyout_center(600, 60, work), (dsk_rect){420, 25 + 815.0 / 3, 600, 60}));
+}
+
 int main(int argc, char **argv) {
+	test_flyout();
 	test_json();
 	if (argc > 1) test_state(argv[1]);
 	fprintf(stderr, "%d failures\n", failed);

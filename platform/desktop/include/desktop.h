@@ -9,7 +9,8 @@
 //   - the state files: where the windows were (internal/winstate's
 //     asuka-window.json) and where their routers were (internal/
 //     routestate's asuka-routes.json);
-//   - files by UTF-8 path (Windows' are UTF-16).
+//   - files by UTF-8 path (Windows' are UTF-16);
+//   - where a flyout window goes against its anchor (internal/flyout).
 //
 // Nothing here is thread-safe unless it says so: the hosts call it on
 // their main thread. It's portable C17 (POSIX on Linux, Win32 on
@@ -17,7 +18,8 @@
 // tests it on any system.
 //
 // The API is stable: what's added is added in commits of platform/desktop
-// alone, each noted here.
+// alone, each noted here:
+//   - dsk_flyout_place, dsk_flyout_center: flyouts' and panels' places.
 #ifndef ASUKA_DESKTOP_SHARED_H
 #define ASUKA_DESKTOP_SHARED_H
 
@@ -169,6 +171,25 @@ bool dsk_routes_location(dsk_routes *s, const char *key, const char **href, cons
 // main thread if it likes: flush takes the store's lock).
 bool dsk_routes_set(dsk_routes *s, const char *key, const char *href, size_t href_len, const char *state, size_t state_len);
 void dsk_routes_flush(dsk_routes *s);
+
+// ---- Flyouts and panels (internal/flyout) ----
+
+// A rectangle, y down, in a host's own units (points or pixels).
+typedef struct {
+	double x, y, w, h;
+} dsk_rect;
+
+// dsk_flyout_center is a w by h rectangle centered across r, its top a
+// third of the way down the room left (as Spotlight's panel shows), within
+// r.
+dsk_rect dsk_flyout_center(double w, double h, dsk_rect r);
+// dsk_flyout_place is the frame of a w by h flyout next to anchor, gap
+// away, as placement (an AK_PLACEMENT_*: the side, then start, center or
+// end) says: flipped to the other side where that has no room and the
+// other has, lined up along the side (flipped to the other end where that
+// has no room), then slid back into work (the work area of the anchor's
+// display) and shrunk to it, as GTK places menus.
+dsk_rect dsk_flyout_place(dsk_rect anchor, double w, double h, int placement, double gap, dsk_rect work);
 
 #ifdef __cplusplus
 }
