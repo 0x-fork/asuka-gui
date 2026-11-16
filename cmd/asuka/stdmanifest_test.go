@@ -82,6 +82,7 @@ func TestStdManifests(t *testing.T) {
 		flags       []string // the iOS host's (usedFeatures)
 		derived     []string // what the CLI derives (ios.derived)
 		no          []string // in neither the app's manifest nor its purpose strings and modes
+		launch      []string // iOS's launch classes (Info.plist's AsukaLaunch), all of them
 	}
 	cases := map[string]want{
 		// asuka/location's background part, only for the apps that use it.
@@ -96,6 +97,7 @@ func TestStdManifests(t *testing.T) {
 			no:      []string{"FOREGROUND_SERVICE", "LocationService", "LocationReceiver"},
 		},
 		"location.startUpdates": {
+			launch: []string{"AsukaLocationLaunch"},
 			android: []string{"FOREGROUND_SERVICE_LOCATION", "RECEIVE_BOOT_COMPLETED", "POST_NOTIFICATIONS",
 				`<service android:name="asuka.location.LocationService" android:exported="false" android:foregroundServiceType="location" />`,
 				`<receiver android:name="asuka.location.LocationReceiver" android:exported="false">`},
@@ -103,6 +105,7 @@ func TestStdManifests(t *testing.T) {
 			no:    []string{"BACKGROUND_LOCATION", "NSLocationAlwaysAndWhenInUseUsageDescription"},
 		},
 		"location.monitor": {
+			launch:  []string{"AsukaLocationLaunch"},
 			android: []string{"RECEIVE_BOOT_COMPLETED", `<receiver android:name="asuka.location.LocationReceiver" android:exported="false">`},
 			no:      []string{"BACKGROUND_LOCATION", "LocationService", "FOREGROUND_SERVICE"},
 		},
@@ -135,7 +138,8 @@ func TestStdManifests(t *testing.T) {
 		"periodic":      {modes: []string{"fetch", "processing"}, plist: []string{"BGTaskSchedulerPermittedIdentifiers"}, hostModules: []string{"periodic"}, flags: []string{"ASUKA_PERIODIC"}},
 		"liveactivity": {android: []string{"POST_PROMOTED_NOTIFICATIONS", `<receiver android:name="dev.asuka.AsukaLiveActivityReceiver" android:exported="false" />`},
 			flags: []string{"ASUKA_LIVEACTIVITY"}, plist: []string{"NSSupportsLiveActivities"}},
-		"purchase": {android: []string{"com.android.vending.BILLING"}},
+		"purchase": {android: []string{"com.android.vending.BILLING", `<provider android:name="dev.asuka.AsukaLauncher" android:authorities="${applicationId}.asuka.launch" android:exported="false" />`,
+			`<meta-data android:name="dev.asuka.launch" android:value="asuka.purchase.PurchaseLaunch" />`}, launch: []string{"AsukaPurchaseLaunch"}},
 		"pay":      {module: []string{"com.google.android.gms.wallet.api.enabled", `android:name="asuka.pay.PayCallbacks"`}},
 		"nfc":      {android: []string{"android.permission.NFC", `android:name="android.hardware.nfc" android:required="false"`}, usage: []string{"NFCReaderUsageDescription"}, ents: []string{"com.apple.developer.nfc.readersession.formats"}},
 		"speech":   {module: []string{`<action android:name="android.intent.action.TTS_SERVICE" />`}},
@@ -194,6 +198,12 @@ func TestStdManifests(t *testing.T) {
 			}
 			if len(w.hostModules) == 0 && len(c.androidModules) > 0 {
 				t.Errorf("host modules %v", c.androidModules)
+			}
+			if got := c.plistArrays["AsukaLaunch"]; !slices.Equal(got, w.launch) {
+				t.Errorf("launch classes %v, want %v", got, w.launch)
+			}
+			if len(w.launch) == 0 && strings.Contains(man, "AsukaLauncher") {
+				t.Errorf("the launcher, without launch classes:\n%s", man)
 			}
 			flags := usedFeatures(&asukaApp{cfg: c}, c)
 			for _, f := range w.flags {

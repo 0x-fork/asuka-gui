@@ -232,6 +232,10 @@ type appConfig struct {
 	// androidModules are the host's optional Gradle modules the app's
 	// packages need (their asuka.toml's android.hostModules).
 	androidModules []string
+	// androidLaunch are the app's packages' launch classes (their
+	// manifests' android.launch), which the host's AsukaLauncher runs as
+	// the process starts.
+	androidLaunch []string
 	// hostFlags are the iOS host's parts the app's packages need (their
 	// manifests' ios.hostFlags); derived, what the CLI makes of the
 	// app's asuka.toml for them (ios.derived: derivedNeeds).
@@ -730,6 +734,11 @@ func (c *appConfig) androidManifest(debug bool) string {
 	}
 	for _, x := range c.androidApp {
 		b.WriteString("        " + x + "\n")
+	}
+	// The packages' launch code: a provider, made as the process starts.
+	if len(c.androidLaunch) > 0 {
+		b.WriteString("        <provider android:name=\"dev.asuka.AsukaLauncher\" android:authorities=\"${applicationId}.asuka.launch\" android:exported=\"false\" />\n")
+		fmt.Fprintf(&b, "        <meta-data android:name=\"dev.asuka.launch\" android:value=\"%s\" />\n", html.EscapeString(strings.Join(c.androidLaunch, ",")))
 	}
 	b.WriteString(c.androidWidgetReceivers())
 	b.WriteString("    </application>\n</manifest>\n")

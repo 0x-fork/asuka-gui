@@ -54,6 +54,10 @@ type manifestNeeds struct {
 		// Derived are what the CLI makes of the app's own asuka.toml for
 		// the package (derivedNeeds).
 		Derived []string `json:"derived"`
+		// Launch is the package's class that runs as the app launches,
+		// before the app's code (the host's AsukaLaunching), by its
+		// Objective-C name: Info.plist's AsukaLaunch lists them.
+		Launch string `json:"launch"`
 	} `json:"ios"`
 	MacOS struct {
 		// HostFlags are compilation conditions of the Mac's Swift
@@ -73,6 +77,10 @@ type manifestNeeds struct {
 		// (platform/android/asuka-<name>) the package's host module needs:
 		// asuka/push's Firebase, asuka/periodic's WorkManager.
 		HostModules []string `json:"hostModules"`
+		// Launch is the package's class that runs as the app's process
+		// starts (the host's AsukaLaunching), by its name: the app's
+		// manifest declares the host's AsukaLauncher with them.
+		Launch string `json:"launch"`
 	} `json:"android"`
 	Linux struct {
 		// Flatpak are the Flatpak's finish-args (the system bus names
@@ -212,6 +220,17 @@ func (c *appConfig) addNeeds(m *manifestNeeds) error {
 		}
 	}
 	add(&c.derived, m.IOS.Derived...)
+	if l := m.IOS.Launch; l != "" {
+		if c.plistArrays == nil {
+			c.plistArrays = map[string][]string{}
+		}
+		have := c.plistArrays["AsukaLaunch"]
+		add(&have, l)
+		c.plistArrays["AsukaLaunch"] = have
+	}
+	if l := m.Android.Launch; l != "" {
+		add(&c.androidLaunch, l)
+	}
 	add(&c.macSwift, m.MacOS.HostFlags...)
 	for _, p := range m.Android.Permissions {
 		c.addPermission(p)
