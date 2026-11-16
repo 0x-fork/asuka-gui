@@ -37,7 +37,7 @@ state units = store.read("units", "metric")
 | `asuka/notify` | 本地通知：`request()`、`show(n)`、`schedule(n)`（在 `n.after` 之后显示）、`cancel(id)`、`showing()`、`remove(ids)`、`removeThread(t)`、`removeAll()`、`setBadge(n)`；`setCategories`（操作、回复）、`setChannels`、`setChannelGroups`（Android）；`Notification(…).from(person, conversation)`（消息）；`present(decide)`（应用在前台时通知怎么显示）；`responses()`（点按、操作和回复组成的流；`r.defer()` 让应用继续运行，直到这项工作完成）。各平台用的都是宿主自己的通知：UserNotifications、Android 的通知、Windows 的 toast、Linux 的通知、浏览器的通知 |
 | `asuka/push` | `push.register()`（令牌：APNs 的、FCM 的、Web 的订阅）、`push.opened()` 和 `push.received()`（`Message` 组成的流；`Message.from(person, conversation)`） |
 | `asuka/watch` | `watch.path(dir, ignore:, recursive:, attributes:)` 返回一个 `Watch`：它的 `root`，以及 `events`，一个由一批批 `Event` 组成的流（`op`：create、write、remove、rename、attrib、overflow；`path`、`oldPath`）。基于 FSEvents、inotify 和 ReadDirectoryChangesW（internal/fswatch）；手机和 Web 上不支持 |
-| `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` 返回一个 `Task`（`update(…)`、`end()`）：由系统显示的长时间工作（Android 前台服务的通知、iOS 的持续处理、桌面上的进度） |
+| `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` 返回一个 `Task`（`update(…)`、`end()`）：在后台继续进行的长时间工作（Android 的前台服务及其通知；iOS 上多给约 30 秒；桌面端不让系统休眠） |
 | `asuka/calendar` | `calendar.request()`（`Access`）、`calendars()`、`events(from:, to:, calendars:)`、`add(Event)`（系统的表单）：EventKit、Calendar Provider |
 | `asuka/compose` | `compose.mail(to:, cc:, bcc:, subject:, body:, html:, attachments:)` 和 `compose.message(to:, body:, …)` 显示系统的编写界面，返回一个 `Result`（cancelled、sent、saved、unknown）；`check()` |
 | `asuka/contacts` | `contacts.pick()`（系统的选择器：返回一个 `Contact` 或 none）、`request()`、`list(name:, limit:)`、`add(Contact)` |
@@ -60,7 +60,7 @@ state units = store.read("units", "metric")
 | `asuka/notify` | 本地通知：`request()`、`show(n)`、`schedule(n)`（在 `n.after` 之后）、`cancel(id)`、`showing()`、`remove(ids)`、`removeThread(t)`、`removeAll()`、`setBadge(n)`；`setCategories`（操作、回复）、`setChannels`、`setChannelGroups`（Android）；`Notification(…).from(person, conversation)`（消息）；`present(decide)`（应用在前台时通知如何显示）；`responses()`（点按、操作和回复的流；`r.defer()` 让应用继续运行以完成工作）。每个平台上用的都是宿主自己的通知：UserNotifications、Android 的通知、Windows 的 toast、Linux 的通知、浏览器的通知 |
 | `asuka/push` | `push.register()`（令牌：APNs 的、FCM 的、Web 的订阅）、`push.opened()` 和 `push.received()`（`Message` 的流；`Message.from(person, conversation)`） |
 | `asuka/watch` | `watch.path(dir, ignore:, recursive:, attributes:)` 得到一个 `Watch`：它的 `root`，以及 `events`，即一批批 `Event` 组成的流（`op`：create、write、remove、rename、attrib、overflow；`path`、`oldPath`）。基于 FSEvents、inotify 和 ReadDirectoryChangesW（internal/fswatch）；手机和 Web 上不支持 |
-| `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` 得到一个 `Task`（`update(…)`、`end()`）：由系统显示的长时间工作（Android 前台服务的通知、iOS 的持续处理、桌面端的进度） |
+| `asuka/background` | `background.start(title:, text:, progress:, actions:, onAction:)` 得到一个 `Task`（`update(…)`、`end()`）：在后台继续进行的长时间工作（Android 的前台服务及其通知；iOS 上多给约 30 秒；桌面端不让系统休眠） |
 | `asuka/calendar` | `calendar.request()`（`Access`）、`calendars()`、`events(from:, to:, calendars:)`、`add(Event)`（系统的表单）：EventKit、Calendar Provider |
 | `asuka/compose` | `compose.mail(to:, cc:, bcc:, subject:, body:, html:, attachments:)` 和 `compose.message(to:, body:, …)` 打开系统的撰写界面，并返回一个 `Result`（cancelled、sent、saved、unknown）；`check()` |
 | `asuka/contacts` | `contacts.pick()`（系统的选择器：一个 `Contact` 或 none）、`request()`、`list(name:, limit:)`、`add(Contact)` |

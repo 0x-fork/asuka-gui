@@ -2,7 +2,7 @@
 // macOS, the Calendar Provider on Android. Adding an event shows the
 // system's own form, which needs no access; reading needs it (request).
 //
-//   let saved = try await calendar.add(calendar.Event(title: "Demo", start: start, end: start + 30min))
+//   let saved = try await calendar.add(calendar.Event(title: "Demo", start: start, end: start + 30 * 60_000))
 
 import asuka/host
 import asuka/json

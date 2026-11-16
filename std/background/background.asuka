@@ -1,8 +1,10 @@
 // Package asuka/background keeps long work going out of sight (a
 // download, an export), with its progress where the system shows such
 // work: an ongoing notification with its buttons (Android's foreground
-// service), iOS 26's continued processing task (iOS asks for the time
-// it gives), the Dock's and the taskbar's progress on the desktops.
+// service). iOS gives the app about 30 seconds more while a task lives,
+// and shows nothing; the desktops keep the app from being slowed or
+// suspended (App Nap, sleep), and show nothing either: update and
+// onAction do nothing there.
 //
 //   let task = background.start(title: "Downloading", progress: -1, actions: [background.Action(id: "cancel", title: "Cancel")], onAction: a => { … })
 //   task.update(title: "Downloading", text: "3 of 10", progress: 0.3, actions: [])
