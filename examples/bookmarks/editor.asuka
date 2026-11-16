@@ -276,7 +276,7 @@ component PickerRow(icon: string, text: string) {
 /// Picks the bookmark's collection, or makes one.
 component CollectionPicker(collections: [Collection]) {
   prop chosen = 0
-  event change(chosen: int)
+  event chosenChange(chosen: int)
   event done
   state name = ""
 
@@ -291,7 +291,7 @@ component CollectionPicker(collections: [Collection]) {
       try await db.exec("insert or ignore into collections (name) values (?)", [n])
       let found: [Collection] = try await db.query("select * from collections where name = ?", [n])
       if let c = found.first() {
-        emit change(c.id)
+        emit chosenChange(c.id)
         emit done
       }
     } catch {}
@@ -313,7 +313,7 @@ component CollectionPicker(collections: [Collection]) {
             align: .center
             role: .button
             on press {
-              emit change(c.id)
+              emit chosenChange(c.id)
               emit done
             }
             Symbol(if c.id == 0 { "tray" } else { "folder" }) {
@@ -354,14 +354,14 @@ component CollectionPicker(collections: [Collection]) {
 /// pick from, and new ones.
 component TagPicker {
   prop tags: [string] = []
-  event change(tags: [string])
+  event tagsChange(tags: [string])
   state typed = ""
 
   let used: sqlite.Live<TagsRow> = db.watch("select tags from bookmarks where tags != ''", [])
   let known = splitTags((used.rows.map(r => r.tags) + tags).joined(","))
 
   fn toggle(t: string) {
-    emit change(if tags.contains(t) { tags.filter(x => x != t) } else { tags + [t] })
+    emit tagsChange(if tags.contains(t) { tags.filter(x => x != t) } else { tags + [t] })
   }
 
   fn add() {
@@ -369,7 +369,7 @@ component TagPicker {
     for t in splitTags(typed.replace("#", "")) {
       if !next.contains(t) { next.push(t) }
     }
-    emit change(next)
+    emit tagsChange(next)
     typed = ""
   }
 

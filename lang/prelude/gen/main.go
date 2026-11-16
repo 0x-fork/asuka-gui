@@ -128,7 +128,7 @@ func enums() []byte {
 // The wire's enums that aren't the language's: what only the runtime
 // encodes (canvas ops, paths, window actions), and SemanticColor, whose
 // cases are Color's.
-var skipEnum = map[string]bool{"PathOp": true, "CanvasOp": true, "WindowAction": true, "Lifecycle": true, "LocationAction": true, "SemanticColor": true}
+var skipEnum = map[string]bool{"PathOp": true, "CanvasOp": true, "WindowAction": true, "LocationAction": true, "SemanticColor": true}
 
 var renameEnum = map[string]string{"Placement": "PopoverPlacement"}
 

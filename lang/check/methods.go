@@ -214,6 +214,7 @@ var Methods = []*Method{
 	{Recv: "app", Name: "press", Sig: "(text: string, down: bool = true)", Builtin: "test.press", Doc: "puts a finger down on the view showing text (or the view around it that reports pressed), or lifts it: its pressed state"},
 	{Recv: "app", Name: "hover", Sig: "(text: string, over: bool = true)", Builtin: "test.hover", Doc: "moves the pointer over the view showing text, or off it"},
 	{Recv: "app", Name: "frame", Sig: "(time: Duration)", Builtin: "test.frame", Doc: "draws a frame at time: what onFrame registered runs"},
+	{Recv: "app", Name: "lifecycle", Sig: "(state: Lifecycle)", Builtin: "test.lifecycle", Doc: "the app comes to the foreground, goes to the background, or the system runs low on memory"},
 	{Recv: "app", Name: "openURL", Sig: "(url: string)", Builtin: "test.open_url", Doc: "opens the app with url, as another app does"},
 	{Recv: "app", Name: "tapLink", Sig: "(url: string)", Builtin: "test.link", Doc: "taps the link to url in the rich text that has one"},
 	{Recv: "app", Name: "emit", Sig: "(view: string, event: string, value: string = \"\")", Builtin: "test.emit", Doc: "sends a native component's event: from the view of that kind (\"<package>#Name\"), its value v an encoded string"},

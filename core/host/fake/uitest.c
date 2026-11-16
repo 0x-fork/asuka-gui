@@ -2037,6 +2037,13 @@ static ak_val t_open_url(ak_val *a, uint32_t n) {
 	return (ak_val){0};
 }
 
+static ak_val t_lifecycle(ak_val *a, uint32_t n) {
+	ak_uitest *app = app_arg(a, n, "test.lifecycle");
+	ak_fake_lifecycle(app->f, n > 1 ? a[1].i : 0);
+	ak_uitest_settle(app);
+	return (ak_val){0};
+}
+
 static ak_val t_link(ak_val *a, uint32_t n) {
 	ak_uitest *app = app_arg(a, n, "test.link");
 	ak_buf err = {0};
@@ -2522,6 +2529,7 @@ void ak_uitest_builtins_init(void) {
 	ak_builtin_register("test.frame", t_frame);
 	ak_builtin_register("test.open_url", t_open_url);
 	ak_builtin_register("test.link", t_link);
+	ak_builtin_register("test.lifecycle", t_lifecycle);
 	ak_builtin_register("test.emit", t_emit);
 	ak_builtin_register("test.mount", t_mount);
 	ak_builtin_register("test.tap", t_tap);

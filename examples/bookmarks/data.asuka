@@ -104,12 +104,10 @@ let titleRE = regex.must(r"(?is)<title[^>]*>(.*?)</title>")
 
 /// Reads the head of the page at link.
 async fn fetchPage(link: string) throws -> Page {
-  let res = try await withTimeout(8s) {
-    try await http.get(link, headers: [
-      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
-    ])
-  }
-  let doc = try await res.text(limit: 512 * 1024)
+  let res = try await http.request("GET", link, headers: [
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+  ], timeout: 8s)
+  let doc = res.text().slice(0, 512 * 1024)
   var p = Page()
   for m in metaRE.findAll(doc) {
     var key = ""

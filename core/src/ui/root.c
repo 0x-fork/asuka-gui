@@ -578,6 +578,9 @@ void ak_ui_dispatch(const uint8_t *buf, size_t len) {
 	case AK_EVENT_LIFECYCLE:
 		if (r && ev.i == AK_LIFECYCLE_MEMORY_WARNING) ak_mcache_clear(&r->measures);
 		ak_crash_lifecycle((int)ev.i);
+		ak_batch_begin();
+		ak_ui_lifecycle(ev.i);
+		flush_after();
 		return;
 	}
 	if (ak_ext_dispatch(&ev)) return;  // a frame, a call's result, a URL, a share (ui_ext.h)

@@ -137,10 +137,8 @@ struct TokenAccount {
 }
 
 async fn postJSON<R>(url: string, body: [string: string]) throws -> R {
-  let res = try await withTimeout(20s) {
-    try await http.post(url, headers: ["Content-Type": "application/json"], body: json.encode(body).bytes())
-  }
-  let text = try await res.text()
+  let res = try await http.request("POST", url, headers: ["Content-Type": "application/json"], body: json.encode(body).bytes(), timeout: 20s)
+  let text = res.text()
   if res.status != 200 { throw apiError(res.status, res.statusText, text) }
   return try json.decode(text)
 }

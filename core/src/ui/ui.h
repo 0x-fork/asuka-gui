@@ -368,6 +368,10 @@ uint32_t ak_ui_view_id(ak_view *v);
 void ak_ui_on_open_url(ak_closure *f);    // fn(string)
 void ak_ui_on_open_files(ak_closure *f);  // fn([string])
 void ak_ui_on_share(ak_closure *f);       // fn([SharedItem])
+void ak_ui_on_lifecycle(ak_closure *f);   // fn(Lifecycle)
+void ak_ui_on_foreground(ak_closure *f);  // fn()
+void ak_ui_on_background(ak_closure *f);  // fn()
+void ak_ui_lifecycle(int64_t state);      // the handlers hear it (root.c)
 // The router's: true when it takes a URL the app is opened with.
 extern bool (*ak_ui_route_url)(ak_span url);
 // ak_router_set_start makes the main window's first Router start at href

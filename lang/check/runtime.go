@@ -49,6 +49,7 @@ var RuntimeFuncs = []*RuntimeFunc{
 	{Name: "useKeys", Body: true, Sig: "(keys: [Shortcut])", Builtin: "ui.use_keys", Doc: "the window's keys while the component lives (the last one's win)"},
 	{Name: "onOpenURL", Body: true, Sig: "(handler: fn(string))", Builtin: "ui.on_open_url", Doc: "hears the URLs the app is opened with while the component lives"},
 	{Name: "onOpenFiles", Body: true, Sig: "(handler: fn([string]))", Builtin: "ui.on_open_files", Doc: "hears the files the app is opened with (their paths) while the component lives"},
+	{Name: "onLifecycle", Body: true, Sig: "(handler: fn(Lifecycle))", Builtin: "ui.on_lifecycle", Doc: "hears the app come to the foreground, go to the background, or the system run low on memory, while the component lives"},
 	{Name: "onShare", Body: true, Sig: "(handler: fn([SharedItem]))", Builtin: "ui.on_share", Doc: "hears what other apps share with the app while the component lives"},
 	{Name: "quit", Sig: "()", Builtin: "ui.quit", Doc: "quits the app as the user's Quit does (⌘Q): on quit's handlers first, which may cancel it; then its windows close (desktop; phones and the web ignore it)"},
 	{Name: "relaunch", Sig: "()", Builtin: "ui.relaunch", Doc: "quits the app as quit() does, then starts it again with the same arguments once it has (a canceled quit cancels it)"},
@@ -74,6 +75,8 @@ var AppEvents = []struct {
 	{"share", "(items: [SharedItem])", "ui.on_share"},
 	{"quit", "(e: QuitEvent)", "ui.on_quit"},
 	{"secondInstance", "(args: [string], dir: string)", "ui.on_second_instance"},
+	{"foreground", "()", "ui.on_foreground"},
+	{"background", "()", "ui.on_background"},
 }
 
 // runtimeSig is f's parameters and result in this checker's prelude.
@@ -253,7 +256,7 @@ func (c *Checker) appEvent(h *syntax.OnHandler) {
 	c.view, c.loops = false, 0
 	c.openScope()
 	if ev == nil {
-		c.errorf(h.Name, "the app has no event %s (its events: openURL, files, share, quit, secondInstance)", h.Name.Name)
+		c.errorf(h.Name, "the app has no event %s (its events: openURL, files, share, quit, secondInstance, foreground, background)", h.Name.Name)
 		for _, p := range h.Params {
 			c.declareVar(p, Invalid, false)
 		}

@@ -156,7 +156,7 @@ typedef struct handler {
 
 typedef AK_VEC(handler *) handler_vec;
 
-static handler_vec url_handlers, file_handlers, share_handlers;
+static handler_vec url_handlers, file_handlers, share_handlers, life_handlers, fore_handlers, back_handlers;
 static ak_str *pending_url;
 static AK_VEC(ak_arr *) pending_files;
 // Shares that came before any handler: the share that launched the app.
@@ -169,7 +169,7 @@ bool (*ak_ui_route_url)(ak_span url);
 static void handler_gone(void *ctx) {
 	handler *h = ctx;
 	h->gone = true;
-	handler_vec *vs[] = {&url_handlers, &file_handlers, &share_handlers};
+	handler_vec *vs[] = {&url_handlers, &file_handlers, &share_handlers, &life_handlers, &fore_handlers, &back_handlers};
 	for (size_t k = 0; k < AK_LEN(vs); k++) {
 		for (uint32_t i = 0; i < vs[k]->len; i++) {
 			if (vs[k]->data[i] != h) continue;
@@ -297,6 +297,34 @@ void ak_ui_on_open_url(ak_closure *f) {
 		ak_call_closure(f, ak_current_owner(), &(ak_val){.p = u}, 1);
 		ak_release(u);
 	}
+}
+
+// ak_ui_on_lifecycle calls f (fn(Lifecycle)) as the app comes to the
+// foreground, goes to the background, or the system is low on memory,
+// while the current owner lives; on_foreground and on_background call
+// theirs (fn()) for the first two.
+void ak_ui_on_lifecycle(ak_closure *f) { add_handler(&life_handlers, f); }
+void ak_ui_on_foreground(ak_closure *f) { add_handler(&fore_handlers, f); }
+void ak_ui_on_background(ak_closure *f) { add_handler(&back_handlers, f); }
+
+static void call_handlers0(handler_vec *v) {
+	uint32_t n = v->len;
+	handler **hs = ak_alloc((n ? n : 1) * sizeof(handler *));
+	memcpy(hs, v->data, n * sizeof(handler *));
+	for (uint32_t i = 0; i < n; i++) {
+		bool live = false;
+		for (uint32_t j = 0; j < v->len; j++) live |= v->data[j] == hs[i];
+		if (live) ak_call_closure(hs[i]->f, hs[i]->owner, NULL, 0);
+	}
+	ak_free(hs);
+}
+
+// ak_ui_lifecycle tells the lifecycle handlers the app's state changed
+// (AK_LIFECYCLE_*).
+void ak_ui_lifecycle(int64_t state) {
+	call_handlers(&life_handlers, (ak_val){.i = state});
+	if (state == AK_LIFECYCLE_FOREGROUND) call_handlers0(&fore_handlers);
+	else if (state == AK_LIFECYCLE_BACKGROUND) call_handlers0(&back_handlers);
 }
 
 // ak_ui_on_open_files calls f (fn([string])) with the files the app is

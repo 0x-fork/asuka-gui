@@ -179,10 +179,8 @@ struct ProfileOrganization {
 }
 
 async fn getText(url: string, token: string) throws -> string {
-  let res = try await withTimeout(20s) {
-    try await http.get(url, headers: ["Authorization": "Bearer {token}", "anthropic-beta": "oauth-2025-04-20"])
-  }
-  let text = try await res.text()
+  let res = try await http.request("GET", url, headers: ["Authorization": "Bearer {token}", "anthropic-beta": "oauth-2025-04-20"], timeout: 20s)
+  let text = res.text()
   if res.status != 200 { throw apiError(res.status, res.statusText, text) }
   return text
 }

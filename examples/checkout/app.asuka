@@ -108,6 +108,13 @@ fn request(quantity: int) -> pay.Request {
   )
 }
 
+/// What the wallet's button says.
+fn payLabel(a: pay.Availability) -> string = match a.wallet {
+  .applePay => if a.hasCard { "Buy with Apple Pay" } else { "Set up Apple Pay" }
+  .googlePay => "Buy with Google Pay"
+  .none => ""
+}
+
 fn firstName(c: pay.Contact) -> string {
   if !c.givenName.isEmpty() { return c.givenName }
   return c.name.fields().first() ?? "friend"
@@ -153,20 +160,25 @@ component Checkout {
       }
     }
     match wallet {
-      .ready(w) if w.canPay => pay.PayButton {
-        // Apple's guidelines: Set Up Apple Pay where the user has no card
-        // yet (its sheet adds one too).
-        type: if w.wallet == .applePay && !w.hasCard { .setUp } else { .buy }
-        style: .automatic
-        on press {
-          if w.wallet == .applePay && !w.hasCard {
-            try? await pay.setUp()
-          } else {
-            await buy()
+      .ready(w) => if w.canPay {
+        pay.PayButton {
+          // Apple's guidelines: Set Up Apple Pay where the user has no card
+          // yet (its sheet adds one too).
+          type: if w.wallet == .applePay && !w.hasCard { .setUp } else { .buy }
+          style: .automatic
+          // What screen readers say of it (and tests tap it by).
+          label: payLabel(w)
+          on press {
+            if w.wallet == .applePay && !w.hasCard {
+              try? await pay.setUp()
+            } else {
+              await buy()
+            }
           }
         }
+      } else {
+        Text("This device has no wallet to pay with.") { color: .secondaryLabel }
       }
-      .ready(_) => Text("This device has no wallet to pay with.") { color: .secondaryLabel }
       _ => Activity()
     }
     Text(status) { color: .secondaryLabel }
@@ -175,15 +187,11 @@ component Checkout {
 
 app { Checkout() }
 
-let ada = pay.FakeContact(
+let ada = pay.Contact(
   givenName: "Ada",
   familyName: "Lovelace",
   email: "ada@example.com",
-  lines: ["1 Infinite Loop"],
-  city: "Cupertino",
-  state: "CA",
-  postalCode: "95014",
-  countryCode: "US",
+  address: pay.PostalAddress(lines: ["1 Infinite Loop"], city: "Cupertino", state: "CA", postalCode: "95014", countryCode: "US"),
 )
 
 /// Waits for the app's answer to what the wallet's user did.
@@ -195,8 +203,8 @@ async fn answered(app: TestApp, w: pay.FakeWallet) {
 // bad coupon shows by its field, a declined card in the sheet; the
 // payment that goes through thanks the user.
 test "Apple Pay" {
+  let w = pay.fake(wallet: .applePay)
   let app = mount(Checkout(), platform: .iOS)
-  let w = app.host.wallet
   await app.waitFor("Buy with Apple Pay")
   app.tap("+")
   app.tap("Buy with Apple Pay")
@@ -211,42 +219,42 @@ test "Apple Pay" {
   expect(w.sheet!.total.amount == "95.40")
   w.enterCoupon("FREE")
   await answered(app, w)
-  expect(w.sheet!.errors.map(e => e.field) == ["couponInvalid"])
+  expect(w.sheet!.errors.map(e => e.field) == [pay.Field.couponInvalid])
   w.enterCoupon("tea10")
   await answered(app, w)
-  expect(w.sheet!.total.amount == "86.76" && w.sheet!.errors.isEmpty) // 80 - 8 + 9 + 8% of 72
-  let card = pay.FakeCard(network: "visa", kind: "credit", name: "Visa 1234")
-  w.authorize(pay.FakeAuthorization(token: "declined", card: card, shipping: ada))
+  expect(w.sheet!.total.amount == "86.76" && w.sheet!.errors.isEmpty()) // 80 - 8 + 9 + 8% of 72
+  let card = pay.Card(network: .visa, kind: .credit, name: "Visa 1234")
+  w.authorize(pay.Payment(token: "declined", card: card, shipping: ada))
   await answered(app, w)
   expect(w.sheet!.errors.map(e => e.message) == ["Your card was declined. Try another."])
-  w.authorize(pay.FakeAuthorization(token: "\{\"data\":\"…\"}", card: card, shipping: ada))
+  w.authorize(pay.Payment(token: "\{\"data\":\"…\"}", card: card, shipping: ada))
   await app.waitFor("Thanks, Ada! Your tea is on its way (express).")
   expect(w.sheet == none && w.authorized)
 }
 
 // On Google Pay: the same order, through Google's callbacks.
 test "Google Pay" {
+  let w = pay.fake(wallet: .googlePay)
   let app = mount(Checkout(), platform: .android)
-  let w = app.host.wallet
   await app.waitFor("Buy with Google Pay")
   app.tap("Buy with Google Pay")
   await app.until("the sheet", () => w.sheet != none)
   w.changeShippingContact(ada)
   await answered(app, w)
   expect(w.sheet!.total.amount == "43.20")
-  w.changeShippingContact(pay.FakeContact(givenName: "Ada", state: "CA", postalCode: "75001", countryCode: "FR"))
+  w.changeShippingContact(pay.Contact(givenName: "Ada", address: pay.PostalAddress(state: "CA", postalCode: "75001", countryCode: "FR")))
   await answered(app, w)
-  expect(w.sheet!.errors.map(e => e.field) == ["unserviceable"])
-  let card = pay.FakeCard(network: "visa", kind: "debit", name: "Visa •••• 4242")
-  w.authorize(pay.FakeAuthorization(token: "tok_visa", card: card, shipping: ada))
+  expect(w.sheet!.errors.map(e => e.field) == [pay.Field.unserviceable])
+  let card = pay.Card(network: .visa, kind: .debit, name: "Visa •••• 4242")
+  w.authorize(pay.Payment(token: "tok_visa", card: card, shipping: ada))
   await app.waitFor("Thanks, Ada! Your tea is on its way (ground).")
 }
 
 // Closed without paying: nothing said. Without a wallet (a desktop, a
 // browser with neither), no button.
 test "cancelled, and no wallet" {
+  let w = pay.fake(wallet: .applePay)
   let a = mount(Checkout(), platform: .iOS)
-  let w = a.host.wallet
   await a.waitFor("Buy with Apple Pay")
   a.tap("Buy with Apple Pay")
   await a.until("the sheet", () => w.sheet != none)
@@ -254,15 +262,19 @@ test "cancelled, and no wallet" {
   await a.until("pay's return", () => w.sheet == none)
   a.expectNo("Thanks, Ada! Your tea is on its way (ground).")
 
-  let b = mount(Checkout(), platform: .windows, setup: host => { host.wallet.unavailable = true })
+  let nowallet = pay.fake(wallet: .none)
+  nowallet.canPay = false
+  let b = mount(Checkout(), platform: .windows)
   await b.waitFor("This device has no wallet to pay with.")
   b.expectNo("Buy with Apple Pay", "Buy with Google Pay")
 }
 
 // Apple Pay without a card: its Set Up button, which opens Wallet's.
 test "set up Apple Pay" {
-  let app = mount(Checkout(), platform: .iOS, setup: host => { host.wallet.noCard = true })
+  let w = pay.fake(wallet: .applePay)
+  w.hasCard = false
+  let app = mount(Checkout(), platform: .iOS)
   await app.waitFor("Set up Apple Pay")
   app.tap("Set up Apple Pay")
-  await app.until("setUp", () => app.host.wallet.setUps == 1)
+  await app.until("setUp", () => w.setUps == 1)
 }

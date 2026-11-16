@@ -85,6 +85,15 @@ screen NotesScreen {
   state draft = ""
   state stats = false
   state clipError = ""
+  state deleting: int? = none
+
+  // A swipe's Delete.
+  task(deleting) {
+    if let id = deleting {
+      await write("delete from notes where id = ?", [id])
+      deleting = none
+    }
+  }
 
   // The search is the query's: SQLite filters, and the rows follow
   // what's typed (the live query runs again as its arguments change, and
@@ -107,16 +116,16 @@ screen NotesScreen {
   WindowCloseGuard {
     when: !draft.isEmpty()
     on closeRequest {
-      alert("Discard the new note?", message: "It hasn't been added.", buttons: [
-        AlertButton(title: "Cancel", role: .cancel),
-        AlertButton(title: "Discard", role: .destructive, run: () => closeWindow()),
+      alert("Discard the new note?", message: "It hasn't been added.", actions: [
+        .button(title: "Cancel", role: .cancel),
+        .button(title: "Discard", role: .destructive, run: () => closeWindow()),
       ])
     }
   }
 
   // A global shortcut: the clipboard's text as a note, whichever app has
   // the keyboard. Phones and the web have none (.notAvailable).
-  hotkey.Hotkey(Shortcut.cmd("n", mods: .alt)) {
+  hotkey.Hotkey(Shortcut(key: "n", primary: true, mods: [.alt])) {
     description: "Add the clipboard as a note"
     on press {
       if let t = try? await device.clipboardText() { await addNote(t) }
@@ -139,13 +148,13 @@ screen NotesScreen {
         on press { await add() }
       }
       MenuItem("Export…") {
-        shortcut: Shortcut.cmd("e", mods: .shift)
+        shortcut: Shortcut(key: "e", primary: true, mods: [.shift])
         on press { await export(notes.rows) }
       }
     }
     Menu("Edit") {
       MenuItem("Clear Completed") {
-        shortcut: Shortcut.cmd("k", mods: .shift)
+        shortcut: Shortcut(key: "k", primary: true, mods: [.shift])
         role: .destructive
         on press { await write("delete from notes where done", []) }
       }
@@ -221,9 +230,7 @@ screen NotesScreen {
           gap: 12
           padding: [14, 20]
           align: .center
-          swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => {
-            await write("delete from notes where id = ?", [n.id])
-          })]
+          swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => { deleting = n.id })]
           on press { await write("update notes set done = ?1 where id = ?2", (!n.done, n.id)) }
           if n.done {
             Symbol("checkmark.circle.fill") { color: .accent }
