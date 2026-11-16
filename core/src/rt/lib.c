@@ -735,6 +735,18 @@ static ak_val color_opacity(ak_val *args, uint32_t n) {
 	RET_I(c);
 }
 
+// appearance.rgb(r, g, b) is an opaque RGB color, each channel 0 to 255:
+// asuka/appearance's accent, which the platform's side gives as numbers.
+static ak_val appearance_rgb(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	uint64_t c[3];
+	for (int i = 0; i < 3; i++) {
+		int64_t v = args[i].i;
+		c[i] = (uint64_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+	}
+	RET_I((2ull << 32) | c[0] << 24 | c[1] << 16 | c[2] << 8 | 0xff);
+}
+
 // ---- Bytes ----
 //
 // A bytes value may be none (a zero value): it's empty.
@@ -850,6 +862,7 @@ const ak_lib_entry ak_lib[] = {
 	{"str.to_bytes", str_to_bytes},
 
 	{"color.opacity", color_opacity},
+	{"appearance.rgb", appearance_rgb},
 	{"bytes.empty", bytes_empty},
 	{"bytes.len", bytes_len},
 	{"bytes.is_empty", bytes_is_empty},
