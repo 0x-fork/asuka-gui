@@ -108,7 +108,7 @@ test "Add counts" {
 - `assets/`：画像などのファイル（`Image("photo.jpg")` のように使います）と、`assets/fonts` に置くフォント。
 - `locales/`：各言語でのアプリのメッセージ（[多言語対応](i18n.md)を参照）。
 - アプリ独自のパッケージ：アプリの `.asuka` ファイルの隣に置いた、`.asuka` ファイルのディレクトリです。`import ./components` のようにインポートします。依存関係は `asuka.toml` の `[dependencies]` に書きます（`asuka add @acme/charts`。[パッケージ](packages.md)を参照）。
-- ネイティブパッケージ：`native interface` や `native component` を宣言する Asuka のパッケージで、各プラットフォームがそれぞれのプロジェクト（Swift パッケージ、Gradle モジュール、JavaScript、デスクトップでは Go）で実装します。[ネイティブコード](native.md)を参照してください。
+- ネイティブパッケージ：`native interface` や `native component` を宣言する Asuka のパッケージで、各プラットフォームがそれぞれのプロジェクト（Swift パッケージ、Gradle モジュール、JavaScript、Windows と Linux では C）で実装します。[ネイティブコード](native.md)を参照してください。
 
 ## 次のステップ
 

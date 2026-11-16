@@ -669,10 +669,7 @@ On macOS a package's Swift runs (its `Package.swift`); its C doesn't.
   again only when it changes, and the app runs again with its state
   kept.
 - **Windows and Linux**: the packages' C builds into the app's
-  executable with the core and the C host, again only when it changes
-  (until the checkout has the C host for the platform, RFC 0008's H2 and
-  H3, the Go host runs the app, and the CLI says which packages' C it
-  doesn't run).
+  executable with the core and the C host, again only when it changes.
 - **Web**: the page reloads as a package's JavaScript changes.
 
 The first iOS or macOS build of a package resolves its Swift

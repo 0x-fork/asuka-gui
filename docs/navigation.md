@@ -1688,8 +1688,8 @@ desktops and the web aren't share targets: `on share` never runs
 there.
 
 To show a sheet of your app's over the app that shares, without opening
-yours, see `app.ShareSheet` in
-[Device](device.md#the-apps-own-share-sheet). To share
+yours, see `asuka/sharesheet` in
+[Device](device.md#the-apps-own-share-sheet-asukasharesheet). To share
 from your app instead, `share(text)` shows the system's share sheet,
 and `shareFiles(paths)` shares files: the share menu on a Mac, the share UI
 on Windows, the browser's on the web. Linux has no share sheet: they

@@ -1049,8 +1049,8 @@ is a compile error.
 ```asuka
 app {
   Tabs {
-    Tab("Inbox", icon: "tray") { Stack { Inbox() } }
-    Tab("Settings", icon: "gear") { Stack { Settings() } }
+    Tab("Inbox") { icon: "tray"; Stack { Inbox() } }
+    Tab("Settings") { icon: "gear"; Stack { Settings() } }
   }
 }
 
@@ -1130,7 +1130,7 @@ pub native component MapView(region: Region) {
 Making a module and calling it may fail (its platform may have no code
 for it), so both take `try`: `let h = try Haptics()`, `try
 h.impact(.light)`. `asuka native generate` writes the Swift, Kotlin,
-JavaScript and Go each platform implements. See [Native
+JavaScript and C each platform implements. See [Native
 packages](native.md).
 
 C is called directly. `extern` declarations say what a C function

@@ -793,8 +793,8 @@ Canvas(g => {
 ```asuka
 app {
   Tabs {
-    Tab("Inbox", icon: "tray") { Stack { Inbox() } }
-    Tab("Settings", icon: "gear") { Stack { Settings() } }
+    Tab("Inbox") { icon: "tray"; Stack { Inbox() } }
+    Tab("Settings") { icon: "gear"; Stack { Settings() } }
   }
 }
 
@@ -857,7 +857,7 @@ pub native component MapView(region: Region) {
 }
 ```
 
-创建模块和调用它都可能失败（当前平台可能没有它的代码），所以两者都要加 `try`：`let h = try Haptics()`、`try h.impact(.light)`。`asuka native generate` 会生成各平台需要实现的 Swift、Kotlin、JavaScript 和 Go 代码。详见[原生代码](native.md)。
+创建模块和调用它都可能失败（当前平台可能没有它的代码），所以两者都要加 `try`：`let h = try Haptics()`、`try h.impact(.light)`。`asuka native generate` 会生成各平台需要实现的 Swift、Kotlin、JavaScript 和 C 代码。详见[原生代码](native.md)。
 
 C 则可以直接调用。`extern` 声明用 C 的类型写明一个 C 函数接收什么、返回什么，Asuka 把每个声明都当作自己的函数来看待（`Int32` 就是 `int`，`CString` 就是 `string`）：
 

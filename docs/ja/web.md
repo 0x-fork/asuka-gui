@@ -43,15 +43,15 @@ asuka build --platform web examples/counter     # 静的サイトを examples/co
 
 ## アドレスと履歴
 
-[`ui.Router`](../navigation.md#routes) を使うと、ページのアドレスが表示中の画面を表します。`#` のフラグメントではなく、`pushState` と `replaceState` でサイトのベースの下の実際のパスを使います。ルーターのナビゲーションの各ステップはページの履歴のエントリーになり、ルーターの状態全体（各スタックの画面、各タブの画面、シート）を保持します。そのため、次のようになります。
+[`Router`](navigation.md#ルート) を使うと、ページのアドレスが表示中の画面を表します。`#` のフラグメントではなく、`pushState` と `replaceState` でサイトのベースの下の実際のパスを使います。ルーターのナビゲーションの各ステップはページの履歴のエントリーになり、ルーターの状態全体（各スタックの画面、各タブの画面、シート）を保持します。そのため、次のようになります。
 
-- ブラウザーの戻ると進むで、スタック、タブ、シートを行き来し、各エントリーが表す画面に戻ります。ブラウザーで戻るときは、まず画面やシートの `ui.OnBack` に確認し、そこで戻る操作が処理されれば、ページはその場にとどまります。
-- リロードすると、いちばん上の画面の下にある画面も含めて、同じ画面に戻ります。貼り付けたリンクやほかの場所から開いたリンクは、それが表す画面を組み立てます（[リンクの下の画面](../navigation.md#the-screens-under-a-link)）。
+- ブラウザーの戻ると進むで、スタック、タブ、シートを行き来し、各エントリーが表す画面に戻ります。ブラウザーで戻るときは、まず画面やシートの `onBack` に確認し、そこで戻る操作が処理されれば、ページはその場にとどまります。
+- リロードすると、いちばん上の画面の下にある画面も含めて、同じ画面に戻ります。貼り付けたリンクやほかの場所から開いたリンクは、それが表す画面を組み立てます（[リンクの下の画面](navigation.md#リンクの下の画面)）。
 - ページのタイトルは、いちばん上の画面のタイトルに追従します（`Title · App`）。
 
-履歴は、react-navigation の linking と同じように動きます。より深く進むナビゲーション（プッシュ、シート、最初以外のタブ）はエントリーを追加します。戻るナビゲーションは、そのアドレスを持つ最新のエントリーに戻ります（履歴にそのエントリーが一度もなかった場合、たとえばディープリンクの画面を一つずつポップした場合は、エントリーを置き換えます）。それ以外（`Replace`、リダイレクト、ガードによる別の画面への誘導、最初以外のタブ同士の切り替え、`SetQuery`）はエントリーを置き換えます。アプリ内の戻るボタン、Escape、Alt+← はスタックをポップし、あわせて履歴を戻ります。アラート、アプリ独自の `Sheet`、ルーターが扱わないスタックは、ルーターがない場合と同じく、ブラウザーの戻る操作のために自分のエントリーを持ちます。
+履歴は、react-navigation の linking と同じように動きます。より深く進むナビゲーション（プッシュ、シート、最初以外のタブ）はエントリーを追加します。戻るナビゲーションは、そのアドレスを持つ最新のエントリーに戻ります（履歴にそのエントリーが一度もなかった場合、たとえばディープリンクの画面を一つずつポップした場合は、エントリーを置き換えます）。それ以外（`replace(href)`、リダイレクト、ガードによる別の画面への誘導、最初以外のタブ同士の切り替え、`router.setQuery`）はエントリーを置き換えます。アプリ内の戻るボタン、Escape、Alt+← はスタックをポップし、あわせて履歴を戻ります。`Alert`、アプリ独自の `Sheet`、ルーターが扱わないスタックは、ルーターがない場合と同じく、ブラウザーの戻る操作のために自分のエントリーを持ちます。
 
-ページの要素の中で動くアプリ（[埋め込み](#埋め込み)）は、ページのアドレスを変えません。ルーターのアドレスはアプリの内部にとどまります。`Window` パネルの中のルーターは、そのアドレスをパネルの `StateKey` とともに `localStorage` に保存します。アプリ自身のサイトを指す通知の URL は、その画面を開きます。
+ページの要素の中で動くアプリ（[埋め込み](#埋め込み)）は、ページのアドレスを変えません。ルーターのアドレスはアプリの内部にとどまります。`Window` パネルの中のルーターは、そのアドレスをパネルの `stateKey` とともに `localStorage` に保存します。アプリ自身のサイトを指す通知の URL は、その画面を開きます。
 
 ### すべてのアドレスを配信する
 
@@ -70,23 +70,23 @@ asuka build --platform web examples/counter     # 静的サイトを examples/co
 
 ## ページから得られる環境
 
-Web アプリから見える環境（`ui.UseEnvironment`）は、ブラウザーのものです。
+Web アプリから見える環境（`environment()`）は、ブラウザーのものです。
 
-- `Platform` は `ui.PlatformWeb` です。
+- `platform` は `.web` です。
 - サイズはページ（アプリを要素の中で動かしている場合はその要素）のサイズで、ウィンドウに合わせて変わります。サイズクラスは Material のもので、幅から決まります。
 - セーフエリアはページのもの（`env(safe-area-inset-*)`。ページが `viewport-fit=cover` のときの、スマートフォンのノッチやホームインジケーターの分）です。キーボードは、スマートフォンのキーボードがページを覆っている量です。
-- ダークモードは `prefers-color-scheme`（またはアプリの `ui.SetColorScheme`）、視差効果を減らす（Reduce Motion）は `prefers-reduced-motion`、文字サイズはブラウザーのデフォルトのフォントサイズ（`FontScale`。テキストはこれに従います）、スケールはディスプレイのピクセル比から決まります。
-- ロケール、言語、タイムゾーン、週の始まりの曜日、時刻の表記（12 時間制か 24 時間制か）は、ブラウザーのもの（`navigator.languages`、`Intl`）です。
+- `dark`（ダークモード）は `prefers-color-scheme`（またはアプリの `setColorScheme`）、`reduceMotion`（視差効果を減らす）は `prefers-reduced-motion`、`fontScale`（文字サイズ）はブラウザーのデフォルトのフォントサイズ（テキストはこれに従います）、`scale` はディスプレイのピクセル比から決まります。
+- `locale`、`languages`、`timeZone`、週の始まりの曜日、時刻の表記（12 時間制か 24 時間制か）は、ブラウザーのもの（`navigator.languages`、`Intl`）です。
 
 ## ビューの対応
 
-- テキストはブラウザーのテキストで、システムのフォント（`system-ui`。Apple のシステムでは San Francisco、Windows では Segoe UI、Android では Roboto）を使い、Web 向けのタイプランプ（本文は 16）で表示されます。`assets/fonts` に置いたアプリのフォントは、アプリが指定した名前（`Font.Family`）で読み込まれます。
-- `Stack` は、一番上の画面を独自のヘッダーバーの下に表示します。ヘッダーバーには、戻るボタン、画面のタイトル、バーのボタン、検索フィールドが並びます。プッシュとポップはスライドで切り替わります。戻る操作にはブラウザーの機能も使えます。アプリ内に戻る先がある間は、ブラウザーの戻るボタン（とスマートフォンの戻るジェスチャー）でアプリ内を戻ります。Escape、Alt+←（Mac では ⌘[）、タッチスクリーンでの先頭側の端からのスワイプも同じです。ほかのプラットフォームと同じく、これらは `ui.OnBack` で受け取れます。ルーターを使う場合、アドレスバーには画面が表示され、履歴はそのナビゲーションのものになります（[アドレスと履歴](#アドレスと履歴)）。
+- テキストはブラウザーのテキストで、システムのフォント（`system-ui`。Apple のシステムでは San Francisco、Windows では Segoe UI、Android では Roboto）を使い、Web 向けのタイプランプ（本文は 16）で表示されます。`assets/fonts` に置いたアプリのフォントは、アプリが指定した名前（フォントの `family`）で読み込まれます。
+- `Stack` は、一番上の画面を独自のヘッダーバーの下に表示します。ヘッダーバーには、戻るボタン、画面のタイトル、バーのボタン、検索フィールドが並びます。プッシュとポップはスライドで切り替わります。戻る操作にはブラウザーの機能も使えます。アプリ内に戻る先がある間は、ブラウザーの戻るボタン（とスマートフォンの戻るジェスチャー）でアプリ内を戻ります。Escape、Alt+←（Mac では ⌘[）、タッチスクリーンでの先頭側の端からのスワイプも同じです。ほかのプラットフォームと同じく、これらは `onBack` で受け取れます。ルーターを使う場合、アドレスバーには画面が表示され、履歴はそのナビゲーションのものになります（[アドレスと履歴](#アドレスと履歴)）。
 - `Tabs` は画面下部のタブバーになります。`Split` は詳細の横に並ぶサイドバーになり、ウィンドウの幅が狭いときは、詳細のヘッダーから開くドロワーになります。
-- `Sheet` はモーダルの `<dialog>` です。幅の狭いウィンドウではボトムシート（medium は高さの半分で、グラバーをドラッグすると引き上げたり閉じたりできます）、幅の広いウィンドウでは中央に置かれたカードになります。Escape、外側のクリック、下方向のスワイプで閉じます。`Alert` もモーダルの `<dialog>` で、アクションシートのボタンはリストになります。`Popover` とメニューは、指し示す対象の隣に表示されるポップオーバーです。`ui.Window` は、ユーザーが移動やサイズ変更をできる、ページ内のパネルになります。
+- `Sheet` はモーダルの `<dialog>` です。幅の狭いウィンドウではボトムシート（medium は高さの半分で、グラバーをドラッグすると引き上げたり閉じたりできます）、幅の広いウィンドウでは中央に置かれたカードになります。Escape、外側のクリック、下方向のスワイプで閉じます。`Alert` もモーダルの `<dialog>` で、アクションシートのボタンはリストになります。`Popover` とメニューは、指し示す対象の隣に表示されるポップオーバーです。`Window` は、ユーザーが移動やサイズ変更をできる、ページ内のパネルになります。
 - `List` は、Mac、Windows、Linux と同じくホストが仮想化します。表示中の行（とその前後半画面分）だけがバインドされます。セクションのヘッダーは上部に固定され、チャットのリストは末尾に留まります。行のスワイプアクションは、その行のコンテキストメニュー（右クリックまたは長押し）になります。
 - `Image` は `<img>`（メインスレッドの外でデコードされ、ブラウザーがキャッシュします）、`Video` は `<video>`、`WebView` は `<iframe>`（[Web ビュー](#web-ビュー)を参照）、`Canvas` は 2D の canvas、`Shape` は SVG のパス、`Shader` は WebGL 2（Kage のプログラムを GLSL ES 3.00 に変換します）になります。`Symbol` は、SF Symbol の名前に対して Android ホストが描画するのと同じ Material Symbol になります。
-- `ui.Animate` は、フレームと見た目のプロパティを Web Animations API でアニメーションします（スプリングは CSS の `linear()` カーブで表現します）。出現・退場のトランジションと共有要素（`Style.Match`）も、iOS と同じように動作します。
+- `animate` は、フレームと見た目のプロパティを Web Animations API でアニメーションします（スプリングは CSS の `linear()` カーブで表現します）。出現・退場のトランジションと共有要素（`shared`）も、iOS と同じように動作します。
 - タップやクリック、長押し（と右クリック）、ホバー、押下状態、パン、スワイプ、ピンチ（2 本指、またはトラックパッドのピンチ）、回転は、マウス、ペン、タッチのどれでも動作します。ドラッグ＆ドロップはブラウザーのもので、ほかのアプリからのファイルにも対応します。
 - `MenuBar` の項目のショートカットは、ページ内で動作します（Mac では ⌘、それ以外では Ctrl）。ただし、ページには独自のメニューバーを表示しません。デスクトップのアプリでは、アプリのメニューが Mac ではメニューバーに、Windows ではウィンドウのメニューバーに、Linux ではヘッダーバーのメインメニューに表示されます。
 
@@ -115,31 +115,32 @@ Web アプリから見える環境（`ui.UseEnvironment`）は、ブラウザー
 
 ## ネイティブモジュール
 
-Asuka のパッケージは、ホストのネイティブモジュールを呼び出します（`ui.Call`）。ブラウザーでは次のようになります。
+標準ライブラリのパッケージは、Web ホストを通じてブラウザーの機能を使います。パッケージごとの `web/` の JavaScript か、どのアプリにもある機能ならホスト自身のモジュール（`platform/web/src/modules`）です。ブラウザーでは次のようになります。
 
 - `asuka/secure`：値は、ブラウザーが保持して外に出さない鍵（エクスポートできない WebCrypto の鍵）で暗号化（AES-GCM）され、IndexedDB に保存されます。キーチェーンではありません。アプリのオリジンで動くスクリプトは鍵そのものを読めませんが、その鍵での復号を依頼することはできます。`https`（または `localhost`）が必要です。
-- `device`：`GetInfo` はユーザーエージェントから取得します（Chromium のクライアントヒントからは、システムのバージョンと Android スマートフォンの機種がわかります）。`Clipboard`、クリップボードの画像（PNG。キャッシュに保存されます）、`OnClipboardChange`（アプリ自身のコピーと、ユーザーがページにクリップボードの読み取りを許可している場合はほかのアプリのコピー）に対応します。`KeepAwake`（Screen Wake Lock。ページが再び表示されると取得し直します）、`Browse`（新しいタブ）、`PickPhotos` と `PickFiles`（ブラウザーのファイル選択ダイアログ。選んだファイルはキャッシュにコピーされます）にも対応します。
-- `ShareFiles`：ファイルを渡して共有シートを開きます（`navigator.share`）。共有シートがなければ、各ファイルをダウンロードします。`asuka/preview`：ファイルを新しいタブで開きます（画像、動画、音声、テキスト、PDF、HTML）。それ以外の種類は `ErrNoViewer` になります。
-- `asuka/print`：HTML、ファイル（PDF はブラウザーのビューアーで）、アプリ自身の Web ビューを、ブラウザーの印刷ダイアログで印刷します。結果は常に `Unknown` です（ブラウザーが結果を知らせないためです）。`PDF` は Web では使えません。ブラウザーが PDF を作れるのは、印刷ダイアログ（「PDF として保存」）を通したときだけです。
+- `asuka/device`：`info()` はユーザーエージェントから取得します（Chromium のクライアントヒントからは、システムのバージョンと Android スマートフォンの機種がわかります）。クリップボード、クリップボードの画像（PNG。キャッシュに保存されます）、`clipboardChanges()`（アプリ自身のコピーと、ユーザーがページにクリップボードの読み取りを許可している場合はほかのアプリのコピー）に対応します。`keepAwake`（Screen Wake Lock。ページが再び表示されると取得し直します）、`browse`（新しいタブ）、`pickPhotos` と `pickFiles`（ブラウザーのファイル選択ダイアログ。選んだファイルはキャッシュにコピーされます）にも対応します。
+- `shareFiles`：ファイルを渡して共有シートを開きます（`navigator.share`）。共有シートがなければ、各ファイルをダウンロードします。`asuka/preview`：ファイルを新しいタブで開きます（画像、動画、音声、テキスト、PDF、HTML）。それ以外の種類は `PreviewError.noViewer` になります。
+- `asuka/print`：HTML、ファイル（PDF はブラウザーのビューアーで）、アプリ自身の Web ビューを、ブラウザーの印刷ダイアログで印刷します。結果は常に `.unknown` です（ブラウザーが結果を知らせないためです）。`print.pdf` は Web では使えません（`PrintError.unsupported`）。ブラウザーが PDF を作れるのは、印刷ダイアログ（「PDF として保存」）を通したときだけです。
 - `asuka/compose`：`mailto:` と `sms:` のリンクを使います。添付ファイルがあれば共有シートを使います。
 - `asuka/notify` と `asuka/push`：アプリの service worker を通じて、Notification API と Web Push を使います。[通知と Web Push](#通知と-web-push)を参照してください。
 - `asuka/network`：オンラインかどうかは `navigator.onLine` から取得します。Wi-Fi、モバイル回線、Ethernet の区別は、ブラウザーが教えてくれる場合（Android の Chrome）にわかります。モバイル回線は従量制（metered）、データセーバーは制限付き（constrained）として扱います。
-- `asuka/location`：Geolocation API を使います。`PlaceName` は Web では使えません（ブラウザーにはジオコーダーがないためです）。
+- `asuka/location`：Geolocation API を使います。`placeName` は Web では使えません（ブラウザーにはジオコーダーがないためです）。領域の監視とバックグラウンドの位置の更新は、位置情報から計算するので、ページが開いている間だけ働きます。
 - `asuka/sensors`：Generic Sensor API（Chrome）か、デバイスの motion イベントと orientation イベント（Safari はタップ時に許可を求めます）を使い、Android と同じ軸と単位で値を返します。気圧計と歩数計はありません。
 - `asuka/speech`：`speechSynthesis` と、ブラウザーの音声を使います。
-- `asuka/audio`：プレイヤーごとに audio 要素を一つ使います（ブラウザーの自動再生のルールが適用されるので、タップから再生してください）。`asuka/record`：`MediaRecorder` を使います。ブラウザーが対応していれば MPEG-4 の AAC で、そうでなければ WebM の Opus で録音します。
-- `asuka/camera`：`Take` は、スマートフォンならカメラを開き、それ以外ではライブのカメラ映像とシャッターボタンのあるダイアログを開きます。`camera.View` は `<video>` に映したカメラ映像です（`Capture`、`record` に対応し、ブラウザーに `BarcodeDetector` があればコードのスキャンにも対応します）。`asuka/scan` と `asuka/vision` のコード読み取りは `BarcodeDetector` を使います。顔とテキストの認識は、ブラウザーが対応している場合にだけ使えます。
+- `asuka/audio`：プレイヤーごとに audio 要素を一つ使います（ブラウザーの自動再生のルールが適用されるので、タップから再生してください）。`asuka/record`：`MediaRecorder` を使います。ブラウザーが対応していれば MPEG-4 の AAC で、そうでなければ WebM の Opus で録音します。`asuka/nowplaying`：Media Session API を使います。
+- `asuka/camera`：`take()` は、スマートフォンならカメラを開き、それ以外ではライブのカメラ映像とシャッターボタンのあるダイアログを開きます。`camera.View` は `<video>` に映したカメラ映像です（`capture()`、`record` に対応し、ブラウザーに `BarcodeDetector` があればコードのスキャンにも対応します）。`asuka/scan` と `asuka/vision` のコード読み取りは `BarcodeDetector` を使います。顔とテキストの認識は、ブラウザーが対応している場合にだけ使えます。
 - `asuka/imageedit`：canvas を使います（JPEG か PNG。リモートの画像には CORS が必要です）。
-- `asuka/maps`：Windows と同じく、OpenStreetMap のタイルからホストが描画する地図です。ピンとそのコールアウト、ドラッグ、ホイール、ピンチ、ダブルクリック、キーボードによる移動、OpenStreetMap が求める帰属表示に対応します。Satellite と Hybrid は道路地図を表示します（無料の航空写真がないためです）。`ShowsUser` は、ページに位置情報の許可があればユーザーの現在地を表示します（許可を求めるのは `asuka/location` で、地図が求めることはありません）。タイルは、利用ポリシーが Web ページに求めるとおりに `tile.openstreetmap.org` から取得します（画面に表示する分だけを、ブラウザーのキャッシュを使い、Referer 付きで取得します）。大量に使う場合は、`start` に `mapTiles`（`{z}`、`{x}`、`{y}` を含む別のサーバーの URL）を渡してください（[埋め込み](#埋め込み)）。
-- `asuka/crash`：ブラウザーでは、Go のランタイムがクラッシュ時の出力をファイルに書けません。そこでホストがその出力を保持しておき、プログラムが panic や致命的なエラーで終了すると、アプリのファイルにあるその実行の記録に書き込みます。次回の起動時に、それが報告されます。キャッチされなかった JavaScript のエラー（ホストのものか、アプリの `web/*.js` のもの）は、その場で `Exception` のレポートになりますが、致命的なものとしては扱われません（ページは動き続けます）。ページは `localStorage` に自分の実行が生きていることを記録するので、アプリのほかの開いているページがその実行に手を出すことはありません。
-- `asuka/biometric`：WebAuthn を通じてプラットフォームの認証器（Touch ID、Face ID、Windows Hello、Android の画面ロック）を使い、ユーザー検証を必須にします。最初の `Authenticate` で、アプリの名前を付けたサイトのパスキーが作られます。プロンプトはブラウザーのものなので、理由やキャンセルのテキストは表示されません。
+- `asuka/maps`：Windows と同じく、OpenStreetMap のタイルからホストが描画する地図です。マーカーとそのコールアウト、ドラッグ、ホイール、ピンチ、ダブルクリック、キーボードによる移動、OpenStreetMap が求める帰属表示に対応します。航空写真と混合の地図は道路地図を表示します（無料の航空写真がないためです）。`showsUser` は、ページに位置情報の許可があればユーザーの現在地を表示します（許可を求めるのは `asuka/location` で、地図が求めることはありません）。タイルは、利用ポリシーが Web ページに求めるとおりに `tile.openstreetmap.org` から取得します（画面に表示する分だけを、ブラウザーのキャッシュを使い、Referer 付きで取得します）。大量に使う場合は、`start` に `mapTiles`（`{z}`、`{x}`、`{y}` を含む別のサーバーの URL）を渡してください（[埋め込み](#埋め込み)）。
+- `asuka/crash`：コアによるその実行の記録は、スマートフォンと同じくアプリのファイルに保存されます。コア自身の致命的なエラーはこの記録を書き込んでページのアプリを止め、次回の起動時に報告されます。キャッチされなかった JavaScript のエラー（ホストのものか、パッケージの `web/` のスクリプトのもの）は、その場で `"exception"` のレポートになりますが、致命的なものとしては扱われません（ページは動き続けます）。ページは `localStorage` に自分の実行が生きていることを記録するので、アプリのほかの開いているページがその実行に手を出すことはありません。
+- `asuka/biometric`：WebAuthn を通じてプラットフォームの認証器（Touch ID、Face ID、Windows Hello、Android の画面ロック）を使い、ユーザー検証を必須にします。最初の `authenticate` で、アプリの名前を付けたサイトのパスキーが作られます。プロンプトはブラウザーのものなので、`reason` と `cancel` のテキストは表示されません。
 - `asuka/webauth`：ポップアップを使い、アプリと同じオリジンのページに戻ってきた時点で完了します（カスタムスキームではページを開けないためです）。
-- `asuka/screen`：`Lock` に対応します（全画面表示のとき、またはインストールしたアプリでのみ）。バーを隠すと全画面表示になります。
-- `asuka/library`：`Save` はファイルをダウンロードします。`asuka/contacts`：`Pick` は、ブラウザーに Contact Picker がある場合（Android の Chrome）に使えます。`Add` は vCard を、`asuka/calendar` の `Add` は `.ics` ファイルをダウンロードします。
-- `asuka/nfc`：Web NFC の `NDEFReader` を使います。セキュアコンテキストの Android の Chrome で、NDEF メッセージの読み書き、タグの読み取り専用化、タグのシリアル番号が使えます。生のコマンドや容量は使えず、タグでページを開くこともできません。ほかのブラウザーには Web NFC がないので `ErrNotAvailable` になります（[NFC タグ](../nfc.md)）。
-- `asuka/tracking` は、ブラウザーが Global Privacy Control か Do Not Track を送っていれば Denied を、そうでなければ Allowed を、プロンプトを出さずに返します。
-- `asuka/pay`：ブラウザーに Apple Pay がある場合（Safari）は、Payment Request API を通じて Apple Pay を使います。マーチャントの検証は、Apple に登録したドメインについてアプリのサーバーが行います（`OnValidateMerchant`）。それ以外のブラウザーでは、Google の Web API（pay.google.com から読み込む `pay.js`）を通じて Google Pay を使います。ボタンはそれぞれ純正のものです。シートはタップからしか表示できません。
-- Web では使えず、その旨のエラー（またはパッケージ独自の「not available」）を返すもの：`asuka/review`、`asuka/integrity`、`asuka/agerange`、`asuka/appleauth`、`asuka/icloud`、`asuka/periodic`、`asuka/widget`、`asuka/liveactivity`、`asuka/photos`（Denied を返します。写真の選択は `device.PickPhotos` でできます）、連絡先とカレンダーの読み取り、`asuka/transcribe` のファイル、`asuka/screen` の `PreventCapture` と `OnScreenshot`。
+- `asuka/screen`：`lock` に対応します（全画面表示のとき、またはインストールしたアプリでのみ）。バーを隠すと全画面表示になります。
+- `asuka/library`：`save` はファイルをダウンロードします。`asuka/contacts`：`pick` は、ブラウザーに Contact Picker がある場合（Android の Chrome）に使えます。`add` は vCard を、`asuka/calendar` の `add` は `.ics` ファイルをダウンロードします。
+- `asuka/nfc`：Web NFC の `NDEFReader` を使います。セキュアコンテキストの Android の Chrome で、NDEF メッセージの読み書き、タグの読み取り専用化、タグのシリアル番号が使えます。生のコマンドや容量は使えず、タグでページを開くこともできません。ほかのブラウザーには Web NFC がないので `NfcError.notAvailable` になります（[NFC タグ](nfc.md)）。
+- `asuka/tracking` は、ブラウザーが Global Privacy Control か Do Not Track を送っていれば `.denied` を、そうでなければ `.allowed` を、プロンプトを出さずに返します。
+- `asuka/pay`：ブラウザーに Apple Pay がある場合（Safari）は、Payment Request API を通じて Apple Pay を使います。マーチャントの検証は、Apple に登録したドメインについてアプリのサーバーが行います（`onValidateMerchant`）。それ以外のブラウザーでは、Google の Web API（pay.google.com から読み込む `pay.js`）を通じて Google Pay を使います。ボタンはそれぞれ純正のものです。シートはタップからしか表示できません。
+- `haptic` は、ブラウザーが対応していれば（Android の Chrome）`navigator.vibrate` を使います。
+- Web では使えず、その旨のエラー（またはパッケージ独自の `notAvailable`）になるもの：`asuka/review`、`asuka/integrity`、`asuka/agerange`、`asuka/appleauth`、`asuka/icloud`、`asuka/periodic`、`asuka/widget`、`asuka/liveactivity`、`asuka/photos`（`.denied` を返します。写真の選択は `device.pickPhotos` でできます）、連絡先とカレンダーの読み取り、`asuka/transcribe` の `file`、`asuka/screen` の `preventCapture` と `screenshots()`。
 
 ## 通知と Web Push
 
@@ -147,18 +148,18 @@ Web アプリにはどれも service worker があります。service worker は
 
 ### asuka/notify
 
-- `Request` は、ブラウザーのプロンプトで許可を求めます。ブラウザーはタップやクリックのときにしか許可を求めないので、その処理の中から呼び出してください。
-- `Show` は service worker を通じて通知を表示するので、ページを閉じた後もボタンは残り、クリックも機能します（service worker のないページ、つまり service worker を登録しない埋め込みページでは、ページ自身の通知がボタンなしで表示され、そのクリックはそのページにしか届きません）。
-- 通知の ID は、その通知のタグになります。同じ ID の通知は前の通知を置き換え、`Silent` でなければ改めてユーザーに知らせます。`Subtitle` は本文の 1 行目、`Image` は画像（`https` の URL かアセット）、メッセージの送信者の画像（`From`）はアイコンになります。`Badge` と `SetBadge` は、インストールしたアプリのバッジを設定します（`navigator.setAppBadge`）。
-- カテゴリーのアクション（`SetCategories`）は、通知のボタンになります（Chrome と Edge は 2 個まで表示し、Firefox と Safari は表示しません）。`Reply` アクションは、ブラウザーがインライン返信に対応していればテキストフィールドになります（Android とデスクトップの Chrome。入力したテキストは `Response.Reply` に入ります。それ以外のブラウザーではボタンになります）。カテゴリーは service worker のために保存されるので、カテゴリーを指定したプッシュ通知にもボタンが付きます。
-- 通知をタップすると、アプリのページにフォーカスが移り、通知の `URL` に移動し（`ui.OnOpenURL`）、`OnAction` が呼ばれます（`Action ""`）。ボタンを押すと、そのボタンの ID を伴って `OnAction` が呼ばれます。呼ばれるのは前面にあるページで、なければアプリのいずれかのページです。ページが一つも開いていなければ、service worker がページを開きます（ブラウザーはアプリのコードをページの中でしか動かさないためです）。アプリは、タップで起動したアプリと同じく、起動時にレスポンスを受け取ります。そのため、`OnAction` はルートコンポーネントで設定してください。`Open` のないアクションは、開いているページを前面に出しません。ただし、ページが一つも開いていなければページを開き、前面に表示します。`Response.Defer` には、完了まで生かしておく対象がありません。ページはそのまま動き続けるためです。
-- `Present` は、ページが前面にあるときに届いた通知（プッシュ通知も含みます）をどう表示するかをアプリに尋ねます。`Banner`、`Quiet`（音なし）、`Hide` から選びます。
-- `Showing`、`Remove`、`RemoveThread`、`RemoveAll`、`Cancel` は、service worker の通知に対して働きます。以前のページが出した通知やプッシュ通知も対象です。
+- `notify.request()` は、ブラウザーのプロンプトで許可を求めます。ブラウザーはタップやクリックのときにしか許可を求めないので、その処理の中から呼び出してください。
+- `notify.show(n)` は service worker を通じて通知を表示するので、ページを閉じた後もボタンは残り、クリックも機能します（service worker のないページ、つまり service worker を登録しない埋め込みページでは、ページ自身の通知がボタンなしで表示され、そのクリックはそのページにしか届きません）。
+- 通知の `id` は、その通知のタグになります。同じ `id` の通知は前の通知を置き換え、`silent` でなければ改めてユーザーに知らせます。`subtitle` は本文の 1 行目、`image` は画像（`https` の URL かアセット）、メッセージの送信者の画像（`sender` の `image`）はアイコンになります。`badge` と `notify.setBadge` は、インストールしたアプリのバッジを設定します（`navigator.setAppBadge`）。
+- カテゴリーのアクション（`notify.setCategories`）は、通知のボタンになります（Chrome と Edge は 2 個まで表示し、Firefox と Safari は表示しません）。`reply` を持つアクションは、ブラウザーがインライン返信に対応していればテキストフィールドになります（Android とデスクトップの Chrome。入力したテキストはレスポンスの `reply` に入ります。それ以外のブラウザーではボタンになります）。カテゴリーは service worker のために保存されるので、カテゴリーを指定したプッシュ通知にもボタンが付きます。
+- 通知をタップすると、アプリのページにフォーカスが移り、通知の `url` に移動し（`onOpenURL`）、`notify.responses()` にレスポンスが届きます（`action` は `""`）。ボタンを押すと、そのボタンの `id` を伴って届きます。届くのは前面にあるページで、なければアプリのいずれかのページです。ページが一つも開いていなければ、service worker がページを開きます（ブラウザーはアプリのコードをページの中でしか動かさないためです）。アプリは、タップで起動したアプリと同じく、起動時にレスポンスを受け取ります。そのため、`notify.responses()` はルートコンポーネントで読んでください。`open` のないアクションは、開いているページを前面に出しません。ただし、ページが一つも開いていなければページを開き、前面に表示します。レスポンスの `defer()` には、完了まで生かしておく対象がありません。ページはそのまま動き続けるためです。
+- `notify.present(decide)` は、ページが前面にあるときに届いた通知（プッシュ通知も含みます）をどう表示するかをアプリに尋ねます。`.banner`、`.quiet`（音なし）、`.hide` から選びます。
+- `notify.showing()`、`remove`、`removeThread`、`removeAll`、`cancel` は、service worker の通知に対して働きます。以前のページが出した通知やプッシュ通知も対象です。
 - Android のチャネルは、ここには存在しません。iOS と同じく、指定しても受け付けたうえで無視されます。
 
 #### スケジュールした通知
 
-アプリのページが一つも開いていない間、ブラウザーは決まった時刻に通知を表示できません。そのための API がなく（これを実現していた Chrome の Notification Triggers は 2021 年に開発が中止されました）、service worker はイベントで起こされたときにしか動かず、タイマーでは動かないためです。そこで `Schedule` は、ブラウザーでできる範囲のことを行います。
+アプリのページが一つも開いていない間、ブラウザーは決まった時刻に通知を表示できません。そのための API がなく（これを実現していた Chrome の Notification Triggers は 2021 年に開発が中止されました）、service worker はイベントで起こされたときにしか動かず、タイマーでは動かないためです。そこで `notify.schedule` は、ブラウザーでできる範囲のことを行います。
 
 - スケジュールした内容は、ページではなくアプリのストア（アプリのページと service worker が共有する Cache Storage）に保存されます。
 - アプリのページがどれか一つでも開いている間は、指定した時刻に表示されます。各ページは次の通知のためのタイマーを持ち（通知をスケジュールしたりキャンセルしたりしたページが、ほかのページに知らせます）、最初に期限に気づいたページが一度だけ表示します（Web Lock を使います）。バックグラウンドのページでは遅れることがあります。ブラウザーは、非表示のページのタイマーを 1 分に 1 回程度に間引くためです。遅くとも、ページが再び前面に来たときには表示されます。
@@ -169,36 +170,36 @@ Web アプリにはどれも service worker があります。service worker は
 
 ### asuka/push：Web Push
 
-Web Push には VAPID の鍵ペアが必要です。アプリのサーバーは秘密鍵でプッシュに署名し、ブラウザーは公開鍵で購読します。公開鍵は `asuka.toml` に書きます。
+Web Push には VAPID の鍵ペア（RFC 8292）が必要です。アプリのサーバーは秘密鍵でプッシュに署名し、ブラウザーは公開鍵で購読します。公開鍵は `asuka.toml` に書きます。
 
 ```toml
 [web]
 vapidPublicKey = "BKpYsAT0ADj2pHQQ..."
 ```
 
-鍵ペアは一度だけ作り、秘密鍵はサーバーに置いておきます。鍵ペアを作り直すと、購読もすべてやり直しになります。鍵ペアは `webpush.GenerateKeys`（後述）でも、`npx web-push generate-vapid-keys` でも作れます。
+鍵ペアは一度だけ作り、秘密鍵はサーバーに置いておきます。鍵ペアを作り直すと、購読もすべてやり直しになります。鍵ペアはどの Web Push ライブラリでも作れます（たとえば `npx web-push generate-vapid-keys`）。
 
-`push.Register()` は、通知の許可を求め（ブラウザーはタップのときにしか尋ねないので、タップから呼び出します）、その鍵でアプリの service worker を購読させ（別の鍵で作った購読は置き換えられます）、次の値を返します。
+`push.register()` は、通知の許可を求め（ブラウザーはタップのときにしか尋ねないので、タップから呼び出します）、その鍵でアプリの service worker を購読させ（別の鍵で作った購読は置き換えられます）、`push.Registration` を返します。
 
-- `Token`：購読の JSON です。形式は `PushSubscription.toJSON()` が返すものと同じで、`{"endpoint": "https://...", "expirationTime": null, "keys": {"p256dh": "...", "auth": "..."}}` のようになります。これをそのままサーバーに送ってください。Web Push のライブラリはこの形式をそのまま受け取れます。ブラウザーが購読を変えることがあるので（`pushsubscriptionchange`）、ほかのプラットフォームと同じく起動のたびに登録し、サーバーにあるものと違っていれば送ってください。
-- `Service`：`"webpush"`。
-- `Allowed`：true。許可がなければ `Register` は失敗します。ブラウザーは、プッシュ通知を表示するサイトにしか購読を許さないためです（`userVisibleOnly`）。
+- `token`：購読の JSON です。形式は `PushSubscription.toJSON()` が返すものと同じで、`{"endpoint": "https://...", "expirationTime": null, "keys": {"p256dh": "...", "auth": "..."}}` のようになります。これをそのままサーバーに送ってください。Web Push のライブラリはこの形式をそのまま受け取れます。ブラウザーが購読を変えることがあるので（`pushsubscriptionchange`）、ほかのプラットフォームと同じく起動のたびに登録し、サーバーにあるものと違っていれば送ってください。
+- `service`：`"webpush"`。
+- `allowed`：true。許可がなければ `register` は失敗します。ブラウザーは、プッシュ通知を表示するサイトにしか購読を許さないためです（`userVisibleOnly`）。
 
 `web.vapidPublicKey` がないとき、service worker がないとき（セキュアでないページ）、ブラウザーが Web Push に対応していないときは、理由を示して失敗します。iOS と iPadOS の Safari が Web Push に対応するのは、ホーム画面に追加したアプリだけです（16.4 以降）。
 
-プッシュ通知は、ページが開いているかどうかにかかわらず通知として表示されます。アプリのページが開いていれば、そのページが先に受け取り（`push.OnReceive`。開いているすべてのページが受け取ります）、内容を書き換えたり（`push.Rewrite`。前面にあるページで、約 10 秒以内に実行されます。ページが開いていなければ、届いたままの内容で表示されます）、表示方法を決めたり（`notify.Present`）できます。通知をタップすると、ローカル通知と同じく、`push.OnOpen`、`notify.OnAction`（`Remote` が設定されます）、そしてデータに `"url"` があれば `ui.OnOpenURL` が呼ばれます。
+プッシュ通知は、ページが開いているかどうかにかかわらず通知として表示されます。アプリのページが開いていれば、そのページが先に受け取り（`push.received()`。開いているすべてのページが受け取ります）、内容を書き換えたり（`push.rewrite`。前面にあるページで、約 10 秒以内に実行されます。ページが開いていなければ、届いたままの内容で表示されます）、表示方法を決めたり（`notify.present`）できます。通知をタップすると、ローカル通知と同じく、`push.opened()` と `notify.responses()`（通知の `remote` が true になります）に届き、データに `"url"` があれば `onOpenURL` も呼ばれます。
 
 #### サーバーが送る内容
 
 ペイロードは JSON です。どの Web Push ライブラリでもそうするように、購読に合わせて暗号化し（RFC 8291 の `aes128gcm`）、VAPID トークン（RFC 8292）を付けて送ります。service worker は次のキーを読みます。ほかのプラットフォームの `push.Message` と同じキーです。
 
-| キー | | 
+| キー | |
 | --- | --- |
 | `title`、`body`、`subtitle` | 表示される内容（サブタイトルは本文の 1 行目になります） |
-| `data` | アプリ独自のキーで、`push.Message` の `Data` になります（文字列でない値は JSON として渡されます）。`"url"` は、タップしたときにアプリに渡して開く URL です（`ui.OnOpenURL`） |
+| `data` | アプリ独自のキーで、`push.Message` の `data` になります（文字列でない値は JSON として渡されます）。`"url"` は、タップしたときにアプリに渡して開く URL です（`onOpenURL`） |
 | `id` | 通知のタグ。同じ `id` のプッシュ通知は、前の通知を置き換えます |
-| `category` | `notify.SetCategories` で登録したカテゴリーの一つ。そのアクションが通知のボタンになります |
-| `thread`、`summary` | `push.Message` の同名のフィールド。`notify.RemoveThread` とアプリのために使います |
+| `category` | `notify.setCategories` で登録したカテゴリーの一つ。そのアクションが通知のボタンになります |
+| `thread`、`summary` | `push.Message` の同名のフィールド。`notify.removeThread` とアプリのために使います |
 | `image` | 画像。`https` の URL か、アプリのアセットの一つ |
 | `badge` | インストールしたアプリのバッジ |
 | `silent` | 音を鳴らさずに表示します |
@@ -214,9 +215,23 @@ vapidPublicKey = "BKpYsAT0ADj2pHQQ..."
 }
 ```
 
-`title` も `body` もないプッシュは、データメッセージです。開いているページが受け取り（`OnReceive`）、何も表示されません。データメッセージは、アプリが開いている間だけ送ってください。ブラウザーはプッシュのたびに通知が表示されることを期待しています。前面にページがないときに何も表示されないと、Chrome は独自の通知（「This site has been updated in the background」）を表示し、Safari はそれが何度か続くと購読を終了します。JSON でないペイロードは、本文として表示されます。ペイロードは最大 3993 バイトです。
+`title` も `body` もないプッシュは、データメッセージです。開いているページが受け取り（`push.received()`）、何も表示されません。データメッセージは、アプリが開いている間だけ送ってください。ブラウザーはプッシュのたびに通知が表示されることを期待しています。前面にページがないときに何も表示されないと、Chrome は独自の通知（「This site has been updated in the background」）を表示し、Safari はそれが何度か続くと購読を終了します。JSON でないペイロードは、本文として表示されます。ペイロードは最大 3993 バイトです。
 
-Go からは、`github.com/egoist/asuka/webpush` で暗号化、署名、送信ができます。使うのは標準ライブラリだけです。
+暗号化、署名、送信は、どの Web Push ライブラリでもできます。Node なら [`web-push`](https://github.com/web-push-libs/web-push) ライブラリを使います。
+
+```js
+import webpush from "web-push";
+
+webpush.setVapidDetails("mailto:ops@example.com", process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+
+// token：アプリの push.register() が返した token
+await webpush.sendNotification(JSON.parse(token), JSON.stringify({
+  title: "Ada", body: "Lunch?", category: "message", data: { url: "myapp://chat/7" },
+}), { urgency: "high" });
+// 404 か 410（err.statusCode）なら購読は終了しています。削除してください。
+```
+
+Go で書いたサーバーなら、Asuka 自身の送信側の実装、つまりリポジトリの [`webpush`](../../webpush/webpush.go) パッケージを使えます。使うのは標準ライブラリだけです。
 
 ```go
 import "github.com/egoist/asuka/webpush"
@@ -227,7 +242,7 @@ var sender = &webpush.Sender{
 }
 
 func notifyChat(ctx context.Context, token string) error {
-	sub, err := webpush.ParseSubscription(token) // アプリの push.Register が返した Token
+	sub, err := webpush.ParseSubscription(token) // アプリの push.register() が返した token
 	if err != nil {
 		return err
 	}
@@ -236,40 +251,26 @@ func notifyChat(ctx context.Context, token string) error {
 		Data: map[string]string{"url": "myapp://chat/7"},
 	}, &webpush.Options{Urgency: "high"})
 	if errors.Is(err, webpush.ErrGone) {
-		return forgetSubscription(token) // 購読が終了した（ユーザーかブラウザーによって）
+		return forgetSubscription(token) // 購読が終了した：ユーザーかブラウザーによって
 	}
 	return err
 }
 ```
 
-`Options` では、プッシュの `TTL`（オフラインのブラウザーのために、プッシュサービスがプッシュを保持しておく期間。デフォルトは 4 週間）、`Urgency`、`Topic`（同じトピックの後続のプッシュが、まだ配信待ちのプッシュを置き換えます）を設定します。リクエストを自分で送るサーバー向けには、処理を二つに分けた `webpush.Keys.Authorization` と `webpush.Encrypt` があります。
-
-Node からは、[`web-push`](https://github.com/web-push-libs/web-push) ライブラリを使います。
-
-```js
-import webpush from "web-push";
-
-webpush.setVapidDetails("mailto:ops@example.com", process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
-
-// token：アプリの push.Register が返した Token
-await webpush.sendNotification(JSON.parse(token), JSON.stringify({
-  title: "Ada", body: "Lunch?", category: "message", data: { url: "myapp://chat/7" },
-}), { urgency: "high" });
-// 404 か 410（err.statusCode）なら購読は終了しているので、破棄する。
-```
+`Options` では、プッシュの `TTL`（ブラウザーがオフラインのときにプッシュサービスが保持する期間。デフォルトは 4 週間）、`Urgency`、`Topic`（同じトピックの後のプッシュが、まだ待っている前のプッシュを置き換えます）を設定します。`webpush.GenerateKeys` で鍵ペアも作れます。ほかの言語にもそれぞれのライブラリ（pywebpush、web-push-php、Rust の `web-push` クレートなど）があり、送る JSON は同じです。
 
 ## Web ビュー
 
 `WebView` は `<iframe>` で、ページを読み込むたびに新しく作られます。そのため独自の履歴を持ち、タブの履歴には何も追加しません。
 
-アプリ自身のサイトのページ（アプリのアセット、HTML、アプリが書き出したファイル、ページと同じオリジンの任意の URL）では、すべての機能が使えます。ホストはページを本来の URL でフレームに読み込み、ページのスクリプトより先に `window.asuka.postMessage` と `Preload` を用意します。そのほかに使えるのは次の機能です。`EvalJS` と `EvalJSResult`（Promise は await されます）。読み込み、失敗、状態のイベント（URL、タイトル、`pushState`、進捗、戻る・進む）。戻る、進む、再読み込み、停止。リンク、フォーム、`location` の変更による読み込みは、Web ビューを通じて行われます。`Block`（マークアップ、`fetch`、XHR、`sendBeacon`、WebSocket、EventSource、要素の `src` と `href`。ブロックした時点ですでに始まっていたリクエストは、送信されてしまうことがあります）。`OnRequest`（Resource Timing）。`OnNewWindow`（`window.open`、`target=_blank`）。`OnDownload`（添付ファイル、フレームで表示できない種類のファイル、`<a download>`）。`WebCookies`（`document.cookie`。`HttpOnly` の Cookie は対象外です）。HTML の相対リンクは、アプリのアセットを基準に解決されます。
+アプリ自身のサイトのページ（アプリのアセット、`html`、アプリが書き出したファイル、ページと同じオリジンの任意の URL）では、すべての機能が使えます。ホストはページを本来の URL でフレームに読み込み、ページのスクリプトより先に `window.asuka.postMessage` と `preload` を用意します。そのほかに使えるのは次の機能です。`Ref` の `run(script)` と `eval(script)`（Promise は await されます）。`on loaded`、`on error`、`on state`（URL、タイトル、`pushState`、進捗、戻る・進む）。`Ref` の `goBack()`、`goForward()`、`reload()`、`stopLoading()`。リンク、フォーム、`location` の変更による読み込みは、Web ビューを通じて行われます。`block`（マークアップ、`fetch`、XHR、`sendBeacon`、WebSocket、EventSource、要素の `src` と `href`。ブロックした時点ですでに始まっていたリクエストは、送信されてしまうことがあります）。`on request`（Resource Timing）。`on newWindow`（`window.open`、`target=_blank`）。`on download`（添付ファイル、フレームで表示できない種類のファイル、`<a download>`）。`webCookies(url)`（`document.cookie`。`HttpOnly` の Cookie は対象外です）。`html` の相対リンクは、アプリのアセットを基準に解決されます。
 
-ほかのサイトのページは、読み込むことしかできません。ブラウザーがサイトどうしを分離しているためです。読み込みが終わると `Navigated`、サイトに接続できないと `Failed` が届きます。サイトがフレーム内での表示を拒否している場合（`X-Frame-Options`、`frame-ancestors`）、Web ビューはそれを検知できず、ブラウザー独自のエラーページが表示されます。ページのリンクの移動先を追ったり、タイトルを読んだりすることはできません。スクリプトの実行、`Block` や `Preload`、リクエストの報告、Cookie の読み取り、ユーザーエージェントの設定もできません（スクリプトと Cookie はエラーを返し、それ以外は一度だけ警告を出します）。フレームはトップレベルナビゲーションを許可しない sandbox になっているので、ページがアプリを別のページに置き換えてしまうことはありません。
+ほかのサイトのページは、読み込むことしかできません。ブラウザーがサイトどうしを分離しているためです。読み込みが終わると `on loaded`、サイトに接続できないと `on error` が呼ばれます。サイトがフレーム内での表示を拒否している場合（`X-Frame-Options`、`frame-ancestors`）、Web ビューはそれを検知できず、ブラウザー独自のエラーページが表示されます。ページのリンクの移動先を追ったり、タイトルを読んだりすることはできません。スクリプトの実行、`block` や `preload`、リクエストの報告、Cookie の読み取り、`userAgent` の設定もできません（スクリプトと Cookie はエラーを返し、それ以外は一度だけ警告を出します）。フレームはトップレベルナビゲーションを許可しない sandbox になっているので、ページがアプリを別のページに置き換えてしまうことはありません。
 
 ほかのサイトのページでも、協力的なページであれば、`postMessage` を通じて Web ビューとやり取りできます（Web ビューは自分のフレームからのメッセージだけを受け付け、準備ができたと伝えてきたオリジンにだけスクリプトを送ります）。
 
 ```js
-// ページ側：アプリへのメッセージ（OnMessage）、URL とタイトル、EvalJS。
+// ページ側：アプリへのメッセージ（on message）、URL とタイトル、アプリの eval。
 const app = (m) => parent.postMessage({ asuka: m.asuka ?? true, ...m }, "*");
 addEventListener("message", async (e) => {
   if (e.source !== parent || !e.data?.asuka) return;
@@ -280,14 +281,23 @@ addEventListener("message", async (e) => {
   }
 });
 app({ asuka: "ready", url: location.href, title: document.title });
-app({ text: "Hello from the page" }); // OnMessage
+app({ text: "Hello from the page" }); // on message
 ```
 
 `asuka/js` は、独自のオリジンを持つ非表示の sandbox フレームでスクリプトを実行します。そのため、スクリプトはアプリのページやストレージにアクセスできません。
 
 ## ネイティブコード
 
-[ネイティブパッケージ](native.md)の JavaScript は、その `web/` ディレクトリに置きます。生成される `<package>.asuka.js` と、パッケージ独自の `<package>.js` です。`<package>.js` は、パッケージのモジュールとビューを作る関数をエクスポートします。
+[ネイティブパッケージ](native.md)は、モジュールとビューを Asuka で宣言します（`native interface`、`native component`）。Web では、それぞれを `web/` ディレクトリの JavaScript で実装します。`asuka native generate` が `<package>.asuka.js`（と、列挙型とエラーを入れる `<package>.decl.asuka.js`）を生成し、これがパッケージ独自の `<package>.js` をインポートします。`<package>.js` は、モジュールとビューごとに `make<Name>` 関数をエクスポートする ES モジュールです。`examples/media/segmented` のビューを例にとると、
+
+```asuka
+pub native component Segmented(items: [string]) {
+  prop selected: int = 0
+  event changed(index: int)
+}
+```
+
+Web での実装は次のとおりです。
 
 ```js
 // segmented/web/segmented.js
@@ -306,8 +316,6 @@ export function makeSegmented(events) {
 
 各パッケージの `web/` は `asuka/<digest>/packages/<package>/` に配置され、ページはアプリの起動前にアプリのパッケージをインポートします。パッケージのほかのファイル（ヘルパーやアセット）も同じ場所に配置されるので、パッケージはそれらを `import.meta.url` からの相対パスでインポートしたり、fetch したりできます。これらのファイルが変わると、`asuka dev` がページをリロードします。
 
-`examples/media/segmented` にはネイティブのビューがあり、その JavaScript は `examples/media/segmented/web/segmented.js` にあります。
-
 ## 埋め込み
 
 `asuka build --platform web` が作るページでは、アプリはページ全体に表示されます。独自のページの要素の中でアプリを動かすには、ホストのローダーを読み込み、その要素の中でアプリを起動します。するとアプリは、その要素のサイズに従います。
@@ -317,7 +325,7 @@ export function makeSegmented(events) {
 <div id="app" style="width: 390px; height: 700px"></div>
 <script type="module">
   import { start } from "./asuka/<digest>/asuka.js";
-  start({ container: document.getElementById("app"), wasm: "app.<digest>.wasm", name: "com.example.app", serviceWorker: "sw.<digest>.js" });
+  start({ container: document.getElementById("app"), core: "asuka.<digest>.wasm", name: "com.example.app", serviceWorker: "sw.<digest>.js" });
 </script>
 ```
 

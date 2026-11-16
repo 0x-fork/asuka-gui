@@ -793,8 +793,8 @@ Canvas(g => {
 ```asuka
 app {
   Tabs {
-    Tab("Inbox", icon: "tray") { Stack { Inbox() } }
-    Tab("Settings", icon: "gear") { Stack { Settings() } }
+    Tab("Inbox") { icon: "tray"; Stack { Inbox() } }
+    Tab("Settings") { icon: "gear"; Stack { Settings() } }
   }
 }
 
@@ -857,7 +857,7 @@ pub native component MapView(region: Region) {
 }
 ```
 
-モジュールを作ることも呼び出すことも失敗する可能性がある（そのプラットフォームにコードがないかもしれない）ので、どちらにも `try` を付けます（`let h = try Haptics()`、`try h.impact(.light)`）。`asuka native generate` は、各プラットフォームが実装する Swift、Kotlin、JavaScript、Go のコードを生成します。詳しくは[ネイティブコード](native.md)を参照してください。
+モジュールを作ることも呼び出すことも失敗する可能性がある（そのプラットフォームにコードがないかもしれない）ので、どちらにも `try` を付けます（`let h = try Haptics()`、`try h.impact(.light)`）。`asuka native generate` は、各プラットフォームが実装する Swift、Kotlin、JavaScript、C のコードを生成します。詳しくは[ネイティブコード](native.md)を参照してください。
 
 C は直接呼び出せます。`extern` 宣言では、C の関数が何を受け取り何を返すかを C の型で書きます。Asuka からは、それぞれが Asuka 自身の型に見えます（`Int32` は `int`、`CString` は `string`）。
 

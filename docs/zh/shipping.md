@@ -11,7 +11,7 @@
 | `linux` | `linux/`：一个安装前缀目录、一个 `.tar.gz`、一份 Flatpak 清单 | 装有 C 编译器的 Linux，或装有 Zig 的任意系统 | `.tar.gz`、Flatpak |
 | `web` | `web/`，一个静态网站 | 装有 Zig 的任意系统 | 任意 Web 服务器或 CDN |
 
-不加 `--platform` 时，在 Mac、Windows PC 或 Linux 机器上会为当前这台电脑构建。核心由平台的编译器构建（Apple 平台用 Xcode 的 clang，Android 用 NDK 的，Windows 和 Linux 用系统的）；[Zig](https://ziglang.org/download) 的 `zig cc` 用来把它构建成 WebAssembly，以及在其他系统上为 Windows 和 Linux 构建（设置 `ASUKA_CC=zig` 则在所有地方都用它）。桌面应用的可执行文件是 Asuka 的桌面宿主，每个应用都一样：CLI 的发布版本为每个系统都准备了一份，构建需要哪一份就下载哪一份，只下载一次并校验哈希值；在 Asuka 仓库的检出中运行时，CLI 改用 Go 构建它（见[桌面端](desktop.md#桌面应用是怎么构成的)）。
+不加 `--platform` 时，在 Mac、Windows PC 或 Linux 机器上会为当前这台电脑构建。核心由平台的编译器构建（Apple 平台用 Xcode 的 clang，Android 用 NDK 的，Windows 和 Linux 用系统的）；[Zig](https://ziglang.org/download) 的 `zig cc` 用来把它构建成 WebAssembly，以及在其他系统上为 Windows 和 Linux 构建（设置 `ASUKA_CC=zig` 则在所有地方都用它）。桌面应用的可执行文件由 Asuka 的桌面宿主与核心、应用链接而成：在 Mac 上是宿主的 Swift 代码，用 Xcode 的 `swiftc` 编译；在 Windows 和 Linux 上是宿主的 C 代码，和核心、应用一起编译（见[桌面端](desktop.md#桌面应用是怎么构成的)）。
 
 ## asuka.toml
 
@@ -37,8 +37,8 @@ keyAlias = "upload"
 - `version` 是用户看到的版本号（默认 `1.0`）；`build` 是已上传构建的序号，每次上传都必须递增（默认 1）。不过 `asuka publish` 会自动把每个构建编号为商店中现有最大编号之后的下一个，所以 `build` 只是起始值。在 Windows 上，二者组成 `.exe` 的文件版本（版本 1.2、构建 7 对应 `1.2.0.7`）；在 Linux 上则是 metainfo 中的 release。
 - `icon` 是一张 1024×1024 的正方形 PNG，用于 iOS 时不能有透明区域。每个平台的构建会自动生成该平台需要的各种尺寸：iOS 上是 asset catalog，Android 上是启动器图标，Mac 上是 `.icns`，Windows 上是嵌入 `.exe` 的 `.ico`，Linux 上是 hicolor 主题下 16 到 512 像素的各尺寸图标，Web 上则是 manifest 中的图标、favicon 以及 iOS 主屏幕图标。
 - `accent` 是应用的强调色，格式为 `"#rrggbb"`。它在 iOS 上是 tint 色；在 Android 上是 Material 3 配色方案的种子色；在 Mac 上是 `Accent`、填充按钮和链接的颜色（AppKit 自带的控件仍然使用用户选择的强调色）；在 Windows 上代替系统强调色，作为控件的强调色；在 Linux 上是 libadwaita 的强调色；在 Web 上是页面的强调色以及 manifest 的 `theme_color`。不设置时，各平台使用各自的默认强调色。
-- `scheme` 让应用可以通过 `myapp://` 这样的 URL 打开，支持 iOS、Android、Mac（`CFBundleURLTypes`）、Linux（desktop 文件中的 `x-scheme-handler`）和 Windows（应用启动时在 `HKEY_CURRENT_USER\Software\Classes` 下为当前用户注册）。`links` 则让指向你自己域名的 https 链接也能打开应用（即 universal links 和 App Links，仅限 iOS 和 Android）。这些 URL 都由 `ui.OnOpenURL` 接收。
-- `fileTypes` 是应用能打开的文件类型，打开的文件由 `ui.OnOpenFiles` 接收：
+- `scheme` 让应用可以通过 `myapp://` 这样的 URL 打开，支持 iOS、Android、Mac（`CFBundleURLTypes`）、Linux（desktop 文件中的 `x-scheme-handler`）和 Windows（应用启动时在 `HKEY_CURRENT_USER\Software\Classes` 下为当前用户注册）。`links` 则让指向你自己域名的 https 链接也能打开应用（即 universal links 和 App Links，仅限 iOS 和 Android）。这些 URL 都由 `onOpenURL` 接收。
+- `fileTypes` 是应用能打开的文件类型，打开的文件由 `onOpenFiles` 接收：
 
   ```toml
   [[fileTypes]]
@@ -53,7 +53,7 @@ keyAlias = "upload"
   ```
 
   `extensions` 是必填项；`name` 默认是第一个扩展名的大写形式加上 "Document"。对于 Asuka 认识的扩展名（md、txt、json、csv、pdf、png、jpg……），`mimeTypes` 和 `uti` 默认采用系统对它的叫法；其他扩展名则视为应用自有的类型：`application/x-<app>-<ext>` 和 `<id>.<ext>`，在 Mac 和 iOS 上会被导出（exported），在 Linux 上会为 shared-mime-info 定义，并且应用会成为这类文件的默认打开方式。`conformsTo` 是导出或导入的类型所遵循的 UTI（默认 `public.data`、`public.content`）；`role` 取 `editor`（默认）或 `viewer`；`icon` 是一张正方形 PNG，在 Mac、Windows 和 Linux 上用作这类文件的图标。各平台的声明方式如下：Mac 和 iOS 写在 Info.plist 中（`CFBundleDocumentTypes`，iOS 上支持原地打开文档）；Android 声明为 intent filter；Windows 在应用启动时为当前用户注册（每种类型一个 ProgID，扩展名的 `OpenWithProgids`，图标打包在 `.exe` 中）；Linux 写在 desktop 文件的 `MimeType` 和 `share/mime/packages/<id>.xml` 中（解压 `.tar.gz` 后需要运行 `update-mime-database` 和 `update-desktop-database`，包管理器和 Flatpak 会自动完成这一步）；Web 写在 manifest 的 `file_handlers` 中（仅限 Chromium 里已安装的应用）。
-- `singleInstance` 默认为 `true`：在 Windows 和 Linux 上，设置了 `id` 的应用只会运行一个实例。再次启动时，新进程会把参数交给正在运行的实例（由 `app.OnSecondInstance` 接收，其中的文件交给 `ui.OnOpenFiles`），然后自行退出。设为 `false` 则每启动一次就运行一个新实例。Mac 上则无论如何都只运行一个实例。
+- `singleInstance` 默认为 `true`：在 Windows 和 Linux 上，设置了 `id` 的应用只会运行一个实例。再次启动时，新进程会把参数交给正在运行的实例（由 `onSecondInstance` 接收，其中的文件交给 `onOpenFiles`），然后自行退出。设为 `false` 则每启动一次就运行一个新实例。Mac 上则无论如何都只运行一个实例。
 
 按平台划分的键：
 
@@ -67,8 +67,8 @@ keyAlias = "upload"
 下面这些用于手机和平板：
 
 - `orientations`：`portrait`、`landscape`（默认两者都支持），只对手机生效。在 iPad 上，应用总是支持所有方向，因为分屏浏览（Split View）、侧拉（Slide Over）和台前调度（Stage Manager）都要求如此；同样，Android 16 在平板和折叠屏设备上也会忽略这项设置。
-- `ios.iphoneOnly` 让应用不支持 iPad。默认情况下，应用同时也是 iPad 应用，用户把窗口调成多大都能适应；在 Android 上，应用可以调整大小，以适应分屏和桌面窗口。因此布局时请依据 `ui.UseEnvironment()` 的 `Width` 和 `Height`，它们是窗口的尺寸，而不是设备的尺寸。
-- `shareTarget` 让应用出现在其他应用的分享面板里：设为 `true` 可以接收文本和链接，设为 `{types = ["text", "image/*"], max = 10}` 这样的表还能接收文件（见[设备](device.md#接收其他应用的分享onshare)）；分享过来的内容由 `ui.OnShare` 接收。在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`）。
+- `ios.iphoneOnly` 让应用不支持 iPad。默认情况下，应用同时也是 iPad 应用，用户把窗口调成多大都能适应；在 Android 上，应用可以调整大小，以适应分屏和桌面窗口。因此布局时请依据 `environment()` 的 `width` 和 `height`，它们是窗口的尺寸，而不是设备的尺寸。
+- `shareTarget` 让应用出现在其他应用的分享面板里：设为 `true` 可以接收文本和链接，设为 `{types = ["text", "image/*"], max = 10}` 这样的表还能接收文件（见[设备](device.md#接收其他应用的分享onshare)）；分享过来的内容由 `onShare` 接收。在 iOS 上，它是应用里的一个分享扩展，有自己的 bundle ID（应用的 ID 加上 `.share`）。
 - `splash` 是启动屏：`{image = "logo.png", size = 96, background = "#ffffff", darkBackground = "#000000"}`（见[设备](device.md#启动屏asukasplash)）。
 - `widgets` 是应用的主屏幕小组件，`shortcuts` 是应用提供给 Siri、Spotlight 和启动器的快捷操作（见[设备](device.md#主屏幕小组件asukawidget)）。小组件扩展有自己的 bundle ID（应用的 ID 加上 `.widgets`）：发布时也要为它准备描述文件，可以用 `ios.widgetProfile` 指定。
 - `android.googleServices` 是 Firebase 项目的 `google-services.json`，供 `asuka/push` 使用；`android.mapsKey` 是 Google Maps Platform 的 API 密钥，供 `asuka/maps` 使用。
@@ -88,7 +88,7 @@ asuka build --platform ios
 
 设置了 `shareTarget` 时，分享扩展也要签名，用的是同一团队下、针对扩展自身 ID 的描述文件（应用是 `com.example.notes`，扩展就是 `com.example.notes.share`）：优先用 `ios.shareProfile`，否则从已安装的描述文件中挑选最匹配的。通配符描述文件（`com.example.*`）可以同时覆盖两者。你需要在 developer.apple.com 上注册扩展的 ID，并像为应用生成描述文件那样，为它也生成一个。
 
-如果 `shareTarget` 要接收文件，还需要一个 App Group `group.<app ID>`，扩展通过它把文件交给应用。在 developer.apple.com 上注册这个 group，为两个 ID（应用的和扩展的）开启 App Groups 能力并选中它，然后重新生成两者的描述文件。通配符 ID 不能使用 App Groups。如果某个描述文件缺少这个 group，构建会停下来并告诉你。iOS 模拟器不需要这些设置。另外，自带分享面板（`app.ShareSheet`）的应用无论接收什么内容，也都需要这个 group 来存放数据。
+如果 `shareTarget` 要接收文件，还需要一个 App Group `group.<app ID>`，扩展通过它把文件交给应用。在 developer.apple.com 上注册这个 group，为两个 ID（应用的和扩展的）开启 App Groups 能力并选中它，然后重新生成两者的描述文件。通配符 ID 不能使用 App Groups。如果某个描述文件缺少这个 group，构建会停下来并告诉你。iOS 模拟器不需要这些设置。另外，自带分享面板（`asuka/sharesheet`）的应用无论接收什么内容，也都需要这个 group 来存放数据。
 
 `asuka publish --platform ios` 会构建并上传到 App Store Connect（见[发布到应用商店](#发布到应用商店)）；也可以用 Apple 的 Transporter 上传。
 
@@ -472,7 +472,7 @@ sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes-native-debu
 sentry-cli upload-proguard --org ORG --project PROJECT dist/Notes-mapping.txt
 ```
 
-**Mac、Windows、Linux 和 Web。** 宿主和核心构建时都去掉了符号表和调试信息；宿主的 Go 调用栈仍然保留函数名和行号，所以它的 panic 照样可读，也没有需要上传的符号。
+**Mac、Windows、Linux 和 Web。** 宿主和核心构建时都不带调试信息，在 Windows 和 Linux 上还去掉了符号表（Mac 的二进制文件保留全局符号）：崩溃报告里的每一帧是一个二进制文件加一个偏移量，二进制文件里有名字的地方会带上名字。没有需要上传的符号。
 
 请保留每个发布版本的符号，因为崩溃只能用它所在构建的符号来符号化。崩溃报告本身的说明见[设备](device.md#崩溃报告asukacrash)。
 
@@ -498,6 +498,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: write # 用于把构建附加到标签对应的 Release
+env:
+  ASUKA_VERSION: 0.1.0 # 应用所用的 Asuka 版本
 
 jobs:
   release:
@@ -515,10 +517,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the distribution certificate and the profile
         env:
           CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
@@ -559,16 +561,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@v3
         with: { packages: platform-tools }
       - name: an NDK
         run: sdkmanager "ndk;27.1.12297006"
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the upload key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -599,7 +601,7 @@ jobs:
 - `ANDROID_KEYSTORE`：上传密钥的 `.jks` 文件；`ANDROID_KEYSTORE_PASSWORD` 是它的密码（如果密钥的密码与之不同，再加上 `ASUKA_KEY_PASSWORD`）。
 - `PLAY_SERVICE_ACCOUNT`：Google Cloud 服务账号的 JSON 密钥，该账号需要在 Play Console 的 Users and permissions 中受邀，并拥有发布到测试轨道的权限。
 
-CLI 内置了 iOS 和 Android 宿主，所以安装的 CLI 版本必须与应用 `go.mod` 中的 Asuka 版本一致。每个构建的编号都是商店中现有最大编号加一，所以打标签之前不需要手动递增任何东西；`--no-wait` 让 iOS 任务在 Apple 收到上传后就结束，而不必等到处理完成。App Store 只接受用较新版本 Xcode 构建的包；如果 runner 默认的 Xcode 太旧，可以用 `sudo xcode-select -s /Applications/Xcode_<version>.app` 切换版本。
+CLI 内置了宿主和核心，所以安装的 CLI 版本必须是应用所用的 Asuka 版本，也就是 `ASUKA_VERSION`；把应用迁移到更新的 Asuka 时，记得同时调高它。每个构建的编号都是商店中现有最大编号加一，所以打标签之前不需要手动递增任何东西；`--no-wait` 让 iOS 任务在 Apple 收到上传后就结束，而不必等到处理完成。App Store 只接受用较新版本 Xcode 构建的包；如果 runner 默认的 Xcode 太旧，可以用 `sudo xcode-select -s /Applications/Xcode_<version>.app` 切换版本。
 
 ### 桌面端
 
@@ -611,10 +613,10 @@ CLI 内置了 iOS 和 Android 宿主，所以安装的 CLI 版本必须与应用
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the Developer ID certificate
         env:
           CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
@@ -648,10 +650,11 @@ CLI 内置了 iOS 和 Android 宿主，所以安装的 CLI 版本必须与应用
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: mlugg/setup-zig@v2 # 交叉编译核心、宿主和应用
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: osslsigncode, and the code signing certificate
         env:
           CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}

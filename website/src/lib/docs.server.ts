@@ -101,11 +101,6 @@ function navItems(list: List, base: string): NavItem[] {
     if (first?.type === "link" && first.url.endsWith(".md") && !/^[a-z]+:/.test(first.url)) {
       return [{ slug: slugOf(path.join(base, first.url)), title: toString(first), description }]
     }
-    // "The Go API: `go doc -all <package>`, …": the package on pkg.go.dev.
-    const pkg = rest[0]?.type === "inlineCode" ? /^go doc (?:-all )?(\S+)$/.exec(rest[0].value)?.[1] : undefined
-    if (first?.type === "text" && pkg) {
-      return [{ href: `https://pkg.go.dev/${pkg}`, title: first.value.split(":")[0]!.replace(/^The /, "") }]
-    }
     return []
   })
 }

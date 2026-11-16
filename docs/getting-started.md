@@ -171,7 +171,7 @@ has the rest of it.
   [Packages](packages.md)).
 - Native packages: Asuka packages that declare a `native interface` or a
   `native component`, which each platform implements in its own project
-  (a Swift package, a Gradle module, JavaScript, Go on the desktop). See
+  (a Swift package, a Gradle module, JavaScript, C on Windows and Linux). See
   [Native code](native.md).
 
 ## Next

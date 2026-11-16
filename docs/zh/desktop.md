@@ -435,10 +435,29 @@ component Spring {
 
 ## 显示器、电源与应用图标
 
-`screen.UseDisplays()` 跟踪所有显示器：每块显示器的位置、工作区、缩放比例、刷新率，以及哪块是主显示器；`Nearest` 和 `Matching` 用来挑出某个点或某个窗口所在的那块显示器。Wayland 没有工作区的概念，在那里工作区就是显示器的整个范围。
+`screen.displays()` 跟踪所有显示器（它是被跟踪的：在绑定里读取时，就会在被读取期间一直监视显示器）：每块显示器的位置、工作区、缩放比例、刷新率，以及哪块是主显示器；`screen.nearest` 和 `screen.matching` 用来挑出某个点或某个窗口所在的那块显示器。Wayland 没有工作区的概念，在那里工作区就是显示器的整个范围。
 
-`power.Use()` 跟踪电池状态、低电量模式和散热状态。`power.OnSuspend`、`OnResume`、`OnLock` 和 `OnUnlock` 会在电脑睡眠、唤醒以及屏幕锁定、解锁时通知你，`power.IdleTime()` 则给出用户已经离开了多久。手机上有锁定和解锁，但没有睡眠和空闲时间；Web 上只有电池状态。
+`power.status()` 跟踪电池状态、低电量模式和散热状态。`power.suspends()`、`resumes()`、`locks()` 和 `unlocks()` 是电脑睡眠、唤醒以及屏幕锁定、解锁的事件流，`power.idleTime()` 则给出用户已经离开了多久。手机上有锁定和解锁，但没有睡眠和空闲时间；Web 上只有电池状态。
 
-`dock.SetProgress` 在程序坞图标、任务栏按钮，或支持 Unity launcher API 的 Linux dock 上显示任务进度（GNOME 自带的 dash 不显示）。`dock.RequestAttention` 会在应用处于后台时让图标跳动或闪烁。图标上的数字角标则由 `notify.SetBadge` 设置。
+```asuka
+import asuka/power
+import asuka/screen
 
-`appearance.Use()` 提供系统的强调色、“增强对比度”和“降低透明度”设置，供应用自己绘制的内容使用；Asuka 显示的视图本身已经会跟随这些设置。
+component Status {
+  let p = power.status()
+  let displays = screen.displays()
+
+  task {
+    for await _ in power.suspends() { print("going to sleep") }
+  }
+
+  Column {
+    Text(if p.battery { "Battery {(p.level * 100).fixed(0)}%" } else { "No battery" })
+    Text(displays.map(d => "{d.name} {d.bounds.width}x{d.bounds.height}@{d.scale}x").joined(separator: "\n"))
+  }
+}
+```
+
+`dock.setProgress` 在程序坞图标、任务栏按钮，或支持 Unity launcher API 的 Linux dock 上显示任务进度（GNOME 自带的 dash 不显示）。`dock.requestAttention` 会在应用处于后台时让图标跳动或闪烁。图标上的数字角标则由 `notify.setBadge` 设置。
+
+`appearance.current()` 提供系统的强调色（一个 `Color?`）、“增强对比度”和“降低透明度”设置（会被跟踪），供应用自己绘制的内容使用；Asuka 显示的视图本身已经会跟随这些设置。

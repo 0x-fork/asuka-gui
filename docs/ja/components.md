@@ -37,6 +37,19 @@
 
 `Text` は、1 行または 1 段落のテキストを表示します。プラットフォームのラベルそのもので、デフォルトで折り返します。`lines` を指定すると行数を制限でき、収まらない部分は省略記号で切り詰められます。
 
+```asuka
+component Inbox {
+  state count = 3
+
+  Column {
+    gap: 8
+    Text("Inbox") { font: .title2.bold() }
+    Text("{count} unread") { color: .secondaryLabel }
+    Text("A long description that stops after two lines.") { lines: 2 }
+  }
+}
+```
+
 スタイルの `font`、`color`、`textAlign`、`lines` がテキストに適用されます。テキストスタイル（`.body`、`.headline`、`.footnote` など）は、ユーザーが選んだ文字サイズに追従します。
 
 ### RichText
@@ -463,7 +476,7 @@ component Upload {
 
 ## 画像
 
-`Image` は画像を表示します。読み込みとデコードはプラットフォームがメインスレッドの外で行い、メモリにキャッシュします。iOS と Android では、http(s) で取得した画像をディスクにも保存し、アプリを起動し直しても使えるようにします。デスクトップのホストはメモリにだけ保持し、ブラウザーは自身のキャッシュに保持します。Windows でデコードできるのは PNG、JPEG、GIF で、Linux ではそれに加えて GDK のローダーが読める形式です。
+`Image` は画像を表示します。読み込みとデコードはプラットフォームがメインスレッドの外で行い、メモリにキャッシュします。iOS と Android では、http(s) で取得した画像をディスクにも保存し、アプリを起動し直しても使えるようにします。デスクトップのホストはメモリにだけ保持し、ブラウザーは自身のキャッシュに保持します。
 
 ```asuka
 struct Photo {
@@ -505,6 +518,19 @@ component Pictures(photo: Photo) {
 - `on loaded(width, height)` は読み込みが終わると画像本来のサイズを受け取り、`on error(message)` は読み込めなかったときにメッセージを受け取ります。
 
 サイズを指定していない画像は、読み込みが終わるまで空です。読み込み後は、使える幅を超えない範囲で、1 ピクセルを 1 ポイントとした本来のサイズになります。一辺だけを指定した場合（`width`、または行の中での `grow`）は縦横比を保ちます。`aspectRatio` を指定すると、読み込む前から縦横比を決めておけます。
+
+デコードできる形式は、各プラットフォームのデコーダーが読めるものです。
+
+| | デコード | 再生（GIF、APNG、アニメーション WebP） |
+|---|---|---|
+| iOS | ImageIO：PNG、JPEG、GIF、WebP、HEIC、AVIF | ImageIO の `CGAnimateImageDataWithBlock`。ファイルの指定どおりのタイミングとループで再生します（HEIF のシーケンスも） |
+| Android | `BitmapFactory`、次に `ImageDecoder`：PNG、JPEG、GIF、WebP、HEIF、AVIF | `AnimatedImageDrawable`：GIF と WebP（システムが再生できれば AVIF のシーケンスも）。APNG は最初のフレームを表示します |
+| macOS | `NSImage`：PNG、JPEG、GIF、WebP、HEIC、AVIF、SVG | iOS と同じ |
+| Windows | WIC：PNG、JPEG、GIF、BMP、TIFF、ICO。コーデックが入っていれば WebP、HEIF、AVIF も（WebP のものは Windows 11 に付属。HEIF には HEIF 画像拡張機能と HEVC ビデオ拡張機能、AVIF には AV1 ビデオ拡張機能が必要） | ホストがフレームを順に再生。アニメーション WebP の各フレームは WIC の WebP コーデックでデコード |
+| Linux | GDK のローダー：PNG、JPEG、GIF。インストールされていれば WebP、AVIF、HEIF、SVG、JPEG XL も | ホストがフレームを順に再生。アニメーション WebP の各フレームは GDK の WebP ローダーでデコード |
+| Web | ブラウザー | WebCodecs の `ImageDecoder` でキャンバスに描画（AVIF のシーケンスも）。ない場合（Safari）は `<img>` そのもので、一時停止中は最初のフレームを表示します |
+
+SVG を画像として表示できるのは、Mac、Linux、Web だけです。どのプラットフォームでも SVG のアイコンを表示するには、[`asuka/svg`](#svg-アイコン) でベクターとして描きます。
 
 ## シンボルとアイコン
 

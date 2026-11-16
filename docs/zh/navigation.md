@@ -1188,4 +1188,4 @@ app {
 
 在 iOS 上，应用会自带一个分享扩展（share extension），它会带着分享的内容打开应用，和 Android 的做法一样：扩展本身不显示任何界面。分享的内容常常是一个标题加一个链接（比如从 Safari 分享时，页面标题作为文本，URL 作为链接）。[`examples/downloader`](../../examples/downloader) 会从中找出那个链接。桌面端和 Web 不能作为分享目标，在这些平台上 `on share` 永远不会运行。
 
-如果想在发起分享的应用上方显示你自己应用的面板，而不打开你的应用，请参阅[设备](device.md#应用自己的分享面板)里的 `app.ShareSheet`。反过来，要从你的应用往外分享，`share(text)` 会弹出系统的分享面板，`shareFiles(paths)` 则用来分享文件：在 Mac 上是分享菜单，在 Windows 上是系统的分享界面，在 Web 上是浏览器的分享界面。Linux 没有分享面板，这两个函数会把要分享的内容复制到剪贴板，并用一个 toast 告诉用户。
+如果想在发起分享的应用上方显示你自己应用的面板，而不打开你的应用，请参阅[设备](device.md#应用自己的分享面板asukasharesheet)里的 `asuka/sharesheet`。反过来，要从你的应用往外分享，`share(text)` 会弹出系统的分享面板，`shareFiles(paths)` 则用来分享文件：在 Mac 上是分享菜单，在 Windows 上是系统的分享界面，在 Web 上是浏览器的分享界面。Linux 没有分享面板，这两个函数会把要分享的内容复制到剪贴板，并用一个 toast 告诉用户。
