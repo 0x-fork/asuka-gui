@@ -56,6 +56,24 @@ test "arrays of structs" {
   print("{copy[0].done} {copy[1].title}")
 }
 
+// Types and values are named apart: a function or a method may be named
+// as a type is, and the type is still the type.
+fn int(a: int, b: int) -> int = a * 10 + b
+
+struct Celsius {
+  degrees: float
+  fn float() -> float = degrees
+  fn string() -> string = "{degrees}°C"
+}
+
+test "names of types as functions" {
+  let x: int = int(4, 2)
+  print(x)
+  let c = Celsius(degrees: 21.5)
+  print(c.float() + 0.5)
+  print(c.string())
+}
+
 // Output:
 // 3
 // 25
@@ -72,3 +90,7 @@ test "arrays of structs" {
 // true b!
 // false b
 // ok arrays of structs
+// 42
+// 22
+// 21.5°C
+// ok names of types as functions
