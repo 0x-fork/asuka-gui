@@ -503,44 +503,52 @@ ui.Snackbar(ui.SnackbarProps{
 
 ## メニュー
 
-メニューは `ui.Action` のリストを表示します。アラートのボタンやバーボタンと同じ型で、各タイトルの横には任意で `Icon` を付けられます。メニューを表示する方法は 2 つあります。
+メニューは `Action` のリストを表示します。アラートのボタンやバーボタンと同じ型で、各タイトルの横には任意で `icon` を付けられます。メニューを表示する方法は 2 つあります。
 
-- `Menu` を指定した `ui.Button` は、タップするとメニューを開きます。
-- `ui.Menu` は、任意の内容にメニューを付けます。タップで開くか、`LongPress` を指定してコンテキストメニューにします。
+- `menu` を指定した `Button` は、タップするとメニューを開きます。
+- `Menu { actions: […] }` は、任意の内容にメニューを付けます。タップで開くか、`longPress: true` を指定してコンテキストメニューにします。
 
-iOS では `UIMenu`、Android では `PopupMenu` です。Mac では `NSMenu`、Windows ではポップアップメニュー（Mac と同じく、破壊的な項目は赤）、Linux では `GtkPopoverMenu`、Web ではポップオーバーになります。デスクトップと Web では、コンテキストメニューは右クリック（副ボタンのクリック）で開き、Windows、Linux、Web では長押しでも開きます。どちらの方法も [コンポーネント](components.md#メニュー) で説明しています。`List` の行にはスワイプアクションもあります。[リスト](components.md#リスト) を参照してください。
+iOS では `UIMenu`、Android では `PopupMenu` です。Mac では `NSMenu`、Windows ではポップアップメニュー（Mac と同じく、破壊的な項目は赤）、Linux では `GtkPopoverMenu`、Web ではポップオーバーになります。デスクトップと Web では、コンテキストメニューは右クリック（副ボタンのクリック）で開き、Windows、Linux、Web では長押しでも開きます。どちらの方法も [コンポーネント](components.md#メニュー) で説明しています。`List` の行にはスワイプアクションもあります。[リスト](components.md#リスト) を参照してください。`MenuBar` の中の `Menu` は、代わりにアプリのメニューの一つになります（[後述](#メニューバーとキーボードショートカット)）。
 
 ## ウィンドウ
 
-デスクトップアプリにはメインウィンドウがあり、`app.Run` が表示するものはそこに入ります。タイトル、開くときのサイズ、最小サイズを指定するには、`app.RunWindow` でアプリを起動します。
+デスクトップアプリにはメインウィンドウがあり、`app` ブロックが表示するものはそこに入ります。`app` ブロックの `Window` がメインウィンドウで、そのキーがメインウィンドウのオプション、子要素が表示する内容になります。
 
-```go
-func main() {
-	app.RunWindow(ui.WindowOptions{Width: 420, Height: 640, MinWidth: 320, MinHeight: 360}, App)
+```asuka
+app {
+  Window {
+    title: "Notes"
+    width: 420
+    height: 640
+    minWidth: 320
+    minHeight: 360
+    Stack { NotesScreen() }
+  }
 }
 ```
 
-サイズはウィンドウの内容の大きさで、単位はポイントです。何も指定しなければ、メインウィンドウは 800 × 600 ポイントで中央に開き、ユーザーは 320 × 320 ポイントより小さくできません。`Title` が空なら、アプリの名前になります。アクセサなので、アプリの言語に追従させられます。ウィンドウはユーザーが最後に置いた場所に戻り（[後述](#ウィンドウの位置の復元)）、それが `Width`、`Height`、`X`、`Y` より優先されます。iOS と Android は、これらのオプションを無視します。
+サイズはウィンドウの内容の大きさで、単位はポイントです。何も指定しなければ、メインウィンドウは 800 × 600 ポイントで中央に開き、ユーザーは 320 × 320 ポイントより小さくできません。`title` が空なら、アプリの名前になります。バインディングなので、アプリの言語に追従させられます。ウィンドウはユーザーが最後に置いた場所に戻り（[後述](#ウィンドウの位置の復元)）、それが `width`、`height`、`x`、`y` より優先されます。iOS と Android は、これらのオプションを無視します。メインウィンドウは `open` が false でない限り表示されます。`bind open: shown` とすると `shown` に合わせて表示・非表示が切り替わり、動き続けるアプリでユーザーがウィンドウを閉じると false が書き込まれます。
 
-`ui.Window` は、`ui.Sheet` がシートを開くのと同じように、`Open` が true の間、別のウィンドウを開きます。
+ほかの `Window` は、`Sheet` がシートを開くのと同じように、`open` が true の間、別のウィンドウを開きます。
 
-```go
-stats := signal.New(false)
-return ui.Column(nil,
-	ui.Button(ui.ButtonProps{Title: ui.Val("Statistics"), OnPress: func() { stats.Set(true) }}),
-	ui.Window(ui.WindowProps{
-		Open:  stats,
-		Title: ui.Val("Statistics"),
-		Width: 280, Height: 140,
-		Content: func() ui.Node {
-			return ui.Text(signal.Func(func() string { return fmt.Sprintf("%d notes", len(notes.Get())) }))
-		},
-	}),
-)
+```asuka
+component Notes {
+  state stats = false
+  Column {
+    Button("Statistics") { on press { stats = true } }
+    Window {
+      bind open: stats
+      title: "Statistics"
+      width: 280
+      height: 140
+      Text("{notes.count()} notes")
+    }
+  }
+}
 ```
 
-- `Content` は、ウィンドウが開くときに組み立てられ、閉じるときに破棄されます。その中の `ui.UseEnvironment` はそのウィンドウのもので、サイズはユーザーによるサイズ変更に追従し、スケールはウィンドウのあるディスプレイのものになります。
-- ユーザーがウィンドウを閉じると、`Open` が false になり、`OnClose` が呼ばれます。コードから `Open` を false にした場合は、`OnClose` を呼ばずに閉じます。
+- 子要素は、ウィンドウが開くときに組み立てられ、閉じるときに破棄されます。その中の `environment()` はそのウィンドウのもので、サイズはユーザーによるサイズ変更に追従し、スケールはウィンドウのあるディスプレイのものになります。
+- ユーザーがウィンドウを閉じると、`open` に false が書き込まれ、`close` が発生します。コードから `open` を false にした場合は、`close` を発生させずに閉じます。
 - 指定がなければ 800 × 600 ポイントで開きます。Mac と Windows では、使用中のウィンドウから少しずらして重ねる（カスケードする）位置に開きます。Linux では、GTK 4 がデスクトップに任せているとおり、配置はデスクトップが決めます（GNOME と KDE は、新しいウィンドウをほかのウィンドウをもっとも覆わない位置に置きます）。中のスタックには、メインウィンドウと同じく専用のバーがあります。シートとアラートは、ユーザーが作業中のウィンドウの上に開きます。
 
 | | ウィンドウ |
@@ -550,93 +558,117 @@ return ui.Column(nil,
 | Linux | `AdwWindow`。専用のヘッダーバーを持ちます |
 | Web | ページ内のパネル。ユーザーが移動したりサイズを変えたりできます |
 
-スマートフォンにはウィンドウがないので、iOS や Android でウィンドウを開くと panic します。ウィンドウを提供するコンポーネントは、先に `ui.Platform()` を確認するか、後述のメニューバーのように、デスクトップにしかないものからだけ開くようにしてください。
+スマートフォンにはウィンドウがないので、そこでは `Window` は何も表示しません。ウィンドウを提供するコンポーネントは、後述のメニューバーのように、デスクトップにしかないものから提供してください。
 
 ### オプション
 
-`WindowOptions`（メインウィンドウ用）と `WindowProps`（`Window` 用）は、ウィンドウの開き方について同じオプションを受け取ります。
+メインウィンドウと `Window` は、ウィンドウの開き方について同じキーを受け取ります。キーはウィンドウが開くときに読まれます（あとから変えるのはハンドルの操作で、後述します。ただし `title`、`alwaysOnTop`、`clickThrough`、`flyout`、`edited`、`file` はバインディングに追従します）。
 
-| オプション | |
+| キー | |
 |---|---|
-| `Width`, `Height` | 内容の大きさ（ポイント） |
-| `MinWidth`, `MinHeight`, `MaxWidth`, `MaxHeight` | ユーザーが変更できるサイズの最小値と最大値。0 ならホストの最小値で、最大値はなし |
-| `X`, `Y` | 画面上でのフレームの左上の位置。メインディスプレイの左上からのポイント数で指定します。どちらも 0 なら、メインウィンドウは中央に置かれ、`Window` はカスケードされます（`Center` で中央に置けます） |
-| `DisableResize`, `DisableMinimize`, `DisableMaximize`, `DisableClose` | ユーザーの操作を禁止します。サイズ変更と、各ボタンの操作です |
-| `AlwaysOnTop` | ほかのアプリのウィンドウより常に手前に表示します |
-| `TitleBar` | `ui.TitleBarHidden` を指定すると、内容をタイトルバーの下、ウィンドウの上端までレイアウトし、ウィンドウのボタンをその上に重ねます |
-| `Background`, `Transparent` | 内容の背後にあるウィンドウの色、または色なし。色なしにすると、内容が何も描かない部分ではウィンドウの背後にあるものが見えます |
-| `Hidden` | 表示せずに開きます。`Show` で表示します |
-| `SkipTaskbar` | タスクバー（Windows）と「ウインドウ」メニュー（macOS）に表示しません |
-| `Maximized`, `Fullscreen` | 最大化した状態、またはフルスクリーンで開きます |
-| `StateKey` | 位置を保存するときのキー。[後述](#ウィンドウの位置の復元) を参照してください |
-| `FitContent` | 内容に合わせてサイズを決め、内容が変わると最小・最大サイズの範囲内で追従します（[デスクトップ](desktop.md#コンテンツに合わせたウィンドウサイズ)） |
-| `Panel` | ランチャーやパレットのウィンドウ。すべてのアプリの上に浮かび、アプリを前面に出さずにキーボード入力を受け取り、Esc キーかほかの場所のクリックで閉じます（[パネル](desktop.md#パネルとランチャー)） |
-| `ClickThrough` | マウスを通過させ、背後にあるものに届けます（[クリックスルー](desktop.md#クリックスルーウィンドウ)） |
-| `Flyout` | `Window` 用。トレイアイコン、または親ウィンドウ内の矩形からぶら下げて表示します（[フライアウト](desktop.md#フライアウト)） |
-| `Child`, `Modal` | `Window` 用。[後述](#子ウィンドウとモーダルウィンドウ) を参照してください |
-| `MenuBar`, `Edited`, `File` | 文書を表示する `Window` 用。それぞれ、そのウィンドウ内のアプリのメニューバー（Windows、Linux）、Mac の閉じるボタンの中の点またはタイトルの前の `*`、Mac のタイトルバーに表示するファイルのアイコンです。[`asuka/sdk/document`](desktop.md#ドキュメント) がこれらを設定します |
+| `width`、`height` | 内容のサイズ（ポイント） |
+| `minWidth`、`minHeight`、`maxWidth`、`maxHeight` | ユーザーが変えられるサイズの最小と最大。0 ならホストの最小値、最大はなし |
+| `x`、`y` | 画面上のフレームの左上。メインディスプレイの左上からのポイント。両方 0 なら、メインウィンドウは中央に、`Window` はカスケードして開きます（`center: true` で中央） |
+| `resizable`、`minimizable`、`maximizable`、`closable` | false にすると、ユーザーの操作（サイズ変更と各ボタン）を取り除きます |
+| `alwaysOnTop` | ほかのアプリのウィンドウより常に手前に置きます |
+| `titleBar` | `.hidden` にすると、内容をタイトルバーの下、ウィンドウの上端まで広げ、ウィンドウのボタンを内容の上に重ねます |
+| `background`、`transparent` | 内容の背後のウィンドウの色。または色なしにして、内容が何も描かないところにウィンドウの背後を見せます |
+| `hidden` | 表示せずに開きます。`w.show()` で表示します |
+| `skipTaskbar` | タスクバー（Windows）と Window メニュー（macOS）に出しません |
+| `maximized`、`fullScreen` | その状態で開きます |
+| `stateKey` | 位置を保存するキー。[後述](#ウィンドウの位置の復元) |
+| `fitContent` | 最小と最大のサイズの範囲で、内容に合わせてサイズを変え続けます（[デスクトップ](desktop.md#コンテンツに合わせたウィンドウサイズ)） |
+| `panel` | ランチャーやパレットのウィンドウ。すべてのアプリの上に浮かび、アプリを前面に出さずにキーボードを受け取り、Escape やほかの場所のクリックで閉じます（[パネル](desktop.md#パネルとランチャー)） |
+| `clickThrough` | マウスを通過させ、背後にあるものに届けます（[クリックスルー](desktop.md#クリックスルーウィンドウ)） |
+| `flyout` | `Window` 用。トレイアイコンや親の矩形からぶら下げます（[フライアウト](desktop.md#フライアウト)） |
+| `child`、`modal` | `Window` 用。[後述](#子ウィンドウとモーダルウィンドウ) |
+| `menuBar`、`edited`、`file` | ドキュメントを表示するウィンドウ用。ウィンドウ内のアプリのメニューバー（Windows、Linux）、Mac の閉じるボタンの点やタイトルの前の `*`、Mac のタイトルバーのファイルアイコン |
 
-タイトルバーを隠すと、内容はウィンドウのボタン（Mac の信号機ボタン、Windows のキャプションボタン、Linux ではヘッダーバーのボタン）の下を通って上端まで広がります。ウィンドウの環境には、タイトルバーの高さが `SafeTop` として入ります。そのため `ui.SafeArea` はボタンを避けて配置され、背景やサイドバー、画像はボタンの下まで広げられます。
+タイトルバーを隠すと、内容はウィンドウの上端まで広がり、ウィンドウのボタン（Mac の信号機ボタン、Windows のキャプションボタン、Linux のヘッダーバーのボタン）の下に入ります。ウィンドウの環境の `safeTop` はタイトルバーの高さになるので、`SafeArea` はボタンを避け、背景やサイドバー、画像はボタンの下まで広げられます。
 
-```go
-app.RunWindow(ui.WindowOptions{TitleBar: ui.TitleBarHidden, Background: colors.RGB(0x1e, 0x1e, 0x1e)}, func() ui.Node {
-	return ui.SafeArea(ui.Style{Grow: 1, Padding: ui.All(16)}, editor())
-})
+```asuka
+app {
+  Window {
+    titleBar: .hidden
+    background: #1e1e1e
+    SafeArea {
+      grow: 1
+      padding: 16
+      Editor()
+    }
+  }
+}
 ```
 
-ボタンの下の帯は、内容がクリックを受け取らない部分では、引き続きウィンドウのドラッグに使えます。Windows では、タイトルバーを隠したメインウィンドウにメニューバーは表示されませんが、そのショートカットは引き続き使えます。
+内容がクリックを受け取らないところでは、ボタンの下の帯でウィンドウをドラッグできます。Windows では、タイトルバーを隠したメインウィンドウにはメニューバーがありませんが、ショートカットは使えます。
 
-準備ができてから表示したいウィンドウは、`Hidden` で開いてコードから表示します。その間に内容が組み立てられ、レイアウトされ、描画されるので、空の状態が見えることはなく、完成した状態で表示されます。バックグラウンドで起動するアプリ（トレイアイコンのアプリなど）は、メインウィンドウを非表示のまま起動し、メニューから表示します。
+準備ができてから表示したいウィンドウは、`hidden` で開いてコードから表示します。その間に内容が組み立てられ、レイアウトされ、描画されるので、空のまま表示されることはありません。バックグラウンドで起動するアプリ（トレイアイコンのアプリ）は、メインウィンドウの `open` を false にして起動し、メニューから表示します。
 
 ### ウィンドウの操作
 
-`ui.UseWindow()` は、コンポーネントが入っているウィンドウのハンドルです。つまり、コンポーネントがその内容に含まれる `Window`、またはメインウィンドウのハンドルです。`ui.MainWindow()` は、メインスレッド上のどこからでも（トレイアイコンのメニューやグローバルショートカットなど）使えるメインウィンドウのハンドルです。`Window` のハンドルをその外側から使うには、アプリがハンドルを作り（`ui.NewWindowHandle()`）、`Handle` として渡します。
+`Window as w` で、ウィンドウのハンドル（その `Window` の `Ref`）に名前を付けます。囲んでいるビューの要素から見え、コンポーネントに渡せます。ほかのビューの `Ref` は、そのビューがあるウィンドウに作用します。
 
-```go
-w := ui.UseWindow()
-ui.Button(ui.ButtonProps{Title: ui.Val("Full Screen"), OnPress: func() { w.SetFullscreen(true) }})
-ui.Text(signal.Func(func() string {
-	if w.Focused().Get() {
-		return "Typing here"
-	}
-	return "In the background"
-}))
+```asuka
+component Editor(w: Ref) {
+  Column {
+    Button("Full Screen") { on press { w.setFullScreen(true) } }
+    Text(if w.focused { "Typing here" } else { "In the background" })
+  }
+}
+
+component Main {
+  state open = false
+  Window as w {
+    bind open: open
+    title: "Editor"
+    Editor(w: w)
+  }
+}
 ```
 
-- `Show` と `Hide` は、ウィンドウを表示・非表示にします。非表示にしてもウィンドウは開いたままで、内容も生き続けます。`Focus` は、ウィンドウが非表示か最小化されていれば表示し、キーボード入力を受け取る状態で最前面に出し、アプリも前面に出します。トレイアイコンのメニューからウィンドウを呼び戻すときに使う方法です（Windows では、トレイアイコンのクリックのように、ユーザーがアプリに対して入力した後であれば、アプリが前面に出ることが許されます）。閉じている `Window` に対しては、`Show` と `Focus` でウィンドウが開きます。
-- `Minimize`、`Maximize`、`Restore`（最小化と最大化のどちらからも戻します）。`SetFullscreen`。
-- `SetSize`（内容の大きさ、ポイント）、`SetPosition`（フレームの左上の位置。メインディスプレイの左上から）、`Center`。
-- `SetAlwaysOnTop` は、ほかのアプリのウィンドウより常に手前に表示するかどうかを切り替えます。
-- `SetClickThrough` は、マウスを通過させるかどうかを切り替えます。
-- `Close` は、ユーザーが閉じるときと同じようにウィンドウを閉じ、先に確認します（後述）。`Destroy` は確認せずに閉じます。メインウィンドウが閉じると、アプリは終了します。
-- ウィンドウの状態はシグナルで、アプリによる変更だけでなくユーザーによる変更にも追従します。`Visible`、`Focused`、`Minimized`、`Maximized`、`Fullscreen`、`AlwaysOnTop`、`ClickThrough`、`Position`、`Size` があります。エフェクトか `StyleFunc` の中で読んでください。最小化されたウィンドウや、ほかのウィンドウの背後にあるウィンドウも、visible のままです。
+- `w.show()` と `w.hide()` で表示・非表示を切り替えます。非表示にしても開いたままで、内容も残ります。`w.focus()` は、非表示や最小化されていれば表示し、キーボードを受け取る状態で手前に出し、アプリも前面に出します。トレイアイコンのメニューからウィンドウを呼び戻すときに使います（Windows では、アプリへのユーザーの入力のあとでないとアプリを前面に出せません。トレイアイコンのクリックは入力にあたります）。閉じている `Window` に `show()` や `focus()` を呼ぶと開きます。
+- `w.minimize()`、`w.maximize()`、`w.restore()`（どちらの状態からでも）、`w.setFullScreen(on)`。
+- `w.setSize(width, height)`（内容のサイズ、ポイント）、`w.setPosition(x, y)`（フレームの左上、メインディスプレイの左上から）、`w.center()`。
+- `w.setAlwaysOnTop(on)` で、ほかのアプリのウィンドウより常に手前に置くかどうかを切り替えます。
+- `w.setClickThrough(on)` で、マウスを通過させるかどうかを切り替えます。
+- `w.close()` は、ユーザーが閉じるときと同じようにウィンドウを閉じ、先に確認します（後述）。`closeWindow()` は、呼び出したコードがあるウィンドウ（どの `Window` の中でもなければメインウィンドウ）を確認せずに閉じます。メインウィンドウが閉じると、動き続けるアプリでない限り、アプリは終了します。
+- ウィンドウの状態は、アプリだけでなくユーザーによる変化にも追従します。`w.visible`、`w.focused`、`w.minimized`、`w.maximized`、`w.fullScreen`、`w.alwaysOnTop`、`w.clickThrough`、`w.position`、`w.size`（それぞれ `(x, y)` と `(width, height)`）があり、`w.windowState` ですべてをまとめて読めます。これらを読むバインディングは追従します。ホストがウィンドウの状態を報告するのは、何かがそれを読んでからです。最小化されたウィンドウや、ほかのウィンドウの後ろにあるウィンドウも、visible のままです。
 
-これらのメソッドは、シグナルへの書き込みと同じく、フラッシュのときにウィンドウに作用します。スマートフォンでは何もせず、状態は常に表示中かつフォーカスありとして読めます。
+操作は、状態の書き込みと同じくフラッシュのときにウィンドウに反映されます。スマートフォンでは何もせず、状態は何も表示されていないことを示します。
 
 ### ウィンドウを閉じる前の確認
 
-`OnCloseRequest` は、ユーザーがウィンドウを閉じようとしたとき（閉じるボタン、⌘W、Alt+F4、Dock やタスクバーのメニュー）や、アプリが `Close` を呼んだときに問い合わせを受けます。false を返すとウィンドウは開いたままになるので、保存されていない変更について先に確認できます。失うものがあるコンポーネントは、マウントされている間、それぞれが自分で確認します。
+ユーザーがウィンドウを閉じるとき（閉じるボタン、⌘W、Alt+F4、Dock やタスクバーのメニュー）や `w.close()` を呼んだときは、先に確認します。
 
-```go
-w := ui.UseWindow()
-w.OnCloseRequest(func() bool {
-	if !doc.Dirty() {
-		return true
-	}
-	ui.Alert(ui.AlertProps{Title: "Save changes?", Actions: []ui.Action{
-		{Title: ui.Val("Save"), OnPress: func() { doc.Save(); w.Destroy() }},
-		{Title: ui.Val("Don't Save"), Role: ui.ActionDestructive, OnPress: w.Destroy},
-		{Title: ui.Val("Cancel"), Role: ui.ActionCancel},
-	}})
-	return false
-})
+- ウィンドウの中の `WindowCloseGuard { when: …; on closeRequest { … } }` は、`when` が true のあいだウィンドウを開いたままにし、`closeRequest` を実行します。未保存の変更について確認し、ユーザーが選んだら `closeWindow()` を呼びます。
+- コンポーネントの本体に書く `onCloseRequest(fn() -> bool)` は、そのコンポーネントがあるあいだ関数に問い合わせます。false を返すと開いたままです。
+- `Window` 自身の `on closeRequest { … }`（メインウィンドウにもあります）は、ユーザーが閉じる操作を引き受けます。ウィンドウは、`open` が false になるか `closeWindow()` が呼ばれるまで開いたままです。
+
+```asuka
+screen NoteScreen {
+  state draft = ""
+  state asking = false
+  WindowCloseGuard {
+    when: !draft.isEmpty()
+    on closeRequest { asking = true }
+  }
+  Sheet {
+    bind open: asking
+    Column {
+      Text("Discard the new note?")
+      Button("Cancel") { on press { asking = false } }
+      Button("Discard") { on press { closeWindow() } }
+    }
+  }
+  TextField { bind text: draft }
+}
 ```
 
-問い合わせを受けるすべての関数が同意しなければ、ウィンドウは閉じません。`WindowProps.OnCloseRequest` と `WindowOptions.OnCloseRequest` にも問い合わせます。ユーザーが選んだ後に呼ぶ `Destroy` は、再び確認せずにウィンドウを閉じます。Web では、メインウィンドウはタブそのものです。ページから離れるときやタブを閉じるときにも確認し、拒否するとページはブラウザー自身の「このサイトを離れますか？」という確認の背後に残ります（この文言はページからは変えられません）。アプリの終了（⌘Q）では、ウィンドウに確認しません。
+問い合わせを受けるすべてのガードと関数が同意しなければ、ウィンドウは閉じません。Web では、メインウィンドウはタブそのものです。ページから離れるときやタブを閉じるときにも確認し、拒否するとページはブラウザー自身の「このサイトを離れますか？」という確認の背後に残ります（この文言はページからは変えられません）。アプリの終了（⌘Q）では、ウィンドウには確認せず、アプリの `on quit` に確認します（[デスクトップ](desktop.md#終了)）。
 
 ### ウィンドウの位置の復元
 
-ウィンドウは、次に起動したときも、ユーザーが最後に置いた場所に戻ります。メインウィンドウは常に（キー `"main"`、または `StateKey` で）戻り、`Window` は `StateKey` を持つときに戻ります。ウィンドウの種類ごとに別のキーを付けてください（`"inspector"`、`"preferences"`）。前回の位置は `Width`、`Height`、`X`、`Y` より優先されます。これらの値は、初回起動時に開くときに使われます。
+ウィンドウは、次に起動したときも、ユーザーが最後に置いた場所に戻ります。メインウィンドウは常に（キー `"main"`、または `stateKey` で）戻り、`Window` は `stateKey` を持つときに戻ります。ウィンドウの種類ごとに別のキーを付けてください（`"inspector"`、`"preferences"`）。前回の位置は `width`、`height`、`x`、`y` より優先されます。これらの値は、初回起動時に開くときに使われます。
 
 | | 保存されるもの |
 |---|---|
@@ -649,19 +681,25 @@ w.OnCloseRequest(func() bool {
 
 ### 子ウィンドウとモーダルウィンドウ
 
-`Child` を指定した `Window` は、宣言されたウィンドウ（メインウィンドウ、またはその `Window` を内容に持つ `Window`）の子になります。子ウィンドウは親ウィンドウより手前にとどまり、親と一緒に閉じます（オーナーが親ウィンドウの内容と一緒に破棄されるためです）。`Modal` を指定すると、閉じるまで親ウィンドウを操作できなくする子ウィンドウになります。
+`child: true` の `Window` は、宣言されたウィンドウ（メインウィンドウか、内容にそれを含む `Window`）の子になります。親より常に手前にあり、親と一緒に閉じます（内容は親の内容と一緒に破棄されます）。`modal: true` にすると、閉じるまで親をブロックする子になります。
 
-```go
-ui.Window(ui.WindowProps{Open: prefs, Modal: true, Title: ui.Val("Preferences"), Width: 480, Height: 360,
-	Content: preferences})
+```asuka
+Window {
+  bind open: prefs
+  modal: true
+  title: "Preferences"
+  width: 480
+  height: 360
+  Preferences()
+}
 ```
 
-| | `Child` | `Modal` |
+| | `child` | `modal` |
 |---|---|---|
-| macOS | 子ウィンドウ。親より手前に重なり、親と一緒に動きます | 親のシート |
-| Windows | 親に所有されるウィンドウ。親より手前にあり、親と一緒に最小化されます | 所有されるウィンドウで、開いている間は親が無効になります |
-| Linux | 親に対して transient で、親と一緒に破棄されます | transient かつモーダル |
-| Web | ほかと変わらないパネル | ページのクリックを受け止める背景の上に置くパネル |
+| macOS | 子ウィンドウ。親より手前に並び、親と一緒に動きます | 親のシート |
+| Windows | 親に所有されます。親より手前にあり、親と一緒に最小化されます | 所有され、開いている間は親が無効になります |
+| Linux | 親に対して transient。親と一緒に破棄されます | transient かつモーダル |
+| Web | ほかと同じパネル | ページのクリックを受け止める背景の上のパネル |
 
 ### デスクトップごとの対応状況
 
@@ -684,29 +722,46 @@ ui.Window(ui.WindowProps{Open: prefs, Modal: true, Title: ui.Val("Preferences"),
 
 ## メニューバーとキーボードショートカット
 
-`ui.MenuBar` は、デスクトップアプリにメニューを与え、その項目にキーボードショートカットを割り当てます。
+`MenuBar` は、デスクトップアプリにメニューを与え、その項目にキーボードショートカットを割り当てます。子要素は `Menu`、`Menu` の子要素は `MenuItem` です。
 
-```go
-ui.MenuBar(signal.Static([]ui.MenuBarMenu{
-	{Title: "File", Items: []ui.MenuItem{
-		{Title: "New Note", Shortcut: ui.Cmd("n"), OnPress: add},
-		ui.MenuSeparator,
-		{Title: "Export…", Shortcut: ui.Cmd("e").With(ui.Shift), OnPress: export},
-	}},
-	{Title: "Edit", Items: []ui.MenuItem{
-		{Title: "Clear Completed", Shortcut: ui.Cmd("k").With(ui.Shift), Destructive: true, OnPress: clear},
-	}},
-}))
+```asuka
+component Notes {
+  MenuBar {
+    Menu("File") {
+      MenuItem("New Note") {
+        shortcut: Shortcut(key: "n", primary: true)
+        on press { add() }
+      }
+      MenuSeparator()
+      MenuItem("Export…") {
+        shortcut: Shortcut(key: "e", primary: true, shift: true)
+        on press { export() }
+      }
+      MenuItem("Close") { role: .close }
+    }
+    Menu("Edit") {
+      MenuItem("Clear Completed") {
+        shortcut: Shortcut(key: "k", primary: true, shift: true)
+        role: .destructive
+        disabled: done == 0
+        on press { clear() }
+      }
+    }
+  }
+  NoteList()
+}
 ```
 
-- `ui.MenuItem` は、`Title`、`Shortcut`、`OnPress` を持ちます。`Disabled`、`Checked`、`Destructive`（赤で表示）で表示が変わります。`ui.MenuSeparator` は、項目のグループの間に入れる区切り線です。
-- `ui.Shortcut` は、`Key` とその `Mods` からなります。`ui.Cmd(key)` は、そのキーとプラットフォームのコマンドキー（Mac では ⌘、それ以外では Ctrl）の組み合わせです。`.With(ui.Shift)`、`ui.Alt`（Mac の Option）、`ui.Control` で修飾キーを追加します。キーは文字（`"n"`、`","`、`"="`）か名前で指定します。名前は `enter`、`escape`、`tab`、`space`、`delete`、`backspace`、`up`、`down`、`left`、`right`、`home`、`end`、`pageup`、`pagedown`、`f1` から `f12` までです。
-- メニューはアクセサに追従します。項目が無効になったりチェックされたり、メニューが現れたり消えたりします。複数の `MenuBar` がマウントされているときは最後のものが表示され、それが破棄されると一つ前のものが表示されます。`ui.MenuBar` が返すノードは領域を取らないので、どこに置いてもかまいません。
+- `MenuItem` は、タイトル、`shortcut`、`press` を持ちます。`disabled` と `checked` で表示が変わります。項目の中に `MenuItem` を入れると、その項目はサブメニューになります。`MenuSeparator()` は、項目のグループの間に入れる区切り線です。
+- `role` は項目の種類です。`.destructive` は赤で表示します（macOS、Windows。GTK では別のセクションに分けます）。`.quit`、`.close`、`.openRecent` はプラットフォーム自身の項目で、ホストが自分のタイトル（項目にタイトルがなければ）とショートカットで実行します。それぞれ、アプリの終了（先にアプリに確認します）、使用中のウィンドウを閉じるボタンと同じように閉じること、最近使ったドキュメント（Mac 標準の「最近使った項目を開く」）です。
+- `Shortcut` は、`key` とその修飾キーからなります。`primary` はプラットフォームのコマンドキー（Mac では ⌘、それ以外では Ctrl）、`shift`、`alt`（Mac の Option）、`control` がほかの修飾キーです。キーは文字（`"n"`、`","`、`"="`）か名前で指定します。名前は `enter`、`escape`、`tab`、`space`、`delete`、`backspace`、`up`、`down`、`left`、`right`、`home`、`end`、`pageup`、`pagedown`、`f1` から `f12` までです。
+- 項目はバインディングです。項目が無効になったりチェックされたり、`for` や `if` が表示するメニューや項目が現れたり消えたりすると、送り直されます。複数の `MenuBar` が表示されているときは最後のものが使われ、それがなくなると一つ前のものが使われます。領域は取らないので、どこに置いてもかまいません。
+- `WindowKeys { keys: [Shortcut(key: "k", primary: true, run: search)] }` は、表示されているあいだ、置かれたウィンドウにキーを与えます。フォーカスがどこにあっても、どのビューも処理しないキーに働きます（最後の `WindowKeys` のものが優先されます）。メニュー項目にしないキーに使います。
 
 デスクトップごとの表示は次のとおりです。
 
 - **macOS**：メニューバー。Mac 標準のメニューと並んで表示されます。標準のメニューは、アプリケーションメニュー（About、Hide、Quit）、File、Edit（Undo、Cut、Copy、Paste...）、View（Back、Enter Full Screen）、Window です。File、Edit、View、Window、Help というタイトルのメニューは、対応する標準メニューに項目を追加します。それ以外のメニューは View と Window の間に入ります。
-- **Windows**：メインウィンドウのメニューバー。ショートカットはアプリのすべてのウィンドウで使えます。各メニューと項目にはアクセスキー（Alt+F）が付き、各項目のタイトルの後ろにはショートカット（"Ctrl+Shift+K"）が表示されます。
+- **Windows**：メインウィンドウ（と `menuBar: true` の `Window`）のメニューバー。ショートカットはアプリのすべてのウィンドウで使えます。各メニューと項目にはアクセスキー（Alt+F）が付き、各項目のタイトルの後ろにはショートカット（"Ctrl+Shift+K"）が表示されます。
 - **Linux**：GNOME のアプリにはメニューバーがなく、代わりにメインメニュー（ヘッダーバーの最後のボタン）があります。アプリの各メニューはそのサブメニューになり（メニューが一つだけなら、その項目がメインメニューに直接並びます）、ショートカットはすべてのウィンドウで使えます。
 - **Web**：ショートカットはページ内で使えます。メニューバーは表示しません。
 

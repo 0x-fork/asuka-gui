@@ -2508,135 +2508,178 @@ keep that additive, the core already treats the mobile screen as one
 root with an environment (size, insets) that can change at any time,
 and never assumes a single root in its own data structures.
 
-**Windows, the menu bar and shortcuts** (`ui/window.go`):
+**Windows, the menu bar and shortcuts** (core/src/ui/window.c,
+menubar.c, keys.c; the Asuka API in docs/navigation.md):
 
-- The main window holds the root (`app.Run`); `app.RunWindow(opts,
-  root)` gives it its options (`ui.WindowOptions`, sent to the root as
-  `WindowOptions` when it mounts). With none, a desktop host opens it at
-  800 by 600 points, a desktop window's size (Electron's default), not a
-  phone's, centered. Where the user left it, remembered by the host,
-  wins over its size and place.
-- `ui.Window(WindowProps{Open, Title, Width, Height, ..., Content,
-  OnClose})` is a window of its own while `Open` is true, built as a
-  `Sheet` is: a `Window` node, a host-sized layout root whose
-  `Environment` the host reports (it follows the user resizing
-  it; its Scale is the window's, which on desktop can differ from the
-  main window's: the core measures and snaps the frames in it at that
-  scale), `Present` opens it (unless it's to open hidden), `Destroy`
-  closes it, and the user closing it sends `Dismissed`, which sets `Open`
-  false (or `CloseRequest`, while something asks). Its content's owner
-  lives as long as the window is open, so a `Window` declared in it
-  closes with it. Mobile hosts can't show one (it panics there, as any
-  kind a host lacks).
-- A window's options, the main window's and a `Window`'s alike, are one
-  encoding (`ops.WindowConfig`: the `WindowOptions` command's args, the
-  `Window` kind's `Config` prop), set before it opens and read by one
-  decoder in each desktop host (`ops.DecodeWindowConfig`, and the web
-  host's): its content's size, least and most size, its place (its
-  frame's top left in points from the main display's top left, or
-  centered), abilities taken away (resizing, the minimize, maximize and
-  close buttons), always on top, a hidden title bar (`TitleBarHidden`:
-  the content under it, the window buttons over the content, the title
-  bar's height reported as the window's environment's `SafeTop`, so
-  `SafeArea` keeps clear of a Mac's traffic lights as of a phone's
-  notch), a background or none (transparent), hidden, maximized or full
-  screen as it opens, left out of the taskbar, a state key, and a
-  `Window`'s parent (the node of the window it's declared in: a child
-  stays above it, a modal one blocks it). The options that change later
-  are the handle's actions, not props, as a window's place and size are
-  the user's as much as the app's.
-- `ui.UseWindow()` is the handle (`*ui.WindowHandle`) of the window the
-  component is in, from a context each window provides (the root the
-  main window's, each `Window` its own), and `ui.MainWindow()` the main
-  window's from anywhere: a tray icon's menu brings the window back with
-  `Focus`. Its actions are one `WindowAction` command (u8 action, two
-  floats for a size or a place) to the root or the `Window` node: show,
-  hide, focus, minimize, maximize, restore, full screen, center, size,
-  place, always on top, close. Its state is signals (`Visible`,
-  `Focused`, `Minimized`, `Maximized`, `Fullscreen`, `AlwaysOnTop`,
-  `Position`, `Size`), set from the host's `WindowState` event (the
-  frame's top left, the content's size, six bits), which a host sends
-  only while the core listens: a handle asked for (`UseWindow`,
-  `MainWindow`, a `Window`'s `Handle`) listens; the rest cost nothing.
-  The host reports at once as the core starts listening, then on every
-  change, the user's or the app's, deduplicated; equal values don't
-  re-run readers, as any signal's. Mobile hosts have no windows: the
-  handle sends nothing there.
-- Closing asks the app: `OnCloseRequest` (`WindowProps`',
-  `WindowOptions`', and any component's through the handle, for as long
-  as its owner lives) makes the core listen for `CloseRequest` on the
-  window. A host whose window the core listens on reports the user's
-  closing with it and keeps the window open; the core asks every
-  function, and closes the window if all agree: a `Window` as the user's
-  closing does (`Open` false, `OnClose`), the main window with
-  `WindowAction` Close, which the host does as its own closing would
-  (the app quits). `Destroy` closes without asking, what a refusal's
-  dialog calls once the user has chosen. Quitting the app as a whole
-  (⌘Q, the session ending) doesn't ask the windows.
-- Where windows were is the host's, by the key the app gives (`StateKey`;
-  the main window's is `main` when it gives none, a `Window`'s isn't kept
-  without one): a Mac's frame autosave, the Windows host's rectangle in
-  pixels with its DPI and whether it was maximized, the Linux host's
-  size and whether it was maximized, in one `asuka-window.json` per app
-  (`internal/winstate`, which reads the file an older host kept for the
-  main window alone as the main window's), and on the web a panel's
-  place in `localStorage`.
+- The main window holds the root. The app block's first `Window` is
+  the main window (the lowering calls `ui.main_window` on it before its
+  keys): its keys are the main window's options, sent to the root as
+  the `WindowOptions` command as it mounts, its title's later changes
+  as `WindowTitle`; its children are the root's content, built at once.
+  Its `open` (true unless set) shows and hides it with `WindowAction`
+  Show and Hide; the core follows the root's `WindowState` while `open`
+  is bound, so the user closing it in an app that keeps running (the
+  host hides it) writes false. With no options, a desktop host opens it
+  at 800 by 600 points, a desktop window's size (Electron's default),
+  not a phone's, centered. Where the user left it, remembered by the
+  host, wins over its size and place.
+- Any other `Window` is a window of its own while `open` is true, built
+  as a `Sheet` is: its children are a builder (`ui.lazy`), built under
+  an owner of their own as it opens and disposed as it closes; its view
+  is a `Window` node, a host-sized layout root whose `Environment` the
+  host reports (it follows the user resizing it; its Scale is the
+  window's, which on desktop can differ from the main window's: the
+  core measures and snaps the frames in it at that scale). `Present`
+  opens it (shown, unless its config says hidden), `Destroy` closes it,
+  and the user closing it sends `Dismissed`, which writes `open` false
+  and raises `close` (or `CloseRequest`, while something asks). A
+  `Window` declared in its content closes with it. Mobile hosts can't
+  show one; the core makes none there only because nothing opens one.
+- A window's options, the main window's and a `Window`'s alike, are its
+  keys (`width`, `height`, `minWidth`…, `x`, `y`, `center`, `resizable`,
+  `minimizable`, `maximizable`, `closable`, `alwaysOnTop`, `hidden`,
+  `skipTaskbar`, `transparent`, `maximized`, `fullScreen`, `titleBar`,
+  `background`, `child`, `modal`, `panel`, `flyout`, `fitContent`,
+  `clickThrough`, `menuBar`, `stateKey`), encoded as one
+  `ops.WindowConfig` (the `WindowOptions` command's args, the `Window`
+  kind's `Config` prop) and read by one decoder in each desktop host:
+  its content's size, least and most size, its place (its frame's top
+  left in points from the main display's top left, or centered),
+  abilities taken away, always on top, a hidden title bar
+  (`TitleBarHidden`: the content under it, the window buttons over the
+  content, the title bar's height reported as the window's
+  environment's `SafeTop`, so `SafeArea` keeps clear of a Mac's traffic
+  lights as of a phone's notch), a background or none (transparent),
+  hidden, maximized or full screen as it opens, left out of the
+  taskbar, a state key, and a `Window`'s parent (the node of the window
+  it's declared in: a child stays above it, a modal one blocks it).
+  They're read as it opens; `title`, `edited`, `file` and `flyout` are
+  sent again as their bindings change, and `alwaysOnTop` and
+  `clickThrough` as `WindowAction`s. The rest that changes later are
+  the handle's actions, not keys, as a window's place and size are the
+  user's as much as the app's.
+- A window's handle is a `Ref`: `Window(…) as w` (a `Ref` of any other
+  view names the window that view is in; none, the window the calling
+  code is in, a context each window provides, else the main window).
+  Its actions are one `WindowAction` command (u8 action, two floats for
+  a size or a place) to the `Window` node or, for the main window, the
+  root: `w.show()`, `hide()`, `focus()` (`ui.focus` of a `Window`),
+  `minimize()`, `maximize()`, `restore()`, `setFullScreen(on)`,
+  `center()`, `setSize(w, h)`, `setPosition(x, y)`, `setAlwaysOnTop`,
+  `setClickThrough`, and `close()`, which is the user's closing (it
+  asks first). Show and Focus on a closed `Window` open it, through its
+  `open`. Its state (`w.visible`, `focused`, `minimized`, `maximized`,
+  `fullScreen`, `alwaysOnTop`, `clickThrough`, `position`, `size`,
+  `windowState`) is one signal per window, set from the host's
+  `WindowState` event (the frame's top left, the content's size, seven
+  bits), which a host sends only while the core listens: the core
+  listens from the first read of a handle's state on; the rest cost
+  nothing. The host reports at once as the core starts listening, then
+  on every change, the user's or the app's; the core drops a report
+  equal to the last, so readers don't re-run. Mobile hosts have no
+  windows: the handle's actions go to the root, which they ignore.
+- Closing asks: what asks are a window's `WindowCloseGuard`s (while
+  their `when` holds, they run their `closeRequest` and the window
+  stays) and the `onCloseRequest(fn() -> bool)` functions registered in
+  it, each for as long as its owner lives; then a `Window`'s own `on
+  closeRequest` (the main window's too) takes the closing over. While
+  any of these exists, the core listens for `CloseRequest` on the
+  window's node (the root for the main window): a host whose window the
+  core listens on reports the user's closing with it and keeps the
+  window open. The core asks each, and closes the window if all agree
+  and no handler took it: a `Window` as the user's closing does (`open`
+  false, `close`), the main window with `WindowAction` Close, which the
+  host does as its own closing would (the app quits, or hides it while
+  it keeps running). `closeWindow()` closes without asking, what a
+  guard's question calls once the user has chosen. Quitting the app as
+  a whole (⌘Q, the session ending) doesn't ask the windows: it asks the
+  app (below).
+- Where windows were is the host's, by the key the app gives
+  (`stateKey`; the main window's is `main` when it gives none, a
+  `Window`'s isn't kept without one): a Mac's frame autosave, the
+  Windows host's rectangle in pixels with its DPI and whether it was
+  maximized, the Linux host's size and whether it was maximized, in one
+  `asuka-window.json` per app, and on the web a panel's place in
+  `localStorage`.
+- A window's keys: `WindowKeys { keys }` gives the window it's in
+  (`Keys` on its `Window` node, or the root's, merged with
+  `useKeys`') keys that no view takes, the last registration's winning,
+  for as long as its owner lives.
 
-- `ui.MenuBar(menus)` gives the app its menus, with keyboard shortcuts
-  (`ui.Shortcut{Key, Mods}`, `ui.Cmd("s").With(ui.Shift)`; `Primary` is
-  ⌘ on macOS and Ctrl on Windows). It's a fragment that follows its
-  accessor: the core encodes the menus into one `MenuBar` command to
-  the root and sends it only when the encoding changed; the host makes
-  its menu bar again, and a chosen item (a click or its shortcut) comes
-  back as `Action` on the root with the item's index among all the
-  menus' items. The last `MenuBar` mounted shows; disposed, the one
-  before. Shortcuts are menu items' because that's how both platforms
-  route them (key equivalents, accelerators), and how users find them.
-  Mobile hosts ignore it.
-- A `MenuItem` with a `Submenu` opens a menu of those items. Items are
-  numbered depth first (a submenu's items after the item that opens it;
-  separators and submenus count), and `Action` carries that number. A
-  `MenuItem` with a `Role` is the host's: `MenuRoleQuit` (`ui.MenuQuit`)
-  quits the app as the system quits it ("Quit Notes", ⌘Q on a Mac), its
-  title the host's unless the item has one, and is never reported;
-  `MenuRoleClose` closes the window in use as its close button does
-  (⌘W, Ctrl+W); `MenuRoleOpenRecent` is a Mac's Open Recent submenu,
-  the host's, and elsewhere the item's own (Documents, below).
+- `MenuBar { Menu(title) { MenuItem(title) { shortcut, role, disabled,
+  checked; on press } … } }` gives the app its menus, with keyboard
+  shortcuts (a `Shortcut`'s key and its `primary`, `shift`, `alt`,
+  `control`; `primary` is ⌘ on macOS and Ctrl elsewhere). `MenuItem`s
+  in an item make a submenu, `MenuSeparator()` a line. None makes a
+  view: a `MenuBar` builds its children (`ui.lazy`) under an owner of
+  its own, outside the tree, where a `Menu` is a menu bar's menu (a
+  context the `MenuBar` provides: elsewhere `Menu` is the context menu
+  element), and marks what it holds as its, so a key set on an item, or
+  an item a `for` or an `if` adds or removes, syncs it at the next
+  flush. The last `MenuBar` shown is the app's: the core encodes its
+  menus into one `MenuBar` command to the root and sends it only when
+  the encoding changed; the host makes its menu bar again, and a chosen
+  item (a click or its shortcut) comes back as `Action` on the root
+  with the item's index among all the menus' items. Disposed, the one
+  before shows; with none left, an empty bar is sent. Shortcuts are
+  menu items' because that's how both platforms route them (key
+  equivalents, accelerators), and how users find them. Mobile hosts
+  ignore it.
+- Items are numbered depth first (a submenu's items after the item
+  that opens it; separators and submenus count), and `Action` carries
+  that number. A `MenuItem`'s `role`: `.destructive` sets the item's
+  destructive flag; `.quit` (`MenuRoleQuit`) quits the app as the
+  system quits it ("Quit Notes", ⌘Q on a Mac), its title the host's
+  unless the item has one, and is never reported; `.close`
+  (`MenuRoleClose`) closes the window in use as its close button does
+  (⌘W, Ctrl+W); `.openRecent` (`MenuRoleOpenRecent`) is a Mac's Open
+  Recent submenu, the host's, and elsewhere the item's own.
 
-**Menus, one encoding** (`ops/menu.go`): the menu bar, a tray icon's
-menu and the Dock menu are the same bytes: a menu is u32 count, then per
-item u8 flags (separator, disabled, checked, destructive, submenu), its
-title, its shortcut's key and modifiers, u8 role, and with the submenu
-flag the submenu, a menu. `ui` encodes (`ui.EncodeMenu`, for packages
-that show menus through a module) and finds an item by its number
-(`ui.MenuItemAt`); the desktop hosts decode with `ops.DecodeMenu` and
-`ops.DecodeMenuBar`, which number the items; the web host reads the
-menu bar's shortcuts with the same layout.
+**Menus, one encoding** (`ops/menu.go`, core/src/ops/payload.c's
+`ak_append_menu_bar`): the menu bar, a tray icon's menu and the Dock
+menu are the same bytes: a menu is u32 count, then per item u8 flags
+(separator, disabled, checked, destructive, submenu), its title, its
+shortcut's key and modifiers, u8 role, and with the submenu flag the
+submenu, a menu. The core encodes the menu bar (menubar.c);
+`asuka/tray` encodes its menus in Asuka (an `Action`'s `.section` its
+items between separators, under a disabled item of its title when it
+has one) and finds a chosen item by its number the same way; the
+desktop hosts decode with `ops.DecodeMenu` and `ops.DecodeMenuBar`
+(`ak_decode_menu`, `ak_decode_menu_bar` in C), which number the
+items; the web host reads the menu bar's shortcuts with the same
+layout.
 
-**The tray, the Dock menu, background apps** (`tray`, `app`):
+**The tray, the Dock menu, background apps, quitting** (std/tray,
+core/src/ui/lifecycle.c):
 
-- `tray.Show(tray.Props{Image, Symbol, Template, Title, Tooltip, Menu,
-  OnClick, ID})`, called in a component, shows an icon in the tray while
-  its owner lives: the menu bar on macOS, the notification area on
-  Windows, the panel's status icons on Linux. It follows its accessors;
-  disposed, the icon goes. `tray.DockMenu(items)` adds items to the app
-  icon's menu, the last mounted showing, as `MenuBar`. Neither is a
-  node: they talk to the host through a module, `tray`, as other
-  packages do (`ui.Call`): `set` sends an icon whole (its strings and its
-  menu, only when its encoding changed), `remove` takes it away, `dock`
-  sets the Dock menu, and `next`, asked again each time it answers,
-  reports a click or a chosen item (an icon's id, 0 for the Dock menu,
-  and the item's number). The asking runs on the main thread, a `Call`
-  from the last one's answer, while an icon or a Dock menu is mounted;
-  the last one going sends `stop`. A host without the module (phones,
-  the web) answers with an error, and the package stops asking: there,
-  `Show` and `DockMenu` do nothing and `tray.Supported` is false.
-- An icon is an `Image` (an asset or a file, drawn 16 points tall) or a
-  `Symbol` (an SF Symbol name, drawn as each host draws `ui.Symbol`),
-  and a template when it's a Symbol or `Template` says so: black on
-  transparent, which the platform colors as its own icons. Without
-  `OnClick` a click opens the menu; with it, a click is `OnClick` and the
-  menu opens on a secondary click.
+- `tray.Tray(id) { image, symbol, template, title, tooltip, menu:
+  [Action]; on click }` shows an icon in the tray while it's shown:
+  the menu bar on macOS, the notification area on Windows, the panel's
+  status icons on Linux. Its keys are bindings; disposed, the icon
+  goes. `tray.DockMenu { items }` adds items to the app icon's menu,
+  the last shown showing, as `MenuBar`. Neither is a node: they're
+  plain Asuka over the hosts' `tray` module (`asuka/platform`'s `call`
+  and `send`): `set` sends an icon whole (u32 its number, 1 and up, u8
+  flags: 1 template, 2 clickable, strings image, symbol, title, tooltip
+  and id, then its menu), again only when its encoding changed;
+  `remove` (u32 its number) takes it away; `dock` (a menu) sets the
+  Dock menu; and `next`, asked again each time it answers, reports a
+  click or a chosen item (u32 an icon's number, 0 for the Dock menu, u8
+  1 a click or 2 an item, u32 the item's number). One `next` is
+  outstanding while any icon or Dock menu shows (a `live` stream the
+  icons read); the last one going cancels it, which sends `stop`, and
+  the host answers the waiting `next` with an error. A host without the
+  module (phones, the web) answers with an error, and the package stops
+  asking: there, `Tray` and `DockMenu` show nothing and
+  `tray.supported()` is false. `tray.anchor(id)` is a flyout's anchor:
+  `Anchor(tray: n)`, the icon's number, followed.
+- An icon is an `image` (an asset or a file, drawn 16 points tall) or a
+  `symbol` (an SF Symbol name, drawn as each host draws `Symbol`), and
+  a template when it's a symbol or `template` says so: black on
+  transparent, which the platform colors as its own icons. Without `on
+  click` (an event's name read as a value is whether the caller handles
+  it) a click opens the menu; with it, a click is `click` and the menu
+  opens on a secondary click.
 - macOS: an `NSStatusItem` (variable length; `ID` its autosave name,
   so it comes back where the user ⌘-dragged it), its button the template
   image and the title in the menu bar's font with monospaced digits;
@@ -2700,20 +2743,51 @@ menu bar's shortcuts with the same layout.
   KDE's task manager). Keeping running holds the `GApplication`; closing
   the main window hides it. The menu bar's submenus are GMenu submenus;
   Quit takes Ctrl+Q and quits as SIGTERM does.
-- `app.KeepRunning()` keeps a desktop app running when its last window
-  closes: closing the main window hides it, its root mounted, until the
-  app shows it again (on macOS also the Dock icon, clicked with no window
-  showing: `applicationShouldHandleReopen:hasVisibleWindows:`; on Linux,
-  the app launched again, `activate`). `app.RunInBackground()` (and asuka.toml's
-  `background = true`, which sets it with `-X` and, on macOS, puts
-  `LSUIElement` in the Info.plist so the Dock icon never shows) also
-  leaves the main window hidden at launch, and on macOS makes the app an
-  accessory (no Dock icon, not in ⌘Tab; a `Window` it opens activates
-  it). Windows and Linux have no app without a taskbar button but one
-  without a window showing: that's theirs. Automation runs
-  (`ASUKA_SNAPSHOT`) still show the main window; on macOS they write
-  each tray icon's button beside it (`file.tray.png`) and, with
-  `ASUKA_DUMP`, the icons' and the Dock's menus in the dump.
+- asuka.toml's `keepRunning = true` keeps a desktop app running when
+  its last window closes: closing the main window hides it, its root
+  mounted, until the app shows it again (on macOS also the Dock icon,
+  clicked with no window showing:
+  `applicationShouldHandleReopen:hasVisibleWindows:`; on Linux, the
+  app launched again, `activate`). `background = true` (which on macOS
+  also puts `LSUIElement` in the Info.plist so the Dock icon never
+  shows) also leaves the main window hidden at launch, and on macOS
+  makes the app an accessory (no Dock icon, not in ⌘Tab; a `Window` it
+  opens activates it). Both reach the host in the settings beside its
+  executable (`asuka-app.json`'s `keepRunning` and `background`), read
+  before the app mounts. Windows and Linux have no app without a
+  taskbar button but one without a window showing: that's theirs.
+  Automation runs (`ASUKA_SNAPSHOT`) still show the main window; on
+  macOS they write each tray icon's button beside it (`file.tray.png`)
+  and, with `ASUKA_DUMP`, the icons' and the Dock's menus in the dump.
+- Quitting: `quit()` sends the `Quit` command to the root (u8 flags, 1
+  relaunch: `relaunch()`), which a desktop host does as the user's
+  Quit (⌘Q, its menu's `.quit` item): it asks the app first, then
+  closes the windows and ends the process (Lifecycle Background first,
+  as always); with the relaunch flag, once the process has ended it
+  starts the app again with the same arguments (a Mac app's bundle
+  through Launch Services), unless the quit was canceled or the session
+  is ending. Phones and the web ignore it.
+- Asking: however a quit starts (the user's Quit, the Dock's, closing
+  the main window where that quits, `Quit`, SIGINT or SIGTERM, the
+  session ending), the host calls `asuka_quit_request(ending)` once,
+  synchronously on the main thread, before it goes on: the core runs
+  the app's `on quit(e)` handlers (the app block's and `onQuit`'s,
+  each for as long as its owner lives) with a `QuitEvent`
+  (`sessionEnding`, `cancel()`, `canceled()`), flushes what they
+  changed (an alert to show), and returns 1 if one canceled, which
+  never happens while ending. A canceled quit leaves the app running
+  (macOS: `terminateCancel`); a later `quit()` asks again. A host asks
+  once per quit: a quit already allowed only finishes.
+- Another launch: on Windows and Linux an app with an `id` runs once (a
+  mutex of the user's session and `WM_COPYDATA`; a unique
+  `GApplication` over D-Bus), and the running one gets the second
+  launch's arguments and working directory as the `SecondInstance`
+  event to the root (u32 count, the arguments, the directory, each a
+  u32-length string), after bringing itself to the front and reporting
+  the files and URLs among them as it does a launch's. The core runs
+  the app block's `on secondInstance(args, dir)` and
+  `onSecondInstance`'s. A Mac runs an app once through Launch Services
+  and passes files, not arguments: it never sends it.
 
 **Flyouts, panels, windows sized to their content, click-through**
 (`ui`, `tray`, `apps`; `internal/flyout`):
@@ -2721,16 +2795,16 @@ menu bar's shortcuts with the same layout.
 - Kinds of `Window`, not kinds of their own: `ops.WindowConfig`'s flags
   `WindowFlyout`, `WindowPanel`, `WindowFitContent` and
   `WindowClickThrough` (bits 14 to 17), set before the window opens
-  (`WindowProps`' `Flyout`, `Panel`, `FitContent`, `ClickThrough`; the
-  main window's `WindowOptions` take all but `Flyout`). A panel also
+  (a `Window`'s keys `flyout`, `panel`, `fitContent`, `clickThrough`;
+  the main window takes all but `flyout`). A panel also
   sets always on top, skip the taskbar, no minimize or maximize; a
   flyout skip the taskbar and its `Parent`, the window it's declared in.
 - A flyout's anchor is the `Window` kind's `Flyout` prop (`ops.Flyout`:
   u32 tray icon, f32 x, y, width, height of a rectangle of its parent's
   content, u8 `Placement`, f32 gap), sent before `Present` and again as
-  its accessor changes (placed again). A tray icon is `asuka/sdk/tray`'s id
-  for it (the "set" call's), which each host's tray module keys its
-  icons by: `tray.Show` returns an `Icon`, whose `Anchor` is that id.
+  its binding's encoding changes (placed again). A tray icon is
+  `asuka/tray`'s number for it (the "set" call's), which each host's
+  tray module keys its icons by: `tray.anchor(id)` is that number.
   `internal/flyout.Place` is one placement for the desktop hosts: on
   the side the placement names, flipped to the other side where that
   has no room and the other has, lined up along it (flipped to the other
@@ -2753,10 +2827,11 @@ menu bar's shortcuts with the same layout.
   flyout placed again, other windows keeping their top left; a window
   that opens shown with it shows on its first Fit, so never at another
   size first. The environment the host then reports doesn't lay the
-  content out again (the content isn't laid out at it). The tab on the
-  web isn't fitted.
+  content out again (the content isn't laid out at it). The main window
+  sized to its content is the root laid out so, its Fit sent to the
+  root (core/src/ui/root.c). The tab on the web isn't fitted.
 - Click-through is `WindowAction` ClickThrough and NotClickThrough, and
-  the `WindowState` bit 64 (`WindowHandle.ClickThrough`).
+  the `WindowState` bit 64 (`w.clickThrough`).
 - macOS: flyouts and panels are `AsukaPanel`s, `NSPanel`s made
   nonactivating and borderless from the start (the window server learns
   that a window never activates its app only from the style it's made

@@ -765,12 +765,12 @@ it, else of the component calling it, else the main window.
 
 ## Menus
 
-A menu shows a list of `ui.Action`s, the same type as alert buttons and
-bar buttons, with an optional `Icon` beside each title. There are two:
+A menu shows a list of `Action`s, the same type as alert buttons and
+bar buttons, with an optional `icon` beside each title. There are two:
 
-- A `ui.Button` with `Menu` opens it when tapped.
-- `ui.Menu` puts one on any content: on a tap, or with `LongPress` as a
-  context menu.
+- A `Button` with `menu` opens it when tapped.
+- `Menu { actions: […] }` puts one on any content: on a tap, or with
+  `longPress: true` as a context menu.
 
 On iOS it's a `UIMenu`, and on Android a `PopupMenu`. On a Mac it's an
 `NSMenu`, on Windows a popup menu (a destructive item red, as on a Mac),
@@ -778,50 +778,62 @@ on Linux a `GtkPopoverMenu`, and on the web a popover. On the desktops
 and the web a context menu opens with a right-click (a secondary
 click), and on Windows, Linux and the web with a long press too. Both are in
 [Components](components.md#menus). Rows of a `List` have swipe actions
-too: see [Lists](components.md#lists).
+too: see [Lists](components.md#lists). A `Menu` in a `MenuBar` is one of
+the app's menus instead ([below](#the-menu-bar-and-keyboard-shortcuts)).
 
 ## Windows
 
-A desktop app has a main window, which holds what `app.Run` shows. To
-give it a title, a size to open at and a least size, start the app with
-`app.RunWindow`:
+A desktop app has a main window, which holds what its `app` block
+shows. The block's `Window` is the main window: its keys are the main
+window's options, and its children what it shows:
 
-```go
-func main() {
-	app.RunWindow(ui.WindowOptions{Width: 420, Height: 640, MinWidth: 320, MinHeight: 360}, App)
+```asuka
+app {
+  Window {
+    title: "Notes"
+    width: 420
+    height: 640
+    minWidth: 320
+    minHeight: 360
+    Stack { NotesScreen() }
+  }
 }
 ```
 
 Sizes are in points, of the window's content. With none, the main window
 opens at 800 by 600 points, centered, and the user can't make it smaller
-than 320 by 320. `Title` is the app's name when it's empty; it's an
-accessor, so it can follow the app's language. The window comes back
+than 320 by 320. Its `title` is the app's name when it's empty; it's a
+binding, so it can follow the app's language. The window comes back
 where the user left it (see [below](#where-windows-were)), which wins
-over `Width`, `Height`, `X` and `Y`. iOS and Android ignore the options.
+over `width`, `height`, `x` and `y`. iOS and Android ignore the options.
+The main window shows unless its `open` is false: `bind open: shown`
+shows and hides it as `shown` changes, and the user closing it, in an
+app that keeps running, writes false.
 
-`ui.Window` opens another window while `Open` is true, as `ui.Sheet`
-opens a sheet:
+Any other `Window` opens a window of its own while `open` is true, as a
+`Sheet` opens a sheet:
 
-```go
-stats := signal.New(false)
-return ui.Column(nil,
-	ui.Button(ui.ButtonProps{Title: ui.Val("Statistics"), OnPress: func() { stats.Set(true) }}),
-	ui.Window(ui.WindowProps{
-		Open:  stats,
-		Title: ui.Val("Statistics"),
-		Width: 280, Height: 140,
-		Content: func() ui.Node {
-			return ui.Text(signal.Func(func() string { return fmt.Sprintf("%d notes", len(notes.Get())) }))
-		},
-	}),
-)
+```asuka
+component Notes {
+  state stats = false
+  Column {
+    Button("Statistics") { on press { stats = true } }
+    Window {
+      bind open: stats
+      title: "Statistics"
+      width: 280
+      height: 140
+      Text("{notes.count()} notes")
+    }
+  }
+}
 ```
 
-- `Content` is built when the window opens and disposed when it closes.
-  `ui.UseEnvironment` in it is the window's: its size follows the user
-  resizing it, and its scale is its display's.
-- The user closing it sets `Open` to false and calls `OnClose`. Setting
-  `Open` to false from code closes it without calling `OnClose`.
+- Its children are built when the window opens and disposed when it
+  closes. `environment()` in it is the window's: its size follows the
+  user resizing it, and its scale is its display's.
+- The user closing it writes `open` false and raises `close`. Setting
+  `open` to false from code closes it without `close`.
 - It opens at 800 by 600 points unless it says otherwise, cascaded
   from the window in use on a Mac and on Windows. On Linux the desktop
   places it, as GTK 4 leaves to it (GNOME and KDE put a new window where
@@ -835,134 +847,164 @@ return ui.Column(nil,
 | Linux | an `AdwWindow`, with its own header bar |
 | The web | a panel in the page, which the user can move and resize |
 
-A phone has no windows: opening one on iOS or Android panics. A
-component that offers one checks `ui.Platform()` first,
-or opens it only from what only a desktop has, as the menu bar below.
+A phone has no windows: a `Window` there shows nothing. A component that
+offers one offers it from what only a desktop has, as the menu bar below.
 
 ### Options
 
-`WindowOptions` (the main window's) and `WindowProps` (a `Window`'s)
-take the same options for how a window opens:
+The main window and a `Window` take the same keys for how a window
+opens; they're read as it opens (the ones that change later are the
+handle's actions, below, but `title`, `alwaysOnTop`, `clickThrough`,
+`flyout`, `edited` and `file` follow their bindings):
 
-| Option | |
+| Key | |
 |---|---|
-| `Width`, `Height` | its content's size, in points |
-| `MinWidth`, `MinHeight`, `MaxWidth`, `MaxHeight` | the least and most the user can size it to; 0: the host's least, no most |
-| `X`, `Y` | its frame's top left on the screen, in points from the main display's top left; with both 0 the main window is centered and a `Window` cascades (`Center` centers it) |
-| `DisableResize`, `DisableMinimize`, `DisableMaximize`, `DisableClose` | take the user's abilities away: resizing it, and its buttons |
-| `AlwaysOnTop` | keeps it above other apps' windows |
-| `TitleBar` | `ui.TitleBarHidden` lays the content out under the title bar, to the window's top edge, the window buttons over it |
-| `Background`, `Transparent` | the window's color behind its content, or none, so what's behind it shows where the content draws nothing |
-| `Hidden` | opens it without showing it: `Show` shows it |
-| `SkipTaskbar` | leaves it out of the taskbar (Windows) and the Window menu (macOS) |
-| `Maximized`, `Fullscreen` | opens it so |
-| `StateKey` | where its place is kept, see [below](#where-windows-were) |
-| `FitContent` | sizes it to its content, as that changes, within its least and most size ([The desktop](desktop.md#windows-sized-to-their-content)) |
-| `Panel` | a launcher's or a palette's window: floating over every app, taking the keyboard without bringing the app forward, closed by Escape or a click elsewhere ([Panels](desktop.md#panels-and-launchers)) |
-| `ClickThrough` | lets the mouse go through it to what's behind ([Click-through](desktop.md#click-through-windows)) |
-| `Flyout` | a `Window`'s: hangs it from a tray icon or a rectangle of its parent ([Flyouts](desktop.md#flyouts)) |
-| `Child`, `Modal` | a `Window`'s: see [below](#child-and-modal-windows) |
-| `MenuBar`, `Edited`, `File` | a `Window`'s that shows a document: the app's menu bar in it (Windows, Linux), the dot in a Mac's close button or a `*` before the title, the file's icon in a Mac's title bar; [`asuka/sdk/document`](desktop.md#documents) sets them |
+| `width`, `height` | its content's size, in points |
+| `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | the least and most the user can size it to; 0: the host's least, no most |
+| `x`, `y` | its frame's top left on the screen, in points from the main display's top left; with both 0 the main window is centered and a `Window` cascades (`center: true` centers it) |
+| `resizable`, `minimizable`, `maximizable`, `closable` | false takes the user's abilities away: resizing it, and its buttons |
+| `alwaysOnTop` | keeps it above other apps' windows |
+| `titleBar` | `.hidden` lays the content out under the title bar, to the window's top edge, the window buttons over it |
+| `background`, `transparent` | the window's color behind its content, or none, so what's behind it shows where the content draws nothing |
+| `hidden` | opens it without showing it: `w.show()` shows it |
+| `skipTaskbar` | leaves it out of the taskbar (Windows) and the Window menu (macOS) |
+| `maximized`, `fullScreen` | opens it so |
+| `stateKey` | where its place is kept, see [below](#where-windows-were) |
+| `fitContent` | sizes it to its content, as that changes, within its least and most size ([The desktop](desktop.md#windows-sized-to-their-content)) |
+| `panel` | a launcher's or a palette's window: floating over every app, taking the keyboard without bringing the app forward, closed by Escape or a click elsewhere ([Panels](desktop.md#panels-and-launchers)) |
+| `clickThrough` | lets the mouse go through it to what's behind ([Click-through](desktop.md#click-through-windows)) |
+| `flyout` | a `Window`'s: hangs it from a tray icon or a rectangle of its parent ([Flyouts](desktop.md#flyouts)) |
+| `child`, `modal` | a `Window`'s: see [below](#child-and-modal-windows) |
+| `menuBar`, `edited`, `file` | a window that shows a document: the app's menu bar in it (Windows, Linux), the dot in a Mac's close button or a `*` before the title, the file's icon in a Mac's title bar |
 
 With a hidden title bar the content goes to the top edge, under the
 window's buttons (a Mac's traffic lights, Windows' caption buttons, the
 header bar's on Linux), and the window's environment has the title
-bar's height as `SafeTop`: a `ui.SafeArea` keeps clear of the buttons,
+bar's height as `safeTop`: a `SafeArea` keeps clear of the buttons,
 and a background, a sidebar or a picture can go under them:
 
-```go
-app.RunWindow(ui.WindowOptions{TitleBar: ui.TitleBarHidden, Background: colors.RGB(0x1e, 0x1e, 0x1e)}, func() ui.Node {
-	return ui.SafeArea(ui.Style{Grow: 1, Padding: ui.All(16)}, editor())
-})
+```asuka
+app {
+  Window {
+    titleBar: .hidden
+    background: #1e1e1e
+    SafeArea {
+      grow: 1
+      padding: 16
+      Editor()
+    }
+  }
+}
 ```
 
 The strip under the buttons still drags the window, where the content
 takes no clicks. On Windows the main window has no menu bar under a
 hidden title bar; its shortcuts still work.
 
-A window that shows only once it's ready opens `Hidden` and shows from
+A window that shows only once it's ready opens `hidden` and shows from
 code: its content is built, laid out and drawn meanwhile, so it shows
 whole, never empty. An app that starts in the background (a tray icon's)
-starts its main window hidden and shows it from its menu.
+starts its main window with `open` false and shows it from its menu.
 
 ### Controlling a window
 
-`ui.UseWindow()` is the handle of the window a component is in: the
-`Window` whose content it's in, or the main window. `ui.MainWindow()` is
-the main window's from anywhere on the main thread (a tray icon's menu,
-a global shortcut). A `Window`'s handle from outside it is one the app
-makes (`ui.NewWindowHandle()`) and gives it as `Handle`.
+`Window as w` names a window's handle, a `Ref` of the `Window`: the
+enclosing view's elements see it, and pass it on to components. A `Ref`
+of any other view acts on the window that view is in.
 
-```go
-w := ui.UseWindow()
-ui.Button(ui.ButtonProps{Title: ui.Val("Full Screen"), OnPress: func() { w.SetFullscreen(true) }})
-ui.Text(signal.Func(func() string {
-	if w.Focused().Get() {
-		return "Typing here"
-	}
-	return "In the background"
-}))
+```asuka
+component Editor(w: Ref) {
+  Column {
+    Button("Full Screen") { on press { w.setFullScreen(true) } }
+    Text(if w.focused { "Typing here" } else { "In the background" })
+  }
+}
+
+component Main {
+  state open = false
+  Window as w {
+    bind open: open
+    title: "Editor"
+    Editor(w: w)
+  }
+}
 ```
 
-- `Show` and `Hide` show and hide it; hidden, it stays open, its content
-  living on. `Focus` shows it if it's hidden or minimized, brings it to
-  the front with the keyboard in it, and brings the app to the front:
-  how a tray icon's menu brings a window back (Windows lets an app come
-  to the front after the user's input to it, as a click on its tray icon
-  is). On a closed `Window`, `Show` and `Focus` open it.
-- `Minimize`, `Maximize` and `Restore` (from either); `SetFullscreen`.
-- `SetSize` (its content's, in points), `SetPosition` (its frame's top
-  left, from the main display's top left), `Center`.
-- `SetAlwaysOnTop` keeps it above other apps' windows, or not.
-- `SetClickThrough` lets the mouse go through it, or not.
-- `Close` closes it as the user does, asking first (below); `Destroy`
-  closes it without asking. The main window closing quits the app.
-- Its state is signals that follow the user's changes as well as the
-  app's: `Visible`, `Focused`, `Minimized`, `Maximized`, `Fullscreen`,
-  `AlwaysOnTop`, `ClickThrough`, `Position` and `Size`. Read them in an
-  effect or a `StyleFunc`. A minimized window, or one behind others, is
-  still visible.
+- `w.show()` and `w.hide()` show and hide it; hidden, it stays open, its
+  content living on. `w.focus()` shows it if it's hidden or minimized,
+  brings it to the front with the keyboard in it, and brings the app to
+  the front: how a tray icon's menu brings a window back (Windows lets
+  an app come to the front after the user's input to it, as a click on
+  its tray icon is). On a closed `Window`, `show()` and `focus()` open it.
+- `w.minimize()`, `w.maximize()` and `w.restore()` (from either);
+  `w.setFullScreen(on)`.
+- `w.setSize(width, height)` (its content's, in points),
+  `w.setPosition(x, y)` (its frame's top left, from the main display's
+  top left), `w.center()`.
+- `w.setAlwaysOnTop(on)` keeps it above other apps' windows, or not.
+- `w.setClickThrough(on)` lets the mouse go through it, or not.
+- `w.close()` closes it as the user does, asking first (below);
+  `closeWindow()` closes the window the calling code is in (the main one
+  outside every `Window`) without asking. The main window closing quits
+  the app, unless it keeps running.
+- Its state follows the user's changes as well as the app's: `w.visible`,
+  `w.focused`, `w.minimized`, `w.maximized`, `w.fullScreen`,
+  `w.alwaysOnTop`, `w.clickThrough`, `w.position` and `w.size` (each an
+  `(x, y)` or `(width, height)`), and all of it at once as
+  `w.windowState`. A binding that reads them follows them; the host
+  reports a window's state only once something reads it. A minimized
+  window, or one behind others, is still visible.
 
-The methods act on the window at the flush, as signal writes do. On a
-phone they do nothing, and the state reads visible and focused.
+The actions act on the window at the flush, as state writes do. On a
+phone they do nothing, and the state reads as nothing shown.
 
 ### Asking before a window closes
 
-`OnCloseRequest` is asked when the user closes the window (its close
-button, ⌘W, Alt+F4, the Dock's or taskbar's menu) or the app calls
-`Close`: returning false keeps it open, to ask about unsaved changes
-first. Each component that has something to lose asks for itself, while
-it's mounted:
+The user closing a window (its close button, ⌘W, Alt+F4, the Dock's or
+taskbar's menu), or `w.close()`, asks first:
 
-```go
-w := ui.UseWindow()
-w.OnCloseRequest(func() bool {
-	if !doc.Dirty() {
-		return true
-	}
-	ui.Alert(ui.AlertProps{Title: "Save changes?", Actions: []ui.Action{
-		{Title: ui.Val("Save"), OnPress: func() { doc.Save(); w.Destroy() }},
-		{Title: ui.Val("Don't Save"), Role: ui.ActionDestructive, OnPress: w.Destroy},
-		{Title: ui.Val("Cancel"), Role: ui.ActionCancel},
-	}})
-	return false
-})
+- `WindowCloseGuard { when: …; on closeRequest { … } }` in a window
+  keeps it open while `when` is true, and runs its `closeRequest`: ask
+  about unsaved changes, then `closeWindow()` once the user has chosen.
+- `onCloseRequest(fn() -> bool)`, an item of a component's body, asks a
+  function for as long as the component lives: false keeps it open.
+- A `Window`'s own `on closeRequest { … }` (the main window's too) takes
+  the user's closing over: the window stays open until `open` is false
+  or `closeWindow()`.
+
+```asuka
+screen NoteScreen {
+  state draft = ""
+  state asking = false
+  WindowCloseGuard {
+    when: !draft.isEmpty()
+    on closeRequest { asking = true }
+  }
+  Sheet {
+    bind open: asking
+    Column {
+      Text("Discard the new note?")
+      Button("Cancel") { on press { asking = false } }
+      Button("Discard") { on press { closeWindow() } }
+    }
+  }
+  TextField { bind text: draft }
+}
 ```
 
-Every function asked must agree; `WindowProps.OnCloseRequest` and
-`WindowOptions.OnCloseRequest` are asked too. `Destroy`, once the user
-has chosen, closes it without asking again. On the web the main window
-is the tab: leaving the page or closing the tab asks too, and a refusal
+Every guard and function asked must agree. On the web the main window is
+the tab: leaving the page or closing the tab asks too, and a refusal
 keeps the page behind the browser's own "Leave site?" question (a page
-can't word it). Quitting the app (⌘Q) doesn't ask the windows.
+can't word it). Quitting the app (⌘Q) doesn't ask the windows: it asks
+the app's `on quit` ([The desktop](desktop.md#quitting)).
 
 ### Where windows were
 
 Windows come back where the user left them, across launches: the main
-window always (under the key `"main"`, or its `StateKey`), a `Window`
-when it has a `StateKey`. Give each kind of window its own
-(`"inspector"`, `"preferences"`). Where it was wins over its `Width`,
-`Height`, `X` and `Y`, which stay what the first launch opens with.
+window always (under the key `"main"`, or its `stateKey`), a `Window`
+when it has a `stateKey`. Give each kind of window its own
+(`"inspector"`, `"preferences"`). Where it was wins over its `width`,
+`height`, `x` and `y`, which stay what the first launch opens with.
 
 | | What's kept |
 |---|---|
@@ -977,18 +1019,24 @@ automation runs keep none.
 
 ### Child and modal windows
 
-A `Window` with `Child` is a child of the window it's declared in: the
-main window, or the `Window` whose content has it. It stays above that
-window, and closes with it (its owner is disposed with that window's
-content). `Modal` makes it a child that blocks that window until it
-closes:
+A `Window` with `child: true` is a child of the window it's declared in:
+the main window, or the `Window` whose content has it. It stays above
+that window, and closes with it (its content is disposed with that
+window's). `modal: true` makes it a child that blocks that window until
+it closes:
 
-```go
-ui.Window(ui.WindowProps{Open: prefs, Modal: true, Title: ui.Val("Preferences"), Width: 480, Height: 360,
-	Content: preferences})
+```asuka
+Window {
+  bind open: prefs
+  modal: true
+  title: "Preferences"
+  width: 480
+  height: 360
+  Preferences()
+}
 ```
 
-| | `Child` | `Modal` |
+| | `child` | `modal` |
 |---|---|---|
 | macOS | a child window, ordered above its parent and moving with it | a sheet of its parent |
 | Windows | owned by its parent: above it, minimized with it | owned, its parent disabled while it's open |
@@ -1016,35 +1064,60 @@ ui.Window(ui.WindowProps{Open: prefs, Modal: true, Title: ui.Val("Preferences"),
 
 ## The menu bar and keyboard shortcuts
 
-`ui.MenuBar` gives a desktop app its menus, and their items their
-keyboard shortcuts:
+`MenuBar` gives a desktop app its menus, and their items their keyboard
+shortcuts. Its children are `Menu`s, theirs `MenuItem`s:
 
-```go
-ui.MenuBar(signal.Static([]ui.MenuBarMenu{
-	{Title: "File", Items: []ui.MenuItem{
-		{Title: "New Note", Shortcut: ui.Cmd("n"), OnPress: add},
-		ui.MenuSeparator,
-		{Title: "Export…", Shortcut: ui.Cmd("e").With(ui.Shift), OnPress: export},
-	}},
-	{Title: "Edit", Items: []ui.MenuItem{
-		{Title: "Clear Completed", Shortcut: ui.Cmd("k").With(ui.Shift), Destructive: true, OnPress: clear},
-	}},
-}))
+```asuka
+component Notes {
+  MenuBar {
+    Menu("File") {
+      MenuItem("New Note") {
+        shortcut: Shortcut(key: "n", primary: true)
+        on press { add() }
+      }
+      MenuSeparator()
+      MenuItem("Export…") {
+        shortcut: Shortcut(key: "e", primary: true, shift: true)
+        on press { export() }
+      }
+      MenuItem("Close") { role: .close }
+    }
+    Menu("Edit") {
+      MenuItem("Clear Completed") {
+        shortcut: Shortcut(key: "k", primary: true, shift: true)
+        role: .destructive
+        disabled: done == 0
+        on press { clear() }
+      }
+    }
+  }
+  NoteList()
+}
 ```
 
-- A `ui.MenuItem` has a `Title`, a `Shortcut` and its `OnPress`;
-  `Disabled`, `Checked` and `Destructive` (in red) change how it shows.
-  `ui.MenuSeparator` is a line between groups of items.
-- A `ui.Shortcut` is a `Key` and its `Mods`. `ui.Cmd(key)` is the key
-  with the platform's command key: ⌘ on a Mac, Ctrl elsewhere.
-  `.With(ui.Shift)`, `ui.Alt` (a Mac's Option) and `ui.Control` add
-  modifiers. A key is a character (`"n"`, `","`, `"="`) or a name:
-  `enter`, `escape`, `tab`, `space`, `delete`, `backspace`, `up`, `down`,
-  `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `f1` to `f12`.
-- The menus follow their accessor: an item turned off or checked, a menu
-  that comes and goes. While several `MenuBar`s are mounted, the last one
-  shows; when it's disposed, the one before does. The node it returns
-  takes no space; put it anywhere.
+- A `MenuItem` has a title, a `shortcut` and its `press`; `disabled` and
+  `checked` change how it shows. `MenuItem`s in an item make it a
+  submenu. `MenuSeparator()` is a line between groups of items.
+- `role` is what the item is: `.destructive` draws it red (macOS,
+  Windows; GTK sets it apart); `.quit`, `.close` and `.openRecent` are
+  the platform's own items, which the host does itself with its own
+  title (unless the item has one) and shortcut: quit the app (asking it
+  first), close the window in use as its close button does, and the
+  recent documents (a Mac's own Open Recent).
+- A `Shortcut` is a `key` and its modifiers: `primary` is the platform's
+  command key (⌘ on a Mac, Ctrl elsewhere), and `shift`, `alt` (a Mac's
+  Option) and `control` the others. A key is a character (`"n"`, `","`,
+  `"="`) or a name: `enter`, `escape`, `tab`, `space`, `delete`,
+  `backspace`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`,
+  `pagedown`, `f1` to `f12`.
+- Its items are bindings: an item turned off or checked, a menu or an
+  item that a `for` or an `if` shows, is sent again. While several
+  `MenuBar`s show, the last one's are the app's; when it goes, the one
+  before's. It takes no space; put it anywhere.
+- `WindowKeys { keys: [Shortcut(key: "k", primary: true, run: search)] }`
+  gives the window it's in keys that no view takes, whatever has the
+  focus, while it shows (the last `WindowKeys`' win): keys that aren't
+  menu items.
 
 Each desktop shows them its own way:
 
@@ -1053,9 +1126,10 @@ Each desktop shows them its own way:
   (Back, Enter Full Screen) and Window. A menu titled File, Edit, View,
   Window or Help adds its items to that one; the others go between View
   and Window.
-- **Windows**: a menu bar on the main window, its shortcuts working in
-  every window of the app. Each menu and item gets an access key
-  (Alt+F), and each item its shortcut after its title ("Ctrl+Shift+K").
+- **Windows**: a menu bar on the main window (and a `Window` with
+  `menuBar: true`), its shortcuts working in every window of the app.
+  Each menu and item gets an access key (Alt+F), and each item its
+  shortcut after its title ("Ctrl+Shift+K").
 - **Linux**: GNOME's apps have no menu bar, but a main menu: the header
   bar's last button. Each of the app's menus is a submenu of it (one
   menu's items are the main menu's own), and the shortcuts work in

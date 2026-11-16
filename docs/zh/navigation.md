@@ -503,44 +503,52 @@ ui.Snackbar(ui.SnackbarProps{
 
 ## 菜单
 
-菜单显示一组 `ui.Action`，它和警告框按钮、导航栏按钮是同一个类型，每个标题旁边还可以加一个 `Icon`。菜单有两种用法：
+菜单显示一组 `Action`，它和警告框按钮、导航栏按钮是同一个类型，每个标题旁边还可以加一个 `icon`。菜单有两种用法：
 
-- 设置了 `Menu` 的 `ui.Button`，点按时打开菜单。
-- `ui.Menu` 可以给任何内容加上菜单：点按时打开，或者设置 `LongPress`，作为上下文菜单使用。
+- 设置了 `menu` 的 `Button`，点按时打开菜单。
+- `Menu { actions: […] }` 可以给任何内容加上菜单：点按时打开，或者设置 `longPress: true`，作为上下文菜单使用。
 
-在 iOS 上它是 `UIMenu`，在 Android 上是 `PopupMenu`。在 Mac 上是 `NSMenu`；在 Windows 上是弹出菜单（和 Mac 一样，破坏性的菜单项显示为红色）；在 Linux 上是 `GtkPopoverMenu`；在 Web 上是一个 popover。在桌面端和 Web 上，右键（也就是辅助点按）会打开上下文菜单；在 Windows、Linux 和 Web 上，长按也可以。这两种用法在[组件](components.md#菜单)里都有介绍。`List` 的行还支持滑动操作：见[列表](components.md#列表)。
+在 iOS 上它是 `UIMenu`，在 Android 上是 `PopupMenu`。在 Mac 上是 `NSMenu`；在 Windows 上是弹出菜单（和 Mac 一样，破坏性的菜单项显示为红色）；在 Linux 上是 `GtkPopoverMenu`；在 Web 上是一个 popover。在桌面端和 Web 上，右键（也就是辅助点按）会打开上下文菜单；在 Windows、Linux 和 Web 上，长按也可以。这两种用法在[组件](components.md#菜单)里都有介绍。`List` 的行还支持滑动操作：见[列表](components.md#列表)。放在 `MenuBar` 里的 `Menu` 则是应用的一个菜单（见[下文](#菜单栏和键盘快捷键)）。
 
 ## 窗口
 
-桌面应用都有一个主窗口，用来显示 `app.Run` 展示的内容。如果要给它设置标题、打开时的大小和最小尺寸，就用 `app.RunWindow` 启动应用：
+桌面应用都有一个主窗口，用来显示 `app` 块展示的内容。`app` 块里的 `Window` 就是主窗口：它的键是主窗口的选项，它的子元素是主窗口显示的内容：
 
-```go
-func main() {
-	app.RunWindow(ui.WindowOptions{Width: 420, Height: 640, MinWidth: 320, MinHeight: 360}, App)
+```asuka
+app {
+  Window {
+    title: "Notes"
+    width: 420
+    height: 640
+    minWidth: 320
+    minHeight: 360
+    Stack { NotesScreen() }
+  }
 }
 ```
 
-尺寸以点（point）为单位，指的是窗口内容区的大小。什么都不设置时，主窗口以 800×600 点的大小居中打开，用户不能把它缩到 320×320 以下。`Title` 为空时使用应用名；它是一个访问器，所以可以跟随应用的语言变化。窗口会回到用户上次离开时的位置（见[下文](#记住窗口位置)），这一点优先于 `Width`、`Height`、`X` 和 `Y`。iOS 和 Android 会忽略这些选项。
+尺寸以点（point）为单位，指的是窗口内容区的大小。什么都不设置时，主窗口以 800×600 点的大小居中打开，用户不能把它缩到 320×320 以下。`title` 为空时使用应用名；它是一个绑定，所以可以跟随应用的语言变化。窗口会回到用户上次离开时的位置（见[下文](#记住窗口位置)），这一点优先于 `width`、`height`、`x` 和 `y`。iOS 和 Android 会忽略这些选项。除非 `open` 为 false，主窗口都会显示：`bind open: shown` 会随 `shown` 的变化显示或隐藏它；在保持运行的应用里，用户关闭主窗口时会把它写成 false。
 
-`ui.Window` 在 `Open` 为 true 时打开另一个窗口，就像 `ui.Sheet` 打开弹出面板一样：
+其他 `Window` 在 `open` 为 true 时打开一个自己的窗口，就像 `Sheet` 打开弹出面板一样：
 
-```go
-stats := signal.New(false)
-return ui.Column(nil,
-	ui.Button(ui.ButtonProps{Title: ui.Val("Statistics"), OnPress: func() { stats.Set(true) }}),
-	ui.Window(ui.WindowProps{
-		Open:  stats,
-		Title: ui.Val("Statistics"),
-		Width: 280, Height: 140,
-		Content: func() ui.Node {
-			return ui.Text(signal.Func(func() string { return fmt.Sprintf("%d notes", len(notes.Get())) }))
-		},
-	}),
-)
+```asuka
+component Notes {
+  state stats = false
+  Column {
+    Button("Statistics") { on press { stats = true } }
+    Window {
+      bind open: stats
+      title: "Statistics"
+      width: 280
+      height: 140
+      Text("{notes.count()} notes")
+    }
+  }
+}
 ```
 
-- `Content` 在窗口打开时构建、关闭时销毁。在里面调用 `ui.UseEnvironment` 得到的是这个窗口的环境：尺寸会随用户调整窗口而变化，缩放比例取决于窗口所在的显示器。
-- 用户关闭窗口时，`Open` 会被设为 false，并调用 `OnClose`。用代码把 `Open` 设为 false 也会关闭窗口，但不会调用 `OnClose`。
+- 它的子元素在窗口打开时构建、关闭时销毁。在里面调用 `environment()` 得到的是这个窗口的环境：尺寸会随用户调整窗口而变化，缩放比例取决于窗口所在的显示器。
+- 用户关闭窗口时，`open` 会被写成 false，并触发 `close`。用代码把 `open` 设为 false 也会关闭窗口，但不会触发 `close`。
 - 除非另外指定，窗口以 800×600 点打开；在 Mac 和 Windows 上，它会相对当前使用的窗口层叠错开。在 Linux 上，窗口位置由桌面环境决定，因为 GTK 4 把这件事交给了它（GNOME 和 KDE 会把新窗口放在遮挡其他窗口最少的地方）。窗口里的导航栈和主窗口里一样，有自己的栏。弹出面板和警告框会在用户正在使用的那个窗口上打开。
 
 | | 窗口 |
@@ -550,93 +558,117 @@ return ui.Column(nil,
 | Linux | 一个 `AdwWindow`，有自己的顶栏 |
 | Web | 页面里的一个面板，用户可以移动它、调整它的大小 |
 
-手机没有窗口：在 iOS 或 Android 上打开窗口会 panic。所以提供窗口的组件要先检查 `ui.Platform()`，或者只从桌面端才有的入口打开窗口，比如下面要讲的菜单栏。
+手机没有窗口：`Window` 在手机上什么也不显示。提供窗口的组件应该只从桌面端才有的入口提供它，比如下面要讲的菜单栏。
 
 ### 窗口选项
 
-`WindowOptions`（主窗口用）和 `WindowProps`（`Window` 用）接受同一组选项，用来控制窗口如何打开：
+主窗口和 `Window` 接受同一组键，用来控制窗口如何打开；这些键在窗口打开时读取（之后要改变的是句柄的操作，见下文，不过 `title`、`alwaysOnTop`、`clickThrough`、`flyout`、`edited` 和 `file` 会跟随各自的绑定）：
 
-| 选项 | |
+| 键 | |
 |---|---|
-| `Width`、`Height` | 内容区的大小，单位为点 |
-| `MinWidth`、`MinHeight`、`MaxWidth`、`MaxHeight` | 用户能把窗口调到的最小和最大尺寸；为 0 时，最小值取宿主的下限，最大值不设上限 |
-| `X`、`Y` | 窗口框架左上角在屏幕上的位置，以主显示器的左上角为原点，单位为点；两者都为 0 时，主窗口居中，`Window` 层叠错开（设置 `Center` 则让它居中） |
-| `DisableResize`、`DisableMinimize`、`DisableMaximize`、`DisableClose` | 去掉用户的相应能力：调整窗口大小，以及对应的窗口按钮 |
-| `AlwaysOnTop` | 让窗口保持在其他应用的窗口之上 |
-| `TitleBar` | `ui.TitleBarHidden` 让内容延伸到标题栏下方、直到窗口顶边，窗口按钮浮在内容上面 |
-| `Background`、`Transparent` | 内容背后的窗口颜色；或者不要颜色，让窗口后面的东西从内容没有绘制的地方透出来 |
-| `Hidden` | 打开窗口但不显示，调用 `Show` 才显示出来 |
-| `SkipTaskbar` | 不在任务栏（Windows）和 Window 菜单（macOS）里出现 |
-| `Maximized`、`Fullscreen` | 以最大化或全屏的状态打开 |
-| `StateKey` | 保存窗口位置时用的键，见[下文](#记住窗口位置) |
-| `FitContent` | 让窗口大小随内容变化，限制在最小和最大尺寸之间（[桌面端](desktop.md#大小适应内容的窗口)） |
-| `Panel` | 启动器或命令面板那样的窗口：浮在所有应用之上，能接收键盘输入，却不会把应用切到前台；按 Escape 或点击别处时关闭（[面板](desktop.md#面板与启动器)） |
-| `ClickThrough` | 让鼠标穿过窗口，落到后面的东西上（[点击穿透](desktop.md#鼠标穿透窗口)） |
-| `Flyout` | 仅用于 `Window`：让窗口从托盘图标或父窗口的某个矩形区域弹出（[Flyout](desktop.md#浮出面板)） |
-| `Child`、`Modal` | 仅用于 `Window`：见[下文](#子窗口和模态窗口) |
-| `MenuBar`、`Edited`、`File` | 仅用于显示文档的 `Window`：分别对应窗口里的应用菜单栏（Windows、Linux）、Mac 关闭按钮里的圆点或标题前的 `*`、Mac 标题栏里的文件图标；[`asuka/sdk/document`](desktop.md#基于文档的应用) 会替你设置它们 |
+| `width`、`height` | 内容区的大小，单位为点 |
+| `minWidth`、`minHeight`、`maxWidth`、`maxHeight` | 用户能把窗口调到的最小和最大尺寸；为 0 时，最小值取宿主的下限，最大值不设上限 |
+| `x`、`y` | 窗口框架左上角在屏幕上的位置，以主显示器的左上角为原点，单位为点；两者都为 0 时，主窗口居中，`Window` 层叠错开（设置 `center: true` 则让它居中） |
+| `resizable`、`minimizable`、`maximizable`、`closable` | 设为 false 会去掉用户的相应能力：调整窗口大小，以及对应的窗口按钮 |
+| `alwaysOnTop` | 让窗口保持在其他应用的窗口之上 |
+| `titleBar` | `.hidden` 让内容延伸到标题栏下方、直到窗口顶边，窗口按钮浮在内容上面 |
+| `background`、`transparent` | 内容背后的窗口颜色；或者不要颜色，让窗口后面的东西从内容没有绘制的地方透出来 |
+| `hidden` | 打开窗口但不显示，调用 `w.show()` 才显示出来 |
+| `skipTaskbar` | 不在任务栏（Windows）和 Window 菜单（macOS）里出现 |
+| `maximized`、`fullScreen` | 以最大化或全屏的状态打开 |
+| `stateKey` | 保存窗口位置时用的键，见[下文](#记住窗口位置) |
+| `fitContent` | 让窗口大小随内容变化，限制在最小和最大尺寸之间（[桌面端](desktop.md#大小适应内容的窗口)） |
+| `panel` | 启动器或命令面板那样的窗口：浮在所有应用之上，能接收键盘输入，却不会把应用切到前台；按 Escape 或点击别处时关闭（[面板](desktop.md#面板与启动器)） |
+| `clickThrough` | 让鼠标穿过窗口，落到后面的东西上（[点击穿透](desktop.md#鼠标穿透窗口)） |
+| `flyout` | 仅用于 `Window`：让窗口从托盘图标或父窗口的某个矩形区域弹出（[Flyout](desktop.md#浮出面板)） |
+| `child`、`modal` | 仅用于 `Window`：见[下文](#子窗口和模态窗口) |
+| `menuBar`、`edited`、`file` | 显示文档的窗口用：分别对应窗口里的应用菜单栏（Windows、Linux）、Mac 关闭按钮里的圆点或标题前的 `*`、Mac 标题栏里的文件图标 |
 
-隐藏标题栏后，内容会一直延伸到窗口顶边，位于窗口按钮（Mac 的红绿灯、Windows 的标题栏按钮、Linux 顶栏上的按钮）下方；窗口环境的 `SafeTop` 则等于标题栏的高度。这样 `ui.SafeArea` 会避开这些按钮，而背景、侧边栏或图片可以铺到按钮下面：
+隐藏标题栏后，内容会一直延伸到窗口顶边，位于窗口按钮（Mac 的红绿灯、Windows 的标题栏按钮、Linux 顶栏上的按钮）下方；窗口环境的 `safeTop` 则等于标题栏的高度。这样 `SafeArea` 会避开这些按钮，而背景、侧边栏或图片可以铺到按钮下面：
 
-```go
-app.RunWindow(ui.WindowOptions{TitleBar: ui.TitleBarHidden, Background: colors.RGB(0x1e, 0x1e, 0x1e)}, func() ui.Node {
-	return ui.SafeArea(ui.Style{Grow: 1, Padding: ui.All(16)}, editor())
-})
+```asuka
+app {
+  Window {
+    titleBar: .hidden
+    background: #1e1e1e
+    SafeArea {
+      grow: 1
+      padding: 16
+      Editor()
+    }
+  }
+}
 ```
 
 在内容不接收点击的地方，按钮下方的那一条区域仍然可以拖动窗口。在 Windows 上，隐藏标题栏后主窗口就没有菜单栏了，但菜单的快捷键依然有效。
 
-如果希望窗口准备好之后才显示，可以用 `Hidden` 打开它，再从代码里显示：在此期间内容已经构建、布局并绘制好了，所以窗口一出现就是完整的，绝不会先闪一下空白。在后台启动的应用（比如托盘图标应用）会让主窗口以隐藏状态启动，再从菜单里把它显示出来。
+如果希望窗口准备好之后才显示，可以用 `hidden` 打开它，再从代码里显示：在此期间内容已经构建、布局并绘制好了，所以窗口一出现就是完整的，绝不会先闪一下空白。在后台启动的应用（比如托盘图标应用）会让主窗口的 `open` 以 false 启动，再从菜单里把它显示出来。
 
 ### 控制窗口
 
-`ui.UseWindow()` 返回组件所在窗口的句柄：如果组件在某个 `Window` 的内容里，就是这个 `Window`，否则就是主窗口。`ui.MainWindow()` 可以在主线程的任何地方拿到主窗口的句柄（比如托盘图标的菜单、全局快捷键）。要在 `Window` 外部拿到它的句柄，需要应用自己创建一个（`ui.NewWindowHandle()`），再作为 `Handle` 传给它。
+`Window as w` 给窗口的句柄起个名字，它是这个 `Window` 的 `Ref`：外围视图里的元素都能看到它，也可以把它传给组件。其他视图的 `Ref` 作用于该视图所在的窗口。
 
-```go
-w := ui.UseWindow()
-ui.Button(ui.ButtonProps{Title: ui.Val("Full Screen"), OnPress: func() { w.SetFullscreen(true) }})
-ui.Text(signal.Func(func() string {
-	if w.Focused().Get() {
-		return "Typing here"
-	}
-	return "In the background"
-}))
+```asuka
+component Editor(w: Ref) {
+  Column {
+    Button("Full Screen") { on press { w.setFullScreen(true) } }
+    Text(if w.focused { "Typing here" } else { "In the background" })
+  }
+}
+
+component Main {
+  state open = false
+  Window as w {
+    bind open: open
+    title: "Editor"
+    Editor(w: w)
+  }
+}
 ```
 
-- `Show` 和 `Hide` 用来显示和隐藏窗口；隐藏后窗口仍然是打开的，内容也继续存在。`Focus` 会在窗口隐藏或最小化时把它显示出来，把它带到最前面并让它获得键盘焦点，同时把应用切到前台：托盘图标的菜单就是这样把窗口找回来的（Windows 只允许应用在用户对它有过输入之后切到前台，点击它的托盘图标就算一次输入）。对已经关闭的 `Window` 调用 `Show` 和 `Focus` 会重新打开它。
-- `Minimize`、`Maximize` 和 `Restore`（从最小化或最大化状态还原都可以）；`SetFullscreen`。
-- `SetSize`（内容区的大小，单位为点）、`SetPosition`（窗口框架的左上角，以主显示器的左上角为原点）、`Center`。
-- `SetAlwaysOnTop` 设置窗口是否保持在其他应用的窗口之上。
-- `SetClickThrough` 设置鼠标是否穿透窗口。
-- `Close` 像用户操作那样关闭窗口，会先询问（见下文）；`Destroy` 则不询问，直接关闭。主窗口关闭时，应用就会退出。
-- 窗口的状态是一组 signal，无论变化来自用户还是应用，它们都会跟着更新：`Visible`、`Focused`、`Minimized`、`Maximized`、`Fullscreen`、`AlwaysOnTop`、`ClickThrough`、`Position` 和 `Size`。可以在 effect 或 `StyleFunc` 里读取它们。最小化的窗口、被其他窗口挡住的窗口，都仍然算作可见。
+- `w.show()` 和 `w.hide()` 用来显示和隐藏窗口；隐藏后窗口仍然是打开的，内容也继续存在。`w.focus()` 会在窗口隐藏或最小化时把它显示出来，把它带到最前面并让它获得键盘焦点，同时把应用切到前台：托盘图标的菜单就是这样把窗口找回来的（Windows 只允许应用在用户对它有过输入之后切到前台，点击它的托盘图标就算一次输入）。对已经关闭的 `Window` 调用 `show()` 和 `focus()` 会重新打开它。
+- `w.minimize()`、`w.maximize()` 和 `w.restore()`（从最小化或最大化状态还原都可以）；`w.setFullScreen(on)`。
+- `w.setSize(width, height)`（内容区的大小，单位为点）、`w.setPosition(x, y)`（窗口框架的左上角，以主显示器的左上角为原点）、`w.center()`。
+- `w.setAlwaysOnTop(on)` 设置窗口是否保持在其他应用的窗口之上。
+- `w.setClickThrough(on)` 设置鼠标是否穿透窗口。
+- `w.close()` 像用户操作那样关闭窗口，会先询问（见下文）；`closeWindow()` 则不询问，直接关闭调用它的代码所在的窗口（不在任何 `Window` 里时是主窗口）。主窗口关闭时，应用就会退出，除非它保持运行。
+- 无论变化来自用户还是应用，窗口的状态都会跟着更新：`w.visible`、`w.focused`、`w.minimized`、`w.maximized`、`w.fullScreen`、`w.alwaysOnTop`、`w.clickThrough`、`w.position` 和 `w.size`（分别是 `(x, y)` 和 `(width, height)`），也可以用 `w.windowState` 一次读出全部状态。读取它们的绑定会跟随它们；只有在有东西读取时，宿主才会报告窗口的状态。最小化的窗口、被其他窗口挡住的窗口，都仍然算作可见。
 
-这些方法和 signal 写入一样，要到刷新（flush）时才作用到窗口上。在手机上它们什么也不做，读出来的状态始终是可见且有焦点。
+这些操作和状态写入一样，要到刷新（flush）时才作用到窗口上。在手机上它们什么也不做，读出来的状态是什么也没显示。
 
 ### 关闭窗口前先询问
 
-当用户关闭窗口（点关闭按钮、按 ⌘W 或 Alt+F4、用程序坞或任务栏的菜单），或者应用调用 `Close` 时，都会先询问 `OnCloseRequest`：返回 false 会让窗口保持打开，这样就可以先问问用户是否保存更改。每个可能丢失内容的组件，在挂载期间各自负责询问：
+当用户关闭窗口（点关闭按钮、按 ⌘W 或 Alt+F4、用程序坞或任务栏的菜单），或者调用 `w.close()` 时，都会先询问：
 
-```go
-w := ui.UseWindow()
-w.OnCloseRequest(func() bool {
-	if !doc.Dirty() {
-		return true
-	}
-	ui.Alert(ui.AlertProps{Title: "Save changes?", Actions: []ui.Action{
-		{Title: ui.Val("Save"), OnPress: func() { doc.Save(); w.Destroy() }},
-		{Title: ui.Val("Don't Save"), Role: ui.ActionDestructive, OnPress: w.Destroy},
-		{Title: ui.Val("Cancel"), Role: ui.ActionCancel},
-	}})
-	return false
-})
+- 窗口里的 `WindowCloseGuard { when: …; on closeRequest { … } }` 在 `when` 为 true 时让窗口保持打开，并执行它的 `closeRequest`：先问问用户是否保存更改，用户做出选择后再调用 `closeWindow()`。
+- 组件里的 `onCloseRequest(fn() -> bool)` 在组件存在期间询问一个函数：返回 false 会让窗口保持打开。
+- `Window` 自己的 `on closeRequest { … }`（主窗口也有）接管用户的关闭操作：窗口会保持打开，直到 `open` 为 false 或调用 `closeWindow()`。
+
+```asuka
+screen NoteScreen {
+  state draft = ""
+  state asking = false
+  WindowCloseGuard {
+    when: !draft.isEmpty()
+    on closeRequest { asking = true }
+  }
+  Sheet {
+    bind open: asking
+    Column {
+      Text("Discard the new note?")
+      Button("Cancel") { on press { asking = false } }
+      Button("Discard") { on press { closeWindow() } }
+    }
+  }
+  TextField { bind text: draft }
+}
 ```
 
-所有被询问的函数都同意，窗口才会关闭；`WindowProps.OnCloseRequest` 和 `WindowOptions.OnCloseRequest` 也会参与询问。用户做出选择后，调用 `Destroy` 关闭窗口，就不会再询问一遍。在 Web 上，主窗口就是浏览器标签页：离开页面或关闭标签页时同样会询问；如果被拒绝，页面会由浏览器自带的“离开网站？”提示拦下来（提示文字无法由页面指定）。退出应用（⌘Q）时不会询问各个窗口。
+所有被询问的守卫和函数都同意，窗口才会关闭。在 Web 上，主窗口就是浏览器标签页：离开页面或关闭标签页时同样会询问；如果被拒绝，页面会由浏览器自带的“离开网站？”提示拦下来（提示文字无法由页面指定）。退出应用（⌘Q）时不会询问各个窗口，而是询问应用的 `on quit`（见[桌面端](desktop.md#退出)）。
 
 ### 记住窗口位置
 
-窗口会在多次启动之间记住位置，回到用户上次离开时的地方：主窗口总是如此（用键 `"main"`，或者它的 `StateKey`），`Window` 则要设置了 `StateKey` 才会记住。每一种窗口都应该用自己的键（如 `"inspector"`、`"preferences"`）。记住的位置优先于 `Width`、`Height`、`X` 和 `Y`，这几个值只决定第一次启动时窗口怎么打开。
+窗口会在多次启动之间记住位置，回到用户上次离开时的地方：主窗口总是如此（用键 `"main"`，或者它的 `stateKey`），`Window` 则要设置了 `stateKey` 才会记住。每一种窗口都应该用自己的键（如 `"inspector"`、`"preferences"`）。记住的位置优先于 `width`、`height`、`x` 和 `y`，这几个值只决定第一次启动时窗口怎么打开。
 
 | | 保存的内容 |
 |---|---|
@@ -649,14 +681,20 @@ w.OnCloseRequest(func() bool {
 
 ### 子窗口和模态窗口
 
-设置了 `Child` 的 `Window` 是它声明所在窗口的子窗口，这个父窗口可以是主窗口，也可以是内容里包含它的那个 `Window`。子窗口始终位于父窗口之上，并随父窗口一起关闭（它的 owner 会随父窗口的内容一起销毁）。`Modal` 则让它成为一个会阻塞父窗口的子窗口，直到它关闭为止：
+设置了 `child: true` 的 `Window` 是它声明所在窗口的子窗口，这个父窗口可以是主窗口，也可以是内容里包含它的那个 `Window`。子窗口始终位于父窗口之上，并随父窗口一起关闭（它的内容会随父窗口的内容一起销毁）。`modal: true` 则让它成为一个会阻塞父窗口的子窗口，直到它关闭为止：
 
-```go
-ui.Window(ui.WindowProps{Open: prefs, Modal: true, Title: ui.Val("Preferences"), Width: 480, Height: 360,
-	Content: preferences})
+```asuka
+Window {
+  bind open: prefs
+  modal: true
+  title: "Preferences"
+  width: 480
+  height: 360
+  Preferences()
+}
 ```
 
-| | `Child` | `Modal` |
+| | `child` | `modal` |
 |---|---|---|
 | macOS | 子窗口，层级排在父窗口之上，并跟随父窗口移动 | 父窗口的 sheet |
 | Windows | 由父窗口拥有（owned）：位于父窗口之上，随父窗口一起最小化 | 由父窗口拥有，打开期间父窗口不可操作 |
@@ -684,29 +722,46 @@ ui.Window(ui.WindowProps{Open: prefs, Modal: true, Title: ui.Val("Preferences"),
 
 ## 菜单栏和键盘快捷键
 
-`ui.MenuBar` 为桌面应用提供菜单，并给其中的菜单项配上键盘快捷键：
+`MenuBar` 为桌面应用提供菜单，并给其中的菜单项配上键盘快捷键。它的子元素是 `Menu`，`Menu` 的子元素是 `MenuItem`：
 
-```go
-ui.MenuBar(signal.Static([]ui.MenuBarMenu{
-	{Title: "File", Items: []ui.MenuItem{
-		{Title: "New Note", Shortcut: ui.Cmd("n"), OnPress: add},
-		ui.MenuSeparator,
-		{Title: "Export…", Shortcut: ui.Cmd("e").With(ui.Shift), OnPress: export},
-	}},
-	{Title: "Edit", Items: []ui.MenuItem{
-		{Title: "Clear Completed", Shortcut: ui.Cmd("k").With(ui.Shift), Destructive: true, OnPress: clear},
-	}},
-}))
+```asuka
+component Notes {
+  MenuBar {
+    Menu("File") {
+      MenuItem("New Note") {
+        shortcut: Shortcut(key: "n", primary: true)
+        on press { add() }
+      }
+      MenuSeparator()
+      MenuItem("Export…") {
+        shortcut: Shortcut(key: "e", primary: true, shift: true)
+        on press { export() }
+      }
+      MenuItem("Close") { role: .close }
+    }
+    Menu("Edit") {
+      MenuItem("Clear Completed") {
+        shortcut: Shortcut(key: "k", primary: true, shift: true)
+        role: .destructive
+        disabled: done == 0
+        on press { clear() }
+      }
+    }
+  }
+  NoteList()
+}
 ```
 
-- `ui.MenuItem` 有 `Title`、`Shortcut` 和 `OnPress`；`Disabled`、`Checked` 和 `Destructive`（显示为红色）会改变它的显示方式。`ui.MenuSeparator` 是菜单项分组之间的分隔线。
-- `ui.Shortcut` 由一个 `Key` 和它的 `Mods` 组成。`ui.Cmd(key)` 表示这个键加上平台的命令键：Mac 上是 ⌘，其他平台上是 Ctrl。用 `.With(ui.Shift)`、`ui.Alt`（Mac 上的 Option）和 `ui.Control` 可以加上更多修饰键。键可以是一个字符（`"n"`、`","`、`"="`），也可以是一个键名：`enter`、`escape`、`tab`、`space`、`delete`、`backspace`、`up`、`down`、`left`、`right`、`home`、`end`、`pageup`、`pagedown`，以及 `f1` 到 `f12`。
-- 菜单会跟随它的访问器变化：某个菜单项被禁用或勾选、某个菜单出现又消失，都会立即反映出来。同时挂载了多个 `MenuBar` 时，显示的是最后一个；它被销毁后，就显示前一个。它返回的节点不占空间，放在哪里都可以。
+- `MenuItem` 有一个标题、一个 `shortcut` 和它的 `press`；`disabled` 和 `checked` 会改变它的显示方式。菜单项里再放 `MenuItem`，它就成了子菜单。`MenuSeparator()` 是菜单项分组之间的分隔线。
+- `role` 说明菜单项是什么：`.destructive` 把它显示为红色（macOS、Windows；GTK 会把它单独隔开）；`.quit`、`.close` 和 `.openRecent` 是平台自己的菜单项，由宿主负责执行，并使用宿主自己的标题（除非菜单项设置了标题）和快捷键：退出应用（会先询问应用）、像点关闭按钮那样关闭当前使用的窗口，以及最近使用的文档（Mac 自带的“打开最近使用”）。
+- `Shortcut` 由一个 `key` 和它的修饰键组成：`primary` 是平台的命令键（Mac 上是 ⌘，其他平台上是 Ctrl），`shift`、`alt`（Mac 上的 Option）和 `control` 是其他修饰键。键可以是一个字符（`"n"`、`","`、`"="`），也可以是一个键名：`enter`、`escape`、`tab`、`space`、`delete`、`backspace`、`up`、`down`、`left`、`right`、`home`、`end`、`pageup`、`pagedown`，以及 `f1` 到 `f12`。
+- 菜单项都是绑定：某个菜单项被禁用或勾选、`for` 或 `if` 显示的菜单或菜单项出现又消失，都会重新发送。同时显示了多个 `MenuBar` 时，以最后一个为准；它消失后，就换成前一个。它不占空间，放在哪里都可以。
+- `WindowKeys { keys: [Shortcut(key: "k", primary: true, run: search)] }` 在显示期间给所在的窗口加上一些按键：无论焦点在哪里，只要没有视图处理它们就会生效（以最后一个 `WindowKeys` 为准），适合那些不是菜单项的按键。
 
 各桌面平台以各自的方式显示菜单：
 
 - **macOS**：显示在菜单栏里，和 Mac 自带的菜单放在一起：应用菜单（About、Hide、Quit）、File、Edit（Undo、Cut、Copy、Paste……）、View（Back、Enter Full Screen）和 Window。标题是 File、Edit、View、Window 或 Help 的菜单，会把菜单项并入对应的系统菜单；其他菜单则放在 View 和 Window 之间。
-- **Windows**：主窗口上的一条菜单栏，快捷键在应用的所有窗口里都有效。每个菜单和菜单项都会分配一个访问键（如 Alt+F），每个菜单项的标题后面会显示它的快捷键（如 "Ctrl+Shift+K"）。
+- **Windows**：主窗口（以及设置了 `menuBar: true` 的 `Window`）上的一条菜单栏，快捷键在应用的所有窗口里都有效。每个菜单和菜单项都会分配一个访问键（如 Alt+F），每个菜单项的标题后面会显示它的快捷键（如 "Ctrl+Shift+K"）。
 - **Linux**：GNOME 应用没有菜单栏，而是有一个主菜单，也就是顶栏上的最后一个按钮。应用的每个菜单都是主菜单的一个子菜单（只有一个菜单时，它的菜单项直接放进主菜单），快捷键在所有窗口里都有效。
 - **Web**：快捷键在页面里有效，但不显示菜单栏。
 

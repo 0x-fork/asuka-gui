@@ -189,7 +189,10 @@ let f: Filter = .unread
 Where the type is known, a case is written `.name`. `match` must cover
 every case (or end with `_ =>`); patterns bind payloads (`.from(p)`),
 match literals (`0`, `"x"`), several cases (`.a | .b`) and take guards
-(`.from(p) if p.vip =>`).
+(`.from(p) if p.vip =>`). A case's labeled payload with a zero value
+(`false`, `0`, `""`, an empty array or map, `none`, an enum's first case)
+may be left out where it's made: `.button(title: "Copy", run: copy)`
+leaves `Action.button`'s `icon`, `role`, `disabled` and `checked` so.
 
 ### Functions and closures
 
@@ -281,7 +284,9 @@ in its caller's block goes there. A named slot is `name { … }` in the
 block (`toolbar { … }`).
 
 `emit name(args)` raises an event; the caller's `on name(args) { }`
-handles it.
+handles it. An event nobody handles does nothing; its name read as a
+value is whether the caller handles it (`if click { … }`: a tray icon
+whose click opens its menu unless the caller takes it).
 
 ### A component's body is declarations
 
@@ -673,10 +678,15 @@ its uniforms set by name (`uniforms: [Uniform(name: "Level", value:
 | `try await webCookies(url)` | the web views' cookies for url |
 | `useKeys([Shortcut(…)])` | the window's keys while the component lives |
 | `onOpenURL(u => …)`, `onOpenFiles(paths => …)`, `onShare(items => …)` | what the app is opened with, or what other apps share with it, while the component lives |
+| `quit()`, `relaunch()` | quits the app as the user's Quit does (and starts it again), asking it first; desktop only |
+| `closeWindow()` | closes the window the code is in, without asking |
+| `onCloseRequest(fn() -> bool)`, `onQuit(e => …)`, `onSecondInstance((args, dir) => …)` | asked before the window the component is in closes; hears the app about to quit (`e.cancel()`), or started again, while the component lives |
 
 `useKeys` and the `on…` registrations are items of a component's body
 (or the app's block). The app's block also handles them as events: `on
-openURL(url) { … }`, `on files(paths) { … }`, `on share(items) { … }`.
+openURL(url) { … }`, `on files(paths) { … }`, `on share(items) { … }`,
+`on quit(e) { … }`, `on secondInstance(args, dir) { … }`. Its first
+`Window` is the main window ([Navigation](navigation.md#windows)).
 
 ## Navigation
 

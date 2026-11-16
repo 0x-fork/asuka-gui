@@ -151,7 +151,7 @@ enum Filter {
 let f: Filter = .unread
 ```
 
-在类型已知的地方，枚举的成员写作 `.name`。`match` 必须覆盖所有成员（或者以 `_ =>` 结尾）；模式可以绑定成员携带的值（`.from(p)`），可以匹配字面量（`0`、`"x"`），可以同时匹配多个成员（`.a | .b`），还可以带守卫条件（`.from(p) if p.vip =>`）。
+在类型已知的地方，枚举的成员写作 `.name`。`match` 必须覆盖所有成员（或者以 `_ =>` 结尾）；模式可以绑定成员携带的值（`.from(p)`），可以匹配字面量（`0`、`"x"`），可以同时匹配多个成员（`.a | .b`），还可以带守卫条件（`.from(p) if p.vip =>`）。成员带标签的值如果有零值（`false`、`0`、`""`、空数组或空映射、`none`、枚举的第一个成员），构造时可以省略：`.button(title: "Copy", run: copy)` 就省略了 `Action.button` 的 `icon`、`role`、`disabled` 和 `checked`。
 
 ### 函数与闭包
 
@@ -232,7 +232,7 @@ MessageRow(m) {
 
 接收子元素的组件要声明 `prop children: View`，调用方代码块里的内容就会放到这里。具名插槽在代码块里写作 `name { … }`（`toolbar { … }`）。
 
-`emit name(args)` 触发一个事件，由调用方的 `on name(args) { }` 来处理。
+`emit name(args)` 触发一个事件，由调用方的 `on name(args) { }` 来处理。没有人处理的事件什么也不做；把事件名当作值读取，得到的是调用方有没有处理它（`if click { … }`：比如托盘图标，调用方不接管点击时，点击就打开它的菜单）。
 
 ### 组件的主体是声明
 
@@ -521,8 +521,11 @@ Canvas(g => {
 | `try await webCookies(url)` | Web 视图为 url 保存的 cookie |
 | `useKeys([Shortcut(…)])` | 组件存在期间，窗口的快捷键 |
 | `onOpenURL(u => …)`、`onOpenFiles(paths => …)`、`onShare(items => …)` | 组件存在期间，应用被打开时带来的内容，或其他应用分享给它的内容 |
+| `quit()`、`relaunch()` | 像用户选择“退出”那样退出应用（并重新启动它），会先询问应用；仅桌面端 |
+| `closeWindow()` | 不询问，直接关闭代码所在的窗口 |
+| `onCloseRequest(fn() -> bool)`、`onQuit(e => …)`、`onSecondInstance((args, dir) => …)` | 组件存在期间：组件所在窗口关闭前的询问；应用即将退出（`e.cancel()`）；应用再次被启动 |
 
-`useKeys` 和这些 `on…` 注册写在组件的主体里（或 app 代码块里）。app 代码块还可以把它们当作事件来处理：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`。
+`useKeys` 和这些 `on…` 注册写在组件的主体里（或 app 代码块里）。app 代码块还可以把它们当作事件来处理：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`、`on quit(e) { … }`、`on secondInstance(args, dir) { … }`。它的第一个 `Window` 是主窗口（见[导航](navigation.md#窗口)）。
 
 ## 导航
 
