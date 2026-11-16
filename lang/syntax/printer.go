@@ -453,9 +453,13 @@ func (p *printer) typeParams(list []*TypeParam) {
 			p.write(", ")
 		}
 		p.write(tp.Name.Name)
-		if tp.Constraint != nil {
-			p.write(": ")
-			p.typ(tp.Constraint)
+		for j, t := range tp.Constraints {
+			if j == 0 {
+				p.write(": ")
+			} else {
+				p.write(" & ")
+			}
+			p.typ(t)
 		}
 	}
 	p.write(">")

@@ -682,6 +682,16 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 		}
 		return b.copyTo(ref, dst)
 	case check.SelIfaceField:
+		if n, ok := recv.(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
+			// A constrained type parameter's field, this instantiation's
+			// type's own: a struct's field, an enum's method.
+			if f := n.Obj.Field(sel.Name); f != nil && n.Obj.Kind == check.StructType {
+				return b.getField(x, n, f, dst)
+			}
+			if m := n.Obj.Methods[sel.Name]; m != nil {
+				return b.invoke(b.l.funcIndex(m, nil, n), []int{x}, b.kind(sel.Field.Type), dst, false)
+			}
+		}
 		r := b.out(dst, b.kind(sel.Field.Type))
 		blk := b.regs([]bc.Kind{bc.KRef})
 		b.move(blk, x)

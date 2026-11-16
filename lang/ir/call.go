@@ -268,6 +268,25 @@ func (b *fb) ifaceCall(e *syntax.CallExpr, call *check.Call, recv *int, dst int)
 		x = b.value(call.Recv, -1)
 	}
 	vals := append([]int{x}, b.args(call, nil)...)
+	return b.ifaceInvoke(call.Name, call, vals, dst)
+}
+
+// ifaceInvoke calls an interface's method name with vals (the receiver,
+// then the arguments). The receiver's type, read with this
+// instantiation's types, says how: an interface's value through CALLI
+// (its shape's method of that name), a struct's or an enum's (a
+// constrained type parameter's, here) its method directly.
+func (b *fb) ifaceInvoke(name string, call *check.Call, vals []int, dst int) int {
+	k := b.l.kind(b.typ(call.Result))
+	if n, ok := b.typ(check.Unopt(call.RecvType)).(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
+		if f := n.Obj.Methods[name]; f != nil {
+			r := b.invoke(b.l.funcIndex(f, nil, n), vals, k, dst, false)
+			if k == bc.KVoid {
+				return -1
+			}
+			return r
+		}
+	}
 	ks := make([]bc.Kind, len(vals))
 	for i, v := range vals {
 		ks[i] = b.f.Kinds[v]
@@ -276,12 +295,6 @@ func (b *fb) ifaceCall(e *syntax.CallExpr, call *check.Call, recv *int, dst int)
 	for i, v := range vals {
 		b.move(blk+i, v)
 	}
-	sel := b.l.info.Selections[e.Fun]
-	name := ""
-	if sel != nil {
-		name = sel.Name
-	}
-	k := b.l.kind(b.typ(call.Result))
 	r := bc.None
 	if k != bc.KVoid {
 		r = b.out(dst, k)
@@ -906,6 +919,11 @@ func (b *fb) callPrepared(ci *check.Call, regs []int, k bc.Kind) int {
 		b.emit(op("CALLC"), r, regs[0], blk, len(ks))
 		b.releaseRegs(blk, ks)
 		return r
+	case check.CallIface:
+		if r := b.ifaceInvoke(ci.Name, ci, regs, -1); r >= 0 {
+			return r
+		}
+		return b.temp(bc.KRef)
 	case check.CallBuiltin:
 		if ci.Builtin.ID == check.BSleep {
 			f := b.callB("time.sleep", bc.KRef, regs[0])

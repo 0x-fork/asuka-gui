@@ -1,0 +1,59 @@
+// Type parameters constrained to interfaces.
+
+interface Shape {
+  fn area() -> float
+}
+
+interface Named {
+  name: string
+}
+
+struct Square {
+  side: float
+  fn area() -> float = side * side
+}
+
+struct Point {
+  x: int
+}
+
+struct Wrong {
+  fn area() -> int = 1
+}
+
+fn total<T: Shape>(xs: [T]) -> float = xs.map(x => x.area()).sum()
+
+fn useArea<T>(x: T) -> float = x.area() // ERROR "T has no method area: constrain it to an interface that has it"
+
+fn useName<T: Shape>(x: T) -> string = x.name // ERROR "T has no name \(its constraints, Shape, don't ask for it\)"
+
+fn notCalled<T: Shape>(x: T) -> float = x.area // ERROR "area is a method: call it, area\(\)"
+
+fn calls() {
+  let a = total([Square(side: 1)])
+  let b = total([Point(x: 1)]) // ERROR "total's T must be Shape, and Point isn't: it has no method area"
+  let c = total([Wrong()]) // ERROR "total's T must be Shape, and Wrong isn't: its area is fn\(\) -> int, not fn\(\) -> float"
+}
+
+fn both<T: Shape & Hashable>(x: T) -> float = x.area()
+
+fn callsBoth() {
+  let a = both(Square(side: 1)) // ERROR "both's T must be Hashable, and Square isn't"
+}
+
+fn notAnInterface<T: Square>(x: T) {} // ERROR "a type parameter's constraint is an interface, Equatable, Comparable or Hashable, not Square"
+
+// One generic passing its T on: its constraints must cover the callee's.
+fn passOn<T: Shape>(xs: [T]) -> float = total(xs)
+
+fn passOnWithout<T: Named>(xs: [T]) -> float = total(xs) // ERROR "total's T must be Shape, and T isn't: it has no method area"
+
+struct Box<T: Shape> {
+  item: T
+}
+
+fn boxes() {
+  let b = Box(item: Point(x: 1)) // ERROR "Box's T must be Shape, and Point isn't"
+}
+
+fn written(b: Box<Point>) {} // ERROR "Box's T must be Shape, and Point isn't"

@@ -197,11 +197,11 @@ const (
 	literalEnd
 
 	operatorBeg
-	ADD // +
-	SUB // -
-	MUL // *
-	QUO // /
-	REM // %
+	ADD   // +
+	SUB   // -
+	MUL   // *
+	QUO   // /
+	REM   // %
 	AMP   // &: bitwise and
 	CARET // ^: bitwise exclusive or
 	TILDE // ~: bitwise not
@@ -327,11 +327,11 @@ var tokens = [...]string{
 	STRING_MID:  "string",
 	STRING_TAIL: "string",
 
-	ADD: "+",
-	SUB: "-",
-	MUL: "*",
-	QUO: "/",
-	REM: "%",
+	ADD:   "+",
+	SUB:   "-",
+	MUL:   "*",
+	QUO:   "/",
+	REM:   "%",
 	AMP:   "&",
 	CARET: "^",
 	TILDE: "~",

@@ -98,8 +98,8 @@ func funcSig(f *check.Function) string {
 		var tps []string
 		for _, tp := range f.TypeParams {
 			s := tp.Name
-			if tp.Constraint != "" {
-				s += ": " + tp.Constraint
+			if tp.Constraint() != "" {
+				s += ": " + tp.Constraint()
 			}
 			tps = append(tps, s)
 		}
@@ -184,8 +184,8 @@ func typeDecl(tn *check.TypeName) string {
 	case check.BasicType:
 		return "type " + tn.Name()
 	case check.ParamType:
-		if tp, ok := tn.Type.(*check.TypeParam); ok && tp.Constraint != "" {
-			return "type parameter " + tn.Name() + ": " + tp.Constraint
+		if tp, ok := tn.Type.(*check.TypeParam); ok && tp.Constraint() != "" {
+			return "type parameter " + tn.Name() + ": " + tp.Constraint()
 		}
 		return "type parameter " + tn.Name()
 	case check.AliasType:

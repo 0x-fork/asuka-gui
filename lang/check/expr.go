@@ -935,6 +935,21 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 // valueMember is x.name for a value x of type t.
 func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 	switch u := t.(type) {
+	case *TypeParam:
+		if f, i := paramField(u, name); f != nil {
+			if i.Obj.isErrorIface {
+				c.info.Selections[e] = &Selection{Kind: SelErrorMessage, Recv: t}
+			} else {
+				c.info.Selections[e] = &Selection{Kind: SelIfaceField, Field: f, Recv: t, Name: name}
+			}
+			return f.Type
+		}
+		if m, _ := paramMethod(u, name); m != nil {
+			c.errorf(e.Name, "%s is a method: call it, %s()", name, name)
+			return Invalid
+		}
+		c.errorf(e.Name, "%s has no %s%s", u.Name, name, paramHint(u))
+		return Invalid
 	case *Named:
 		s := u.Subst()
 		switch u.Obj.Kind {

@@ -360,6 +360,7 @@ func TestParseDecls(t *testing.T) {
 		{"enum E: Error { a, b(int), c(code: int, String)\n fn f() { } }", "*syntax.EnumDecl"},
 		{"interface Named { name: string\n fn describe() -> string }", "*syntax.InterfaceDecl"},
 		{"fn id<T: Hashable>(x: T) -> T = x", "*syntax.FuncDecl"},
+		{"fn sort<T: Shape & Hashable, U>(x: T) -> T = x", "*syntax.FuncDecl"},
 		{"type Pair<A, B> = (A, B)", "*syntax.TypeAliasDecl"},
 		{"style card { padding: 16 }", "*syntax.StyleDecl"},
 		{"state theme: Theme = .system", "*syntax.StateDecl"},

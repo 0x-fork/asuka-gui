@@ -558,6 +558,18 @@ func (c *Checker) checkImplements(at syntax.Node, t Type, i *TypeName) {
 // implements reports why t doesn't have interface iface's methods and
 // fields, "" when it does.
 func (c *Checker) implements(t Type, iface *Named) string {
+	if why := c.implementsMembers(t, iface); why != "" {
+		return why
+	}
+	if n := AsNamed(t, EnumType); n != nil && !iface.Obj.isErrorIface && !n.Obj.RefEnum() {
+		return "an enum without payloads is stored as an int: declare the interface (enum " + n.Obj.name + ": " + iface.Obj.name + ") to use it as one"
+	}
+	return ""
+}
+
+// implementsMembers reports why a struct or an enum t doesn't have
+// interface iface's methods and fields, "" when it does.
+func (c *Checker) implementsMembers(t Type, iface *Named) string {
 	n, ok := t.(*Named)
 	if !ok || (n.Obj.Kind != StructType && n.Obj.Kind != EnumType) {
 		return "only structs and enums have interfaces"
@@ -569,40 +581,41 @@ func (c *Checker) implements(t Type, iface *Named) string {
 		}
 		return ""
 	}
-	s := n.Subst()
+	if it.Iface == nil {
+		return "" // still being declared
+	}
+	s, is := n.Subst(), iface.Subst()
 	for _, m := range it.Iface.Methods {
 		f := n.Obj.Methods[m.Name]
 		if f == nil {
 			return "it has no method " + m.Name
 		}
 		c.funcSig(f)
-		got := s.Apply(f.Sig.Type())
-		if !Identical(got, m.Sig.Type()) {
-			return "its " + m.Name + " is " + typeString(got) + ", not " + typeString(m.Sig.Type())
+		got, want := s.Apply(f.Sig.Type()), is.Apply(m.Sig.Type())
+		if !Identical(got, want) {
+			return "its " + m.Name + " is " + typeString(got) + ", not " + typeString(want)
 		}
 	}
 	for _, fl := range it.Iface.Fields {
+		want := is.Apply(fl.Type)
 		if n.Obj.Kind == StructType {
 			f := n.Obj.Field(fl.Name)
 			if f == nil {
 				return "it has no field " + fl.Name
 			}
-			if !Identical(s.Apply(f.Type), fl.Type) {
-				return "its field " + fl.Name + " is " + typeString(s.Apply(f.Type)) + ", not " + typeString(fl.Type)
+			if !Identical(s.Apply(f.Type), want) {
+				return "its field " + fl.Name + " is " + typeString(s.Apply(f.Type)) + ", not " + typeString(want)
 			}
 		} else {
 			f := n.Obj.Methods[fl.Name]
 			if f == nil {
-				return "it has no " + fl.Name + " (an enum has it as a method: fn " + fl.Name + "() -> " + typeString(fl.Type) + ")"
+				return "it has no " + fl.Name + " (an enum has it as a method: fn " + fl.Name + "() -> " + typeString(want) + ")"
 			}
 			c.funcSig(f)
-			if len(f.Sig.Params) != 0 || !Identical(s.Apply(f.Sig.Result), fl.Type) {
-				return "its " + fl.Name + " isn't fn " + fl.Name + "() -> " + typeString(fl.Type)
+			if len(f.Sig.Params) != 0 || !Identical(s.Apply(f.Sig.Result), want) {
+				return "its " + fl.Name + " isn't fn " + fl.Name + "() -> " + typeString(want)
 			}
 		}
-	}
-	if n.Obj.Kind == EnumType && !n.Obj.RefEnum() {
-		return "an enum without payloads is stored as an int: declare the interface (enum " + n.Obj.name + ": " + it.name + ") to use it as one"
 	}
 	return ""
 }

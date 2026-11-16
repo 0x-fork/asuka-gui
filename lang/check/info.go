@@ -115,8 +115,9 @@ type Call struct {
 	// SelfCall: a method of the enclosing type, called by name (self's,
 	// or the env's).
 	SelfCall bool
-	Optional bool // x?.f(): none when x is
-	Index    int  // CallNative: the method's number, from 1
+	Optional bool   // x?.f(): none when x is
+	Index    int    // CallNative: the method's number, from 1
+	Name     string // CallIface, CallNative: the method's name
 	// Awaited: animate(…) awaited, which returns once it's complete.
 	Awaited bool
 	// TrKey is CallTr's message; Args are its arguments, by its Params.

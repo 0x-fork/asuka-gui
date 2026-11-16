@@ -182,6 +182,15 @@ type Signature struct {
 	Throws bool
 }
 
+// applySig is sig with s's type parameters replaced.
+func (s Subst) applySig(sig *Signature) *Signature {
+	out := &Signature{Result: s.Apply(sig.Result), Async: sig.Async, Throws: sig.Throws}
+	for _, p := range sig.Params {
+		out.Params = append(out.Params, &Param{Name: p.Name, Type: s.Apply(p.Type), Default: p.Default})
+	}
+	return out
+}
+
 // Type is the signature as a function type.
 func (s *Signature) Type() *FuncType {
 	ps := make([]Type, len(s.Params))

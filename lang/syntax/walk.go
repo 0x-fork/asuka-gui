@@ -34,8 +34,8 @@ func Walk(v Visitor, n Node) {
 	// Declarations.
 	case *TypeParam:
 		walk(n.Name)
-		if n.Constraint != nil {
-			walk(n.Constraint)
+		for _, t := range n.Constraints {
+			walk(t)
 		}
 	case *Param:
 		walk(n.Name)

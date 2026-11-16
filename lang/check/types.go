@@ -182,13 +182,34 @@ func (n *Named) String() string {
 
 // TypeParam is a generic function's or type's parameter.
 type TypeParam struct {
-	Name       string
-	Constraint string // "", Equatable, Comparable or Hashable
-	Index      int
-	id         int // unique, for inference
+	Name string
+	// Builtins are the built-in constraints it names: Equatable,
+	// Comparable, Hashable.
+	Builtins []string
+	// Ifaces are the program's interfaces it names: a type argument has
+	// their methods and fields, which T's values are called with,
+	// resolved per instantiation.
+	Ifaces  []*Named
+	written string // the constraints as written: Shape & Hashable
+	Index   int
+	id      int // unique, for inference
 }
 
 func (t *TypeParam) String() string { return t.Name }
+
+// Constraint is the parameter's constraints as written (Shape &
+// Hashable), "" for none.
+func (t *TypeParam) Constraint() string { return t.written }
+
+// Has reports a built-in constraint: Equatable, Comparable or Hashable.
+func (t *TypeParam) Has(builtin string) bool {
+	for _, b := range t.Builtins {
+		if b == builtin {
+			return true
+		}
+	}
+	return false
+}
 
 // Untyped integer literals take float where a float is expected; their
 // type until then is Int. That's handled by expected types, not here.
@@ -451,7 +472,7 @@ func IsEquatable(t Type) bool {
 		}
 		return true
 	case *TypeParam:
-		return x.Constraint != ""
+		return len(x.Builtins) > 0
 	case *Named:
 		switch x.Obj.Kind {
 		case ExternType:
@@ -486,7 +507,7 @@ func IsComparable(t Type) bool {
 		return true
 	}
 	if p, ok := t.(*TypeParam); ok {
-		return p.Constraint == "Comparable"
+		return p.Has("Comparable")
 	}
 	return false
 }
@@ -500,7 +521,7 @@ func IsHashable(t Type) bool {
 		return true
 	}
 	if p, ok := t.(*TypeParam); ok {
-		return p.Constraint == "Hashable"
+		return p.Has("Hashable")
 	}
 	if n := AsNamed(t, EnumType); n != nil {
 		return !n.Obj.RefEnum()

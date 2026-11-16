@@ -84,8 +84,9 @@ package syntax
 //      for and match are items, and an if's else is optional.
 //  13. Types. ( T ) groups: (fn() -> int)? is an optional function.
 //      Generic arguments follow a qualified name's last part:
-//      http.Response<T>. A type parameter may name a constraint: <T:
-//      Hashable>. T?? is an optional optional.
+//      http.Response<T>. A type parameter may name constraints, joined
+//      by &: <T: Hashable>, <T: Shape & Hashable>. T?? is an optional
+//      optional.
 //  14. Enums. Cases are separated by commas or newlines and come before
 //      the methods; a case's name may be a keyword (none).
 //  15. Imports come before declarations. pub may precede any
@@ -928,7 +929,10 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		start := p.pos
 		tp := &TypeParam{Name: p.ident()}
 		if p.got(COLON) {
-			tp.Constraint = p.parseType()
+			tp.Constraints = append(tp.Constraints, p.parseType())
+			for p.got(AMP) {
+				tp.Constraints = append(tp.Constraints, p.parseType())
+			}
 		}
 		tp.Span = p.span(start)
 		list = append(list, tp)

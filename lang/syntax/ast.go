@@ -168,8 +168,8 @@ func (d *ImportDecl) PathString() string {
 // A TypeParam is a generic parameter: T, or T: Hashable.
 type TypeParam struct {
 	Span
-	Name       *Ident
-	Constraint Type // nil for none
+	Name        *Ident
+	Constraints []Type // T: A & B; none for none
 }
 
 // A Param is a parameter of a function, a component's header, an event
