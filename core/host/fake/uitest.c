@@ -380,6 +380,7 @@ enum {
 	BY_VIEW,      // the view's own text: a Text, a Button's title, a field's
 	BY_TITLE,     // a Screen's title, in its navigation bar
 	BY_TAB,       // a Tabs' tab: its Screen's title
+	BY_DEST,      // a Split's destination, in its sidebar
 	BY_SEGMENT,   // a Segmented's segment
 	BY_ITEM,      // an item of a Screen's bar buttons, toolbar or primary action, or an alert's buttons
 	BY_FIELD,     // an alert's text field, by its placeholder
@@ -397,12 +398,13 @@ typedef AK_VEC(target) target_vec;
 
 // The parts of the screen a scope (app.in(…)) narrows to: TestScope's
 // cases, in order.
-enum { IN_ANYWHERE, IN_CONTENT, IN_NAVIGATION_BAR, IN_TOOLBAR, IN_TAB_BAR };
+enum { IN_ANYWHERE, IN_CONTENT, IN_NAVIGATION_BAR, IN_TOOLBAR, IN_TAB_BAR, IN_SIDEBAR };
 
 static int region_of(const target *t) {
 	switch (t->how) {
 	case BY_TITLE: return IN_NAVIGATION_BAR;
 	case BY_TAB: return IN_TAB_BAR;
+	case BY_DEST: return IN_SIDEBAR;
 	case BY_ITEM:
 		if (t->v->kind == AK_KIND_SCREEN) return t->i >= AK_SCREEN_TOOLBAR_ACTIONS ? IN_TOOLBAR : IN_NAVIGATION_BAR;
 	}
@@ -567,6 +569,17 @@ static void targets_in(ak_uitest *a, const ak_fake_view_vec *ls, ak_span text, t
 			for (uint32_t j = 0; j < v->children.len; j++)
 				if (text.len && ak_span_eq(ak_fake_string(v->children.data[j], AK_PROP_SCREEN_TITLE), text)) add_target(a, out, v, BY_TAB, j);
 			break;
+		case AK_KIND_SPLIT: {
+			if (!text.len) break;
+			ak_sidebar_heading_vec secs = {0};
+			ak_sidebar_item_vec items = {0};
+			ak_fake_sidebar(v, &secs, &items);
+			for (uint32_t j = 0; j < items.len; j++)
+				if (ak_span_eq(items.data[j].title, text)) add_target(a, out, v, BY_DEST, j);
+			ak_vec_free(&secs);
+			ak_vec_free(&items);
+			break;
+		}
 		case AK_KIND_SEGMENTED: {
 			ak_str_vec segs = {0};
 			ak_fake_strings(v, AK_PROP_SEGMENTED_SEGMENTS, &segs);
@@ -1205,7 +1218,7 @@ static bool one(ak_uitest *a, ak_span text, target_ok ok, target *out, ak_buf *e
 		return failure(a, err, "the screen doesn't show \"%.*s\"", text);
 	}
 	if (err) ak_buf_printf(err, "%u things show ", n);
-	return failure(a, err, "\"%.*s\": narrow it with app.in(.content), app.in(.navigationBar), app.in(.bottomToolbar) or app.nextTo(label), or give it a label", text);
+	return failure(a, err, "\"%.*s\": narrow it with app.in(.content), app.in(.navigationBar), app.in(.bottomToolbar), app.in(.sidebar) or app.nextTo(label), or give it a label", text);
 }
 
 // focus gives the field the keyboard, as a tap does: the field focused
@@ -1331,6 +1344,7 @@ bool ak_uitest_tap(ak_uitest *a, ak_span text, ak_buf *err) {
 	switch (t.how) {
 	case BY_VIEW: ok = press(a, t.v, text, false, err); break;
 	case BY_TAB:
+	case BY_DEST:
 	case BY_SEGMENT:
 		if (disabled_view(t.v)) return failure(a, err, "\"%.*s\" is disabled", text);
 		ak_fake_select(a->f, t.v, t.i);
@@ -2277,7 +2291,7 @@ static ak_val scoped_new(ak_uitest *app, uint8_t region, ak_str *next_to) {
 }
 
 // test.in's region is TestScope's case: content, navigationBar, toolbar,
-// tabBar (IN_CONTENT...).
+// tabBar, sidebar (IN_CONTENT...).
 static ak_val t_in(ak_val *a, uint32_t n) {
 	ak_uitest *app = app_arg(a, n, "test.in");
 	return scoped_new(app, (uint8_t)(IN_CONTENT + (n > 1 ? a[1].i : 0)), NULL);

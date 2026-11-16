@@ -1,3 +1,4 @@
+import asuka/math
 import asuka/chart
 import asuka/lottie
 import asuka/shader
@@ -204,7 +205,7 @@ component LottieSection {
       marker: markers[marker]
       // Blue in light mode, a lighter blue in dark mode.
       overrides: if tinted {
-        [lottie.Override.colors("Ring", light: #0a84ff, dark: #64d2ff), lottie.Override.colors("Glow", light: #e5f1ff, dark: #0b2540)]
+        [lottie.colors("Ring", light: #0a84ff, dark: #64d2ff), lottie.colors("Glow", light: #e5f1ff, dark: #0b2540)]
       } else {
         []
       }
@@ -348,7 +349,7 @@ component Shapes {
 /// A circle inset by half the stroke, starting at the top.
 fn ring(w: float, h: float) -> Path {
   let r = min(w, h) / 2 - 4
-  return Path().arc(w / 2, h / 2, radius: r, from: -pi / 2, to: 3 * pi / 2, clockwise: true)
+  return Path().arc(w / 2, h / 2, r, start: -math.pi / 2, end: 3 * math.pi / 2)
 }
 
 /// A five-pointed star in the box.
@@ -356,10 +357,10 @@ fn star(w: float, h: float) -> Path {
   var p = Path()
   for i in 0..<10 {
     let r = if i % 2 == 1 { min(w, h) / 2 * 0.42 } else { min(w, h) / 2 }
-    let a = i.float() * pi / 5 - pi / 2
-    let x = w / 2 + r * cos(a)
-    let y = h / 2 + r * sin(a)
-    p = if i == 0 { p.moveTo(x, y) } else { p.lineTo(x, y) }
+    let a = i.float() * math.pi / 5 - math.pi / 2
+    let x = w / 2 + r * math.cos(a)
+    let y = h / 2 + r * math.sin(a)
+    p = if i == 0 { p.move(x, y) } else { p.line(x, y) }
   }
   return p.close()
 }
@@ -386,21 +387,21 @@ component CanvasSection {
   state level = 0.62
 
   Section("Canvas") {
-    Canvas {
-      height: 170
-      draw: g => {
-        let cx = g.width / 2
-        let cy = g.height - 12
-        let r = min(g.width / 2, cy) - 10 // room for half the stroke
-        g.stroke(Path().arc(cx, cy, radius: r, from: pi, to: 2 * pi, clockwise: true), .secondaryBackground, width: 14, cap: .round)
-        g.stroke(Path().arc(cx, cy, radius: r, from: pi, to: pi * (1 + level), clockwise: true), .accent, width: 14, cap: .round)
-        for i in 0..10 {
-          let a = pi * (1 + i.float() / 10)
-          let tick = Path().moveTo(cx + cos(a) * (r - 22), cy + sin(a) * (r - 22)).lineTo(cx + cos(a) * (r - 30), cy + sin(a) * (r - 30))
-          g.stroke(tick, .tertiaryLabel, width: 2, cap: .round)
-        }
-        g.text("{(level * 100).fixed(0)}%", cx, cy - 8, font: Font(size: 34, weight: .semibold), align: .center)
+    Canvas(g => {
+      let cx = g.width / 2
+      let cy = g.height - 12
+      let r = min(g.width / 2, cy) - 10 // room for half the stroke
+      let thick = StrokeStyle(width: 14, cap: .round)
+      g.stroke(Path().arc(cx, cy, r, start: math.pi, end: 2 * math.pi), .secondaryBackground, thick)
+      g.stroke(Path().arc(cx, cy, r, start: math.pi, end: math.pi * (1 + level)), .accent, thick)
+      for i in 0..10 {
+        let a = math.pi * (1 + i.float() / 10)
+        let tick = Path().move(cx + math.cos(a) * (r - 22), cy + math.sin(a) * (r - 22)).line(cx + math.cos(a) * (r - 30), cy + math.sin(a) * (r - 30))
+        g.stroke(tick, .tertiaryLabel, StrokeStyle(width: 2, cap: .round))
       }
+      g.text("{(level * 100).fixed(0)}%", cx, cy - 8, CanvasText(size: 34, weight: .semibold, align: .center))
+    }) {
+      height: 170
     }
     Slider { bind value: level }
     // A GPU program: an aurora that flows, in the slider's hue.

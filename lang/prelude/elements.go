@@ -447,15 +447,18 @@ var Elements = []Element{
 		{Name: "longPress", Type: "bool", Doc: "a context menu: shown on a long press (a right click on a desktop) rather than a tap"},
 	}, Doc: "shows a menu of actions when its children are tapped (UIMenu, PopupMenu). In a MenuBar, one of its menus: its children are MenuItems"},
 	{Name: "Split", Children: true, Keys: []Key{
-		{Name: "title", Type: "string", Doc: "the sidebar's"},
+		{Name: "title", Type: "string", Positional: true, Default: "\"\"", Doc: "the sidebar's"},
 		{Name: "selected", Type: "int", Bind: true, Event: "change", Doc: "the chosen destination's index: the user's choice writes it"},
-	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations"},
+	}, Events: []Event{{Name: "change", Params: []Param{{"index", "int"}}}}, Doc: "destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations, or Sidebars of them"},
 	{Name: "Destination", Children: true, LazyChildren: true, Keys: []Key{
 		{Name: "title", Type: "string", Positional: true},
 		{Name: "icon", Type: "string"},
 		{Name: "badge", Type: "string"},
 		{Name: "section", Type: "string", Doc: "the sidebar section it's in: destinations next to each other with the same section are one"},
 	}, Doc: "a place a Split's sidebar leads to: its content is its first screen, built when it's chosen"},
+	{Name: "Sidebar", Children: true, Keys: []Key{
+		{Name: "title", Type: "string", Positional: true, Doc: "the section's heading in the sidebar"},
+	}, Doc: "a section of a Split's sidebar: its children are Destinations, under its title (a Destination's own section, if it gives one, wins)"},
 	{Name: "Window", Children: true, LazyChildren: true, NoStyle: true, Keys: []Key{
 		{Name: "open", Type: "bool", Bind: true, Event: "change", Doc: "the window is open while true; the user closing it writes false. The app block's Window, the main window, shows unless it's false"},
 		{Name: "title", Type: "string", Doc: "its title bar's (\"\": the app's name)"},

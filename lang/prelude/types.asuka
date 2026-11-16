@@ -195,7 +195,7 @@ enum Feedback {
 }
 
 /// An animation's timing. repeat runs it again, that many times more
-/// (-1: until its props change again), each run going back first with
+/// (Animation.forever, -1: until its props change again), each run going back first with
 /// autoreverses. A spring's damping is from 0 to 1 (1 settles without
 /// overshooting; 0: 0.85, a little) and its velocity, a fraction of the
 /// change per second at the start (to carry on a fling). done is called
@@ -213,6 +213,8 @@ struct Animation {
   let spring = Animation(curve: .spring)
   let linear = Animation(curve: .linear)
   let quick = Animation(duration: 200ms)
+  /// repeat's: until the props change again.
+  let forever = -1
 }
 
 /// A span of a text field's text, as byte offsets into it
@@ -304,6 +306,7 @@ enum TestScope {
   navigationBar // the screens' titles and their toolbar's buttons
   bottomToolbar // the screens' bottom toolbars and primary actions
   tabBar        // the tab bars' tabs
+  sidebar       // the split views' sidebars: their destinations
 }
 
 /// A swipe's direction.

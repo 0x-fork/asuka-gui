@@ -142,7 +142,7 @@ component PopoverRow {
 /// stays until it's dismissed, one that just says so.
 component Snackbars {
   state drafts = 3
-  state upload: SnackbarHandle? = none
+  state upload: (fn())? = none
 
   Section("Snackbars") {
     Text("{drafts} drafts") { color: .secondaryLabel }
@@ -155,7 +155,7 @@ component Snackbars {
         disabled: drafts == 0
         on press {
           drafts -= 1
-          snackbar("Draft deleted", action: SnackbarAction(title: "Undo", run: () => { drafts += 1 }))
+          snackbar("Draft deleted", action: .button(title: "Undo", run: () => { drafts += 1 }))
         }
       }
       Button("Copy the link") {
@@ -172,7 +172,7 @@ component Snackbars {
       Button("Finish the upload") {
         variant: .gray
         on press {
-          upload?.dismiss()
+          if let dismiss = upload { dismiss() }
           upload = none
           snackbar("3 photos uploaded", duration: .long)
         }
@@ -246,7 +246,7 @@ component Dates {
       bind value: when
       mode: .dateTime
     }
-    DatePicker {
+    time.Picker {
       bind value: when
       inline: true
       min: now
@@ -258,17 +258,17 @@ component Dates {
 component DateRow(label: string) {
   prop value = time.now()
   prop mode: DateMode = .date
-  event change(value: time.Time)
+  event valueChange(value: time.Time)
 
   Row {
     gap: 12
     align: .center
     Text(label) { grow: 1 }
-    DatePicker {
+    time.Picker {
       value: value
       mode: mode
       min: time.now()
-      on change(v) { emit change(v) }
+      on valueChange(v) { emit valueChange(v) }
     }
   }
 }

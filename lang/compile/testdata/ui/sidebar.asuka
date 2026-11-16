@@ -1,0 +1,49 @@
+// A Split's sidebar in sections: Sidebars of Destinations.
+
+state chosen = 0
+
+component Gallery {
+  Split("Gallery") {
+    bind selected: chosen
+    Sidebar("Views") {
+      Destination("Text") {
+        icon: "textformat"
+        Text("the text page")
+      }
+      Destination("Images") { Text("the images page") }
+    }
+    Sidebar("Controls") {
+      Destination("Buttons") {
+        badge: "New"
+        Screen {
+          toolbar {
+            Button("Top") { on press { chosen = 0 } }
+          }
+          Text("the buttons page")
+        }
+      }
+    }
+    Destination("About") {
+      section: "More"
+      Text("the about page")
+    }
+  }
+}
+
+test "sections" {
+  let app = mount(Gallery())
+  app.expect("the text page")
+  chosen = 2
+  app.expect("the buttons page", "Buttons")
+  app.expectNo("the text page")
+  app.tap("Top")
+  app.expect("the text page")
+  chosen = 3
+  app.expect("the about page")
+  app.tap("Images")
+  app.expect("the images page")
+  expect(chosen == 1)
+  app.in(.sidebar).expect("Text", "Buttons", "About")
+}
+
+app { Gallery() }

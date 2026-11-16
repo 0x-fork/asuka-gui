@@ -1,3 +1,5 @@
+import asuka/math
+
 /// Motion's examples, with the toast they show over the screen's bottom
 /// and a button back to the top.
 component MotionPage {
@@ -79,7 +81,7 @@ component Motion {
           if g.state == .ended || g.state == .cancelled {
             // Back home on a bouncy spring that carries on the fling: its
             // speed toward home, as a fraction of the way left per second.
-            let d = hypot(g.translationX, g.translationY)
+            let d = math.hypot(g.translationX, g.translationY)
             let v = if d > 1 { -(g.velocityX * g.translationX + g.velocityY * g.translationY) / d / d } else { 0.0 }
             animate(Animation(duration: 600ms, curve: .spring, damping: 0.55, velocity: v), () => {
               dragX = 0
@@ -121,7 +123,7 @@ component Matched {
         gap: 12
         align: .center
         on press { toggle() }
-        Art(240, radius: 24)
+        Art(240, 24)
         Text("Night Drive") {
           font: .title2.bold()
           shared: "album-title"
@@ -133,7 +135,7 @@ component Matched {
         gap: 12
         align: .center
         on press { toggle() }
-        Art(56, radius: 10)
+        Art(56, 10)
         Text("Night Drive") {
           font: .headline
           shared: "album-title"
@@ -182,7 +184,7 @@ component Pulse {
         if pulsing {
           pulsing = false
         } else {
-          animate(Animation(duration: 800ms, curve: .easeInOut, repeat: .forever, autoreverses: true), () => { pulsing = true })
+          animate(Animation(duration: 800ms, curve: .easeInOut, repeat: Animation.forever, autoreverses: true), () => { pulsing = true })
         }
       }
     }
@@ -245,7 +247,7 @@ component Turner {
       background: .purple
       transform: Transform(scale: scale, rotation: angle)
       on rotate(g) {
-        angle = base + g.rotation * 180 / pi
+        angle = base + g.rotation * 180 / math.pi
         if g.state == .ended || g.state == .cancelled { base = angle }
       }
       on pinch(g) {

@@ -692,11 +692,9 @@ native component Menu(title: string = "") {
   prop longPress: bool
 }
 
-/// destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations
-native component Split() {
+/// destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations, or Sidebars of them
+native component Split(title: string = "") {
   prop children: View? = none
-  /// the sidebar's
-  prop title: string
   /// the chosen destination's index: the user's choice writes it
   prop selected: int
   event change(index: int)
@@ -709,6 +707,11 @@ native component Destination(title: string) {
   prop badge: string
   /// the sidebar section it's in: destinations next to each other with the same section are one
   prop section: string
+}
+
+/// a section of a Split's sidebar: its children are Destinations, under its title (a Destination's own section, if it gives one, wins)
+native component Sidebar(title: string) {
+  prop children: View? = none
 }
 
 /// a desktop window of its own while open (a window in the page on the web; phones have none): its content is built as it opens, disposed as it closes. The app block's Window is the main window: its keys are the main window's
