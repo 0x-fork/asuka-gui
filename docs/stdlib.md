@@ -141,8 +141,8 @@ The device's packages (`location`, `sensors`, `purchase`, `pay`,
 `appleauth`, `nfc`, `bluetooth`) have fakes for tests: `location.fake()`,
 `purchase.fake(products)` and the others give the package an Asuka
 implementation a test drives (it moves the device, approves a purchase,
-taps a tag, adds a peripheral) in place of the platform's, as the
-[standard library's README](../std/README.md#test-fakes) says.
+taps a tag, adds a peripheral) in place of the platform's. See
+[Testing](testing.md#platform-services-and-native-packages).
 
 ## Packages that aren't here
 

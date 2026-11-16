@@ -114,7 +114,7 @@ state units = store.read("units", "metric")
 
 `asuka test` では実行のたびに同じ結果になります。`time.now()` は 2026-01-01T00:00:00Z から始まり、テストの時間（`sleep`）に合わせてだけ進みます。ローカルのタイムゾーンは UTC で、各テストには `fs.appDir()` として専用の空のディレクトリがあります。Web ではアプリにまだディレクトリがないので、`std/fs` の呼び出しはエラーを投げます。
 
-デバイスまわりのパッケージ（`location`、`sensors`、`purchase`、`pay`、`appleauth`、`nfc`、`bluetooth`）にはテスト用のフェイクがあります。`location.fake()` や `purchase.fake(products)` などは、プラットフォームの実装の代わりに、テストが操作する Asuka の実装（端末を動かす、購入を承認する、タグをかざす、ペリフェラルを加える）をパッケージに与えます。詳しくは[標準ライブラリの README](../../std/README.md#test-fakes) を参照してください。
+デバイスまわりのパッケージ（`location`、`sensors`、`purchase`、`pay`、`appleauth`、`nfc`、`bluetooth`）にはテスト用のフェイクがあります。`location.fake()` や `purchase.fake(products)` などは、プラットフォームの実装の代わりに、テストが操作する Asuka の実装（端末を動かす、購入を承認する、タグをかざす、ペリフェラルを加える）をパッケージに与えます。詳しくは[テスト](testing.md#プラットフォームのサービスとネイティブパッケージ)を参照してください。
 
 ## ここにないパッケージ
 

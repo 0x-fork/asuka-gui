@@ -114,7 +114,7 @@ state units = store.read("units", "metric")
 
 `asuka test` 让每次运行都可重复：`time.now()` 从 2026-01-01T00:00:00Z 开始，只随测试的时间（`sleep`）前进，本地时区是 UTC，每个测试都有一个属于自己的空目录作为 `fs.appDir()`。Web 上应用还没有自己的目录，所以 `std/fs` 的调用在那里会抛出错误。
 
-设备相关的包（`location`、`sensors`、`purchase`、`pay`、`appleauth`、`nfc`、`bluetooth`）都为测试提供了替身：`location.fake()`、`purchase.fake(products)` 等会把一个由测试驱动的 Asuka 实现换给这个包，代替平台的实现（移动设备位置、批准一笔购买、轻触一个标签、添加一个外设），详见[标准库的 README](../../std/README.md#test-fakes)。
+设备相关的包（`location`、`sensors`、`purchase`、`pay`、`appleauth`、`nfc`、`bluetooth`）都为测试提供了替身：`location.fake()`、`purchase.fake(products)` 等会把一个由测试驱动的 Asuka 实现换给这个包，代替平台的实现（移动设备位置、批准一笔购买、轻触一个标签、添加一个外设），参见[测试](testing.md#平台服务与原生包)。
 
 ## 标准库之外的包
 
