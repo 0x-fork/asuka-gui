@@ -566,8 +566,11 @@ static void targets_in(ak_uitest *a, const ak_fake_view_vec *ls, ak_span text, t
 			break;
 		}
 		case AK_KIND_TABS:
+			// A tab, by its title or its badge (on the tab: a tap there picks it).
 			for (uint32_t j = 0; j < v->children.len; j++)
-				if (text.len && ak_span_eq(ak_fake_string(v->children.data[j], AK_PROP_SCREEN_TITLE), text)) add_target(a, out, v, BY_TAB, j);
+				if (text.len && (ak_span_eq(ak_fake_string(v->children.data[j], AK_PROP_SCREEN_TITLE), text) ||
+				                 ak_span_eq(ak_fake_string(v->children.data[j], AK_PROP_SCREEN_BADGE), text)))
+					add_target(a, out, v, BY_TAB, j);
 			break;
 		case AK_KIND_SPLIT: {
 			if (!text.len) break;
@@ -648,9 +651,13 @@ static void targets_of(const ak_fake_view *v, text_fn f, void *ctx) {
 		break;
 	}
 	case AK_KIND_TABS:
+		// Each tab's title, then its badge (a count), as the tab bar shows
+		// and a screen reader reads them.
 		for (uint32_t i = 0; i < v->children.len; i++) {
 			ak_span t = ak_fake_string(v->children.data[i], AK_PROP_SCREEN_TITLE);
 			if (t.len) f(t, ctx);
+			ak_span badge = ak_fake_string(v->children.data[i], AK_PROP_SCREEN_BADGE);
+			if (badge.len) f(badge, ctx);
 		}
 		break;
 	case AK_KIND_SEGMENTED: {

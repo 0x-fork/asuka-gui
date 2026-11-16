@@ -395,6 +395,7 @@ struct rnode {
 typedef struct {
 	ak_closure *build;
 	AK_VEC(ak_view *) kids;  // its Routes (retained)
+	AK_VEC(ak_view *) tabs;  // the Tabs made of it (retained; a gone one dropped as it's next seen)
 } route_t;
 
 static const ak_val *key_of(const ak_view *e, uint16_t key) { return ak_style_get(e, key); }
@@ -1453,6 +1454,11 @@ static ak_view *nav_view(router_t *rt, inst *in, const ndesc *d) {
 				const ak_val *v = s->route ? key_of(s->route, from[k]) : NULL;
 				if (v) ak_ui_set(tab, to[k], *v);
 			}
+			// It follows the Route's title, icon and badge (route_set).
+			if (s->route) {
+				route_t *rr = s->route->impl;
+				ak_vec_push(&rr->tabs, (ak_view *)ak_retain(tab));
+			}
 			ak_ui_add(tabs, tab);
 			ak_vec_push(&in->pages, ((slotv){tab, NULL, NULL}));  // the tabs hold it, and the page
 			ak_vec_push(&in->entries, NULL);
@@ -1653,11 +1659,38 @@ static ak_val not_found_screen(ak_closure *c, ak_val *a, uint32_t n) {
 
 static void route_init(ak_view *e) { e->impl = ak_alloc(sizeof(route_t)); }
 
+// route_set passes a change of the Route's title, icon or badge (a
+// binding's: an unread count) on to the tabs made of it.
+static void route_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
+	AK_UNUSED(prev);
+	uint16_t to;
+	switch (key) {
+	case AK_KEY_ROUTE_TITLE: to = AK_KEY_TAB_TITLE; break;
+	case AK_KEY_ROUTE_ICON: to = AK_KEY_TAB_ICON; break;
+	case AK_KEY_ROUTE_BADGE: to = AK_KEY_TAB_BADGE; break;
+	default: return;
+	}
+	route_t *r = e->impl;
+	uint32_t kept = 0;
+	for (uint32_t i = 0; i < r->tabs.len; i++) {
+		ak_view *t = r->tabs.data[i];
+		if (t->dead) {
+			ak_release(t);
+			continue;
+		}
+		ak_ui_set(t, to, v);
+		r->tabs.data[kept++] = t;
+	}
+	r->tabs.len = kept;
+}
+
 static void route_drop(ak_view *e) {
 	route_t *r = e->impl;
 	if (!r) return;
 	for (uint32_t i = 0; i < r->kids.len; i++) ak_release(r->kids.data[i]);
 	ak_vec_free(&r->kids);
+	for (uint32_t i = 0; i < r->tabs.len; i++) ak_release(r->tabs.data[i]);
+	ak_vec_free(&r->tabs);
 	ak_release(r->build);
 	ak_free(r);
 }
@@ -1677,7 +1710,7 @@ static void route_lazy(ak_view *e, ak_closure *build) {
 }
 
 const ak_el_class ak_class_route = {.name = "Route", .kind = AK_KIND_VIEW, .flags = AK_ELF_FRAGMENT | AK_ELF_FLATTEN | AK_ELF_CHILDREN,
-                                    .init = route_init, .add = route_add, .lazy = route_lazy, .drop = route_drop};
+                                    .init = route_init, .set = route_set, .add = route_add, .lazy = route_lazy, .drop = route_drop};
 
 static void router_dispose(void *ctx) {
 	ak_view *e = ctx;
