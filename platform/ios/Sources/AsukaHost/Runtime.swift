@@ -312,7 +312,7 @@ final class AsukaTextField: UITextField {
     /// Buttons with a glass variant (roundGlass).
     var glassButtons = Set<ObjectIdentifier>()
     weak var controller: AsukaViewController?
-    /// The share sheet this runtime is in (app.ShareSheet, in the share
+    /// The share sheet this runtime is in (asuka/sharesheet, in the share
     /// extension), if it is.
     weak var sheet: AsukaShareSheetController?
     var rootID: UInt32 = 0
@@ -392,9 +392,10 @@ final class AsukaTextField: UITextField {
     private func boot() {
         started = true
         // The app's own files (asuka/fs's appDir): Application Support,
-        // which the app makes as it writes there. Before the crash record,
-        // which is kept there.
-        if let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+        // which the app makes as it writes there (the App Group's, with a
+        // share sheet or a push rewrite: AsukaShared). Before the crash
+        // record, which is kept there.
+        if let dir = AsukaShared.appDir() {
             dir.path.withCString { asuka_set_app_dir($0) }
         }
         AsukaCrash.start() // before the app's init: its crashes are kept
@@ -463,15 +464,19 @@ final class AsukaTextField: UITextField {
     /// phone ASUKA_DEV_TUNNEL, the port the Mac reaches it on through the
     /// cable), the bytecode the CLI sends; otherwise the app compiled into
     /// this build. A player keeps where asuka dev was, so opened again
-    /// from the home screen it finds it.
+    /// from the home screen it finds it; with a share sheet or a push
+    /// rewrite, in the App Group, where its extensions (which asuka dev
+    /// doesn't launch) find it too and load the app from it as well.
     private func startApp() {
         var err: UnsafeMutablePointer<CChar>?
         var rc: Int32
         let env = ProcessInfo.processInfo.environment
-        let saved = UserDefaults.standard
+        let saved = AsukaShared.group.flatMap { UserDefaults(suiteName: $0) } ?? UserDefaults.standard
         let player = asuka_has_app() == 0
         let dev = env["ASUKA_DEV"] ?? (player ? saved.string(forKey: "AsukaDev") : nil)
-        let tunnel = env["ASUKA_DEV_TUNNEL"].flatMap { Int32($0) } ?? (player ? Int32(saved.integer(forKey: "AsukaDevTunnel")) : 0)
+        // The tunnel's port is the app's to listen on, not an extension's.
+        let appex = Bundle.main.bundlePath.hasSuffix(".appex")
+        let tunnel = env["ASUKA_DEV_TUNNEL"].flatMap { Int32($0) } ?? (player && !appex ? Int32(saved.integer(forKey: "AsukaDevTunnel")) : 0)
         if let dev, let colon = dev.lastIndex(of: ":"), let port = Int32(dev[dev.index(after: colon)...]) {
             if env["ASUKA_DEV"] != nil, player {
                 saved.set(dev, forKey: "AsukaDev")

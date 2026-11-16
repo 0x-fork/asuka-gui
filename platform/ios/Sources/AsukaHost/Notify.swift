@@ -271,7 +271,7 @@ import Intents
 }
 
 /// Notifications' content from Go's spec (internal/notifyspec's Spec):
-/// asuka/sdk/notify's, and a push's rewrite (push.Rewrite, in the Notification
+/// asuka/sdk/notify's, and a push's rewrite (push.rewrite, in the Notification
 /// Service Extension); and what's reported of one that shows.
 enum AsukaNotifyContent {
     /// Makes the content o says (into base: a push's, which keeps its aps),

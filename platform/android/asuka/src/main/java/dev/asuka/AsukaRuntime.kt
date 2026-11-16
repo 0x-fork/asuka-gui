@@ -437,7 +437,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             AsukaAutomation.start(this)
             watchRegion()
             AsukaNative.load(app)
-            // A share sheet's process: the Go code's root is the app's sheet.
+            // A share sheet's process: the app runs as its sheet (asuka/sharesheet).
             if (activity is AsukaShareActivity) runCatching { AsukaNative.setenv("ASUKA_SHARE_SHEET", "1") }
             activity.sendEnvironment(force = true)
             enter {
