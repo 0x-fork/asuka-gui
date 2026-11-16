@@ -110,7 +110,7 @@ public protocol Sensors: AnyObject {
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 2): // Sensors.Watch
@@ -124,7 +124,7 @@ public protocol Sensors: AnyObject {
                 AsukaNative.notify(readingID, w)
             }
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.watch(sensor: sensor, every: every, reading: reading)
@@ -138,7 +138,7 @@ public protocol Sensors: AnyObject {
             let from = r.int()
             let to = r.int()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.steps(from: from, to: to)
@@ -152,7 +152,7 @@ public protocol Sensors: AnyObject {
             let o = object as! any Sensors
             let json = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.simulate(json: json)

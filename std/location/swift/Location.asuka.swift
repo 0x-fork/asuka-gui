@@ -325,7 +325,7 @@ public protocol Locator: AnyObject {
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 2): // Locator.WatchAuthorization
@@ -337,7 +337,7 @@ public protocol Locator: AnyObject {
                 AsukaNative.notify(changedID, w)
             }
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.watchAuthorization(changed: changed)
@@ -350,7 +350,7 @@ public protocol Locator: AnyObject {
             let o = object as! any Locator
             let always = r.bool()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.request(always: always)
@@ -364,7 +364,7 @@ public protocol Locator: AnyObject {
             let o = object as! any Locator
             let purpose = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.requestPrecise(purpose: purpose)
@@ -377,7 +377,7 @@ public protocol Locator: AnyObject {
         case (0, 5): // Locator.Current
             let o = object as! any Locator
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.current()
@@ -396,7 +396,7 @@ public protocol Locator: AnyObject {
                 AsukaNative.notify(movedID, w)
             }
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.watch(moved: moved)
@@ -410,7 +410,7 @@ public protocol Locator: AnyObject {
             let latitude = r.float64()
             let longitude = r.float64()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.placeName(latitude: latitude, longitude: longitude)
@@ -424,7 +424,7 @@ public protocol Locator: AnyObject {
             let o = object as! any Locator
             let options = Wire.readUpdates(&r)
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.startUpdates(options: options)
@@ -436,7 +436,7 @@ public protocol Locator: AnyObject {
         case (0, 12): // Locator.Updating
             let o = object as! any Locator
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.updating()
@@ -450,7 +450,7 @@ public protocol Locator: AnyObject {
             let o = object as! any Locator
             let region = Wire.readRegion(&r)
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.monitor(region: region)
@@ -463,7 +463,7 @@ public protocol Locator: AnyObject {
             let o = object as! any Locator
             let id = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.stopMonitoring(id: id)
@@ -475,7 +475,7 @@ public protocol Locator: AnyObject {
         case (0, 15): // Locator.StopMonitoringAll
             let o = object as! any Locator
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.stopMonitoringAll()
@@ -487,7 +487,7 @@ public protocol Locator: AnyObject {
         case (0, 16): // Locator.Monitored
             let o = object as! any Locator
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.monitored()
@@ -506,7 +506,7 @@ public protocol Locator: AnyObject {
                 AsukaNative.notify(eventID, w)
             }
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     try await o.events(event: event)

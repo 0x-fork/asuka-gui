@@ -179,7 +179,7 @@ public protocol Provider: AnyObject {
         }
     }
 
-    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {
+    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {
         var r = input
         switch (iface, method) {
         case (0, 2): // Provider.SignIn
@@ -188,7 +188,7 @@ public protocol Provider: AnyObject {
             let nonce = r.string()
             let state = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.signIn(scopes: scopes, nonce: nonce, state: state)
@@ -202,7 +202,7 @@ public protocol Provider: AnyObject {
             let o = object as! any Provider
             let user = r.string()
             guard !r.failed else { done(.failure(AsukaNativeError.malformed)); return nil }
-            return Task {
+            return _Concurrency.Task {
                 do {
                     var w = AsukaNativeWriter.ok()
                     let v = try await o.credentialState(user: user)
