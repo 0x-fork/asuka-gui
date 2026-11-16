@@ -94,6 +94,12 @@ func runEnv(t *testing.T, dir string) []string {
 // and returns the dumps by name ("end" the last).
 func script(t *testing.T, dir, exe string, steps ...string) map[string]string {
 	t.Helper()
+	return scriptEnv(t, dir, exe, nil, steps...)
+}
+
+// scriptEnv is script with more of the environment.
+func scriptEnv(t *testing.T, dir, exe string, env []string, steps ...string) map[string]string {
+	t.Helper()
 	var s, snaps []string
 	for _, st := range steps {
 		if name, ok := strings.CutPrefix(st, "snap:"); ok {
@@ -105,6 +111,7 @@ func script(t *testing.T, dir, exe string, steps ...string) map[string]string {
 	cmd := exec.Command(exe)
 	cmd.Dir = dir
 	cmd.Env = append(runEnv(t, dir), "ASUKA_SCRIPT="+strings.Join(s, ";"), "ASUKA_DUMP=1", "ASUKA_SNAPSHOT="+filepath.Join(dir, "end.png"))
+	cmd.Env = append(cmd.Env, env...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Start(); err != nil {
@@ -474,4 +481,29 @@ func TestDrawing(t *testing.T) {
 			t.Errorf("no%s in:\n%s", strings.TrimSuffix(kind, " ["), d["drawn"])
 		}
 	}
+}
+
+// A window reopens where it was left (docs/navigation.md, "Routes"): the
+// app navigates to a message and quits; launched again, its router
+// starts at the message (asuka_set_start, from asuka-routes.json), with
+// home under it. Automation keeps no routes unless ASUKA_ROUTES=1 says
+// so: without it, the app starts at its initial route.
+func TestRouteReopens(t *testing.T) {
+	onLinux(t)
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "app")
+	buildApp(t, testdata(t, "routes.asuka"), exe)
+	data := filepath.Join(dir, "data")
+	keep := []string{"ASUKA_DATA=" + data, "ASUKA_ROUTES=1"}
+	first := scriptEnv(t, dir, exe, keep, "wait:1s", "tap:Open 7", "wait:1s", "snap:first")
+	shows(t, first["first"], "the first run", []string{"Showing message 7"}, "The home screen")
+	if b, _ := os.ReadFile(filepath.Join(data, "asuka-routes.json")); !strings.Contains(string(b), "/home/7") {
+		t.Fatalf("asuka-routes.json:\n%s", b)
+	}
+	// Automation alone keeps nothing: the initial route.
+	fresh := scriptEnv(t, dir, exe, []string{"ASUKA_DATA=" + data}, "wait:1s", "snap:fresh")
+	shows(t, fresh["fresh"], "an automated run", []string{"The home screen"}, "Showing message 7")
+	again := scriptEnv(t, dir, exe, keep, "wait:1s", "snap:again", "back", "wait:1s", "snap:back")
+	shows(t, again["again"], "launched again", []string{"Showing message 7"}, "The home screen")
+	shows(t, again["back"], "back", []string{"The home screen"}, "Showing message 7")
 }

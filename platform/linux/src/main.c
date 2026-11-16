@@ -70,6 +70,7 @@ void lx_mount(void) {
 	static asuka_host_callbacks cb;
 	cb = lx_callbacks();
 	H.depth++;
+	lx_route_start();
 	asuka_start(&cb);
 	H.started = true;
 	char *err = NULL;

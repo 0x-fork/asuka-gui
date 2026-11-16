@@ -94,7 +94,7 @@ void lx_command(node *n, ak_cmd c, ak_span args) {
 		return;
 	}
 	case AK_CMD_LOCATION:
-		lx_route_location(args);
+		lx_route_location(n, args);
 		return;
 	case AK_CMD_WINDOW_TITLE:
 		if (H.main) {

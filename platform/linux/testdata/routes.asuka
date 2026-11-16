@@ -1,0 +1,29 @@
+// A router's address kept for the window (routes_test.go): Home, then a
+// message pushed; the app quits and opens on the message.
+app { Routes() }
+
+component Routes {
+  Router(initial: "/home") {
+    Route("/home", layout: .stack) {
+      Home
+      Message
+    }
+  }
+}
+
+screen Home at "" {
+  title: "Home"
+  Column {
+    padding: 16; gap: 8
+    Text("The home screen")
+    Button("Open 7") { on press { navigate("/home/7") } }
+  }
+}
+
+screen Message(id: int) at ":id" {
+  title: "Message {id}"
+  Column {
+    padding: 16
+    Text("Showing message {id}")
+  }
+}
