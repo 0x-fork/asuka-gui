@@ -55,6 +55,10 @@ typedef struct {
 } asuka_host_callbacks;
 
 ASUKA_API void asuka_start(asuka_host_callbacks *callbacks);
+// asuka_unload lets the running app go: its views (the host gets their
+// Destroy ops now), its state and its module. A host that goes, or a
+// test about to start the core for another host, calls it. Main thread.
+ASUKA_API void asuka_unload(void);
 // Loads a compiled module (lang/bytecode), runs its init and mounts its
 // app as the root. A module loaded while one runs replaces it (the old
 // app is unmounted). It returns 0, or -1 with a message the host can

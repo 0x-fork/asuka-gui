@@ -127,6 +127,15 @@ static int run_module(ak_module *m, char **err) {
 	return 0;
 }
 
+void asuka_unload(void) {
+	if (!started) return;
+	ak_ui_unmount();
+	if (module_owner) ak_owner_dispose(module_owner);
+	module_owner = NULL;
+	if (module) ak_module_release(module);
+	module = NULL;
+}
+
 int asuka_load(const uint8_t *p, size_t n, char **err) {
 	if (err) *err = NULL;
 	if (!started) {

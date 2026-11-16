@@ -47,6 +47,7 @@ type Core struct {
 
 	start      func(cbs *callbacks)
 	load       func(p *byte, n uintptr, err **byte) int32
+	unload     func()
 	run        func(err **byte) int32
 	devConnect func(host string, port int32, hello string, err **byte) int32
 	freeString func(p *byte)
@@ -113,6 +114,7 @@ func Open(path string) (*Core, error) {
 	c := &Core{}
 	purego.RegisterLibFunc(&c.start, lib, "asuka_start")
 	purego.RegisterLibFunc(&c.load, lib, "asuka_load")
+	purego.RegisterLibFunc(&c.unload, lib, "asuka_unload")
 	purego.RegisterLibFunc(&c.run, lib, "asuka_run")
 	purego.RegisterLibFunc(&c.devConnect, lib, "asuka_dev_connect")
 	purego.RegisterLibFunc(&c.freeString, lib, "asuka_free_string")
@@ -278,6 +280,10 @@ func (c *Core) Load(module []byte) error {
 	}
 	return nil
 }
+
+// Unload lets the running app go: its views (Destroy ops to the
+// current host), its state, its module. Main thread.
+func (c *Core) Unload() { c.unload() }
 
 // Run runs the app compiled into the core library (a release build).
 func (c *Core) Run() error {
