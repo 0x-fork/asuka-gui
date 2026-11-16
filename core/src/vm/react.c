@@ -27,6 +27,7 @@ void (*ak_vm_keep_add)(ak_str *key, void *cell);
 
 ak_val ak_vm_cell_new(ak_val v, ak_kind k, ak_str *keep_key) {
 	cell *c = ak_opaque_new(AK_TAG_CELL, sizeof(cell), cell_drop);
+	ak_signal_born(&c->node);
 	c->kind = (uint8_t)k;
 	c->v = v;
 	if (keep_key && ak_vm_keep_find) {

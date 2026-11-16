@@ -1,0 +1,31 @@
+// A component's let that makes a store and sets it up: the memo writes
+// only state it made, which nothing reads yet.
+
+store Counter {
+  state start = 0
+  state n = 0
+}
+
+fn counter(from: int) -> Counter {
+  let c = Counter()
+  c.start = from
+  c.n = from
+  return c
+}
+
+component View(from: int) {
+  let c = counter(from)
+  Column {
+    Text("n {c.n}")
+    Button("Add") { on press { c.n += 1 } }
+  }
+}
+
+app { View(5) }
+
+test "made and set up in a let" {
+  let app = mount(View(5))
+  app.expect("n 5")
+  app.tap("Add")
+  app.expect("n 6")
+}
