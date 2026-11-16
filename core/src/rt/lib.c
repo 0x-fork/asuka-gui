@@ -894,6 +894,16 @@ static ak_val f_race(ak_val *args, uint32_t n) {
 	return group(ARR(0), true);
 }
 
+// ak_in_spawn_worker is set in an instance of the core that runs spawn's
+// work and nothing else (the web's workers): the module's init makes there
+// only the file's values a spawn can use (lang/ir's initBody).
+bool ak_in_spawn_worker;
+
+static ak_val async_in_worker(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+	return (ak_val){.i = ak_in_spawn_worker};
+}
+
 // async.never is a future nothing resolves: what never() awaits,
 // which ends when its task is cancelled (no timer: idle isn't held).
 static ak_val async_never(ak_val *args, uint32_t n) {
@@ -1097,6 +1107,7 @@ const ak_lib_entry ak_lib[] = {
 
 	{"color.opacity", color_opacity},
 	{"async.never", async_never},
+	{"async.in_worker", async_in_worker},
 	{"appearance.rgb", appearance_rgb},
 	{"bytes.empty", bytes_empty},
 	{"bytes.from", bytes_from},

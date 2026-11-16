@@ -175,9 +175,10 @@ export class DeclaredError extends Error {
 /**
  * The app the page runs: its name (asuka.toml's, the host's options), for
  * a package to keep its data under, as the host keeps the app's; and
- * where its assets are served from. Set as the host starts.
+ * where its assets are served from; its version (asuka.toml's), and
+ * whether it's asuka dev's build. Set as the host starts.
  */
-export const app = { name: "app", assets: "assets", version: "", build: "" };
+export const app = { name: "app", assets: "assets", version: "", build: "", dev: false };
 
 /**
  * The app's files, for a package that hands it some: a browser gives a

@@ -1,0 +1,353 @@
+// The update window (the Go sdk/update's window.go, Sparkle's), its menu item,
+// and its words in the app's language.
+
+import asuka/i18n
+import asuka/markdown
+
+// The window's sizes: a status's, and a release's, with its notes.
+let statusWidth = 440.0
+let statusHeight = 150.0
+let releaseWidth = 620.0
+let releaseHeight = 460.0
+
+/// The updater of a desktop app, Sparkle's, in a window of its own: show
+/// it once, in the app's main window (it takes no room there). While it's
+/// shown it checks for updates in the background (soon after launch,
+/// then every interval, unless automaticChecks() is off), and when a
+/// version is out the window shows its release notes and offers Install
+/// Update, Skip This Version (background checks don't offer it again, but
+/// offer the next) and Remind Me Later (the next check offers it again),
+/// with "Automatically download and install updates in the future"
+/// (automaticDownloads()). Installing shows the download's progress, then
+/// offers Relaunch Now. checkForUpdates() checks as the user asked, and
+/// the window says when the app is up to date, can't update itself, or
+/// failed. Where the app can't update itself (asuka dev's builds, an app
+/// a package manager installed, a phone) it never checks in the
+/// background. Its words are Asuka's, in the app's language.
+pub component UpdateWindow {
+  /// An image of the app in the window: an asset's path, as Image takes it.
+  prop icon: string = ""
+  /// The time between checks in the background.
+  prop interval: Duration = 24h
+  /// Whether it checks in the background until the user chooses
+  /// (setAutomaticChecks): false for an app that asks first, or checks
+  /// from its menu only.
+  prop automaticChecks: bool = true
+
+  effect {
+    checksByDefault = automaticChecks
+  }
+
+  task {
+    windows += 1
+    defer { windows -= 1 }
+    // The host's info, for the app's name in the menu.
+    let _ = await info()
+    schedule()
+    await never()
+  }
+
+  // What checkForUpdates and the window's buttons ask for, and the next
+  // check in the background, each as a task a new one replaces.
+  task(workID) { await runWork(workID, work) }
+  task(scheduleID, windows, checksByDefault, prefs.value.automaticChecks) { await scheduled(interval) }
+
+  Window {
+    bind open: windowOpen
+    title: say("softwareUpdate")
+    width: statusWidth
+    height: statusHeight
+    center: true
+    minimizable: false
+    maximizable: false
+    on close { dismiss() }
+    UpdateContent(icon: icon)
+  }
+}
+
+component UpdateContent(icon: string) {
+  state big = false
+  state shown: Phase = .idle
+  let content = Ref()
+
+  // Each phase comes to the front (the app's main window, shown after the
+  // updater's at launch, would hide it); a release's view, with its
+  // notes, is larger, and centered again as the size changes.
+  Column {
+    ref: content
+    grow: 1
+    match updater.phase {
+      .checking => ProgressView(title: say("updateChecking"), fraction: none, cancel: true, icon: icon)
+      .downloading => ProgressView(title: say("updateDownloading"), fraction: fraction(), cancel: true, icon: icon)
+      .installing => ProgressView(title: say("updateInstalling"), fraction: none, cancel: false, icon: icon)
+      .available => ReleaseView(icon: icon)
+      .ready => StatusView(title: say("updateReady"), message: say("updateReadyMessage", releaseArgs()), detail: "", icon: icon) {
+        Button(say("updateNotNow")) {
+          variant: .gray
+          on press { dismiss() }
+        }
+        Button(say("updateRelaunch")) {
+          variant: .filled
+          on press { relaunchNow() }
+        }
+      }
+      .upToDate => StatusView(title: say("updateUpToDate"), message: say("updateUpToDateMessage", ["app": appName(), "version": version()]), detail: "", icon: icon) {
+        Button(say("ok")) {
+          variant: .filled
+          on press { dismiss() }
+        }
+      }
+      .failed => StatusView(title: say("updateError"), message: say(if updater.installing { "updateInstallError" } else { "updateCheckError" }), detail: detail(), icon: icon) {
+        Button(say("ok")) {
+          variant: .filled
+          on press { dismiss() }
+        }
+      }
+      .unavailable => StatusView(title: say("updateUnavailable"), message: say("updateUnavailableMessage", ["app": appName()]), detail: detail(), icon: icon) {
+        Button(say("ok")) {
+          variant: .filled
+          on press { dismiss() }
+        }
+      }
+      .idle => View {}
+    }
+  }
+
+  effect {
+    let p = updater.phase
+    if p == shown { return }
+    shown = p
+    let b = p == .available
+    if b != big {
+      big = b
+      if b { content.setSize(releaseWidth, releaseHeight) } else { content.setSize(statusWidth, statusHeight) }
+      content.center()
+    }
+    content.focus()
+  }
+}
+
+fn appName() -> string {
+  if let i = hostInfo {
+    if !i.name.isEmpty() { return i.name }
+  }
+  return "App"
+}
+
+fn releaseArgs() -> [string: string] = ["app": appName(), "version": updater.release?.version ?? "", "current": version()]
+
+// detail is the error's, for the curious, without the package's prefix.
+fn detail() -> string = if let e = updater.error { messageOf(e) } else { "" }
+
+// fraction is the download's part done, 0 to 1.
+fn fraction() -> float? {
+  if updater.total <= 0 { return 0.0 }
+  return min(float(updater.downloaded) / float(updater.total), 1.0)
+}
+
+// formatSize is a size in megabytes, as "12.3 MB" (kilobytes below one).
+fn formatSize(n: int) -> string {
+  if n < 1_048_576 { return "{(n + 1023) / 1024} KB" }
+  return "{(float(n) / float(1_048_576)).fixed(1)} MB"
+}
+
+component AppIcon(icon: string, size: float) {
+  if !icon.isEmpty() {
+    Image(icon) {
+      width: size
+      height: size
+      shrink: 0
+    }
+  }
+}
+
+// A title, a message, a detail (an error's) and buttons.
+component StatusView(title: string, message: string, detail: string, icon: string) {
+  prop children: View
+  Column {
+    padding: 20
+    gap: 16
+    grow: 1
+    Row {
+      gap: 16
+      align: .start
+      AppIcon(icon: icon, size: 48)
+      Column {
+        grow: 1
+        shrink: 1
+        gap: 6
+        Text(title) { font: .headline }
+        Text(message) { font: .callout }
+        if !detail.isEmpty() {
+          Text(detail) {
+            font: .footnote
+            color: .secondaryLabel
+            lines: 3
+          }
+        }
+      }
+    }
+    Row {
+      gap: 8
+      justify: .end
+      children
+    }
+  }
+}
+
+// A title, a progress bar (none: under way, how far unknown), and Cancel.
+component ProgressView(title: string, fraction: float?, cancel: bool, icon: string) {
+  Column {
+    padding: 20
+    gap: 16
+    grow: 1
+    Row {
+      gap: 16
+      align: .center
+      AppIcon(icon: icon, size: 48)
+      Column {
+        grow: 1
+        shrink: 1
+        gap: 8
+        Text(title) { font: .headline }
+        Progress {
+          value: fraction
+          width: 100%
+        }
+        if fraction.isSome() {
+          Text(say("updateProgress", ["done": formatSize(updater.downloaded), "total": formatSize(updater.total)])) {
+            font: .footnote
+            color: .secondaryLabel
+          }
+        }
+      }
+    }
+    if cancel {
+      Row {
+        justify: .end
+        Button(say("cancel")) {
+          variant: .gray
+          on press { dismiss() }
+        }
+      }
+    }
+  }
+}
+
+// The release offered: its notes, Skip This Version, Remind Me Later and
+// Install Update, and the choice to install the next ones without
+// asking.
+component ReleaseView(icon: string) {
+  state automatic = automaticDownloads()
+  let notes = updater.release?.notes ?? ""
+
+  Column {
+    padding: 20
+    gap: 12
+    grow: 1
+    Row {
+      gap: 16
+      align: .start
+      AppIcon(icon: icon, size: 64)
+      Column {
+        grow: 1
+        shrink: 1
+        gap: 6
+        Text(say("updateAvailable", ["app": appName()])) { font: .headline }
+        Text(say("updateAvailableMessage", releaseArgs())) { font: .callout }
+      }
+    }
+    if !notes.trim().isEmpty() {
+      Text(say("updateReleaseNotes")) { font: .footnote.bold() }
+      Scroll {
+        grow: 1
+        shrink: 1
+        basis: 0
+        border: 1
+        borderColor: .separator
+        radius: 6
+        background: .secondaryBackground
+        markdown.View(notes) { padding: 12 }
+      }
+    } else {
+      View { grow: 1 }
+    }
+    Row {
+      gap: 6
+      align: .center
+      Toggle {
+        bind on: automatic
+        checkbox: true
+      }
+      // A click on a checkbox's words checks it, as the platforms' do.
+      View {
+        shrink: 1
+        on press { automatic = !automatic }
+        Text(say("updateAutomatically")) { font: .callout }
+      }
+    }
+    Row {
+      gap: 8
+      align: .center
+      Button(say("updateSkip")) {
+        variant: .gray
+        on press { skip(automatic) }
+      }
+      View { grow: 1 }
+      Button(say("updateRemindLater")) {
+        variant: .gray
+        on press { remindLater(automatic) }
+      }
+      Button(say("updateInstall")) {
+        variant: .filled
+        on press { installOffered(automatic) }
+      }
+    }
+  }
+}
+
+/// "Check for Updates…": a MenuItem that calls checkForUpdates(), for
+/// the app's MenuBar (AppMenu) or a tray icon's menu.
+pub component CheckForUpdates {
+  MenuItem(say("checkForUpdates")) { on press { checkForUpdates() } }
+}
+
+/// The menu CheckForUpdates goes in, for the app's MenuBar: on the Mac,
+/// the app's menu (a menu titled as the app puts its items there, after
+/// About); elsewhere Help, as Windows and GNOME apps have it.
+pub component AppMenu {
+  Menu(if environment().platform == .macOS { appName() } else { "Help" }) {
+    CheckForUpdates()
+  }
+}
+
+// ---- Words ----
+
+// say is the word of key in the app's language (i18n.locale(), which
+// it follows), its {placeholders} filled from args; English where the
+// language has none.
+fn say(key: string, args: [string: string] = [:]) -> string {
+  var text = wordsOf(i18n.locale())[key] ?? (words["en"] ?? [:])[key] ?? key
+  for (k, v) in args {
+    text = text.replace("\{{k}\}", v)
+  }
+  return text
+}
+
+// wordsOf is the words of the language nearest tag: the tag, its script
+// (Chinese's), then its language alone.
+fn wordsOf(tag: string) -> [string: string] {
+  let t = tag.replace("_", "-")
+  if let w = words[t] { return w }
+  let parts = t.split("-")
+  let lang = parts[0].lower()
+  if lang == "zh" {
+    let traditional = t.contains("Hant") || t.contains("TW") || t.contains("HK") || t.contains("MO")
+    return words[if traditional { "zh-Hant" } else { "zh-Hans" }] ?? [:]
+  }
+  if lang == "no" || lang == "nn" { return words["nb"] ?? [:] }
+  if parts.count() > 1 {
+    if let w = words["{lang}-{parts[1]}"] { return w }
+  }
+  return words[lang] ?? (words["en"] ?? [:])
+}

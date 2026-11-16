@@ -803,7 +803,7 @@ ui.OnOpenURL(func(raw string) {
 
 ## ほかのアプリからの共有
 
-`asuka.toml` に `shareTarget = true` と書くと、ブラウザーや YouTube の「共有」のように、ほかのアプリの共有シートにアプリが表示され、テキストやリンクを受け取れるようになります。`shareTarget` をテーブルにして `types = ["image/*", ...]` を指定すると、ファイルも受け取れます（[デバイスとサービス](device.md#ほかのアプリからの共有-uionshare) を参照）。`ui.OnShare` は、共有された内容を受け取ります。`OnOpenURL` と同じく、アプリを起動した共有は最初のハンドラーに渡されます。
+`asuka.toml` に `shareTarget = true` と書くと、ブラウザーや YouTube の「共有」のように、ほかのアプリの共有シートにアプリが表示され、テキストやリンクを受け取れるようになります。`shareTarget` をテーブルにして `types = ["image/*", ...]` を指定すると、ファイルも受け取れます（[デバイスとサービス](device.md#ほかのアプリからの共有onshare) を参照）。`ui.OnShare` は、共有された内容を受け取ります。`OnOpenURL` と同じく、アプリを起動した共有は最初のハンドラーに渡されます。
 
 ```go
 ui.OnShare(func(items []ui.SharedItem) {
@@ -815,4 +815,4 @@ ui.OnShare(func(items []ui.SharedItem) {
 
 iOS では、アプリに共有拡張機能（share extension）が付きます。この拡張機能は、Android と同じように、共有された内容を持ってアプリを開きます。拡張機能が独自の画面を表示することはありません。共有される内容は、タイトルとリンクの組であることがよくあります（Safari からは、ページのタイトルがテキストとして、その URL がリンクとして届きます）。[`examples/downloader`](../../examples/downloader) は、その中からリンクを探します。デスクトップと Web は共有先にならないので、そこでは `OnShare` は呼ばれません。
 
-自分のアプリを開かずに、共有元のアプリの上に自分のアプリのシートを表示するには、[デバイスとサービス](device.md#アプリ独自の共有シート-appsharesheet) の `app.ShareSheet` を参照してください。逆に自分のアプリから共有するには、`ui.Share(text)` でシステムの共有シートを表示し、`ui.ShareFiles` でファイルを共有します。Mac では共有メニュー、Windows では共有 UI、Web ではブラウザーの共有 UI になります。Linux には共有シートがないので、これらの関数は共有する内容をクリップボードにコピーし、そのことをトーストで知らせます。
+自分のアプリを開かずに、共有元のアプリの上に自分のアプリのシートを表示するには、[デバイスとサービス](device.md#アプリ独自の共有シート) の `app.ShareSheet` を参照してください。逆に自分のアプリから共有するには、`ui.Share(text)` でシステムの共有シートを表示し、`ui.ShareFiles` でファイルを共有します。Mac では共有メニュー、Windows では共有 UI、Web ではブラウザーの共有 UI になります。Linux には共有シートがないので、これらの関数は共有する内容をクリップボードにコピーし、そのことをトーストで知らせます。

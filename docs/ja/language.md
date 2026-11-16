@@ -372,7 +372,7 @@ async fn loadThread(id: string) throws -> Thread {
 - 非同期関数を呼ぶには `await` が必要です。ハンドラー、タスク、テストでは `await` できますが、コンポーネントの本体とその中の `let` ではできません。
 - **メインスレッド。** すべてのコードはメインスレッドで動きます。`await` で待っている間は、ほかの処理が動けます。状態を変更できるのはメインスレッドだけです。
 - `all(a, b)` は複数の呼び出しを同時に実行し、すべての結果を待ちます。`race(a, b)` は最初に終わった結果を取り、残りをキャンセルします。ほかに `sleep(300ms)` と `withTimeout(5s) { … }` があります。これらは構造化されていて、キャンセルした処理が止まり、その `defer` が実行されてから戻るかエラーを投げます。`await never()` はタスクが終わるまで待つだけです。コンポーネントが表示されている間、何かを持ち続けるタスク（`defer { release() }; await never()`）や、読み手がいなくなったときにだけ終わるストリームに使います。
-- `spawn { … }` はブロックを別のスレッドで実行します。メインスレッドを止めてしまうような処理（パース、画像処理）に使います。中で使えるのは値だけで、状態、ストア、ビューは使えません。使っていればコンパイラーが教えてくれます。Web では、ページの Web Worker の一つで実行されます。
+- `spawn { … }` はブロックを別のスレッドで実行します。メインスレッドを止めてしまうような処理（パース、画像処理）に使います。中で使えるのは値だけで、状態、ストア、ビュー、ネイティブのオブジェクト、C のポインター、そしてそれらを持つファイルの `let`（データベースなど）は使えません。使っていればコンパイラーが教えてくれます。Web では、ページの Web Worker の一つで実行されます。Worker はファイルの値だけを自分で作り、それ以外は作りません。
 - `for await message in socket.messages { … }` はストリーム、つまり `Stream<T>` を読みます。時間とともに届く値です。`Stream(send => { … })` で作ります。ストリームが最初に読まれたときにブロックがタスクとして動き出し、`send(x)` のたびに値が一つ届きます。ブロックが戻るとストリームは終わり、ブロックが投げたエラーでストリームも失敗します。ループを抜けると（`break`、エラー、オーナーがなくなる）ブロックはキャンセルされます。ストリームの読み手は一つだけです。
 
   ```asuka
@@ -601,6 +601,22 @@ pub native component MapView(region: Region) {
 
 モジュールを作ることも呼び出すことも失敗する可能性がある（そのプラットフォームにコードがないかもしれない）ので、どちらにも `try` を付けます（`let h = try Haptics()`、`try h.impact(.light)`）。`asuka native generate` は、各プラットフォームが実装する Swift、Kotlin、JavaScript、Go のコードを生成します。詳しくは[ネイティブコード](native.md)を参照してください。
 
+C は直接呼び出せます。`extern` 宣言では、C の関数が何を受け取り何を返すかを C の型で書きます。Asuka からは、それぞれが Asuka 自身の型に見えます（`Int32` は `int`、`CString` は `string`）。
+
+```asuka
+extern type Db with release db_close
+extern fn db_open(path: CString) -> Db?
+extern fn db_close(db: Db)
+extern fn db_each(db: Db, sql: CString, row: fn(CString?) -> bool) -> Int32
+
+extern struct Point {
+  x: Float32
+  y: Float32
+}
+```
+
+`extern type` は C が渡すポインターで、最後の参照がなくなると release で解放されます。`extern struct` は値渡しで受け渡しされ、C に渡した関数はコールバックになります。アプリがコンパイルしてリンクする C は、`asuka.toml` の `[c]` に書きます。詳しくは [Asuka から C を呼び出す](c.md)を参照してください。
+
 ## テスト
 
 ```asuka
@@ -627,6 +643,6 @@ test "archiving removes the row" {
 ## キーワード
 
 `app as async await bind break catch component continue defer do effect
-else emit enum event false fn for if import in interface key let load
+else emit enum event extern false fn for if import in interface key let load
 match native none on prop provide pub return screen self spawn state
 store struct style task test throw throws true try type use var while`

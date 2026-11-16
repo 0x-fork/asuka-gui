@@ -134,6 +134,7 @@ OS が日本語で表示する名前は、それぞれの表記に従います�
 | desktop.md | デスクトップ |
 | packages.md | パッケージ |
 | plugins.md | プラグイン |
+| c.md | Asuka から C を呼び出す |
 | native.md | ネイティブコード |
 | development.md | 開発 |
 | testing.md | テスト |

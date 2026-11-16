@@ -28,6 +28,18 @@ struct Drawing {
 let origin = Point(x: 0, y: 0)
 let names = ["a", "b", "c"]
 
+// Made by the page's init only: a store isn't a value, so no spawn can
+// use it, and a worker doesn't make it again (nor what's made from it).
+store Registry {
+  state n = 0
+}
+fn makeRegistry() -> Registry {
+  print("registry made")
+  return Registry()
+}
+let registry = makeRegistry()
+let registered = registry.n + 1
+
 fn heavy(n: int) -> int {
   var sum = 0
   for i in 1..n { sum += i }

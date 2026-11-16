@@ -246,7 +246,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 		if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose}); err != nil {
 			return "", err
 		}
-		if err := appbuild.Lib(t, cbuild.Shared, nil, filepath.Join(bundle, "Contents", "Frameworks", coreLibName("darwin"))); err != nil {
+		if err := appbuild.PlayerLib(t, cbuild.Shared, app.c, filepath.Join(bundle, "Contents", "Frameworks", coreLibName("darwin"))); err != nil {
 			return "", err
 		}
 		if err := writeHostConfig(app, platform, "", false, filepath.Join(bundle, "Contents", "Resources", boot.ConfigFile)); err != nil {
@@ -280,7 +280,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 	if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose}); err != nil {
 		return "", err
 	}
-	if err := appbuild.Lib(t, cbuild.Shared, nil, filepath.Join(dir, coreLibName(t.OS))); err != nil {
+	if err := appbuild.PlayerLib(t, cbuild.Shared, app.c, filepath.Join(dir, coreLibName(t.OS))); err != nil {
 		return "", err
 	}
 	return exe, writeHostConfig(app, platform, "", false, filepath.Join(dir, boot.ConfigFile))

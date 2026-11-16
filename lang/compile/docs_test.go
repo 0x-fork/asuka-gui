@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -57,38 +56,15 @@ func TestI18nDocExamples(t *testing.T) {
 	}
 }
 
-// The Asuka in docs/data.md compiles: its blocks, as one program (their
-// imports first).
-func TestDataDocCompiles(t *testing.T) {
-	b, err := os.ReadFile("../../docs/data.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var imports, body []string
-	seen := map[string]bool{}
-	for _, m := range regexp.MustCompile("(?s)```asuka\n(.*?)```").FindAllStringSubmatch(string(b), -1) {
-		for _, line := range strings.Split(m[1], "\n") {
-			if strings.HasPrefix(line, "import ") {
-				if !seen[line] {
-					seen[line] = true
-					imports = append(imports, line)
-				}
-				continue
-			}
-			body = append(body, line)
-		}
-	}
-	src := strings.Join(imports, "\n") + "\n\n" + strings.Join(body, "\n") + "\n"
-	if res := Files(map[string][]byte{"data.asuka": []byte(src)}, nil); res.Err() != nil {
-		t.Fatalf("docs/data.md's Asuka:\n%v", res.Err())
-	}
-}
-
 // The Asuka examples of the pages that show the standard library's
-// packages compile, each on its own, in every language's docs.
+// packages compile, in every language's docs. Those of eachBlock compile
+// each on its own; a page of onePage builds one program as it goes, its
+// blocks compiled together (their imports first).
 func TestDocExamples(t *testing.T) {
+	eachBlock := []string{"device.md", "components.md"}
+	onePage := []string{"data.md", "purchases.md", "nfc.md", "bluetooth.md", "icloud.md"}
 	for _, lang := range []string{"", "zh", "ja"} {
-		for _, page := range []string{"device.md", "components.md"} {
+		for _, page := range eachBlock {
 			path := filepath.Join("..", "..", "docs", lang, page)
 			b, err := os.ReadFile(path)
 			if err != nil {
@@ -104,6 +80,64 @@ func TestDocExamples(t *testing.T) {
 				})
 			}
 		}
+		for _, page := range onePage {
+			path := filepath.Join("..", "..", "docs", lang, page)
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Run(path, func(t *testing.T) {
+				var imports, body []string
+				seen := map[string]bool{}
+				for _, ex := range asukaBlocks(string(b)) {
+					for _, line := range strings.Split(ex.code, "\n") {
+						if strings.HasPrefix(line, "import ") {
+							if !seen[line] {
+								seen[line] = true
+								imports = append(imports, line)
+							}
+							continue
+						}
+						body = append(body, line)
+					}
+				}
+				if len(body) == 0 {
+					t.Fatalf("%s has no Asuka", path)
+				}
+				src := strings.Join(imports, "\n") + "\n\n" + strings.Join(body, "\n") + "\n"
+				if res := Files(map[string][]byte{"page.asuka": []byte(src)}, nil); res.Err() != nil {
+					t.Errorf("%s's Asuka doesn't compile:\n%v", path, res.Err())
+				}
+			})
+		}
+	}
+}
+
+// The updater's examples (asuka/update) in the shipping and desktop
+// guides compile, in every language's docs.
+func TestUpdateDocExamples(t *testing.T) {
+	n := 0
+	for _, lang := range []string{"", "zh", "ja"} {
+		for _, page := range []string{"shipping.md", "desktop.md"} {
+			path := filepath.Join("..", "..", "docs", lang, page)
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, ex := range asukaBlocks(string(b)) {
+				if !strings.Contains(ex.code, "import asuka/update") {
+					continue
+				}
+				n++
+				res := Files(map[string][]byte{"example.asuka": []byte(ex.code)}, nil)
+				if err := res.Err(); err != nil {
+					t.Errorf("%s:%d: the example doesn't compile:\n%v", path, ex.line, err)
+				}
+			}
+		}
+	}
+	if n < 9 {
+		t.Errorf("%d examples of asuka/update, want 3 in each language", n)
 	}
 }
 

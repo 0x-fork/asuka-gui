@@ -1,0 +1,255 @@
+// C from Asuka: extern fns, types and structs, and callbacks, calling
+// ffi.c (compiled into the runner).
+
+extern fn ffi_add(a: int, b: int) -> int
+extern fn ffi_wrap8(x: Int8) -> Int8
+extern fn ffi_wrapu8(x: UInt8) -> UInt8
+extern fn ffi_big() -> UInt64
+extern fn ffi_neg16(x: Int16) -> Int16
+extern fn ffi_u32(x: UInt32) -> UInt32
+extern fn ffi_half(x: Float32) -> Float32
+extern fn ffi_scale(x: float, by: float) -> float
+extern fn ffi_not(b: bool) -> bool
+
+extern fn ffi_len(s: CString) -> UInt64
+extern fn ffi_greeting() -> CString
+extern fn ffi_maybe(some: bool) -> CString?
+extern fn ffi_is_null(s: CString?) -> bool
+
+extern fn ffi_sum(b: bytes) -> Int64
+extern fn ffi_bytes_len(b: bytes?) -> Int64
+
+extern fn ffi_ptr() -> Pointer
+extern fn ffi_null() -> Pointer?
+extern fn ffi_deref(p: Pointer?) -> Int32
+
+extern type Counter with release counter_free
+extern fn counter_new(start: int) -> Counter?
+extern fn counter_bump(c: Counter) -> int
+extern fn counter_free(c: Counter)
+extern fn counters_open() -> int
+extern fn counters_closed() -> int
+
+extern struct Point {
+  x: Int32
+  y: Float32
+}
+
+extern struct Line {
+  a: Point
+  b: Point
+  tag: Pointer
+  closed: bool
+  width: UInt8 = 1
+}
+
+extern fn point_scale(p: Point, by: Int32) -> Point
+extern fn line_length2(l: Line) -> float
+extern fn line_flip(l: Line) -> Line
+
+extern fn each_number(n: int, f: fn(int)) -> int
+extern fn fold(n: Int32, f: fn(Int32, Int32) -> Int32) -> Int32
+extern fn each_word(s: CString, f: fn(CString?, bool))
+extern fn maybe_call(f: (fn())?) -> bool
+
+extern fn keep(f: fn(int))
+extern fn call_kept(v: int)
+extern fn drop_kept()
+extern fn call_kept_on_thread()
+extern fn join_thread()
+
+test "numbers" {
+  print(ffi_add(40, 2))
+  print(ffi_wrap8(300))
+  print(ffi_wrapu8(-1))
+  print(ffi_big())
+  print(ffi_neg16(5))
+  print(ffi_u32(41))
+  print(ffi_half(3.0))
+  print(ffi_scale(1.5, 4))
+  print(ffi_not(true))
+}
+
+test "strings and bytes" {
+  print(ffi_len("héllo"))
+  print(ffi_greeting())
+  print(ffi_maybe(true) ?? "none")
+  print(ffi_maybe(false) ?? "none")
+  print(ffi_is_null(none))
+  print(ffi_is_null(""))
+  print(ffi_sum("abc".bytes()))
+  print(ffi_bytes_len(none))
+  print(ffi_bytes_len(bytes()))
+}
+
+test "pointers" {
+  let p = ffi_ptr()
+  print(ffi_deref(p))
+  print(p == ffi_ptr())
+  print(ffi_null() == none)
+  print(ffi_deref(ffi_null()))
+}
+
+fn bumpTwice() -> int {
+  let c = counter_new(10)!
+  counter_bump(c)
+  return counter_bump(c)
+}
+
+test "extern types" {
+  print(bumpTwice())
+  // Released as its last reference went.
+  print(counters_open())
+  print(counter_new(-1) == none)
+  let c = counter_new(0)!
+  let same = c
+  print(c == same)
+  print(counters_open())
+  // Released at once; once only.
+  counter_free(c)
+  print(counters_open())
+  print(counters_closed())
+  do {
+    counter_bump(same)
+  } catch e {
+    print(e.message)
+  }
+}
+
+test "after the test, nothing's open" {
+  print(counters_open())
+  print(counters_closed())
+}
+
+test "structs" {
+  let p = point_scale(Point(x: 2, y: 1.5), 3)
+  print(p.x)
+  print(p.y)
+  let l = Line(a: Point(x: 0, y: 0), b: Point(x: 3, y: 4), tag: ffi_ptr(), closed: false)
+  print(line_length2(l))
+  let f = line_flip(l)
+  print(f.a.x)
+  print(f.b.y)
+  print(f.closed)
+  print(f.width)
+  print(ffi_deref(f.tag))
+}
+
+test "callbacks" {
+  var seen: [int] = []
+  print(each_number(3, n => seen.push(n * 10)))
+  print(seen)
+  print(fold(4, (acc, i) => acc + i))
+  var words: [string] = []
+  each_word("hi there you", (w, last) => {
+    var word = w ?? "(end)"
+    if last {
+      word += "."
+    }
+    words.push(word)
+  })
+  print(words)
+  print(maybe_call(none))
+  var called = false
+  print(maybe_call(() => { called = true }))
+  print(called)
+}
+
+test "a callback that fails" {
+  var n = 0
+  do {
+    each_number(5, i => {
+      n += 1
+      if i == 1 {
+        let xs: [int] = []
+        print(xs[i])
+      }
+    })
+    print("not here")
+  } catch e {
+    print("caught: {e.message}")
+  }
+  print(n)
+}
+
+state got: [int] = []
+
+test "kept callbacks" {
+  keep(v => got.push(v))
+  call_kept(1)
+  call_kept(2)
+  print(got)
+  // From another thread: posted to the main thread.
+  call_kept_on_thread()
+  join_thread()
+  print(got)
+  await sleep(1ms)
+  print(got)
+  drop_kept()
+  call_kept(3)
+  print(got)
+}
+
+// Output:
+// 42
+// 44
+// 255
+// -1
+// -5
+// 42
+// 1.5
+// 6
+// false
+// ok numbers
+// 6
+// héllo from C
+// some
+// none
+// true
+// false
+// 294
+// -1
+// 0
+// ok strings and bytes
+// 42
+// true
+// true
+// -1
+// ok pointers
+// 12
+// 0
+// true
+// true
+// 1
+// 0
+// 2
+// counter_bump: the Counter was released
+// ok extern types
+// 0
+// 2
+// ok after the test, nothing's open
+// 6
+// 4.5
+// 26
+// 3
+// 0
+// true
+// 2
+// 42
+// ok structs
+// 3
+// [0,10,20]
+// 10
+// ["hi","there","you.","(end)."]
+// false
+// true
+// true
+// ok callbacks
+// caught: index 1 out of range (length 0)
+// 2
+// ok a callback that fails
+// [1,2]
+// [1,2]
+// [1,2,7]
+// [1,2,7]
+// ok kept callbacks

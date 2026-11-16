@@ -386,6 +386,8 @@ func pubDecl(n syntax.Node) bool {
 		return d.Pub.IsValid()
 	case *syntax.TypeAliasDecl:
 		return d.Pub.IsValid()
+	case *syntax.ExternTypeDecl:
+		return d.Pub.IsValid()
 	case *syntax.FuncDecl:
 		return d.Pub.IsValid()
 	}

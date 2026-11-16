@@ -1,0 +1,62 @@
+// An app whose C is its own (c/) and the system's zlib (asuka.toml's
+// [c]): the CLI's tests run its tests and build it for each platform.
+
+extern fn zlibVersion() -> CString
+extern fn checksum_crc32(data: bytes) -> UInt32
+extern fn checksum_seed() -> int
+extern fn checksum_lines(text: CString, each: fn(int, UInt32)) -> Int32
+extern fn checksum_later(text: CString, done: fn(UInt32))
+extern fn checksum_wait()
+
+struct Line {
+  index: int
+  crc: int
+}
+
+component Checksum {
+  state text = "hello\nworld"
+  state lines: [Line] = []
+  state later = 0
+
+  Column {
+    Text("zlib {zlibVersion()}")
+    Text("CRC {checksum_crc32(text.bytes())}")
+    Button("Lines") {
+      on press {
+        var got: [Line] = []
+        checksum_lines(text, (i, crc) => got.push(Line(index: i, crc: crc)))
+        lines = got
+      }
+    }
+    Button("Later") {
+      on press {
+        checksum_later(text, crc => { later = crc })
+      }
+    }
+    for l in lines key l.index {
+      Text("Line {l.index}: {l.crc}")
+    }
+    Text("Later: {later}")
+  }
+}
+
+app { Checksum() }
+
+test "C, and the system's zlib" {
+  expect(checksum_crc32("hello".bytes()) == 907060870)
+  expect(checksum_seed() == 7)
+  expect(zlibVersion() != "")
+}
+
+test "the UI calls C, and C calls back" {
+  let app = mount(Checksum())
+  app.expect("CRC 2877110229")
+  app.tap("Lines")
+  app.expect("Line 0: 907060870")
+  app.expect("Line 1: 980881731")
+  // From another thread: posted to the main thread.
+  app.tap("Later")
+  checksum_wait()
+  await app.idle()
+  app.expect("Later: 2877110229")
+}

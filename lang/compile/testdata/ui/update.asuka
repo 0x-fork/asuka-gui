@@ -1,0 +1,300 @@
+// asuka/update on the fake host: its update module set up as an
+// installed app's host's (update.fakeHost), serving a feed, an archive
+// and a delta the CLI's code wrote (internal/update's WriteArchive and
+// WriteDelta, 1.0.0 to 1.1.0), signed here as `asuka build` signs them:
+// the check, the window's Install, Skip and Remind Me Later, the
+// download (the delta, or the archive when the delta fails), staging and
+// the host's install, a signature that isn't the app's, and the feeds.
+
+import asuka/update
+import asuka/fs
+import asuka/json
+import asuka/crypto
+import asuka/encoding
+
+// The 1.1.0 app's archive (App, assets/a.txt, assets/b.txt), and its
+// delta from 1.0.0.
+let archive64 = "H4sIAAAAAAAC/+zWS07DMBDG8VlzijlAFL5pPPGaoxg6KJFKHMXmcXzEYwFF7NpUVea3SbaW9f/ku3mmcwOAPgTCl+MvEAOJ7mKvIho6AmLcCTFoBc+lpoWAUxzy5+GuRB2M0zw3/GJLGfPE0kqLhsda+CHvjQdbjNO05/rx1/BTXozzI4/1htzVS6VYLbdn7z+q/t8/8Lt/gWokVu9/rftPbX2rF9t/9Ef3L9oF3/81DHY4ZF/yzfru//6i/Uv3t//O+1/DZK88fr76fAScc25L3gcACP4BmAASAAA="
+let delta64 = "YXN1a2EgZGVsdGEgMQqLAnTQPY4bMQwF4LuwHjgSJVI/Xc4RpBAlEp7CP5iZBEEM3z2wg/V64d2OeK94H3gBW04HqOB3budggt+6rPPpeE/8PdHjtsy6Qv1xgXPb9lDh+/kMExxOQ6FGdBOs81+Fyrdr35AYKrBKtEEOQ8tEGAS5cWuGGEqWHiU6JsLBGHtM2liSkrGFQqlxF5jeaP/XRtsa1BCv04PR1lW39dbNC9Rt+aUv5be22/5sn2KfrJSLFxJCHDTMZR7OzIn3zmSUgV4kWk+eQ7MQh8uYuaHmyMaiLrxbP6y+auQrjfdPnDKMovmoRgmjFA5cyMJwvmv2yZUg0pW7GqOk4XJ2JIlStC5q3R7f8vH68/pvAAEGCdLnZQAMAGLABIwMuAFgANJRyM0vSlXIT1PILOECDADKSy1XyMxTMNQz5AIMAA=="
+
+// The key `asuka update keygen` would make, from a fixed seed.
+let seed = crypto.sha256("asuka/update's tests".bytes())
+let base = "https://updates.example.com"
+let feed = "{base}/update-test.json"
+
+component Notes {
+  prop automatic = false
+  Column {
+    update.UpdateWindow { automaticChecks: automatic }
+    MenuBar { update.AppMenu() }
+    Text("Notes {update.updater.phase}")
+    Button("Check") { on press { update.checkForUpdates() } }
+  }
+}
+
+app { Notes() }
+
+fn path(names: [string]) -> string = fs.join([fs.appDir()] + names)
+
+fn sign(data: bytes) -> string = encoding.base64Encode(crypto.ed25519Sign(seed, crypto.sha256(data)))
+
+fn write(p: string, data: bytes) {
+  try? fs.mkdirAll(fs.dir(p))
+  try? fs.write(p, data)
+}
+
+// installed sets up the fake host as an installed 1.0.0's (a Windows
+// folder in the app's directory, its files as the delta was made from),
+// and serves 1.1.0: its manifest, archive and delta.
+async fn installed(signer: bytes = seed, notes: string = "## New\n\nA **faster** start.", changed: bool = false) throws -> update.FakeHost {
+  let root = path(["install"])
+  write(fs.join([root, "App"]), (if changed { "the app, changed" } else { "the app, version 1.0.0, its code here and there\n" }).bytes())
+  write(fs.join([root, "assets", "a.txt"]), "hello\n".bytes())
+  let archive = try encoding.base64Decode(archive64)
+  let delta = try encoding.base64Decode(delta64)
+  write(path(["feed", "app.tar.gz"]), archive)
+  write(path(["feed", "app.delta"]), delta)
+  let key = crypto.ed25519PublicKey(seed)
+  let m = update.Manifest(version: "1.1.0", notes: notes, date: "2026-11-16T00:00:00Z", url: "{base}/app.tar.gz", size: archive.count(), signature: encoding.base64Encode(crypto.ed25519Sign(signer, crypto.sha256(archive))), deltas: [update.ManifestDelta(from: "1.0.0", url: "{base}/app.delta", size: delta.count(), signature: encoding.base64Encode(crypto.ed25519Sign(signer, crypto.sha256(delta))))])
+  write(path(["feed", "update-test.json"]), json.encode(m).bytes())
+  let host = try await update.fakeHost(update.FakeApp(version: "1.0.0", name: "Notes", feed: feed, key: encoding.base64Encode(key), kind: "folder", root: root, exe: fs.join([root, "App"]), work: root))
+  try await host.serve(update.Served(url: feed, file: path(["feed", "update-test.json"])))
+  try await host.serve(update.Served(url: "{base}/app.tar.gz", file: path(["feed", "app.tar.gz"])))
+  try await host.serve(update.Served(url: "{base}/app.delta", file: path(["feed", "app.delta"])))
+  return host
+}
+
+// A release as GitHub's API lists it.
+struct GitHubRelease {
+  tag_name: string
+  draft: bool = false
+  prerelease: bool = false
+}
+
+fn read(p: string) -> string = (try? fs.readText(p)) ?? "(none)"
+
+test "versions compare as semantic versioning orders them" {
+  expect(update.compareVersions("1.10.0", "1.9.2") == 1)
+  expect(update.compareVersions("1.4.0-beta.2", "1.4.0-beta.10") == -1)
+  expect(update.compareVersions("1.4.0-beta.2", "1.4.0") == -1)
+  expect(update.compareVersions("v1.2.0", "1.2.0+42") == 0)
+  expect(update.compareVersions("1.2", "1.2.0") == -1)
+  expect(update.compareVersions("1.0.0-alpha", "1.0.0-1") == 1)
+  expect(update.channelOf("1.3.0-beta.2") == "beta")
+  expect(update.channelOf("1.3.0-Beta2") == "beta")
+  expect(update.channelOf("1.3.0-1") == "pre")
+  expect(update.channelOf("1.3.0") == "")
+  expect(update.onChannel("1.3.0", "beta") && update.onChannel("1.3.0-rc.1", "*") && !update.onChannel("1.3.0-rc.1", "beta"))
+  expect(update.validVersion("1.3.0-beta.1+42") && !update.validVersion("1.x") && !update.validVersion("1.2-"))
+  expect(update.manifestName("darwin-universal", "beta") == "update-darwin-universal-beta.json")
+}
+
+test "without the host's module, updates aren't available" {
+  let app = mount(Notes())
+  await app.idle()
+  expect(await update.unsupported() == update.UpdateError.notAvailable)
+  do {
+    let _ = try await update.check()
+    expect(false, "checked")
+  } catch e {
+    print(e.message)
+  }
+  app.tap("Check")
+  app.expect("Updates Unavailable")
+  app.expect("App can’t update itself where it’s installed. If a package manager or an app store installed it, update it there.")
+  app.tap("OK")
+  app.expect("Notes idle")
+}
+
+test "a host that can't install says why" {
+  let app = mount(Notes())
+  let _ = try await update.fakeHost(update.FakeApp(installable: false, reason: "managed"))
+  expect(await update.unsupported() == update.UpdateError.managed)
+  let _ = try await update.fakeHost(update.FakeApp(feed: feed))
+  expect(await update.unsupported() == update.UpdateError.notConfigured, "no key")
+  app.expect("Notes idle")
+}
+
+test "check finds the newer version, and none when it's the one running" {
+  let app = mount(Notes())
+  let host = try await installed()
+  await app.idle()
+  let r = (try await update.check())!
+  expect(r.version == "1.1.0")
+  expect(r.current == "1.0.0")
+  expect(r.notes.contains("faster"))
+  // What install downloads: the delta.
+  expect(r.size == r.manifest.deltas[0].size)
+  let _ = try await update.fakeHost(update.FakeApp(version: "1.1.0", name: "Notes", feed: feed, key: "k", root: "r", exe: "r/App", work: "r"))
+  expect((try await update.check()).isNone())
+  print((try await host.log()).downloads)
+  app.expect("Notes idle")
+}
+
+test "Install Update downloads the delta, stages the new version, and relaunches" {
+  let app = mount(Notes())
+  let host = try await installed()
+  await app.idle()
+  var installedVersion = ""
+  let stop = update.onInstalled(r => { installedVersion = r.version })
+  defer { stop() }
+  app.tap("Check")
+  app.expect("A new version of Notes is available!")
+  app.expect("Notes 1.1.0 is now available—you have 1.0.0. Would you like to install it now?")
+  app.expect("Release Notes:")
+  expect(app.windows().contains("\"Software Update\""), app.windows())
+  app.tap("Install Update")
+  await app.idle()
+  app.expect("Ready to Relaunch")
+  app.expect("Notes ready")
+  expect(installedVersion == "1.1.0")
+  let log = try await host.log()
+  expect(log.downloads == [feed, "{base}/app.delta"], "{log.downloads}")
+  expect(log.installed.count() == 1)
+  // The staged tree is the new version's, beside the install, named as
+  // the host's cleaning of leftovers finds it.
+  let staged = log.installed[0]
+  expect(fs.base(fs.dir(staged)).hasPrefix(".asuka-update-"), staged)
+  expect(read(fs.join([staged, "App"])) == "the app, version 1.1.0, its code here and there, more of it\n")
+  expect(read(fs.join([staged, "assets", "b.txt"])) == "new in 1.1\n")
+  app.tap("Relaunch Now")
+  expect(app.quits() == "relaunch")
+}
+
+test "a delta that fails takes the whole archive" {
+  let app = mount(Notes())
+  let host = try await installed(changed: true)
+  await app.idle()
+  app.tap("Check")
+  app.tap("Install Update")
+  await app.idle()
+  app.expect("Ready to Relaunch")
+  let log = try await host.log()
+  expect(log.downloads == [feed, "{base}/app.delta", "{base}/app.tar.gz"], "{log.downloads}")
+  expect(read(fs.join([log.installed[0], "assets", "a.txt"])) == "hello\n")
+}
+
+test "an update not signed with the app's key is never installed" {
+  let app = mount(Notes())
+  let host = try await installed(signer: crypto.sha256("another key".bytes()))
+  await app.idle()
+  app.tap("Check")
+  app.tap("Install Update")
+  await app.idle()
+  app.expect("Update Error!")
+  app.expect("An error occurred while installing the update. Please try again later.")
+  app.expect("the update is not signed with the app's key")
+  expect((try await host.log()).installed.isEmpty())
+  // Nothing is left of it beside the install.
+  expect(!(try fs.readDir(path(["install"]))).any(e => e.name.hasPrefix(".asuka-update-")))
+  await app.idle()
+  app.tap("OK")
+  app.expect("Notes idle")
+}
+
+test "Skip This Version, and Remind Me Later" {
+  let app = mount(Notes())
+  let _ = try await installed()
+  await app.idle()
+  app.tap("Check")
+  app.tap("Remind Me Later")
+  app.expect("Notes idle")
+  expect(update.skippedVersion() == "")
+  app.tap("Check")
+  app.expect("Install Update")
+  app.tap("Skip This Version")
+  app.expect("Notes idle")
+  expect(update.skippedVersion() == "1.1.0")
+  // The user asking is offered it still.
+  app.tap("Check")
+  app.expect("Skip This Version")
+}
+
+test "the window's checkbox installs the next ones without asking" {
+  let app = mount(Notes())
+  let _ = try await installed()
+  await app.idle()
+  app.tap("Check")
+  app.tap("Automatically download and install updates in the future")
+  app.tap("Remind Me Later")
+  expect(update.automaticDownloads())
+}
+
+test "up to date, said when the user asked" {
+  let app = mount(Notes())
+  let _ = try await installed()
+  await app.idle()
+  let _ = try await update.fakeHost(update.FakeApp(version: "1.1.0", name: "Notes", feed: feed, key: "k", root: "r", exe: "r/App", work: "r"))
+  await app.idle()
+  app.chooseMenuItem("Help > Check for Updates…")
+  app.expect("You’re up to date!")
+  app.expect("Notes 1.1.0 is currently the newest version available.")
+  app.tap("OK")
+  app.expect("Notes idle")
+}
+
+test "a check in the background offers what it finds" {
+  let app = mount(Notes() { automatic: true })
+  let _ = try await installed()
+  await app.idle()
+  await sleep(15s)
+  app.expect("A new version of Notes is available!")
+  expect(update.lastCheck().isSome())
+}
+
+test "a server of the app's own: its URL filled in, 204 when nothing's newer" {
+  let app = mount(Notes())
+  let host = try await installed()
+  await app.idle()
+  update.setFeed("{base}/check?target=\{target}&version=\{version}&channel=\{channel}")
+  defer { update.setFeed("") }
+  update.setChannel("beta")
+  defer { update.setChannel("") }
+  try await host.serve(update.Served(url: "{base}/check?target=test&version=1.0.0&channel=beta", status: 204))
+  expect((try await update.check()).isNone())
+  try await host.serve(update.Served(url: "{base}/check?target=test&version=1.0.0&channel=beta", file: path(["feed", "update-test.json"])))
+  expect((try await update.check())?.version == "1.1.0")
+  app.expect("Notes idle")
+}
+
+test "a channel's prerelease, beside the release" {
+  let app = mount(Notes())
+  let host = try await installed()
+  await app.idle()
+  let beta = update.Manifest(version: "1.2.0-beta.1", url: "{base}/beta.tar.gz", size: 10, signature: "c2ln")
+  write(path(["feed", "beta.json"]), json.encode(beta).bytes())
+  try await host.serve(update.Served(url: "{base}/update-test-beta.json", file: path(["feed", "beta.json"])))
+  expect((try await update.check())?.version == "1.1.0")
+  update.setChannel("beta")
+  defer { update.setChannel("") }
+  expect((try await update.check())?.version == "1.2.0-beta.1")
+  app.expect("Notes idle")
+}
+
+test "GitHub's releases: the latest, or a tagged one through the API" {
+  let app = mount(Notes())
+  let host = try await installed()
+  await app.idle()
+  let _ = try await update.fakeHost(update.FakeApp(version: "1.0.0", name: "Notes", feed: "https://github.com/acme/notes/releases/download/desktop-v\{version}/update-test.json", key: encoding.base64Encode(crypto.ed25519PublicKey(seed)), root: path(["install"]), exe: path(["install", "App"]), work: path(["install"])))
+  let releases = [GitHubRelease(tag_name: "cli-v9.0.0"), GitHubRelease(tag_name: "desktop-v1.2.0-beta.1", prerelease: true), GitHubRelease(tag_name: "desktop-v1.1.0")]
+  write(path(["feed", "releases.json"]), json.encode(releases).bytes())
+  try await host.serve(update.Served(url: "https://api.github.com/repos/acme/notes/releases?per_page=100&page=1", file: path(["feed", "releases.json"])))
+  try await host.serve(update.Served(url: "https://github.com/acme/notes/releases/download/desktop-v1.1.0/update-test.json", file: path(["feed", "update-test.json"])))
+  expect((try await update.check())?.version == "1.1.0")
+  app.expect("Notes idle")
+}
+
+test "a download is cancelled with the window" {
+  let app = mount(Notes())
+  let host = try await installed()
+  await app.idle()
+  try await host.serve(update.Served(url: "{base}/app.delta", hold: true))
+  await app.idle()
+  app.tap("Check")
+  app.tap("Install Update")
+  app.expect("Downloading update…")
+  app.tap("Cancel")
+  await app.idle()
+  app.expect("Notes idle")
+  expect((try await host.log()).canceled == 1)
+}

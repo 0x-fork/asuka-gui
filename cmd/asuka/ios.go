@@ -41,6 +41,9 @@ type iosToolchain struct {
 	// packages is what the app's Swift packages bring besides the host's
 	// object, as the last buildHost built them (nil without any).
 	packages *swiftPackageOutput
+	// cLink is what the app's C ([c]'s libraries and frameworks) links,
+	// as the last buildCore built it: the executable's link adds it.
+	cLink []string
 }
 
 func newIOSToolchain(verbose bool) (*iosToolchain, error) {
@@ -496,14 +499,31 @@ func playerFeatures(app *asukaApp, cfg *appConfig) []string {
 
 // buildCore builds the C core for the SDK's target into work: with m
 // compiled in (a release), or without an app (m nil: asuka dev's
-// player).
-func (t *iosToolchain) buildCore(work string, m *bytecode.Module) (string, error) {
+// player), with the C the app's externs call (m's, or for a player c,
+// the last compile's).
+func (t *iosToolchain) buildCore(work string, m *bytecode.Module, c *bytecode.C) (string, error) {
 	target := cbuild.Target{OS: "ios", Arch: "arm64"}
 	if t.sdkName == "iphonesimulator" {
 		target = cbuild.Target{OS: "ios-simulator", Arch: t.goarch}
 	}
+	if m != nil {
+		c = m.C
+	}
+	// A static library links nothing: the executable links what its C
+	// needs.
+	f, err := appbuild.Foreign(c, target)
+	if err != nil {
+		return "", err
+	}
+	t.cLink = nil
+	if f != nil {
+		t.cLink = f.Link
+	}
 	lib := filepath.Join(work, "libasuka.a")
-	return lib, appbuild.Lib(target, cbuild.Static, m, lib)
+	if m != nil {
+		return lib, appbuild.Lib(target, cbuild.Static, m, lib)
+	}
+	return lib, appbuild.PlayerLib(target, cbuild.Static, c, lib)
 }
 
 func (t *iosToolchain) link(app *asukaApp, work, hostObj, lib string) (string, error) {
@@ -844,7 +864,7 @@ func (t *iosToolchain) buildPlayer(app *asukaApp, work string) (string, error) {
 	if err := generateNatives(app); err != nil {
 		return "", err
 	}
-	lib, err := t.buildCore(work, nil)
+	lib, err := t.buildCore(work, nil, app.c)
 	if err != nil {
 		return "", err
 	}

@@ -6,7 +6,7 @@
 //     site that shows its pushes) and answers push.Registration's JSON:
 //     the token is the subscription's JSON (PushSubscription.toJSON():
 //     endpoint, expirationTime, keys.p256dh, keys.auth), which the app's
-//     server sends to (asuka/sdk/push/webpush), service "webpush". A
+//     server sends to (asuka/webpush), service "webpush". A
 //     subscription made with another key is replaced.
 //   - The worker (sw.js) shows each push; the page gets it
 //     (nextReceived), and its tap (nextOpened), through worker.js.

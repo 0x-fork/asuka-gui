@@ -1,13 +1,13 @@
 # 插件
 
-插件是一个自带库的 Go 包：这些库用 C、Zig 或 Rust 编写，已经为每个平台预先构建好，插件的 Go 代码不借助 cgo 就能调用它们。使用插件只需导入它，命令行工具会在每个平台上把它的库和应用一起打包发布。`asuka/sdk/sqlite` 就是一个插件（见[数据](data.md#记录sqlite-插件)）。
+插件是一个自带库的 Go 包：这些库用 C、Zig 或 Rust 编写，已经为每个平台预先构建好，插件的 Go 代码不借助 cgo 就能调用它们。使用插件只需导入它，命令行工具会在每个平台上把它的库和应用一起打包发布。`asuka/sqlite` 就是一个插件（见[数据](data.md#记录asukasqlite)）。
 
 ## 使用插件
 
 导入即可：
 
 ```go
-import "github.com/egoist/asuka/sdk/sqlite"
+import "github.com/egoist/asuka/sqlite"
 
 db, err := sqlite.Open("notes.db")
 ```

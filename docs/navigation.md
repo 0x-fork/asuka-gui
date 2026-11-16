@@ -1447,7 +1447,7 @@ opens its screen, and opening the page doesn't call `OnOpenURL`.
 With `shareTarget = true` in `asuka.toml`, the app shows in other apps'
 share sheets, for text and links, such as "Share" in a browser or in
 YouTube; a table, `{types = ["image/*", ...]}`, takes files too (see
-[Device](device.md#shares-from-other-apps-uionshare)). `ui.OnShare` gets
+[Device](device.md#shares-from-other-apps-onshare)). `ui.OnShare` gets
 what's shared. A share that launched the app goes to the first handler,
 as with `OnOpenURL`.
 
@@ -1469,7 +1469,7 @@ there.
 
 To show a sheet of your app's over the app that shares, without opening
 yours, see `app.ShareSheet` in
-[Device](device.md#the-apps-own-share-sheet-appsharesheet). To share
+[Device](device.md#the-apps-own-share-sheet). To share
 from your app instead, `ui.Share(text)` shows the system's share sheet,
 and `ui.ShareFiles` shares files: the share menu on a Mac, the share UI
 on Windows, the browser's on the web. Linux has no share sheet: they

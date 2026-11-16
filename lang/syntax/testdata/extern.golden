@@ -1,0 +1,138 @@
+SourceFile 1:1-28:3
+  Decls: [10]
+    ExternTypeDecl 5:1-5:41 comments="// C from Asuka: extern fns, types and structs. | /// A database handle C owns: Asuka frees it with db_close as its last / /// reference goes." pub extern
+      Name: Ident "Db" 5:17-5:19
+      Release: Ident "db_close" 5:33-5:41
+    ExternTypeDecl 6:1-6:19 extern
+      Name: Ident "Handle" 6:13-6:19
+    FuncDecl 8:1-8:44 blank pub extern
+      Name: Ident "db_open" 8:15-8:22
+      Params: ParamList 8:22-8:37
+        List: [1]
+          Param 8:23-8:36
+            Name: Ident "path" 8:23-8:27
+            Type: NamedType 8:29-8:36
+              Path: [1]
+                Ident "CString" 8:29-8:36
+      Result: OptionalType 8:41-8:44
+        Elem: NamedType 8:41-8:43
+          Path: [1]
+            Ident "Db" 8:41-8:43
+    FuncDecl 9:1-9:36 extern
+      Name: Ident "db_close" 9:11-9:19
+      Params: ParamList 9:19-9:27
+        List: [1]
+          Param 9:20-9:26
+            Name: Ident "db" 9:20-9:22
+            Type: NamedType 9:24-9:26
+              Path: [1]
+                Ident "Db" 9:24-9:26
+      Result: NamedType 9:31-9:36
+        Path: [1]
+          Ident "Int32" 9:31-9:36
+    FuncDecl 10:1-10:84 extern
+      Name: Ident "db_each" 10:11-10:18
+      Params: ParamList 10:18-10:75
+        List: [3]
+          Param 10:19-10:25
+            Name: Ident "db" 10:19-10:21
+            Type: NamedType 10:23-10:25
+              Path: [1]
+                Ident "Db" 10:23-10:25
+          Param 10:27-10:39
+            Name: Ident "sql" 10:27-10:30
+            Type: NamedType 10:32-10:39
+              Path: [1]
+                Ident "CString" 10:32-10:39
+          Param 10:41-10:74
+            Name: Ident "row" 10:41-10:44
+            Type: FuncType 10:46-10:74
+              Params: [2]
+                OptionalType 10:49-10:57
+                  Elem: NamedType 10:49-10:56
+                    Path: [1]
+                      Ident "CString" 10:49-10:56
+                NamedType 10:59-10:64
+                  Path: [1]
+                    Ident "Int64" 10:59-10:64
+              Result: NamedType 10:69-10:74
+                Path: [1]
+                  Ident "Int32" 10:69-10:74
+      Result: NamedType 10:79-10:84
+        Path: [1]
+          Ident "Int32" 10:79-10:84
+    FuncDecl 11:1-11:61 extern
+      Name: Ident "compress" 11:11-11:19
+      Params: ParamList 11:19-11:50
+        List: [2]
+          Param 11:20-11:31
+            Name: Ident "data" 11:20-11:24
+            Type: NamedType 11:26-11:31
+              Path: [1]
+                Ident "bytes" 11:26-11:31
+          Param 11:33-11:49
+            Name: Ident "level" 11:33-11:38
+            Type: NamedType 11:40-11:45
+              Path: [1]
+                Ident "Int32" 11:40-11:45
+            Default: BasicLit 11:48-11:49 Kind=integer Value="6"
+      Result: NamedType 11:54-11:61
+        Path: [1]
+          Ident "Pointer" 11:54-11:61
+    FuncDecl 12:1-12:32 extern
+      Name: Ident "notify" 12:11-12:17
+      Params: ParamList 12:17-12:32
+        List: [1]
+          Param 12:18-12:31
+            Name: Ident "done" 12:18-12:22
+            Type: OptionalType 12:24-12:31
+              Elem: FuncType 12:25-12:29
+    StructDecl 14:1-17:2 blank extern
+      Name: Ident "Point" 14:15-14:20
+      Members: [2]
+        Field 15:3-15:11
+          Name: Ident "x" 15:3-15:4
+          Type: NamedType 15:6-15:11
+            Path: [1]
+              Ident "Int32" 15:6-15:11
+        Field 16:3-16:17
+          Name: Ident "y" 16:3-16:4
+          Type: NamedType 16:6-16:13
+            Path: [1]
+              Ident "Float32" 16:6-16:13
+          Default: BasicLit 16:16-16:17 Kind=integer Value="1"
+    StructDecl 19:1-22:2 blank pub extern
+      Name: Ident "Rect" 19:19-19:23
+      Members: [2]
+        Field 20:3-20:16
+          Name: Ident "origin" 20:3-20:9
+          Type: NamedType 20:11-20:16
+            Path: [1]
+              Ident "Point" 20:11-20:16
+        Field 21:3-21:14
+          Name: Ident "size" 21:3-21:7
+          Type: NamedType 21:9-21:14
+            Path: [1]
+              Ident "Point" 21:9-21:14
+    FuncDecl 25:1-28:2 comments="// extern is a name elsewhere."
+      Name: Ident "uses" 25:4-25:8
+      Params: ParamList 25:8-25:21
+        List: [1]
+          Param 25:9-25:20
+            Name: Ident "extern" 25:9-25:15
+            Type: NamedType 25:17-25:20
+              Path: [1]
+                Ident "int" 25:17-25:20
+      Result: NamedType 25:25-25:28
+        Path: [1]
+          Ident "int" 25:25-25:28
+      Body: Block 25:29-28:2
+        Items: [2]
+          LetDecl 26:3-26:27 Keyword=let
+            Pattern: BindPat 26:7-26:14
+              Name: Ident "extern2" 26:7-26:14
+            Value: BinaryExpr 26:17-26:27 Op=+
+              X: Ident "extern" 26:17-26:23
+              Y: BasicLit 26:26-26:27 Kind=integer Value="1"
+          ReturnStmt 27:3-27:17
+            Value: Ident "extern2" 27:10-27:17
