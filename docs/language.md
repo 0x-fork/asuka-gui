@@ -88,6 +88,13 @@ message, the rest as JSON.
 
 A map's keys are ints, strings, bools or enums without payloads.
 
+`int` arithmetic wraps: past the largest `int` (2⁶³ − 1), `+`, `-` and
+`*` go on from the smallest, as 64-bit two's complement does
+(`9223372036854775807 + 1` is `-9223372036854775808`). That's what
+hashes, checksums and binary protocols want, and it costs no check on
+every operation. Dividing by zero (`/`, `%`) throws; `int(x)` of a float
+past the range gives the nearest `int` (`0` for NaN).
+
 ### Built-in methods
 
 Strings, bytes, arrays, maps and optionals have methods; those that change
@@ -101,7 +108,6 @@ their value (`push`, `insert`, `removeAt`, `removeWhere`, `pop`,
 | `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `bytes()`, `+` |
 | `bytes` | `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `s.bytes()` a string's UTF-8 |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()` |
-| `Duration` | `seconds()`, `minutes()`, `hours()` (floats), `milliseconds()`, `nanoseconds()` (ints) |
 | `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic) |
 | `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()`, `minutes()`, `hours()` (floats), `rounded(to:)`, `truncated(to:)`, `+`, `-`, `* n`, `/ n` |
 | `T?` | `isNone()`, `isSome()` |
@@ -147,6 +153,10 @@ state count = 0              // state: a value the UI follows
 
 Types are inferred; write one where it helps: `let ids: [int] = []`.
 
+`type` names a type, at the top of a file: `type Pair<A, B> = (A, B)`,
+`type Check = fn(string) -> bool`. It's another name for the same type
+(an alias): a `Pair<int, string>` is an `(int, string)`.
+
 ### Structs
 
 ```asuka
@@ -168,6 +178,17 @@ their names; they can't change it (it's a value): one that would
 returns a new one. `let` in a struct's body is a constant of the
 type (`Font.title`), which `.title` names wherever a `Font` is
 expected.
+
+A struct may take type parameters, inferred where it's made:
+
+```asuka
+struct Page<T> {
+  items: [T]
+  next: string? = none
+}
+
+let page = Page(items: [1, 2, 3])     // a Page<int>
+```
 
 ### Enums
 
@@ -195,6 +216,20 @@ match literals (`0`, `"x"`), several cases (`.a | .b`) and take guards
 may be left out where it's made: `.button(title: "Copy", run: copy)`
 leaves `Action.button`'s `icon`, `role`, `disabled` and `checked` so.
 
+A case's payload may hold the enum itself, so an enum can be a tree:
+
+```asuka
+enum Expr {
+  num(int)
+  add(Expr, Expr)
+
+  fn eval() -> int = match self {
+    .num(n) => n
+    .add(a, b) => a.eval() + b.eval()
+  }
+}
+```
+
 ### Functions and closures
 
 ```asuka
@@ -210,8 +245,18 @@ let sorted = people.sorted((a, b) => a.age < b.age)
 ```
 
 Arguments are positional, then by name. A closure is `x => expr`, `(a,
-b) => expr` or `x => { statements }`; it captures values by value and
-state by reference.
+b) => expr` or `x => { statements }`. It shares the variables it
+captures with the code around it: what one changes, the other sees.
+
+```asuka
+var n = 0
+let inc = () => { n += 1 }
+inc()
+inc()                // n is 2
+```
+
+State is shared the same way. Only `spawn` copies what it uses (values
+only, as they are when it starts), since it runs on another thread.
 
 ### Interfaces and generics
 
@@ -228,9 +273,85 @@ fn total<T>(items: [T], size: fn(T) -> float) -> float {
 }
 ```
 
+An interface is a type too: a value of one is any value that has its
+methods, and calling one calls that value's.
+
+```asuka
+let shapes: [Shape] = [Circle(radius: 1), Square(side: 2)]
+let areas = shapes.map(s => s.area())
+```
+
 Generic functions and types take type parameters; `Equatable`,
 `Comparable` and `Hashable` are the constraints, and structs and enums
 have them when their fields do.
+
+### Control flow
+
+`if` and `match` are values too. As one, an `if` needs an `else`, and a
+block's value is its last expression:
+
+```asuka
+let label = if unread > 0 { "{unread} new" } else { "Inbox" }
+let icon = match (online, unread) {
+  (false, _) => "wifi.slash"
+  (true, 0) => "tray"
+  _ => "tray.full"
+}
+```
+
+A tuple pattern (`(true, 0)`) matches each element with a pattern of
+its own.
+
+`for` goes over an array, a map's `(key, value)` pairs, or a range:
+`a..<b` is the ints from `a` up to `b`, without it, and `a..b` with it
+(`0..<3` is `[0, 1, 2]`, and a `for` over a range makes no array).
+`while cond { … }` loops while cond holds; `break` and `continue` leave
+the loop, or go on to its next turn.
+
+`if let` and `while let` take an optional's value, or match a pattern,
+and run their block when there's one: `if let u = user { … }`, `while
+let job = queue.pop() { … }`, `if let .ready(v) = state { … }`. Their
+condition may be a chain: lets and bools, separated by commas, in any
+order. Each sees what the ones before it bound, and the block runs
+when all of them hold (they're tried in order, up to the first that
+doesn't):
+
+```asuka
+if let user = session.user, user.isAdmin, let team = teams[user.teamId] {
+  Text("{team.name}'s admin")
+} else {
+  Text("Not an admin")
+}
+```
+
+`let … else` binds a value or leaves. Its `else` block runs when the
+optional is none (or the pattern doesn't match), and must leave:
+`return`, `throw`, `break`, `continue` or `panic(…)` (the compiler says
+so when it can go on). After it, the name holds the value, not an
+optional:
+
+```asuka
+fn summary(id: string) -> string {
+  let message = cache[id] else { return "(deleted)" }
+  let .ready(body) = message.body else { return message.subject }
+  return "{message.subject}: {body}"
+}
+```
+
+`throw`, `return`, `break` and `continue` may go where a value does:
+they leave instead of giving one (their type is `never`, which fits
+any). After `??`, they say what to do with none:
+
+```asuka
+let user = cache[id] ?? throw MailError.missing(id)
+for line in lines {
+  let n = line.toInt() ?? continue
+  total += n
+}
+```
+
+They go likewise in an `if`'s or a `match` arm's branch, and as a
+closure's body: `x => x ?? throw Error("empty")`.
 
 ## Components
 
@@ -341,10 +462,11 @@ on press {
 Writes in a handler show together when it ends (or when it reaches an
 `await`).
 
-Statements: `let`, `var`, assignments (`= += -= *= /= %= ??=`), `if`,
-`for x in xs`, `for (i, x) in xs.enumerated()`, `while`, `match`,
-`return`, `break`, `continue`, `throw`, `do { } catch { }`, `defer { }`,
-`emit`.
+Statements: `let`, `var`, `let … else`, assignments (`= += -= *= /=
+%= ??=`), `if` and `if let`, `for x in xs`, `for (i, x) in
+xs.enumerated()`, `while` and `while let`, `match`, `return`, `break`,
+`continue`, `throw`, `do { } catch { }`, `defer { }`, `emit`
+([Control flow](#control-flow)).
 
 ### Two-way bindings
 
@@ -543,6 +665,28 @@ on press {
 
 let n = try? parse(text)   // none if it throws
 ```
+
+`catch` after an expression gives a fallback: the expression's value,
+or when what's in it throws, the value of the catch's block (its last
+expression, as an `if`'s), unless the block leaves:
+
+```asuka
+let port = try parsePort(text) catch e {
+  log(e.message)
+  80
+}
+let size = try await fileSize(path) catch { return }
+try save(draft) catch { failed = true }   // a statement: no value to give
+```
+
+Its clauses are `do`'s: `catch`, `catch e`, `catch e: ParseError`,
+`catch MailError.server(code)`, several in a row; the first that takes
+the error runs. An error none takes goes on, so the function must throw,
+as for `try`. One whose clauses take every error can't throw, so it goes
+where a `try` can't: in a component's `let` (`let port = try
+parsePort(text) catch { 80 }`, kept up to date as `text` changes), or a
+closure that mustn't throw. It works with `try await`, and with `throw`
+as a value: `let user = cache[id] ?? throw MailError.missing(id)`.
 
 An error's `message` is its `message` field, its `fn message() ->
 string`, or its type's and case's name. `Error("…")` makes an error of a
