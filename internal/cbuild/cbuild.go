@@ -355,7 +355,10 @@ func headers(core string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if !e.IsDir() && strings.HasSuffix(p, ".h") {
+		// Headers, and the sources of libraries the core vendors
+		// (third_party: its C includes them), which count in the cache's
+		// key as headers do.
+		if !e.IsDir() && (strings.HasSuffix(p, ".h") || strings.Contains(p, string(filepath.Separator)+"third_party"+string(filepath.Separator))) {
 			out = append(out, p)
 		}
 		return nil

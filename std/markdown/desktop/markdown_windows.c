@@ -1,10 +1,10 @@
-// asuka/markdown on Windows: the paragraphs as RTF in a read-only rich
+// asuka/markdown on Windows: the paragraphs the core read as RTF in a read-only rich
 // edit (msftedit's RICHEDIT50W: its typesetter, selection, copying and
 // accessibility), in a window of the package's that it fills, which gets
 // the rich edit's EN_REQUESTRESIZE to measure it. Links are the theme's
 // accent, underlined; a click on one opens it.
 #include "asuka_windows.h"
-#include "markdown.h"
+#include "markdown.asuka.h"
 
 #include <commctrl.h>
 #include <math.h>
@@ -22,7 +22,7 @@ typedef struct {
 typedef struct {
 	markdown_Document base;
 	HWND hwnd, ctl;
-	char *source;
+	char *rtf;  // what the control shows
 	link *links;
 	size_t nlinks, lcap;
 	int32_t requested;  // EN_REQUESTRESIZE's height
@@ -186,8 +186,8 @@ static void clear_links(document *v) {
 	v->nlinks = 0;
 }
 
-// build sets the control's text from the source.
-static void build(document *v) {
+// build is the paragraphs as RTF (malloc's), their links the document's.
+static char *build(document *v, markdown_list_Paragraph d) {
 	rgb label = semantic(LABEL, (rgb){0, 0, 0});
 	rgb secondary = semantic(SECONDARY_LABEL, (rgb){96, 96, 96});
 	rgb code = semantic(SECONDARY_BACKGROUND, (rgb){240, 240, 240});
@@ -199,16 +199,15 @@ static void build(document *v) {
 	clear_links(v);
 	builder b = {.v = v, .half = (int)(body * scale * 2 + 0.5f)};
 	color_index(&b.pal, label);
-	md_doc d = markdown_read(v->source);
-	for (size_t i = 0; i < d.n; i++) {
-		const md_para *p = &d.paras[i];
+	for (size_t i = 0; i < d.len; i++) {
+		const markdown_Paragraph *p = &d.data[i];
 		if (i > 0) {
 			add(&b, (rtf_run){.text = "\n"}, NULL);
-			if (!d.paras[i - 1].tight || !p->tight) add(&b, (rtf_run){.text = "\n", .size = body / 2 * scale}, NULL);
+			if (!d.data[i - 1].tight || !p->tight) add(&b, (rtf_run){.text = "\n", .size = body / 2 * scale}, NULL);
 		}
 		asuka_writer lead = {0};
 		for (int k = 1; k < p->indent; k++) asuka_writer_put(&lead, "    ", 4);
-		if (p->marker) {
+		if (*p->marker) {
 			asuka_writer_put(&lead, p->marker, strlen(p->marker));
 			asuka_writer_put(&lead, " ", 1);
 		} else if (p->indent > 0) {
@@ -224,9 +223,9 @@ static void build(document *v) {
 			add(&b, (rtf_run){.text = line, .color = &secondary}, NULL);
 			continue;
 		}
-		for (size_t j = 0; j < p->nruns; j++) {
-			const md_run *r = &p->runs[j];
-			rtf_run x = {.text = r->text, .bold = r->bold, .italic = r->italic, .strike = r->strike, .mono = r->mono};
+		for (size_t j = 0; j < p->runs.len; j++) {
+			const markdown_Run *r = &p->runs.data[j];
+			rtf_run x = {.text = r->text, .bold = r->bold, .italic = r->italic, .strike = r->struck, .mono = r->code};
 			char *indented = NULL;
 			if (p->code && p->indent > 0) {
 				asuka_writer w = {0};
@@ -239,18 +238,16 @@ static void build(document *v) {
 				indented = (char *)w.data;
 				x.text = indented;
 			}
-			if (r->mono) x.background = &code;
-			if (r->quote) x.color = &secondary;
+			if (r->code) x.background = &code;
+			if (r->quoted) x.color = &secondary;
 			if (p->heading > 0) {
 				x.bold = true;
 				x.size = sizes[(p->heading > 6 ? 6 : p->heading) - 1] * scale;
 			}
-			add(&b, x, r->link);
+			add(&b, x, *r->link ? r->link : NULL);
 			free(indented);
 		}
 	}
-	markdown_doc_free(&d);
-
 	asuka_writer doc = {0};
 	puts_w(&doc, "{\\rtf1\\ansi\\ansicpg1252\\deff0\\uc1{\\fonttbl{\\f0\\fnil Segoe UI;}{\\f1\\fmodern\\fprq1 Cascadia Mono;}}{\\colortbl ;");
 	for (int i = 0; i < b.pal.n; i++) {
@@ -263,19 +260,21 @@ static void build(document *v) {
 	puts_w(&doc, "}");
 	asuka_writer_u8(&doc, 0);
 	asuka_writer_free(&b.body);
-
 	SendMessageW(v->ctl, EM_SETBKGNDCOLOR, 0, RGB(bg.r, bg.g, bg.b));
-	SETTEXTEX st = {ST_DEFAULT, CP_ACP};
-	SendMessageW(v->ctl, EM_SETTEXTEX, (WPARAM)&st, (LPARAM)doc.data);
-	asuka_writer_free(&doc);
+	return (char *)doc.data;
 }
 
-static void set_text(markdown_Document *self, const char *s) {
+static void set_paragraphs(markdown_Document *self, markdown_list_Paragraph d) {
 	document *v = (document *)self;
-	if (v->source && strcmp(v->source, s ? s : "") == 0) return;
-	free(v->source);
-	v->source = asuka_strdup(s);
-	build(v);
+	char *rtf = build(v, d);
+	if (v->rtf && strcmp(v->rtf, rtf) == 0) {  // as it is: its selection kept
+		free(rtf);
+		return;
+	}
+	free(v->rtf);
+	v->rtf = rtf;
+	SETTEXTEX st = {ST_DEFAULT, CP_ACP};
+	SendMessageW(v->ctl, EM_SETTEXTEX, (WPARAM)&st, (LPARAM)rtf);
 }
 
 // measure is its height at the width it's given, in points.
@@ -368,7 +367,7 @@ static bool window(void *ctx, HWND hwnd, UINT m, WPARAM wp, LPARAM lp, LRESULT *
 	case WM_NCDESTROY:
 		clear_links(v);
 		free(v->links);
-		free(v->source);
+		free(v->rtf);
 		free(v);
 		break;
 	}
@@ -378,7 +377,7 @@ static bool window(void *ctx, HWND hwnd, UINT m, WPARAM wp, LPARAM lp, LRESULT *
 // destroy: the window (the host's) frees the document as it goes.
 static void destroy(markdown_Document *self) {}
 
-static const markdown_Document_vtable vt = {.destroy = destroy, .set_text = set_text, .measure = measure};
+static const markdown_Document_vtable vt = {.destroy = destroy, .set_paragraphs = set_paragraphs, .measure = measure};
 
 markdown_Document *markdown_make_Document(markdown_Document_events events) {
 	static bool loaded;

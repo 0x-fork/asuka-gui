@@ -1680,14 +1680,16 @@ behavior.
     highlight color. A scroll view's taking the gesture over cancels the
     long press.
   - Copying leaves out the inline components.
-- `asuka/markdown` (`markdown.View(text) { streaming: true }`) is each
-  platform's own Markdown, so a document reads, selects and speaks as the
-  platform's text does: `AttributedString` in a text view on iOS and the
-  Mac, Markwon on Android, a vendored marked on the web (raw HTML escaped,
-  only web, mail and relative links kept), and on Windows and Linux the
-  package's own parser written as RTF into a rich edit and as Pango
-  markup in a label. While a reply streams in, its text is healed once,
-  in Asuka, before it reaches any platform (`markdown.heal`: an unclosed
+- `asuka/markdown` (`markdown.View(text) { streaming: true }`) is read
+  once, in the core, the same on every platform: md4c (core/third_party)
+  into paragraphs of styled runs (`markdown.read`; raw HTML as text, only
+  web, mail and phone links kept), which each platform shows as its own
+  text, so a document reads, selects and speaks as the platform's text
+  does: an attributed string in a text view on iOS and the Mac, spans in
+  a TextView on Android, the page's elements on the web, RTF in a rich
+  edit on Windows and Pango markup in a label on Linux. Only what's
+  shown differs; what the Markdown says doesn't. While a reply streams in, its text is healed once,
+  in the core, before it reaches any platform (`markdown.heal`: an unclosed
   emphasis, a link being written), so a half-written document renders as
   it will. Links open with the platform.
 

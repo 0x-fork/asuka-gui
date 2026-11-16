@@ -1,8 +1,8 @@
-// asuka/markdown on Linux: the paragraphs as Pango markup in a GtkLabel
-// that wraps and is selectable: one selection, links GTK opens, the
-// theme's font and its text scaling.
+// asuka/markdown on Linux: the paragraphs the core read as Pango markup
+// in a GtkLabel that wraps and is selectable: one selection, links GTK
+// opens, the theme's font and its text scaling.
 #include "asuka_linux.h"
-#include "markdown.h"
+#include "markdown.asuka.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -41,7 +41,7 @@ static bool load(void) {
 
 typedef struct {
 	markdown_Document base;
-	char *source;
+	char *markup;  // what the label shows
 } document;
 
 // escape writes s with Pango markup's specials escaped.
@@ -68,17 +68,17 @@ static const char *mono_span = "<span font_family=\"monospace\" bgalpha=\"12%\" 
 
 // run writes a run's text in its style; in a code block, each of its
 // lines indented as the block is.
-static void run(asuka_writer *w, const md_para *p, const md_run *r) {
-	if (r->link) {
+static void run(asuka_writer *w, const markdown_Paragraph *p, const markdown_Run *r, bool mono) {
+	if (*r->link) {
 		put(w, "<a href=\"");
 		escape(w, r->link);
 		put(w, "\">");
 	}
-	if (r->quote) put(w, "<span fgalpha=\"65%\">");
-	if (r->strike) put(w, "<s>");
+	if (r->quoted) put(w, "<span fgalpha=\"65%\">");
+	if (r->struck) put(w, "<s>");
 	if (r->italic) put(w, "<i>");
 	if (r->bold) put(w, "<b>");
-	if (r->mono) put(w, mono_span);
+	if (mono) put(w, mono_span);
 	if (p->code) {
 		const char *s = r->text;
 		for (const char *nl; (nl = strchr(s, '\n')); s = nl + 1) {
@@ -86,33 +86,33 @@ static void run(asuka_writer *w, const md_para *p, const md_run *r) {
 			escape(w, line);
 			free(line);
 			put(w, "\n");
-			indent(w, p->indent);
+			indent(w, (int)p->indent);
 		}
 		escape(w, s);
 	} else {
 		escape(w, r->text);
 	}
-	if (r->mono) put(w, "</span>");
+	if (mono) put(w, "</span>");
 	if (r->bold) put(w, "</b>");
 	if (r->italic) put(w, "</i>");
-	if (r->strike) put(w, "</s>");
-	if (r->quote) put(w, "</span>");
-	if (r->link) put(w, "</a>");
+	if (r->struck) put(w, "</s>");
+	if (r->quoted) put(w, "</span>");
+	if (*r->link) put(w, "</a>");
 }
 
 static const char *heading_sizes[] = {"xx-large", "x-large", "large", "medium", "medium", "medium"};
 
 // pango is the paragraphs as Pango markup, of malloc's.
-static char *pango(const md_doc *d) {
+static char *pango(markdown_list_Paragraph d) {
 	asuka_writer w = {0};
-	for (size_t i = 0; i < d->n; i++) {
-		const md_para *p = &d->paras[i];
+	for (size_t i = 0; i < d.len; i++) {
+		const markdown_Paragraph *p = &d.data[i];
 		if (i > 0) {
 			put(&w, "\n");
-			if (!d->paras[i - 1].tight || !p->tight) put(&w, "\n");
+			if (!d.data[i - 1].tight || !p->tight) put(&w, "\n");
 		}
-		indent(&w, p->indent > 1 ? p->indent - 1 : 0);
-		if (p->marker) {
+		indent(&w, p->indent > 1 ? (int)p->indent - 1 : 0);
+		if (*p->marker) {
 			escape(&w, p->marker);
 			put(&w, " ");
 		} else if (p->indent > 0) {
@@ -130,10 +130,9 @@ static char *pango(const md_doc *d) {
 			free(h);
 		}
 		if (p->code) put(&w, mono_span);
-		for (size_t j = 0; j < p->nruns; j++) {
-			md_run r = p->runs[j];
-			if (p->code) r.mono = false;  // the block's span is the whole of it
-			run(&w, p, &r);
+		for (size_t j = 0; j < p->runs.len; j++) {
+			const markdown_Run *r = &p->runs.data[j];
+			run(&w, p, r, r->code && !p->code);  // a code block's span is the whole of it
 		}
 		if (p->code) put(&w, "</span>");
 		if (p->heading > 0) put(&w, "</span>");
@@ -142,16 +141,16 @@ static char *pango(const md_doc *d) {
 	return (char *)w.data;
 }
 
-static void set_text(markdown_Document *self, const char *s) {
+static void set_paragraphs(markdown_Document *self, markdown_list_Paragraph d) {
 	document *v = (document *)self;
-	if (v->source && strcmp(v->source, s ? s : "") == 0) return;
-	free(v->source);
-	v->source = asuka_strdup(s);
-	md_doc d = markdown_read(v->source);
-	char *markup = pango(&d);
-	markdown_doc_free(&d);
+	char *markup = pango(d);
+	if (v->markup && strcmp(v->markup, markup) == 0) {  // as it is: its selection kept
+		free(markup);
+		return;
+	}
+	free(v->markup);
+	v->markup = markup;
 	gk.set_markup(v->base.widget, markup);
-	free(markup);
 	gk.queue_resize(v->base.widget);
 }
 
@@ -172,11 +171,11 @@ static bool measure(markdown_Document *self, float width, float height, float *o
 static void destroy(markdown_Document *self) {
 	document *v = (document *)self;
 	G(g_object_unref)(v->base.widget);
-	free(v->source);
+	free(v->markup);
 	free(v);
 }
 
-static const markdown_Document_vtable vt = {.destroy = destroy, .set_text = set_text, .measure = measure};
+static const markdown_Document_vtable vt = {.destroy = destroy, .set_paragraphs = set_paragraphs, .measure = measure};
 
 markdown_Document *markdown_make_Document(markdown_Document_events events) {
 	if (!load()) return NULL;

@@ -1,8 +1,6 @@
-// asuka/markdown on iOS and macOS: Apple's Markdown (AttributedString,
-// its full syntax) laid out as styled paragraphs, from each run's
-// presentation intent (headings, lists, quotes, code blocks, tables), in
-// a text view that isn't editable: one selection, links that open, the
-// user's text size. Raw HTML stays text.
+// asuka/markdown on iOS and macOS: the paragraphs the core read (md4c)
+// as an attributed string, in a text view that isn't editable: one
+// selection, links that open, the user's text size.
 import Asuka
 import Foundation
 #if canImport(UIKit)
@@ -64,98 +62,57 @@ struct MDTheme {
     }
 }
 
-/// The document as styled paragraphs.
-func markdownText(_ md: String, _ th: MDTheme) -> NSAttributedString {
+/// The paragraphs (the core's, md4c's reading) as styled text.
+func markdownText(_ paras: [Paragraph], _ th: MDTheme) -> NSAttributedString {
     let out = NSMutableAttributedString()
-    let opts = AttributedString.MarkdownParsingOptions(allowsExtendedAttributes: false, interpretedSyntax: .full,
-                                                       failurePolicy: .returnPartiallyParsedIfPossible)
-    guard let doc = try? AttributedString(markdown: md, options: opts) else {
-        return NSAttributedString(string: md, attributes: [.font: th.body, .foregroundColor: th.color])
-    }
-    var block = -1         // the identity of the block the last run was in
-    var items = Set<Int>() // the list items whose marker is out
-    var row = -1
-    for run in doc.runs {
-        let text = String(doc[run.range].characters)
-        let comps = run.presentationIntent?.components ?? []
-        let leaf = comps.first?.identity ?? 0
-        var depth = 0, quote = false, code = false, heading = 0, cell = -1, header = false, rule = false
-        var marker = ""
-        for c in comps {
-            switch c.kind {
-            case .header(let level): heading = level
-            case .codeBlock: code = true
-            case .blockQuote: quote = true
-            case .thematicBreak: rule = true
-            case .tableCell(let column): cell = column
-            case .tableHeaderRow: header = true
-            case .listItem(let ordinal):
-                depth += 1
-                if !items.contains(c.identity) && marker.isEmpty {
-                    items.insert(c.identity)
-                    marker = isOrdered(comps, after: c) ? "\(ordinal).\t" : "•\t"
-                }
-            default: break
-            }
+    var last: NSParagraphStyle?  // the paragraph before's: its newline's
+    for (i, p) in paras.enumerated() {
+        if let last { out.append(NSAttributedString(string: "\n", attributes: [.font: th.body, .paragraphStyle: last])) }
+        let tight = p.tight && i + 1 < paras.count && paras[i + 1].tight
+        let spacing: CGFloat = tight ? (p.row ? 2 : 4) : 10
+        let style = paragraph(th, indent: p.indent, marker: !p.marker.isEmpty, spacing: spacing, tabs: p.indent > 0 || p.row)
+        if p.rule {
+            last = paragraph(th, indent: 0, marker: false, spacing: 8, tabs: false)
+            out.append(NSAttributedString(string: "\u{2003}", attributes: [
+                .font: th.body, .strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: th.separator,
+                .paragraphStyle: last!]))
+            continue
         }
-        if leaf != block {
-            // A new block: a new paragraph, or a table's next cell.
-            let rowID = comps.first { if case .tableRow = $0.kind { return true }; if case .tableHeaderRow = $0.kind { return true }; return false }?.identity ?? -1
-            if out.length > 0 {
-                out.append(NSAttributedString(string: cell > 0 && rowID == row ? "\t" : "\n"))
-            }
-            row = rowID
-            block = leaf
-            if rule {
-                out.append(NSAttributedString(string: "\u{2003}", attributes: [
-                    .font: th.body, .strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: th.separator,
-                    .paragraphStyle: paragraph(th, indent: 0, spacing: 8, tabs: false)]))
-                continue
-            }
-            if !marker.isEmpty {
-                out.append(NSAttributedString(string: marker, attributes: [.font: th.body, .foregroundColor: th.secondary,
-                                                                           .paragraphStyle: paragraph(th, indent: depth, spacing: 4, tabs: true)]))
-            }
+        last = style
+        if !p.marker.isEmpty {
+            out.append(NSAttributedString(string: p.marker + "\t", attributes: [.font: th.body, .foregroundColor: th.secondary,
+                                                                                 .paragraphStyle: style]))
         }
-        if rule { continue }
-        // The run's own style.
-        let inline = run.inlinePresentationIntent ?? []
-        let strong = inline.contains(.stronglyEmphasized) || header || heading > 0
-        let em = inline.contains(.emphasized)
-        var font = heading > 0 ? th.heading(heading) : th.body
-        var attrs: [NSAttributedString.Key: Any] = [:]
-        if code || inline.contains(.code) {
-            font = th.mono(font, bold: strong)
-            attrs[.backgroundColor] = th.codeBackground
-        } else {
-            font = th.traits(font, bold: strong, italic: em)
+        for r in p.runs {
+            let strong = r.bold || p.heading > 0
+            var font = p.heading > 0 ? th.heading(p.heading) : th.body
+            var attrs: [NSAttributedString.Key: Any] = [:]
+            if p.code || r.code {
+                font = th.mono(font, bold: strong)
+                attrs[.backgroundColor] = th.codeBackground
+            } else {
+                font = th.traits(font, bold: strong, italic: r.italic)
+            }
+            attrs[.font] = font
+            attrs[.foregroundColor] = r.quoted ? th.secondary : th.color
+            if r.struck { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+            if !r.link.isEmpty, let url = URL(string: r.link) { attrs[.link] = url }
+            attrs[.paragraphStyle] = style
+            out.append(NSAttributedString(string: r.text, attributes: attrs))
         }
-        attrs[.font] = font
-        attrs[.foregroundColor] = quote ? th.secondary : th.color
-        if inline.contains(.strikethrough) { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
-        if let url = run.link { attrs[.link] = url }
-        let spacing: CGFloat = heading > 0 ? 10 : depth > 0 ? 4 : cell >= 0 ? 2 : 10
-        attrs[.paragraphStyle] = paragraph(th, indent: depth + (quote ? 1 : 0), spacing: spacing, tabs: depth > 0 || cell >= 0)
-        out.append(NSAttributedString(string: code ? text.trimmingTrailingNewline() : text, attributes: attrs))
     }
     return out
 }
 
-/// Whether the list holding item is an ordered one: the list right
-/// outside it in comps.
-private func isOrdered(_ comps: [PresentationIntent.IntentType], after item: PresentationIntent.IntentType) -> Bool {
-    guard let i = comps.firstIndex(where: { $0.identity == item.identity }), i + 1 < comps.count else { return false }
-    if case .orderedList = comps[i + 1].kind { return true }
-    return false
-}
-
-private func paragraph(_ th: MDTheme, indent: Int, spacing: CGFloat, tabs: Bool) -> NSParagraphStyle {
+/// A paragraph's style: indent steps in (a marker's line starting a step
+/// before, the marker in it), its spacing after, tab stops a step apart.
+private func paragraph(_ th: MDTheme, indent: Int, marker: Bool, spacing: CGFloat, tabs: Bool) -> NSParagraphStyle {
     let p = NSMutableParagraphStyle()
     let step = th.body.pointSize * 1.5
     p.paragraphSpacing = spacing
     if indent > 0 {
-        p.firstLineHeadIndent = step * CGFloat(indent - 1)
         p.headIndent = step * CGFloat(indent)
+        p.firstLineHeadIndent = marker ? step * CGFloat(indent - 1) : p.headIndent
     }
     if tabs {
         p.tabStops = (1...8).map { NSTextTab(textAlignment: .natural, location: step * CGFloat($0)) }
@@ -164,13 +121,9 @@ private func paragraph(_ th: MDTheme, indent: Int, spacing: CGFloat, tabs: Bool)
     return p
 }
 
-private extension String {
-    func trimmingTrailingNewline() -> String { hasSuffix("\n") ? String(dropLast()) : self }
-}
-
 #if canImport(UIKit)
 final class MarkdownTextView: UITextView {
-    var markdown = "" { didSet { if markdown != oldValue { render() } } }
+    var paragraphs: [Paragraph] = [] { didSet { render() } }
 
     init() {
         super.init(frame: .zero, textContainer: nil)
@@ -187,7 +140,9 @@ final class MarkdownTextView: UITextView {
     required init?(coder: NSCoder) { fatalError("init(coder:) isn't used") }
 
     func render() {
-        attributedText = markdownText(markdown, .current)
+        let t = markdownText(paragraphs, .current)
+        if attributedText.isEqual(to: t) { return }  // as it is: its selection kept
+        attributedText = t
         invalidateIntrinsicContentSize()
     }
 
@@ -201,14 +156,16 @@ final class MarkdownTextView: UITextView {
     let text = MarkdownTextView()
     var view: AsukaPlatformView { text }
     init(_ events: DocumentEvents) {}
-    func setText(_ value: String) { text.markdown = value }
+    func setParagraphs(_ value: [Paragraph]) { text.paragraphs = value }
 }
 #else
 final class MarkdownTextView: NSTextView {
-    var markdown = "" { didSet { if markdown != oldValue { render() } } }
+    var paragraphs: [Paragraph] = [] { didSet { render() } }
 
     func render() {
-        textStorage?.setAttributedString(markdownText(markdown, .current))
+        let t = markdownText(paragraphs, .current)
+        guard let storage = textStorage, !storage.isEqual(to: t) else { return }  // as it is: its selection kept
+        storage.setAttributedString(t)
     }
 
     override var isFlipped: Bool { true }
@@ -246,7 +203,7 @@ final class MarkdownTextView: NSTextView {
         text.isHorizontallyResizable = false
     }
 
-    func setText(_ value: String) { text.markdown = value }
+    func setParagraphs(_ value: [Paragraph]) { text.paragraphs = value }
 
     func sizeThatFits(_ size: CGSize) -> CGSize {
         let w = size.width.isFinite && size.width > 0 ? size.width : 10_000
