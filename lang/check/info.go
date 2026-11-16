@@ -181,6 +181,7 @@ const (
 	ForMap                // (key, value) in a map
 	ForEnumerated         // (i, x) in xs.enumerated()
 	ForStream             // for await x in a stream
+	ForSet                // x in a set, in insertion order
 )
 
 // ForInfo is a for loop's iteration.

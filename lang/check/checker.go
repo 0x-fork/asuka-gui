@@ -168,7 +168,7 @@ func (c *Checker) initUniverse() {
 		{"print", BPrint}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
-		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream},
+		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet},
 		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {"shader", BShader},
 		{"never", BNever},
 	} {
@@ -597,6 +597,14 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 					return Invalid
 				}
 				return &Stream{c.typeExpr(t.Args[0])}
+			}
+		case "Set":
+			if o, _ := c.lookup(name).(*Builtin); o != nil && o.ID == BSet {
+				if len(t.Args) != 1 {
+					c.errorf(t, "Set takes one type: Set<T>")
+					return Invalid
+				}
+				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0])
 			}
 		case "Task":
 			if c.lookup(name) == nil {

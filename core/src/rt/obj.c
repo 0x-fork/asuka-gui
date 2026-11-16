@@ -294,7 +294,8 @@ ak_val ak_deep_copy(ak_val v, ak_kind k) {
 	case AK_TAG_MAP: {
 		ak_map *m = (ak_map *)o;
 		ak_kind kk = (ak_kind)(m->h.aux & 0xf), vk = (ak_kind)(m->h.aux >> 4);
-		ak_map *c = ak_map_new(kk, m->h.flags & 1, vk, m->vshape);
+		ak_map *c = ak_map_new(kk, m->h.flags & AK_MAP_STRKEYS, vk, m->vshape);
+		c->h.flags = m->h.flags;
 		for (uint32_t i = 0; i < m->len; i++) {
 			if (m->dead[i]) continue;
 			ak_map_set(&c, ak_deep_copy(m->keys[i], kk), ak_deep_copy(m->vals[i], vk));

@@ -912,7 +912,7 @@ static bool put_arg(ak_buf *b, ak_val v, ak_kind k) {
 
 static bool tuple_shape(const ak_shape *s) { return s->name && s->name[0] == '('; }
 
-// sqlite.args(value, desc): the statement's arguments. A tuple or an
+// sqlite.args(value, desc): the statement's arguments. A tuple, a set or an
 // array gives them by position (?, ?1), a struct or a map from strings
 // by name (:name, @name, $name) and position; one value alone is the one
 // argument.
@@ -944,6 +944,16 @@ static ak_val b_args(ak_val *a, uint32_t n) {
 			const char *name = named ? sh->names[i] : "";
 			ak_buf_str(&b, name, strlen(name));
 			ok = put_arg(&b, s->f[i], (ak_kind)sh->kinds[i]);
+		}
+	} else if (o && o->tag == AK_TAG_MAP && ak_map_is_set(v.p)) {
+		// A set's elements, by position, as an array's.
+		ak_map *m = v.p;
+		ak_kind ek = (ak_kind)(m->h.aux & 0xf);
+		ak_buf_u32(&b, m->live);
+		for (uint32_t i = 0; ok && i < m->len; i++) {
+			if (m->dead[i]) continue;
+			ak_buf_str(&b, "", 0);
+			ok = put_arg(&b, m->keys[i], ek);
 		}
 	} else if (o && o->tag == AK_TAG_MAP) {
 		ak_map *m = v.p;
@@ -1117,6 +1127,12 @@ static bool convert(const cell *c, const char *d, const ak_json_types *t, ak_val
 			return true;
 		}
 		goto json;
+	case '<':
+		if (c->type == 0) {
+			out->p = ak_set_new(kind_of(d + 1), d[1] == 's');
+			return true;
+		}
+		goto json;
 	case 'S':
 	case 'E':
 	json:
@@ -1147,6 +1163,7 @@ static bool zero(const char *d, const ak_json_types *t, ak_val *out) {
 	case 'y': out->p = ak_bytes_new(NULL, 0); return true;
 	case '[': out->p = ak_arr_new(kind_of(d + 1), shape_of(d + 1, t), 0); return true;
 	case '{': out->p = ak_map_new(AK_K_REF, true, kind_of(d + 1), shape_of(d + 1, t)); return true;
+	case '<': out->p = ak_set_new(kind_of(d + 1), d[1] == 's'); return true;
 	case 'S':
 	case 'E': return false;
 	default: return true;  // a zero scalar, none

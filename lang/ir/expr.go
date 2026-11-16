@@ -201,6 +201,14 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		if r, ok := b.hoist(e, dst); ok {
 			return r
 		}
+		if st, ok := b.rawType(e).(*check.Set); ok {
+			// A set literal: set.of(kind, its elements...).
+			args := []int{b.konst(int64(b.l.kind(st.Elem)))}
+			for _, x := range e.Elems {
+				args = append(args, b.value(x, -1))
+			}
+			return b.copyTo(b.callB("set.of", bc.KRef, args...), dst)
+		}
 		at, _ := b.rawType(e).(*check.Array)
 		if at == nil {
 			return b.valueReg(-1, bc.KRef)

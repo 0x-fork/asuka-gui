@@ -515,7 +515,27 @@ func Dedent(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+// setOf is Set<elem>, its elements Hashable (at says where it's
+// written).
+func (c *Checker) setOf(elem Type, at syntax.Node) Type {
+	if !IsInvalid(elem) && !IsHashable(elem) {
+		c.errorf(at, "a Set's elements are ints, strings, bools or enums without payloads, not %s", typeString(elem))
+	}
+	return &Set{elem}
+}
+
+// setLit is an array literal where a Set is expected: its elements.
+func (c *Checker) setLit(e *syntax.ArrayExpr, st *Set) Type {
+	for _, x := range e.Elems {
+		c.assign(x, st.Elem, "an element of "+typeString(st))
+	}
+	return st
+}
+
 func (c *Checker) arrayLit(e *syntax.ArrayExpr, want Type) Type {
+	if st, ok := Unopt(want).(*Set); ok {
+		return c.setLit(e, st)
+	}
 	var elem Type
 	if a, ok := Unopt(want).(*Array); ok {
 		elem = a.Elem

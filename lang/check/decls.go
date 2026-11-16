@@ -659,5 +659,47 @@ func (c *Checker) nativeValue(t Type) string {
 	if IsInvalid(t) {
 		return ""
 	}
+	if hasSet(t, map[*TypeName]bool{}) {
+		return "a Set doesn't cross to the platform: pass an array"
+	}
 	return jsonable1(t, map[*TypeName]bool{}, func(*TypeParam) bool { return false })
+}
+
+// hasSet reports a Set in t (its elements, fields, payloads).
+func hasSet(t Type, seen map[*TypeName]bool) bool {
+	switch x := t.(type) {
+	case *Set:
+		return true
+	case *Array:
+		return hasSet(x.Elem, seen)
+	case *Map:
+		return hasSet(x.Elem, seen)
+	case *Optional:
+		return hasSet(x.Elem, seen)
+	case *Tuple:
+		for _, e := range x.Elems {
+			if hasSet(e, seen) {
+				return true
+			}
+		}
+	case *Named:
+		if seen[x.Obj] {
+			return false
+		}
+		seen[x.Obj] = true
+		s := x.Subst()
+		for _, f := range x.Obj.Fields {
+			if hasSet(s.Apply(f.Type), seen) {
+				return true
+			}
+		}
+		for _, k := range x.Obj.Cases {
+			for _, p := range k.Params {
+				if hasSet(s.Apply(p), seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

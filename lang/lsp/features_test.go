@@ -60,3 +60,42 @@ fn label<T: Shape>(x: T) -> string = x.name
 		}
 	}
 }
+
+// A Set's methods complete and hover, and Set itself has its doc.
+func TestSets(t *testing.T) {
+	root := t.TempDir()
+	c := newClient(t, root)
+	text := `fn f() -> bool {
+  var tags: Set<string> = ["a", "b"]
+  tags.insert("c")
+  return tags.contains("a")
+}
+
+fn g(xs: [int]) -> int = Set(xs).count()
+`
+	uri := c.openText(filepath.Join(root, "a.asuka"), text)
+	c.waitDiags(uri, noDiags)
+	for _, tc := range []struct{ at, want string }{
+		{"tags.ins|ert", "fn Set<string>.insert(value: string) -> bool"},
+		{"tags.con|tains", "Whether value is one of the elements."},
+		{"var ta|gs", "var tags: Set<string>"},
+		{"Se|t(xs)", "fn Set<T: Hashable>"},
+	} {
+		if got := hoverAt(t, c, uri, text, tc.at); !strings.Contains(got, tc.want) {
+			t.Errorf("hover at %s: %q lacks %q", tc.at, got, tc.want)
+		}
+	}
+	version := 1
+	edited := strings.Replace(text, "tags.insert(\"c\")", "tags.", 1)
+	got := labels(complete(t, c, uri, &version, edited, edited[:strings.Index(edited, "tags.\n")+5]+"|"))
+	for _, w := range []string{"insert", "remove", "union", "isSubset", "contains", "count"} {
+		if !contains(got, w) {
+			t.Errorf("no %q in %v", w, got)
+		}
+	}
+	for _, w := range []string{"push", "keys"} {
+		if contains(got, w) {
+			t.Errorf("%q in %v", w, got)
+		}
+	}
+}

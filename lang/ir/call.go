@@ -137,6 +137,8 @@ func (b *fb) zeroValue(t check.Type) int {
 		r := b.temp(bc.KRef)
 		b.emit(op("NEWM"), r, int(b.l.kind(x.Key)), int(b.l.kind(x.Elem)), b.null(), 0)
 		return r
+	case *check.Set:
+		return b.callB("set.of", bc.KRef, b.konst(int64(b.l.kind(x.Elem))))
 	}
 	return b.zero(b.kind(t))
 }
@@ -506,6 +508,14 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return b.copyTo(b.callB("live.new", bc.KRef, init, src, b.konst(int64(b.l.kind(ft.Result)))), dst)
 	case check.BEnvironment:
 		return b.copyTo(b.callB("ui.environment", bc.KRef), dst)
+	case check.BSet:
+		// Set(xs): its distinct elements; Set<T>(): none.
+		st := b.typ(call.Result).(*check.Set)
+		if len(call.Args) == 1 {
+			xs := b.value(call.Args[0], -1)
+			return b.copyTo(b.callB("set.from", bc.KRef, xs), dst)
+		}
+		return b.copyTo(b.callB("set.of", bc.KRef, b.konst(int64(b.l.kind(st.Elem)))), dst)
 	case check.BStream:
 		// Stream<T>(produce): started when it's first read.
 		st := b.typ(call.Result).(*check.Stream)

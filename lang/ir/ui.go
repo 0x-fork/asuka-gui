@@ -618,6 +618,9 @@ func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int, keyKind bc.Kind) 
 	items = b.makeClosure(closure{name: "items", ctxs: []*check.FuncCtx{itemsCtx}, ret: bc.KRef, throws: true, body: func(c *fb) {
 		c.ctx = itemsCtx
 		v := c.value(fi.Seq, -1)
+		if fi.Kind == check.ForSet {
+			v = c.callB("map.keys", bc.KRef, v) // the rows: its elements, in order
+		}
 		c.emit(op("RET"), v)
 	}})
 	if s.Key != nil {

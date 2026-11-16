@@ -499,6 +499,7 @@ var builtinDocs = map[string][2]string{
 	"panic":       {"fn panic(message: string) -> never", "Stops the program with a message: for what can't happen."},
 	"withTimeout": {"async fn withTimeout(duration: Duration) { … } throws", "Runs the block, cancelling it with an error when it takes longer than the duration."},
 	"Stream":      {"fn Stream<T>(produce: async fn(send: fn(T)) throws) -> Stream<T>", "A stream whose values the block sends; read it with `for await`."},
+	"Set":         {"fn Set<T: Hashable>(elements: [T] = []) -> Set<T>", "A set of the array's distinct elements, in the order they first come (`Set<T>()`: none). Where a Set is expected, an array literal is one: `let tags: Set<string> = [\"a\", \"b\"]`."},
 	"decode":      {"fn decode<T>(text: string) throws -> T", "Reads JSON text as a T (json.decode<T>(text), or where a T is expected)."},
 	"encode":      {"fn encode(value: T, indent: int = 0) -> string", "Writes a value as JSON text, indented when indent > 0."},
 }

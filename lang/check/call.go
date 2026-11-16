@@ -230,7 +230,7 @@ func HasZero(t Type) bool {
 	switch x := t.(type) {
 	case *Basic:
 		return x == Bool || x == Int || x == Float || x == String || x == Bytes || x == Duration || x == Color || x == Length
-	case *Array, *Map, *Optional:
+	case *Array, *Map, *Set, *Optional:
 		return true
 	case *Named:
 		return x.Obj.Kind == EnumType && !x.Obj.RefEnum() && len(x.Args) == 0
@@ -299,6 +299,9 @@ func (c *Checker) unify(p, a Type, s Subst, free map[*TypeParam]bool) bool {
 	case *Map:
 		y, ok := a.(*Map)
 		return ok && c.unify(x.Key, y.Key, s, free) && c.unify(x.Elem, y.Elem, s, free)
+	case *Set:
+		y, ok := a.(*Set)
+		return ok && c.unify(x.Elem, y.Elem, s, free)
 	case *Optional:
 		if a == NoneType {
 			return true
@@ -368,6 +371,8 @@ func mentionsFree(t Type, free map[*TypeParam]bool, s Subst) bool {
 			walk(x.Elem)
 		case *Map:
 			walk(x.Key)
+			walk(x.Elem)
+		case *Set:
 			walk(x.Elem)
 		case *Optional:
 			walk(x.Elem)
@@ -1361,6 +1366,8 @@ func sendable1(t Type, seen map[*TypeName]bool) bool {
 	case *Array:
 		return sendable1(x.Elem, seen)
 	case *Map:
+		return sendable1(x.Elem, seen)
+	case *Set:
 		return sendable1(x.Elem, seen)
 	case *Optional:
 		return sendable1(x.Elem, seen)

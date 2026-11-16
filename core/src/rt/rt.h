@@ -195,8 +195,11 @@ ak_arr *ak_arr_copy(const ak_arr *a);
 
 // ---- Maps: insertion ordered, keys int or string ----
 
+#define AK_MAP_STRKEYS 1  // h.flags: the keys are strings
+#define AK_MAP_SET 2      // h.flags: a set, its values void (ak_set_*)
+
 typedef struct ak_map {
-	ak_obj h;  // h.aux: key kind | value kind << 4; h.flags: 1 when keys are strings
+	ak_obj h;  // h.aux: key kind | value kind << 4; h.flags: AK_MAP_STRKEYS, AK_MAP_SET
 	uint32_t len, cap;   // entries used, entries allocated (includes deleted)
 	uint32_t live;       // entries not deleted
 	uint32_t nslots;     // index slots (a power of 2)
@@ -213,6 +216,24 @@ void ak_map_set(ak_map **m, ak_val key, ak_val v);          // takes both refere
 bool ak_map_delete(ak_map **m, ak_val key);
 ak_arr *ak_map_keys(const ak_map *m);
 ak_arr *ak_map_values(const ak_map *m);
+
+// ---- Sets: a map whose values are void, insertion ordered ----
+//
+// A Set<T> is an ak_map of T's keys (ints, or strings) to nothing,
+// flagged AK_MAP_SET: it's copied on write, compared, hashed, frozen and
+// copied across threads as a map is, and iterates in insertion order
+// (an element removed and inserted again goes last).
+
+ak_map *ak_set_new(ak_kind elem, bool string_elems);
+static inline bool ak_map_is_set(const ak_map *m) { return (m->h.flags & AK_MAP_SET) != 0; }
+bool ak_set_has(const ak_map *s, ak_val x);      // x borrowed
+bool ak_set_insert(ak_map **s, ak_val x);        // takes x's reference; whether x was new
+bool ak_set_remove(ak_map **s, ak_val x);        // x borrowed; whether it was there
+ak_map *ak_set_union(const ak_map *a, const ak_map *b);         // a's elements, then b's new ones
+ak_map *ak_set_intersection(const ak_map *a, const ak_map *b);  // a's that b has, in a's order
+ak_map *ak_set_subtracting(const ak_map *a, const ak_map *b);   // a's that b hasn't
+bool ak_set_is_subset(const ak_map *a, const ak_map *b);        // every element of a is b's
+ak_map *ak_set_from_arr(const ak_arr *a);  // its distinct elements, first occurrence first
 
 // ---- Structs, tuples and enums ----
 

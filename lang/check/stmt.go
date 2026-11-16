@@ -410,11 +410,13 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 			if view {
 				c.errorf(s.Seq, "a for in a view goes over an array: use the map's keys() or values()")
 			}
+		case *Set:
+			fi.Kind, fi.Elem = ForSet, u.Elem
 		default:
 			if t == String {
 				c.errorf(s.Seq, "a string isn't a list: go over its characters, s.chars()")
 			} else if !IsInvalid(t) {
-				c.errorf(s.Seq, "for goes over an array, a map or a range, not a %s", typeString(t))
+				c.errorf(s.Seq, "for goes over an array, a set, a map or a range, not a %s", typeString(t))
 			}
 			fi.Kind, fi.Elem = ForArray, Invalid
 		}

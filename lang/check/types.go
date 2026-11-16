@@ -80,6 +80,11 @@ type Array struct{ Elem Type }
 
 func (a *Array) String() string { return "[" + a.Elem.String() + "]" }
 
+// Set is Set<Elem>: distinct Hashable values, in insertion order.
+type Set struct{ Elem Type }
+
+func (s *Set) String() string { return "Set<" + s.Elem.String() + ">" }
+
 // Map is [Key: Elem].
 type Map struct{ Key, Elem Type }
 
@@ -229,6 +234,9 @@ func Identical(a, b Type) bool {
 	case *Map:
 		y, ok := b.(*Map)
 		return ok && Identical(x.Key, y.Key) && Identical(x.Elem, y.Elem)
+	case *Set:
+		y, ok := b.(*Set)
+		return ok && Identical(x.Elem, y.Elem)
 	case *Optional:
 		y, ok := b.(*Optional)
 		return ok && Identical(x.Elem, y.Elem)
@@ -296,6 +304,10 @@ func (s Subst) Apply(t Type) Type {
 		k, e := s.Apply(x.Key), s.Apply(x.Elem)
 		if k != x.Key || e != x.Elem {
 			return &Map{k, e}
+		}
+	case *Set:
+		if e := s.Apply(x.Elem); e != x.Elem {
+			return &Set{e}
 		}
 	case *Optional:
 		if e := s.Apply(x.Elem); e != x.Elem {
@@ -384,6 +396,8 @@ func HasTypeParams(t Type) bool {
 		return HasTypeParams(x.Elem)
 	case *Map:
 		return HasTypeParams(x.Key) || HasTypeParams(x.Elem)
+	case *Set:
+		return HasTypeParams(x.Elem)
 	case *Optional:
 		return HasTypeParams(x.Elem)
 	case *Tuple:
@@ -462,6 +476,8 @@ func IsEquatable(t Type) bool {
 		return IsEquatable(x.Elem)
 	case *Map:
 		return IsEquatable(x.Elem)
+	case *Set:
+		return true // its elements are Hashable
 	case *Optional:
 		return IsEquatable(x.Elem)
 	case *Tuple:

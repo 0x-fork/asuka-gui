@@ -561,7 +561,7 @@
       "patterns": [
         {
           "name": "support.type.builtin.asuka",
-          "match": "\\b(int|float|bool|string|bytes|void|never|Duration|Color|Length|View|Error|Task|Stream|Loading)\\b"
+          "match": "\\b(int|float|bool|string|bytes|void|never|Duration|Color|Length|View|Error|Task|Stream|Loading|Set)\\b"
         },
         {
           "name": "entity.name.type.asuka",

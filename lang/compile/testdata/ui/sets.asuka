@@ -1,0 +1,50 @@
+// A Set in state: what reads it follows its changes, and a for in a view
+// goes over its elements in order.
+
+component Tags {
+  state selected: Set<string> = ["swift"]
+  let all = ["swift", "go", "c"]
+
+  Column {
+    Text("{selected.count()} selected")
+    if selected.contains("go") {
+      Text("Go is in")
+    }
+    for tag in selected key tag {
+      Text("#{tag}")
+    }
+    for tag in all key tag {
+      Button("Toggle {tag}") {
+        on press {
+          if !selected.remove(tag) {
+            selected.insert(tag)
+          }
+        }
+      }
+    }
+  }
+}
+
+app { Tags() }
+
+test "toggles tags" {
+  let app = mount(Tags())
+  app.expect("1 selected")
+  app.expect("#swift")
+  app.expectNo("Go is in")
+  app.tap("Toggle go")
+  app.expect("2 selected")
+  app.expect("Go is in")
+  app.expect("#swift")
+  app.expect("#go")
+  app.tap("Toggle swift")
+  app.expect("1 selected")
+  app.expect("#go")
+  app.expectNo("#swift")
+  app.tap("Toggle swift")
+  app.expect("2 selected")
+  app.expect("#go")
+  app.expect("#swift")
+  app.tap("Toggle go")
+  app.expectNo("Go is in")
+}

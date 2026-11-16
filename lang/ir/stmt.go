@@ -218,6 +218,13 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.value(fi.Seq, i)
 		limit = b.local(bc.KInt)
 		b.value(fi.End, limit)
+	case check.ForSet:
+		// The set as it is now (a local holds it, so a change in the
+		// body copies it), entry by entry: set.next is the index of the
+		// first live entry from i, or -1.
+		seq = b.local(bc.KRef)
+		b.value(fi.Seq, seq)
+		b.loadInt(i, 0)
 	case check.ForMap:
 		m := b.value(fi.Seq, -1)
 		keys = b.local(bc.KRef)
@@ -235,9 +242,14 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.loadInt(i, 0)
 	}
 	b.f.Place(top)
-	if fi.Kind == check.ForRange && fi.Incl {
+	switch {
+	case fi.Kind == check.ForSet:
+		b.callBTo("set.next", i, seq, i)
+		zero := b.konst(0)
+		b.emit(op("LEI"), cond, zero, i)
+	case fi.Kind == check.ForRange && fi.Incl:
 		b.emit(op("LEI"), cond, i, limit)
-	} else {
+	default:
 		b.emit(op("LTI"), cond, i, limit)
 	}
 	b.emitJump(op("JF"), cond, end)
@@ -245,6 +257,10 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 	switch fi.Kind {
 	case check.ForRange:
 		b.declare(fi.Item, i)
+	case check.ForSet:
+		x := b.temp(b.kind(fi.Elem))
+		b.callBTo("set.elem", x, seq, i)
+		b.declare(fi.Item, x)
 	case check.ForMap:
 		kt := fi.Elem.(*check.Tuple)
 		k := b.temp(b.kind(kt.Elems[0]))
