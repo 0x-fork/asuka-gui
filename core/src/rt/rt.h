@@ -63,6 +63,11 @@ typedef struct ak_obj {
 
 void ak_destroy(ak_obj *o);
 
+// ak_obj_live counts the objects made and not yet destroyed (immortal
+// ones aside: constants, never destroyed), so tests can tell that what code made is freed: a
+// runner's -leaks. Atomic: workers (spawn) make objects too.
+extern int64_t ak_obj_live;
+
 static inline void *ak_retain(void *p) {
 	if (p) {
 		ak_obj *o = (ak_obj *)p;

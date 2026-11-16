@@ -8,10 +8,24 @@ import (
 
 // stmts lowers statements; a defer protects the rest of its block.
 func (b *fb) stmts(items []syntax.Item) {
-	for i, it := range items {
+	for i := 0; i < len(items); i++ {
+		it := items[i]
 		if d, ok := it.(*syntax.DeferStmt); ok {
 			b.withDefer(d, items[i+1:])
 			return
+		}
+		if _, ok := it.(*syntax.FuncDecl); ok {
+			// The fns declared one after another: a group.
+			j := i + 1
+			for j < len(items) {
+				if _, ok := items[j].(*syntax.FuncDecl); !ok {
+					break
+				}
+				j++
+			}
+			b.localGroup(items[i:j])
+			i = j - 1
+			continue
 		}
 		b.stmt(it)
 	}
@@ -1009,4 +1023,196 @@ func (b *fb) jumpExpr(e *syntax.JumpExpr, dst int) int {
 		b.branch(e.Tok)
 	}
 	return dst
+}
+
+// ---------------------------------------------------------------------
+// Local fns
+
+// localGroup lowers a group of local fns (check.LocalGroup): each a
+// function taking its parameters, then the group's captures as the code
+// around holds them (a var's box, a value), then the env when they use
+// it. A call of one, from anywhere it's in scope, itself and its
+// siblings included, is a CALL passing them on: no closure is made, and
+// none holds another or itself, so recursion makes no cycle. Only a use
+// as a value makes a closure (localFnValue).
+func (b *fb) localGroup(items []syntax.Item) {
+	var fns []*check.LocalFn
+	for _, it := range items {
+		d := it.(*syntax.FuncDecl)
+		if v, ok := b.l.info.Defs[d.Name].(*check.Var); ok && v.Fn != nil {
+			fns = append(fns, v.Fn)
+		}
+	}
+	if len(fns) == 0 {
+		return
+	}
+	g := fns[0].Group
+	if b.locals == nil {
+		b.locals = map[*check.LocalFn]int{}
+	}
+	ncaps := len(g.Captures)
+	if g.UsesEnv {
+		ncaps++
+	}
+	fbs := make([]*fb, len(fns))
+	for i, lf := range fns {
+		c := b.l.newFunc(b.f.Name+"/"+lf.Decl.Name.Name, b.f.File, len(lf.Sig.Params)+ncaps, b.kind(lf.Sig.Result))
+		c.subst = b.subst
+		c.comp = b.comp
+		c.line = b.line
+		c.ctx = lf.Ctx
+		c.locals = b.locals
+		fbs[i] = c
+		b.locals[lf] = c.idx
+	}
+	for i, lf := range fns {
+		c := fbs[i]
+		var params []int
+		for _, p := range lf.Sig.Params {
+			params = append(params, c.newReg(c.kind(p.Type)))
+		}
+		for _, v := range g.Captures {
+			c.vars[v] = c.newReg(c.capKind(v))
+		}
+		if g.UsesEnv {
+			c.envReg = c.newReg(bc.KRef)
+		}
+		c.openScope()
+		for i, p := range lf.Sig.Params {
+			if p.Var == nil {
+				continue
+			}
+			if p.Var.Boxed() {
+				c.declare(p.Var, params[i])
+			} else {
+				c.vars[p.Var] = params[i]
+			}
+		}
+		if lf.Sig.Throws {
+			c.f.Flags |= bc.FThrows
+		}
+		d := lf.Decl
+		c.at(d)
+		switch {
+		case d.Value != nil:
+			k := c.f.Ret
+			if k == bc.KVoid {
+				c.exprStmt(d.Value)
+				c.emit(op("RET0"))
+			} else {
+				mark := c.mark()
+				c.ret(c.value(d.Value, -1), k)
+				c.release(mark)
+			}
+		case d.Body != nil:
+			c.stmts(d.Body.Items)
+			c.ret(-1, c.f.Ret)
+		}
+		c.closeScope()
+		if lf.Sig.Async || lf.Ctx.Awaits {
+			c.f.Flags |= bc.FAsync
+		}
+	}
+}
+
+// capKind is the kind of the register a local fn's capture of v is
+// passed in: as the code around holds it.
+func (b *fb) capKind(v *check.Var) bc.Kind {
+	if v.Boxed() || v.Kind == check.RowItem || v.Kind == check.ViewMemo {
+		return bc.KRef
+	}
+	return b.kind(v.Type)
+}
+
+// localCaps are the registers a call of a local fn of g passes after its
+// arguments: the group's captures as this function holds them (a
+// spawn's copy of a boxed var boxed again), then the env.
+func (b *fb) localCaps(g *check.LocalGroup, n syntax.Node) []int {
+	var regs []int
+	for _, v := range g.Captures {
+		r, ok := b.vars[v]
+		if !ok {
+			b.l.errorf(n, "internal: %s has no register in %s", v.Name(), b.f.Name)
+			r = b.valueReg(-1, b.capKind(v))
+		} else if v.Boxed() && b.unboxed[v] {
+			box := b.temp(bc.KRef)
+			b.emit(op("VBOX"), box, r, int(b.kind(v.Type)))
+			r = box
+		}
+		regs = append(regs, r)
+	}
+	if g.UsesEnv {
+		regs = append(regs, b.env(n))
+	}
+	return regs
+}
+
+// localIndex is the function of local fn lf.
+func (b *fb) localIndex(lf *check.LocalFn, n syntax.Node) (int, bool) {
+	idx, ok := b.locals[lf]
+	if !ok {
+		b.l.errorf(n, "internal: local fn %s isn't lowered in %s", lf.Decl.Name.Name, b.f.Name)
+	}
+	return idx, ok
+}
+
+// localCall is a call of a local fn by name: a CALL with its arguments
+// and its group's captures.
+func (b *fb) localCall(e *syntax.CallExpr, call *check.Call, lf *check.LocalFn, dst int, discard bool) int {
+	var vals []int
+	for _, a := range call.Args {
+		vals = append(vals, b.value(a, -1))
+	}
+	vals = append(vals, b.localCaps(lf.Group, e)...)
+	idx, ok := b.localIndex(lf, e)
+	k := b.kind(lf.Sig.Result)
+	if !ok {
+		return b.valueReg(-1, k)
+	}
+	return b.invoke(idx, vals, k, dst, discard)
+}
+
+// localFnValue is a local fn used as a value: a closure that captures
+// its group's captures and calls it with them.
+func (b *fb) localFnValue(lf *check.LocalFn, n syntax.Node) int {
+	idx, ok := b.localIndex(lf, n)
+	if !ok {
+		return b.valueReg(-1, bc.KRef)
+	}
+	g := lf.Group
+	var extra []extraCap
+	for _, v := range g.Captures {
+		r, ok := b.vars[v]
+		if !ok {
+			b.l.errorf(n, "internal: %s has no register in %s", v.Name(), b.f.Name)
+			continue
+		}
+		if v.Boxed() && b.unboxed[v] {
+			box := b.temp(bc.KRef)
+			b.emit(op("VBOX"), box, r, int(b.kind(v.Type)))
+			r = box
+		}
+		extra = append(extra, extraCap{v, r})
+	}
+	var params []*check.Var
+	var pkinds []bc.Kind
+	for _, p := range lf.Sig.Params {
+		params = append(params, nil)
+		pkinds = append(pkinds, b.kind(p.Type))
+	}
+	ret := b.kind(lf.Sig.Result)
+	return b.makeClosure(closure{name: lf.Decl.Name.Name, params: params, pkinds: pkinds, extra: extra, env: g.UsesEnv, ret: ret, async: lf.Sig.Async, throws: true, body: func(c *fb) {
+		var vals []int
+		for i := range lf.Sig.Params {
+			vals = append(vals, i)
+		}
+		for _, v := range g.Captures {
+			vals = append(vals, c.vars[v])
+		}
+		if g.UsesEnv {
+			vals = append(vals, c.env(n))
+		}
+		r := c.invoke(idx, vals, ret, -1, false)
+		c.ret(r, ret)
+	}})
 }

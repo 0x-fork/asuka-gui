@@ -179,6 +179,9 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 	switch o := o.(type) {
 	case *Var:
 		c.useVar(o, e)
+		if o.Kind == LocalFnVar {
+			c.localUses = append(c.localUses, localUse{ctx: c.ctx, fn: o.Fn})
+		}
 		return o.Type
 	case *Global:
 		return c.useGlobal(o, e)
@@ -1257,7 +1260,7 @@ func (c *Checker) mayThrow(at syntax.Node) {
 		return
 	}
 	switch c.ctx.Kind {
-	case CtxFunc, CtxMethod:
+	case CtxFunc, CtxMethod, CtxLocalFn:
 		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (try … catch { }, do { } catch { }, try?)", c.ctx.Name)
 	case CtxLambda:
 		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)")
@@ -1275,7 +1278,7 @@ func (c *Checker) asyncHint() string {
 		return "in an async fn, a handler, a task or a test"
 	}
 	switch c.ctx.Kind {
-	case CtxFunc, CtxMethod:
+	case CtxFunc, CtxMethod, CtxLocalFn:
 		return "mark " + c.ctx.Name + " async (async fn …)"
 	case CtxBinding, CtxComponent, CtxStore, CtxBuilder:
 		return "a component's body is declarations; load data with let x = load f(), or in a task { }"

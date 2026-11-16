@@ -30,16 +30,21 @@ type Checker struct {
 	styles     map[string]*syntax.StyleDecl
 
 	// While checking a body.
-	ctx       *FuncCtx
-	scope     *Scope
-	inTry     int           // inside try's operand
-	inAwait   int           // inside await's operand
-	handled   int           // inside a do block with a catch-all
-	partial   *partialCatch // inside a do or a catch that doesn't take every error
-	loops     int
-	curGlobal *Global
-	resolving map[any]bool
-	view      bool // checking view items
+	ctx     *FuncCtx
+	scope   *Scope
+	inTry   int           // inside try's operand
+	inAwait int           // inside await's operand
+	handled int           // inside a do block with a catch-all
+	partial *partialCatch // inside a do or a catch that doesn't take every error
+	warns   []Diagnostic
+	// The local fns' groups, and where their fns are used (by name),
+	// for finishLocalFns.
+	localGroups []*LocalGroup
+	localUses   []localUse
+	loops       int
+	curGlobal   *Global
+	resolving   map[any]bool
+	view        bool // checking view items
 
 	chained map[syntax.Expr]bool // the members and calls of a ?. chain
 	nextTP  int
@@ -106,6 +111,7 @@ func (c *Checker) CheckPackage(path, name string, files []*syntax.SourceFile, im
 
 // Program is what the checker made of the packages so far.
 func (c *Checker) Program(root *Package) *Program {
+	c.finishLocalFns()
 	c.finalize()
 	c.jsonGenerics()
 	pkgs := append([]*Package{c.prelude}, c.pkgs...)
@@ -117,7 +123,7 @@ func (c *Checker) Program(root *Package) *Program {
 		}
 		return a.Offset < b.Offset
 	})
-	return &Program{Fset: c.fset, Packages: pkgs, Prelude: c.prelude, Root: root, Info: c.info, Diags: diags, Catalog: c.catalog, checker: c}
+	return &Program{Fset: c.fset, Packages: pkgs, Prelude: c.prelude, Root: root, Info: c.info, Diags: diags, Warnings: append([]Diagnostic{}, c.warns...), Catalog: c.catalog, checker: c}
 }
 
 // ---------------------------------------------------------------------
@@ -131,6 +137,19 @@ func (c *Checker) errorf(n syntax.Node, format string, args ...any) {
 		end = c.fset.Position(r.End)
 	}
 	c.errorAt(pos, end, fmt.Sprintf(format, args...))
+}
+
+// warnf reports what's worth saying that doesn't stop the build.
+func (c *Checker) warnf(n syntax.Node, format string, args ...any) {
+	r := n.Range()
+	pos, end := c.fset.Position(r.Start), c.fset.Position(r.End)
+	msg := fmt.Sprintf(format, args...)
+	key := "warning " + pos.String() + msg
+	if c.errLines[key] {
+		return
+	}
+	c.errLines[key] = true
+	c.warns = append(c.warns, Diagnostic{Pos: pos, End: end, Msg: msg})
 }
 
 func (c *Checker) errorPos(p syntax.Pos, format string, args ...any) {

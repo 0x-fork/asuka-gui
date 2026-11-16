@@ -1,0 +1,78 @@
+// Run with the runner's -leaks: each test fails if objects it made
+// outlive it. Recursion through local fns frees everything; a closure
+// that calls itself through the var it's stored in doesn't (a box and a
+// closure holding each other), which the compiler warns of.
+
+struct Node {
+  name: string
+  children: [Node] = []
+}
+
+test "a recursive local fn" {
+  var made = 0
+  fn build(depth: int) -> Node {
+    made += 1
+    if depth == 0 { return Node(name: "leaf") }
+    return Node(name: "n{depth}", children: [build(depth - 1), build(depth - 1)])
+  }
+  fn size(n: Node) -> int {
+    var s = 1
+    for c in n.children { s += size(c) }
+    return s
+  }
+  let t = build(6)
+  print("{size(t)} {made}")
+}
+
+test "mutually recursive local fns" {
+  var steps: [string] = []
+  fn ping(n: int) {
+    steps.push("ping {n}")
+    if n > 0 { pong(n - 1) }
+  }
+  fn pong(n: int) {
+    steps.push("pong {n}")
+    if n > 0 { ping(n - 1) }
+  }
+  ping(3)
+  print(steps)
+}
+
+test "a local fn as a value, and in a closure" {
+  var total = 0
+  let label = "item"
+  fn add(x: int) -> string {
+    total += x
+    return "{label} {x}"
+  }
+  let names = [1, 2, 3].map(add)
+  let again = [4].map(x => add(x))
+  let kept = add
+  print("{names} {again} {kept(5)} {total}")
+}
+
+test "a local fn in a closure's body, calling itself" {
+  let depths = [3, 1].map(n => {
+    fn down(k: int) -> int = if k == 0 { 0 } else { 1 + down(k - 1) }
+    return down(n)
+  })
+  print(depths)
+}
+
+test "a closure calling itself through its var leaks" {
+  var walk: fn(int) -> int = n => 0
+  walk = n => if n == 0 { 0 } else { 1 + walk(n - 1) }
+  print(walk(3))
+}
+
+// Output:
+// 127 127
+// ok a recursive local fn
+// ["ping 3","pong 2","ping 1","pong 0"]
+// ok mutually recursive local fns
+// ["item 1","item 2","item 3"] ["item 4"] item 5 15
+// ok a local fn as a value, and in a closure
+// [3,1]
+// ok a local fn in a closure's body, calling itself
+// 3
+// FAIL a closure calling itself through its var leaks: 2 objects it made outlive it

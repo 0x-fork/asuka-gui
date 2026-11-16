@@ -114,6 +114,15 @@ func funcSig(f *check.Function) string {
 	return b.String()
 }
 
+// localFnSig is a fn declared in a block's signature.
+func localFnSig(f *check.LocalFn) string {
+	s := "fn " + f.Var.Name() + paramsString(f.Sig.Params) + resultString(f.Sig.Result, f.Sig.Async, f.Sig.Throws)
+	if f.Sig.Async {
+		s = "async " + s
+	}
+	return s
+}
+
 // methodSig is a built-in method's signature, for a receiver of type
 // recv: fn [int].map(transform: fn(int) -> U) -> [U].
 func methodSig(m *check.Method, recv check.Type) string {
@@ -571,6 +580,9 @@ func (fc *fileCtx) describe(r *ref) (code, doc string) {
 	}
 	switch o := r.obj.(type) {
 	case *check.Var:
+		if o.Fn != nil {
+			return localFnSig(o.Fn), docOf(o.Fn.Decl)
+		}
 		return fc.varDecl(o), ""
 	case *check.Global:
 		d := ""

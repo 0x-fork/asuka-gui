@@ -1,0 +1,32 @@
+// A fn declared in a handler: it reads and writes the component's state
+// (through the env), and calls itself.
+
+component Countdown {
+  state log: [string] = []
+  state from = 3
+
+  Column {
+    Text("{log.count()} steps")
+    for line in log key line { Text(line) }
+    Button("Count") {
+      on press {
+        fn tick(n: int) {
+          log.push("at {n}")
+          if n > 0 { tick(n - 1) }
+        }
+        tick(from)
+      }
+    }
+  }
+}
+
+app { Countdown() }
+
+test "a handler's fn" {
+  let app = mount(Countdown())
+  app.expect("0 steps")
+  app.tap("Count")
+  app.expect("4 steps")
+  app.expect("at 0")
+  app.expect("at 3")
+}

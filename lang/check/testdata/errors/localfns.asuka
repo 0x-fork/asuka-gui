@@ -1,0 +1,74 @@
+// fns declared in a block, and closures that call themselves through
+// their var.
+
+fn ok(n: int) -> int {
+  fn isEven(k: int) -> bool = if k == 0 { true } else { isOdd(k - 1) }
+  fn isOdd(k: int) -> bool = if k == 0 { false } else { isEven(k - 1) }
+  fn walk(k: int) -> int {
+    if k == 0 { return 0 }
+    return 1 + walk(k - 1)
+  }
+  let f: fn(int) -> int = walk
+  return if isEven(n) { f(n) } else { walk(n) }
+}
+
+fn notAdjacent(n: int) -> int {
+  fn first(k: int) -> int = second(k) // ERROR "unknown name second"
+  let gap = 1
+  fn second(k: int) -> int = k + gap
+  return first(n)
+}
+
+fn generic(n: int) -> int {
+  fn id<T>(x: T) -> T = x // ERROR "a fn in a block isn't generic: declare id at the top of the file"
+  return n
+}
+
+fn defaults(n: int) -> int {
+  fn add(a: int, b: int = 1) -> int = a + b // ERROR "a fn in a block takes its arguments in order, without defaults"
+  return add(n, 2)
+}
+
+fn noReturn(n: int) -> int {
+  fn half(k: int) -> int {
+    if k > 0 { return k / 2 }
+  } // ERROR "fn half must return a int"
+  return half(n)
+}
+
+fn assignFn(n: int) -> int {
+  fn one() -> int = 1
+  one = () => 2 // ERROR "can't assign to one: it's a fn"
+  return one()
+}
+
+fn declaredTwice() {
+  fn twice() {}
+  fn twice() {} // ERROR "twice is declared twice here"
+}
+
+fn throwsWithoutMark(n: int) -> int {
+  fn check(k: int) -> int {
+    if k < 0 { throw Error("negative") } // ERROR "check doesn't throw: mark it throws"
+    return k
+  }
+  return check(n)
+}
+
+fn labels(n: int) -> int {
+  fn add(a: int, b: int) -> int = a + b
+  return add(a: n, b: 1) // ERROR "a function value's arguments have no names"
+}
+
+async fn inSpawn(n: int) -> int {
+  fn twice(k: int) -> int = k * 2
+  return await spawn { twice(n) } // ERROR "spawn can't use twice"
+}
+
+fn selfThroughVar(n: int) -> int {
+  var walk: fn(int) -> int = k => 0
+  walk = k => if k == 0 { 0 } else { 1 + walk(k - 1) } // WARNING "walk calls itself through the variable it's stored in, which keeps it alive forever: declare it fn walk\(…\)"
+  var other: fn(int) -> int = k => 0
+  other = k => k + 1
+  return walk(n) + other(n)
+}

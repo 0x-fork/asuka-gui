@@ -30,6 +30,11 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 	case check.CallFunc, check.CallMethod:
 		return b.funcCall(e, call, dst, discard)
 	case check.CallClosure:
+		if id, ok := unparen(call.Recv).(*syntax.Ident); ok {
+			if v, ok := b.l.info.Uses[id].(*check.Var); ok && v.Fn != nil {
+				return b.localCall(e, call, v.Fn, dst, discard)
+			}
+		}
 		return b.closureCall(e, call, dst)
 	case check.CallIface:
 		return b.ifaceCall(e, call, nil, dst)
