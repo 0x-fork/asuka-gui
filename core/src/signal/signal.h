@@ -40,15 +40,17 @@ typedef struct ak_node {
 
 static inline void ak_signal_init(ak_node *n) { memset(n, 0, sizeof *n); }
 // ak_signal_born marks a signal made now: one made inside a memo may be
-// written there while nothing reads it yet (the memo makes a store and
-// sets it up), which isn't a side effect anything sees.
+// written there while nothing but that memo reads it (the memo makes a
+// store and sets it up, reading what it set), which isn't a side effect
+// anything else sees.
 void ak_signal_born(ak_node *n);
 // ak_signal_read subscribes the running computation, if any, to n.
 void ak_signal_read(ak_node *n);
 // ak_signal_write tells the graph the caller changed n's value (the
 // caller skips writes it considers equal). Outside a batch and a flush,
 // the effects it dirtied run before it returns. A write inside a memo
-// panics.
+// panics, but to a signal the memo made in this run (ak_signal_born) that
+// nothing but the memo reads.
 void ak_signal_write(ak_node *n);
 // ak_signal_drop unsubscribes everything that read n, before the caller
 // frees it. Reads of a dropped signal track nothing.
