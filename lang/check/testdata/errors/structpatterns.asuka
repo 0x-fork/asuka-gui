@@ -1,0 +1,105 @@
+// Struct patterns, and exhaustiveness through nested patterns.
+
+struct Point {
+  x: int
+  y: int
+}
+
+struct Flag {
+  on: bool
+  label: string
+}
+
+enum Light { red, yellow, green }
+
+enum Event {
+  tap(at: Point)
+  key(code: int, shift: bool)
+  idle
+}
+
+fn unknownField(p: Point) -> int = match p {
+  Point(z: 1) => 1 // ERROR "Point has no field z"
+  _ => 0
+}
+
+fn typo(p: Point) -> int = match p {
+  Point(xx: 1) => 1 // ERROR "Point has no field xx: did you mean x\?"
+  _ => 0
+}
+
+fn unlabeled(p: Point) -> int = match p {
+  Point(1) => 1 // ERROR "a struct pattern names the fields it matches: write field: pattern"
+  _ => 0
+}
+
+fn wildcard(p: Point) -> int = match p {
+  Point(x: 1, _) => 1 // ERROR "leave out a field to match any"
+  _ => 0
+}
+
+fn twice(p: Point) -> int = match p {
+  Point(x: 1, x: 2) => 1 // ERROR "x is matched twice"
+  _ => 0
+}
+
+fn wrongType(f: Flag) -> int = match f {
+  Point(x: 1) => 1 // ERROR "a Flag can't be a Point"
+  _ => 0
+}
+
+fn fieldType(p: Point) -> int = match p {
+  Point(x: "a") => 1 // ERROR "a int can't be a string"
+  _ => 0
+}
+
+// Exhaustive: every field's pattern matches anything.
+fn whole(p: Point) -> int = match p {
+  Point(x, y) => x + y
+}
+
+fn bools(f: Flag) -> int = match f { // ERROR "match doesn't cover Flag\(on: false\)"
+  Flag(on: true) => 1
+}
+
+fn boolsBoth(f: Flag) -> int = match f {
+  Flag(on: true) => 1
+  Flag(on: false, label) => 2
+}
+
+fn ints(p: Point) -> int = match p { // ERROR "match doesn't cover the rest"
+  Point(x: 0) => 1
+}
+
+fn nested(e: Event) -> int = match e { // ERROR "match doesn't cover .key\(_, false\), .idle"
+  .tap(at: Point(x, y)) => x
+  .key(code: _, shift: true) => 1
+}
+
+fn nestedAll(e: Event) -> int = match e {
+  .tap(Point(x: 0)) => 0
+  .tap(_) => 1
+  .key(_, true) | .key(_, false) => 2
+  .idle => 3
+}
+
+fn optionalStruct(f: Flag?) -> int = match f { // ERROR "match doesn't cover none"
+  Flag(on: true) => 1
+  Flag(on: false) => 2
+}
+
+fn tuples(t: (bool, Light)) -> int = match t { // ERROR "match doesn't cover \(false, .green\)"
+  (true, _) => 1
+  (false, .red | .yellow) => 2
+}
+
+fn wrongLabel(e: Event) -> int = match e {
+  .key(code: c, alt: true) => c // ERROR "case key's payload 2 is shift, not alt"
+  _ => 0
+}
+
+fn guarded(f: Flag) -> int = match f { // ERROR "match doesn't cover Flag\\(on: true\\)"
+  Flag(on: true) if f.label == "" => 1
+  Flag(on: false) => 2
+  Flag(on: true) if f.label != "" => 3
+}

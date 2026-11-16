@@ -1,0 +1,37 @@
+// A view's match with struct patterns: the names they bind follow the
+// subject.
+
+struct Cursor {
+  line: int
+  column: int
+  selecting: bool = false
+}
+
+component Status {
+  state cursor = Cursor(line: 1, column: 1)
+
+  Column {
+    match cursor {
+      Cursor(line: 1, column: 1) => Text("At the start")
+      Cursor(selecting: true, line) => Text("Selecting on line {line}")
+      Cursor(line, column: col) => Text("Line {line}, column {col}")
+    }
+    Button("Down") { on press { cursor.line += 1 } }
+    Button("Select") { on press { cursor.selecting = true } }
+  }
+}
+
+app { Status() }
+
+test "follows the cursor" {
+  let app = mount(Status())
+  app.expect("At the start")
+  app.tap("Down")
+  app.expect("Line 2, column 1")
+  app.tap("Down")
+  app.expect("Line 3, column 1")
+  app.tap("Select")
+  app.expect("Selecting on line 3")
+  app.tap("Down")
+  app.expect("Selecting on line 4")
+}

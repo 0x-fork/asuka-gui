@@ -14,17 +14,17 @@ import (
 // and Android modules; a release's profile must have the entitlements.
 func TestPackageExtras(t *testing.T) {
 	var c appConfig
-	c.permissionsFor([]string{"github.com/egoist/asuka/sdk/push", "github.com/egoist/asuka/sdk/periodic", "github.com/egoist/asuka/sdk/appleauth"})
-	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=push,periodic" {
+	importStd(t, &c, "ios", "push", "periodic", "appleauth")
+	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=periodic,push" {
 		t.Errorf("modules: %s", got)
 	}
 	if c.entitlements["aps-environment"] != "development" || c.entitlements["com.apple.developer.applesignin"] == nil {
 		t.Errorf("entitlements: %v", c.entitlements)
 	}
-	if m := c.plistArrays["UIBackgroundModes"]; !slices.Contains(m, "remote-notification") || !slices.Contains(m, "fetch") {
+	x := c.plistExtras()
+	if m, _ := x["UIBackgroundModes"].([]string); !slices.Contains(m, "remote-notification") || !slices.Contains(m, "fetch") {
 		t.Errorf("background modes: %v", m)
 	}
-	x := c.plistExtras()
 	if ids, _ := x["BGTaskSchedulerPermittedIdentifiers"].([]string); !slices.Equal(ids, []string{"dev.asuka.processing", "dev.asuka.refresh"}) {
 		t.Errorf("task identifiers: %v", ids)
 	}
@@ -34,14 +34,14 @@ func TestPackageExtras(t *testing.T) {
 
 	ent := filepath.Join(t.TempDir(), "e.plist")
 	os.WriteFile(ent, []byte(plist(map[string]any{"aps-environment": "production"})), 0o644)
-	if m := c.missingEntitlements(ent); !slices.Equal(m, []string{"Sign in with Apple (asuka/sdk/appleauth)"}) {
+	if m := c.missingEntitlements(ent); !slices.Equal(m, []string{"Sign in with Apple (asuka/appleauth)"}) {
 		t.Errorf("missing: %v", m)
 	}
 
 	// Android: biometric's permission; maps' key in the manifest.
 	var a appConfig
 	a.Android.MapsKey = "KEY"
-	a.permissionsFor([]string{"github.com/egoist/asuka/sdk/biometric", "github.com/egoist/asuka/sdk/maps"})
+	importStd(t, &a, "", "biometric", "maps")
 	man := a.androidManifest(false)
 	if !strings.Contains(man, "android.permission.USE_BIOMETRIC") || !strings.Contains(man, `android:name="com.google.android.geo.API_KEY" android:value="KEY"`) {
 		t.Errorf("manifest:\n%s", man)
@@ -51,35 +51,28 @@ func TestPackageExtras(t *testing.T) {
 	}
 }
 
-// Now Playing: on iOS, the audio background mode for an app that calls
-// nowplaying.Show; on Android, the media playback foreground service and
-// its permissions for one that imports it, and nothing for one that
+// Now Playing: on iOS, the audio background mode; on Android, the media
+// playback foreground service (asuka/nowplaying's module's) and its
+// permissions for an app that imports it, and nothing for one that
 // doesn't.
 func TestNowPlayingExtras(t *testing.T) {
-	var c appConfig
-	c.addFeatureExtras([]string{"ASUKA_NOWPLAYING"})
-	if m := c.plistArrays["UIBackgroundModes"]; !slices.Equal(m, []string{"audio"}) {
-		t.Errorf("background modes: %v", m)
-	}
-	found := false
-	for _, f := range iosFeatures {
-		found = found || f.flag == "ASUKA_NOWPLAYING" && f.symbol == "github.com/egoist/asuka/sdk/nowplaying.Show"
-	}
-	if !found {
-		t.Error("nowplaying.Show's symbol isn't a feature's")
-	}
 	var a appConfig
-	a.permissionsFor([]string{"github.com/egoist/asuka/sdk/nowplaying"})
+	importStd(t, &a, "ios", "nowplaying")
 	man := a.androidManifest(false)
-	for _, want := range []string{"android.permission.FOREGROUND_SERVICE\"", "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-		`<service android:name="dev.asuka.AsukaMediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" />`} {
+	for _, want := range []string{"android.permission.FOREGROUND_SERVICE\"", "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"} {
 		if !strings.Contains(man, want) {
 			t.Errorf("no %s in the manifest:\n%s", want, man)
 		}
 	}
+	if mod := stdAndroidManifest(t, "nowplaying"); !strings.Contains(mod, `<service android:name="asuka.nowplaying.MediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" />`) {
+		t.Errorf("asuka/nowplaying's module's manifest:\n%s", mod)
+	}
+	if m, _ := a.plistExtras()["UIBackgroundModes"].([]string); !slices.Equal(m, []string{"audio"}) {
+		t.Errorf("background modes: %v", m)
+	}
 	var none appConfig
-	none.permissionsFor([]string{"github.com/egoist/asuka/sdk/audio"})
-	if man := none.androidManifest(false); strings.Contains(man, "AsukaMediaService") || strings.Contains(man, "MEDIA_PLAYBACK") {
+	importStd(t, &none, "ios", "audio")
+	if man := none.androidManifest(false); strings.Contains(man, "MediaService") || strings.Contains(man, "MEDIA_PLAYBACK") {
 		t.Errorf("audio alone:\n%s", man)
 	}
 }

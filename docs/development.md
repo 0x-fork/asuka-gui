@@ -77,13 +77,13 @@ launches it.
 
 What each platform's player is:
 
-- **macOS, Windows**: the desktop host (`cmd/asuka-host`: AppKit or
-  Win32, driving the core through its C ABI) and the core beside it
-  (`libasuka.dylib`, `asuka.dll`), in the app's directory in Asuka's
-  cache; on a Mac it's an `.app` like a release's. It's launched with
+- **Windows, Linux**: one program, the C host (on Win32; on GTK 4 and
+  libadwaita) linked with the core and no app, in the app's directory
+  in Asuka's cache (on Windows a console program). It's launched with
   `ASUKA_DEV=host:port` in its environment.
-- **Linux**: one executable, the C host (GTK 4 and libadwaita) linked
-  with the core and no app, in the app's directory in Asuka's cache,
+- **macOS**: the desktop host (`cmd/asuka-host`: AppKit, driving the
+  core through its C ABI) and the core beside it (`libasuka.dylib`), an
+  `.app` like a release's in the app's directory in Asuka's cache. It's
   launched with `ASUKA_DEV=host:port` in its environment.
 - **iOS**: the Swift host linked with the core (`libasuka.a`) into the
   app's `.app`, with every part of the host that links a framework of
@@ -103,11 +103,12 @@ What each platform's player is:
 ## On the desktop
 
 On macOS, Windows and Linux, `asuka dev` runs the player in a window.
-The Mac's and Windows' host is built from Asuka's source when the CLI
-runs from a checkout of it, else it's the CLI's release's, fetched once
-into Asuka's cache and checked by its hash; the core is built with this
-computer's C compiler. Linux's host is C, built with the core from the
-source the CLI carries.
+On Windows and Linux the host is C, built with the core by this
+computer's C compiler (Zig, clang, or MinGW's or Linux's gcc;
+`ASUKA_CC` picks one) from the source the CLI carries. On the Mac the
+host is built from Asuka's source when the CLI runs from a checkout of
+it, else it's the CLI's release's, fetched once into Asuka's cache and
+checked by its hash; the core is built with this computer's C compiler.
 
 The app reads its `assets/` where they are, so changing one needs no
 copy. Its data (SQLite databases, files) is in a `data` directory of its
@@ -126,9 +127,9 @@ profile's entitlements (push, Sign in with Apple, App Attest) work only
 in a release build signed with one: see [Shipping](shipping.md#macos).
 
 **Windows.** `asuka dev` runs only on Windows itself; `asuka build
---platform windows` builds from any system. The player is a console
-program, so its output prints in the terminal; a release has no
-console. To stop it, Asuka closes its standard input (Windows can't send
+--platform windows` builds from any system (with Zig), one `.exe` with
+the app in it. The player is a console program, so its output prints in
+the terminal; a release has no console. To stop it, Asuka closes its standard input (Windows can't send
 a process Ctrl-C).
 
 **Linux.** `asuka dev` on Linux runs the player on GTK 4 and libadwaita,
@@ -380,7 +381,7 @@ core, the CLI and each host through the platform's real views.
 go test ./core                                     # the core's C tests (ASan, UBSan) and the VM's
 go test ./internal/appbuild ./cmd/asuka            # the builds and the dev loop, on every platform this computer has
 go test ./host/darwin                              # macOS: real AppKit views
-go test ./host/windows                             # Windows: real windows
+go test ./platform/windows                         # Windows: apps built with Zig, driven in real windows (on Windows, or a VM)
 xvfb-run -a dbus-run-session go test ./platform/linux  # Linux: apps driven in real GTK windows
 swift test --package-path platform/ios             # the Swift host's decoder
 node --test platform/web                           # the web host's decoder
@@ -392,11 +393,18 @@ in headless Chrome, on the booted iOS simulator and on a running Android
 emulator, and builds the app for each platform; it skips what this
 computer can't build or run.
 
-`go test ./host/darwin -run Conformance` and `go test ./host/windows
--run Conformance` check what the host draws for a style (edges, corners,
-borders, shadows, gradients), measured in a capture of the window; the
-e2e tests do the same on the simulator, the emulator and headless
-Chrome (`go test -tags e2e ./e2e -run Conformance`).
+`go test ./host/darwin -run Conformance` checks what the host draws for
+a style (edges, corners, borders, shadows, gradients), measured in a
+capture of the window; the e2e tests do the same on the simulator, the
+emulator and headless Chrome (`go test -tags e2e ./e2e -run
+Conformance`). On Windows, `go test ./platform/windows -run Drawing`
+checks images, shapes, canvases, shaders, rounded clips and materials by
+their pixels in the window's capture.
+
+`go test ./platform/windows` runs each test's app in Windows: on a PC,
+or from a Mac in the swiftvm VM that `ASUKA_WINDOWS_VM` names
+(`Windows Fresh` by default), which sees `~/Library/Caches/asuka/windows-vm`
+as `Z:\windows-vm`; with neither, they skip.
 
 ## Benchmarks
 

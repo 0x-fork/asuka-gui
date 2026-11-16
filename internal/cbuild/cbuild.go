@@ -390,6 +390,98 @@ func headers(core string) ([]string, error) {
 	return out, err
 }
 
+// Program is a desktop host's executable (RFC 0008: the host with the
+// core, and an app compiled to C, linked in): what Program builds.
+type Program struct {
+	// Host are the host's C sources (platform/windows/src's, platform/
+	// desktop/src's), compiled with HostFlags after the core's includes.
+	Host      []string
+	HostFlags []string
+	// Extra are more sources compiled as the core is (an app compiled to
+	// C, lang/cgen; a native package's glue), which make the core run the
+	// app compiled in (AK_APP_COMPILED).
+	Extra []string
+	// Objects are linked in as they are (a Windows resource object: the
+	// icon, the manifest, the version).
+	Objects []string
+	// Link are the libraries and flags the link takes.
+	Link []string
+	// Debug builds without optimizing, with symbols.
+	Debug bool
+}
+
+// Program builds p for the toolchain's target into out: the core's and
+// the host's objects come from the cache (each by its sources' and flags'
+// hash), the extra ones compiled per build.
+func (tc *Toolchain) Program(core string, p Program, out string) error {
+	srcs, err := Sources(core, false)
+	if err != nil {
+		return err
+	}
+	flags := append(append(Includes(core), tc.Flags...), "-ffunction-sections", "-fdata-sections")
+	if p.Debug {
+		flags = append(flags, "-g", "-O1", "-DAK_DEBUG=1")
+	} else {
+		flags = append(flags, "-O2", "-DNDEBUG")
+	}
+	if len(p.Extra) > 0 {
+		flags = append(flags, "-DAK_APP_COMPILED=1")
+	}
+	hdrs, _ := headers(core)
+	objs, err := tc.compileCached(core, "core", srcs, hdrs, flags, Static)
+	if err != nil {
+		return err
+	}
+	if len(p.Host) > 0 {
+		hostHdrs := append([]string{}, hdrs...)
+		for _, s := range p.Host {
+			h, _ := filepath.Glob(filepath.Join(filepath.Dir(s), "*.h"))
+			hostHdrs = append(hostHdrs, h...)
+			inc, _ := filepath.Glob(filepath.Join(filepath.Dir(filepath.Dir(s)), "include", "*.h"))
+			hostHdrs = append(hostHdrs, inc...)
+		}
+		sort.Strings(hostHdrs)
+		more, err := tc.compileCached(core, "host", p.Host, dedupe(hostHdrs), append(append([]string{}, flags...), p.HostFlags...), Static)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, more...)
+	}
+	if len(p.Extra) > 0 {
+		more, err := tc.compileCached(core, "app", p.Extra, hdrs, flags, Static)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, more...)
+	}
+	objs = append(objs, p.Objects...)
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return err
+	}
+	link := append(append([]string{}, tc.Flags...), p.Link...)
+	link = append(link, "-lm")
+	if !p.Debug {
+		link = append(link, deadStrip(tc.Target)...)
+	}
+	tmp := tmpName(out)
+	if err := tc.CC.Link(objs, tmp, link); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	os.Remove(strings.TrimSuffix(tmp, ".tmp") + ".pdb")
+	return os.Rename(tmp, out)
+}
+
+func dedupe(s []string) []string {
+	var out []string
+	for i, v := range s {
+		if i == 0 || v != s[i-1] {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // Exe builds an executable of the core (core/src, without the fake host)
 // and extra C sources (a host, the native registry, packages' C, an app
 // compiled to C) for this computer, into dir (the caller's), and returns

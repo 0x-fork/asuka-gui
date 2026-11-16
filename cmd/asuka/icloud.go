@@ -9,25 +9,16 @@ import (
 	"strings"
 )
 
-// asuka/sdk/icloud: what an app that uses it is given. The key-value
+// asuka/icloud: what an app that uses it is given. The key-value
 // store's entitlement (its identifier, the team's prefix and the app's
-// ID), for an app that calls the store's functions; for one that calls
-// the documents', iCloud Documents (the CloudDocuments service) and the
+// ID), for an app that uses the store (its manifest's members that derive
+// icloudKeyValue: Value, remove, the account); for one that uses the
+// documents' (icloudDocuments), iCloud Documents (the CloudDocuments service) and the
 // app's containers (asuka.toml's icloud.containers, by default
 // iCloud.<id>), and Info.plist's NSUbiquitousContainers, which shows the
 // first one's Documents in iCloud Drive. As Xcode does, a profile's
 // wildcards (the services' "*", the store's TEAM.*) are signed as the
 // values the app uses, and the profile must have its containers.
-
-const icloudPkg = "github.com/egoist/asuka/sdk/icloud"
-
-// The package's functions, by what they need.
-var icloudFuncs = struct{ kv, docs, account []string }{
-	kv: []string{"Get", "Set", "Delete", "All", "Sync", "OnChange", "Signal"},
-	docs: []string{"Container", "Documents", "Files", "WatchFiles", "UseFiles", "Download", "Evict", "ReadFile", "WriteFile",
-		"Remove", "Rename", "MoveIn", "MoveOut", "Conflicts", "Resolve", "Link"},
-	account: []string{"CurrentAccount", "WatchAccount", "UseAccount"},
-}
 
 // The entitlements.
 const (
@@ -48,10 +39,10 @@ var icloudEntitlements = []string{entKVStore, entContainers, entUbiquity, entSer
 
 // icloudWhat says what an entitlement is for, when a profile lacks it.
 var icloudWhat = map[string]string{
-	entKVStore:    "iCloud's key-value storage (asuka/sdk/icloud)",
-	entContainers: "iCloud Documents, with asuka.toml's icloud containers (asuka/sdk/icloud)",
-	entUbiquity:   "iCloud Documents, with asuka.toml's icloud containers (asuka/sdk/icloud)",
-	entServices:   "iCloud Documents, with asuka.toml's icloud containers (asuka/sdk/icloud)",
+	entKVStore:    "iCloud's key-value storage (asuka/icloud)",
+	entContainers: "iCloud Documents, with asuka.toml's icloud containers (asuka/icloud)",
+	entUbiquity:   "iCloud Documents, with asuka.toml's icloud containers (asuka/icloud)",
+	entServices:   "iCloud Documents, with asuka.toml's icloud containers (asuka/icloud)",
 }
 
 // icloudContainers are the app's container IDs, its default first.
@@ -60,22 +51,6 @@ func (c *appConfig) icloudContainers() []string {
 		return c.ICloud.Containers
 	}
 	return []string{"iCloud." + c.ID}
-}
-
-// useICloud notes what of asuka/sdk/icloud the app calls, from what its
-// sources name, and adds what that needs. An app that only asks about
-// the account is given the store's entitlement, without which there's no
-// account to see.
-func (c *appConfig) useICloud(app *asukaApp) {
-	if !app.imports(icloudPkg) {
-		return
-	}
-	uses := func(fns []string) bool { return slices.ContainsFunc(fns, app.names) }
-	kv, docs := uses(icloudFuncs.kv), uses(icloudFuncs.docs)
-	if !kv && !docs && uses(icloudFuncs.account) {
-		kv = true
-	}
-	c.addICloud(kv, docs)
 }
 
 // addICloud adds the entitlements of the store (kv) and the documents.
@@ -212,7 +187,7 @@ func signICloud(t *iosToolchain, work, ent, team string, need *appConfig, profil
 	json.Unmarshal(js, &have)
 	set, remove, err := narrowICloud(have, need, team)
 	if err != nil {
-		return fmt.Errorf("the profile %q lacks %s, which asuka/sdk/icloud needs: turn on the iCloud capability for %s at developer.apple.com (Identifiers), with iCloud Documents and its containers, then make the profile again", profile, err, need.ID)
+		return fmt.Errorf("the profile %q lacks %s, which asuka/icloud needs: turn on the iCloud capability for %s at developer.apple.com (Identifiers), with iCloud Documents and its containers, then make the profile again", profile, err, need.ID)
 	}
 	for _, k := range remove {
 		if err := t.run(work, nil, "plutil", "-remove", plistKey(k), ent); err != nil {

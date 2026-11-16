@@ -119,6 +119,19 @@ func sexpr(n Node) string {
 		return s + " => " + sexpr(x.Body) + "]"
 	case *LetCond:
 		return "(let " + printed(x.Pattern) + " " + sexpr(x.Value) + ")"
+	case *CondList:
+		return "(cond" + list(exprNodes(x.List)) + ")"
+	case *JumpExpr:
+		if x.Value == nil {
+			return "(" + x.Tok.String() + ")"
+		}
+		return "(" + x.Tok.String() + " " + sexpr(x.Value) + ")"
+	case *CatchExpr:
+		s := "(catch " + sexpr(x.X)
+		for _, c := range x.Catches {
+			s += " [" + strings.TrimSuffix(printed(c), " "+printed(c.Body)) + " " + sexpr(c.Body) + "]"
+		}
+		return s + ")"
 	case *ExprStmt:
 		return sexpr(x.X)
 	case *BadExpr:
@@ -177,6 +190,16 @@ func TestParseExpr(t *testing.T) {
 		{"-x.y", "(- (. x y))"},
 		{"!x!", "(! (! x))"},
 		{"(a + b) * c", "(* (paren (+ a b)) c)"},
+		// Bitwise operators, with Swift's precedence.
+		{"a + b << c", "(+ a (<< b c))"},
+		{"a * b >> c", "(* a (>> b c))"},
+		{"a & b + c", "(+ (& a b) c)"},
+		{"a | b & c", "(| a (& b c))"},
+		{"a ^ b | c", "(| (^ a b) c)"},
+		{"a & b == c", "(== (& a b) c)"},
+		{"~a & -b", "(& (~ a) (- b))"},
+		{"a >> b > c", "(> (>> a b) c)"},
+		{"a > >b", "(> a BAD)"},
 		// Unary keywords.
 		{"await f()", "(await (call f))"},
 		{"try await f()", "(try (await (call f)))"},
@@ -242,6 +265,27 @@ func TestParseExpr(t *testing.T) {
 		{"if let u = user { u } else { none }", "(if (let u user) {u} {none})"},
 		{"match x { .a => 1, .b(y) if y > 0 => y, _ => 0 }", "(match x [.a => 1] [.b(y) if (> y 0) => y] [_ => 0])"},
 		{"match x {\n0 => \"zero\"\n-1 => \"neg\"\n}", `(match x [0 => (str "zero")] [-1 => (str "neg")])`},
+		// Condition chains.
+		{"if let a = x, let b = y, a > b { a } else { b }", "(if (cond (let a x) (let b y) (> a b)) {a} {b})"},
+		{"if a, b { 1 } else { 2 }", "(if (cond a b) {1} {2})"},
+		{"if f(a, b), c { 1 } else { 2 }", "(if (cond (call f a b) c) {1} {2})"},
+		// Jumps as values (decision 22).
+		{"a ?? throw E.missing(id)", "(?? a (throw (call (. E missing) id)))"},
+		{"a ?? throw b ?? c", "(?? a (throw (?? b c)))"},
+		{"a ?? return", "(?? a (return))"},
+		{"a ?? return 1", "(?? a (return 1))"},
+		{"f(a ?? return, b ?? break)", "(call f (?? a (return)) (?? b (break)))"},
+		{"[a ?? continue]", "(array (?? a (continue)))"},
+		{"x => throw E.bad", "(=> (x) (throw (. E bad)))"},
+		{"match x { .a => 1, _ => return }", "(match x [.a => 1] [_ => (return)])"},
+		// catch as a value (decision 23).
+		{"try f() catch { 0 }", "(catch (try (call f)) [catch {0}])"},
+		{"try await f() catch e { log(e); 80 }", "(catch (try (await (call f))) [catch e {(call log e); 80}])"},
+		{"a + try f() catch { 0 }", "(catch (+ a (try (call f))) [catch {0}])"},
+		{"try f() catch E.a { 1 } catch e: T { 2 }", "(catch (try (call f)) [catch E.a {1}] [catch e: T {2}])"},
+		{"try f() catch E.a { 1 }\ncatch { 2 }", "(catch (try (call f)) [catch E.a {1}] [catch {2}])"},
+		{"x => try g(x) catch { 0 }", "(=> (x) (catch (try (call g x)) [catch {0}]))"},
+		{"try withTimeout(5s) { go() } catch { none }", "(catch (try (call withTimeout 5s {(call go)})) [catch {none}])"},
 		// Soft keywords are names in expressions.
 		{"app.tap(\"Add\")", `(call (. app tap) (str "Add"))`},
 		{"type(\"Hi\", into: \"Title\")", `(call type (str "Hi") into:(str "Title"))`},
@@ -304,6 +348,12 @@ func TestParseItems(t *testing.T) {
 		{"a ??= b", "*syntax.AssignStmt<a ??= b>"},
 		{"n %= 2", "*syntax.AssignStmt<n %= 2>"},
 		{"while let x = next() { use(x) }", "*syntax.WhileStmt<while let x = next() {\n  use(x)\n}>"},
+		{"while let x = next(), x > 0 { }", "*syntax.WhileStmt<while let x = next(), x > 0 {}>"},
+		{"let user = cache[id] else { return }", "*syntax.LetDecl<let user = cache[id] else {\n  return\n}>"},
+		{"let .ok(v) = result else { throw E.bad }", "*syntax.LetDecl<let .ok(v) = result else {\n  throw E.bad\n}>"},
+		{"let u: User = find(id) else { return }", "*syntax.LetDecl<let u: User = find(id) else {\n  return\n}>"},
+		{"try save() catch { failed = true }", "(catch (try (call save)) [catch {*syntax.AssignStmt<failed = true>}])"},
+		{"x = a ?? return", "*syntax.AssignStmt<x = a ?? return>"},
 		{"for await m in stream { }", "*syntax.ForStmt<for await m in stream {}>"},
 		{"do { try a() } catch e: HttpError { } catch { }", "*syntax.DoStmt<do {\n  try a()\n} catch e: HttpError {} catch {}>"},
 		{"do { } catch MailError.server(code, _) { }", "*syntax.DoStmt<do {} catch MailError.server(code, _) {}>"},
@@ -350,6 +400,7 @@ func TestParseDecls(t *testing.T) {
 		{"enum E: Error { a, b(int), c(code: int, String)\n fn f() { } }", "*syntax.EnumDecl"},
 		{"interface Named { name: string\n fn describe() -> string }", "*syntax.InterfaceDecl"},
 		{"fn id<T: Hashable>(x: T) -> T = x", "*syntax.FuncDecl"},
+		{"fn sort<T: Shape & Hashable, U>(x: T) -> T = x", "*syntax.FuncDecl"},
 		{"type Pair<A, B> = (A, B)", "*syntax.TypeAliasDecl"},
 		{"style card { padding: 16 }", "*syntax.StyleDecl"},
 		{"state theme: Theme = .system", "*syntax.StateDecl"},
@@ -448,6 +499,11 @@ func TestParsePatterns(t *testing.T) {
 		{"HttpError.notFound", "*syntax.CasePat"},
 		{"(a, (b, _))", "*syntax.TuplePat"},
 		{".a | .b | .c(x)", "*syntax.OrPat"},
+		{"Point(x: 0, y)", "*syntax.CasePat"},
+		{"Line(from: Point(x: 0), to: p, dashed: true)", "*syntax.CasePat"},
+		{"geo.Point(x: _)", "*syntax.CasePat"},
+		{".server(code: c, retry)", "*syntax.CasePat"},
+		{"Point()", "*syntax.CasePat"},
 	}
 	for _, tt := range tests {
 		f := parseOK(t, "fn f() {\nmatch v {\n"+tt.src+" => 1\n}\n}")

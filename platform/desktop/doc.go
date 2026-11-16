@@ -4,8 +4,13 @@
 // asuka_linux.h and asuka_windows.h (src/linux.c, src/windows.c), what
 // packages' Linux and Windows C share. Its
 // tests build them with a test host (test/host.c) and run Asuka on the
-// core, with no Go at run time.
+// core, with no Go at run time. include/desktop.h (src/app.c, files.c,
+// jsontree.c, state.c, flyout.c, animimage.c, words.c) is what the hosts
+// themselves share: their settings, files, state, flyouts' places,
+// animated images and Asuka's own words.
 package desktop
+
+//go:generate go run gen_words.go
 
 import (
 	"embed"
@@ -51,7 +56,7 @@ func Registry(dir string) string { return filepath.Join(dir, "src", "native.c") 
 // (asuka_windows.h: windows.c), each built for its platform only.
 func Shared(dir string) []string {
 	src := filepath.Join(dir, "src")
-	return []string{filepath.Join(src, "native.c"), filepath.Join(src, "linux.c"), filepath.Join(src, "linux_syms.c"), filepath.Join(src, "windows.c"), filepath.Join(src, "fetch.c"), filepath.Join(src, "asuka_json.c"), filepath.Join(src, "webview2.c"),
+	return []string{filepath.Join(src, "native.c"), filepath.Join(src, "linux.c"), filepath.Join(src, "linux_syms.c"), filepath.Join(src, "windows.c"), filepath.Join(src, "fetch.c"), filepath.Join(src, "json.c"), filepath.Join(src, "webview2.c"),
 		filepath.Join(dir, "include", "asuka_linux.h"), filepath.Join(dir, "include", "asuka_linux.def"), filepath.Join(dir, "include", "asuka_windows.h")}
 }
 
@@ -62,10 +67,10 @@ func Shared(dir string) []string {
 func HostShared(dir string) []string {
 	src := filepath.Join(dir, "src")
 	var out []string
-	for _, f := range []string{"app.c", "files.c", "json.c", "state.c", "flyout.c", "anim.c", "words.c", "words_gen.c", "words.h", "words_gen.h"} {
+	for _, f := range []string{"app.c", "files.c", "jsontree.c", "state.c", "flyout.c", "animimage.c", "words.c", "words_gen.c", "words.h", "words_gen.h"} {
 		out = append(out, filepath.Join(src, f))
 	}
-	return append(out, filepath.Join(dir, "include", "desktop.h"), filepath.Join(dir, "include", "anim.h"))
+	return append(out, filepath.Join(dir, "include", "desktop.h"))
 }
 
 // Libs are the system libraries the shared C links with on goos.

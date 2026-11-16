@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/egoist/asuka/internal/appbuild"
 )
 
 func TestAccent(t *testing.T) {
@@ -156,34 +158,58 @@ func TestShareTargetConfig(t *testing.T) {
 	}
 }
 
+// What an app's imports need of the platforms: their manifests'
+// permissions and purpose strings; the host's optional modules only for
+// what the host still does (a Video's player, push, periodic), the std
+// packages' own libraries being their Gradle modules'.
 func TestFeaturesFromImports(t *testing.T) {
 	var c appConfig
-	c.permissionsFor([]string{"github.com/egoist/asuka/ui", "github.com/egoist/asuka/sdk/scan", "github.com/egoist/asuka/sdk/camera"})
-	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=scan" {
+	importStd(t, &c, "ios", "scan", "camera")
+	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("modules: %s", got)
 	}
 	if !slices.Contains(c.Android.Permissions, "android.permission.CAMERA") || slices.Contains(c.Android.Permissions, "android.permission.POST_NOTIFICATIONS") {
 		t.Errorf("permissions: %v", c.Android.Permissions)
 	}
 	var pics appConfig
-	pics.permissionsFor([]string{"github.com/egoist/asuka/sdk/vision", "github.com/egoist/asuka/sdk/photos"})
-	if got := strings.Join(pics.gradleProps(), " "); got != "-PasukaModules=vision" {
+	importStd(t, &pics, "ios", "vision", "photos")
+	if got := strings.Join(pics.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("modules: %s", got)
 	}
 	if !slices.Contains(pics.Android.Permissions, "android.permission.READ_MEDIA_IMAGES") || pics.IOS.Usage["NSPhotoLibraryUsageDescription"] == "" {
 		t.Errorf("photos: %v %v", pics.Android.Permissions, pics.IOS.Usage)
 	}
 	var none appConfig
-	none.permissionsFor([]string{"github.com/egoist/asuka/ui"})
+	importStd(t, &none, "ios")
 	if got := strings.Join(none.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("no modules: %s", got)
 	}
+
+	// Video's player: in an app whose sources name Video, and in asuka
+	// dev's player, which shows whatever the next save does.
+	for _, x := range []struct {
+		refs   map[string]bool
+		player bool
+		want   string
+	}{
+		{map[string]bool{"Video": true}, false, "-PasukaModules=video"},
+		{map[string]bool{"Text": true}, false, "-PasukaModules="},
+		{nil, true, "-PasukaModules=video"},
+	} {
+		var v appConfig
+		app := &asukaApp{cfg: &v, uses: &appbuild.Uses{Refs: x.refs}}
+		v.androidFeatures(app, x.player)
+		v.androidFeatures(app, x.player)
+		if got := strings.Join(v.gradleProps(), " "); got != x.want {
+			t.Errorf("%v, player %v: %s, want %s", x.refs, x.player, got, x.want)
+		}
+	}
 }
 
-// An app that imports asuka/sdk/pay gets Google Pay's module (whose
-// manifest has its API and callbacks service) and Apple Pay's
-// entitlement with asuka.toml's merchant IDs (none without them); one
-// that doesn't, neither.
+// An app that imports asuka/pay gets Apple Pay's entitlement with
+// asuka.toml's merchant IDs (none without them), and no host module
+// (Google Pay's library, API and callbacks service are asuka/pay's
+// Gradle module's); one that doesn't, neither.
 func TestPayFeature(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[applePay]\nmerchantIds = [\"merchant.dev.asuka.shop\"]"), 0o644)
@@ -191,8 +217,8 @@ func TestPayFeature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.permissionsFor([]string{"github.com/egoist/asuka/ui", payPkg})
-	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=pay" {
+	importStd(t, c, "", "pay")
+	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("modules: %s", got)
 	}
 	if ids, _ := c.entitlements["com.apple.developer.in-app-payments"].([]string); !slices.Equal(ids, []string{"merchant.dev.asuka.shop"}) {
@@ -200,12 +226,12 @@ func TestPayFeature(t *testing.T) {
 	}
 	var without appConfig
 	without.ApplePay.MerchantIDs = []string{"merchant.dev.asuka.shop"}
-	without.permissionsFor([]string{"github.com/egoist/asuka/ui"})
+	importStd(t, &without, "")
 	if _, ok := without.entitlements["com.apple.developer.in-app-payments"]; ok || len(without.androidModules) != 0 {
 		t.Errorf("an app without the package: %v", without.entitlements)
 	}
 	var noIDs appConfig
-	noIDs.permissionsFor([]string{payPkg})
+	importStd(t, &noIDs, "", "pay")
 	if _, ok := noIDs.entitlements["com.apple.developer.in-app-payments"]; ok {
 		t.Errorf("no merchant IDs: %v", noIDs.entitlements)
 	}
@@ -284,35 +310,6 @@ func TestPushRewriteConfig(t *testing.T) {
 	}
 	if !strings.Contains(c.androidManifest(false), `<meta-data android:name="dev.asuka.push.rewrite" android:value="true" />`) {
 		t.Fatal("rewrite: no meta-data")
-	}
-}
-
-// Messages in conversations (notify's From) need the Communication
-// Notifications entitlement and the intent in Info.plist: only in the
-// apps whose Go code calls From.
-func TestFeatureExtras(t *testing.T) {
-	c := &appConfig{ID: "com.example.chat"}
-	c.addFeatureExtras([]string{"ASUKA_NOTIFY"})
-	if c.entitlements != nil || c.plistArrays != nil {
-		t.Fatalf("notify alone: %v %v", c.entitlements, c.plistArrays)
-	}
-	c.addFeatureExtras([]string{"ASUKA_CONVERSATIONS"})
-	c.addFeatureExtras([]string{"ASUKA_CONVERSATIONS"})
-	if c.entitlements["com.apple.developer.usernotifications.communication"] != true ||
-		len(c.plistArrays["NSUserActivityTypes"]) != 1 || c.plistArrays["NSUserActivityTypes"][0] != "INSendMessageIntent" {
-		t.Fatalf("conversations: %v %v", c.entitlements, c.plistArrays)
-	}
-	if got := c.plistExtras()["NSUserActivityTypes"]; len(got.([]string)) != 1 {
-		t.Fatalf("Info.plist %v", got)
-	}
-	found := false
-	for _, f := range iosFeatures {
-		if f.flag == "ASUKA_CONVERSATIONS" && f.symbol == "github.com/egoist/asuka/sdk/notify.Notification.From" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("From's symbol isn't a feature's")
 	}
 }
 

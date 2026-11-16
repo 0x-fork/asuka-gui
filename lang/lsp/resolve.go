@@ -193,7 +193,7 @@ func (fc *fileCtx) selRef(sel *check.Selection, name string) *ref {
 	switch sel.Kind {
 	case check.SelField, check.SelIfaceField:
 		if sel.Field != nil {
-			return fieldRef(sel.Field, namedObj(sel.Recv))
+			return fieldRef(sel.Field, memberOwner(sel.Recv, name))
 		}
 	case check.SelCase:
 		if sel.Case != nil {
@@ -206,7 +206,7 @@ func (fc *fileCtx) selRef(sel *check.Selection, name string) *ref {
 	case check.SelStoreMember:
 		return fc.objRef(sel.Member)
 	case check.SelMethod:
-		if tn := namedObj(sel.Recv); tn != nil {
+		if tn := memberOwner(sel.Recv, name); tn != nil {
 			if tn.Kind == check.InterfaceType {
 				return fc.imethRef(tn, name)
 			}
@@ -238,6 +238,31 @@ func namedObj(t check.Type) *check.TypeName {
 	return nil
 }
 
+// memberOwner is the declared type a member name of a t is of: t's own
+// (through an optional), or for a type parameter the interface among
+// its constraints that asks for it.
+func memberOwner(t check.Type, name string) *check.TypeName {
+	if p, ok := check.Unopt(t).(*check.TypeParam); ok {
+		for _, i := range p.Ifaces {
+			if i.Obj.Iface == nil {
+				continue
+			}
+			for _, m := range i.Obj.Iface.Methods {
+				if m.Name == name {
+					return i.Obj
+				}
+			}
+			for _, f := range i.Obj.Iface.Fields {
+				if f.Name == name {
+					return i.Obj
+				}
+			}
+		}
+		return nil
+	}
+	return namedObj(t)
+}
+
 // callRef is what a call's callee refers to.
 func (fc *fileCtx) callRef(call *syntax.CallExpr, name string) *ref {
 	c := fc.info.Calls[call]
@@ -260,7 +285,7 @@ func (fc *fileCtx) callRef(call *syntax.CallExpr, name string) *ref {
 			return methodRef(c.Method, c.RecvType)
 		}
 	case check.CallIface, check.CallNative:
-		return fc.imethRef(namedObj(c.RecvType), name)
+		return fc.imethRef(memberOwner(c.RecvType, name), name)
 	case check.CallCase:
 		if c.Case != nil {
 			return caseRef(c.Case)
@@ -449,6 +474,20 @@ func (fc *fileCtx) resolve(path []syntax.Node) *ref {
 			}
 		}
 	case *syntax.CasePat:
+		// A label: a struct pattern's field, a case's payload's.
+		for i := range p.Args {
+			if p.Label(i) != id {
+				continue
+			}
+			if fields := info.FieldPats[p]; i < len(fields) && fields[i] != nil {
+				tn, _ := info.Uses[p.Path[len(p.Path)-1]].(*check.TypeName)
+				return fieldRef(fields[i], tn)
+			}
+			if k := info.Cases[p]; k != nil {
+				return caseRef(k)
+			}
+			return nil
+		}
 		if len(p.Path) > 0 && p.Path[len(p.Path)-1] == id {
 			if k := info.Cases[p]; k != nil {
 				return caseRef(k)

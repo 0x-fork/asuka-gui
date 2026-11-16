@@ -1,8 +1,8 @@
-// Command asuka-host is a desktop app's executable (package
-// host/apphost): the platform's host, which runs the app on the C core
-// beside it. asuka build copies it into the app as the app's own
-// executable (a Windows build links the app's icon, manifest and version
-// into it); it's the same for every app.
+// Command asuka-host is a macOS app's executable (package host/apphost):
+// the Go host, which runs the app on the C core beside it. asuka build
+// copies it into the app as the app's own executable; it's the same for
+// every app. (A Windows or Linux app is the C host of platform/windows or
+// platform/linux, with the core and the app linked in.)
 package main
 
 import "github.com/egoist/asuka/host/apphost"

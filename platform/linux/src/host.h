@@ -319,7 +319,6 @@ typedef struct {
 	GMenuModel *app_menu;
 	AK_VEC(char *) app_actions;
 	bool frames;
-	guint inhibit;
 	bool in_background;
 	bool quitting, quit_allowed;
 	bool started;

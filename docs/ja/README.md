@@ -39,8 +39,8 @@ test "counts taps" {
 | iOS | Swift。コアを組み込む | UIKit |
 | Android | Kotlin。コアを組み込む | Android Views と Material 3 |
 | macOS | Go。アプリと同じプロセスで動く（purego 経由で AppKit を呼び出す） | AppKit |
-| Windows | Go。アプリと同じプロセスで動く（`syscall` 経由で Win32 を呼び出す） | Win32 とコモンコントロール（Windows 11 の見た目で描画） |
-| Linux | Go。アプリと同じプロセスで動く（purego 経由で GTK を呼び出す） | GTK 4 と libadwaita |
+| Windows | C。コアとアプリを組み込む | Win32 とコモンコントロール（Windows 11 の見た目で描画） |
+| Linux | C。コアとアプリを組み込む（GTK は起動時に開く） | GTK 4 と libadwaita |
 | Web | JavaScript。コアは WebAssembly として動く | ページの DOM とブラウザー標準のコントロール |
 
 たとえばテキストフィールドは、プラットフォームに応じて `UITextField`、`EditText`、`NSTextField`、`EDIT` コントロール、`GtkEntry`、`<input>` のいずれかになります。画面のスタックなら、`UINavigationController`、戻るジェスチャーに対応した Material のアプリバー、戻るボタンの付いた Mac のウィンドウのツールバー、libadwaita のナビゲーションビューのいずれかです。そのため、スタイルを何も指定しないアプリは、そのプラットフォームのほかのアプリと同じ見た目になり、アクセシビリティやテキスト入力、スクロールもほかのアプリと同じように振る舞います。

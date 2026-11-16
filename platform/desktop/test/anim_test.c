@@ -4,7 +4,6 @@
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
 #endif
-#include "anim.h"
 #include "desktop.h"
 
 #include <stdio.h>
@@ -21,18 +20,21 @@ int main(int argc, char **argv) {
 		printf("still\n");
 		return 0;
 	}
-	printf("%dx%d loops %d frames %zu\n", a->width, a->height, a->loops, a->count);
-	dsk_player p;
-	dsk_player_init(&p, a);
+	printf("%dx%d loops %d frames %zu\n", a->w, a->h, a->loops, a->n);
+	dsk_anim_player p;
+	if (!dsk_anim_player_init(&p, a)) return 2;
 	for (int i = 0; i < 8; i++) {
-		int d = dsk_player_next(&p);
+		int d = 0;
+		if (!dsk_anim_next(&p, &d)) {
+			printf("-1 ");
+			break;
+		}
 		printf("%d ", d);
-		if (d < 0) break;
-		for (int k = 0; k < a->width * a->height * 4; k++) printf("%02x", p.canvas[k]);
+		for (int k = 0; k < a->w * a->h * 4; k++) printf("%02x", p.canvas[k]);
 		printf("\n");
 	}
 	printf("\n");
-	dsk_player_free(&p);
+	dsk_anim_player_free(&p);
 	dsk_anim_free(a);
 	free(data);
 	return 0;

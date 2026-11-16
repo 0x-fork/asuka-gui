@@ -21,26 +21,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // asuka/sdk/periodic: its tasks' handlers, which the system wants before launch ends.
         AsukaPeriodic.shared.registerAtLaunch()
         #endif
-        #if ASUKA_LOCATION_BACKGROUND
-        // asuka/sdk/location: the delegate for the events the system launched
-        // the app for (a region, a significant change), and its updates again.
-        AsukaLocationBackground.shared.registerAtLaunch()
-        #endif
         #if ASUKA_NOTIFY || ASUKA_PUSH || ASUKA_NOTIFICATION_SERVICE
         // asuka/sdk/notify, asuka/sdk/push: the center's delegate before launch
         // ends, to see the response that launched the app (a background
         // action launches it without a scene).
         AsukaNotifyCenter.shared.install()
-        #endif
-        #if ASUKA_PURCHASE
-        // asuka/sdk/purchase: StoreKit's transactions, listened to from the
-        // start, so none that comes before the Go code observes is lost.
-        AsukaStore.shared.start()
-        #endif
-        #if ASUKA_BLUETOOTH
-        // asuka/sdk/bluetooth: relaunched for Bluetooth (state restoration),
-        // its managers again before launch ends.
-        AsukaBluetooth.shared.launched(options)
         #endif
         return true
     }

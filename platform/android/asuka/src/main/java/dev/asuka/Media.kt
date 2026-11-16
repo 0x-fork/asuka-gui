@@ -483,12 +483,6 @@ class AsukaNativeHost(context: Context) : FrameLayout(context) {
         }
 }
 
-fun AsukaRuntime.registerNatives() {
-    registerNative("asuka.camera") { ctx -> AsukaCameraView(this, ctx) }
-    registerPlugins() // asuka-maps' view, the optional modules' methods
-    // Packages' typed views are found as they're shown (AsukaModules.makeView).
-}
-
 fun AsukaRuntime.setNativeProp(n: AsukaNode, prop: Int, v: Any): Boolean {
     when (prop) {
         AsukaProp.Native.TYPE -> {

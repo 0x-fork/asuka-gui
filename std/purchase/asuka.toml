@@ -4,3 +4,8 @@ description = "Sells in the app: the App Store, Google Play, the Microsoft Store
 
 [android]
 permissions = ["com.android.vending.BILLING"]
+
+# The Mac's Go host builds platform/macos's StoreKit 2 into the app's
+# Swift library.
+[macos]
+hostFlags = ["ASUKA_PURCHASE"]

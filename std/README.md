@@ -111,12 +111,38 @@ test "a region, crossed" {
 
 ### Each platform
 
-- **What an app needs**: asuka.toml's `[ios] usage` (purpose strings)
-  and `backgroundModes`, and `[android] permissions`, merged into each
-  app that imports the package; `iOS.entitlements` and
-  `macOS.entitlements` beside Package.swift. The CLI's feature tables
-  (cmd/asuka/config.go) still apply to `asuka/<name>` as to
-  `asuka/sdk/<name>`: Apple Pay's merchant IDs, asuka.toml's `nfc` and
+- **What an app needs** is the package's to say, and only an app that
+  uses it gets it (cmd/asuka's depManifests and nativeNeeds; the hosts
+  have nothing of a package's). asuka.toml's tables are for every app
+  that imports the package: `[ios] usage` (purpose strings) and
+  `backgroundModes`, `[android] permissions` (`"name:28"` up to an API
+  level, `"name|neverForLocation"` with flags). What only part of the
+  package needs goes in `[uses.<member>]` tables, with the same keys
+  (`[uses.requestAlways.android] permissions = [...]`,
+  `[uses.startUpdates.ios] backgroundModes = ["location"]`): an app gets
+  them only if its program refers to that member (a function, a type, a
+  store; `"Type.name"` for a type's member), from its code or a
+  dependency's, as the checker resolved it (appbuild.Uses), not a local
+  name that's the same nor a test block's. The files beside the code are
+  for every app that imports the package: `iOS.entitlements`,
+  `macOS.entitlements` and an `Info.plist` beside Package.swift, the
+  Gradle module's `src/main/AndroidManifest.xml` and `build.gradle.kts`
+  (its libraries): what one member needs (asuka/location's service and
+  receiver) goes in asuka.toml's `[uses]` instead. A package over a
+  host's module, which has neither, says the rest in asuka.toml too:
+  `[ios] entitlements` (a simulator build's values), `plist` (a key set
+  to true, an array joined with the app's, or a string), `hostFlags`
+  (the iOS host's parts its module needs, by their compilation
+  conditions: `ASUKA_NOTIFY`), `derived` (what the CLI makes of the
+  app's own asuka.toml: `icloudKeyValue`, `icloudDocuments`,
+  `locationPrecise`); `[macos] hostFlags` (the Mac's Swift);
+  `[android] application` and `manifest` (elements of the manifest's
+  application and of the manifest), `hostModules` (the host's optional
+  Gradle modules, platform/android/asuka-<name>: std/push's `push`);
+  `[linux] flatpak` (the Flatpak's finish-args). Test it in cmd/asuka's
+  TestStdManifests (a member's as "location.requestAlways"). What the
+  app's own asuka.toml asks of a package is the CLI's (cmd/asuka/
+  config.go's permissionsFor): Apple Pay's merchant IDs, the `nfc` and
   `bluetooth` tables.
 - **Swift** (iOS and macOS: one source, `#if os(iOS)` where they differ):
   move the host's code for the module from platform/ios's AsukaHost (and

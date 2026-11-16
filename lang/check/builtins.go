@@ -274,6 +274,43 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 	case BEnvironment:
 		positional(0, "nothing: environment()")
 		call.Result = c.prelude.Scope.Lookup("Environment").(*TypeName).Type
+	case BSet:
+		// Set(xs): xs's distinct elements; Set<T>(): none.
+		args := positional(-1, "")
+		var elem Type
+		if len(e.TypeArgs) == 1 {
+			elem = c.typeExpr(e.TypeArgs[0])
+		} else if len(e.TypeArgs) > 1 {
+			c.errorf(e, "Set takes one type: Set<T>")
+		} else if st, ok := Unopt(want).(*Set); ok {
+			elem = st.Elem
+		}
+		switch len(args) {
+		case 0:
+			if elem == nil {
+				c.errorf(e, "can't tell the set's elements: Set<T>(), or say what's expected (let s: Set<T> = [])")
+				elem = Invalid
+			}
+		case 1:
+			if elem != nil {
+				c.assign(args[0], &Array{elem}, "Set(…)'s argument")
+			} else if a, ok := c.expr(args[0], nil).(*Array); ok {
+				elem = a.Elem
+			} else {
+				if t := c.info.Types[args[0]]; !IsInvalid(t) {
+					c.errorf(args[0], "Set(…) takes an array of its elements, not a %s", typeString(t))
+				}
+				elem = Invalid
+			}
+		default:
+			c.errorf(e, "Set takes an array of its elements: Set([a, b]), or Set<T>() for none")
+			for _, a := range args {
+				c.expr(a, nil)
+			}
+			elem = Invalid
+		}
+		call.Args = args
+		call.Result = c.setOf(elem, e)
 	case BStream:
 		args := positional(1, "what sends its values: Stream<T>(send => { … })")
 		var elem Type
@@ -578,6 +615,8 @@ func mentionsParam(t Type, tp *TypeParam) bool {
 		return mentionsParam(x.Elem, tp)
 	case *Map:
 		return mentionsParam(x.Key, tp) || mentionsParam(x.Elem, tp)
+	case *Set:
+		return mentionsParam(x.Elem, tp)
 	case *Named:
 		for _, a := range x.Args {
 			if mentionsParam(a, tp) {
@@ -614,6 +653,9 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 		if x.Key != String {
 			return "a JSON object's keys are strings"
 		}
+		return jsonable1(x.Elem, seen, param)
+	case *Set:
+		// An array of its elements.
 		return jsonable1(x.Elem, seen, param)
 	case *Named:
 		if seen[x.Obj] {

@@ -199,6 +199,12 @@ bool ak_vm_run(ak_co *co, ak_val *out) {
 		case AK_OP_LEI: R[a[0]].i = R[a[1]].i <= R[a[2]].i; break;
 		case AK_OP_BAND: R[a[0]].i = R[a[1]].i & R[a[2]].i; break;
 		case AK_OP_BOR: R[a[0]].i = R[a[1]].i | R[a[2]].i; break;
+		case AK_OP_BXOR: R[a[0]].i = R[a[1]].i ^ R[a[2]].i; break;
+		case AK_OP_BNOT: R[a[0]].i = ~R[a[1]].i; break;
+		case AK_OP_SHL:
+		case AK_OP_SHR:
+			if (!ak_op_shift(R, a[0], a[1], a[2], op == AK_OP_SHR)) goto unwind;
+			break;
 
 		case AK_OP_ADDF: R[a[0]].f = R[a[1]].f + R[a[2]].f; break;
 		case AK_OP_SUBF: R[a[0]].f = R[a[1]].f - R[a[2]].f; break;

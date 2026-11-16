@@ -121,6 +121,111 @@ static void test_words(void) {
 	CHECK(strcmp(out, "1 item") == 0);
 }
 
+// ---- Animated images ----
+
+static uint32_t be32(const uint8_t *b) { return (uint32_t)b[0] << 24 | (uint32_t)b[1] << 16 | (uint32_t)b[2] << 8 | b[3]; }
+
+// A still decoder that reads no pixels: a PNG's IHDR size, filled with
+// gray 200 at alpha 200; a WebP's fake VP8L byte, its gray, at the size
+// the test says.
+typedef struct {
+	int calls, w[2], h[2];
+} fake_still;
+
+static bool still(void *ctx, const uint8_t *d, size_t n, uint8_t **rgba, int *w, int *h) {
+	fake_still *f = ctx;
+	int i = f->calls++;
+	uint8_t c = 200, a = 200;
+	if (n > 24 && !memcmp(d + 1, "PNG", 3)) {
+		*w = (int)be32(d + 16), *h = (int)be32(d + 20);
+		CHECK(!memcmp(d + n - 8, "IEND", 4));
+	} else {
+		CHECK(n >= 21 && !memcmp(d, "RIFF", 4) && !memcmp(d + 12, "VP8L", 4));
+		c = d[20], a = 255;
+		*w = f->w[i & 1], *h = f->h[i & 1];
+	}
+	size_t px = (size_t)*w * (size_t)*h;
+	*rgba = malloc(px * 4);
+	for (size_t k = 0; k < px; k++) (*rgba)[k * 4] = (*rgba)[k * 4 + 1] = (*rgba)[k * 4 + 2] = c, (*rgba)[k * 4 + 3] = a;
+	return true;
+}
+
+static uint8_t *at(dsk_anim_player *p, int x, int y) { return p->canvas + ((size_t)y * (size_t)p->a->w + (size_t)x) * 4; }
+
+static uint8_t *read_test_file(const char *dir, const char *name, size_t *n) {
+	char path[1024];
+	snprintf(path, sizeof path, "%s/%s", dir, name);
+	return (uint8_t *)dsk_read_file(path, n);
+}
+
+static void test_anim(const char *dir) {
+	size_t n;
+	uint8_t *d = read_test_file(dir, "anim.gif", &n);
+	CHECK(d && dsk_anim_is_animated(d, n));
+	dsk_anim *a = d ? dsk_anim_decode(d, n, NULL, NULL) : NULL;
+	free(d);
+	CHECK(a && a->w == 4 && a->h == 4 && a->n == 2 && a->loops == 3);
+	if (a) {
+		CHECK(a->frames[0].delay_ms == 50 && a->frames[1].delay_ms == 100 && a->frames[1].disposal == DSK_DISPOSE_BACKGROUND);
+		dsk_anim_player p;
+		CHECK(dsk_anim_player_init(&p, a));
+		int ms = 0;
+		CHECK(dsk_anim_next(&p, &ms) && ms == 50);
+		CHECK(at(&p, 3, 3)[0] == 255 && at(&p, 3, 3)[3] == 255);
+		dsk_anim_next(&p, &ms);
+		CHECK(at(&p, 3, 3)[2] == 255 && at(&p, 0, 0)[0] == 255);
+		CHECK(at(&p, 2, 2)[0] == 255 && at(&p, 2, 2)[2] == 0);  // transparent: frame 0 shows
+		dsk_anim_next(&p, &ms);  // frame 1's rectangle cleared, the second loop
+		CHECK(p.last == 0 && at(&p, 3, 3)[0] == 255);
+		dsk_anim_next(&p, &ms);
+		dsk_anim_next(&p, &ms);
+		dsk_anim_next(&p, &ms);
+		CHECK(!dsk_anim_next(&p, &ms));  // three plays
+		CHECK(at(&p, 3, 3)[2] == 255);  // the last frame stays
+		dsk_anim_player_free(&p);
+		dsk_anim_free(a);
+	}
+
+	d = read_test_file(dir, "anim.png", &n);
+	CHECK(d && dsk_anim_is_animated(d, n));
+	fake_still f = {0};
+	a = d ? dsk_anim_decode(d, n, still, &f) : NULL;
+	free(d);
+	CHECK(a && a->n == 2 && a->loops == 0 && f.calls == 2);
+	if (a) {
+		dsk_anim_frame *f1 = &a->frames[1];
+		CHECK(f1->x == 1 && f1->y == 1 && f1->w == 2 && f1->h == 2 && f1->delay_ms == 30 && f1->blend && f1->disposal == DSK_DISPOSE_PREVIOUS);
+		dsk_anim_player p;
+		dsk_anim_player_init(&p, a);
+		dsk_anim_next(&p, NULL);
+		CHECK(at(&p, 1, 1)[3] == 200);
+		dsk_anim_next(&p, NULL);
+		CHECK(at(&p, 1, 1)[3] > 200 && at(&p, 0, 0)[3] == 200);  // over itself: more opaque
+		dsk_anim_next(&p, NULL);  // disposed to the previous, then the loop starts again
+		CHECK(p.last == 0 && at(&p, 1, 1)[3] == 200);
+		dsk_anim_player_free(&p);
+		dsk_anim_free(a);
+	}
+
+	d = read_test_file(dir, "anim.webp", &n);
+	CHECK(d && dsk_anim_is_animated(d, n));
+	fake_still g = {0, {4, 2}, {4, 2}};
+	a = d ? dsk_anim_decode(d, n, still, &g) : NULL;
+	free(d);
+	CHECK(a && a->w == 4 && a->h == 4 && a->n == 2 && a->loops == 2);
+	if (a) {
+		CHECK(a->frames[1].x == 2 && !a->frames[1].blend && a->frames[1].disposal == DSK_DISPOSE_BACKGROUND && a->frames[1].delay_ms == 40);
+		dsk_anim_player p;
+		dsk_anim_player_init(&p, a);
+		dsk_anim_next(&p, NULL);
+		dsk_anim_next(&p, NULL);
+		CHECK(at(&p, 3, 3)[0] == 20 && at(&p, 0, 0)[0] == 10);
+		dsk_anim_player_free(&p);
+		dsk_anim_free(a);
+	}
+	CHECK(!dsk_anim_is_animated((const uint8_t *)"GIF89a", 6));
+}
+
 int main(int argc, char **argv) {
 	test_words();
 	test_flyout();
@@ -128,6 +233,7 @@ int main(int argc, char **argv) {
 	if (argc > 1) {
 		test_state(argv[1]);
 		test_exists(argv[1]);
+		test_anim(argv[1]);
 	}
 	fprintf(stderr, "%d failures\n", failed);
 	return failed ? 1 : 0;

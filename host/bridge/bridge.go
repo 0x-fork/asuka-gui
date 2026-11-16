@@ -1,7 +1,8 @@
-//go:build darwin || windows
+//go:build darwin
 
 // Package bridge drives Asuka's C core from a host written in Go: the
-// Go desktop hosts (host/darwin, host/windows). The core is a
+// macOS host (host/darwin; the Windows and Linux hosts are C, the core
+// linked in). The core is a
 // library (libasuka: the core, its VM, and an app compiled to C or
 // loaded as bytecode) that the host loads with purego, without cgo, and
 // talks to through core/include/asuka.h, as the Swift and Kotlin hosts
@@ -70,20 +71,11 @@ var (
 	current *Core // the core whose callbacks are installed (one per process)
 )
 
-// LibName is the core library's file name on this system.
-func LibName() string {
-	switch runtime.GOOS {
-	case "darwin":
-		return "libasuka.dylib"
-	case "windows":
-		return "asuka.dll"
-	}
-	return "libasuka.so"
-}
+// LibName is the core library's file name.
+func LibName() string { return "libasuka.dylib" }
 
 // Find returns the core library's path: ASUKA_CORE_LIB, or LibName
-// beside the executable, in a .app's Frameworks, or in an install
-// prefix's lib/<executable> (Linux: bin/<executable> beside it).
+// beside the executable or in a .app's Frameworks.
 func Find() (string, error) {
 	if p := os.Getenv("ASUKA_CORE_LIB"); p != "" {
 		return p, nil
@@ -96,8 +88,6 @@ func Find() (string, error) {
 	for _, p := range []string{
 		filepath.Join(dir, LibName()),
 		filepath.Join(dir, "..", "Frameworks", LibName()),
-		filepath.Join(dir, "lib", LibName()),
-		filepath.Join(dir, "..", "lib", strings.TrimSuffix(filepath.Base(exe), ".exe"), LibName()),
 	} {
 		if _, err := os.Stat(p); err == nil {
 			return p, nil
@@ -197,7 +187,7 @@ var cbs = func() *callbacks {
 			c.h.Post(func() { c.runPosted() })
 			return 0
 		}),
-		// Floats can't cross purego's callbacks everywhere (Windows), so
+		// Floats can't cross purego's callbacks everywhere, so
 		// the host takes measure_v: the four inputs and two outputs by
 		// pointer.
 		measureV: purego.NewCallback(func(id uintptr, in, out unsafe.Pointer) uintptr {

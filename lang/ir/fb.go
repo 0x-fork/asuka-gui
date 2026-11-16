@@ -19,6 +19,9 @@ type fb struct {
 	line  int32
 
 	vars map[*check.Var]int // a local's register (its box, accessor or memo)
+	// unboxed: boxed vars this function holds the values of (a spawn's
+	// copies), in their registers.
+	unboxed map[*check.Var]bool
 
 	// Registers: per kind, those free to reuse; temps die at the end of
 	// the statement that made them; locals at the end of their block.
@@ -331,7 +334,7 @@ func (b *fb) readVar(v *check.Var, n syntax.Node) int {
 		return b.valueReg(-1, b.kind(v.Type))
 	}
 	switch {
-	case v.Boxed():
+	case v.Boxed() && !b.unboxed[v]:
 		t := b.temp(b.kind(v.Type))
 		b.emit(op("VGET"), t, r)
 		return t
@@ -503,7 +506,10 @@ type closure struct {
 	throws bool
 	env    bool       // capture the env even if no context says so
 	extra  []extraCap // more captures: registers of the maker's
-	body   func(c *fb)
+	// byValue: the vars it captures are copied in, their values at the
+	// time it's made, not shared (spawn's: values only).
+	byValue bool
+	body    func(c *fb)
 }
 
 // extraCap captures the maker's register reg as v.
@@ -564,6 +570,15 @@ func (b *fb) makeClosure(s closure) int {
 			if !ok {
 				// Not the maker's: a closure further in declares it.
 				continue
+			}
+			if s.byValue && v.Boxed() && !b.unboxed[v] {
+				// The value, not the box.
+				t := b.temp(b.kind(v.Type))
+				b.emit(op("VGET"), t, r)
+				r = t
+				c.unboxed[v] = true
+			} else if b.unboxed[v] {
+				c.unboxed[v] = true // a copy already: a spawn's closure's
 			}
 			caps = append(caps, r)
 			capVars = append(capVars, v)

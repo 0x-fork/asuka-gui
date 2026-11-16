@@ -96,30 +96,6 @@ func packageLibs(dir, goos string) ([]string, error) {
 	return m.Linux.Libraries, nil
 }
 
-// CHost is the C desktop host for t, and whether there's one: Linux's
-// (platform/linux, from the checkout or the CLI's own copy); Windows' in
-// this checkout (platform/windows: its src/*.c and include/), until
-// which (RFC 0008's H2) Windows apps run in the Go host.
-func CHost(t cbuild.Target) (*DesktopC, bool) {
-	if t.OS == "linux" {
-		// The Linux host is C, wherever the CLI runs from.
-		h, err := linuxHost()
-		return h, err == nil
-	}
-	root := Checkout()
-	if root == "" {
-		return nil, false
-	}
-	dir := filepath.Join(root, "platform", t.OS)
-	srcs, _ := filepath.Glob(filepath.Join(dir, "src", "*.c"))
-	if len(srcs) == 0 {
-		return nil, false
-	}
-	hs, _ := filepath.Glob(filepath.Join(dir, "src", "*.h"))
-	inc, _ := filepath.Glob(filepath.Join(dir, "include", "*.h"))
-	return &DesktopC{Sources: append(append(srcs, hs...), inc...), Flags: []string{"-I" + filepath.Join(dir, "include"), "-I" + filepath.Join(dir, "src")}}, true
-}
-
 // DesktopExe builds a Windows or Linux app's executable for t at out:
 // host's C, the core, the native C and m compiled to C (a release's), or
 // with m nil a dev player's, which loads the bytecode asuka dev sends.

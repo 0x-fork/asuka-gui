@@ -3,7 +3,7 @@
 // installed; http and https by libsoup), kept in memory by source as GDK
 // textures, and drawn by the node's view at its mode, clipped to its
 // corners; Color tints them (a mask). Animated GIFs, APNGs and WebPs play
-// (platform/desktop's anim.h: their frames' pictures by GDK's loaders).
+// (platform/desktop's dsk_anim: their frames' pictures by GDK's loaders).
 //
 // An Image's placeholder (the core's decoded hash, else the Placeholder
 // image) is drawn under the image in its own mode until the image
@@ -11,7 +11,6 @@
 // (Transition; 0.25s over a placeholder). An animation plays frame after
 // frame on GLib timeouts while it isn't Paused.
 #include "host.h"
-#include "anim.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -46,7 +45,7 @@ struct image_extra {
 	float fade;  // the image's opacity as it arrives
 	int fade_gen;
 	bool paused;
-	dsk_player player;
+	dsk_anim_player player;
 	bool playing;
 	int frame_gen;
 	int wait;  // ms
@@ -84,7 +83,7 @@ void lx_release_image(node *n) {
 	if (x->fade_tick && n->widget) gtk_widget_remove_tick_callback(n->widget, x->fade_tick);
 	set_placeholder(x, NULL, false);
 	if (x->hash) g_object_unref(x->hash);
-	if (x->playing) dsk_player_free(&x->player);
+	if (x->playing) dsk_anim_player_free(&x->player);
 	free(x->placeholder);
 	free(x);
 	n->imgx = NULL;
@@ -112,14 +111,14 @@ static GdkTexture *rgba_texture(int w, int h, const uint8_t *px) {
 
 // still decodes a frame's still file (a PNG, a WebP) with GDK's loaders:
 // RGBA, not premultiplied. Any thread.
-static uint8_t *still(void *ctx, const uint8_t *data, size_t n, int *w, int *h) {
+static bool still(void *ctx, const uint8_t *data, size_t n, uint8_t **rgba, int *w, int *h) {
 	(void)ctx;
 	GBytes *b = g_bytes_new(data, n);
 	GError *err = NULL;
 	GdkTexture *t = gdk_texture_new_from_bytes(b, &err);
 	g_bytes_unref(b);
 	if (err) g_error_free(err);
-	if (!t) return NULL;
+	if (!t) return false;
 	*w = gdk_texture_get_width(t);
 	*h = gdk_texture_get_height(t);
 	size_t stride = (size_t)*w * 4;
@@ -139,7 +138,8 @@ static uint8_t *still(void *ctx, const uint8_t *data, size_t n, int *w, int *h) 
 		px[i + 2] = bl;
 		px[i + 3] = a;
 	}
-	return px;
+	*rgba = px;
+	return true;
 }
 
 // read_source reads an image's bytes: an http(s) URL with libsoup, a
@@ -201,14 +201,14 @@ static gpointer decode_thread(gpointer data) {
 	if (dsk_anim_is_animated(p, n)) {
 		d->anim = dsk_anim_decode(p, n, still, NULL);
 		if (d->anim) {
-			dsk_player pl;
-			dsk_player_init(&pl, d->anim);
-			dsk_player_next(&pl);
+			dsk_anim_player pl;
+			if (!dsk_anim_player_init(&pl, d->anim)) abort();
+			dsk_anim_next(&pl, NULL);
 			d->first = pl.canvas;
 			pl.canvas = NULL;
-			dsk_player_free(&pl);
-			d->w = d->anim->width;
-			d->h = d->anim->height;
+			dsk_anim_player_free(&pl);
+			d->w = d->anim->w;
+			d->h = d->anim->h;
 			g_bytes_unref(b);
 			g_idle_add_full(0, decoded_main, d, NULL);
 			return NULL;
@@ -354,10 +354,11 @@ static void loaded(node *n, decoded *d, bool placeholder) {
 	lx_emit(n, (ak_event){.kind = AK_EVENT_LOADED, .x = d->w, .y = d->h});
 	if (d->anim) {
 		lx_emit(n, (ak_event){.kind = AK_EVENT_ANIMATED});
-		if (x->playing) dsk_player_free(&x->player);
-		dsk_player_init(&x->player, d->anim);
+		if (x->playing) dsk_anim_player_free(&x->player);
+		if (!dsk_anim_player_init(&x->player, d->anim)) abort();
 		x->playing = true;
-		x->wait = dsk_player_next(&x->player);
+		x->wait = 0;
+		if (!dsk_anim_next(&x->player, &x->wait)) x->wait = -1;
 		if (!x->paused) next_frame(n, x->wait);
 	}
 }
@@ -372,9 +373,9 @@ static gboolean frame_due(gpointer data) {
 	node *n = node_get(r->id);
 	image_extra *x = n ? n->imgx : NULL;
 	if (x && x->frame_gen == r->gen && x->playing) {
-		int d = dsk_player_next(&x->player);
-		if (d >= 0) {
-			GdkTexture *t = rgba_texture(x->player.a->width, x->player.a->height, x->player.canvas);
+		int d = 0;
+		if (dsk_anim_next(&x->player, &d)) {
+			GdkTexture *t = rgba_texture(x->player.a->w, x->player.a->h, x->player.canvas);
 			set_texture(n, t);
 			if (t) g_object_unref(t);  // set_texture holds it
 			x->wait = d;
@@ -390,7 +391,7 @@ static gboolean frame_due(gpointer data) {
 static void next_frame(node *n, int wait) {
 	image_extra *x = imx(n);
 	x->frame_gen++;
-	if (!x->playing || x->paused || !x->loaded) return;
+	if (!x->playing || x->paused || !x->loaded || wait < 0) return;  // < 0: played its loops
 	frame_ref *r = malloc(sizeof *r);
 	if (!r) abort();
 	r->id = n->id;
@@ -431,7 +432,7 @@ void lx_set_image_prop(node *n, ak_prop p, const ak_value *v) {
 		str_set(&n->source, v->s);
 		x->loaded = false;
 		if (x->playing) {
-			dsk_player_free(&x->player);
+			dsk_anim_player_free(&x->player);
 			x->playing = false;
 		}
 		x->frame_gen++;

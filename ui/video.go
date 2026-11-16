@@ -34,7 +34,7 @@ type VideoProps struct {
 // then it keeps the video's aspect ratio. Drive it with Play, Pause and
 // Seek.
 //
-// Never inlined: asuka build looks for its symbol (cmd/asuka iosFeatures).
+// Never inlined: a Go app's build looked for its symbol.
 //
 //go:noinline
 func Video(p VideoProps) Node {

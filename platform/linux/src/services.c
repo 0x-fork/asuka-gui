@@ -1,7 +1,7 @@
 // services.c: the host's modules (what asuka/platform's call reaches: the
 // Call command), and what the host does for the app itself: opening a
-// URL, sharing, the clipboard's text, keeping the session awake, GNOME's
-// settings GTK doesn't follow.
+// URL, sharing, the clipboard's text, GNOME's settings GTK doesn't
+// follow.
 //
 // A module's method answers once, on the main thread, after the batch
 // that called it: a Result event (u32 call, u8 ok, then the answer's
@@ -136,17 +136,6 @@ void lx_share(node *n, ak_span text) {
 	lx_toast("Copied to clipboard");
 }
 
-// keep_awake inhibits the session's idling (the screen blanking) while on.
-static void keep_awake(bool on) {
-	if (on == (H.inhibit != 0)) return;
-	if (on) {
-		H.inhibit = gtk_application_inhibit((GtkApplication *)H.app, H.main ? H.main->window : NULL, GTK_APPLICATION_INHIBIT_IDLE, "Keeping the screen on");
-		return;
-	}
-	gtk_application_uninhibit((GtkApplication *)H.app, H.inhibit);
-	H.inhibit = 0;
-}
-
 typedef struct {
 	void (*done)(const char *text, bool ok, void *ctx);
 	void *ctx;
@@ -172,76 +161,13 @@ void lx_read_clipboard_text(void (*done)(const char *text, bool ok, void *ctx), 
 	gdk_clipboard_read_text_async(gdk_display_get_clipboard(gdk_display_get_default()), NULL, clip_read_done, c);
 }
 
-// ---- device, browser ----
-
-// device.info: JSON: model, system, systemVersion, appVersion, build.
-static void device_info(ak_span args, reply *r) {
-	(void)args;
-	dsk_jw w = {0};
-	dsk_jw_obj(&w);
-	dsk_jw_key(&w, "model");
-	dsk_jw_str(&w, "PC");
-	dsk_jw_key(&w, "system");
-	dsk_jw_str(&w, "Linux");
-	dsk_jw_key(&w, "systemVersion");
-	dsk_jw_str(&w, lx_os_version());
-	dsk_jw_key(&w, "appVersion");
-	dsk_jw_str(&w, S(H.cfg.version));
-	dsk_jw_key(&w, "build");
-	dsk_jw_str(&w, S(H.cfg.build));
-	dsk_jw_end(&w);
-	size_t n;
-	char *s = dsk_jw_take(&w, &n);
-	reply_ok(r, s, n);
-	free(s);
-}
-
-static void clipboard_answer(const char *text, bool ok, void *ctx) {
-	reply *r = ctx;
-	if (!ok) {
-		reply_ok(r, "\0", 1);
-		return;
-	}
-	size_t n = strlen(text);
-	uint8_t *b = malloc(n + 1);
-	if (!b) abort();
-	b[0] = 1;
-	memcpy(b + 1, text, n);
-	reply_ok(r, b, n + 1);
-	free(b);
-}
-
-// device.clipboard: u8 has, then the clipboard's text.
-static void device_clipboard(ak_span args, reply *r) {
-	(void)args;
-	lx_read_clipboard_text(clipboard_answer, r);
-}
-
-// device.keepAwake: u8 on: the session doesn't go idle while on.
-static void device_keep_awake(ak_span args, reply *r) {
-	keep_awake(args.len > 0 && args.p[0] == 1);
-	reply_ok(r, NULL, 0);
-}
-
-// browser.open: the URL: the user's browser opens it.
-static void browser_open(ak_span args, reply *r) {
-	char *u = str_dup(args);
-	lx_open_url(u);
-	free(u);
-	reply_ok(r, NULL, 0);
-}
-
-static const method_t builtin[] = {
-	{"device", "info", device_info},
-	{"device", "clipboard", device_clipboard},
-	{"device", "keepAwake", device_keep_awake},
-	{"browser", "open", browser_open},
-};
-
-// lx_modules_init registers the host's modules: these, and each area's.
+// lx_modules_init registers the host's modules: each area's (what the
+// core calls, and what std's packages call by name; the rest of what
+// they do is their own C, std/<name>/desktop).
 void lx_modules_init(void) {
-	if (methods.len) return;
-	lx_register_methods(builtin, AK_LEN(builtin));
+	static bool done;
+	if (done) return;
+	done = true;
 	for (size_t i = 0; i < lx_area_count; i++)
 		if (lx_areas[i]->modules) lx_areas[i]->modules();
 }
