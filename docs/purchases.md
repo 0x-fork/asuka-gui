@@ -15,9 +15,8 @@ the stores' current APIs:
 | Linux | none | |
 
 Where there's no store (Linux, a browser without the Digital Goods API, a
-Windows app that wasn't installed from the Store, the player in
-`asuka dev`), `purchase.available()` is false and the rest throw
-`PurchaseError.notAvailable`.
+Windows app that wasn't installed from the Store), `purchase.available()`
+is false and the rest throw `PurchaseError.notAvailable`.
 
 ## Products
 
@@ -187,9 +186,9 @@ sold. A transaction's `verification` has what each store's API takes:
 
 ## Testing your purchases
 
-The stores sell only to an app they know. On iOS, `asuka dev` builds an
-app that imports `asuka/purchase` as itself, without hot reload's
-player, so a save reinstalls it. On Android, Play sells only to a build
+The stores sell only to an app they know. On iOS, `asuka dev`'s player
+is built as the app, with its bundle ID, so the store knows it, and a
+save reloads it as any other. On Android, Play sells only to a build
 installed from one of its tracks.
 
 **The iOS simulator.** Make a StoreKit configuration file in Xcode (File ›
@@ -236,7 +235,8 @@ test "Ask to Buy, then approved" {
 
 `outcome` is `.bought`, `.pending`, `.cancelled` or `.failed`;
 `unavailable` and `notAllowed` are a store that isn't there and payments
-turned off; `deliver(id)` is a purchase on another device, `renew(id)` a
+turned off; `approve(id)` and `decline(id)` are a parent's answer to Ask
+to Buy, `deliver(id)` is a purchase on another device, `renew(id)` a
 renewal, `expire(id)` a subscription that ended, `refund(id)` a refund,
 `setCountry(c)` a storefront change; `unfinished()` lists what the app
 hasn't finished, `transactions` everything, `restores`, `manages`,
