@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"html"
 	"math"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -122,46 +121,16 @@ var (
 
 // The app's WebView2 environment.
 var (
-	webEnv      uintptr
-	webEnvErr   error
-	webEnvWait  []func()
-	webEnvStart bool
+	webEnv    uintptr
+	webEnvErr error
 )
 
 func (h *Host) whenWebEnvironment(f func()) {
-	if webEnv != 0 || webEnvErr != nil {
-		f()
-		return
-	}
-	webEnvWait = append(webEnvWait, f)
-	if webEnvStart {
-		return
-	}
-	webEnvStart = true
-	// Videos play without a click, as AutoPlay asks.
-	os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--autoplay-policy=no-user-gesture-required")
-	dir := filepath.Join(os.Getenv("LOCALAPPDATA"), h.appName, "WebView2")
-	os.MkdirAll(dir, 0o755)
-	err := CreateWebView2Environment(dir, func(env uintptr, err error) {
+	// The process's, which native packages' hidden pages share.
+	WhenWebEnvironment(h.appName, func(env uintptr, err error) {
 		webEnv, webEnvErr = env, err
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "asuka:", err)
-		}
-		fs := webEnvWait
-		webEnvWait = nil
-		for _, f := range fs {
-			f()
-		}
+		f()
 	})
-	if err != nil {
-		webEnvErr = err
-		fmt.Fprintln(os.Stderr, "asuka:", err)
-		fs := webEnvWait
-		webEnvWait = nil
-		for _, f := range fs {
-			f()
-		}
-	}
 }
 
 func (h *Host) makeWeb(n *node) {

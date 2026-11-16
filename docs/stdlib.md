@@ -18,6 +18,7 @@ Linux), so they behave as they do for the platform's own apps.
 
 | Package | What it has |
 |---|---|
+| `asuka/js` | `js.eval(script, timeout:)`: JavaScript run off screen in the platform's own engine (WKWebView, Android's WebView, WebView2, WebKitGTK, a sandboxed frame), its value as JSON; `js.JsError.timeout` |
 | `asuka/json` | `json.decode<T>(text)` and `json.encode(value, indent:)`: typed JSON, by the compiler's knowledge of `T` |
 | `asuka/math` | `sqrt`, `pow`, `floor`, `ceil`, `round`, `sin`, `cos`, `atan2`, `clamp`, `random`, `randomInt`, `seed`, `pi` |
 | `asuka/time` | `time.now()` (milliseconds since 1970), `time.monotonic()` (a `Duration` that only goes forward) |

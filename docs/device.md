@@ -1817,40 +1817,42 @@ the Mac too. [`examples/bookmarks`](../examples/bookmarks) is a
 sheet as Raindrop's: the page's title, description and image, a note, a
 collection and tags.
 
-## JavaScript: asuka/sdk/js
+## JavaScript: asuka/js
 
-`asuka/sdk/js` runs JavaScript off screen, in the platform's own engine: a web
+`asuka/js` runs JavaScript off screen, in the platform's own engine: a web
 view that's never shown (WKWebView on iOS and the Mac, Android's WebView,
 WebView2 on Windows, WebKitGTK on Linux), or in a browser a hidden,
 sandboxed frame. It's for code
 that only has a JavaScript form, as a site's player whose functions sign
 its video URLs.
 
-`js.Eval(ctx, script)` runs a script, statements as a `<script>`'s, in a
+`js.eval(script)` runs a script, statements as a `<script>`'s, in a
 fresh page of its own, and returns its value as JSON: the last
 statement's value, or what the promise it returns resolves to (`null` for
-`undefined`). A thrown error, or a rejected promise, is the error, a
-`*js.Error`. The page is gone after: what one script sets isn't there for
-the next. Not on the main thread.
+`undefined`). A thrown error, or a rejected promise, is the error, with
+the script's message. The page is gone after: what one script sets isn't
+there for the next. It waits without holding the main thread.
 
-```go
-go func() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	v, err := js.Eval(ctx, `const xs = [1, 2, 3].map(x => x * 2); xs`)
-	fmt.Println(string(v), err) // [2,4,6] <nil>
+```asuka
+import asuka/js
+import asuka/json
 
-	s, err := js.EvalString(ctx, `new Promise(done => setTimeout(() => done("later"), 100))`)
-	fmt.Println(s, err) // later <nil>
-}()
+async fn doubled() throws -> [int] {
+  let v = try await js.eval("const xs = [1, 2, 3].map(x => x * 2); xs")   // "[2,4,6]"
+  return try json.decode<[int]>(v)
+}
+
+async fn later() throws -> string {
+  let v = try await js.eval("new Promise(done => setTimeout(() => done('later'), 100))", timeout: 10s)
+  return try json.decode<string>(v)
+}
 ```
 
-`js.EvalString` is `Eval` for a script whose value is a string. A script
-may run until `ctx`'s deadline, or for `js.DefaultTimeout` (a minute) if
-it has none; one that runs out fails with `"timeout"`. On Android a
-thrown error's message has its stack.
+A script may run for its `timeout` (a minute by default); one that runs
+out throws `js.JsError.timeout`. Cancelling the task (the screen that
+started it going) lets its page go.
 
-For script in a page the user sees, use `ui.WebView`
+For script in a page the user sees, use `WebView`
 ([Web pages](components.md#web-pages)).
 
 ## Push notifications: asuka/sdk/push
