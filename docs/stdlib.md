@@ -23,7 +23,10 @@ Linux), so they behave as they do for the platform's own apps.
 | `asuka/time` | `time.now()` (milliseconds since 1970), `time.monotonic()` (a `Duration` that only goes forward) |
 | `asuka/http` | `http.get`, `http.post`, `http.postJSON`, `http.request`: requests through the platform's own client, so proxies, trusted certificates, caches and cookies work as the system's do. A `Response` has `status`, `url`, `headers`, `body`, `text()`, `json<T>()` and `ok()` |
 | `asuka/network` | `network.status()` (tracked: `connected`, `type`, `metered`, `constrained`; it watches the network only while something reads it), `network.current()`, `network.changes()` (a stream). NWPathMonitor on iOS and macOS, ConnectivityManager on Android, the Network List Manager on Windows, GNetworkMonitor and NetworkManager on Linux, `navigator.onLine` and the Network Information API on the web |
+| `asuka/review` | `review.request()`: the store's rating prompt (StoreKit on iOS and the Mac, Play's in-app review), shown or not on the store's quota; nothing on Windows, Linux and the web. `review.appStoreURL(id)`, `review.playStoreURL(id)` for a "Rate us" button |
+| `asuka/splash` | `splash.hold()`, `splash.hide()`: keeps asuka.toml's launch screen up while the app gets ready (iOS, Android; nothing elsewhere) |
 | `asuka/store` | `store.read(key, default)`, `store.write(key, value)`, `store.remove(key)`: small values kept across launches as JSON, in the platform's preferences (UserDefaults, SharedPreferences, `localStorage`, a file on Windows and Linux) |
+| `asuka/tracking` | `tracking.request()`, `tracking.current()`: App Tracking Transparency's prompt on iOS and the Mac (`.notAsked`, `.restricted`, `.denied`, `.allowed`); Windows' advertising ID setting; the browser's Global Privacy Control or Do Not Track; `.allowed` on Android and Linux, which have no prompt |
 
 Where a platform has no code for a native package (an app run by
 `asuka test`, which has none), what needs it throws an `unsupported`

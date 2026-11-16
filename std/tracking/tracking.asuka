@@ -1,0 +1,59 @@
+// Package asuka/tracking asks the user to let the app track them across
+// other companies' apps and websites: App Tracking Transparency's prompt
+// on iOS and the Mac, which an app must show before it reads the
+// advertising identifier (IDFA) or shares data with ad networks and data
+// brokers. An app that imports it is given the prompt's purpose string
+// (NSUserTrackingUsageDescription; say yours in asuka.toml's ios.usage).
+//
+//   let status = try await tracking.request()
+//   if status == .allowed { ads.personalize() }
+//
+// Android and Linux have no such prompt (the user turns personalized ads
+// off in Settings): the answer there is allowed. Windows answers from
+// its advertising ID setting (off: denied); the web from Global Privacy
+// Control and Do Not Track (on: denied).
+
+/// The user's answer.
+pub enum Status {
+  /// The prompt hasn't been shown.
+  notAsked
+  /// The device doesn't let the user allow it (a child's account, a
+  /// managed device): as denied.
+  restricted
+  /// The user said no, or turned tracking off for every app.
+  denied
+  /// The user said yes (or the platform has no such setting).
+  allowed
+}
+
+/// The platform's answer.
+native interface Tracker {
+  /// The answer now, without asking.
+  fn current() -> Status
+  /// Shows the prompt the first time; the answer.
+  async fn request() -> Status
+}
+
+// Made once; none where the platform has no such prompt.
+let tracker = try? Tracker()
+
+/// The answer now, without asking.
+pub fn current() -> Status {
+  if let t = tracker {
+    if let s = try? t.current() {
+      return s
+    }
+  }
+  return .allowed
+}
+
+/// Shows the prompt the first time (after, it's the user's answer then,
+/// or what they've set in Settings since), and returns the answer. iOS
+/// shows it only while the app is active: ask once the app's on screen,
+/// not as it starts.
+pub async fn request() throws -> Status {
+  if let t = tracker {
+    return try await t.request()
+  }
+  return .allowed
+}

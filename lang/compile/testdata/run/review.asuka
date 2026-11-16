@@ -1,0 +1,17 @@
+// asuka/review with no platform code (the fake host): no store prompt,
+// so request does nothing; the stores' links.
+
+import asuka/review
+
+test "no store here" {
+  try? await review.request()
+  print("asked")
+  print(review.appStoreURL("123"))
+  print(review.playStoreURL("dev.asuka.app"))
+}
+
+// Output:
+// asked
+// https://apps.apple.com/app/id123?action=write-review
+// https://play.google.com/store/apps/details?id=dev.asuka.app&showAllReviews=true
+// ok no store here

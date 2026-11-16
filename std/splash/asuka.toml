@@ -1,0 +1,3 @@
+name = "asuka/splash"
+version = "0.1.0"
+description = "Keeps the launch screen up while the app gets ready"

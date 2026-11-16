@@ -2283,7 +2283,7 @@ going full screen, and has neither `PreventCapture` nor `OnScreenshot`.
 These are the app's, not a screen's: a screen that sets one sets it back
 as it goes (`signal.OnCleanup`).
 
-## The launch screen: asuka/sdk/splash
+## The launch screen: asuka/splash
 
 `asuka.toml`'s `splash` is the launch screen: an image (a square PNG, a
 logo), `size` points wide (default 120, at most 160), in the middle of a
@@ -2301,18 +2301,24 @@ It shows from the tap on the icon until the app's first frame: iOS's
 launch screen, then a copy of it over the app until the first frame is
 ready; Android 12's splash screen (the image in the middle of the icon's
 circle) and, before, the window's background. The desktops and the web
-have no launch screen: there `Hold` and `Hide` do nothing. To keep it up
-while the app loads, call `splash.Hold()` as it starts (in the root component) and
-`splash.Hide()` once it's ready:
+have no launch screen: there `hold` and `hide` do nothing. To keep it up
+while the app loads, call `splash.hold()` as it starts (in the root
+component) and `splash.hide()` once it's ready:
 
-```go
-func App() ui.Node {
-	splash.Hold()
-	go func() {
-		load()
-		ui.Post(splash.Hide)
-	}()
-	return home()
+```asuka
+import asuka/splash
+
+component Root {
+  state ready = false
+
+  task {
+    splash.hold()
+    await loadSession()
+    ready = true
+    splash.hide()
+  }
+
+  if ready { Home() }
 }
 ```
 

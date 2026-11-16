@@ -42,14 +42,24 @@ object AsukaSplash {
         waiting?.invalidate()
     }
 
+    /** Keeps the splash up after the first frame, until release: asked before it (asuka/splash). Main thread. */
+    fun hold() {
+        if (!ready) held = true
+    }
+
+    /** Takes the splash away, now or once the first frame is in. Main thread. */
+    fun release() {
+        held = false
+        waiting?.invalidate()
+    }
+
     fun methods(): Map<String, AsukaModuleMethod> = mapOf(
         "hold" to { _, reply ->
-            if (!ready) held = true
+            hold()
             reply(Result.success(ByteArray(0)))
         },
         "hide" to { _, reply ->
-            held = false
-            waiting?.invalidate()
+            release()
             reply(Result.success(ByteArray(0)))
         },
     )
