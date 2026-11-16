@@ -1229,76 +1229,71 @@ the core headless (iOS's center delegate, Android's broadcast receiver)
 and hands the app the response, keeping the process until it reports it
 done.
 
-### Plugins
+### Packages' C and vendors' libraries
 
-docs/plugins.md is the guide. A plugin is a package that brings native
-libraries prebuilt for each platform and published once: a manifest,
-`asuka-plugin.toml` (package `plugin`), beside the package's
-`asuka.toml`, names each library's file for each target (`darwin`,
-universal; `ios`, `ios-simulator`; `android-<goarch>`;
-`linux-<goarch>`; `windows-<goarch>`; `wasm`), published to the
-plugin's GitHub release gzipped and named for its hash, with the
-SHA-256 of both. Of the three ways to bring code that isn't Asuka, it's
-the one built once rather than with each app: C with `extern` (docs/c.md)
-and native packages (docs/native.md) are compiled with the app. Only the
-manifest is checked in; a package's tarball carries it, not the
-libraries.
+Code that isn't Asuka comes in two ways, both compiled with the app: C
+with `extern` (docs/c.md, `asuka.toml`'s `[c]`) and native packages
+(docs/native.md: Swift, Kotlin, JavaScript and C, each platform's own
+project). Nothing is loaded at run time from beside the app: no library
+lookup, no embedding a package's libraries, no rpaths of Asuka's.
 
-The package's native code (the core's, for std/sqlite: core/src/sqlite)
-loads the library with `dlopen`, `LoadLibrary` or WebAssembly's
-instantiation, looking first in `ASUKA_LIB_<NAME>` (where `asuka dev` on
-a desktop, `asuka test` and `asuka run` point it: the plugin's
-checkout's build, `build/<target>` beside the manifest, or the published
-file, downloaded once into the user's cache and verified), then where
-`asuka build` put it, from the executable's directory, then by name. A
-phone's never download: `asuka dev` pushes them to the player.
+**A std or sdk package's own C** is its `asuka.toml`'s `[c]`, as any
+package's, but a unit of the build cache ("The build cache"):
+`cbuild.StdC` makes it `std-<name>-c` for each target, with its
+platform table's flags (after the configuration's, so `-Os` on the web
+wins), which a release prebuilds for every target with the rest
+(`appbuild.Units`). The compiler records the std and sdk packages a
+program imports that have one (`bytecode.C.Std`, all the way down:
+`std/store` brings `std/sqlite`), and every build of it links their
+libraries through `cbuild.Foreign` (`Libs`): the phones' and the Mac's
+core library (a static library has them merged in, libtool), the
+desktops' executables, a program's, and `asuka test`'s and `asuka run`'s
+runners (compiled there with the runner's compiler, unsanitized). The
+core calls them through `core/link/link.c`, compiled per link with
+`AK_STD_<NAME>` for each one linked (`ak_link_sqlite`), so a link that
+has none has no reference to them: an app that doesn't import
+std/sqlite carries no SQLite. A player (`asuka dev`) is built with the C
+of the app's last compile and again when it changes, as for externs.
 
-The CLI finds an app's plugins among its packages for the build's
-platform (the app's directory, its dependencies, the std packages it
-imports) and ships each library's file where the core looks:
-`Contents/Frameworks` on macOS (signed with the app), beside the `.exe`
-on Windows, `lib/<exe>` of the prefix on Linux, a framework of its own
-on iOS (named for the library; an Info.plist, a privacy manifest from
-the binary's imports, signed with the app), beside `libasuka.so` in
-each Android ABI, and `lib/` of the host's files on the web (the page's
-`libs` option names each file's URL): all in one place, so two plugins
-with a file of the same name for a platform don't build. A plugin
-builds its libraries with its own tool (they need what they need:
-SQLite, Xcode, the NDK and Zig), which writes each with
-`plugin.StoreBuild` and the hash of the plugin's sources (the manifest's
-`sources`); `asuka plugin publish` uploads them, refusing a build older
-than its sources, downloads each back to check it, and records them in
-the manifest.
-
-A plugin's name, which goes in those paths, is letters, digits, `-`, `_` and `.`; two of an app's plugins can't
-share one.
+**A vendor's prebuilt libraries** are `[c.prebuilt]`'s: a static
+library per target (`ios-arm64`, `ios-simulator-x64`, `macos-arm64`,
+`android-arm`, `linux-x64`, `windows-arm64`, `web`; a universal one for
+`ios-simulator` or `macos`), or several, which the link of that target
+adds as it adds `libraries`; a target the table names nothing for
+doesn't build. Static only: an archive is what every target's link
+takes (the web's wasm-ld has no dynamic linking), it needs nothing at
+run time (no loader paths, nothing more to embed, sign or give a
+privacy manifest of its own), and the link drops what the app doesn't
+call. A vendor's dynamic library goes where its platform's build
+handles it: a native package's Swift package (a binary target) or Gradle
+module (`jniLibs`, an AAR).
 
 ### SQLite
 
-`std/sqlite` is a plugin's: SQLite's own C, one pinned
-release built with the same options for every platform by
-`std/sqlite/internal/build` (Xcode, the NDK, Zig), which the package's
-`asuka-plugin.toml` ships with the apps that import it. With it, one library of Asuka's
-(`std/sqlite/csrc/asq.c`) and one entry point: `asq_call(op, conn, arg, in,
-inLen, out, outCap)`, every argument pointer-sized. A call is a whole
-statement: its SQL and arguments in, its answer (a query's columns and
-first rows, as many as fit the buffer) out; `next` brings the rest a
-chunk at a time, and an answer too long for the buffer is kept for the
-caller to take with a bigger one. Statements are cached by SQL in C
-(64 per connection). The tables a call's commits wrote (the authorizer,
-the preupdate and commit hooks) and its queries read come back with
-each answer, so the live queries need no callbacks.
+`std/sqlite` is plain std C: SQLite's amalgamation, one pinned release
+vendored in `std/sqlite/third_party/sqlite`, and one file of Asuka's
+(`std/sqlite/csrc/asq.c`), its `[c]` built with the same options for
+every target (multi-thread natively, `SQLITE_OS_OTHER` with one thread
+on the web), and linked into the apps that import it. One entry point:
+`asq_call(op, conn, arg, in, inLen, out, outCap)`, every argument
+pointer-sized. A call is a whole statement: its SQL and arguments in,
+its answer (a query's columns and first rows, as many as fit the
+buffer) out; `next` brings the rest a chunk at a time, and an answer
+too long for the buffer is kept for the caller to take with a bigger
+one. Statements are cached by SQL in C (64 per connection). The tables
+a call's commits wrote (the authorizer, the preupdate and commit hooks)
+and its queries read come back with each answer, so the live queries
+need no callbacks.
 
-The core (core/src/sqlite) crosses into the library once per statement,
-never per column, on a thread of its own where statements run one
-after another, and decodes the rows on the main thread straight into
-the program's values by the type's descriptor: no JSON text, no
-per-cell crossing. macOS, Linux, iOS and Android load the library with
-`dlopen`, Windows with `LoadLibrary`, and the web runs the same C built
-to WebAssembly in the page's SQLite worker. Every symbol but `asq_call`
-and `asq_version` is hidden, so a system SQLite in the same process
-(GTK may load one) never clashes. The CLI ships it with the app as any
-plugin's library ([Plugins](#plugins)).
+The core (core/src/sqlite) calls `asq_call` (`ak_link_sqlite`) once per
+statement, never per column, on a thread of its own where statements
+run one after another, and decodes the rows on the main thread straight
+into the program's values by the type's descriptor: no JSON text, no
+per-cell crossing. SQLite's symbols are hidden (`-fvisibility=hidden`),
+so a system SQLite in the same process (GTK may load one) never
+clashes, and an app's own SQLite neither. On the web the same C, with
+`csrc/asq_wasm.c` as its system, is a module of its own that the page's
+SQLite worker runs ([The web](#the-web)).
 
 ## iOS and Android: the core in the app
 
@@ -1337,12 +1332,10 @@ and calls `asuka_run_posted`.
   Views host, JNI bindings) and `app`, the shell app the CLI builds per
   app (application ID and name passed as Gradle properties).
 
-An app's plugins' libraries ([Plugins](#plugins)) ship with it: on iOS a
-framework each in `Frameworks` (`asqlite.framework` for SQLite: an
-Info.plist, a privacy manifest of its own, signed with the app;
-`dlopen`ed by its path from the executable's directory, or
-`../../Frameworks` from an extension); on Android each beside
-`libasuka.so` in each ABI's `jniLibs`, loaded by name from the APK.
+The C an app's packages bring is in the core's library with it: on
+iOS the static library the executable links, on Android `libasuka.so`
+([Packages' C and vendors' libraries](#packages-c-and-vendors-libraries)):
+nothing beside it to embed, sign or load.
 
 Crash reports (platform/crash) are the core's record of the run
 (`core/src/std/crash.c`, its files' formats those apps of the Go
@@ -1575,16 +1568,19 @@ lookup takes the one whose headers all still hash the same. Paths under
 the checkout or the cache are written relative to them, so another
 worktree's build hits what this one compiled. The core is the same for
 every app: what used to differ by `-D` (an app compiled in, its externs'
-glue) is `core/link/link.c`'s, compiled per link (`ak_link_app`,
-`ak_link_ffi`, which name the app's and the glue's objects so a static
-library's link keeps them). The core, the desktop hosts' C, the native
-registry and each std and sdk package's desktop C are **units**
-(`cbuild.Unit`, `appbuild.Units`): one static library per target and
-configuration (dev: `-g -O1 -DAK_DEBUG=1`; release: `-O2 -DNDEBUG`), its
-key its objects' keys. A link searches them (a package's whole: its
-provider registers itself in a constructor); a static library (iOS, the
-Mac) is the core's with the build's objects added; a shared library or
-the web's module links the core's whole, its exports its roots.
+glue, the std packages' C it imports) is `core/link/link.c`'s, compiled
+per link (`ak_link_app`, `ak_link_ffi`, `ak_link_sqlite`, which name the
+app's, the glue's and SQLite's objects so a static library's link keeps
+them). The core, the desktop hosts' C, the native registry, each std and
+sdk package's desktop C and each one's own C (its `[c]`: std/sqlite's
+SQLite, every target's) are **units** (`cbuild.Unit`, `appbuild.Units`):
+one static library per target and configuration (dev: `-g -O1
+-DAK_DEBUG=1`; release: `-O2 -DNDEBUG`; then the unit's own flags), its
+key its objects' keys. A link searches them (a package's desktop C
+whole: its provider registers itself in a constructor); a static
+library (iOS, the Mac) is the core's with the build's objects and the
+std packages' C it imports added; a shared library or the web's module
+links the core's whole, its exports its roots.
 
 **Prebuilt, from npm.** A release builds every unit for every target
 (`asuka prebuilt build`, the release workflow; Zig, Xcode and the NDK as
@@ -1664,8 +1660,6 @@ asuka/
                      Kotlin and JavaScript codecs
   i18n/              languages, catalogs, ICU messages, CLDR's formats
                      (compiled into what the core says)
-  plugin/            plugins' manifests, builds and publishing (package
-                     plugin; std/sqlite is a plugin)
   internal/nativegen/ asuka native's generator (Swift, Kotlin,
                      JavaScript, C)
   platform/ios/      the Swift host and decoder
@@ -1691,7 +1685,6 @@ asuka/
                      object cache), ccache (the build cache), prebuilt
                      (what a release carries, from npm), appbuild,
                      devserver, pkgs (packages), boot, ...
-  plugin/            plugins' manifests, fetching and linking
   template/          what `asuka new` copies
   examples/          apps in Asuka
   conformance/       what every host draws for the style props, measured
@@ -4041,14 +4034,17 @@ core/src/abi/web.c is the core's side:
   a job carries what changed since the worker's last (but its own
   changes), and its answer what the job changed, which the page takes as
   another writer's.
-- SQLite: the sqlite plugin's C (SQLite and `std/sqlite/csrc/asq.c`), built to
-  WebAssembly by `std/sqlite/internal/build` (zig, `wasm32-wasi`, `-Os`) with
-  `std/sqlite/csrc/asq_wasm.c` as its system (`SQLITE_OS_OTHER`, one thread:
-  a VFS, the time zone and randomness imported from JavaScript, no WASI
-  imports): the plugin's `wasm` file, which the CLI ships with the apps
-  that use it, in `lib/` (as any plugin's, [Plugins](#plugins)), named in
-  the page's `libs` option; the page starts the worker when it has
-  `asqlite.wasm`. It runs in a worker of the
+- SQLite: std/sqlite's C (SQLite and `std/sqlite/csrc/asq.c`, its
+  `[c.web]` adding `std/sqlite/csrc/asq_wasm.c` as its system:
+  `SQLITE_OS_OTHER`, one thread, a VFS, the time zone and randomness
+  imported from JavaScript, no WASI imports, `-Os`), its wasm32 unit
+  linked into a module of its own (`appbuild.SQLiteWasm`, a reactor
+  exporting `asq_call`, `asq_version`, `malloc` and `free`, linked once
+  into the build cache) rather than into the app's: the page never calls
+  SQLite, its worker does, and the worker needs none of the app.
+  `asuka dev` and `asuka build` carry it for the apps that import
+  std/sqlite, in `lib/asqlite.wasm` of the host's files, named in the
+  page's `sqlite` option; the page starts the worker when it has one. It runs in a worker of the
   page's (`platform/web/src/sqlite-worker.js`; `sqlite-engine.js` the
   module, `sqlite-vfs.js` its files, `sqlite-store.js` where they're
   kept). std/sqlite's builtins (`core/src/sqlite/sqlite.c`) send each
