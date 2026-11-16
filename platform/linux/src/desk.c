@@ -49,7 +49,7 @@ void lx_drop_desk(win *w) {
 static bool x11_loaded(void) {
 	static int ok = -1;
 	if (ok < 0)
-		ok = lx_lib_load(AK_LIB_X11) && XMoveWindow && gdk_x11_surface_get_xid && gdk_x11_get_xatom_by_name_for_display &&
+		ok = lx_lib_load(ASUKA_LIB_X11) && XMoveWindow && gdk_x11_surface_get_xid && gdk_x11_get_xatom_by_name_for_display &&
 			gdk_x11_display_get_xrootwindow && gdk_x11_display_get_xdisplay && gdk_x11_display_get_type;
 	return ok == 1;
 }

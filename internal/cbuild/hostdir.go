@@ -47,6 +47,6 @@ func LinuxHost() (srcs, flags []string, err error) {
 	}
 	cs, _ := filepath.Glob(filepath.Join(l, "src", "*.c"))
 	hs, _ := filepath.Glob(filepath.Join(l, "src", "*.h"))
-	srcs = append(append(append(cs, hs...), filepath.Join(l, "src", "syms.def")), desktop.HostShared(d)...)
+	srcs = append(append(cs, hs...), desktop.HostShared(d)...)
 	return srcs, []string{"-I" + filepath.Join(l, "src"), "-I" + desktop.Include(d)}, nil
 }

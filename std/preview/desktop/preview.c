@@ -52,7 +52,7 @@ static void open_main(void *p) {
 static void launched(GObject *source, GAsyncResult *res, gpointer p) {
 	opening *o = p;
 	GError *e = NULL;
-	bool ok = G(gtk_file_launcher_launch_finish)(source, res, &e);
+	bool ok = G(gtk_file_launcher_launch_finish)((GtkFileLauncher *)source, res, &e);
 	G(g_object_unref)(source);
 	if (ok || asuka_linux_cancelled(e)) {  // cancelled: the portal's app chooser closed
 		if (e) G(g_error_free)(e);

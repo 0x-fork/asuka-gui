@@ -280,7 +280,16 @@ func fakes(t *testing.T) string {
 	if cc == "" {
 		cc = "cc"
 	}
-	cmd := exec.Command(cc, "-std=c17", "-D_GNU_SOURCE", "-I"+src, filepath.Join(src, "syms.c"), filepath.Join("test", "fakes.c"), "-ldl", "-o", exe)
+	desk, err := filepath.Abs(filepath.Join("..", "desktop"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	core, err := filepath.Abs(filepath.Join("..", "..", "core", "include"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(cc, "-std=c17", "-D_GNU_SOURCE", "-I"+src, "-I"+filepath.Join(desk, "include"), "-I"+core,
+		filepath.Join(src, "syms.c"), filepath.Join(desk, "src", "linux_syms.c"), filepath.Join("test", "fakes.c"), "-ldl", "-lpthread", "-o", exe)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("building the fakes: %v\n%s", err, out)
 	}

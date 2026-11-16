@@ -318,7 +318,7 @@ typedef struct {
 // add_font_file adds a font file for the process and returns its family
 // (malloc'd), or NULL.
 static char *add_font_file(const char *path) {
-	if (!lx_lib_load(AK_LIB_FC) || !FcConfigAppFontAddFile || !FcConfigAppFontAddFile(NULL, (const unsigned char *)path)) return NULL;
+	if (!lx_lib_load(ASUKA_LIB_FC) || !FcConfigAppFontAddFile || !FcConfigAppFontAddFile(NULL, (const unsigned char *)path)) return NULL;
 	fc_font_set *set = FcConfigGetFonts(NULL, 1);  // FcSetApplication
 	if (!set) return NULL;
 	for (int i = 0; i < set->nfont; i++) {

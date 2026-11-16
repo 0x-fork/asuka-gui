@@ -324,7 +324,7 @@ static void u_download(ak_span args, reply *r) {
 		reply_err(r, "update.download: bad arguments");
 		return;
 	}
-	if (!lx_lib_load(AK_LIB_SOUP) || !soup_session_send_async) {
+	if (!lx_lib_load(ASUKA_LIB_SOUP) || !soup_session_send_async) {
 		dsk_json_free(j);
 		reply_err(r, "libsoup 3 isn't installed: updates can't download");
 		return;

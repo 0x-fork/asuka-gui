@@ -48,12 +48,12 @@ static GHashTable *books, *cals;  // connected clients, by source UID
 static int loaded_book, loaded_cal;  // 0 not tried, 1 there, -1 not
 
 static bool load_book(void) {
-	if (!loaded_book) loaded_book = lx_lib_load(AK_LIB_EDS) && lx_lib_load(AK_LIB_EBOOKC) && lx_lib_load(AK_LIB_EBOOK) && e_source_registry_new_sync && e_book_client_connect_sync && e_contact_new_from_vcard ? 1 : -1;
+	if (!loaded_book) loaded_book = lx_lib_load(ASUKA_LIB_EDS) && lx_lib_load(ASUKA_LIB_EBOOKC) && lx_lib_load(ASUKA_LIB_EBOOK) && e_source_registry_new_sync && e_book_client_connect_sync && e_contact_new_from_vcard ? 1 : -1;
 	return loaded_book > 0;
 }
 
 static bool load_cal(void) {
-	if (!loaded_cal) loaded_cal = lx_lib_load(AK_LIB_EDS) && lx_lib_load(AK_LIB_ICAL) && lx_lib_load(AK_LIB_ECAL) && e_source_registry_new_sync && e_cal_client_connect_sync && i_cal_component_new_from_string ? 1 : -1;
+	if (!loaded_cal) loaded_cal = lx_lib_load(ASUKA_LIB_EDS) && lx_lib_load(ASUKA_LIB_ICAL) && lx_lib_load(ASUKA_LIB_ECAL) && e_source_registry_new_sync && e_cal_client_connect_sync && i_cal_component_new_from_string ? 1 : -1;
 	return loaded_cal > 0;
 }
 

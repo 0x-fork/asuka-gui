@@ -278,7 +278,7 @@ static void fetch_for(node *n, const char *src, bool placeholder, lx_texture_fn 
 	d->waiting.data[d->waiting.len].ctx = ctx;
 	d->waiting.len++;
 	if (start) {
-		if (!strncmp(src, "http", 4)) lx_lib_load(AK_LIB_SOUP);  // on the main thread: dlopen once
+		if (!strncmp(src, "http", 4)) lx_lib_load(ASUKA_LIB_SOUP);  // on the main thread: dlopen once
 		g_thread_unref(g_thread_new("asuka-image", decode_thread, d));
 	}
 }

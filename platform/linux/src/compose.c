@@ -179,7 +179,7 @@ static gpointer local_thread(gpointer data) {
 // lx_local_files finds the files sources name (with their types, for a
 // download), off the main thread, and calls done with them on it.
 void lx_local_files(const char *const *sources, const char *const *types, size_t n, void (*done)(void *ctx, char **paths, size_t n, const char *err), void *ctx) {
-	lx_lib_load(AK_LIB_SOUP);  // on the main thread: dlopen once
+	lx_lib_load(ASUKA_LIB_SOUP);  // on the main thread: dlopen once
 	local_job *j = calloc(1, sizeof *j);
 	if (!j) abort();
 	j->n = n;

@@ -46,11 +46,11 @@ static bool webkit_tried;
 static const char *webkit(void) {
 	if (webkit_tried) return webkit_err;
 	webkit_tried = true;
-	if (!lx_lib_load(AK_LIB_JSC) || !lx_lib_load(AK_LIB_WEBKIT))
+	if (!lx_lib_load(ASUKA_LIB_JSC) || !lx_lib_load(ASUKA_LIB_WEBKIT))
 		webkit_err = "WebKitGTK 6.0 isn't installed: install it to show web pages (Ubuntu, Debian: libwebkitgtk-6.0-4; Fedora: webkitgtk6.0; Arch: webkitgtk-6.0)";
 	else if (!webkit_web_view_call_async_javascript_function || !webkit_network_session_get_default)
 		webkit_err = "WebKitGTK 6.0 is too old: update it to show web pages";
-	lx_lib_load(AK_LIB_SOUP);
+	lx_lib_load(ASUKA_LIB_SOUP);
 	if (webkit_err) lx_log("%s", webkit_err);
 	return webkit_err;
 }

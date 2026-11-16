@@ -204,7 +204,7 @@ static bool gl_ready(void) {
 	if (glr.tried) return glr.ctx != NULL;
 	glr.tried = true;
 	const char *why = NULL;
-	if (!lx_lib_load(AK_LIB_EPOXY)) {
+	if (!lx_lib_load(ASUKA_LIB_EPOXY)) {
 		why = "no libepoxy";
 	} else {
 #define X(name, ret, args)                       \

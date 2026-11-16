@@ -88,7 +88,7 @@ static void on_title(gpointer view, gpointer spec, gpointer d) {
 	signin *s = d;
 	ui *u = s->platform;
 	const char *t = wk.get_title(u->view);
-	G(adw_window_title_set_title)(u->title, t ? t : "");
+	G(adw_window_title_set_title)((AdwWindowTitle *)u->title, t ? t : "");
 }
 
 static void on_uri(gpointer view, gpointer spec, gpointer d) {
@@ -96,7 +96,7 @@ static void on_uri(gpointer view, gpointer spec, gpointer d) {
 	ui *u = s->platform;
 	const char *uri = wk.get_uri(u->view);
 	char *host = webauth_host(uri ? uri : "");
-	G(adw_window_title_set_subtitle)(u->title, host);
+	G(adw_window_title_set_subtitle)((AdwWindowTitle *)u->title, host);
 	free(host);
 }
 
@@ -108,7 +108,7 @@ void webauth_close(signin *s) {
 		for (int i = 0; i < 5; i++)
 			if (u->handlers[i]) G(g_signal_handler_disconnect)(u->objects[i], u->handlers[i]);
 		wk.stop_loading(u->view);
-		G(adw_dialog_force_close)(u->dialog);
+		G(adw_dialog_force_close)((AdwDialog *)u->dialog);
 		G(g_object_unref)(u->dialog);
 		G(g_object_unref)(u->view);
 		free(u);
@@ -136,19 +136,21 @@ void webauth_show(signin *s) {
 	G(g_object_ref_sink)(u->view);
 	G(gtk_widget_set_vexpand)(u->view, true);
 	u->dialog = G(g_object_ref_sink)(G(adw_dialog_new)());
-	G(adw_dialog_set_content_width)(u->dialog, 560);
-	G(adw_dialog_set_content_height)(u->dialog, 680);
+	G(adw_dialog_set_content_width)((AdwDialog *)u->dialog, 560);
+	G(adw_dialog_set_content_height)((AdwDialog *)u->dialog, 680);
 	GtkWidget *tv = G(adw_toolbar_view_new)(), *bar = G(adw_header_bar_new)();
-	G(adw_header_bar_set_show_start_title_buttons)(bar, false);
-	G(adw_header_bar_set_show_end_title_buttons)(bar, false);
+	AdwHeaderBar *hb = (AdwHeaderBar *)bar;
+	AdwToolbarView *tvv = (AdwToolbarView *)tv;
+	G(adw_header_bar_set_show_start_title_buttons)(hb, false);
+	G(adw_header_bar_set_show_end_title_buttons)(hb, false);
 	// GTK's own word for it, in the user's language.
 	GtkWidget *cancel = G(gtk_button_new_with_mnemonic)(G(g_dgettext)("gtk40", "_Cancel"));
-	G(adw_header_bar_pack_start)(bar, cancel);
+	G(adw_header_bar_pack_start)(hb, cancel);
 	u->title = G(adw_window_title_new)("", s->host);
-	G(adw_header_bar_set_title_widget)(bar, u->title);
-	G(adw_toolbar_view_add_top_bar)(tv, bar);
-	G(adw_toolbar_view_set_content)(tv, u->view);
-	G(adw_dialog_set_child)(u->dialog, tv);
+	G(adw_header_bar_set_title_widget)(hb, u->title);
+	G(adw_toolbar_view_add_top_bar)(tvv, bar);
+	G(adw_toolbar_view_set_content)(tvv, u->view);
+	G(adw_dialog_set_child)((AdwDialog *)u->dialog, tv);
 	gpointer objs[5] = {cancel, u->dialog, u->view, u->view, u->view};
 	memcpy(u->objects, objs, sizeof objs);
 	u->handlers[0] = g_signal_connect(cancel, "clicked", on_cancel, s);
@@ -156,6 +158,6 @@ void webauth_show(signin *s) {
 	u->handlers[2] = g_signal_connect(u->view, "decide-policy", on_policy, s);
 	u->handlers[3] = g_signal_connect(u->view, "notify::title", on_title, s);
 	u->handlers[4] = g_signal_connect(u->view, "notify::uri", on_uri, s);
-	G(adw_dialog_present)(u->dialog, asuka_desktop_window(0));
+	G(adw_dialog_present)((AdwDialog *)u->dialog, asuka_desktop_window(0));
 	wk.load_uri(u->view, s->link);
 }

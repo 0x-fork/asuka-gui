@@ -1135,7 +1135,7 @@ static void m_schedule(ak_span args, reply *r) {
 	}
 	const char *img = s->image;
 	if (!strncmp(img, "http://", 7) || !strncmp(img, "https://", 8)) {
-		if (!lx_lib_load(AK_LIB_SOUP) || !soup_session_new) {
+		if (!lx_lib_load(ASUKA_LIB_SOUP) || !soup_session_new) {
 			add_scheduled(s, "", r);
 			return;
 		}
