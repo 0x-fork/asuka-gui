@@ -264,10 +264,10 @@ let asukaDragDistance: CGFloat = 3
     }
 
     /// Where the pointer is in w, in its coordinates, if it's over w in the
-    /// active app (a test's stand-in, if it has one).
+    /// active app (under the automation, its hoverprobe's: none without).
     func hoverProbe(_ w: NSWindow) -> CGPoint? {
         if let probe = visual.hoverProbe { return probe(w) }
-        guard NSApp.isActive, w.isVisible else { return nil }
+        guard !AsukaAutomation.shared.active, NSApp.isActive, w.isVisible else { return nil }
         let p = NSEvent.mouseLocation
         guard NSWindow.windowNumber(at: p, belowWindowWithWindowNumber: 0) == w.windowNumber else { return nil }
         return w.convertPoint(fromScreen: p)
