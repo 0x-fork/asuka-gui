@@ -18,22 +18,20 @@ import (
 	"github.com/egoist/asuka/plugin"
 )
 
-// Desktop apps: the executable is the desktop host (cmd/asuka-host: Go,
-// AppKit, Win32 or GTK, the same for every app), with the C core beside
-// it (libasuka: libasuka.dylib in a Mac app's Frameworks, asuka.dll
-// beside the .exe, libasuka.so in a Linux prefix's lib/<exe>) and the
-// app's settings (internal/boot's ConfigFile). A release's core has the
-// app compiled into it; asuka dev's player's has none, and loads the
-// bytecode the CLI sends (ASUKA_DEV).
+// Desktop apps on macOS and Linux: the executable is the desktop host
+// (cmd/asuka-host: Go, AppKit or GTK, the same for every app), with the C
+// core beside it (libasuka: libasuka.dylib in a Mac app's Frameworks,
+// libasuka.so in a Linux prefix's lib/<exe>) and the app's settings
+// (internal/boot's ConfigFile). A release's core has the app compiled
+// into it; asuka dev's player's has none, and loads the bytecode the CLI
+// sends (ASUKA_DEV). On Windows the executable is the C host with the
+// core and the app linked in (windows.go), its settings beside it.
 
 // coreLibName is the core library's file name on goos (host/bridge's
-// LibName).
+// LibName): macOS's or Linux's.
 func coreLibName(goos string) string {
-	switch goos {
-	case "darwin":
+	if goos == "darwin" {
 		return "libasuka.dylib"
-	case "windows":
-		return "asuka.dll"
 	}
 	return "libasuka.so"
 }

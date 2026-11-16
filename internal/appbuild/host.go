@@ -32,11 +32,7 @@ var HostRelease = "https://github.com/egoist/asuka/releases/download/v%s/%s"
 
 // HostFile is the name of the prebuilt host for t in a release.
 func HostFile(t cbuild.Target) string {
-	n := "asuka-host-" + t.OS + "-" + t.Arch
-	if t.OS == "windows" {
-		n += ".exe"
-	}
-	return n
+	return "asuka-host-" + t.OS + "-" + t.Arch
 }
 
 // Checkout is the Asuka repository this CLI runs from (go run, go test,
@@ -59,10 +55,6 @@ func Checkout() string {
 type HostOptions struct {
 	// Release strips the executable of its symbols.
 	Release bool
-	// Syso, for Windows, are the executable's resources (its icon, its
-	// manifest, its version: a COFF object, as go build links a main
-	// package's .syso files).
-	Syso []byte
 	// Verbose prints the commands.
 	Verbose bool
 	// Natives are the directories of the app's own native packages' Go
@@ -113,20 +105,14 @@ func buildHost(root string, t cbuild.Target, out string, o HostOptions) error {
 	}
 	args := []string{"build", "-trimpath"}
 	if o.Release {
-		ld := "-s -w -buildid="
-		if t.OS == "windows" {
-			ld += " -H windowsgui" // no console window
-		}
-		args = append(args, "-ldflags="+ld)
+		args = append(args, "-ldflags=-s -w -buildid=")
 	}
 	args = append(args, "-o", out)
 	dir := root
 	pkg := "./cmd/asuka-host"
-	if len(o.Syso) > 0 || len(o.Natives) > 0 || root == "" {
+	if len(o.Natives) > 0 || root == "" {
 		// A module of its own, which uses this checkout (or the release's
-		// module): go build links only the main package's own .syso files
-		// (an overlay doesn't reach them), and the app's packages' Go are
-		// packages of it.
+		// module): the app's packages' Go are packages of it.
 		tmp, err := os.MkdirTemp("", "asuka-host-")
 		if err != nil {
 			return err
@@ -149,11 +135,6 @@ func buildHost(root string, t cbuild.Target, out string, o HostOptions) error {
 		main += ")\n\nfunc main() { apphost.Main() }\n"
 		if err := os.WriteFile(filepath.Join(tmp, "main.go"), []byte(main), 0o644); err != nil {
 			return err
-		}
-		if len(o.Syso) > 0 {
-			if err := os.WriteFile(filepath.Join(tmp, "rsrc_windows_"+t.Arch+".syso"), o.Syso, 0o644); err != nil {
-				return err
-			}
 		}
 		goVersion := "1.25"
 		var mod string

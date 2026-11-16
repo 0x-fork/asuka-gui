@@ -1,5 +1,3 @@
-//go:build !windows
-
 package tracking
 
 import "errors"

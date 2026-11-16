@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package hosttest runs Asuka apps on a desktop host in its own tests, as
 // the host runs them: the C core (built once for this computer, as a
 // library, and loaded through host/bridge), an app compiled from Asuka
@@ -37,7 +39,7 @@ var (
 // Core is the core library, built for this computer (its objects cached
 // across runs) and opened once per process. ASUKA_HOSTTEST_CORE names a
 // library built already instead: one cross-compiled for a test run where
-// there's no compiler (the Windows host's tests under Wine).
+// there's no compiler.
 func Core(t testing.TB) *bridge.Core {
 	t.Helper()
 	once.Do(func() {
