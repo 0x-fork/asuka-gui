@@ -171,7 +171,7 @@ effect. A style is a set of keys like any other.
 - `match` (`ak_ui_switch`), and views rebuilt from what they read
   (`ak_ui_dynamic`).
 
-### v0 components
+### Elements
 
 | Component | iOS | Android |
 |---|---|---|
@@ -188,8 +188,8 @@ effect. A style is a set of keys like any other.
 | `Refresh` (pull to refresh, on `Scroll`/`List`) | UIRefreshControl | SwipeRefreshLayout |
 | `Stack` (navigation) | UINavigationController | own view stack with transitions, `OnBackPressedDispatcher` and predictive back |
 | `Tabs` | UITabBarController | BottomNavigationView |
-| `Tab.Badge` | UITabBarItem.badgeValue | BadgeDrawable (getOrCreateBadge) |
-| `Destination.Badge` | UICellAccessory.label | a counter (MenuItem's action view) |
+| `Tab`'s `badge` | UITabBarItem.badgeValue | BadgeDrawable (getOrCreateBadge) |
+| `Destination`'s `badge` | UICellAccessory.label | a counter (MenuItem's action view) |
 | `Alert` | UIAlertController (alert, action sheet; `addTextField` for its fields) | MaterialAlertDialogBuilder (its fields: TextInputLayouts) |
 | `Snackbar` | the host's own: a capsule in the system material (Liquid Glass on iOS 26) | Snackbar (Material), in an overlay CoordinatorLayout |
 | `Sheet` | sheet presentation (detents) | BottomSheetDialog |
@@ -199,21 +199,23 @@ effect. A style is a set of keys like any other.
 | `Picker` (a menu of options) | UIButton with a menu (`changesSelectionAsPrimaryAction`) | exposed dropdown menu (TextInputLayout, MaterialAutoCompleteTextView) |
 | `ProgressRing` | drawn (SwiftUI's circular Gauge's look); UIActivityIndicatorView without a value | CircularProgressIndicator |
 
-A component a host can't show yet panics in that host with its name, so
-gaps are found, never silently drawn wrong. `host/fake` supports all of
-them.
+An element a host can't show yet is logged by that host with its name,
+so gaps are found, never silently drawn wrong. The fake host
+(core/host/fake) supports all of them.
 
-Gestures on any `View`: `OnPress`, `OnLongPress`, and later pan, swipe
-and pinch, mapped to UIGestureRecognizers and Android's
-`GestureDetector`. Haptics: `ui.Haptic(kind)` (UIFeedbackGenerator,
+Gestures on any `View`: `on press`, `on longPress`, `on pan`, `on
+swipe`, `on pinch`, mapped to UIGestureRecognizers and Android's
+`GestureDetector`. Haptics: `haptic(.success)` (UIFeedbackGenerator,
 `performHapticFeedback`).
 
 ### Navigation
 
-`ui.Stack` holds a stack of screens; `ui.UseNavigator()` (a context) has
-`Push(func() ui.Node, ui.ScreenOptions)` and `Pop()`. A screen is an
-owner: popping it disposes it. `ScreenOptions` has the title, the bar's
-buttons and whether the back gesture is allowed. The host animates
+`Stack { Root() }` holds a stack of screens; `push(Detail(id))` and
+`pop()` act on the nearest one (`ui.push` takes a builder: the screen is
+built as it's pushed). A `screen` is a component whose block takes the
+screen's props (`title`, `largeTitle`, `backGesture`, ...) and slots
+(`actions`, `toolbar`, `primary`). A screen is an owner: popping it
+disposes it. The host animates
 pushes, pops and the interactive back gesture natively; a gesture the
 user finishes tells the core with `Event(stack, popped)`, which disposes
 the screen, and one they cancel changes nothing.
@@ -278,87 +280,88 @@ How the kinds map (ops/schema.go has the wire contract):
 
 #### Routes
 
-`ui.Router` gives every screen an address, an `ui.Href` (a path and a
-query, `/chat/7?tab=info`), as expo-router does, declared in Go: a tree
-of `ui.Route` values, each a path pattern (static segments, `:param`,
-a last `*catchAll`; relative to its parent's unless it starts with `/`)
-mapped to a `Screen func(ui.Params) ui.Node`, or holding routes under a
-navigator (`Layout`: `LayoutStack`, `LayoutTabs`, `LayoutSplit`,
-`LayoutSlot`) or in a group (no layout: a path prefix, a guard, a
-sidebar section). A route with a `Sheet` is presented over its
-navigator instead of pushed or chosen. A `Redirect` replaces an href
-with another; a `Guard func(to Href) Href` sends the user elsewhere
-(`""` lets them in). The router compiles the tree once (ui/router.go),
-panicking at shapes the navigators can't show (a tabs inside a stack:
-two bars), and ranks the screens' full patterns as expo-router does
-(static before parameter before catch-all, segment by segment); its
-top level is a slot of the routes given it and a not-found catch-all.
-Nothing on the hot path: routing runs as the user navigates, and
-reflection only reads and writes the saved state's JSON.
+A `Router` gives every screen an address, an href (a path and a query,
+`/chat/7?tab=info`), as expo-router does. Routes are elements, declared
+where the app's structure is (lang/LOWERING.md, "Routes"): a tree of
+`Route`s, each a path pattern (static segments, `:param`, a last
+`*catchAll`; relative to its parent's unless it starts with `/`) whose
+block builds a screen from its `Params`, or holding routes under a
+navigator (`layout: .stack`, `.tabs`, `.split`, `.slot`) or in a group
+(no layout: a path prefix, a guard, a sidebar section). A `screen`
+declared `at "pattern"` is a route of its own, its parameters typed and
+read from the path or the query. A route with `sheet: true` is
+presented over its navigator instead of pushed or chosen; `redirect:`
+replaces an href with another; a `guard` (`fn(string) -> string`) sends
+the user elsewhere (`""` lets them in). The runtime (core/src/ui's
+router) builds the tree once, logging shapes the navigators can't show
+(a tabs inside a stack: two bars), and ranks the screens' full patterns
+as expo-router does (static before parameter before catch-all, segment
+by segment); its top level is a slot of the routes given it and a
+not-found catch-all. Nothing on the hot path: routing runs as the user
+navigates.
 
 The navigation state is a tree, react-navigation's shape: each
 navigator's entries (a stack's screens bottom first; a tab's or a
 destination's or a slot's chosen entry, each tab keeping its own) and
 the sheets over it, each entry a route with its parameters and query,
 or a navigator. Every change is made on a description of the state
-(`navDesc`, from the live one with each entry's key), then the live
-state is reconciled to it, as a view diff: entries both have are kept
-(by key; by route and parameters for a description from outside, a
-history entry, a reload), the stack's others popped (the lower first,
-so one pop animates) or pushed, the sheets dismissed or presented, the
-tab, destination or slot switched. The views are the existing
-components': `Stack` (pushes through `stackState`, which reports the
-pushes and pops it didn't make, a Navigator's and the user's), `Tabs`
-and `SplitView` (internal hooks report the user's choice), `showSheet`
-(Sheet's own), and a slot (a fragment whose child is swapped). An entry
-is an owner as any screen is: one a route pops, replaces or leaves is
-disposed; a navigator closes its sheets as its owner goes.
+(from the live one with each entry's key), then the live state is
+reconciled to it, as a view diff: entries both have are kept (by key;
+by route and parameters for a description from outside, a history
+entry, a reload), the stack's others popped (the lower first, so one
+pop animates) or pushed, the sheets dismissed or presented, the tab,
+destination or slot switched. The views are the existing elements'
+(`Stack`, `Tabs`, `SplitView`, `Sheet`, and a slot: a fragment whose
+child is swapped), which report the pushes, pops and choices they
+didn't make (the user's). An entry is an owner as any screen is: one a
+route pops, replaces or leaves is disposed; a navigator closes its
+sheets as its owner goes.
 
-- **Navigating**: `Navigate(href)` switches the tabs, destinations and
-  slots on the way, goes back to an entry with the same address in the
-  target's stack or pushes it, presents a sheet (react-navigation's
-  `navigate`); `Push` always pushes; `Replace` replaces the focused
-  entry (a sheet: closed and the screen pushed); `Back` pops the
-  innermost stack or sheet; `SetQuery` changes the focused screen's
-  query, which `Params` follows. `ViewProps.Href`, `ButtonProps.Href`,
-  `NavLink` and a rich text's link to one of the app's hrefs navigate.
-  The imperative API stays: a screen pushed with a Navigator on a routed
-  stack is an entry without a route, at its stack's address.
+- **Navigating**: `navigate(href)` (or `navigate(Thread(id: 7))`)
+  switches the tabs, destinations and slots on the way, goes back to an
+  entry with the same address in the target's stack or pushes it,
+  presents a sheet (react-navigation's `navigate`); `navigate(href,
+  .push)` always pushes; `.replace` replaces the focused entry (a sheet:
+  closed and the screen pushed); `router.back()` pops the innermost
+  stack or sheet; `router.setQuery(q)` changes the focused screen's
+  query, which its `Params` follow. A View's and a Button's `href`, and
+  a rich text's link to one of the app's hrefs, navigate. `push(X(…))`
+  stays: a screen pushed on a routed stack is an entry without a route,
+  at its stack's address.
 - **An href builds a state** (`fresh`): in each stack on the way, the
-  stack's `Initial` entry (expo-router's `initialRouteName`; its first
+  stack's initial entry (expo-router's `initialRouteName`; its first
   route by default), then its screens whose patterns are prefixes of the
   target's (`/inbox/:id` under `/inbox/:id/reply`), then the target,
   each taking its parameters from the target's by name and left out if
   it can't (a parameter missing, a guard); the other tabs at their
   first entries. Redirects and guards are resolved first, at most 32
-  steps (more is a loop: a panic naming the hrefs).
-- **Guards follow signals**: a render effect asks the guards of the
+  steps (more is a loop: an error naming the hrefs).
+- **Guards follow state**: a render effect asks the guards of the
   entries shown, and again as what they read or the state changes; one
   that keeps the user out drops those entries (with what's over them in
   their stacks; the other tabs are kept) and the router goes where the
   focused href resolves now, replacing it.
-- **The state serializes** (`savedNav`: entries by their route's key
-  and their href, JSON), so it reads back after the routes change, as
-  far as they still match. The router sends its address with every
-  change (`Location`, to its window's element: the root or a `Window`
-  node): the focused routed entry's href, the state, the window's key,
-  and how the history moved, decided as react-navigation's linking
-  decides: where the old and new focused chains part, a navigator's
-  history length grew (Push), shrank (Back by as many) or stayed
-  (Replace); a stack's length is its entries', a tabs' or a split's is 1
-  on its first entry and 2 on another ("firstRoute"), plus their sheets.
-  Redirects and guards replace. A host that keeps windows' addresses
-  (`host.Locator`) gives the last back as the router mounts.
+- **The state serializes** (entries by their route's key and their
+  href, JSON), so it reads back after the routes change, as far as they
+  still match. The router sends its address with every change
+  (`Location`, to its window's element: the root or a `Window` node):
+  the focused routed entry's href, the state, the window's key, and how
+  the history moved, decided as react-navigation's linking decides:
+  where the old and new focused chains part, a navigator's history
+  length grew (Push), shrank (Back by as many) or stayed (Replace); a
+  stack's length is its entries', a tabs' or a split's is 1 on its first
+  entry and 2 on another ("firstRoute"), plus their sheets. Redirects
+  and guards replace. A host that keeps windows' addresses gives the
+  last back as the router mounts.
 - **Where it starts**: a launch URL it takes (a link that came before
-  any handler: `OnOpenURL` gives it to the routers first, once the root
-  is built), else the window's address (`host.Locator`: the web's
-  address and history entry; a desktop window's last run), else the
-  last run's under `asuka dev` (`signal.KeepValue`, kept with the
-  signals), else `RouterProps.Initial`. URLs the app is opened with
-  later (its scheme's, universal and app links, notifications') go to
-  the first router that takes them, the main window's first:
-  `scheme://a/b` is `/a/b` (the host the first segment, as expo-router
-  reads it), an https link its path; the rest go to `OnOpenURL`.
+  any handler: `on openURL` gives it to the routers first, once the
+  root is built), else the window's address (the web's address and
+  history entry; a desktop window's last run), else
+  `Router(initial:)`. URLs the app is opened with later (its scheme's,
+  universal and app links, notifications') go to the first router that
+  takes them, the main window's first: `scheme://a/b` is `/a/b` (the
+  host the first segment, as expo-router reads it), an https link its
+  path; the rest go to `on openURL`.
 - **The web** keeps the address in the page's (history.js):
   `pushState`, `replaceState`, back to the latest entry with the href
   (none: replace, a deep link's screens popped one by one), each entry
@@ -366,7 +369,7 @@ disposed; a navigator closes its sheets as its owner goes.
   reload rebuild the screens. The user's back and forward send the
   entry to the core (`Location` event); while it handles it, its answer
   only rewrites the entry, and a back of one that a screen's or sheet's
-  `OnBack` takes answers `Forward`, which goes back to the entry the
+  `onBack` takes answers `Forward`, which goes back to the entry the
   user left. Routed stacks and sheets (`Routed`) go back through the
   history; the host's own back entry stands only for what the router
   doesn't route (an alert, a sheet of the app's). `<base href>` is the
@@ -377,123 +380,123 @@ disposed; a navigator closes its sheets as its owner goes.
   data directory, written a moment after it changes, off the main
   thread): a window comes back at its screens. Phones don't keep it
   across launches, as their native apps don't.
-- **Typed links**: Go has no compile step to check a string, so `asuka
-  vet`'s `routes` analyzer checks constant hrefs (of type `ui.Href`, a
-  `Redirect`, `HrefOf`'s pattern) against the app's routes (its
-  `ui.Route` literals, Children in place or in a variable), in the
-  package or through facts where the routes are, and `HrefOf`'s count of
-  values; it reports nothing when the routes can't all be known.
-  Generated route constructors were the alternative: they'd need a
-  generator run on every edit of a route and a name for each, for what
-  the analyzer already catches before the app runs.
+- **Typed links**: the compiler knows each routed screen's full pattern
+  from the one Router that routes it, so `navigate(Thread(id: 7))` and
+  `href: Thread(id: 7)` are checked as the app compiles (a screen two
+  Routers route, or none, is an error), and a constant string href is
+  checked against the routes.
 
 ### Style
 
-`ui.Style` is a plain struct (static), or a `ui.StyleFunc` that runs in
-an effect and sends only what changed.
+Every element takes the style props, which are keys like any other
+(lang/prelude/elements.go): a constant is set once, a value that reads
+state is a binding that sends only that prop as it changes. A `style
+name { … }` declaration is a set of them, inlined where it's used; a
+later prop of the same key wins.
 
 Layout props map to CSS flexbox with React Native's defaults (column
-direction, border-box): `Width`, `Height`, `Min*`, `Max*` (`ui.Pt`,
-`ui.Pct`, Auto), `Grow`, `Shrink` (0 means CSS's default 1; `NoShrink`),
-`Basis`, `Direction`, `Justify`, `Align`, `AlignSelf`, `Wrap`, `Gap`,
-`Padding`, `Margin`, `Absolute` with `Top`/`Right`/`Bottom`/`Left`,
-`AspectRatio`, and `Grid` (columns, rows, auto tracks, flow) with
-`GridColumn`/`GridRow` placement. `BorderWidth` insets the content, as
-the native border is drawn inside the view.
+direction, border-box): `width`, `height`, `minWidth`, `maxWidth`, ...
+(points, `pct(50)`, `.auto`), `grow`, `shrink`, `basis`, `direction`,
+`justify`, `align`, `alignSelf`, `wrap`, `gap`, `padding`, `margin`,
+`absolute` with `top`/`right`/`bottom`/`left`, `aspectRatio`, and `grid`
+(columns, rows, auto tracks, flow) with `gridColumn`/`gridRow`
+placement. `borderWidth` insets the content, as the native border is
+drawn inside the view.
 
 Visual props, applied where the native widget supports them and ignored
-elsewhere (documented per host): `Background`, `CornerRadius`, `Border`,
-`Shadow`, `Opacity`, `Hidden`, `Font` (size, weight, family), `Color`,
-`TextAlign`, `LineLimit`. Defaults are the platform's own; an app that
-sets nothing looks native.
+elsewhere (documented per host): `background`, `radius`, `border`,
+`shadow`, `opacity`, `hidden`, `font` (size, weight, family), `color`,
+`textAlign`, `lines`. Defaults are the platform's own; an app that sets
+nothing looks native.
 
-A style's values live in `ui` when they're layout's (`ui.AlignCenter`,
-`ui.JustifySpaceBetween`, `ui.TextCenter`: prefixed by their type) and
-in their own packages when they're open-ended sets: `colors` and
-`fonts`, so `ui` keeps its names for components and a color can't be
-read as a weight (`fonts.Black`, `colors.Red`).
+Colors and fonts can be semantic (`.label`, `.secondaryLabel`,
+`.accent`; `.body`, `.title`), resolved by the host (UIKit's semantic
+colors and text styles; Material 3's color roles and type scale), so
+dark mode and Dynamic Type / font scale need no app code. An enum's
+cases are written with a leading dot where the type is known, so a
+color can't be read as a weight.
 
-Colors and fonts can be semantic (`colors.Label`, `colors.SecondaryLabel`,
-`colors.Accent`, `fonts.Body`, `fonts.Title`), resolved by the host
-(UIKit's semantic colors and text styles; Material 3's color roles and
-type scale), so dark mode and Dynamic Type / font scale need no app
-code.
-
-`Font.Family` (`fonts.Custom("Inter-Bold", fonts.Title)`) takes a font file
-of the app's, by its name in `assets/fonts`; a family of them (`Inter`:
-`Inter-Regular`, `Inter-Bold`..., picked by `Weight`); a generic family
-(`serif`, `monospace`, `rounded`: on iOS the system font's designs); or
-a system family. It scales as its text style does. Under `asuka dev` the
-core sends a font file's URL instead, since the player hasn't the app's
-assets: the host loads it, then sends `FontLoaded`, and the core
-measures text again (its measure cache cleared).
+A font's family (`Font(family: "Inter", style: .title)`) takes a font
+file of the app's, by its name in `assets/fonts`; a family of them
+(`Inter`: `Inter-Regular`, `Inter-Bold`..., picked by the weight); a
+generic family (`serif`, `monospace`, `rounded`: on iOS the system
+font's designs); or a system family. It scales as its text style does.
+Under `asuka dev` the core sends a font file's URL instead, since the
+player hasn't the app's assets: the host loads it, then sends
+`FontLoaded`, and the core measures text again (its measure cache
+cleared).
 
 ### Native packages
 
 Platform code an app needs that Asuka doesn't wrap lives in **native
-packages** (package `native`, `internal/nativegen`, `asuka native`): a
-Go package declares a module, `//asuka:native` on an interface, or a
-view, `//asuka:view` on a `<View>Props` struct. Each platform
-implements it in its own language, in a project of that platform's own
-beside the Go:
+packages** (docs/native.md; `internal/nativegen`, `asuka native`): an
+Asuka package declares a module, a `native interface`, or a view, a
+`native component`. Each platform implements it in its own language, in
+a project of that platform's own beside the Asuka:
 
 - `Package.swift` (sources in `swift/`) for iOS and macOS;
 - a Gradle library module in `android/`;
 - `web/<pkg>.js`;
-- Go for Windows and Linux.
+- Go for Windows and Linux (`desktop/`).
 
 The generator writes the typed glue on every side:
 
-- Go: `<pkg>_native.go`, with `NewT`, a client per interface, the view's
-  constructor, and `implementT` for Go implementations.
 - Swift: protocols, structs and enums, a provider class
   `@objc(AsukaModule_<path>)`.
-- Kotlin: interfaces, data classes, `object AsukaModule`, in the package
-  `KotlinPackage(path)`.
+- Kotlin: interfaces, data classes, `object AsukaModule`, in the
+  package `KotlinPackage(path)`.
 - JavaScript: frozen enums and a provider registered by import path.
+- Go: `<pkg>_native.go`, a server per interface for Go implementations.
 
-The platform side writes only `makeT` functions. The types are the
-scalars, strings, bytes, times and durations, slices, `map[string]T`,
-`*T`, the package's structs and string or integer enums, native
-interfaces (as parameters or results), and funcs (notifications, run on
-the main thread with `ui.Post`; questions, run synchronously).
+The platform side writes only `makeT` functions. The compiler lowers a
+`native interface`'s construction and methods to `native.new`,
+`native.call` and `native.start` (lang/LOWERING.md), and a package's
+`native fn`s to builtins the core implements. The types are the
+scalars, strings, bytes, times and durations, arrays, maps of strings,
+optionals, the package's structs and enums, native interfaces (as
+parameters or results), and functions (notifications, run on the main
+thread; questions, run synchronously).
 
 Values cross as one buffer each way, in a fixed little-endian layout
-(`native.Writer`/`Reader`, pooled), with no reflection or JSON:
+(core/src/native; `native.Writer`/`Reader` in Go), with no reflection
+or JSON:
 
 - the arguments in declaration order;
 - the answer's status byte: ok, a declared error by index, a platform
   error (domain, code, message), unsupported, or canceled.
 
-A call runs synchronously on the calling goroutine's thread, through the
-host's transport (`native.Backend`):
+A call goes through the host's callbacks in `asuka_host_callbacks`
+(`native_new`, `native_call`, `native_start`, `native_cancel`,
+`native_release`):
 
-- iOS: C function pointers in `asuka_host_callbacks`;
+- iOS: the Swift host's C function pointers;
 - Android: JNI into `dev.asuka.AsukaModules`;
-- macOS: the Swift library's `@_cdecl` functions through purego;
+- macOS: the Swift library's `@_cdecl` functions, reached by host/bridge
+  through purego;
+- Windows and Linux: Go servers in the host's process (package
+  `native`);
 - the web: the JavaScript host.
 
-`//asuka:mainthread` hops to the platform's main thread. A first
-`context.Context` makes a method asynchronous (Swift `async`, Kotlin
-`suspend`, JavaScript with an `AbortSignal`): Go's `CallContext` blocks
-on a channel that `native.Done` answers, and cancels the platform's task
-when the context is done. Objects are handles. Go releases them with
-`runtime.AddCleanup` or `io.Closer`'s `Close`, and the platform's last
+A method marked `async` is a task: `native_start` begins it (Swift
+`async`, Kotlin `suspend`, JavaScript with an `AbortSignal`), the
+platform answers with `asuka_native_done`, and cancelling the task (its
+owner going) calls `native_cancel`. Objects are handles; the core
+releases one as its last reference goes, and the platform's last
 reference goes on its main thread.
 
-A view is `ui.Native` of the kind `native.ViewKind` names (the module's
-Swift class or Kotlin class or import path, `#`, the view), each prop
-its encoded bytes (the wire's bytes value). Accessor props are effects
-owned by the node. Each host finds a `#` kind through the module's
-provider, `makeView`, and, on the desktop, first in package `native`'s
-registry, where `implementT` puts a Go view.
+A `native component` is a `Native` view of the kind its package names
+(the module's Swift class or Kotlin class or import path, `#`, the
+view), each prop its encoded bytes (the wire's bytes value), each a
+binding like any prop. Each host finds a `#` kind through the module's
+provider, `makeView`, and, on the desktop, in package `native`'s
+registry, where a Go view registers.
 
-`ui.Native` is the mechanism under it: a node whose `Type` prop, sent
-right after `Create`, picks the factory, with props of bools, ints,
-floats, strings and bytes, and events back by name. The hosts' own
-native views (`asuka.camera`, `asuka.map`) use it directly.
+`Native` is the mechanism under it: a node whose `Type` prop, sent right
+after `Create`, picks the factory, with props of bools, ints, floats,
+strings and bytes, and events back by name. The hosts' own native views
+(`asuka.camera`, `asuka.map`) use it directly.
 
-The CLI generates the app's own module's native packages before each
+The CLI generates the app's own native packages' glue before each
 build (others must ship current generated code, which is checked by
 hash). It builds:
 
@@ -505,16 +508,19 @@ hash). It builds:
 - Android: each module included as `:native-<pkg>` (`-PasukaNativeModules`),
   given the SDK levels and `:asuka`;
 - the web: each `web/` shipped at `packages/<pkg>/`, imported before the
-  app starts.
+  app starts;
+- Windows and Linux: a host executable of the app's own with its
+  packages' Go linked in (cmd/asuka-host, `HostOptions.Natives`).
 
-A package's `Info.plist`, `iOS.entitlements` and `macOS.entitlements`
-merge into the app's: usage strings defer to asuka.toml, arrays join,
-and other keys are set if absent. Android's manifest merger takes the
+A package's `asuka.toml` (usage strings, background modes, permissions),
+`Info.plist`, `iOS.entitlements` and `macOS.entitlements` merge into the
+app's: usage strings defer to the app's asuka.toml, arrays join, and
+other keys are set if absent. Android's manifest merger takes the
 module's `AndroidManifest.xml`.
 
 ### Images, gestures, animation
 
-- `ui.Image` takes an http(s) URL or a path in the app's `assets/`
+- `Image` takes an http(s) URL or a path in the app's `assets/`
   (copied into the iOS bundle; pushed beside the library on Android).
   The host fetches, decodes (Android subsamples to the screen) and
   prepares it off the main thread, caches it in memory, and reports
@@ -523,7 +529,7 @@ module's `AndroidManifest.xml`.
   it has, the other side from the aspect ratio; a style's `AspectRatio`
   overrides the image's, so a box keeps its size before and after
   loading. A BlurHash or ThumbHash placeholder is decoded by the core
-  (`internal/imagehash`, cached) and sent as pixels (`PlaceholderImage`);
+  (core/src/ui/imagehash.c, cached) and sent as pixels (`PlaceholderImage`);
   the host shows it, in its own mode, until the image arrives and fades
   in over it (`Transition`). An animated image plays: ImageIO's player on
   Apple platforms, `AnimatedImageDrawable` on Android, the browser's (or
@@ -531,14 +537,14 @@ module's `AndroidManifest.xml`.
   (`internal/animimage`). The host reports `Animated` after `Loaded`, and
   only then does the core follow Reduce Motion for it (`Paused`), so a
   still image costs no effect.
-- Gestures are `View` props (`OnPan`, `OnPinch`, `OnSwipe`) with the
+- Gestures are `View` events (`on pan`, `on pinch`, `on swipe`) with the
   platform's recognizers on iOS (pan and pinch recognize together) and a
   touch listener on Android that claims the touch once it moves past the
   touch slop: it cancels the view's press and stops the parent
   intercepting. Android's `ScaleGestureDetector` isn't used: it ignores
   pinches narrower than about 27mm.
-- `ui.Animate(f)` (or `AnimateWith` a duration and curve) brackets the
-  next flush's two batches with `AnimateBegin`/`AnimateEnd`; the host
+- `animate { … }` (or `animate(Animation(duration:, curve:)) { … }`)
+  brackets the next flush's two batches with `AnimateBegin`/`AnimateEnd`; the host
   changes frames, opacity, background and corner radius inside UIView
   animations, and with animators on Android (a frame animates by
   interpolating the layout bounds; views that weren't on screen don't
@@ -548,37 +554,32 @@ module's `AndroidManifest.xml`.
 
 A view's interaction states (pressed, hovered, dragged, a drag over a
 drop target) are reported by the host as events, and the core turns
-them into what styles read (`ui/interaction.go`). There are three
+them into what styles read (core/src/ui/interaction.c). There are three
 layers, each built on the one below:
 
-- **Variants**, for the view's own style: `Style.Pressed`, `Hovered`,
-  `Dragging` and `DragOver` (`*Style`). They are CSS's `:active` and
-  `:hover`, and Tailwind's `active:` and `hover:`. While the view is in
-  a state, its variant is laid over the style. Merging rules:
-  - A variant replaces only the fields it sets (non-zero).
-  - `Font` is merged field by field.
-  - Variants apply in the order Hovered, Pressed, Dragging, DragOver.
-  - A View whose style (or `StyleFunc`) has variants wraps it in an
-    effect that applies them. A flattened container whose
-    `StyleFunc` comes to have variants gets a view of its own.
-  - Other components ignore variants.
-- **`Interaction`** (`ViewProps.Interaction`), the view's states as
-  values. Compose has `InteractionSource` and Flutter has
+- **Variants**, for the view's own style: `hovered { … }`, `pressed {
+  … }`, `dragging { … }` and `dragOver { … }` in a container's block.
+  They are CSS's `:active` and `:hover`, and Tailwind's `active:` and
+  `hover:`. While the view is in a state, its variant is laid over the
+  style:
+  - A variant sets only the props it names (a `font`'s fields one by
+    one), and its values are bindings like any prop's.
+  - Variants apply in the order hovered, pressed, dragging, dragOver.
+  - A container with variants always makes a view of its own (it isn't
+    flattened).
+  - Other elements take no variants (the checker says so).
+- **States as values**: `View as card { … }` (or `ref: card`) names the
+  view, and `card.hovered`, `card.pressed`, `card.dragging` and
+  `card.dragOver` are tracked bools (`ui.state`) any binding reads: a
+  child's style (a group's hover), a sibling's (a peer's), a `Text`, an
+  `if`. Compose has `InteractionSource` and Flutter
   `WidgetStatesController` for the same thing.
-  - `it.Pressed()`, `Hovered()`, `Dragging()` and `DragOver()` read
-    signals.
-  - Other views follow the state with `Style.When(it.Hovered, ...)` and
-    `Unless`, and anything else can read it in a `StyleFunc`, a `Text`
-    or a `Show`. That covers Tailwind's group-hover and peer-hover.
-  - Variants use the view's `Interaction` (or one of its own made for
-    them).
-  - Given to several views, a state is true while any of them is in it.
-    Each view's changes are counted, and a disposed view is taken out.
-- **Handlers**, for side effects: `OnPressedChange`, `OnHoverChange`,
-  a `DropTarget`'s `OnOverChange` and a `DragSource`'s `OnPhase`.
+- **Handlers**, for side effects: `on pressedChange(p)`, `on
+  hoverChange(h)`, a drop target's `on dropOver` and a drag source's `on
+  dragPhase`.
 
-A view listens for a state only from when something first reads it,
-whether a variant or a read of its `Interaction`.
+A view listens for a state only from when something first asks for it:
+a variant, a read of its state, a handler.
 
 - A host may get the `Listen` long after `Create`, and every host
   handles that.
@@ -587,15 +588,11 @@ whether a variant or a read of its `Interaction`.
 - This is exact, not an approximation: a read that never happened can't
   have changed any output.
 
-`When` takes any `func() bool`, so styles follow ordinary signals the
-same way. Because a zero field means unset, a state can't clear a field.
-`Unless` sets the field in the other state instead.
-
-`ViewProps.Drag` (a `DragSource`) and `Drop` (a `DropTarget`) set up drag
-and drop. The core reports each state change once, and keeps the states
+A view's `drag` items make it a drag source and its `dropAccept` a drop
+target. The core reports each state change once, and keeps the states
 last reported. A view disposed while in a state reports leaving it, to
-its handlers and its `Interaction`, so what follows it elsewhere doesn't
-stay stuck.
+its handlers and its readers, so what follows it elsewhere doesn't stay
+stuck.
 
 The wire (ops/schema.go): events `Pressed` and `Hover` (bool),
 `DragOver` (a gesture payload: Began, Changed, Cancelled, and X, Y),
@@ -603,7 +600,7 @@ The wire (ops/schema.go): events `Pressed` and `Hover` (bool),
 `DragPhase`); `View` props `DropAccept` (MIME patterns) and `DragItems`
 (the items, each with its kind, text, path, name, MIME type and whether
 it carries an app's value). `ops/item.go` has the codecs and
-`ops.MatchMIME`, which the Go hosts share. What every host does:
+`ops.MatchMIME`, which the desktop hosts share (the core's are in C). What every host does:
 
 - **Pressed** (a `View` listening for `Pressed`). True as the primary
   pointer goes down on the view (a touch, the mouse's primary button);
@@ -689,32 +686,32 @@ it carries an app's value). `ops/item.go` has the codecs and
 
 A hardware keyboard's keys, on a desktop, an iPad, a Chromebook, a
 phone with one, and in a browser: what a view does with them while the
-keyboard's focus is in it (`ViewProps.Keys`, `TextFieldProps.Keys`, a
-`KeyMap` of `Shortcut` to func), and what the window does
-(`UseKeys`).
+keyboard's focus is in it (its `keys` prop, a `[Shortcut]`, each with
+its key, modifiers and what it runs; core/src/ui/keys.c), and what the
+window does (`useKeys([…])` in a component's body).
 
 - Declared, not asked: a view's keys are a prop (`Keys`: each key's
   name, a lower case character or a named key, and its modifiers, as the
   menu bar's), and the host routes a key going down (and each repeat) on
   its own: from the focused view out through its ancestors, the nearest
   with the key takes it, and the host sends `Key` with its index. So no
-  host waits on Go to know whether a key is taken (the platforms want to
-  know as the key goes down: a text field's caret, the menus' key
-  equivalents), and it works the same with the app's Go elsewhere
-  (`asuka dev` on a phone).
+  host waits on the app to know whether a key is taken (the platforms
+  want to know as the key goes down: a text field's caret, the menus'
+  key equivalents).
 - The nearest first, as the responder chains go (AppKit's, UIKit's,
-  the DOM's bubbling): a field's own Keys, then the views around it, then
-  the window's (`UseKeys`: the root's, or a Window node's, Keys prop).
+  the DOM's bubbling): a field's own keys, then the views around it,
+  then the window's (`useKeys`: the root's, or a Window node's, keys
+  prop).
   A key goes out from the focused node through its parents in the
   core's tree. A node the core leaves without a parent, but which shows
   inside another, goes on where it shows: a List's row (a cell the host
   made and bound) to its List; a Sheet's node to the window it's
   declared in (its `Window` prop: the root's or a Window node's ID, the
-  window it's presented on, as `UseKeys` in it are that window's), a
+  window it's presented on, as `useKeys` in it are that window's), a
   Popover's to the root of what its anchor is in (a window's root, or a
   sheet's node, for a popover in a sheet), so its way ends at that
-  window's root and its `UseKeys`; on a phone (one window), the root. A Window node is an end: its window's own keys (its
-  `UseKeys`), never the main window's; the root is one too. With
+  window's root and its `useKeys`; on a phone (one window), the root. A Window node is an end: its window's own keys (its
+  `useKeys`), never the main window's; the root is one too. With
   nothing focused, a key starts at the root of the window that has the
   keyboard: the root, a Window node, or a sheet's or a popover's node
   (then out, as above). A key a view takes doesn't reach the focused
@@ -724,7 +721,7 @@ keyboard's focus is in it (`ViewProps.Keys`, `TextFieldProps.Keys`, a
   case: Shift is a modifier like the others), and exactly the declared
   modifiers. Never while an input method composes text (marked text):
   its keys are its own.
-- `UseKeys`' maps are merged per window, the last one called first for a
+- `useKeys`' lists are merged per window, the last one called first for a
   key; each goes with its component's owner, and a view's with the view.
 - Hosts: macOS, a local event monitor for key down: the first
   responder's view (a field's field editor: its field), its Asuka node
@@ -757,23 +754,26 @@ keyboard's focus is in it (`ViewProps.Keys`, `TextFieldProps.Keys`, a
 
 ### Accessibility
 
-Native widgets bring their own. `View` takes `Label`, `Hint`, `Role`
-(button, header, image, …) and `Decorative` (hidden from screen readers
-with what's in it), which hosts map to UIKit's accessibility properties
-and Android's `AccessibilityNodeInfo` (through `ViewCompat`). Layout-only
-views (below) never appear in the accessibility tree.
+Native widgets bring their own. Every element takes `label`, `hint`,
+`role` (button, header, image, …) and `a11yHidden` (hidden from screen
+readers with what's in it), which hosts map to UIKit's accessibility
+properties and Android's `AccessibilityNodeInfo` (through
+`ViewCompat`). Layout-only views (below) never appear in the
+accessibility tree.
 
 - A pressable `View` is one element, a button, read as its contents'
   labels joined (VoiceOver; TalkBack merges a clickable view's text
   itself).
-- `TextField` and `Toggle` (switch or checkbox) take a `Label` accessor,
-  carried by the common `A11yLabel` prop. The name follows its accessor
+- `TextField` and `Toggle` (switch or checkbox) take a `label` that
+  follows the app's language, carried by the common `A11yLabel` prop,
   without replacing the control's value or native editing and toggling.
-- `ui.Announce` has the screen reader say what changed where focus
-  isn't (a toast, a count of results).
+- `announce(text)` has the screen reader say what changed where focus
+  isn't (a toast, a count of results); `a11yFocus(ref)` moves it to a
+  view; a view's `actions` are what a screen reader offers to do with
+  it.
 - A List row's swipe actions are its accessibility actions on Android
   (UIKit's list offers its contextual actions to VoiceOver itself).
-- `Environment.ReduceMotion` is iOS's Reduce Motion, or Android's
+- `environment().reduceMotion` is iOS's Reduce Motion, or Android's
   animations turned off; on iOS, `Transition`s then dissolve instead of
   moving, as UIKit's do (Android's animator scale already makes every
   animation instant).
@@ -785,13 +785,14 @@ Writes mark effects dirty; the scheduler flushes once:
 
 - at the end of each event dispatched from the host (synchronously, so
   the host shows the result in the same run loop turn);
-- after `ui.Post` callbacks;
+- after work posted to the main thread (`ak_post`: a task's
+  continuation, a timer, a native call's answer);
 - never on a timer.
 
 A flush:
 
-1. Runs dirty effects. Prop effects append `SetProp` ops; `Show`/`For`
-   append create, insert, remove and destroy ops.
+1. Runs dirty effects. Prop bindings append `SetProp` ops; `if`, `for`
+   and `match` append create, insert, remove and destroy ops.
 2. `Apply` the batch: native views now exist with their props.
 3. Lays out dirty subtrees (`layout`), calling `Measure` for leaves whose
    props or constraints changed (cached per node and constraints).
@@ -810,15 +811,15 @@ during layout) wait in the host until `Apply` returns.
 `Column` with no visual props, no events and no accessibility props makes
 no native view. Its children are placed in the nearest real ancestor,
 offset by its frame. Events and accessibility props are fixed at
-creation; a `StyleFunc` that gains visual props makes its container real
+creation; a binding that gains visual props makes its container real
 and the flush moves its children into the new view (it then stays real).
-`Show`, `For` and `Dynamic` are fragments: no box and no view, their
+`if`, `for` and `match` are fragments: no box and no view, their
 children splice into the parent's layout and native children.
 
 ## layout
 
-Our own engine implementing CSS **block**, **flexbox** and **grid**
-layout (in the spirit of Taffy, not a port of it or of Yoga), in points
+Our own engine (core/src/layout) implementing CSS **block**, **flexbox**
+and **grid** layout (in the spirit of Taffy, not a port of it or of Yoga), in points
 (iOS points, Android dp; hosts convert to pixels).
 
 - **Model.** A node is computed with known sizes (NaN when free), a
@@ -845,21 +846,25 @@ layout (in the spirit of Taffy, not a port of it or of Yoga), in points
   the way up; nodes whose size is forced by tight inputs are never
   measured. A layout reports the nodes whose frame changed, so the flush
   sends only those `SetFrame`s.
-- **Shared measure cache.** `ui` keeps one per root (two generations
+- **Shared measure cache.** The UI runtime keeps one per root
+  (core/src/ui/measure.c) (two generations
   of up to 1024 entries), keyed by content: the kind, the text or
   title, the font, the line limit, the variant, the font scale and the
   constraints. Nodes showing the same thing (recycled list rows,
   repeated labels) ask the host once.
 - **Performance.** All scratch memory (flex items and lines, grid
-  tracks and items, block items) lives in a reusable `layout.Pass`:
-  steady-state layout allocates nothing. Frames are snapped to the
-  pixel grid by `ui` when it sends them: edges round to the nearest
+  tracks and items, block items) lives in a reusable `ak_lpass`:
+  steady-state layout allocates nothing (counted by the tests). Frames
+  are snapped to the pixel grid by the UI runtime when it sends them: edges round to the nearest
   pixel, except that a measured leaf's size rounds up (rounding both
   edges can take a pixel off a label, and a label a pixel narrower
   wraps), as Yoga does for text.
 - **Correctness** is defined by Chrome: `layout/testdata/css` holds
   Taffy's Chrome-generated fixtures (block, flex, grid; border-box,
-  either direction), run as table tests, with what they don't cover in
+  either direction), converted for the C engine
+  (`core/test/testdata/layout_fixtures.txt`, `go run
+  layout/testdata/gen_c_fixtures.go`) and run by `go test ./core -run
+  Layout`, with what they don't cover in
   `rtl_chrome.xml` and `ltr_chrome.xml`, each rendered by Chrome; `known_failures.txt` lists the ones
   that don't match yet (mostly the unsupported features above).
 
@@ -912,8 +917,8 @@ cellID)`, `ListUnbind(id, cellID)`.
 
 ### Lists
 
-`ui.List(items, key, row)` has `For`'s signature, backed by
-UICollectionView and RecyclerView. Because the core is on the main
+A `for … key` directly in a `List` is virtualized (`ak_ui_lazy_for`,
+core/src/ui/list.c), backed by UICollectionView and RecyclerView. Because the core is on the main
 thread, the data source calls straight in:
 
 - `ListBind` with a cell the host made: the core makes the row's owner
@@ -922,7 +927,7 @@ thread, the data source calls straight in:
   flushes, and returns. Recycling a cell costs the props that differ.
 - Row heights come from the core's layout of the row at the list's
   width (self-sizing cells measure through `ListBind`'s flush).
-- `ListProps.Appearance: ui.ListInsetGrouped` is each platform's grouped
+- `List { appearance: .insetGrouped }` is each platform's grouped
   list: UIKit's inset grouped list; Material 3 Expressive's segmented
   list on Android (each row its own container, 2dp apart, the group's
   ends rounded, on the surface container); a System Settings group on
@@ -934,14 +939,14 @@ thread, the data source calls straight in:
   own margins, so what's measured is what's shown.
 - Changes to `items` send `Command(list, listUpdate, item IDs)`: a
   stable int64 per key, in order. iOS applies them as an
-  `NSDiffableDataSourceSnapshot` (once the call into Go has returned, so
+  `NSDiffableDataSourceSnapshot` (once the call into the core has returned, so
   binding never re-enters a flush); Android diffs them with `DiffUtil`
   (likewise after the call returns) and dispatches item ranges and moves
   to the RecyclerView adapter. Bound rows whose item changed are updated
   in place by the core.
 - Cells are views the host makes; their IDs have the high bit set. A
   cell's `SetFrame` carries the row's height.
-- Sections (`ListProps.Section`) follow the item IDs in the same
+- Sections (a `Section` in the `List`) follow the item IDs in the same
   `ListUpdate`: each section's first item and an ID of its own (stable
   while its key lasts, as an item's). A section's header is a cell too,
   bound with `ListBind`'s index `-1 - section`, so no new entry point
@@ -951,14 +956,14 @@ thread, the data source calls straight in:
   `UIScrollEdgeElementContainerInteraction`, whose region takes
   touches); on Android, which has no sticky headers, a cell of its own
   over the RecyclerView, in a frame that is the list's view.
-- The anchor (`AnchorBottom`, a chat's) and keeping what's on screen in
+- The anchor (`anchor: .bottom`, a chat's) and keeping what's on screen in
   place as rows are added above are the host's, which knows where rows
   are: iOS remembers the first visible row and its offset before a
   snapshot applies and puts it back after, and pins the end in
   `layoutSubviews` while the user hasn't scrolled off it; Android's
   `LinearLayoutManager` keeps its anchor row itself (`stackFromEnd` for
   the bottom); the desktop hosts, which tile their own rows, keep the
-  row at the top as rows bind and change height. `OnStartReached` is the
+  row at the top as rows bind and change height. `on startReached` is the
   core's, from the rows it's asked to bind.
 - Selecting rows: the core sends `Selecting` and each cell's `Selected`;
   the host shows its control, reports the user's choices
@@ -967,27 +972,28 @@ thread, the data source calls straight in:
 
 ### Text input
 
-`ui.TextField(ui.TextFieldProps{Value: text})` where `text` is a
-`*signal.Signal[string]`. The widget owns its text. Its edits write the
-signal; the core remembers the last value the native side reported and
-sends `SetProp` only when the signal differs from it, so typing never
+`TextField { bind text: query }`, where `query` is state. The widget
+owns its text. Its edits write the state; the core remembers the last
+value the native side reported and sends `SetProp` only when the state
+differs from it, so typing never
 round-trips and IME composition is never disturbed. Props for the
 keyboard: type (text, number, email, URL, phone), return key, secure
 entry, autocapitalization, autocorrection, content type (for AutoFill).
 
-The selection (`TextFieldProps.Selection`) is kept the same way: the
-host reports its moves (`SelectionChanged`, after the text change that
-caused them) and the core sends one only when the signal differs from
+The selection (`bind selection:`) is kept the same way: the host
+reports its moves (`SelectionChanged`, after the text change that
+caused them) and the core sends one only when the state differs from
 what was reported. The wire counts UTF-16 units, as UIKit and Android
-do; the core converts to byte offsets of the Go string. `InsertText`
+do; the core converts to byte offsets of the UTF-8 string. A ref's
+`insert(text)`
 replaces the selection through the platform's own text input (UITextInput's
 `insertText`, `Editable.replace`, the field editor's `insertText:`,
 `EM_REPLACESEL`), so it's undoable and reported as typing. Content of
-`PasteTypes` that's pasted, put in by a keyboard or dropped goes to the
+`pasteTypes` that's pasted, put in by a keyboard or dropped goes to the
 app as files (`Pasted`, its items as `Shared`'s) instead of into the
 text.
 
-A Rich field's styled text (`TextFieldProps.Rich`) goes to the host in
+A rich field's styled text (`bind rich: spans`) goes to the host in
 RichText's Content encoding and comes back in the same, canonically
 (styles in the order runs first use them, runs of one style merged), so
 the core tells the user's edit from what it sent, as with Value. Each
@@ -1016,24 +1022,23 @@ The desktop hosts keep their bezels' own padding inside the inset.
 
 ### Lifecycle and state
 
-`app.OnLifecycle(func(app.State))` reports foreground and background.
-On Android the Go core and the views live in the process, not the
+`on lifecycle(state)` in the app's block reports foreground and
+background. On Android the core and the views live in the process, not the
 Activity: views are made with the app's Material theme
 (`ContextThemeWrapper` over the application). The Activity handles
 rotation, size, dark mode, font scale and density itself
 (`configChanges`); any other configuration change remakes it, and the
 new Activity takes over the existing tree: `asuka_attach` resends the
-root (`ui.Reattach`) and every frame, with no app state lost. Android
+root and every frame, with no app state lost. Android
 views resolve theme colors and text sizes when they're made, so after a
 dark mode, font scale or density change the host makes its text and
 Material views again, replaying the props it was sent and keeping the
 user's state (text, selection, checked, value). There's one Activity
 (`singleTask`), and whichever instance comes to the front takes the
-views. Process death loses state, as in any native app; saving state to
-the device for that is later, under a name that says storage (say
-`signal.Saved(key, initial)` over `UserDefaults` / `SharedPreferences`),
-not to be confused with keeping state across `asuka dev` reloads (below),
-which needs no code.
+views. Process death loses state, as in any native app; what must outlive
+it is stored (`asuka/storage`'s `Value<T>(key, default)` over
+`UserDefaults` / `SharedPreferences`), not to be confused with keeping
+state across `asuka dev` reloads (below), which needs no code.
 
 The core can also start without a screen: when the system runs a
 background task (`asuka/sdk/periodic`: BGTaskScheduler, WorkManager) with the
@@ -1250,12 +1255,15 @@ asuka build --platform web <dir>             a static site: WebAssembly, the web
 asuka dev|build <dir>                       no --platform: this computer's, on macOS (mac) and Windows (windows)
 asuka generate <dir>                        the typed functions of the app's catalogs
 asuka i18n init|add|check                   start, add languages to, and check the catalogs
-asuka vet [packages]                        what builds but runs wrong: a signal read once, written off the main thread
+asuka check|fmt|test|run [paths]            the compiler's errors; formatting; test blocks on the fake host; one file
+asuka add|remove|install                     packages from the npm registry (asuka.lock)
+asuka native new|add|generate|check          native packages and their glue
+asuka lsp                                    the language server, on stdio
 asuka publish --platform mac|windows|linux   the desktop build, its signed update (dist/updates), uploaded: a GitHub release, S3
 asuka update keygen                         the Ed25519 key pair that signs desktop updates
 ```
 
-**An app's metadata** is `asuka.toml` beside its Go code (TOML 1.0, read
+**An app's metadata** is `asuka.toml` beside its Asuka code (TOML 1.0, read
 by `internal/toml`), all optional:
 name, ID (bundle ID and application ID), version and build number, a
 1024×1024 icon, orientations (the phone's: an iPad or a large Android
@@ -1267,24 +1275,24 @@ its line and column.
 
 **The accent color** (`accent = "#7c3aed"`) is the one color an app's
 brand sets on native controls; the controls are the platform's, so
-Asuka has no theme of its own over them (`Style` changes one view). It
-travels with the Go code, not the shell: the CLI builds it in
-(`-ldflags -X`, `internal/boot`), and each root, as it mounts, sends
-the `Accent` command before any view is made. That way the dev player,
-which runs any app, takes each one's, and drops it between apps. On iOS
-it's the windows' tint color, which UIKit's controls and `colors.Accent`
-take. On Android it's the seed of a Material 3 color scheme
+Asuka has no theme of its own over them (a style changes one view). It
+travels with the app's code, not the shell: the compiler builds it into
+the module's init, and each root, as it mounts, sends the `Accent`
+command before any view is made. That way the dev player, which runs
+any app, takes each one's, and drops it between apps. On iOS it's the
+windows' tint color, which UIKit's controls and `.accent` take. On Android it's the seed of a Material 3 color scheme
 (`SchemeContent`, light and dark, as Material's `DynamicColors` makes
 it) on Android 12 and later; before that, Material's baseline colors,
-with Asuka's own uses of the accent (links, `colors.Accent`) taking the color
+with Asuka's own uses of the accent (links, `.accent`) taking the color
 itself. `android.dynamicColor = true` takes the wallpaper's colors
 instead, where the system has them. The theme context is made again
 and the views that resolved theme colors are rebuilt, as on a dark mode
 change.
 
 **`asuka build --platform ios`** makes an `.ipa`, still without an Xcode project:
-the host compiled optimized (no debug automation), the Go archive for
-`arm64` devices, linked with dead stripping; an Info.plist with the
+the host compiled optimized (no debug automation), the core with the
+app compiled to C (lang/cgen) for `arm64` devices, linked with dead
+stripping; an Info.plist with the
 keys App Store validation checks (`DT*` from the SDK and Xcode,
 `ITSAppUsesNonExemptEncryption`); the icon as an asset catalog compiled
 by `actool`; then signing as Xcode would: the installed provisioning
@@ -1297,7 +1305,8 @@ for the simulator.
 
 **`asuka build --platform android`** makes an `.aab` for Google Play (no
 `.apk`: Play makes each device's from it, with only that device's ABI):
-the Go code as a stripped `.so` for arm64-v8a, armeabi-v7a and x86_64,
+the core with the app compiled to C as a stripped `libasuka.so` for
+arm64-v8a, armeabi-v7a and x86_64,
 the assets, launcher icons (legacy per density, and adaptive: the icon
 inside the safe zone over its corner color), the permissions, the
 version; Kotlin shrunk by R8 (the classes JNI and reflection reach are
@@ -1308,7 +1317,7 @@ builds do in development; cleartext HTTP (the player's assets) is
 debug-only, as is iOS's local networking exception.
 
 **`asuka publish --platform ios`** and **`--platform android`** make the release build and
-upload it, through the stores' APIs from Go (no altool, no Gradle
+upload it, through the stores' APIs from the CLI (no altool, no Gradle
 plugin), so a release is one command, in CI too. Everything the store
 can refuse is asked first, before the build: the app (App Store Connect
 by bundle ID; Play by package, in an edit opened to look and deleted),
@@ -1333,113 +1342,43 @@ Console, committed unsent. Requests are retried when rate limited
 (`Retry-After`) and, where safe to repeat, when the server or the
 network fails.
 
-**`asuka dev` runs the app's Go code on the Mac, and its views in a
-player** (`internal/remote`): the platform host with a small Go library
-(`mobile/player`) in place of an app, built and installed once and
-shared by every app. A change rebuilds the Go code for the Mac and
-restarts that process, under a second; the player reconnects and shows
-the new code, with no install. The app's logs are the process's output.
+**`asuka dev` runs the app in a player**: the platform's host with the
+core and no app in it (the simulator's, an emulator's or a phone's
+shell app, a desktop host, a page), built with the app's ID, name, icon
+and native packages, and built and installed again only when those
+change. The CLI compiles the app to bytecode and sends it to the
+players that connect (internal/devserver, core/src/abi/dev.h: framed
+modules one way; hello, logs, how each reload went and errors the
+other); on each save it compiles again, in milliseconds, and sends the
+new module, which each player loads in place:
 
-- **Noticing a change**: the system says when a file under the app's
-  module changes (`asuka/sdk/watch`: FSEvents, inotify,
-  ReadDirectoryChangesW; 25 ms for a burst to end), and a scan of the
-  files' modification times decides whether it needs a build; where the
-  system can't watch (too many files, no way to), `asuka dev` polls.
-  Development builds leave out DWARF (`-ldflags=-w`), much of the
-  linker's time; tracebacks and `runtime.Callers` use the symbol table.
-- **The next run starts behind the last** (`internal/devstate`'s
-  `Wait`): `asuka dev` starts the new build while the old one runs, and
-  it waits on a control connection (`ASUKA_CONTROL`: it connects, sends
-  its process ID, and waits for a byte), before it makes a window,
-  listens or reads its kept state. Once it waits, the old run is stopped
-  (its connection closed: it saves its state and exits), and the new one
-  is let go on and takes the state back. So its start (the runtime, its
-  packages' `init`, the frameworks loaded, and on macOS the system's
-  check of a program it hasn't seen run, a few hundred milliseconds
-  unless the terminal is a developer tool) happens behind the old one;
-  a build that quits as it starts leaves the old one running. A run that
-  takes over 10 s to wait doesn't hold the old one longer; one run
-  elsewhere (`ASUKA_LINUX_RUN`) is stopped and started in turn.
-- **The player's port outlives the runs**: `asuka dev` listens, and each
-  run takes the listener (and the assets' one) as an inherited
-  descriptor (`ASUKA_REMOTE_FD`, `ASUKA_ASSETS_FD`), so the player,
-  reconnecting as its connection ends, waits in the queue for the next
-  run instead of being refused and trying again.
-
-- **Only in that process**: `asuka dev` links `app/remote` into it (an
-  `-overlay` file in the app's main package), and with it the socket
-  and the assets' HTTP server. An app's own builds (on the device, for
-  release, on a desktop) carry none of that code, which is half of a
-  small app's binary. The desktop hosts keep state across reloads with
-  `internal/devstate`, which needs no network.
-
-- **The protocol** is the host interface over a socket, synchronous both
-  ways, with calls nesting as they do in process: while a side waits
-  for its reply it serves the other's requests (a list binding cells in
-  the middle of a batch, a measure during layout). The core takes no
-  events while it waits for a player (hosts never send them in the
-  middle of an `Apply`); one that arrives meanwhile is served when the
-  call returns. Both ends are Go, so the protocol is tested in Go, with
-  the fake host as the player. A call that gets no reply in 10s gives
-  up rather than hang a main thread.
-- **A stuck player is reported**: a session whose player connected 10s
-  ago and hasn't had the app mounted (it never sent its environment)
-  makes the core ask it for its goroutines' stacks (`mStacks`), which
-  the player answers on its connection's reader, not its main thread,
-  which is likely what's stuck. The run says so, with what to do
-  (relaunch the player, `--no-hot`), and writes the stacks beside the
-  kept state. The GUI tests (`e2e`, `-run Player`) install the player,
-  reload after an edit and relaunch it against the running code, and
-  fail on that report.
-- **Several players at once**: each connection is a session with its
-  own root, multiplexed on the core's one loop (the app on an iPhone
-  and an Android phone together). A reconnecting player clears the last
-  session's views first.
 - **State survives a reload** without code, as React's Fast Refresh
-  keeps hooks' state: the process saves every app signal's value as it
-  stops, and the next run gives it back to the signal made at the same
-  place: the same call path (function names), name, type and position
-  among the live signals of that name and type there. A signal made by
-  Asuka itself isn't kept, nor a value JSON would change (funcs,
-  unexported fields). Changing a signal's type resets it. Navigation
-  isn't kept (screens are closures): a reload starts at the root
-  screen. Off in a built app, where `signal.New` pays one nil check.
-- **Places are named from the source** (`signal.KeepPlaces`): Go names
-  closures by their order in their function (`Screen.func2`), so adding
-  one, a button's handler, renumbers those after it. `asuka dev` reads
-  the app's own packages as it builds them (`go/ast`; `go list` once,
-  and again only for an import it hadn't seen) and adds a table to the
-  build's overlay: each function literal's lines, depth and place among
-  its siblings, named by what it is in its function (the variable or
-  field it's assigned to, the call and argument it's passed as, a
-  `go`, `defer` or `return`: `Screen>body`, `Screen>ui.Show#1`, a second
-  of a name `~2`), and each `signal.New` and `NewFunc` by the variable
-  or field it's made for. The run finds a frame's literal by its file
-  and line, at the depth its runtime name says past its function's
-  (`.funcN`, `.N` as inlined, `-rangeN` a range-over-func loop's body,
-  no literal), and of siblings on one line by their place; what the
-  table can't tell keeps the runtime's name. A file that says
-  `//asuka:reset` has its signals start over when it's edited (its
-  digest is in their names).
-- **Reaching the Mac**: the simulator shares its loopback; an Android
-  emulator reaches it at `10.0.2.2`, directly (`adb reverse` adds a
-  round trip's worth of latency to every call); a device goes through
-  `adb reverse`. Assets are served over HTTP from the Mac
-  (`boot.AssetBase`). An iPhone has no `adb reverse`, and its apps can't
-  open connections through the cable, but the Mac can, to a port on the
-  phone (usbmuxd, `internal/usbmux`): `asuka dev` keeps a few idle
-  connections open to the player's tunnel port, and the player takes
-  one for each of its connections, naming in a byte what it's for (the
-  app, or its assets, which it serves on its loopback as the URLs say);
-  the Mac connects it there and answers (`internal/devtunnel`). The
-  player closes a tunnel idle for a second and the Mac opens another,
-  so the newest listener on the port, with `SO_REUSEPORT`, gets them:
-  the share extension's while it runs. Unplugged, the player dials the
-  Mac's addresses on the network and its Bonjour name (iOS's Local
-  Network permission), through relays `asuka dev` keeps, which also
-  tell it which way the player came. Both are in the `devtunnel.Spec`
-  it's launched with (`devicectl --environment-variables`), and keeps
-  for a launch from the home screen.
+  keeps hooks' state: every state cell is made with a key, its
+  component's path and its name (core/src/vm/keep.h). Before the old
+  module goes, each live cell's value is saved in a form that names its
+  types, fields and cases; the new module's cells with the same keys
+  start from it, converted to the new types by name. A value that can't
+  be converted (a field added whose type has no zero value, a type
+  that's now another kind) starts from its initial value, as does a
+  cell whose component moved. The views that are still there are kept,
+  so a reload changes only what the edit changed. The player
+  reports how many cells it kept and how long the load took.
+- **Noticing a change**: the system says when a file under the app's
+  directory changes (`internal/fswatch`: FSEvents, inotify,
+  ReadDirectoryChangesW; 25 ms for a burst to end); where the system
+  can't watch, `asuka dev` polls. A module that doesn't compile is
+  printed and the players keep the last one; the next that does goes
+  out.
+- **Several players at once**: each connection gets every module (the
+  app on an iPhone and an Android phone together, and the desktop).
+  The player's logs come back to the CLI, which prints them.
+- **Reaching the CLI**: the simulator shares the Mac's loopback; an
+  Android device or emulator through `adb reverse` (its loopback reaches
+  the computer's, on the same port); an iPhone over the local network
+  (Local Network permission), on a port kept the same from run to run so
+  the player launched again from the home screen finds it; a desktop
+  player on loopback; the web's page through the dev server, which
+  serves the page and the modules (`asuka_dev_reload`).
 - **Signing for an iPhone**: the player's App ID is the team's own
   (`dev.asuka.player.<team>`). A development profile that fits (the
   device among its devices, the capabilities the build's entitlements
@@ -1449,20 +1388,10 @@ the new code, with no install. The app's logs are the process's output.
   -allowProvisioningDeviceRegistration` make the profiles (the Xcode
   account's, or the App Store Connect key's), once a session. The
   player goes without the capabilities its team can't have.
-- **Not in the player**: an app's own native code (`ios/`, `android/`),
-  which only an app built with it can show. Such apps, `--once` and
-  `--no-hot` build the app with its Go code, as before: `asuka dev`
-  rebuilds the library and relaunches on the iOS simulator (no Xcode
-  project: `swiftc` compiles the embedded host, with the app's Swift,
-  into one object, cached; each change rebuilds the archive, links,
-  ad-hoc signs and reinstalls with `xcrun simctl`, in about a second;
-  on an iPhone it signs for development and reinstalls with `xcrun
-  devicectl`, whose `--console` brings the app's output)
-  or an Android device or emulator (Gradle builds the shell app, with
-  the app's Kotlin, once per host version and app ID; each change
-  rebuilds the `.so`, pushes it into the app's private files with `adb`
-  and `run-as`, where the debug shell app loads it from, and restarts
-  the app: about a second and a half).
+- **Native code**: the app's native packages' Swift, Kotlin, JavaScript
+  or Go is built into its player, so a change to it rebuilds and
+  relaunches the player (generating the glue first); a change to Asuka
+  code reloads. `--once` builds and launches once, without watching.
 
 ## Repository layout
 
