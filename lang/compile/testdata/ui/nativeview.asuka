@@ -1,0 +1,40 @@
+// A native package's view with no platform code: the fake host makes a
+// Native view of its type (shown by its component's name), keeps its
+// props, and a tap on it is its Press event.
+
+pub enum Level { low, high }
+
+native component Dial(label: string) {
+  prop value: float = 0.5
+  prop level: Level = .low
+  event changed(value: float)
+  event press
+}
+
+component Root {
+  state v = 0.0
+  state pressed = 0
+  Column {
+    Dial("Heat") {
+      value: v
+      padding: 4
+      on changed(n) { v = n }
+      on press { pressed += 1 }
+    }
+    Text("v {v} pressed {pressed}")
+    Button("More") { on press { v += 1 } }
+  }
+}
+
+app { Root() }
+
+test "a native view with no platform code" {
+  let app = mount(Root())
+  await app.idle()
+  app.expect("Dial")
+  app.expect("v 0 pressed 0")
+  app.tap("More")
+  app.expect("v 1 pressed 0")
+  app.tap("Dial")
+  app.expect("v 1 pressed 1")
+}

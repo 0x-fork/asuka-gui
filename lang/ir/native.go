@@ -2,6 +2,7 @@ package ir
 
 import (
 	"strconv"
+	"strings"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
@@ -203,4 +204,78 @@ func (b *fb) nativeBody(f *check.Function, params []int) {
 		return
 	}
 	b.ret(b.callB(name, k, args...), k)
+}
+
+// nativeView builds a native package's view (LOWERING.md "Native
+// packages"): CALLB ui.native("<class>#<name>"), then each prop by its
+// name as the platforms' generated code knows it (upper camel case) and
+// its descriptor, once (ui.native_set) or as a binding (ui.native_bind),
+// a prop left out at its default; the style's keys as any element's;
+// each handler by its event's name and its parameters' descriptors
+// (ui.native_on).
+func (b *fb) nativeView(ec *check.ElementCall) int {
+	tn := ec.Comp
+	comp := tn.Comp
+	v := b.local(bc.KRef)
+	b.callBTo("ui.native", v, b.kstr(tn.Pkg.NativeClass+"#"+tn.Name()))
+	set := func(m *check.Member, x syntax.Expr) {
+		mark := b.mark()
+		defer b.release(mark)
+		t := b.typ(m.Type)
+		name, desc := b.kstr(upperFirst(m.Name())), b.kstr(b.l.nativeDesc(t))
+		if b.l.prog.Reactive(x) {
+			clos := b.thunk(b.l.info.Ctxs[x], x, b.l.thunkType(x, m.Type))
+			b.callBTo("ui.native_bind", bc.None, v, name, desc, clos)
+			return
+		}
+		b.callBTo("ui.native_set", bc.None, v, name, desc, b.value(x, -1))
+	}
+	given := map[*check.Member]bool{}
+	for i, m := range comp.Params {
+		if a := ec.Args[i]; a != nil {
+			set(m, a)
+		} else if m.Default != nil {
+			set(m, m.Default)
+		}
+		given[m] = true
+	}
+	// A prop set twice: the last one wins.
+	last := map[*check.Member]int{}
+	for i, p := range ec.Props {
+		last[p.Member] = i
+	}
+	for i, p := range ec.Props {
+		if last[p.Member] != i {
+			continue
+		}
+		if comp.Members[p.Member.Name()] != p.Member {
+			b.setProp(v, "", p.Member, p.Value) // a style key
+			continue
+		}
+		set(p.Member, p.Value)
+		given[p.Member] = true
+	}
+	for _, m := range comp.Props {
+		if !given[m] && m.Default != nil {
+			set(m, m.Default)
+		}
+	}
+	for _, h := range ec.Handlers {
+		desc := ""
+		for _, p := range h.Event.Params {
+			desc += b.l.nativeDesc(b.typ(p.Type))
+		}
+		clos := b.handler(h.Handler, h.Event)
+		b.callBTo("ui.native_on", bc.None, v, b.kstr(upperFirst(h.Event.Name())), b.kstr(desc), clos)
+	}
+	return v
+}
+
+// upperFirst is a prop's or an event's name as internal/nativegen
+// names it on the platforms' side.
+func upperFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

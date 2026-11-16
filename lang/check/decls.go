@@ -339,6 +339,15 @@ func (c *Checker) typeBodies(t *TypeName) {
 	if t.Comp != nil && !t.Comp.Native {
 		c.componentBody(t)
 	}
+	// A package's native component: its props' defaults are values its
+	// views are given (the prelude's elements' are the runtime's).
+	if t.Comp != nil && t.Comp.Native && t.Pkg != nil && !t.Pkg.Prelude && t.Comp.Ctx != nil {
+		for _, m := range t.Comp.Order {
+			if (m.Kind == PropMember || m.Kind == ParamMember) && m.Default != nil {
+				c.memberValue(m)
+			}
+		}
+	}
 	if t.Kind == StructType || t.Kind == EnumType {
 		for _, i := range t.Conforms {
 			c.checkImplements(t.Decl, t.Type, i)

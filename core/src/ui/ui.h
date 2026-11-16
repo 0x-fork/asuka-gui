@@ -148,6 +148,12 @@ void ak_ui_remeasure(void);
 // ---- Elements ----
 
 ak_view *ak_ui_new(uint16_t el);
+// A native package's view (native_view.c): type is "<class>#<name>";
+// a prop's value is its bytes on the native wire; a handler's arguments
+// are decoded by desc (the parameters' descriptors) with types.
+ak_view *ak_ui_native(ak_str *type);
+void ak_ui_native_set(ak_view *v, ak_str *name, const uint8_t *bytes, size_t n);
+void ak_ui_native_on(ak_view *v, ak_str *name, ak_str *desc, const void *types, ak_closure *handler);
 void ak_ui_set(ak_view *v, uint16_t key, ak_val value);   // borrows value
 void ak_ui_bind(ak_view *v, uint16_t key, ak_closure *thunk);
 void ak_ui_on(ak_view *v, uint16_t event, ak_closure *handler);

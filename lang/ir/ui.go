@@ -713,6 +713,9 @@ func (b *fb) element(e *syntax.CallExpr) int {
 		return b.valueReg(-1, bc.KRef)
 	}
 	if ec.Comp.Comp.Native {
+		if p := ec.Comp.Pkg; p != nil && !p.Prelude {
+			return b.nativeView(ec)
+		}
 		return b.builtinElement(ec)
 	}
 	return b.componentCall(ec)

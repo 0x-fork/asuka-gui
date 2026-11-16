@@ -51,6 +51,11 @@ ak_future *ak_native_start(ak_native_obj *o, uint32_t method, ak_val args, const
 void ak_native_done(uint64_t call, const uint8_t *p, size_t len);
 size_t ak_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out);
 
+// ak_native_desc_skip is past the descriptor's first type;
+// ak_native_desc_kind is that type's kind.
+const char *ak_native_desc_skip(const char *d);
+ak_kind ak_native_desc_kind(const char *d);
+
 void ak_native_vm_init(void);
 
 #endif

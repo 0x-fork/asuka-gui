@@ -850,6 +850,14 @@ ak_span ak_fake_label(const ak_fake_view *v) {
 	switch (v->kind) {
 	case AK_KIND_TEXT: return ak_fake_string(v, AK_PROP_TEXT_TEXT);
 	case AK_KIND_BUTTON: return ak_fake_string(v, AK_PROP_BUTTON_TITLE);
+	case AK_KIND_NATIVE: {
+		// A native package's view: its component's name (its Type is
+		// "<class>#<name>").
+		ak_span t = ak_fake_string(v, AK_PROP_NATIVE_TYPE);
+		for (uint32_t i = t.len; i > 0; i--)
+			if (t.p[i - 1] == '#') return (ak_span){t.p + i, t.len - i};
+		return t;
+	}
 	}
 	return (ak_span){"", 0};
 }

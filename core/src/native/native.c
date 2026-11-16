@@ -49,6 +49,9 @@ static ak_kind kind_of(const char *d) {
 	}
 }
 
+const char *ak_native_desc_skip(const char *d) { return desc_skip(d); }
+ak_kind ak_native_desc_kind(const char *d) { return kind_of(d); }
+
 static size_t name_len(const char *d) {
 	const char *q = strchr(d + 1, ';');
 	return q ? (size_t)(q - d - 1) : strlen(d + 1);

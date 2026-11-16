@@ -209,6 +209,8 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 
 `examples/media/segmented` 是一个在所有平台上都完整实现的视图示例。
 
+在应用的测试里（运行在假宿主上，没有平台代码），原生视图显示为它的组件名，`app.tap("Segmented")` 会给它发送一个 `press` 事件，就像平台上的按钮被按下一样。
+
 ## iOS 和 macOS：Swift
 
 包中的 Swift 代码是一个 Swift 包：`Package.swift` 位于 Go 包的根目录，源码放在 `swift/` 中。同一个包同时服务 iOS 和 macOS，两者有差异的地方用 `#if canImport(UIKit)` 区分：

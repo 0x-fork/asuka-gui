@@ -209,6 +209,8 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 
 `examples/media/segmented` は、すべてのプラットフォームで動く完全なビューの例です。
 
+アプリのテスト（プラットフォームのコードがないフェイクホスト上）では、ネイティブビューはコンポーネント名で表示され、`app.tap("Segmented")` はプラットフォームのボタンと同じように `press` イベントを送ります。
+
 ## iOS と macOS：Swift
 
 パッケージの Swift のコードは、Swift パッケージとして書きます。Go パッケージのルートに `Package.swift` を置き、ソースは `swift/` に入れます。一つのパッケージで iOS と macOS の両方に対応し、両者で異なる部分には `#if canImport(UIKit)` を使います。

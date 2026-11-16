@@ -400,6 +400,25 @@ object type (a reference: the runtime's ak_native_obj) and its methods:
 - Every method `throws` (the platform's side may fail); the checker
   requires `try` at calls.
 
+A package's `native component X(p: P) { prop q: Q = d; event e(a: A) }`
+(the prelude's are the runtime's elements) lowers to the Native kind of
+view:
+
+- `X(…) { … }` is CALLB `ui.native("<class>#X")`, then each prop by its
+  name as the platforms' generated code knows it (its first letter upper
+  case: `"Q"`) and its descriptor (as a method's parameter's):
+  `ui.native_set(v, name, desc, value)` when the value reads nothing
+  reactive, else `ui.native_bind(v, name, desc, thunk)`. A prop left
+  out goes at its default; one with none isn't sent. The style's keys
+  are any element's (`ui.set`, `ui.bind`).
+- `on e(a) { … }` is `ui.native_on(v, "E", desc, handler)`, desc the
+  parameters' descriptors in order: the host's Native event named `E`
+  calls it with its `v` value decoded by them.
+- The core (core/src/ui/native_view.c) sends the Type before the props,
+  a prop only as its bytes change, and listens for Native events once a
+  handler is set. The fake host shows the view by its component's name,
+  and a test's tap on it is its `Press` event.
+
 A native interface can't be generic, has methods only, and no struct
 declares it. The class is the package's name as internal/nativegen
 names it: asuka.toml's `name`, else its directory's. The errors array is

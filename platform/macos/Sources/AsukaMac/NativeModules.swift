@@ -233,12 +233,15 @@ public enum AsukaNative {
     /// host's: to Go).
     public static var invoke: (UInt64, [UInt8]) -> [UInt8]? = { _, _ in nil }
 
-    /// The provider of a class's name, looked up once.
+    /// The provider of a class's name, looked up once: its Objective-C
+    /// name, or a package's path (asuka/network), which the C core gives,
+    /// as asuka native names its class (AsukaModule_asuka_network).
     public static func provider(_ name: String) -> AsukaModuleProvider.Type? {
         lock.lock()
         defer { lock.unlock() }
         if let p = providers[name] { return p }
-        guard let p = NSClassFromString(name) as? AsukaModuleProvider.Type else { return nil }
+        let objc = "AsukaModule_" + String(name.unicodeScalars.map { $0.isASCII && CharacterSet.alphanumerics.contains($0) ? Character($0) : "_" })
+        guard let p = (NSClassFromString(name) ?? NSClassFromString(objc)) as? AsukaModuleProvider.Type else { return nil }
         providers[name] = p
         return p
     }
