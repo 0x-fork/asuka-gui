@@ -2,6 +2,7 @@ package ir
 
 import (
 	"fmt"
+	"strings"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
 )
@@ -79,6 +80,12 @@ func (f *Func) validate(p *Program) error {
 			}
 			r := int(in.Args[j])
 			if r == bc.None {
+				ri++
+				continue
+			}
+			if r == len(f.Kinds) && j+1 < len(def.Operands) && def.Operands[j+1] != bc.Reg && in.Args[j+1] == 0 && strings.HasPrefix(def.Name, "CALL") {
+				// An empty argument block, in a function with no
+				// registers past it: nothing is read.
 				ri++
 				continue
 			}
