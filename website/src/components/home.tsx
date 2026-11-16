@@ -12,7 +12,7 @@ import { site } from "@/lib/site"
 import { cn } from "@/lib/utils"
 
 // The platforms an app runs on, each with the widgets it is shown with: the
-// units, of which Go is the pilot.
+// units, of which Asuka is the pilot.
 const platforms = ["iOS", "Android", "macOS", "Windows", "Linux", "Web"]
 
 // The six features' numerals, as a title card numbers episodes.
@@ -51,17 +51,17 @@ interface Copy {
 const en: Copy = {
   toolkits: ["UIKit", "Android Views · Material 3", "AppKit", "Win32, drawn as Windows 11", "GTK 4 · libadwaita", "The DOM"],
   hero: {
-    status: "Core: Go / Host: native / Sync 100.0%",
+    status: "Language: Asuka / Core: C / Host: native / Sync 100.0%",
     framework: "Framework:",
-    title: "Native widgets, in Go.",
+    title: "Native widgets, in Asuka.",
     subtitle: "UIKit, Material, AppKit, Win32, GTK and the DOM. Not a canvas, not a web view.",
-    lead: "Write one app in Go alone, for phones, desktops and the web. Each platform shows it with its own controls, its text input and its accessibility, and Asuka updates only what changed.",
+    lead: "Write one app in Asuka, a language made for interfaces, for phones, desktops and the web. A small core in C runs it, each platform shows it with its own controls, its text input and its accessibility, and only what changed is updated.",
   },
   start: "Get started",
   spec: {
     label: "Specification",
     lines: [
-      { line: "One language.", note: "Go, and Go alone" },
+      { line: "One language.", note: "Asuka, made for interfaces" },
       { line: "Six platforms.", note: "iOS · Android · macOS · Windows · Linux · Web" },
       { line: "Zero web views.", note: "Each platform's own widgets", red: true },
     ],
@@ -71,7 +71,7 @@ const en: Copy = {
     aside: "Pick a host",
     heading: (
       <>
-        Go in.
+        Asuka in.
         <br />
         <span className="text-unit">Native out.</span>
       </>
@@ -81,7 +81,7 @@ const en: Copy = {
     label: "Deployment",
     aside: (
       <>
-        Pilot: Go
+        Pilot: Asuka
         <br />
         Units: 6 / 6 active
       </>
@@ -114,8 +114,14 @@ const en: Copy = {
       ["asuka dev --platform ios", "the iOS simulator"],
       ["asuka dev --platform android", "an emulator or a phone"],
       ["asuka dev --platform web", "your browser"],
+      ["asuka test", "the file's test blocks"],
     ],
-    note: (examples) => <>Save a Go file and the app reloads in a moment, its state kept. See {examples}: the gallery shows every component.</>,
+    note: (examples) => (
+      <>
+        Save a file and the app reloads in milliseconds, its state kept, on a phone too; its tests live beside it. See {examples}: the gallery shows every
+        component.
+      </>
+    ),
     examples: "the examples",
   },
   episodes: {
@@ -126,13 +132,18 @@ const en: Copy = {
     features: [
       {
         title: "The platform's own widgets",
-        text: "Navigation, lists, fields, pickers, sheets and menus that look and feel as each platform's do, because they are each platform's.",
-        href: "/docs/parity",
+        text: "Navigation, lists, fields, pickers, sheets and menus that look and feel as each platform's do, because they are each platform's, with its motion and gestures.",
+        href: "/docs/components",
       },
       {
-        title: "Fine-grained signals",
-        text: "Components run once. A signal's change updates only the views that read it, in one batch for each frame, without diffing a tree.",
-        href: "/docs/getting-started#change-it",
+        title: "A language for interfaces",
+        text: "Components declare what they show, state says what changes, async and await, tests beside the code. The compiler checks what a binding reads and what runs on the main thread.",
+        href: "/docs/language",
+      },
+      {
+        title: "Fine-grained updates",
+        text: "Components run once. A change to state updates only the props that read it, in one batch for each frame, without diffing a tree.",
+        href: "/docs/concepts",
       },
       {
         title: "Live as you save",
@@ -140,14 +151,9 @@ const en: Copy = {
         href: "/docs/development",
       },
       {
-        title: "Motion",
-        text: "Animations, springs, transforms, enter and exit transitions, shared elements that grow from one view into another, and gestures.",
-        href: "/docs/parity#motion",
-      },
-      {
-        title: "Batteries",
-        text: "SQLite with live queries, secure storage, the camera and code scanning, photos, location, notifications, audio, video and web views.",
-        href: "/docs/parity#data-and-services",
+        title: "Batteries, and C",
+        text: "SQLite with live queries, secure storage, the camera, photos, location, notifications, purchases, Bluetooth, and any C library through extern.",
+        href: "/docs/stdlib",
       },
       {
         title: "Ready to ship",
@@ -161,7 +167,7 @@ const en: Copy = {
     // After NERV's motto, from Browning: God's in his heaven, all's right with the world.
     motto: (
       <>
-        <Tall>Go&rsquo;s in its core.</Tall>
+        <Tall>Asuka&rsquo;s in its core.</Tall>
         <Tall className="mt-[0.08em]">
           <span className="text-unit">All&rsquo;s native</span> on
         </Tall>
@@ -177,18 +183,18 @@ const en: Copy = {
 const zh: Copy = {
   toolkits: ["UIKit", "Android Views · Material 3", "AppKit", "Win32，Windows 11 外观", "GTK 4 · libadwaita", "DOM"],
   hero: {
-    status: "核心：Go / 宿主：原生 / 同步率 100.0%",
+    status: "语言：Asuka / 核心：C / 宿主：原生 / 同步率 100.0%",
     framework: "框架：",
-    title: "跨平台原生控件，用 Go 写。",
+    title: "跨平台原生控件，用 Asuka 写。",
     // No breaks inside a phrase: Chinese breaks between any two characters.
-    subtitle: "UIKit、Material、AppKit、Win32、GTK\u00a0和\u00a0DOM。不是\u00a0GPU\u00a0自绘，也不是\u00a0Web\u00a0View。",
-    lead: "只用 Go 写一个应用，就能跑在手机、桌面和 Web 上。每个平台都用自己的控件、输入法和无障碍功能来呈现它，Asuka 只更新真正变化的部分。",
+    subtitle: "UIKit、Material、AppKit、Win32、GTK 和 DOM。不是 GPU 自绘，也不是 Web View。",
+    lead: "用 Asuka——一门专为界面设计的语言——写一个应用，就能跑在手机、桌面和 Web 上。一个用 C 写的小巧核心负责运行，每个平台都用自己的控件、输入法和无障碍功能来呈现它，只更新真正变化的部分。",
   },
   start: "快速上手",
   spec: {
     label: "规格",
     lines: [
-      { line: "一种语言。", note: "只用 Go" },
+      { line: "一种语言。", note: "Asuka，为界面而生" },
       { line: "六个平台。", note: "iOS · Android · macOS · Windows · Linux · Web" },
       { line: "零 Web View。", note: "全是各平台自己的控件", red: true },
     ],
@@ -198,7 +204,7 @@ const zh: Copy = {
     aside: "选一个宿主看看",
     heading: (
       <>
-        写的是 Go，
+        写的是 Asuka，
         <br />
         <span className="text-unit">跑的是原生。</span>
       </>
@@ -208,7 +214,7 @@ const zh: Copy = {
     label: "出击",
     aside: (
       <>
-        驾驶员：Go
+        驾驶员：Asuka
         <br />
         机体：6 / 6 启动
       </>
@@ -241,8 +247,9 @@ const zh: Copy = {
       ["asuka dev --platform ios", "iOS 模拟器"],
       ["asuka dev --platform android", "Android 模拟器或手机"],
       ["asuka dev --platform web", "浏览器"],
+      ["asuka test", "文件里的测试块"],
     ],
-    note: (examples) => <>保存 Go 文件，应用片刻间就会重新加载，状态原样保留。更多用法请看{examples}，其中的 gallery 展示了全部组件。</>,
+    note: (examples) => <>保存文件，应用几毫秒内就会重新加载，状态原样保留，在手机上也是如此；测试就写在代码旁边。更多用法请看{examples}，其中的 gallery 展示了全部组件。</>,
     examples: "示例",
   },
   episodes: {
@@ -252,13 +259,18 @@ const zh: Copy = {
     features: [
       {
         title: "平台原生控件",
-        text: "导航、列表、输入框、选择器、弹出面板和菜单，外观和手感都与各平台一致——因为它们本来就是平台自己的控件。",
-        href: "/zh/docs/parity",
+        text: "导航、列表、输入框、选择器、弹出面板和菜单，外观和手感都与各平台一致——因为它们本来就是平台自己的控件，动画和手势也是。",
+        href: "/zh/docs/components",
+      },
+      {
+        title: "为界面而生的语言",
+        text: "组件声明自己显示什么，状态说明什么会变；有 async 和 await，测试就写在代码旁边。编译器会检查绑定读取了什么、什么代码在主线程上运行。",
+        href: "/zh/docs/language",
       },
       {
         title: "细粒度更新",
-        text: "组件只运行一次。signal 变化时，只有读取它的视图才会更新，每帧合成一批提交，无需比对整棵树。",
-        href: "/zh/docs/getting-started#修改应用",
+        text: "组件只运行一次。状态变化时，只有读取它的属性才会更新，每帧合成一批提交，无需比对整棵树。",
+        href: "/zh/docs/concepts",
       },
       {
         title: "保存即生效",
@@ -266,14 +278,9 @@ const zh: Copy = {
         href: "/zh/docs/development",
       },
       {
-        title: "动效",
-        text: "动画、弹簧、变换、进场与退场过渡、从一个视图“长”成另一个视图的共享元素，还有手势。",
-        href: "/zh/docs/parity#动画",
-      },
-      {
-        title: "开箱即用",
-        text: "支持实时查询的 SQLite、安全存储、相机与扫码、相册、定位、通知、音频、视频和网页视图，一应俱全。",
-        href: "/zh/docs/parity#数据与服务",
+        title: "开箱即用，还能调 C",
+        text: "支持实时查询的 SQLite、安全存储、相机、相册、定位、通知、内购、蓝牙，还能通过 extern 直接调用任何 C 库。",
+        href: "/zh/docs/stdlib",
       },
       {
         title: "随时上架",
@@ -287,7 +294,7 @@ const zh: Copy = {
     // 化用 NERV 的箴言（出自勃朗宁）：神在天堂，世间一切安好。
     motto: (
       <>
-        <Tall>Go 在核心，</Tall>
+        <Tall>Asuka 在核心，</Tall>
         {/* Chinese characters fill the em, so the lines need more room than Latin's. */}
         <Tall className="mt-[0.22em]">
           万屏<span className="text-unit">皆原生。</span>
@@ -303,18 +310,18 @@ const zh: Copy = {
 const ja: Copy = {
   toolkits: ["UIKit", "Android Views · Material 3", "AppKit", "Win32（Windows 11 の外観）", "GTK 4 · libadwaita", "DOM"],
   hero: {
-    status: "コア：Go / ホスト：ネイティブ / シンクロ率 100.0%",
+    status: "言語：Asuka / コア：C / ホスト：ネイティブ / シンクロ率 100.0%",
     framework: "フレームワーク：",
-    title: "全機種純正部品、Go で。",
+    title: "全機種純正部品、Asuka で。",
     // Breaks only after punctuation (break-keep), as in Chinese.
-    subtitle: "UIKit、Material、AppKit、Win32、GTK、そして\u00a0DOM。キャンバス描画でも、Web\u00a0View\u00a0でもない。",
-    lead: "Go だけでアプリを一つ書けば、スマートフォンでも、デスクトップでも、Web でも動きます。表示するのは各プラットフォーム純正のコントロールで、文字入力もアクセシビリティもそのまま。Asuka が更新するのは、変わった部分だけです。",
+    subtitle: "UIKit、Material、AppKit、Win32、GTK、そして DOM。キャンバス描画でも、Web View でもない。",
+    lead: "インターフェースのための言語 Asuka でアプリを一つ書けば、スマートフォンでも、デスクトップでも、Web でも動きます。動かすのは C で書かれた小さなコア。表示するのは各プラットフォーム純正のコントロールで、文字入力もアクセシビリティもそのまま。更新されるのは、変わった部分だけです。",
   },
   start: "はじめる",
   spec: {
     label: "仕様",
     lines: [
-      { line: "言語は一つ。", note: "Go、ただ Go だけ" },
+      { line: "言語は一つ。", note: "Asuka、インターフェースのための言語" },
       { line: "舞台は六つ。", note: "iOS · Android · macOS · Windows · Linux · Web" },
       { line: "Web View はゼロ。", note: "すべて各プラットフォーム純正のウィジェット", red: true },
     ],
@@ -324,7 +331,7 @@ const ja: Copy = {
     aside: "ホストを選択",
     heading: (
       <>
-        書くのは Go。
+        書くのは Asuka。
         <br />
         <span className="text-unit">動くのはネイティブ。</span>
       </>
@@ -334,7 +341,7 @@ const ja: Copy = {
     label: "出撃",
     aside: (
       <>
-        パイロット：Go
+        パイロット：Asuka
         <br />
         機体：6 / 6 起動
       </>
@@ -368,8 +375,14 @@ const ja: Copy = {
       ["asuka dev --platform ios", "iOS シミュレーター"],
       ["asuka dev --platform android", "Android エミュレーターか実機"],
       ["asuka dev --platform web", "ブラウザー"],
+      ["asuka test", "ファイルのテストブロック"],
     ],
-    note: (examples) => <>Go のファイルを保存すると、アプリはすぐにリロードされ、状態もそのまま残ります。ほかの使い方は{examples}をどうぞ。gallery ではすべてのコンポーネントを見られます。</>,
+    note: (examples) => (
+      <>
+        ファイルを保存すると、アプリは数ミリ秒でリロードされ、状態もそのまま残ります。スマートフォンでも同じです。テストはコードのすぐ隣に書けます。ほかの使い方は{examples}
+        をどうぞ。gallery ではすべてのコンポーネントを見られます。
+      </>
+    ),
     examples: "サンプル",
   },
   episodes: {
@@ -379,13 +392,18 @@ const ja: Copy = {
     features: [
       {
         title: "純正のウィジェット",
-        text: "ナビゲーション、リスト、入力欄、ピッカー、シート、メニュー。見た目も手触りも各プラットフォームのものと同じです。各プラットフォームのウィジェットそのものなのですから。",
-        href: "/ja/docs/parity",
+        text: "ナビゲーション、リスト、入力欄、ピッカー、シート、メニュー。見た目も手触りも、モーションもジェスチャーも各プラットフォームのものと同じです。各プラットフォームのウィジェットそのものなのですから。",
+        href: "/ja/docs/components",
       },
       {
-        title: "きめ細かなシグナル",
-        text: "コンポーネントは一度しか実行されません。シグナルが変わると、それを読むビューだけがフレームごとに一つのバッチで更新されます。ツリーの差分は取りません。",
-        href: "/ja/docs/getting-started#アプリの変更",
+        title: "インターフェースのための言語",
+        text: "コンポーネントは表示するものを宣言し、状態は変わるものを表します。async と await があり、テストはコードの隣に。バインディングが何を読み、何がメインスレッドで動くかはコンパイラーが確かめます。",
+        href: "/ja/docs/language",
+      },
+      {
+        title: "きめ細かな更新",
+        text: "コンポーネントは一度しか実行されません。状態が変わると、それを読むプロパティだけがフレームごとに一つのバッチで更新されます。ツリーの差分は取りません。",
+        href: "/ja/docs/concepts",
       },
       {
         title: "保存すれば、すぐ動く",
@@ -393,14 +411,9 @@ const ja: Copy = {
         href: "/ja/docs/development",
       },
       {
-        title: "モーション",
-        text: "アニメーション、スプリング、変形、表示と退場のトランジション、あるビューから別のビューへと姿を変える共有要素、そしてジェスチャー。",
-        href: "/ja/docs/parity#モーション",
-      },
-      {
-        title: "全部入り",
-        text: "ライブクエリ付きの SQLite、セキュアストレージ、カメラとコードスキャン、写真、位置情報、通知、オーディオ、ビデオ、Web ビュー。",
-        href: "/ja/docs/parity#データとサービス",
+        title: "全部入り、C も",
+        text: "ライブクエリ付きの SQLite、セキュアストレージ、カメラ、写真、位置情報、通知、アプリ内課金、Bluetooth。そして extern で、どんな C ライブラリでも呼べます。",
+        href: "/ja/docs/stdlib",
       },
       {
         title: "すぐにリリース",
@@ -414,7 +427,7 @@ const ja: Copy = {
     // 上田敏が訳したブラウニングの一節、エヴァの結びの言葉「神は天にいまし、すべて世は事も無し」から。
     motto: (
       <>
-        <Tall>Go はコアにいまし、</Tall>
+        <Tall>Asuka はコアにいまし、</Tall>
         {/* Kana and kanji fill the em, so the lines need more room than Latin's. */}
         <Tall className="mt-[0.22em]">すべて画面は</Tall>
         <Tall className="mt-[0.22em]">
@@ -548,36 +561,37 @@ const cards = {
     topSize: "text-[calc(100cqi/8.1)]",
     bottom: (
       <>
-        用 <span className="text-unit">Go</span> 写。
+        用 <span className="text-unit">Asuka</span> 写。
       </>
     ),
-    bottomSize: "text-[calc(100cqi/6.6)]",
+    bottomSize: "text-[calc(100cqi/9)]",
   },
   ja: {
     top: "全機種純正部品、",
     topSize: "text-[calc(100cqi/8.1)]",
     bottom: (
       <>
-        <span className="text-unit">Go</span> で。
+        <span className="text-unit">Asuka</span> で。
       </>
     ),
-    bottomSize: "text-[calc(100cqi/6.6)]",
+    bottomSize: "text-[calc(100cqi/7.8)]",
   },
 }
 
 /**
  * The title card, in the page's column and within a laptop's screen.
  *
- * In English, NATIVE WIDGETS, set to the column's full width, IN GO. flush
- * right under it and larger, the subtitle in the space it leaves. The sizes
- * come from the lines' widths in Shippori Mincho B1 ExtraBold: NATIVE
- * WIDGETS, is 10.23em.
+ * In English, NATIVE WIDGETS, set to the column's full width, IN ASUKA.
+ * flush right under it and larger, the subtitle in the space it leaves. The
+ * sizes come from the lines' widths in Shippori Mincho B1 ExtraBold: NATIVE
+ * WIDGETS, is 10.23em, IN ASUKA. 5.74em (at 100cqi/9.5, 60% of the column).
  *
  * In Chinese, whose characters are each an em wide, likewise: 跨平台原生控件，
- * (8em) across the column, 用 Go 写。 flush right under it and larger, the
- * subtitle beside it. In Japanese, in kanji as a title card sets them, the
- * same: 全機種純正部品、 (8em: every platform's genuine parts) across the
- * column, Go で。 under it.
+ * (8em) across the column, 用 Asuka 写。 (6.69em in Noto Serif SC, at
+ * 100cqi/9: 74%) flush right under it, the subtitle beside it. In Japanese,
+ * in kanji as a title card sets them, the same: 全機種純正部品、 (8em: every
+ * platform's genuine parts) across the column, Asuka で。 (5.44em, at
+ * 100cqi/7.8: 70%) under it, larger.
  */
 function Hero({ locale, t }: { locale: Locale; t: Copy }) {
   // Line height after the size: tailwind-merge drops a leading- that comes before a text- size.
@@ -624,8 +638,8 @@ function Hero({ locale, t }: { locale: Locale; t: Copy }) {
               </p>
               <div className="mt-[1.6cqi] flex items-end justify-between gap-6">
                 <p className={cn(subtitle("text-[clamp(1.2rem,2.5cqi,1.9rem)]"), "hidden max-w-[26ch] pb-[0.8cqi] sm:block")}>{t.hero.subtitle}</p>
-                <p aria-hidden className={cn("display ml-auto", big("text-[calc(100cqi/7.6)]"), "origin-bottom-right")}>
-                  IN <span className="text-unit">GO.</span>
+                <p aria-hidden className={cn("display ml-auto", big("text-[calc(100cqi/9.5)]"), "origin-bottom-right")}>
+                  IN <span className="text-unit">ASUKA.</span>
                 </p>
               </div>
             </>
