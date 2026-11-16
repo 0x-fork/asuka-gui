@@ -1190,59 +1190,49 @@ does, so a write inside another's transaction fails with `ErrBusy`
 rather than hanging. Rows scan into structs by a plan made once per
 type (field offsets and kinds), written in place; no reflection per row.
 
-## mobile
+## iOS and Android: the core in the app
 
-`mobile/` (build tags `ios || android`, cgo) exports a C ABI:
+The phones' hosts link the C core (`core/`, built by `internal/cbuild`
+with Xcode's clang and the NDK's) and call its ABI
+(`core/include/asuka.h`, copied to `platform/ios/Sources/CAsuka/include`):
 
 ```c
-void      asuka_start(asuka_host_callbacks*);   // apply, measure, post; calls main
-void      asuka_attach(void);                 // mount the tree again (new Activity)
-void      asuka_event(const uint8_t*, size_t);
-int64_t   asuka_list_count(uint32_t list);
-void      asuka_list_bind(uint32_t list, int64_t index, uint32_t cell);
-void      asuka_list_unbind(uint32_t list, uint32_t cell);
-void      asuka_run_posted(void);             // the host's main-thread hop
+void asuka_start(asuka_host_callbacks*);  // apply, measure, post, the native calls
+int  asuka_load(const uint8_t*, size_t, char **err);  // bytecode: the dev player
+int  asuka_run(char **err);               // the app compiled into the library
+void asuka_event(const uint8_t*, size_t);
+int64_t asuka_list_count(uint32_t list);
+void asuka_list_bind(uint32_t list, int64_t index, uint32_t cell);
+void asuka_list_unbind(uint32_t list, uint32_t cell);
+void asuka_run_posted(void);              // the host's main-thread hop
 ```
 
-All calls come on the main thread. `post` from Go calls the host's
+All calls come on the main thread. The core's `post` calls the host's
 callback, which hops with `DispatchQueue.main.async` / `Handler.post`
-and calls `asuka_run_posted`. The header Swift and Kotlin compile against
-is `platform/ios/Sources/CAsuka/include/asuka.h`.
+and calls `asuka_run_posted`.
 
-An app is a `main` package whose `main` calls `app.Run(root)`. The CLI
-adds a file to it with `go build -overlay` that imports `mobile` and
-sets `mobile.Main = main`; `asuka_start` calls it, and `app.Run` mounts the
-root on the mobile host.
-
-- iOS: `GOOS=ios GOARCH=arm64 CGO_ENABLED=1 go build
-  -buildmode=c-archive`, with the SDK's clang (iphonesimulator for the
-  simulator, arm64 and x86_64; iphoneos and an XCFramework for devices
-  in M6). `platform/ios` is a Swift package with the decoder (`AsukaOps`),
-  the UIKit host (`AsukaHost`) and the C header (`CAsuka`); `App/` holds the
-  `@main` app delegate. The CLI embeds them.
-- Android: `GOOS=android CGO_ENABLED=1 go build -buildmode=c-shared` per
-  ABI (arm64-v8a, x86_64; armeabi-v7a optional) with the NDK's clang,
-  linked with 16 KB pages (`-z max-page-size=16384`) as new devices
-  require. `mobile/jni_android.c` is the JNI side of the same C ABI:
-  Kotlin's `dev.asuka.AsukaNative` calls in; the core calls
+- iOS: the core, with the app compiled to C (lang/cgen) for a release
+  or without it for `asuka dev`'s player, is a static library in an
+  XCFramework; `platform/ios` is a Swift package with the decoder
+  (`AsukaOps`), the UIKit host (`AsukaHost`) and the C header
+  (`CAsuka`); `App/` holds the `@main` app delegate. The CLI embeds
+  them.
+- Android: the core is `libasuka.so` per ABI (arm64-v8a, armeabi-v7a,
+  x86_64), linked with 16 KB pages as new devices require;
+  `core/src/abi/jni_android.c` is the JNI side of the ABI: Kotlin's
+  `dev.asuka.AsukaNative` calls in; the core calls
   `AsukaRuntime.apply(ByteBuffer)` (a direct buffer over the encoded
   batch, one call per batch), `measure` and `post` back.
   `platform/android` is a Gradle project: the `asuka` library (decoder,
   Views host, JNI bindings) and `app`, the shell app the CLI builds per
   app (application ID and name passed as Gradle properties).
 
-The CLI does these builds itself (no gomobile).
-
 An app's plugins' libraries ([Plugins](#plugins)) ship with it: on iOS a
 framework each in `Frameworks` (`asqlite.framework` for SQLite: an
-Info.plist, a privacy manifest of its own, signed with the app; not
-linked, `dlopen`ed by its path from the executable's directory, or
-`../../Frameworks` from an extension), and an XCFramework each beside
-`AsukaApp.xcframework` for an app embedded in another; on Android each
-beside `libasuka.so` in each ABI's `jniLibs`, loaded by name from the
-APK. `asuka dev --once` pushes them with the Go library to the app's
-`files/asuka`, and package plugin looks first beside the file its own
-code was mapped from (`/proc/self/maps`).
+Info.plist, a privacy manifest of its own, signed with the app;
+`dlopen`ed by its path from the executable's directory, or
+`../../Frameworks` from an extension); on Android each beside
+`libasuka.so` in each ABI's `jniLibs`, loaded by name from the APK.
 
 ## CLI (`cmd/asuka`)
 
@@ -1478,106 +1468,94 @@ the new code, with no install. The app's logs are the process's output.
 
 ```
 asuka/
-  signal/            reactivity
-  ui/                components, nodes, flush, flattening, navigation
-  colors/            semantic colors and RGB/Hex, for a Style
-  fonts/             semantic text styles, weights, families, for a Style
-  layout/            flexbox
-  ops/               schema, Go encoder; generate writes Swift/Kotlin decoders
+  core/              the C core: base, signal, layout, ops, ui (the UI
+                     runtime), vm (bytecode, tasks), rt (values, the
+                     scheduler, streams, JSON), native, abi; host/fake
+                     (the test host) and runner (asuka-run)
+  lang/              the Asuka compiler: syntax, check, ir, bytecode, cgen
+                     (bytecode to C), prelude (the elements), compile
+                     (the driver), lsp (the language server)
+  std/               the standard library's packages (asuka/<name>)
+  ops/               the wire's schema; go generate writes the C, Swift,
+                     Kotlin and JavaScript codecs
+  layout/            the layout's types and Chrome's fixtures (the C
+                     layout's conformance)
   i18n/              languages, catalogs, ICU messages, CLDR's formats
-  vet/               asuka vet's analyzers
-  host/              Host interface, Environment
-    fake/            records ops, measures by fixed rules; for tests
-  mobile/            C ABI (cgo, ios||android)
-  platform/ios/      Swift package
-  platform/android/  Kotlin/Gradle library
-  app/               app.Root, lifecycle
-    remote/          what asuka dev links in to serve a player
-  sdk/               the packages beyond the core: what the platform offers
-                     (biometric, camera, push, tray…) over native modules,
-                     and libraries over ui (chart, markdown, svg, store…);
-                     sdk/sqlite is a plugin (SQLite's own C, no cgo)
+                     (compiled into what the core says)
+  host/              the desktop hosts, Go: darwin (AppKit through
+                     purego), windows (Win32), linux (GTK 4 and
+                     libadwaita); bridge (the core's ABI through purego);
+                     apphost (cmd/asuka-host); hosttest (their tests on
+                     the core); the Host interface
+  native/            native packages' Go runtime (the codec, the servers
+                     desktop code answers with)
+  internal/nativegen/ asuka native's generator (Swift, Kotlin,
+                     JavaScript, Go)
+  platform/ios/      the Swift host and decoder
+  platform/android/  the Kotlin host and decoder (Gradle)
+  platform/web/      the JavaScript host and decoder; the core runs in the
+                     page as WebAssembly
+  platform/macos/    the Swift runtime packages' Swift builds against
+  cmd/asuka/         the CLI; cmd/asuka-host: every desktop app's executable
+  internal/          the CLI's parts: cbuild (building the core),
+                     appbuild, devserver, pkgs (packages), boot, ...
   plugin/            plugins' manifests, fetching and linking
-  native/            native packages' runtime: the codec, modules, views
-  internal/nativegen/ asuka native's generator (Go, Swift, Kotlin, JavaScript)
-  cmd/asuka/         CLI
   template/          what `asuka new` copies
-  examples/counter/  examples/todo/  examples/list10k/  examples/navigation/
-  conformance/       what every host draws for a Style, measured on its pixels
+  examples/          apps in Asuka
+  conformance/       what every host draws for the style props, measured
+  bench/             Asuka against SwiftUI and Compose
+  e2e/               GUI tests on the simulator, the emulator, the
+                     desktops and headless Chrome
 ```
-
-The web adds `host/web` (the Go side, `js && wasm`) and `platform/web`
-(the JavaScript host: `src/`, with the generated `ops.js` and
-`symbols.js`, `gen_symbols.go`, and the decoder's tests).
-
-Desktop adds `host/darwin` and `internal/darwin` (macOS),
-`host/windows` and `internal/windows` (Windows), and `host/linux` later.
 
 ## Testing
 
-- `signal`: unit tests for glitch-freedom (diamonds), laziness of memos,
-  disposal (no effect runs after its owner is disposed), batching, and
-  the panics. Benchmarks from js-reactivity-benchmark's cases.
-- `layout`: Chrome's results on Taffy's CSS fixtures as table tests,
-  plus counts (measures, changed frames) and allocations.
-- `ui` with `host/fake`: assert the op streams. Performance is asserted
-  by counts, never time:
-  - one `Set` on a signal one `Text` reads gives exactly one `SetProp`,
-    at most one `Measure`, and only the `SetFrame`s of boxes that moved;
-  - `For` moving one of 1,000 rows gives one `Remove` and one `Insert`;
-  - a `List` of 10,000 items binds only the cells the host asks for;
-  - rebinding a recycled cell to an item that differs in one field
-    gives one `SetProp`;
-  - a flattened container makes no native view;
-  - popping a screen disposes every owner it made;
-  - steady-state flushes allocate nothing (`testing.AllocsPerRun`).
-- Apps: `uitest` mounts an app's components on `host/fake` in its own
-  `go test` and drives them by what the screen shows (tap, type, back,
-  a row's swipe action), as a user would: only what shows counts (a
-  stack's top screen, the selected tab, a list's rows that fit, which
-  it binds as a collection view does), and taps reach only the top
-  modal layer. It settles after each action (posted work, flushes, list
-  binding), waits on the app's goroutines through the host's posts
-  (never a sleep), and on cleanup fails the test if a view outlives
-  the root. Text is measured by the fake host's rules, so frames hold
-  relative to each other, not to the point. `Snapshot` describes the
-  screen for golden files (`-uitest.update`).
-- `host/darwin` (macOS): tests mount components on the real AppKit
-  host, on the main thread (`TestMain` keeps it), and check the views
-  (their text, frames, clicks, list binding, navigation, disposal).
-- `host/windows` (Windows), likewise on real Win32 windows: a click
-  through the BUTTON's `BM_CLICK`, typing into the EDIT, a 10,000-row
-  list binding only what shows, a stack's back button disposing the
-  screen, and disposal destroying every window.
-- `ops`: the Go encoder and the generated Swift, Kotlin and JavaScript
+- The core (`go test ./core`): C tests under ASan and UBSan, a file per
+  area (`core/test/*_test.c`): signals (glitch-freedom, laziness,
+  disposal, batching), layout (Chrome's results on Taffy's CSS fixtures,
+  measures and allocations counted), ops (byte-identical to the golden
+  batches), the UI runtime on the fake host (op streams: one write to
+  state a Text reads gives one SetProp; a list of 10,000 items binds
+  only what shows; a popped screen disposes every owner it made;
+  steady-state flushes allocate nothing, `ak_alloc_count`), the VM and
+  the release backend (every module run on both, which must agree).
+- The compiler (`go test ./lang/...`): the parser and printer, the
+  checker's diagnostics (`testdata/errors`, `// ERROR` comments), and
+  programs (`lang/compile/testdata/run` and `ui`) run on the VM and
+  compiled to C, which must print the same: the language's conformance
+  suite, UI programs driven on the fake host included.
+- Apps: `test` blocks (`asuka test`) mount views on the fake host and
+  drive them by what the screen shows (`tap`, `type`, `expect`), as a
+  user would; the clock moves only when nothing else can run, so a
+  `sleep(5s)` takes no time and nothing waits on wall-clock time.
+- The desktop hosts (`go test ./host/darwin`, `./host/windows`,
+  `./host/linux` under Xvfb): host/hosttest compiles an Asuka app, runs
+  it on the core in the test's process, and the test drives and checks
+  the host's own views (a click through the button's action, the text
+  set again, frames, list binding, disposal).
+- `ops`: the C encoder and the generated Swift, Kotlin and JavaScript
   decoders round-trip the same golden batches (`swift test --package-path
   platform/ios`; `./gradlew :asuka:testDebugUnitTest` in `platform/android`;
   `node --test platform/web`).
-- Hosts: GUI tests (`e2e/`, build tag `e2e`, in CI on a simulator and
-  an emulator) build `examples/` with `asuka dev --once` and drive them
-  through the native views. Debug builds take automation commands (tap,
-  type, submit, back, tab, rotate, dump: what the screen shows), on iOS from a file in the
-  app's container on the `dev.asuka.automation` Darwin notification
-  (`platform/ios/Sources/AsukaHost/Automation.swift`), on Android from a
-  `dev.asuka.automation` broadcast (`Automation.kt`; the dump read with
-  `run-as`). So both platforms run the same test, and neither needs
-  UI Automator's single connection, which device tools hold. Each test
-  waits for the screen to show what it expects, bounded so a broken app
-  fails.
-- Rendering (`conformance`): each host draws one sheet of cases
-  (a background's edges, rounded corners, borders, opacity and group
-  opacity, clips, shadows, gradients, transforms) between two
-  registration markers; its runner captures the screen, and the cases
-  measure the pixels: where an edge is to the device pixel, a shadow's
-  Gaussian σ, a color's mix. They assert measurements with tolerances,
-  not pixels against a reference, so one set holds for every host at
-  any scale, as Graphite's backend conformance suite does. Runners:
-  `host/darwin` (Core Animation's own renderer, `CARenderer`, into a
-  Metal texture: NSView's `cacheDisplayInRect` leaves out transforms and
-  shadows), `host/windows` (`PrintWindow`), and `e2e` on the simulator,
-  the emulator and headless Chrome at 1×, 1.5× and 2× (the DevTools
-  protocol's screenshots). A host that documents lacking a feature
-  (Android's elevation shadows) skips its cases, with the reason.
+- The CLI (`go test ./cmd/asuka ./internal/...`): builds for every
+  platform, the dev loop's reloads keeping state (on the Mac, the
+  simulator, the emulator and headless Chrome), an app with standard
+  library packages built and run on the Mac (`TestBuildMacStd`).
+- Hosts end to end (`e2e/`, build tag `e2e`): the examples built and
+  driven through the native views on the simulator, the emulator, the
+  desktops and headless Chrome. Debug builds take automation commands
+  (tap, type, submit, back, tab, rotate, dump: what the screen shows),
+  so every platform runs the same test.
+- Rendering (`conformance`): each host draws one sheet of cases (a
+  background's edges, rounded corners, borders, opacity and group
+  opacity, clips, shadows, gradients, transforms), written in Asuka,
+  between two registration markers; its runner captures the screen, and
+  the cases measure the pixels: where an edge is to the device pixel, a
+  shadow's Gaussian σ, a color's mix, with tolerances, not against a
+  reference, so one set holds for every host at any scale. Runners:
+  `host/darwin` (Core Animation's own renderer into a Metal texture),
+  `host/windows` (`PrintWindow`), and `e2e` on the simulator, the
+  emulator and headless Chrome at 1×, 1.5× and 2×.
 - Tests never pass or fail on wall-clock time: wait for the condition,
   count the work.
 
