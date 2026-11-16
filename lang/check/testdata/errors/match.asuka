@@ -24,3 +24,8 @@ fn wrongCase(l: Light) -> int = match l {
   .blue => 1 // ERROR "Light has no case blue"
   _ => 0
 }
+
+fn bareCase(l: Light) -> int = match l {
+  red(x) => 1 // ERROR "red\(…\) isn't a case: write .red\(…\), or Type.red\(…\)"
+  _ => 0
+}
