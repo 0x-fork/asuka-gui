@@ -158,3 +158,20 @@ var javaKeywords = set("abstract assert boolean break byte case catch char class
 // KotlinClass is the class of a module's Kotlin side, which the Android
 // host finds it by.
 func KotlinClass(importPath string) string { return KotlinPackage(importPath) + ".AsukaModule" }
+
+// generatedLocals are the names the generated Swift, Kotlin and
+// JavaScript give their own locals where a method's arguments are
+// decoded (the reader, the writer, the object, the answer...).
+var generatedLocals = map[string]bool{
+	"r": true, "w": true, "o": true, "v": true, "a": true, "cw": true, "done": true, "input": true,
+	"obj": true, "object": true, "iface": true, "method": true, "signal": true, "e": true, "it": true,
+}
+
+// argLocal is the local a method's argument is decoded into: its own
+// (escaped) name, unless the generated code has a local of that name.
+func argLocal(name string) string {
+	if generatedLocals[strings.Trim(name, "`")] {
+		return strings.Trim(name, "`") + "Arg"
+	}
+	return name
+}

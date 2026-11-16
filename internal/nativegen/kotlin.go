@@ -406,9 +406,9 @@ func (g *kotlinGen) provider() {
 func (g *kotlinGen) decodeArgs(m *Method, indent string) string {
 	var args []string
 	for _, p := range m.Params {
-		n := kotlinName(p.Name)
+		n := argLocal(kotlinName(p.Name))
 		if p.Type.Kind == Func {
-			g.closure(p.Name, p.Type.Func, indent)
+			g.closure(argLocal(p.Name), p.Type.Func, indent)
 		} else {
 			g.printf("%sval %s = %s\n", indent, n, g.dec(p.Type, "r"))
 		}
