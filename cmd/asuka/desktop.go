@@ -226,7 +226,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 			return "", err
 		}
 		exe := filepath.Join(bundle, "Contents", "MacOS", name)
-		if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose}); err != nil {
+		if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose, Natives: desktopNatives(app)}); err != nil {
 			return "", err
 		}
 		if err := appbuild.Lib(t, cbuild.Shared, nil, filepath.Join(bundle, "Contents", "Frameworks", coreLibName("darwin"))); err != nil {
@@ -248,7 +248,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 	if t.OS == "windows" {
 		exe += ".exe"
 	}
-	if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose}); err != nil {
+	if err := appbuild.Host(t, exe, appbuild.HostOptions{Verbose: verbose, Natives: desktopNatives(app)}); err != nil {
 		return "", err
 	}
 	if err := appbuild.Lib(t, cbuild.Shared, nil, filepath.Join(dir, coreLibName(t.OS))); err != nil {
@@ -268,5 +268,27 @@ func desktopRelease(app *asukaApp, t cbuild.Target, exe, lib string, o *buildOpt
 		return err
 	}
 	ho.Release, ho.Verbose = true, o.verbose
+	ho.Natives = desktopNatives(app)
 	return appbuild.Host(t, exe, ho)
+}
+
+// desktopNatives are the directories of the app's own native packages'
+// Go for the desktop (a package's desktop/ with Go files), which its
+// host is built with; the standard library's are in every host.
+func desktopNatives(app *asukaApp) []string {
+	ps, err := appNatives(app)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range ps {
+		if strings.HasPrefix(p.path, "asuka/") {
+			continue
+		}
+		d := filepath.Join(p.dir, "desktop")
+		if files, _ := filepath.Glob(filepath.Join(d, "*.go")); len(files) > 0 {
+			out = append(out, d)
+		}
+	}
+	return out
 }

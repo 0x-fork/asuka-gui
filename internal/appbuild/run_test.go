@@ -1,8 +1,11 @@
 package appbuild_test
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -109,5 +112,48 @@ func TestStripTests(t *testing.T) {
 	var out strings.Builder
 	if err := appbuild.ShowApp(s, &out); err != nil || !strings.Contains(out.String(), `"Count: 0"`) {
 		t.Fatalf("%v\n%s", err, out.String())
+	}
+}
+
+// A host built with an app's native packages' Go links them in: their
+// servers register as the host starts.
+func TestHostNatives(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the host (not -short)")
+	}
+	if appbuild.Checkout() == "" {
+		t.Skip("not a checkout")
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip(err)
+	}
+	pkg := filepath.Join(t.TempDir(), "probe", "desktop")
+	os.MkdirAll(pkg, 0o755)
+	os.WriteFile(filepath.Join(pkg, "probe.go"), []byte(`package probe
+
+import (
+	"context"
+
+	"github.com/egoist/asuka/native"
+)
+
+func init() {
+	native.RegisterServer(&native.Server{
+		Class: "acme/probe-class",
+		New:   func(uint32) (any, error) { return nil, native.ErrClosed },
+		Call: func(context.Context, *native.Session, any, uint32, *native.Reader, *native.Writer) error {
+			return native.ErrClosed
+		},
+	})
+}
+`), 0o644)
+	out := filepath.Join(t.TempDir(), "host")
+	target := cbuild.Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	if err := appbuild.Host(target, out, appbuild.HostOptions{Natives: []string{pkg}}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(out)
+	if err != nil || !bytes.Contains(b, []byte("acme/probe-class")) {
+		t.Fatalf("the host doesn't have the package's Go (%v)", err)
 	}
 }
