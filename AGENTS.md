@@ -74,7 +74,7 @@ go generate ./i18n                  # CLDR's tables, from the pinned release
 go test ./i18n -run 'CTables|CompileCases' -update-c  # the C core's CLDR tables (core/src/ui/i18n_gen.c) and its catalog test data
 go generate ./sdk/sqlite        # the sqlite plugin's library for every platform, into sdk/sqlite/build (Xcode, the NDK, Zig)
 go run ./cmd/asuka plugin publish sdk/sqlite  # upload a plugin's build to its GitHub release, record it in its asuka-plugin.toml
-go run ./cmd/asuka generate examples/i18n  # an app's catalog functions (dev and build do it too)
+go run ./cmd/asuka i18n check examples/i18n  # an app's catalogs, checked (the compiler reads them: dev and build check them too)
 go run ./cmd/asuka native generate examples/media/segmented  # a native package's glue: Go, Swift, Kotlin, JavaScript (dev and build do it too; `native check`: CI)
 go test ./internal/nativegen -update     # after changing the generator: refresh its golden files (testdata/kitchen)
 go test ./host/darwin -run SwiftNatives  # a native package's Swift (the kitchen), built and called through the Mac's library
@@ -138,15 +138,17 @@ go test -tags e2e ./e2e -run Updater               # a desktop app updates itsel
   step, no framework), the browser's own elements for controls and
   dialogs, driven by the core as WebAssembly (`src/core.js`): batches, measures and
   events.
-- Every prop that shows text is an accessor, so it can follow the app's
-  language (`locales.Live.Title()`); only what's shown once (an alert) takes a
-  string. Frames are always physical: a host never mirrors what the core places.
+- Every prop that shows text is a binding, so a message said in it
+  (`tr.title()`) follows the app's language; only what's shown once (an
+  alert) takes a string. Frames are always physical: a host never mirrors
+  what the core places.
 - The docs have a Chinese translation in `docs/zh` and a Japanese one in
   `docs/ja`, the same pages with the same headings (each one's
   TRANSLATING.md: its style and terms). A change to a page of `docs`
   changes its translations too, written as natural Chinese and Japanese,
   not word for word.
-- Keep generated files (`ops` decoders, `locales/catalog_gen.go`, native
+- Keep generated files (`ops` decoders, the core's CLDR tables and catalog
+  test data (`go test ./i18n -run 'CTables|CompileCases' -update-c`), native
   packages' `*_native.go` and `*.asuka.*`) committed and up to date.
 - Platform code an app needs is a native package (docs/native.md): a Go
   interface or props struct, implemented in each platform's own project

@@ -221,6 +221,7 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 			views = append(views, it)
 		}
 	}
+	views = b.bodyCalls(views)
 	v := b.viewsOf(views)
 	r := b.newReg(bc.KRef)
 	b.move(r, v)
@@ -379,8 +380,13 @@ func (b *fb) lowerApp(d *syntax.AppDecl) {
 			b.release(mark)
 			continue
 		}
+		if _, ok := it.(*syntax.OnHandler); ok {
+			continue // the app's events: appHandlers
+		}
 		views = append(views, it)
 	}
+	b.appHandlers()
+	views = b.bodyCalls(views)
 	v := b.viewsOf(views)
 	r := b.newReg(bc.KRef)
 	b.move(r, v)
@@ -712,6 +718,9 @@ func (b *fb) element(e *syntax.CallExpr) int {
 	if ec == nil {
 		return b.valueReg(-1, bc.KRef)
 	}
+	if ec.Comp.Comp.Native && ec.Comp.Comp.Element == nil && !ec.Comp.Pkg.Prelude {
+		return b.nativeView(ec)
+	}
 	if ec.Comp.Comp.Native {
 		return b.builtinElement(ec)
 	}
@@ -727,6 +736,7 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 	}
 	v := b.local(bc.KRef)
 	b.callBTo(uiNew, v, b.konst(int64(el)))
+	b.elementRef(ec, v)
 	for i, m := range ec.Comp.Comp.Params {
 		if a := ec.Args[i]; a != nil {
 			b.setProp(v, name, m, a)
@@ -742,6 +752,7 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 			b.setProp(v, name, p.Member, p.Value)
 		}
 	}
+	b.variants(v, ec)
 	for _, h := range ec.Handlers {
 		ev := prelude.EventID(name, h.Event.Name())
 		clos := b.handler(h.Handler, h.Event)

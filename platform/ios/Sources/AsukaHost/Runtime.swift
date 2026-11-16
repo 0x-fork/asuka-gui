@@ -451,6 +451,11 @@ final class AsukaTextField: UITextField {
             native_free: { free($0) },
             measure_v: nil
         )
+        // The app's own files (asuka/fs's appDir): Application Support,
+        // which the app makes as it writes there.
+        if let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            dir.path.withCString { asuka_set_app_dir($0) }
+        }
         enter {
             asuka_start(&cb)
             startApp()

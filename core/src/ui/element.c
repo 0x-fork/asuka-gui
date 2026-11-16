@@ -115,6 +115,7 @@ static void view_drop(ak_opaque *o) {
 	ak_vec_free(&e->kids);
 	if (e->cls->drop) e->cls->drop(e);
 	ak_ix_free(e);
+	ak_release(e->prov);
 	ak_style_free(e);
 	for (uint32_t i = 0; i < e->handlers.len; i++) ak_release(e->handlers.data[i].c);
 	ak_vec_free(&e->handlers);
@@ -142,6 +143,7 @@ void ak_view_remeasure(ak_view *e) {
 }
 
 void ak_view_mark_kids(ak_view *e) {
+	if (e->bar) ak_bar_dirty(e);  // a fragment in a Screen's bar: the bar is sent again
 	ak_view *l = e;
 	while (l && l->frag) l = l->parent;
 	if (!l || l->kids_dirty) return;
@@ -304,6 +306,12 @@ void ak_view_destroy(ak_view *e) {
 		ak_ui.stats.native--;
 	}
 	for (uint32_t i = 0; i < e->kids.len; i++) ak_view_destroy(e->kids.data[i]);
+	// Its slots' views (a Screen's bar buttons) go with it.
+	for (uint32_t i = 0; i < e->style.len; i++) {
+		ak_style_ent *s = &e->style.data[i];
+		if (s->key >= AK_KEY__STYLE_END && ak_key_kinds[s->key] == AK_K_REF && s->v.p && ((ak_obj *)s->v.p)->tag == AK_TAG_VIEW)
+			ak_view_destroy(s->v.p);
+	}
 }
 
 // ---- Frames ----

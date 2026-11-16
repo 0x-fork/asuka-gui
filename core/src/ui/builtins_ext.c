@@ -11,6 +11,8 @@
 //	ui.state                v: View, state: int                            bool (tracked)
 //	ui.use_keys             keys: [Shortcut]                               -
 //	ui.animate              anim: Animation?, body: fn()                   -
+//	ui.animate_wait         anim: Animation?, body: fn()                   Task<void> (settles once
+//	                                                                       it's complete)
 //	ui.animating            -                                              bool
 //	ui.on_frame             f: fn(Duration)                                fn() (stop)
 //	ui.play, ui.pause       v: View (a Video)                              -
@@ -55,6 +57,13 @@
 //	i18n.catalog            blob: bytes (i18n's Catalog.Compile)           Catalog
 //	i18n.say                catalog: Catalog, key: int, args: tuple?,
 //	                        lang: string? (none: the language shown)        string (tracked)
+//	i18n.format_number      n: float, flags: int (1 percent, 2 integer,
+//	                        4 no grouping, 8 half even), minFrac, maxFrac   string (tracked)
+//	i18n.format_int         n: int, flags: int                             string (tracked)
+//	i18n.format_date        ns: int, date: int, time: int (0 none, 1
+//	                        short, 2 medium, 3 long, 4 full)               string (tracked)
+//	i18n.autonym            tag: string                                    string
+//	i18n.force              lang: string, dir: string ("rtl", "ltr", "")   - (asuka dev's --lang, --dir)
 //
 // canvas.* and path.*, a Canvas's Graphics and Path, are canvas.c's.
 #include "ui/ui_ext.h"
@@ -94,6 +103,11 @@ static ak_val b_animate(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	ak_ui_animate(a[0].p, a[1].p);
 	return none();
+}
+
+static ak_val b_animate_wait(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_ui_animate_wait(a[0].p, a[1].p)};
 }
 
 static ak_val b_animating(ak_val *a, uint32_t n) {
@@ -329,6 +343,34 @@ static ak_val b_say(ak_val *a, uint32_t n) {
 	return (ak_val){.p = ak_i18n_say(a[0].p, a[1].i, n > 2 ? a[2] : none(), n > 3 ? a[3].p : NULL)};
 }
 
+static ak_val b_format_number(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_format_number(a[0].f, (int)a[1].i, (int)a[2].i, (int)a[3].i)};
+}
+
+static ak_val b_format_int(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_format_int(a[0].i, (int)a[1].i)};
+}
+
+static ak_val b_format_date(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_format_date(a[0].i, (int)a[1].i, (int)a[2].i)};
+}
+
+void ak_ui_force_locale(ak_str *lang, ak_str *dir);
+
+static ak_val b_force(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_force_locale(a[0].p, a[1].p);
+	return none();
+}
+
+static ak_val b_autonym(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_autonym(a[0].p)};
+}
+
 void ak_canvas_builtins_init(void);
 void ak_accent_builtins_init(void);
 
@@ -340,7 +382,7 @@ void ak_ui_ext_builtins_init(void) {
 		ak_builtin_fn fn;
 	} t[] = {
 		{"ui.variant", b_variant}, {"ui.variant_bind", b_variant_bind}, {"ui.state", b_state}, {"ui.use_keys", b_use_keys},
-		{"ui.animate", b_animate}, {"ui.animating", b_animating}, {"ui.on_frame", b_on_frame}, {"ui.play", b_play},
+		{"ui.animate", b_animate}, {"ui.animate_wait", b_animate_wait}, {"ui.animating", b_animating}, {"ui.on_frame", b_on_frame}, {"ui.play", b_play},
 		{"ui.pause", b_pause}, {"ui.seek", b_seek}, {"ui.web_eval", b_web_eval}, {"ui.web_navigate", b_web_navigate},
 		{"ui.web_eval_result", b_web_eval_result}, {"ui.web_cookies", b_web_cookies}, {"ui.insert_text", b_insert_text},
 		{"ui.format", b_format}, {"ui.toggle_format", b_toggle_format}, {"ui.set_link", b_set_link}, {"ui.native", b_native},
@@ -356,6 +398,8 @@ void ak_ui_ext_builtins_init(void) {
 		{"i18n.locale", b_locale}, {"i18n.set_locale", b_set_locale}, {"i18n.set_languages", b_set_languages},
 		{"i18n.languages", b_languages}, {"i18n.preferred_languages", b_preferred}, {"i18n.is_rtl", b_is_rtl},
 		{"i18n.region", b_region}, {"i18n.format_locale", b_format_locale}, {"i18n.catalog", b_catalog}, {"i18n.say", b_say},
+		{"i18n.format_number", b_format_number}, {"i18n.format_int", b_format_int}, {"i18n.format_date", b_format_date},
+		{"i18n.autonym", b_autonym}, {"i18n.force", b_force},
 	};
 	for (size_t i = 0; i < AK_LEN(t); i++) ak_builtin_register(t[i].name, t[i].fn);
 	ak_canvas_builtins_init();

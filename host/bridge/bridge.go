@@ -46,6 +46,7 @@ type Core struct {
 	ev    []byte
 
 	start      func(cbs *callbacks)
+	setAppDir  func(path string)
 	load       func(p *byte, n uintptr, err **byte) int32
 	unload     func()
 	run        func(err **byte) int32
@@ -113,6 +114,7 @@ func Open(path string) (*Core, error) {
 	}
 	c := &Core{}
 	purego.RegisterLibFunc(&c.start, lib, "asuka_start")
+	purego.RegisterLibFunc(&c.setAppDir, lib, "asuka_set_app_dir")
 	purego.RegisterLibFunc(&c.load, lib, "asuka_load")
 	purego.RegisterLibFunc(&c.unload, lib, "asuka_unload")
 	purego.RegisterLibFunc(&c.run, lib, "asuka_run")
@@ -262,6 +264,11 @@ func (c *Core) Start(h host.Host) {
 	mu.Unlock()
 	c.cbs = cbs
 	native.SetPost(h.Post)
+	// The app's directory (asuka/fs's appDir): ASUKA_DATA, which each
+	// desktop host sets in Go's environment, not the C library's.
+	if d := os.Getenv("ASUKA_DATA"); d != "" {
+		c.setAppDir(d)
+	}
 	c.start(c.cbs)
 	if conn, ok := h.(host.Connector); ok {
 		conn.Connect(c)

@@ -2,7 +2,9 @@
 // -test, it runs the module's test blocks instead of its app, with time
 // that only moves when nothing else can run (a sleep in a test takes no
 // time), and reports each as "ok name" or "FAIL name: message". A test
-// mounts views on the fake host (test.mount: core/host/fake/uitest.h).
+// mounts views on the fake host (test.mount: core/host/fake/uitest.h),
+// and has an empty directory of its own as the app's (asuka/fs's
+// appDir), removed after it.
 //
 //	asuka-run [-test [pattern]] module.akb
 #include "vm/vm.h"
@@ -10,6 +12,7 @@
 #include "signal/signal.h"
 #include "ui/ui.h"
 #include "fake/uitest.h"
+#include "std/std.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -140,6 +143,8 @@ int main(int argc, char **argv) {
 			if (pattern && !strstr(name, pattern)) continue;
 			current = name;
 			failure[0] = 0;
+			char *dir = ak_fs_temp_dir();
+			ak_fs_set_app_dir(dir);
 			const ak_func *f = ak_module_func(m, fi);
 			ak_owner *o = ak_owner_new();
 			run_t r = {f, NULL};
@@ -151,6 +156,11 @@ int main(int argc, char **argv) {
 			ak_release(fut);
 			ak_owner_dispose(o);
 			settle(NULL);
+			if (dir) {
+				ak_fs_remove_tree(dir);
+				ak_free(dir);
+			}
+			ak_fs_set_app_dir(NULL);
 			if (failure[0]) {
 				failures++;
 				printf("FAIL %s: %s\n", name, failure);

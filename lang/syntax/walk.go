@@ -292,6 +292,9 @@ func Walk(v Visitor, n Node) {
 		if n.Args != nil {
 			walk(n.Args)
 		}
+		if n.As != nil {
+			walk(n.As)
+		}
 		if n.Block != nil {
 			walk(n.Block)
 		}

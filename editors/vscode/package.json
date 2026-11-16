@@ -1,0 +1,105 @@
+{
+  "name": "asuka",
+  "displayName": "Asuka",
+  "description": "The Asuka language: diagnostics, completion, hover, go to definition, references, rename and formatting, from asuka lsp.",
+  "version": "0.1.0",
+  "publisher": "asuka",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/egoist/asuka",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Linters"
+  ],
+  "keywords": [
+    "asuka",
+    "ui",
+    "lsp"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:asuka",
+    "workspaceContains:**/asuka.toml"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "asuka",
+        "aliases": [
+          "Asuka",
+          "asuka"
+        ],
+        "extensions": [
+          ".asuka"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "asuka",
+        "scopeName": "source.asuka",
+        "path": "./syntaxes/asuka.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Asuka",
+      "properties": {
+        "asuka.server.path": {
+          "type": "string",
+          "default": "asuka",
+          "markdownDescription": "The `asuka` command the language server runs as (`asuka lsp`): a name looked up on `PATH`, or a path (a relative one is from the workspace's first folder)."
+        },
+        "asuka.server.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "More arguments for `asuka lsp`, such as `--verbose` to log to the Asuka output channel."
+        },
+        "asuka.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the messages between VS Code and the language server, in the Asuka output channel."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "asuka.restartServer",
+        "title": "Restart Language Server",
+        "category": "Asuka"
+      },
+      {
+        "command": "asuka.showOutput",
+        "title": "Show Language Server Output",
+        "category": "Asuka"
+      }
+    ],
+    "configurationDefaults": {
+      "[asuka]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": true,
+        "editor.semanticHighlighting.enabled": true
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

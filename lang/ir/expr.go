@@ -34,7 +34,17 @@ func (b *fb) value(e syntax.Expr, dst int) int {
 	// What's converted when compiling: lengths and edges.
 	if inner == check.Length && from != check.Length {
 		r := b.temp(bc.KInt)
-		b.loadInt(r, check.PackLength(1, check.ConstNumber(e)))
+		if check.IsConstNumber(e) {
+			b.loadInt(r, check.PackLength(1, check.ConstNumber(e)))
+		} else {
+			x := b.expr(e, -1)
+			if b.f.Kinds[x] == bc.KInt {
+				f := b.temp(bc.KFloat)
+				b.emit(op("I2F"), f, x)
+				x = f
+			}
+			b.callBTo("length.points", r, x)
+		}
 		return b.toOptional(r, check.Length, to, dst)
 	}
 	if b.isEdges(inner) && !b.isEdges(from) {
@@ -640,6 +650,8 @@ func (b *fb) selection(e syntax.Expr, x syntax.Expr, dst int) int {
 // member reads a member of value x (of type recv).
 func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type, dst int) int {
 	switch sel.Kind {
+	case check.SelBuiltinField:
+		return b.builtinField(sel, x, b.rawType(e), dst)
 	case check.SelField:
 		return b.getField(x, recv.(*check.Named), sel.Field, dst)
 	case check.SelStoreMember:

@@ -57,7 +57,7 @@ import ./theme as t               // 起一个更短的名字
 | `[K: V]` | map，按插入顺序保存：`["a": 1]`、`[:]` |
 | `(A, B)` | 元组：`(1, "one")` |
 | `T?` | 可选值：一个 `T`，或者 `none` |
-| `Duration` | `300ms`、`5s`、`2min`、`1h` |
+| `Duration` | `300ms`、`5s`、`2min`、`1h`（还有 `us`、`ns`） |
 | `Color` | `#7c3aed`、`#7c3aed80`，以及语义色：`.label`、`.accent` …… |
 | `Length` | `100`（点）、`50%`、`.auto` |
 | `fn(A) -> B` | 函数和闭包 |
@@ -74,10 +74,11 @@ map 的键可以是整数、字符串、布尔值，或者成员不携带值的�
 |---|---|
 | `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
 | `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序） |
-| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new)`、`split(sep)`、`find(s)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`+` |
+| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`bytes()`、`+` |
 | `bytes` | `count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）；`bytes()` 是空的字节序列，`s.bytes()` 是字符串的 UTF-8 字节 |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()` |
 | `Color` | `opacity(a)`：以原本不透明度的 a 倍绘制（语义颜色仍然是语义颜色） |
+| `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`、`/ n` |
 | `T?` | `isNone()`、`isSome()` |
 
 `min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `asuka/math` 里。
@@ -442,7 +443,86 @@ View {
 }
 ```
 
-只有当某处用到了某个状态，视图才会上报它。因此没有写 `pressed` 变体的视图，仍然保留平台自己的按下效果。其他视图可以通过名字跟随一个视图的状态：写成 `View as card { … }`，然后在任意绑定里读 `card.hovered`（或 `card.pressed`、`card.dragging`、`card.dragOver`），子视图可以这样做（整组悬停），兄弟视图也可以。与样式无关的反应则交给处理器：`on pressedChange(p)`、`on hoverChange(h)`。
+只有当某处用到了某个状态，视图才会上报它。因此没有写 `pressed` 变体的视图，仍然保留平台自己的按下效果。变体里也可以用 `style`（`pressed { style raised }`）。其他视图可以通过名字跟随一个视图的状态（见[给视图命名](#给视图命名)）：写成 `View as card { … }`，然后在任意绑定里读 `card.hovered`（或 `card.pressed`、`card.dragging`、`card.dragOver`），子视图可以这样做（整组悬停），兄弟视图也可以。与样式无关的反应则交给处理器：`on pressedChange(p)`、`on hoverChange(h)`。
+
+## 给视图命名
+
+有些事不是给视图设置一个值，而是要对视图做点什么：播放视频、在网页里运行脚本、往输入框里插入文本、滚动列表。`Ref` 就是视图的句柄：在任意元素上写 `ref: r`，它的视图就放进 `r`；写成 `Element as name`，则会为所在代码块的剩余部分声明一个这样的句柄。
+
+```asuka
+component Player {
+  let video = Ref()
+
+  Video("intro.mp4") { ref: video }
+  Button("Start over") {
+    on press {
+      video.seek(0)
+      video.play()
+    }
+  }
+}
+```
+
+只有视图显示期间，Ref 才持有它；在那之前和之后都是空的，这时命令什么也不做，状态都是 false。Ref 的状态会被追踪，读取它的绑定会跟着它变化：
+
+| 适用于 | Ref 的成员 |
+|---|---|
+| 任意视图 | `hovered`、`pressed`、`dragging`、`dragOver`（bool，会被追踪）；`focus()`、`blur()` |
+| `Scroll`、`List` | `scrollTo(x, y, animated: true)` |
+| `Video` | `play()`、`pause()`、`seek(seconds)` |
+| `WebView` | `try await eval(script)`（脚本的值，以 JSON 表示）、`run(script)`（不等待结果）、`goBack()`、`goForward()`、`reload()`、`stopLoading()` |
+| `TextField` | `insert(text)`、`format(.bold, on)`、`toggleFormat(.italic)`、`setLink(url)`（作用于富文本输入框的选区） |
+
+Ref 可以传来传去（`shareFiles(paths, from: button)`、`a11yFocus(field)`），也可以放在文件顶层的 `let` 里，供多个组件的视图使用。
+
+## 动画
+
+`animate { … }` 会立即运行代码块，块中对 frame 和绘制内容（不透明度、背景、圆角半径、形状的裁剪）所做的改动，都会以原生动画呈现。`animate(.spring) { … }` 接收一个 `Animation`：时长、曲线、延迟、重复次数，以及弹簧动画的阻尼和初速度。`await` 它时，会等到动画完成才返回；不 `await` 也可以。
+
+```asuka
+on press {
+  animate { expanded = !expanded }
+}
+on press {
+  await animate(Animation(duration: 500ms, curve: .spring)) { offset = 0 }
+  done = true
+}
+```
+
+`animate(() => …)` 和 `animate(anim, () => …)` 是同样的写法，只是用闭包代替代码块。`animating()` 表示当前所做的改动是否处在动画中。`onFrame(t => …)` 在显示器绘制的每一帧调用闭包，传入这一帧的时间，直到调用它返回的闭包，或组件消失为止：`let stop = onFrame(t => tick(t))`。
+
+## 绘制
+
+`Canvas(g => …)` 用一个 `Graphics` 来绘制，坐标以点为单位、从左上角算起。它在布局完成后绘制一次，尺寸或读取的内容变化时再重新绘制。`Shape(fn(width, height) -> Path)` 是一个由平台负责填充和描边的轮廓（`fill`、`stroke`、`lineWidth`、`trimEnd`、`dash` ……）。
+
+```asuka
+Canvas(g => {
+  let ring = g.path().arc(g.width / 2, g.height / 2, 40, 0, 6.28318)
+  g.stroke(ring, .accent, StrokeStyle(width: 8, cap: .round))
+  g.text("{percent}%", g.width / 2, g.height / 2, CanvasText(size: 20, align: .center))
+}) { height: 100 }
+```
+
+`Path` 通过它的方法构建，每个方法都返回它自己：`Path().move(x, y)`、`line`、`quad`、`cubic`、`rect`、`roundedRect`、`ellipse`、`arc(cx, cy, radius, start, end, clockwise: true)`（弧度，从 x 轴正方向起算）、`close()`；`g.path()` 是画布自己的一个空路径，每次绘制都会复用。`Graphics` 只在绘制函数运行期间有效：`width`、`height`、`fill(path, color)`（也可以传 `LinearGradient` 或 `RadialGradient`）、`stroke(path, color 或渐变, style)`、`save()`、`restore()`、`translate`、`scale`、`rotate(degrees)`、`opacity`、`clip(path)`、`transform(a, b, c, d, tx, ty)`、`evenOdd(on)`、`text(s, x, y, style)`。
+
+`Shader(shader("""…"""))` 是一个由 GPU 程序绘制的方框。程序用 Kage 编写，随应用一起编译（程序里有错误时，由编译器报告），uniform 按名字设置（`uniforms: [Uniform(name: "Level", value: [0.5]), colorUniform("Tint", .accent)]`）。
+
+## 系统功能
+
+| 函数 | 作用 |
+|---|---|
+| `share(text)` | 为一段文本或一个链接弹出分享面板 |
+| `try await shareFiles(paths, title:, from: ref)` | 为文件弹出分享面板，从某个视图弹出（弹出框指向的位置）；面板关闭后返回 |
+| `haptic(.success)` | 平台的触感反馈（一个 `Haptic`） |
+| `copy(text)` | 把文本放到剪贴板 |
+| `openURL(url)` | 用能处理 url 的应用打开它 |
+| `announce(text)` | 让屏幕阅读器读出文本 |
+| `a11yFocus(ref)` | 把屏幕阅读器的焦点移到该视图 |
+| `try await webCookies(url)` | Web 视图为 url 保存的 cookie |
+| `useKeys([Shortcut(…)])` | 组件存在期间，窗口的快捷键 |
+| `onOpenURL(u => …)`、`onOpenFiles(paths => …)`、`onShare(items => …)` | 组件存在期间，应用被打开时带来的内容，或其他应用分享给它的内容 |
+
+`useKeys` 和这些 `on…` 注册写在组件的主体里（或 app 代码块里）。app 代码块还可以把它们当作事件来处理：`on openURL(url) { … }`、`on files(paths) { … }`、`on share(items) { … }`。
 
 ## 导航
 
@@ -471,7 +551,7 @@ screen Inbox {
 
 ## 多语言文本
 
-`tr.inbox.title(unread: n)` 读取应用的目录文件，并在应用编译时检查：缺少键或参数都会报错。每个显示文字的 prop 都会跟随应用的语言，所以切换语言时，显示的内容也会随之改变。详见[多语言](i18n.md)。
+`tr.inboxTitle(unread: n)` 说出应用目录文件（`locales/en.json`、`de.json`……）里的一条文案，并在应用编译时检查：缺少键或参数，或者参数类型不对，都会报错。在绑定里说出的文案会跟随应用的语言，所以切换语言（`i18n.setLocale("de")`，来自 asuka/i18n）时，显示的内容也会随之改变；从右往左书写的语言还会让整个应用从右侧开始排版。详见[多语言](i18n.md)。
 
 ## 原生代码
 

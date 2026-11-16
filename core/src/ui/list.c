@@ -10,15 +10,41 @@
 // at the list's width (a grid's column's): a cell's SetFrame carries its
 // row's height.
 //
-// Deferred (ui.h): sections and their headers, swipe actions, selection.
+// Sections: rows next to each other with the same section key (the
+// list's section(index)) are one, headed by header(key)'s view, a row of
+// its own that the host binds at an index of -1 - the section's; their
+// IDs go with ListUpdate. Swipe actions (swipeActions(index),
+// leadingSwipeActions(index)) and whether a row is selected
+// (selected(index)) are followed in each bound row's effects; the host's
+// Action, RowSelected and RowSelectBegin come to its cell.
 #include "ui/ui_int.h"
 
 // A bound cell: the host's view, and the row built in it.
-typedef struct {
+typedef struct lcell {
 	ak_view *el;  // retained
-	ak_row row;   // its key, cells, owner (its view is el's kid)
+	ak_row row;   // its key, cells, owner (its view is el's kid); a header's: its section's key's cell
 	float width;  // as last laid out
+	bool header;  // a section's header
+	int8_t sel;   // 1: the host shows it selected; 0 not; -1 unknown
+	ak_arr *actions, *leading;  // its swipe actions, as last sent (retained)
+	ak_buf sent, sent_l;
+	bool has_sent, has_sent_l;
+	struct list_t *st;
 } lcell;
+
+// A run of rows with the same section key.
+typedef struct {
+	uint32_t start;
+	ak_str *key;  // retained
+	int64_t id;
+} lsection;
+
+// A key's sections' IDs, in the order they come.
+typedef struct {
+	ak_str *key;  // retained
+	AK_VEC(int64_t) ids;
+} lsecids;
+typedef AK_VEC(lsecids) lsecids_vec;
 
 // An item's ID, by key.
 typedef struct {
@@ -28,7 +54,7 @@ typedef struct {
 	uint32_t index;
 } lid;
 
-typedef struct {
+typedef struct list_t {
 	ak_view *e;  // the List
 	ak_closure *items, *key, *row;
 	ak_kind key_kind;
@@ -47,6 +73,9 @@ typedef struct {
 	int columns;
 	ak_path *path;
 	ak_comp_info info;
+	AK_VEC(lsection) sections;
+	lsecids_vec secids, next_secids;
+	float row_lead, row_trail;  // the room the host's selection control takes from the rows
 } list_t;
 
 // ---- The class ----
@@ -73,9 +102,28 @@ static void free_ids(lid *t, uint32_t cap, ak_kind k) {
 		if (t[i].hash) ak_release_val(t[i].key, k);
 }
 
+static void free_sections(list_t *st) {
+	for (uint32_t i = 0; i < st->sections.len; i++) ak_release(st->sections.data[i].key);
+	st->sections.len = 0;
+}
+
+static void free_secids(lsecids_vec *s) {
+	for (uint32_t i = 0; i < s->len; i++) {
+		ak_release(s->data[i].key);
+		ak_vec_free(&s->data[i].ids);
+	}
+	s->len = 0;
+}
+
 static void list_drop(ak_view *e) {
 	list_t *st = e->impl;
 	if (!st) return;
+	free_sections(st);
+	ak_vec_free(&st->sections);
+	free_secids(&st->secids);
+	free_secids(&st->next_secids);
+	ak_vec_free(&st->secids);
+	ak_vec_free(&st->next_secids);
 	ak_free(st);
 }
 
@@ -96,6 +144,10 @@ static void list_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
 	case AK_KEY_LIST_APPEARANCE:
 	case AK_KEY_LIST_ANCHOR:
 		if (e->finalized) ak_batch_set_enum(b, e->id, key == AK_KEY_LIST_ANCHOR ? AK_PROP_LIST_ANCHOR : AK_PROP_LIST_APPEARANCE, (int32_t)v.i);
+		break;
+	case AK_KEY_LIST_SELECTING:
+		if (prev || v.i) ak_batch_set_bool(b, e->id, AK_PROP_LIST_SELECTING, v.i != 0);
+		ak_view_listen(e, AK_EVENT_ROW_INSET);
 		break;
 	}
 }
@@ -159,6 +211,13 @@ static void list_finalize(ak_view *e) {
 
 static void list_event(ak_view *e, const ak_event *ev) {
 	list_t *st = e->impl;
+	if (ev->kind == AK_EVENT_ROW_INSET) {
+		// The rows are laid out again at the width they have.
+		st->row_lead = ev->x > 0 ? (float)ev->x : 0;
+		st->row_trail = ev->y > 0 ? (float)ev->y : 0;
+		for (uint32_t i = 0; i < st->cells.len; i++) st->cells.data[i]->width = -1;
+		return;
+	}
 	if (ev->kind == AK_EVENT_SCROLLED) {
 		ak_val args[2] = {{.f = (float)ev->x}, {.f = (float)ev->y}};
 		ak_view_call(e, AK_EV_LIST_SCROLL, args, 2);
@@ -193,6 +252,52 @@ static lid *find_id(lid *t, uint32_t cap, ak_val k, uint32_t hash, ak_kind kind)
 static uint32_t hash_of(ak_val k, ak_kind kind) {
 	uint32_t h = (uint32_t)ak_val_hash(k, kind);
 	return h ? h : 1;
+}
+
+static ak_closure *closure_key(const ak_view *e, uint16_t key) {
+	const ak_val *v = ak_style_get(e, key);
+	return v ? v->p : NULL;
+}
+
+// make_sections splits the n items into runs of the same section key,
+// each with an ID it keeps while its key does; a key that comes back
+// after another run is told apart by which time it comes, and keeps its
+// ID too. It reports whether the list has sections.
+static bool make_sections(list_t *st, uint32_t n) {
+	ak_closure *section = closure_key(st->e, AK_KEY_LIST_SECTION);
+	if (!section || !closure_key(st->e, AK_KEY_LIST_HEADER)) return false;
+	free_sections(st);
+	free_secids(&st->next_secids);
+	for (uint32_t i = 0; i < n; i++) {
+		ak_val arg = {.i = i};
+		ak_val kv = ak_call(section, &arg, 1);
+		if (ak_error_pending()) {
+			ak_ui_raise_pending(st->owner);
+			continue;
+		}
+		ak_str *k = kv.p ? kv.p : ak_str_empty();
+		if (st->sections.len && ak_str_eq(st->sections.data[st->sections.len - 1].key, k)) {
+			ak_release(k);
+			continue;
+		}
+		lsecids *now = NULL, *old = NULL;
+		for (uint32_t j = 0; j < st->next_secids.len; j++)
+			if (ak_str_eq(st->next_secids.data[j].key, k)) now = &st->next_secids.data[j];
+		for (uint32_t j = 0; j < st->secids.len; j++)
+			if (ak_str_eq(st->secids.data[j].key, k)) old = &st->secids.data[j];
+		if (!now) {
+			ak_vec_push(&st->next_secids, ((lsecids){ak_retain(k), {0}}));
+			now = &st->next_secids.data[st->next_secids.len - 1];
+		}
+		uint32_t nth = now->ids.len;
+		int64_t id = old && nth < old->ids.len ? old->ids.data[nth] : ++st->next;
+		ak_vec_push(&now->ids, id);
+		ak_vec_push(&st->sections, ((lsection){i, k, id}));
+	}
+	lsecids_vec t = st->secids;
+	st->secids = st->next_secids;
+	st->next_secids = t;
+	return true;
 }
 
 // update sends the new item IDs (the host diffs them) and updates the
@@ -233,9 +338,20 @@ static void update(list_t *st, ak_arr *list) {
 		}
 		st->order.data[st->order.len++] = id;
 	}
+	ak_retain(list);
+	ak_release(st->list);
+	st->list = list;  // section(i) may read it
+	bool sections = make_sections(st, n);
 	ak_buf *b = ak_batch_command_begin(e->r->batch, e->id, AK_CMD_LIST_UPDATE);
 	ak_buf_u32(b, n);
 	for (uint32_t i = 0; i < n; i++) ak_buf_u64(b, (uint64_t)st->order.data[i]);
+	if (sections) {
+		ak_buf_u32(b, st->sections.len);
+		for (uint32_t i = 0; i < st->sections.len; i++) {
+			ak_buf_u32(b, st->sections.data[i].start);
+			ak_buf_u64(b, (uint64_t)st->sections.data[i].id);
+		}
+	}
 	ak_batch_command_end(e->r->batch);
 	free_ids(st->ids, st->ids_cap, st->key_kind);
 	lid *t = st->ids;
@@ -243,11 +359,9 @@ static void update(list_t *st, ak_arr *list) {
 	st->ids = st->next_ids, st->ids_cap = st->next_cap;
 	st->next_ids = t, st->next_cap = c;
 	if (st->next_ids) memset(st->next_ids, 0, st->next_cap * sizeof(lid));
-	ak_retain(list);
-	ak_release(st->list);
-	st->list = list;
 	for (uint32_t i = 0; i < st->cells.len; i++) {
 		lcell *c = st->cells.data[i];
+		if (c->header) continue;  // a section's ID keeps its key; the host rebinds the rest
 		lid *x = find_id(st->ids, st->ids_cap, c->row.key, c->row.hash, st->key_kind);
 		if (x->hash) ak_row_update(&c->row, list->data[x->index], ik, x->index);
 	}
@@ -404,15 +518,239 @@ static void make_row(void *ctx) {
 	}
 }
 
+// ---- Cells: swipe actions, selection ----
+
+// encode_swipe encodes a cell's swipe actions, flat: a swipe shows
+// neither children nor a disabled look, so each item's number is its
+// place.
+static void encode_swipe(ak_buf *b, const ak_arr *as) {
+	ak_buf_u32(b, as ? as->len : 0);
+	for (uint32_t i = 0; as && i < as->len; i++) {
+		const ak_enum *a = as->data[i].p;
+		uint16_t c = a ? ak_enum_case(a) : 0;
+		const ak_str *title = a ? a->f[0].p : NULL, *icon = a && c <= 1 ? a->f[1].p : NULL;
+		ak_buf_u8(b, a && c == 0 ? (uint8_t)a->f[2].i : 0);
+		ak_buf_str(b, title ? title->data : "", title ? title->len : 0);
+		ak_buf_str(b, icon ? icon->data : "", icon ? icon->len : 0);
+		ak_buf_u8(b, 0);
+	}
+}
+
+static int64_t cell_index(lcell *c, bool track) { return ak_vm_cell_get(c->row.cell_index, track).i; }
+
+// swipe_send sends one of a cell's swipe actions, if it changed.
+static void swipe_send(lcell *c, ak_closure *f, ak_arr **as, ak_buf *sent, bool *has, ak_prop p, int64_t i) {
+	ak_val arg = {.i = i};
+	ak_val v = ak_call(f, &arg, 1);
+	if (ak_error_pending()) {
+		void *err = ak_error_take();
+		if (ak_is_cancel(err)) ak_release(err);
+		else ak_raise(err);
+		return;
+	}
+	ak_release(*as);
+	*as = v.p;
+	ak_buf b = {0};
+	encode_swipe(&b, *as);
+	if (*has && b.len == sent->len && memcmp(b.data, sent->data, b.len) == 0) {
+		ak_buf_free(&b);
+		return;
+	}
+	ak_buf_free(sent);
+	*sent = b;
+	*has = true;
+	ak_batch_set_bytes(c->el->r->batch, c->el->id, p, b.data, b.len);
+}
+
+static void swipe_run(void *ctx) {
+	lcell *c = ctx;
+	if (c->el->dead) return;
+	int64_t i = cell_index(c, true);
+	ak_closure *trail = closure_key(c->st->e, AK_KEY_LIST_SWIPE_ACTIONS), *lead = closure_key(c->st->e, AK_KEY_LIST_LEADING_SWIPE_ACTIONS);
+	if (trail) swipe_send(c, trail, &c->actions, &c->sent, &c->has_sent, AK_PROP_SWIPE_ACTIONS, i);
+	if (lead) swipe_send(c, lead, &c->leading, &c->sent_l, &c->has_sent_l, AK_PROP_LEADING_SWIPE_ACTIONS, i);
+}
+
+// show_selected sends whether cell c's row is selected, if the host shows
+// otherwise.
+static void show_selected(lcell *c, bool v) {
+	int8_t s = v ? 1 : 0;
+	if (c->sel == s) return;
+	c->sel = s;
+	ak_batch_set_bool(c->el->r->batch, c->el->id, AK_PROP_SELECTED, v);
+}
+
+static bool is_selected(lcell *c, int64_t i) {
+	ak_closure *f = closure_key(c->st->e, AK_KEY_LIST_SELECTED);
+	ak_val arg = {.i = i};
+	ak_val v = ak_call(f, &arg, 1);
+	if (ak_error_pending()) {
+		void *err = ak_error_take();
+		if (ak_is_cancel(err)) ak_release(err);
+		else ak_raise(err);
+		return c->sel == 1;
+	}
+	return v.i != 0;
+}
+
+static void selected_run(void *ctx) {
+	lcell *c = ctx;
+	if (c->el->dead) return;
+	show_selected(c, is_selected(c, cell_index(c, true)));
+}
+
+static const ak_comp_info swipe_info = {.label = "List.swipe"};
+static const ak_comp_info selected_info = {.label = "List.selected"};
+
+static void cell_effects(void *ctx) {
+	lcell *c = ctx;
+	ak_view *e = c->st->e;
+	if (closure_key(e, AK_KEY_LIST_SWIPE_ACTIONS) || closure_key(e, AK_KEY_LIST_LEADING_SWIPE_ACTIONS)) {
+		ak_view_listen(c->el, AK_EVENT_ACTION);
+		ak_effect_new(swipe_run, c, AK_EFFECT_RENDER, &swipe_info);
+	}
+	if (closure_key(e, AK_KEY_LIST_SELECTED)) ak_effect_new(selected_run, c, AK_EFFECT_RENDER, &selected_info);
+	if (closure_key(e, AK_KEY_LIST_SELECTED) || ak_view_handler(e, AK_EV_LIST_SELECT)) ak_view_listen(c->el, AK_EVENT_ROW_SELECTED);
+	if (ak_view_handler(e, AK_EV_LIST_SELECT_BEGIN)) ak_view_listen(c->el, AK_EVENT_ROW_SELECT_BEGIN);
+}
+
+static void run_swipe(lcell *c, const ak_arr *as, int64_t k) {
+	if (!as || k < 0 || k >= as->len) return;
+	const ak_enum *a = as->data[k].p;
+	if (!a || ak_enum_case(a) != 0 || !a->f[5].p) return;  // a swipe shows each action enabled
+	ak_closure *run = ak_retain(a->f[5].p);
+	ak_val r = ak_call(run, NULL, 0);
+	if (!ak_error_pending()) ak_release(r.p);
+	else ak_ui_raise_pending(c->row.owner);
+	ak_release(run);
+}
+
+static void lcell_event(ak_view *el, const ak_event *ev) {
+	lcell *c = el->impl;
+	if (!c || c->header) return;
+	list_t *st = c->st;
+	int64_t i = cell_index(c, false);
+	switch (ev->kind) {
+	case AK_EVENT_ACTION: {
+		ak_arr *as = ak_retain(ev->i < 0 ? c->leading : c->actions);
+		run_swipe(c, as, ev->i < 0 ? -1 - ev->i : ev->i);
+		ak_release(as);
+		ak_val args[2] = {{.i = i}, {.i = ev->i}};
+		if (!st->e->dead) ak_view_call(st->e, AK_EV_LIST_ACTION, args, 2);
+		break;
+	}
+	case AK_EVENT_ROW_SELECTED: {
+		// The host shows it as the user left it; what the app doesn't take
+		// goes back.
+		c->sel = ev->b ? 1 : 0;
+		ak_val args[2] = {{.i = i}, {.i = ev->b}};
+		ak_view_call(st->e, AK_EV_LIST_SELECT, args, 2);
+		if (!el->dead && closure_key(st->e, AK_KEY_LIST_SELECTED)) {
+			void *tok = ak_untrack_begin();
+			bool v = is_selected(c, i);
+			ak_untrack_end(tok);
+			if (ak_error_pending()) ak_ui_raise_pending(c->row.owner);
+			show_selected(c, v);
+		}
+		break;
+	}
+	case AK_EVENT_ROW_SELECT_BEGIN: {
+		ak_val arg = {.i = i};
+		ak_view_call(st->e, AK_EV_LIST_SELECT_BEGIN, &arg, 1);
+		break;
+	}
+	}
+}
+
+static void lcell_adjust(ak_view *e, ak_lstyle *ls) {
+	AK_UNUSED(e);
+	ls->width = ak_lpct(100);
+}
+
+static const ak_el_class cls_lcell = {.name = "Cell", .kind = AK_KIND_VIEW, .flags = AK_ELF_CHILDREN, .event = lcell_event, .adjust = lcell_adjust};
+
+// new_cell makes the element of a cell the host made.
+static lcell *new_cell(list_t *st, ak_id cell) {
+	ak_view *e = st->e;
+	ak_ui_root *r = e->r;
+	lcell *c = ak_alloc(sizeof *c);
+	c->st = st;
+	ak_view *el = ak_view_new(r, &cls_lcell, 0, false);
+	el->real = true;
+	el->cell = true;
+	el->id = cell;
+	el->up = e;
+	el->dir = e->dir;
+	el->impl = c;
+	ak_view_put_id(el);
+	ak_style_relayout(el);  // a layout root: its direction (and as wide as the row it's laid out at)
+	if (el->dir != AK_LAYOUT_DIRECTION_INHERIT) ak_batch_set_enum(r->batch, cell, AK_PROP_LAYOUT_DIRECTION, el->dir);
+	el->finalized = true;
+	c->el = el;
+	c->row.old = -1;
+	ak_vec_push(&st->cells, c);
+	return c;
+}
+
+static int32_t find_cell(list_t *st, ak_id cell);
+
+// bind_header binds section s's header into cell.
+static void bind_header(list_t *st, int64_t s, ak_id cell) {
+	ak_closure *header = closure_key(st->e, AK_KEY_LIST_HEADER);
+	if (!header || s >= st->sections.len) return;
+	lsection *sec = &st->sections.data[s];
+	int32_t ci = find_cell(st, cell);
+	if (ci >= 0) {
+		lcell *c = st->cells.data[ci];
+		if (c->header) {
+			ak_retain(sec->key);
+			ak_vm_cell_set(c->row.cell_item, (ak_val){.p = sec->key});
+			return;
+		}
+		// A cell a row was in (a desktop host reuses its cells for both):
+		// none of the row's state stays with it.
+		ak_batch *b = st->e->r->batch;
+		if (c->sel > 0) ak_batch_set_bool(b, cell, AK_PROP_SELECTED, false);
+		uint8_t none[4] = {0};
+		if (c->has_sent && c->sent.len > 4) ak_batch_set_bytes(b, cell, AK_PROP_SWIPE_ACTIONS, none, 4);
+		if (c->has_sent_l && c->sent_l.len > 4) ak_batch_set_bytes(b, cell, AK_PROP_LEADING_SWIPE_ACTIONS, none, 4);
+		unbind_cell(st, (uint32_t)ci);
+	}
+	ak_ui_root *r = st->e->r;
+	lcell *c = new_cell(st, cell);
+	c->header = true;
+	ak_retain(sec->key);
+	c->row.cell_item = ak_vm_cell_new((ak_val){.p = sec->key}, AK_K_REF, NULL).p;
+	c->row.owner = ak_root_under(st->owner);
+	ak_val acc = ak_vm_acc_cell(c->row.cell_item);
+	ak_ui_root *prev = ak_ui.cur;
+	ak_ui.cur = r;
+	ak_view *v = ak_build_under(r, c->row.owner, header, &acc, 1);
+	ak_ui.cur = prev;
+	ak_release(acc.p);
+	if (v) {
+		ak_view_append(c->el, v);
+		ak_release(v);
+	}
+}
+
 void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 	list_t *st = e->impl;
-	if (i < 0) return;  // a section's header (deferred)
+	if (i < 0) {
+		bind_header(st, -1 - i, cell);
+		return;
+	}
 	if (!st->list || i >= st->list->len) return;
 	ak_val item = st->list->data[i];
 	ak_kind ik = ak_arr_kind(st->list);
 	reached(st, i);
 	reached_start(st, i);
 	int32_t ci = find_cell(st, cell);
+	bool was_header = ci >= 0 && st->cells.data[ci]->header;
+	if (was_header) {
+		unbind_cell(st, (uint32_t)ci);
+		ci = -1;
+	}
 	if (ci >= 0) {
 		// A recycled cell: its row takes the item, which updates only the
 		// props that differ.
@@ -435,27 +773,16 @@ void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 	}
 	// The cell's element: the host made its view.
 	ak_ui_root *r = e->r;
-	lcell *c = ak_alloc(sizeof *c);
-	ak_view *el = ak_view_new(r, &ak_class_cell, 0, false);
-	el->real = true;
-	el->cell = true;
-	el->id = cell;
-	el->up = e;
-	el->dir = e->dir;
-	ak_view_put_id(el);
-	ak_style_relayout(el);  // a layout root: its direction (and as wide as the row it's laid out at)
-	if (el->dir != AK_LAYOUT_DIRECTION_INHERIT) ak_batch_set_enum(r->batch, cell, AK_PROP_LAYOUT_DIRECTION, el->dir);
-	el->finalized = true;
-	c->el = el;
+	lcell *c = new_cell(st, cell);
+	if (was_header) c->sel = -1;  // the host's state is a header's: unknown, sent at once
 	c->row.key = k;
 	c->row.hash = hash_of(k, st->key_kind);
-	c->row.old = -1;
-	ak_vec_push(&st->cells, c);
 	// Under the List's owner: it sees what the List sees.
 	make_ctx m = {st, c, item, ik, i};
 	ak_ui_root *prev = ak_ui.cur;
 	ak_ui.cur = r;
 	make_row(&m);
+	if (c->row.owner) ak_with_owner(c->row.owner, cell_effects, c);
 	ak_ui.cur = prev;
 }
 
@@ -467,8 +794,13 @@ static void unbind_cell(list_t *st, uint32_t i) {
 	ak_view *el = c->el;
 	while (el->kids.len) ak_view_remove(el, el->kids.data[el->kids.len - 1], true);
 	el->dead = true;  // the host's view: not destroyed by the core
+	el->impl = NULL;
 	if (ak_view_of(el->id) == el) ak_view_drop_id(el->id);
 	ak_release(el);
+	ak_release(c->actions);
+	ak_release(c->leading);
+	ak_buf_free(&c->sent);
+	ak_buf_free(&c->sent_l);
 	ak_free(c);
 }
 
@@ -489,7 +821,7 @@ void ak_list_each_cell(ak_view *e, void (*f)(ak_view *c, void *ctx), void *ctx) 
 void ak_list_layout(ak_view *e, ak_lpass *p) {
 	list_t *st = e->impl;
 	if (!st || !st->cells.len) return;
-	float w = ak_lnode_frame(e->box).w - 2 * st->inset;
+	float w = ak_lnode_frame(e->box).w - 2 * st->inset - st->row_lead - st->row_trail;
 	if (st->columns > 1) {
 		float gap = ak_style_float(e, AK_KEY_GAP, 0);
 		w = (ak_lnode_frame(e->box).w - gap * (float)(st->columns - 1)) / (float)st->columns;

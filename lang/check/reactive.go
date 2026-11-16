@@ -127,6 +127,10 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 				switch sel.Kind {
 				case SelStoreMember, SelLoading:
 					found = true
+				case SelBuiltinField:
+					if sel.Method.Recv == "ref" {
+						found = true // a view's interaction state
+					}
 				case SelPkg:
 					if g, ok := sel.Obj.(*Global); ok && (g.Kind != ConstGlobal || g.Ctx != nil && g.Ctx.readsState) {
 						found = true
@@ -140,8 +144,8 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 					if call.Func.Ctx == nil || call.Func.Ctx.readsState || call.Func.Recv != nil && call.Func.Recv.Kind == StoreType {
 						found = true
 					}
-				case CallClosure, CallIface, CallNative:
-					found = true
+				case CallClosure, CallIface, CallNative, CallTr:
+					found = true // a message reads the language shown, a signal
 				case CallBuiltinMethod:
 					if call.Method.Recv == "loading" {
 						found = true
@@ -149,6 +153,9 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 				case CallBuiltin:
 					if call.Builtin.ID == BEnvironment {
 						found = true // it reads the root's environment, a signal
+					}
+					if call.Builtin.ID == BRuntime && call.Builtin.Fn.Once {
+						return false // its closure's reads are the closure's
 					}
 				}
 			}

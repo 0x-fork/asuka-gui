@@ -19,6 +19,7 @@ type Checker struct {
 	errLines map[string]bool
 
 	universe *Scope
+	catalog  *Catalog // the app's catalogs (tr), or nil
 	prelude  *Package
 	pkgs     []*Package
 	std      map[string]*Package
@@ -49,11 +50,15 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
+	// The built-in methods' and functions' signatures that name the
+	// prelude's types, read with this checker's prelude.
+	sigs  map[*Method]parsedSig
+	fsigs map[*RuntimeFunc]parsedSig
 }
 
 // NewChecker makes a checker and checks the prelude with it.
 func NewChecker(fset *syntax.FileSet) *Checker {
-	c := &Checker{fset: fset, info: newInfo(), errLines: map[string]bool{}, std: map[string]*Package{}, resolving: map[any]bool{}, chained: map[syntax.Expr]bool{}}
+	c := &Checker{fset: fset, info: newInfo(), errLines: map[string]bool{}, std: map[string]*Package{}, resolving: map[any]bool{}, chained: map[syntax.Expr]bool{}, sigs: map[*Method]parsedSig{}, fsigs: map[*RuntimeFunc]parsedSig{}}
 	c.universe = NewScope(nil)
 	c.initUniverse()
 	var files []*syntax.SourceFile
@@ -108,7 +113,7 @@ func (c *Checker) Program(root *Package) *Program {
 		}
 		return a.Offset < b.Offset
 	})
-	return &Program{Fset: c.fset, Packages: pkgs, Prelude: c.prelude, Root: root, Info: c.info, Diags: diags, checker: c}
+	return &Program{Fset: c.fset, Packages: pkgs, Prelude: c.prelude, Root: root, Info: c.info, Diags: diags, Catalog: c.catalog, checker: c}
 }
 
 // ---------------------------------------------------------------------
@@ -143,7 +148,7 @@ func (c *Checker) errorAt(pos, end syntax.Position, msg string) {
 // The universe: the types and functions built into the compiler
 
 func (c *Checker) initUniverse() {
-	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path} {
+	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref} {
 		c.universe.Insert(&TypeName{object: object{name: t.name}, Kind: BasicType, Type: t, resolved: true})
 	}
 	// Error: the interface every error has.
@@ -161,10 +166,13 @@ func (c *Checker) initUniverse() {
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream},
-		{"environment", BEnvironment}, {"live", BLive},
+		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {"shader", BShader},
 		{"untilCancelled", BUntilCancelled},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
+	}
+	for _, f := range RuntimeFuncs {
+		c.universe.Insert(&Builtin{object: object{name: f.Name}, ID: BRuntime, Fn: f})
 	}
 }
 
@@ -188,6 +196,10 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	// each other's declarations, in any order.
 	for _, f := range files {
 		fs := NewScope(p.Scope)
+		if p.fileScopes == nil {
+			p.fileScopes = map[*syntax.SourceFile]*Scope{}
+		}
+		p.fileScopes[f] = fs
 		for _, imp := range f.Imports {
 			c.importDecl(fs, imp, imports)
 		}
@@ -237,6 +249,7 @@ func (c *Checker) importDecl(fs *Scope, imp *syntax.ImportDecl, imports map[stri
 		c.errorf(imp, "no package %s: %s", path, importHint(imp))
 		return
 	}
+	c.info.Imports[imp] = ip
 	if !contains(c.pkg.Imports, ip) {
 		c.pkg.Imports = append(c.pkg.Imports, ip)
 	}
@@ -467,6 +480,15 @@ func (c *Checker) lookup(name string) Object {
 	return c.pkg.Scope.Lookup(name)
 }
 
+// lookupType finds the type named name in scope (a value of the name
+// doesn't hide it).
+func (c *Checker) lookupType(name string) *TypeName {
+	if c.scope != nil {
+		return c.scope.LookupType(name)
+	}
+	return c.pkg.Scope.LookupType(name)
+}
+
 // enter starts checking a function body.
 func (c *Checker) enter(kind CtxKind, node syntax.Node, name string) *FuncCtx {
 	ctx := &FuncCtx{Kind: kind, Parent: c.ctx, Node: node, Name: name}
@@ -566,7 +588,11 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 				return &Task{c.typeExpr(t.Args[0])}
 			}
 		}
-		o = c.lookup(name)
+		if tn := c.lookupType(name); tn != nil {
+			o = tn
+		} else {
+			o = c.lookup(name)
+		}
 		if o == nil {
 			c.errorf(t, "unknown type %s%s", name, c.suggest(name))
 			return Invalid
@@ -579,10 +605,14 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 			c.errorf(t, "unknown type %s (%s isn't an imported package)", joinPath(t.Path), t.Path[0].Name)
 			return Invalid
 		}
+		c.info.Uses[t.Path[0]] = pn
 		o = pn.Pkg.Scope.LookupLocal(name)
 		if o == nil {
 			c.errorf(t, "package %s has no type %s", pn.Pkg.Path, name)
 			return Invalid
+		}
+		if len(t.Path) == 2 {
+			c.info.Uses[t.Path[1]] = o
 		}
 		if !c.exported(pn.Pkg, o) {
 			c.errorf(t, "%s isn't pub in package %s", name, pn.Pkg.Path)

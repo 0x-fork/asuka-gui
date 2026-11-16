@@ -52,21 +52,12 @@
 // ---- Deferred to the next job (the structure supports each) ----
 //
 // The rest of the Go ui package. Each is an element class (core/src/ui:
-// an ak_el_class in elements.c), its keys and events in
-// lang/prelude/elements.go, and its behavior ported from the Go file named:
-//   - navigation: Stack, Screen (title, bar buttons, toolbar slot), Tabs,
-//     Sheet, Popover, Alert, Menu, the router and hrefs (nav.go, route.go,
-//     router.go, back.go): host-sized layout roots with their own
-//     environment (the element's host_sized and env fields are there for
-//     them; layout() lays them out); ak_ui_push/pop/present/dismiss below.
-//     A Button's href is stored and ignored until the router lands; the
-//     router takes the URLs the app is opened with through
-//     ak_ui_route_url (share.c).
-//   - windows, split views, snackbars (window.go, windowhandle.go,
-//     split.go, snackbar.go); a Window's own keys (use_keys is the root's).
-//   - List: sections and headers, swipe actions, selection (list.go's
-//     Section, SwipeActions, Selecting); Scroll: paging, page control.
-//   - Error boundaries (control.go's Catch) as an element over ak_catch.
+// an ak_el_class), its keys and events in lang/prelude/elements.go, and
+// its behavior ported from the Go file named:
+//   - the router (router.c): a split view's routes, the navigation state
+//     kept in the history (a browser's back rebuilds from the href),
+//     guards followed as what they read changes, NavLink's push and
+//     replace modes on a Button.
 //   - The keep registry of the dev loop: state cells kept across reloads
 //     by ak_ui_path_key (below).
 //   - Dates in messages: a catalog's date and time arguments take a
@@ -151,7 +142,16 @@ void ak_ui_set(ak_view *v, uint16_t key, ak_val value);   // borrows value
 void ak_ui_bind(ak_view *v, uint16_t key, ak_closure *thunk);
 void ak_ui_on(ak_view *v, uint16_t event, ak_closure *handler);
 void ak_ui_add(ak_view *v, ak_view *child);  // child NULL: nothing
+// ak_ui_slot fills a named slot with a view, or (a lazy slot: a
+// Popover's content) a closure returning one, built when it shows.
 void ak_ui_slot(ak_view *v, uint16_t slot, ak_view *child);
+// ak_ui_lazy gives an element whose children are built when they show
+// (LazyChildren: a Stack's first screen, a Tab's page, a Sheet's, a
+// Window's or a Destination's content, a Route's screen, a Boundary's
+// content) the builder of its children: a closure returning a View,
+// called with the element's builder parameters (a Route's Params, an
+// accessor).
+void ak_ui_lazy(ak_view *v, ak_closure *build);
 // ak_ui_ref makes v reachable as a value (TextField as field): the
 // commands below take it. It returns v, retained.
 ak_view *ak_ui_ref(ak_view *v);
@@ -237,13 +237,55 @@ void ak_ui_focus(ak_view *v);
 void ak_ui_blur(ak_view *v);
 void ak_ui_scroll_to(ak_view *v, float x, float y, bool animated);
 // push builds the screen build() returns on the stack nearest the
-// current owner; pop takes the top one off; present shows build()'s view
-// in a sheet; dismiss closes the nearest sheet. Deferred with navigation:
-// they throw "not available yet" for now.
+// current owner, under an owner of its own (a root under the stack's),
+// where push and pop find that stack, and OnBack the screen: a screen
+// declaration's Screen adopts the screen made for it, other views are
+// put in one. pop takes the top screen off (not the first), disposing
+// it; depth is how many screens the stack holds (0: none). They throw
+// outside a Stack.
 void ak_ui_push(ak_closure *build);
 void ak_ui_pop(void);
+int64_t ak_ui_depth(void);
+// present shows build()'s view in a sheet, owned by the current owner
+// (it closes as that's disposed); dismiss closes the nearest sheet, as
+// the user's dismissal does (a Sheet's change(false) and dismiss).
 void ak_ui_present(ak_closure *build);
 void ak_ui_dismiss(void);
+// ak_ui_on_back takes the user's going back from where the component is
+// (a pushed screen, a sheet or popover, else the app): handler returns
+// true when it took it; the latest registered is asked first, and it
+// goes with the current owner.
+void ak_ui_on_back(ak_closure *handler);
+// ak_ui_alert shows an alert, or an action sheet, now: actions an
+// [Action], or a closure returning one that it follows while it shows;
+// none: OK. fields ([AlertField], an alert's) are text fields.
+void ak_ui_alert(ak_str *title, ak_str *message, ak_obj *actions, bool action_sheet, ak_arr *fields);
+// ak_ui_snackbar shows a brief message at the bottom of the window now,
+// with an optional Action (its title and run), for duration
+// (AK_SNACKBAR_DURATION_*), and returns a closure that dismisses it
+// (owned). on_dismiss runs when it goes other than by its action.
+ak_closure *ak_ui_snackbar(ak_str *message, const ak_enum *action, int64_t duration, ak_closure *on_dismiss);
+
+// Windows (desktop): w is a Window element (Window(…) as w), or NULL:
+// the window the calling code is in, else the main window.
+void ak_ui_window_action(ak_view *w, int64_t action, float x, float y);  // AK_WINDOW_ACTION_*
+void ak_ui_window_close(ak_view *w);  // now, without asking
+ak_val ak_ui_window_state(ak_view *w);  // a WindowState, read (followed)
+void ak_ui_on_close_request(ak_closure *handler);  // fn() -> bool: false keeps it open
+extern const ak_shape ak_ui_shape_window_state;
+
+// The Router the calling code is in (else the main window's first):
+// navigate goes to href (mode 0 navigate, 1 push, 2 replace); back and
+// dismiss report whether there was somewhere to go; router_href is the
+// address shown, read (followed). href_of fills a pattern's parameters.
+void ak_ui_navigate(ak_str *href, int64_t mode);
+bool ak_ui_router_back(void);
+bool ak_ui_router_dismiss(void);
+bool ak_ui_can_go_back(void);
+void ak_ui_set_query(ak_str *query);
+ak_str *ak_ui_router_href(void);  // owned
+ak_str *ak_ui_href_of(ak_str *pattern, ak_arr *values);  // owned; throws on a count that isn't the pattern's
+extern const ak_shape ak_ui_shape_params;
 
 // ---- Interaction, media, graphics, languages (ui_ext.h's parts) ----
 
@@ -261,6 +303,10 @@ void ak_ui_use_keys(ak_arr *keys);
 // animate(anim) { body }: what body changes animates in the next flush
 // (anim an Animation, NULL: the default).
 void ak_ui_animate(const ak_struct *anim, ak_closure *body);
+// ak_ui_animate_wait is ak_ui_animate, and a future (AK_K_VOID) that
+// settles once the animation is complete: at once when nothing is
+// mounted, and for one that repeats until its props change (repeat -1).
+ak_future *ak_ui_animate_wait(const ak_struct *anim, ak_closure *body);
 bool ak_ui_animating(void);
 // ak_ui_on_frame calls f (fn(Duration)) at each frame the display draws
 // until the stop closure it returns is called or the owner is disposed.

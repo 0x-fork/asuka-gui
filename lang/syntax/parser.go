@@ -33,11 +33,14 @@ package syntax
 //  3. Elements and slots. A lower-case name followed by { is a named
 //     slot (toolbar { … }). An upper-case name (or a qualified one whose
 //     last part is upper-case, ui.Row) followed by { is an element: a
-//     call with no parentheses and a trailing block (Row { … }). Any
-//     call f(…) followed by { takes it as its trailing block too:
+//     call with no parentheses and a trailing block (Row { … }); after
+//     the name or the arguments, as name names it (View as card { … }).
+//     Any call f(…) followed by { takes it as its trailing block too:
 //     Text("hi") { color: .red }, withTimeout(5s) { … }. A lower-case
-//     name and { elsewhere than at the start of an item is the name and
-//     then a block.
+//     name and { elsewhere than at the start of an item is a call of it
+//     with that trailing block (await animate { … }); at the start of an
+//     item, the checker reads a slot named after a function in a
+//     statement as that call (animate { … } in a handler).
 //  4. Trailing blocks bind only on the call's line: a { on the next line
 //     starts a new item (and a block on a line of its own isn't one, an
 //     error). They never bind in the head of an if, a while, a for (its
@@ -1941,6 +1944,19 @@ func (p *parser) parsePostfix() Expr {
 			x.(*MemberExpr).Span = p.span(start)
 		case LPAREN:
 			c := &CallExpr{Fun: x, Args: p.parseArgs()}
+			if isElement(x) {
+				p.elementName(c)
+			}
+			p.trailingBlock(c)
+			c.Span = p.span(start)
+			x = c
+		case AS:
+			// View as card { … }: an element named.
+			if !isElement(x) || p.peek(1) != IDENT {
+				return x
+			}
+			c := &CallExpr{Fun: x}
+			p.elementName(c)
 			p.trailingBlock(c)
 			c.Span = p.span(start)
 			x = c
@@ -1956,7 +1972,9 @@ func (p *parser) parsePostfix() Expr {
 			c.Span = p.span(start)
 			x = c
 		case LBRACE:
-			if p.exprLev < 0 || !isElement(x) {
+			// An element's block, or a lower-case function's trailing
+			// block: await animate { … } (decision 3).
+			if _, name := x.(*Ident); p.exprLev < 0 || !isElement(x) && !name {
 				return x
 			}
 			c := &CallExpr{Fun: x}
@@ -2034,6 +2052,14 @@ parse:
 	}
 	p.next() // >
 	return ts, true
+}
+
+// elementName parses an element's as name, when it has one.
+func (p *parser) elementName(c *CallExpr) {
+	if p.tok == AS && p.peek(1) == IDENT {
+		p.next()
+		c.As = p.ident()
+	}
 }
 
 // trailingBlock parses a call's trailing block, if one may follow

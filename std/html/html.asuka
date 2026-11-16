@@ -1,0 +1,14 @@
+// Package asuka/html escapes text for HTML, and reads it back.
+//
+//   let safe = "<p>{html.escape(comment)}</p>"
+//   let text = html.unescape("Fish &amp; Chips") // Fish & Chips
+
+/// text with & < > " ' as character references, so it's text in an
+/// element's content and in a quoted attribute.
+pub native fn escape(text: string) -> string
+
+/// text with its character references read: numeric ones (&#169;,
+/// &#xA9;) and the named ones text uses (XML's five, Latin-1's,
+/// typography's: &nbsp; &copy; &mdash; &hellip; &euro;…, arrows, Greek
+/// letters). What isn't one stays as it is.
+pub native fn unescape(text: string) -> string

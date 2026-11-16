@@ -1,0 +1,125 @@
+// Commands through refs (Video, WebView, TextField, Scroll), rich text,
+// and the system's: sharing, haptics, the clipboard, URLs, screen
+// readers.
+
+let page = Ref()
+
+component Media {
+  state status = ""
+  state opened = ""
+  state link = ""
+  state shared = 0
+  let player = Ref()
+  let field = Ref()
+  let scroll = Ref()
+
+  onOpenURL(url => { opened = url })
+  useKeys([Shortcut(key: "r", primary: true, run: () => { status = "key" })])
+
+  Scroll {
+    ref: scroll
+    height: 400
+    Video("clip.mp4") { ref: player; muted: true }
+    WebView { ref: page; html: "<p>Hi</p>" }
+    TextField { ref: field; placeholder: "Body"; rich: [Span(text: "Hi")] }
+    RichText([Span(text: "Read "), Span(text: "more", link: "https://example.com"), Span(inline: Inline(key: "dot", build: () => Text("•")))]) {
+      on link(url) { link = url }
+    }
+    Text("Status: {status}")
+    Text("Opened: {opened}")
+    Text("Link: {link}")
+    Button("Play") { on press { player.seek(0); player.play() } }
+    Button("Pause") { on press { player.pause() } }
+    Button("Eval") { on press { status = (try? await page.eval("1 + 1")) ?? "no answer" } }
+    Button("Web") {
+      on press {
+        page.run("go()")
+        page.goBack()
+        page.goForward()
+        page.reload()
+        page.stopLoading()
+      }
+    }
+    Button("Format") {
+      on press {
+        field.focus()
+        field.insert("there")
+        field.format(.bold, true)
+        field.toggleFormat(.italic)
+        field.setLink("https://example.com")
+        field.blur()
+      }
+    }
+    Button("Top") { on press { scroll.scrollTo(0, 0, animated: false) } }
+    Button("System") {
+      on press {
+        share("https://example.com")
+        copy("copied")
+        haptic(.success)
+        openURL("https://example.com")
+        announce("Saved")
+        a11yFocus(player)
+      }
+    }
+    Button("Files") {
+      on press {
+        do {
+          try await shareFiles(["a.txt"], title: "A file", from: page)
+          status = "shared"
+        } catch e {
+          status = "not shared"
+        }
+        status = status + ", " + ((try? await webCookies("https://example.com")) ?? "no cookies")
+      }
+    }
+  }
+}
+
+app {
+  on openURL(url) { print("the app opens {url}") }
+  Media()
+}
+
+fn short(ops: string) -> string = ops.split("\n").map(l => l.slice(0, 50)).joined(separator: "\n")
+
+test "commands go to the view a ref holds" {
+  let app = mount(Media())
+  app.ops()
+  app.tap("Play")
+  let video = short(app.ops())
+  expect(video.contains("Seek") && video.contains("Play"), video)
+  app.tap("Pause")
+  expect(app.ops().contains("Pause"))
+  app.tap("Web")
+  let web = short(app.ops())
+  expect(web.contains("Eval") && web.contains("WebNavigate 00") && web.contains("WebNavigate 03"), web)
+  app.tap("Format")
+  let field = short(app.ops())
+  expect(field.contains("Focus") && field.contains("Insert") && field.contains("Blur"), field)
+  app.tap("Top")
+  expect(app.ops().contains("ScrollTo"))
+}
+
+test "a web view's script answers through the host" {
+  let app = mount(Media())
+  app.tap("Eval")
+  await app.idle()
+  app.expect("Status: no answer")
+  app.tap("Files")
+  await app.idle()
+  app.expect("Status: not shared, no cookies")
+}
+
+test "the system's commands" {
+  let app = mount(Media())
+  app.ops()
+  app.tap("System")
+  let ops = short(app.ops())
+  expect(ops.contains("Share") && ops.contains("Copy") && ops.contains("Haptic") && ops.contains("OpenURL") && ops.contains("Announce"), ops)
+}
+
+test "the URLs the app is opened with" {
+  let app = mount(Media())
+  app.openURL("asuka://inbox")
+  app.expect("Opened: asuka://inbox")
+}

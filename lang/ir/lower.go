@@ -34,6 +34,7 @@ type Lowerer struct {
 	pendingConsts  []pendingConst
 	pendingNative  []pendingNative
 	stringsFn      *fb
+	catalog        int // the app's catalog's global, or -1
 }
 
 // Options say how to lower.
@@ -45,6 +46,10 @@ type Options struct {
 	// the core (ui.set_accent).
 	Accent      uint64
 	AccentFlags uint8
+	// Lang and Direction force the language and the direction the app
+	// shows for this run (asuka dev's --lang and --dir): the init says so
+	// first (i18n.force), so that every platform's player follows.
+	Lang, Direction string
 }
 
 // Lower lowers prog (checked without errors) to a program.
@@ -63,6 +68,7 @@ func Lower(prog *check.Program, opts *Options) (*Program, []check.Diagnostic) {
 		memberIdx: map[*check.Member]int{},
 		enumNames: map[string]int{},
 		errIDs:    map[int]int{},
+		catalog:   -1,
 	}
 	l.out = &Program{Mod: l.mod}
 	l.opts = opts
@@ -541,6 +547,13 @@ func (l *Lowerer) initBody(b *fb) {
 	// The case-name tables the lowering asks for as it goes are made by
 	// a function init calls first; its body is written at the end.
 	l.stringsFn = l.newFunc("init.strings", "", 0, bc.KVoid)
+	// The catalog first: what init's memos say may read the language.
+	if l.opts.Lang != "" || l.opts.Direction != "" {
+		mark := b.mark()
+		b.callBTo("i18n.force", bc.None, b.kstr(l.opts.Lang), b.kstr(l.opts.Direction))
+		b.release(mark)
+	}
+	l.initCatalog(b)
 	b.emit(op("CALL"), bc.None, l.stringsFn.idx, 0, 0)
 	done := map[*check.Global]bool{}
 	var visit func(g *check.Global)
@@ -636,7 +649,7 @@ func (l *Lowerer) initGlobal(b *fb, g *check.Global) {
 	default:
 		k := l.kind(g.Type)
 		v := b.valueReg(b.value(g.Value, -1), k)
-		if k == bc.KRef {
+		if k == bc.KRef && !isObject(g.Type) {
 			v = b.freeze(v, k)
 		}
 		b.emit(op("GSET"), slot, v, int(k))
@@ -829,6 +842,17 @@ func (l *Lowerer) constLiteral(e syntax.Expr, top bool) bool {
 			}
 		}
 		return len(call.Args) > 0
+	}
+	return false
+}
+
+// isObject reports a type whose values are the runtime's objects, not
+// values: a Ref (a cell), a Path (a builder), a Graphics. A constant of
+// one isn't frozen: it changes.
+func isObject(t check.Type) bool {
+	switch check.Unopt(t) {
+	case check.Ref, check.Path, check.Graphics:
+		return true
 	}
 	return false
 }

@@ -10,6 +10,14 @@
 //	list.c      List: rows bound by the host
 //	path.c      instance paths
 //	builtins.c  the VM's ui.* builtins
+//	nav.c       providers (host-sized layout roots with their own
+//	            environment), going back, Stack, Screen and its bars,
+//	            Tabs, Split, PageControl
+//	overlay.c   Sheet, present and dismiss, Popover, Alert, Menu,
+//	            Snackbar
+//	window.c    Window, window handles, the main window
+//	router.c    Router and Route, hrefs
+//	boundary.c  Boundary: error boundaries
 #ifndef AK_UI_INT_H
 #define AK_UI_INT_H
 
@@ -69,6 +77,12 @@ struct ak_el_class {
 	ak_view *(*style_target)(ak_view *e, uint16_t key);
 	// styled hears of a style key set on e (a List's gap).
 	void (*styled)(ak_view *e, uint16_t key);
+	// lazy takes the builder of its children (ui.lazy: a Tab's page, a
+	// Sheet's content), which it builds when they show.
+	void (*lazy)(ak_view *e, ak_closure *build);
+	// sync runs at the flush, before the props are applied, for a view
+	// queued with ak_view_sync (a Screen's bars, a Split's sidebar).
+	void (*sync)(ak_view *e);
 	// drop frees the class's state.
 	void (*drop)(ak_view *e);
 	// sized hears the size it's laid out at (AK_ELF_SIZED), after the
@@ -96,7 +110,10 @@ struct ak_view {
 	bool safe;      // a SafeArea: extra_pad follows the safe area
 	bool autofocus; // takes the keyboard once it's placed (its first frame)
 	ak_view *parent;  // not retained: the parent holds its children
-	ak_view *up;      // not retained: where a view of no parent shows (a cell's list)
+	ak_view *up;      // not retained: where a view of no parent shows (a cell's list, a sheet's window, a popover's anchor)
+	ak_view *bar;     // not retained: the view whose bar a view in a slot is in (a Screen's toolbar)
+	struct ak_prov *prov;  // retained: a provider's environment (host_sized), or what a SafeArea follows
+	bool sync_q;      // queued for its class's sync
 	AK_VEC(ak_view *) kids;  // retained
 	ak_lnode *box;           // NULL for fragments
 	uint32_t native_kids;    // native children inserted into its view
@@ -169,6 +186,11 @@ struct ak_ui_root {
 	ak_lsize size;  // as last laid out
 	ak_lpass pass;
 	ak_view_vec kids_q, frame_q, init_q, layout_q, lists;
+	ak_view_vec provs;   // host-sized layout roots: screens, sheets, popovers, windows
+	ak_view_vec sync_q;  // views whose class syncs at the flush
+	ak_view_vec shown;   // sheets, alerts and snackbars presented, held until they go
+	ak_view_vec pagers;  // paging Scrolls: their pages follow their size
+	struct ak_back *back;  // the root's going back (OnBack outside screens and sheets)
 	AK_VEC(ak_lnode *) boxbuf;
 	ak_mcache measures;
 	int laying;
@@ -287,6 +309,99 @@ void ak_encode_strings(ak_buf *b, const ak_arr *a);
 void ak_refresh_set(ak_view *e, bool *shown, ak_prop refreshing, ak_val v);
 void ak_refresh_event(ak_view *e, bool *shown, ak_prop refreshing, uint16_t key, uint16_t ev);
 bool ak_ui_eq(ak_val a, ak_val b, ak_kind k);
+
+// ---- nav.c ----
+
+// A provider's environment: a host-sized layout root's (a screen's, a
+// sheet's, a window's), which the host reports with an Environment event
+// to its view, starting from the root's. Content built in it finds it as
+// a context (ak_prov_current), before its view exists.
+typedef struct ak_prov {
+	ak_opaque h;
+	ak_view *view;  // not retained: the view it's the environment of, once made
+	ak_environment env;
+	ak_str *strs[3];
+	ak_node node;  // read: follows the environment
+	ak_lsize laid;  // as last laid out
+	ak_lsize room;  // a fit sheet's, as last laid out
+	float max_w;    // a fit root's widest (a popover's)
+	bool fits;      // sized to its content: a popover's, an accessory's
+	bool full_width;
+	bool fit_sheet;  // a sheet as tall as its content (Detent fit)
+	bool fit_wait;   // a fit sheet waits for its room (its first Environment)
+	bool fit_win;    // a window sized to its content
+	bool fit_sent;
+} ak_prov;
+
+extern const char ak_env_key[], ak_back_key[], ak_nav_key[], ak_sheet_key[], ak_window_key[], ak_router_key[];
+
+ak_prov *ak_prov_new(ak_ui_root *r);  // starting from the root's environment
+ak_prov *ak_prov_current(void);       // the nearest one, borrowed (NULL: the root's)
+// ak_prov_attach makes v a provider: host-sized, laid out at its
+// environment's size (ak_root_layout_provs), its environment p's.
+void ak_prov_attach(ak_view *v, ak_prov *p);
+// ak_view_env is the environment e is laid out in (its provider's, else
+// the root's), read: a render effect that calls it follows it.
+const ak_environment *ak_view_env(ak_view *e);
+void ak_root_layout_provs(ak_ui_root *r, ak_lpass *p);
+// ak_prov_report sets a provider's environment, reported by the host.
+bool ak_prov_report(ak_id id, const ak_environment *env);
+// ak_only_kid is v made to fill its parent, as the one child of a kind
+// that has one (a sheet's, a window's content): wrapped in a View when
+// it makes none of its own.
+ak_view *ak_only_kid(ak_ui_root *r, ak_view *v);
+// ak_view_sync queues e's class's sync for the next flush.
+void ak_view_sync(ak_view *e);
+void ak_root_sync(ak_ui_root *r);
+// ak_bar_dirty hears of a change in a view in a slot shown as a bar.
+void ak_bar_dirty(ak_view *v);
+
+// Going back (back.go): where the user's going back is taken.
+typedef struct ak_back ak_back;
+ak_back *ak_back_new(void (*fallback)(void *ctx), void *ctx);  // fallback NULL: the root's
+void ak_back_attach(ak_back *b, ak_view *e);  // the view its Back events come to
+void ak_back_run(ak_back *b);
+void ak_back_release(ak_back *b);
+// ak_root_event takes the root view's events: Back, the main window's.
+void ak_root_event(ak_view *e, const ak_event *ev);
+ak_event_kind ak_nav_ev_ops(uint16_t ev);
+// ak_build_under builds build(args) for root r under owner o (made a
+// current owner for the call), returning the view (finalized) or NULL.
+ak_view *ak_build_under(ak_ui_root *r, ak_owner *o, ak_closure *build, ak_val *args, uint32_t nargs);
+// Stacks, for the router: push a builder (under owner o, whose contexts
+// the screen sees), reset to one, and hear of the user's pops.
+ak_view *ak_stack_new(ak_ui_root *r);
+ak_view *ak_stack_push(ak_view *stack, ak_closure *build, ak_val *args, uint32_t nargs, ak_owner *o);
+void ak_stack_pop_to(ak_view *stack, uint32_t depth);
+uint32_t ak_stack_depth(ak_view *stack);
+ak_view *ak_stack_screen(ak_view *stack, uint32_t i);
+void ak_stack_replace(ak_view *stack);
+void ak_stack_remove_at(ak_view *stack, uint32_t i);
+void ak_stack_on_pop(ak_view *stack, void (*fn)(void *ctx, ak_view *screen), void *ctx);
+void ak_stack_on_push(ak_view *stack, void (*fn)(void *ctx, ak_view *screen), void *ctx);
+void ak_screen_set_title(ak_view *screen, ak_str *title);
+
+// ---- elements.c ----
+
+void ak_encode_actions(ak_buf *b, const ak_arr *as);
+const ak_enum *ak_find_action(const ak_arr *as, int64_t n);
+uint32_t ak_action_count(const ak_arr *as);  // the numbers its items take
+// ak_run_action runs an Action's run (a button's, unless it's
+// disabled), its error going to e's owner's catcher.
+void ak_run_action(ak_view *e, const ak_enum *a);
+bool ak_scroll_laid(ak_view *e);
+
+// ---- overlay.c, window.c, router.c ----
+
+void ak_window_event(ak_view *e, const ak_event *ev);  // the main window's, to the root view
+void ak_window_root_drop(ak_view *e);
+ak_view *ak_window_of(ak_view *e);  // the window e is in: the root's view or a Window's
+ak_view *ak_alert_window(ak_ui_root *r);
+void ak_router_href(ak_view *from, ak_str *href);  // a Button's href, pressed
+bool ak_router_incoming(ak_span url);
+void ak_router_location(ak_view *win, const ak_event *ev);
+ak_view *ak_sheet_present(ak_ui_root *r, ak_owner *owner, ak_closure *build, ak_val *args, uint32_t nargs, int64_t detents, bool grabber, bool full, bool routed, void (*dismissed)(void *ctx), void *ctx);
+void ak_sheet_close(ak_view *sheet);
 
 // ---- control.c ----
 

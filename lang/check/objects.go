@@ -43,7 +43,13 @@ type Package struct {
 	Tests   []*Test
 	App     *syntax.AppDecl
 	Imports []*Package
+
+	fileScopes map[*syntax.SourceFile]*Scope
 }
+
+// FileScope is the scope of f's imports (inside the package's), nil for
+// a file that isn't the package's.
+func (p *Package) FileScope(f *syntax.SourceFile) *Scope { return p.fileScopes[f] }
 
 // A Test is a test block.
 type Test struct {
@@ -71,6 +77,22 @@ func (s *Scope) Lookup(name string) Object {
 	}
 	return nil
 }
+
+// LookupType finds the type named name in s or its parents: types and
+// values are named apart, so a function or a method named int (asuka/
+// random's) doesn't hide the type int.
+func (s *Scope) LookupType(name string) *TypeName {
+	for ; s != nil; s = s.parent {
+		if tn, ok := s.names[name].(*TypeName); ok {
+			return tn
+		}
+	}
+	return nil
+}
+
+// Parent is the scope s is in: a package's is the prelude's, whose is
+// the universe's (nil).
+func (s *Scope) Parent() *Scope { return s.parent }
 
 // LookupLocal finds name in s only.
 func (s *Scope) LookupLocal(name string) Object { return s.names[name] }
@@ -395,15 +417,18 @@ const (
 	BPanic
 	BJSONDecode
 	BJSONEncode
-	BMath // math.<name>: the builtin of the same name
-	BTimeNow
-	BTimeMonotonic
+	BMath           // math.<name>: the builtin of the same name
 	BRange          // arr.range
 	BWithTimeout    // withTimeout(d) { … }
 	BStream         // Stream<T>(send => { … })
 	BEnvironment    // environment(): what the platform says about where the app shows (tracked)
 	BLive           // live(initial, source): a tracked value a stream keeps current while it's read
 	BUntilCancelled // untilCancelled(): waits until the task is cancelled
+	BRuntime        // a RuntimeFunc: share, haptic, onFrame, ... (Builtin.Fn)
+	BAnimate        // animate(anim) { … }
+	BRefNew         // Ref(): a view's handle
+	BPathNew        // Path(): an empty outline
+	BShader         // shader("""…"""): a Kage program, compiled with the app
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,
@@ -414,6 +439,8 @@ type Builtin struct {
 	// For BMath: the runtime builtin's name and signature.
 	RT  string
 	Sig *FuncType
+	// For BRuntime: the function.
+	Fn *RuntimeFunc
 }
 
 // ---------------------------------------------------------------------

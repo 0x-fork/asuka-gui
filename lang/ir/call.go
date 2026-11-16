@@ -53,6 +53,8 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 		return b.copyTo(b.element(e), dst)
 	case check.CallStore:
 		return b.storeCall(e, call, dst)
+	case check.CallTr:
+		return b.trCall(e, call, dst)
 	}
 	b.l.errorf(e, "internal: unknown call")
 	return -1
@@ -298,9 +300,20 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		}
 		vals = ord
 	}
-	if m.Extra == "kindU" {
+	switch m.Extra {
+	case "kindU":
 		u := b.typ(call.Bound["U"])
 		vals = append(vals, b.konst(int64(b.l.kind(u))))
+	case "false":
+		vals = append(vals, b.konst(0))
+	case "true":
+		vals = append(vals, b.konst(1))
+	}
+	if m.Recv == "ref" {
+		return b.refMethod(m, b.recvValue(call, recv), vals, res, dst)
+	}
+	for _, c := range m.Consts {
+		vals = append(vals, b.konst(c))
 	}
 	r := bc.None
 	if m.Async {
@@ -545,7 +558,17 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 			ind = b.konst(0)
 		}
 		return b.copyTo(b.callB("json.encode", bc.KRef, v, d, ind), dst)
-	case check.BMath, check.BTimeNow, check.BTimeMonotonic:
+	case check.BRuntime:
+		return b.runtimeCall(call, dst)
+	case check.BAnimate:
+		return b.animateCall(call)
+	case check.BRefNew:
+		return b.refNew(dst)
+	case check.BPathNew:
+		return b.copyTo(b.callB(pathNew, bc.KRef), dst)
+	case check.BShader:
+		return b.shaderProgram(e, dst)
+	case check.BMath:
 		var vals []int
 		for _, a := range call.Args {
 			vals = append(vals, b.value(a, -1))

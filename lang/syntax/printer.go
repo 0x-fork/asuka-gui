@@ -981,6 +981,9 @@ func (p *printer) expr1(x Expr) {
 		if x.Args != nil {
 			p.args(x.Args)
 		}
+		if x.As != nil {
+			p.write(" as " + x.As.Name)
+		}
 		if x.Block != nil {
 			p.write(" ")
 			p.block(x.Block)

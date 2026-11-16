@@ -63,3 +63,14 @@ func EventID(el, name string) int {
 	}
 	return 0
 }
+
+// StateID is AK_STATE_<name>, an interaction state's bit (Variants'
+// order), 0 when there's no such state.
+func StateID(name string) int {
+	for i, v := range Variants {
+		if v == name {
+			return 1 << i
+		}
+	}
+	return 0
+}

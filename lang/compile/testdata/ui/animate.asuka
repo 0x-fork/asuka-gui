@@ -1,0 +1,74 @@
+// animate { }: changes that animate, awaited until they're complete;
+// onFrame: the display's frames.
+
+component Panel {
+  state open = false
+  state size = 100.0
+  state done = 0
+  state frames = 0
+  state last = 0ms
+  let stop = onFrame(t => { frames += 1; last = t })
+
+  Column {
+    View { width: size; height: 40; opacity: if open { 1 } else { 0.5 } }
+    Text("Done: {done}")
+    Text("Frames: {frames} at {last}")
+    Button("Toggle") {
+      on press {
+        animate { open = !open }
+      }
+    }
+    Button("Grow") {
+      on press {
+        await animate(.spring) { size = 200 }
+        done += 1
+      }
+    }
+    Button("Shrink") {
+      on press {
+        await animate(Animation(duration: 1s, repeat: 1), () => { size = 50 })
+        done += 1
+      }
+    }
+    Button("Check") {
+      on press {
+        animate(() => { if animating() { done += 10 } })
+      }
+    }
+    Button("Stop") { on press { stop() } }
+  }
+}
+
+app { Panel() }
+
+test "animate's changes go between AnimateBegin and AnimateEnd" {
+  let app = mount(Panel())
+  app.ops()
+  app.tap("Toggle")
+  let ops = app.ops()
+  expect(ops.contains("AnimateBegin") && ops.contains("Opacity=1") && ops.contains("AnimateEnd"), ops)
+  app.tap("Check")
+  app.expect("Done: 10")
+}
+
+test "await animate returns once it's complete" {
+  let app = mount(Panel())
+  app.tap("Grow")
+  app.expect("Done: 0")
+  await app.idle()
+  app.expect("Done: 1")
+  app.tap("Shrink")
+  app.expect("Done: 1")
+  await app.idle()
+  app.expect("Done: 2")
+}
+
+test "onFrame runs at each frame until stopped" {
+  let app = mount(Panel())
+  app.frame(16ms)
+  app.frame(32ms)
+  app.expect("Frames: 2 at 32ms")
+  app.tap("Stop")
+  app.frame(48ms)
+  app.expect("Frames: 2 at 32ms")
+}

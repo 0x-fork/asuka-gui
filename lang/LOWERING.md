@@ -53,6 +53,7 @@ the built-in functions and methods) into one module.
 | store | ref | an ak_struct of the store's cells, memos and methods' captures |
 | `View` | ref | ak_view (the UI runtime's) |
 | `Graphics`, `Path`, a catalog | ref | the UI runtime's objects (core/src/ui/canvas.c, i18n.c) |
+| `Ref` | ref | a cell holding a `View`, or none |
 | `Task<T>` | ref | ak_future |
 | `Loading<T>` | ref | the runtime's loader (see "load") |
 | interface | ref | a struct or enum value; calls go through CALLI |
@@ -304,8 +305,18 @@ core/src/ui/elements_gen.h:
 | `bind text: q` | `ui.bind(v, AK_KEY_TEXT_FIELD_TEXT, thunk{CGET q})` and `ui.on(v, AK_EV_TEXT_FIELD_CHANGE, closure(t){CSET q t})` |
 | `style card` | the style's prop sets, inlined here; a later set of the same key wins (the compiler keeps only the last) |
 | children | each built, then `ui.add(v, child)` |
+| children of a `LazyChildren` element (`Stack`, `Tab`, `Sheet`, `Destination`, `Window`, `Route`, `Boundary`) | `ui.lazy(v, builder)`: the runtime builds them when they show, under an owner of their own (a `Route`'s builder takes its `Params`, an accessor) |
 | `toolbar { … }` | `ui.slot(v, AK_KEY_SCREEN_TOOLBAR, fragment)` |
-| `Text(x) as t` | `t` is a local holding `ui.ref(v)` |
+| a `Lazy` slot (`Popover`'s `content { … }`) | `ui.slot(v, key, builder)`: a closure returning the View, built as it shows |
+| `on error(e, reset) { views }` (an event that `Builds`) | `ui.on(v, ev, closure)`, the closure returning the View it builds |
+| `Text(x) as t` | `t` is a local Ref of the enclosing view (see "Refs") |
+| `ref: r` | the view put in the Ref r (see "Refs") |
+
+A `Screen`'s `actions`, `toolbar` and `primary` slots hold Buttons:
+the runtime sends them as the platform's bar items (title or icon, a
+`menu`, `disabled`), and runs a Button's `press` (and its `href`) when
+its item is chosen; a Button that changes, or one a `for` or an `if` in
+the slot adds, sends the bar again.
 
 Values cross as their kinds (rt.h). Conversions the checker inserts:
 a number where an `Edges` is expected is `Edges(all)`; `[v, h]` and `[t,
@@ -346,8 +357,13 @@ with the state:
 | `pressed { opacity: 0.6 }` | `ui.variant(v, AK_STATE_PRESSED, AK_KEY_OPACITY, 0.6)` |
 | `hovered { color: c }` (c reactive) | `ui.variant_bind(v, AK_STATE_HOVERED, AK_KEY_COLOR, thunk)` |
 | `style card` inside a variant | the style's sets, inlined into the variant |
-| `View as card { … }` then `card.hovered` | `card` is `ui.ref(v)`; the read is `ui.state(card, AK_STATE_HOVERED)`, a tracked bool |
+| `View as card { … }` then `card.hovered` | `card` is a Ref (see "Refs"); the read is CGET of it, then `ui.state(view, AK_STATE_HOVERED)`, a tracked bool (false while it holds none) |
 | `on pressedChange(p) { … }` | `ui.on(v, AK_EV_VIEW_PRESSED_CHANGE, closure)`, as any event |
+
+The checker allows style keys only (not the element's own, dragItems or
+dropTypes, nor keys and actions, which don't change with a state), and
+variants only in an element whose `Variants` is set: anywhere else a
+variant's name is a slot that doesn't exist, and says so.
 
 The runtime lays the variants of the states the view is in over its own
 values, in the states' order (a later one wins), whole values (a `font`
@@ -355,6 +371,23 @@ in a variant replaces the font). A view reports a state from the first
 variant, read or handler that asks for it, and leaves each state it's in
 when its owner is disposed. `ref` names any element, so `card.hovered`
 works on any view the host reports states for.
+
+## Refs
+
+A `Ref` is a view's handle: a cell (CELL of none) the view goes in.
+`Ref()` makes one; `ref: r` on an element (a pseudo-prop the checker
+reads, on elements and native components only) puts the element's view
+in r right after `ui.new`: CSET, and a CLEANUP of the building owner
+that sets it back to none when it still holds that view. `Element as
+name` is the same with a Ref the lowering makes (CELL, before the
+element), a local of the enclosing view function: the element's own
+bindings, its children and its later siblings see it. Reading the view
+is CGET, so a binding that reads a state through a Ref follows both the
+view coming and going and the state. A Ref's members are built-in
+methods (methods.go, receiver ref) on the view it holds: none, a
+command does nothing and a property is its zero (JNONE around the
+CALLB); an async one (`eval`) passes none on, and the runtime fails its
+future. A top-level `let` of a Ref (or a Path) isn't frozen: it changes.
 
 ## Graphics
 
@@ -374,18 +407,20 @@ methods are builtins taking the object first:
 | `g.width`, `g.height` | `canvas.width(g)`, `canvas.height(g)` (floats) |
 | `g.path()` | `canvas.path(g)`: one of the canvas's paths, emptied, reused from draw to draw (drawing again allocates nothing) |
 | `Path()` | `path.new()` |
-| `p.move(x, y)`, `.line`, `.quad(cx, cy, x, y)`, `.cubic(...)`, `.rect`, `.roundedRect(x, y, w, h, r)`, `.ellipse`, `.arc(cx, cy, r, start, end, clockwise)`, `.close()` | `path.move(p, x, y)`, ..., `path.rounded_rect`, `path.arc` (radians, clockwise from +x), `path.close(p)`; each returns p |
+| `p.move(x, y)`, `.line`, `.quad(cx, cy, x, y)`, `.cubic(...)`, `.rect`, `.roundedRect(x, y, w, h, r)`, `.ellipse`, `.arc(cx, cy, r, start, end, clockwise: true)`, `.close()` | `path.move(p, x, y)`, ..., `path.rounded_rect`, `path.arc` (radians, clockwise from +x), `path.close(p)`; each returns p |
 | `g.fill(p, color)`, `g.stroke(p, color, StrokeStyle(...))` | `canvas.fill(g, p, c)`, `canvas.stroke(g, p, c, style?)` |
-| `g.fill(p, LinearGradient(...))`, `RadialGradient` | `canvas.fill_gradient(g, p, gr)`, `canvas.fill_radial(g, p, gr)` (the checker picks by type) |
-| `g.stroke(p, style, gradient)` | `canvas.stroke_gradient` / `canvas.stroke_radial` |
+| `g.fill(p, LinearGradient(...))`, `RadialGradient` | `canvas.fill_gradient(g, p, gr)`, `canvas.fill_radial(g, p, gr)` (the checker picks the overload by the argument's type, an implicit member being a color) |
+| `g.stroke(p, gradient, style)` | `canvas.stroke_gradient(g, p, style?, gr)` / `canvas.stroke_radial` (the paint comes second, as fill's; the builtin's order is the method's Order) |
 | `g.save()`, `.restore()`, `.translate(x, y)`, `.scale(x, y)`, `.rotate(deg)`, `.opacity(a)`, `.clip(p)`, `.transform(a, b, c, d, tx, ty)`, `.evenOdd(on)` | `canvas.save(g)`, ..., `canvas.even_odd(g, on)` |
 | `g.text(s, x, y, CanvasText(...))` | `canvas.text(g, s, x, y, style?)` |
 
-`Shader(program)` takes the compiled program as `bytes`: the compiler
-compiles `shader("""…""")`, a Kage program, at build time (package
-shader, internal/shadercode's Encode, which carries the uniforms' lane
-table) into a bytes constant. `uniforms: [Uniform(name:, value:)]` set
-its variables by name; `colorUniform(name, color)` is
+`Shader(program)` takes the compiled program as `bytes`: the checker
+compiles `shader("""…""")`, a Kage program written as a literal without
+interpolations (a raw `r"""…"""` keeps Go's braces), with
+internal/shadercode's Compile and Encode (which carry the uniforms'
+lane table), reporting its errors; the lowering makes the bytes of a
+string constant (KSTR, CALLB `str.to_bytes`). `uniforms: [Uniform(name:,
+value:)]` set its variables by name; `colorUniform(name, color)` is
 `canvas.color_uniform`.
 
 ## Animation and frames
@@ -394,12 +429,20 @@ its variables by name; `colorUniform(name, color)` is
 |---|---|
 | `animate { body }` | `ui.animate(none, closure{body})` |
 | `animate(.spring) { body }` | `ui.animate(anim, closure{body})`, anim an `Animation` |
+| `animate(() => …)`, `animate(anim, () => …)` | the same, the closure as written |
+| `await animate(…) { body }` | `ui.animate_wait(anim, closure{body})`, AWAIT on the future it returns: settled once the animation is complete (its delay and runs; at once when nothing is mounted, or it repeats forever) |
 | `animating()` | `ui.animating()` (whether the changes made now animate) |
 | `let stop = onFrame(t => …)` | `ui.on_frame(closure(t: Duration))`, which returns the stop closure; the frames stop with the current owner too |
 
 `body` runs synchronously, its writes batched; the props and frames the
 next flush changes are sent between AnimateBegin and AnimateEnd.
-`Animation.done` is called once the animation is complete.
+`Animation.done` is called once the animation is complete. animate is
+no async function: a handler or a plain fn calls it without waiting,
+and `await` (where waiting is allowed) makes the checker mark the call
+(Call.Awaited). At the start of a statement, `animate { … }` parses as a
+slot named animate: the checker reads a slot named after a function, in
+a statement, as that call (Info.SlotCalls). onFrame's closure doesn't
+make a `let` of it a memo: what it reads is the closure's.
 
 ## Keys, drags, drops, accessibility
 
@@ -414,16 +457,24 @@ target; their events are `dragPhase`, `dropOver`, `dropMove` and `drop`.
 
 ## Media and the system
 
-Commands on a view are builtins taking its ref:
+Commands on a view are a Ref's methods, builtins taking the view it
+holds (see "Refs"):
 
 | Source | Lowered |
 |---|---|
 | `video.play()`, `.pause()`, `.seek(s)` | `ui.play(v)`, `ui.pause(v)`, `ui.seek(v, s)` |
-| `web.eval(js)`, `.back()`, `.forward()`, `.reload()`, `.stop()` | `ui.web_eval(v, js)`, `ui.web_navigate(v, 0..3)` |
-| `try await web.evalResult(js)`, `try await webCookies(url)` | `ui.web_eval_result(v, js)`, `ui.web_cookies(url)`: AWAIT on the future |
-| `field.insertText(s)`, `.format(.bold, on)`, `.toggleFormat(.bold)`, `.setLink(url)` | `ui.insert_text`, `ui.format(v, f, on)`, `ui.toggle_format(v, f)`, `ui.set_link` |
-| `share(text)`, `try await shareFiles(paths, ...)`, `haptic(.success)`, `copy(text)`, `openURL(url)`, `announce(text)`, `a11yFocus(view)` | `ui.share`, `ui.share_files`, `ui.haptic`, `ui.copy`, `ui.open_url`, `ui.announce`, `ui.a11y_focus` |
-| `onOpenURL(u => …)`, `onOpenFiles(ps => …)`, `onShare(items => …)` | `ui.on_open_url`, `ui.on_open_files`, `ui.on_share`: handlers while the component lives |
+| `web.run(js)`, `.goBack()`, `.goForward()`, `.reload()`, `.stopLoading()` | `ui.web_eval(v, js)`, `ui.web_navigate(v, 0..3)` (Method.Consts) |
+| `try await web.eval(js)`, `try await webCookies(url)` | `ui.web_eval_result(v, js)`, `ui.web_cookies(url)`: AWAIT on the future |
+| `field.insert(s)`, `.format(.bold, on)`, `.toggleFormat(.bold)`, `.setLink(url)` | `ui.insert_text`, `ui.format(v, f, on)`, `ui.toggle_format(v, f)`, `ui.set_link` |
+| `field.focus()`, `.blur()`, `scroll.scrollTo(x, y, animated: true)` | `ui.focus`, `ui.blur`, `ui.scroll_to` |
+| `share(text)`, `try await shareFiles(paths, mime:, uti:, title:, from: ref)`, `haptic(.success)`, `copy(text)`, `openURL(url)`, `announce(text)`, `a11yFocus(ref)` | `ui.share`, `ui.share_files` (from: the Ref's view, or none), `ui.haptic`, `ui.copy`, `ui.open_url`, `ui.announce`, `ui.a11y_focus` (not called while the Ref holds none) |
+| `useKeys([…])`, `onOpenURL(u => …)`, `onOpenFiles(ps => …)`, `onShare(items => …)` | `ui.use_keys`, `ui.on_open_url`, `ui.on_open_files`, `ui.on_share`: items of a component's body (or the app's block), called in its function before its views, so they hold while it lives |
+| the app's `on openURL(url) { }`, `on files(paths) { }`, `on share(items) { }` | `ui.on_open_url`, `ui.on_open_files`, `ui.on_share` of the handler, in the app's function |
+
+These functions are a table (lang/check/runtime.go's RuntimeFuncs), as
+the built-in methods are: a name, a signature over the prelude's types,
+the builtin, whether it's async or throws; a Ref argument crosses as its
+view.
 
 A host module's method (one Asuka doesn't wrap) is `ui.call(module,
 method, args)`, a future of the answer's bytes.
@@ -435,38 +486,59 @@ A `native component X(…) { prop …; event … }` of a native package
 
 | Source | Lowered |
 |---|---|
-| making it | `v = ui.native(type)`, type `"<module ID>#X"`, the module ID the platforms' generated code registers (as `native.new`'s cls) |
-| a prop, constant | `ui.native_set(v, "name", value, desc)`, desc its type's descriptor (native.h's) |
-| a prop, reactive | `ui.native_bind(v, "name", thunk, desc)` |
-| `on name(a, b) { … }` | `ui.native_on(v, "name", closure, desc)`, desc its parameters' descriptors, in order |
+| making it | `v = ui.native(type)`, type `"<module ID>#X"`, the module ID the platforms' generated code registers (as `native.new`'s cls: check.Package.NativeClass) |
+| a header parameter or a prop, constant | `ui.native_set(v, "Name", value, desc)`, desc its type's descriptor (native.h's) |
+| a header parameter or a prop, reactive | `ui.native_bind(v, "Name", thunk, desc)` |
+| `on name(a, b) { … }` | `ui.native_on(v, "Name", closure, desc)`, desc its parameters' descriptors, in order |
 | the style | `ui.set` / `ui.bind` of style keys on v |
 
-The handlers are set before the props (a view may send an event as a
-prop is set); the runtime sends the props after the listening, then each
-again only when its encoding changes. Props cross as bytes (native.go's
-type 5) in the native codec; an event's values are its one value "v",
-decoded parameter by parameter.
+Names cross exported (`selected` is "Selected", `changed` "Changed"):
+internal/nativegen's names, which the platforms' generated code decodes
+props and sends events by. A prop the caller leaves out is sent its
+declared default, when it has one. The handlers are set before the
+props (a view may send an event as a prop is set); the runtime sends the
+props after the listening, then each again only when its encoding
+changes. Props cross as bytes (native.go's type 5) in the native codec;
+an event's values are its one value "v", decoded parameter by parameter.
+Each host finds the kind's view by the package's path: iOS and macOS
+(AsukaNative.makeView) and Android (AsukaModules.makeView) through the
+provider of the path, the web through registerModule's, Windows and
+Linux through native.ViewFactory, under which the package's generated
+desktop Go (implement<X>) registers it.
 
 ## Languages
 
-An app's catalogs compile at build time with package i18n
-(`Catalog.Compile`): the blob, the keys sorted, and each key's arguments
-in its source message's order. The blob is a module constant; the
-module's init makes the catalog global, `i18n.catalog(blob)`, which
-registers it: its languages become the app's.
+The compiler (lang/compile) finds the app's catalogs (asuka.toml's
+`[i18n]`, else `locales/`), checks them with internal/i18ngen (what's
+wrong is a diagnostic at its file and line; a translation's missing
+messages are warnings), and compiles them with package i18n
+(`Catalog.CompileWith`): the blob, the keys sorted, each key's arguments
+in its source message's order, each language's number formats and, when
+a message has a date or the app imports asuka/i18n, its dates (CLDR's
+names, and the patterns of every style pair and of the messages'
+skeletons, in 12 and 24 hours). The checker gets `tr` (check.Catalog):
+each source key, its arguments typed by its placeholders (`int`, a
+number for `double` and `num`, a date for `DateTime`, a string
+otherwise). The blob is a string constant; init makes the catalog global
+before anything else, `i18n.catalog(blob.bytes())`, which registers it
+(a reload's replaces the last): its languages become the app's. An app
+without catalogs that imports asuka/i18n gets an implicit one, English's
+formats and no messages, and no `tr`.
 
 | Source | Lowered |
 |---|---|
-| `tr.inbox.title(unread: n)` | `i18n.say(catalog, key, (n,), none)`, key the index of `inboxTitle`'s key; the tuple of the arguments in the key's order: an int or a float for number, plural and selectordinal arguments, a string otherwise |
-| `tr.in("de").greeting(name: n)` | `i18n.say(catalog, key, (n,), "de")` |
-| `locale()`, `setLocale(tag)`, `setLanguages(tags)`, `languages()`, `preferredLanguages()`, `isRTL()`, `region()`, `formatLocale()` | `i18n.locale`, `i18n.set_locale`, ... |
+| `tr.inboxTitle(unread: n)` | `i18n.say(catalog, key, (n,), none)`, key the index of `inboxTitle`; the tuple of the arguments in the key's order, of their own kinds: an int or a float for number, plural and selectordinal arguments, an int (nanoseconds since 1970; a `Time`'s instant) for a date, a string otherwise; none without arguments |
+| `i18n.locale()`, `i18n.setLocale(tag)`, `i18n.languages()`, `i18n.isRTL()`, ... (asuka/i18n) | the package's `native fn`s: `i18n.locale`, `i18n.set_locale`, `i18n.languages`, `i18n.is_rtl`, `i18n.region`, `i18n.format_locale`, `i18n.format_number`, `i18n.format_int`, `i18n.format_date`, `i18n.autonym` |
 
 `i18n.say` reads the language shown, tracked: a binding that says a
-message follows the language as it follows its arguments. A key missing
-in a language falls back as `Catalog.Format` does (its CLDR parent
-locales, then the source); a key none has says its name. Dates are the
-caller's to write (a `date` or `time` argument takes a string) until the
-language has a date type.
+message follows the language as it follows its arguments, and the
+checker counts a call of tr (and asuka/i18n's natives that read the
+locale) as reading state, so a function that says one is followed too
+and spawn can't call it. A key missing in a language falls back as
+`Catalog.Format` does (its CLDR parent locales, then the source); a key
+none has says its name. Numbers and dates are written in the language
+shown's formats (the catalog's best match for it), dates in the device's
+time zone and the user's hour cycle.
 
 ## load
 
@@ -482,7 +554,78 @@ what it read changes, cancelling the last task, and exposes a
 
 `push(X(…))`, `present(X(…))`: CALLB `ui.push(builder)`, `ui.present(builder)`.
 `pop()`, `dismiss()`, `field.focus()`, `scroll.scrollTo(…)`: builtins
-taking the ref.
+taking the ref. The rest (core/src/ui/builtins.c has their arguments):
+
+| Source | Lowered |
+|---|---|
+| `onBack { … return true }` (a component's statement) | `ui.on_back(closure)`: the closure returns whether it took the user's going back from the nearest pushed screen, sheet or popover (else the app's); it goes with the component |
+| `depth()` | `ui.depth()`: the nearest stack's screens |
+| `alert("Delete?", message: m, actions: [.button(…)], fields: […])` | `ui.alert(title, message, actions, actionSheet, fields)`; `actions` a closure when they read state (a button disabled while a field is empty), followed while it shows |
+| `snackbar("Deleted", action: .button("Undo") { … })` | `ui.snackbar(message, action, duration, onDismiss)`, returning the closure that dismisses it |
+| `w.show()`, `w.setSize(w, h)`, … on `Window(…) as w` (none: the window it's in) | `ui.window_action(w, action, x, y)`; `w.close()` `ui.window_close(w)`; `w.state` `ui.window_state(w)`, followed |
+| `onCloseRequest { … return ok }` | `ui.on_close_request(closure)` |
+| `navigate(href)`, `navigate(X(…))` | `ui.navigate(href, mode)` (0 navigate, 1 push, 2 replace); `X(…)` a routed screen (below): its href |
+| `router.back()`, `router.dismiss()`, `router.canGoBack`, `router.href`, `router.setQuery(q)` | `ui.router_back`, `ui.router_dismiss`, `ui.can_go_back`, `ui.router_href` (followed), `ui.set_query` |
+
+## Routes
+
+A `Router` maps addresses to screens, as the Go ui's did: every screen
+of it has an href (`/inbox/18`, `/search?q=go`), which the web shows
+in its address bar, a link opens, and a reload comes back to. Routes
+are elements, so they're declared where the app's structure is:
+
+```asuka
+app {
+  Router(initial: "/inbox") {
+    Route("/", redirect: "/inbox")
+    Route(layout: .tabs) {
+      Route("/inbox", layout: .stack, title: "Inbox", icon: "tray") {
+        Inbox                                    // its screen's own path: ""
+        Thread                                   // ":id"
+        Route(":id/reply", sheet: true) { (p) in Reply(id: p.get("id")) }
+      }
+      Route("/settings", layout: .stack, title: "Settings", icon: "gear") {
+        Settings
+      }
+    }
+    Route("/admin", layout: .stack, guard: { to in signedIn ? "" : "/login?next={to}" }) { Users }
+  }
+}
+
+screen Inbox at "" { … }
+screen Thread(id: int) at ":id" { … }    // id: from the path, parsed
+```
+
+- `Router(initial:) { … }` is `ui.new(AK_EL_ROUTER)`, its keys, then
+  `ui.add` of each `Route`; a `Route` with routes in it likewise. A
+  route's layout makes it a navigator of its children (`.stack`,
+  `.tabs`, `.split`, `.slot`), `.group` (the default) only gathers them
+  under its path and guard.
+- `Route(path) { (p) in View }` is `ui.lazy(route, closure(pAcc){…})`:
+  the runtime builds it for each screen of the route, with its `Params`
+  (an accessor: a kept screen follows its query, `setQuery`).
+- A screen declared with `at "pattern"` is routable: named in a
+  `Route`'s block, it's a `Route` of its pattern (relative to the
+  parent's, unless it starts with `/`) whose builder reads each of the
+  screen's parameters from the path's parameters, else the query's,
+  converted to its type (`int`, `float`, `bool`, an enum's case name,
+  `string`); a value that doesn't convert throws `RouteError` to the
+  nearest `Boundary`. Its title is the screen's own.
+- `navigate(Thread(id: 7))`, a Button's `href: Thread(id: 7)`: the
+  compiler knows Thread's full pattern from the one Router that routes it
+  (`/inbox/:id`) and lowers the href to `ui.href_of("/inbox/:id",
+  ["7"])`; a screen two Routers route, or none, is an error there. A
+  string href is checked against the routes when it's a constant.
+- Guards are closures `fn(string) -> string` (the href asked for; `""`
+  lets the user in, an href sends them there), asked as the router
+  navigates. Redirects fill the route's parameters into theirs.
+- The router is the nearest one around the code (a context the router
+  gives what it builds), else the main window's first.
+
+The runtime (core/src/ui/router.c) is the Go ui's router: the navigation
+state described, then reconciled; Location commands with how the
+history moved; a browser's back and forward (the Location event); links
+the app is opened with.
 
 ## Tests
 
@@ -558,6 +701,17 @@ the future it returns when it's `async`), so it's called, passed and
 compiled as any function. Other packages reach platform code through
 native interfaces instead.
 
+The builtins are C, in core/src/std (a file and a table per package,
+registered with the rest); the package's Asuka writes the rest of its
+API on them. A builtin makes only what C can without the module's
+shapes: scalars, strings, bytes, and arrays of those (or optionals of
+them); the Asuka side builds its structs (asuka/time's `Time` from an
+instant and an offset, asuka/fs's `Entry` from a name and `[isDir,
+size, modified]`). A failure is a runtime error, or for typed errors a
+status the Asuka side reads and throws as its own enum (asuka/fs's
+`FsError`, from the thread's last failure). Builtins may run on spawn's
+threads, so they keep no state that isn't per thread.
+
 ## Streams
 
 `Stream(produce)` is CALLB `stream.new(produce, kind)` (kind: the
@@ -580,8 +734,8 @@ starts nothing.
 ## Imports
 
 The compiler (lang/compile) finds each import: `./path` beside the
-importing file's package; `asuka/json`, `asuka/math` and `asuka/time`
-in the checker itself; any other `asuka/<name>` in std/ (the CLI's
+importing file's package; `asuka/json` and `asuka/math` in the checker
+itself; any other `asuka/<name>` in std/ (the CLI's
 copy: package std); anything else through the project's asuka.lock
 (internal/pkgs.Imports), by the importing package's dependencies, so
 two packages may import different majors under one name. A package's
@@ -603,27 +757,36 @@ packages.
 ## Built-in methods
 
 The built-in types' methods are a table (lang/check/methods.go's
-Methods): a receiver (an array, a map, a string, a float, an optional,
-mount's app, a Loading), a name, a signature over the receiver's type
+Methods): a receiver (an array, a map, a string, bytes, a float, a
+Duration, an optional, mount's app, a Loading), a name, a signature over the receiver's type
 variables, and the builtin (core/src/rt/lib.c) CALLB calls, the
 receiver first, then the arguments in the builtin's order. An inout
 method changes its receiver in place (see "Changing values in place").
-A few the lowering does itself: `count()` of an array or a map is LEN,
+A signature may name the prelude's types (StrokeStyle, TextFormat):
+each checker reads it with its own prelude (methodSig). A method may be
+a property (Field: `g.width`, `card.hovered`, no parentheses), append
+constants to the builtin's arguments (Consts: the state ui.state reads;
+Extra: `map`'s result's element kind, last, or a bool: `padStart` and
+`padEnd` are one builtin, `str.pad`),
+and share its arity with overloads the checker picks by an argument's
+type (g.fill's color or gradient). The receivers are arrays, maps,
+strings, bytes, floats, colors, optionals, mount's app, a Loading, a
+Graphics, a Path and a Ref. A few the lowering does itself: `count()`
+of an array or a map is LEN,
 `isNone()` ISNONE, a map's `get(k)` MGET, `enumerated()` a loop making
 `(index, element)` tuples (and `for (i, x) in xs.enumerated()` makes
-none: it's a loop over the indexes). `map` passes its result's element
-kind last. Closures passed to them don't throw and don't await.
+none: it's a loop over the indexes). Closures passed to them don't
+throw and don't await.
 
 ## What isn't lowered yet
 
-- A `Length` from a number computed at run time (constants are packed
-  when compiling), `for await`, `withTimeout`, native interfaces and
-  components, screens (the runtime has no `Screen` element yet), styles
-  of other packages, `List`'s lazy rows (no `List` element yet; the
-  lowering calls `ui.lazy_for` when an element says it builds rows
-  lazily).
-- The C UI runtime's builtins (lang/ir/uimap.go) don't exist yet, so a
-  module that makes views doesn't load ("no builtin ui.new").
+- `for await`, `withTimeout`, screens (the runtime has no `Screen`
+  element yet), styles of other packages, `List`'s lazy rows (no `List`
+  element yet; the lowering calls `ui.lazy_for` when an element says it
+  builds rows lazily), `frames()` (a stream of onFrame's), `ui.call` (a
+  host module's method Asuka doesn't wrap).
+- A `Length` from a number computed at run time is `length.points` of
+  it (a constant one is packed when compiling).
 - The runtime reports a user error's message only where the lowering
   asks for it (tests, `e.message`): `ak_error_message` reads a struct's
   `message` field, and user errors are enums; it could call the shape's

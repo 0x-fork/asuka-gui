@@ -56,6 +56,13 @@ void ak_sched_advance(int64_t ns);
 // ak_sched_next_timer gives when the next timer is due (false: none).
 bool ak_sched_next_timer(int64_t *at);
 int64_t ak_sched_now(void);
+// ak_sched_manual reports the manual clock (a test's run). Any thread.
+bool ak_sched_manual(void);
+// ak_sched_wall is the time since the Unix epoch in nanoseconds: the
+// system's, or with the manual clock AK_TEST_EPOCH plus the manual
+// clock's time, so tests see the same dates on every run. Any thread.
+int64_t ak_sched_wall(void);
+#define AK_TEST_EPOCH INT64_C(1767225600000000000)  // 2026-01-01T00:00:00Z
 
 // ---- Futures ----
 

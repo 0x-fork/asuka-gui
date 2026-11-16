@@ -18,6 +18,7 @@
 #include "vm/keep.h"
 #include "abi/dev.h"
 #include "base/thread.h"
+#include "std/std.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -372,6 +373,8 @@ void asuka_setenv(const char *key, const char *value) {
 	setenv(key, value, 1);
 #endif
 }
+
+void asuka_set_app_dir(const char *path) { ak_fs_set_app_dir(path); }
 
 char *asuka_crash_start(const char *info) {
 	AK_UNUSED(info);

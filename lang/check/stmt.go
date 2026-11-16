@@ -83,6 +83,15 @@ func (c *Checker) stmt(it syntax.Item) {
 				c.errorf(s, "a view here does nothing: views go in a component's body")
 			}
 		}
+	case *syntax.SlotItem:
+		// animate { … }: a function's call with a trailing block.
+		if _, ok := c.lookup(s.Name.Name).(*Builtin); ok {
+			call := &syntax.CallExpr{Span: s.Span, Fun: s.Name, Block: s.Body}
+			c.info.SlotCalls[s] = call
+			c.expr(call, nil)
+			return
+		}
+		c.errorf(it, "%s isn't a statement: %s", itemName(it), notStatementHint(it))
 	case *syntax.BadItem:
 	case *syntax.FuncDecl:
 		c.errorf(s, "a fn is declared at the top of a file, or in a component's or a store's body; here, use a closure: let %s = (…) => …", s.Name.Name)
@@ -758,6 +767,13 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 				return
 			}
 			tn = n.Obj
+		} else if len(p.Path) < 2 {
+			name := "case"
+			if len(p.Path) == 1 {
+				name = p.Path[0].Name
+			}
+			c.errorf(p, "%s(…) isn't a case: write .%s(…), or Type.%s(…)", name, name, name)
+			return
 		} else {
 			tn = c.casePathType(p.Path[:len(p.Path)-1])
 			if tn == nil {

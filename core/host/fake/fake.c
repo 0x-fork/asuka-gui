@@ -24,6 +24,9 @@ AK_PRINTF(2, 3) static void fail(ak_fake *f, const char *fmt, ...) {
 	f->fail_fn(f->fail_ctx, msg);
 }
 
+static void location(ak_fake *f, ak_fake_view *v, ak_span args);
+static bool listening(ak_fake *f, const ak_fake_view *v, ak_event_kind e);
+
 static const char *kind_str(ak_view_kind k, char buf[16]) {
 	if (k == AK_FAKE_KIND_CELL) return "Cell";
 	const char *n = ak_kind_name(k);
@@ -281,6 +284,15 @@ void ak_fake_free(ak_fake *f) {
 	ak_buf_free(&f->error);
 	ak_buf_free(&f->pending);
 	ak_buf_free(&f->ev);
+	for (uint32_t i = 0; i < f->histories.len; i++) {
+		ak_fake_history *h = &f->histories.data[i];
+		for (uint32_t j = 0; j < h->entries.len; j++) {
+			ak_buf_free(&h->entries.data[j].href);
+			ak_buf_free(&h->entries.data[j].state);
+		}
+		ak_vec_free(&h->entries);
+	}
+	ak_vec_free(&f->histories);
 	ak_free(f);
 }
 
@@ -615,7 +627,7 @@ static void apply_op(ak_fake *f, const ak_op *op) {
 		if (!v) return;
 		switch (op->cmd) {
 		case AK_CMD_CALL: call(f, op->id, op->value.s); return;
-		case AK_CMD_LOCATION: return;  // a Router's history isn't kept
+		case AK_CMD_LOCATION: location(f, v, op->value.s); return;
 		case AK_CMD_LIST_UPDATE: list_update(f, v, op->value.s); break;
 		case AK_CMD_PRESENT:
 			if (v->kind != AK_KIND_SHEET && v->kind != AK_KIND_POPOVER && v->kind != AK_KIND_ALERT && v->kind != AK_KIND_WINDOW && v->kind != AK_KIND_SNACKBAR)
@@ -636,6 +648,121 @@ static void apply_op(ak_fake *f, const ak_op *op) {
 	}
 	}
 	fail(f, "unknown op %u", op->code);
+}
+
+// ---- Histories ----
+
+ak_fake_history *ak_fake_history_of(ak_fake *f, const ak_fake_view *win) {
+	if (!win) win = ak_fake_root(f);
+	if (!win) return NULL;
+	for (uint32_t i = 0; i < f->histories.len; i++)
+		if (f->histories.data[i].win == win->id) return &f->histories.data[i];
+	return NULL;
+}
+
+void ak_fake_hrefs(const ak_fake_history *h, ak_buf *out) {
+	for (uint32_t i = 0; h && i < h->entries.len; i++) {
+		if (i) ak_buf_u8(out, ' ');
+		ak_buf_put(out, h->entries.data[i].href.data, h->entries.data[i].href.len);
+	}
+}
+
+static void set_entry(ak_fake_entry *e, const ak_location *l) {
+	e->href.len = e->state.len = 0;
+	ak_buf_put(&e->href, l->href.p, l->href.len);
+	ak_buf_put(&e->state, l->state.p, l->state.len);
+}
+
+static void append_entry(ak_fake_history *h, const ak_location *l) {
+	ak_vec_push(&h->entries, ((ak_fake_entry){0}));
+	set_entry(&h->entries.data[h->entries.len - 1], l);
+}
+
+static void truncate_entries(ak_fake_history *h, uint32_t n) {
+	while (h->entries.len > n) {
+		ak_fake_entry *e = &h->entries.data[--h->entries.len];
+		ak_buf_free(&e->href);
+		ak_buf_free(&e->state);
+	}
+}
+
+// location applies a Location command to window v's history, as a
+// browser's pushState, replaceState and history.go do.
+static void location(ak_fake *f, ak_fake_view *v, ak_span args) {
+	ak_location l;
+	if (!ak_decode_location((const uint8_t *)args.p, args.len, &l)) {
+		fail(f, "Location: its args don't decode");
+		return;
+	}
+	if (v->kind != AK_KIND_VIEW && v->kind != AK_KIND_WINDOW) {
+		fail(f, "Location sent to a view that isn't the root or a Window");
+		return;
+	}
+	ak_fake_history *h = ak_fake_history_of(f, v);
+	if (!h) {
+		ak_vec_push(&f->histories, ((ak_fake_history){.win = v->id, .index = -1}));
+		h = &f->histories.data[f->histories.len - 1];
+	}
+	h->commands++;
+	if (f->popping) {
+		// The browser went there already: the router's state is that
+		// entry's, or the app stays where it was (Forward: back again).
+		if (l.action == AK_LOCATION_ACTION_FORWARD) h->index = f->pop_from;
+		if (h->index >= 0 && (uint32_t)h->index < h->entries.len) set_entry(&h->entries.data[h->index], &l);
+		return;
+	}
+	switch (l.action) {
+	case AK_LOCATION_ACTION_PUSH:
+		truncate_entries(h, (uint32_t)(h->index + 1));
+		append_entry(h, &l);
+		h->index++;
+		break;
+	case AK_LOCATION_ACTION_BACK: {
+		// The latest entry back with the same href, as the web host goes
+		// back; none: this entry is replaced.
+		int32_t i = -1;
+		for (int32_t j = h->index - 1; j >= 0; j--) {
+			ak_buf *b = &h->entries.data[j].href;
+			if (ak_span_eq(ak_strn(b->data, b->len), l.href)) {
+				i = j;
+				break;
+			}
+		}
+		if (i >= 0) h->index = i;
+		if (h->index < 0) {
+			append_entry(h, &l);
+			h->index = 0;
+		}
+		set_entry(&h->entries.data[h->index], &l);
+		break;
+	}
+	default:
+		if (h->index < 0) {
+			append_entry(h, &l);
+			h->index = 0;
+		} else {
+			set_entry(&h->entries.data[h->index], &l);
+		}
+	}
+}
+
+bool ak_fake_go(ak_fake *f, ak_fake_view *win, int32_t n) {
+	if (!win) win = ak_fake_root(f);
+	ak_fake_history *h = ak_fake_history_of(f, win);
+	if (!h) return false;
+	int32_t i = h->index + n;
+	if (i < 0 || (uint32_t)i >= h->entries.len) return false;
+	f->pop_from = h->index;
+	h->index = i;
+	ak_buf b = {0};
+	ak_fake_entry *e = &h->entries.data[i];
+	ak_append_location_event(&b, ak_strn(e->href.data, e->href.len), ak_strn(e->state.data, e->state.len));
+	f->popping = true;
+	if (listening(f, win, AK_EVENT_LOCATION))
+		ak_fake_dispatch(f, &(ak_event){.id = win->id, .kind = AK_EVENT_LOCATION, .s = ak_strn(b.data, b.len)});
+	f->popping = false;
+	ak_buf_free(&b);
+	return true;
 }
 
 void ak_fake_apply(ak_fake *f, const uint8_t *buf, size_t len) {

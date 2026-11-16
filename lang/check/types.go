@@ -40,6 +40,7 @@ const (
 	KTestApp                   // what mount returns
 	KGraphics                  // a Canvas's drawing context (the UI runtime's)
 	KPath                      // an outline a Shape or a Graphics draws (the UI runtime's)
+	KRef                       // a view's handle (ref: r, X as r): a cell holding the view, or none
 	KNever                     // what never returns (throw, panic)
 )
 
@@ -68,6 +69,7 @@ var (
 	TestApp  = &Basic{KTestApp, "TestApp"}
 	Graphics = &Basic{KGraphics, "Graphics"}
 	Path     = &Basic{KPath, "Path"}
+	Ref      = &Basic{KRef, "Ref"}
 	Never    = &Basic{KNever, "never"}
 )
 
@@ -432,7 +434,7 @@ func IsErrorType(t Type) bool {
 func IsEquatable(t Type) bool {
 	switch x := t.(type) {
 	case *Basic:
-		return x != Void && x != View && x != TestApp && x != Never
+		return x != Void && x != View && x != TestApp && x != Never && x != Graphics && x != Path && x != Ref
 	case *Array:
 		return IsEquatable(x.Elem)
 	case *Map:

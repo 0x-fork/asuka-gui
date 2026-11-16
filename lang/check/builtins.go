@@ -68,7 +68,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		}
 		return out
 	}
-	if e.Block != nil && b.ID != BMount && b.ID != BWithTimeout {
+	if e.Block != nil && b.ID != BMount && b.ID != BWithTimeout && b.ID != BAnimate && b.ID != BRuntime {
 		c.errorf(e.Block, "%s takes no block", b.name)
 	}
 	switch b.ID {
@@ -218,7 +218,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		}
 		call.Args, call.Params = args, ps
 		call.Result = String
-	case BMath, BTimeNow, BTimeMonotonic:
+	case BMath:
 		ft := b.Sig
 		args := positional(len(ft.Params), plural(len(ft.Params), "argument", "arguments"))
 		for i, a := range args {
@@ -293,6 +293,18 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		call.Params = []*Param{{Name: "produce", Type: prod}}
 		call.Result = &Stream{elem}
+	case BRuntime:
+		c.runtimeCall(e, call, b.Fn)
+	case BAnimate:
+		c.animateCall(e, call)
+	case BShader:
+		c.shaderCall(e, call)
+	case BRefNew:
+		positional(0, "nothing: Ref(), then ref: it on an element")
+		call.Result = Ref
+	case BPathNew:
+		positional(0, "nothing: Path(), then its methods: Path().move(0, 0).line(10, 10)")
+		call.Result = Path
 	default:
 		c.errorf(e, "unknown builtin %s", b.name)
 		call.Result = Invalid
@@ -393,6 +405,8 @@ func (c *Checker) isAsyncCall(call *Call) bool {
 		switch call.Builtin.ID {
 		case BSleep, BAll, BRace, BIdle, BWithTimeout:
 			return true
+		case BRuntime:
+			return call.Builtin.Fn.Async
 		}
 	}
 	return false
@@ -602,7 +616,7 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 // library's package at path (the rest are directories of std/).
 func ProvidesStd(path string) bool {
 	switch path {
-	case "asuka/json", "asuka/math", "asuka/time":
+	case "asuka/json", "asuka/math":
 		return true
 	}
 	return false
@@ -635,10 +649,6 @@ func (c *Checker) makeStd(path string) *Package {
 		pi := &Global{object: object{name: "pi"}, Pkg: p, Kind: ConstGlobal, Type: Float, Value: &syntax.BasicLit{Kind: syntax.FLOAT, Value: "3.141592653589793"}, Pub: true}
 		p.Scope.Insert(pi)
 		p.Globals = append(p.Globals, pi)
-	case "asuka/time":
-		p.Name = "time"
-		add("now", BTimeNow, "time.now", &FuncType{Result: Int})
-		add("monotonic", BTimeMonotonic, "time.monotonic", &FuncType{Result: Duration})
 	default:
 		return nil
 	}

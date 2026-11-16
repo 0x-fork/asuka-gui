@@ -250,7 +250,7 @@ native component Button(title: string) {
   prop icon: string
   /// actions shown when it's tapped, instead of press
   prop menu: [Action]
-  /// goes to this route when it's pressed, after press
+  /// goes to this route when it's pressed, after press (the Router around it navigates there)
   prop href: string
   event press
 }
@@ -383,10 +383,16 @@ native component Scroll() {
   prop horizontal: bool
   /// shows the pull to refresh spinner while true (with on refresh)
   prop refreshing: bool
+  /// it stops only at multiples of its own size, a page each, and hides its scroll bars
+  prop paging: bool
+  /// the page it shows (paging): a swipe that settles writes it, and writing it scrolls there
+  prop page: int
   /// its content offset as it scrolls
   event scroll(x: float, y: float)
   /// pulled to refresh
   event refresh
+  /// a paging swipe is settling on a page: its index from the content's start (its leading edge, right to left)
+  event pageChange(page: int)
 }
 
 /// a for in it is the platform's recycling list: rows exist only while they're on screen. It grows into its room unless it's sized
@@ -399,6 +405,18 @@ native component List() {
   prop appearance: ListAppearance
   /// .bottom: a chat's, which rests at its end
   prop anchor: ScrollAnchor
+  /// row index's actions, revealed by swiping it from its trailing edge (a destructive one red; the first a full swipe's)
+  prop swipeActions: fn(int) -> [Action]
+  /// row index's actions revealed from its leading edge (Mail's Unread)
+  prop leadingSwipeActions: fn(int) -> [Action]
+  /// row index's section: rows next to each other with the same key are one, headed by header
+  prop section: fn(int) -> string
+  /// a section's header, given its key (an accessor: a recycled header follows its new section)
+  prop header: fn(string) -> View
+  /// selection mode (Mail's Edit): rows show the platform's selection control, a tap selects instead of pressing, and rows don't swipe
+  prop selecting: bool
+  /// whether row index is selected, followed as what it reads changes
+  prop selected: fn(int) -> bool
   event scroll(x: float, y: float)
   /// pulled to refresh
   event refresh
@@ -406,6 +424,12 @@ native component List() {
   event endReached
   /// the first rows are about to show: load earlier ones (once per first item)
   event startReached
+  /// the user selected or deselected row index; what selected doesn't take back goes back as it was
+  event select(index: int, selected: bool)
+  /// the user started selecting at row index while the list isn't selecting (a two-finger pan on iOS, a long press on Android)
+  event selectBegin(index: int)
+  /// a swipe action of row index was chosen: its index among swipeActions, or -1 - its index among leadingSwipeActions (its run has run)
+  event action(index: int, action: int)
 }
 
 /// styled paragraphs (spans), typeset and drawn by the platform's text engine; the style's font, color, textAlign and lines are its spans' defaults. Each paragraph's layout is cached by its content and width
@@ -482,4 +506,174 @@ native component WebView() {
   event download(download: WebDownload)
   /// a page it would open in a new window; without a handler it loads here
   event newWindow(url: string)
+}
+
+/// a navigation stack (UINavigationController; a view stack with a top app bar and predictive back on Android): its child is its first screen; push(…) and pop() in it add and remove more, and the user's back pops. It grows into its room unless it's sized
+native component Stack() {
+  prop children: View? = none
+}
+
+/// a screen of a Stack (a screen declaration's root), sized by the platform
+native component Screen() {
+  prop children: View? = none
+  /// the bar's title (a tab's, a page's in a browser)
+  prop title: string
+  /// the title large at the top, collapsing into the bar as it scrolls (iOS)
+  prop largeTitle: bool
+  /// the edge swipe pops it (iOS)
+  prop backGesture: bool = true
+  /// the shared key of a view on the screen below: the screen zooms out of it as it's pushed, and back as it's popped (iOS 18)
+  prop zoomFrom: string
+  /// the top app bar's color while it's on top (Android)
+  prop barColor: Color
+  /// a search field in the bar: what's typed (typing writes it)
+  prop search: string
+  /// the search field's placeholder ("": Search, in the app's language)
+  prop searchPlaceholder: string
+  /// the search field stays out of the way until it's asked for
+  prop searchButton: bool
+  /// primary's title beside its icon, shrinking to the icon as the content scrolls (Android's extended FAB)
+  prop primaryExtended: bool
+  /// the search field's text changed
+  event searchChange(text: string)
+  /// return pressed in the search field
+  event searchSubmit
+  /// the bar's buttons: Buttons (title or icon, menu, disabled), shown by the platform's bar
+  prop actions: View? = none
+  /// buttons in a bar at the bottom of the screen: Buttons, as actions'
+  prop toolbar: View? = none
+  /// the screen's main action (compose, add): a Button; Android's floating action button, iOS's prominent toolbar item
+  prop primary: View? = none
+}
+
+/// pages with a tab bar (UITabBarController; Material's navigation bar): its children are Tabs. It grows into its room unless it's sized
+native component Tabs() {
+  prop children: View? = none
+  /// the shown tab's index: the user's choice writes it
+  prop selected: int
+  event change(index: int)
+}
+
+/// a page of Tabs: its content is built when it's first chosen
+native component Tab(title: string) {
+  prop children: View? = none
+  /// a symbol
+  prop icon: string
+  /// shown on the tab: a count ("3"), or short text; empty: none
+  prop badge: string
+}
+
+/// content in a modal sheet while open: built as it opens, disposed as it closes. It takes no room where it's declared
+native component Sheet() {
+  prop children: View? = none
+  /// shows the sheet while true; the user dismissing it writes false
+  prop open: bool
+  /// the heights it rests at ([]: large)
+  prop detents: [Detent]
+  prop grabber: bool
+  /// covers the screen; the user can't swipe it away
+  prop fullScreen: bool
+  event change(open: bool)
+  /// the user dismissed it
+  event dismiss
+}
+
+/// content in a bubble pointing at its children while open (UIPopoverPresentationController, a PopupWindow, NSPopover)
+native component Popover() {
+  prop children: View? = none
+  /// shows the popover while true; a tap outside writes false
+  prop open: bool
+  /// how wide it may be (0: 320); it's as big as its content
+  prop maxWidth: float
+  event change(open: bool)
+  /// the user dismissed it
+  event dismiss
+  /// what the popover shows: built as it opens, disposed as it closes
+  prop content: View? = none
+}
+
+/// shows a menu of actions when its children are tapped (UIMenu, PopupMenu)
+native component Menu(actions: [Action]) {
+  prop children: View? = none
+  /// a context menu: shown on a long press (a right click on a desktop) rather than a tap
+  prop longPress: bool
+}
+
+/// destinations in a sidebar and the chosen one's screens beside it, as a Stack (UISplitViewController; Material's navigation drawer): its children are Destinations
+native component Split() {
+  prop children: View? = none
+  /// the sidebar's
+  prop title: string
+  /// the chosen destination's index: the user's choice writes it
+  prop selected: int
+  event change(index: int)
+}
+
+/// a place a Split's sidebar leads to: its content is its first screen, built when it's chosen
+native component Destination(title: string) {
+  prop children: View? = none
+  prop icon: string
+  prop badge: string
+  /// the sidebar section it's in: destinations next to each other with the same section are one
+  prop section: string
+}
+
+/// a desktop window of its own while open (a window in the page on the web; phones have none): its content is built as it opens
+native component Window() {
+  prop children: View? = none
+  /// the window is open while true; the user closing it writes false
+  prop open: bool
+  prop title: string
+  /// how it opens: its size, its place, its kind
+  prop options: WindowOptions
+  /// its document has unsaved changes
+  prop edited: bool
+  /// the path of the file it shows
+  prop file: string
+  /// follow its state (windowState(w) reads it)
+  prop watchState: bool
+  event change(open: bool)
+  /// the user closed it
+  event close
+  /// the user asked to close it: it stays open until closeWindow(w)
+  event closeRequest
+}
+
+/// shows its routes' screens from the address the app is at: its children are Routes
+native component Router() {
+  prop children: View? = none
+  /// where it starts when nothing else says (a link the app was opened with, the address its window was left at)
+  prop initial: string = "/"
+}
+
+/// maps a path to a screen (its content, built with its parameters), or holds routes
+native component Route(path: string) {
+  prop children: View? = none
+  /// a navigator of its child routes, or a group
+  prop layout: RouteLayout
+  prop title: string
+  prop icon: string
+  prop badge: string
+  /// the child a navigator starts with (a stack's first screen, under the one a link names)
+  prop initial: string
+  /// sends whoever comes here to this href, its parameters filled in
+  prop redirect: string
+  /// presented in a sheet over its navigator
+  prop sheet: bool
+  prop detents: [Detent]
+  /// asked before its screens show: "" lets the user in, an href sends them there
+  prop guard: fn(string) -> string
+}
+
+/// an error boundary: an error its content doesn't catch shows on error's views
+native component Boundary() {
+  prop children: View? = none
+  /// what shows instead when building its content, or an effect or handler in it, fails; reset builds it again
+  event error(error: Error, reset: fn())
+}
+
+/// a row of dots, one per page, the current one highlighted (UIPageControl)
+native component PageControl(count: int) {
+  prop page: int
+  event change(page: int)
 }

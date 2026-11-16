@@ -1,6 +1,6 @@
 # 开发
 
-`asuka dev` 会运行你的应用，并在你保存时重新加载。它可以运行在 iOS 模拟器或 iPhone、Android 模拟器或手机、你的 Mac、PC 或 Linux 电脑上，也可以运行在浏览器里。本页介绍它在各个平台上是怎么做到的、重载时会保留什么，以及设备、资源和日志、你可能遇到的问题，还有 Asuka 自己的测试和基准测试。
+`asuka dev` 会运行你的应用，并在你保存时重新加载。它可以运行在 iOS 模拟器或 iPhone、Android 模拟器或手机、你的 Mac、PC 或 Linux 电脑上，也可以运行在浏览器里。本页介绍它在各个平台上是怎么做到的、重载时会保留什么，以及设备、资源和日志、编辑器、你可能遇到的问题，还有 Asuka 自己的测试和基准测试。
 
 ## asuka dev
 
@@ -104,6 +104,21 @@ Asuka 会监听应用所在的目录及其本地依赖（`asuka.toml` 中的 `fi
 ## 日志
 
 开发 App 会把它的输出和错误发送给 `asuka dev`，由后者打印到终端：在每个平台上都包括 `print`、未捕获的错误，以及核心和宿主写出的内容。开发 App 无法加载某个模块时，会说明原因（`asuka: the player: ...`）。在浏览器中，页面的错误也会打印到终端。
+
+## 编辑器
+
+`asuka lsp` 是 Asuka 的语言服务器，为 `.asuka` 文件提供：输入时的诊断、补全、带 `///` 文档的悬停提示、跳转到定义、查找引用、重命名、格式化（与 `asuka fmt` 相同）、符号、签名帮助和语义高亮。它会带着你尚未保存的修改检查正在编辑的包，以及导入它的包。
+
+VS Code 的扩展在 `editors/vscode` 中：它为这门语言加上语法高亮，并运行 `asuka lsp`（使用 `PATH` 中的 `asuka`，或 `asuka.server.path` 指定的那个）。
+
+```sh
+cd editors/vscode
+npm install
+npx @vscode/vsce package
+code --install-extension asuka-0.1.0.vsix
+```
+
+任何带 LSP 客户端的编辑器也都能使用它：运行 `asuka lsp`，它通过标准输入和输出使用 LSP 3.17，处理 `.asuka` 文件，以 `asuka.toml` 所在的目录为根。`editors/vscode` 的 README 里有 Neovim 和 Helix 的设置。
 
 ## 快照与脚本
 

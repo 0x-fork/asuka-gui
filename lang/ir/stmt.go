@@ -111,6 +111,13 @@ func (b *fb) stmt(it syntax.Item) {
 		b.emitStmt(s)
 	case *syntax.ExprStmt:
 		b.exprStmt(s.X)
+	case *syntax.SlotItem:
+		// animate { … } in a statement: the call.
+		if call := b.l.info.SlotCalls[s]; call != nil {
+			b.exprStmt(call)
+			return
+		}
+		b.l.errorf(it, "can't lower this statement")
 	case *syntax.DeferStmt:
 		b.withDefer(s, nil)
 	default:

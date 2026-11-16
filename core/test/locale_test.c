@@ -4,6 +4,7 @@
 // Format says), said by the core from the compiled catalog.
 #include "uih.h"
 #include "ui/i18n.h"
+#include "base/thread.h"
 
 #include <stdlib.h>
 
@@ -37,6 +38,7 @@ static void load(void) {
 	ak_locale_reset();
 	ak_i18n_reset();
 	ak_ui_set_direction(false);
+	ak_zone_set_utc(true);  // the cases' dates are UTC's
 	size_t n;
 	char *b = read_file("core/test/testdata/catalog.akc", &n);
 	if (!b) ak_panic("no catalog.akc");
@@ -316,6 +318,52 @@ TEST(pseudo_locale) {
 	unload();
 }
 
+static void check_str(ak_str *s, const char *want) {
+	if (strcmp(s->data, want) != 0) T_FAIL("%s, want %s", s->data, want);
+	ak_release(s);
+}
+
+// Numbers and dates outside messages (asuka/i18n): in the language shown,
+// with the catalog's data for it, in the user's hour cycle.
+TEST(formatting) {
+	load();
+	ak_uitest *a = mount_reading("de-DE", empty_app);
+	check_str(ak_i18n_format_number(1234567.891, 0, 0, 3), "1.234.567,891");
+	check_str(ak_i18n_format_number(0.256, 1, 0, 0), "26\u00a0%");
+	check_str(ak_i18n_format_number(2.5, 0, 2, 2), "2,50");
+	check_str(ak_i18n_format_int(-1234567, 0), "-1.234.567");
+	check_str(ak_i18n_format_int(1234567, 4), "1234567");
+	int64_t t = 1767618429000000000;  // 2026-01-05 13:07:09 UTC
+	check_str(ak_i18n_format_date(t, 2, 0), "05.01.2026");
+	check_str(ak_i18n_format_date(t, 4, 1), "Montag, 5. Januar 2026 um 13:07");
+	check_str(ak_i18n_format_date(t, 0, 2), "13:07:09");
+	// Another reader's hour cycle: their regional formats'.
+	ak_fake *f = ak_uitest_host(a);
+	ak_environment env = f->env;
+	env.hour_cycle = 12;
+	ak_fake_set_environment(f, &env);
+	check_str(ak_i18n_format_date(t, 0, 1), "01:07 PM");  // as Go writes de-u-hc-h12
+	ak_str *hi = ak_str_c("hi"), *ar = ak_str_c("ar"), *xx = ak_str_c("zz-Qaaa");
+	ak_ui_set_locale(hi);
+	check_str(ak_i18n_format_number(1234567, 0, 0, 3), "12,34,567");
+	ak_ui_set_locale(ar);
+	check_str(ak_i18n_format_date(t, 1, 0), "5\u200f/1\u200f/2026");
+	// Languages by their own names.
+	ak_str *de = ak_str_c("de"), *zh = ak_str_c("zh-Hant");
+	check_str(ak_i18n_autonym(de), "Deutsch");
+	check_str(ak_i18n_autonym(zh), "繁體中文");
+	check_str(ak_i18n_autonym(ar), "العربية");
+	check_str(ak_i18n_autonym(xx), "zz-Qaaa");
+	ak_release(hi), ak_release(ar), ak_release(xx), ak_release(de), ak_release(zh);
+	done(a);
+	unload();
+	// Without catalogs: Latin digits, English's patterns, ISO dates.
+	ak_locale_reset();
+	ak_i18n_reset();
+	check_str(ak_i18n_format_number(1234.5, 0, 0, 3), "1,234.5");
+	check_str(ak_i18n_format_date(t, 2, 0), "2026-01-05 13:07");
+}
+
 // The regional formats, with the rg keyword's region, and the locale to
 // format in.
 TEST(region) {
@@ -427,6 +475,129 @@ TEST(tags) {
 	CHECK(ak_plural(AK_STR("en"), &one, false) == AK_PLURAL_ONE && ak_plural(AK_STR("ja"), &one, false) == AK_PLURAL_OTHER);
 	CHECK(ak_plural(AK_STR("en-US"), &two, true) == AK_PLURAL_TWO);
 	CHECK(ak_plural(AK_STR("ar"), &two, false) == AK_PLURAL_TWO);
+}
+
+// ---- Plural rules: every sample CLDR gives of every language's
+// categories (i18n/testdata/plural_samples.txt, which package i18n's
+// rules are tested against too), cardinal and ordinal ----
+
+static const char *const plural_names[] = {"zero", "one", "two", "few", "many", "other"};
+
+static int plural_index(const char *name) {
+	for (int i = 0; i < 6; i++)
+		if (strcmp(plural_names[i], name) == 0) return i;
+	return -1;
+}
+
+// one_sample calls f for a sample, or each of a range's: 2~16 every
+// integer, 0.0~1.5 every tenth.
+static void one_sample(char *item, void (*f)(const char *n, void *ctx), void *ctx) {
+	while (*item == ' ') item++;
+	char *end = item + strlen(item);
+	while (end > item && end[-1] == ' ') *--end = 0;
+	if (!*item || strncmp(item, "\xE2\x80\xA6", 3) == 0) return;  // …
+	char *tilde = strchr(item, '~');
+	if (!tilde) {
+		f(item, ctx);
+		return;
+	}
+	*tilde = 0;
+	const char *lo = item, *hi = tilde + 1;
+	const char *dot = strchr(lo, '.');
+	int frac = dot ? (int)strlen(dot + 1) : 0;
+	char digits[32];
+	size_t n = 0;
+	for (const char *p = lo; *p && n + 1 < sizeof digits; p++)
+		if (*p != '.') digits[n++] = *p;
+	digits[n] = 0;
+	long long a = strtoll(digits, NULL, 10);
+	n = 0;
+	for (const char *p = hi; *p && n + 1 < sizeof digits; p++)
+		if (*p != '.') digits[n++] = *p;
+	digits[n] = 0;
+	long long z = strtoll(digits, NULL, 10);
+	for (long long v = a; v <= z; v++) {
+		char out[48];
+		if (frac) {
+			long long scale = 1;
+			for (int i = 0; i < frac; i++) scale *= 10;
+			snprintf(out, sizeof out, "%lld.%0*lld", v / scale, frac, v % scale);
+		} else {
+			snprintf(out, sizeof out, "%lld", v);
+		}
+		f(out, ctx);
+	}
+}
+
+// each_sample calls f for each number of samples ("@integer 0, 2~16, …
+// @decimal 0.0~1.5"), as plural_test.go's expandSamples writes them out.
+static void each_sample(char *samples, void (*f)(const char *n, void *ctx), void *ctx) {
+	char *save_g = NULL;
+	for (char *group = strtok_r(samples, "@", &save_g); group; group = strtok_r(NULL, "@", &save_g)) {
+		char *list = strchr(group, ' ');  // after "integer" or "decimal"
+		if (!list) continue;
+		char *save = NULL;
+		for (char *item = strtok_r(list, ",", &save); item; item = strtok_r(NULL, ",", &save)) one_sample(item, f, ctx);
+	}
+}
+
+typedef struct {
+	char *langs;
+	int want;
+	bool ordinal;
+	int checked, failures;
+} sample_ctx;
+
+static void check_sample(const char *num, void *p) {
+	sample_ctx *c = p;
+	ak_operands o = ak_operands_dec(num, strlen(num));
+	char langs[2048];
+	snprintf(langs, sizeof langs, "%s", c->langs);
+	char *save = NULL;
+	for (char *lang = strtok_r(langs, ",", &save); lang; lang = strtok_r(NULL, ",", &save)) {
+		int got = ak_plural(ak_cstr(lang), &o, c->ordinal);
+		if (got != c->want && c->failures++ < 20)
+			T_FAIL("%s %s %s: %s, want %s", lang, c->ordinal ? "ordinal" : "cardinal", num, plural_names[got], plural_names[c->want]);
+		c->checked++;
+	}
+}
+
+TEST(plural_samples) {
+	char *text = read_file("i18n/testdata/plural_samples.txt", NULL);
+	REQUIRE(text);
+	int checked = 0, failures = 0;
+	char *save = NULL;
+	for (char *line = strtok_r(text, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+		if (line[0] == '#' || !line[0]) continue;
+		// kind, languages, category, samples
+		char *kind = line, *langs = strchr(kind, ' ');
+		if (!langs) continue;
+		*langs++ = 0;
+		char *cat = strchr(langs, ' ');
+		if (!cat) continue;
+		*cat++ = 0;
+		char *samples = strchr(cat, ' ');
+		if (!samples) continue;
+		*samples++ = 0;
+		sample_ctx c = {langs, plural_index(cat), strcmp(kind, "ordinal") == 0, 0, 0};
+		REQUIRE(c.want >= 0);
+		each_sample(samples, check_sample, &c);
+		checked += c.checked, failures += c.failures;
+	}
+	free(text);
+	CHECK(failures == 0);
+	if (checked < 10000) T_FAIL("checked %d samples only", checked);
+	// A region's or a script's rules: its own when CLDR has them, else its
+	// language's (as ICU looks them up).
+	ak_operands zero = ak_operands_int(0), one5 = ak_operands_dec("1.5", 3), many = ak_operands_int(1000000);
+	CHECK(ak_plural(AK_STR("pt-PT"), &zero, false) == AK_PLURAL_OTHER);  // pt-PT's: i = 1 and v = 0
+	CHECK(ak_plural(AK_STR("pt-BR"), &zero, false) == AK_PLURAL_ONE);    // pt's: i = 0..1
+	CHECK(ak_plural(AK_STR("fr-CA"), &one5, false) == AK_PLURAL_ONE);
+	CHECK(ak_plural(AK_STR("fr"), &many, false) == AK_PLURAL_MANY);
+	CHECK(ak_plural(AK_STR("sr-Latn-RS"), &zero, false) == AK_PLURAL_OTHER);
+	CHECK(ak_plural(AK_STR("zh-Hant-TW"), &zero, false) == AK_PLURAL_OTHER);
+	CHECK(ak_plural(AK_STR("xx-unknown"), &zero, false) == AK_PLURAL_OTHER);
+	CHECK(ak_plural(AK_STR("en-u-nu-latn"), &one5, false) == AK_PLURAL_OTHER);
 }
 
 T_MAIN()

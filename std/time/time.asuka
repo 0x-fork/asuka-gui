@@ -1,0 +1,263 @@
+// Package asuka/time is dates and times: an instant, read on a zone's
+// wall clock.
+//
+//   let t = time.now()
+//   Text(t.format("EEE d MMM, HH:mm"))
+//   let deadline = t.add(2h)
+//   let left = deadline.sub(time.now())
+//
+// In tests (asuka test, the fake host) the clock is the test's: now()
+// starts at 2026-01-01T00:00:00Z and moves only as the test's time does
+// (sleep), and the local zone is UTC, so a test sees the same dates on
+// every run and every computer.
+
+/// A day of the week.
+pub enum Weekday { sunday, monday, tuesday, wednesday, thursday, friday, saturday }
+
+/// Where a time's wall clock is.
+pub enum Zone {
+  /// The device's zone, with its rules (daylight saving time).
+  local
+  utc
+  /// A zone always seconds east of UTC (west when negative).
+  fixed(seconds: int)
+}
+
+/// An instant, and its wall clock's fields in a zone. Make one with
+/// now, date, unix or parse; its methods return new ones.
+pub struct Time {
+  /// Nanoseconds since 1970-01-01T00:00:00Z.
+  instant: int
+  zone: Zone
+  /// The zone's offset from UTC at this instant, in seconds east.
+  offset: int
+  year: int
+  /// 1 (January) to 12.
+  month: int
+  /// 1 to 31.
+  day: int
+  /// 0 to 23.
+  hour: int
+  minute: int
+  second: int
+  nanosecond: int
+  weekday: Weekday
+
+  /// Seconds since 1970-01-01T00:00:00Z.
+  fn unix() -> int = floorDiv(instant, nsPerSecond)
+  /// Milliseconds since 1970-01-01T00:00:00Z.
+  fn unixMilli() -> int = floorDiv(instant, 1_000_000)
+  /// Nanoseconds since 1970-01-01T00:00:00Z.
+  fn unixNano() -> int = instant
+
+  /// The time d later (earlier when d is negative).
+  fn add(d: Duration) -> Time = at(instant + d.nanoseconds(), zone)
+  /// How long after t this is (negative when it's before).
+  fn sub(t: Time) -> Duration = 1ns * (instant - t.instant)
+  /// The date years, months and days on, at the same time of day: the
+  /// fields overflow into the next (October 32 is November 1).
+  fn addDate(years: int = 0, months: int = 0, days: int = 0) -> Time = date(year + years, month + months, day + days, hour: hour, minute: minute, second: second, nanosecond: nanosecond, zone: zone)
+
+  fn isBefore(t: Time) -> bool = instant < t.instant
+  fn isAfter(t: Time) -> bool = instant > t.instant
+  /// -1, 0 or 1 as this is before, at or after t (whatever their zones).
+  fn compare(t: Time) -> int = if instant < t.instant { -1 } else if instant > t.instant { 1 } else { 0 }
+
+  /// The same instant on zone's clock.
+  fn inZone(zone: Zone) -> Time = at(instant, zone)
+  fn utc() -> Time = at(instant, .utc)
+  fn local() -> Time = at(instant, .local)
+
+  /// Whether t is on the same day as this, on this one's clock.
+  fn sameDay(t: Time) -> bool {
+    let u = t.inZone(zone)
+    return u.year == year && u.month == month && u.day == day
+  }
+
+  /// Midnight at the start of this day.
+  fn startOfDay() -> Time = date(year, month, day, zone: zone)
+
+  /// The wall clock rounded down to a multiple of d since midnight's
+  /// day boundary: truncate(1h) is the hour's start, truncate(15min) the
+  /// quarter's.
+  fn truncate(d: Duration) -> Time {
+    let step = d.nanoseconds()
+    if step <= 0 {
+      return self
+    }
+    let wall = instant + offset * nsPerSecond
+    return at(instant - floorMod(wall, step), zone)
+  }
+
+  /// The number of days in this time's month.
+  fn daysInMonth() -> int = daysIn(month, year: year)
+
+  /// The time as text, by a pattern of Unicode's date fields (UTS #35),
+  /// in English:
+  ///
+  ///   y yyyy yy   year: 2026, 2026, 26
+  ///   M MM        month: 3, 03     MMM MMMM MMMMM: Mar, March, M
+  ///   d dd        day: 7, 07       D: day of the year
+  ///   E EEEE      weekday: Sat, Saturday   EEEEE: S   EEEEEE: Sa
+  ///   H HH        hour 0-23        h hh: 1-12   K: 0-11   k: 1-24
+  ///   m mm s ss   minute, second   S…: fractions (SSS: milliseconds)
+  ///   a           AM or PM         G: AD or BC
+  ///   XXX xxx     +01:00 (X: Z for UTC)   XX: +0100   X: +01
+  ///   ZZZZZ       as XXX           Z: +0100   ZZZZ: GMT+01:00
+  ///   'text'      text as it is ('' a quote); other letters are reserved
+  ///
+  /// So "yyyy-MM-dd" is 2026-03-07, "EEE d MMM" Sat 7 Mar, "h:mm a"
+  /// 3:04 PM.
+  fn format(pattern: string) -> string = formatFields(pattern, year, month, day, hour, minute, second, nanosecond, weekday, offset)
+
+  /// RFC 3339's form: 2026-03-07T15:04:05+01:00 (Z for UTC).
+  fn rfc3339() -> string = format(if nanosecond == 0 { "yyyy-MM-dd'T'HH:mm:ssXXX" } else { "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSXXX" })
+}
+
+let nsPerSecond = 1_000_000_000
+
+let weekdays: [Weekday] = [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
+
+/// Now, on zone's clock.
+pub fn now(zone: Zone = .local) -> Time = at(wallNanos(), zone)
+
+/// A clock that only goes forward (the system's time can be set back):
+/// for measuring how long something takes.
+pub native fn monotonic() -> Duration
+
+/// How long it's been since t.
+pub fn since(t: Time) -> Duration = now().sub(t)
+
+/// The time seconds after 1970-01-01T00:00:00Z.
+pub fn unix(seconds: int, zone: Zone = .local) -> Time = at(seconds * nsPerSecond, zone)
+pub fn unixMilli(milliseconds: int, zone: Zone = .local) -> Time = at(milliseconds * 1_000_000, zone)
+pub fn unixNano(nanoseconds: int, zone: Zone = .local) -> Time = at(nanoseconds, zone)
+
+/// The time at a date and a time of day on zone's clock. Fields out of
+/// their range overflow into the next: month 13 is January of the next
+/// year, day 0 the last of the month before. A local time daylight
+/// saving skips or repeats is taken at the offset before the change.
+pub fn date(year: int, month: int, day: int, hour: int = 0, minute: int = 0, second: int = 0, nanosecond: int = 0, zone: Zone = .local) -> Time {
+  let y = year + floorDiv(month - 1, 12)
+  let m = floorMod(month - 1, 12) + 1
+  let wall = daysFromCivil(y, m, day) * 86400 + hour * 3600 + minute * 60 + second
+  var off = 0
+  match zone {
+    .local => {
+      off = localOffset(wall)
+      off = localOffset(wall - off)
+    }
+    .utc => {}
+    .fixed(s) => { off = s }
+  }
+  return at((wall - off) * nsPerSecond + nanosecond, zone)
+}
+
+/// Reads an RFC 3339 time (2026-03-07T15:04:05Z,
+/// 2026-03-07T15:04:05.123+01:00), in the zone it says.
+pub fn parse(rfc3339: string) throws -> Time {
+  let r = try parseRFC3339(rfc3339)
+  let zone: Zone = if r[1] == 0 { .utc } else { .fixed(seconds: r[1]) }
+  return at(r[0], zone)
+}
+
+/// The number of days in month (1 to 12) of year.
+pub fn daysIn(month: int, year: int) -> int {
+  if month == 2 {
+    return if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 { 29 } else { 28 }
+  }
+  return if month == 4 || month == 6 || month == 9 || month == 11 { 30 } else { 31 }
+}
+
+/// The time every period, from period from now, until the loop that
+/// reads it ends: for await t in time.ticks(1s) { now = t }.
+pub fn ticks(every: Duration) -> Stream<Time> = Stream(send => {
+  while true {
+    await sleep(every)
+    send(now())
+  }
+})
+
+/// Times every period, as a stream, until stop.
+pub struct Ticker {
+  /// now(), every period: for await t in ticker.ticks { … }.
+  ticks: Stream<Time>
+  /// Ends ticks: the loop reading them ends at the next one, without it.
+  /// (Leaving the loop, or the task's end, stops it too.)
+  stop: fn()
+}
+
+/// A ticker of every period, from period from now:
+///
+///   let ticker = time.ticker(1s)
+///   defer { ticker.stop() }
+///   for await t in ticker.ticks { now = t }
+pub fn ticker(every: Duration) -> Ticker {
+  var stopped = false
+  let ticks = Stream<Time>(send => {
+    while !stopped {
+      await sleep(every)
+      if !stopped {
+        send(now())
+      }
+    }
+  })
+  return Ticker(ticks: ticks, stop: () => { stopped = true })
+}
+
+// at is the time at instant ns on zone's clock: the zone's offset then,
+// and the wall clock's fields (Howard Hinnant's civil_from_days).
+fn at(ns: int, zone: Zone) -> Time {
+  let secs = floorDiv(ns, nsPerSecond)
+  let off = match zone {
+    .local => localOffset(secs)
+    .utc => 0
+    .fixed(s) => s
+  }
+  let wall = secs + off
+  let days = floorDiv(wall, 86400)
+  let rem = wall - days * 86400
+  let z = days + 719468
+  let era = floorDiv(z, 146097)
+  let doe = z - era * 146097
+  let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+  let mp = (5 * doy + 2) / 153
+  let m = if mp < 10 { mp + 3 } else { mp - 9 }
+  return Time(
+    instant: ns,
+    zone: zone,
+    offset: off,
+    year: yoe + era * 400 + (if m <= 2 { 1 } else { 0 }),
+    month: m,
+    day: doy - (153 * mp + 2) / 5 + 1,
+    hour: rem / 3600,
+    minute: rem / 60 % 60,
+    second: rem % 60,
+    nanosecond: ns - secs * nsPerSecond,
+    weekday: weekdays[floorMod(days + 4, 7)],
+  )
+}
+
+// daysFromCivil is the number of days from 1970-01-01 to y-m-d (Howard
+// Hinnant's days_from_civil); d may be out of the month's range.
+fn daysFromCivil(year: int, month: int, day: int) -> int {
+  let y = if month <= 2 { year - 1 } else { year }
+  let era = floorDiv(y, 400)
+  let yoe = y - era * 400
+  let doy = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1
+  let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+  return era * 146097 + doe - 719468
+}
+
+fn floorDiv(a: int, b: int) -> int {
+  let q = a / b
+  return if a % b != 0 && (a < 0) != (b < 0) { q - 1 } else { q }
+}
+
+fn floorMod(a: int, b: int) -> int = a - floorDiv(a, b) * b
+
+native fn wallNanos() -> int
+native fn localOffset(unix: int) -> int
+native fn formatFields(pattern: string, year: int, month: int, day: int, hour: int, minute: int, second: int, nanosecond: int, weekday: Weekday, offset: int) -> string
+native fn parseRFC3339(s: string) throws -> [int]

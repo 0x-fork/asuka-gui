@@ -112,6 +112,31 @@ void ak_ui_animate(const ak_struct *anim, ak_closure *body) {
 	}
 }
 
+// anim_ns is how long anim takes, its delay and its runs, in
+// nanoseconds; 0 for one that repeats until its props change.
+static int64_t anim_ns(const ak_struct *anim) {
+	double dur = anim ? (double)anim->f[0].i / 1e9 : 0;
+	if (dur <= 0) dur = 0.25;
+	double delay = anim ? (double)anim->f[2].i / 1e9 : 0;
+	if (delay < 0) delay = 0;
+	int64_t repeat = anim ? anim->f[3].i : 0;
+	if (repeat < 0) return 0;
+	bool autoreverses = anim && anim->f[4].i;
+	double runs = (double)(repeat + 1) * (autoreverses ? 2 : 1);
+	return (int64_t)((delay + dur * runs) * 1e9);
+}
+
+ak_future *ak_ui_animate_wait(const ak_struct *anim, ak_closure *body) {
+	ak_ui_root *r = anim_root();
+	bool live = r && r->el;
+	ak_ui_animate(anim, body);
+	int64_t ns = live ? anim_ns(anim) : 0;
+	if (ns > 0) return ak_sleep(ns);
+	ak_future *f = ak_future_new(AK_K_VOID);
+	ak_future_resolve(f, (ak_val){0});
+	return f;
+}
+
 // ak_ui_animating is the animation the changes made now are in (inside
 // animate's body and the effects it causes, until its flush), or NULL.
 bool ak_ui_animating(void) {
