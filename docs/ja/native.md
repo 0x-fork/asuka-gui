@@ -445,6 +445,8 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   [linux]
   libraries = []
   ```
+- **パッケージ自身のライブラリ**：パッケージがビルドに使う C のライブラリ（パーサー、デコーダー）は、手を加えずに `desktop/third_party/<名前>/` に置き、ライセンスとバージョンを添えます。パッケージ自身のファイルがそのソースを取り込む（`#include "third_party/<名前>/<名前>.c"`）ので、パッケージの C と一緒にコンパイルされ、変更すればアプリもビルドし直されます。
+- **テスト**：`desktop/*_test.c` は独立したプログラム（自分の `main` を持つ）で、両プラットフォーム共通のパッケージの C（生成されたグルーは含みません）と一緒にビルドされ、platform/desktop のテストがどのシステムでも実行します。プラットフォームに依存しない処理（解析、デコード、エンコード）のテストに使います。`desktop/*_linux_test.c` は Linux 上で GTK を使って、`desktop/*_windows_test.c` は Windows 上で（platform/windows の TestStdViews が実行し、他のシステムからは Windows の VM で）ビューをテストします。どちらもグルーと一緒にビルドされ、ビューの C を取り込み、ビューを作ってホストと同じように動かします（std/markdown のテストは、ストリーミングで届く返答を与え、置き換えた分を数えます）。
 
 macOS では、パッケージの Swift（`Package.swift`）が動き、C は動きません。
 

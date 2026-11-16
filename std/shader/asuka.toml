@@ -1,3 +1,6 @@
 name = "asuka/shader"
 version = "0.1.0"
 description = "Fragment shaders, written in Kage and run on each platform's GPU"
+
+[windows]
+libraries = ["d3d11", "uxtheme", "msimg32"]

@@ -180,10 +180,15 @@ component Reply(text: string, writing: bool) {
 reply streams in: its end shows what it will most likely become (a code
 fence closed, `**bold` as bold, a link being written as a link) rather
 than half-written syntax. `markdown.heal(text)` is that, on its own.
-Each platform's Markdown reads it: Apple's (`AttributedString`, laid out
-in a text view) on iOS and macOS, Markwon on Android, marked on the web,
-and Asuka's parser on Windows (a rich edit) and Linux (a label's Pango
-markup). See [`examples/markdown`](../examples/markdown).
+The core reads it, the same on every platform (md4c), into paragraphs
+of styled text, which each platform shows as its own: an attributed
+string in a text view on iOS and macOS, spans in a TextView on Android,
+the page's elements on the web, a rich edit on Windows and a label a
+block on Linux (as GNOME apps show rich text: each block selects on its
+own). The text is read again as it changes, but a view replaces only
+what changed: the blocks from the first that differs, so as a reply
+streams in, what's above its last block keeps its layout and selection.
+See [`examples/markdown`](../examples/markdown).
 
 ## Buttons
 
@@ -792,7 +797,7 @@ component Done {
 ```
 
 It's Core Graphics on iOS and macOS, Android's `Canvas`, an `<svg>` in a
-browser, GDI+ on Windows and GSK's paths on Linux.
+browser, GDI+ on Windows and Cairo on Linux.
 
 ## Video
 
@@ -1226,13 +1231,13 @@ component Glow(level: float) {
 It's Metal on iOS and macOS (a `CAMetalLayer`), AGSL on Android 13 and
 later (a `RuntimeShader`; an empty box before), WebGL 2 in a browser
 (GLSL ES 3.00), Direct3D 11 on Windows (HLSL; WARP, the system's
-software rasterizer, where there's no GPU) and OpenGL on Linux (drawn
-in a context of GTK's into a texture GTK draws). On Windows a frame
-renders off the main thread and shows when it's ready. Linux without GL
-(no driver, `GDK_DISABLE=gl`) runs the program on the CPU instead,
-across the cores and off the main thread, a large or animated box at a
-fraction of its resolution, scaled up. Give the box a `background` that
-stands in until the first frame.
+software rasterizer, where there's no GPU) and OpenGL on Linux (a
+`GtkGLArea`; Mesa's software rasterizer where there's no GPU). Each
+platform's program is compiled with the app; the device compiles only
+its own shading language's. On Windows a frame renders off the main
+thread and shows when it's ready. Linux without GL (`GDK_DISABLE=gl`)
+shows an empty box. Give the box a `background` that stands in until
+the first frame.
 
 ## Containers
 

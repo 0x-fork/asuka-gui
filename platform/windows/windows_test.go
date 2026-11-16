@@ -11,6 +11,8 @@
 //   - TestApps build apps (an Asuka source each) into the executable an
 //     app ships, and drive them as a user does (ASUKA_SCRIPT), reading
 //     back what they showed (ASUKA_DUMP, ASUKA_SNAPSHOT).
+//   - TestStdViews runs the standard library's view tests
+//     (std/*/desktop/*_windows_test.c).
 package windows_test
 
 import (

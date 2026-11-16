@@ -1084,6 +1084,14 @@ const asuka_linux_t *asuka_linux(void);
 #define G(name) (asuka_linux_fns.name)
 extern asuka_linux_t asuka_linux_fns;
 
+// asuka_linux_image_load decodes an image file with GdkPixbuf (what its
+// loaders read: PNG, JPEG, GIF, BMP, TIFF, WebP and more where they're
+// installed), upright (its EXIF orientation applied): *pixels its rows of
+// RGBA, not premultiplied, width*4 bytes each, of malloc's. false when
+// it isn't an image GdkPixbuf reads (or there's no GdkPixbuf). Any
+// thread.
+bool asuka_linux_image_load(const char *path, int *width, int *height, uint8_t **pixels);
+
 // asuka_linux_fail fails err with a GError's message, and frees it:
 // asuka_error_failed with the domain "gio" and its code (what for none).
 void asuka_linux_fail(asuka_error *err, GError *e, const char *what);

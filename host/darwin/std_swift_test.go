@@ -50,29 +50,7 @@ func TestStdSwift(t *testing.T) {
 		t.Skip("no Xcode command line tools")
 	}
 	dir := t.TempDir()
-	arch := map[string]string{"arm64": "arm64", "amd64": "x86_64"}[runtime.GOARCH]
-	swiftc := func(t *testing.T, args ...string) {
-		t.Helper()
-		out, err := exec.Command("xcrun", append([]string{"swiftc", "-swift-version", "5", "-parse-as-library", "-Onone"}, args...)...).CombinedOutput()
-		if err != nil {
-			t.Fatalf("swiftc: %v\n%s", err, out)
-		}
-	}
-	src := "../../platform/macos/Sources/AsukaMac/"
-	mac := filepath.Join(dir, "mac")
-	os.MkdirAll(mac, 0o755)
-	swiftc(t, "-target", arch+"-apple-macos11", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(mac, "Asuka.swiftmodule"), "-wmo", "-c",
-		src+"AsukaMacRuntime.swift", src+"NativeModules.swift", "-o", filepath.Join(mac, "Asuka.o"))
-	sim, _ := exec.Command("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path").Output()
-	simSDK := strings.TrimSpace(string(sim))
-	ios := filepath.Join(dir, "ios")
-	if simSDK != "" {
-		os.MkdirAll(ios, 0o755)
-		shim := filepath.Join(ios, "Host.swift")
-		os.WriteFile(shim, []byte(iosHost), 0o644)
-		swiftc(t, "-sdk", simSDK, "-target", arch+"-apple-ios16.0-simulator", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(ios, "Asuka.swiftmodule"),
-			"-wmo", shim, "../../platform/ios/Sources/AsukaHost/NativeModules.swift")
-	}
+	mac, ios, simSDK, arch := asukaModules(t, dir)
 	pkgs, _ := filepath.Glob("../../std/*/Package.swift")
 	for _, ps := range pkgs {
 		pkg := filepath.Dir(ps)
@@ -100,6 +78,103 @@ func TestStdSwift(t *testing.T) {
 			if simSDK != "" {
 				swiftc(t, append([]string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", mod, "-I", ios, "-typecheck"}, srcs...)...)
 			}
+		})
+	}
+}
+
+// asukaModules builds module Asuka as a package's Swift sees it: for
+// macOS (platform/macos's runtime) in mac and, when there's the iOS
+// simulator's SDK (simSDK), for it in ios (iosHost's shim and the iOS
+// host's NativeModules.swift): each its Asuka.swiftmodule and Asuka.o.
+func asukaModules(t *testing.T, dir string) (mac, ios, simSDK, arch string) {
+	t.Helper()
+	arch = map[string]string{"arm64": "arm64", "amd64": "x86_64"}[runtime.GOARCH]
+	src := "../../platform/macos/Sources/AsukaMac/"
+	mac = filepath.Join(dir, "mac")
+	os.MkdirAll(mac, 0o755)
+	swiftc(t, "-target", arch+"-apple-macos11", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(mac, "Asuka.swiftmodule"), "-wmo", "-c",
+		src+"AsukaMacRuntime.swift", src+"NativeModules.swift", "-o", filepath.Join(mac, "Asuka.o"))
+	sim, _ := exec.Command("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path").Output()
+	simSDK = strings.TrimSpace(string(sim))
+	if simSDK != "" {
+		ios = filepath.Join(dir, "ios")
+		os.MkdirAll(ios, 0o755)
+		shim := filepath.Join(ios, "Host.swift")
+		os.WriteFile(shim, []byte(iosHost), 0o644)
+		swiftc(t, "-sdk", simSDK, "-target", arch+"-apple-ios16.0-simulator", "-module-name", "Asuka", "-emit-module", "-emit-module-path", filepath.Join(ios, "Asuka.swiftmodule"),
+			"-wmo", "-c", shim, "../../platform/ios/Sources/AsukaHost/NativeModules.swift", "-o", filepath.Join(ios, "Asuka.o"))
+	}
+	return mac, ios, simSDK, arch
+}
+
+func swiftc(t *testing.T, args ...string) {
+	t.Helper()
+	out, err := exec.Command("xcrun", append([]string{"swiftc", "-swift-version", "5", "-parse-as-library", "-Onone"}, args...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("swiftc: %v\n%s", err, out)
+	}
+}
+
+// bootedSimulator is a booted iOS simulator's UDID, or "".
+func bootedSimulator() string {
+	out, err := exec.Command("xcrun", "simctl", "list", "devices", "booted").Output()
+	if err != nil {
+		return ""
+	}
+	m := regexp.MustCompile(`\(([0-9A-F-]{36})\) \(Booted\)`).FindStringSubmatch(string(out))
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// TestStdSwiftViews runs the standard library's Swift view tests: each
+// package's tests/*ViewTest.swift (its @main), built with the package's
+// Swift (one module, so it reaches the package's own types) into an
+// executable for macOS, run here, and for the iOS simulator, run in a
+// booted one (xcrun simctl spawn; none booted: skipped). Its first
+// argument is its package's tests directory. It passes when it exits 0.
+func TestStdSwiftViews(t *testing.T) {
+	if _, err := exec.LookPath("xcrun"); err != nil {
+		t.Skip("no Xcode command line tools")
+	}
+	tests, _ := filepath.Glob("../../std/*/tests/*ViewTest.swift")
+	if len(tests) == 0 {
+		t.Fatal("no Swift view tests")
+	}
+	dir := t.TempDir()
+	mac, ios, simSDK, arch := asukaModules(t, dir)
+	for _, test := range tests {
+		pkg := filepath.Dir(filepath.Dir(test))
+		name := filepath.Base(pkg)
+		data, _ := filepath.Abs(filepath.Dir(test))
+		srcs, _ := filepath.Glob(filepath.Join(pkg, nativegen.SwiftDir, "*.swift"))
+		srcs = append(srcs, test)
+		mod := strings.ToUpper(name[:1]) + name[1:] + "Native"
+		run := func(t *testing.T, cmd ...string) {
+			out, err := exec.Command(cmd[0], cmd[1:]...).CombinedOutput()
+			t.Logf("%s", out)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Run(name+"/macos", func(t *testing.T) {
+			exe := filepath.Join(dir, name+"-macos")
+			swiftc(t, append([]string{"-target", arch + "-apple-macos13", "-module-name", mod, "-I", mac, "-wmo", filepath.Join(mac, "Asuka.o"), "-o", exe}, srcs...)...)
+			run(t, exe, filepath.Join(data, "stream.json"))
+		})
+		t.Run(name+"/ios", func(t *testing.T) {
+			if simSDK == "" {
+				t.Skip("no iOS simulator SDK")
+			}
+			udid := bootedSimulator()
+			if udid == "" {
+				t.Skip("no booted iOS simulator")
+			}
+			exe := filepath.Join(dir, name+"-ios")
+			swiftc(t, append([]string{"-sdk", simSDK, "-target", arch + "-apple-ios16.0-simulator", "-module-name", mod, "-I", ios, "-wmo",
+				filepath.Join(ios, "Asuka.o"), "-o", exe}, srcs...)...)
+			run(t, "xcrun", "simctl", "spawn", udid, exe, filepath.Join(data, "stream.json"))
 		})
 	}
 }

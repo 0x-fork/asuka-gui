@@ -628,6 +628,21 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   [linux]
   libraries = []
   ```
+- **A library of its own**: a C library the package builds with (a
+  parser, a decoder) goes in `desktop/third_party/<name>/`, unchanged,
+  with its license and the version it is; a file of the package's
+  includes its sources (`#include "third_party/<name>/<name>.c"`), so it's
+  compiled with the package's C, and a change to it rebuilds the app.
+- **Tests**: a `desktop/*_test.c` is a program of its own (its `main`),
+  built with the package's C for both platforms (not the generated glue)
+  and run on any system by platform/desktop's tests, for what the C
+  works out without a platform: parsing, decoding, encoding. A
+  `desktop/*_linux_test.c` tests a view on Linux, with GTK, and a
+  `desktop/*_windows_test.c` on Windows (platform/windows' TestStdViews,
+  in the Windows VM from another system): built with the glue, it
+  includes the view's C, makes the view and drives it as the host would
+  (std/markdown's give it a reply streamed in and count what it
+  replaces).
 
 On macOS a package's Swift runs (its `Package.swift`); its C doesn't.
 

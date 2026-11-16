@@ -3,6 +3,8 @@ package desktop_test
 import (
 	"bufio"
 	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -61,6 +63,7 @@ func TestStdLinux(t *testing.T) {
 	// A tone for the microphone; a Speech Dispatcher of the test's.
 	t.Setenv("ASUKA_RECORD_SOURCE", "audiotestsrc is-live=true")
 	ssip := fakeSSIP(t)
+	images := pngFixtures(t)
 	for _, c := range []struct {
 		name, src string
 		want      []string
@@ -603,6 +606,147 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: available false", "host: not available", "host: done"}, nil},
+		{"markdown", `import asuka/markdown
+
+component Probe {
+  state step = "start"
+  Column {
+    Text("#{step}")
+    markdown.View("# Plan\n\nThree **steps**, *in* ` + "`order`" + `:\n\n1. Read [docs](https://asuka.dev)\n2. Write\n\n| a | b |\n|---|---|\n| 1 | 2 |\n") {
+      width: 240
+    }
+  }
+  task {
+    await sleep(20ms)
+    step = "healed {markdown.heal("**bold and ` + "`code" + `")}"
+    await sleep(1ms)
+    step = "done"
+  }
+}
+
+app { Probe() }
+`, []string{"host: native view asuka/markdown#Document", "host: measured asuka/markdown#Document 240x", "host: healed **bold and `code`**", "host: done"}, nil},
+		{"svg", `import asuka/svg
+
+let tick = svg.Icon(r"""<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"/><rect x="2" y="2" width="20" height="20" rx="4"/></svg>""")
+
+component Probe {
+  state step = "start"
+  state color: Color = .accent
+  Column {
+    Text("#{step}")
+    svg.View(tick) { color: color }
+    svg.Shape([svg.Layer(path: svg.Path().rect(svg.Point(), svg.Point(fx: 1, fy: 1), radius: 6), fill: .red, fade: .blue)]) {
+      width: 100
+      height: 40
+    }
+  }
+  task {
+    await sleep(20ms)
+    color = .label
+    await sleep(20ms)
+    step = "done"
+  }
+}
+
+app { Probe() }
+`, []string{"host: native view asuka/svg#View", "host: native view asuka/svg#Shape", "host: measured asuka/svg#View 22x22", "host: done"}, nil},
+		{"shader", `import asuka/shader
+
+let glow = shader.Program(r"""
+package main
+
+var Time float
+var Tint vec4
+
+func Fragment(dst vec4, pos vec2) vec4 {
+	d := distance(pos/rectSize(), vec2(0.5))
+	return vec4(Tint.rgb*smoothstep(0.5, 0, d)*(0.8+0.2*sin(Time*2)), 1) * Tint.a
+}
+""")
+
+component Probe {
+  state step = "start"
+  state tint: [float] = [0.3, 0.6, 1, 1]
+  Column {
+    Text("#{step}")
+    shader.Shader(glow) {
+      uniforms: [shader.Uniform(name: "Tint", value: tint)]
+      animated: true
+      width: 160
+      height: 80
+    }
+  }
+  task {
+    await sleep(100ms)
+    tint = [1, 0, 0, 1]
+    await sleep(100ms)
+    step = "done"
+  }
+}
+
+app { Probe() }
+`, []string{"host: native view asuka/shader#Shader", "host: done"}, nil},
+		{"scan", `import asuka/scan
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let qr = try await scan.file("` + images + `/qr.png")
+      step = "qr {qr.map(c => "{c.kind} {c.value}").joined(separator: ", ")}"
+      await sleep(1ms)
+      let both = try await scan.file("` + images + `/mixed.png")
+      step = "mixed {both.count()}"
+      await sleep(1ms)
+      let ean = try await scan.file("` + images + `/mixed.png", kinds: ["ean13"])
+      step = "asked {ean.map(c => "{c.kind} {c.value}").joined(separator: ", ")}"
+      await sleep(1ms)
+      let upc = try await scan.file("` + images + `/upca.png", kinds: ["ean13"])
+      step = "upc as {upc.map(c => "{c.kind} {c.value}").joined(separator: ", ")}"
+      await sleep(1ms)
+      let empty = try await scan.file("` + images + `/none.png")
+      step = "none {empty.count()}"
+      await sleep(1ms)
+      do {
+        let _ = try await scan.file("` + images + `/missing.png")
+      } catch e {
+        step = "missing threw"
+        await sleep(1ms)
+      }
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: qr qr https://asuka.dev/scan?q=1", "host: mixed 2", "host: asked ean13 5901234123457", "host: upc as ean13 0036000291452", "host: none 0", "host: missing threw", "host: done"}, nil},
+		{"vision", `import asuka/vision
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    do {
+      let r = try await vision.analyze("` + images + `/mixed.png")
+      let q = r.codes.filter(c => c.kind == "qr")
+      step = "seen {r.width}x{r.height} {r.codes.count()} codes {r.faces.count()} faces {q.count() == 1 && q[0].box.x > 0 && q[0].box.x < 0.2 && q[0].box.w > 0.2 && q[0].box.w < 0.4}"
+      await sleep(1ms)
+      let t = try await vision.analyze("` + images + `/qr.png", text: false, faces: false)
+      step = "codes only {t.codes.count()} {t.lines.count()}"
+      await sleep(1ms)
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: seen 426x168 2 codes 0 faces true", "host: codes only 1 0", "host: done"}, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -618,6 +762,9 @@ app { Probe() }
 			os.WriteFile(mod, res.Module.Encode(), 0o644)
 			cmd := exec.Command(exe, mod)
 			cmd.Env = append(os.Environ(), "ASUKA_DATA="+dir, noLeaks, "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1") // WebKit's sandbox doesn't start in a container
+			if c.name == "markdown" || c.name == "svg" || c.name == "shader" {
+				cmd.Env = append(cmd.Env, "ASUKA_TEST_WINDOW=1") // shown, so they draw
+			}
 			var out strings.Builder
 			if c.drive == nil {
 				cmd.Stdout, cmd.Stderr = &out, &out
@@ -643,8 +790,40 @@ app { Probe() }
 					t.Errorf("no %q in:\n%s", w, got)
 				}
 			}
+			if strings.Contains(got, "asuka: a shader doesn't run") {
+				t.Errorf("a shader didn't run:\n%s", got)
+			}
 		})
 	}
+}
+
+// pngFixtures writes testdata/barcode's images (gray, PGM) as PNGs in a
+// directory of the test's: what the packages read as a photo.
+func pngFixtures(t *testing.T) string {
+	dir := t.TempDir()
+	pgms, _ := filepath.Glob(filepath.Join("testdata", "barcode", "*.pgm"))
+	for _, p := range pgms {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// "P5\n<w> <h>\n255\n", then the rows.
+		head := strings.SplitN(string(b), "\n", 4)
+		var w, h int
+		if len(head) < 4 || head[0] != "P5" || head[2] != "255" {
+			t.Fatalf("%s isn't a PGM", p)
+		}
+		fmt.Sscanf(head[1], "%d %d", &w, &h)
+		img := image.NewGray(image.Rect(0, 0, w, h))
+		copy(img.Pix, b[len(b)-w*h:])
+		f, err := os.Create(filepath.Join(dir, strings.TrimSuffix(filepath.Base(p), ".pgm")+".png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		png.Encode(f, img)
+		f.Close()
+	}
+	return dir
 }
 
 var (

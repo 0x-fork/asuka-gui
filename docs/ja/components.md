@@ -122,7 +122,7 @@ component Reply(text: string, writing: bool) {
 }
 ```
 
-`streaming` は、言語モデルの返答が流れてくるときのように、テキストがまだ書かれている途中であることを表します。このときテキストの末尾は、書きかけの記法ではなく、最終的になりそうな姿で表示されます（コードフェンスは閉じ、`**bold` は太字に、書きかけのリンクはリンクに）。`markdown.heal(text)` で同じ処理だけを行うこともできます。解析は各プラットフォームの Markdown が行います。iOS と macOS では Apple のもの（`AttributedString` をテキストビューにレイアウト）、Android では Markwon、Web では marked、Windows（リッチエディット）と Linux（ラベルの Pango マークアップ）では Asuka のパーサーです。[`examples/markdown`](../../examples/markdown) を見てください。
+`streaming` は、言語モデルの返答が流れてくるときのように、テキストがまだ書かれている途中であることを表します。このときテキストの末尾は、書きかけの記法ではなく、最終的になりそうな姿で表示されます（コードフェンスは閉じ、`**bold` は太字に、書きかけのリンクはリンクに）。`markdown.heal(text)` で同じ処理だけを行うこともできます。解析はどのプラットフォームでも同じく、コアが md4c で行います。テキストはスタイル付きの段落として読まれ、各プラットフォームがそれを自分の方法で表示します。iOS と macOS ではテキストビューの属性付き文字列、Android では TextView の span、Web ではページの要素、Windows ではリッチエディット、Linux ではブロックごとのラベルです（GNOME アプリがリッチテキストを表示する方法で、選択はブロックごとになります）。テキストは変わるたびに読み直されますが、ビューが置き換えるのは変わった部分、つまり最初に違いが出たブロックから後だけです。そのため返答がストリーミングで届く間も、最後のブロックより前はレイアウトと選択範囲を保ちます。[`examples/markdown`](../../examples/markdown) を見てください。
 
 ## ボタン
 
@@ -564,7 +564,7 @@ component Done {
 }
 ```
 
-iOS と macOS では Core Graphics、Android では `Canvas`、ブラウザーでは `<svg>`、Windows では GDI+、Linux では GSK のパスで描きます。
+iOS と macOS では Core Graphics、Android では `Canvas`、ブラウザーでは `<svg>`、Windows では GDI+、Linux では Cairo で描きます。
 
 ## 動画
 
@@ -861,7 +861,7 @@ component Glow(level: float) {
 - `var Time float` はシェーダーが表示されてからの秒数です。`animated` で動かすと、ディスプレイが描くフレームごとにボックスを描きます。
 - コンパイラーはシェーダーのエラーを行番号付きで報告し、Android で実行できない部分もすべてのプラットフォームで同じように報告します。AGSL は GLSL ES 1.00 の言語なので、符号なし整数、ビット演算、整数の剰余（float の `mod` は使えます）、導関数、上下限が定数でないループは使えません。
 
-iOS と macOS では Metal（`CAMetalLayer`）、Android 13 以降では AGSL（`RuntimeShader`。それより前は空のボックス）、ブラウザーでは WebGL 2（GLSL ES 3.00）、Windows では Direct3D 11（HLSL。GPU がないときはシステムのソフトウェアラスタライザー WARP）、Linux では OpenGL（GTK のコンテキストで、GTK が描くテクスチャーに描画）です。Windows ではフレームをメインスレッドの外で描き、できあがったものから表示します。GL のない Linux（ドライバーがない、`GDK_DISABLE=gl`）では、プログラムを代わりに CPU で、すべてのコアに分けてメインスレッドの外で実行し、大きいボックスやアニメーションするボックスは解像度を下げて描いてから拡大します。最初のフレームが出るまでの代わりに、ボックスに `background` を付けておいてください。
+iOS と macOS では Metal（`CAMetalLayer`）、Android 13 以降では AGSL（`RuntimeShader`。それより前は空のボックス）、ブラウザーでは WebGL 2（GLSL ES 3.00）、Windows では Direct3D 11（HLSL。GPU がないときはシステムのソフトウェアラスタライザー WARP）、Linux では OpenGL（`GtkGLArea`。GPU がないときは Mesa のソフトウェアラスタライザー）です。各プラットフォームのプログラムはアプリと一緒にコンパイルされ、デバイスでコンパイルされるのはそのプラットフォームのシェーディング言語だけです。Windows ではフレームをメインスレッドの外で描き、できあがったものから表示します。GL のない Linux（`GDK_DISABLE=gl`）では、空のボックスになります。最初のフレームが出るまでの代わりに、ボックスに `background` を付けておいてください。
 
 ## コンテナー
 

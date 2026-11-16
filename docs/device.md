@@ -220,7 +220,7 @@ names what's missing.
 | `asuka/library` | The user's folders (XDG's Pictures, Videos, Music, Downloads), in the folder asked |
 | `shareFiles` | No share sheet: the files are copied to the clipboard, with a toast |
 | `asuka/camera`, `asuka/record` | The camera portal (it asks the user once; PipeWire's cameras, `gstreamer1.0-pipewire`), else the first Video4Linux camera, through GStreamer. `take()`: a dialog over the window with a live preview, Take Photo and Cancel. `camera.View`: the preview, mirrored, filling its box; front and back are the same camera (a computer's face the user). Videos are MPEG-4 (H.264 from x264 or OpenH264, AAC), else WebM; scanning codes needs GStreamer's `zbar` element. No camera: `CameraError.noCamera`; refused: `.notAllowed` |
-| `asuka/scan`, `asuka/vision` | ZBar (`libzbar0`) reads codes: no Aztec or Data Matrix. Tesseract (`libtesseract5` and a language's data) reads text; nothing finds faces: `faces` is empty. Without ZBar, `scan.file` throws "not available"; `vision.analyze` leaves out what isn't installed |
+| `asuka/scan`, `asuka/vision` | Asuka's own reader reads codes, as on Windows: QR, Data Matrix, EAN, UPC, Code 128, Code 39 (no Aztec, PDF417, Code 93, Codabar or ITF). Tesseract (`libtesseract5` and a language's data) reads text; nothing finds faces: `faces` is empty. `vision.analyze` leaves out the text without Tesseract |
 | `asuka/imageedit` | GdkPixbuf's loaders decode (HEIF and WebP where their loaders are installed), upright; the host does the actions; video frames from GStreamer |
 | `asuka/webauth` | A dialog over the window with a WebKitGTK web view (`ephemeral`: a session of its own); closing it cancels |
 | `asuka/js` | A WebKitGTK web view that's never shown |
@@ -370,8 +370,9 @@ it looks for; none: every kind. Kinds are named `"qr"`, `"aztec"`,
 `scan.file(path)` reads the codes in an image file instead (a photo
 taken or picked): Vision on iOS and the Mac, ML Kit on Android (its
 model in the app, about 2 MB, so it works without Google Play services),
-the browser's `BarcodeDetector` where it has one, Asuka's own decoder on
-Windows, ZBar's GStreamer element on Linux.
+the browser's `BarcodeDetector` where it has one, and Asuka's own reader
+on Windows and Linux, which have none an app can count on (QR, Data
+Matrix, EAN, UPC, Code 128, Code 39).
 
 ```asuka
 import asuka/camera
@@ -418,8 +419,12 @@ async fn words(photo: string) throws -> [string] {
 
 The Vision framework on iOS and the Mac, ML Kit and its bundled models
 on Android (about 30 MB), the browser's Shape Detection API where it has
-one, Windows' OCR, and Tesseract (where it's installed) and ZBar on
-Linux. `asuka/scan` reads a code's value; this package says where it is.
+one, Windows' OCR and face detection, and Tesseract (where it's
+installed) on Linux; codes on Windows and Linux are Asuka's own reader's.
+Text and faces are each platform's own recognition (there's no reader of
+them every platform could share), so what's found can differ from one
+platform to another. `asuka/scan` reads a code's value; this package
+says where it is.
 
 ## The photo library: asuka/photos
 
