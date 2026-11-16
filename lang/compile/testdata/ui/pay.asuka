@@ -1,0 +1,138 @@
+import asuka/pay
+
+let methods = [
+  pay.ShippingMethod(id: "ground", label: "Ground", detail: "Arrives in 5 to 7 days", amount: "0.00"),
+  pay.ShippingMethod(id: "express", label: "Express", detail: "Arrives tomorrow", amount: "9.00"),
+]
+
+/// The order as the sheet changes it.
+store Order {
+  state state = ""
+  state method = "ground"
+  state coupon = ""
+
+  fn cents() -> int {
+    var c = 4000
+    if coupon == "TEA10" { c -= 400 }
+    if method == "express" { c += 900 }
+    if state == "CA" { c += 320 }
+    return c
+  }
+
+  fn update() -> pay.Update = pay.Update(total: pay.Item(amount: "{cents() / 100}.{cents() % 100}"))
+}
+
+fn request(o: Order) -> pay.Request = pay.Request(
+  items: [pay.Item(label: "Tea set", amount: "40.00")],
+  total: pay.Item(label: "Asuka Tea", amount: "40.00"),
+  shipping: [.name, .address],
+  shippingMethods: methods,
+  coupons: true,
+  apple: pay.Apple(merchantId: "merchant.dev.asuka.checkout"),
+  onShippingContact: c => {
+    if c.address.countryCode != "US" {
+      throw pay.Invalid(field: .unserviceable, message: "We ship in the United States only.")
+    }
+    o.state = c.address.state
+    return o.update()
+  },
+  onShippingMethod: m => {
+    o.method = m.id
+    return o.update()
+  },
+  onCoupon: code => {
+    if code != "TEA10" {
+      throw pay.Invalid(field: .couponInvalid, message: "That coupon isn't ours.", update: o.update())
+    }
+    o.coupon = code
+    return o.update()
+  },
+  onAuthorize: p => {
+    if p.token == "declined" {
+      throw Error("Your card was declined.")
+    }
+  },
+)
+
+component Checkout {
+  state status = ""
+  let order = Order()
+  let wallet = load pay.available(request(order))
+
+  Column {
+    if wallet.value?.canPay ?? false {
+      pay.PayButton {
+        type: .buy
+        on press {
+          do {
+            let p = try await pay.pay(request(order))
+            status = "Paid with {p.token} ({p.shippingMethod})"
+          } catch pay.PayError.canceled {
+            status = "Canceled"
+          } catch e {
+            status = e.message
+          }
+        }
+      }
+    } else {
+      Text("No wallet")
+    }
+    Text("status {status}")
+  }
+}
+
+app { Checkout() }
+
+test "with no platform code, there's no wallet" {
+  let app = mount(Checkout())
+  await app.idle()
+  app.expect("No wallet")
+  do {
+    let _ = try await pay.pay(pay.Request())
+  } catch pay.PayError.notAvailable {
+    print("not available")
+  }
+}
+
+test "a fake's sheet, changed and paid" {
+  let w = pay.fake()
+  let app = mount(Checkout())
+  await app.idle()
+  app.tap("PayButton")
+  await app.idle()
+  expect(w.sheet!.total.amount == "40.00" && w.sheet!.method == "ground")
+  w.changeShippingContact(pay.Contact(address: pay.PostalAddress(state: "CA", countryCode: "US")))
+  await app.idle()
+  expect(w.sheet!.total.amount == "43.20")
+  w.changeShippingContact(pay.Contact(address: pay.PostalAddress(countryCode: "FR")))
+  await app.idle()
+  expect(w.sheet!.errors.map(e => e.field) == [pay.Field.unserviceable])
+  w.chooseShippingMethod("express")
+  await app.idle()
+  expect(w.sheet!.total.amount == "52.20" && w.sheet!.errors.isEmpty())
+  w.enterCoupon("FREE")
+  await app.idle()
+  expect(w.sheet!.errors.map(e => e.field) == [pay.Field.couponInvalid])
+  w.enterCoupon("TEA10")
+  await app.idle()
+  expect(w.sheet!.total.amount == "48.20")
+  w.authorize(pay.Payment(token: "declined"))
+  await app.idle()
+  expect(w.sheet!.errors.map(e => e.message) == ["Your card was declined."])
+  w.authorize(pay.Payment(token: "tok_visa"))
+  await app.idle()
+  app.expect("status Paid with tok_visa (express)")
+  expect(w.sheet.isNone() && w.authorized)
+}
+
+test "canceled" {
+  let w = pay.fake(wallet: .googlePay)
+  let app = mount(Checkout())
+  await app.idle()
+  app.tap("PayButton")
+  await app.idle()
+  w.cancel()
+  await app.idle()
+  app.expect("status Canceled")
+  expect(w.sheet.isNone())
+}
