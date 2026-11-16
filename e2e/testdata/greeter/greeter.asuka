@@ -1,0 +1,16 @@
+// The greeter is a native package (asuka native): a module that says
+// hello, and a view that says what it shows, each platform's own code
+// implementing them (Swift on iOS and macOS, Kotlin on Android,
+// JavaScript on the web, C on Windows and Linux). The GUI tests' plugin
+// app (e2e/testdata/pluginapp) uses it on every platform.
+
+/// Greets.
+pub native interface Greeter {
+  /// The platform's greeting to name.
+  fn hello(name: string) -> string
+}
+
+/// A label showing its name; it says what it shows.
+pub native component Badge(name: string) {
+  event shown(text: string)
+}

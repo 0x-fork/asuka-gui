@@ -1,2 +1,6 @@
 name = "Plugin App"
 id = "dev.asuka.pluginapp"
+
+[dependencies]
+"@asuka/greeter" = "file:../greeter"
+"@asuka/pantry" = "file:../../../internal/nativegen/testdata/pantry"
