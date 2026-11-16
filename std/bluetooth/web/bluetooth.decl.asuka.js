@@ -66,7 +66,7 @@ export const RequestKind = Object.freeze({
 const errorIndex = { notAvailable: 0, off: 1, denied: 2, unsupported: 3, canceled: 4, disconnected: 5, notFound: 6, timeout: 7 };
 const errorMessage = ["bluetooth: not available", "bluetooth: off", "bluetooth: not allowed", "bluetooth: unsupported", "bluetooth: canceled", "bluetooth: disconnected", "bluetooth: not found", "bluetooth: timeout"];
 
-/** One of the errors the package declares (native.NewError): throw new BluetoothError("notAvailable"). */
+/** One of the errors the package declares: throw new BluetoothError("notAvailable"). */
 export class BluetoothError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -75,3 +75,4 @@ export class BluetoothError extends DeclaredError {
     this.name = "BluetoothError";
   }
 }
+

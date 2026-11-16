@@ -150,7 +150,7 @@ func GenerateJS(p *Package) []byte {
 	for _, v := range p.Views {
 		g.printf("//\texport function make%s(events) // returns { el, set<Prop>(value)..., measure?, destroy? }\n", v.Name)
 	}
-	g.printf("//\n// A method that takes a context in Go is async, and gets an AbortSignal\n// first. int64 and uint64 are BigInts; a time is a Date; a duration is\n// milliseconds; a []byte is a Uint8Array.\n\n")
+	g.printf("//\n// An async method gets an AbortSignal first. An int is a number; a\n// Duration is milliseconds; bytes are a Uint8Array.\n\n")
 	if jsHasDecl(p) {
 		// Before the package's own module: what it imports of these is
 		// made first (an import's module runs before the next import's).
@@ -202,8 +202,8 @@ func GenerateJSDecl(p *Package) []byte {
 			msgs = append(msgs, strconv.Quote(e.Message))
 		}
 		g.printf("%s };\nconst errorMessage = [%s];\n\n", strings.Join(parts, ", "), strings.Join(msgs, ", "))
-		g.printf("/** One of the errors the package declares (native.NewError): throw new %s(\"%s\"). */\n", t, lowerCamel(errorCase(p.Errors[0].Name)))
-		g.printf("export class %s extends DeclaredError {\n  constructor(name) {\n    const i = errorIndex[name];\n    if (i === undefined) throw new Error(`no error ${name}`);\n    super(i, errorMessage[i]);\n    this.name = %q;\n  }\n}\n", t, t)
+		g.printf("/** One of the errors the package declares: throw new %s(\"%s\"). */\n", t, lowerCamel(errorCase(p.Errors[0].Name)))
+		g.printf("export class %s extends DeclaredError {\n  constructor(name) {\n    const i = errorIndex[name];\n    if (i === undefined) throw new Error(`no error ${name}`);\n    super(i, errorMessage[i]);\n    this.name = %q;\n  }\n}\n\n", t, t)
 	}
 	return g.b.Bytes()
 }
@@ -311,7 +311,7 @@ func (g *jsGen) decodeArgs(m *Method, indent string) string {
 }
 
 func (g *jsGen) wire() {
-	g.printf("// The package's values on the wire (package native's format).\nconst Wire = {\n")
+	g.printf("// The package's values on the wire (core/src/native's format).\nconst Wire = {\n")
 	done := map[string]bool{}
 	for {
 		var names []string

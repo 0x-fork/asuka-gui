@@ -18,7 +18,7 @@ export const Quality = Object.freeze({
 const errorIndex = { notAllowed: 0, busy: 1 };
 const errorMessage = ["record: not allowed", "record: already recording"];
 
-/** One of the errors the package declares (native.NewError): throw new RecordError("notAllowed"). */
+/** One of the errors the package declares: throw new RecordError("notAllowed"). */
 export class RecordError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -27,3 +27,4 @@ export class RecordError extends DeclaredError {
     this.name = "RecordError";
   }
 }
+

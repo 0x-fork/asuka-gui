@@ -105,7 +105,7 @@ static void test_state(const char *dir) {
 
 static bool same(dsk_rect a, dsk_rect b) { return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h; }
 
-// internal/flyout's cases.
+// the desktop hosts' cases (the web's window.test.js has them too).
 static void test_flyout(void) {
 	dsk_rect work = {0, 25, 1440, 875}, icon = {1200, 0, 24, 25};
 	struct {

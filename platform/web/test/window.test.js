@@ -1,6 +1,6 @@
 // Windows in a page (src/window.js, src/nav.js): a flyout's anchor as
 // its Window's Flyout prop carries it, where a flyout goes against its
-// anchor (internal/flyout's Place, the same cases), where a panel opens,
+// anchor (platform/desktop's dsk_flyout_place, the same cases), where a panel opens,
 // and what WindowAction Fit and ClickThrough do to a Window's panel and
 // the tab.
 import { test } from "node:test";
@@ -32,7 +32,7 @@ test("decodeFlyout reads ops.Flyout; cut short, a point below the parent's top l
   for (let n = 0; n < b.length; n++) assert.deepEqual(decodeFlyout(b.subarray(0, n)), none, `cut to ${n} bytes`);
 });
 
-test("place: the desktop hosts' cases (internal/flyout)", () => {
+test("place: the desktop hosts' cases (dsk_flyout_place)", () => {
   const work = { x: 0, y: 25, w: 1440, h: 875 }; // under a 25-point menu bar
   const icon = { x: 1200, y: 0, w: 24, h: 25 };
   const R = (x, y, w, h) => ({ x, y, w, h });

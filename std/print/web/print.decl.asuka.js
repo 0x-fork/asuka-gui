@@ -19,7 +19,7 @@ export const Outcome = Object.freeze({
 const errorIndex = { unavailable: 0, unsupported: 1 };
 const errorMessage = ["print: printing isn't available", "print: can't print this file"];
 
-/** One of the errors the package declares (native.NewError): throw new PrintError("unavailable"). */
+/** One of the errors the package declares: throw new PrintError("unavailable"). */
 export class PrintError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -28,3 +28,4 @@ export class PrintError extends DeclaredError {
     this.name = "PrintError";
   }
 }
+

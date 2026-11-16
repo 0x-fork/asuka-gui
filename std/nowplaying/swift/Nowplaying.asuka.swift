@@ -137,7 +137,7 @@ public struct Info: Sendable {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeInfo(_ w: inout AsukaNativeWriter, _ v: Info) {
         w.string(v.title)

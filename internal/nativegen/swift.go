@@ -397,7 +397,7 @@ func (g *swiftGen) viewDecl(v *View) {
 		g.printf("%s    func set%s(_ value: %s)\n", swiftDoc(f.Doc, "    "), f.Name, g.typ(f.Type))
 	}
 	g.printf("}\n\n")
-	g.printf("/// Sends a %s's events to its Go.\n@MainActor public struct %sEvents {\n    let ctx: AsukaNativeContext\n\n", v.Name, v.Name)
+	g.printf("/// Sends a %s's events to the app.\n@MainActor public struct %sEvents {\n    let ctx: AsukaNativeContext\n\n", v.Name, v.Name)
 	for _, e := range v.Events {
 		var ps []string
 		for _, a := range e.Type.Func.Params {
@@ -516,7 +516,7 @@ func (g *swiftGen) decodeArgs(m *Method, indent string) string {
 	return strings.Join(args, ", ")
 }
 
-// closure decodes a callback: a Swift closure that calls back Go's func.
+// closure decodes a callback: a Swift closure that calls back the app's fn.
 func (g *swiftGen) closure(n string, ft *FuncType, indent string) {
 	var ps, ts []string
 	for i, p := range ft.Params {
@@ -546,7 +546,7 @@ func (g *swiftGen) closure(n string, ft *FuncType, indent string) {
 }
 
 func (g *swiftGen) wire() {
-	g.printf("/// The package's values on the wire (package native's format).\nfileprivate enum Wire {\n")
+	g.printf("/// The package's values on the wire (core/src/native's format).\nfileprivate enum Wire {\n")
 	done := map[string]bool{}
 	for {
 		var names []string

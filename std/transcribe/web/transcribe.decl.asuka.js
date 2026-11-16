@@ -10,7 +10,7 @@ const { DeclaredError } = globalThis.asuka.native;
 const errorIndex = { notAvailable: 0, notAllowed: 1, downloading: 2 };
 const errorMessage = ["transcribe: not available on this device", "transcribe: not allowed", "transcribe: the language's model is downloading"];
 
-/** One of the errors the package declares (native.NewError): throw new TranscribeError("notAvailable"). */
+/** One of the errors the package declares: throw new TranscribeError("notAvailable"). */
 export class TranscribeError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -19,3 +19,4 @@ export class TranscribeError extends DeclaredError {
     this.name = "TranscribeError";
   }
 }
+

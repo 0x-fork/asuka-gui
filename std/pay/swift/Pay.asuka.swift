@@ -632,7 +632,7 @@ public protocol Wallets: AnyObject {
     func setNetworks(_ value: [Network])
 }
 
-/// Sends a PayButton's events to its Go.
+/// Sends a PayButton's events to the app.
 @MainActor public struct PayButtonEvents {
     let ctx: AsukaNativeContext
 
@@ -761,7 +761,7 @@ public protocol Wallets: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeAnswer(_ w: inout AsukaNativeWriter, _ v: Answer) {
         Wire.writeUpdate(&w, v.update)

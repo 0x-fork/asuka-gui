@@ -98,7 +98,7 @@ public protocol Pantry: AnyObject {
     func setItems(_ value: [Item])
 }
 
-/// Sends a Dial's events to its Go.
+/// Sends a Dial's events to the app.
 @MainActor public struct DialEvents {
     let ctx: AsukaNativeContext
 
@@ -260,7 +260,7 @@ public protocol Pantry: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeItem(_ w: inout AsukaNativeWriter, _ v: Item) {
         w.string(v.name)

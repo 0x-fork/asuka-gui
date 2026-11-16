@@ -26,7 +26,7 @@ export const Mode = Object.freeze({
 const errorIndex = { noCamera: 0, noView: 1, notAllowed: 2 };
 const errorMessage = ["camera: there's no camera", "camera: no camera view is showing", "camera: not allowed"];
 
-/** One of the errors the package declares (native.NewError): throw new CameraError("noCamera"). */
+/** One of the errors the package declares: throw new CameraError("noCamera"). */
 export class CameraError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -35,3 +35,4 @@ export class CameraError extends DeclaredError {
     this.name = "CameraError";
   }
 }
+

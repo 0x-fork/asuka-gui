@@ -18,7 +18,7 @@ export const Level = Object.freeze({
 const errorIndex = { busy: 0, empty: 1 };
 const errorMessage = ["pantry: busy", "pantry: empty"];
 
-/** One of the errors the package declares (native.NewError): throw new PantryError("busy"). */
+/** One of the errors the package declares: throw new PantryError("busy"). */
 export class PantryError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -27,3 +27,4 @@ export class PantryError extends DeclaredError {
     this.name = "PantryError";
   }
 }
+

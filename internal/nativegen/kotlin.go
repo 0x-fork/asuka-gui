@@ -322,7 +322,7 @@ func (g *kotlinGen) viewDecl(v *View) {
 		g.printf("%s    fun set%s(value: %s)\n", kotlinDoc(f.Doc, "    "), f.Name, g.typ(f.Type))
 	}
 	g.printf("}\n\n")
-	g.printf("/** Sends a %s's events to its Go, and has the app's themed context to make views with. */\n", v.Name)
+	g.printf("/** Sends a %s's events to the app, and has the app's themed context to make views with. */\n", v.Name)
 	g.printf("public class %sEvents internal constructor(private val ctx: AsukaNativeContext) {\n    val context: android.content.Context get() = ctx.context\n", v.Name)
 	for _, e := range v.Events {
 		var ps []string
@@ -459,7 +459,7 @@ func (g *kotlinGen) closure(name string, ft *FuncType, indent string) {
 }
 
 func (g *kotlinGen) wire() {
-	g.printf("/** The package's values on the wire (package native's format). */\nprivate object Wire {\n")
+	g.printf("/** The package's values on the wire (core/src/native's format). */\nprivate object Wire {\n")
 	done := map[string]bool{}
 	for {
 		var names []string

@@ -1,19 +1,19 @@
-// Typed native modules on the web (src/native.js): the kitchen package's
-// generated JavaScript (internal/nativegen/testdata/kitchen/web) and its
-// implementation, called as its Go calls them, in package native's wire
-// format.
+// Typed native modules on the web (src/native.js): the pantry package's
+// generated JavaScript (internal/nativegen/testdata/pantry/web) and its
+// implementation, called as the core calls them, in core/src/native's
+// wire format.
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as native from "../src/native.js";
 
 globalThis.asuka = { native };
-await import("../../../internal/nativegen/testdata/kitchen/web/kitchen.asuka.js");
+await import("../../../internal/nativegen/testdata/pantry/web/pantry.asuka.js");
 
-const id = "github.com/egoist/asuka/internal/nativegen/testdata/kitchen";
+const id = "@asuka/pantry";
 const { NativeWriter, NativeReader } = native;
 
-// A Go of its own: its answers, and its callbacks.
-function goSide(callbacks = {}) {
+// The core's side: its answers, and its callbacks.
+function coreSide(callbacks = {}) {
   const done = new Map();
   return {
     done: (call, b) => done.set(call, b),
@@ -33,7 +33,7 @@ function make(back) {
 }
 
 test("calls with every kind of value, and errors", () => {
-  const back = goSide();
+  const back = coreSide();
   const h = make(back);
   assert.equal(ok(native.call(h, 1, new Uint8Array(0), back)).string(), "home");
 
@@ -41,21 +41,29 @@ test("calls with every kind of value, and errors", () => {
   assert.equal(r.len(), 1);
   assert.equal(r.string(), "x");
   assert.equal(r.float64(), 1.5);
-  assert.equal(r.string(), "g");
+  assert.equal(r.int64(), 1n); // Level.high
   assert.equal(r.len(), 2);
   assert.deepEqual([r.string(), r.string()], ["a", "b"]);
   assert.equal(r.len(), 1);
   assert.deepEqual([r.string(), r.string()], ["k", "v"]);
-  assert.equal(r.present(), true);
-  assert.equal(r.time().getTime(), 1_700_000_000_250);
   assert.equal(r.present(), true); // next
   assert.equal(r.string(), "inner");
+  assert.equal(r.float64(), 0);
+  assert.equal(r.int64(), 0n);
+  assert.equal(r.len(), 0);
+  assert.equal(r.len(), 0);
+  assert.equal(r.present(), false);
+  assert.deepEqual([...r.data()], []);
+  assert.equal(r.duration(), 0);
+  assert.equal(r.int64(), 0n);
+  assert.equal(r.bool(), false);
+  assert.deepEqual([...r.data()], [1, 2, 3]);
+  assert.equal(r.duration(), 2500);
+  assert.equal(r.int64(), -3n);
+  assert.equal(r.bool(), true);
 
   // A declared error: its index.
-  const empty = new NativeWriter();
-  for (const f of ["string", "float64", "string"]) empty[f](f === "float64" ? 0 : "");
-  const add = native.call(h, 3, itemBytes(""), back);
-  assert.deepEqual([...add], [1, 0, 0, 0, 0]);
+  assert.deepEqual([...native.call(h, 3, itemBytes(""), back)], [1, 0, 0, 0, 0]);
   assert.deepEqual([...native.call(h, 3, itemBytes("y"), back)], [0]);
 
   // An error it doesn't declare: its name and message.
@@ -63,24 +71,23 @@ test("calls with every kind of value, and errors", () => {
   assert.equal(none.uint8(), 2);
   assert.equal(none.string(), "RangeError");
   assert.equal(none.int64(), 0n);
-  assert.equal(none.string(), "no oven");
+  assert.equal(none.string(), "no shelf");
 
-  // An object, its method, unsupported.
-  const oven = Number(ok(native.call(h, 6, new NativeWriter().string("main").bytes(), back)).uint64());
-  const heat = new NativeReader(native.call(oven, 2, new NativeWriter().float32(1).string("oz").bytes(), back));
-  assert.equal(heat.uint8(), 3);
-  assert.equal(heat.string(), "no ounces");
-  native.release(oven);
-  assert.equal(new NativeReader(native.call(oven, 2, new NativeWriter().float32(1).string("g").bytes(), back)).uint8(), 2);
+  // An object, its method, its declared error; released, it's gone.
+  const shelf = Number(ok(native.call(h, 6, new NativeWriter().string("main").bytes(), back)).uint64());
+  assert.deepEqual([...native.call(shelf, 1, new NativeWriter().int(3).int(1).bytes(), back)], [0]);
+  assert.deepEqual([...native.call(shelf, 1, new NativeWriter().int(11).int(1).bytes(), back)], [1, 1, 0, 0, 0]);
+  native.release(shelf);
+  assert.equal(new NativeReader(native.call(shelf, 1, new NativeWriter().int(1).int(0).bytes(), back)).uint8(), 2);
 
-  const counts = ok(native.call(h, 9, new Uint8Array(0), back));
+  const counts = ok(native.call(h, 8, new Uint8Array(0), back));
   assert.equal(counts.len(), 2);
   assert.deepEqual([counts.string(), counts.int64(), counts.string(), counts.int64()], ["a", 1n, "b", -2n]);
 });
 
 test("a question callback answers on the call's thread", () => {
   let asked;
-  const back = goSide({ 7: (r) => { asked = r.string(); return new NativeWriter().bool(true).bytes(); } });
+  const back = coreSide({ 7: (r) => { asked = r.string(); return new NativeWriter().bool(true).bytes(); } });
   const h = make(back);
   assert.equal(ok(native.call(h, 5, new NativeWriter().uint64(7).bytes(), back)).bool(), true);
   assert.equal(asked, "ok?");
@@ -88,7 +95,7 @@ test("a question callback answers on the call's thread", () => {
 
 test("an async call answers, its progress notified, and cancels", async () => {
   const progress = [];
-  const back = goSide({ 3: (r) => { progress.push(r.float64()); return null; } });
+  const back = coreSide({ 3: (r) => { progress.push(r.float64()); return null; } });
   const h = make(back);
   native.start(h, 4, new NativeWriter().string("soup").uint64(3).bytes(), 1, back);
   await new Promise((r) => setTimeout(r, 10));
@@ -102,7 +109,8 @@ test("an async call answers, its progress notified, and cancels", async () => {
   assert.deepEqual([...back.answered.get(2)], [4]);
 });
 
+// itemBytes is an Item named name, the rest zero.
 function itemBytes(name) {
-  const w = new NativeWriter().string(name).float64(0).string("").len(0).len(0).present(false).present(false).data(new Uint8Array(0));
-  return w.duration(0).uint64(0).int8(0).float32(0).bool(false).bytes();
+  return new NativeWriter().string(name).float64(0).int(0).len(0).len(0).present(false).data(new Uint8Array(0))
+    .duration(0).int(0).bool(false).bytes();
 }

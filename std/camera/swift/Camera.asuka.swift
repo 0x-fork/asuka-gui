@@ -90,7 +90,7 @@ public protocol Camera: AnyObject {
     func setCodes(_ value: [String])
 }
 
-/// Sends a View's events to its Go.
+/// Sends a View's events to the app.
 @MainActor public struct ViewEvents {
     let ctx: AsukaNativeContext
 
@@ -220,7 +220,7 @@ public protocol Camera: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeCode(_ w: inout AsukaNativeWriter, _ v: Code) {
         w.string(v.kind)

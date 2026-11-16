@@ -640,7 +640,7 @@ public protocol Store: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeItem(_ w: inout AsukaNativeWriter, _ v: Item) {
         w.string(v.id)

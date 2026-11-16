@@ -253,7 +253,7 @@ public protocol Platform: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeClipboardKinds(_ w: inout AsukaNativeWriter, _ v: ClipboardKinds) {
         w.bool(v.text)

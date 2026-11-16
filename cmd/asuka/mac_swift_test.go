@@ -29,7 +29,7 @@ func needMacBuild(t *testing.T) {
 	}
 }
 
-// An app's native packages' Swift (testdata/nativeapp's: the kitchen,
+// An app's native packages' Swift (testdata/nativeapp's: the pantry,
 // internal/nativegen's testdata) is built with the host's Swift into the
 // app's executable, linked with the core, with Swift's concurrency runtime
 // in its Frameworks for macOS 11 when it links it. An app without native
@@ -60,8 +60,8 @@ func TestMacSwift(t *testing.T) {
 			t.Errorf("the executable hasn't the core's %s", sym)
 		}
 	}
-	if !strings.Contains(s, "AsukaModule_github_com_egoist_asuka_internal_nativegen_testdata_kitchen") {
-		t.Error("the executable hasn't the kitchen's Swift")
+	if !strings.Contains(s, "AsukaModule__asuka_pantry") {
+		t.Error("the executable hasn't the pantry's Swift")
 	}
 	fw := filepath.Join(bundle, "Contents", "Frameworks")
 	if macImports(exe, "@rpath/libswift_Concurrency.dylib") {

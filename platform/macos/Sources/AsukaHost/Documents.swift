@@ -1,6 +1,6 @@
 // The module that hands files to the system's composers (host/darwin's
 // documents.go): asuka/compose (NSSharingService, mailto:), and the files
-// it names (internal/localfile). documents.go's preview (Quick Look) and
+// it names. documents.go's preview (Quick Look) and
 // print modules aren't here: asuka/preview and asuka/print have their own
 // Swift.
 import AppKit
@@ -27,7 +27,7 @@ struct AsukaSource: Decodable {
     enum CodingKeys: String, CodingKey { case source, type, name }
 }
 
-/// The file a source names (internal/localfile), for the modules that hand
+/// The file a source names, for the modules that hand
 /// files to the system: a path, a file:// URL, an asset's path, or an
 /// http(s) URL, downloaded first.
 enum AsukaLocalFile {

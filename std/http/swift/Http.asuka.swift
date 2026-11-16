@@ -165,7 +165,7 @@ public protocol LocalServer: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeMapString(_ w: inout AsukaNativeWriter, _ v: [String: String]) {
         w.len(v.count)

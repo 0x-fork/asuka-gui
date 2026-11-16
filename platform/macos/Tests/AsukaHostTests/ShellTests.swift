@@ -5,8 +5,7 @@ import Carbon.HIToolbox
 
 // The shell's pure parts: menus on the wire (ops/menu.go's format and its
 // tests), shortcuts as key equivalents, the pseudo locales' menu words, and
-// apps.search's ranking (internal/appsearch's tests, which every desktop
-// host answers alike).
+// apps.search's ranking (the cases every desktop host answers alike).
 @MainActor final class ShellTests: XCTestCase {
     // MARK: Menus
 
@@ -137,7 +136,7 @@ import Carbon.HIToolbox
                        "\u{200F}\u{202E}Close\u{202C}\u{200F} \u{200F}\u{202E}Window\u{202C}\u{200F}")
     }
 
-    // MARK: apps.search (internal/appsearch's tests)
+    // MARK: apps.search (the desktop hosts' cases)
 
     private func search(_ names: [String], _ q: String) -> [String] {
         AsukaAppSearch.rank(names, q).map { names[$0] }
@@ -206,7 +205,7 @@ import Carbon.HIToolbox
         XCTAssertEqual(S.fold("Ärger ÆØ straße ﬁle"), "arger aeo strasse file")
     }
 
-    // MARK: Routes (internal/routestate's file)
+    // MARK: Routes (the desktop hosts' file)
 
     private func location(_ href: String, _ state: String, _ key: String) -> [UInt8] {
         var w = AsukaByteWriter()

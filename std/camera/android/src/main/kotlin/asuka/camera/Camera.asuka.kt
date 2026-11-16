@@ -109,7 +109,7 @@ public interface View {
     fun setCodes(value: List<String>)
 }
 
-/** Sends a View's events to its Go, and has the app's themed context to make views with. */
+/** Sends a View's events to the app, and has the app's themed context to make views with. */
 public class ViewEvents internal constructor(private val ctx: AsukaNativeContext) {
     val context: android.content.Context get() = ctx.context
 
@@ -238,7 +238,7 @@ public object AsukaModule : AsukaModuleProvider {
     }
 }
 
-/** The package's values on the wire (package native's format). */
+/** The package's values on the wire (core/src/native's format). */
 private object Wire {
     fun writeCode(w: AsukaNativeWriter, v: Code) {
         w.string(v.kind)

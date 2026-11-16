@@ -10,7 +10,7 @@ const { DeclaredError } = globalThis.asuka.native;
 const errorIndex = { noViewer: 0 };
 const errorMessage = ["preview: nothing can show this file"];
 
-/** One of the errors the package declares (native.NewError): throw new PreviewError("noViewer"). */
+/** One of the errors the package declares: throw new PreviewError("noViewer"). */
 export class PreviewError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -19,3 +19,4 @@ export class PreviewError extends DeclaredError {
     this.name = "PreviewError";
   }
 }
+

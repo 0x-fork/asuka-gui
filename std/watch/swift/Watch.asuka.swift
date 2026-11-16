@@ -133,7 +133,7 @@ public protocol Watching: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeEvent(_ w: inout AsukaNativeWriter, _ v: Event) {
         w.int(v.op.rawValue)

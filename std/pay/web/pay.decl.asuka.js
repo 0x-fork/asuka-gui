@@ -171,7 +171,7 @@ export const ButtonStyle = Object.freeze({
 const errorIndex = { notAvailable: 0, canceled: 1, busy: 2 };
 const errorMessage = ["pay: not available", "pay: canceled", "pay: a payment sheet shows already"];
 
-/** One of the errors the package declares (native.NewError): throw new PayError("notAvailable"). */
+/** One of the errors the package declares: throw new PayError("notAvailable"). */
 export class PayError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -180,3 +180,4 @@ export class PayError extends DeclaredError {
     this.name = "PayError";
   }
 }
+

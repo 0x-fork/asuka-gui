@@ -52,7 +52,7 @@ export const Transition = Object.freeze({
 const errorIndex = { denied: 0, needsAlways: 1, tooManyRegions: 2, unavailable: 3 };
 const errorMessage = ["location: not allowed", "location: needs the Always authorization (requestAlways)", "location: too many regions", "location: not available"];
 
-/** One of the errors the package declares (native.NewError): throw new LocationError("denied"). */
+/** One of the errors the package declares: throw new LocationError("denied"). */
 export class LocationError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -61,3 +61,4 @@ export class LocationError extends DeclaredError {
     this.name = "LocationError";
   }
 }
+

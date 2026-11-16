@@ -47,7 +47,7 @@ final class AsukaPanel: NSPanel {
     }
 }
 
-/// A rectangle, y down (a flyout's placement: internal/flyout).
+/// A rectangle, y down (a flyout's placement: dsk_flyout_place).
 struct AsukaFlyoutRect: Equatable {
     var x: CGFloat = 0, y: CGFloat = 0, w: CGFloat = 0, h: CGFloat = 0
 
@@ -58,7 +58,7 @@ struct AsukaFlyoutRect: Equatable {
 }
 
 /// Places a flyout window next to its anchor, as the desktop hosts all do:
-/// the C they share (platform/desktop's flyout.c, internal/flyout's). On
+/// the C they share (platform/desktop's flyout.c). On
 /// the side its Placement names, flipped to the other side where that has
 /// no room and the other has, lined up with the anchor along that side
 /// (flipped to the other end where that has no room), then slid back into

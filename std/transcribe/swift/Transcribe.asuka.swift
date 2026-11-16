@@ -142,7 +142,7 @@ public protocol Recognizer: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeAvailability(_ w: inout AsukaNativeWriter, _ v: Availability) {
         w.bool(v.onDevice)

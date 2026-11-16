@@ -101,7 +101,7 @@ export const EventType = Object.freeze({
 const errorIndex = { notAvailable: 0, notAllowed: 1, unknownProduct: 2, alreadyOwned: 3 };
 const errorMessage = ["purchase: no store", "purchase: payments not allowed", "purchase: unknown product", "purchase: already owned"];
 
-/** One of the errors the package declares (native.NewError): throw new PurchaseError("notAvailable"). */
+/** One of the errors the package declares: throw new PurchaseError("notAvailable"). */
 export class PurchaseError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -110,3 +110,4 @@ export class PurchaseError extends DeclaredError {
     this.name = "PurchaseError";
   }
 }
+

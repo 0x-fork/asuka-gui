@@ -4,7 +4,7 @@
 // apps launched by GIO with the display's launch context.
 //
 // search ranks names against what the user types, as a launcher does
-// (internal/appsearch): the name is the query; it starts with it; a word
+// (every desktop host's): the name is the query; it starts with it; a word
 // of it does (a word starts after a space or a mark, at a capital in
 // CamelCase, between letters and digits), or the query is the starts of
 // its words in order ("vsc": Visual Studio Code); the name has it; it has

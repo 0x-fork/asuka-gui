@@ -19,7 +19,7 @@ export const Quality = Object.freeze({
 const errorIndex = { stopped: 0 };
 const errorMessage = ["speech: stopped"];
 
-/** One of the errors the package declares (native.NewError): throw new SpeechError("stopped"). */
+/** One of the errors the package declares: throw new SpeechError("stopped"). */
 export class SpeechError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -28,3 +28,4 @@ export class SpeechError extends DeclaredError {
     this.name = "SpeechError";
   }
 }
+

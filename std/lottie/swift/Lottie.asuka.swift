@@ -122,7 +122,7 @@ public struct Info: Sendable {
     func setOverrides(_ value: [Override])
 }
 
-/// Sends a View's events to its Go.
+/// Sends a View's events to the app.
 @MainActor public struct ViewEvents {
     let ctx: AsukaNativeContext
 
@@ -245,7 +245,7 @@ public struct Info: Sendable {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeInfo(_ w: inout AsukaNativeWriter, _ v: Info) {
         w.float64(v.width)

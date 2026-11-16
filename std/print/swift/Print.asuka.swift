@@ -181,7 +181,7 @@ public protocol Printer: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeJob(_ w: inout AsukaNativeWriter, _ v: Job) {
         w.string(v.name)

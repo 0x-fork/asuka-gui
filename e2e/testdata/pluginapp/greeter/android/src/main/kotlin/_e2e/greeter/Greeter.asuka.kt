@@ -41,7 +41,7 @@ public interface Badge {
     fun setName(value: String)
 }
 
-/** Sends a Badge's events to its Go, and has the app's themed context to make views with. */
+/** Sends a Badge's events to the app, and has the app's themed context to make views with. */
 public class BadgeEvents internal constructor(private val ctx: AsukaNativeContext) {
     val context: android.content.Context get() = ctx.context
 
@@ -105,6 +105,6 @@ public object AsukaModule : AsukaModuleProvider {
     }
 }
 
-/** The package's values on the wire (package native's format). */
+/** The package's values on the wire (core/src/native's format). */
 private object Wire {
 }

@@ -1,5 +1,5 @@
-// apps.c: asuka/apps on Windows (host/windows' apps.go,
-// internal/appsearch): the Start menu's All apps, the shell's
+// apps.c: asuka/apps on Windows (its search ranked as every desktop
+// host's): the Start menu's All apps, the shell's
 // Applications folder (FOLDERID_AppsFolder: desktop apps by their
 // shortcuts, packaged apps by their AppUserModelIDs, as PowerToys' Command
 // Palette lists them), each item's icon from the shell

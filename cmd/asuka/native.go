@@ -73,7 +73,7 @@ func appNatives(app *asukaApp) ([]nativePackage, error) {
 	sort.Strings(dirs)
 	var out []nativePackage
 	for _, d := range dirs {
-		p, err := nativegen.LoadAny(d)
+		p, err := nativegen.LoadAsuka(d)
 		if err != nil {
 			return nil, err
 		}
@@ -143,28 +143,18 @@ func generateNatives(app *asukaApp) error {
 	return nil
 }
 
-// hasDirectives reports whether a package's Go has //asuka:native or
-// //asuka:view declarations.
+// hasDirectives reports whether a package's Asuka declares a native
+// interface or a native component. A generated file's are the prelude's
+// elements (lang/prelude's elements.asuka), the runtime's, not a
+// package's.
 func hasDirectives(dir string) bool {
 	es, _ := os.ReadDir(dir)
 	for _, e := range es {
 		n := e.Name()
-		if e.IsDir() {
+		if e.IsDir() || !strings.HasSuffix(n, ".asuka") {
 			continue
 		}
-		if strings.HasSuffix(n, ".asuka") {
-			// An Asuka package: native interface or native component. A
-			// generated file's are the prelude's elements (lang/prelude's
-			// elements.asuka), the runtime's, not a package's.
-			if b, err := os.ReadFile(filepath.Join(dir, n)); err == nil && nativeDecl.Match(b) && !bytes.HasPrefix(b, []byte("// Code generated ")) {
-				return true
-			}
-			continue
-		}
-		if !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") || strings.HasSuffix(n, "_native.go") {
-			continue
-		}
-		if b, err := os.ReadFile(filepath.Join(dir, n)); err == nil && (bytes.Contains(b, []byte("//asuka:native")) || bytes.Contains(b, []byte("//asuka:view"))) {
+		if b, err := os.ReadFile(filepath.Join(dir, n)); err == nil && nativeDecl.Match(b) && !bytes.HasPrefix(b, []byte("// Code generated ")) {
 			return true
 		}
 	}
@@ -174,8 +164,8 @@ func hasDirectives(dir string) bool {
 // nativeDecl finds an Asuka file's native declarations.
 var nativeDecl = regexp.MustCompile(`(?m)^\s*(pub\s+)?native\s+(interface|component)\b`)
 
-// nativeDirs are the packages of the module in moduleDir (as ./...
-// lists them) with //asuka:native or //asuka:view declarations.
+// nativeDirs are the packages under moduleDir with native declarations
+// (hasDirectives).
 func nativeDirs(moduleDir string) ([]string, error) {
 	var dirs []string
 	err := filepath.WalkDir(moduleDir, func(p string, d os.DirEntry, err error) error {
@@ -201,14 +191,14 @@ func nativeDirs(moduleDir string) ([]string, error) {
 	return dirs, err
 }
 
-// nativeStamp is what a package's generation depends on: its Go files'
-// (but the generated one's) contents, and its projects' presence.
+// nativeStamp is what a package's generation depends on: its Asuka
+// files' contents, and its projects' presence.
 func nativeStamp(dir string) string {
 	h := sha256.New()
 	es, _ := os.ReadDir(dir)
 	for _, e := range es {
 		n := e.Name()
-		if e.IsDir() || !(strings.HasSuffix(n, ".go") || strings.HasSuffix(n, ".asuka")) || strings.HasSuffix(n, "_test.go") || strings.HasSuffix(n, "_native.go") {
+		if e.IsDir() || !strings.HasSuffix(n, ".asuka") {
 			continue
 		}
 		b, _ := os.ReadFile(filepath.Join(dir, n))
@@ -238,7 +228,7 @@ func generateNative(dir string) error {
 			return nil
 		}
 	}
-	p, err := nativegen.LoadAny(dir)
+	p, err := nativegen.LoadAsuka(dir)
 	if err != nil {
 		return err
 	}
@@ -262,7 +252,7 @@ func nativeHashes(dir string) (bool, string) {
 	var hash string
 	ok := true
 	filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".asuka.") && !strings.HasSuffix(d.Name(), "_native.go") {
+		if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".asuka.") {
 			return nil
 		}
 		b, _ := os.ReadFile(p)
@@ -283,7 +273,7 @@ func checkNative(dir string) error {
 	if b, err := os.ReadFile(sp); err == nil && string(b) == "checked "+stamp {
 		return nil
 	}
-	p, err := nativegen.LoadAny(dir)
+	p, err := nativegen.LoadAsuka(dir)
 	if err != nil {
 		return err
 	}

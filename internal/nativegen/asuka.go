@@ -57,7 +57,7 @@ func LoadAsuka(dir string) (*Package, error) {
 			path = m.Name
 		}
 	}
-	l := &aloader{fset: fset, out: &Package{Path: path, Name: sanitizeName(name), Dir: abs, Asuka: true},
+	l := &aloader{fset: fset, out: &Package{Path: path, Name: sanitizeName(name), Dir: abs},
 		structs: map[string]*syntax.StructDecl{}, enums: map[string]*syntax.EnumDecl{}, ifaces: map[string]bool{},
 		doneS: map[string]*StructDecl{}, doneE: map[string]*EnumDecl{}}
 	if err := l.load(files); err != nil {
@@ -400,13 +400,4 @@ func (l *aloader) enumDecl(d *syntax.EnumDecl) (*EnumDecl, error) {
 	l.doneE[d.Name.Name] = e
 	l.out.Enums = append(l.out.Enums, e)
 	return e, nil
-}
-
-// LoadAny reads the native declarations of the package in dir, in Asuka
-// when it has .asuka files, else in Go.
-func LoadAny(dir string) (*Package, error) {
-	if m, _ := filepath.Glob(filepath.Join(dir, "*.asuka")); len(m) > 0 {
-		return LoadAsuka(dir)
-	}
-	return Load(dir)
 }

@@ -6,9 +6,8 @@
 //
 //	export function makeEngine() // returns its methods (lowerCamelCase)
 //
-// A method that takes a context in Go is async, and gets an AbortSignal
-// first. int64 and uint64 are BigInts; a time is a Date; a duration is
-// milliseconds; a []byte is a Uint8Array.
+// An async method gets an AbortSignal first. An int is a number; a
+// Duration is milliseconds; bytes are a Uint8Array.
 
 export * from "./js.decl.asuka.js";
 import * as impl from "./js.js";
@@ -55,6 +54,6 @@ const provider = {
 
 registerModule("asuka/js", provider);
 
-// The package's values on the wire (package native's format).
+// The package's values on the wire (core/src/native's format).
 const Wire = {
 };

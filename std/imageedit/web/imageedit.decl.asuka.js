@@ -31,7 +31,7 @@ export const Format = Object.freeze({
 const errorIndex = { noImage: 0 };
 const errorMessage = ["imageedit: no image"];
 
-/** One of the errors the package declares (native.NewError): throw new EditError("noImage"). */
+/** One of the errors the package declares: throw new EditError("noImage"). */
 export class EditError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -40,3 +40,4 @@ export class EditError extends DeclaredError {
     this.name = "EditError";
   }
 }
+

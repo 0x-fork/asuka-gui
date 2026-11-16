@@ -72,8 +72,10 @@ class AsukaView: NSView, NSDraggingSource {
     override func mouseUp(with event: NSEvent) {
         if !rt.mouseUp(event) { super.mouseUp(with: event) }
     }
-    override func mouseEntered(with event: NSEvent) { rt.mouseEntered(self) }
-    override func mouseExited(with event: NSEvent) { rt.mouseExited(self) }
+    // Under the automation, hover is its steps' (hover, hoverprobe): the
+    // pointer of the computer it runs on isn't the test's.
+    override func mouseEntered(with event: NSEvent) { if !AsukaAutomation.shared.active { rt.mouseEntered(self) } }
+    override func mouseExited(with event: NSEvent) { if !AsukaAutomation.shared.active { rt.mouseExited(self) } }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

@@ -59,9 +59,7 @@ import AsukaOps
     var relaunchAsked = false
     var signalSources: [DispatchSourceSignal] = []
 
-    /// Under asuka dev, the Go host started each run behind the one before
-    /// (internal/devstate's wait), as it restarted the process to reload.
-    /// The player isn't restarted: asuka dev sends it each new module and
+    /// Under asuka dev the player isn't restarted: asuka dev sends it each new module and
     /// the core keeps the state itself. Nothing to wait for.
     func waitForPreviousRun() {}
 

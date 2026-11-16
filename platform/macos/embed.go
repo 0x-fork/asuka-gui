@@ -10,3 +10,8 @@ import "embed"
 //
 //go:embed Sources App
 var Files embed.FS
+
+// HostDefines are the host's compilation conditions: what the iOS host's
+// files it shares build in (iCloud's, ICloud.swift). Every app's host has
+// them all.
+var HostDefines = []string{"ASUKA_ICLOUD"}

@@ -5,7 +5,7 @@
 // processed), from where the first block that changed starts or after,
 // the text before it as it was; a selection in the heading survives; and
 // at the end the storage is what a view given the whole reply has,
-// attribute by attribute. host/darwin's TestStdSwiftViews builds it with
+// attribute by attribute. platform/macos's TestStdSwiftViews builds it with
 // the package's Swift and runs it on macOS and in the iOS simulator.
 import Foundation
 #if canImport(UIKit)

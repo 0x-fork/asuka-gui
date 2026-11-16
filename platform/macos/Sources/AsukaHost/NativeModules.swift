@@ -4,7 +4,7 @@
 // is in the iOS host and the Mac's runtime (platform/macos), which a test
 // keeps equal.
 //
-// The wire format is package native's: values in declaration order,
+// The wire format is core/src/native's: values in declaration order,
 // little-endian.
 
 import Foundation
@@ -119,7 +119,7 @@ public enum AsukaColors {
 // for its decoder's tests: AsukaOps is a module of its own there).
 #if canImport(UIKit) || !canImport(AsukaOps)
 
-/// Encodes values (package native's Writer).
+/// Encodes values (core/src/native's writer).
 public struct AsukaNativeWriter {
     public private(set) var bytes: [UInt8]
 
@@ -185,8 +185,6 @@ public struct AsukaNativeWriter {
     public mutating func present(_ v: Bool) { bool(v) }
 }
 
-/// Decodes values (package native's Reader). After a short read every
-/// read returns its zero value, and failed is true.
 /// One of the app's views a method was passed (an Asuka Ref): the id its
 /// host knows it by.
 public struct AsukaViewRef: Sendable, Hashable {
@@ -198,6 +196,8 @@ public struct AsukaViewRef: Sendable, Hashable {
     @MainActor public var view: AsukaPlatformView? { id == 0 ? nil : AsukaNative.views(id) }
 }
 
+/// Decodes values (core/src/native's reader). After a short read every
+/// read returns its zero value, and failed is true.
 public struct AsukaNativeReader {
     let bytes: [UInt8]
     var p = 0
@@ -277,7 +277,7 @@ public struct AsukaNativeReader {
     }
 }
 
-/// An error a package declares (native.NewError): its Go gets that value.
+/// An error a package declares (its enum ...: Error): the app gets that value.
 public protocol AsukaDeclaredError: Error {
     var asukaIndex: UInt32 { get }
 }

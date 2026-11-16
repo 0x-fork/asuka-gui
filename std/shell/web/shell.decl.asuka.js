@@ -10,7 +10,7 @@ const { DeclaredError } = globalThis.asuka.native;
 const errorIndex = { noApp: 0 };
 const errorMessage = ["shell: no app opens this file"];
 
-/** One of the errors the package declares (native.NewError): throw new ShellError("noApp"). */
+/** One of the errors the package declares: throw new ShellError("noApp"). */
 export class ShellError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -19,3 +19,4 @@ export class ShellError extends DeclaredError {
     this.name = "ShellError";
   }
 }
+

@@ -31,7 +31,7 @@ export const Event = Object.freeze({
 const errorIndex = { idleUnknown: 0 };
 const errorMessage = ["power: the idle time isn't known here"];
 
-/** One of the errors the package declares (native.NewError): throw new PowerError("idleUnknown"). */
+/** One of the errors the package declares: throw new PowerError("idleUnknown"). */
 export class PowerError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -40,3 +40,4 @@ export class PowerError extends DeclaredError {
     this.name = "PowerError";
   }
 }
+

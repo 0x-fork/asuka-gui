@@ -21,7 +21,7 @@ export const Kind = Object.freeze({
 const errorIndex = { canceled: 0, notAvailable: 1, failed: 2 };
 const errorMessage = ["biometric: canceled", "biometric: not available", "biometric: not recognized"];
 
-/** One of the errors the package declares (native.NewError): throw new BiometricError("canceled"). */
+/** One of the errors the package declares: throw new BiometricError("canceled"). */
 export class BiometricError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -30,3 +30,4 @@ export class BiometricError extends DeclaredError {
     this.name = "BiometricError";
   }
 }
+

@@ -10,7 +10,7 @@ const { DeclaredError } = globalThis.asuka.native;
 const errorIndex = { timeout: 0 };
 const errorMessage = ["js: the script ran out of time"];
 
-/** One of the errors the package declares (native.NewError): throw new JsError("timeout"). */
+/** One of the errors the package declares: throw new JsError("timeout"). */
 export class JsError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -19,3 +19,4 @@ export class JsError extends DeclaredError {
     this.name = "JsError";
   }
 }
+

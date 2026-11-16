@@ -10,7 +10,7 @@ const { DeclaredError } = globalThis.asuka.native;
 const errorIndex = { canceled: 0 };
 const errorMessage = ["webauth: canceled"];
 
-/** One of the errors the package declares (native.NewError): throw new WebAuthError("canceled"). */
+/** One of the errors the package declares: throw new WebAuthError("canceled"). */
 export class WebAuthError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -19,3 +19,4 @@ export class WebAuthError extends DeclaredError {
     this.name = "WebAuthError";
   }
 }
+

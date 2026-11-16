@@ -23,7 +23,7 @@ export const Sensor = Object.freeze({
 const errorIndex = { notAvailable: 0, notAllowed: 1 };
 const errorMessage = ["sensors: not available", "sensors: not allowed"];
 
-/** One of the errors the package declares (native.NewError): throw new SensorError("notAvailable"). */
+/** One of the errors the package declares: throw new SensorError("notAvailable"). */
 export class SensorError extends DeclaredError {
   constructor(name) {
     const i = errorIndex[name];
@@ -32,3 +32,4 @@ export class SensorError extends DeclaredError {
     this.name = "SensorError";
   }
 }
+

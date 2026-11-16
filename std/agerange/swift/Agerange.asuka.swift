@@ -115,7 +115,7 @@ public protocol Signals: AnyObject {
     }
 }
 
-/// The package's values on the wire (package native's format).
+/// The package's values on the wire (core/src/native's format).
 fileprivate enum Wire {
     static func writeRange(_ w: inout AsukaNativeWriter, _ v: Range) {
         w.int(v.status.rawValue)
