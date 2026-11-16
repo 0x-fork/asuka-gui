@@ -625,7 +625,7 @@ func (l *Lowerer) initGlobal(b *fb, g *check.Global) {
 	default:
 		k := l.kind(g.Type)
 		v := b.valueReg(b.value(g.Value, -1), k)
-		if k == bc.KRef {
+		if k == bc.KRef && !isObject(g.Type) {
 			v = b.freeze(v, k)
 		}
 		b.emit(op("GSET"), slot, v, int(k))
@@ -818,6 +818,17 @@ func (l *Lowerer) constLiteral(e syntax.Expr, top bool) bool {
 			}
 		}
 		return len(call.Args) > 0
+	}
+	return false
+}
+
+// isObject reports a type whose values are the runtime's objects, not
+// values: a Ref (a cell), a Path (a builder), a Graphics. A constant of
+// one isn't frozen: it changes.
+func isObject(t check.Type) bool {
+	switch check.Unopt(t) {
+	case check.Ref, check.Path, check.Graphics:
+		return true
 	}
 	return false
 }

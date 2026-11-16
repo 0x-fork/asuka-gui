@@ -1,0 +1,277 @@
+package ir
+
+import (
+	bc "github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/prelude"
+	"github.com/egoist/asuka/lang/syntax"
+)
+
+// The UI runtime's interaction, media, graphics and system parts
+// (LOWERING.md's "Interaction states and variants" to "Media and the
+// system"): refs, variants, animate, the prelude's runtime functions.
+
+const (
+	uiVariant     = "ui.variant"      // (view, state int, key int, value) -> void
+	uiVariantBind = "ui.variant_bind" // (view, state, key, thunk) -> void
+	uiAnimate     = "ui.animate"      // (Animation?, body closure) -> void
+	uiAnimateWait = "ui.animate_wait" // (Animation?, body closure) -> future: settles once the animation is complete
+	pathNew       = "path.new"        // () -> Path
+)
+
+// A Ref is a cell holding the view (none while there's none): CELL of
+// none; reading its view is CGET, so a binding that reads a state
+// through it follows the view coming and going.
+
+// refNew makes a Ref: a cell of none.
+func (b *fb) refNew(dst int) int {
+	none := b.temp(bc.KRef)
+	b.emit(op("KNONE"), none)
+	r := b.out(dst, bc.KRef)
+	b.emit(op("CELL"), r, none, int(bc.KRef))
+	return r
+}
+
+// setRef puts the view v in the Ref cell, and takes it out when the
+// owner building v is disposed (unless the Ref holds another view by
+// then).
+func (b *fb) setRef(cell, v int) {
+	b.emit(op("CSET"), cell, v)
+	cv, vv := &check.Var{Type: check.Ref}, &check.Var{Type: check.View}
+	clos := b.makeClosure(closure{name: "ref", extra: []extraCap{{cv, cell}, {vv, v}}, ret: bc.KVoid, body: func(c *fb) {
+		cur := c.temp(bc.KRef)
+		c.emit(op("CPEEK"), cur, c.vars[cv])
+		eq := c.temp(bc.KBool)
+		c.emit(op("EQ"), eq, cur, c.vars[vv], int(bc.KRef))
+		end := c.f.NewLabel()
+		c.emitJump(op("JF"), eq, end)
+		none := c.temp(bc.KRef)
+		c.emit(op("KNONE"), none)
+		c.emit(op("CSET"), c.vars[cv], none)
+		c.f.Place(end)
+		c.emit(op("RET0"))
+	}})
+	b.emit(op("CLEANUP"), clos)
+}
+
+// elementRef binds an element's ref: r and its as name, once v is made.
+func (b *fb) elementRef(ec *check.ElementCall, v int) {
+	if ec.As != nil {
+		cell := b.local(bc.KRef)
+		b.refNew(cell)
+		b.vars[ec.As] = cell
+		b.setRef(cell, v)
+	}
+	if ec.Ref != nil {
+		mark := b.mark()
+		b.setRef(b.value(ec.Ref, -1), v)
+		b.release(mark)
+	}
+}
+
+// refView is the view a Ref cell holds (none when none), read tracked.
+func (b *fb) refView(cell int) int {
+	v := b.temp(bc.KRef)
+	b.emit(op("CGET"), v, cell)
+	return v
+}
+
+// variants sets a container's variants: each prop as a prop set is,
+// with the state.
+func (b *fb) variants(v int, ec *check.ElementCall) {
+	for _, va := range ec.Variants {
+		state := b.konst(int64(prelude.StateID(va.State)))
+		last := map[*check.Member]int{}
+		for i, p := range va.Props {
+			last[p.Member] = i
+		}
+		for i, p := range va.Props {
+			if last[p.Member] != i {
+				continue
+			}
+			mark := b.mark()
+			key := prelude.KeyID(ec.Comp.Name(), p.Member.Name())
+			k := b.konst(int64(key))
+			if b.l.prog.Reactive(p.Value) {
+				t := b.l.thunkType(p.Value, p.Member.Type)
+				clos := b.thunk(b.l.info.Ctxs[p.Value], p.Value, t)
+				b.callBTo(uiVariantBind, bc.None, v, state, k, clos)
+			} else {
+				val := b.value(p.Value, -1)
+				b.callBTo(uiVariant, bc.None, v, state, k, val)
+			}
+			b.release(mark)
+		}
+	}
+}
+
+// refMethod is a Ref's method or property: the builtin called with the
+// view the Ref holds, or nothing done (a property false) when it holds
+// none. vals are the arguments, in the builtin's order.
+func (b *fb) refMethod(m *check.Method, cell int, vals []int, res check.Type, dst int) int {
+	k := b.l.kind(res)
+	view := b.refView(cell)
+	for _, c := range m.Consts {
+		vals = append(vals, b.konst(c))
+	}
+	args := append([]int{view}, vals...)
+	if m.Async {
+		// The runtime fails the future of a view that isn't there.
+		f := b.callB(m.Builtin, bc.KRef, args...)
+		if k == bc.KVoid {
+			b.emit(op("AWAIT"), b.temp(bc.KRef), f)
+			return -1
+		}
+		r := b.out(dst, k)
+		b.emit(op("AWAIT"), r, f)
+		return r
+	}
+	end := b.f.NewLabel()
+	if k == bc.KVoid {
+		b.emitJump(op("JNONE"), view, end)
+		b.callBTo(m.Builtin, bc.None, args...)
+		b.f.Place(end)
+		return -1
+	}
+	r := b.out(dst, k)
+	b.move(r, b.zero(k))
+	b.emitJump(op("JNONE"), view, end)
+	b.callBTo(m.Builtin, r, args...)
+	b.f.Place(end)
+	return r
+}
+
+// zero is a register holding kind k's zero value.
+func (b *fb) zero(k bc.Kind) int {
+	switch k {
+	case bc.KFloat:
+		r := b.temp(bc.KFloat)
+		b.emit(op("KFLOAT"), r, b.l.floatConst(0))
+		return r
+	case bc.KRef:
+		return b.valueReg(-1, bc.KRef)
+	}
+	r := b.temp(k)
+	b.loadInt(r, 0)
+	return r
+}
+
+// builtinField reads a built-in type's property: g.width, card.hovered.
+func (b *fb) builtinField(sel *check.Selection, x int, res check.Type, dst int) int {
+	m := sel.Method
+	if m.Recv == "ref" {
+		return b.refMethod(m, x, nil, res, dst)
+	}
+	args := []int{x}
+	for _, c := range m.Consts {
+		args = append(args, b.konst(c))
+	}
+	k := b.l.kind(res)
+	r := b.out(dst, k)
+	b.callBTo(m.Builtin, r, args...)
+	return r
+}
+
+// runtimeCall calls a RuntimeFunc: its arguments in its parameters'
+// order, a Ref as the view it holds.
+func (b *fb) runtimeCall(call *check.Call, dst int) int {
+	f := call.Builtin.Fn
+	vals := b.args(call, nil)
+	skip := b.f.NewLabel()
+	for i, p := range call.Params {
+		if check.Unopt(p.Type) != check.Ref {
+			continue
+		}
+		view := b.temp(bc.KRef)
+		if check.IsOptional(p.Type) {
+			b.emit(op("KNONE"), view)
+			l := b.f.NewLabel()
+			b.emitJump(op("JNONE"), vals[i], l)
+			b.emit(op("CGET"), view, vals[i])
+			b.f.Place(l)
+		} else {
+			b.emit(op("CGET"), view, vals[i])
+		}
+		if f.NeedsView {
+			b.emitJump(op("JNONE"), view, skip)
+		}
+		vals[i] = view
+	}
+	k := b.l.kind(call.Result)
+	r := -1
+	switch {
+	case f.Async:
+		fut := b.callB(f.Builtin, bc.KRef, vals...)
+		if k == bc.KVoid {
+			b.emit(op("AWAIT"), b.temp(bc.KRef), fut)
+		} else {
+			r = b.out(dst, k)
+			b.emit(op("AWAIT"), r, fut)
+		}
+	case k == bc.KVoid:
+		b.callBTo(f.Builtin, bc.None, vals...)
+	default:
+		r = b.out(dst, k)
+		b.callBTo(f.Builtin, r, vals...)
+	}
+	b.f.Place(skip)
+	return r
+}
+
+// animateCall is animate(anim) { body }: the body runs at once, its
+// changes animating; awaited, the call returns once they're complete.
+func (b *fb) animateCall(call *check.Call) int {
+	anim := b.valueReg(-1, bc.KRef)
+	if call.Args[0] != nil {
+		anim = b.value(call.Args[0], -1)
+	}
+	body := b.value(call.Args[1], -1)
+	if call.Awaited {
+		f := b.callB(uiAnimateWait, bc.KRef, anim, body)
+		b.emit(op("AWAIT"), b.temp(bc.KRef), f)
+		return -1
+	}
+	b.callBTo(uiAnimate, bc.None, anim, body)
+	return -1
+}
+
+// shaderProgram is shader("""…"""): the program compiled with the app,
+// as bytes.
+func (b *fb) shaderProgram(e *syntax.CallExpr, dst int) int {
+	code := b.l.info.Shaders[e]
+	s := b.kstr(string(code))
+	return b.copyTo(b.callB("str.to_bytes", bc.KRef, s), dst)
+}
+
+// bodyCalls lowers a body's registrations (useKeys(…), onOpenURL(…)):
+// statements of its function, before its views.
+func (b *fb) bodyCalls(items []syntax.Item) []syntax.Item {
+	var rest []syntax.Item
+	for _, it := range items {
+		if b.l.info.BodyCalls[it] {
+			mark := b.mark()
+			b.at(it)
+			b.exprStmt(it.(*syntax.ExprStmt).X)
+			b.release(mark)
+			continue
+		}
+		rest = append(rest, it)
+	}
+	return rest
+}
+
+// appHandlers registers the app block's events' handlers.
+func (b *fb) appHandlers() {
+	for _, h := range b.l.info.AppHandlers {
+		mark := b.mark()
+		name := ""
+		for _, a := range check.AppEvents {
+			if a.Name == h.Event.Name() {
+				name = a.Builtin
+			}
+		}
+		clos := b.handler(h.Handler, h.Event)
+		b.callBTo(name, bc.None, clos)
+		b.release(mark)
+	}
+}

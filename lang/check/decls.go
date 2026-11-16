@@ -503,8 +503,13 @@ func (c *Checker) appBody(p *Package) {
 			}
 			continue
 		}
+		if h, ok := it.(*syntax.OnHandler); ok {
+			c.appEvent(h)
+			continue
+		}
 		views = append(views, it)
 	}
+	views = c.bodyCalls(views)
 	c.viewBlock(views, nil, "app")
 	c.leave(nil)
 	c.scope, c.ctx = savedScope, savedCtx

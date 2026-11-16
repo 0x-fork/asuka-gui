@@ -659,12 +659,19 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 			}
 		}
 	}
-	if m := lookupMethodArity(xt, name, argCount(e)); m != nil {
+	if ms := methodsArity(xt, name, argCount(e)); len(ms) > 0 {
+		m := ms[0]
+		if len(ms) > 1 {
+			m = c.overload(e, ms)
+		}
 		return c.builtinMethodCall(e, fn, xt, m, want)
 	}
-	if lookupMethod(xt, name) != nil {
-		m := lookupMethod(xt, name)
-		c.errorf(e, "%s takes %s", name, plural(len(m.Params), "argument", "arguments"))
+	if m := lookupMethod(xt, name); m != nil {
+		if m.Field {
+			c.errorf(e, "%s is a property of %s, not a method: %s", name, typeString(xt), name)
+		} else {
+			c.errorf(e, "%s takes %s", name, plural(len(m.Params), "argument", "arguments"))
+		}
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
@@ -682,11 +689,13 @@ func argCount(e *syntax.CallExpr) int {
 
 // builtinMethodCall is a built-in type's method: [T].map, string.trim.
 func (c *Checker) builtinMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type, m *Method, want Type) Type {
-	params := m.params()
+	params, result := c.methodSig(m)
 	args := c.matchArgs(e, params, m.Name)
+	c.trailingClosure(e, params, args)
 	s := m.bind(xt)
 	free := map[*TypeParam]bool{tvU: true}
-	c.inferArgs(args, params, s, free, want, m.Result, m.Name)
+	c.inferArgs(args, params, s, free, want, result, m.Name)
+	c.typeDefaults(args, params)
 	if why := m.requires(s); why != "" {
 		c.errorf(fn.Name, "%s %s", m.Name, why)
 	}
@@ -694,10 +703,10 @@ func (c *Checker) builtinMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, x
 	for tp, t := range s {
 		bound[tp.Name] = t
 	}
-	if m.Result != nil && mentionsFree(m.Result, free, s) {
+	if result != nil && mentionsFree(result, free, s) {
 		c.errorf(e, "can't tell what %s returns", m.Name)
 	}
-	res := s.Apply(m.Result)
+	res := s.Apply(result)
 	c.info.Calls[e] = &Call{Kind: CallBuiltinMethod, Method: m, Recv: fn.X, RecvType: xt, Args: args, Params: params, Result: res, Bound: bound}
 	c.info.Selections[fn] = &Selection{Kind: SelBuiltinMethod, Name: m.Name, Recv: xt}
 	if m.Inout {
@@ -705,6 +714,54 @@ func (c *Checker) builtinMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, x
 	}
 	c.callEffects(e, m.Name, m.Async, m.Throws)
 	return res
+}
+
+// overload picks the one of a built-in method's overloads of the same
+// arity (g.fill(p, .red), g.fill(p, LinearGradient(…))) by the first
+// parameter whose type tells them apart: the argument's type, checked
+// with nothing expected (an implicit member is an enum's or a color's).
+func (c *Checker) overload(e *syntax.CallExpr, ms []*Method) *Method {
+	p0, _ := c.methodSig(ms[0])
+	at := -1
+	for i := range p0 {
+		for _, m := range ms[1:] {
+			pi, _ := c.methodSig(m)
+			if i < len(pi) && !Identical(pi[i].Type, p0[i].Type) && at < 0 {
+				at = i
+			}
+		}
+	}
+	if at < 0 || e.Args == nil || at >= len(e.Args.List) || e.Args.List[at].Label != nil {
+		return ms[0]
+	}
+	arg := e.Args.List[at].Value
+	if _, ok := unparen(arg).(*syntax.ImplicitMember); ok {
+		for _, m := range ms {
+			ps, _ := c.methodSig(m)
+			if ps[at].Type == Color || AsNamed(ps[at].Type, EnumType) != nil {
+				return m
+			}
+		}
+		return ms[0]
+	}
+	t := c.expr(arg, nil)
+	for _, m := range ms {
+		ps, _ := c.methodSig(m)
+		if Identical(Unopt(ps[at].Type), Unopt(t)) {
+			return m
+		}
+	}
+	return ms[0]
+}
+
+// typeDefaults gives the defaults a call leaves to its parameters their
+// parameters' types (a signature's literals have none of their own).
+func (c *Checker) typeDefaults(args []syntax.Expr, params []*Param) {
+	for i, a := range args {
+		if a == nil && i < len(params) && params[i].Default != nil && c.info.Types[params[i].Default] == nil {
+			c.info.Types[params[i].Default] = params[i].Type
+		}
+	}
 }
 
 // mutates checks that x, which a method changes, can be changed.
@@ -752,6 +809,10 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		case Bytes:
 			// bytes(): none; s.bytes() makes them from text.
 			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BMath, RT: "bytes.empty", Sig: &FuncType{Result: Bytes}}, want)
+		case Ref:
+			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BRefNew}, want)
+		case Path:
+			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BPathNew}, want)
 		}
 		c.errorf(e.Fun, "%s is a type, not a function", tn.name)
 	default:

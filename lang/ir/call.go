@@ -302,6 +302,12 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		u := b.typ(call.Bound["U"])
 		vals = append(vals, b.konst(int64(b.l.kind(u))))
 	}
+	if m.Recv == "ref" {
+		return b.refMethod(m, b.recvValue(call, recv), vals, res, dst)
+	}
+	for _, c := range m.Consts {
+		vals = append(vals, b.konst(c))
+	}
 	r := bc.None
 	if m.Async {
 		// An async builtin returns its future; the value is the await's.
@@ -541,6 +547,16 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 			ind = b.konst(0)
 		}
 		return b.copyTo(b.callB("json.encode", bc.KRef, v, d, ind), dst)
+	case check.BRuntime:
+		return b.runtimeCall(call, dst)
+	case check.BAnimate:
+		return b.animateCall(call)
+	case check.BRefNew:
+		return b.refNew(dst)
+	case check.BPathNew:
+		return b.copyTo(b.callB(pathNew, bc.KRef), dst)
+	case check.BShader:
+		return b.shaderProgram(e, dst)
 	case check.BMath, check.BTimeNow, check.BTimeMonotonic:
 		var vals []int
 		for _, a := range call.Args {
