@@ -1681,28 +1681,29 @@ What every host does:
   alignment (`TextStart` is the side the language starts on, and is the default),
   a slider's direction, `RichText`'s paragraphs. Where the platform lets it, it
   also says the platform's own words in the language.
-- **`LayoutDirection`** (a common prop): the same for one view, for what
-  `ui.WithDirection` builds.
+- **`LayoutDirection`** (a common prop): the same for one view and what's
+  in it, for a view's `layoutDirection: .leftToRight`.
 - **A horizontal `Scroll` or `List`** starts at its trailing end right to left,
   and keeps its distance from that end as its content's width changes. The
   content is at the scroll view's origin, laid out from the right within it.
   `OnScroll` and `ScrollToOffset` stay physical.
 - **Symbols** whose names say a direction by `forward` or `backward` mirror
   (`chevron.forward`); `chevron.left` doesn't, since it means left.
-- **`SaveLocale`** keeps the language: AppleLanguages of the app's defaults
+- **`SaveLocale`** (the command `setLocale` sends) keeps the language: AppleLanguages of the app's defaults
   (iOS, macOS), which Settings shows and UIKit and AppKit read at launch;
   `LocaleManager` (Android), or the host's own preferences on Windows. Android declares its languages in `locales_config`, iOS and macOS
   in `CFBundleLocalizations` and `.lproj`s: `asuka build` writes them from the
   catalogs, with the app's name and purpose strings in each.
 
-Under `asuka dev` the player runs every app, so `boot.SaveLocale` keeps the
-choice beside the kept state on the Mac, not in the player.
+Under `asuka dev` the player runs every app: `--lang` and `--dir` force a
+language and a direction for the run through the module's init
+(`i18n.force`), and a choice `setLocale` saves there is the player's.
 
 What each host does by its own means:
 
 - **iOS**: `semanticContentAttribute` through the appearance and a walk of what
   exists, with a window trait override, since the back chevron follows traits
-  (iOS 17 and later). The walk waits until Go has returned: a collection view
+  (iOS 17 and later). The walk waits until the core has returned: a collection view
   asks for its cells as its direction changes. UIKit's own words stay in the
   process's language until the next launch.
 - **Android**: the themed context carries the locale and direction, views are
