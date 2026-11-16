@@ -42,11 +42,23 @@ void ak_signal_born(ak_node *n) {
 	if (g->in_memo > 0) n->flags |= AK_F_FRESH;
 }
 
+// own_scratch reports whether n is the running computation's own: read,
+// if at all, only by it (a store it made reading its own state as it's
+// set up: sqlite's migrate counting the tables it wrote).
+static bool own_scratch(const ak_node *n) {
+	return !n->subs || (n->subs == n->subs_tail && n->subs->sub == g->active);
+}
+
 void ak_signal_write(ak_node *n) {
 	if (!ak_sig_check_thread()) return;
-	if (AK_UNLIKELY(g->in_memo > 0) && !((n->flags & AK_F_FRESH) && !n->subs)) {
-		char d[256];
-		ak_sig_panic("signal: write inside a memo (%s)", g->active ? ak_sig_describe(g->active, d, sizeof d) : "?");
+	if (AK_UNLIKELY(g->in_memo > 0)) {
+		// A memo may write only a signal it made in this run that nothing
+		// else reads: that can't make anything stale (it isn't done yet).
+		if (!((n->flags & AK_F_FRESH) && own_scratch(n))) {
+			char d[256];
+			ak_sig_panic("signal: write inside a memo (%s)", g->active ? ak_sig_describe(g->active, d, sizeof d) : "?");
+			return;
+		}
 		return;
 	}
 	if (n->subs) {

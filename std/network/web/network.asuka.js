@@ -10,20 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./network.decl.asuka.js";
 import * as impl from "./network.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * What carries the connection.
- */
-export const ConnectionType = Object.freeze({
-  none: 0,
-  wifi: 1,
-  cellular: 2,
-  ethernet: 3,
-  other: 4,
-});
 
 const provider = {
   make(iface) {

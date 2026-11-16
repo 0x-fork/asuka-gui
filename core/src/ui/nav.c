@@ -79,6 +79,7 @@ static void fill(ak_view *v) {
 static void prov_drop(ak_opaque *o) {
 	ak_prov *p = (ak_prov *)o;
 	for (int i = 0; i < 3; i++) ak_release(p->strs[i]);
+	ak_release(p->follows);
 	ak_signal_drop(&p->node);
 }
 
@@ -133,6 +134,38 @@ static bool env_same(const ak_environment *a, const ak_environment *b) {
 	       ak_span_eq(a->languages, b->languages) && a->first_weekday == b->first_weekday && a->hour_cycle == b->hour_cycle;
 }
 
+// prov_take sets p's environment to env: what reads it follows, and it's
+// laid out again. False when it's the same.
+static bool prov_take(ak_prov *p, const ak_environment *env) {
+	if (env_same(env, &p->env)) return false;
+	float old = p->env.scale;
+	ak_ui_env_strings(&p->env, p->strs, env);
+	ak_signal_write(&p->node);
+	if (p->view) {
+		ak_lnode_mark_dirty(p->view->box);
+		if (env->scale > 0 && env->scale != old) ak_view_mark_measured(p->view);
+	}
+	return true;
+}
+
+// followers_take passes p's environment on to the providers that follow
+// it, and theirs.
+static void followers_take(ak_ui_root *r, ak_prov *p) {
+	for (uint32_t i = 0; i < r->provs.len; i++) {
+		ak_view *v = r->provs.data[i];
+		ak_prov *f = v->prov;
+		if (v->dead || !f || f->follows != p) continue;
+		if (prov_take(f, &p->env)) followers_take(r, f);
+	}
+}
+
+void ak_prov_follow(ak_prov *p, ak_prov *of) {
+	ak_retain(of);
+	ak_release(p->follows);
+	p->follows = of;
+	prov_take(p, &of->env);
+}
+
 bool ak_prov_report(ak_id id, const ak_environment *in) {
 	ak_view *v = ak_view_of(id);
 	if (!v || v->dead || !v->host_sized || !v->prov) return false;
@@ -141,15 +174,16 @@ bool ak_prov_report(ak_id id, const ak_environment *in) {
 	if (env.width_class == AK_SIZE_CLASS_UNSPECIFIED) env.width_class = ak_width_class_of(env.width);
 	if (env.height_class == AK_SIZE_CLASS_UNSPECIFIED) env.height_class = ak_height_class_of(env.height);
 	p->fit_wait = false;  // its own room, which a fit sheet waits for
-	if (env_same(&env, &p->env)) {
+	if (p->follows) {
+		// The host sizes it itself: it no longer follows.
+		ak_release(p->follows);
+		p->follows = NULL;
+	}
+	if (!prov_take(p, &env)) {
 		ak_view_remeasure(v);  // laid out (a fit sheet's first room)
 		return true;
 	}
-	float old = p->env.scale;
-	ak_ui_env_strings(&p->env, p->strs, &env);
-	ak_signal_write(&p->node);
-	ak_lnode_mark_dirty(v->box);
-	if (env.scale > 0 && env.scale != old) ak_view_mark_measured(v);
+	followers_take(v->r, p);
 	return true;
 }
 
@@ -665,9 +699,13 @@ static void screen_init(ak_view *e) {
 	if (pv && !pv->view) {
 		ak_prov_attach(e, pv);
 	} else {
-		pv = ak_prov_new(e->r);
-		ak_prov_attach(e, pv);
-		ak_release(pv);
+		// Its own; in a sheet (or a window) that already has one, it's as
+		// big as that, as its environment says, until the host says
+		// otherwise.
+		ak_prov *own = ak_prov_new(e->r);
+		if (pv) ak_prov_follow(own, pv);
+		ak_prov_attach(e, own);
+		ak_release(own);
 	}
 	v = NULL;
 	ak_back *bk = ak_context_lookup(ak_back_key, &v) ? v : NULL;

@@ -10,64 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./location.decl.asuka.js";
 import * as impl from "./location.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * How much the user lets the app know where the device is.
- */
-export const Level = Object.freeze({
-  notAsked: 0,
-  denied: 1,
-  restricted: 2,
-  whenInUse: 3,
-  always: 4,
-});
-
-/**
- * How exact the background updates are, against the power they use.
- */
-export const Accuracy = Object.freeze({
-  high: 0,
-  navigation: 1,
-  balanced: 2,
-  low: 3,
-  passive: 4,
-});
-
-/**
- * What the user does as the device moves: iOS tunes its updates to it.
- */
-export const Activity = Object.freeze({
-  other: 0,
-  automotive: 1,
-  otherNavigation: 2,
-  fitness: 3,
-  airborne: 4,
-});
-
-/**
- * A region's transition.
- */
-export const Transition = Object.freeze({
-  enter: 0,
-  exit: 1,
-  dwell: 2,
-});
-
-const errorIndex = { denied: 0, needsAlways: 1, tooManyRegions: 2, unavailable: 3 };
-const errorMessage = ["location: not allowed", "location: needs the Always authorization (requestAlways)", "location: too many regions", "location: not available"];
-
-/** One of the errors the package declares (native.NewError): throw new LocationError("denied"). */
-export class LocationError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "LocationError";
-  }
-}
 
 const provider = {
   make(iface) {

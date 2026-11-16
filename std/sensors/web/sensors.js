@@ -62,10 +62,7 @@ async function allowMotion() {
   }
 }
 
-// Made at first use, not as the module loads: the generated module imports
-// this one first, so its enums aren't made yet then.
-let genericNames;
-const genericName = () => (genericNames ??= { [Sensor.accelerometer]: "Accelerometer", [Sensor.gyroscope]: "Gyroscope", [Sensor.magnetometer]: "Magnetometer", [Sensor.light]: "AmbientLightSensor" });
+const genericName = { [Sensor.accelerometer]: "Accelerometer", [Sensor.gyroscope]: "Gyroscope", [Sensor.magnetometer]: "Magnetometer", [Sensor.light]: "AmbientLightSensor" };
 
 const probed = new Map(); // sensor -> Promise of "generic", "events" or false
 
@@ -73,7 +70,7 @@ const probed = new Map(); // sensor -> Promise of "generic", "events" or false
 function source(s) {
   if (!probed.has(s)) {
     probed.set(s, (async () => {
-      const name = genericName()[s];
+      const name = genericName[s];
       if (name && generic(name) && (await probeGeneric(generic(name)))) return "generic";
       if ((s === Sensor.accelerometer || s === Sensor.gyroscope || s === Sensor.motion) && motionEvents()) return "events";
       return false;
@@ -102,7 +99,7 @@ export function makeSensors() {
     // Sync, so not probed: what the browser has the API for (watch finds
     // whether it reads).
     available(s) {
-      const name = genericName()[s];
+      const name = genericName[s];
       if (name && generic(name)) return true;
       return (s === Sensor.accelerometer || s === Sensor.gyroscope || s === Sensor.motion) && motionEvents();
     },

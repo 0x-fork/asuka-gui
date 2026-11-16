@@ -12,30 +12,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./pantry.decl.asuka.js";
 import * as impl from "./pantry.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * How hot.
- */
-export const Level = Object.freeze({
-  low: 0,
-  high: 1,
-});
-
-const errorIndex = { busy: 0, empty: 1 };
-const errorMessage = ["pantry: busy", "pantry: empty"];
-
-/** One of the errors the package declares (native.NewError): throw new PantryError("busy"). */
-export class PantryError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "PantryError";
-  }
-}
 
 function viewDial(ctx) {
   const events = {

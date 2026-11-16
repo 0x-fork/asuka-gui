@@ -10,22 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./transcribe.decl.asuka.js";
 import * as impl from "./transcribe.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-const errorIndex = { notAvailable: 0, notAllowed: 1, downloading: 2 };
-const errorMessage = ["transcribe: not available on this device", "transcribe: not allowed", "transcribe: the language's model is downloading"];
-
-/** One of the errors the package declares (native.NewError): throw new TranscribeError("notAvailable"). */
-export class TranscribeError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "TranscribeError";
-  }
-}
 
 const provider = {
   make(iface) {

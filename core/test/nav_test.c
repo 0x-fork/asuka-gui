@@ -656,6 +656,57 @@ TEST(sheet) {
 	ak_release(open_cell);
 }
 
+// ---- A sheet's screen (a Router's sheet route's) ----
+
+static ak_val sheet_screen_content(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *scr = ak_ui_new(AK_EL_SCREEN);
+	add(scr, text("at the top"));
+	ak_view *gap = ak_ui_new(AK_EL_VIEW);
+	set(gap, AK_KEY_GROW, (ak_val){.f = 1});
+	add(scr, gap);
+	add(scr, text("at the bottom"));
+	return (ak_val){.p = scr};
+}
+
+static ak_val sheet_screen_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *col = ak_ui_new(AK_EL_COLUMN);
+	ak_view *s = ak_ui_new(AK_EL_SHEET);
+	bind(s, AK_KEY_SHEET_OPEN, read_cell, open_cell);
+	lazy(s, sheet_screen_content, NULL);
+	add(col, s);
+	add(col, text("below"));
+	return (ak_val){.p = col};
+}
+
+// A Screen in a sheet is as big as the sheet, whose environment the host
+// reports (not the screen's): its content is laid out at the sheet's size
+// (not the window's, which a sheet is shorter than), and again as the
+// sheet's changes.
+TEST(sheet_screen_follows_its_sheet) {
+	open_cell = ak_vm_cell_new((ak_val){.i = 1}, AK_K_BOOL, NULL).p;
+	ak_uitest *a = mount(sheet_screen_app, NULL);
+	ak_fake *f = ak_uitest_host(a);
+	ak_fake_view *sheet = nth(a, AK_KIND_SHEET, 0);
+	REQUIRE(sheet && sheet->presented);
+	ak_fake_report_sheet(f, sheet);
+	ak_environment e = {0};
+	ak_ui_environment(&e);
+	float h = e.height - e.safe_top - 10;  // the fake's sheet: below the status bar
+	ak_fake_view *bottom = one(a, AK_KIND_TEXT, "at the bottom");
+	REQUIRE(bottom);
+	CHECK_EQ_F(bottom->frame[1] + bottom->frame[3], h);
+	CHECK_EQ_F(one(a, AK_KIND_TEXT, "at the top")->frame[2], e.width);
+	// The sheet grows (a detent, the keyboard): its screen with it.
+	ak_environment big = e;
+	big.height = h + 100;
+	ak_fake_dispatch(f, &(ak_event){.id = sheet->id, .kind = AK_EVENT_ENVIRONMENT, .env = big});
+	CHECK_EQ_F(bottom->frame[1] + bottom->frame[3], h + 100);
+	done(a);
+	ak_release(open_cell);
+}
+
 // ---- Popover (popover_test.go) ----
 
 static ak_val pop_content(ak_closure *c, ak_val *a, uint32_t n) {

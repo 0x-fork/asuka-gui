@@ -417,6 +417,8 @@ void asuka_setenv(const char *key, const char *value) {
 
 void asuka_set_app_dir(const char *path) { ak_fs_set_app_dir(path); }
 
+void asuka_set_start(const char *href) { ak_router_set_start(href ? ak_cstr(href) : ak_cstr("")); }
+
 void asuka_native_done(uint64_t call, const uint8_t *p, size_t len) { ak_native_done(call, p, len); }
 
 size_t asuka_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out) { return ak_native_invoke(id, p, len, out); }

@@ -114,6 +114,11 @@ ASUKA_API void asuka_setenv(const char *key, const char *value);
 // directory on Android, its data directory on desktops). Before
 // asuka_start; without it the core reads ASUKA_DATA, else guesses.
 ASUKA_API void asuka_set_app_dir(const char *path);
+// The address the main window's first Router starts at, the next time
+// it's built ("" or NULL: its initial, or the link the app is opened
+// with): where a browser opened the page, where a desktop window was left.
+// Main thread, before asuka_load or asuka_run.
+ASUKA_API void asuka_set_start(const char *href);
 // Begins the run's crash record (asuka/crash: core/src/std/crash.c), with
 // info, JSON of the device and the app ("model", "system",
 // "systemVersion", "appVersion", "build"; "foreground" if the app starts

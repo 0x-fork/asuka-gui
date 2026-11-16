@@ -66,6 +66,7 @@ battery/
   web/
     battery.js             自分で書く：export function makeBattery
     battery.asuka.js       生成
+    battery.decl.asuka.js  生成：パッケージの列挙型とエラー（あれば）
   desktop/                 Windows と Linux 向けの C
     battery.c              自分で書くもの：battery_make_Battery（_windows.c、_linux.c は一方のプラットフォームだけ）
     battery.asuka.h        生成されるもの：型、vtable、自分で書く関数
@@ -352,7 +353,7 @@ export function makeSegmented(events) {
 }
 ```
 
-メソッドは Promise を返してもかまいません。Asuka で `async` でないメソッドでも同じです。パッケージで宣言したエラーは、生成されたクラスで投げます（`import { KitchenError } from "./kitchen.asuka.js"`）。`web/` 内のファイルはすべてアプリに同梱されるので、モジュールは自前のヘルパーをインポートしたり、`import.meta.url` からの相対パスでアセットを取得したりできます。`asuka dev --platform web` では、ファイルが変わるとページがリロードされます。詳しくは [Web](web.md#ネイティブコード) を参照してください。
+メソッドは Promise を返してもかまいません。Asuka で `async` でないメソッドでも同じです。パッケージで宣言したエラーは、生成されたクラスで投げます（`import { KitchenError } from "./kitchen.asuka.js"`）。パッケージの列挙型とエラーはパッケージ自身のモジュールが実行される前に作られるので、モジュールの読み込み時に参照してもかまいません（列挙型のケースの表を作るなど）。パッケージが宣言していない名前をインポートすると、`asuka native generate` がエラーにします。`web/` 内のファイルはすべてアプリに同梱されるので、モジュールは自前のヘルパーをインポートしたり、`import.meta.url` からの相対パスでアセットを取得したりできます。`asuka dev --platform web` では、ファイルが変わるとページがリロードされます。詳しくは [Web](web.md#ネイティブコード) を参照してください。
 
 ## Windows と Linux：C
 

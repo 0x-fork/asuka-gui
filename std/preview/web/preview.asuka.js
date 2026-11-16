@@ -10,22 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./preview.decl.asuka.js";
 import * as impl from "./preview.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-const errorIndex = { noViewer: 0 };
-const errorMessage = ["preview: nothing can show this file"];
-
-/** One of the errors the package declares (native.NewError): throw new PreviewError("noViewer"). */
-export class PreviewError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "PreviewError";
-  }
-}
 
 const provider = {
   make(iface) {

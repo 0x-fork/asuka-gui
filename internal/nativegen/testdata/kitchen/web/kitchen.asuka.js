@@ -12,38 +12,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./kitchen.decl.asuka.js";
 import * as impl from "./kitchen.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * Unit is a weight's unit.
- */
-export const Unit = Object.freeze({
-  gram: "g",
-  ounce: "oz",
-});
-
-/**
- * Level is how hot.
- */
-export const Level = Object.freeze({
-  low: 0,
-  high: 1,
-});
-
-const errorIndex = { busy: 0 };
-const errorMessage = ["kitchen: busy"];
-
-/** One of the errors the package declares (native.NewError): throw new KitchenError("busy"). */
-export class KitchenError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "KitchenError";
-  }
-}
 
 function viewDial(ctx) {
   const events = {

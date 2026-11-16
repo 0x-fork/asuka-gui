@@ -91,6 +91,7 @@ battery/
   web/
     battery.js             yours: export function makeBattery
     battery.asuka.js       generated
+    battery.decl.asuka.js  generated: its enums and errors, when it has some
   desktop/                 C for Windows and Linux
     battery.c              yours: battery_make_Battery (_windows.c, _linux.c for one)
     battery.asuka.h        generated: types, vtables, what yours writes
@@ -486,7 +487,10 @@ export function makeSegmented(events) {
 ```
 
 A method may return a promise, even one that isn't `async` in Asuka. Throw the package's declared errors with the generated classes
-(`import { KitchenError } from "./kitchen.asuka.js"`). Every file in
+(`import { KitchenError } from "./kitchen.asuka.js"`). The package's
+enums and errors are made before its own module runs, so it may read
+them as it loads (a table of an enum's cases); `asuka native generate`
+fails on an import of a name the package doesn't declare. Every file in
 `web/` ships with the app, so a module can import its own helpers and
 fetch its assets relative to `import.meta.url`. `asuka dev --platform
 web` reloads the page as one changes. See [the web](web.md#native-code).

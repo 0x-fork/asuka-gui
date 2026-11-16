@@ -143,6 +143,10 @@ export async function startCore(host, options = {}) {
   host.connect(core, e.asuka_io());
   host.inGo = 1;
   if (options.appDir) withBytes(new TextEncoder().encode(options.appDir + "\0"), (p) => e.asuka_set_app_dir(p));
+  // Where the Router starts: the page's address (a reload, a link), or
+  // where the main window was left.
+  const start = host.location?.("")?.[0];
+  if (start) withBytes(new TextEncoder().encode(start + "\0"), (p) => e.asuka_set_start(p));
   // The run's crash record, before the app's init (crash.js).
   options.crash?.start(e, withBytes, (p) => {
     const b = new Uint8Array(memory().buffer, p);

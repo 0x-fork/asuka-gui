@@ -10,31 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./print.decl.asuka.js";
 import * as impl from "./print.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * What the user did in the print dialog.
- */
-export const Outcome = Object.freeze({
-  cancelled: 0,
-  printed: 1,
-  unknown: 2,
-});
-
-const errorIndex = { unavailable: 0, unsupported: 1 };
-const errorMessage = ["print: printing isn't available", "print: can't print this file"];
-
-/** One of the errors the package declares (native.NewError): throw new PrintError("unavailable"). */
-export class PrintError extends DeclaredError {
-  constructor(name) {
-    const i = errorIndex[name];
-    if (i === undefined) throw new Error(`no error ${name}`);
-    super(i, errorMessage[i]);
-    this.name = "PrintError";
-  }
-}
 
 const provider = {
   make(iface) {

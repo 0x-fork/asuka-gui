@@ -36,17 +36,7 @@ function style() {
   document.head.appendChild(s);
 }
 
-// The view's map types, by the declaration's MapType: read as a type is
-// set, not as the module loads (maps.asuka.js imports this module first,
-// so its MapType isn't made yet then).
-function typeName(t) {
-  switch (t) {
-    case MapType.satellite: return 1;
-    case MapType.hybrid: return 2;
-    case MapType.muted: return 3;
-    default: return 0;
-  }
-}
+const typeNames = { [MapType.standard]: 0, [MapType.satellite]: 1, [MapType.hybrid]: 2, [MapType.muted]: 3 };
 
 /** The marker's Color (the core's encoding) as "#rrggbbaa", as the view takes it. */
 function hexColor(v) {
@@ -76,7 +66,7 @@ export function makeView(events) {
       v.set("region", JSON.stringify(r));
     },
     setMarkers(ms) { v.set("markers", JSON.stringify(ms.map((m) => ({ ...m, color: hexColor(m.color) })))); },
-    setMapType(t) { v.set("type", typeName(t)); },
+    setMapType(t) { v.set("type", typeNames[t] ?? 0); },
     setShowsUser(on) { v.set("showsUser", on); },
     setInteractive(on) { v.set("interactive", on); },
     destroy() { v.destroy(); },

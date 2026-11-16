@@ -10,19 +10,10 @@
 // first. int64 and uint64 are BigInts; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array.
 
+export * from "./tracking.decl.asuka.js";
 import * as impl from "./tracking.js";
 
 const { NativeWriter, NativeReader, DeclaredError, UnsupportedError, registerModule, retain, object } = globalThis.asuka.native;
-
-/**
- * The user's answer.
- */
-export const Status = Object.freeze({
-  notAsked: 0,
-  restricted: 1,
-  denied: 2,
-  allowed: 3,
-});
 
 const provider = {
   make(iface) {
