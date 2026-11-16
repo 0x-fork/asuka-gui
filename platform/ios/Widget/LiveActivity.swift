@@ -1,5 +1,5 @@
-#if ASUKA_LIVEACTIVITY // an app that calls asuka/sdk/liveactivity (the CLI builds the extension with it)
-// The Live Activities' template (asuka/sdk/liveactivity): the lock screen's
+#if ASUKA_LIVEACTIVITY // an app that calls asuka/liveactivity (the CLI builds the extension with it)
+// The Live Activities' template (asuka/liveactivity): the lock screen's
 // (and an iPhone without a Dynamic Island's banner), and the Dynamic
 // Island's compact, minimal and expanded views, each laying out what the
 // content has. The attributes are the app's (AsukaActivityAttributes,

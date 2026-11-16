@@ -374,7 +374,7 @@ final class AsukaTextField: UITextField {
     func start(_ controller: AsukaViewController) {
         self.controller = controller
         guard !started else {
-            // Started without a screen (asuka/sdk/periodic's task): the root goes in it now.
+            // Started without a screen (asuka/periodic's task): the root goes in it now.
             if let n = nodes[rootID], n.view.superview == nil { controller.mount(n.view) }
             return
         }
@@ -382,7 +382,7 @@ final class AsukaTextField: UITextField {
     }
 
     /// Starts the core without a screen, if it hasn't started: the system
-    /// launched the app in the background for a task (asuka/sdk/periodic). The
+    /// launched the app in the background for a task (asuka/periodic). The
     /// root view is made, and goes on screen if a scene comes.
     func startHeadless() {
         guard !started else { return }
@@ -401,7 +401,7 @@ final class AsukaTextField: UITextField {
         AsukaCrash.start() // before the app's init: its crashes are kept
         NotificationCenter.default.addObserver(self, selector: #selector(voiceOverChanged), name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
         #if ASUKA_NOTIFY || ASUKA_PUSH || ASUKA_NOTIFICATION_SERVICE
-        AsukaNotifyCenter.shared.install() // asuka/sdk/push's too
+        AsukaNotifyCenter.shared.install() // asuka/push's too
         #endif
         #if DEBUG
         AsukaAutomation.start()

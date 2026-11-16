@@ -67,8 +67,7 @@ go run ./cmd/asuka fmt -w [paths]   # format .asuka files
 go generate ./lang/bytecode ./lang/prelude  # the VM's opcodes header; the prelude and the UI's element constants
 go test ./internal/cbuild           # the core built for this computer, iOS, Android and the web (ASUKA_CC=zig for Zig)
 go build ./... && go vet ./...      # CGO_ENABLED=0: everything
-go test ./...                       # signal, layout, ui with host/fake, ops, CLI
-go test ./uitest                    # Go apps' UI tests: uitest drives them on host/fake (-uitest.update: their snapshots)
+go test ./...                       # everything Go runs: the core's C tests, the compiler, ops, the CLI, the generators
 go run ./cmd/asuka test examples/counter  # an example's tests (its test blocks); the examples are Asuka, what they still ask of the platforms in examples/STDLIB.md
 go test ./core -run TestC/Layout -update-known  # after fixing layout: refresh core/test/testdata/css/known_failures.txt
 go test ./ops -update               # after changing the wire format: refresh golden files
@@ -127,7 +126,7 @@ go test ./platform/windows -run Updater           # likewise on Windows (a PC, o
 
 ## Conventions
 
-- Tests assert op streams from `host/fake` and count work (ops,
+- Tests assert op streams from the fake host (`core/host/fake`) and count work (ops,
   measurements, allocations). They never pass or fail on wall-clock
   time: wait for the condition, count the work.
 - Prefer the platform's behavior and defaults; an app that sets no style

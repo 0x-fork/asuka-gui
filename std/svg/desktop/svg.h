@@ -1,5 +1,5 @@
 // svg.h: what svg's Windows and Linux C share (svg.c): an icon's layers
-// as the compiler encodes them (sdk/svg's Encode: transforms
+// as the compiler encodes them (internal/svgparse's Encode: transforms
 // applied, arcs made curves), and a Shape's layers resolved in its box,
 // both as a drawing each platform fills and strokes with its own vector
 // drawing (Cairo, GDI+).

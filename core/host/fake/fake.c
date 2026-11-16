@@ -1,5 +1,4 @@
-// The C core's host for tests: host/fake/fake.go's core parts. See
-// fake.h.
+// The C core's host for tests. See fake.h.
 #include "fake/fake.h"
 
 #include <stdarg.h>

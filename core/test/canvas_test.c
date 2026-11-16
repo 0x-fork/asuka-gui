@@ -1,6 +1,5 @@
-// Canvas and its Graphics, Path, Shape, Shader (canvas.c): ports of
-// ui/canvas_test.go, shader_test.go and media_test.go's TestShape and
-// TestShapeDash. The draw and path closures call the canvas.* and path.*
+// Canvas and its Graphics, Path, Shape, Shader (canvas.c), shapes' dashes
+// included. The draw and path closures call the canvas.* and path.*
 // builtins, as compiled code does.
 #include "uih.h"
 

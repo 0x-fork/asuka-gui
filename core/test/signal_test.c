@@ -1007,7 +1007,7 @@ TEST(after_flush) {
 	ak_owner_dispose(r);
 }
 
-// ---- Ambient state (signal/ambient_test.go). The C core needs no
+// ---- Ambient state. The C core needs no
 // ambient mechanism: process-wide state the main thread's effects follow
 // (the app's language) is a plain signal, and a worker thread that reads
 // it doesn't track (ak_signal_on_main_thread). These are the same

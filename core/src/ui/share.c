@@ -1,7 +1,6 @@
 // share.c: what the app asks of the system and hears from it outside its
-// views (ui/share.go, call.go, richtext.go's commands, nav.go's Haptic):
-// the share sheet, haptics, the clipboard, opening a URL, a screen
-// reader's announcements and focus; native modules' calls (Call, and the
+// views: the share sheet, haptics, the clipboard, opening a URL, a rich
+// text's commands, a screen reader's announcements and focus; native modules' calls (Call, and the
 // Result that answers it); the URLs and files the app is opened with,
 // and what other apps share with it.
 #include "ui/ui_ext.h"

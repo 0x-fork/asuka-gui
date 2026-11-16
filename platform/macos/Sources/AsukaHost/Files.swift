@@ -56,7 +56,7 @@ import AsukaOps
             atLogin = p.enumCodeValue == keyAELaunchedAsLogInItem
         }
         // Windows' and Linux's login entries start the app with an argument
-        // (boot.LoginArg); a Mac app started so by hand reads it too.
+        // (--asuka-opened-at-login); a Mac app started so by hand reads it too.
         atLogin = atLogin || CommandLine.arguments.contains("--asuka-opened-at-login")
         let r = Data([atLogin ? 1 : 0])
         let ws = loginWaiting

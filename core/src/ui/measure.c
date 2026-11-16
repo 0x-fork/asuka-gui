@@ -1,4 +1,4 @@
-// measure.c: the shared measure cache (ui/measure.go). Nodes showing the
+// measure.c: the shared measure cache. Nodes showing the
 // same thing (recycled list rows, repeated labels) ask the host once: a
 // measurement is keyed by the kind, the text or title, the variant, the
 // font, the line limit, the font scale, the scale, whether it's inset

@@ -1,6 +1,6 @@
 // A view's keys (src/keys.js): the Keys prop's encoding as ops.AppendKeys
 // writes it, a key event's name and modifiers as ops.MatchKey matches
-// them, and the routing the fake host does (host/fake's Key): from the
+// them, and the routing the fake host does (core/host/fake): from the
 // focused element's view out, the nearest whose keys have it.
 import { test } from "node:test";
 import assert from "node:assert/strict";

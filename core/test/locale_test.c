@@ -1,6 +1,5 @@
 // The language the app shows and its catalogs (locale.c, i18n.c,
-// i18n_tags.c): ports of ui/locale_test.go and accessibility_test.go, and
-// every case of core/test/testdata/catalog_cases.txt (what package i18n's
+// i18n_tags.c), what screen readers are told in it, and every case of core/test/testdata/catalog_cases.txt (what package i18n's
 // Format says), said by the core from the compiled catalog.
 #include "uih.h"
 #include "ui/i18n.h"

@@ -387,7 +387,7 @@ var Elements = []Element{
 		{Name: "download", Params: []Param{{"download", "WebDownload"}}},
 		{Name: "newWindow", Params: []Param{{"url", "string"}}, Doc: "a page it would open in a new window; without a handler it loads here"},
 	}, Doc: "a web page, in the platform's web view; with no height and no grow, it grows"},
-	// Navigation (ui/nav.go, router.go, split.go, window.go).
+	// Navigation: stacks, tabs, routers, split views, windows.
 	{Name: "Stack", Children: true, LazyChildren: true, Doc: "a navigation stack (UINavigationController; a view stack with a top app bar and predictive back on Android): its child is its first screen; push(…) and pop() in it add and remove more, and the user's back pops. It grows into its room unless it's sized"},
 	{Name: "Screen", Children: true, Keys: []Key{
 		{Name: "title", Type: "string", Doc: "the bar's title (a tab's, a page's in a browser)"},
@@ -523,7 +523,7 @@ var Elements = []Element{
 		{Name: "count", Type: "int", Positional: true},
 		{Name: "page", Type: "int", Bind: true, Event: "change"},
 	}, Events: []Event{{Name: "change", Params: []Param{{"page", "int"}}}}, Doc: "a row of dots, one per page, the current one highlighted (UIPageControl)"},
-	// Desktop (ui/window.go, windowhandle.go).
+	// Desktop: windows and their handles.
 	{Name: "MenuBar", Children: true, LazyChildren: true, NoStyle: true, Doc: "the app's menus (macOS's menu bar; Windows' and Linux's in the main window), with their keyboard shortcuts, beside the platform's own: its children are Menus. While several show, the last one's are the app's; when it goes, the one before's. Phones ignore it"},
 	{Name: "MenuItem", Children: true, NoStyle: true, Keys: []Key{
 		{Name: "title", Type: "string", Positional: true, Doc: "what it says (\"\": its role's own)"},

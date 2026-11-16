@@ -86,7 +86,7 @@ const char *asuka_desktop_app_id(void);
 // Its version and build (asuka.toml's version and build; "" if none).
 const char *asuka_desktop_app_version(void);
 const char *asuka_desktop_app_build(void);
-// Its directories (internal/appdir's rules), made if missing.
+// Its directories (each platform's place for them: dsk_dirs), made if missing.
 const char *asuka_desktop_data_dir(void);
 const char *asuka_desktop_config_dir(void);
 const char *asuka_desktop_cache_dir(void);

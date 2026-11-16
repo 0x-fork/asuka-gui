@@ -1,4 +1,4 @@
-// overlay.c: what shows over the screens (ui/nav.go, snackbar.go): Sheet
+// overlay.c: what shows over the screens: Sheet
 // and present/dismiss, Popover, Alert and action sheets, Menu (and
 // context menus), Snackbar.
 //

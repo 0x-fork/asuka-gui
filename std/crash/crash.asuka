@@ -17,11 +17,10 @@
 // breadcrumbs and its values, written as they change so a crash can't
 // lose them. Nothing is uploaded.
 //
-// Where: everywhere a host keeps the runs' record. The desktops' Go hosts
-// keep theirs (sdk/crash: their Go panics too); on iOS, Android and the
-// web the core keeps it (core/src/std/crash.c: its own fatal errors, with
-// what the host saw: uncaught exceptions, iOS's MetricKit diagnostics,
-// how Android's runs ended, uncaught JavaScript errors). Where none
+// Where: everywhere a host keeps the runs' record: the core keeps it
+// (core/src/std/crash.c: its own fatal errors, with what the host saw:
+// uncaught exceptions, fatal signals in native code, MetricKit's
+// diagnostics, how Android's runs ended, uncaught JavaScript errors). Where none
 // keeps it (asuka test), reports ends empty and the rest does nothing.
 
 import asuka/json

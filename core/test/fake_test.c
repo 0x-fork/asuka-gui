@@ -1,5 +1,5 @@
 // The C fake host (core/host/fake): it applies encoded batches as a real
-// host does, keeps the view tree, measures by host/fake's rules, and
+// host does, keeps the view tree, measures text at 8 points a character, and
 // sends the events a user's taps and typing make.
 #include "t.h"
 #include "fake/fake.h"
@@ -314,7 +314,7 @@ static void measure_all(void *ctx, ak_fake_view *v, float width, float height, f
 	*w = 1, *h = 2;
 }
 
-// Views are measured by host/fake's rules.
+// Views are measured by the fake host's rules.
 TEST(measure) {
 	env e;
 	setup(&e);

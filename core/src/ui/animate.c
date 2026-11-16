@@ -1,5 +1,5 @@
-// animate.c: animate { } (ui/animate.go) and the frames a display draws
-// (ui/frame.go's OnFrame), and the root's own state they keep (ak_rext).
+// animate.c: animate { } and the frames a display draws (on frame),
+// and the root's own state they keep (ak_rext).
 //
 // animate(anim) { body } runs body, and the frames and visual props
 // (opacity, background, corner radius, a shape's trim) the next flush

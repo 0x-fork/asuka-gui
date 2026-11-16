@@ -1,6 +1,5 @@
-// Keys (keys.c), animate { } and frames (animate.c): ports of
-// ui/keys_test.go, media_test.go's TestAnimateWrapsWhatItChanges and
-// TestAnimating, ui_test.go's TestOnFrame.
+// Keys (keys.c), animate { } and frames (animate.c): what animate wraps,
+// what's animating, on frame.
 #include "uih.h"
 
 static const uint8_t shortcut_kinds[] = {AK_K_REF, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_BOOL, AK_K_REF};

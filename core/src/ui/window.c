@@ -1,4 +1,4 @@
-// window.c: windows (ui/window.go, windowhandle.go): the Window element,
+// window.c: windows: the Window element,
 // a desktop window of the app's own while it's open, the main window
 // (the app block's Window: its keys are the root's options), window
 // handles (the commands, WindowAction, and the state, WindowState, of a

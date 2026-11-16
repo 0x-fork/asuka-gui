@@ -20,7 +20,7 @@ const fail = (what, why) => () => { throw notOnWeb(what, why); };
 
 // --- icloud ---
 
-/** icloud is asuka/sdk/icloud's module (internal/icloudspec's methods): none here. */
+/** icloud is asuka/icloud's module (std/icloud's methods): none here. */
 function icloud() {
   const m = { stop: () => new Uint8Array(0) };
   for (const k of ["account", "kvGet", "kvSet", "kvDelete", "kvAll", "kvSync", "container", "files", "watch", "unwatch",
@@ -59,7 +59,7 @@ function download(bytes, name, type) {
 
 const vEscape = (s) => String(s ?? "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/([,;])/g, "\\$1");
 
-/** vCard is a contact (asuka/sdk/contacts' JSON) as a vCard 3.0. */
+/** vCard is a contact (asuka/contacts' JSON) as a vCard 3.0. */
 export function vCard(c) {
   const lines = ["BEGIN:VCARD", "VERSION:3.0"];
   const fn = c.name || [c.givenName, c.familyName].filter(Boolean).join(" ") || c.organization || "";
@@ -81,7 +81,7 @@ const icsDate = (ms, allDay) => {
   return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
 };
 
-/** iCalendar is an event (asuka/sdk/calendar's add JSON) as an iCalendar file. */
+/** iCalendar is an event (asuka/calendar's add JSON) as an iCalendar file. */
 export function iCalendar(e, uid, now = Date.now()) {
   const all = !!e.allDay;
   const end = all && e.endMs <= e.startMs ? e.startMs + 86400000 : e.endMs;

@@ -9,7 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
- * asuka/sdk/screen's settings: the app's, kept here so that an Activity made
+ * asuka/screen's settings: the app's, kept here so that an Activity made
  * again (a configuration change) takes them, as AsukaActivity applies them.
  */
 object AsukaDisplay {
@@ -91,7 +91,7 @@ object AsukaDisplay {
                 callback = null
             }
         } catch (_: SecurityException) {
-            // No DETECT_SCREEN_CAPTURE: the app doesn't import asuka/sdk/screen's package path.
+            // No DETECT_SCREEN_CAPTURE: the app doesn't import asuka/screen's package path.
         }
     }
 }

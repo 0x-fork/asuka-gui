@@ -1,6 +1,5 @@
-// fake.h: the C core's host for tests, ported from host/fake (fake.go).
-// It applies encoded batches as a real host does, decoding them, and
-// keeps a tree of pretend views (failing on any op a real host couldn't
+// fake.h: the C core's host for tests. It applies encoded batches as a
+// real host does, decoding them, and keeps a tree of pretend views (failing on any op a real host couldn't
 // apply), records the ops, measures views by fixed rules, counts its
 // work, and sends events the way a user's taps and typing do.
 //
@@ -96,7 +95,7 @@ typedef struct {
 
 typedef struct ak_fake ak_fake;
 
-// A Router's addresses, as the web host keeps them (host/fake/history.go):
+// A Router's addresses, as the web host keeps them:
 // each window's (the root's, a Window node's) Location commands drive a
 // browser's history of its own, which a test goes back and forward in as
 // the user does with a browser's buttons (ak_fake_go: the Location

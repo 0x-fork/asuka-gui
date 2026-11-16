@@ -25,7 +25,7 @@
 pub struct Icon {
   /// The SVG's markup.
   source: string
-  /// Its layers, as the compiler encodes them (sdk/svg's Encode).
+  /// Its layers, as the compiler encodes them (internal/svgparse's Encode).
   data: bytes = bytes()
   /// Its size in points when its style gives none: the svg's width and
   /// height, else its viewBox's.

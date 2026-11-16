@@ -8,16 +8,16 @@
 // raises an exception for it).
 //
 // The module ("notify"):
-// - "request" (u8 allowed); "schedule" (a notifyspec.Spec: seconds 0
+// - "request" (u8 allowed); "schedule" (a std/notify's Spec: seconds 0
 //   shows it now); "cancel" (the id).
 // - "categories" (JSON), kept in the user defaults and set again at launch.
 // - "badge" (u32: the Dock tile's); "showing" (JSON list); "remove" (JSON
 //   ids), "removeThread" (the thread), "removeAll".
-// - "present" (u8 on), "nextPresent" (a notifyspec.Present), "presented"
+// - "present" (u8 on), "nextPresent" (a std/notify's Present), "presented"
 //   (u8 presentation, the token): with the presenter on, a notification
 //   that comes while the app is in front waits for the app's answer, a
 //   second at most.
-// - "nextAction" (a notifyspec.Response), "actionDone" (the token): a
+// - "nextAction" (a std/notify's WireResponse), "actionDone" (the token): a
 //   background action keeps the app's work going until the app is done
 //   with it (25 seconds at most); a tap or an action that opens the app is
 //   done at once.
@@ -367,7 +367,7 @@ import AsukaOps
         DispatchQueue.global(qos: .userInitiated).async { finish(file, file.pathExtension) }
     }
 
-    /// What's reported of a notification (a notifyspec.Shown).
+    /// What's reported of a notification (a std/notify's WireDelivered).
     nonisolated static func shown(_ n: UNNotification) -> [String: Any] {
         let c = n.request.content
         let remote = n.request.trigger is UNPushNotificationTrigger

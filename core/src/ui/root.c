@@ -1,4 +1,4 @@
-// root.c: mounted trees (ui/root.go): the flush, layout, events from the
+// root.c: mounted trees: the flush, layout, events from the
 // host, the environment.
 //
 // A flush (DESIGN.md's "Flush"): effects have run (the signal graph's

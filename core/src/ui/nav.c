@@ -1,4 +1,4 @@
-// nav.c: navigation (ui/nav.go, back.go, split.go): providers, the
+// nav.c: navigation: providers, the
 // host-sized layout roots with an environment of their own (screens,
 // tabs' pages, sheets, popovers, windows); going back (OnBack); Stack and
 // Screen, push and pop; a Screen's bars (its actions, toolbar and primary

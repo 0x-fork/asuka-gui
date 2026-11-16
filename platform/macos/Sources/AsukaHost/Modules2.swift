@@ -142,7 +142,7 @@ enum AsukaModules2Kit {
     // MARK: iCloud
 
     /// asuka/icloud's module: ICloud.swift's AsukaICloud (the iOS host's
-    /// file), internal/icloudspec's methods. An app's host always has it
+    /// file), std/icloud's methods. An app's host always has it
     /// (the CLI's macHostDefines); without (the package's tests), there's
     /// no iCloud. Under the automation with ASUKA_ICLOUD_TEST_STORE, the
     /// key-value store is a UserDefaults suite of its own, emptied: the

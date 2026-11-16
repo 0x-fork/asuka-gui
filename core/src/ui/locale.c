@@ -1,6 +1,6 @@
-// locale.c: the language the app shows (ui/locale.go).
+// locale.c: the language the app shows.
 //
-// The model, as Go's: the app shows one language, which its messages,
+// The model: the app shows one language, which its messages,
 // Asuka's own words and the host's views all follow, and the regional
 // formats are a setting of their own. The language is the user's
 // preferred languages (the environment's languages), or the one the app

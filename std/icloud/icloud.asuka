@@ -84,7 +84,7 @@ struct WireVersion {
   device: string = ""
 }
 
-// What the hosts say (internal/icloudspec).
+// What the hosts say (their methods and JSON).
 struct WireFile {
   path: string = ""
   name: string = ""

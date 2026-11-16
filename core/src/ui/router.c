@@ -1,4 +1,4 @@
-// router.c: routing (ui/route.go, router.go): every screen has an
+// router.c: routing: every screen has an
 // address, an href (a path and a query, as on the web). A Router's
 // Routes map path patterns to screens, under navigators that show them
 // (a Stack, Tabs, a slot) and sheets presented over them.

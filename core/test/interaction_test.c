@@ -1,6 +1,5 @@
 // Interaction states, style variants, gestures, screen readers' actions,
-// drags and drops (interaction.c): ports of ui/interaction_test.go,
-// variants_test.go and media_test.go's TestGestures.
+// drags and drops, gestures (interaction.c).
 #include "uih.h"
 
 static ak_color sem(uint16_t c) { return ak_semantic_color(c); }

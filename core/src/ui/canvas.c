@@ -1,5 +1,5 @@
-// canvas.c: Canvas and what it draws with (ui/canvas.go's Graphics),
-// Path (shape.go), Shape and Shader (shader.go).
+// canvas.c: Canvas and what it draws with (its Graphics), Path, Shape
+// and Shader.
 //
 // A Canvas's draw closure gets a Graphics, a runtime object valid while
 // it runs: each call records a drawing command, in points from the

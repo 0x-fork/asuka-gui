@@ -1,4 +1,4 @@
-// asuka/sdk/periodic on a Mac (host/darwin's periodic.go):
+// asuka/periodic on a Mac (host/darwin's periodic.go):
 // NSBackgroundActivityScheduler, which runs a task about every interval
 // while the app runs (in the background too: a Mac app keeps running out of
 // sight), when the system has the time and power for it; unlike iOS's

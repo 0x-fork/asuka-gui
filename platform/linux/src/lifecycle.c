@@ -6,7 +6,7 @@
 // compositor doesn't show), and as it quits: its last window closing, the
 // session ending (GtkApplication's query-end), or a signal (SIGTERM,
 // SIGINT, SIGHUP), which quits it as closing it does. Each sends
-// Lifecycle, and the core's handlers run then: asuka/sdk/store writes
+// Lifecycle, and the core's handlers run then: asuka/store writes
 // what's pending. GLib's memory monitor's warnings are MemoryWarning.
 //
 // Quitting: the Quit command (u8 flags, 1 relaunch), the app menu's Quit,

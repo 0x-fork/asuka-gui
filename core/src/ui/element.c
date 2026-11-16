@@ -1,4 +1,4 @@
-// element.c: the node tree over native views (ui/element.go). Real views
+// element.c: the node tree over native views. Real views
 // have a native view; flattened containers only take part in layout;
 // fragments (Show, For, Dynamic, a component's several views) have
 // neither, their children splicing into their parent.

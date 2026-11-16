@@ -10,5 +10,5 @@ without them, as each entry says.
 
 | What | Needs | The examples meanwhile |
 |---|---|---|
-| `asuka/update`: the desktop's updater (checks, release notes, a signed download, relaunch) | the Go hosts' `sdk/update`, ported to the Swift and C hosts | none uses it |
+| `asuka/update`: the desktop's updater (checks, release notes, a signed download, relaunch) | the Go updater, ported to the Swift and C hosts (std/update, the hosts' `update` module) | none uses it |
 | The app block's `shareSheet: fn(ShareSheet) -> View` (a sheet of the app's over another app's share) and `pushRewrite` (a notification rewritten before it shows) | an iOS share extension and notification service extension built with the app, and Android's share target activity | downloader takes shares with `on share(items)`, which opens the app |
