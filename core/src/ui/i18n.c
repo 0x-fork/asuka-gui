@@ -25,29 +25,54 @@ ak_operands ak_operands_int(int64_t n) {
 	return (ak_operands){.i = u};
 }
 
+// digits_value is a string of decimal digits' value, or its last 18
+// digits plus 10^18 when it has more significant ones (plural.go's).
+static uint64_t digits_value(const char *d, size_t n) {
+	const uint64_t big = UINT64_C(1000000000000000000);
+	while (n && *d == '0') d++, n--;
+	bool is_big = n > 18;
+	if (is_big) d += n - 18, n = 18;
+	uint64_t v = 0;
+	for (size_t i = 0; i < n; i++) v = v * 10 + (uint64_t)(d[i] - '0');
+	return is_big ? v + big : v;
+}
+
+// ak_operands_dec reads a decimal number as plural.go's parseOperands
+// does: a sign, digits, a fraction, and an exponent of CLDR's compact
+// notation ("1.2c6": the integer digits 1200000, c 6).
 ak_operands ak_operands_dec(const char *s, size_t n) {
 	ak_operands o = {0};
-	const uint64_t big = UINT64_C(1000000000000000000);
 	size_t i = 0;
 	if (i < n && (s[i] == '-' || s[i] == '+')) i++;
-	int digits = 0;
-	for (; i < n && s[i] >= '0' && s[i] <= '9'; i++) {
-		o.i = o.i * 10 + (uint64_t)(s[i] - '0');
-		if (++digits > 18) o.i = o.i % big + big;
-	}
+	char ip[160], fp[160];
+	size_t il = 0, fl = 0;
+	for (; i < n && s[i] >= '0' && s[i] <= '9'; i++)
+		if (il < 120) ip[il++] = s[i];
 	if (i < n && s[i] == '.') {
-		i++;
-		size_t start = i, last = i;
-		for (; i < n && s[i] >= '0' && s[i] <= '9'; i++) {
-			o.f = o.f * 10 + (uint64_t)(s[i] - '0');
-			if (s[i] != '0') last = i + 1;
-			if (i - start >= 18) o.f %= big;
-		}
-		o.v = (int)(i - start);
-		o.w = (int)(last - start);
-		o.t = o.f;
-		for (int k = o.w; k < o.v; k++) o.t /= 10;
+		for (i++; i < n && s[i] >= '0' && s[i] <= '9'; i++)
+			if (fl < 120) fp[fl++] = s[i];
 	}
+	int exp = 0;
+	if (i < n && (s[i] == 'c' || s[i] == 'C' || s[i] == 'e' || s[i] == 'E')) {
+		for (i++; i < n && s[i] >= '0' && s[i] <= '9'; i++) exp = exp * 10 + (s[i] - '0');
+		if (exp > 100) exp = 100;
+	}
+	// The exponent moves the point to the right.
+	if (exp > 0) {
+		size_t shift = (size_t)exp < fl ? (size_t)exp : fl;
+		for (size_t k = 0; k < shift && il < 150; k++) ip[il++] = fp[k];
+		memmove(fp, fp + shift, fl - shift);
+		fl -= shift;
+		for (int k = (int)shift; k < exp && il < 150; k++) ip[il++] = '0';
+	}
+	o.c = exp;
+	o.v = (int)fl;
+	o.i = digits_value(ip, il);
+	o.f = digits_value(fp, fl);
+	size_t tl = fl;
+	while (tl && fp[tl - 1] == '0') tl--;
+	o.w = (int)tl;
+	o.t = digits_value(fp, tl);
 	return o;
 }
 

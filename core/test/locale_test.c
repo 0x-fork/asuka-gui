@@ -477,4 +477,127 @@ TEST(tags) {
 	CHECK(ak_plural(AK_STR("ar"), &two, false) == AK_PLURAL_TWO);
 }
 
+// ---- Plural rules: every sample CLDR gives of every language's
+// categories (i18n/testdata/plural_samples.txt, which package i18n's
+// rules are tested against too), cardinal and ordinal ----
+
+static const char *const plural_names[] = {"zero", "one", "two", "few", "many", "other"};
+
+static int plural_index(const char *name) {
+	for (int i = 0; i < 6; i++)
+		if (strcmp(plural_names[i], name) == 0) return i;
+	return -1;
+}
+
+// one_sample calls f for a sample, or each of a range's: 2~16 every
+// integer, 0.0~1.5 every tenth.
+static void one_sample(char *item, void (*f)(const char *n, void *ctx), void *ctx) {
+	while (*item == ' ') item++;
+	char *end = item + strlen(item);
+	while (end > item && end[-1] == ' ') *--end = 0;
+	if (!*item || strncmp(item, "\xE2\x80\xA6", 3) == 0) return;  // …
+	char *tilde = strchr(item, '~');
+	if (!tilde) {
+		f(item, ctx);
+		return;
+	}
+	*tilde = 0;
+	const char *lo = item, *hi = tilde + 1;
+	const char *dot = strchr(lo, '.');
+	int frac = dot ? (int)strlen(dot + 1) : 0;
+	char digits[32];
+	size_t n = 0;
+	for (const char *p = lo; *p && n + 1 < sizeof digits; p++)
+		if (*p != '.') digits[n++] = *p;
+	digits[n] = 0;
+	long long a = strtoll(digits, NULL, 10);
+	n = 0;
+	for (const char *p = hi; *p && n + 1 < sizeof digits; p++)
+		if (*p != '.') digits[n++] = *p;
+	digits[n] = 0;
+	long long z = strtoll(digits, NULL, 10);
+	for (long long v = a; v <= z; v++) {
+		char out[48];
+		if (frac) {
+			long long scale = 1;
+			for (int i = 0; i < frac; i++) scale *= 10;
+			snprintf(out, sizeof out, "%lld.%0*lld", v / scale, frac, v % scale);
+		} else {
+			snprintf(out, sizeof out, "%lld", v);
+		}
+		f(out, ctx);
+	}
+}
+
+// each_sample calls f for each number of samples ("@integer 0, 2~16, …
+// @decimal 0.0~1.5"), as plural_test.go's expandSamples writes them out.
+static void each_sample(char *samples, void (*f)(const char *n, void *ctx), void *ctx) {
+	char *save_g = NULL;
+	for (char *group = strtok_r(samples, "@", &save_g); group; group = strtok_r(NULL, "@", &save_g)) {
+		char *list = strchr(group, ' ');  // after "integer" or "decimal"
+		if (!list) continue;
+		char *save = NULL;
+		for (char *item = strtok_r(list, ",", &save); item; item = strtok_r(NULL, ",", &save)) one_sample(item, f, ctx);
+	}
+}
+
+typedef struct {
+	char *langs;
+	int want;
+	bool ordinal;
+	int checked, failures;
+} sample_ctx;
+
+static void check_sample(const char *num, void *p) {
+	sample_ctx *c = p;
+	ak_operands o = ak_operands_dec(num, strlen(num));
+	char langs[2048];
+	snprintf(langs, sizeof langs, "%s", c->langs);
+	char *save = NULL;
+	for (char *lang = strtok_r(langs, ",", &save); lang; lang = strtok_r(NULL, ",", &save)) {
+		int got = ak_plural(ak_cstr(lang), &o, c->ordinal);
+		if (got != c->want && c->failures++ < 20)
+			T_FAIL("%s %s %s: %s, want %s", lang, c->ordinal ? "ordinal" : "cardinal", num, plural_names[got], plural_names[c->want]);
+		c->checked++;
+	}
+}
+
+TEST(plural_samples) {
+	char *text = read_file("i18n/testdata/plural_samples.txt", NULL);
+	REQUIRE(text);
+	int checked = 0, failures = 0;
+	char *save = NULL;
+	for (char *line = strtok_r(text, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+		if (line[0] == '#' || !line[0]) continue;
+		// kind, languages, category, samples
+		char *kind = line, *langs = strchr(kind, ' ');
+		if (!langs) continue;
+		*langs++ = 0;
+		char *cat = strchr(langs, ' ');
+		if (!cat) continue;
+		*cat++ = 0;
+		char *samples = strchr(cat, ' ');
+		if (!samples) continue;
+		*samples++ = 0;
+		sample_ctx c = {langs, plural_index(cat), strcmp(kind, "ordinal") == 0, 0, 0};
+		REQUIRE(c.want >= 0);
+		each_sample(samples, check_sample, &c);
+		checked += c.checked, failures += c.failures;
+	}
+	free(text);
+	CHECK(failures == 0);
+	if (checked < 10000) T_FAIL("checked %d samples only", checked);
+	// A region's or a script's rules: its own when CLDR has them, else its
+	// language's (as ICU looks them up).
+	ak_operands zero = ak_operands_int(0), one5 = ak_operands_dec("1.5", 3), many = ak_operands_int(1000000);
+	CHECK(ak_plural(AK_STR("pt-PT"), &zero, false) == AK_PLURAL_OTHER);  // pt-PT's: i = 1 and v = 0
+	CHECK(ak_plural(AK_STR("pt-BR"), &zero, false) == AK_PLURAL_ONE);    // pt's: i = 0..1
+	CHECK(ak_plural(AK_STR("fr-CA"), &one5, false) == AK_PLURAL_ONE);
+	CHECK(ak_plural(AK_STR("fr"), &many, false) == AK_PLURAL_MANY);
+	CHECK(ak_plural(AK_STR("sr-Latn-RS"), &zero, false) == AK_PLURAL_OTHER);
+	CHECK(ak_plural(AK_STR("zh-Hant-TW"), &zero, false) == AK_PLURAL_OTHER);
+	CHECK(ak_plural(AK_STR("xx-unknown"), &zero, false) == AK_PLURAL_OTHER);
+	CHECK(ak_plural(AK_STR("en-u-nu-latn"), &one5, false) == AK_PLURAL_OTHER);
+}
+
 T_MAIN()
