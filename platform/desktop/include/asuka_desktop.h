@@ -295,6 +295,18 @@ typedef struct {
 // task going stops it (failing with ASUKA_CANCELLED). false with err set.
 bool asuka_fetch(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
                  int timeout_ms, asuka_call *cancel, asuka_response *out, asuka_error *err);
+
+// asuka_fetch_sink takes a response's body as it comes, a chunk at a
+// time, once out's status, URL and headers are in; false stops the
+// request, failing it with err (which the sink sets).
+typedef bool (*asuka_fetch_sink)(void *ctx, const asuka_response *head, const void *p, size_t n, asuka_error *err);
+
+// asuka_fetch_to is asuka_fetch handing the body to sink as it arrives
+// rather than collecting it (out->body stays empty): a download written
+// to a file as it comes, its progress reported. timeout_ms is then the
+// longest wait for the next bytes.
+bool asuka_fetch_to(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
+                    int timeout_ms, asuka_call *cancel, asuka_fetch_sink sink, void *ctx, asuka_response *out, asuka_error *err);
 void asuka_response_free(asuka_response *r);
 
 // asuka_desktop_local_file is a file an app names as a file on this

@@ -389,6 +389,46 @@ async fn latest() throws -> string {
 In a browser, a request to another origin needs that origin's CORS
 headers.
 
+A large answer (a video, an archive) goes into a file as it comes:
+`http.download(url, path, progress:)` writes it beside the path and
+renames it into place once it's all in, calling `progress` with the
+bytes so far and the whole's (-1 when the server doesn't say) a few
+times a second. Its `timeout` is the longest wait for more, not for the
+whole; cancelling its task stops it and leaves no file. URLSession on
+iOS and macOS, `HttpURLConnection` on Android, WinHTTP and libsoup on
+Windows and Linux stream it to the file; in a browser it's read from
+fetch's stream into the app's files.
+
+```asuka
+import asuka/fs
+import asuka/http
+
+component Download(url: string) {
+  state got = 0
+  state total = -1
+  state problem = ""
+
+  task(url) {
+    let file = fs.join([fs.appDir(), "downloads", "video.mp4"])
+    do {
+      try fs.mkdirAll(fs.dir(file))
+      let r = try await http.download(url, file, progress: (n, all) => {
+        got = n
+        total = all
+      })
+      if !r.ok() { problem = "HTTP {r.status}" }
+    } catch e {
+      problem = e.message
+    }
+  }
+
+  Column {
+    Progress { value: if total > 0 { got.float() / total.float() } else { none } }
+    if !problem.isEmpty() { Text(problem) }
+  }
+}
+```
+
 ## Watching files: asuka/watch
 
 `watch.path(dir)` follows changes to a folder (or a file): a folder the

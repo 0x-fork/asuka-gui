@@ -62,6 +62,7 @@ typedef struct _GObject GObject;
 typedef struct _GMainContext GMainContext;
 typedef struct _GMainLoop GMainLoop;
 typedef struct _GCancellable GCancellable;
+typedef struct _GInputStream GInputStream;
 typedef struct _GAsyncResult GAsyncResult;
 typedef struct _GDBusConnection GDBusConnection;
 typedef struct _GDBusProxy GDBusProxy;
@@ -220,6 +221,8 @@ enum { G_FILE_QUERY_INFO_NONE = 0 };
 	X(gio, GCancellable *, g_cancellable_new, (void))                                                           \
 	X(gio, void, g_cancellable_cancel, (GCancellable * c))                                                      \
 	X(gio, gboolean, g_cancellable_is_cancelled, (GCancellable * c))                                            \
+	X(gio, gssize, g_input_stream_read, (GInputStream * s, void *buf, gsize n, GCancellable *c, GError **e))     \
+	X(gio, gboolean, g_input_stream_close, (GInputStream * s, GCancellable *c, GError **e))                    \
 	X(gio, GNetworkMonitor *, g_network_monitor_get_default, (void))                                            \
 	X(gio, gboolean, g_network_monitor_get_network_available, (GNetworkMonitor * m))                            \
 	X(gio, gboolean, g_network_monitor_get_network_metered, (GNetworkMonitor * m))                              \

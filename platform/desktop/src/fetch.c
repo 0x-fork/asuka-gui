@@ -76,9 +76,10 @@ static void on_cancel(void *p) {
 	ReleaseSRWLockExclusive(&c->mu);
 }
 
-bool asuka_fetch(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
-                 int timeout_ms, asuka_call *cancel, asuka_response *out, asuka_error *err) {
+bool asuka_fetch_to(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
+                    int timeout_ms, asuka_call *cancel, asuka_fetch_sink sink, void *ctx, asuka_response *out, asuka_error *err) {
 	*out = (asuka_response){0};
+	bool sunk = false;  // the sink stopped it (err is the sink's)
 	wchar_t *wurl = asuka_wide(url), *wmethod = asuka_wide(method && *method ? method : "GET");
 	URL_COMPONENTS u;
 	memset(&u, 0, sizeof u);
@@ -152,30 +153,30 @@ bool asuka_fetch(const char *method, const char *url, const asuka_header *header
 		free(final);
 	}
 	if (!out->url) out->url = asuka_strdup(url);
-	asuka_writer b = {0};
 	for (;;) {
 		DWORD avail = 0, got = 0;
-		if (!WinHttpQueryDataAvailable(req, &avail)) {
-			asuka_writer_free(&b);
-			goto fail;
-		}
+		if (!WinHttpQueryDataAvailable(req, &avail)) goto fail;
 		if (avail == 0) break;
 		uint8_t *buf = malloc(avail);
 		if (!WinHttpReadData(req, buf, avail, &got)) {
 			free(buf);
-			asuka_writer_free(&b);
 			goto fail;
 		}
-		asuka_writer_put(&b, buf, got);
+		bool more = got == 0 || sink(ctx, out, buf, got, err);
 		free(buf);
+		if (!more) {
+			sunk = true;
+			goto fail;
+		}
 		if (got == 0) break;
 	}
-	out->body = (asuka_bytes){b.data ? b.data : malloc(1), b.len};
 	ok = true;
 	goto done;
 fail:;
 	DWORD code = GetLastError();
-	if (cancel && asuka_call_cancelled(cancel)) asuka_error_cancelled(err);
+	if (sunk) {
+		// err is the sink's
+	} else if (cancel && asuka_call_cancelled(cancel)) asuka_error_cancelled(err);
 	else if (code == ERROR_WINHTTP_TIMEOUT) asuka_error_failed(err, "http", 0, "%s: timed out", url);
 	else asuka_win_fail(err, HRESULT_FROM_WIN32(code), url);
 	asuka_response_free(out);
@@ -212,7 +213,7 @@ static struct {
 	void (*headers_append)(SoupMessageHeaders *, const char *, const char *);
 	void (*headers_foreach)(SoupMessageHeaders *, void (*)(const char *, const char *, gpointer), gpointer);
 	void (*set_request_body_from_bytes)(SoupMessage *, const char *, GBytes *);
-	GBytes *(*send_and_read)(SoupSession *, SoupMessage *, GCancellable *, GError **);
+	GInputStream *(*send)(SoupSession *, SoupMessage *, GCancellable *, GError **);
 	guint (*get_status)(SoupMessage *);
 	GUri *(*get_uri)(SoupMessage *);
 	char *(*uri_to_string)(GUri *);
@@ -234,19 +235,19 @@ static void load_soup(void) {
 	*(void **)&soup.headers_append = dlsym(l, "soup_message_headers_append");
 	*(void **)&soup.headers_foreach = dlsym(l, "soup_message_headers_foreach");
 	*(void **)&soup.set_request_body_from_bytes = dlsym(l, "soup_message_set_request_body_from_bytes");
-	*(void **)&soup.send_and_read = dlsym(l, "soup_session_send_and_read");
+	*(void **)&soup.send = dlsym(l, "soup_session_send");
 	*(void **)&soup.get_status = dlsym(l, "soup_message_get_status");
 	*(void **)&soup.get_uri = dlsym(l, "soup_message_get_uri");
 	*(void **)&soup.uri_to_string = dlsym(l, "g_uri_to_string");
-	soup.loaded = soup.session_new && soup.message_new && soup.send_and_read && soup.get_status;
+	soup.loaded = soup.session_new && soup.message_new && soup.send && soup.get_status;
 }
 
 static void each_header(const char *name, const char *value, gpointer r) { add_header(r, name, strlen(name), value, strlen(value)); }
 
 static void cancel_soup(void *c) { G(g_cancellable_cancel)(c); }
 
-bool asuka_fetch(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
-                 int timeout_ms, asuka_call *cancel, asuka_response *out, asuka_error *err) {
+bool asuka_fetch_to(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
+                    int timeout_ms, asuka_call *cancel, asuka_fetch_sink sink, void *ctx, asuka_response *out, asuka_error *err) {
 	static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
 	pthread_mutex_lock(&mu);
 	load_soup();
@@ -280,8 +281,9 @@ bool asuka_fetch(const char *method, const char *url, const asuka_header *header
 		asuka_call_on_cancel(cancel, cancel_soup, c);
 	}
 	GError *e = NULL;
-	GBytes *got = soup.send_and_read(s, msg, c, &e);
-	bool ok = got != NULL;
+	// The body as it comes: the response's stream, read a chunk at a time.
+	GInputStream *in = soup.send(s, msg, c, &e);
+	bool ok = in != NULL, sunk = false;
 	if (ok) {
 		out->status = (int)soup.get_status(msg);
 		GUri *u = soup.get_uri ? soup.get_uri(msg) : NULL;
@@ -289,16 +291,33 @@ bool asuka_fetch(const char *method, const char *url, const asuka_header *header
 		out->url = asuka_strdup(us ? us : url);
 		G(g_free)(us);
 		if (soup.headers_foreach) soup.headers_foreach(soup.response_headers(msg), each_header, out);
-		gsize n = 0;
-		const void *p = G(g_bytes_get_data)(got, &n);
-		out->body = asuka_bytes_copy(p ? p : "", n);
-		G(g_bytes_unref)(got);
+		uint8_t *buf = malloc(64 * 1024);
+		for (;;) {
+			gssize n = G(g_input_stream_read)(in, buf, 64 * 1024, c, &e);
+			if (n < 0) {
+				ok = false;
+				break;
+			}
+			if (n == 0) break;
+			if (!sink(ctx, out, buf, (size_t)n, err)) {
+				ok = false;
+				sunk = true;
+				break;
+			}
+		}
+		free(buf);
+		G(g_input_stream_close)(in, NULL, NULL);
+		G(g_object_unref)(in);
+	}
+	if (ok || sunk) {
+		if (e) G(g_error_free)(e);
 	} else if (cancel && asuka_call_cancelled(cancel)) {
 		if (e) G(g_error_free)(e);
 		asuka_error_cancelled(err);
 	} else {
 		asuka_linux_fail(err, e, url);
 	}
+	if (!ok) asuka_response_free(out);
 	G(g_object_unref)(c);  // the cancel's reference stays until the process ends: one per request
 	G(g_object_unref)(msg);
 	G(g_object_unref)(s);
@@ -306,6 +325,25 @@ bool asuka_fetch(const char *method, const char *url, const asuka_header *header
 }
 
 #endif
+
+// ---- Whole bodies ----
+
+static bool collect(void *ctx, const asuka_response *head, const void *p, size_t n, asuka_error *err) {
+	(void)head, (void)err;
+	asuka_writer_put(ctx, p, n);
+	return true;
+}
+
+bool asuka_fetch(const char *method, const char *url, const asuka_header *headers, size_t nheaders, const void *body, size_t len,
+                 int timeout_ms, asuka_call *cancel, asuka_response *out, asuka_error *err) {
+	asuka_writer b = {0};
+	if (!asuka_fetch_to(method, url, headers, nheaders, body, len, timeout_ms, cancel, collect, &b, out, err)) {
+		asuka_writer_free(&b);
+		return false;
+	}
+	out->body = (asuka_bytes){b.data ? b.data : malloc(1), b.len};
+	return true;
+}
 
 // ---- Local files ----
 

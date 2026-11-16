@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
@@ -42,6 +43,15 @@ func TestStdLinux(t *testing.T) {
 			b := make([]byte, r.ContentLength)
 			r.Body.Read(b)
 			w.Write(b)
+		case "/big":
+			// 1 MB in 64 KB chunks, a pause between: a download's progress.
+			w.Header().Set("Content-Length", "1048576")
+			chunk := strings.Repeat("a", 64*1024)
+			for i := 0; i < 16; i++ {
+				fmt.Fprint(w, chunk)
+				w.(http.Flusher).Flush()
+				time.Sleep(20 * time.Millisecond)
+			}
 		default:
 			http.NotFound(w, r)
 		}
@@ -97,6 +107,36 @@ component Probe {
 
 app { Probe() }
 `, []string{"host: got 200 hello GET probe yes true", "host: posted 200 ping", "host: missing 404", "host: done"}},
+		{"download", `import asuka/fs
+import asuka/http
+
+component Probe {
+  state step = "start"
+  Text("#{step}")
+  task {
+    let path = fs.join([fs.appDir(), "big.bin"])
+    var reports = 0
+    var last = 0
+    do {
+      let r = try await http.download("` + srv.URL + `/big", path, progress: (got, total) => {
+        reports += 1
+        last = got
+        if total != 1048576 { step = "total {total}" }
+      })
+      step = "downloaded {r.status} {r.body.count()} {last} {reports > 1} {fs.exists(path)} {fs.exists(path + ".download")}"
+      await sleep(1ms)
+      let data = try fs.read(path)
+      step = "file {data.count()}"
+      await sleep(1ms)
+      step = "done"
+    } catch e {
+      step = "fail {e.message}"
+    }
+  }
+}
+
+app { Probe() }
+`, []string{"host: downloaded 200 0 1048576 true true false", "host: file 1048576", "host: done"}},
 		{"monitors", `import asuka/network
 import asuka/power
 import asuka/appearance
