@@ -8,5 +8,6 @@ package apphost
 import (
 	_ "github.com/egoist/asuka/std/http/desktop"
 	_ "github.com/egoist/asuka/std/network/desktop"
+	_ "github.com/egoist/asuka/std/speech/desktop"
 	_ "github.com/egoist/asuka/std/store/desktop"
 )
