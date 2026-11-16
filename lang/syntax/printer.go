@@ -566,6 +566,7 @@ func (p *printer) node(n Node) {
 	case *StoreDecl:
 		p.pub(n.Pub)
 		p.write("store " + n.Name.Name)
+		p.typeParams(n.TypeParams)
 		p.params(n.Params)
 		p.write(" ")
 		p.block(n.Body)

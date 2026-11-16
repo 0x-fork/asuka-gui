@@ -57,7 +57,10 @@ the built-in functions and methods) into one module.
 | interface | ref | a struct or enum value; calls go through CALLI |
 | `void` | void | |
 
-Generic code is compiled once per instantiation (monomorphized).
+Generic code is compiled once per instantiation (monomorphized). A
+generic store too: its function, its env's shape and its fns are made
+per instantiation (`Box<int>`, `Box<[string]>`), and a let of its type
+parameters is a memo, so its env holds references whatever T is.
 
 Shapes are named so that JSON and hot reload find them: a type of the
 root package or the prelude by its name (`Todo`), of another package by

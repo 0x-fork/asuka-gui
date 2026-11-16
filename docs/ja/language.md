@@ -300,6 +300,17 @@ screen Inbox {
 
 ファイルの最上位に書いた `state` はアプリのもので、アプリ全体で一つだけです。
 
+ストアは構造体と同じように型パラメータを取れます。型は引数か、期待される型から推論されます。
+
+```asuka
+store Kept<T>(key: string, initial: T) {
+  pub state value: T = initial
+}
+
+let size = Kept("size", 17.0)                 // Kept<float>
+let tags: Kept<[string]> = Kept("tags", [])
+```
+
 ### エフェクトとタスク
 
 ```asuka

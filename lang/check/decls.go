@@ -35,6 +35,8 @@ func (c *Checker) resolveType(t *TypeName) {
 		tps = d.TypeParams
 	case *syntax.TypeAliasDecl:
 		tps = d.TypeParams
+	case *syntax.StoreDecl:
+		tps = d.TypeParams
 	case *syntax.ComponentDecl:
 		tps = d.TypeParams
 		if len(tps) > 0 {

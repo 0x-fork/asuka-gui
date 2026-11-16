@@ -136,10 +136,6 @@ type Function struct {
 	Recv       *TypeName // a method's type (struct, enum, store, component); nil for a function
 	Ctx        *FuncCtx  // its body's
 
-	// Its type parameters read or written as JSON: each call's type
-	// argument must be JSON then.
-	jsonParams map[*TypeParam]bool
-
 	// What the reactive analysis and spawn's check need.
 	readsState bool
 	calls      []*Function

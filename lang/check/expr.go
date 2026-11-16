@@ -947,7 +947,7 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 					c.ctx.readsState = true
 				}
 				c.spawnState(e, name)
-				return c.memberType(m)
+				return s.Apply(c.memberType(m))
 			}
 		case InterfaceType:
 			if u.Obj.isErrorIface && name == "message" {

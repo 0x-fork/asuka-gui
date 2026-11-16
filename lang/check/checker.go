@@ -49,6 +49,8 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
+	jsonTP       map[*TypeParam]bool // type parameters read or written as JSON: each call's argument must be JSON
+	bindingArgs  bool                // inferArgs checks each argument as a binding (a store's)
 }
 
 // NewChecker makes a checker and checks the prelude with it.

@@ -300,6 +300,17 @@ screen Inbox {
 
 写在文件顶层的 `state` 属于整个应用：全应用只有一份。
 
+store 和结构体一样可以带类型参数，由参数或期望的类型推断出来：
+
+```asuka
+store Kept<T>(key: string, initial: T) {
+  pub state value: T = initial
+}
+
+let size = Kept("size", 17.0)                 // 一个 Kept<float>
+let tags: Kept<[string]> = Kept("tags", [])
+```
+
 ### Effect 与 task
 
 ```asuka

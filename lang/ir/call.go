@@ -169,6 +169,13 @@ func (b *fb) funcCallRecv(e *syntax.CallExpr, call *check.Call, recv int, dst in
 		} else if b.ctx.Self != nil {
 			rt = b.typ(b.ctx.Self.Type)
 		}
+	} else if f.Recv.Kind == check.StoreType && len(f.Recv.TypeParams) > 0 {
+		// A generic store's fn: lowered per instantiation.
+		if call.RecvType != nil && !call.SelfCall {
+			rt = b.typ(check.Unopt(call.RecvType))
+		} else {
+			rt = b.typ(f.Recv.Type)
+		}
 	}
 	var targs []check.Type
 	for _, t := range call.TypeArgs {

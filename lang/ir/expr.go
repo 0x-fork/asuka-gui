@@ -645,7 +645,7 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 	case check.SelStoreMember:
 		ref := b.storeMemberRef(x, sel.Member)
 		m := sel.Member
-		k := b.l.kind(m.Type)
+		k := b.l.kind(memberTypeIn(recv, m))
 		switch m.Kind {
 		case check.StateMember:
 			r := b.out(dst, k)

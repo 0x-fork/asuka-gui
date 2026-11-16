@@ -456,6 +456,7 @@ type lvalue struct {
 	kind  int // what the root is
 	v     *check.Var
 	m     *check.Member
+	mtype check.Type // m's type where it's reached (a generic store's, instantiated)
 	g     *check.Global
 	cell  int // a store member's cell
 	inner *lvalue
@@ -500,7 +501,7 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 		}
 		if sel != nil && sel.Kind == check.SelStoreMember {
 			s := b.value(x.X, -1)
-			return &lvalue{x: x, kind: lvCell, cell: b.storeMemberRef(s, sel.Member), m: sel.Member}
+			return &lvalue{x: x, kind: lvCell, cell: b.storeMemberRef(s, sel.Member), m: sel.Member, mtype: memberTypeIn(b.typ(sel.Recv), sel.Member)}
 		}
 		if sel != nil && sel.Kind == check.SelField {
 			n, _ := b.typ(sel.Recv).(*check.Named)
@@ -557,6 +558,9 @@ func (b *fb) update(lv *lvalue, fn func(cur int)) {
 }
 
 func (b *fb) cellKind(lv *lvalue) bc.Kind {
+	if lv.mtype != nil {
+		return b.l.kind(lv.mtype)
+	}
 	if lv.m != nil {
 		return b.kind(lv.m.Type)
 	}
@@ -854,4 +858,13 @@ func (b *fb) forAwait(s *syntax.ForStmt, fi *check.ForInfo) {
 	b.jmp(top)
 	b.f.Place(end)
 	b.callBTo("stream.close", bc.None, st)
+}
+
+// memberTypeIn is m's type in a store of type recv: a generic store's
+// with its type arguments.
+func memberTypeIn(recv check.Type, m *check.Member) check.Type {
+	if n, ok := check.Unopt(recv).(*check.Named); ok && len(n.Args) > 0 {
+		return n.Subst().Apply(m.Type)
+	}
+	return m.Type
 }

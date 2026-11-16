@@ -978,6 +978,7 @@ func (p *parser) parseStore(start Pos) *StoreDecl {
 	p.expect(STORE)
 	d := &StoreDecl{}
 	d.Name = p.ident()
+	d.TypeParams = p.parseTypeParams()
 	d.Params = p.optParams()
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)

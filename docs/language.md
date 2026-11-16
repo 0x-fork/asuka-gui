@@ -390,6 +390,18 @@ screen Inbox {
 
 `state` at the top of a file is the app's: one for the whole app.
 
+A store takes type parameters as a struct does, inferred from its
+arguments or from what's expected:
+
+```asuka
+store Kept<T>(key: string, initial: T) {
+  pub state value: T = initial
+}
+
+let size = Kept("size", 17.0)                 // a Kept<float>
+let tags: Kept<[string]> = Kept("tags", [])
+```
+
 ### Effects and tasks
 
 ```asuka

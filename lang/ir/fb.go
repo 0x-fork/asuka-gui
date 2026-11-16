@@ -380,7 +380,17 @@ func (b *fb) compName() string {
 
 // memberIndex is m's field in its owner's env.
 func (l *Lowerer) memberIndex(m *check.Member) int {
-	l.envShapeOf(m.Owner)
+	if i, ok := l.memberIdx[m]; ok {
+		return i
+	}
+	i := 0
+	for _, o := range m.Owner.Comp.Order {
+		if o.Kind == check.FnMember {
+			continue
+		}
+		l.memberIdx[o] = i
+		i++
+	}
 	return l.memberIdx[m]
 }
 
@@ -397,21 +407,25 @@ func isLoad(e syntax.Expr) bool {
 	return ok && u.Op == syntax.LOAD
 }
 
-// envShapeOf is a component's or store's env: a struct of its members'
-// cells, memos, accessors and handlers.
-func (l *Lowerer) envShapeOf(t *check.TypeName) int {
-	if i, ok := l.envShape[t]; ok {
+// envShapeOf is a component's or store's env, typ its type (a generic
+// store's instantiation): a struct of its members' cells, memos,
+// accessors and handlers.
+func (l *Lowerer) envShapeOf(t *check.TypeName, typ check.Type) int {
+	if typ == nil || check.HasTypeParams(typ) && len(t.TypeParams) == 0 {
+		typ = t.Type
+	}
+	key := l.typeKey(typ)
+	if i, ok := l.envShape[key]; ok {
 		return i
 	}
-	key := l.typeKey(t.Type)
-	i := l.addShape(key, t.Type)
-	l.envShape[t] = i
+	i := l.addShape(key, typ)
+	l.envShape[key] = i
 	var fs []bc.Field
 	for _, m := range t.Comp.Order {
 		if m.Kind == check.FnMember {
 			continue
 		}
-		l.memberIdx[m] = len(fs)
+		l.memberIndex(m)
 		fs = append(fs, bc.Field{Name: m.Name(), Kind: l.memberKind(m), Shape: -1})
 	}
 	l.mod.Shapes[i].Fields = fs

@@ -64,6 +64,7 @@ func Walk(v Visitor, n Node) {
 		walk(n.Body)
 	case *StoreDecl:
 		walk(n.Name)
+		walkTypeParams(v, n.TypeParams)
 		if n.Params != nil {
 			walk(n.Params)
 		}
