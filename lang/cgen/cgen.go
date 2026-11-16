@@ -9,7 +9,10 @@
 // call each other freely.
 //
 // The C defines asuka_app_load, which the core's ABI calls in a release
-// build instead of waiting for bytecode.
+// build instead of waiting for bytecode; for a program (a module with a
+// fn main), a C main() too, which runs it (asuka_program_main): weak, so
+// that a headless host that needs its own (platform/desktop's, the Mac's
+// Swift for packages' Swift) replaces it.
 package cgen
 
 import (
@@ -95,6 +98,29 @@ __attribute__((constructor)) static void register_app(void) {
 ak_module *asuka_app_module(void);
 ak_module *asuka_app_module(void) { return asuka_app_load(); }
 `, len(m.Funcs), readsCrashes(m))
+	if m.Main >= 0 && m.Data != "" {
+		g.p(`
+// The folder the program's data goes in: the app's it ships with.
+extern const char *ak_program_data;
+__attribute__((constructor)) static void program_data(void) { ak_program_data = %s; }
+`, cbytes(m.Data))
+	}
+	if m.Main >= 0 {
+		g.p(`
+// main runs the program (docs/programs.md): its arguments the system's
+// (on Windows, read in UTF-16 by the core), its exit code main's.
+#include "asuka.h"
+int main(int argc, char **argv);
+__attribute__((weak)) int main(int argc, char **argv) {
+#if defined(_WIN32)
+	AK_UNUSED(argc), AK_UNUSED(argv);
+	return asuka_program_main(0, NULL, NULL);
+#else
+	return asuka_program_main(argc, argv, NULL);
+#endif
+}
+`)
+	}
 	return g.b.Bytes(), nil
 }
 
@@ -200,6 +226,9 @@ func (g *gen) fn(i int) error {
 		}
 	}
 	g.p("#define K K%d\n#define N %d\n", i, n)
+	// Where an error left from (its line), for a program's trace: set on
+	// the error's path only.
+	g.p("\tuint32_t at_ = 0; AK_UNUSED(at_);\n")
 	g.p("\tif (0) goto unwind;\n")
 	for _, in := range ins {
 		if targets[in.pc] {
@@ -218,9 +247,26 @@ func (g *gen) fn(i int) error {
 			return err
 		}
 	}
-	g.p("unwind:\n\tak_op_exit(R, K, N, -1);\n\tdepth--;\n\treturn (ak_val){0};\n")
+	g.p("unwind:\n\tif (ak_frame_hook) ak_frame_hook(\"%s\", \"%s\", at_);\n", cstr(f.Name), cstr(f.File))
+	g.p("\tak_op_exit(R, K, N, -1);\n\tdepth--;\n\treturn (ak_val){0};\n")
 	g.p("#undef K\n#undef N\n}\n\n")
 	return nil
+}
+
+// cbytes is s as a C string literal, byte by byte.
+func cbytes(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 32 || c > 126 || c == '"' || c == '\\' || c == '?' {
+			fmt.Fprintf(&b, "\\%03o", c)
+		} else {
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 func cstr(s string) string {
@@ -274,9 +320,22 @@ func store(f *bc.FuncDef, a int, v string, discardKind bc.Kind) string {
 	return fmt.Sprintf("R[%d] = %s;", a, v)
 }
 
+// lineAt is the source line of f's code at pc.
+func lineAt(f *bc.FuncDef, pc int) uint32 {
+	var line uint32
+	for _, l := range f.Lines {
+		if int(l.PC) > pc {
+			break
+		}
+		line = l.Line
+	}
+	return line
+}
+
 func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 	a := in.args
-	thrown := fmt.Sprintf("if (AK_UNLIKELY(ak_error_pending())) goto %s;", h)
+	at := lineAt(f, in.pc)
+	thrown := fmt.Sprintf("if (AK_UNLIKELY(ak_error_pending())) { at_ = %d; goto %s; }", at, h)
 	w := func(format string, args ...any) { g.p("\t"+format+"\n", args...) }
 	switch name := bc.Ops[in.op].Name; name {
 	case "NOP":
@@ -389,11 +448,11 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 	case "RET0":
 		w("ak_op_exit(R, K, N, -1); depth--; return (ak_val){0};")
 	case "THROW":
-		w("{ void *e_ = R[%d].p; R[%d].p = NULL; ak_throw(e_); goto %s; }", a[0], a[0], h)
+		w("{ void *e_ = R[%d].p; R[%d].p = NULL; ak_throw(e_); at_ = %d; goto %s; }", a[0], a[0], at, h)
 	case "CATCH":
 		w("ak_op_setref(R, %d, ak_error_take());", a[0])
 	case "RETHROW":
-		w("{ void *e_ = R[%d].p; R[%d].p = NULL; ak_throw(e_); goto unwind; }", a[0], a[0])
+		w("{ void *e_ = R[%d].p; R[%d].p = NULL; ak_throw(e_); at_ = %d; goto unwind; }", a[0], a[0], at)
 	case "CLOS":
 		w("ak_op_setref(R, %d, ak_op_clos(&M->funcs[%d], &R[%d]));", a[0], a[1], a[2])
 	case "CAP":

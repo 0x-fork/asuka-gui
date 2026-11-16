@@ -15,6 +15,7 @@
 #include "ui/ui.h"
 #include "fake/uitest.h"
 #include "std/std.h"
+#include "abi/program.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,10 +72,20 @@ static void settle(ak_future *fut) {
 }
 
 int main(int argc, char **argv) {
-	bool test = false, aot = false, app = false, leaks = false;
-	const char *pattern = NULL, *path = NULL;
+	bool test = false, aot = false, app = false, leaks = false, program = false;
+	const char *pattern = NULL, *path = NULL, *name = "main";
+	int rest = argc;  // the program's arguments, after --
 	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "-aot") == 0) {
+		if (strcmp(argv[i], "--") == 0) {
+			rest = i + 1;
+			break;
+		} else if (strcmp(argv[i], "-main") == 0) {
+			program = true;
+		} else if (strcmp(argv[i], "-program") == 0 && i + 1 < argc) {
+			name = argv[++i];
+		} else if (strcmp(argv[i], "-trim") == 0 && i + 1 < argc) {
+			ak_program_trim(argv[++i]);
+		} else if (strcmp(argv[i], "-aot") == 0) {
 			aot = true;
 		} else if (strcmp(argv[i], "-app") == 0) {
 			app = true;
@@ -99,7 +110,8 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (!path && !aot) {
-		fprintf(stderr, "usage: asuka-run [-leaks] [-test [pattern]] [-app] [-platform name] (module.akb | -aot)\n");
+		fprintf(stderr, "usage: asuka-run [-leaks] [-test [pattern]] [-app] [-platform name] (module.akb | -aot)\n"
+		                "       asuka-run -main [-program name] (module.akb | -aot) [-- args...]\n");
 		return 2;
 	}
 	size_t n = 0;
@@ -128,6 +140,19 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "asuka-run: %s\n", err);
 		return 2;
 	}
+	if (program) {
+		// argv[0] the program's name, then what came after --.
+		int pargc = 1 + (argc - rest);
+		char **pargv = ak_alloc(sizeof(char *) * (size_t)(pargc + 1));
+		pargv[0] = (char *)name;
+		for (int i = rest; i < argc; i++) pargv[1 + i - rest] = argv[i];
+		int code = ak_program_start(m, pargc, pargv, NULL);
+		if (code < 0) code = ak_program_loop();
+		ak_free(pargv);
+		return code;
+	}
+	// Tests' processes: exit ends a test, not the runner.
+	if (test) ak_os_testing(true);
 	ak_owner *root = ak_root_new();
 	const ak_func *init = ak_module_nfuncs(m) ? ak_module_func(m, ak_module_init(m)) : NULL;
 	if (init) {
@@ -165,9 +190,15 @@ int main(int argc, char **argv) {
 			settle(fut);
 			if (fut && fut->state == AK_FUT_FAILED && !failure[0]) snprintf(failure, sizeof failure, "%s", ak_error_message(fut->error)->data);
 			else if (fut && fut->state == AK_FUT_PENDING && !failure[0]) snprintf(failure, sizeof failure, "the test never finished (it awaits something that never completes)");
+			int64_t code;
+			if (ak_os_test_exit(&code)) {
+				failure[0] = 0;
+				snprintf(failure, sizeof failure, "it called os.exit(%lld), which ends a program: a test runs main with os.fake().run(main) to see its code", (long long)code);
+			}
 			ak_release(fut);
 			ak_owner_dispose(o);
 			settle(NULL);
+			ak_os_reset();
 			if (dir) {
 				ak_fs_remove_tree(dir);
 				ak_free(dir);

@@ -533,7 +533,9 @@ func (p *printer) node(n Node) {
 		p.sourceFile(n)
 	case *ImportDecl:
 		p.write("import ")
-		if n.Relative {
+		if n.Up > 0 {
+			p.write(strings.Repeat("../", n.Up))
+		} else if n.Relative {
 			p.write("./")
 		}
 		for i, s := range n.Path {

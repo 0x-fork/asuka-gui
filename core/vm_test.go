@@ -114,7 +114,7 @@ func (f *fn) done(ret bc.Kind, flags uint8) int {
 	return len(f.m.Funcs) - 1
 }
 
-func module() *bc.Module { return &bc.Module{App: -1} }
+func module() *bc.Module { return &bc.Module{App: -1, Main: -1} }
 
 func addInit(m *bc.Module) {
 	f := newFn(m, "init")

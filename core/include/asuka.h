@@ -68,6 +68,17 @@ ASUKA_API int asuka_load(const uint8_t *module, size_t len, char **err);
 ASUKA_API int asuka_run(char **err);
 // Whether an app is compiled into this build: 0 in asuka dev's players.
 ASUKA_API int asuka_has_app(void);
+
+// A program (docs/programs.md): a module whose fn main is its entry,
+// compiled into this build (lang/cgen), with no UI. asuka_program_main
+// runs it on the core's own loop to its end and returns its exit code:
+// argv its arguments (argv[0] the program), callbacks a headless host's
+// (the native_* of packages' platform code) or NULL. asuka_program_start
+// is for a host with a run loop of its own (callbacks->post asks it to
+// call asuka_run_posted): it starts the program and returns -1, or the
+// exit code when it has ended already; as main ends, the process exits.
+ASUKA_API int asuka_program_main(int argc, char **argv, asuka_host_callbacks *callbacks);
+ASUKA_API int asuka_program_start(int argc, char **argv, asuka_host_callbacks *callbacks);
 // Connects to asuka dev at host:port (a player: the simulator's, an
 // emulator's, a phone's, a desktop's): the CLI sends the app's bytecode
 // and loads it again on every save, keeping its state and views; the

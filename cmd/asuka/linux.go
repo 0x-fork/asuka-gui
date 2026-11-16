@@ -153,6 +153,20 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 	if err := writeLibs(libs, linuxPluginLibs(out, exe)); err != nil {
 		return err
 	}
+	// The project's programs in bin, beside the app's: on PATH where the
+	// prefix is installed (~/.local, the Flatpak's /app).
+	progs, err := bundlePrograms(app, t, nil, filepath.Join(out, "bin"), "", o.verbose)
+	if err != nil {
+		return err
+	}
+	for _, p := range progs {
+		// Their plugins' libraries where the core looks from bin/<name>.
+		if l, err := appLibs(app, target); err == nil && len(l) > 0 {
+			if err := writeLibs(l, linuxPluginLibs(out, filepath.Base(p))); err != nil {
+				return err
+			}
+		}
+	}
 	if err := writeLinuxShare(app, out, exe); err != nil {
 		return err
 	}

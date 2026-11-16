@@ -13,6 +13,9 @@ const ak_lib_entry *const ak_std_libs[] = {
 	ak_std_crash,
 	ak_std_update,
 	ak_std_markdown,
+	ak_std_os,
+	ak_std_flag,
+	ak_std_command,
 	NULL,
 };
 

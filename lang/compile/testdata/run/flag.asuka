@@ -1,0 +1,234 @@
+// asuka/flag: the command line read into a struct of options, or an
+// enum of commands, by what the compiler knows of the type.
+
+import asuka/flag
+
+enum Level { low, high, veryHigh }
+
+/// Copies files somewhere else.
+struct Copy {
+  /// -v Says each file as it's copied.
+  verbose: bool = false
+  /// -f Writes over what's there.
+  force: bool = false
+  /// Keeps the files' times.
+  keepTimes: bool = true
+  /// -j How many at once.
+  jobs: int = 4
+  /// How hard to compress.
+  level: Level = .low
+  ratio: float = 0.5
+  /// -x Leaves out names like this.
+  exclude: [string] = []
+  label: string? = none
+  /// Where they go.
+  dest: string
+  /// What to copy.
+  sources: [string]
+}
+
+fn show(args: [string]) {
+  do {
+    let c = try flag.tryParse<Copy>(args, program: "cp")
+    print("v={c.verbose} f={c.force} t={c.keepTimes} j={c.jobs} l={c.level} r={c.ratio} x={c.exclude} label={c.label} dest={c.dest} src={c.sources}")
+  } catch flag.FlagError.usage(problem, _, _) {
+    print("usage: {problem}")
+  } catch e {
+    print("other: {e.message}")
+  }
+}
+
+test "defaults, and arguments in order" {
+  show(["out", "a", "b"])
+}
+
+test "long options: a value after, or after =; switches; --no-" {
+  show(["--verbose", "--jobs", "8", "--level=very-high", "--ratio", "0.25", "--no-keep-times", "out"])
+  show(["--force=true", "--keep-times=false", "out"])
+}
+
+test "short options: grouped switches, a value after or joined" {
+  show(["-vf", "-j8", "out"])
+  show(["-vj", "2", "out"])
+}
+
+test "repeated, optional" {
+  show(["-x", "*.o", "--exclude", "*.tmp", "--label=nightly", "out", "a"])
+}
+
+test "-- ends the options" {
+  show(["out", "--", "-v", "--jobs"])
+}
+
+test "mistakes" {
+  show(["--jbos", "3", "out"])
+  show(["--level", "medium", "out"])
+  show(["--level", "hihg", "out"])
+  show(["--jobs", "many", "out"])
+  show(["--jobs"])
+  show(["-z", "out"])
+  show([])
+  show(["--verbose=maybe", "out"])
+  show(["--no-jobs", "out"])
+}
+
+struct Two {
+  first: string
+  /// An optional without a default is an argument that may be left out.
+  second: string?
+}
+
+test "an optional argument, and one too many" {
+  let a = try flag.tryParse<Two>(["x"])
+  print("{a.first} {a.second}")
+  let b = try flag.tryParse<Two>(["x", "y"])
+  print("{b.first} {b.second}")
+  print((try? flag.tryParse<Two>(["x", "y", "z"])) == none)
+}
+
+test "help" {
+  print(flag.help<Copy>(program: "cp"))
+  do {
+    let _ = try flag.tryParse<Copy>(["out", "-h"], program: "cp")
+  } catch flag.FlagError.help(text) {
+    print(text == flag.help<Copy>(program: "cp"))
+  }
+}
+
+struct AddOptions {
+  /// -f Adds ignored files too.
+  force: bool = false
+  /// The files.
+  paths: [string]
+}
+
+struct RemoteOptions {
+  name: string
+  url: string
+}
+
+/// A tiny version control.
+enum Command {
+  /// Adds files to the index.
+  add(AddOptions)
+  /// Adds a remote.
+  addRemote(opts: RemoteOptions)
+  /// Shows the state.
+  status
+}
+
+struct Cli {
+  /// -q Says less.
+  quiet: bool = false
+  command: Command
+}
+
+fn run(args: [string]) {
+  do {
+    let c = try flag.tryParse<Cli>(args, program: "vc")
+    match c.command {
+      .add(o) => print("add q={c.quiet} f={o.force} {o.paths}")
+      .addRemote(o) => print("add-remote {o.name} {o.url}")
+      .status => print("status q={c.quiet}")
+    }
+  } catch flag.FlagError.usage(problem, usage, _) {
+    print("usage: {problem} | {usage}")
+  } catch flag.FlagError.help(text) {
+    print(text)
+  } catch e {
+    print("other: {e.message}")
+  }
+}
+
+test "commands" {
+  run(["add", "-f", "a", "b"])
+  run(["-q", "status"])
+  run(["add-remote", "origin", "https://example.com/r"])
+  run(["stauts"])
+  run([])
+  run(["status", "x"])
+  run(["--help"])
+  run(["add", "--help"])
+  let c = try flag.tryParse<Command>(["status"])
+  print(c)
+}
+
+// Output:
+// v=false f=false t=true j=4 l=low r=0.5 x=[] label=none dest=out src=["a","b"]
+// ok defaults, and arguments in order
+// v=true f=false t=false j=8 l=veryHigh r=0.25 x=[] label=none dest=out src=[]
+// v=false f=true t=false j=4 l=low r=0.5 x=[] label=none dest=out src=[]
+// ok long options: a value after, or after =; switches; --no-
+// v=true f=true t=true j=8 l=low r=0.5 x=[] label=none dest=out src=[]
+// v=true f=false t=true j=2 l=low r=0.5 x=[] label=none dest=out src=[]
+// ok short options: grouped switches, a value after or joined
+// v=false f=false t=true j=4 l=low r=0.5 x=["*.o","*.tmp"] label=nightly dest=out src=["a"]
+// ok repeated, optional
+// v=false f=false t=true j=4 l=low r=0.5 x=[] label=none dest=out src=["-v","--jobs"]
+// ok -- ends the options
+// usage: unknown option --jbos (did you mean --jobs?)
+// usage: --level: medium isn't one of low, high, very-high
+// usage: --level: hihg isn't one of low, high, very-high (did you mean high?)
+// usage: --jobs: many isn't a whole number
+// usage: --jobs needs a value (<n>)
+// usage: unknown option -z
+// usage: missing <dest>
+// usage: --verbose: maybe isn't true or false
+// usage: unknown option --no-jobs
+// ok mistakes
+// x none
+// x y
+// true
+// ok an optional argument, and one too many
+// Copies files somewhere else.
+//
+// Usage: cp [options] <dest> [<sources>...]
+//
+// Arguments:
+//   <dest>          Where they go.
+//   [<sources>...]  What to copy.
+//
+// Options:
+//   -v, --verbose                     Says each file as it's copied.
+//   -f, --force                       Writes over what's there.
+//       --[no-]keep-times             Keeps the files' times. (default: true)
+//   -j, --jobs <n>                    How many at once. (default: 4)
+//       --level <low|high|very-high>  How hard to compress. (default: low)
+//       --ratio <number>              (default: 0.5)
+//   -x, --exclude <exclude>...        Leaves out names like this.
+//       --label <label>
+//   -h, --help                        Show this help.
+// true
+// ok help
+// add q=false f=true ["a","b"]
+// status q=true
+// add-remote origin https://example.com/r
+// usage: unknown command stauts (did you mean status?) | Usage: vc [options] <command>
+// usage: missing a command (add, add-remote, status) | Usage: vc [options] <command>
+// usage: unexpected argument x | Usage: vc status [options]
+// A tiny version control.
+//
+// Usage: vc [options] <command>
+//
+// Options:
+//   -q, --quiet  Says less.
+//   -h, --help   Show this help.
+//
+// Commands:
+//   add         Adds files to the index.
+//   add-remote  Adds a remote.
+//   status      Shows the state.
+//
+// See 'vc <command> --help' for a command's options.
+// Adds files to the index.
+//
+// Usage: vc add [options] [<paths>...]
+//
+// Arguments:
+//   [<paths>...]  The files.
+//
+// Options:
+//   -f, --force  Adds ignored files too.
+//   -h, --help   Show this help.
+// "status"
+// ok commands

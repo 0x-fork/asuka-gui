@@ -78,6 +78,7 @@ struct ak_module {
 	uint32_t nglobals;
 	uint32_t init;
 	int32_t app;
+	int32_t main;  // a program's fn main, -1: none
 	struct { ak_str *name; uint32_t func; } *tests;
 	uint32_t ntests;
 	struct { ak_str **data; uint32_t len, cap; } names;  // what shapes' names point into

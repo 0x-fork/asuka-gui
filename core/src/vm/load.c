@@ -238,6 +238,7 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	m->globals = ak_alloc(sizeof(ak_val) * (ng ? ng : 1));
 	m->init = ak_read_u32(&l->r);
 	m->app = (int32_t)ak_read_u32(&l->r);
+	m->main = (int32_t)ak_read_u32(&l->r);
 	m->ntests = count(l, 8);
 	m->tests = ak_alloc(sizeof(*m->tests) * (m->ntests ? m->ntests : 1));
 	for (uint32_t i = 0; i < m->ntests; i++) {
@@ -247,6 +248,7 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	if (l->r.err) fail(l, "truncated module");
 	if (!l->failed && m->nfuncs && m->init >= m->nfuncs) fail(l, "bad init function");
 	if (!l->failed && m->app >= (int32_t)m->nfuncs) fail(l, "bad app function");
+	if (!l->failed && m->main >= (int32_t)m->nfuncs) fail(l, "bad main function");
 	for (uint32_t i = 0; i < m->ntests && !l->failed; i++)
 		if (m->tests[i].func >= m->nfuncs) fail(l, "bad test function");
 	for (uint32_t i = 0; i < m->nshapes && !l->failed; i++)
@@ -327,6 +329,7 @@ const ak_func *ak_module_find(const ak_module *m, const char *name) {
 
 uint32_t ak_module_init(const ak_module *m) { return m->init; }
 int32_t ak_module_app(const ak_module *m) { return m->app; }
+int32_t ak_module_main(const ak_module *m) { return m->main; }
 uint32_t ak_module_ntests(const ak_module *m) { return m->ntests; }
 
 const char *ak_module_test(const ak_module *m, uint32_t i, uint32_t *func) {

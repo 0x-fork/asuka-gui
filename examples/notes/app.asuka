@@ -4,6 +4,9 @@
 // what's on the clipboard as a note, from whichever app is in front.
 //
 //   asuka dev --platform ios examples/notes
+//
+// It ships a command, notes (cli/, asuka.toml's [bin.notes]), which
+// lists and adds the same notes from a terminal.
 
 import asuka/device
 import asuka/dialog
@@ -12,26 +15,10 @@ import asuka/hotkey
 import asuka/shell
 import asuka/sqlite
 import asuka/url
-
-struct Note {
-  id: int
-  text: string
-  done: bool
-}
-
-fn openDB(path: string) throws -> sqlite.DB {
-  let db = try sqlite.open(path)
-  try db.migrate([
-    "create table notes (id integer primary key, text text not null, done bool not null default 0)",
-  ])
-  return db
-}
+import ./model.{Note, openDB, search}
 
 /// The notes' database, opened as the app starts.
 let db = (try? openDB("notes.db"))!
-
-/// The search's SQL: a match anywhere, any case; % and _ are text.
-let search = "select * from notes where ?1 = '' or instr(lower(text), lower(?1)) > 0 order by done, id desc"
 
 /// Runs a statement off the main thread; a failure shows.
 async fn write<A>(query: string, args: A) {

@@ -24,7 +24,7 @@ import (
 // Sources are the shared C, embedded in the asuka CLI so an installed CLI
 // builds desktop apps without the repository.
 //
-//go:embed include src
+//go:embed include src program
 var Sources embed.FS
 
 var (
@@ -96,6 +96,11 @@ func Libs(goos string) []string {
 	}
 	return nil
 }
+
+// Headless is the host a program's executable runs on when its packages
+// have platform code (docs/programs.md), in dir (Dir's): no window, the
+// main thread's loop and asuka_desktop.h's host half.
+func Headless(dir string) string { return filepath.Join(dir, "program", "headless.c") }
 
 // Include is the include directory of asuka_desktop.h in dir.
 func Include(dir string) string { return filepath.Join(dir, "include") }

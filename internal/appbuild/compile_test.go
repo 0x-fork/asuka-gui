@@ -22,9 +22,9 @@ func TestUsesFromCompile(t *testing.T) {
 	old := Compile
 	defer func() { Compile = old }()
 	compiles := 0
-	Compile = func(dir string, deps map[string]string, main bool) (*bytecode.Module, *Uses, []string, error) {
+	Compile = func(dir string, deps map[string]string) (*bytecode.Module, *Uses, []string, error) {
 		compiles++
-		return old(dir, deps, main)
+		return old(dir, deps)
 	}
 	p := &Project{Dir: dir}
 	if u := p.Uses(); !u.Ref("asuka/location", "current") || compiles != 1 {
@@ -41,7 +41,7 @@ func TestUsesFromCompile(t *testing.T) {
 		t.Fatalf("after a save: %v, %d compiles", u.Refs, compiles)
 	}
 	// A test's compile, which doesn't say: checked.
-	Compile = func(dir string, deps map[string]string, main bool) (*bytecode.Module, *Uses, []string, error) {
+	Compile = func(dir string, deps map[string]string) (*bytecode.Module, *Uses, []string, error) {
 		return nil, nil, nil, nil
 	}
 	q := &Project{Dir: dir}

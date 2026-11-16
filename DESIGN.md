@@ -1362,7 +1362,7 @@ system reports again of a crash already reported is left out.
 ## CLI (`cmd/asuka`)
 
 ```
-asuka new [--lib [--native]] <dir>          an app, or a library (with a native module)
+asuka new [--bin | --lib [--native]] <dir>  an app, a program (fn main), or a library (with a native module)
 asuka dev --platform ios|android <dir>       build, run, rebuild and restart on save
 asuka build --platform ios|android <dir>     a release build for the stores
 asuka publish --platform ios|android <dir>   the release build, uploaded: TestFlight, App Review; a Play track
@@ -1375,13 +1375,38 @@ asuka build --platform web <dir>             a static site: WebAssembly, the web
 asuka dev|build <dir>                       no --platform: this computer's, on macOS (mac) and Windows (windows)
 asuka generate <dir>                        the typed functions of the app's catalogs
 asuka i18n init|add|check                   start, add languages to, and check the catalogs
-asuka check|fmt|test|run [paths]            the compiler's errors; formatting; test blocks on the fake host; one file
+asuka check|fmt|test|run [paths]            the compiler's errors; formatting; test blocks on the fake host (every [bin]'s too); one file
+asuka run [--bin name] [dir] [-- args]      a program's main on the VM, its arguments after --, its exit code the CLI's
+asuka dev [--bin name] [dir] [-- args]      a program: run, and again with each change saved
+asuka build [--bin name] [--target os-arch] a program's executable: dist/<name> (Linux: static, musl), another desktop's with Zig
 asuka add|remove|install                     packages from the npm registry (asuka.lock)
 asuka native add|generate|check              native packages' projects and their glue
 asuka lsp                                    the language server, on stdio
 asuka publish --platform mac|windows|linux   the desktop build, its signed update (dist/updates), uploaded: a GitHub release, S3
 asuka update keygen                         the Ed25519 key pair that signs desktop updates
 ```
+
+**Programs** (docs/programs.md) are the third kind of project, beside
+apps and libraries: a package whose files declare `fn main()` (the
+checker: no parameters, no result, no app block, no components; only
+the root package's). The module records it (`Module.Main`), lang/cgen
+emits a weak C `main()` that calls `asuka_program_main`, and the core
+runs it with no UI host (core/src/abi/program.c): init, then main (as a
+task when async) on the core's own loop (posts wake a condition
+variable) or a host's (`asuka_program_start`: macOS's dispatch queue);
+as main ends, what's left is cancelled and the process exits 0, 1 with
+`error: <message>` and the trace (the VM's frames, and compiled
+functions' noted on the error's path only: `ak_frame_hook`), or what
+`os.exit` said. asuka/os, asuka/command (fork and exec; CreateProcess)
+and asuka/flag (lang/ir/flag.go writes `flag.spec<T>()`'s description
+of T) are the core's C and Asuka. A program whose packages have
+platform code runs on a headless host: platform/desktop/program on
+Windows and Linux (asuka_desktop.h's host half, GLib's loop when it's
+there), the Mac host's Swift with an `AsukaProgram` entry on macOS (the
+packages' Swift is what URLSession is reached through). asuka.toml's
+`[bin.<name>] path = "dir"` names a project's programs; a desktop build
+puts them in the app (Contents/Helpers, bin/, beside the .exe), built
+with the app's data folder (`Module.Data`) so they share its data.
 
 **An app's metadata** is `asuka.toml` beside its Asuka code (TOML 1.0, read
 by `internal/toml`), all optional:

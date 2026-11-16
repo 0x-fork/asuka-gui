@@ -527,7 +527,11 @@ func (c *Checker) funcBody(f *Function) {
 	} else {
 		c.stmts(d.Body.Items)
 		if ctx.Result != Void && !c.terminates(d.Body.Items) {
-			c.errorPos(d.Body.Rbrace, "fn %s must return a %s: it can reach its end without a return", f.name, typeString(ctx.Result))
+			if ctx.Result == Never {
+				c.errorPos(d.Body.Rbrace, "fn %s never returns (its result is never): it can reach its end, which it mustn't (end it with panic, a throw or a call of another that never returns)", f.name)
+			} else {
+				c.errorPos(d.Body.Rbrace, "fn %s must return a %s: it can reach its end without a return", f.name, typeString(ctx.Result))
+			}
 		}
 	}
 	c.leave(nil)

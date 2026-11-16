@@ -1,0 +1,50 @@
+// unix
+// exit: 0
+import asuka/command
+
+async fn main() throws {
+  let out = try await command.run("echo", ["a b", "c"])
+  print("[{out.text().trim()}] {out.code}")
+  let up = try await command.run("tr", ["a-z", "A-Z"], stdin: "shout\n")
+  print(up.text().trim())
+  let p = try command.start("sh", ["-c", "echo one; echo two >&2; echo three; exit 7"])
+  for await l in p.lines() {
+    print("line: {l}")
+  }
+  print("code {await p.wait()}")
+  let both = try await command.run("sh", ["-c", "echo out; echo err >&2; exit 3"])
+  print("{both.text().trim()} {both.errorText().trim()} {both.code}")
+  let env = try await command.run("sh", ["-c", "echo $ASUKA_CMD_TEST"], env: ["ASUKA_CMD_TEST": "from env"])
+  print(env.text().trim())
+  let cwd = try await command.run("pwd", cwd: "/")
+  print(cwd.text().trim())
+  do {
+    let _ = try await command.run("asuka-no-such-program")
+  } catch e {
+    print(e.message)
+  }
+  let s = try command.start("sleep", ["30"])
+  s.kill()
+  print("killed {await s.wait()}")
+  // A big output, while a big input goes in: neither waits on the other.
+  var big = ""
+  for i in 0..<20000 {
+    big += "line {i}\n"
+  }
+  let cat = try await command.run("cat", stdin: big)
+  print(cat.stdout.count() == big.byteCount())
+}
+
+// Stdout:
+// [a b c] 0
+// SHOUT
+// line: one
+// line: three
+// code 7
+// out err 3
+// from env
+// /
+// asuka-no-such-program: no such program (looked on PATH)
+// killed 143
+// true
+// Stderr:

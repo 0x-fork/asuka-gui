@@ -40,8 +40,6 @@ type Lowerer struct {
 
 // Options say how to lower.
 type Options struct {
-	// MainTest adds the root package's fn main() as a test named main.
-	MainTest bool
 	// Accent and AccentFlags are the app's accent color (the wire's
 	// Color, 0: the platform's) and its flags, which the app's init gives
 	// the core (ui.set_accent).
@@ -51,6 +49,9 @@ type Options struct {
 	// shows for this run (asuka dev's --lang and --dir): the init says so
 	// first (i18n.force), so that every platform's player follows.
 	Lang, Direction string
+	// Version is the project's (asuka.toml's version): asuka/flag's
+	// --version.
+	Version string
 }
 
 // Lower lowers prog (checked without errors) to a program.
@@ -60,7 +61,7 @@ func Lower(prog *check.Program, opts *Options) (*Program, []check.Diagnostic) {
 	}
 	l := &Lowerer{
 		prog: prog, info: prog.Info, fset: prog.Fset,
-		mod:       &bc.Module{App: -1},
+		mod:       &bc.Module{App: -1, Main: -1},
 		funcs:     map[string]int{},
 		shapes:    map[string]int{},
 		shapeType: map[int]check.Type{},
@@ -102,12 +103,8 @@ func (l *Lowerer) lower() {
 		for _, t := range root.Tests {
 			l.lowerTest(t)
 		}
-		if l.opts.MainTest {
-			for _, f := range root.Funcs {
-				if f.Name() == "main" && len(f.Sig.Params) == 0 {
-					l.mod.Tests = append(l.mod.Tests, bc.Test{Name: "main", Func: uint32(l.funcIndex(f, nil, nil))})
-				}
-			}
+		if m := l.prog.Main; m != nil {
+			l.mod.Main = int32(l.funcIndex(m, nil, nil))
 		}
 	}
 	// What the constants and the native errors' table use (an error's

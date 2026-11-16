@@ -24,6 +24,9 @@ extern const ak_lib_entry ak_std_fs[];
 extern const ak_lib_entry ak_std_crash[];
 extern const ak_lib_entry ak_std_update[];
 extern const ak_lib_entry ak_std_markdown[];
+extern const ak_lib_entry ak_std_os[];
+extern const ak_lib_entry ak_std_flag[];
+extern const ak_lib_entry ak_std_command[];
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];
@@ -86,6 +89,9 @@ bool ak_ed25519_verify(const uint8_t pub[32], const uint8_t *m, size_t n, const 
 void ak_fs_set_app_dir(const char *path);
 // ak_fs_app_dir is that directory's path (ak_free it).
 char *ak_fs_app_dir(void);
+// ak_fs_make_dirs makes path and the directories above it (a UTF-8
+// path); false if it can't.
+bool ak_fs_make_dirs(const char *path);
 
 // DEFLATE (RFC 1951) and gzip (RFC 1952) read as a stream (inflate.c):
 // a section of a file (offset, len bytes; len -1: to its end), or a gzip
@@ -112,6 +118,16 @@ bool ak_update_valid_path(const char *p, size_t n);
 // reads its reports (lang/cgen sets it).
 void ak_crash_lifecycle(int state);
 extern bool ak_app_crash;
+// asuka/os (os.c): the program's arguments (argv[0] the program), which
+// a host that doesn't set them reads from the system (a desktop app's);
+// a test's process (the runner's tests: exit ends the test, not the
+// process; args and stdin are empty unless os.fake gives them), cleared
+// with ak_os_reset after each; whether a test called exit, and its code.
+void ak_os_set_args(int argc, char **argv);
+void ak_os_testing(bool on);
+void ak_os_reset(void);
+bool ak_os_test_exit(int64_t *code);
+
 // For tests (core/runner): a new empty directory in the system's
 // temporary one (ak_free the path; NULL when it can't be made), and
 // removing a directory and what's in it.

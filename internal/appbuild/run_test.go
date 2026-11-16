@@ -57,8 +57,8 @@ func TestShowApp(t *testing.T) {
 }
 
 // Compile is the compiler: a project's diagnostics as file:line:col
-// messages, its module once there are none; one file (asuka run) runs
-// its fn main() as a test named main.
+// messages, its module once there are none; a package with fn main is a
+// program, whose module names it (and it can't have an app too).
 func TestCompile(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, src string) {
@@ -75,16 +75,21 @@ func TestCompile(t *testing.T) {
 	if err != nil || m != nil || len(diags) != 1 || !strings.Contains(diags[0], "app.asuka:1:") {
 		t.Fatalf("a mistake: %v %v %v", m, diags, err)
 	}
-	write("app.asuka", "component C { Text(\"hi\") }\napp { C() }\nfn main() { print(\"main\") }\n")
-	if m, diags, err = p.Compile(); err != nil || m == nil || len(diags) != 0 || len(m.Tests) != 0 {
+	write("app.asuka", "component C { Text(\"hi\") }\napp { C() }\n")
+	if m, diags, err = p.Compile(); err != nil || m == nil || len(diags) != 0 || m.App < 0 || m.Main >= 0 {
 		t.Fatalf("an app: %v %v %v", m, diags, err)
 	}
+	write("app.asuka", "component C { Text(\"hi\") }\napp { C() }\nfn main() { print(\"main\") }\n")
+	if m, diags, err = p.Compile(); m != nil || len(diags) != 1 || !strings.Contains(diags[0], "an app or a program") {
+		t.Fatalf("an app with main: %v %v %v", m, diags, err)
+	}
+	write("app.asuka", "fn main() { print(\"main\") }\n")
 	f, err := appbuild.Load(filepath.Join(dir, "app.asuka"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m, _, err = f.Compile(); err != nil || m == nil || len(m.Tests) != 1 {
-		t.Fatalf("one file, with main: %v %v", m, err)
+	if m, _, err = f.Compile(); err != nil || m == nil || m.Main < 0 || m.App >= 0 {
+		t.Fatalf("one file, a program: %v %v", m, err)
 	}
 }
 

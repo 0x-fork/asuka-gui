@@ -1,0 +1,25 @@
+// stdin: a\nb\n
+// env: ASUKA_TEST_GREETING=hi there
+// exit: 0
+import asuka/os
+
+fn main() {
+  let all = os.readAll().string()
+  print(all.count())
+  print(os.env("ASUKA_TEST_GREETING") ?? "unset")
+  print(os.env("ASUKA_TEST_NOT_SET") ?? "unset")
+  print(os.environ()["ASUKA_TEST_GREETING"] ?? "missing")
+  print(!os.cwd().isEmpty())
+  os.writeTo(.stdout, "no line end")
+  os.writeTo(.stderr, "err")
+}
+
+// Stdout:
+// 4
+// hi there
+// unset
+// hi there
+// true
+// no line end
+// Stderr:
+// err

@@ -362,3 +362,7 @@ func filesUnder(fsys fs.FS, dir string) (map[string][]byte, error) {
 	sort.Strings(keys)
 	return out, err
 }
+
+// bundled reports whether the packages bring what goes in an app's
+// bundle beside its executable (frameworks, resource bundles).
+func (o *swiftPackageOutput) bundled() bool { return len(o.frameworks) > 0 || len(o.bundles) > 0 }

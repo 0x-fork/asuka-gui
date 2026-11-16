@@ -692,6 +692,15 @@ func (p *parser) parseImport() *ImportDecl {
 		d.Relative = true
 		p.next()
 		p.next()
+	} else {
+		// ../path: a directory up (a project's program importing the
+		// project's packages).
+		for p.tok == RANGE && p.peek(1) == QUO {
+			d.Relative = true
+			d.Up++
+			p.next()
+			p.next()
+		}
 	}
 	for {
 		seg := p.importSegment(!d.Relative && len(d.Path) == 0)

@@ -1,6 +1,6 @@
 // Command Asuka makes, runs and builds Asuka apps.
 //
-//	asuka new [--lib [--native]] <dir>       an app, or a library (with a native module)
+//	asuka new [--bin | --lib [--native]] <dir>  an app, a program (fn main), or a library (with a native module)
 //	asuka dev --platform ios <dir>           build, run on the iOS simulator or an iPhone, rebuild on save
 //	asuka dev --platform android <dir>       build, run on an Android emulator or device, rebuild on save
 //	asuka dev --platform mac <dir>           build, run on this Mac, rebuild on save
@@ -9,7 +9,7 @@
 //	asuka dev --platform web <dir>           build, serve and open in the browser, rebuild on save
 //	asuka dev <dir>                          on macOS, Windows or Linux: run on this computer
 //	asuka test [dir]                         run an app's or a package's test blocks
-//	asuka run file.asuka                     run a file's tests, or show its app
+//	asuka run [--bin name] [dir] [-- args]   run a program on the VM; a file's tests, or show its app
 //	asuka fmt [-w] [-l] [paths]              format Asuka source (.asuka files)
 //	asuka check [dir]                        report an Asuka package's problems
 //	asuka lsp                                the language server, for editors
@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 )
 
@@ -29,14 +30,18 @@ var version = "dev"
 
 func usage() {
 	fmt.Fprint(os.Stderr, `usage:
-  asuka new [--lib [--native]] <dir>        make an app, or a library (with --native, its platforms' code)
+  asuka new [--bin | --lib [--native]] <dir>
+                                            make an app, a program (a command-line tool), or a library
+                                            (with --native, its platforms' code)
   asuka dev [-p platform] [flags] [dir]     run, rebuilding on save, on platform: ios (the
                                             simulator), android (an emulator or device), mac,
                                             windows, linux or web (the browser); default on
                                             macOS, Windows and Linux: this computer
-  asuka build [-p platform] [flags] [dir]   a release build for platform, likewise
+  asuka build [-p platform] [flags] [dir]   a release build for platform, likewise; a program's
+                                            executable (--bin name, --target os-arch)
   asuka test [-run pattern] [dir]           run the test blocks of an app or a package on the fake host
-  asuka run file.asuka                      run a file's test blocks, or show what its app shows
+  asuka run [--bin name] [dir] [-- args]    run a program's main, with its arguments; a file without
+                                            one: its test blocks, and what its app shows
   asuka publish -p platform [flags] [dir]
                                             a release build, uploaded to TestFlight or Google Play;
                                             mac, windows, linux: its update, to asuka.toml's updates
@@ -117,6 +122,10 @@ func main() {
 	if errors.Is(err, errReported) {
 		os.Exit(1)
 	}
+	var code exitCode
+	if errors.As(err, &code) {
+		os.Exit(int(code))
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "asuka:", err)
 		os.Exit(1)
@@ -133,11 +142,14 @@ type devOptions struct {
 	once      bool
 	verbose   bool
 	lang, dir string
+	bin       string // a program of asuka.toml's [bin.<name>]
 }
 
 func devFlags(o *devOptions) *flagSet {
-	fs := newFlagSet("dev", "[dir]")
-	fs.about = "Runs the app, and runs it again with each change you save."
+	fs := newFlagSet("dev", "[dir] [-- args...]")
+	fs.about = "Runs the app, and runs it again with each change you save. A program (fn main,\n" +
+		"or --bin) runs on the VM with the arguments after --, again with each change."
+	fs.String(&o.bin, "bin", 0, "", "run the `program` asuka.toml's [bin.<name>] names, instead of the app")
 	platformFlag(fs, &o.platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},
 		"the `platform` to run on: ios (the simulator, or an iPhone with --device), android (a device or emulator), mac (this Mac), windows (this PC), linux (this Linux machine, or ASUKA_LINUX_RUN's), or web (the browser: the core as WebAssembly, the views the page's DOM); default on macOS, Windows and Linux: this computer")
 	fs.Int(&o.port, "port", 0, 0, "web: the dev server's `port` (default 8790, or a free one)")
@@ -154,6 +166,10 @@ func devFlags(o *devOptions) *flagSet {
 
 func cmdDev(args []string) error {
 	var o devOptions
+	var progArgs []string
+	if i := slices.Index(args, "--"); i >= 0 {
+		args, progArgs = args[:i], args[i+1:]
+	}
 	fs := devFlags(&o)
 	if err := fs.parse(args); err != nil {
 		return err
@@ -165,13 +181,16 @@ func cmdDev(args []string) error {
 	if fs.Arg(0) != "" {
 		dir = fs.Arg(0)
 	}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	if o.bin != "" || (o.platform == "" && isProgramDir(dir)) {
+		return devProgram(dir, o.bin, progArgs, stop)
+	}
 	if o.platform == "" {
 		if o.platform = thisComputer(); o.platform == "" {
 			return errors.New("pick a platform: asuka dev --platform ios|android|web <dir>")
 		}
 	}
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	switch o.platform {
 	case platformWeb:
 		return devWeb(dir, &o, stop)

@@ -1,0 +1,23 @@
+// exit: 1
+enum ParseError: Error { empty, bad(text: string) }
+
+fn parse(text: string) throws -> int {
+  if text.isEmpty() {
+    throw ParseError.empty
+  }
+  return text.toInt() ?? throw ParseError.bad(text: text)
+}
+
+async fn main() throws {
+  defer { print("main's defer runs") }
+  await sleep(1ms)
+  print(try parse("12"))
+  print(try parse("x1"))
+}
+
+// Stdout:
+// 12
+// main's defer runs
+// Stderr:
+// error: ParseError.bad
+// …

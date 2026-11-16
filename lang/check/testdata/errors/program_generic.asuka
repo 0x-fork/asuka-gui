@@ -1,0 +1,2 @@
+fn main<T>() { // ERROR "fn main is the program's entry: it has no type parameters"
+}

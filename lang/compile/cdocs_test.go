@@ -33,7 +33,7 @@ func TestCDocExamples(t *testing.T) {
 			if !strings.Contains(src, "app {") {
 				src += "\napp { Text(\"x\") }\n"
 			}
-			res := Files(map[string][]byte{"example.asuka": []byte(src)}, &Options{MainTest: true})
+			res := Files(map[string][]byte{"example.asuka": []byte(src)}, nil)
 			if err := res.Err(); err != nil {
 				t.Errorf("%s:\n%s\n%v", page, src, err)
 			} else if res.Module.C == nil {

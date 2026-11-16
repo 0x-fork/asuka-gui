@@ -405,6 +405,7 @@ void asuka_list_unbind(uint32_t list, uint32_t cell) {
 
 void asuka_run_posted(void) {
 	if (started) ak_ui_run_posted();
+	else ak_sched_run_posted();  // a program's (abi/program.c): no UI
 }
 
 void asuka_setenv(const char *key, const char *value) {

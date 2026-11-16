@@ -553,6 +553,25 @@ ak_val ak_vm_closure_invoke(ak_closure *c, ak_val *args, uint32_t nargs) {
 	return call_sync(f, c, args, nargs);
 }
 
+ak_str *ak_vm_error_text(void *err) {
+	ak_str *name = ak_str_c("message");
+	const ak_func *m = ak_vm_method(err, name);
+	ak_release(name);
+	if (m) {
+		ak_val a = {.p = err};
+		ak_val v = ak_vm_call(m, &a, 1);
+		if (!ak_error_pending() && v.p) return v.p;
+		if (ak_error_pending()) ak_release(ak_error_take());
+	}
+	return ak_retain(ak_error_message(err));
+}
+
+bool ak_closure_async(const ak_closure *c) {
+	if (c->invoke != ak_vm_closure_invoke) return false;
+	const ak_func *f = c->fn;
+	return !f->native && (f->flags & AK_F_ASYNC);
+}
+
 ak_val ak_vm_call(const ak_func *f, ak_val *args, uint32_t nargs) {
 	if (f->flags & AK_F_ASYNC) {
 		// Its result, if it finished; its error, if it failed; else none

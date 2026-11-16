@@ -126,6 +126,9 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
   background, global shortcuts, file dialogs and the file manager,
   opening files, one instance, quitting, recent documents, starting at
   login, updates, the displays, power and progress on the app's icon.
+- [Programs](programs.md): command-line tools in Asuka (`fn main`):
+  their arguments, flags and stdin, other programs run, an executable
+  for each desktop, and the commands an app ships.
 - [Packages](packages.md): sharing code between apps: `asuka add`, the
   npm registry, `asuka.lock`, publishing
 - [Plugins](plugins.md): packages that bring native libraries, prebuilt

@@ -31,8 +31,7 @@ import (
 // (deps: package ID → directory, from internal/pkgs), to a module, and
 // says what its program uses (nil: not known: Uses checks it then); its
 // diagnostics are "file:line:col: message". An error with no diagnostics
-// is one that isn't the source's (a file that can't be read). main adds
-// the package's fn main() as a test named main (asuka run). It's
+// is one that isn't the source's (a file that can't be read). It's
 // lang/compile; tests replace it.
 var Compile = compileDir
 
@@ -45,10 +44,10 @@ var DevLang, DevDirection string
 // catalogs' missing translations), "file:line:col: warning: message".
 var Warnings io.Writer = os.Stderr
 
-func compileDir(dir string, deps map[string]string, main bool) (*bytecode.Module, *Uses, []string, error) {
+func compileDir(dir string, deps map[string]string) (*bytecode.Module, *Uses, []string, error) {
 	// Imports resolve through the project's asuka.lock (compile.Dir's
 	// own), which Load made ready.
-	res, err := compile.Dir(dir, &compile.Options{MainTest: main, Lang: DevLang, Direction: DevDirection})
+	res, err := compile.Dir(dir, &compile.Options{Lang: DevLang, Direction: DevDirection, Project: binRoot(dir)})
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -87,6 +86,12 @@ type Project struct {
 	Local []string
 	// File, for a project of one file (asuka run file.asuka), is that file.
 	File string
+	// Root, for a program of a project's ([bin.<name>], Bin), is the
+	// project's directory: its asuka.lock, its catalogs, its packages the
+	// program imports (../model).
+	Root string
+	// Bins are the project's programs ([bin.<name>]), sorted by name.
+	Bins []Bin
 	// uses is what the last compile (or check) found its program uses,
 	// usesStamp the files' stamp they're of; last is the last compile.
 	uses      *Uses
@@ -116,6 +121,9 @@ func Load(dir string) (*Project, error) {
 	}
 	m, err := pkgs.ReadManifest(abs)
 	if err != nil {
+		return nil, err
+	}
+	if p.Bins, err = bins(abs, m); err != nil {
 		return nil, err
 	}
 	if len(m.Dependencies) == 0 {
@@ -183,6 +191,9 @@ func (p *Project) stamp() string {
 	h := sha256.New()
 	fmt.Fprintln(h, DevLang, DevDirection, p.File)
 	roots := []string{p.Dir}
+	if p.Root != "" {
+		roots = append(roots, p.Root)
+	}
 	if p.File != "" {
 		roots = []string{p.File}
 	}
@@ -226,7 +237,7 @@ func (p *Project) compile() (*bytecode.Module, *Uses, []string, error) {
 		if err := os.WriteFile(filepath.Join(tmp, filepath.Base(p.File)), b, 0o644); err != nil {
 			return nil, nil, nil, err
 		}
-		m, u, diags, err := Compile(tmp, p.Deps, true)
+		m, u, diags, err := Compile(tmp, p.Deps)
 		for i, d := range diags {
 			diags[i] = strings.ReplaceAll(d, filepath.Join(tmp, filepath.Base(p.File)), p.File)
 		}
@@ -238,7 +249,7 @@ func (p *Project) compile() (*bytecode.Module, *Uses, []string, error) {
 		}
 		return m, u, diags, err
 	}
-	return Compile(p.Dir, p.Deps, false)
+	return Compile(p.Dir, p.Deps)
 }
 
 // WatchRoots are the directories whose .asuka files make the app: its

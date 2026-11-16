@@ -16,6 +16,7 @@ import (
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/appconfig"
+	"github.com/egoist/asuka/internal/cbuild"
 	iupdate "github.com/egoist/asuka/internal/update"
 )
 
@@ -217,7 +218,8 @@ func signMac(bundle, identity, entitlements string, run func(dir string, env []s
 	// own team.
 	libs, _ := filepath.Glob(filepath.Join(bundle, "Contents", "Frameworks", "*.dylib"))
 	fws, _ := filepath.Glob(filepath.Join(bundle, "Contents", "Frameworks", "*.framework")) // its Swift packages'
-	for _, lib := range append(libs, fws...) {
+	helpers, _ := filepath.Glob(filepath.Join(bundle, "Contents", "Helpers", "*"))          // its programs ([bin])
+	for _, lib := range append(append(libs, fws...), helpers...) {
 		if err := run(dir, nil, "codesign", append(slices.Clip(args), lib)...); err != nil {
 			return err
 		}
@@ -287,6 +289,11 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 	}
 	// The plugins' libraries, in Frameworks: signed with the app (signMac).
 	if err := writeLibs(libs, macPluginLibs(bundle)); err != nil {
+		return err
+	}
+	// The project's programs, in Helpers (a CLI the app ships, which a
+	// user links onto their PATH): signed with the app too.
+	if _, err := bundlePrograms(app, cbuild.Target{OS: "darwin"}, appbuild.MacArchs, filepath.Join(bundle, "Contents", "Helpers"), macPluginLibs(bundle), o.verbose); err != nil {
 		return err
 	}
 

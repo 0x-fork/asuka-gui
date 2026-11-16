@@ -44,12 +44,22 @@ const ak_func *ak_module_func(const ak_module *m, uint32_t i);
 const ak_func *ak_module_find(const ak_module *m, const char *name);
 uint32_t ak_module_init(const ak_module *m);
 int32_t ak_module_app(const ak_module *m);
+// ak_module_main is a program's fn main (docs/programs.md), -1 for an
+// app or a library.
+int32_t ak_module_main(const ak_module *m);
 uint32_t ak_module_ntests(const ak_module *m);
 const char *ak_module_test(const ak_module *m, uint32_t i, uint32_t *func);
 const ak_shape *ak_module_shape(const ak_module *m, uint32_t i);
 const ak_shape *ak_module_shape_named(const ak_module *m, const char *name);
 const char *ak_func_name(const ak_func *f);
 bool ak_func_async(const ak_func *f);
+// ak_closure_async reports whether calling c (ak_call) starts a task and
+// returns its future, rather than running it to its end.
+bool ak_closure_async(const ak_closure *c);
+// ak_vm_error_text is an error's message as Asuka's e.message reads it:
+// a user error's message method's (its field, its fn message(), its
+// type's and case's name), a runtime error's message. Owned.
+ak_str *ak_vm_error_text(void *err);
 
 // ak_module_attach gives a module's functions their bodies compiled to
 // C (lang/cgen): bodies[i] is function i's, or NULL to interpret it.

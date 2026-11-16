@@ -18,8 +18,8 @@ import (
 // path of its content's (the core's build caches its object by it), and
 // returns the path.
 func AppC(m *bytecode.Module) (string, error) {
-	if m == nil || m.App < 0 {
-		return "", fmt.Errorf("appbuild: the module has no app (an app block)")
+	if m == nil || m.App < 0 && m.Main < 0 {
+		return "", fmt.Errorf("appbuild: the module has no app (an app block) and no fn main")
 	}
 	src, err := cgen.Generate(m)
 	if err != nil {

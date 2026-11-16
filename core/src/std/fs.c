@@ -742,6 +742,14 @@ static ak_val mkdir_all_fn(ak_val *args, uint32_t n) {
 	return (ak_val){.i = 1};
 }
 
+bool ak_fs_make_dirs(const char *path) {
+	ak_str *s = ak_str_c(path);
+	ak_val a = {.p = s};
+	ak_val r = mkdir_all_fn(&a, 1);
+	ak_release(s);
+	return r.i != 0;
+}
+
 static bool remove_one(const ak_str *p) {
 #if defined(_WIN32)
 	wchar_t *w = wide(p);
