@@ -135,6 +135,15 @@ go test ./platform/windows -run Updater           # likewise on Windows (a PC, o
   how a platform behaves, read its docs or an established framework's
   implementation (React Native, react-navigation, Solid, Taffy, the CSS specs) before
   inventing one.
+- Platform widgets for UI; everything else shared. What's shown is each
+  platform's own widget, but what isn't UI (parsing, formats, codecs,
+  image operations, text processing, the app's logic) is one
+  implementation every platform runs — C in the core or a std package's
+  shared C (a pinned, permissively licensed library where one fits),
+  the web through the core's wasm — so a Markdown document, an SVG or
+  an edited image comes out the same everywhere. A platform's own API is
+  for its widgets and for what only the OS has (the camera, sensors,
+  accounts, the store, notifications, ML it alone ships).
 - Swift host: UIKit only, no SwiftUI. Kotlin host: Android Views and
   Material Components, no Compose. macOS host: AppKit only, from Go
   through `internal/darwin` (purego), no cgo, no SwiftUI; an app's own
