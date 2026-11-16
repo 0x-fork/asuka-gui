@@ -42,13 +42,16 @@ network/
   android/build.gradle.kts  the Gradle library module (namespace asuka.<name>)
   android/src/main/kotlin/asuka/network/Network.kt   yours
   web/network.js            yours: export function makeMonitor
-  desktop/network.go        yours (+ _linux.go, _windows.go, _other.go)
-  desktop/network_native.go generated
+  desktop/network_linux.c   yours: network_make_Monitor (_windows.c; a
+                            .c without a suffix is both's)
+  desktop/network.asuka.h   generated (and network.asuka.c)
 ```
 
 `go run ./cmd/asuka native generate ./std/<name>` writes the generated
 files for each platform whose project exists (create Package.swift,
-android/build.gradle.kts, web/ and desktop/ first). Commit them.
+android/build.gradle.kts, web/ and desktop/ first). Commit them. A
+package with no C for Windows or Linux has none of desktop/'s for it,
+and answers there as a platform without the package's code does.
 
 ### The API
 
@@ -130,30 +133,34 @@ test "a region, crossed" {
   `build.gradle.kts`.
 - **JavaScript**: from platform/web, implementing the methods (async
   methods get an AbortSignal first).
-- **Go, for Windows and Linux** (macOS runs the Swift): from host/windows
-  and host/linux, using internal/windows and internal/gtk directly.
-  Calls run on the core's main thread (sync methods) or a goroutine of
-  their own (async ones): touch the platform and call callbacks on the
-  main thread, with native.Post and native.OnMain. Split by build tags
-  (_linux.go is `linux && !android`; an _other.go answers
-  errors.ErrUnsupported).
+- **C, for Windows and Linux** (macOS runs the Swift; docs/native.md's
+  "Windows and Linux: C"): Win32, COM and WinRT through
+  `asuka_windows.h`'s helpers (a WinRT interface's slots declared as
+  Microsoft's documentation orders them, as the Go did), GLib, GIO and
+  GTK through `asuka_linux.h`'s declarations (`G(fn)(…)`, resolved at
+  run time; a library of its own, libsecret, libsoup, dlopened by the
+  package). Every call comes on the main thread: an async method that
+  blocks runs on `asuka_desktop_spawn`'s thread and answers from there;
+  GLib's async calls answer on the main context. What two packages
+  share goes to platform/desktop (`asuka_fetch`,
+  `asuka_desktop_local_file`, the system window, WIC's images).
 
 Once a module is a std package, remove the host's old byte-protocol
 module for it (`modules["<name>"]` in each host and its code) and the
-sdk/<name> Go package. (std/bluetooth/desktop's engines are the hosts'
-old ones, moved: they still speak internal/bluetoothspec and use
-internal/bluez, which stay.)
+sdk/<name> Go package.
 
 ### Over a host's module
 
 What a host already does for its apps through a module of its own
 (notifications, pushes, iCloud, the photo library...: platform/ios's
 AsukaHost, platform/android's dev.asuka, platform/web's modules,
-host/darwin, host/windows, host/linux) a package can reach through
-`asuka/host` (std/host), with no platform code of its own: it calls the
-module's methods by name (`host.call`, `host.send`, `host.next` for a
-"next" method's stream), with the bytes sdk/<name> sent (mostly JSON,
-`host.u32` and the like for the rest), and types the answers in Asuka.
+host/darwin, host/windows, host/linux) a package reaches through
+`asuka/platform`, as above, with no platform code of its own: it calls
+the module's methods by name (`platform.call`, `platform.send`,
+`platform.next` for a "next" method's stream), with the bytes
+sdk/<name> sent (mostly JSON, `platform.u32` and the like for the
+rest), types the answers in Asuka, and answers a host without the
+module (`platform.unsupported(e)`) as unsupported or with a fallback.
 std/notify, push, icloud, library, photos, contacts, calendar, compose,
 periodic, background, liveactivity and widget are such. Moving a
 module's code into its package (as above) can come after, one platform
@@ -173,8 +180,9 @@ where no host keeps its own (iOS, Android, the web).
   with no platform code: it must behave (fallbacks, errors).
 - Swift: compiles for macOS and the iOS simulator (xcrun swiftc against
   platform/macos's runtime, as host/darwin's buildKitchenSwift does).
-- Go: `go vet` for GOOS=linux and GOOS=windows; tests where the logic is
-  more than a call.
+- C: compiled for Windows and Linux with Zig, and run on Linux by
+  platform/desktop's std_test.go (an Asuka program on the test host, in
+  the asuka-linux-test image) where it can be driven there.
 - The platforms end to end: the e2e suites (`go test -tags e2e ./e2e`),
   where a module can be driven.
 

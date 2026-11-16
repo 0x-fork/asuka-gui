@@ -201,3 +201,52 @@ func TestAsukaLoadErrors(t *testing.T) {
 		}
 	}
 }
+
+// docs/native.md's C example (and its translations') compiles for Windows
+// and Linux against its Battery's generated header.
+func TestDocsCExample(t *testing.T) {
+	zig, err := exec.LookPath("zig")
+	if err != nil {
+		t.Skip("no zig")
+	}
+	for _, page := range []string{"../../docs/native.md", "../../docs/zh/native.md", "../../docs/ja/native.md"} {
+		b, err := os.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		block := func(lang, contains string) string {
+			for _, part := range strings.Split(string(b), "```"+lang+"\n")[1:] {
+				code, _, _ := strings.Cut(part, "```")
+				if strings.Contains(code, contains) {
+					return code
+				}
+			}
+			t.Fatalf("%s: no %s block with %q", page, lang, contains)
+			return ""
+		}
+		dir := filepath.Join(t.TempDir(), "battery")
+		os.MkdirAll(filepath.Join(dir, "desktop"), 0o755)
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("name = \"battery\"\nversion = \"0.1.0\"\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "battery.asuka"), []byte(block("asuka", "native interface Battery")), 0o644)
+		os.WriteFile(filepath.Join(dir, "desktop", "battery.c"), []byte(block("c", "battery_make_Battery")), 0o644)
+		p, err := LoadAsuka(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Write(p); err != nil {
+			t.Fatal(err)
+		}
+		for _, target := range []string{"x86_64-windows-gnu", "x86_64-linux-gnu"} {
+			for _, f := range []string{"battery.c", "battery.asuka.c"} {
+				args := []string{"cc", "-target", target, "-std=c17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-c",
+					"-o", filepath.Join(dir, target+f+".o"), "-I", "../../platform/desktop/include", "-I", "../../core/include", filepath.Join(dir, "desktop", f)}
+				if strings.Contains(target, "linux") {
+					args = append(args, "-D_GNU_SOURCE")
+				}
+				if out, err := exec.Command(zig, args...).CombinedOutput(); err != nil {
+					t.Errorf("%s %s %s: %v\n%s", page, target, f, err, out)
+				}
+			}
+		}
+	}
+}

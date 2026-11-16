@@ -1,6 +1,6 @@
 # ネイティブコード
 
-Asuka がラップしていない機能には、**ネイティブパッケージ**を通じてアクセスします。ネイティブパッケージは、モジュール（`native interface`）やビュー（`native component`）を Asuka で宣言するもので、それを各プラットフォームが自身の言語で実装します。iOS と macOS では Swift、Android では Kotlin、Web では JavaScript、Windows と Linux では Go です。`asuka native generate` が、すべての側の型付きのグルーコードを生成します。Asuka からは、モジュールのメソッドをほかのメソッドと同じように呼び出し、ビューを普通のコンポーネントと同じように表示できます。値はコンパクトなバイナリ形式でやり取りされ、JSON もリフレクションも使いません。
+Asuka がラップしていない機能には、**ネイティブパッケージ**を通じてアクセスします。ネイティブパッケージは、モジュール（`native interface`）やビュー（`native component`）を Asuka で宣言するもので、それを各プラットフォームが自身の言語で実装します。iOS と macOS では Swift、Android では Kotlin、Web では JavaScript、Windows と Linux では C です。`asuka native generate` が、すべての側の型付きのグルーコードを生成します。Asuka からは、モジュールのメソッドをほかのメソッドと同じように呼び出し、ビューを普通のコンポーネントと同じように表示できます。値はコンパクトなバイナリ形式でやり取りされ、JSON もリフレクションも使いません。
 
 ```asuka
 /// デバイスのバッテリー。
@@ -40,7 +40,7 @@ func makeBattery() throws -> any Battery { IOSBattery() }
 ## パッケージの作成
 
 ```sh
-asuka native new ./battery                # Asuka、Swift、Kotlin、JavaScript、デスクトップ向けの Go
+asuka native new ./battery                # Asuka、Swift、Kotlin、JavaScript、デスクトップ向けの C
 asuka native new --projects swift,android ./battery
 asuka native add web ./battery            # あとからプラットフォームのプロジェクトを追加
 ```
@@ -64,7 +64,10 @@ battery/
   web/
     battery.js             自分で書く：export function makeBattery
     battery.asuka.js       生成
-  desktop/                 Windows と Linux 向けの Go
+  desktop/                 Windows と Linux 向けの C
+    battery.c              自分で書くもの：battery_make_Battery（_windows.c、_linux.c は一方のプラットフォームだけ）
+    battery.asuka.h        生成されるもの：型、vtable、自分で書く関数
+    battery.asuka.c        生成されるもの：エンコードとデコード、プロバイダ
   Info.plist               （任意）パッケージが Apple のアプリに求めるもの
   iOS.entitlements         （任意）
   macOS.entitlements       （任意）
@@ -118,32 +121,32 @@ pub native interface Oven {
 
 ### 型
 
-| Asuka | Swift | Kotlin | JavaScript |
-| --- | --- | --- | --- |
-| `bool` | `Bool` | `Boolean` | `boolean` |
-| `int` | `Int` | `Long` | `bigint` |
-| `float` | `Double` | `Double` | `number` |
-| `string` | `String` | `String` | `string` |
-| `bytes` | `Data` | `ByteArray` | `Uint8Array` |
-| `Duration` | `TimeInterval`（秒） | `kotlin.time.Duration` | `number`（ミリ秒） |
-| `[T]` | `[T]` | `List<T>` | `Array` |
-| `[string: T]` | `[String: T]` | `Map<String, T>` | `object` |
-| `T?` | `T?` | `T?` | `T` または `null` |
-| `Color` | `Int`（コアのエンコーディング）。`AsukaColors.color(_:)` で `UIColor` か `NSColor` になります（セマンティックカラーはライトとダークに追従します） | `Long`。`AsukaModules.color(v, fallback)` で ARGB の `Int` になります | `bigint`。`native.color(v)` で CSS の色になります（セマンティックカラーは CSS 変数） |
-| パッケージの構造体 | 構造体（自身を含む場合は final class） | data class | オブジェクト |
-| パッケージの列挙型（ケースが値を持たないもの） | ケースごとに static を持つ `RawRepresentable` の構造体 | ケースごとに定数を持つ value class | ケースを収めた凍結（frozen）オブジェクト |
-| `native interface`（引数または戻り値） | `any T` | `T` | オブジェクト |
-| `fn(...)`（引数） | クロージャ | 関数 | 関数 |
+| Asuka | Swift | Kotlin | JavaScript | C |
+| --- | --- | --- | --- | --- |
+| `bool` | `Bool` | `Boolean` | `boolean` | `bool` |
+| `int` | `Int` | `Long` | `bigint` | `int64_t` |
+| `float` | `Double` | `Double` | `number` | `double` |
+| `string` | `String` | `String` | `string` | `char *`（UTF-8、NUL 終端） |
+| `bytes` | `Data` | `ByteArray` | `Uint8Array` | `asuka_bytes`（`data`、`len`） |
+| `Duration` | `TimeInterval`（秒） | `kotlin.time.Duration` | `number`（ミリ秒） | `int64_t`（ナノ秒） |
+| `[T]` | `[T]` | `List<T>` | `Array` | `<pkg>_list_T`（`data`、`len`） |
+| `[string: T]` | `[String: T]` | `Map<String, T>` | `object` | `<pkg>_map_T`（`keys`、`values`、`len`） |
+| `T?` | `T?` | `T?` | `T` または `null` | `T *`（`NULL` は値なし。`string?` は `char *`） |
+| `Color` | `Int`（コアのエンコーディング）。`AsukaColors.color(_:)` で `UIColor` か `NSColor` になります（セマンティックカラーはライトとダークに追従します） | `Long`。`AsukaModules.color(v, fallback)` で ARGB の `Int` になります | `bigint`。`native.color(v)` で CSS の色になります（セマンティックカラーは CSS 変数） | `uint64_t`。`asuka_desktop_color(v)` で表示中の外観に合わせた RGBA になります |
+| パッケージの構造体 | 構造体（自身を含む場合は final class） | data class | オブジェクト | 構造体 `<pkg>_Name` |
+| パッケージの列挙型（ケースが値を持たないもの） | ケースごとに static を持つ `RawRepresentable` の構造体 | ケースごとに定数を持つ value class | ケースを収めた凍結（frozen）オブジェクト | ケースごとに定数を持つ `int64_t`（`<pkg>_Level_low`） |
+| `native interface`（引数または戻り値） | `any T` | `T` | オブジェクト | `<pkg>_T *` |
+| `fn(...)`（引数） | クロージャ | 関数 | 関数 | `<pkg>_fn_…`。その `_call` で呼び出します |
 
 構造体のフィールドは宣言順に渡されます。構造体の定数とメソッドは Asuka 側に残ります。オブジェクト（ネイティブのインターフェース）を渡せるのは引数か戻り値としてだけで、配列、マップ、構造体の中には入れられません。それ以外の型を使うと、`asuka native generate` がその位置とともに報告し、代わりに使うべきものを示します。
 
 ### メソッド
 
 - **エラー**：プラットフォーム側が投げたエラーは、次のいずれかとして返ります。
-  - パッケージで宣言したエラー（`: Error` を付けて宣言した列挙型のケースで、その `///` ドキュメントがメッセージになります）。プラットフォーム側では、Swift なら `KitchenError.busy`、Kotlin なら `KitchenException(KitchenError.BUSY)`、JavaScript なら `new KitchenError("busy")` として投げます。Asuka では `catch KitchenError.busy` で捕まえられます。
-  - `AsukaNativeError.unsupported(msg)`、`AsukaUnsupportedException`、`asuka.native.UnsupportedError`。これらは `unsupported` エラーになります。
+  - パッケージで宣言したエラー（`: Error` を付けて宣言した列挙型のケースで、その `///` ドキュメントがメッセージになります）。プラットフォーム側では、Swift なら `KitchenError.busy`、Kotlin なら `KitchenException(KitchenError.BUSY)`、JavaScript なら `new KitchenError("busy")`、C なら `asuka_error_declared(err, kitchen_KitchenError_busy)` として投げます。Asuka では `catch KitchenError.busy` で捕まえられます。
+  - `AsukaNativeError.unsupported(msg)`、`AsukaUnsupportedException`、`asuka.native.UnsupportedError`、`asuka_error_unsupported`。これらは `unsupported` エラーになります。
   - それ以外のもの。ドメイン（`NSError` のドメインや例外のクラス）、コード、メッセージを持つエラーになります。
-- **`async`** を付けたメソッドは非同期になります。Swift では `async`、Kotlin では `suspend`、JavaScript では最初の引数に `AbortSignal` を受け取る `async` 関数です。Asuka は、メインスレッドを止めずにその結果を待ちます。タスクがキャンセルされると（それを始めた画面がなくなったときなど）、プラットフォーム側のタスクもキャンセルされます（Swift のタスク、Kotlin のコルーチン、`AbortSignal` の abort）。ネットワーク、ファイル、ダイアログの応答待ちなど、時間がかかる処理に使ってください。
+- **`async`** を付けたメソッドは非同期になります。Swift では `async`、Kotlin では `suspend`、JavaScript では最初の引数に `AbortSignal` を受け取る `async` 関数、C では `asuka_call` を受け取り、どのスレッドからでも一度だけ応答する関数です。Asuka は、メインスレッドを止めずにその結果を待ちます。タスクがキャンセルされると（それを始めた画面がなくなったときなど）、プラットフォーム側のタスクもキャンセルされます（Swift のタスク、Kotlin のコルーチン、`AbortSignal` の abort、C の `asuka_call_on_cancel`）。ネットワーク、ファイル、ダイアログの応答待ちなど、時間がかかる処理に使ってください。
 - **コールバック**：`fn` 型の引数には 2 種類あります。
   - **通知**：何も返さない関数（`progress: fn(float)`）。プラットフォーム側は、呼び出しの実行中でも、呼び出しが戻ったあとでも（ウォッチャーなど）、どのスレッドからでも、何度でも呼べます。Asuka 側ではメインスレッドで実行されるので、状態に書き込めます。
   - **問い合わせ**：何かを返す関数（`question: fn(string) -> bool`）。すぐに実行され、その結果がプラットフォームに返ります。
@@ -152,7 +155,7 @@ pub native interface Oven {
 - **オブジェクト**：メソッドは、ほかのネイティブインターフェースを返せます（`open` は `Oven` を返します）。それぞれがプラットフォーム側では独立したオブジェクトで、Asuka がそれを保持しなくなったとき、または `close()`（`close` という名前の、引数のないメソッド）が呼ばれた時点で解放されます。
 - **スレッド**：メソッドはプラットフォーム側で、呼び出したメインスレッドの上で同期的に実行されます。スレッドの切り替えもキューもありません。そのため呼び出しは軽量ですが、時間のかかる呼び出しはメインスレッドを止めてしまいます。そうしたメソッドには `async` を付けてください。
   - メソッドやインターフェースの `///` ドキュメントに `@mainThread` と書くと、必ずプラットフォームのメインスレッドで実行されます。UIKit、AppKit、Android のビューはこれを必要とします。この場合、Swift のプロトコルは `@MainActor` になります。
-  - JavaScript はシングルスレッドなので、Web ではこの点は関係ありません。
+  - JavaScript はシングルスレッドなので、Web ではこの点は関係ありません。Windows と Linux の C では、すべての呼び出しがメインスレッドで動きます。
 
 ### 呼び出しのコスト
 
@@ -204,9 +207,9 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 - Swift では `sizeThatFits`（iOS）または `fittingSize`（macOS）。ビューが `AsukaSizing` に準拠していれば、その `sizeThatFits`
 - Android では、ビュー自身の計測
 - JavaScript では `measure(c)`
-- Go では `Measure`（後述）
+- C では vtable の `measure`。なければウィジェット自身のサイズ（後述）
 
-固有のサイズを持たないビューは、スタイルからサイズを決めます。解放すべきものを持つビューは、`AsukaDestroying` に準拠させるか、JavaScript なら `destroy` を持たせるか、Go なら `native.Destroyer` を実装します。
+固有のサイズを持たないビューは、スタイルからサイズを決めます。解放すべきものを持つビューは、`AsukaDestroying` に準拠させるか、JavaScript か C の vtable に `destroy` を持たせます。
 
 `examples/media/segmented` は、すべてのプラットフォームで動く完全なビューの例です。
 
@@ -318,35 +321,105 @@ export function makeSegmented(events) {
 
 メソッドは Promise を返してもかまいません。Asuka で `async` でないメソッドでも同じです。パッケージで宣言したエラーは、生成されたクラスで投げます（`import { KitchenError } from "./kitchen.asuka.js"`）。`web/` 内のファイルはすべてアプリに同梱されるので、モジュールは自前のヘルパーをインポートしたり、`import.meta.url` からの相対パスでアセットを取得したりできます。`asuka dev --platform web` では、ファイルが変わるとページがリロードされます。詳しくは [Web](web.md#ネイティブコード) を参照してください。
 
-## Windows と Linux：Go
+## Windows と Linux：C
 
-デスクトップのホストは Go で書かれているので、そこでのネイティブパッケージのコードも Go で、パッケージの `desktop/` ディレクトリに置きます。Windows では `syscall` で Win32 を、Linux では purego で GTK 4 を呼び出し、cgo は使いません。生成される `<package>_native.go` に、自分のコードが用意する関数がインターフェースごとに一つずつ書かれています。
+Windows と Linux でのパッケージのコードは C で、パッケージの `desktop/` ディレクトリに置きます。C のホスト、コア、アプリと一緒にアプリの実行ファイルへコンパイルされます（Zig を使えばどのシステムからでもクロスコンパイルできます）。名前が `_windows.c` か `_linux.c` で終わるファイルはそのプラットフォームでだけビルドされ、それ以外は両方でビルドされます。違いのある箇所は `#ifdef _WIN32` で分けます。あるプラットフォーム向けのファイルがパッケージに一つもなければ、そこにはパッケージのコードがなく、モジュールを作ると `unsupported` が投げられます。`asuka native generate` は、自分のコードがインクルードする `<package>.asuka.h` を生成します。パッケージの型、インターフェースごとの vtable、そして自分で書く関数（インターフェースとビューごとに一つずつ）が書かれています。
 
-```go
-// desktop/battery_windows.go
-package battery
+```c
+// desktop/battery.c
+#include "battery.asuka.h"
 
-func newBattery() (Battery, error) { return winBattery{}, nil }
+#include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <stdio.h>
+#include <time.h>
+#endif
 
-type winBattery struct{}
+// level_now はバッテリーの残量で、0 から 1（負の値はバッテリーなし）。
+static double level_now(void) {
+#ifdef _WIN32
+	SYSTEM_POWER_STATUS s;
+	return GetSystemPowerStatus(&s) && s.BatteryLifePercent <= 100 ? s.BatteryLifePercent / 100.0 : -1;
+#else
+	FILE *f = fopen("/sys/class/power_supply/BAT0/capacity", "r");
+	int n = -100;
+	if (f) {
+		if (fscanf(f, "%d", &n) != 1) n = -100;
+		fclose(f);
+	}
+	return n / 100.0;
+#endif
+}
 
-func (winBattery) Level() (float64, error) { ... }
-func (winBattery) Watch(ctx context.Context, changed func(float64)) error { ... }
+static double level(battery_Battery *self, asuka_error *err) {
+	double l = level_now();
+	if (l < 0) asuka_error_unsupported(err, "no battery");
+	return l;
+}
+
+typedef struct {
+	battery_fn_float changed;
+	asuka_call *call;
+} watching;
+
+// run は専用のスレッドで残量を毎秒読み、監視しているタスクがキャンセルされるまで続けます。
+static void run(void *p) {
+	watching *w = p;
+	double last = -2;
+	while (!asuka_call_cancelled(w->call)) {
+		double l = level_now();
+		if (l != last) battery_fn_float_call(w->changed, l);  // メインスレッドに投げられます
+		last = l;
+#ifdef _WIN32
+		Sleep(1000);
+#else
+		nanosleep(&(struct timespec){1, 0}, NULL);
+#endif
+	}
+	asuka_error e = {0};
+	asuka_error_cancelled(&e);
+	asuka_call_fail(w->call, &e);
+	free(w);
+}
+
+static void watch(battery_Battery *self, battery_fn_float changed, asuka_call *call) {
+	watching *w = malloc(sizeof *w);
+	*w = (watching){changed, call};
+	asuka_desktop_spawn(run, w);
+}
+
+static const battery_Battery_vtable vt = {.level = level, .watch = watch};
+
+battery_Battery *battery_make_Battery(asuka_error *err) {
+	battery_Battery *b = malloc(sizeof *b);
+	b->vt = &vt;
+	return b;  // Asuka が手放すと解放されます（vtable に release がないため）
+}
 ```
 
-Asuka で `async` のメソッドは `context.Context` を受け取ります。呼び出したタスクがキャンセルされると、このコンテキストもキャンセルされます。このメソッドは専用のゴルーチンで動きます。`async` でないメソッドはメインスレッドで動くので、メインスレッドを止めてはいけません。プラットフォームの UI に触れる処理（ウィンドウ、GTK のウィジェット、メインスレッドのアパートメントに属する COM オブジェクト）と、すべてのコールバックはメインスレッドで動かします。`native.Post(f)` は f をメインスレッドで実行し、`native.OnMain(f)` は実行して終わるまで待ちます。ファイルはビルド制約でプラットフォームごとに分けます（`windows` と `linux && !android`。Android のビルドも `linux` を満たすためです）。実装がないプラットフォームでは `errors.ErrUnsupported` を返すと、Asuka はそれを `unsupported` エラーとして投げます。
+- **呼び出し**は、プラットフォームの UI があるメインスレッドで動きます。同期メソッドは結果をそのまま返し、メインスレッドを止めてはいけません。失敗したメソッドは `err` を設定してゼロ値を返します。`async` のメソッドは `asuka_call` を受け取ってすぐに戻り、あとでどのスレッドからでも、生成された `_done`（`battery_Battery_watch_done`）か `asuka_call_fail` で一度だけ応答します。呼び出したタスクがなくなったことは `asuka_call_cancelled` と `asuka_call_on_cancel` でわかります。ブロックする処理は `asuka_desktop_spawn` で専用のスレッドに回します。
+- **メモリ**：境界を越える値はすべて `malloc` で確保します。メソッドの引数は生成されたコードのもので、同期呼び出しのあいだと、非同期呼び出しが応答するまで有効です（それより長く使うならコピーします）。メソッドが返す（または応答する）値は生成されたコードに渡り、そちらで解放されます（リテラルは `asuka_strdup` してから返します）。コールバックの引数は自分のもののままで、問い合わせ型のコールバックが返した値は自分で解放します（`<pkg>_<Type>_free`）。vtable の `release` が `NULL` なら、Asuka が手放したときにオブジェクトがそのまま解放されます。
+- **コールバック**は `<pkg>_fn_…_call` で呼び出します。通知型はどのスレッドからでも呼べます（メインスレッドに投げられます）。問い合わせ型はメインスレッドならその場で動き、ほかのスレッドからは結果を待ちます。
+- **ビュー**：`<pkg>_make_<View>(events)` が、ビューのオブジェクトとその `widget`（`HWND`（`events.parent` の子）か `GtkWidget *`）を作ります。ホストがそれを表示し、ビューがなくなるときに破棄します。プロパティごとに vtable のセッター（`set_selected`）があり、ウィジェットが自分のサイズを返せないときは `measure` がサイズを決めます。イベントは生成された関数（`segmented_Segmented_selectedChange(events, i)`）で、どのスレッドからでも呼べます。
+- **ホスト**：`asuka_desktop.h`（platform/desktop）は、パッケージの C が使える C のホストの機能です。メインスレッドへの投げ込み、ビューのあるウィンドウ、アプリの名前・ID・バージョン・ディレクトリ、アセット、表示中の外観に合わせた色、HTTP（`asuka_fetch`）、アプリが指定したファイル（`asuka_desktop_local_file`）があります。`asuka_windows.h` には COM と WinRT の補助（UTF-16、vtable のスロット、HSTRING、アクティベーションファクトリ、デリゲート、非同期操作の待機、WIC の画像、システムウィンドウが受け取るブロードキャスト）があり、`asuka_linux.h` は、パッケージが使う GLib、GIO、GTK、libadwaita の関数を宣言して、Linux のホストと同じく実行時に解決します（`G(g_variant_new)(…)` のように呼びます）。そのため、ビルドに GTK のヘッダーは要りません。
+- **ライブラリ**：パッケージの C が各プラットフォームでリンクするものは、その `asuka.toml` に書きます。
 
-ビューも同じように生成されます。生成されたファイルに、ビューを作る関数とプロパティごとのセッターが書かれ、ビューのイベントオブジェクトがイベントを送ります。
+  ```toml
+  [windows]
+  libraries = ["ole32", "winhttp"]
+  [linux]
+  libraries = []
+  ```
 
-macOS では、パッケージに Swift（`Package.swift`）があればそれが動きます。Go しかないパッケージは macOS でも Go が動きます。
-
-標準ライブラリの Go は、すべてのアプリのホストに入っています。アプリ自身のパッケージにデスクトップ向けの Go があると、それを組み込んでビルドしたホストがアプリに使われます。`asuka build` と `asuka dev` が `go build` を実行します（ビルドするコンピュータに Go 1.26 以降が必要です）。その Go に変更があったときだけビルドし直します。
+macOS では、パッケージの Swift（`Package.swift`）が動き、C は動きません。
 
 ## ネイティブコードの開発
 
 - **iOS と Android**：`asuka dev` は、ネイティブパッケージを含むアプリの外側をビルドしてインストールし、ネイティブコードが変わったときにビルドし直します。Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist`、マニフェストの変更も対象です。アプリの Asuka のコードは、保存するとビルドし直さずにリロードされます。ネイティブパッケージを持たないアプリは、ホットリロードモードで開発用アプリの中で実行されます。開発用アプリに入っているのは、Asuka 自身のネイティブコードだけです。[開発](development.md#仕組み開発用アプリ)を参照してください。
 - **macOS**：パッケージの Swift は、アプリの Swift ライブラリにビルドされます。こちらも変更があったときだけビルドされ、アプリは状態を保ったまま再実行されます。
-- **Windows と Linux**：パッケージの Go はアプリのホストにビルドされます。こちらも変更があったときだけです。
+- **Windows と Linux**：パッケージの C は、コアと C のホストと一緒にアプリの実行ファイルにビルドされます。こちらも変更があったときだけです（チェックアウトにそのプラットフォームの C のホストがそろうまで、つまり RFC 0008 の H2 と H3 までは、アプリは Go のホストで動き、どのパッケージの C が動かないかを CLI が知らせます）。
 - **Web**：パッケージの JavaScript が変わると、ページがリロードされます。
 
 iOS や macOS でパッケージを初めてビルドするときに Swift の依存関係を解決し、以降のビルドではそれを再利用します。

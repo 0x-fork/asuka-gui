@@ -54,7 +54,7 @@ libffi and no per-call marshalling beyond what the types need.
 | Building the Linux host | Our own declarations of the subset of GTK, GLib and libadwaita it uses; their symbols resolved with dlopen and dlsym as it starts | It builds from any system with Zig (no GTK sysroot), as the Go host did with purego. |
 | Building the Windows host | Zig's MinGW target from any system; clang or MSVC on Windows | Cross-builds from a Mac or Linux, as today. |
 | An app's executable | The host with the core (and the app compiled to C) linked in: one executable on Windows and Linux, a bundle's executable on macOS | No dynamic library to load; dead stripping across the core and the app. |
-| Desktop native packages | macOS: Swift (as now). Windows and Linux: C in the package (`windows/`, `linux/`), against generated glue | The platforms' own language. |
+| Desktop native packages | macOS: Swift (as now). Windows and Linux: C in the package (`desktop/`, `_windows.c` and `_linux.c` for one), against generated glue | The platforms' own language. |
 | C from Asuka | `extern fn` and `extern type` in Asuka, glue the compiler generates in C, compiled into the core's build | One direct call; works on the VM and compiled to C alike. |
 | Go | The CLI, the compiler, generators, tests; never in what an app ships | Go is the toolchain's language, not the runtime's. |
 
@@ -104,7 +104,11 @@ files need, the updater's staging) lives in platform/desktop.
 ## Native packages on the desktop
 
 A package's Windows and Linux code is C:
-- `windows/*.c` and `linux/*.c` in the package;
+- `desktop/*.c` in the package: `x_windows.c` and `x_linux.c` for one
+  platform, `x.c` for both (`#ifdef _WIN32` where they differ), as most
+  packages share much between the two (a snapshot's diffing, a JSON
+  store, the codec's use); a platform with no file of its own gets none
+  of the package's C;
 - `asuka native generate` writes `<pkg>.asuka.h` and `<pkg>.asuka.c`
   beside them, holding:
   - the package's types as C structs and enums;
