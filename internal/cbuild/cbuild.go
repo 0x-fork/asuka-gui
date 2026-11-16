@@ -270,7 +270,7 @@ func cacheDir(name string) string {
 
 var pruneOnce sync.Once
 
-// prune removes root's build directories (core-, app-, runner-) last
+// prune removes root's build directories (core-, app-, runner-, exe-) last
 // used before cutoff.
 func prune(root string, cutoff time.Time) {
 	entries, err := os.ReadDir(root)
@@ -279,7 +279,7 @@ func prune(root string, cutoff time.Time) {
 	}
 	for _, e := range entries {
 		n := e.Name()
-		if !e.IsDir() || !(strings.HasPrefix(n, "core-") || strings.HasPrefix(n, "app-") || strings.HasPrefix(n, "runner-")) {
+		if !e.IsDir() || !(strings.HasPrefix(n, "core-") || strings.HasPrefix(n, "app-") || strings.HasPrefix(n, "runner-") || strings.HasPrefix(n, "exe-")) {
 			continue
 		}
 		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
@@ -310,4 +310,55 @@ func headers(core string) ([]string, error) {
 	})
 	sort.Strings(out)
 	return out, err
+}
+
+// Exe builds an executable of the core (core/src, without the fake host)
+// and extra C sources (a host, the native registry, packages' C, an app
+// compiled to C) for this computer, into dir (the caller's), and returns
+// its path: the core's objects come from the cache, the extra ones are
+// compiled into dir with extraFlags (their include directories). link is
+// what the executable links with besides the C library. sanitize builds
+// it with ASan and UBSan (tests).
+func Exe(core string, extra, extraFlags, link []string, sanitize bool, dir, name string) (string, error) {
+	cc, err := Find()
+	if err != nil {
+		return "", err
+	}
+	srcs, err := Sources(core, false)
+	if err != nil {
+		return "", err
+	}
+	flags := append(Includes(core), "-g", "-O1")
+	ldflags := append([]string{"-lm"}, link...)
+	if runtime.GOOS == "linux" {
+		ldflags = append(ldflags, "-lpthread", "-ldl")
+	}
+	if sanitize && runtime.GOOS != "windows" {
+		flags = append(flags, "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer", "-DAK_TEST=1")
+		ldflags = append(ldflags, "-fsanitize=address,undefined")
+	}
+	h := sha256.New()
+	fmt.Fprintln(h, cc.Path, cc.Args, flags)
+	hdrs, _ := headers(core)
+	for _, f := range append(append([]string{}, srcs...), hdrs...) {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintln(h, f, len(b))
+		h.Write(b)
+	}
+	objs, err := cc.Compile(srcs, filepath.Join(cacheDir("exe-"+hex.EncodeToString(h.Sum(nil))[:16]), "obj"), flags)
+	if err != nil {
+		return "", err
+	}
+	more, err := cc.Compile(extra, filepath.Join(dir, "obj"), append(append([]string{}, flags...), extraFlags...))
+	if err != nil {
+		return "", err
+	}
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	exe := filepath.Join(dir, name)
+	return exe, cc.Link(append(objs, more...), exe, ldflags)
 }

@@ -148,8 +148,8 @@ func TestPantry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 4 {
-		t.Errorf("%d files, want Swift's, Kotlin's, JavaScript's and the desktop's Go (no Go client: Asuka's compiler calls it)", len(files))
+	if len(files) != 5 {
+		t.Errorf("%d files, want Swift's, Kotlin's, JavaScript's and the desktop's C (a header and a source; no Go client: Asuka's compiler calls it)", len(files))
 	}
 	for rel, b := range files {
 		old, _ := os.ReadFile(filepath.Join(p.Dir, rel))
@@ -160,11 +160,25 @@ func TestPantry(t *testing.T) {
 	if _, err := LoadAsuka("testdata/kitchen"); err != nil {
 		t.Fatal(err)
 	}
-	for _, goos := range []string{"windows", "linux"} {
-		c := exec.Command("go", "vet", "./testdata/pantry/desktop")
-		c.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=0")
-		if out, err := c.CombinedOutput(); err != nil {
-			t.Errorf("%s: %v\n%s", goos, err, out)
+	// The desktop's C compiles for Windows and Linux (Zig cross-compiles;
+	// platform/desktop's test runs it).
+	if got := CSources("testdata/pantry/desktop", "linux"); strings.Join(got, " ") != "pantry.asuka.c pantry.c" {
+		t.Errorf("the C for Linux: %v", got)
+	}
+	zig, err := exec.LookPath("zig")
+	if err != nil {
+		t.Log("no zig: the C isn't cross-compiled")
+		return
+	}
+	out := t.TempDir()
+	for _, target := range []string{"x86_64-windows-gnu", "x86_64-linux-gnu", "aarch64-linux-gnu"} {
+		for _, f := range []string{"pantry.asuka.c", "pantry.c"} {
+			c := exec.Command(zig, "cc", "-target", target, "-std=c17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-c",
+				"-o", filepath.Join(out, target+"-"+f+".o"),
+				"-I", "../../platform/desktop/include", "-I", "../../core/include", "testdata/pantry/desktop/"+f)
+			if out, err := c.CombinedOutput(); err != nil {
+				t.Errorf("%s %s: %v\n%s", target, f, err, out)
+			}
 		}
 	}
 }

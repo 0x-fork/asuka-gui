@@ -16,27 +16,29 @@ import (
 //	               src/main/kotlin, in the package's Kotlin package
 //	web/           JavaScript modules: <package>.js
 //
-// Windows and Linux (and wherever the package says so) implement it in
-// Go. Generate writes what connects each to the package's Go. The Swift
+//	desktop/       C, for Windows and Linux (DesktopDir)
+//
+// Generate writes what connects each to the package's declarations. The Swift
 // package is at the package's root because SwiftPM knows a package by
 // its folder's name: the Go package's, not one every package shares.
 
 // Platforms are the projects a package can have native code in.
-var Platforms = []string{"swift", "android", "web"}
+var Platforms = []string{"swift", "android", "web", "desktop"}
 
 // SwiftDir is the folder of a package's Swift, which its Package.swift's
 // target is (path: "swift").
 const SwiftDir = "swift"
 
 // HasPlatform reports whether the package in dir has native code in
-// platform's project (swift: its Package.swift).
+// platform's project (swift: its Package.swift; desktop: its C, for
+// Windows and Linux).
 func HasPlatform(dir, platform string) bool {
 	switch platform {
 	case "swift":
 		return exists(filepath.Join(dir, "Package.swift"))
 	case "android":
 		return exists(filepath.Join(dir, platform, "build.gradle.kts"))
-	case "web":
+	case "web", "desktop":
 		return exists(filepath.Join(dir, platform))
 	}
 	return false
@@ -53,12 +55,10 @@ func Files(p *Package) (map[string][]byte, error) {
 		}
 		files[GoFile(p.Name)] = goSrc
 	}
-	if p.Asuka && exists(filepath.Join(p.Dir, DesktopDir)) {
-		src, err := GenerateGoServer(p)
-		if err != nil {
-			return nil, err
-		}
-		files[filepath.Join(DesktopDir, GoServerFile(p))] = src
+	if p.Asuka && HasPlatform(p.Dir, "desktop") {
+		h, c := GenerateC(p)
+		files[filepath.Join(DesktopDir, CHeader(p))] = h
+		files[filepath.Join(DesktopDir, CSource(p))] = c
 	}
 	if HasPlatform(p.Dir, "swift") {
 		files[filepath.Join(SwiftDir, SwiftFile(p))] = GenerateSwift(p)
