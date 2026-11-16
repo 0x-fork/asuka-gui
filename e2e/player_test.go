@@ -64,7 +64,7 @@ func startPlayerDev(t *testing.T, platform string) *playerDev {
 		cli += ".exe" // what Windows runs
 	}
 	run(t, "go", "build", "-C", repo, "-o", cli, "./cmd/asuka")
-	args := []string{"dev", "--platform", platform, "--no-vet"}
+	args := []string{"dev", "--platform", platform}
 	if d := os.Getenv("ASUKA_DEVICE"); d != "" {
 		args = append(args, "--device", d)
 	}

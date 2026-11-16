@@ -61,7 +61,7 @@ var (
 )
 
 // flagPos are the positions printed, as flags, when they're valid.
-var flagPos = map[string]bool{"Pub": true, "Native": true, "Async": true, "Throws": true, "Await": true}
+var flagPos = map[string]bool{"Pub": true, "Native": true, "Extern": true, "Async": true, "Throws": true, "Await": true}
 
 func (d *dumper) node(n Node, depth int, label string) {
 	if label != "" {

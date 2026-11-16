@@ -1,0 +1,80 @@
+// C from Asuka: what can't cross, and extern declarations' own rules.
+
+extern type Db with release db_close
+extern type Stmt with release nothing // ERROR "release nothing: the function that frees a Stmt is an extern fn of this package"
+extern type Row with release helper // ERROR "release helper: the function that frees a Row is an extern fn"
+extern type Cursor with release db_close // ERROR "release db_close: it takes one Cursor"
+
+extern fn db_open(path: CString) -> Db?
+extern fn db_close(db: Db) -> Int32
+extern fn db_exec(db: Db, sql: CString) -> Int32
+extern fn db_each(db: Db, row: fn(CString, Int64) -> Int32) -> Int32
+
+extern struct Point {
+  x: Int32
+  y: Float32
+}
+
+extern struct Line {
+  a: Point
+  b: Point
+  tag: Pointer
+}
+
+extern struct Named {
+  name: CString // ERROR "field name of extern struct Named can't be a CString"
+  db: Db // ERROR "can't be an extern type"
+  maybe: Int32? // ERROR "can't be none"
+}
+
+extern struct Loop { // ERROR "extern struct Loop holds itself: C can't lay it out"
+  next: Loop
+}
+
+extern struct Generic<T> { // ERROR "an extern struct isn't generic"
+  x: Int32
+}
+
+struct Todo {
+  title: string
+}
+
+extern fn takes_string(s: string) // ERROR "it crosses to C as a CString"
+extern fn takes_todo(t: Todo) // ERROR "Todo, an Asuka struct: C takes an extern struct"
+extern fn takes_view(v: View) // ERROR "a View isn't a C type"
+extern fn takes_array(xs: [int]) // ERROR "can't be an array"
+extern fn gives_bytes() -> bytes // ERROR "can't be bytes: their length can't come back"
+extern fn gives_fn() -> fn() // ERROR "C gives none back"
+extern fn opt_int(x: Int32?) // ERROR "can't be none"
+extern fn async_cb(f: async fn()) // ERROR "a callback isn't async"
+extern fn throwing_cb(f: fn() throws) // ERROR "a callback doesn't throw"
+extern fn struct_cb(f: fn(Point)) // ERROR "can't be an extern struct: a callback takes"
+extern fn db_cb(f: fn(Db)) // ERROR "can't be an extern type: who would free it"
+extern fn bytes_cb(f: fn(bytes)) // ERROR "bytes cross as an extern fn's parameter only"
+extern fn nested_cb(f: fn(fn())) // ERROR "a callback is an extern fn's parameter"
+extern fn with_body() -> Int32 { // ERROR "an extern fn has no body: C implements it"
+  return 1
+}
+extern fn generic<T>(x: Int32) // ERROR "an extern fn isn't generic"
+extern async fn waits() // ERROR "an extern fn isn't async"
+extern fn fails() throws // ERROR "an extern fn doesn't throw"
+
+fn helper(r: Row) {}
+
+fn uses() -> int {
+  let n: Int32 = 1 // ERROR "Int32 is a C type: it's written in extern declarations, and Asuka sees it as an int"
+  let d = Db() // ERROR "Db is an extern type: C makes one"
+  if let db = db_open("x.db") {
+    let p = Point(x: 1, y: 2.5)
+    let ok = db == db
+    db_each(db, (s, i) => s.count() + i)
+    return db_exec(db, "select 1") + p.x
+  }
+  return 0
+}
+
+fn crosses(db: Db) {
+  let t = spawn {
+    db_exec(db, "x") // ERROR "spawn can't use db"
+  }
+}

@@ -390,6 +390,33 @@ location = false
 
 见[蓝牙](bluetooth.md#在后台)。
 
+## c
+
+应用的 `extern` 声明所调用的 C 代码：为每个目标编进核心构建的内容，以及要链接的库。每个平台的表（`[c.ios]`、`[c.android]`、`[c.macos]`、`[c.windows]`、`[c.linux]`、`[c.web]`）会在顶层 `[c]` 的各个列表后面追加内容。包的 `asuka.toml` 也可以有自己的 `[c]`，导入这个包的应用会一并构建它。
+
+| 键 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `sources` | 字符串数组 | 无 | C 文件，相对于 `asuka.toml` 的 glob（`c/*.c`；`**` 匹配任意层目录）。如果某个 glob 一个文件也没匹配到，构建会停下来。 |
+| `include` | 字符串数组 | 无 | 源文件的头文件搜索目录（`-I`）。`asuka_ffi.h` 总是可以包含。 |
+| `defines` | 字符串数组 | 无 | 宏，`NAME` 或 `NAME=value`（`-D`）。 |
+| `flags` | 字符串数组 | 无 | 额外的编译器参数。 |
+| `libraries` | 字符串数组 | 无 | 要链接的库：一个名字（`sqlite3`：`-lsqlite3`），或者相对于 `asuka.toml` 的文件路径（`lib/libfoo.a`）。 |
+| `frameworks` | 字符串数组 | 无 | Apple 的框架，在 iOS 和 macOS 上链接（`Security`）。 |
+
+```toml
+[c]
+sources = ["c/*.c"]
+include = ["c/include"]
+
+[c.ios]
+libraries = ["z"]
+
+[c.web]
+defines = ["NO_ZLIB"]
+```
+
+见[在 Asuka 中调用 C](c.md#构建)。
+
 ## 环境变量
 
 密钥之类的机密信息不要写进 `asuka.toml`，而是通过环境变量提供，CI 可以从它的 secrets 中读取。下面这些环境变量还会覆盖对应的键。

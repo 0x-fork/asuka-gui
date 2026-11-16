@@ -36,6 +36,24 @@ func Runner() (string, error) {
 	return runnerPath, runnerErr
 }
 
+// RunnerFor is asuka-run for m: Runner, or for a module with C (its
+// externs'), one built with that C, which the module's ffi.* builtins
+// are in, linked in dir (the caller's, which it removes).
+func RunnerFor(m *bytecode.Module, dir string) (string, error) {
+	if m == nil || m.C == nil {
+		return Runner()
+	}
+	core, err := cbuild.CoreDir()
+	if err != nil {
+		return "", err
+	}
+	f, err := Foreign(m.C, cbuild.Host())
+	if err != nil {
+		return "", err
+	}
+	return cbuild.RunnerFor(core, cbuild.RunnerOptions{Foreign: f, Dir: dir})
+}
+
 // TestResult is how a test block went.
 type TestResult struct {
 	Name    string
@@ -76,7 +94,12 @@ type TestOptions struct {
 // or "FAIL name (file:line)" and the message, indented.
 func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, error) {
 	pattern, dir := o.Pattern, o.Dir
-	exe, err := Runner()
+	work, err := os.MkdirTemp("", "asuka-test-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(work)
+	exe, err := RunnerFor(m, work)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +207,12 @@ func testPos(m *bytecode.Module, name, dir string) string {
 // ShowApp mounts m's app on the fake host (an iPhone's screen), lets it
 // settle and writes what the screen shows to out.
 func ShowApp(m *bytecode.Module, out io.Writer) error {
-	exe, err := Runner()
+	work, err := os.MkdirTemp("", "asuka-run-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(work)
+	exe, err := RunnerFor(m, work)
 	if err != nil {
 		return err
 	}

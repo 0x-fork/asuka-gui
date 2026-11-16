@@ -54,6 +54,14 @@ A package needs code only for the platforms its apps run on. Where it
 has none, making its module throws an `unsupported` error, and its view
 shows nothing (the host logs that the view is missing).
 
+For a library with a C API, or code you'd write in C anyway, call C
+directly instead: an `extern fn` is one declaration, the same C runs on
+every platform (the web too, compiled into the module), and a call
+converts only what its types need, with no encoding. A native package
+is for what only a platform's own language reaches (UIKit, Android's
+APIs, the DOM, a vendor's Swift or Kotlin SDK) and for views. See [C
+from Asuka](c.md).
+
 ## Making one
 
 ```sh

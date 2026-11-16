@@ -317,8 +317,11 @@ func devWeb(dir string, o *devOptions, stop <-chan os.Signal) error {
 	opened := false
 	launch := func() error {
 		if opened {
-			// The app's settings, assets or scripts changed: the page
-			// loads them again.
+			// The app's settings, assets, scripts or C changed: the page
+			// loads them again, and a player built again.
+			if err := s.buildPlayer(); err != nil {
+				return err
+			}
 			if err := s.findPlugins(); err != nil {
 				return err
 			}
@@ -357,14 +360,18 @@ func newWebDev(app *asukaApp, work string) (*devServer, *devLoop, error) {
 	}
 	src, _ := webSource()
 	s := &devServer{app: app, src: src, wasm: filepath.Join(work, "asuka.wasm"), vapid: vapid, clients: map[chan string]bool{}}
-	if err := appbuild.Lib(cbuild.Target{OS: "wasm", Arch: "wasm32"}, cbuild.Module, nil, s.wasm); err != nil {
+	// The loop compiles the app first: the player has the C its externs
+	// call.
+	loop, err := newDevLoop(app, "127.0.0.1:0")
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.buildPlayer(); err != nil {
+		loop.close()
 		return nil, nil, err
 	}
 	if err := s.findPlugins(); err != nil {
-		return nil, nil, err
-	}
-	loop, err := newDevLoop(app, "127.0.0.1:0")
-	if err != nil {
+		loop.close()
 		return nil, nil, err
 	}
 	s.loop = loop
@@ -382,6 +389,12 @@ func newWebDev(app *asukaApp, work string) (*devServer, *devLoop, error) {
 	loop.fixed = append(loop.fixed, func() { s.send("fixed", "") })
 	loop.mu.Unlock()
 	return s, loop, nil
+}
+
+// buildPlayer builds the page's player: the core without an app, with
+// the C the app's externs call as of the last compile.
+func (s *devServer) buildPlayer() error {
+	return appbuild.PlayerLib(cbuild.Target{OS: "wasm", Arch: "wasm32"}, cbuild.Module, s.app.c, s.wasm)
 }
 
 // devServer serves the app's page under asuka dev: the page, the host's

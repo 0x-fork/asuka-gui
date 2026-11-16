@@ -64,7 +64,7 @@ func (t *iosToolchain) linkApp(work, bundle string, cfg *appConfig, hostObj, lib
 	if !cfg.sharedLayout() {
 		args := append([]string{"swiftc", "-target", t.target, "-sdk", t.sdk, hostObj, lib,
 			"-o", exe, "-framework", "UIKit", "-framework", "Foundation", "-lresolv"}, strip...)
-		args = append(append(args, pkgs...), extra...)
+		args = append(append(append(args, pkgs...), extra...), t.cLink...)
 		return exe, t.run(work, nil, "xcrun", append(args, ents...)...)
 	}
 	fw := filepath.Join(bundle, "Frameworks", fwName+".framework")
@@ -78,7 +78,7 @@ func (t *iosToolchain) linkApp(work, bundle string, cfg *appConfig, hostObj, lib
 		"-o", bin, "-framework", "UIKit", "-framework", "Foundation", "-lresolv",
 		"-Xlinker", "-install_name", "-Xlinker", "@rpath/" + fwName + ".framework/" + fwName,
 		"-Xlinker", "-application_extension"}, strip...)
-	if err := t.run(work, nil, "xcrun", append(args, pkgs...)...); err != nil {
+	if err := t.run(work, nil, "xcrun", append(append(args, pkgs...), t.cLink...)...); err != nil {
 		return "", err
 	}
 	if err := os.Chmod(bin, 0o755); err != nil {

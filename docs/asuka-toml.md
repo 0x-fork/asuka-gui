@@ -443,6 +443,37 @@ location = false
 
 See [Bluetooth](bluetooth.md#in-the-background).
 
+## c
+
+The C the app's `extern` declarations call: what it compiles into the
+core's build for each target, and what it links. Each platform's table
+(`[c.ios]`, `[c.android]`, `[c.macos]`, `[c.windows]`, `[c.linux]`,
+`[c.web]`) adds to the top one's lists. A package's `asuka.toml` has a
+`[c]` of its own, which an app that imports the package builds too.
+
+| Key | Type | Default | What it is |
+|---|---|---|---|
+| `sources` | strings | none | C files, globs relative to `asuka.toml` (`c/*.c`; `**` matches any directories). A glob that names no file stops the build. |
+| `include` | strings | none | Directories the sources include from (`-I`). `asuka_ffi.h` is always there. |
+| `defines` | strings | none | Macros, `NAME` or `NAME=value` (`-D`). |
+| `flags` | strings | none | More of the compiler's flags. |
+| `libraries` | strings | none | Libraries to link: a name (`sqlite3`: `-lsqlite3`) or a file's path relative to `asuka.toml` (`lib/libfoo.a`). |
+| `frameworks` | strings | none | Apple's frameworks, linked on iOS and macOS (`Security`). |
+
+```toml
+[c]
+sources = ["c/*.c"]
+include = ["c/include"]
+
+[c.ios]
+libraries = ["z"]
+
+[c.web]
+defines = ["NO_ZLIB"]
+```
+
+See [C from Asuka](c.md#building).
+
 ## The environment
 
 Secrets stay out of `asuka.toml`: give them in the environment, which

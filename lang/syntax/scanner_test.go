@@ -101,7 +101,7 @@ func TestScanKeywords(t *testing.T) {
 		}
 	}
 	const rfc = `app as async await bind break catch component continue
-  defer do effect else emit enum event false fn for if import in
+  defer do effect else emit enum event extern false fn for if import in
   interface key let load match native none on prop provide pub return
   screen self spawn state store struct style task test throw throws
   true try type use var while`

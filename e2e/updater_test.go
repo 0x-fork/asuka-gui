@@ -49,7 +49,7 @@ func newUpdateFeed(t *testing.T) *updateFeed {
 // It returns the build's directory.
 func (f *updateFeed) build(t *testing.T, platform, version string) string {
 	out := filepath.Join(t.TempDir(), "dist")
-	c := exec.Command("go", "run", "./cmd/asuka", "build", "--platform", platform, "--no-vet", "--version", version, "-o", out, "e2e/testdata/updater")
+	c := exec.Command("go", "run", "./cmd/asuka", "build", "--platform", platform, "--version", version, "-o", out, "e2e/testdata/updater")
 	c.Dir, c.Env = root(t), f.env
 	b, err := c.CombinedOutput()
 	if err != nil {
