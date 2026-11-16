@@ -24,7 +24,8 @@
 // alone, each noted here:
 //   - dsk_flyout_place, dsk_flyout_center: flyouts' and panels' places;
 //   - dsk_word, dsk_word_format: Asuka's own words;
-//   - dsk_exists; anim.h: animated images (dsk_anim, dsk_player).
+//   - dsk_exists; anim.h: animated images (dsk_anim, dsk_player);
+//   - dsk_jw_json: a value of JSON written elsewhere.
 #ifndef ASUKA_DESKTOP_SHARED_H
 #define ASUKA_DESKTOP_SHARED_H
 
@@ -75,6 +76,9 @@ typedef struct {
 } dsk_jw;
 
 void dsk_jw_raw(dsk_jw *w, const char *s, size_t n);
+// dsk_jw_json writes a value that's JSON already (an array, an object, a
+// string written elsewhere), as dsk_jw_str writes a string's.
+void dsk_jw_json(dsk_jw *w, const char *json, size_t n);
 void dsk_jw_obj(dsk_jw *w);   // {
 void dsk_jw_end(dsk_jw *w);   // }
 void dsk_jw_arr(dsk_jw *w);   // [

@@ -271,6 +271,11 @@ static void sep(dsk_jw *w) {
 	w->comma = true;
 }
 
+void dsk_jw_json(dsk_jw *w, const char *json, size_t n) {
+	sep(w);
+	dsk_jw_raw(w, json, n);
+}
+
 void dsk_jw_obj(dsk_jw *w) { sep(w), dsk_jw_raw(w, "{", 1), w->comma = false; }
 void dsk_jw_end(dsk_jw *w) { dsk_jw_raw(w, "}", 1), w->comma = true; }
 void dsk_jw_arr(dsk_jw *w) { sep(w), dsk_jw_raw(w, "[", 1), w->comma = false; }
