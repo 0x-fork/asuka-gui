@@ -1,5 +1,5 @@
-# Build outputs
-platform/ios/.build/
+# Build outputs (SwiftPM's, in any Swift package)
+.build/
 platform/ios/.swiftpm/
 .DS_Store
 
